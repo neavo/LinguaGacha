@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 
 import { describe, expect, it } from "vitest";
-import JSZip from "jszip";
+import { write_zip, read_zip_fixture, zip_text } from "../../../../test/zip-fixture";
 
 import { create_epub_fixture, read_epub_entry_text } from "../../../../test/epub-fixture";
 import { Item } from "../../../../domain/item";
@@ -33,8 +33,8 @@ describe("EPUB item slot distribution", () => {
  * 构造带翻页方向、竖排 CSS 和横竖排 class 的 EPUB，专门覆盖写回排版策略
  */
 async function create_layout_epub_fixture(): Promise<Buffer> {
-  const zip = new JSZip();
-  zip.file(
+  const zip = new Map<string, string | Uint8Array>();
+  zip.set(
     "META-INF/container.xml",
     `<?xml version="1.0" encoding="UTF-8"?>
 <container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">
@@ -43,7 +43,7 @@ async function create_layout_epub_fixture(): Promise<Buffer> {
   </rootfiles>
 </container>`,
   );
-  zip.file(
+  zip.set(
     "OPS/package.opf",
     `<?xml version="1.0" encoding="UTF-8"?>
 <package version="3.0" xmlns="http://www.idpf.org/2007/opf">
@@ -57,27 +57,27 @@ async function create_layout_epub_fixture(): Promise<Buffer> {
   </spine>
 </package>`,
   );
-  zip.file("OPS/style.css", ".vrtl { writing-mode: vertical-rl; color: red; }");
-  zip.file(
+  zip.set("OPS/style.css", ".vrtl { writing-mode: vertical-rl; color: red; }");
+  zip.set(
     "OPS/chapter.xhtml",
     `<?xml version="1.0" encoding="UTF-8"?>
 <html xmlns="http://www.w3.org/1999/xhtml">
   <body><p class="vrtl keep" style="writing-mode: vertical-rl; color: red;">章节</p></body>
 </html>`,
   );
-  return zip.generateAsync({ compression: "STORE", type: "nodebuffer" });
+  return write_zip(zip);
 }
 
 /**
  * 构造带目录导航链接的 EPUB，验证双语写回不会改坏章节目标。
  */
 async function create_nav_epub_fixture(): Promise<Buffer> {
-  const zip = new JSZip();
-  zip.file(
+  const zip = new Map<string, string | Uint8Array>();
+  zip.set(
     "META-INF/container.xml",
     `<container><rootfiles><rootfile full-path="OPS/package.opf"/></rootfiles></container>`,
   );
-  zip.file(
+  zip.set(
     "OPS/package.opf",
     `<package version="3.0">
       <manifest>
@@ -89,24 +89,24 @@ async function create_nav_epub_fixture(): Promise<Buffer> {
       </spine>
     </package>`,
   );
-  zip.file(
+  zip.set(
     "OPS/nav.xhtml",
     `<html><body><nav epub:type="toc"><ol><li><a href="chapter.xhtml">第一章</a></li></ol></nav></body></html>`,
   );
-  zip.file("OPS/chapter.xhtml", "<html><body><p>章节</p></body></html>");
-  return zip.generateAsync({ compression: "STORE", type: "nodebuffer" });
+  zip.set("OPS/chapter.xhtml", "<html><body><p>章节</p></body></html>");
+  return write_zip(zip);
 }
 
 /**
  * 构造带真实 NBSP 的 XHTML，覆盖 XML 输出实体合法性
  */
 async function create_nbsp_xhtml_epub_fixture(): Promise<Buffer> {
-  const zip = new JSZip();
-  zip.file(
+  const zip = new Map<string, string | Uint8Array>();
+  zip.set(
     "META-INF/container.xml",
     `<container><rootfiles><rootfile full-path="OPS/package.opf"/></rootfiles></container>`,
   );
-  zip.file(
+  zip.set(
     "OPS/package.opf",
     `<package version="3.0" xmlns="http://www.idpf.org/2007/opf">
       <manifest>
@@ -117,26 +117,26 @@ async function create_nbsp_xhtml_epub_fixture(): Promise<Buffer> {
       </spine>
     </package>`,
   );
-  zip.file(
+  zip.set(
     "OPS/chapter.xhtml",
     `<?xml version="1.0" encoding="UTF-8"?>
 <html xmlns="http://www.w3.org/1999/xhtml">
   <body><p>\u00a0</p><p>章节</p></body>
 </html>`,
   );
-  return zip.generateAsync({ compression: "STORE", type: "nodebuffer" });
+  return write_zip(zip);
 }
 
 /**
  * 构造无 XHTML 命名空间的普通 HTML，覆盖 HTML 输出行为
  */
 async function create_plain_html_epub_fixture(): Promise<Buffer> {
-  const zip = new JSZip();
-  zip.file(
+  const zip = new Map<string, string | Uint8Array>();
+  zip.set(
     "META-INF/container.xml",
     `<container><rootfiles><rootfile full-path="OPS/package.opf"/></rootfiles></container>`,
   );
-  zip.file(
+  zip.set(
     "OPS/package.opf",
     `<package version="3.0">
       <manifest>
@@ -147,8 +147,8 @@ async function create_plain_html_epub_fixture(): Promise<Buffer> {
       </spine>
     </package>`,
   );
-  zip.file("OPS/chapter.html", "<html><body><p>章节</p></body></html>");
-  return zip.generateAsync({ compression: "STORE", type: "nodebuffer" });
+  zip.set("OPS/chapter.html", "<html><body><p>章节</p></body></html>");
+  return write_zip(zip);
 }
 
 /**
@@ -458,13 +458,13 @@ describe("EPUB manifest 路径写回", () => {
     ["one+two.xhtml", "one+two.xhtml"],
   ])("按 manifest href %s 读取并写回原 ZIP 文件名", async (href, file_name) => {
     using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "epub-href-"));
-    const zip = await JSZip.loadAsync(await create_epub_fixture("正文"));
-    const chapter = await zip.file("OPS/chapter.xhtml")!.async("string");
-    const opf = await zip.file("OPS/package.opf")!.async("string");
-    zip.remove("OPS/chapter.xhtml");
-    zip.file(`OPS/${file_name}`, chapter);
-    zip.file("OPS/package.opf", opf.replace('href="chapter.xhtml"', `href="${href}"`));
-    const bytes = await zip.generateAsync({ type: "nodebuffer" });
+    const zip = await read_zip_fixture(await create_epub_fixture("正文"));
+    const chapter = zip_text(zip, "OPS/chapter.xhtml");
+    const opf = zip_text(zip, "OPS/package.opf");
+    zip.delete("OPS/chapter.xhtml");
+    zip.set(`OPS/${file_name}`, chapter);
+    zip.set("OPS/package.opf", opf.replace('href="chapter.xhtml"', `href="${href}"`));
+    const bytes = await write_zip(zip);
     const items = await new EpubAst().read_from_stream(bytes, "book.epub");
     expect(items).toHaveLength(1);
     expect(items[0]).toMatchObject({ src: "正文", tag: `OPS/${file_name}` });
@@ -474,12 +474,12 @@ describe("EPUB manifest 路径写回", () => {
     for (const bilingual of [false, true]) {
       const out = path.join(temp.path, `${bilingual}.epub`);
       await create_writer().build_epub(bytes, items, out, bilingual);
-      const output = await JSZip.loadAsync(fs.readFileSync(out));
-      const text = await output.file(`OPS/${file_name}`)!.async("string");
+      const output = await read_zip_fixture(fs.readFileSync(out));
+      const text = zip_text(output, `OPS/${file_name}`);
       expect(text).toContain("译文");
       expect(text.includes("正文")).toBe(bilingual);
-      expect(await output.file("OPS/package.opf")!.async("string")).toContain(`href="${href}"`);
-      expect(Object.keys(output.files).sort()).toEqual(Object.keys(zip.files).sort());
+      expect(zip_text(output, "OPS/package.opf")).toContain(`href="${href}"`);
+      expect([...output.keys()].sort()).toEqual([...zip.keys()].sort());
     }
   });
 });
@@ -488,8 +488,8 @@ describe("EPUB 正文片段写回", () => {
   it.each([false, true])("连续片段与旧块共同写回，双语=%s 时保留资源和锚点", async (bilingual) => {
     using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "epub-runs-"));
     const ast = new EpubAst();
-    const zip = await JSZip.loadAsync(await create_epub_fixture("旧段落"));
-    zip.file(
+    const zip = await read_zip_fixture(await create_epub_fixture("旧段落"));
+    zip.set(
       "OPS/chapter.xhtml",
       `<html xmlns="http://www.w3.org/1999/xhtml"><body>
       第一<span>片段</span><p> </p>前<ruby>漢<rt>かん</rt></ruby>后
@@ -497,7 +497,7 @@ describe("EPUB 正文片段写回", () => {
       <blockquote><span>引文</span>尾文</blockquote><p>旧段落</p><br/>结尾
     </body></html>`,
     );
-    const bytes = await zip.generateAsync({ type: "nodebuffer" });
+    const bytes = await write_zip(zip);
     const items = await ast.read_from_stream(bytes, "book.epub");
     const expected_sources = ["第一片段", "前漢后", "锚点", "链接", "引文尾文", "旧段落", "结尾"];
     expect(items.map((item) => item.src.trim())).toEqual(expected_sources);
@@ -526,16 +526,13 @@ describe("EPUB 正文片段写回", () => {
   it("旧定位继续写回，片段摘要不匹配时保留源文，未译片段保留内联排版", async () => {
     using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "epub-runs-"));
     const ast = new EpubAst();
-    const zip = await JSZip.loadAsync(await create_epub_fixture("旧段落"));
-    const [old] = await ast.read_from_stream(
-      await zip.generateAsync({ type: "nodebuffer" }),
-      "book.epub",
-    );
-    zip.file(
+    const zip = await read_zip_fixture(await create_epub_fixture("旧段落"));
+    const [old] = await ast.read_from_stream(await write_zip(zip), "book.epub");
+    zip.set(
       "OPS/chapter.xhtml",
       '<html><body><span class="italic">新片段</span><p>旧段落</p>尾文</body></html>',
     );
-    const bytes = await zip.generateAsync({ type: "nodebuffer" });
+    const bytes = await write_zip(zip);
     const runs = (await ast.read_from_stream(bytes, "book.epub")).filter(
       (item) => read_epub_extra(item)?.["mode"] === "text_run",
     );

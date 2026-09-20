@@ -1,6 +1,7 @@
+import JSZip from "jszip";
 import render from "dom-serializer";
 import { Element, isTag, Text, type ChildNode } from "domhandler";
-import JSZip from "jszip";
+import { write_zip, type ZipContents } from "../../zip";
 
 import { Item } from "../../../../domain/item";
 import { read_json_record, type JsonRecord } from "../../../../domain/json";
@@ -125,7 +126,7 @@ export class EpubWriter {
     }
 
     const source_zip = await JSZip.loadAsync(original_epub_bytes);
-    const output_zip = new JSZip();
+    const output_zip: ZipContents = new Map();
     const opf_title_sync_pair = await this.resolve_opf_title_sync_pair(
       source_zip,
       by_doc,
@@ -133,11 +134,11 @@ export class EpubWriter {
     );
 
     for (const name of Object.keys(source_zip.files)) {
-      const file = source_zip.file(name);
+      const file = (await source_zip.file(name)?.async("uint8array")) ?? null;
       if (file === null) {
         continue;
       }
-      const raw = await file.async("uint8array");
+      const raw = file;
       const lower = name.toLowerCase();
       const is_html_document = this.ast.is_html_document_path(name);
 
@@ -146,7 +147,7 @@ export class EpubWriter {
         continue;
       }
       if (lower.endsWith(".css")) {
-        output_zip.file(name, this.sanitize_css(this.ast.decode_bytes(raw)));
+        output_zip.set(name, this.sanitize_css(this.ast.decode_bytes(raw)));
         continue;
       }
       if (
@@ -163,7 +164,7 @@ export class EpubWriter {
         );
         continue;
       }
-      output_zip.file(name, raw);
+      output_zip.set(name, raw);
     }
 
     await this.write_zip_file(output_zip, out_path);
@@ -185,12 +186,12 @@ export class EpubWriter {
       if (!doc_path.toLowerCase().endsWith(".opf") || doc_items.length === 0) {
         continue;
       }
-      const file = source_zip.file(doc_path);
+      const file = (await source_zip.file(doc_path)?.async("uint8array")) ?? null;
       if (file === null) {
         continue;
       }
       try {
-        const root = this.ast.parse_opf_xml(await file.async("uint8array"));
+        const root = this.ast.parse_opf_xml(file);
         const [applied] = this.apply_items_to_tree(root, doc_path, doc_items, bilingual);
         if (applied > 0) {
           return candidate;
@@ -234,28 +235,28 @@ export class EpubWriter {
    * OPF 写回失败时回退原文加清洗，元数据文件不能阻塞正文导出
    */
   private async write_opf_doc(
-    output_zip: JSZip,
+    output_zip: ZipContents,
     name: string,
     raw: Uint8Array,
     doc_items: Item[],
     bilingual: boolean,
   ): Promise<void> {
     if (doc_items.length === 0) {
-      output_zip.file(name, this.sanitize_opf(this.ast.decode_bytes(raw)));
+      output_zip.set(name, this.sanitize_opf(this.ast.decode_bytes(raw)));
       return;
     }
     const has_real_translation = doc_items.some((item) => item.dst !== "" && item.dst !== item.src);
     if (!has_real_translation) {
-      output_zip.file(name, this.sanitize_opf(this.ast.decode_bytes(raw)));
+      output_zip.set(name, this.sanitize_opf(this.ast.decode_bytes(raw)));
       return;
     }
     try {
       const root = this.ast.parse_opf_xml(raw);
       const [applied] = this.apply_items_to_tree(root, name, doc_items, bilingual);
       const text = applied > 0 ? this.serialize_doc(name, root) : this.ast.decode_bytes(raw);
-      output_zip.file(name, this.sanitize_opf(text));
+      output_zip.set(name, this.sanitize_opf(text));
     } catch {
-      output_zip.file(name, this.sanitize_opf(this.ast.decode_bytes(raw)));
+      output_zip.set(name, this.sanitize_opf(this.ast.decode_bytes(raw)));
     }
   }
 
@@ -263,7 +264,7 @@ export class EpubWriter {
    * XHTML/NCX 写回在 AST 定位失败时保留原始文档，避免损坏 EPUB 包
    */
   private async write_ast_content_doc(
-    output_zip: JSZip,
+    output_zip: ZipContents,
     name: string,
     raw: Uint8Array,
     doc_items: Item[],
@@ -285,9 +286,9 @@ export class EpubWriter {
           changed = true;
         }
       }
-      output_zip.file(name, changed ? this.serialize_doc(name, root) : raw);
+      output_zip.set(name, changed ? this.serialize_doc(name, root) : raw);
     } catch {
-      output_zip.file(name, raw);
+      output_zip.set(name, raw);
     }
   }
 
@@ -591,27 +592,27 @@ export class EpubWriter {
     }
 
     const source_zip = await JSZip.loadAsync(original_epub_bytes);
-    const output_zip = new JSZip();
+    const output_zip: ZipContents = new Map();
     for (const name of Object.keys(source_zip.files)) {
-      const file = source_zip.file(name);
+      const file = (await source_zip.file(name)?.async("uint8array")) ?? null;
       if (file === null) {
         continue;
       }
-      const raw = await file.async("uint8array");
+      const raw = file;
       const lower = name.toLowerCase();
       if (lower.endsWith(".css")) {
-        output_zip.file(name, this.sanitize_css(this.ast.decode_bytes(raw)));
+        output_zip.set(name, this.sanitize_css(this.ast.decode_bytes(raw)));
       } else if (lower.endsWith(".opf")) {
-        output_zip.file(name, this.sanitize_opf(this.ast.decode_bytes(raw)));
+        output_zip.set(name, this.sanitize_opf(this.ast.decode_bytes(raw)));
       } else if (lower.endsWith(".ncx")) {
-        output_zip.file(name, this.process_legacy_ncx(name, raw, tag_group.get(name) ?? []));
+        output_zip.set(name, this.process_legacy_ncx(name, raw, tag_group.get(name) ?? []));
       } else if (this.ast.is_html_document_path(name)) {
-        output_zip.file(
+        output_zip.set(
           name,
           this.process_legacy_html(name, raw, tag_group.get(name) ?? [], bilingual),
         );
       } else {
-        output_zip.file(name, raw);
+        output_zip.set(name, raw);
       }
     }
     await this.write_zip_file(output_zip, out_path);
@@ -923,8 +924,8 @@ export class EpubWriter {
   /**
    * EPUB 输出沿用 STORE 压缩，避免重压缩带来不必要的二进制差异
    */
-  private async write_zip_file(zip_file: JSZip, out_path: string): Promise<void> {
-    const content = await zip_file.generateAsync({ compression: "STORE", type: "nodebuffer" });
+  private async write_zip_file(zip_file: ZipContents, out_path: string): Promise<void> {
+    const content = await write_zip(zip_file);
     await write_binary_file(out_path, content);
   }
 }

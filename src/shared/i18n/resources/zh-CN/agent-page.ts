@@ -35,10 +35,19 @@ export const zh_cn_agent_page = {
     placeholder: "描述任务，或输入 @ 选择技能或指令 …",
     edit_assistant_placeholder: "修改模型回复 …",
     newline: "换行",
-    drop_images: "松开以添加图片",
+    drop_files: "松开以添加文件",
   },
   mention: {
-    groups: { skills: "技能", instructions: "指令" },
+    files: {
+      project: "项目",
+      upload: "上传",
+      items: "{COUNT} 条",
+      pages: "{COUNT} 页",
+      loading: "正在读取文件列表…",
+      error: "文件列表读取失败，请重新打开菜单重试",
+      more: "匹配文件较多，请继续输入以缩小范围",
+    },
+    groups: { files: "文件", skills: "技能", instructions: "指令" },
     instructions: {
       compact_context: {
         title: "压缩上下文",
@@ -93,7 +102,7 @@ export const zh_cn_agent_page = {
     stop: "停止",
     applying: "正在应用工程修改，完成前不可停止",
     new_task: "新任务",
-    add_image: "添加图片",
+    add_file: "添加文件",
     continue: "继续",
     edit: "修改",
     copy: "复制",
@@ -128,6 +137,7 @@ export const zh_cn_agent_page = {
     error: "失败 · {duration}",
     stopped: "已停止 · {duration}",
   },
+  upload: { uploading: "正在上传", failed: "上传失败", retry: "重试" },
   file_saved: "文件已保存。",
   error: {
     activate_link: "处理链接失败。",
@@ -141,7 +151,6 @@ export const zh_cn_agent_page = {
     queue_delete: "排队消息删除失败，请重试。",
     queue_reorder: "队列顺序更新失败，请重试。",
     queue_send: "消息无法立即发送，仍保留在队列中。",
-    image: "图片读取失败，仅支持 PNG、JPG、BMP、WebP 和 AVIF。",
     stop: "停止失败，请重试。",
     reset: "新任务创建失败，请重试。",
     approval_mode: "写入请求审批模式更新失败，请重试。",

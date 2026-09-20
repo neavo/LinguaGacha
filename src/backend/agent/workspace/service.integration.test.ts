@@ -79,6 +79,20 @@ it("PDF 零条目工程按页保存、隔离旧指纹，语言变化后重建工
       openDirectory: async () => {},
       pickSavePath: async () => null,
     });
+    expect(workspace.list_files()).toEqual([
+      { kind: "project", path: "book.pdf", count: 3, unit: "pages" },
+    ]);
+    const upload = await workspace.uploads.upload(
+      "参考.txt",
+      new ReadableStream({
+        start(controller) {
+          controller.enqueue(new TextEncoder().encode("资料"));
+          controller.close();
+        },
+      }),
+      new AbortController().signal,
+    );
+    expect(workspace.list_files()).toContainEqual({ kind: "upload", path: upload.path, size: 6 });
     await workspace.initialize();
     await workspace.run("", [], new AbortController().signal);
     const root = resources.paths.get_agent_workspace_root_dir();
@@ -101,7 +115,7 @@ it("PDF 零条目工程按页保存、隔离旧指纹，语言变化后重建工
     expect(
       JSON.parse(fs.readFileSync(path.join(root, "project_meta.json"), "utf8")).counts,
     ).toMatchObject({ items: 0, pages: page_rows.length });
-    const source_path = path.join(root, "sources/book.pdf/original.pdf");
+    const source_path = path.join(root, "sources/book.pdf");
     const source_mtime = fs.statSync(source_path).mtimeMs;
     const draft = {
       translation: { kind: "translate" as const, markdown: "跨页段落\n\n图中是蓝色矩形。" },

@@ -98,16 +98,23 @@ export type AgentPendingDecision = JsonRecord &
       }
   );
 
-/** 单条用户消息按输入顺序最多保留的图片数。 */
+/** 单条用户消息最多发送到视觉通道的图片数。 */
 export const AGENT_MESSAGE_IMAGE_LIMIT = 10;
 /** 当前会话最多保留的待发送输入数；renderer 与 AgentService 共用同一产品上限。 */
 export const AGENT_INPUT_QUEUE_LIMIT = 5;
-/** 用户消息附件包含后端归一的 WebP 与已确认的回复批注。 */
+/** 上传成功后的不可变文件记录，路径只由后端生成。 */
+export type AgentFileAttachment = JsonRecord & {
+  kind: "file";
+  uploadId: string; // 后端生成的会话内身份，提交请求只携带此字段
+  name: string; // 用户选择时的原名称，用于展示
+  path: string; // 工作区相对路径，保存名已规范化
+  size: number; // 实际写入的字节数
+  imageMimeType: string | null; // 文件头识别出的受支持图片类型，其余文件为 null
+};
+
+/** 图片和普通文件共用引用协议，图片字节只在模型发送边界生成。 */
 export type AgentMessageAttachment = JsonRecord &
-  (
-    | { kind: "image"; webpBase64: string }
-    | { kind: "response_annotation"; selectedText: string; comment: string }
-  );
+  (AgentFileAttachment | { kind: "response_annotation"; selectedText: string; comment: string });
 
 export type AgentResponseAnnotationAttachment = Extract<
   AgentMessageAttachment,
@@ -120,7 +127,17 @@ export type AgentMessageInput = JsonRecord & {
   attachments: AgentMessageAttachment[];
 };
 
-/** 产品输入队列完全驻留于当前会话内存；sending 表示已交给 Pi、尚未确认消费。 */
+/** 提交只携带上传身份，展示元数据由后端重新取得。 */
+export function agent_message_request(message: AgentMessageInput): JsonRecord {
+  return {
+    text: message.text,
+    attachments: message.attachments.map((attachment) =>
+      attachment.kind === "file" ? { kind: "file", uploadId: attachment.uploadId } : attachment,
+    ),
+  };
+}
+
+/** 产品输入队列完全驻留于当前会话内存；sending 表示正在准备或已交给 Pi、尚未确认消费。 */
 export type AgentQueuedInput = AgentMessageInput & {
   id: string;
   status: "queued" | "sending";
@@ -191,6 +208,7 @@ export type AgentEntry = JsonRecord &
 
 /** GET snapshot 与 snapshot_seed 共用的完整会话形状。 */
 export type AgentSessionSnapshot = JsonRecord & {
+  sessionId: string; // 对话重置与工程切换后改变，草稿据此清理旧文件引用。
   revision: number;
   state: AgentSessionState;
   approvalMode: AgentApprovalMode;
@@ -223,13 +241,6 @@ export type AgentSessionEventPayload = JsonRecord &
 /** SSE 以单调 revision 排序；重复、旧帧与缺口由 renderer 显式处理。 */
 export type AgentSessionEvent = AgentSessionEventPayload & { revision: number };
 
-/** Agent marker 的稳定字面量范围；前后端共用同一转义与重叠规则。 */
-export type AgentReferenceRange = Readonly<{
-  from: number;
-  to: number;
-  marker: string;
-}>;
-
 /** 校验公开 assistant parts，删除纯空白并合并相邻同类，同时保留可见正文原值。 */
 export function normalize_agent_assistant_message_parts(
   value: unknown,
@@ -260,26 +271,38 @@ export function normalize_agent_user_message_text(value: unknown): string | null
   return text === "" ? null : text;
 }
 
-/** 完整消息允许纯附件；按顺序规范两种附件，并忽略图片上限之外的图片。 */
-export function normalize_agent_message_input(value: unknown): AgentMessageInput | null {
+/** 请求通过上传身份解析文件，快照边界校验后端返回的完整记录。 */
+export function normalize_agent_message_input(
+  value: unknown,
+  resolve_file?: (id: string) => AgentFileAttachment,
+): AgentMessageInput | null {
   if (typeof value !== "object" || value === null || Array.isArray(value)) return null;
   const record = value as Record<string, unknown>;
   if (typeof record["text"] !== "string" || !Array.isArray(record["attachments"])) return null;
   const text = record["text"].trim();
   const attachments: AgentMessageAttachment[] = [];
-  let image_count = 0;
   for (const attachment of record["attachments"]) {
     if (typeof attachment !== "object" || attachment === null || Array.isArray(attachment)) {
       return null;
     }
     const attachment_record = attachment as Record<string, unknown>;
-    if (attachment_record["kind"] === "image") {
-      if (image_count >= AGENT_MESSAGE_IMAGE_LIMIT) continue;
-      if (typeof attachment_record["webpBase64"] !== "string") return null;
-      const webp_base64 = attachment_record["webpBase64"].trim();
-      if (webp_base64 === "") return null;
-      attachments.push({ kind: "image", webpBase64: webp_base64 });
-      image_count += 1;
+    if (attachment_record["kind"] === "file") {
+      const id = attachment_record["uploadId"];
+      if (typeof id !== "string" || id === "") return null;
+      if (resolve_file !== undefined) attachments.push(resolve_file(id));
+      else {
+        const { name, path, size, imageMimeType } = attachment_record;
+        if (
+          typeof name !== "string" ||
+          typeof path !== "string" ||
+          typeof size !== "number" ||
+          !Number.isSafeInteger(size) ||
+          size < 0 ||
+          (imageMimeType !== null && typeof imageMimeType !== "string")
+        )
+          return null;
+        attachments.push({ kind: "file", uploadId: id, name, path, size, imageMimeType });
+      }
       continue;
     }
     if (attachment_record["kind"] === "response_annotation") {
@@ -301,47 +324,15 @@ export function normalize_agent_message_input(value: unknown): AgentMessageInput
 }
 
 /** 修订请求复用完整消息边界，assistant 的纯文本限制由拥有角色事实的后端校验。 */
-export function normalize_agent_revision_request(value: unknown): AgentRevisionRequest | null {
+export function normalize_agent_revision_request(
+  value: unknown,
+  resolve_file?: (id: string) => AgentFileAttachment,
+): AgentRevisionRequest | null {
   if (typeof value !== "object" || value === null || Array.isArray(value)) return null;
   const record = value as Record<string, unknown>;
   const entry_id = record["entryId"];
-  const message = normalize_agent_message_input(record["message"]);
+  const message = normalize_agent_message_input(record["message"], resolve_file);
   return typeof entry_id !== "string" || entry_id === "" || message === null
     ? null
     : { entryId: entry_id, message };
-}
-
-/** 生成不会随 UI locale 改变的显式能力 marker。 */
-export function format_agent_skill_reference(name: string): string {
-  return `@skill(${name})`;
-}
-
-/** 找出未被反斜线转义的 marker；重叠时由较长 marker 优先占用范围。 */
-export function find_agent_reference_ranges(
-  text: string,
-  markers: readonly string[],
-): AgentReferenceRange[] {
-  const ranges: AgentReferenceRange[] = [];
-  const ordered_markers = [...new Set(markers)].sort((left, right) => right.length - left.length);
-  for (const marker of ordered_markers) {
-    let from = text.indexOf(marker);
-    while (from >= 0) {
-      const to = from + marker.length;
-      if (
-        !agent_reference_is_escaped(text, from) &&
-        !ranges.some((range) => from < range.to && to > range.from)
-      ) {
-        ranges.push({ from, to, marker });
-      }
-      from = text.indexOf(marker, to);
-    }
-  }
-  return ranges.sort((left, right) => left.from - right.from);
-}
-
-/** 奇数个连续反斜线转义 marker，偶数个仍表示一次真实引用。 */
-function agent_reference_is_escaped(text: string, from: number): boolean {
-  let slash_count = 0;
-  for (let index = from - 1; index >= 0 && text[index] === "\\"; index -= 1) slash_count += 1;
-  return slash_count % 2 === 1;
 }

@@ -41,11 +41,11 @@ export async function preview(file_path, updates_path) {
   }
   const meta = JSON.parse(await readFile(ws.contract.datasets.project_meta.path, "utf8"));
   const source = meta.files.find((file) => file.file_path === file_path);
-  if (!source?.source_binary_path) throw new Error(`PDF source not found: ${file_path}`);
+  if (!source) throw new Error(`PDF source not found: ${file_path}`);
   const output = await build_pdf_document({
     title: path.basename(file_path),
     document,
-    source_bytes: new Uint8Array(await readFile(source.source_binary_path)),
+    source_bytes: new Uint8Array(await readFile(`sources/${source.file_path}`)),
     print: async (html) => {
       const printed = await ws.host({ kind: "print_pdf", html });
       return new Uint8Array(await readFile(printed.path));

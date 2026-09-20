@@ -37,10 +37,19 @@ export const ko_kr_agent_page = {
     placeholder: "작업을 설명하거나 @를 입력해 스킬 또는 명령을 선택하세요 …",
     edit_assistant_placeholder: "모델 응답 수정 …",
     newline: "줄 바꿈",
-    drop_images: "놓아서 이미지 추가",
+    drop_files: "놓아서 파일 추가",
   },
   mention: {
-    groups: { skills: "스킬", instructions: "명령" },
+    files: {
+      project: "프로젝트",
+      upload: "업로드",
+      items: "{COUNT}개 항목",
+      pages: "{COUNT}페이지",
+      loading: "파일 목록을 불러오는 중…",
+      error: "메뉴를 다시 열어 재시도하세요.",
+      more: "계속 입력하여 검색 범위를 좁히세요.",
+    },
+    groups: { files: "파일", skills: "스킬", instructions: "명령" },
     instructions: {
       compact_context: {
         title: "컨텍스트 압축",
@@ -95,7 +104,7 @@ export const ko_kr_agent_page = {
     stop: "중지",
     applying: "프로젝트 변경 사항을 적용 중입니다. 완료될 때까지 중지할 수 없습니다",
     new_task: "새 작업",
-    add_image: "이미지 추가",
+    add_file: "파일 추가",
     continue: "계속",
     edit: "수정",
     copy: "복사",
@@ -134,6 +143,7 @@ export const ko_kr_agent_page = {
     error: "실패 · {duration}",
     stopped: "중지됨 · {duration}",
   },
+  upload: { uploading: "업로드 중", failed: "업로드 실패", retry: "다시 시도" },
   file_saved: "파일을 저장했습니다.",
   error: {
     activate_link: "링크를 처리하지 못했습니다.",
@@ -147,7 +157,6 @@ export const ko_kr_agent_page = {
     queue_delete: "대기 중인 메시지를 삭제하지 못했습니다. 다시 시도해 주세요.",
     queue_reorder: "대기열 순서를 변경하지 못했습니다. 다시 시도해 주세요.",
     queue_send: "메시지를 즉시 전송하지 못했습니다. 대기열에 보관되어 있습니다.",
-    image: "이미지를 읽지 못했습니다. PNG, JPG, BMP, WebP, AVIF만 지원합니다.",
     stop: "중지하지 못했습니다. 다시 시도해 주세요.",
     reset: "새 작업을 만들지 못했습니다. 다시 시도해 주세요.",
     approval_mode: "쓰기 승인 모드를 변경하지 못했습니다. 다시 시도해 주세요.",

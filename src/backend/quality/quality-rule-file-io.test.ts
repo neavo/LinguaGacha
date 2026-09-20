@@ -2,7 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-import ExcelJS from "exceljs";
+import { spreadsheet_fixture, spreadsheet_values } from "../../test/spreadsheet-fixture";
 import { afterEach, describe, expect, it } from "vitest";
 
 import {
@@ -65,13 +65,25 @@ describe("quality-rule-file-io", () => {
   it("从 Excel 规则文件读取前五列并跳过表头", async () => {
     const root = create_temp_root();
     const file_path = path.join(root, "rules.xlsx");
-    const workbook = new ExcelJS.Workbook();
-    const worksheet = workbook.addWorksheet("rules");
-    worksheet.addRow(["src", "dst", "info", "regex", "case_sensitive"]);
-    worksheet.addRow(["HP", "生命值", "术语", "true", "TRUE"]);
-    worksheet.addRow(["", "应跳过"]);
-    worksheet.addRow(["MP", "魔力"]);
-    fs.writeFileSync(file_path, Buffer.from(await workbook.xlsx.writeBuffer()));
+    fs.writeFileSync(
+      file_path,
+      await spreadsheet_fixture({
+        A1: "src",
+        B1: "dst",
+        C1: "info",
+        D1: "regex",
+        E1: "case_sensitive",
+        A2: "HP",
+        B2: "生命值",
+        C2: "术语",
+        D2: true,
+        E2: "TRUE",
+        A3: "",
+        B3: "应跳过",
+        A4: "MP",
+        B4: "魔力",
+      }),
+    );
 
     await expect(load_quality_rule_entries_from_file(file_path)).resolves.toEqual([
       {
@@ -109,13 +121,12 @@ describe("quality-rule-file-io", () => {
         case_sensitive: false,
       },
     ]);
-    const workbook = new ExcelJS.Workbook();
-    await workbook.xlsx.readFile(`${base_path}.xlsx`);
-    const cell = workbook.worksheets[0]?.getCell(2, 1);
-    expect(cell?.value).toBe("'=SUM(A1:A2)");
+    const cells = await spreadsheet_values(fs.readFileSync(`${base_path}.xlsx`));
+    expect(cells.A2).toBe("'=SUM(A1:A2)");
   });
 });
 
+/** 写入隔离的外部规则文件，供真实 IO 入口读取。 */
 function write_temp_file(file_name: string, content: string): string {
   const root = create_temp_root();
   const file_path = path.join(root, file_name);
@@ -123,6 +134,7 @@ function write_temp_file(file_name: string, content: string): string {
   return file_path;
 }
 
+/** 登记临时目录，由测试清理统一回收。 */
 function create_temp_root(): string {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "linguagacha-quality-rule-io-"));
   cleanup_roots.push(root);

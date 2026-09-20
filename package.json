@@ -103,6 +103,10 @@
     }
   },
   "workspacePackages": [
+    "chardet",
+    "exceljs",
+    "iconv-lite",
+    "jszip",
     "mupdf",
     "remark-gfm",
     "remark-parse",

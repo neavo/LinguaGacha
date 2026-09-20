@@ -1,3 +1,8 @@
+vi.mock("@frontend/app/desktop/desktop-api", () => ({
+  api_blob: async () => new Blob([], { type: "image/png" }),
+  api_file_url: (path: string) => `http://localhost${path}`,
+}));
+import { uploaded_file } from "../../../test/agent-upload-fixture";
 import { act, createElement, type ComponentProps } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -25,6 +30,7 @@ describe("AgentMessageAttachments", () => {
     root = null;
   });
 
+  /** 保持真实附件组件与浮层，注入本例交互入口。 */
   async function render_attachments(props: AgentMessageAttachmentsProps): Promise<HTMLDivElement> {
     container = document.createElement("div");
     document.body.append(container);
@@ -35,19 +41,53 @@ describe("AgentMessageAttachments", () => {
     return container;
   }
 
-  it("已发送附件保持图片优先顺序，并按类型打开只读详情", async () => {
+  it("图片预览使用 Blob URL，卸载后释放地址", async () => {
+    const revoke = vi.spyOn(URL, "revokeObjectURL");
+    try {
+      const view = await render_attachments({
+        mode: "sent",
+        attachments: [uploaded_file("preview")],
+      });
+      const source = view.querySelector("img")?.getAttribute("src");
+      expect(source).toMatch(/^blob:/);
+      await act(async () => root?.unmount());
+      root = null;
+      expect(revoke).toHaveBeenCalledWith(source);
+    } finally {
+      revoke.mockRestore();
+    }
+  });
+
+  it("普通文件关联下载路径，草稿可直接移除", async () => {
+    const on_remove = vi.fn();
+    const file = { ...uploaded_file("document", null), name: "长 文件名.pdf", size: 128 };
+    const view = await render_attachments({
+      mode: "draft",
+      attachments: [file],
+      disabled: false,
+      on_remove,
+      on_retry: vi.fn(),
+      on_update_annotation: vi.fn(),
+    });
+    expect(view.querySelector("a")?.textContent).toBe(file.name);
+    expect(view.querySelector("a")?.getAttribute("href")).toContain("/api/agent/uploads/document");
+    await act(async () => view.querySelector<HTMLButtonElement>("button")?.click());
+    expect(on_remove).toHaveBeenCalledWith(0);
+  });
+
+  it("已发送附件保持添加顺序，并按类型打开只读详情", async () => {
     const view = await render_attachments({
       mode: "sent",
       attachments: [
         { kind: "response_annotation", selectedText: "旧回复片段", comment: "请更准确" },
-        { kind: "image", webpBase64: "webp-a" },
+        uploaded_file("webp-a"),
       ],
     });
     const buttons = view.querySelectorAll<HTMLButtonElement>("button[aria-label]");
 
-    expect(buttons[0]?.querySelector("img")?.alt).toBe("");
-    expect(buttons[1]?.textContent).toBe("旧回复片段");
-    await act(async () => buttons[1]?.click());
+    expect(buttons[1]?.querySelector("img")?.alt).toBe("");
+    expect(buttons[0]?.textContent).toBe("旧回复片段");
+    await act(async () => buttons[0]?.click());
 
     const panel = document.body.querySelector(
       '[role="dialog"][aria-label="agent_page.annotation.title"]',
@@ -57,7 +97,7 @@ describe("AgentMessageAttachments", () => {
     expect(panel?.querySelector("textarea")).toBeNull();
     expect(document.body.querySelector('[data-slot="dialog-overlay"]')).toBeNull();
 
-    await act(async () => buttons[0]?.click());
+    await act(async () => buttons[1]?.click());
     const dialog = document.body.querySelector('[data-slot="dialog-content"]');
     expect(dialog?.querySelector("img")?.alt).toBe("");
     expect(
@@ -71,7 +111,8 @@ describe("AgentMessageAttachments", () => {
     const on_remove = vi.fn();
     const view = await render_attachments({
       mode: "draft",
-      attachments: [{ kind: "image", webpBase64: "webp-a" }],
+      on_retry: vi.fn(),
+      attachments: [uploaded_file("webp-a")],
       disabled: false,
       on_remove,
       on_update_annotation: vi.fn(),
@@ -97,6 +138,7 @@ describe("AgentMessageAttachments", () => {
     const on_update_annotation = vi.fn();
     const view = await render_attachments({
       mode: "draft",
+      on_retry: vi.fn(),
       attachments: [{ kind: "response_annotation", selectedText: "旧回复", comment: "原评论" }],
       disabled: false,
       on_remove,
@@ -129,6 +171,7 @@ describe("AgentMessageAttachments", () => {
   });
 });
 
+/** 通过原生输入事件通知 React 更新批注草稿。 */
 function set_textarea_value(textarea: HTMLTextAreaElement, value: string): void {
   Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")?.set?.call(
     textarea,

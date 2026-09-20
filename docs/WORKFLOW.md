@@ -54,7 +54,7 @@
 |GUI / preload / native / Backend Runtime worker 行为|相关目标测试；共享资源或 GUI Backend 生命周期变化时运行真实 `BackendResources` 与 `GuiBackendBootstrap` 集成测试|
 |Agent 工作区或 Node runtime 行为|`src/backend/agent/workspace/`、`model-tools/` 及受影响的 Backend Runtime / main 路径测试；JavaScript 加载、权限、真实文件边界、系统代理或网页流读取的环境语义存在风险时，对相应行为运行真实 Electron Node 子进程集成验证|
 |宿主加载、组合根、资源定位或跨进程通信与启动契约变化|低层测试不足以证明变化时，对受影响的契约执行真实 Electron 集成或 smoke 验证|
-|Agent 图片处理与宿主协议|图片服务、消息受理、Workspace 输出与附件入口的目标测试；编解码或 IPC 变化运行 `src/native/agent-image-host.test.ts` 和 Workspace bootstrap 的真实 Electron 验证|
+|Agent 文件上传、图片处理与宿主协议|上传存储、消息准备、草稿与 Workspace 输出的目标测试。字节传输与关闭行为验证真实 Gateway / Bootstrap。编解码或 IPC 变化运行 `src/native/agent-image-host.test.ts` 和 Workspace bootstrap 的真实 Electron 验证|
 |端到端 UI 冒烟|用户明确要求时执行；或已识别具体高风险，且低层验证不足以证明结果时执行。需要启动真机应用时使用 `npm run dev`|
 |Windows Go launcher|在受影响的 `buildtools/builder/win-cli` 或 `buildtools/builder/win-berserker` 内执行 `go test ./...`|
 |构建、Vite、electron-builder、afterPack、发布资产|`npm run build`，并按下文核对受影响的产物契约|

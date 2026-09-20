@@ -292,6 +292,22 @@ export class ProjectDatabase {
     );
   }
 
+  /** 文件菜单只读取分组计数，避免加载正文和原始资产。 */
+  public read_file_counts(project_path: string): Map<string, number> {
+    return this.with_project_connection(
+      project_path,
+      (db) =>
+        new Map(
+          db
+            .prepare(
+              `SELECT json_extract(data, '$.file_path') AS path, COUNT(*) AS count FROM items GROUP BY path UNION ALL SELECT file_path AS path, COUNT(*) AS count FROM pdf_pages GROUP BY file_path`,
+            )
+            .all()
+            .map((row) => [String(row["path"]), Number(row["count"])]),
+        ),
+    );
+  }
+
   /** 列表按页面处置统计，正文按单文档读取。 */
   public read_pdf_summaries(project_path: string): Record<string, PDFSummary> {
     return this.with_project_connection(project_path, (db) =>

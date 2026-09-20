@@ -26,7 +26,7 @@ vi.mock("@frontend/app/navigation/navigation-context", () => ({
   }),
 }));
 vi.mock("@frontend/app/session/agent/agent-session-context", () => ({
-  useAgentInput: () => ({ write_draft: mocks.write_draft, read_draft: mocks.read_draft }),
+  useAgentInput: () => ({ draft: { write: mocks.write_draft, read: mocks.read_draft } }),
 }));
 vi.mock("@frontend/app/state/use-desktop-state", () => ({
   useDesktopState: () => ({ project_snapshot: mocks.project_snapshot }),

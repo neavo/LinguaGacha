@@ -20,10 +20,10 @@ import {
 } from "../../shared/error";
 import type { ApiGatewayStartResult } from "./api-types";
 import { api_error_envelope, normalize_api_error } from "./api-error";
-import { type ApiJsonHandler, register_post_json_route } from "./api-json";
-import { register_api_routes } from "./api-routes";
+import { register_post_json_route, register_api_request } from "./api-request";
+import { register_api_routes, type ApiRouteContext } from "./api-routes";
 
-const CORS_ALLOWED_HEADERS = "Content-Type"; // 公开 Gateway 只接受 JSON 请求头，避免 renderer 依赖额外私有请求头
+const CORS_ALLOWED_HEADERS = "Content-Type"; // 上传与 JSON 请求共用标准 Content-Type，renderer 不依赖私有请求头
 
 /**
  * Gateway 启动参数由 GUI Backend 组合根注入，路由层只消费已组装的服务与传输端口。
@@ -152,12 +152,14 @@ export class ApiGatewayServer {
         }),
     );
 
-    const route_context = {
+    const route_context: ApiRouteContext = {
       app,
       services,
       agent: this.options.agentService,
-      postJson: (path_name: string, handler: ApiJsonHandler) =>
-        this.post_json(app, path_name, handler),
+      postJson: (path_name, handler) =>
+        register_post_json_route(app, path_name, handler, this.respond_error),
+      request: (method, path, handler) =>
+        register_api_request(app, method, path, handler, this.respond_error),
       createEventStreamResponse: () => this.options.eventStream.create_stream_response(),
       readLogFiles: () => ({ dates: services.logManager.files.list_dates() }),
       readLogPage: async (body: JsonRecord) =>
@@ -182,33 +184,33 @@ export class ApiGatewayServer {
     return app;
   }
 
-  /**
-   * 直接处理路由复用同一响应壳，避免错误码和 CORS 语义在各路由发散。
-   */
-  private post_json(app: Hono, path_name: string, handler: ApiJsonHandler): void {
-    register_post_json_route(app, path_name, handler, (error, route_path, request_id) => {
-      const normalized_error = normalize_api_error(error);
-      const envelope = api_error_envelope(normalized_error);
-      const status = resolve_app_error_http_status(normalized_error);
-      if (status >= 500 || normalized_error.severity !== "expected") {
-        record_app_error(normalized_error, {
-          logManager: this.options.backendServices.logManager,
-          message: t_main_log("app.diagnostic.api_gateway.direct_route_failed"),
-          source: "api-gateway",
-          context: {
-            code: normalized_error.code,
-            path: route_path,
-            request_id,
-            status,
-          },
-        });
-      }
-      return new Response(JsonTool.stringifyStrict(envelope), {
-        headers: { "Content-Type": "application/json; charset=utf-8" },
-        status,
+  /** JSON 与文件路由共用错误映射和诊断，响应只携带公开错误字段。 */
+  private readonly respond_error = (
+    error: unknown,
+    route_path: string,
+    request_id: string,
+  ): Response => {
+    const normalized_error = normalize_api_error(error);
+    const envelope = api_error_envelope(normalized_error);
+    const status = resolve_app_error_http_status(normalized_error);
+    if (status >= 500 || normalized_error.severity !== "expected") {
+      record_app_error(normalized_error, {
+        logManager: this.options.backendServices.logManager,
+        message: t_main_log("app.diagnostic.api_gateway.direct_route_failed"),
+        source: "api-gateway",
+        context: {
+          code: normalized_error.code,
+          path: route_path,
+          request_id,
+          status,
+        },
       });
+    }
+    return new Response(JsonTool.stringifyStrict(envelope), {
+      headers: { "Content-Type": "application/json; charset=utf-8" },
+      status,
     });
-  }
+  };
 
   /**
    * 从 Gateway 中间件入口跟踪完整请求；连接被强制关闭也不能让解析或错误响应越过资源释放边界。
@@ -232,9 +234,6 @@ export class ApiGatewayServer {
    * stop 已关闭接入，因此当前集合清空后不会再出现新的请求处理。
    */
   private async wait_for_in_flight_requests(): Promise<void> {
-    if (this.in_flight_requests.size === 0) {
-      return;
-    }
     await Promise.allSettled(this.in_flight_requests);
   }
 

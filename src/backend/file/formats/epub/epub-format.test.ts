@@ -2,7 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-import JSZip from "jszip";
+import { read_zip_fixture } from "../../../../test/zip-fixture";
 import { describe, expect, it } from "vitest";
 
 import { create_epub_fixture } from "../../../../test/epub-fixture";
@@ -99,10 +99,10 @@ describe("EPUBFormat", () => {
     );
 
     await expect(
-      JSZip.loadAsync(fs.readFileSync(path.join(paths.translated_path, file_name))),
+      read_zip_fixture(fs.readFileSync(path.join(paths.translated_path, file_name))),
     ).resolves.toBeDefined();
     await expect(
-      JSZip.loadAsync(fs.readFileSync(path.join(paths.bilingual_path, file_name))),
+      read_zip_fixture(fs.readFileSync(path.join(paths.bilingual_path, file_name))),
     ).resolves.toBeDefined();
   });
 });

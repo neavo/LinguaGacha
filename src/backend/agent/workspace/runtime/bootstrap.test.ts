@@ -67,6 +67,23 @@ afterAll(async () => {
   if (root) await rm(root, { recursive: true, force: true });
 });
 
+it("上传原文件在真实工作区只读，可复制到 work 后修改", async () => {
+  await mkdir(path.join(workspace, "uploads"), { recursive: true });
+  await writeFile(path.join(workspace, "uploads/input.bin"), "original");
+  const result = await run(`
+    import { readFile, writeFile, copyFile } from 'node:fs/promises';
+    const original = await readFile('uploads/input.bin', 'utf8');
+    try { await writeFile('uploads/input.bin', 'changed'); throw new Error('write allowed'); }
+    catch(error) { if(error.code !== 'ERR_ACCESS_DENIED') throw error; }
+    await copyFile('uploads/input.bin', 'work/copy.bin');
+    await writeFile('work/copy.bin', 'changed');
+    console.log(JSON.stringify({original, copy: await readFile('work/copy.bin', 'utf8')}));
+  `);
+  expect(result.execution.exitCode).toBe(0);
+  expect(await readFile(path.join(workspace, "uploads/input.bin"), "utf8")).toBe("original");
+  expect(await readFile(path.join(workspace, "work/copy.bin"), "utf8")).toBe("changed");
+});
+
 it("独立部署目录支持原生模块、主程序身份、自然退出和异步 Todo", async () => {
   await mkdir(path.join(workspace, "work/scripts"));
   await writeFile(
@@ -632,6 +649,34 @@ it("页面更新模块在部署工作区解析记录并判定目标", async () =
   expect(output_content(result.execution.stdout)).toMatchObject([
     { reason: "target_missing", line: 2 },
   ]);
+});
+
+it("工作区预装表格、ZIP 和编码库在权限模式下读写并自然退出", async () => {
+  const result = await run(
+    `
+    import assert from 'node:assert/strict';
+    import ExcelJS from 'exceljs';
+    import JSZip from 'jszip';
+    import iconv from 'iconv-lite';
+    import {detect} from 'chardet';
+    const workbook=new ExcelJS.Workbook();
+    const sheet=workbook.addWorksheet('Sheet1');
+    sheet.getCell('A1').value='原文 🌸';
+    const read=new ExcelJS.Workbook();
+    await read.xlsx.load(await workbook.xlsx.writeBuffer());
+    assert.equal(read.getWorksheet('Sheet1').getCell('A1').value,'原文 🌸');
+    const zip=new JSZip();
+    zip.file('中文.txt','你好');
+    const archive=await JSZip.loadAsync(await zip.generateAsync({type:'uint8array'}));
+    assert.equal(await archive.file('中文.txt').async('string'),'你好');
+    assert.equal(iconv.decode(iconv.encode('中文','gbk'),'gbk'),'中文');
+    assert.equal(typeof detect(Buffer.from('sample')),'string');
+    console.log('file libraries ready');
+  `,
+    AbortSignal.timeout(10000),
+  );
+  expect(result.execution.exitCode).toBe(0);
+  expect(output_content(result.execution.stdout)).toBe("file libraries ready\n");
 });
 
 /** 保存真实 ESM 文件并通过生产 runner 观察进程结果。 */

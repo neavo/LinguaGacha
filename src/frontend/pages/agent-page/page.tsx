@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { format_agent_reference } from "@shared/agent-reference";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import {
   ArrowDownToLine,
   BookOpenText,
@@ -12,7 +13,6 @@ import {
 import type { ModelThinkingLevel } from "@domain/model";
 import {
   AGENT_INPUT_QUEUE_LIMIT,
-  format_agent_skill_reference,
   type AgentApprovalMode,
   type AgentEntry,
   type AgentMessageInput,
@@ -46,7 +46,7 @@ import { AgentDecision } from "./agent-decision";
 import { AgentComposer, type AgentComposerHandle } from "./agent-composer";
 import { AgentInlineEditor, type AgentInlineEditTarget } from "./agent-inline-editor";
 import { AgentInputQueue } from "./agent-input-queue";
-import { create_agent_mention_tokens, type AgentMentionInstruction } from "./agent-mention";
+import { type AgentMentionInstruction } from "./agent-mention";
 import { AgentTaskStatus } from "./agent-task-status";
 import { AgentTimeline } from "./agent-timeline";
 import { useAgentFollowLatest } from "./agent-scroll";
@@ -129,7 +129,6 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
     allow_in_text_editing: true,
     on_trigger: toggle_follow_latest,
   });
-  const mention_tokens = useMemo(() => create_agent_mention_tokens(skills), [skills]);
   const is_running = controls.state === "running";
   // apply 一旦进入公开 running 工具帧就不可取消；后端仍保留同一权威守卫。
   const workspace_apply_running = entries.some(
@@ -356,11 +355,6 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
     set_active_inline_edit(null);
   }, []);
 
-  /** 图片处理失败通过页面反馈，保留正在编辑的内容。 */
-  const handle_inline_image_error = useCallback((): void => {
-    push_toast("error", t("agent_page.error.image"));
-  }, [t]);
-
   /** 时间线与队列只决定编辑目标，共享同一套编辑器装配。 */
   const render_inline_editor = useCallback(
     (target: AgentInlineEditTarget): JSX.Element => {
@@ -373,18 +367,10 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
           on_save={save_inline_edit}
           on_saved={cancel_inline_edit}
           on_cancel={cancel_inline_edit}
-          on_image_error={handle_inline_image_error}
         />
       );
     },
-    [
-      controls.command,
-      cancel_inline_edit,
-      handle_inline_image_error,
-      save_inline_edit,
-      skills,
-      unavailable_reason,
-    ],
+    [controls.command, cancel_inline_edit, save_inline_edit, skills, unavailable_reason],
   );
 
   /** 仅在当前历史目标的位置挂载原位编辑器。 */
@@ -554,7 +540,7 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
                     className="agent-page__suggestion"
                     onClick={() =>
                       composer_ref.current?.write_draft(
-                        `${t(suggestionKey)} ${format_agent_skill_reference(skillName)}`,
+                        `${t(suggestionKey)} ${format_agent_reference({ kind: "skill", name: skillName })}`,
                       )
                     }
                   >
@@ -562,7 +548,7 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
                     <span className="agent-page__suggestion-label">
                       {t(suggestionKey)}{" "}
                       <span className="agent-mention-token">
-                        <span>{format_agent_skill_reference(skillName)}</span>
+                        <span>{format_agent_reference({ kind: "skill", name: skillName })}</span>
                       </span>
                     </span>
                   </button>
@@ -572,7 +558,6 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
           ) : (
             <AgentTimeline
               entries={entries}
-              mention_tokens={mention_tokens}
               follow_reset_revision={follow_reset_revision}
               on_continue={continue_latest_round}
               on_edit={start_edit}
@@ -665,7 +650,7 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
             >
               <AgentComposer
                 ref={composer_ref}
-                image_drop_target_ref={page_ref}
+                file_drop_target_ref={page_ref}
                 locked={active_inline_edit !== null || input_transition.locked}
                 skills={skills}
                 instructions={instructions}
@@ -684,7 +669,6 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
                 on_send={submit_message}
                 on_thinking_level_change={change_agent_thinking_level}
                 on_approval_mode_change={change_approval_mode}
-                on_image_error={() => push_toast("error", t("agent_page.error.image"))}
                 on_stop={stop}
                 on_reset={() => set_reset_dialog_open(true)}
               />

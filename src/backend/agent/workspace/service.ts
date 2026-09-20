@@ -1,4 +1,6 @@
+import type { AgentFileCandidate } from "../../../shared/agent-reference";
 import { create_workspace_host } from "./host";
+import { AgentUploadStore } from "./uploads";
 import { AGENT_IMAGE_INPUT_MAX_BYTES, type AgentImageService } from "../agent-image-service";
 import type { AgentImage } from "../../../shared/agent-image";
 import path from "node:path";
@@ -120,17 +122,38 @@ type AgentWorkspaceWorkSession = {
 type WorkspacePath = Readonly<{
   path: string;
   kind: "file" | "directory";
-  scope: "work" | "sources" | "snapshot"; // 按工作区访问入口匹配清理生命周期，链接目标可在外部
+  scope: "work" | "sources" | "snapshot" | "uploads"; // 按工作区访问入口匹配清理生命周期，链接目标可在外部
 }>;
 
 /** 当前 Agent 会话磁盘工作区；协调跨快照 work、当前数据快照与 apply。 */
 export class AgentWorkspaceService {
+  public readonly uploads: AgentUploadStore;
+
+  /** 查询现有文件事实，不触发工作区生成或解析原稿。 */
+  public list_files(): AgentFileCandidate[] {
+    const snapshot = this.options.cache.snapshot();
+    const counts =
+      snapshot.projectPath === ""
+        ? new Map<string, number>()
+        : this.options.database.read_file_counts(snapshot.projectPath);
+    return [
+      ...this.options.cache.files.readFileEntries().map((file): AgentFileCandidate => ({
+        kind: "project",
+        path: file.rel_path,
+        count: counts.get(file.rel_path) ?? 0,
+        unit: file.file_type === "PDF" ? "pages" : "items",
+      })),
+      ...this.uploads
+        .list()
+        .map((file): AgentFileCandidate => ({ kind: "upload", path: file.path, size: file.size })),
+    ];
+  }
   private readonly root_path: string;
   private active: ActiveAgentWorkspace | null = null; // 当前磁盘快照的工程身份、语言和版本基线
   private source_session: AgentWorkspaceSourceSession | null = null; // 独立于显式 Agent reset 存活
   private work_session: AgentWorkspaceWorkSession | null = null; // 不读取目录内容，只拥有生命周期
   private busy = false; // snapshot、script 与 apply 共用的进程内互斥
-  private readonly link_versions = { work: 0, sources: 0, snapshot: 0 }; // 原生对话框等待期间的来源有效期
+  private readonly link_versions = { work: 0, sources: 0, snapshot: 0, uploads: 0 }; // 原生对话框等待期间的来源有效期
 
   /** 注入当前工程读侧、唯一写入口与 Node 脚本端口。 */
   public constructor(
@@ -143,7 +166,11 @@ export class AgentWorkspaceService {
       proofreading: Pick<ProofreadingQueryService, "query_warnings">;
       database: Pick<
         ProjectDatabase,
-        "get_all_meta" | "read_asset_content" | "read_pdf_document" | "read_pdf_documents"
+        | "get_all_meta"
+        | "read_asset_content"
+        | "read_pdf_document"
+        | "read_pdf_documents"
+        | "read_file_counts"
       >;
       runtimeGate: {
         run_agent_project_write(
@@ -161,6 +188,7 @@ export class AgentWorkspaceService {
     },
   ) {
     this.root_path = options.paths.get_agent_workspace_root_dir();
+    this.uploads = new AgentUploadStore(this.root_path, this.native_fs);
   }
 
   /** 生产默认使用共享 NativeFs，测试只在显式注入时替换。 */
@@ -217,6 +245,7 @@ export class AgentWorkspaceService {
 
   /** 会话开始失效时立即隔离待决保存，不等待旧模型和脚本停止。 */
   public invalidate_links(): void {
+    this.link_versions.uploads += 1;
     this.link_versions.work += 1;
     this.link_versions.sources += 1;
     this.link_versions.snapshot += 1;
@@ -254,7 +283,7 @@ export class AgentWorkspaceService {
       return {
         path: file_path,
         kind: stat.isDirectory() ? "directory" : "file",
-        scope: scope === "work" || scope === "sources" ? scope : "snapshot",
+        scope: scope === "work" || scope === "sources" || scope === "uploads" ? scope : "snapshot",
       };
     } catch (cause) {
       if (AppErrors.is_app_error(cause)) throw cause;
@@ -268,6 +297,7 @@ export class AgentWorkspaceService {
 
   /** 启动时清除崩溃遗留目录，工作区从不跨应用生命周期恢复。 */
   public async initialize(): Promise<void> {
+    await this.uploads.clear();
     this.invalidate_links();
     this.active = null;
     this.source_session = null;
@@ -669,6 +699,7 @@ export class AgentWorkspaceService {
 
   /** 显式 Agent reset 销毁当前快照和工作材料目录，同一工程会话继续复用源文件投影。 */
   public async reset_workspace(): Promise<void> {
+    await this.uploads.clear();
     this.invalidate_links();
     await this.clear_snapshot();
     await this.discard_work();
@@ -676,6 +707,7 @@ export class AgentWorkspaceService {
 
   /** 工程切换先销毁旧投影；非空路径表示为当前工程立即生成 sources。 */
   public async reset_project(project_path: string | null): Promise<void> {
+    await this.uploads.clear();
     this.invalidate_links();
     await this.clear_snapshot();
     await this.discard_work();
@@ -861,6 +893,7 @@ export class AgentWorkspaceService {
 /** AgentService 通过工作区公开操作管理生命周期、执行工具与交付文件。 */
 export type AgentWorkspacePort = Pick<
   AgentWorkspaceService,
+  | "list_files"
   | "initialize"
   | "run"
   | "apply_workspace"
@@ -868,7 +901,9 @@ export type AgentWorkspacePort = Pick<
   | "reset_project"
   | "activate_path"
   | "invalidate_links"
->;
+> & {
+  uploads: Pick<AgentUploadStore, "upload" | "get" | "read_image" | "open" | "clear" | "cancel">;
+};
 
 /** 输入均为 realpath 结果，包含根目录本身。 */
 function is_inside_path(root: string, target: string): boolean {

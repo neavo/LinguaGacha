@@ -1,3 +1,6 @@
+import { AgentUploadStore } from "../agent/workspace/uploads";
+import { NativeFs } from "../../native/native-fs";
+import type { AgentFileAttachment } from "../../shared/agent";
 import fs from "node:fs";
 import http from "node:http";
 import os from "node:os";
@@ -41,6 +44,33 @@ describe("ApiGatewayServer", () => {
         version: "9.8.7",
       },
     });
+  });
+
+  it("二进制上传与下载通过真实 HTTP 原样往返，未知身份复用公开错误壳", async () => {
+    const gateway = create_gateway();
+    const { baseUrl } = await gateway.start();
+    const original = Uint8Array.from([0, 255, 1, 128, 13, 10]);
+    const response = await fetch(
+      `${baseUrl}/api/agent/uploads?name=${encodeURIComponent("数据 文件.zip")}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/octet-stream" },
+        body: original,
+      },
+    );
+    const payload = (await response.json()) as { ok: boolean; data: AgentFileAttachment };
+    expect(payload.ok).toBe(true);
+    expect(payload.data).toMatchObject({ name: "数据 文件.zip", size: 6, imageMimeType: null });
+    const downloaded = await fetch(`${baseUrl}/api/agent/uploads/${payload.data.uploadId}`);
+    expect(new Uint8Array(await downloaded.arrayBuffer())).toEqual(original);
+    expect(downloaded.headers.get("Content-Disposition")).toContain("attachment;");
+    const empty = await fetch(`${baseUrl}/api/agent/uploads?name=empty.bin`, {
+      method: "POST",
+      body: new Uint8Array(),
+    });
+    expect(await empty.json()).toMatchObject({ ok: true, data: { size: 0 } });
+    const missing = await fetch(`${baseUrl}/api/agent/uploads/missing`);
+    expect(await missing.json()).toMatchObject({ ok: false, error: { code: "file.not_found" } });
   });
 
   it("预检请求只暴露公开 CORS 头", async () => {
@@ -285,7 +315,12 @@ describe("ApiGatewayServer", () => {
 
   /** 网关测试只模拟公开 Agent 协议。 */
   function create_agent_service_stub(): AgentService {
+    const uploads = new AgentUploadStore(create_app_root(), new NativeFs());
+    cleanup_callbacks.push(() => uploads.clear());
     return {
+      upload_file: (name: string, body: ReadableStream<Uint8Array>, signal: AbortSignal) =>
+        uploads.upload(name, body, signal),
+      read_upload: (id: string) => uploads.open(id),
       get_snapshot: vi.fn(() => ({
         revision: 0,
         state: "idle",

@@ -35,10 +35,19 @@ export const en_us_agent_page = {
     placeholder: "Describe a task, or type @ to select a skill or instruction …",
     edit_assistant_placeholder: "Edit the model response …",
     newline: "New line",
-    drop_images: "Release to add images",
+    drop_files: "Release to add files",
   },
   mention: {
-    groups: { skills: "Skills", instructions: "Instructions" },
+    files: {
+      project: "Project",
+      upload: "Upload",
+      items: "{COUNT} entries",
+      pages: "{COUNT} pages",
+      loading: "Loading files…",
+      error: "Could not load files. Reopen the menu to retry.",
+      more: "More matches available. Keep typing to narrow the results.",
+    },
+    groups: { files: "Files", skills: "Skills", instructions: "Instructions" },
     instructions: {
       compact_context: {
         title: "Compact context",
@@ -93,7 +102,7 @@ export const en_us_agent_page = {
     stop: "Stop",
     applying: "Applying project changes; this cannot be stopped until completion",
     new_task: "New Task",
-    add_image: "Add images",
+    add_file: "Add files",
     continue: "Continue",
     edit: "Edit",
     copy: "Copy",
@@ -138,6 +147,7 @@ export const en_us_agent_page = {
     error: "Failed · {duration}",
     stopped: "Stopped · {duration}",
   },
+  upload: { uploading: "Uploading", failed: "Upload failed", retry: "Retry" },
   file_saved: "File saved.",
   error: {
     activate_link: "Failed to process the link.",
@@ -151,7 +161,6 @@ export const en_us_agent_page = {
     queue_delete: "The queued message could not be deleted. Try again.",
     queue_reorder: "The queue could not be reordered. Try again.",
     queue_send: "The message could not be sent now. It remains queued.",
-    image: "The image could not be read. Use PNG, JPG, BMP, WebP, or AVIF.",
     stop: "The task could not be stopped. Try again.",
     reset: "A new task could not be created. Try again.",
     approval_mode: "The write request approval mode could not be updated. Try again.",

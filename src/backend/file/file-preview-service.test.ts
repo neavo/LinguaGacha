@@ -4,13 +4,14 @@ import os from "node:os";
 import path from "node:path";
 
 import { describe, expect, it, vi } from "vitest";
-import JSZip from "jszip";
+import { write_zip } from "../../test/zip-fixture";
 
 import { write_epub_fixture } from "../../test/epub-fixture";
 import type { AppSettingService } from "../app/app-setting-service";
 import type { LogManager } from "../log/log-manager";
 import { FilePreviewService } from "./file-preview-service";
 
+/** 固定预览所需配置，隔离用户设置。 */
 function create_setting_service(): AppSettingService {
   return {
     read_setting: () => ({
@@ -99,23 +100,20 @@ describe("FilePreviewService", () => {
   it("项目文件预解析 EPUB 坏内容时返回文件解析错误码", async () => {
     using temp_dir = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "linguagacha-file-preview-"));
     const epub_file = path.join(temp_dir.path, "broken.epub");
-    const zip = new JSZip();
-    zip.file(
+    const zip = new Map<string, string | Uint8Array>();
+    zip.set(
       "META-INF/container.xml",
       `<container><rootfiles><rootfile full-path="OPS/package.opf"/></rootfiles></container>`,
     );
-    zip.file(
+    zip.set(
       "OPS/package.opf",
       `<package version="3.0">
         <manifest><item id="chapter" href="chapter.xhtml" media-type="application/xhtml+xml"/></manifest>
         <spine><itemref idref="chapter"/></spine>
       </package>`,
     );
-    zip.file("OPS/chapter.xhtml", "");
-    fs.writeFileSync(
-      epub_file,
-      await zip.generateAsync({ compression: "STORE", type: "nodebuffer" }),
-    );
+    zip.set("OPS/chapter.xhtml", "");
+    fs.writeFileSync(epub_file, await write_zip(zip));
     const service = new FilePreviewService(create_setting_service(), create_pdf_execution());
 
     await expect(service.parse_project_file({ source_paths: [epub_file] })).resolves.toEqual({
@@ -182,8 +180,9 @@ describe("FilePreviewService", () => {
   });
 });
 
+/** 每次提供独立的诊断记录入口。 */
 function create_log_manager(): Pick<LogManager, "warning"> {
   return {
     warning: vi.fn(),
-  } as unknown as Pick<LogManager, "warning">;
+  };
 }

@@ -2,7 +2,7 @@ import type { TranslationFileExportResult } from "@shared/translation-export";
 import { resolve_visible_error_message } from "@frontend/app/feedback/visible-error-message";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { format_agent_skill_reference } from "@shared/agent";
+import { format_agent_reference } from "@shared/agent-reference";
 import type { ProofreadingWarningSummary } from "@shared/proofreading/proofreading-types";
 import { api_fetch } from "@frontend/app/desktop/desktop-api";
 import { push_toast } from "@frontend/app/feedback/desktop-toast";
@@ -147,10 +147,10 @@ export function useTranslationExportFlow(): TranslationExportFlow {
     if (current_state.phase !== "ready" || current_state.summary.total_count === 0) {
       return;
     }
-    const draft = agent_input.read_draft();
+    const draft = agent_input.draft.read();
     if (draft.text.trim() === "" && draft.attachments.length === 0) {
-      agent_input.write_draft({
-        text: `${t("agent_page.empty.suggestions.review_translation")} ${format_agent_skill_reference("translation")}`,
+      agent_input.draft.write({
+        text: `${t("agent_page.empty.suggestions.review_translation")} ${format_agent_reference({ kind: "skill", name: "translation" })}`,
         attachments: [],
       });
     }

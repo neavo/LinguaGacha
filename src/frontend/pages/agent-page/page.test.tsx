@@ -1,3 +1,8 @@
+vi.mock("./use-agent-mention-files", () => ({
+  useAgentMentionFiles: () => ({ files: [], status: "idle" }),
+}));
+import { AgentInputDraft } from "@frontend/app/session/agent/agent-input-draft";
+import { uploaded_file } from "../../../test/agent-upload-fixture";
 vi.mock("@frontend/app/session/batch-translation/batch-translation-session-context", () => ({
   useBatchTranslationSession: () => ({
     batch_translation_task: { translation_task_metrics: { active: false } },
@@ -39,10 +44,11 @@ const runtime_state = vi.hoisted(() => ({
   current: { revision: 0, owner: null as "batch_translation" | "agent" | "model_test" | null },
 }));
 const push_toast = vi.hoisted(() => vi.fn());
-vi.mock("./agent-image", async (import_original) => ({
-  ...(await import_original<typeof import("./agent-image")>()),
-  normalize_agent_images: async (files: Iterable<File>) =>
-    Array.from(files, (file) => `webp-${file.name}`),
+vi.mock("@frontend/app/desktop/desktop-api", async (original) => ({
+  ...(await original<typeof import("@frontend/app/desktop/desktop-api")>()),
+  api_blob: async () => new Blob([], { type: "image/png" }),
+  api_file_url: (path: string) => `http://localhost${path}`,
+  api_upload: async (_path: string, file: File) => uploaded_file(`webp-${file.name}`),
 }));
 const model_thinking_state = vi.hoisted(() => ({
   thinking_level: "OFF" as ModelThinkingLevel,
@@ -237,12 +243,9 @@ describe("AgentPage", () => {
       const target = view.querySelector(selector)!;
       await drop_image(target, "page.png");
     }
-    expect(input.write_draft).toHaveBeenLastCalledWith({
+    expect(input.draft.read()).toEqual({
       text: "",
-      attachments: Array.from({ length: 3 }, () => ({
-        kind: "image",
-        webpBase64: "webp-page.png",
-      })),
+      attachments: Array.from({ length: 3 }, () => uploaded_file("webp-page.png")),
     });
   });
 
@@ -265,14 +268,14 @@ describe("AgentPage", () => {
     await act(async () => inline_editor.dispatchEvent(over));
     expect(over.dataTransfer?.dropEffect).toBe("copy");
     await drop_image(inline_editor, "inline.png");
-    expect(input.write_draft).not.toHaveBeenCalled();
+    expect(input.draft.read()).toEqual({ text: "", attachments: [] });
     await act(async () =>
       view.querySelector<HTMLButtonElement>(".agent-composer__inline-submit")!.click(),
     );
     expect(reviseLatestRound).toHaveBeenCalledWith(
       expect.any(String),
       expect.objectContaining({
-        attachments: [{ kind: "image", webpBase64: "webp-inline.png" }],
+        attachments: [uploaded_file("webp-inline.png")],
       }),
     );
   });
@@ -386,7 +389,6 @@ describe("AgentPage", () => {
       '[aria-labelledby="agent-mention-instructions-label"] [role="option"]',
     );
     if (instruction === null) throw new Error("缺少压缩指令");
-    expect(instruction.querySelector("small")).toBeNull();
 
     await act(async () => instruction.click());
     expect(editor.state.doc.toString()).toBe("");
@@ -412,7 +414,6 @@ describe("AgentPage", () => {
         '[aria-labelledby="agent-mention-instructions-label"] [role="option"]',
       );
       expect(idle_instruction?.disabled).toBe(true);
-      expect(idle_instruction?.querySelector("small")).not.toBeNull();
 
       runtime_state.current = { revision: 1, owner };
       await render_page({ context: { tokens: 1_000, compactable: false, limits: null } });
@@ -420,7 +421,6 @@ describe("AgentPage", () => {
         '[aria-labelledby="agent-mention-instructions-label"] [role="option"]',
       );
       expect(busy_instruction?.disabled).toBe(true);
-      expect(busy_instruction?.querySelector("small")).toBeNull();
     },
   );
 
@@ -752,7 +752,7 @@ describe("AgentPage", () => {
     };
     const input: AgentInputSession = {
       ...build_state().input,
-      read_draft: () => ({
+      draft: new AgentInputDraft({
         text: "",
         attachments: [
           { kind: "response_annotation", selectedText: "需要复核的段落", comment: "检查人称" },
@@ -916,7 +916,7 @@ describe("AgentPage", () => {
       assistant_entry("assistant-write", "原输出", "success", 2),
     ];
     const ordinary_input = build_state().input;
-    ordinary_input.read_draft = () => ({ text: "普通草稿", attachments: [] });
+    ordinary_input.draft.write({ text: "普通草稿", attachments: [] });
     const view = await render_page({
       entries,
       reviseLatestRound,
@@ -962,7 +962,7 @@ describe("AgentPage", () => {
     if (assistant_edit === undefined) throw new Error("缺少 assistant 编辑按钮");
     await act(async () => assistant_edit.click());
     const assistant_editor = get_editor(view);
-    expect(view.querySelector(".agent-composer--inline .agent-composer__image-trigger")).toBeNull();
+    expect(view.querySelector(".agent-composer--inline .agent-composer__file-trigger")).toBeNull();
     expect(view.querySelector(".agent-composer--inline .agent-composer__model-trigger")).toBeNull();
     await act(async () =>
       assistant_editor.dispatch({
@@ -1119,8 +1119,7 @@ function build_state(overrides: Partial<AgentPageState> = {}): AgentPageState {
     command: null,
     input: {
       revision: 0,
-      read_draft: () => ({ text: "", attachments: [] }),
-      write_draft: vi.fn(),
+      draft: new AgentInputDraft(),
       read_history: () => [],
       replace_history: vi.fn(),
     },

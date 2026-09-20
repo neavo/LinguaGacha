@@ -1,9 +1,11 @@
 import type { Hono } from "hono";
+import { Readable } from "node:stream";
+import { AppError } from "../../shared/error";
 
 import type { JsonRecord, JsonValue } from "../../domain/json";
 import type { BackendServices } from "../bootstrap/backend-services";
 import type { AgentService } from "../agent/agent-service";
-import type { ApiPostJsonRoute } from "./api-json";
+import type { ApiPostJsonRoute, ApiRequestRoute } from "./api-request";
 import { ok } from "./api-types";
 
 /**
@@ -14,6 +16,7 @@ export interface ApiRouteContext {
   services: BackendServices;
   agent: AgentService;
   postJson: ApiPostJsonRoute;
+  request: ApiRequestRoute;
   createEventStreamResponse: () => Response;
   readLogFiles: () => JsonValue;
   readLogPage: (body: JsonRecord) => Promise<JsonValue>;
@@ -62,11 +65,42 @@ export function register_api_routes(context: ApiRouteContext): void {
 
   context.app.get("/api/events/stream", () => context.createEventStreamResponse());
   context.postJson("/api/runtime/snapshot", () => services.runtime.getSnapshot());
+  context.app.get("/api/agent/files", (context) => context.json(ok(agent.list_files())));
   context.app.get("/api/agent/snapshot", (hono_context) =>
     hono_context.json(ok(agent.get_snapshot())),
   );
   context.postJson("/api/agent/message", (body) => agent.send_message(body));
-  context.postJson("/api/agent/image/prepare", (body) => agent.prepare_image(body));
+  context.request("POST", "/api/agent/uploads", async (request) => {
+    const name = new URL(request.url).searchParams.get("name");
+    if (name === null || name === "") throw new AppError("request.validation_failed");
+    return Response.json(
+      ok(
+        await agent.upload_file(
+          name,
+          request.body ??
+            new ReadableStream<Uint8Array>({
+              start(controller) {
+                controller.close();
+              },
+            }),
+          request.signal,
+        ),
+      ),
+    );
+  });
+  context.request("GET", "/api/agent/uploads/:id", (request) => {
+    const id = new URL(request.url).pathname.split("/").at(-1)!;
+    const { file, stream } = agent.read_upload(id);
+    return new Response(Readable.toWeb(stream) as ReadableStream<Uint8Array>, {
+      headers: {
+        "Content-Type": file.imageMimeType ?? "application/octet-stream",
+        "Content-Length": String(file.size),
+        "Content-Disposition": `${file.imageMimeType === null ? "attachment" : "inline"}; filename*=UTF-8''${encodeURIComponent(file.name)}`,
+        "X-Content-Type-Options": "nosniff",
+        "Cache-Control": "no-store",
+      },
+    });
+  });
   context.postJson("/api/agent/workspace/activate-path", (body) =>
     agent.activate_workspace_path(body),
   );

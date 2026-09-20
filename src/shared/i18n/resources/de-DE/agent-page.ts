@@ -35,10 +35,19 @@ export const de_de_agent_page = {
     placeholder: "Aufgabe beschreiben oder mit @ einen Skill oder Befehl wählen …",
     edit_assistant_placeholder: "Modellantwort bearbeiten …",
     newline: "Neue Zeile",
-    drop_images: "Loslassen, um Bilder hinzuzufügen",
+    drop_files: "Loslassen, um Dateien hinzuzufügen",
   },
   mention: {
-    groups: { skills: "Skills", instructions: "Befehle" },
+    files: {
+      project: "Projekt",
+      upload: "Upload",
+      items: "{COUNT} Einträge",
+      pages: "{COUNT} Seiten",
+      loading: "Dateien werden geladen…",
+      error: "Dateien konnten nicht geladen werden. Menü erneut öffnen.",
+      more: "Weitere Treffer vorhanden. Suche weiter eingrenzen.",
+    },
+    groups: { files: "Dateien", skills: "Skills", instructions: "Befehle" },
     instructions: {
       compact_context: {
         title: "Kontext komprimieren",
@@ -93,7 +102,7 @@ export const de_de_agent_page = {
     stop: "Stoppen",
     applying: "Projektänderungen werden angewendet; der Vorgang kann nicht gestoppt werden",
     new_task: "Neue Aufgabe",
-    add_image: "Bilder hinzufügen",
+    add_file: "Dateien hinzufügen",
     continue: "Fortsetzen",
     edit: "Bearbeiten",
     copy: "Kopieren",
@@ -138,6 +147,11 @@ export const de_de_agent_page = {
     error: "Fehlgeschlagen · {duration}",
     stopped: "Gestoppt · {duration}",
   },
+  upload: {
+    uploading: "Wird hochgeladen",
+    failed: "Upload fehlgeschlagen",
+    retry: "Erneut versuchen",
+  },
   file_saved: "Datei gespeichert.",
   error: {
     activate_link: "Der Link konnte nicht verarbeitet werden.",
@@ -152,7 +166,6 @@ export const de_de_agent_page = {
     queue_delete: "Die vorgemerkte Nachricht konnte nicht gelöscht werden. Bitte erneut versuchen.",
     queue_reorder: "Die Warteschlange konnte nicht sortiert werden. Bitte erneut versuchen.",
     queue_send: "Die Nachricht konnte nicht sofort gesendet werden. Sie bleibt vorgemerkt.",
-    image: "Das Bild konnte nicht gelesen werden. Unterstützt werden PNG, JPG, BMP, WebP und AVIF.",
     stop: "Die Aufgabe konnte nicht gestoppt werden. Bitte erneut versuchen.",
     reset: "Eine neue Aufgabe konnte nicht erstellt werden. Bitte erneut versuchen.",
     approval_mode:

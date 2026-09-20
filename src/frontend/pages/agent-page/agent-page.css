@@ -351,20 +351,16 @@
       var(--agent-attachment-square-size)
   );
 
-  display: grid;
-  width: fit-content;
-  max-width: 100%;
-  min-width: 0;
-  grid-auto-columns: max-content;
-  grid-auto-flow: column;
-  grid-template-rows: var(--agent-attachment-row-height);
+  display: flex;
+  align-items: center;
   gap: var(--agent-attachment-gap);
+  max-width: 100%;
   overflow-x: auto;
   padding: 4px 2px 2px;
 }
 
-.agent-attachment-strip[data-has-images="true"] {
-  grid-template-rows: repeat(2, var(--agent-attachment-row-height));
+.agent-attachment-strip > * {
+  flex-shrink: 0;
 }
 
 .agent-attachment {
@@ -383,11 +379,45 @@
     background-color 120ms ease;
 }
 
+.agent-attachment--file {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 280px;
+  max-width: 100%;
+  min-height: var(--agent-attachment-square-size);
+  padding: 8px;
+  cursor: default;
+}
+
+.agent-attachment__file-info {
+  display: grid;
+  min-width: 0;
+  flex: 1;
+  gap: 4px;
+}
+.agent-attachment__file-info > * {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+}
+.agent-attachment__file-info > span:last-child {
+  color: var(--muted-foreground);
+}
+.agent-attachment__file-info > a {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.agent-attachment__file-actions {
+  display: flex;
+  flex-direction: column;
+}
+
 /* 类型变体只改变几何与内容排版，共享边界和交互状态由附件外壳承接。 */
 .agent-attachment--image {
   width: var(--agent-attachment-square-size);
   height: var(--agent-attachment-square-size);
-  grid-row: 1 / -1;
   margin: 0;
 }
 
@@ -1202,7 +1232,7 @@
   display: none;
 }
 
-.agent-image-drop-overlay {
+.agent-file-drop-overlay {
   position: absolute;
   inset: 5px;
   z-index: 12;
@@ -1219,7 +1249,7 @@
   transition: opacity 120ms ease-out;
 }
 
-.agent-image-drop-overlay[data-active="true"] {
+.agent-file-drop-overlay[data-active="true"] {
   opacity: 1;
 }
 
@@ -1692,7 +1722,7 @@
   display: grid;
   width: 100%;
   min-width: 0;
-  grid-template-columns: 16px minmax(0, 0.45fr) minmax(0, 1fr);
+  grid-template-columns: 16px minmax(0, 3fr) minmax(0, 7fr);
   align-items: center;
   gap: 8px;
   border: 0;
@@ -1736,10 +1766,6 @@
 .agent-mention-menu strong {
   font-size: 12px;
   font-weight: 500;
-}
-
-.agent-mention-menu button:not(:has(small)) strong {
-  grid-column: 2 / -1;
 }
 
 .agent-mention-menu small {
@@ -1813,7 +1839,7 @@
   .agent-thinking-entry__content,
   .agent-tool-entry,
   .agent-decision-action,
-  .agent-image-drop-overlay,
+  .agent-file-drop-overlay,
   .agent-page__suggestion,
   .agent-page__suggestion-icon,
   .agent-composer {

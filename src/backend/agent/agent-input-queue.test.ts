@@ -40,10 +40,13 @@ describe("AgentInputQueue", () => {
     const queue = new AgentInputQueue();
     queue.enqueue(message("一"));
     queue.pause();
-    expect(queue.take_next()).toBeNull();
+    expect(queue.read_next()).toBeNull();
     expect(queue.read_snapshot(true)).toMatchObject({ paused: true, canSendNow: true });
     queue.resume();
-    expect(queue.take_next()?.text).toBe("一");
+    const next = queue.read_next()!;
+    expect(next.text).toBe("一");
+    queue.begin_send(next.id);
+    queue.commit_send();
     expect(queue.read_snapshot(true).paused).toBe(false);
   });
 

@@ -20,11 +20,7 @@ import type {
 import { useI18n, type LocaleKey } from "@frontend/app/locale/locale-context";
 import { push_toast } from "@frontend/app/feedback/desktop-toast";
 import { AppButton } from "@frontend/widgets/app-button";
-import {
-  find_agent_mention_ranges,
-  type AgentMentionRange,
-  type AgentMentionToken,
-} from "./agent-mention";
+import { find_agent_reference_ranges, type AgentReferenceRange } from "@shared/agent-reference";
 import { AgentMarkdown } from "./agent-markdown";
 import { AgentMessageAttachments } from "./agent-message-attachments";
 import {
@@ -66,7 +62,7 @@ const AGENT_THINKING_AUTO_COLLAPSE_DELAY_MS = 3_000; // 给用户留出确认终
 /** 页面传入时间线事实、用户命令和思考块跟随重置版本。 */
 type AgentTimelineProps = {
   entries: readonly AgentEntry[];
-  mention_tokens: readonly AgentMentionToken[];
+
   follow_reset_revision: number;
   on_continue: () => void;
   on_edit: (entry: UserEntry | AssistantEntry) => void;
@@ -102,7 +98,7 @@ export function AgentTimeline(props: AgentTimelineProps): JSX.Element {
           <AgentRound
             key={round.user.id}
             round={round}
-            mention_tokens={props.mention_tokens}
+
             follow_reset_revision={props.follow_reset_revision}
             t={t}
             latest={index === rounds.length - 1}
@@ -160,7 +156,7 @@ function build_agent_rounds(
 
 type AgentRoundProps = {
   round: AgentRoundEntries;
-  mention_tokens: readonly AgentMentionToken[];
+
   follow_reset_revision: number;
   t: Translate;
   latest: boolean;
@@ -176,7 +172,7 @@ type AgentRoundProps = {
 /** 单个轮次统一渲染用户消息、公开条目、恢复入口与最终状态。 */
 const AgentRound = memo(function AgentRound(props: AgentRoundProps): JSX.Element {
   const { user, entries } = props.round;
-  const mention_ranges = find_agent_mention_ranges(user.text, props.mention_tokens);
+  const mention_ranges = find_agent_reference_ranges(user.text);
   const mention_only =
     mention_ranges.length === 1 &&
     mention_ranges[0]?.from === 0 &&
@@ -220,7 +216,7 @@ const AgentRound = memo(function AgentRound(props: AgentRoundProps): JSX.Element
       </AgentMessageFrame>
       {entries.map((entry) => {
         if (entry.kind === "user_message") {
-          const ranges = find_agent_mention_ranges(entry.text, props.mention_tokens);
+          const ranges = find_agent_reference_ranges(entry.text);
           return (
             <AgentMessageFrame key={entry.id} role="user" actions={null}>
               <article className="agent-message agent-message--user">
@@ -293,7 +289,6 @@ const AgentRound = memo(function AgentRound(props: AgentRoundProps): JSX.Element
 function agent_round_props_equal(previous: AgentRoundProps, next: AgentRoundProps): boolean {
   if (
     previous.round !== next.round ||
-    previous.mention_tokens !== next.mention_tokens ||
     previous.follow_reset_revision !== next.follow_reset_revision ||
     previous.t !== next.t ||
     previous.latest !== next.latest ||
@@ -478,7 +473,7 @@ function AgentContextCompactionEntry(props: {
 /** 用已知非重叠范围渲染用户正文；未知 marker 与普通文本保持原样。 */
 function render_agent_mention_text(
   text: string,
-  ranges: readonly AgentMentionRange[],
+  ranges: readonly AgentReferenceRange[],
 ): ReactNode[] {
   const content: ReactNode[] = [];
   let cursor = 0;
