@@ -1,9 +1,11 @@
 import { read_json_record, type JsonRecord, type JsonValue } from "../../domain/json";
-import { Model, type ModelApiFormat } from "../../domain/model";
+import { Model } from "../../domain/model";
 import * as AppErrors from "../../shared/error";
-import { get_primary_api_key } from "./llm-client-policy";
-import { normalize_google_api_base_url } from "./policy/google-policy";
-import { normalize_openai_sdk_base_url } from "./policy/openai-policy";
+import {
+  get_primary_api_key,
+  normalize_google_api_base_url,
+  normalize_openai_sdk_base_url,
+} from "./llm-request";
 
 // 模型列表探测沿用浏览器 UA，减少部分服务商对 Node 默认 UA 的拒绝概率。
 const BROWSER_USER_AGENT =
@@ -15,7 +17,7 @@ const GOOGLE_MODEL_LIST_PAGE_SIZE = 1000;
  */
 export async function list_available_models(model: JsonRecord): Promise<string[]> {
   try {
-    const api_format = resolve_model_api_format(model);
+    const api_format = Model.normalize_api_format(String(model["api_format"] ?? "OpenAI"));
     let models: string[];
     if (api_format === "Google") {
       models = await fetch_google_available_models(model);
@@ -104,13 +106,13 @@ async function fetch_json(url: string, headers: Record<string, string>): Promise
  * 读取 HTTP 模型列表数组结构，坏项直接跳过。
  */
 function read_response_model_ids(data: JsonValue, array_key: string, id_key: string): string[] {
-  const record = { ...read_json_record(data) };
+  const record = read_json_record(data);
   const items = record[array_key];
   if (!Array.isArray(items)) {
     return [];
   }
   return items
-    .map((item) => ({ ...read_json_record(item) })[id_key])
+    .map((item) => read_json_record(item)[id_key])
     .filter((value): value is string => typeof value === "string" && value.trim() !== "");
 }
 
@@ -119,20 +121,13 @@ function read_response_model_ids(data: JsonValue, array_key: string, id_key: str
  */
 function build_browser_headers(model: JsonRecord): Record<string, string> {
   const headers: Record<string, string> = { "User-Agent": BROWSER_USER_AGENT };
-  const request_config = { ...read_json_record(model["request"]) };
+  const request_config = read_json_record(model["request"]);
   if (request_config["extra_headers_custom_enable"] !== true) {
     return headers;
   }
-  const extra_headers = { ...read_json_record(request_config["extra_headers"]) };
+  const extra_headers = read_json_record(request_config["extra_headers"]);
   for (const [key, value] of Object.entries(extra_headers)) {
     headers[key] = String(value);
   }
   return headers;
-}
-
-/**
- * API 格式缺失时按 OpenAI-compatible 处理。
- */
-function resolve_model_api_format(model: JsonRecord): ModelApiFormat {
-  return Model.normalize_api_format(String(model["api_format"] ?? "OpenAI"));
 }

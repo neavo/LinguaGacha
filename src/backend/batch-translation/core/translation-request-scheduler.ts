@@ -1,6 +1,6 @@
 import { read_json_record } from "../../../domain/json";
 import { AppError, log_error_from_message, type LogError } from "../../../shared/error";
-import { collect_api_keys, read_request_timeout_ms } from "../../llm/llm-client-policy";
+import { collect_api_keys, read_request_timeout_ms } from "../../llm/llm-request";
 import type { LLMClientPort, LLMRequestBody } from "../../llm/llm-types";
 import type {
   TranslationRequestPort,

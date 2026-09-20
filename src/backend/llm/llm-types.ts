@@ -2,11 +2,11 @@ import type { JsonValue } from "../../domain/json";
 import type { LogError } from "../../shared/error";
 
 /**
- * 请求消息保持 provider-neutral chat 形状；Pi 负责基础协议转换，项目 policy 固定最终协议语义。
+ * 请求消息保持中性的对话形状；Pi 负责协议转换，项目载荷入口应用产品约定。
  */
 export interface LLMMessage {
   role: "system" | "user"; // OneShot 只接受业务提示词，不承载多轮 assistant 历史
-  content: string; // 已拼好的业务提示词，request policy 不再读取项目事实
+  content: string; // 已拼好的业务提示词，请求准备只消费冻结输入。
 }
 
 /**
@@ -15,9 +15,9 @@ export interface LLMMessage {
 export interface LLMRequestBody {
   run_id: string; // OneShot 运行身份，同时用于供应商会话路由、诊断与迟到结果隔离
   work_unit_id: string; // 本轮分块的诊断身份，重试和 Key 轮换继续复用 run_id
-  model: JsonValue; // 保留任务启动快照形状，policy 在边界处收窄供应商字段
+  model: JsonValue; // 保留任务启动快照形状，请求边界收窄供应商字段。
   config_snapshot: JsonValue; // 与任务启动时一致，确保重试不读取后续 UI 修改
-  messages: LLMMessage[]; // 已由 PromptBuilder 拼好，policy 只做协议转换
+  messages: LLMMessage[]; // 已由 `PromptBuilder` 拼好，请求准备负责协议转换。
 }
 
 /**

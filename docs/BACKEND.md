@@ -128,10 +128,11 @@ project, files, items, pdf, quality, prompts, proofreading
 - `resolve_prompt_template_language` 统一选择普通翻译模板：中文 UI 使用中文，其它 UI 语言使用英文。模板、源／目标语言占位符、输入与术语等模型说明及其日志回显均使用模板语言，名称与说明从共享词典解析；自定义规则正文由用户拥有。一般日志和错误继续按应用语言展示，Agent 交互消息的语言归 [`AGENT_RUNTIME.md`](AGENT_RUNTIME.md)。
 - 翻译 work unit 在 pre-pipeline 前从原始 source fields 计算术语覆盖，再以全局开关和非空 `dst` 裁出 Prompt 激活条目；PromptBuilder 只格式化已激活条目，不根据预处理或模型输入文本再次匹配。
 - 批量翻译以外的重型计算通过 `ComputeWorkerClient` 提交无状态 compute task；worker 不读数据库、不写 `.lg`、不发布事件、不持有项目 cache。
-- 模型请求快照、统一模型能力解析、`api_format` 协议策略、最终请求覆盖、结果归一和模型列表探测归 `src/backend/llm`；OneShot、Agent、模型管理快照与模型选择快照共用同一能力结果和 `pi-ai` adapter，模型列表探测仍直接调用供应商 REST API。持久化 `Model` 只记录用户配置，不持有由模型 ID 推导的第二套容量或思考事实。
-- 特定模型与接入点的静态修正集中于 `src/backend/llm/llm-overrides.ts`，分别由 `model-capability.ts` 与 `policy/policy-shared.ts` 消费。
-- `llm-client-policy.ts` 组合请求策略，请求头只通过适配器调用选项发送。接入点按精确主机名匹配，会话头使用调用方身份，已启用的扩展头按大小写不敏感覆盖默认值。OneShot 复用 `run_id`：批量任务的分块与重试共享身份，每次批量任务和每个 Key 的模型测试各自独立。Agent 对话身份归 [`AGENT_RUNTIME.md`](AGENT_RUNTIME.md)。
-- 模型容量与协议思考能力分别优先采用应用修正，再读取 Pi catalog。两者共用名称规则：精确匹配优先，变种 ID 在字母数字分隔边界内取最长且唯一的 canonical ID。容量跨协议聚合同 ID 的全部记录，分别取最大上下文与输出规格；思考使用当前协议适配的单一模板。缺少容量时使用 Agent 安全值，缺少思考证据时不猜测；解析保留真实请求 ID、归一后的 API URL 和请求头。修正只承载 Pi 缺失或落后的事实，Pi 更新并验证后按容量或协议删除。Agent 运行容量的合并规则归 [`AGENT_RUNTIME.md`](AGENT_RUNTIME.md)。
+- `src/backend/llm` 统一处理模型能力、请求准备、协议载荷和结果。模型管理、OneShot 与 Agent 共用能力结果，Pi 模型构造直接消费该结果。持久化 `Model` 保存用户配置，远端可用模型列表由供应商 REST API 提供。
+- 能力目录优先精确匹配名称，变种 ID 在字母数字边界内取最长且唯一的标准模型 ID。容量取同名记录的最大上下文与输出规格。思考模板先匹配协议，再按原厂、聚合目录、托管平台的显式优先级选择。唯一未知来源可用，多个未知来源按能力缺失处理。缺少容量时使用 Agent 安全值，最终请求保留用户的真实模型 ID。
+- `llm-overrides.ts` 保存模型与端点修正。同协议思考映射和兼容配置按字段合并，`null` 表示档位不受支持。OpenAI 两种协议回退时仅借用思考能力与档位，Azure Responses 与 Responses 共用兼容契约。Agent 运行容量规则归 [`AGENT_RUNTIME.md`](AGENT_RUNTIME.md)。
+- `llm-request.ts` 准备配置与生成选项，`llm-payload.ts` 合并最终载荷。请求头通过适配器选项发送，端点按精确主机名匹配，用户扩展头按大小写不敏感覆盖默认值。OneShot 的分块与重试共享 `run_id`，批量任务及每个密钥的模型测试各自独立。Agent 对话身份归 [`AGENT_RUNTIME.md`](AGENT_RUNTIME.md)。
+- OneShot 在适配器入口调用 `normalizeContext()`，Agent 由 `ModelRuntime` 归一化上下文。Anthropic 与 Google 合并用户扩展后保留结构化思考设置，Google 单次请求最终使用应用的取消信号。
 - 产品思考档位按操作语义合并同效果别名，包括关闭思考；共享映射由 Pi adapter 转为供应商接口值。
 - `LLMClient` 独立拥有 OneShot 的总时限、取消和请求终态，Pi 固定 `maxRetries: 0`：供应商请求失败归 `request_error`，长度截断和不支持的工具调用归 `response_error`，正常终止的正文原样交给消费方按任务协议校验，空正文因此属于零有效任务数据；成功 usage 归一为输入、思考与输出三个互斥口径并分别进入任务快照。
 - `src/backend/network` 是普通后端与 Agent 工作区 HTTP 的共用传输所有者。工作区调用和代理通信归 [`AGENT_RUNTIME.md`](AGENT_RUNTIME.md)。`BackendResources` 在业务服务启动前把它安装为当前 Backend Runtime worker 或 CLI 进程的 `globalThis.fetch`，同时安装同版本的 Request、Response、Headers 和 FormData，关闭时一起恢复，避免 Electron 内置 Undici 与应用依赖混用。模型 adapter、模型列表和 Web Search 从该入口取用 transport。HTTP 入口按请求隔离状态码、接收时刻及重试时间，LLM 端口传递事实，调度器决定恢复策略。每次请求按当前 Electron session 代理规则选路，loopback 固定直连。解析失败、路由不受支持或代理失败都结束请求，不绕过代理静默直连，也不改写进程全局 dispatcher。

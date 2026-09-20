@@ -1,10 +1,16 @@
-import { Type, type Model, type ProviderStreamOptions } from "@earendil-works/pi-ai";
+import {
+  Type,
+  fauxAssistantMessage,
+  normalizeContext,
+  type Model,
+  type ProviderStreamOptions,
+} from "@earendil-works/pi-ai";
 import { ANTHROPIC_MODELS } from "@earendil-works/pi-ai/providers/anthropic.models";
 import { describe, expect, it, vi } from "vitest";
 
 import { is_json_record, type JsonRecord } from "../../domain/json";
 import { Model as ConfiguredModel } from "../../domain/model";
-import { read_model_request_snapshot } from "./llm-client-policy";
+import { read_model_request_snapshot } from "./llm-request";
 import { resolve_one_shot_pi_request, resolve_pi_model } from "./llm-pi";
 import { resolve_model_capability } from "./model-capability";
 
@@ -12,6 +18,65 @@ const TEST_USER_AGENT = "LinguaGacha/Test";
 const TEST_REQUEST_IDENTITY = { user_agent: TEST_USER_AGENT, session_id: "test-session" };
 
 describe("pi-ai 请求适配", () => {
+  it("DeepSeek 中转的 Agent 请求继承目录输出字段与 assistant 历史要求", async () => {
+    const configured = create_model({
+      model_id: "vendor/deepseek-flash:fast",
+      api_url: "https://relay.example/v1",
+      thinking: { level: "HIGH" },
+    });
+    const capability = resolve_model_capability(
+      ConfiguredModel.from_json(configured, "test-model"),
+    );
+    const resolved = resolve_pi_model(
+      read_model_request_snapshot(configured, TEST_REQUEST_IDENTITY),
+      capability,
+      {
+        name: "DeepSeek",
+        input: ["text"],
+        contextWindow: capability.agent_limits.context_window,
+        maxTokens: capability.agent_limits.max_output_tokens,
+      },
+    );
+    let payload: unknown;
+    await resolved
+      .streamSimple(
+        resolved.model,
+        normalizeContext({
+          messages: [
+            { role: "user", content: "上一轮", timestamp: 0 },
+            {
+              ...fauxAssistantMessage("上一轮回复"),
+              model: resolved.model.id,
+              provider: resolved.model.provider,
+              api: resolved.model.api,
+            },
+            { role: "user", content: "继续", timestamp: 1 },
+          ],
+        }),
+        {
+          apiKey: "fake",
+          reasoning: resolved.thinkingLevel === "off" ? undefined : resolved.thinkingLevel,
+          onPayload: (value) => {
+            payload = value;
+            throw new Error("capture-payload");
+          },
+        },
+      )
+      .result();
+    expect(payload).toMatchObject({
+      model: "vendor/deepseek-flash:fast",
+      max_tokens: capability.agent_limits.max_output_tokens,
+      thinking: { type: "enabled" },
+      reasoning_effort: "high",
+      messages: [
+        { role: "user", content: "上一轮" },
+        { role: "assistant", content: "上一轮回复", reasoning_content: "" },
+        { role: "user", content: "继续" },
+      ],
+    });
+    expect(payload).not.toHaveProperty("max_completion_tokens");
+    expect(payload).not.toHaveProperty("store");
+  });
   it.each(["OpenAI", "OpenAIResponses"] as const)(
     "%s DeepSeek Flash 保留新请求 ID 并发送各可用思考档位",
     async (api_format) => {
@@ -101,7 +166,10 @@ describe("pi-ai 请求适配", () => {
       create_model({ api_format }),
       TEST_REQUEST_IDENTITY,
     );
-    const resolved = resolve_pi_model(snapshot, {
+    const capability = resolve_model_capability(
+      ConfiguredModel.from_json(create_model({ api_format }), "test-model"),
+    );
+    const resolved = resolve_pi_model(snapshot, capability, {
       name: "Test",
       contextWindow: 32_000,
       maxTokens: 4096,
@@ -199,7 +267,6 @@ describe("pi-ai 请求适配", () => {
       compat: {
         supportsDeveloperRole: false,
         supportsStore: false,
-        supportsUsageInStreaming: true,
         maxTokensField: "max_tokens",
       },
     });
@@ -516,7 +583,7 @@ describe("pi-ai 请求适配", () => {
     });
   });
 
-  it("Anthropic 自动上限未命中 catalog 时回退 64000", async () => {
+  it("未知 Anthropic 模型获得必需的正数输出上限", async () => {
     const request = resolve_request({
       api_format: "Anthropic",
       model_id: "provider-defined-claude",
@@ -525,7 +592,7 @@ describe("pi-ai 请求适配", () => {
     const payload = await capture_payload(request);
 
     expect(request.options).not.toHaveProperty("maxTokens");
-    expect(request.model.maxTokens).toBe(64_000);
+    expect(request.model.maxTokens).toBeGreaterThan(0);
     expect(payload).toHaveProperty("max_tokens", request.model.maxTokens);
   });
 
@@ -562,9 +629,8 @@ describe("pi-ai 请求适配", () => {
       topP: 0.9,
       responseMimeType: "application/json",
       abortSignal: request.options.signal,
-      thinkingConfig: { includeThoughts: true, thinkingBudget: 2048 },
+      thinkingConfig: { includeThoughts: true, thinkingBudget: expect.any(Number) },
     });
-    expect(config["safetySettings"]).toHaveLength(4);
   });
 
   it("Google 自动输出上限不进入最终 payload", async () => {

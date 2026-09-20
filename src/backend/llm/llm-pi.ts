@@ -1,9 +1,9 @@
 import {
   type AssistantMessageEventStream,
   type Context,
+  normalizeContext,
   type Model as PiModel,
   type ModelThinkingLevel as PiModelThinkingLevel,
-  type ProviderStreamOptions,
   type ProviderStreams,
   type SimpleStreamOptions,
 } from "@earendil-works/pi-ai";
@@ -11,19 +11,22 @@ import { anthropicMessagesApi } from "@earendil-works/pi-ai/api/anthropic-messag
 import { googleGenerativeAIApi } from "@earendil-works/pi-ai/api/google-generative-ai.lazy";
 import { openAICompletionsApi } from "@earendil-works/pi-ai/api/openai-completions.lazy";
 import { openAIResponsesApi } from "@earendil-works/pi-ai/api/openai-responses.lazy";
+import type { OpenAICompletionsOptions } from "@earendil-works/pi-ai/api/openai-completions";
+import type { AnthropicOptions } from "@earendil-works/pi-ai/api/anthropic-messages";
 
 import { DEFAULT_MODEL_AGENT_CONFIG } from "../../domain/model-agent";
 import { AppError } from "../../shared/error";
-import {
-  apply_one_shot_request_overrides,
-  resolve_one_shot_generation_options,
-} from "./llm-client-policy";
+import { resolve_one_shot_generation_options, type ModelRequestSnapshot } from "./llm-request";
+import { apply_one_shot_request_overrides } from "./llm-payload";
 import type { LLMMessage } from "./llm-types";
-import { resolve_model_capability, resolve_pi_thinking_level } from "./model-capability";
-import type { ModelRequestSnapshot } from "./policy/policy-types";
+import {
+  resolve_model_capability,
+  resolve_pi_thinking_level,
+  type ResolvedModelCapability,
+} from "./model-capability";
 
 // Pi provider 身份只用于 adapter 与 ModelRuntime 注册，项目策略直接使用 api_format。
-type PiApi =
+export type PiApi =
   | "openai-completions"
   | "openai-responses"
   | "anthropic-messages"
@@ -31,11 +34,15 @@ type PiApi =
 type PiProvider = "openai" | "openai-compatible" | "anthropic" | "google";
 const ANTHROPIC_FALLBACK_MAX_TOKENS = 64_000; // 缺少模型规格时仍满足 Messages API 必填上限
 
-/** 统一 OneShot 调用形状，A/G 通过它转接 Pi 的 streamSimple。 */
+/** 共用选项沿用 Pi 正式类型，协议专属字段只在对应请求分支写入。 */
+type OneShotOptions = SimpleStreamOptions &
+  Pick<OpenAICompletionsOptions, "reasoningEffort"> &
+  Pick<AnthropicOptions, "interleavedThinking">;
+
 type OneShotStream = (
   model: PiModel<PiApi>,
   context: Context,
-  options?: ProviderStreamOptions,
+  options?: OneShotOptions,
 ) => AssistantMessageEventStream;
 
 /** 调用方可覆盖显示身份与容量，缺省容量沿用统一模型规格，协议字段由本模块补齐。 */
@@ -47,9 +54,10 @@ type PiModelSettings = Readonly<{
   input: PiModel<PiApi>["input"];
 }>;
 
-/** OneShot 与 Agent 共用同一次策略解析生成 Pi 能力映射和实际思考档位。 */
+/** 消费调用方唯一解析的能力，构造 Pi 模型与当前请求思考档位。 */
 export function resolve_pi_model(
   snapshot: ModelRequestSnapshot,
+  capability: ResolvedModelCapability,
   settings: PiModelSettings,
 ): {
   model: PiModel<PiApi>;
@@ -58,18 +66,13 @@ export function resolve_pi_model(
   streamSimple: ProviderStreams["streamSimple"];
 } {
   const api = resolve_pi_api(snapshot.api_format);
-  const capability = resolve_model_capability({
-    api_format: snapshot.api_format,
-    model_id: snapshot.model_id,
-    agent: DEFAULT_MODEL_AGENT_CONFIG,
-  });
   const thinking_level = resolve_pi_thinking_level(
     snapshot.thinking_level,
     capability.available_thinking_levels,
   );
   const compat = {
     ...capability.compat,
-    // 自定义 OpenAI-compatible 服务只共同保证 system role；OneShot 会继续冻结旧 payload 形状。
+    // 产品 Chat Completions 指令使用 `system`；Responses 角色由最终载荷策略拥有。
     ...(api.api === "openai-completions" ? { supportsDeveloperRole: false } : {}),
   };
   const model: PiModel<PiApi> = {
@@ -104,11 +107,16 @@ export function resolve_one_shot_pi_request(
 ): {
   model: PiModel<PiApi>;
   context: Context;
-  options: ProviderStreamOptions;
+  options: OneShotOptions;
   stream: OneShotStream;
 } {
   const generation = resolve_one_shot_generation_options(snapshot);
-  const resolved = resolve_pi_model(snapshot, {
+  const capability = resolve_model_capability({
+    api_format: snapshot.api_format,
+    model_id: snapshot.model_id,
+    agent: DEFAULT_MODEL_AGENT_CONFIG,
+  });
+  const resolved = resolve_pi_model(snapshot, capability, {
     name: snapshot.model_id,
     // Anthropic 要求 max_tokens：显式值冻结总 ceiling，自动值使用模型规格或未知模型回退。
     ...(snapshot.api_format !== "Anthropic"
@@ -125,21 +133,18 @@ export function resolve_one_shot_pi_request(
           ...resolved.model,
           compat: {
             ...resolved.model.compat,
-            supportsDeveloperRole: false,
             supportsStore: false,
-            supportsUsageInStreaming: true,
             maxTokensField: "max_tokens",
           },
         }
       : resolved.model;
-  const options: ProviderStreamOptions = {
+  const options: OneShotOptions = {
     apiKey: snapshot.api_keys[0] ?? "no_key_required",
     cacheRetention: "none",
     headers: { ...snapshot.headers },
     maxRetries: 0,
     signal,
-    ...(generation.temperature === undefined ? {} : { temperature: generation.temperature }),
-    ...(generation.maxTokens === undefined ? {} : { maxTokens: generation.maxTokens }),
+    ...generation,
     ...((snapshot.api_format === "OpenAI" || snapshot.api_format === "OpenAIResponses") &&
     resolved.model.reasoning &&
     resolved.thinkingLevel !== "off"
@@ -153,21 +158,17 @@ export function resolve_one_shot_pi_request(
     ...(snapshot.api_format === "Anthropic" ? { interleavedThinking: false } : {}),
     onPayload: (payload) => apply_one_shot_request_overrides(snapshot, payload, signal),
   };
-  const stream: OneShotStream =
+  // Google / Anthropic 由 `streamSimple` 转换思考档位，OpenAI 直接调用以保留自动输出上限语义。
+  const provider_stream =
     snapshot.api_format === "Google" || snapshot.api_format === "Anthropic"
-      ? (active_model, context, active_options) =>
-          resolved.streamSimple(
-            active_model,
-            context,
-            active_options as SimpleStreamOptions | undefined,
-          )
-      : (active_model, context, active_options) =>
-          resolved.stream(active_model, context, active_options);
+      ? resolved.streamSimple
+      : resolved.stream;
   return {
     model,
     context: build_pi_context(snapshot, messages),
     options,
-    stream,
+    stream: (active_model, context, active_options) =>
+      provider_stream(active_model, normalizeContext(context), active_options),
   };
 }
 
