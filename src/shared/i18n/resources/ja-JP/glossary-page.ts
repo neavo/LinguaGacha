@@ -12,7 +12,6 @@ export const ja_jp_glossary_page = {
   fields: {
     translation: "訳文",
     description: "説明",
-
     hit: "一致",
   },
   hit: {
@@ -29,16 +28,12 @@ export const ja_jp_glossary_page = {
       description: "備考",
     },
   },
-
   feedback: {
     load_failed: "用語集を読み込めませんでした。しばらくしてから再試行してください。",
     save_failed: "用語集を保存できませんでした",
     import_failed: "用語集をインポートできませんでした",
-
     export_failed: "用語集をエクスポートできませんでした",
-
     preset_failed: "用語集のプリセットを読み込めませんでした",
-
     query_failed: "用語集を検索できませんでした",
   },
 } satisfies LocaleMessageSchema<typeof zh_cn_glossary_page>;

@@ -54,7 +54,6 @@ export const en_us_project_page = {
     items: "Loading project items …",
     quality: "Loading quality rules …",
     prompts: "Loading prompt settings …",
-
     proofreading: "Loading proofreading view …",
     task: "Loading task status …",
   },

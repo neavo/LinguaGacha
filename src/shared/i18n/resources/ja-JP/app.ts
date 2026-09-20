@@ -360,7 +360,6 @@ export const ja_jp_app = {
     engine_api_name: "API 名",
     engine_api_url: "API アドレス",
     engine_task_done: "タスクが完了しました …",
-
     engine_task_fail:
       "タスクの一部が完了していません。未処理のデータがあるため、処理結果を確認してください …",
     engine_task_rule_analysis: "ルール分析：",

@@ -7,7 +7,6 @@ export const en_us_task_progress = {
   translation_failed: "Translation Failed",
   translation_pending: "Awaiting Translation",
   translation_skipped: "No Translation Needed",
-
   toggle_tooltip: "Click to switch",
   line: "{status} - {count} lines",
   page: "{status} - {count} pages",

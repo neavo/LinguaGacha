@@ -3,10 +3,8 @@ import type { LocaleMessageSchema } from "../../types";
 
 export const en_us_text_preserve_page = {
   title: "Text Preserve",
-
   mode: {
     label: "Text Preserve Mode",
-
     loading_toast: "Refreshing proofreading cache …",
     content_html:
       "Preserve text segments like code snippets, control characters, and style characters that shouldn't be translated, preventing incorrect translation" +
@@ -32,7 +30,6 @@ export const en_us_text_preserve_page = {
       note: "Remarks",
     },
   },
-
   preset: {
     dialog: {
       name_placeholder: "Please enter preset name …",
@@ -41,13 +38,10 @@ export const en_us_text_preserve_page = {
   hit: {
     hit_count: "Matched Item Count: {COUNT}",
   },
-
   feedback: {
     load_failed: "Failed to load text preservation rules. Please try again later.",
     preset_name_required: "Preset name cannot be empty",
-
     unknown_error: "The operation failed. Please try again later.",
-
     mode_refresh_pending:
       "The text preserve mode was updated, and the proofreading cache is still refreshing. Please check again shortly.",
   },

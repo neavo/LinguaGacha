@@ -5,7 +5,6 @@ export const en_us_text_replacement_page = {
   title: "Text Replacement",
   fields: {
     replacement: "Replacement",
-
     hit: "Hits",
   },
   rule: {
@@ -17,24 +16,18 @@ export const en_us_text_replacement_page = {
       tooltip_label: "Search scope",
     },
   },
-
   hit: {
     subset_relations: "Subset relations:",
-
     action: {
       search_relation: "Search relation",
     },
   },
-
   feedback: {
     load_failed: "Failed to load replacement rules. Please try again later.",
     save_failed: "Failed to save replacement page.",
     import_failed: "Failed to import replacement rules.",
-
     export_failed: "Failed to export replacement rules.",
-
     preset_failed: "Failed to load replacement presets.",
-
     query_failed: "Failed to query replacement rule.",
   },
 } satisfies LocaleMessageSchema<typeof zh_cn_text_replacement_page>;

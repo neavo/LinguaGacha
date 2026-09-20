@@ -6,7 +6,6 @@ export const ja_jp_task_progress = {
   translation_failed: "翻訳失敗",
   translation_pending: "翻訳待ち",
   translation_skipped: "翻訳不要",
-
   toggle_tooltip: "クリックして切り替え",
   line: "{status} - {count} 行",
   page: "{status} - {count} ページ",

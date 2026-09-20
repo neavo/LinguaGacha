@@ -21,7 +21,6 @@ export const ko_kr_batch_translation = {
     output_tokens: "출력 Token",
     waveform_title: "현재 속도",
     metrics_title: "통계",
-
     active_requests: "실행 중인 작업 수",
   },
   feedback: {

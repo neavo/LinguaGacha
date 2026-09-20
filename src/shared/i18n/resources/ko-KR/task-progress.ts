@@ -6,7 +6,6 @@ export const ko_kr_task_progress = {
   translation_failed: "번역 실패",
   translation_pending: "번역 대기",
   translation_skipped: "번역 불필요",
-
   toggle_tooltip: "클릭하여 전환",
   line: "{status} - {count}행",
   page: "{status} - {count}페이지",

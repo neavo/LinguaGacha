@@ -1,9 +1,7 @@
 export const zh_cn_text_preserve_page = {
   title: "文本保护",
-
   mode: {
     label: "文本保护模式",
-
     loading_toast: "正在刷新校对缓存 …",
     content_html:
       "对文本中无需翻译的代码段、控制字符、样式字符等内容进行保护，避免它们被错误的翻译" +
@@ -29,7 +27,6 @@ export const zh_cn_text_preserve_page = {
       note: "备注",
     },
   },
-
   preset: {
     dialog: {
       name_placeholder: "请输入预设名称 …",
@@ -38,13 +35,10 @@ export const zh_cn_text_preserve_page = {
   hit: {
     hit_count: "命中条目数：{COUNT}",
   },
-
   feedback: {
     load_failed: "文本保护规则加载失败，请稍后重试。",
     preset_name_required: "预设名称不能为空",
-
     unknown_error: "当前操作失败，请稍后重试。",
-
     mode_refresh_pending: "文本保护模式已切换，校对缓存仍在刷新，请稍后再看结果。",
   },
 } as const;

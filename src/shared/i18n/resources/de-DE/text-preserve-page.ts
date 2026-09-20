@@ -3,10 +3,8 @@ import type { LocaleMessageSchema } from "../../types";
 
 export const de_de_text_preserve_page = {
   title: "Textschutz",
-
   mode: {
     label: "Textschutz-Modus",
-
     loading_toast: "Korrektur-Cache wird aktualisiert …",
     content_html:
       "Schützt Textsegmente wie Code-Snippets, Steuerzeichen und Stilzeichen, die nicht übersetzt werden sollen, um falsche Übersetzungen zu verhindern" +
@@ -32,7 +30,6 @@ export const de_de_text_preserve_page = {
       note: "Bemerkungen",
     },
   },
-
   preset: {
     dialog: {
       name_placeholder: "Bitte Namen der Voreinstellung eingeben …",
@@ -41,14 +38,11 @@ export const de_de_text_preserve_page = {
   hit: {
     hit_count: "Anzahl übereinstimmender Einträge: {COUNT}",
   },
-
   feedback: {
     load_failed:
       "Texterhaltungsregeln konnten nicht geladen werden. Bitte später erneut versuchen.",
     preset_name_required: "Name der Voreinstellung darf nicht leer sein",
-
     unknown_error: "Der Vorgang ist fehlgeschlagen. Bitte versuchen Sie es später erneut.",
-
     mode_refresh_pending:
       "Der Textschutz-Modus wurde aktualisiert und der Korrektur-Cache wird noch aktualisiert. Bitte überprüfen Sie es in Kürze erneut.",
   },
