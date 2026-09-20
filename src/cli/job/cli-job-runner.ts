@@ -186,12 +186,7 @@ async function start_and_wait_for_translation(
       scope: { kind: "all" },
     });
     const result = await handle.completion;
-    if (result.status !== "done")
-      throw new Error(
-        result.reason === "keys_exhausted"
-          ? "Translation stopped: all API keys are unavailable"
-          : "Translation task failed",
-      );
+    if (result.status !== "done") throw new Error("Translation task failed");
   } finally {
     unsubscribe();
   }

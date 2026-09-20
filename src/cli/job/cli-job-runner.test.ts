@@ -1,3 +1,4 @@
+import { create_empty_batch_translation_snapshot } from "../../shared/batch-translation/batch-translation";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -137,31 +138,28 @@ describe("run_cli_job", () => {
     expect_temp_project_removed(harness.created_project_paths);
   });
 
-  it.each([undefined, "keys_exhausted"] as const)(
-    "任务失败 %s 时跳过导出并清理资源",
-    async (reason) => {
-      const paths = create_cli_paths();
-      const harness = create_backend_services_harness({ reason });
-      const run_promise = run_cli_job(
-        harness.backend_services,
-        create_command(paths, { command: "translate" }),
-        harness.status_reporter,
-      );
-      const rejection = run_promise.catch((error: unknown) => error);
+  it("任务失败时跳过导出并清理资源", async () => {
+    const paths = create_cli_paths();
+    const harness = create_backend_services_harness();
+    const run_promise = run_cli_job(
+      harness.backend_services,
+      create_command(paths, { command: "translate" }),
+      harness.status_reporter,
+    );
+    const rejection = run_promise.catch((error: unknown) => error);
 
-      await wait_for_task_start(harness, run_promise);
-      await harness.emit_snapshot("error");
-      const error = await rejection;
-      expect(error).toBeInstanceOf(Error);
+    await wait_for_task_start(harness, run_promise);
+    await harness.emit_snapshot("error");
+    const error = await rejection;
+    expect(error).toBeInstanceOf(Error);
 
-      expect(harness.set_transient_overrides).toHaveBeenLastCalledWith(null);
-      expect(harness.unload_project).toHaveBeenCalledOnce();
-      expect(harness.subscriber_count()).toBe(0);
-      expect(harness.status_reporter.emit_finished).toHaveBeenCalledWith("error", error);
-      expect(harness.export_files_to_directory).not.toHaveBeenCalled();
-      expect_temp_project_removed(harness.created_project_paths);
-    },
-  );
+    expect(harness.set_transient_overrides).toHaveBeenLastCalledWith(null);
+    expect(harness.unload_project).toHaveBeenCalledOnce();
+    expect(harness.subscriber_count()).toBe(0);
+    expect(harness.status_reporter.emit_finished).toHaveBeenCalledWith("error", error);
+    expect(harness.export_files_to_directory).not.toHaveBeenCalled();
+    expect_temp_project_removed(harness.created_project_paths);
+  });
 
   it("输入不存在时在任何工程副作用前失败", async () => {
     const paths = create_cli_paths();
@@ -239,9 +237,7 @@ describe("run_cli_job", () => {
 });
 
 /** 组合可控任务完成链与磁盘临时工程，观察导出及资源清理顺序。 */
-function create_backend_services_harness(
-  failures: { unloadFailure?: Error; reason?: "keys_exhausted" } = {},
-) {
+function create_backend_services_harness(failures: { unloadFailure?: Error } = {}) {
   const events: string[] = [];
   const created_project_paths: string[] = [];
   const task_listeners = new Set<
@@ -250,12 +246,10 @@ function create_backend_services_harness(
   let started = false;
   let finish!: (result: {
     status: "done" | "idle" | "error";
-    reason?: "keys_exhausted";
     progress: BatchTranslationSnapshot["progress"];
   }) => void;
   const completion = new Promise<{
     status: "done" | "idle" | "error";
-    reason?: "keys_exhausted";
     progress: BatchTranslationSnapshot["progress"];
   }>((resolve) => {
     finish = resolve;
@@ -379,7 +373,7 @@ function create_backend_services_harness(
       const snapshot = create_task_snapshot(status, progress);
       await Promise.all([...task_listeners].map(async (listener) => await listener(snapshot)));
       if (status === "done" || status === "idle" || status === "error")
-        finish({ status, progress: snapshot.progress, reason: failures.reason });
+        finish({ status, progress: snapshot.progress });
     },
   };
 }
@@ -402,25 +396,13 @@ function create_task_snapshot(
   status: BatchTranslationSnapshot["status"],
   progress: Partial<BatchTranslationSnapshot["progress"]> = {},
 ): BatchTranslationSnapshot {
+  const snapshot = create_empty_batch_translation_snapshot();
   return {
+    ...snapshot,
     revision: 1,
     status,
     source: status === "idle" ? null : "standalone",
-    request_in_flight_count: 0,
-    progress: {
-      line: 0,
-      total_line: 0,
-      processed_line: 0,
-      error_line: 0,
-      total_tokens: 0,
-      total_output_tokens: 0,
-      total_reasoning_tokens: 0,
-      total_input_tokens: 0,
-      time: 0,
-      start_time: 0,
-      ...progress,
-    },
-    scope: { kind: "all" },
+    progress: { ...snapshot.progress, ...progress },
   };
 }
 

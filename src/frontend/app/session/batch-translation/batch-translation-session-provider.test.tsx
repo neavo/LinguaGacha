@@ -14,6 +14,10 @@ const task_runtime_mock = vi.hoisted(() => {
   };
 });
 
+vi.mock("./batch-translation-recovery-toast", () => ({
+  BatchTranslationRecoveryToast: () => null,
+}));
+
 vi.mock("@frontend/app/locale/locale-context", () => {
   return {
     useI18n: () => ({

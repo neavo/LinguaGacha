@@ -10,21 +10,22 @@ import {
 } from "./batch-translation";
 
 describe("批量翻译展示", () => {
-  it("密钥耗尽原因经过传输归一和历史复制保留，且不触发自动导出", () => {
-    const snapshot = clone_translation_task_snapshot(
+  it("恢复信息归一后供历史快照共享，停止时清空", () => {
+    const recovery = { retry_count: 4, retry_at: 123_000 };
+    const snapshot = normalize_batch_translation_snapshot({
+      batch_translation: { status: "running", request_recovery: recovery },
+    });
+    recovery.retry_count = 99;
+    expect(clone_translation_task_snapshot(snapshot).request_recovery).toEqual({
+      retry_count: 4,
+      retry_at: 123_000,
+    });
+    expect(
       normalize_batch_translation_snapshot({
-        batch_translation: {
-          status: "error",
-          reason: "keys_exhausted",
-          source: "standalone",
-          operation: "translate",
-          scope: { kind: "all" },
-        },
-      }),
-    );
-    expect(snapshot.reason).toBe("keys_exhausted");
-    expect(should_open_translation_export_followup("running", snapshot)).toBe(false);
-    expect(normalize_batch_translation_snapshot({}).reason).toBeUndefined();
+        batch_translation: { ...snapshot, status: "stopped" },
+      }).request_recovery,
+    ).toBeNull();
+    expect(normalize_batch_translation_snapshot({}).request_recovery).toBeNull();
   });
   it.each(["standalone", "agent", null] as const)("任务来源 %s 经归一与复制保留", (source) => {
     const snapshot = normalize_batch_translation_snapshot({ batch_translation: { source } });

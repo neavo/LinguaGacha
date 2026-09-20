@@ -37,7 +37,7 @@
 |Agent 工程数据快照与 change 准备|`AgentWorkspaceService`|完整 load / run / apply 生命周期|
 |项目事实提交|`ProjectWriteStore`|单 `.lg` 事务、唯一 `ProjectEventHandler`、`adapt_project_change`|
 |Item 状态值域与重复关系|`domain/item` / `ProjectWriteStore`|人工状态只含 `NONE`、`PROCESSED`、`EXCLUDED`；重复组协调器物化 `DUPLICATED`|
-|活动 run、operation、scope、本轮进度、status、revision、请求压力和 completion|`BatchTranslationRuntime`|批量翻译命令、Runner 生命周期和项目会话切换|
+|活动 run、operation、scope、本轮进度、status、revision、请求运行态和 completion|`BatchTranslationRuntime`|批量翻译命令、Runner 生命周期和项目会话切换|
 |累计翻译进度|`.lg` 的翻译进度 meta|`BatchTranslationProjectStore` 经 `ProjectWriteStore` 写入|
 |批量翻译公开快照|`BatchTranslationRuntime.build_snapshot`|内存运行态、本轮进度与当前工程累计进度|
 |`.lg` 物理 workflow|`ProjectDatabase`|类型化读写方法、`transaction(projectPath, callback)`|
@@ -108,19 +108,19 @@ project, files, items, pdf, quality, prompts, proofreading
 
 - 批量引擎处理 Item。PDF 的格式识别、Agent 指引和 CLI 排除在文件与任务入口处理，具体 CLI 协议归 CLI.md。
 
-- 工作台、校对页、CLI 与 Agent 共用 `BackendServices.batchTranslation`。`POST /api/batch-translation/start` 接收显式 `operation` 与 `scope`：`translate` 携带 `new | continue | reset` 模式和可选 `include_errors`，`retranslate` 只接收指定 item 范围。`stop` 与 `snapshot` 接收空对象。HTTP 与 `batch_translation.snapshot_changed` 共用 `{ batch_translation: BatchTranslationSnapshot }`，快照包含 `revision`、`status`、`source`、`request_in_flight_count`、工程累计 `progress` 与 `scope`，预约后包含 `operation`，目标准备后包含本轮 `run_progress`。可选 `config` 承载本次运行的非敏感配置摘要，本轮取消后携带 `stop_source`。`requested | running | stopping` 唯一决定活跃态。
+- 工作台、校对页、CLI 与 Agent 共用 `BackendServices.batchTranslation`。`POST /api/batch-translation/start` 接收显式 `operation` 与 `scope`：`translate` 携带 `new | continue | reset` 模式和可选 `include_errors`，`retranslate` 只接收指定 item 范围。`stop` 与 `snapshot` 接收空对象。HTTP 与 `batch_translation.snapshot_changed` 共用 `{ batch_translation: BatchTranslationSnapshot }`，快照包含 `revision`、`status`、`source`、`request_in_flight_count`、`request_recovery`、工程累计 `progress` 与 `scope`，预约后包含 `operation`，目标准备后包含本轮 `run_progress`。可选 `config` 承载本次运行的非敏感配置摘要，本轮取消后携带 `stop_source`。`requested | running | stopping` 唯一决定活跃态。
 - `BatchTranslationService` 收窄命令并确认 loaded 工程，在运行 lease 内准备单次执行上下文：普通入口按 translation 用途读取模型，Agent 入口采用调用方解析出的模型配置，设置与模型在交给 Runner 时隔离引用。`BatchTranslationRuntime` 在首次异步发布前建立 run、controller 和唯一 completion；standalone 原子取得运行 lease，Agent 内运行校验真实 lease 并单向连接工具取消信号。两种入口共享一个活动翻译 run。Runtime 在预约时按入口写入 `source: standalone | agent`，本轮终态保留，新预约覆盖，工程切换清空为 `null`；来源只属于内存运行态，预约发布失败随快照回滚。快照 `scope.kind` 保留本轮范围类型，指定范围的 `item_ids` 随成功提交的执行结果移除，同值结果也完成本次尝试，任一终态清空 ID。
 - `BatchTranslationRunner` 消费 Service 提供的执行上下文，以类型化进度、质量规则、条目和提交数据消费 ProjectStore、Planner、Pipeline 与 worker。执行目的与范围分别决定目标资格和选中集合；目标准备校验目标存在性，在执行副本中重置状态。统一规划器保留工程顺序与完整前文，仅对实际目标计量和执行。Runner 从执行上下文投影 `config` 并登记到 Runtime；新运行预约和工程切换清空配置，终态保留，工程重开只恢复累计进度。
 - 本轮 `run_progress` 由 Runtime 持有，目标总量在执行前冻结，成功提交后推进成功、最终失败与用量；已报告用量即使没有终态条目也经同一提交链累计，终态保留，工程切换清空。工程累计 `progress` 持久化在 `translation_extras`，行数在 ProjectWriteStore 的同一写事务中按真实前后状态更新；失败重试成功减少累计失败数，同值失败保持工程计数。Runner 只提供累计耗时与用量并从已提交 meta 读取权威计数。提交后同步失败保留已完成事实与原始诊断。
-- Runner 等待规划、worker 和增量提交收束，保存最终进度并释放本轮数据库 lease 后返回独立结果；Runtime 冲刷请求压力、发布同一结果的终态、移除父监听并释放自己取得的 lease，最后结算 completion。完成、取消与执行失败分别为 `done`、`stopped`、`error`，`idle` 表示没有运行任务；已提交译文保留。首次取消在发出信号前记录 `stop_source: user | parent | shutdown`，重复停止返回未受理，新运行与工程切换清空来源。基础设施异常拒绝 completion；取消后的 `BatchTranslationCompletionError` 携带结果与原始 cause；dispose 等待同一完成链。
-- 生命周期与已提交进度立即发布快照，请求压力按 500ms 合并且在终态前冲刷。请求压力只计已发出的模型请求。每次项目会话切换重置为空闲并推进 revision，迟到 run 和旧帧不能覆盖新工程。
+- Runner 等待规划、worker 和增量提交收束，保存最终进度并释放本轮数据库 lease 后返回独立结果；Runtime 冲刷请求运行态、发布同一结果的终态、移除父监听并释放自己取得的 lease，最后结算 completion。完成、取消与执行失败分别为 `done`、`stopped`、`error`，`idle` 表示没有运行任务；已提交译文保留。首次取消在发出信号前记录 `stop_source: user | parent | shutdown`，重复停止返回未受理，新运行与工程切换清空来源。基础设施异常拒绝 completion；取消后的 `BatchTranslationCompletionError` 携带结果与原始 cause；dispose 等待同一完成链。
+- 生命周期与已提交进度立即发布快照，请求运行态按 500ms 合并并在终态前冲刷。调度器同时提供在途请求数与恢复信息，`BatchTranslationRuntime` 按运行身份写入并隔离引用。工程切换清空运行展示并推进 `revision`。
 - work-unit worker 负责提示词与响应处理，通过本次执行携带的父线程请求端口访问 LLM；线程与同进程模式共用该端口和原 work unit 的取消信号。worker 崩溃必须中止所属父线程请求，作为基础设施错误结束任务。
-- `TranslationRequestScheduler` 是本轮唯一请求队列、并发额度与派发入口，同时检查速率和 Key 可用性。网络失败保持原请求回到队尾，重新选择可用 Key；收到响应后交给内容处理。`RequestRatePool` 跨任务保留同配置的速率时钟，Key、并发额度与请求队列属于单轮任务。
-- 并发与 RPM 双零启用本轮探测，显式并发优先，仅 RPM 非零时并发取 RPM。降档版本在真实派发时记录，重派重新取值；旧版本不调整额度，但继续参与结果与 Key 恢复。默认 RPS 随额度变化，跨轮保留速率时钟并重新探测。
-- `TranslationPipeline` 读取请求调度器的并发额度与密钥耗尽快照来供应 work unit，完成后优先补充内容重试；降档保留在途任务，真实网络派发立即受新额度约束。活动 work unit 包含预处理与响应处理，其数量与网络在途计数、线程池容量各自独立。
-- 密钥首次失败暂停派发并等待在途请求结束。同波并发失败只计一次，成功清零。冷却后仅派发一个恢复请求，恢复机会耗尽则本轮禁用该密钥，其余密钥继续处理共享队列。全部暂时不可用时等待。响应内容错误进入内容重试。
-- 全部密钥耗尽时，流水线停止领取普通及重试分块，待请求的活动分块收到 `keys_exhausted`，其余活动分块继续收尾，仅提交已完成条目和真实用量。未完成目标保留数据库原状态、译文和重试次数。任务返回 `status: error`、`reason: keys_exhausted`，结果与快照保留原因，新运行与工程切换清空。
-- `429` 从响应接收时刻等待 `max(30 秒, min(服务端等待时间, 本轮请求超时设置))`。`Retry-After` 缺失、无效或过期时等待 30 秒。同波响应取最晚恢复时刻，同时等待在途请求结束，收束后不重新起算。其它请求故障在收束后冷却 30 ± 5 秒。
+- `TranslationRequestScheduler` 独占本轮请求队列、并发额度和密钥恢复。请求故障在原逻辑请求内持续重试，响应成功后才进入内容处理，基础设施异常结束任务。`RequestRatePool` 跨任务保留同配置的速率时钟。
+- 并发与 RPM 双零启用自动探测，成功升档，429 降档。显式并发优先，仅 RPM 非零时并发取 RPM。每次真实派发记录额度版本，旧版本请求只参与结果和密钥恢复，默认 RPS 随额度变化。
+- `TranslationPipeline` 读取请求调度器的并发额度来供应 work unit，完成后优先补充内容重试；降档保留在途任务，真实网络派发立即受新额度约束。活动 work unit 包含预处理与响应处理，其数量与网络在途计数、线程池容量各自独立。
+- 密钥首次失败后等待本密钥在途请求收束，同波故障只计一次。收束期间按响应完成顺序确定是否恢复，成功清零故障轮次。连续失败按有上限的退避时长冷却，每次冷却后只派发一个恢复请求。全部密钥不可用时保留待译条目并持续等待，直到恢复或取消。客户端归一的请求错误包含认证失败。
+- 429 同波响应取最晚服务端截止时间，服务端等待以上述请求的超时设置为上界。密钥可恢复时间取收束后退避截止时间与服务端截止时间的较大值，实际派发还需满足并发和速率资格，冷却与速率共用一个唤醒计时器。
+- `request_recovery` 在全部密钥不可用且仍有请求待完成时携带本次恢复信息，否则为 `null`。`retry_count` 累计本次连续不可用期间实际派发的恢复请求，任一密钥恢复正常后清零，独立于每密钥的退避轮次。`retry_at` 是下一次重试的毫秒时间戳，收束或探测期间为 `null`。取消、终态、新任务和工程切换清空恢复信息，运行身份隔离迟到更新。
 - `TranslationPlanner` 首次建立本轮源文指标，Runner 持有到任务完成；token 数按短引用投影后的 `o200k_base` 正文计算，特殊标记按普通文本处理，行数来自原文。内容重试按本轮条目和指标同步拆块，worker 返回值只决定待重试集合；最终提交消费 worker 写回快照。指标不进入 work-unit 载荷、计费统计或项目存储。
 - Planner 独占跨任务计数 LRU，同轮缺失文本去重后交给 planning worker；每个线程独占 BPE 片段缓存并按需启动、跨规划复用。池依赖单 run 互斥，只受理一个计数请求；取消停止新批次派发，在完整条目之间响应，并等待全部活动批次终态后释放请求。线程异常使本次请求失败，后续请求按需重建已退出线程；显式同进程执行共用计数循环。
 - 翻译 work-unit 以 item 为唯一请求、响应和提交单位：普通模型每个请求 item 使用一条 JSONL 记录（`id`、`text`，actor 模式再加 `actor`），`text` 可包含换行。`id` 在请求内从 0 按实际记录分配，与数据库 item ID 独立；响应按原值匹配，允许乱序。唯一匹配的非空译文独立提交，缺失、重复、未知或空白正文只影响对应 item；请求失败、零有效译文、部分有效和全部有效分别形成 error、error、warning 和 info 结果日志，结构变化的译文保留模型完整文本并由校对实时派生 `LINE_COUNT_MISMATCH` warning。SakuraLLM 每个 work-unit 只发送一个 item，并以完整纯文本承载译文；worker 内部才保留逐行准备与恢复事实。

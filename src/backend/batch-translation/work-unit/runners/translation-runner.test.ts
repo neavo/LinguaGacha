@@ -1,7 +1,4 @@
-import type {
-  TranslationRequestPort,
-  TranslationRequestResult,
-} from "../../protocol/translation-request";
+import type { TranslationRequestPort } from "../../protocol/translation-request";
 import { Model } from "../../../../domain/model";
 import { normalize_setting_snapshot } from "../../../../domain/setting";
 import { TextQualitySnapshotTool } from "../../../../shared/text/text-types";
@@ -13,7 +10,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { JsonRecord } from "../../../../domain/json";
 import { TranslationWorkUnitRunner } from "./translation-runner";
-import type { LLMClientPort, LLMRequestBody } from "../../../llm/llm-types";
+import type { LLMClientPort, LLMRequestBody, LLMRequestResult } from "../../../llm/llm-types";
 import type { TranslationWorkUnit, WorkUnitLogEntry } from "../../protocol/work-unit";
 
 const cleanup_roots: string[] = [];
@@ -542,30 +539,6 @@ describe("TranslationWorkUnitRunner", () => {
     expect(read_log_summary(result.logs[0])).not.toContain("ProviderError:");
   });
 
-  it("Key 耗尽保留未完成条目和预处理完成项，且不增加内容重试次数", async () => {
-    const runner = new TranslationWorkUnitRunner(
-      await create_template_root(),
-      create_llm_client({
-        keys_exhausted: true,
-        request_error: { message: "Key exhausted" },
-      }),
-    );
-    const result = await runner.execute_unit(
-      create_translation_unit({
-        model: { api_format: "OpenAI" },
-        items: [
-          { id: 1, src: "こんにちは", dst: "", status: "NONE", retry_count: 2 },
-          { id: 2, src: "", dst: "", status: "NONE", retry_count: 0 },
-        ],
-      }),
-      new AbortController().signal,
-    );
-    expect(result.output.items).toMatchObject([
-      { id: 1, status: "NONE", retry_count: 2 },
-      { id: 2, status: "PROCESSED", retry_count: 0 },
-    ]);
-  });
-
   it("零有效译文时记录错误结果", async () => {
     const runner = new TranslationWorkUnitRunner(
       await create_template_root(),
@@ -774,7 +747,7 @@ function create_quality_payload(): JsonRecord {
  * 构造可覆盖响应字段的 LLM 边界 stub，测试只断言 runner 公开结果。
  */
 function create_llm_client(
-  overrides: Partial<TranslationRequestResult>,
+  overrides: Partial<LLMRequestResult>,
   captured_requests: LLMRequestBody[] = [],
 ): TranslationRequestPort {
   return {

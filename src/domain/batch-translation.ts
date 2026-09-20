@@ -189,23 +189,31 @@ export function clone_translation_scope(scope: BatchTranslationScope): BatchTran
     : { kind: "all" };
 }
 
-export type BatchTranslationSnapshot = {
+/** 本次连续不可用期间的恢复事实，供任务快照和页面共同消费。 */
+export type BatchTranslationRequestRecovery = Readonly<{
+  retry_count: number; // 实际派发的恢复请求总数，任一密钥恢复正常后清零。
+  retry_at: number | null; // 毫秒时间戳，收束或探测期间尚无下一次派发时间。
+}>;
+
+export type BatchTranslationRequestState = Readonly<{
+  request_in_flight_count: number;
+  request_recovery: BatchTranslationRequestRecovery | null;
+}>;
+
+export type BatchTranslationSnapshot = BatchTranslationRequestState & {
   config?: BatchTranslationConfig;
   operation?: BatchTranslationOperation; // 首次预约后保留本轮目的，工程切换清空
   run_progress?: BatchTranslationProgress; // 本轮目标和实际提交结果，只属于内存运行态
   revision: number;
   status: BatchTranslationRunStatus;
-  reason?: "keys_exhausted"; // 本轮密钥耗尽导致提前结束，终态保留。
   source: BatchTranslationSource | null; // 预约入口决定本轮来源，终态保留，工程切换清空
   stop_source?: BatchTranslationStopSource; // 本轮首次受理的取消来源，收尾失败也保留
-  request_in_flight_count: number;
   progress: BatchTranslationProgress;
   scope: BatchTranslationScope; // kind 保留本轮范围类型；items 中待处理 ID 随提交移除，终态清空
 };
 
 export type BatchTranslationResult = Readonly<{
   status: "done" | "stopped" | "error";
-  reason?: "keys_exhausted";
   stop_source?: BatchTranslationStopSource;
   progress: Readonly<BatchTranslationProgress>;
   run_progress?: Readonly<BatchTranslationProgress>;

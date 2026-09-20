@@ -9,20 +9,18 @@ const { work_unit_dispose_mock, planning_dispose_mock } = vi.hoisted(() => {
 
 vi.mock("../batch-translation/work-unit/translation-worker-pool", () => {
   return {
+    // 用关闭回调观察翻译线程池的收尾。
     TranslationWorkerPool: class {
-      public async dispose(): Promise<void> {
-        await work_unit_dispose_mock();
-      }
+      public dispose = work_unit_dispose_mock;
     },
   };
 });
 
 vi.mock("../batch-translation/planning/planning-worker-pool", () => {
   return {
+    // 用关闭回调观察规划线程池的收尾。
     PlanningWorkerPool: class {
-      public async dispose(): Promise<void> {
-        await planning_dispose_mock();
-      }
+      public dispose = planning_dispose_mock;
     },
   };
 });
@@ -104,6 +102,7 @@ describe("BackendServices", () => {
       status: "running",
       source: "standalone",
       request_in_flight_count: 2,
+      request_recovery: null,
       progress: {
         line: 1,
         total_line: 3,

@@ -170,15 +170,14 @@ describe("useBatchTranslationTask", () => {
     });
   }
 
-  // 固定产品契约：终态、原因、失败数、提示类型、文案键、持久显示与导出次数。
+  // 固定产品契约：终态、失败数、提示类型、文案键、持久显示与导出次数。
   it.each([
-    ["done", undefined, 0, "success", "done", false, 1],
-    ["done", undefined, 2, "warning", "done_with_errors", true, 1],
-    ["error", "keys_exhausted", 2, "warning", "keys_exhausted", true, 0],
-    ["stopped", undefined, 2, "info", "stopped", false, 0],
+    ["done", 0, "success", "done", false, 1],
+    ["done", 2, "warning", "done_with_errors", true, 1],
+    ["stopped", 2, "info", "stopped", false, 0],
   ] as const)(
-    "%s / %s / %i 的独立与 Agent 终态反馈",
-    async (status, reason, error_line, kind, message, persistent, export_count) => {
+    "%s / %i 的独立与 Agent 终态反馈",
+    async (status, error_line, kind, message, persistent, export_count) => {
       api_fetch_mock.mockImplementation(async () => ({
         batch_translation: runtime_fixture.current.task_snapshot,
       }));
@@ -191,7 +190,6 @@ describe("useBatchTranslationTask", () => {
         await render_probe();
         const snapshot = {
           ...create_task_snapshot({ source, status, progress: { error_line: 99 } }),
-          reason,
           run_progress: normalize_batch_translation_progress({ error_line }),
         };
         runtime_fixture.current = create_runtime_fixture(snapshot);
@@ -756,6 +754,7 @@ function create_task_snapshot(
     status: "idle",
     source: overrides.status === undefined || overrides.status === "idle" ? null : "standalone",
     request_in_flight_count: 0,
+    request_recovery: null,
     operation: "translate",
     scope: { kind: "all" },
     ...overrides,

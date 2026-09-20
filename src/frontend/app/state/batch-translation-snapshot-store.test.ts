@@ -1,31 +1,22 @@
+import { create_empty_batch_translation_snapshot } from "@shared/batch-translation/batch-translation";
 import { describe, expect, it } from "vitest";
 
 import { createBatchTranslationSnapshotStore } from "./batch-translation-snapshot-store";
 import type { BatchTranslationSnapshot } from "@domain/batch-translation";
 
+/** 构造不同版本的任务快照，验证接收顺序。 */
 function create_task_snapshot(
   revision: number,
   status: BatchTranslationSnapshot["status"],
   line = 0,
 ): BatchTranslationSnapshot {
+  const snapshot = create_empty_batch_translation_snapshot();
   return {
+    ...snapshot,
     revision,
     status,
     source: status === "idle" ? null : "standalone",
-    request_in_flight_count: 0,
-    progress: {
-      line,
-      total_line: line,
-      processed_line: line,
-      error_line: 0,
-      total_tokens: 0,
-      total_output_tokens: 0,
-      total_reasoning_tokens: 0,
-      total_input_tokens: 0,
-      time: 0,
-      start_time: 0,
-    },
-    scope: { kind: "all" },
+    progress: { ...snapshot.progress, line, total_line: line, processed_line: line },
   };
 }
 

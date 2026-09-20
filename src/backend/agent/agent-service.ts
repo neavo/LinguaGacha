@@ -230,7 +230,7 @@ export class AgentService {
   private operation_acceptance: Promise<AgentCommandAck> | null = null; // 串行覆盖建会话、换模与异步操作启动
   private runtime_settlement: Promise<void> | null = null; // 后台模型与压缩操作统一纳入关闭屏障
   private runtime_lease: RuntimeLease | null = null; // 从消息受理覆盖到 SDK 最终 settle
-  private translation_paused_result: BatchTranslationResult | null = null; // 用户停止或密钥耗尽后在当前 round 内暂停翻译能力
+  private translation_paused_result: BatchTranslationResult | null = null; // 用户停止后在当前 round 内暂停翻译能力
   private runtime_generation = 0; // stop/reset/dispose 统一令迟到异步阶段失效
   private state: AgentSessionState = "idle"; // 只表达当前回合是否运行，结果归各条目
   private approval_mode_revision = 0; // 显式设置优先于较早批次提交后的自动模式回写
@@ -1094,10 +1094,7 @@ export class AgentService {
               model,
               request,
             );
-            if (
-              generation === this.runtime_generation &&
-              (result.stop_source === "user" || result.reason === "keys_exhausted")
-            ) {
+            if (generation === this.runtime_generation && result.stop_source === "user") {
               this.translation_paused_result = result;
             }
             return result;

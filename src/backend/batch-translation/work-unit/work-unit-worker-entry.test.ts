@@ -66,7 +66,7 @@ describe("work-unit-worker-entry", () => {
     });
   });
 
-  it("worker 请求端口按请求 ID 保留父线程 Key 耗尽结果", async () => {
+  it("worker 请求端口按请求 ID 保留父线程响应与用量", async () => {
     const harness = install_worker_threads_mock<WorkUnitWorkerCommand>({
       builtinRoot: TEST_BUILTIN_ROOT,
     });
@@ -100,8 +100,7 @@ describe("work-unit-worker-entry", () => {
         ok: true,
         data: {
           response_think: "",
-          response_result: "",
-          keys_exhausted: true,
+          response_result: "译文",
           input_tokens: 1,
           reasoning_tokens: 0,
           output_tokens: 2,
@@ -112,8 +111,10 @@ describe("work-unit-worker-entry", () => {
     });
 
     await expect(request).resolves.toMatchObject({
-      response_result: "",
-      keys_exhausted: true,
+      input_tokens: 1,
+      reasoning_tokens: 0,
+      output_tokens: 2,
+      response_result: "译文",
     });
   });
 

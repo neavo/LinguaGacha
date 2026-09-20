@@ -1,6 +1,5 @@
-import type { TranslationRequestResult } from "../protocol/translation-request";
 import type { LogError } from "../../../shared/error";
-import type { LLMRequestBody } from "../../llm/llm-types";
+import type { LLMRequestBody, LLMRequestResult } from "../../llm/llm-types";
 import type { TranslationWorkUnit } from "../protocol/work-unit";
 
 /** 父线程发往 work-unit worker 的完整命令集合。 */
@@ -10,7 +9,7 @@ export type WorkUnitWorkerCommand =
   | {
       type: "llm_result";
       requestId: string; // 关联 worker 发出的单次 llm_request
-      result: { ok: true; data: TranslationRequestResult } | { ok: false; error: LogError };
+      result: { ok: true; data: LLMRequestResult } | { ok: false; error: LogError };
     };
 
 /** work-unit worker 回传父线程的终态或中性 LLM 请求。 */

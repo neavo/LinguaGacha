@@ -7,37 +7,6 @@ describe("TranslationPipeline", () => {
     vi.useRealTimers();
   });
 
-  it("密钥耗尽立即关闭供给，在途结果与用量仍提交且不再重试", async () => {
-    let keys_exhausted = false;
-    const releases: Array<() => void> = [];
-    const executed: string[] = [];
-    const committed: number[] = [];
-    const signals: AbortSignal[] = [];
-    const pipeline = new TranslationPipeline({
-      read_dispatch_state: () => ({ concurrency_limit: 2, keys_exhausted }),
-      signal: new AbortController().signal,
-      execute: async (unit, signal) => {
-        executed.push(unit.work_unit_id);
-        signals.push(signal);
-        await new Promise<void>((resolve) => releases.push(resolve));
-        return {
-          commit_entries: [commit(Number(unit.work_unit_id))],
-          retry_contexts: [context(99)],
-        };
-      },
-      commit: async (entries) => {
-        committed.push(...entries.map((entry) => entry.input_tokens));
-      },
-    });
-    const run = pipeline.run([context(1), context(2), context(3)]);
-    keys_exhausted = true;
-    releases.forEach((release) => release());
-    await run;
-    expect(executed).toEqual(["1", "2"]);
-    expect(committed).toEqual([1, 2]);
-    expect(signals.every((signal) => !signal.aborted)).toBe(true);
-  });
-
   it("升档补充活动任务，降档等待自然收束后再补发", async () => {
     vi.useFakeTimers();
     let limit = 4;
@@ -45,7 +14,7 @@ describe("TranslationPipeline", () => {
     const releases: Array<() => void> = [];
     const committed: number[] = [];
     const pipeline = new TranslationPipeline({
-      read_dispatch_state: () => ({ concurrency_limit: limit, keys_exhausted: false }),
+      read_concurrency_limit: () => limit,
       signal: new AbortController().signal,
       execute: async (unit) => {
         if (hold) await new Promise<void>((resolve) => releases.push(resolve));
@@ -80,7 +49,7 @@ describe("TranslationPipeline", () => {
     const releases: Array<() => void> = [];
     const executed: number[] = [];
     const pipeline = new TranslationPipeline({
-      read_dispatch_state: () => ({ concurrency_limit: 4, keys_exhausted: false }),
+      read_concurrency_limit: () => 4,
       signal: controller.signal,
       execute: async (unit) => {
         const id = Number(unit.work_unit_id);
@@ -111,7 +80,7 @@ describe("TranslationPipeline", () => {
     const executed: number[] = [];
     const committed: number[][] = [];
     const pipeline = new TranslationPipeline({
-      read_dispatch_state: () => ({ concurrency_limit: 1, keys_exhausted: false }),
+      read_concurrency_limit: () => 1,
       signal: new AbortController().signal,
       execute: async (unit) => {
         executed.push(Number(unit.work_unit_id));
@@ -136,7 +105,7 @@ describe("TranslationPipeline", () => {
     let release_second_context: () => void = () => {};
     let second_context_started = false;
     const pipeline = new TranslationPipeline({
-      read_dispatch_state: () => ({ concurrency_limit: 1, keys_exhausted: false }),
+      read_concurrency_limit: () => 1,
       signal: new AbortController().signal,
       execute: async (unit) => {
         if (Number(unit.work_unit_id) === 2) {
@@ -170,7 +139,7 @@ describe("TranslationPipeline", () => {
     let second_worker_saw_abort = false;
     let settled = false;
     const pipeline = new TranslationPipeline({
-      read_dispatch_state: () => ({ concurrency_limit: 2, keys_exhausted: false }),
+      read_concurrency_limit: () => 2,
       signal: new AbortController().signal,
       execute: async (unit, signal) => {
         executed.push(Number(unit.work_unit_id));
@@ -225,7 +194,7 @@ describe("TranslationPipeline", () => {
     const committed: number[][] = [];
     let release_second_context: () => void = () => {};
     const pipeline = new TranslationPipeline({
-      read_dispatch_state: () => ({ concurrency_limit: 1, keys_exhausted: false }),
+      read_concurrency_limit: () => 1,
       signal: new AbortController().signal,
       execute: async (unit) => {
         if (Number(unit.work_unit_id) === 2) {
