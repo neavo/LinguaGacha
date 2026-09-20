@@ -16,9 +16,9 @@
     "test": "vitest run --config buildtools/vitest/vitest.config.ts"
   },
   "dependencies": {
-    "@earendil-works/pi-agent-core": "^0.86.0",
-    "@earendil-works/pi-ai": "^0.86.0",
-    "@earendil-works/pi-coding-agent": "^0.86.0"
+    "@earendil-works/pi-agent-core": "^0.86.1",
+    "@earendil-works/pi-ai": "^0.86.1",
+    "@earendil-works/pi-coding-agent": "^0.86.1"
   },
   "devDependencies": {
     "@base-ui/react": "^1.8.0",
