@@ -323,7 +323,7 @@ function create_sync_state(
 ) {
   const default_filters: ProofreadingFilterOptions = {
     outcomes: ["NO_WARNING", "NONE"],
-    file_paths: ["chapter01.txt"],
+    files: { mode: "default" },
     glossary_entry_ids: [],
     include_without_glossary_miss: true,
     ...default_filter_patch,
@@ -375,6 +375,7 @@ function create_client_item(
     item_id,
     row_id: String(item_id),
     file_path: `chapter${item_id}.txt`,
+    internal_file_path: null,
     row_number: Number(item_id),
     src: `foo-${item_id}`,
     dst: `bar-${item_id}`,
@@ -610,9 +611,9 @@ describe("useProofreadingPageState", () => {
     expect(latest_state?.settled_project_path).toBe("E:/demo/sample.lg");
   });
 
-  it("打开可见行编辑弹窗时仍读取按需详情", async () => {
+  it("打开可见行编辑弹窗时读取最新正文准备草稿", async () => {
     proofreading_client_fixture.current.read_proofreading_items_by_row_ids.mockResolvedValueOnce([
-      create_client_item(1, { internal_file_path: "data/Actors.json" }),
+      create_client_item(1, { dst: "最新译文" }),
     ]);
     await render_hook();
 
@@ -620,7 +621,7 @@ describe("useProofreadingPageState", () => {
       await latest_state?.open_edit_dialog("1");
     });
 
-    expect(latest_state?.dialog_item?.internal_file_path).toBe("data/Actors.json");
+    expect(latest_state?.dialog_state.draft_item.dst).toBe("最新译文");
   });
 
   it("保存弹窗改动时提交当前列表 revision 锁", async () => {
@@ -644,7 +645,10 @@ describe("useProofreadingPageState", () => {
   it("内容筛选确认保留搜索条的显式文件意图，空选择和全选分别生效", async () => {
     await render_hook();
     await act(async () =>
-      latest_state?.update_file_selection({ mode: "selected", values: ["chapter01.txt"] }),
+      latest_state?.update_file_selection({
+        mode: "selected",
+        values: [{ file_path: "chapter01.txt", internal_file_path: null }],
+      }),
     );
     await flush_async_updates();
     await act(async () => latest_state?.open_filter_dialog());
@@ -656,20 +660,25 @@ describe("useProofreadingPageState", () => {
       });
       await latest_state?.confirm_filter_dialog_filters();
     });
-    expect(latest_state?.file_selection).toEqual({ mode: "selected", values: ["chapter01.txt"] });
-    expect(latest_state?.filter_dialog_filters).not.toHaveProperty("file_paths");
+    expect(latest_state?.file_selection).toEqual({
+      mode: "selected",
+      values: [{ file_path: "chapter01.txt", internal_file_path: null }],
+    });
+    expect(latest_state?.filter_dialog_filters).not.toHaveProperty("files");
     await act(async () => latest_state?.update_file_selection({ mode: "selected", values: [] }));
     expect(
       proofreading_client_fixture.current.build_proofreading_list_view,
     ).toHaveBeenLastCalledWith(
-      expect.objectContaining({ filters: expect.objectContaining({ file_paths: [] }) }),
+      expect.objectContaining({
+        filters: expect.objectContaining({ files: { mode: "selected", values: [] } }),
+      }),
     );
     await act(async () => latest_state?.update_file_selection({ mode: "default" }));
     expect(
       proofreading_client_fixture.current.build_proofreading_list_view,
     ).toHaveBeenLastCalledWith(
       expect.objectContaining({
-        filters: expect.objectContaining({ file_paths: ["chapter01.txt"] }),
+        filters: expect.objectContaining({ files: { mode: "default" } }),
       }),
     );
   });
@@ -719,7 +728,7 @@ describe("useProofreadingPageState", () => {
       expect.objectContaining({
         filters: {
           outcomes: ["NO_WARNING", "NONE"],
-          file_paths: ["chapter01.txt"],
+          files: { mode: "default" },
           glossary_entry_ids: [],
           include_without_glossary_miss: true,
         },
@@ -1633,14 +1642,12 @@ describe("useProofreadingPageState", () => {
       });
     });
     proofreading_client_fixture.current.build_proofreading_list_view.mockClear();
-    proofreading_client_fixture.current.read_proofreading_list_window = vi.fn(
-      async (query: { view_id: string }) => ({
-        view_id: query.view_id,
-        start: 0,
-        row_count: 0,
-        rows: [],
-      }),
-    );
+    proofreading_client_fixture.current.read_proofreading_list_window = vi.fn(async () => ({
+      view_id: "",
+      start: 0,
+      row_count: 0,
+      rows: [],
+    }));
     runtime_fixture.current = {
       ...runtime_fixture.current,
       project_change_signal: create_project_change_signal(1, {
@@ -1741,8 +1748,7 @@ describe("useProofreadingPageState", () => {
     );
   });
 
-  it("项目刷新读到失效旧窗口时会按当前窗口重建列表", async () => {
-    const row_count = 1000;
+  it.each([0, 1000])("项目刷新读到失效旧窗口时重建列表，旧结果数量为 %i", async (row_count) => {
     const visible_range = { start: 300, count: 10 };
     const expected_window = resolve_prefetched_list_window_bounds({
       range: visible_range,
@@ -1774,16 +1780,14 @@ describe("useProofreadingPageState", () => {
       await Promise.resolve();
     });
     proofreading_client_fixture.current.build_proofreading_list_view.mockClear();
-    proofreading_client_fixture.current.read_proofreading_list_window = vi.fn(
-      async (query: { view_id: string }) => {
-        return {
-          view_id: query.view_id,
-          start: 0,
-          row_count: 0,
-          rows: [],
-        };
-      },
-    );
+    proofreading_client_fixture.current.read_proofreading_list_window = vi.fn(async () => {
+      return {
+        view_id: "",
+        start: 0,
+        row_count: 0,
+        rows: [],
+      };
+    });
 
     runtime_fixture.current = {
       ...runtime_fixture.current,
@@ -2382,7 +2386,7 @@ describe("useProofreadingPageState", () => {
     vi.useFakeTimers();
     const selected_filters: ProofreadingFilterOptions = {
       outcomes: ["NO_WARNING", "NONE"],
-      file_paths: ["chapter01.txt"],
+      files: { mode: "default" },
       glossary_entry_ids: ["magic"],
       include_without_glossary_miss: true,
     };

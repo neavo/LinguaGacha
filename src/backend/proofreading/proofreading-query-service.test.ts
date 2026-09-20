@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
+import type { JsonRecord } from "../../domain/json";
 import type { ProofreadingCache } from "../cache/proofreading-cache";
 import { ProjectSessionState } from "../project/project-session-state";
 import { ProofreadingQueryService } from "./proofreading-query-service";
@@ -19,7 +20,7 @@ function create_cache(): ProofreadingCache {
         revisions: { files: 4, items: 3, quality: 2, proofreading: 1 },
         defaultFilters: {
           outcomes: ["GLOSSARY"],
-          file_paths: [],
+          files: { mode: "selected", values: [] },
           glossary_entry_ids: [],
           include_without_glossary_miss: true,
         },
@@ -187,4 +188,32 @@ describe("ProofreadingQueryService", () => {
       diagnostic_context: { reason: "invalid_proofreading_query_action" },
     });
   });
+});
+
+it("文件选择通过 JSON 边界保留内部身份、默认意图与显式空集", async () => {
+  const session = new ProjectSessionState();
+  session.mark_loaded("E:/Project/demo.lg");
+  const cache = create_cache();
+  const service = new ProofreadingQueryService({ sessionState: session, cache });
+  const selections: JsonRecord[] = [
+    { mode: "default" },
+    { mode: "selected", values: [] },
+    { mode: "selected", values: [{ file_path: "book.epub", internal_file_path: "Text/01.xhtml" }] },
+  ];
+  for (const files of selections) {
+    await service.query({ action: "list", query: { filters: { files } } });
+    expect(cache.list).toHaveBeenLastCalledWith(
+      expect.objectContaining({ filters: expect.objectContaining({ files }) }),
+    );
+  }
+  await expect(
+    service.query({
+      action: "list",
+      query: {
+        filters: {
+          files: { mode: "selected", values: [{ file_path: "book.epub" }] },
+        },
+      },
+    }),
+  ).rejects.toMatchObject({ code: "request.validation_failed" });
 });

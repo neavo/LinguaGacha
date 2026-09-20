@@ -218,33 +218,66 @@ describe("ProofreadingCache", () => {
     expect(read_items).toHaveBeenCalledTimes(1);
   });
 
-  it("按 row id 查询时只从热缓存补 TRANS 内部路径", async () => {
-    const worker = create_worker();
-    const items = [
-      create_cache_item({
-        file_path: "game.trans",
-        file_type: "TRANS",
-        src: "A",
-        dst: "甲",
-        extra_field: { trans_ref: { file_key: "data/Actors.json", row_index: 0 } },
-      }),
-    ];
-    const cache = new ProofreadingCache({
-      readPages: () => [],
-      cache: create_cache_read_port({ items }),
-      appSettingService: create_settings(),
-      workerClient: worker,
-      reader: createProofreadingReader(),
-    });
-
-    const rows = await cache.itemsByRowIds({ row_ids: ["1"] });
-
-    expect(worker.sync_inputs[0]?.upsertItems[0]).not.toHaveProperty("internal_file_path");
-    expect(rows.data[0]).toMatchObject({
-      item_id: 1,
+  it.each<{
+    file_type: "TRANS" | "EPUB";
+    extra_field: ProjectItemPublicRecord["extra_field"];
+    internal_file_path: string;
+  }>([
+    {
+      file_type: "TRANS",
+      extra_field: { trans_ref: { file_key: "data/Actors.json", row_index: 0 } },
       internal_file_path: "data/Actors.json",
-    });
-  });
+    },
+    {
+      file_type: "EPUB",
+      extra_field: { epub: { doc_path: "OEBPS/Text/ch01.xhtml" } },
+      internal_file_path: "OEBPS/Text/ch01.xhtml",
+    },
+  ])(
+    "$file_type 的列表、详情和候选共用运行态内部路径",
+    async ({ file_type, extra_field, internal_file_path }) => {
+      const worker = create_worker();
+      const items = [
+        create_cache_item({
+          file_path: "game.trans",
+          file_type,
+          src: "A",
+          dst: "甲",
+          extra_field,
+        }),
+      ];
+      const cache_port = create_cache_read_port({ items });
+      cache_port.files.readFileEntries = () => [
+        { rel_path: "game.trans", file_type, sort_index: 0 },
+      ];
+      const cache = new ProofreadingCache({
+        readPages: () => [],
+        cache: cache_port,
+        appSettingService: create_settings(),
+        workerClient: worker,
+        reader: createProofreadingReader(),
+      });
+
+      const rows = await cache.itemsByRowIds({ row_ids: ["1"] });
+
+      const sync = await cache.sync({});
+      const view = await cache.list({
+        filters: sync.data.defaultFilters,
+        keyword: "",
+        scope: "all",
+        is_regex: false,
+        sort_state: null,
+      });
+      expect(sync.data.files).toEqual([
+        { file_path: "game.trans", internal_file_path, kind: "item", count: 1 },
+      ]);
+      expect(view.data.window_rows[0]).toMatchObject({ item: { internal_file_path } });
+      expect(rows.data[0]).toMatchObject({
+        item_id: 1,
+        internal_file_path,
+      });
+    },
+  );
 
   it("文件修订复用文本评估，语言变化重新评估", async () => {
     const worker = create_worker();

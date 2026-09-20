@@ -989,6 +989,7 @@ function create_fixture(temp_dir: string, native_fs?: NativeFs) {
         {
           item_id: 1,
           file_path: "script.txt",
+          internal_file_path: null,
           row_number: 0,
           src: String(warning_item["src"]),
           dst: "",

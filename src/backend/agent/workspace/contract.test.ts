@@ -50,6 +50,7 @@ describe("Agent 工作区 contract", () => {
       project_agent_workspace_warning({
         item_id: 1,
         file_path: "a.txt",
+        internal_file_path: null,
         row_number: 0,
         src: "原文",
         dst: "译文",

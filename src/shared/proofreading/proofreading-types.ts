@@ -81,15 +81,13 @@ export type ProofreadingWarningFragmentsByCode = Partial<
 
 export type ProofreadingFilterOptions = {
   outcomes: ProofreadingOutcomeCode[];
-  file_paths: string[];
+  files: ProofreadingFileSelection;
   glossary_entry_ids: string[];
   include_without_glossary_miss: boolean;
 };
 
-export type ProofreadingItem = {
+export type ProofreadingItem = ProofreadingFileRef & {
   item_id: number | string;
-  file_path: string;
-  internal_file_path?: string; // 详情查询按需返回格式内部路径，列表窗口不携带
   row_number: number;
   src: string;
   dst: string;
@@ -102,9 +100,8 @@ export type ProofreadingItem = {
   glossary_applications: GlossaryApplication[];
 };
 
-export type ProofreadingItemRecord = {
+export type ProofreadingItemRecord = ProofreadingFileRef & {
   item_id: number;
-  file_path: string;
   row_number: number;
   src: string;
   dst: string;
@@ -162,7 +159,37 @@ export type ProofreadingRow =
       page: ProofreadingPageSummary;
     };
 
-export type ProofreadingFile = { file_path: string; kind: "item" | "page"; count: number };
+/** 原始路径共同确定叶子身份，null 仅表示内容没有内部路径。 */
+export type ProofreadingFileRef = Readonly<{
+  file_path: string;
+  internal_file_path: string | null;
+}>;
+
+export type ProofreadingFileSelection =
+  | { mode: "default" }
+  | { mode: "selected"; values: readonly ProofreadingFileRef[] };
+
+export type ProofreadingFile = ProofreadingFileRef & { kind: "item" | "page"; count: number };
+
+/** 使用二元组隔离容器与内部路径，原始分隔符不参与身份归一。 */
+export function build_proofreading_file_key(file: ProofreadingFileRef): string {
+  return JSON.stringify([file.file_path, file.internal_file_path]);
+}
+
+/** 跨层快照隔离选择数组和引用对象，默认意图保持紧凑。 */
+export function clone_proofreading_file_selection(
+  selection: ProofreadingFileSelection,
+): ProofreadingFileSelection {
+  return selection.mode === "default"
+    ? { mode: "default" }
+    : {
+        mode: "selected",
+        values: selection.values.map((file) => ({
+          file_path: file.file_path,
+          internal_file_path: file.internal_file_path,
+        })),
+      };
+}
 
 /** 页面身份按路径和原页编码，不能转换成文本写入 ID。 */
 export function build_proofreading_page_row_id(file_path: string, page: number): string {
@@ -291,7 +318,7 @@ export function clone_proofreading_filter_options(
 ): ProofreadingFilterOptions {
   return {
     outcomes: [...filters.outcomes],
-    file_paths: [...filters.file_paths],
+    files: clone_proofreading_file_selection(filters.files),
     glossary_entry_ids: [...filters.glossary_entry_ids],
     include_without_glossary_miss: filters.include_without_glossary_miss,
   };
@@ -303,7 +330,7 @@ export function clone_proofreading_filter_options(
 export function create_empty_proofreading_filter_options(): ProofreadingFilterOptions {
   return {
     outcomes: [],
-    file_paths: [],
+    files: { mode: "selected", values: [] },
     glossary_entry_ids: [],
     include_without_glossary_miss: true,
   };

@@ -1,6 +1,8 @@
 import { type ProofreadingContentFilters } from "@frontend/pages/proofreading-page/proofreading-filter-state";
-import type { ProofreadingFile } from "@shared/proofreading/proofreading-types";
-import type { ProofreadingFilterChoice } from "./proofreading-filter-state";
+import type {
+  ProofreadingFile,
+  ProofreadingFileSelection,
+} from "@shared/proofreading/proofreading-types";
 import type { ProjectDataSection, ProjectDataSectionRevisions } from "@shared/project-event";
 import type { ItemManualStatus } from "@domain/item";
 import type {
@@ -60,8 +62,8 @@ export function normalize_proofreading_sort_state(
 
 export type UseProofreadingPageStateResult = {
   files: ProofreadingFile[];
-  file_selection: ProofreadingFilterChoice<string>;
-  update_file_selection: (choice: ProofreadingFilterChoice<string>) => void;
+  file_selection: ProofreadingFileSelection;
+  update_file_selection: (choice: ProofreadingFileSelection) => void;
   cache_status: "idle" | "refreshing" | "ready" | "error";
   list_revisions: ProjectDataSectionRevisions;
   required_sections: ProjectDataSection[];

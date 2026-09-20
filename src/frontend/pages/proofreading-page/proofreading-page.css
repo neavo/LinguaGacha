@@ -726,16 +726,19 @@
 }
 .proofreading-page__file-options {
   min-height: 0;
-  max-height: 320px;
   overflow: auto;
 }
 .proofreading-page__file-tree {
+  position: relative;
   margin: 0;
   padding: 0;
   list-style: none;
 }
-.proofreading-page__file-tree .proofreading-page__file-tree {
-  padding-left: 16px;
+.proofreading-page__file-tree > li {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
 }
 .proofreading-page__file-row {
   display: flex;

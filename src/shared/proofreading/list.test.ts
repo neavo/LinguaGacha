@@ -15,6 +15,7 @@ function create_row(
     item: {
       item_id,
       file_path,
+      internal_file_path: null,
       row_number,
       src: "",
       dst,

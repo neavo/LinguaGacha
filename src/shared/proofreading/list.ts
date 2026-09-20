@@ -128,6 +128,7 @@ export function create_proofreading_client_item(args: {
   return {
     item_id: args.item.item_id,
     file_path: args.item.file_path,
+    internal_file_path: args.item.internal_file_path,
     row_number: args.item.row_number,
     src: args.item.src,
     dst: args.item.dst,

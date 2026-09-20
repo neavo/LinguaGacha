@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  build_filter_signature,
+  create_default_proofreading_filter_selection,
   materialize_proofreading_filters,
   resolve_proofreading_filter_selection_from_filters,
 } from "@frontend/pages/proofreading-page/proofreading-filter-state";
@@ -10,7 +12,7 @@ import type { ProofreadingFilterOptions } from "@shared/proofreading/proofreadin
 function create_filters(patch: Partial<ProofreadingFilterOptions> = {}): ProofreadingFilterOptions {
   return {
     outcomes: ["NO_WARNING", "GLOSSARY", "NONE", "PROCESSED", "ERROR"],
-    file_paths: ["chapter01.txt"],
+    files: { mode: "selected", values: [{ file_path: "chapter01.txt", internal_file_path: null }] },
     glossary_entry_ids: [],
     include_without_glossary_miss: true,
     ...patch,
@@ -85,4 +87,23 @@ describe("resolve_proofreading_filter_selection_from_filters", () => {
 
     expect(selection.outcomes).toEqual({ mode: "default" });
   });
+});
+
+it("默认文件范围保持紧凑，查询签名按完整内部身份和集合语义比较", () => {
+  const defaults = create_filters();
+  expect(
+    materialize_proofreading_filters(
+      create_default_proofreading_filter_selection(defaults),
+      defaults,
+    ).files,
+  ).toEqual({ mode: "default" });
+  const first = { file_path: "book.epub", internal_file_path: "Text/01.xhtml" };
+  const second = { file_path: "book.epub", internal_file_path: "Text/02.xhtml" };
+  const signature = (values: (typeof first)[]) =>
+    build_filter_signature(create_filters({ files: { mode: "selected", values } }));
+  expect(signature([first, second])).toBe(signature([second, first]));
+  expect(signature([first])).not.toBe(signature([second]));
+  expect(signature([])).not.toBe(
+    build_filter_signature(create_filters({ files: { mode: "default" } })),
+  );
 });

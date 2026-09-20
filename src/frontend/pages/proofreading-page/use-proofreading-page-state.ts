@@ -7,7 +7,6 @@ import {
   materialize_proofreading_filters,
   clone_proofreading_view_filter_state,
   type ProofreadingViewFilterState,
-  type ProofreadingFilterChoice,
 } from "@frontend/pages/proofreading-page/proofreading-filter-state";
 import { startTransition, useCallback, useMemo, useRef, useState } from "react";
 
@@ -74,6 +73,7 @@ import {
   type ProofreadingClientItem,
   type ProofreadingContextItem,
   type ProofreadingFilterOptions,
+  type ProofreadingFileSelection,
 } from "@shared/proofreading/proofreading-types";
 
 // 校对页所有保存动作共享同一业务 operation，具体 item 范围留在写入 context。
@@ -767,7 +767,7 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
     read_list_window,
     report_proofreading_list_error,
     materialize_active_filters,
-    read_file_selection: () => table_filter_state_ref.current.selection.file_paths,
+    read_file_selection: () => table_filter_state_ref.current.selection.files,
     run_filter_panel_query,
     run_list_query_change,
     schedule_list_query_change,
@@ -842,15 +842,15 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
 
   // 文件选择直接更新查询意图，弹窗确认只接管内容条件。
   const update_file_selection = useCallback(
-    (choice: ProofreadingFilterChoice<string>): void => {
+    (choice: ProofreadingFileSelection): void => {
       update_table_filter_state({
-        selection: { ...table_filter_state_ref.current.selection, file_paths: choice },
+        selection: { ...table_filter_state_ref.current.selection, files: choice },
       });
       void run_list_query_change({ target_row_id: active_row_id_ref.current });
     },
     [update_table_filter_state, table_filter_state_ref, run_list_query_change, active_row_id_ref],
   );
-  const file_selection = table_ui_state.filter_state.selection.file_paths;
+  const file_selection = table_ui_state.filter_state.selection.files;
 
   return useMemo<UseProofreadingPageStateResult>(() => {
     return {

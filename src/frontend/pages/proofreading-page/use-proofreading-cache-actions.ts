@@ -35,7 +35,6 @@ import {
   build_filter_panel_signature,
   build_refreshed_proofreading_list_view,
   is_proofreading_list_window_covered,
-  is_missing_refreshed_list_window,
   resolve_list_view_window_bounds,
   resolve_prefetched_list_window_bounds,
   resolve_requested_sync_mode,
@@ -234,7 +233,7 @@ export function useProofreadingCacheActions(
 
       const filters = {
         ...content_filters,
-        file_paths: options.resolve_current_list_query().query.filters.file_paths,
+        files: options.resolve_current_list_query().query.filters.files,
       };
       const query_signature = build_filter_panel_signature({
         revisions: sync_state.revisions,
@@ -549,11 +548,7 @@ export function useProofreadingCacheActions(
           options.list_snapshot_ref.current.query_intent_key ===
             previous_list_snapshot.query_intent_key &&
           options.resolve_current_list_query().query_intent_key ===
-            previous_list_snapshot.query_intent_key &&
-          !is_missing_refreshed_list_window({
-            previous_view: previous_list_snapshot.view,
-            window: next_window,
-          })
+            previous_list_snapshot.query_intent_key
         ) {
           next_list_view = build_refreshed_proofreading_list_view({
             previous_view: previous_list_snapshot.view,

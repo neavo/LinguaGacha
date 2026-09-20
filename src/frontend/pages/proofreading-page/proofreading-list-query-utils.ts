@@ -112,18 +112,6 @@ export function build_refreshed_proofreading_list_view(args: {
 }
 
 /**
- * 非空旧视图突然返回空窗口表示 view_id 已失效，需要退回完整 list query。
- */
-export function is_missing_refreshed_list_window(args: {
-  previous_view: ProofreadingListView;
-  window: ProofreadingListWindow;
-}): boolean {
-  return (
-    args.previous_view.row_count > 0 && args.window.row_count === 0 && args.window.rows.length === 0
-  );
-}
-
-/**
  * 查询意图键只编码用户可编辑状态；后端默认筛选变化不得让 delta 刷新重算成员。
  */
 export function build_proofreading_list_query_intent_key(args: {

@@ -48,6 +48,7 @@ function create_item(input: {
   dst: string;
   status?: string;
   file_path?: string;
+  internal_file_path?: string | null;
   row_number?: number;
   name_src?: ItemNameField;
   name_dst?: ItemNameField;
@@ -55,6 +56,7 @@ function create_item(input: {
   return {
     item_id: input.item_id,
     file_path: input.file_path ?? "script.txt",
+    internal_file_path: input.internal_file_path ?? null,
     row_number: input.row_number ?? input.item_id,
     src: input.src ?? `原文 ${input.item_id.toString()}`,
     dst: input.dst,
@@ -85,7 +87,7 @@ function sync_full(
 }
 
 describe("proofreading-reader", () => {
-  it("增量维护计数和默认顺序，并保持上下文顺序与旧视图身份", () => {
+  it("增量维护计数和默认顺序，文件归属变化使旧视图失效", () => {
     const reader = createProofreadingReader();
     const input: ProofreadingSyncInput = {
       projectId: "E:/demo/order.lg",
@@ -134,7 +136,7 @@ describe("proofreading-reader", () => {
       reader
         .read_list_window({ view_id: view.view_id, start: 0, count: 10 })
         .rows.map((row) => row.row_id),
-    ).toEqual(["3", "10"]);
+    ).toEqual([]);
     const fresh = createProofreadingReader();
     const full = sync_full(fresh, {
       ...input,
@@ -255,6 +257,7 @@ describe("proofreading-reader", () => {
         create_item({
           item_id: 1,
           file_path: "b.txt",
+          internal_file_path: null,
           row_number: 2,
           src: "HP",
           dst: "カナ",
@@ -265,6 +268,7 @@ describe("proofreading-reader", () => {
         create_item({
           item_id: 2,
           file_path: "a.txt",
+          internal_file_path: null,
           row_number: 3,
           src: "HP",
           dst: "普通译文",
@@ -275,6 +279,7 @@ describe("proofreading-reader", () => {
         create_item({
           item_id: 3,
           file_path: "a.txt",
+          internal_file_path: null,
           row_number: 1,
           src: "メニュー",
           dst: "菜单",
@@ -283,6 +288,7 @@ describe("proofreading-reader", () => {
         create_item({
           item_id: 4,
           file_path: "a.txt",
+          internal_file_path: null,
           row_number: 4,
           src: "失败",
           dst: "",
@@ -291,6 +297,7 @@ describe("proofreading-reader", () => {
         create_item({
           item_id: 5,
           file_path: "a.txt",
+          internal_file_path: null,
           row_number: 2,
           src: "文本",
           dst: "カナ",
@@ -423,6 +430,7 @@ describe("proofreading-reader", () => {
         {
           item_id: 1,
           file_path: "b.txt",
+          internal_file_path: null,
           row_number: 1,
           src: "HP",
           dst: "HP",
@@ -435,6 +443,7 @@ describe("proofreading-reader", () => {
         {
           item_id: 2,
           file_path: "a.txt",
+          internal_file_path: null,
           row_number: 1,
           src: "菜单",
           dst: "菜单",
@@ -572,6 +581,7 @@ describe("proofreading-reader", () => {
         {
           item_id: 1,
           file_path: "a.txt",
+          internal_file_path: null,
           row_number: 1,
           src: "文本",
           dst: "译文",
@@ -957,7 +967,7 @@ describe("proofreading-reader", () => {
         count: 10,
       }),
     ).toEqual({
-      view_id: view.view_id,
+      view_id: "",
       start: 0,
       row_count: 0,
       rows: [],
@@ -1061,7 +1071,10 @@ it("混合窗口统一工程顺序、页面状态、筛选与计数，并保留�
   expect(reader.read_list_view({ ...query, keyword: "needle", scope: "dst" }).row_count).toBe(1);
   expect(reader.read_list_view({ ...query, keyword: "needle", scope: "src" }).row_count).toBe(0);
   expect(
-    reader.read_list_view({ ...query, filters: { ...query.filters, file_paths: [] } }).row_count,
+    reader.read_list_view({
+      ...query,
+      filters: { ...query.filters, files: { mode: "selected", values: [] } },
+    }).row_count,
   ).toBe(0);
   expect(
     reader.read_list_view({
@@ -1080,7 +1093,13 @@ it("混合窗口统一工程顺序、页面状态、筛选与计数，并保留�
   ).toBe(0);
   expect(
     reader
-      .read_list_view({ ...query, filters: { ...all_filters, file_paths: ["a.txt"] } })
+      .read_list_view({
+        ...query,
+        filters: {
+          ...all_filters,
+          files: { mode: "selected", values: [{ file_path: "a.txt", internal_file_path: null }] },
+        },
+      })
       .window_rows.map((row) => row.kind),
   ).toEqual(["item"]);
   expect(reader.build_filter_panel({ filters: query.filters })).toMatchObject({
@@ -1088,7 +1107,12 @@ it("混合窗口统一工程顺序、页面状态、筛选与计数，并保留�
     without_glossary_miss_count: 4,
   });
   expect(
-    reader.build_filter_panel({ filters: { ...all_filters, file_paths: ["b.pdf"] } }),
+    reader.build_filter_panel({
+      filters: {
+        ...all_filters,
+        files: { mode: "selected", values: [{ file_path: "b.pdf", internal_file_path: null }] },
+      },
+    }),
   ).toMatchObject({
     outcome_count_by_code: { NONE: 1, NO_WARNING: 2, RULE_SKIPPED: 1, EXCLUDED: 1 },
     without_glossary_miss_count: 5,
@@ -1116,4 +1140,207 @@ it("混合窗口统一工程顺序、页面状态、筛选与计数，并保留�
     reader.resolve_row_index({ view_id: stable.view_id, row_id: window.rows[0]!.row_id }),
   ).toBe(0);
   expect(reader.read_list_view({ ...query, keyword: "needle" }).row_count).toBe(0);
+});
+
+it("内部文件筛选统一列表、统计与批量行范围，并隔离容器同名路径", () => {
+  const reader = createProofreadingReader();
+  const input: ProofreadingSyncInput = {
+    projectId: "internal.lg",
+    revisions: { files: 1, items: 1, quality: 1, proofreading: 0 },
+    total_item_count: 4,
+    quality: create_quality(),
+    processingConfig: create_processing_config(),
+    upsertItems: [
+      create_item({
+        item_id: 3,
+        file_path: "a.trans",
+        internal_file_path: "data/Map.json",
+        dst: "",
+        row_number: 3,
+      }),
+      create_item({
+        item_id: 1,
+        file_path: "a.trans",
+        internal_file_path: "data/Actors.json",
+        src: "HP",
+        dst: "HP",
+        status: "PROCESSED",
+      }),
+      create_item({
+        item_id: 2,
+        file_path: "b.trans",
+        internal_file_path: "data/Actors.json",
+        src: "HP",
+        dst: "HP",
+        status: "PROCESSED",
+      }),
+      create_item({ item_id: 4, file_path: "a.trans", dst: "", row_number: 4 }),
+    ],
+  };
+  const sync = sync_full(reader, input);
+  expect(sync.defaultFilters.files).toEqual({ mode: "default" });
+  expect(sync.files).toEqual([
+    { file_path: "a.trans", internal_file_path: "data/Actors.json", kind: "item", count: 1 },
+    { file_path: "a.trans", internal_file_path: "data/Map.json", kind: "item", count: 1 },
+    { file_path: "a.trans", internal_file_path: null, kind: "item", count: 1 },
+    { file_path: "b.trans", internal_file_path: "data/Actors.json", kind: "item", count: 1 },
+  ]);
+  const query: ProofreadingListViewQuery = {
+    filters: { ...sync.defaultFilters, files: { mode: "selected", values: [sync.files[0]!] } },
+    keyword: "",
+    scope: "all",
+    is_regex: false,
+    sort_state: null,
+  };
+  const view = reader.read_list_view(query);
+  expect(view.window_rows.map((row) => row.row_id)).toEqual(["1"]);
+  expect(reader.read_row_ids_range({ view_id: view.view_id, start: 0, count: 100 })).toEqual(["1"]);
+  const panel = reader.build_filter_panel({ filters: query.filters });
+  expect(panel.outcome_count_by_code["GLOSSARY"]).toBe(1);
+  expect(panel.glossary_term_entries).toMatchObject([{ entry_id: "hp", count: 1 }]);
+  expect(
+    reader
+      .read_warning_page({
+        warning_types: ["GLOSSARY"],
+        file_paths: ["a.trans"],
+        keywords: [],
+        scope: "all",
+        offset: 0,
+        limit: 10,
+      })
+      .items.map((item) => item.item_id),
+  ).toEqual([1]);
+  expect(
+    reader
+      .read_list_view({
+        ...query,
+        filters: {
+          ...query.filters,
+          files: { mode: "selected", values: [{ file_path: "a.trans", internal_file_path: null }] },
+        },
+      })
+      .window_rows.map((row) => row.row_id),
+  ).toEqual(["4"]);
+  expect(
+    reader.read_list_view({
+      ...query,
+      filters: {
+        ...query.filters,
+        files: {
+          mode: "selected",
+          values: [{ file_path: "a.trans", internal_file_path: "missing" }],
+        },
+      },
+    }).row_count,
+  ).toBe(0);
+});
+
+it("内部文件增删与迁移更新候选并撤销旧视图，正文更新保留视图且与全量同步一致", () => {
+  const reader = createProofreadingReader();
+  const input: ProofreadingSyncInput = {
+    projectId: "book.lg",
+    revisions: { files: 1, items: 1, quality: 1, proofreading: 0 },
+    total_item_count: 2,
+    quality: create_quality(),
+    processingConfig: create_processing_config(),
+    upsertItems: [
+      create_item({
+        item_id: 1,
+        file_path: "book.epub",
+        internal_file_path: "Text/02.xhtml",
+        dst: "",
+        row_number: 2,
+      }),
+      create_item({
+        item_id: 2,
+        file_path: "book.epub",
+        internal_file_path: "Text/01.xhtml",
+        dst: "",
+        row_number: 1,
+      }),
+    ],
+  };
+  const sync = sync_full(reader, input);
+  const query: ProofreadingListViewQuery = {
+    filters: sync.defaultFilters,
+    keyword: "",
+    scope: "all",
+    is_regex: false,
+    sort_state: null,
+  };
+  const view = reader.read_list_view(query);
+  const text_changed = { ...input.upsertItems[0]!, dst: "新译文" };
+  const delta = {
+    projectId: input.projectId,
+    revisions: { ...input.revisions, items: 2 },
+    total_item_count: 2,
+    upsertItems: [text_changed],
+    deleteItemIds: [] as number[],
+    patchItemIds: [],
+    fieldPatch: null,
+  };
+  expect(reader.apply_item_delta(delta).files).toEqual(sync.files);
+  expect(reader.read_list_window({ view_id: view.view_id, start: 0, count: 10 })).toMatchObject({
+    view_id: view.view_id,
+    row_count: 2,
+  });
+  // 原本没有结果的选择也必须在新增内部文件后重新查询。
+  const future_query: ProofreadingListViewQuery = {
+    ...query,
+    filters: {
+      ...query.filters,
+      files: {
+        mode: "selected",
+        values: [{ file_path: "book.epub", internal_file_path: "Text/03.xhtml" }],
+      },
+    },
+  };
+  const empty_view = reader.read_list_view(future_query);
+  expect(empty_view.row_count).toBe(0);
+  const moved = { ...text_changed, internal_file_path: "Text/03.xhtml" };
+  reader.apply_item_delta({
+    ...delta,
+    revisions: { ...delta.revisions, items: 3 },
+    upsertItems: [moved],
+  });
+  expect(
+    reader.read_list_window({ view_id: empty_view.view_id, start: 0, count: 10 }).view_id,
+  ).toBe("");
+  const updated = reader.apply_item_delta({
+    ...delta,
+    revisions: { ...delta.revisions, items: 4 },
+    upsertItems: [],
+    deleteItemIds: [2],
+    total_item_count: 1,
+  });
+  expect(updated.files).toEqual([
+    { file_path: "book.epub", internal_file_path: "Text/03.xhtml", kind: "item", count: 1 },
+  ]);
+  expect(reader.read_list_view(future_query).window_rows.map((row) => row.row_id)).toEqual(["1"]);
+  const fresh = createProofreadingReader();
+  const full = sync_full(fresh, {
+    ...input,
+    revisions: updated.revisions,
+    upsertItems: [moved],
+    total_item_count: 1,
+  });
+  expect(updated.files).toEqual(full.files);
+  expect(reader.read_list_view(query).window_rows).toEqual(fresh.read_list_view(query).window_rows);
+  const added = create_item({
+    item_id: 3,
+    file_path: "book.epub",
+    internal_file_path: "Text/04.xhtml",
+    dst: "",
+  });
+  const appended = reader.apply_item_delta({
+    ...delta,
+    revisions: { ...delta.revisions, items: 5 },
+    upsertItems: [added],
+    total_item_count: 2,
+  });
+  expect(appended.files.map((file) => file.internal_file_path)).toEqual([
+    "Text/03.xhtml",
+    "Text/04.xhtml",
+  ]);
+  expect(reader.read_list_view(query).row_count).toBe(2);
 });

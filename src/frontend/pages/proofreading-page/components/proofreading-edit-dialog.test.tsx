@@ -127,6 +127,7 @@ function create_proofreading_item(): ProofreadingItem {
   return {
     item_id: 1,
     file_path: "chapter01.txt",
+    internal_file_path: null,
     row_number: 1,
     src: "魔法と美優",
     dst: "Magic 和美1优",
