@@ -1,23 +1,26 @@
 import { JsonTool } from "@shared/utils/json-tool";
 import {
   create_empty_proofreading_filter_options,
+  clone_proofreading_file_selection,
+  build_proofreading_file_key,
+  type ProofreadingFileSelection,
   type ProofreadingFilterOptions,
   type ProofreadingSearchScope,
 } from "@shared/proofreading/proofreading-types";
 
-export type ProofreadingFilterChoice<T> =
+type ProofreadingFilterChoice =
   | {
       mode: "default";
     }
   | {
       mode: "selected";
-      values: T[];
+      values: string[];
     };
 
 export type ProofreadingFilterSelection = {
-  outcomes: ProofreadingFilterChoice<string>;
-  file_paths: ProofreadingFilterChoice<string>;
-  glossary_entry_ids: ProofreadingFilterChoice<string>;
+  outcomes: ProofreadingFilterChoice;
+  files: ProofreadingFileSelection;
+  glossary_entry_ids: ProofreadingFilterChoice;
   include_without_glossary_miss: boolean;
 };
 
@@ -28,15 +31,8 @@ export type ProofreadingViewFilterState = {
   is_regex: boolean;
 };
 
-/** 默认意图在查询时展开，后续新增候选自动纳入。 */
-function create_default_filter_choice<T>(): ProofreadingFilterChoice<T> {
-  return {
-    mode: "default",
-  };
-}
-
 /** 显式选择保留空集，并隔离调用方数组。 */
-function create_selected_filter_choice<T>(values: T[]): ProofreadingFilterChoice<T> {
+function create_selected_filter_choice(values: string[]): ProofreadingFilterChoice {
   return {
     mode: "selected",
     values: [...values],
@@ -44,19 +40,19 @@ function create_selected_filter_choice<T>(values: T[]): ProofreadingFilterChoice
 }
 
 /** 会话快照复制选择值，保留默认与显式意图的区别。 */
-function clone_filter_choice<T>(choice: ProofreadingFilterChoice<T>): ProofreadingFilterChoice<T> {
+function clone_filter_choice(choice: ProofreadingFilterChoice): ProofreadingFilterChoice {
   if (choice.mode === "default") {
-    return create_default_filter_choice();
+    return { mode: "default" };
   }
 
   return create_selected_filter_choice(choice.values);
 }
 
 /** 查询边界按最新默认值展开意图并返回独立数组。 */
-function materialize_filter_choice<T>(
-  choice: ProofreadingFilterChoice<T>,
-  default_values: T[],
-): T[] {
+function materialize_filter_choice(
+  choice: ProofreadingFilterChoice,
+  default_values: string[],
+): string[] {
   const source_values = choice.mode === "default" ? default_values : choice.values;
   return [...source_values];
 }
@@ -80,9 +76,9 @@ function are_string_values_equal(left_values: string[], right_values: string[]):
 function resolve_string_filter_choice(args: {
   values: string[];
   default_values: string[];
-}): ProofreadingFilterChoice<string> {
+}): ProofreadingFilterChoice {
   return are_string_values_equal(args.values, args.default_values)
-    ? create_default_filter_choice()
+    ? { mode: "default" }
     : create_selected_filter_choice(args.values);
 }
 
@@ -96,20 +92,20 @@ export function create_default_proofreading_filter_selection(
   default_filters: ProofreadingFilterOptions = create_empty_filter_options(),
 ): ProofreadingFilterSelection {
   return {
-    outcomes: create_default_filter_choice(),
-    file_paths: create_default_filter_choice(),
-    glossary_entry_ids: create_default_filter_choice(),
+    outcomes: { mode: "default" },
+    files: { mode: "default" },
+    glossary_entry_ids: { mode: "default" },
     include_without_glossary_miss: default_filters.include_without_glossary_miss,
   };
 }
 
-/** 外部查找意图固定完整筛选范围。 */
+/** 固定内容筛选，文件范围沿用调用方的选择意图。 */
 export function create_selected_proofreading_filter_selection(
   filters: ProofreadingFilterOptions,
 ): ProofreadingFilterSelection {
   return {
     outcomes: create_selected_filter_choice(filters.outcomes),
-    file_paths: create_selected_filter_choice(filters.file_paths),
+    files: clone_proofreading_file_selection(filters.files),
     glossary_entry_ids: create_selected_filter_choice(filters.glossary_entry_ids),
     include_without_glossary_miss: filters.include_without_glossary_miss,
   };
@@ -121,7 +117,7 @@ export function clone_proofreading_filter_selection(
 ): ProofreadingFilterSelection {
   return {
     outcomes: clone_filter_choice(selection.outcomes),
-    file_paths: clone_filter_choice(selection.file_paths),
+    files: clone_proofreading_file_selection(selection.files),
     glossary_entry_ids: clone_filter_choice(selection.glossary_entry_ids),
     include_without_glossary_miss: selection.include_without_glossary_miss,
   };
@@ -133,14 +129,14 @@ export function clone_proofreading_filter_selection(
 export function resolve_proofreading_filter_selection_from_filters(args: {
   filters: ProofreadingContentFilters;
   default_filters: ProofreadingContentFilters;
-  file_selection: ProofreadingFilterChoice<string>;
+  file_selection: ProofreadingFileSelection;
 }): ProofreadingFilterSelection {
   return {
     outcomes: resolve_string_filter_choice({
       values: args.filters.outcomes,
       default_values: args.default_filters.outcomes,
     }),
-    file_paths: clone_filter_choice(args.file_selection),
+    files: clone_proofreading_file_selection(args.file_selection),
     glossary_entry_ids: resolve_string_filter_choice({
       values: args.filters.glossary_entry_ids,
       default_values: args.default_filters.glossary_entry_ids,
@@ -149,14 +145,14 @@ export function resolve_proofreading_filter_selection_from_filters(args: {
   };
 }
 
-/** 一次物化全部维度，保证同次查询使用相同默认快照。 */
+/** 内容条件按默认快照展开，文件选择直接传递意图。 */
 export function materialize_proofreading_filters(
   selection: ProofreadingFilterSelection,
   default_filters: ProofreadingFilterOptions,
 ): ProofreadingFilterOptions {
   return {
     outcomes: materialize_filter_choice(selection.outcomes, default_filters.outcomes),
-    file_paths: materialize_filter_choice(selection.file_paths, default_filters.file_paths),
+    files: clone_proofreading_file_selection(selection.files),
     glossary_entry_ids: materialize_filter_choice(
       selection.glossary_entry_ids,
       default_filters.glossary_entry_ids,
@@ -206,13 +202,19 @@ export function create_proofreading_view_filter_state(args: {
 export function build_filter_signature(filters: ProofreadingFilterOptions): string {
   return JsonTool.stringifyStrict({
     outcomes: [...filters.outcomes].sort(),
-    file_paths: [...filters.file_paths].sort(),
+    files:
+      filters.files.mode === "default"
+        ? filters.files
+        : {
+            mode: "selected",
+            values: [...new Set(filters.files.values.map(build_proofreading_file_key))].sort(),
+          },
     glossary_entry_ids: [...filters.glossary_entry_ids].sort(),
     include_without_glossary_miss: filters.include_without_glossary_miss,
   });
 }
 
-export type ProofreadingContentFilters = Omit<ProofreadingFilterOptions, "file_paths">;
+export type ProofreadingContentFilters = Omit<ProofreadingFilterOptions, "files">;
 
 /** 弹窗只拥有内容条件，文件范围始终由搜索条的查询意图提供。 */
 export function clone_content_filters(

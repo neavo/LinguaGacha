@@ -5,6 +5,8 @@ import type { ProjectSessionState } from "../project/project-session-state";
 import * as AppErrors from "../../shared/error";
 import type {
   ProofreadingFilterOptions,
+  ProofreadingFileSelection,
+  ProofreadingFileRef,
   ProofreadingSearchScope,
 } from "../../shared/proofreading/proofreading-types";
 import type {
@@ -158,12 +160,39 @@ export class ProofreadingQueryService {
     const record = read_json_record(value);
     return {
       outcomes: this.read_string_array(record["outcomes"] as JsonValue | undefined),
-      file_paths: this.read_string_array(record["file_paths"] as JsonValue | undefined),
+      files: this.read_file_selection(record["files"] as JsonValue | undefined),
       glossary_entry_ids: this.read_string_array(
         record["glossary_entry_ids"] as JsonValue | undefined,
       ),
       include_without_glossary_miss: record["include_without_glossary_miss"] !== false,
     };
+  }
+
+  /** 文件引用在 JSON 边界校验，失效选择不能扩大成默认全选。 */
+  private read_file_selection(value: JsonValue | undefined): ProofreadingFileSelection {
+    if (value === undefined) return { mode: "default" };
+    const record = read_json_record(value);
+    if (record["mode"] === "default") return { mode: "default" };
+    if (record["mode"] !== "selected" || !Array.isArray(record["values"])) {
+      throw new AppErrors.AppError("request.validation_failed", {
+        diagnostic_context: { field: "filters.files" },
+      });
+    }
+    const values = record["values"].map((value): ProofreadingFileRef => {
+      const file = read_json_record(value);
+      const file_path = file["file_path"];
+      const internal_file_path = file["internal_file_path"];
+      if (
+        typeof file_path !== "string" ||
+        (internal_file_path !== null && typeof internal_file_path !== "string")
+      ) {
+        throw new AppErrors.AppError("request.validation_failed", {
+          diagnostic_context: { field: "filters.files.values" },
+        });
+      }
+      return { file_path, internal_file_path };
+    });
+    return { mode: "selected", values };
   }
 
   /**

@@ -28,7 +28,7 @@ describe("proofreading-api-client", () => {
             revisions: { files: 1, items: 6, quality: 1, proofreading: 1 },
             defaultFilters: {
               outcomes: [],
-              file_paths: [],
+              files: { mode: "selected", values: [] },
               glossary_entry_ids: [],
               include_without_glossary_miss: true,
             },
@@ -124,6 +124,10 @@ describe("proofreading-api-client", () => {
       start: 0,
       count: 10,
     });
+    api_fetch_mock.mockResolvedValueOnce({});
+    await expect(
+      client.read_proofreading_list_window({ view_id: "view-1", start: 0, count: 10 }),
+    ).resolves.toMatchObject({ view_id: "", row_count: 0, rows: [] });
   });
 
   it("按 row id 读取窄上下文载荷", async () => {

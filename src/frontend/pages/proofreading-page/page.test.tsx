@@ -5,7 +5,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ProofreadingPage } from "@frontend/pages/proofreading-page/page";
 import { TooltipProvider } from "@frontend/shadcn/tooltip";
-import type { ProofreadingFile } from "@shared/proofreading/proofreading-types";
+import type {
+  ProofreadingFile,
+  ProofreadingFileSelection,
+} from "@shared/proofreading/proofreading-types";
 
 const proofreading_state_fixture = vi.hoisted(() => ({
   current: null as ReturnType<typeof create_proofreading_state_fixture> | null,
@@ -162,7 +165,7 @@ function create_proofreading_state_fixture() {
     files: [] as ProofreadingFile[],
     file_selection: {
       mode: "default",
-    } as import("./proofreading-filter-state").ProofreadingFilterChoice<string>,
+    } as ProofreadingFileSelection,
     update_file_selection: vi.fn(),
     visible_items: [],
     visible_row_count: 0,
@@ -187,6 +190,7 @@ describe("ProofreadingPage", () => {
     container?.remove();
     container = null;
     root = null;
+    vi.restoreAllMocks();
   });
 
   /**
@@ -331,8 +335,13 @@ describe("ProofreadingPage", () => {
   });
 
   it("工程切换关闭文件浮层并重置目录展开状态", async () => {
+    // happy-dom 不执行布局，提供虚拟文件列表的视口尺寸。
+    vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockReturnValue(320);
+    vi.spyOn(HTMLElement.prototype, "offsetWidth", "get").mockReturnValue(440);
     const state = proofreading_state_fixture.current!;
-    state.files = [{ file_path: "game/tl/chapter.rpy", kind: "item", count: 1 }];
+    state.files = [
+      { file_path: "game/tl/chapter.rpy", internal_file_path: null, kind: "item", count: 1 },
+    ];
     await mount_page();
     // 从真实页面入口打开浮层，验证工程切换时组件身份与本地状态一起重建。
     const open_files = async () => {

@@ -11,6 +11,7 @@ const item: ProofreadingClientItem = {
   item_id: 1,
   row_id: "1",
   file_path: "chapter.txt",
+  internal_file_path: null,
   row_number: 1,
   src: "原文",
   dst: "译文",

@@ -88,7 +88,7 @@ export function createProofreadingApiClient(): ProofreadingApiClient {
         "/api/proofreading/query",
         { action: "window", ...input },
       );
-      return response.window ?? { view_id: input.view_id, start: 0, row_count: 0, rows: [] };
+      return response.window ?? { view_id: "", start: 0, row_count: 0, rows: [] };
     },
     async read_proofreading_row_ids_range(input) {
       const response = await api_fetch<{ row_ids?: string[] }>("/api/proofreading/query", {

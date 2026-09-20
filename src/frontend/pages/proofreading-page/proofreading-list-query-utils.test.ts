@@ -14,7 +14,6 @@ import {
   build_proofreading_list_query_intent_key,
   build_refreshed_proofreading_list_view,
   is_proofreading_list_window_covered,
-  is_missing_refreshed_list_window,
   resolve_list_view_window_bounds,
   resolve_prefetched_list_window_bounds,
   resolve_proofreading_refresh_signal,
@@ -46,7 +45,7 @@ function create_list_view(row_count = 3) {
 function create_filters(patch: Partial<ProofreadingFilterOptions> = {}): ProofreadingFilterOptions {
   return {
     outcomes: ["NO_WARNING", "NONE", "PROCESSED"],
-    file_paths: ["chapter01.txt"],
+    files: { mode: "selected", values: [{ file_path: "chapter01.txt", internal_file_path: null }] },
     glossary_entry_ids: ["magic"],
     include_without_glossary_miss: true,
     ...patch,
@@ -156,28 +155,6 @@ describe("proofreading-list-query-utils", () => {
       start: 0,
       count: PROOFREADING_INITIAL_WINDOW_ROWS,
     });
-  });
-
-  it("只有非空旧视图读到完全空窗口时才判定 view_id 失效", () => {
-    const empty_window = {
-      view_id: "view-1",
-      start: 0,
-      row_count: 0,
-      rows: [],
-    };
-
-    expect(
-      is_missing_refreshed_list_window({
-        previous_view: create_list_view(),
-        window: empty_window,
-      }),
-    ).toBe(true);
-    expect(
-      is_missing_refreshed_list_window({
-        previous_view: create_list_view(0),
-        window: empty_window,
-      }),
-    ).toBe(false);
   });
 
   it("查询意图键忽略对象引用，但区分搜索、排序和显式筛选", () => {

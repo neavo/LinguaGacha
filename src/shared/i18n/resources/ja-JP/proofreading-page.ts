@@ -78,6 +78,7 @@ export const ja_jp_proofreading_page = {
     text_preserve_failed: "未発動",
     foreign_char_residue_fragments: "残留する他言語の箇所",
   },
+  ungrouped_file: "未分類",
   no_files: "プロジェクトにファイルがありません",
   filter: {
     translated_group: "翻訳成功",

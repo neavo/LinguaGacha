@@ -421,7 +421,7 @@ export function ProofreadingEditDialog(props: ProofreadingEditDialogProps): JSX.
   const source_name = read_item_name_text(item.name_src);
   const translation_name = draft_item.name_dst;
   const file_path_label =
-    item.internal_file_path === undefined
+    item.internal_file_path === null
       ? item.file_path
       : `${item.file_path} | ${item.internal_file_path}`;
   const source_name_glossary_state = resolve_name_glossary_state(glossary_applications);

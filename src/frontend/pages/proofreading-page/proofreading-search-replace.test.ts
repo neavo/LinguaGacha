@@ -11,6 +11,7 @@ function create_item(overrides: Partial<ProofreadingItem> = {}): ProofreadingIte
   return {
     item_id: 1,
     file_path: "chapter.txt",
+    internal_file_path: null,
     row_number: 1,
     src: "source",
     dst: "正文译文",

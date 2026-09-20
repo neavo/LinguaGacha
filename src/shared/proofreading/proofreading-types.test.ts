@@ -1,27 +1,24 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  type ProofreadingFilterOptions,
   build_proofreading_warning_summary,
   clone_proofreading_filter_options,
-  compress_proofreading_text,
-  format_proofreading_glossary_term,
   resolve_proofreading_outcomes,
   resolve_proofreading_status_sort_rank,
 } from "./proofreading-types";
 
 describe("proofreading types", () => {
-  it("格式化术语、压缩换行并将未知状态排在已知状态之后", () => {
-    expect(format_proofreading_glossary_term({ src: "魔法", dst: "Magic" })).toBe("魔法 -> Magic");
-    expect(compress_proofreading_text("第一行\n第二行")).toBe("第一行 ↵ 第二行");
+  it("未知状态排在已知状态之后", () => {
     expect(resolve_proofreading_status_sort_rank("NONE")).toBeLessThan(
       resolve_proofreading_status_sort_rank("UNKNOWN"),
     );
   });
 
   it("克隆筛选项时不会共享术语 ID 数组", () => {
-    const filters = {
+    const filters: ProofreadingFilterOptions = {
       outcomes: ["GLOSSARY", "NONE", "PROCESSED", "ERROR"],
-      file_paths: ["chapter.txt"],
+      files: { mode: "selected", values: [{ file_path: "chapter.txt", internal_file_path: null }] },
       glossary_entry_ids: ["magic"],
       include_without_glossary_miss: true,
     };

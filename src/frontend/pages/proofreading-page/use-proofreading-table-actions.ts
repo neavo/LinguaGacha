@@ -46,7 +46,7 @@ type UseProofreadingTableActionsOptions = {
   read_current_view_row_ids: (start: number, count: number) => Promise<string[]>;
   read_list_window: (range: { start: number; count: number }) => Promise<unknown>;
   report_proofreading_list_error: (error: unknown, fallback_message: string) => boolean;
-  read_file_selection: () => ProofreadingViewFilterState["selection"]["file_paths"];
+  read_file_selection: () => ProofreadingViewFilterState["selection"]["files"];
   materialize_active_filters: () => ProofreadingFilterOptions;
   run_filter_panel_query: (
     filters: ProofreadingContentFilters,

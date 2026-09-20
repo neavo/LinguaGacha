@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 
 import { resolve_visible_error_message } from "@frontend/app/feedback/visible-error-message";
 import type { LocaleKey } from "@frontend/app/locale/locale-context";
@@ -74,17 +74,11 @@ export function useProofreadingDialogActions(
   const [dialog_item_snapshot, set_dialog_item_snapshot] = useState<ProofreadingItem | null>(null);
   const dialog_request_id_ref = useRef(0); // 弹窗关闭或重开时，旧的条目与上下文响应都不得回写
 
-  const dialog_item = useMemo(() => {
-    if (dialog_state.target_row_id === null) {
-      return null;
-    }
-    const visible_item = options.visible_item_by_id.get(dialog_state.target_row_id);
-    if (visible_item === undefined || dialog_item_snapshot === null) {
-      return visible_item ?? dialog_item_snapshot;
-    }
-    // 详情快照提供按需字段，列表窗口只覆盖它实际携带的最新行事实。
-    return { ...dialog_item_snapshot, ...visible_item };
-  }, [dialog_item_snapshot, dialog_state.target_row_id, options.visible_item_by_id]);
+  // 列表与详情携带同一组事实，可见行更新时直接使用窗口快照。
+  const dialog_item =
+    dialog_state.target_row_id === null
+      ? null
+      : (options.visible_item_by_id.get(dialog_state.target_row_id) ?? dialog_item_snapshot);
 
   /** 关闭弹窗并使旧详情请求失效。 */
   const reset_dialog = useCallback((): void => {

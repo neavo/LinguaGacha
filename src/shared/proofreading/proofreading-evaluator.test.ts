@@ -37,6 +37,7 @@ function evaluate(args: {
     item: {
       item_id: 1,
       file_path: "chapter.txt",
+      internal_file_path: null,
       row_number: 1,
       src: args.src,
       dst: args.dst,

@@ -79,6 +79,7 @@ export const en_us_proofreading_page = {
     text_preserve_failed: "Not Applied",
     foreign_char_residue_fragments: "Foreign Character Fragments",
   },
+  ungrouped_file: "Ungrouped",
   no_files: "No files in this project",
   filter: {
     translated_group: "Translated",

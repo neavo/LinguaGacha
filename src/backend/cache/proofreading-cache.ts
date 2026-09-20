@@ -154,26 +154,11 @@ export class ProofreadingCache {
     return this.query_current(() => this.reader.resolve_row_index(query) ?? null);
   }
 
-  /**
-   * 按 row id 局部读取校对行，并只为返回行从热缓存补 TRANS 内部路径，避免进入全量 worker。
-   */
+  /** 按行身份读取统一运行态，内部路径与列表、筛选保持一致。 */
   public async itemsByRowIds(
     query: ProofreadingItemsByRowIdsQuery,
   ): Promise<ProofreadingCacheResult<ProofreadingClientItem[]>> {
-    return this.query_current(() => {
-      return this.reader.read_items_by_row_ids(query).map((item) => {
-        const cached_item = this.cache.items.readItem(Number(item.item_id));
-        if (cached_item === null || String(cached_item["file_type"] ?? "") !== "TRANS") {
-          return item;
-        }
-        const extra_field = read_json_record(cached_item["extra_field"]);
-        const trans_ref = read_json_record(extra_field["trans_ref"]);
-        const internal_file_path = trans_ref["file_key"];
-        return typeof internal_file_path === "string" && internal_file_path !== ""
-          ? { ...item, internal_file_path }
-          : item;
-      });
-    });
+    return this.query_current(() => this.reader.read_items_by_row_ids(query));
   }
 
   /**
@@ -458,6 +443,7 @@ export class ProofreadingCache {
     return {
       item_id: item.item_id,
       file_path,
+      internal_file_path: this.read_internal_file_path(item),
       row_number: item.row_number,
       src: String(item["src"] ?? ""),
       dst: String(item["dst"] ?? ""),
@@ -467,6 +453,18 @@ export class ProofreadingCache {
       text_type: String(item["text_type"] ?? "NONE"),
       retry_count: this.read_number(item["retry_count"], 0),
     };
+  }
+
+  /** 格式定位信息只在校对入口解释，普通格式与缺少定位的内容归入无内部路径分组。 */
+  private read_internal_file_path(item: ProjectItemPublicRecord): string | null {
+    const extra = read_json_record(item["extra_field"]);
+    const value =
+      item["file_type"] === "TRANS"
+        ? read_json_record(extra["trans_ref"])["file_key"]
+        : item["file_type"] === "EPUB"
+          ? read_json_record(extra["epub"])["doc_path"]
+          : null;
+    return typeof value === "string" && value !== "" ? value : null;
   }
 
   /**

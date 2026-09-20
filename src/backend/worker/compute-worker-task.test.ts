@@ -14,7 +14,7 @@ describe("run_compute_worker_task", () => {
           {
             item_id: 1,
             file_path: "script.txt",
-            file_order: 0,
+            internal_file_path: null,
             row_number: 1,
             src: "HP",
             dst: "カナ",

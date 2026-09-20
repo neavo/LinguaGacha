@@ -4,6 +4,8 @@ import {
   proofreading_page_status,
   type ProofreadingRow,
   type ProofreadingFile,
+  type ProofreadingFileSelection,
+  clone_proofreading_file_selection,
 } from "./proofreading-types";
 import type { QualitySnapshot } from "../quality/quality-rule-snapshot";
 import {
@@ -192,14 +194,15 @@ type ProofreadingReaderState = {
   natural_row_ids: string[] | null; // 列表、警告查询与上下文共用自然顺序，变化后按需重建。
   outcome_count_by_code: Map<string, number>; // 全部状态用于筛选面板的可选结果。
   translated_outcome_count_by_code: Map<string, number>; // 仅成功条目用于默认警告选项与警告摘要。
-  file_count_by_path: Map<string, number>;
+  file_entries: { file_path: string; kind: "item" | "page" }[]; // 外层身份与顺序仅由文件同步拥有。
   glossary_term_count_map: Map<string, ProofreadingFilterPanelTermEntry>;
   defaultFilters: ProofreadingFilterOptions;
 };
 
 type ProofreadingItemChange = {
   item_id: string; // 变更记录统一使用 row id 字符串，直接对接列表缓存
-  removed_from_runtime: boolean; // 只有后端 tombstone 能改变旧结果视图的成员集合
+  removed_from_runtime: boolean; // 后端 tombstone 从稳定视图剪除成员
+  file_changed: boolean; // 既有条目迁移文件归属时，旧视图必须失效。
   natural_order_changed: boolean; // 文件、行号或 item_id 变化会影响所有排序的兜底顺序
 };
 
@@ -215,7 +218,7 @@ type ProofreadingListViewCache = {
 // 单次筛选查询的预编译上下文，避免在每个 item 上重复构造 Set
 type ProofreadingFilterContext = {
   outcome_set: Set<string> | null; // null 表示当前查询忽略翻译结果维度
-  file_path_set: Set<string> | null; // null 表示当前查询忽略 file 维度
+  files: Map<string, Set<string | null>> | null; // null 表示默认全选；空 Map 表示显式空集。
   glossary_filter_enabled: boolean; // false 表示当前查询忽略术语维度
   glossary_entry_id_set: Set<string>; // 术语缺失筛选直接使用稳定条目身份
   include_without_glossary_miss: boolean; // 是否保留没有术语缺失的条目
@@ -274,7 +277,6 @@ function normalize_runtime_filter_options(args: {
 }): ProofreadingFilterOptions {
   const filters = args.filters;
   const has_outcomes = Array.isArray(filters?.outcomes);
-  const has_file_paths = Array.isArray(filters?.file_paths);
   const has_glossary_entry_ids = Array.isArray(filters?.glossary_entry_ids);
   const has_include_without_glossary_miss =
     typeof filters?.include_without_glossary_miss === "boolean";
@@ -287,9 +289,7 @@ function normalize_runtime_filter_options(args: {
     outcomes: has_outcomes
       ? unique_strings((filters?.outcomes ?? []).map((value) => String(value)))
       : [...args.defaultFilters.outcomes],
-    file_paths: has_file_paths
-      ? unique_strings((filters?.file_paths ?? []).map((value) => String(value)))
-      : [...args.defaultFilters.file_paths],
+    files: clone_proofreading_file_selection(filters?.files ?? args.defaultFilters.files),
     glossary_entry_ids: has_glossary_entry_ids
       ? glossary_entry_ids
       : [...args.defaultFilters.glossary_entry_ids],
@@ -320,13 +320,40 @@ function create_proofreading_filter_context(args: {
 
   return {
     outcome_set: args.filters.outcomes === undefined ? null : new Set(args.filters.outcomes),
-    file_path_set: args.filters.file_paths === undefined ? null : new Set(args.filters.file_paths),
+    files: compile_file_selection(args.filters.files),
     glossary_filter_enabled,
     glossary_entry_id_set: glossary_filter_enabled
       ? new Set(args.filters.glossary_entry_ids ?? [])
       : new Set<string>(),
     include_without_glossary_miss: args.filters.include_without_glossary_miss ?? false,
   };
+}
+
+/** 查询开始时编译一次，逐行匹配不拼接或序列化路径。 */
+function compile_file_selection(
+  selection: ProofreadingFileSelection | undefined,
+): Map<string, Set<string | null>> | null {
+  if (selection === undefined || selection.mode === "default") return null;
+  const files = new Map<string, Set<string | null>>();
+  for (const file of selection.values) {
+    let paths = files.get(file.file_path);
+    if (!paths) files.set(file.file_path, (paths = new Set()));
+    paths.add(file.internal_file_path);
+  }
+  return files;
+}
+
+/** 列表和筛选计数共享文件范围判断，页面归入无内部路径的叶子。 */
+function row_matches_files(
+  row: ProofreadingRowRecord,
+  files: ProofreadingFilterContext["files"],
+): boolean {
+  if (files === null) return true;
+  return (
+    files
+      .get(read_proofreading_row_file_path(row))
+      ?.has(row.kind === "item" ? row.item.internal_file_path : null) ?? false
+  );
 }
 
 /**
@@ -386,11 +413,7 @@ function row_matches_filter_context(
     !resolve_proofreading_row_outcomes(row).some((outcome) => outcome_set.has(outcome))
   )
     return false;
-  if (
-    context.file_path_set !== null &&
-    !context.file_path_set.has(read_proofreading_row_file_path(row))
-  )
-    return false;
+  if (!row_matches_files(row, context.files)) return false;
   return row.kind === "item"
     ? item_matches_glossary_filter(row.item, context)
     : !context.glossary_filter_enabled || context.include_without_glossary_miss;
@@ -453,7 +476,6 @@ function apply_counter_delta(args: {
   item: ProofreadingEvaluatedItem;
   delta: number;
 }): void {
-  increment_map_count(args.state.file_count_by_path, args.item.file_path, args.delta);
   for (const outcome of resolve_proofreading_outcomes(args.item)) {
     increment_map_count(args.state.outcome_count_by_code, outcome, args.delta);
     if (args.item.status === "PROCESSED") {
@@ -488,6 +510,10 @@ function upsert_runtime_item_in_state(
 ): ProofreadingItemChange {
   const item_key = String(item.item_id);
   const previous = state.item_by_id.get(item_key);
+  const file_changed =
+    previous !== undefined &&
+    (previous.file_path !== item.file_path ||
+      previous.internal_file_path !== item.internal_file_path);
   const natural_order_changed =
     previous === undefined ||
     previous.file_path !== item.file_path ||
@@ -505,7 +531,7 @@ function upsert_runtime_item_in_state(
   };
   state.item_by_id.set(item_key, next);
   apply_counter_delta({ state, item: next, delta: 1 });
-  return { item_id: item_key, removed_from_runtime: false, natural_order_changed };
+  return { item_id: item_key, removed_from_runtime: false, natural_order_changed, file_changed };
 }
 
 /**
@@ -516,11 +542,14 @@ function delete_runtime_item_from_state(
   item_id: string,
 ): ProofreadingItemChange {
   const previous = state.item_by_id.get(item_id);
-  if (previous !== undefined) apply_counter_delta({ state, item: previous, delta: -1 });
+  if (previous !== undefined) {
+    apply_counter_delta({ state, item: previous, delta: -1 });
+  }
   state.item_by_id.delete(item_id);
   return {
     item_id,
     removed_from_runtime: previous !== undefined,
+    file_changed: false,
     natural_order_changed: previous !== undefined,
   };
 }
@@ -538,14 +567,13 @@ function buildDefaultFiltersFromState(state: ProofreadingReaderState): Proofread
     .filter((outcome) => !known_outcome_set.has(outcome))
     .sort((left, right) => left.localeCompare(right));
 
-  const file_paths = state.files.map((file) => file.file_path);
   const glossary_entry_ids = [...state.glossary_term_count_map.keys()].sort(
     compare_proofreading_text,
   );
 
   return {
     outcomes: [...default_outcomes, ...extra_outcomes],
-    file_paths,
+    files: { mode: "default" },
     glossary_entry_ids,
     include_without_glossary_miss: true,
   };
@@ -577,16 +605,32 @@ function read_natural_row_ids(state: ProofreadingReaderState): string[] {
   ).map((row) => row.row_id));
 }
 
-/** 数量来自各自内容索引，文件身份与排列来自文件同步。 */
-function refresh_file_counts(state: ProofreadingReaderState): void {
+/** 结构变化时一次遍历生成候选和计数，Map 保留内部文件的自然顺序。 */
+function refresh_files(state: ProofreadingReaderState): void {
+  const counts = new Map<string, Map<string | null, number>>();
   const page_counts = new Map<string, number>();
-  for (const { file_path } of state.page_by_id.values())
-    increment_map_count(page_counts, file_path, 1);
-  state.files = state.files.map((file) => ({
-    ...file,
-    count: (file.kind === "page" ? page_counts : state.file_count_by_path).get(file.file_path) ?? 0,
-  }));
-  state.defaultFilters = buildDefaultFiltersFromState(state);
+  for (const row_id of read_natural_row_ids(state)) {
+    const row = read_row(state, row_id)!;
+    if (row.kind === "page") {
+      increment_map_count(page_counts, row.record.file_path, 1);
+      continue;
+    }
+    let internal_counts = counts.get(row.item.file_path);
+    if (!internal_counts) counts.set(row.item.file_path, (internal_counts = new Map()));
+    const path = row.item.internal_file_path;
+    internal_counts.set(path, (internal_counts.get(path) ?? 0) + 1);
+  }
+  state.files = state.file_entries.flatMap((file): ProofreadingFile[] => {
+    if (file.kind === "page")
+      return [{ ...file, internal_file_path: null, count: page_counts.get(file.file_path) ?? 0 }];
+    const internal_counts = counts.get(file.file_path);
+    if (!internal_counts) return [{ ...file, internal_file_path: null, count: 0 }];
+    return [...internal_counts].map(([internal_file_path, count]) => ({
+      ...file,
+      internal_file_path,
+      count,
+    }));
+  });
 }
 
 /**
@@ -716,7 +760,7 @@ function create_run_state_from_evaluated(
     natural_row_ids: null,
     outcome_count_by_code: new Map(),
     translated_outcome_count_by_code: new Map(),
-    file_count_by_path: new Map(),
+    file_entries: [],
     glossary_term_count_map: new Map(),
     defaultFilters: create_empty_proofreading_filter_options(),
   };
@@ -768,7 +812,7 @@ function resolve_proofreading_rows(
 }
 
 /**
- * item 增量提交后只从当前结果快照剪除 tombstone；字段变化只刷新行内容，不重新执行筛选或排序。
+ * 文件归属变化撤销当前视图，普通字段变化保留成员与顺序，tombstone 剪除成员。
  * 这保证重翻修复术语命中后，行仍停留在当前筛选结果里供用户检查其它问题。
  */
 function apply_item_changes_to_list_view_cache(args: {
@@ -778,6 +822,8 @@ function apply_item_changes_to_list_view_cache(args: {
   if (args.cache === null || args.changes.length === 0) {
     return args.cache;
   }
+
+  if (args.changes.some((change) => change.file_changed)) return null;
 
   const deleted_item_ids = new Set(
     args.changes.filter((change) => change.removed_from_runtime).map((change) => change.item_id),
@@ -811,15 +857,14 @@ export function createProofreadingReader() {
       revision: number,
     ): ProofreadingSyncState {
       if (state === null) throw new AppError("runtime.internal_invariant");
-      state.files = files.map((file) => ({
+      state.file_entries = files.map((file) => ({
         file_path: file.rel_path,
         kind: file.file_type === "PDF" ? "page" : "item",
-        count: 0,
       }));
-      state.file_order = new Map(state.files.map((file, index) => [file.file_path, index]));
+      state.file_order = new Map(state.file_entries.map((file, index) => [file.file_path, index]));
       state.revisions = { ...state.revisions, files: revision };
       state.natural_row_ids = null;
-      refresh_file_counts(state);
+      refresh_files(state);
       list_view_cache = null;
       return build_sync_state(state);
     },
@@ -840,7 +885,13 @@ export function createProofreadingReader() {
       );
       state.revisions = { ...state.revisions, pdf: revision };
       state.natural_row_ids = null;
-      refresh_file_counts(state);
+      // 页面内容更新只刷新页面文件计数，不扫描文本条目重建内部目录。
+      const page_counts = new Map(
+        documents.map(({ file_path, document }) => [file_path, document.pages.length]),
+      );
+      state.files = state.files.map((file) =>
+        file.kind === "page" ? { ...file, count: page_counts.get(file.file_path) ?? 0 } : file,
+      );
       const deleted_page_ids = new Set(
         [...previous_pages.keys()].filter((id) => !state!.page_by_id.has(id)),
       );
@@ -861,7 +912,7 @@ export function createProofreadingReader() {
       state = create_run_state_from_evaluated(input);
       // 文本评估重建不改变同一工程的文件与页面事实，其修订由独立同步入口推进。
       if (previous?.projectId === input.projectId) {
-        state.files = previous.files;
+        state.file_entries = previous.file_entries;
         state.file_order = previous.file_order;
         state.page_by_id = previous.page_by_id;
         state.revisions = {
@@ -869,7 +920,7 @@ export function createProofreadingReader() {
           files: previous.revisions.files,
           pdf: previous.revisions.pdf,
         };
-        refresh_file_counts(state);
+        refresh_files(state);
       }
       list_view_cache = null;
       return build_sync_state(state);
@@ -947,11 +998,22 @@ export function createProofreadingReader() {
         current_state.natural_row_ids = null;
       }
 
-      current_state.files = current_state.files.map((file) =>
-        file.kind === "item"
-          ? { ...file, count: current_state.file_count_by_path.get(file.file_path) ?? 0 }
-          : file,
-      );
+      if (should_rebuild_natural_order || item_changes.some((change) => change.file_changed)) {
+        const previous_files = current_state.files;
+        refresh_files(current_state);
+        // 内部候选增删也改变默认范围，需让空结果视图重新查询。
+        if (
+          previous_files.length !== current_state.files.length ||
+          previous_files.some((file, index) => {
+            const next = current_state.files[index]!;
+            return (
+              file.file_path !== next.file_path ||
+              file.internal_file_path !== next.internal_file_path
+            );
+          })
+        )
+          list_view_cache = null;
+      }
       current_state.defaultFilters = buildDefaultFiltersFromState(current_state);
       list_view_cache = apply_item_changes_to_list_view_cache({
         cache: list_view_cache,
@@ -1024,10 +1086,17 @@ export function createProofreadingReader() {
         query.statuses === undefined || query.statuses.includes("PROCESSED")
           ? query.warning_types
           : [];
+      const outer_paths = query.file_paths === undefined ? null : new Set(query.file_paths);
       const resolved = resolve_proofreading_rows(state, {
         filters: {
           outcomes: warning_outcomes,
-          ...(query.file_paths === undefined ? {} : { file_paths: query.file_paths }),
+          files:
+            outer_paths === null
+              ? { mode: "default" }
+              : {
+                  mode: "selected",
+                  values: state.files.filter((file) => outer_paths.has(file.file_path)),
+                },
         },
         keywords: query.keywords,
         scope: query.scope,
@@ -1059,7 +1128,7 @@ export function createProofreadingReader() {
       return { total_count: entries.reduce((sum, entry) => sum + entry.count, 0), entries };
     },
     /**
-     * 读取已构建列表视图的窗口切片，失效 view_id 直接返回空窗口防止旧请求覆盖新 UI
+     * 失效视图返回空 view_id，空结果视图也能明确识别失效并重新查询
      */
     read_list_window(query: ProofreadingListWindowQuery): ProofreadingListWindow {
       if (
@@ -1069,7 +1138,7 @@ export function createProofreadingReader() {
         list_view_cache.projectId !== state.projectId
       ) {
         return {
-          view_id: query.view_id,
+          view_id: "",
           start: 0,
           row_count: 0,
           rows: [],
@@ -1225,9 +1294,7 @@ export function createProofreadingReader() {
       let without_glossary_miss_count = 0;
       for (const row of read_rows(state)) {
         const outcomes = resolve_proofreading_row_outcomes(row);
-        const file_matches =
-          context.file_path_set === null ||
-          context.file_path_set.has(read_proofreading_row_file_path(row));
+        const file_matches = row_matches_files(row, context.files);
         const outcome_set = context.outcome_set;
         const outcome_matches =
           outcome_set === null || outcomes.some((value) => outcome_set.has(value));
