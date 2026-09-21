@@ -43,9 +43,8 @@ export const de_de_agent_page = {
       upload: "Upload",
       items: "{COUNT} Einträge",
       pages: "{COUNT} Seiten",
-      loading: "Dateien werden geladen…",
-      error: "Dateien konnten nicht geladen werden. Menü erneut öffnen.",
-      more: "Weitere Treffer vorhanden. Suche weiter eingrenzen.",
+      loading: "Dateiliste wird geladen …",
+      error: "Dateiliste konnte nicht geladen werden …",
     },
     groups: { files: "Dateien", skills: "Skills", instructions: "Befehle" },
     instructions: {

@@ -45,9 +45,8 @@ export const ja_jp_agent_page = {
       upload: "アップロード",
       items: "{COUNT} 件",
       pages: "{COUNT} ページ",
-      loading: "ファイルを読み込み中…",
-      error: "読み込みに失敗しました。メニューを開き直してください。",
-      more: "入力を続けて候補を絞り込んでください。",
+      loading: "ファイル一覧を読み込み中 …",
+      error: "ファイル一覧の読み込みに失敗しました …",
     },
     groups: { files: "ファイル", skills: "スキル", instructions: "指示" },
     instructions: {

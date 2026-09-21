@@ -45,9 +45,8 @@ export const ko_kr_agent_page = {
       upload: "업로드",
       items: "{COUNT}개 항목",
       pages: "{COUNT}페이지",
-      loading: "파일 목록을 불러오는 중…",
-      error: "메뉴를 다시 열어 재시도하세요.",
-      more: "계속 입력하여 검색 범위를 좁히세요.",
+      loading: "파일 목록을 불러오는 중 …",
+      error: "파일 목록을 불러오지 못했습니다 …",
     },
     groups: { files: "파일", skills: "스킬", instructions: "명령" },
     instructions: {

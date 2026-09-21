@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import type { AgentFileCandidate } from "@shared/agent-reference";
 
 import { create_agent_mention_candidates } from "./agent-mention";
 
@@ -34,6 +35,38 @@ function create_candidates(query: string) {
 }
 
 describe("Agent mention 菜单候选", () => {
+  it.each(["", " \t "])("无筛选时按来源顺序展示前三个文件：%j", (query) => {
+    const files: AgentFileCandidate[] = [
+      { kind: "workspace", path: "z.txt", count: 1, unit: "items" },
+      { kind: "workspace", path: "a.txt", count: 1, unit: "items" },
+      { kind: "upload", path: "uploads/b.txt", size: 10 },
+      { kind: "upload", path: "uploads/c.txt", size: 10 },
+    ];
+    const result = create_agent_mention_candidates({
+      locale: "zh-CN",
+      query,
+      skills: [],
+      instructions: [],
+      files,
+    });
+    expect(result.files.map((file) => file.title)).toEqual(["z.txt", "a.txt", "uploads/b.txt"]);
+  });
+
+  it("搜索完整文件列表并限制展示数量", () => {
+    const files: AgentFileCandidate[] = Array.from({ length: 60 }, (_, index) => ({
+      kind: "workspace",
+      path: `chapter-${index}.txt`,
+      count: 1,
+      unit: "items",
+    }));
+    const args = { locale: "zh-CN" as const, skills: [], instructions: [], files };
+    const result = create_agent_mention_candidates({ ...args, query: "chapter" });
+    expect(result.files.length).toBeLessThan(files.length);
+    expect(create_agent_mention_candidates({ ...args, query: "chapter-59" }).files).toMatchObject([
+      { title: "chapter-59.txt" },
+    ]);
+  });
+
   it("按当前语言的描述查询并展示技能", () => {
     expect(
       create_agent_mention_candidates({ locale: "ja-JP", query: "用語", skills, instructions: [] })
@@ -52,7 +85,6 @@ describe("Agent mention 菜单候选", () => {
       skills: [],
       files: [],
       instructions: [],
-      fileCount: 0,
     });
   });
 });

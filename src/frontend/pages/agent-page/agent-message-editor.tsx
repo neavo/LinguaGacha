@@ -180,7 +180,7 @@ export function AgentMessageEditor(props: AgentMessageEditorProps): JSX.Element 
   );
   const candidate_groups =
     assistant_editing || mention_query_text === undefined
-      ? { skills: [], files: [], instructions: [], fileCount: 0 }
+      ? { skills: [], files: [], instructions: [] }
       : create_agent_mention_candidates({
           query: mention_query_text,
           locale,
@@ -564,9 +564,6 @@ export function AgentMessageEditor(props: AgentMessageEditorProps): JSX.Element 
               )}
               {file_query.status === "error" && (
                 <p className="agent-mention-menu__empty">{t("agent_page.mention.files.error")}</p>
-              )}
-              {candidate_groups.fileCount > matching_files.length && (
-                <p className="agent-mention-menu__empty">{t("agent_page.mention.files.more")}</p>
               )}
             </div>
           )}

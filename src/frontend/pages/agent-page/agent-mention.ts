@@ -2,7 +2,8 @@ import type { AgentSkillSnapshot } from "@shared/agent";
 import { format_agent_reference, type AgentFileCandidate } from "@shared/agent-reference";
 import { create_text_resolver, type Locale } from "@shared/i18n";
 
-const FILE_CANDIDATE_LIMIT = 50; // 菜单只渲染有界候选，完整匹配数量用于提示收窄查询。
+const DEFAULT_FILE_CANDIDATE_LIMIT = 3; // 默认展示数量由产品要求确定。
+const SEARCH_FILE_CANDIDATE_LIMIT = 20; // 限制搜索菜单规模。
 
 /** 页面提供宿主指令的显示状态与即时动作；它不进入消息协议。 */
 export type AgentMentionInstruction = Readonly<{
@@ -30,7 +31,6 @@ type AgentMentionCandidateGroups = Readonly<{
   skills: readonly AgentMentionCandidate[];
   instructions: readonly AgentMentionCandidate[];
   files: readonly AgentMentionCandidate[];
-  fileCount: number;
 }>;
 
 /** 指令文案和可用性由调用方注入，纯投影不依赖 React i18n 或会话状态。 */
@@ -77,19 +77,20 @@ export function create_agent_mention_candidates(
   const matching_files = (args.files ?? []).filter((file) =>
     terms.every((term) => file.path.toLocaleLowerCase(args.locale).includes(term)),
   );
-  const files = matching_files
-    .slice(0, FILE_CANDIDATE_LIMIT)
-    .map((file): AgentMentionCandidate => ({
-      kind: "file",
-      key: `${file.kind}:${file.path}`,
-      title: file.path,
-      description:
-        file.kind === "workspace"
-          ? `${t("agent_page.mention.files.workspace")} · ${t(file.unit === "pages" ? "agent_page.mention.files.pages" : "agent_page.mention.files.items", { COUNT: file.count.toLocaleString(args.locale) })}`
-          : `${t("agent_page.mention.files.upload")} · ${format_file_size(file.size)}`,
-      insertText: format_agent_reference(file),
-    }));
-  return { skills, files, instructions, fileCount: matching_files.length };
+  // 保留来源顺序，默认精简展示，搜索始终匹配完整列表。
+  const file_limit =
+    terms.length === 0 ? DEFAULT_FILE_CANDIDATE_LIMIT : SEARCH_FILE_CANDIDATE_LIMIT;
+  const files = matching_files.slice(0, file_limit).map((file): AgentMentionCandidate => ({
+    kind: "file",
+    key: `${file.kind}:${file.path}`,
+    title: file.path,
+    description:
+      file.kind === "workspace"
+        ? `${t("agent_page.mention.files.workspace")} · ${t(file.unit === "pages" ? "agent_page.mention.files.pages" : "agent_page.mention.files.items", { COUNT: file.count.toLocaleString(args.locale) })}`
+        : `${t("agent_page.mention.files.upload")} · ${format_file_size(file.size)}`,
+    insertText: format_agent_reference(file),
+  }));
+  return { skills, files, instructions };
 }
 
 /** 文件大小只用于候选摘要，原始字节数仍由后端持有。 */
