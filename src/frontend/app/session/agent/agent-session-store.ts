@@ -19,6 +19,7 @@ import type {
   AgentSkillDisplayDescriptions,
   AgentSkillSnapshot,
   AgentToolEntry,
+  AgentTokenSpeedSnapshot,
   AgentWriteApprovalDecision,
 } from "@shared/agent";
 import {
@@ -104,7 +105,15 @@ export type AgentSessionActions = Readonly<{
   reconnect: () => void;
 }>;
 
-type StoreSlice = "timeline" | "controls" | "queue" | "todo" | "skills" | "input" | "countdown";
+type StoreSlice =
+  | "speed"
+  | "timeline"
+  | "controls"
+  | "queue"
+  | "todo"
+  | "skills"
+  | "input"
+  | "countdown";
 type Listener = () => void;
 type CommandEventQueue = { base_revision: number; events: AgentSessionEvent[] };
 
@@ -126,6 +135,7 @@ const EMPTY_SKILLS: AgentSkillsSlice = { skills: [] };
 /** renderer 侧唯一 Agent 会话镜像；后端事实经 revision 校验进入切片，本地决策时钟独立发布。 */
 export class AgentSessionStore {
   private session_id: string | null = null;
+  private token_speed: AgentTokenSpeedSnapshot = { tokensPerSecond: null };
   private timeline = EMPTY_TIMELINE;
   private controls = EMPTY_CONTROLS;
   private queue = EMPTY_QUEUE;
@@ -142,6 +152,7 @@ export class AgentSessionStore {
   private readonly draft = new AgentInputDraft();
   private input_history: string[];
   private readonly listeners: Record<StoreSlice, Set<Listener>> = {
+    speed: new Set(),
     timeline: new Set(),
     controls: new Set(),
     queue: new Set(),
@@ -196,6 +207,12 @@ export class AgentSessionStore {
       reconnect: this.reconnect,
     };
   }
+
+  /** 返回稳定的速度切片，供底栏独立订阅。 */
+  public readonly get_token_speed = (): AgentTokenSpeedSnapshot => this.token_speed;
+  /** 速度变化只通知对应订阅者。 */
+  public readonly subscribe_token_speed = (listener: Listener): (() => void) =>
+    this.subscribe("speed", listener);
 
   /** 返回时间线缓存，供独立消息区订阅。 */
   public readonly get_timeline = (): AgentTimelineSlice => this.timeline;
@@ -393,6 +410,7 @@ export class AgentSessionStore {
     }
     this.session_id = snapshot.sessionId;
     this.revision = snapshot.revision;
+    this.set_token_speed(snapshot.tokenSpeed);
     this.timeline = { entries: snapshot.entries };
     this.queue = { inputQueue: snapshot.inputQueue };
     this.todo = { todos: snapshot.todos };
@@ -410,6 +428,13 @@ export class AgentSessionStore {
     this.emit("todo");
     this.emit("skills");
     this.emit("controls");
+  }
+
+  /** 快照恢复与增量事件共用数值去重，保留切片引用稳定性。 */
+  private set_token_speed(speed: AgentTokenSpeedSnapshot): void {
+    if (speed.tokensPerSecond === this.token_speed.tokensPerSecond) return;
+    this.token_speed = speed;
+    this.emit("speed");
   }
 
   /** 顺序重放事件，遇到首个修订缺口交由快照恢复。 */
@@ -431,6 +456,9 @@ export class AgentSessionStore {
 
     this.revision = event.revision;
     switch (event.type) {
+      case "token_speed":
+        this.set_token_speed(event.tokenSpeed);
+        break;
       case "session_state":
         this.set_controls({ state: event.state });
         break;
@@ -737,13 +765,15 @@ function normalize_snapshot(value: unknown): AgentSessionSnapshot {
   const skills = Array.isArray(record["skills"]) ? record["skills"].flatMap(normalize_skill) : [];
   const input_queue = normalize_input_queue(record["inputQueue"]);
   const todos = normalize_todos(record["todos"]);
+  const token_speed = normalize_token_speed(record["tokenSpeed"]);
   const context = normalize_context(record["context"]);
   if (
     approval_mode === null ||
     pending_decision === undefined ||
     input_queue === null ||
     todos === null ||
-    context === null
+    context === null ||
+    token_speed === null
   ) {
     throw new TypeError("Agent snapshot is invalid.");
   }
@@ -758,6 +788,7 @@ function normalize_snapshot(value: unknown): AgentSessionSnapshot {
     inputQueue: input_queue,
     todos,
     context,
+    tokenSpeed: token_speed,
   };
 }
 
@@ -795,6 +826,12 @@ function normalize_agent_event(value: unknown): AgentSessionEvent | null {
       const todos = normalize_todos(record["todos"]);
       return todos === null ? null : { type: "todo", revision, todos };
     }
+    case "token_speed": {
+      const token_speed = normalize_token_speed(record["tokenSpeed"]);
+      return token_speed === null
+        ? null
+        : { type: "token_speed", revision, tokenSpeed: token_speed };
+    }
     case "context": {
       const context = normalize_context(record["context"]);
       return context === null ? null : { type: "context", revision, context };
@@ -806,6 +843,15 @@ function normalize_agent_event(value: unknown): AgentSessionEvent | null {
     default:
       return null;
   }
+}
+
+/** SSE 和快照只接收有限、非负的速度，null 明确表示隐藏。 */
+function normalize_token_speed(value: unknown): AgentTokenSpeedSnapshot | null {
+  if (!is_json_record(value)) return null;
+  const speed = value["tokensPerSecond"];
+  return speed === null || (typeof speed === "number" && Number.isFinite(speed) && speed >= 0)
+    ? { tokensPerSecond: speed }
+    : null;
 }
 
 /** 必需修订号无效时抛错，使调用方进入恢复路径。 */

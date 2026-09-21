@@ -39,6 +39,7 @@ import {
   type AgentWorkspaceLinkResult,
   type AgentCommandAck,
   type AgentContextSnapshot,
+  type AgentTokenSpeedSnapshot,
   type AgentEntry,
   type AgentEntryStatus,
   type AgentMessageInput,
@@ -81,10 +82,12 @@ import {
 import { load_agent_system_prompt } from "./agent-system-prompt";
 import { AgentToolError, prepare_agent_tool } from "./model-tools/definition";
 
+import { AgentTokenSpeed } from "./agent-token-speed";
 import { AgentSessionLog } from "./agent-log";
 import { project_assistant_message_parts } from "./agent-message";
 
 const AGENT_KEEP_RECENT_TOKENS = 32_000; // 产品固定保留的最近模型可见历史
+const AGENT_TOKEN_SPEED_PUBLISH_INTERVAL_MS = 250; // 数值最多 4Hz，采样仍消费每个增量
 const AGENT_STREAM_PUBLISH_INTERVAL_MS = 100; // assistant 完整公开条目最多 10Hz；工具与终态不等待
 /** 产品会话使用固定压缩预算，不读取 coding-agent 用户设置。 */
 function build_agent_session_settings() {
@@ -185,6 +188,9 @@ type LoadedAgentResources = Readonly<{
  * 单个后端 Agent 产品会话的状态拥有者；通用模型生命周期交给 AgentSession。
  */
 export class AgentService {
+  private readonly token_speed = new AgentTokenSpeed();
+  private token_speed_updated_at: number | null = null;
+  private token_speed_snapshot: AgentTokenSpeedSnapshot = { tokensPerSecond: null };
   private session_id = uuidv7(); // 对话重置时换代，前端据此清理草稿文件引用
   private readonly batch_translation: AgentServiceOptions["batchTranslation"];
   private readonly paths: AgentServiceOptions["paths"];
@@ -323,6 +329,7 @@ export class AgentService {
       inputQueue: this.input_queue.read_snapshot(this.can_send_queued_now()),
       todos: [...this.todos],
       context: structuredClone(this.context),
+      tokenSpeed: { ...this.token_speed_snapshot },
     };
   }
 
@@ -653,6 +660,9 @@ export class AgentService {
     this.workspace.invalidate_links();
     this.clear_assistant_stream();
     this.decisions.reset();
+    this.token_speed.reset();
+    this.token_speed_updated_at = null;
+    this.token_speed_snapshot = { tokensPerSecond: null };
     this.todos = [];
     this.input_queue.reset();
     this.runtime_generation += 1;
@@ -976,6 +986,9 @@ export class AgentService {
       createdAt: Date.now(),
       endedAt: null,
     };
+    this.token_speed.reset();
+    this.token_speed_updated_at = null;
+    this.publish_token_speed(null);
     const checkpoint = {
       entry_id: entry.id,
       leaf_id: runtime.session.sessionManager.getLeafId(),
@@ -1008,6 +1021,8 @@ export class AgentService {
       });
     }
     this.pending_assistant_checkpoint = null;
+    // continue 延续原 round 的累计统计与展示值，首个新增量立即更新。
+    this.token_speed_updated_at = null;
     this.upsert_entry({ ...user, status: "running", endedAt: null });
     this.set_state("running");
     return this.run_round(runtime, generation, runtime_lease, { kind: "continue" });
@@ -1325,16 +1340,29 @@ export class AgentService {
       };
       return;
     }
-    if (
-      event.type === "message_update" &&
-      (event.assistantMessageEvent.type === "text_delta" ||
-        event.assistantMessageEvent.type === "thinking_delta")
-    ) {
-      this.append_assistant_stream_delta(event.assistantMessageEvent);
+    if (event.type === "message_update") {
+      const delta = event.assistantMessageEvent;
+      if (
+        delta.type === "text_delta" ||
+        delta.type === "thinking_delta" ||
+        delta.type === "toolcall_delta"
+      ) {
+        const content = delta.partial.content[delta.contentIndex];
+        if (delta.delta !== "" && !(content?.type === "thinking" && content.redacted === true)) {
+          const now = performance.now();
+          this.token_speed.record(delta.delta, delta.contentIndex, now);
+          this.publish_realtime_token_speed(now);
+        }
+      }
+      if (delta.type === "text_delta" || delta.type === "thinking_delta") {
+        this.append_assistant_stream_delta(delta);
+      }
       return;
     }
     if (event.type === "message_end") {
       if (event.message.role === "assistant") {
+        this.token_speed.finish_response(performance.now(), event.message.usage.output);
+        this.token_speed_updated_at = null;
         this.clear_assistant_stream();
         this.upsert_assistant_message(
           event.message,
@@ -1555,6 +1583,8 @@ export class AgentService {
         entry.kind === "user_message" && entry.delivery === "round" && entry.status === "running",
     );
     if (user_index < 0) return;
+    this.token_speed_updated_at = null;
+    this.publish_token_speed(this.token_speed.finish_round(performance.now()));
     for (const entry of this.entries.slice(user_index + 1)) {
       if (entry.status !== "running") continue;
       // 压缩终态只由 SDK compaction_end 确认，轮次收尾不代写结果。
@@ -1595,6 +1625,25 @@ export class AgentService {
     if (session === undefined) return;
     this.context = this.read_context(session, tokens);
     this.publish_event({ type: "context", context: structuredClone(this.context) });
+  }
+
+  /** 分词与实时发布共用更新节奏，即使数值不变也限制分词频率。 */
+  private publish_realtime_token_speed(now: number): void {
+    if (
+      this.token_speed_updated_at !== null &&
+      now - this.token_speed_updated_at < AGENT_TOKEN_SPEED_PUBLISH_INTERVAL_MS
+    )
+      return;
+    this.token_speed_updated_at = now;
+    this.publish_token_speed(this.token_speed.measure(now));
+  }
+
+  /** 公开快照与底栏使用同一精度；生命周期由调用者拥有。 */
+  private publish_token_speed(tokens_per_second: number | null): void {
+    const speed = tokens_per_second === null ? null : Number(tokens_per_second.toFixed(2));
+    if (this.token_speed_snapshot.tokensPerSecond === speed) return;
+    this.token_speed_snapshot = { tokensPerSecond: speed };
+    this.publish_event({ type: "token_speed", tokenSpeed: { ...this.token_speed_snapshot } });
   }
 
   /** 状态未变化时不发布重复 SSE。 */
@@ -1663,6 +1712,9 @@ export class AgentService {
     this.approval_mode_revision += 1;
     this.decisions.reset();
     this.entries = [];
+    this.token_speed.reset();
+    this.token_speed_updated_at = null;
+    this.token_speed_snapshot = { tokensPerSecond: null };
     this.context = { tokens: null, compactable: false, limits: null };
     this.latest_round_checkpoint = null;
     this.translation_paused_result = null;

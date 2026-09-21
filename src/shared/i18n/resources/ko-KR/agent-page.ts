@@ -1,6 +1,7 @@
 import type { zh_cn_agent_page } from "../zh-CN/agent-page";
 import type { LocaleMessageSchema } from "../../types";
 export const ko_kr_agent_page = {
+  token_speed: "실시간 속도",
   batch_translation_model: {
     follow: "같은 모델 사용",
     follow_option: "AGENT와 같은 모델 사용",

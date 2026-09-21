@@ -1,3 +1,4 @@
+import { AgentTokenSpeed } from "./agent-token-speed";
 import { uploaded_file } from "../../test/agent-upload-fixture";
 import { workspace_execution } from "../../test/agent-workspace-fixture";
 import { Model as AppModel } from "../../domain/model";
@@ -1089,6 +1090,43 @@ describe("AgentService", () => {
     expect(idle_index).toBeGreaterThan(round_end_index);
   });
 
+  it("显示精度相同的速度不重复发布，但每个增量仍参与统计", async () => {
+    vi.useFakeTimers();
+    const { service, publish } = await create_service();
+    fake_agent_state.mode = "streaming";
+    fake_agent_state.stream_token_size = 1;
+    fake_agent_state.stream_tokens_per_second = 40;
+    const measure = AgentTokenSpeed.prototype.measure;
+    let measurements = 0;
+    const record_spy = vi.spyOn(AgentTokenSpeed.prototype, "record");
+    const spy = vi.spyOn(AgentTokenSpeed.prototype, "measure").mockImplementation(function (
+      this: AgentTokenSpeed,
+      now,
+    ) {
+      measure.call(this, now);
+      return 99.991 + (++measurements % 2) * 0.001;
+    });
+    try {
+      await service.send_message({ text: "开始", attachments: [] });
+      await vi.runAllTimersAsync();
+      await wait_for_idle(service);
+      const speeds = publish.mock.calls.flatMap(([, payload]) => {
+        const event = payload as AgentSessionEvent;
+        return event.type === "token_speed" ? [event.tokenSpeed.tokensPerSecond] : [];
+      });
+      expect(record_spy.mock.calls.length).toBeGreaterThan(10);
+      expect(measurements).toBeGreaterThan(1);
+      expect(measurements).toBeLessThan(8);
+      expect(speeds[0]).toBe(99.99);
+      expect(speeds).toHaveLength(2);
+      expect(speeds[1]).toBe(service.get_snapshot().tokenSpeed.tokensPerSecond);
+      expect(speeds[1]).toBeGreaterThan(0);
+    } finally {
+      spy.mockRestore();
+      record_spy.mockRestore();
+    }
+  });
+
   it("高频 assistant delta 按固定窗口合并，并立即发布完整终帧", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(1_000);
@@ -1104,6 +1142,21 @@ describe("AgentService", () => {
     await service.send_message({ text: "开始", attachments: [] });
     await vi.runAllTimersAsync();
     await wait_for_idle(service);
+
+    const speed_events = publish.mock.calls.flatMap(([, payload], index) => {
+      const event = payload as AgentSessionEvent;
+      return event.type === "token_speed"
+        ? [{ speed: event.tokenSpeed.tokensPerSecond, at: published_at[index]! }]
+        : [];
+    });
+    const speeds = speed_events.map(({ speed }) => speed);
+    const live = speed_events.slice(0, -1);
+    expect(live.length).toBeGreaterThan(1);
+    expect(live.slice(1).every((event, index) => event.at - live[index]!.at >= 250)).toBe(true);
+    expect(speed_events.at(-1)!.at).toBe(published_at.at(-1));
+    expect(speeds).not.toContain(null);
+    expect(speeds.at(-1)).toBe(service.get_snapshot().tokenSpeed.tokensPerSecond);
+    expect(service.get_snapshot().tokenSpeed.tokensPerSecond).toBeGreaterThan(0);
 
     const assistant_events = publish.mock.calls.flatMap(([, payload], index) => {
       const event = payload as AgentSessionEvent;
@@ -1297,7 +1350,40 @@ describe("AgentService", () => {
     expect(JSON.stringify(publish.mock.calls)).not.toContain("private-redacted");
   });
 
-  it("纯工具调用消息不产生空 assistant 条目", async () => {
+  it("工具等待和失败继续保留速度，新回合与重置清空", async () => {
+    const { service, publish, runtime_gate } = await create_service();
+    fake_agent_state.mode = "tools_error";
+    fake_agent_state.hold_tool_execution = true;
+    await service.send_message({ text: "查询", attachments: [] });
+    await vi.waitFor(() => expect(fake_agent_state.release_tool_execution).not.toBeNull());
+    const waiting_speed = service.get_snapshot().tokenSpeed.tokensPerSecond;
+    expect(waiting_speed).toBeGreaterThan(0);
+    expect(
+      publish.mock.calls.some(([, payload]) => {
+        const event = payload as AgentSessionEvent;
+        return event.type === "token_speed" && event.tokenSpeed.tokensPerSecond === null;
+      }),
+    ).toBe(false);
+    fake_agent_state.release_tool_execution?.();
+    await wait_for_idle(service);
+    const failed_speed = service.get_snapshot().tokenSpeed;
+    expect(failed_speed.tokensPerSecond).toBeGreaterThan(0);
+    fake_agent_state.mode = "pending";
+    fake_agent_state.hold_idle = true;
+    await service.continue_session({});
+    await vi.waitFor(() => expect(fake_agent_state.release_pending).not.toBeNull());
+    expect(service.get_snapshot().tokenSpeed).toEqual(failed_speed);
+    service.stop();
+    fake_agent_state.hold_idle = false;
+    fake_agent_state.release_pending?.();
+    await vi.waitFor(() => expect(runtime_gate.get_snapshot().owner).toBeNull());
+    await service.send_message({ text: "新回合", attachments: [] });
+    expect(service.get_snapshot().tokenSpeed.tokensPerSecond).toBeNull();
+    await service.reset();
+    expect(service.get_snapshot().tokenSpeed.tokensPerSecond).toBeNull();
+  });
+
+  it("纯工具调用消息仍统计生成速度且不产生空 assistant 条目", async () => {
     const { service } = await create_service();
     fake_agent_state.mode = "tool_only";
 
@@ -1308,6 +1394,7 @@ describe("AgentService", () => {
       "user_message",
       "tool_call",
     ]);
+    expect(service.get_snapshot().tokenSpeed.tokensPerSecond).toBeGreaterThan(0);
   });
 
   it("重置期间的工具终帧归入旧会话，新会话使用独立日志身份", async () => {
@@ -1820,6 +1907,7 @@ describe("AgentService", () => {
       skills: skill_test_fixture.snapshots,
       inputQueue: { paused: false, canSendNow: false, items: [] },
       todos: [],
+      tokenSpeed: { tokensPerSecond: null },
       context: { tokens: null, compactable: false, limits: null },
     });
     expect(count_published_events(publish, "snapshot_seed")).toBe(1);
@@ -2014,6 +2102,7 @@ describe("AgentService", () => {
     expect(
       service.get_snapshot().entries.find((entry) => entry.id === stopped_assistant?.id),
     ).toEqual(stopped_assistant);
+    expect(service.get_snapshot().tokenSpeed).toEqual(stopped_snapshot.tokenSpeed);
     expect(log_error).not.toHaveBeenCalled();
   });
 
@@ -2142,6 +2231,7 @@ describe("AgentService", () => {
       skills: skill_test_fixture.snapshots,
       inputQueue: { paused: false, canSendNow: false, items: [] },
       todos: [],
+      tokenSpeed: { tokensPerSecond: null },
       context: { tokens: null, compactable: false, limits: null },
     });
     await Promise.resolve();

@@ -1,3 +1,4 @@
+import type { AgentTokenSpeedSnapshot } from "@shared/agent";
 import { createContext, useContext, useSyncExternalStore } from "react";
 import type { AgentDecisionCountdownSnapshot } from "./agent-decision-countdown";
 import type {
@@ -15,6 +16,16 @@ export type { AgentCommand, AgentTransportState } from "./agent-session-store";
 export type { AgentInputSession } from "./agent-session-store";
 
 export const AgentSessionStoreContext = createContext<AgentSessionStore | null>(null);
+
+/** 高频测速只通知底栏数字。 */
+export function useAgentTokenSpeed(): AgentTokenSpeedSnapshot {
+  const store = use_agent_store();
+  return useSyncExternalStore(
+    store.subscribe_token_speed,
+    store.get_token_speed,
+    store.get_token_speed,
+  );
+}
 
 /** 只订阅时间线，控制与计时更新不触发消息区重绘。 */
 export function useAgentTimeline(): AgentTimelineSlice {
