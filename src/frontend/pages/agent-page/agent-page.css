@@ -1863,3 +1863,23 @@
   color: var(--ui-warning);
   font-size: 12px;
 }
+
+.agent-token-speed {
+  flex: 0 0 auto;
+  padding-inline: 6px;
+  color: var(--muted-foreground);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.agent-token-speed:focus-visible {
+  outline: 1px solid var(--ring);
+  outline-offset: 2px;
+}
+
+/* 为三位整数和两位小数预留空间，更长数值随内容自然扩展。 */
+.agent-token-speed__value {
+  display: inline-block;
+  min-width: 6ch;
+  text-align: right;
+}

@@ -24,6 +24,12 @@
 |工程写入审批模式|`AgentService`|approval mode API 与 `workspace_apply` 成功结果|
 |当前对话工作材料 `work`、数据快照与显式变更清单准备|`AgentWorkspaceService`|`workspace_run`、`workspace_apply`|
 
+### 生成速度
+
+- `AgentService` 拥有当前用户回合的 TPS，通过快照的 `tokenSpeed` 和带 `revision` 的 `token_speed` 事件同步。前端独立订阅底栏速度，断线与恢复期间隐藏旧值，`tokensPerSecond: null` 表示尚无有效数据。
+- 正文、可见思考和工具参数按内容块合并，使用通用分词器分批估算。更新由增量触发，计数与发布共用节奏，工具和用户等待期间保留最近值。响应边界重建采样窗口，首个增量立即更新。
+- 回合平均以各响应真实的 `usage.output` 校准，缺失时使用包含尾部文本的估算量。生成耗时排除工具、首段等待和压缩。失败后的 `continue` 保留原回合的累计统计与展示值，新回合、`reset` 和工程切换清空。
+
 ### 用户决定与会话配置
 
 - 当前回合至多建立一个 `pendingDecision`，由 `AgentDecisionCoordinator` 持有普通问题与写入授权的待回答状态、取消和一次性裁决，各自使用窄 resolve API。后端等待宿主提交答案，公开决定不携带期限；裁决先清除 pending，再在下一事件循环恢复工具。reset、工程切换和 dispose 取消当前等待。

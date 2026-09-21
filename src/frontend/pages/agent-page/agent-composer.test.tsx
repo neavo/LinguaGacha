@@ -1,3 +1,4 @@
+vi.mock("./agent-token-speed", () => ({ AgentTokenSpeed: () => null }));
 import { AgentInputDraft } from "@frontend/app/session/agent/agent-input-draft";
 import { act, type ComponentProps } from "react";
 import { createRoot, type Root } from "react-dom/client";

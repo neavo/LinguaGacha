@@ -1,6 +1,7 @@
 import type { zh_cn_agent_page } from "../zh-CN/agent-page";
 import type { LocaleMessageSchema } from "../../types";
 export const ja_jp_agent_page = {
+  token_speed: "リアルタイム速度",
   batch_translation_model: {
     follow: "同じモデル",
     follow_option: "AGENT と同じモデルを使用",

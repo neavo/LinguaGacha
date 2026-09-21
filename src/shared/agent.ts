@@ -206,6 +206,9 @@ export type AgentEntry = JsonRecord &
     | AgentContextCompactionEntry
   );
 
+/** 当前可展示的 TPS；null 表示当前回合尚无有效速度数据。 */
+export type AgentTokenSpeedSnapshot = JsonRecord & { tokensPerSecond: number | null };
+
 /** GET snapshot 与 snapshot_seed 共用的完整会话形状。 */
 export type AgentSessionSnapshot = JsonRecord & {
   sessionId: string; // 对话重置与工程切换后改变，草稿据此清理旧文件引用。
@@ -218,6 +221,7 @@ export type AgentSessionSnapshot = JsonRecord & {
   inputQueue: AgentInputQueueSnapshot;
   todos: string[]; // 当前对话的有序待办；空数组不占用固定展示位
   context: AgentContextSnapshot;
+  tokenSpeed: AgentTokenSpeedSnapshot;
 };
 
 /** 写命令只确认后端受理到的事件边界，公开事实继续由事件同步。 */
@@ -234,6 +238,7 @@ export type AgentSessionEventPayload = JsonRecord &
     | { type: "pending_decision"; pendingDecision: AgentPendingDecision | null }
     | { type: "input_queue"; inputQueue: AgentInputQueueSnapshot }
     | { type: "todo"; todos: string[] }
+    | { type: "token_speed"; tokenSpeed: AgentTokenSpeedSnapshot }
     | { type: "context"; context: AgentContextSnapshot }
     | { type: "snapshot_seed"; snapshot: AgentSessionSnapshot }
   );

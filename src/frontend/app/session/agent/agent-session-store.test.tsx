@@ -1,3 +1,4 @@
+import { AgentSessionStore } from "./agent-session-store";
 import { uploaded_file } from "../../../../test/agent-upload-fixture";
 const decision_toast = vi.hoisted(() => vi.fn());
 vi.mock("@frontend/app/locale/locale-context", () => ({
@@ -139,6 +140,46 @@ describe("AgentSessionStore", () => {
       .mockReset()
       .mockImplementation(async () => ({ revision: event_source.current_revision }));
     desktop_api_mocks.open_event_stream.mockReset().mockReturnValue(event_source);
+  });
+
+  it("速度独立发布，重复值不通知，并从 revision 缺口快照恢复", async () => {
+    const store = new AgentSessionStore(window.localStorage, vi.fn());
+    const speed_changed = vi.fn();
+    const timeline_changed = vi.fn();
+    store.subscribe_token_speed(speed_changed);
+    store.subscribe_timeline(timeline_changed);
+    store.connect();
+    try {
+      await vi.waitFor(() => expect(store.get_controls().transport).toBe("ready"));
+      timeline_changed.mockClear();
+      event_source.emit(AGENT_SESSION_EVENT_TOPIC, {
+        type: "token_speed",
+        tokenSpeed: { tokensPerSecond: 42.25 },
+      });
+      event_source.emit(AGENT_SESSION_EVENT_TOPIC, {
+        type: "token_speed",
+        tokenSpeed: { tokensPerSecond: 42.25 },
+      });
+      expect(store.get_token_speed().tokensPerSecond).toBe(42.25);
+      expect(speed_changed).toHaveBeenCalledOnce();
+      expect(timeline_changed).not.toHaveBeenCalled();
+      desktop_api_mocks.api_get.mockResolvedValue(
+        agent_snapshot({ revision: 4, tokenSpeed: { tokensPerSecond: 30 } }),
+      );
+      event_source.emit(AGENT_SESSION_EVENT_TOPIC, {
+        type: "token_speed",
+        revision: 4,
+        tokenSpeed: { tokensPerSecond: 99 },
+      });
+      await vi.waitFor(() => expect(store.get_token_speed().tokensPerSecond).toBe(30));
+      event_source.emit(AGENT_SESSION_EVENT_TOPIC, {
+        type: "token_speed",
+        tokenSpeed: { tokensPerSecond: null },
+      });
+      expect(store.get_token_speed().tokensPerSecond).toBeNull();
+    } finally {
+      store.disconnect();
+    }
   });
 
   it("StrictMode effect 重放后仍能完成会话恢复", async () => {
@@ -860,6 +901,7 @@ describe("AgentSessionStore", () => {
       inputQueue: { paused: false, canSendNow: true, items: [] },
       todos: [],
       context: { tokens: null, compactable: false, limits: null },
+      tokenSpeed: { tokensPerSecond: null },
       skills: [
         TEST_SKILLS[0],
         { name: "legacy", description: "旧描述" },
@@ -1091,6 +1133,7 @@ describe("AgentSessionStore", () => {
       inputQueue: { paused: false, canSendNow: true, items: [] },
       todos: [],
       context: { tokens: null, compactable: false, limits: null },
+      tokenSpeed: { tokensPerSecond: null },
     });
     let latest!: ReturnType<typeof useAgentSession>;
     await render_probe(() => {
@@ -1775,6 +1818,7 @@ function agent_snapshot(overrides: Partial<AgentSessionSnapshot> = {}): AgentSes
     inputQueue: { paused: false, canSendNow: false, items: [] },
     todos: [],
     context: { tokens: null, compactable: false, limits: null },
+    tokenSpeed: { tokensPerSecond: null },
     ...overrides,
   };
 }
