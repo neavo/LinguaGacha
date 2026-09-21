@@ -39,7 +39,7 @@ export const en_us_agent_page = {
   },
   mention: {
     files: {
-      project: "Project",
+      workspace: "Workspace file",
       upload: "Upload",
       items: "{COUNT} entries",
       pages: "{COUNT} pages",
@@ -60,7 +60,6 @@ export const en_us_agent_page = {
     title: "Annotation",
     add: "Add annotation",
     edit: "Edit annotation",
-    remove: "Delete",
     selected_text: "Text",
     user_comment: "Annotation",
     comment_placeholder: "Comment on the selected text …",

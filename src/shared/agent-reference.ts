@@ -1,6 +1,6 @@
 /** 引用只存在于消息正文；路径按工作区规则解析，技能按目录名称读取。 */
 export type AgentReference =
-  | { kind: "project" | "upload"; path: string }
+  | { kind: "workspace" | "upload"; path: string }
   | { kind: "skill"; name: string };
 
 export type AgentReferenceRange = Readonly<{
@@ -20,7 +20,7 @@ export function format_agent_reference(reference: AgentReference): string {
 /** JSON 字符串承担路径转义；未完成或非法引用仍是普通文本。 */
 export function find_agent_reference_ranges(text: string): AgentReferenceRange[] {
   const ranges: AgentReferenceRange[] = [];
-  const pattern = /@(project_file|upload_file|skill)\(("(?:[^"\\\r\n]|\\[^\r\n])*")\)/gu;
+  const pattern = /@(workspace_file|upload_file|skill)\(("(?:[^"\\\r\n]|\\[^\r\n])*")\)/gu;
   for (const match of text.matchAll(pattern)) {
     const from = match.index;
     let slashes = 0;
@@ -36,7 +36,7 @@ export function find_agent_reference_ranges(text: string): AgentReferenceRange[]
     const reference: AgentReference =
       match[1] === "skill"
         ? { kind: "skill", name: value }
-        : { kind: match[1] === "project_file" ? "project" : "upload", path: value };
+        : { kind: match[1] === "workspace_file" ? "workspace" : "upload", path: value };
     ranges.push({ from, to: from + match[0].length, marker: match[0], reference });
   }
   return ranges;
@@ -44,7 +44,7 @@ export function find_agent_reference_ranges(text: string): AgentReferenceRange[]
 
 /** 文件规模只属于候选展示，不进入正文引用。 */
 export type AgentFileCandidate =
-  | { kind: "project"; path: string; count: number; unit: "items" | "pages" }
+  | { kind: "workspace"; path: string; count: number; unit: "items" | "pages" }
   | { kind: "upload"; path: string; size: number };
 
 export type AgentFilesResponse = { sessionId: string; files: AgentFileCandidate[] };

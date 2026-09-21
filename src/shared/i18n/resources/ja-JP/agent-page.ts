@@ -41,7 +41,7 @@ export const ja_jp_agent_page = {
   },
   mention: {
     files: {
-      project: "プロジェクト",
+      workspace: "ワークスペースファイル",
       upload: "アップロード",
       items: "{COUNT} 件",
       pages: "{COUNT} ページ",
@@ -62,7 +62,6 @@ export const ja_jp_agent_page = {
     title: "コメント",
     add: "コメントを追加",
     edit: "コメントを編集",
-    remove: "削除",
     selected_text: "テキスト",
     user_comment: "コメント",
     comment_placeholder: "選択したテキストへのコメントを入力 …",

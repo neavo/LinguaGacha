@@ -200,6 +200,9 @@ export function AgentMessageEditor(props: AgentMessageEditorProps): JSX.Element 
     snapshot.text !== "" || (!assistant_editing && draft_attachments.length > 0);
   const actions = props.render_actions({ has_content: has_sendable_content, uploads_pending });
   const can_append_files = !editor_read_only && !assistant_editing;
+  // CodeMirror 扩展只创建一次，文件拖放读取当前上传权限。
+  const can_append_files_ref = useRef(can_append_files);
+  can_append_files_ref.current = can_append_files;
   // 编辑器只创建一次，首次锁定态必须在首帧扩展中生效，不能等待后续 effect。
   const initial_editor_read_only_ref = useRef(editor_read_only);
   const input_revision = props.input_session.revision;
@@ -243,6 +246,16 @@ export function AgentMessageEditor(props: AgentMessageEditorProps): JSX.Element 
           EditorView.domEventHandlers({
             blur: () => set_menu_suppressed(true),
             keydown: (event) => event.key === "Enter" && event.isComposing,
+            drop: (event) => {
+              const transfer = event.dataTransfer;
+              if (transfer === null || !Array.from(transfer.types).includes("Files")) return false;
+              // 在 CodeMirror 读取文本文件前消费事件，上传只进入当前编辑器的草稿。
+              event.preventDefault();
+              event.stopPropagation();
+              if (can_append_files_ref.current)
+                input_session_ref.current.draft.append(transfer.files);
+              return true;
+            },
           }),
           keymap.of([
             {

@@ -33,7 +33,6 @@ type AgentResponseAnnotationEditorProps = Omit<ComponentProps<"div">, "aria-labe
   on_comment_change: (comment: string) => void;
   on_submit: () => void;
   on_cancel: () => void;
-  on_remove?: () => void;
 };
 
 type AgentResponseAnnotationPanelProps = Omit<ComponentProps<"div">, "aria-label"> & {
@@ -80,7 +79,6 @@ export function AgentResponseAnnotationEditor({
   on_comment_change,
   on_submit,
   on_cancel,
-  on_remove,
   ...panel_props
 }: AgentResponseAnnotationEditorProps): JSX.Element {
   const { t } = useI18n();
@@ -109,46 +107,36 @@ export function AgentResponseAnnotationEditor({
         />
       </label>
       <div className="agent-annotation-editor__actions">
-        {on_remove === undefined ? null : (
-          <AppButton type="button" size="sm" variant="destructive" onClick={on_remove}>
-            {t("agent_page.annotation.remove")}
-          </AppButton>
-        )}
-        <div className="agent-annotation-editor__commit-actions">
-          <AppButton
-            type="button"
-            size="sm"
-            variant="outline"
-            aria-label={t("app.action.cancel")}
-            aria-keyshortcuts="Escape"
-            onClick={on_cancel}
-          >
-            {t("app.action.cancel")}
-            <ShortcutKbd action="cancel" />
-          </AppButton>
-          <Tooltip>
-            <TooltipTrigger
-              render={
-                <AppButton
-                  type="button"
-                  size="sm"
-                  aria-label={t("app.action.save")}
-                  aria-keyshortcuts="Enter"
-                  onClick={on_submit}
-                >
-                  {t("app.action.save")}
-                  <ShortcutKbd
-                    action="submit"
-                    className="bg-background/18 text-primary-foreground"
-                  />
-                </AppButton>
-              }
-            />
-            <TooltipContent>
-              <ShortcutTooltipRow label={t("agent_page.input.newline")} shortcut="newline" />
-            </TooltipContent>
-          </Tooltip>
-        </div>
+        <AppButton
+          type="button"
+          size="sm"
+          variant="outline"
+          aria-label={t("app.action.cancel")}
+          aria-keyshortcuts="Escape"
+          onClick={on_cancel}
+        >
+          {t("app.action.cancel")}
+          <ShortcutKbd action="cancel" />
+        </AppButton>
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <AppButton
+                type="button"
+                size="sm"
+                aria-label={t("app.action.save")}
+                aria-keyshortcuts="Enter"
+                onClick={on_submit}
+              >
+                {t("app.action.save")}
+                <ShortcutKbd action="submit" className="bg-background/18 text-primary-foreground" />
+              </AppButton>
+            }
+          />
+          <TooltipContent>
+            <ShortcutTooltipRow label={t("agent_page.input.newline")} shortcut="newline" />
+          </TooltipContent>
+        </Tooltip>
       </div>
     </AgentResponseAnnotationPanel>
   );

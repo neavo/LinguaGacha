@@ -2,7 +2,7 @@ import path from "node:path";
 
 import type { NativeFs } from "../../../native/native-fs";
 
-/** project_meta 中单个工程文件与 sources 投影的对应关系。 */
+/** `project_meta` 中单个工作区文件与 `sources` 投影的对应关系。 */
 export type AgentWorkspaceSourceFile = {
   file_path: string; // 工程内原始文件身份
   file_type: string; // items 使用的既有格式类型

@@ -41,7 +41,7 @@ export const ko_kr_agent_page = {
   },
   mention: {
     files: {
-      project: "프로젝트",
+      workspace: "작업 공간 파일",
       upload: "업로드",
       items: "{COUNT}개 항목",
       pages: "{COUNT}페이지",
@@ -62,7 +62,6 @@ export const ko_kr_agent_page = {
     title: "주석",
     add: "주석 추가",
     edit: "주석 수정",
-    remove: "삭제",
     selected_text: "텍스트",
     user_comment: "주석",
     comment_placeholder: "선택한 텍스트에 대한 의견을 입력하세요 …",
