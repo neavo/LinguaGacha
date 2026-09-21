@@ -7,7 +7,7 @@ import {
 
 it("三类引用通过 JSON 字符串保留路径中的空格、引号和括号", () => {
   const references: AgentReference[] = [
-    { kind: "project", path: '资料/角色 (一) "新版".xlsx' },
+    { kind: "workspace", path: '资料/角色 (一) "新版".xlsx' },
     { kind: "upload", path: "uploads/原稿.epub" },
     { kind: "skill", name: "review" },
   ];

@@ -80,7 +80,7 @@ it("PDF 零条目工程按页保存、隔离旧指纹，语言变化后重建工
       pickSavePath: async () => null,
     });
     expect(workspace.list_files()).toEqual([
-      { kind: "project", path: "book.pdf", count: 3, unit: "pages" },
+      { kind: "workspace", path: "book.pdf", count: 3, unit: "pages" },
     ]);
     const upload = await workspace.uploads.upload(
       "参考.txt",

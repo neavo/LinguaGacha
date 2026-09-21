@@ -39,7 +39,7 @@ export const de_de_agent_page = {
   },
   mention: {
     files: {
-      project: "Projekt",
+      workspace: "Arbeitsbereichsdatei",
       upload: "Upload",
       items: "{COUNT} Einträge",
       pages: "{COUNT} Seiten",
@@ -60,7 +60,6 @@ export const de_de_agent_page = {
     title: "Anmerkung",
     add: "Anmerkung hinzufügen",
     edit: "Anmerkung bearbeiten",
-    remove: "Löschen",
     selected_text: "Text",
     user_comment: "Anmerkung",
     comment_placeholder: "Ausgewählten Text kommentieren …",

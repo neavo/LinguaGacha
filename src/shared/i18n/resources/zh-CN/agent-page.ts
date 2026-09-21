@@ -39,7 +39,7 @@ export const zh_cn_agent_page = {
   },
   mention: {
     files: {
-      project: "项目",
+      workspace: "工作区文件",
       upload: "上传",
       items: "{COUNT} 条",
       pages: "{COUNT} 页",
@@ -60,7 +60,6 @@ export const zh_cn_agent_page = {
     title: "批注",
     add: "添加批注",
     edit: "修改批注",
-    remove: "删除",
     selected_text: "文本",
     user_comment: "批注",
     comment_placeholder: "写下针对所选文本的评论 …",

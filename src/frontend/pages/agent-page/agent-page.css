@@ -339,127 +339,89 @@
 }
 
 .agent-attachment-strip {
-  /* 一个紧凑行是附件拼图的最小单元，其余尺寸只从这一关系派生。 */
-  --agent-attachment-row-height: 33px;
-  --agent-attachment-gap: 6px;
-  --agent-attachment-square-size: calc(
-    var(--agent-attachment-row-height) + var(--agent-attachment-gap) +
-      var(--agent-attachment-row-height)
-  );
-  --agent-attachment-wide-width: calc(
-    var(--agent-attachment-square-size) + var(--agent-attachment-gap) +
-      var(--agent-attachment-square-size)
-  );
-
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: var(--agent-attachment-gap);
+  gap: 6px;
   max-width: 100%;
-  overflow-x: auto;
   padding: 4px 2px 2px;
-}
-
-.agent-attachment-strip > * {
-  flex-shrink: 0;
 }
 
 .agent-attachment {
   position: relative;
-  overflow: hidden;
+  flex: 0 1 auto;
+  width: 192px;
+  min-width: 0;
+  height: 36px;
   border: 1px solid var(--border);
   border-radius: var(--ui-radius-button);
   background: var(--muted);
-  padding: 0;
   color: var(--foreground);
-  font: inherit;
-  text-align: left;
-  cursor: pointer;
-  transition:
-    border-color 120ms ease,
-    background-color 120ms ease;
 }
 
-.agent-attachment--file {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  width: 280px;
-  max-width: 100%;
-  min-height: var(--agent-attachment-square-size);
-  padding: 8px;
-  cursor: default;
-}
-
-.agent-attachment__file-info {
-  display: grid;
-  min-width: 0;
-  flex: 1;
-  gap: 4px;
-}
-.agent-attachment__file-info > * {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: 12px;
-}
-.agent-attachment__file-info > span:last-child {
-  color: var(--muted-foreground);
-}
-.agent-attachment__file-info > a {
-  text-decoration: underline;
-  text-underline-offset: 2px;
-}
-.agent-attachment__file-actions {
-  display: flex;
-  flex-direction: column;
-}
-
-/* 类型变体只改变几何与内容排版，共享边界和交互状态由附件外壳承接。 */
-.agent-attachment--image {
-  width: var(--agent-attachment-square-size);
-  height: var(--agent-attachment-square-size);
-  margin: 0;
-}
-
-.agent-attachment--image > img {
-  display: block;
-  width: 100%;
-  height: 100%;
-  object-fit: contain;
-}
-
-.agent-attachment--annotation {
-  width: var(--agent-attachment-wide-width);
-  height: var(--agent-attachment-row-height);
-  display: grid;
-  grid-template-columns: 14px minmax(0, 1fr);
-  align-items: center;
-  gap: 6px;
-  padding: 0 8px;
-}
-
-.agent-attachment:hover:not(:disabled) {
+.agent-attachment:hover,
+.agent-attachment:focus-within {
   border-color: color-mix(in srgb, var(--primary) 28%, var(--border));
   background: var(--accent);
 }
 
-.agent-attachment:focus-visible {
+.agent-attachment__body {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  height: 100%;
+  padding: 0 8px;
+  border-radius: inherit;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.agent-attachment__body:disabled,
+.agent-attachment__body[aria-disabled="true"] {
+  cursor: default;
+}
+
+.agent-attachment__body:disabled {
+  opacity: 0.58;
+}
+
+.agent-attachment__body:focus-visible,
+.agent-attachment__remove:focus-visible {
   outline: 1px solid var(--ring);
   outline-offset: -1px;
 }
 
-.agent-attachment:disabled {
-  cursor: default;
-  opacity: 0.58;
-}
-
-.agent-attachment > svg {
-  width: 14px;
-  height: 14px;
+.agent-attachment__preview {
+  display: grid;
+  place-items: center;
+  flex: 0 0 24px;
+  width: 24px;
+  height: 24px;
   color: var(--primary);
 }
 
-.agent-attachment > span {
+.agent-attachment__preview svg {
+  width: 16px;
+  height: 16px;
+}
+
+.agent-attachment__preview[data-failed] {
+  color: var(--destructive);
+}
+
+.agent-attachment__preview img {
+  width: 100%;
+  height: 100%;
+  border-radius: var(--ui-radius-button);
+  object-fit: cover;
+  outline: 0.5px solid var(--border);
+  outline-offset: -0.5px;
+}
+
+.agent-attachment__name {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -468,6 +430,58 @@
   line-height: 1.4;
 }
 
+/* 与外壳同色的不透明背景遮住末尾文字，按钮出现时不挤动文件名。 */
+.agent-attachment__remove {
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border: 0.5px solid var(--border);
+  border-radius: var(--ui-radius-button);
+  background: inherit;
+  box-shadow: -4px 0 0 var(--accent);
+  opacity: 0;
+  pointer-events: none;
+  cursor: pointer;
+}
+
+.agent-attachment:hover .agent-attachment__remove,
+.agent-attachment:focus-within .agent-attachment__remove {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.agent-attachment__remove:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--foreground) 20%, var(--border));
+  background: var(--muted);
+}
+
+.agent-attachment__remove:disabled {
+  color: var(--muted-foreground);
+  cursor: default;
+}
+
+.agent-attachment__remove svg {
+  width: 14px;
+  height: 14px;
+}
+
+.agent-attachment__tooltip-text {
+  max-height: min(320px, 50vh);
+  overflow: auto;
+  white-space: pre-wrap;
+}
+
+@media (hover: none) {
+  .agent-attachment__remove {
+    opacity: 1;
+    pointer-events: auto;
+    box-shadow: -4px 0 0 var(--muted);
+  }
+}
 .agent-thinking-entry {
   overflow: hidden;
   width: 100%;
@@ -1202,15 +1216,9 @@
 .agent-annotation-editor__actions {
   display: flex;
   align-items: center;
+  justify-content: flex-end;
   gap: 8px;
   margin-top: 4px;
-}
-
-.agent-annotation-editor__commit-actions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-left: auto;
 }
 
 .agent-response-annotation-popover[role="toolbar"] {

@@ -64,8 +64,11 @@ export function AgentFileDropTarget({
     // 绑定真实区域的冒泡阶段：局部编辑器先消费文件，页面不会重复添加或覆盖 dropEffect。
     const events = ["dragenter", "dragover", "dragleave", "drop"] as const;
     for (const type of events) element.addEventListener(type, handle_drag);
+    // 内层编辑器可能消费 drop，捕获阶段仅清除反馈，不接管文件归属。
+    element.addEventListener("drop", reset, true);
     return () => {
       for (const type of events) element.removeEventListener(type, handle_drag);
+      element.removeEventListener("drop", reset, true);
     };
   }, [target_ref]);
 

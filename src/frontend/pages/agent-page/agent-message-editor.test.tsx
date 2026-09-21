@@ -318,13 +318,8 @@ describe("AgentMessageEditor", () => {
       attachments: image_attachments("webp-a.png"),
     });
 
-    await act(async () =>
-      view
-        .querySelector<HTMLButtonElement>('button[aria-label="agent_page.image.title 1"]')
-        ?.click(),
-    );
     const remove = [...document.body.querySelectorAll<HTMLButtonElement>("button")].find(
-      (button) => button.textContent === "app.action.delete",
+      (button) => button.getAttribute("aria-label") === "app.action.delete",
     );
     await act(async () => remove?.click());
     expect(view.querySelectorAll(".agent-attachment")).toHaveLength(0);
@@ -358,6 +353,66 @@ describe("AgentMessageEditor", () => {
       attachments: image_attachments("webp-drop.webp", "webp-paste.png"),
     });
     expect(view.querySelectorAll(".agent-attachment")).toHaveLength(2);
+  });
+
+  it.each([undefined, "inline"] as const)(
+    "正文拖入文本文件只上传到所属草稿，展示模式 %s",
+    async (presentation) => {
+      const input_session = create_input_session();
+      const view = await render_editor({ input_session, presentation });
+      const editor = get_editor(view);
+      await set_document(editor, "原有正文", 2);
+      const selection = editor.state.selection.toJSON();
+      const read_text = vi
+        .spyOn(FileReader.prototype, "readAsText")
+        .mockImplementation(() => undefined);
+      const outer_drop = vi.fn();
+      view.addEventListener("drop", outer_drop);
+      try {
+        const file = new File(["不能插入的文件内容"], "notes.txt", { type: "text/plain" });
+        const enter = new DragEvent("dragenter", { bubbles: true, cancelable: true });
+        Object.defineProperty(enter, "dataTransfer", { value: { types: ["Files"] } });
+        await act(async () => editor.contentDOM.dispatchEvent(enter));
+        expect(view.querySelector('[data-active="true"]')).not.toBeNull();
+        const drop = new DragEvent("drop", { bubbles: true, cancelable: true });
+        Object.defineProperty(drop, "dataTransfer", { value: { types: ["Files"], files: [file] } });
+        await act(async () => editor.contentDOM.dispatchEvent(drop));
+        expect(read_text).not.toHaveBeenCalled();
+        expect(editor.state.doc.toString()).toBe("原有正文");
+        expect(editor.state.selection.toJSON()).toEqual(selection);
+        expect(input_session.draft.read().attachments).toEqual([uploaded_file("webp-notes.txt")]);
+        expect(image_mocks.upload).toHaveBeenCalledOnce();
+        expect(outer_drop).not.toHaveBeenCalled();
+        expect(view.querySelector('[data-active="true"]')).toBeNull();
+      } finally {
+        read_text.mockRestore();
+        view.removeEventListener("drop", outer_drop);
+      }
+    },
+  );
+
+  it("正文文件拖放读取最新权限，助手编辑也不读取文件文本", async () => {
+    const input_session = create_input_session();
+    const view = await render_editor({ input_session });
+    const read_text = vi
+      .spyOn(FileReader.prototype, "readAsText")
+      .mockImplementation(() => undefined);
+    try {
+      for (const options of [{ read_only: true }, { role: "assistant" as const }]) {
+        await render_editor({ input_session, ...options });
+        const drop = new DragEvent("drop", { bubbles: true, cancelable: true });
+        Object.defineProperty(drop, "dataTransfer", {
+          value: { types: ["Files"], files: [new File(["text"], "notes.txt")] },
+        });
+        await act(async () => get_editor(view).contentDOM.dispatchEvent(drop));
+        expect(drop.defaultPrevented).toBe(true);
+      }
+      expect(read_text).not.toHaveBeenCalled();
+      expect(image_mocks.upload).not.toHaveBeenCalled();
+      expect(input_session.draft.read().attachments).toEqual([]);
+    } finally {
+      read_text.mockRestore();
+    }
   });
 
   it("新增批注在修改后随完整消息提交", async () => {
@@ -423,10 +478,8 @@ describe("AgentMessageEditor", () => {
     );
     await act(async () => annotation?.click());
     const remove = [
-      ...document.body.querySelectorAll<HTMLButtonElement>(
-        ".agent-composer__annotation-editor button",
-      ),
-    ].find((button) => button.textContent?.includes("agent_page.annotation.remove"));
+      ...document.body.querySelectorAll<HTMLButtonElement>(".agent-attachment button"),
+    ].find((button) => button.getAttribute("aria-label") === "app.action.delete");
     if (remove === undefined) throw new Error("缺少批注删除动作");
     await act(async () => remove.click());
     expect(input_session.draft.read().attachments.map((attachment) => attachment.kind)).toEqual([
@@ -453,11 +506,13 @@ describe("AgentMessageEditor", () => {
     const on_submit = vi.fn();
     const view = await render_editor({ input_session, on_submit });
     await act(async () => input_session.draft.append([new File(["text"], "notes.txt")]));
-    expect(view.textContent).toContain("agent_page.upload.failed");
+    expect(view.querySelector(".agent-attachment__body")?.getAttribute("aria-label")).toContain(
+      "agent_page.upload.failed",
+    );
     await click_send(view);
     expect(on_submit).not.toHaveBeenCalled();
-    const retry = [...view.querySelectorAll("button")].find(
-      (button) => button.textContent === "agent_page.upload.retry",
+    const retry = [...view.querySelectorAll("button")].find((button) =>
+      button.getAttribute("aria-label")?.includes("agent_page.upload.retry"),
     );
     await act(async () => retry?.click());
     await click_send(view);
@@ -510,7 +565,7 @@ describe("AgentMessageEditor", () => {
 
   it("文件候选展示完整路径，并只把引用写入正文", async () => {
     mention_files.files = [
-      { kind: "project", path: "资料/角色设定.xlsx", count: 320, unit: "items" },
+      { kind: "workspace", path: "资料/角色设定.xlsx", count: 320, unit: "items" },
       { kind: "upload", path: "uploads/角色设定.xlsx", size: 128 },
     ];
     const input = create_input_session();
@@ -524,13 +579,13 @@ describe("AgentMessageEditor", () => {
       "uploads/角色设定.xlsx",
     ]);
     await act(async () => options[0]!.click());
-    expect(editor.state.doc.toString()).toBe('@project_file("资料/角色设定.xlsx") ');
+    expect(editor.state.doc.toString()).toBe('@workspace_file("资料/角色设定.xlsx") ');
     expect(input.draft.read().attachments).toEqual([]);
   });
 
   it.each(["strong", "small"])("候选 %s 列使用应用提示显示自身全文", async (column) => {
     mention_files.files = [
-      { kind: "project", path: "资料/很长的目录/角色设定.xlsx", count: 320, unit: "items" },
+      { kind: "workspace", path: "资料/很长的目录/角色设定.xlsx", count: 320, unit: "items" },
     ];
     const view = await render_editor();
     const editor = get_editor(view);

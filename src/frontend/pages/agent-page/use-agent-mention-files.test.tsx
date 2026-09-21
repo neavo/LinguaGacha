@@ -46,7 +46,7 @@ it("菜单查询按上传完成刷新，跨会话迟到结果不会覆盖新文�
     await act(async () =>
       pending.shift()!({
         sessionId: "one",
-        files: [{ kind: "project", path: "书.epub", count: 12, unit: "items" }],
+        files: [{ kind: "workspace", path: "书.epub", count: 12, unit: "items" }],
       }),
     );
     expect(value!.files[0]?.path).toBe("书.epub");

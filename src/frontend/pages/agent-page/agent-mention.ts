@@ -84,8 +84,8 @@ export function create_agent_mention_candidates(
       key: `${file.kind}:${file.path}`,
       title: file.path,
       description:
-        file.kind === "project"
-          ? `${t("agent_page.mention.files.project")} · ${t(file.unit === "pages" ? "agent_page.mention.files.pages" : "agent_page.mention.files.items", { COUNT: file.count.toLocaleString(args.locale) })}`
+        file.kind === "workspace"
+          ? `${t("agent_page.mention.files.workspace")} · ${t(file.unit === "pages" ? "agent_page.mention.files.pages" : "agent_page.mention.files.items", { COUNT: file.count.toLocaleString(args.locale) })}`
           : `${t("agent_page.mention.files.upload")} · ${format_file_size(file.size)}`,
       insertText: format_agent_reference(file),
     }));

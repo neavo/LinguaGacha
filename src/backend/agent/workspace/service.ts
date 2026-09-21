@@ -104,7 +104,7 @@ type ActiveAgentWorkspace = {
   languageKey: string; // 只包含解释工作区数据所需的语言
 };
 
-/** 当前工程文件世代共享的 sources 身份与 project_meta 映射。 */
+/** 当前工作区文件世代共享的 `sources` 身份与 `project_meta` 映射。 */
 type AgentWorkspaceSourceSession = {
   projectPath: string; // 关联的当前工程身份
   projectEpoch: number; // 隔离同路径重新加载后的旧投影
@@ -138,7 +138,7 @@ export class AgentWorkspaceService {
         : this.options.database.read_file_counts(snapshot.projectPath);
     return [
       ...this.options.cache.files.readFileEntries().map((file): AgentFileCandidate => ({
-        kind: "project",
+        kind: "workspace",
         path: file.rel_path,
         count: counts.get(file.rel_path) ?? 0,
         unit: file.file_type === "PDF" ? "pages" : "items",
@@ -775,7 +775,7 @@ export class AgentWorkspaceService {
     return this.active;
   }
 
-  /** 每个工程文件快照只展开一次；连续 workspace_run 复用同一个 sources 目录。 */
+  /** 每个工作区文件快照展开一次，连续 `workspace_run` 复用同一个 `sources` 目录。 */
   private async ensure_sources(args: {
     projectPath: string;
     projectEpoch: number;

@@ -85,7 +85,7 @@ describe("AgentMessageAttachments", () => {
     });
     const buttons = view.querySelectorAll<HTMLButtonElement>("button[aria-label]");
 
-    expect(buttons[1]?.querySelector("img")?.alt).toBe("");
+    expect(buttons[1]?.querySelector("img")).not.toBeNull();
     expect(buttons[0]?.textContent).toBe("旧回复片段");
     await act(async () => buttons[0]?.click());
 
@@ -99,41 +99,15 @@ describe("AgentMessageAttachments", () => {
 
     await act(async () => buttons[1]?.click());
     const dialog = document.body.querySelector('[data-slot="dialog-content"]');
-    expect(dialog?.querySelector("img")?.alt).toBe("");
+    expect(dialog?.querySelector("img")).not.toBeNull();
     expect(
       [...document.body.querySelectorAll("button")].some(
-        (button) => button.textContent === "app.action.delete",
+        (button) => button.getAttribute("aria-label") === "app.action.delete",
       ),
     ).toBe(false);
   });
 
-  it("草稿图片在统一预览弹窗中删除", async () => {
-    const on_remove = vi.fn();
-    const view = await render_attachments({
-      mode: "draft",
-      on_retry: vi.fn(),
-      attachments: [uploaded_file("webp-a")],
-      disabled: false,
-      on_remove,
-      on_update_annotation: vi.fn(),
-    });
-
-    await act(async () =>
-      view
-        .querySelector<HTMLButtonElement>('button[aria-label="agent_page.image.title 1"]')
-        ?.click(),
-    );
-    const dialog = document.body.querySelector('[data-slot="dialog-content"]');
-    const remove = [...(dialog?.querySelectorAll<HTMLButtonElement>("button") ?? [])].find(
-      (button) => button.textContent === "app.action.delete",
-    );
-    await act(async () => remove?.click());
-
-    expect(on_remove).toHaveBeenCalledWith(0);
-    expect(document.body.querySelector('[data-slot="dialog-content"]')).toBeNull();
-  });
-
-  it("草稿批注在统一面板中保存和删除", async () => {
+  it("草稿批注在面板保存，在附件块删除", async () => {
     const on_remove = vi.fn();
     const on_update_annotation = vi.fn();
     const view = await render_attachments({
@@ -149,8 +123,6 @@ describe("AgentMessageAttachments", () => {
       'button[aria-label="agent_page.annotation.title 1"]',
     );
     await act(async () => open?.click());
-    const positioner = document.body.querySelector<HTMLElement>('[role="presentation"]');
-    expect(positioner?.className).toContain("z-(--ui-layer-popover)");
     const textarea = document.body.querySelector<HTMLTextAreaElement>(
       '[role="dialog"][aria-label="agent_page.annotation.edit"] textarea',
     );
@@ -164,10 +136,85 @@ describe("AgentMessageAttachments", () => {
 
     await act(async () => open?.click());
     const remove = [...document.body.querySelectorAll<HTMLButtonElement>("button")].find(
-      (button) => button.textContent === "agent_page.annotation.remove",
+      (button) => button.getAttribute("aria-label") === "app.action.delete",
     );
     await act(async () => remove?.click());
     expect(on_remove).toHaveBeenCalledWith(0);
+  });
+
+  it("删除前面的附件后，已展开批注仍保存到当前位置", async () => {
+    const file = uploaded_file("first");
+    const annotation = {
+      kind: "response_annotation" as const,
+      selectedText: "引用原文",
+      comment: "评论",
+    };
+    const on_update_annotation = vi.fn();
+    const props: AgentMessageAttachmentsProps = {
+      mode: "draft",
+      attachments: [file, annotation],
+      disabled: false,
+      on_remove: vi.fn(),
+      on_retry: vi.fn(),
+      on_update_annotation,
+    };
+    const view = await render_attachments(props);
+    await act(async () =>
+      view
+        .querySelector<HTMLButtonElement>('button[aria-label="agent_page.annotation.title 2"]')
+        ?.click(),
+    );
+    await act(async () =>
+      root?.render(
+        <TooltipProvider>
+          <AgentMessageAttachments {...props} attachments={[annotation]} />
+        </TooltipProvider>,
+      ),
+    );
+    expect(document.body.querySelector("blockquote")?.textContent).toBe("引用原文");
+    await act(async () =>
+      document.body
+        .querySelector<HTMLButtonElement>('button[aria-label="app.action.save"]')
+        ?.click(),
+    );
+    expect(on_update_annotation).toHaveBeenCalledWith(0, "评论");
+  });
+
+  it("附件块删除不打开图片预览，锁定草稿仍可预览但无法移除", async () => {
+    const on_remove = vi.fn();
+    const props: AgentMessageAttachmentsProps = {
+      mode: "draft",
+      attachments: [uploaded_file("preview")],
+      disabled: false,
+      on_remove,
+      on_retry: vi.fn(),
+      on_update_annotation: vi.fn(),
+    };
+    const view = await render_attachments(props);
+    await act(async () =>
+      view.querySelector<HTMLButtonElement>('button[aria-label="app.action.delete"]')?.click(),
+    );
+    expect(on_remove).toHaveBeenCalledExactlyOnceWith(0);
+    expect(document.body.querySelector('[data-slot="dialog-content"]')).toBeNull();
+    await act(async () =>
+      root?.render(
+        <TooltipProvider>
+          <AgentMessageAttachments {...props} disabled />
+        </TooltipProvider>,
+      ),
+    );
+    const remove = view.querySelector<HTMLButtonElement>('button[aria-label="app.action.delete"]');
+    expect(remove?.disabled).toBe(true);
+    await act(async () => remove?.click());
+    expect(on_remove).toHaveBeenCalledOnce();
+    await act(async () =>
+      view
+        .querySelector<HTMLButtonElement>('button[aria-label="agent_page.image.title 1"]')
+        ?.click(),
+    );
+    const dialog = document.body.querySelector('[data-slot="dialog-content"]');
+    expect(dialog?.querySelector("img")).not.toBeNull();
+    expect(dialog?.querySelector('button[aria-label="app.action.delete"]')).toBeNull();
   });
 });
 

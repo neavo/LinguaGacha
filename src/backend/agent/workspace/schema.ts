@@ -213,7 +213,7 @@ export const AGENT_WORKSPACE_PROJECT_META_SCHEMA = Type.Object(
         },
         { additionalProperties: false },
       ),
-      { description: "按工程文件顺序排列" },
+      { description: "按工作区文件顺序排列" },
     ),
   },
   { additionalProperties: false },

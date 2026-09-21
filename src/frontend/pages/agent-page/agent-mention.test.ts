@@ -57,19 +57,19 @@ describe("Agent mention 菜单候选", () => {
   });
 });
 
-it("项目和上传文件按路径检索，并生成不同来源的引用", () => {
+it("工作区和上传文件按路径检索，并生成不同来源的引用", () => {
   const result = create_agent_mention_candidates({
     locale: "zh-CN",
     query: "资料 设定",
     skills: [],
     instructions: [],
     files: [
-      { kind: "project", path: "资料/设定.xlsx", count: 3, unit: "items" },
+      { kind: "workspace", path: "资料/设定.xlsx", count: 3, unit: "items" },
       { kind: "upload", path: "uploads/资料_设定.xlsx", size: 128 },
     ],
   });
   expect(result.files.map((file) => (file.kind === "instruction" ? "" : file.insertText))).toEqual([
-    '@project_file("资料/设定.xlsx")',
+    '@workspace_file("资料/设定.xlsx")',
     '@upload_file("uploads/资料_设定.xlsx")',
   ]);
 });

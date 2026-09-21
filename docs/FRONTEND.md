@@ -54,7 +54,8 @@
 - `QualityRuleStatisticsProvider` 持有当前项目内跨规则页共享的后端质量统计结果窄投影；页面只缓存 `entry_ids`、`hits_by_entry_id` 和 `subset_parents_by_entry_id`，不保存后端依赖签名或重复 revision。项目切换时重置，项目事件按受影响规则失效并推进请求 token，旧项目或旧 token 的迟到结果不得写回。
 - Agent 页面外层信息流默认跟随最新内容，用户向上滚离底部超过容差或点击“跟随最新”可退出跟随；内容伸缩与程序归底不改变跟随状态，再次点击或按当前平台快捷键（Ctrl+E / ⌘E）会归底并重新激活，同时重置当前活动思考视口；跟随按钮同步公开 `aria-keyshortcuts`。每个活动思考视口独立默认跟随流式内容，用户在该视口内上滚后取消自身跟随与完成后的自动收起，历史思考视口保留自己的阅读位置。
 - `useAgentInputTransition` 拥有 Agent 底部占位、离场内容和焦点恢复；测量目标尺寸时固定外部占位，避免滚动视口夹取阅读位置。Composer 持续挂载，输入锁保持至离场结束，焦点归还等待编辑器恢复可编辑；工具栏 Portal 菜单同步关闭。共享编辑器提供正文与附件能力，提交权限由主 Composer 和原位编辑器各自决定。
-- `AgentFileDropTarget` 管理文件拖入区域。主输入接收整页拖入，原位编辑只接收局部拖入。编辑器将文件交给 `AgentInputDraft`，按草稿顺序展示附件。图片通过 API 读取原文件，用组件生命周期内的 Blob URL 遵循现有 CSP。上传与会话契约归 [AGENT_RUNTIME](AGENT_RUNTIME.md)。
+- `AgentFileDropTarget` 管理文件拖入区域。主输入接收整页拖入，原位编辑只接收局部拖入。CodeMirror 在默认读取文件文本前消费文件事件，按当前权限交给所属 `AgentInputDraft`。外层冒泡入口接收其余区域，捕获阶段清除拖放反馈。普通文本拖放由编辑器处理。
+- `AgentMessageAttachments` 共用草稿与已发送附件的展示，修改动作交还所属草稿。图片通过 API 读取原文件，组件持有并释放符合 CSP 的 Blob URL。上传与会话契约归 [AGENT_RUNTIME](AGENT_RUNTIME.md)。
 - Agent renderer 由 `AgentSessionStore` 作为唯一会话镜像，按 timeline、controls、queue、todo、skills、input 与 countdown 切片订阅；command、queue、todo、pending decision 和 transport 的变化不重建其它切片。entry upsert 只替换目标条目，正常命令不回传完整历史；时间线 round 与 Markdown 组件按稳定 entry / 真实文本输入复用，发送按钮在 command 开始后立即以 `aria-busy` 表示受理中。页面拥有主 Composer 的宿主指令列表及其标题、描述、禁用态和动作，Composer 只负责筛选与即时触发；原位编辑器不提供指令。Agent 会话恢复、用户决定与连接世代的跨层消费契约归 [`AGENT_RUNTIME.md`](AGENT_RUNTIME.md)。
 - `AgentMarkdown` 将正文解析、高亮与图表交给 Streamdown 插件，接入桌面链接、图片预览和交互边界；Mermaid 配置消费应用主题令牌。图表容器的可用宽度由应用 CSS 提供，SVG 布局与自然尺寸由 Mermaid 决定。图表激活态由 DOM 焦点拥有，失焦或 Escape 后滚轮恢复页面滚动；图表文字和经过图表的选区不进入正文批注。
 - Agent 工具详情在首次查看标签时生成阅读文档，按原始内容复用输入、输出各一份结果，只挂载当前查看器。输出逐块递归解释完整的内嵌 JSON，统一 LF 并裁剪首尾空白行，保留正文缩进与内部空行；空白块占一行，无输出生成空文档。会话保留原始块。格式化器在清理后生成文本和语义范围，`AppEditor` 在同一事务更新文档与范围，通过单个 CodeMirror 视口显示，不重新解析阅读文档。
