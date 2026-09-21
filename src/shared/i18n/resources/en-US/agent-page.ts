@@ -43,9 +43,8 @@ export const en_us_agent_page = {
       upload: "Upload",
       items: "{COUNT} entries",
       pages: "{COUNT} pages",
-      loading: "Loading files…",
-      error: "Could not load files. Reopen the menu to retry.",
-      more: "More matches available. Keep typing to narrow the results.",
+      loading: "Loading file list …",
+      error: "Failed to load file list …",
     },
     groups: { files: "Files", skills: "Skills", instructions: "Instructions" },
     instructions: {

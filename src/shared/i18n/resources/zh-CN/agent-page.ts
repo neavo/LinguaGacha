@@ -43,9 +43,8 @@ export const zh_cn_agent_page = {
       upload: "上传",
       items: "{COUNT} 条",
       pages: "{COUNT} 页",
-      loading: "正在读取文件列表…",
-      error: "文件列表读取失败，请重新打开菜单重试",
-      more: "匹配文件较多，请继续输入以缩小范围",
+      loading: "正在读取文件列表 …",
+      error: "文件列表读取失败 …",
     },
     groups: { files: "文件", skills: "技能", instructions: "指令" },
     instructions: {
