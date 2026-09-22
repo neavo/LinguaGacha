@@ -30,7 +30,7 @@ import {
 import { AgentStatusMark } from "@frontend/pages/agent-page/agent-status-mark";
 import { useAgentFollowLatest } from "./agent-scroll";
 import { AgentToolDetailDialog } from "./agent-tool-detail-dialog";
-import { AgentResponseAnnotationSelection } from "./agent-response-annotation";
+import { AgentResponseAnnotationSelection } from "./agent-response-annotation-selection";
 
 type Translate = ReturnType<typeof useI18n>["t"];
 type UserEntry = Extract<AgentEntry, { kind: "user_message" }>;
@@ -232,11 +232,6 @@ const AgentRound = memo(function AgentRound(props: AgentRoundProps): JSX.Element
             </AgentMessageFrame>
           );
         }
-        const annotatable =
-          user.status === "success" &&
-          entry.kind === "assistant_message" &&
-          entry.status === "success" &&
-          entry.id === latest_output?.id;
         const view = (
           <AgentEntryView
             key={entry.id}
@@ -244,7 +239,6 @@ const AgentRound = memo(function AgentRound(props: AgentRoundProps): JSX.Element
             t={props.t}
             follow_reset_revision={props.follow_reset_revision}
             on_open_tool={props.on_open_tool}
-            annotatable={annotatable}
           />
         );
         if (entry.kind !== "assistant_message") return view;
@@ -339,6 +333,7 @@ function AgentMessageActions(props: {
     return () => window.clearTimeout(timeout_id);
   }, [copy_state]);
 
+  /** 复制结果通过当前按钮反馈，宿主失败使用统一提示。 */
   const copy = (): void => {
     if (typeof navigator === "undefined" || navigator.clipboard === undefined) {
       push_toast("error", props.t("agent_page.action.copy_failed"));
@@ -417,7 +412,6 @@ type AgentEntryViewProps = {
   entry: Exclude<AgentRoundEntry, { kind: "user_message" }>;
   t: Translate;
   on_open_tool: (id: string) => void;
-  annotatable: boolean;
   follow_reset_revision: number;
 };
 
@@ -436,7 +430,7 @@ const AgentEntryView = memo(function AgentEntryView(props: AgentEntryViewProps):
       />
     );
   }
-  return render_assistant_entry(entry, props.t, props.annotatable, props.follow_reset_revision);
+  return render_assistant_entry(entry, props.t, props.follow_reset_revision);
 }, agent_entry_view_props_equal);
 
 /** 每种条目只比较真正参与自身正文渲染的 props，控制按钮变化不穿透 Markdown。 */
@@ -446,10 +440,7 @@ function agent_entry_view_props_equal(
 ): boolean {
   if (previous.entry !== next.entry || previous.t !== next.t) return false;
   if (next.entry.kind === "assistant_message") {
-    return (
-      previous.annotatable === next.annotatable &&
-      previous.follow_reset_revision === next.follow_reset_revision
-    );
+    return previous.follow_reset_revision === next.follow_reset_revision;
   }
   if (next.entry.kind === "context_compaction") return true;
   return previous.on_open_tool === next.on_open_tool;
@@ -490,15 +481,19 @@ function render_agent_mention_text(
   return content;
 }
 
-/** 保持 text / thinking 的供应商顺序，并只把流式状态标到最后一个开放 part。 */
+/** 按供应商顺序展示正文和思考，助手条目统一声明批注范围。 */
 function render_assistant_entry(
   entry: AssistantEntry,
   t: Translate,
-  annotatable: boolean,
   follow_reset_revision: number,
 ): JSX.Element {
   return (
-    <article className="agent-message agent-message--assistant" key={entry.id}>
+    <article
+      className="agent-message agent-message--assistant"
+      data-agent-annotation-message="true"
+      tabIndex={-1}
+      key={entry.id}
+    >
       {entry.parts.map((part, part_index) => {
         const key = `${entry.id}-${part_index.toString()}`;
         if (part.kind === "thinking") {
@@ -519,14 +514,7 @@ function render_assistant_entry(
             />
           );
         }
-        return (
-          <AgentMarkdown
-            key={key}
-            text={part.text}
-            streaming={entry.status === "running"}
-            annotatable={annotatable}
-          />
-        );
+        return <AgentMarkdown key={key} text={part.text} streaming={entry.status === "running"} />;
       })}
     </article>
   );
@@ -660,6 +648,7 @@ function AgentThinkingDetail(props: {
   const duration = useAgentElapsed(props.started_at, props.active);
   return (
     <div
+      data-agent-annotation-exclude="true"
       className="agent-thinking-entry"
       data-open={open || undefined}
       data-following={(following && props.active) || undefined}

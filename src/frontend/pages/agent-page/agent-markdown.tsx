@@ -40,7 +40,6 @@ import "./agent-markdown.css";
 type AgentMarkdownProps = {
   text: string;
   streaming: boolean;
-  annotatable?: boolean;
 };
 
 const MARKDOWN_DIAGRAM_OPTIONS = { errorComponent: AgentMarkdownDiagramError };
@@ -172,7 +171,6 @@ export const AgentMarkdown = memo(function AgentMarkdown(props: AgentMarkdownPro
   return (
     <div
       className="agent-markdown"
-      data-agent-annotation-content={props.annotatable || undefined}
       onClick={activate_link}
       onWheelCapture={scroll_past_inline_diagram}
       onPointerDownCapture={focus_inline_diagram}

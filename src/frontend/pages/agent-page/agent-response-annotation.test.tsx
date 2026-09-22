@@ -12,7 +12,6 @@ vi.mock("@frontend/app/locale/locale-context", () => ({
 
 import {
   AgentResponseAnnotationEditor,
-  AgentResponseAnnotationSelection,
   AgentResponseAnnotationViewer,
 } from "./agent-response-annotation";
 
@@ -21,13 +20,13 @@ describe("AgentResponseAnnotation", () => {
   let root: Root | null = null;
 
   afterEach(async () => {
-    window.getSelection()?.removeAllRanges();
     if (root !== null) await act(async () => root?.unmount());
     container?.remove();
     container = null;
     root = null;
   });
 
+  /** 挂载共用批注面板及其提示上下文。 */
   async function render_view(view: ReactNode): Promise<HTMLDivElement> {
     container = document.createElement("div");
     document.body.append(container);
@@ -110,159 +109,6 @@ describe("AgentResponseAnnotation", () => {
     );
     expect(view.querySelector("p")).toBeNull();
   });
-
-  it("同一最终回复内的选区确认后成为规范批注附件", async () => {
-    const on_add = vi.fn();
-    const view = await render_view(
-      <AgentResponseAnnotationSelection disabled={false} on_add={on_add}>
-        <div data-agent-annotation-content="true">最终回复</div>
-      </AgentResponseAnnotationSelection>,
-    );
-    const text_node = view.querySelector("[data-agent-annotation-content]")?.firstChild;
-    if (text_node === null || text_node === undefined) throw new Error("缺少回复文本");
-    select_range(text_node, 0, text_node, 2);
-
-    await act(async () =>
-      view
-        .querySelector(".agent-page__messages")
-        ?.dispatchEvent(new MouseEvent("pointerup", { bubbles: true })),
-    );
-    const add_button = document.body.querySelector<HTMLButtonElement>('[role="toolbar"] button');
-    await act(async () => add_button?.click());
-    const textarea = document.body.querySelector<HTMLTextAreaElement>('[role="dialog"] textarea');
-    if (textarea === null) throw new Error("缺少批注输入");
-    await act(async () => set_textarea_value(textarea, "  请改写  "));
-    const submit = document.body.querySelector<HTMLButtonElement>(
-      'button[aria-label="app.action.save"]',
-    );
-    await act(async () => submit?.click());
-
-    expect(on_add).toHaveBeenCalledWith({
-      kind: "response_annotation",
-      selectedText: "最终",
-      comment: "请改写",
-    });
-    expect(window.getSelection()?.rangeCount).toBe(0);
-  });
-
-  it("操作条打开后允许在同一回复内重新选择文本", async () => {
-    const view = await render_view(
-      <AgentResponseAnnotationSelection disabled={false} on_add={vi.fn()}>
-        <div data-agent-annotation-content="true">最终回复</div>
-      </AgentResponseAnnotationSelection>,
-    );
-    const messages = view.querySelector<HTMLElement>(".agent-page__messages");
-    const text_node = view.querySelector("[data-agent-annotation-content]")?.firstChild;
-    if (messages === null || text_node === null || text_node === undefined) {
-      throw new Error("缺少回复文本");
-    }
-    select_range(text_node, 0, text_node, 2);
-    await act(async () => messages.dispatchEvent(new MouseEvent("pointerup", { bubbles: true })));
-    await act(async () => {
-      messages.dispatchEvent(new MouseEvent("pointerdown", { bubbles: true, button: 0 }));
-      select_range(text_node, 0, text_node, 4);
-      messages.dispatchEvent(new MouseEvent("pointerup", { bubbles: true }));
-      messages.dispatchEvent(new MouseEvent("click", { bubbles: true, button: 0 }));
-    });
-
-    const add_button = document.body.querySelector<HTMLButtonElement>('[role="toolbar"] button');
-    await act(async () => add_button?.click());
-    expect(document.body.querySelector('[role="dialog"] blockquote')?.textContent).toBe("最终回复");
-
-    await act(async () => {
-      document.body.dispatchEvent(new MouseEvent("pointerdown", { bubbles: true, button: 0 }));
-      document.body.dispatchEvent(new MouseEvent("click", { bubbles: true, button: 0 }));
-    });
-    expect(document.body.querySelector('[role="dialog"]')).toBeNull();
-  });
-
-  it("键盘扩展选区后把焦点交给添加批注操作", async () => {
-    const view = await render_view(
-      <AgentResponseAnnotationSelection disabled={false} on_add={vi.fn()}>
-        <div data-agent-annotation-content="true">最终回复</div>
-      </AgentResponseAnnotationSelection>,
-    );
-    const messages = view.querySelector<HTMLElement>(".agent-page__messages");
-    const text_node = view.querySelector("[data-agent-annotation-content]")?.firstChild;
-    if (messages === null || text_node === null || text_node === undefined) {
-      throw new Error("缺少回复文本");
-    }
-    select_range(text_node, 0, text_node, 2);
-
-    await act(async () =>
-      messages.dispatchEvent(
-        new KeyboardEvent("keyup", { key: "ArrowRight", shiftKey: true, bubbles: true }),
-      ),
-    );
-
-    const add_button = document.body.querySelector<HTMLButtonElement>('[role="toolbar"] button');
-    expect(add_button).not.toBeNull();
-    expect(document.activeElement).toBe(add_button);
-  });
-
-  it("跨回复正文的选区不创建批注入口", async () => {
-    const view = await render_view(
-      <AgentResponseAnnotationSelection disabled={false} on_add={vi.fn()}>
-        <div data-agent-annotation-content="true">第一段</div>
-        <div data-agent-annotation-content="true">第二段</div>
-      </AgentResponseAnnotationSelection>,
-    );
-    const surfaces = view.querySelectorAll("[data-agent-annotation-content]");
-    const start = surfaces[0]?.firstChild;
-    const end = surfaces[1]?.firstChild;
-    if (start === null || start === undefined || end === null || end === undefined) {
-      throw new Error("缺少回复文本");
-    }
-    select_range(start, 0, end, 2);
-
-    await act(async () =>
-      view
-        .querySelector(".agent-page__messages")
-        ?.dispatchEvent(new MouseEvent("pointerup", { bubbles: true })),
-    );
-
-    expect(document.body.querySelector('[role="toolbar"]')).toBeNull();
-  });
-
-  it("图表交互关闭旧批注入口，图内与跨图表选区不创建批注", async () => {
-    const view = await render_view(
-      <AgentResponseAnnotationSelection disabled={false} on_add={vi.fn()}>
-        <div data-agent-annotation-content="true">
-          <p>普通正文</p>
-          <div data-streamdown="mermaid">
-            <span>节点文字</span>
-            <button>放大</button>
-          </div>
-          <p>后续正文</p>
-        </div>
-      </AgentResponseAnnotationSelection>,
-    );
-    const messages = view.querySelector(".agent-page__messages")!;
-    const paragraphs = view.querySelectorAll("p");
-    const text = paragraphs[0].firstChild!;
-    const diagram = view.querySelector('[data-streamdown="mermaid"]')!;
-    const label = diagram.querySelector("span")!.firstChild!;
-    select_range(text, 0, text, 2);
-    await act(async () => messages.dispatchEvent(new MouseEvent("pointerup", { bubbles: true })));
-    expect(document.body.querySelector('[role="toolbar"]')).not.toBeNull();
-    await act(async () => {
-      diagram
-        .querySelector("button")
-        ?.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }));
-      diagram
-        .querySelector("button")
-        ?.dispatchEvent(new PointerEvent("pointerup", { bubbles: true }));
-    });
-    expect(document.body.querySelector('[role="toolbar"]')).toBeNull();
-    for (const [start, end] of [
-      [label, label],
-      [text, paragraphs[1].firstChild!],
-    ]) {
-      select_range(start, 0, end, 2);
-      await act(async () => messages.dispatchEvent(new MouseEvent("pointerup", { bubbles: true })));
-      expect(document.body.querySelector('[role="toolbar"]')).toBeNull();
-    }
-  });
 });
 
 /** 通过原生 setter 与 input 事件驱动 React 受控输入。 */
@@ -272,14 +118,4 @@ function set_textarea_value(textarea: HTMLTextAreaElement, value: string): void 
     value,
   );
   textarea.dispatchEvent(new Event("input", { bubbles: true }));
-}
-
-/** 构造真实 Range，让批注测试经过浏览器选区边界。 */
-function select_range(start: Node, start_offset: number, end: Node, end_offset: number): void {
-  const range = document.createRange();
-  range.setStart(start, start_offset);
-  range.setEnd(end, end_offset);
-  const selection = window.getSelection();
-  selection?.removeAllRanges();
-  selection?.addRange(range);
 }

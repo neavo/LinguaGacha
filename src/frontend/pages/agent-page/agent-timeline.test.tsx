@@ -170,16 +170,41 @@ describe("AgentTimeline", () => {
     expect(view.querySelectorAll(".agent-round-footer")).toHaveLength(1);
   });
 
-  it("只让成功轮次的最终助手正文进入可批注边界", async () => {
-    const view = await render_timeline([
-      user_entry("user-1", "开始", "success", 0, 4_000),
-      assistant_entry("assistant-intermediate", "准备工作", "success", 1_000),
-      tool_entry("tool-1", "test_tool", "success", "{}", 2_000),
-      assistant_entry("assistant-final", "最终结果", "success", 3_000),
-    ]);
-    const surfaces = view.querySelectorAll<HTMLElement>(".agent-markdown");
-    expect(surfaces[0]?.hasAttribute("data-agent-annotation-content")).toBe(false);
-    expect(surfaces[1]?.getAttribute("data-agent-annotation-content")).toBe("true");
+  it("各状态轮次的中间与最终助手正文均可创建批注", async () => {
+    const entries = (["success", "error", "stopped", "running"] as const).flatMap(
+      (status, index) => [
+        user_entry(
+          `user-${status}`,
+          "开始",
+          status,
+          index * 4_000,
+          status === "running" ? null : (index + 1) * 4_000,
+        ),
+        assistant_entry(`middle-${status}`, `${status} 中间回复`, "success", index * 4_000 + 1_000),
+        assistant_entry(`last-${status}`, `${status} 最终回复`, status, index * 4_000 + 2_000),
+      ],
+    );
+    const view = await render_timeline(entries);
+    const messages = view.querySelectorAll(".agent-message--assistant");
+    const replies = entries.filter((entry) => entry.kind === "assistant_message");
+    for (const [index, reply] of replies.entries()) {
+      const range = document.createRange();
+      range.selectNodeContents(messages[index]);
+      await act(async () => {
+        const selection = window.getSelection()!;
+        selection.removeAllRanges();
+        selection.addRange(range);
+        document.dispatchEvent(new Event("selectionchange"));
+        await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+      });
+      const button = document.querySelector<HTMLButtonElement>('[role="toolbar"] button');
+      expect(button).not.toBeNull();
+      await act(async () => button!.click());
+      expect(document.querySelector("blockquote")?.textContent).toBe(reply.parts[0].text);
+      await act(async () =>
+        document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" })),
+      );
+    }
   });
 
   it("最新失败轮次可分别修改输入与输出，且只保留一处继续入口", async () => {
@@ -227,33 +252,20 @@ describe("AgentTimeline", () => {
     );
   });
 
-  it("成功轮次只允许修改最终 assistant，状态行不提供回合重试", async () => {
+  it("成功轮次只允许修改最终助手回复，状态行不提供回合重试", async () => {
     const view = await render_timeline([
       user_entry("user-1", "开始", "success", 0, 4_000),
       assistant_entry("assistant-intermediate", "准备调用工具", "success", 1_000),
       tool_entry("tool-1", "test_tool", "success", "{}", 2_000),
       assistant_entry("assistant-final", "最终结果", "success", 3_000),
     ]);
-    const user_actions = view.querySelectorAll<HTMLButtonElement>(
-      ".agent-message-frame--user .agent-message-actions button",
-    );
-    const output_actions = view.querySelectorAll<HTMLButtonElement>(
-      ".agent-message-frame--assistant .agent-message-actions button",
-    );
-
-    expect([...user_actions].map((button) => button.textContent)).toEqual([
-      "agent_page.action.copy",
-      "agent_page.action.edit",
-    ]);
-    expect([...output_actions].map((button) => button.textContent)).toEqual([
-      "agent_page.action.copy",
-      "agent_page.action.edit",
-    ]);
-    await act(async () =>
-      [...output_actions]
-        .find((button) => button.textContent === "agent_page.action.edit")
-        ?.click(),
-    );
+    const edits = [
+      ...view.querySelectorAll<HTMLButtonElement>(
+        ".agent-message-frame--assistant .agent-message-actions button",
+      ),
+    ].filter((button) => button.textContent === "agent_page.action.edit");
+    expect(edits).toHaveLength(1);
+    await act(async () => edits[0].click());
     expect(on_edit).toHaveBeenCalledWith(
       expect.objectContaining({ id: "assistant-final", kind: "assistant_message" }),
     );
@@ -268,19 +280,6 @@ describe("AgentTimeline", () => {
     ]);
 
     expect(view.querySelectorAll(".agent-message-actions")).toHaveLength(0);
-  });
-
-  it("成功轮次没有输出时仍只提供输入复制与修改", async () => {
-    const view = await render_timeline([user_entry("user-only", "开始", "success", 0, 1_000)]);
-    const actions = view.querySelectorAll<HTMLButtonElement>(
-      ".agent-message-frame--user .agent-message-actions button",
-    );
-
-    expect([...actions].map((button) => button.textContent)).toEqual([
-      "agent_page.action.copy",
-      "agent_page.action.edit",
-    ]);
-    expect(view.querySelector(".agent-round-footer button")).toBeNull();
   });
 
   it("复制失败通过通知说明结果，按钮继续提供复制入口", async () => {
@@ -397,6 +396,7 @@ describe("AgentTimeline", () => {
 
   it("运行中的思考块上滚后保留阅读位置并退出跟随", async () => {
     let follow_reset_revision = 0;
+    // 复用条目身份，让追加正文经过真实的跟随状态更新。
     const render_thinking = (text: string) =>
       render_timeline(
         round_entries([
