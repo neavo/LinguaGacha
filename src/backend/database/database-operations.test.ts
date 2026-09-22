@@ -1,6 +1,9 @@
 import { read_pdf_document } from "../file/formats/pdf/pdf-document";
 import { create_pdf_fixture } from "../file/formats/pdf/test-support";
 import fs from "node:fs";
+import { spawn } from "node:child_process";
+import { once } from "node:events";
+import { NativeFs } from "../../native/native-fs";
 import os from "node:os";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -89,6 +92,133 @@ afterEach(() => {
 });
 
 describe("ProjectDatabase", () => {
+  it("新建拒绝已有目标并保留原有内容", () => {
+    const database = create_database();
+    const target = project_path("existing.lg");
+    fs.writeFileSync(target, "existing content");
+    expect(() => database.create_project(target, "replacement")).toThrow("project.already_exists");
+    expect(fs.readFileSync(target, "utf8")).toBe("existing content");
+  });
+
+  it("WAL 初始化失败会关闭连接并删除本次创建的空文件", () => {
+    const database = create_database();
+    const target = project_path("failed-wal.lg");
+    const original = DatabaseSync.prototype.exec;
+    const failure = vi.spyOn(DatabaseSync.prototype, "exec").mockImplementation(function (
+      this: DatabaseSync,
+      sql,
+    ) {
+      if (sql === "PRAGMA journal_mode=WAL")
+        throw Object.assign(new Error("database is locked"), { errcode: 5 });
+      return original.call(this, sql);
+    });
+    expect(() => database.create_project(target, "failed")).toThrow("database.busy");
+    expect(fs.existsSync(target)).toBe(false);
+    expect(has_project_sidecar(target)).toBe(false);
+    failure.mockRestore();
+    database.create_project(target, "retry");
+    expect(read_meta(database, target, "name", "")).toBe("retry");
+  });
+
+  it("提交后关闭失败保留工程并明确禁止重放写入", () => {
+    const database = create_database();
+    const target = project_path("committed.lg");
+    vi.spyOn(DatabaseSync.prototype, "close").mockImplementationOnce(() => {
+      throw new Error("close failed");
+    });
+    expect(() => database.create_project(target, "committed")).toThrow(
+      expect.objectContaining({
+        code: "data.committed_sync_failed",
+        public_details: { committed: true, action: "reload_project" },
+      }),
+    );
+    expect(fs.existsSync(target)).toBe(true);
+    database.close();
+    expect(read_meta(database, target, "name", "")).toBe("committed");
+  });
+
+  it("新建失败且清理失败时保留两个异常与残留文件", () => {
+    const native_fs = new NativeFs();
+    const database = new ProjectDatabase(native_fs);
+    cleanup_databases.push(database);
+    const target = project_path("cleanup-failed.lg");
+    vi.spyOn(native_fs, "remove").mockImplementationOnce(() => {
+      throw new Error("remove failed");
+    });
+    let failure: unknown;
+    try {
+      database.create_project(target, "failed", () => {
+        throw new Error("initialize failed");
+      });
+    } catch (error) {
+      failure = error;
+    }
+    expect(failure).toHaveProperty("cause.errors", [
+      expect.objectContaining({ cause: expect.objectContaining({ message: "initialize failed" }) }),
+      expect.objectContaining({ cause: expect.objectContaining({ message: "remove failed" }) }),
+    ]);
+    expect(fs.existsSync(target)).toBe(true);
+  });
+
+  it.each([false, true])(
+    "真实进程持锁：持续占用=%s",
+    async (persistent) => {
+      const target = project_path("locked.lg");
+      // 子进程独立释放锁，父进程阻塞在 DatabaseSync 时仍能观察真实 SQLite 等待行为。
+      const child = spawn(
+        process.execPath,
+        [
+          "--input-type=commonjs",
+          "-e",
+          `
+      const { DatabaseSync } = require('node:sqlite');
+      const db = new DatabaseSync(process.argv[1]);
+      db.exec('PRAGMA journal_mode=DELETE; BEGIN EXCLUSIVE');
+      process.on('message', (delay) => {
+        setTimeout(() => { db.exec('COMMIT'); db.close(); process.disconnect(); }, delay);
+        process.send('armed');
+      });
+      process.send('locked');
+    `,
+          target,
+        ],
+        { stdio: ["ignore", "ignore", "pipe", "ipc"], windowsHide: true },
+      );
+      const exited = once(child, "exit");
+      try {
+        await once(child, "message");
+        if (!persistent) {
+          const armed = once(child, "message");
+          child.send(300);
+          await armed;
+        }
+        const database = create_database();
+        if (persistent) {
+          expect(() => database.get_all_meta(target)).toThrow(
+            expect.objectContaining({
+              code: "database.busy",
+              severity: "warning",
+              diagnostic_context: expect.objectContaining({
+                operation: "journal_mode",
+                sqlite_code: 5,
+              }),
+            }),
+          );
+          child.send(0);
+        } else {
+          database.get_all_meta(target);
+        }
+        await exited;
+        database.set_meta(target, "name", "available");
+        expect(read_meta(database, target, "name", "")).toBe("available");
+      } finally {
+        if (child.exitCode === null) child.kill();
+        await exited;
+      }
+    },
+    15000,
+  );
+
   it("创建工程并读写 meta", () => {
     const database = create_database();
     const lg_path = project_path("demo.lg");
@@ -223,7 +353,7 @@ describe("ProjectDatabase", () => {
     expect(has_project_sidecar(lg_path)).toBe(false);
   });
 
-  it("一条连接关闭失败时仍释放其它连接并清空连接所有权", () => {
+  it("一条连接关闭失败仍释放其它连接，并保留失败连接供再次回收", () => {
     const database = create_database();
     const first_path = project_path("first-close.lg");
     const second_path = project_path("second-close.lg");
@@ -231,35 +361,20 @@ describe("ProjectDatabase", () => {
     database.create_project(second_path, "second");
     const release_first = database.acquire_project_lease(first_path, "test");
     const release_second = database.acquire_project_lease(second_path, "test");
-    const checkpoint_failure = new Error("checkpoint failed");
-    const original_exec = DatabaseSync.prototype.exec;
-    let checkpoint_failed = false;
-    vi.spyOn(DatabaseSync.prototype, "exec").mockImplementation(function (this: DatabaseSync, sql) {
-      if (sql === "PRAGMA wal_checkpoint(TRUNCATE)" && !checkpoint_failed) {
-        checkpoint_failed = true;
-        throw checkpoint_failure;
-      }
-      return Reflect.apply(original_exec, this, [sql]) as void;
+    const failure = new Error("close failed");
+    const close = vi.spyOn(DatabaseSync.prototype, "close").mockImplementationOnce(() => {
+      throw failure;
     });
-    const connection_close = vi.spyOn(DatabaseSync.prototype, "close");
-    let close_error: unknown;
-
-    try {
-      database.close();
-    } catch (error) {
-      close_error = error;
-    }
-
-    expect(close_error).toBeInstanceOf(AggregateError);
-    expect((close_error as AggregateError).errors).toEqual([checkpoint_failure]);
-    expect(connection_close).toHaveBeenCalledTimes(2);
+    expect(() => database.close()).toThrow(AggregateError);
+    expect(close).toHaveBeenCalledTimes(2);
+    expect(has_project_sidecar(second_path)).toBe(false);
+    database.close();
     expect(() => release_first()).not.toThrow();
     expect(() => release_second()).not.toThrow();
     expect(has_project_sidecar(first_path)).toBe(false);
-    expect(has_project_sidecar(second_path)).toBe(false);
   });
 
-  it("项目数据库初始化失败时立即关闭未登记连接", () => {
+  it("项目数据库初始化失败时关闭连接并保留原始原因", () => {
     const database = create_database();
     const lg_path = project_path("open-failed.lg");
     const open_failure = new Error("migration failed");
@@ -271,7 +386,12 @@ describe("ProjectDatabase", () => {
       },
     );
 
-    expect(() => database.get_all_meta(lg_path)).toThrow(open_failure);
+    expect(() => database.get_all_meta(lg_path)).toThrow(
+      expect.objectContaining({
+        cause: open_failure,
+        diagnostic_context: expect.objectContaining({ operation: "migration" }),
+      }),
+    );
 
     expect(connection_close).not.toBeNull();
     expect(connection_close).toHaveBeenCalledTimes(1);
@@ -299,7 +419,7 @@ describe("ProjectDatabase", () => {
         database.set_meta(lg_path, "target_language", "ZH");
         throw new Error("rollback");
       }),
-    ).toThrow("rollback");
+    ).toThrow(expect.objectContaining({ cause: expect.objectContaining({ message: "rollback" }) }));
 
     expect(read_meta(database, lg_path, "target_language", "missing")).toBe("missing");
   });
@@ -313,10 +433,36 @@ describe("ProjectDatabase", () => {
         database.set_meta(lg_path, "target_language", "ZH");
         throw new Error("rollback");
       }),
-    ).toThrow("rollback");
+    ).toThrow(expect.objectContaining({ cause: expect.objectContaining({ message: "rollback" }) }));
 
     expect(fs.existsSync(lg_path)).toBe(false);
     expect(has_project_sidecar(lg_path)).toBe(false);
+  });
+
+  it("回滚失败时保留两个原因并撤销租约持有的失效连接", () => {
+    const { database, lg_path } = create_database_project("rollback-failed");
+    const release = database.acquire_project_lease(lg_path, "test");
+    const original = DatabaseSync.prototype.exec;
+    vi.spyOn(DatabaseSync.prototype, "exec").mockImplementation(function (this: DatabaseSync, sql) {
+      if (sql === "ROLLBACK") throw new Error("rollback failed");
+      return original.call(this, sql);
+    });
+    let failure: unknown;
+    try {
+      database.transaction(lg_path, () => {
+        database.set_meta(lg_path, "target_language", "ZH");
+        throw new Error("write failed");
+      });
+    } catch (error) {
+      failure = error;
+    }
+    expect(failure).toHaveProperty("cause.errors", [
+      expect.objectContaining({ cause: expect.objectContaining({ message: "write failed" }) }),
+      expect.objectContaining({ cause: expect.objectContaining({ message: "rollback failed" }) }),
+    ]);
+    expect(has_project_sidecar(lg_path)).toBe(false);
+    expect(read_meta(database, lg_path, "target_language", "missing")).toBe("missing");
+    expect(() => release()).not.toThrow();
   });
 
   it("只推进受支持的section revision，并忽略重复 section", () => {

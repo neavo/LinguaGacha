@@ -8,15 +8,20 @@ describe("log 基础模型", () => {
     expect(normalize_log_level("bad")).toBe("info");
   });
 
-  it("普通文本、空行和异常正文保持原有显示格式", () => {
+  it("展示正文、原始原因和诊断字段", () => {
     expect(format_log_readable_text({ content: "" })).toBe("");
     expect(format_log_readable_text({ content: "第一行\n第二行" })).toBe("第一行\n第二行");
-    expect(
-      format_log_readable_text({
-        content: "操作失败",
-        error: { message: "boom", stack: "Error: boom\n    at request" },
-      }),
-    ).toBe("操作失败\nboom\nError: boom\n    at request");
+    const text = format_log_readable_text({
+      content: "操作失败",
+      error: {
+        message: "boom",
+        stack: "Error: boom\n    at request",
+        cause_chain: [{ message: "root cause", context: { phase: "open" } }],
+        context: { request_id: "request-1" },
+      },
+    });
+    for (const part of ["操作失败", "boom", "at request", "root cause", "open", "request-1"])
+      expect(text).toContain(part);
   });
 
   it("读取普通文本和翻译对照", () => {

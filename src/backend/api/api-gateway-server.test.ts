@@ -18,6 +18,7 @@ import type { BackendWorkerExecution } from "../worker/worker-execution";
 import { LogManager } from "../log/log-manager";
 import { ApiGatewayServer } from "./api-gateway-server";
 import { ApiStreamHub } from "./api-stream-hub";
+import { AppError } from "../../shared/error";
 
 const IN_PROCESS_WORKER_EXECUTION: BackendWorkerExecution = { kind: "in_process" };
 
@@ -28,6 +29,43 @@ describe("ApiGatewayServer", () => {
     while (cleanup_callbacks.length > 0) {
       await cleanup_callbacks.pop()?.();
     }
+  });
+
+  it("数据库忙通过 HTTP 返回明确错误并保留服务端诊断日志", async () => {
+    const app_root = create_app_root();
+    const log_manager = create_log_manager(app_root);
+    const { gateway, backend_services } = create_gateway_fixture(
+      app_root,
+      new ProjectDatabase(),
+      log_manager,
+    );
+    const warning = vi.spyOn(log_manager, "warning");
+    vi.spyOn(backend_services.project.lifecycle, "create_project_commit").mockRejectedValueOnce(
+      new AppError("database.busy", {
+        cause: new Error("database is locked"),
+        diagnostic_context: { operation: "journal_mode", sqlite_code: 5 },
+      }),
+    );
+    const { baseUrl } = await gateway.start();
+    const response = await post_json(baseUrl, "/api/session/project/create", {});
+    expect(response.status).toBe(423);
+    expect(await response.json()).toEqual({ ok: false, error: { code: "database.busy" } });
+    expect(warning).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({
+        error: expect.objectContaining({
+          cause_chain: expect.arrayContaining([
+            expect.objectContaining({ message: "database is locked" }),
+          ]),
+          context: expect.objectContaining({
+            diagnostic_context: expect.objectContaining({
+              operation: "journal_mode",
+              sqlite_code: 5,
+            }),
+          }),
+        }),
+      }),
+    );
   });
 
   it("响应公开健康检查", async () => {

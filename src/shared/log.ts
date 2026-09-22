@@ -190,11 +190,32 @@ export function format_log_content_text(content: LogContent): string {
   return `${rows.filter((row) => row.trim() !== "").join("\n\n")}\n`;
 }
 
-// 普通文本附带异常消息；结构化结果由 summary 承载用户文案，只追加诊断调用栈。
+// 普通文本附带异常消息，结构化摘要共用堆栈、原因链与上下文。
 export function format_log_readable_text(detail: Pick<LogDetail, "content" | "error">): string {
-  const error_message = typeof detail.content === "string" ? detail.error?.message : undefined;
-  return [format_log_content_text(detail.content), error_message, detail.error?.stack]
-    .filter((value): value is string => value !== undefined && value.trim() !== "")
+  return [
+    format_log_content_text(detail.content),
+    format_log_error_text(detail.error, typeof detail.content === "string"),
+  ]
+    .filter((value) => value.trim() !== "")
+    .join("\n");
+}
+
+/** 窗口、控制台与结构化日志共用异常投影，原因链和诊断字段随外层堆栈一起显示。 */
+export function format_log_error_text(
+  error: LogError | undefined,
+  include_message: boolean,
+): string {
+  if (error === undefined) return "";
+  return [
+    include_message ? error.message : undefined,
+    error.stack,
+    ...(error.cause_chain ?? []).flatMap((cause) => [
+      cause.stack ?? `${cause.name ?? "Error"}: ${cause.message}`,
+      cause.context === undefined ? undefined : JSON.stringify(cause.context, null, 2),
+    ]),
+    error.context === undefined ? undefined : JSON.stringify(error.context, null, 2),
+  ]
+    .filter((value) => value !== undefined && value.trim() !== "")
     .join("\n");
 }
 

@@ -197,6 +197,9 @@ export const ja_jp_app = {
       },
     },
     project: {
+      already_exists: {
+        message: "プロジェクトファイルは既に存在します。別のファイル名を選択してください …",
+      },
       not_loaded: {
         message: "プロジェクトが読み込まれていません …",
       },
@@ -222,6 +225,9 @@ export const ja_jp_app = {
       },
     },
     database: {
+      busy: {
+        message: "プロジェクトデータベースが使用中です。しばらくしてから再試行してください …",
+      },
       conflict: {
         message: "データベースへの書き込みが競合しました。更新して再試行してください …",
       },
@@ -231,7 +237,8 @@ export const ja_jp_app = {
         message: "データのバージョンが変わりました。更新して再試行してください …",
       },
       committed_sync_failed: {
-        message: "データは保存されましたが、画面の同期に失敗しました …",
+        message:
+          "データは保存されましたが、その後の処理に失敗しました。プロジェクトを再読み込みしてください …",
       },
     },
     model: {

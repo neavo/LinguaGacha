@@ -12,6 +12,25 @@ import {
 } from "./log-error";
 
 describe("log error", () => {
+  it("聚合异常经过 JSON 传递后保留两个原因和诊断字段", () => {
+    const original = new AppError("database.busy", {
+      cause: new Error("database is locked"),
+      diagnostic_context: { operation: "journal_mode", sqlite_code: 5 },
+    });
+    const error = new AggregateError([original, new Error("close failed")], "cleanup failed", {
+      cause: original,
+    });
+    const snapshot = normalize_log_error(
+      JSON.parse(JSON.stringify(to_log_error(error))),
+      "unknown",
+    );
+    expect(snapshot.cause_chain).toMatchObject([
+      { message: "database.busy", context: { operation: "journal_mode", sqlite_code: 5 } },
+      { message: "database is locked" },
+      { message: "close failed" },
+    ]);
+  });
+
   it("跨线程错误快照作为 cause 时保留原始原因链和调用栈", () => {
     const root = new Error("打印失败");
     root.stack = "Error: 打印失败\n    at print_pdf";

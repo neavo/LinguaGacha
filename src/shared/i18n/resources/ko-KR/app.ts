@@ -195,6 +195,7 @@ export const ko_kr_app = {
       },
     },
     project: {
+      already_exists: { message: "프로젝트 파일이 이미 존재합니다. 다른 파일 이름을 선택하세요 …" },
       not_loaded: {
         message: "프로젝트가 열려 있지 않습니다 …",
       },
@@ -220,6 +221,7 @@ export const ko_kr_app = {
       },
     },
     database: {
+      busy: { message: "프로젝트 데이터베이스가 사용 중입니다. 잠시 후 다시 시도하세요 …" },
       conflict: {
         message: "데이터베이스 쓰기 충돌이 발생했습니다. 새로 고친 후 다시 시도해 주세요 …",
       },
@@ -229,7 +231,7 @@ export const ko_kr_app = {
         message: "데이터 버전이 변경되었습니다. 새로 고친 후 다시 시도해 주세요 …",
       },
       committed_sync_failed: {
-        message: "데이터는 저장되었으나 화면 동기화에 실패했습니다 …",
+        message: "데이터는 저장되었지만 후속 처리에 실패했습니다. 프로젝트를 다시 불러오세요 …",
       },
     },
     model: {

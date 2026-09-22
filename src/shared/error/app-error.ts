@@ -54,6 +54,8 @@ export const APP_ERROR_DEFINITIONS = {
     status: 409,
     severity: "expected",
   },
+  "database.busy": { status: 423, severity: "warning" },
+  "project.already_exists": { status: 409, severity: "expected" },
   "data.revision_conflict": {
     status: 409,
     severity: "expected",
@@ -137,10 +139,10 @@ interface AppErrorOptions {
  * AppError 是跨 main / renderer / worker 的唯一错误事实，不承担日志写入副作用。
  */
 export class AppError extends Error {
-  public readonly code: AppErrorCode;
-  public readonly severity: AppErrorSeverity;
-  public readonly public_details: AppErrorPublicDetails;
-  public readonly diagnostic_context: AppErrorDiagnosticContext;
+  public readonly code: AppErrorCode; // 跨层传递的稳定业务错误码。
+  public readonly severity: AppErrorSeverity; // 从错误定义表取得的严重度。
+  public readonly public_details: AppErrorPublicDetails; // 随 API 响应返回的公开详情。
+  public readonly diagnostic_context: AppErrorDiagnosticContext; // 随服务端日志保存的诊断字段。
 
   /**
    * 构造时只冻结错误事实，HTTP 和日志快照由独立纯函数完成。
@@ -180,6 +182,7 @@ function sanitize_app_error_public_details(details: AppErrorPublicDetails): AppE
   );
 }
 
+/** 递归筛选公开详情允许的基础值、数组和对象。 */
 function is_safe_json_value(value: JsonValue): boolean {
   if (value === null) {
     return true;

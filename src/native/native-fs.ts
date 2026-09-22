@@ -195,6 +195,12 @@ export class NativeFs {
     fs.writeFileSync(this.to_native_path(file_path), data);
   }
 
+  /** 排他创建空文件，成功返回后由调用者负责清理。 */
+  public create_file_exclusive(file_path: string): void {
+    this.ensure_parent_dir(file_path);
+    fs.closeSync(fs.openSync(this.to_native_path(file_path), "wx"));
+  }
+
   /**
    * 同步追加日志文本；日志目录缺失时由门面补齐。
    */

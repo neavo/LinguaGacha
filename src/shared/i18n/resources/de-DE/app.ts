@@ -200,6 +200,9 @@ export const de_de_app = {
       },
     },
     project: {
+      already_exists: {
+        message: "Die Projektdatei existiert bereits. Bitte einen anderen Dateinamen wählen …",
+      },
       not_loaded: {
         message: "Kein Projekt geladen …",
       },
@@ -225,6 +228,7 @@ export const de_de_app = {
       },
     },
     database: {
+      busy: { message: "Die Projektdatenbank ist belegt. Bitte später erneut versuchen …" },
       conflict: {
         message:
           "Datenbank-Schreibkonflikt. Bitte aktualisieren Sie die Daten und versuchen Sie es erneut …",
@@ -237,7 +241,7 @@ export const de_de_app = {
       },
       committed_sync_failed: {
         message:
-          "Die Daten wurden gespeichert, aber die Oberfläche konnte nicht synchronisiert werden …",
+          "Die Daten wurden gespeichert, aber die nachfolgende Verarbeitung ist fehlgeschlagen. Bitte das Projekt neu laden …",
       },
     },
     model: {

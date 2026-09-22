@@ -1,22 +1,17 @@
 import type { LogLevel } from "../log";
 import type { JsonRecord, JsonValue } from "../../domain/json";
 import type { AppError, AppErrorDiagnosticContext } from "./app-error";
+import { is_app_error } from "./app-error";
 
-// MAX LOG ERROR DEPTH 是模块级稳定契约，集中维护避免调用点散落魔术值。
+// 日志快照限制嵌套、集合规模与文本长度，供跨线程传输和持久化共用。
 const MAX_LOG_ERROR_DEPTH = 4;
-// MAX LOG ERROR ARRAY ITEMS 是模块级稳定契约，集中维护避免调用点散落魔术值。
 const MAX_LOG_ERROR_ARRAY_ITEMS = 24;
-// MAX LOG ERROR OBJECT KEYS 是持久化或快捷键契约，集中保存避免调用点散落魔术字符串。
 const MAX_LOG_ERROR_OBJECT_KEYS = 48;
-// MAX LOG ERROR MESSAGE LENGTH 是模块级稳定契约，集中维护避免调用点散落魔术值。
 const MAX_LOG_ERROR_MESSAGE_LENGTH = 4096;
-// MAX LOG ERROR STACK LENGTH 是模块级稳定契约，集中维护避免调用点散落魔术值。
 const MAX_LOG_ERROR_STACK_LENGTH = 16384;
-// MAX LOG ERROR CAUSE CHAIN LENGTH 是模块级稳定契约，集中维护避免调用点散落魔术值。
 const MAX_LOG_ERROR_CAUSE_CHAIN_LENGTH = 8;
-// LOG ERROR PATH HASH OFFSET 是跨边界路径或地址契约，集中保存避免调用点散落魔术字符串。
+// 固定种子和乘数使路径、URL 摘要能跨运行关联。
 const LOG_ERROR_PATH_HASH_OFFSET = 2166136261;
-// LOG ERROR PATH HASH PRIME 是跨边界路径或地址契约，集中保存避免调用点散落魔术字符串。
 const LOG_ERROR_PATH_HASH_PRIME = 16777619;
 
 export type LogErrorContext = JsonRecord;
@@ -26,6 +21,7 @@ interface LogErrorCause {
   name?: string;
   message: string;
   stack?: string;
+  context?: LogErrorContext; // 随异常快照传递的诊断字段。
 }
 
 export interface LogError {
@@ -33,7 +29,7 @@ export interface LogError {
   message: string;
   stack?: string;
   cause_chain?: LogErrorCause[];
-  context?: LogErrorContext;
+  context?: LogErrorContext; // 随异常快照传递的诊断字段。
 }
 
 export interface LogErrorPathIdentity extends LogErrorContext {
@@ -103,7 +99,7 @@ export function normalize_log_error(value: unknown, fallback_message: string): L
   if (!is_log_error_like(value)) {
     return log_error_from_message(fallback_message);
   }
-  const record = value as Record<string, unknown>;
+  const record = value;
   const message =
     typeof record["message"] === "string" && record["message"].trim() !== ""
       ? record["message"]
@@ -182,6 +178,7 @@ export function to_app_error_log_snapshot(
   };
 }
 
+/** 将跨线程异常快照收窄为对象记录。 */
 function is_log_error_like(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -199,6 +196,7 @@ function build_log_error_from_error(error: Error, context: LogErrorContextInput)
   });
 }
 
+/** 合并调用现场的诊断字段，后传字段优先。 */
 function merge_log_error_context(error: LogError, context: LogErrorContextInput): LogError {
   const extra_context = sanitize_log_error_context(context);
   if (Object.keys(extra_context).length === 0) {
@@ -213,14 +211,14 @@ function merge_log_error_context(error: LogError, context: LogErrorContextInput)
   });
 }
 
+/** 序列化有效上下文，省略空记录。 */
 function normalize_optional_context(value: unknown): { context?: LogErrorContext } {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    return {};
-  }
-  const context = sanitize_log_error_context(value as LogErrorContextInput);
+  if (!is_log_error_like(value)) return {};
+  const context = sanitize_log_error_context(value);
   return Object.keys(context).length === 0 ? {} : { context };
 }
 
+/** 省略空诊断字段，保留可展示的错误消息。 */
 function prune_empty_log_error(payload: LogError): LogError {
   const message = payload.message.trim() === "" ? "unknown_error" : payload.message;
   return {
@@ -236,6 +234,7 @@ function prune_empty_log_error(payload: LogError): LogError {
   };
 }
 
+/** 分离混入消息的调用栈，已有独立堆栈优先。 */
 function split_message_and_stack(
   message: string,
   stack: string | undefined,
@@ -263,22 +262,35 @@ function split_message_and_stack(
   };
 }
 
+/** 展开原因与聚合异常，同一异常只保留一次，并限制输出长度。 */
 function collect_log_error_cause_chain(error: Error): LogErrorCause[] {
   const chain: LogErrorCause[] = [];
-  let current: unknown = error.cause;
-  while (
-    current !== undefined &&
-    current !== null &&
-    chain.length < MAX_LOG_ERROR_CAUSE_CHAIN_LENGTH
-  ) {
+  const pending: unknown[] = // 待展开的异常允许共享或循环引用。
+    error instanceof AggregateError
+      ? [...error.errors.slice(0, MAX_LOG_ERROR_CAUSE_CHAIN_LENGTH), error.cause]
+      : [error.cause];
+  const visited = new Set<unknown>([error]); // 去重已展开的异常，避免重复占用原因列表。
+  // 先展开业务失败，再展开收尾失败，保持诊断顺序。
+  while (pending.length > 0 && chain.length < MAX_LOG_ERROR_CAUSE_CHAIN_LENGTH) {
+    const current = pending.shift();
+    if (current === undefined || current === null || visited.has(current)) continue;
+    visited.add(current);
     if (current instanceof Error) {
       const split = split_message_and_stack(current.message, current.stack);
       chain.push({
         ...(current.name.trim() === "" ? {} : { name: current.name }),
         message: split.message,
         ...(split.stack === undefined ? {} : { stack: split.stack }),
+        ...(is_app_error(current)
+          ? normalize_optional_context({ code: current.code, ...current.diagnostic_context })
+          : {}),
       });
-      current = current.cause;
+      pending.unshift(
+        ...(current instanceof AggregateError
+          ? current.errors.slice(0, MAX_LOG_ERROR_CAUSE_CHAIN_LENGTH - chain.length)
+          : []),
+        current.cause,
+      );
       continue;
     }
     // worker 在本地 Error.cause 中保留 LogError 快照，继续展开才能保留远端调用栈。
@@ -286,17 +298,17 @@ function collect_log_error_cause_chain(error: Error): LogErrorCause[] {
       const snapshot = normalize_log_error(current, "unknown_error");
       const causes = normalize_cause_chain([snapshot, ...(snapshot.cause_chain ?? [])]);
       chain.push(...causes.slice(0, MAX_LOG_ERROR_CAUSE_CHAIN_LENGTH - chain.length));
-      break;
+      continue;
     }
     chain.push({
       name: typeof current,
       message: trim_log_error_text(String(current), MAX_LOG_ERROR_MESSAGE_LENGTH),
     });
-    break;
   }
   return chain;
 }
 
+/** 校验跨线程原因列表并统一文本、堆栈和上下文。 */
 function normalize_cause_chain(value: unknown): LogErrorCause[] {
   if (!Array.isArray(value)) {
     return [];
@@ -320,11 +332,13 @@ function normalize_cause_chain(value: unknown): LogErrorCause[] {
           : {}),
         message: split.message,
         ...(split.stack === undefined ? {} : { stack: split.stack }),
+        ...normalize_optional_context(record["context"]),
       },
     ];
   });
 }
 
+/** 限制上下文字段数量，并递归转换字段值。 */
 function sanitize_json_record(record: Record<string, unknown>, depth: number): LogErrorContext {
   const entries = Object.entries(record).slice(0, MAX_LOG_ERROR_OBJECT_KEYS);
   return Object.fromEntries(
@@ -332,6 +346,7 @@ function sanitize_json_record(record: Record<string, unknown>, depth: number): L
   ) as LogErrorContext;
 }
 
+/** 将诊断值转为有限深度的 JSON，保留特殊值的文字表示。 */
 function sanitize_value(value: unknown, depth: number): JsonValue {
   if (value === null) {
     return null;
@@ -360,6 +375,7 @@ function sanitize_value(value: unknown, depth: number): JsonValue {
   return String(value);
 }
 
+/** 解析诊断 URL，非法输入交给摘要调用方处理。 */
 function parse_log_error_url(value: string): URL | null {
   try {
     return new URL(value);
@@ -368,6 +384,7 @@ function parse_log_error_url(value: string): URL | null {
   }
 }
 
+/** 计算稳定摘要，以关联同一路径或 URL。 */
 function build_log_error_identity_hash(value: string): string {
   let hash = LOG_ERROR_PATH_HASH_OFFSET;
   for (let index = 0; index < value.length; index += 1) {
@@ -377,14 +394,17 @@ function build_log_error_identity_hash(value: string): string {
   return (hash >>> 0).toString(16).padStart(8, "0");
 }
 
+/** 统一换行并清理首尾空白。 */
 function normalize_log_error_text(value: string): string {
   return value.replace(/\r\n/g, "\n").replace(/\r/g, "\n").trim();
 }
 
+/** 按日志长度上限裁剪文本。 */
 function trim_log_error_text(value: string, limit: number): string {
   return value.length > limit ? `${value.slice(0, limit)}...` : value;
 }
 
+/** 将业务错误严重度映射为日志等级。 */
 function resolve_app_error_log_level(
   error: AppError,
 ): Extract<LogLevel, "debug" | "warning" | "error"> {

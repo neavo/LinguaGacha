@@ -197,6 +197,7 @@ export const en_us_app = {
       },
     },
     project: {
+      already_exists: { message: "The project file already exists. Choose another file name …" },
       not_loaded: {
         message: "No project is loaded …",
       },
@@ -222,6 +223,7 @@ export const en_us_app = {
       },
     },
     database: {
+      busy: { message: "The project database is busy. Please try again later …" },
       conflict: {
         message: "Database write conflict. Please refresh and try again …",
       },
@@ -231,7 +233,7 @@ export const en_us_app = {
         message: "The data version changed. Please refresh and try again …",
       },
       committed_sync_failed: {
-        message: "The data was saved, but the interface failed to synchronize …",
+        message: "Data was saved, but subsequent processing failed. Reload the project …",
       },
     },
     model: {

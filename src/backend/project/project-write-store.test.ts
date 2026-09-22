@@ -65,7 +65,11 @@ describe("ProjectWriteStore", () => {
         source: "agent_workspace_apply",
         batch,
       }),
-    ).rejects.toThrow("revision write failed");
+    ).rejects.toThrow(
+      expect.objectContaining({
+        cause: expect.objectContaining({ message: "revision write failed" }),
+      }),
+    );
     failure.mockRestore();
     expect(database.read_pdf_document(project_path, "book.pdf")).toEqual(document);
     expect(get_section_revision(read_meta(database, project_path), "pdf")).toBe(0);
@@ -734,7 +738,11 @@ describe("ProjectWriteStore", () => {
           ],
         }),
       }),
-    ).rejects.toThrow("prompt write failed");
+    ).rejects.toThrow(
+      expect.objectContaining({
+        cause: expect.objectContaining({ message: "prompt write failed" }),
+      }),
+    );
 
     expect(read_items(database, project_path)[0]).toMatchObject({
       dst: "",

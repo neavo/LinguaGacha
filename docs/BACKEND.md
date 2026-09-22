@@ -14,7 +14,7 @@
 - `POST /api/project/translation-stats` 提供当前工程统计，成功与跳过条目占全部条目的比例取整为完成率，空工程为零，仍有未完成对象时最高为 99%；该口径独立于本轮任务进度。响应携带工程路径供切换隔离。
 - `POST /api/workbench/snapshot` 的文本文件复用工程统计口径；PDF 按原页处置计数，translate（含空译稿）为完成，keep 与 omit 为跳过，其余为等待，失败计数为 null。完成率复用工程取整规则，与核对标记独立；工程统计仍只汇总文本条目。
 - 模型管理 API 只负责配置 CRUD；任务入口读取窄选项，通过组合选模或按用途更新等级命令修改配置。选项只携带显示身份、解析后的非敏感 Agent 容量、当前等级与可用等级，不公开自动配置、密钥、请求覆盖或生成参数。
-- `LogManager` 统一日志入口，`LogFileStore` 拥有每日正文 `.jsonl` 与可重建索引 `.idx.jsonl`。文件和 API 传递同一份正文，控制台和索引消费文本投影；Agent 事件字段由后端生产者约束，读取端按 JSON 展示。翻译摘要冻结本地化文案，其投影省略 `LogError.message`、保留调用栈。日志写入时间由 `LogManager` 生成；翻译起止时间由 worker 在模型请求开始和响应处理收尾时捕获，回放保留原值。
+- `LogManager` 统一日志入口，`LogFileStore` 拥有每日正文 `.jsonl` 与可重建索引 `.idx.jsonl`。文件和 API 传递同一份正文，控制台和索引消费文本投影；Agent 事件字段由后端生产者约束，读取端按 JSON 展示。翻译摘要冻结本地化文案，其投影由摘要承载外层消息，统一展示堆栈、原因链和诊断上下文。日志写入时间由 `LogManager` 生成；翻译起止时间由 worker 在模型请求开始和响应处理收尾时捕获，回放保留原值。
 - 日志身份采用日期和物理行号，隐藏与损坏行同样计数；字节定位只留在索引。每个日期在进程首次访问时重建索引，随后通过文件身份、大小和时间戳区别自身追加与外部编辑；编辑或索引失效更换内容代次，旧游标与详情请求过期。正文先写、索引后写；同日期恢复任务共享，失败保留正文，日志自身故障走 stderr。
 - 查询固定在显式日期文件内结束；隐藏记录 `window: false` 不进入摘要和详情。Agent 对话与执行记录消费同一查询链路，其生产和生命周期边界归 [AGENT_RUNTIME](AGENT_RUNTIME.md)。正文、索引和旧 `.log` 按最近三个日期共同轮转；旧 `.log` 只供直接查看。
 - renderer 诊断入口只接收实际异常摘要与白名单上下文并写入 `LogManager`，不改变项目、任务或设置事实。
@@ -144,9 +144,10 @@ project, files, items, pdf, quality, prompts, proofreading
 ## 5. 数据库与 `.lg` 存储
 
 - `ProjectDatabase` 是 `.lg` workflow 的唯一入口；上层调用类型化读写方法，不持有 SQLite 连接，也不拼字符串操作协议。
-- `transaction(projectPath, callback)` 只为该路径的连接建立事务；回调内的类型化方法仍显式接收路径，跨 `.lg` 写入不具备原子性。`create_project` 完成基础建库后在该路径事务内执行可选初始化回调；回调失败时关闭并移除新文件。
-- `.lg` 使用 SQLite `FULL auto_vacuum` 回收完整空闲页；`ProjectDatabase` 遇到其它模式时在 schema/writeback migration 前尝试 `VACUUM`，物理整理未完成时保留现有模式并继续正常 workflow。
-- 连接运行期使用 WAL；长任务通过 project lease 保留连接，普通 workflow 结束且无租约时统一 checkpoint 并关闭连接，不手动删除 `-wal` / `-shm`。
+- `transaction(projectPath, callback)` 只保证该路径的事务，回调内的类型化方法仍显式接收路径。`create_project` 排他创建文件，将初始元数据与初始化回调一起提交。提交前失败先关闭连接再清理新文件，清理失败保留文件和原因。事务拥有提交状态，提交后的收尾失败通过 `data.committed_sync_failed` 要求重载。
+- `.lg` 使用 SQLite `FULL auto_vacuum` 回收空闲页。旧模式在迁移前尝试 `VACUUM`，整理失败则保留原模式继续操作。
+- 所有数据库操作共用连接作用域，私有 SQL 方法接收连接。连接创建时配置锁等待，覆盖 WAL 初始化。长任务租约和同步作用域共同持有连接，全部释放后关闭。SQLite 管理最后一个连接的 checkpoint 与副文件清理，`ProjectDatabase` 负责回收关闭失败的连接。
+- 数据库边界按 SQLite 数值码识别锁冲突。公开响应使用业务错误码，日志保留失败阶段、路径摘要、SQLite 原码和异常链。回滚或收尾失败同时保留主异常与清理异常。
 - `pdf_documents` 保存来源摘要，`pdf_pages` 以 `(file_path, page)` 保存页面 JSON，原始字节归 assets。读取按原页序组合，写入仅更新目标页。导入事务核对资产 SHA-256，拒绝解析后变化的来源。文字、字体与坐标提取作为可再生工作材料，不进入存储。
 - asset 存在 `assets` 表，以 Zstd blob 落库；压缩格式集中在 `src/shared/utils/zstd-tool.ts`，数据库读取向上返回解压后的 bytes。
 - 新建与既有工程共用打开迁移入口：按实际表和列补齐结构，再执行业务写回迁移。执行成功后在同一事务内记录 `applied_writeback_migrations`，完成记录由迁移执行器唯一写入。迁移清单归 registry。
