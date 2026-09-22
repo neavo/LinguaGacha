@@ -2,7 +2,7 @@ import type { LogDetail } from "@frontend/app/desktop/desktop-api";
 import { useI18n } from "@frontend/app/locale/locale-context";
 import { Badge } from "@frontend/shadcn/badge";
 import { AppEditor } from "@frontend/widgets/app-editor/app-editor";
-import { format_log_readable_text } from "@shared/log";
+import { format_log_readable_text, format_log_error_text } from "@shared/log";
 import "@frontend/pages/log-window-page/log-detail-view.css";
 
 /** 详情视图只接收已由 desktop-api 收窄的完整日志。 */
@@ -27,7 +27,7 @@ export function LogDetailView(props: LogDetailViewProps): JSX.Element {
   }
 
   // 结构化结果已有独立内容布局，异常只追加诊断字段，避免再次生成正文投影。
-  const error_text = props.detail.error?.stack?.trim() ?? "";
+  const error_text = format_log_error_text(props.detail.error, false);
 
   return (
     <div className="log-detail-view">

@@ -194,6 +194,7 @@ export const zh_cn_app = {
       },
     },
     project: {
+      already_exists: { message: "工程文件已存在，请选择其他文件名 …" },
       not_loaded: {
         message: "工程未加载 …",
       },
@@ -219,6 +220,7 @@ export const zh_cn_app = {
       },
     },
     database: {
+      busy: { message: "工程数据库暂时无法取得访问锁，请稍后重试 …" },
       conflict: {
         message: "数据库写入冲突，请刷新后重试 …",
       },
@@ -228,7 +230,7 @@ export const zh_cn_app = {
         message: "数据版本已变化，请刷新后重试 …",
       },
       committed_sync_failed: {
-        message: "数据已写入，但界面同步失败 …",
+        message: "数据已写入，但后续处理失败，请重新加载工程 …",
       },
     },
     model: {

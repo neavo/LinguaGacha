@@ -1,3 +1,4 @@
+import { database_error, database_cleanup_error } from "./database-error";
 import type { ProjectPreview } from "../../shared/project-preview";
 import { build_project_translation_stats } from "../../shared/project-translation-stats";
 import { build_project_file_paths } from "../../shared/project/project-file-paths";
@@ -24,7 +25,8 @@ type DatabaseRow = Record<string, unknown>;
 
 // SQLite 的 IN 参数统一在数据库边界分块；业务批量大小不应复用这个存储安全值。
 const SQLITE_IN_CLAUSE_CHUNK_SIZE = 500;
-const SQLITE_AUTO_VACUUM_FULL = 1; // SQLite PRAGMA 用 1 表示 FULL，文件头查询与设置共享该协议值
+const SQLITE_AUTO_VACUUM_FULL = 1; // SQLite 的 FULL 自动回收模式。
+const SQLITE_BUSY_TIMEOUT_MS = 5000; // 连接建立后即生效，覆盖首次 WAL 初始化。
 
 /** 让所有 IN 查询共享同一存储分块边界，避免调用方各自猜测 SQLite 参数容量。 */
 function for_each_sqlite_in_clause_chunk<T>(
@@ -39,14 +41,13 @@ function for_each_sqlite_in_clause_chunk<T>(
 export type ProjectDatabaseWrite = (database: ProjectDatabase) => void;
 
 /**
- * 单个 .lg 当前打开连接的生命周期记录，只表达 scoped 使用和显式租约
+ * 单个 .lg 当前打开连接的生命周期记录，记录连接就绪状态和作用域、租约的共同持有计数
  */
 interface ProjectDatabaseConnectionRecord {
   readonly normalized_path: string; // 连接表的唯一键，避免同一 .lg 因相对路径重复打开
   readonly db: DatabaseSync;
-  lease_count: number; // 任务等长流程正在显式保留连接
-  scoped_use_count: number; // 当前同步 workflow 正在使用连接，归零后才能收尾
-  closed: boolean; // 隔离已关闭记录，保证迟到租约释放不会二次操作 SQLite 句柄
+  use_count: number; // 同步作用域与长任务租约共同持有连接，全部释放后关闭。
+  ready: boolean; // 初始化或关闭失败的连接留待回收，不能交给业务使用。
 }
 
 /**
@@ -124,7 +125,6 @@ export class ProjectDatabase {
    */
   public close(): void {
     const records = [...this.connection_records.values()];
-    this.connection_records.clear();
     this.storage_maintenance_deferred_paths.clear();
     const errors: unknown[] = [];
     for (const record of records) {
@@ -139,25 +139,38 @@ export class ProjectDatabase {
     }
   }
 
-  /**
-   * 重建目标 .lg，并让可选领域初始化在同一连接的事务内完成；领域初始化失败时清理半成品。
-   */
+  /** 排他创建工程，按事务提交结果决定失败时是否清理新文件。 */
   public create_project(project_path: string, name: string, initialize?: () => void): void {
-    let initialized = false;
+    const normalized_path = path.resolve(project_path);
     try {
-      this.initialize_project(project_path, name);
-      initialized = true;
-      if (initialize !== undefined) {
-        this.transaction(project_path, initialize);
-      }
+      this.native_fs.create_file_exclusive(normalized_path);
     } catch (error) {
-      if (initialized) {
-        this.close_project_connection(project_path);
-        this.native_fs.remove(project_path, { force: true });
+      if (error instanceof Error && "code" in error && error.code === "EEXIST") {
+        throw new AppErrors.AppError("project.already_exists", { cause: error });
+      }
+      throw database_error(error, normalized_path, "create_file");
+    }
+    this.storage_maintenance_deferred_paths.delete(normalized_path);
+    try {
+      this.transaction(normalized_path, () => {
+        const now = new Date().toISOString();
+        this.upsert_meta_entries(normalized_path, { name, created_at: now, updated_at: now });
+        initialize?.();
+      });
+    } catch (error) {
+      // 事务入口拥有提交状态，新建入口按同一错误协议保留已提交文件。
+      if (AppErrors.is_app_error(error) && error.code === "data.committed_sync_failed") throw error;
+      try {
+        // 关闭失败时保留文件和连接记录，防止删除仍被持有的数据库。
+        this.close_project(normalized_path);
+        this.native_fs.remove(normalized_path, { force: true });
+      } catch (cleanup) {
+        throw database_cleanup_error(
+          error,
+          database_error(cleanup, normalized_path, "remove_created_file"),
+        );
       }
       throw error;
-    } finally {
-      this.close_connection_if_idle_path(project_path);
     }
   }
 
@@ -165,47 +178,84 @@ export class ProjectDatabase {
    * 工程卸载时强制释放该路径的连接与租约。
    */
   public close_project(project_path: string): void {
-    this.close_project_connection(project_path);
+    const normalized_path = path.resolve(project_path);
+    const record = this.connection_records.get(normalized_path);
+    if (record === undefined) {
+      return;
+    }
+    record.use_count = 0;
+    this.close_connection_record(record);
   }
 
   /**
    * 以 BEGIN IMMEDIATE 执行同步回调；回调内的 typed 方法复用当前 scoped 连接。
    */
   public transaction<T>(project_path: string, callback: () => T): T {
-    return this.with_project_connection(project_path, (db) => {
-      db.exec("BEGIN IMMEDIATE");
-      try {
-        const result = callback();
-        db.exec("COMMIT");
-        return result;
-      } catch (error) {
-        db.exec("ROLLBACK");
-        throw error;
-      }
+    let committed = false; // COMMIT 成功后，收尾失败只能要求重载。
+    try {
+      return this.with_project_connection(project_path, (db) => {
+        db.exec("BEGIN IMMEDIATE");
+        try {
+          const result = callback();
+          db.exec("COMMIT");
+          committed = true;
+          return result;
+        } catch (error) {
+          try {
+            db.exec("ROLLBACK");
+          } catch (cleanup) {
+            // 回滚失败的连接不能被长任务租约继续复用，退出作用域时立即关闭。
+            const record = this.connection_records.get(path.resolve(project_path));
+            if (record !== undefined) record.ready = false;
+            throw database_cleanup_error(
+              database_error(error, project_path, "transaction"),
+              database_error(cleanup, project_path, "rollback"),
+            );
+          }
+          throw error;
+        }
+      });
+    } catch (error) {
+      if (committed) throw this.committed_error(error, project_path);
+      throw error;
+    }
+  }
+
+  /** 提交后关闭失败沿用已提交错误协议，调用者只能重载，不能重放写入。 */
+  private committed_error(cause: unknown, project_path: string): AppErrors.AppError {
+    return new AppErrors.AppError("data.committed_sync_failed", {
+      cause,
+      public_details: { committed: true, action: "reload_project" },
+      diagnostic_context: {
+        operation: "close_after_commit",
+        project: AppErrors.summarize_log_error_path(project_path),
+      },
     });
   }
 
   /**
-   * 以下公开 typed 方法只负责 scoped 连接复用；SQL 语义集中在对应私有读写实现。
+   * 在连接作用域内写入单个元数据字段。
    */
   public set_meta(project_path: string, key: string, value: JsonValue): void {
-    this.with_project_connection(project_path, () => this.write_meta(project_path, key, value));
+    this.with_project_connection(project_path, (db) =>
+      this.upsert_meta_entries_with_db(db, { [key]: value }),
+    );
   }
 
   /** 合并提交的 meta 键，保留其它工程元数据。 */
   public upsert_meta_entries(project_path: string, meta: JsonRecord): void {
-    this.with_project_connection(project_path, () => this.write_meta_entries(project_path, meta));
+    this.with_project_connection(project_path, (db) => this.upsert_meta_entries_with_db(db, meta));
   }
 
   /** 读取工程元数据，供上层一次组装设置与 revision。 */
   public get_all_meta(project_path: string): JsonValue {
-    return this.with_project_connection(project_path, () => this.read_all_meta(project_path));
+    return this.with_project_connection(project_path, (db) => this.read_all_meta(db));
   }
 
   /** 推进 files/items revision，重复 section 在同次调用中只计一次。 */
   public bump_section_revisions(project_path: string, sections: string[]): JsonValue {
-    return this.with_project_connection(project_path, () =>
-      this.advance_section_revisions(project_path, sections),
+    return this.with_project_connection(project_path, (db) =>
+      this.advance_section_revisions(db, sections),
     );
   }
 
@@ -217,9 +267,9 @@ export class ProjectDatabase {
     document: PDFDocument | null,
     sort_order: number | null = null,
   ): void {
-    this.with_project_connection(project_path, () => {
-      this.insert_asset_from_source(project_path, asset_path, source_path, sort_order);
-      this.replace_pdf_source(project_path, asset_path, document);
+    this.with_project_connection(project_path, (db) => {
+      this.insert_asset_from_source(db, asset_path, source_path, sort_order);
+      this.replace_pdf_source(db, asset_path, document);
     });
   }
 
@@ -230,26 +280,26 @@ export class ProjectDatabase {
     source_path: string,
     document: PDFDocument | null,
   ): void {
-    this.with_project_connection(project_path, () => {
-      this.replace_asset_from_source(project_path, asset_path, source_path);
-      this.replace_pdf_source(project_path, asset_path, document);
+    this.with_project_connection(project_path, (db) => {
+      this.replace_asset_from_source(db, asset_path, source_path);
+      this.replace_pdf_source(db, asset_path, document);
     });
   }
 
   /** 导入准备与资产写入之间源文件可能变化；摘要校验与文档替换共用外层事务。 */
   private replace_pdf_source(
-    project_path: string,
+    db: DatabaseSync,
     file_path: string,
     document: PDFDocument | null,
   ): void {
-    const db = this.open_project(project_path); // 导入入口已持有连接与资产事务。
     db.prepare("DELETE FROM pdf_pages WHERE file_path = ?").run(file_path);
     if (document === null) {
       db.prepare("DELETE FROM pdf_documents WHERE file_path = ?").run(file_path);
       return;
     }
     read_pdf_document(document);
-    const bytes = this.read_asset_content(project_path, file_path);
+    const row = db.prepare("SELECT data FROM assets WHERE path = ?").get(file_path);
+    const bytes = row === undefined ? null : ZstdTool.decompress(bytes_from_blob(row["data"]));
     if (bytes === null || createHash("sha256").update(bytes).digest("hex") !== document.digest)
       throw new AppErrors.AppError("file.parse_failed", {
         diagnostic_context: { reason: "source_changed_after_parse", file_path },
@@ -361,65 +411,57 @@ export class ProjectDatabase {
     this.with_project_connection(project_path, (db) => {
       db.prepare("DELETE FROM pdf_pages WHERE file_path = ?").run(asset_path);
       db.prepare("DELETE FROM pdf_documents WHERE file_path = ?").run(asset_path);
-      this.remove_asset(project_path, asset_path);
+      this.remove_asset(db, asset_path);
     });
   }
 
   /** 按持久化顺序返回路径与排序位，不读取资产正文。 */
   public get_all_asset_records(project_path: string): JsonValue {
-    return this.with_project_connection(project_path, () =>
-      this.read_all_asset_records(project_path),
-    );
+    return this.with_project_connection(project_path, (db) => this.read_all_asset_records(db));
   }
 
   /** 直接统计资产数量，避免文件列表全量读取。 */
   public get_asset_count(project_path: string): number {
-    return this.with_project_connection(project_path, () => this.read_asset_count(project_path));
+    return this.with_project_connection(project_path, (db) => this.read_asset_count(db));
   }
 
   /** 按调用方顺序重排资产，多步写入由调用方事务包裹。 */
   public update_asset_sort_orders(project_path: string, ordered_paths: string[]): void {
-    this.with_project_connection(project_path, () =>
-      this.write_asset_sort_orders(project_path, ordered_paths),
+    this.with_project_connection(project_path, (db) =>
+      this.write_asset_sort_orders(db, ordered_paths),
     );
   }
 
   /** 按数据库 id 顺序返回条目及其持久身份。 */
   public get_all_items(project_path: string): JsonValue {
-    return this.with_project_connection(project_path, () => this.read_all_items(project_path));
+    return this.with_project_connection(project_path, (db) => this.read_all_items(db));
   }
 
   /** 直接统计条目数量，避免解析 JSON 正文。 */
   public get_item_count(project_path: string): number {
-    return this.with_project_connection(project_path, () => this.read_item_count(project_path));
+    return this.with_project_connection(project_path, (db) => this.read_item_count(db));
   }
 
   /** 通过 SQL 聚合条目状态，供进度统计读取。 */
   public get_item_status_summary(project_path: string): JsonValue {
-    return this.with_project_connection(project_path, () =>
-      this.read_item_status_summary(project_path),
-    );
+    return this.with_project_connection(project_path, (db) => this.read_item_status_summary(db));
   }
 
   /** 按请求 id 顺序回查存在的条目，并去重请求。 */
   public get_items_by_ids(project_path: string, item_ids: number[]): JsonValue {
-    return this.with_project_connection(project_path, () =>
-      this.read_items_by_ids(project_path, item_ids),
-    );
+    return this.with_project_connection(project_path, (db) => this.read_items_by_ids(db, item_ids));
   }
 
   /** 只读取字段写回所需事实，减少校对提交的回查开销。 */
   public get_item_write_facts_by_ids(project_path: string, item_ids: number[]): JsonValue {
-    return this.with_project_connection(project_path, () =>
-      this.read_item_write_facts_by_ids(project_path, item_ids),
+    return this.with_project_connection(project_path, (db) =>
+      this.read_item_write_facts_by_ids(db, item_ids),
     );
   }
 
   /** 替换整个条目集合，调用方事务负责与相关工程事实一起提交。 */
   public set_items(project_path: string, items: JsonValue[]): number[] {
-    return this.with_project_connection(project_path, () =>
-      this.replace_items(project_path, items),
-    );
+    return this.with_project_connection(project_path, (db) => this.replace_items(db, items));
   }
 
   /** 按条目 id 更新允许写入的字段，保留其它持久事实。 */
@@ -428,51 +470,43 @@ export class ProjectDatabase {
     item_ids: number[],
     patch: JsonRecord,
   ): void {
-    this.with_project_connection(project_path, () =>
-      this.write_item_fields_by_ids(project_path, item_ids, patch),
+    this.with_project_connection(project_path, (db) =>
+      this.write_item_fields_by_ids(db, item_ids, patch),
     );
   }
 
   /** 批量更新译文字段，保持条目原文与定位信息。 */
   public patch_item_translation_fields(project_path: string, patches: JsonValue[]): void {
-    this.with_project_connection(project_path, () =>
-      this.write_item_translation_fields(project_path, patches),
+    this.with_project_connection(project_path, (db) =>
+      this.write_item_translation_fields(db, patches),
     );
   }
 
   /** 读取指定规则类型的持久载荷，由领域层校验内容。 */
   public get_rules(project_path: string, rule_type: string): JsonValue {
-    return this.with_project_connection(project_path, () =>
-      this.read_rules(project_path, rule_type),
-    );
+    return this.with_project_connection(project_path, (db) => this.read_rules(db, rule_type));
   }
 
   /** 替换指定类型的规则载荷，其它规则类型继续保留。 */
   public set_rules(project_path: string, rule_type: string, rules: JsonValue[]): void {
-    this.with_project_connection(project_path, () =>
-      this.write_rules(project_path, rule_type, rules),
+    this.with_project_connection(project_path, (db) =>
+      this.set_rules_with_db(db, rule_type, rules),
     );
   }
 
   /** 将提示词等文本规则的持久载荷收窄为字符串。 */
   public get_rule_text(project_path: string, rule_type: string): string {
-    return this.with_project_connection(project_path, () =>
-      this.read_rule_text(project_path, rule_type),
-    );
+    return this.with_project_connection(project_path, (db) => this.read_rule_text(db, rule_type));
   }
 
   /** 以统一文本规则形状保存提示词内容。 */
   public set_rule_text(project_path: string, rule_type: string, text: string): void {
-    this.with_project_connection(project_path, () =>
-      this.write_rule_text(project_path, rule_type, text),
-    );
+    this.with_project_connection(project_path, (db) => this.write_rule_text(db, rule_type, text));
   }
 
   /** 聚合工程元数据和条目进度，供列表与状态读取。 */
   public get_project_summary(project_path: string): ProjectPreview {
-    return this.with_project_connection(project_path, () =>
-      this.read_project_summary(project_path),
-    );
+    return this.with_project_connection(project_path, (db) => this.read_project_summary(db));
   }
 
   /**
@@ -493,62 +527,55 @@ export class ProjectDatabase {
    */
   public acquire_project_lease(project_path: string, _owner: string): () => void {
     const record = this.open_project_record(path.resolve(project_path));
-    record.lease_count += 1;
-    let released = false;
+    record.use_count += 1;
+    let released = false; // 迟到或重复释放只减少一次持有计数。
     return () => {
       if (released) {
         return;
       }
       released = true;
-      record.lease_count = Math.max(0, record.lease_count - 1);
+      record.use_count = Math.max(0, record.use_count - 1);
       this.close_connection_if_idle(record);
     };
   }
 
   /**
-   * 打开并迁移工程数据库，确保后续读写看到当前 schema
-   */
-  private open_project(project_path: string): DatabaseSync {
-    return this.open_project_record(path.resolve(project_path)).db;
-  }
-
-  /**
-   * 取得连接记录；默认 operation 由外层 scoped 使用计数决定何时关闭
+   * 取得可用连接，失败连接先关闭再重新初始化
    */
   private open_project_record(normalized_path: string): ProjectDatabaseConnectionRecord {
     const cached = this.connection_records.get(normalized_path);
-    if (cached !== undefined) {
-      return cached;
-    }
-    this.native_fs.make_dir(path.dirname(normalized_path));
-    const db = new DatabaseSync(this.native_fs.to_native_path(normalized_path));
+    if (cached?.ready) return cached;
+    if (cached !== undefined) this.close_connection_record(cached);
+    let record: ProjectDatabaseConnectionRecord | undefined;
+    let operation = "open"; // 记录首个失败的连接初始化阶段。
     try {
+      this.native_fs.make_dir(path.dirname(normalized_path));
+      const db = new DatabaseSync(this.native_fs.to_native_path(normalized_path), {
+        timeout: SQLITE_BUSY_TIMEOUT_MS,
+      });
+      record = { normalized_path, db, use_count: 0, ready: false };
+      // 登记后再初始化，关闭失败仍由本实例持有并回收。
+      this.connection_records.set(normalized_path, record);
+      operation = "journal_mode";
       db.exec("PRAGMA journal_mode=WAL");
+      operation = "synchronous";
       db.exec("PRAGMA synchronous=NORMAL");
-      db.exec("PRAGMA busy_timeout=5000");
       this.apply_project_storage_mode(normalized_path, db);
-      // 每次首次打开都先跑 schema/writeback 迁移，让业务读写只面对当前 .lg 物理契约
+      operation = "migration";
       migration_orchestrator.run_project_database_migrations(db);
-    } catch (open_error) {
-      try {
-        db.close();
-      } catch (close_error) {
-        throw new AggregateError(
-          [open_error, close_error],
-          "Project database initialization and connection cleanup both failed.",
-        );
+      record.ready = true;
+      return record;
+    } catch (error) {
+      const failure = database_error(error, normalized_path, operation);
+      if (record !== undefined) {
+        try {
+          this.close_connection_record(record);
+        } catch (cleanup) {
+          throw database_cleanup_error(failure, cleanup);
+        }
       }
-      throw open_error;
+      throw failure;
     }
-    const record: ProjectDatabaseConnectionRecord = {
-      normalized_path,
-      db,
-      lease_count: 0,
-      scoped_use_count: 0,
-      closed: false,
-    };
-    this.connection_records.set(normalized_path, record);
-    return record;
   }
 
   /**
@@ -572,116 +599,53 @@ export class ProjectDatabase {
   }
 
   /**
-   * 关闭指定工程连接并清空租约计数，用于工程卸载和文件重建收尾
-   */
-  private close_project_connection(project_path: string): void {
-    const normalized_path = path.resolve(project_path);
-    const record = this.connection_records.get(normalized_path);
-    if (record === undefined) {
-      return;
-    }
-    record.lease_count = 0;
-    record.scoped_use_count = 0;
-    this.close_connection_record(record);
-  }
-
-  /**
-   * 默认数据库 workflow 使用 scoped connection，完成后在无租约时立即 checkpoint/close
+   * 数据库操作持有连接作用域，完成后在无租约时关闭
    */
   private with_project_connection<T>(project_path: string, callback: (db: DatabaseSync) => T): T {
     const record = this.open_project_record(path.resolve(project_path));
-    record.scoped_use_count += 1;
+    record.use_count += 1;
+    let failure: AppErrors.AppError | undefined; // 保留主异常，以便合并收尾异常。
+    let result!: T; // 业务执行成功且连接收尾完成后再返回。
     try {
-      return callback(record.db);
+      result = callback(record.db);
+    } catch (error) {
+      failure = database_error(error, project_path, "operation");
     } finally {
-      record.scoped_use_count -= 1;
-      this.close_connection_if_idle(record);
+      record.use_count -= 1;
     }
+    try {
+      this.close_connection_if_idle(record);
+    } catch (cleanup) {
+      if (failure !== undefined) throw database_cleanup_error(failure, cleanup);
+      throw cleanup;
+    }
+    if (failure !== undefined) throw failure;
+    return result;
   }
 
   /**
    * 无长租约且无 scoped workflow 时收尾连接，让稳定态回到单个 .lg 文件
    */
   private close_connection_if_idle(record: ProjectDatabaseConnectionRecord): void {
-    if (record.closed) {
-      return;
-    }
-    if (record.lease_count > 0 || record.scoped_use_count > 0) {
+    if (record.ready && record.use_count > 0) {
       return;
     }
     this.close_connection_record(record);
   }
 
-  /**
-   * 按路径查找连接记录并尝试空闲收尾，供 createProject 特例使用
-   */
-  private close_connection_if_idle_path(project_path: string): void {
-    const record = this.connection_records.get(path.resolve(project_path));
-    if (record !== undefined) {
-      this.close_connection_if_idle(record);
-    }
-  }
-
-  /**
-   * SQLite 正常 checkpoint 后关闭连接；不手动删除 -wal / -shm 副文件
-   */
+  /** 最后一个连接的 checkpoint 与副文件清理由 SQLite 正常关闭完成。 */
   private close_connection_record(record: ProjectDatabaseConnectionRecord): void {
-    if (record.closed) {
-      return;
-    }
-    record.closed = true;
-    this.connection_records.delete(record.normalized_path);
-    const errors: unknown[] = [];
-    try {
-      record.db.exec("PRAGMA wal_checkpoint(TRUNCATE)");
-    } catch (error) {
-      errors.push(error);
-    }
+    if (!record.db.isOpen) return;
+    record.ready = false;
     try {
       record.db.close();
     } catch (error) {
-      errors.push(error);
+      throw database_error(error, record.normalized_path, "close");
+    } finally {
+      if (!record.db.isOpen) {
+        this.connection_records.delete(record.normalized_path);
+      }
     }
-    if (errors.length === 1) {
-      throw errors[0];
-    }
-    if (errors.length > 1) {
-      throw new AggregateError(errors, "Failed to close a project database connection.");
-    }
-  }
-
-  /**
-   * 创建新 .lg 数据库并初始化 schema，作为工程落盘入口
-   */
-  private initialize_project(project_path: string, name: string): null {
-    const normalized_path = path.resolve(project_path);
-    this.close_project(normalized_path);
-    this.storage_maintenance_deferred_paths.delete(normalized_path);
-    if (this.native_fs.exists(normalized_path)) {
-      this.native_fs.unlink(normalized_path);
-    }
-    const db = this.open_project(normalized_path);
-    const now = new Date().toISOString();
-    this.upsert_meta_entries_with_db(db, {
-      name,
-      created_at: now,
-      updated_at: now,
-    });
-    return null;
-  }
-
-  /**
-   * 写入单个 meta 值，维持 meta 更新的统一序列化方式
-   */
-  private write_meta(project_path: string, key: string, value: JsonValue): void {
-    this.upsert_meta_entries(project_path, { [key]: value });
-  }
-
-  /**
-   * 批量写入 meta 项，减少跨边界多次 database workflow
-   */
-  private write_meta_entries(project_path: string, meta: DatabaseRow): void {
-    this.upsert_meta_entries_with_db(this.open_project(project_path), meta);
   }
 
   /**
@@ -697,8 +661,7 @@ export class ProjectDatabase {
   /**
    * 读取完整 meta 快照，供运行态编码一次性构建事实
    */
-  private read_all_meta(project_path: string): JsonValue {
-    const db = this.open_project(project_path);
+  private read_all_meta(db: DatabaseSync): JsonValue {
     const result: MutableJsonRecord = {};
     for (const row of db.prepare("SELECT key, value FROM meta").all()) {
       result[row_text(row, "key")] = json_parse(row["value"]);
@@ -709,8 +672,7 @@ export class ProjectDatabase {
   /**
    * 由内部任务数据路由调用的窄 revision 推进入口；公开读取和 ack 仍由 项目域计算
    */
-  private advance_section_revisions(project_path: string, sections: string[]): JsonValue {
-    const db = this.open_project(project_path);
+  private advance_section_revisions(db: DatabaseSync, sections: string[]): JsonValue {
     const supported_sections = new Set(["files", "items"]);
     const next_revisions: Record<string, number> = {};
     for (const section of sections) {
@@ -756,33 +718,26 @@ export class ProjectDatabase {
    * 从源文件导入 asset，统一压缩和排序字段写入
    */
   private insert_asset_from_source(
-    project_path: string,
+    db: DatabaseSync,
     asset_path: string,
     source_path: string,
     sort_order: number | null,
   ): void {
     const original_data = this.native_fs.read_file(source_path);
     const compressed = ZstdTool.compress(original_data);
-    this.add_asset_buffer(
-      project_path,
-      asset_path,
-      compressed,
-      original_data.byteLength,
-      sort_order,
-    );
+    this.add_asset_buffer(db, asset_path, compressed, original_data.byteLength, sort_order);
   }
 
   /**
    * 写入 asset buffer，集中处理压缩和记录插入
    */
   private add_asset_buffer(
-    project_path: string,
+    db: DatabaseSync,
     asset_path: string,
     compressed: Buffer,
     original_size: number,
     sort_order: number | null,
   ): void {
-    const db = this.open_project(project_path);
     const effective_sort_order = sort_order ?? this.get_next_asset_sort_order(db);
     db.prepare(
       `INSERT INTO assets (path, sort_order, data, original_size, compressed_size)
@@ -794,13 +749,13 @@ export class ProjectDatabase {
    * 用源文件更新 asset 内容，保持路径记录不被调用方重建
    */
   private replace_asset_from_source(
-    project_path: string,
+    db: DatabaseSync,
     asset_path: string,
     source_path: string,
   ): void {
     const original_data = this.native_fs.read_file(source_path);
     const compressed = ZstdTool.compress(original_data);
-    const result = this.open_project(project_path)
+    const result = db
       .prepare(
         `UPDATE assets
          SET data = ?, original_size = ?, compressed_size = ?
@@ -817,15 +772,15 @@ export class ProjectDatabase {
   /**
    * 删除 asset 记录，保持文件移除只走存储入口
    */
-  private remove_asset(project_path: string, asset_path: string): void {
-    this.open_project(project_path).prepare("DELETE FROM assets WHERE path = ?").run(asset_path);
+  private remove_asset(db: DatabaseSync, asset_path: string): void {
+    db.prepare("DELETE FROM assets WHERE path = ?").run(asset_path);
   }
 
   /**
    * 读取 asset 记录快照，供运行态排序与导出使用
    */
-  private read_all_asset_records(project_path: string): JsonValue {
-    return this.open_project(project_path)
+  private read_all_asset_records(db: DatabaseSync): JsonValue {
+    return db
       .prepare("SELECT path, sort_order FROM assets ORDER BY sort_order ASC, id ASC")
       .all()
       .map((row) => ({ path: row_text(row, "path"), sort_order: row_number(row, "sort_order") }));
@@ -834,20 +789,16 @@ export class ProjectDatabase {
   /**
    * 文件数量直接由 SQL 聚合读取，manifest 不为计数预热 files section
    */
-  private read_asset_count(project_path: string): number {
-    const row = this.open_project(project_path)
-      .prepare("SELECT COUNT(*) AS count FROM assets")
-      .get();
+  private read_asset_count(db: DatabaseSync): number {
+    const row = db.prepare("SELECT COUNT(*) AS count FROM assets").get();
     return row === undefined ? 0 : row_number(row, "count");
   }
 
   /**
    * 批量更新 asset 顺序，保证文件重排一次事务完成
    */
-  private write_asset_sort_orders(project_path: string, ordered_paths: string[]): void {
-    const statement = this.open_project(project_path).prepare(
-      "UPDATE assets SET sort_order = ? WHERE path = ?",
-    );
+  private write_asset_sort_orders(db: DatabaseSync, ordered_paths: string[]): void {
+    const statement = db.prepare("UPDATE assets SET sort_order = ? WHERE path = ?");
     for (const [sort_order, asset_path] of ordered_paths.entries()) {
       statement.run(sort_order, asset_path);
     }
@@ -856,8 +807,8 @@ export class ProjectDatabase {
   /**
    * 读取全部条目事实，供项目数据读取和任务快照重建
    */
-  private read_all_items(project_path: string): JsonValue {
-    return this.open_project(project_path)
+  private read_all_items(db: DatabaseSync): JsonValue {
+    return db
       .prepare("SELECT id, data FROM items ORDER BY id")
       .all()
       .map((row) => ({ ...this.value_record(json_parse(row["data"])), id: row_number(row, "id") }));
@@ -866,18 +817,16 @@ export class ProjectDatabase {
   /**
    * 条目数量直接由 SQL 聚合读取，manifest 不为计数扫描完整 item payload
    */
-  private read_item_count(project_path: string): number {
-    const row = this.open_project(project_path)
-      .prepare("SELECT COUNT(*) AS count FROM items")
-      .get();
+  private read_item_count(db: DatabaseSync): number {
+    const row = db.prepare("SELECT COUNT(*) AS count FROM items").get();
     return row === undefined ? 0 : row_number(row, "count");
   }
 
   /**
    * 翻译统计口径由 status 决定，SQL 聚合为缺失 meta 的校对保存提供低成本基线。
    */
-  private read_item_status_summary(project_path: string): JsonValue {
-    const row = this.open_project(project_path)
+  private read_item_status_summary(db: DatabaseSync): JsonValue {
+    const row = db
       .prepare(
         `SELECT
            COALESCE(SUM(CASE WHEN status IN ('NONE', 'PROCESSED', 'ERROR') THEN 1 ELSE 0 END), 0)
@@ -905,7 +854,7 @@ export class ProjectDatabase {
   /**
    * 按 id 读取条目，减少校对和任务提交后的回查范围
    */
-  private read_items_by_ids(project_path: string, item_ids: number[]): JsonValue {
+  private read_items_by_ids(db: DatabaseSync, item_ids: number[]): JsonValue {
     const normalized_ids = [
       ...new Set(
         item_ids.map((item_id) => Number(item_id)).filter((item_id) => Number.isFinite(item_id)),
@@ -915,7 +864,6 @@ export class ProjectDatabase {
       return [];
     }
     const rows_by_id = new Map<number, DatabaseRow>();
-    const db = this.open_project(project_path);
     for_each_sqlite_in_clause_chunk(normalized_ids, (chunk) => {
       const placeholders = chunk.map(() => "?").join(",");
       for (const row of db
@@ -933,7 +881,7 @@ export class ProjectDatabase {
   /**
    * 校对统一字段写入只需要少量事实，避免为状态设置解析完整 item JSON。
    */
-  private read_item_write_facts_by_ids(project_path: string, item_ids: number[]): JsonValue {
+  private read_item_write_facts_by_ids(db: DatabaseSync, item_ids: number[]): JsonValue {
     const normalized_ids = [
       ...new Set(
         item_ids
@@ -945,7 +893,6 @@ export class ProjectDatabase {
       return [];
     }
     const rows_by_id = new Map<number, DatabaseRow>();
-    const db = this.open_project(project_path);
     for_each_sqlite_in_clause_chunk(normalized_ids, (chunk) => {
       const placeholders = chunk.map(() => "?").join(",");
       for (const row of db
@@ -994,8 +941,7 @@ export class ProjectDatabase {
   /**
    * 批量写入条目事实，确保导入和重置链路高效落盘
    */
-  private replace_items(project_path: string, items: JsonValue[]): number[] {
-    const db = this.open_project(project_path);
+  private replace_items(db: DatabaseSync, items: JsonValue[]): number[] {
     db.prepare("DELETE FROM items").run();
     const insert_with_id = db.prepare("INSERT INTO items (id, data) VALUES (?, ?)");
     const insert = db.prepare("INSERT INTO items (data) VALUES (?)");
@@ -1063,11 +1009,7 @@ export class ProjectDatabase {
   /**
    * 用 SQLite JSON patch 写入同一个字段增量，避免校对批量状态修改重写完整 DTO。
    */
-  private write_item_fields_by_ids(
-    project_path: string,
-    item_ids: number[],
-    patch: DatabaseRow,
-  ): void {
+  private write_item_fields_by_ids(db: DatabaseSync, item_ids: number[], patch: DatabaseRow): void {
     const normalized_ids = [
       ...new Set(
         item_ids
@@ -1095,7 +1037,6 @@ export class ProjectDatabase {
           )
         : patch_entry.value,
     ]);
-    const db = this.open_project(project_path);
     for_each_sqlite_in_clause_chunk(normalized_ids, (chunk) => {
       const placeholders = chunk.map(() => "?").join(",");
       db.prepare(
@@ -1107,8 +1048,7 @@ export class ProjectDatabase {
   /**
    * 按 item 逐条局部更新翻译字段，任务结果不能覆盖完整持久 item。
    */
-  private write_item_translation_fields(project_path: string, patches: JsonValue[]): void {
-    const db = this.open_project(project_path);
+  private write_item_translation_fields(db: DatabaseSync, patches: JsonValue[]): void {
     for (const raw_patch of patches) {
       const entry = this.value_record(raw_patch);
       const item_id = Number(entry["id"]);
@@ -1153,10 +1093,8 @@ export class ProjectDatabase {
   /**
    * 读取指定规则集合，保持质量规则运行时只看数据库事实
    */
-  private read_rules(project_path: string, rule_type: string): JsonValue {
-    const row = this.open_project(project_path)
-      .prepare("SELECT data FROM rules WHERE type = ? ORDER BY id")
-      .get(rule_type);
+  private read_rules(db: DatabaseSync, rule_type: string): JsonValue {
+    const row = db.prepare("SELECT data FROM rules WHERE type = ? ORDER BY id").get(rule_type);
     if (row === undefined) {
       return [];
     }
@@ -1166,13 +1104,6 @@ export class ProjectDatabase {
     } catch {
       return [];
     }
-  }
-
-  /**
-   * 写入指定规则集合，统一 revision 与 payload 维护
-   */
-  private write_rules(project_path: string, rule_type: string, rules: JsonValue[]): void {
-    this.set_rules_with_db(this.open_project(project_path), rule_type, rules);
   }
 
   /**
@@ -1189,10 +1120,8 @@ export class ProjectDatabase {
   /**
    * 读取提示词或规则文本，统一文本规则落点
    */
-  private read_rule_text(project_path: string, rule_type: string): string {
-    const row = this.open_project(project_path)
-      .prepare("SELECT data FROM rules WHERE type = ? LIMIT 1")
-      .get(rule_type);
+  private read_rule_text(db: DatabaseSync, rule_type: string): string {
+    const row = db.prepare("SELECT data FROM rules WHERE type = ? LIMIT 1").get(rule_type);
     if (row === undefined) {
       return "";
     }
@@ -1202,8 +1131,7 @@ export class ProjectDatabase {
   /**
    * 保存文本规则内容，保持 prompt 与规则文本写入一致
    */
-  private write_rule_text(project_path: string, rule_type: string, text: string): void {
-    const db = this.open_project(project_path);
+  private write_rule_text(db: DatabaseSync, rule_type: string, text: string): void {
     db.prepare("DELETE FROM rules WHERE type = ?").run(rule_type);
     db.prepare("INSERT INTO rules (type, data) VALUES (?, ?)").run(
       rule_type,
@@ -1226,9 +1154,8 @@ export class ProjectDatabase {
   /**
    * 读取工程摘要，供打开预览和运行态快速判断使用
    */
-  private read_project_summary(project_path: string): ProjectPreview {
-    const meta = this.value_record(this.get_all_meta(project_path));
-    const db = this.open_project(project_path);
+  private read_project_summary(db: DatabaseSync): ProjectPreview {
+    const meta = this.value_record(this.read_all_meta(db));
     const assets = db.prepare("SELECT path FROM assets ORDER BY sort_order ASC, id ASC").all();
     const items = db
       .prepare("SELECT data FROM items ORDER BY id ASC")

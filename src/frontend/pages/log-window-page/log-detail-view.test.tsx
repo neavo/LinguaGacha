@@ -80,4 +80,16 @@ describe("LogDetailView", () => {
     });
     expect(view.querySelector(".cm-content")?.textContent).toContain("任务已经完成");
   });
+
+  it("普通错误详情显示原始原因和诊断字段", () => {
+    const view = render_detail("创建工程失败", {
+      message: "database.busy",
+      cause_chain: [{ message: "database is locked" }],
+      context: { operation: "journal_mode", sqlite_code: 5 },
+    });
+    const text = view.querySelector(".cm-content")?.textContent;
+    expect(text).toContain("database is locked");
+    expect(text).toContain("journal_mode");
+    expect(text).toContain("sqlite_code");
+  });
 });
