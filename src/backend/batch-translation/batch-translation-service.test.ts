@@ -255,7 +255,7 @@ it("历史工程批量翻译保留旧分析物理数据、正式术语与资产�
           logs: [],
         }),
       },
-      logManager: { append: vi.fn(), info: vi.fn(), warning: vi.fn(), error: vi.fn() },
+      logManager: { append: vi.fn() },
     });
     const service = new BatchTranslationService(runner, runtime, session, {
       read_setting: () => ({

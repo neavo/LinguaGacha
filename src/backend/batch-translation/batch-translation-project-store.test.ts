@@ -28,7 +28,7 @@ describe("BatchTranslationProjectStore", () => {
     const { database, project_path, store, published_changes } = create_store();
     seed_items(database, project_path);
 
-    const ack = await store.commit_translation_items(
+    const ack = await store.commit_translation_batch(
       [
         {
           item_id: 1,
@@ -93,7 +93,7 @@ describe("BatchTranslationProjectStore", () => {
     const { database, project_path, store, published_changes } = create_store();
     seed_items(database, project_path);
 
-    const ack = await store.commit_translation_items(
+    const ack = await store.commit_translation_batch(
       [
         {
           item_id: 2,
@@ -127,7 +127,7 @@ describe("BatchTranslationProjectStore", () => {
   });
 
   it("失败重试按实际状态更新工程计数，同值失败仍提交本次用量", async () => {
-    const { database, project_path, store } = create_store();
+    const { database, project_path, store, published_changes } = create_store();
     database.set_items(project_path, [
       { id: 1, src: "待重试", dst: "", status: "ERROR", retry_count: 0, file_path: "a.txt" },
       {
@@ -140,12 +140,14 @@ describe("BatchTranslationProjectStore", () => {
       },
     ]);
     const failed = { item_id: 1, dst: "", status: "ERROR", retry_count: 0 };
-    const ack = await store.commit_translation_items(
+    const ack = await store.commit_translation_batch(
       [failed],
       create_progress_snapshot({ total_line: 999, error_line: 999, total_tokens: 7 }),
       false,
     );
     expect(ack.changed_item_ids).toEqual([]);
+    expect(published_changes).toEqual([]);
+    expect(read_meta(database, project_path)["project_runtime_revision.items"] ?? 0).toBe(0);
     expect(read_meta(database, project_path)["translation_extras"]).toMatchObject({
       total_line: 2,
       line: 2,
@@ -153,7 +155,7 @@ describe("BatchTranslationProjectStore", () => {
       error_line: 1,
       total_tokens: 7,
     });
-    await store.commit_translation_items(
+    await store.commit_translation_batch(
       [{ ...failed, dst: "重试成功", status: "PROCESSED" }],
       create_progress_snapshot({ total_tokens: 10 }),
       false,
@@ -210,7 +212,7 @@ describe("BatchTranslationProjectStore", () => {
     });
     seed_items(database, project_path);
 
-    await store.commit_translation_items(
+    await store.commit_translation_batch(
       [
         {
           item_id: 1,
@@ -226,6 +228,7 @@ describe("BatchTranslationProjectStore", () => {
     expect(calls).toEqual(["internal:start", "internal:end", "public"]);
   });
 
+  /** 组合临时数据库和真实写入口，收集项目事件。 */
   function create_store(
     options: {
       on_publish_project_change?: () => void;
@@ -276,6 +279,7 @@ describe("BatchTranslationProjectStore", () => {
     };
   }
 
+  /** 准备含已用字段的数据库条目，验证局部提交保留其它事实。 */
   function seed_items(database: ProjectDatabase, project_path: string): void {
     database.set_items(project_path, [
       {
@@ -306,6 +310,7 @@ describe("BatchTranslationProjectStore", () => {
     ]);
   }
 
+  /** 提供完整进度，场景只覆盖需要变化的统计。 */
   function create_progress_snapshot(
     overrides: Partial<import("../../domain/batch-translation").BatchTranslationProgress> = {},
   ): import("../../domain/batch-translation").BatchTranslationProgress {
@@ -324,10 +329,12 @@ describe("BatchTranslationProjectStore", () => {
     };
   }
 
+  /** 读取持久条目，核对提交结果。 */
   function read_items(database: ProjectDatabase, project_path: string): JsonValue {
     return database.get_all_items(project_path);
   }
 
+  /** 读取持久进度与修订，核对写入副作用。 */
   function read_meta(database: ProjectDatabase, project_path: string): MutableJsonRecord {
     return database.get_all_meta(project_path) as unknown as MutableJsonRecord;
   }

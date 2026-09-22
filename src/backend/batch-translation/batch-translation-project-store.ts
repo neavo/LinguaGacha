@@ -42,9 +42,9 @@ export class BatchTranslationProjectStore {
   }
 
   /**
-   * 翻译批次只接收已收窄的 item 与进度；执行目的决定是否同步推进校对事实
+   * 批次提交包含终态条目或仅用量；项目写入口决定实际变化及其事件。
    */
-  public async commit_translation_items(
+  public async commit_translation_batch(
     items: TextTaskItemRecord[],
     progress_snapshot: BatchTranslationProgress,
     affects_proofreading: boolean,

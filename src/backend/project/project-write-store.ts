@@ -3,7 +3,6 @@ import { ProjectDatabase, type ProjectDatabaseWrite } from "../database/database
 import { Item } from "../../domain/item";
 import {
   is_json_record,
-  read_json_integer,
   read_json_record,
   type JsonRecord,
   type JsonValue,
@@ -798,7 +797,7 @@ export class ProjectWriteStore {
   }
 
   /**
-   * 任务 artifact item patch 共享同一写入链路和进度 meta 更新。
+   * 批次条目和用量共享事务。仅用量或同值结果只写进度。
    */
   private async apply_task_item_patches(request: {
     projectPath: string;
@@ -808,7 +807,6 @@ export class ProjectWriteStore {
     updatedSections: ProjectDataSection[];
   }): Promise<ProjectWriteSectionAck> {
     const patches = request.items;
-    this.assert_patch_targets_exist(request.projectPath, patches);
     let changed_item_ids: number[] = [];
     await this.commit_runtime_change({
       projectPath: request.projectPath,
@@ -817,11 +815,11 @@ export class ProjectWriteStore {
       source: request.source,
       updatedSections: request.updatedSections,
       prepare: (revision_context) => {
-        const actual_changes = this.plan_item_patch_changes(
-          request.projectPath,
-          revision_context.meta,
-          patches,
-        );
+        // 非空集合在同一事务快照上校验目标并规划变更，空集合跳过条目查询。
+        const actual_changes =
+          patches.length === 0
+            ? []
+            : this.plan_item_patch_changes(request.projectPath, revision_context.meta, patches);
         changed_item_ids = actual_changes.map((change) => change.item_id);
         // 工程计数来自事务内的真实状态变化，本次运行用量由任务入口提供。
         const counters = this.build_translation_extras_after_status_changes(
@@ -836,6 +834,13 @@ export class ProjectWriteStore {
           error_line: counters["error_line"],
           line: counters["line"],
         };
+        const writes: ProjectDatabaseWrite[] = [
+          (database) =>
+            database.upsert_meta_entries(request.projectPath, {
+              translation_extras: translation_extras as unknown as JsonValue,
+            } as unknown as JsonRecord),
+        ];
+        if (actual_changes.length === 0) return { writes, updatedSections: [] };
         return {
           writes: [
             (database) =>
@@ -843,10 +848,7 @@ export class ProjectWriteStore {
                 request.projectPath,
                 this.to_database_translation_patches(actual_changes),
               ),
-            (database) =>
-              database.upsert_meta_entries(request.projectPath, {
-                translation_extras: translation_extras as unknown as JsonValue,
-              } as unknown as JsonRecord),
+            ...writes,
             ...this.build_section_revision_writes(revision_context),
           ],
           items: { payloadMode: "canonical-delta", changedIds: changed_item_ids },
@@ -1104,37 +1106,6 @@ export class ProjectWriteStore {
   }
 
   /**
-   * 在进入事务前确认所有 artifact item_id 都指向现有项目事实。
-   */
-  private assert_patch_targets_exist(project_path: string, patches: TranslationItemPatch[]): void {
-    const rows = this.database.get_item_write_facts_by_ids(
-      project_path,
-      patches.map((patch) => patch.item_id),
-    );
-    const existing_ids = new Set<number>();
-    if (Array.isArray(rows)) {
-      for (const row of rows) {
-        if (is_json_record(row)) {
-          const item_id = read_json_integer(row["id"], 0);
-          if (item_id > 0) {
-            existing_ids.add(item_id);
-          }
-        }
-      }
-    }
-    for (const patch of patches) {
-      if (!existing_ids.has(patch.item_id)) {
-        throw new AppErrors.AppError("runtime.internal_invariant", {
-          diagnostic_context: {
-            reason: "translation_patch_item_not_found",
-            item_id: patch.item_id,
-          },
-        });
-      }
-    }
-  }
-
-  /**
    * 将领域 patch 包装为 database 批量写入口的物理 JSON 形状。
    */
   private to_database_translation_patches(patches: TranslationItemPatch[]): JsonValue[] {
@@ -1183,7 +1154,7 @@ export class ProjectWriteStore {
       : [];
   }
 
-  /** 将任务 artifact patch 还原为显式前后事实，再进入统一重复组写入规划。 */
+  /** 在事务快照上校验批次目标并计算前后事实，再进入统一重复组写入规划。 */
   private plan_item_patch_changes(
     project_path: string,
     meta: JsonRecord,
@@ -1193,7 +1164,14 @@ export class ProjectWriteStore {
     const current_by_id = new Map(items.map((item) => [item.item_id, item]));
     const explicit_changes = patches.flatMap((item_patch) => {
       const current = current_by_id.get(item_patch.item_id);
-      if (current === undefined) return [];
+      if (current === undefined) {
+        throw new AppErrors.AppError("runtime.internal_invariant", {
+          diagnostic_context: {
+            reason: "translation_patch_item_not_found",
+            item_id: item_patch.item_id,
+          },
+        });
+      }
       const next = apply_project_item_field_patch(current, item_patch.patch);
       return next === null ? [] : [{ item_id: item_patch.item_id, current, next }];
     });

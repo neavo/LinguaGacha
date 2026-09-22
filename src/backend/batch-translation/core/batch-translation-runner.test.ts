@@ -1,3 +1,10 @@
+import { CacheManager } from "../../cache/cache-manager";
+import { ProjectDatabase } from "../../database/database-operations";
+import { ProjectWriteStore } from "../../project/project-write-store";
+import { BatchTranslationProjectStore } from "../batch-translation-project-store";
+import type { ComputeWorkerClient } from "../../worker/compute-worker-client";
+import { Item } from "../../../domain/item";
+import { TASK_PIPELINE_COMMIT_INTERVAL_MS } from "./translation-pipeline";
 import { TranslationWorkerPool } from "../work-unit/translation-worker-pool";
 import { log_error_from_message } from "../../../shared/error";
 import type { BatchTranslationRunContext } from "./batch-translation-runner-options";
@@ -11,7 +18,7 @@ import path from "node:path";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import type { ProjectDataReader } from "../../project/project-data-reader";
+import { get_section_revision, ProjectDataReader } from "../../project/project-data-reader";
 import { ProjectSessionState } from "../../project/project-session-state";
 import { RuntimeOperationGate } from "../../runtime-operation-gate";
 import { BatchTranslationRuntime } from "../batch-translation-runtime";
@@ -47,7 +54,7 @@ describe("BatchTranslationRunner", () => {
       builtinRoot: path.join(process.cwd(), "builtin"),
       taskStore: create_task_store({
         get_translation_items: () => [create_pending_item()],
-        commit_translation_items: async (
+        commit_translation_batch: async (
           items: MutableJsonRecord[],
           translation_extras: BatchTranslationProgress,
         ) => {
@@ -92,49 +99,131 @@ describe("BatchTranslationRunner", () => {
     });
   });
 
-  it("指定重翻的同值提交完成本轮目标并收敛行级状态", async () => {
-    const runtime = create_task_runtime();
-    const snapshots: Readonly<BatchTranslationSnapshot>[] = [];
-    runtime.subscribe((snapshot) => {
-      snapshots.push(snapshot);
-    });
-    const item = { ...create_pending_item(), status: "PROCESSED", dst: "译文" };
-    const runner = new BatchTranslationRunner({
-      llmClient: create_unused_llm_client(),
-      builtinRoot: path.join(process.cwd(), "builtin"),
-      taskStore: create_task_store({
-        get_translation_items: () => [item],
-      }),
-      taskRuntime: runtime,
-      executorClient: { execute_unit: async () => create_translation_worker_result([item], 2, 3) },
-      taskPlanner: create_test_task_planner(),
-      logManager: create_log_manager(),
-    });
-    const command: BatchTranslationStartCommand = {
-      operation: "retranslate",
-      scope: { kind: "items", item_ids: [1] },
-    };
-    const handle = runtime.begin_standalone(command.scope, command.operation);
-    await runtime.execute(handle, () => runner.run(handle, command, create_run_context()));
-    const result = await handle.completion;
-    expect(result.run_progress).toMatchObject({
-      total_line: 1,
-      processed_line: 1,
-      error_line: 0,
-      total_tokens: 5,
-    });
-    expect(
-      snapshots.some(
-        (snapshot) =>
+  it.each(["translate", "retranslate"] as const)(
+    "%s 在仅用量落库后继续重试，同值结果也完成本轮目标",
+    async (operation) => {
+      const retranslate = operation === "retranslate";
+      const builtin_root = create_template_root();
+      const project_path = path.join(builtin_root, "task.lg");
+      const database = new ProjectDatabase();
+      database.create_project(project_path, "test");
+      database.set_items(project_path, [
+        Item.from_json({
+          id: 1,
+          src: "こんにちは",
+          dst: retranslate ? "你好" : "",
+          status: retranslate ? "PROCESSED" : "NONE",
+          file_path: "demo.txt",
+        }).to_json(),
+      ]);
+      const original_items = database.get_all_items(project_path);
+      const session = new ProjectSessionState();
+      session.mark_loaded(project_path);
+      const reader = new ProjectDataReader(database);
+      const runtime = new BatchTranslationRuntime(session, reader, new RuntimeOperationGate());
+      const completed_scopes: number[][] = [];
+      runtime.subscribe((snapshot) => {
+        if (
           snapshot.status === "running" &&
           snapshot.scope.kind === "items" &&
-          snapshot.scope.item_ids.length === 0 &&
-          snapshot.run_progress?.line === 1,
-      ),
-    ).toBe(true);
-    expect(item).toMatchObject({ status: "PROCESSED", dst: "译文" });
-    await runtime.dispose();
-  });
+          snapshot.run_progress?.line === 1
+        )
+          completed_scopes.push([...snapshot.scope.item_ids]);
+      });
+      const cache = new CacheManager({
+        database,
+        logManager: null,
+        appSettingService: {
+          read_setting: () => ({ source_language: "JA", target_language: "ZH" }),
+        } as never,
+        workerClient: { run: vi.fn(), dispose: vi.fn() } as unknown as ComputeWorkerClient,
+      });
+      const publish_change = vi.fn(() => null);
+      const writes = new ProjectWriteStore(database, vi.fn(), publish_change);
+      const store = new BatchTranslationProjectStore(database, session, cache, writes);
+      const pool = new TranslationWorkerPool({
+        builtinRoot: builtin_root,
+        execution: { kind: "in_process" },
+      });
+      let release_retry = (): void => {};
+      // 暂留重试结果，让空条目提交独立通过真实存储边界。
+      const retry_response = new Promise<void>((resolve) => {
+        release_retry = resolve;
+      });
+      let report_retry_started = (): void => {};
+      const retry_started = new Promise<void>((resolve) => {
+        report_retry_started = resolve;
+      });
+      let attempts = 0;
+      try {
+        await cache.warmProject(project_path);
+        vi.useFakeTimers();
+        const runner = new BatchTranslationRunner({
+          builtinRoot: builtin_root,
+          taskStore: store,
+          taskRuntime: runtime,
+          executorClient: pool,
+          taskPlanner: create_test_task_planner(),
+          logManager: create_log_manager(),
+          llmClient: {
+            request: async () => {
+              const first = ++attempts === 1;
+              if (!first) {
+                report_retry_started();
+                await retry_response;
+              }
+              return {
+                response_think: "",
+                response_result: first ? "无效响应" : '{"id":0,"text":"你好"}',
+                input_tokens: first ? 10 : 20,
+                reasoning_tokens: 0,
+                output_tokens: first ? 5 : 7,
+                cancelled: false,
+                timeout: false,
+              };
+            },
+          },
+        });
+        const command: BatchTranslationStartCommand = retranslate
+          ? { operation: "retranslate", scope: { kind: "items", item_ids: [1] } }
+          : { operation: "translate", mode: "new", scope: { kind: "all" } };
+        const handle = runtime.begin_standalone(command.scope, command.operation);
+        await runtime.execute(handle, () => runner.run(handle, command, create_run_context(4)));
+        await retry_started;
+        await vi.advanceTimersByTimeAsync(TASK_PIPELINE_COMMIT_INTERVAL_MS);
+        expect(await runtime.build_snapshot()).toMatchObject({
+          status: "running",
+          run_progress: { line: 0, total_tokens: 15 },
+          progress: { processed_line: retranslate ? 1 : 0, error_line: 0, total_tokens: 15 },
+        });
+        expect(database.get_all_items(project_path)).toEqual(original_items);
+        expect(publish_change).not.toHaveBeenCalled();
+        expect(get_section_revision(reader.get_all_meta(project_path), "items")).toBe(0);
+        expect(get_section_revision(reader.get_all_meta(project_path), "proofreading")).toBe(0);
+        if (retranslate)
+          expect((await runtime.build_snapshot()).scope).toEqual({ kind: "items", item_ids: [1] });
+        release_retry();
+        expect(await handle.completion).toMatchObject({
+          status: "done",
+          progress: { processed_line: 1, error_line: 0, total_tokens: 42 },
+          run_progress: { processed_line: 1, error_line: 0, total_tokens: 42 },
+        });
+        expect(attempts).toBe(2);
+        expect(database.get_all_items(project_path)).toEqual([
+          expect.objectContaining({ dst: "你好", status: "PROCESSED" }),
+        ]);
+        if (retranslate) {
+          expect(completed_scopes).toContainEqual([]);
+          expect(publish_change).not.toHaveBeenCalled();
+        } else expect(publish_change).toHaveBeenCalledTimes(1);
+      } finally {
+        release_retry();
+        await runtime.dispose();
+        await pool.dispose();
+        database.close();
+      }
+    },
+  );
 
   it("Runner 将指定模型传给规划器，并发布同源任务摘要", async () => {
     const model_ids: string[] = [];
@@ -364,7 +453,7 @@ describe("BatchTranslationRunner", () => {
         logManager: create_log_manager(),
         taskStore: create_task_store({
           get_translation_items: () => items,
-          commit_translation_items: async (items) => {
+          commit_translation_batch: async (items) => {
             committed.push(...items);
             return { changed_item_ids: [], section_revisions: {} };
           },
@@ -683,7 +772,7 @@ describe("BatchTranslationRunner", () => {
       acquire_project_lease: () => () => undefined,
       build_quality_snapshot: () => TextQualitySnapshotTool.from_api_value({}),
 
-      commit_translation_items: async () => ({ changed_item_ids: [], section_revisions: {} }),
+      commit_translation_batch: async () => ({ changed_item_ids: [], section_revisions: {} }),
 
       get_translation_items: () => [],
 
@@ -767,13 +856,6 @@ describe("BatchTranslationRunner", () => {
         logs.push(format_log_content_text(payload.content));
         return null;
       },
-      info: (message: string) => {
-        logs.push(message);
-      },
-      warning: (message: string) => {
-        logs.push(message);
-      },
-      error: () => undefined,
     };
   }
 });

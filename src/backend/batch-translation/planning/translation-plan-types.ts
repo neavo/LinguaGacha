@@ -26,16 +26,6 @@ export interface TranslationContext {
 }
 
 /**
- * 翻译提交项只携带可批量写库的数据和 token 累计值。
- */
-export interface TranslationCommitEntry {
-  items: TextTaskItemRecord[];
-  input_tokens: number;
-  reasoning_tokens: number; // 请求思考 token，不计入输出 token
-  output_tokens: number; // 已扣除思考 token 的模型输出
-}
-
-/**
  * 翻译拆分重试会同时产生新 context 和强制失败条目，两者必须分开提交。
  */
 export interface TranslationRetryPlan {

@@ -1,8 +1,8 @@
+import type { TranslationContext } from "../planning/translation-plan-types";
 import type {
-  TranslationContext,
   TranslationCommitEntry,
-} from "../planning/translation-plan-types";
-import type { TranslationPipelineWorkerResult } from "./batch-translation-runner-options";
+  TranslationPipelineWorkerResult,
+} from "./batch-translation-runner-options";
 
 export const TASK_PIPELINE_COMMIT_INTERVAL_MS = 500; // worker 结果提交窗口固定为每秒 2 次，避免高频写库
 
