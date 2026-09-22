@@ -126,7 +126,7 @@ function install_scroll_metrics(target: HTMLElement, metrics: ScrollMetrics): vo
 }
 
 vi.mock("@frontend/app/session/agent/agent-session-context", () => ({
-  useAgentTokenSpeed: () => ({ tokensPerSecond: null }),
+  useAgentTokenSpeed: () => null,
   useAgentTimeline: () => ({ entries: page_state.current.entries }),
   useAgentControls: () => ({
     state: page_state.current.state,
@@ -1164,6 +1164,7 @@ function user_entry(
     kind: "user_message" as const,
     id,
     delivery: "round" as const,
+    averageTokensPerSecond: null,
     text,
     attachments: [],
     status,

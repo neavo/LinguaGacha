@@ -135,7 +135,7 @@ const EMPTY_SKILLS: AgentSkillsSlice = { skills: [] };
 /** renderer 侧唯一 Agent 会话镜像；后端事实经 revision 校验进入切片，本地决策时钟独立发布。 */
 export class AgentSessionStore {
   private session_id: string | null = null;
-  private token_speed: AgentTokenSpeedSnapshot = { tokensPerSecond: null };
+  private token_speed: AgentTokenSpeedSnapshot = null;
   private timeline = EMPTY_TIMELINE;
   private controls = EMPTY_CONTROLS;
   private queue = EMPTY_QUEUE;
@@ -208,7 +208,7 @@ export class AgentSessionStore {
     };
   }
 
-  /** 返回稳定的速度切片，供底栏独立订阅。 */
+  /** 返回稳定的速度切片，供当前回合状态条独立订阅。 */
   public readonly get_token_speed = (): AgentTokenSpeedSnapshot => this.token_speed;
   /** 速度变化只通知对应订阅者。 */
   public readonly subscribe_token_speed = (listener: Listener): (() => void) =>
@@ -430,9 +430,13 @@ export class AgentSessionStore {
     this.emit("controls");
   }
 
-  /** 快照恢复与增量事件共用数值去重，保留切片引用稳定性。 */
+  /** 快照恢复与增量事件按回合身份和数值去重，保留切片引用稳定性。 */
   private set_token_speed(speed: AgentTokenSpeedSnapshot): void {
-    if (speed.tokensPerSecond === this.token_speed.tokensPerSecond) return;
+    if (
+      speed?.roundId === this.token_speed?.roundId &&
+      speed?.tokensPerSecond === this.token_speed?.tokensPerSecond
+    )
+      return;
     this.token_speed = speed;
     this.emit("speed");
   }
@@ -773,7 +777,7 @@ function normalize_snapshot(value: unknown): AgentSessionSnapshot {
     input_queue === null ||
     todos === null ||
     context === null ||
-    token_speed === null
+    token_speed === undefined
   ) {
     throw new TypeError("Agent snapshot is invalid.");
   }
@@ -828,7 +832,7 @@ function normalize_agent_event(value: unknown): AgentSessionEvent | null {
     }
     case "token_speed": {
       const token_speed = normalize_token_speed(record["tokenSpeed"]);
-      return token_speed === null
+      return token_speed === undefined
         ? null
         : { type: "token_speed", revision, tokenSpeed: token_speed };
     }
@@ -845,13 +849,19 @@ function normalize_agent_event(value: unknown): AgentSessionEvent | null {
   }
 }
 
-/** SSE 和快照只接收有限、非负的速度，null 明确表示隐藏。 */
-function normalize_token_speed(value: unknown): AgentTokenSpeedSnapshot | null {
-  if (!is_json_record(value)) return null;
+/** SSE 和快照只接收有限、非负的速度。`null` 表示无数据，`undefined` 表示载荷无效。 */
+function normalize_token_speed(value: unknown): AgentTokenSpeedSnapshot | undefined {
+  if (value === null) return null;
+  if (!is_json_record(value)) return undefined;
+  const round_id = value["roundId"];
   const speed = value["tokensPerSecond"];
-  return speed === null || (typeof speed === "number" && Number.isFinite(speed) && speed >= 0)
-    ? { tokensPerSecond: speed }
-    : null;
+  return typeof round_id === "string" &&
+    round_id !== "" &&
+    typeof speed === "number" &&
+    Number.isFinite(speed) &&
+    speed >= 0
+    ? { roundId: round_id, tokensPerSecond: speed }
+    : undefined;
 }
 
 /** 必需修订号无效时抛错，使调用方进入恢复路径。 */
@@ -969,14 +979,28 @@ function normalize_entry(value: unknown): AgentEntry[] {
       }
       return [{ ...base, delivery: "steer", status: "success", endedAt: ended_at }];
     }
+    const average_speed = value["averageTokensPerSecond"];
     if (
       value["delivery"] !== "round" ||
       (ended_at !== null && (typeof ended_at !== "number" || !Number.isInteger(ended_at))) ||
-      (status === "running") !== (ended_at === null)
+      (status === "running") !== (ended_at === null) ||
+      (average_speed !== null &&
+        (status === "running" ||
+          typeof average_speed !== "number" ||
+          !Number.isFinite(average_speed) ||
+          average_speed < 0))
     ) {
       return [];
     }
-    return [{ ...base, delivery: "round", status, endedAt: ended_at }];
+    return [
+      {
+        ...base,
+        delivery: "round",
+        status,
+        endedAt: ended_at,
+        averageTokensPerSecond: average_speed,
+      },
+    ];
   }
   if (value["kind"] === "assistant_message") {
     const status = normalize_entry_status(value["status"]);

@@ -27,6 +27,10 @@ vi.mock("@frontend/app/locale/locale-context", () => ({
 vi.mock("@frontend/app/appearance/appearance-context", () => ({
   useAppearance: () => ({ resolved_theme: "light" }),
 }));
+vi.mock("@frontend/app/session/agent/agent-session-context", () => ({
+  useAgentTokenSpeed: () => null,
+  useAgentControls: () => ({ transport: "ready" }),
+}));
 
 import { AgentTimeline } from "./agent-timeline";
 
@@ -656,6 +660,7 @@ function user_entry(
     kind: "user_message" as const,
     id,
     delivery: "round" as const,
+    averageTokensPerSecond: null,
     text,
     attachments: images.map((id) => uploaded_file(id)),
     status,

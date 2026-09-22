@@ -154,29 +154,46 @@ describe("AgentSessionStore", () => {
       timeline_changed.mockClear();
       event_source.emit(AGENT_SESSION_EVENT_TOPIC, {
         type: "token_speed",
-        tokenSpeed: { tokensPerSecond: 42.25 },
+        tokenSpeed: { roundId: "round-1", tokensPerSecond: 42.25 },
       });
       event_source.emit(AGENT_SESSION_EVENT_TOPIC, {
         type: "token_speed",
-        tokenSpeed: { tokensPerSecond: 42.25 },
+        tokenSpeed: { roundId: "round-1", tokensPerSecond: 42.25 },
       });
-      expect(store.get_token_speed().tokensPerSecond).toBe(42.25);
+      expect(store.get_token_speed()?.tokensPerSecond).toBe(42.25);
       expect(speed_changed).toHaveBeenCalledOnce();
+      event_source.emit(AGENT_SESSION_EVENT_TOPIC, {
+        type: "token_speed",
+        tokenSpeed: { roundId: "round-2", tokensPerSecond: 42.25 },
+      });
+      expect(store.get_token_speed()?.roundId).toBe("round-2");
+      expect(speed_changed).toHaveBeenCalledTimes(2);
       expect(timeline_changed).not.toHaveBeenCalled();
       desktop_api_mocks.api_get.mockResolvedValue(
-        agent_snapshot({ revision: 4, tokenSpeed: { tokensPerSecond: 30 } }),
+        agent_snapshot({
+          revision: 5,
+          tokenSpeed: { roundId: "round-2", tokensPerSecond: 30 },
+          entries: [
+            { ...user_entry("round-1", "已完成"), averageTokensPerSecond: 21.5 },
+            { ...user_entry("round-2", "继续"), status: "running", endedAt: null },
+          ],
+        }),
       );
       event_source.emit(AGENT_SESSION_EVENT_TOPIC, {
         type: "token_speed",
-        revision: 4,
-        tokenSpeed: { tokensPerSecond: 99 },
+        revision: 5,
+        tokenSpeed: { roundId: "round-2", tokensPerSecond: 99 },
       });
-      await vi.waitFor(() => expect(store.get_token_speed().tokensPerSecond).toBe(30));
+      await vi.waitFor(() => expect(store.get_token_speed()?.tokensPerSecond).toBe(30));
+      expect(store.get_timeline().entries[0]).toMatchObject({
+        id: "round-1",
+        averageTokensPerSecond: 21.5,
+      });
       event_source.emit(AGENT_SESSION_EVENT_TOPIC, {
         type: "token_speed",
-        tokenSpeed: { tokensPerSecond: null },
+        tokenSpeed: null,
       });
-      expect(store.get_token_speed().tokensPerSecond).toBeNull();
+      expect(store.get_token_speed()).toBeNull();
     } finally {
       store.disconnect();
     }
@@ -901,7 +918,7 @@ describe("AgentSessionStore", () => {
       inputQueue: { paused: false, canSendNow: true, items: [] },
       todos: [],
       context: { tokens: null, compactable: false, limits: null },
-      tokenSpeed: { tokensPerSecond: null },
+      tokenSpeed: null,
       skills: [
         TEST_SKILLS[0],
         { name: "legacy", description: "旧描述" },
@@ -1058,6 +1075,7 @@ describe("AgentSessionStore", () => {
           kind: "user_message",
           id: "user-new",
           delivery: "round",
+          averageTokensPerSecond: null,
           text: '@skill("glossary-audit") 审校',
           attachments: [
             ...image_attachments("webp-image"),
@@ -1091,6 +1109,7 @@ describe("AgentSessionStore", () => {
           kind: "user_message",
           id: "user-missing-ended-at",
           delivery: "round",
+          averageTokensPerSecond: null,
           text: "缺少结束时间",
           attachments: [],
           status: "success",
@@ -1100,6 +1119,7 @@ describe("AgentSessionStore", () => {
           kind: "user_message",
           id: "user-invalid-ended-at",
           delivery: "round",
+          averageTokensPerSecond: null,
           text: "非法结束时间",
           attachments: [],
           status: "success",
@@ -1110,6 +1130,7 @@ describe("AgentSessionStore", () => {
           kind: "user_message",
           id: "user-float-ended-at",
           delivery: "round",
+          averageTokensPerSecond: null,
           text: "浮点结束时间",
           attachments: [],
           status: "success",
@@ -1133,7 +1154,7 @@ describe("AgentSessionStore", () => {
       inputQueue: { paused: false, canSendNow: true, items: [] },
       todos: [],
       context: { tokens: null, compactable: false, limits: null },
-      tokenSpeed: { tokensPerSecond: null },
+      tokenSpeed: null,
     });
     let latest!: ReturnType<typeof useAgentSession>;
     await render_probe(() => {
@@ -1192,6 +1213,7 @@ describe("AgentSessionStore", () => {
         kind: "user_message",
         id: "user-new",
         delivery: "round",
+        averageTokensPerSecond: null,
         text: '@skill("glossary-audit") 审校',
         attachments: [
           ...image_attachments("webp-image"),
@@ -1792,6 +1814,7 @@ function user_entry(id: string, text: string, images: string[] = []) {
     kind: "user_message" as const,
     id,
     delivery: "round" as const,
+    averageTokensPerSecond: null,
     text,
     attachments: image_attachments(...images),
     status: "success" as const,
@@ -1818,7 +1841,7 @@ function agent_snapshot(overrides: Partial<AgentSessionSnapshot> = {}): AgentSes
     inputQueue: { paused: false, canSendNow: false, items: [] },
     todos: [],
     context: { tokens: null, compactable: false, limits: null },
-    tokenSpeed: { tokensPerSecond: null },
+    tokenSpeed: null,
     ...overrides,
   };
 }

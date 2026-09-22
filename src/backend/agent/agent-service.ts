@@ -187,9 +187,9 @@ type LoadedAgentResources = Readonly<{
  * 单个后端 Agent 产品会话的状态拥有者；通用模型生命周期交给 AgentSession。
  */
 export class AgentService {
-  private readonly token_speed = new AgentTokenSpeed();
-  private token_speed_updated_at: number | null = null;
-  private token_speed_snapshot: AgentTokenSpeedSnapshot = { tokensPerSecond: null };
+  private readonly token_speed = new AgentTokenSpeed(); // 失败继续复用回合累计统计。
+  private token_speed_updated_at: number | null = null; // 计数和发布共用节流时间。
+  private token_speed_snapshot: AgentTokenSpeedSnapshot = null; // 等待期间保留最近展示值。
   private session_id = uuidv7(); // 对话重置时换代，前端据此清理草稿文件引用
   private readonly batch_translation: AgentServiceOptions["batchTranslation"];
   private readonly paths: AgentServiceOptions["paths"];
@@ -328,7 +328,7 @@ export class AgentService {
       inputQueue: this.input_queue.read_snapshot(this.can_send_queued_now()),
       todos: [...this.todos],
       context: structuredClone(this.context),
-      tokenSpeed: { ...this.token_speed_snapshot },
+      tokenSpeed: structuredClone(this.token_speed_snapshot),
     };
   }
 
@@ -661,7 +661,7 @@ export class AgentService {
     this.decisions.reset();
     this.token_speed.reset();
     this.token_speed_updated_at = null;
-    this.token_speed_snapshot = { tokensPerSecond: null };
+    this.token_speed_snapshot = null;
     this.todos = [];
     this.input_queue.reset();
     this.runtime_generation += 1;
@@ -982,6 +982,7 @@ export class AgentService {
       status: "running",
       createdAt: Date.now(),
       endedAt: null,
+      averageTokensPerSecond: null,
     };
     this.token_speed.reset();
     this.token_speed_updated_at = null;
@@ -1018,9 +1019,10 @@ export class AgentService {
       });
     }
     this.pending_assistant_checkpoint = null;
-    // continue 延续原 round 的累计统计与展示值，首个新增量立即更新。
+    // 先恢复已显示的均速，再切回运行态，避免状态条在首个新增量前短暂丢失速度。
     this.token_speed_updated_at = null;
-    this.upsert_entry({ ...user, status: "running", endedAt: null });
+    this.publish_token_speed(user.averageTokensPerSecond);
+    this.upsert_entry({ ...user, status: "running", endedAt: null, averageTokensPerSecond: null });
     this.set_state("running");
     return this.run_round(runtime, generation, runtime_lease, { kind: "continue" });
   }
@@ -1377,6 +1379,7 @@ export class AgentService {
     }
     if (event.type === "message_end") {
       if (event.message.role === "assistant") {
+        // 结算响应采样后保留展示值，覆盖工具执行和模型等待期间，直到下一次输出更新。
         this.token_speed.finish_response(performance.now(), event.message.usage.output);
         this.token_speed_updated_at = null;
         this.clear_assistant_stream();
@@ -1599,7 +1602,7 @@ export class AgentService {
     );
     if (user_index < 0) return;
     this.token_speed_updated_at = null;
-    this.publish_token_speed(this.token_speed.finish_round(performance.now()));
+    const average_tokens_per_second = this.token_speed.finish_round(performance.now());
     for (const entry of this.entries.slice(user_index + 1)) {
       if (entry.status !== "running") continue;
       // 压缩终态只由 SDK compaction_end 确认，轮次收尾不代写结果。
@@ -1612,8 +1615,14 @@ export class AgentService {
     }
     const user = this.entries[user_index];
     if (user?.kind === "user_message" && user.delivery === "round" && user.status === "running") {
-      this.upsert_entry({ ...user, status: outcome, endedAt: Date.now() });
+      this.upsert_entry({
+        ...user,
+        status: outcome,
+        endedAt: Date.now(),
+        averageTokensPerSecond: average_tokens_per_second,
+      });
     }
+    this.publish_token_speed(null);
   }
 
   /** 每次模型历史变化后发布完整上下文快照。 */
@@ -1635,12 +1644,20 @@ export class AgentService {
     this.publish_token_speed(this.token_speed.measure(now));
   }
 
-  /** 公开快照与底栏使用同一精度；生命周期由调用者拥有。 */
+  /** 实时数据绑定当前回合，按显示精度去重，结束结果由回合条目承载。 */
   private publish_token_speed(tokens_per_second: number | null): void {
-    const speed = tokens_per_second === null ? null : Number(tokens_per_second.toFixed(2));
-    if (this.token_speed_snapshot.tokensPerSecond === speed) return;
-    this.token_speed_snapshot = { tokensPerSecond: speed };
-    this.publish_event({ type: "token_speed", tokenSpeed: { ...this.token_speed_snapshot } });
+    const round_id = this.latest_round_checkpoint?.entry_id;
+    const speed: AgentTokenSpeedSnapshot =
+      tokens_per_second === null || round_id === undefined
+        ? null
+        : { roundId: round_id, tokensPerSecond: Number(tokens_per_second.toFixed(2)) };
+    if (
+      this.token_speed_snapshot?.roundId === speed?.roundId &&
+      this.token_speed_snapshot?.tokensPerSecond === speed?.tokensPerSecond
+    )
+      return;
+    this.token_speed_snapshot = speed;
+    this.publish_event({ type: "token_speed", tokenSpeed: structuredClone(speed) });
   }
 
   /** 状态未变化时不发布重复 SSE。 */
@@ -1711,7 +1728,7 @@ export class AgentService {
     this.entries = [];
     this.token_speed.reset();
     this.token_speed_updated_at = null;
-    this.token_speed_snapshot = { tokensPerSecond: null };
+    this.token_speed_snapshot = null;
     this.context = { tokens: null, compactable: false, limits: null };
     this.latest_round_checkpoint = null;
     this.translation_paused_result = null;

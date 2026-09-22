@@ -31,25 +31,19 @@ import { AgentStatusMark } from "@frontend/pages/agent-page/agent-status-mark";
 import { useAgentFollowLatest } from "./agent-scroll";
 import { AgentToolDetailDialog } from "./agent-tool-detail-dialog";
 import { AgentResponseAnnotationSelection } from "./agent-response-annotation-selection";
+import { AgentRoundFooter } from "./agent-round-footer";
 
 type Translate = ReturnType<typeof useI18n>["t"];
 type UserEntry = Extract<AgentEntry, { kind: "user_message" }>;
 type AssistantEntry = Extract<AgentEntry, { kind: "assistant_message" }>;
 type ContextCompactionEntry = Extract<AgentEntry, { kind: "context_compaction" }>;
 type AgentRoundEntry = UserEntry | AssistantEntry | AgentToolEntry | ContextCompactionEntry;
-/** 公开 user 条目拥有随后全部输出，直到下一个 user 条目开始新轮次。 */
-export type AgentRoundEntries = {
-  user: UserEntry;
+/** `round` 用户条目拥有随后输出与 `steer` 输入，直到下一个 `round` 开始。 */
+type AgentRoundEntries = {
+  user: Extract<UserEntry, { delivery: "round" }>;
   entries: AgentRoundEntry[];
 };
 
-/** 轮次尾标只包装持续时间，状态对应的完整句式由本地化词表拥有。 */
-const AGENT_ROUND_LABEL_KEYS: Readonly<Record<AgentEntryStatus, LocaleKey>> = Object.freeze({
-  running: "agent_page.round.running",
-  success: "agent_page.round.success",
-  error: "agent_page.round.error",
-  stopped: "agent_page.round.stopped",
-});
 /** 压缩条目使用独立状态句式，不复用普通轮次结果文案。 */
 const AGENT_COMPACTION_LABEL_KEYS: Readonly<Record<ContextCompactionEntry["status"], LocaleKey>> =
   Object.freeze({
@@ -274,7 +268,7 @@ const AgentRound = memo(function AgentRound(props: AgentRoundProps): JSX.Element
           on_continue={props.on_continue}
         />
       ) : null}
-      <AgentRoundFooter user={user} t={props.t} />
+      <AgentRoundFooter user={user} />
     </>
   );
 }, agent_round_props_equal);
@@ -694,24 +688,6 @@ function AgentThinkingDetail(props: {
             <pre ref={body_ref}>{props.content}</pre>
           </div>
         </div>
-      </div>
-    </div>
-  );
-}
-
-/** 每轮只在未结束时持有一个本地时钟；结束时间始终以后端 user 条目为准。 */
-function AgentRoundFooter(props: { user: UserEntry; t: Translate }): JSX.Element {
-  const active = props.user.status === "running";
-  const duration = useAgentElapsed(props.user.createdAt, active, props.user.endedAt ?? undefined);
-  return (
-    <div className="agent-round-footer" data-running={active || undefined}>
-      <div className="agent-round-footer__running" aria-hidden={!active}>
-        <span className="agent-round-footer__activity" aria-hidden="true" />
-        <small>{props.t(AGENT_ROUND_LABEL_KEYS.running, { duration })}</small>
-      </div>
-      <div className="agent-round-footer__result" aria-hidden={active}>
-        <span className="agent-round-footer__line" aria-hidden="true" />
-        <small>{props.t(AGENT_ROUND_LABEL_KEYS[props.user.status], { duration })}</small>
       </div>
     </div>
   );

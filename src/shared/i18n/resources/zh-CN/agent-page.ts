@@ -1,5 +1,4 @@
 export const zh_cn_agent_page = {
-  token_speed: "实时速度",
   batch_translation_model: {
     follow: "保持一致",
     follow_option: "与 AGENT 模型保持一致",

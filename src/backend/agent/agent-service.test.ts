@@ -1070,7 +1070,7 @@ describe("AgentService", () => {
     const { service, publish } = await create_service();
     fake_agent_state.mode = "streaming";
     fake_agent_state.stream_token_size = 1;
-    fake_agent_state.stream_tokens_per_second = 40;
+    fake_agent_state.stream_tokens_per_second = 10;
     const measure = AgentTokenSpeed.prototype.measure;
     let measurements = 0;
     const record_spy = vi.spyOn(AgentTokenSpeed.prototype, "record");
@@ -1087,122 +1087,72 @@ describe("AgentService", () => {
       await wait_for_idle(service);
       const speeds = publish.mock.calls.flatMap(([, payload]) => {
         const event = payload as AgentSessionEvent;
-        return event.type === "token_speed" ? [event.tokenSpeed.tokensPerSecond] : [];
+        return event.type === "token_speed" ? [event.tokenSpeed?.tokensPerSecond ?? null] : [];
       });
-      expect(record_spy.mock.calls.length).toBeGreaterThan(10);
       expect(measurements).toBeGreaterThan(1);
-      expect(measurements).toBeLessThan(8);
-      expect(speeds[0]).toBe(99.99);
-      expect(speeds).toHaveLength(2);
-      expect(speeds[1]).toBe(service.get_snapshot().tokenSpeed.tokensPerSecond);
-      expect(speeds[1]).toBeGreaterThan(0);
+      expect(measurements).toBeLessThan(record_spy.mock.calls.length);
+      expect(speeds).toEqual([99.99, null]);
     } finally {
       spy.mockRestore();
       record_spy.mockRestore();
     }
   });
 
-  it("高频 assistant delta 按固定窗口合并，并立即发布完整终帧", async () => {
+  it("高频助手增量合并发布，终态保留完整正文和条目身份", async () => {
     vi.useFakeTimers();
-    vi.setSystemTime(1_000);
     const { service, publish } = await create_service();
-    const published_at: number[] = [];
-    publish.mockImplementation(() => {
-      published_at.push(Date.now());
-    });
     fake_agent_state.mode = "streaming";
     fake_agent_state.stream_token_size = 1;
     fake_agent_state.stream_tokens_per_second = 40;
+    const received_deltas = vi.spyOn(AgentTokenSpeed.prototype, "record"); // 此场景只含正文，计数入口接收每个原始增量。
 
     await service.send_message({ text: "开始", attachments: [] });
     await vi.runAllTimersAsync();
     await wait_for_idle(service);
 
-    const speed_events = publish.mock.calls.flatMap(([, payload], index) => {
-      const event = payload as AgentSessionEvent;
-      return event.type === "token_speed"
-        ? [{ speed: event.tokenSpeed.tokensPerSecond, at: published_at[index]! }]
-        : [];
-    });
-    const speeds = speed_events.map(({ speed }) => speed);
-    const live = speed_events.slice(0, -1);
-    expect(live.length).toBeGreaterThan(1);
-    expect(live.slice(1).every((event, index) => event.at - live[index]!.at >= 250)).toBe(true);
-    expect(speed_events.at(-1)!.at).toBe(published_at.at(-1));
-    expect(speeds).not.toContain(null);
-    expect(speeds.at(-1)).toBe(service.get_snapshot().tokenSpeed.tokensPerSecond);
-    expect(service.get_snapshot().tokenSpeed.tokensPerSecond).toBeGreaterThan(0);
-
-    const assistant_events = publish.mock.calls.flatMap(([, payload], index) => {
-      const event = payload as AgentSessionEvent;
-      return event.type === "entry_upsert" && event.entry.kind === "assistant_message"
-        ? [{ entry: event.entry, publishedAt: published_at[index] }]
-        : [];
-    });
-    const running_events = assistant_events.filter(({ entry }) => entry.status === "running");
+    const events = publish.mock.calls.map(([, payload]) => payload as AgentSessionEvent);
+    const assistant_entries = events.flatMap((event) =>
+      event.type === "entry_upsert" && event.entry.kind === "assistant_message"
+        ? [event.entry]
+        : [],
+    );
+    const running_entries = assistant_entries.filter((entry) => entry.status === "running");
     const final_text = "abcdefghijklmnopqrstuvwxabcdefghijklmnopqrstuvwx";
-
-    expect(running_events.length).toBeGreaterThan(0);
-    expect(running_events.length).toBeLessThan(12);
+    expect(running_entries.length).toBeGreaterThan(0);
+    expect(running_entries.length).toBeLessThan(received_deltas.mock.calls.length);
     expect(
-      running_events
-        .slice(1)
-        .every(
-          (event, index) =>
-            event.publishedAt !== undefined &&
-            running_events[index]?.publishedAt !== undefined &&
-            event.publishedAt - running_events[index].publishedAt >= 100,
-        ),
-    ).toBe(true);
-    expect(
-      running_events.every(
-        ({ entry }) =>
-          entry.kind === "assistant_message" &&
-          entry.parts.length === 1 &&
-          entry.parts[0]?.kind === "text" &&
-          final_text.startsWith(entry.parts[0].text),
+      running_entries.every(
+        ({ parts }) =>
+          parts.length === 1 && parts[0]?.kind === "text" && final_text.startsWith(parts[0].text),
       ),
     ).toBe(true);
     expect(
-      running_events
+      running_entries
         .slice(1)
         .every(
-          ({ entry }, index) =>
-            entry.kind === "assistant_message" &&
-            running_events[index]?.entry.kind === "assistant_message" &&
-            entry.parts[0]!.text.length >= running_events[index].entry.parts[0]!.text.length,
+          (entry, index) =>
+            entry.parts[0]!.text.length >= running_entries[index]!.parts[0]!.text.length,
         ),
     ).toBe(true);
-    expect(new Set(assistant_events.map(({ entry }) => entry.id))).toHaveProperty("size", 1);
-    expect(assistant_events.at(-1)?.entry).toMatchObject({
-      kind: "assistant_message",
+    expect(new Set(assistant_entries.map((entry) => entry.id)).size).toBe(1);
+    expect(assistant_entries.at(-1)).toMatchObject({
       parts: [{ kind: "text", text: final_text }],
       status: "success",
     });
-
-    const final_assistant_index = publish.mock.calls.findLastIndex(([, payload]) => {
-      const event = payload as AgentSessionEvent;
-      return (
+    const final_assistant_index = events.findLastIndex(
+      (event) =>
         event.type === "entry_upsert" &&
         event.entry.kind === "assistant_message" &&
-        event.entry.status === "success"
-      );
-    });
-    const final_user_index = publish.mock.calls.findLastIndex(([, payload]) => {
-      const event = payload as AgentSessionEvent;
-      return (
+        event.entry.status === "success",
+    );
+    const final_user_index = events.findLastIndex(
+      (event) =>
         event.type === "entry_upsert" &&
         event.entry.kind === "user_message" &&
-        event.entry.status === "success"
-      );
-    });
-    const idle_index = publish.mock.calls.findLastIndex(([, payload]) => {
-      const event = payload as AgentSessionEvent;
-      return event.type === "session_state" && event.state === "idle";
-    });
+        event.entry.status === "success",
+    );
     expect(final_user_index).toBeGreaterThan(final_assistant_index);
-    expect(idle_index).toBeGreaterThan(final_user_index);
-    expect(service.get_snapshot().entries.at(-1)).toEqual(assistant_events.at(-1)?.entry);
+    expect(service.get_snapshot().entries.at(-1)).toEqual(assistant_entries.at(-1));
   });
 
   it("从真实 Agent 消息历史发布上下文用量，并在重置时清空", async () => {
@@ -1324,37 +1274,81 @@ describe("AgentService", () => {
     expect(JSON.stringify(publish.mock.calls)).not.toContain("private-redacted");
   });
 
-  it("工具等待和失败继续保留速度，新回合与重置清空", async () => {
+  it("工具等待保留最近速度，失败继续先恢复均速，新回合保留历史结果", async () => {
     const { service, publish, runtime_gate } = await create_service();
     fake_agent_state.mode = "tools_error";
     fake_agent_state.hold_tool_execution = true;
     await service.send_message({ text: "查询", attachments: [] });
     await vi.waitFor(() => expect(fake_agent_state.release_tool_execution).not.toBeNull());
-    const waiting_speed = service.get_snapshot().tokenSpeed.tokensPerSecond;
-    expect(waiting_speed).toBeGreaterThan(0);
-    expect(
-      publish.mock.calls.some(([, payload]) => {
-        const event = payload as AgentSessionEvent;
-        return event.type === "token_speed" && event.tokenSpeed.tokensPerSecond === null;
-      }),
-    ).toBe(false);
+    const round_id = service.get_snapshot().entries[0]!.id;
+    const waiting_speed = service.get_snapshot().tokenSpeed;
+    expect(waiting_speed).toEqual({ roundId: round_id, tokensPerSecond: expect.any(Number) });
+    const live_events = publish.mock.calls.flatMap(([, payload]) => {
+      const event = payload as AgentSessionEvent;
+      return event.type === "token_speed" ? [event.tokenSpeed] : [];
+    });
+    expect(live_events.at(-1)).toEqual(waiting_speed);
+    expect(live_events).not.toContain(null);
     fake_agent_state.release_tool_execution?.();
     await wait_for_idle(service);
-    const failed_speed = service.get_snapshot().tokenSpeed;
-    expect(failed_speed.tokensPerSecond).toBeGreaterThan(0);
+    const failed_round = service
+      .get_snapshot()
+      .entries.find((entry) => entry.kind === "user_message" && entry.delivery === "round")!;
+    expect(failed_round).toMatchObject({
+      status: "error",
+      averageTokensPerSecond: expect.any(Number),
+    });
+    expect(service.get_snapshot().tokenSpeed).toBeNull();
+    expect(publish.mock.calls).toContainEqual([
+      "agent.session_event",
+      expect.objectContaining({ type: "entry_upsert", entry: failed_round }),
+    ]);
+
     fake_agent_state.mode = "pending";
     fake_agent_state.hold_idle = true;
+    const continue_event_start = publish.mock.calls.length;
     await service.continue_session({});
     await vi.waitFor(() => expect(fake_agent_state.release_pending).not.toBeNull());
-    expect(service.get_snapshot().tokenSpeed).toEqual(failed_speed);
+    const resumed_speed = service.get_snapshot().tokenSpeed;
+    expect(resumed_speed).toEqual({
+      roundId: round_id,
+      tokensPerSecond: Number(failed_round.averageTokensPerSecond!.toFixed(2)),
+    });
+    const continue_events = publish.mock.calls
+      .slice(continue_event_start)
+      .map(([, event]) => event as AgentSessionEvent);
+    const speed_index = continue_events.findIndex((event) => event.type === "token_speed");
+    const running_index = continue_events.findIndex(
+      (event) =>
+        event.type === "entry_upsert" &&
+        event.entry.id === round_id &&
+        event.entry.status === "running",
+    );
+    expect(speed_index).toBeGreaterThanOrEqual(0);
+    expect(running_index).toBeGreaterThan(speed_index);
+    expect(service.get_snapshot().entries[0]).toMatchObject({
+      id: round_id,
+      status: "running",
+      averageTokensPerSecond: null,
+    });
     service.stop();
     fake_agent_state.hold_idle = false;
     fake_agent_state.release_pending?.();
     await vi.waitFor(() => expect(runtime_gate.get_snapshot().owner).toBeNull());
+    const stopped_round = service.get_snapshot().entries[0]!;
+    expect(stopped_round).toMatchObject({
+      status: "stopped",
+      averageTokensPerSecond: failed_round.averageTokensPerSecond,
+    });
     await service.send_message({ text: "新回合", attachments: [] });
-    expect(service.get_snapshot().tokenSpeed.tokensPerSecond).toBeNull();
+    expect(service.get_snapshot().tokenSpeed).toBeNull();
+    expect(service.get_snapshot().entries[0]).toEqual(stopped_round);
+    expect(service.get_snapshot().entries.at(-1)).toMatchObject({
+      delivery: "round",
+      averageTokensPerSecond: null,
+    });
     await service.reset();
-    expect(service.get_snapshot().tokenSpeed.tokensPerSecond).toBeNull();
+    expect(service.get_snapshot()).toMatchObject({ entries: [], tokenSpeed: null });
   });
 
   it("纯工具调用消息仍统计生成速度且不产生空 assistant 条目", async () => {
@@ -1368,7 +1362,10 @@ describe("AgentService", () => {
       "user_message",
       "tool_call",
     ]);
-    expect(service.get_snapshot().tokenSpeed.tokensPerSecond).toBeGreaterThan(0);
+    expect(service.get_snapshot().entries[0]).toMatchObject({
+      averageTokensPerSecond: expect.any(Number),
+    });
+    expect(service.get_snapshot().tokenSpeed).toBeNull();
   });
 
   it("重置期间的工具终帧归入旧会话，新会话使用独立日志身份", async () => {
@@ -1538,6 +1535,7 @@ describe("AgentService", () => {
         kind: "user_message",
         id: expect.any(String),
         delivery: "round",
+        averageTokensPerSecond: expect.any(Number),
         text: "查询",
         attachments: [],
         status: "success",
@@ -1881,7 +1879,7 @@ describe("AgentService", () => {
       skills: skill_test_fixture.snapshots,
       inputQueue: { paused: false, canSendNow: false, items: [] },
       todos: [],
-      tokenSpeed: { tokensPerSecond: null },
+      tokenSpeed: null,
       context: { tokens: null, compactable: false, limits: null },
     });
     expect(count_published_events(publish, "snapshot_seed")).toBe(1);
@@ -2205,7 +2203,7 @@ describe("AgentService", () => {
       skills: skill_test_fixture.snapshots,
       inputQueue: { paused: false, canSendNow: false, items: [] },
       todos: [],
-      tokenSpeed: { tokensPerSecond: null },
+      tokenSpeed: null,
       context: { tokens: null, compactable: false, limits: null },
     });
     await Promise.resolve();
