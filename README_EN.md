@@ -88,19 +88,11 @@
 - See [Wiki - Supported Formats](https://github.com/neavo/LinguaGacha/wiki/%E6%94%AF%E6%8C%81%E7%9A%84%E6%96%87%E4%BB%B6%E6%A0%BC%E5%BC%8F) for examples. Submit format requests via [ISSUES](https://github.com/neavo/LinguaGacha/issues)
 
 ## Recent Updates 📅
-- 20260920 v0.122.2
-  - Fixes and improvements [#908](../../issues/908) [#912](../../issues/912) [#913](../../issues/913) [#914](../../issues/914)
-
-- 20260919 v0.122.1
-  - LinguaGacha-chan has a new avatar 😎
-  - Fixes and improvements [#902](../../issues/902) [#903](../../issues/903) [#905](../../issues/905)
-
-- 20260918 v0.122.0
-  - Added support for `.pdf` files [#895](../../issues/895)
-    - Can only be translated in `AGENT` mode
-    - Supports `plain text` and `image text`
-  - Support for `OpenCode Go` special field rules [#894](../../issues/894)
-  - Fixes and improvements [#877](../../issues/877) [#888](../../issues/888) [#890](../../issues/890) [#891](../../issues/891) [#892](../../issues/892) [#893](../../issues/893) [#896](../../issues/896) [#897](../../issues/897) [#898](../../issues/898) [#899](../../issues/899)
+- 20260922 v0.123.0
+  - `AGENT` - Upload reference files [#917](../../issues/917)
+  - `AGENT` - Output speed statistics [#920](../../issues/920)
+  - Fixed an issue that could cause translation tasks to stop [#922](../../issues/922)
+  - Fixes and improvements [#921](../../issues/921) [#923](../../issues/923)
 
 ## Development Guide 🛠️
 - Install [Go](https://go.dev) and [`Node.js`](https://nodejs.org)
