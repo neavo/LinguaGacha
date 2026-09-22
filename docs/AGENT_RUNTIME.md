@@ -16,7 +16,8 @@
 |状态|拥有者|唯一入口|
 |---|---|---|
 |公开状态、完整 UI 时间线、会话生命周期与启动期资源|`AgentService`|Agent API、`agent.session_event`|
-|模型可见历史、工具循环、上下文压缩、中断与 settle|内存 `AgentSession`|`AgentService` 调用 SDK 的 prompt、模型切换与关闭 API|
+|模型可见历史|内存 `SessionManager`|SDK 历史写入口|
+|工具循环、上下文压缩、中断与 settle|内存 `AgentSession`|`AgentService` 调用 SDK 的 prompt、模型切换与关闭 API|
 |用户输入队列与暂停 / 发送状态|`AgentService`|Agent message、continue 与 queue API|
 |模型对话级有序 Todo|`AgentService`|`ws.todo`、Agent API 与 `agent.session_event`|
 |当前唯一用户决定、取消与一次性裁决|`AgentDecisionCoordinator`|各类用户决定 resolve API 与 `agent.session_event`|
@@ -41,6 +42,7 @@
 ### 运行控制与恢复
 
 - Agent 的公开会话与模型历史完全内存化，持久化日志不参与会话恢复。消息受理到当前 round 及自动 FIFO 链最终 settle 期间持有同一 [`RuntimeOperationGate`](BACKEND.md) lease，等待用户决定也不释放；Pi 在 SDK run 内拥有工具循环、自动压缩和压缩后的续跑。
+- `AgentService` 根据当前执行的助手终帧、恢复压缩结果和请求异常结算轮次。恢复失败且没有后续成功响应时，轮次失败并暂停队列。普通阈值压缩失败后模型仍可完成轮次。
 - Agent runtime 冻结初始 SDK 会话 UUID 作为产品对话请求身份，跨轮次、修订、换模和压缩复用，随 runtime 重建更换。SDK 修订与压缩可能分配新 ID，因此发送边界使用冻结身份；请求头策略归 [`BACKEND.md`](BACKEND.md)。
 - 手动压缩只在稳定空闲且有可压缩旧段时受理，以独立 Agent lease 更新模型配置、发布 running 条目并后台调用同一压缩入口，不建立公开 round。ack 返回后仍持有 lease，关闭屏障等待 settlement 退出。
 - Pi `agent_start / agent_end`、压缩事件和 `pendingDecision` 共同决定 `canSendNow`，使异步预检、用户决定、压缩与结算窗口中的 steer 受同一条件约束。
@@ -66,8 +68,9 @@
 
 - Agent 与 OneShot 共用 [`BACKEND.md`](BACKEND.md) 定义的唯一模型能力解析和请求覆盖边界。模型配置中的 `agent.context_window` 与 `agent.max_output_tokens` 各自以 `0` 表示自动：自动上下文采用统一能力解析器提供的模型窗口；自动输出先取模型最大输出与产品档位的较小值，模型最大窗口低于 500K 时产品档位为 32K，否则为 64K。用户非零值优先，最终输出仍不得超过 `context_window - 32K`；格式损坏或无法容纳固定预留时整组恢复 `0/0`。每次 Agent 模型操作前把生效容量与已经确认可用的思考等级同步到既有 `AgentSession`，请求期保持该档位稳定。页面从 `context_window - max_output_tokens - 32K` 起预警；设置作用于同一对话的下一次模型操作，不重建或清空模型历史。模型页 generation 和 threshold 输入 / 输出 token 设置只作用于 OneShot。隐藏“继续”消息在操作发起时按当前 `app_language` 解析。
 - Agent 模型在 Pi 请求边界固定声明 text / image 输入；消息附件中的批注与文件清单进入文本提示，普通文件由 `workspace_run` 按需读取；图片清单中的序号对应视觉输入，规范 WebP 直接交给当前供应商，OneShot 仍只声明 text。产品不探测或配置具体模型的视觉能力，不自动删图、降级或回退 JPEG，供应商拒绝图片时沿用普通模型失败语义。
-- Pi 在模型历史的 `system` 消息中保存指令与工具声明，由 SDK 负责压缩、分支和重放。这些消息参与上下文估算。
-- 模型可见上下文超过 `context_window - 32K` 时，`AgentSession` 在新用户请求前、自然结束后，以及完整工具批次与下一次 assistant 请求之间统一自动压缩；空闲会话也可由公开手动入口立即压缩。历史切点完全交给 SDK，保留侧不拆分 assistant 工具调用与其结果；`AgentService` 只把 SDK 压缩事件投影到公开时间线，成功后 `context` 采用 SDK 对新模型历史的估算并重新计算可压缩性，失败保留原上下文快照并沿用 SDK 后续请求语义。
+- Pi 把系统指令与工具声明写入 `system` 消息。`SessionManager` 根据压缩记录和 `context_edit` 生成模型上下文，保留被排除的原始条目。产品修订通过 SDK 写入历史，再调用 `refreshContext()` 同步检查缓存。
+- 公开 `context` 优先使用 SDK `getContextUsage()` 的有效用量，压缩后尚无有效统计时按当前内容及生效系统指令估算。`message_end` 先通知再写入历史，统计在历史提交后刷新。恢复压缩失败时可能已排除失败响应，也需重新读取上下文。
+- 模型可见上下文超过 `context_window - 32K` 时，`AgentSession` 在新用户请求前、自然结束后，以及完整工具批次与下一次助手请求之间统一自动压缩。空闲会话可由公开手动入口立即压缩。SDK 决定历史切点，保留侧的助手工具调用与结果保持配对。
 - Workspace 是 `AgentService` 的构造依赖、初始化前置和恒定工具面，初始化失败会阻止 Agent 启动资源完成加载。Agent 启动期原子加载必需的 `builtin/agent/system_prompt.md` 与 `builtin/agent/session_seed.json`；会话种子由零个或多个顺序任意的 user / assistant 消息组成，文本裁剪后允许为空，按资源顺序进入每个新会话的模型历史但不进入公开时间线，任一资源缺失或结构无效都会阻止启动。GUI Backend 的完整装配与启动顺序归 [`ARCHITECTURE.md`](ARCHITECTURE.md)。
 - coding-agent 的默认工具与项目资源发现全部关闭，SDK 不发现项目 `AGENTS.md`、`.pi` 或其它运行期资源。产品在初始会话及每次 reset 或工程切换时按用户目录、当前版本内置目录的优先级依次扫描，同名 skill 取首个有效定义，坏 skill 只记录诊断；安装根的历史资源目录不参与发现。形成的会话 catalog 同时拥有 System Prompt 能力清单、公开 mention、用户 marker 注入和名称到获胜 skill 包的内部绑定，并在当前对话内冻结。模型能力清单只公开名称与描述；`SKILL.md` 描述同时作为模型描述和 `ui.json` 展示描述缺失时的回退。
 - `agent-charter` 是隐藏但保留在模型能力清单中的最高层任务宪章，其短正文与系统提示有意重复。模型负责在任务前加载，后端通过普通技能读取提供正文，加载状态由模型判断。

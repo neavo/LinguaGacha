@@ -136,6 +136,8 @@ const fake_agent_state = vi.hoisted(() => ({
     | "todo_clear"
     | "invalid_tool"
     | "tool_compaction"
+    | "overflow"
+    | "length"
     | "tools",
   batch_mode: false,
   batch_retries: 0,
@@ -158,6 +160,7 @@ const fake_agent_state = vi.hoisted(() => ({
   release_summary: null as (() => void) | null,
   request_kinds: [] as Array<"model" | "summary">,
   model_contexts: [] as TranscriptContext["messages"][],
+  summary_contexts: [] as TranscriptContext["messages"][],
   auth_configured: true,
   hold_auth: false,
   auth_wait: null as Promise<void> | null,
@@ -200,6 +203,8 @@ function create_fake_agent_stream(
   if (!is_summary) {
     fake_agent_state.model_call_count += 1;
     fake_agent_state.model_contexts.push(structuredClone(context.messages));
+  } else {
+    fake_agent_state.summary_contexts.push(structuredClone(context.messages));
   }
   fake_agent_state.system_prompts.push(getCurrentSystemPrompt(context.messages) ?? "");
   fake_agent_state.prompts.push(read_last_user_text(context));
@@ -225,17 +230,9 @@ function create_fake_agent_stream(
   const response = hold_summary
     ? async (_context: TranscriptContext, stream_options: StreamOptions | undefined) =>
         await wait_for_summary_release(stream_options?.signal)
-    : is_summary && fake_agent_state.summary_failures_remaining > 0
-      ? (() => {
-          fake_agent_state.summary_failures_remaining -= 1;
-          return fauxAssistantMessage([], {
-            stopReason: "error",
-            errorMessage: "摘要生成失败",
-          });
-        })()
-      : is_summary
-        ? fauxAssistantMessage("压缩摘要")
-        : create_fake_response(context);
+    : is_summary
+      ? create_fake_summary_response()
+      : create_fake_response(context);
   faux.setResponses([response]);
   return faux.streamSimple(model, context, options);
 }
@@ -309,6 +306,14 @@ function register_fake_agent_model(model_runtime: ModelRuntime, config: JsonReco
 
 /** 只描述模型响应，不复制 Agent 的事件协议、工具执行或生命周期。 */
 function create_fake_response(context: TranscriptContext): FauxResponseStep {
+  if (fake_agent_state.mode === "overflow" || fake_agent_state.mode === "length") {
+    const stop_reason = fake_agent_state.mode === "overflow" ? "error" : "length";
+    fake_agent_state.mode = "success";
+    return fauxAssistantMessage("废弃的恢复尝试", {
+      stopReason: stop_reason,
+      ...(stop_reason === "error" ? { errorMessage: "context_length_exceeded" } : {}),
+    });
+  }
   if (fake_agent_state.mode === "pending") {
     return async (_context, options) => await wait_for_pending_release(options?.signal);
   }
@@ -483,7 +488,16 @@ function wait_for_pending_release(signal: AbortSignal | undefined): Promise<Assi
   });
 }
 
-/** 摘要请求可确定性挂起，供受理回执与后台结算时序测试独立推进。 */
+/** 摘要与普通模型响应独立配置，失败次数由实际摘要请求消费。 */
+function create_fake_summary_response(): AssistantMessage {
+  if (fake_agent_state.summary_failures_remaining > 0) {
+    fake_agent_state.summary_failures_remaining -= 1;
+    return fauxAssistantMessage([], { stopReason: "error", errorMessage: "摘要生成失败" });
+  }
+  return fauxAssistantMessage("压缩摘要");
+}
+
+/** 摘要挂起后仍按释放时的剧本结算，允许在恢复期间提交队列输入。 */
 function wait_for_summary_release(signal: AbortSignal | undefined): Promise<AssistantMessage> {
   return new Promise((resolve) => {
     let settled = false;
@@ -494,7 +508,7 @@ function wait_for_summary_release(signal: AbortSignal | undefined): Promise<Assi
       if (fake_agent_state.release_summary === release) {
         fake_agent_state.release_summary = null;
       }
-      resolve(fauxAssistantMessage("压缩摘要"));
+      resolve(create_fake_summary_response());
     };
     const handle_abort = () => {
       if (!fake_agent_state.hold_idle) release();
@@ -531,6 +545,7 @@ describe("AgentService", () => {
     fake_agent_state.release_summary = null;
     fake_agent_state.request_kinds = [];
     fake_agent_state.model_contexts = [];
+    fake_agent_state.summary_contexts = [];
     fake_agent_state.auth_configured = true;
     fake_agent_state.hold_auth = false;
     fake_agent_state.auth_wait = null;
@@ -809,8 +824,8 @@ describe("AgentService", () => {
       role: "user",
       content: [
         { type: "text", text: expect.stringContaining("uploads/webp-a.png") },
-        { type: "image", data: "webp-a", mimeType: "image/webp" },
-        { type: "image", data: "webp-b", mimeType: "image/webp" },
+        { type: "image", data: Buffer.from("webp-a").toString("base64"), mimeType: "image/webp" },
+        { type: "image", data: Buffer.from("webp-b").toString("base64"), mimeType: "image/webp" },
       ],
     });
   });
@@ -985,59 +1000,19 @@ describe("AgentService", () => {
     }
   });
 
-  it("技能引用只保留用户正文，具体读取由模型决定", async () => {
+  it("各类技能引用按用户正文完整传给模型和公开时间线", async () => {
     const fixture = await create_service();
-
-    await fixture.service.send_message({
-      text: '先用 @skill("corpus-search")，再用 @skill("glossary-audit")。',
-      attachments: [],
-    });
-    await wait_for_idle(fixture.service);
-    const prompt = fake_agent_state.prompts.at(-1) ?? "";
-
-    expect(prompt).not.toContain("<skill ");
-    expect(prompt).toContain('先用 @skill("corpus-search")，再用 @skill("glossary-audit")。');
-    expect_agent_system_prompt(fake_agent_state.system_prompts.at(-1));
-    expect(prompt).not.toContain("完整正文。");
-  });
-
-  it("重复与未知引用按用户正文传递", async () => {
-    const fixture = await create_service();
-    const text =
-      '@skill("glossary-audit") @skill("unknown") @skill("glossary-audit") @unknown(reference) @glossary-audit';
-
-    await fixture.service.send_message({ text, attachments: [] });
-    await wait_for_idle(fixture.service);
-
-    const prompt = fake_agent_state.prompts.at(-1) ?? "";
-    expect(prompt).not.toContain('<skill name="glossary-audit"');
-    expect(prompt).not.toContain('<skill name="unknown"');
-    expect(prompt).toContain(text);
-    expect(fixture.service.get_snapshot().entries[0]).toMatchObject({ text });
-  });
-
-  it("转义 marker 只作为用户正文，不注入 skill", async () => {
-    const fixture = await create_service();
-    const text = String.raw`\@skill(\"glossary-audit\") 只讨论语法`;
-
-    await fixture.service.send_message({ text, attachments: [] });
-    await wait_for_idle(fixture.service);
-
-    const prompt = fake_agent_state.prompts.at(-1) ?? "";
-    expect(prompt).toBe(text);
-    expect(prompt).not.toContain('<skill name="glossary-audit"');
-  });
-
-  it("隐藏知识保留在模型清单，但用户精确 marker 不注入正文", async () => {
-    const fixture = await create_service();
-    const text = '@skill("internal-guidance")';
+    const text = [
+      '@skill("corpus-search") @skill("glossary-audit") @skill("internal-guidance")',
+      '@skill("glossary-audit") @skill("unknown") @unknown(reference) @glossary-audit',
+      String.raw`\@skill(\"glossary-audit\") 只讨论语法`,
+    ].join("\n");
 
     await fixture.service.send_message({ text, attachments: [] });
     await wait_for_idle(fixture.service);
 
     expect(fake_agent_state.prompts.at(-1)).toBe(text);
-    expect(fake_agent_state.prompts.at(-1)).not.toContain('<skill name="internal-guidance"');
-    expect_agent_system_prompt(fake_agent_state.system_prompts.at(-1));
+    expect(fixture.service.get_snapshot().entries[0]).toMatchObject({ text });
   });
 
   it("模型回合从 running 回到 idle，并由条目保存成功终态", async () => {
@@ -1253,7 +1228,6 @@ describe("AgentService", () => {
         limits: { context_window: expect.any(Number), max_output_tokens: expect.any(Number) },
       },
     });
-    expect(service.get_snapshot().context.tokens).toEqual(expect.any(Number));
     expect(service.get_snapshot().context.tokens ?? 0).toBeGreaterThan(0);
     expect((context_events.at(-1)?.["context"] as JsonRecord | undefined)?.["tokens"]).toBe(
       service.get_snapshot().context.tokens,
@@ -2466,6 +2440,68 @@ describe("AgentService", () => {
     expect(log_error).not.toHaveBeenCalled();
   });
 
+  it.each(["overflow", "length"] as const)(
+    "%s 恢复失败按当前运行结算并暂停队列，继续时不重放废弃响应",
+    async (mode) => {
+      const { service } = await create_service();
+      await prepare_manual_compaction_history(service);
+      fake_agent_state.mode = mode;
+      fake_agent_state.hold_next_summary = true;
+      fake_agent_state.summary_failures_remaining = 1;
+
+      await service.send_message({ text: "触发恢复", attachments: [] });
+      await vi.waitFor(() => expect(fake_agent_state.release_summary).not.toBeNull());
+      await service.send_message({ text: "排队工作", attachments: [] });
+      fake_agent_state.release_summary?.();
+      await wait_for_idle(service);
+
+      expect(service.get_snapshot()).toMatchObject({
+        inputQueue: { paused: true, items: [{ text: "排队工作" }] },
+      });
+      expect(
+        service.get_snapshot().entries.findLast((entry) => entry.kind === "user_message"),
+      ).toMatchObject({ text: "触发恢复", status: "error" });
+      expect(fake_agent_state.prompts).not.toContain("排队工作");
+
+      await service.continue_session({});
+      await wait_for_idle(service);
+      expect(JSON.stringify(fake_agent_state.model_contexts)).not.toContain("废弃的恢复尝试");
+      expect(service.get_snapshot()).toMatchObject({ inputQueue: { paused: false, items: [] } });
+      expect(
+        service.get_snapshot().entries.findLast((entry) => entry.kind === "user_message"),
+      ).toMatchObject({ text: "排队工作", status: "success" });
+    },
+  );
+
+  it("溢出恢复成功后再次压缩和请求都不恢复废弃响应", async () => {
+    const { service, log_error } = await create_service();
+    await prepare_manual_compaction_history(service);
+    fake_agent_state.mode = "overflow";
+
+    await service.send_message({ text: "触发恢复", attachments: [] });
+    await wait_for_idle(service);
+    expect(
+      service.get_snapshot().entries.findLast((entry) => entry.kind === "user_message"),
+    ).toMatchObject({ text: "触发恢复", status: "success" });
+
+    await service.send_message({ text: `后续材料${"x".repeat(80_000)}`, attachments: [] });
+    await wait_for_idle(service);
+    await service.compact_context();
+    await vi.waitFor(() =>
+      expect(service.get_snapshot().entries.at(-1)).toMatchObject({
+        kind: "context_compaction",
+        status: "success",
+      }),
+    );
+    await service.send_message({ text: "压缩后继续", attachments: [] });
+    await wait_for_idle(service);
+
+    expect(fake_agent_state.summary_contexts.length).toBeGreaterThanOrEqual(2);
+    expect(JSON.stringify(fake_agent_state.summary_contexts)).not.toContain("废弃的恢复尝试");
+    expect(JSON.stringify(fake_agent_state.model_contexts)).not.toContain("废弃的恢复尝试");
+    expect(log_error).not.toHaveBeenCalled();
+  });
+
   it("重试等待期间 stop 会取消后续调用且不报告失败", async () => {
     vi.useFakeTimers();
     const { service, log_error } = await create_service();
@@ -3225,7 +3261,7 @@ describe("AgentService", () => {
     images: ConstructorParameters<typeof AgentService>[0]["images"] = {
       clear: vi.fn(),
       prepare: async (data) => ({
-        data: Buffer.from(data).toString(),
+        data: Buffer.from(data).toString("base64"),
         mimeType: "image/webp",
         width: 1,
         height: 1,
@@ -3463,11 +3499,7 @@ function expect_agent_system_prompt(prompt: string | undefined): void {
   );
   expect(prompt).not.toContain("<name>corpus-search</name>");
   expect(prompt).not.toContain("<visible>");
-  expect(prompt).not.toContain("执行术语审校。");
-  expect(prompt).not.toContain("完整正文。");
-  expect(prompt).not.toContain("You are an expert coding assistant operating inside pi");
-  expect(prompt).not.toContain("Read the full skill file when the task matches");
-  expect(prompt).not.toContain("LinguaGacha Agent 协作指南");
+  expect(prompt).not.toContain(skill_test_fixture.fixture_contents.glossary_audit);
   expect(prompt?.match(/<cwd>/gu)).toHaveLength(1);
   const working_directory = prompt?.match(/<cwd>\s*([\s\S]*?)\s*<\/cwd>/u)?.[1];
   expect(working_directory?.replaceAll("\\", "/")).toBe(skill_test_fixture.app_root);

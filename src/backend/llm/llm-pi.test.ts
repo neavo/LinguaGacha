@@ -360,6 +360,20 @@ describe("pi-ai 请求适配", () => {
     expect(payload).not.toHaveProperty("reasoning");
   });
 
+  it("未知 Chat Completions 接入点的工具声明省略 strict 字段", async () => {
+    const request = resolve_request({
+      api_format: "OpenAI",
+      api_url: "https://relay.example/v1",
+      model_id: "custom-model",
+    });
+    const parameters = Type.Object({ value: Type.String() });
+    request.context.tools = [{ name: "probe", description: "探针工具", parameters }];
+
+    expect((await capture_payload(request))["tools"]).toEqual([
+      { type: "function", function: { name: "probe", description: "探针工具", parameters } },
+    ]);
+  });
+
   it("Responses 原样发送工具 parameters 且默认 strict=false", async () => {
     const request = resolve_request({
       api_format: "OpenAIResponses",
