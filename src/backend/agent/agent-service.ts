@@ -3,7 +3,6 @@ import type { AgentImageService } from "./agent-image-service";
 import type { AgentFileAttachment } from "../../shared/agent";
 import { prepare_agent_message, type PreparedAgentMessage } from "./agent-message-input";
 import { BatchTranslationCompletionError } from "../batch-translation/batch-translation-runtime";
-import { estimateContextTokens } from "@earendil-works/pi-agent-core";
 import { resolve_agent_batch_translation_model } from "../model/model-config-resolver";
 import type { BatchTranslationResult } from "../../domain/batch-translation";
 import type { Model } from "../../domain/model";
@@ -85,8 +84,8 @@ import { AgentToolError, prepare_agent_tool } from "./model-tools/definition";
 import { AgentTokenSpeed } from "./agent-token-speed";
 import { AgentSessionLog } from "./agent-log";
 import { project_assistant_message_parts } from "./agent-message";
+import { AGENT_KEEP_RECENT_TOKENS, read_agent_session_context } from "./agent-session-context";
 
-const AGENT_KEEP_RECENT_TOKENS = 32_000; // 产品固定保留的最近模型可见历史
 const AGENT_TOKEN_SPEED_PUBLISH_INTERVAL_MS = 250; // 数值最多 4Hz，采样仍消费每个增量
 const AGENT_STREAM_PUBLISH_INTERVAL_MS = 100; // assistant 完整公开条目最多 10Hz；工具与终态不等待
 /** 产品会话使用固定压缩预算，不读取 coding-agent 用户设置。 */
@@ -720,7 +719,7 @@ export class AgentService {
         }
         if (created) {
           this.runtime = runtime;
-          this.publish_context(estimateContextTokens(runtime.session.messages).tokens);
+          this.publish_context();
         }
       } catch (error) {
         if (created && runtime !== null && this.runtime !== runtime && !candidate_closed) {
@@ -835,9 +834,8 @@ export class AgentService {
   private replace_active_history(runtime: AgentRuntime, leaf_id: string | null): void {
     if (leaf_id === null) runtime.session.sessionManager.newSession();
     else runtime.session.sessionManager.createBranchedSession(leaf_id);
-    runtime.session.agent.state.messages =
-      runtime.session.sessionManager.buildSessionContext().messages;
-    this.context = this.read_context(runtime.session);
+    runtime.session.refreshContext();
+    this.context = read_agent_session_context(runtime.session);
   }
 
   /** 人工修改的 assistant 是零 usage 的正常历史消息，不触发供应商请求。 */
@@ -871,8 +869,7 @@ export class AgentService {
       stopReason: "stop",
       timestamp: created_at,
     });
-    runtime.session.agent.state.messages =
-      runtime.session.sessionManager.buildSessionContext().messages;
+    runtime.session.refreshContext();
     const entry: AgentEntry = {
       kind: "assistant_message",
       id: uuidv7(),
@@ -882,7 +879,7 @@ export class AgentService {
     };
     this.entries = [...structuredClone(prefix), entry];
     this.latest_output_checkpoint = { entry_id: entry.id, leaf_id: checkpoint_leaf };
-    this.context = this.read_context(runtime.session);
+    this.context = read_agent_session_context(runtime.session);
     this.state = "idle";
     this.publish_snapshot_seed();
   }
@@ -1165,6 +1162,22 @@ export class AgentService {
   ): Promise<void> {
     let outcome: Extract<AgentEntryStatus, "success" | "error"> = "success";
     let next_request: AgentModelRequest | null = null;
+    // 恢复会从模型上下文排除失败响应，运行结果必须由本次执行事件独立确认。
+    let request_error: string | null = null; // 后续响应成功时清除本次执行的中间失败。
+    const unsubscribe_result = runtime.session.subscribe((event) => {
+      if (event.type === "message_end" && event.message.role === "assistant") {
+        request_error =
+          event.message.stopReason === "error"
+            ? (event.message.errorMessage ?? "Agent model turn failed.")
+            : null;
+      } else if (
+        event.type === "compaction_end" &&
+        event.reason === "overflow" &&
+        event.result === undefined
+      ) {
+        request_error = event.errorMessage ?? "Agent context recovery failed.";
+      }
+    });
     runtime.log.begin_run(this.latest_round_checkpoint!.entry_id, request.kind);
     try {
       // 普通入口已在受理前完成预检；FIFO 在实际出队执行时采用新设置，失败归入该轮终态。
@@ -1173,16 +1186,9 @@ export class AgentService {
       if (!this.prompt_is_current(runtime, generation)) return;
       if (request.kind === "continue") await this.send_continue(runtime);
       else await this.send_prompt(runtime, generation, request.text, request.images);
-      if (this.prompt_is_current(runtime, generation)) {
-        const final_assistant = runtime.session.messages.findLast(
-          (message): message is AssistantMessage => message.role === "assistant",
-        );
-        if (final_assistant?.stopReason === "error") {
-          outcome = "error";
-          this.log_request_failure(
-            new Error(final_assistant.errorMessage ?? "Agent model turn failed."),
-          );
-        }
+      if (this.prompt_is_current(runtime, generation) && request_error !== null) {
+        outcome = "error";
+        this.log_request_failure(new Error(request_error));
       }
     } catch (error) {
       if (this.prompt_is_current(runtime, generation)) {
@@ -1190,6 +1196,7 @@ export class AgentService {
         this.log_request_failure(error);
       }
     } finally {
+      unsubscribe_result();
       runtime.log.finish_run(outcome);
       if (this.prompt_is_current(runtime, generation)) {
         this.flush_assistant_stream();
@@ -1281,6 +1288,15 @@ export class AgentService {
 
   /** 将 SDK 事件收窄为按真实顺序追加的公开时间线；中间失败不冒充最终失败。 */
   private handle_agent_event(event: PiAgentSessionEvent): void {
+    if (
+      event.type === "turn_end" ||
+      event.type === "agent_settled" ||
+      (event.type === "entry_appended" && event.entry.type === "context_edit")
+    ) {
+      // message_end 通知早于 SDK 落库；这些边界已提交历史，直接读取 SessionManager。
+      this.publish_context();
+      return;
+    }
     if (event.type === "compaction_start") {
       this.begin_context_compaction();
       return;
@@ -1301,7 +1317,7 @@ export class AgentService {
           context: { reason: event.reason, error: event.errorMessage },
         });
       }
-      if (success) this.publish_context(result.estimatedTokensAfter);
+      this.publish_context();
       return;
     }
     if (event.type === "agent_start" || event.type === "turn_start") {
@@ -1370,7 +1386,6 @@ export class AgentService {
         );
         this.pending_assistant_checkpoint = null;
       }
-      this.publish_context();
       return;
     }
     if (event.type === "tool_execution_start") {
@@ -1601,29 +1616,11 @@ export class AgentService {
     }
   }
 
-  /** 压缩可用性与 token 估算由同一后端快照发布，renderer 不重建 SDK 历史规则。 */
-  private read_context(session: AgentSession, tokens?: number): AgentContextSnapshot {
-    const context_tokens = tokens ?? estimateContextTokens(session.messages).tokens;
-    // Pi 拒绝立即重复压缩以避免用摘要再次替换同一段历史，公开能力保持同一边界。
-    const last_entry = session.sessionManager.getBranch().at(-1);
-    return {
-      tokens: context_tokens,
-      limits:
-        session.model === undefined
-          ? null
-          : {
-              context_window: session.model.contextWindow,
-              max_output_tokens: session.model.maxTokens,
-            },
-      compactable: context_tokens > AGENT_KEEP_RECENT_TOKENS && last_entry?.type !== "compaction",
-    };
-  }
-
   /** 每次模型历史变化后发布完整上下文快照。 */
-  private publish_context(tokens?: number): void {
+  private publish_context(): void {
     const session = this.runtime?.session;
     if (session === undefined) return;
-    this.context = this.read_context(session, tokens);
+    this.context = read_agent_session_context(session);
     this.publish_event({ type: "context", context: structuredClone(this.context) });
   }
 
