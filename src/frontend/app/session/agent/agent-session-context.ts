@@ -17,7 +17,7 @@ export type { AgentInputSession } from "./agent-session-store";
 
 export const AgentSessionStoreContext = createContext<AgentSessionStore | null>(null);
 
-/** 高频测速只通知底栏数字。 */
+/** 高频测速只通知当前回合状态条的实时数字。 */
 export function useAgentTokenSpeed(): AgentTokenSpeedSnapshot {
   const store = use_agent_store();
   return useSyncExternalStore(

@@ -729,44 +729,23 @@
 }
 
 .agent-round-footer {
-  display: grid;
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  container-type: inline-size;
+  container-name: agent-round-footer;
   color: var(--muted-foreground);
 }
 
-.agent-round-footer__running,
-.agent-round-footer__result {
-  grid-area: 1 / 1;
-  align-items: center;
-}
-
-.agent-round-footer__running {
-  display: flex;
-  gap: 10px;
-  opacity: 0;
-  transition: opacity 160ms ease-out;
-}
-
-.agent-round-footer[data-running="true"] .agent-round-footer__running {
-  opacity: 1;
-}
-
-.agent-round-footer__result {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  opacity: 1;
-  transition: opacity 220ms ease-out 40ms;
-}
-
-.agent-round-footer[data-running="true"] .agent-round-footer__result {
-  opacity: 0;
-  transition-delay: 0ms;
+.agent-round-footer__label {
+  flex: 0 0 auto;
 }
 
 .agent-round-footer__activity {
   width: 8px;
   height: 8px;
   flex: 0 0 auto;
+  margin-right: 10px;
   border-radius: var(--ui-radius-pill);
   --agent-status-color: var(--primary);
   background: var(--agent-status-color);
@@ -775,6 +754,7 @@
 .agent-round-footer__line {
   flex: 1 1 auto;
   height: 1px;
+  margin-right: 10px;
   background: var(--border);
 }
 
@@ -1837,11 +1817,6 @@
     box-shadow: 0 0 0 3px color-mix(in srgb, var(--agent-status-color) 35%, transparent);
   }
 
-  .agent-round-footer__running,
-  .agent-round-footer__result {
-    transition: none;
-  }
-
   .agent-thinking-entry__toggle::before,
   .agent-thinking-entry__toggle,
   .agent-thinking-entry__content,
@@ -1864,22 +1839,20 @@
   font-size: 12px;
 }
 
-.agent-token-speed {
+.agent-round-footer__speed {
   flex: 0 0 auto;
-  padding-inline: 6px;
-  color: var(--muted-foreground);
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-}
-
-.agent-token-speed:focus-visible {
-  outline: 1px solid var(--ring);
-  outline-offset: 2px;
+  white-space: pre;
 }
 
 /* 为三位整数和两位小数预留空间，更长数值随内容自然扩展。 */
-.agent-token-speed__value {
+.agent-round-footer__speed-value {
   display: inline-block;
   min-width: 6ch;
   text-align: right;
+}
+
+@container agent-round-footer (max-width: 360px) {
+  .agent-round-footer__speed {
+    display: none;
+  }
 }

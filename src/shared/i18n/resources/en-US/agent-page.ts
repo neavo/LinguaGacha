@@ -1,5 +1,4 @@
 export const en_us_agent_page = {
-  token_speed: "Real-time speed",
   batch_translation_model: {
     follow: "Follow Agent",
     follow_option: "Use the AGENT model",

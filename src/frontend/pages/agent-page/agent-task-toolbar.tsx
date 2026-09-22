@@ -1,4 +1,3 @@
-import { AgentTokenSpeed } from "./agent-token-speed";
 import { useState } from "react";
 import {
   ChevronDown,
@@ -165,7 +164,6 @@ export function AgentTaskToolbar(props: {
           </AppDropdownMenuRadioGroup>
         </AppDropdownMenuContent>
       </AppDropdownMenu>
-      <AgentTokenSpeed />
     </>
   );
 }

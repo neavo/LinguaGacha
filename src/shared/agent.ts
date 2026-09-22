@@ -192,7 +192,12 @@ export type AgentEntry = JsonRecord &
   (
     | (AgentUserEntryBase &
         (
-          | { delivery: "round"; status: AgentEntryStatus; endedAt: number | null }
+          | {
+              delivery: "round";
+              status: AgentEntryStatus;
+              endedAt: number | null;
+              averageTokensPerSecond: number | null; // 终态生成均速，运行中或没有有效统计时为空。
+            }
           | { delivery: "steer"; status: "success"; endedAt: number }
         ))
     | {
@@ -206,8 +211,10 @@ export type AgentEntry = JsonRecord &
     | AgentContextCompactionEntry
   );
 
-/** 当前可展示的 TPS；null 表示当前回合尚无有效速度数据。 */
-export type AgentTokenSpeedSnapshot = JsonRecord & { tokensPerSecond: number | null };
+/** 当前回合最近的生成速度。等待期间保留，失败继续先展示已有均速，`null` 表示无数据。 */
+export type AgentTokenSpeedSnapshot =
+  | (JsonRecord & { roundId: string; tokensPerSecond: number })
+  | null;
 
 /** GET snapshot 与 snapshot_seed 共用的完整会话形状。 */
 export type AgentSessionSnapshot = JsonRecord & {

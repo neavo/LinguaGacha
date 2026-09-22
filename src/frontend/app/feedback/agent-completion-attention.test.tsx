@@ -72,6 +72,7 @@ function round_entry(status: AgentEntry["status"]): AgentEntry {
     kind: "user_message",
     id: `round-${status}`,
     delivery: "round",
+    averageTokensPerSecond: null,
     text: "任务",
     attachments: [],
     status,
