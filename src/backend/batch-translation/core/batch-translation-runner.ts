@@ -16,9 +16,9 @@ import type { BatchTranslationProgress } from "../../../domain/batch-translation
 import type {
   BatchTranslationRunnerOptions,
   BatchTranslationRunContext,
+  TranslationCommitEntry,
 } from "./batch-translation-runner-options";
 import type {
-  TranslationCommitEntry,
   TranslationContext,
   TranslationTokenMetric,
 } from "../planning/translation-plan-types";
@@ -308,7 +308,7 @@ export class BatchTranslationRunner {
     next_progress = TranslationProgressAccumulator.with_elapsed(next_progress);
     next_run = TranslationProgressAccumulator.with_elapsed(next_run);
     try {
-      await this.task_store.commit_translation_items(items, next_progress, affects_proofreading);
+      await this.task_store.commit_translation_batch(items, next_progress, affects_proofreading);
     } catch (error) {
       // 事务已经提交但事件同步失败时，本轮结果仍然成立；保留原始诊断。
       if (error instanceof AppError && error.code === "data.committed_sync_failed") {

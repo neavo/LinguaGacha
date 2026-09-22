@@ -58,14 +58,14 @@ export function require_project_expected_section_revisions(
 }
 
 /**
- * 将任务 artifact 收窄为 Store 可直接提交的翻译字段 patch。
+ * 将批次条目收窄为翻译字段补丁。空集合表示本批次只提交用量。
  */
 export function normalize_translation_item_patches(
   value: JsonValue | undefined,
 ): TranslationItemPatch[] {
-  if (!Array.isArray(value) || value.length === 0) {
+  if (!Array.isArray(value)) {
     throw new AppErrors.AppError("runtime.internal_invariant", {
-      diagnostic_context: { reason: "empty_translation_item_patch" },
+      diagnostic_context: { reason: "invalid_translation_item_patches" },
     });
   }
   const patches: TranslationItemPatch[] = [];
@@ -118,7 +118,7 @@ export function normalize_translation_item_patches(
   return patches;
 }
 
-/** 任务 artifact 要求的正整数主键。 */
+/** 翻译条目使用的正整数主键。 */
 function read_positive_integer(value: JsonValue | undefined, reason: string): number {
   const parsed = Number(value);
   if (!Number.isInteger(parsed) || parsed <= 0) {

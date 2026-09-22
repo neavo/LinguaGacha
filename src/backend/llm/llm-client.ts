@@ -1,4 +1,5 @@
 import { contentText, type AssistantMessage } from "@earendil-works/pi-ai";
+import { read_json_integer } from "../../domain/json";
 
 import { log_error_from_message, to_log_error, type LogError } from "../../shared/error";
 import {
@@ -103,16 +104,25 @@ function normalize_pi_result(
 function normalize_usage(
   message: AssistantMessage,
 ): Pick<LLMRequestResult, "input_tokens" | "reasoning_tokens" | "output_tokens"> {
-  const provider_output_tokens = Math.max(0, message.usage.output);
+  // 兼容接口可能返回数字字符串，逐项归一后才能安全累计用量。
+  const input_tokens = read_usage_tokens(message.usage.input);
+  const cache_read_tokens = read_usage_tokens(message.usage.cacheRead);
+  const cache_write_tokens = read_usage_tokens(message.usage.cacheWrite);
+  const provider_output_tokens = read_usage_tokens(message.usage.output);
   const reasoning_tokens = Math.min(
     provider_output_tokens,
-    Math.max(0, message.usage.reasoning ?? 0),
+    read_usage_tokens(message.usage.reasoning),
   );
   return {
-    input_tokens: message.usage.input + message.usage.cacheRead + message.usage.cacheWrite,
+    input_tokens: input_tokens + cache_read_tokens + cache_write_tokens,
     reasoning_tokens,
     output_tokens: provider_output_tokens - reasoning_tokens,
   };
+}
+
+/** 缺失或不可用统计按零计入已知用量，不影响响应正文的处理。 */
+function read_usage_tokens(value: unknown): number {
+  return Math.max(0, read_json_integer(value, 0));
 }
 
 /** 统一拒绝不完整终态；正常结束的正文由消费方按任务协议校验。 */

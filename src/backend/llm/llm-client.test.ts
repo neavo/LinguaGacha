@@ -56,6 +56,79 @@ beforeEach(() => {
 });
 
 describe("LLMClient", () => {
+  it.each([
+    {
+      usage: {
+        input: "invalid",
+        cacheRead: NaN,
+        cacheWrite: -2,
+        output: Infinity,
+        reasoning: undefined,
+      },
+      expected: { input_tokens: 0, reasoning_tokens: 0, output_tokens: 0 },
+    },
+    {
+      usage: { input: 1.9, cacheRead: 0, cacheWrite: 0, output: 4, reasoning: 8 },
+      expected: { input_tokens: 1, reasoning_tokens: 4, output_tokens: 0 },
+    },
+  ])("供应商用量在客户端归一为有限非负整数：$usage", async ({ usage, expected }) => {
+    api_mocks.openai.mockImplementation(() =>
+      completed_stream(
+        create_message({
+          content: [{ type: "text", text: "有效译文" }],
+          // 真实接口可能违背 SDK 的声明类型，归一必须发生在跨 worker 之前。
+          usage: { ...create_usage(), ...usage } as unknown as AssistantMessage["usage"],
+        }),
+      ),
+    );
+    await expect(
+      create_client().request(create_body(), new AbortController().signal),
+    ).resolves.toMatchObject({
+      ...expected,
+      response_result: "有效译文",
+      cancelled: false,
+      timeout: false,
+    });
+  });
+
+  it("真实适配器返回字符串用量时保留正文并按数值累计", async () => {
+    const { openAICompletionsApi } = await vi.importActual<
+      typeof import("@earendil-works/pi-ai/api/openai-completions.lazy")
+    >("@earendil-works/pi-ai/api/openai-completions.lazy");
+    api_mocks.openai.mockImplementationOnce(openAICompletionsApi().stream);
+    // 替代 HTTP 响应，保留 SDK 对供应商原始字段的解析。
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        `data: ${JSON.stringify({
+          id: "test",
+          object: "chat.completion.chunk",
+          created: 0,
+          model: "gpt-5-mini",
+          choices: [
+            { index: 0, delta: { role: "assistant", content: "有效译文" }, finish_reason: "stop" },
+          ],
+          usage: {
+            prompt_tokens: "10",
+            completion_tokens: "8",
+            prompt_tokens_details: { cached_tokens: "2", cache_write_tokens: "3" },
+            completion_tokens_details: { reasoning_tokens: "3" },
+          },
+        })}\n\ndata: [DONE]\n\n`,
+        { headers: { "Content-Type": "text/event-stream" } },
+      ),
+    );
+    await expect(
+      create_client().request(create_body(), new AbortController().signal),
+    ).resolves.toEqual(
+      create_result({
+        response_result: "有效译文",
+        input_tokens: 10,
+        reasoning_tokens: 3,
+        output_tokens: 5,
+      }),
+    );
+  });
+
   it("SDK 错误归一后仍保留 HTTP 响应的重试事实", async () => {
     api_mocks.openai.mockImplementation(() => {
       record_http_response_info(
