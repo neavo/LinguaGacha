@@ -110,7 +110,10 @@ export class PiModelCatalog {
       if (fetch_controller.signal.aborted)
         this.log.warning("Pi 模型能力目录检查超时，保留已完成的供应商结果。");
       const candidate = this.merge(next);
-      if (JSON.stringify(next) !== JSON.stringify(this.cache)) this.save_cache(next);
+      const serialized = JSON.stringify(next);
+      // 缓存经原路径写入，保留用户设置的文件链接。
+      if (serialized !== JSON.stringify(this.cache))
+        this.native_fs.write_file_sync(this.file_path, serialized);
       if (same_models(candidate, this.models)) {
         this.cache = next;
         return;
@@ -223,17 +226,6 @@ export class PiModelCatalog {
       for (const model of entry.models) models.set(`${model.provider}\0${model.id}`, model);
     }
     return [...models.values()];
-  }
-
-  /** 同目录替换让读取方只能看到完整缓存。 */
-  private save_cache(cache: CatalogCache): void {
-    const temporary = `${this.file_path}.${crypto.randomUUID()}.tmp`;
-    try {
-      this.native_fs.write_file_sync(temporary, JSON.stringify(cache));
-      this.native_fs.rename(temporary, this.file_path);
-    } finally {
-      if (this.native_fs.exists(temporary)) this.native_fs.remove(temporary, { force: true });
-    }
   }
 }
 
