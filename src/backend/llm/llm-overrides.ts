@@ -42,11 +42,19 @@ const DOUBAO_THINKING_LEVEL_MAP: CompleteThinkingLevelMap = Object.freeze({
 
 /** 补齐 Pi 内置目录缺失或落后的事实，上游补齐并验证后删除对应修正。 */
 export const MODEL_CAPABILITY_OVERRIDES: readonly ModelCapabilityOverride[] = Object.freeze([
+  // Pi 按 xAI 端点禁用 Chat Completions 的 `reasoning_effort`，这两个模型需显式启用。
   {
     model_id: "grok-4.6",
     protocols: {
       OpenAI: {
-        // Pi 按 xAI 端点禁用 `reasoning_effort`，此处显式启用。
+        compat: { supportsReasoningEffort: true, thinkingFormat: "openai" },
+      },
+    },
+  },
+  {
+    model_id: "grok-4.7",
+    protocols: {
+      OpenAI: {
         compat: { supportsReasoningEffort: true, thinkingFormat: "openai" },
       },
     },
