@@ -92,9 +92,7 @@ describe("TextPreserveEditDialog", () => {
     expect(on_save).not.toHaveBeenCalled();
   });
   it("校验失败后将焦点定位到规则编辑器", async () => {
-    const container = document.createElement("div");
-    document.body.append(container);
-    const root = createRoot(container);
+    // 复用同一编辑器实例，观察校验状态变化后的焦点。
     const render = (invalid: boolean) =>
       root.render(
         <TextPreserveEditDialog
@@ -109,19 +107,14 @@ describe("TextPreserveEditDialog", () => {
           on_close={async () => undefined}
         />,
       );
-    try {
-      await act(async () => render(false));
-      find_button("app.action.save")?.focus();
-      await act(async () => render(true));
-      const rule = document.querySelector(
-        '.cm-content[aria-label="quality_rule_editor.fields.rule"]',
-      );
-      expect(document.activeElement).toBe(rule);
-      expect(rule?.getAttribute("aria-invalid")).toBe("true");
-    } finally {
-      await act(async () => root.unmount());
-      container.remove();
-    }
+    await act(async () => render(false));
+    find_button("app.action.save")?.focus();
+    await act(async () => render(true));
+    const rule = document.querySelector(
+      '.cm-content[aria-label="quality_rule_editor.fields.rule"]',
+    );
+    expect(document.activeElement).toBe(rule);
+    expect(rule?.getAttribute("aria-invalid")).toBe("true");
   });
 });
 

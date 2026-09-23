@@ -5,7 +5,7 @@ import { useI18n } from "@frontend/app/locale/locale-context";
 import { cn } from "@frontend/shadcn/classnames";
 import { AppButton } from "@frontend/widgets/app-button";
 
-type AppPageDialogSize = "sm" | "md" | "lg" | "xl";
+type AppPageDialogSize = "sm" | "md" | "lg" | "xl" | "viewport";
 type AppPageDialogDismissBehavior = "default" | "escape-only" | "blocked";
 
 type AppPageDialogProps = {
@@ -21,18 +21,13 @@ type AppPageDialogProps = {
   footerClassName?: string;
 };
 
+/** 固定档位限制公共宽度，`viewport` 经 `cn` 覆盖公共宽度并随视口伸展。 */
 const SIZE_CLASS_NAME_BY_VALUE: Record<AppPageDialogSize, string> = {
   sm: "sm:max-w-[560px]",
   md: "sm:max-w-[720px]",
-  lg: "sm:max-w-[960px]",
-  xl: "sm:max-w-[1120px]",
-};
-
-const DEFAULT_HEIGHT_CLASS_NAME_BY_SIZE: Record<AppPageDialogSize, string> = {
-  sm: "",
-  md: "",
-  lg: "h-[640px]",
-  xl: "h-[640px]",
+  lg: "h-[640px] sm:max-w-[960px]",
+  xl: "h-[640px] sm:max-w-[1120px]",
+  viewport: "h-[80vh] w-[80vw]",
 };
 
 /**
@@ -82,7 +77,6 @@ export function AppPageDialog(props: AppPageDialogProps): JSX.Element {
           className={cn(
             "fixed top-1/2 left-1/2 z-(--ui-layer-overlay) flex max-h-[calc(100vh-48px)] w-[calc(100vw-48px)] max-w-[calc(100vw-48px)] -translate-x-1/2 -translate-y-1/2 flex-col gap-0 overflow-hidden rounded-xl bg-popover p-0 text-sm text-foreground ring-1 ring-foreground/10 duration-100 outline-none data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95",
             SIZE_CLASS_NAME_BY_VALUE[size],
-            DEFAULT_HEIGHT_CLASS_NAME_BY_SIZE[size],
             props.contentClassName,
           )}
         >

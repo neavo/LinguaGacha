@@ -448,7 +448,7 @@ export function ProofreadingEditDialog(props: ProofreadingEditDialogProps): JSX.
     <AppPageDialog
       open={open}
       title={t(context_open ? "proofreading_page.action.view_context" : "app.action.edit")}
-      size="lg"
+      size="viewport"
       dismissBehavior={context_open ? "default" : saving ? "blocked" : "escape-only"}
       onClose={context_open ? props.on_close_context : props.on_close}
       bodyClassName="overflow-hidden p-0"
