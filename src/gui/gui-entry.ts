@@ -66,7 +66,16 @@ export function run_gui_entry(options: GuiEntryOptions): void {
     resourcesPath: process.resourcesPath,
     projectRoot: process.cwd(),
   });
-  const pdf_host = create_pdf_host(path.join(workspace_runtime_directory, "pdf-print.css"));
+  const pdf_host = create_pdf_host({
+    stylesPath: path.join(
+      app.isPackaged ? process.resourcesPath : path.join(app.getAppPath(), "build/resources"),
+      "pdf-print.css",
+    ),
+    fontsDirectory: path.join(
+      app.getAppPath(),
+      app.isPackaged ? "build/dist/fonts" : "public/fonts",
+    ),
+  });
   const backend_runtime = new BackendRuntimeClient({
     workerEntryUrl: options.backendRuntimeWorkerEntryUrl,
     appRoot: app_root,

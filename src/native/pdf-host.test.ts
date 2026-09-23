@@ -63,7 +63,12 @@ it("真实打印加载字体、保持图文分页并在取消后释放窗口", a
       await app.whenReady();
       app.on('window-all-closed', () => {});
       try {
-        const host = create_pdf_host(${JSON.stringify(path.join(runtime, "pdf-print.css"))});
+        const host = create_pdf_host(${JSON.stringify({
+          stylesPath: path.resolve(runtime, "..", "pdf-print.css"),
+          fontsDirectory: process.env.LINGUAGACHA_TEST_WORKSPACE_RUNTIME
+            ? path.resolve(runtime, "..", "app.asar", "build/dist/fonts")
+            : path.resolve("public/fonts"),
+        })});
         const source = new Uint8Array(await fs.readFile(${JSON.stringify(path.join(directory, "source.pdf"))}));
         const document = JSON.parse(await fs.readFile(${JSON.stringify(path.join(directory, "document.json"))}, 'utf8'));
         const output = await build_pdf_document({

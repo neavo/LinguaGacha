@@ -1,14 +1,25 @@
 import { BrowserWindow, session, type Session } from "electron";
+import path from "node:path";
 import { randomUUID } from "node:crypto";
 import type { PDFHost } from "../shared/pdf";
 import { default_native_fs } from "./native-fs";
+
+// 打印声明复用界面字体文件，字重与等宽字体缩放决定 PDF 排版。
+const PRINT_FONTS = [
+  ["LGBaseFont", "LGBaseFont-Regular.woff2", "400", ""],
+  ["LGBaseFont", "LGBaseFont-Bold.woff2", "500 700", ""],
+  ["LGMono", "MonaspaceNeon.woff2", "400 700", "size-adjust:90%;"],
+] as const;
 
 const PDF_HOST_TIMEOUT_MS = 120_000;
 const PRINT_CSP =
   "default-src 'none'; img-src data:; font-src data:; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'";
 
 /** Electron 只拥有 HTML 打印。一个窗口串行复用，取消实际销毁窗口后才释放队列。 */
-export function create_pdf_host(styles_path: string): PDFHost & { dispose: () => Promise<void> } {
+export function create_pdf_host(resources: {
+  stylesPath: string; // 构建生成的内嵌数学样式。
+  fontsDirectory: string; // GUI 注入开发或发行资源中的共享字体目录。
+}): PDFHost & { dispose: () => Promise<void> } {
   let print_styles: string | null = null; // 宿主生命周期内复用固定版本的字体与数学样式。
   let window: BrowserWindow | null = null;
   let tail: Promise<unknown> = Promise.resolve();
@@ -49,7 +60,14 @@ export function create_pdf_host(styles_path: string): PDFHost & { dispose: () =>
       const timeout = setTimeout(close, PDF_HOST_TIMEOUT_MS);
       combined.addEventListener("abort", close, { once: true });
       try {
-        print_styles ??= default_native_fs.read_text_file(styles_path);
+        // 只读取应用自带的固定字体，首次打印时编码并缓存，发行包与 UI 共用一份文件。
+        print_styles ??=
+          PRINT_FONTS.map(([family, file, weight, extra]) => {
+            const bytes = default_native_fs.read_file(path.join(resources.fontsDirectory, file));
+            return `@font-face{font-family:"${family}";src:url(data:font/woff2;base64,${bytes.toString("base64")}) format("woff2");font-weight:${weight};font-style:normal;${extra}}`;
+          }).join("\n") +
+          "\n" +
+          default_native_fs.read_text_file(resources.stylesPath);
         // 每次加载新文档，CSP 在调用方内容前生效，页面不能执行脚本或请求外部资源。
         const html = `<!doctype html><meta http-equiv="Content-Security-Policy" content="${PRINT_CSP}">${operation.html}`;
         await current.loadURL("data:text/html;charset=utf-8,<html></html>");
