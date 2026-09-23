@@ -104,7 +104,7 @@ export class PromptBuilder {
     return { messages, console_log };
   }
 
-  /** 构建单个 SakuraLLM item 使用的纯文本提示词。 */
+  /** 构建 SakuraLLM 批量正文使用的纯文本提示词。 */
   public generate_prompt_sakura(src: string): PromptBuildResult {
     const messages: LLMMessage[] = [
       {

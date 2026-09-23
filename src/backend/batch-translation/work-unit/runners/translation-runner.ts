@@ -194,7 +194,7 @@ export class TranslationWorkUnitRunner {
       api_format === "SakuraLLM" ? "text" : resolve_translation_prompt_mode(request_items);
     const prompt =
       api_format === "SakuraLLM"
-        ? builder.generate_prompt_sakura(request_items[0]?.text_src ?? "")
+        ? builder.generate_prompt_sakura(request_items.map((item) => item.text_src).join("\n"))
         : builder.generate_prompt(request_items, mode, samples, projected_precedings);
     return {
       done: false,
@@ -224,7 +224,6 @@ export class TranslationWorkUnitRunner {
     response: LLMRequestResult,
   ): Promise<TranslationWorkUnitResult> {
     const request_failed = context.request_error !== undefined || context.request_timeout;
-    // 规划器保证 Sakura 请求只有一个 item，正文可安全整体归属。
     const is_sakura =
       String(read_json_record(context.request.model)["api_format"] ?? "") === "SakuraLLM";
     const response_parts = request_failed
@@ -235,14 +234,9 @@ export class TranslationWorkUnitRunner {
     const decoder = new ResponseDecoder();
     const decoded = request_failed
       ? []
-      : is_sakura && context.request_items.length === 1
-        ? decoder.decode_plain_text_item(
-            response_parts.translation_text,
-            context.request_items[0]?.request_id ?? 0,
-          )
-        : is_sakura
-          ? []
-          : await decoder.decode_translation(response_parts.translation_text, context.mode);
+      : is_sakura
+        ? decoder.decode_sakura(response_parts.translation_text, context.request_items)
+        : await decoder.decode_translation(response_parts.translation_text, context.mode);
     const by_request_id = new Map<number, TranslationDecodedItem>();
     const duplicates = new Set<number>(); // 同一请求 ID 有多个候选时无法唯一匹配，整组保持待处理。
     for (const item of decoded) {

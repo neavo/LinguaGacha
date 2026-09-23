@@ -17,9 +17,8 @@ import { read_task_item_id, read_task_item_status } from "../translation-item";
 
 const DEFAULT_INPUT_TOKEN_LIMIT = 512; // 模型未配置 token 限制时使用保守默认值，避免一次塞入过长 prompt。
 const HASH_YIELD_EVERY_ITEMS = 1024; // 主线程计算 hash 时分批让出事件循环，避免大项目启动阶段长时间无响应。
-const SAKURA_MAX_ITEMS_PER_WORK_UNIT = 1; // 纯文本响应没有 item 边界，Sakura 每次只请求一个 item。
 
-const END_LINE_PUNCTUATION = new Set([".", "。", "?", "？", "!", "！", "…", "'", '"', "」", "』"]); // chunk 拆分优先在句末标点处分割，减少上下文被硬切断的概率。
+const END_LINE_PUNCTUATION = new Set([".", "。", "?", "？", "!", "！", "…", "'", '"', "」", "』"]); // 向前选取上文时，仅接纳以这些标点结尾的条目。
 
 /**
  * TranslationPlanner 是后台任务唯一规划器：它复用进程内 token 缓存，并把精确计数交给 planning worker。
@@ -46,7 +45,7 @@ export class TranslationPlanner {
     target_ids?: ReadonlySet<number>,
   ): Promise<TranslationPlan> {
     const threshold = this.get_input_token_limit(model, DEFAULT_INPUT_TOKEN_LIMIT);
-    const is_sakura = String(model["api_format"] ?? "") === "SakuraLLM"; // 纯文本响应要求单 item 且不携带 preceding。
+    const is_sakura = String(model["api_format"] ?? "") === "SakuraLLM"; // Sakura 专用提示词仅消费本批正文，不使用额外前文。
     const metrics = await this.resolve_item_metrics(
       target_ids === undefined
         ? items
@@ -59,7 +58,6 @@ export class TranslationPlanner {
       threshold,
       is_sakura ? 0 : read_json_integer(config["preceding_lines_threshold"], 0),
       signal,
-      is_sakura ? SAKURA_MAX_ITEMS_PER_WORK_UNIT : Number.POSITIVE_INFINITY,
     );
     return {
       metrics,
@@ -149,7 +147,6 @@ export class TranslationPlanner {
     input_token_threshold: number,
     preceding_lines_threshold: number,
     signal: AbortSignal,
-    max_items_per_chunk = Number.POSITIVE_INFINITY, // 普通模型不设上限，纯文本协议按 item 边界收敛。
   ): Array<{ chunk_items: TextTaskItemRecord[]; precedings: TextTaskItemRecord[] }> {
     const line_limit = Math.max(8, Math.trunc(input_token_threshold / 16));
     const chunks: Array<{ chunk_items: TextTaskItemRecord[]; precedings: TextTaskItemRecord[] }> =
@@ -166,8 +163,7 @@ export class TranslationPlanner {
       }
       if (
         chunk.length > 0 &&
-        (chunk.length >= max_items_per_chunk ||
-          line_length + metric.line_count > line_limit ||
+        (line_length + metric.line_count > line_limit ||
           token_length + metric.token_count > input_token_threshold ||
           String(item["file_path"] ?? "") !== String(chunk[chunk.length - 1]?.["file_path"] ?? ""))
       ) {

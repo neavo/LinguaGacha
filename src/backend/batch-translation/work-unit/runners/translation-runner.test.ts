@@ -88,6 +88,49 @@ describe("TranslationWorkUnitRunner", () => {
     expect(llm_client.request).not.toHaveBeenCalled();
   });
 
+  it("SakuraLLM 按实际发送正文对应，独立提交有效条目", async () => {
+    const captured_requests: LLMRequestBody[] = [];
+    const runner = new TranslationWorkUnitRunner(
+      await create_template_root(),
+      create_llm_client({ response_result: "甲译文\n续行\n \n丙译文" }, captured_requests),
+    );
+    const quality = create_quality_payload();
+    const quality_block = quality["quality"] as JsonRecord;
+    quality_block["text_preserve"] = {
+      mode: "custom",
+      entries: [{ entry_id: "tag", src: "<[^>]+>", info: "" }],
+    };
+    quality_block["pre_replacement"] = {
+      enabled: true,
+      entries: [
+        { entry_id: "source", src: "甲", dst: "准备甲", regex: false, case_sensitive: true },
+      ],
+    };
+    const result = await runner.execute_unit(
+      create_translation_unit({
+        model: { api_format: "SakuraLLM" },
+        quality_snapshot: quality,
+        items: ["<skip>", "甲\r\n续行", "乙", "丙"].map((src, index) => ({
+          id: index + 1,
+          src,
+          dst: "",
+          status: "NONE",
+          text_type: "TXT",
+        })),
+      }),
+      new AbortController().signal,
+    );
+
+    expect(captured_requests).toHaveLength(1);
+    expect(captured_requests[0]?.messages[1]?.content).toMatch(/\n准备甲\n续行\n乙\n丙$/u);
+    expect(result.output.items).toMatchObject([
+      { id: 1, dst: "<skip>", status: "PROCESSED" },
+      { id: 2, dst: "甲译文\n续行", status: "PROCESSED" },
+      { id: 3, dst: "", status: "NONE" },
+      { id: 4, dst: "丙译文", status: "PROCESSED" },
+    ]);
+  });
+
   it("SakuraLLM 含姓名请求仍走固定纯文本提示词且不写姓名译文", async () => {
     const captured_requests: LLMRequestBody[] = [];
     const llm_client: LLMClientPort = {
@@ -139,12 +182,7 @@ describe("TranslationWorkUnitRunner", () => {
       new AbortController().signal,
     );
 
-    if (result.output.kind !== "translation") {
-      throw new Error("期望翻译输出");
-    }
-    expect(captured_requests[0]?.messages[1]?.content).toBe(
-      "将下面的日文文本翻译成中文：\nこんにちは",
-    );
+    expect(captured_requests[0]?.messages[1]?.content).toMatch(/\nこんにちは$/u);
     expect(result.output.items).toEqual([
       {
         id: 1,

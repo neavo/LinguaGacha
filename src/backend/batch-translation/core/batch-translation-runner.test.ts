@@ -529,6 +529,83 @@ describe("BatchTranslationRunner", () => {
     },
   );
 
+  it("SakuraLLM 批量响应无法对应时缩段，单条换行变化仍能完成写回", async () => {
+    const builtin_root = create_template_root();
+    const pool = new TranslationWorkerPool({
+      builtinRoot: builtin_root,
+      execution: { kind: "in_process" },
+    });
+    const done = create_status_waiter("done");
+    const runtime = create_task_runtime(done.listener);
+    const committed: MutableJsonRecord[] = [];
+    const prompts: string[] = [];
+    const run_context = create_run_context(1, 32, { source_language: "JA", target_language: "ZH" });
+    const responses = ["无法对应的合并译文", "甲的完整译文", "乙的译文"];
+    try {
+      const runner = new BatchTranslationRunner({
+        catalog: { read_models: read_builtin_pi_models },
+        builtinRoot: builtin_root,
+        taskStore: create_task_store({
+          get_translation_items: () => [
+            create_pending_item(1, "demo.txt", "甲\n续行"),
+            create_pending_item(2, "demo.txt", "乙"),
+          ],
+          commit_translation_batch: async (items) => {
+            committed.push(...items);
+            return {
+              changed_item_ids: items.map((item) => Number(item.id)),
+              section_revisions: {},
+            };
+          },
+        }),
+        taskRuntime: runtime,
+        executorClient: pool,
+        taskPlanner: create_test_task_planner(16),
+        logManager: create_log_manager(),
+        llmClient: {
+          request: async (body) => {
+            const response_result = responses[prompts.length] ?? "";
+            prompts.push(String(body.messages[1]?.content ?? ""));
+            return {
+              response_think: "",
+              response_result,
+              input_tokens: 1,
+              reasoning_tokens: 0,
+              output_tokens: 1,
+              cancelled: false,
+              timeout: false,
+            };
+          },
+        },
+      });
+      await start_task(
+        runner,
+        runtime,
+        { operation: "translate", mode: "new", scope: { kind: "all" } },
+        { ...run_context, model: { ...run_context.model, api_format: "SakuraLLM" } },
+      );
+      await done.promise;
+
+      expect(prompts).toEqual([
+        expect.stringMatching(/\n甲\n续行\n乙$/u),
+        expect.stringMatching(/\n甲\n续行$/u),
+        expect.stringMatching(/\n乙$/u),
+      ]);
+      expect(committed).toMatchObject([
+        { id: 1, dst: "甲的完整译文", status: "PROCESSED" },
+        { id: 2, dst: "乙的译文", status: "PROCESSED" },
+      ]);
+      expect((await runtime.build_snapshot()).run_progress).toMatchObject({
+        line: 2,
+        processed_line: 2,
+        error_line: 0,
+      });
+    } finally {
+      await runtime.dispose();
+      await pool.dispose();
+    }
+  });
+
   it("翻译切块使用注入 token 计数器而不是字符长度估算", async () => {
     const executed_batches: number[][] = []; // 记录 executor 可见的 chunk 分组，证明长文本仍可被 fake token 预算合并
     const done = create_status_waiter("done");
