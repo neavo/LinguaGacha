@@ -64,6 +64,12 @@ export const zh_cn_agent_page = {
     comment_placeholder: "写下针对所选文本的评论 …",
   },
   context_usage_warning: "即将自动压缩上下文",
+  usage: {
+    input: "输入",
+    output: "输出",
+    cache_hit_rate: "缓存命中率",
+    context_window: "上下文窗口",
+  },
   approval: {
     manual: "手动批准",
     auto: "自动批准",

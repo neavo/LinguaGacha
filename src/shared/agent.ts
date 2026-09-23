@@ -216,6 +216,14 @@ export type AgentTokenSpeedSnapshot =
   | (JsonRecord & { roundId: string; tokensPerSecond: number })
   | null;
 
+/** 当前产品对话累计的模型用量，历史修订后仍保留已发生的消耗。 */
+export type AgentUsageSnapshot = JsonRecord & {
+  input: number; // 普通输入，缓存读取和写入分别计数
+  output: number; // 包含供应商计入的思考用量
+  cacheRead: number; // 命中缓存的输入
+  cacheWrite: number; // 写入缓存的输入
+};
+
 /** GET snapshot 与 snapshot_seed 共用的完整会话形状。 */
 export type AgentSessionSnapshot = JsonRecord & {
   sessionId: string; // 对话重置与工程切换后改变，草稿据此清理旧文件引用。
@@ -228,6 +236,7 @@ export type AgentSessionSnapshot = JsonRecord & {
   inputQueue: AgentInputQueueSnapshot;
   todos: string[]; // 当前对话的有序待办；空数组不占用固定展示位
   context: AgentContextSnapshot;
+  usage: AgentUsageSnapshot;
   tokenSpeed: AgentTokenSpeedSnapshot;
 };
 
@@ -247,6 +256,7 @@ export type AgentSessionEventPayload = JsonRecord &
     | { type: "todo"; todos: string[] }
     | { type: "token_speed"; tokenSpeed: AgentTokenSpeedSnapshot }
     | { type: "context"; context: AgentContextSnapshot }
+    | { type: "usage"; usage: AgentUsageSnapshot }
     | { type: "snapshot_seed"; snapshot: AgentSessionSnapshot }
   );
 

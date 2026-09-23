@@ -1,9 +1,10 @@
 import type { Ref, RefObject } from "react";
 import { ArrowUp, LoaderCircle, Square } from "lucide-react";
-import type { ModelThinkingLevel } from "@domain/model";
+import type { ModelSelectionInput } from "@shared/model-selection";
 import {
   AGENT_INPUT_QUEUE_LIMIT,
   type AgentContextSnapshot,
+  type AgentUsageSnapshot,
   type AgentMessageInput,
   type AgentApprovalMode,
   type AgentSkillSnapshot,
@@ -38,11 +39,12 @@ type AgentComposerProps = {
   queue_full: boolean;
   can_reset: boolean;
   context: AgentContextSnapshot;
+  usage: AgentUsageSnapshot;
   approval_mode?: AgentApprovalMode;
   model_selection: ModelSelectionController;
   input_session: AgentInputSession;
   on_send: (message: AgentMessageInput) => void;
-  on_thinking_level_change?: (thinking_level: ModelThinkingLevel) => void; // 主 Composer 交给页面决定是否确认关闭思考
+  on_agent_model_select: (change: ModelSelectionInput) => void;
   on_approval_mode_change?: (approval_mode: AgentApprovalMode) => void;
   on_stop: () => Promise<void>;
   on_reset: () => void;
@@ -119,12 +121,13 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
                 props.command === null
               }
               context={props.context}
+              usage={props.usage}
               model_selection={props.model_selection}
               approval_mode={props.approval_mode ?? "manual"}
               approval_disabled={props.command !== null || props.unavailable_reason !== null}
               disconnected={props.unavailable_reason === "disconnected"}
               on_reset={props.on_reset}
-              on_thinking_level_change={props.on_thinking_level_change}
+              on_agent_model_select={props.on_agent_model_select}
               on_approval_mode_change={props.on_approval_mode_change}
             />
           ),

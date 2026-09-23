@@ -39,6 +39,7 @@ import {
   type AgentCommandAck,
   type AgentContextSnapshot,
   type AgentTokenSpeedSnapshot,
+  type AgentUsageSnapshot,
   type AgentEntry,
   type AgentEntryStatus,
   type AgentMessageInput,
@@ -221,6 +222,8 @@ export class AgentService {
   private approval_mode: AgentApprovalMode = "manual"; // 当前任务的工程写入审批策略
   private entries: AgentEntry[] = []; // 本次 reset 以来唯一的公开时间线事实
   private context: AgentContextSnapshot = { tokens: null, compactable: false, limits: null }; // 模型历史估算与手动压缩能力的同源快照
+  private removed_usage: AgentUsageSnapshot = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }; // 历史修订移出 SDK 会话的已发生用量
+  private usage: AgentUsageSnapshot = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }; // 最近发布的完整用量，供快照读取与事件去重
   private assistant_stream: AgentAssistantStream | null = null; // 当前生成消息的窄字符串增量
   private assistant_stream_publish_timer: ReturnType<typeof setTimeout> | null = null; // 固定窗口唯一发布计时器
   private latest_round_checkpoint: AgentHistoryCheckpoint | null = null; // 最新 user 轮次写入前的位置
@@ -332,6 +335,7 @@ export class AgentService {
       inputQueue: this.input_queue.read_snapshot(this.can_send_queued_now()),
       todos: [...this.todos],
       context: structuredClone(this.context),
+      usage: { ...this.usage },
       tokenSpeed: structuredClone(this.token_speed_snapshot),
     };
   }
@@ -836,10 +840,17 @@ export class AgentService {
 
   /** SessionManager 在内存模式下用根到 leaf 的单一路径替换整棵旧树。 */
   private replace_active_history(runtime: AgentRuntime, leaf_id: string | null): void {
+    const before = runtime.session.getSessionStats().tokens;
     if (leaf_id === null) runtime.session.sessionManager.newSession();
     else runtime.session.sessionManager.createBranchedSession(leaf_id);
+    const after = runtime.session.getSessionStats().tokens;
+    // SDK 内存分支只保留新路径，差额属于同一产品对话已发生的用量。
+    for (const key of ["input", "output", "cacheRead", "cacheWrite"] as const) {
+      this.removed_usage[key] += before[key] - after[key];
+    }
     runtime.session.refreshContext();
     this.context = read_agent_session_context(runtime.session);
+    this.publish_usage();
   }
 
   /** 人工修改的 assistant 是零 usage 的正常历史消息，不触发供应商请求。 */
@@ -1645,6 +1656,27 @@ export class AgentService {
     if (session === undefined) return;
     this.context = read_agent_session_context(session);
     this.publish_event({ type: "context", context: structuredClone(this.context) });
+    this.publish_usage();
+  }
+
+  /** SDK 汇总模型调用，产品层补回历史修订移出的已发生用量。 */
+  private publish_usage(): void {
+    const tokens = this.runtime?.session.getSessionStats().tokens;
+    if (tokens === undefined) return;
+    const usage: AgentUsageSnapshot = {
+      input: this.removed_usage.input + tokens.input,
+      output: this.removed_usage.output + tokens.output,
+      cacheRead: this.removed_usage.cacheRead + tokens.cacheRead,
+      cacheWrite: this.removed_usage.cacheWrite + tokens.cacheWrite,
+    };
+    if (
+      (["input", "output", "cacheRead", "cacheWrite"] as const).every(
+        (key) => this.usage[key] === usage[key],
+      )
+    )
+      return;
+    this.usage = usage;
+    this.publish_event({ type: "usage", usage: { ...usage } });
   }
 
   /** 分词与实时发布共用更新节奏，即使数值不变也限制分词频率。 */
@@ -1744,6 +1776,8 @@ export class AgentService {
     this.token_speed_updated_at = null;
     this.token_speed_snapshot = null;
     this.context = { tokens: null, compactable: false, limits: null };
+    this.removed_usage = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
+    this.usage = { ...this.removed_usage };
     this.latest_round_checkpoint = null;
     this.translation_paused_result = null;
     this.latest_output_checkpoint = null;

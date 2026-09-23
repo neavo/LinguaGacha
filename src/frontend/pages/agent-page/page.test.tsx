@@ -55,7 +55,7 @@ const model_thinking_state = vi.hoisted(() => ({
   available_thinking_levels: [] as ModelThinkingLevel[],
 }));
 const model_selection_commands = vi.hoisted(() => ({
-  update_thinking_level: vi.fn(async () => undefined),
+  select_model: vi.fn(async () => undefined),
 }));
 const resize_observers = new Set<TestResizeObserver>();
 
@@ -133,6 +133,7 @@ vi.mock("@frontend/app/session/agent/agent-session-context", () => ({
     approvalMode: page_state.current.approvalMode,
     pendingDecision: page_state.current.pendingDecision,
     context: page_state.current.context,
+    usage: page_state.current.usage,
     transport: page_state.current.transport,
     command: page_state.current.command,
   }),
@@ -170,8 +171,7 @@ vi.mock("@frontend/features/model-selection/use-model-selection", async (import_
       },
       loading: false,
       updating: false,
-      select_model: vi.fn(async () => undefined),
-      update_thinking_level: model_selection_commands.update_thinking_level,
+      select_model: model_selection_commands.select_model,
     }),
   };
 });
@@ -204,7 +204,7 @@ describe("AgentPage", () => {
     push_toast.mockReset();
     model_thinking_state.thinking_level = "OFF";
     model_thinking_state.available_thinking_levels = [];
-    model_selection_commands.update_thinking_level.mockClear();
+    model_selection_commands.select_model.mockClear();
   });
 
   afterEach(async () => {
@@ -344,7 +344,11 @@ describe("AgentPage", () => {
 
     await select_agent_thinking_level(view, "app.model.thinking_level.off");
 
-    expect(model_selection_commands.update_thinking_level).toHaveBeenCalledWith("agent", "OFF");
+    expect(model_selection_commands.select_model).toHaveBeenCalledWith({
+      target: "agent",
+      model_id: "agent",
+      thinking_level: "OFF",
+    });
     expect(document.body.querySelector('[data-slot="alert-dialog-content"]')).toBeNull();
   });
 
@@ -354,19 +358,27 @@ describe("AgentPage", () => {
     const view = await render_page();
 
     await select_agent_thinking_level(view, "app.model.thinking_level.low");
-    expect(model_selection_commands.update_thinking_level).toHaveBeenCalledWith("agent", "LOW");
-    model_selection_commands.update_thinking_level.mockClear();
+    expect(model_selection_commands.select_model).toHaveBeenCalledWith({
+      target: "agent",
+      model_id: "agent",
+      thinking_level: "LOW",
+    });
+    model_selection_commands.select_model.mockClear();
 
     await select_agent_thinking_level(view, "app.model.thinking_level.off");
-    expect(model_selection_commands.update_thinking_level).not.toHaveBeenCalled();
+    expect(model_selection_commands.select_model).not.toHaveBeenCalled();
     expect(document.body.querySelector('[data-slot="alert-dialog-content"]')).not.toBeNull();
 
     await act(async () => get_portal_cancel_button().click());
-    expect(model_selection_commands.update_thinking_level).not.toHaveBeenCalled();
+    expect(model_selection_commands.select_model).not.toHaveBeenCalled();
 
     await select_agent_thinking_level(view, "app.model.thinking_level.off");
     await act(async () => get_portal_action_button().click());
-    expect(model_selection_commands.update_thinking_level).toHaveBeenCalledWith("agent", "OFF");
+    expect(model_selection_commands.select_model).toHaveBeenCalledWith({
+      target: "agent",
+      model_id: "agent",
+      thinking_level: "OFF",
+    });
     expect(document.body.querySelector('[data-slot="alert-dialog-content"]')).toBeNull();
   });
 
@@ -1116,6 +1128,7 @@ function build_state(overrides: Partial<AgentPageState> = {}): AgentPageState {
     inputQueue: { paused: false, canSendNow: false, items: [] },
     todos: [],
     context: { tokens: null, compactable: false, limits: null },
+    usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
     transport: "ready",
     command: null,
     input: {
@@ -1227,14 +1240,29 @@ function get_editor(container: HTMLElement): EditorView {
   return editor;
 }
 
-/** 通过真实 Base UI 菜单选择 Agent 思考档位，覆盖 Composer 到页面的交互接缝。 */
+/** 通过合并后的模型菜单选择思考档位。 */
 async function select_agent_thinking_level(container: HTMLElement, label: string): Promise<void> {
-  const trigger = container.querySelector<HTMLButtonElement>(".agent-composer__thinking-trigger");
-  if (trigger === null) throw new Error("缺少思考档位入口");
+  const trigger = container.querySelector<HTMLButtonElement>(
+    'button[aria-label^="app.model.selection.label"]',
+  );
+  if (trigger === null) throw new Error("缺少模型入口");
   await act(async () => {
     trigger.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, button: 0 }));
     trigger.click();
   });
+  const category = [
+    ...document.body.querySelectorAll<HTMLElement>('[data-slot="dropdown-menu-sub-trigger"]'),
+  ].find(
+    (item) =>
+      item.textContent?.includes("app.model.type.openai") && !item.hasAttribute("data-disabled"),
+  )!;
+  await act(async () => category.click());
+  const model = [
+    ...document.body.querySelectorAll<HTMLElement>('[data-slot="dropdown-menu-sub-trigger"]'),
+  ].find((item) => item.title === "Agent Model")!;
+  await act(async () =>
+    model.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, key: "ArrowRight" })),
+  );
   const option = Array.from(
     document.body.querySelectorAll<HTMLElement>('[role="menuitemradio"]'),
   ).find((candidate) => candidate.textContent?.trim() === label);

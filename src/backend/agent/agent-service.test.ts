@@ -1713,6 +1713,47 @@ describe("AgentService", () => {
     ).toHaveLength(1);
   });
 
+  it("修订历史后保留整个产品对话的累计用量，重置时清零", async () => {
+    const { service, publish } = await create_service();
+    await service.send_message({ text: "原任务", attachments: [] });
+    await wait_for_idle(service);
+    const user = service.get_snapshot().entries.find((entry) => entry.kind === "user_message");
+    if (user === undefined) throw new Error("缺少 user 条目");
+    const first_usage = service.get_snapshot().usage;
+    expect(first_usage.input).toBeGreaterThan(0);
+    expect(first_usage.output).toBeGreaterThan(0);
+
+    await service.revise_latest_round({
+      entryId: user.id,
+      message: { text: "重试任务", attachments: [] },
+    });
+    await wait_for_idle(service);
+    const revised_usage = service.get_snapshot().usage;
+    expect(revised_usage.input).toBeGreaterThan(first_usage.input);
+    expect(revised_usage.output).toBe(first_usage.output * 2);
+    expect(revised_usage.cacheWrite).toBeGreaterThan(first_usage.cacheWrite);
+    expect(publish.mock.calls.some(([, event]) => event["type"] === "usage")).toBe(true);
+
+    const revised_user = service
+      .get_snapshot()
+      .entries.find((entry) => entry.kind === "user_message");
+    if (revised_user === undefined) throw new Error("缺少修订后的 user 条目");
+    await service.revise_latest_round({
+      entryId: revised_user.id,
+      message: { text: "再次重试", attachments: [] },
+    });
+    await wait_for_idle(service);
+    expect(service.get_snapshot().usage.output).toBe(first_usage.output * 3);
+
+    await service.reset();
+    expect(service.get_snapshot().usage).toEqual({
+      input: 0,
+      output: 0,
+      cacheRead: 0,
+      cacheWrite: 0,
+    });
+  });
+
   it("恢复失败轮次时保留公开工具历史，并以隐藏消息继续原 user", async () => {
     const { service } = await create_service(true);
     fake_agent_state.mode = "tools_error";
@@ -1882,6 +1923,7 @@ describe("AgentService", () => {
       todos: [],
       tokenSpeed: null,
       context: { tokens: null, compactable: false, limits: null },
+      usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
     });
     expect(count_published_events(publish, "snapshot_seed")).toBe(1);
   });
@@ -2206,6 +2248,7 @@ describe("AgentService", () => {
       todos: [],
       tokenSpeed: null,
       context: { tokens: null, compactable: false, limits: null },
+      usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
     });
     await Promise.resolve();
     expect(settled).toBe(false);

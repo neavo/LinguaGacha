@@ -20,6 +20,7 @@ import type {
   AgentSkillSnapshot,
   AgentToolEntry,
   AgentTokenSpeedSnapshot,
+  AgentUsageSnapshot,
   AgentWriteApprovalDecision,
 } from "@shared/agent";
 import {
@@ -72,6 +73,7 @@ export type AgentControlsSlice = Readonly<{
   approvalMode: AgentApprovalMode;
   pendingDecision: AgentPendingDecision | null;
   context: AgentContextSnapshot;
+  usage: AgentUsageSnapshot;
   transport: AgentTransportState;
   command: AgentCommand;
 }>;
@@ -123,6 +125,7 @@ const EMPTY_CONTROLS: AgentControlsSlice = {
   approvalMode: "manual",
   pendingDecision: null,
   context: { tokens: null, compactable: false, limits: null },
+  usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
   transport: "restoring",
   command: null,
 };
@@ -327,6 +330,10 @@ export class AgentSessionStore {
       next.context.compactable === this.controls.context.compactable &&
       next.context.limits?.context_window === this.controls.context.limits?.context_window &&
       next.context.limits?.max_output_tokens === this.controls.context.limits?.max_output_tokens &&
+      next.usage.input === this.controls.usage.input &&
+      next.usage.output === this.controls.usage.output &&
+      next.usage.cacheRead === this.controls.usage.cacheRead &&
+      next.usage.cacheWrite === this.controls.usage.cacheWrite &&
       next.transport === this.controls.transport &&
       next.command === this.controls.command
     ) {
@@ -421,6 +428,7 @@ export class AgentSessionStore {
       approvalMode: snapshot.approvalMode,
       pendingDecision: snapshot.pendingDecision,
       context: snapshot.context,
+      usage: snapshot.usage,
     };
     this.sync_countdown();
     this.emit("timeline");
@@ -474,6 +482,9 @@ export class AgentSessionStore {
         break;
       case "context":
         this.set_controls({ context: event.context });
+        break;
+      case "usage":
+        this.set_controls({ usage: event.usage });
         break;
       case "input_queue":
         this.queue = { inputQueue: event.inputQueue };
@@ -771,12 +782,14 @@ function normalize_snapshot(value: unknown): AgentSessionSnapshot {
   const todos = normalize_todos(record["todos"]);
   const token_speed = normalize_token_speed(record["tokenSpeed"]);
   const context = normalize_context(record["context"]);
+  const usage = normalize_usage(record["usage"]);
   if (
     approval_mode === null ||
     pending_decision === undefined ||
     input_queue === null ||
     todos === null ||
     context === null ||
+    usage === null ||
     token_speed === undefined
   ) {
     throw new TypeError("Agent snapshot is invalid.");
@@ -792,6 +805,7 @@ function normalize_snapshot(value: unknown): AgentSessionSnapshot {
     inputQueue: input_queue,
     todos,
     context,
+    usage,
     tokenSpeed: token_speed,
   };
 }
@@ -840,6 +854,10 @@ function normalize_agent_event(value: unknown): AgentSessionEvent | null {
       const context = normalize_context(record["context"]);
       return context === null ? null : { type: "context", revision, context };
     }
+    case "usage": {
+      const usage = normalize_usage(record["usage"]);
+      return usage === null ? null : { type: "usage", revision, usage };
+    }
     case "entry_upsert": {
       const entry = normalize_entry(record["entry"])[0];
       return entry === undefined ? null : { type: "entry_upsert", revision, entry };
@@ -862,6 +880,26 @@ function normalize_token_speed(value: unknown): AgentTokenSpeedSnapshot | undefi
     speed >= 0
     ? { roundId: round_id, tokensPerSecond: speed }
     : undefined;
+}
+
+/** 累计用量必须完整且非负，非法事件由 revision 缺口恢复。 */
+function normalize_usage(value: unknown): AgentUsageSnapshot | null {
+  if (!is_json_record(value)) return null;
+  const { input, output, cacheRead, cacheWrite } = value;
+  if (
+    typeof input !== "number" ||
+    typeof output !== "number" ||
+    typeof cacheRead !== "number" ||
+    typeof cacheWrite !== "number"
+  )
+    return null;
+  if (
+    [input, output, cacheRead, cacheWrite].some(
+      (count) => !Number.isSafeInteger(count) || count < 0,
+    )
+  )
+    return null;
+  return { input, output, cacheRead, cacheWrite };
 }
 
 /** 必需修订号无效时抛错，使调用方进入恢复路径。 */

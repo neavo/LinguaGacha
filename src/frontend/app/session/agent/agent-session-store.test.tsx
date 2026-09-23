@@ -339,6 +339,34 @@ describe("AgentSessionStore", () => {
     expect(latest.context).toEqual({ tokens: 31_488, compactable: true, limits: null });
   });
 
+  it("累计用量通过快照与完整事件更新，非法计数保留旧值", async () => {
+    desktop_api_mocks.api_get.mockResolvedValue(
+      agent_snapshot({ usage: { input: 10, output: 2, cacheRead: 5, cacheWrite: 1 } }),
+    );
+    let latest!: ReturnType<typeof useAgentSession>;
+    await render_probe(() => {
+      latest = useAgentSession();
+    });
+    await wait_for(() => expect(latest.transport).toBe("ready"));
+    expect(latest.usage).toEqual({ input: 10, output: 2, cacheRead: 5, cacheWrite: 1 });
+    await act(async () =>
+      event_source.emit(AGENT_SESSION_EVENT_TOPIC, {
+        type: "usage",
+        revision: 1,
+        usage: { input: 20, output: 4, cacheRead: 12, cacheWrite: 2 },
+      }),
+    );
+    expect(latest.usage).toEqual({ input: 20, output: 4, cacheRead: 12, cacheWrite: 2 });
+    await act(async () =>
+      event_source.emit(AGENT_SESSION_EVENT_TOPIC, {
+        type: "usage",
+        revision: 2,
+        usage: { input: -1, output: 4, cacheRead: 12, cacheWrite: 2 },
+      }),
+    );
+    expect(latest.usage.input).toBe(20);
+  });
+
   it("用合法 Todo 事件替换全部待办，并拒绝空事项", async () => {
     let latest!: ReturnType<typeof useAgentSession>;
     await render_probe(() => {
@@ -919,6 +947,7 @@ describe("AgentSessionStore", () => {
       todos: [],
       context: { tokens: null, compactable: false, limits: null },
       tokenSpeed: null,
+      usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
       skills: [
         TEST_SKILLS[0],
         { name: "legacy", description: "旧描述" },
@@ -1155,6 +1184,7 @@ describe("AgentSessionStore", () => {
       todos: [],
       context: { tokens: null, compactable: false, limits: null },
       tokenSpeed: null,
+      usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
     });
     let latest!: ReturnType<typeof useAgentSession>;
     await render_probe(() => {
@@ -1841,6 +1871,7 @@ function agent_snapshot(overrides: Partial<AgentSessionSnapshot> = {}): AgentSes
     inputQueue: { paused: false, canSendNow: false, items: [] },
     todos: [],
     context: { tokens: null, compactable: false, limits: null },
+    usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
     tokenSpeed: null,
     ...overrides,
   };

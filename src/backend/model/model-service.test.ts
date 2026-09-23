@@ -216,7 +216,7 @@ describe("ModelService 配置管理", () => {
     service.select_model({ target: "agent", model_id: "doubao" });
 
     for (const level of ["HIGH", "OFF"] as const) {
-      service.update_selected_model_thinking_level({ usage: "agent", thinking_level: level });
+      service.select_model({ target: "agent", model_id: "doubao", thinking_level: level });
 
       expect(
         service.get_selection_snapshot().models.find((model) => model.id === "doubao")
@@ -568,7 +568,7 @@ describe("ModelService 配置管理", () => {
     });
   });
 
-  it("按用途更新当前模型思考档位并保持选择快照狭窄", async () => {
+  it("选择模型时更新思考档位并保持选择快照狭窄", async () => {
     const { service } = await create_model_service([
       create_model({ id: "preset", type: "PRESET" }),
       create_model({ id: "openai", type: "CUSTOM_OPENAI", model_id: "gpt-5.6-luna" }),
@@ -576,7 +576,7 @@ describe("ModelService 配置管理", () => {
     service.select_model({ target: "agent", model_id: "openai" });
 
     const selection = read_selection_snapshot(
-      service.update_selected_model_thinking_level({ usage: "agent", thinking_level: "MAX" }),
+      service.select_model({ target: "agent", model_id: "openai", thinking_level: "MAX" }),
     );
     const selected = selection.models.find((model) => model["id"] === "openai");
     const management = read_request_model_snapshot(service.get_snapshot());
@@ -593,36 +593,28 @@ describe("ModelService 配置管理", () => {
   it.each([
     {
       name: "非法用途",
-      request: { usage: "unknown", thinking_level: "HIGH" },
+      request: { target: "unknown", model_id: "preset", thinking_level: "HIGH" },
     },
     {
       name: "非法思考档位",
-      request: { usage: "agent", thinking_level: "UNKNOWN" },
+      request: { target: "agent", model_id: "preset", thinking_level: "UNKNOWN" },
     },
   ])("$name 不落盘", async ({ request }) => {
     const { service } = await create_model_service([create_model({ id: "preset" })]);
     const before = service.get_selection_snapshot();
 
-    expect(() => service.update_selected_model_thinking_level(request)).toThrow(
-      "request.validation_failed",
-    );
+    expect(() => service.select_model(request)).toThrow("request.validation_failed");
     expect(service.get_selection_snapshot()).toEqual(before);
   });
 
-  it("思考档位写入口统一归一为模型可用档位", async () => {
+  it("不支持思考档位的模型拒绝显式等级", async () => {
     const { service, app_setting_service } = await create_model_service([
       create_model({ id: "sakura", type: "PRESET", api_format: "SakuraLLM" }),
     ]);
 
-    const snapshot = service.update_selected_model_thinking_level({
-      usage: "agent",
-      thinking_level: "HIGH",
-    });
-
-    expect(read_selection_snapshot(snapshot).models[0]).toMatchObject({
-      thinking_level: "OFF",
-      available_thinking_levels: [],
-    });
+    expect(() =>
+      service.select_model({ target: "agent", model_id: "sakura", thinking_level: "HIGH" }),
+    ).toThrow("request.validation_failed");
     expect(read_config_model_records(app_setting_service.read_setting())[0]?.["thinking"]).toEqual({
       level: "OFF",
     });
@@ -1007,7 +999,7 @@ describe("ModelService 配置管理", () => {
     ]);
     const lease = runtime_gate.begin_runtime("agent");
     service.select_model({ target: "agent", model_id: "b" });
-    service.update_selected_model_thinking_level({ usage: "agent", thinking_level: "HIGH" });
+    service.select_model({ target: "agent", model_id: "b", thinking_level: "HIGH" });
     service.select_model({ target: "agent_batch_translation", model_id: "a" });
     const snapshot = service.get_selection_snapshot();
     expect(snapshot.model_selection).toMatchObject({ agent: "b", agent_batch_translation: "a" });

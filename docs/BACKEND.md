@@ -19,7 +19,7 @@
 - 查询固定在显式日期文件内结束；隐藏记录 `window: false` 不进入摘要和详情。Agent 对话与执行记录消费同一查询链路，其生产和生命周期边界归 [AGENT_RUNTIME](AGENT_RUNTIME.md)。正文、索引和旧 `.log` 按最近三个日期共同轮转；旧 `.log` 只供直接查看。
 - renderer 诊断入口只接收实际异常摘要与白名单上下文并写入 `LogManager`，不改变项目、任务或设置事实。
 
-`POST /api/models/select` 接受 `target`（translation / agent / agent_batch_translation）、`model_id` 和可选 `thinking_level`，返回 `ModelSelectionSnapshot`。Agent 主模型选择不接受等级，批量跟随使用 `model_id: null` 且不带等级；省略等级保留模型归一配置，显式等级须属于模型能力集合。`ModelService` 在同一配置副本中校验并更新选择和模型全局等级，同步保存一次，设置文件写入成功后才更新缓存；该边界不提供磁盘写入回滚。独立等级更新按用途定位当前模型。
+`POST /api/models/select` 接受 `target`（translation / agent / agent_batch_translation）、`model_id` 和可选 `thinking_level`，返回 `ModelSelectionSnapshot`。批量跟随使用 `model_id: null` 且不带等级。省略等级保留模型归一配置，显式等级须属于模型能力集合。`ModelService` 在同一配置副本中校验并更新选择和模型全局等级，同步保存一次，设置文件写入成功后才更新缓存。磁盘写入失败时不执行文件回滚。
 
 内置模型目录按 ID 补齐缺失模型并提供重置模板；已有用户配置与选择保留。预设下架后可删除，仍有模板时可重置且禁止删除。`ModelService` 每次操作共用一份目录判断权限，快照的 `can_reset` 不持久化，类型仍记录来源与分组。目录允许空数组；读取、解析或结构校验失败在配置写入前报错，避免把资源损坏解释为下架。
 

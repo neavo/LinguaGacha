@@ -1,14 +1,12 @@
 import { type ModelAgentLimits, AGENT_COMPACTION_RESERVE_TOKENS } from "@domain/model-agent";
 import { useState, type ReactNode } from "react";
-import { BookOpenText, Boxes, Brain, ChevronDown, Circle, CircleCheck } from "lucide-react";
-import type { ModelThinkingLevel } from "@domain/model";
+import { BookOpenText, Boxes, ChevronDown, Circle, CircleCheck } from "lucide-react";
+import type { ModelSelectionInput } from "@shared/model-selection";
+import type { AgentUsageSnapshot } from "@shared/agent";
 
 import { useI18n } from "@frontend/app/locale/locale-context";
-import {
-  ModelSelectionOptions,
-  ModelThinkingLevelOptions,
-} from "@frontend/features/model-selection/model-selection-menu";
-import { MODEL_THINKING_LEVEL_LABEL_KEY } from "@frontend/features/model-selection/model-selection-meta";
+import { ModelSelectionOptions } from "@frontend/features/model-selection/model-selection-menu";
+import { read_model_thinking_level_label_key } from "@frontend/features/model-selection/model-selection-meta";
 import {
   read_selected_model,
   type ModelSelectionController,
@@ -29,37 +27,29 @@ export function AgentComposerModelControls(props: {
   controller: ModelSelectionController;
   context_tokens: number | null;
   context_limits: ModelAgentLimits | null;
-  on_thinking_level_change?: (level: ModelThinkingLevel) => void;
+  usage: AgentUsageSnapshot;
+  on_agent_model_select: (change: ModelSelectionInput) => void;
 }): JSX.Element {
   const { t } = useI18n();
   // 菜单 Portal 位于输入区之外，随底部交互锁关闭并释放菜单状态。
-  const [open_menu, set_open_menu] = useState<"model" | "thinking" | "batch" | null>(null);
+  const [open_menu, set_open_menu] = useState<"model" | "batch" | null>(null);
   if (props.locked && open_menu !== null) set_open_menu(null);
   const model_controls_disabled =
     props.locked === true || props.controller.loading || props.controller.updating;
   const selected_model = read_selected_model(props.controller, "agent");
   const selected_model_name =
     selected_model?.name || selected_model?.id || t("app.model.selection.unavailable");
-  const selected_thinking_available =
-    selected_model !== null &&
-    selected_model.available_thinking_levels.includes(selected_model.thinking_level);
-  const thinking_unavailable =
-    selected_model !== null && selected_model.available_thinking_levels.length === 0;
   const selected_thinking_label =
-    selected_model === null
-      ? null
-      : selected_thinking_available
-        ? t(MODEL_THINKING_LEVEL_LABEL_KEY[selected_model.thinking_level])
-        : t("app.model.thinking_level.default");
+    selected_model === null ? null : t(read_model_thinking_level_label_key(selected_model));
   const model_selection_label = t("app.model.selection.label");
-  const model_selection_aria_label = `${model_selection_label}: ${selected_model_name}`;
+  const model_selection_aria_label = `${model_selection_label}: ${selected_model_name}${selected_thinking_label === null ? "" : ` · ${selected_thinking_label}`}`;
   // 已有会话使用实际容量，选择变化只影响下一次模型操作。
   const limits = props.context_limits ?? selected_model?.agent_limits;
   const context_usage =
     limits === undefined
       ? null
       : format_context_usage({
-          tokens: props.context_tokens ?? 0,
+          tokens: props.context_tokens,
           contextWindow: limits.context_window,
           maxTokens: limits.max_output_tokens,
         });
@@ -70,6 +60,8 @@ export function AgentComposerModelControls(props: {
     batch_model_id === null
       ? t("agent_page.batch_translation_model.follow")
       : batch_model?.name || batch_model?.id || t("app.model.selection.unavailable");
+  const batch_thinking_label =
+    batch_model === undefined ? null : t(read_model_thinking_level_label_key(batch_model));
   const batch_tooltip = t("agent_page.batch_translation_model.tooltip");
   const FollowModelIcon = batch_model_id === null ? CircleCheck : Circle;
   return (
@@ -85,6 +77,7 @@ export function AgentComposerModelControls(props: {
         }
         icon={<Boxes aria-hidden="true" />}
         name={selected_model_name}
+        thinking_label={selected_thinking_label}
         detail={
           context_usage !== null ? (
             <>
@@ -98,78 +91,45 @@ export function AgentComposerModelControls(props: {
           ) : null
         }
         tooltip={
-          <>
-            {context_usage !== null ? (
-              <p>{`${context_usage.used} / ${context_usage.total}`}</p>
-            ) : null}
-            {context_usage?.warning ? <p>{t("agent_page.context_usage_warning")}</p> : null}
-          </>
+          <div className="grid grid-cols-[auto_auto] gap-x-8 gap-y-0.5 tabular-nums">
+            <span>{t("agent_page.usage.input")}</span>
+            <span className="text-right">
+              {format_usage_tokens(
+                props.usage.input + props.usage.cacheRead + props.usage.cacheWrite,
+              )}
+            </span>
+            <span>{t("agent_page.usage.output")}</span>
+            <span className="text-right">{format_usage_tokens(props.usage.output)}</span>
+            <span>{t("agent_page.usage.cache_hit_rate")}</span>
+            <span className="text-right">{format_cache_hit_rate(props.usage)}</span>
+            <span>
+              {t(
+                context_usage?.warning
+                  ? "agent_page.context_usage_warning"
+                  : "agent_page.usage.context_window",
+              )}
+            </span>
+            <span className="text-right">
+              {context_usage === null ? "0K/0K" : `${context_usage.used}/${context_usage.total}`}
+            </span>
+          </div>
         }
       >
         <ModelSelectionOptions
-          mode="model"
           models={props.controller.snapshot.models}
           value={props.controller.snapshot.model_selection.agent}
-          on_select={({ model_id }) => {
-            void props.controller.select_model({ target: "agent", model_id });
-          }}
+          on_select={props.on_agent_model_select}
           disabled={model_controls_disabled}
         />
       </ModelMenuButton>
-      {selected_thinking_label !== null && (
-        <AppDropdownMenu
-          open={open_menu === "thinking"}
-          onOpenChange={(open) => set_open_menu(open ? "thinking" : null)}
-        >
-          <Tooltip>
-            <TooltipTrigger
-              render={
-                <span className="inline-flex" tabIndex={thinking_unavailable ? 0 : undefined}>
-                  <AppDropdownMenuTrigger
-                    render={
-                      <AppButton
-                        type="button"
-                        size="sm"
-                        variant="ghost"
-                        className="agent-composer__thinking-trigger"
-                        disabled={model_controls_disabled || thinking_unavailable}
-                        aria-label={`${t("app.model.thinking_level.label")}: ${selected_thinking_label}`}
-                      >
-                        <Brain aria-hidden="true" />
-                        <span>{selected_thinking_label}</span>
-                        <ChevronDown aria-hidden="true" />
-                      </AppButton>
-                    }
-                  />
-                </span>
-              }
-            />
-            <TooltipContent>
-              <p>
-                {thinking_unavailable
-                  ? t("app.model.thinking_level.unsupported")
-                  : t("app.model.thinking_level.label")}
-              </p>
-            </TooltipContent>
-          </Tooltip>
-          <AppDropdownMenuContent align="start" matchTriggerWidth={false}>
-            <ModelThinkingLevelOptions
-              controller={props.controller}
-              usage="agent"
-              disabled={model_controls_disabled}
-              on_thinking_level_change={props.on_thinking_level_change}
-            />
-          </AppDropdownMenuContent>
-        </AppDropdownMenu>
-      )}
-
       <ModelMenuButton
         open={open_menu === "batch"}
         on_open_change={(open) => set_open_menu(open ? "batch" : null)}
         disabled={model_controls_disabled}
-        label={`${batch_tooltip}: ${batch_label}`}
+        label={`${batch_tooltip}: ${batch_label}${batch_thinking_label === null ? "" : ` · ${batch_thinking_label}`}`}
         icon={<BookOpenText aria-hidden="true" />}
         name={batch_label}
+        thinking_label={batch_thinking_label}
         tooltip={<p>{batch_tooltip}</p>}
       >
         <AppDropdownMenuItem
@@ -187,7 +147,6 @@ export function AgentComposerModelControls(props: {
         </AppDropdownMenuItem>
         <AppDropdownMenuSeparator />
         <ModelSelectionOptions
-          mode="model_and_thinking"
           models={props.controller.snapshot.models}
           value={batch_model_id ?? ""}
           disabled={model_controls_disabled}
@@ -208,13 +167,14 @@ function ModelMenuButton(props: {
   label: string;
   icon: ReactNode;
   name: string;
+  thinking_label: string | null;
   detail?: ReactNode;
   tooltip: ReactNode;
   children: ReactNode;
 }): JSX.Element {
   return (
     <AppDropdownMenu open={props.open} onOpenChange={props.on_open_change}>
-      <Tooltip>
+      <Tooltip disabled={props.open}>
         <TooltipTrigger
           render={
             <TooltipTarget>
@@ -230,6 +190,19 @@ function ModelMenuButton(props: {
                   >
                     {props.icon}
                     <span className="agent-composer__model-name">{props.name}</span>
+                    {props.thinking_label === null ? null : (
+                      <>
+                        <span
+                          className="agent-composer__model-context-separator"
+                          aria-hidden="true"
+                        >
+                          ·
+                        </span>
+                        <span className="agent-composer__model-thinking">
+                          {props.thinking_label}
+                        </span>
+                      </>
+                    )}
                     {props.detail}
                     <ChevronDown aria-hidden="true" />
                   </AppButton>
@@ -249,7 +222,7 @@ function ModelMenuButton(props: {
 
 /** 一次生成上下文百分比、详情与色阶，避免组件分别重复派生。 */
 function format_context_usage(usage: {
-  tokens: number;
+  tokens: number | null;
   contextWindow: number;
   maxTokens: number;
 }): {
@@ -259,13 +232,14 @@ function format_context_usage(usage: {
   tone: "default" | "warning";
   warning: boolean;
 } {
-  const percent = (usage.tokens / usage.contextWindow) * 100;
+  const percent = ((usage.tokens ?? 0) / usage.contextWindow) * 100;
   // 预警到自动压缩之间保留一份最大输出预算。
   const warning =
+    usage.tokens !== null &&
     usage.tokens >= usage.contextWindow - usage.maxTokens - AGENT_COMPACTION_RESERVE_TOKENS;
   return {
     percent: `${percent.toFixed(1)}%`,
-    used: format_context_tokens(usage.tokens),
+    used: format_context_tokens(usage.tokens ?? 0),
     total: format_context_tokens(usage.contextWindow),
     tone: warning ? "warning" : "default",
     warning,
@@ -275,4 +249,17 @@ function format_context_usage(usage: {
 /** 鼠标提示中的上下文详情固定以整数 K 展示。 */
 function format_context_tokens(tokens: number): string {
   return `${Math.round(tokens / 1_000).toString()}K`;
+}
+
+/** 累计输入输出按数量选择 K 或 M，保留两位小数并省略整值的小数部分。 */
+function format_usage_tokens(tokens: number): string {
+  if (tokens < 1_000) return tokens.toString();
+  const unit = tokens < 1_000_000 ? 1_000 : 1_000_000;
+  return `${(tokens / unit).toFixed(2).replace(/\.00$/, "")}${unit === 1_000 ? "K" : "M"}`;
+}
+
+/** 缓存读取占全部输入的比例，缓存写入也计入分母。 */
+function format_cache_hit_rate(usage: AgentUsageSnapshot): string {
+  const input = usage.input + usage.cacheRead + usage.cacheWrite;
+  return `${(input === 0 ? 0 : (usage.cacheRead / input) * 100).toFixed(2)}%`;
 }

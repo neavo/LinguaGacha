@@ -115,7 +115,7 @@ describe("useModelSelection", () => {
     expect(container.textContent).toContain("openai:OFF:false");
   });
 
-  it("更新当前用途模型的思考档位并消费统一窄回包", async () => {
+  it("在选模命令中更新当前模型的思考档位并消费统一窄回包", async () => {
     api.get.mockResolvedValue(snapshot("preset"));
     api.fetch.mockResolvedValue(snapshot("preset", "HIGH"));
     const container = await render_probe();
@@ -123,8 +123,9 @@ describe("useModelSelection", () => {
 
     await act(async () => find_button(container, "thinking").click());
 
-    expect(api.fetch).toHaveBeenCalledWith("/api/models/thinking-level/update", {
-      usage: "translation",
+    expect(api.fetch).toHaveBeenCalledWith("/api/models/select", {
+      target: "translation",
+      model_id: "preset",
       thinking_level: "HIGH",
     });
     expect(container.textContent).toContain("preset:HIGH:false");
@@ -238,7 +239,15 @@ function Probe(): JSX.Element {
       <button onClick={() => void controller.select_model({ target: "agent", model_id: "openai" })}>
         other
       </button>
-      <button onClick={() => void controller.update_thinking_level("translation", "HIGH")}>
+      <button
+        onClick={() =>
+          void controller.select_model({
+            target: "translation",
+            model_id: "preset",
+            thinking_level: "HIGH",
+          })
+        }
+      >
         thinking
       </button>
     </div>

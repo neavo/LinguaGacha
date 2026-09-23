@@ -129,6 +129,7 @@ describe("AgentComposer", () => {
             queue_full={false}
             can_reset={true}
             context={{ tokens: null, compactable: false, limits: null }}
+            usage={{ input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }}
             model_selection={{
               snapshot: {
                 models: [],
@@ -137,7 +138,6 @@ describe("AgentComposer", () => {
               loading: false,
               updating: false,
               select_model: async () => {},
-              update_thinking_level: async () => {},
             }}
             input_session={{
               revision: 0,
@@ -146,6 +146,7 @@ describe("AgentComposer", () => {
               replace_history: () => {},
             }}
             on_send={vi.fn()}
+            on_agent_model_select={vi.fn()}
             on_stop={async () => {}}
             on_reset={vi.fn()}
             {...options}
