@@ -764,6 +764,20 @@
   white-space: nowrap;
 }
 
+.agent-round-footer__speed {
+  flex: 0 0 auto;
+}
+
+.agent-round-footer__speed-separator {
+  margin-inline: 4px;
+}
+
+@container agent-round-footer (max-width: 360px) {
+  .agent-round-footer__speed {
+    display: none;
+  }
+}
+
 .agent-page__bottom-region {
   position: relative;
   box-sizing: border-box;
@@ -1626,11 +1640,7 @@
 }
 
 .agent-composer__model-context {
-  display: inline-flex;
   flex: 0 0 auto;
-  align-items: center;
-  border-radius: var(--ui-radius-button);
-  padding-inline: 4px;
   color: var(--muted-foreground);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
@@ -1837,22 +1847,4 @@
   gap: 4px;
   color: var(--ui-warning);
   font-size: 12px;
-}
-
-.agent-round-footer__speed {
-  flex: 0 0 auto;
-  white-space: pre;
-}
-
-/* 为三位整数和两位小数预留空间，更长数值随内容自然扩展。 */
-.agent-round-footer__speed-value {
-  display: inline-block;
-  min-width: 6ch;
-  text-align: right;
-}
-
-@container agent-round-footer (max-width: 360px) {
-  .agent-round-footer__speed {
-    display: none;
-  }
 }
