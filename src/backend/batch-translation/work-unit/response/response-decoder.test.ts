@@ -3,11 +3,31 @@ import { describe, expect, it } from "vitest";
 import { ResponseDecoder } from "./response-decoder";
 
 describe("响应解码器", () => {
-  it("解码单 item 的 SakuraLLM 纯文本响应并保留内部换行", () => {
-    expect(new ResponseDecoder().decode_plain_text_item("第一行\n第二行", 3)).toEqual([
-      { request_id: 3, text_dst: "第一行\n第二行", actor_dst: null },
+  const sakura_items = [
+    { request_id: 3, item_index: 1, text_src: "甲\r\n\r\n乙\r\n", actor_src: null },
+    { request_id: 8, item_index: 2, text_src: "丙", actor_src: null },
+  ];
+
+  it("SakuraLLM 单条接收非空完整响应并允许换行变化", () => {
+    expect(new ResponseDecoder().decode_sakura("第一行\n第二行", sakura_items.slice(0, 1))).toEqual(
+      [{ request_id: 3, text_dst: "第一行\n第二行", actor_dst: null }],
+    );
+    expect(new ResponseDecoder().decode_sakura(" \n ", sakura_items.slice(0, 1))).toEqual([]);
+  });
+
+  it("SakuraLLM 多条对应保留内部空行和条目末尾空行", () => {
+    expect(new ResponseDecoder().decode_sakura("一\r\n\r\n二\r\n\r\n三", sakura_items)).toEqual([
+      { request_id: 3, text_dst: "一\n\n二\n", actor_dst: null },
+      { request_id: 8, text_dst: "三", actor_dst: null },
     ]);
   });
+
+  it.each(["一\n二", "一\n\n二\n\n三\n"])(
+    "SakuraLLM 响应行数无法对应时不生成译文：%s",
+    (response) => {
+      expect(new ResponseDecoder().decode_sakura(response, sakura_items)).toEqual([]);
+    },
+  );
 
   it("解码一条包含真实换行的 item JSONL 记录", async () => {
     await expect(

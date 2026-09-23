@@ -5,15 +5,36 @@ import {
   normalize_translation_actor,
   type TranslationDecodedItem,
   type TranslationPromptMode,
+  type TranslationRequestItem,
 } from "../translation-item";
 
 /**
  * 按翻译请求模式解码模型正文，保留 item 对齐信息
  */
 export class ResponseDecoder {
-  /** 解码单 item Sakura 请求返回的完整纯文本正文。 */
-  public decode_plain_text_item(response: string, request_id: number): TranslationDecodedItem[] {
-    return response.trim() === "" ? [] : [{ request_id, text_dst: response, actor_dst: null }];
+  /** 多条按实际请求正文的行数对应，单条可直接接收换行变化后的完整译文。 */
+  public decode_sakura(
+    response: string,
+    request_items: readonly TranslationRequestItem[],
+  ): TranslationDecodedItem[] {
+    if (request_items.length === 1) {
+      return response.trim() === ""
+        ? []
+        : [{ request_id: request_items[0]!.request_id, text_dst: response, actor_dst: null }];
+    }
+    const lines = split_text_lines(response);
+    const decoded: TranslationDecodedItem[] = [];
+    let offset = 0; // 下一条译文在响应中的起始行，空行也占据对应位置。
+    for (const item of request_items) {
+      const end = offset + split_text_lines(item.text_src).length;
+      const text_dst = lines.slice(offset, end).join("\n");
+      offset = end;
+      if (text_dst.trim() !== "") {
+        decoded.push({ request_id: item.request_id, text_dst, actor_dst: null });
+      }
+    }
+    // 整批行数对应后才接受候选译文，其余情况交给现有缩段重试。
+    return offset === lines.length ? decoded : [];
   }
 
   /**

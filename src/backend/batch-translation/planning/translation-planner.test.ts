@@ -68,11 +68,13 @@ describe("TranslationPlanner", () => {
     expect(contexts[0]?.precedings.map((item) => item["id"])).toEqual([1, 2]);
   });
 
-  it("SakuraLLM 每个 work unit 只携带一个 item", async () => {
-    const planner = create_planner(async (items) => items.map(() => 1));
+  it("SakuraLLM 按容量合批并在文件边界切段", async () => {
+    const planner = create_planner(async (items) => items.map(() => 9));
     const items = [
       create_item({ id: 1, src: "第一句。", file_path: "chapter.txt" }),
       create_item({ id: 2, src: "第二句。", file_path: "chapter.txt" }),
+      create_item({ id: 3, src: "第三句。", file_path: "chapter.txt" }),
+      create_item({ id: 4, src: "第四句。", file_path: "next.txt" }),
     ];
 
     const { contexts } = await planner.build_translation_plan(
@@ -82,7 +84,11 @@ describe("TranslationPlanner", () => {
       new AbortController().signal,
     );
 
-    expect(contexts.map((context) => context.items.map((item) => item["id"]))).toEqual([[1], [2]]);
+    expect(contexts.map((context) => context.items.map((item) => item["id"]))).toEqual([
+      [1, 2],
+      [3],
+      [4],
+    ]);
     expect(contexts.every((context) => context.precedings.length === 0)).toBe(true);
   });
 
