@@ -44,7 +44,7 @@ export function TextPreserveEditDialog(props: TextPreserveEditDialogProps): JSX.
     <AppPageDialog
       open={props.open}
       title={title}
-      size="lg"
+      size="viewport"
       dismissBehavior={props.saving ? "blocked" : "escape-only"}
       onClose={props.on_close}
       bodyClassName="overflow-hidden p-0"
