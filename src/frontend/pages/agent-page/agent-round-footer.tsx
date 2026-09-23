@@ -51,8 +51,10 @@ function AgentRoundSpeed({ speed }: { speed: number | null }): JSX.Element | nul
   if (speed === null) return null;
   return (
     <small className="agent-round-footer__speed">
-      <span aria-hidden="true"> · </span>
-      <span className="agent-round-footer__speed-value">{speed.toFixed(2)}</span> T/S
+      <span className="agent-round-footer__speed-separator" aria-hidden="true">
+        ·
+      </span>
+      {`${speed.toFixed(2)} T/S`}
     </small>
   );
 }
