@@ -87,6 +87,13 @@
 - 例については [Wiki - 対応フォーマット](https://github.com/neavo/LinguaGacha/wiki/%E6%94%AF%E6%8C%81%E7%9A%84%E6%96%87%E4%BB%B6%E6%A0%BC%E5%BC%8F) を参照。フォーマットのリクエストは [ISSUES](https://github.com/neavo/LinguaGacha/issues) で提出
 
 ## 最近の更新 📅
+- 20260923 v0.123.1
+  - 新しいモデルへの対応を追加 [#926](../../issues/926)
+    - `GPT 6 Sol`
+    - `GPT 6 Luna`
+    - `Claude Opus 5.5`
+  - 修正と改善 [#929](../../issues/929) [#930](../../issues/930)
+
 - 20260922 v0.123.0
   - `AGENT` - 参考ファイルのアップロード [#917](../../issues/917)
   - `AGENT` - 出力速度の統計 [#920](../../issues/920)

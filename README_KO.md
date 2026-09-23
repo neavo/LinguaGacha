@@ -85,6 +85,13 @@
 - 구체적인 예시는 [Wiki - 지원 파일 형식](https://github.com/neavo/LinguaGacha/wiki/%E6%94%AF%E6%8C%81%E7%9A%84%E6%96%87%E4%BB%B6%E6%A0%BC%E5%BC%8F)을 참고하세요. 지원 형식은 계속 추가되며, [ISSUES](https://github.com/neavo/LinguaGacha/issues)에서 원하는 형식을 요청할 수 있습니다
 
 ## 최근 업데이트 📅
+- 20260923 v0.123.1
+  - 새로운 모델 지원 추가 [#926](../../issues/926)
+    - `GPT 6 Sol`
+    - `GPT 6 Luna`
+    - `Claude Opus 5.5`
+  - 수정 및 개선 [#929](../../issues/929) [#930](../../issues/930)
+
 - 20260922 v0.123.0
   - `AGENT` - 참고 파일 업로드 [#917](../../issues/917)
   - `AGENT` - 출력 속도 통계 [#920](../../issues/920)

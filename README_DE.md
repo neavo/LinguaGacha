@@ -85,6 +85,13 @@
 - Beispiele finden Sie unter [Wiki – Unterstützte Dateiformate](https://github.com/neavo/LinguaGacha/wiki/%E6%94%AF%E6%8C%81%E7%9A%84%E6%96%87%E4%BB%B6%E6%A0%BC%E5%BC%8F). Weitere Formate werden laufend ergänzt. Wünsche können Sie unter [ISSUES](https://github.com/neavo/LinguaGacha/issues) einreichen
 
 ## Neueste Updates 📅
+- 20260923 v0.123.1
+  - Unterstützung für neue Modelle hinzugefügt [#926](../../issues/926)
+    - `GPT 6 Sol`
+    - `GPT 6 Luna`
+    - `Claude Opus 5.5`
+  - Fehlerbehebungen und Verbesserungen [#929](../../issues/929) [#930](../../issues/930)
+
 - 20260922 v0.123.0
   - `AGENT` - Referenzdateien hochladen [#917](../../issues/917)
   - `AGENT` - Statistiken zur Ausgabegeschwindigkeit [#920](../../issues/920)
