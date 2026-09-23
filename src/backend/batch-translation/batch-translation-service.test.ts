@@ -13,6 +13,7 @@ import { describe, expect, it, vi } from "vitest";
 import { BatchTranslationService } from "./batch-translation-service";
 import { BatchTranslationRuntime } from "./batch-translation-runtime";
 import { RuntimeOperationGate } from "../runtime-operation-gate";
+import { read_builtin_pi_models } from "../llm/pi-model-catalog";
 import { ProjectSessionState } from "../project/project-session-state";
 import { ProjectDataReader } from "../project/project-data-reader";
 import { BatchTranslationRunner } from "./core/batch-translation-runner";
@@ -229,6 +230,7 @@ it("历史工程批量翻译保留旧分析物理数据、正式术语与资产�
     );
     expect(cache.prompts.readBlock()).not.toHaveProperty("analysis");
     const runner = new BatchTranslationRunner({
+      catalog: { read_models: read_builtin_pi_models },
       llmClient: {
         request: async () => {
           throw new Error("Unexpected LLM request");

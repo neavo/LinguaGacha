@@ -13,6 +13,29 @@ import { Model as ConfiguredModel } from "../../domain/model";
 import { read_model_request_snapshot } from "./llm-request";
 import { resolve_one_shot_pi_request, resolve_pi_model } from "./llm-pi";
 import { resolve_model_capability } from "./model-capability";
+import { read_builtin_pi_models } from "./pi-model-catalog";
+import { DEFAULT_MODEL_AGENT_CONFIG } from "../../domain/model-agent";
+
+const catalog = read_builtin_pi_models();
+/** 以固定目录构造请求能力，断言直接观察 Pi 适配结果。 */
+const create_pi_request = (
+  snapshot: Parameters<typeof resolve_one_shot_pi_request>[0],
+  messages: Parameters<typeof resolve_one_shot_pi_request>[1],
+  signal: AbortSignal,
+) =>
+  resolve_one_shot_pi_request(
+    snapshot,
+    messages,
+    signal,
+    resolve_model_capability(
+      {
+        api_format: snapshot.api_format,
+        model_id: snapshot.model_id,
+        agent: DEFAULT_MODEL_AGENT_CONFIG,
+      },
+      catalog,
+    ),
+  );
 
 const TEST_USER_AGENT = "LinguaGacha/Test";
 const TEST_REQUEST_IDENTITY = { user_agent: TEST_USER_AGENT, session_id: "test-session" };
@@ -26,6 +49,7 @@ describe("pi-ai 请求适配", () => {
     });
     const capability = resolve_model_capability(
       ConfiguredModel.from_json(configured, "test-model"),
+      catalog,
     );
     const resolved = resolve_pi_model(
       read_model_request_snapshot(configured, TEST_REQUEST_IDENTITY),
@@ -82,6 +106,7 @@ describe("pi-ai 请求适配", () => {
     async (api_format) => {
       const capability = resolve_model_capability(
         ConfiguredModel.from_json({ api_format, model_id: "deepseek-flash" }, "test-model"),
+        catalog,
       );
       for (const [level, effort] of [
         ["OFF", "none"],
@@ -168,6 +193,7 @@ describe("pi-ai 请求适配", () => {
     );
     const capability = resolve_model_capability(
       ConfiguredModel.from_json(create_model({ api_format }), "test-model"),
+      catalog,
     );
     const resolved = resolve_pi_model(snapshot, capability, {
       name: "Test",
@@ -204,7 +230,7 @@ describe("pi-ai 请求适配", () => {
         }),
         TEST_REQUEST_IDENTITY,
       );
-      const request = resolve_one_shot_pi_request(
+      const request = create_pi_request(
         snapshot,
         [{ role: "user", content: "ping" }],
         new AbortController().signal,
@@ -229,11 +255,7 @@ describe("pi-ai 请求适配", () => {
     );
 
     expect(() =>
-      resolve_one_shot_pi_request(
-        snapshot,
-        [{ role: "user", content: "   " }],
-        new AbortController().signal,
-      ),
+      create_pi_request(snapshot, [{ role: "user", content: "   " }], new AbortController().signal),
     ).toThrow("request.validation_failed");
   });
 
@@ -688,7 +710,7 @@ type ResolvedRequest = ReturnType<typeof resolve_one_shot_pi_request>;
 /** 使用统一模型夹具生成可直接交给 Pi adapter 的 OneShot 请求。 */
 function resolve_request(overrides: JsonRecord): ResolvedRequest {
   const snapshot = read_model_request_snapshot(create_model(overrides), TEST_REQUEST_IDENTITY);
-  return resolve_one_shot_pi_request(
+  return create_pi_request(
     snapshot,
     [
       { role: "system", content: " 系统约束 " },

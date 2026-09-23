@@ -15,7 +15,7 @@
 - 界面已呈现结果的操作静默成功，有额外结果信息时再通知。操作拥有者负责失败恢复和一次错误 Toast；持续不可用状态就地说明，共享 Toast 入口负责展示与可选恢复动作。
 - renderer 诊断只上报实际异常摘要与 route / project / task / event 白名单上下文，不上报完整 items / files、页面自定义对象或原始路径 / URL。
 - `useLogPages` 独占日志日期、跟随状态和单日期分页缓存；首次选择最新实际日期，目录刷新保留原选择。可见时串行补读，暂停跟随时只检查文件状态；隐藏暂停、恢复补读。滚动加载保留阅读锚点，失败 Toast 后由再次滚动重试。“回到顶部”仍读取所选日期。切换日期取消旧请求，外部编辑清空旧选择与详情，迟到响应不得污染新视图；搜索仅覆盖已加载摘要。普通页面、toast 和空状态不展示调用栈或原始异常。
-- 应用语言元数据归 `src/shared/i18n/types.ts`，菜单与发行包共用该声明且不加载词典。`src/domain/app-language.ts` 保留合法持久化编码并投影为 renderer `Locale`；系统语言只用于显式缺省场景，Provider 消费已解析的 locale。
+- 应用语言元数据归 `src/shared/i18n/types.ts`，菜单与发行包共用该声明且不加载词典。`src/domain/app-language.ts` 保留合法持久化编码并投影为 renderer `Locale`；系统语言只用于显式缺省场景，Provider 消费已解析的 locale。主窗口的 `LocaleProvider` 从外层 `DesktopStateProvider` 读取语言，外层事件通知显式接收设置语言并调用共享文案解析器。
 - 应用文案及源／目标语言展示名归 `src/shared/i18n`，菜单使用固定自称；领域语言模块只拥有语言码与字符规则。中文词典定义消息契约，其它语言保持键和占位符一致；提示词语言消费归 [`BACKEND.md`](BACKEND.md)。
 
 ### 开发热更新与模块生命周期
@@ -31,6 +31,7 @@
 - 项目身份由 `path + epoch + phase` 守护；项目切换、同路径重新初始化、迟到事件和首刷期间暂存事件都经过同一身份闸门。
 - `BatchTranslationSnapshotStore` 独占 renderer 当前批量翻译快照，HTTP 与 SSE 共用同形载荷并按 `revision` 丢弃旧帧；Hook 通过 `useBatchTranslationSnapshot` 直接消费，不保存或回写本地当前快照。metrics 随快照与显示时钟计算，输入、思考和输出 token 保持互斥累计口径。
 - `RuntimeActivityStore` 缓存 `revision + owner` 并丢弃旧帧，消费方通过 `useRuntimeSnapshot` 订阅；入口互斥遵循 [`BACKEND.md`](BACKEND.md)。Agent owner 期间允许输入排队，Pi steer 使用 Agent snapshot 的 `canSendNow`；batch_translation / model_test owner 下暂停额外 Agent 执行命令。批量翻译活跃态由 status 派生。
+- 模型目录共享状态保存更新标记，页面各自查询模型数据。首次 SSE 连接和重连补查目录快照，按后端实例和修订丢弃迟到结果，会话存储避免窗口重载后重复提示。目录更新触发模型页与选模组件刷新，正在编辑的草稿随目标模型切换才重置。
 - settings 只由后端设置载荷同步，task 只由后端 snapshot 或命令 ack 同步，project identity 只由后端项目载荷同步；Agent 普通命令 ack 只含 `revision`，公开会话事实由同 revision 的 Agent SSE 事件同步。
 - HTTP 写入结果与 `project.data_changed` SSE 共用同一事件入口、去重窗口和恢复策略；共享层只向 `ProjectChangeSignalStore` 发布轻量信号，页面通过 `useProjectChangeSignal` 精确订阅并根据目标 section 重新 query。
 - `DesktopRefreshScheduler` 只合并可延迟的 task snapshot 和项目刷新信号；项目切换、设置刷新、写入结果和任务终态先冲刷窗口。

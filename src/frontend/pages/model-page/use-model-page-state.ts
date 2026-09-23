@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { api_fetch } from "@frontend/app/desktop/desktop-api";
 import { useRuntimeSnapshot } from "@frontend/app/state/use-desktop-state";
+import { useModelCatalogRevision } from "@frontend/app/state/model-catalog-store";
 import { is_runtime_busy } from "@frontend/app/state/runtime-activity-store";
 import { push_toast } from "@frontend/app/feedback/desktop-toast";
 import { resolve_visible_error_message } from "@frontend/app/feedback/visible-error-message";
@@ -417,6 +418,7 @@ function reorder_snapshot_group(
 /** 持有模型页 query、乐观更新与对话框状态，后端仍是模型事实唯一来源。 */
 export function useModelPageState(): UseModelPageStateResult {
   const { t } = useI18n();
+  const catalog_revision = useModelCatalogRevision();
 
   const runtime_snapshot = useRuntimeSnapshot();
   const [snapshot, set_snapshot] = useState<ModelPageSnapshot>(EMPTY_SNAPSHOT);
@@ -467,7 +469,7 @@ export function useModelPageState(): UseModelPageStateResult {
     return () => {
       load_request_ref.current += 1;
     };
-  }, [refresh_snapshot]);
+  }, [refresh_snapshot, catalog_revision]);
 
   const grouped_categories = useMemo<ModelCategorySnapshot[]>(() => {
     return MODEL_TYPES.map((model_type) => {

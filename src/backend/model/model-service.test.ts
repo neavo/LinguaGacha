@@ -11,9 +11,12 @@ import { AGENT_COMPACTION_RESERVE_TOKENS } from "../../domain/model-agent";
 import { AppPathService } from "../app/app-path-service";
 import { AppSettingService } from "../app/app-setting-service";
 import type { LLMClientPort } from "../llm/llm-types";
+import { read_builtin_pi_models } from "../llm/pi-model-catalog";
 import { RuntimeOperationGate } from "../runtime-operation-gate";
 import { read_config_model_records } from "./model-config-resolver";
 import { ModelService } from "./model-service";
+
+const catalog = { read_models: read_builtin_pi_models };
 
 type ModelPresetFiles = {
   builtin_models?: Array<JsonRecord>;
@@ -37,6 +40,51 @@ afterEach(async () => {
 });
 
 describe("ModelService 配置管理", () => {
+  it("目录候选在 Agent 空闲后统一修正配置、切换并发布", async () => {
+    const { service, runtime_gate, app_setting_service } = await create_model_service([
+      create_model({ thinking: { level: "HIGH" } }),
+    ]);
+    const candidate = read_builtin_pi_models().map((model) =>
+      model.id === "gpt-5-mini" ? { ...model, reasoning: false } : model,
+    );
+    const lease = runtime_gate.begin_runtime("agent");
+    const commit = vi.fn();
+    const publish = vi.fn();
+    const applying = service.apply_catalog(
+      candidate,
+      commit,
+      new AbortController().signal,
+      publish,
+    );
+    await Promise.resolve();
+    expect(commit).not.toHaveBeenCalled();
+    runtime_gate.finish_runtime(lease);
+    await applying;
+    expect(commit).toHaveBeenCalledOnce();
+    expect(publish).toHaveBeenCalledOnce();
+    expect(read_config_model_records(app_setting_service.read_setting())[0]?.["thinking"]).toEqual({
+      level: "OFF",
+    });
+  });
+
+  it("配置保存失败时不切换目录或发布成功", async () => {
+    const { service, app_setting_service } = await create_model_service([
+      create_model({ thinking: { level: "HIGH" } }),
+    ]);
+    const candidate = read_builtin_pi_models().map((model) =>
+      model.id === "gpt-5-mini" ? { ...model, reasoning: false } : model,
+    );
+    vi.spyOn(app_setting_service, "save_setting").mockImplementation(() => {
+      throw new Error("disk failed");
+    });
+    const commit = vi.fn();
+    const publish = vi.fn();
+    await expect(
+      service.apply_catalog(candidate, commit, new AbortController().signal, publish),
+    ).rejects.toThrow("disk failed");
+    expect(commit).not.toHaveBeenCalled();
+    expect(publish).not.toHaveBeenCalled();
+  });
   it.each([
     ["Google", "CUSTOM_GOOGLE"],
     ["OpenAI", "CUSTOM_OPENAI"],
@@ -112,6 +160,7 @@ describe("ModelService 配置管理", () => {
       new AppSettingService(paths),
       { request: llm_request },
       runtime_gate,
+      catalog,
     );
     const group = read_request_model_snapshot(reloaded.get_snapshot()).models.filter(
       (model) => model["type"] === "CUSTOM_OPENAI",
@@ -428,6 +477,7 @@ describe("ModelService 配置管理", () => {
       app_setting_service,
       { request: vi.fn() },
       new RuntimeOperationGate(),
+      catalog,
     );
     const snapshot = read_request_model_snapshot(second_service.get_snapshot());
 
@@ -1218,6 +1268,7 @@ async function create_model_service(
       app_setting_service,
       { request: llm_request },
       runtime_gate,
+      catalog,
       log_manager,
     ),
     app_setting_service,

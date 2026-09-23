@@ -21,6 +21,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { get_section_revision, ProjectDataReader } from "../../project/project-data-reader";
 import { ProjectSessionState } from "../../project/project-session-state";
 import { RuntimeOperationGate } from "../../runtime-operation-gate";
+import { read_builtin_pi_models } from "../../llm/pi-model-catalog";
 import { BatchTranslationRuntime } from "../batch-translation-runtime";
 import type { BatchTranslationStartCommand } from "../../../domain/batch-translation";
 import type { BatchTranslationSnapshot } from "../../../domain/batch-translation";
@@ -50,6 +51,7 @@ describe("BatchTranslationRunner", () => {
     const done = create_status_waiter("done");
     const task_runtime = create_task_runtime(done.listener);
     const task_engine = new BatchTranslationRunner({
+      catalog: { read_models: read_builtin_pi_models },
       llmClient: create_unused_llm_client(),
       builtinRoot: path.join(process.cwd(), "builtin"),
       taskStore: create_task_store({
@@ -159,6 +161,7 @@ describe("BatchTranslationRunner", () => {
         await cache.warmProject(project_path);
         vi.useFakeTimers();
         const runner = new BatchTranslationRunner({
+          catalog: { read_models: read_builtin_pi_models },
           builtinRoot: builtin_root,
           taskStore: store,
           taskRuntime: runtime,
@@ -230,6 +233,7 @@ describe("BatchTranslationRunner", () => {
     const done = create_status_waiter("done");
     const task_runtime = create_task_runtime(done.listener);
     const task_engine = new BatchTranslationRunner({
+      catalog: { read_models: read_builtin_pi_models },
       llmClient: create_unused_llm_client(),
       builtinRoot: create_template_root(),
       taskStore: create_task_store(),
@@ -288,6 +292,7 @@ describe("BatchTranslationRunner", () => {
       }
     });
     const task_engine = new BatchTranslationRunner({
+      catalog: { read_models: read_builtin_pi_models },
       llmClient: create_unused_llm_client(),
       builtinRoot: path.join(process.cwd(), "builtin"),
       taskStore: create_task_store({
@@ -341,6 +346,7 @@ describe("BatchTranslationRunner", () => {
       }
     });
     const task_engine = new BatchTranslationRunner({
+      catalog: { read_models: read_builtin_pi_models },
       llmClient: create_unused_llm_client(),
       builtinRoot: path.join(process.cwd(), "builtin"),
       taskStore: create_task_store({
@@ -383,6 +389,7 @@ describe("BatchTranslationRunner", () => {
       throw new AppError("worker.failed");
     });
     const runner = new BatchTranslationRunner({
+      catalog: { read_models: read_builtin_pi_models },
       llmClient: create_unused_llm_client(),
       builtinRoot: path.join(process.cwd(), "builtin"),
       taskStore: create_task_store({ get_translation_items: () => [create_pending_item()] }),
@@ -445,6 +452,7 @@ describe("BatchTranslationRunner", () => {
         };
       });
       const runner = new BatchTranslationRunner({
+        catalog: { read_models: read_builtin_pi_models },
         llmClient: { request },
         builtinRoot: builtin_root,
         taskRuntime: runtime,
@@ -527,6 +535,7 @@ describe("BatchTranslationRunner", () => {
     const task_runtime = create_task_runtime(done.listener);
     const run_context = create_run_context(1, 16);
     const task_engine = new BatchTranslationRunner({
+      catalog: { read_models: read_builtin_pi_models },
       llmClient: create_unused_llm_client(),
       builtinRoot: path.join(process.cwd(), "builtin"),
       taskStore: create_task_store({
@@ -584,6 +593,7 @@ describe("BatchTranslationRunner", () => {
       prompt_enhancement_enable: false,
     });
     const task_engine = new BatchTranslationRunner({
+      catalog: { read_models: read_builtin_pi_models },
       llmClient: create_unused_llm_client(),
       builtinRoot: builtin_root,
       taskStore: create_task_store({
@@ -624,6 +634,7 @@ describe("BatchTranslationRunner", () => {
     let lease_release_count = 0;
     const task_runtime = create_task_runtime();
     const task_engine = new BatchTranslationRunner({
+      catalog: { read_models: read_builtin_pi_models },
       llmClient: create_unused_llm_client(),
       builtinRoot: path.join(process.cwd(), "builtin"),
       taskStore: create_task_store({

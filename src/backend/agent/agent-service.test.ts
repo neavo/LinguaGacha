@@ -32,6 +32,7 @@ import type { AgentWebSearchPort } from "./model-tools/web-search";
 import * as workspace_tools from "./model-tools/workspace";
 import { ProjectSessionState } from "../project/project-session-state";
 import { RuntimeOperationGate } from "../runtime-operation-gate";
+import { read_builtin_pi_models } from "../llm/pi-model-catalog";
 
 /** 集中保存模型定义与公开快照的共同 skill 身份，避免协议断言复制语言矩阵。 */
 const skill_test_fixture = vi.hoisted(() => {
@@ -3375,6 +3376,7 @@ describe("AgentService", () => {
     const log_append = vi.fn();
     const runtime_gate = new RuntimeOperationGate();
     const service = new AgentService({
+      catalog: { read_models: read_builtin_pi_models },
       images,
       batchTranslation: batch_translation ?? {
         run_under_agent: async () => ({

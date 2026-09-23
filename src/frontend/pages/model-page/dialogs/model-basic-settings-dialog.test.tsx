@@ -93,6 +93,17 @@ describe("ModelBasicSettingsDialog", () => {
       throw new Error("模型 ID 输入按钮未挂载。");
     }
     await act(async () => input_button.click());
+    const draft_input = document.querySelector<HTMLInputElement>(
+      'input[placeholder="model_page.fields.model_id.placeholder"]',
+    );
+    if (draft_input === null) throw new Error("模型 ID 草稿输入框未挂载。");
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set?.call(
+        draft_input,
+        "unsaved-model-id",
+      );
+      draft_input.dispatchEvent(new Event("input", { bubbles: true }));
+    });
     await render_dialog(true);
 
     const readonly_fields = document.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>(
@@ -107,6 +118,7 @@ describe("ModelBasicSettingsDialog", () => {
     if (!(model_id_input instanceof HTMLInputElement)) {
       throw new Error("模型 ID 输入框未挂载。");
     }
+    expect(model_id_input.value).toBe("unsaved-model-id");
     await act(async () => {
       model_id_input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
     });

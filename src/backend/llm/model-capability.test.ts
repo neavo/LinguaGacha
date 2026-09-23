@@ -1,9 +1,9 @@
-import type { Api, Model as PiModel } from "@earendil-works/pi-ai";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import { Model, type ModelApiFormat } from "../../domain/model";
 import { AGENT_COMPACTION_RESERVE_TOKENS } from "../../domain/model-agent";
 import {
+  type PiCatalogModel,
   adjust_model_thinking_level,
   match_pi_catalog_models,
   resolve_model_capability,
@@ -11,47 +11,56 @@ import {
 } from "./model-capability";
 
 describe("统一模型能力", () => {
-  it("容量聚合后应用产品输出上限，思考能力独立按协议解析", async () => {
-    await with_catalog(
-      [
-        {
-          ...create_catalog_model("small-model"),
-          contextWindow: 128_000,
-          maxTokens: 8_000,
-        },
-        { ...create_catalog_model("catalog-model"), contextWindow: 128_000, maxTokens: 16_000 },
-        { ...create_catalog_model("catalog-model"), contextWindow: 600_000, maxTokens: 8_000 },
-        { ...create_catalog_model("small-window"), contextWindow: 128_000, maxTokens: 96_000 },
-        { ...create_catalog_model("large-window"), contextWindow: 1_000_000, maxTokens: 256_000 },
-      ],
-      (resolve) => {
-        expect(resolve(create_model("OpenAIResponses", "vendor/catalog-model:fast"))).toMatchObject(
-          {
-            context_window: 600_000,
-            max_tokens: 16_000,
-            agent_limits: { context_window: 600_000, max_output_tokens: 16_000 },
-          },
-        );
-        expect(resolve(create_model("OpenAIResponses", "small-model"))).toMatchObject({
-          context_window: 128_000,
-          max_tokens: 8_000,
-          agent_limits: { context_window: 128_000, max_output_tokens: 8_000 },
-        });
-        expect(resolve(create_model("Anthropic", "small-model"))).toMatchObject({
-          context_window: 128_000,
-          max_tokens: 8_000,
-          reasoning: false,
-          available_thinking_levels: [],
-        });
-        const small = resolve(create_model("OpenAIResponses", "small-window"));
-        const large = resolve(create_model("OpenAIResponses", "large-window"));
-        expect(large.agent_limits.max_output_tokens).toBeGreaterThan(
-          small.agent_limits.max_output_tokens,
-        );
-        expect(small.agent_limits.max_output_tokens).toBeLessThanOrEqual(small.max_tokens!);
-        expect(large.agent_limits.max_output_tokens).toBeLessThanOrEqual(large.max_tokens!);
+  it("容量聚合后应用产品输出上限，思考能力独立按协议解析", () => {
+    const catalog: PiCatalogModel[] = [
+      {
+        ...create_catalog_model("small-model"),
+        contextWindow: 128_000,
+        maxTokens: 8_000,
       },
+      { ...create_catalog_model("catalog-model"), contextWindow: 128_000, maxTokens: 16_000 },
+      { ...create_catalog_model("catalog-model"), contextWindow: 600_000, maxTokens: 8_000 },
+      { ...create_catalog_model("small-window"), contextWindow: 128_000, maxTokens: 96_000 },
+      { ...create_catalog_model("large-window"), contextWindow: 1_000_000, maxTokens: 256_000 },
+    ];
+    expect(
+      resolve_model_capability(
+        create_model("OpenAIResponses", "vendor/catalog-model:fast"),
+        catalog,
+      ),
+    ).toMatchObject({
+      context_window: 600_000,
+      max_tokens: 16_000,
+      agent_limits: { context_window: 600_000, max_output_tokens: 16_000 },
+    });
+    expect(
+      resolve_model_capability(create_model("OpenAIResponses", "small-model"), catalog),
+    ).toMatchObject({
+      context_window: 128_000,
+      max_tokens: 8_000,
+      agent_limits: { context_window: 128_000, max_output_tokens: 8_000 },
+    });
+    expect(
+      resolve_model_capability(create_model("Anthropic", "small-model"), catalog),
+    ).toMatchObject({
+      context_window: 128_000,
+      max_tokens: 8_000,
+      reasoning: false,
+      available_thinking_levels: [],
+    });
+    const small = resolve_model_capability(
+      create_model("OpenAIResponses", "small-window"),
+      catalog,
     );
+    const large = resolve_model_capability(
+      create_model("OpenAIResponses", "large-window"),
+      catalog,
+    );
+    expect(large.agent_limits.max_output_tokens).toBeGreaterThan(
+      small.agent_limits.max_output_tokens,
+    );
+    expect(small.agent_limits.max_output_tokens).toBeLessThanOrEqual(small.max_tokens!);
+    expect(large.agent_limits.max_output_tokens).toBeLessThanOrEqual(large.max_tokens!);
   });
 
   it.each(["OpenAI", "OpenAIResponses"] as const)(
@@ -71,7 +80,7 @@ describe("统一模型能力", () => {
       max_output_tokens: requested_max_output_tokens,
     });
 
-    expect(resolve_model_capability(model)).toMatchObject({
+    expect(resolve_model_capability(model, [])).toMatchObject({
       agent_config: { context_window },
       agent_limits: {
         context_window,
@@ -80,27 +89,24 @@ describe("统一模型能力", () => {
     });
   });
 
-  it("开关型思考按当前协议投影档位和历史要求", async () => {
-    await with_catalog(
-      [
-        {
-          ...create_catalog_model("toggle-model"),
-          api: "openai-completions",
-          compat: { thinkingFormat: "deepseek", requiresReasoningContentOnAssistantMessages: true },
-        },
-      ],
-      (resolve) => {
-        const completions = resolve(create_model("OpenAI", "toggle-model"));
-        expect(completions.available_thinking_levels).toEqual(["OFF", "LOW"]);
-        expect(completions.compat).toMatchObject({
-          thinkingFormat: "deepseek",
-          requiresReasoningContentOnAssistantMessages: true,
-        });
-        expect(
-          resolve(create_model("OpenAIResponses", "toggle-model")).available_thinking_levels,
-        ).toEqual(["OFF", "LOW", "MEDIUM", "HIGH"]);
+  it("开关型思考按当前协议投影档位和历史要求", () => {
+    const catalog: PiCatalogModel[] = [
+      {
+        ...create_catalog_model("toggle-model"),
+        api: "openai-completions",
+        compat: { thinkingFormat: "deepseek", requiresReasoningContentOnAssistantMessages: true },
       },
-    );
+    ];
+    const completions = resolve_model_capability(create_model("OpenAI", "toggle-model"), catalog);
+    expect(completions.available_thinking_levels).toEqual(["OFF", "LOW"]);
+    expect(completions.compat).toMatchObject({
+      thinkingFormat: "deepseek",
+      requiresReasoningContentOnAssistantMessages: true,
+    });
+    expect(
+      resolve_model_capability(create_model("OpenAIResponses", "toggle-model"), catalog)
+        .available_thinking_levels,
+    ).toEqual(["OFF", "LOW", "MEDIUM", "HIGH"]);
   });
 
   it("未知模型不猜测思考能力并使用安全容量", () => {
@@ -139,8 +145,8 @@ describe("统一模型能力", () => {
     expect(match_pi_catalog_models("model-alpha+model-bravo", catalog)).toEqual([]);
   });
 
-  it("目录乱序或新增托管平台同名记录不改变可信模板，原厂同协议记录优先", async () => {
-    const aggregated: PiModel<Api> = {
+  it("目录乱序或新增托管平台同名记录不改变可信模板，原厂同协议记录优先", () => {
+    const aggregated: PiCatalogModel = {
       ...create_catalog_model("shared-model"),
       provider: "openrouter",
       thinkingLevelMap: {
@@ -152,108 +158,88 @@ describe("统一模型能力", () => {
         max: "max",
       },
     };
-    const hosted: PiModel<Api> = {
+    const hosted: PiCatalogModel = {
       ...create_catalog_model("shared-model"),
       provider: "nvidia",
       reasoning: false,
     };
-    const native: PiModel<Api> = {
+    const native: PiCatalogModel = {
       ...create_catalog_model("shared-model"),
       provider: "openai",
       thinkingLevelMap: { off: null, minimal: null, low: null, medium: null, high: "high" },
     };
     for (const catalog of [[aggregated], [hosted, aggregated], [aggregated, hosted]]) {
-      await with_catalog(catalog, (resolve) => {
-        expect(
-          resolve(create_model("OpenAIResponses", "shared-model")).available_thinking_levels,
-        ).toEqual(["LOW", "HIGH", "MAX"]);
-      });
-    }
-    await with_catalog([hosted, aggregated, native], (resolve) => {
       expect(
-        resolve(create_model("OpenAIResponses", "shared-model")).available_thinking_levels,
-      ).toEqual(["HIGH"]);
-    });
+        resolve_model_capability(create_model("OpenAIResponses", "shared-model"), catalog)
+          .available_thinking_levels,
+      ).toEqual(["LOW", "HIGH", "MAX"]);
+    }
+    const catalog: PiCatalogModel[] = [hosted, aggregated, native];
+    expect(
+      resolve_model_capability(create_model("OpenAIResponses", "shared-model"), catalog)
+        .available_thinking_levels,
+    ).toEqual(["HIGH"]);
   });
 
-  it("同协议优先于跨协议原厂，未知来源冲突不依赖目录顺序猜测", async () => {
-    const exact: PiModel<Api> = {
+  it("同协议优先于跨协议原厂，未知来源冲突不依赖目录顺序猜测", () => {
+    const exact: PiCatalogModel = {
       ...create_catalog_model("shared-model"),
       provider: "openrouter",
       api: "openai-completions",
       thinkingLevelMap: { off: null, minimal: null, low: null, medium: null, high: "high" },
     };
-    await with_catalog([create_catalog_model("shared-model"), exact], (resolve) => {
-      expect(resolve(create_model("OpenAI", "shared-model")).available_thinking_levels).toEqual([
-        "HIGH",
-      ]);
-    });
+    const catalog: PiCatalogModel[] = [create_catalog_model("shared-model"), exact];
+    expect(
+      resolve_model_capability(create_model("OpenAI", "shared-model"), catalog)
+        .available_thinking_levels,
+    ).toEqual(["HIGH"]);
     const first = { ...exact, provider: "unknown-one" };
     const second = { ...exact, provider: "unknown-two", reasoning: false };
     for (const catalog of [
       [first, second],
       [second, first],
     ]) {
-      await with_catalog(catalog, (resolve) => {
-        expect(resolve(create_model("OpenAI", "shared-model")).available_thinking_levels).toEqual(
-          [],
-        );
-      });
+      expect(
+        resolve_model_capability(create_model("OpenAI", "shared-model"), catalog)
+          .available_thinking_levels,
+      ).toEqual([]);
     }
   });
 
-  it("局部模型修正保留同协议目录字段，跨协议仅沿用档位", async () => {
-    await with_catalog(
-      [
-        {
-          ...create_catalog_model("grok-4.6"),
-          provider: "xai",
-          api: "openai-completions",
-          compat: {
-            supportsStore: false,
-            requiresReasoningContentOnAssistantMessages: true,
-            supportsReasoningEffort: false,
-          },
-          thinkingLevelMap: { off: null, low: "low", max: "max" },
-        },
-      ],
-      (resolve) => {
-        expect(resolve(create_model("OpenAI", "grok-4.6")).compat).toMatchObject({
+  it("局部模型修正保留同协议目录字段，跨协议仅沿用档位", () => {
+    const catalog: PiCatalogModel[] = [
+      {
+        ...create_catalog_model("grok-4.6"),
+        provider: "xai",
+        api: "openai-completions",
+        compat: {
           supportsStore: false,
           requiresReasoningContentOnAssistantMessages: true,
-          supportsReasoningEffort: true,
-          thinkingFormat: "openai",
-        });
-        const responses = resolve(create_model("OpenAIResponses", "grok-4.6"));
-        expect(responses.compat).toBeUndefined();
-        expect(responses.thinking_level_map).toMatchObject({ off: null, max: "max" });
+          supportsReasoningEffort: false,
+        },
+        thinkingLevelMap: { off: null, low: "low", max: "max" },
       },
+    ];
+    expect(
+      resolve_model_capability(create_model("OpenAI", "grok-4.6"), catalog).compat,
+    ).toMatchObject({
+      supportsStore: false,
+      requiresReasoningContentOnAssistantMessages: true,
+      supportsReasoningEffort: true,
+      thinkingFormat: "openai",
+    });
+    const responses = resolve_model_capability(
+      create_model("OpenAIResponses", "grok-4.6"),
+      catalog,
     );
+    expect(responses.compat).toBeUndefined();
+    expect(responses.thinking_level_map).toMatchObject({ off: null, max: "max" });
   });
 });
 
-/** 使用自有目录验证选择规则；模型供应商的真实载荷由适配器测试覆盖。 */
-async function with_catalog(
-  catalog: PiModel<Api>[],
-  check: (resolve: typeof resolve_model_capability) => void,
-): Promise<void> {
-  vi.resetModules();
-  vi.doMock("@earendil-works/pi-ai/providers/all", () => ({
-    getBuiltinProviders: () => ["fixture"],
-    getBuiltinModels: () => catalog,
-  }));
-  try {
-    const { resolve_model_capability: resolve } = await import("./model-capability");
-    check(resolve);
-  } finally {
-    vi.doUnmock("@earendil-works/pi-ai/providers/all");
-    vi.resetModules();
-  }
-}
-
 /** 以默认用户配置观察公开能力结果。 */
 function resolve_capability(api_format: ModelApiFormat, model_id: string) {
-  return resolve_model_capability(create_model(api_format, model_id));
+  return resolve_model_capability(create_model(api_format, model_id), []);
 }
 
 /** 构造能力解析输入，自动容量与显式容量使用同一归一入口。 */
@@ -273,16 +259,12 @@ function create_model(
 }
 
 /** 提供独立于供应商目录更新的匹配样本。 */
-function create_catalog_model(id: string): PiModel<Api> {
+function create_catalog_model(id: string): PiCatalogModel {
   return {
     id,
-    name: id,
     api: "openai-responses",
     provider: "openai",
-    baseUrl: "https://example.com/v1",
     reasoning: true,
-    input: ["text"],
-    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
     contextWindow: 0,
     maxTokens: 0,
   };

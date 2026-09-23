@@ -5,7 +5,6 @@ import {
   type ModelThinkingLevel as PiModelThinkingLevel,
   type ThinkingLevelMap,
 } from "@earendil-works/pi-ai";
-import { getBuiltinModels, getBuiltinProviders } from "@earendil-works/pi-ai/providers/all";
 
 import {
   MODEL_THINKING_LEVELS,
@@ -64,7 +63,20 @@ const MODEL_PROVIDER_ORDER = [
   "nvidia",
 ] as const;
 
-type PiCatalogModel = PiModel<Api>;
+/** 目录只提供能力事实，请求身份、价格与输入类型由各自消费方决定。 */
+export type PiCatalogModel = Readonly<
+  Pick<
+    PiModel<Api>,
+    | "id"
+    | "provider"
+    | "api"
+    | "reasoning"
+    | "contextWindow"
+    | "maxTokens"
+    | "thinkingLevelMap"
+    | "compat"
+  >
+>;
 
 export type ResolvedModelCapability = Readonly<{
   agent_config: ModelAgentConfig; // 可持久化的用户配置，0 保留自动语义。
@@ -79,16 +91,14 @@ export type ResolvedModelCapability = Readonly<{
 
 type ModelCapabilityInput = Pick<Model, "api_format" | "model_id" | "agent">;
 
-/** 启动时冻结 Pi 内置目录，所有模型能力消费方共享这一份事实快照。 */
-const PI_CATALOG_MODELS: readonly PiCatalogModel[] = Object.freeze(
-  getBuiltinProviders().flatMap((provider) => getBuiltinModels(provider)),
-);
-
 /**
  * 解析唯一运行能力；容量来自目录，协议能力合并必要修正，再应用用户 Agent 配置。
  */
-export function resolve_model_capability(model: ModelCapabilityInput): ResolvedModelCapability {
-  const matches = match_pi_catalog_models(model.model_id, PI_CATALOG_MODELS);
+export function resolve_model_capability(
+  model: ModelCapabilityInput,
+  catalog: readonly PiCatalogModel[],
+): ResolvedModelCapability {
+  const matches = match_pi_catalog_models(model.model_id, catalog);
   const pi_template = select_pi_thinking_template(model.api_format, matches);
   const app_override = match_model_capability_override(model.model_id);
   const protocol_override = app_override?.protocols[model.api_format];
@@ -270,7 +280,7 @@ function resolve_available_thinking_levels(
   ) {
     return ["OFF", "LOW"];
   }
-  const probe: PiCatalogModel = {
+  const probe: PiModel<Api> = {
     id: "capability-probe",
     name: "capability-probe",
     api: "openai-completions",

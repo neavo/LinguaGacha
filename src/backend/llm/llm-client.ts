@@ -8,20 +8,26 @@ import {
   type ModelRequestSnapshot,
 } from "./llm-request";
 import { resolve_one_shot_pi_request } from "./llm-pi";
+import { resolve_model_capability } from "./model-capability";
+import type { PiModelCatalogReader } from "./pi-model-catalog";
+import { DEFAULT_MODEL_AGENT_CONFIG } from "../../domain/model-agent";
 import type { LLMRequestBody, LLMClientPort, LLMRequestResult } from "./llm-types";
 import { with_http_response_info } from "../network/http-response-info";
 
 interface LLMClientOptions {
   userAgent: string; // 由应用元信息层注入，LLMClient 不读取 version.txt
+  catalog: PiModelCatalogReader;
 }
 
 /** Backend 进程内 OneShot LLM 入口，拥有总时限、取消和结果归一。 */
 export class LLMClient implements LLMClientPort {
   private readonly user_agent: string; // 当前 Backend 实例的固定请求身份
+  private readonly catalog: PiModelCatalogReader; // 请求开始时解析能力，运行占用期间目录保持稳定。
 
   /** User-Agent 由组合根注入，避免请求层读取应用资源。 */
   public constructor(options: LLMClientOptions) {
     this.user_agent = options.userAgent;
+    this.catalog = options.catalog;
   }
 
   /** 在单次请求上下文内附加 HTTP 事实，避免依赖 SDK 的错误文本。 */
@@ -36,7 +42,20 @@ export class LLMClient implements LLMClientPort {
       session_id: body.run_id,
     });
     const controller = new AbortController();
-    const request = resolve_one_shot_pi_request(snapshot, body.messages, controller.signal);
+    const capability = resolve_model_capability(
+      {
+        api_format: snapshot.api_format,
+        model_id: snapshot.model_id,
+        agent: DEFAULT_MODEL_AGENT_CONFIG,
+      },
+      this.catalog.read_models(),
+    );
+    const request = resolve_one_shot_pi_request(
+      snapshot,
+      body.messages,
+      controller.signal,
+      capability,
+    );
     // 外部信号记录用户取消，独立超时标记保留同时发生时的结果优先级。
     let timeout = false;
     const timer = setTimeout(() => {

@@ -16,6 +16,7 @@ const GET_PATHS = new Set([
   "/api/events/stream",
   "/api/agent/snapshot",
   "/api/models/selection",
+  "/api/models/catalog/snapshot",
 ]);
 
 const POST_PATHS = new Set([
@@ -115,7 +116,7 @@ describe("register_api_routes", () => {
     expect(new Set(all_paths).size).toBe(all_paths.length);
   });
 
-  it("GET 路由返回 Agent 与模型选择快照", () => {
+  it("GET 路由返回 Agent、模型选择和目录快照", () => {
     const fixture = create_route_fixture();
     /** 保留原始响应对象以验证公开载荷。 */
     const json = (value: unknown) => value;
@@ -140,6 +141,10 @@ describe("register_api_routes", () => {
         model_selection: { translation: "a", agent: "c" },
         models: [],
       },
+    });
+    expect(read_get_handler(fixture.get, "/api/models/catalog/snapshot")({ json })).toEqual({
+      ok: true,
+      data: fixture.catalog_snapshot,
     });
   });
 
@@ -272,6 +277,7 @@ describe("register_api_routes", () => {
 
 /** 每个行为独立注册一次，避免跨测试共享 mock 调用历史。 */
 function create_route_fixture() {
+  const catalog_snapshot = { instance_id: "catalog", started_at: 100, revision: 1 };
   const get = vi.fn();
   const post_json = vi.fn();
   const start_task = vi.fn(() => ({ accepted: true }));
@@ -324,6 +330,7 @@ function create_route_fixture() {
     reset,
   } as unknown as AgentService;
   const services = {
+    modelCatalog: { get_snapshot: () => catalog_snapshot },
     app: { metadata: {}, settings: {}, updateSettings: update_settings },
     project: {
       lifecycle: { summarize_source_files },
@@ -362,6 +369,7 @@ function create_route_fixture() {
     recordRendererError: vi.fn(),
   });
   return {
+    catalog_snapshot,
     get,
     post_json,
     continue_session,

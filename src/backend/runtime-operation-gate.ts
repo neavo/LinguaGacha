@@ -12,6 +12,7 @@ export class RuntimeOperationGate {
   private project_write_running = false; // 项目写不公开为模型 owner，只阻止并发运行与写入
   private revision = 0; // 仅在公开 owner 变化时推进
   private readonly listeners = new Set<RuntimeActivityListener>(); // 组合根用它桥接 SSE
+  private readonly idle_waiters = new Set<() => void>(); // 目录应用等待运行与工程写入都释放
 
   /** 返回不可变值形状，调用方不能取得内部 lease。 */
   public get_snapshot(): RuntimeActivitySnapshot {
@@ -52,6 +53,29 @@ export class RuntimeOperationGate {
     if (this.active_runtime !== lease) return;
     this.active_runtime = null;
     this.publish_snapshot();
+    this.notify_idle();
+  }
+
+  /** 等待所有运行与工程写入口空闲；调用方随后仍须同步取得写租约。 */
+  public async wait_for_idle(signal: AbortSignal): Promise<void> {
+    signal.throwIfAborted();
+    if (this.active_runtime === null && !this.project_write_running) return;
+    await new Promise<void>((resolve, reject) => {
+      const settle = (): void => {
+        cleanup();
+        resolve();
+      };
+      const abort = (): void => {
+        cleanup();
+        reject(signal.reason);
+      };
+      const cleanup = (): void => {
+        this.idle_waiters.delete(settle);
+        signal.removeEventListener("abort", abort);
+      };
+      this.idle_waiters.add(settle);
+      signal.addEventListener("abort", abort, { once: true });
+    });
   }
 
   /** 用户写入和工程生命周期操作要求整个模型运行时空闲。 */
@@ -77,7 +101,14 @@ export class RuntimeOperationGate {
       return await operation();
     } finally {
       this.project_write_running = false;
+      this.notify_idle();
     }
+  }
+
+  /** 运行和写入均释放后唤醒等待方，等待方取得占用前仍须复查。 */
+  private notify_idle(): void {
+    if (this.active_runtime !== null || this.project_write_running) return;
+    for (const waiter of this.idle_waiters) waiter();
   }
 
   /** owner 每次变化都发布完整快照，消费者只按 revision 排序。 */

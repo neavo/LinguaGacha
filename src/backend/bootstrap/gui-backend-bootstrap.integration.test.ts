@@ -4,13 +4,20 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { GuiBackendBootstrap } from "./gui-backend-bootstrap";
 import { AppPathService } from "../app/app-path-service";
 import { LLMClient } from "../llm/llm-client";
+import { PiModelCatalog } from "../llm/pi-model-catalog";
 
 describe("GuiBackendBootstrap 集成", () => {
+  let check_catalog: ReturnType<typeof vi.spyOn>;
+  beforeEach(() => {
+    check_catalog = vi.spyOn(PiModelCatalog.prototype, "check").mockResolvedValue(undefined);
+  });
+  afterEach(() => vi.restoreAllMocks());
+
   it("关闭 Gateway 时取消流式上传并清理半成品", async ({ onTestFinished }) => {
     const app_root = fs.mkdtempSync(path.join(os.tmpdir(), "lg-file-upload-"));
     fs.writeFileSync(path.join(app_root, "version.txt"), "1.2.3", "utf8");
@@ -172,6 +179,7 @@ describe("GuiBackendBootstrap 集成", () => {
 
     try {
       const started = await bootstrap.start();
+      expect(check_catalog).toHaveBeenCalledOnce();
       const health = await fetch(`${started.apiBaseUrl}/api/health`);
       const agent = await fetch(`${started.apiBaseUrl}/api/agent/snapshot`);
 

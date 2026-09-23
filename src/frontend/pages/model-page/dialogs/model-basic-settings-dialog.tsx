@@ -38,12 +38,6 @@ export function ModelBasicSettingsDialog(props: ModelBasicSettingsDialogProps): 
   const [model_id_input_value, set_model_id_input_value] = useState("");
 
   useEffect(() => {
-    if (props.model !== null) {
-      set_model_id_input_value(props.model.model_id);
-    }
-  }, [props.model]);
-
-  useEffect(() => {
     if (!props.open) {
       set_is_model_id_editor_open(false);
     }
@@ -154,6 +148,7 @@ export function ModelBasicSettingsDialog(props: ModelBasicSettingsDialogProps): 
                     size="sm"
                     disabled={props.readonly}
                     onClick={() => {
+                      // 输入器每次打开时取当前值，后台快照不会覆盖本次输入。
                       set_model_id_input_value(model.model_id);
                       set_is_model_id_editor_open(true);
                     }}

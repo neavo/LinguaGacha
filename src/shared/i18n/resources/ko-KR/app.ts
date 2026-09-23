@@ -11,6 +11,7 @@ export const ko_kr_app = {
     app_name: "LinguaGacha",
   },
   model: {
+    catalog_updated: "모델 데이터베이스가 업데이트되었습니다 …",
     type: {
       preset: "프리셋 모델",
       google: "사용자 지정 Google 모델",

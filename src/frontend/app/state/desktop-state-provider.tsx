@@ -726,6 +726,7 @@ export function DesktopStateProvider(props: { children: ReactNode }): JSX.Elemen
   });
 
   useDesktopEventStream({
+    appLanguage: settings_snapshot.app_language,
     schedulerRef: refresh_scheduler_ref,
     applySettingsSnapshot: apply_settings_snapshot,
     applyTaskSnapshot: sync_task_snapshot,

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 
 import {
   normalize_model_agent_config,
@@ -225,6 +225,7 @@ export function ModelAdvancedSettingsDialog(
   props: ModelAdvancedSettingsDialogProps,
 ): JSX.Element | null {
   const { t } = useI18n();
+  // 页面以模型 ID 作为 React key，切换目标时重建草稿，目录刷新保留当前输入。
   const [request_json_drafts, set_request_json_drafts] = useState(
     create_request_json_drafts(props.model),
   );
@@ -237,18 +238,6 @@ export function ModelAdvancedSettingsDialog(
   const [slider_texts, set_slider_texts] = useState<Record<SliderFieldName, string>>(
     create_slider_text_state(props.model),
   );
-
-  useEffect(() => {
-    if (props.model !== null) {
-      set_request_json_drafts(create_request_json_drafts(props.model));
-      set_agent_limit_draft(create_agent_limit_draft(props.model));
-    }
-  }, [props.model]);
-
-  useEffect(() => {
-    set_slider_values(create_slider_value_state(props.model));
-    set_slider_texts(create_slider_text_state(props.model));
-  }, [props.model]);
 
   if (props.model === null) {
     return null;

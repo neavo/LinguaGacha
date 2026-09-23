@@ -9,7 +9,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { JsonRecord } from "../../domain/json";
 import { Model, type ModelApiFormat } from "../../domain/model";
 import { resolve_model_capability } from "../llm/model-capability";
+import { read_builtin_pi_models } from "../llm/pi-model-catalog";
 import { register_agent_model } from "./agent-model";
+
+const catalog = { read_models: read_builtin_pi_models };
 
 const api_mocks = vi.hoisted(() => ({
   streamSimple: vi.fn<ProviderStreams["streamSimple"]>(() => ({}) as never),
@@ -41,6 +44,7 @@ describe("Agent 模型注册", () => {
       runtime,
       build_config("OpenAI", { api_url: "https://opencode.ai/zen/go/v1" }),
       TEST_REQUEST_IDENTITY,
+      catalog,
     );
     const fetch = vi.fn<typeof globalThis.fetch>(
       async () =>
@@ -71,11 +75,15 @@ describe("Agent 模型注册", () => {
   it("将统一解析的 Agent 自动容量注册到运行时", async () => {
     const runtime = await create_model_runtime();
     const config = { api_format: "OpenAIResponses", model_id: "deepseek-flash" };
-    const { agent_limits } = resolve_model_capability(Model.from_json(config, "active"));
+    const { agent_limits } = resolve_model_capability(
+      Model.from_json(config, "active"),
+      catalog.read_models(),
+    );
     const resolved = register_agent_model(
       runtime,
       build_config("OpenAIResponses", config),
       TEST_REQUEST_IDENTITY,
+      catalog,
     );
     expect(resolved.model).toMatchObject({
       id: "deepseek-flash",
@@ -92,6 +100,7 @@ describe("Agent 模型注册", () => {
         runtime,
         build_config(api_format, { model_id: "doubao-seed-evolving" }),
         TEST_REQUEST_IDENTITY,
+        catalog,
       );
       expect(resolved.thinkingLevel).toBe("off");
       expect(resolved.model_config.thinking.level).toBe("OFF");
@@ -128,6 +137,7 @@ describe("Agent 模型注册", () => {
         threshold: { input_token_limit: 4096, output_token_limit: 1024 },
       }),
       TEST_REQUEST_IDENTITY,
+      catalog,
     );
 
     expect(resolved.model).toMatchObject({
@@ -192,13 +202,14 @@ describe("Agent 模型注册", () => {
 
   it("同一运行时重新注册模型时采用最新容量", async () => {
     const runtime = await create_model_runtime();
-    register_agent_model(runtime, build_config("OpenAI"), TEST_REQUEST_IDENTITY);
+    register_agent_model(runtime, build_config("OpenAI"), TEST_REQUEST_IDENTITY, catalog);
     const resolved = register_agent_model(
       runtime,
       build_config("OpenAI", {
         agent: { context_window: 400_000, max_output_tokens: 50_000 },
       }),
       TEST_REQUEST_IDENTITY,
+      catalog,
     );
 
     expect(resolved.model).toMatchObject({ contextWindow: 400_000, maxTokens: 50_000 });
@@ -218,6 +229,7 @@ describe("Agent 模型注册", () => {
         },
       }),
       TEST_REQUEST_IDENTITY,
+      catalog,
     );
 
     expect(resolved.model).toMatchObject({
@@ -272,6 +284,7 @@ describe("Agent 模型注册", () => {
         thinking: { level: "HIGH" },
       }),
       TEST_REQUEST_IDENTITY,
+      catalog,
     );
 
     expect(resolved.model.reasoning).toBe(false);
@@ -292,6 +305,7 @@ describe("Agent 模型注册", () => {
         },
       }),
       TEST_REQUEST_IDENTITY,
+      catalog,
     );
 
     expect(resolved.model.reasoning).toBe(false);
@@ -314,6 +328,7 @@ describe("Agent 模型注册", () => {
       runtime,
       build_config("SakuraLLM"),
       TEST_REQUEST_IDENTITY,
+      catalog,
     );
 
     expect(resolved.model).toMatchObject({
@@ -339,7 +354,7 @@ describe("Agent 模型注册", () => {
     ];
     const runtime = await create_model_runtime();
 
-    expect(register_agent_model(runtime, config, TEST_REQUEST_IDENTITY).model.id).toBe(
+    expect(register_agent_model(runtime, config, TEST_REQUEST_IDENTITY, catalog).model.id).toBe(
       "test-model",
     );
   });

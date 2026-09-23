@@ -40,6 +40,7 @@ function create_backend_services_options(): BackendServicesOptions {
     paths: {
       get_app_root: () => TEST_APP_ROOT,
       get_builtin_root: () => "E:/app.asar/builtin",
+      get_user_data_path: (name: string) => `E:/UserData/${name}`,
       get_user_data_dir: () => "E:/UserData",
       get_agent_workspace_root_dir: () => "E:/UserData/agent/workspace",
     },
@@ -70,17 +71,21 @@ describe("BackendServices", () => {
     planning_dispose_mock.mockClear();
   });
 
-  it("释放时只管理共享业务根拥有的运行期资源", async () => {
+  it("后台目录检查只启动一次，关闭时释放共享资源", async () => {
     const options = create_backend_services_options();
     const compute_worker_dispose = vi.spyOn(ComputeWorkerClient.prototype, "dispose");
     const services = new BackendServices(options);
+    const check = vi.spyOn(services.modelCatalog, "check").mockResolvedValue();
+    services.start_model_catalog_check();
+    services.start_model_catalog_check();
+    expect(check).toHaveBeenCalledOnce();
 
     await services.dispose();
 
     expect(work_unit_dispose_mock).toHaveBeenCalledTimes(1);
     expect(planning_dispose_mock).toHaveBeenCalledTimes(1);
     expect(compute_worker_dispose).toHaveBeenCalledTimes(1);
-    expect(options.metadata.build_linguagacha_user_agent).toHaveBeenCalledTimes(1);
+    check.mockRestore();
     compute_worker_dispose.mockRestore();
   });
 
