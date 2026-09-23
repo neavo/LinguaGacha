@@ -10,6 +10,7 @@ export const zh_cn_app = {
     app_name: "LinguaGacha",
   },
   model: {
+    catalog_updated: "模型数据库已更新 …",
     type: {
       preset: "预设模型",
       google: "自定义 Google 模型",

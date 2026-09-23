@@ -8,12 +8,12 @@
 - 普通 loaded-project query / write 从 `ProjectSessionState` 取得目标工程；create、open、preview、`/api/session/source-files/summary` 和打开前 settings alignment 是可以接收显式路径的生命周期例外。source-files summary 只按共享互斥扩展名目录递归发现并去重，返回文件总数与各格式命中数，不读取内容或向 renderer 公开文件路径。
 - Gateway 只监听本机地址，CORS 只允许 `Content-Type`，renderer 不依赖额外私有请求头。
 - JSON 成功响应为 `{ ok: true, data }`，失败响应为 `{ ok: false, error: { code, details? } }`；`APP_ERROR_DEFINITIONS` 是错误码、严重度和 HTTP 状态的唯一词表。公开错误不携带服务端本地化文案、request id、diagnostic context、cause、stack 或供应商原始异常，request id 只保留在后端日志上下文中。
-- 公开 SSE topic 固定为 `project.data_changed`、`batch_translation.snapshot_changed`、`runtime.snapshot_changed`、`agent.session_event`、`settings.changed`，data 使用严格 JSON 序列化；`POST /api/runtime/snapshot` 返回带单调 `revision` 的当前运行所有者 `batch_translation | agent | model_test | null`。
+- 公开 SSE topic 固定为 `project.data_changed`、`batch_translation.snapshot_changed`、`runtime.snapshot_changed`、`agent.session_event`、`settings.changed`、`model_catalog.updated`，`data` 使用严格 JSON 序列化。`POST /api/runtime/snapshot` 返回带单调 `revision` 的当前运行所有者 `batch_translation | agent | model_test | null`。`GET /api/models/catalog/snapshot` 与目录更新事件共用 `instance_id + started_at + revision` 快照。
 - 通用质量规则由切片 query / update 读写，校对 query 统一分发列表、上下文、筛选面板与真实 warning 类型计数。items update 对正文译文的实际修改统一完成条目并清零 `retry_count`，相同非空译文可以确认 `ERROR` 结果，显式人工状态最后覆盖且同样清零，姓名译文保持正文状态与重试历史；清空命令以必填 `reset_status` 决定是否同时恢复状态和重试次数，替换保留独立的后端意图命令。
 - `POST /api/session/project/preview` 直接读取磁盘，不加载或切换会话；文件路径与工作台共用 asset 顺序及历史条目补齐规则，统计复用 `build_project_translation_stats`。
 - `POST /api/project/translation-stats` 提供当前工程统计，成功与跳过条目占全部条目的比例取整为完成率，空工程为零，仍有未完成对象时最高为 99%；该口径独立于本轮任务进度。响应携带工程路径供切换隔离。
 - `POST /api/workbench/snapshot` 的文本文件复用工程统计口径；PDF 按原页处置计数，translate（含空译稿）为完成，keep 与 omit 为跳过，其余为等待，失败计数为 null。完成率复用工程取整规则，与核对标记独立；工程统计仍只汇总文本条目。
-- 模型管理 API 只负责配置 CRUD；任务入口读取窄选项，通过组合选模或按用途更新等级命令修改配置。选项只携带显示身份、解析后的非敏感 Agent 容量、当前等级与可用等级，不公开自动配置、密钥、请求覆盖或生成参数。
+- 模型配置命令负责配置 CRUD；任务入口读取窄选项，通过组合选模或按用途更新等级命令修改配置。选项只携带显示身份、解析后的非敏感 Agent 容量、当前等级与可用等级，不公开自动配置、密钥、请求覆盖或生成参数。
 - `LogManager` 统一日志入口，`LogFileStore` 拥有每日正文 `.jsonl` 与可重建索引 `.idx.jsonl`。文件和 API 传递同一份正文，控制台和索引消费文本投影；Agent 事件字段由后端生产者约束，读取端按 JSON 展示。翻译摘要冻结本地化文案，其投影由摘要承载外层消息，统一展示堆栈、原因链和诊断上下文。日志写入时间由 `LogManager` 生成；翻译起止时间由 worker 在模型请求开始和响应处理收尾时捕获，回放保留原值。
 - 日志身份采用日期和物理行号，隐藏与损坏行同样计数；字节定位只留在索引。每个日期在进程首次访问时重建索引，随后通过文件身份、大小和时间戳区别自身追加与外部编辑；编辑或索引失效更换内容代次，旧游标与详情请求过期。正文先写、索引后写；同日期恢复任务共享，失败保留正文，日志自身故障走 stderr。
 - 查询固定在显式日期文件内结束；隐藏记录 `window: false` 不进入摘要和详情。Agent 对话与执行记录消费同一查询链路，其生产和生命周期边界归 [AGENT_RUNTIME](AGENT_RUNTIME.md)。正文、索引和旧 `.log` 按最近三个日期共同轮转；旧 `.log` 只供直接查看。
@@ -23,6 +23,8 @@
 
 内置模型目录按 ID 补齐缺失模型并提供重置模板；已有用户配置与选择保留。预设下架后可删除，仍有模板时可重置且禁止删除。`ModelService` 每次操作共用一份目录判断权限，快照的 `can_reset` 不持久化，类型仍记录来源与分组。目录允许空数组；读取、解析或结构校验失败在配置写入前报错，避免把资源损坏解释为下架。
 
+`PiModelCatalog` 由共享业务组合根持有，将 Pi 内置能力与 `userdata/pi-model-catalog.json` 中较新的供应商数据合并。GUI 启动后通过系统代理后台检查一次，CLI 读取已有缓存。单个供应商失败保留旧值，网络超时仍可应用已完成的结果。缓存通过临时文件替换保存，能力发生变化时等待 `RuntimeOperationGate` 空闲，再由 `ModelService` 读取最新配置、修正失效档位并同步切换目录。保存失败时保留当前运行目录并记录诊断。Agent 和 OneShot 显式读取同一目录，Agent 的 `ModelRuntime` 关闭独立联网刷新。
+
 `POST /api/models/copy` 接受源配置内部 ID `model_id`，一次保存后返回 `snapshot` 和 `copied_model_id`。复制源模型当前完整配置，按协议进入对应自定义分类末尾；SakuraLLM 禁止复制。副本使用新 ID，名称按当前应用语言在整个模型集合中避重，有效模型选择保留原值。
 
 ## 2. 状态拥有者
@@ -31,6 +33,7 @@
 |---|---|---|
 |应用设置、最近工程、语言|`AppSettingService`|设置 API、CLI transient overrides、`settings.changed`|
 |模型集合、配置与按用途选择|`ModelService`|模型 API；经 `AppSettingService` 持久化到应用设置|
+|Pi 模型能力有效目录与启动检查|`PiModelCatalog`|内置目录、`userdata/pi-model-catalog.json`、目录快照与更新事件|
 |翻译 / Agent / 接口测试占用与工程写互斥|`RuntimeOperationGate`|运行 lease、`POST /api/runtime/snapshot`、`runtime.snapshot_changed`|
 |loaded 工程身份|`ProjectSessionState`|`ProjectLifecycleService`|
 |loaded 工程热读数据|`CacheManager`|工程热机、committed event、功能 query|

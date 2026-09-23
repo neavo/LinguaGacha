@@ -1,8 +1,37 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { RuntimeOperationGate } from "./runtime-operation-gate";
 
 describe("RuntimeOperationGate", () => {
+  it("等待运行与工程写入释放，并可取消等待", async () => {
+    const gate = new RuntimeOperationGate();
+    const lease = gate.begin_runtime("agent");
+    const ready = vi.fn();
+    const pending = gate.wait_for_idle(new AbortController().signal).then(ready);
+    await Promise.resolve();
+    expect(ready).not.toHaveBeenCalled();
+    gate.finish_runtime(lease);
+    await pending;
+    expect(ready).toHaveBeenCalledOnce();
+
+    let release!: () => void;
+    const writing = gate.run_project_write(
+      () =>
+        new Promise<void>((resolve) => {
+          release = resolve;
+        }),
+    );
+    const controller = new AbortController();
+    const cancelled = gate.wait_for_idle(controller.signal);
+    controller.abort();
+    await expect(cancelled).rejects.toBe(controller.signal.reason);
+    const after_write = vi.fn();
+    const waiting_for_write = gate.wait_for_idle(new AbortController().signal).then(after_write);
+    release();
+    await writing;
+    expect(after_write).toHaveBeenCalledOnce();
+    await waiting_for_write;
+  });
   it("普通任务与 Agent 共享单一运行租约并发布单调快照", () => {
     const gate = new RuntimeOperationGate();
     const snapshots: unknown[] = [];

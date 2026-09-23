@@ -41,6 +41,8 @@ const resources = {
 };
 const services = {
   model: { dispose: vi.fn(async () => undefined) },
+  modelCatalog: { marker: "pi-model-catalog" },
+  start_model_catalog_check: vi.fn(),
   batchTranslation: { marker: "batch-translation" },
   state: shared_state,
   proofreading: { query: { marker: "proofreading" } },

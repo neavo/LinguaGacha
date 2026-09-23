@@ -10,6 +10,7 @@ import * as AppErrors from "../../shared/error";
 import { read_model_request_snapshot, type ModelRequestIdentity } from "../llm/llm-request";
 import { apply_request_overrides } from "../llm/llm-payload";
 import { resolve_model_capability } from "../llm/model-capability";
+import type { PiModelCatalogReader } from "../llm/pi-model-catalog";
 import { resolve_pi_model, type PiApi } from "../llm/llm-pi";
 import { resolve_model_for_usage } from "../model/model-config-resolver";
 
@@ -18,6 +19,7 @@ export function register_agent_model(
   model_runtime: ModelRuntime,
   config: JsonRecord,
   identity: ModelRequestIdentity,
+  catalog: PiModelCatalogReader,
 ): {
   model: PiModel<PiApi>;
   thinkingLevel: PiModelThinkingLevel;
@@ -26,7 +28,7 @@ export function register_agent_model(
   const raw_model = resolve_model_for_usage(config, "agent");
   if (raw_model === null) throw new AppErrors.AppError("model.not_found");
   const configured_model = Model.from_json(raw_model, String(raw_model["id"] ?? ""));
-  const capability = resolve_model_capability(configured_model);
+  const capability = resolve_model_capability(configured_model, catalog.read_models());
   const snapshot = read_model_request_snapshot(raw_model, identity);
   const api_key = snapshot.api_keys[0] ?? "no_key_required";
   const configured_name = String(raw_model["name"] ?? "").trim();

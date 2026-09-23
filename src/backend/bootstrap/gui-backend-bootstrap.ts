@@ -136,6 +136,7 @@ export class GuiBackendBootstrap {
         pickSavePath: this.options.pickSavePath,
       });
       const agent = new AgentService({
+        catalog: services.modelCatalog,
         images,
         batchTranslation: services.batchTranslation,
         paths: resources.paths,
@@ -159,6 +160,7 @@ export class GuiBackendBootstrap {
       this.gateway = gateway;
       const gateway_result = await gateway.start();
       this.state = "ready";
+      services.start_model_catalog_check();
       return {
         apiBaseUrl: gateway_result.baseUrl,
         backendServices: services,

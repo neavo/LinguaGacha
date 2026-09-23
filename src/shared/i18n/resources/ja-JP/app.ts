@@ -11,6 +11,7 @@ export const ja_jp_app = {
     app_name: "LinguaGacha",
   },
   model: {
+    catalog_updated: "モデルデータベースを更新しました …",
     type: {
       preset: "プリセットモデル",
       google: "カスタム Google モデル",

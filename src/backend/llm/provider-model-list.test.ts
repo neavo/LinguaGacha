@@ -1,13 +1,13 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { list_available_models } from "./llm-model-catalog";
+import { list_available_models } from "./provider-model-list";
 
 afterEach(() => {
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
 });
 
-describe("llm-model-catalog", () => {
+describe("provider-model-list", () => {
   it.each([
     ["OpenAI", "https://api.example/v1"],
     ["OpenAIResponses", "https://api.example/v1/responses/"],

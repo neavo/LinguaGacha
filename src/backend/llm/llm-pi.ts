@@ -14,16 +14,11 @@ import { openAIResponsesApi } from "@earendil-works/pi-ai/api/openai-responses.l
 import type { OpenAICompletionsOptions } from "@earendil-works/pi-ai/api/openai-completions";
 import type { AnthropicOptions } from "@earendil-works/pi-ai/api/anthropic-messages";
 
-import { DEFAULT_MODEL_AGENT_CONFIG } from "../../domain/model-agent";
 import { AppError } from "../../shared/error";
 import { resolve_one_shot_generation_options, type ModelRequestSnapshot } from "./llm-request";
 import { apply_one_shot_request_overrides } from "./llm-payload";
 import type { LLMMessage } from "./llm-types";
-import {
-  resolve_model_capability,
-  resolve_pi_thinking_level,
-  type ResolvedModelCapability,
-} from "./model-capability";
+import { resolve_pi_thinking_level, type ResolvedModelCapability } from "./model-capability";
 
 // Pi provider 身份只用于 adapter 与 ModelRuntime 注册，项目策略直接使用 api_format。
 export type PiApi =
@@ -104,6 +99,7 @@ export function resolve_one_shot_pi_request(
   snapshot: ModelRequestSnapshot,
   messages: LLMMessage[],
   signal: AbortSignal,
+  capability: ResolvedModelCapability,
 ): {
   model: PiModel<PiApi>;
   context: Context;
@@ -111,11 +107,6 @@ export function resolve_one_shot_pi_request(
   stream: OneShotStream;
 } {
   const generation = resolve_one_shot_generation_options(snapshot);
-  const capability = resolve_model_capability({
-    api_format: snapshot.api_format,
-    model_id: snapshot.model_id,
-    agent: DEFAULT_MODEL_AGENT_CONFIG,
-  });
   const resolved = resolve_pi_model(snapshot, capability, {
     name: snapshot.model_id,
     // Anthropic 要求 max_tokens：显式值冻结总 ceiling，自动值使用模型规格或未知模型回退。

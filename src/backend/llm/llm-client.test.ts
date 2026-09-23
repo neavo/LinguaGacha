@@ -9,6 +9,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { JsonRecord, JsonValue } from "../../domain/json";
 import { LLMClient } from "./llm-client";
+import { read_builtin_pi_models } from "./pi-model-catalog";
 import type { LLMRequestBody, LLMRequestResult } from "./llm-types";
 import { record_http_response_info } from "../network/http-response-info";
 
@@ -456,7 +457,10 @@ describe("LLMClient", () => {
 
 /** 所有用例共用固定 User-Agent，供应商 transport 由 Backend 进程统一安装。 */
 function create_client(): LLMClient {
-  return new LLMClient({ userAgent: TEST_USER_AGENT });
+  return new LLMClient({
+    userAgent: TEST_USER_AGENT,
+    catalog: { read_models: read_builtin_pi_models },
+  });
 }
 
 /** 用 Pi 公开事件流构造确定的成功或 provider-error 终态。 */

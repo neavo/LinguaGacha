@@ -92,6 +92,7 @@ export function ModelPage(_props: ModelPageProps): JSX.Element {
       />
 
       <ModelAdvancedSettingsDialog
+        key={model_page_state.active_dialog_model?.id}
         open={model_page_state.dialog_state.kind === "advanced"}
         model={model_page_state.active_dialog_model}
         readonly={model_page_state.readonly}

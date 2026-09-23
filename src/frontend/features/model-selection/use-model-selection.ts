@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import type { ModelThinkingLevel, ModelUsage } from "@domain/model";
 import { useRuntimeSnapshot } from "@frontend/app/state/use-desktop-state";
+import { useModelCatalogRevision } from "@frontend/app/state/model-catalog-store";
 import { api_fetch, api_get } from "@frontend/app/desktop/desktop-api";
 import { push_toast } from "@frontend/app/feedback/desktop-toast";
 import { resolve_visible_error_message } from "@frontend/app/feedback/visible-error-message";
@@ -28,6 +29,7 @@ const EMPTY_SNAPSHOT = normalize_model_selection_snapshot({});
 export function useModelSelection(): ModelSelectionController {
   const { t } = useI18n();
   const runtime_idle = useRuntimeSnapshot().owner === null; // 共享运行占用变化后刷新配置快照
+  const catalog_revision = useModelCatalogRevision();
   const [snapshot, set_snapshot] = useState<ModelSelectionSnapshot>(EMPTY_SNAPSHOT);
   const [loading, set_loading] = useState(true);
   const [updating, set_updating] = useState(false);
@@ -58,7 +60,7 @@ export function useModelSelection(): ModelSelectionController {
     return () => {
       mounted = false;
     };
-  }, [t, runtime_idle]);
+  }, [t, runtime_idle, catalog_revision]);
 
   /** 模型控制命令共用提交、回包归一和错误恢复。 */
   const update_snapshot = useCallback(

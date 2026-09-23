@@ -98,6 +98,8 @@ describe("ModelAdvancedSettingsDialog", () => {
         changes: { from: 0, to: headers.state.doc.length, insert: '{"X-Test":}' },
       });
     });
+    await render_dialog(true);
+    expect(headers.state.doc.toString()).toBe('{"X-Test":}');
     await act(async () => {
       headers.contentDOM.focus();
       headers.contentDOM.blur();

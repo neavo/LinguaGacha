@@ -11,6 +11,7 @@ export const en_us_app = {
     app_name: "LinguaGacha",
   },
   model: {
+    catalog_updated: "Model database updated …",
     type: {
       preset: "Preset Models",
       google: "Custom Google Models",

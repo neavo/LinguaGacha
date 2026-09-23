@@ -11,6 +11,7 @@ export const de_de_app = {
     app_name: "LinguaGacha",
   },
   model: {
+    catalog_updated: "Modelldatenbank wurde aktualisiert …",
     type: {
       preset: "Voreingestellte Modelle",
       google: "Benutzerdefinierte Google-Modelle",

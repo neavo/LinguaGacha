@@ -4,18 +4,24 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { DesktopRefreshScheduler } from "@frontend/app/state/desktop-refresh-scheduler";
 import { useDesktopEventStream } from "@frontend/app/state/desktop-event-stream";
+import { format_i18n_message } from "@shared/i18n";
 
-const { open_event_stream_mock } = vi.hoisted(() => {
+const { open_event_stream_mock, api_get_mock, push_toast_mock } = vi.hoisted(() => {
   return {
     open_event_stream_mock: vi.fn(),
+    api_get_mock: vi.fn(async () => ({ instance_id: "test", started_at: 1, revision: 0 })),
+    push_toast_mock: vi.fn(),
   };
 });
 
 vi.mock("@frontend/app/desktop/desktop-api", () => {
   return {
     open_event_stream: open_event_stream_mock,
+    api_get: api_get_mock,
   };
 });
+
+vi.mock("@frontend/app/feedback/desktop-toast", () => ({ push_toast: push_toast_mock }));
 
 let root: Root | null = null;
 let container: HTMLDivElement | null = null;
@@ -101,6 +107,7 @@ function create_event_stream_options(
   overrides: Partial<Omit<DesktopEventStreamOptions, "schedulerRef">> = {},
 ): Omit<DesktopEventStreamOptions, "schedulerRef"> {
   return {
+    appLanguage: "ZH",
     applySettingsSnapshot: vi.fn(),
     applyTaskSnapshot: vi.fn(),
     applyRuntimeSnapshot: vi.fn(),
@@ -131,6 +138,48 @@ describe("useDesktopEventStream", () => {
     root = null;
     container = null;
     vi.restoreAllMocks();
+    api_get_mock.mockReset();
+    api_get_mock.mockResolvedValue({ instance_id: "test", started_at: 1, revision: 0 });
+    push_toast_mock.mockClear();
+  });
+
+  it("在语言 Provider 外补查目录，通知使用最新语言且重连不重复提示", async () => {
+    const event_stream = create_event_source_stub();
+    const started_at = Date.now();
+    const instance_id = `test-${started_at}`;
+    let finish_snapshot!: (value: {
+      instance_id: string;
+      started_at: number;
+      revision: number;
+    }) => void;
+    api_get_mock.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish_snapshot = resolve;
+        }),
+    );
+    api_get_mock.mockResolvedValue({ instance_id, started_at, revision: 1 });
+    open_event_stream_mock.mockClear();
+    open_event_stream_mock.mockReturnValue(event_stream.event_source);
+    const options = create_event_stream_options();
+    render_event_stream(options);
+    await wait_for_condition(() => event_stream.has_listener("model_catalog.updated"));
+
+    act(() => event_stream.open());
+    expect(api_get_mock).toHaveBeenCalledWith("/api/models/catalog/snapshot");
+    await act(async () => {
+      root?.render(<EventStreamProbe options={{ ...options, appLanguage: "EN" }} />);
+    });
+    expect(open_event_stream_mock).toHaveBeenCalledOnce();
+    act(() => event_stream.emit("model_catalog.updated", { instance_id, started_at, revision: 1 }));
+    expect(push_toast_mock).toHaveBeenCalledExactlyOnceWith(
+      "success",
+      format_i18n_message("en-US", "app.model.catalog_updated"),
+    );
+    await act(async () => finish_snapshot({ instance_id, started_at, revision: 0 }));
+    act(() => event_stream.open());
+    await act(async () => Promise.resolve());
+    expect(push_toast_mock).toHaveBeenCalledTimes(1);
   });
 
   it("项目事件管线失败时用摘要化 payload 上报 renderer 错误", async () => {

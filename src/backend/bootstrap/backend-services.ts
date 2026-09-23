@@ -23,6 +23,7 @@ import {
 } from "../file/translation-file-export-service";
 import { LogManager } from "../log/log-manager";
 import { LLMClient } from "../llm/llm-client";
+import { PiModelCatalog } from "../llm/pi-model-catalog";
 import { ModelService } from "../model/model-service";
 import { ProjectContentService } from "../project/project-content-service";
 import { create_project_change_publisher } from "../project/project-write-event-adapter";
@@ -41,6 +42,7 @@ import { ComputeWorkerClient } from "../worker/compute-worker-client";
 import type { BackendWorkerExecution } from "../worker/worker-execution";
 import type { JsonRecord } from "../../domain/json";
 import { PROJECT_CHANGE_EVENT_TOPIC } from "../../shared/project-event";
+import { MODEL_CATALOG_UPDATED_EVENT_TOPIC } from "../../shared/model-catalog";
 import {
   RUNTIME_ACTIVITY_EVENT_TOPIC,
   type RuntimeActivitySnapshot,
@@ -110,6 +112,9 @@ export interface BackendFileServices {
  * GUI 与 CLI 共享的业务服务组合根；状态拥有者只在这里装配。
  */
 export class BackendServices {
+  public readonly modelCatalog: PiModelCatalog; // GUI 与 CLI 共用的模型能力事实。
+  private catalog_check: Promise<void> | null = null; // 唯一启动守卫，关闭时等待已取消的检查收束。
+  private readonly publish_event: BackendServicesOptions["publishEvent"]; // 目录应用完成后才通知消费方。
   private readonly app_setting_service: AppSettingService; // 引用 Bootstrap 提供的唯一设置服务
   private readonly cache_manager: CacheManager; // 所有领域服务共用的项目热读缓存
   private readonly pdf_worker: PDFWorker; // 独立文档计算与取消，随业务根释放
@@ -136,6 +141,7 @@ export class BackendServices {
    * 只在这里装配状态拥有者与服务依赖，调用方不得二次 new 同类服务。
    */
   public constructor(options: BackendServicesOptions) {
+    this.publish_event = options.publishEvent;
     const paths = options.paths;
     const metadata = options.metadata;
     const user_agent = metadata.build_linguagacha_user_agent();
@@ -144,7 +150,8 @@ export class BackendServices {
 
     this.app_setting_service = options.appSettingService;
     this.logManager = options.logManager;
-    const llm_client = new LLMClient({ userAgent: user_agent });
+    this.modelCatalog = new PiModelCatalog(paths, this.logManager);
+    const llm_client = new LLMClient({ userAgent: user_agent, catalog: this.modelCatalog });
     if (options.workerExecution.kind === "worker_threads" && !options.workspaceRuntimeDirectory)
       throw new Error("PDF runtime directory is required for worker execution.");
     this.pdf_worker = new PDFWorker(
@@ -199,6 +206,7 @@ export class BackendServices {
       execution: options.workerExecution,
     });
     const task_engine = new BatchTranslationRunner({
+      catalog: this.modelCatalog,
       llmClient: llm_client,
       builtinRoot: paths.get_builtin_root(),
       taskStore: new BatchTranslationProjectStore(
@@ -302,6 +310,7 @@ export class BackendServices {
       this.app_setting_service,
       llm_client,
       this.runtime_gate,
+      this.modelCatalog,
       this.logManager,
     );
     this.batchTranslation = new BatchTranslationService(
@@ -328,16 +337,32 @@ export class BackendServices {
     });
   }
 
+  /** GUI 启动后后台检查一次；CLI 只使用已加载缓存。 */
+  public start_model_catalog_check(): void {
+    if (this.catalog_check !== null) return;
+    this.catalog_check = this.modelCatalog.check((models, commit, signal) =>
+      this.model.apply_catalog(models, commit, signal, () =>
+        this.publish_event(MODEL_CATALOG_UPDATED_EVENT_TOPIC, this.modelCatalog.get_snapshot()),
+      ),
+    );
+  }
+
   /**
    * 释放组合根拥有的运行态资源；数据库和日志由 Bootstrap 关闭。
    */
   public async dispose(): Promise<void> {
+    const errors: unknown[] = [];
+    this.modelCatalog.dispose();
+    try {
+      await this.catalog_check;
+    } catch (error) {
+      errors.push(error);
+    }
     this.proofreading.preview.dispose();
     this.task_stream_unsubscribe?.();
     this.task_stream_unsubscribe = null;
     this.runtime_stream_unsubscribe?.();
     this.runtime_stream_unsubscribe = null;
-    const errors: unknown[] = [];
     try {
       await this.task_runtime.dispose();
     } catch (error) {

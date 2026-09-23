@@ -1,6 +1,10 @@
-import { useEffect, type MutableRefObject } from "react";
+import { useEffect, useEffectEvent, type MutableRefObject } from "react";
 
-import { open_event_stream } from "@frontend/app/desktop/desktop-api";
+import { api_get, open_event_stream } from "@frontend/app/desktop/desktop-api";
+import { push_toast } from "@frontend/app/feedback/desktop-toast";
+import { resolve_app_locale, type AppLanguage } from "@domain/app-language";
+import { format_i18n_message } from "@shared/i18n";
+import { apply_model_catalog_revision } from "@frontend/app/state/model-catalog-store";
 import {
   DesktopRefreshScheduler,
   type DesktopRefreshSchedulerErrorContext,
@@ -23,6 +27,7 @@ import type { SettingsSnapshotPayload } from "@frontend/app/state/desktop-state-
 import { record_renderer_diagnostics_event } from "@frontend/app/diagnostics/renderer-error-reporter";
 import { parse_event_payload } from "@frontend/app/state/desktop-event-payload";
 import { PROJECT_CHANGE_EVENT_TOPIC } from "@shared/project-event";
+import { MODEL_CATALOG_UPDATED_EVENT_TOPIC } from "@shared/model-catalog";
 import {
   RUNTIME_ACTIVITY_EVENT_TOPIC,
   type RuntimeActivitySnapshot,
@@ -34,6 +39,7 @@ type SettingsChangedEventPayload = {
 };
 
 type DesktopEventStreamOptions = {
+  appLanguage: AppLanguage; // 状态 Provider 位于语言 Provider 外层，通知直接消费权威设置。
   schedulerRef: MutableRefObject<DesktopRefreshScheduler | null>;
   applySettingsSnapshot: (payload: SettingsSnapshotPayload) => void;
   applyTaskSnapshot: (snapshot: BatchTranslationSnapshot) => void;
@@ -61,6 +67,16 @@ export function useDesktopEventStream(options: DesktopEventStreamOptions): void 
   const { report_state_error, refresh_project_state_after_error, refresh_task_after_state_error } =
     recovery;
 
+  /** 使用收到更新时的语言，语言变化保持当前 SSE 订阅。 */
+  const apply_catalog = useEffectEvent((payload: unknown): void => {
+    if (apply_model_catalog_revision(payload)) {
+      push_toast(
+        "success",
+        format_i18n_message(resolve_app_locale(options.appLanguage), "app.model.catalog_updated"),
+      );
+    }
+  });
+
   useEffect(() => {
     let event_source: EventSource | null = null;
     let cancelled = false;
@@ -77,6 +93,34 @@ export function useDesktopEventStream(options: DesktopEventStreamOptions): void 
       },
     });
     schedulerRef.current = refresh_scheduler;
+
+    /** 连接建立后补读权威快照，覆盖启动阶段尚未订阅的更新。 */
+    function refresh_catalog(): void {
+      void api_get<unknown>("/api/models/catalog/snapshot")
+        .then((payload) => {
+          if (!cancelled) apply_catalog(payload);
+        })
+        .catch((error: unknown) => {
+          if (cancelled) return;
+          report_state_error(error, {
+            source: "state-recovery",
+            context: { stage: "refresh_model_catalog" },
+          });
+        });
+    }
+
+    /** 事件解析失败时回到同一快照入口恢复。 */
+    function handle_catalog_updated(event: MessageEvent<string>): void {
+      try {
+        apply_catalog(parse_event_payload(event));
+      } catch (error) {
+        report_state_error(error, {
+          source: "sse",
+          context: { stage: "handle_model_catalog_updated" },
+        });
+        refresh_catalog();
+      }
+    }
 
     function handle_task_snapshot_changed(event: MessageEvent<string>): void {
       let payload: Record<string, unknown> = {};
@@ -217,6 +261,7 @@ export function useDesktopEventStream(options: DesktopEventStreamOptions): void 
           if (cancelled) {
             return;
           }
+          refresh_catalog();
           if (opened_once) {
             void restore_state_after_reconnect();
           }
@@ -227,6 +272,10 @@ export function useDesktopEventStream(options: DesktopEventStreamOptions): void 
           handle_task_snapshot_changed as EventListener,
         );
         event_source.addEventListener("settings.changed", handle_settings_changed as EventListener);
+        event_source.addEventListener(
+          MODEL_CATALOG_UPDATED_EVENT_TOPIC,
+          handle_catalog_updated as EventListener,
+        );
         event_source.addEventListener(
           RUNTIME_ACTIVITY_EVENT_TOPIC,
           handle_runtime_snapshot_changed as EventListener,

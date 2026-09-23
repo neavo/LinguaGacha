@@ -4,8 +4,13 @@ import path from "node:path";
 import type { LogManager } from "../log/log-manager";
 import { AppPathService } from "../app/app-path-service";
 import { AppSettingService } from "../app/app-setting-service";
-import { list_available_models } from "../llm/llm-model-catalog";
-import { adjust_model_thinking_level, resolve_model_capability } from "../llm/model-capability";
+import { list_available_models } from "../llm/provider-model-list";
+import {
+  adjust_model_thinking_level,
+  resolve_model_capability,
+  type PiCatalogModel,
+} from "../llm/model-capability";
+import type { PiModelCatalogReader } from "../llm/pi-model-catalog";
 import type { LLMClientPort, LLMMessage, LLMRequestResult } from "../llm/llm-types";
 import { collect_api_keys } from "../llm/llm-request";
 import {
@@ -72,6 +77,7 @@ export class ModelService {
   private readonly runtime_gate: RuntimeOperationGate; // 接口测试独占运行时，配置管理不占用
   private readonly log_manager?: Pick<LogManager, "info" | "warning">; // 只记录模型探测诊断
   private readonly native_fs: NativeFs; // 统一读取内置模型预设文件
+  private readonly catalog: PiModelCatalogReader; // 配置归一化与公开快照共用当前能力事实。
 
   /**
    * 初始化 ModelService 依赖，保持外部写入口清晰
@@ -81,6 +87,7 @@ export class ModelService {
     app_setting_service: AppSettingService,
     llm_client: LLMClientPort,
     runtime_gate: RuntimeOperationGate,
+    catalog: PiModelCatalogReader,
     log_manager?: Pick<LogManager, "info" | "warning">,
     native_fs: NativeFs = default_native_fs,
   ) {
@@ -90,6 +97,40 @@ export class ModelService {
     this.runtime_gate = runtime_gate;
     this.log_manager = log_manager;
     this.native_fs = native_fs;
+    this.catalog = catalog;
+  }
+
+  /** 目录候选在运行租约空闲后，以同一次同步写租约归一配置并切换有效目录。 */
+  public async apply_catalog(
+    models: readonly PiCatalogModel[],
+    commit: () => void,
+    signal: AbortSignal,
+    publish: () => void,
+  ): Promise<void> {
+    while (!signal.aborted) {
+      await this.runtime_gate.wait_for_idle(signal);
+      try {
+        await this.runtime_gate.run_project_write(() => {
+          signal.throwIfAborted();
+          const config = this.app_setting_service.read_setting();
+          const previous = read_config_model_records(config);
+          const updated = previous.map((model) => this.normalize_model(model, models));
+          if (JSON.stringify(updated) !== JSON.stringify(previous)) {
+            config["models"] = updated as unknown as JsonValue;
+            this.app_setting_service.save_setting(config);
+          }
+          commit();
+        });
+        try {
+          publish();
+        } catch (error) {
+          this.log_manager?.warning("Pi 模型能力目录已应用，事件发布失败。", { error });
+        }
+        return;
+      } catch (error) {
+        if (!(error instanceof AppErrors.AppError) || error.code !== "runtime.busy") throw error;
+      }
+    }
   }
 
   /**
@@ -162,7 +203,10 @@ export class ModelService {
       const index = this.find_model_index_or_raise(models, model_id);
       if (has_level && is_model_thinking_level(level)) {
         const model = models[index]!; // 查找成功保证对象存在，输入等级已在上方收窄。
-        const capability = resolve_model_capability(Model.from_json(model, model_id));
+        const capability = resolve_model_capability(
+          Model.from_json(model, model_id),
+          this.catalog.read_models(),
+        );
         if (!capability.available_thinking_levels.includes(level)) {
           throw new AppErrors.AppError("request.validation_failed", {
             public_details: { field: "thinking_level" },
@@ -735,11 +779,11 @@ export class ModelService {
    * 归一模型对象并同步能力派生字段；已有 ID 不重新取 UUID，避免初始化消耗新增模型的确定 ID。
    * 思考档位在这里统一修正，保证快照与持久化模型不会暴露当前模型不支持的值。
    */
-  private normalize_model(model: JsonRecord): JsonRecord {
+  private normalize_model(model: JsonRecord, catalog = this.catalog.read_models()): JsonRecord {
     const existing_id = String(model["id"] ?? "").trim();
     const fallback_id = existing_id === "" ? crypto.randomUUID() : existing_id;
     const normalized = Model.from_json(model, fallback_id);
-    const capability = resolve_model_capability(normalized);
+    const capability = resolve_model_capability(normalized, catalog);
     const thinking_level = adjust_model_thinking_level(
       normalized.thinking.level,
       capability.available_thinking_levels,
@@ -873,7 +917,7 @@ export class ModelService {
   ): JsonRecord {
     const models = read_config_model_records(config).map((model) => {
       const normalized = Model.from_json(model, String(model["id"] ?? ""));
-      const capability = resolve_model_capability(normalized);
+      const capability = resolve_model_capability(normalized, this.catalog.read_models());
       return {
         ...normalized.to_json(),
         can_reset: this.find_preset_model(model, presets) !== undefined,
@@ -893,7 +937,7 @@ export class ModelService {
       model_selection: normalize_model_selection(config["model_selection"]),
       models: read_config_model_records(config).map((model) => {
         const normalized = Model.from_json(model, String(model["id"] ?? ""));
-        const capability = resolve_model_capability(normalized);
+        const capability = resolve_model_capability(normalized, this.catalog.read_models());
         return {
           id: normalized.id,
           type: normalized.type,

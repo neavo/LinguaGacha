@@ -58,6 +58,7 @@ import type { ProjectSessionState } from "../project/project-session-state";
 import type { RuntimeLease, RuntimeOperationGate } from "../runtime-operation-gate";
 import { AgentDecisionCoordinator } from "./agent-decision";
 import { register_agent_model } from "./agent-model";
+import type { PiModelCatalogReader } from "../llm/pi-model-catalog";
 import {
   append_agent_session_seed,
   load_agent_session_seed,
@@ -157,6 +158,7 @@ type AgentServicePaths = Pick<
 >;
 
 type AgentServiceOptions = {
+  catalog: PiModelCatalogReader;
   batchTranslation: Pick<
     import("../batch-translation/batch-translation-service").BatchTranslationService,
     "run_under_agent"
@@ -187,6 +189,7 @@ type LoadedAgentResources = Readonly<{
  * 单个后端 Agent 产品会话的状态拥有者；通用模型生命周期交给 AgentSession。
  */
 export class AgentService {
+  private readonly catalog: PiModelCatalogReader; // 每轮准备时读取组合根持有的当前目录。
   private readonly token_speed = new AgentTokenSpeed(); // 失败继续复用回合累计统计。
   private token_speed_updated_at: number | null = null; // 计数和发布共用节流时间。
   private token_speed_snapshot: AgentTokenSpeedSnapshot = null; // 等待期间保留最近展示值。
@@ -229,6 +232,7 @@ export class AgentService {
 
   /** 会话订阅返回 reset Promise，保证工程生命周期等待旧 Agent 完整退出。 */
   public constructor(options: AgentServiceOptions) {
+    this.catalog = options.catalog;
     this.batch_translation = options.batchTranslation;
     this.paths = options.paths;
     this.settings = options.settings;
@@ -1032,10 +1036,15 @@ export class AgentService {
     runtime: AgentRuntime,
     model_settings: JsonRecord,
   ): Promise<void> {
-    const resolved_model = register_agent_model(runtime.session.modelRuntime, model_settings, {
-      user_agent: this.user_agent,
-      session_id: runtime.session_id,
-    });
+    const resolved_model = register_agent_model(
+      runtime.session.modelRuntime,
+      model_settings,
+      {
+        user_agent: this.user_agent,
+        session_id: runtime.session_id,
+      },
+      this.catalog,
+    );
     await runtime.session.setModel(resolved_model.model);
     runtime.session.settingsManager.applyOverrides(build_agent_session_settings());
     runtime.session.setThinkingLevel(resolved_model.thinkingLevel);
@@ -1056,10 +1065,15 @@ export class AgentService {
       modelsPath: null,
       allowModelNetwork: false,
     });
-    const resolved_model = register_agent_model(model_runtime, model_settings, {
-      user_agent: this.user_agent,
-      session_id,
-    });
+    const resolved_model = register_agent_model(
+      model_runtime,
+      model_settings,
+      {
+        user_agent: this.user_agent,
+        session_id,
+      },
+      this.catalog,
+    );
     const settings_manager = SettingsManager.inMemory(build_agent_session_settings(), {
       projectTrusted: false,
     });
