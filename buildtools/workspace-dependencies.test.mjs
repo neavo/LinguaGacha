@@ -48,6 +48,9 @@ it("独立部署保留嵌套版本和包资源，重建移除旧依赖", async (
       new Uint8Array([0, 97, 115, 109]),
     );
 
+    await writeFile(path.join(root, "node_modules/alpha/index.js.map"), "{}");
+    await writeFile(path.join(root, "node_modules/alpha/index.d.ts"), "export default 1;");
+
     await deploy_workspace_dependencies(root, output);
     expect(
       execFileSync(
@@ -62,6 +65,12 @@ it("独立部署保留嵌套版本和包资源，重建移除旧依赖", async (
     ).toBe("[1,2]");
     expect(await readFile(path.join(output, "node_modules/alpha/README.md"), "utf8")).toBe(
       "包的使用说明",
+    );
+    await expect(
+      readFile(path.join(output, "node_modules/alpha/index.js.map")),
+    ).rejects.toMatchObject({ code: "ENOENT" });
+    expect(await readFile(path.join(output, "node_modules/alpha/index.d.ts"), "utf8")).toBe(
+      "export default 1;",
     );
     expect([...(await readFile(path.join(output, "node_modules/alpha/engine.wasm")))]).toEqual([
       0, 97, 115, 109,
@@ -101,6 +110,7 @@ it("整体重建拒绝覆盖项目和依赖安装源", async () => {
   }
 });
 
+/** 创建可由 npm 查询和 Node 导入的自有包，验证真实依赖部署。 */
 async function create_package(root, name, version, dependencies, code) {
   const directory = path.join(root, "node_modules", name);
   await mkdir(directory, { recursive: true });

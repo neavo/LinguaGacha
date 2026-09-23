@@ -2,6 +2,12 @@ import { cp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { execa } from "execa";
 
+// Node 入口使用 `exceljs/lib` 和原始 MuPDF WASM，按包排除对应的替代构建。
+const PACKAGE_EXCLUDED_PATH = {
+  exceljs: "dist",
+  mupdf: "dist/mupdf-wasm.wasm.br",
+};
+
 /** npm 拥有依赖解析；部署保留实际安装位置，让嵌套版本按标准 Node 规则加载。 */
 export async function deploy_workspace_dependencies(root, output) {
   root = path.resolve(root);
@@ -37,7 +43,14 @@ export async function deploy_workspace_dependencies(root, output) {
     await cp(source, path.join(output, pkg.location), {
       recursive: true,
       // 嵌套 node_modules 由查询结果逐包部署，避免带入未选中的旧安装包。
-      filter: (entry) => entry !== path.join(source, "node_modules"),
+      filter: (entry) => {
+        const relative = path.relative(source, entry).split(path.sep).join("/");
+        return (
+          relative !== "node_modules" &&
+          !relative.endsWith(".map") &&
+          relative !== PACKAGE_EXCLUDED_PATH[pkg.name]
+        );
+      },
     });
   }
   await writeFile(

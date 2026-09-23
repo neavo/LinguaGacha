@@ -18,6 +18,8 @@
 - 应用语言元数据归 `src/shared/i18n/types.ts`，菜单与发行包共用该声明且不加载词典。`src/domain/app-language.ts` 保留合法持久化编码并投影为 renderer `Locale`；系统语言只用于显式缺省场景，Provider 消费已解析的 locale。主窗口的 `LocaleProvider` 从外层 `DesktopStateProvider` 读取语言，外层事件通知显式接收设置语言并调用共享文案解析器。
 - 应用文案及源／目标语言展示名归 `src/shared/i18n`，菜单使用固定自称；领域语言模块只拥有语言码与字符规则。中文词典定义消息契约，其它语言保持键和占位符一致；提示词语言消费归 [`BACKEND.md`](BACKEND.md)。
 
+- PDF 打印资源归 Electron 宿主。`buildtools/build-pdf-print.mjs` 生成内嵌 KaTeX 字体的样式，GUI 注入样式路径与共享字体目录。宿主首次打印读取界面字体并缓存内嵌样式，打印窗口只允许 `data:` 资源。
+
 ### 开发热更新与模块生命周期
 
 - Context 与消费 Hook 归 `*-context.ts`，状态装配归 `*-provider.tsx`，实例类型通过类型导入引用。词典更新经 `LocaleProvider` 发布，沿用同一 `LocaleContext`。

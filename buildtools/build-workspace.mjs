@@ -1,4 +1,4 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, writeFile } from "node:fs/promises";
 import { builtinModules } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -8,7 +8,6 @@ import { deploy_workspace_dependencies } from "./workspace-dependencies.mjs";
 const root = fileURLToPath(new URL("..", import.meta.url));
 const output = path.resolve(process.argv[2] ?? path.join(root, "build/resources/workspace")); // 测试可在仓库外使用同一部署流程
 await deploy_workspace_dependencies(root, output);
-await build_pdf_print_assets();
 
 await build_package(
   "@lg/workspace",
@@ -74,32 +73,4 @@ async function build_package(name, entries, exports, external = []) {
       },
     },
   });
-}
-
-/** 构建一次离线打印样式；字体来自 UI 与 KaTeX 的权威资源，不维护手工副本。 */
-async function build_pdf_print_assets() {
-  const encode = async (file) => (await readFile(file)).toString("base64");
-  const fonts = [
-    ["LGBaseFont", "LGBaseFont-Regular.woff2", "400", ""],
-    ["LGBaseFont", "LGBaseFont-Bold.woff2", "500 700", ""],
-    ["LGMono", "MonaspaceNeon.woff2", "400 700", "size-adjust:90%;"],
-  ];
-  const rules = [];
-  for (const [family, file, weight, extra] of fonts) {
-    rules.push(
-      `@font-face{font-family:"${family}";src:url(data:font/woff2;base64,${await encode(path.join(root, "public/fonts", file))}) format("woff2");font-weight:${weight};font-style:normal;${extra}}`,
-    );
-  }
-  const katex = path.join(root, "node_modules/katex/dist");
-  let css = await readFile(path.join(katex, "katex.min.css"), "utf8");
-  // Chromium 使用 WOFF2；每个字体面只保留这一份内嵌资源。
-  for (const [declaration, file] of css.matchAll(
-    /src:url\((fonts\/[^)]+\.woff2)\) format\("woff2"\)[^;}]*;?/gu,
-  )) {
-    css = css.replace(
-      declaration,
-      `src:url(data:font/woff2;base64,${await encode(path.join(katex, file))}) format("woff2");`,
-    );
-  }
-  await writeFile(path.join(output, "pdf-print.css"), rules.join("\n") + "\n" + css);
 }
