@@ -95,6 +95,7 @@ describe("AgentTaskToolbar", () => {
             locked={false}
             can_reset={false}
             context={{ tokens: null, compactable: false, limits: null }}
+            usage={{ input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }}
             model_selection={{
               snapshot: {
                 models: [],
@@ -103,12 +104,12 @@ describe("AgentTaskToolbar", () => {
               loading: false,
               updating: false,
               select_model: async () => {},
-              update_thinking_level: async () => {},
             }}
             approval_mode="manual"
             approval_disabled={false}
             disconnected={false}
             on_reset={vi.fn()}
+            on_agent_model_select={vi.fn()}
             {...props}
           />
         </TooltipProvider>,

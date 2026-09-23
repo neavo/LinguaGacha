@@ -1,190 +1,138 @@
-import type { ReactNode } from "react";
-import { renderToStaticMarkup } from "react-dom/server";
-import { beforeEach, describe, expect, it, vi } from "vitest";
-
+import { act } from "react";
+import { createRoot, type Root } from "react-dom/client";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  AppDropdownMenu,
+  AppDropdownMenuContent,
+  AppDropdownMenuTrigger,
+} from "@frontend/widgets/app-dropdown-menu";
 import type { ModelSelectionController } from "./use-model-selection";
-import { ModelSelectionMenu, ModelThinkingLevelOptions } from "./model-selection-menu";
-
-const menu_state = vi.hoisted(() => ({
-  item_actions: new Map<string, (() => void) | undefined>(),
-}));
+import { ModelSelectionMenu } from "./model-selection-menu";
 
 vi.mock("@frontend/app/locale/locale-context", () => ({
   useI18n: () => ({ t: (key: string) => key }),
 }));
 
-vi.mock("@frontend/widgets/app-dropdown-menu", () => ({
-  AppDropdownMenuSub: (props: { children: ReactNode }) => <section>{props.children}</section>,
-  AppDropdownMenuSubTrigger: (props: {
-    children: ReactNode;
-    disabled?: boolean;
-    "aria-current"?: "true";
-  }) => (
-    <button disabled={props.disabled} aria-current={props["aria-current"]}>
-      {props.children}
-    </button>
-  ),
-  AppDropdownMenuSubContent: (props: { children: ReactNode }) => <div>{props.children}</div>,
-  AppDropdownMenuRadioGroup: (props: { children: ReactNode; value?: string }) => {
-    return (
-      <div role="radiogroup" data-value={props.value}>
-        {props.children}
-      </div>
-    );
-  },
-  AppDropdownMenuRadioItem: (props: {
-    children: ReactNode;
-    value: string;
-    onClick?: () => void;
-  }) => {
-    menu_state.item_actions.set(props.value, props.onClick);
-    return (
-      <div role="radio" data-value={props.value}>
-        {props.children}
-      </div>
-    );
-  },
-}));
-
 describe("ModelSelectionMenu", () => {
-  beforeEach(() => menu_state.item_actions.clear());
-  it("展示当前分类与模型，并把选择提交给对应任务用途", () => {
-    const select_model = vi.fn(async () => undefined);
-    const controller: ModelSelectionController = {
+  let host: HTMLDivElement;
+  let root: Root;
+  let controller: ModelSelectionController;
+
+  beforeEach(() => {
+    host = document.body.appendChild(document.createElement("div"));
+    root = createRoot(host);
+    controller = {
       snapshot: {
-        model_selection: { translation: "openai", agent: "", agent_batch_translation: null },
+        model_selection: { translation: "a", agent: "", agent_batch_translation: null },
         models: [
           {
-            id: "preset",
+            id: "a",
+            name: "模型 A",
             type: "PRESET",
-            name: "",
-            agent_limits: { context_window: 288_000, max_output_tokens: 32_000 },
-            thinking_level: "OFF",
-            available_thinking_levels: [],
+            agent_limits: { context_window: 128_000, max_output_tokens: 32_000 },
+            thinking_level: "HIGH",
+            available_thinking_levels: ["OFF", "HIGH"],
           },
           {
-            id: "openai",
-            type: "CUSTOM_OPENAI",
-            name: "OpenAI Main",
-            agent_limits: { context_window: 288_000, max_output_tokens: 32_000 },
-            thinking_level: "MEDIUM",
-            available_thinking_levels: ["OFF", "LOW", "MEDIUM", "HIGH", "XHIGH", "MAX"],
+            id: "b",
+            name: "模型 B",
+            type: "PRESET",
+            agent_limits: { context_window: 128_000, max_output_tokens: 32_000 },
+            thinking_level: "OFF",
+            available_thinking_levels: [],
           },
         ],
       },
       loading: false,
       updating: false,
-      select_model,
-      update_thinking_level: vi.fn(async () => undefined),
+      select_model: vi.fn(async () => undefined),
     };
+  });
 
-    const html = renderToStaticMarkup(
-      <ModelSelectionMenu controller={controller} usage="translation" />,
+  afterEach(async () => {
+    await act(async () => root.unmount());
+    host.remove();
+  });
+
+  it.each(["click", "Enter", " "])("等级菜单展开后仍可直接选模并关闭根菜单：%s", async (action) => {
+    await open_models();
+    const model = document.querySelector<HTMLElement>(
+      '[data-slot="dropdown-menu-sub-trigger"][title="模型 A"]',
+    )!;
+    await act(async () =>
+      model.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, key: "ArrowRight" })),
     );
-    const document = new DOMParser().parseFromString(html, "text/html");
-
-    expect(document.querySelector('button[aria-current="true"]')).not.toBeNull();
-    expect(document.querySelector('[role="radiogroup"][data-value="openai"]')).not.toBeNull();
-    menu_state.item_actions.get("preset")?.();
-    menu_state.item_actions.get("MEDIUM")?.();
-    expect(select_model).toHaveBeenCalledWith({
-      target: "translation",
-      model_id: "openai",
-      thinking_level: "MEDIUM",
+    expect(document.querySelector('[role="menuitemradio"]')).not.toBeNull();
+    expect(controller.select_model).not.toHaveBeenCalled();
+    await act(async () => {
+      model.focus();
+      if (action === "click") model.click();
+      else {
+        model.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, key: action }));
+        model.dispatchEvent(new KeyboardEvent("keyup", { bubbles: true, key: action }));
+      }
     });
-    expect(select_model).toHaveBeenCalledWith({ target: "translation", model_id: "preset" });
-    expect(select_model).toHaveBeenCalledTimes(2);
+    expect(controller.select_model).toHaveBeenCalledExactlyOnceWith({
+      target: "translation",
+      model_id: "a",
+    });
+    expect(host.querySelector("button")?.getAttribute("aria-expanded")).toBe("false");
   });
 
-  it("当前选择失效时仍可打开菜单恢复到可用模型", () => {
-    const controller: ModelSelectionController = {
-      snapshot: {
-        model_selection: { translation: "missing", agent: "", agent_batch_translation: null },
-        models: [
-          {
-            id: "openai",
-            type: "CUSTOM_OPENAI",
-            name: "OpenAI Main",
-            agent_limits: { context_window: 288_000, max_output_tokens: 32_000 },
-            thinking_level: "OFF",
-            available_thinking_levels: ["OFF", "LOW", "MEDIUM", "HIGH", "XHIGH", "MAX"],
-          },
-        ],
-      },
-      loading: false,
-      updating: false,
-      select_model: vi.fn(async () => undefined),
-      update_thinking_level: vi.fn(async () => undefined),
-    };
-
-    const html = renderToStaticMarkup(
-      <ModelSelectionMenu controller={controller} usage="translation" />,
+  it("等级叶子一次提交模型与等级并关闭根菜单", async () => {
+    await open_models();
+    const model = document.querySelector<HTMLElement>(
+      '[data-slot="dropdown-menu-sub-trigger"][title="模型 A"]',
+    )!;
+    await act(async () =>
+      model.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, key: "ArrowRight" })),
     );
-    const document = new DOMParser().parseFromString(html, "text/html");
-
-    expect(document.querySelector("button")?.disabled).toBe(false);
-    expect(document.querySelector('[role="radiogroup"][data-value="OFF"]')).not.toBeNull();
+    const level = [...document.querySelectorAll<HTMLElement>('[role="menuitemradio"]')].find(
+      (item) => item.getAttribute("aria-checked") === "true",
+    )!;
+    await act(async () => level.click());
+    expect(controller.select_model).toHaveBeenCalledExactlyOnceWith({
+      target: "translation",
+      model_id: "a",
+      thinking_level: "HIGH",
+    });
+    expect(host.querySelector("button")?.getAttribute("aria-expanded")).toBe("false");
   });
 
-  it("展示当前思考档位并提交合法选择", () => {
-    const update_thinking_level = vi.fn(async () => undefined);
-    const controller: ModelSelectionController = {
-      snapshot: {
-        model_selection: { translation: "", agent: "openai", agent_batch_translation: null },
-        models: [
-          {
-            id: "openai",
-            type: "CUSTOM_OPENAI",
-            name: "OpenAI Main",
-            agent_limits: { context_window: 288_000, max_output_tokens: 32_000 },
-            thinking_level: "MEDIUM",
-            available_thinking_levels: ["LOW", "MEDIUM", "MAX"],
-          },
-        ],
-      },
-      loading: false,
-      updating: false,
-      select_model: vi.fn(async () => undefined),
-      update_thinking_level,
-    };
+  it("失效选择仍能通过无等级模型恢复", async () => {
+    controller.snapshot.model_selection.translation = "missing";
+    await open_models();
+    const model = document.querySelector<HTMLElement>(
+      '[data-slot="dropdown-menu-item"][title="模型 B"]',
+    )!;
+    expect(model.getAttribute("aria-haspopup")).toBeNull();
+    await act(async () => model.click());
+    expect(controller.select_model).toHaveBeenCalledExactlyOnceWith({
+      target: "translation",
+      model_id: "b",
+    });
+    expect(host.querySelector("button")?.getAttribute("aria-expanded")).toBe("false");
+  });
 
-    const html = renderToStaticMarkup(
-      <ModelThinkingLevelOptions controller={controller} usage="agent" />,
+  /** 从工作台的根菜单进入模型分类，使用真实 Base UI 观察选择与关闭行为。 */
+  async function open_models(): Promise<void> {
+    await act(async () =>
+      root.render(
+        <AppDropdownMenu>
+          <AppDropdownMenuTrigger>任务</AppDropdownMenuTrigger>
+          <AppDropdownMenuContent>
+            <ModelSelectionMenu controller={controller} usage="translation" />
+          </AppDropdownMenuContent>
+        </AppDropdownMenu>,
+      ),
     );
-    const document = new DOMParser().parseFromString(html, "text/html");
-
-    expect(document.querySelector('[role="radiogroup"]')?.getAttribute("data-value")).toBe(
-      "MEDIUM",
+    await act(async () => host.querySelector("button")!.click());
+    await act(async () =>
+      document.querySelector<HTMLElement>('[data-slot="dropdown-menu-sub-trigger"]')!.click(),
     );
-    expect(document.querySelector('[role="radio"][data-value="MAX"]')).not.toBeNull();
-    expect(document.querySelector('[role="radio"][data-value="OFF"]')).toBeNull();
-    menu_state.item_actions.get("MAX")?.();
-    expect(update_thinking_level).toHaveBeenCalledWith("agent", "MAX");
-  });
-
-  it("当前模型不可配置思考档位时不渲染选项", () => {
-    const controller: ModelSelectionController = {
-      snapshot: {
-        model_selection: { translation: "", agent: "sakura", agent_batch_translation: null },
-        models: [
-          {
-            id: "sakura",
-            type: "PRESET",
-            name: "Sakura",
-            agent_limits: { context_window: 288_000, max_output_tokens: 32_000 },
-            thinking_level: "OFF",
-            available_thinking_levels: [],
-          },
-        ],
-      },
-      loading: false,
-      updating: false,
-      select_model: vi.fn(async () => undefined),
-      update_thinking_level: vi.fn(async () => undefined),
-    };
-
-    expect(
-      renderToStaticMarkup(<ModelThinkingLevelOptions controller={controller} usage="agent" />),
-    ).toBe("");
-  });
+    const category = [
+      ...document.querySelectorAll<HTMLElement>('[data-slot="dropdown-menu-sub-trigger"]'),
+    ].find((item) => !item.hasAttribute("title") && !item.hasAttribute("data-disabled"))!;
+    await act(async () => category.click());
+  }
 });

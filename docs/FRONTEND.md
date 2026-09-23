@@ -52,7 +52,8 @@
 - `SCREEN_REGISTRY` 是页面组件、标题 key 与工作区布局模式的唯一入口；页面缺省消费 Shell 标准边距，Agent 使用占满 WorkspaceFrame 的 `edge-to-edge` 画布并在页面内部约束阅读区与操作区。
 - `PageLeaveProvider` 保存当前页面唯一的异步离开前动作，路由选择与确认退出等待其成功。提示词编辑 Hook 拥有草稿、成功基线与串行保存，页面注册 `flush_prompt_change`；失败保留草稿供编辑或离页重试，Toast 可撤销到成功基线。重试与页面身份变化使恢复通知失效；卸载取消延迟任务并失效旧请求。
 - Agent、工作台与校对可在未加载工程时发起项目选择，并在 session ready 后恢复 pending route；其它项目功能页在工程未加载或 session 未 ready 时禁用。
-- `features/model-selection` 持有页面级模型 query / command，运行占用变化触发重查，保存设置使旧查询失效；数据不进入 `DesktopStateProvider` 或 SSE。配置加载和保存期间锁定控件，成功回包替换整份快照，失败保留原值。工作台与 Agent 批量入口一次提交模型及可选等级，重复判断同时比较两者；Agent 主模型直接选择，独立等级更新保留页面确认。共享选项只表达模型与等级，页面负责用途、跟随项及提交命令。选模契约归 [`BACKEND.md`](BACKEND.md)，Agent 配置生效边界归 [`AGENT_RUNTIME.md`](AGENT_RUNTIME.md)。
+- `features/model-selection` 持有页面级模型查询与写入命令。运行占用变化触发重查，保存设置使旧查询失效。配置加载和保存期间锁定控件，成功回包替换快照，失败保留原值。共用模型菜单支持直接选择模型并沿用其等级，悬停或右方向键展开可选等级，等级项目一次提交模型与等级。Agent 页面负责关闭思考的确认和批量跟随项。选模契约归 [`BACKEND.md`](BACKEND.md)，Agent 配置生效边界归 [`AGENT_RUNTIME.md`](AGENT_RUNTIME.md)。
+- Agent 模型入口从会话 `usage` 与 `context` 快照生成用量提示。累计输入包含缓存读取与写入，缓存命中率以累计输入为分母。上下文容量优先使用运行会话的 `limits`，空会话使用所选模型配置。
 - `ProjectSessionUiStateProvider` 只保存当前项目内可跨路由恢复的轻量 UI 状态，项目切换或关闭时清空，不写入后端事实。
 - `QualityRuleStatisticsProvider` 持有当前项目内跨规则页共享的后端质量统计结果窄投影；页面只缓存 `entry_ids`、`hits_by_entry_id` 和 `subset_parents_by_entry_id`，不保存后端依赖签名或重复 revision。项目切换时重置，项目事件按受影响规则失效并推进请求 token，旧项目或旧 token 的迟到结果不得写回。
 - Agent 页面外层信息流默认跟随最新内容，用户向上滚离底部超过容差或点击“跟随最新”可退出跟随；内容伸缩与程序归底不改变跟随状态，再次点击或按当前平台快捷键（Ctrl+E / ⌘E）会归底并重新激活，同时重置当前活动思考视口；跟随按钮同步公开 `aria-keyshortcuts`。每个活动思考视口独立默认跟随流式内容，用户在该视口内上滚后取消自身跟随与完成后的自动收起，历史思考视口保留自己的阅读位置。

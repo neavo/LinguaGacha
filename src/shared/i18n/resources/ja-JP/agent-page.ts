@@ -65,7 +65,13 @@ export const ja_jp_agent_page = {
     user_comment: "コメント",
     comment_placeholder: "選択したテキストへのコメントを入力 …",
   },
-  context_usage_warning: "まもなくコンテキストを自動圧縮します",
+  context_usage_warning: "まもなくコンテキスト圧縮",
+  usage: {
+    input: "入力",
+    output: "出力",
+    cache_hit_rate: "キャッシュヒット率",
+    context_window: "コンテキストウィンドウ",
+  },
   approval: {
     manual: "手動承認",
     auto: "自動承認",

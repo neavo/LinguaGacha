@@ -1603,7 +1603,6 @@
 .agent-composer__export,
 .agent-composer__reset,
 .agent-composer__model-trigger,
-.agent-composer__thinking-trigger,
 .agent-composer__approval-trigger {
   padding-inline: 4px;
   color: var(--muted-foreground);
@@ -1611,8 +1610,7 @@
 }
 
 .agent-composer__export,
-.agent-composer__reset,
-.agent-composer__thinking-trigger {
+.agent-composer__reset {
   flex: 0 0 auto;
 }
 
@@ -1643,6 +1641,12 @@
   flex: 0 0 auto;
   color: var(--muted-foreground);
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.agent-composer__model-thinking {
+  flex: 0 0 auto;
+  color: var(--muted-foreground);
   white-space: nowrap;
 }
 

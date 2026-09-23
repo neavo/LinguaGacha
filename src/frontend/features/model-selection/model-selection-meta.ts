@@ -1,5 +1,6 @@
 import type { ModelThinkingLevel, ModelType } from "@domain/model";
 import type { LocaleKey } from "@frontend/app/locale/locale-context";
+import type { ModelSelectionOption } from "@shared/model-selection";
 
 /** 模型管理页与任务选择菜单共享同一类型标题词表。 */
 export const MODEL_TYPE_TITLE_KEY = {
@@ -19,3 +20,10 @@ export const MODEL_THINKING_LEVEL_LABEL_KEY = {
   XHIGH: "app.model.thinking_level.xhigh",
   MAX: "app.model.thinking_level.max",
 } as const satisfies Record<ModelThinkingLevel, LocaleKey>;
+
+/** 入口只显示模型实际可选的档位；不支持思考等级时沿用默认文案。 */
+export function read_model_thinking_level_label_key(model: ModelSelectionOption): LocaleKey {
+  return model.available_thinking_levels.includes(model.thinking_level)
+    ? MODEL_THINKING_LEVEL_LABEL_KEY[model.thinking_level]
+    : "app.model.thinking_level.default";
+}

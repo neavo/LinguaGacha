@@ -20,7 +20,6 @@ import {
   normalize_model_selection,
   type CustomModelType,
   type ModelSelection,
-  type ModelUsage,
 } from "../../domain/model";
 import {
   read_json_record,
@@ -191,7 +190,7 @@ export class ModelService {
     }
     const has_level = Object.hasOwn(request, "thinking_level");
     const level = request["thinking_level"];
-    if (has_level && (target === "agent" || value === null || !is_model_thinking_level(level))) {
+    if (has_level && (value === null || !is_model_thinking_level(level))) {
       throw new AppErrors.AppError("request.validation_failed", {
         public_details: { field: "thinking_level" },
       });
@@ -220,24 +219,6 @@ export class ModelService {
     else if (model_id !== null) selection[target] = model_id;
     config["models"] = models as unknown as JsonValue;
     config["model_selection"] = selection;
-    return this.build_selection_snapshot(this.persist_config(config));
-  }
-
-  /** 按用途原子更新当前模型的全局思考档位，避免调用方提交过期模型 ID。 */
-  public update_selected_model_thinking_level(request: JsonRecord): JsonRecord {
-    const usage = this.read_model_usage(request["usage"]);
-    const thinking_level = request["thinking_level"];
-    if (!is_model_thinking_level(thinking_level)) {
-      throw new AppErrors.AppError("request.validation_failed", {
-        public_details: { field: "thinking_level" },
-      });
-    }
-    const { config } = this.load_setting_with_models(false);
-    const models = read_config_model_records(config);
-    const selection = normalize_model_selection(config["model_selection"]);
-    const index = this.find_model_index_or_raise(models, selection[usage]);
-    models[index] = this.apply_patch(models[index] ?? {}, { thinking: { level: thinking_level } });
-    config["models"] = models as unknown as JsonValue;
     return this.build_selection_snapshot(this.persist_config(config));
   }
 
@@ -844,17 +825,6 @@ export class ModelService {
       throw new AppErrors.AppError("model.not_found");
     }
     return index;
-  }
-
-  /** 所有按用途模型命令共用同一公开值域校验。 */
-  private read_model_usage(value: unknown): ModelUsage {
-    const usage = MODEL_USAGES.find((candidate) => candidate === value);
-    if (usage === undefined) {
-      throw new AppErrors.AppError("request.validation_failed", {
-        public_details: { field: "usage" },
-      });
-    }
-    return usage;
   }
 
   /**

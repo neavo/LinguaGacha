@@ -10,7 +10,7 @@ import {
   Sparkles,
 } from "lucide-react";
 
-import type { ModelThinkingLevel } from "@domain/model";
+import type { ModelSelectionInput } from "@shared/model-selection";
 import {
   AGENT_INPUT_QUEUE_LIMIT,
   type AgentApprovalMode,
@@ -79,7 +79,7 @@ const AGENT_TASK_SUGGESTIONS = [
 /** 同一个系统确认框承接首条发送与已有对话关闭思考两个用户动作。 */
 type PendingThinkingOffAction =
   | { kind: "send"; message: AgentMessageInput }
-  | { kind: "disable_thinking" };
+  | { kind: "select_model"; change: ModelSelectionInput };
 
 /** 会话事实由跨路由 session 提供，页面组合交互入口并持有原位编辑状态。 */
 export function AgentPage(_props: ScreenComponentProps): JSX.Element {
@@ -240,18 +240,22 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
     void send_message(message);
   };
 
-  /** 空对话可自由配置；已有对话只有从其它档位切到关闭时才需确认。 */
-  const change_agent_thinking_level = (thinking_level: ModelThinkingLevel): void => {
+  /** 已有对话关闭思考前保存整份选择，确认后一次提交模型与等级。 */
+  const change_agent_model_selection = (change: ModelSelectionInput): void => {
+    const next_model = model_selection.snapshot.models.find(
+      (model) => model.id === change.model_id,
+    );
+    const next_level = change.thinking_level ?? next_model?.thinking_level;
     if (
       conversation_started &&
       selected_agent_model !== null &&
       selected_agent_model.thinking_level !== "OFF" &&
-      thinking_level === "OFF"
+      next_level === "OFF"
     ) {
-      set_pending_thinking_off_action({ kind: "disable_thinking" });
+      set_pending_thinking_off_action({ kind: "select_model", change });
       return;
     }
-    void model_selection.update_thinking_level("agent", thinking_level);
+    void model_selection.select_model({ target: "agent", ...change });
   };
 
   /** 写入审批模式只接受后端确认的会话状态，失败沿用页面命令错误反馈。 */
@@ -288,8 +292,8 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
   const confirm_pending_thinking_off_action = async (): Promise<void> => {
     const action = pending_thinking_off_action;
     if (action === null) return;
-    if (action.kind === "disable_thinking") {
-      await model_selection.update_thinking_level("agent", "OFF");
+    if (action.kind === "select_model") {
+      await model_selection.select_model({ target: "agent", ...action.change });
       set_pending_thinking_off_action(null);
     } else if (await send_message(action.message)) {
       set_pending_thinking_off_action(null);
@@ -663,11 +667,12 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
                 queue_full={queue_full}
                 can_reset={!agent_restoring && entries.length > 0}
                 context={controls.context}
+                usage={controls.usage}
                 approval_mode={controls.approvalMode}
                 model_selection={model_selection}
                 input_session={input}
                 on_send={submit_message}
-                on_thinking_level_change={change_agent_thinking_level}
+                on_agent_model_select={change_agent_model_selection}
                 on_approval_mode_change={change_approval_mode}
                 on_stop={stop}
                 on_reset={() => set_reset_dialog_open(true)}
@@ -680,7 +685,7 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
         open={pending_thinking_off_action !== null}
         description={t("agent_page.confirm.thinking_off")}
         submitting={
-          pending_thinking_off_action?.kind === "disable_thinking"
+          pending_thinking_off_action?.kind === "select_model"
             ? model_selection.updating
             : controls.command === "send"
         }

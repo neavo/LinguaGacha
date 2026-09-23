@@ -64,6 +64,12 @@ export const en_us_agent_page = {
     comment_placeholder: "Comment on the selected text …",
   },
   context_usage_warning: "Context will be compacted soon",
+  usage: {
+    input: "Input",
+    output: "Output",
+    cache_hit_rate: "Cache hit rate",
+    context_window: "Context window",
+  },
   approval: {
     manual: "Manual approval",
     auto: "Automatic approval",

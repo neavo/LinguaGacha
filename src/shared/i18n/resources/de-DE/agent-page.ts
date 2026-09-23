@@ -63,7 +63,13 @@ export const de_de_agent_page = {
     user_comment: "Anmerkung",
     comment_placeholder: "Ausgewählten Text kommentieren …",
   },
-  context_usage_warning: "Kontext wird bald automatisch komprimiert",
+  context_usage_warning: "Kontext wird bald komprimiert",
+  usage: {
+    input: "Eingabe",
+    output: "Ausgabe",
+    cache_hit_rate: "Cache-Trefferrate",
+    context_window: "Kontextfenster",
+  },
   approval: {
     manual: "Manuelle Genehmigung",
     auto: "Automatische Genehmigung",

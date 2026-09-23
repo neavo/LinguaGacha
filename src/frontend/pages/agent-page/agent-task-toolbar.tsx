@@ -7,8 +7,8 @@ import {
   ShieldQuestionMark,
   WifiOff,
 } from "lucide-react";
-import type { ModelThinkingLevel } from "@domain/model";
-import type { AgentApprovalMode, AgentContextSnapshot } from "@shared/agent";
+import type { ModelSelectionInput } from "@shared/model-selection";
+import type { AgentApprovalMode, AgentContextSnapshot, AgentUsageSnapshot } from "@shared/agent";
 import { useI18n } from "@frontend/app/locale/locale-context";
 import { useTranslationExport } from "@frontend/app/session/translation-export/translation-export-context";
 import type { ModelSelectionController } from "@frontend/features/model-selection/use-model-selection";
@@ -31,12 +31,13 @@ export function AgentTaskToolbar(props: {
   locked: boolean;
   can_reset: boolean;
   context: AgentContextSnapshot;
+  usage: AgentUsageSnapshot;
   model_selection: ModelSelectionController;
   approval_mode: AgentApprovalMode;
   approval_disabled: boolean;
   disconnected: boolean;
   on_reset: () => void;
-  on_thinking_level_change?: (level: ModelThinkingLevel) => void;
+  on_agent_model_select: (change: ModelSelectionInput) => void;
   on_approval_mode_change?: (mode: AgentApprovalMode) => void;
 }): JSX.Element {
   const { t } = useI18n();
@@ -110,7 +111,8 @@ export function AgentTaskToolbar(props: {
         controller={props.model_selection}
         context_tokens={props.context.tokens}
         context_limits={props.context.limits}
-        on_thinking_level_change={props.on_thinking_level_change}
+        usage={props.usage}
+        on_agent_model_select={props.on_agent_model_select}
       />
       <AppDropdownMenu open={approval_open} onOpenChange={set_approval_open}>
         <Tooltip>

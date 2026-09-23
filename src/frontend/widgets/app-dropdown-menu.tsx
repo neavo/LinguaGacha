@@ -1,4 +1,5 @@
 import { useRef } from "react";
+import { MenuCloseContext } from "./app-dropdown-menu-context";
 import { useWindowDeactivation } from "@frontend/widgets/interactions/use-window-deactivation";
 import { CheckIcon, ChevronRightIcon } from "lucide-react";
 import { Menu as DropdownMenuPrimitive } from "@base-ui/react/menu";
@@ -24,7 +25,11 @@ function AppDropdownMenu({ actionsRef, ...props }: DropdownMenuPrimitive.Root.Pr
   const local_actions = useRef<DropdownMenuPrimitive.Root.Actions | null>(null);
   const actions = actionsRef ?? local_actions;
   useWindowDeactivation(() => actions.current?.close());
-  return <DropdownMenuPrimitive.Root data-slot="dropdown-menu" {...props} actionsRef={actions} />;
+  return (
+    <MenuCloseContext value={() => actions.current?.close()}>
+      <DropdownMenuPrimitive.Root data-slot="dropdown-menu" {...props} actionsRef={actions} />
+    </MenuCloseContext>
+  );
 }
 
 function AppDropdownMenuTrigger({

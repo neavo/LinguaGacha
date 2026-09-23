@@ -91,7 +91,6 @@ const POST_PATHS = new Set([
   "/api/models/snapshot",
   "/api/models/update",
   "/api/models/select",
-  "/api/models/thinking-level/update",
   "/api/models/add",
   "/api/models/copy",
   "/api/models/delete",
@@ -263,16 +262,6 @@ describe("register_api_routes", () => {
     expect(read_post_handler(fixture.post_json, "/api/models/copy")(request)).toBe(response);
     expect(fixture.copy_model).toHaveBeenCalledExactlyOnceWith(request);
   });
-
-  it("思考档位更新原样转交模型服务", () => {
-    const fixture = create_route_fixture();
-    const request = { usage: "agent", thinking_level: "HIGH" };
-
-    expect(
-      read_post_handler(fixture.post_json, "/api/models/thinking-level/update")(request),
-    ).toEqual({ updated: request });
-    expect(fixture.update_selected_model_thinking_level).toHaveBeenCalledWith(request);
-  });
 });
 
 /** 每个行为独立注册一次，避免跨测试共享 mock 调用历史。 */
@@ -298,9 +287,6 @@ function create_route_fixture() {
   const update_settings = vi.fn((request: JsonRecord) => ({ settings: request }));
   const select_model = vi.fn((request: JsonRecord) => ({ selected: request }));
   const copy_model = vi.fn();
-  const update_selected_model_thinking_level = vi.fn((request: JsonRecord) => ({
-    updated: request,
-  }));
   const source_file_summary = { source_file_count: 1, format_hit_counts: { txt: 1 } };
   const summarize_source_files = vi.fn(() => source_file_summary);
   const agent = {
@@ -347,7 +333,6 @@ function create_route_fixture() {
       })),
       select_model,
       copy_model,
-      update_selected_model_thinking_level,
     },
     batchTranslation: { start: start_task },
     runtime: {
@@ -388,7 +373,6 @@ function create_route_fixture() {
     summarize_source_files,
     start_task,
     stop,
-    update_selected_model_thinking_level,
     update_settings,
     select_model,
     copy_model,

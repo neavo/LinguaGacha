@@ -66,6 +66,12 @@ export const ko_kr_agent_page = {
     comment_placeholder: "선택한 텍스트에 대한 의견을 입력하세요 …",
   },
   context_usage_warning: "곧 컨텍스트가 자동으로 압축됩니다",
+  usage: {
+    input: "입력",
+    output: "출력",
+    cache_hit_rate: "캐시 적중률",
+    context_window: "컨텍스트 창",
+  },
   approval: {
     manual: "수동 승인",
     auto: "자동 승인",

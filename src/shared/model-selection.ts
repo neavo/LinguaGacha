@@ -10,14 +10,17 @@ import {
 } from "../domain/model";
 import { parse_model_agent_limits, type ModelAgentLimits } from "../domain/model-agent";
 
-/** 一次选择同时提交目标模型及可选的全局思考等级。 */
+/** 模型菜单传给页面的选择，省略等级时沿用该模型配置。 */
+export type ModelSelectionInput = {
+  model_id: string;
+  thinking_level?: ModelThinkingLevel;
+};
+
+/** 页面为菜单选择补充用途，跟随项只用于 Agent 批量翻译。 */
 export type ModelSelectionChange =
-  | {
-      target: "translation" | "agent_batch_translation";
-      model_id: string;
-      thinking_level?: ModelThinkingLevel;
-    }
-  | { target: "agent"; model_id: string }
+  | (ModelSelectionInput & {
+      target: "translation" | "agent" | "agent_batch_translation";
+    })
   | { target: "agent_batch_translation"; model_id: null };
 
 /** 任务入口可见的非敏感模型摘要。 */

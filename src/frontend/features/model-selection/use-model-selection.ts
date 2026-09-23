@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import type { ModelThinkingLevel, ModelUsage } from "@domain/model";
+import type { ModelUsage } from "@domain/model";
 import { useRuntimeSnapshot } from "@frontend/app/state/use-desktop-state";
 import { useModelCatalogRevision } from "@frontend/app/state/model-catalog-store";
 import { api_fetch, api_get } from "@frontend/app/desktop/desktop-api";
@@ -20,7 +20,6 @@ export type ModelSelectionController = {
   loading: boolean;
   updating: boolean;
   select_model: (change: ModelSelectionChange) => Promise<void>;
-  update_thinking_level: (usage: ModelUsage, thinking_level: ModelThinkingLevel) => Promise<void>; // 后端按用途原子定位当前模型，调用方不提交可能过期的模型 ID
 };
 
 const EMPTY_SNAPSHOT = normalize_model_selection_snapshot({});
@@ -101,26 +100,11 @@ export function useModelSelection(): ModelSelectionController {
     [snapshot, update_snapshot],
   );
 
-  /** 独立档位入口按用途更新当前模型，重复档位无需保存。 */
-  const update_thinking_level = useCallback(
-    async (usage: ModelUsage, thinking_level: ModelThinkingLevel): Promise<void> => {
-      const selected = snapshot.models.find(
-        (model) => model.id === snapshot.model_selection[usage],
-      );
-      if (selected === undefined || selected.thinking_level === thinking_level) {
-        return;
-      }
-      await update_snapshot("/api/models/thinking-level/update", { usage, thinking_level });
-    },
-    [snapshot, update_snapshot],
-  );
-
   return {
     snapshot,
     loading,
     updating,
     select_model,
-    update_thinking_level,
   };
 }
 
