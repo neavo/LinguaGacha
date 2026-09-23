@@ -1,4 +1,4 @@
-import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { link, mkdtemp, mkdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import type { PiCatalogModel } from "./model-capability";
@@ -60,8 +60,14 @@ function response(provider: "alpha" | "beta", changes: Record<string, unknown> =
 }
 
 describe("PiModelCatalog", () => {
-  it("合并较新供应商目录并持久化，离线重启继续使用缓存", async () => {
+  it("合并较新供应商目录并经链接持久化，离线重启继续使用缓存", async () => {
     const { catalog, paths, file_path } = await create_catalog();
+    const target_path = `${file_path}.target`;
+    await mkdir(path.dirname(file_path), { recursive: true });
+    await writeFile(target_path, "{}");
+    // Windows 文件软连接需要额外权限，硬链接同样能检验写入是否替换了原路径。
+    if (process.platform === "win32") await link(target_path, file_path);
+    else await symlink(target_path, file_path, "file");
     vi.stubGlobal(
       "fetch",
       vi.fn(async (url: string) =>
@@ -82,6 +88,7 @@ describe("PiModelCatalog", () => {
     expect(applied.find((model) => model.provider === "beta")?.contextWindow).toBe(200);
     expect(catalog.get_snapshot().revision).toBe(1);
     expect(JSON.parse(await readFile(file_path, "utf8")).providers.alpha.etag).toBe('"new"');
+    expect(await readFile(target_path, "utf8")).toBe(await readFile(file_path, "utf8"));
 
     const offline = new PiModelCatalog(paths, { warning: vi.fn() });
     expect(offline.read_models().find((model) => model.provider === "alpha")?.contextWindow).toBe(

@@ -23,7 +23,7 @@
 
 内置模型目录按 ID 补齐缺失模型并提供重置模板；已有用户配置与选择保留。预设下架后可删除，仍有模板时可重置且禁止删除。`ModelService` 每次操作共用一份目录判断权限，快照的 `can_reset` 不持久化，类型仍记录来源与分组。目录允许空数组；读取、解析或结构校验失败在配置写入前报错，避免把资源损坏解释为下架。
 
-`PiModelCatalog` 由共享业务组合根持有，将 Pi 内置能力与 `userdata/pi-model-catalog.json` 中较新的供应商数据合并。GUI 启动后通过系统代理后台检查一次，CLI 读取已有缓存。单个供应商失败保留旧值，网络超时仍可应用已完成的结果。缓存通过临时文件替换保存，能力发生变化时等待 `RuntimeOperationGate` 空闲，再由 `ModelService` 读取最新配置、修正失效档位并同步切换目录。保存失败时保留当前运行目录并记录诊断。Agent 和 OneShot 显式读取同一目录，Agent 的 `ModelRuntime` 关闭独立联网刷新。
+`PiModelCatalog` 由共享业务组合根持有，将 Pi 内置能力与 `userdata/pi-model-catalog.json` 中较新的供应商数据合并。GUI 启动后通过系统代理后台检查一次，CLI 读取已有缓存。单个供应商失败保留旧值，网络超时仍可应用已完成的结果。缓存直接写入原路径，损坏时回退内置目录。能力发生变化时等待 `RuntimeOperationGate` 空闲，再由 `ModelService` 读取最新配置、修正失效档位并同步切换目录。保存失败时保留当前运行目录并记录诊断。Agent 和 OneShot 显式读取同一目录，Agent 的 `ModelRuntime` 关闭独立联网刷新。
 
 `POST /api/models/copy` 接受源配置内部 ID `model_id`，一次保存后返回 `snapshot` 和 `copied_model_id`。复制源模型当前完整配置，按协议进入对应自定义分类末尾；SakuraLLM 禁止复制。副本使用新 ID，名称按当前应用语言在整个模型集合中避重，有效模型选择保留原值。
 
