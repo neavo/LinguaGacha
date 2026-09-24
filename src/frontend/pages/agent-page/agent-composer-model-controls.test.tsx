@@ -57,7 +57,7 @@ describe("AgentComposerModelControls", () => {
     );
     const model = [
       ...document.querySelectorAll<HTMLElement>('[data-slot="dropdown-menu-sub-trigger"]'),
-    ].find((item) => item.title === "模型 A")!;
+    ].find((item) => item.textContent === "模型 A")!;
     await act(async () =>
       model.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, key: "ArrowRight" })),
     );

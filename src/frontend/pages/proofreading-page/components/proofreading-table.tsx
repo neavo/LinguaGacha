@@ -136,9 +136,16 @@ function ProofreadingTextCell(props: {
   return (
     <span className="proofreading-page__table-text-line">
       {props.name === null ? null : (
-        <Badge title={props.name} className="proofreading-page__table-name-badge">
-          <span className="proofreading-page__table-name-badge-label">{props.name}</span>
-        </Badge>
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <Badge className="proofreading-page__table-name-badge">
+                <span className="proofreading-page__table-name-badge-label">{props.name}</span>
+              </Badge>
+            }
+          />
+          <TooltipContent>{props.name}</TooltipContent>
+        </Tooltip>
       )}
       <span className="proofreading-page__table-text">{props.text}</span>
       {props.full_text !== "" && (

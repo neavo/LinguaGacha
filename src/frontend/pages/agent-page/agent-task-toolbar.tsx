@@ -97,14 +97,17 @@ export function AgentTaskToolbar(props: {
         <span>{t("workbench_page.action.generate_translation")}</span>
       </AppButton>
       {props.disconnected ? (
-        <span
-          className="agent-composer__connection-status"
-          role="status"
-          title={t("agent_page.error.connection")}
-        >
-          <WifiOff className="size-4 shrink-0" aria-hidden="true" />
-          <span className="truncate">{t("agent_page.error.connection")}</span>
-        </span>
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <span className="agent-composer__connection-status" role="status">
+                <WifiOff className="size-4 shrink-0" aria-hidden="true" />
+                <span className="truncate">{t("agent_page.error.connection")}</span>
+              </span>
+            }
+          />
+          <TooltipContent>{t("agent_page.error.connection")}</TooltipContent>
+        </Tooltip>
       ) : null}
       <AgentComposerModelControls
         locked={props.locked}

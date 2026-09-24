@@ -2,6 +2,7 @@ import { LoaderCircle } from "lucide-react";
 import type { ReactNode } from "react";
 
 import { useI18n } from "@frontend/app/locale/locale-context";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@frontend/shadcn/tooltip";
 import type {
   ProofreadingDialogContextState,
   ProofreadingDialogState,
@@ -48,9 +49,16 @@ function render_context_text(name: string | null, text: string): JSX.Element {
   return (
     <dd className="proofreading-page__context-text">
       {name === null ? null : (
-        <Badge title={name} className="proofreading-page__context-name">
-          <span className="proofreading-page__context-name-label">{name}</span>
-        </Badge>
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <Badge className="proofreading-page__context-name">
+                <span className="proofreading-page__context-name-label">{name}</span>
+              </Badge>
+            }
+          />
+          <TooltipContent>{name}</TooltipContent>
+        </Tooltip>
       )}
       <span>{render_visible_whitespace(text)}</span>
     </dd>
@@ -88,9 +96,12 @@ export function ProofreadingContextView(props: ProofreadingContextViewProps): JS
   return (
     <section className="proofreading-page__context-view" aria-label={t("proofreading_page.title")}>
       <header className="proofreading-page__context-header">
-        <span className="proofreading-page__context-file-path" title={props.file_path}>
-          {props.file_path}
-        </span>
+        <Tooltip>
+          <TooltipTrigger
+            render={<span className="proofreading-page__context-file-path">{props.file_path}</span>}
+          />
+          <TooltipContent>{props.file_path}</TooltipContent>
+        </Tooltip>
       </header>
 
       <ol className="proofreading-page__context-items">

@@ -1337,7 +1337,7 @@ async function select_agent_thinking_level(container: HTMLElement, label: string
   await act(async () => category.click());
   const model = [
     ...document.body.querySelectorAll<HTMLElement>('[data-slot="dropdown-menu-sub-trigger"]'),
-  ].find((item) => item.title === "Agent Model")!;
+  ].find((item) => item.textContent === "Agent Model")!;
   await act(async () =>
     model.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, key: "ArrowRight" })),
   );

@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { useI18n } from "@frontend/app/locale/locale-context";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@frontend/shadcn/tooltip";
 
 /** 校对详情共用文件条和双栏结构，编辑状态、状态区和操作由各自内容拥有者提供。 */
 export function ProofreadingDetailLayout(props: {
@@ -14,9 +15,12 @@ export function ProofreadingDetailLayout(props: {
   return (
     <div className="proofreading-page__dialog-form" hidden={props.hidden}>
       <section className="proofreading-page__dialog-file-card">
-        <span className="proofreading-page__dialog-file-path" title={props.file_label}>
-          {props.file_label}
-        </span>
+        <Tooltip>
+          <TooltipTrigger
+            render={<span className="proofreading-page__dialog-file-path">{props.file_label}</span>}
+          />
+          <TooltipContent>{props.file_label}</TooltipContent>
+        </Tooltip>
         {props.file_actions}
       </section>
       <section className="proofreading-page__dialog-content-block">

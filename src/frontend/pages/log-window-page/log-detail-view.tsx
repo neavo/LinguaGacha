@@ -1,5 +1,6 @@
 import type { LogDetail } from "@frontend/app/desktop/desktop-api";
 import { useI18n } from "@frontend/app/locale/locale-context";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@frontend/shadcn/tooltip";
 import { Badge } from "@frontend/shadcn/badge";
 import { AppEditor } from "@frontend/widgets/app-editor/app-editor";
 import { format_log_readable_text, format_log_error_text } from "@shared/log";
@@ -54,9 +55,18 @@ export function LogDetailView(props: LogDetailViewProps): JSX.Element {
                   <dt>{t("log_window_page.detail.content.source_text")}</dt>
                   <dd className="log-detail-view__text">
                     {typeof pair.actor_src === "string" && pair.actor_src !== "" ? (
-                      <Badge title={pair.actor_src} className="log-detail-view__name-badge">
-                        <span className="log-detail-view__name-badge-label">{pair.actor_src}</span>
-                      </Badge>
+                      <Tooltip>
+                        <TooltipTrigger
+                          render={
+                            <Badge className="log-detail-view__name-badge">
+                              <span className="log-detail-view__name-badge-label">
+                                {pair.actor_src}
+                              </span>
+                            </Badge>
+                          }
+                        />
+                        <TooltipContent>{pair.actor_src}</TooltipContent>
+                      </Tooltip>
                     ) : null}
                     <span>{pair.src}</span>
                   </dd>
@@ -65,9 +75,18 @@ export function LogDetailView(props: LogDetailViewProps): JSX.Element {
                   <dt>{t("log_window_page.detail.content.translated_text")}</dt>
                   <dd className="log-detail-view__text">
                     {typeof pair.actor_dst === "string" && pair.actor_dst !== "" ? (
-                      <Badge title={pair.actor_dst} className="log-detail-view__name-badge">
-                        <span className="log-detail-view__name-badge-label">{pair.actor_dst}</span>
-                      </Badge>
+                      <Tooltip>
+                        <TooltipTrigger
+                          render={
+                            <Badge className="log-detail-view__name-badge">
+                              <span className="log-detail-view__name-badge-label">
+                                {pair.actor_dst}
+                              </span>
+                            </Badge>
+                          }
+                        />
+                        <TooltipContent>{pair.actor_dst}</TooltipContent>
+                      </Tooltip>
                     ) : null}
                     <span>{pair.dst}</span>
                   </dd>
