@@ -116,7 +116,7 @@ export class AgentSkillsService {
   }
 
   /** 持有占用直到文件、偏好和当前集合全部更新，避免模型请求看到中间状态。 */
-  private write<T>(action: () => T): Promise<T> {
+  private write<T>(action: () => T | Promise<T>): Promise<T> {
     return this.serial(() => this.runtime_gate.run_skill_write(action));
   }
 
@@ -139,7 +139,7 @@ export class AgentSkillsService {
 
   /** 校验文件操作意图，完成后返回最新目录。 */
   public change_file(request: JsonRecord): Promise<AgentSkillTree> {
-    return this.write(() => {
+    return this.write(async () => {
       const { root, skill } = this.locate(request, true);
       const { operation, path: relative, destination } = request;
       if (typeof relative !== "string") throw new AppError("request.validation_failed");
@@ -153,7 +153,7 @@ export class AgentSkillsService {
       )
         change = { operation, path: relative };
       else throw new AppError("request.validation_failed");
-      change_skill_file(root, change);
+      await change_skill_file(root, change);
       return { skill, entries: read_skill_tree(root) };
     });
   }
@@ -223,6 +223,42 @@ export class AgentSkillsService {
       this.settings.publish_settings_changed(["agent_skills"]);
       this.refresh_current();
       return read_skill_file(root, { ...skill, name: document.name }, request.path);
+    });
+  }
+
+  /** 磁盘删除完成后再清理当前偏好；失败只同步实际文件集合，已删除的内容无法回滚。 */
+  public delete(request: JsonRecord): Promise<AgentSkillsSnapshot> {
+    return this.write(async () => {
+      const { root, skill } = this.locate(request, true);
+      try {
+        await fs.remove_async(root, { recursive: true });
+        // 等待期间其它应用设置可能变化，提交时读取最新值，避免覆盖无关修改。
+        const setting = this.settings.read_setting();
+        const preferences = normalize_agent_skill_settings(setting.agent_skills);
+        this.settings.save_setting({
+          ...setting,
+          agent_skills: {
+            disabled: {
+              ...preferences.disabled,
+              user: preferences.disabled.user.filter((name) => name !== skill.name),
+            },
+            user_order: preferences.user_order.filter((name) => name !== skill.name),
+          },
+        });
+        const snapshot = this.update_snapshot(scan_agent_skills(this.paths, this.log));
+        this.settings.publish_settings_changed(["agent_skills"]);
+        return snapshot;
+      } catch (error) {
+        let cause = error;
+        try {
+          this.refresh_current();
+        } catch (refresh) {
+          cause = new AggregateError([error, refresh], "Skill deletion and refresh failed.", {
+            cause: error,
+          });
+        }
+        throw cause;
+      }
     });
   }
 
@@ -345,5 +381,12 @@ export class AgentSkillsService {
 /** GUI Gateway 仅消费技能管理公开命令。 */
 export type AgentSkillsApi = Pick<
   AgentSkillsService,
-  "snapshot" | "set_enabled" | "reorder" | "tree" | "read_file" | "save_file" | "change_file"
+  | "snapshot"
+  | "set_enabled"
+  | "reorder"
+  | "tree"
+  | "read_file"
+  | "save_file"
+  | "change_file"
+  | "delete"
 >;

@@ -24,7 +24,7 @@ type Props = {
   readonly: boolean;
   busy: boolean;
   on_open: (path: string) => Promise<boolean>;
-  on_change: (change: AgentSkillFileChange) => Promise<boolean>;
+  on_change?: (change: AgentSkillFileChange) => Promise<boolean>;
 };
 type EntryAction = "rename" | "delete";
 type InputAction = {
@@ -78,7 +78,7 @@ export function SkillFileTree(props: Props): JSX.Element {
   }
   /** 文件命令成功后迁移本地导航路径，磁盘事实始终由父组件刷新。 */
   async function change(command: AgentSkillFileChange): Promise<boolean> {
-    if (!(await props.on_change(command))) return false;
+    if (!props.on_change || !(await props.on_change(command))) return false;
     if (command.operation === "move") {
       // 目录移动同时迁移后代的展开路径。
       const migrate = (path: string) =>
@@ -172,6 +172,7 @@ export function SkillFileTree(props: Props): JSX.Element {
         className="skill-tree__row"
         data-selected={(selected ?? props.path) === entry.path || undefined}
         data-cut={cut === entry.path || undefined}
+        data-expandable={(directory && !root) || undefined}
         data-drop-target={drop_target === entry.path || undefined}
         {...(directory ? drop_events(entry.path) : {})}
       >
@@ -181,7 +182,6 @@ export function SkillFileTree(props: Props): JSX.Element {
               <button
                 type="button"
                 className="skill-tree__select"
-                data-root={root || undefined}
                 disabled={props.busy}
                 aria-expanded={directory && !root ? open : undefined}
                 draggable={editable && !disabled}
@@ -215,17 +215,15 @@ export function SkillFileTree(props: Props): JSX.Element {
                     });
                 }}
               >
-                {directory && !root ? (
-                  open ? (
-                    <ChevronDown />
-                  ) : (
-                    <ChevronRight />
-                  )
-                ) : root ? null : (
-                  <span className="skill-tree__spacer" />
-                )}
                 {root ? <FolderOpen /> : directory ? <Folder /> : <File />}
-                <span>{label}</span>
+                <span className="skill-tree__name">{label}</span>
+                {directory &&
+                  !root &&
+                  (open ? (
+                    <ChevronDown className="skill-tree__chevron" />
+                  ) : (
+                    <ChevronRight className="skill-tree__chevron" />
+                  ))}
               </button>
             }
           />

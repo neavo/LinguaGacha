@@ -77,7 +77,11 @@ import {
   type AgentWorkspaceApprovalPort,
 } from "./model-tools/workspace";
 import { format_agent_skills_for_system_prompt } from "./agent-skills";
-import { load_agent_system_prompt } from "./agent-system-prompt";
+import {
+  insert_agent_personality,
+  load_agent_personality,
+  load_agent_system_prompt,
+} from "./agent-system-prompt";
 import { AgentToolError, prepare_agent_tool } from "./model-tools/definition";
 
 import { AgentTokenSpeed } from "./agent-token-speed";
@@ -179,6 +183,7 @@ type AgentIncrementalEvent = Exclude<AgentSessionEventPayload, { type: "snapshot
 /** 启动时加载的基础提示词和会话种子。 */
 type LoadedAgentResources = Readonly<{
   baseSystemPrompt: string;
+  defaultPersonality: string;
   sessionSeed: AgentSessionSeed;
 }>;
 
@@ -375,10 +380,12 @@ export class AgentService {
   public async load_resources(): Promise<void> {
     await this.workspace.initialize();
     const base_system_prompt = load_agent_system_prompt(this.paths);
+    const default_personality = load_agent_personality(this.paths);
     const session_seed = load_agent_session_seed(this.paths);
     await this.skills.refresh();
     this.resources = {
       baseSystemPrompt: base_system_prompt,
+      defaultPersonality: default_personality,
       sessionSeed: session_seed,
     };
   }
@@ -1150,11 +1157,25 @@ export class AgentService {
       sessionManager: session_manager,
       settingsManager: settings_manager,
     });
-    // 目录只属于本次请求，避免把配置快照写入历史或在压缩、重试时恢复旧目录。
+    // 模板与历史保持稳定，每次请求在原位插入当前人格，并附加最新技能目录。
     const transform_context = session.agent.transformContext;
     session.agent.transformContext = async (messages, signal) => {
-      const context = transform_context ? await transform_context(messages, signal) : messages;
+      const original = transform_context ? await transform_context(messages, signal) : messages;
       const catalog = format_agent_skills_for_system_prompt(this.skills.get_current());
+      const override = this.settings.read_setting().agent_personality;
+      const personality = typeof override === "string" ? override : resources.defaultPersonality;
+      const context = original.map((message) => {
+        // DefaultResourceLoader 将固定模板放入 preamble，按请求替换并保留历史原文。
+        if (message.role !== "system" || typeof message.sections?.preamble !== "string")
+          return message;
+        return {
+          ...message,
+          sections: {
+            ...message.sections,
+            preamble: insert_agent_personality(message.sections.preamble, personality),
+          },
+        };
+      });
       if (!catalog) return context;
       return [
         {

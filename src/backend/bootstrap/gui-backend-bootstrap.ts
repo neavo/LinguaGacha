@@ -1,3 +1,4 @@
+import { AgentPersonalityService } from "../agent/agent-personality-service";
 import { AgentSkillsService } from "../agent/agent-skills-service";
 import type { PDFHost } from "../../shared/pdf";
 import type { AgentImageHost } from "../../shared/agent-image";
@@ -165,6 +166,11 @@ export class GuiBackendBootstrap {
         backendServices: services,
         agentService: agent,
         skillsService: skills,
+        personalityService: new AgentPersonalityService(
+          resources.paths,
+          resources.settings,
+          services.state.runtimeGate,
+        ),
         eventStream: event_stream,
       });
       this.gateway = gateway;

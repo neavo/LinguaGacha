@@ -3,7 +3,12 @@ export const zh_cn_skills_page = {
   builtin: "内置技能",
   user: "用户技能",
   empty: "暂无技能",
+  readonly: "只读",
+  personality_description: "智能助手的自定义角色设定",
   editor: {
+    reset: "重置",
+    delete_skill_confirm: "是否确认删除技能 …?",
+    reset_skill_confirm: "是否确认重置技能 …?",
     back: "返回技能列表",
     files: "文件",
     create_file: "新增文件",

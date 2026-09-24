@@ -47,6 +47,8 @@
 |平台 IO 与路径身份|`NativeFs` / `NativePathPolicy`|`src/native`|
 |后端日志|`LogManager`|正文文件、可重建索引与按位置查询|
 
+`NativeFs.remove_async()` 负责文件和目录删除，调用者等待完成后再提交关联状态。该路径处理 Windows 只读属性。同步单文件清理使用 `unlink()`，`force` 仅忽略文件不存在。`remove_empty_dir()` 只清理空目录。
+
 `RuntimeOperationGate` 统一管理批量翻译、Agent、接口测试与工程写入的互斥。执行从受理到收尾持有运行租约，工程写入与生命周期操作在准备和提交期间持有工程写租约。冲突返回 `runtime.busy`。技能写入约束见 [AGENT_RUNTIME](AGENT_RUNTIME.md)。
 
 纯应用设置、模型配置、预设管理和只读查询沿用各自入口。模型列表探测只请求元数据，接口测试取得 `model_test` 租约。执行采用受理时的模型配置，配置修改影响后续执行。Agent 工作区写入和批量翻译复用当前 Agent 租约，经 `ProjectWriteStore` 提交。
@@ -157,5 +159,5 @@ project, files, items, pdf, quality, prompts, proofreading
 - `pdf_documents` 保存来源摘要，`pdf_pages` 以 `(file_path, page)` 保存页面 JSON，原始字节归 assets。读取按原页序组合，写入仅更新目标页。导入事务核对资产 SHA-256，拒绝解析后变化的来源。文字、字体与坐标提取作为可再生工作材料，不进入存储。
 - asset 存在 `assets` 表，以 Zstd blob 落库；压缩格式集中在 `src/shared/utils/zstd-tool.ts`，数据库读取向上返回解压后的 bytes。
 - 新建与既有工程共用打开迁移入口：按实际表和列补齐结构，再执行业务写回迁移。执行成功后在同一事务内记录 `applied_writeback_migrations`，完成记录由迁移执行器唯一写入。迁移清单归 registry。
-- 启动期迁移先处理 userdata 与历史安装布局，再读取设置；版本内置资产始终只读。project-open 文件迁移在事务执行时按目标文件合并当前可见 Item，使多个格式迁移可以串行组合；历史 `file_type: MD` 在缓存热机和 session loaded 前一次性转为 `MD_V2`。
+- 启动期迁移按顺序等待每个同步或异步钩子完成，处理 userdata 与历史安装布局后再读取设置。版本内置资产始终只读。project-open 文件迁移在事务执行时按目标文件合并当前可见 Item，使多个格式迁移可以串行组合。历史 `file_type: MD` 在缓存热机和 session loaded 前一次性转为 `MD_V2`。
 - 历史工程中已停用能力的表、规则与 meta 保留物理原值，当前 manifest、section、提示词与运行快照只投影现行事实。翻译提示词的路径和存储键由 `TRANSLATION_PROMPT` 固定描述对象拥有。

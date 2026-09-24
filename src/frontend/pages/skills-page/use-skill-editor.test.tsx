@@ -1,3 +1,4 @@
+import { create_text_resolver, type LocaleKey } from "@shared/i18n";
 const runtime_state = vi.hoisted(() => ({ owner: null as "agent" | null }));
 vi.mock("@frontend/app/state/use-desktop-state", () => ({
   useRuntimeSnapshot: () => runtime_state,
@@ -7,7 +8,8 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AgentSkillFile, AgentSkillIdentity } from "@shared/agent-skills";
-import { useSkillEditor, SKILL_AUTOSAVE_DELAY_MS } from "./use-skill-editor";
+import { useSkillEditor } from "./use-skill-editor";
+import { SKILL_AUTOSAVE_DELAY_MS } from "./skill-editor-document";
 import { format_skill_editor_document, read_skill_editor_document } from "./skill-editor-document";
 
 const mocks = vi.hoisted(() => ({ api: vi.fn(), toast: vi.fn(), t: (key: string) => key }));
@@ -34,6 +36,7 @@ describe("技能自动保存", () => {
     vi.useFakeTimers();
     runtime_state.owner = null;
     mocks.api.mockReset();
+    mocks.t = (key: string) => key;
     mocks.toast.mockReset();
     save = undefined;
     disk = {
@@ -85,6 +88,104 @@ describe("技能自动保存", () => {
   }
   /** 保存请求的顺序是自动保存协议的一部分。 */
   const saves = () => mocks.api.mock.calls.filter(([url]) => url.endsWith("/save"));
+
+  it("整包删除报错后查询确认包已不存在，显示通用错误并结束旧文件编辑", async () => {
+    const text = create_text_resolver("zh-CN");
+    mocks.t = (key: string) => text(key as LocaleKey);
+    await act(async () => root.render(<Harness />));
+    const original_api = mocks.api.getMockImplementation()!;
+    mocks.api.mockImplementation(async (url, body, signal) => {
+      if (url === "/api/skills/delete") throw new DesktopApiError({ code: "file.io_failed" });
+      if (url === "/api/skills/tree") throw new DesktopApiError({ code: "file.not_found" });
+      return original_api(url, body, signal);
+    });
+    await act(async () => {
+      expect(await editor.delete_skill()).toBe(true);
+    });
+    expect(editor.file).toBeNull();
+    expect(mocks.toast).toHaveBeenCalledWith("error", text("app.error.file.io_failed.message"));
+    await act(async () => vi.advanceTimersByTime(SKILL_AUTOSAVE_DELAY_MS * 2));
+    expect(saves()).toHaveLength(0);
+  });
+
+  it("删除报错后的查询也失败时保留草稿和编辑入口，不猜测删除结果", async () => {
+    await edit("unsaved");
+    const previous = editor.file;
+    const draft = editor.draft;
+    mocks.api.mockRejectedValue(new DesktopApiError({ code: "file.io_failed" }));
+    await act(async () => {
+      expect(await editor.delete_skill()).toBe(false);
+    });
+    expect(editor.file).toBe(previous);
+    expect(editor.draft).toBe(draft);
+    expect(editor.error).not.toBe("");
+    await act(async () => vi.advanceTimersByTime(SKILL_AUTOSAVE_DELAY_MS * 2));
+    expect(saves()).toHaveLength(0);
+  });
+
+  it("删除失败后当前文件已不存在，刷新文件树并回到主文件", async () => {
+    await act(async () => {
+      await editor.open_file("reference.md");
+    });
+    const original_api = mocks.api.getMockImplementation()!;
+    mocks.api.mockImplementation(async (url, body, signal) => {
+      if (url === "/api/skills/file/change") throw new DesktopApiError({ code: "file.io_failed" });
+      return original_api(url, body, signal);
+    });
+    await act(async () => {
+      expect(await editor.change_file({ operation: "delete", path: "reference.md" })).toBe(false);
+    });
+    expect(editor.file?.path).toBe("SKILL.md");
+    expect(editor.tree?.entries).toEqual([{ path: "SKILL.md", kind: "file" }]);
+    expect(mocks.toast).toHaveBeenCalled();
+  });
+
+  it("整包删除等待在途保存并丢弃后续草稿，不会再次保存旧包", async () => {
+    let release!: () => void;
+    save = () =>
+      new Promise<void>((resolve) => {
+        release = resolve;
+      });
+    const original_api = mocks.api.getMockImplementation()!;
+    mocks.api.mockImplementation(async (url, body, signal) => {
+      if (url === "/api/skills/delete") return { skills: [] };
+      return original_api(url, body, signal);
+    });
+    await edit("first");
+    await act(async () => vi.advanceTimersByTime(SKILL_AUTOSAVE_DELAY_MS));
+    await edit("discarded");
+    let deleting!: Promise<boolean>;
+    await act(async () => {
+      deleting = editor.delete_skill();
+    });
+    expect(mocks.api.mock.calls.some(([url]) => url === "/api/skills/delete")).toBe(false);
+    await act(async () => {
+      release();
+      expect(await deleting).toBe(true);
+    });
+    expect(saves()).toHaveLength(1);
+    expect(editor.file).toBeNull();
+    await act(async () => vi.advanceTimersByTime(SKILL_AUTOSAVE_DELAY_MS * 2));
+    expect(saves()).toHaveLength(1);
+    expect(mocks.api).toHaveBeenCalledWith("/api/skills/delete", identity);
+  });
+
+  it("无效元数据不阻止整包删除，删除失败保留草稿供重试", async () => {
+    const invalid = format_skill_editor_document({ name: "", description: "", body: "draft" });
+    await act(async () => editor.edit(invalid));
+    const original_api = mocks.api.getMockImplementation()!;
+    mocks.api.mockImplementation(async (url, body, signal) => {
+      if (url === "/api/skills/delete") throw new Error("locked package");
+      return original_api(url, body, signal);
+    });
+    await act(async () => {
+      expect(await editor.delete_skill()).toBe(false);
+    });
+    expect(editor.draft).toBe(invalid);
+    expect(editor.file).not.toBeNull();
+    expect(saves()).toHaveLength(0);
+    expect(mocks.toast).toHaveBeenCalled();
+  });
 
   it("运行占用暂停已排队自动保存，保留草稿并在空闲后恢复", async () => {
     const draft = format_skill_editor_document({ ...disk.document!, body: "updated" });
@@ -191,6 +292,14 @@ describe("技能自动保存", () => {
     const previous = mocks.api.getMockImplementation()!;
     mocks.api.mockImplementation(async (url, body) => {
       if (url.endsWith("/change")) throw new Error("denied");
+      if (url.endsWith("/tree"))
+        return {
+          skill: identity,
+          entries: [
+            { path: "SKILL.md", kind: "file" },
+            { path: "note.md", kind: "file" },
+          ],
+        };
       return previous(url, body);
     });
     await act(async () => {

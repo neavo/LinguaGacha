@@ -28,33 +28,35 @@ const skill_markdown = Prec.high(
 );
 
 /** 在事务生效前拒绝跨固定结构的修改，允许选择与复制。 */
-const protect_metadata = EditorState.transactionFilter.of((transaction) => {
-  if (!transaction.docChanged) return transaction;
-  const { fields, body_from } = skill_editor_layout(transaction.startState.doc);
-  let rejected = false; // 任一变更越过字段边界时拒绝整批修改。
-  const corrections: ChangeSpec[] = []; // 修正位置以本次修改后的文档为准。
-  transaction.changes.iterChanges((from, to, next_from, next_to, inserted) => {
-    if (from >= body_from) return;
-    const field = fields.find((item) => from >= item.from && to <= item.to);
-    if (!field) {
-      rejected = true;
-    } else if (inserted.lines > 1) {
-      if (transaction.isUserEvent("input.paste")) {
-        corrections.push({
-          from: next_from,
-          to: next_to,
-          insert: inserted.toString().replace(/[\r\n]+/g, " "),
-        });
-      } else {
+function protect_metadata(readonly: boolean): Extension {
+  return EditorState.transactionFilter.of((transaction) => {
+    if (!transaction.docChanged) return transaction;
+    const { fields, body_from } = skill_editor_layout(transaction.startState.doc);
+    let rejected = false; // 任一变更越过字段边界时拒绝整批修改。
+    const corrections: ChangeSpec[] = []; // 修正位置以本次修改后的文档为准。
+    transaction.changes.iterChanges((from, to, next_from, next_to, inserted) => {
+      if (from >= body_from) return;
+      const field = fields.find((item) => from >= item.from && to <= item.to);
+      if (readonly || !field) {
         rejected = true;
+      } else if (inserted.lines > 1) {
+        if (transaction.isUserEvent("input.paste")) {
+          corrections.push({
+            from: next_from,
+            to: next_to,
+            insert: inserted.toString().replace(/[\r\n]+/g, " "),
+          });
+        } else {
+          rejected = true;
+        }
       }
-    }
+    });
+    if (rejected) return [];
+    if (corrections.length === 0) return transaction;
+    // CodeMirror 合并顺序修改并映射选区，撤销历史只记录最终文本。
+    return [transaction, { changes: corrections, sequential: true }];
   });
-  if (rejected) return [];
-  if (corrections.length === 0) return transaction;
-  // CodeMirror 合并顺序修改并映射选区，撤销历史只记录最终文本。
-  return [transaction, { changes: corrections, sequential: true }];
-});
+}
 
 /** 仅计算固定头部的标记，正文高亮继续交给 Markdown。 */
 const metadata_marks = EditorView.decorations.compute(["doc"], (state) => {
@@ -80,4 +82,15 @@ const metadata_marks = EditorView.decorations.compute(["doc"], (state) => {
 });
 
 /** 字段结构、粘贴与高亮规则集中在当前扩展。 */
-export const skill_editor_extension: Extension = [skill_markdown, protect_metadata, metadata_marks];
+export const skill_editor_extension: Extension = [
+  skill_markdown,
+  protect_metadata(false),
+  metadata_marks,
+];
+
+/** 人格使用同一文档语法，名称和描述固定，正文仍可编辑。 */
+export const personality_editor_extension: Extension = [
+  skill_markdown,
+  protect_metadata(true),
+  metadata_marks,
+];

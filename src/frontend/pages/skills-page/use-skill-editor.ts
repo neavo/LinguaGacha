@@ -12,9 +12,12 @@ import {
   type AgentSkillIdentity,
   type AgentSkillTree,
 } from "@shared/agent-skills";
-import { format_skill_editor_document, read_skill_editor_document } from "./skill-editor-document";
+import {
+  SKILL_AUTOSAVE_DELAY_MS,
+  format_skill_editor_document,
+  read_skill_editor_document,
+} from "./skill-editor-document";
 
-export const SKILL_AUTOSAVE_DELAY_MS = 1000;
 type EditorState = {
   tree: AgentSkillTree | null;
   file: AgentSkillFile | null;
@@ -62,6 +65,7 @@ export function useSkillEditor(identity: AgentSkillIdentity) {
   const operation = useRef<Promise<boolean> | null>(null); // 离页同时等待文件操作，错误留在当前工作面。
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null); // 离页和文件操作接管尚未触发的自动保存。
   const reading = useRef<AbortController | null>(null); // 重试和 StrictMode 重挂载失效旧查询。
+  const deleting = useRef(false); // 删除接管草稿后，正在保存的循环只完成当前请求。
   /** 同步刷新异步操作读取的状态和 React 展示。 */
   const update = useCallback((patch: Partial<EditorState>) => {
     current.current = { ...current.current, ...patch };
@@ -138,6 +142,7 @@ export function useSkillEditor(identity: AgentSkillIdentity) {
     const run = async (): Promise<boolean> => {
       update({ error: "", conflict: false });
       while (mounted.current) {
+        if (deleting.current) return true;
         if (current.current.composing) return false;
         const { file, draft } = current.current;
         if (!file || file.skill.source === "builtin" || draft === file_draft(file)) return true;
@@ -209,6 +214,39 @@ export function useSkillEditor(identity: AgentSkillIdentity) {
     return true;
   }
 
+  /** 递归删除失败可能已经移除部分文件；刷新结构，只替换已不存在文件的编辑基线。 */
+  async function refresh_after_delete_failure(skill: AgentSkillIdentity): Promise<boolean> {
+    let tree: AgentSkillTree;
+    try {
+      tree = await api_fetch<AgentSkillTree>("/api/skills/tree", skill);
+    } catch (error) {
+      if (!(error instanceof DesktopApiError) || error.code !== "file.not_found") throw error;
+      update({ file: null, tree: null, draft: "", error: "", conflict: false });
+      return true;
+    }
+    update({ tree });
+    const current_file = current.current.file;
+    if (
+      current_file &&
+      tree.entries.some((entry) => entry.kind === "file" && entry.path === current_file.path)
+    )
+      return false;
+    // 旧文件已被删除，先停止其自动保存；主文件读取失败时由页面提供重载。
+    update({ file: null });
+    const file = await api_fetch<AgentSkillFile>("/api/skills/file/read", {
+      ...tree.skill,
+      path: AGENT_SKILL_MAIN_FILE,
+    });
+    update({
+      file,
+      draft: file_draft(file),
+      error: "",
+      conflict: false,
+      reset_count: current.current.reset_count + 1,
+    });
+    return false;
+  }
+
   /** 文件命令成功后更新导航。当前路径未受影响时沿用已保存内容。 */
   async function change_file(change: AgentSkillFileChange): Promise<boolean> {
     if (locked_ref.current) return false;
@@ -234,10 +272,22 @@ export function useSkillEditor(identity: AgentSkillIdentity) {
     }
     const previous = current.current.file;
     if (!previous) return false;
-    const tree = await api_fetch<AgentSkillTree>("/api/skills/file/change", {
-      ...previous.skill,
-      ...change,
-    });
+    let tree: AgentSkillTree;
+    try {
+      tree = await api_fetch<AgentSkillTree>("/api/skills/file/change", {
+        ...previous.skill,
+        ...change,
+      });
+    } catch (error) {
+      if (change.operation === "delete") {
+        try {
+          await refresh_after_delete_failure(previous.skill);
+        } catch (refresh) {
+          report(refresh, "load_failed");
+        }
+      }
+      throw error;
+    }
     update({ tree });
     const next_path =
       change.operation === "create_file"
@@ -324,13 +374,41 @@ export function useSkillEditor(identity: AgentSkillIdentity) {
     invalid,
     reload: load,
     flush: finish,
+    delete_skill: () =>
+      run_operation(async () => {
+        if (locked_ref.current) return false;
+        deleting.current = true;
+        try {
+          if (write.current) await write.current;
+          const file = current.current.file;
+          if (!file) return false;
+          await api_fetch("/api/skills/delete", file.skill);
+          // 删除成功后清除保存基线，离页和延迟回调都无法重新写入旧包。
+          update({ file: null, tree: null, draft: "", error: "", conflict: false });
+          return true;
+        } catch (error) {
+          notify(error);
+          const skill = current.current.file?.skill;
+          if (skill) {
+            try {
+              return await refresh_after_delete_failure(skill);
+            } catch (refresh) {
+              report(refresh, "load_failed");
+            }
+          }
+          return false;
+        } finally {
+          deleting.current = false;
+        }
+      }, "file_operation"),
     open_file: (path: string) => run_operation(() => open_file(path), "load_failed"),
     change_file: (change: AgentSkillFileChange) =>
       run_operation(() => change_file(change), "file_operation"),
     recover: (overwrite = false) => run_operation(() => recover(overwrite), "load_failed"),
     /** 输入更新草稿后清除上一次保存错误，恢复自动保存。 */
     edit: (draft: string) => {
-      if (!locked_ref.current) update({ draft, error: "", conflict: false });
+      if (!locked_ref.current && !current.current.busy)
+        update({ draft, error: "", conflict: false });
     },
     /** 组词开始时取消待保存任务，结束后由草稿监听恢复计时。 */
     compose: (composing: boolean) => {

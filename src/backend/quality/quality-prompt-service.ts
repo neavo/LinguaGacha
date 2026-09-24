@@ -187,12 +187,12 @@ export class QualityPromptService {
   /**
    * 删除用户提示词预设。
    */
-  public delete_preset(request: JsonRecord): JsonRecord {
+  public async delete_preset(request: JsonRecord): Promise<JsonRecord> {
     const preset_file = this.resolve_prompt_preset_file(String(request["virtual_id"] ?? ""));
     if (preset_file.source !== "user") {
       throw new AppErrors.AppError("request.validation_failed");
     }
-    this.native_fs.remove(preset_file.file_path);
+    await this.native_fs.remove_async(preset_file.file_path);
     return { path: preset_file.file_path.replace(/\\/g, "/") };
   }
 

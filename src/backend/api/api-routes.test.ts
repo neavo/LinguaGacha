@@ -20,6 +20,9 @@ const GET_PATHS = new Set([
 ]);
 
 const POST_PATHS = new Set([
+  "/api/agent/personality/read",
+  "/api/agent/personality/save",
+  "/api/skills/delete",
   "/api/skills/snapshot",
   "/api/skills/enabled",
   "/api/skills/reorder",
@@ -351,7 +354,9 @@ function create_route_fixture() {
     app: { get } as unknown as Hono,
     services,
     agent,
+    personality: { read: vi.fn(), save: vi.fn() },
     skills: {
+      delete: vi.fn(),
       snapshot: vi.fn(),
       set_enabled: vi.fn(),
       tree: vi.fn(),

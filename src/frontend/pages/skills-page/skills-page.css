@@ -82,6 +82,9 @@
 }
 
 .skills-page__heading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   grid-column: 2;
   grid-row: 1;
   min-width: 0;
@@ -111,7 +114,7 @@
   text-overflow: ellipsis;
   white-space: nowrap;
   color: var(--muted-foreground);
-  font-size: 13px;
+  font-size: 12px;
   line-height: 1.5;
   user-select: none;
 }
@@ -129,4 +132,12 @@
 }
 .skills-page__list[hidden] {
   display: none;
+}
+
+.skills-page__heading > span:first-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.skills-page__heading > [data-slot="badge"] {
+  flex-shrink: 0;
 }

@@ -8,6 +8,7 @@ import { AppSettingService } from "../app/app-setting-service";
 import { normalize_agent_skill_settings } from "../../domain/agent-skill-settings";
 import { AgentSkillsService } from "./agent-skills-service";
 import { load_agent_skills } from "./agent-skills";
+import { default_native_fs } from "../../native/native-fs";
 
 /** 隔离技能目录和配置文件，使用真实加载与持久化入口。 */
 function fixture() {
@@ -56,6 +57,127 @@ function fixture() {
 }
 
 describe("技能管理", () => {
+  it("异步删除持有运行互斥和查询队列，提交偏好时保留等待期间的其它设置", async () => {
+    using f = fixture();
+    f.write("user", "folder", "sample");
+    let release!: () => void;
+    let started!: () => void;
+    const entered = new Promise<void>((resolve) => {
+      started = resolve;
+    });
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const actual_remove = default_native_fs.remove_async.bind(default_native_fs);
+    using remove = vi
+      .spyOn(default_native_fs, "remove_async")
+      .mockImplementationOnce(async (...args) => {
+        started();
+        await held;
+        await actual_remove(...args);
+      });
+    const deleting = f.service.delete({ source: "user", name: "sample" });
+    await entered;
+    expect(() => f.gate.begin_runtime("agent")).toThrow(
+      expect.objectContaining({ code: "runtime.busy" }),
+    );
+    let read_finished = false;
+    const reading = f.service.snapshot().then((value) => {
+      read_finished = true;
+      return value;
+    });
+    await Promise.resolve();
+    expect(read_finished).toBe(false);
+    f.settings.save_setting({ ...f.settings.read_setting(), request_timeout: 42 });
+    release();
+    await deleting;
+    expect((await reading).skills).toEqual([]);
+    expect(f.settings.read_setting().request_timeout).toBe(42);
+    const lease = f.gate.begin_runtime("agent");
+    f.gate.finish_runtime(lease);
+    expect(remove).toHaveBeenCalledOnce();
+  });
+
+  it("递归删除部分完成后失败，集合立即反映主文件已消失的事实", async () => {
+    using f = fixture();
+    f.write("user", "folder", "sample");
+    await f.service.refresh();
+    using remove = vi
+      .spyOn(default_native_fs, "remove_async")
+      .mockImplementationOnce(async (root) => {
+        fs.unlinkSync(path.join(root, "SKILL.md"));
+        throw Object.assign(new Error("blocked child"), { code: "EPERM" });
+      });
+    await expect(f.service.delete({ source: "user", name: "sample" })).rejects.toMatchObject({
+      code: "file.io_failed",
+    });
+    expect(f.service.get_current()).toEqual([]);
+    expect(fs.existsSync(path.join(f.paths.get_agent_user_skill_dir(), "folder"))).toBe(true);
+    const lease = f.gate.begin_runtime("agent");
+    f.gate.finish_runtime(lease);
+    expect(remove).toHaveBeenCalledOnce();
+  });
+
+  it("磁盘删除成功但偏好保存失败，保留原始错误并刷新集合，不回写旧配置", async () => {
+    using f = fixture();
+    f.write("user", "folder", "sample");
+    await f.service.refresh();
+    using save = vi.spyOn(f.settings, "save_setting").mockImplementationOnce(() => {
+      throw new Error("disk full");
+    });
+    await expect(f.service.delete({ source: "user", name: "sample" })).rejects.toMatchObject({
+      code: "file.io_failed",
+      cause: expect.objectContaining({ message: "disk full" }),
+    });
+    expect(fs.existsSync(path.join(f.paths.get_agent_user_skill_dir(), "folder"))).toBe(false);
+    expect(f.service.get_current()).toEqual([]);
+    expect(save).toHaveBeenCalledOnce();
+  });
+
+  it("删除整个用户包并清理偏好，同名内置技能恢复可用", async () => {
+    using f = fixture();
+    f.write("builtin", "builtin-folder", "sample");
+    f.write("user", "user-folder", "sample");
+    f.write("user", "other-folder", "other");
+    const root = path.join(f.paths.get_agent_user_skill_dir(), "user-folder");
+    fs.mkdirSync(path.join(root, "references"));
+    fs.writeFileSync(path.join(root, "references", "note.md"), "Reference");
+    await f.service.reorder({ names: ["sample", "other"] });
+    await f.service.set_enabled({ source: "user", name: "sample", enabled: false });
+    const result = await f.service.delete({ source: "user", name: "sample" });
+    expect(fs.existsSync(root)).toBe(false);
+    expect(result.skills.map(({ source, name }) => [source, name])).toEqual([
+      ["builtin", "sample"],
+      ["user", "other"],
+    ]);
+    expect(f.settings.read_setting().agent_skills).toEqual({
+      disabled: { builtin: [], user: [] },
+      user_order: ["other"],
+    });
+    expect(f.service.get_current().find((skill) => skill.name === "sample")?.filePath).toContain(
+      "builtin-folder",
+    );
+    await expect(f.service.delete({ source: "builtin", name: "sample" })).rejects.toMatchObject({
+      code: "request.validation_failed",
+    });
+  });
+
+  it("删除失败保留技能偏好并刷新可重试的当前集合", async () => {
+    using f = fixture();
+    f.write("user", "folder", "sample");
+    await f.service.reorder({ names: ["sample"] });
+    const previous = f.settings.read_setting().agent_skills;
+    using remove = vi.spyOn(default_native_fs, "remove_async").mockImplementationOnce(async () => {
+      throw new Error("Locked file");
+    });
+    await expect(f.service.delete({ source: "user", name: "sample" })).rejects.toMatchObject({
+      code: "file.io_failed",
+    });
+    expect(f.settings.read_setting().agent_skills).toEqual(previous);
+    expect(f.service.get_current().map((skill) => skill.name)).toEqual(["sample"]);
+    expect(remove).toHaveBeenCalledOnce();
+  });
+
   it("运行期间拒绝全部技能修改，读取保持可用", async () => {
     using f = fixture();
     f.write("user", "different-folder", "sample");
@@ -65,6 +187,7 @@ describe("技能管理", () => {
     for (const command of [
       () => f.service.set_enabled({ ...skill, enabled: false }),
       () => f.service.reorder({ names: ["sample"] }),
+      () => f.service.delete(skill),
       () =>
         f.service.save_file({
           ...skill,

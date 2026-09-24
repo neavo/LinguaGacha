@@ -62,6 +62,18 @@ describe("技能文件树", () => {
       (button) => button.textContent === name,
     )!;
   }
+  it("点击目录箭头展开子项", async () => {
+    await render();
+    const directory = entry_button("references");
+    expect(directory.getAttribute("aria-expanded")).toBe("false");
+    await act(async () =>
+      directory
+        .querySelector(".skill-tree__chevron")!
+        .dispatchEvent(new MouseEvent("click", { bubbles: true })),
+    );
+    expect(directory.getAttribute("aria-expanded")).toBe("true");
+    expect(entry_button("guide.md")).toBeDefined();
+  });
   /** 点击条目的直接操作按钮。 */
   async function row_action(label: string) {
     const row = entry_button("note.md").parentElement!;

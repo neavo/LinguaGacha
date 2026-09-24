@@ -52,6 +52,7 @@
 |共享 helper、状态写入口、公开契约|直接受影响的调用者及生产者、消费者相关测试|
 |测试配置、环境初始化、广泛共享基础设施|受影响的测试项目；影响面无法可靠界定时执行 `npm test`|
 |GUI / preload / native / Backend Runtime worker 行为|相关目标测试；共享资源或 GUI Backend 生命周期变化时运行真实 `BackendResources` 与 `GuiBackendBootstrap` 集成测试|
+|文件删除或清理|运行 `src/native/native-fs.test.ts` 和调用者测试。该文件在 Windows 使用真实 Electron 验证只读文件与目录删除|
 |Agent 工作区或 Node runtime 行为|`src/backend/agent/workspace/`、`model-tools/` 及受影响的 Backend Runtime / main 路径测试；JavaScript 加载、权限、真实文件边界、系统代理或网页流读取的环境语义存在风险时，对相应行为运行真实 Electron Node 子进程集成验证|
 |宿主加载、组合根、资源定位或跨进程通信与启动契约变化|低层测试不足以证明变化时，对受影响的契约执行真实 Electron 集成或 smoke 验证|
 |Agent 文件上传、图片处理与宿主协议|上传存储、消息准备、草稿与 Workspace 输出的目标测试。字节传输与关闭行为验证真实 Gateway / Bootstrap。编解码或 IPC 变化运行 `src/native/agent-image-host.test.ts` 和 Workspace bootstrap 的真实 Electron 验证|

@@ -31,9 +31,9 @@ export class MigrationOrchestrator {
   /**
    * Backend 启动期迁移只处理 userdata 与历史安装布局，必须早于设置读取和 Gateway 启动。
    */
-  public run_startup_migrations(context: StartupMigrationContext): void {
+  public async run_startup_migrations(context: StartupMigrationContext): Promise<void> {
     for (const migration of this.by_order((item) => item.run_startup !== undefined)) {
-      migration.run_startup?.(context);
+      await migration.run_startup?.(context);
     }
   }
 

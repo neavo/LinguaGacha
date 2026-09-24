@@ -1,3 +1,5 @@
+import { PersonalityEditor } from "./personality-editor";
+import { Badge } from "@frontend/shadcn/badge";
 import { useEffect, useRef, useState, type Ref } from "react";
 import type {
   AgentSkillEntry,
@@ -26,26 +28,37 @@ import { useDesktopState, useRuntimeSnapshot } from "@frontend/app/state/use-des
 import "./skills-page.css";
 import { SkillEditor } from "./skill-editor";
 
+type SkillsPageEntry = { kind: "personality" } | { kind: "skill"; skill: AgentSkillIdentity };
+
 /** 按来源展示技能，用户排序由页面统一提交。 */
 export function SkillsPage(): JSX.Element {
-  const [selected, set_selected] = useState<AgentSkillIdentity | null>(null);
+  const [selected, set_selected] = useState<SkillsPageEntry | null>(null);
   return (
     <>
       <div className="skills-page__list" hidden={selected !== null}>
-        <SkillsList on_open={set_selected} active={selected === null} />
+        <SkillsList
+          on_open={(skill) => set_selected({ kind: "skill", skill })}
+          on_personality={() => set_selected({ kind: "personality" })}
+          active={selected === null}
+        />
       </div>
-      {selected && <SkillEditor skill={selected} on_back={() => set_selected(null)} />}
+      {selected?.kind === "skill" && (
+        <SkillEditor skill={selected.skill} on_back={() => set_selected(null)} />
+      )}
+      {selected?.kind === "personality" && <PersonalityEditor on_back={() => set_selected(null)} />}
     </>
   );
 }
 
 /** 列表保留挂载状态以恢复滚动，详情关闭后重新读取技能事实。 */
 function SkillsList({
+  on_personality,
   on_open,
   active,
 }: {
   on_open: (skill: AgentSkillIdentity) => void;
   active: boolean;
+  on_personality: () => void;
 }): JSX.Element {
   const { t } = useI18n();
   const state = useSkillsPageState(active);
@@ -77,6 +90,20 @@ function SkillsList({
     <div className="skills-page page-shell page-shell--full">
       <section className="skills-page__group" aria-label={t("skills_page.builtin")}>
         <h2>{t("skills_page.builtin")}</h2>
+        <Card className="skills-page__card">
+          <button
+            type="button"
+            className="skills-page__open"
+            aria-label="personality"
+            disabled={pending}
+            onClick={on_personality}
+          />
+          <SkillHandle disabled />
+          <h3 className="skills-page__heading">
+            <span>personality</span>
+          </h3>
+          <p className="skills-page__description">{t("skills_page.personality_description")}</p>
+        </Card>
         {builtin.map((skill) => (
           <SkillCard
             key={skill.name}
@@ -87,7 +114,6 @@ function SkillsList({
             on_open={on_open}
           />
         ))}
-        {builtin.length === 0 && <p className="skills-page__empty">{t("skills_page.empty")}</p>}
       </section>
       <section className="skills-page__group" aria-label={t("skills_page.user")}>
         <h2>{t("skills_page.user")}</h2>
@@ -127,7 +153,6 @@ function SkillCard(props: SkillCardProps): JSX.Element {
   const skill = props.skill;
   const description = skill.displayDescriptions[locale];
   const drag_disabled = props.pending || props.locked || skill.source === "builtin";
-  const drag_label = t(drag_disabled ? "app.drag.disabled" : "app.drag.enabled");
   return (
     <Card
       ref={props.card_ref}
@@ -142,22 +167,11 @@ function SkillCard(props: SkillCardProps): JSX.Element {
         disabled={props.pending || props.dragging}
         onClick={() => props.on_open({ source: skill.source, name: skill.name })}
       />
-      <Tooltip>
-        <TooltipTrigger render={<span className="skills-page__handle-slot" />}>
-          <AppButton
-            ref={props.handle_ref}
-            variant="ghost"
-            size="icon-sm"
-            className="skills-page__handle"
-            disabled={drag_disabled}
-            aria-label={drag_label}
-          >
-            <GripVertical />
-          </AppButton>
-        </TooltipTrigger>
-        <TooltipContent>{drag_label}</TooltipContent>
-      </Tooltip>
-      <h3 className="skills-page__heading">{skill.name}</h3>
+      <SkillHandle disabled={drag_disabled} handle_ref={props.handle_ref} />
+      <h3 className="skills-page__heading">
+        <span>{skill.name}</span>
+        {skill.source === "builtin" && <Badge tone="neutral">{t("skills_page.readonly")}</Badge>}
+      </h3>
       <div className="skills-page__actions">
         <BooleanSegmentedToggle
           aria_label={skill.name}
@@ -170,6 +184,35 @@ function SkillCard(props: SkillCardProps): JSX.Element {
       </div>
       <p className="skills-page__description">{description}</p>
     </Card>
+  );
+}
+
+/** 内置与用户技能共用把手外观，只有用户条目绑定排序。 */
+function SkillHandle({
+  disabled,
+  handle_ref,
+}: {
+  disabled: boolean;
+  handle_ref?: Ref<HTMLButtonElement>;
+}): JSX.Element {
+  const { t } = useI18n();
+  const drag_label = t(disabled ? "app.drag.disabled" : "app.drag.enabled");
+  return (
+    <Tooltip>
+      <TooltipTrigger render={<span className="skills-page__handle-slot" />}>
+        <AppButton
+          ref={handle_ref}
+          variant="ghost"
+          size="icon-sm"
+          className="skills-page__handle"
+          disabled={disabled}
+          aria-label={drag_label}
+        >
+          <GripVertical />
+        </AppButton>
+      </TooltipTrigger>
+      <TooltipContent>{drag_label}</TooltipContent>
+    </Tooltip>
   );
 }
 

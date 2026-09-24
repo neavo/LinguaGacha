@@ -40,14 +40,14 @@ describe("技能文件", () => {
       "SKILL.md",
     ]);
   });
-  it("文件读写、移动和删除保留正文，入口及内部文件受保护", () => {
+  it("文件读写、移动和删除保留正文，入口及内部文件受保护", async () => {
     using f = fixture();
     fs.writeFileSync(path.join(f.root, "ui.json"), "{}");
     expect(read_skill_tree(f.root)).toEqual([{ path: "SKILL.md", kind: "file" }]);
-    change_skill_file(f.root, { operation: "create_directory", path: "references" });
-    change_skill_file(f.root, { operation: "create_file", path: "references/note.md" });
+    await change_skill_file(f.root, { operation: "create_directory", path: "references" });
+    await change_skill_file(f.root, { operation: "create_file", path: "references/note.md" });
     write_skill_file(skill_existing_path(f.root, "references/note.md"), "  text\n\n");
-    change_skill_file(f.root, {
+    await change_skill_file(f.root, {
       operation: "move",
       path: "references/note.md",
       destination: "note.md",
@@ -58,28 +58,30 @@ describe("技能文件", () => {
     }
     for (const operation of ["create_file", "delete", "move"] as const) {
       for (const relative of ["SKILL.md", "ui.json"]) {
-        expect(() =>
+        await expect(
           change_skill_file(f.root, { operation, path: relative, destination: "other.md" }),
-        ).toThrow();
+        ).rejects.toThrow();
       }
     }
-    change_skill_file(f.root, { operation: "delete", path: "references" });
+    await change_skill_file(f.root, { operation: "delete", path: "references" });
     expect(fs.existsSync(path.join(f.root, "references"))).toBe(false);
   });
 
-  it("包内链接不参与读取或创建，父目录操作保护隐藏后代", () => {
+  it("包内链接不参与读取或创建，父目录操作保护隐藏后代", async () => {
     using f = fixture();
     using outside = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-skill-outside-"));
     fs.writeFileSync(path.join(outside.path, "secret.md"), "private");
     fs.symlinkSync(outside.path, path.join(f.root, "linked"), "junction");
     expect(read_skill_tree(f.root).some((entry) => entry.path === "linked")).toBe(false);
     expect(() => read_skill_file(f.root, skill, "linked/secret.md")).toThrow();
-    expect(() =>
+    await expect(
       change_skill_file(f.root, { operation: "create_file", path: "linked/new.md" }),
-    ).toThrow();
+    ).rejects.toThrow();
     fs.mkdirSync(path.join(f.root, "nested"));
     fs.writeFileSync(path.join(f.root, "nested/ui.json"), "{}");
-    expect(() => change_skill_file(f.root, { operation: "delete", path: "nested" })).toThrow();
+    await expect(
+      change_skill_file(f.root, { operation: "delete", path: "nested" }),
+    ).rejects.toThrow();
     expect(fs.readFileSync(path.join(outside.path, "secret.md"), "utf8")).toBe("private");
   });
 

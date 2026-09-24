@@ -3,7 +3,12 @@ export const en_us_skills_page = {
   builtin: "Built-in skills",
   user: "User skills",
   empty: "No skills",
+  readonly: "Read-only",
+  personality_description: "Custom personality for your intelligent assistant",
   editor: {
+    reset: "Reset",
+    delete_skill_confirm: "Confirm deleting the skill …?",
+    reset_skill_confirm: "Confirm resetting the skill …?",
     back: "Back to skills",
     files: "Files",
     create_file: "New file",

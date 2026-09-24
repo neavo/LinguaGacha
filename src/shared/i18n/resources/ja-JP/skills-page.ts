@@ -3,7 +3,12 @@ export const ja_jp_skills_page = {
   builtin: "内蔵スキル",
   user: "ユーザースキル",
   empty: "スキルはありません",
+  readonly: "読み取り専用",
+  personality_description: "アシスタントのカスタムキャラクター設定",
   editor: {
+    reset: "リセット",
+    delete_skill_confirm: "スキルを削除しますか …?",
+    reset_skill_confirm: "スキルをリセットしますか …?",
     back: "スキル一覧に戻る",
     files: "ファイル",
     create_file: "ファイルを追加",

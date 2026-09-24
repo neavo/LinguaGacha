@@ -291,7 +291,7 @@ export class AppPathService {
         `.linguagacha_write_probe_${Date.now().toString()}_${Math.random().toString(16).slice(2)}`,
       );
       this.native_fs.write_file_sync(probe_path, "");
-      this.native_fs.remove(probe_path, { force: true });
+      this.native_fs.unlink(probe_path, { force: true });
       return true;
     } catch {
       return false;

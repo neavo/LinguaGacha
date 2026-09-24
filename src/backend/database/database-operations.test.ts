@@ -142,7 +142,7 @@ describe("ProjectDatabase", () => {
     const database = new ProjectDatabase(native_fs);
     cleanup_databases.push(database);
     const target = project_path("cleanup-failed.lg");
-    vi.spyOn(native_fs, "remove").mockImplementationOnce(() => {
+    vi.spyOn(native_fs, "unlink").mockImplementationOnce(() => {
       throw new Error("remove failed");
     });
     let failure: unknown;

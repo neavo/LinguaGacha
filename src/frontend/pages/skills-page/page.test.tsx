@@ -131,7 +131,12 @@ describe("技能页面", () => {
       },
     );
     await render();
-    const cards = container.querySelectorAll<HTMLElement>(".skills-page__card");
+    const cards = [...container.querySelectorAll<HTMLElement>(".skills-page__card")].filter(
+      (card) =>
+        card.querySelector(
+          '.skills-page__open[aria-label="custom"], .skills-page__open[aria-label="another"]',
+        ),
+    );
     expect(cards[0]?.querySelector<HTMLButtonElement>(".skills-page__handle")?.disabled).toBe(true);
     expect(cards[1]?.querySelector<HTMLButtonElement>(".skills-page__handle")?.disabled).toBe(
       false,

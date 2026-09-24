@@ -3,7 +3,12 @@ export const de_de_skills_page = {
   builtin: "Integrierte Skills",
   user: "Benutzer-Skills",
   empty: "Keine Skills",
+  readonly: "Schreibgeschützt",
+  personality_description: "Individuelle Persönlichkeit des intelligenten Assistenten",
   editor: {
+    reset: "Zurücksetzen",
+    delete_skill_confirm: "Skill wirklich löschen …?",
+    reset_skill_confirm: "Skill wirklich zurücksetzen …?",
     back: "Zurück zu Skills",
     files: "Dateien",
     create_file: "Neue Datei",

@@ -6,7 +6,7 @@ import path from "node:path";
 import { NativePathPolicy, default_native_path_policy } from "./native-path";
 
 /**
- * 同步删除选项只暴露项目实际使用的安全子集。
+ * 删除选项只暴露项目实际使用的安全子集。
  */
 export interface NativeRemoveOptions {
   readonly recursive?: boolean;
@@ -234,7 +234,7 @@ export class NativeFs {
     } catch (cause) {
       try {
         // 复制可能尚未建立临时文件，缺失时清理已完成。
-        this.remove(temporary_path, { force: true });
+        this.unlink(temporary_path, { force: true });
       } catch (cleanup_error) {
         throw new AggregateError([cause, cleanup_error], "File copy and cleanup failed.", {
           cause,
@@ -258,14 +258,7 @@ export class NativeFs {
     fs.copyFileSync(native_source, native_destination);
   }
 
-  /**
-   * 同步删除文件或目录，保留调用方传入的 force / recursive 语义。
-   */
-  public remove(target_path: string, options: NativeRemoveOptions = {}): void {
-    fs.rmSync(this.to_native_path(target_path), options);
-  }
-
-  /** 异步删除可能很大的临时目录，避免阻塞 Backend worker 事件循环。 */
+  /** 用户文件和目录统一异步删除；Electron 的同步递归删除不能可靠处理 Windows 只读属性。 */
   public async remove_async(target_path: string, options: NativeRemoveOptions = {}): Promise<void> {
     await fs.promises.rm(this.to_native_path(target_path), options);
   }
@@ -273,8 +266,15 @@ export class NativeFs {
   /**
    * 同步删除单个文件，语义等同 unlinkSync。
    */
-  public unlink(target_path: string): void {
-    fs.unlinkSync(this.to_native_path(target_path));
+  public unlink(target_path: string, options: Pick<NativeRemoveOptions, "force"> = {}): void {
+    try {
+      fs.unlinkSync(this.to_native_path(target_path));
+    } catch (error) {
+      // 临时文件可能尚未创建；只有明确允许缺失的清理操作忽略 ENOENT。
+      if (options.force && error instanceof Error && "code" in error && error.code === "ENOENT")
+        return;
+      throw error;
+    }
   }
 
   /** 依赖目录由应用部署，工作区仅持有绝对目标链接；Windows 使用无需提权的目录联接。 */

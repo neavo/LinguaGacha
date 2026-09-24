@@ -15,7 +15,7 @@ import { SkillEditor } from "./skill-editor";
 import { DesktopApiError } from "@frontend/app/desktop/desktop-api";
 import type { AgentSkillDocument, AgentSkillIdentity } from "@shared/agent-skills";
 import { create_text_resolver } from "@shared/i18n";
-import { SKILL_AUTOSAVE_DELAY_MS } from "./use-skill-editor";
+import { SKILL_AUTOSAVE_DELAY_MS } from "./skill-editor-document";
 
 const mocks = vi.hoisted(() => ({ api: vi.fn() }));
 const t = create_text_resolver("zh-CN");
@@ -97,6 +97,27 @@ describe("技能编辑工作面", () => {
     );
     await act(async () => retry!.click());
     expect(container.querySelector(".cm-content")?.textContent).toContain("name: sample");
+  });
+
+  it("顶栏整包删除等待确认，成功后清除编辑内容", async () => {
+    await render("user");
+    vi.useFakeTimers();
+    const button = [
+      ...container.querySelectorAll<HTMLButtonElement>(".skill-editor__toolbar button"),
+    ].find((button) => button.textContent === "删除")!;
+    await act(async () => button.click());
+    const dialog = document.querySelector('[role="alertdialog"]')!;
+    expect(mocks.api.mock.calls.some(([url]) => url === "/api/skills/delete")).toBe(false);
+    await act(async () => vi.advanceTimersByTime(3000));
+    const confirm = [...dialog.querySelectorAll("button")].find(
+      (item) => item.textContent === "确认",
+    )!;
+    await act(async () => confirm.click());
+    expect(mocks.api).toHaveBeenCalledWith("/api/skills/delete", {
+      source: "user",
+      name: "sample",
+    });
+    expect(container.querySelector(".cm-content")).toBeNull();
   });
   it("未知加载错误使用加载语境的兜底文案", async () => {
     await render("user", new Error("unavailable"));

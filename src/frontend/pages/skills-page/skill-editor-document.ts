@@ -1,6 +1,8 @@
 import { Text } from "@codemirror/state";
 import type { AgentSkillDocument } from "@shared/agent-skills";
 
+export const SKILL_AUTOSAVE_DELAY_MS = 1000;
+
 const METADATA_FIELDS = ["name", "description"] as const;
 const METADATA_SEPARATOR = "---";
 export const SKILL_EDITOR_HEADER_LINES = METADATA_FIELDS.length + 2;

@@ -25,7 +25,14 @@ describe("GuiBackendBootstrap 集成", () => {
     const builtin_root = path.join(app_root, "builtin");
     const paths = new AppPathService({ appRoot: app_root, builtinRoot: builtin_root });
     fs.mkdirSync(path.join(builtin_root, "agent"), { recursive: true });
-    fs.writeFileSync(paths.get_agent_system_prompt_path(), "Test system prompt.");
+    fs.writeFileSync(
+      paths.get_agent_system_prompt_path(),
+      "Test system prompt.\n{{agent_personality}}\nFixed instructions.",
+    );
+    fs.writeFileSync(
+      path.join(path.dirname(paths.get_agent_system_prompt_path()), "personality.md"),
+      "Test personality.",
+    );
     fs.writeFileSync(paths.get_agent_session_seed_path(), "[]");
     for (const name of ["first", "second"]) {
       const directory = path.join(paths.get_agent_user_skill_dir(), name);
@@ -115,6 +122,19 @@ describe("GuiBackendBootstrap 集成", () => {
         document: { ...main.data.document, name: "renamed", description: "Updated fixture" },
       });
       expect(await names()).toEqual(["second", "renamed"]);
+      const personality = await post("/api/agent/personality/read");
+      const customized = await post("/api/agent/personality/save", {
+        revision: personality.data.revision,
+        body: "Custom integration role",
+      });
+      expect(customized.data.body).toBe("Custom integration role");
+      const reset = await post("/api/agent/personality/save", {
+        revision: customized.data.revision,
+        body: null,
+      });
+      expect(reset.data.body).toBe("Test personality.");
+      await post("/api/skills/delete", { source: "user", name: "renamed" });
+      expect(await names()).toEqual(["second"]);
     } finally {
       await bootstrap.stop();
     }

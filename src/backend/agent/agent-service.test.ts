@@ -109,7 +109,9 @@ const agent_resource_fixture = vi.hoisted(() => {
   return {
     system_prompt,
     session_seed,
-    system_prompt_loader: vi.fn(() => system_prompt),
+    system_prompt_loader: vi.fn(
+      () => `${system_prompt}\n\n{{agent_personality}}\n\nfixed-after-personality-fixture`,
+    ),
     session_seed_loader: vi.fn(() => session_seed),
   };
 });
@@ -179,8 +181,10 @@ vi.mock("./agent-session-seed", async (import_original) => ({
   ...(await import_original<typeof import("./agent-session-seed")>()),
   load_agent_session_seed: agent_resource_fixture.session_seed_loader,
 }));
-vi.mock("./agent-system-prompt", () => ({
+vi.mock("./agent-system-prompt", async (original) => ({
+  ...(await original<typeof import("./agent-system-prompt")>()),
   load_agent_system_prompt: agent_resource_fixture.system_prompt_loader,
+  load_agent_personality: () => "default-personality-fixture",
 }));
 vi.mock("./agent-model", () => ({ register_agent_model: agent_model_registrar }));
 
@@ -592,6 +596,28 @@ describe("AgentService", () => {
       "request.validation_failed",
     );
     expect(fixture.service.get_snapshot()).toMatchObject({ state: "idle", entries: [] });
+  });
+
+  it("已有会话的每次请求使用当前角色覆盖值，空正文和重置分别生效", async () => {
+    const f = await create_service();
+    for (const value of [null, "custom-personality-fixture", "", null]) {
+      f.set_personality(value);
+      await f.service.send_message({ text: "继续任务", attachments: [] });
+      await wait_for_idle(f.service);
+      const prompt = fake_agent_state.system_prompts.at(-1)!;
+      expect(prompt).toContain(agent_resource_fixture.system_prompt);
+      const body = value ?? "default-personality-fixture";
+      expect(prompt).toContain(
+        `${agent_resource_fixture.system_prompt}\n\n${body}\n\nfixed-after-personality-fixture`,
+      );
+      expect(prompt).not.toContain("{{agent_personality}}");
+      if (value === null) expect(prompt).toContain("default-personality-fixture");
+      else {
+        expect(prompt).not.toContain("default-personality-fixture");
+        if (value) expect(prompt).toContain(value);
+        else expect(prompt).not.toContain("custom-personality-fixture");
+      }
+    }
   });
 
   it("命令只回执最后事件 revision，且公开事件 revision 严格递增", async () => {
@@ -3409,6 +3435,7 @@ describe("AgentService", () => {
     set_app_language: (app_language: AppLanguage) => void;
     runtime_gate: RuntimeOperationGate;
     select_batch_translation_model: (model_id: string | null) => void;
+    set_personality: (value: string | null) => void;
     session_state: ProjectSessionState;
   }> {
     const session_state = new ProjectSessionState();
@@ -3417,10 +3444,12 @@ describe("AgentService", () => {
     let agent_model_id: "active" | "next" = "active";
     let batch_model_id: string | null = null;
     let app_language: AppLanguage = "ZH";
+    let personality: string | null = null;
     const settings = {
       read_setting: () => {
         return {
           app_language,
+          agent_personality: personality,
           model_selection: {
             translation: "active",
             agent: agent_model_id,
@@ -3545,6 +3574,9 @@ describe("AgentService", () => {
     if (load_resources) await service.load_resources();
     services.push(service);
     return {
+      set_personality: (value: string | null) => {
+        personality = value;
+      },
       service,
       skills,
       publish,

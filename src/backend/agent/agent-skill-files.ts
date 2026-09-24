@@ -141,7 +141,7 @@ export function write_skill_file(target: string, text: string): void {
     fs.rename(temporary, target);
   } catch (cause) {
     try {
-      fs.remove(temporary, { force: true });
+      fs.unlink(temporary, { force: true });
     } catch (cleanup) {
       throw new AggregateError([cause, cleanup], "Skill file write and cleanup failed.", { cause });
     }
@@ -150,7 +150,7 @@ export function write_skill_file(target: string, text: string): void {
 }
 
 /** 执行包内文件操作，根目录与主文件的生命周期由技能服务管理。 */
-export function change_skill_file(root: string, change: AgentSkillFileChange): void {
+export async function change_skill_file(root: string, change: AgentSkillFileChange): Promise<void> {
   const creating = change.operation === "create_file" || change.operation === "create_directory";
   const target = creating
     ? skill_target_path(root, change.path)
@@ -173,7 +173,7 @@ export function change_skill_file(root: string, change: AgentSkillFileChange): v
   }
   if (fs.stat(target).isDirectory()) assert_contents(target);
   if (change.operation === "delete") {
-    fs.remove(target, { recursive: true });
+    await fs.remove_async(target, { recursive: true });
     return;
   }
   if (change.operation !== "move") throw new AppError("request.validation_failed");

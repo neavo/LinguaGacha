@@ -3,7 +3,12 @@ export const ko_kr_skills_page = {
   builtin: "기본 스킬",
   user: "사용자 스킬",
   empty: "스킬 없음",
+  readonly: "읽기 전용",
+  personality_description: "지능형 어시스턴트의 사용자 지정 역할 설정",
   editor: {
+    reset: "초기화",
+    delete_skill_confirm: "스킬을 삭제하시겠습니까 …?",
+    reset_skill_confirm: "스킬을 초기화하시겠습니까 …?",
     back: "스킬 목록으로 돌아가기",
     files: "파일",
     create_file: "새 파일",
