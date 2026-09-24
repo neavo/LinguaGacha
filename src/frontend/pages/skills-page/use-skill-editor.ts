@@ -7,18 +7,18 @@ import { useI18n } from "@frontend/app/locale/locale-context";
 import {
   validate_agent_skill_document,
   type AgentSkillFile,
-  type AgentSkillDocument,
   type AgentSkillFileChange,
   type AgentSkillIdentity,
   type AgentSkillTree,
 } from "@shared/agent-skills";
+import { format_skill_editor_document, read_skill_editor_document } from "./skill-editor-document";
 
 export const SKILL_AUTOSAVE_DELAY_MS = 1000;
-type Draft = { text: string; document?: AgentSkillDocument };
 type EditorState = {
   tree: AgentSkillTree | null;
   file: AgentSkillFile | null;
-  draft: Draft;
+  draft: string;
+  reset_count: number; // 明确放弃修改时重建编辑器，清除旧撤销历史。
   loading: boolean;
   busy: boolean;
   saving: boolean;
@@ -26,17 +26,11 @@ type EditorState = {
   error: string;
   conflict: boolean;
 };
-/** 保存回包提供新的编辑基线，主文件草稿沿用解析后的正文。 */
-function file_draft(file: AgentSkillFile): Draft {
-  return { text: file.text ?? "", document: file.document };
-}
-/** 主文件按表单与正文比较，普通文件按完整文本比较。 */
-function same_draft(a: Draft, b: Draft): boolean {
-  return a.document && b.document
-    ? a.document.name === b.document.name &&
-        a.document.description === b.document.description &&
-        a.document.body === b.document.body
-    : a.text === b.text;
+/** 草稿和保存基线统一使用 LF，与编辑器的逻辑行表示一致。 */
+function file_draft(file: AgentSkillFile): string {
+  return file.document
+    ? format_skill_editor_document(file.document)
+    : (file.text ?? "").replace(/\r\n?/g, "\n");
 }
 
 /** 只持有当前文件草稿。切换先保存，文件命令与自动保存共享同一在途请求。 */
@@ -49,7 +43,8 @@ export function useSkillEditor(identity: AgentSkillIdentity) {
   const [state, set_state] = useState<EditorState>({
     tree: null,
     file: null,
-    draft: { text: "" },
+    draft: "",
+    reset_count: 0,
     loading: true,
     busy: false,
     saving: false,
@@ -61,7 +56,7 @@ export function useSkillEditor(identity: AgentSkillIdentity) {
   const mounted = useRef(false); // 卸载后停止向页面发布请求结果。
   const write = useRef<Promise<boolean> | null>(null); // 保存和文件操作共同等待同一写入。
   const operation = useRef<Promise<boolean> | null>(null); // 离页同时等待文件操作，错误留在当前工作面。
-  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null); // 离页和文件操作接管尚未触发的自动保存。
   const reading = useRef<AbortController | null>(null); // 重试和 StrictMode 重挂载失效旧查询。
   /** 同步刷新异步操作读取的状态和 React 展示。 */
   const update = useCallback((patch: Partial<EditorState>) => {
@@ -125,28 +120,28 @@ export function useSkillEditor(identity: AgentSkillIdentity) {
   const flush = useCallback(async (): Promise<boolean> => {
     cancel();
     if (write.current) return await write.current;
-    /** 每轮提交前重新检查组词和表单状态。 */
+    /** 每轮提交前重新检查组词和字段状态。 */
     const run = async (): Promise<boolean> => {
       update({ error: "", conflict: false });
       while (mounted.current) {
         if (current.current.composing) return false;
         const { file, draft } = current.current;
-        if (!file || file.skill.source === "builtin" || same_draft(draft, file_draft(file)))
-          return true;
-        if (draft.document && validate_agent_skill_document(draft.document)) return false;
+        if (!file || file.skill.source === "builtin" || draft === file_draft(file)) return true;
+        const document = file.document ? read_skill_editor_document(draft) : undefined;
+        if (document && validate_agent_skill_document(document)) return false;
         update({ saving: true });
         try {
           const saved = await api_fetch<AgentSkillFile>("/api/skills/file/save", {
             ...file.skill,
             path: file.path,
             revision: file.revision,
-            ...draft,
+            ...(document ? { document } : { text: draft }),
           });
           if (!mounted.current) return false;
           const renamed = saved.skill.name !== file.skill.name;
           update({
             file: saved,
-            ...(same_draft(current.current.draft, draft) ? { draft: file_draft(saved) } : {}),
+            ...(current.current.draft === draft ? { draft: file_draft(saved) } : {}),
             tree: current.current.tree ? { ...current.current.tree, skill: saved.skill } : null,
           });
           if (renamed) push_toast("success", t("skills_page.feedback.next_conversation"));
@@ -167,8 +162,10 @@ export function useSkillEditor(identity: AgentSkillIdentity) {
     }
   }, [cancel, report, t, update]);
 
-  const dirty = state.file !== null && !same_draft(state.draft, file_draft(state.file));
-  const invalid = state.draft.document ? validate_agent_skill_document(state.draft.document) : null;
+  const dirty = state.file !== null && state.draft !== file_draft(state.file);
+  const invalid = state.file?.document
+    ? validate_agent_skill_document(read_skill_editor_document(state.draft))
+    : null;
   useEffect(() => {
     if (dirty && !invalid && !state.composing && !state.busy && !state.error)
       timer.current = setTimeout(() => {
@@ -233,7 +230,12 @@ export function useSkillEditor(identity: AgentSkillIdentity) {
       ...old.skill,
       path: old.path,
     });
-    update({ file, ...(!overwrite ? { draft: file_draft(file) } : {}) });
+    update({
+      file,
+      ...(!overwrite
+        ? { draft: file_draft(file), reset_count: current.current.reset_count + 1 }
+        : {}),
+    });
     return overwrite ? await flush() : true;
   }
 
@@ -275,7 +277,9 @@ export function useSkillEditor(identity: AgentSkillIdentity) {
     open_file: (path: string) => run_operation(() => open_file(path), "load_failed"),
     change_file: (change: AgentSkillFileChange) => run_operation(() => change_file(change)),
     recover: (overwrite = false) => run_operation(() => recover(overwrite), "load_failed"),
-    edit: (draft: Draft) => update({ draft, error: "", conflict: false }),
+    /** 输入更新草稿后清除上一次保存错误，恢复自动保存。 */
+    edit: (draft: string) => update({ draft, error: "", conflict: false }),
+    /** 组词开始时取消待保存任务，结束后由草稿监听恢复计时。 */
     compose: (composing: boolean) => {
       if (composing) cancel();
       update({ composing });

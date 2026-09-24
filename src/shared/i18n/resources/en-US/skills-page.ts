@@ -14,8 +14,6 @@ export const en_us_skills_page = {
     actions: "File actions",
     destination: "Destination folder",
     delete_confirm: "Delete “{PATH}” and all its contents? Unsaved changes will also be discarded.",
-    name: "Name",
-    description: "Description",
     modified: "Modified",
     saving: "Saving",
     saved: "Saved",

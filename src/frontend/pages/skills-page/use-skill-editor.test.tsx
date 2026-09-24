@@ -3,6 +3,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AgentSkillFile, AgentSkillIdentity } from "@shared/agent-skills";
 import { useSkillEditor, SKILL_AUTOSAVE_DELAY_MS } from "./use-skill-editor";
+import { format_skill_editor_document, read_skill_editor_document } from "./skill-editor-document";
 
 const mocks = vi.hoisted(() => ({ api: vi.fn(), t: (key: string) => key, toast: vi.fn() }));
 vi.mock("@frontend/app/desktop/desktop-api", async (original) => ({
@@ -70,7 +71,9 @@ describe("技能自动保存", () => {
   /** 将输入送入公开编辑入口。 */
   async function edit(body: string) {
     await act(async () =>
-      editor.edit({ ...editor.draft, document: { ...editor.draft.document!, body } }),
+      editor.edit(
+        format_skill_editor_document({ ...read_skill_editor_document(editor.draft), body }),
+      ),
     );
   }
   /** 保存请求的顺序是自动保存协议的一部分。 */
@@ -124,7 +127,7 @@ describe("技能自动保存", () => {
       expect(await editor.open_file("reference.md")).toBe(false);
     });
     expect(editor.file?.path).toBe("SKILL.md");
-    expect(editor.draft.document?.body).toBe("keep me");
+    expect(read_skill_editor_document(editor.draft).body).toBe("keep me");
     expect(editor.error).not.toBe("");
     save = undefined;
     await act(async () => {
@@ -133,15 +136,20 @@ describe("技能自动保存", () => {
     expect(disk.document?.body).toBe("keep me");
     expect(editor.dirty).toBe(false);
   });
-  it("元数据无效时整份主文件不保存，修正后正文和表单一起提交", async () => {
+  it("元数据无效时整份主文件不保存，修正后正文和字段一起提交", async () => {
     await act(async () =>
-      editor.edit({ ...editor.draft, document: { name: "", description: "new", body: "changed" } }),
+      editor.edit(format_skill_editor_document({ name: "", description: "new", body: "changed" })),
     );
     await act(async () => vi.advanceTimersByTimeAsync(SKILL_AUTOSAVE_DELAY_MS));
     expect(editor.invalid).toBe("name");
     expect(saves()).toHaveLength(0);
     await act(async () =>
-      editor.edit({ ...editor.draft, document: { ...editor.draft.document!, name: "sample" } }),
+      editor.edit(
+        format_skill_editor_document({
+          ...read_skill_editor_document(editor.draft),
+          name: "sample",
+        }),
+      ),
     );
     await act(async () => vi.advanceTimersByTimeAsync(SKILL_AUTOSAVE_DELAY_MS));
     expect(disk.document).toEqual({ name: "sample", description: "new", body: "changed" });
@@ -150,7 +158,7 @@ describe("技能自动保存", () => {
     await act(async () => {
       await editor.open_file("note.md");
     });
-    await act(async () => editor.edit({ text: "unsaved" }));
+    await act(async () => editor.edit("unsaved"));
     const previous = mocks.api.getMockImplementation()!;
     mocks.api.mockImplementation(async (url, body) => {
       if (url.endsWith("/change")) throw new Error("denied");
@@ -159,7 +167,7 @@ describe("技能自动保存", () => {
     await act(async () => {
       expect(await editor.change_file({ operation: "delete", path: "note.md" })).toBe(false);
     });
-    expect(editor.draft.text).toBe("unsaved");
+    expect(editor.draft).toBe("unsaved");
     expect(saves()).toHaveLength(0);
     await act(async () => vi.advanceTimersByTimeAsync(SKILL_AUTOSAVE_DELAY_MS * 2));
     expect(saves()).toHaveLength(0);

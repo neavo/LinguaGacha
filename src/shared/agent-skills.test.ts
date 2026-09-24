@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { validate_agent_skill_document } from "./agent-skills";
 
-describe("技能表单校验", () => {
+describe("技能字段校验", () => {
   it("名称遵循加载器协议，错误定位到名称字段", () => {
     const value = { name: "sample-2", description: "description", body: "" };
     expect(validate_agent_skill_document(value)).toBeNull();

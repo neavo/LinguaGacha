@@ -33,7 +33,7 @@ export type AgentSkillFileChange =
   | { operation: "create_file" | "create_directory" | "delete"; path: string }
   | { operation: "move"; path: string; destination: string };
 
-/** 表单和持久化共用主文件约束，与技能加载器的名称及描述规则一致。 */
+/** 编辑视图和持久化共用主文件约束，与技能加载器的名称及描述规则一致。 */
 export function validate_agent_skill_document(
   document: AgentSkillDocument,
 ): "name" | "description" | null {

@@ -14,8 +14,6 @@ export const ja_jp_skills_page = {
     actions: "ファイル操作",
     destination: "移動先フォルダー",
     delete_confirm: "「{PATH}」とその内容を削除しますか？未保存の変更も破棄されます。",
-    name: "名前",
-    description: "説明",
     modified: "変更あり",
     saving: "保存中",
     saved: "保存済み",

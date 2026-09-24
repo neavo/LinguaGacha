@@ -15,8 +15,6 @@ export const de_de_skills_page = {
     destination: "Zielordner",
     delete_confirm:
       "„{PATH}“ samt Inhalt löschen? Ungespeicherte Änderungen werden ebenfalls verworfen.",
-    name: "Name",
-    description: "Beschreibung",
     modified: "Geändert",
     saving: "Wird gespeichert",
     saved: "Gespeichert",

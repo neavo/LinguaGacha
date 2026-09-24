@@ -14,8 +14,6 @@ export const ko_kr_skills_page = {
     actions: "파일 작업",
     destination: "대상 폴더",
     delete_confirm: "「{PATH}」 및 모든 내용을 삭제할까요? 저장하지 않은 변경 사항도 삭제됩니다.",
-    name: "이름",
-    description: "설명",
     modified: "수정됨",
     saving: "저장 중",
     saved: "저장됨",

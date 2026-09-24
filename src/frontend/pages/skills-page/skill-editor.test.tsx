@@ -1,15 +1,20 @@
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { undo } from "@codemirror/commands";
+import { EditorView } from "@codemirror/view";
 import { LocaleProvider } from "@frontend/app/locale/locale-provider";
 import { PageLeaveProvider } from "@frontend/app/navigation/page-leave-provider";
 import { AppearanceContext } from "@frontend/app/appearance/appearance-context";
 import { TooltipProvider } from "@frontend/shadcn/tooltip";
 import { SkillEditor } from "./skill-editor";
 import { DesktopApiError } from "@frontend/app/desktop/desktop-api";
-import type { AgentSkillIdentity } from "@shared/agent-skills";
+import type { AgentSkillDocument, AgentSkillIdentity } from "@shared/agent-skills";
+import { create_text_resolver } from "@shared/i18n";
+import { SKILL_AUTOSAVE_DELAY_MS } from "./use-skill-editor";
 
 const mocks = vi.hoisted(() => ({ api: vi.fn() }));
+const t = create_text_resolver("zh-CN");
 vi.mock("@frontend/app/desktop/desktop-api", async (original) => ({
   ...(await original<typeof import("@frontend/app/desktop/desktop-api")>()),
   api_fetch: mocks.api,
@@ -23,29 +28,36 @@ describe("技能编辑工作面", () => {
     if (root) await act(async () => root!.unmount());
     container?.remove();
     mocks.api.mockReset();
+    vi.useRealTimers();
   });
-  /** 使用真实表单与编辑器，文件接口由当前场景提供。 */
+  /** 使用真实编辑器，文件接口由当前场景提供。 */
   async function render(source: "user" | "builtin", failure?: Error) {
     const skill: AgentSkillIdentity = { source, name: "sample" };
-    mocks.api.mockImplementation(async (url: string, body: { path?: string }) =>
-      url.endsWith("/tree")
-        ? {
-            skill,
-            entries: [
-              { path: "SKILL.md", kind: "file" },
-              { path: "reference.md", kind: "file" },
-            ],
-          }
-        : {
-            skill,
-            path: body.path,
-            revision: "one",
-            size: 32,
-            text: "Body",
-            ...(body.path === "SKILL.md"
-              ? { document: { name: "sample", description: "Single line", body: "Body" } }
-              : {}),
-          },
+    let saved_document: AgentSkillDocument = {
+      name: "sample",
+      description: "Single line",
+      body: "Body",
+    };
+    mocks.api.mockImplementation(
+      async (url: string, body: { path?: string; document?: AgentSkillDocument }) => {
+        if (url.endsWith("/save") && body.document) saved_document = body.document;
+        return url.endsWith("/tree")
+          ? {
+              skill,
+              entries: [
+                { path: "SKILL.md", kind: "file" },
+                { path: "reference.md", kind: "file" },
+              ],
+            }
+          : {
+              skill,
+              path: body.path,
+              revision: "one",
+              size: 32,
+              text: "Body",
+              ...(body.path === "SKILL.md" ? { document: saved_document } : {}),
+            };
+      },
     );
     if (failure) mocks.api.mockRejectedValueOnce(failure);
     container = document.createElement("div");
@@ -75,40 +87,74 @@ describe("技能编辑工作面", () => {
   }
   it("初次加载展示具体错误，并能重试进入编辑器", async () => {
     await render("user", new DesktopApiError({ code: "file.not_found" }));
-    expect(container.textContent).toContain("文件不存在");
+    expect(container.textContent).toContain(t("app.error.file.not_found.message"));
     const retry = [...container.querySelectorAll("button")].find(
-      (button) => button.textContent === "重试",
+      (button) => button.textContent === t("app.action.retry"),
     );
     await act(async () => retry!.click());
-    expect(container.querySelector(".skill-editor__metadata")).not.toBeNull();
+    expect(container.querySelector(".cm-content")?.textContent).toContain("name: sample");
   });
   it("未知加载错误使用加载语境的兜底文案", async () => {
     await render("user", new Error("unavailable"));
-    expect(container.textContent).toContain("技能加载失败");
-    expect(container.textContent).not.toContain("保存失败");
+    expect(container.textContent).toContain(t("skills_page.feedback.load_failed"));
   });
-  it("用户主文件使用单行表单，普通文件切换为完整编辑器", async () => {
+  it("用户主文件在同一编辑器展示字段和正文，普通文件直接展示文本", async () => {
     await render("user");
-    const inputs = container.querySelectorAll<HTMLInputElement>(".skill-editor__metadata input");
-    expect(inputs[1].readOnly).toBe(false);
+    expect(container.querySelectorAll(".cm-editor")).toHaveLength(1);
+    expect(container.querySelector(".cm-content")?.textContent).toContain(
+      "description: Single line",
+    );
     expect(container.querySelector(".cm-content")?.getAttribute("contenteditable")).toBe("true");
     await act(async () => {
       (container.querySelector('button[title="reference.md"]') as HTMLButtonElement).click();
     });
-    expect(container.querySelector(".skill-editor__metadata")).toBeNull();
+    expect(container.querySelector(".cm-content")?.textContent).toBe("Body");
     expect(container.querySelector(".skill-editor__path")?.textContent).toContain("reference.md");
   });
   it("内置技能保留选择与阅读，隐藏写入入口与状态徽标", async () => {
     await render("builtin");
-    expect(
-      [...container.querySelectorAll<HTMLInputElement>(".skill-editor__metadata input")].every(
-        (input) => input.readOnly && !input.disabled,
-      ),
-    ).toBe(true);
+    expect(container.querySelector(".cm-content")?.textContent).toContain("name: sample");
     expect(container.querySelector(".cm-content")?.getAttribute("contenteditable")).toBe("false");
     await act(async () => {
       (container.querySelector('button[title="reference.md"]') as HTMLButtonElement).click();
     });
     expect(container.querySelector(".skill-editor__path")?.textContent).toContain("reference.md");
+  });
+
+  it("自动保存保留编辑会话，放弃修改清除旧历史", async () => {
+    await render("user");
+    vi.useFakeTimers();
+    const view = EditorView.findFromDOM(container.querySelector(".cm-content")!)!;
+    const original = view.state.doc.toString();
+    const from = original.indexOf("Single line");
+    await act(async () =>
+      view.dispatch({
+        changes: { from, to: from + "Single line".length, insert: 'A: "quote" # tag' },
+        userEvent: "input",
+      }),
+    );
+    await act(async () => view.dispatch({ selection: { anchor: 0, head: view.state.doc.length } }));
+    await act(async () => vi.advanceTimersByTimeAsync(SKILL_AUTOSAVE_DELAY_MS));
+    expect(mocks.api.mock.calls.find(([url]) => url.endsWith("/save"))?.[1]).toMatchObject({
+      document: { name: "sample", description: 'A: "quote" # tag', body: "Body" },
+    });
+    expect(EditorView.findFromDOM(container.querySelector(".cm-content")!)).toBe(view);
+    expect(view.state.selection.main.to).toBe(view.state.doc.length);
+    await act(async () => {
+      expect(undo(view)).toBe(true);
+    });
+    expect(view.state.doc.toString()).toBe(original);
+    const name_start = original.indexOf("sample");
+    await act(async () =>
+      view.dispatch({ changes: { from: name_start, to: name_start + "sample".length } }),
+    );
+    expect(view.contentDOM.getAttribute("aria-invalid")).toBe("true");
+    const discard = [...container.querySelectorAll("button")].find(
+      (button) => button.textContent === t("skills_page.editor.discard"),
+    );
+    await act(async () => discard!.click());
+    const restored = EditorView.findFromDOM(container.querySelector(".cm-content")!)!;
+    expect(restored.state.doc.toString()).toContain('description: A: "quote" # tag');
+    expect(undo(restored)).toBe(false);
   });
 });

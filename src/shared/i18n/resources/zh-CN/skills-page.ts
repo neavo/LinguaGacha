@@ -14,8 +14,6 @@ export const zh_cn_skills_page = {
     actions: "文件操作",
     destination: "目标文件夹",
     delete_confirm: "删除「{PATH}」及其全部内容？未保存的修改也会被丢弃。",
-    name: "名称",
-    description: "描述",
     modified: "已修改",
     saving: "保存中",
     saved: "已保存",

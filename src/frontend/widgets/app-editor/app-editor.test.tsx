@@ -2,6 +2,8 @@ import { act, createRef, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { EditorView } from "@codemirror/view";
+import { EditorState } from "@codemirror/state";
+import { undoDepth } from "@codemirror/commands";
 
 import { AppEditor, type AppEditorHandle } from "@frontend/widgets/app-editor/app-editor";
 
@@ -28,6 +30,7 @@ vi.mock("@frontend/shadcn/tooltip", () => ({
   TooltipContent: (props: { children: ReactNode }) => <>{props.children}</>,
 }));
 
+/** 取得真实输入节点，组件未挂载编辑器时直接报告失败。 */
 function get_editor_content(container: HTMLElement): HTMLElement {
   const content = container.querySelector<HTMLElement>(".cm-content");
   if (content === null) {
@@ -37,6 +40,7 @@ function get_editor_content(container: HTMLElement): HTMLElement {
   return content;
 }
 
+/** 从聚焦的输入节点发送 Tab，观察编辑器是否接管按键。 */
 function dispatch_tab_key(content: HTMLElement): boolean {
   content.focus();
   const event = new KeyboardEvent("keydown", {
@@ -65,6 +69,42 @@ describe("AppEditor", () => {
     container?.remove();
     container = null;
     root = null;
+  });
+
+  it("文档扩展限制输入，外部替换绕过过滤且不写入撤销历史", async () => {
+    container = document.createElement("div");
+    document.body.append(container);
+    root = createRoot(container);
+    const extensions = EditorState.changeFilter.of(() => false);
+    const on_change = vi.fn();
+    await act(async () =>
+      root?.render(
+        <AppEditor
+          value="old"
+          aria_label="编辑文档"
+          read_only={false}
+          extensions={extensions}
+          on_change={on_change}
+        />,
+      ),
+    );
+    const view = EditorView.findFromDOM(container.querySelector(".cm-content")!)!;
+    await act(async () => view.dispatch({ changes: { from: 0, insert: "blocked" } }));
+    expect(view.state.doc.toString()).toBe("old");
+    await act(async () =>
+      root?.render(
+        <AppEditor
+          value="loaded"
+          aria_label="编辑文档"
+          read_only={false}
+          extensions={extensions}
+          on_change={on_change}
+        />,
+      ),
+    );
+    expect(view.state.doc.toString()).toBe("loaded");
+    expect(undoDepth(view.state)).toBe(0);
+    expect(on_change).not.toHaveBeenCalled();
   });
 
   it("字段形态会把外部多行值归一成单行", async () => {

@@ -1,5 +1,5 @@
 import { AGENT_SKILL_MAIN_FILE } from "@shared/agent-skills";
-import { Fragment, useEffect, useState, type CSSProperties, type ClipboardEvent } from "react";
+import { Fragment, useEffect, useState, type CSSProperties } from "react";
 import { ChevronLeft } from "lucide-react";
 import { useI18n } from "@frontend/app/locale/locale-context";
 import { usePageLeave } from "@frontend/app/navigation/page-leave-context";
@@ -9,16 +9,16 @@ import { AppContentState } from "@frontend/widgets/app-content-state";
 import { Card } from "@frontend/shadcn/card";
 import { CommandBar } from "@frontend/widgets/command-bar/command-bar";
 import { Badge } from "@frontend/shadcn/badge";
-import { Input } from "@frontend/shadcn/input";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@frontend/shadcn/tooltip";
 import type { AgentSkillIdentity } from "@shared/agent-skills";
 import { SkillFileTree } from "./skill-file-tree";
 import { useSkillEditor } from "./use-skill-editor";
+import { skill_editor_extension } from "./skill-editor-extension";
 import "./skill-editor.css";
 
 const TREE_WIDTH = { initial: 196, min: 180, max: 480, step: 20 };
 
-/** 组合技能导航、元数据表单与正文，并将自动保存接入离页流程。 */
+/** 组合技能导航与连续编辑文档，并将自动保存接入离页流程。 */
 export function SkillEditor({
   skill,
   on_back,
@@ -42,27 +42,11 @@ export function SkillEditor({
         : editor.dirty
           ? "modified"
           : "saved";
-  const document = editor.draft.document;
   const path_parts = [
     editor.file?.skill.name ?? skill.name,
     ...(editor.file?.path ?? AGENT_SKILL_MAIN_FILE).split("/"),
   ];
   const path_label = path_parts.join(" / ");
-  /** 粘贴多行内容时替换换行，保持单行元数据输入契约。 */
-  function paste_single_line(
-    event: ClipboardEvent<HTMLInputElement>,
-    field: "name" | "description",
-  ) {
-    const text = event.clipboardData.getData("text/plain");
-    if (!/[\r\n]/.test(text) || !document || locked) return;
-    event.preventDefault();
-    const input = event.currentTarget;
-    const next =
-      input.value.slice(0, input.selectionStart ?? 0) +
-      text.replace(/[\r\n]+/g, " ") +
-      input.value.slice(input.selectionEnd ?? input.value.length);
-    editor.edit({ ...editor.draft, document: { ...document, [field]: next } });
-  }
   return (
     <section
       className="skill-editor"
@@ -233,6 +217,7 @@ export function SkillEditor({
             )}
             {editor.invalid && !readonly && (
               <div className="skill-editor__error">
+                <span>{t(`skills_page.editor.invalid_${editor.invalid}`)}</span>
                 <AppButton
                   size="sm"
                   variant="ghost"
@@ -245,32 +230,6 @@ export function SkillEditor({
                 </AppButton>
               </div>
             )}
-            {document && (
-              <div className="skill-editor__metadata">
-                {(["name", "description"] as const).map((field) => (
-                  <label key={field}>
-                    <span>{t(`skills_page.editor.${field}`)}</span>
-                    <Input
-                      value={document[field]}
-                      readOnly={locked}
-                      aria-invalid={editor.invalid === field || undefined}
-                      onPaste={(event) => paste_single_line(event, field)}
-                      onChange={(event) =>
-                        editor.edit({
-                          ...editor.draft,
-                          document: { ...document, [field]: event.target.value },
-                        })
-                      }
-                    />
-                    {editor.invalid === field && !readonly && (
-                      <span className="skill-editor__field-error">
-                        {t(`skills_page.editor.invalid_${field}`)}
-                      </span>
-                    )}
-                  </label>
-                ))}
-              </div>
-            )}
             {editor.file.text === null ? (
               <div className="skill-editor__unsupported">
                 {t("skills_page.editor.unsupported")}
@@ -278,7 +237,7 @@ export function SkillEditor({
               </div>
             ) : (
               <AppEditor
-                key={editor.file.path}
+                key={`${editor.file.path}:${editor.reset_count}`}
                 class_name="skill-editor__text"
                 aria_label={editor.file.path}
                 syntax={
@@ -291,15 +250,11 @@ export function SkillEditor({
                         : "plain"
                 }
                 read_only={locked}
+                aria_invalid={editor.invalid !== null}
+                extensions={editor.file.document ? skill_editor_extension : undefined}
                 indent_with_tab
-                value={document?.body ?? editor.draft.text}
-                on_change={(text) =>
-                  editor.edit(
-                    document
-                      ? { ...editor.draft, document: { ...document, body: text } }
-                      : { text },
-                  )
-                }
+                value={editor.draft}
+                on_change={editor.edit}
               />
             )}
           </Card>

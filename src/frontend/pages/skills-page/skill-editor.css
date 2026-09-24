@@ -79,28 +79,15 @@
   min-width: 0;
   min-height: 0;
 }
-.skill-editor__metadata {
-  padding: 12px;
-  display: grid;
-  grid-template-columns: max-content minmax(0, 1fr);
-  gap: 8px;
-  border-bottom: 1px solid var(--ui-table-divider-soft);
+.skill-editor__text .cm-skill-key {
+  color: var(--primary);
 }
-.skill-editor__metadata input {
-  font-size: 13px;
+.skill-editor__text .cm-skill-separator {
+  color: var(--muted-foreground);
 }
-.skill-editor__metadata label {
-  display: grid;
-  grid-template-columns: subgrid;
-  grid-column: 1 / -1;
-  align-items: center;
-  gap: 8px;
-  font-size: 13px;
-}
-.skill-editor__field-error {
-  grid-column: 2;
-  color: var(--destructive);
-  font-size: 12px;
+.skill-editor__text .cm-skill-invalid {
+  text-decoration: underline wavy var(--destructive);
+  text-underline-offset: 3px;
 }
 .skill-editor__text {
   flex: 1;
