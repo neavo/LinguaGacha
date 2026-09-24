@@ -17,7 +17,6 @@ export const ko_kr_skills_page = {
     delete: "삭제",
     delete_file_confirm: "파일을 삭제하시겠습니까 …?",
     delete_directory_confirm: "폴더를 삭제하시겠습니까 …?",
-    modified: "수정됨",
     saving: "저장 중",
     saved: "저장됨",
     failed: "저장 실패",

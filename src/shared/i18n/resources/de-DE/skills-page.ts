@@ -17,7 +17,6 @@ export const de_de_skills_page = {
     delete: "Löschen",
     delete_file_confirm: "Datei wirklich löschen …?",
     delete_directory_confirm: "Ordner wirklich löschen …?",
-    modified: "Geändert",
     saving: "Wird gespeichert",
     saved: "Gespeichert",
     failed: "Speichern fehlgeschlagen",

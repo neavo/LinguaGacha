@@ -17,7 +17,6 @@ export const zh_cn_skills_page = {
     delete: "删除",
     delete_file_confirm: "是否确认删除文件 …?",
     delete_directory_confirm: "是否确认删除文件夹 …?",
-    modified: "已修改",
     saving: "保存中",
     saved: "已保存",
     failed: "保存失败",

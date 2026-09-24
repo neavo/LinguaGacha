@@ -34,6 +34,10 @@ describe("技能编辑工作面", () => {
     runtime_state.owner = null;
     vi.useRealTimers();
   });
+  /** 读取当前反馈，排除用于预留宽度的隐藏文案。 */
+  function status() {
+    return container.querySelector(".skill-editor__status-label")?.textContent;
+  }
   /** 使用真实编辑器，文件接口由当前场景提供。 */
   async function render(source: "user" | "builtin", failure?: Error) {
     const skill: AgentSkillIdentity = { source, name: "sample" };
@@ -104,7 +108,7 @@ describe("技能编辑工作面", () => {
     vi.useFakeTimers();
     const button = [
       ...container.querySelectorAll<HTMLButtonElement>(".skill-editor__toolbar button"),
-    ].find((button) => button.textContent === "删除")!;
+    ].find((button) => button.getAttribute("aria-label") === "删除")!;
     await act(async () => button.click());
     const dialog = document.querySelector('[role="alertdialog"]')!;
     expect(mocks.api.mock.calls.some(([url]) => url === "/api/skills/delete")).toBe(false);
@@ -141,6 +145,7 @@ describe("技能编辑工作面", () => {
   it("Agent 执行期间用户技能只读，仍可浏览包内文件", async () => {
     runtime_state.owner = "agent";
     await render("user");
+    expect(container.querySelector(".skill-editor__status")).toBeNull();
     expect(container.querySelector(".cm-content")?.getAttribute("contenteditable")).toBe("false");
     await act(async () => {
       [...container.querySelectorAll<HTMLButtonElement>(".skill-tree__select")]
@@ -153,6 +158,7 @@ describe("技能编辑工作面", () => {
 
   it("内置技能保留选择与阅读，隐藏写入入口与状态徽标", async () => {
     await render("builtin");
+    expect(container.querySelector(".skill-editor__status")).toBeNull();
     expect(container.querySelector(".cm-content")?.textContent).toContain("name: sample");
     expect(container.querySelector(".cm-content")?.getAttribute("contenteditable")).toBe("false");
     await act(async () => {
@@ -175,8 +181,10 @@ describe("技能编辑工作面", () => {
         userEvent: "input",
       }),
     );
+    expect(status()).toBe(t("skills_page.editor.saving"));
     await act(async () => view.dispatch({ selection: { anchor: 0, head: view.state.doc.length } }));
     await act(async () => vi.advanceTimersByTimeAsync(SKILL_AUTOSAVE_DELAY_MS));
+    expect(status()).toBe(t("skills_page.editor.saved"));
     expect(mocks.api.mock.calls.find(([url]) => url.endsWith("/save"))?.[1]).toMatchObject({
       document: { name: "sample", description: 'A: "quote" # tag', body: "Body" },
     });
@@ -191,6 +199,7 @@ describe("技能编辑工作面", () => {
       view.dispatch({ changes: { from: name_start, to: name_start + "sample".length } }),
     );
     expect(view.contentDOM.getAttribute("aria-invalid")).toBe("true");
+    expect(status()).toBe(t("skills_page.editor.invalid"));
     const discard = [...container.querySelectorAll("button")].find(
       (button) => button.textContent === t("skills_page.editor.discard"),
     );

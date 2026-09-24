@@ -24,7 +24,6 @@
 .skill-editor__path {
   display: flex;
   align-items: center;
-  flex: 1;
   min-width: 0;
   font-size: 13px;
   font-weight: 400;
@@ -263,8 +262,14 @@
   opacity: 0.5;
 }
 
-.skill-editor__toolbar-end {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
+.skill-editor__status {
+  display: inline-grid;
+  margin-left: 4px;
+}
+/* 重叠文案按当前语言预留宽度，正常保存状态切换时保持胶囊尺寸。 */
+.skill-editor__status > span {
+  grid-area: 1 / 1;
+}
+.skill-editor__status > [aria-hidden] {
+  visibility: hidden;
 }

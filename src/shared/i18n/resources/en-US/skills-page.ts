@@ -17,7 +17,6 @@ export const en_us_skills_page = {
     delete: "Delete",
     delete_file_confirm: "Delete the file …?",
     delete_directory_confirm: "Delete the folder …?",
-    modified: "Modified",
     saving: "Saving",
     saved: "Saved",
     failed: "Save failed",

@@ -17,7 +17,6 @@ export const ja_jp_skills_page = {
     delete: "削除",
     delete_file_confirm: "ファイルを削除しますか …?",
     delete_directory_confirm: "フォルダーを削除しますか …?",
-    modified: "変更あり",
     saving: "保存中",
     saved: "保存済み",
     failed: "保存失敗",

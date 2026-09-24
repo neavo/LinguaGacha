@@ -9,8 +9,10 @@ import { AppearanceContext } from "@frontend/app/appearance/appearance-context";
 import { PageLeaveProvider } from "@frontend/app/navigation/page-leave-provider";
 import { TooltipProvider } from "@frontend/shadcn/tooltip";
 import { PersonalityEditor } from "./personality-editor";
+import { create_text_resolver } from "@shared/i18n";
 import { SKILL_AUTOSAVE_DELAY_MS } from "./skill-editor-document";
 
+const t = create_text_resolver("zh-CN");
 const mocks = vi.hoisted(() => ({ api: vi.fn(), owner: null as "agent" | null }));
 vi.mock("@frontend/app/desktop/desktop-api", async (original) => ({
   ...(await original<typeof import("@frontend/app/desktop/desktop-api")>()),
@@ -55,6 +57,10 @@ describe("角色设定编辑", () => {
     container.remove();
     vi.useRealTimers();
   });
+  /** 读取当前反馈，排除用于预留宽度的隐藏文案。 */
+  function status() {
+    return container.querySelector(".skill-editor__status-label")?.textContent;
+  }
   /** 通过真实编辑工作面验证保存与重置。 */
   async function render() {
     await act(async () =>
@@ -100,7 +106,7 @@ describe("角色设定编辑", () => {
   async function open_reset() {
     await act(async () =>
       [...container.querySelectorAll<HTMLButtonElement>(".skill-editor__toolbar button")]
-        .find((button) => button.textContent === "重置")!
+        .find((button) => button.getAttribute("aria-label") === "重置")!
         .click(),
     );
   }
@@ -132,16 +138,19 @@ describe("角色设定编辑", () => {
   });
   it("空正文可自动保存，运行占用期间暂停写入并在空闲后恢复", async () => {
     await edit("");
+    expect(status()).toBe(t("skills_page.editor.saving"));
     mocks.owner = "agent";
     await render();
+    expect(container.querySelector(".skill-editor__status")).toBeNull();
     await act(async () => vi.advanceTimersByTime(SKILL_AUTOSAVE_DELAY_MS * 2));
     expect(disk.body).toBe("Custom role");
     expect(view().contentDOM.getAttribute("contenteditable")).toBe("false");
     mocks.owner = null;
     await render();
+    expect(status()).toBe(t("skills_page.editor.saving"));
     await act(async () => vi.advanceTimersByTime(SKILL_AUTOSAVE_DELAY_MS));
     expect(disk.body).toBe("");
-    expect(container.textContent).toContain("已保存");
+    expect(status()).toBe(t("skills_page.editor.saved"));
   });
   it("重置复用倒计时，等待在途保存后恢复默认并清除撤销历史", async () => {
     let release!: () => void;
@@ -152,6 +161,7 @@ describe("角色设定编辑", () => {
     await edit("Saving role");
     await act(async () => vi.advanceTimersByTime(SKILL_AUTOSAVE_DELAY_MS));
     await edit("Discarded draft");
+    expect(status()).toBe(t("skills_page.editor.saving"));
     await open_reset();
     expect(document.querySelector('[role="alertdialog"]')?.textContent).toContain(
       "是否确认重置技能 …?",
@@ -183,12 +193,13 @@ describe("角色设定编辑", () => {
     expect(read_skill_editor_document(view().state.doc.toString()).body).toBe("Unsaved role");
     expect(disk.body).toBe("Custom role");
     expect(container.querySelector('[role="alert"]')).not.toBeNull();
+    expect(status()).toBe(t("skills_page.editor.failed"));
     const retry = [...container.querySelectorAll("button")].find(
       (button) => button.textContent === "重试",
     )!;
     await act(async () => retry.click());
     expect(disk.body).toBe("Unsaved role");
     expect(container.querySelector('[role="alert"]')).toBeNull();
-    expect(container.textContent).toContain("已保存");
+    expect(status()).toBe(t("skills_page.editor.saved"));
   });
 });

@@ -28,6 +28,15 @@ export function PersonalityEditor({ on_back }: { on_back: () => void }): JSX.Ele
   const { leaving, register_before_leave } = usePageLeave();
   useEffect(() => register_before_leave(editor.flush), [editor.flush, register_before_leave]);
   const locked = editor.locked || editor.busy || leaving;
+  // 运行占用会暂停自动保存，隐藏反馈直到恢复，避免把暂停显示为持续保存。
+  const status =
+    !editor.saved || editor.locked
+      ? null
+      : editor.error
+        ? "failed"
+        : editor.dirty || editor.saving
+          ? "saving"
+          : "saved";
   return (
     <section
       className="skill-editor"
@@ -46,17 +55,7 @@ export function PersonalityEditor({ on_back }: { on_back: () => void }): JSX.Ele
         locked={locked || !editor.saved}
         action="reset"
         on_action={editor.reset}
-        status={
-          !editor.saved
-            ? null
-            : editor.error
-              ? "failed"
-              : editor.saving
-                ? "saving"
-                : editor.dirty
-                  ? "modified"
-                  : "saved"
-        }
+        status={status}
         on_back={() => {
           void editor.flush().then((ok) => {
             if (ok) on_back();
@@ -141,7 +140,7 @@ type PersonalityEditorState = {
   reset_count: number;
 };
 
-/** 配置保存使用版本检查；重置接管草稿并等待在途保存，避免旧正文覆盖默认值。 */
+/** 保存校验版本，重置等待在途保存后接管草稿，避免旧正文覆盖默认值。 */
 function usePersonalityEditor() {
   const { t } = useI18n();
   const locked = useRuntimeSnapshot().owner === "agent";

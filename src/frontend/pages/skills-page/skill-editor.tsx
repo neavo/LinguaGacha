@@ -6,7 +6,7 @@ import {
   type ComponentProps,
   type ReactNode,
 } from "react";
-import { ChevronLeft } from "lucide-react";
+import { ChevronLeft, RotateCcw, Trash2 } from "lucide-react";
 import { AGENT_SKILL_MAIN_FILE, type AgentSkillIdentity } from "@shared/agent-skills";
 import { useI18n } from "@frontend/app/locale/locale-context";
 import { usePageLeave } from "@frontend/app/navigation/page-leave-context";
@@ -37,15 +37,14 @@ export function SkillEditor({
   useEffect(() => register_before_leave(editor.flush), [editor.flush, register_before_leave]);
   const readonly = skill.source === "builtin" || editor.locked;
   const locked = readonly || editor.busy || leaving;
+  // 自动保存等待期与在途写入共用保存反馈，避免草稿尚未落盘时显示已保存。
   const status = editor.error
     ? "failed"
     : editor.invalid
       ? "invalid"
-      : editor.saving
+      : editor.dirty || editor.saving
         ? "saving"
-        : editor.dirty
-          ? "modified"
-          : "saved";
+        : "saved";
   const path_parts = [
     editor.file?.skill.name ?? skill.name,
     ...(editor.file?.path ?? AGENT_SKILL_MAIN_FILE).split("/"),
@@ -194,7 +193,7 @@ export function SkillEditor({
 /** 文件与角色编辑共用导航、保存反馈和危险操作，具体写入由各自编辑状态拥有。 */
 export function SkillEditorToolbar(props: {
   path: string[];
-  status: "failed" | "invalid" | "saving" | "modified" | "saved" | null;
+  status: "failed" | "invalid" | "saving" | "saved" | null;
   busy: boolean;
   locked: boolean;
   action?: "delete" | "reset";
@@ -237,34 +236,46 @@ export function SkillEditorToolbar(props: {
                 </Fragment>
               ))}
             </span>
-          </div>
-        }
-        hint={
-          <span className="skill-editor__toolbar-end">
             {props.status && (
               <Badge
+                className="skill-editor__status"
                 tone={
                   props.status === "failed"
                     ? "failure"
-                    : props.status === "modified" || props.status === "invalid"
+                    : props.status === "invalid"
                       ? "warning"
                       : "neutral"
                 }
               >
-                {t(`skills_page.editor.${props.status}`)}
+                <span aria-hidden="true">{t("skills_page.editor.saving")}</span>
+                <span aria-hidden="true">{t("skills_page.editor.saved")}</span>
+                <span className="skill-editor__status-label">
+                  {t(`skills_page.editor.${props.status}`)}
+                </span>
               </Badge>
             )}
-            {props.action && (
-              <AppButton
-                variant="outline"
-                size="sm"
-                disabled={props.busy || props.locked}
-                onClick={() => set_confirming(true)}
+          </div>
+        }
+        hint={
+          props.action ? (
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <AppButton
+                    variant="ghost"
+                    size="icon"
+                    className={props.action === "delete" ? "hover:text-destructive" : undefined}
+                    disabled={props.busy || props.locked}
+                    aria-label={action_label}
+                    onClick={() => set_confirming(true)}
+                  />
+                }
               >
-                {action_label}
-              </AppButton>
-            )}
-          </span>
+                {props.action === "reset" ? <RotateCcw /> : <Trash2 />}
+              </TooltipTrigger>
+              <TooltipContent>{action_label}</TooltipContent>
+            </Tooltip>
+          ) : undefined
         }
       />
       {props.action && (
