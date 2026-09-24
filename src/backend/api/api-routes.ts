@@ -1,3 +1,4 @@
+import type { AgentSkillsService } from "../agent/agent-skills-service";
 import type { Hono } from "hono";
 import { Readable } from "node:stream";
 import { AppError } from "../../shared/error";
@@ -15,6 +16,7 @@ export interface ApiRouteContext {
   app: Hono;
   services: BackendServices;
   agent: AgentService;
+  skills: Pick<AgentSkillsService, "snapshot" | "set_enabled" | "reorder">;
   postJson: ApiPostJsonRoute;
   request: ApiRequestRoute;
   createEventStreamResponse: () => Response;
@@ -30,6 +32,10 @@ export interface ApiRouteContext {
 export function register_api_routes(context: ApiRouteContext): void {
   const services = context.services;
   const agent = context.agent;
+
+  context.postJson("/api/skills/snapshot", () => context.skills.snapshot());
+  context.postJson("/api/skills/enabled", (body) => context.skills.set_enabled(body));
+  context.postJson("/api/skills/reorder", (body) => context.skills.reorder(body));
 
   context.app.get("/api/health", (hono_context) =>
     hono_context.json(

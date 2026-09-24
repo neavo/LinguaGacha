@@ -1,3 +1,4 @@
+import { ko_kr_skills_page } from "./skills-page";
 import { ko_kr_agent_page } from "./agent-page";
 import { ko_kr_agent_runtime } from "./agent-runtime";
 import { ko_kr_app } from "./app";
@@ -23,6 +24,7 @@ import type { zh_cn_messages } from "../zh-CN";
 import type { LocaleMessageSchema } from "../../types";
 
 export const ko_kr_messages = {
+  skills_page: ko_kr_skills_page,
   agent_page: ko_kr_agent_page,
   agent_runtime: ko_kr_agent_runtime,
   app: ko_kr_app,

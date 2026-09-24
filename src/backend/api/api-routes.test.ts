@@ -20,6 +20,9 @@ const GET_PATHS = new Set([
 ]);
 
 const POST_PATHS = new Set([
+  "/api/skills/snapshot",
+  "/api/skills/enabled",
+  "/api/skills/reorder",
   "/api/agent/uploads",
   "/api/logs/detail",
   "/api/logs/files",
@@ -344,6 +347,7 @@ function create_route_fixture() {
     app: { get } as unknown as Hono,
     services,
     agent,
+    skills: { snapshot: vi.fn(), set_enabled: vi.fn(), reorder: vi.fn() },
     postJson: post_json,
     request: (method, route, handler) =>
       method === "GET" ? get(route, handler) : post_json(route, handler),

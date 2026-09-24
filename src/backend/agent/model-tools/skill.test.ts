@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import { type AgentSkillDefinition } from "../agent-skills";
 import { create_agent_skill_tools } from "./skill";
@@ -29,7 +29,7 @@ describe("Agent 技能读取工具", () => {
     });
   });
 
-  it("当前会话名称始终绑定已冻结的获胜 skill 包", async () => {
+  it("当前会话名称始终绑定已冻结的技能包", async () => {
     using fixture = create_fixture("builtin", "shared", "会话内置正文");
     write_skill(fixture.user_root, "shared", "后来新增的用户正文");
 
@@ -49,17 +49,13 @@ describe("Agent 技能读取工具", () => {
     });
   });
 
-  it("实时发现 catalog 外的新名称，并沿用用户有效定义优先级", async () => {
+  it("拒绝读取会话目录外的新名称", async () => {
     using fixture = create_fixture();
     write_skill(fixture.builtin_root, "new-skill", "内置新正文");
     write_skill(fixture.user_root, "new-skill", "用户新正文");
 
-    await expect(execute(fixture.tool, { name: "new-skill" })).resolves.toMatchObject({
-      details: {
-        name: "new-skill",
-        path: "SKILL.md",
-        content: expect.stringContaining("用户新正文"),
-      },
+    await expect(execute(fixture.tool, { name: "new-skill" })).rejects.toMatchObject({
+      details: { code: "skill.resource_not_found" },
     });
   });
 
@@ -160,15 +156,11 @@ function create_fixture(source?: "user" | "builtin", name = "shared", body = "�
             disableModelInvocation: false,
           } satisfies AgentSkillDefinition,
         ];
-  const [tool] = create_agent_skill_tools(
-    skills,
-    {
-      get_app_root: () => disposable.path,
-      get_agent_user_skill_dir: () => user_root,
-      get_agent_builtin_skill_dir: () => builtin_root,
-    },
-    { warning: vi.fn(), error: vi.fn() },
-  );
+  const [tool] = create_agent_skill_tools(skills, {
+    get_app_root: () => disposable.path,
+    get_agent_user_skill_dir: () => user_root,
+    get_agent_builtin_skill_dir: () => builtin_root,
+  });
   if (tool === undefined) throw new Error("缺少 read_skill");
   return {
     [Symbol.dispose]: () => disposable[Symbol.dispose](),

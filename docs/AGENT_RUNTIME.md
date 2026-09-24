@@ -73,11 +73,12 @@
 - 公开 `context` 优先使用 SDK `getContextUsage()` 的有效用量，压缩后尚无有效统计时按当前内容及生效系统指令估算。`message_end` 先通知再写入历史，统计在历史提交后刷新。恢复压缩失败时可能已排除失败响应，也需重新读取上下文。
 - 模型可见上下文超过 `context_window - 32K` 时，`AgentSession` 在新用户请求前、自然结束后，以及完整工具批次与下一次助手请求之间统一自动压缩。空闲会话可由公开手动入口立即压缩。SDK 决定历史切点，保留侧的助手工具调用与结果保持配对。
 - Workspace 是 `AgentService` 的构造依赖、初始化前置和恒定工具面，初始化失败会阻止 Agent 启动资源完成加载。Agent 启动期原子加载必需的 `builtin/agent/system_prompt.md` 与 `builtin/agent/session_seed.json`；会话种子由零个或多个顺序任意的 user / assistant 消息组成，文本裁剪后允许为空，按资源顺序进入每个新会话的模型历史但不进入公开时间线，任一资源缺失或结构无效都会阻止启动。GUI Backend 的完整装配与启动顺序归 [`ARCHITECTURE.md`](ARCHITECTURE.md)。
-- coding-agent 的默认工具与项目资源发现全部关闭，SDK 不发现项目 `AGENTS.md`、`.pi` 或其它运行期资源。产品在初始会话及每次 reset 或工程切换时按用户目录、当前版本内置目录的优先级依次扫描，同名 skill 取首个有效定义，坏 skill 只记录诊断；安装根的历史资源目录不参与发现。形成的会话 catalog 同时拥有 System Prompt 能力清单、公开 mention、用户 marker 注入和名称到获胜 skill 包的内部绑定，并在当前对话内冻结。模型能力清单只公开名称与描述；`SKILL.md` 描述同时作为模型描述和 `ui.json` 展示描述缺失时的回退。
-- `agent-charter` 是隐藏但保留在模型能力清单中的最高层任务宪章，其短正文与系统提示有意重复。模型负责在任务前加载，后端通过普通技能读取提供正文，加载状态由模型判断。
-- `ui.json` 的 `visible` 控制公开技能列表；`disableModelInvocation` 排除模型的自动能力清单，显式用户引用仍可要求读取该技能。技能目录保留名称、描述、包路径与 UI 元数据，正文只由 `read_skill` 在实际调用时读取。系统提示词引导模型先加载用户指定的技能，同一上下文已有正文时复用。
-- `read_skill` 独立于 Workspace Service，按 `name` 和可选包内相对 `path` 读取文件，默认 `SKILL.md`；路径必须规范且真实目标位于获胜包内，同名包不合并或回退。返回 `{ name, path, content, base_url }`。`base_url` 是宿主生成的原包根目录 file: URL，始终以 / 结尾，不随被读文件改变。脚本可直接执行，无需先读取技能。
-- 同名覆盖在下一会话生效；catalog 外的新名称在 `read_skill` 时按同一优先级发现，不加入当前能力清单、mention 或 marker。包内文件在读取或后续 run 时消费当前磁盘内容，删除后正常失败；上下文中已有正文需显式重读才会更新。apply、快照刷新、对话重置和工程切换均不处理技能原文件。
+- 产品在初始化、重置对话和工程切换时扫描用户目录及当前版本内置目录。同一来源按稳定路径顺序保留首个有效同名包，坏包和重复包进入日志。SDK 的默认工具和资源发现保持关闭，技能扫描范围由产品指定。
+- `AgentSkillsService` 由 GUI Backend 组合根装配，提供管理快照、启用和排序命令。`AppSettingService` 保存应用级 `agent_skills` 偏好并发布 `settings.changed`。关闭名称按来源保存，用户顺序按名称保存。内置顺序来自 `ui.json.order`，新用户技能按名称追加。
+- 管理页展示两个来源的公开技能。建立会话时先过滤关闭项，再由用户包覆盖同名内置包。关闭用户包后，下次会话使用仍启用的内置包。隐藏资源继续参与会话加载。
+- 会话技能快照统一提供系统提示能力清单、公开技能引用、用户标记解析与名称绑定。启用、排序和新增技能在下一会话生效。`ui.json.visible` 控制公开展示，`disableModelInvocation` 排除自动能力清单，显式引用仍可要求读取。模型清单只包含名称和描述，缺失的 UI 描述回退到 `SKILL.md` 描述。
+- `agent-charter` 是隐藏的最高层任务宪章，其短正文与系统提示有意重复。模型在任务前通过普通技能读取加载正文，并自行判断加载状态。
+- `read_skill` 按会话内的 `name` 和可选包内相对 `path` 读取文件，默认读取 `SKILL.md`。规范路径的真实目标必须位于绑定包内。返回 `{ name, path, content, base_url }`，其中 `base_url` 是以 / 结尾的原包根目录 file: URL。正文和资源在读取或执行时消费当前磁盘内容，删除后正常失败，上下文中的旧正文需显式重读。技能原文件由用户或发布资源维护。
 - [系统提示](../builtin/agent/system_prompt.md) 负责人格、任务与授权边界、技能选择、CodeAct、业务单元与提交、恢复和交付要求，加载后在正文末尾附加会话技能目录。
 - 任务类型 `report / apply` 由模型遵守。`report` 允许分析和准备工作材料，`apply` 承担工程写入、回执核对及依赖写入结果的检查，直接写入工具同样受此边界约束。后端按工具契约执行，任务类型由模型在工作记录中保存。
 - 模型按[技能入口](../builtin/agent/skill/)选择任务文件、领域判据与扩展技能，包括 `writing-guide-` 前缀扩展。各任务文件完整维护自身流程及所需的全局要求，判据与参考提供领域知识。自启发调查的步骤、种子账本格式和结束条件随领域流程维护。
@@ -110,7 +111,7 @@
 - `ws.contract` 的类型外壳、磁盘索引和模型声明共用同一 Schema，索引只承载数据集与变更路径、`reference` 入口和通用 `apply` 契约。`workspace/schema` 拥有快照与变更记录结构，`contract` 关联路径、Schema 和对象语义，并生成轻量索引与按业务主题聚合的只读 `reference/*.md`。参考文档与工具 API 说明共用 `schema-description`，从原 Schema 生成字段和约束；对象特有副作用、排序与批次建议随主题提供。参考文档随快照创建、失败清理和刷新，模型使用 Node 文件 API 按需读取。
 - `changes` 按相同记录 Schema 校验 JSONL 后转换为领域意图，缺失或空清单表示该类意图为空。纯指纹格式常量与业务字段词表位于无宿主依赖的 `shared/project/agent-workspace`，项目写入器负责事实、冲突与领域规则，`warnings` 直接使用 shared 校对词表和证据字段。运行时注入的冻结 `ws` 由 contract、Todo、emitImage 与 host 请求入口组成；运行时初始化按外壳 Schema 校验磁盘契约，再冻结独立副本。
 - `items`、`pages`、quality entry 与 prompt 对象携带基于数据对象事实计算的指纹 `fp`，用于 `workspace_apply` 时校验该对象自工作区快照后是否仍保持一致；quality 额外携带零基 `sort`。显式变更清单按对象类型及其支持的操作分开，记录形状由源码 Schema 唯一定义，模型通过索引中的 `reference` 读取生成说明。
-- `AgentWorkspaceService` 为每次执行保存同标识的程序与两路日志到 `work/runs/`，沿用 work 生命周期。runner 复用 Electron Node 模式，以 `--import` 预加载 ws 和系统代理 fetch，程序按事件循环自然退出。宿主先解析工作区与运行目录的真实路径，以运行目录为基准解析 `@lg/workspace/bootstrap` 包入口，并以整个运行目录授予只读权限。每次 run 从与 catalog 共用的 AppPathService 取得两个技能根，授予逻辑入口与真实路径只读权限；授权独立于同名选择，缺失目录不阻断执行，后续 run 重新解析。`--preserve-symlinks` 和 `--preserve-symlinks-main` 保留模块的工作区入口，使挂载的 work 仍能发现预装依赖，不同导入路径可形成独立模块实例。
+- `AgentWorkspaceService` 为每次执行保存同标识的程序与两路日志到 `work/runs/`，沿用 work 生命周期。runner 复用 Electron Node 模式，以 `--import` 预加载 ws 和系统代理 fetch，程序按事件循环自然退出。宿主先解析工作区与运行目录的真实路径，以运行目录为基准解析 `@lg/workspace/bootstrap` 包入口，并以整个运行目录授予只读权限。每次 run 从与 catalog 共用的 AppPathService 取得两个技能根，授予逻辑入口与真实路径只读权限；授权独立于技能启用状态，缺失目录不阻断执行，后续 run 重新解析。`--preserve-symlinks` 和 `--preserve-symlinks-main` 保留模块的工作区入口，使挂载的 work 仍能发现预装依赖，不同导入路径可形成独立模块实例。
 - 子进程直接写入 stdout/stderr 文件，close 后两路独立按额度返回完整 content 或文件补读提示，JSON 对象与数组优先结构化。成功、非零退出和超时共用执行记录，取消保留已写文件。IPC 传初始化、Todo、图片输出与具名宿主请求。代理查询和宿主操作共用请求关联、取消和保活通道，空闲不保活。停止、超时或父通道断开时回收进程并取消待决请求；父进程等待宿主操作实际结算及进程、文件句柄收尾后才释放工作区互斥。运行中的宿主调用使用本次执行绑定的内部端口，不重新进入工作区公开互斥入口。
 - 根 `package.json` 与锁文件拥有依赖版本，`workspacePackages` 声明预装包名并供工具说明读取。`buildtools/build-workspace.mjs` 共用于开发、测试和发布，整体重建 `build/resources/workspace`。部署通过 `npm query` 取得依赖闭包，保留安装相对位置、运行资源、类型声明与使用说明，集中排除源码映射和已确认无用的替代构建。生成的 `package.json` 记录实际版本，发布前通过根 `npm ci` 保证安装来源可复现。
 - 应用源码构建为 `@lg/workspace`、`@lg/text` 与 `@lg/pdf` 内部包。宿主通过 `src/native/workspace-runtime.ts` 从注入的运行目录解析包导出，解析阶段只定位入口。PDF 库与 worker 共用一次多入口构建及包内 chunk，MuPDF JS/WASM 由 worker 和工作区共享。

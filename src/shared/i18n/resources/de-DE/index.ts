@@ -1,3 +1,4 @@
+import { de_de_skills_page } from "./skills-page";
 import { de_de_batch_translation } from "./batch-translation";
 import { de_de_agent_page } from "./agent-page";
 import { de_de_agent_runtime } from "./agent-runtime";
@@ -23,6 +24,7 @@ import type { zh_cn_messages } from "../zh-CN";
 import type { LocaleMessageSchema } from "../../types";
 
 export const de_de_messages = {
+  skills_page: de_de_skills_page,
   agent_page: de_de_agent_page,
   agent_runtime: de_de_agent_runtime,
   app: de_de_app,

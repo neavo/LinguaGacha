@@ -1,3 +1,4 @@
+import { AgentSkillsService } from "../agent/agent-skills-service";
 import type { PDFHost } from "../../shared/pdf";
 import type { AgentImageHost } from "../../shared/agent-image";
 import { AgentImageService } from "../agent/agent-image-service";
@@ -155,6 +156,11 @@ export class GuiBackendBootstrap {
       const gateway = new ApiGatewayServer({
         backendServices: services,
         agentService: agent,
+        skillsService: new AgentSkillsService(
+          resources.paths,
+          resources.settings,
+          resources.logManager,
+        ),
         eventStream: event_stream,
       });
       this.gateway = gateway;

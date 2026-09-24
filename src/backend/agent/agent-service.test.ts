@@ -55,7 +55,7 @@ const skill_test_fixture = vi.hoisted(() => {
     },
   };
   const glossary_audit_content = `${glossary_audit_snapshot.name}:fixture`;
-  const snapshots = [corpus_search_snapshot, glossary_audit_snapshot];
+  const snapshots = [glossary_audit_snapshot, corpus_search_snapshot];
   const skills = [
     {
       ...glossary_audit_snapshot,
@@ -570,7 +570,7 @@ describe("AgentService", () => {
     await Promise.all(services.splice(0).map(async (service) => await service.dispose()));
   });
 
-  it("快照按 UI 顺序下发 skill 清单，并在变更状态前拒绝非法消息", async () => {
+  it("快照沿用技能加载结果的展示顺序，并在变更状态前拒绝非法消息", async () => {
     const fixture = await create_service();
 
     expect(fixture.service.get_snapshot().skills).toEqual(skill_test_fixture.snapshots);

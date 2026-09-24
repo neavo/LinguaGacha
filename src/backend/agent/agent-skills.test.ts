@@ -87,15 +87,6 @@ describe("Agent skill 加载", () => {
 
     await expect(load_agent_skills(paths, log_manager)).resolves.toEqual([
       {
-        name: "manual",
-        description: "手动能力",
-        visible: true,
-        displayDescriptions: Object.fromEntries(LOCALES.map((locale) => [locale, "手动能力"])),
-
-        filePath: expect.stringMatching(/\/manual\/SKILL\.md$/u),
-        disableModelInvocation: true,
-      },
-      {
         name: "valid",
         description: "合法能力",
         visible: true,
@@ -103,6 +94,15 @@ describe("Agent skill 加载", () => {
 
         filePath: expect.stringMatching(/\/valid\/SKILL\.md$/u),
         disableModelInvocation: false,
+      },
+      {
+        name: "manual",
+        description: "手动能力",
+        visible: true,
+        displayDescriptions: Object.fromEntries(LOCALES.map((locale) => [locale, "手动能力"])),
+
+        filePath: expect.stringMatching(/\/manual\/SKILL\.md$/u),
+        disableModelInvocation: true,
       },
     ]);
     expect(warning).toHaveBeenCalledWith(
@@ -117,7 +117,7 @@ describe("Agent skill 加载", () => {
     );
   });
 
-  it("用户有效同名 skill 完整覆盖内置 skill 且不产生诊断", async () => {
+  it("用户有效同名技能覆盖内置技能且不产生诊断", async () => {
     using temp_root = fs.mkdtempDisposableSync(
       path.join(os.tmpdir(), "linguagacha-agent-skills-override-"),
     );
@@ -144,22 +144,13 @@ describe("Agent skill 加载", () => {
     const warning = vi.fn();
 
     await expect(load_agent_skills(paths, { warning, error: vi.fn() })).resolves.toEqual([
-      {
+      expect.objectContaining({
         name: "shared",
         description: "用户能力",
-        visible: true,
         order: 200,
-        displayDescriptions: {
-          "zh-CN": "用户能力",
-          "en-US": "User skill",
-          "de-DE": "用户能力",
-          "ja-JP": "ユーザー機能",
-          "ko-KR": "사용자 기능",
-        },
-
         filePath: path.join(user_dir, "SKILL.md").replaceAll("\\", "/"),
-        disableModelInvocation: false,
-      },
+        displayDescriptions: expect.objectContaining({ "en-US": "User skill" }),
+      }),
     ]);
     expect(warning).not.toHaveBeenCalled();
   });

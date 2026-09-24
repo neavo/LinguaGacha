@@ -71,7 +71,7 @@
 - `features/media-preview` 拥有 Agent 与校对共用的画布、尺寸观测、缩放和平移，弹窗、数据请求与附加工具归调用方。调用方通过组件身份控制重置，同一实例在媒体或视口尺寸变化后保留倍率并约束平移。
 - `src/frontend/pages/<page>` 只包含页面入口及该页面的私有实现；页面之间不互相导入，共用能力先迁入 `features`，`features` 不反向依赖 `pages`。
 - `src/frontend/widgets/interactions` 只承接通用交互与快捷键，不依赖 app state、页面领域、桌面桥、后端 API 或 SSE。
-- `widgets/interactions/use-reorder` 拥有表格、模型分类和 Agent 队列的临时 ID 顺序与提交互斥；拖动中身份顺序或可操作状态变化即取消。页面拥有数据、持久化和一次错误反馈，`on_reorder` 的 resolve/reject 均表示保存与刷新处理结束，随后交回当前权威顺序；Agent 队列等待命令事件重放或快照恢复。React 拥有排序 DOM 和虚拟索引，dnd-kit 的 DOM 乐观排序插件保持禁用。
+- `widgets/interactions/use-reorder` 拥有表格、模型分类、技能和 Agent 队列的临时 ID 顺序与提交互斥；拖动中身份顺序或可操作状态变化即取消。页面拥有数据、持久化和一次错误反馈，`on_reorder` 的 resolve/reject 均表示保存与刷新处理结束，随后交回当前权威顺序；Agent 队列等待命令事件重放或快照恢复。React 拥有排序 DOM 和虚拟索引，dnd-kit 的 DOM 乐观排序插件保持禁用。
 - `AppTable` 拥有选区裁决、行菜单与拖动手柄，手柄可使用独立拖动列或数据列的 `drag_handle` 嵌入，页面只声明位置并提供业务列、菜单项及重排限制。拖拽与菜单共用重排入口；拖动及等待保存期间按起始身份顺序显示序号，位置索引独立服务交互。原行、占位与浮层共用手柄布局，浮层显示时原行透明占位以保留测量与焦点，浮层使用不透明底色。
 - 新业务能力代码按所有者进入 `app`、`features`、`pages`、`widgets`、`src/shared` 或 `src/domain`，不新建无主的顶层技术工具桶。
 

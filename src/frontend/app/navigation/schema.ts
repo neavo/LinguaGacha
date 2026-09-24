@@ -12,6 +12,7 @@ import {
   ReplaceAll,
   ShieldCheck,
   SlidersHorizontal,
+  Sparkles,
 } from "lucide-react";
 
 import type { NavigationGroup, RouteId } from "@frontend/app/navigation/types";
@@ -67,6 +68,7 @@ export const NAVIGATION_GROUPS: NavigationGroup[] = [
   {
     id: "quality",
     items: [
+      { id: "skills", icon: Sparkles, title_key: "skills_page.title" },
       {
         id: "glossary",
         icon: BookA,

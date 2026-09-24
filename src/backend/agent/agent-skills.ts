@@ -18,6 +18,11 @@ import {
 import { NodeExecutionEnv } from "@earendil-works/pi-agent-core/node";
 
 import { is_json_record } from "../../domain/json";
+import {
+  normalize_agent_skill_settings,
+  type AgentSkillSettings,
+} from "../../domain/agent-skill-settings";
+import type { AgentSkillSource } from "../../shared/agent-skills";
 import { default_native_fs, type NativeFs } from "../../native/native-fs";
 import type { AgentSkillDisplayDescriptions } from "../../shared/agent";
 import { LOCALES } from "../../shared/i18n/types";
@@ -29,7 +34,7 @@ const UI_FILE_NAME = "ui.json";
 
 type AgentSkillUi = {
   visible: boolean; // 是否进入公开能力列表并接受用户 marker，不改变模型自主调用或读取权限
-  order?: number; // 缺失时排在显式顺序之后，同类保持加载顺序
+  order?: number; // 内置展示顺序，缺失时按名称追加；用户顺序由应用偏好拥有
   displayDescriptions: AgentSkillDisplayDescriptions;
 };
 
@@ -52,24 +57,52 @@ export type AgentSkillPaths = Pick<
   "get_agent_builtin_skill_dir" | "get_agent_user_skill_dir" | "get_app_root"
 >;
 
-/** 按 Pi 的 first-wins 语义加载会话 catalog；用户有效定义优先于内置定义。 */
+export type AgentSkillPackage = {
+  definition: AgentSkillDefinition; // 会话读取所需的包与元数据。
+  source: AgentSkillSource; // 偏好身份与同名覆盖优先级。
+};
+
+/** 会话按名称选择启用的获胜包，公开列表和读取工具共享这一集合。 */
 export async function load_agent_skills(
   paths: AgentSkillPaths,
   log_manager: AgentSkillLog,
+  settings: AgentSkillSettings = normalize_agent_skill_settings(undefined),
   native_fs: AgentSkillNativeFs = default_native_fs,
 ): Promise<AgentSkillDefinition[]> {
+  const packages = await scan_agent_skills(paths, log_manager, native_fs);
+  const selected = new Map<string, AgentSkillPackage>(); // 每个名称只绑定一个启用包。
+  // 先过滤各来源的关闭项，再由用户包覆盖内置包；关闭用户包后自然回退。
+  for (const item of packages) {
+    if (item.definition.visible && settings.disabled[item.source].includes(item.definition.name))
+      continue;
+    if (!selected.has(item.definition.name) || item.source === "user")
+      selected.set(item.definition.name, item);
+  }
+  return sort_agent_skill_packages([...selected.values()], settings).map((item) => item.definition);
+}
+
+/** 按来源保留首个有效同名包，跨来源的覆盖只在建立会话时决定。 */
+export async function scan_agent_skills(
+  paths: AgentSkillPaths,
+  log_manager: AgentSkillLog,
+  native_fs: AgentSkillNativeFs = default_native_fs,
+): Promise<AgentSkillPackage[]> {
   try {
     const execution_env = new AgentSkillExecutionEnv({ cwd: paths.get_app_root() }, native_fs);
-    const sources = [paths.get_agent_user_skill_dir(), paths.get_agent_builtin_skill_dir()];
-    const skills = new Map<string, AgentSkillDefinition>();
-    for (const source of sources) {
-      const result = await loadSkills(execution_env, source, BACKGROUND_CONTEXT);
+    const sources = [
+      { source: "builtin" as const, root: paths.get_agent_builtin_skill_dir() },
+      { source: "user" as const, root: paths.get_agent_user_skill_dir() },
+    ];
+    const skills: AgentSkillPackage[] = [];
+    for (const { source, root } of sources) {
+      const result = await loadSkills(execution_env, root, BACKGROUND_CONTEXT);
       for (const diagnostic of result.diagnostics) log_skill_diagnostic(log_manager, diagnostic);
       const invalid_paths = new Set(
         result.diagnostics
           .filter((diagnostic) => diagnostic.code === "invalid_metadata")
           .map((diagnostic) => diagnostic.path),
       );
+      const names = new Set<string>();
       for (const skill of result.skills.toSorted((left, right) =>
         left.filePath.localeCompare(right.filePath),
       )) {
@@ -79,11 +112,23 @@ export async function load_agent_skills(
         ) {
           continue;
         }
-        if (skills.has(skill.name)) continue;
-        skills.set(skill.name, create_agent_skill_definition(skill, log_manager, native_fs));
+        if (names.has(skill.name)) {
+          log_skill_ui_diagnostic(
+            log_manager,
+            skill.name,
+            skill.filePath,
+            "同一来源的技能名称重复，使用首个有效包",
+          );
+          continue;
+        }
+        names.add(skill.name);
+        skills.push({
+          definition: create_agent_skill_definition(skill, log_manager, native_fs),
+          source,
+        });
       }
     }
-    return [...skills.values()];
+    return skills;
   } catch (error) {
     log_manager.error(t_main_log("app.diagnostic.agent.skill_load_failed"), {
       source: "agent",
@@ -91,6 +136,23 @@ export async function load_agent_skills(
     });
     return [];
   }
+}
+
+/** 内置顺序由资源决定，用户顺序由偏好决定；未排序的新技能按名称追加。 */
+export function sort_agent_skill_packages(
+  skills: readonly AgentSkillPackage[],
+  settings: AgentSkillSettings,
+): AgentSkillPackage[] {
+  const user_order = new Map(settings.user_order.map((name, index) => [name, index]));
+  // 两种顺序分别归资源和用户偏好拥有，缺省项统一追加。
+  const rank = (skill: AgentSkillPackage): number =>
+    skill.source === "builtin"
+      ? (skill.definition.order ?? Number.MAX_SAFE_INTEGER)
+      : (user_order.get(skill.definition.name) ?? Number.MAX_SAFE_INTEGER);
+  return skills.toSorted((left, right) => {
+    if (left.source !== right.source) return left.source === "builtin" ? -1 : 1;
+    return rank(left) - rank(right) || left.definition.name.localeCompare(right.definition.name);
+  });
 }
 
 /** 将 Pi 的协议结果收口为产品会话使用的 skill 定义，并在此补齐 UI 投影。 */

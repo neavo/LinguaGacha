@@ -1,3 +1,4 @@
+import { normalize_agent_skill_settings } from "../../domain/agent-skill-settings";
 import type { AgentFilesResponse } from "../../shared/agent-reference";
 import type { AgentImageService } from "./agent-image-service";
 import type { AgentFileAttachment } from "../../shared/agent";
@@ -311,7 +312,7 @@ export class AgentService {
     return { sessionId: this.session_id, files: this.workspace.list_files() };
   }
 
-  /** 返回独立的公开快照；UI 排序不改写模型侧技能目录。 */
+  /** 返回独立的公开快照，技能沿用会话加载顺序。 */
   public get_snapshot(): AgentSessionSnapshot {
     return {
       sessionId: this.session_id,
@@ -322,12 +323,6 @@ export class AgentService {
       entries: structuredClone(this.entries),
       skills: (this.resources?.skills ?? [])
         .filter(({ visible }) => visible)
-        .sort((left, right) => {
-          // 未配置 order 的能力排在显式顺序之后；同类项依赖稳定排序保留加载顺序。
-          if (left.order === undefined) return right.order === undefined ? 0 : 1;
-          if (right.order === undefined) return -1;
-          return left.order - right.order;
-        })
         .map(({ name, displayDescriptions }) => ({
           name,
           displayDescriptions: { ...displayDescriptions },
@@ -372,7 +367,11 @@ export class AgentService {
     await this.workspace.initialize();
     const base_system_prompt = load_agent_system_prompt(this.paths);
     const session_seed = load_agent_session_seed(this.paths);
-    const skills = await load_agent_skills(this.paths, this.log_manager);
+    const skills = await load_agent_skills(
+      this.paths,
+      this.log_manager,
+      normalize_agent_skill_settings(this.settings.read_setting().agent_skills),
+    );
     const skills_prompt = format_agent_skills_for_system_prompt(skills);
     this.resources = {
       baseSystemPrompt: base_system_prompt,
@@ -1158,7 +1157,7 @@ export class AgentService {
           todo: this.todo_port(),
           approval: this.workspace_approval_port(),
         }),
-        ...create_agent_skill_tools(resources.skills, this.paths, this.log_manager),
+        ...create_agent_skill_tools(resources.skills, this.paths),
         ...(this.web_search === undefined ? [] : [create_agent_web_search_tool(this.web_search)]),
       ].map((tool) => prepare_agent_tool(tool, this.log_manager)),
       resourceLoader: resource_loader,
@@ -1894,7 +1893,11 @@ export class AgentService {
   /** 新产品会话重新冻结 catalog；System Prompt、mention 与 marker 始终共享同一快照。 */
   private async reload_session_skills(): Promise<void> {
     if (this.resources === null) return;
-    const skills = await load_agent_skills(this.paths, this.log_manager);
+    const skills = await load_agent_skills(
+      this.paths,
+      this.log_manager,
+      normalize_agent_skill_settings(this.settings.read_setting().agent_skills),
+    );
     const skills_prompt = format_agent_skills_for_system_prompt(skills);
     this.resources = {
       ...this.resources,

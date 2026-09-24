@@ -18,6 +18,76 @@ describe("GuiBackendBootstrap 集成", () => {
   });
   afterEach(() => vi.restoreAllMocks());
 
+  it("技能管理在无工程时可用，开关和排序只在重置对话后生效", async () => {
+    using temporary = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-skills-gateway-"));
+    const app_root = temporary.path;
+    fs.writeFileSync(path.join(app_root, "version.txt"), "1.2.3");
+    const builtin_root = path.join(app_root, "builtin");
+    const paths = new AppPathService({ appRoot: app_root, builtinRoot: builtin_root });
+    fs.mkdirSync(path.join(builtin_root, "agent"), { recursive: true });
+    fs.writeFileSync(paths.get_agent_system_prompt_path(), "Test system prompt.");
+    fs.writeFileSync(paths.get_agent_session_seed_path(), "[]");
+    for (const name of ["first", "second"]) {
+      const directory = path.join(paths.get_agent_user_skill_dir(), name);
+      fs.mkdirSync(directory, { recursive: true });
+      fs.writeFileSync(
+        path.join(directory, "SKILL.md"),
+        `---\nname: ${name}\ndescription: Fixture skill\n---\nBody`,
+      );
+    }
+    const bootstrap = new GuiBackendBootstrap({
+      appRoot: app_root,
+      builtinRoot: builtin_root,
+      logTargets: { console: false, window: false },
+      imageHost: async () => {
+        throw new Error("Unexpected image request");
+      },
+      systemProxyResolver: { resolveProxy: async () => "DIRECT" },
+      workspaceRuntimeDirectory: create_workspace_runtime_fixture(app_root),
+      openDirectory: async () => undefined,
+      pickSavePath: async () => null,
+      workerExecution: { kind: "in_process" },
+    });
+    try {
+      const { apiBaseUrl } = await bootstrap.start();
+      /** 通过真实 Gateway 写配置，确保路由绑定和持久化共同生效。 */
+      const post = async (route: string, body: Record<string, unknown> = {}) => {
+        const response = await fetch(`${apiBaseUrl}${route}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+        expect(response.ok).toBe(true);
+        return response.json();
+      };
+      /** 从会话公开快照观察生效时机。 */
+      const names = async (): Promise<string[]> => {
+        const response = await fetch(`${apiBaseUrl}/api/agent/snapshot`);
+        const payload = (await response.json()) as { data: { skills: { name: string }[] } };
+        return payload.data.skills.map((skill) => skill.name);
+      };
+      expect(await names()).toEqual(["first", "second"]);
+      await post("/api/skills/reorder", { names: ["second", "first"] });
+      expect(await names()).toEqual(["first", "second"]);
+      await post("/api/agent/reset");
+      expect(await names()).toEqual(["second", "first"]);
+      await post("/api/skills/enabled", { source: "user", name: "second", enabled: false });
+      expect(await names()).toEqual(["second", "first"]);
+      await expect(post("/api/skills/snapshot")).resolves.toMatchObject({
+        data: {
+          skills: [
+            { name: "second", enabled: false },
+            { name: "first", enabled: true },
+          ],
+        },
+      });
+      await post("/api/agent/reset");
+      expect(await names()).toEqual(["first"]);
+    } finally {
+      await bootstrap.stop();
+    }
+  });
+
   it("关闭 Gateway 时取消流式上传并清理半成品", async ({ onTestFinished }) => {
     const app_root = fs.mkdtempSync(path.join(os.tmpdir(), "lg-file-upload-"));
     fs.writeFileSync(path.join(app_root, "version.txt"), "1.2.3", "utf8");

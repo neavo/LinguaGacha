@@ -11,6 +11,7 @@ export type RouteId =
   | "basic-settings"
   | "expert-settings"
   | "glossary"
+  | "skills"
   | "text-preserve"
   | "text-replacement"
   | "pre-translation-replacement"
