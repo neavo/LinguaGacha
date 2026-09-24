@@ -2,7 +2,14 @@ import { useEffect, useImperativeHandle, useRef, useState, type Ref } from "reac
 import { WrapText } from "lucide-react";
 
 import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
-import { Compartment, EditorSelection, EditorState, Prec, type Extension } from "@codemirror/state";
+import {
+  Compartment,
+  EditorSelection,
+  EditorState,
+  Prec,
+  Transaction,
+  type Extension,
+} from "@codemirror/state";
 import {
   EditorView,
   drawSelection,
@@ -60,6 +67,7 @@ type AppEditorDocumentProps = AppEditorBaseProps &
   AppEditorEditingProps & {
     variant?: "document";
     syntax?: AppEditorSyntax;
+    extensions?: Extension; // 随编辑器挂载安装，调用方通过组件身份切换业务文档。
   };
 
 type AppEditorFieldProps = AppEditorBaseProps &
@@ -232,7 +240,7 @@ function create_clamped_selection(
   );
 }
 
-/** 组合只创建一次的基础扩展；运行期变化通过各自 Compartment 重配。 */
+/** 创建基础扩展，并通过 `Compartment` 更新运行配置。 */
 function create_editor_extensions(args: {
   theme_extension: Extension;
   syntax_extension: Extension;
@@ -274,7 +282,7 @@ function create_editor_extensions(args: {
 
 /**
  * 受控 CodeMirror 表面，统一字段、正文与只读查看器的互斥语义。
- * 正文通过 aria_label 命名；调用方用普通容器组合字段，避免 label 将点击转发给内部换行按钮。
+ * 正文通过 `aria_label` 命名。调用方用普通容器组合字段，避免 `label` 将点击转发给内部换行按钮。
  */
 export function AppEditor(props: AppEditorProps): JSX.Element {
   const { resolved_theme } = useAppearance();
@@ -292,9 +300,12 @@ export function AppEditor(props: AppEditorProps): JSX.Element {
   const on_change_ref = useRef(config.on_change);
   const on_blur_ref = useRef(config.on_blur);
   const suppress_change_ref = useRef(false);
-  // EditorView 生命周期独立于 React 重渲染，首帧配置固定后只通过 Compartment 同步。
+  // `EditorView` 独立于 React 重渲染，运行配置通过各自的 `Compartment` 同步。
   const initial_value_ref = useRef(value);
   const initial_ranges_ref = useRef(ranges);
+  const initial_extensions_ref = useRef<Extension>(
+    props.variant === "field" || props.variant === "viewer" ? [] : (props.extensions ?? []),
+  );
   const applied_document_ref = useRef({ value, ranges, variant });
   const initial_aria_label_ref = useRef(props.aria_label);
   const initial_aria_invalid_ref = useRef(config.aria_invalid);
@@ -325,6 +336,7 @@ export function AppEditor(props: AppEditorProps): JSX.Element {
     const editor_state = EditorState.create({
       doc: initial_value_ref.current,
       extensions: [
+        initial_extensions_ref.current,
         editor_viewer_ranges_compartment.of(create_app_viewer_ranges(initial_ranges_ref.current)),
         ...create_editor_extensions({
           theme_extension: initial_theme_extension_ref.current,
@@ -467,7 +479,7 @@ export function AppEditor(props: AppEditorProps): JSX.Element {
     }
 
     const previous = applied_document_ref.current;
-    // 可编辑文档可能已由用户输入更新；只读查看器直接复用上次外部值，免去全文拼接。
+    // 可编辑文档读取当前输入。只读查看器复用上次外部值，省去全文拼接。
     const current_value =
       variant === "viewer" && previous.variant === "viewer"
         ? previous.value
@@ -492,6 +504,9 @@ export function AppEditor(props: AppEditorProps): JSX.Element {
               },
         effects: editor_viewer_ranges_compartment.reconfigure(create_app_viewer_ranges(ranges)),
         selection: next_selection,
+        // 外部载入可以替换固定结构，替换过程不进入用户撤销历史。
+        filter: false,
+        annotations: Transaction.addToHistory.of(false),
       });
       applied_document_ref.current = { value, ranges, variant };
     } finally {
@@ -535,7 +550,7 @@ export function AppEditor(props: AppEditorProps): JSX.Element {
                 variant="ghost"
                 size="icon-sm"
                 className="app-editor__wrap-action"
-                aria-label={t("app.editor.line_wrap_target", { TARGET: props.aria_label })}
+                aria-label={t("app.editor.line_wrap")}
                 aria-pressed={wrap_lines}
                 onPointerDown={(event) => {
                   // 指针切换只改变视图偏好，保持正文焦点并避免触发失焦提交。
@@ -550,7 +565,7 @@ export function AppEditor(props: AppEditorProps): JSX.Element {
           <TooltipContent side="left">
             <p>
               {t("app.tooltip.value", {
-                TITLE: t("app.editor.line_wrap_target", { TARGET: props.aria_label }),
+                TITLE: t("app.editor.line_wrap"),
                 VALUE: t(wrap_lines ? "app.state.enabled" : "app.state.disabled"),
               })}
             </p>

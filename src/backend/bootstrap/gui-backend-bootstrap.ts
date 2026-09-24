@@ -1,3 +1,5 @@
+import { AgentPersonalityService } from "../agent/agent-personality-service";
+import { AgentSkillsService } from "../agent/agent-skills-service";
 import type { PDFHost } from "../../shared/pdf";
 import type { AgentImageHost } from "../../shared/agent-image";
 import { AgentImageService } from "../agent/agent-image-service";
@@ -135,7 +137,15 @@ export class GuiBackendBootstrap {
         openDirectory: this.options.openDirectory,
         pickSavePath: this.options.pickSavePath,
       });
+      // 管理 API 和 Agent 共用技能队列，让当前对话接收设置变更。
+      const skills = new AgentSkillsService(
+        resources.paths,
+        resources.settings,
+        resources.logManager,
+        services.state.runtimeGate,
+      );
       const agent = new AgentService({
+        skills,
         catalog: services.modelCatalog,
         images,
         batchTranslation: services.batchTranslation,
@@ -155,6 +165,12 @@ export class GuiBackendBootstrap {
       const gateway = new ApiGatewayServer({
         backendServices: services,
         agentService: agent,
+        skillsService: skills,
+        personalityService: new AgentPersonalityService(
+          resources.paths,
+          resources.settings,
+          services.state.runtimeGate,
+        ),
         eventStream: event_stream,
       });
       this.gateway = gateway;

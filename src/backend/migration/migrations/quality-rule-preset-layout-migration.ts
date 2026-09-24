@@ -47,16 +47,18 @@ export const quality_rule_preset_layout_migration: MigrationDescriptor = {
   /**
    * 质量规则预设体系迁移由三个步骤组成，必须在设置读取前一次完成。
    */
-  run_startup(context: StartupMigrationContext): void {
-    run_quality_rule_preset_layout_migration(context);
+  async run_startup(context: StartupMigrationContext): Promise<void> {
+    await run_quality_rule_preset_layout_migration(context);
   },
 };
 
 /**
  * 执行顺序固定为迁移用户预设，再归一配置值。
  */
-export function run_quality_rule_preset_layout_migration(context: StartupMigrationContext): void {
-  migrate_user_presets(context);
+export async function run_quality_rule_preset_layout_migration(
+  context: StartupMigrationContext,
+): Promise<void> {
+  await migrate_user_presets(context);
   normalize_default_preset_config_values(context);
 }
 
@@ -120,11 +122,11 @@ export function normalize_quality_rule_preset_value(
 /**
  * 用户预设从 resource 旧目录迁到 userdata，目标同名代表当前用户事实。
  */
-function migrate_user_presets(context: StartupMigrationContext): void {
+async function migrate_user_presets(context: StartupMigrationContext): Promise<void> {
   for (const preset_directory of QUALITY_RULE_PRESET_DIRECTORIES) {
     const destination_dir = context.paths.get_quality_rule_user_preset_dir(preset_directory);
     default_native_fs.make_dir(destination_dir);
-    relocate_directory_items(
+    await relocate_directory_items(
       context.log_manager,
       get_legacy_user_preset_dir(context, preset_directory),
       destination_dir,

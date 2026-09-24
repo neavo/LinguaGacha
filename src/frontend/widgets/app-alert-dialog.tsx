@@ -35,6 +35,7 @@ type AppConfirmDialogProps = Omit<
 > & {
   onConfirm: () => void | Promise<void>;
   confirmDelay?: boolean; // 危险动作在开放确认前启用统一倒计时
+  confirmDisabled?: boolean; // 弹窗打开期间仍受业务运行占用约束。
 };
 
 type AppActionDialogProps = AppDialogBaseProps & {
@@ -83,7 +84,7 @@ export function AppConfirmDialog(props: AppConfirmDialogProps): JSX.Element {
       primaryAction={{
         label: confirm_is_delayed ? `${remaining_seconds}s` : t("app.action.confirm"),
         onSelect: props.onConfirm,
-        disabled: confirm_is_delayed,
+        disabled: confirm_is_delayed || props.confirmDisabled,
       }}
       onClose={props.onClose}
     />

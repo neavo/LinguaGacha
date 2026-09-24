@@ -51,7 +51,15 @@
 - 模型页按后端快照的 `can_reset` 展示重置或删除，类型只用于分组；自定义分组最后一项保留，已下架预设可清空分组。模型配置编辑只随本地提交状态暂停；接口测试独立消费运行占用和本地测试状态；复制提示按回包的副本 ID 读取分类和名称。模型生命周期与复制契约归 [`BACKEND.md`](BACKEND.md)。
 - `SCREEN_REGISTRY` 是页面组件、标题 key 与工作区布局模式的唯一入口；页面缺省消费 Shell 标准边距，Agent 使用占满 WorkspaceFrame 的 `edge-to-edge` 画布并在页面内部约束阅读区与操作区。
 - `PageLeaveProvider` 保存当前页面唯一的异步离开前动作，路由选择与确认退出等待其成功。提示词编辑 Hook 拥有草稿、成功基线与串行保存，页面注册 `flush_prompt_change`；失败保留草稿供编辑或离页重试，Toast 可撤销到成功基线。重试与页面身份变化使恢复通知失效；卸载取消延迟任务并失效旧请求。
+- 技能列表与详情共用 `skills` 导航项。列表在返回时恢复滚动位置并重读快照。`personality` 使用固定的 `SKILL.md` 编辑视图，正文保存到应用配置。其持久化与模型消费归 [AGENT_RUNTIME](AGENT_RUNTIME.md)。
+- 技能编辑器以 LF 文本持有草稿，输入暂停后自动保存，组词期间等待。文件切换和离页等待在途操作完成。主文件的 `name`、`description` 与正文共用编辑视图，固定结构由编辑事务保护。人格视图同时保护元数据。保存推进基线并保留选区与撤销历史，放弃修改和人格重置清除旧历史。
+- `owner === "agent"` 暂停编辑和自动保存，并约束已打开的确认弹窗。删除和重置在用户确认后接管草稿，等待在途保存结束。删除成功返回列表，重置成功留在编辑器。
+- 文件命令通过 Toast 报告失败，正文保存错误和版本冲突由编辑区提供恢复入口。命令成功后读取失败通过重载恢复。
+- 删除失败后重读文件树，保留仍存在文件的草稿，当前文件消失则回到主文件。包已不可用时结束编辑，查询失败时保留可重试状态。
+- `AppEditor` 在挂载时安装调用方提供的业务扩展。相同受控值保留当前文档。外部值更新绕过输入过滤且不进入用户撤销历史。
 - Agent、工作台与校对可在未加载工程时发起项目选择，并在 session ready 后恢复 pending route；其它项目功能页在工程未加载或 session 未 ready 时禁用。
+- `navigate_to_agent` 将一次性输入请求随导航提交。壳层在离页成功后保存请求，工程选择期间保留，其它导航或工程关闭时清除。
+- Agent 页面等待会话就绪，由编辑器判断输入锁并完成正文、选区和焦点更新。`if-empty` 保留已有正文或附件，`replace` 替换完整草稿并取消旧附件上传。页面消费后清除请求，编辑器在 React 重连时保留状态和焦点。
 - `features/model-selection` 持有页面级模型查询与写入命令。运行占用变化触发重查，保存设置使旧查询失效。配置加载和保存期间锁定控件，成功回包替换快照，失败保留原值。共用模型菜单支持直接选择模型并沿用其等级，悬停或右方向键展开可选等级，等级项目一次提交模型与等级。Agent 页面负责关闭思考的确认和批量跟随项。选模契约归 [`BACKEND.md`](BACKEND.md)，Agent 配置生效边界归 [`AGENT_RUNTIME.md`](AGENT_RUNTIME.md)。
 - Agent 模型入口从会话 `usage` 与 `context` 快照生成用量提示。累计输入包含缓存读取与写入，缓存命中率以累计输入为分母。上下文容量优先使用运行会话的 `limits`，空会话使用所选模型配置。
 - `ProjectSessionUiStateProvider` 只保存当前项目内可跨路由恢复的轻量 UI 状态，项目切换或关闭时清空，不写入后端事实。
@@ -60,7 +68,7 @@
 - `useAgentInputTransition` 拥有 Agent 底部占位、离场内容和焦点恢复；测量目标尺寸时固定外部占位，避免滚动视口夹取阅读位置。Composer 持续挂载，输入锁保持至离场结束，焦点归还等待编辑器恢复可编辑；工具栏 Portal 菜单同步关闭。共享编辑器提供正文与附件能力，提交权限由主 Composer 和原位编辑器各自决定。
 - `AgentFileDropTarget` 管理文件拖入区域。主输入接收整页拖入，原位编辑只接收局部拖入。CodeMirror 在默认读取文件文本前消费文件事件，按当前权限交给所属 `AgentInputDraft`。外层冒泡入口接收其余区域，捕获阶段清除拖放反馈。普通文本拖放由编辑器处理。
 - `AgentMessageAttachments` 共用草稿与已发送附件的展示，修改动作交还所属草稿。图片通过 API 读取原文件，组件持有并释放符合 CSP 的 Blob URL。上传与会话契约归 [AGENT_RUNTIME](AGENT_RUNTIME.md)。
-- Agent renderer 由 `AgentSessionStore` 作为唯一会话镜像，按 timeline、controls、queue、todo、skills、input 与 countdown 切片订阅；command、queue、todo、pending decision 和 transport 的变化不重建其它切片。entry upsert 只替换目标条目，正常命令不回传完整历史；时间线 round 与 Markdown 组件按稳定 entry / 真实文本输入复用，发送按钮在 command 开始后立即以 `aria-busy` 表示受理中。页面拥有主 Composer 的宿主指令列表及其标题、描述、禁用态和动作，Composer 只负责筛选与即时触发；原位编辑器不提供指令。Agent 会话恢复、用户决定与连接世代的跨层消费契约归 [`AGENT_RUNTIME.md`](AGENT_RUNTIME.md)。
+- Agent renderer 由 `AgentSessionStore` 作为唯一会话镜像，按 timeline、controls、queue、todo、skills、input 与 countdown 切片订阅，各切片独立更新。entry upsert 只替换目标条目，正常命令通过事件更新状态。时间线 round 与 Markdown 组件按稳定 entry / 真实文本输入复用，发送按钮在 command 开始后立即以 `aria-busy` 表示受理中。页面拥有主 Composer 的宿主指令列表及其标题、描述、禁用态和动作，Composer 负责筛选与即时触发。Agent 会话恢复、用户决定与连接世代的跨层消费契约归 [`AGENT_RUNTIME.md`](AGENT_RUNTIME.md)。
 - `AgentMarkdown` 将正文解析、高亮与图表交给 Streamdown 插件，接入桌面链接、图片预览和交互边界；Mermaid 配置消费应用主题令牌。图表容器的可用宽度由应用 CSS 提供，SVG 布局与自然尺寸由 Mermaid 决定。图表激活态由 DOM 焦点拥有，失焦或 Escape 后滚轮恢复页面滚动；图表文字和经过图表的选区不进入正文批注。
 - Agent 工具详情在首次查看标签时生成阅读文档，按原始内容复用输入、输出各一份结果，只挂载当前查看器。输出逐块递归解释完整的内嵌 JSON，统一 LF 并裁剪首尾空白行，保留正文缩进与内部空行；空白块占一行，无输出生成空文档。会话保留原始块。格式化器在清理后生成文本和语义范围，`AppEditor` 在同一事务更新文档与范围，通过单个 CodeMirror 视口显示，不重新解析阅读文档。
 - 校对以 `entry_id` 消费后端字段级术语结果；编辑窗只对对应译文字段重新求值，不重建术语身份。
@@ -71,7 +79,7 @@
 - `features/media-preview` 拥有 Agent 与校对共用的画布、尺寸观测、缩放和平移，弹窗、数据请求与附加工具归调用方。调用方通过组件身份控制重置，同一实例在媒体或视口尺寸变化后保留倍率并约束平移。
 - `src/frontend/pages/<page>` 只包含页面入口及该页面的私有实现；页面之间不互相导入，共用能力先迁入 `features`，`features` 不反向依赖 `pages`。
 - `src/frontend/widgets/interactions` 只承接通用交互与快捷键，不依赖 app state、页面领域、桌面桥、后端 API 或 SSE。
-- `widgets/interactions/use-reorder` 拥有表格、模型分类和 Agent 队列的临时 ID 顺序与提交互斥；拖动中身份顺序或可操作状态变化即取消。页面拥有数据、持久化和一次错误反馈，`on_reorder` 的 resolve/reject 均表示保存与刷新处理结束，随后交回当前权威顺序；Agent 队列等待命令事件重放或快照恢复。React 拥有排序 DOM 和虚拟索引，dnd-kit 的 DOM 乐观排序插件保持禁用。
+- `widgets/interactions/use-reorder` 拥有表格、模型分类、技能和 Agent 队列的临时 ID 顺序与提交互斥；拖动中身份顺序或可操作状态变化即取消。页面拥有数据、持久化和一次错误反馈，`on_reorder` 的 resolve/reject 均表示保存与刷新处理结束，随后交回当前权威顺序；Agent 队列等待命令事件重放或快照恢复。React 拥有排序 DOM 和虚拟索引，dnd-kit 的 DOM 乐观排序插件保持禁用。
 - `AppTable` 拥有选区裁决、行菜单与拖动手柄，手柄可使用独立拖动列或数据列的 `drag_handle` 嵌入，页面只声明位置并提供业务列、菜单项及重排限制。拖拽与菜单共用重排入口；拖动及等待保存期间按起始身份顺序显示序号，位置索引独立服务交互。原行、占位与浮层共用手柄布局，浮层显示时原行透明占位以保留测量与焦点，浮层使用不透明底色。
 - 新业务能力代码按所有者进入 `app`、`features`、`pages`、`widgets`、`src/shared` 或 `src/domain`，不新建无主的顶层技术工具桶。
 
@@ -80,7 +88,7 @@
 - `BatchTranslationSessionProvider` 拥有历史、波形、动作确认与唯一详情侧栏；工程级 `TranslationExportProvider` 独立拥有跨页面导出流程和唯一导出弹窗。两者在应用 session 常驻，工程切换或关闭时清空对应交互；页面计算缓存、其它弹窗、导入和提交状态随页面挂载与卸载。
 - 批量翻译终态反馈由会话 Hook 统一触发，仅独立任务发送 Toast。完成时按本轮 `run_progress.error_line` 区分成功与部分失败，主动停止使用中性提示。部分失败警告由用户手动关闭，Agent 子步骤由工具结果承接汇报。
 - `BatchTranslationRecoveryToast` 在会话层订阅当前快照的 `request_recovery`，独立与 Agent 任务共用固定 ID、不可手动关闭的警告。前端按 `retry_at` 每秒重算倒计时，其余恢复情况显示正在重试。恢复信息清空时解除通知。恢复协议归 [`BACKEND.md`](BACKEND.md)。
-- 独立全量翻译（`source: standalone`、`operation: translate`、`scope.kind: all`）从活跃态进入 `done` 时请求导出确认，包含部分失败的情况。页面与任务完成通知共用预检及确认流程，运行态不锁定导出。前往 Agent 时保留已有草稿，仅为空草稿填入审校请求。该请求复用 Agent 空态快捷入口的本地化文案及技能引用，两处都表达检查并校正的任务意图。
+- 独立全量翻译（`source: standalone`、`operation: translate`、`scope.kind: all`）从活跃态进入 `done` 时请求导出确认，包含部分失败的情况。页面与任务完成通知共用预检及确认流程，运行态不锁定导出。前往 Agent 通过统一导航入口提交 `if-empty` 审校请求。该请求复用 Agent 空态快捷入口的本地化文案及技能引用，两处都表达检查并校正的任务意图。
 - `ProjectTranslationStatsProvider` 独占工程统计缓存，工作台、Agent 卡片和详情共享结果；仅工程就绪后及相关 `project` / `items` 变化时串行刷新。工程关闭、切换和同路径重载使旧请求与重试失效，读取失败保留有效值。统计口径归 [`BACKEND.md`](BACKEND.md)。
 - `features/batch-translation` 提供共享摘要、详情、格式化与样式。速度、耗时、用量和剩余时间优先消费本轮 `run_progress`，工程重开后消费累计 `progress`；完成率显式消费共享工程统计。校对页按重翻目的与剩余 item 范围展示行级状态，详情侧栏的模型信息直接消费快照 `config`。Agent 在翻译活跃时显示摘要，终态恢复 Todo。
 

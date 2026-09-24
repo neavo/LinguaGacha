@@ -5,7 +5,7 @@ import { act, createRef, type ComponentProps, type RefObject } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { deleteCharBackward } from "@codemirror/commands";
+import { deleteCharBackward, undo } from "@codemirror/commands";
 import { EditorSelection } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 import { type AgentMessageAttachment } from "@shared/agent";
@@ -96,6 +96,24 @@ describe("AgentMessageEditor", () => {
     image_mocks.upload.mockClear();
   });
 
+  it("技能失效时恢复原文并保留编辑器和撤销历史，重新启用后恢复块", async () => {
+    const view = await render_editor();
+    const editor = get_editor(view);
+    const text = '@skill("glossary-audit")';
+    await set_document(editor, text, text.length);
+    expect(view.querySelector(".agent-mention-token")).not.toBeNull();
+    await render_editor({ skills: [] });
+    expect(get_editor(view)).toBe(editor);
+    expect(editor.state.doc.toString()).toBe(text);
+    expect(view.querySelector(".agent-mention-token")).toBeNull();
+    await render_editor({ skills });
+    expect(view.querySelector(".agent-mention-token")).not.toBeNull();
+    await act(async () => {
+      undo(editor);
+    });
+    expect(editor.state.doc.toString()).toBe("");
+  });
+
   it("选择技能插入 marker，选择压缩指令则移除筛选文本并立即执行", async () => {
     const on_submit = vi.fn();
     const on_compact = vi.fn();
@@ -126,6 +144,22 @@ describe("AgentMessageEditor", () => {
     expect(editor.state.doc.toString()).toBe("前  后");
     expect(on_compact).toHaveBeenCalledOnce();
     expect(on_submit).not.toHaveBeenCalled();
+  });
+
+  it("打开中的 mention 菜单随技能集合更新并保留草稿", async () => {
+    const view = await render_editor();
+    const editor = get_editor(view);
+    await set_document(editor, "草稿 @", 4);
+    expect(
+      view.querySelectorAll('[aria-labelledby="agent-mention-skills-label"] [role="option"]'),
+    ).toHaveLength(2);
+    await render_editor({ skills: skills.slice(1) });
+    const options = view.querySelectorAll(
+      '[aria-labelledby="agent-mention-skills-label"] [role="option"]',
+    );
+    expect(options).toHaveLength(1);
+    expect(options[0]?.textContent).toContain("corpus-search");
+    expect(editor.state.doc.toString()).toBe("草稿 @");
   });
 
   it("禁用的压缩指令保持筛选文本且不可触发", async () => {

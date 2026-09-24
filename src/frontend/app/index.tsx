@@ -35,7 +35,7 @@ import { push_toast } from "@frontend/app/feedback/desktop-toast";
 import { AgentCompletionAttention } from "@frontend/app/feedback/agent-completion-attention";
 import { resolve_visible_error_message } from "@frontend/app/feedback/visible-error-message";
 import "@frontend/app/shell/app-shell.css";
-import type { RouteId } from "@frontend/app/navigation/types";
+import type { AgentInputRequest, RouteId } from "@frontend/app/navigation/types";
 import { LocaleProvider } from "@frontend/app/locale/locale-provider";
 import { useI18n } from "@frontend/app/locale/locale-context";
 import { SidebarInset, SidebarProvider } from "@frontend/shadcn/sidebar";
@@ -113,6 +113,8 @@ function AppContent(): JSX.Element {
   const { t } = useI18n();
   const shell_info = window.desktopApp.shell;
   const [selected_route, set_selected_route] = useState<RouteId>(DEFAULT_ROUTE_ID);
+  // 请求与实际导航共同提交，工程选择期间保留，离开目标流程时清除。
+  const [agent_input_request, set_agent_input_request] = useState<AgentInputRequest | null>(null);
   const [expanded_items, set_expanded_items] = useState<Set<RouteId>>(() => new Set());
   const [is_sidebar_collapsed, set_is_sidebar_collapsed] = useState<boolean>(() =>
     read_sidebar_state(),
@@ -188,6 +190,9 @@ function AppContent(): JSX.Element {
     if (next_route !== null) {
       set_selected_route(next_route.selected_route);
       set_pending_target_route(next_route.pending_target_route);
+      if (next_route.selected_route !== "agent" && next_route.pending_target_route !== "agent") {
+        set_agent_input_request(null);
+      }
     }
   }, [
     initial_state_status,
@@ -241,9 +246,12 @@ function AppContent(): JSX.Element {
     });
   }, []);
 
-  /** 用户导航先等待当前页面完成保存。 */
-  function handle_select_route(route_id: RouteId): void {
-    if (route_id === selected_route) return;
+  /** 离页保存成功后共同提交路由和输入请求，保存失败时保留当前页面。 */
+  function handle_select_route(route_id: RouteId, request?: AgentInputRequest): void {
+    if (route_id === selected_route) {
+      set_agent_input_request(request ?? null);
+      return;
+    }
     void (async () => {
       if (!(await prepare_page_leave())) return;
       const next_route = resolve_route_selection({
@@ -254,6 +262,7 @@ function AppContent(): JSX.Element {
       });
       set_pending_target_route(next_route.pending_target_route);
       set_selected_route(next_route.selected_route);
+      set_agent_input_request(request ?? null);
     })().catch((error: unknown) => {
       push_toast("error", resolve_visible_error_message(error, t, t("app.feedback.update_failed")));
     });
@@ -563,6 +572,8 @@ function AppContent(): JSX.Element {
                 <AppNavigationProvider
                   selected_route={selected_route}
                   navigate_to_route={handle_select_route}
+                  agent_input_request={agent_input_request}
+                  clear_agent_input_request={() => set_agent_input_request(null)}
                 >
                   <AgentSessionProvider>
                     <AgentCompletionAttention />

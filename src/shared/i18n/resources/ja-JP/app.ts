@@ -112,7 +112,7 @@ export const ja_jp_app = {
     enabled: "有効",
   },
   editor: {
-    line_wrap_target: "{TARGET}を折り返す",
+    line_wrap: "自動折り返し",
   },
   tooltip: {
     value: "{TITLE} · {VALUE}",
@@ -212,6 +212,9 @@ export const ja_jp_app = {
       export_failed: { message: "訳文のエクスポートに失敗しました …" },
     },
     file: {
+      already_exists: {
+        message: "同名のファイルまたはフォルダーが存在します。別の名前を指定してください …",
+      },
       not_found: {
         message: "ファイルが見つかりません …",
       },
@@ -321,7 +324,6 @@ export const ja_jp_app = {
       session_cleanup_failed: "Agent のセッションをクリーンアップできませんでした …",
       tool_execution_failed: "Agent のツール実行中にエラーが発生しました …",
       skill_load_failed: "Agent スキルを読み込めませんでした …",
-      skill_resource_load_failed: "Agent スキルのリソースを読み込めませんでした …",
     },
     api_gateway: {
       direct_route_failed: "API Gateway の直接ルート処理に失敗しました …",

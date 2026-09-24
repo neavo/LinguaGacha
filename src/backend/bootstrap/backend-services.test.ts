@@ -42,7 +42,7 @@ function create_backend_services_options(): BackendServicesOptions {
       get_builtin_root: () => "E:/app.asar/builtin",
       get_user_data_path: (name: string) => `E:/UserData/${name}`,
       get_user_data_dir: () => "E:/UserData",
-      get_agent_workspace_root_dir: () => "E:/UserData/agent/workspace",
+      get_agent_workspace_root_dir: () => "E:/UserData/workspace",
     },
     metadata: {
       build_linguagacha_user_agent: vi.fn(() => "LinguaGacha/Test"),

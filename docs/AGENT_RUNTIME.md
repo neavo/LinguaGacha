@@ -58,8 +58,8 @@
 
 ### 工作区投影
 
-- GUI Agent 在 `userdata/agent/workspace` 持有固定物理工作区：数据快照、`changes`、`work` 与 `sources` 都使用真实相对路径。work 绑定当前 Agent 对话、工程 epoch 与权威语言；这些目录都是 Agent 工作资产，公开会话和项目事实分别由 `AgentService` 与项目读写边界拥有。
-- 工程加载从 `.lg` 原始资产生成 `sources`；同一工程 `epoch` 与文件修订号复用同一投影，文件修订号变化时完整重建。`workspace_run` 在普通 section revision 后刷新数据快照与空变更清单，保留相容的 `work`；reset 清除快照和 work 并保留相容 sources，工程切换与应用启动清除旧工作区。`sources` 生成和目录清理故障进入诊断，项目加载与提交事实保持其权威结果。
+- GUI Agent 每次启动时重建 `userdata/workspace`。数据快照、`changes`、`work` 与 `sources` 都使用真实相对路径。`work` 绑定当前 Agent 对话、工程 `epoch` 与权威语言。`AgentService` 拥有公开会话，项目读写边界拥有项目事实。
+- 工程加载从 `.lg` 原始资产生成 `sources`。同一工程 `epoch` 与文件修订号复用同一投影，文件修订号变化时完整重建。`workspace_run` 在普通 section revision 后刷新数据快照与空变更清单，保留相容的 `work`。reset 清除快照和 `work` 并保留相容 `sources`，工程切换清除工作区。`sources` 生成和目录清理故障进入诊断，项目加载与提交事实保持其权威结果。
 - 所有项目原始资产按原字节投影到 `sources/<file_path>`，包括文本、PDF、EPUB 和 XLSX。`project_meta.files` 只公开工程路径与类型，读取路径由统一目录规则确定；容器与文本编码由工作区程序按需处理。`pages` 基线随数据快照投影到 `pages/entries.jsonl`。
 - 工作区链接使用相对根目录的 URL 编码路径；`POST /api/agent/workspace/activate-path` 接收 `{ path }`，由 `AgentWorkspaceService` 校验工作区相对入口，文件访问自然跟随目录链接，允许目标位于工作区外；来源失效范围按 work、sources 或快照入口确定。目录经宿主打开；文件经宿主选择保存路径，由工作区服务复制，返回 `{ status: "saved" | "opened" | "cancelled" }`。
 - 文件保存采用确认时的当前内容，不建立点击时副本。对话框等待期间释放工作区互斥；会话清理开始立即使待决链接失效，work、sources 与数据快照按各自清理生命周期失效。确认后重新检查来源与脚本互斥，拒绝向工作区内部保存；同目录临时文件完整复制后才替换目标，保留工作原件与失败前的已有目标。
@@ -72,15 +72,24 @@
 - Pi 把系统指令与工具声明写入 `system` 消息。`SessionManager` 根据压缩记录和 `context_edit` 生成模型上下文，保留被排除的原始条目。产品修订通过 SDK 写入历史，再调用 `refreshContext()` 同步检查缓存。
 - 公开 `context` 优先使用 SDK `getContextUsage()` 的有效用量，压缩后尚无有效统计时按当前内容及生效系统指令估算。`message_end` 先通知再写入历史，统计在历史提交后刷新。恢复压缩失败时可能已排除失败响应，也需重新读取上下文。
 - 模型可见上下文超过 `context_window - 32K` 时，`AgentSession` 在新用户请求前、自然结束后，以及完整工具批次与下一次助手请求之间统一自动压缩。空闲会话可由公开手动入口立即压缩。SDK 决定历史切点，保留侧的助手工具调用与结果保持配对。
-- Workspace 是 `AgentService` 的构造依赖、初始化前置和恒定工具面，初始化失败会阻止 Agent 启动资源完成加载。Agent 启动期原子加载必需的 `builtin/agent/system_prompt.md` 与 `builtin/agent/session_seed.json`；会话种子由零个或多个顺序任意的 user / assistant 消息组成，文本裁剪后允许为空，按资源顺序进入每个新会话的模型历史但不进入公开时间线，任一资源缺失或结构无效都会阻止启动。GUI Backend 的完整装配与启动顺序归 [`ARCHITECTURE.md`](ARCHITECTURE.md)。
-- coding-agent 的默认工具与项目资源发现全部关闭，SDK 不发现项目 `AGENTS.md`、`.pi` 或其它运行期资源。产品在初始会话及每次 reset 或工程切换时按用户目录、当前版本内置目录的优先级依次扫描，同名 skill 取首个有效定义，坏 skill 只记录诊断；安装根的历史资源目录不参与发现。形成的会话 catalog 同时拥有 System Prompt 能力清单、公开 mention、用户 marker 注入和名称到获胜 skill 包的内部绑定，并在当前对话内冻结。模型能力清单只公开名称与描述；`SKILL.md` 描述同时作为模型描述和 `ui.json` 展示描述缺失时的回退。
-- `agent-charter` 是隐藏但保留在模型能力清单中的最高层任务宪章，其短正文与系统提示有意重复。模型负责在任务前加载，后端通过普通技能读取提供正文，加载状态由模型判断。
-- `ui.json` 的 `visible` 控制公开技能列表；`disableModelInvocation` 排除模型的自动能力清单，显式用户引用仍可要求读取该技能。技能目录保留名称、描述、包路径与 UI 元数据，正文只由 `read_skill` 在实际调用时读取。系统提示词引导模型先加载用户指定的技能，同一上下文已有正文时复用。
-- `read_skill` 独立于 Workspace Service，按 `name` 和可选包内相对 `path` 读取文件，默认 `SKILL.md`；路径必须规范且真实目标位于获胜包内，同名包不合并或回退。返回 `{ name, path, content, base_url }`。`base_url` 是宿主生成的原包根目录 file: URL，始终以 / 结尾，不随被读文件改变。脚本可直接执行，无需先读取技能。
-- 同名覆盖在下一会话生效；catalog 外的新名称在 `read_skill` 时按同一优先级发现，不加入当前能力清单、mention 或 marker。包内文件在读取或后续 run 时消费当前磁盘内容，删除后正常失败；上下文中已有正文需显式重读才会更新。apply、快照刷新、对话重置和工程切换均不处理技能原文件。
-- [系统提示](../builtin/agent/system_prompt.md) 负责人格、任务与授权边界、技能选择、CodeAct、业务单元与提交、恢复和交付要求，加载后在正文末尾附加会话技能目录。
+- `AgentService` 启动前完成 Workspace 初始化，并加载 `builtin/system.md`、`builtin/personality.md` 与 `builtin/session_seed.json`。资源缺失或结构无效会阻止启动。GUI Backend 装配顺序归 [ARCHITECTURE](ARCHITECTURE.md)。
+- 会话种子按资源顺序进入新会话的模型历史，公开时间线独立维护。种子允许任意顺序的 `user` / `assistant` 消息，消息文本裁剪后可为空。
+- GUI Backend 向 Agent 和 Gateway 注入同一个 `AgentSkillsService`，由它持有当前技能集合。管理命令和显式扫描共用串行队列。初始化、首次受理、重置、工程切换和管理查询扫描磁盘，主文件保存、启停和排序更新集合。`AgentService` 在工作区程序成功、失败或取消收尾后等待技能刷新，再结算工具调用。刷新独立于程序取消，双重失败时保留程序错误并记录刷新诊断。SDK 默认资源发现关闭。
+- 扫描器递归发现 `SKILL.md`，到达包后停止深入。目录级 `.gitignore`、`.ignore`、`.fdignore` 由 `ignore` 解释，隐藏目录和 `node_modules` 跳过。加载与编辑共用元数据规则，`name` 决定身份，路径定位资源。
+- `AppSettingService` 保存 `agent_skills` 并发布 `settings.changed`。关闭名称按来源保存，用户顺序按名称保存；内置顺序来自 `ui.json.order`，新用户技能按名称追加。同一来源按路径保留首个有效同名包。可用集合先过滤关闭项，再由用户包覆盖同名内置包；关闭用户包后回退到启用的内置包。
+- `AppPathService` 定位 `builtin/skills` 与 `userdata/skills`，来源根允许目录链接。用户技能跨对话和工程保留，程序失败或取消时已写文件仍保留。管理命令在真实包目录内执行，包内链接及 `ui.json` 受保护，根 `SKILL.md` 的名称和位置固定。运行权限见下文部署契约。
+- 整包删除完成后读取最新配置，清理对应偏好并更新集合；删除失败重新扫描磁盘。递归删除可能已移除部分文件，前端恢复规则归 [FRONTEND](FRONTEND.md)。
+- 保存以内容摘要检查版本，文件替换复用 `NativeFs`。主文件按 `name`、`description`、`body` 提交，保留额外 YAML 字段、注释及正文空白。改名同时迁移按名称保存的偏好；文件与配置写入失败时执行补偿。
+- 对话通过 `skills_changed` 和会话 `revision` 更新技能切片，完整快照负责加载和恢复。
+- `RuntimeOperationGate` 让管理页技能写入与 Agent 执行互斥。管理写占用覆盖异步文件操作、偏好和集合发布，Agent 租约覆盖准备、运行、等待决定、程序直接写入和技能刷新收尾。
+- `ui.json.visible` 控制公开展示，隐藏技能继续供模型使用。`disable-model-invocation` 控制自动能力清单，显式引用仍可要求读取。模型清单包含名称和描述，UI 描述缺失时回退到 `SKILL.md` 描述。
+- `agent-charter` 是隐藏的最高层任务宪章，其短正文与系统提示有意重复。模型在任务前通过普通技能读取加载正文，并自行判断加载状态。
+- `read_skill` 按当前集合的 `name` 和可选包内相对 `path` 读取文件，默认读取 `SKILL.md`。规范路径的真实目标必须位于当前技能包内。返回 `{ name, path, content, base_url }`，其中 `base_url` 是以 / 结尾的原包根目录 file: URL。正文和资源在读取或执行时消费当前磁盘内容，删除后正常失败，上下文中的旧正文需显式重读。
+- [系统提示](../builtin/system.md) 拥有固定指令，[默认角色设定](../builtin/personality.md) 提供人格正文。`AgentPersonalityService` 通过 `AppSettingService` 保存 `agent_personality`：`null` 使用默认资源，字符串使用用户正文，空字符串清空人格。保存与重置校验版本，复用技能写入互斥。
+- 模板中的 `{{agent_personality}}` 必须恰好出现一次。SDK 的 `transformContext` 在每次请求时替换系统消息 `preamble` 中的人格，并附加当前技能目录；模型历史保留原文。
+
 - 任务类型 `report / apply` 由模型遵守。`report` 允许分析和准备工作材料，`apply` 承担工程写入、回执核对及依赖写入结果的检查，直接写入工具同样受此边界约束。后端按工具契约执行，任务类型由模型在工作记录中保存。
-- 模型按[技能入口](../builtin/agent/skill/)选择任务文件、领域判据与扩展技能，包括 `writing-guide-` 前缀扩展。各任务文件完整维护自身流程及所需的全局要求，判据与参考提供领域知识。自启发调查的步骤、种子账本格式和结束条件随领域流程维护。
+- 模型按[技能入口](../builtin/skills/)选择任务文件、领域判据与扩展技能，包括 `writing-guide-` 前缀扩展。各任务文件完整维护自身流程及所需的全局要求，判据与参考提供领域知识。自启发调查的步骤、种子账本格式和结束条件随领域流程维护。
 - 模型通过 `workspace_run` 在 `work/` 中保存领域证据、种子账本、方案与覆盖记录，并据此恢复调查进度。领域流程状态由模型维护，工程事实以有效快照与实际回执为准。完整 `items` 决定条目范围，`warnings` 仅提供关联证据。`pages` 以来源页追踪内容，视觉核验定位到渲染后的输出页。Agent 页面消费 Markdown、Mermaid 和结构化决策状态。
 
 ## 4. 产品工具与宿主能力
@@ -105,12 +114,12 @@
 - 模型 FC 的 JSON 结果统一由 `model-tools/definition` 生成同源的模型正文与 `details`；FC 的 TypeBox Schema 独占模型参数，并统一使用跨供应商稳定的普通 `object` 根，条件字段组合由工具执行入口收窄。注册边界在模型请求前拒绝非 `object` 根和根级联合，且不按供应商改写 Schema。受控 `AppError` 只投影稳定 `code` 与公开字段，未知执行异常对模型固定为 `{ "code": "tool_failed" }`，原始异常只进入本地诊断。SDK 的 `tool_execution_start/end` 仍是完整持久化调用记录的唯一来源，覆盖参数校验失败、未知工具、成功和执行异常。
 - `ask_user` 始终注册，承接任务开始前或执行中的单个有界决定，适用于可通过二至三个选项表达的范围、处理策略或偏好。`prompt`、`description` 与选项 `label` 均受 shared Agent 问题文本上限约束，分别承担简短问题、共用背景和短行动或结果；证据与长篇说明留在正文或工作资产中。通用交互原则归 System Prompt，领域技能拥有具体触发条件，调用、返回、到期与取消语义归工具说明。工具参数包含一个 `prompt`、可选的问题级 `description` 和二至三个身份唯一、按推荐顺序排列的固定选项；宿主提供自定义答案与取消。宿主提交固定选择时返回 `selected` 与其 `optionId`，自定义答案同样返回原工具轮次，显式取消返回 `cancelled`，模型暂停依赖该决定的动作。所有结果均返回原工具轮次，不追加公开 user 消息。完成后沿用普通工具条目与详情。工程写入授权使用独立权限入口，`allow_once` 仅允许当前批次写入。
 - 当前对话只持有一份由短阶段标签组成的有界有序 Todo，不保存领域事实、工程证据或完成历史。每次 `workspace_run` 以当前 Todo 初始化 `ws.todo`；同步 `read()` 返回不可变副本，`write(todos)` 替换本次程序副本并通过 IPC 发送独立快照。runner 暂存最后有效值，进程成功退出且调用未取消时由 `AgentService` 原子提交；失败、停止或超时保留调用前状态。公开 Agent snapshot 与 SSE 使用 `todos` 投影完整数组，空数组表示不展示。
-- `ws` 只提供当前契约、Todo、图片输出与宿主请求。领域程序按技能 `base_url` 从原包导入普通脚本，输入与返回值留在 Node 进程内，由程序保存工作资产并选择模型输出。技能的领域算法及调用说明随包维护；全局接口声明只描述运行时应用边界。
+- `ws.userSkillDirectory` 提供用户技能根的绝对路径。`AppPathService` 定位目录，runner 按需创建并通过执行初始化消息传入，独立于工程快照。领域程序按技能 `base_url` 从原包导入普通脚本，输入与返回值留在 Node 进程内，由程序保存工作资产并选择模型输出。技能的领域算法及调用说明随包维护；全局接口声明只描述运行时应用边界。
 - `@lg/workspace/item-contexts` 提供条目邻近语境查询，调用约定归导出函数注释，随可读模块一起部署。调用方使用 Node 标准文件 API 读取数据，领域扫描接收条目数组或异步流。JSONL 记录按 LF 分行，正文中的 Unicode 分隔符属于字段内容。`@lg/text` 从正式字面匹配源码导出规范化与匹配能力，技能和应用共用 Unicode、大小写与原文坐标语义。领域扫描负责范围、完整计数与证据收集量，完整性由扫描结果表达；stdout/stderr 限额只限制输出，不改变内部计算。
 - `ws.contract` 的类型外壳、磁盘索引和模型声明共用同一 Schema，索引只承载数据集与变更路径、`reference` 入口和通用 `apply` 契约。`workspace/schema` 拥有快照与变更记录结构，`contract` 关联路径、Schema 和对象语义，并生成轻量索引与按业务主题聚合的只读 `reference/*.md`。参考文档与工具 API 说明共用 `schema-description`，从原 Schema 生成字段和约束；对象特有副作用、排序与批次建议随主题提供。参考文档随快照创建、失败清理和刷新，模型使用 Node 文件 API 按需读取。
-- `changes` 按相同记录 Schema 校验 JSONL 后转换为领域意图，缺失或空清单表示该类意图为空。纯指纹格式常量与业务字段词表位于无宿主依赖的 `shared/project/agent-workspace`，项目写入器负责事实、冲突与领域规则，`warnings` 直接使用 shared 校对词表和证据字段。运行时注入的冻结 `ws` 由 contract、Todo、emitImage 与 host 请求入口组成；运行时初始化按外壳 Schema 校验磁盘契约，再冻结独立副本。
+- `changes` 按相同记录 Schema 校验 JSONL 后转换为领域意图，缺失或空清单表示该类意图为空。纯指纹格式常量与业务字段词表位于无宿主依赖的 `shared/project/agent-workspace`，项目写入器负责事实、冲突与领域规则，`warnings` 直接使用 shared 校对词表和证据字段。运行时校验磁盘契约，并冻结 `ws` 的独立副本。
 - `items`、`pages`、quality entry 与 prompt 对象携带基于数据对象事实计算的指纹 `fp`，用于 `workspace_apply` 时校验该对象自工作区快照后是否仍保持一致；quality 额外携带零基 `sort`。显式变更清单按对象类型及其支持的操作分开，记录形状由源码 Schema 唯一定义，模型通过索引中的 `reference` 读取生成说明。
-- `AgentWorkspaceService` 为每次执行保存同标识的程序与两路日志到 `work/runs/`，沿用 work 生命周期。runner 复用 Electron Node 模式，以 `--import` 预加载 ws 和系统代理 fetch，程序按事件循环自然退出。宿主先解析工作区与运行目录的真实路径，以运行目录为基准解析 `@lg/workspace/bootstrap` 包入口，并以整个运行目录授予只读权限。每次 run 从与 catalog 共用的 AppPathService 取得两个技能根，授予逻辑入口与真实路径只读权限；授权独立于同名选择，缺失目录不阻断执行，后续 run 重新解析。`--preserve-symlinks` 和 `--preserve-symlinks-main` 保留模块的工作区入口，使挂载的 work 仍能发现预装依赖，不同导入路径可形成独立模块实例。
+- `AgentWorkspaceService` 为每次执行保存同标识的程序与两路日志到 `work/runs/`，沿用 work 生命周期。runner 复用 Electron Node 模式，以 `--import` 预加载 ws 和系统代理 fetch，程序按事件循环自然退出。宿主先解析工作区与运行目录的真实路径，以运行目录为基准解析 `@lg/workspace/bootstrap` 包入口，并以整个运行目录授予只读权限。每次执行从 `AppPathService` 取得两个技能根并重新解析真实路径。内置根授予读取权限，用户根授予读写权限，均覆盖逻辑入口与真实路径。授权独立于技能启用状态，缺失内置根时仍可执行。`--preserve-symlinks` 和 `--preserve-symlinks-main` 保留模块的工作区入口，使挂载的 work 仍能发现预装依赖，不同导入路径可形成独立模块实例。
 - 子进程直接写入 stdout/stderr 文件，close 后两路独立按额度返回完整 content 或文件补读提示，JSON 对象与数组优先结构化。成功、非零退出和超时共用执行记录，取消保留已写文件。IPC 传初始化、Todo、图片输出与具名宿主请求。代理查询和宿主操作共用请求关联、取消和保活通道，空闲不保活。停止、超时或父通道断开时回收进程并取消待决请求；父进程等待宿主操作实际结算及进程、文件句柄收尾后才释放工作区互斥。运行中的宿主调用使用本次执行绑定的内部端口，不重新进入工作区公开互斥入口。
 - 根 `package.json` 与锁文件拥有依赖版本，`workspacePackages` 声明预装包名并供工具说明读取。`buildtools/build-workspace.mjs` 共用于开发、测试和发布，整体重建 `build/resources/workspace`。部署通过 `npm query` 取得依赖闭包，保留安装相对位置、运行资源、类型声明与使用说明，集中排除源码映射和已确认无用的替代构建。生成的 `package.json` 记录实际版本，发布前通过根 `npm ci` 保证安装来源可复现。
 - 应用源码构建为 `@lg/workspace`、`@lg/text` 与 `@lg/pdf` 内部包。宿主通过 `src/native/workspace-runtime.ts` 从注入的运行目录解析包导出，解析阶段只定位入口。PDF 库与 worker 共用一次多入口构建及包内 chunk，MuPDF JS/WASM 由 worker 和工作区共享。
@@ -134,5 +143,5 @@
 - 页面持有活动原生选区与当前原位编辑目标；这些页面局部事实不进入 Agent snapshot、历史或发送协议。
 - 所有助手正文均可批注，包括生成中、中间和失败回复。选区可跨同一回复的正文块，思考、工具界面和图表属于排除区。动作条跟随有效选区，拖选期间隐藏。进入编辑时冻结选文和定位几何，正文更新不会改变引用。
 - 页面在状态区固定展示 Todo 队首与最多 5 条输入队列；Todo 完整列表在提示浮层中展示，并在超出可用高度时内部滚动，列表支持键盘聚焦；输入队列不使用内部滚动，输入队列达到上限时发送按钮显示容量提示并保持禁用，空数组不占位。
-- 消息级“复制”与“编辑”共用当前可修订消息的操作区；复制仅对其中有正文的 user / assistant 开放且不改变会话状态，输入消息的保存并重试会重新运行最新 round。历史 user、assistant 与队列项各自在目标位置展开独立编辑器，失败时保留编辑内容。assistant 编辑隐藏附件与 marker 能力。输入框、引导卡片与时间线通过共享语法解析器把引用投影为整块视觉，正文是唯一事实来源，识别不依赖当前候选列表。
+- 消息级“复制”与“编辑”共用当前可修订消息的操作区。复制仅对其中有正文的 user / assistant 开放且不改变会话状态，输入消息的保存并重试会重新运行最新 round。历史 user、assistant 与队列项各自在目标位置展开独立编辑器，失败时保留编辑内容。assistant 编辑隐藏附件与 marker 能力。输入框和时间线共用引用解析与技能有效性筛选。有效技能引用显示为块，失效后恢复字面量和普通光标导航。技能变化通过装饰更新保留正文、选区和撤销历史。
 - Agent round 运行态与 stop 命令不锁定普通草稿编辑；send、continue、revise、queue update 与 reset 受理期间相关编辑器只读。运行中有效普通草稿通过 message 入队，空草稿执行 stop；空闲且队列暂停时 Composer 统一执行 continue，可选草稿随请求追加队尾。压缩和 `workspace_apply` 期间仍允许有效普通草稿排队，但不可 stop。队列组件只消费后端顺序与能力快照，修改、删除、重排和立即发送均经页面调用 `AgentSessionProvider` 命令入口；steer user 不开放 round 的修改或重试操作。失败恢复仍由后端拥有，renderer 不监听终态补发命令。

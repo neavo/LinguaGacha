@@ -20,6 +20,15 @@ import { QualityPromptService } from "./quality-prompt-service";
 import { build_translation_output_format } from "../../shared/text/translation-output-format";
 
 describe("QualityPromptService", () => {
+  it("用户提示词预设删除完成后才返回，内置资源受保护", async () => {
+    const { service } = create_service();
+    service.save_preset({ name: "delete-fixture", text: "fixture" });
+    const result = await service.delete_preset({ virtual_id: "user:delete-fixture.txt" });
+    expect(fs.existsSync(String(result.path))).toBe(false);
+    await expect(
+      service.delete_preset({ virtual_id: "builtin:delete-fixture.txt" }),
+    ).rejects.toMatchObject({ code: "request.validation_failed" });
+  });
   const cleanup_paths: string[] = [];
   const cleanup_databases: ProjectDatabase[] = [];
 

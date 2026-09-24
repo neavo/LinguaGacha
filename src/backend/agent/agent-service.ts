@@ -1,3 +1,4 @@
+import type { AgentSkillsService } from "./agent-skills-service";
 import type { AgentFilesResponse } from "../../shared/agent-reference";
 import type { AgentImageService } from "./agent-image-service";
 import type { AgentFileAttachment } from "../../shared/agent";
@@ -75,12 +76,12 @@ import {
   type AgentTodoPort,
   type AgentWorkspaceApprovalPort,
 } from "./model-tools/workspace";
+import { format_agent_skills_for_system_prompt } from "./agent-skills";
 import {
-  format_agent_skills_for_system_prompt,
-  load_agent_skills,
-  type AgentSkillDefinition,
-} from "./agent-skills";
-import { load_agent_system_prompt } from "./agent-system-prompt";
+  insert_agent_personality,
+  load_agent_personality,
+  load_agent_system_prompt,
+} from "./agent-system-prompt";
 import { AgentToolError, prepare_agent_tool } from "./model-tools/definition";
 
 import { AgentTokenSpeed } from "./agent-token-speed";
@@ -159,6 +160,7 @@ type AgentServicePaths = Pick<
 >;
 
 type AgentServiceOptions = {
+  skills: Pick<AgentSkillsService, "get_current" | "subscribe" | "refresh">;
   catalog: PiModelCatalogReader;
   batchTranslation: Pick<
     import("../batch-translation/batch-translation-service").BatchTranslationService,
@@ -178,12 +180,11 @@ type AgentServiceOptions = {
 
 type AgentIncrementalEvent = Exclude<AgentSessionEventPayload, { type: "snapshot_seed" }>;
 
+/** 启动时加载的基础提示词和会话种子。 */
 type LoadedAgentResources = Readonly<{
-  /** 保留未拼接 skill catalog 的稳定 System 前缀，reset 时重建能力清单而不累积旧投影。 */
   baseSystemPrompt: string;
-  systemPrompt: string;
+  defaultPersonality: string;
   sessionSeed: AgentSessionSeed;
-  skills: readonly AgentSkillDefinition[];
 }>;
 
 /**
@@ -198,6 +199,8 @@ export class AgentService {
   private readonly batch_translation: AgentServiceOptions["batchTranslation"];
   private readonly paths: AgentServiceOptions["paths"];
   private readonly settings: AgentServiceOptions["settings"];
+  private readonly skills: AgentServiceOptions["skills"]; // 菜单、模型目录与读取工具共用的当前技能入口。
+  private readonly unsubscribe_skills: () => void; // 关闭时解除订阅，停止接收集合变更。
   private readonly user_agent: string;
   private readonly session_state: ProjectSessionState;
   private readonly runtime_gate: RuntimeOperationGate; // task / Agent 互斥与 Agent 写工具授权来源
@@ -229,7 +232,7 @@ export class AgentService {
   private latest_round_checkpoint: AgentHistoryCheckpoint | null = null; // 最新 user 轮次写入前的位置
   private latest_output_checkpoint: AgentHistoryCheckpoint | null = null; // 最新轮次最终可见 assistant 写入前的位置
   private pending_assistant_checkpoint: { leaf_id: string | null } | null = null; // message_start 到首个可见 part 的暂存位置
-  private resources: LoadedAgentResources | null = null; // 基础资源与当前会话 catalog 的唯一原子快照
+  private resources: LoadedAgentResources | null = null; // 启动期基础提示词和会话种子。
   private revision = 0; // 当前产品会话公开事件的全局单调序号；reset 与工程切换均不回退
   private disposed = false; // 关闭后永久拒绝命令和事件发布
 
@@ -239,6 +242,12 @@ export class AgentService {
     this.batch_translation = options.batchTranslation;
     this.paths = options.paths;
     this.settings = options.settings;
+    this.skills = options.skills;
+    this.unsubscribe_skills = this.skills.subscribe(() => {
+      if (!this.disposed && this.resources !== null && this.session_reset === null) {
+        this.publish_event({ type: "skills_changed", skills: this.get_skill_snapshot() });
+      }
+    });
     this.user_agent = options.userAgent;
     this.session_state = options.sessionState;
     this.runtime_gate = options.runtimeGate;
@@ -311,7 +320,18 @@ export class AgentService {
     return { sessionId: this.session_id, files: this.workspace.list_files() };
   }
 
-  /** 返回独立的公开快照；UI 排序不改写模型侧技能目录。 */
+  /** 完整快照和技能事件共用公开投影，隐藏技能仍可供模型读取。 */
+  private get_skill_snapshot(): AgentSessionSnapshot["skills"] {
+    return this.skills
+      .get_current()
+      .filter(({ visible }) => visible)
+      .map(({ name, displayDescriptions }) => ({
+        name,
+        displayDescriptions: { ...displayDescriptions },
+      }));
+  }
+
+  /** 返回独立的公开快照，技能沿用当前集合顺序。 */
   public get_snapshot(): AgentSessionSnapshot {
     return {
       sessionId: this.session_id,
@@ -320,18 +340,7 @@ export class AgentService {
       approvalMode: this.approval_mode,
       pendingDecision: this.decisions.read_pending(),
       entries: structuredClone(this.entries),
-      skills: (this.resources?.skills ?? [])
-        .filter(({ visible }) => visible)
-        .sort((left, right) => {
-          // 未配置 order 的能力排在显式顺序之后；同类项依赖稳定排序保留加载顺序。
-          if (left.order === undefined) return right.order === undefined ? 0 : 1;
-          if (right.order === undefined) return -1;
-          return left.order - right.order;
-        })
-        .map(({ name, displayDescriptions }) => ({
-          name,
-          displayDescriptions: { ...displayDescriptions },
-        })),
+      skills: this.get_skill_snapshot(),
       inputQueue: this.input_queue.read_snapshot(this.can_send_queued_now()),
       todos: [...this.todos],
       context: structuredClone(this.context),
@@ -367,19 +376,17 @@ export class AgentService {
     return this.get_acknowledgement();
   }
 
-  /** 启动期原子加载必需的基础 Prompt、会话种子和初始 skill catalog。 */
+  /** 启动期加载必需基础资源，并通过技能服务准备空白对话的候选。 */
   public async load_resources(): Promise<void> {
     await this.workspace.initialize();
     const base_system_prompt = load_agent_system_prompt(this.paths);
+    const default_personality = load_agent_personality(this.paths);
     const session_seed = load_agent_session_seed(this.paths);
-    const skills = await load_agent_skills(this.paths, this.log_manager);
-    const skills_prompt = format_agent_skills_for_system_prompt(skills);
+    await this.skills.refresh();
     this.resources = {
       baseSystemPrompt: base_system_prompt,
-      systemPrompt:
-        skills_prompt === "" ? base_system_prompt : `${base_system_prompt}\n\n${skills_prompt}`,
+      defaultPersonality: default_personality,
       sessionSeed: session_seed,
-      skills,
     };
   }
 
@@ -409,12 +416,10 @@ export class AgentService {
     if (this.input_queue.is_paused) {
       throw agent_queue_validation_error("agent_continue_required");
     }
-    const resources = this.require_resources();
+    this.require_resources();
     const runtime_lease = this.runtime_gate.begin_runtime("agent");
     this.runtime_lease = runtime_lease;
-    return await this.track_operation_acceptance(
-      this.accept_round(resources, message, runtime_lease),
-    );
+    return await this.track_operation_acceptance(this.accept_round(message, runtime_lease));
   }
 
   /** 只允许修改仍在等待的队列项；发送中的内容已经交给 Pi，不能再改写。 */
@@ -459,13 +464,11 @@ export class AgentService {
       this.publish_input_queue();
       return this.track_operation_acceptance(this.accept_steer(runtime, item));
     }
-    const resources = this.require_resources();
+    this.require_resources();
     const item = this.input_queue.read(id);
     const runtime_lease = this.runtime_gate.begin_runtime("agent");
     this.runtime_lease = runtime_lease;
-    return await this.track_operation_acceptance(
-      this.accept_round(resources, item, runtime_lease, item.id),
-    );
+    return await this.track_operation_acceptance(this.accept_round(item, runtime_lease, item.id));
   }
 
   /** steer 的准备占位与失败回滚属于同一个受理操作，轮次结束会等待它结算。 */
@@ -674,6 +677,7 @@ export class AgentService {
     this.input_queue.reset();
     this.runtime_generation += 1;
     this.unsubscribe_project_session();
+    this.unsubscribe_skills();
     const runtime = this.runtime;
     const reset = this.session_reset;
     runtime?.log.reset("dispose");
@@ -689,54 +693,37 @@ export class AgentService {
     await this.workspace.reset_project(null);
   }
 
-  /** 在当前运行世代准备运行时；队列输入只在启动 round 前提交移除。 */
+  /** 在当前运行世代准备运行时，启动回合前才移除队列输入。 */
   private async accept_round(
-    resources: LoadedAgentResources,
     message: AgentMessageInput,
     runtime_lease: RuntimeLease,
     queued_id?: string,
   ): Promise<AgentCommandAck> {
     let prompt_started = false;
     const generation = this.runtime_generation;
+    let runtime = this.runtime;
+    const created = runtime === null;
     try {
       if (queued_id !== undefined) {
         this.input_queue.begin_send(queued_id);
         this.publish_input_queue();
       }
       const model_settings = this.settings.read_setting();
-      let runtime = this.runtime;
-      const created = runtime === null;
-      let candidate_closed = false;
-
-      try {
-        if (runtime === null) {
-          runtime = await this.create_runtime(resources, model_settings);
-        } else {
-          await this.update_runtime_model(runtime, model_settings);
-        }
-
-        if (this.disposed || generation !== this.runtime_generation) {
-          if (created || this.runtime === runtime) {
-            if (this.runtime === runtime) this.runtime = null;
-            await this.close_runtime(runtime);
-            candidate_closed = true;
-          }
-          throw new AppErrors.AppError("request.validation_failed", {
-            diagnostic_context: { reason: "agent_message_invalidated" },
-          });
-        }
-        if (created) {
-          this.runtime = runtime;
-          this.publish_context();
-        }
-      } catch (error) {
-        if (created && runtime !== null && this.runtime !== runtime && !candidate_closed) {
-          await this.close_runtime(runtime);
-        }
-        throw error;
+      if (runtime === null) {
+        await this.skills.refresh();
+        this.assert_current_acceptance(generation);
+        runtime = await this.create_runtime(model_settings);
+      } else {
+        await this.update_runtime_model(runtime, model_settings);
       }
-
+      this.assert_current_acceptance(generation);
       const prepared = await this.prepare_message(message);
+      this.assert_current_acceptance(generation);
+      // 异步准备成功后才提交候选运行时。
+      if (created) {
+        this.runtime = runtime;
+        this.publish_context();
+      }
       if (queued_id !== undefined) {
         this.input_queue.commit_send();
         this.publish_input_queue();
@@ -747,6 +734,10 @@ export class AgentService {
       return this.get_acknowledgement();
     } finally {
       if (!prompt_started) {
+        if (created) {
+          if (this.runtime === runtime) this.runtime = null;
+          if (runtime !== null) await this.close_runtime(runtime);
+        }
         if (queued_id !== undefined && generation === this.runtime_generation) {
           this.input_queue.cancel_send();
           this.input_queue.pause();
@@ -754,6 +745,15 @@ export class AgentService {
         }
         this.finish_runtime(runtime_lease);
       }
+    }
+  }
+
+  /** 重置和工程切换可发生在任一准备阶段，迟到结果只能清理自己的候选。 */
+  private assert_current_acceptance(generation: number): void {
+    if (this.disposed || generation !== this.runtime_generation) {
+      throw new AppErrors.AppError("request.validation_failed", {
+        diagnostic_context: { reason: "agent_message_invalidated" },
+      });
     }
   }
 
@@ -765,14 +765,8 @@ export class AgentService {
         diagnostic_context: { reason: "agent_continue_queue_missing" },
       });
     }
-    const resources = this.require_resources();
-    return this.accept_round(
-      resources,
-      item,
-
-      runtime_lease,
-      item.id,
-    );
+    this.require_resources();
+    return this.accept_round(item, runtime_lease, item.id);
   }
 
   /** 重试与修改共享同一受理边界，目标检查通过后才取得运行 lease。 */
@@ -1064,10 +1058,8 @@ export class AgentService {
   }
 
   /** 创建完全内存化的 SDK 会话，并关闭默认工具与运行期资源发现。 */
-  private async create_runtime(
-    resources: LoadedAgentResources,
-    model_settings: JsonRecord,
-  ): Promise<AgentRuntime> {
+  private async create_runtime(model_settings: JsonRecord): Promise<AgentRuntime> {
+    const resources = this.require_resources();
     const app_root = this.paths.get_app_root();
     const session_manager = SessionManager.inMemory(app_root);
     const session_id = session_manager.getSessionId();
@@ -1097,7 +1089,7 @@ export class AgentService {
       noPromptTemplates: true,
       noThemes: true,
       noContextFiles: true,
-      systemPrompt: resources.systemPrompt,
+      systemPrompt: resources.baseSystemPrompt,
       appendSystemPrompt: [],
     });
     await resource_loader.reload();
@@ -1154,17 +1146,69 @@ export class AgentService {
             this.decisions.wait_for_question(tool_call_id, question, signal),
         }),
         ...create_agent_workspace_tools({
-          workspace: this.workspace,
+          workspace: {
+            run: async (...args) => {
+              // 文件写入在失败或取消前也可能完成，进程收尾后统一同步磁盘事实。
+              const result = await this.workspace.run(...args).then(
+                (value) => ({ ok: true as const, value }),
+                (error: unknown) => ({ ok: false as const, error }),
+              );
+              try {
+                await this.skills.refresh();
+              } catch (error) {
+                // 程序和刷新同时失败时保留程序错误，刷新异常另记诊断。
+                if (result.ok) throw error;
+                this.log_manager.error(t_main_log("app.diagnostic.agent.tool_execution_failed"), {
+                  source: "agent",
+                  error,
+                  context: { tool_name: "workspace_run", action: "refresh_skills" },
+                });
+              }
+              if (!result.ok) throw result.error;
+              return result.value;
+            },
+            apply_workspace: (...args) => this.workspace.apply_workspace(...args),
+          },
           todo: this.todo_port(),
           approval: this.workspace_approval_port(),
         }),
-        ...create_agent_skill_tools(resources.skills, this.paths, this.log_manager),
+        ...create_agent_skill_tools(() => this.skills.get_current(), this.paths),
         ...(this.web_search === undefined ? [] : [create_agent_web_search_tool(this.web_search)]),
       ].map((tool) => prepare_agent_tool(tool, this.log_manager)),
       resourceLoader: resource_loader,
       sessionManager: session_manager,
       settingsManager: settings_manager,
     });
+    // 模板与历史保持稳定，每次请求在原位插入当前人格，并附加最新技能目录。
+    const transform_context = session.agent.transformContext;
+    session.agent.transformContext = async (messages, signal) => {
+      const original = transform_context ? await transform_context(messages, signal) : messages;
+      const catalog = format_agent_skills_for_system_prompt(this.skills.get_current());
+      const override = this.settings.read_setting().agent_personality;
+      const personality = typeof override === "string" ? override : resources.defaultPersonality;
+      const context = original.map((message) => {
+        // DefaultResourceLoader 将固定模板放入 preamble，按请求替换并保留历史原文。
+        if (message.role !== "system" || typeof message.sections?.preamble !== "string")
+          return message;
+        return {
+          ...message,
+          sections: {
+            ...message.sections,
+            preamble: insert_agent_personality(message.sections.preamble, personality),
+          },
+        };
+      });
+      if (!catalog) return context;
+      return [
+        {
+          role: "system",
+          content: "",
+          sections: { available_skills: catalog },
+          timestamp: Date.now(),
+        },
+        ...context,
+      ];
+    };
     const runtime: AgentRuntime = {
       session_id,
       log: new AgentSessionLog(this.log_manager),
@@ -1788,7 +1832,7 @@ export class AgentService {
       acceptance?.catch(() => undefined),
       settlement?.catch(() => undefined),
       runtime === null ? undefined : this.close_runtime(runtime),
-      this.reload_session_skills(),
+      this.skills.refresh(),
     ])
       .then(async () => {
         if (scope === "project") {
@@ -1796,6 +1840,8 @@ export class AgentService {
         } else {
           await this.workspace.reset_workspace();
         }
+        // 先恢复技能通知再发布最终快照，避免队列保存落在快照与清理屏障之间。
+        if (this.session_reset === reset) this.session_reset = null;
         if (!this.disposed) {
           this.publish_snapshot_seed();
         }
@@ -1889,21 +1935,6 @@ export class AgentService {
       });
     }
     return this.resources;
-  }
-
-  /** 新产品会话重新冻结 catalog；System Prompt、mention 与 marker 始终共享同一快照。 */
-  private async reload_session_skills(): Promise<void> {
-    if (this.resources === null) return;
-    const skills = await load_agent_skills(this.paths, this.log_manager);
-    const skills_prompt = format_agent_skills_for_system_prompt(skills);
-    this.resources = {
-      ...this.resources,
-      systemPrompt:
-        skills_prompt === ""
-          ? this.resources.baseSystemPrompt
-          : `${this.resources.baseSystemPrompt}\n\n${skills_prompt}`,
-      skills,
-    };
   }
 
   /** 失败 round 使用隐藏模型消息续跑，不制造公开 user 轮次。 */

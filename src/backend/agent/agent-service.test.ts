@@ -55,7 +55,7 @@ const skill_test_fixture = vi.hoisted(() => {
     },
   };
   const glossary_audit_content = `${glossary_audit_snapshot.name}:fixture`;
-  const snapshots = [corpus_search_snapshot, glossary_audit_snapshot];
+  const snapshots = [glossary_audit_snapshot, corpus_search_snapshot];
   const skills = [
     {
       ...glossary_audit_snapshot,
@@ -94,6 +94,7 @@ const skill_test_fixture = vi.hoisted(() => {
     fixture_contents: { glossary_audit: glossary_audit_content },
     skill_root,
     snapshots,
+    skills,
     loader: vi.fn(() => skills),
   };
 });
@@ -108,7 +109,9 @@ const agent_resource_fixture = vi.hoisted(() => {
   return {
     system_prompt,
     session_seed,
-    system_prompt_loader: vi.fn(() => system_prompt),
+    system_prompt_loader: vi.fn(
+      () => `${system_prompt}\n\n{{agent_personality}}\n\nfixed-after-personality-fixture`,
+    ),
     session_seed_loader: vi.fn(() => session_seed),
   };
 });
@@ -178,12 +181,15 @@ vi.mock("./agent-session-seed", async (import_original) => ({
   ...(await import_original<typeof import("./agent-session-seed")>()),
   load_agent_session_seed: agent_resource_fixture.session_seed_loader,
 }));
-vi.mock("./agent-system-prompt", () => ({
+vi.mock("./agent-system-prompt", async (original) => ({
+  ...(await original<typeof import("./agent-system-prompt")>()),
   load_agent_system_prompt: agent_resource_fixture.system_prompt_loader,
+  load_agent_personality: () => "default-personality-fixture",
 }));
 vi.mock("./agent-model", () => ({ register_agent_model: agent_model_registrar }));
 
 import { AgentService } from "./agent-service";
+import { AgentSkillsService } from "./agent-skills-service";
 import type { AgentWorkspacePort } from "./workspace/service";
 
 /** 测试只替换远程流边界，Agent 的事件、工具执行、abort 与收尾均使用真实实现。 */
@@ -555,7 +561,7 @@ describe("AgentService", () => {
     fake_agent_state.stream_tokens_per_second = undefined;
     agent_model_registrar.mockReset();
     agent_model_registrar.mockImplementation(register_fake_agent_model);
-    skill_test_fixture.loader.mockClear();
+    skill_test_fixture.loader.mockReset().mockReturnValue(skill_test_fixture.skills);
     agent_resource_fixture.system_prompt_loader.mockClear();
     agent_resource_fixture.session_seed_loader.mockClear();
   });
@@ -570,7 +576,7 @@ describe("AgentService", () => {
     await Promise.all(services.splice(0).map(async (service) => await service.dispose()));
   });
 
-  it("快照按 UI 顺序下发 skill 清单，并在变更状态前拒绝非法消息", async () => {
+  it("快照沿用技能加载结果的展示顺序，并在变更状态前拒绝非法消息", async () => {
     const fixture = await create_service();
 
     expect(fixture.service.get_snapshot().skills).toEqual(skill_test_fixture.snapshots);
@@ -590,6 +596,28 @@ describe("AgentService", () => {
       "request.validation_failed",
     );
     expect(fixture.service.get_snapshot()).toMatchObject({ state: "idle", entries: [] });
+  });
+
+  it("已有会话的每次请求使用当前角色覆盖值，空正文和重置分别生效", async () => {
+    const f = await create_service();
+    for (const value of [null, "custom-personality-fixture", "", null]) {
+      f.set_personality(value);
+      await f.service.send_message({ text: "继续任务", attachments: [] });
+      await wait_for_idle(f.service);
+      const prompt = fake_agent_state.system_prompts.at(-1)!;
+      expect(prompt).toContain(agent_resource_fixture.system_prompt);
+      const body = value ?? "default-personality-fixture";
+      expect(prompt).toContain(
+        `${agent_resource_fixture.system_prompt}\n\n${body}\n\nfixed-after-personality-fixture`,
+      );
+      expect(prompt).not.toContain("{{agent_personality}}");
+      if (value === null) expect(prompt).toContain("default-personality-fixture");
+      else {
+        expect(prompt).not.toContain("default-personality-fixture");
+        if (value) expect(prompt).toContain(value);
+        else expect(prompt).not.toContain("custom-personality-fixture");
+      }
+    }
   });
 
   it("命令只回执最后事件 revision，且公开事件 revision 严格递增", async () => {
@@ -933,42 +961,146 @@ describe("AgentService", () => {
     expect(fixture.service.get_snapshot().skills).toEqual(expected_skills);
   });
 
-  it("当前会话冻结 catalog，reset 后才刷新 System Prompt、mention 与 marker", async () => {
+  it("同一对话持续接收技能变化，模型请求只使用当前目录", async () => {
     const fixture = await create_service();
-    const current_skills = skill_test_fixture.loader.mock.results.at(-1)?.value ?? [];
-    skill_test_fixture.loader.mockReturnValueOnce([
-      ...current_skills,
+    const session_id = fixture.service.get_snapshot().sessionId;
+    const next_skills = [
+      ...skill_test_fixture.skills,
       {
+        ...skill_test_fixture.skills[0]!,
         name: "new-skill",
-        visible: true,
-        order: 50,
-        displayDescriptions: {
-          "zh-CN": "新技能",
-          "en-US": "New skill",
-          "de-DE": "Neue Fähigkeit",
-        },
-        description: "会话中新增的技能",
-        content: "new-skill:fixture",
         filePath: `${skill_test_fixture.skill_root}/new-skill/SKILL.md`,
-        disableModelInvocation: false,
       },
-    ]);
-
-    expect(fixture.service.get_snapshot().skills.map(({ name }) => name)).not.toContain(
-      "new-skill",
-    );
-    expect(skill_test_fixture.loader).toHaveBeenCalledTimes(1);
-
-    await fixture.service.reset();
+    ];
+    skill_test_fixture.loader.mockReturnValue(next_skills);
+    await fixture.skills.refresh();
     expect(fixture.service.get_snapshot().skills.map(({ name }) => name)).toContain("new-skill");
-    expect(skill_test_fixture.loader).toHaveBeenCalledTimes(2);
+    expect(fixture.service.get_snapshot()).toMatchObject({ sessionId: session_id, entries: [] });
+    expect(fixture.publish).toHaveBeenCalledWith(
+      "agent.session_event",
+      expect.objectContaining({
+        type: "skills_changed",
+        skills: expect.arrayContaining([expect.objectContaining({ name: "new-skill" })]),
+      }),
+    );
 
     await fixture.service.send_message({ text: '@skill("new-skill") 开始', attachments: [] });
     await wait_for_idle(fixture.service);
     expect(fake_agent_state.system_prompts.at(-1)).toContain("<name>new-skill</name>");
-    expect(fake_agent_state.system_prompts.at(-1)).not.toContain("<location>");
-    expect(fake_agent_state.prompts.at(-1)).toBe('@skill("new-skill") 开始');
+
+    skill_test_fixture.loader.mockReturnValue(skill_test_fixture.skills);
+    await fixture.skills.refresh();
+    expect(fixture.service.get_snapshot().skills.map(({ name }) => name)).not.toContain(
+      "new-skill",
+    );
+    await fixture.service.send_message({ text: "继续", attachments: [] });
+    await wait_for_idle(fixture.service);
+    expect(fake_agent_state.system_prompts.at(-1)).not.toContain("<name>new-skill</name>");
+    expect(fixture.service.get_snapshot().sessionId).toBe(session_id);
+
+    await fixture.service.reset();
+    expect(fixture.service.get_snapshot().skills.map(({ name }) => name)).not.toContain(
+      "new-skill",
+    );
+    skill_test_fixture.loader.mockReturnValue(next_skills);
+    await fixture.skills.refresh();
+    expect(fixture.service.get_snapshot().skills.map(({ name }) => name)).toContain("new-skill");
   });
+
+  it.each(["success", "failure", "stop"] as const)(
+    "工作区 %s 收尾后刷新技能，下一请求消费新目录",
+    async (outcome) => {
+      const fixture = await create_service();
+      fake_agent_state.mode = "tool_only";
+      fixture.read_items.mockImplementation(() => {
+        skill_test_fixture.loader.mockReturnValue([
+          ...skill_test_fixture.skills,
+          { ...skill_test_fixture.skills[0]!, name: "installed-skill" },
+        ]);
+        if (outcome === "stop") fixture.service.stop();
+        if (outcome === "failure") throw new Error("程序写入后失败");
+        return [];
+      });
+      await fixture.service.send_message({ text: "安装技能", attachments: [] });
+      await wait_for_idle(fixture.service);
+      expect(fixture.service.get_snapshot().skills.map(({ name }) => name)).toContain(
+        "installed-skill",
+      );
+      if (outcome !== "stop") {
+        expect(fake_agent_state.system_prompts.at(-1)).toContain("<name>installed-skill</name>");
+      }
+      expect(fixture.runtime_gate.get_snapshot().owner).toBeNull();
+    },
+  );
+
+  it("模型请求在异步准备完成后消费当前目录", async () => {
+    const fixture = await create_service();
+    skill_test_fixture.loader.mockReturnValue([]);
+    fake_agent_state.hold_auth = true;
+    const sending = fixture.service.send_message({ text: "开始", attachments: [] });
+    await vi.waitFor(() => expect(fake_agent_state.release_auth).not.toBeNull());
+    expect(fixture.service.get_snapshot().skills).toEqual([]);
+    skill_test_fixture.loader.mockReturnValue(skill_test_fixture.skills);
+    await fixture.skills.refresh();
+    expect(fixture.service.get_snapshot().skills).toEqual(skill_test_fixture.snapshots);
+    fake_agent_state.release_auth?.();
+    await sending;
+    await wait_for_idle(fixture.service);
+    expect(fake_agent_state.system_prompts.at(-1)).toContain("<available_skills>");
+    await fixture.service.reset();
+    expect(fixture.service.get_snapshot().skills).toEqual(skill_test_fixture.snapshots);
+  });
+
+  it.each(["failure", "stop", "reset"] as const)(
+    "首次附件准备被 %s 中断后，重试使用当前技能",
+    async (interruption) => {
+      const image = {
+        data: "prepared",
+        mimeType: "image/webp" as const,
+        width: 1,
+        height: 1,
+        originalWidth: 1,
+        originalHeight: 1,
+      };
+      let resolve_image!: (value: typeof image) => void;
+      let reject_image!: (error: Error) => void;
+      const pending_image = new Promise<typeof image>((resolve, reject) => {
+        resolve_image = resolve;
+        reject_image = reject;
+      });
+      const images = { clear: vi.fn(), prepare: vi.fn(async () => image) };
+      images.prepare.mockImplementationOnce(() => pending_image);
+      const { service, skills } = await create_service(
+        true,
+        undefined,
+        undefined,
+        undefined,
+        images,
+      );
+      const sending = service.send_message({ text: "图片", attachments: [uploaded_file("raw")] });
+      const rejected =
+        interruption === "failure"
+          ? expect(sending).rejects.toThrow("图片准备失败")
+          : expect(sending).rejects.toMatchObject({ code: "runtime.cancelled" });
+      await vi.waitFor(() => expect(images.prepare).toHaveBeenCalled());
+      skill_test_fixture.loader.mockReturnValue([]);
+      await skills.refresh();
+      expect(service.get_snapshot().skills).toEqual([]);
+      let reset: Promise<unknown> | undefined;
+      if (interruption === "failure") reject_image(new Error("图片准备失败"));
+      else {
+        if (interruption === "stop") service.stop();
+        else reset = service.reset();
+        resolve_image(image);
+      }
+      await rejected;
+      await reset;
+      expect(service.get_snapshot()).toMatchObject({ entries: [], skills: [] });
+      await service.send_message({ text: "重试", attachments: [] });
+      await wait_for_idle(service);
+      expect(fake_agent_state.system_prompts.at(-1)).not.toContain("<available_skills>");
+    },
+  );
 
   it("种子消息按顺序进入模型历史且不公开到时间线", async () => {
     const fixture = await create_service();
@@ -2376,8 +2508,8 @@ describe("AgentService", () => {
     ).toHaveLength(2);
   });
 
-  it("建会话准备失败时不公开用户条目、状态或模型请求", async () => {
-    const { service, publish } = await create_service();
+  it("建会话准备失败时保留空白对话，重试采用最新技能", async () => {
+    const { service, publish, skills } = await create_service();
     agent_model_registrar.mockImplementationOnce(() => {
       throw new Error("模型解析失败");
     });
@@ -2390,6 +2522,12 @@ describe("AgentService", () => {
     expect(service.get_snapshot()).toEqual(before);
     expect(publish).not.toHaveBeenCalled();
     expect(fake_agent_state.model_call_count).toBe(0);
+    skill_test_fixture.loader.mockReturnValue([]);
+    await skills.refresh();
+    expect(service.get_snapshot().skills).toEqual([]);
+    await service.send_message({ text: "重试", attachments: [] });
+    await wait_for_idle(service);
+    expect(fake_agent_state.system_prompts.at(-1)).not.toContain("<available_skills>");
   });
 
   it("换模鉴权失败时保留原公开快照", async () => {
@@ -3313,6 +3451,7 @@ describe("AgentService", () => {
     },
   ): Promise<{
     service: AgentService;
+    skills: AgentSkillsService;
     publish: ReturnType<typeof vi.fn>;
     read_items: ReturnType<typeof vi.fn<() => JsonRecord[]>>;
     log_error: ReturnType<typeof vi.fn>;
@@ -3322,6 +3461,7 @@ describe("AgentService", () => {
     set_app_language: (app_language: AppLanguage) => void;
     runtime_gate: RuntimeOperationGate;
     select_batch_translation_model: (model_id: string | null) => void;
+    set_personality: (value: string | null) => void;
     session_state: ProjectSessionState;
   }> {
     const session_state = new ProjectSessionState();
@@ -3330,10 +3470,12 @@ describe("AgentService", () => {
     let agent_model_id: "active" | "next" = "active";
     let batch_model_id: string | null = null;
     let app_language: AppLanguage = "ZH";
+    let personality: string | null = null;
     const settings = {
       read_setting: () => {
         return {
           app_language,
+          agent_personality: personality,
           model_selection: {
             translation: "active",
             agent: agent_model_id,
@@ -3418,7 +3560,17 @@ describe("AgentService", () => {
     const log_warning = vi.fn();
     const log_append = vi.fn();
     const runtime_gate = new RuntimeOperationGate();
+    const skills = new AgentSkillsService(
+      {
+        get_agent_builtin_skill_dir: () => skill_test_fixture.skill_root,
+        get_agent_user_skill_dir: () => `${skill_test_fixture.app_root}/user-skills`,
+      },
+      { ...settings, save_setting: vi.fn(), publish_settings_changed: vi.fn() },
+      { warning: log_warning },
+      runtime_gate,
+    );
     const service = new AgentService({
+      skills,
       catalog: { read_models: read_builtin_pi_models },
       images,
       batchTranslation: batch_translation ?? {
@@ -3431,10 +3583,9 @@ describe("AgentService", () => {
         get_app_root: () => skill_test_fixture.app_root,
         get_agent_builtin_skill_dir: () => skill_test_fixture.skill_root,
         get_agent_user_skill_dir: () => `${skill_test_fixture.app_root}/user-skills`,
-        get_agent_system_prompt_path: () =>
-          `${skill_test_fixture.app_root}/builtin/agent/system_prompt.md`,
+        get_agent_system_prompt_path: () => `${skill_test_fixture.app_root}/builtin/system.md`,
         get_agent_session_seed_path: () =>
-          `${skill_test_fixture.app_root}/builtin/agent/session_seed.json`,
+          `${skill_test_fixture.app_root}/builtin/session_seed.json`,
       },
       settings,
       userAgent: "LinguaGacha/Test",
@@ -3448,7 +3599,11 @@ describe("AgentService", () => {
     if (load_resources) await service.load_resources();
     services.push(service);
     return {
+      set_personality: (value: string | null) => {
+        personality = value;
+      },
       service,
+      skills,
       publish,
       read_items,
       log_error,

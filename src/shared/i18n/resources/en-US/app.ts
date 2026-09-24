@@ -112,7 +112,7 @@ export const en_us_app = {
     enabled: "Enabled",
   },
   editor: {
-    line_wrap_target: "Line wrapping for {TARGET}",
+    line_wrap: "Line wrapping",
   },
   tooltip: {
     value: "{TITLE} · {VALUE}",
@@ -210,6 +210,9 @@ export const en_us_app = {
       export_failed: { message: "Translation export failed …" },
     },
     file: {
+      already_exists: {
+        message: "A file or folder with this name already exists. Choose another name …",
+      },
       not_found: {
         message: "The file does not exist …",
       },
@@ -316,7 +319,6 @@ export const en_us_app = {
       session_cleanup_failed: "Agent session cleanup failed …",
       tool_execution_failed: "Agent tool execution failed …",
       skill_load_failed: "Agent skill loading failed …",
-      skill_resource_load_failed: "Agent skill resource loading failed …",
     },
     api_gateway: {
       direct_route_failed: "API Gateway direct route handling failed …",

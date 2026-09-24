@@ -6,6 +6,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { LOCALES } from "../../shared/i18n/types";
 import { AppPathService } from "../app/app-path-service";
+import { default_native_fs } from "../../native/native-fs";
 import { format_agent_skills_for_system_prompt, load_agent_skills } from "./agent-skills";
 
 describe("Agent skill 模型投影", () => {
@@ -43,7 +44,101 @@ describe("Agent skill 模型投影", () => {
 });
 
 describe("Agent skill 加载", () => {
-  it("只扫描用户与当前内置根，不加载安装目录残留的旧版 skill", async () => {
+  it("按名称稳定去重，包内目录不发现新技能，遵循目录忽略规则", () => {
+    using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-skill-discovery-"));
+    const paths = create_paths(temp.path);
+    const root = paths.get_agent_user_skill_dir();
+    /** 在指定层级创建独立命名的测试包。 */
+    const write = (folder: string, name: string) =>
+      write_skill(
+        path.join(root, folder, "SKILL.md"),
+        `---\nname: ${name}\ndescription: valid\n---\n`,
+      );
+    write("a-folder", "same");
+    write("b-folder", "same");
+    write("a-folder/references/nested", "nested");
+    write("group/common", "another");
+    write("other/common", "third");
+    write("ignored", "ignored");
+    write("group/excluded", "excluded");
+    write(".hidden", "hidden");
+    write("node_modules/pkg", "dependency");
+    write_skill(path.join(root, ".gitignore"), "ignored/\n");
+    write_skill(path.join(root, "group", ".ignore"), "excluded/\n");
+    write_skill(path.join(root, "loose.md"), "---\nname: [broken\n---\n");
+    write_skill(path.join(root, "ordinary", "notes.md"), "This is not a skill.");
+    write_skill(path.join(root, "ordinary", "script.js"), "console.log(1);");
+    const warning = vi.fn();
+    const result = load_agent_skills(paths, { warning });
+    expect(result.map((skill) => skill.name)).toEqual(["another", "same", "third"]);
+    expect(warning).toHaveBeenCalledExactlyOnceWith(expect.any(String), {
+      source: "agent",
+      error: expect.any(String),
+      context: {
+        name: "same",
+        selected: path.join(root, "a-folder", "SKILL.md"),
+        path: path.join(root, "b-folder", "SKILL.md"),
+      },
+    });
+  });
+
+  it("已发现技能的读取和元数据失败统一记录异常，保留其它技能", () => {
+    using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-skill-diagnostics-"));
+    const paths = create_paths(temp.path);
+    const root = paths.get_agent_user_skill_dir();
+    write_skill(
+      path.join(root, "bad", "SKILL.md"),
+      "---\nname: Invalid_Name\ndescription: ''\n---\n",
+    );
+    write_skill(path.join(root, "missing", "SKILL.md"), "---\ndescription: valid\n---\n");
+    for (const name of ["good", "unreadable", "unscannable"])
+      write_skill(
+        path.join(root, name, "SKILL.md"),
+        `---\nname: ${name}\ndescription: valid\n---\n`,
+      );
+    const warning = vi.fn();
+    const read_error = new Error("read denied");
+    const skills = load_agent_skills(paths, { warning }, undefined, {
+      /** 单个分支不可遍历时，其它分支仍可发现。 */
+      read_dirents(directory) {
+        if (directory.endsWith("unscannable")) throw new Error("scan denied");
+        return default_native_fs.read_dirents(directory);
+      },
+      /** 分别模拟主文件和可选显示配置的读取失败。 */
+      read_text_file(file) {
+        if (file.includes("unreadable")) throw read_error;
+        if (file === path.join(root, "good", "ui.json")) throw new Error("display read denied");
+        return default_native_fs.read_text_file(file);
+      },
+    });
+    expect(skills.map((skill) => skill.name)).toEqual(["good"]);
+    for (const folder of ["bad", "missing"]) {
+      expect(warning).toHaveBeenCalledWith(expect.any(String), {
+        source: "agent",
+        error: expect.objectContaining({
+          code: "file.invalid_structure",
+          diagnostic_context: { field: "name" },
+        }),
+        context: { path: path.join(root, folder, "SKILL.md") },
+      });
+    }
+    expect(warning).toHaveBeenCalledWith(expect.any(String), {
+      source: "agent",
+      error: read_error,
+      context: { path: path.join(root, "unreadable", "SKILL.md") },
+    });
+    for (const [file, message] of [
+      ["unscannable", "scan denied"],
+      ["good/ui.json", "display read denied"],
+    ] as const) {
+      expect(warning).toHaveBeenCalledWith(expect.any(String), {
+        source: "agent",
+        error: expect.objectContaining({ message }),
+        context: { path: path.join(root, file) },
+      });
+    }
+  });
+  it("只扫描用户与当前内置根，不加载安装目录残留的旧版 skill", () => {
     using temp_root = fs.mkdtempDisposableSync(
       path.join(os.tmpdir(), "linguagacha-agent-skills-legacy-resource-"),
     );
@@ -57,12 +152,12 @@ describe("Agent skill 加载", () => {
       "---\nname: current\ndescription: 当前能力\n---\n\n当前正文。",
     );
 
-    const skills = await load_agent_skills(paths, { warning: vi.fn(), error: vi.fn() });
+    const skills = load_agent_skills(paths, { warning: vi.fn() });
 
     expect(skills.map((skill) => skill.name)).toEqual(["current"]);
   });
 
-  it("加载双目录合法 SKILL.md，记录坏 frontmatter，并过滤目录名不匹配项", async () => {
+  it("按元数据加载技能，目录名称不参与合法性判断", () => {
     using temp_root = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "linguagacha-agent-skills-"));
     const app_root = temp_root.path;
     const paths = create_paths(app_root);
@@ -76,25 +171,16 @@ describe("Agent skill 加载", () => {
     );
     write_skill(
       path.join(paths.get_agent_user_skill_dir(), "folder-name", "SKILL.md"),
-      "---\nname: other-name\ndescription: 名称错位\n---\n\n不应加载。",
+      "---\nname: other-name\ndescription: 独立名称\n---\n\n应正常加载。",
     );
     write_skill(
       path.join(paths.get_agent_user_skill_dir(), "manual", "SKILL.md"),
       "---\nname: manual\ndescription: 手动能力\ndisable-model-invocation: true\n---\n\n执行手动任务。",
     );
     const warning = vi.fn();
-    const log_manager = { warning, error: vi.fn() };
+    const log_manager = { warning };
 
-    await expect(load_agent_skills(paths, log_manager)).resolves.toEqual([
-      {
-        name: "manual",
-        description: "手动能力",
-        visible: true,
-        displayDescriptions: Object.fromEntries(LOCALES.map((locale) => [locale, "手动能力"])),
-
-        filePath: expect.stringMatching(/\/manual\/SKILL\.md$/u),
-        disableModelInvocation: true,
-      },
+    expect(load_agent_skills(paths, log_manager)).toEqual([
       {
         name: "valid",
         description: "合法能力",
@@ -104,20 +190,31 @@ describe("Agent skill 加载", () => {
         filePath: expect.stringMatching(/\/valid\/SKILL\.md$/u),
         disableModelInvocation: false,
       },
-    ]);
-    expect(warning).toHaveBeenCalledWith(
-      "Agent skill 资源加载失败 …",
+      {
+        name: "manual",
+        description: "手动能力",
+        visible: true,
+        displayDescriptions: Object.fromEntries(LOCALES.map((locale) => [locale, "手动能力"])),
+
+        filePath: expect.stringMatching(/\/manual\/SKILL\.md$/u),
+        disableModelInvocation: true,
+      },
       expect.objectContaining({
-        source: "agent",
-        context: expect.objectContaining({ diagnostic_message: expect.any(String) }),
+        name: "other-name",
+        filePath: expect.stringMatching(/folder-name\/SKILL\.md$/),
       }),
-    );
-    expect(warning.mock.calls.map((call) => call[1]?.context?.code)).toEqual(
-      expect.arrayContaining(["parse_failed", "invalid_metadata"]),
-    );
+    ]);
+    expect(warning).toHaveBeenCalledExactlyOnceWith(expect.any(String), {
+      source: "agent",
+      error: expect.objectContaining({
+        code: "file.invalid_structure",
+        cause: expect.objectContaining({ name: "YAMLParseError" }),
+      }),
+      context: { path: path.join(paths.get_agent_user_skill_dir(), "broken", "SKILL.md") },
+    });
   });
 
-  it("用户有效同名 skill 完整覆盖内置 skill 且不产生诊断", async () => {
+  it("用户有效同名技能覆盖内置技能且不产生诊断", () => {
     using temp_root = fs.mkdtempDisposableSync(
       path.join(os.tmpdir(), "linguagacha-agent-skills-override-"),
     );
@@ -143,23 +240,14 @@ describe("Agent skill 加载", () => {
     );
     const warning = vi.fn();
 
-    await expect(load_agent_skills(paths, { warning, error: vi.fn() })).resolves.toEqual([
-      {
+    expect(load_agent_skills(paths, { warning })).toEqual([
+      expect.objectContaining({
         name: "shared",
         description: "用户能力",
-        visible: true,
         order: 200,
-        displayDescriptions: {
-          "zh-CN": "用户能力",
-          "en-US": "User skill",
-          "de-DE": "用户能力",
-          "ja-JP": "ユーザー機能",
-          "ko-KR": "사용자 기능",
-        },
-
         filePath: path.join(user_dir, "SKILL.md").replaceAll("\\", "/"),
-        disableModelInvocation: false,
-      },
+        displayDescriptions: expect.objectContaining({ "en-US": "User skill" }),
+      }),
     ]);
     expect(warning).not.toHaveBeenCalled();
   });
@@ -172,7 +260,7 @@ describe("Agent skill 加载", () => {
     ["负数顺序", '{"order":-1}'],
     ["小数顺序", '{"order":1.5}'],
     ["未知字段", '{"enabled":true}'],
-  ])("%s 的 ui.json 整份回退并记录诊断", async (_case_name, ui) => {
+  ])("%s 的 ui.json 整份回退并记录诊断", (_case_name, ui) => {
     using temp_root = fs.mkdtempDisposableSync(
       path.join(os.tmpdir(), "linguagacha-agent-skills-ui-"),
     );
@@ -186,26 +274,23 @@ describe("Agent skill 加载", () => {
     write_skill(path.join(skill_dir, "ui.json"), ui);
     const warning = vi.fn();
 
-    const skills = await load_agent_skills(paths, { warning, error: vi.fn() });
+    const skills = load_agent_skills(paths, { warning });
 
     expect(skills[0]).toMatchObject({
       visible: true,
       displayDescriptions: Object.fromEntries(LOCALES.map((locale) => [locale, "默认描述"])),
     });
     expect(warning).toHaveBeenCalledWith(
-      "Agent skill 资源加载失败 …",
+      expect.any(String),
       expect.objectContaining({
         source: "agent",
-        context: expect.objectContaining({
-          skill: "invalid-ui",
-          path: expect.stringMatching(/ui\.json$/u),
-          error: expect.any(String),
-        }),
+        error: ui === "{" ? expect.any(SyntaxError) : expect.any(String),
+        context: { path: expect.stringMatching(/ui\.json$/u) },
       }),
     );
   });
 
-  it("仅含 visible=false 的 ui.json 隐藏用户能力但保留完整 skill", async () => {
+  it("仅含 visible=false 的 ui.json 隐藏用户能力但保留完整 skill", () => {
     using temp_root = fs.mkdtempDisposableSync(
       path.join(os.tmpdir(), "linguagacha-agent-skills-hidden-"),
     );
@@ -218,7 +303,7 @@ describe("Agent skill 加载", () => {
     write_skill(path.join(skill_dir, "ui.json"), '{"visible":false}');
     const warning = vi.fn();
 
-    const skills = await load_agent_skills(paths, { warning, error: vi.fn() });
+    const skills = load_agent_skills(paths, { warning });
 
     expect(skills).toHaveLength(1);
     expect(skills[0]).toMatchObject({

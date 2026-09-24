@@ -163,7 +163,7 @@ export class ProjectDatabase {
       try {
         // 关闭失败时保留文件和连接记录，防止删除仍被持有的数据库。
         this.close_project(normalized_path);
-        this.native_fs.remove(normalized_path, { force: true });
+        this.native_fs.unlink(normalized_path, { force: true });
       } catch (cleanup) {
         throw database_cleanup_error(
           error,

@@ -1,3 +1,5 @@
+import type { AgentPersonalityService } from "../agent/agent-personality-service";
+import type { AgentSkillsApi } from "../agent/agent-skills-service";
 import type { Server } from "node:http";
 
 import { Hono } from "hono";
@@ -31,6 +33,8 @@ const CORS_ALLOWED_HEADERS = "Content-Type"; // 上传与 JSON 请求共用标�
 export interface ApiGatewayServerOptions {
   backendServices: BackendServices;
   agentService: AgentService;
+  skillsService: AgentSkillsApi;
+  personalityService: Pick<AgentPersonalityService, "read" | "save">;
   eventStream: ApiStreamHub;
 }
 
@@ -156,6 +160,8 @@ export class ApiGatewayServer {
       app,
       services,
       agent: this.options.agentService,
+      skills: this.options.skillsService,
+      personality: this.options.personalityService,
       postJson: (path_name, handler) =>
         register_post_json_route(app, path_name, handler, this.respond_error),
       request: (method, path, handler) =>

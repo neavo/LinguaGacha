@@ -10,6 +10,7 @@ export type RuntimeActivityListener = (snapshot: Readonly<RuntimeActivitySnapsho
 export class RuntimeOperationGate {
   private active_runtime: RuntimeLease | null = null; // 对象身份同时承担迟到释放校验
   private project_write_running = false; // 项目写不公开为模型 owner，只阻止并发运行与写入
+  private skill_write_running = false; // 技能保存到集合发布期间阻止 Agent 取得执行占用。
   private revision = 0; // 仅在公开 owner 变化时推进
   private readonly listeners = new Set<RuntimeActivityListener>(); // 组合根用它桥接 SSE
   private readonly idle_waiters = new Set<() => void>(); // 目录应用等待运行与工程写入都释放
@@ -27,7 +28,11 @@ export class RuntimeOperationGate {
 
   /** 同步占用保证检查与首个异步阶段之间没有并发窗口。 */
   public begin_runtime(owner: RuntimeActivityOwner): RuntimeLease {
-    if (this.active_runtime !== null || this.project_write_running) {
+    if (
+      this.active_runtime !== null ||
+      this.project_write_running ||
+      (owner === "agent" && this.skill_write_running)
+    ) {
       throw new AppErrors.AppError("runtime.busy");
     }
     const lease = Object.freeze({ owner });
@@ -84,6 +89,18 @@ export class RuntimeOperationGate {
       throw new AppErrors.AppError("runtime.busy");
     }
     return await this.run_project_write_under_lease(operation);
+  }
+
+  /** 技能修改只与 Agent 执行互斥；技能命令之间由技能服务串行处理。 */
+  public async run_skill_write<T>(operation: () => Promise<T> | T): Promise<T> {
+    if (this.active_runtime?.owner === "agent" || this.skill_write_running)
+      throw new AppErrors.AppError("runtime.busy");
+    this.skill_write_running = true;
+    try {
+      return await operation();
+    } finally {
+      this.skill_write_running = false;
+    }
   }
 
   /** Agent 写工具复用项目写串行 lease，但只能在自己的运行回合内调用。 */

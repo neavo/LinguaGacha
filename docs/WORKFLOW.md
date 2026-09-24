@@ -13,7 +13,7 @@
 |API、SSE、错误、项目读写|[BACKEND](BACKEND.md)|`src/backend/api/`、`src/backend/project/`、`src/backend/cache/`、`src/shared/error/`|
 |数据库、`.lg`、migration、asset、NativeFs|[BACKEND](BACKEND.md)|`src/backend/database/`、`src/backend/migration/`、`src/native/`|
 |任务、worker、共享 LLM、系统代理网络|[BACKEND](BACKEND.md)|`src/backend/batch-translation/`、`src/backend/worker/`、`src/backend/llm/`、`src/backend/network/`|
-|产品 Agent 会话、资源、skill、工具、宿主能力、页面消费|[AGENT_RUNTIME](AGENT_RUNTIME.md)|`src/backend/agent/`、`src/shared/agent.ts`、`src/shared/backend-runtime.ts`、`src/frontend/app/session/agent/`、`src/frontend/pages/agent-page/`、`builtin/agent/`|
+|产品 Agent 会话、资源、skill、工具、宿主能力、页面消费|[AGENT_RUNTIME](AGENT_RUNTIME.md)|`src/backend/agent/`、`src/shared/agent.ts`、`src/shared/backend-runtime.ts`、`src/frontend/app/session/agent/`、`src/frontend/pages/agent-page/`、`builtin/`|
 |Electron / preload / renderer 接入|[FRONTEND](FRONTEND.md)|`src/gui/`、`src/frontend/app/desktop/`|
 |前端共享状态、feature、query、导航、session UI|[FRONTEND](FRONTEND.md)|`src/frontend/app/state/`、`src/frontend/app/session/`、`src/frontend/features/`、`src/frontend/pages/`|
 |前端文案、样式消费、视觉|[FRONTEND](FRONTEND.md)|当前设计输入、既有界面证据、`src/frontend/index.css`、相关组件 / 页面 CSS|
@@ -52,6 +52,7 @@
 |共享 helper、状态写入口、公开契约|直接受影响的调用者及生产者、消费者相关测试|
 |测试配置、环境初始化、广泛共享基础设施|受影响的测试项目；影响面无法可靠界定时执行 `npm test`|
 |GUI / preload / native / Backend Runtime worker 行为|相关目标测试；共享资源或 GUI Backend 生命周期变化时运行真实 `BackendResources` 与 `GuiBackendBootstrap` 集成测试|
+|文件删除或清理|运行 `src/native/native-fs.test.ts` 和调用者测试。该文件在 Windows 使用真实 Electron 验证只读文件与目录删除|
 |Agent 工作区或 Node runtime 行为|`src/backend/agent/workspace/`、`model-tools/` 及受影响的 Backend Runtime / main 路径测试；JavaScript 加载、权限、真实文件边界、系统代理或网页流读取的环境语义存在风险时，对相应行为运行真实 Electron Node 子进程集成验证|
 |宿主加载、组合根、资源定位或跨进程通信与启动契约变化|低层测试不足以证明变化时，对受影响的契约执行真实 Electron 集成或 smoke 验证|
 |Agent 文件上传、图片处理与宿主协议|上传存储、消息准备、草稿与 Workspace 输出的目标测试。字节传输与关闭行为验证真实 Gateway / Bootstrap。编解码或 IPC 变化运行 `src/native/agent-image-host.test.ts` 和 Workspace bootstrap 的真实 Electron 验证|
@@ -64,6 +65,6 @@ Vitest 在 `buildtools/vitest/vitest.config.ts` 中划分 `node` 与 `renderer`�
 
 `src/backend/agent/workspace/runtime/bootstrap.test.ts` 在仓库外的独立目录使用生产构建与 Electron 验证标准 npm 导入、真实程序入口、自然退出、文件权限、IPC、网页流读取与取消。发布资产或入口定位变化时，以 `LINGUAGACHA_TEST_ELECTRON` 和 `LINGUAGACHA_TEST_WORKSPACE_RUNTIME` 指定发行包可执行文件和运行目录，复用该集成入口验证部署产物。
 
-PDF 变更按风险运行 `formats/pdf/`、`agent-workspace-page-write`、工作区 `service.integration.test.ts` 与数据库、`ProjectWriteStore` 的来源及事务测试。`pdf-worker.test.ts` 验证独立部署线程的计算、打印回调、取消与重启。`src/native/pdf-host.test.ts` 验证真实 Electron 打印和取消，`LINGUAGACHA_PDF_QA_DIR` 可保留产物供视觉检查。验证发行包打印资源时，设置 `LINGUAGACHA_TEST_WORKSPACE_RUNTIME` 并使用默认开发 Electron 执行测试脚本。Workspace bootstrap 集成使用自有技能夹具验证原目录只读执行、条目上下文、页面更新与正式文本模块、npm / WASM 导入、apply 后再次执行与宿主 IPC。领域脚本变更按本次行为目标直接执行合成样例核验，长期自动化测试不绑定动态内置技能清单或内容。真实模型质量另以有界样本运行记录验证。
+PDF 变更按风险运行 `formats/pdf/`、`agent-workspace-page-write`、工作区 `service.integration.test.ts` 与数据库、`ProjectWriteStore` 的来源及事务测试。`pdf-worker.test.ts` 验证独立部署线程的计算、打印回调、取消与重启。`src/native/pdf-host.test.ts` 验证真实 Electron 打印和取消，`LINGUAGACHA_PDF_QA_DIR` 可保留产物供视觉检查。验证发行包打印资源时，设置 `LINGUAGACHA_TEST_WORKSPACE_RUNTIME` 并使用默认开发 Electron 执行测试脚本。Workspace bootstrap 集成使用自有技能夹具验证内置技能只读、用户技能读写与目录链接、条目上下文、页面更新与正式文本模块、npm / WASM 导入、apply 后再次执行与宿主 IPC。领域脚本变更按本次行为目标直接执行合成样例核验，长期自动化测试不绑定动态内置技能清单或内容。真实模型质量另以有界样本运行记录验证。
 
 构建或发布资产变化时，核对 Electron locale 与 `LOCALES` 一致，并按 [AGENT_RUNTIME](AGENT_RUNTIME.md) 的部署契约检查 Workspace 产物。入口或运行目录定位变化运行 `src/native/workspace-runtime.test.ts`；依赖部署变化运行 `buildtools/workspace-dependencies.test.mjs`，并复用上述仓库外 Electron 集成验证。涉及平台启动器时测试并构建对应 Go module。

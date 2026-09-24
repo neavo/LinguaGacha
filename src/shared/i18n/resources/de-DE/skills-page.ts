@@ -1,0 +1,43 @@
+export const de_de_skills_page = {
+  title: "Skills",
+  builtin: "Integrierte Skills",
+  user: "Benutzer-Skills",
+  empty: "Keine Benutzer-Skills",
+  readonly: "Schreibgeschützt",
+  personality_description: "Persönlichkeitseinstellungen des intelligenten Assistenten",
+  install: {
+    title: "Installationsanleitung",
+    description: "Sende den Skill-Link an AGENT und bitte ihn, den Skill zu installieren.",
+    placeholder: "[Skill-Link hier eingeben]",
+    request: "Bitte installiere diesen Skill für mich: {LINK}",
+  },
+  editor: {
+    reset: "Zurücksetzen",
+    delete_skill_confirm: "Skill wirklich löschen …?",
+    reset_skill_confirm: "Skill wirklich zurücksetzen …?",
+    back: "Zurück zu Skills",
+    files: "Dateien",
+    create_file: "Neue Datei",
+    create_directory: "Neuer Ordner",
+    rename: "Umbenennen",
+    delete: "Löschen",
+    delete_file_confirm: "Datei wirklich löschen …?",
+    delete_directory_confirm: "Ordner wirklich löschen …?",
+    modified: "Geändert",
+    saved: "Gespeichert",
+    discard: "Änderungen verwerfen und neu laden",
+    overwrite: "Datei überschreiben",
+    conflict: "Die Datei wurde extern geändert. Neu laden oder ausdrücklich überschreiben.",
+    invalid_name:
+      "Maximal 64 Kleinbuchstaben, Ziffern und einzelne Bindestriche. Anfang und Ende müssen alphanumerisch sein.",
+    invalid_description: "Eine einzeilige Beschreibung mit maximal 1024 Zeichen eingeben.",
+    unsupported:
+      "Diese Datei ist kein UTF-8-Text oder größer als 2 MB und kann hier nicht bearbeitet werden.",
+  },
+  feedback: {
+    duplicate_name: "Dateiname bereits vorhanden …",
+    operation_failed: "Dateiaktion fehlgeschlagen …",
+    load_failed: "Skills konnten nicht geladen werden …",
+    save_failed: "Skill-Einstellungen konnten nicht gespeichert werden …",
+  },
+} as const;

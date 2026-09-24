@@ -8,7 +8,6 @@ import { api_fetch } from "@frontend/app/desktop/desktop-api";
 import { push_toast } from "@frontend/app/feedback/desktop-toast";
 import { useI18n } from "@frontend/app/locale/locale-context";
 import { useAppNavigation } from "@frontend/app/navigation/navigation-context";
-import { useAgentInput } from "@frontend/app/session/agent/agent-session-context";
 import { useDesktopState } from "@frontend/app/state/use-desktop-state";
 
 type TranslationExportReadyState = {
@@ -50,8 +49,7 @@ export type TranslationExportFlow = {
 export function useTranslationExportFlow(): TranslationExportFlow {
   const { t } = useI18n();
 
-  const { navigate_to_route, selected_route } = useAppNavigation();
-  const agent_input = useAgentInput();
+  const { navigate_to_agent, selected_route } = useAppNavigation();
   const { project_snapshot } = useDesktopState();
   const [state, set_state] = useState<TranslationExportState>({ phase: "closed" });
   const state_ref = useRef(state); // 稳定动作读取即时 phase，阻止同一帧重复提交
@@ -147,17 +145,13 @@ export function useTranslationExportFlow(): TranslationExportFlow {
     if (current_state.phase !== "ready" || current_state.summary.total_count === 0) {
       return;
     }
-    const draft = agent_input.draft.read();
-    if (draft.text.trim() === "" && draft.attachments.length === 0) {
-      agent_input.draft.write({
-        text: `${t("agent_page.empty.suggestions.review_translation")} ${format_agent_reference({ kind: "skill", name: "translation" })}`,
-        attachments: [],
-      });
-    }
     request_generation_ref.current += 1;
     apply_state({ phase: "closed" });
-    navigate_to_route("agent");
-  }, [agent_input, apply_state, navigate_to_route, t]);
+    navigate_to_agent({
+      text: `${t("agent_page.empty.suggestions.review_translation")} ${format_agent_reference({ kind: "skill", name: "translation" })}`,
+      mode: "if-empty",
+    });
+  }, [apply_state, navigate_to_agent, t]);
 
   /** 非导出态关闭弹窗，并淘汰仍在途的预检结果。 */
   const close = useCallback((): void => {

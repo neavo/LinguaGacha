@@ -38,6 +38,7 @@ export const APP_ERROR_DEFINITIONS = {
     status: 404,
     severity: "expected",
   },
+  "file.already_exists": { status: 409, severity: "expected" },
   "file.parse_failed": {
     status: 415,
     severity: "expected",

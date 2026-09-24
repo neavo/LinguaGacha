@@ -6,7 +6,7 @@ import path from "node:path";
 import { NativePathPolicy, default_native_path_policy } from "./native-path";
 
 /**
- * 同步删除选项只暴露项目实际使用的安全子集。
+ * 删除选项只暴露项目实际使用的安全子集。
  */
 export interface NativeRemoveOptions {
   readonly recursive?: boolean;
@@ -97,6 +97,16 @@ export class NativeFs {
    */
   public stat(target_path: string): fs.Stats {
     return fs.statSync(this.to_native_path(target_path));
+  }
+
+  /** 读取入口本身，保留目录链接与失效链接的身份。 */
+  public lstat(target_path: string): fs.Stats {
+    return fs.lstatSync(this.to_native_path(target_path));
+  }
+
+  /** 读取链接保存的目标文本，调用方按原入口位置解释相对目标。 */
+  public read_link(link_path: string): string {
+    return fs.readlinkSync(this.to_native_path(link_path));
   }
 
   /**
@@ -227,16 +237,31 @@ export class NativeFs {
 
   /** 同目录临时文件完整复制后才替换目标，复制或替换失败保留已有目标。 */
   public copy_file_atomic(source_path: string, destination_path: string): void {
+    this.replace_file_atomic(destination_path, (temporary) =>
+      this.copy_file(source_path, temporary),
+    );
+  }
+
+  /** 完整写入同目录临时文件后替换目标，供需要保留旧文件的保存入口使用。 */
+  public write_file_atomic(file_path: string, data: string | Uint8Array): void {
+    this.replace_file_atomic(file_path, (temporary) => this.write_file_sync(temporary, data));
+  }
+
+  /** 复制与写入共用替换及失败清理，清理异常与原始异常一起保留。 */
+  private replace_file_atomic(
+    destination_path: string,
+    prepare: (temporary: string) => void,
+  ): void {
     const temporary_path = path.join(path.dirname(destination_path), `.${randomUUID()}.tmp`);
     try {
-      this.copy_file(source_path, temporary_path);
+      prepare(temporary_path);
       this.rename(temporary_path, destination_path);
     } catch (cause) {
       try {
-        // 复制可能尚未建立临时文件，缺失时清理已完成。
-        this.remove(temporary_path, { force: true });
+        // 准备失败可能尚未建立临时文件，缺失时清理已完成。
+        this.unlink(temporary_path, { force: true });
       } catch (cleanup_error) {
-        throw new AggregateError([cause, cleanup_error], "File copy and cleanup failed.", {
+        throw new AggregateError([cause, cleanup_error], "File replacement and cleanup failed.", {
           cause,
         });
       }
@@ -258,14 +283,7 @@ export class NativeFs {
     fs.copyFileSync(native_source, native_destination);
   }
 
-  /**
-   * 同步删除文件或目录，保留调用方传入的 force / recursive 语义。
-   */
-  public remove(target_path: string, options: NativeRemoveOptions = {}): void {
-    fs.rmSync(this.to_native_path(target_path), options);
-  }
-
-  /** 异步删除可能很大的临时目录，避免阻塞 Backend worker 事件循环。 */
+  /** 用户文件和目录统一异步删除；Electron 的同步递归删除不能可靠处理 Windows 只读属性。 */
   public async remove_async(target_path: string, options: NativeRemoveOptions = {}): Promise<void> {
     await fs.promises.rm(this.to_native_path(target_path), options);
   }
@@ -273,11 +291,18 @@ export class NativeFs {
   /**
    * 同步删除单个文件，语义等同 unlinkSync。
    */
-  public unlink(target_path: string): void {
-    fs.unlinkSync(this.to_native_path(target_path));
+  public unlink(target_path: string, options: Pick<NativeRemoveOptions, "force"> = {}): void {
+    try {
+      fs.unlinkSync(this.to_native_path(target_path));
+    } catch (error) {
+      // 临时文件可能尚未创建；只有明确允许缺失的清理操作忽略 ENOENT。
+      if (options.force && error instanceof Error && "code" in error && error.code === "ENOENT")
+        return;
+      throw error;
+    }
   }
 
-  /** 依赖目录由应用部署，工作区仅持有绝对目标链接；Windows 使用无需提权的目录联接。 */
+  /** 创建绝对目标的目录链接，Windows 使用无需提权的目录联接。 */
   public create_directory_link(target_path: string, link_path: string): void {
     fs.symlinkSync(
       this.to_native_path(path.resolve(target_path)),

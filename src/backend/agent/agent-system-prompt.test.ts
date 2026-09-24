@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { NativeFs } from "../../native/native-fs";
 import { AppPathService } from "../app/app-path-service";
-import { load_agent_system_prompt } from "./agent-system-prompt";
+import { insert_agent_personality, load_agent_system_prompt } from "./agent-system-prompt";
 
 const cleanup_roots: string[] = []; // 每个用例独立建临时应用根，统一在 afterEach 回收
 
@@ -20,9 +20,30 @@ afterEach(() => {
 describe("Agent system prompt 加载与资源契约", () => {
   it("读取内置正文并裁剪首尾空白", () => {
     const paths = create_paths();
-    write_system_prompt(paths, "\n  prompt-before\nprompt-after  \n");
+    write_system_prompt(paths, "\n  prompt-before\n{{agent_personality}}\nprompt-after  \n");
 
-    expect(load_agent_system_prompt(paths, new NativeFs())).toBe("prompt-before\nprompt-after");
+    expect(load_agent_system_prompt(paths, new NativeFs())).toBe(
+      "prompt-before\n{{agent_personality}}\nprompt-after",
+    );
+  });
+
+  it.each(["", "{{agent_personality}}\n{{agent_personality}}"])(
+    "模板必须保留唯一的人格插入位置：%s",
+    (slot) => {
+      const paths = create_paths();
+      write_system_prompt(paths, `Before\n${slot}\nAfter`);
+      expect(() => load_agent_system_prompt(paths)).toThrow(
+        expect.objectContaining({ code: "file.invalid_structure" }),
+      );
+    },
+  );
+
+  it("人格原位插入，空正文与替换语法字符按原文处理", () => {
+    const template = "Before\n{{agent_personality}}\nAfter";
+    expect(insert_agent_personality(template, "Role $& $$ {{agent_personality}}")).toBe(
+      "Before\nRole $& $$ {{agent_personality}}\nAfter",
+    );
+    expect(insert_agent_personality(template, "")).toBe("Before\n\nAfter");
   });
 
   it("资源缺失时保留原始读取异常", () => {

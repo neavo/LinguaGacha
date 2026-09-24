@@ -20,6 +20,8 @@ export function format_agent_workspace_typescript_api(): string {
     "",
     "declare const ws: Readonly<{",
     "  contract: WorkspaceContract;",
+    "  /** 用户技能根目录的绝对路径。 */",
+    "  userSkillDirectory: string;",
     "  /** 输出工作区图片，按调用顺序返回。await 完成后内容已固定，模型在程序成功返回后看到图片。 */",
     `  emitImage(path: string, options?: ${render_schema(WORKSPACE_IMAGE_OPTIONS_SCHEMA)}): Promise<void>;`,
     `  host(request: ${render_schema(WORKSPACE_HOST_REQUEST_SCHEMA)}, signal?: AbortSignal): Promise<{ path: string }>;`,
