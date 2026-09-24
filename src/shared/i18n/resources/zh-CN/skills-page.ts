@@ -2,7 +2,7 @@ export const zh_cn_skills_page = {
   title: "技能",
   builtin: "内置技能",
   user: "用户技能",
-  empty: "暂无技能",
+  empty: "暂无用户技能",
   readonly: "只读",
   personality_description: "智能助手的自定义角色设定",
   editor: {

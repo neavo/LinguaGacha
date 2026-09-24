@@ -2,7 +2,7 @@ export const ja_jp_skills_page = {
   title: "スキル",
   builtin: "内蔵スキル",
   user: "ユーザースキル",
-  empty: "スキルはありません",
+  empty: "ユーザースキルはありません",
   readonly: "読み取り専用",
   personality_description: "アシスタントのカスタムキャラクター設定",
   editor: {

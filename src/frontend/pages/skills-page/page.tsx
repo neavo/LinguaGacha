@@ -130,7 +130,11 @@ function SkillsList({
             />
           ))}
         </DragDropProvider>
-        {user.length === 0 && <p className="skills-page__empty">{t("skills_page.empty")}</p>}
+        {user.length === 0 && (
+          <Card render={<p />} className="skills-page__empty">
+            {t("skills_page.empty")}
+          </Card>
+        )}
       </section>
     </div>
   );

@@ -120,10 +120,13 @@
 }
 
 .skills-page__empty {
-  margin: 0;
+  align-items: center;
+  justify-content: center;
+  min-height: 60px;
   padding: 16px;
   font-size: 13px;
   color: var(--muted-foreground);
+  text-align: center;
 }
 
 .skills-page__list {
