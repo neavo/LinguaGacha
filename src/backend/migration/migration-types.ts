@@ -10,7 +10,7 @@ import type { AppSettingService } from "../app/app-setting-service";
  */
 export interface StartupMigrationContext {
   paths: AppPathService; // appRoot/builtinRoot/dataRoot/userdata 的唯一权威，不允许迁移点自行猜根目录
-  log_manager: LogManager; // 启动期迁移失败的唯一诊断出口，失败不阻断 Backend 启动
+  log_manager: LogManager; // 记录可继续启动的迁移诊断，组合根负责处理抛出的异常
 }
 
 /**
@@ -35,7 +35,7 @@ export interface ProjectOpenMigrationContext {
 export interface MigrationDescriptor {
   readonly id: string; // 写回迁移持久标记，改名等同新增迁移，必须谨慎
   readonly order: number; // 只表达同一 hook 内的依赖顺序，不承载业务优先级
-  run_startup?(context: StartupMigrationContext): void | Promise<void>; // startup hook 迁移应用级文件，失败诊断由迁移点记录
+  run_startup?(context: StartupMigrationContext): void | Promise<void>; // 迁移应用级文件，抛出异常会中止启动
   run_project_database_schema?(context: ProjectDatabaseMigrationContext): void; // schema hook 只补物理结构，必须幂等
   run_project_database_writeback?(context: ProjectDatabaseMigrationContext): void; // writeback hook 写回业务事实，并由编排器按 id 标记
   /** open hook 只返回类型化写入，不自行开启或提交事务。 */

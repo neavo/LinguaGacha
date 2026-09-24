@@ -99,6 +99,16 @@ export class NativeFs {
     return fs.statSync(this.to_native_path(target_path));
   }
 
+  /** 读取入口本身，保留目录链接与失效链接的身份。 */
+  public lstat(target_path: string): fs.Stats {
+    return fs.lstatSync(this.to_native_path(target_path));
+  }
+
+  /** 读取链接保存的目标文本，调用方按原入口位置解释相对目标。 */
+  public read_link(link_path: string): string {
+    return fs.readlinkSync(this.to_native_path(link_path));
+  }
+
   /**
    * 解析现存路径的真实位置，供受控根目录检查阻断符号链接越界。
    */
@@ -277,7 +287,7 @@ export class NativeFs {
     }
   }
 
-  /** 依赖目录由应用部署，工作区仅持有绝对目标链接；Windows 使用无需提权的目录联接。 */
+  /** 创建绝对目标的目录链接，Windows 使用无需提权的目录联接。 */
   public create_directory_link(target_path: string, link_path: string): void {
     fs.symlinkSync(
       this.to_native_path(path.resolve(target_path)),

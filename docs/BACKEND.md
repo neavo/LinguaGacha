@@ -159,5 +159,6 @@ project, files, items, pdf, quality, prompts, proofreading
 - `pdf_documents` 保存来源摘要，`pdf_pages` 以 `(file_path, page)` 保存页面 JSON，原始字节归 assets。读取按原页序组合，写入仅更新目标页。导入事务核对资产 SHA-256，拒绝解析后变化的来源。文字、字体与坐标提取作为可再生工作材料，不进入存储。
 - asset 存在 `assets` 表，以 Zstd blob 落库；压缩格式集中在 `src/shared/utils/zstd-tool.ts`，数据库读取向上返回解压后的 bytes。
 - 新建与既有工程共用打开迁移入口：按实际表和列补齐结构，再执行业务写回迁移。执行成功后在同一事务内记录 `applied_writeback_migrations`，完成记录由迁移执行器唯一写入。迁移清单归 registry。
-- 启动期迁移按顺序等待每个同步或异步钩子完成，处理 userdata 与历史安装布局后再读取设置。版本内置资产始终只读。project-open 文件迁移在事务执行时按目标文件合并当前可见 Item，使多个格式迁移可以串行组合。历史 `file_type: MD` 在缓存热机和 session loaded 前一次性转为 `MD_V2`。
+- 启动期迁移按顺序完成用户数据与历史布局迁移，再读取设置。迁移自行记录可继续初始化的错误，组合根记录抛出的异常并释放资源、中止启动。用户技能迁移失败会阻止新目录初始化，避免产生两份用户技能。版本内置资产始终只读。
+- 工程打开时，文件迁移在事务内按目标文件合并当前可见 Item，使多个格式迁移可以串行组合。历史 `file_type: MD` 在缓存热机和 session loaded 前一次性转为 `MD_V2`。
 - 历史工程中已停用能力的表、规则与 meta 保留物理原值，当前 manifest、section、提示词与运行快照只投影现行事实。翻译提示词的路径和存储键由 `TRANSLATION_PROMPT` 固定描述对象拥有。

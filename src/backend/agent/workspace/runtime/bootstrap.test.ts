@@ -263,7 +263,7 @@ it("用户技能目录链接可创建、替换和删除包，失败前的写入�
 it("发布态 ASAR 技能在原目录授权下导入脚本、资源和预装依赖", async () => {
   const directory = await mkdtemp(path.join(root, "asar-"));
   const source = path.join(directory, "source");
-  const skill = path.join(source, "builtin/agent/skill/fixture");
+  const skill = path.join(source, "builtin/skills/fixture");
   await mkdir(skill, { recursive: true });
   await writeFile(path.join(skill, "asset.txt"), "原包资源");
   await writeFile(path.join(skill, "helper.mjs"), "export const heading = '# fixture';");
@@ -287,7 +287,7 @@ it("发布态 ASAR 技能在原目录授权下导入脚本、资源和预装依�
   );
   const archive = path.join(directory, "app.asar");
   await createPackage(source, archive);
-  const skill_root = path.join(archive, "builtin/agent/skill");
+  const skill_root = path.join(archive, "builtin/skills");
   const start: AgentWorkspaceRuntimeParentMessage = {
     type: "start",
     userSkillDirectory: skill_paths.get_agent_user_skill_dir(),
@@ -583,8 +583,8 @@ it.each([false, true])(
     const data = path.join(directory, "data");
     const data_link = path.join(directory, "data-link");
     const runtime_link = path.join(directory, "runtime-link");
-    const actual_workspace = path.join(data, "agent", "workspace");
-    const logical_workspace = path.join(data_link, "agent", "workspace");
+    const actual_workspace = path.join(data, "workspace");
+    const logical_workspace = path.join(data_link, "workspace");
     const external = path.join(directory, "external");
     const link_type = process.platform === "win32" ? "junction" : "dir";
     await mkdir(actual_workspace, { recursive: true });

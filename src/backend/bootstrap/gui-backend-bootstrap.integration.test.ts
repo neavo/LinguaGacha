@@ -24,7 +24,7 @@ describe("GuiBackendBootstrap 集成", () => {
     fs.writeFileSync(path.join(app_root, "version.txt"), "1.2.3");
     const builtin_root = path.join(app_root, "builtin");
     const paths = new AppPathService({ appRoot: app_root, builtinRoot: builtin_root });
-    fs.mkdirSync(path.join(builtin_root, "agent"), { recursive: true });
+    fs.mkdirSync(builtin_root, { recursive: true });
     fs.writeFileSync(
       paths.get_agent_system_prompt_path(),
       "Test system prompt.\n{{agent_personality}}\nFixed instructions.",

@@ -3583,10 +3583,9 @@ describe("AgentService", () => {
         get_app_root: () => skill_test_fixture.app_root,
         get_agent_builtin_skill_dir: () => skill_test_fixture.skill_root,
         get_agent_user_skill_dir: () => `${skill_test_fixture.app_root}/user-skills`,
-        get_agent_system_prompt_path: () =>
-          `${skill_test_fixture.app_root}/builtin/agent/system_prompt.md`,
+        get_agent_system_prompt_path: () => `${skill_test_fixture.app_root}/builtin/system.md`,
         get_agent_session_seed_path: () =>
-          `${skill_test_fixture.app_root}/builtin/agent/session_seed.json`,
+          `${skill_test_fixture.app_root}/builtin/session_seed.json`,
       },
       settings,
       userAgent: "LinguaGacha/Test",
