@@ -52,13 +52,37 @@ describe("ModelSelectionMenu", () => {
   afterEach(async () => {
     await act(async () => root.unmount());
     host.remove();
+    vi.useRealTimers();
+  });
+
+  it("失效选择下可悬停查看模型名称并点击恢复选择", async () => {
+    controller.snapshot.model_selection.translation = "missing";
+    await open_models();
+    vi.useFakeTimers();
+    const model = [
+      ...document.querySelectorAll<HTMLElement>('[data-slot="dropdown-menu-item"]'),
+    ].find((item) => item.textContent === "模型 B")!;
+    const name = model.querySelector<HTMLElement>("span")!;
+    expect(model.hasAttribute("title")).toBe(false);
+    await act(async () => {
+      name.dispatchEvent(new MouseEvent("mouseenter", { bubbles: true }));
+      name.dispatchEvent(new MouseEvent("mousemove", { bubbles: true }));
+      vi.runAllTimers();
+    });
+    expect(document.querySelector('[role="tooltip"][data-open]')?.textContent).toBe("模型 B");
+    await act(async () => name.click());
+    expect(controller.select_model).toHaveBeenCalledExactlyOnceWith({
+      target: "translation",
+      model_id: "b",
+    });
+    expect(host.querySelector("button")?.getAttribute("aria-expanded")).toBe("false");
   });
 
   it.each(["click", "Enter", " "])("等级菜单展开后仍可直接选模并关闭根菜单：%s", async (action) => {
     await open_models();
-    const model = document.querySelector<HTMLElement>(
-      '[data-slot="dropdown-menu-sub-trigger"][title="模型 A"]',
-    )!;
+    const model = [
+      ...document.querySelectorAll<HTMLElement>('[data-slot="dropdown-menu-sub-trigger"]'),
+    ].find((item) => item.textContent === "模型 A")!;
     await act(async () =>
       model.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, key: "ArrowRight" })),
     );
@@ -81,9 +105,9 @@ describe("ModelSelectionMenu", () => {
 
   it("等级叶子一次提交模型与等级并关闭根菜单", async () => {
     await open_models();
-    const model = document.querySelector<HTMLElement>(
-      '[data-slot="dropdown-menu-sub-trigger"][title="模型 A"]',
-    )!;
+    const model = [
+      ...document.querySelectorAll<HTMLElement>('[data-slot="dropdown-menu-sub-trigger"]'),
+    ].find((item) => item.textContent === "模型 A")!;
     await act(async () =>
       model.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, key: "ArrowRight" })),
     );
@@ -95,21 +119,6 @@ describe("ModelSelectionMenu", () => {
       target: "translation",
       model_id: "a",
       thinking_level: "HIGH",
-    });
-    expect(host.querySelector("button")?.getAttribute("aria-expanded")).toBe("false");
-  });
-
-  it("失效选择仍能通过无等级模型恢复", async () => {
-    controller.snapshot.model_selection.translation = "missing";
-    await open_models();
-    const model = document.querySelector<HTMLElement>(
-      '[data-slot="dropdown-menu-item"][title="模型 B"]',
-    )!;
-    expect(model.getAttribute("aria-haspopup")).toBeNull();
-    await act(async () => model.click());
-    expect(controller.select_model).toHaveBeenCalledExactlyOnceWith({
-      target: "translation",
-      model_id: "b",
     });
     expect(host.querySelector("button")?.getAttribute("aria-expanded")).toBe("false");
   });
@@ -132,7 +141,7 @@ describe("ModelSelectionMenu", () => {
     );
     const category = [
       ...document.querySelectorAll<HTMLElement>('[data-slot="dropdown-menu-sub-trigger"]'),
-    ].find((item) => !item.hasAttribute("title") && !item.hasAttribute("data-disabled"))!;
+    ].find((item) => item.textContent === "app.model.type.preset")!;
     await act(async () => category.click());
   }
 });

@@ -2,6 +2,7 @@ import { Boxes, Circle, CircleCheck } from "lucide-react";
 
 import { MODEL_TYPES, type ModelThinkingLevel, type ModelUsage } from "@domain/model";
 import { useI18n } from "@frontend/app/locale/locale-context";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@frontend/shadcn/tooltip";
 import {
   AppDropdownMenuRadioGroup,
   AppDropdownMenuRadioItem,
@@ -38,13 +39,16 @@ export function ModelSelectionMenu(
 
   return (
     <AppDropdownMenuSub>
-      <AppDropdownMenuSubTrigger
-        className="max-w-80"
-        disabled={disabled}
-        title={thinking_label === null ? selected_name : `${selected_name} · ${thinking_label}`}
-      >
+      <AppDropdownMenuSubTrigger className="max-w-80" disabled={disabled}>
         <Boxes aria-hidden="true" />
-        <span className="min-w-0 max-w-72 truncate">{selected_name}</span>
+        <Tooltip>
+          <TooltipTrigger
+            render={<span className="min-w-0 max-w-72 truncate">{selected_name}</span>}
+          />
+          <TooltipContent>
+            {thinking_label === null ? selected_name : `${selected_name} · ${thinking_label}`}
+          </TooltipContent>
+        </Tooltip>
         {thinking_label === null ? null : <span className="shrink-0">· {thinking_label}</span>}
       </AppDropdownMenuSubTrigger>
       <AppDropdownMenuSubContent>
@@ -90,25 +94,32 @@ export function ModelSelectionOptions(props: {
               <span>{t(MODEL_TYPE_TITLE_KEY[model_type])}</span>
             </AppDropdownMenuSubTrigger>
             <AppDropdownMenuSubContent>
-              {models.map((model) =>
-                model.available_thinking_levels.length > 0 ? (
+              {models.map((model) => {
+                const ModelIcon = model.id === selected_id ? CircleCheck : Circle;
+                // 两类菜单项共用名称内容。提示挂在文本上，选择与展开由菜单项负责。
+                const content = (
+                  <>
+                    <ModelIcon aria-hidden="true" />
+                    <Tooltip>
+                      <TooltipTrigger
+                        render={<span className="max-w-72 truncate">{model.name || model.id}</span>}
+                      />
+                      <TooltipContent>{model.name || model.id}</TooltipContent>
+                    </Tooltip>
+                  </>
+                );
+                return model.available_thinking_levels.length > 0 ? (
                   <AppDropdownMenuSub key={model.id}>
                     <AppDropdownMenuSubTrigger
                       disabled={disabled}
-                      title={model.name || model.id}
                       aria-current={model.id === selected_id ? "true" : undefined}
                       onClick={() => {
                         props.on_select({ model_id: model.id });
-                        // 子菜单触发项只负责展开，直接选模后需要关闭根菜单。
+                        // 直接选模后通过根菜单的公开入口关闭所有子菜单。
                         close();
                       }}
                     >
-                      {model.id === selected_id ? (
-                        <CircleCheck aria-hidden="true" />
-                      ) : (
-                        <Circle aria-hidden="true" />
-                      )}
-                      <span className="max-w-72 truncate">{model.name || model.id}</span>
+                      {content}
                     </AppDropdownMenuSubTrigger>
                     <AppDropdownMenuSubContent>
                       <ThinkingLevelOptions
@@ -124,19 +135,13 @@ export function ModelSelectionOptions(props: {
                   <AppDropdownMenuItem
                     key={model.id}
                     disabled={disabled}
-                    title={model.name || model.id}
                     aria-current={model.id === selected_id ? "true" : undefined}
                     onClick={() => props.on_select({ model_id: model.id })}
                   >
-                    {model.id === selected_id ? (
-                      <CircleCheck aria-hidden="true" />
-                    ) : (
-                      <Circle aria-hidden="true" />
-                    )}
-                    <span className="max-w-72 truncate">{model.name || model.id}</span>
+                    {content}
                   </AppDropdownMenuItem>
-                ),
-              )}
+                );
+              })}
             </AppDropdownMenuSubContent>
           </AppDropdownMenuSub>
         );

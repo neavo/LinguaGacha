@@ -124,6 +124,19 @@ describe("ProofreadingTable", () => {
     });
   }
 
+  it("姓名悬停通过统一提示展示全文", async () => {
+    vi.useFakeTimers();
+    await render_table(create_visible_item({ name_src: "完整角色姓名" }));
+    const name = container!.querySelector<HTMLElement>(".proofreading-page__table-name-badge")!;
+    expect(name.hasAttribute("title")).toBe(false);
+    await act(async () => {
+      name.dispatchEvent(new MouseEvent("mouseenter", { bubbles: true }));
+      name.dispatchEvent(new MouseEvent("mousemove", { bubbles: true }));
+      vi.runAllTimers();
+    });
+    expect(document.querySelector('[role="tooltip"][data-open]')?.textContent).toBe("完整角色姓名");
+  });
+
   it.each([
     ["src", "原文第一行\n  原文第二行"],
     ["dst", "译文第一行\n  译文第二行"],

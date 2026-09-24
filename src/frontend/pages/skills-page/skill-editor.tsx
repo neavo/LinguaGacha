@@ -221,19 +221,28 @@ export function SkillEditorToolbar(props: {
               <TooltipContent>{t("skills_page.editor.back")}</TooltipContent>
             </Tooltip>
             <div className="skill-editor__file-info">
-              <span className="skill-editor__path" title={props.path.join(" / ")}>
-                {props.path.map((part, index) => (
-                  <Fragment key={index}>
-                    {index > 0 && <span className="skill-editor__path-separator">/</span>}
-                    <span
-                      className="skill-editor__path-segment"
-                      data-directory={(index > 0 && index < props.path.length - 1) || undefined}
-                    >
-                      {part}
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <span className="skill-editor__path">
+                      {props.path.map((part, index) => (
+                        <Fragment key={index}>
+                          {index > 0 && <span className="skill-editor__path-separator">/</span>}
+                          <span
+                            className="skill-editor__path-segment"
+                            data-directory={
+                              (index > 0 && index < props.path.length - 1) || undefined
+                            }
+                          >
+                            {part}
+                          </span>
+                        </Fragment>
+                      ))}
                     </span>
-                  </Fragment>
-                ))}
-              </span>
+                  }
+                />
+                <TooltipContent>{props.path.join(" / ")}</TooltipContent>
+              </Tooltip>
               {props.status && (
                 <span className="skill-editor__status" data-status={props.status}>
                   <span aria-hidden="true">·</span>

@@ -170,6 +170,7 @@ function create_dialog_state(
   };
 }
 
+/** 按原文、译文顺序读取姓名编辑器，供草稿提交场景使用。 */
 function get_name_textboxes(
   container: HTMLElement,
 ): readonly [HTMLTextAreaElement, HTMLTextAreaElement] {
@@ -196,6 +197,7 @@ describe("ProofreadingEditDialog", () => {
     root = null;
   });
 
+  /** 复用挂载实例，观察条目与保存状态变化后的交互。 */
   async function render_dialog(
     props: Partial<ComponentProps<typeof ProofreadingEditDialog>> = {},
   ): Promise<HTMLDivElement> {
@@ -268,7 +270,6 @@ describe("ProofreadingEditDialog", () => {
     const file_path = rendered.querySelector(".proofreading-page__dialog-file-path");
 
     expect(file_path?.textContent).toBe("game.trans | data/Actors.json");
-    expect(file_path?.getAttribute("title")).toBe("game.trans | data/Actors.json");
   });
 
   it("有姓名字段时显示原文姓名并提交译文姓名草稿", async () => {
