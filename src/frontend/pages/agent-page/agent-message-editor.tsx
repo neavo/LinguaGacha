@@ -1,4 +1,3 @@
-import { find_agent_reference_ranges } from "@shared/agent-reference";
 import { useAgentMentionFiles } from "./use-agent-mention-files";
 import {
   useCallback,
@@ -17,6 +16,7 @@ import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
 import {
   Annotation,
   Compartment,
+  Facet,
   EditorSelection,
   EditorState,
   StateField,
@@ -50,6 +50,7 @@ import {
 import type { AgentInputSession } from "@frontend/app/session/agent/agent-session-context";
 import {
   create_agent_mention_candidates,
+  find_agent_mention_ranges,
   type AgentMentionCandidate,
   type AgentMentionInstruction,
 } from "./agent-mention";
@@ -72,7 +73,7 @@ type EditorSnapshot = {
 
 /** 页面只能写入草稿并请求聚焦，正文与光标所有权仍留在 CodeMirror。 */
 export type AgentMessageEditorHandle = {
-  write_draft: (text: string) => void;
+  write_draft: (text: string, selection?: Readonly<{ from: number; to: number }>) => boolean;
   add_response_annotation: (annotation: AgentResponseAnnotationAttachment) => void;
   focus: () => void;
 };
@@ -116,12 +117,25 @@ const theme_compartment = new Compartment();
 const read_only_compartment = new Compartment();
 const placeholder_compartment = new Compartment();
 
+const skills_compartment = new Compartment(); // 技能变化只更新装饰依赖，保留文档和撤销历史。
+const mention_skills = Facet.define<readonly AgentSkillSnapshot[], readonly AgentSkillSnapshot[]>({
+  combine: (values) => values.at(-1) ?? [],
+});
+
 const mention_tokens_field = StateField.define<DecorationSet>({
-  create: (state) => create_mention_token_decorations(state.doc.toString()),
-  /** 正文改变时重建引用装饰，其余事务复用结果。 */
+  create: (state) =>
+    create_mention_token_decorations(state.doc.toString(), state.facet(mention_skills)),
+  /** 正文或当前技能改变时重建装饰，失效引用同时解除整块光标导航。 */
   update(tokens, transaction) {
-    if (!transaction.docChanged) return tokens;
-    return create_mention_token_decorations(transaction.newDoc.toString());
+    if (
+      !transaction.docChanged &&
+      transaction.startState.facet(mention_skills) === transaction.state.facet(mention_skills)
+    )
+      return tokens;
+    return create_mention_token_decorations(
+      transaction.newDoc.toString(),
+      transaction.state.facet(mention_skills),
+    );
   },
   /** 同一装饰范围同时拥有绘制与整块光标导航语义。 */
   provide(field) {
@@ -149,6 +163,7 @@ export function AgentMessageEditor(props: AgentMessageEditorProps): JSX.Element 
   const file_input_ref = useRef<HTMLInputElement | null>(null);
   const menu_ref = useRef<HTMLDivElement | null>(null);
   const view_ref = useRef<EditorView | null>(null);
+  const retained_editor = useRef<{ state: EditorState; focused: boolean } | null>(null); // React 重连编辑器时恢复选区、撤销历史与焦点。
   const submit_ref = useRef<() => void>(() => undefined);
   // CodeMirror 扩展只创建一次，ref 保证 Escape 调用最新的页面取消入口。
   const cancel_edit_ref = useRef(props.on_cancel);
@@ -232,109 +247,121 @@ export function AgentMessageEditor(props: AgentMessageEditorProps): JSX.Element 
     };
     const editor = new EditorView({
       parent: host,
-      state: EditorState.create({
-        extensions: [
-          theme_compartment.of(resolve_app_editor_theme_extensions(resolved_theme, "plain")),
-          read_only_compartment.of(
-            resolve_app_editor_readonly_extensions(initial_editor_read_only_ref.current),
-          ),
-          placeholder_compartment.of(placeholder(placeholder_text)),
-          mention_token_extension,
-          drawSelection(),
-          history(),
-          EditorView.lineWrapping,
-          EditorView.domEventHandlers({
-            blur: () => set_menu_suppressed(true),
-            keydown: (event) => event.key === "Enter" && event.isComposing,
-            drop: (event) => {
-              const transfer = event.dataTransfer;
-              if (transfer === null || !Array.from(transfer.types).includes("Files")) return false;
-              // 在 CodeMirror 读取文本文件前消费事件，上传只进入当前编辑器的草稿。
-              event.preventDefault();
-              event.stopPropagation();
-              if (can_append_files_ref.current)
-                input_session_ref.current.draft.append(transfer.files);
-              return true;
-            },
-          }),
-          keymap.of([
-            {
-              key: "ArrowDown",
-              run: (view) =>
-                inline
-                  ? false
-                  : menu_open_ref.current
-                    ? navigate_mention_menu(1)
-                    : navigate_input_history(view, "newer"),
-            },
-            {
-              key: "ArrowUp",
-              run: (view) =>
-                inline
-                  ? false
-                  : menu_open_ref.current
-                    ? navigate_mention_menu(-1)
-                    : navigate_input_history(view, "older"),
-            },
-            {
-              key: "Escape",
-              run: () => {
-                if (menu_open_ref.current) {
-                  set_menu_suppressed(true);
+      state:
+        retained_editor.current?.state ??
+        EditorState.create({
+          extensions: [
+            theme_compartment.of(resolve_app_editor_theme_extensions(resolved_theme, "plain")),
+            read_only_compartment.of(
+              resolve_app_editor_readonly_extensions(initial_editor_read_only_ref.current),
+            ),
+            placeholder_compartment.of(placeholder(placeholder_text)),
+            skills_compartment.of(mention_skills.of([])),
+            mention_token_extension,
+            drawSelection(),
+            history(),
+            EditorView.lineWrapping,
+            EditorView.domEventHandlers({
+              blur: () => set_menu_suppressed(true),
+              keydown: (event) => event.key === "Enter" && event.isComposing,
+              drop: (event) => {
+                const transfer = event.dataTransfer;
+                if (transfer === null || !Array.from(transfer.types).includes("Files"))
+                  return false;
+                // 在 CodeMirror 读取文本文件前消费事件，上传只进入当前编辑器的草稿。
+                event.preventDefault();
+                event.stopPropagation();
+                if (can_append_files_ref.current)
+                  input_session_ref.current.draft.append(transfer.files);
+                return true;
+              },
+            }),
+            keymap.of([
+              {
+                key: "ArrowDown",
+                run: (view) =>
+                  inline
+                    ? false
+                    : menu_open_ref.current
+                      ? navigate_mention_menu(1)
+                      : navigate_input_history(view, "newer"),
+              },
+              {
+                key: "ArrowUp",
+                run: (view) =>
+                  inline
+                    ? false
+                    : menu_open_ref.current
+                      ? navigate_mention_menu(-1)
+                      : navigate_input_history(view, "older"),
+              },
+              {
+                key: "Escape",
+                run: () => {
+                  if (menu_open_ref.current) {
+                    set_menu_suppressed(true);
+                    return true;
+                  }
+                  const cancel_edit = cancel_edit_ref.current;
+                  if (!inline || cancel_edit === undefined) return false;
+                  cancel_edit();
                   return true;
+                },
+              },
+              {
+                key: "Enter",
+                run: (view) => {
+                  if (view.composing) return true;
+                  const candidate = matching_candidates_ref.current[menu_index_ref.current];
+                  if (menu_open_ref.current && candidate !== undefined) {
+                    select_candidate_ref.current(candidate);
+                  } else submit_ref.current();
+                  return true;
+                },
+              },
+              ...defaultKeymap,
+              ...historyKeymap,
+            ]),
+            EditorView.updateListener.of((update) => {
+              const { docChanged, selectionSet, state, transactions } = update;
+              if (docChanged || selectionSet) {
+                if (
+                  docChanged &&
+                  !transactions.every(
+                    (transaction) =>
+                      transaction.annotation(input_history_navigation_annotation) === true,
+                  )
+                ) {
+                  input_history_index_ref.current = null;
+                  input_session_ref.current.draft.write({
+                    text: state.doc.toString(),
+                    attachments: input_session_ref.current.draft.read().attachments,
+                  });
                 }
-                const cancel_edit = cancel_edit_ref.current;
-                if (!inline || cancel_edit === undefined) return false;
-                cancel_edit();
-                return true;
-              },
-            },
-            {
-              key: "Enter",
-              run: (view) => {
-                if (view.composing) return true;
-                const candidate = matching_candidates_ref.current[menu_index_ref.current];
-                if (menu_open_ref.current && candidate !== undefined) {
-                  select_candidate_ref.current(candidate);
-                } else submit_ref.current();
-                return true;
-              },
-            },
-            ...defaultKeymap,
-            ...historyKeymap,
-          ]),
-          EditorView.updateListener.of((update) => {
-            const { docChanged, selectionSet, state, transactions } = update;
-            if (docChanged || selectionSet) {
-              if (
-                docChanged &&
-                !transactions.every(
-                  (transaction) =>
-                    transaction.annotation(input_history_navigation_annotation) === true,
-                )
-              ) {
-                input_history_index_ref.current = null;
-                input_session_ref.current.draft.write({
-                  text: state.doc.toString(),
-                  attachments: input_session_ref.current.draft.read().attachments,
-                });
+                emit_snapshot(state);
               }
-              emit_snapshot(state);
-            }
-          }),
-        ],
-      }),
+            }),
+          ],
+        }),
     });
     editor.contentDOM.setAttribute("aria-label", placeholder_text);
     editor.contentDOM.setAttribute("aria-multiline", "true");
     editor.contentDOM.setAttribute("spellcheck", "false");
     view_ref.current = editor;
+    if (retained_editor.current?.focused) editor.focus();
     emit_snapshot(editor.state);
     return () => {
+      retained_editor.current = { state: editor.state, focused: editor.hasFocus };
       editor.destroy();
       view_ref.current = null;
     };
   }, []);
+
+  useEffect(() => {
+    view_ref.current?.dispatch({
+      effects: skills_compartment.reconfigure(mention_skills.of(props.skills)),
+    });
+  }, [props.skills]);
 
   useEffect(() => {
     const view = view_ref.current;
@@ -465,13 +492,14 @@ export function AgentMessageEditor(props: AgentMessageEditorProps): JSX.Element 
   useImperativeHandle(
     props.ref,
     () => ({
-      /** 外部草稿替换退出历史导航，并遵循当前编辑锁。 */
-      write_draft(text) {
+      /** 外部草稿替换退出历史导航。编辑锁阻止写入时返回 `false`，调用方可在解锁后重试。 */
+      write_draft(text, selection) {
         const view = view_ref.current;
-        if (view === null || editor_read_only) return;
+        if (view === null || editor_read_only) return false;
         input_history_index_ref.current = null;
-        write_agent_message_text(view, text);
+        write_agent_message_text(view, text, undefined, selection);
         view.focus();
+        return true;
       },
       /** 复制批注后加入当前草稿，助手历史编辑遵循纯正文边界。 */
       add_response_annotation(annotation) {
@@ -734,15 +762,18 @@ function can_start_input_history(view: EditorView): boolean {
   return view.moveToLineBoundary(selection.main, false, true).head === 0;
 }
 
-/** 用单次事务同步纯文本正文与末尾光标。 */
+/** 用单次事务同步正文和选区，默认将光标放在末尾。 */
 function write_agent_message_text(
   view: EditorView,
   text: string,
   annotations?: TransactionSpec["annotations"],
+  selection?: Readonly<{ from: number; to: number }>,
 ): void {
   view.dispatch({
     changes: { from: 0, to: view.state.doc.length, insert: text },
-    selection: EditorSelection.cursor(text.length),
+    selection: selection
+      ? EditorSelection.range(selection.from, selection.to)
+      : EditorSelection.cursor(text.length),
     annotations,
   });
 }
@@ -770,9 +801,12 @@ function find_mention_query(state: EditorState): MentionQuery | null {
 }
 
 /** 把完整引用投影成原子视觉块，底层文档仍保留完整稳定协议。 */
-function create_mention_token_decorations(text: string): DecorationSet {
+function create_mention_token_decorations(
+  text: string,
+  skills: readonly AgentSkillSnapshot[],
+): DecorationSet {
   return Decoration.set(
-    find_agent_reference_ranges(text).map((range) =>
+    find_agent_mention_ranges(text, skills).map((range) =>
       Decoration.replace({
         widget: new MentionTokenWidget(range.marker),
         inclusive: false,

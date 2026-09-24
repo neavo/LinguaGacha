@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import { type AgentSkillDefinition } from "../agent-skills";
 import { create_agent_skill_tools } from "./skill";
@@ -29,7 +29,7 @@ describe("Agent 技能读取工具", () => {
     });
   });
 
-  it("当前会话名称始终绑定已冻结的获胜 skill 包", async () => {
+  it("每次读取当前集合指定的包及磁盘正文", async () => {
     using fixture = create_fixture("builtin", "shared", "会话内置正文");
     write_skill(fixture.user_root, "shared", "后来新增的用户正文");
 
@@ -49,17 +49,21 @@ describe("Agent 技能读取工具", () => {
     });
   });
 
-  it("实时发现 catalog 外的新名称，并沿用用户有效定义优先级", async () => {
-    using fixture = create_fixture();
-    write_skill(fixture.builtin_root, "new-skill", "内置新正文");
-    write_skill(fixture.user_root, "new-skill", "用户新正文");
-
+  it("集合替换后按新名称和来源读取技能", async () => {
+    using fixture = create_fixture("builtin", "shared", "旧正文");
+    const filePath = write_skill(fixture.user_root, "new-skill", "用户新正文");
+    await expect(execute(fixture.tool, { name: "new-skill" })).rejects.toMatchObject({
+      details: { code: "skill.resource_not_found" },
+    });
+    fixture.catalog.skills = [{ ...fixture.catalog.skills[0]!, name: "new-skill", filePath }];
     await expect(execute(fixture.tool, { name: "new-skill" })).resolves.toMatchObject({
       details: {
-        name: "new-skill",
-        path: "SKILL.md",
         content: expect.stringContaining("用户新正文"),
+        base_url: pathToFileURL(path.join(fixture.user_root, "new-skill") + path.sep).href,
       },
+    });
+    await expect(execute(fixture.tool, { name: "shared" })).rejects.toMatchObject({
+      details: { code: "skill.resource_not_found" },
     });
   });
 
@@ -131,44 +135,36 @@ describe("Agent 技能读取工具", () => {
 });
 
 /** 构建可回收的用户／内置资源根及工具快照，验证真实文件边界。 */
-function create_fixture(source?: "user" | "builtin", name = "shared", body = "正文") {
+function create_fixture(source: "user" | "builtin", name: string, body: string) {
   const disposable = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "linguagacha-skill-read-"));
   const user_root = path.join(disposable.path, "user");
   const builtin_root = path.join(disposable.path, "builtin");
   fs.mkdirSync(user_root, { recursive: true });
   fs.mkdirSync(builtin_root, { recursive: true });
-  const skill_path =
-    source === undefined
-      ? null
-      : write_skill(source === "user" ? user_root : builtin_root, name, body);
-  const skills =
-    skill_path === null
-      ? []
-      : [
-          {
-            name,
-            description: `${name} 描述`,
-            filePath: skill_path.replaceAll("\\", "/"),
-            visible: true,
-            displayDescriptions: {
-              "zh-CN": `${name} 描述`,
-              "en-US": `${name} 描述`,
-              "de-DE": `${name} 描述`,
-              "ja-JP": `${name} 描述`,
-              "ko-KR": `${name} 描述`,
-            },
-            disableModelInvocation: false,
-          } satisfies AgentSkillDefinition,
-        ];
-  const [tool] = create_agent_skill_tools(
-    skills,
-    {
-      get_app_root: () => disposable.path,
-      get_agent_user_skill_dir: () => user_root,
-      get_agent_builtin_skill_dir: () => builtin_root,
-    },
-    { warning: vi.fn(), error: vi.fn() },
-  );
+  const skill_path = write_skill(source === "user" ? user_root : builtin_root, name, body);
+  const catalog: { skills: readonly AgentSkillDefinition[] } = {
+    // 模拟服务用新集合替换旧集合。
+    skills: [
+      {
+        name,
+        description: `${name} 描述`,
+        filePath: skill_path.replaceAll("\\", "/"),
+        visible: true,
+        displayDescriptions: {
+          "zh-CN": `${name} 描述`,
+          "en-US": `${name} 描述`,
+          "de-DE": `${name} 描述`,
+          "ja-JP": `${name} 描述`,
+          "ko-KR": `${name} 描述`,
+        },
+        disableModelInvocation: false,
+      },
+    ],
+  };
+  const [tool] = create_agent_skill_tools(() => catalog.skills, {
+    get_agent_user_skill_dir: () => user_root,
+    get_agent_builtin_skill_dir: () => builtin_root,
+  });
   if (tool === undefined) throw new Error("缺少 read_skill");
   return {
     [Symbol.dispose]: () => disposable[Symbol.dispose](),
@@ -176,7 +172,7 @@ function create_fixture(source?: "user" | "builtin", name = "shared", body = "�
     user_root,
     builtin_root,
     tool,
-    skills,
+    catalog,
   };
 }
 

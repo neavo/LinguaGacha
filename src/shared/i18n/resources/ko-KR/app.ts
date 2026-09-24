@@ -110,7 +110,7 @@ export const ko_kr_app = {
     enabled: "사용 중",
   },
   editor: {
-    line_wrap_target: "{TARGET} 자동 줄 바꿈",
+    line_wrap: "자동 줄 바꿈",
   },
   tooltip: {
     value: "{TITLE} · {VALUE}",
@@ -208,6 +208,9 @@ export const ko_kr_app = {
       export_failed: { message: "번역문 내보내기에 실패했습니다 …" },
     },
     file: {
+      already_exists: {
+        message: "같은 이름의 파일 또는 폴더가 있습니다. 다른 이름을 사용하세요 …",
+      },
       not_found: {
         message: "파일이 없습니다 …",
       },
@@ -314,7 +317,6 @@ export const ko_kr_app = {
       session_cleanup_failed: "Agent 세션 정리에 실패했습니다 …",
       tool_execution_failed: "Agent 도구 실행 중 오류가 발생했습니다 …",
       skill_load_failed: "Agent 스킬을 불러오지 못했습니다 …",
-      skill_resource_load_failed: "Agent 스킬 리소스를 불러오지 못했습니다 …",
     },
     api_gateway: {
       direct_route_failed: "API Gateway 직접 경로 처리에 실패했습니다 …",

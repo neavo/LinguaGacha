@@ -18,6 +18,128 @@ describe("GuiBackendBootstrap 集成", () => {
   });
   afterEach(() => vi.restoreAllMocks());
 
+  it("技能管理在无工程时可用，空白对话立即采用开关和排序", async () => {
+    using temporary = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-skills-gateway-"));
+    const app_root = temporary.path;
+    fs.writeFileSync(path.join(app_root, "version.txt"), "1.2.3");
+    const builtin_root = path.join(app_root, "builtin");
+    const paths = new AppPathService({ appRoot: app_root, builtinRoot: builtin_root });
+    fs.mkdirSync(builtin_root, { recursive: true });
+    fs.writeFileSync(
+      paths.get_agent_system_prompt_path(),
+      "Test system prompt.\n{{agent_personality}}\nFixed instructions.",
+    );
+    fs.writeFileSync(
+      path.join(path.dirname(paths.get_agent_system_prompt_path()), "personality.md"),
+      "Test personality.",
+    );
+    fs.writeFileSync(paths.get_agent_session_seed_path(), "[]");
+    for (const name of ["first", "second"]) {
+      const directory = path.join(paths.get_agent_user_skill_dir(), name);
+      fs.mkdirSync(directory, { recursive: true });
+      fs.writeFileSync(
+        path.join(directory, "SKILL.md"),
+        `---\nname: ${name}\ndescription: Fixture skill\n---\nBody`,
+      );
+    }
+    const bootstrap = new GuiBackendBootstrap({
+      appRoot: app_root,
+      builtinRoot: builtin_root,
+      logTargets: { console: false, window: false },
+      imageHost: async () => {
+        throw new Error("Unexpected image request");
+      },
+      systemProxyResolver: { resolveProxy: async () => "DIRECT" },
+      workspaceRuntimeDirectory: create_workspace_runtime_fixture(app_root),
+      openDirectory: async () => undefined,
+      pickSavePath: async () => null,
+      workerExecution: { kind: "in_process" },
+    });
+    try {
+      const { apiBaseUrl } = await bootstrap.start();
+      /** 通过真实 Gateway 写配置，确保路由绑定和持久化共同生效。 */
+      const post = async (route: string, body: Record<string, unknown> = {}) => {
+        const response = await fetch(`${apiBaseUrl}${route}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+        expect(response.ok).toBe(true);
+        return response.json();
+      };
+      /** 从会话公开快照观察生效时机。 */
+      const names = async (): Promise<string[]> => {
+        const response = await fetch(`${apiBaseUrl}/api/agent/snapshot`);
+        const payload = (await response.json()) as { data: { skills: { name: string }[] } };
+        return payload.data.skills.map((skill) => skill.name);
+      };
+      expect(await names()).toEqual(["first", "second"]);
+      await post("/api/skills/reorder", { names: ["second", "first"] });
+      expect(await names()).toEqual(["second", "first"]);
+      await post("/api/skills/enabled", { source: "user", name: "second", enabled: false });
+      expect(await names()).toEqual(["first"]);
+      await expect(post("/api/skills/snapshot")).resolves.toMatchObject({
+        data: {
+          skills: [
+            { name: "second", enabled: false },
+            { name: "first", enabled: true },
+          ],
+        },
+      });
+      await post("/api/agent/reset");
+      expect(await names()).toEqual(["first"]);
+      await post("/api/skills/enabled", { source: "user", name: "second", enabled: true });
+      expect(await names()).toEqual(["second", "first"]);
+      // 文件 API 与真实磁盘贯通，普通参考文件不改变技能候选。
+      const skill = { source: "user", name: "first" };
+      await expect(post("/api/skills/tree", skill)).resolves.toMatchObject({
+        data: { entries: [{ path: "SKILL.md", kind: "file" }] },
+      });
+      await post("/api/skills/file/change", {
+        ...skill,
+        operation: "create_file",
+        path: "reference.md",
+      });
+      const read = await post("/api/skills/file/read", { ...skill, path: "reference.md" });
+      await post("/api/skills/file/save", {
+        ...skill,
+        path: "reference.md",
+        revision: read.data.revision,
+        text: "Reference\n",
+      });
+      expect(
+        fs.readFileSync(
+          path.join(paths.get_agent_user_skill_dir(), "first", "reference.md"),
+          "utf8",
+        ),
+      ).toBe("Reference\n");
+      expect(await names()).toEqual(["second", "first"]);
+      const main = await post("/api/skills/file/read", { ...skill, path: "SKILL.md" });
+      await post("/api/skills/file/save", {
+        ...skill,
+        path: "SKILL.md",
+        revision: main.data.revision,
+        document: { ...main.data.document, name: "renamed", description: "Updated fixture" },
+      });
+      expect(await names()).toEqual(["second", "renamed"]);
+      const personality = await post("/api/agent/personality/read");
+      const customized = await post("/api/agent/personality/save", {
+        revision: personality.data.revision,
+        body: "Custom integration role",
+      });
+      expect(customized.data.body).toBe("Custom integration role");
+      const reset = await post("/api/agent/personality/save", {
+        revision: customized.data.revision,
+        body: null,
+      });
+      expect(reset.data.body).toBe("Test personality.");
+      await post("/api/skills/delete", { source: "user", name: "renamed" });
+      expect(await names()).toEqual(["second"]);
+    } finally {
+      await bootstrap.stop();
+    }
+  });
+
   it("关闭 Gateway 时取消流式上传并清理半成品", async ({ onTestFinished }) => {
     const app_root = fs.mkdtempSync(path.join(os.tmpdir(), "lg-file-upload-"));
     fs.writeFileSync(path.join(app_root, "version.txt"), "1.2.3", "utf8");

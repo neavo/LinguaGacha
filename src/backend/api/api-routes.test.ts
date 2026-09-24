@@ -20,6 +20,16 @@ const GET_PATHS = new Set([
 ]);
 
 const POST_PATHS = new Set([
+  "/api/agent/personality/read",
+  "/api/agent/personality/save",
+  "/api/skills/delete",
+  "/api/skills/snapshot",
+  "/api/skills/enabled",
+  "/api/skills/reorder",
+  "/api/skills/tree",
+  "/api/skills/file/read",
+  "/api/skills/file/save",
+  "/api/skills/file/change",
   "/api/agent/uploads",
   "/api/logs/detail",
   "/api/logs/files",
@@ -344,6 +354,17 @@ function create_route_fixture() {
     app: { get } as unknown as Hono,
     services,
     agent,
+    personality: { read: vi.fn(), save: vi.fn() },
+    skills: {
+      delete: vi.fn(),
+      snapshot: vi.fn(),
+      set_enabled: vi.fn(),
+      tree: vi.fn(),
+      read_file: vi.fn(),
+      save_file: vi.fn(),
+      change_file: vi.fn(),
+      reorder: vi.fn(),
+    },
     postJson: post_json,
     request: (method, route, handler) =>
       method === "GET" ? get(route, handler) : post_json(route, handler),

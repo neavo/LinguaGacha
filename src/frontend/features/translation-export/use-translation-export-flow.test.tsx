@@ -7,9 +7,7 @@ import { useTranslationExportFlow } from "./use-translation-export-flow";
 const mocks = vi.hoisted(() => ({
   api_fetch: vi.fn(),
   push_toast: vi.fn(),
-  navigate_to_route: vi.fn(),
-  write_draft: vi.fn(),
-  read_draft: vi.fn(() => ({ text: "", attachments: [] })),
+  navigate_to_agent: vi.fn(),
   selected_route: "workbench",
   project_snapshot: { loaded: true, path: "E:/demo/sample.lg" },
 }));
@@ -21,12 +19,9 @@ vi.mock("@frontend/app/locale/locale-context", () => ({
 }));
 vi.mock("@frontend/app/navigation/navigation-context", () => ({
   useAppNavigation: () => ({
-    navigate_to_route: mocks.navigate_to_route,
+    navigate_to_agent: mocks.navigate_to_agent,
     selected_route: mocks.selected_route,
   }),
-}));
-vi.mock("@frontend/app/session/agent/agent-session-context", () => ({
-  useAgentInput: () => ({ draft: { write: mocks.write_draft, read: mocks.read_draft } }),
 }));
 vi.mock("@frontend/app/state/use-desktop-state", () => ({
   useDesktopState: () => ({ project_snapshot: mocks.project_snapshot }),
@@ -51,9 +46,7 @@ describe("useTranslationExportFlow", () => {
   beforeEach(() => {
     mocks.api_fetch.mockReset();
     mocks.push_toast.mockReset();
-    mocks.navigate_to_route.mockReset();
-    mocks.write_draft.mockReset();
-    mocks.read_draft.mockReturnValue({ text: "", attachments: [] });
+    mocks.navigate_to_agent.mockReset();
     mocks.selected_route = "workbench";
     mocks.project_snapshot.loaded = true;
     mocks.project_snapshot.path = "E:/demo/sample.lg";
@@ -84,7 +77,7 @@ describe("useTranslationExportFlow", () => {
     await act(async () => Promise.resolve());
   }
 
-  it("读取警告摘要后为空草稿填入审校建议并跳转", async () => {
+  it("读取警告摘要后提交仅填充空草稿的审校导航请求", async () => {
     mocks.api_fetch.mockResolvedValueOnce({
       projectPath: "E:/demo/sample.lg",
       warningSummary: {
@@ -100,26 +93,14 @@ describe("useTranslationExportFlow", () => {
     expect(latest_flow?.state).toMatchObject({ phase: "ready", summary: { total_count: 3 } });
 
     act(() => latest_flow?.jump_to_agent());
-    expect(mocks.write_draft).toHaveBeenCalledWith({
+    expect(mocks.navigate_to_agent).toHaveBeenCalledWith({
       text: expect.stringMatching(/\S+ @skill\([^)]+\)$/),
-      attachments: [],
+      mode: "if-empty",
     });
-    expect(mocks.navigate_to_route).toHaveBeenCalledWith("agent");
     expect(latest_flow?.state.phase).toBe("closed");
   });
 
-  it("跳转保留已有草稿，AGENT 页面隐藏重复导航", async () => {
-    mocks.read_draft.mockReturnValue({ text: "用户未发送的内容", attachments: [] });
-    mocks.api_fetch.mockResolvedValue({
-      projectPath: mocks.project_snapshot.path,
-      warningSummary: { total_count: 1, entries: [] },
-    });
-    await render_probe();
-    act(() => latest_flow?.request_export());
-    await flush_microtasks();
-    act(() => latest_flow?.jump_to_agent());
-    expect(mocks.write_draft).not.toHaveBeenCalled();
-    expect(mocks.navigate_to_route).toHaveBeenCalledWith("agent");
+  it("AGENT 页面隐藏重复导航", async () => {
     mocks.selected_route = "agent";
     await render_probe();
     expect(latest_flow?.can_jump_to_agent).toBe(false);

@@ -7,6 +7,7 @@ import { AGENT_WORKSPACE_CONTRACT_SCHEMA } from "../schema";
 
 export type AgentWorkspaceRuntimeApi = Readonly<{
   contract: AgentWorkspaceRuntimeContract;
+  userSkillDirectory: string; // 应用级可写技能根，独立于工程快照
   emitImage: (path: string, options?: AgentImageOptions) => Promise<void>;
   host: (request: WorkspaceHostRequest, signal?: AbortSignal) => Promise<WorkspaceHostResult>;
   todo: Readonly<{
@@ -18,6 +19,7 @@ export type AgentWorkspaceRuntimeApi = Readonly<{
 /** 只投影应用契约；普通 Node API 与 npm 模块由原生运行环境提供。 */
 export function create_agent_workspace_runtime_api(
   contract: unknown,
+  user_skill_directory: string,
   initial_todos: readonly string[],
   write_todos: (todos: string[]) => void,
   host: AgentWorkspaceRuntimeApi["host"] = async () => {
@@ -32,6 +34,7 @@ export function create_agent_workspace_runtime_api(
   }
   let todos = normalize_agent_todos(initial_todos); // 当前程序副本，宿主只在执行成功后提交
   return deep_freeze({
+    userSkillDirectory: user_skill_directory,
     emitImage,
     host,
     contract: structuredClone(contract), // 冻结公开接口不能改动借入的数据上下文

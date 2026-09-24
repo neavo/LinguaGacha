@@ -14,6 +14,7 @@ import { quality_rule_preset_layout_migration } from "./migrations/quality-rule-
 import { text_preserve_mode_migration } from "./migrations/text-preserve-mode-migration";
 import { trans_item_metadata_migration } from "./migrations/trans-item-metadata-migration";
 import { translation_prompt_legacy_slot_migration } from "./migrations/translation-prompt-legacy-slot-migration";
+import { user_skills_layout_migration } from "./migrations/user-skills-layout-migration";
 
 /**
  * 全量迁移注册表按生命周期混排，真正执行顺序由编排器按 hook 和 order 二次筛选。
@@ -22,6 +23,7 @@ export const MIGRATIONS: readonly MigrationDescriptor[] = [
   legacy_default_config_migration,
   prompt_user_preset_layout_migration,
   quality_rule_preset_layout_migration,
+  user_skills_layout_migration,
   model_selection_migration,
   project_schema_migration,
   project_rule_storage_migration,

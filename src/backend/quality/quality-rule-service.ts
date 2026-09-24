@@ -251,7 +251,7 @@ export class QualityRuleService {
   /**
    * 删除用户规则预设，避免调用方误删内置资源
    */
-  public delete_rule_preset(request: JsonRecord): JsonRecord {
+  public async delete_rule_preset(request: JsonRecord): Promise<JsonRecord> {
     const preset_directory = QualityRule.from_json(request["rule_type"]).preset_directory;
     const preset_file = this.resolve_rule_preset_file(
       preset_directory,
@@ -260,7 +260,7 @@ export class QualityRuleService {
     if (preset_file.source !== "user") {
       throw new AppErrors.AppError("request.validation_failed");
     }
-    this.native_fs.remove(preset_file.file_path);
+    await this.native_fs.remove_async(preset_file.file_path);
     return { path: preset_file.file_path.replace(/\\/g, "/") };
   }
 

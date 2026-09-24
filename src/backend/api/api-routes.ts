@@ -1,3 +1,5 @@
+import type { AgentPersonalityService } from "../agent/agent-personality-service";
+import type { AgentSkillsApi } from "../agent/agent-skills-service";
 import type { Hono } from "hono";
 import { Readable } from "node:stream";
 import { AppError } from "../../shared/error";
@@ -15,6 +17,8 @@ export interface ApiRouteContext {
   app: Hono;
   services: BackendServices;
   agent: AgentService;
+  skills: AgentSkillsApi;
+  personality: Pick<AgentPersonalityService, "read" | "save">;
   postJson: ApiPostJsonRoute;
   request: ApiRequestRoute;
   createEventStreamResponse: () => Response;
@@ -30,6 +34,17 @@ export interface ApiRouteContext {
 export function register_api_routes(context: ApiRouteContext): void {
   const services = context.services;
   const agent = context.agent;
+
+  context.postJson("/api/agent/personality/read", () => context.personality.read());
+  context.postJson("/api/agent/personality/save", (body) => context.personality.save(body));
+  context.postJson("/api/skills/delete", (body) => context.skills.delete(body));
+  context.postJson("/api/skills/snapshot", () => context.skills.snapshot());
+  context.postJson("/api/skills/enabled", (body) => context.skills.set_enabled(body));
+  context.postJson("/api/skills/reorder", (body) => context.skills.reorder(body));
+  context.postJson("/api/skills/tree", (body) => context.skills.tree(body));
+  context.postJson("/api/skills/file/read", (body) => context.skills.read_file(body));
+  context.postJson("/api/skills/file/save", (body) => context.skills.save_file(body));
+  context.postJson("/api/skills/file/change", (body) => context.skills.change_file(body));
 
   context.app.get("/api/health", (hono_context) =>
     hono_context.json(

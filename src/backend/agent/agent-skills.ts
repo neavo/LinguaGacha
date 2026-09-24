@@ -1,23 +1,16 @@
+import { AGENT_SKILL_MAIN_FILE, AGENT_SKILL_UI_FILE } from "../../shared/agent-skills";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 
-import {
-  BACKGROUND_CONTEXT,
-  err,
-  FileError,
-  loadSkills,
-  ok,
-  toError,
-  type Context,
-  type FileErrorCode,
-  type FileInfo,
-  type Result,
-  type Skill,
-  type SkillDiagnostic,
-} from "@earendil-works/pi-agent-core";
-import { NodeExecutionEnv } from "@earendil-works/pi-agent-core/node";
+import ignore, { type Ignore } from "ignore";
+import { read_agent_skill_metadata } from "./agent-skill-document";
 
 import { is_json_record } from "../../domain/json";
+import {
+  normalize_agent_skill_settings,
+  type AgentSkillSettings,
+} from "../../domain/agent-skill-settings";
+import type { AgentSkillSource } from "../../shared/agent-skills";
 import { default_native_fs, type NativeFs } from "../../native/native-fs";
 import type { AgentSkillDisplayDescriptions } from "../../shared/agent";
 import { LOCALES } from "../../shared/i18n/types";
@@ -25,87 +18,205 @@ import type { AppPathService } from "../app/app-path-service";
 import type { LogManager } from "../log/log-manager";
 import { t_main_log } from "../log/log-text";
 
-const UI_FILE_NAME = "ui.json";
-
 type AgentSkillUi = {
   visible: boolean; // 是否进入公开能力列表并接受用户 marker，不改变模型自主调用或读取权限
-  order?: number; // 缺失时排在显式顺序之后，同类保持加载顺序
+  order?: number; // 内置展示顺序，缺失时按名称追加；用户顺序由应用偏好拥有
   displayDescriptions: AgentSkillDisplayDescriptions;
 };
 
-/** 会话 skill 快照保留 Pi 路由语义、名称绑定与产品 UI 投影。 */
-export type AgentSkillDefinition = Pick<
-  Skill,
-  "name" | "description" | "filePath" | "disableModelInvocation"
-> &
-  AgentSkillUi;
+/** 名称是逻辑身份，文件路径只负责定位原包。 */
+export type AgentSkillDefinition = AgentSkillUi & {
+  name: string;
+  description: string;
+  filePath: string;
+  disableModelInvocation: boolean;
+};
 
 type AgentSkillCatalogDefinition = Pick<
   AgentSkillDefinition,
   "name" | "description" | "disableModelInvocation"
 >;
 
-export type AgentSkillLog = Pick<LogManager, "error" | "warning">;
-type AgentSkillNativeFs = Pick<NativeFs, "read_dirents" | "read_text_file" | "stat">;
+export type AgentSkillLog = Pick<LogManager, "warning">;
+type AgentSkillNativeFs = Pick<NativeFs, "read_dirents" | "read_text_file">;
 export type AgentSkillPaths = Pick<
   AppPathService,
-  "get_agent_builtin_skill_dir" | "get_agent_user_skill_dir" | "get_app_root"
+  "get_agent_builtin_skill_dir" | "get_agent_user_skill_dir"
 >;
 
-/** 按 Pi 的 first-wins 语义加载会话 catalog；用户有效定义优先于内置定义。 */
-export async function load_agent_skills(
+export type AgentSkillPackage = {
+  definition: AgentSkillDefinition; // 会话读取所需的包与元数据。
+  source: AgentSkillSource; // 偏好身份与同名覆盖优先级。
+};
+
+/** 扫描技能并按偏好选择每个名称的启用来源。 */
+export function load_agent_skills(
+  paths: AgentSkillPaths,
+  log_manager: AgentSkillLog,
+  settings: AgentSkillSettings = normalize_agent_skill_settings(undefined),
+  native_fs: AgentSkillNativeFs = default_native_fs,
+): AgentSkillDefinition[] {
+  const packages = scan_agent_skills(paths, log_manager, native_fs);
+  return select_agent_skills(packages, settings);
+}
+
+/** 管理命令与会话读取共用启用、同名覆盖和排序规则。 */
+export function select_agent_skills(
+  packages: readonly AgentSkillPackage[],
+  settings: AgentSkillSettings,
+): AgentSkillDefinition[] {
+  const selected = new Map<string, AgentSkillPackage>(); // 每个名称只绑定一个启用包。
+  // 先过滤关闭项，再由用户包覆盖内置包。关闭用户包后回退到内置包。
+  for (const item of packages) {
+    if (item.definition.visible && settings.disabled[item.source].includes(item.definition.name))
+      continue;
+    if (!selected.has(item.definition.name) || item.source === "user")
+      selected.set(item.definition.name, item);
+  }
+  return sort_agent_skill_packages([...selected.values()], settings).map((item) => item.definition);
+}
+
+/** 按来源保留首个有效同名包，跨来源覆盖由选择函数处理。 */
+export function scan_agent_skills(
   paths: AgentSkillPaths,
   log_manager: AgentSkillLog,
   native_fs: AgentSkillNativeFs = default_native_fs,
-): Promise<AgentSkillDefinition[]> {
-  try {
-    const execution_env = new AgentSkillExecutionEnv({ cwd: paths.get_app_root() }, native_fs);
-    const sources = [paths.get_agent_user_skill_dir(), paths.get_agent_builtin_skill_dir()];
-    const skills = new Map<string, AgentSkillDefinition>();
-    for (const source of sources) {
-      const result = await loadSkills(execution_env, source, BACKGROUND_CONTEXT);
-      for (const diagnostic of result.diagnostics) log_skill_diagnostic(log_manager, diagnostic);
-      const invalid_paths = new Set(
-        result.diagnostics
-          .filter((diagnostic) => diagnostic.code === "invalid_metadata")
-          .map((diagnostic) => diagnostic.path),
-      );
-      for (const skill of result.skills.toSorted((left, right) =>
-        left.filePath.localeCompare(right.filePath),
-      )) {
-        if (
-          invalid_paths.has(skill.filePath) ||
-          path.basename(path.dirname(skill.filePath)) !== skill.name
-        ) {
-          continue;
-        }
-        if (skills.has(skill.name)) continue;
-        skills.set(skill.name, create_agent_skill_definition(skill, log_manager, native_fs));
+): AgentSkillPackage[] {
+  const skills: AgentSkillPackage[] = [];
+  for (const source of ["builtin", "user"] as const) {
+    const root =
+      source === "builtin" ? paths.get_agent_builtin_skill_dir() : paths.get_agent_user_skill_dir();
+    const names = new Map<string, string>(); // 按路径顺序保留首个有效同名包。
+    for (const filePath of discover_skill_files(root, log_manager, native_fs).sort((a, b) =>
+      a.localeCompare(b),
+    )) {
+      let metadata: ReturnType<typeof read_agent_skill_metadata>;
+      try {
+        metadata = read_agent_skill_metadata(native_fs.read_text_file(filePath));
+      } catch (error) {
+        log_skill_failure(log_manager, error, { path: filePath });
+        continue;
       }
+      const previous = names.get(metadata.name);
+      if (previous) {
+        log_skill_failure(log_manager, "技能名称重复，已跳过后发现的技能", {
+          name: metadata.name,
+          path: filePath,
+          selected: previous,
+        });
+        continue;
+      }
+      names.set(metadata.name, filePath);
+      const { name, description, disableModelInvocation } = metadata;
+      const skill = {
+        name,
+        description,
+        disableModelInvocation,
+        filePath: filePath.replaceAll("\\", "/"),
+      };
+      skills.push({
+        source,
+        definition: { ...skill, ...load_skill_ui(skill, log_manager, native_fs) },
+      });
     }
-    return [...skills.values()];
-  } catch (error) {
-    log_manager.error(t_main_log("app.diagnostic.agent.skill_load_failed"), {
-      source: "agent",
-      error,
-    });
-    return [];
   }
+  return skills;
 }
 
-/** 将 Pi 的协议结果收口为产品会话使用的 skill 定义，并在此补齐 UI 投影。 */
-function create_agent_skill_definition(
-  skill: Skill,
-  log_manager: AgentSkillLog,
-  native_fs: AgentSkillNativeFs,
-): AgentSkillDefinition {
-  return {
-    name: skill.name,
-    description: skill.description,
-    filePath: skill.filePath.replaceAll("\\", "/"),
-    disableModelInvocation: skill.disableModelInvocation,
-    ...load_skill_ui(skill, log_manager, native_fs),
+const SKILL_IGNORE_FILES = [".gitignore", ".ignore", ".fdignore"] as const;
+
+/** 链接只允许作为来源入口；发现主文件后即到达包边界。忽略规则按所在目录继承。 */
+function discover_skill_files(root: string, log: AgentSkillLog, fs: AgentSkillNativeFs): string[] {
+  const files: string[] = [];
+  /** 每个目录追加自己的忽略规则，兄弟目录分别继承父级规则。 */
+  const walk = (
+    directory: string,
+    parents: readonly { directory: string; matcher: Ignore }[],
+  ): void => {
+    let entries: ReturnType<AgentSkillNativeFs["read_dirents"]>;
+    try {
+      entries = fs.read_dirents(directory);
+    } catch (error) {
+      // 用户技能根允许尚未创建；已发现的分支访问失败仍需诊断。
+      if (directory !== path.resolve(root) || !is_not_found_error(error))
+        log_skill_failure(log, error, { path: directory });
+      return;
+    }
+    const matcher = ignore();
+    for (const name of SKILL_IGNORE_FILES) {
+      if (!entries.some((entry) => entry.name === name && entry.isFile())) continue;
+      const target = path.join(directory, name);
+      try {
+        matcher.add(fs.read_text_file(target));
+      } catch (error) {
+        log_skill_failure(log, error, { path: target });
+      }
+    }
+    const rules = [...parents, { directory, matcher }];
+    /** 从父到子应用规则，子目录的显式反选覆盖父级匹配。 */
+    const ignored = (target: string, is_directory: boolean): boolean => {
+      let ignored = false;
+      for (const rule of rules) {
+        const relative =
+          path.relative(rule.directory, target).replaceAll("\\", "/") + (is_directory ? "/" : "");
+        const result = rule.matcher.test(relative);
+        if (result.ignored) ignored = true;
+        else if (result.unignored) ignored = false;
+      }
+      return ignored;
+    };
+    const main = path.join(directory, AGENT_SKILL_MAIN_FILE);
+    if (
+      entries.some((entry) => entry.name === AGENT_SKILL_MAIN_FILE && entry.isFile()) &&
+      !ignored(main, false)
+    ) {
+      files.push(main);
+      return;
+    }
+    for (const entry of entries) {
+      if (
+        !entry.isDirectory() ||
+        entry.isSymbolicLink() ||
+        entry.name.startsWith(".") ||
+        entry.name === "node_modules"
+      )
+        continue;
+      const target = path.join(directory, entry.name);
+      if (!ignored(target, true)) walk(target, rules);
+    }
   };
+  walk(path.resolve(root), []);
+  return files;
+}
+
+/** 技能加载各阶段共用固定提示，异常与诊断详情交给日志系统呈现。 */
+function log_skill_failure(
+  log: AgentSkillLog,
+  error: unknown,
+  context: Record<string, unknown>,
+): void {
+  log.warning(t_main_log("app.diagnostic.agent.skill_load_failed"), {
+    source: "agent",
+    error,
+    context,
+  });
+}
+
+/** 内置顺序由资源决定，用户顺序由偏好决定；未排序的新技能按名称追加。 */
+export function sort_agent_skill_packages(
+  skills: readonly AgentSkillPackage[],
+  settings: AgentSkillSettings,
+): AgentSkillPackage[] {
+  const user_order = new Map(settings.user_order.map((name, index) => [name, index]));
+  // 两种顺序分别归资源和用户偏好拥有，缺省项统一追加。
+  const rank = (skill: AgentSkillPackage): number =>
+    skill.source === "builtin"
+      ? (skill.definition.order ?? Number.MAX_SAFE_INTEGER)
+      : (user_order.get(skill.definition.name) ?? Number.MAX_SAFE_INTEGER);
+  return skills.toSorted((left, right) => {
+    if (left.source !== right.source) return left.source === "builtin" ? -1 : 1;
+    return rank(left) - rank(right) || left.definition.name.localeCompare(right.definition.name);
+  });
 }
 
 /** 产品只注入能力事实，skill 路由规则由 system prompt 唯一拥有。 */
@@ -145,7 +256,7 @@ function escape_agent_skill_xml(value: string): string {
  * 同目录 ui.json 定义公开可调用性、顺序与描述；缺失或整份无效时统一回退默认 UI 配置。
  */
 function load_skill_ui(
-  skill: Skill,
+  skill: Pick<AgentSkillDefinition, "description" | "filePath">,
   log_manager: AgentSkillLog,
   native_fs: AgentSkillNativeFs,
 ): AgentSkillUi {
@@ -155,19 +266,25 @@ function load_skill_ui(
       LOCALES.map((locale) => [locale, skill.description]),
     ) as AgentSkillDisplayDescriptions,
   };
-  const file_path = path.join(path.dirname(skill.filePath), UI_FILE_NAME);
+  const file_path = path.join(path.dirname(skill.filePath), AGENT_SKILL_UI_FILE);
+  let text: string;
+  try {
+    text = native_fs.read_text_file(file_path);
+  } catch (error) {
+    // 显示配置可省略；其它加载失败记录后使用默认配置。
+    if (!is_not_found_error(error)) log_skill_failure(log_manager, error, { path: file_path });
+    return fallback;
+  }
   let parsed: unknown;
   try {
-    parsed = JSON.parse(native_fs.read_text_file(file_path)) as unknown;
+    parsed = JSON.parse(text) as unknown;
   } catch (error) {
-    if (!is_not_found_error(error)) {
-      log_skill_ui_diagnostic(log_manager, skill.name, file_path, error);
-    }
+    log_skill_failure(log_manager, error, { path: file_path });
     return fallback;
   }
 
   if (!is_json_record(parsed)) {
-    log_skill_ui_diagnostic(log_manager, skill.name, file_path, "格式无效");
+    log_skill_failure(log_manager, "技能显示配置无效，已使用默认配置", { path: file_path });
     return fallback;
   }
   const visible = parsed["visible"];
@@ -191,7 +308,7 @@ function load_skill_ui(
         description.trim() === "",
     )
   ) {
-    log_skill_ui_diagnostic(log_manager, skill.name, file_path, "格式无效");
+    log_skill_failure(log_manager, "技能显示配置无效，已使用默认配置", { path: file_path });
     return fallback;
   }
 
@@ -210,131 +327,4 @@ function load_skill_ui(
 /** 缺失的可选 skill 资源不产生诊断，其它 IO 错误仍需显式暴露。 */
 function is_not_found_error(error: unknown): boolean {
   return error instanceof Error && "code" in error && error.code === "ENOENT";
-}
-
-/** Pi 只负责 skill 协议解析，所有真实扫描与读取仍经过项目 NativeFs 门面。 */
-class AgentSkillExecutionEnv extends NodeExecutionEnv {
-  /** 注入应用文件门面，使第三方解析器不直接越过宿主 IO 边界。 */
-  public constructor(
-    options: { cwd: string },
-    private readonly native_fs: AgentSkillNativeFs,
-  ) {
-    super(options);
-  }
-
-  /** 把 Pi 的文本读取协议适配为应用文件读取，并保留中止与错误语义。 */
-  public override async readTextFile(
-    file_path: string,
-    context: Context,
-  ): Promise<Result<string, FileError>> {
-    const resolved_path = this.resolve_path(file_path);
-    if (context.abortSignal?.aborted) {
-      return err(new FileError("aborted", "aborted", resolved_path));
-    }
-    try {
-      return ok(this.native_fs.read_text_file(resolved_path));
-    } catch (error) {
-      return err(to_file_error(error, resolved_path));
-    }
-  }
-
-  /** 将应用文件状态投影成 Pi 识别的普通文件或目录。 */
-  public override async fileInfo(
-    file_path: string,
-    context: Context,
-  ): Promise<Result<FileInfo, FileError>> {
-    const resolved_path = this.resolve_path(file_path);
-    if (context.abortSignal?.aborted) {
-      return err(new FileError("aborted", "aborted", resolved_path));
-    }
-    try {
-      const stats = this.native_fs.stat(resolved_path);
-      const kind = stats.isFile() ? "file" : stats.isDirectory() ? "directory" : null;
-      if (kind === null) {
-        return err(new FileError("invalid", "Unsupported skill file type.", resolved_path));
-      }
-      return ok({
-        name: resolved_path.split("/").at(-1) ?? resolved_path,
-        path: resolved_path,
-        kind,
-        size: stats.size,
-        mtimeMs: stats.mtimeMs,
-      });
-    } catch (error) {
-      return err(to_file_error(error, resolved_path));
-    }
-  }
-
-  /** 枚举 skill 目录时忽略符号链接，避免第三方扫描越过目录树。 */
-  public override async listDir(
-    directory: string,
-    context: Context,
-  ): Promise<Result<FileInfo[], FileError>> {
-    const resolved_path = this.resolve_path(directory);
-    if (context.abortSignal?.aborted) {
-      return err(new FileError("aborted", "aborted", resolved_path));
-    }
-    try {
-      const file_infos: FileInfo[] = [];
-      for (const entry of this.native_fs.read_dirents(resolved_path)) {
-        if (entry.isSymbolicLink()) continue;
-        const result = await this.fileInfo(path.join(resolved_path, entry.name), context);
-        if (!result.ok) return result;
-        file_infos.push(result.value);
-      }
-      return ok(file_infos);
-    } catch (error) {
-      return err(to_file_error(error, resolved_path));
-    }
-  }
-
-  /** 统一相对路径基准与分隔符，保持 Pi 返回路径在各平台一致。 */
-  private resolve_path(file_path: string): string {
-    return (path.isAbsolute(file_path) ? file_path : path.resolve(this.cwd, file_path)).replaceAll(
-      "\\",
-      "/",
-    );
-  }
-}
-
-/** 将宿主 IO 错误映射为 Pi 的窄错误码，同时保留原始 cause。 */
-function to_file_error(error: unknown, file_path: string): FileError {
-  const code = error instanceof Error && "code" in error ? String(error.code) : "";
-  const mapped_code: FileErrorCode =
-    code === "ENOENT"
-      ? "not_found"
-      : code === "EACCES" || code === "EPERM"
-        ? "permission_denied"
-        : code === "ENOTDIR"
-          ? "not_directory"
-          : code === "EISDIR"
-            ? "is_directory"
-            : "unknown";
-  const cause = toError(error);
-  return new FileError(mapped_code, cause.message, file_path, cause);
-}
-
-/** 第三方 loader 诊断统一进入应用日志，不阻断其它合法 skill。 */
-function log_skill_diagnostic(log_manager: AgentSkillLog, diagnostic: SkillDiagnostic): void {
-  log_manager.warning(t_main_log("app.diagnostic.agent.skill_resource_load_failed"), {
-    source: "agent",
-    context: {
-      code: diagnostic.code,
-      path: diagnostic.path,
-      diagnostic_message: diagnostic.message,
-    },
-  });
-}
-
-/** skill UI 配置失败只降级当前 skill，并保留完整诊断上下文。 */
-function log_skill_ui_diagnostic(
-  log_manager: AgentSkillLog,
-  skill_name: string,
-  file_path: string,
-  error: unknown,
-): void {
-  log_manager.warning(t_main_log("app.diagnostic.agent.skill_resource_load_failed"), {
-    source: "agent",
-    context: { skill: skill_name, path: file_path, error: String(error) },
-  });
 }

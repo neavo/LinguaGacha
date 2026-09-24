@@ -35,7 +35,7 @@ describe("AppPathService", () => {
       path.join(app_root, "userdata", "berserker"),
     );
     expect(service.get_agent_workspace_root_dir()).toBe(
-      path.join(app_root, "userdata", "agent", "workspace"),
+      path.join(app_root, "userdata", "workspace"),
     );
     expect(service.get_berserker_version_dir("1.2.4")).toBe(
       path.join(app_root, "userdata", "berserker", "v1.2.4"),
@@ -43,16 +43,12 @@ describe("AppPathService", () => {
     expect(service.get_version_path()).toBe(path.join(app_root, "version.txt"));
     expect(service.get_log_dir()).toBe(path.join(app_root, "log"));
     expect(service.get_model_preset_dir()).toBe(path.join(builtin_root, "model", "preset"));
-    expect(service.get_agent_system_prompt_path()).toBe(
-      path.join(builtin_root, "agent", "system_prompt.md"),
-    );
+    expect(service.get_agent_system_prompt_path()).toBe(path.join(builtin_root, "system.md"));
     expect(service.get_agent_session_seed_path()).toBe(
-      path.join(builtin_root, "agent", "session_seed.json"),
+      path.join(builtin_root, "session_seed.json"),
     );
-    expect(service.get_agent_builtin_skill_dir()).toBe(path.join(builtin_root, "agent", "skill"));
-    expect(service.get_agent_user_skill_dir()).toBe(
-      path.join(app_root, "userdata", "agent", "skill"),
-    );
+    expect(service.get_agent_builtin_skill_dir()).toBe(path.join(builtin_root, "skills"));
+    expect(service.get_agent_user_skill_dir()).toBe(path.join(app_root, "userdata", "skills"));
     expect(service.get_quality_rule_builtin_preset_dir("glossary")).toBe(
       path.join(builtin_root, "glossary", "preset"),
     );

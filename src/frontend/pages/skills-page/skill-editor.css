@@ -1,0 +1,282 @@
+.skill-editor {
+  --skill-editor-gap: 8px;
+  gap: var(--skill-editor-gap);
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+.skill-editor__toolbar .command-bar__toolbar {
+  min-height: 40px;
+}
+.skill-editor__toolbar-start {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  flex: 1;
+}
+/* 外层居中整组文字，组内基线对齐两种字号。 */
+.skill-editor__file-info {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+.skill-editor__state {
+  flex: 1;
+  min-height: 0;
+}
+.skill-editor__path {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--foreground);
+}
+.skill-editor__path-segment {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.skill-editor__path-segment[data-directory] {
+  flex-shrink: 10;
+}
+.skill-editor__path-separator {
+  flex-shrink: 0;
+  margin-inline: 6px;
+  color: var(--muted-foreground);
+}
+.skill-editor__workspace {
+  display: grid;
+  grid-template-columns: var(--skill-tree-width) var(--skill-editor-gap) minmax(0, 1fr);
+  flex: 1;
+  min-height: 0;
+}
+.skill-editor__tree {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+.skill-editor__divider {
+  position: relative;
+  cursor: col-resize;
+  touch-action: none;
+  outline: none;
+}
+.skill-editor__divider::before {
+  content: "";
+  position: absolute;
+  inset: 8px calc((var(--skill-editor-gap) - 1px) / 2);
+  background: var(--ring);
+  opacity: 0;
+}
+.skill-editor__divider:hover::before,
+.skill-editor__divider:active::before,
+.skill-editor__divider:focus-visible::before {
+  opacity: 1;
+}
+.skill-editor__content {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+.skill-editor__text .cm-skill-key {
+  color: var(--primary);
+}
+.skill-editor__text .cm-skill-separator {
+  color: var(--muted-foreground);
+}
+.skill-editor__text .cm-skill-invalid {
+  text-decoration: underline wavy var(--destructive);
+  text-underline-offset: 3px;
+}
+.skill-editor__text {
+  flex: 1;
+  min-height: 0;
+  border: 0;
+  border-radius: 0;
+}
+.skill-editor__content:not([data-readonly]):focus-within::after {
+  border-color: var(--ring);
+}
+.skill-editor__error {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--ui-table-divider-soft);
+  color: var(--destructive);
+  font-size: 12px;
+}
+.skill-editor__error > div {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+.skill-editor__unsupported {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 24px;
+  font-size: 13px;
+  color: var(--muted-foreground);
+}
+.skill-tree__toolbar {
+  display: flex;
+  align-items: center;
+  min-height: 40px;
+  flex-shrink: 0;
+  padding: 0 8px;
+  gap: 4px;
+  font-size: 12px;
+}
+.skill-tree__title {
+  flex: 1;
+}
+.skill-tree__scroll {
+  flex: 1;
+  overflow: auto;
+  padding: 0 6px 8px;
+}
+.skill-tree__branch {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.skill-tree__branch .skill-tree__branch,
+.skill-tree__children {
+  padding-left: 14px;
+}
+.skill-tree__row {
+  --skill-tree-row-surface: var(--card);
+  position: relative;
+  isolation: isolate;
+  display: flex;
+  align-items: center;
+  min-height: 30px;
+}
+/* 状态底色上下留缝，整行仍接收点击和拖拽。 */
+.skill-tree__row::before {
+  content: "";
+  position: absolute;
+  inset: 1px 0;
+  z-index: 0;
+  background: var(--skill-tree-row-surface);
+  opacity: 0;
+  pointer-events: none;
+}
+.skill-tree__row::after {
+  content: "";
+  position: absolute;
+  inset: 7px auto 7px 0;
+  z-index: 2;
+  width: var(--ui-selection-rail-width);
+  background: var(--sidebar-primary);
+  opacity: 0;
+  pointer-events: none;
+}
+.skill-tree__row:hover {
+  --skill-tree-row-surface: var(--accent);
+}
+.skill-tree__row[data-selected] {
+  --skill-tree-row-surface: color-mix(in srgb, var(--accent) 96%, var(--card));
+}
+.skill-tree__row:hover::before,
+.skill-tree__row[data-selected]::before,
+.skill-tree__row[data-drop-target]::before,
+.skill-tree__row[data-selected]::after {
+  opacity: 1;
+}
+.skill-tree__row[data-drop-target]::before {
+  outline: 1px solid var(--ring);
+  outline-offset: -1px;
+}
+.skill-tree__select {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  flex: 1;
+  padding: 5px 4px 5px 8px;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  font-size: 12px;
+  cursor: pointer;
+}
+.skill-tree__name {
+  min-width: 0;
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.skill-tree__select svg {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+}
+.skill-tree__select:focus-visible,
+.skill-tree__action:focus-visible {
+  outline: 1px solid var(--ring);
+  outline-offset: -1px;
+}
+.skill-tree__select:disabled,
+.skill-tree__action:disabled {
+  cursor: default;
+  color: var(--muted-foreground);
+}
+/* 操作区覆盖末尾文字，使用同一不透明底色，显隐不改变名称布局。 */
+.skill-tree__actions {
+  position: absolute;
+  inset: 3px 3px 3px auto;
+  z-index: 3;
+  display: flex;
+  gap: 3px;
+  background: var(--skill-tree-row-surface);
+  box-shadow: -4px 0 0 var(--skill-tree-row-surface);
+  visibility: hidden;
+}
+.skill-tree__row[data-expandable] .skill-tree__actions {
+  right: 23px;
+}
+.skill-tree__row:hover .skill-tree__actions,
+.skill-tree__row:has(:focus-visible) .skill-tree__actions {
+  visibility: visible;
+}
+.skill-tree__action {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  border: 0.5px solid var(--border);
+  border-radius: var(--ui-radius-button);
+  background: var(--skill-tree-row-surface);
+  cursor: pointer;
+}
+.skill-tree__action:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--foreground) 20%, var(--border));
+  background: var(--muted);
+}
+.skill-tree__action svg {
+  width: 14px;
+  height: 14px;
+}
+.skill-tree__row[data-cut] {
+  opacity: 0.5;
+}
+
+.skill-editor__status {
+  display: inline-flex;
+  flex-shrink: 0;
+  gap: 8px;
+  font-size: 12px;
+  white-space: nowrap;
+  color: var(--muted-foreground);
+}
+.skill-editor__status[data-status="modified"] .skill-editor__status-label {
+  color: var(--primary);
+}

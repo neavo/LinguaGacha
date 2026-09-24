@@ -16,6 +16,21 @@ import { QualityRuleService } from "./quality-rule-service";
 import type { ProjectChangeEvent } from "../../shared/project-event";
 
 describe("QualityRuleService", () => {
+  it("用户预设删除等待磁盘完成，内置预设继续拒绝删除", async () => {
+    const { service } = create_service();
+    service.save_rule_preset({ rule_type: "glossary", name: "delete-fixture", entries: [] });
+    const result = await service.delete_rule_preset({
+      rule_type: "glossary",
+      virtual_id: "user:delete-fixture.json",
+    });
+    expect(fs.existsSync(String(result.path))).toBe(false);
+    await expect(
+      service.delete_rule_preset({
+        rule_type: "glossary",
+        virtual_id: "builtin:delete-fixture.json",
+      }),
+    ).rejects.toMatchObject({ code: "request.validation_failed" });
+  });
   const cleanup_paths: string[] = [];
   const cleanup_databases: ProjectDatabase[] = [];
 
@@ -434,12 +449,14 @@ describe("QualityRuleService", () => {
     };
   }
 
+  /** 创建指定占用状态，验证写入口的互斥行为。 */
   function create_runtime_gate(owner: "batch_translation" | "agent" | null): RuntimeOperationGate {
     const gate = new RuntimeOperationGate();
     if (owner !== null) gate.begin_runtime(owner);
     return gate;
   }
 
+  /** 提供规则测试需要的最小缓存事实。 */
   function create_cache(): CacheReadPort {
     return {
       readSectionRevisions: () => ({ quality: 0 }),

@@ -16,7 +16,7 @@ const HOME_DATA_ROOT_NAME = "LinguaGacha";
 const BUILTIN_DIR_NAME = "builtin";
 const USER_DATA_DIR_NAME = "userdata";
 const BERSERKER_DIR_NAME = "berserker";
-const AGENT_DIR_NAME = "agent";
+const SKILLS_DIR_NAME = "skills";
 const AGENT_WORKSPACE_DIR_NAME = "workspace";
 const LOG_DIR_NAME = "log";
 const TEMPLATE_DIR_NAME = "template";
@@ -144,7 +144,7 @@ export class AppPathService {
 
   /** 返回一次性 Agent 数据工作区根目录；启动与会话清理共用同一落点。 */
   public get_agent_workspace_root_dir(): string {
-    return this.get_user_data_path(AGENT_DIR_NAME, AGENT_WORKSPACE_DIR_NAME);
+    return this.get_user_data_path(AGENT_WORKSPACE_DIR_NAME);
   }
 
   /**
@@ -186,28 +186,28 @@ export class AppPathService {
    * 返回必需的内置 Agent system prompt 路径。
    */
   public get_agent_system_prompt_path(): string {
-    return this.get_builtin_path("agent", "system_prompt.md");
+    return this.get_builtin_path("system.md");
   }
 
   /**
    * 返回必需的内置 Agent 会话种子路径。
    */
   public get_agent_session_seed_path(): string {
-    return this.get_builtin_path("agent", "session_seed.json");
+    return this.get_builtin_path("session_seed.json");
   }
 
   /**
    * 返回内置 Agent skill 根目录，供启动期协议加载统一使用。
    */
   public get_agent_builtin_skill_dir(): string {
-    return this.get_builtin_path("agent", "skill");
+    return this.get_builtin_path(SKILLS_DIR_NAME);
   }
 
   /**
    * 返回用户 Agent skill 根目录，和内置资源保持同一目录协议。
    */
   public get_agent_user_skill_dir(): string {
-    return this.get_user_data_path(AGENT_DIR_NAME, "skill");
+    return this.get_user_data_path(SKILLS_DIR_NAME);
   }
 
   /**
@@ -291,7 +291,7 @@ export class AppPathService {
         `.linguagacha_write_probe_${Date.now().toString()}_${Math.random().toString(16).slice(2)}`,
       );
       this.native_fs.write_file_sync(probe_path, "");
-      this.native_fs.remove(probe_path, { force: true });
+      this.native_fs.unlink(probe_path, { force: true });
       return true;
     } catch {
       return false;

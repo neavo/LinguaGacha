@@ -1,3 +1,8 @@
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
+import { createRequire } from "node:module";
+import { pathToFileURL } from "node:url";
+import { build } from "vite";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -15,29 +20,30 @@ beforeEach(() => {
   temp_dir = fs.mkdtempSync(path.join(os.tmpdir(), "linguagacha-native-fs-"));
 });
 
-afterEach(() => {
+afterEach(async () => {
   vi.restoreAllMocks();
-  new NativeFs(new NativePathPolicy(process.platform)).remove(temp_dir, {
+  await new NativeFs(new NativePathPolicy(process.platform)).remove_async(temp_dir, {
     recursive: true,
     force: true,
   });
 });
 
 describe("原生文件系统门面", () => {
-  it("完整复制后替换目标，保留二进制源文件", () => {
+  it.each(["copy", "write"])("%s 完成后替换目标并保留原始字节", (operation) => {
     const native_fs = new NativeFs();
     const source = path.join(temp_dir, "source.bin");
     const target = path.join(temp_dir, "target.bin");
     const bytes = Buffer.from([0, 255, 13, 10, 128]);
     fs.writeFileSync(source, bytes);
     fs.writeFileSync(target, "旧文件");
-    native_fs.copy_file_atomic(source, target);
+    if (operation === "copy") native_fs.copy_file_atomic(source, target);
+    else native_fs.write_file_atomic(target, bytes);
     expect(fs.readFileSync(target)).toEqual(bytes);
     expect(fs.readFileSync(source)).toEqual(bytes);
     expect(fs.readdirSync(temp_dir).sort()).toEqual(["source.bin", "target.bin"]);
   });
 
-  it.each(["copy", "rename"])("%s 失败保留已有目标并清理半成品", (failure) => {
+  it.each(["copy", "write", "rename"])("%s 失败保留已有目标并清理半成品", (failure) => {
     const native_fs = new NativeFs();
     const source = path.join(temp_dir, "source.txt");
     const target = path.join(temp_dir, "target.txt");
@@ -49,12 +55,20 @@ describe("原生文件系统门面", () => {
         fs.writeFileSync(temporary, "半成品");
         throw cause;
       });
+    } else if (failure === "write") {
+      vi.spyOn(native_fs, "write_file_sync").mockImplementation((temporary) => {
+        fs.writeFileSync(temporary, "半成品");
+        throw cause;
+      });
     } else {
       vi.spyOn(native_fs, "rename").mockImplementation(() => {
         throw cause;
       });
     }
-    expect(() => native_fs.copy_file_atomic(source, target)).toThrow(cause);
+    expect(() => {
+      if (failure === "copy") native_fs.copy_file_atomic(source, target);
+      else native_fs.write_file_atomic(target, "新文件");
+    }).toThrow(cause);
     expect(fs.readFileSync(target, "utf8")).toBe("旧文件");
     expect(fs.readdirSync(temp_dir).sort()).toEqual(["source.txt", "target.txt"]);
   });
@@ -136,13 +150,16 @@ describe("原生文件系统门面", () => {
     expect(native_fs.read_text_file(target_path)).toBe("长路径译文");
   });
 
-  it("删除目录时保留调用方指定的递归语义", () => {
+  it("删除目录时保留调用方指定的递归语义", async () => {
     const native_fs = new NativeFs(new NativePathPolicy(process.platform));
     const target_dir = path.join(temp_dir, "removable", "child");
     fs.mkdirSync(target_dir, { recursive: true });
     fs.writeFileSync(path.join(target_dir, "file.txt"), "内容", "utf-8");
 
-    native_fs.remove(path.join(temp_dir, "removable"), { recursive: true, force: true });
+    await native_fs.remove_async(path.join(temp_dir, "removable"), {
+      recursive: true,
+      force: true,
+    });
 
     expect(fs.existsSync(path.join(temp_dir, "removable"))).toBe(false);
   });
@@ -173,3 +190,64 @@ describe("原生文件系统门面", () => {
     expect(Buffer.from(bytes).toString("utf-8")).toBe("xlsx");
   });
 });
+
+/** 普通 Node 无法复现 Electron 的同步递归删除差异，正式门面必须在发行运行时中验证。 */
+it.skipIf(process.platform !== "win32")(
+  "真实 Electron 删除只读目录与文件，同步清理限于单文件",
+  async () => {
+    const directory = temp_dir;
+    await build({
+      configFile: false,
+      logLevel: "silent",
+      build: {
+        outDir: path.join(directory, "bundle"),
+        lib: {
+          entry: path.resolve("src/native/native-fs.ts"),
+          formats: ["es"],
+          fileName: () => "native-fs.mjs",
+        },
+        rolldownOptions: { external: [/^node:/u], platform: "node" },
+        minify: false,
+      },
+    });
+    const entry = path.join(directory, "probe.mjs");
+    await fs.promises.writeFile(
+      entry,
+      `
+      import assert from 'node:assert/strict';
+      import fs from 'node:fs';
+      import path from 'node:path';
+      import { NativeFs } from ${JSON.stringify(pathToFileURL(path.join(directory, "bundle/native-fs.mjs")).href)};
+      const native = new NativeFs();
+      const root = ${JSON.stringify(path.join(directory, "fixtures"))};
+      const nested = path.join(root, 'references', 'nested');
+      const file = path.join(nested, 'note.md');
+      native.make_dir(nested);
+      native.write_file_sync(file, 'fixture');
+      for (const target of [root, nested, file]) fs.chmodSync(target, 0o444);
+      await native.remove_async(root, {recursive: true});
+      assert.equal(native.exists(root), false);
+      native.make_dir(root);
+      const cleanup = path.join(root, 'temporary.tmp');
+      native.write_file_sync(cleanup, 'temporary');
+      fs.chmodSync(cleanup, 0o444);
+      native.unlink(cleanup);
+      native.unlink(cleanup, {force: true});
+      assert.throws(() => native.unlink(cleanup), {code: 'ENOENT'});
+      native.write_file_sync(path.join(root, 'keep.txt'), 'kept');
+      assert.throws(() => native.unlink(root));
+      assert.equal(native.read_text_file(path.join(root, 'keep.txt')), 'kept');
+      await native.remove_async(root, {recursive: true});
+      console.log('native-delete-ok');
+    `,
+    );
+    const require = createRequire(import.meta.url);
+    const executable = require("electron") as string;
+    const result = await promisify(execFile)(executable, [entry], {
+      env: { ...process.env, ELECTRON_RUN_AS_NODE: "1" },
+      timeout: 30_000,
+      windowsHide: true,
+    });
+    expect(result.stdout).toContain("native-delete-ok");
+  },
+);

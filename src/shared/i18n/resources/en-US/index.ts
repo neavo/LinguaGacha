@@ -1,3 +1,4 @@
+import { en_us_skills_page } from "./skills-page";
 import { en_us_batch_translation } from "./batch-translation";
 import { en_us_agent_page } from "./agent-page";
 import { en_us_agent_runtime } from "./agent-runtime";
@@ -23,6 +24,7 @@ import type { zh_cn_messages } from "../zh-CN";
 import type { LocaleMessageSchema } from "../../types";
 
 export const en_us_messages = {
+  skills_page: en_us_skills_page,
   agent_page: en_us_agent_page,
   agent_runtime: en_us_agent_runtime,
   app: en_us_app,

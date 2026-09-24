@@ -114,7 +114,7 @@ export const de_de_app = {
     enabled: "Aktiviert",
   },
   editor: {
-    line_wrap_target: "Zeilenumbruch für {TARGET}",
+    line_wrap: "Zeilenumbruch",
   },
   tooltip: {
     value: "{TITLE} · {VALUE}",
@@ -215,6 +215,10 @@ export const de_de_app = {
       export_failed: { message: "Export der Übersetzung fehlgeschlagen …" },
     },
     file: {
+      already_exists: {
+        message:
+          "Eine Datei oder ein Ordner mit diesem Namen existiert bereits. Bitte einen anderen Namen wählen …",
+      },
       not_found: {
         message: "Die Datei existiert nicht …",
       },
@@ -325,7 +329,6 @@ export const de_de_app = {
       session_cleanup_failed: "Agent-Sitzungsbereinigung fehlgeschlagen …",
       tool_execution_failed: "Agent-Werkzeugausführung fehlgeschlagen …",
       skill_load_failed: "Agent-Skill-Laden fehlgeschlagen …",
-      skill_resource_load_failed: "Agent-Skill-Ressource konnte nicht geladen werden …",
     },
     api_gateway: {
       direct_route_failed: "API Gateway-Direkt-Routing fehlgeschlagen …",

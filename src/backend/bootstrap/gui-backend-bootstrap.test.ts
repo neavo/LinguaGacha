@@ -203,7 +203,7 @@ describe("GuiBackendBootstrap", () => {
       sessionState: shared_state.session,
       runtimeGate: shared_state.runtimeGate,
     });
-    expect(mocks.gateway_options[0]).toEqual({
+    expect(mocks.gateway_options[0]).toMatchObject({
       backendServices: services,
       agentService: agent,
       eventStream: stream,

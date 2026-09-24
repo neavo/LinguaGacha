@@ -55,7 +55,7 @@ export class BackendResources {
         t_main_log("app.log.app_version", { VERSION: metadata.read_version() }),
         log_manager,
       );
-      migration_orchestrator.run_startup_migrations({ paths, log_manager });
+      await migration_orchestrator.run_startup_migrations({ paths, log_manager });
       const settings = new AppSettingService(paths);
       set_main_log_language_reader(() => settings.read_app_language());
       system_proxy_http_client = new SystemProxyHttpClient(options.systemProxyResolver);

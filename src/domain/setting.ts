@@ -1,6 +1,7 @@
 import { read_json_boolean, type JsonRecord, type JsonValue } from "./json";
 import { normalize_app_language, type AppLanguage } from "./app-language";
 import { normalize_model_selection } from "./model";
+import { normalize_agent_skill_settings } from "./agent-skill-settings";
 
 export {
   ALL_LANGUAGE_CODE,
@@ -126,6 +127,8 @@ export const DEFAULT_SETTING: JsonRecord = {
     agent_batch_translation: null,
   },
   models: null,
+  agent_skills: { disabled: { builtin: [], user: [] }, user_order: [] },
+  agent_personality: null,
 };
 
 const PROJECT_SAVE_MODE_SET = new Set<ProjectSaveMode>(PROJECT_SAVE_MODES);
@@ -238,6 +241,8 @@ export class Setting {
    * 归一设置字段，防止未知类型写入设置文件
    */
   public static normalize_value(key: string, value: JsonValue): JsonValue {
+    if (key === "agent_personality") return typeof value === "string" ? value : null;
+    if (key === "agent_skills") return normalize_agent_skill_settings(value);
     if (key === "app_language") {
       return normalize_app_language(value);
     }

@@ -16,16 +16,29 @@ import {
 } from "./migration-orchestrator";
 
 describe("MigrationOrchestrator", () => {
-  it("启动期只执行带 startup hook 的迁移", () => {
+  it("启动期只执行带 startup hook 的迁移", async () => {
     using temp_dir = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "linguagacha-orchestrator-"));
     const calls: string[] = [];
     const orchestrator = new MigrationOrchestrator([
-      { id: "b", order: 2, run_startup: () => calls.push("b") },
-      { id: "a", order: 1, run_startup: () => calls.push("a") },
+      {
+        id: "b",
+        order: 2,
+        run_startup: () => {
+          calls.push("b");
+        },
+      },
+      {
+        id: "a",
+        order: 1,
+        run_startup: async () => {
+          await Promise.resolve();
+          calls.push("a");
+        },
+      },
       { id: "db", order: 0, run_project_database_writeback: () => calls.push("db") },
     ]);
 
-    orchestrator.run_startup_migrations({
+    await orchestrator.run_startup_migrations({
       paths: new AppPathService({
         appRoot: temp_dir.path,
         builtinRoot: path.join(temp_dir.path, "builtin"),

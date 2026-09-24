@@ -8,7 +8,7 @@ import type { LogManager } from "../log/log-manager";
 import { relocate_directory_items, relocate_path_if_needed } from "./path-relocation";
 
 describe("path relocation", () => {
-  it("目标不存在时复制旧源并删除旧源", () => {
+  it("目标不存在时复制旧源并删除旧源", async () => {
     using temp_dir = fs.mkdtempDisposableSync(
       path.join(os.tmpdir(), "linguagacha-path-relocation-"),
     );
@@ -16,13 +16,13 @@ describe("path relocation", () => {
     const destination_path = path.join(temp_dir.path, "userdata", "demo.txt");
     write_file(source_path, "旧内容");
 
-    relocate_path_if_needed(create_log_manager(), source_path, destination_path);
+    await relocate_path_if_needed(create_log_manager(), source_path, destination_path);
 
     expect(fs.readFileSync(destination_path, "utf-8")).toBe("旧内容");
     expect(fs.existsSync(source_path)).toBe(false);
   });
 
-  it("目标已存在时保留当前事实并清理旧源", () => {
+  it("目标已存在时保留当前事实并清理旧源", async () => {
     using temp_dir = fs.mkdtempDisposableSync(
       path.join(os.tmpdir(), "linguagacha-path-relocation-"),
     );
@@ -31,13 +31,13 @@ describe("path relocation", () => {
     write_file(source_path, "旧内容");
     write_file(destination_path, "当前内容");
 
-    relocate_path_if_needed(create_log_manager(), source_path, destination_path);
+    await relocate_path_if_needed(create_log_manager(), source_path, destination_path);
 
     expect(fs.readFileSync(destination_path, "utf-8")).toBe("当前内容");
     expect(fs.existsSync(source_path)).toBe(false);
   });
 
-  it("只迁移指定扩展名并保留非预设材料", () => {
+  it("只迁移指定扩展名并保留非预设材料", async () => {
     using temp_dir = fs.mkdtempDisposableSync(
       path.join(os.tmpdir(), "linguagacha-path-relocation-"),
     );
@@ -46,7 +46,7 @@ describe("path relocation", () => {
     write_file(path.join(source_dir, "story.txt"), "预设");
     write_file(path.join(source_dir, "readme.md"), "说明");
 
-    relocate_directory_items(create_log_manager(), source_dir, destination_dir, ".txt", [
+    await relocate_directory_items(create_log_manager(), source_dir, destination_dir, ".txt", [
       temp_dir.path,
     ]);
 

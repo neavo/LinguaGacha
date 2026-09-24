@@ -6,9 +6,7 @@ import { defineTool, type ToolDefinition } from "@earendil-works/pi-coding-agent
 import { default_native_fs, type NativeFs } from "../../../native/native-fs";
 import {
   agent_skill_base_url,
-  load_agent_skills,
   type AgentSkillDefinition,
-  type AgentSkillLog,
   type AgentSkillPaths,
 } from "../agent-skills";
 import { AgentToolError, agent_tool_result } from "./definition";
@@ -33,11 +31,10 @@ const READ_SKILL_PARAMETERS = Type.Object(
 
 type AgentSkillNativeFs = Pick<NativeFs, "read_text_file" | "real_path" | "stat">;
 
-/** 按逻辑 skill 名称读取包内文件；catalog 外的新 skill 在调用时实时发现。 */
+/** 按当前名称定位技能包，每次调用读取当前磁盘内容。 */
 export function create_agent_skill_tools(
-  session_skills: readonly AgentSkillDefinition[],
+  get_skills: () => readonly AgentSkillDefinition[],
   paths: AgentSkillPaths,
-  log_manager: AgentSkillLog,
   native_fs: AgentSkillNativeFs = default_native_fs,
 ): ToolDefinition[] {
   return [
@@ -60,12 +57,7 @@ export function create_agent_skill_tools(
             path: params.path ?? DEFAULT_SKILL_RESOURCE_PATH,
           });
         }
-        // 已知名称绑定当前会话胜者；只有未知名称才实时发现，避免同名覆盖半途生效。
-        const skill =
-          session_skills.find((candidate) => candidate.name === params.name) ??
-          (await load_agent_skills(paths, log_manager)).find(
-            (candidate) => candidate.name === params.name,
-          );
+        const skill = get_skills().find((candidate) => candidate.name === params.name);
         if (skill === undefined) {
           throw new AgentToolError({
             code: "skill.resource_not_found",

@@ -468,6 +468,10 @@ export class AgentSessionStore {
 
     this.revision = event.revision;
     switch (event.type) {
+      case "skills_changed":
+        this.skills = { skills: event.skills };
+        this.emit("skills");
+        break;
       case "token_speed":
         this.set_token_speed(event.tokenSpeed);
         break;
@@ -820,6 +824,10 @@ function normalize_agent_event(value: unknown): AgentSessionEvent | null {
       const snapshot = normalize_snapshot(record["snapshot"]);
       return snapshot.revision === revision ? { type: "snapshot_seed", revision, snapshot } : null;
     }
+    case "skills_changed":
+      return Array.isArray(record["skills"])
+        ? { type: "skills_changed", revision, skills: record["skills"].flatMap(normalize_skill) }
+        : null;
     case "session_state":
       return { type: "session_state", revision, state: normalize_state(record["state"]) };
     case "approval_mode": {

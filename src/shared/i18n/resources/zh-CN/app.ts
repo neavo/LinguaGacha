@@ -109,7 +109,7 @@ export const zh_cn_app = {
     enabled: "已启用",
   },
   editor: {
-    line_wrap_target: "{TARGET}自动换行",
+    line_wrap: "自动换行",
   },
   tooltip: {
     value: "{TITLE} · {VALUE}",
@@ -207,6 +207,7 @@ export const zh_cn_app = {
       export_failed: { message: "译文导出失败 …" },
     },
     file: {
+      already_exists: { message: "同名文件或文件夹已存在，请使用其它名称 …" },
       not_found: {
         message: "文件不存在 …",
       },
@@ -312,8 +313,7 @@ export const zh_cn_app = {
       context_compaction_failed: "Agent 上下文压缩失败 …",
       session_cleanup_failed: "Agent 会话清理失败 …",
       tool_execution_failed: "Agent 工具执行异常 …",
-      skill_load_failed: "Agent skill 加载失败 …",
-      skill_resource_load_failed: "Agent skill 资源加载失败 …",
+      skill_load_failed: "Agent 技能加载失败 …",
     },
     api_gateway: {
       direct_route_failed: "API Gateway 直接路由处理失败 …",
