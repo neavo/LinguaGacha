@@ -110,7 +110,7 @@ export const ko_kr_app = {
     enabled: "사용 중",
   },
   editor: {
-    line_wrap_target: "{TARGET} 자동 줄 바꿈",
+    line_wrap: "자동 줄 바꿈",
   },
   tooltip: {
     value: "{TITLE} · {VALUE}",

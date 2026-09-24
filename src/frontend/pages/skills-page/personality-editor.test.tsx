@@ -57,7 +57,7 @@ describe("角色设定编辑", () => {
     container.remove();
     vi.useRealTimers();
   });
-  /** 读取当前反馈，排除用于预留宽度的隐藏文案。 */
+  /** 从工具栏读取当前保存反馈。 */
   function status() {
     return container.querySelector(".skill-editor__status-label")?.textContent;
   }
@@ -138,18 +138,36 @@ describe("角色设定编辑", () => {
   });
   it("空正文可自动保存，运行占用期间暂停写入并在空闲后恢复", async () => {
     await edit("");
-    expect(status()).toBe(t("skills_page.editor.saving"));
+    expect(status()).toBe(t("skills_page.editor.modified"));
     mocks.owner = "agent";
     await render();
-    expect(container.querySelector(".skill-editor__status")).toBeNull();
+    expect(status()).toBe(t("skills_page.editor.modified"));
     await act(async () => vi.advanceTimersByTime(SKILL_AUTOSAVE_DELAY_MS * 2));
     expect(disk.body).toBe("Custom role");
     expect(view().contentDOM.getAttribute("contenteditable")).toBe("false");
     mocks.owner = null;
     await render();
-    expect(status()).toBe(t("skills_page.editor.saving"));
+    expect(status()).toBe(t("skills_page.editor.modified"));
     await act(async () => vi.advanceTimersByTime(SKILL_AUTOSAVE_DELAY_MS));
     expect(disk.body).toBe("");
+    expect(status()).toBe(t("skills_page.editor.saved"));
+  });
+  it("在途保存期间撤销到原文仍显示已修改，全部写入完成后显示已保存", async () => {
+    let release!: () => void;
+    hold = () =>
+      new Promise<void>((resolve) => {
+        release = resolve;
+      });
+    await edit("Saving role");
+    await act(async () => vi.advanceTimersByTime(SKILL_AUTOSAVE_DELAY_MS));
+    await act(async () => {
+      expect(undo(view())).toBe(true);
+    });
+    expect(read_skill_editor_document(view().state.doc.toString()).body).toBe("Custom role");
+    expect(status()).toBe(t("skills_page.editor.modified"));
+    hold = undefined;
+    await act(async () => release());
+    expect(disk.body).toBe("Custom role");
     expect(status()).toBe(t("skills_page.editor.saved"));
   });
   it("重置复用倒计时，等待在途保存后恢复默认并清除撤销历史", async () => {
@@ -161,7 +179,7 @@ describe("角色设定编辑", () => {
     await edit("Saving role");
     await act(async () => vi.advanceTimersByTime(SKILL_AUTOSAVE_DELAY_MS));
     await edit("Discarded draft");
-    expect(status()).toBe(t("skills_page.editor.saving"));
+    expect(status()).toBe(t("skills_page.editor.modified"));
     await open_reset();
     expect(document.querySelector('[role="alertdialog"]')?.textContent).toContain(
       "是否确认重置技能 …?",
@@ -193,7 +211,7 @@ describe("角色设定编辑", () => {
     expect(read_skill_editor_document(view().state.doc.toString()).body).toBe("Unsaved role");
     expect(disk.body).toBe("Custom role");
     expect(container.querySelector('[role="alert"]')).not.toBeNull();
-    expect(status()).toBe(t("skills_page.editor.failed"));
+    expect(status()).toBe(t("skills_page.editor.modified"));
     const retry = [...container.querySelectorAll("button")].find(
       (button) => button.textContent === "重试",
     )!;

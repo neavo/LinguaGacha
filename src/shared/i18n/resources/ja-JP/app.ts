@@ -112,7 +112,7 @@ export const ja_jp_app = {
     enabled: "有効",
   },
   editor: {
-    line_wrap_target: "{TARGET}を折り返す",
+    line_wrap: "自動折り返し",
   },
   tooltip: {
     value: "{TITLE} · {VALUE}",

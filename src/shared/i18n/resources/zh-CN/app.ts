@@ -109,7 +109,7 @@ export const zh_cn_app = {
     enabled: "已启用",
   },
   editor: {
-    line_wrap_target: "{TARGET}自动换行",
+    line_wrap: "自动换行",
   },
   tooltip: {
     value: "{TITLE} · {VALUE}",

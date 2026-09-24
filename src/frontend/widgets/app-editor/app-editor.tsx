@@ -550,7 +550,7 @@ export function AppEditor(props: AppEditorProps): JSX.Element {
                 variant="ghost"
                 size="icon-sm"
                 className="app-editor__wrap-action"
-                aria-label={t("app.editor.line_wrap_target", { TARGET: props.aria_label })}
+                aria-label={t("app.editor.line_wrap")}
                 aria-pressed={wrap_lines}
                 onPointerDown={(event) => {
                   // 指针切换只改变视图偏好，保持正文焦点并避免触发失焦提交。
@@ -565,7 +565,7 @@ export function AppEditor(props: AppEditorProps): JSX.Element {
           <TooltipContent side="left">
             <p>
               {t("app.tooltip.value", {
-                TITLE: t("app.editor.line_wrap_target", { TARGET: props.aria_label }),
+                TITLE: t("app.editor.line_wrap"),
                 VALUE: t(wrap_lines ? "app.state.enabled" : "app.state.disabled"),
               })}
             </p>

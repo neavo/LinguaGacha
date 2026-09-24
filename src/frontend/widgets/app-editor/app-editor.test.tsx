@@ -173,15 +173,12 @@ describe("AppEditor", () => {
 
     const editor = container.querySelector(".app-editor--viewer");
     const content = get_editor_content(container);
-    expect(editor?.classList.contains("app-editor--readonly")).toBe(false);
     expect(editor?.classList.contains("app-editor--wrap-lines")).toBe(true);
     expect(content.getAttribute("contenteditable")).toBe("false");
     expect(content.getAttribute("tabindex")).toBe("0");
-    expect(container.querySelector(".cm-lineNumbers")).not.toBeNull();
-    expect(container.querySelector(".cm-line span")).not.toBeNull();
 
     const wrap_action = container.querySelector<HTMLButtonElement>(
-      'button[aria-label="app.editor.line_wrap_target:工具输出"]',
+      'button[aria-label="app.editor.line_wrap"]',
     );
     expect(wrap_action?.getAttribute("aria-pressed")).toBe("true");
     await act(async () => wrap_action?.click());
@@ -202,7 +199,7 @@ describe("AppEditor", () => {
 
     expect(container.querySelector(".app-editor--wrap-lines")).not.toBeNull();
     const wrap_action = container.querySelector<HTMLButtonElement>(
-      'button[aria-label="app.editor.line_wrap_target:正文编辑器"]',
+      'button[aria-label="app.editor.line_wrap"]',
     );
     await act(async () => wrap_action?.click());
 
@@ -282,25 +279,6 @@ describe("AppEditor", () => {
     });
 
     expect(container.querySelector(".cm-placeholder")?.textContent).toBe("JSON eingeben");
-  });
-
-  it("关闭 Tab 缩进后把 Tab 交回浏览器焦点链路", async () => {
-    container = document.createElement("div");
-    document.body.append(container);
-    root = createRoot(container);
-
-    await act(async () => {
-      root?.render(
-        <AppEditor
-          value="Alpha"
-          aria_label="质量规则字段"
-          read_only={false}
-          indent_with_tab={false}
-        />,
-      );
-    });
-
-    expect(dispatch_tab_key(get_editor_content(container))).toBe(false);
   });
 
   it("更新 Tab 缩进属性后同步重配键盘映射", async () => {

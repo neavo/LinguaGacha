@@ -17,6 +17,13 @@
   min-width: 0;
   flex: 1;
 }
+/* 外层居中整组文字，组内基线对齐两种字号。 */
+.skill-editor__file-info {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
 .skill-editor__state {
   flex: 1;
   min-height: 0;
@@ -263,13 +270,13 @@
 }
 
 .skill-editor__status {
-  display: inline-grid;
-  margin-left: 4px;
+  display: inline-flex;
+  flex-shrink: 0;
+  gap: 8px;
+  font-size: 12px;
+  white-space: nowrap;
+  color: var(--muted-foreground);
 }
-/* 重叠文案按当前语言预留宽度，正常保存状态切换时保持胶囊尺寸。 */
-.skill-editor__status > span {
-  grid-area: 1 / 1;
-}
-.skill-editor__status > [aria-hidden] {
-  visibility: hidden;
+.skill-editor__status[data-status="modified"] .skill-editor__status-label {
+  color: var(--primary);
 }

@@ -112,7 +112,7 @@ export const en_us_app = {
     enabled: "Enabled",
   },
   editor: {
-    line_wrap_target: "Line wrapping for {TARGET}",
+    line_wrap: "Line wrapping",
   },
   tooltip: {
     value: "{TITLE} · {VALUE}",

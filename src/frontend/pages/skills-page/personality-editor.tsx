@@ -28,15 +28,6 @@ export function PersonalityEditor({ on_back }: { on_back: () => void }): JSX.Ele
   const { leaving, register_before_leave } = usePageLeave();
   useEffect(() => register_before_leave(editor.flush), [editor.flush, register_before_leave]);
   const locked = editor.locked || editor.busy || leaving;
-  // 运行占用会暂停自动保存，隐藏反馈直到恢复，避免把暂停显示为持续保存。
-  const status =
-    !editor.saved || editor.locked
-      ? null
-      : editor.error
-        ? "failed"
-        : editor.dirty || editor.saving
-          ? "saving"
-          : "saved";
   return (
     <section
       className="skill-editor"
@@ -55,7 +46,7 @@ export function PersonalityEditor({ on_back }: { on_back: () => void }): JSX.Ele
         locked={locked || !editor.saved}
         action="reset"
         on_action={editor.reset}
-        status={status}
+        status={!editor.saved ? null : editor.dirty || editor.saving ? "modified" : "saved"}
         on_back={() => {
           void editor.flush().then((ok) => {
             if (ok) on_back();

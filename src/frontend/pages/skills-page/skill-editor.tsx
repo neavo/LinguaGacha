@@ -15,7 +15,6 @@ import { AppEditor } from "@frontend/widgets/app-editor/app-editor";
 import { AppContentState } from "@frontend/widgets/app-content-state";
 import { AppConfirmDialog } from "@frontend/widgets/app-alert-dialog";
 import { CommandBar } from "@frontend/widgets/command-bar/command-bar";
-import { Badge } from "@frontend/shadcn/badge";
 import { Card } from "@frontend/shadcn/card";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@frontend/shadcn/tooltip";
 import { SkillFileTree } from "./skill-file-tree";
@@ -37,14 +36,6 @@ export function SkillEditor({
   useEffect(() => register_before_leave(editor.flush), [editor.flush, register_before_leave]);
   const readonly = skill.source === "builtin" || editor.locked;
   const locked = readonly || editor.busy || leaving;
-  // 自动保存等待期与在途写入共用保存反馈，避免草稿尚未落盘时显示已保存。
-  const status = editor.error
-    ? "failed"
-    : editor.invalid
-      ? "invalid"
-      : editor.dirty || editor.saving
-        ? "saving"
-        : "saved";
   const path_parts = [
     editor.file?.skill.name ?? skill.name,
     ...(editor.file?.path ?? AGENT_SKILL_MAIN_FILE).split("/"),
@@ -63,7 +54,13 @@ export function SkillEditor({
     >
       <SkillEditorToolbar
         path={path_parts}
-        status={!readonly && editor.file ? status : null}
+        status={
+          skill.source === "user" && editor.file?.text != null
+            ? editor.dirty || editor.saving
+              ? "modified"
+              : "saved"
+            : null
+        }
         busy={editor.busy || leaving}
         locked={locked || editor.loading || !editor.file}
         action={skill.source === "user" ? "delete" : undefined}
@@ -193,7 +190,7 @@ export function SkillEditor({
 /** 文件与角色编辑共用导航、保存反馈和危险操作，具体写入由各自编辑状态拥有。 */
 export function SkillEditorToolbar(props: {
   path: string[];
-  status: "failed" | "invalid" | "saving" | "saved" | null;
+  status: "saved" | "modified" | null; // 草稿有差异或保存尚在进行时均为已修改，防止在途撤销提前显示已保存。
   busy: boolean;
   locked: boolean;
   action?: "delete" | "reset";
@@ -223,37 +220,29 @@ export function SkillEditorToolbar(props: {
               </TooltipTrigger>
               <TooltipContent>{t("skills_page.editor.back")}</TooltipContent>
             </Tooltip>
-            <span className="skill-editor__path" title={props.path.join(" / ")}>
-              {props.path.map((part, index) => (
-                <Fragment key={index}>
-                  {index > 0 && <span className="skill-editor__path-separator">/</span>}
-                  <span
-                    className="skill-editor__path-segment"
-                    data-directory={(index > 0 && index < props.path.length - 1) || undefined}
-                  >
-                    {part}
+            <div className="skill-editor__file-info">
+              <span className="skill-editor__path" title={props.path.join(" / ")}>
+                {props.path.map((part, index) => (
+                  <Fragment key={index}>
+                    {index > 0 && <span className="skill-editor__path-separator">/</span>}
+                    <span
+                      className="skill-editor__path-segment"
+                      data-directory={(index > 0 && index < props.path.length - 1) || undefined}
+                    >
+                      {part}
+                    </span>
+                  </Fragment>
+                ))}
+              </span>
+              {props.status && (
+                <span className="skill-editor__status" data-status={props.status}>
+                  <span aria-hidden="true">·</span>
+                  <span className="skill-editor__status-label">
+                    {t(`skills_page.editor.${props.status}`)}
                   </span>
-                </Fragment>
-              ))}
-            </span>
-            {props.status && (
-              <Badge
-                className="skill-editor__status"
-                tone={
-                  props.status === "failed"
-                    ? "failure"
-                    : props.status === "invalid"
-                      ? "warning"
-                      : "neutral"
-                }
-              >
-                <span aria-hidden="true">{t("skills_page.editor.saving")}</span>
-                <span aria-hidden="true">{t("skills_page.editor.saved")}</span>
-                <span className="skill-editor__status-label">
-                  {t(`skills_page.editor.${props.status}`)}
                 </span>
-              </Badge>
-            )}
+              )}
+            </div>
           </div>
         }
         hint={
@@ -273,7 +262,7 @@ export function SkillEditorToolbar(props: {
               >
                 {props.action === "reset" ? <RotateCcw /> : <Trash2 />}
               </TooltipTrigger>
-              <TooltipContent>{action_label}</TooltipContent>
+              <TooltipContent side="left">{action_label}</TooltipContent>
             </Tooltip>
           ) : undefined
         }

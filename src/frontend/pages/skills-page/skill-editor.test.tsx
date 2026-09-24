@@ -34,7 +34,7 @@ describe("技能编辑工作面", () => {
     runtime_state.owner = null;
     vi.useRealTimers();
   });
-  /** 读取当前反馈，排除用于预留宽度的隐藏文案。 */
+  /** 从工具栏读取当前保存反馈。 */
   function status() {
     return container.querySelector(".skill-editor__status-label")?.textContent;
   }
@@ -145,7 +145,7 @@ describe("技能编辑工作面", () => {
   it("Agent 执行期间用户技能只读，仍可浏览包内文件", async () => {
     runtime_state.owner = "agent";
     await render("user");
-    expect(container.querySelector(".skill-editor__status")).toBeNull();
+    expect(status()).toBe(t("skills_page.editor.saved"));
     expect(container.querySelector(".cm-content")?.getAttribute("contenteditable")).toBe("false");
     await act(async () => {
       [...container.querySelectorAll<HTMLButtonElement>(".skill-tree__select")]
@@ -156,7 +156,7 @@ describe("技能编辑工作面", () => {
     expect(mocks.api.mock.calls.some(([url]) => url.endsWith("/save"))).toBe(false);
   });
 
-  it("内置技能保留选择与阅读，隐藏写入入口与状态徽标", async () => {
+  it("内置技能保留选择与阅读，隐藏写入入口与保存状态", async () => {
     await render("builtin");
     expect(container.querySelector(".skill-editor__status")).toBeNull();
     expect(container.querySelector(".cm-content")?.textContent).toContain("name: sample");
@@ -181,7 +181,7 @@ describe("技能编辑工作面", () => {
         userEvent: "input",
       }),
     );
-    expect(status()).toBe(t("skills_page.editor.saving"));
+    expect(status()).toBe(t("skills_page.editor.modified"));
     await act(async () => view.dispatch({ selection: { anchor: 0, head: view.state.doc.length } }));
     await act(async () => vi.advanceTimersByTimeAsync(SKILL_AUTOSAVE_DELAY_MS));
     expect(status()).toBe(t("skills_page.editor.saved"));
@@ -199,7 +199,7 @@ describe("技能编辑工作面", () => {
       view.dispatch({ changes: { from: name_start, to: name_start + "sample".length } }),
     );
     expect(view.contentDOM.getAttribute("aria-invalid")).toBe("true");
-    expect(status()).toBe(t("skills_page.editor.invalid"));
+    expect(status()).toBe(t("skills_page.editor.modified"));
     const discard = [...container.querySelectorAll("button")].find(
       (button) => button.textContent === t("skills_page.editor.discard"),
     );
