@@ -237,16 +237,31 @@ export class NativeFs {
 
   /** 同目录临时文件完整复制后才替换目标，复制或替换失败保留已有目标。 */
   public copy_file_atomic(source_path: string, destination_path: string): void {
+    this.replace_file_atomic(destination_path, (temporary) =>
+      this.copy_file(source_path, temporary),
+    );
+  }
+
+  /** 完整写入同目录临时文件后替换目标，供需要保留旧文件的保存入口使用。 */
+  public write_file_atomic(file_path: string, data: string | Uint8Array): void {
+    this.replace_file_atomic(file_path, (temporary) => this.write_file_sync(temporary, data));
+  }
+
+  /** 复制与写入共用替换及失败清理，清理异常与原始异常一起保留。 */
+  private replace_file_atomic(
+    destination_path: string,
+    prepare: (temporary: string) => void,
+  ): void {
     const temporary_path = path.join(path.dirname(destination_path), `.${randomUUID()}.tmp`);
     try {
-      this.copy_file(source_path, temporary_path);
+      prepare(temporary_path);
       this.rename(temporary_path, destination_path);
     } catch (cause) {
       try {
-        // 复制可能尚未建立临时文件，缺失时清理已完成。
+        // 准备失败可能尚未建立临时文件，缺失时清理已完成。
         this.unlink(temporary_path, { force: true });
       } catch (cleanup_error) {
-        throw new AggregateError([cause, cleanup_error], "File copy and cleanup failed.", {
+        throw new AggregateError([cause, cleanup_error], "File replacement and cleanup failed.", {
           cause,
         });
       }

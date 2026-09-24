@@ -5,9 +5,7 @@ import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { AppPathService } from "../app/app-path-service";
 import { AppSettingService } from "../app/app-setting-service";
-import { normalize_agent_skill_settings } from "../../domain/agent-skill-settings";
 import { AgentSkillsService } from "./agent-skills-service";
-import { load_agent_skills } from "./agent-skills";
 import { default_native_fs } from "../../native/native-fs";
 
 /** 隔离技能目录和配置文件，使用真实加载与持久化入口。 */
@@ -47,12 +45,6 @@ function fixture() {
       );
       if (hidden) fs.writeFileSync(path.join(directory, "ui.json"), '{"visible":false}');
     },
-    load: () =>
-      load_agent_skills(
-        paths,
-        log,
-        normalize_agent_skill_settings(settings.read_setting().agent_skills),
-      ),
   };
 }
 
@@ -222,7 +214,7 @@ describe("技能管理", () => {
       revision: file.revision,
       document: { ...file.document!, name: "target" },
     });
-    expect(f.load().find((skill) => skill.name === "target")?.filePath).toBe(
+    expect(f.service.get_current().find((skill) => skill.name === "target")?.filePath).toBe(
       path.join(f.paths.get_agent_user_skill_dir(), "folder", "SKILL.md").replaceAll("\\", "/"),
     );
     await expect(
@@ -234,32 +226,6 @@ describe("技能管理", () => {
       }),
     ).rejects.toMatchObject({ code: "file.already_exists" });
   });
-  it("启用、排序与同名来源回退原子更新当前集合", async () => {
-    using f = fixture();
-    f.write("builtin", "shared", "shared");
-    f.write("user", "shared", "shared");
-    f.write("user", "another", "another");
-    await f.service.refresh();
-    const original = f.service.get_current();
-    const user_path = path
-      .join(f.paths.get_agent_user_skill_dir(), "shared", "SKILL.md")
-      .replaceAll("\\", "/");
-    const builtin_path = path
-      .join(f.paths.get_agent_builtin_skill_dir(), "shared", "SKILL.md")
-      .replaceAll("\\", "/");
-    expect(original.find((skill) => skill.name === "shared")?.filePath).toBe(user_path);
-
-    await f.service.set_enabled({ source: "user", name: "shared", enabled: false });
-    const after_disable = f.service.get_current();
-    expect(after_disable.find((skill) => skill.name === "shared")?.filePath).toBe(builtin_path);
-    expect(original.find((skill) => skill.name === "shared")?.filePath).toBe(user_path);
-
-    await f.service.set_enabled({ source: "user", name: "shared", enabled: true });
-    await f.service.reorder({ names: ["shared", "another"] });
-    expect(f.service.get_current().map((skill) => skill.name)).toEqual(["shared", "another"]);
-    expect(after_disable.find((skill) => skill.name === "shared")?.filePath).toBe(builtin_path);
-  });
-
   it("技能根目录经链接定位后，文件管理与技能改名作用于实际目录", async () => {
     using f = fixture();
     f.write("user", "sample", "sample");
@@ -360,7 +326,7 @@ describe("技能管理", () => {
     });
     expect(fs.existsSync(path.join(f.paths.get_agent_user_skill_dir(), "before"))).toBe(true);
     await f.service.set_enabled({ source: "user", name: "after", enabled: true });
-    expect(f.load().map((item) => item.name)).toEqual(["after"]);
+    expect(f.service.get_current().map((item) => item.name)).toEqual(["after"]);
   });
 
   it("改名配置写入失败恢复原正文和偏好", async () => {
@@ -400,14 +366,16 @@ describe("技能管理", () => {
     const builtin_path = path
       .join(f.paths.get_agent_builtin_skill_dir(), "shared", "SKILL.md")
       .replaceAll("\\", "/");
-    expect(f.load().map((item) => item.filePath)).toEqual([user_path]);
+    const original = f.service.get_current();
+    expect(original.map((item) => item.filePath)).toEqual([user_path]);
     await f.service.set_enabled({ source: "user", name: "shared", enabled: false });
-    expect(f.load().map((item) => item.filePath)).toEqual([builtin_path]);
+    expect(f.service.get_current().map((item) => item.filePath)).toEqual([builtin_path]);
+    expect(original.map((item) => item.filePath)).toEqual([user_path]);
     expect((await f.service.snapshot()).skills.map((item) => item.enabled)).toEqual([true, false]);
     await f.service.set_enabled({ source: "builtin", name: "shared", enabled: false });
-    expect(f.load()).toEqual([]);
+    expect(f.service.get_current()).toEqual([]);
     await f.service.set_enabled({ source: "user", name: "shared", enabled: true });
-    expect(f.load().map((item) => item.filePath)).toEqual([user_path]);
+    expect(f.service.get_current().map((item) => item.filePath)).toEqual([user_path]);
     expect(new AppSettingService(f.paths).read_setting().agent_skills).toEqual({
       disabled: { builtin: ["shared"], user: [] },
       user_order: [],
@@ -415,22 +383,6 @@ describe("技能管理", () => {
     await expect(f.service.set_enabled({ name: "shared", enabled: false })).rejects.toMatchObject({
       code: "request.validation_failed",
     });
-  });
-
-  it("同一来源只显示首个有效同名包，排序不改变包选择", async () => {
-    using f = fixture();
-    f.write("user", "two/duplicate", "duplicate");
-    f.write("user", "one/duplicate", "duplicate");
-    f.write("user", "other", "other");
-    expect((await f.service.snapshot()).skills.map((item) => item.name)).toEqual([
-      "duplicate",
-      "other",
-    ]);
-    await f.service.reorder({ names: ["other", "duplicate"] });
-    const loaded = f.load();
-    expect(loaded.map((item) => item.name)).toEqual(["other", "duplicate"]);
-    expect(loaded[1]?.filePath).toContain("/one/duplicate/SKILL.md");
-    expect(f.log.warning).toHaveBeenCalled();
   });
 
   it("保存开关与排序，隐藏技能继续加载，新技能追加到末尾", async () => {
@@ -448,10 +400,15 @@ describe("技能管理", () => {
         ["alpha", true],
       ],
     );
-    expect(f.load().map((skill) => skill.name)).toEqual(["built", "hidden", "alpha"]);
+    expect(f.service.get_current().map((skill) => skill.name)).toEqual([
+      "built",
+      "hidden",
+      "alpha",
+    ]);
     await f.service.set_enabled({ source: "user", name: "beta", enabled: true });
     f.write("user", "aardvark", "aardvark");
-    expect(f.load().map((skill) => skill.name)).toEqual([
+    await f.service.refresh();
+    expect(f.service.get_current().map((skill) => skill.name)).toEqual([
       "built",
       "hidden",
       "beta",

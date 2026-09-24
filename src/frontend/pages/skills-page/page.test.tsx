@@ -104,8 +104,14 @@ describe("技能页面", () => {
     mocks.owner = "agent";
     mocks.api.mockResolvedValue({ skills: [skill("sample", "user")] });
     await render();
-    expect(container.querySelector<HTMLButtonElement>(".skills-page__handle")?.disabled).toBe(true);
-    expect(container.querySelector<HTMLButtonElement>(".skills-page__open")?.disabled).toBe(false);
+    const entry = container.querySelector<HTMLButtonElement>(
+      '.skills-page__open[aria-label="sample"]',
+    )!;
+    expect(
+      entry.closest(".skills-page__card")?.querySelector<HTMLButtonElement>(".skills-page__handle")
+        ?.disabled,
+    ).toBe(true);
+    expect(entry.disabled).toBe(false);
     for (const button of container.querySelectorAll<HTMLButtonElement>("button[aria-pressed]"))
       expect(button.disabled).toBe(true);
   });
@@ -116,12 +122,14 @@ describe("技能页面", () => {
       mocks.api.mockResolvedValue({ skills: [skill("sample", source)] });
       await render();
       const list = container.querySelector<HTMLElement>(".skills-page__list")!;
-      const handle = container.querySelector<HTMLButtonElement>(".skills-page__handle")!;
-      await act(async () => handle.click());
-      expect(list.hidden).toBe(false);
       const entry = container.querySelector<HTMLButtonElement>(
         'button.skills-page__open[aria-label="sample"]',
       )!;
+      const handle = entry
+        .closest(".skills-page__card")!
+        .querySelector<HTMLButtonElement>(".skills-page__handle")!;
+      await act(async () => handle.click());
+      expect(list.hidden).toBe(false);
       await act(async () => entry.click());
       expect(list.hidden).toBe(true);
       const back = [...container.querySelectorAll("button")].find(

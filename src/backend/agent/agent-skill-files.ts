@@ -1,6 +1,6 @@
 import { AGENT_SKILL_MAIN_FILE, AGENT_SKILL_UI_FILE } from "../../shared/agent-skills";
 import path from "node:path";
-import { createHash, randomUUID } from "node:crypto";
+import { createHash } from "node:crypto";
 import { default_native_fs as fs } from "../../native/native-fs";
 import type {
   AgentSkillFile,
@@ -132,21 +132,10 @@ export function read_skill_file(
   };
 }
 
-/** 同目录完整写入临时文件再替换；失败时清理临时文件并保留原始异常。 */
+/** 编辑大小限制归技能接口，原子替换与失败清理由文件系统门面负责。 */
 export function write_skill_file(target: string, text: string): void {
   if (Buffer.byteLength(text) > MAX_TEXT_BYTES) throw new AppError("request.validation_failed");
-  const temporary = path.join(path.dirname(target), `.${randomUUID()}.tmp`);
-  try {
-    fs.write_file_sync(temporary, text);
-    fs.rename(temporary, target);
-  } catch (cause) {
-    try {
-      fs.unlink(temporary, { force: true });
-    } catch (cleanup) {
-      throw new AggregateError([cause, cleanup], "Skill file write and cleanup failed.", { cause });
-    }
-    throw cause;
-  }
+  fs.write_file_atomic(target, text);
 }
 
 /** 执行包内文件操作，根目录与主文件的生命周期由技能服务管理。 */

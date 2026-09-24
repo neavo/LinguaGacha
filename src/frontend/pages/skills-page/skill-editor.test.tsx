@@ -112,7 +112,12 @@ describe("技能编辑工作面", () => {
     await act(async () => button.click());
     const dialog = document.querySelector('[role="alertdialog"]')!;
     expect(mocks.api.mock.calls.some(([url]) => url === "/api/skills/delete")).toBe(false);
-    await act(async () => vi.advanceTimersByTime(3000));
+    const countdown = [...dialog.querySelectorAll("button")].find((button) =>
+      /^\d+s$/.test(button.textContent ?? ""),
+    )!;
+    await act(async () =>
+      vi.advanceTimersByTime(Number.parseInt(countdown.textContent!, 10) * 1000),
+    );
     const confirm = [...dialog.querySelectorAll("button")].find(
       (item) => item.textContent === "确认",
     )!;

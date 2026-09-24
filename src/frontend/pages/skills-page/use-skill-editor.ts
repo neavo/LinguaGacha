@@ -41,12 +41,8 @@ function file_draft(file: AgentSkillFile): string {
 export function useSkillEditor(identity: AgentSkillIdentity) {
   const { t } = useI18n();
   const locked = useRuntimeSnapshot().owner === "agent";
-  const locked_ref = useRef(locked); // 在途保存和离页回调读取最新运行占用。
-  locked_ref.current = locked;
-  const translate = useRef(t); // 语言变化只更新错误文案，不重新加载并覆盖草稿。
-  useEffect(() => {
-    translate.current = t;
-  }, [t]);
+  const environment = useRef({ locked, t }); // 异步回调读取当前占用与语言，语言切换保留草稿。
+  environment.current = { locked, t };
   const [state, set_state] = useState<EditorState>({
     tree: null,
     file: null,
@@ -79,7 +75,7 @@ export function useSkillEditor(identity: AgentSkillIdentity) {
   /** 错误反馈使用当前语言，并保留版本冲突的恢复入口。 */
   const report = useCallback(
     (error: unknown, context: "load_failed" | "save_failed" = "save_failed") => {
-      const text = translate.current;
+      const text = environment.current.t;
       update({
         error: resolve_visible_error_message(error, text, text(`skills_page.feedback.${context}`)),
         conflict: error instanceof DesktopApiError && error.code === "data.revision_conflict",
@@ -89,7 +85,7 @@ export function useSkillEditor(identity: AgentSkillIdentity) {
   );
   /** 文件命令的失败通过通知反馈，不占用正文保存的恢复状态。 */
   const notify = useCallback((error: unknown) => {
-    const text = translate.current;
+    const text = environment.current.t;
     push_toast(
       "error",
       error instanceof DesktopApiError && error.code === "file.already_exists"
@@ -146,7 +142,7 @@ export function useSkillEditor(identity: AgentSkillIdentity) {
         if (current.current.composing) return false;
         const { file, draft } = current.current;
         if (!file || file.skill.source === "builtin" || draft === file_draft(file)) return true;
-        if (locked_ref.current) return false;
+        if (environment.current.locked) return false;
         const document = file.document ? read_skill_editor_document(draft) : undefined;
         if (document && validate_agent_skill_document(document)) return false;
         update({ saving: true });
@@ -249,7 +245,7 @@ export function useSkillEditor(identity: AgentSkillIdentity) {
 
   /** 文件命令成功后更新导航。当前路径未受影响时沿用已保存内容。 */
   async function change_file(change: AgentSkillFileChange): Promise<boolean> {
-    if (locked_ref.current) return false;
+    if (environment.current.locked) return false;
     const affected =
       current.current.file &&
       (current.current.file.path === change.path ||
@@ -265,8 +261,8 @@ export function useSkillEditor(identity: AgentSkillIdentity) {
         "error",
         current.current.error ||
           (invalid
-            ? translate.current(`skills_page.editor.invalid_${invalid}`)
-            : translate.current("skills_page.feedback.save_failed")),
+            ? environment.current.t(`skills_page.editor.invalid_${invalid}`)
+            : environment.current.t("skills_page.feedback.save_failed")),
       );
       return false;
     }
@@ -376,7 +372,7 @@ export function useSkillEditor(identity: AgentSkillIdentity) {
     flush: finish,
     delete_skill: () =>
       run_operation(async () => {
-        if (locked_ref.current) return false;
+        if (environment.current.locked) return false;
         deleting.current = true;
         try {
           if (write.current) await write.current;
@@ -407,7 +403,7 @@ export function useSkillEditor(identity: AgentSkillIdentity) {
     recover: (overwrite = false) => run_operation(() => recover(overwrite), "load_failed"),
     /** 输入更新草稿后清除上一次保存错误，恢复自动保存。 */
     edit: (draft: string) => {
-      if (!locked_ref.current && !current.current.busy)
+      if (!environment.current.locked && !current.current.busy)
         update({ draft, error: "", conflict: false });
     },
     /** 组词开始时取消待保存任务，结束后由草稿监听恢复计时。 */

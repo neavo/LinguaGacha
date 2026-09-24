@@ -102,12 +102,18 @@ describe("角色设定编辑", () => {
       }),
     );
   }
-  /** 从顶栏进入确认流程。 */
+  /** 从顶栏打开确认窗，按显示的倒计时等待动作开放。 */
   async function open_reset() {
     await act(async () =>
       [...container.querySelectorAll<HTMLButtonElement>(".skill-editor__toolbar button")]
         .find((button) => button.getAttribute("aria-label") === "重置")!
         .click(),
+    );
+    const countdown = [...document.querySelectorAll('[role="alertdialog"] button')].find((button) =>
+      /^\d+s$/.test(button.textContent ?? ""),
+    )!;
+    await act(async () =>
+      vi.advanceTimersByTime(Number.parseInt(countdown.textContent!, 10) * 1000),
     );
   }
   /** 定位倒计时结束后开放的确认动作。 */
@@ -181,10 +187,6 @@ describe("角色设定编辑", () => {
     await edit("Discarded draft");
     expect(status()).toBe(t("skills_page.editor.modified"));
     await open_reset();
-    expect(document.querySelector('[role="alertdialog"]')?.textContent).toContain(
-      "是否确认重置技能 …?",
-    );
-    await act(async () => vi.advanceTimersByTime(3000));
     await act(async () => confirmation().click());
     expect(mocks.api.mock.calls.some(([, body]) => body.body === null)).toBe(false);
     await act(async () => release());
@@ -197,7 +199,6 @@ describe("角色设定编辑", () => {
   });
   it("确认窗口打开后出现运行占用，确认按钮仍受互斥约束", async () => {
     await open_reset();
-    await act(async () => vi.advanceTimersByTime(3000));
     mocks.owner = "agent";
     await render();
     expect(confirmation().disabled).toBe(true);

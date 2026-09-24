@@ -29,20 +29,21 @@ afterEach(async () => {
 });
 
 describe("原生文件系统门面", () => {
-  it("完整复制后替换目标，保留二进制源文件", () => {
+  it.each(["copy", "write"])("%s 完成后替换目标并保留原始字节", (operation) => {
     const native_fs = new NativeFs();
     const source = path.join(temp_dir, "source.bin");
     const target = path.join(temp_dir, "target.bin");
     const bytes = Buffer.from([0, 255, 13, 10, 128]);
     fs.writeFileSync(source, bytes);
     fs.writeFileSync(target, "旧文件");
-    native_fs.copy_file_atomic(source, target);
+    if (operation === "copy") native_fs.copy_file_atomic(source, target);
+    else native_fs.write_file_atomic(target, bytes);
     expect(fs.readFileSync(target)).toEqual(bytes);
     expect(fs.readFileSync(source)).toEqual(bytes);
     expect(fs.readdirSync(temp_dir).sort()).toEqual(["source.bin", "target.bin"]);
   });
 
-  it.each(["copy", "rename"])("%s 失败保留已有目标并清理半成品", (failure) => {
+  it.each(["copy", "write", "rename"])("%s 失败保留已有目标并清理半成品", (failure) => {
     const native_fs = new NativeFs();
     const source = path.join(temp_dir, "source.txt");
     const target = path.join(temp_dir, "target.txt");
@@ -54,12 +55,20 @@ describe("原生文件系统门面", () => {
         fs.writeFileSync(temporary, "半成品");
         throw cause;
       });
+    } else if (failure === "write") {
+      vi.spyOn(native_fs, "write_file_sync").mockImplementation((temporary) => {
+        fs.writeFileSync(temporary, "半成品");
+        throw cause;
+      });
     } else {
       vi.spyOn(native_fs, "rename").mockImplementation(() => {
         throw cause;
       });
     }
-    expect(() => native_fs.copy_file_atomic(source, target)).toThrow(cause);
+    expect(() => {
+      if (failure === "copy") native_fs.copy_file_atomic(source, target);
+      else native_fs.write_file_atomic(target, "新文件");
+    }).toThrow(cause);
     expect(fs.readFileSync(target, "utf8")).toBe("旧文件");
     expect(fs.readdirSync(temp_dir).sort()).toEqual(["source.txt", "target.txt"]);
   });

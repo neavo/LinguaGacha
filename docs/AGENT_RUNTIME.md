@@ -72,23 +72,21 @@
 - Pi 把系统指令与工具声明写入 `system` 消息。`SessionManager` 根据压缩记录和 `context_edit` 生成模型上下文，保留被排除的原始条目。产品修订通过 SDK 写入历史，再调用 `refreshContext()` 同步检查缓存。
 - 公开 `context` 优先使用 SDK `getContextUsage()` 的有效用量，压缩后尚无有效统计时按当前内容及生效系统指令估算。`message_end` 先通知再写入历史，统计在历史提交后刷新。恢复压缩失败时可能已排除失败响应，也需重新读取上下文。
 - 模型可见上下文超过 `context_window - 32K` 时，`AgentSession` 在新用户请求前、自然结束后，以及完整工具批次与下一次助手请求之间统一自动压缩。空闲会话可由公开手动入口立即压缩。SDK 决定历史切点，保留侧的助手工具调用与结果保持配对。
-- Workspace 是 `AgentService` 的构造依赖、初始化前置和恒定工具面，初始化失败会阻止 Agent 启动资源完成加载。Agent 启动期原子加载必需的 `builtin/system.md`、`builtin/personality.md` 与 `builtin/session_seed.json`；会话种子由零个或多个顺序任意的 user / assistant 消息组成，文本裁剪后允许为空，按资源顺序进入每个新会话的模型历史但不进入公开时间线，任一资源缺失或结构无效都会阻止启动。GUI Backend 的完整装配与启动顺序归 [`ARCHITECTURE.md`](ARCHITECTURE.md)。
+- `AgentService` 启动前完成 Workspace 初始化，并加载 `builtin/system.md`、`builtin/personality.md` 与 `builtin/session_seed.json`。资源缺失或结构无效会阻止启动。GUI Backend 装配顺序归 [ARCHITECTURE](ARCHITECTURE.md)。
+- 会话种子按资源顺序进入新会话的模型历史，公开时间线独立维护。种子允许任意顺序的 `user` / `assistant` 消息，消息文本裁剪后可为空。
 - GUI Backend 向 Agent 和 Gateway 注入同一个 `AgentSkillsService`，由它持有当前技能集合。管理命令和显式扫描共用串行队列。初始化、首次受理、重置、工程切换和管理查询扫描磁盘，主文件保存、启停和排序更新集合。`AgentService` 在工作区程序成功、失败或取消收尾后等待技能刷新，再结算工具调用。刷新独立于程序取消，双重失败时保留程序错误并记录刷新诊断。SDK 默认资源发现关闭。
-- 扫描器递归发现 `SKILL.md`，到达技能包后停止深入。目录级 `.gitignore`、`.ignore`、`.fdignore` 由 `ignore` 解释，隐藏目录和 `node_modules` 跳过。加载与编辑共用元数据校验，必填的 `name` 决定技能身份，实际路径定位资源。
-- `AppSettingService` 保存应用级 `agent_skills` 偏好并发布 `settings.changed`。关闭名称按来源保存，用户顺序按名称保存。内置顺序来自 `ui.json.order`，新用户技能按名称追加。
-- 技能来源根分别为 `builtin/skills` 与 `userdata/skills`，统一由 `AppPathService` 定位。来源入口可以是目录链接，命令在真实技能包目录内执行。内置技能只读，用户技能支持编辑、文件管理和工作区程序直接读写。程序写入用户技能后，文件跨对话及工程切换保留，失败或取消不回滚。启停与排序仍由应用配置决定。包内链接不参与管理，管理页中的 `ui.json` 隐藏并受保护，根目录 `SKILL.md` 固定名称与位置。
-- 管理页整包删除完成后，技能服务读取最新配置，清理对应用户技能的启停与排序偏好，再更新可用集合。删除失败重新扫描磁盘事实。递归删除可能已经移除部分内容，前端通过重新查询恢复当前状态。
-- 保存以读取时的内容摘要检查版本，通过同目录临时文件替换正文。主文件按 `name`、`description`、`body` 提交，后端处理 YAML 转义并保留额外字段与注释。结束标记所在行之后的内容全部属于正文，按提交内容保留空白。结束标记位于文件末尾时，新增正文会补齐该行换行。
-- 改名更新原文件元数据及按名称保存的启用、排序偏好。同一来源按名称检查冲突，文件与偏好写入失败时执行补偿。
-- 同一来源按稳定路径保留首个有效同名包。管理页展示两个来源的公开技能，可用集合先过滤关闭项，再由用户包覆盖同名内置包。关闭用户包后回退到仍启用的内置包，隐藏技能继续供模型使用。
-- 对话通过 `skills_changed` 和会话 `revision` 更新技能切片，完整快照负责加载和恢复。模型历史保存消息，SDK 的 `transformContext` 在请求构造时提供当前技能目录。
+- 扫描器递归发现 `SKILL.md`，到达包后停止深入。目录级 `.gitignore`、`.ignore`、`.fdignore` 由 `ignore` 解释，隐藏目录和 `node_modules` 跳过。加载与编辑共用元数据规则，`name` 决定身份，路径定位资源。
+- `AppSettingService` 保存 `agent_skills` 并发布 `settings.changed`。关闭名称按来源保存，用户顺序按名称保存；内置顺序来自 `ui.json.order`，新用户技能按名称追加。同一来源按路径保留首个有效同名包。可用集合先过滤关闭项，再由用户包覆盖同名内置包；关闭用户包后回退到启用的内置包。
+- `AppPathService` 定位 `builtin/skills` 与 `userdata/skills`，来源根允许目录链接。用户技能跨对话和工程保留，程序失败或取消时已写文件仍保留。管理命令在真实包目录内执行，包内链接及 `ui.json` 受保护，根 `SKILL.md` 的名称和位置固定。运行权限见下文部署契约。
+- 整包删除完成后读取最新配置，清理对应偏好并更新集合；删除失败重新扫描磁盘。递归删除可能已移除部分文件，前端恢复规则归 [FRONTEND](FRONTEND.md)。
+- 保存以内容摘要检查版本，文件替换复用 `NativeFs`。主文件按 `name`、`description`、`body` 提交，保留额外 YAML 字段、注释及正文空白。改名同时迁移按名称保存的偏好；文件与配置写入失败时执行补偿。
+- 对话通过 `skills_changed` 和会话 `revision` 更新技能切片，完整快照负责加载和恢复。
 - `RuntimeOperationGate` 让管理页技能写入与 Agent 执行互斥。管理写占用覆盖异步文件操作、偏好和集合发布，Agent 租约覆盖准备、运行、等待决定、程序直接写入和技能刷新收尾。
-- `ui.json.visible` 控制公开展示，`disableModelInvocation` 排除自动能力清单，显式引用仍可要求读取。模型清单只包含名称和描述，缺失的 UI 描述回退到 `SKILL.md` 描述。
+- `ui.json.visible` 控制公开展示，隐藏技能继续供模型使用。`disable-model-invocation` 控制自动能力清单，显式引用仍可要求读取。模型清单包含名称和描述，UI 描述缺失时回退到 `SKILL.md` 描述。
 - `agent-charter` 是隐藏的最高层任务宪章，其短正文与系统提示有意重复。模型在任务前通过普通技能读取加载正文，并自行判断加载状态。
 - `read_skill` 按当前集合的 `name` 和可选包内相对 `path` 读取文件，默认读取 `SKILL.md`。规范路径的真实目标必须位于当前技能包内。返回 `{ name, path, content, base_url }`，其中 `base_url` 是以 / 结尾的原包根目录 file: URL。正文和资源在读取或执行时消费当前磁盘内容，删除后正常失败，上下文中的旧正文需显式重读。
-- [系统提示](../builtin/system.md) 负责任务、授权、工具与表达规则。[默认角色设定](../builtin/personality.md) 提供「角色设定」节。
-- `AgentPersonalityService` 通过 `AppSettingService` 保存应用级 `agent_personality`。`null` 使用默认资源，字符串使用用户正文，空字符串表示无附加角色设定。保存与重置校验版本，并复用技能写入的运行互斥。
-- 固定模板中的唯一标记 `{{agent_personality}}` 保留人格原始位置，缺失或重复会阻止启动。SDK 将模板放入系统消息的 `preamble` 分段，`transformContext` 按当前配置原位替换，并附加技能目录。替换仅作用于本次请求，已有会话从下一次执行使用新配置。
+- [系统提示](../builtin/system.md) 拥有固定指令，[默认角色设定](../builtin/personality.md) 提供人格正文。`AgentPersonalityService` 通过 `AppSettingService` 保存 `agent_personality`：`null` 使用默认资源，字符串使用用户正文，空字符串清空人格。保存与重置校验版本，复用技能写入互斥。
+- 模板中的 `{{agent_personality}}` 必须恰好出现一次。SDK 的 `transformContext` 在每次请求时替换系统消息 `preamble` 中的人格，并附加当前技能目录；模型历史保留原文。
 
 - 任务类型 `report / apply` 由模型遵守。`report` 允许分析和准备工作材料，`apply` 承担工程写入、回执核对及依赖写入结果的检查，直接写入工具同样受此边界约束。后端按工具契约执行，任务类型由模型在工作记录中保存。
 - 模型按[技能入口](../builtin/skills/)选择任务文件、领域判据与扩展技能，包括 `writing-guide-` 前缀扩展。各任务文件完整维护自身流程及所需的全局要求，判据与参考提供领域知识。自启发调查的步骤、种子账本格式和结束条件随领域流程维护。

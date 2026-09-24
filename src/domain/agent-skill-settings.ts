@@ -1,3 +1,5 @@
+import { read_json_record } from "./json";
+
 export type AgentSkillSettings = {
   disabled: { builtin: string[]; user: string[] }; // 同名技能按来源独立开关。
   user_order: string[]; // 保留缺失技能的位置偏好。
@@ -5,7 +7,7 @@ export type AgentSkillSettings = {
 
 /** 配置文件可被手动编辑，名称列表在持久化边界统一收窄并去重。 */
 export function normalize_agent_skill_settings(value: unknown): AgentSkillSettings {
-  const record = typeof value === "object" && value !== null ? value : {};
+  const record = read_json_record(value);
   // 去重保留首个位置，避免手动配置改变排序语义。
   const names = (input: unknown): string[] =>
     Array.isArray(input)
@@ -17,15 +19,12 @@ export function normalize_agent_skill_settings(value: unknown): AgentSkillSettin
           ),
         ]
       : [];
-  const disabled =
-    "disabled" in record && typeof record.disabled === "object" && record.disabled !== null
-      ? record.disabled
-      : {};
+  const disabled = read_json_record(record.disabled);
   return {
     disabled: {
-      builtin: names("builtin" in disabled ? disabled.builtin : undefined),
-      user: names("user" in disabled ? disabled.user : undefined),
+      builtin: names(disabled.builtin),
+      user: names(disabled.user),
     },
-    user_order: names("user_order" in record ? record.user_order : undefined),
+    user_order: names(record.user_order),
   };
 }

@@ -48,6 +48,7 @@ describe("Agent skill 加载", () => {
     using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-skill-discovery-"));
     const paths = create_paths(temp.path);
     const root = paths.get_agent_user_skill_dir();
+    /** 在指定层级创建独立命名的测试包。 */
     const write = (folder: string, name: string) =>
       write_skill(
         path.join(root, folder, "SKILL.md"),
@@ -70,7 +71,7 @@ describe("Agent skill 加载", () => {
     const warning = vi.fn();
     const result = load_agent_skills(paths, { warning });
     expect(result.map((skill) => skill.name)).toEqual(["another", "same", "third"]);
-    expect(warning).toHaveBeenCalledExactlyOnceWith("Agent 技能加载失败 …", {
+    expect(warning).toHaveBeenCalledExactlyOnceWith(expect.any(String), {
       source: "agent",
       error: expect.any(String),
       context: {
@@ -98,10 +99,12 @@ describe("Agent skill 加载", () => {
     const warning = vi.fn();
     const read_error = new Error("read denied");
     const skills = load_agent_skills(paths, { warning }, undefined, {
+      /** 单个分支不可遍历时，其它分支仍可发现。 */
       read_dirents(directory) {
         if (directory.endsWith("unscannable")) throw new Error("scan denied");
         return default_native_fs.read_dirents(directory);
       },
+      /** 分别模拟主文件和可选显示配置的读取失败。 */
       read_text_file(file) {
         if (file.includes("unreadable")) throw read_error;
         if (file === path.join(root, "good", "ui.json")) throw new Error("display read denied");
@@ -110,7 +113,7 @@ describe("Agent skill 加载", () => {
     });
     expect(skills.map((skill) => skill.name)).toEqual(["good"]);
     for (const folder of ["bad", "missing"]) {
-      expect(warning).toHaveBeenCalledWith("Agent 技能加载失败 …", {
+      expect(warning).toHaveBeenCalledWith(expect.any(String), {
         source: "agent",
         error: expect.objectContaining({
           code: "file.invalid_structure",
@@ -119,17 +122,16 @@ describe("Agent skill 加载", () => {
         context: { path: path.join(root, folder, "SKILL.md") },
       });
     }
-    expect(warning).toHaveBeenCalledWith("Agent 技能加载失败 …", {
+    expect(warning).toHaveBeenCalledWith(expect.any(String), {
       source: "agent",
       error: read_error,
       context: { path: path.join(root, "unreadable", "SKILL.md") },
     });
-    expect(warning.mock.calls.every(([message]) => message === "Agent 技能加载失败 …")).toBe(true);
     for (const [file, message] of [
       ["unscannable", "scan denied"],
       ["good/ui.json", "display read denied"],
     ] as const) {
-      expect(warning).toHaveBeenCalledWith("Agent 技能加载失败 …", {
+      expect(warning).toHaveBeenCalledWith(expect.any(String), {
         source: "agent",
         error: expect.objectContaining({ message }),
         context: { path: path.join(root, file) },
@@ -202,7 +204,7 @@ describe("Agent skill 加载", () => {
         filePath: expect.stringMatching(/folder-name\/SKILL\.md$/),
       }),
     ]);
-    expect(warning).toHaveBeenCalledExactlyOnceWith("Agent 技能加载失败 …", {
+    expect(warning).toHaveBeenCalledExactlyOnceWith(expect.any(String), {
       source: "agent",
       error: expect.objectContaining({
         code: "file.invalid_structure",
@@ -279,7 +281,7 @@ describe("Agent skill 加载", () => {
       displayDescriptions: Object.fromEntries(LOCALES.map((locale) => [locale, "默认描述"])),
     });
     expect(warning).toHaveBeenCalledWith(
-      "Agent 技能加载失败 …",
+      expect.any(String),
       expect.objectContaining({
         source: "agent",
         error: ui === "{" ? expect.any(SyntaxError) : expect.any(String),

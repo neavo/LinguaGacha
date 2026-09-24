@@ -1,8 +1,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { describe, expect, it, vi } from "vitest";
-import { default_native_fs } from "../../native/native-fs";
+import { describe, expect, it } from "vitest";
 import {
   change_skill_file,
   read_skill_file,
@@ -85,22 +84,10 @@ describe("技能文件", () => {
     expect(fs.readFileSync(path.join(outside.path, "secret.md"), "utf8")).toBe("private");
   });
 
-  it("二进制文件只返回信息，替换失败保留原文件并清理临时文件", () => {
+  it("二进制文件只返回信息", () => {
     using f = fixture();
     const binary = path.join(f.root, "asset.bin");
     fs.writeFileSync(binary, Buffer.from([0, 255, 1]));
     expect(read_skill_file(f.root, skill, "asset.bin").text).toBeNull();
-    const target = path.join(f.root, "note.md");
-    fs.writeFileSync(target, "original");
-    const rename = vi.spyOn(default_native_fs, "rename").mockImplementationOnce(() => {
-      throw new Error("disk full");
-    });
-    try {
-      expect(() => write_skill_file(target, "replacement")).toThrow("disk full");
-      expect(fs.readFileSync(target, "utf8")).toBe("original");
-      expect(fs.readdirSync(f.root).some((name) => name.endsWith(".tmp"))).toBe(false);
-    } finally {
-      rename.mockRestore();
-    }
   });
 });
