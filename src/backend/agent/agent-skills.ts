@@ -61,7 +61,7 @@ export type AgentSkillPackage = {
   source: AgentSkillSource; // 偏好身份与同名覆盖优先级。
 };
 
-/** 会话按名称选择启用的获胜包，公开列表和读取工具共享这一集合。 */
+/** 扫描技能并按偏好选择每个名称的启用来源。 */
 export async function load_agent_skills(
   paths: AgentSkillPaths,
   log_manager: AgentSkillLog,
@@ -69,8 +69,16 @@ export async function load_agent_skills(
   native_fs: AgentSkillNativeFs = default_native_fs,
 ): Promise<AgentSkillDefinition[]> {
   const packages = await scan_agent_skills(paths, log_manager, native_fs);
+  return select_agent_skills(packages, settings);
+}
+
+/** 管理命令与会话读取共用启用、同名覆盖和排序规则。 */
+export function select_agent_skills(
+  packages: readonly AgentSkillPackage[],
+  settings: AgentSkillSettings,
+): AgentSkillDefinition[] {
   const selected = new Map<string, AgentSkillPackage>(); // 每个名称只绑定一个启用包。
-  // 先过滤各来源的关闭项，再由用户包覆盖内置包；关闭用户包后自然回退。
+  // 先过滤关闭项，再由用户包覆盖内置包。关闭用户包后回退到内置包。
   for (const item of packages) {
     if (item.definition.visible && settings.disabled[item.source].includes(item.definition.name))
       continue;
@@ -80,7 +88,7 @@ export async function load_agent_skills(
   return sort_agent_skill_packages([...selected.values()], settings).map((item) => item.definition);
 }
 
-/** 按来源保留首个有效同名包，跨来源的覆盖只在建立会话时决定。 */
+/** 按来源保留首个有效同名包，跨来源覆盖由选择函数处理。 */
 export async function scan_agent_skills(
   paths: AgentSkillPaths,
   log_manager: AgentSkillLog,

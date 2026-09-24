@@ -31,7 +31,7 @@ const READ_SKILL_PARAMETERS = Type.Object(
 
 type AgentSkillNativeFs = Pick<NativeFs, "read_text_file" | "real_path" | "stat">;
 
-/** 只读取会话已冻结的技能包；启用和新增技能在下一会话生效。 */
+/** 读取首次消息受理时绑定的技能包，后续设置变更由下一对话采用。 */
 export function create_agent_skill_tools(
   session_skills: readonly AgentSkillDefinition[],
   paths: AgentSkillPaths,

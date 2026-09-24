@@ -18,7 +18,7 @@ describe("GuiBackendBootstrap 集成", () => {
   });
   afterEach(() => vi.restoreAllMocks());
 
-  it("技能管理在无工程时可用，开关和排序只在重置对话后生效", async () => {
+  it("技能管理在无工程时可用，空白对话立即采用开关和排序", async () => {
     using temporary = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-skills-gateway-"));
     const app_root = temporary.path;
     fs.writeFileSync(path.join(app_root, "version.txt"), "1.2.3");
@@ -68,11 +68,9 @@ describe("GuiBackendBootstrap 集成", () => {
       };
       expect(await names()).toEqual(["first", "second"]);
       await post("/api/skills/reorder", { names: ["second", "first"] });
-      expect(await names()).toEqual(["first", "second"]);
-      await post("/api/agent/reset");
       expect(await names()).toEqual(["second", "first"]);
       await post("/api/skills/enabled", { source: "user", name: "second", enabled: false });
-      expect(await names()).toEqual(["second", "first"]);
+      expect(await names()).toEqual(["first"]);
       await expect(post("/api/skills/snapshot")).resolves.toMatchObject({
         data: {
           skills: [
@@ -83,7 +81,9 @@ describe("GuiBackendBootstrap 集成", () => {
       });
       await post("/api/agent/reset");
       expect(await names()).toEqual(["first"]);
-      // 文件 API 与真实磁盘贯通，正文修改不替换当前会话的能力快照。
+      await post("/api/skills/enabled", { source: "user", name: "second", enabled: true });
+      expect(await names()).toEqual(["second", "first"]);
+      // 文件 API 与真实磁盘贯通，普通参考文件不改变技能候选。
       const skill = { source: "user", name: "first" };
       await expect(post("/api/skills/tree", skill)).resolves.toMatchObject({
         data: { entries: [{ path: "SKILL.md", kind: "file" }] },
@@ -106,7 +106,15 @@ describe("GuiBackendBootstrap 集成", () => {
           "utf8",
         ),
       ).toBe("Reference\n");
-      expect(await names()).toEqual(["first"]);
+      expect(await names()).toEqual(["second", "first"]);
+      const main = await post("/api/skills/file/read", { ...skill, path: "SKILL.md" });
+      await post("/api/skills/file/save", {
+        ...skill,
+        path: "SKILL.md",
+        revision: main.data.revision,
+        document: { ...main.data.document, name: "renamed", description: "Updated fixture" },
+      });
+      expect(await names()).toEqual(["second", "renamed"]);
     } finally {
       await bootstrap.stop();
     }

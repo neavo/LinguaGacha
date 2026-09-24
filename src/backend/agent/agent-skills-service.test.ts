@@ -53,6 +53,34 @@ function fixture() {
 }
 
 describe("技能管理", () => {
+  it("启用、排序与同名来源回退更新当前集合，已绑定集合保持稳定", async () => {
+    using f = fixture();
+    f.write("builtin", "shared", "shared");
+    f.write("user", "shared", "shared");
+    f.write("user", "another", "another");
+    await f.service.refresh();
+    const original = f.service.get_current();
+    const user_path = path
+      .join(f.paths.get_agent_user_skill_dir(), "shared", "SKILL.md")
+      .replaceAll("\\", "/");
+    const builtin_path = path
+      .join(f.paths.get_agent_builtin_skill_dir(), "shared", "SKILL.md")
+      .replaceAll("\\", "/");
+    expect(original.find((skill) => skill.name === "shared")?.filePath).toBe(user_path);
+
+    // 保存与首次读取的先后由同一服务队列决定。
+    const saving = f.service.set_enabled({ source: "user", name: "shared", enabled: false });
+    const binding = f.service.bind_session(() => undefined);
+    const [, bound] = await Promise.all([saving, binding]);
+    expect(bound.find((skill) => skill.name === "shared")?.filePath).toBe(builtin_path);
+    expect(original.find((skill) => skill.name === "shared")?.filePath).toBe(user_path);
+
+    await f.service.set_enabled({ source: "user", name: "shared", enabled: true });
+    await f.service.reorder({ names: ["shared", "another"] });
+    expect(f.service.get_current().map((skill) => skill.name)).toEqual(["shared", "another"]);
+    expect(bound.find((skill) => skill.name === "shared")?.filePath).toBe(builtin_path);
+  });
+
   it("技能根目录经链接定位后，文件管理与技能改名作用于实际目录", async () => {
     using f = fixture();
     f.write("user", "sample", "sample");

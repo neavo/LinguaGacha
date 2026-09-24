@@ -128,6 +128,22 @@ describe("AgentMessageEditor", () => {
     expect(on_submit).not.toHaveBeenCalled();
   });
 
+  it("打开中的 mention 菜单随技能集合更新并保留草稿", async () => {
+    const view = await render_editor();
+    const editor = get_editor(view);
+    await set_document(editor, "草稿 @", 4);
+    expect(
+      view.querySelectorAll('[aria-labelledby="agent-mention-skills-label"] [role="option"]'),
+    ).toHaveLength(2);
+    await render_editor({ skills: skills.slice(1) });
+    const options = view.querySelectorAll(
+      '[aria-labelledby="agent-mention-skills-label"] [role="option"]',
+    );
+    expect(options).toHaveLength(1);
+    expect(options[0]?.textContent).toContain("corpus-search");
+    expect(editor.state.doc.toString()).toBe("草稿 @");
+  });
+
   it("禁用的压缩指令保持筛选文本且不可触发", async () => {
     const on_compact = vi.fn();
     const view = await render_editor({

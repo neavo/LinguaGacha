@@ -1,6 +1,7 @@
 import { AGENT_SKILL_MAIN_FILE } from "../../shared/agent-skills";
 import { normalize_agent_skill_settings } from "../../domain/agent-skill-settings";
 import path from "node:path";
+import { isDeepStrictEqual } from "node:util";
 import { is_json_record, type JsonRecord } from "../../domain/json";
 import { default_native_fs as fs } from "../../native/native-fs";
 import type {
@@ -24,22 +25,84 @@ import { AppError } from "../../shared/error";
 import type { AppSettingService } from "../app/app-setting-service";
 import {
   scan_agent_skills,
+  load_agent_skills,
+  select_agent_skills,
+  type AgentSkillDefinition,
   sort_agent_skill_packages,
   type AgentSkillPackage,
   type AgentSkillPaths,
   type AgentSkillLog,
 } from "./agent-skills";
 
-/** 技能管理拥有来源与名称校验和偏好命令，配置文件仍由 AppSettingService 唯一写入。 */
+/** 技能管理与会话读取共用串行入口和当前技能集合，配置仍由 AppSettingService 写入。 */
 export class AgentSkillsService {
   /** 复用 GUI 组合根提供的路径、配置写入口和日志。 */
   public constructor(
     private readonly paths: AgentSkillPaths, // 两个技能来源的目录。
-    private readonly settings: AppSettingService, // 应用配置的唯一写入者。
+    private readonly settings: Pick<
+      AppSettingService,
+      "read_setting" | "save_setting" | "publish_settings_changed"
+    >, // 应用配置的唯一写入者。
     private readonly log: AgentSkillLog, // 扫描诊断出口。
   ) {}
 
   private pending: Promise<unknown> = Promise.resolve(); // 技能修改、查询共用顺序，改名期间不暴露半成品。
+  private current: readonly AgentSkillDefinition[] = []; // 原子替换，已绑定的对话继续持有旧集合。
+  private readonly listeners = new Set<() => void>(); // 当前集合变化时通知空白对话。
+
+  /** 返回只读集合，后续更新通过替换集合保留已绑定的技能。 */
+  public get_current(): readonly AgentSkillDefinition[] {
+    return this.current;
+  }
+
+  /** 注册集合变更通知，调用方在关闭时取消订阅。 */
+  public subscribe(listener: () => void): () => void {
+    this.listeners.add(listener);
+    return () => {
+      this.listeners.delete(listener);
+    };
+  }
+
+  /** 启动、重置与首次受理在管理命令队列中读取最新磁盘和偏好。 */
+  public refresh(): Promise<void> {
+    return this.serial(() => this.refresh_current());
+  }
+
+  /** 同一串行操作内同步绑定，后续保存不能插入读取与对话绑定之间。 */
+  public bind_session(
+    bind: (skills: readonly AgentSkillDefinition[]) => void,
+  ): Promise<readonly AgentSkillDefinition[]> {
+    return this.serial(async () => {
+      await this.refresh_current();
+      bind(this.current);
+      return this.current;
+    });
+  }
+
+  /** 在已持有的串行操作中扫描技能，供读取和保存复用。 */
+  private async refresh_current(): Promise<void> {
+    this.update_current(
+      await load_agent_skills(
+        this.paths,
+        this.log,
+        normalize_agent_skill_settings(this.settings.read_setting().agent_skills),
+      ),
+    );
+  }
+
+  /** 仅在内容变化时替换不可变集合，避免扫描触发重复会话快照。 */
+  private update_current(skills: readonly AgentSkillDefinition[]): void {
+    if (isDeepStrictEqual(this.current, skills)) return;
+    this.current = Object.freeze(
+      skills.map((skill) =>
+        Object.freeze({
+          ...skill,
+          displayDescriptions: Object.freeze({ ...skill.displayDescriptions }),
+        }),
+      ),
+    );
+    for (const listener of this.listeners) listener();
+  }
 
   /** 串行处理管理命令，并将文件系统错误转换为公开错误。 */
   private serial<T>(action: () => Promise<T>): Promise<T> {
@@ -129,6 +192,7 @@ export class AgentSkillsService {
       const target = skill_existing_path(root, request.path);
       if (!document || document.name === skill.name) {
         write_skill_file(target, text);
+        if (document) await this.refresh_current();
         return read_skill_file(root, skill, request.path);
       }
       // 名称与目录名是加载契约；目录、正文和偏好在同一命令内更新并补偿。
@@ -171,6 +235,7 @@ export class AgentSkillsService {
         throw cause;
       }
       this.settings.publish_settings_changed(["agent_skills"]);
+      await this.refresh_current();
       return read_skill_file(next_root, { ...skill, name: document.name }, request.path);
     });
   }
@@ -214,7 +279,7 @@ export class AgentSkillsService {
   /** 每次查询扫描磁盘，使重新进入页面能看到外部文件变更。 */
   public snapshot(): Promise<AgentSkillsSnapshot> {
     return this.serial(async () =>
-      this.build_snapshot(await scan_agent_skills(this.paths, this.log)),
+      this.update_snapshot(await scan_agent_skills(this.paths, this.log)),
     );
   }
 
@@ -248,7 +313,7 @@ export class AgentSkillsService {
         },
       });
       this.settings.publish_settings_changed(["agent_skills"]);
-      return this.build_snapshot(packages);
+      return this.update_snapshot(packages);
     });
   }
 
@@ -277,13 +342,14 @@ export class AgentSkillsService {
         agent_skills: { ...preferences, user_order: [...names, ...missing] },
       });
       this.settings.publish_settings_changed(["agent_skills"]);
-      return this.build_snapshot(packages);
+      return this.update_snapshot(packages);
     });
   }
 
-  /** 管理页展示两个来源的偏好，包含关闭或被覆盖的技能。 */
-  private build_snapshot(packages: readonly AgentSkillPackage[]): AgentSkillsSnapshot {
+  /** 同一次扫描更新可用集合，并返回含关闭项和被覆盖来源的管理快照。 */
+  private update_snapshot(packages: readonly AgentSkillPackage[]): AgentSkillsSnapshot {
     const preferences = normalize_agent_skill_settings(this.settings.read_setting().agent_skills);
+    this.update_current(select_agent_skills(packages, preferences));
     return {
       skills: sort_agent_skill_packages(packages, preferences)
         .filter((item) => item.definition.visible)
