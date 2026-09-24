@@ -1,4 +1,4 @@
-import type { AgentSkillsService } from "../agent/agent-skills-service";
+import type { AgentSkillsApi } from "../agent/agent-skills-service";
 import type { Server } from "node:http";
 
 import { Hono } from "hono";
@@ -32,7 +32,7 @@ const CORS_ALLOWED_HEADERS = "Content-Type"; // 上传与 JSON 请求共用标�
 export interface ApiGatewayServerOptions {
   backendServices: BackendServices;
   agentService: AgentService;
-  skillsService: Pick<AgentSkillsService, "snapshot" | "set_enabled" | "reorder">;
+  skillsService: AgentSkillsApi;
   eventStream: ApiStreamHub;
 }
 

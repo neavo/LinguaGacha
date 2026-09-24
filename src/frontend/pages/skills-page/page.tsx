@@ -1,5 +1,10 @@
 import { useEffect, useRef, useState, type Ref } from "react";
-import type { AgentSkillEntry, AgentSkillSource, AgentSkillsSnapshot } from "@shared/agent-skills";
+import type {
+  AgentSkillEntry,
+  AgentSkillIdentity,
+  AgentSkillSource,
+  AgentSkillsSnapshot,
+} from "@shared/agent-skills";
 import { DragDropProvider } from "@dnd-kit/react";
 import { useI18n } from "@frontend/app/locale/locale-context";
 import { AppContentState } from "@frontend/widgets/app-content-state";
@@ -9,7 +14,7 @@ import {
   SORTABLE_PROVIDER_OPTIONS,
 } from "@frontend/widgets/interactions/sortable";
 import { useSortable } from "@dnd-kit/react/sortable";
-import { GripVertical, Settings } from "lucide-react";
+import { GripVertical } from "lucide-react";
 import { Card } from "@frontend/shadcn/card";
 import { Tooltip, TooltipTrigger, TooltipContent } from "@frontend/shadcn/tooltip";
 import { AppButton } from "@frontend/widgets/app-button";
@@ -19,11 +24,31 @@ import { push_toast } from "@frontend/app/feedback/desktop-toast";
 import { resolve_visible_error_message } from "@frontend/app/feedback/visible-error-message";
 import { useDesktopState } from "@frontend/app/state/use-desktop-state";
 import "./skills-page.css";
+import { SkillEditor } from "./skill-editor";
 
 /** 按来源展示技能，用户排序由页面统一提交。 */
 export function SkillsPage(): JSX.Element {
+  const [selected, set_selected] = useState<AgentSkillIdentity | null>(null);
+  return (
+    <>
+      <div className="skills-page__list" hidden={selected !== null}>
+        <SkillsList on_open={set_selected} active={selected === null} />
+      </div>
+      {selected && <SkillEditor skill={selected} on_back={() => set_selected(null)} />}
+    </>
+  );
+}
+
+/** 列表保留挂载状态以恢复滚动，详情关闭后重新读取技能事实。 */
+function SkillsList({
+  on_open,
+  active,
+}: {
+  on_open: (skill: AgentSkillIdentity) => void;
+  active: boolean;
+}): JSX.Element {
   const { t } = useI18n();
-  const state = useSkillsPageState();
+  const state = useSkillsPageState(active);
   const builtin = state.snapshot.skills.filter((skill) => skill.source === "builtin");
   const user = state.snapshot.skills.filter((skill) => skill.source === "user");
   const reorder = useReorder({
@@ -57,6 +82,7 @@ export function SkillsPage(): JSX.Element {
             skill={skill}
             pending={pending}
             on_enabled={state.set_enabled}
+            on_open={on_open}
           />
         ))}
         {builtin.length === 0 && <p className="skills-page__empty">{t("skills_page.empty")}</p>}
@@ -71,6 +97,7 @@ export function SkillsPage(): JSX.Element {
               index={index}
               pending={pending}
               on_enabled={state.set_enabled}
+              on_open={on_open}
             />
           ))}
         </DragDropProvider>
@@ -81,6 +108,7 @@ export function SkillsPage(): JSX.Element {
 }
 
 type SkillCardProps = {
+  on_open: (skill: AgentSkillIdentity) => void;
   skill: AgentSkillEntry;
   pending: boolean;
   on_enabled: (source: AgentSkillSource, name: string, enabled: boolean) => Promise<void>;
@@ -102,6 +130,14 @@ function SkillCard(props: SkillCardProps): JSX.Element {
       className="skills-page__card"
       data-dragging={props.dragging || undefined}
     >
+      {/* 独立按钮覆盖条目；把手和开关位于上层，点击与拖动无需阻止事件冒泡。 */}
+      <button
+        type="button"
+        className="skills-page__open"
+        aria-label={skill.name}
+        disabled={props.pending || props.dragging}
+        onClick={() => props.on_open({ source: skill.source, name: skill.name })}
+      />
       <Tooltip>
         <TooltipTrigger render={<span className="skills-page__handle-slot" />}>
           <AppButton
@@ -127,15 +163,6 @@ function SkillCard(props: SkillCardProps): JSX.Element {
             if (enabled !== skill.enabled) void props.on_enabled(skill.source, skill.name, enabled);
           }}
         />
-        <AppButton
-          variant="ghost"
-          size="icon-sm"
-          disabled
-          aria-label={t("skills_page.settings")}
-          title={t("skills_page.settings")}
-        >
-          <Settings />
-        </AppButton>
       </div>
       <p className="skills-page__description">{description}</p>
     </Card>
@@ -154,7 +181,7 @@ function SortableSkillCard(props: SkillCardProps & { index: number }): JSX.Eleme
 }
 
 /** 页面保存管理快照，Agent 在新对话时加载可用技能。 */
-function useSkillsPageState() {
+function useSkillsPageState(active: boolean) {
   const { settings_snapshot } = useDesktopState();
   const { t } = useI18n();
   const [snapshot, set_snapshot] = useState<AgentSkillsSnapshot>({ skills: [] });
@@ -175,7 +202,7 @@ function useSkillsPageState() {
 
   useEffect(() => {
     // 本页保存由命令回包更新快照；通知只为其它设置变更触发读取。
-    if (saving.current) return;
+    if (saving.current || !active) return;
     const controller = new AbortController();
     reading.current = controller;
     void api_fetch<AgentSkillsSnapshot>("/api/skills/snapshot", {}, controller.signal).then(
@@ -191,11 +218,11 @@ function useSkillsPageState() {
     return () => {
       controller.abort();
     };
-  }, [settings_snapshot, refresh]);
+  }, [settings_snapshot, refresh, active]);
 
   /** 以服务端回包更新页面，提交失败时保留上次成功快照。 */
   async function save(path: string, body: Record<string, unknown>): Promise<void> {
-    if (saving.current) return;
+    if (saving.current || !active) return;
     saving.current = true;
     reading.current?.abort();
     set_pending(true);

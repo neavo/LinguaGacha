@@ -215,6 +215,10 @@ export const de_de_app = {
       export_failed: { message: "Export der Übersetzung fehlgeschlagen …" },
     },
     file: {
+      already_exists: {
+        message:
+          "Eine Datei oder ein Ordner mit diesem Namen existiert bereits. Bitte einen anderen Namen wählen …",
+      },
       not_found: {
         message: "Die Datei existiert nicht …",
       },

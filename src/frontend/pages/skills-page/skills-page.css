@@ -32,6 +32,39 @@
   opacity: 0.9;
 }
 
+.skills-page__open {
+  position: absolute;
+  inset: 0;
+  border: 0;
+  border-radius: inherit;
+  background: transparent;
+  cursor: pointer;
+}
+
+.skills-page__open:disabled {
+  cursor: default;
+}
+
+.skills-page__open:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: -2px;
+}
+
+.skills-page__card:has(> .skills-page__open:hover:not(:disabled))::after {
+  border-color: var(--card-border-hover-current);
+}
+
+.skills-page__handle-slot,
+.skills-page__actions {
+  position: relative;
+  z-index: 1;
+}
+
+.skills-page__heading,
+.skills-page__description {
+  pointer-events: none;
+}
+
 .skills-page__handle-slot {
   grid-column: 1;
   grid-row: 1 / 3;
@@ -88,4 +121,12 @@
   padding: 16px;
   font-size: 13px;
   color: var(--muted-foreground);
+}
+
+.skills-page__list {
+  height: 100%;
+  overflow: auto;
+}
+.skills-page__list[hidden] {
+  display: none;
 }

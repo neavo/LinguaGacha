@@ -296,7 +296,15 @@ describe("ApiGatewayServer", () => {
     const gateway = new ApiGatewayServer({
       backendServices: { dispose } as unknown as BackendServices,
       agentService: create_agent_service_stub(),
-      skillsService: { snapshot: vi.fn(), set_enabled: vi.fn(), reorder: vi.fn() },
+      skillsService: {
+        snapshot: vi.fn(),
+        set_enabled: vi.fn(),
+        tree: vi.fn(),
+        read_file: vi.fn(),
+        save_file: vi.fn(),
+        change_file: vi.fn(),
+        reorder: vi.fn(),
+      },
       eventStream: new ApiStreamHub(),
     });
 
@@ -342,7 +350,15 @@ describe("ApiGatewayServer", () => {
     const gateway = new ApiGatewayServer({
       backendServices: backend_services,
       agentService: create_agent_service_stub(),
-      skillsService: { snapshot: vi.fn(), set_enabled: vi.fn(), reorder: vi.fn() },
+      skillsService: {
+        snapshot: vi.fn(),
+        set_enabled: vi.fn(),
+        tree: vi.fn(),
+        read_file: vi.fn(),
+        save_file: vi.fn(),
+        change_file: vi.fn(),
+        reorder: vi.fn(),
+      },
       eventStream: new ApiStreamHub(),
     });
     cleanup_callbacks.push(

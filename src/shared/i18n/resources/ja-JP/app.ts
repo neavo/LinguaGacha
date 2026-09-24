@@ -212,6 +212,9 @@ export const ja_jp_app = {
       export_failed: { message: "訳文のエクスポートに失敗しました …" },
     },
     file: {
+      already_exists: {
+        message: "同名のファイルまたはフォルダーが存在します。別の名前を指定してください …",
+      },
       not_found: {
         message: "ファイルが見つかりません …",
       },

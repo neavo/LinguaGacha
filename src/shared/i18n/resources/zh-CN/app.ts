@@ -207,6 +207,7 @@ export const zh_cn_app = {
       export_failed: { message: "译文导出失败 …" },
     },
     file: {
+      already_exists: { message: "同名文件或文件夹已存在，请使用其它名称 …" },
       not_found: {
         message: "文件不存在 …",
       },

@@ -208,6 +208,9 @@ export const ko_kr_app = {
       export_failed: { message: "번역문 내보내기에 실패했습니다 …" },
     },
     file: {
+      already_exists: {
+        message: "같은 이름의 파일 또는 폴더가 있습니다. 다른 이름을 사용하세요 …",
+      },
       not_found: {
         message: "파일이 없습니다 …",
       },

@@ -83,6 +83,30 @@ describe("GuiBackendBootstrap 集成", () => {
       });
       await post("/api/agent/reset");
       expect(await names()).toEqual(["first"]);
+      // 文件 API 与真实磁盘贯通，正文修改不替换当前会话的能力快照。
+      const skill = { source: "user", name: "first" };
+      await expect(post("/api/skills/tree", skill)).resolves.toMatchObject({
+        data: { entries: [{ path: "SKILL.md", kind: "file" }] },
+      });
+      await post("/api/skills/file/change", {
+        ...skill,
+        operation: "create_file",
+        path: "reference.md",
+      });
+      const read = await post("/api/skills/file/read", { ...skill, path: "reference.md" });
+      await post("/api/skills/file/save", {
+        ...skill,
+        path: "reference.md",
+        revision: read.data.revision,
+        text: "Reference\n",
+      });
+      expect(
+        fs.readFileSync(
+          path.join(paths.get_agent_user_skill_dir(), "first", "reference.md"),
+          "utf8",
+        ),
+      ).toBe("Reference\n");
+      expect(await names()).toEqual(["first"]);
     } finally {
       await bootstrap.stop();
     }

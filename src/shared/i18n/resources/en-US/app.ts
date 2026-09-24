@@ -210,6 +210,9 @@ export const en_us_app = {
       export_failed: { message: "Translation export failed …" },
     },
     file: {
+      already_exists: {
+        message: "A file or folder with this name already exists. Choose another name …",
+      },
       not_found: {
         message: "The file does not exist …",
       },

@@ -1,3 +1,4 @@
+import { AGENT_SKILL_UI_FILE } from "../../shared/agent-skills";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 
@@ -29,8 +30,6 @@ import { LOCALES } from "../../shared/i18n/types";
 import type { AppPathService } from "../app/app-path-service";
 import type { LogManager } from "../log/log-manager";
 import { t_main_log } from "../log/log-text";
-
-const UI_FILE_NAME = "ui.json";
 
 type AgentSkillUi = {
   visible: boolean; // 是否进入公开能力列表并接受用户 marker，不改变模型自主调用或读取权限
@@ -217,7 +216,7 @@ function load_skill_ui(
       LOCALES.map((locale) => [locale, skill.description]),
     ) as AgentSkillDisplayDescriptions,
   };
-  const file_path = path.join(path.dirname(skill.filePath), UI_FILE_NAME);
+  const file_path = path.join(path.dirname(skill.filePath), AGENT_SKILL_UI_FILE);
   let parsed: unknown;
   try {
     parsed = JSON.parse(native_fs.read_text_file(file_path)) as unknown;

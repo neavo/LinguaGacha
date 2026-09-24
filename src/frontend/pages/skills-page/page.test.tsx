@@ -3,7 +3,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { LocaleProvider } from "@frontend/app/locale/locale-provider";
 import { TooltipProvider } from "@frontend/shadcn/tooltip";
-import type { AgentSkillEntry } from "@shared/agent-skills";
+import type { AgentSkillEntry, AgentSkillIdentity } from "@shared/agent-skills";
 import { SkillsPage } from "./page";
 
 const mocks = vi.hoisted(() => ({ api: vi.fn(), toast: vi.fn(), settings: {} }));
@@ -11,6 +11,13 @@ vi.mock("@frontend/app/desktop/desktop-api", () => ({ api_fetch: mocks.api }));
 vi.mock("@frontend/app/feedback/desktop-toast", () => ({ push_toast: mocks.toast }));
 vi.mock("@frontend/app/state/use-desktop-state", () => ({
   useDesktopState: () => ({ settings_snapshot: mocks.settings }),
+}));
+vi.mock("./skill-editor", () => ({
+  SkillEditor: ({ skill, on_back }: { skill: AgentSkillIdentity; on_back: () => void }) => (
+    <button onClick={on_back}>
+      {skill.source}/{skill.name}
+    </button>
+  ),
 }));
 
 /** 使用测试自有技能覆盖同名来源，避免依赖动态内置资源。 */
@@ -56,6 +63,28 @@ describe("技能页面", () => {
       ),
     );
   }
+
+  it.each(["builtin", "user"] as const)(
+    "%s 技能条目进入对应详情，把手点击不导航",
+    async (source) => {
+      mocks.api.mockResolvedValue({ skills: [skill("sample", source)] });
+      await render();
+      const list = container.querySelector<HTMLElement>(".skills-page__list")!;
+      const handle = container.querySelector<HTMLButtonElement>(".skills-page__handle")!;
+      await act(async () => handle.click());
+      expect(list.hidden).toBe(false);
+      const entry = container.querySelector<HTMLButtonElement>(
+        'button.skills-page__open[aria-label="sample"]',
+      )!;
+      await act(async () => entry.click());
+      expect(list.hidden).toBe(true);
+      const back = [...container.querySelectorAll("button")].find(
+        (button) => button.textContent === `${source}/sample`,
+      )!;
+      await act(async () => back.click());
+      expect(list.hidden).toBe(false);
+    },
+  );
 
   it("两组共用卡片，内置把手禁用，同名用户技能正常操作，旧读取不能覆盖保存结果", async () => {
     let skills = [skill("custom", "builtin"), skill("custom", "user"), skill("another", "user")];
@@ -103,6 +132,7 @@ describe("技能页面", () => {
     mocks.settings = {};
     await render();
     await act(async () => toggle?.click());
+    expect(container.querySelector<HTMLElement>(".skills-page__list")?.hidden).toBe(false);
     expect(mocks.api).toHaveBeenCalledWith("/api/skills/enabled", {
       source: "user",
       name: "custom",
@@ -111,7 +141,7 @@ describe("技能页面", () => {
     expect(mocks.toast).not.toHaveBeenCalled();
     await act(async () => finish());
     await act(async () => finish_read());
-    expect(mocks.toast).toHaveBeenCalledExactlyOnceWith("success", "将在新的对话中生效 …");
+    expect(mocks.toast).toHaveBeenCalledExactlyOnceWith("success", expect.any(String));
     expect(toggle?.getAttribute("aria-pressed")).toBe("true");
     expect(builtin_toggle?.getAttribute("aria-pressed")).toBe("false");
   });

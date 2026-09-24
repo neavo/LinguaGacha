@@ -53,6 +53,129 @@ function fixture() {
 }
 
 describe("技能管理", () => {
+  it("技能根目录经链接定位后，文件管理与技能改名作用于实际目录", async () => {
+    using f = fixture();
+    f.write("user", "sample", "sample");
+    const entry = f.paths.get_agent_user_skill_dir();
+    const storage = path.join(f.paths.get_app_root(), "skill-storage");
+    fs.renameSync(entry, storage);
+    fs.symlinkSync(storage, entry, "junction");
+    const skill = { source: "user", name: "sample" };
+    expect((await f.service.tree(skill)).entries).toEqual([{ path: "SKILL.md", kind: "file" }]);
+    await f.service.change_file({ ...skill, operation: "create_directory", path: "references" });
+    await f.service.change_file({ ...skill, operation: "create_file", path: "references/note.md" });
+    const note = await f.service.read_file({ ...skill, path: "references/note.md" });
+    await f.service.save_file({
+      ...skill,
+      path: note.path,
+      revision: note.revision,
+      text: "Saved through link\n",
+    });
+    await f.service.change_file({
+      ...skill,
+      operation: "move",
+      path: note.path,
+      destination: "note.md",
+    });
+    expect(fs.readFileSync(path.join(storage, "sample/note.md"), "utf8")).toBe(
+      "Saved through link\n",
+    );
+    await f.service.change_file({ ...skill, operation: "delete", path: "references" });
+    const main = await f.service.read_file({ ...skill, path: "SKILL.md" });
+    await f.service.save_file({
+      ...skill,
+      path: main.path,
+      revision: main.revision,
+      document: { ...main.document!, name: "renamed" },
+    });
+    expect((await f.service.snapshot()).skills).toMatchObject([{ name: "renamed" }]);
+    expect(fs.readFileSync(path.join(storage, "renamed/note.md"), "utf8")).toBe(
+      "Saved through link\n",
+    );
+    expect(fs.lstatSync(entry).isSymbolicLink()).toBe(true);
+  });
+  it("内置技能允许读取，拒绝正文保存与文件管理", async () => {
+    using f = fixture();
+    f.write("builtin", "sample", "sample");
+    const skill = { source: "builtin", name: "sample" };
+    const file = await f.service.read_file({ ...skill, path: "SKILL.md" });
+    await expect(
+      f.service.save_file({
+        ...skill,
+        path: file.path,
+        revision: file.revision,
+        document: { ...file.document!, body: "changed" },
+      }),
+    ).rejects.toMatchObject({ code: "request.validation_failed" });
+    await expect(
+      f.service.change_file({ ...skill, operation: "create_file", path: "new.md" }),
+    ).rejects.toMatchObject({ code: "request.validation_failed" });
+  });
+
+  it("并发保存拒绝旧版本覆盖", async () => {
+    using f = fixture();
+    f.write("user", "sample", "sample");
+    const skill = { source: "user", name: "sample" };
+    const root = path.join(f.paths.get_agent_user_skill_dir(), "sample");
+    fs.writeFileSync(path.join(root, "note.md"), "initial");
+    const file = await f.service.read_file({ ...skill, path: "note.md" });
+    const results = await Promise.allSettled(
+      ["first", "second"].map((text) =>
+        f.service.save_file({ ...skill, path: file.path, revision: file.revision, text }),
+      ),
+    );
+    expect(results[0].status).toBe("fulfilled");
+    expect(results[1]).toMatchObject({
+      status: "rejected",
+      reason: { code: "data.revision_conflict" },
+    });
+    expect(fs.readFileSync(path.join(root, "note.md"), "utf8")).toBe("first");
+  });
+
+  it("技能改名同时迁移目录、启用状态和顺序，加载器能继续发现", async () => {
+    using f = fixture();
+    f.write("user", "before", "before");
+    const skill = { source: "user", name: "before" };
+    await f.service.set_enabled({ ...skill, enabled: false });
+    await f.service.reorder({ names: ["before"] });
+    const file = await f.service.read_file({ ...skill, path: "SKILL.md" });
+    const saved = await f.service.save_file({
+      ...skill,
+      path: file.path,
+      revision: file.revision,
+      document: { name: "after", description: "A: description", body: "\nbody\n" },
+    });
+    expect(saved.skill.name).toBe("after");
+    expect((await f.service.snapshot()).skills).toMatchObject([{ name: "after", enabled: false }]);
+    expect(f.settings.read_setting().agent_skills).toEqual({
+      disabled: { builtin: [], user: ["after"] },
+      user_order: ["after"],
+    });
+    expect(fs.existsSync(path.join(f.paths.get_agent_user_skill_dir(), "before"))).toBe(false);
+    await f.service.set_enabled({ source: "user", name: "after", enabled: true });
+    expect((await f.load()).map((item) => item.name)).toEqual(["after"]);
+  });
+
+  it("改名配置写入失败恢复原目录和原正文", async () => {
+    using f = fixture();
+    f.write("user", "before", "before");
+    const skill = { source: "user", name: "before" };
+    const file = await f.service.read_file({ ...skill, path: "SKILL.md" });
+    vi.spyOn(f.settings, "save_setting").mockImplementationOnce(() => {
+      throw new Error("disk full");
+    });
+    await expect(
+      f.service.save_file({
+        ...skill,
+        path: file.path,
+        revision: file.revision,
+        document: { name: "after", description: "description", body: "changed" },
+      }),
+    ).rejects.toMatchObject({ code: "file.io_failed" });
+    expect((await f.service.read_file({ ...skill, path: "SKILL.md" })).text).toBe(file.text);
+    expect(fs.existsSync(path.join(f.paths.get_agent_user_skill_dir(), "after"))).toBe(false);
+  });
+
   it("按来源独立保存开关，同名用户技能优先，关闭后回退到内置技能", async () => {
     using f = fixture();
     f.write("builtin", "shared", "shared");
@@ -159,7 +282,7 @@ describe("技能管理", () => {
     });
     await expect(
       f.service.set_enabled({ source: "user", name: "alpha", enabled: false }),
-    ).rejects.toThrow("write failed");
+    ).rejects.toMatchObject({ code: "file.io_failed", cause: new Error("write failed") });
     expect((await f.service.snapshot()).skills.every((skill) => skill.enabled)).toBe(true);
     expect(f.publish).not.toHaveBeenCalled();
   });
