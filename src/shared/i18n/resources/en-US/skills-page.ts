@@ -4,7 +4,13 @@ export const en_us_skills_page = {
   user: "User skills",
   empty: "No user skills",
   readonly: "Read-only",
-  personality_description: "Custom personality for your intelligent assistant",
+  personality_description: "Personality settings for your intelligent assistant",
+  install: {
+    title: "Installation guide",
+    description: "Send the skill link to AGENT and ask it to install the skill.",
+    placeholder: "[Enter the skill link here]",
+    request: "Please install this skill for me: {LINK}",
+  },
   editor: {
     reset: "Reset",
     delete_skill_confirm: "Confirm deleting the skill …?",

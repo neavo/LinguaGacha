@@ -26,6 +26,13 @@ export type ProofreadingLookupIntent = {
   scope: "src" | "dst" | "all";
 };
 
+/** 随导航交给 Agent 的一次性输入请求，选区使用最终正文的字符位置。 */
+export type AgentInputRequest = Readonly<{
+  text: string;
+  mode: "replace" | "if-empty";
+  selection?: Readonly<{ from: number; to: number }>;
+}>;
+
 type NavigationNode = {
   id: RouteId;
   icon: LucideIcon;

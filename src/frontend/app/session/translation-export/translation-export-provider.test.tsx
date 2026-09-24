@@ -14,12 +14,7 @@ vi.mock("@frontend/app/locale/locale-context", () => ({
 }));
 vi.mock("@frontend/app/feedback/desktop-toast", () => ({ push_toast: vi.fn() }));
 vi.mock("@frontend/app/navigation/navigation-context", () => ({
-  useAppNavigation: () => ({ selected_route: "agent", navigate_to_route: vi.fn() }),
-}));
-vi.mock("@frontend/app/session/agent/agent-session-context", () => ({
-  useAgentInput: () => ({
-    draft: { read: () => ({ text: "", attachments: [] }), write: vi.fn() },
-  }),
+  useAppNavigation: () => ({ selected_route: "agent", navigate_to_agent: vi.fn() }),
 }));
 vi.mock("@frontend/app/state/use-desktop-state", () => ({
   useDesktopState: () => ({ project_snapshot: { loaded: true, path: "test.lg" } }),

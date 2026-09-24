@@ -16,9 +16,11 @@ import {
   SORTABLE_PROVIDER_OPTIONS,
 } from "@frontend/widgets/interactions/sortable";
 import { useSortable } from "@dnd-kit/react/sortable";
-import { GripVertical } from "lucide-react";
+import { CircleHelp, GripVertical } from "lucide-react";
 import { Card } from "@frontend/shadcn/card";
 import { Tooltip, TooltipTrigger, TooltipContent } from "@frontend/shadcn/tooltip";
+import { useAppNavigation } from "@frontend/app/navigation/navigation-context";
+import { AppActionDialog } from "@frontend/widgets/app-alert-dialog";
 import { AppButton } from "@frontend/widgets/app-button";
 import { BooleanSegmentedToggle } from "@frontend/widgets/boolean-segmented-toggle";
 import { api_fetch } from "@frontend/app/desktop/desktop-api";
@@ -62,6 +64,8 @@ function SkillsList({
 }): JSX.Element {
   const { t } = useI18n();
   const state = useSkillsPageState(active);
+  const { navigate_to_agent } = useAppNavigation();
+  const [help_open, set_help_open] = useState(false);
   const locked = useRuntimeSnapshot().owner === "agent";
   const builtin = state.snapshot.skills.filter((skill) => skill.source === "builtin");
   const user = state.snapshot.skills.filter((skill) => skill.source === "user");
@@ -116,7 +120,24 @@ function SkillsList({
         ))}
       </section>
       <section className="skills-page__group" aria-label={t("skills_page.user")}>
-        <h2>{t("skills_page.user")}</h2>
+        <div className="skills-page__group-header">
+          <h2>{t("skills_page.user")}</h2>
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <AppButton
+                  variant="ghost"
+                  size="icon-sm"
+                  aria-label={t("skills_page.install.title")}
+                  onClick={() => set_help_open(true)}
+                >
+                  <CircleHelp aria-hidden="true" />
+                </AppButton>
+              }
+            />
+            <TooltipContent>{t("skills_page.install.title")}</TooltipContent>
+          </Tooltip>
+        </div>
         <DragDropProvider {...SORTABLE_PROVIDER_OPTIONS} {...reorder.events}>
           {reorder.ordered_ids.map((name, index) => (
             <SortableSkillCard
@@ -136,6 +157,26 @@ function SkillsList({
           </Card>
         )}
       </section>
+      <AppActionDialog
+        open={help_open}
+        title={t("skills_page.install.title")}
+        description={t("skills_page.install.description")}
+        onClose={() => set_help_open(false)}
+        primaryAction={{
+          label: t("app.action.go_to_agent"),
+          onSelect: () => {
+            const placeholder = t("skills_page.install.placeholder");
+            const text = t("skills_page.install.request", { LINK: placeholder });
+            const from = text.indexOf(placeholder); // 从当前语言的完整正文定位选区。
+            set_help_open(false);
+            navigate_to_agent({
+              text,
+              mode: "replace",
+              selection: { from, to: from + placeholder.length },
+            });
+          },
+        }}
+      />
     </div>
   );
 }

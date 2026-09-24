@@ -57,6 +57,8 @@
 - 文件命令通过 Toast 报告失败，正文保存错误和版本冲突由编辑区提供恢复入口。删除失败后重读文件树，保留仍存在文件的草稿，当前文件已消失则回到主文件。包已不可用时结束编辑，查询失败时保留可重试状态。移动成功复用已保存正文并更新路径，创建或删除成功后的读取失败通过重载恢复。
 - `AppEditor` 在挂载时安装调用方提供的业务扩展。相同受控值保留当前文档。外部值更新绕过输入过滤且不进入用户撤销历史。
 - Agent、工作台与校对可在未加载工程时发起项目选择，并在 session ready 后恢复 pending route；其它项目功能页在工程未加载或 session 未 ready 时禁用。
+- `navigate_to_agent` 将一次性输入请求随导航提交。壳层在离页成功后保存请求，工程选择期间保留，其它导航或工程关闭时清除。
+- Agent 页面等待会话就绪，由编辑器判断输入锁并完成正文、选区和焦点更新。`if-empty` 保留已有正文或附件，`replace` 替换完整草稿并取消旧附件上传。页面消费后清除请求，编辑器在 React 重连时保留状态和焦点。
 - `features/model-selection` 持有页面级模型查询与写入命令。运行占用变化触发重查，保存设置使旧查询失效。配置加载和保存期间锁定控件，成功回包替换快照，失败保留原值。共用模型菜单支持直接选择模型并沿用其等级，悬停或右方向键展开可选等级，等级项目一次提交模型与等级。Agent 页面负责关闭思考的确认和批量跟随项。选模契约归 [`BACKEND.md`](BACKEND.md)，Agent 配置生效边界归 [`AGENT_RUNTIME.md`](AGENT_RUNTIME.md)。
 - Agent 模型入口从会话 `usage` 与 `context` 快照生成用量提示。累计输入包含缓存读取与写入，缓存命中率以累计输入为分母。上下文容量优先使用运行会话的 `limits`，空会话使用所选模型配置。
 - `ProjectSessionUiStateProvider` 只保存当前项目内可跨路由恢复的轻量 UI 状态，项目切换或关闭时清空，不写入后端事实。
@@ -85,7 +87,7 @@
 - `BatchTranslationSessionProvider` 拥有历史、波形、动作确认与唯一详情侧栏；工程级 `TranslationExportProvider` 独立拥有跨页面导出流程和唯一导出弹窗。两者在应用 session 常驻，工程切换或关闭时清空对应交互；页面计算缓存、其它弹窗、导入和提交状态随页面挂载与卸载。
 - 批量翻译终态反馈由会话 Hook 统一触发，仅独立任务发送 Toast。完成时按本轮 `run_progress.error_line` 区分成功与部分失败，主动停止使用中性提示。部分失败警告由用户手动关闭，Agent 子步骤由工具结果承接汇报。
 - `BatchTranslationRecoveryToast` 在会话层订阅当前快照的 `request_recovery`，独立与 Agent 任务共用固定 ID、不可手动关闭的警告。前端按 `retry_at` 每秒重算倒计时，其余恢复情况显示正在重试。恢复信息清空时解除通知。恢复协议归 [`BACKEND.md`](BACKEND.md)。
-- 独立全量翻译（`source: standalone`、`operation: translate`、`scope.kind: all`）从活跃态进入 `done` 时请求导出确认，包含部分失败的情况。页面与任务完成通知共用预检及确认流程，运行态不锁定导出。前往 Agent 时保留已有草稿，仅为空草稿填入审校请求。该请求复用 Agent 空态快捷入口的本地化文案及技能引用，两处都表达检查并校正的任务意图。
+- 独立全量翻译（`source: standalone`、`operation: translate`、`scope.kind: all`）从活跃态进入 `done` 时请求导出确认，包含部分失败的情况。页面与任务完成通知共用预检及确认流程，运行态不锁定导出。前往 Agent 通过统一导航入口提交 `if-empty` 审校请求。该请求复用 Agent 空态快捷入口的本地化文案及技能引用，两处都表达检查并校正的任务意图。
 - `ProjectTranslationStatsProvider` 独占工程统计缓存，工作台、Agent 卡片和详情共享结果；仅工程就绪后及相关 `project` / `items` 变化时串行刷新。工程关闭、切换和同路径重载使旧请求与重试失效，读取失败保留有效值。统计口径归 [`BACKEND.md`](BACKEND.md)。
 - `features/batch-translation` 提供共享摘要、详情、格式化与样式。速度、耗时、用量和剩余时间优先消费本轮 `run_progress`，工程重开后消费累计 `progress`；完成率显式消费共享工程统计。校对页按重翻目的与剩余 item 范围展示行级状态，详情侧栏的模型信息直接消费快照 `config`。Agent 在翻译活跃时显示摘要，终态恢复 Todo。
 

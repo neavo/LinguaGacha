@@ -1,6 +1,7 @@
 vi.mock("./use-agent-mention-files", () => ({
   useAgentMentionFiles: () => ({ files: [], status: "idle" }),
 }));
+import type { AgentInputRequest } from "@frontend/app/navigation/types";
 import { AgentInputDraft } from "@frontend/app/session/agent/agent-input-draft";
 import { uploaded_file } from "../../../test/agent-upload-fixture";
 vi.mock("@frontend/app/session/batch-translation/batch-translation-session-context", () => ({
@@ -8,7 +9,7 @@ vi.mock("@frontend/app/session/batch-translation/batch-translation-session-conte
     batch_translation_task: { translation_task_metrics: { active: false } },
   }),
 }));
-import { act } from "react";
+import { act, StrictMode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { EditorSelection } from "@codemirror/state";
@@ -38,6 +39,13 @@ type AgentPageState = AgentTimelineSlice &
   AgentSkillsSlice &
   AgentSessionActions & { input: AgentInputSession };
 
+const navigation = vi.hoisted(() => ({
+  agent_input_request: null as AgentInputRequest | null,
+  clear_agent_input_request: vi.fn(),
+}));
+vi.mock("@frontend/app/navigation/navigation-context", () => ({
+  useAppNavigation: () => navigation,
+}));
 const page_state = vi.hoisted(() => ({ current: {} as AgentPageState }));
 /** 用真实 hook 返回形状驱动 runtime owner 迁移，不复制 store 内部实现。 */
 const runtime_state = vi.hoisted(() => ({
@@ -202,6 +210,8 @@ describe("AgentPage", () => {
     resize_observers.clear();
     runtime_state.current = { revision: 0, owner: null };
     push_toast.mockReset();
+    navigation.agent_input_request = null;
+    navigation.clear_agent_input_request.mockReset();
     model_thinking_state.thinking_level = "OFF";
     model_thinking_state.available_thinking_levels = [];
     model_selection_commands.select_model.mockClear();
@@ -229,13 +239,81 @@ describe("AgentPage", () => {
     }
     await act(async () =>
       root?.render(
-        <TooltipProvider>
-          <AgentPage is_sidebar_collapsed={false} />
-        </TooltipProvider>,
+        <StrictMode>
+          <TooltipProvider>
+            <AgentPage is_sidebar_collapsed={false} />
+          </TooltipProvider>
+        </StrictMode>,
       ),
     );
     return container;
   }
+
+  it("导航替换草稿和附件、聚焦选中占位文字，重渲染不重复覆盖", async () => {
+    const input = build_state().input;
+    input.draft.write({ text: "原草稿", attachments: [uploaded_file("old")] });
+    const text = "安装：[链接]";
+    navigation.agent_input_request = {
+      text,
+      mode: "replace",
+      selection: { from: 3, to: text.length },
+    };
+    const send = vi.fn();
+    const view = await render_page({ input, send });
+    const editor = EditorView.findFromDOM(view.querySelector(".cm-editor")!)!;
+    expect(input.draft.read()).toEqual({ text, attachments: [] });
+    expect(
+      editor.state.sliceDoc(editor.state.selection.main.from, editor.state.selection.main.to),
+    ).toBe("[链接]");
+    expect(editor.hasFocus).toBe(true);
+    expect(send).not.toHaveBeenCalled();
+    expect(navigation.clear_agent_input_request).toHaveBeenCalledTimes(1);
+    await act(async () =>
+      editor.dispatch({ changes: { from: 0, to: text.length, insert: "用户已修改" } }),
+    );
+    await render_page({ input, send });
+    expect(input.draft.read().text).toBe("用户已修改");
+  });
+
+  it.each(["empty", "text", "attachment"] as const)(
+    "审校导航按实际草稿决定是否填充：%s",
+    async (kind) => {
+      const input = build_state().input;
+      const original = {
+        text: kind === "text" ? "已有正文" : "",
+        attachments: kind === "attachment" ? [uploaded_file("old")] : [],
+      };
+      input.draft.write(original);
+      navigation.agent_input_request = { text: "审校请求", mode: "if-empty" };
+      await render_page({ input });
+      expect(input.draft.read()).toEqual(
+        kind === "empty" ? { text: "审校请求", attachments: [] } : original,
+      );
+      expect(navigation.clear_agent_input_request).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it("会话恢复完成后才消费导航请求", async () => {
+    const input = build_state().input;
+    navigation.agent_input_request = { text: "安装请求", mode: "replace" };
+    await render_page({ input, transport: "restoring" });
+    expect(input.draft.read().text).toBe("");
+    expect(navigation.clear_agent_input_request).not.toHaveBeenCalled();
+    await render_page({ input, transport: "ready" });
+    expect(input.draft.read().text).toBe("安装请求");
+  });
+
+  it("输入锁释放后才消费导航请求", async () => {
+    const input = build_state().input;
+    input.draft.write({ text: "原草稿", attachments: [] });
+    navigation.agent_input_request = { text: "安装请求", mode: "replace" };
+    await render_page({ input, command: "reset" });
+    expect(input.draft.read().text).toBe("原草稿");
+    expect(navigation.clear_agent_input_request).not.toHaveBeenCalled();
+    await render_page({ input, command: null });
+    expect(input.draft.read().text).toBe("安装请求");
+    expect(navigation.clear_agent_input_request).toHaveBeenCalledTimes(1);
+  });
 
   it("页面留白、消息区与输入框拖入图片均只追加一次", async () => {
     const input = build_state().input;

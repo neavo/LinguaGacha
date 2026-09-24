@@ -5,12 +5,17 @@ import { LocaleProvider } from "@frontend/app/locale/locale-provider";
 import { TooltipProvider } from "@frontend/shadcn/tooltip";
 import type { AgentSkillEntry, AgentSkillIdentity } from "@shared/agent-skills";
 import { SkillsPage } from "./page";
+import { zh_cn_skills_page } from "@shared/i18n/resources/zh-CN/skills-page";
 
 const mocks = vi.hoisted(() => ({
   api: vi.fn(),
+  navigate_to_agent: vi.fn(),
   toast: vi.fn(),
   settings: {},
   owner: null as "agent" | null,
+}));
+vi.mock("@frontend/app/navigation/navigation-context", () => ({
+  useAppNavigation: () => ({ navigate_to_agent: mocks.navigate_to_agent }),
 }));
 vi.mock("@frontend/app/desktop/desktop-api", () => ({ api_fetch: mocks.api }));
 vi.mock("@frontend/app/feedback/desktop-toast", () => ({ push_toast: mocks.toast }));
@@ -47,6 +52,7 @@ describe("技能页面", () => {
   let root: Root;
   beforeEach(() => {
     mocks.api.mockReset();
+    mocks.navigate_to_agent.mockReset();
     mocks.owner = null;
     mocks.toast.mockReset();
     container = document.createElement("div");
@@ -70,6 +76,29 @@ describe("技能页面", () => {
       ),
     );
   }
+
+  it("安装帮助可取消，前往 Agent 时携带完整请求和占位选区", async () => {
+    mocks.api.mockResolvedValue({ skills: [] });
+    await render();
+    const help = container.querySelector<HTMLButtonElement>(
+      `button[aria-label="${zh_cn_skills_page.install.title}"]`,
+    )!;
+    await act(async () => help.click());
+    /** 通过弹窗中的可见动作文字查找按钮。 */
+    const action = (text: string) =>
+      [...document.querySelectorAll<HTMLButtonElement>('[role="alertdialog"] button')].find(
+        (button) => button.textContent === text,
+      )!;
+    await act(async () => action("取消").click());
+    expect(mocks.navigate_to_agent).not.toHaveBeenCalled();
+    await act(async () => help.click());
+    await act(async () => action("前往 AGENT").click());
+    const request = mocks.navigate_to_agent.mock.calls[0]![0];
+    expect(request.mode).toBe("replace");
+    expect(request.text.slice(request.selection.from, request.selection.to)).toBe(
+      zh_cn_skills_page.install.placeholder,
+    );
+  });
 
   it("Agent 占用时禁用开关和拖拽但保留详情入口", async () => {
     mocks.owner = "agent";

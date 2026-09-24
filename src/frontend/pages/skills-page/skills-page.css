@@ -10,10 +10,25 @@
   gap: 6px;
 }
 
-.skills-page__group > h2 {
+.skills-page__group > h2,
+.skills-page__group-header > h2 {
   margin: 0 0 4px;
   font-size: 14px;
   font-weight: 500;
+}
+
+.skills-page__group-header {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.skills-page__group-header > h2 {
+  margin: 0;
+}
+
+.skills-page__group-header > button {
+  color: var(--muted-foreground);
 }
 
 .skills-page__card {

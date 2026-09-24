@@ -4,7 +4,13 @@ export const de_de_skills_page = {
   user: "Benutzer-Skills",
   empty: "Keine Benutzer-Skills",
   readonly: "Schreibgeschützt",
-  personality_description: "Individuelle Persönlichkeit des intelligenten Assistenten",
+  personality_description: "Persönlichkeitseinstellungen des intelligenten Assistenten",
+  install: {
+    title: "Installationsanleitung",
+    description: "Sende den Skill-Link an AGENT und bitte ihn, den Skill zu installieren.",
+    placeholder: "[Skill-Link hier eingeben]",
+    request: "Bitte installiere diesen Skill für mich: {LINK}",
+  },
   editor: {
     reset: "Zurücksetzen",
     delete_skill_confirm: "Skill wirklich löschen …?",

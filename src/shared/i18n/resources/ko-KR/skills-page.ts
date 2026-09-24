@@ -4,7 +4,13 @@ export const ko_kr_skills_page = {
   user: "사용자 스킬",
   empty: "사용자 스킬 없음",
   readonly: "읽기 전용",
-  personality_description: "지능형 어시스턴트의 사용자 지정 역할 설정",
+  personality_description: "지능형 어시스턴트의 역할 설정",
+  install: {
+    title: "설치 안내",
+    description: "스킬 링크를 AGENT에 보내고 이 스킬을 설치해 달라고 요청하세요.",
+    placeholder: "[여기에 스킬 링크 입력]",
+    request: "이 스킬을 설치해 주세요: {LINK}",
+  },
   editor: {
     reset: "초기화",
     delete_skill_confirm: "스킬을 삭제하시겠습니까 …?",

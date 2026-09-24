@@ -4,7 +4,14 @@ export const ja_jp_skills_page = {
   user: "ユーザースキル",
   empty: "ユーザースキルはありません",
   readonly: "読み取り専用",
-  personality_description: "アシスタントのカスタムキャラクター設定",
+  personality_description: "アシスタントのキャラクター設定",
+  install: {
+    title: "インストールガイド",
+    description:
+      "スキルのリンクを AGENT に送り、「このスキルをインストールして」と伝えてください。",
+    placeholder: "[ここにスキルのリンクを入力]",
+    request: "このスキルをインストールしてください：{LINK}",
+  },
   editor: {
     reset: "リセット",
     delete_skill_confirm: "スキルを削除しますか …?",

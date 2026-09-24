@@ -26,6 +26,7 @@ import {
   useModelSelection,
 } from "@frontend/features/model-selection/use-model-selection";
 import { useRuntimeSnapshot } from "@frontend/app/state/use-desktop-state";
+import { useAppNavigation } from "@frontend/app/navigation/navigation-context";
 import type { ScreenComponentProps } from "@frontend/app/navigation/types";
 import { AppConfirmDialog } from "@frontend/widgets/app-alert-dialog";
 import { AppButton } from "@frontend/widgets/app-button";
@@ -91,6 +92,8 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
   const { todos } = useAgentTodo();
   const { skills } = useAgentSkills();
   const input = useAgentInput();
+  const { agent_input_request, clear_agent_input_request } = useAppNavigation();
+  const consumed_input_request = useRef<typeof agent_input_request>(null); // `StrictMode` 重放副作用时跳过已消费请求。
   const agent_actions = useAgentSessionActions();
   const model_selection = useModelSelection();
   const runtime_snapshot = useRuntimeSnapshot();
@@ -449,6 +452,30 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
   const queue_full = inputQueue.items.length >= AGENT_INPUT_QUEUE_LIMIT;
   const pending_decision = controls.pendingDecision;
   const input_transition = useAgentInputTransition(pending_decision, composer_ref);
+
+  // 会话就绪后尝试写入，编辑器统一判断输入锁。锁状态变化时重新尝试。
+  useEffect(() => {
+    const request = agent_input_request;
+    if (!request || consumed_input_request.current === request || controls.transport !== "ready")
+      return;
+    const draft = input.draft.read();
+    const preserve =
+      request.mode === "if-empty" && (draft.text.trim() !== "" || draft.attachments.length > 0);
+    if (!preserve) {
+      if (!composer_ref.current?.write_draft(request.text, request.selection)) return;
+      input.draft.write({ text: request.text, attachments: [] });
+    }
+    consumed_input_request.current = request;
+    clear_agent_input_request();
+  }, [
+    agent_input_request,
+    clear_agent_input_request,
+    input,
+    controls.transport,
+    active_inline_edit,
+    input_transition.locked,
+    controls.command,
+  ]);
 
   const follow_latest_label = t("agent_page.action.follow_latest");
   // 可访问性属性使用标准键名；Tooltip 继续显示用户熟悉的平台符号。

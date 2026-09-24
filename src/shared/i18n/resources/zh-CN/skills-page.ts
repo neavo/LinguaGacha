@@ -4,7 +4,13 @@ export const zh_cn_skills_page = {
   user: "用户技能",
   empty: "暂无用户技能",
   readonly: "只读",
-  personality_description: "智能助手的自定义角色设定",
+  personality_description: "智能助手的角色设定",
+  install: {
+    title: "安装指南",
+    description: "将技能链接发送给 AGENT，并告诉它「请帮我安装这个技能」",
+    placeholder: "[在这里输入技能链接]",
+    request: "请帮我安装这个技能：{LINK}",
+  },
   editor: {
     reset: "重置",
     delete_skill_confirm: "是否确认删除技能 …?",
