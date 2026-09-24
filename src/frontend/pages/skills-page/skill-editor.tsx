@@ -16,7 +16,7 @@ import { useSkillEditor } from "./use-skill-editor";
 import { skill_editor_extension } from "./skill-editor-extension";
 import "./skill-editor.css";
 
-const TREE_WIDTH = { initial: 196, min: 180, max: 480, step: 20 };
+const TREE_WIDTH = { initial: 220, min: 180, max: 480, step: 20 };
 
 /** 组合技能导航与连续编辑文档，并将自动保存接入离页流程。 */
 export function SkillEditor({

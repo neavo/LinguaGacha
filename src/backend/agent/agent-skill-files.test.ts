@@ -25,6 +25,21 @@ function fixture() {
 }
 
 describe("技能文件", () => {
+  it("每级目录优先，主文件参与普通文件排序", () => {
+    using f = fixture();
+    fs.mkdirSync(path.join(f.root, "z-folder/nested"), { recursive: true });
+    fs.mkdirSync(path.join(f.root, "a-folder"));
+    fs.writeFileSync(path.join(f.root, "a.md"), "");
+    fs.writeFileSync(path.join(f.root, "z-folder/a.md"), "");
+    expect(read_skill_tree(f.root).map((entry) => entry.path)).toEqual([
+      "a-folder",
+      "z-folder",
+      "z-folder/nested",
+      "z-folder/a.md",
+      "a.md",
+      "SKILL.md",
+    ]);
+  });
   it("文件读写、移动和删除保留正文，入口及内部文件受保护", () => {
     using f = fixture();
     fs.writeFileSync(path.join(f.root, "ui.json"), "{}");

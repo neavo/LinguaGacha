@@ -110,7 +110,9 @@ describe("技能编辑工作面", () => {
     );
     expect(container.querySelector(".cm-content")?.getAttribute("contenteditable")).toBe("true");
     await act(async () => {
-      (container.querySelector('button[title="reference.md"]') as HTMLButtonElement).click();
+      [...container.querySelectorAll<HTMLButtonElement>(".skill-tree__select")]
+        .find((button) => button.textContent === "reference.md")!
+        .click();
     });
     expect(container.querySelector(".cm-content")?.textContent).toBe("Body");
     expect(container.querySelector(".skill-editor__path")?.textContent).toContain("reference.md");
@@ -120,7 +122,9 @@ describe("技能编辑工作面", () => {
     await render("user");
     expect(container.querySelector(".cm-content")?.getAttribute("contenteditable")).toBe("false");
     await act(async () => {
-      (container.querySelector('button[title="reference.md"]') as HTMLButtonElement).click();
+      [...container.querySelectorAll<HTMLButtonElement>(".skill-tree__select")]
+        .find((button) => button.textContent === "reference.md")!
+        .click();
     });
     expect(container.querySelector(".skill-editor__path")?.textContent).toContain("reference.md");
     expect(mocks.api.mock.calls.some(([url]) => url.endsWith("/save"))).toBe(false);
@@ -131,7 +135,9 @@ describe("技能编辑工作面", () => {
     expect(container.querySelector(".cm-content")?.textContent).toContain("name: sample");
     expect(container.querySelector(".cm-content")?.getAttribute("contenteditable")).toBe("false");
     await act(async () => {
-      (container.querySelector('button[title="reference.md"]') as HTMLButtonElement).click();
+      [...container.querySelectorAll<HTMLButtonElement>(".skill-tree__select")]
+        .find((button) => button.textContent === "reference.md")!
+        .click();
     });
     expect(container.querySelector(".skill-editor__path")?.textContent).toContain("reference.md");
   });

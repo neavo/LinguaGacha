@@ -139,22 +139,57 @@
   padding: 0;
   margin: 0;
 }
-.skill-tree__branch .skill-tree__branch {
+.skill-tree__branch .skill-tree__branch,
+.skill-tree__children {
   padding-left: 14px;
 }
 .skill-tree__row {
+  --skill-tree-row-surface: var(--card);
+  position: relative;
+  isolation: isolate;
   display: flex;
   align-items: center;
-  border-radius: var(--ui-radius-button);
   min-height: 30px;
 }
+/* 状态底色上下留缝，整行仍接收点击和拖拽。 */
+.skill-tree__row::before {
+  content: "";
+  position: absolute;
+  inset: 1px 0;
+  z-index: 0;
+  background: var(--skill-tree-row-surface);
+  opacity: 0;
+  pointer-events: none;
+}
+.skill-tree__row::after {
+  content: "";
+  position: absolute;
+  inset: 7px auto 7px 0;
+  z-index: 2;
+  width: var(--ui-selection-rail-width);
+  background: var(--sidebar-primary);
+  opacity: 0;
+  pointer-events: none;
+}
 .skill-tree__row:hover {
-  background: var(--accent);
+  --skill-tree-row-surface: var(--accent);
 }
 .skill-tree__row[data-selected] {
-  background: var(--ui-table-selected);
+  --skill-tree-row-surface: color-mix(in srgb, var(--accent) 96%, var(--card));
+}
+.skill-tree__row:hover::before,
+.skill-tree__row[data-selected]::before,
+.skill-tree__row[data-drop-target]::before,
+.skill-tree__row[data-selected]::after {
+  opacity: 1;
+}
+.skill-tree__row[data-drop-target]::before {
+  outline: 1px solid var(--ring);
+  outline-offset: -1px;
 }
 .skill-tree__select {
+  position: relative;
+  z-index: 1;
   display: flex;
   align-items: center;
   gap: 5px;
@@ -167,6 +202,9 @@
   font-size: 12px;
   cursor: pointer;
 }
+.skill-tree__select[data-root] {
+  padding-left: 10px;
+}
 .skill-tree__select > span:last-child {
   white-space: nowrap;
   overflow: hidden;
@@ -178,49 +216,47 @@
   height: 14px;
   flex-shrink: 0;
 }
-.skill-tree__select:focus-visible {
+.skill-tree__select:focus-visible,
+.skill-tree__action:focus-visible {
   outline: 1px solid var(--ring);
   outline-offset: -1px;
-  border-radius: var(--ui-radius-button);
 }
-.skill-tree__select:disabled {
+.skill-tree__select:disabled,
+.skill-tree__action:disabled {
   cursor: default;
   color: var(--muted-foreground);
 }
+/* 操作区覆盖末尾文字，使用同一不透明底色，显隐不改变名称布局。 */
 .skill-tree__actions {
-  opacity: 0;
-  flex-shrink: 0;
-}
-.skill-tree__row:hover .skill-tree__actions,
-.skill-tree__row:focus-within .skill-tree__actions,
-.skill-tree__actions[aria-expanded="true"] {
-  opacity: 1;
-}
-@media (hover: none) {
-  .skill-tree__actions {
-    opacity: 1;
-  }
-}
-.skill-tree__input {
+  position: absolute;
+  inset: 3px 3px 3px auto;
+  z-index: 3;
   display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-  padding: 4px;
+  gap: 3px;
+  background: var(--skill-tree-row-surface);
+  box-shadow: -4px 0 0 var(--skill-tree-row-surface);
+  visibility: hidden;
 }
-.skill-tree__input input {
-  flex-basis: 100%;
+.skill-tree__row:hover .skill-tree__actions {
+  visibility: visible;
 }
-.skill-tree__destination {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  padding: 16px;
-  font-size: 13px;
-}
-.skill-tree__destination select {
-  height: 32px;
-  border: 1px solid var(--border);
+.skill-tree__action {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  border: 0.5px solid var(--border);
   border-radius: var(--ui-radius-button);
-  background: var(--popover);
-  padding: 0 8px;
+  background: var(--skill-tree-row-surface);
+  cursor: pointer;
+}
+.skill-tree__action:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--foreground) 20%, var(--border));
+  background: var(--muted);
+}
+.skill-tree__action svg {
+  width: 14px;
+  height: 14px;
+}
+.skill-tree__row[data-cut] {
+  opacity: 0.5;
 }

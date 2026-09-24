@@ -2,6 +2,7 @@ import { AGENT_SKILL_MAIN_FILE } from "@shared/agent-skills";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api_fetch, DesktopApiError } from "@frontend/app/desktop/desktop-api";
 import { resolve_visible_error_message } from "@frontend/app/feedback/visible-error-message";
+import { push_toast } from "@frontend/app/feedback/desktop-toast";
 import { useRuntimeSnapshot } from "@frontend/app/state/use-desktop-state";
 import { useI18n } from "@frontend/app/locale/locale-context";
 import {
@@ -82,6 +83,16 @@ export function useSkillEditor(identity: AgentSkillIdentity) {
     },
     [update],
   );
+  /** 文件命令的失败通过通知反馈，不占用正文保存的恢复状态。 */
+  const notify = useCallback((error: unknown) => {
+    const text = translate.current;
+    push_toast(
+      "error",
+      error instanceof DesktopApiError && error.code === "file.already_exists"
+        ? text("skills_page.feedback.duplicate_name")
+        : resolve_visible_error_message(error, text, text("skills_page.feedback.operation_failed")),
+    );
+  }, []);
 
   /** 初始化和重试共用读取流程，取消旧查询后才接收新结果。 */
   const load = useCallback(async () => {
@@ -90,7 +101,7 @@ export function useSkillEditor(identity: AgentSkillIdentity) {
     reading.current = controller;
     update({ loading: true, error: "" });
     try {
-      const skill = current.current.file?.skill ?? identity;
+      const skill = current.current.file?.skill ?? current.current.tree?.skill ?? identity;
       const tree = await api_fetch<AgentSkillTree>("/api/skills/tree", skill, controller.signal);
       const file = await api_fetch<AgentSkillFile>(
         "/api/skills/file/read",
@@ -168,23 +179,22 @@ export function useSkillEditor(identity: AgentSkillIdentity) {
   const invalid = state.file?.document
     ? validate_agent_skill_document(read_skill_editor_document(state.draft))
     : null;
+  // 文件命令可能在同次 React 提交内结束，仍需按最新状态恢复被接管的保存计时。
   useEffect(() => {
-    if (!locked && dirty && !invalid && !state.composing && !state.busy && !state.error)
+    if (
+      !locked &&
+      dirty &&
+      !invalid &&
+      !state.composing &&
+      !state.busy &&
+      !state.saving &&
+      !state.error
+    )
       timer.current = setTimeout(() => {
         void flush();
       }, SKILL_AUTOSAVE_DELAY_MS);
     return cancel;
-  }, [
-    state.draft,
-    state.composing,
-    state.busy,
-    state.error,
-    dirty,
-    invalid,
-    locked,
-    cancel,
-    flush,
-  ]);
+  }, [state, dirty, invalid, locked, cancel, flush]);
 
   /** 切换前保存当前草稿，成功读取后才替换编辑内容。 */
   async function open_file(relative: string): Promise<boolean> {
@@ -209,7 +219,19 @@ export function useSkillEditor(identity: AgentSkillIdentity) {
     // 删除已获确认，等待在途保存后直接处理目标草稿。
     if (change.operation === "delete" && affected) {
       if (write.current) await write.current;
-    } else if (!(await flush())) return false;
+    } else if (!(await flush())) {
+      const invalid = current.current.file?.document
+        ? validate_agent_skill_document(read_skill_editor_document(current.current.draft))
+        : null;
+      push_toast(
+        "error",
+        current.current.error ||
+          (invalid
+            ? translate.current(`skills_page.editor.invalid_${invalid}`)
+            : translate.current("skills_page.feedback.save_failed")),
+      );
+      return false;
+    }
     const previous = current.current.file;
     if (!previous) return false;
     const tree = await api_fetch<AgentSkillTree>("/api/skills/file/change", {
@@ -226,11 +248,22 @@ export function useSkillEditor(identity: AgentSkillIdentity) {
             ? change.destination + previous.path.slice(change.path.length)
             : previous.path;
     if (next_path === previous.path) return true;
-    const file = await api_fetch<AgentSkillFile>("/api/skills/file/read", {
-      ...tree.skill,
-      path: next_path,
-    });
-    update({ file, draft: file_draft(file), error: "", conflict: false });
+    if (change.operation === "move") {
+      // 移动后复用已保存正文与版本，并更新当前路径。
+      update({ file: { ...previous, skill: tree.skill, path: next_path } });
+      return true;
+    }
+    try {
+      const file = await api_fetch<AgentSkillFile>("/api/skills/file/read", {
+        ...tree.skill,
+        path: next_path,
+      });
+      update({ file, draft: file_draft(file), error: "", conflict: false });
+    } catch (error) {
+      // 文件命令已经完成。读取失败进入页面重载，避免重复执行创建或删除。
+      update({ file: null });
+      report(error, "load_failed");
+    }
     return true;
   }
 
@@ -245,6 +278,8 @@ export function useSkillEditor(identity: AgentSkillIdentity) {
     });
     update({
       file,
+      error: "",
+      conflict: false,
       ...(!overwrite
         ? { draft: file_draft(file), reset_count: current.current.reset_count + 1 }
         : {}),
@@ -256,13 +291,14 @@ export function useSkillEditor(identity: AgentSkillIdentity) {
   const run_operation = useCallback(
     async (
       action: () => Promise<boolean>,
-      context: "load_failed" | "save_failed" = "save_failed",
+      context: "load_failed" | "file_operation",
     ): Promise<boolean> => {
       if (operation.current) return false;
       cancel();
-      update({ busy: true, error: "", conflict: false });
+      update({ busy: true });
       const pending = action().catch((error: unknown) => {
-        report(error, context);
+        if (context === "file_operation") notify(error);
+        else report(error, context);
         return false;
       });
       operation.current = pending;
@@ -273,7 +309,7 @@ export function useSkillEditor(identity: AgentSkillIdentity) {
         update({ busy: false });
       }
     },
-    [cancel, report, update],
+    [cancel, notify, report, update],
   );
   /** 离页等待文件命令及最新草稿落盘，失败时保留当前工作面。 */
   const finish = useCallback(async (): Promise<boolean> => {
@@ -289,7 +325,8 @@ export function useSkillEditor(identity: AgentSkillIdentity) {
     reload: load,
     flush: finish,
     open_file: (path: string) => run_operation(() => open_file(path), "load_failed"),
-    change_file: (change: AgentSkillFileChange) => run_operation(() => change_file(change)),
+    change_file: (change: AgentSkillFileChange) =>
+      run_operation(() => change_file(change), "file_operation"),
     recover: (overwrite = false) => run_operation(() => recover(overwrite), "load_failed"),
     /** 输入更新草稿后清除上一次保存错误，恢复自动保存。 */
     edit: (draft: string) => {

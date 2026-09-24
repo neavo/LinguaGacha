@@ -1,5 +1,5 @@
 import { AGENT_SKILL_MAIN_FILE } from "@shared/agent-skills";
-import { useEffect, useState } from "react";
+import { useEffect, useState, type DragEvent, type KeyboardEvent } from "react";
 import {
   ChevronDown,
   ChevronRight,
@@ -7,26 +7,15 @@ import {
   FilePlus2,
   Folder,
   FolderPlus,
-  MoreHorizontal,
+  FolderOpen,
+  Pencil,
+  Trash2,
 } from "lucide-react";
 import { useI18n } from "@frontend/app/locale/locale-context";
 import { AppButton } from "@frontend/widgets/app-button";
-import { Input } from "@frontend/shadcn/input";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@frontend/shadcn/tooltip";
 import { AppActionDialog } from "@frontend/widgets/app-alert-dialog";
-import { AppPageDialog } from "@frontend/widgets/app-page-dialog";
-import {
-  AppContextMenu,
-  AppContextMenuContent,
-  AppContextMenuItem,
-  AppContextMenuTrigger,
-} from "@frontend/widgets/app-context-menu";
-import {
-  AppDropdownMenu,
-  AppDropdownMenuContent,
-  AppDropdownMenuItem,
-  AppDropdownMenuTrigger,
-} from "@frontend/widgets/app-dropdown-menu";
+import { SkillEntryNameDialog } from "./skill-entry-name-dialog";
 import type { AgentSkillFileChange, AgentSkillFileEntry } from "@shared/agent-skills";
 
 type Props = {
@@ -37,7 +26,7 @@ type Props = {
   on_open: (path: string) => Promise<boolean>;
   on_change: (change: AgentSkillFileChange) => Promise<boolean>;
 };
-type EntryAction = "rename" | "move" | "delete";
+type EntryAction = "rename" | "delete";
 type InputAction = {
   operation: "create_file" | "create_directory" | "rename";
   path: string;
@@ -48,17 +37,17 @@ const parent_path = (value: string) => value.slice(0, Math.max(0, value.lastInde
 /** 在选中的父目录下组合新名称。 */
 const join_path = (parent: string, name: string) => (parent ? `${parent}/${name}` : name);
 
-/** 文件树只拥有展开、选中和菜单状态；文件事实及保存顺序由编辑页持有。 */
+/** 文件树持有导航、名称弹窗与拖拽状态。编辑页管理文件事实及保存顺序。 */
 export function SkillFileTree(props: Props): JSX.Element {
   const { t } = useI18n();
   const [expanded, set_expanded] = useState<Set<string>>(new Set());
-  const [selected, set_selected] = useState<string | null>(null);
+  const [selected, set_selected] = useState<string | null>(null); // 空路径选中根目录，null 跟随当前文件。
   const [input, set_input] = useState<InputAction | null>(null);
-  const [name, set_name] = useState("");
-  const [action, set_action] = useState<{ operation: "move" | "delete"; path: string } | null>(
-    null,
-  );
-  const [destination, set_destination] = useState("");
+  const [deleting, set_deleting] = useState<AgentSkillFileEntry | null>(null);
+  const [cut, set_cut] = useState<string | null>(null); // 剪切只记录来源，粘贴成功后才清除。
+  const [dragging, set_dragging] = useState<string | null>(null); // 原生拖拽来源同时控制条目提示显隐。
+  const [drop_target, set_drop_target] = useState<string | null>(null);
+  const disabled = props.busy || props.readonly;
   useEffect(() => {
     const parts = props.path.split("/");
     set_expanded(
@@ -73,182 +62,216 @@ export function SkillFileTree(props: Props): JSX.Element {
   const selection = props.entries.find((entry) => entry.path === (selected ?? props.path));
   const new_parent =
     selection?.kind === "directory" ? selection.path : parent_path(selection?.path ?? "");
-  const actions: EntryAction[] = ["rename", "move", "delete"];
-  /** 将行菜单选择转换为名称输入或确认操作。 */
+  const actions: EntryAction[] = ["rename", "delete"];
+  /** 将行按钮转换为名称输入或删除确认。 */
   function start(operation: EntryAction, entry: AgentSkillFileEntry) {
     if (operation === "rename") {
       set_input({ operation, path: entry.path, parent: parent_path(entry.path) });
-      set_name(entry.path.split("/").at(-1) ?? "");
     } else {
-      set_destination("");
-      set_action({ operation, path: entry.path });
+      set_deleting(entry);
     }
   }
   /** 在选中目录或当前文件所在目录开始创建条目。 */
   function create(operation: "create_file" | "create_directory") {
     set_expanded((previous) => new Set([...previous, new_parent]));
     set_input({ operation, path: "", parent: new_parent });
-    set_name("");
   }
-  /** 提交名称后等待后端结果，失败时保留输入。 */
-  async function submit() {
-    if (!input || !name.trim() || /[/\\]/.test(name) || props.busy || props.readonly) return;
-    const target = join_path(input.parent, name);
-    if (input.operation === "rename" && target === input.path) {
-      set_input(null);
-      return;
+  /** 文件命令成功后迁移本地导航路径，磁盘事实始终由父组件刷新。 */
+  async function change(command: AgentSkillFileChange): Promise<boolean> {
+    if (!(await props.on_change(command))) return false;
+    if (command.operation === "move") {
+      // 目录移动同时迁移后代的展开路径。
+      const migrate = (path: string) =>
+        path === command.path || path.startsWith(`${command.path}/`)
+          ? command.destination + path.slice(command.path.length)
+          : path;
+      set_expanded(
+        (previous) => new Set([...previous].map(migrate).concat(parent_path(command.destination))),
+      );
+      set_selected(command.destination);
+    } else if (command.operation !== "delete") {
+      set_selected(command.path);
     }
-    const change: AgentSkillFileChange =
-      input.operation === "rename"
-        ? { operation: "move", path: input.path, destination: target }
-        : { operation: input.operation, path: target };
-    if (await props.on_change(change)) {
-      set_input(null);
-      set_selected(target);
-    }
+    set_cut(null);
+    return true;
   }
-  const input_row = input ? (
-    <form
-      className="skill-tree__input"
-      onSubmit={(event) => {
+  /** 拖拽和键盘粘贴使用相同的目标规则与移动入口。 */
+  function can_move(source: string | null, parent: string): source is string {
+    return (
+      !disabled &&
+      source !== null &&
+      source !== AGENT_SKILL_MAIN_FILE &&
+      props.entries.some((entry) => entry.path === source) &&
+      (parent === "" ||
+        props.entries.some((entry) => entry.path === parent && entry.kind === "directory")) &&
+      parent !== parent_path(source) &&
+      parent !== source &&
+      !parent.startsWith(`${source}/`)
+    );
+  }
+  /** 将来源名称放到目标目录，由统一文件命令更新导航。 */
+  async function move(source: string | null, parent: string) {
+    if (can_move(source, parent))
+      await change({
+        operation: "move",
+        path: source,
+        destination: join_path(parent, source.split("/").at(-1)!),
+      });
+  }
+  /** 整行接收目录投放，落点高亮与提交共用目标校验。 */
+  function drop_events(parent: string) {
+    return {
+      onDragOver: (event: DragEvent<HTMLElement>) => {
+        event.stopPropagation();
+        if (!can_move(dragging, parent)) {
+          event.dataTransfer.dropEffect = "none";
+          set_drop_target(null);
+          return;
+        }
         event.preventDefault();
-        void submit();
-      }}
-    >
-      <Input
-        autoFocus
-        aria-label={t(`skills_page.editor.${input.operation}`)}
-        value={name}
-        disabled={props.busy || props.readonly}
-        onChange={(event) => set_name(event.target.value)}
-        onKeyDown={(event) => {
-          if (event.key === "Escape") set_input(null);
-        }}
-      />
-      <AppButton
-        size="sm"
-        type="submit"
-        disabled={props.busy || props.readonly || !name.trim() || /[/\\]/.test(name)}
+        event.dataTransfer.dropEffect = "move";
+        set_drop_target(parent);
+      },
+      onDragLeave: (event: DragEvent<HTMLElement>) => {
+        if (!event.currentTarget.contains(event.relatedTarget as Node | null))
+          set_drop_target(null);
+      },
+      onDrop: (event: DragEvent<HTMLElement>) => {
+        event.preventDefault();
+        event.stopPropagation();
+        const source = dragging;
+        set_dragging(null);
+        set_drop_target(null);
+        void move(source, parent);
+      },
+    };
+  }
+  /** 文件树接收剪切、粘贴和取消，名称弹窗在此容器外处理输入。 */
+  function keyboard(event: KeyboardEvent<HTMLElement>) {
+    if (disabled) return;
+    if (event.key === "Escape") set_cut(null);
+    if (!(event.ctrlKey || event.metaKey) || event.altKey) return;
+    if (event.key.toLowerCase() === "x" && selection && selection.path !== AGENT_SKILL_MAIN_FILE) {
+      event.preventDefault();
+      set_cut(selection.path);
+    }
+    if (event.key.toLowerCase() === "v" && cut) {
+      event.preventDefault();
+      void move(cut, new_parent);
+    }
+  }
+  /** 根目录是页面导航入口，使用与真实条目相同的行结构和投放区域。 */
+  function row(entry: AgentSkillFileEntry): JSX.Element {
+    const root = entry.path === "";
+    const directory = entry.kind === "directory";
+    const open = root || expanded.has(entry.path);
+    const editable = !root && !props.readonly && entry.path !== AGENT_SKILL_MAIN_FILE;
+    const label = root ? "/" : entry.path.split("/").at(-1)!;
+    return (
+      <div
+        className="skill-tree__row"
+        data-selected={(selected ?? props.path) === entry.path || undefined}
+        data-cut={cut === entry.path || undefined}
+        data-drop-target={drop_target === entry.path || undefined}
+        {...(directory ? drop_events(entry.path) : {})}
       >
-        {t("app.action.confirm")}
-      </AppButton>
-      <AppButton
-        size="sm"
-        variant="ghost"
-        type="button"
-        disabled={props.busy}
-        onClick={() => set_input(null)}
-      >
-        {t("app.action.cancel")}
-      </AppButton>
-    </form>
-  ) : null;
-  /** 只展开可见分支，同一条目共用右键与更多菜单动作。 */
+        <Tooltip disabled={dragging !== null}>
+          <TooltipTrigger
+            render={
+              <button
+                type="button"
+                className="skill-tree__select"
+                data-root={root || undefined}
+                disabled={props.busy}
+                aria-expanded={directory && !root ? open : undefined}
+                draggable={editable && !disabled}
+                onFocus={() => set_selected(entry.path)}
+                onDragStart={(event) => {
+                  if (!editable || disabled) {
+                    event.preventDefault();
+                    return;
+                  }
+                  set_dragging(entry.path);
+                  event.dataTransfer.effectAllowed = "move";
+                  event.dataTransfer.setData("text/plain", entry.path);
+                }}
+                onDragEnd={() => {
+                  set_dragging(null);
+                  set_drop_target(null);
+                }}
+                onClick={() => {
+                  if (root) set_selected("");
+                  else if (directory) {
+                    set_selected(entry.path);
+                    set_expanded((previous) => {
+                      const next = new Set(previous);
+                      if (open) next.delete(entry.path);
+                      else next.add(entry.path);
+                      return next;
+                    });
+                  } else
+                    void props.on_open(entry.path).then((ok) => {
+                      if (ok) set_selected(entry.path);
+                    });
+                }}
+              >
+                {directory && !root ? (
+                  open ? (
+                    <ChevronDown />
+                  ) : (
+                    <ChevronRight />
+                  )
+                ) : root ? null : (
+                  <span className="skill-tree__spacer" />
+                )}
+                {root ? <FolderOpen /> : directory ? <Folder /> : <File />}
+                <span>{label}</span>
+              </button>
+            }
+          />
+          <TooltipContent>{`/${entry.path}`}</TooltipContent>
+        </Tooltip>
+        {editable && (
+          <div className="skill-tree__actions">
+            {actions.map((operation) => (
+              <Tooltip key={operation}>
+                <TooltipTrigger
+                  render={
+                    <button
+                      type="button"
+                      className="skill-tree__action"
+                      aria-label={t(`skills_page.editor.${operation}`)}
+                      disabled={props.busy}
+                      onClick={() => start(operation, entry)}
+                    >
+                      {operation === "rename" ? (
+                        <Pencil aria-hidden="true" />
+                      ) : (
+                        <Trash2 aria-hidden="true" />
+                      )}
+                    </button>
+                  }
+                />
+                <TooltipContent>{t(`skills_page.editor.${operation}`)}</TooltipContent>
+              </Tooltip>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  }
+  /** 递归只负责遍历可见目录，条目外观与交互由同一个行入口负责。 */
   function branch(parent: string): JSX.Element {
     return (
       <ul className="skill-tree__branch">
-        {input && input.operation !== "rename" && input.parent === parent && <li>{input_row}</li>}
         {props.entries
           .filter((entry) => parent_path(entry.path) === parent)
-          .map((entry) => {
-            const directory = entry.kind === "directory";
-            const open = expanded.has(entry.path);
-            const editable = !props.readonly && entry.path !== AGENT_SKILL_MAIN_FILE;
-            const row = (
-              <div
-                className="skill-tree__row"
-                data-selected={(selected ?? props.path) === entry.path || undefined}
-              >
-                <button
-                  type="button"
-                  className="skill-tree__select"
-                  disabled={props.busy}
-                  aria-expanded={directory ? open : undefined}
-                  title={entry.path}
-                  onClick={() => {
-                    if (directory) {
-                      set_selected(entry.path);
-                      set_expanded((previous) => {
-                        const next = new Set(previous);
-                        if (open) next.delete(entry.path);
-                        else next.add(entry.path);
-                        return next;
-                      });
-                    } else
-                      void props.on_open(entry.path).then((ok) => {
-                        if (ok) set_selected(entry.path);
-                      });
-                  }}
-                >
-                  {directory ? (
-                    open ? (
-                      <ChevronDown />
-                    ) : (
-                      <ChevronRight />
-                    )
-                  ) : (
-                    <span className="skill-tree__spacer" />
-                  )}
-                  {directory ? <Folder /> : <File />}
-                  <span>{entry.path.split("/").at(-1)}</span>
-                </button>
-                {editable && (
-                  <AppDropdownMenu>
-                    <AppDropdownMenuTrigger
-                      render={
-                        <AppButton
-                          variant="ghost"
-                          size="icon-sm"
-                          disabled={props.busy}
-                          className="skill-tree__actions"
-                          aria-label={t("skills_page.editor.actions")}
-                          title={t("skills_page.editor.actions")}
-                        />
-                      }
-                    >
-                      <MoreHorizontal />
-                    </AppDropdownMenuTrigger>
-                    <AppDropdownMenuContent align="end">
-                      {actions.map((operation) => (
-                        <AppDropdownMenuItem
-                          key={operation}
-                          variant={operation === "delete" ? "destructive" : "default"}
-                          onClick={() => start(operation, entry)}
-                        >
-                          {t(`skills_page.editor.${operation}`)}
-                        </AppDropdownMenuItem>
-                      ))}
-                    </AppDropdownMenuContent>
-                  </AppDropdownMenu>
-                )}
-              </div>
-            );
-            return (
-              <li key={entry.path}>
-                {input?.operation === "rename" && input.path === entry.path ? (
-                  input_row
-                ) : editable ? (
-                  <AppContextMenu>
-                    <AppContextMenuTrigger render={<div />}>{row}</AppContextMenuTrigger>
-                    <AppContextMenuContent>
-                      {actions.map((operation) => (
-                        <AppContextMenuItem
-                          key={operation}
-                          disabled={props.busy}
-                          onClick={() => start(operation, entry)}
-                        >
-                          {t(`skills_page.editor.${operation}`)}
-                        </AppContextMenuItem>
-                      ))}
-                    </AppContextMenuContent>
-                  </AppContextMenu>
-                ) : (
-                  row
-                )}
-                {directory && open && branch(entry.path)}
-              </li>
-            );
-          })}
+          .map((entry) => (
+            <li key={entry.path}>
+              {row(entry)}
+              {entry.kind === "directory" && expanded.has(entry.path) && branch(entry.path)}
+            </li>
+          ))}
       </ul>
     );
   }
@@ -274,15 +297,24 @@ export function SkillFileTree(props: Props): JSX.Element {
             </Tooltip>
           ))}
       </div>
-      <nav className="skill-tree__scroll" aria-label={t("skills_page.editor.files")}>
-        {branch("")}
+      <nav
+        className="skill-tree__scroll"
+        aria-label={t("skills_page.editor.files")}
+        onKeyDown={keyboard}
+      >
+        {row({ path: "", kind: "directory" })}
+        <div className="skill-tree__children">{branch("")}</div>
       </nav>
       <AppActionDialog
-        open={action?.operation === "delete"}
+        open={deleting !== null}
         title={t("skills_page.editor.delete")}
-        description={t("skills_page.editor.delete_confirm", { PATH: action?.path ?? "" })}
+        description={t(
+          deleting?.kind === "directory"
+            ? "skills_page.editor.delete_directory_confirm"
+            : "skills_page.editor.delete_file_confirm",
+        )}
         submitting={props.busy}
-        onClose={() => set_action(null)}
+        onClose={() => set_deleting(null)}
         primaryAction={{
           label: t("skills_page.editor.delete"),
           destructive: true,
@@ -290,69 +322,33 @@ export function SkillFileTree(props: Props): JSX.Element {
           onSelect: async () => {
             if (
               !props.readonly &&
-              action &&
-              (await props.on_change({ operation: "delete", path: action.path }))
+              deleting &&
+              (await change({ operation: "delete", path: deleting.path }))
             ) {
-              set_action(null);
+              set_deleting(null);
               set_selected(null);
             }
           },
         }}
       />
-      <AppPageDialog
-        open={action?.operation === "move"}
-        title={t("skills_page.editor.move")}
-        size="sm"
-        onClose={() => {
-          if (!props.busy) set_action(null);
-        }}
-        footer={
-          <AppButton
-            disabled={props.busy || props.readonly}
-            onClick={() => {
-              if (action)
-                void props
-                  .on_change({
-                    operation: "move",
-                    path: action.path,
-                    destination: join_path(destination, action.path.split("/").at(-1) ?? ""),
-                  })
-                  .then((ok) => {
-                    if (ok) {
-                      set_action(null);
-                      set_selected(null);
-                      set_expanded((previous) => new Set([...previous, destination]));
-                    }
-                  });
-            }}
-          >
-            {t("skills_page.editor.move")}
-          </AppButton>
-        }
-      >
-        <label className="skill-tree__destination">
-          {t("skills_page.editor.destination")}
-          <select
-            value={destination}
-            disabled={props.busy || props.readonly}
-            onChange={(event) => set_destination(event.target.value)}
-          >
-            <option value="">/</option>
-            {props.entries
-              .filter(
-                (entry) =>
-                  entry.kind === "directory" &&
-                  entry.path !== action?.path &&
-                  !entry.path.startsWith(`${action?.path}/`),
-              )
-              .map((entry) => (
-                <option key={entry.path} value={entry.path}>
-                  {entry.path}
-                </option>
-              ))}
-          </select>
-        </label>
-      </AppPageDialog>
+      {input && (
+        <SkillEntryNameDialog
+          operation={input.operation}
+          initial_name={input.path.split("/").at(-1) ?? ""}
+          busy={props.busy}
+          readonly={props.readonly}
+          on_close={() => set_input(null)}
+          on_submit={async (name) => {
+            const target = join_path(input.parent, name);
+            if (input.operation === "rename" && target === input.path) return true;
+            return await change(
+              input.operation === "rename"
+                ? { operation: "move", path: input.path, destination: target }
+                : { operation: input.operation, path: target },
+            );
+          }}
+        />
+      )}
     </>
   );
 }

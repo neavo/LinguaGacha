@@ -80,7 +80,7 @@ function skill_target_path(root: string, relative: string): string {
   return path.join(read_skill_entry(root, parts.slice(0, -1)), name);
 }
 
-/** 返回普通文件和目录，主文件置顶且内部资源隐藏。 */
+/** 逐级按目录优先和名称排序返回普通条目，隐藏内部资源。 */
 export function read_skill_tree(root: string): AgentSkillFileEntry[] {
   const entries: AgentSkillFileEntry[] = [];
   /** 按父目录顺序展开后代，路径保持包内相对形式。 */
@@ -98,9 +98,7 @@ export function read_skill_tree(root: string): AgentSkillFileEntry[] {
     }
   }
   visit(root, "");
-  return entries.sort(
-    (a, b) => Number(b.path === AGENT_SKILL_MAIN_FILE) - Number(a.path === AGENT_SKILL_MAIN_FILE),
-  );
+  return entries;
 }
 
 /** 文本与版本来自同一批字节，无法无损编辑的文件只返回信息。 */

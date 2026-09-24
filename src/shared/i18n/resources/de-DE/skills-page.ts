@@ -9,12 +9,9 @@ export const de_de_skills_page = {
     create_file: "Neue Datei",
     create_directory: "Neuer Ordner",
     rename: "Umbenennen",
-    move: "Verschieben nach…",
     delete: "Löschen",
-    actions: "Dateiaktionen",
-    destination: "Zielordner",
-    delete_confirm:
-      "„{PATH}“ samt Inhalt löschen? Ungespeicherte Änderungen werden ebenfalls verworfen.",
+    delete_file_confirm: "Datei wirklich löschen …?",
+    delete_directory_confirm: "Ordner wirklich löschen …?",
     modified: "Geändert",
     saving: "Wird gespeichert",
     saved: "Gespeichert",
@@ -30,6 +27,8 @@ export const de_de_skills_page = {
       "Diese Datei ist kein UTF-8-Text oder größer als 2 MB und kann hier nicht bearbeitet werden.",
   },
   feedback: {
+    duplicate_name: "Dateiname bereits vorhanden …",
+    operation_failed: "Dateiaktion fehlgeschlagen …",
     load_failed: "Skills konnten nicht geladen werden …",
     save_failed: "Skill-Einstellungen konnten nicht gespeichert werden …",
   },
