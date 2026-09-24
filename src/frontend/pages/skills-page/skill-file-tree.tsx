@@ -92,7 +92,7 @@ export function SkillFileTree(props: Props): JSX.Element {
   }
   /** 提交名称后等待后端结果，失败时保留输入。 */
   async function submit() {
-    if (!input || !name.trim() || /[/\\]/.test(name) || props.busy) return;
+    if (!input || !name.trim() || /[/\\]/.test(name) || props.busy || props.readonly) return;
     const target = join_path(input.parent, name);
     if (input.operation === "rename" && target === input.path) {
       set_input(null);
@@ -119,7 +119,7 @@ export function SkillFileTree(props: Props): JSX.Element {
         autoFocus
         aria-label={t(`skills_page.editor.${input.operation}`)}
         value={name}
-        disabled={props.busy}
+        disabled={props.busy || props.readonly}
         onChange={(event) => set_name(event.target.value)}
         onKeyDown={(event) => {
           if (event.key === "Escape") set_input(null);
@@ -128,7 +128,7 @@ export function SkillFileTree(props: Props): JSX.Element {
       <AppButton
         size="sm"
         type="submit"
-        disabled={props.busy || !name.trim() || /[/\\]/.test(name)}
+        disabled={props.busy || props.readonly || !name.trim() || /[/\\]/.test(name)}
       >
         {t("app.action.confirm")}
       </AppButton>
@@ -286,8 +286,13 @@ export function SkillFileTree(props: Props): JSX.Element {
         primaryAction={{
           label: t("skills_page.editor.delete"),
           destructive: true,
+          disabled: props.readonly,
           onSelect: async () => {
-            if (action && (await props.on_change({ operation: "delete", path: action.path }))) {
+            if (
+              !props.readonly &&
+              action &&
+              (await props.on_change({ operation: "delete", path: action.path }))
+            ) {
               set_action(null);
               set_selected(null);
             }
@@ -303,7 +308,7 @@ export function SkillFileTree(props: Props): JSX.Element {
         }}
         footer={
           <AppButton
-            disabled={props.busy}
+            disabled={props.busy || props.readonly}
             onClick={() => {
               if (action)
                 void props
@@ -329,7 +334,7 @@ export function SkillFileTree(props: Props): JSX.Element {
           {t("skills_page.editor.destination")}
           <select
             value={destination}
-            disabled={props.busy}
+            disabled={props.busy || props.readonly}
             onChange={(event) => set_destination(event.target.value)}
           >
             <option value="">/</option>

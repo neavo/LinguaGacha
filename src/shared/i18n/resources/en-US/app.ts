@@ -319,7 +319,6 @@ export const en_us_app = {
       session_cleanup_failed: "Agent session cleanup failed …",
       tool_execution_failed: "Agent tool execution failed …",
       skill_load_failed: "Agent skill loading failed …",
-      skill_resource_load_failed: "Agent skill resource loading failed …",
     },
     api_gateway: {
       direct_route_failed: "API Gateway direct route handling failed …",

@@ -5,7 +5,7 @@ import { act, createRef, type ComponentProps, type RefObject } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { deleteCharBackward } from "@codemirror/commands";
+import { deleteCharBackward, undo } from "@codemirror/commands";
 import { EditorSelection } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 import { type AgentMessageAttachment } from "@shared/agent";
@@ -94,6 +94,24 @@ describe("AgentMessageEditor", () => {
     root = null;
     default_input_session = null;
     image_mocks.upload.mockClear();
+  });
+
+  it("技能失效时恢复原文并保留编辑器和撤销历史，重新启用后恢复块", async () => {
+    const view = await render_editor();
+    const editor = get_editor(view);
+    const text = '@skill("glossary-audit")';
+    await set_document(editor, text, text.length);
+    expect(view.querySelector(".agent-mention-token")).not.toBeNull();
+    await render_editor({ skills: [] });
+    expect(get_editor(view)).toBe(editor);
+    expect(editor.state.doc.toString()).toBe(text);
+    expect(view.querySelector(".agent-mention-token")).toBeNull();
+    await render_editor({ skills });
+    expect(view.querySelector(".agent-mention-token")).not.toBeNull();
+    await act(async () => {
+      undo(editor);
+    });
+    expect(editor.state.doc.toString()).toBe("");
   });
 
   it("选择技能插入 marker，选择压缩指令则移除筛选文本并立即执行", async () => {

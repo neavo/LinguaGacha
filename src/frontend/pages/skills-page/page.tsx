@@ -22,7 +22,7 @@ import { BooleanSegmentedToggle } from "@frontend/widgets/boolean-segmented-togg
 import { api_fetch } from "@frontend/app/desktop/desktop-api";
 import { push_toast } from "@frontend/app/feedback/desktop-toast";
 import { resolve_visible_error_message } from "@frontend/app/feedback/visible-error-message";
-import { useDesktopState } from "@frontend/app/state/use-desktop-state";
+import { useDesktopState, useRuntimeSnapshot } from "@frontend/app/state/use-desktop-state";
 import "./skills-page.css";
 import { SkillEditor } from "./skill-editor";
 
@@ -49,11 +49,12 @@ function SkillsList({
 }): JSX.Element {
   const { t } = useI18n();
   const state = useSkillsPageState(active);
+  const locked = useRuntimeSnapshot().owner === "agent";
   const builtin = state.snapshot.skills.filter((skill) => skill.source === "builtin");
   const user = state.snapshot.skills.filter((skill) => skill.source === "user");
   const reorder = useReorder({
     ids: user.map((skill) => skill.name),
-    disabled: state.pending,
+    disabled: state.pending || locked,
     on_reorder: state.reorder,
   });
   const by_name = new Map(user.map((skill) => [skill.name, skill]));
@@ -81,6 +82,7 @@ function SkillsList({
             key={skill.name}
             skill={skill}
             pending={pending}
+            locked={locked}
             on_enabled={state.set_enabled}
             on_open={on_open}
           />
@@ -96,6 +98,7 @@ function SkillsList({
               skill={by_name.get(name)!}
               index={index}
               pending={pending}
+              locked={locked}
               on_enabled={state.set_enabled}
               on_open={on_open}
             />
@@ -111,6 +114,7 @@ type SkillCardProps = {
   on_open: (skill: AgentSkillIdentity) => void;
   skill: AgentSkillEntry;
   pending: boolean;
+  locked: boolean;
   on_enabled: (source: AgentSkillSource, name: string, enabled: boolean) => Promise<void>;
   card_ref?: Ref<HTMLDivElement>;
   handle_ref?: Ref<HTMLButtonElement>;
@@ -122,7 +126,7 @@ function SkillCard(props: SkillCardProps): JSX.Element {
   const { t, locale } = useI18n();
   const skill = props.skill;
   const description = skill.displayDescriptions[locale];
-  const drag_disabled = props.pending || skill.source === "builtin";
+  const drag_disabled = props.pending || props.locked || skill.source === "builtin";
   const drag_label = t(drag_disabled ? "app.drag.disabled" : "app.drag.enabled");
   return (
     <Card
@@ -158,7 +162,7 @@ function SkillCard(props: SkillCardProps): JSX.Element {
         <BooleanSegmentedToggle
           aria_label={skill.name}
           value={skill.enabled}
-          disabled={props.pending}
+          disabled={props.pending || props.locked}
           on_value_change={(enabled) => {
             if (enabled !== skill.enabled) void props.on_enabled(skill.source, skill.name, enabled);
           }}
@@ -175,12 +179,12 @@ function SortableSkillCard(props: SkillCardProps & { index: number }): JSX.Eleme
     ...SORTABLE_OPTIONS,
     id: props.skill.name,
     index: props.index,
-    disabled: props.pending,
+    disabled: props.pending || props.locked,
   });
   return <SkillCard {...props} card_ref={ref} handle_ref={handleRef} dragging={isDragSource} />;
 }
 
-/** 页面保存管理快照，Agent 在新对话时加载可用技能。 */
+/** 页面持有管理快照，当前可用技能由后端同步到对话。 */
 function useSkillsPageState(active: boolean) {
   const { settings_snapshot } = useDesktopState();
   const { t } = useI18n();
@@ -231,7 +235,6 @@ function useSkillsPageState(active: boolean) {
       if (!mounted.current) return;
       set_snapshot(next);
       set_status("ready");
-      push_toast("success", t("skills_page.feedback.next_conversation"));
     } catch (error) {
       if (mounted.current)
         push_toast(

@@ -561,6 +561,7 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
             </div>
           ) : (
             <AgentTimeline
+              skills={skills}
               entries={entries}
               follow_reset_revision={follow_reset_revision}
               on_continue={continue_latest_round}

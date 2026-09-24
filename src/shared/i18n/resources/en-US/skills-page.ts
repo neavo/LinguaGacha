@@ -28,7 +28,6 @@ export const en_us_skills_page = {
     unsupported: "This file is not UTF-8 text or exceeds 2 MB and cannot be edited here.",
   },
   feedback: {
-    next_conversation: "Will take effect in a new conversation …",
     load_failed: "Failed to load skills …",
     save_failed: "Failed to save skill settings …",
   },

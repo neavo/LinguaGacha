@@ -27,7 +27,6 @@ export const zh_cn_skills_page = {
     unsupported: "此文件不是 UTF-8 文本或超过 2 MB，暂不支持文本编辑。",
   },
   feedback: {
-    next_conversation: "将在新的对话中生效 …",
     load_failed: "技能加载失败 …",
     save_failed: "技能设置保存失败 …",
   },

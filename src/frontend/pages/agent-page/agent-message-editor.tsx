@@ -1,4 +1,3 @@
-import { find_agent_reference_ranges } from "@shared/agent-reference";
 import { useAgentMentionFiles } from "./use-agent-mention-files";
 import {
   useCallback,
@@ -17,6 +16,7 @@ import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
 import {
   Annotation,
   Compartment,
+  Facet,
   EditorSelection,
   EditorState,
   StateField,
@@ -50,6 +50,7 @@ import {
 import type { AgentInputSession } from "@frontend/app/session/agent/agent-session-context";
 import {
   create_agent_mention_candidates,
+  find_agent_mention_ranges,
   type AgentMentionCandidate,
   type AgentMentionInstruction,
 } from "./agent-mention";
@@ -116,12 +117,25 @@ const theme_compartment = new Compartment();
 const read_only_compartment = new Compartment();
 const placeholder_compartment = new Compartment();
 
+const skills_compartment = new Compartment(); // 技能变化只更新装饰依赖，保留文档和撤销历史。
+const mention_skills = Facet.define<readonly AgentSkillSnapshot[], readonly AgentSkillSnapshot[]>({
+  combine: (values) => values.at(-1) ?? [],
+});
+
 const mention_tokens_field = StateField.define<DecorationSet>({
-  create: (state) => create_mention_token_decorations(state.doc.toString()),
-  /** 正文改变时重建引用装饰，其余事务复用结果。 */
+  create: (state) =>
+    create_mention_token_decorations(state.doc.toString(), state.facet(mention_skills)),
+  /** 正文或当前技能改变时重建装饰，失效引用同时解除整块光标导航。 */
   update(tokens, transaction) {
-    if (!transaction.docChanged) return tokens;
-    return create_mention_token_decorations(transaction.newDoc.toString());
+    if (
+      !transaction.docChanged &&
+      transaction.startState.facet(mention_skills) === transaction.state.facet(mention_skills)
+    )
+      return tokens;
+    return create_mention_token_decorations(
+      transaction.newDoc.toString(),
+      transaction.state.facet(mention_skills),
+    );
   },
   /** 同一装饰范围同时拥有绘制与整块光标导航语义。 */
   provide(field) {
@@ -239,6 +253,7 @@ export function AgentMessageEditor(props: AgentMessageEditorProps): JSX.Element 
             resolve_app_editor_readonly_extensions(initial_editor_read_only_ref.current),
           ),
           placeholder_compartment.of(placeholder(placeholder_text)),
+          skills_compartment.of(mention_skills.of([])),
           mention_token_extension,
           drawSelection(),
           history(),
@@ -335,6 +350,12 @@ export function AgentMessageEditor(props: AgentMessageEditorProps): JSX.Element 
       view_ref.current = null;
     };
   }, []);
+
+  useEffect(() => {
+    view_ref.current?.dispatch({
+      effects: skills_compartment.reconfigure(mention_skills.of(props.skills)),
+    });
+  }, [props.skills]);
 
   useEffect(() => {
     const view = view_ref.current;
@@ -770,9 +791,12 @@ function find_mention_query(state: EditorState): MentionQuery | null {
 }
 
 /** 把完整引用投影成原子视觉块，底层文档仍保留完整稳定协议。 */
-function create_mention_token_decorations(text: string): DecorationSet {
+function create_mention_token_decorations(
+  text: string,
+  skills: readonly AgentSkillSnapshot[],
+): DecorationSet {
   return Decoration.set(
-    find_agent_reference_ranges(text).map((range) =>
+    find_agent_mention_ranges(text, skills).map((range) =>
       Decoration.replace({
         widget: new MentionTokenWidget(range.marker),
         inclusive: false,

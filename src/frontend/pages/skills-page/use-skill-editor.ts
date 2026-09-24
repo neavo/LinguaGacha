@@ -2,7 +2,7 @@ import { AGENT_SKILL_MAIN_FILE } from "@shared/agent-skills";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api_fetch, DesktopApiError } from "@frontend/app/desktop/desktop-api";
 import { resolve_visible_error_message } from "@frontend/app/feedback/visible-error-message";
-import { push_toast } from "@frontend/app/feedback/desktop-toast";
+import { useRuntimeSnapshot } from "@frontend/app/state/use-desktop-state";
 import { useI18n } from "@frontend/app/locale/locale-context";
 import {
   validate_agent_skill_document,
@@ -36,6 +36,9 @@ function file_draft(file: AgentSkillFile): string {
 /** 只持有当前文件草稿。切换先保存，文件命令与自动保存共享同一在途请求。 */
 export function useSkillEditor(identity: AgentSkillIdentity) {
   const { t } = useI18n();
+  const locked = useRuntimeSnapshot().owner === "agent";
+  const locked_ref = useRef(locked); // 在途保存和离页回调读取最新运行占用。
+  locked_ref.current = locked;
   const translate = useRef(t); // 语言变化只更新错误文案，不重新加载并覆盖草稿。
   useEffect(() => {
     translate.current = t;
@@ -127,6 +130,7 @@ export function useSkillEditor(identity: AgentSkillIdentity) {
         if (current.current.composing) return false;
         const { file, draft } = current.current;
         if (!file || file.skill.source === "builtin" || draft === file_draft(file)) return true;
+        if (locked_ref.current) return false;
         const document = file.document ? read_skill_editor_document(draft) : undefined;
         if (document && validate_agent_skill_document(document)) return false;
         update({ saving: true });
@@ -138,13 +142,11 @@ export function useSkillEditor(identity: AgentSkillIdentity) {
             ...(document ? { document } : { text: draft }),
           });
           if (!mounted.current) return false;
-          const renamed = saved.skill.name !== file.skill.name;
           update({
             file: saved,
             ...(current.current.draft === draft ? { draft: file_draft(saved) } : {}),
             tree: current.current.tree ? { ...current.current.tree, skill: saved.skill } : null,
           });
-          if (renamed) push_toast("success", t("skills_page.feedback.next_conversation"));
         } catch (error) {
           if (mounted.current) report(error);
           return false;
@@ -160,19 +162,29 @@ export function useSkillEditor(identity: AgentSkillIdentity) {
       write.current = null;
       if (mounted.current) update({ saving: false });
     }
-  }, [cancel, report, t, update]);
+  }, [cancel, report, update]);
 
   const dirty = state.file !== null && state.draft !== file_draft(state.file);
   const invalid = state.file?.document
     ? validate_agent_skill_document(read_skill_editor_document(state.draft))
     : null;
   useEffect(() => {
-    if (dirty && !invalid && !state.composing && !state.busy && !state.error)
+    if (!locked && dirty && !invalid && !state.composing && !state.busy && !state.error)
       timer.current = setTimeout(() => {
         void flush();
       }, SKILL_AUTOSAVE_DELAY_MS);
     return cancel;
-  }, [state.draft, state.composing, state.busy, state.error, dirty, invalid, cancel, flush]);
+  }, [
+    state.draft,
+    state.composing,
+    state.busy,
+    state.error,
+    dirty,
+    invalid,
+    locked,
+    cancel,
+    flush,
+  ]);
 
   /** 切换前保存当前草稿，成功读取后才替换编辑内容。 */
   async function open_file(relative: string): Promise<boolean> {
@@ -189,6 +201,7 @@ export function useSkillEditor(identity: AgentSkillIdentity) {
 
   /** 文件命令成功后更新导航。当前路径未受影响时沿用已保存内容。 */
   async function change_file(change: AgentSkillFileChange): Promise<boolean> {
+    if (locked_ref.current) return false;
     const affected =
       current.current.file &&
       (current.current.file.path === change.path ||
@@ -271,6 +284,7 @@ export function useSkillEditor(identity: AgentSkillIdentity) {
   return {
     ...state,
     dirty,
+    locked,
     invalid,
     reload: load,
     flush: finish,
@@ -278,7 +292,9 @@ export function useSkillEditor(identity: AgentSkillIdentity) {
     change_file: (change: AgentSkillFileChange) => run_operation(() => change_file(change)),
     recover: (overwrite = false) => run_operation(() => recover(overwrite), "load_failed"),
     /** 输入更新草稿后清除上一次保存错误，恢复自动保存。 */
-    edit: (draft: string) => update({ draft, error: "", conflict: false }),
+    edit: (draft: string) => {
+      if (!locked_ref.current) update({ draft, error: "", conflict: false });
+    },
     /** 组词开始时取消待保存任务，结束后由草稿监听恢复计时。 */
     compose: (composing: boolean) => {
       if (composing) cancel();

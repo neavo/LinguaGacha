@@ -329,7 +329,6 @@ export const de_de_app = {
       session_cleanup_failed: "Agent-Sitzungsbereinigung fehlgeschlagen …",
       tool_execution_failed: "Agent-Werkzeugausführung fehlgeschlagen …",
       skill_load_failed: "Agent-Skill-Laden fehlgeschlagen …",
-      skill_resource_load_failed: "Agent-Skill-Ressource konnte nicht geladen werden …",
     },
     api_gateway: {
       direct_route_failed: "API Gateway-Direkt-Routing fehlgeschlagen …",

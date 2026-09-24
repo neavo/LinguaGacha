@@ -31,9 +31,9 @@ const READ_SKILL_PARAMETERS = Type.Object(
 
 type AgentSkillNativeFs = Pick<NativeFs, "read_text_file" | "real_path" | "stat">;
 
-/** 读取首次消息受理时绑定的技能包，后续设置变更由下一对话采用。 */
+/** 按当前名称定位技能包，每次调用读取当前磁盘内容。 */
 export function create_agent_skill_tools(
-  session_skills: readonly AgentSkillDefinition[],
+  get_skills: () => readonly AgentSkillDefinition[],
   paths: AgentSkillPaths,
   native_fs: AgentSkillNativeFs = default_native_fs,
 ): ToolDefinition[] {
@@ -57,7 +57,7 @@ export function create_agent_skill_tools(
             path: params.path ?? DEFAULT_SKILL_RESOURCE_PATH,
           });
         }
-        const skill = session_skills.find((candidate) => candidate.name === params.name);
+        const skill = get_skills().find((candidate) => candidate.name === params.name);
         if (skill === undefined) {
           throw new AgentToolError({
             code: "skill.resource_not_found",

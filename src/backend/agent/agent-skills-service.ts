@@ -1,3 +1,4 @@
+import type { RuntimeOperationGate } from "../runtime-operation-gate";
 import { AGENT_SKILL_MAIN_FILE } from "../../shared/agent-skills";
 import { normalize_agent_skill_settings } from "../../domain/agent-skill-settings";
 import path from "node:path";
@@ -16,7 +17,6 @@ import {
   read_skill_tree,
   read_skill_file,
   skill_existing_path,
-  validate_skill_entry_name,
   write_skill_file,
   change_skill_file,
 } from "./agent-skill-files";
@@ -44,13 +44,14 @@ export class AgentSkillsService {
       "read_setting" | "save_setting" | "publish_settings_changed"
     >, // 应用配置的唯一写入者。
     private readonly log: AgentSkillLog, // 扫描诊断出口。
+    private readonly runtime_gate: Pick<RuntimeOperationGate, "run_skill_write">, // 技能保存与 Agent 执行共用互斥入口。
   ) {}
 
   private pending: Promise<unknown> = Promise.resolve(); // 技能修改、查询共用顺序，改名期间不暴露半成品。
-  private current: readonly AgentSkillDefinition[] = []; // 原子替换，已绑定的对话继续持有旧集合。
-  private readonly listeners = new Set<() => void>(); // 当前集合变化时通知空白对话。
+  private current: readonly AgentSkillDefinition[] = []; // 当前可用集合，由管理操作和显式扫描原子替换。
+  private readonly listeners = new Set<() => void>(); // 当前集合变化时通知所有对话。
 
-  /** 返回只读集合，后续更新通过替换集合保留已绑定的技能。 */
+  /** 返回当前只读集合。 */
   public get_current(): readonly AgentSkillDefinition[] {
     return this.current;
   }
@@ -68,21 +69,10 @@ export class AgentSkillsService {
     return this.serial(() => this.refresh_current());
   }
 
-  /** 同一串行操作内同步绑定，后续保存不能插入读取与对话绑定之间。 */
-  public bind_session(
-    bind: (skills: readonly AgentSkillDefinition[]) => void,
-  ): Promise<readonly AgentSkillDefinition[]> {
-    return this.serial(async () => {
-      await this.refresh_current();
-      bind(this.current);
-      return this.current;
-    });
-  }
-
   /** 在已持有的串行操作中扫描技能，供读取和保存复用。 */
-  private async refresh_current(): Promise<void> {
+  private refresh_current(): void {
     this.update_current(
-      await load_agent_skills(
+      load_agent_skills(
         this.paths,
         this.log,
         normalize_agent_skill_settings(this.settings.read_setting().agent_skills),
@@ -90,7 +80,7 @@ export class AgentSkillsService {
     );
   }
 
-  /** 仅在内容变化时替换不可变集合，避免扫描触发重复会话快照。 */
+  /** 仅在内容变化时替换不可变集合，避免重复发布技能集合。 */
   private update_current(skills: readonly AgentSkillDefinition[]): void {
     if (isDeepStrictEqual(this.current, skills)) return;
     this.current = Object.freeze(
@@ -105,7 +95,7 @@ export class AgentSkillsService {
   }
 
   /** 串行处理管理命令，并将文件系统错误转换为公开错误。 */
-  private serial<T>(action: () => Promise<T>): Promise<T> {
+  private serial<T>(action: () => T | Promise<T>): Promise<T> {
     const result = this.pending.then(action).catch((cause: unknown) => {
       if (cause instanceof AppError) throw cause;
       if (
@@ -125,18 +115,23 @@ export class AgentSkillsService {
     return result;
   }
 
+  /** 持有占用直到文件、偏好和当前集合全部更新，避免模型请求看到中间状态。 */
+  private write<T>(action: () => T): Promise<T> {
+    return this.serial(() => this.runtime_gate.run_skill_write(action));
+  }
+
   /** 读取当前技能的可管理文件树。 */
   public tree(request: JsonRecord): Promise<AgentSkillTree> {
-    return this.serial(async () => {
-      const { root, skill } = await this.locate(request);
+    return this.serial(() => {
+      const { root, skill } = this.locate(request);
       return { skill, entries: read_skill_tree(root) };
     });
   }
 
   /** 返回文件内容和本次读取的版本，供后续保存校验。 */
   public read_file(request: JsonRecord): Promise<AgentSkillFile> {
-    return this.serial(async () => {
-      const { root, skill } = await this.locate(request);
+    return this.serial(() => {
+      const { root, skill } = this.locate(request);
       if (typeof request.path !== "string") throw new AppError("request.validation_failed");
       return read_skill_file(root, skill, request.path);
     });
@@ -144,8 +139,8 @@ export class AgentSkillsService {
 
   /** 校验文件操作意图，完成后返回最新目录。 */
   public change_file(request: JsonRecord): Promise<AgentSkillTree> {
-    return this.serial(async () => {
-      const { root, skill } = await this.locate(request, true);
+    return this.write(() => {
+      const { root, skill } = this.locate(request, true);
       const { operation, path: relative, destination } = request;
       if (typeof relative !== "string") throw new AppError("request.validation_failed");
       let change: AgentSkillFileChange;
@@ -163,10 +158,10 @@ export class AgentSkillsService {
     });
   }
 
-  /** 保存当前版本的草稿，主文件改名同时迁移目录与偏好。 */
+  /** 保存当前版本的草稿，名称变化只迁移逻辑身份及偏好。 */
   public save_file(request: JsonRecord): Promise<AgentSkillFile> {
-    return this.serial(async () => {
-      const { root, skill, packages } = await this.locate(request, true);
+    return this.write(() => {
+      const { root, skill, packages } = this.locate(request, true);
       if (typeof request.path !== "string" || typeof request.revision !== "string")
         throw new AppError("request.validation_failed");
       const current = read_skill_file(root, skill, request.path);
@@ -192,28 +187,20 @@ export class AgentSkillsService {
       const target = skill_existing_path(root, request.path);
       if (!document || document.name === skill.name) {
         write_skill_file(target, text);
-        if (document) await this.refresh_current();
+        if (document) this.refresh_current();
         return read_skill_file(root, skill, request.path);
       }
-      // 名称与目录名是加载契约；目录、正文和偏好在同一命令内更新并补偿。
-      validate_skill_entry_name(document.name);
-      const next_root = path.join(path.dirname(root), document.name);
-      if (
-        fs.exists(next_root) ||
-        packages.some((item) => item.source === "user" && item.definition.name === document.name)
-      )
+      if (packages.some((item) => item.source === "user" && item.definition.name === document.name))
         throw new AppError("file.already_exists");
       const setting = this.settings.read_setting();
       const preferences = normalize_agent_skill_settings(setting.agent_skills);
+      // 名称偏好随元数据迁移，原目录继续定位资源。
       const replace_name = (names: string[]) => [
         ...new Set(names.map((name) => (name === skill.name ? document.name : name))),
       ];
-      let renamed = false; // 补偿时决定是否恢复目录。
       let saving_settings = false; // 配置写入可能部分失败，补偿须恢复旧配置。
       try {
         write_skill_file(target, text);
-        fs.rename(root, next_root);
-        renamed = true;
         saving_settings = true;
         this.settings.save_setting({
           ...setting,
@@ -224,27 +211,26 @@ export class AgentSkillsService {
         });
       } catch (cause) {
         try {
-          if (renamed) fs.rename(next_root, root);
           write_skill_file(target, current.text);
           if (saving_settings) this.settings.save_setting(setting);
         } catch (rollback) {
-          throw new AggregateError([cause, rollback], "Skill rename and rollback failed.", {
+          throw new AggregateError([cause, rollback], "Skill metadata save and rollback failed.", {
             cause,
           });
         }
         throw cause;
       }
       this.settings.publish_settings_changed(["agent_skills"]);
-      await this.refresh_current();
-      return read_skill_file(next_root, { ...skill, name: document.name }, request.path);
+      this.refresh_current();
+      return read_skill_file(root, { ...skill, name: document.name }, request.path);
     });
   }
 
   /** 从同一次扫描中定位真实技能包并检查来源权限。 */
-  private async locate(
+  private locate(
     request: JsonRecord,
     writable = false,
-  ): Promise<{ root: string; skill: AgentSkillIdentity; packages: AgentSkillPackage[] }> {
+  ): { root: string; skill: AgentSkillIdentity; packages: AgentSkillPackage[] } {
     if (
       (request.source !== "builtin" && request.source !== "user") ||
       typeof request.name !== "string" ||
@@ -252,7 +238,7 @@ export class AgentSkillsService {
     )
       throw new AppError("request.validation_failed");
     const skill: AgentSkillIdentity = { source: request.source, name: request.name };
-    const packages = await scan_agent_skills(this.paths, this.log);
+    const packages = scan_agent_skills(this.paths, this.log);
     const selected = packages.find(
       (item) =>
         item.source === skill.source &&
@@ -267,26 +253,19 @@ export class AgentSkillsService {
         ? this.paths.get_agent_user_skill_dir()
         : this.paths.get_agent_builtin_skill_dir();
     const relative = path.relative(fs.real_path(source_root), root);
-    if (
-      !relative ||
-      relative.startsWith(`..${path.sep}`) ||
-      relative === ".." ||
-      path.isAbsolute(relative)
-    )
+    if (relative.startsWith(`..${path.sep}`) || relative === ".." || path.isAbsolute(relative))
       throw new AppError("request.validation_failed");
     return { root, skill, packages };
   }
   /** 每次查询扫描磁盘，使重新进入页面能看到外部文件变更。 */
   public snapshot(): Promise<AgentSkillsSnapshot> {
-    return this.serial(async () =>
-      this.update_snapshot(await scan_agent_skills(this.paths, this.log)),
-    );
+    return this.serial(() => this.update_snapshot(scan_agent_skills(this.paths, this.log)));
   }
 
   /** 只修改指定来源的公开技能，保留同名另一来源的偏好。 */
   public set_enabled(request: JsonRecord): Promise<AgentSkillsSnapshot> {
-    return this.serial(async () => {
-      const packages = await scan_agent_skills(this.paths, this.log);
+    return this.write(() => {
+      const packages = scan_agent_skills(this.paths, this.log);
       const { source, name, enabled } = request;
       if (
         (source !== "builtin" && source !== "user") ||
@@ -299,7 +278,7 @@ export class AgentSkillsService {
       ) {
         throw new AppError("request.validation_failed");
       }
-      // 扫描完成后再读取最新偏好，同步读改写避免两个异步命令互相覆盖。
+      // 在串行命令内读取和保存当前偏好，避免命令间覆盖。
       const setting = this.settings.read_setting();
       const preferences = normalize_agent_skill_settings(setting.agent_skills);
       const disabled = new Set(preferences.disabled[source]);
@@ -319,8 +298,8 @@ export class AgentSkillsService {
 
   /** 校验用户技能完整排列后保存，暂时缺失的名称继续保留。 */
   public reorder(request: JsonRecord): Promise<AgentSkillsSnapshot> {
-    return this.serial(async () => {
-      const packages = await scan_agent_skills(this.paths, this.log);
+    return this.write(() => {
+      const packages = scan_agent_skills(this.paths, this.log);
       const names = request.names;
       const current = packages
         .filter((item) => item.source === "user" && item.definition.visible)

@@ -37,9 +37,7 @@ describe("技能主文件编辑", () => {
   it("损坏的元数据无法进入编辑视图", () => {
     expect(() => read_agent_skill_document("---\nname: [broken\n---\ntext")).toThrow();
   });
-  it("名称省略时与技能加载器一样使用目录名", () => {
-    expect(read_agent_skill_document("---\ndescription: description\n---\nbody", "sample")).toEqual(
-      { name: "sample", description: "description", body: "body" },
-    );
+  it("名称必须由元数据声明", () => {
+    expect(() => read_agent_skill_document("---\ndescription: description\n---\nbody")).toThrow();
   });
 });

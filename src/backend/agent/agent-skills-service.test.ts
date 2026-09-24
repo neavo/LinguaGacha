@@ -1,3 +1,4 @@
+import { RuntimeOperationGate } from "../runtime-operation-gate";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -20,11 +21,13 @@ function fixture() {
   fs.mkdirSync(path.dirname(paths.get_config_path()), { recursive: true });
   const publish = vi.fn();
   const settings = new AppSettingService(paths, { publish });
-  const log = { warning: vi.fn(), error: vi.fn() };
-  const service = new AgentSkillsService(paths, settings, log);
+  const log = { warning: vi.fn() };
+  const gate = new RuntimeOperationGate();
+  const service = new AgentSkillsService(paths, settings, log, gate);
   return {
     [Symbol.dispose]: () => root[Symbol.dispose](),
     paths,
+    gate,
     settings,
     service,
     publish,
@@ -53,7 +56,62 @@ function fixture() {
 }
 
 describe("技能管理", () => {
-  it("启用、排序与同名来源回退更新当前集合，已绑定集合保持稳定", async () => {
+  it("运行期间拒绝全部技能修改，读取保持可用", async () => {
+    using f = fixture();
+    f.write("user", "different-folder", "sample");
+    const skill = { source: "user", name: "sample" };
+    const file = await f.service.read_file({ ...skill, path: "SKILL.md" });
+    const lease = f.gate.begin_runtime("agent");
+    for (const command of [
+      () => f.service.set_enabled({ ...skill, enabled: false }),
+      () => f.service.reorder({ names: ["sample"] }),
+      () =>
+        f.service.save_file({
+          ...skill,
+          path: file.path,
+          revision: file.revision,
+          document: { ...file.document!, body: "changed" },
+        }),
+      () => f.service.change_file({ ...skill, operation: "create_file", path: "note.md" }),
+    ])
+      await expect(command()).rejects.toMatchObject({ code: "runtime.busy" });
+    expect((await f.service.read_file({ ...skill, path: "SKILL.md" })).text).toBe(file.text);
+    f.gate.finish_runtime(lease);
+    await f.service.save_file({
+      ...skill,
+      path: file.path,
+      revision: file.revision,
+      document: { ...file.document!, body: "changed" },
+    });
+    expect((await f.service.read_file({ ...skill, path: "SKILL.md" })).document?.body).toBe(
+      "changed",
+    );
+  });
+
+  it("改名仅按元数据检测冲突，目标同名目录不妨碍保存", async () => {
+    using f = fixture();
+    f.write("user", "folder", "original");
+    f.write("user", "target", "different");
+    const file = await f.service.read_file({ source: "user", name: "original", path: "SKILL.md" });
+    const saved = await f.service.save_file({
+      ...file.skill,
+      path: file.path,
+      revision: file.revision,
+      document: { ...file.document!, name: "target" },
+    });
+    expect(f.load().find((skill) => skill.name === "target")?.filePath).toBe(
+      path.join(f.paths.get_agent_user_skill_dir(), "folder", "SKILL.md").replaceAll("\\", "/"),
+    );
+    await expect(
+      f.service.save_file({
+        ...saved.skill,
+        path: saved.path,
+        revision: saved.revision,
+        document: { ...saved.document!, name: "different" },
+      }),
+    ).rejects.toMatchObject({ code: "file.already_exists" });
+  });
+  it("启用、排序与同名来源回退原子更新当前集合", async () => {
     using f = fixture();
     f.write("builtin", "shared", "shared");
     f.write("user", "shared", "shared");
@@ -68,17 +126,15 @@ describe("技能管理", () => {
       .replaceAll("\\", "/");
     expect(original.find((skill) => skill.name === "shared")?.filePath).toBe(user_path);
 
-    // 保存与首次读取的先后由同一服务队列决定。
-    const saving = f.service.set_enabled({ source: "user", name: "shared", enabled: false });
-    const binding = f.service.bind_session(() => undefined);
-    const [, bound] = await Promise.all([saving, binding]);
-    expect(bound.find((skill) => skill.name === "shared")?.filePath).toBe(builtin_path);
+    await f.service.set_enabled({ source: "user", name: "shared", enabled: false });
+    const after_disable = f.service.get_current();
+    expect(after_disable.find((skill) => skill.name === "shared")?.filePath).toBe(builtin_path);
     expect(original.find((skill) => skill.name === "shared")?.filePath).toBe(user_path);
 
     await f.service.set_enabled({ source: "user", name: "shared", enabled: true });
     await f.service.reorder({ names: ["shared", "another"] });
     expect(f.service.get_current().map((skill) => skill.name)).toEqual(["shared", "another"]);
-    expect(bound.find((skill) => skill.name === "shared")?.filePath).toBe(builtin_path);
+    expect(after_disable.find((skill) => skill.name === "shared")?.filePath).toBe(builtin_path);
   });
 
   it("技能根目录经链接定位后，文件管理与技能改名作用于实际目录", async () => {
@@ -117,7 +173,7 @@ describe("技能管理", () => {
       document: { ...main.document!, name: "renamed" },
     });
     expect((await f.service.snapshot()).skills).toMatchObject([{ name: "renamed" }]);
-    expect(fs.readFileSync(path.join(storage, "renamed/note.md"), "utf8")).toBe(
+    expect(fs.readFileSync(path.join(storage, "sample/note.md"), "utf8")).toBe(
       "Saved through link\n",
     );
     expect(fs.lstatSync(entry).isSymbolicLink()).toBe(true);
@@ -160,7 +216,7 @@ describe("技能管理", () => {
     expect(fs.readFileSync(path.join(root, "note.md"), "utf8")).toBe("first");
   });
 
-  it("技能改名同时迁移目录、启用状态和顺序，加载器能继续发现", async () => {
+  it("技能改名保留目录并迁移启用状态和顺序", async () => {
     using f = fixture();
     f.write("user", "before", "before");
     const skill = { source: "user", name: "before" };
@@ -179,12 +235,12 @@ describe("技能管理", () => {
       disabled: { builtin: [], user: ["after"] },
       user_order: ["after"],
     });
-    expect(fs.existsSync(path.join(f.paths.get_agent_user_skill_dir(), "before"))).toBe(false);
+    expect(fs.existsSync(path.join(f.paths.get_agent_user_skill_dir(), "before"))).toBe(true);
     await f.service.set_enabled({ source: "user", name: "after", enabled: true });
-    expect((await f.load()).map((item) => item.name)).toEqual(["after"]);
+    expect(f.load().map((item) => item.name)).toEqual(["after"]);
   });
 
-  it("改名配置写入失败恢复原目录和原正文", async () => {
+  it("改名配置写入失败恢复原正文和偏好", async () => {
     using f = fixture();
     f.write("user", "before", "before");
     const skill = { source: "user", name: "before" };
@@ -221,14 +277,14 @@ describe("技能管理", () => {
     const builtin_path = path
       .join(f.paths.get_agent_builtin_skill_dir(), "shared", "SKILL.md")
       .replaceAll("\\", "/");
-    expect((await f.load()).map((item) => item.filePath)).toEqual([user_path]);
+    expect(f.load().map((item) => item.filePath)).toEqual([user_path]);
     await f.service.set_enabled({ source: "user", name: "shared", enabled: false });
-    expect((await f.load()).map((item) => item.filePath)).toEqual([builtin_path]);
+    expect(f.load().map((item) => item.filePath)).toEqual([builtin_path]);
     expect((await f.service.snapshot()).skills.map((item) => item.enabled)).toEqual([true, false]);
     await f.service.set_enabled({ source: "builtin", name: "shared", enabled: false });
-    expect(await f.load()).toEqual([]);
+    expect(f.load()).toEqual([]);
     await f.service.set_enabled({ source: "user", name: "shared", enabled: true });
-    expect((await f.load()).map((item) => item.filePath)).toEqual([user_path]);
+    expect(f.load().map((item) => item.filePath)).toEqual([user_path]);
     expect(new AppSettingService(f.paths).read_setting().agent_skills).toEqual({
       disabled: { builtin: ["shared"], user: [] },
       user_order: [],
@@ -248,7 +304,7 @@ describe("技能管理", () => {
       "other",
     ]);
     await f.service.reorder({ names: ["other", "duplicate"] });
-    const loaded = await f.load();
+    const loaded = f.load();
     expect(loaded.map((item) => item.name)).toEqual(["other", "duplicate"]);
     expect(loaded[1]?.filePath).toContain("/one/duplicate/SKILL.md");
     expect(f.log.warning).toHaveBeenCalled();
@@ -269,10 +325,10 @@ describe("技能管理", () => {
         ["alpha", true],
       ],
     );
-    expect((await f.load()).map((skill) => skill.name)).toEqual(["built", "hidden", "alpha"]);
+    expect(f.load().map((skill) => skill.name)).toEqual(["built", "hidden", "alpha"]);
     await f.service.set_enabled({ source: "user", name: "beta", enabled: true });
     f.write("user", "aardvark", "aardvark");
-    expect((await f.load()).map((skill) => skill.name)).toEqual([
+    expect(f.load().map((skill) => skill.name)).toEqual([
       "built",
       "hidden",
       "beta",

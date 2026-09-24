@@ -250,6 +250,7 @@ export type AgentSessionEventPayload = JsonRecord &
   (
     | { type: "entry_upsert"; entry: AgentEntry }
     | { type: "session_state"; state: AgentSessionState }
+    | { type: "skills_changed"; skills: AgentSkillSnapshot[] }
     | { type: "approval_mode"; approvalMode: AgentApprovalMode }
     | { type: "pending_decision"; pendingDecision: AgentPendingDecision | null }
     | { type: "input_queue"; inputQueue: AgentInputQueueSnapshot }

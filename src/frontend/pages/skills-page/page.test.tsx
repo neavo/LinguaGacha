@@ -6,10 +6,16 @@ import { TooltipProvider } from "@frontend/shadcn/tooltip";
 import type { AgentSkillEntry, AgentSkillIdentity } from "@shared/agent-skills";
 import { SkillsPage } from "./page";
 
-const mocks = vi.hoisted(() => ({ api: vi.fn(), toast: vi.fn(), settings: {} }));
+const mocks = vi.hoisted(() => ({
+  api: vi.fn(),
+  toast: vi.fn(),
+  settings: {},
+  owner: null as "agent" | null,
+}));
 vi.mock("@frontend/app/desktop/desktop-api", () => ({ api_fetch: mocks.api }));
 vi.mock("@frontend/app/feedback/desktop-toast", () => ({ push_toast: mocks.toast }));
 vi.mock("@frontend/app/state/use-desktop-state", () => ({
+  useRuntimeSnapshot: () => ({ owner: mocks.owner }),
   useDesktopState: () => ({ settings_snapshot: mocks.settings }),
 }));
 vi.mock("./skill-editor", () => ({
@@ -41,6 +47,7 @@ describe("技能页面", () => {
   let root: Root;
   beforeEach(() => {
     mocks.api.mockReset();
+    mocks.owner = null;
     mocks.toast.mockReset();
     container = document.createElement("div");
     document.body.append(container);
@@ -63,6 +70,16 @@ describe("技能页面", () => {
       ),
     );
   }
+
+  it("Agent 占用时禁用开关和拖拽但保留详情入口", async () => {
+    mocks.owner = "agent";
+    mocks.api.mockResolvedValue({ skills: [skill("sample", "user")] });
+    await render();
+    expect(container.querySelector<HTMLButtonElement>(".skills-page__handle")?.disabled).toBe(true);
+    expect(container.querySelector<HTMLButtonElement>(".skills-page__open")?.disabled).toBe(false);
+    for (const button of container.querySelectorAll<HTMLButtonElement>("button[aria-pressed]"))
+      expect(button.disabled).toBe(true);
+  });
 
   it.each(["builtin", "user"] as const)(
     "%s 技能条目进入对应详情，把手点击不导航",
@@ -141,7 +158,7 @@ describe("技能页面", () => {
     expect(mocks.toast).not.toHaveBeenCalled();
     await act(async () => finish());
     await act(async () => finish_read());
-    expect(mocks.toast).toHaveBeenCalledExactlyOnceWith("success", expect.any(String));
+    expect(mocks.toast).not.toHaveBeenCalled();
     expect(toggle?.getAttribute("aria-pressed")).toBe("true");
     expect(builtin_toggle?.getAttribute("aria-pressed")).toBe("false");
   });

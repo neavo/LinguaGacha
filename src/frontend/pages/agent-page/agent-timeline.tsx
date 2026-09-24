@@ -1,3 +1,4 @@
+import { find_agent_mention_ranges } from "./agent-mention";
 import {
   memo,
   useEffect,
@@ -12,6 +13,7 @@ import { Check, ChevronsDownUp, CircleAlert, Copy, Pencil, Wrench } from "lucide
 
 import type {
   AgentEntry,
+  AgentSkillSnapshot,
   AgentEntryStatus,
   AgentAssistantMessagePart,
   AgentResponseAnnotationAttachment,
@@ -20,7 +22,7 @@ import type {
 import { useI18n, type LocaleKey } from "@frontend/app/locale/locale-context";
 import { push_toast } from "@frontend/app/feedback/desktop-toast";
 import { AppButton } from "@frontend/widgets/app-button";
-import { find_agent_reference_ranges, type AgentReferenceRange } from "@shared/agent-reference";
+import { type AgentReferenceRange } from "@shared/agent-reference";
 import { AgentMarkdown } from "./agent-markdown";
 import { AgentMessageAttachments } from "./agent-message-attachments";
 import {
@@ -55,6 +57,7 @@ const AGENT_THINKING_AUTO_COLLAPSE_DELAY_MS = 3_000; // 给用户留出确认终
 
 /** 页面传入时间线事实、用户命令和思考块跟随重置版本。 */
 type AgentTimelineProps = {
+  skills: readonly AgentSkillSnapshot[];
   entries: readonly AgentEntry[];
 
   follow_reset_revision: number;
@@ -92,6 +95,7 @@ export function AgentTimeline(props: AgentTimelineProps): JSX.Element {
           <AgentRound
             key={round.user.id}
             round={round}
+            skills={props.skills}
 
             follow_reset_revision={props.follow_reset_revision}
             t={t}
@@ -149,6 +153,7 @@ function build_agent_rounds(
 }
 
 type AgentRoundProps = {
+  skills: readonly AgentSkillSnapshot[];
   round: AgentRoundEntries;
 
   follow_reset_revision: number;
@@ -166,7 +171,7 @@ type AgentRoundProps = {
 /** 单个轮次统一渲染用户消息、公开条目、恢复入口与最终状态。 */
 const AgentRound = memo(function AgentRound(props: AgentRoundProps): JSX.Element {
   const { user, entries } = props.round;
-  const mention_ranges = find_agent_reference_ranges(user.text);
+  const mention_ranges = find_agent_mention_ranges(user.text, props.skills);
   const mention_only =
     mention_ranges.length === 1 &&
     mention_ranges[0]?.from === 0 &&
@@ -210,7 +215,7 @@ const AgentRound = memo(function AgentRound(props: AgentRoundProps): JSX.Element
       </AgentMessageFrame>
       {entries.map((entry) => {
         if (entry.kind === "user_message") {
-          const ranges = find_agent_reference_ranges(entry.text);
+          const ranges = find_agent_mention_ranges(entry.text, props.skills);
           return (
             <AgentMessageFrame key={entry.id} role="user" actions={null}>
               <article className="agent-message agent-message--user">

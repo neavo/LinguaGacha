@@ -30,7 +30,6 @@ export const de_de_skills_page = {
       "Diese Datei ist kein UTF-8-Text oder größer als 2 MB und kann hier nicht bearbeitet werden.",
   },
   feedback: {
-    next_conversation: "Wird in einem neuen Gespräch wirksam …",
     load_failed: "Skills konnten nicht geladen werden …",
     save_failed: "Skill-Einstellungen konnten nicht gespeichert werden …",
   },

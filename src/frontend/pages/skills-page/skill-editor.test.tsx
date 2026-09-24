@@ -1,3 +1,7 @@
+const runtime_state = vi.hoisted(() => ({ owner: null as "agent" | null }));
+vi.mock("@frontend/app/state/use-desktop-state", () => ({
+  useRuntimeSnapshot: () => runtime_state,
+}));
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -19,7 +23,6 @@ vi.mock("@frontend/app/desktop/desktop-api", async (original) => ({
   ...(await original<typeof import("@frontend/app/desktop/desktop-api")>()),
   api_fetch: mocks.api,
 }));
-vi.mock("@frontend/app/feedback/desktop-toast", () => ({ push_toast: vi.fn() }));
 
 describe("技能编辑工作面", () => {
   let root: Root | undefined;
@@ -28,6 +31,7 @@ describe("技能编辑工作面", () => {
     if (root) await act(async () => root!.unmount());
     container?.remove();
     mocks.api.mockReset();
+    runtime_state.owner = null;
     vi.useRealTimers();
   });
   /** 使用真实编辑器，文件接口由当前场景提供。 */
@@ -111,6 +115,17 @@ describe("技能编辑工作面", () => {
     expect(container.querySelector(".cm-content")?.textContent).toBe("Body");
     expect(container.querySelector(".skill-editor__path")?.textContent).toContain("reference.md");
   });
+  it("Agent 执行期间用户技能只读，仍可浏览包内文件", async () => {
+    runtime_state.owner = "agent";
+    await render("user");
+    expect(container.querySelector(".cm-content")?.getAttribute("contenteditable")).toBe("false");
+    await act(async () => {
+      (container.querySelector('button[title="reference.md"]') as HTMLButtonElement).click();
+    });
+    expect(container.querySelector(".skill-editor__path")?.textContent).toContain("reference.md");
+    expect(mocks.api.mock.calls.some(([url]) => url.endsWith("/save"))).toBe(false);
+  });
+
   it("内置技能保留选择与阅读，隐藏写入入口与状态徽标", async () => {
     await render("builtin");
     expect(container.querySelector(".cm-content")?.textContent).toContain("name: sample");

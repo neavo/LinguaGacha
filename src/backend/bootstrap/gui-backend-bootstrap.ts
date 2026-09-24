@@ -136,11 +136,12 @@ export class GuiBackendBootstrap {
         openDirectory: this.options.openDirectory,
         pickSavePath: this.options.pickSavePath,
       });
-      // 管理 API 和 Agent 共用技能队列，让空白对话接收设置变更。
+      // 管理 API 和 Agent 共用技能队列，让当前对话接收设置变更。
       const skills = new AgentSkillsService(
         resources.paths,
         resources.settings,
         resources.logManager,
+        services.state.runtimeGate,
       );
       const agent = new AgentService({
         skills,

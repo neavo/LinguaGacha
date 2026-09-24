@@ -28,7 +28,6 @@ export const ja_jp_skills_page = {
     unsupported: "UTF-8テキストではないか、2 MBを超えているため編集できません。",
   },
   feedback: {
-    next_conversation: "新しい会話で有効になります …",
     load_failed: "スキルの読み込みに失敗しました …",
     save_failed: "スキル設定の保存に失敗しました …",
   },

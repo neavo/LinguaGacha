@@ -1,3 +1,7 @@
+const runtime_state = vi.hoisted(() => ({ owner: null as "agent" | null }));
+vi.mock("@frontend/app/state/use-desktop-state", () => ({
+  useRuntimeSnapshot: () => runtime_state,
+}));
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -5,13 +9,12 @@ import type { AgentSkillFile, AgentSkillIdentity } from "@shared/agent-skills";
 import { useSkillEditor, SKILL_AUTOSAVE_DELAY_MS } from "./use-skill-editor";
 import { format_skill_editor_document, read_skill_editor_document } from "./skill-editor-document";
 
-const mocks = vi.hoisted(() => ({ api: vi.fn(), t: (key: string) => key, toast: vi.fn() }));
+const mocks = vi.hoisted(() => ({ api: vi.fn(), t: (key: string) => key }));
 vi.mock("@frontend/app/desktop/desktop-api", async (original) => ({
   ...(await original<typeof import("@frontend/app/desktop/desktop-api")>()),
   api_fetch: mocks.api,
 }));
 vi.mock("@frontend/app/locale/locale-context", () => ({ useI18n: () => ({ t: mocks.t }) }));
-vi.mock("@frontend/app/feedback/desktop-toast", () => ({ push_toast: mocks.toast }));
 
 describe("技能自动保存", () => {
   let root: Root;
@@ -27,6 +30,7 @@ describe("技能自动保存", () => {
   }
   beforeEach(async () => {
     vi.useFakeTimers();
+    runtime_state.owner = null;
     mocks.api.mockReset();
     save = undefined;
     disk = {
@@ -78,6 +82,28 @@ describe("技能自动保存", () => {
   }
   /** 保存请求的顺序是自动保存协议的一部分。 */
   const saves = () => mocks.api.mock.calls.filter(([url]) => url.endsWith("/save"));
+
+  it("运行占用暂停已排队自动保存，保留草稿并在空闲后恢复", async () => {
+    const draft = format_skill_editor_document({ ...disk.document!, body: "updated" });
+    await act(async () => editor.edit(draft));
+    runtime_state.owner = "agent";
+    await act(async () => root.render(<Harness />));
+    await act(async () => vi.advanceTimersByTime(SKILL_AUTOSAVE_DELAY_MS * 2));
+    expect(saves()).toHaveLength(0);
+    expect(editor.draft).toBe(draft);
+    expect(editor.locked).toBe(true);
+    await act(async () => {
+      expect(await editor.flush()).toBe(false);
+    });
+    await act(async () => {
+      expect(await editor.change_file({ operation: "create_file", path: "new.md" })).toBe(false);
+    });
+    runtime_state.owner = null;
+    await act(async () => root.render(<Harness />));
+    await act(async () => vi.advanceTimersByTime(SKILL_AUTOSAVE_DELAY_MS));
+    expect(disk.document?.body).toBe("updated");
+    expect(editor.dirty).toBe(false);
+  });
 
   it("合并输入，输入法组词期间暂停，完成后保存最新正文", async () => {
     await edit("first");

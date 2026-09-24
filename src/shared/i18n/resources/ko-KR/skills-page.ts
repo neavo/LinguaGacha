@@ -28,7 +28,6 @@ export const ko_kr_skills_page = {
     unsupported: "UTF-8 텍스트가 아니거나 2 MB를 초과하여 편집할 수 없습니다.",
   },
   feedback: {
-    next_conversation: "새 대화에서 적용됩니다 …",
     load_failed: "스킬을 불러오지 못했습니다 …",
     save_failed: "스킬 설정을 저장하지 못했습니다 …",
   },

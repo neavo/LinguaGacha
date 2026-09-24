@@ -12,6 +12,7 @@ import type {
   AgentContextCompactionEntry,
   AgentEntry,
   AgentEntryStatus,
+  AgentSkillSnapshot,
   AgentToolEntry,
 } from "@shared/agent";
 import { TooltipProvider } from "@frontend/shadcn/tooltip";
@@ -91,6 +92,7 @@ describe("AgentTimeline", () => {
   async function render_timeline(
     entries: readonly AgentEntry[],
     follow_reset_revision = 0,
+    skills: readonly AgentSkillSnapshot[] = [],
   ): Promise<HTMLDivElement> {
     if (container === null) {
       container = document.createElement("div");
@@ -101,6 +103,7 @@ describe("AgentTimeline", () => {
       root?.render(
         <TooltipProvider>
           <AgentTimeline
+            skills={skills}
             entries={entries}
 
             follow_reset_revision={follow_reset_revision}
@@ -135,6 +138,28 @@ describe("AgentTimeline", () => {
   function get_tool_dialog_json(): unknown {
     return JSON.parse(get_tool_dialog_text() ?? "");
   }
+
+  it("历史消息根据当前技能集合显示引用，失效后保留原始文本", async () => {
+    const text = '@skill("example")';
+    const entries = [user_entry("user-1", text, "success", 0, 1)];
+    const skills = [
+      {
+        name: "example",
+        displayDescriptions: {
+          "zh-CN": "描述",
+          "en-US": "Description",
+          "de-DE": "Beschreibung",
+          "ja-JP": "説明",
+          "ko-KR": "설명",
+        },
+      },
+    ];
+    const view = await render_timeline(entries, 0, skills);
+    expect(view.querySelector(".agent-mention-token")?.textContent).toBe(text);
+    await render_timeline(entries);
+    expect(view.querySelector(".agent-mention-token")).toBeNull();
+    expect(view.querySelector(".agent-message__user-text")?.textContent).toBe(text);
+  });
 
   it("附件画廊与消息文本是相邻的独立区域", async () => {
     const view = await render_timeline([

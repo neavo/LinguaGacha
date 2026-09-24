@@ -52,7 +52,7 @@
 - `SCREEN_REGISTRY` 是页面组件、标题 key 与工作区布局模式的唯一入口；页面缺省消费 Shell 标准边距，Agent 使用占满 WorkspaceFrame 的 `edge-to-edge` 画布并在页面内部约束阅读区与操作区。
 - `PageLeaveProvider` 保存当前页面唯一的异步离开前动作，路由选择与确认退出等待其成功。提示词编辑 Hook 拥有草稿、成功基线与串行保存，页面注册 `flush_prompt_change`；失败保留草稿供编辑或离页重试，Toast 可撤销到成功基线。重试与页面身份变化使恢复通知失效；卸载取消延迟任务并失效旧请求。
 - 技能列表与详情共用 `skills` 导航项。详情用 LF 文本持有当前文件草稿，输入暂停后自动保存，组词期间等待。文件切换及离页等待保存和文件命令完成，失败保留草稿供重试或放弃。列表在返回时恢复滚动位置并重读快照。磁盘与技能改名契约归 [AGENT_RUNTIME](AGENT_RUNTIME.md)。
-- 主文件编辑视图包含 `name`、`description` 和正文，复制得到可见文本。技能扩展负责头部保护和单行字段约束，字段无效时保留草稿并暂停保存。保存成功推进基线，编辑器保留选区和撤销历史。放弃修改重建编辑器并清除旧历史。
+- 主文件编辑视图包含 `name`、`description` 和正文，复制得到可见文本。技能扩展负责头部保护和单行字段约束，字段无效时保留草稿并暂停保存。保存成功推进基线，编辑器保留选区和撤销历史。放弃修改重建编辑器并清除旧历史。共享运行快照的 `owner === "agent"` 使技能编辑只读并暂停自动保存，空闲后恢复草稿保存。
 - `AppEditor` 在挂载时安装调用方提供的业务扩展。相同受控值保留当前文档。外部值更新绕过输入过滤且不进入用户撤销历史。
 - Agent、工作台与校对可在未加载工程时发起项目选择，并在 session ready 后恢复 pending route；其它项目功能页在工程未加载或 session 未 ready 时禁用。
 - `features/model-selection` 持有页面级模型查询与写入命令。运行占用变化触发重查，保存设置使旧查询失效。配置加载和保存期间锁定控件，成功回包替换快照，失败保留原值。共用模型菜单支持直接选择模型并沿用其等级，悬停或右方向键展开可选等级，等级项目一次提交模型与等级。Agent 页面负责关闭思考的确认和批量跟随项。选模契约归 [`BACKEND.md`](BACKEND.md)，Agent 配置生效边界归 [`AGENT_RUNTIME.md`](AGENT_RUNTIME.md)。
@@ -63,7 +63,7 @@
 - `useAgentInputTransition` 拥有 Agent 底部占位、离场内容和焦点恢复；测量目标尺寸时固定外部占位，避免滚动视口夹取阅读位置。Composer 持续挂载，输入锁保持至离场结束，焦点归还等待编辑器恢复可编辑；工具栏 Portal 菜单同步关闭。共享编辑器提供正文与附件能力，提交权限由主 Composer 和原位编辑器各自决定。
 - `AgentFileDropTarget` 管理文件拖入区域。主输入接收整页拖入，原位编辑只接收局部拖入。CodeMirror 在默认读取文件文本前消费文件事件，按当前权限交给所属 `AgentInputDraft`。外层冒泡入口接收其余区域，捕获阶段清除拖放反馈。普通文本拖放由编辑器处理。
 - `AgentMessageAttachments` 共用草稿与已发送附件的展示，修改动作交还所属草稿。图片通过 API 读取原文件，组件持有并释放符合 CSP 的 Blob URL。上传与会话契约归 [AGENT_RUNTIME](AGENT_RUNTIME.md)。
-- Agent renderer 由 `AgentSessionStore` 作为唯一会话镜像，按 timeline、controls、queue、todo、skills、input 与 countdown 切片订阅；command、queue、todo、pending decision 和 transport 的变化不重建其它切片。entry upsert 只替换目标条目，正常命令不回传完整历史；时间线 round 与 Markdown 组件按稳定 entry / 真实文本输入复用，发送按钮在 command 开始后立即以 `aria-busy` 表示受理中。页面拥有主 Composer 的宿主指令列表及其标题、描述、禁用态和动作，Composer 只负责筛选与即时触发；原位编辑器不提供指令。Agent 会话恢复、用户决定与连接世代的跨层消费契约归 [`AGENT_RUNTIME.md`](AGENT_RUNTIME.md)。
+- Agent renderer 由 `AgentSessionStore` 作为唯一会话镜像，按 timeline、controls、queue、todo、skills、input 与 countdown 切片订阅，各切片独立更新。entry upsert 只替换目标条目，正常命令通过事件更新状态。时间线 round 与 Markdown 组件按稳定 entry / 真实文本输入复用，发送按钮在 command 开始后立即以 `aria-busy` 表示受理中。页面拥有主 Composer 的宿主指令列表及其标题、描述、禁用态和动作，Composer 负责筛选与即时触发。Agent 会话恢复、用户决定与连接世代的跨层消费契约归 [`AGENT_RUNTIME.md`](AGENT_RUNTIME.md)。
 - `AgentMarkdown` 将正文解析、高亮与图表交给 Streamdown 插件，接入桌面链接、图片预览和交互边界；Mermaid 配置消费应用主题令牌。图表容器的可用宽度由应用 CSS 提供，SVG 布局与自然尺寸由 Mermaid 决定。图表激活态由 DOM 焦点拥有，失焦或 Escape 后滚轮恢复页面滚动；图表文字和经过图表的选区不进入正文批注。
 - Agent 工具详情在首次查看标签时生成阅读文档，按原始内容复用输入、输出各一份结果，只挂载当前查看器。输出逐块递归解释完整的内嵌 JSON，统一 LF 并裁剪首尾空白行，保留正文缩进与内部空行；空白块占一行，无输出生成空文档。会话保留原始块。格式化器在清理后生成文本和语义范围，`AppEditor` 在同一事务更新文档与范围，通过单个 CodeMirror 视口显示，不重新解析阅读文档。
 - 校对以 `entry_id` 消费后端字段级术语结果；编辑窗只对对应译文字段重新求值，不重建术语身份。

@@ -47,7 +47,9 @@
 |平台 IO 与路径身份|`NativeFs` / `NativePathPolicy`|`src/native`|
 |后端日志|`LogManager`|正文文件、可重建索引与按位置查询|
 
-`RuntimeOperationGate` 是批量翻译、Agent、接口测试与工程写入 / 生命周期操作的唯一互斥边界。三类执行从受理到最终收尾持有运行 lease；普通工程写入的准备与提交持有同一工程写 lease。纯应用设置、模型配置管理、预设文件管理与只读查询不占用运行时；模型列表探测只请求元数据，接口测试才取得 `model_test` lease。执行入口冻结所用配置，运行中修改或删除配置只影响后续执行。Agent 工作区变更在自己的运行 lease 内由 `AgentWorkspaceService` 串行调用 `ProjectWriteStore`；Agent 发起的批量翻译复用该 lease，由共享批量翻译链路经 `ProjectWriteStore` 提交。冲突统一返回 `runtime.busy`。
+`RuntimeOperationGate` 统一管理批量翻译、Agent、接口测试与工程写入的互斥。执行从受理到收尾持有运行租约，工程写入与生命周期操作在准备和提交期间持有工程写租约。冲突返回 `runtime.busy`。技能写入约束见 [AGENT_RUNTIME](AGENT_RUNTIME.md)。
+
+纯应用设置、模型配置、预设管理和只读查询沿用各自入口。模型列表探测只请求元数据，接口测试取得 `model_test` 租约。执行采用受理时的模型配置，配置修改影响后续执行。Agent 工作区写入和批量翻译复用当前 Agent 租约，经 `ProjectWriteStore` 提交。
 
 `POST /api/settings/update` 由 `AppSettingsCommandService` 编排，返回 `settings + accepted + changes`。语言和预过滤修改涉及已加载工程时，准备、配置保存、工程提交及失败补偿持有同一写 lease；目标语言只同步设置，其余工程设置重算预过滤。提交前失败只补偿本次字段，已提交错误保留新配置；设置通知在两个存储完成后发布。配置与工程持久化分别归 `AppSettingService` 和 `ProjectWriteStore`。
 

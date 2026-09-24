@@ -76,7 +76,7 @@ import {
   type AgentTodoPort,
   type AgentWorkspaceApprovalPort,
 } from "./model-tools/workspace";
-import { format_agent_skills_for_system_prompt, type AgentSkillDefinition } from "./agent-skills";
+import { format_agent_skills_for_system_prompt } from "./agent-skills";
 import { load_agent_system_prompt } from "./agent-system-prompt";
 import { AgentToolError, prepare_agent_tool } from "./model-tools/definition";
 
@@ -156,7 +156,7 @@ type AgentServicePaths = Pick<
 >;
 
 type AgentServiceOptions = {
-  skills: Pick<AgentSkillsService, "get_current" | "subscribe" | "refresh" | "bind_session">;
+  skills: Pick<AgentSkillsService, "get_current" | "subscribe" | "refresh">;
   catalog: PiModelCatalogReader;
   batchTranslation: Pick<
     import("../batch-translation/batch-translation-service").BatchTranslationService,
@@ -194,7 +194,7 @@ export class AgentService {
   private readonly batch_translation: AgentServiceOptions["batchTranslation"];
   private readonly paths: AgentServiceOptions["paths"];
   private readonly settings: AgentServiceOptions["settings"];
-  private readonly skills: AgentServiceOptions["skills"]; // 管理命令与首次受理共用的技能入口。
+  private readonly skills: AgentServiceOptions["skills"]; // 菜单、模型目录与读取工具共用的当前技能入口。
   private readonly unsubscribe_skills: () => void; // 关闭时解除订阅，停止接收集合变更。
   private readonly user_agent: string;
   private readonly session_state: ProjectSessionState;
@@ -228,7 +228,6 @@ export class AgentService {
   private latest_output_checkpoint: AgentHistoryCheckpoint | null = null; // 最新轮次最终可见 assistant 写入前的位置
   private pending_assistant_checkpoint: { leaf_id: string | null } | null = null; // message_start 到首个可见 part 的暂存位置
   private resources: LoadedAgentResources | null = null; // 启动期基础提示词和会话种子。
-  private conversation_skills: readonly AgentSkillDefinition[] | null = null; // 首次受理时绑定，空白对话读取技能服务的当前集合。
   private revision = 0; // 当前产品会话公开事件的全局单调序号；reset 与工程切换均不回退
   private disposed = false; // 关闭后永久拒绝命令和事件发布
 
@@ -240,13 +239,8 @@ export class AgentService {
     this.settings = options.settings;
     this.skills = options.skills;
     this.unsubscribe_skills = this.skills.subscribe(() => {
-      if (
-        !this.disposed &&
-        this.resources !== null &&
-        this.conversation_skills === null &&
-        this.session_reset === null
-      ) {
-        this.publish_snapshot_seed();
+      if (!this.disposed && this.resources !== null && this.session_reset === null) {
+        this.publish_event({ type: "skills_changed", skills: this.get_skill_snapshot() });
       }
     });
     this.user_agent = options.userAgent;
@@ -321,7 +315,18 @@ export class AgentService {
     return { sessionId: this.session_id, files: this.workspace.list_files() };
   }
 
-  /** 返回独立的公开快照，技能沿用会话加载顺序。 */
+  /** 完整快照和技能事件共用公开投影，隐藏技能仍可供模型读取。 */
+  private get_skill_snapshot(): AgentSessionSnapshot["skills"] {
+    return this.skills
+      .get_current()
+      .filter(({ visible }) => visible)
+      .map(({ name, displayDescriptions }) => ({
+        name,
+        displayDescriptions: { ...displayDescriptions },
+      }));
+  }
+
+  /** 返回独立的公开快照，技能沿用当前集合顺序。 */
   public get_snapshot(): AgentSessionSnapshot {
     return {
       sessionId: this.session_id,
@@ -330,12 +335,7 @@ export class AgentService {
       approvalMode: this.approval_mode,
       pendingDecision: this.decisions.read_pending(),
       entries: structuredClone(this.entries),
-      skills: (this.conversation_skills ?? this.skills.get_current())
-        .filter(({ visible }) => visible)
-        .map(({ name, displayDescriptions }) => ({
-          name,
-          displayDescriptions: { ...displayDescriptions },
-        })),
+      skills: this.get_skill_snapshot(),
       inputQueue: this.input_queue.read_snapshot(this.can_send_queued_now()),
       todos: [...this.todos],
       context: structuredClone(this.context),
@@ -696,7 +696,6 @@ export class AgentService {
     const generation = this.runtime_generation;
     let runtime = this.runtime;
     const created = runtime === null;
-    let candidate_skills: readonly AgentSkillDefinition[] | null = null; // 失败时只解除本次受理的绑定。
     try {
       if (queued_id !== undefined) {
         this.input_queue.begin_send(queued_id);
@@ -704,19 +703,16 @@ export class AgentService {
       }
       const model_settings = this.settings.read_setting();
       if (runtime === null) {
-        candidate_skills = await this.skills.bind_session((skills) => {
-          this.assert_current_acceptance(generation);
-          this.conversation_skills = skills;
-        });
+        await this.skills.refresh();
         this.assert_current_acceptance(generation);
-        runtime = await this.create_runtime(candidate_skills, model_settings);
+        runtime = await this.create_runtime(model_settings);
       } else {
         await this.update_runtime_model(runtime, model_settings);
       }
       this.assert_current_acceptance(generation);
       const prepared = await this.prepare_message(message);
       this.assert_current_acceptance(generation);
-      // 异步准备成功后才提交候选运行时，受理失败时释放技能绑定。
+      // 异步准备成功后才提交候选运行时。
       if (created) {
         this.runtime = runtime;
         this.publish_context();
@@ -734,12 +730,6 @@ export class AgentService {
         if (created) {
           if (this.runtime === runtime) this.runtime = null;
           if (runtime !== null) await this.close_runtime(runtime);
-          if (this.conversation_skills !== null && this.conversation_skills === candidate_skills) {
-            const skills_changed = this.conversation_skills !== this.skills.get_current();
-            this.conversation_skills = null;
-            if (skills_changed && !this.disposed && this.session_reset === null)
-              this.publish_snapshot_seed();
-          }
         }
         if (queued_id !== undefined && generation === this.runtime_generation) {
           this.input_queue.cancel_send();
@@ -1061,12 +1051,8 @@ export class AgentService {
   }
 
   /** 创建完全内存化的 SDK 会话，并关闭默认工具与运行期资源发现。 */
-  private async create_runtime(
-    skills: readonly AgentSkillDefinition[],
-    model_settings: JsonRecord,
-  ): Promise<AgentRuntime> {
+  private async create_runtime(model_settings: JsonRecord): Promise<AgentRuntime> {
     const resources = this.require_resources();
-    const skills_prompt = format_agent_skills_for_system_prompt(skills);
     const app_root = this.paths.get_app_root();
     const session_manager = SessionManager.inMemory(app_root);
     const session_id = session_manager.getSessionId();
@@ -1096,10 +1082,7 @@ export class AgentService {
       noPromptTemplates: true,
       noThemes: true,
       noContextFiles: true,
-      systemPrompt:
-        skills_prompt === ""
-          ? resources.baseSystemPrompt
-          : `${resources.baseSystemPrompt}\n\n${skills_prompt}`,
+      systemPrompt: resources.baseSystemPrompt,
       appendSystemPrompt: [],
     });
     await resource_loader.reload();
@@ -1160,13 +1143,29 @@ export class AgentService {
           todo: this.todo_port(),
           approval: this.workspace_approval_port(),
         }),
-        ...create_agent_skill_tools(skills, this.paths),
+        ...create_agent_skill_tools(() => this.skills.get_current(), this.paths),
         ...(this.web_search === undefined ? [] : [create_agent_web_search_tool(this.web_search)]),
       ].map((tool) => prepare_agent_tool(tool, this.log_manager)),
       resourceLoader: resource_loader,
       sessionManager: session_manager,
       settingsManager: settings_manager,
     });
+    // 目录只属于本次请求，避免把配置快照写入历史或在压缩、重试时恢复旧目录。
+    const transform_context = session.agent.transformContext;
+    session.agent.transformContext = async (messages, signal) => {
+      const context = transform_context ? await transform_context(messages, signal) : messages;
+      const catalog = format_agent_skills_for_system_prompt(this.skills.get_current());
+      if (!catalog) return context;
+      return [
+        {
+          role: "system",
+          content: "",
+          sections: { available_skills: catalog },
+          timestamp: Date.now(),
+        },
+        ...context,
+      ];
+    };
     const runtime: AgentRuntime = {
       session_id,
       log: new AgentSessionLog(this.log_manager),
@@ -1770,7 +1769,6 @@ export class AgentService {
     const settlement = this.runtime_settlement;
     this.runtime = null;
     this.state = "idle";
-    this.conversation_skills = null;
     this.approval_mode = "manual";
     this.approval_mode_revision += 1;
     this.decisions.reset();

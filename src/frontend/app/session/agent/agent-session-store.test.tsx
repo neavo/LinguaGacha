@@ -1381,23 +1381,28 @@ describe("AgentSessionStore", () => {
     expect(latest.input.revision).toBe(1);
   });
 
-  it("空白对话更新技能时保留草稿，新会话身份清理旧文件引用", async () => {
+  it("技能增量只更新候选并保留历史与草稿，新会话身份清理旧文件引用", async () => {
     desktop_api_mocks.api_get.mockResolvedValue(
-      agent_snapshot({ entries: [], skills: TEST_SKILLS }),
+      agent_snapshot({
+        entries: [assistant_entry("existing", "历史", "success", 1)],
+        skills: TEST_SKILLS,
+      }),
     );
     let latest!: ReturnType<typeof useAgentSession>;
     await render_probe(() => {
       latest = useAgentSession();
     });
     await wait_for(() => expect(latest.transport).toBe("ready"));
+    const entries = latest.entries;
     latest.input.draft.write({ text: "草稿", attachments: [uploaded_file("old")] });
     await act(async () =>
       event_source.emit(AGENT_SESSION_EVENT_TOPIC, {
-        type: "snapshot_seed",
-        snapshot: agent_snapshot({ revision: 1, entries: [], skills: TEST_SKILLS.slice(0, 1) }),
+        type: "skills_changed",
+        skills: TEST_SKILLS.slice(0, 1),
       }),
     );
     expect(latest.skills).toEqual(TEST_SKILLS.slice(0, 1));
+    expect(latest.entries).toBe(entries);
     expect(latest.input.draft.read()).toEqual({
       text: "草稿",
       attachments: [uploaded_file("old")],

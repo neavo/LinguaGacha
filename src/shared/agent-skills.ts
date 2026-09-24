@@ -33,16 +33,19 @@ export type AgentSkillFileChange =
   | { operation: "create_file" | "create_directory" | "delete"; path: string }
   | { operation: "move"; path: string; destination: string };
 
-/** 编辑视图和持久化共用主文件约束，与技能加载器的名称及描述规则一致。 */
-export function validate_agent_skill_document(
-  document: AgentSkillDocument,
-): "name" | "description" | null {
+/** 加载与编辑共用字段规则，返回首个无效字段。正文不参与元数据校验。 */
+export function validate_agent_skill_document(document: {
+  name: unknown;
+  description: unknown;
+}): "name" | "description" | null {
   if (
+    typeof document.name !== "string" ||
     document.name.length > MAX_SKILL_NAME_LENGTH ||
     !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(document.name)
   )
     return "name";
   if (
+    typeof document.description !== "string" ||
     !document.description.trim() ||
     document.description.length > MAX_SKILL_DESCRIPTION_LENGTH ||
     /[\r\n]/.test(document.description)

@@ -935,7 +935,7 @@ describe("AgentService", () => {
     expect(fixture.service.get_snapshot().skills).toEqual(expected_skills);
   });
 
-  it("空白对话跟随技能更新，首次发送绑定后直到重置才采用新集合", async () => {
+  it("同一对话持续接收技能变化，模型请求只使用当前目录", async () => {
     const fixture = await create_service();
     const session_id = fixture.service.get_snapshot().sessionId;
     const next_skills = [
@@ -953,8 +953,8 @@ describe("AgentService", () => {
     expect(fixture.publish).toHaveBeenCalledWith(
       "agent.session_event",
       expect.objectContaining({
-        type: "snapshot_seed",
-        snapshot: expect.objectContaining({ sessionId: session_id }),
+        type: "skills_changed",
+        skills: expect.arrayContaining([expect.objectContaining({ name: "new-skill" })]),
       }),
     );
 
@@ -964,10 +964,13 @@ describe("AgentService", () => {
 
     skill_test_fixture.loader.mockReturnValue(skill_test_fixture.skills);
     await fixture.skills.refresh();
-    expect(fixture.service.get_snapshot().skills.map(({ name }) => name)).toContain("new-skill");
+    expect(fixture.service.get_snapshot().skills.map(({ name }) => name)).not.toContain(
+      "new-skill",
+    );
     await fixture.service.send_message({ text: "继续", attachments: [] });
     await wait_for_idle(fixture.service);
-    expect(fake_agent_state.system_prompts.at(-1)).toContain("<name>new-skill</name>");
+    expect(fake_agent_state.system_prompts.at(-1)).not.toContain("<name>new-skill</name>");
+    expect(fixture.service.get_snapshot().sessionId).toBe(session_id);
 
     await fixture.service.reset();
     expect(fixture.service.get_snapshot().skills.map(({ name }) => name)).not.toContain(
@@ -978,7 +981,7 @@ describe("AgentService", () => {
     expect(fixture.service.get_snapshot().skills.map(({ name }) => name)).toContain("new-skill");
   });
 
-  it("首次发送读取最新技能，模型运行期间的修改留给下一对话", async () => {
+  it("模型请求在异步准备完成后消费当前目录", async () => {
     const fixture = await create_service();
     skill_test_fixture.loader.mockReturnValue([]);
     fake_agent_state.hold_auth = true;
@@ -987,17 +990,17 @@ describe("AgentService", () => {
     expect(fixture.service.get_snapshot().skills).toEqual([]);
     skill_test_fixture.loader.mockReturnValue(skill_test_fixture.skills);
     await fixture.skills.refresh();
-    expect(fixture.service.get_snapshot().skills).toEqual([]);
+    expect(fixture.service.get_snapshot().skills).toEqual(skill_test_fixture.snapshots);
     fake_agent_state.release_auth?.();
     await sending;
     await wait_for_idle(fixture.service);
-    expect(fake_agent_state.system_prompts.at(-1)).not.toContain("<available_skills>");
+    expect(fake_agent_state.system_prompts.at(-1)).toContain("<available_skills>");
     await fixture.service.reset();
     expect(fixture.service.get_snapshot().skills).toEqual(skill_test_fixture.snapshots);
   });
 
   it.each(["failure", "stop", "reset"] as const)(
-    "首次附件准备被 %s 中断后释放绑定，重试使用当前技能",
+    "首次附件准备被 %s 中断后，重试使用当前技能",
     async (interruption) => {
       const image = {
         data: "prepared",
@@ -1030,7 +1033,7 @@ describe("AgentService", () => {
       await vi.waitFor(() => expect(images.prepare).toHaveBeenCalled());
       skill_test_fixture.loader.mockReturnValue([]);
       await skills.refresh();
-      expect(service.get_snapshot().skills).toEqual(skill_test_fixture.snapshots);
+      expect(service.get_snapshot().skills).toEqual([]);
       let reset: Promise<unknown> | undefined;
       if (interruption === "failure") reject_image(new Error("图片准备失败"));
       else {
@@ -3504,15 +3507,12 @@ describe("AgentService", () => {
     const runtime_gate = new RuntimeOperationGate();
     const skills = new AgentSkillsService(
       {
-        get_app_root: () => skill_test_fixture.app_root,
         get_agent_builtin_skill_dir: () => skill_test_fixture.skill_root,
         get_agent_user_skill_dir: () => `${skill_test_fixture.app_root}/user-skills`,
       },
       { ...settings, save_setting: vi.fn(), publish_settings_changed: vi.fn() },
-      {
-        error: log_error,
-        warning: log_warning,
-      },
+      { warning: log_warning },
+      runtime_gate,
     );
     const service = new AgentService({
       skills,

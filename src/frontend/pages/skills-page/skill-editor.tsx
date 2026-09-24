@@ -31,7 +31,7 @@ export function SkillEditor({
   const { leaving, register_before_leave } = usePageLeave();
   const [width, set_width] = useState(TREE_WIDTH.initial);
   useEffect(() => register_before_leave(editor.flush), [editor.flush, register_before_leave]);
-  const readonly = skill.source === "builtin";
+  const readonly = skill.source === "builtin" || editor.locked;
   const locked = readonly || editor.busy || leaving;
   const status = editor.error
     ? "failed"
@@ -183,7 +183,7 @@ export function SkillEditor({
                   <AppButton
                     size="sm"
                     variant="outline"
-                    disabled={editor.busy || editor.saving}
+                    disabled={locked || editor.saving}
                     onClick={() => {
                       void editor.flush();
                     }}
@@ -204,7 +204,7 @@ export function SkillEditor({
                     <AppButton
                       size="sm"
                       variant="outline"
-                      disabled={editor.busy || editor.saving}
+                      disabled={locked || editor.saving}
                       onClick={() => {
                         void editor.recover(true);
                       }}

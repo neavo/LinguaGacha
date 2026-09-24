@@ -62,7 +62,6 @@ const metadata_marks = EditorView.decorations.compute(["doc"], (state) => {
   const invalid = validate_agent_skill_document({
     name: state.doc.sliceString(fields[0].from, fields[0].to),
     description: state.doc.sliceString(fields[1].from, fields[1].to),
-    body: "",
   });
   return Decoration.set(
     [

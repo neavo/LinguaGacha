@@ -317,7 +317,6 @@ export const ko_kr_app = {
       session_cleanup_failed: "Agent 세션 정리에 실패했습니다 …",
       tool_execution_failed: "Agent 도구 실행 중 오류가 발생했습니다 …",
       skill_load_failed: "Agent 스킬을 불러오지 못했습니다 …",
-      skill_resource_load_failed: "Agent 스킬 리소스를 불러오지 못했습니다 …",
     },
     api_gateway: {
       direct_route_failed: "API Gateway 직접 경로 처리에 실패했습니다 …",

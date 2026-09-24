@@ -3,6 +3,32 @@ import { describe, expect, it, vi } from "vitest";
 import { RuntimeOperationGate } from "./runtime-operation-gate";
 
 describe("RuntimeOperationGate", () => {
+  it("技能写入与 Agent 双向互斥，失败后释放占用且不限制其它模型任务", async () => {
+    const gate = new RuntimeOperationGate();
+    const lease = gate.begin_runtime("agent");
+    await expect(gate.run_skill_write(() => undefined)).rejects.toThrow("runtime.busy");
+    gate.finish_runtime(lease);
+    let release!: () => void;
+    const writing = gate.run_skill_write(
+      () =>
+        new Promise<void>((resolve) => {
+          release = resolve;
+        }),
+    );
+    expect(() => gate.begin_runtime("agent")).toThrow("runtime.busy");
+    const batch = gate.begin_runtime("batch_translation");
+    release();
+    await writing;
+    await expect(gate.run_skill_write(() => "saved")).resolves.toBe("saved");
+    gate.finish_runtime(batch);
+    await expect(
+      gate.run_skill_write(() => {
+        throw new Error("failed");
+      }),
+    ).rejects.toThrow("failed");
+    const next = gate.begin_runtime("agent");
+    gate.finish_runtime(next);
+  });
   it("等待运行与工程写入释放，并可取消等待", async () => {
     const gate = new RuntimeOperationGate();
     const lease = gate.begin_runtime("agent");
