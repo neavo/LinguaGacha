@@ -1146,7 +1146,29 @@ export class AgentService {
             this.decisions.wait_for_question(tool_call_id, question, signal),
         }),
         ...create_agent_workspace_tools({
-          workspace: this.workspace,
+          workspace: {
+            run: async (...args) => {
+              // 文件写入在失败或取消前也可能完成，进程收尾后统一同步磁盘事实。
+              const result = await this.workspace.run(...args).then(
+                (value) => ({ ok: true as const, value }),
+                (error: unknown) => ({ ok: false as const, error }),
+              );
+              try {
+                await this.skills.refresh();
+              } catch (error) {
+                // 程序和刷新同时失败时保留程序错误，刷新异常另记诊断。
+                if (result.ok) throw error;
+                this.log_manager.error(t_main_log("app.diagnostic.agent.tool_execution_failed"), {
+                  source: "agent",
+                  error,
+                  context: { tool_name: "workspace_run", action: "refresh_skills" },
+                });
+              }
+              if (!result.ok) throw result.error;
+              return result.value;
+            },
+            apply_workspace: (...args) => this.workspace.apply_workspace(...args),
+          },
           todo: this.todo_port(),
           approval: this.workspace_approval_port(),
         }),

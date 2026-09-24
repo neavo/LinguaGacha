@@ -6,7 +6,7 @@ describe("Workspace 应用接口", () => {
   it("冻结契约与 Todo 副本，规范化写入并向宿主发送独立快照", () => {
     const write = vi.fn();
     const contract = structuredClone(AGENT_WORKSPACE_CONTRACT);
-    const ws = create_agent_workspace_runtime_api(contract, ["发现目标"], write);
+    const ws = create_agent_workspace_runtime_api(contract, "/user-skills", ["发现目标"], write);
     contract.datasets.items.path = "changed";
     expect(ws.contract.datasets.items.path).toBe(AGENT_WORKSPACE_CONTRACT.datasets.items.path);
     expect([ws, ws.contract, ws.todo, ws.todo.read()].every(Object.isFrozen)).toBe(true);
@@ -22,6 +22,8 @@ describe("Workspace 应用接口", () => {
   });
 
   it("运行时入口拒绝无效磁盘契约", () => {
-    expect(() => create_agent_workspace_runtime_api(null, [], () => undefined)).toThrow();
+    expect(() =>
+      create_agent_workspace_runtime_api(null, "/user-skills", [], () => undefined),
+    ).toThrow();
   });
 });

@@ -1007,6 +1007,32 @@ describe("AgentService", () => {
     expect(fixture.service.get_snapshot().skills.map(({ name }) => name)).toContain("new-skill");
   });
 
+  it.each(["success", "failure", "stop"] as const)(
+    "工作区 %s 收尾后刷新技能，下一请求消费新目录",
+    async (outcome) => {
+      const fixture = await create_service();
+      fake_agent_state.mode = "tool_only";
+      fixture.read_items.mockImplementation(() => {
+        skill_test_fixture.loader.mockReturnValue([
+          ...skill_test_fixture.skills,
+          { ...skill_test_fixture.skills[0]!, name: "installed-skill" },
+        ]);
+        if (outcome === "stop") fixture.service.stop();
+        if (outcome === "failure") throw new Error("程序写入后失败");
+        return [];
+      });
+      await fixture.service.send_message({ text: "安装技能", attachments: [] });
+      await wait_for_idle(fixture.service);
+      expect(fixture.service.get_snapshot().skills.map(({ name }) => name)).toContain(
+        "installed-skill",
+      );
+      if (outcome !== "stop") {
+        expect(fake_agent_state.system_prompts.at(-1)).toContain("<name>installed-skill</name>");
+      }
+      expect(fixture.runtime_gate.get_snapshot().owner).toBeNull();
+    },
+  );
+
   it("模型请求在异步准备完成后消费当前目录", async () => {
     const fixture = await create_service();
     skill_test_fixture.loader.mockReturnValue([]);

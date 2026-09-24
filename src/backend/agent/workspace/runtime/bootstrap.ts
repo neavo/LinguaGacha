@@ -61,6 +61,7 @@ const contract: unknown = JSON.parse(await readFile("contract.json", "utf8"));
 Object.defineProperty(globalThis, "ws", {
   value: create_agent_workspace_runtime_api(
     contract,
+    start.userSkillDirectory,
     start.todos,
     (todos) => {
       // send 自身负责刷新待发送消息；发送失败成为程序失败，不能提交未送达的 Todo。

@@ -198,8 +198,12 @@ it.each(["user", "builtin"])(
     const {inspect} = await import(${JSON.stringify(entry_url)});
     import {writeFile} from 'node:fs/promises';
     const result = await inspect();
-    try { await writeFile(new URL(${JSON.stringify(entry_url)}), 'changed'); throw new Error('write allowed'); }
-    catch(error) { if(error.code !== 'ERR_ACCESS_DENIED') throw error; }
+    if (${JSON.stringify(kind)} === 'user') {
+      await writeFile(new URL(${JSON.stringify(entry_url)}), 'changed');
+    } else {
+      try { await writeFile(new URL(${JSON.stringify(entry_url)}), 'changed'); throw new Error('write allowed'); }
+      catch(error) { if(error.code !== 'ERR_ACCESS_DENIED') throw error; }
+    }
     console.log(JSON.stringify(result));
   `,
       undefined,
@@ -220,6 +224,41 @@ it.each(["user", "builtin"])(
     });
   },
 );
+
+it("用户技能目录链接可创建、替换和删除包，失败前的写入保留", async () => {
+  const original = skill_paths.get_agent_user_skill_dir();
+  const target = path.join(root, "linked-user-skills");
+  await mkdir(target);
+  const link = path.join(root, "user-skills-link");
+  await symlink(target, link, process.platform === "win32" ? "junction" : "dir");
+  skill_paths.get_agent_user_skill_dir = () => link;
+  try {
+    const result = await run(`
+      import fs from 'node:fs/promises';
+      import path from 'node:path';
+      const staging = await fs.mkdtemp(path.join(ws.userSkillDirectory, '.install-'));
+      await fs.writeFile(path.join(staging, 'SKILL.md'), 'first');
+      const installed = path.join(ws.userSkillDirectory, 'fixture');
+      await fs.rename(staging, installed);
+      await fs.writeFile(path.join(installed, 'SKILL.md'), 'updated');
+      const content = await fs.readFile(path.join(installed, 'SKILL.md'), 'utf8');
+      await fs.rm(installed, {recursive: true});
+      await fs.writeFile(path.join(ws.userSkillDirectory, 'retained.txt'), content);
+      process.exitCode = 1;
+    `).catch((error: unknown) => {
+      if (error instanceof AgentWorkspaceRunError) return { execution: error.execution };
+      throw error;
+    });
+    expect(result.execution.exitCode).toBe(1);
+    expect(await readFile(path.join(target, "retained.txt"), "utf8")).toBe("updated");
+    await expect(readFile(path.join(target, "fixture/SKILL.md"))).rejects.toMatchObject({
+      code: "ENOENT",
+    });
+  } finally {
+    skill_paths.get_agent_user_skill_dir = () => original;
+    await unlink(link);
+  }
+});
 
 it("发布态 ASAR 技能在原目录授权下导入脚本、资源和预装依赖", async () => {
   const directory = await mkdtemp(path.join(root, "asar-"));
@@ -251,6 +290,7 @@ it("发布态 ASAR 技能在原目录授权下导入脚本、资源和预装依�
   const skill_root = path.join(archive, "builtin/agent/skill");
   const start: AgentWorkspaceRuntimeParentMessage = {
     type: "start",
+    userSkillDirectory: skill_paths.get_agent_user_skill_dir(),
     todos: [],
     skillRoots: [pathToFileURL(skill_root + path.sep).href],
   };
