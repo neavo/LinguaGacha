@@ -38,7 +38,6 @@ const POST_PATHS = new Set([
   "/api/runtime/snapshot",
   "/api/agent/message",
   "/api/agent/workspace/activate-path",
-  "/api/agent/approval-mode",
   "/api/agent/question/resolve",
   "/api/agent/write-approval/resolve",
   "/api/agent/queue/update",
@@ -135,7 +134,6 @@ describe("register_api_routes", () => {
       data: {
         revision: 0,
         state: "idle",
-        approvalMode: "manual",
         pendingDecision: null,
         entries: [],
         skills: [],
@@ -170,13 +168,6 @@ describe("register_api_routes", () => {
       read_post_handler(fixture.post_json, "/api/agent/message")(message),
     ).resolves.toEqual({ revision: 7 });
     expect(fixture.send_message).toHaveBeenCalledWith(message);
-    const approval_mode = { approvalMode: "auto" };
-    expect(read_post_handler(fixture.post_json, "/api/agent/approval-mode")(approval_mode)).toEqual(
-      {
-        revision: 7,
-      },
-    );
-    expect(fixture.set_approval_mode).toHaveBeenCalledWith(approval_mode);
     const question = { id: "question-1", response: { kind: "option", optionId: "safe" } };
     expect(read_post_handler(fixture.post_json, "/api/agent/question/resolve")(question)).toEqual({
       revision: 7,
@@ -282,7 +273,6 @@ function create_route_fixture() {
   const start_task = vi.fn(() => ({ accepted: true }));
   const acknowledgement = { revision: 7 };
   const send_message = vi.fn(async () => acknowledgement);
-  const set_approval_mode = vi.fn(() => acknowledgement);
   const resolve_question = vi.fn(() => acknowledgement);
   const resolve_write_approval = vi.fn(() => acknowledgement);
   const revise_latest_round = vi.fn(async () => acknowledgement);
@@ -303,7 +293,6 @@ function create_route_fixture() {
     get_snapshot: vi.fn(() => ({
       revision: 0,
       state: "idle",
-      approvalMode: "manual",
       pendingDecision: null,
       entries: [],
       skills: [],
@@ -312,7 +301,6 @@ function create_route_fixture() {
       context: { tokens: null, compactable: false, limits: null },
     })),
     send_message,
-    set_approval_mode,
     resolve_question,
     resolve_write_approval,
     update_queued_message,
@@ -384,7 +372,6 @@ function create_route_fixture() {
     revise_latest_round,
     reset,
     send_message,
-    set_approval_mode,
     resolve_question,
     resolve_write_approval,
     send_queued_message,

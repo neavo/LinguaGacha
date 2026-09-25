@@ -86,7 +86,6 @@ export const de_de_agent_page = {
     },
     reject: "Ablehnen",
     allow_once: "Diesen Schreibvorgang erlauben",
-    allow_session: "Diesen und alle weiteren Schreibvorgänge dieser Sitzung erlauben",
   },
   decision: {
     paused_remaining: "Pausiert · Noch {time}",

@@ -1,3 +1,4 @@
+import type { AgentApprovalMode } from "@domain/setting";
 import { format_agent_reference } from "@shared/agent-reference";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import {
@@ -13,7 +14,6 @@ import {
 import type { ModelSelectionInput } from "@shared/model-selection";
 import {
   AGENT_INPUT_QUEUE_LIMIT,
-  type AgentApprovalMode,
   type AgentEntry,
   type AgentMessageInput,
   type AgentQueuedInput,
@@ -25,7 +25,9 @@ import {
   read_selected_model,
   useModelSelection,
 } from "@frontend/features/model-selection/use-model-selection";
-import { useRuntimeSnapshot } from "@frontend/app/state/use-desktop-state";
+import { useDesktopState, useRuntimeSnapshot } from "@frontend/app/state/use-desktop-state";
+import type { SettingsSnapshotPayload } from "@frontend/app/state/desktop-state-context";
+import { api_fetch } from "@frontend/app/desktop/desktop-api";
 import { useAppNavigation } from "@frontend/app/navigation/navigation-context";
 import type { ScreenComponentProps } from "@frontend/app/navigation/types";
 import { AppConfirmDialog } from "@frontend/widgets/app-alert-dialog";
@@ -97,6 +99,8 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
   const agent_actions = useAgentSessionActions();
   const model_selection = useModelSelection();
   const runtime_snapshot = useRuntimeSnapshot();
+  const { settings_snapshot, apply_settings_snapshot, initial_state_status } = useDesktopState();
+  const [approval_updating, set_approval_updating] = useState(false); // 保存期间禁用模式选择。
   const page_ref = useRef<HTMLDivElement | null>(null);
   const conversation_ref = useRef<HTMLElement | null>(null);
   const conversation_content_ref = useRef<HTMLDivElement | null>(null);
@@ -261,14 +265,23 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
     void model_selection.select_model({ target: "agent", ...change });
   };
 
-  /** 写入审批模式只接受后端确认的会话状态，失败沿用页面命令错误反馈。 */
+  /** 审批偏好使用应用设置链路，保存成功前展示已确认的模式。 */
   const change_approval_mode = useCallback(
-    (approval_mode: AgentApprovalMode): void => {
-      void agent_actions.setApprovalMode(approval_mode).catch((error: unknown) => {
+    async (approval_mode: AgentApprovalMode): Promise<void> => {
+      if (approval_mode === settings_snapshot.agent_approval_mode) return;
+      set_approval_updating(true);
+      try {
+        const payload = await api_fetch<SettingsSnapshotPayload>("/api/settings/update", {
+          agent_approval_mode: approval_mode,
+        });
+        apply_settings_snapshot(payload);
+      } catch (error) {
         show_command_error(error, "agent_page.error.approval_mode");
-      });
+      } finally {
+        set_approval_updating(false);
+      }
     },
-    [agent_actions, show_command_error],
+    [apply_settings_snapshot, settings_snapshot.agent_approval_mode, show_command_error],
   );
 
   /** Mention 指令直接调用宿主压缩；筛选文本由 Composer 在动作前移除。 */
@@ -696,7 +709,8 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
                 can_reset={!agent_restoring && entries.length > 0}
                 context={controls.context}
                 usage={controls.usage}
-                approval_mode={controls.approvalMode}
+                approval_mode={settings_snapshot.agent_approval_mode}
+                approval_disabled={initial_state_status !== "ready" || approval_updating}
                 model_selection={model_selection}
                 input_session={input}
                 on_send={submit_message}

@@ -17,6 +17,7 @@ type SettingsStreamMessage = {
 const cleanup_roots: string[] = [];
 
 afterEach(() => {
+  vi.restoreAllMocks();
   vi.useRealTimers();
   while (cleanup_roots.length > 0) {
     const temp_root = cleanup_roots.pop();
@@ -27,6 +28,41 @@ afterEach(() => {
 });
 
 describe("AppSettingService", () => {
+  it("审批偏好保存后广播设置，重建服务仍使用保存值", () => {
+    const { service, paths, events } = create_service();
+    expect(service.read_setting()["agent_approval_mode"]).toBe("manual");
+    expect(service.update_app_settings({ agent_approval_mode: "auto" })).toMatchObject({
+      settings: { agent_approval_mode: "auto" },
+    });
+    const restored = new AppSettingService(paths);
+    expect(restored.read_setting()["agent_approval_mode"]).toBe("auto");
+    expect(events).toEqual([
+      {
+        topic: "settings.changed",
+        payload: {
+          keys: ["agent_approval_mode"],
+          settings: expect.objectContaining({ agent_approval_mode: "auto" }),
+        },
+      },
+    ]);
+    restored.update_app_settings({ agent_approval_mode: "manual" });
+    expect(new AppSettingService(paths).read_setting()["agent_approval_mode"]).toBe("manual");
+  });
+
+  it("审批偏好保存失败保留原配置与缓存，且不发布成功事件", () => {
+    const { service, config_path, events } = create_service();
+    service.update_app_settings({ agent_approval_mode: "auto" });
+    events.length = 0;
+    const failure = new Error("配置写入失败");
+    vi.spyOn(fs, "writeFileSync").mockImplementationOnce(() => {
+      throw failure;
+    });
+    expect(() => service.update_app_settings({ agent_approval_mode: "manual" })).toThrow(failure);
+    expect(service.read_setting()["agent_approval_mode"]).toBe("auto");
+    expect(read_config(config_path)["agent_approval_mode"]).toBe("auto");
+    expect(events).toEqual([]);
+  });
+
   it("保留已保存的语言，切换后重启使用新选择", () => {
     const { service, paths, config_path } = create_service();
     write_config(config_path, { app_language: "DE" });

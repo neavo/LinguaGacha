@@ -4,10 +4,10 @@
 
 ## 1. 公开会话协议
 
-- Agent 公开入口提供 snapshot、message、写入请求审批模式 update、普通问题 resolve、写入授权 resolve、continue、输入队列 update / delete / reorder / send、最新轮次 revise、手动上下文压缩、stop 与 reset。message 请求和公开 user 条目携带规范化后的 `text` 与有序 `attachments`，附件包含上传文件引用（包括图片）或用户确认的回复批注。文件附件提交 `uploadId`，后端补齐队列与时间线元数据。正文或附件至少有一项非空。批注冻结所选助手正文与允许为空的用户评论，不追踪来源消息；后端只把选文和评论投影为模型可读的引用上下文，图片仍通过模型图片通道传递。
+- Agent 公开入口提供 snapshot、message、普通问题 resolve、写入授权 resolve、continue、输入队列 update / delete / reorder / send、最新轮次 revise、手动上下文压缩、stop 与 reset。message 请求和公开 user 条目携带规范化后的 `text` 与有序 `attachments`，附件包含上传文件引用（包括图片）或用户确认的回复批注。文件附件提交 `uploadId`，后端补齐队列与时间线元数据。正文或附件至少有一项非空。批注冻结所选助手正文与允许为空的用户评论，不追踪来源消息；后端只把选文和评论投影为模型可读的引用上下文，图片仍通过模型图片通道传递。
 - 空闲且没有暂停队列时，message 建立新的公开轮次；运行时 message 进入当前会话最多保留 5 条的有界内存输入队列，达到上限后 renderer 禁止新增入队，AgentService 仍以共享上限拒绝越界请求。正常轮次成功后在同一运行 lease 内按 FIFO 续取，stop 或模型失败保留并暂停剩余队列。continue 原子追加可选消息、解除暂停，并按需恢复失败 round 或启动队首；空 continue 只表达继续意图。立即发送在空闲时启动选中 round，在运行时经 Pi `steer` 发送，并仅在对应 user `message_start` 后从 `sending` 提交为成功的 `delivery: steer` 条目；提交前失败、停止或取消恢复为 `queued`。普通 user 使用 `delivery: round`；只有 round 建立 SDK history checkpoint 和轮次终态，因而可作为 revise（包括以原输入重新运行）与失败 continue 的目标。
 - revise 目标为最新 round user 时删除整轮旧尝试并以完整替换消息重新调用模型，替换为原输入即表示重试；目标为该轮最终可见 assistant 时保留此前 user 与工具历史、写入零 usage 的纯文本 assistant 而不调用模型。continue 以隐藏“继续”消息续跑失败的原 user 轮次。两种操作都要求会话空闲，revision 另校验最新 round 输入或最终输出身份；更早轮次、steer 输入和同轮中间 assistant 不可修订。会话状态只区分 `idle | running`；round user、assistant 与 tool 条目携带 `running | success | error | stopped` 状态，steer user 只在成功提交后公开，上下文压缩条目只使用 `running | success | error`。
-- `AgentSessionSnapshot.sessionId` 标识当前对话，对话重置或工程切换后改变，前端据此清除旧草稿与上传任务。`AgentSessionSnapshot` 与所有 `agent.session_event` 都携带同一会话内单调 `revision`；`snapshot_seed` 先分配 revision，再用同值构造事件顶层和嵌套快照。普通 message、continue、队列、用户决定、审批模式、revise、手动压缩、stop 与 reset 命令只返回 `{ revision }` 的 `AgentCommandAck`，公开事实必须由增量事件表达；手动压缩在 `context_compaction` running 条目发布后返回 ack，最终 success / error 由后续增量事件结算。完整 snapshot 只用于首次加载、重连、revision 缺口和 reset 恢复。renderer 对旧 / 重复事件丢弃，对缺口暂停应用并重新 GET 快照。
+- `AgentSessionSnapshot.sessionId` 标识当前对话，对话重置或工程切换后改变，前端据此清除旧草稿与上传任务。`AgentSessionSnapshot` 与所有 `agent.session_event` 都携带同一会话内单调 `revision`；`snapshot_seed` 先分配 revision，再用同值构造事件顶层和嵌套快照。普通 message、continue、队列、用户决定、revise、手动压缩、stop 与 reset 命令只返回 `{ revision }` 的 `AgentCommandAck`，公开事实必须由增量事件表达；手动压缩在 `context_compaction` running 条目发布后返回 ack，最终 success / error 由后续增量事件结算。完整 snapshot 只用于首次加载、重连、revision 缺口和 reset 恢复。renderer 对旧 / 重复事件丢弃，对缺口暂停应用并重新 GET 快照。
 - 时间线由 snapshot 与 revisioned `agent.session_event` 共同恢复本次 reset 以来的内存历史；连续的压缩尝试复用最近一次失败 entry。公开 assistant 条目只保留非空白的 text / thinking parts、合并相邻同类且至少包含一项；空投影不产生条目。公开 `context` 同时携带模型可见历史的估算 token 与后端判定的 `compactable`；模型失败只写入对应条目和轮次，不发布第二套失败事件。公开工具条目冻结规范化后的完整输入，并只在 SDK 工具终帧后以字符串数组按顺序保留模型实际收到的文本块原文；终态空数组表示没有文本块，运行与停止状态使用 null，块间排版归前端；公开协议不承载 SDK 原始参数引用、结构化 details、压缩诊断、供应商连续性元数据或脱敏思考。
 - 工具 `running` 条目在执行体开始前发布；所有产品工具在统一注册边界先让出一次事件循环，为本地 SSE 首帧提供独立发送轮次。
 
@@ -22,7 +22,7 @@
 |模型对话级有序 Todo|`AgentService`|`ws.todo`、Agent API 与 `agent.session_event`|
 |当前唯一用户决定、取消与一次性裁决|`AgentDecisionCoordinator`|各类用户决定 resolve API 与 `agent.session_event`|
 |当前决定的自动选择倒计时|renderer `AgentSessionStore` 持有的 `AgentDecisionCountdown`|已确认决定、连接与命令状态、自定义输入焦点|
-|工程写入审批模式|`AgentService`|approval mode API 与 `workspace_apply` 成功结果|
+|工程写入审批偏好|`AppSettingService`|应用设置 API 与 `settings.changed`|
 |当前对话工作材料 `work`、数据快照与显式变更清单准备|`AgentWorkspaceService`|`workspace_run`、`workspace_apply`|
 
 ### 生成速度
@@ -38,7 +38,8 @@
 - Agent 批量翻译模型偏好属于应用设置 `model_selection.agent_batch_translation`，默认 `null` 表示跟随，显式模型 ID 表示固定选择，跨会话与工程保留；由 `ModelService` 校验并保存，运行中允许修改，删除被引用的模型或修复失效配置时恢复跟随。`run_batch_item_translation` 调用时同步解析偏好：跟随使用成功建会话或换模后保存的 Agent 生效配置与思考档位，固定选择使用该模型自身保存配置，即使其 ID 等于当前 Agent 模型也保持固定语义。批量入口选择模型及等级通过统一选模命令保存，等级仍属于模型全局配置，引用同一模型的入口共享该值；跟随项不编辑等级。每次批量翻译调用冻结所用配置，运行中修改偏好影响后续调用。
 - Agent 模型与思考档位属于应用设置，运行中保存后在下一次普通轮次、失败继续或手动压缩开始前采用。普通命令在受理前完成模型预检；FIFO 自动轮次在实际执行时通过同一模型同步方法预检，失败记入该轮并暂停剩余队列。轮内工具循环与 steer 使用当前轮次配置。公开 context 携带当前会话的历史 tokens 与实际 limits。
 - `AgentService` 用 Pi 的 `getSessionStats()` 汇总当前 SDK 历史，并在历史修订重建内存分支时累加被移除路径的用量。产品会话的累计 `usage` 包含 `input`、`output`、`cacheRead`、`cacheWrite`，通过完整快照和 `usage` 事件同步，重置与工程切换清零。累计输入包含每次请求重复携带的历史上下文，与当前 `context` 占用分开统计。
-- 写入请求审批模式默认 `manual`，`auto` 直接提交工程数据变更，`manual` 为每个实际提交批次建立写入授权。待决状态使用同一份已准备差异生成按业务种类聚合的受影响对象数量，所有数量字段必填，无变化时为 0；`pages` 按实际变化的对象数计数；允许后续写入在当前批次成功且用户未更新模式时切换为 `auto`；允许本次写入、拒绝或提交失败沿用当前模式。reset、工程切换和应用重启恢复为 `manual`。运行中可切换模式，每批开始时确定审批方式，已展示的审批继续等待原裁决。
+- 工程写入审批偏好 `agent_approval_mode` 默认 `manual`，随应用设置持久化，跨对话重置、工程切换和应用重启保留。renderer 通过应用设置快照与 `settings.changed` 消费。
+- `workspace_apply` 每批开始时读取偏好：`auto` 直接提交，`manual` 等待本批审批。运行中修改偏好影响后续批次，已展示的审批继续等待原裁决。审批摘要与提交使用同一份已准备差异，按业务种类统计实际变化的对象数。
 
 ### 运行控制与恢复
 

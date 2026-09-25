@@ -39,9 +39,6 @@ export type AgentContextSnapshot = JsonRecord & {
 /** 每个时间线条目独立持有结果；会话 state 不再复制轮次终态。 */
 export type AgentEntryStatus = "running" | "success" | "error" | "stopped";
 
-/** 当前 Agent 会话任务的工程写入确认方式；默认手动，自动持续到会话重置。 */
-export type AgentApprovalMode = "manual" | "auto";
-
 /** 待审批写入的结构化变更摘要；按业务种类统计受影响对象数量。 */
 export type AgentPendingWriteSummary = Readonly<{
   pages: number; // 本批实际变化的 PDF 原页数
@@ -80,8 +77,8 @@ export type AgentQuestion = JsonRecord & {
 export type AgentQuestionResponse = JsonRecord &
   ({ kind: "option"; optionId: string } | { kind: "custom"; text: string } | { kind: "cancel" });
 
-/** 写入授权使用固定的三种结果，不与普通问题答案共用权限入口。 */
-export type AgentWriteApprovalDecision = "reject" | "allow_once" | "allow_session";
+/** 写入授权只裁决当前批次，不改变应用审批偏好。 */
+export type AgentWriteApprovalDecision = "reject" | "allow_once";
 
 /** 当前 Agent 回合至多持有一个需要用户介入的决定。 */
 export type AgentPendingDecision = JsonRecord &
@@ -229,7 +226,6 @@ export type AgentSessionSnapshot = JsonRecord & {
   sessionId: string; // 对话重置与工程切换后改变，草稿据此清理旧文件引用。
   revision: number;
   state: AgentSessionState;
-  approvalMode: AgentApprovalMode;
   pendingDecision: AgentPendingDecision | null;
   entries: AgentEntry[];
   skills: AgentSkillSnapshot[];
@@ -251,7 +247,6 @@ export type AgentSessionEventPayload = JsonRecord &
     | { type: "entry_upsert"; entry: AgentEntry }
     | { type: "session_state"; state: AgentSessionState }
     | { type: "skills_changed"; skills: AgentSkillSnapshot[] }
-    | { type: "approval_mode"; approvalMode: AgentApprovalMode }
     | { type: "pending_decision"; pendingDecision: AgentPendingDecision | null }
     | { type: "input_queue"; inputQueue: AgentInputQueueSnapshot }
     | { type: "todo"; todos: string[] }

@@ -88,7 +88,6 @@ export const ko_kr_agent_page = {
     },
     reject: "거부",
     allow_once: "이번 쓰기 허용",
-    allow_session: "이번 쓰기 및 이 세션의 이후 모든 쓰기 허용",
   },
   decision: {
     paused_remaining: "일시 정지됨 · 남은 시간 {time}",

@@ -17,6 +17,8 @@ import { EditorView } from "@codemirror/view";
 
 import { TooltipProvider } from "@frontend/shadcn/tooltip";
 import type { ModelThinkingLevel } from "@domain/model";
+import type { AgentApprovalMode } from "@domain/setting";
+import type { SettingsSnapshotPayload } from "@frontend/app/state/desktop-state-context";
 import {
   AGENT_INPUT_QUEUE_LIMIT,
   type AgentAssistantMessageParts,
@@ -52,8 +54,17 @@ const runtime_state = vi.hoisted(() => ({
   current: { revision: 0, owner: null as "batch_translation" | "agent" | "model_test" | null },
 }));
 const push_toast = vi.hoisted(() => vi.fn());
+const settings_state = vi.hoisted(() => ({
+  snapshot: { agent_approval_mode: "manual" as AgentApprovalMode },
+  /** 保存响应成为后续渲染读取的设置快照。 */
+  apply_snapshot: (payload: SettingsSnapshotPayload): void => {
+    settings_state.snapshot = { agent_approval_mode: payload.settings!.agent_approval_mode! };
+  },
+  save: vi.fn<(path: string, body: Record<string, unknown>) => Promise<SettingsSnapshotPayload>>(),
+}));
 vi.mock("@frontend/app/desktop/desktop-api", async (original) => ({
   ...(await original<typeof import("@frontend/app/desktop/desktop-api")>()),
+  api_fetch: settings_state.save,
   api_blob: async () => new Blob([], { type: "image/png" }),
   api_file_url: (path: string) => `http://localhost${path}`,
   api_upload: async (_path: string, file: File) => uploaded_file(`webp-${file.name}`),
@@ -138,7 +149,6 @@ vi.mock("@frontend/app/session/agent/agent-session-context", () => ({
   useAgentTimeline: () => ({ entries: page_state.current.entries }),
   useAgentControls: () => ({
     state: page_state.current.state,
-    approvalMode: page_state.current.approvalMode,
     pendingDecision: page_state.current.pendingDecision,
     context: page_state.current.context,
     usage: page_state.current.usage,
@@ -154,6 +164,11 @@ vi.mock("@frontend/app/session/agent/agent-session-context", () => ({
 }));
 vi.mock("@frontend/app/state/use-desktop-state", () => ({
   useRuntimeSnapshot: () => runtime_state.current,
+  useDesktopState: () => ({
+    initial_state_status: "ready",
+    settings_snapshot: settings_state.snapshot,
+    apply_settings_snapshot: settings_state.apply_snapshot,
+  }),
 }));
 vi.mock("@frontend/app/feedback/desktop-toast", () => ({ push_toast }));
 vi.mock("@frontend/features/model-selection/use-model-selection", async (import_original) => {
@@ -210,6 +225,8 @@ describe("AgentPage", () => {
     resize_observers.clear();
     runtime_state.current = { revision: 0, owner: null };
     push_toast.mockReset();
+    settings_state.snapshot = { agent_approval_mode: "manual" };
+    settings_state.save.mockReset();
     navigation.agent_input_request = null;
     navigation.clear_agent_input_request.mockReset();
     model_thinking_state.thinking_level = "OFF";
@@ -248,6 +265,40 @@ describe("AgentPage", () => {
     );
     return container;
   }
+
+  it.each(["success", "failure"] as const)(
+    "运行中保存审批偏好，%s 后展示已确认设置",
+    async (outcome) => {
+      let resolve!: (value: SettingsSnapshotPayload) => void;
+      let reject!: (error: Error) => void;
+      settings_state.save.mockReturnValueOnce(
+        new Promise((accept, fail) => {
+          resolve = accept;
+          reject = fail;
+        }),
+      );
+      runtime_state.current = { revision: 1, owner: "agent" };
+      const view = await render_page({ state: "running" });
+      const trigger = view.querySelector<HTMLButtonElement>(".agent-composer__approval-trigger")!;
+      await act(async () => trigger.click());
+      const auto = [...document.querySelectorAll<HTMLElement>('[role="menuitemradio"]')].find(
+        (item) => item.textContent?.includes("agent_page.approval.auto"),
+      )!;
+      await act(async () => auto.click());
+      expect(settings_state.save).toHaveBeenCalledWith("/api/settings/update", {
+        agent_approval_mode: "auto",
+      });
+      expect(trigger.disabled).toBe(true);
+      expect(trigger.dataset.approvalMode).toBe("manual");
+      await act(async () => {
+        if (outcome === "success") resolve({ settings: { agent_approval_mode: "auto" } });
+        else reject(new Error("保存失败"));
+      });
+      expect(trigger.disabled).toBe(false);
+      expect(trigger.dataset.approvalMode).toBe(outcome === "success" ? "auto" : "manual");
+      expect(push_toast).toHaveBeenCalledTimes(outcome === "failure" ? 1 : 0);
+    },
+  );
 
   it("导航替换草稿和附件、聚焦选中占位文字，重渲染不重复覆盖", async () => {
     const input = build_state().input;
@@ -1196,7 +1247,6 @@ describe("AgentPage", () => {
 function build_state(overrides: Partial<AgentPageState> = {}): AgentPageState {
   return {
     state: "idle",
-    approvalMode: "manual",
     pendingDecision: null,
     entries: [
       user_entry("user-1", "开始", "success", 0, 1),
@@ -1225,7 +1275,6 @@ function build_state(overrides: Partial<AgentPageState> = {}): AgentPageState {
     compactContext: vi.fn(async () => undefined),
     stop: vi.fn(),
     reset: vi.fn(async () => undefined),
-    setApprovalMode: vi.fn(async () => undefined),
     resolveQuestion: vi.fn(async () => undefined),
     resolveWriteApproval: vi.fn(async () => undefined),
     setQuestionFocused: vi.fn(),

@@ -10,8 +10,13 @@ import {
 describe("设置快照", () => {
   it("缺失或非法设置沿用默认值，合法语言标识按规范保存", () => {
     expect(
-      normalize_setting_snapshot({ source_language: " en ", request_timeout: Infinity }),
+      normalize_setting_snapshot({
+        source_language: " en ",
+        request_timeout: Infinity,
+        agent_approval_mode: "unknown",
+      }),
     ).toMatchObject({
+      agent_approval_mode: "manual",
       source_language: "EN",
       target_language: DEFAULT_SETTING["target_language"],
       request_timeout: DEFAULT_SETTING["request_timeout"],

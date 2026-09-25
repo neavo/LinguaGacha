@@ -1,7 +1,6 @@
 import { AgentInputDraft } from "./agent-input-draft";
 import { agent_message_request } from "@shared/agent";
 import type {
-  AgentApprovalMode,
   AgentCommandAck,
   AgentContextSnapshot,
   AgentEntry,
@@ -60,7 +59,6 @@ export type AgentCommand =
   | "queue_delete"
   | "queue_reorder"
   | "queue_send"
-  | "approval_mode"
   | "decision"
   | null;
 
@@ -70,7 +68,6 @@ export type AgentTimelineSlice = Readonly<{ entries: readonly AgentEntry[] }>;
 
 export type AgentControlsSlice = Readonly<{
   state: AgentSessionState;
-  approvalMode: AgentApprovalMode;
   pendingDecision: AgentPendingDecision | null;
   context: AgentContextSnapshot;
   usage: AgentUsageSnapshot;
@@ -100,7 +97,6 @@ export type AgentSessionActions = Readonly<{
   compactContext: () => Promise<void>;
   stop: () => Promise<void>;
   reset: () => Promise<void>;
-  setApprovalMode: (approval_mode: AgentApprovalMode) => Promise<void>;
   resolveQuestion: (response: AgentQuestionResponse) => Promise<void>;
   resolveWriteApproval: (decision: AgentWriteApprovalDecision) => Promise<void>;
   setQuestionFocused: (id: string, focused: boolean) => void;
@@ -122,7 +118,6 @@ type CommandEventQueue = { base_revision: number; events: AgentSessionEvent[] };
 const EMPTY_TIMELINE: AgentTimelineSlice = { entries: [] };
 const EMPTY_CONTROLS: AgentControlsSlice = {
   state: "idle",
-  approvalMode: "manual",
   pendingDecision: null,
   context: { tokens: null, compactable: false, limits: null },
   usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
@@ -203,7 +198,6 @@ export class AgentSessionStore {
       compactContext: this.compact_context,
       stop: this.stop,
       reset: this.reset,
-      setApprovalMode: this.set_approval_mode,
       resolveQuestion: this.resolve_question,
       resolveWriteApproval: this.resolve_write_approval,
       setQuestionFocused: (id, focused) => this.countdown.set_focused(id, focused),
@@ -324,7 +318,6 @@ export class AgentSessionStore {
     const next = { ...this.controls, ...patch };
     if (
       next.state === this.controls.state &&
-      next.approvalMode === this.controls.approvalMode &&
       next.pendingDecision === this.controls.pendingDecision &&
       next.context.tokens === this.controls.context.tokens &&
       next.context.compactable === this.controls.context.compactable &&
@@ -425,7 +418,6 @@ export class AgentSessionStore {
     this.controls = {
       ...this.controls,
       state: snapshot.state,
-      approvalMode: snapshot.approvalMode,
       pendingDecision: snapshot.pendingDecision,
       context: snapshot.context,
       usage: snapshot.usage,
@@ -477,9 +469,6 @@ export class AgentSessionStore {
         break;
       case "session_state":
         this.set_controls({ state: event.state });
-        break;
-      case "approval_mode":
-        this.set_controls({ approvalMode: event.approvalMode });
         break;
       case "pending_decision":
         this.set_controls({ pendingDecision: event.pendingDecision });
@@ -681,13 +670,6 @@ export class AgentSessionStore {
     await this.execute_command("reset", () => api_fetch<AgentCommandAck>("/api/agent/reset"));
   };
 
-  /** 提交审批模式，实际模式由后端事件同步。 */
-  private readonly set_approval_mode = async (approval_mode: AgentApprovalMode): Promise<void> => {
-    await this.execute_command("approval_mode", () =>
-      api_fetch<AgentCommandAck>("/api/agent/approval-mode", { approvalMode: approval_mode }),
-    );
-  };
-
   /** 普通问题只向对应窄入口提交当前 pending 的身份与答案。 */
   private readonly resolve_question = async (response: AgentQuestionResponse): Promise<void> => {
     const pending = this.controls.pendingDecision;
@@ -776,7 +758,6 @@ function normalize_snapshot(value: unknown): AgentSessionSnapshot {
     throw new TypeError("Agent session identity is invalid.");
   const revision = normalize_revision(record["revision"], "snapshot");
   const state = normalize_state(record["state"]);
-  const approval_mode = normalize_approval_mode(record["approvalMode"]);
   const pending_decision = normalize_pending_decision(record["pendingDecision"]);
   const entries = Array.isArray(record["entries"])
     ? record["entries"].flatMap(normalize_entry)
@@ -788,7 +769,6 @@ function normalize_snapshot(value: unknown): AgentSessionSnapshot {
   const context = normalize_context(record["context"]);
   const usage = normalize_usage(record["usage"]);
   if (
-    approval_mode === null ||
     pending_decision === undefined ||
     input_queue === null ||
     todos === null ||
@@ -802,7 +782,6 @@ function normalize_snapshot(value: unknown): AgentSessionSnapshot {
     sessionId: session_id,
     revision,
     state,
-    approvalMode: approval_mode,
     pendingDecision: pending_decision,
     entries,
     skills,
@@ -830,12 +809,6 @@ function normalize_agent_event(value: unknown): AgentSessionEvent | null {
         : null;
     case "session_state":
       return { type: "session_state", revision, state: normalize_state(record["state"]) };
-    case "approval_mode": {
-      const approval_mode = normalize_approval_mode(record["approvalMode"]);
-      return approval_mode === null
-        ? null
-        : { type: "approval_mode", revision, approvalMode: approval_mode };
-    }
     case "pending_decision": {
       const pending = normalize_pending_decision(record["pendingDecision"]);
       return pending === undefined
@@ -1115,11 +1088,6 @@ function normalize_entry_status(value: unknown): AgentEntryStatus | null {
 function normalize_state(value: unknown): AgentSessionState {
   if (value === "idle" || value === "running") return value;
   throw new TypeError("Agent snapshot state is invalid.");
-}
-
-/** 审批模式只接受公开的手动与自动值域。 */
-function normalize_approval_mode(value: unknown): AgentApprovalMode | null {
-  return value === "manual" || value === "auto" ? value : null;
 }
 
 /** 在 snapshot / SSE 边界按种类收窄用户决定。 */

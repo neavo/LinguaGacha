@@ -147,6 +147,9 @@ describe("AgentComposer", () => {
             }}
             on_send={vi.fn()}
             on_agent_model_select={vi.fn()}
+            approval_mode="manual"
+            approval_disabled={false}
+            on_approval_mode_change={vi.fn()}
             on_stop={async () => {}}
             on_reset={vi.fn()}
             {...options}

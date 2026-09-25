@@ -1,7 +1,8 @@
 import { Type } from "@earendil-works/pi-ai";
 import { defineTool, type ToolDefinition } from "@earendil-works/pi-coding-agent";
 
-import type { AgentApprovalMode, AgentPendingWriteSummary } from "../../../shared/agent";
+import type { AgentApprovalMode } from "../../../domain/setting";
+import type { AgentPendingWriteSummary } from "../../../shared/agent";
 import { agent_tool_result } from "./definition";
 import { AGENT_WORKSPACE_CONTRACT } from "../workspace/contract";
 import {
@@ -19,8 +20,7 @@ export type AgentWorkspaceApprovalPort = {
     tool_call_id: string,
     summary: AgentPendingWriteSummary,
     signal: AbortSignal | undefined,
-  ) => Promise<{ auto_revision: number | null }>;
-  activate_auto: (mode_revision: number) => void;
+  ) => Promise<void>;
 };
 
 /** AgentService 持有跨回合 Todo，脚本工具只协调调用前后的不可变快照。 */
@@ -199,21 +199,14 @@ export function create_agent_workspace_tools(options: {
       parameters: WORKSPACE_APPLY_PARAMETERS,
       execute: async (tool_call_id, _params, signal) => {
         signal?.throwIfAborted();
-        // 批次成功后请求更新审批模式，用户后续选择由 AgentService 仲裁。
-        let auto_revision: number | null = null;
+        // 每批开始时确定审批方式，期间修改偏好只影响后续批次。
         const result = await options.workspace.apply_workspace(
           options.approval.read_mode() === "auto"
             ? undefined
             : async (summary) => {
-                const decision = await options.approval.wait_for_decision(
-                  tool_call_id,
-                  summary,
-                  signal,
-                );
-                auto_revision = decision.auto_revision;
+                await options.approval.wait_for_decision(tool_call_id, summary, signal);
               },
         );
-        if (auto_revision !== null) options.approval.activate_auto(auto_revision);
         return agent_tool_result(result);
       },
     }),

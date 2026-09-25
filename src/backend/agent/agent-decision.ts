@@ -111,7 +111,7 @@ export class AgentDecisionCoordinator {
   public resolve_write_approval(request: JsonRecord): void {
     const pending = this.require_pending(request, "write_approval");
     const decision = request["decision"];
-    if (decision !== "reject" && decision !== "allow_once" && decision !== "allow_session") {
+    if (decision !== "reject" && decision !== "allow_once") {
       throw validation_error("agent_write_approval_decision_invalid");
     }
     this.settle(pending, decision);

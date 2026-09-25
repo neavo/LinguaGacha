@@ -8,7 +8,8 @@ import {
   WifiOff,
 } from "lucide-react";
 import type { ModelSelectionInput } from "@shared/model-selection";
-import type { AgentApprovalMode, AgentContextSnapshot, AgentUsageSnapshot } from "@shared/agent";
+import type { AgentApprovalMode } from "@domain/setting";
+import type { AgentContextSnapshot, AgentUsageSnapshot } from "@shared/agent";
 import { useI18n } from "@frontend/app/locale/locale-context";
 import { useTranslationExport } from "@frontend/app/session/translation-export/translation-export-context";
 import type { ModelSelectionController } from "@frontend/features/model-selection/use-model-selection";
@@ -38,7 +39,7 @@ export function AgentTaskToolbar(props: {
   disconnected: boolean;
   on_reset: () => void;
   on_agent_model_select: (change: ModelSelectionInput) => void;
-  on_approval_mode_change?: (mode: AgentApprovalMode) => void;
+  on_approval_mode_change: (mode: AgentApprovalMode) => void;
 }): JSX.Element {
   const { t } = useI18n();
   const [approval_open, set_approval_open] = useState(false); // 当前审批菜单的展开状态
@@ -154,7 +155,7 @@ export function AgentTaskToolbar(props: {
             value={props.approval_mode}
             onValueChange={(value) => {
               if (!props.approval_disabled && (value === "manual" || value === "auto")) {
-                props.on_approval_mode_change?.(value);
+                props.on_approval_mode_change(value);
               }
             }}
           >
