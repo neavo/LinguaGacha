@@ -490,36 +490,6 @@ describe("AgentSessionStore", () => {
     expect(latest.input.draft.read()).toEqual({ text: "", attachments: [] });
   });
 
-  it("写入审批模式通过后端命令更新并由快照回流", async () => {
-    desktop_api_mocks.api_fetch.mockImplementationOnce(async () => {
-      event_source.emit(AGENT_SESSION_EVENT_TOPIC, {
-        type: "approval_mode",
-        approvalMode: "auto",
-      });
-      return { revision: event_source.current_revision };
-    });
-    let latest!: ReturnType<typeof useAgentSession>;
-    await render_probe(() => {
-      latest = useAgentSession();
-    });
-    await wait_for(() => expect(latest.transport).toBe("ready"));
-
-    await act(async () => latest.setApprovalMode("auto"));
-
-    expect(desktop_api_mocks.api_fetch).toHaveBeenCalledWith("/api/agent/approval-mode", {
-      approvalMode: "auto",
-    });
-    expect(latest.approvalMode).toBe("auto");
-
-    await act(async () =>
-      event_source.emit(AGENT_SESSION_EVENT_TOPIC, {
-        type: "approval_mode",
-        approvalMode: "manual",
-      }),
-    );
-    expect(latest.approvalMode).toBe("manual");
-  });
-
   it("压缩回执应用命令期间收到的公开 running 条目", async () => {
     desktop_api_mocks.api_get.mockResolvedValue(
       agent_snapshot({ context: { tokens: 64_000, compactable: true, limits: null } }),
@@ -586,10 +556,10 @@ describe("AgentSessionStore", () => {
     await wait_for(() => expect(latest.transport).toBe("ready"));
 
     expect(latest.pendingDecision).toEqual(waiting);
-    await act(async () => latest.resolveWriteApproval("allow_session"));
+    await act(async () => latest.resolveWriteApproval("allow_once"));
     expect(desktop_api_mocks.api_fetch).toHaveBeenCalledWith("/api/agent/write-approval/resolve", {
       id: "apply-1",
-      decision: "allow_session",
+      decision: "allow_once",
     });
     expect(latest.pendingDecision).toBeNull();
   });
@@ -769,19 +739,13 @@ describe("AgentSessionStore", () => {
 
     await act(async () => {
       event_source.emit(AGENT_SESSION_EVENT_TOPIC, {
-        type: "approval_mode",
-        approvalMode: "auto",
-      });
-      event_source.emit(AGENT_SESSION_EVENT_TOPIC, {
         type: "pending_decision",
         pendingDecision: pending,
       });
     });
-    expect(latest.approvalMode).toBe("auto");
     expect(latest.pendingDecision).toEqual(pending);
 
     await act(async () => {
-      event_source.emit(AGENT_SESSION_EVENT_TOPIC, { type: "approval_mode" });
       event_source.emit(AGENT_SESSION_EVENT_TOPIC, { type: "pending_decision" });
       event_source.emit(AGENT_SESSION_EVENT_TOPIC, {
         type: "pending_decision",
@@ -811,7 +775,6 @@ describe("AgentSessionStore", () => {
       });
     });
 
-    expect(latest.approvalMode).toBe("auto");
     expect(latest.pendingDecision).toEqual(pending);
   });
 
@@ -855,7 +818,6 @@ describe("AgentSessionStore", () => {
       "inputQueue",
       {
         state: "idle",
-        approvalMode: "manual",
         pendingDecision: null,
         entries: [],
         skills: [],
@@ -867,31 +829,17 @@ describe("AgentSessionStore", () => {
       "context",
       {
         state: "idle",
-        approvalMode: "manual",
         pendingDecision: null,
         entries: [],
         skills: [],
         inputQueue: { paused: false, canSendNow: false, items: [] },
         todos: [],
-      },
-    ],
-    [
-      "approvalMode",
-      {
-        state: "idle",
-        pendingDecision: null,
-        entries: [],
-        skills: [],
-        inputQueue: { paused: false, canSendNow: false, items: [] },
-        todos: [],
-        context: { tokens: null, compactable: false, limits: null },
       },
     ],
     [
       "pendingDecision",
       {
         state: "idle",
-        approvalMode: "manual",
         entries: [],
         skills: [],
         inputQueue: { paused: false, canSendNow: false, items: [] },
@@ -940,7 +888,6 @@ describe("AgentSessionStore", () => {
       sessionId: "test-session",
       revision: 0,
       state: "idle",
-      approvalMode: "manual",
       pendingDecision: null,
       entries: [],
       inputQueue: { paused: false, canSendNow: true, items: [] },
@@ -975,7 +922,6 @@ describe("AgentSessionStore", () => {
       sessionId: "test-session",
       revision: 0,
       state: "idle",
-      approvalMode: "manual",
       pendingDecision: null,
       entries: [
         {
@@ -1876,7 +1822,6 @@ function agent_snapshot(overrides: Partial<AgentSessionSnapshot> = {}): AgentSes
     sessionId: "test-session",
     revision: 0,
     state: "idle",
-    approvalMode: "manual",
     pendingDecision: null,
     entries: [],
     skills: [],

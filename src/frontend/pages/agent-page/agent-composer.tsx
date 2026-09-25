@@ -1,3 +1,4 @@
+import type { AgentApprovalMode } from "@domain/setting";
 import type { Ref, RefObject } from "react";
 import { ArrowUp, LoaderCircle, Square } from "lucide-react";
 import type { ModelSelectionInput } from "@shared/model-selection";
@@ -6,7 +7,6 @@ import {
   type AgentContextSnapshot,
   type AgentUsageSnapshot,
   type AgentMessageInput,
-  type AgentApprovalMode,
   type AgentSkillSnapshot,
 } from "@shared/agent";
 import type {
@@ -40,12 +40,13 @@ type AgentComposerProps = {
   can_reset: boolean;
   context: AgentContextSnapshot;
   usage: AgentUsageSnapshot;
-  approval_mode?: AgentApprovalMode;
+  approval_mode: AgentApprovalMode;
+  approval_disabled: boolean;
   model_selection: ModelSelectionController;
   input_session: AgentInputSession;
   on_send: (message: AgentMessageInput) => void;
   on_agent_model_select: (change: ModelSelectionInput) => void;
-  on_approval_mode_change?: (approval_mode: AgentApprovalMode) => void;
+  on_approval_mode_change: (approval_mode: AgentApprovalMode) => void;
   on_stop: () => Promise<void>;
   on_reset: () => void;
 };
@@ -123,8 +124,8 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
               context={props.context}
               usage={props.usage}
               model_selection={props.model_selection}
-              approval_mode={props.approval_mode ?? "manual"}
-              approval_disabled={props.command !== null || props.unavailable_reason !== null}
+              approval_mode={props.approval_mode}
+              approval_disabled={props.approval_disabled}
               disconnected={props.unavailable_reason === "disconnected"}
               on_reset={props.on_reset}
               on_agent_model_select={props.on_agent_model_select}

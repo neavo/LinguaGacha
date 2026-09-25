@@ -1,3 +1,4 @@
+import type { AgentApprovalMode } from "../../domain/setting";
 import { AgentTokenSpeed } from "./agent-token-speed";
 import { uploaded_file } from "../../test/agent-upload-fixture";
 import { workspace_execution } from "../../test/agent-workspace-fixture";
@@ -633,111 +634,74 @@ describe("AgentService", () => {
     expect(service.get_snapshot().revision).toBe(revisions.at(-1));
   });
 
-  it("写入审批模式通过快照与事件同步，模型请求保持稳定", async () => {
+  it("允许本次写入受理后清除浮层并提交", async () => {
     const fixture = await create_service();
+    fake_agent_state.mode = "write";
+    fake_agent_state.hold_tool_execution = true;
 
-    expect(fixture.service.get_snapshot()).toMatchObject({ approvalMode: "manual" });
-    expect(fixture.service.set_approval_mode({ approvalMode: "auto" })).toEqual({ revision: 1 });
-    expect(fixture.service.get_snapshot()).toMatchObject({ approvalMode: "auto" });
-    expect(fixture.publish).toHaveBeenCalledWith(
-      "agent.session_event",
-      expect.objectContaining({ type: "approval_mode", approvalMode: "auto", revision: 1 }),
+    await fixture.service.send_message({ text: "写入", attachments: [] });
+    await vi.waitFor(() =>
+      expect(fixture.service.get_snapshot().pendingDecision).toMatchObject({
+        kind: "write_approval",
+        summary: {
+          pages: 0,
+          items: 1,
+          glossary: 0,
+          textPreserve: 0,
+          preReplacement: 0,
+          postReplacement: 0,
+          prompts: 0,
+        },
+      }),
+    );
+    const pending = fixture.service.get_snapshot().pendingDecision;
+    if (pending?.kind !== "write_approval") throw new Error("缺少待审批写入");
+    expect(fixture.service.get_snapshot().entries).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: "tool_call",
+          toolName: "workspace_apply",
+          status: "running",
+        }),
+      ]),
     );
 
-    await fixture.service.send_message({ text: "执行任务", attachments: [] });
+    const approval_ack = fixture.service.resolve_write_approval({
+      id: pending.id,
+      decision: "allow_once",
+    });
+    await vi.waitFor(() => expect(fake_agent_state.release_tool_execution).not.toBeNull());
+    try {
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      expect(approval_ack).toEqual({ revision: expect.any(Number) });
+      expect(fixture.service.get_snapshot().pendingDecision).toBeNull();
+    } finally {
+      fake_agent_state.release_tool_execution?.();
+    }
     await wait_for_idle(fixture.service);
-    const stable_system_prompt = fake_agent_state.system_prompts[0];
-
-    await fixture.service.reset();
-    await fixture.service.send_message({ text: "手动任务", attachments: [] });
-    await wait_for_idle(fixture.service);
-    expect(fake_agent_state.system_prompts.at(-1)).toBe(stable_system_prompt);
-
-    expect(fixture.service.get_snapshot()).toMatchObject({ approvalMode: "manual" });
-    expect(() => fixture.service.set_approval_mode({ approvalMode: "unknown" })).toThrow(
-      "request.validation_failed",
+    expect(fixture.service.get_snapshot().pendingDecision).toBeNull();
+    expect(fixture.service.get_snapshot().entries).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: "tool_call",
+          toolName: "workspace_apply",
+          status: "success",
+        }),
+      ]),
     );
   });
 
-  it.each([
-    ["allow_once", "manual"],
-    ["allow_session", "auto"],
-  ] as const)(
-    "写入决定 %s 受理后清除浮层并提交，审批模式为 %s",
-    async (decision, approval_mode) => {
-      const fixture = await create_service();
-      fake_agent_state.mode = "write";
-      fake_agent_state.hold_tool_execution = true;
-
-      await fixture.service.send_message({ text: "写入", attachments: [] });
-      await vi.waitFor(() =>
-        expect(fixture.service.get_snapshot().pendingDecision).toMatchObject({
-          kind: "write_approval",
-          summary: {
-            pages: 0,
-            items: 1,
-            glossary: 0,
-            textPreserve: 0,
-            preReplacement: 0,
-            postReplacement: 0,
-            prompts: 0,
-          },
-        }),
-      );
-      const pending = fixture.service.get_snapshot().pendingDecision;
-      if (pending?.kind !== "write_approval") throw new Error("缺少待审批写入");
-      expect(fixture.service.get_snapshot().entries).toEqual(
-        expect.arrayContaining([
-          expect.objectContaining({
-            kind: "tool_call",
-            toolName: "workspace_apply",
-            status: "running",
-          }),
-        ]),
-      );
-
-      const approval_ack = fixture.service.resolve_write_approval({
-        id: pending.id,
-        decision,
-      });
-      await vi.waitFor(() => expect(fake_agent_state.release_tool_execution).not.toBeNull());
-      try {
-        await new Promise<void>((resolve) => setImmediate(resolve));
-        expect(approval_ack).toEqual({ revision: expect.any(Number) });
-        expect(fixture.service.get_snapshot().pendingDecision).toBeNull();
-      } finally {
-        fake_agent_state.release_tool_execution?.();
-      }
-      await wait_for_idle(fixture.service);
-      expect(fixture.service.get_snapshot().pendingDecision).toBeNull();
-      expect(fixture.service.get_snapshot().approvalMode).toBe(approval_mode);
-      expect(fixture.service.get_snapshot().entries).toEqual(
-        expect.arrayContaining([
-          expect.objectContaining({
-            kind: "tool_call",
-            toolName: "workspace_apply",
-            status: "success",
-          }),
-        ]),
-      );
-    },
-  );
-
-  it("审批等待与提交期间的新模式优先于旧批次成功回写", async () => {
-    const { service } = await create_service();
+  it.each(["reset", "project"] as const)("自动审批偏好跨 %s 保留", async (boundary) => {
+    const { service, set_approval_mode, session_state } = await create_service();
+    set_approval_mode("auto");
     fake_agent_state.mode = "write";
-    fake_agent_state.hold_tool_execution = true;
-    await service.send_message({ text: "写入", attachments: [] });
-    await vi.waitFor(() => expect(service.get_snapshot().pendingDecision).not.toBeNull());
-    const pending = service.get_snapshot().pendingDecision!;
-    service.set_approval_mode({ approvalMode: "auto" });
-    expect(service.get_snapshot().pendingDecision?.id).toBe(pending.id);
-    service.resolve_write_approval({ id: pending.id, decision: "allow_session" });
-    await vi.waitFor(() => expect(fake_agent_state.release_tool_execution).not.toBeNull());
-    service.set_approval_mode({ approvalMode: "manual" });
-    fake_agent_state.release_tool_execution?.();
+    await service.send_message({ text: "首次写入", attachments: [] });
     await wait_for_idle(service);
-    expect(service.get_snapshot().approvalMode).toBe("manual");
+    if (boundary === "reset") await service.reset();
+    else await session_state.mark_loaded("next.lg");
+    await service.send_message({ text: "再次写入", attachments: [] });
+    await wait_for_idle(service);
+    expect(service.get_snapshot().pendingDecision).toBeNull();
     expect(service.get_snapshot().entries).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -747,6 +711,27 @@ describe("AgentService", () => {
         }),
       ]),
     );
+  });
+
+  it("等待审批时修改偏好保留当前决定，并作用于下一批", async () => {
+    const { service, set_approval_mode } = await create_service();
+    fake_agent_state.mode = "write";
+    await service.send_message({ text: "写入", attachments: [] });
+    await vi.waitFor(() => expect(service.get_snapshot().pendingDecision).not.toBeNull());
+    const pending = service.get_snapshot().pendingDecision!;
+    set_approval_mode("auto");
+    expect(service.get_snapshot().pendingDecision?.id).toBe(pending.id);
+    service.resolve_write_approval({ id: pending.id, decision: "allow_once" });
+    await wait_for_idle(service);
+    await service.send_message({ text: "后续写入", attachments: [] });
+    await wait_for_idle(service);
+    expect(service.get_snapshot().pendingDecision).toBeNull();
+    expect(
+      service.get_snapshot().entries.findLast((entry) => entry.kind === "tool_call"),
+    ).toMatchObject({
+      toolName: "workspace_apply",
+      status: "success",
+    });
   });
 
   it("拒绝手动写入后以工具失败结束", async () => {
@@ -2047,7 +2032,6 @@ describe("AgentService", () => {
       sessionId: expect.any(String),
       revision: expect.any(Number),
       state: "idle",
-      approvalMode: "manual",
       pendingDecision: null,
       entries: [],
       skills: skill_test_fixture.snapshots,
@@ -2285,8 +2269,8 @@ describe("AgentService", () => {
   });
 
   it("workspace_apply 运行期间拒绝停止，提交终帧仍成为唯一结果", async () => {
-    const { service, runtime_gate, log_append } = await create_service();
-    service.set_approval_mode({ approvalMode: "auto" });
+    const { service, runtime_gate, log_append, set_approval_mode } = await create_service();
+    set_approval_mode("auto");
     fake_agent_state.mode = "write";
     fake_agent_state.hold_tool_execution = true;
     await service.send_message({ text: "写入", attachments: [] });
@@ -2372,7 +2356,6 @@ describe("AgentService", () => {
       sessionId: expect.any(String),
       revision: expect.any(Number),
       state: "idle",
-      approvalMode: "manual",
       pendingDecision: null,
       entries: [],
       skills: skill_test_fixture.snapshots,
@@ -3462,6 +3445,7 @@ describe("AgentService", () => {
     runtime_gate: RuntimeOperationGate;
     select_batch_translation_model: (model_id: string | null) => void;
     set_personality: (value: string | null) => void;
+    set_approval_mode: (value: AgentApprovalMode) => void;
     session_state: ProjectSessionState;
   }> {
     const session_state = new ProjectSessionState();
@@ -3471,11 +3455,13 @@ describe("AgentService", () => {
     let batch_model_id: string | null = null;
     let app_language: AppLanguage = "ZH";
     let personality: string | null = null;
+    let approval_mode: AgentApprovalMode = "manual";
     const settings = {
       read_setting: () => {
         return {
           app_language,
           agent_personality: personality,
+          agent_approval_mode: approval_mode,
           model_selection: {
             translation: "active",
             agent: agent_model_id,
@@ -3599,6 +3585,9 @@ describe("AgentService", () => {
     if (load_resources) await service.load_resources();
     services.push(service);
     return {
+      set_approval_mode: (value) => {
+        approval_mode = value;
+      },
       set_personality: (value: string | null) => {
         personality = value;
       },

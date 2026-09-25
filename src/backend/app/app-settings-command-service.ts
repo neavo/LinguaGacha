@@ -2,6 +2,7 @@ import {
   Setting,
   PROJECT_SETTING_KEYS,
   normalize_project_settings_snapshot,
+  is_agent_approval_mode,
 } from "../../domain/setting";
 import type { JsonRecord, MutableJsonRecord } from "../../domain/json";
 import { AppError } from "../../shared/error";
@@ -23,6 +24,14 @@ export class AppSettingsCommandService {
 
   /** 保存用户修改；涉及已加载工程时统一完成同步与失败补偿。 */
   public async update(request: JsonRecord): Promise<JsonRecord> {
+    if (
+      Object.hasOwn(request, "agent_approval_mode") &&
+      !is_agent_approval_mode(request["agent_approval_mode"])
+    ) {
+      throw new AppError("request.validation_failed", {
+        public_details: { field: "agent_approval_mode" },
+      });
+    }
     if (
       !this.session.snapshot().loaded ||
       !PROJECT_SETTING_KEYS.some((key) => Object.hasOwn(request, key))

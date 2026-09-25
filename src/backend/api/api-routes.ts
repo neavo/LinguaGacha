@@ -122,7 +122,6 @@ export function register_api_routes(context: ApiRouteContext): void {
   context.postJson("/api/agent/workspace/activate-path", (body) =>
     agent.activate_workspace_path(body),
   );
-  context.postJson("/api/agent/approval-mode", (body) => agent.set_approval_mode(body));
   context.postJson("/api/agent/question/resolve", (body) => agent.resolve_question(body));
   context.postJson("/api/agent/write-approval/resolve", (body) =>
     agent.resolve_write_approval(body),

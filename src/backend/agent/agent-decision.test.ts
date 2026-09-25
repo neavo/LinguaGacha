@@ -91,6 +91,10 @@ describe("AgentDecisionCoordinator", () => {
       },
       undefined,
     );
+    expect(() =>
+      coordinator.resolve_write_approval({ id: "write-1", decision: "allow_session" }),
+    ).toThrow("request.validation_failed");
+    expect(coordinator.read_pending()?.id).toBe("write-1");
     coordinator.resolve_write_approval({ id: "write-1", decision: "allow_once" });
     expect(coordinator.read_pending()).toBeNull();
     await expect(result).resolves.toBe("allow_once");

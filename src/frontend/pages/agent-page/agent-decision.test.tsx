@@ -184,6 +184,7 @@ describe("AgentDecision", () => {
     );
     const actions = [...container.querySelectorAll<HTMLButtonElement>(".agent-decision-action")];
 
+    expect(actions).toHaveLength(2);
     expect(actions.filter((button) => button.querySelector(".agent-decision-progress"))).toEqual([
       actions[1],
     ]);

@@ -88,7 +88,6 @@ export const ja_jp_agent_page = {
     },
     reject: "拒否",
     allow_once: "今回の書き込みを許可",
-    allow_session: "今回とこのセッション内の以降の書き込みをすべて許可",
   },
   decision: {
     paused_remaining: "一時停止中 · 残り {time}",

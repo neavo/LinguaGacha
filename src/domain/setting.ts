@@ -22,6 +22,8 @@ export {
 export const PROJECT_SAVE_MODES = ["MANUAL", "FIXED", "SOURCE"] as const; // ProjectSaveMode 是项目保存位置策略，页面和设置服务都从这里取合法值
 
 export type ProjectSaveMode = (typeof PROJECT_SAVE_MODES)[number];
+/** 应用级工程写入审批偏好，跨对话、工程和应用重启保留。 */
+export type AgentApprovalMode = "manual" | "auto";
 export type RecentProjectSetting = {
   path: string; // 最近工程路径
   name: string; // 最近工程展示名
@@ -29,6 +31,7 @@ export type RecentProjectSetting = {
 };
 
 export type SettingSnapshot = {
+  agent_approval_mode: AgentApprovalMode;
   app_language: AppLanguage; // 渲染进程国际化与日志文案共同消费的应用语言
   source_language: string; // 源语言允许 ALL，具体过滤器负责进一步收窄
   target_language: string; // 目标语言进入提示词和项目设置镜像
@@ -62,6 +65,7 @@ export const PROJECT_SETTING_KEYS = [
 export type ProjectSettingsSnapshot = Pick<SettingSnapshot, (typeof PROJECT_SETTING_KEYS)[number]>;
 
 export const SETTING_KEYS = [
+  "agent_approval_mode",
   "app_language",
   "source_language",
   "target_language",
@@ -99,6 +103,7 @@ const BOOLEAN_SETTING_KEYS = new Set([
 const NUMBER_SETTING_KEYS = new Set(["request_timeout", "preceding_lines_threshold"]);
 
 export const DEFAULT_SETTING: JsonRecord = {
+  agent_approval_mode: "manual",
   app_language: "ZH",
   source_language: "JA",
   target_language: "ZH",
@@ -241,6 +246,7 @@ export class Setting {
    * 归一设置字段，防止未知类型写入设置文件
    */
   public static normalize_value(key: string, value: JsonValue): JsonValue {
+    if (key === "agent_approval_mode") return normalize_agent_approval_mode(value);
     if (key === "agent_personality") return typeof value === "string" ? value : null;
     if (key === "agent_skills") return normalize_agent_skill_settings(value);
     if (key === "app_language") {
@@ -287,12 +293,23 @@ export function is_project_save_mode(value: unknown): value is ProjectSaveMode {
   return PROJECT_SAVE_MODE_SET.has(value as ProjectSaveMode);
 }
 
+/** 写入命令据此拒绝非法模式；读取配置时由归一化入口补默认值。 */
+export function is_agent_approval_mode(value: unknown): value is AgentApprovalMode {
+  return value === "manual" || value === "auto";
+}
+
+/** 旧配置缺失或存储值无效时使用手动审批。 */
+export function normalize_agent_approval_mode(value: unknown): AgentApprovalMode {
+  return is_agent_approval_mode(value) ? value : "manual";
+}
+
 /**
  * 渲染进程、主进程和 worker 的设置快照只从这一处补默认值和收窄类型
  */
 export function normalize_setting_snapshot(value: unknown): SettingSnapshot {
   const record = read_setting_record(value);
   return {
+    agent_approval_mode: normalize_agent_approval_mode(record["agent_approval_mode"]),
     app_language: normalize_app_language(record["app_language"]),
     source_language: read_string_setting(record["source_language"], "source_language"),
     target_language: read_string_setting(record["target_language"], "target_language"),

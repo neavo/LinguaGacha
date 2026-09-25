@@ -238,7 +238,6 @@ function build_todo_port(
 function build_approval_port(): AgentWorkspaceApprovalPort {
   return {
     read_mode: () => "auto",
-    wait_for_decision: vi.fn(async () => ({ auto_revision: null })),
-    activate_auto: vi.fn(),
+    wait_for_decision: vi.fn(async () => undefined),
   };
 }

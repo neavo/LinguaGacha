@@ -45,7 +45,6 @@ const SUMMARY_FIELDS = [
 const WRITE_DECISIONS = [
   ["reject", "agent_page.approval.reject"],
   ["allow_once", "agent_page.approval.allow_once"],
-  ["allow_session", "agent_page.approval.allow_session"],
 ] as const satisfies readonly (readonly [AgentWriteApprovalDecision, LocaleKey])[];
 
 type QuestionDecision = Extract<AgentPendingDecision, { kind: "question" }>;
@@ -182,7 +181,7 @@ function AgentQuestionDecision(props: {
   );
 }
 
-/** 写入授权展示后端冻结的摘要与三种即时裁决。 */
+/** 写入授权展示后端冻结的摘要与当前批次的两种裁决。 */
 function AgentWriteDecision(props: {
   decision: WriteDecision;
   countdown: AgentDecisionCountdownSnapshot;

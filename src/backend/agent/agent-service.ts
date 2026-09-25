@@ -1,3 +1,4 @@
+import { normalize_agent_approval_mode } from "../../domain/setting";
 import type { AgentSkillsService } from "./agent-skills-service";
 import type { AgentFilesResponse } from "../../shared/agent-reference";
 import type { AgentImageService } from "./agent-image-service";
@@ -35,7 +36,6 @@ import {
   normalize_agent_message_input,
   normalize_agent_revision_request,
   type AgentAssistantMessageParts,
-  type AgentApprovalMode,
   type AgentWorkspaceLinkResult,
   type AgentCommandAck,
   type AgentContextSnapshot,
@@ -221,8 +221,6 @@ export class AgentService {
   private translation_paused_result: BatchTranslationResult | null = null; // 用户停止后在当前 round 内暂停翻译能力
   private runtime_generation = 0; // stop/reset/dispose 统一令迟到异步阶段失效
   private state: AgentSessionState = "idle"; // 只表达当前回合是否运行，结果归各条目
-  private approval_mode_revision = 0; // 显式设置优先于较早批次提交后的自动模式回写
-  private approval_mode: AgentApprovalMode = "manual"; // 当前任务的工程写入审批策略
   private entries: AgentEntry[] = []; // 本次 reset 以来唯一的公开时间线事实
   private context: AgentContextSnapshot = { tokens: null, compactable: false, limits: null }; // 模型历史估算与手动压缩能力的同源快照
   private removed_usage: AgentUsageSnapshot = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }; // 历史修订移出 SDK 会话的已发生用量
@@ -337,7 +335,6 @@ export class AgentService {
       sessionId: this.session_id,
       revision: this.revision,
       state: this.state,
-      approvalMode: this.approval_mode,
       pendingDecision: this.decisions.read_pending(),
       entries: structuredClone(this.entries),
       skills: this.get_skill_snapshot(),
@@ -347,19 +344,6 @@ export class AgentService {
       usage: { ...this.usage },
       tokenSpeed: structuredClone(this.token_speed_snapshot),
     };
-  }
-
-  /** 更新当前 Agent 任务的写入请求审批模式；reset、工程切换和应用重启都会回到手动。 */
-  public set_approval_mode(request: JsonRecord): AgentCommandAck {
-    this.assert_not_disposed();
-    if (this.session_reset !== null) throw new AppErrors.AppError("runtime.busy");
-    const approval_mode = read_agent_approval_mode(request);
-    this.approval_mode_revision += 1;
-    if (this.approval_mode !== approval_mode) {
-      this.approval_mode = approval_mode;
-      this.publish_event({ type: "approval_mode", approvalMode: approval_mode });
-    }
-    return this.get_acknowledgement();
   }
 
   /** 普通问题的决定只恢复 ask_user，不建立公开 user 消息。 */
@@ -1812,8 +1796,6 @@ export class AgentService {
     const settlement = this.runtime_settlement;
     this.runtime = null;
     this.state = "idle";
-    this.approval_mode = "manual";
-    this.approval_mode_revision += 1;
     this.decisions.reset();
     this.entries = [];
     this.token_speed.reset();
@@ -1976,12 +1958,12 @@ export class AgentService {
     };
   }
 
-  /** workspace_apply 的授权模式与用户决定在 AgentService 边界汇合。 */
+  /** `workspace_apply` 读取应用审批偏好，当前批次决定由会话协调器持有。 */
   private workspace_approval_port(): AgentWorkspaceApprovalPort {
     return {
-      read_mode: () => this.approval_mode,
+      read_mode: () =>
+        normalize_agent_approval_mode(this.settings.read_setting()["agent_approval_mode"]),
       wait_for_decision: async (tool_call_id, summary, signal) => {
-        const mode_revision = this.approval_mode_revision;
         const decision = await this.decisions.wait_for_write_approval(
           tool_call_id,
           summary,
@@ -1990,12 +1972,6 @@ export class AgentService {
         if (decision === "reject") {
           throw new AgentToolError({ code: "approval_denied", action: "await_user" });
         }
-        return { auto_revision: decision === "allow_session" ? mode_revision : null };
-      },
-      activate_auto: (mode_revision) => {
-        if (mode_revision !== this.approval_mode_revision) return;
-        this.approval_mode = "auto";
-        this.publish_event({ type: "approval_mode", approvalMode: "auto" });
       },
     };
   }
@@ -2029,15 +2005,6 @@ function read_queue_id(request: JsonRecord): string {
     throw agent_queue_validation_error("agent_input_queue_invalid_id");
   }
   return id;
-}
-
-/** 审批模式是公开协议窄枚举，拒绝缺失、布尔值和未知字符串。 */
-function read_agent_approval_mode(request: JsonRecord): AgentApprovalMode {
-  const value = request["approvalMode"];
-  if (value === "manual" || value === "auto") return value;
-  throw new AppErrors.AppError("request.validation_failed", {
-    diagnostic_context: { reason: "agent_approval_mode_invalid" },
-  });
 }
 
 /** 修改请求在服务边界拆出身份与待归一化消息。 */

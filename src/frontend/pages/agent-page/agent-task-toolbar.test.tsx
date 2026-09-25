@@ -110,6 +110,7 @@ describe("AgentTaskToolbar", () => {
             disconnected={false}
             on_reset={vi.fn()}
             on_agent_model_select={vi.fn()}
+            on_approval_mode_change={vi.fn()}
             {...props}
           />
         </TooltipProvider>,

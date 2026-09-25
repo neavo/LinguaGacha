@@ -67,16 +67,35 @@ describe("AppSettingsCommandService", () => {
   it("运行中可保存应用设置，工程设置在持久化前被拒绝", async () => {
     const f = create_service();
     const lease = f.gate.begin_runtime("agent");
-    await f.service.update({ request_timeout: 600 });
+    await expect(
+      f.service.update({ request_timeout: 600, agent_approval_mode: "auto" }),
+    ).resolves.toMatchObject({
+      settings: { agent_approval_mode: "auto" },
+      accepted: true,
+      changes: [],
+    });
     await expect(f.service.update({ source_language: "EN" })).rejects.toMatchObject({
       code: "runtime.busy",
     });
     expect(f.settings.read_setting()).toMatchObject({
       request_timeout: 600,
+      agent_approval_mode: "auto",
       source_language: "JA",
     });
     expect(f.database.get_all_meta(f.project_path)).toMatchObject({ source_language: "JA" });
+    expect(f.on_commit).not.toHaveBeenCalled();
     f.gate.finish_runtime(lease);
+  });
+
+  it("拒绝非法审批模式并保留已保存的模式", async () => {
+    const f = create_service();
+    await f.service.update({ agent_approval_mode: "auto" });
+    f.publish.mockClear();
+    await expect(f.service.update({ agent_approval_mode: "unknown" })).rejects.toMatchObject({
+      code: "request.validation_failed",
+    });
+    expect(f.settings.read_setting()["agent_approval_mode"]).toBe("auto");
+    expect(f.publish).not.toHaveBeenCalled();
   });
 
   it("没有工程时语言只保存为应用设置", async () => {
@@ -126,10 +145,14 @@ describe("AppSettingsCommandService", () => {
 
   it("数据库提交失败补偿配置，释放租约且不发布成功事件", async () => {
     const f = create_service();
+    const failure = new Error("disk failure");
     vi.spyOn(f.database, "upsert_meta_entries").mockImplementationOnce(() => {
-      throw new Error("disk failure");
+      throw failure;
     });
-    await expect(f.service.update({ target_language: "EN" })).rejects.toThrow("disk failure");
+    await expect(f.service.update({ target_language: "EN" })).rejects.toMatchObject({
+      code: "runtime.internal_invariant",
+      cause: failure,
+    });
     expect(f.settings.read_setting()).toMatchObject({ target_language: "ZH" });
     expect(f.database.get_all_meta(f.project_path)).toMatchObject({ target_language: "ZH" });
     expect(f.publish).not.toHaveBeenCalled();

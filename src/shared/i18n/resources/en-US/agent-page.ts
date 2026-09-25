@@ -86,7 +86,6 @@ export const en_us_agent_page = {
     },
     reject: "Reject",
     allow_once: "Allow this write",
-    allow_session: "Allow this and all later writes in this session",
   },
   decision: {
     paused_remaining: "Paused · {time} remaining",

@@ -384,7 +384,6 @@ describe("ApiGatewayServer", () => {
       get_snapshot: vi.fn(() => ({
         revision: 0,
         state: "idle",
-        approvalMode: "manual",
         pendingDecision: null,
         entries: [],
         skills: [],
@@ -393,7 +392,6 @@ describe("ApiGatewayServer", () => {
         context: { tokens: null, compactable: false, limits: null },
       })),
       send_message: vi.fn(),
-      set_approval_mode: vi.fn(),
       resolve_question: vi.fn(),
       resolve_write_approval: vi.fn(),
       update_queued_message: vi.fn(),

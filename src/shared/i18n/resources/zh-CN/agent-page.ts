@@ -86,7 +86,6 @@ export const zh_cn_agent_page = {
     },
     reject: "拒绝",
     allow_once: "允许本次写入",
-    allow_session: "允许本次及本会话后续的全部写入",
   },
   decision: {
     paused_remaining: "已暂停 · 剩余时间 {time}",
