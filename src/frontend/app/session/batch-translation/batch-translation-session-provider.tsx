@@ -1,7 +1,7 @@
 import { useProjectTranslationStats } from "@frontend/app/session/project-translation-stats-context";
 import { BatchTranslationDetailSheet } from "@frontend/features/batch-translation/batch-translation-detail-sheet";
 import { build_translation_task_detail_display } from "@frontend/features/batch-translation/batch-translation-display";
-import { useMemo, type ReactNode } from "react";
+import { type JSX, useMemo, type ReactNode } from "react";
 import { useI18n } from "@frontend/app/locale/locale-context";
 import { useBatchTranslationTask } from "@frontend/app/session/batch-translation/use-batch-translation-task";
 import type { TranslationTaskConfirmState } from "@shared/batch-translation/batch-translation";

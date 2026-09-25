@@ -52,10 +52,7 @@ export function format_console_log(
   const time_text = format_console_time_key(created_at);
   const level_text = payload.level.toUpperCase().padEnd(CONSOLE_LEVEL_COLUMN_WIDTH, " ");
   const prefix = build_console_prefix(time_text, payload.level, level_text);
-  const message = format_log_readable_text({
-    content: payload.content,
-    error: payload.error,
-  });
+  const message = format_log_readable_text(payload);
   const message_text = format_console_message_lines(message, resolve_console_columns(options));
   return `${prefix}${message_text}\n`;
 }
@@ -67,6 +64,7 @@ function format_console_time_key(date: Date): string {
   return `${hours}:${minutes}:${seconds}`;
 }
 
+/** 已有 ANSI 样式的消息保持原样，普通消息才按词元着色。 */
 function highlight_console_message(message: string): string {
   if (message.includes(ANSI_SEQUENCE_PREFIX)) {
     return message;
@@ -76,6 +74,7 @@ function highlight_console_message(message: string): string {
   });
 }
 
+/** 折行先扣除日志前缀宽度，续行与正文起点对齐。 */
 function format_console_message_lines(message: string, columns: number | null): string {
   const indent_width = resolve_console_message_indent_width();
   const indent = " ".repeat(indent_width);
@@ -110,6 +109,7 @@ function resolve_console_message_indent_width(): number {
   );
 }
 
+/** 显式配置优先，其次读取终端、环境变量和宿主探测结果。 */
 function resolve_console_columns(options: ConsoleLogFormatOptions): number | null {
   const columns =
     options.columns ?? process.stdout.columns ?? read_env_columns() ?? read_host_console_columns();
@@ -124,6 +124,7 @@ function read_env_columns(): number | undefined {
   return Number.isFinite(columns) && columns > 0 ? columns : undefined;
 }
 
+/** 短期缓存宿主探测结果，避免每条日志都启动子进程。 */
 function read_host_console_columns(): number | null {
   const now = Date.now();
   if (console_columns_cache !== null && console_columns_cache.expires_at > now) {
@@ -139,6 +140,7 @@ function read_host_console_columns(): number | null {
   return value;
 }
 
+/** 终端不可访问时返回缺省值，日志格式化继续使用保守宽度。 */
 function read_windows_console_columns(): number | null {
   try {
     const output = execFileSync("cmd.exe", ["/d", "/c", "mode con"], {
@@ -153,6 +155,7 @@ function read_windows_console_columns(): number | null {
   }
 }
 
+/** 终端能力查询失败时交由调用方选择缺省宽度。 */
 function read_posix_console_columns(): number | null {
   try {
     const output = execFileSync("tput", ["cols"], {

@@ -1,3 +1,4 @@
+import type { JSX } from "react";
 import { AppContentState } from "@frontend/widgets/app-content-state";
 import "@frontend/pages/text-replacement-page/text-replacement-page.css";
 import type { ScreenComponentProps } from "@frontend/app/navigation/types";

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { type JSX, useState } from "react";
 import { useI18n } from "@frontend/app/locale/locale-context";
 import { push_toast } from "@frontend/app/feedback/desktop-toast";
 import { Input } from "@frontend/shadcn/input";

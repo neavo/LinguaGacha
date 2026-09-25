@@ -1,3 +1,4 @@
+import type { JSX } from "react";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@frontend/shadcn/tooltip";
 import "@frontend/widgets/segmented-progress/segmented-progress.css";
 

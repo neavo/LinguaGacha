@@ -1,5 +1,5 @@
 import { ProofreadingDetailLayout } from "./proofreading-detail-layout";
-import { useEffect, useRef } from "react";
+import { type JSX, useEffect, useRef } from "react";
 import { BookOpenText, Eraser, ListChecks, RefreshCcw } from "lucide-react";
 
 import { ITEM_MANUAL_STATUSES, type ItemManualStatus } from "@domain/item";

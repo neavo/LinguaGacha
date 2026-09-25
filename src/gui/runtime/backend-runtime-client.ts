@@ -223,6 +223,7 @@ function to_error(value: unknown): Error {
   const error = normalize_log_error(value, "Backend runtime 调用失败。");
   const result = new Error(error.message);
   result.name = error.name ?? "BackendRuntimeError";
-  result.stack = error.stack;
+  if (error.stack === undefined) delete result.stack;
+  else result.stack = error.stack;
   return result;
 }

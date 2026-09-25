@@ -1,22 +1,12 @@
 {
+  "extends": "./tsconfig.base.json",
   "compilerOptions": {
-    "composite": true,
-    "module": "ESNext",
-    "moduleResolution": "bundler",
-    "noUncheckedSideEffectImports": true,
-    "noUnusedLocals": true,
-    "noUnusedParameters": true,
-    "resolveJsonModule": true,
-    "skipLibCheck": true,
-    "strict": true,
-    "target": "ES2023",
-    "tsBuildInfoFile": "./build/tsconfig.node.tsbuildinfo",
-    "verbatimModuleSyntax": true,
-    "types": ["electron-vite/node"]
+    "lib": ["ES2025", "DOM", "DOM.Iterable"],
+    "types": ["node", "electron-vite/node", "vite/client"],
+    "tsBuildInfoFile": "./build/tsconfig.node.tsbuildinfo"
   },
   "include": [
     "buildtools/**/*.ts",
-    "src/*.test.ts",
     "src/backend",
     "src/cli",
     "src/domain",
@@ -24,8 +14,7 @@
     "src/gui",
     "src/index.ts",
     "src/native",
-    "src/shared",
-    "src/test",
-    "package.json"
-  ]
+    "src/shared"
+  ],
+  "exclude": ["**/*.test.ts", "**/*.test.tsx", "src/test"]
 }

@@ -1,3 +1,4 @@
+import type { JSX } from "react";
 import { FileDown, FileUp, Plus, Trash2 } from "lucide-react";
 
 import { useActionShortcut } from "@frontend/widgets/interactions/use-action-shortcut";

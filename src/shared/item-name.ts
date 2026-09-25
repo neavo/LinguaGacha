@@ -3,7 +3,7 @@ import { Item, type ItemNameField } from "../domain/item";
 type ResolveExportItemNameInput = {
   name_src: ItemNameField | undefined;
   name_dst: ItemNameField | undefined;
-  write_translated_name_fields_to_file?: boolean;
+  write_translated_name_fields_to_file?: boolean | undefined; // 缺省与 undefined 均采用译名，只有 false 明确选择原名。
 };
 
 // 姓名数组只有第 0 槽是当前可见姓名，后续槽位作为格式附加信息保留。

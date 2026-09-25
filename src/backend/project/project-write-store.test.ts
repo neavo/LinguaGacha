@@ -855,13 +855,13 @@ describe("ProjectWriteStore", () => {
         updatedSections: updated_sections as ProjectChangeEvent["updatedSections"],
         ...(payload["items"] === undefined
           ? {}
-          : { items: payload["items"] as ProjectChangeEvent["items"] }),
+          : { items: payload["items"] as NonNullable<ProjectChangeEvent["items"]> }),
         ...(payload["files"] === undefined
           ? {}
-          : { files: payload["files"] as ProjectChangeEvent["files"] }),
+          : { files: payload["files"] as NonNullable<ProjectChangeEvent["files"]> }),
         ...(payload["sections"] === undefined
           ? {}
-          : { sections: payload["sections"] as ProjectChangeEvent["sections"] }),
+          : { sections: payload["sections"] as NonNullable<ProjectChangeEvent["sections"]> }),
       };
     });
   }

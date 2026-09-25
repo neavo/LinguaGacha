@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type KeyboardEvent } from "react";
+import { type JSX, useEffect, useMemo, useState, type KeyboardEvent } from "react";
 
 import { push_toast } from "@frontend/app/feedback/desktop-toast";
 import { parse_bounded_setting_number_draft } from "@frontend/features/settings-editor/setting-number-draft";

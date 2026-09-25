@@ -242,7 +242,7 @@ export async function api_fetch<data_type>(
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JsonTool.stringifyStrict(body),
-    signal,
+    ...(signal === undefined ? {} : { signal }),
   });
 }
 
@@ -256,7 +256,7 @@ export async function api_upload<data_type>(
     method: "POST",
     headers: { "Content-Type": "application/octet-stream" },
     body: file,
-    signal,
+    ...(signal === undefined ? {} : { signal }),
   });
 }
 
@@ -378,18 +378,16 @@ function normalize_log_detail(payload: unknown): LogDetail | null {
     level: normalize_log_level(detail["level"]),
     source: detail["source"],
     content,
-    error:
-      typeof detail["error"] === "object" &&
-      detail["error"] !== null &&
-      !Array.isArray(detail["error"])
-        ? normalize_log_error(detail["error"], "unknown_log_error")
-        : undefined,
-    context:
-      typeof detail["context"] === "object" &&
-      detail["context"] !== null &&
-      !Array.isArray(detail["context"])
-        ? { ...(detail["context"] as Record<string, unknown>) }
-        : undefined,
+    ...(typeof detail["error"] === "object" &&
+    detail["error"] !== null &&
+    !Array.isArray(detail["error"])
+      ? { error: normalize_log_error(detail["error"], "unknown_log_error") }
+      : {}),
+    ...(typeof detail["context"] === "object" &&
+    detail["context"] !== null &&
+    !Array.isArray(detail["context"])
+      ? { context: { ...(detail["context"] as Record<string, unknown>) } }
+      : {}),
   };
 }
 

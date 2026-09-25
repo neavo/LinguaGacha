@@ -110,7 +110,7 @@ export function reconcile_result_snapshot<Query, Id extends string>(args: {
   previous_snapshot: ResultSnapshot<Query, Id> | null;
   current_snapshot: ResultSnapshot<Query, Id>;
   valid_id_set: ReadonlySet<Id>;
-  refresh_policy?: ResultRefreshPolicy;
+  refresh_policy?: ResultRefreshPolicy | undefined;
 }): ResultSnapshot<Query, Id> {
   const refresh_policy = args.refresh_policy ?? PRESERVE_RESULT_REFRESH;
   if (args.previous_snapshot === null || should_rebuild_result(refresh_policy)) {

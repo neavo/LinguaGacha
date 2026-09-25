@@ -916,9 +916,11 @@ export function createProofreadingReader() {
         state.file_order = previous.file_order;
         state.page_by_id = previous.page_by_id;
         state.revisions = {
-          ...state.revisions,
+          items: state.revisions.items,
+          quality: state.revisions.quality,
+          proofreading: state.revisions.proofreading,
           files: previous.revisions.files,
-          pdf: previous.revisions.pdf,
+          ...(previous.revisions.pdf === undefined ? {} : { pdf: previous.revisions.pdf }),
         };
         refresh_files(state);
       }
@@ -953,9 +955,11 @@ export function createProofreadingReader() {
       }
 
       current_state.revisions = {
-        ...revisions,
+        items: revisions.items,
+        quality: revisions.quality,
+        proofreading: revisions.proofreading,
         files: current_state.revisions.files,
-        pdf: current_state.revisions.pdf,
+        ...(current_state.revisions.pdf === undefined ? {} : { pdf: current_state.revisions.pdf }),
       };
       current_state.total_item_count = input.total_item_count;
 
@@ -1238,7 +1242,7 @@ export function createProofreadingReader() {
           index >= 0 && index < natural_row_ids.length && found_count < PROOFREADING_CONTEXT_RADIUS;
           index += direction
         ) {
-          const item_id = natural_row_ids[index];
+          const item_id = natural_row_ids[index]!; // 循环边界保证索引位于自然顺序列表内。
           const item = current_state.item_by_id.get(item_id);
           if (item === undefined) {
             continue;

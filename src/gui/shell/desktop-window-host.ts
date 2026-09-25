@@ -424,9 +424,7 @@ export function load_renderer_entry(
   }
   return target_window.loadFile(
     path.join(resolve_renderer_dist(desktop_bundle_dir), "index.html"),
-    {
-      query,
-    },
+    query === undefined ? {} : { query },
   );
 }
 

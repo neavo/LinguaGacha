@@ -1,5 +1,5 @@
 import { Tooltip, TooltipContent, TooltipTrigger } from "@frontend/shadcn/tooltip";
-import { useMemo, useState } from "react";
+import { type JSX, useMemo, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { Popover } from "@base-ui/react/popover";
 import { ChevronDown, ChevronRight, File, Files, Folder, FolderOpen } from "lucide-react";

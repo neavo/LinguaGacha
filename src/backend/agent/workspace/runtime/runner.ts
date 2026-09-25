@@ -306,12 +306,11 @@ export class AgentWorkspaceRunner {
               exitCode,
               signal: exitSignal ?? null,
               todos,
-              failure:
-                terminal_error === timeout_error
-                  ? timeout_error.message
-                  : exitCode !== 0
-                    ? "Workspace program exited unsuccessfully."
-                    : undefined,
+              ...(terminal_error === timeout_error
+                ? { failure: timeout_error.message }
+                : exitCode !== 0
+                  ? { failure: "Workspace program exited unsuccessfully." }
+                  : {}),
             });
         });
       });

@@ -195,7 +195,7 @@ export class WebSearchService {
     if (existing !== undefined) return existing;
     const client = new Client({ name: "LinguaGacha", version: this.client_version });
     const transport = new StreamableHTTPClientTransport(new URL(spec.url), {
-      requestInit: { headers: spec.headers },
+      requestInit: spec.headers === undefined ? {} : { headers: spec.headers },
     });
     this.clients.set(spec.name, client);
     // 迟到的旧连接关闭通知只能释放自身，不能删除已经替换的新连接。

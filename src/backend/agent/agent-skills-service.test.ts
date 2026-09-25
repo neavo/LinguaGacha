@@ -297,7 +297,7 @@ describe("技能管理", () => {
         f.service.save_file({ ...skill, path: file.path, revision: file.revision, text }),
       ),
     );
-    expect(results[0].status).toBe("fulfilled");
+    expect(results[0]).toMatchObject({ status: "fulfilled" });
     expect(results[1]).toMatchObject({
       status: "rejected",
       reason: { code: "data.revision_conflict" },

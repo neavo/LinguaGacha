@@ -27,7 +27,7 @@ export type BackendRuntimePort = {
 type PendingHostRequest = {
   resolve: (value: unknown) => void;
   reject: (reason?: unknown) => void;
-  signal?: AbortSignal; // Agent stop 的原始取消来源
+  signal: AbortSignal | undefined; // Agent stop 的原始取消来源
   abortListener?: () => void; // 结算时必须解绑，避免长会话积累监听器
 };
 
@@ -188,6 +188,7 @@ function to_error(error: LogError): Error {
   const normalized = normalize_log_error(error, "Backend runtime 宿主调用失败。");
   const result = new Error(normalized.message);
   result.name = normalized.name ?? "BackendRuntimeHostError";
-  result.stack = normalized.stack;
+  if (normalized.stack === undefined) delete result.stack;
+  else result.stack = normalized.stack;
   return result;
 }

@@ -2,7 +2,7 @@ import {
   normalize_batch_translation_progress,
   type BatchTranslationSnapshot,
 } from "@domain/batch-translation";
-import { act, createElement } from "react";
+import { type JSX, act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -1253,7 +1253,7 @@ describe("useProofreadingPageState", () => {
     const create_query_view = (view_id: string, compressed_src: string) => ({
       ...create_list_view(),
       view_id,
-      window_rows: [{ ...create_list_view().window_rows[0], compressed_src }],
+      window_rows: [{ ...create_list_view().window_rows[0]!, compressed_src }],
     });
     proofreading_client_fixture.current.build_proofreading_list_view = vi
       .fn()

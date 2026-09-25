@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { type JSX, useEffect, useState } from "react";
 import { ProofreadingFilePicker } from "./components/proofreading-file-picker";
 import { ProofreadingPagePreview } from "./components/proofreading-page-preview";
 import { Funnel } from "lucide-react";

@@ -7,12 +7,13 @@ type AppButtonProps = Omit<React.ComponentProps<typeof Button>, "size" | "varian
   size?: "default" | "xs" | "sm" | "lg" | "toolbar" | "icon" | "icon-xs" | "icon-sm" | "icon-lg";
 };
 
+/** 统一应用按钮尺寸词表，并暴露 `data-size` 供组合控件样式消费。 */
 function AppButton({
   className,
   variant = "default",
   size = "default",
   ...props
-}: AppButtonProps): JSX.Element {
+}: AppButtonProps): React.JSX.Element {
   return <Button variant={variant} size={size} data-size={size} className={className} {...props} />;
 }
 

@@ -24,7 +24,7 @@ export interface CLIJsonStatusReporterOptions {
 interface CLIProgressInput {
   status: string;
   progress: JsonRecord;
-  run_progress?: JsonRecord;
+  run_progress?: JsonRecord | undefined;
 }
 
 /**

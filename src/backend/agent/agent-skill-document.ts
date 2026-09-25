@@ -8,7 +8,7 @@ function parse_skill_document(text: string) {
   const match = /^(?:\uFEFF)?---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/.exec(text);
   if (!match)
     throw new AppError("file.invalid_structure", { diagnostic_context: { field: "frontmatter" } });
-  const yaml = parseDocument(match[1]);
+  const yaml = parseDocument(match[1]!);
   if (yaml.errors.length) throw new AppError("file.invalid_structure", { cause: yaml.errors[0] });
   if (!isMap(yaml.contents))
     throw new AppError("file.invalid_structure", { diagnostic_context: { field: "frontmatter" } });

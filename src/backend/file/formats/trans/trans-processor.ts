@@ -239,11 +239,9 @@ export class NoneTransProcessor {
     const parameter_list = Array.isArray(parameter) ? parameter : [];
     const result = trans_record_array(parameter_list);
     for (const [index, is_blocked] of block.entries()) {
-      while (index >= result.length) {
-        result.push({});
-      }
-      result[index]["contextStr"] = context[index] ?? "";
-      result[index]["translation"] = is_blocked ? src : "";
+      const entry = (result[index] ??= {});
+      entry["contextStr"] = context[index] ?? "";
+      entry["translation"] = is_blocked ? src : "";
     }
     return result;
   }

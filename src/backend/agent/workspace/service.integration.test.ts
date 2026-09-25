@@ -292,7 +292,7 @@ it("PDF 零条目工程按页保存、隔离旧指纹，语言变化后重建工
       })["sectionRevisions"];
     await services.project.content.reset_files({
       rel_paths: ["book.pdf"],
-      expected_section_revisions: revision(),
+      expected_section_revisions: revision()!,
     });
     expect(
       read_document().pages.every(
@@ -302,7 +302,7 @@ it("PDF 零条目工程按页保存、隔离旧指纹，语言变化后重建工
     expect(read_document().pages).toHaveLength(3);
     await services.project.content.delete_files({
       rel_paths: ["book.pdf"],
-      expected_section_revisions: revision(),
+      expected_section_revisions: revision()!,
     });
     expect(resources.database.read_pdf_document(project_path, "book.pdf")).toBeNull();
     expect(resources.database.read_asset_content(project_path, "book.pdf")).toBeNull();

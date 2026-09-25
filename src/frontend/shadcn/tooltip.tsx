@@ -20,7 +20,7 @@ function TooltipProvider({
   delay = 0,
   children,
   ...props
-}: TooltipPrimitive.Provider.Props): JSX.Element {
+}: TooltipPrimitive.Provider.Props): React.JSX.Element {
   const [suppressed, set_suppressed] = React.useState(false);
   const pointer = React.useRef<{ x: number; y: number } | null>(null);
   useWindowDeactivation(() => set_suppressed(true));
@@ -58,7 +58,7 @@ function TooltipProvider({
 }
 
 /** 共享 handle 保持触发器身份，并承接窗口关闭与悬停恢复。 */
-function Tooltip({ disabled, handle, ...props }: TooltipPrimitive.Root.Props): JSX.Element {
+function Tooltip({ disabled, handle, ...props }: TooltipPrimitive.Root.Props): React.JSX.Element {
   const suppressed = React.useContext(TooltipWindowContext);
   const [local_handle] = React.useState(() => TooltipPrimitive.createHandle());
   const tooltip_handle = handle ?? local_handle;
@@ -79,7 +79,7 @@ function TooltipTrigger({
   disabled,
   onMouseMove,
   ...props
-}: TooltipPrimitive.Trigger.Props): JSX.Element {
+}: TooltipPrimitive.Trigger.Props): React.JSX.Element {
   const inherited = React.useContext(TooltipHandleContext);
   const suppressed = React.useContext(TooltipWindowContext);
   const generated_id = React.useId();
@@ -125,7 +125,7 @@ function TooltipContent({
   children,
   ...props
 }: TooltipPrimitive.Popup.Props &
-  Pick<TooltipPrimitive.Positioner.Props, "side" | "align" | "alignOffset">): JSX.Element {
+  Pick<TooltipPrimitive.Positioner.Props, "side" | "align" | "alignOffset">): React.JSX.Element {
   return (
     <TooltipPrimitive.Portal>
       <TooltipPrimitive.Positioner
@@ -153,7 +153,7 @@ function TooltipContent({
 }
 
 /** 外层承接禁用控件的悬停，并转交触发器注入的事件、属性和 ref。 */
-function TooltipTarget({ className, ...props }: React.ComponentProps<"span">): JSX.Element {
+function TooltipTarget({ className, ...props }: React.ComponentProps<"span">): React.JSX.Element {
   return <span {...props} className={cn("inline-flex", className)} />;
 }
 

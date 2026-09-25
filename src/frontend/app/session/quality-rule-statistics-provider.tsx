@@ -1,4 +1,12 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, type ReactNode } from "react";
+import {
+  type JSX,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  type ReactNode,
+} from "react";
 import { api_fetch } from "@frontend/app/desktop/desktop-api";
 import { useDesktopState, useProjectChangeSignal } from "@frontend/app/state/use-desktop-state";
 import {

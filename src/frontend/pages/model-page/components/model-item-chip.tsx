@@ -1,7 +1,7 @@
 import { useSortable } from "@dnd-kit/react/sortable";
 import { SORTABLE_OPTIONS } from "@frontend/widgets/interactions/sortable";
 import { ChevronDown, GripVertical } from "lucide-react";
-import type { ReactNode } from "react";
+import type { JSX, ReactNode } from "react";
 
 import type { ModelEntrySnapshot } from "@frontend/pages/model-page/types";
 import { AppButton } from "@frontend/widgets/app-button";

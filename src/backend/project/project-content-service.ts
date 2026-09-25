@@ -821,7 +821,7 @@ export class ProjectContentService {
       if (candidates === undefined || candidates.length === 0) {
         continue;
       }
-      const candidate = candidates[0];
+      const candidate = candidates[0]!; // 上方已排除空候选组，沿用组内首个结果。
       item.dst = candidate.dst;
       item.name_dst = candidate.name_dst;
       item.retry_count = candidate.retry_count;

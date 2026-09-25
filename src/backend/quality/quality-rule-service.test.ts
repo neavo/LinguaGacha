@@ -443,7 +443,7 @@ describe("QualityRuleService", () => {
           updatedSections: updated_sections as ProjectChangeEvent["updatedSections"],
           ...(payload.sections === undefined
             ? {}
-            : { sections: payload.sections as ProjectChangeEvent["sections"] }),
+            : { sections: payload.sections as NonNullable<ProjectChangeEvent["sections"]> }),
         };
       }),
     };

@@ -218,7 +218,7 @@ describe("AgentTimeline", () => {
     const replies = entries.filter((entry) => entry.kind === "assistant_message");
     for (const [index, reply] of replies.entries()) {
       const range = document.createRange();
-      range.selectNodeContents(messages[index]);
+      range.selectNodeContents(messages[index]!);
       await act(async () => {
         const selection = window.getSelection()!;
         selection.removeAllRanges();
@@ -294,7 +294,7 @@ describe("AgentTimeline", () => {
       ),
     ].filter((button) => button.textContent === "agent_page.action.edit");
     expect(edits).toHaveLength(1);
-    await act(async () => edits[0].click());
+    await act(async () => edits[0]!.click());
     expect(on_edit).toHaveBeenCalledWith(
       expect.objectContaining({ id: "assistant-final", kind: "assistant_message" }),
     );

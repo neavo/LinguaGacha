@@ -386,7 +386,7 @@ describe("ProofreadingCache", () => {
       sort_state: null,
     });
     revisions.items = 2;
-    items[0] = { ...items[0], dst: "生命值" };
+    items[0] = { ...items[0]!, dst: "生命值" };
 
     await cache.applyChange(create_delta_change(), revisions);
     const next_sync = await cache.sync({});

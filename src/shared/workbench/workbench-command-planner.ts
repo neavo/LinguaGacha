@@ -33,9 +33,10 @@ function normalize_file_record(value: unknown): WorkbenchPlannerFileRecord | nul
     return null;
   }
 
+  const { rel_path, file_type } = value as WorkbenchPlannerFileRecord;
   return {
-    rel_path: String((value as WorkbenchPlannerFileRecord).rel_path ?? "").trim(),
-    file_type: (value as WorkbenchPlannerFileRecord).file_type,
+    rel_path: String(rel_path ?? "").trim(),
+    ...(file_type === undefined ? {} : { file_type }),
   };
 }
 
@@ -77,22 +78,15 @@ function normalize_target_rel_paths(rel_paths: string[]): string[] {
 }
 
 // 每个 command 只携带它依赖的 section revision，由后端执行乐观锁。
-function build_expected_section_revisions(
-  section_revisions: WorkbenchSectionRevisions,
-  sections: WorkbenchCommandSection[],
-): Record<string, number> {
-  const expected_section_revisions: Record<string, number> = {};
-  for (const section of sections) {
-    expected_section_revisions[section] = section_revisions[section] ?? 0;
-  }
-  return expected_section_revisions;
-}
-
 function build_expected_revisions(
   state: WorkbenchCommandPlanningState,
   sections: WorkbenchCommandSection[],
 ): Record<string, number> {
-  return build_expected_section_revisions(state.section_revisions, sections);
+  const expected_section_revisions: Record<string, number> = {};
+  for (const section of sections) {
+    expected_section_revisions[section] = state.section_revisions[section] ?? 0;
+  }
+  return expected_section_revisions;
 }
 
 // 从完整运行态设置提取出工作台 planner 可消费的命令设置。

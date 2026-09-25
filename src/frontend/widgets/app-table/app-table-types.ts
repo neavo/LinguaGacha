@@ -103,11 +103,11 @@ export type AppTableProps<Row> = {
   anchor_row_id: string | null;
   sort_state: AppTableSortState | null;
   get_row_id: (row: Row, index: number) => string;
-  row_model?: AppTableRowModel<Row>;
+  row_model?: AppTableRowModel<Row> | undefined;
   // scroll_to_row 主动把目标行滚入视口，不改变表格选区或键盘焦点。
-  scroll_to_row?: AppTableScrollTarget;
+  scroll_to_row?: AppTableScrollTarget | undefined;
   // preserve_scroll_anchor 是数据刷新期间保持视觉偏移的滚动锚点。
-  preserve_scroll_anchor?: AppTableScrollAnchor;
+  preserve_scroll_anchor?: AppTableScrollAnchor | undefined;
   get_row_can_drag?: (row: Row, index: number) => boolean;
   on_selection_change: (payload: AppTableSelectionChange) => void;
   on_selection_error?: (error: unknown) => void;

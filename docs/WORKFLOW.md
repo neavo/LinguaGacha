@@ -33,9 +33,13 @@
 
 ### 静态检查入口
 
+- 宿主、渲染端和测试分别检查，共享源码在各消费环境下校验。TypeScript 只做类型检查，产物由构建工具生成。
+- 宿主保留 DOM 与 Vite 资源声明，覆盖 preload、发送到隔离渲染进程的函数及原始资源导入。
+- 根配置的前端别名供 shadcn 定位；完整类型解析映射归 `tsconfig.base.json`，运行解析归 `buildtools/vite/project-paths.ts`。
+
 |触发条件|命令与范围|
 |---|---|
-|TypeScript 源码、类型、测试或影响其解析的配置变化|`npx tsc -b --noEmit`；本次运行 `npm run build` 时使用其内置 typecheck 结果|
+|TypeScript 源码、类型、测试或影响其解析的配置变化|`npm run typecheck`；本次运行 `npm run build` 时使用其内置类型检查结果|
 |lint 覆盖的源码、测试、脚本或规则配置变化|`npm run lint`，同时检查前端 `react/only-export-components` 导出边界|
 |`src/`、`buildtools/` 中受架构和错误规则检查的源码或规则实现变化|`npm run check`，覆盖错误契约及 GUI、前端、后端边界|
 |格式化脚本支持的源码、CSS、JSON 或相关配置变化|`npm run format -- --check <文件路径...>`；需要修复时对相同文件执行 `npm run format -- <文件路径...>` 后复查|

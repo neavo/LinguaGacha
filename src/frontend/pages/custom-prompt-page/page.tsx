@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { type JSX, useEffect } from "react";
 import { usePageLeave } from "@frontend/app/navigation/page-leave-context";
 import { AppContentState } from "@frontend/widgets/app-content-state";
 import "@frontend/pages/custom-prompt-page/custom-prompt-page.css";

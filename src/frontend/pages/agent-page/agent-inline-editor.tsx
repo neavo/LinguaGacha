@@ -1,5 +1,5 @@
 import { AgentInputDraft } from "@frontend/app/session/agent/agent-input-draft";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { type JSX, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import type { AgentMessageInput, AgentSkillSnapshot } from "@shared/agent";
 import type {

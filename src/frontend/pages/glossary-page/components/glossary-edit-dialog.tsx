@@ -1,3 +1,4 @@
+import type { JSX } from "react";
 import { CaseSensitive } from "lucide-react";
 
 import { useI18n } from "@frontend/app/locale/locale-context";

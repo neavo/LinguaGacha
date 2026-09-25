@@ -44,7 +44,7 @@ export class BackendResources {
     const metadata = new AppMetadataService(paths);
     const log_manager = new LogManager({
       logDir: paths.get_log_dir(),
-      targets: options.logTargets,
+      ...(options.logTargets === undefined ? {} : { targets: options.logTargets }),
     });
     const database = new ProjectDatabase();
     let system_proxy_http_client: SystemProxyHttpClient | null = null;

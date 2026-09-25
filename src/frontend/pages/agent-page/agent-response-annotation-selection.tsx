@@ -1,4 +1,12 @@
-import { useCallback, useEffect, useEffectEvent, useRef, useState, type ReactNode } from "react";
+import {
+  type JSX,
+  useCallback,
+  useEffect,
+  useEffectEvent,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import { createPortal } from "react-dom";
 import { MessageSquareQuote } from "lucide-react";
 import {
@@ -22,7 +30,9 @@ const EXCLUDED =
 
 type AnnotationTarget = {
   selectedText: string;
-  anchor: Required<VirtualElement>; // 选区与编辑快照都提供完整定位几何。
+  anchor: Required<VirtualElement> & {
+    getClientRects: NonNullable<VirtualElement["getClientRects"]>;
+  }; // 选区与编辑快照都提供完整定位几何。
   message: HTMLElement; // 回复拥有选择范围，也承接批注关闭后的焦点。
 };
 type AnnotationSelection = AnnotationTarget &

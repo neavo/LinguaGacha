@@ -1,5 +1,5 @@
 import { LoaderCircle } from "lucide-react";
-import { useEffect, useMemo, useRef } from "react";
+import { type JSX, useEffect, useMemo, useRef } from "react";
 
 import { useI18n } from "@frontend/app/locale/locale-context";
 import { useDebouncedValue } from "@frontend/widgets/interactions/use-debounce";
@@ -20,6 +20,7 @@ type ModelSelectorDialogProps = {
   onSelectModelId: (model_name: string) => Promise<void>;
   onClose: () => void;
 };
+/** 输入立即回显，模型列表按防抖后的关键词执行本地筛选。 */
 export function ModelSelectorDialog(props: ModelSelectorDialogProps): JSX.Element | null {
   const { t } = useI18n();
   const requested_model_id_ref = useRef<string | null>(null);

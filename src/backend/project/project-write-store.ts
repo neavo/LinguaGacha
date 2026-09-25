@@ -305,15 +305,17 @@ export class ProjectWriteStore {
         : undefined);
     return await this.commit_runtime_change({
       projectPath: request.projectPath,
-      expectedSectionRevisions: request.expectedSectionRevisions,
+      ...(request.expectedSectionRevisions === undefined
+        ? {}
+        : { expectedSectionRevisions: request.expectedSectionRevisions }),
       requireExpectedSectionRevisions: request.requireExpectedSectionRevisions ?? true,
       revisionSections: request.revisionSections,
       source: request.source,
       updatedSections: request.updatedSections,
-      items: items_payload,
-      files: files_payload,
-      sections: request.sections,
-      sectionModes: request.sectionModes,
+      ...(items_payload === undefined ? {} : { items: items_payload }),
+      ...(files_payload === undefined ? {} : { files: files_payload }),
+      ...(request.sections === undefined ? {} : { sections: request.sections }),
+      ...(request.sectionModes === undefined ? {} : { sectionModes: request.sectionModes }),
       prepare: (revision_context) => {
         const pdf_changed =
           (request.resetPDFPaths?.length ?? 0) > 0 ||
@@ -1051,8 +1053,8 @@ export class ProjectWriteStore {
       events.push({
         ...common,
         type: "project.items.changed",
-        items: request.items,
-        files: request.files,
+        ...(request.items === undefined ? {} : { items: request.items }),
+        ...(request.files === undefined ? {} : { files: request.files }),
         scope: request.items?.changedIds === undefined ? "items-full" : "items-partial",
       });
     }

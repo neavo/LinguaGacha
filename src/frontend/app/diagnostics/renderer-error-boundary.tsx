@@ -29,7 +29,7 @@ export class RendererErrorBoundary extends Component<
   /**
    * 组件栈只作为诊断上下文写日志，不暴露到用户界面。
    */
-  public componentDidCatch(error: Error, info: ErrorInfo): void {
+  public override componentDidCatch(error: Error, info: ErrorInfo): void {
     this.setState({ has_error: true });
     capture_renderer_error(error, {
       source: "render",
@@ -40,7 +40,7 @@ export class RendererErrorBoundary extends Component<
   }
 
   // render 是跨边界副作用入口，集中处理调用时序和错误载荷组装。
-  public render(): ReactNode {
+  public override render(): ReactNode {
     if (!this.state.has_error) {
       return this.props.children;
     }
@@ -60,6 +60,7 @@ export class RendererErrorBoundary extends Component<
   }
 }
 
+/** 错误边界可能在语言 Provider 之外渲染，故从宿主语言选择兜底文案。 */
 function read_error_boundary_locale(): Locale {
   return resolve_app_locale(resolve_app_language_from_locale_tag(window.navigator.language));
 }

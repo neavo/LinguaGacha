@@ -1,5 +1,5 @@
 import { ThemeProvider, useTheme } from "next-themes";
-import { useEffect, useState, type ReactNode } from "react";
+import { type JSX, useEffect, useState, type ReactNode } from "react";
 import type { ResolvedThemeMode } from "@gui/bridge-types";
 import {
   type ThemePreference,

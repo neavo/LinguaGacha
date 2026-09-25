@@ -1,0 +1,31 @@
+{
+  "compilerOptions": {
+    "target": "ES2025",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "moduleDetection": "force",
+    "noEmit": true,
+    "incremental": true,
+    "strict": true,
+    "verbatimModuleSyntax": true,
+    "noUncheckedSideEffectImports": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+    "noImplicitOverride": true,
+    "noFallthroughCasesInSwitch": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "resolveJsonModule": true,
+    "skipLibCheck": true,
+    "paths": {
+      "@backend/api/api-base-url": ["./src/backend/api/api-base-url.ts"],
+      "@domain/*": ["./src/domain/*"],
+      "@frontend/*": ["./src/frontend/*"],
+      "@gui/bridge-api": ["./src/gui/bridge/bridge-api.ts"],
+      "@gui/bridge-types": ["./src/gui/bridge/bridge-types.ts"],
+      "@gui/ipc-contract": ["./src/gui/gui-ipc-contract.ts"],
+      "@gui/shell-contract": ["./src/gui/shell/shell-contract.ts"],
+      "@shared/*": ["./src/shared/*"]
+    }
+  }
+}

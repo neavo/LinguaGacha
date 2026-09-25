@@ -7,13 +7,14 @@
   "type": "module",
   "main": "build/dist-electron/index.js",
   "scripts": {
-    "build": "tsc -b --noEmit && electron-vite build --config buildtools/vite/electron.vite.config.ts && node buildtools/build-workspace.mjs && node buildtools/build-pdf-print.mjs && electron-builder --config buildtools/builder/electron-builder.config.ts",
+    "build": "npm run typecheck && electron-vite build --config buildtools/vite/electron.vite.config.ts && node buildtools/build-workspace.mjs && node buildtools/build-pdf-print.mjs && electron-builder --config buildtools/builder/electron-builder.config.ts",
     "check": "node ./buildtools/check/index.mjs",
     "dev": "node buildtools/build-workspace.mjs && node buildtools/build-pdf-print.mjs && electron-vite dev --config buildtools/vite/electron.vite.config.ts",
     "format": "node ./buildtools/format-related-files.mjs",
     "lint": "oxlint . && oxlint --react-plugin -A all -D react/only-export-components src/frontend",
-    "postinstall": "node ./node_modules/electron/install.js",
-    "test": "vitest run --config buildtools/vitest/vitest.config.ts"
+    "postinstall": "install-electron",
+    "test": "vitest run --config buildtools/vitest/vitest.config.ts",
+    "typecheck": "tsc -b"
   },
   "dependencies": {
     "@earendil-works/pi-agent-core": "^0.87.1",

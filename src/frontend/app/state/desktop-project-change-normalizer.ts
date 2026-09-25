@@ -54,6 +54,7 @@ export function normalize_project_change_event(
       }
     : undefined;
   const sections = normalize_project_change_sections(payload.sections);
+  const section_revisions = normalize_section_revisions(payload.sectionRevisions);
 
   return {
     eventId: String(payload.eventId ?? ""),
@@ -68,7 +69,7 @@ export function normalize_project_change_event(
         sections,
       },
     ],
-    sectionRevisions: normalize_section_revisions(payload.sectionRevisions),
+    ...(section_revisions === undefined ? {} : { sectionRevisions: section_revisions }),
   };
 }
 
@@ -79,6 +80,7 @@ export function is_project_change_record(value: unknown): value is Record<string
   return is_record(value);
 }
 
+/** 只接纳已知分段及对象载荷，供后续按载荷模式恢复状态。 */
 function normalize_project_change_sections(
   value: unknown,
 ): Partial<Record<ProjectStage, { payloadMode: ProjectChangePayloadMode; data: unknown }>> {
@@ -147,6 +149,7 @@ function normalize_record_map(value: unknown): Record<string, JsonRecord> {
   );
 }
 
+/** 条目身份只接纳正整数并去重，避免重复应用同一变化。 */
 function normalize_number_array(value: unknown): number[] {
   if (!Array.isArray(value)) {
     return [];

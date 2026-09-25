@@ -181,7 +181,7 @@ describe("SearchBar", () => {
           replace_text={options.replace_text ?? "梨"}
           replace_placeholder="替换为"
           replace_clear_label="清空替换"
-          replace_actions_disabled={options.replace_actions_disabled}
+          replace_actions_disabled={options.replace_actions_disabled === true}
           on_replace_text_change={() => undefined}
           replace_next_label="替换当前"
           replace_all_label="全部替换"

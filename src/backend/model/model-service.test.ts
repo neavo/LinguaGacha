@@ -140,7 +140,7 @@ describe("ModelService 配置管理", () => {
 
     const updated = read_request_model_snapshot(
       service.update_model({
-        model_id: copy["id"],
+        model_id: copy["id"]!,
         patch: { request: { extra_body: { options: { values: [9] } } }, api_key: "copy-key" },
       }),
     );
@@ -169,7 +169,7 @@ describe("ModelService 配置管理", () => {
     expect(new Set(group.map((model) => model["id"])).size).toBe(3);
     const copy_id = group.at(-1)!["id"];
     expect(
-      read_request_model_snapshot(reloaded.delete_model({ model_id: copy_id })).models.some(
+      read_request_model_snapshot(reloaded.delete_model({ model_id: copy_id! })).models.some(
         (model) => model["id"] === copy_id,
       ),
     ).toBe(false);
@@ -1241,11 +1241,19 @@ async function create_model_service(
       : {
           /** 记录模型操作的公开日志。 */
           info(message: string, payload?: Record<string, unknown>): void {
-            log_entries.push({ level: "info", message, payload });
+            log_entries.push({
+              level: "info",
+              message,
+              ...(payload === undefined ? {} : { payload }),
+            });
           },
           /** 保留模型修复警告供断言。 */
           warning(message: string, payload?: Record<string, unknown>): void {
-            log_entries.push({ level: "warning", message, payload });
+            log_entries.push({
+              level: "warning",
+              message,
+              ...(payload === undefined ? {} : { payload }),
+            });
           },
         };
   const runtime_gate = new RuntimeOperationGate();

@@ -1,4 +1,4 @@
-import { act, useEffect } from "react";
+import { type JSX, act, useEffect } from "react";
 import { createRoot } from "react-dom/client";
 import { expect, it, vi } from "vitest";
 import { ProjectSessionUiStateProvider } from "./project-session-ui-state-provider";

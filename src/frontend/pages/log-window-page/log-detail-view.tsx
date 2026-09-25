@@ -1,3 +1,4 @@
+import type { JSX } from "react";
 import type { LogDetail } from "@frontend/app/desktop/desktop-api";
 import { useI18n } from "@frontend/app/locale/locale-context";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@frontend/shadcn/tooltip";

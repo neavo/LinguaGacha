@@ -30,8 +30,8 @@ describe("Agent 工作区对象写入规则", () => {
     expect(
       project_agent_workspace_item({
         ...stored_item,
-        id: item_id,
-        row: row_number,
+        id: item_id!,
+        row: row_number!,
         name_src: null,
         name_dst: null,
       }),

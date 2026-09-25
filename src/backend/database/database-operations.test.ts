@@ -11,7 +11,7 @@ import { DatabaseSync } from "node:sqlite";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { JsonTool } from "../../shared/utils/json-tool";
-import { ZstdTool } from "../../shared/utils/zstd-tool";
+import { ZstdTool } from "./zstd-tool";
 import { migration_orchestrator } from "../migration/migration-orchestrator";
 import {
   PROJECT_DATABASE_APPLIED_WRITEBACK_MIGRATIONS_META_KEY,

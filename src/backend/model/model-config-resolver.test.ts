@@ -84,7 +84,7 @@ describe("model-config-resolver", () => {
     };
 
     const records = read_config_model_records(config);
-    records[0]["name"] = "调用方改名";
+    records[0]!["name"] = "调用方改名";
     records.push({ id: "model-2" });
 
     expect(model).toEqual({ id: "model-1", name: "原始模型" });

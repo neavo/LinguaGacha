@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import type { JSX, ReactNode } from "react";
 
 import { render_rich_text, type RichTextComponentMap } from "@frontend/app/locale/rich-text";
 import { cn } from "@frontend/shadcn/classnames";

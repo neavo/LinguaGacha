@@ -1,7 +1,7 @@
 import { AGENT_SKILL_MAIN_FILE, type AgentSkillFileEntry } from "@shared/agent-skills";
 import { SkillEditorToolbar, SkillEditorWorkspace } from "./skill-editor";
 import { personality_editor_extension } from "./skill-editor-extension";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { type JSX, useCallback, useEffect, useRef, useState } from "react";
 import type { AgentPersonality } from "@shared/agent-personality";
 import { useI18n } from "@frontend/app/locale/locale-context";
 import { usePageLeave } from "@frontend/app/navigation/page-leave-context";

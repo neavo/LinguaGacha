@@ -7,8 +7,8 @@ describe("Workspace 应用接口", () => {
     const write = vi.fn();
     const contract = structuredClone(AGENT_WORKSPACE_CONTRACT);
     const ws = create_agent_workspace_runtime_api(contract, "/user-skills", ["发现目标"], write);
-    contract.datasets.items.path = "changed";
-    expect(ws.contract.datasets.items.path).toBe(AGENT_WORKSPACE_CONTRACT.datasets.items.path);
+    contract.datasets.items!.path = "changed";
+    expect(ws.contract.datasets.items!.path).toBe(AGENT_WORKSPACE_CONTRACT.datasets.items!.path);
     expect([ws, ws.contract, ws.todo, ws.todo.read()].every(Object.isFrozen)).toBe(true);
     const before = ws.todo.read();
     const next = [" 处理目标 ", "核验结果"];

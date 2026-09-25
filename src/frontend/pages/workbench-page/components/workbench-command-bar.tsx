@@ -1,3 +1,4 @@
+import type { JSX } from "react";
 import { build_translation_task_summary_display } from "@frontend/features/batch-translation/batch-translation-display";
 import { FileInput, FilePlus2, SquarePower, Trash2, type LucideIcon } from "lucide-react";
 

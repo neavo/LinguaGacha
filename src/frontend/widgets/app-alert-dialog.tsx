@@ -1,5 +1,5 @@
 import { AlertDialog as AlertDialogPrimitive } from "@base-ui/react/alert-dialog";
-import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { type JSX, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 
 import { useI18n } from "@frontend/app/locale/locale-context";
 import { Spinner } from "@frontend/shadcn/spinner";
@@ -19,11 +19,11 @@ type AppDialogActionPosition = "primary" | "secondary";
 
 type AppDialogBaseProps = {
   open: boolean;
-  title?: string;
+  title?: string | undefined;
   description: string;
   details?: ReactNode; // 动作弹窗可在无障碍描述之外承载结构化业务详情
   onClose: () => void;
-  submitting?: boolean;
+  submitting?: boolean | undefined;
   submittingAction?: AppDialogActionPosition; // 多动作弹窗由业务状态指定加载反馈归属
   submittingLabel?: string;
   submittingIcon?: boolean;
@@ -40,7 +40,7 @@ type AppConfirmDialogProps = Omit<
 
 type AppActionDialogProps = AppDialogBaseProps & {
   primaryAction: AppDialogPrimaryAction;
-  secondaryAction?: AppDialogAction;
+  secondaryAction?: AppDialogAction | undefined;
 };
 
 // 延迟确认采用统一时长，业务层只判断动作是否需要保护。
@@ -84,7 +84,7 @@ export function AppConfirmDialog(props: AppConfirmDialogProps): JSX.Element {
       primaryAction={{
         label: confirm_is_delayed ? `${remaining_seconds}s` : t("app.action.confirm"),
         onSelect: props.onConfirm,
-        disabled: confirm_is_delayed || props.confirmDisabled,
+        disabled: confirm_is_delayed || props.confirmDisabled === true,
       }}
       onClose={props.onClose}
     />

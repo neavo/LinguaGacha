@@ -1,4 +1,4 @@
-import { useRef } from "react";
+import { type JSX, useRef } from "react";
 import { MenuCloseContext } from "./app-dropdown-menu-context";
 import { useWindowDeactivation } from "@frontend/widgets/interactions/use-window-deactivation";
 import { CheckIcon, ChevronRightIcon } from "lucide-react";

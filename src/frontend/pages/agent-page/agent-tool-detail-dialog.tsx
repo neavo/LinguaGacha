@@ -1,4 +1,4 @@
-import { memo, useState } from "react";
+import { type JSX, memo, useState } from "react";
 
 import { is_json_record } from "@domain/json";
 import type { AgentToolEntry } from "@shared/agent";

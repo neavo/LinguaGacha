@@ -1,5 +1,6 @@
 import { useAgentMentionFiles } from "./use-agent-mention-files";
 import {
+  type JSX,
   useCallback,
   useEffect,
   useImperativeHandle,
@@ -81,16 +82,16 @@ export type AgentMessageEditorHandle = {
 type AgentEditorState = { has_content: boolean; uploads_pending: boolean };
 
 type AgentMessageEditorProps = {
-  ref?: Ref<AgentMessageEditorHandle>;
-  file_drop_target_ref?: RefObject<HTMLElement | null>; // 缺省接收当前表单，主输入由页面指定整页区域
-  presentation?: "composer" | "inline";
-  role?: "user" | "assistant";
+  ref?: Ref<AgentMessageEditorHandle> | undefined;
+  file_drop_target_ref?: RefObject<HTMLElement | null> | undefined; // 缺省接收当前表单，主输入由页面指定整页区域
+  presentation?: "composer" | "inline" | undefined;
+  role?: "user" | "assistant" | undefined;
   read_only: boolean;
   skills: readonly AgentSkillSnapshot[];
-  instructions?: readonly AgentMentionInstruction[];
+  instructions?: readonly AgentMentionInstruction[] | undefined;
   input_session: AgentInputSession;
   on_submit: (message: AgentMessageInput) => void;
-  on_cancel?: () => void;
+  on_cancel?: (() => void) | undefined;
   /** 消费方统一决定按钮与提交权限，包含只读、内容和图片处理条件。 */
   render_actions: (state: AgentEditorState) => {
     can_submit: boolean;
@@ -774,7 +775,7 @@ function write_agent_message_text(
     selection: selection
       ? EditorSelection.range(selection.from, selection.to)
       : EditorSelection.cursor(text.length),
-    annotations,
+    ...(annotations === undefined ? {} : { annotations }),
   });
 }
 
@@ -794,7 +795,7 @@ function find_mention_query(state: EditorState): MentionQuery | null {
   const before = state.doc.sliceString(line.from, selection.head);
   const match = before.match(/(^|\s)@([^@]*)$/u);
   if (match === null) return null;
-  const from = selection.head - match[0].length + match[1].length;
+  const from = selection.head - match[0].length + match[1]!.length;
   const token = state.field(mention_tokens_field).iter(from);
   if (token.value !== null && token.from < selection.head && token.to > from) return null;
   return { from, to: selection.head, text: match[2] ?? "" };

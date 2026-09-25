@@ -4,7 +4,14 @@ import { SORTABLE_OPTIONS } from "@frontend/widgets/interactions/sortable";
 import { AppContextMenu, AppContextMenuTrigger } from "@frontend/widgets/app-context-menu";
 import { AppTableDragIndicator } from "./app-table-drag-indicator";
 import { ArrowDown, ArrowUp, ArrowUpDown } from "lucide-react";
-import { useState, type CSSProperties, type MouseEvent, type ReactNode, type Ref } from "react";
+import {
+  type JSX,
+  useState,
+  type CSSProperties,
+  type MouseEvent,
+  type ReactNode,
+  type Ref,
+} from "react";
 
 import { cn } from "@frontend/shadcn/classnames";
 import { AppButton } from "@frontend/widgets/app-button";
@@ -139,7 +146,7 @@ function AppTableCellContent<Row>(props: {
   row_number: number;
   disabled: boolean;
   dragging: boolean;
-  handle_ref?: Ref<HTMLButtonElement>;
+  handle_ref?: Ref<HTMLButtonElement> | undefined;
   show_tooltip: boolean;
 }): ReactNode {
   if (props.column.kind !== "drag" && !props.column.drag_handle) {
@@ -225,12 +232,12 @@ type AppTableSortableRowProps<Row> = {
   active: boolean;
   drag_enabled: boolean;
   can_drag: boolean;
-  row_class_name?: string;
-  render_row_context_menu?: (payload: AppTableRowEvent<Row>) => ReactNode;
+  row_class_name?: string | undefined;
+  render_row_context_menu?: ((payload: AppTableRowEvent<Row>) => ReactNode) | undefined;
   should_ignore_click: () => boolean;
   on_row_click: (row_id: string, row_index: number, event: MouseEvent<HTMLTableRowElement>) => void;
   on_row_context: (row_id: string) => void;
-  on_row_activate?: (row_id: string) => void;
+  on_row_activate?: ((row_id: string) => void) | undefined;
   register_row_element: (row_id: string, row_element: HTMLTableRowElement | null) => void;
 };
 
@@ -246,7 +253,7 @@ export function AppTableRowCells<Row>(props: {
   dragging: boolean;
   row_number: number;
   drag_disabled: boolean;
-  handle_ref?: Ref<HTMLButtonElement>;
+  handle_ref?: Ref<HTMLButtonElement> | undefined;
 }): JSX.Element {
   return (
     <>

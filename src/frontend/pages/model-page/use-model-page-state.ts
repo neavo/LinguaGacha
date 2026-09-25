@@ -401,7 +401,7 @@ function reorder_snapshot_group(
   let group_index = 0;
   const next_models = snapshot.models.map((model) => {
     if (model.type === model_type) {
-      const next_model = reordered_group_models[group_index];
+      const next_model = reordered_group_models[group_index]!; // 上方已验证分组成员与数量完全一致。
       group_index += 1;
       return next_model;
     } else {

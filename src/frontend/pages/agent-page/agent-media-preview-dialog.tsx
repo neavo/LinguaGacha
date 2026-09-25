@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import type { JSX, ReactNode } from "react";
 import { AppPageDialog } from "@frontend/widgets/app-page-dialog";
 import { MediaViewport } from "@frontend/features/media-preview/media-viewport";
 

@@ -1,0 +1,17 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "jsx": "react-jsx",
+    "lib": ["ES2025", "DOM", "DOM.Iterable"],
+    "types": ["node", "vite/client", "electron-vite/node"],
+    "tsBuildInfoFile": "./build/tsconfig.test.tsbuildinfo"
+  },
+  "include": [
+    "src/**/*.test.ts",
+    "src/**/*.test.tsx",
+    "buildtools/**/*.test.ts",
+    "src/test",
+    "src/electron-env.d.ts",
+    "src/frontend/vite-env.d.ts"
+  ]
+}

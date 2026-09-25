@@ -37,7 +37,7 @@ const DESKTOP_SHELL_INFO = resolve_desktop_shell_info(process.platform as Deskto
 // CORE API BASE URL 是跨边界路径或地址契约，集中保存避免调用点散落魔术字符串。
 const BACKEND_API_BASE_URL = resolve_backend_api_base_url_from_argv(process.argv);
 let next_update_download_request_id = 0; // preload 本地递增，避免进度事件在多次下载之间串台
-const LAST_DIALOG_DIRECTORY_STORAGE_KEY = "linguagacha:dialog:last-directory-workaround"; // Electron 43 上游修复落地后连同读写逻辑一起删除
+const LAST_DIALOG_DIRECTORY_STORAGE_KEY = "linguagacha:dialog:last-directory-workaround"; // 应用记录最近选择目录，供后续对话框复用
 
 const DESKTOP_BRIDGE_API: DesktopBridgeApi = {
   appVersion: resolve_app_version_from_argv(process.argv),
@@ -152,7 +152,10 @@ const DESKTOP_BRIDGE_API: DesktopBridgeApi = {
     return invoke_path_picker({ kind: "workbench-files" });
   },
   async pickFixedProjectDirectory(default_path?: string): Promise<DesktopPathPickResult> {
-    return invoke_path_picker({ kind: "fixed-project-directory", default_path });
+    return invoke_path_picker({
+      kind: "fixed-project-directory",
+      ...(default_path === undefined ? {} : { default_path }),
+    });
   },
   async pickGlossaryImportFilePath(): Promise<DesktopPathPickResult> {
     return invoke_path_picker({ kind: "glossary-import" });
@@ -186,10 +189,12 @@ async function invoke_path_picker(intent: DesktopPathPickIntent): Promise<Deskto
   return result;
 }
 
+/** 目录选择结果直接保存，文件选择结果取其父目录。 */
 function is_directory_pick(intent: DesktopPathPickIntent): boolean {
   return intent.kind === "project-source-directory" || intent.kind === "fixed-project-directory";
 }
 
+/** 恢复最近选择目录；存储不可用时交由宿主使用默认目录。 */
 function read_last_dialog_directory(): string | null {
   try {
     const directory = localStorage.getItem(LAST_DIALOG_DIRECTORY_STORAGE_KEY);
@@ -199,11 +204,12 @@ function read_last_dialog_directory(): string | null {
   }
 }
 
+/** 成功选择后记录起始目录，供下一次原生对话框使用。 */
 function write_last_dialog_directory(directory: string): void {
   try {
     localStorage.setItem(LAST_DIALOG_DIRECTORY_STORAGE_KEY, directory);
   } catch {
-    // 最近目录只是 Electron 43 兼容状态，写入失败不影响本次选择结果
+    // 最近目录是交互偏好，写入失败不影响本次选择结果
   }
 }
 

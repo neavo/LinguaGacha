@@ -158,7 +158,7 @@ export function create_empty_agent_workspace_intent_batch(): AgentWorkspaceInten
 
 /** 把数据库 item 归一为工作区公开字段，并绑定对象事实指纹。 */
 export function project_agent_workspace_item(item: JsonRecord): JsonRecord {
-  const row: JsonRecord = {
+  const row = {
     item_id: read_json_integer(item["item_id"] ?? item["id"], 0),
     src: String(item["src"] ?? ""),
     dst: String(item["dst"] ?? ""),
@@ -170,7 +170,7 @@ export function project_agent_workspace_item(item: JsonRecord): JsonRecord {
     status: Item.normalize_status(item["status"]),
     retry_count: read_json_integer(item["retry_count"], 0),
   };
-  return { item_id: row["item_id"], fp: fingerprint(item_fingerprint_tuple(row)), ...row };
+  return { ...row, fp: fingerprint(item_fingerprint_tuple(row)) };
 }
 
 /** 把 quality entry 的内部身份与业务字段投影为带当前位置的工作区对象。 */
@@ -214,7 +214,9 @@ export function resolve_agent_workspace_writes(args: {
       kind,
       intents: args.batch.quality[kind],
       current: args.current.quality[kind] ?? [],
-      createEntryId: args.createQualityEntryId,
+      ...(args.createQualityEntryId === undefined
+        ? {}
+        : { createEntryId: args.createQualityEntryId }),
     }),
   );
   const quality_changes = quality_results.flatMap((result) =>
@@ -308,7 +310,10 @@ function quality_fingerprint_tuple(kind: QualityRuleKind, row: JsonRecord): Json
 }
 
 /** 归一规则身份与业务字段，供指纹与实际变化比较。 */
-function project_quality_business_entry(kind: QualityRuleKind, entry: JsonRecord): JsonRecord {
+function project_quality_business_entry(
+  kind: QualityRuleKind,
+  entry: JsonRecord,
+): JsonRecord & { id: string } {
   const normalized = normalize_quality_rule_entries(QualityRule.from_json(kind), [entry])[0];
   if (normalized === undefined) throw new TypeError("Quality rule entry is missing.");
   return {

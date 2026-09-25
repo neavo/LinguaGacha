@@ -233,7 +233,9 @@ function create_fake_agent_stream(
       min: fake_agent_state.stream_token_size,
       max: fake_agent_state.stream_token_size,
     },
-    tokensPerSecond: fake_agent_state.stream_tokens_per_second,
+    ...(fake_agent_state.stream_tokens_per_second === undefined
+      ? {}
+      : { tokensPerSecond: fake_agent_state.stream_tokens_per_second }),
   });
   const response = hold_summary
     ? async (_context: TranscriptContext, stream_options: StreamOptions | undefined) =>

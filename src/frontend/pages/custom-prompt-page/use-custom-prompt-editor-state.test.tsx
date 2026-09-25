@@ -1,4 +1,4 @@
-import { act, useEffect } from "react";
+import { type JSX, act, useEffect } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -232,7 +232,7 @@ describe("useCustomPromptEditorState", () => {
       .map(([, body]) => body as Record<string, unknown>);
   }
 
-  it("默认模板不是脏草稿，连续编辑只在一秒后保存最终 trim 值", async () => {
+  it("默认模板保持已保存状态，连续编辑防抖后保存修剪值", async () => {
     query_text = "";
     await render_probe();
 

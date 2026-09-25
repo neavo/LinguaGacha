@@ -1,5 +1,5 @@
 import { PencilLine, RefreshCw, Send } from "lucide-react";
-import { useEffect, useState } from "react";
+import { type JSX, useEffect, useState } from "react";
 
 import { is_model_thinking_level } from "@domain/model";
 import { useI18n } from "@frontend/app/locale/locale-context";

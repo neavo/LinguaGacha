@@ -1,3 +1,4 @@
+import type { JSX } from "react";
 import type { ScreenComponentProps } from "@frontend/app/navigation/types";
 import { useI18n } from "@frontend/app/locale/locale-context";
 import "@frontend/pages/laboratory-page/laboratory-page.css";

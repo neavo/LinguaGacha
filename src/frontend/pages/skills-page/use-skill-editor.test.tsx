@@ -58,7 +58,7 @@ describe("技能自动保存", () => {
         await save?.(body);
         disk = {
           ...disk,
-          document: body.document as AgentSkillFile["document"],
+          document: body.document as NonNullable<AgentSkillFile["document"]>,
           text: String(body.text),
           revision: String(Number(disk.revision) + 1),
         };

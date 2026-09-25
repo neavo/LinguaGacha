@@ -1,4 +1,4 @@
-import { useRef, type ComponentProps } from "react";
+import { type JSX, useRef, type ComponentProps } from "react";
 import { useWindowDeactivation } from "@frontend/widgets/interactions/use-window-deactivation";
 import { CheckIcon, ChevronRightIcon } from "lucide-react";
 import { ContextMenu as ContextMenuPrimitive } from "@base-ui/react/context-menu";

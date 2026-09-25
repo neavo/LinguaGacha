@@ -10,22 +10,28 @@ type CommandBarProps = React.ComponentProps<"section"> & {
   actions: React.ReactNode;
 };
 
-function CommandBarToolbar({ className, ...props }: React.ComponentProps<"div">): JSX.Element {
+function CommandBarToolbar({
+  className,
+  ...props
+}: React.ComponentProps<"div">): React.JSX.Element {
   return <div className={cn("command-bar__toolbar", className)} {...props} />;
 }
 
-function CommandBarActions({ className, ...props }: React.ComponentProps<"div">): JSX.Element {
+function CommandBarActions({
+  className,
+  ...props
+}: React.ComponentProps<"div">): React.JSX.Element {
   return <div className={cn("command-bar__actions", className)} {...props} />;
 }
 
-function CommandBarHint({ className, ...props }: React.ComponentProps<"span">): JSX.Element {
+function CommandBarHint({ className, ...props }: React.ComponentProps<"span">): React.JSX.Element {
   return <span className={cn("command-bar__hint", className)} {...props} />;
 }
 
 function CommandBarSeparatorPrimitive({
   className,
   ...props
-}: React.ComponentProps<typeof Separator>): JSX.Element {
+}: React.ComponentProps<typeof Separator>): React.JSX.Element {
   return (
     <Separator
       orientation="vertical"
@@ -35,7 +41,12 @@ function CommandBarSeparatorPrimitive({
   );
 }
 
-export function CommandBar({ className, hint, actions, ...props }: CommandBarProps): JSX.Element {
+export function CommandBar({
+  className,
+  hint,
+  actions,
+  ...props
+}: CommandBarProps): React.JSX.Element {
   return (
     <Card variant="toolbar" className={cn("command-bar", className)} {...props}>
       <CardContent>
@@ -51,11 +62,14 @@ export function CommandBar({ className, hint, actions, ...props }: CommandBarPro
 export function CommandBarSeparator({
   className,
   ...props
-}: React.ComponentProps<typeof Separator>): JSX.Element {
+}: React.ComponentProps<typeof Separator>): React.JSX.Element {
   return <CommandBarSeparatorPrimitive className={className} {...props} />;
 }
 
-export function CommandBarGroup({ className, ...props }: React.ComponentProps<"div">): JSX.Element {
+export function CommandBarGroup({
+  className,
+  ...props
+}: React.ComponentProps<"div">): React.JSX.Element {
   // 统一提供零间距动作组，避免每个页面重复声明连体按钮样式
   return <div className={cn("command-bar__group", className)} {...props} />;
 }

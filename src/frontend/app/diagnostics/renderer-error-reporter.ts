@@ -56,11 +56,9 @@ export function record_renderer_diagnostics_event(event: LogErrorContextInput): 
  */
 export function capture_renderer_error(error: unknown, options: RendererErrorCaptureOptions): void {
   const report = create_renderer_error_report({
-    source: options.source,
     error,
     diagnosticsContext: diagnostics_context,
-    triggeringEvent: options.triggeringEvent,
-    context: options.context,
+    ...options,
   });
   const signature = options.dedupeKey ?? build_error_signature(report);
   if (is_recent_error_signature(signature)) {
@@ -75,6 +73,7 @@ export function capture_renderer_error(error: unknown, options: RendererErrorCap
  * 根入口注册浏览器级异常监听，覆盖 React 边界之外的未处理 promise 和事件回调错误。
  */
 export function install_renderer_global_error_handlers(): () => void {
+  /** 浏览器事件保留脚本位置，进入与 React 异常相同的上报入口。 */
   function handle_error(event: ErrorEvent): void {
     capture_renderer_error(event.error ?? event.message, {
       source: "global",
@@ -88,6 +87,7 @@ export function install_renderer_global_error_handlers(): () => void {
     });
   }
 
+  /** 未处理的 Promise 拒绝沿用全局异常来源与当前页面位置。 */
   function handle_unhandled_rejection(event: PromiseRejectionEvent): void {
     capture_renderer_error(event.reason, {
       source: "global",
@@ -106,11 +106,13 @@ export function install_renderer_global_error_handlers(): () => void {
   };
 }
 
+/** 用来源、消息、栈首部和路由识别短时间内重复上报的同一错误。 */
 function build_error_signature(report: RendererErrorReport): string {
   const stack_head = report.error.stack?.split("\n").slice(0, 3).join("\n") ?? "";
   return [report.source, report.error.message, stack_head, report.route ?? ""].join("|");
 }
 
+/** 按时间和容量清理去重记录，避免连续异常长期占用内存。 */
 function is_recent_error_signature(signature: string): boolean {
   const now = Date.now();
   while (
@@ -130,6 +132,7 @@ function is_recent_error_signature(signature: string): boolean {
   return false;
 }
 
+/** 诊断快照只接纳已声明的路由、工程和任务摘要。 */
 function pick_renderer_diagnostics_context(
   payload: RendererDiagnosticsPayload,
 ): RendererDiagnosticsContext {

@@ -218,7 +218,7 @@ export class TranslationWorkUnitRunner {
       mode: TranslationPromptMode;
       pipeline_contexts: TranslationPrePipelineContext[];
       items: TextTaskItemRecord[];
-      request_error?: LogError;
+      request_error?: LogError | undefined;
       request_timeout: boolean;
     },
     response: LLMRequestResult,
@@ -293,7 +293,7 @@ export class TranslationWorkUnitRunner {
       console_log: string[];
       request_items: TranslationRequestItem[];
       mode: TranslationPromptMode;
-      request_error?: LogError;
+      request_error?: LogError | undefined;
       request_timeout: boolean;
     },
     valid_count: number,

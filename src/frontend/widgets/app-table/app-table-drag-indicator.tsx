@@ -2,13 +2,13 @@ import { GripVertical } from "lucide-react";
 
 import { useI18n } from "@frontend/app/locale/locale-context";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@frontend/shadcn/tooltip";
-import type { Ref } from "react";
+import type { JSX, Ref } from "react";
 
 type AppTableDragIndicatorProps = {
   row_number: number;
   disabled: boolean;
   dragging: boolean;
-  handle_ref?: Ref<HTMLButtonElement>;
+  handle_ref?: Ref<HTMLButtonElement> | undefined;
   show_tooltip?: boolean;
 };
 

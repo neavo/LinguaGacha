@@ -1,4 +1,4 @@
-import { type DragEvent, useRef, useState, type ReactNode } from "react";
+import { type JSX, type DragEvent, useRef, useState, type ReactNode } from "react";
 
 import {
   has_path_drop_payload,
@@ -20,15 +20,18 @@ type FileDropZoneProps = {
   on_drop_issue?: (issue: FileDropIssue) => void;
 };
 
+/** 组件拥有拖放反馈与路径选择，文件读写由调用者接管。 */
 export function FileDropZone(props: FileDropZoneProps): JSX.Element {
   const drag_depth_ref = useRef(0);
   const [drop_active, set_drop_active] = useState(false);
 
+  /** 落下文件后同时清空嵌套深度与高亮，避免残留拖入状态。 */
   function reset_drop_state(): void {
     drag_depth_ref.current = 0;
     set_drop_active(false);
   }
 
+  /** 只接纳文件载荷，累计子元素间的拖入深度以稳定高亮。 */
   function handle_drag_enter(event: DragEvent<HTMLDivElement>): void {
     if (props.disabled || !has_path_drop_payload(event.dataTransfer)) {
       return;
@@ -40,6 +43,7 @@ export function FileDropZone(props: FileDropZoneProps): JSX.Element {
     event.dataTransfer.dropEffect = "copy";
   }
 
+  /** 持续允许复制文件，使浏览器在当前区域触发落下事件。 */
   function handle_drag_over(event: DragEvent<HTMLDivElement>): void {
     if (props.disabled || !has_path_drop_payload(event.dataTransfer)) {
       return;
@@ -52,6 +56,7 @@ export function FileDropZone(props: FileDropZoneProps): JSX.Element {
     event.dataTransfer.dropEffect = "copy";
   }
 
+  /** 直到退出最外层区域才清除高亮，避免经过子元素时闪烁。 */
   function handle_drag_leave(event: DragEvent<HTMLDivElement>): void {
     if (props.disabled || !has_path_drop_payload(event.dataTransfer)) {
       return;
@@ -64,6 +69,7 @@ export function FileDropZone(props: FileDropZoneProps): JSX.Element {
     }
   }
 
+  /** 先结束拖放反馈，再解析宿主路径并按单选或多选契约分发。 */
   async function handle_drop(event: DragEvent<HTMLDivElement>): Promise<void> {
     event.preventDefault();
     reset_drop_state();

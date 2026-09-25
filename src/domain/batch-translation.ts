@@ -200,14 +200,15 @@ export type BatchTranslationRequestState = Readonly<{
   request_recovery: BatchTranslationRequestRecovery | null;
 }>;
 
+/** 运行态允许显式清空可选字段；对外完成结果只携带存在的字段。 */
 export type BatchTranslationSnapshot = BatchTranslationRequestState & {
-  config?: BatchTranslationConfig;
-  operation?: BatchTranslationOperation; // 首次预约后保留本轮目的，工程切换清空
-  run_progress?: BatchTranslationProgress; // 本轮目标和实际提交结果，只属于内存运行态
+  config?: BatchTranslationConfig | undefined;
+  operation?: BatchTranslationOperation | undefined; // 首次预约后保留本轮目的，工程切换清空
+  run_progress?: BatchTranslationProgress | undefined; // 本轮目标和实际提交结果，只属于内存运行态
   revision: number;
   status: BatchTranslationRunStatus;
   source: BatchTranslationSource | null; // 预约入口决定本轮来源，终态保留，工程切换清空
-  stop_source?: BatchTranslationStopSource; // 本轮首次受理的取消来源，收尾失败也保留
+  stop_source?: BatchTranslationStopSource | undefined; // 本轮首次受理的取消来源，收尾失败也保留
   progress: BatchTranslationProgress;
   scope: BatchTranslationScope; // kind 保留本轮范围类型；items 中待处理 ID 随提交移除，终态清空
 };

@@ -233,7 +233,7 @@ const electron_mock = vi.hoisted(() => {
      * 加载当前场景的资源入口。
      */
     async loadFile(file_path: string, options?: { query?: Record<string, string> }): Promise<void> {
-      this.load_file_calls.push({ file_path, options });
+      this.load_file_calls.push({ file_path, ...(options === undefined ? {} : { options }) });
     }
 
     // loadURL 模拟测试场景中的对应运行时方法，保持断言聚焦协议行为。

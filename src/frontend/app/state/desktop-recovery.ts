@@ -52,11 +52,7 @@ export function useDesktopRecovery(options: DesktopRecoveryOptions): DesktopReco
   const task_recovery_ref = useRef<Promise<void> | null>(null);
 
   const report_state_error = useCallback((error: unknown, args: StateErrorReportArgs): void => {
-    capture_renderer_error(error, {
-      source: args.source,
-      triggeringEvent: args.triggeringEvent,
-      context: args.context,
-    });
+    capture_renderer_error(error, args);
   }, []);
 
   // 并发恢复共享一个快照请求。
@@ -74,7 +70,7 @@ export function useDesktopRecovery(options: DesktopRecoveryOptions): DesktopReco
         .catch((error: unknown) => {
           report_state_error(error, {
             source: "state-recovery",
-            triggeringEvent: triggering_event,
+            ...(triggering_event === undefined ? {} : { triggeringEvent: triggering_event }),
             context: { reason, recovery: "task_snapshot" },
           });
         })
@@ -113,7 +109,7 @@ export function useDesktopRecovery(options: DesktopRecoveryOptions): DesktopReco
         .catch((error: unknown) => {
           report_state_error(error, {
             source: "state-recovery",
-            triggeringEvent: triggering_event,
+            ...(triggering_event === undefined ? {} : { triggeringEvent: triggering_event }),
             context: { ...recovery_context, reason, recovery: "project_state" },
           });
         })

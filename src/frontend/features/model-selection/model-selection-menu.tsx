@@ -1,3 +1,4 @@
+import type { JSX } from "react";
 import { Boxes, Circle, CircleCheck } from "lucide-react";
 
 import { MODEL_TYPES, type ModelThinkingLevel, type ModelUsage } from "@domain/model";

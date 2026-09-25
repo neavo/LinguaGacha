@@ -121,6 +121,7 @@ export function preview_quality_rule_import(args: {
   };
 }
 
+/** 按原位置保留规则，新导入的同键条目只覆盖允许更新的字段。 */
 function merge_quality_rule_import_entries(args: {
   rule_type: QualityRuleImportRuleType;
   existing: JsonRecord[];
@@ -166,10 +167,11 @@ function ingest_import_rows(
   });
 }
 
+/** 首个条目创建非空分组，后续合并可直接读取基准条目。 */
 function group_import_items_by_identity(
   items: QualityRuleImportItem[],
-): Map<string, QualityRuleImportItem[]> {
-  const grouped_items = new Map<string, QualityRuleImportItem[]>();
+): Map<string, [QualityRuleImportItem, ...QualityRuleImportItem[]]> {
+  const grouped_items = new Map<string, [QualityRuleImportItem, ...QualityRuleImportItem[]]>();
   for (const item of items) {
     const group = grouped_items.get(item.identity);
     if (group === undefined) {
@@ -181,9 +183,10 @@ function group_import_items_by_identity(
   return grouped_items;
 }
 
+/** 组内按输入顺序覆盖目标字段，输出位置沿用首个条目。 */
 function merge_grouped_import_entries(
   rule_type: QualityRuleImportRuleType,
-  grouped_items: Map<string, QualityRuleImportItem[]>,
+  grouped_items: Map<string, [QualityRuleImportItem, ...QualityRuleImportItem[]]>,
 ): QualityRuleKeptEntry[] {
   const kept_entries: QualityRuleKeptEntry[] = [];
   for (const items of grouped_items.values()) {
@@ -229,6 +232,7 @@ function build_duplicate_key_groups(args: {
   );
 }
 
+/** 按导入顺序返回与既有规则冲突的条目，供确认界面定位。 */
 function collect_duplicate_entries(
   rule_type: QualityRuleImportRuleType,
   groups: DuplicateKeyGroup[],
@@ -251,6 +255,7 @@ function collect_duplicate_entries(
   return duplicates.sort((left, right) => left.incoming_index - right.incoming_index);
 }
 
+/** 区分目标相同、已有目标为空、导入目标为空和目标冲突。 */
 function classify_duplicate_kind(
   rule_type: QualityRuleImportRuleType,
   existing_items: QualityRuleImportItem[],
@@ -285,6 +290,7 @@ function normalize_quality_rule_import_entry(entry: JsonRecord): JsonRecord {
   };
 }
 
+/** 各类规则只开放实际拥有的目标字段，源模式由判重键固定。 */
 function get_overwrite_fields(rule_type: QualityRuleImportRuleType) {
   return rule_type === "TEXT_PRESERVE"
     ? (["info"] as const)
@@ -302,6 +308,7 @@ function read_text(record: JsonRecord, field: string): string {
   return String(record[field] ?? "").trim();
 }
 
+/** 判重沿用正则和大小写语义，字面量按匹配规则归一。 */
 function build_pattern_identity(rule_type: QualityRuleImportRuleType, entry: JsonRecord): string {
   const src = read_text(entry, "src");
   if (rule_type === "TEXT_PRESERVE") return JSON.stringify(["regex", false, src]);

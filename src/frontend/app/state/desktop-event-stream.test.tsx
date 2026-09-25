@@ -1,4 +1,4 @@
-import { act, useRef } from "react";
+import { type JSX, act, useRef } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 

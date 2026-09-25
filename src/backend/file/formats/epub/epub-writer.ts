@@ -685,8 +685,9 @@ export class EpubWriter {
         const replaced = this.ast.parse_html_document(serialized.replace(item.src, () => item_dst));
         this.replace_element(dom, replaced);
       } else if (!is_nav_page) {
-        dom.children = [new Text(item_dst)];
-        dom.children[0].parent = dom;
+        const text = new Text(item_dst);
+        text.parent = dom;
+        dom.children = [text];
       }
       item_index += 1;
     }
@@ -857,8 +858,7 @@ export class EpubWriter {
     if (!(node instanceof Element)) {
       return;
     }
-    for (const key of Object.keys(node.attribs)) {
-      const original = node.attribs[key];
+    for (const [key, original] of Object.entries(node.attribs)) {
       const escaped = this.escape_xml_attribute(String(original));
       if (escaped !== original) {
         node.attribs[key] = escaped;
