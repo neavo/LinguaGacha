@@ -1,3 +1,4 @@
+import type { JSX } from "react";
 import { ChevronDown, Languages, ScrollText } from "lucide-react";
 
 import type { NavigationGroup, RouteId } from "@frontend/app/navigation/types";

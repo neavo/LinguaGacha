@@ -74,7 +74,7 @@ export class ModelService {
   private readonly app_setting_service: AppSettingService; // 模型配置唯一持久化入口
   private readonly llm_client: LLMClientPort; // 父线程真实模型请求入口，与任务共用网络边界
   private readonly runtime_gate: RuntimeOperationGate; // 接口测试独占运行时，配置管理不占用
-  private readonly log_manager?: Pick<LogManager, "info" | "warning">; // 只记录模型探测诊断
+  private readonly log_manager: Pick<LogManager, "info" | "warning"> | undefined; // 只记录模型探测诊断
   private readonly native_fs: NativeFs; // 统一读取内置模型预设文件
   private readonly catalog: PiModelCatalogReader; // 配置归一化与公开快照共用当前能力事实。
 

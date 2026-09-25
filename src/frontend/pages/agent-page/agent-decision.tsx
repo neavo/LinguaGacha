@@ -1,5 +1,5 @@
 import { badgeVariants } from "@frontend/shadcn/badge-variants";
-import { useEffect, useId, useState, type ReactNode, type RefObject } from "react";
+import { type JSX, useEffect, useId, useState, type ReactNode, type RefObject } from "react";
 import { ArrowRight, CircleQuestionMark, X } from "lucide-react";
 import type {
   AgentPendingDecision,
@@ -53,7 +53,7 @@ type WriteDecision = Extract<AgentPendingDecision, { kind: "write_approval" }>;
 /** 决策区域独立订阅时钟，页面只负责布局与离场生命周期。 */
 export function AgentDecision(props: {
   decision: AgentPendingDecision;
-  title_ref?: RefObject<HTMLHeadingElement | null>;
+  title_ref?: RefObject<HTMLHeadingElement | null> | undefined;
 }): JSX.Element {
   const countdown = useAgentDecisionCountdown();
   const actions = useAgentSessionActions();
@@ -84,7 +84,7 @@ function AgentQuestionDecision(props: {
   decision: QuestionDecision;
   countdown: AgentDecisionCountdownSnapshot;
   on_focus: (id: string, focused: boolean) => void;
-  title_ref?: RefObject<HTMLHeadingElement | null>;
+  title_ref?: RefObject<HTMLHeadingElement | null> | undefined;
   on_resolve: (response: AgentQuestionResponse) => void;
 }): JSX.Element {
   const { t } = useI18n();
@@ -185,7 +185,7 @@ function AgentQuestionDecision(props: {
 function AgentWriteDecision(props: {
   decision: WriteDecision;
   countdown: AgentDecisionCountdownSnapshot;
-  title_ref?: RefObject<HTMLHeadingElement | null>;
+  title_ref?: RefObject<HTMLHeadingElement | null> | undefined;
   on_resolve: (decision: AgentWriteApprovalDecision) => void;
 }): JSX.Element {
   const { t } = useI18n();
@@ -214,7 +214,7 @@ function AgentWriteDecision(props: {
 /** 公共框架统一组织标题、说明、取消按钮和内容区域。 */
 function AgentDecisionFrame(props: {
   title: string;
-  title_ref?: RefObject<HTMLHeadingElement | null>;
+  title_ref?: RefObject<HTMLHeadingElement | null> | undefined;
   description?: ReactNode;
   children: ReactNode;
   on_cancel?: () => void;

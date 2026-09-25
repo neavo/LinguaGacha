@@ -18,7 +18,10 @@ export async function spreadsheet_fixture(cells: Record<string, FixtureCell>): P
     else {
       cell.value =
         value.formula !== undefined
-          ? { formula: value.formula, result: value.result }
+          ? {
+              formula: value.formula,
+              ...(value.result === undefined ? {} : { result: value.result }),
+            }
           : value.rich
             ? { richText: value.rich.map((text) => ({ text })) }
             : (value.text ?? "");

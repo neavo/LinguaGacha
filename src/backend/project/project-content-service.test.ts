@@ -114,13 +114,13 @@ function create_test_project_change_publisher(
       updatedSections: updated_sections as ProjectChangeEvent["updatedSections"],
       ...(payload.items === undefined
         ? {}
-        : { items: payload.items as ProjectChangeEvent["items"] }),
+        : { items: payload.items as NonNullable<ProjectChangeEvent["items"]> }),
       ...(payload.files === undefined
         ? {}
-        : { files: payload.files as ProjectChangeEvent["files"] }),
+        : { files: payload.files as NonNullable<ProjectChangeEvent["files"]> }),
       ...(payload.sections === undefined
         ? {}
-        : { sections: payload.sections as ProjectChangeEvent["sections"] }),
+        : { sections: payload.sections as NonNullable<ProjectChangeEvent["sections"]> }),
     };
   });
 }
@@ -175,8 +175,8 @@ function create_persistent_item(overrides: JsonRecord = {}): JsonRecord {
   const { item_id, row_number, ...rest_item } = item;
   return {
     ...rest_item,
-    id: item_id,
-    row: row_number,
+    id: item_id!,
+    row: row_number!,
   };
 }
 
@@ -235,7 +235,7 @@ describe("ProjectContentService", () => {
           { source_path: text, target_rel_path: "story.txt" },
         ],
         conflict_action: "replace",
-        expected_section_revisions: revisions(),
+        expected_section_revisions: revisions()!,
       });
       expect(database.get_item_count(lg_path)).toBe(1);
       expect(new ProjectDataReader(database).build_files_record_block(lg_path)).toMatchObject({
@@ -253,7 +253,7 @@ describe("ProjectContentService", () => {
       await service.import_files({
         files: [{ source_path: source, target_rel_path: "book.pdf" }],
         conflict_action: "replace",
-        expected_section_revisions: revisions(),
+        expected_section_revisions: revisions()!,
       });
       const next = database.read_pdf_document(lg_path, "book.pdf")!;
       expect(next.pages[0]).toMatchObject({ translation: null, reviewed: false, notes: "" });

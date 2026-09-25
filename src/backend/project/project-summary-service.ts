@@ -90,7 +90,8 @@ export class ProjectSummaryService {
   ): WorkbenchFileEntry {
     let progress: WorkbenchFileProgress;
     if (file_entry.file_type === "PDF") {
-      const pdf = pdf_summaries[file_entry.rel_path];
+      // ProjectDataReader 以页面摘要的键标记 PDF 文件，缓存与数据库写入同步更新。
+      const pdf = pdf_summaries[file_entry.rel_path]!;
       const skipped_count = pdf.kept_pages + pdf.omitted_pages; // 两种处置均完成处理，导出时仍区分保留与省略。
       progress = {
         unit: "page",

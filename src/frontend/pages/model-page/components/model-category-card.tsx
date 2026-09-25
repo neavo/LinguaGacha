@@ -1,4 +1,4 @@
-import { Fragment, type ReactNode } from "react";
+import { type JSX, Fragment, type ReactNode } from "react";
 import { DragDropProvider } from "@dnd-kit/react";
 import { SORTABLE_PROVIDER_OPTIONS } from "@frontend/widgets/interactions/sortable";
 import { useReorder } from "@frontend/widgets/interactions/use-reorder";

@@ -21,11 +21,14 @@ export function format_skill_editor_document(document: AgentSkillDocument): stri
 
 /** 从当前文档定位可编辑范围，固定头部由格式化入口创建并由编辑事务保护。 */
 export function skill_editor_layout(doc: Text) {
+  /** 字段顺序与格式化共用同一元组，前一行是头部分隔符。 */
+  function read_field(index: 0 | 1) {
+    const field = METADATA_FIELDS[index];
+    const line = doc.line(index + 2);
+    return { field, start: line.from, from: line.from + `${field}: `.length, to: line.to };
+  }
   return {
-    fields: METADATA_FIELDS.map((field, index) => {
-      const line = doc.line(index + 2);
-      return { field, start: line.from, from: line.from + `${field}: `.length, to: line.to };
-    }),
+    fields: [read_field(0), read_field(1)] as const,
     body_from: doc.line(SKILL_EDITOR_HEADER_LINES).to + 1,
   };
 }

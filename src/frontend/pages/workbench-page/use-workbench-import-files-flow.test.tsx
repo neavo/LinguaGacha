@@ -299,8 +299,10 @@ describe("useWorkbenchImportFilesFlow", () => {
       root?.render(
         <HookProbe
           state={options.state ?? create_project_store_state()}
-          run_project_file_write={options.run_project_file_write}
-          push_toast={options.push_toast}
+          {...(options.run_project_file_write === undefined
+            ? {}
+            : { run_project_file_write: options.run_project_file_write })}
+          {...(options.push_toast === undefined ? {} : { push_toast: options.push_toast })}
           onSnapshot={(snapshot) => {
             snapshots.push(snapshot);
           }}

@@ -508,7 +508,7 @@ describe("AgentWorkspaceService", () => {
     const original_write_file = native_fs.write_file.bind(native_fs);
     vi.spyOn(native_fs, "write_file").mockImplementation(async (file_path, content) => {
       const normalized_path = file_path.replaceAll("\\", "/");
-      if (normalized_path.endsWith(AGENT_WORKSPACE_CONTRACT.datasets.items.reference)) {
+      if (normalized_path.endsWith(AGENT_WORKSPACE_CONTRACT.datasets.items!.reference)) {
         delayed_write_pending = true;
         mark_delayed_write_started();
         await delayed_write_release;

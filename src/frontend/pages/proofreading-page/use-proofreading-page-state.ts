@@ -661,7 +661,7 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
     async (change: ListQueryChange): Promise<void> => {
       try {
         const snapshot = await query_list_view({
-          rebuild: change.rebuild,
+          ...(change.rebuild === undefined ? {} : { rebuild: change.rebuild }),
           scroll_to_row_id: change.target_row_id,
         });
         if (snapshot === null) {

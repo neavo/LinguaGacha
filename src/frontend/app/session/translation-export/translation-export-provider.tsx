@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import type { JSX, ReactNode } from "react";
 import { TranslationExportDialog } from "@frontend/features/translation-export/translation-export-dialog";
 import { useTranslationExportFlow } from "@frontend/features/translation-export/use-translation-export-flow";
 import { TranslationExportContext } from "./translation-export-context";

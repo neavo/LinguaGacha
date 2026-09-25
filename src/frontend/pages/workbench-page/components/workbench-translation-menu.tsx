@@ -1,3 +1,4 @@
+import type { JSX } from "react";
 import { BrushCleaning, Paintbrush, Play, ScanText } from "lucide-react";
 
 import "@frontend/features/batch-translation/batch-translation.css";

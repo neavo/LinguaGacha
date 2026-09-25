@@ -8,7 +8,7 @@ import {
   Minimize2,
   ScrollText,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
+import { type JSX, useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
 
 import { read_log_detail, type LogDetail, type LogEntry } from "@frontend/app/desktop/desktop-api";
 import { useI18n, type LocaleKey } from "@frontend/app/locale/locale-context";

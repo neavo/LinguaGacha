@@ -1,3 +1,4 @@
+import type { JSX } from "react";
 import { CircleAlert, LoaderCircle } from "lucide-react";
 import { useI18n } from "@frontend/app/locale/locale-context";
 import { AppButton } from "@frontend/widgets/app-button";

@@ -1,4 +1,4 @@
-import { act, type InputHTMLAttributes, type ReactNode, useState } from "react";
+import { type JSX, act, type InputHTMLAttributes, type ReactNode, useState } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -110,7 +110,7 @@ describe("ModelSelectorDialog", () => {
     });
   }
 
-  it("模型筛选输入即时显示，本地模型列表在 250ms 后刷新", async () => {
+  it("筛选输入即时显示，列表在防抖到期后刷新", async () => {
     vi.useFakeTimers();
     await render_dialog();
     if (container === null) {

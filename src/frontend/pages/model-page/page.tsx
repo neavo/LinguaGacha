@@ -1,3 +1,4 @@
+import type { JSX } from "react";
 import { AppContentState } from "@frontend/widgets/app-content-state";
 import { Plus } from "lucide-react";
 

@@ -1,4 +1,4 @@
-import { useEffect, useEffectEvent, useRef, useState, type RefObject } from "react";
+import { type JSX, useEffect, useEffectEvent, useRef, useState, type RefObject } from "react";
 import { createPortal } from "react-dom";
 import { useI18n } from "@frontend/app/locale/locale-context";
 import { useWindowDeactivation } from "@frontend/widgets/interactions/use-window-deactivation";

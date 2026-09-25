@@ -17,10 +17,7 @@ export interface RecordAppErrorOptions {
  * Backend 侧统一把 AppError 写入 LogManager，避免各边界手拼 code/details/stack。
  */
 export function record_app_error(error: AppError, options: RecordAppErrorOptions): void {
-  const snapshot = to_app_error_log_snapshot(error, {
-    context: options.context,
-    fatal: options.fatal,
-  });
+  const snapshot = to_app_error_log_snapshot(error, options);
   const payload = {
     source: options.source,
     error: snapshot.error,

@@ -1,6 +1,6 @@
 import type { AgentDraftAttachment } from "@frontend/app/session/agent/agent-input-draft";
 import { api_blob, api_file_url } from "@frontend/app/desktop/desktop-api";
-import { useEffect, useState } from "react";
+import { type JSX, useEffect, useState } from "react";
 import { File, LoaderCircle, MessageSquareQuote, CircleAlert, X } from "lucide-react";
 import { Popover as PopoverPrimitive } from "@base-ui/react/popover";
 import type { AgentFileAttachment, AgentMessageAttachment } from "@shared/agent";

@@ -1,5 +1,5 @@
 import { type ModelAgentLimits, AGENT_COMPACTION_RESERVE_TOKENS } from "@domain/model-agent";
-import { useState, type ReactNode } from "react";
+import { type JSX, useState, type ReactNode } from "react";
 import { BookOpenText, Boxes, ChevronDown, Circle, CircleCheck } from "lucide-react";
 import type { ModelSelectionInput } from "@shared/model-selection";
 import type { AgentUsageSnapshot } from "@shared/agent";

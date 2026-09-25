@@ -30,7 +30,7 @@ export function useReorder(args: {
   disabled: boolean;
   disabled_ids?: readonly string[];
   moving_ids?: (source_id: string) => readonly string[];
-  on_reorder?: (ids: string[]) => Promise<void>;
+  on_reorder?: ((ids: string[]) => Promise<void>) | undefined;
 }) {
   const [session, set_session] = useState<ReorderSession | null>(null);
   // dragover 和 dragend 可在同一次 React 提交前到达，事件入口必须读取同一份最新预览。

@@ -103,7 +103,9 @@ export function build_refreshed_proofreading_list_view(args: {
       items: args.sync_state.revisions.items,
       quality: args.sync_state.revisions.quality,
       proofreading: args.sync_state.revisions.proofreading,
-      pdf: args.sync_state.revisions.pdf,
+      ...(args.sync_state.revisions.pdf === undefined
+        ? {}
+        : { pdf: args.sync_state.revisions.pdf }),
     },
     row_count: args.window.row_count,
     window_start: args.window.start,

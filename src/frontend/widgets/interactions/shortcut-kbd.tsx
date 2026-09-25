@@ -1,3 +1,4 @@
+import type { JSX } from "react";
 import {
   get_shortcut_label,
   type ShortcutLabel,

@@ -8,7 +8,7 @@ import type { WorkspaceHostPort } from "./runtime/host-contract";
 export function create_workspace_host(options: {
   root: string;
   nativeFs: NativeFs;
-  pdfHost?: PDFHost;
+  pdfHost?: PDFHost | undefined;
 }): WorkspaceHostPort {
   return async (request, signal) => {
     signal.throwIfAborted();

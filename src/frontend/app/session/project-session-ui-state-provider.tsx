@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, type ReactNode } from "react";
+import { type JSX, useCallback, useMemo, useRef, type ReactNode } from "react";
 import { useDesktopState } from "@frontend/app/state/use-desktop-state";
 import type { ProjectSessionUiStateKey } from "@frontend/app/session/project-session-ui-state-context";
 import {

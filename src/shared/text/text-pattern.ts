@@ -104,10 +104,8 @@ export function create_text_keyword_matcher(args: {
   readonly unicode?: boolean;
 }): TextKeywordMatcher {
   const matcher = create_text_keywords_matcher({
+    ...args,
     keywords: [args.keyword],
-    is_regex: args.is_regex,
-    case_sensitive: args.case_sensitive,
-    unicode: args.unicode,
   });
   return {
     invalid_regex_message: matcher.invalid_regex?.message ?? null,

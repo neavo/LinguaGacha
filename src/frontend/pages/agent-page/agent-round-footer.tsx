@@ -1,3 +1,4 @@
+import type { JSX } from "react";
 import type { AgentEntry, AgentEntryStatus } from "@shared/agent";
 import { useI18n, type LocaleKey } from "@frontend/app/locale/locale-context";
 import {

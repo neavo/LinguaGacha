@@ -1,6 +1,6 @@
 import type { AgentApprovalMode } from "@domain/setting";
 import { format_agent_reference } from "@shared/agent-reference";
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { type JSX, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import {
   ArrowDownToLine,
   BookOpenText,

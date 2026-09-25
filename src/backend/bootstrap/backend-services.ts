@@ -51,7 +51,7 @@ import {
 const BATCH_TRANSLATION_SNAPSHOT_EVENT_TOPIC = "batch_translation.snapshot_changed";
 
 export interface BackendServicesOptions {
-  pdfHost?: PDFHost;
+  pdfHost?: PDFHost | undefined;
   workspaceRuntimeDirectory?: string; // 入口注入包含 MuPDF 与 PDF worker 的运行目录
 
   paths: AppPathService; // 启动阶段解析出的应用根与数据根权威

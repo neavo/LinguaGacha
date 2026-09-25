@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { type JSX, useEffect, useRef } from "react";
 import { CaseSensitive, Regex } from "lucide-react";
 
 import { useI18n } from "@frontend/app/locale/locale-context";

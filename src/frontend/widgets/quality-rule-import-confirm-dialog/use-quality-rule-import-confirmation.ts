@@ -221,18 +221,16 @@ export function create_quality_rule_duplicate_resolution_plan<TEntry extends Jso
   before_apply?: () => void;
 }): QualityRuleDuplicateResolutionPlan<TEntry> {
   return {
+    ...args,
     existing_entries: clone_entries(args.existing_entries),
     incoming_entries: clone_entries(args.incoming_entries),
-    direct_entries:
-      args.direct_entries === undefined ? undefined : clone_entries(args.direct_entries),
-    skip_entries:
-      args.skip_entries === undefined || args.skip_entries === null
-        ? args.skip_entries
-        : clone_entries(args.skip_entries),
-    overwrite_entries:
-      args.overwrite_entries === undefined ? undefined : clone_entries(args.overwrite_entries),
-    before_pending: args.before_pending,
-    before_apply: args.before_apply,
+    ...(args.direct_entries === undefined
+      ? {}
+      : { direct_entries: clone_entries(args.direct_entries) }),
+    ...(args.skip_entries == null ? {} : { skip_entries: clone_entries(args.skip_entries) }),
+    ...(args.overwrite_entries === undefined
+      ? {}
+      : { overwrite_entries: clone_entries(args.overwrite_entries) }),
   };
 }
 

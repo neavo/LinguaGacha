@@ -179,14 +179,14 @@ function normalize_default_preset_config_values(context: StartupMigrationContext
 function try_normalize_virtual_id(value: string): string | null {
   const parts = value.split(":");
   if (parts.length === 2) {
-    const [source, file_name] = parts;
+    const [source, file_name] = parts as [string, string];
     if (is_preset_source(source) && is_preset_file_name(file_name)) {
       return build_virtual_id(source, file_name);
     }
     return null;
   }
   if (parts.length === 3) {
-    const [source, language, file_name] = parts;
+    const [source, language, file_name] = parts as [string, string, string];
     if (
       source === "builtin" &&
       LANGUAGE_DIR_NAMES.includes(language.toLowerCase() as (typeof LANGUAGE_DIR_NAMES)[number]) &&

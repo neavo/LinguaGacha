@@ -2,7 +2,15 @@ import { TranslationExportProvider } from "@frontend/app/session/translation-exp
 import { PageLeaveProvider } from "@frontend/app/navigation/page-leave-provider";
 import { usePageLeave } from "@frontend/app/navigation/page-leave-context";
 import { AppContentState } from "@frontend/widgets/app-content-state";
-import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import {
+  type JSX,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+  type ReactNode,
+} from "react";
 
 import { DEFAULT_ROUTE_ID, NAVIGATION_GROUPS } from "@frontend/app/navigation/schema";
 import { AppearanceProvider } from "@frontend/app/appearance/appearance-provider";
@@ -231,13 +239,13 @@ function AppContent(): JSX.Element {
             return has_registered_screen(item.id);
           })
           .map((item) => {
-            if ((item.children?.length ?? 0) === 0) {
+            if (item.children === undefined || item.children.length === 0) {
               return item;
             }
 
             return {
               ...item,
-              children: item.children?.filter((child) => {
+              children: item.children.filter((child) => {
                 return has_registered_screen(child.id);
               }),
             };

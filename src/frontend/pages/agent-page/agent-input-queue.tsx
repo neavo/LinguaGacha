@@ -6,7 +6,7 @@ import {
 } from "@frontend/widgets/interactions/sortable";
 import { useReorder } from "@frontend/widgets/interactions/use-reorder";
 import { GripVertical, LoaderCircle, Pencil, Send, Trash2 } from "lucide-react";
-import type { ReactNode } from "react";
+import type { JSX, ReactNode } from "react";
 
 import { useI18n } from "@frontend/app/locale/locale-context";
 import type { AgentInputQueueSnapshot, AgentQueuedInput } from "@shared/agent";
@@ -72,7 +72,7 @@ function AgentInputQueueItem(props: {
   disabled: boolean;
   can_send_now: boolean;
   editing: boolean;
-  render_editor?: (item: AgentQueuedInput) => ReactNode | null;
+  render_editor?: ((item: AgentQueuedInput) => ReactNode | null) | undefined;
   on_edit: (item: AgentQueuedInput) => void;
   on_delete: (id: string) => void;
   on_send_now: (id: string) => void;

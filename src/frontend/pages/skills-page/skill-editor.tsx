@@ -1,4 +1,5 @@
 import {
+  type JSX,
   Fragment,
   useEffect,
   useState,
@@ -193,7 +194,7 @@ export function SkillEditorToolbar(props: {
   status: "saved" | "modified" | null; // 草稿有差异或保存尚在进行时均为已修改，防止在途撤销提前显示已保存。
   busy: boolean;
   locked: boolean;
-  action?: "delete" | "reset";
+  action?: "delete" | "reset" | undefined;
   on_back: () => void;
   on_action: () => Promise<boolean>;
 }): JSX.Element {

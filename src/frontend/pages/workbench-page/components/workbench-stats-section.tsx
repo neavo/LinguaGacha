@@ -1,3 +1,4 @@
+import type { JSX } from "react";
 import { useI18n } from "@frontend/app/locale/locale-context";
 import type { ProjectTranslationStats } from "@shared/project-translation-stats";
 import { WorkbenchStatCard } from "@frontend/pages/workbench-page/components/workbench-stat-card";

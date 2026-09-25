@@ -1,3 +1,4 @@
+import type { JSX } from "react";
 import { Copy, GraduationCap, ListTodo, Recycle, SlidersHorizontal, Trash2 } from "lucide-react";
 
 import { Model } from "@domain/model";

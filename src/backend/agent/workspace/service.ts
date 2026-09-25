@@ -180,7 +180,7 @@ export class AgentWorkspaceService {
       writeStore: Pick<ProjectWriteStore, "apply_agent_workspace_changes">;
       logManager: Pick<LogManager, "warning">;
       run: AgentWorkspaceRunPort;
-      pdfHost?: PDFHost;
+      pdfHost?: PDFHost | undefined;
       runtimeDirectory: string; // 当前应用版本部署的预加载模块与 npm 依赖目录
       openDirectory: (path: string) => Promise<void>;
       pickSavePath: (defaultName: string) => Promise<string | null>;
@@ -259,7 +259,7 @@ export class AgentWorkspaceService {
     let relative_path: string;
     try {
       // 链接片段不参与文件定位；百分号只在此解码一次，保留编码后的文件名字符。
-      relative_path = decodeURIComponent(href.split(/[?#]/u)[0]);
+      relative_path = decodeURIComponent(href.split(/[?#]/u, 1)[0]!);
     } catch (cause) {
       throw new AppErrors.AppError("request.validation_failed", { cause });
     }

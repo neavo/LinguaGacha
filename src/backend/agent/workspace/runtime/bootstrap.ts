@@ -76,7 +76,11 @@ Object.defineProperty(globalThis, "ws", {
       return result;
     },
     async (path, options) => {
-      await request_channel.call({ kind: "emit_image", path, options });
+      await request_channel.call({
+        kind: "emit_image",
+        path,
+        ...(options === undefined ? {} : { options }),
+      });
     },
   ),
 });

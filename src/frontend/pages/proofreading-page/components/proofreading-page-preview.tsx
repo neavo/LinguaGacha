@@ -1,5 +1,5 @@
 import type { ProofreadingPagePreviewResult as PreviewResult } from "@shared/proofreading/proofreading-types";
-import { useEffect, useState } from "react";
+import { type JSX, useEffect, useState } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { api_fetch } from "@frontend/app/desktop/desktop-api";
 import { useI18n } from "@frontend/app/locale/locale-context";

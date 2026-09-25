@@ -43,7 +43,7 @@ describe("LogDetailView", () => {
                 level: "info",
                 source: "test",
                 content,
-                error,
+                ...(error === undefined ? {} : { error }),
               }}
             />
           </LocaleProvider>

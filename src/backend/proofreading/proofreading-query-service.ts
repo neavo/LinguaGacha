@@ -47,8 +47,12 @@ export class ProofreadingQueryService {
     const action = String(request["action"] ?? "sync");
     if (action === "sync") {
       const result = await this.cache.sync({
-        sourceLanguage: request["source_language"],
-        targetLanguage: request["target_language"],
+        ...(request["source_language"] === undefined
+          ? {}
+          : { sourceLanguage: request["source_language"] }),
+        ...(request["target_language"] === undefined
+          ? {}
+          : { targetLanguage: request["target_language"] }),
       });
       return this.with_revision(result, {
         syncState: result.data as unknown as JsonValue,

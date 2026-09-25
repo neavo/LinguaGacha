@@ -3,7 +3,7 @@ import type { DatabaseSync } from "node:sqlite";
 import { read_json_record } from "../../../domain/json";
 import { JsonTool } from "../../../shared/utils/json-tool";
 import { row_number, row_text } from "../migration-row";
-import { ZstdTool } from "../../../shared/utils/zstd-tool";
+import { ZstdTool } from "../../database/zstd-tool";
 import type { MigrationDescriptor, ProjectDatabaseMigrationContext } from "../migration-types";
 
 /**

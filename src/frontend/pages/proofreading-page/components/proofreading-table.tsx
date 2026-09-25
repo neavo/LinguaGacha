@@ -12,7 +12,7 @@ import {
   RefreshCcw,
   TriangleAlert,
 } from "lucide-react";
-import { useMemo, type ReactNode } from "react";
+import { type JSX, useMemo, type ReactNode } from "react";
 
 import { ITEM_MANUAL_STATUSES, type ItemManualStatus } from "@domain/item";
 import { useI18n } from "@frontend/app/locale/locale-context";

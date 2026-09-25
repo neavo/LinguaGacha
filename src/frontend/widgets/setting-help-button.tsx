@@ -1,3 +1,4 @@
+import type { JSX } from "react";
 import { BadgeHelp } from "lucide-react";
 
 import { open_external_url } from "@frontend/app/desktop/desktop-api";

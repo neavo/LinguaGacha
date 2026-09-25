@@ -107,16 +107,16 @@ function normalize_change_request(request: ProjectWriteChangeRequest): ProjectWr
   }
   return {
     ...request,
-    items:
-      request.items ??
-      (request.updatedSections.includes("items") && !has_explicit_section_payload(request, "items")
-        ? { payloadMode: "section-invalidated" }
-        : undefined),
-    files:
-      request.files ??
-      (request.updatedSections.includes("files") && !has_explicit_section_payload(request, "files")
-        ? { payloadMode: "section-invalidated" }
-        : undefined),
+    ...(request.items === undefined &&
+    request.updatedSections.includes("items") &&
+    !has_explicit_section_payload(request, "items")
+      ? { items: { payloadMode: "section-invalidated" } }
+      : {}),
+    ...(request.files === undefined &&
+    request.updatedSections.includes("files") &&
+    !has_explicit_section_payload(request, "files")
+      ? { files: { payloadMode: "section-invalidated" } }
+      : {}),
     ...(Object.keys(sections).length === 0 ? {} : { sections }),
   };
 }

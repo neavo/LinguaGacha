@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { type JSX, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { RouteId } from "@frontend/app/navigation/types";
 import { api_fetch } from "@frontend/app/desktop/desktop-api";
 import type {
@@ -149,7 +149,7 @@ function create_project_change_apply_result(
 
   const result: ProjectChangeApplyResult = {
     applied: true,
-    eventId: event.eventId,
+    ...(event.eventId === undefined ? {} : { eventId: event.eventId }),
     source: event.source,
     projectRevision: event.projectRevision,
     updatedSections: [...event.updatedSections],
@@ -543,7 +543,7 @@ export function DesktopStateProvider(props: { children: ReactNode }): JSX.Elemen
       return;
     }
 
-    const next_project_snapshot = normalize_project_snapshot({ project: manifest.project });
+    const next_project_snapshot = normalize_project_snapshot(manifest);
     const manifest_project_path = String(manifest.projectPath ?? "").trim();
     if (!next_project_snapshot.loaded || manifest_project_path === "") {
       sync_project_snapshot(next_project_snapshot);

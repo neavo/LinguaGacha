@@ -10,7 +10,7 @@ describe("技能主文件编辑", () => {
     const result = write_agent_skill_document(original, document);
     expect(read_agent_skill_document(result)).toEqual(document);
     expect(result).toContain("disable-model-invocation: true");
-    expect(parse(result.split("---")[1]).extra).toEqual(["one", "two"]);
+    expect(parse(result.split("---")[1]!).extra).toEqual(["one", "two"]);
     expect(result).toContain("# 留给其它消费者的字段");
   });
   it.each(["", "\n \t\r\n\n"])("正文空白随读取和写入保留：%j", (separator) => {

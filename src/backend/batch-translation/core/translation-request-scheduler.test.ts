@@ -29,7 +29,13 @@ describe("TranslationRequestScheduler", () => {
     async (retry_after_ms, request_timeout, expected) => {
       const request = vi
         .fn<LLMClientPort["request"]>()
-        .mockResolvedValueOnce(response({ ...failure(), retry_after_ms, http_received_at: 0 }))
+        .mockResolvedValueOnce(
+          response({
+            ...failure(),
+            ...(retry_after_ms === undefined ? {} : { retry_after_ms }),
+            http_received_at: 0,
+          }),
+        )
         .mockResolvedValue(response());
       const { scheduler } = setup(request);
       const result = scheduler.request(

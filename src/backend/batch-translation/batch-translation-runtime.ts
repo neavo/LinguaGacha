@@ -273,15 +273,16 @@ export class BatchTranslationRuntime {
         this.snapshot = { ...run.previous, revision: this.snapshot.revision };
         await this.publish_snapshot();
       } else {
+        const run_progress = result?.run_progress ?? this.read_run_progress();
         result ??= Object.freeze({
           status: "error",
           progress: Object.freeze(this.read_progress()),
-          run_progress: this.read_run_progress(),
+          ...(run_progress === undefined ? {} : { run_progress }),
         });
         // 最后一次异步收尾后冻结结果；此刻之前受理的停止都属于本轮。
         result = Object.freeze({
           ...result,
-          run_progress: result.run_progress ?? this.read_run_progress(),
+          ...(run_progress === undefined ? {} : { run_progress }),
           status:
             result.status === "error"
               ? "error"
@@ -318,6 +319,7 @@ export class BatchTranslationRuntime {
       }
     }
     if (errors.length > 0) {
+      const run_progress = result?.run_progress ?? this.read_run_progress();
       const cause =
         errors.length === 1
           ? errors[0]
@@ -330,7 +332,7 @@ export class BatchTranslationRuntime {
                 stop_source: run.stop_source,
                 // 预约尚未执行时沿用前置进度，停止事实仍随完成链返回。
                 progress: result?.progress ?? Object.freeze({ ...run.previous.progress }),
-                run_progress: result?.run_progress ?? this.read_run_progress(),
+                ...(run_progress === undefined ? {} : { run_progress }),
               }),
               cause,
             )

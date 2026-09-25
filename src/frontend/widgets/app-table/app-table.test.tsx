@@ -1,4 +1,4 @@
-import { act, useState, type ReactNode } from "react";
+import { type JSX, act, useState, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { DragEndEvent, DragStartEvent, DragOverEvent, DragDropManager } from "@dnd-kit/react";
@@ -204,7 +204,9 @@ function create_remote_row_model(args: {
       const index = args.rows.findIndex((row) => row.id === row_id);
       return index >= 0 && loaded_index_set.has(index) ? index : undefined;
     },
-    resolve_row_ids_range: args.resolve_row_ids_range,
+    ...(args.resolve_row_ids_range === undefined
+      ? {}
+      : { resolve_row_ids_range: args.resolve_row_ids_range }),
   };
 }
 
@@ -411,7 +413,7 @@ describe("AppTable", () => {
     const on_row_activate = vi.fn();
     const container = await mount(
       create_default_props({
-        rows: [rows[0]],
+        rows: [rows[0]!],
         row_model: create_remote_row_model({ rows, loaded_indices: [0] }),
         active_row_id: "b",
         on_row_activate,

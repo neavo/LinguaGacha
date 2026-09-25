@@ -66,7 +66,7 @@ it("相邻页独立编译脚注与标题链接，各页同名引用互不干扰"
     const page_ids = DomUtils.findAll(
       (node) => typeof node.attribs["id"] === "string",
       tree.children,
-    ).map((node) => node.attribs["id"]);
+    ).map((node) => node.attribs["id"]!);
     ids.push(...page_ids);
     const links = DomUtils.getElementsByTagName("a", tree.children).map(
       (node) => node.attribs["href"],

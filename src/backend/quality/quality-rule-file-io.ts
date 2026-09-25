@@ -199,7 +199,7 @@ function project_external_rule_fields(entry: QualityRuleFileEntry): QualityRuleF
   const result: QualityRuleFileEntry = {};
   for (const key of ["src", "dst", "info", "regex", "case_sensitive"] as const) {
     if (Object.hasOwn(entry, key)) {
-      result[key] = entry[key];
+      result[key] = entry[key]!; // 自有 JSON 字段的值不会是 undefined。
     }
   }
   return result;

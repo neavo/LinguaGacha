@@ -1,3 +1,4 @@
+import type { JSX } from "react";
 import { Card, CardContent, CardTitle } from "@frontend/shadcn/card";
 import { cn } from "@frontend/shadcn/classnames";
 

@@ -1,4 +1,4 @@
-import { useEffect, useImperativeHandle, useRef, useState, type Ref } from "react";
+import { type JSX, useEffect, useImperativeHandle, useRef, useState, type Ref } from "react";
 import { WrapText } from "lucide-react";
 
 import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
@@ -60,14 +60,14 @@ type AppEditorEditingProps = {
   indent_with_tab?: boolean;
   marks?: readonly AppTextMark[];
   on_change?: (next_value: string) => void;
-  on_blur?: () => void;
+  on_blur?: (() => void) | undefined;
 };
 
 type AppEditorDocumentProps = AppEditorBaseProps &
   AppEditorEditingProps & {
     variant?: "document";
     syntax?: AppEditorSyntax;
-    extensions?: Extension; // 随编辑器挂载安装，调用方通过组件身份切换业务文档。
+    extensions?: Extension | undefined; // 随编辑器挂载安装，调用方通过组件身份切换业务文档。
   };
 
 type AppEditorFieldProps = AppEditorBaseProps &
@@ -79,7 +79,7 @@ type AppEditorFieldProps = AppEditorBaseProps &
 type AppEditorViewerProps = AppEditorBaseProps & {
   variant: "viewer";
   syntax?: AppEditorSyntax;
-  ranges?: readonly AppViewerRange[];
+  ranges?: readonly AppViewerRange[] | undefined;
 };
 
 type AppEditorProps = AppEditorDocumentProps | AppEditorFieldProps | AppEditorViewerProps;
@@ -93,7 +93,7 @@ type NormalizedAppEditorProps = AppEditorBaseProps & {
   indent_with_tab: boolean;
   marks: readonly AppTextMark[];
   on_change?: (next_value: string) => void;
-  on_blur?: () => void;
+  on_blur?: (() => void) | undefined;
 };
 
 // 各维度独立重配，避免 React 属性变化时重建 EditorView 和丢失选区。
@@ -494,14 +494,9 @@ export function AppEditor(props: AppEditorProps): JSX.Element {
     suppress_change_ref.current = true;
     try {
       editor_view.dispatch({
-        changes:
-          current_value === value
-            ? undefined
-            : {
-                from: 0,
-                to: editor_view.state.doc.length,
-                insert: value,
-              },
+        ...(current_value === value
+          ? {}
+          : { changes: { from: 0, to: editor_view.state.doc.length, insert: value } }),
         effects: editor_viewer_ranges_compartment.reconfigure(create_app_viewer_ranges(ranges)),
         selection: next_selection,
         // 外部载入可以替换固定结构，替换过程不进入用户撤销历史。

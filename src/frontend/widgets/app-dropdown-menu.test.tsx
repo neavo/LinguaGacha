@@ -1,4 +1,4 @@
-import { act, createRef, useState } from "react";
+import { type JSX, act, createRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { expect, it } from "vitest";
 import {

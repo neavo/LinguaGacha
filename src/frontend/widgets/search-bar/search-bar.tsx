@@ -31,7 +31,7 @@ type SearchBarSharedProps<scope_value extends string = string> = React.Component
   clear_label: string;
   invalid_message: string | null;
   on_keyword_change: (next_keyword: string) => void;
-  search_disabled?: boolean; // 只锁搜索读控件，不影响替换文本编辑。
+  search_disabled?: boolean | undefined; // 只锁搜索读控件，不影响替换文本编辑。
   scope: {
     value: scope_value;
     button_label: React.ReactNode;
@@ -159,12 +159,12 @@ type SearchBarKeywordFieldProps = {
   placeholder: string;
   clear_label: string;
   invalid_message: string | null;
-  search_disabled?: boolean;
+  search_disabled?: boolean | undefined;
   on_keyword_change: (next_keyword: string) => void;
   className?: string;
 };
 // 关键词、清空与正则错误提示同属搜索读控件，共用 search_disabled。
-function SearchBarKeywordField(props: SearchBarKeywordFieldProps): JSX.Element {
+function SearchBarKeywordField(props: SearchBarKeywordFieldProps): React.JSX.Element {
   const show_clear_keyword = props.keyword !== "";
   const show_invalid_state = props.invalid_message !== null;
   const show_inline_controls = show_clear_keyword || show_invalid_state;
@@ -242,14 +242,14 @@ type SearchBarMenuActionProps<Value extends string> = {
   options: readonly { value: Value; label: React.ReactNode }[];
   on_change: (value: Value) => void;
   on_open?: () => void;
-  disabled?: boolean;
+  disabled?: boolean | undefined;
   active?: boolean;
 };
 
 /** 范围与日期共用工具栏菜单的尺寸、提示和单选交互。 */
 export function SearchBarMenuAction<Value extends string>(
   props: SearchBarMenuActionProps<Value>,
-): JSX.Element {
+): React.JSX.Element {
   return (
     <AppDropdownMenu
       onOpenChange={(open) => {
@@ -299,11 +299,11 @@ export function SearchBarMenuAction<Value extends string>(
 }
 
 type SearchBarRegexActionProps = {
-  search_disabled?: boolean;
+  search_disabled?: boolean | undefined;
   regex: SearchBarSharedProps["regex"];
 };
 // 正则开关只改变搜索解释方式，跟搜索范围共用读控件锁。
-function SearchBarRegexAction(props: SearchBarRegexActionProps): JSX.Element {
+function SearchBarRegexAction(props: SearchBarRegexActionProps): React.JSX.Element {
   return (
     <Tooltip>
       <TooltipTrigger
@@ -346,7 +346,7 @@ type SearchBarReplaceFieldProps = {
   on_replace_all: () => void | Promise<void>;
 };
 // 替换输入和替换提交分开消费禁用状态，避免项目写锁影响本地草稿。
-function SearchBarReplaceField(props: SearchBarReplaceFieldProps): JSX.Element {
+function SearchBarReplaceField(props: SearchBarReplaceFieldProps): React.JSX.Element {
   const show_clear_replace_text = props.replace_text !== "";
 
   return (
@@ -442,7 +442,7 @@ function SearchBarReplaceField(props: SearchBarReplaceFieldProps): JSX.Element {
 // SearchBar 对外只暴露能力锁，具体提交前置条件由组件内部收口。
 export function SearchBar<scope_value extends string = string>(
   props: SearchBarProps<scope_value>,
-): JSX.Element {
+): React.JSX.Element {
   const {
     className,
     variant,

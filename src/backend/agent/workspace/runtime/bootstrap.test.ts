@@ -741,8 +741,8 @@ async function run(
       stdoutPath: `${AGENT_WORKSPACE_RUN_ROOT}/task-${sequence}.stdout.log`,
       stderrPath: `${AGENT_WORKSPACE_RUN_ROOT}/task-${sequence}.stderr.log`,
       todos: ["发现目标"],
-      host,
-      emitImage,
+      ...(host === undefined ? {} : { host }),
+      ...(emitImage === undefined ? {} : { emitImage }),
     },
     signal,
   );

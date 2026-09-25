@@ -1,3 +1,4 @@
+import type { JSX } from "react";
 import { CircleEllipsis, Recycle } from "lucide-react";
 
 import { AppButton } from "@frontend/widgets/app-button";

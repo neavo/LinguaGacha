@@ -14,6 +14,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import {
+  type JSX,
   forwardRef,
   type ComponentProps,
   type DragEvent,

@@ -1,3 +1,4 @@
+import type { JSX } from "react";
 import { useI18n } from "@frontend/app/locale/locale-context";
 import type { ModelEntrySnapshot } from "@frontend/pages/model-page/types";
 import { Input } from "@frontend/shadcn/input";
@@ -15,6 +16,7 @@ type ModelTaskSettingsDialogProps = {
 const THRESHOLD_INPUT_MIN = 0;
 const THRESHOLD_INPUT_MAX = 9_999_999;
 
+/** 阈值收口为允许范围内的整数，非法输入归零。 */
 function normalize_number_input(value: string): number {
   const parsed_value = Number(value);
   if (Number.isFinite(parsed_value)) {

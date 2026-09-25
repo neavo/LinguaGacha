@@ -157,7 +157,7 @@ project, files, items, pdf, quality, prompts, proofreading
 - 所有数据库操作共用连接作用域，私有 SQL 方法接收连接。连接创建时配置锁等待，覆盖 WAL 初始化。长任务租约和同步作用域共同持有连接，全部释放后关闭。SQLite 管理最后一个连接的 checkpoint 与副文件清理，`ProjectDatabase` 负责回收关闭失败的连接。
 - 数据库边界按 SQLite 数值码识别锁冲突。公开响应使用业务错误码，日志保留失败阶段、路径摘要、SQLite 原码和异常链。回滚或收尾失败同时保留主异常与清理异常。
 - `pdf_documents` 保存来源摘要，`pdf_pages` 以 `(file_path, page)` 保存页面 JSON，原始字节归 assets。读取按原页序组合，写入仅更新目标页。导入事务核对资产 SHA-256，拒绝解析后变化的来源。文字、字体与坐标提取作为可再生工作材料，不进入存储。
-- asset 存在 `assets` 表，以 Zstd blob 落库；压缩格式集中在 `src/shared/utils/zstd-tool.ts`，数据库读取向上返回解压后的 bytes。
+- asset 存在 `assets` 表，以 Zstd blob 落库；压缩格式集中在 `src/backend/database/zstd-tool.ts`，数据库读取向上返回解压后的 bytes。
 - 新建与既有工程共用打开迁移入口：按实际表和列补齐结构，再执行业务写回迁移。执行成功后在同一事务内记录 `applied_writeback_migrations`，完成记录由迁移执行器唯一写入。迁移清单归 registry。
 - 启动期迁移按顺序完成用户数据与历史布局迁移，再读取设置。迁移自行记录可继续初始化的错误，组合根记录抛出的异常并释放资源、中止启动。用户技能迁移失败会阻止新目录初始化，避免产生两份用户技能。版本内置资产始终只读。
 - 工程打开时，文件迁移在事务内按目标文件合并当前可见 Item，使多个格式迁移可以串行组合。历史 `file_type: MD` 在缓存热机和 session loaded 前一次性转为 `MD_V2`。

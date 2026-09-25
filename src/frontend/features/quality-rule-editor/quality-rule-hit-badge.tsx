@@ -1,3 +1,4 @@
+import type { JSX } from "react";
 import { Badge } from "@frontend/shadcn/badge";
 import "./quality-rule-hit-badge.css";
 import { Spinner } from "@frontend/shadcn/spinner";

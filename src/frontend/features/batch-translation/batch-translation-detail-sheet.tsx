@@ -1,3 +1,4 @@
+import type { JSX } from "react";
 import { CircleStop } from "lucide-react";
 
 import "./batch-translation.css";
@@ -17,7 +18,7 @@ import {
 type BatchTranslationDetailSheetProps = {
   open: boolean;
   display: BatchTranslationDetailDisplay;
-  empty_text?: string;
+  empty_text?: string | undefined;
   on_close: () => void;
   on_request_stop_confirmation: () => void;
 };

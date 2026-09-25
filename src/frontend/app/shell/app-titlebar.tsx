@@ -1,5 +1,5 @@
 import { PanelLeftClose, PanelLeftOpen } from "lucide-react";
-import { startTransition } from "react";
+import { type JSX, startTransition } from "react";
 
 import { useSidebar } from "@frontend/shadcn/sidebar-context";
 import "@frontend/app/shell/app-titlebar.css";

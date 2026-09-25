@@ -90,6 +90,64 @@ describe("useModelPageState", () => {
     runtime.owner = null;
   });
 
+  /** 同组模型隔着另一分组，验证重排不会移动其它分组的位置。 */
+  function create_reorder_snapshot() {
+    const payload = create_snapshot();
+    payload.snapshot.models.push({
+      id: "second",
+      type: "CUSTOM_OPENAI",
+      name: "第二模型",
+      can_reset: false,
+    });
+    return payload;
+  }
+
+  it.each([["custom"], ["custom", "custom"], ["custom", "preset"]])(
+    "拒绝成员不完整、重复或跨分组的重排：%j",
+    async (...ids) => {
+      api_fetch_mock.mockResolvedValue(create_reorder_snapshot());
+      await render_hook();
+      const before = latest_state!.snapshot;
+      api_fetch_mock.mockClear();
+      await act(async () => latest_state!.request_reorder_models("CUSTOM_OPENAI", ids));
+      expect(latest_state!.snapshot).toBe(before);
+      expect(api_fetch_mock).not.toHaveBeenCalled();
+    },
+  );
+
+  it("重排只移动当前分组，提交失败后恢复原顺序并解除忙碌状态", async () => {
+    api_fetch_mock.mockResolvedValue(create_reorder_snapshot());
+    await render_hook();
+    const before = latest_state!.snapshot;
+    let reject!: (error: Error) => void;
+    api_fetch_mock.mockReturnValueOnce(
+      new Promise((_resolve, fail) => {
+        reject = fail;
+      }),
+    );
+    let pending!: Promise<void>;
+    await act(async () => {
+      pending = latest_state!.request_reorder_models("CUSTOM_OPENAI", ["second", "custom"]);
+    });
+    expect(latest_state!.snapshot.models.map((model) => model.id)).toEqual([
+      "preset",
+      "second",
+      "responses",
+      "custom",
+    ]);
+    expect(latest_state!.readonly).toBe(true);
+    expect(api_fetch_mock).toHaveBeenLastCalledWith("/api/models/reorder", {
+      ordered_model_ids: ["second", "custom"],
+    });
+    await act(async () => {
+      reject(new Error("save failed"));
+      await pending;
+    });
+    expect(latest_state!.snapshot).toBe(before);
+    expect(latest_state!.readonly).toBe(false);
+    expect(push_toast).toHaveBeenCalledOnce();
+  });
+
   it("复制期间锁定操作，成功提示目标分类和服务端避重后的副本名称", async () => {
     api_fetch_mock.mockResolvedValue(create_snapshot());
     await render_hook();

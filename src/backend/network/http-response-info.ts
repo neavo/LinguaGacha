@@ -36,5 +36,6 @@ export function record_http_response_info(response: Pick<Response, "status" | "h
   observation.http_status = response.status;
   observation.http_received_at = received_at;
   // 同次响应覆盖整组事实，避免后续响应沿用上一响应的等待时间。
-  observation.retry_after_ms = Number.isFinite(delay) && delay > 0 ? delay : undefined;
+  if (Number.isFinite(delay) && delay > 0) observation.retry_after_ms = delay;
+  else delete observation.retry_after_ms;
 }

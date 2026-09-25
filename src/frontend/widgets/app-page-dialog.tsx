@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import type { JSX, ReactNode } from "react";
 import { Dialog as DialogPrimitive } from "@base-ui/react/dialog";
 
 import { useI18n } from "@frontend/app/locale/locale-context";
@@ -18,7 +18,7 @@ type AppPageDialogProps = {
   children: ReactNode;
   contentClassName?: string;
   bodyClassName?: string;
-  footerClassName?: string;
+  footerClassName?: string | undefined;
 };
 
 /** 固定档位限制公共宽度，`viewport` 经 `cn` 覆盖公共宽度并随视口伸展。 */

@@ -1,6 +1,6 @@
 import { TranslationProgressBadge } from "@frontend/features/translation-progress/translation-progress-badge";
 import { CircleEllipsis } from "lucide-react";
-import { useMemo, useState } from "react";
+import { type JSX, useMemo, useState } from "react";
 
 import { useI18n } from "@frontend/app/locale/locale-context";
 import {

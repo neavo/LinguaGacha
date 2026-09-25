@@ -1,44 +1,21 @@
 {
+  "extends": "./tsconfig.base.json",
   "compilerOptions": {
-    "allowImportingTsExtensions": true,
     "erasableSyntaxOnly": true,
-    "isolatedModules": true,
     "jsx": "react-jsx",
-    "lib": ["ES2023", "DOM", "DOM.Iterable"],
-    "module": "ESNext",
-    "moduleResolution": "bundler",
-    "noEmit": true,
-    "noFallthroughCasesInSwitch": true,
-    "noUncheckedSideEffectImports": true,
-    "noUnusedLocals": true,
-    "noUnusedParameters": true,
-    "paths": {
-      "@backend/api/api-base-url": ["./src/backend/api/api-base-url.ts"],
-      "@domain/*": ["./src/domain/*"],
-      "@frontend/*": ["./src/frontend/*"],
-      "@gui/bridge-api": ["./src/gui/bridge/bridge-api.ts"],
-      "@gui/bridge-types": ["./src/gui/bridge/bridge-types.ts"],
-      "@gui/external-url-policy": ["./src/gui/shell/external-url-policy.ts"],
-      "@gui/ipc-contract": ["./src/gui/gui-ipc-contract.ts"],
-      "@gui/shell-contract": ["./src/gui/shell/shell-contract.ts"],
-      "@shared/*": ["./src/shared/*"]
-    },
-    "resolveJsonModule": true,
-    "skipLibCheck": true,
-    "strict": true,
-    "target": "ES2023",
-    "tsBuildInfoFile": "./build/tsconfig.renderer.tsbuildinfo",
-    "verbatimModuleSyntax": true
+    "lib": ["ES2025", "DOM", "DOM.Iterable"],
+    "types": ["vite/client"],
+    "tsBuildInfoFile": "./build/tsconfig.renderer.tsbuildinfo"
   },
   "include": [
     "src/backend/api/api-base-url.ts",
     "src/domain",
-    "src/electron-env.d.ts",
     "src/frontend",
     "src/gui/bridge/*.ts",
     "src/gui/gui-ipc-contract.ts",
     "src/gui/shell/external-url-policy.ts",
     "src/gui/shell/shell-contract.ts",
     "src/shared"
-  ]
+  ],
+  "exclude": ["**/*.test.ts", "**/*.test.tsx", "src/test"]
 }

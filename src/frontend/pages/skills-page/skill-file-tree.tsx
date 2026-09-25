@@ -1,5 +1,5 @@
 import { AGENT_SKILL_MAIN_FILE } from "@shared/agent-skills";
-import { useEffect, useState, type DragEvent, type KeyboardEvent } from "react";
+import { type JSX, useEffect, useState, type DragEvent, type KeyboardEvent } from "react";
 import {
   ChevronDown,
   ChevronRight,

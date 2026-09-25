@@ -5,7 +5,7 @@ const RESERVED_MAIN_PROCESS_PARALLELISM = 1; // 默认至少给主线程保留�
  * 统一解析项目后台 worker 默认容量；显式 workerCount 只做正整数收口。
  */
 export function resolve_default_worker_count(args: {
-  workerCount?: number;
+  workerCount?: number | undefined;
   availableParallelism: number;
 }): number {
   if (args.workerCount !== undefined) {

@@ -1,3 +1,4 @@
+import type { JSX } from "react";
 import type { AgentEntryStatus } from "@shared/agent";
 
 /** 状态灯以颜色和可访问名称共同表达结果。 */

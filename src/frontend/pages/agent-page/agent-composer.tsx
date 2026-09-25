@@ -1,5 +1,5 @@
 import type { AgentApprovalMode } from "@domain/setting";
-import type { Ref, RefObject } from "react";
+import type { JSX, Ref, RefObject } from "react";
 import { ArrowUp, LoaderCircle, Square } from "lucide-react";
 import type { ModelSelectionInput } from "@shared/model-selection";
 import {

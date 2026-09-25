@@ -7,7 +7,7 @@ import type {
 type PendingRequest = {
   resolve: (value: WorkspaceRequestResult) => void;
   reject: (error: unknown) => void;
-  signal?: AbortSignal;
+  signal: AbortSignal | undefined;
   abortListener?: () => void;
 };
 

@@ -1,3 +1,4 @@
+import type { JSX } from "react";
 import { FileDown, FileUp } from "lucide-react";
 
 import { useI18n } from "@frontend/app/locale/locale-context";

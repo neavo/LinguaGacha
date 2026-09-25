@@ -11,7 +11,7 @@ type DesktopToastOptions = {
 };
 type ProgressToastOptions = {
   message: string;
-  progress_percent?: number;
+  progress_percent?: number | undefined;
   presentation?: "inline" | "modal";
 };
 type ProgressToastState = Readonly<ProgressToastOptions & { owner_token: DesktopToastId }>;

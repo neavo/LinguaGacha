@@ -116,7 +116,7 @@ const RENPY_CONTROL_TAG_PATTERN = /\{([^{}]*?)\}|\[([^[\]]*?)\]/giu; // RENPY；
  * Item 是跨文件解析、数据库、任务和导出共享的条目实体
  */
 export class Item {
-  public id?: number; // 数据库主键（自增）；跨层 JSON 中允许缺失
+  public id: number | undefined; // 数据库主键（自增）；跨层 JSON 中允许缺失
   public src = ""; // 原文
   public dst = ""; // 译文；为空时导出逻辑回退原文
   public name_src: ItemNameField = null; // 角色姓名原文

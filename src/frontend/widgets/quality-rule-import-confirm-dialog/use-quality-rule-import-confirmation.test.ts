@@ -17,8 +17,8 @@ describe("quality-rule-import-confirmation", () => {
       before_pending,
       before_apply,
     });
-    existing_entries[0].src = "污染";
-    incoming_entries[0].dst = "Dirty";
+    existing_entries[0]!.src = "污染";
+    incoming_entries[0]!.dst = "Dirty";
 
     expect(plan.existing_entries).toEqual([{ src: "魔法", dst: "Magic" }]);
     expect(plan.incoming_entries).toEqual([{ src: "勇者", dst: "Hero" }]);

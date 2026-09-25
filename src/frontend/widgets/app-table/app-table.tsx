@@ -3,6 +3,7 @@ import { SORTABLE_PROVIDER_OPTIONS } from "@frontend/widgets/interactions/sortab
 import { useReorder } from "@frontend/widgets/interactions/use-reorder";
 import { useVirtualizer, type VirtualItem } from "@tanstack/react-virtual";
 import {
+  type JSX,
   Fragment,
   useCallback,
   useEffect,

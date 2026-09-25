@@ -172,7 +172,8 @@ export class PiModelCatalog {
       read_catalog_model(provider, id, value),
     );
     if (models.length === 0) throw new Error(`Pi catalog ${provider}: empty provider body`);
-    return { modified, etag: response.headers.get("ETag") ?? undefined, models };
+    const etag = response.headers.get("ETag");
+    return { modified, ...(etag === null ? {} : { etag }), models };
   }
 
   /** 按当前内置日期筛选缓存，坏供应商条目独立回退。 */
@@ -206,7 +207,7 @@ export class PiModelCatalog {
       try {
         providers[provider] = {
           modified,
-          etag: typeof record.etag === "string" ? record.etag : undefined,
+          ...(typeof record.etag === "string" ? { etag: record.etag } : {}),
           models: record.models.map((model) => {
             const id = (model as { id?: unknown }).id;
             return read_catalog_model(provider, String(id ?? ""), model);

@@ -1,3 +1,4 @@
+import type { JSX } from "react";
 import { useTranslationExport } from "@frontend/app/session/translation-export/translation-export-context";
 import { useProjectTranslationStats } from "@frontend/app/session/project-translation-stats-context";
 import { useI18n } from "@frontend/app/locale/locale-context";

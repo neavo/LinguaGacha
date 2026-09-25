@@ -185,7 +185,7 @@ export function build_translation_task_summary_display(
  * 将翻译任务快照组装成详情面板契约，停止中禁用重复停止。
  */
 export function build_translation_task_detail_display(args: {
-  config?: BatchTranslationConfig;
+  config?: BatchTranslationConfig | undefined;
   metrics: BatchTranslationMetrics;
   completion_percent: number | null; // 工程完成率由共享统计提供，与本轮运行指标分开
   waveform_history: number[];

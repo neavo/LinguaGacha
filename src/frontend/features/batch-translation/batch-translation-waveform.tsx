@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from "react";
+import { type JSX, useEffect, useMemo, useRef } from "react";
 
 import {
   build_task_waveform_columns,

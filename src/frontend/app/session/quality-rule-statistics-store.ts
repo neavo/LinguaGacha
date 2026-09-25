@@ -152,7 +152,7 @@ function resolve_quality_statistics_item_result_expire_scope(
     source: result.source,
     fullReplace: item_delta.fullReplace,
     deleteCount: item_delta.deleteItemIds.length,
-    fieldPatch: item_delta.fieldPatch,
+    ...(item_delta.fieldPatch === undefined ? {} : { fieldPatch: item_delta.fieldPatch }),
   });
 }
 

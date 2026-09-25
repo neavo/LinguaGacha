@@ -2,7 +2,7 @@ import {
   clone_content_filters,
   type ProofreadingContentFilters,
 } from "@frontend/pages/proofreading-page/proofreading-filter-state";
-import { useEffect, useMemo, useState } from "react";
+import { type JSX, useEffect, useMemo, useState } from "react";
 import { Check, LoaderCircle, Minus } from "lucide-react";
 
 import { useI18n } from "@frontend/app/locale/locale-context";
@@ -91,7 +91,7 @@ function FilterGroupHeader(props: {
   action_label: string;
   selected: boolean;
   partial: boolean;
-  loading?: boolean;
+  loading?: boolean | undefined;
   onClick: () => void;
 }): JSX.Element {
   const checked_state = props.partial ? "mixed" : props.selected;

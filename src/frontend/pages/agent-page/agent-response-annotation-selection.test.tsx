@@ -183,7 +183,7 @@ describe("AgentResponseAnnotationSelection", () => {
       </>,
     );
     const paragraphs = container.querySelectorAll("p");
-    select(paragraphs[0].firstChild!, paragraphs[1].firstChild!);
+    select(paragraphs[0]!.firstChild!, paragraphs[1]!.firstChild!);
     await flush();
     expect(toolbar()).toBeNull();
   });

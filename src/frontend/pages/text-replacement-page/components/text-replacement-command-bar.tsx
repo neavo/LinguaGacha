@@ -1,3 +1,4 @@
+import type { JSX } from "react";
 import { FileDown, FileUp, Plus, Trash2 } from "lucide-react";
 
 import { useI18n, type LocaleKey } from "@frontend/app/locale/locale-context";

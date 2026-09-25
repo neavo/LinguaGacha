@@ -1,6 +1,7 @@
-import type { CSSProperties } from "react";
+import type { JSX, CSSProperties } from "react";
 import "@frontend/widgets/progress-toast-ring/progress-toast-ring.css";
 
+/** 未知进度使用不定动画，已知进度限制在可绘制的百分比范围。 */
 function build_progress_value(progress_percent?: number): number | null {
   if (progress_percent === undefined || Number.isNaN(progress_percent)) {
     return null;
@@ -9,7 +10,8 @@ function build_progress_value(progress_percent?: number): number | null {
   return Math.max(0, Math.min(100, progress_percent));
 }
 
-export function ProgressToastRing(props: { progress_percent?: number }): JSX.Element {
+/** 以同一圆环呈现已知进度和等待状态，文案由外层通知提供。 */
+export function ProgressToastRing(props: { progress_percent?: number | undefined }): JSX.Element {
   const normalized_progress = build_progress_value(props.progress_percent);
   const ring_radius = 13;
   const ring_circumference = 2 * Math.PI * ring_radius;

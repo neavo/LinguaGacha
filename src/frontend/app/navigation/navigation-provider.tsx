@@ -1,4 +1,4 @@
-import { useMemo, useState, type ReactNode } from "react";
+import { type JSX, useMemo, useState, type ReactNode } from "react";
 import type {
   AgentInputRequest,
   ProofreadingLookupIntent,

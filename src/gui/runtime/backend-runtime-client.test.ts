@@ -337,7 +337,7 @@ function create_client(
       resolveProxy: resolve_proxy,
       openDirectory: open_directory,
       pickSavePath: pick_save_path,
-      pdfHost,
+      ...(pdfHost === undefined ? {} : { pdfHost }),
       imageHost,
       onUnexpectedExit: on_unexpected_exit,
     }),

@@ -1,4 +1,4 @@
-import { act } from "react";
+import { type JSX, act } from "react";
 import { createRoot } from "react-dom/client";
 import { expect, it, vi } from "vitest";
 import { TranslationExportProvider } from "@frontend/app/session/translation-export/translation-export-provider";

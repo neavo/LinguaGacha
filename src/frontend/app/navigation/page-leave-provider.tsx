@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState, type ReactNode } from "react";
+import { type JSX, useCallback, useMemo, useRef, useState, type ReactNode } from "react";
 import { type BeforePageLeave, PageLeaveContext } from "./page-leave-context";
 
 /** 主窗口只持有当前页面的离开前动作，草稿和保存仍由页面拥有。 */

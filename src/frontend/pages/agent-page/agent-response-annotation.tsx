@@ -1,4 +1,4 @@
-import type { ComponentProps } from "react";
+import type { JSX, ComponentProps } from "react";
 import { X } from "lucide-react";
 
 import { useI18n } from "@frontend/app/locale/locale-context";

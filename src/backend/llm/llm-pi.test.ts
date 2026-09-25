@@ -79,7 +79,7 @@ describe("pi-ai 请求适配", () => {
         }),
         {
           apiKey: "fake",
-          reasoning: resolved.thinkingLevel === "off" ? undefined : resolved.thinkingLevel,
+          ...(resolved.thinkingLevel === "off" ? {} : { reasoning: resolved.thinkingLevel }),
           onPayload: (value) => {
             payload = value;
             throw new Error("capture-payload");

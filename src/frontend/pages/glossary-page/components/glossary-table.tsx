@@ -1,5 +1,5 @@
 import { CaseSensitive } from "lucide-react";
-import { useMemo } from "react";
+import { type JSX, useMemo } from "react";
 
 import { useI18n } from "@frontend/app/locale/locale-context";
 import { GlossaryContextMenuItems } from "@frontend/pages/glossary-page/components/glossary-context-menu";

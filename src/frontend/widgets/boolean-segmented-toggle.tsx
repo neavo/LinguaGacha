@@ -1,3 +1,4 @@
+import type { JSX } from "react";
 import { useI18n } from "@frontend/app/locale/locale-context";
 import { SegmentedToggle } from "@frontend/shadcn/segmented-toggle";
 
@@ -16,15 +17,12 @@ export function BooleanSegmentedToggle(props: BooleanSegmentedToggleProps): JSX.
 
   return (
     <SegmentedToggle
-      aria_label={props.aria_label}
+      {...props}
       value={props.value ? "enabled" : "disabled"}
       options={[
         { value: "disabled", label: t("app.toggle.option.disabled") },
         { value: "enabled", label: t("app.toggle.option.enabled") },
       ]}
-      disabled={props.disabled}
-      className={props.className}
-      stretch={props.stretch}
       on_value_change={(next_value) => props.on_value_change(next_value === "enabled")}
     />
   );

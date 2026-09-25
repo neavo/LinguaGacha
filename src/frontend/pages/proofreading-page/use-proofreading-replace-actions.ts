@@ -160,7 +160,7 @@ export function useProofreadingReplaceActions(
           {
             item_id: Number(target_item.item_id),
             dst: replaced_result.field === "dst" ? replaced_result.text : target_item.dst,
-            name_dst: replaced_result.field === "name_dst" ? replaced_result.text : undefined,
+            ...(replaced_result.field === "name_dst" ? { name_dst: replaced_result.text } : {}),
           },
         ],
       }),

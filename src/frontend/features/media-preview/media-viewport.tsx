@@ -1,4 +1,5 @@
 import {
+  type JSX,
   useCallback,
   useEffect,
   useRef,

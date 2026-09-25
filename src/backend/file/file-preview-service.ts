@@ -43,7 +43,7 @@ export class FilePreviewService {
     const pipeline = this.create_parse_pipeline();
     const result = await pipeline.parse_project_file_preview({
       source_paths,
-      current_rel_path,
+      ...(current_rel_path === undefined ? {} : { current_rel_path }),
     });
     this.log_parse_failures(result.failed_files);
     return {

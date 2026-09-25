@@ -1,4 +1,5 @@
 import {
+  type JSX,
   memo,
   useEffect,
   useMemo,
@@ -45,7 +46,7 @@ type AgentMarkdownProps = {
 const MARKDOWN_DIAGRAM_OPTIONS = { errorComponent: AgentMarkdownDiagramError };
 const MARKDOWN_CONTROLS = { mermaid: { fullscreen: false } };
 // 保留产品的原始 HTML 展示；URL 在唯一转换入口沿用既有协议边界。
-const MARKDOWN_REHYPE_PLUGINS = [defaultRehypePlugins.raw];
+const MARKDOWN_REHYPE_PLUGINS = [defaultRehypePlugins.raw!]; // Streamdown 的 raw 插件是产品保留原始 HTML 的固定依赖。
 const MARKDOWN_REMARK_PLUGINS = [...Object.values(defaultRemarkPlugins), MARKDOWN_ALERT];
 const MARKDOWN_URL_PROTOCOL = /^(?:https?|ircs?|mailto|xmpp)$/iu;
 const MERMAID_NODE_RADIUS = 4;

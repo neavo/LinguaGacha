@@ -1,5 +1,6 @@
 import { find_agent_mention_ranges } from "./agent-mention";
 import {
+  type JSX,
   memo,
   useEffect,
   useId,
@@ -63,7 +64,7 @@ type AgentTimelineProps = {
   follow_reset_revision: number;
   on_continue: () => void;
   on_edit: (entry: UserEntry | AssistantEntry) => void;
-  render_entry_editor?: (entry: UserEntry | AssistantEntry) => ReactNode | null;
+  render_entry_editor?: ((entry: UserEntry | AssistantEntry) => ReactNode | null) | undefined;
   on_add_annotation: (annotation: AgentResponseAnnotationAttachment) => void;
   revision_disabled: boolean;
   continue_disabled: boolean;
@@ -162,7 +163,7 @@ type AgentRoundProps = {
   revision_available: boolean;
   on_continue: () => void;
   on_edit: (entry: UserEntry | AssistantEntry) => void;
-  render_entry_editor?: (entry: UserEntry | AssistantEntry) => ReactNode | null;
+  render_entry_editor?: ((entry: UserEntry | AssistantEntry) => ReactNode | null) | undefined;
   revision_disabled: boolean;
   continue_disabled: boolean;
   on_open_tool: (id: string) => void;

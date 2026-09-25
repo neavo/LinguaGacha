@@ -1,4 +1,4 @@
-import { useLayoutEffect, useSyncExternalStore } from "react";
+import { type JSX, useLayoutEffect, useSyncExternalStore } from "react";
 import { toast } from "sonner";
 import { ProgressToastRing } from "@frontend/widgets/progress-toast-ring/progress-toast-ring";
 import {

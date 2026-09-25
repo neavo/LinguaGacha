@@ -1,6 +1,6 @@
 import { PersonalityEditor } from "./personality-editor";
 import { Badge } from "@frontend/shadcn/badge";
-import { useEffect, useRef, useState, type Ref } from "react";
+import { type JSX, useEffect, useRef, useState, type Ref } from "react";
 import type {
   AgentSkillEntry,
   AgentSkillIdentity,
@@ -188,7 +188,7 @@ type SkillCardProps = {
   locked: boolean;
   on_enabled: (source: AgentSkillSource, name: string, enabled: boolean) => Promise<void>;
   card_ref?: Ref<HTMLDivElement>;
-  handle_ref?: Ref<HTMLButtonElement>;
+  handle_ref?: Ref<HTMLButtonElement> | undefined;
   dragging?: boolean;
 };
 
@@ -238,7 +238,7 @@ function SkillHandle({
   handle_ref,
 }: {
   disabled: boolean;
-  handle_ref?: Ref<HTMLButtonElement>;
+  handle_ref?: Ref<HTMLButtonElement> | undefined;
 }): JSX.Element {
   const { t } = useI18n();
   const drag_label = t(disabled ? "app.drag.disabled" : "app.drag.enabled");

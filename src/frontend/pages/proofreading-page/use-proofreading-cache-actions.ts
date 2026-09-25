@@ -581,7 +581,9 @@ export function useProofreadingCacheActions(
         // 意图变化或旧窗口失效时统一走 list query，避免在刷新路径复制成员重算规则。
         const snapshot = await query_list_view({
           rebuild: true,
-          window_bounds: can_reuse_current_view ? refresh_window_bounds : undefined,
+          ...(can_reuse_current_view && refresh_window_bounds !== undefined
+            ? { window_bounds: refresh_window_bounds }
+            : {}),
           ...(refresh_anchor_id === null
             ? {}
             : {

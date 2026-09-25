@@ -9,7 +9,7 @@ import { createHash } from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
 
 import { migration_orchestrator } from "../migration/migration-orchestrator";
-import { ZstdTool } from "../../shared/utils/zstd-tool";
+import { ZstdTool } from "./zstd-tool";
 import { JsonTool } from "../../shared/utils/json-tool";
 import * as AppErrors from "../../shared/error";
 import { NativeFs, default_native_fs } from "../../native/native-fs";

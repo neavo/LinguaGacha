@@ -87,10 +87,10 @@ function create_test_project_change_publisher(database: ProjectDatabase, lg_path
         updatedSections: updated_sections as ProjectChangeEvent["updatedSections"],
         ...(payload.items === undefined
           ? {}
-          : { items: payload.items as ProjectChangeEvent["items"] }),
+          : { items: payload.items as NonNullable<ProjectChangeEvent["items"]> }),
         ...(payload.sections === undefined
           ? {}
-          : { sections: payload.sections as ProjectChangeEvent["sections"] }),
+          : { sections: payload.sections as NonNullable<ProjectChangeEvent["sections"]> }),
       };
     }),
   };
