@@ -384,7 +384,6 @@ function create_client_item(
     status: "NONE",
     retry_count: 0,
     warnings: [],
-    warning_fragments_by_code: {},
     glossary_applications: [],
     compressed_src: `foo-${item_id}`,
     compressed_dst: `bar-${item_id}`,
@@ -790,7 +789,7 @@ describe("useProofreadingPageState", () => {
           row_id: "1",
           item: {
             ...create_client_item(1),
-            warnings: ["FULL_SYNCED"],
+            warnings: [{ code: "GLOSSARY", target_field: "dst" }],
           },
           compressed_src: "foo",
           compressed_dst: "bar",
@@ -825,7 +824,7 @@ describe("useProofreadingPageState", () => {
     expect(latest_state?.cache_status).toBe("ready");
     expect(
       latest_state?.visible_items.filter((row) => row.kind === "item")[0]?.item.warnings,
-    ).toEqual(["FULL_SYNCED"]);
+    ).toEqual([{ code: "GLOSSARY", target_field: "dst" }]);
     expect(proofreading_client_fixture.current.build_proofreading_list_view).toHaveBeenCalledWith(
       expect.any(Object),
     );

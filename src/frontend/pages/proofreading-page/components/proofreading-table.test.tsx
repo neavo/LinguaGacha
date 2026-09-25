@@ -49,7 +49,6 @@ function create_visible_item(overrides: Partial<ProofreadingClientItem>): Proofr
     status: "PROCESSED",
     retry_count: 0,
     warnings: [],
-    warning_fragments_by_code: {},
     glossary_applications: [],
     compressed_src: "src-preview",
     compressed_dst: "dst-preview",

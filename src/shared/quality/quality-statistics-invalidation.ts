@@ -8,22 +8,11 @@ const QUALITY_STATISTICS_TRANSLATION_ITEM_SOURCES = new Set([
   "translation_batch_update",
   "retranslate_items",
 ]);
-// 状态字段不参与任何质量规则文本匹配。
-const QUALITY_STATISTICS_STATUS_ONLY_FIELDS = new Set<keyof ProjectChangeItemFieldPatch>([
+// 状态和译名不属于当前规则统计的文本源；译后替换只扫描正文 dst。
+const QUALITY_STATISTICS_IGNORED_FIELDS = new Set<keyof ProjectChangeItemFieldPatch>([
   "status",
   "retry_count",
-]);
-// 后置替换统计唯一依赖的 item 译文字段集合。
-const QUALITY_STATISTICS_TRANSLATION_TEXT_FIELDS = new Set<keyof ProjectChangeItemFieldPatch>([
-  "dst",
   "name_dst",
-]);
-// 译文文本和状态可以共同出现，仍只影响后置替换统计。
-const QUALITY_STATISTICS_TRANSLATION_SAFE_FIELDS = new Set<keyof ProjectChangeItemFieldPatch>([
-  "dst",
-  "name_dst",
-  "status",
-  "retry_count",
 ]);
 
 /**
@@ -58,15 +47,8 @@ function resolve_quality_statistics_field_patch_scope(
   if (fields.length === 0) {
     return "all";
   }
-  if (fields.every((field) => QUALITY_STATISTICS_STATUS_ONLY_FIELDS.has(field))) {
-    return "none";
-  }
-  const only_translation_safe_fields = fields.every((field) => {
-    return QUALITY_STATISTICS_TRANSLATION_SAFE_FIELDS.has(field);
-  });
-  const has_translation_text_field = fields.some((field) => {
-    return QUALITY_STATISTICS_TRANSLATION_TEXT_FIELDS.has(field);
-  });
-
-  return only_translation_safe_fields && has_translation_text_field ? "post_replacement" : "all";
+  if (fields.every((field) => QUALITY_STATISTICS_IGNORED_FIELDS.has(field))) return "none";
+  return fields.every((field) => field === "dst" || QUALITY_STATISTICS_IGNORED_FIELDS.has(field))
+    ? "post_replacement"
+    : "all";
 }

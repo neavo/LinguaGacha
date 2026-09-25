@@ -7,6 +7,7 @@ import {
 } from "./proofreading-search-replace";
 import type { ProofreadingItem } from "@shared/proofreading/proofreading-types";
 
+/** 提供搜索替换所需的条目，场景只覆盖参与匹配的字段。 */
 function create_item(overrides: Partial<ProofreadingItem> = {}): ProofreadingItem {
   return {
     item_id: 1,
@@ -20,7 +21,6 @@ function create_item(overrides: Partial<ProofreadingItem> = {}): ProofreadingIte
     status: "NONE",
     retry_count: 0,
     warnings: [],
-    warning_fragments_by_code: {},
     glossary_applications: [],
     ...overrides,
   };

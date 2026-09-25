@@ -1,7 +1,8 @@
 import { find_quality_rule_subset_parents } from "../../../shared/quality/quality-rule-subset-parents";
 import { run_quality_statistics_task_sync } from "../../../shared/quality/quality-statistics";
 import type { QualityStatisticsPreparedTaskInput } from "../../../shared/quality/quality-statistics-input";
-import type { ItemTextGroup } from "../../../shared/item-text";
+import type { QualityStatisticsTextGroup } from "../../../shared/quality/quality-statistics";
+import { restore_text_resource_references } from "../../../shared/text/text-resource-reference";
 
 export type QualityRuleStatisticsWorkerTaskInput = QualityStatisticsPreparedTaskInput & {
   include_subset_parents: boolean; // 规则未变化时复用父项缓存，避免 item 变更重复计算
@@ -50,15 +51,18 @@ export function run_quality_rule_statistics_worker_task(
 }
 
 /** 从 worker 已捕获的同一文本快照投影规则实际扫描的一侧。 */
-function format_example(text_group: ItemTextGroup, text_source: "src" | "dst"): string {
+function format_example(
+  text_group: QualityStatisticsTextGroup,
+  text_source: "src" | "dst",
+): string {
   const name_field = text_source === "src" ? "name_src" : "name_dst";
   const body = text_group
     .filter((part) => part.field === text_source)
-    .map((part) => part.text)
+    .map((part) => restore_text_resource_references(part.text, part.reference_mappings ?? []))
     .join("\n");
   const name = text_group
     .filter((part) => part.field === name_field)
-    .map((part) => part.text)
+    .map((part) => restore_text_resource_references(part.text, part.reference_mappings ?? []))
     .join("\n");
   return name === "" ? body : `【${name}】${body}`;
 }

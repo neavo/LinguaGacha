@@ -1,13 +1,14 @@
 import { describe, expect, it } from "vitest";
 import { Check } from "typebox/value";
 
+import type { ProofreadingWarning } from "../../../shared/proofreading/proofreading-types";
 import { check_typescript } from "../../../test/typescript-fixture";
 import {
   AGENT_WORKSPACE_CONTRACT,
   AGENT_WORKSPACE_REFERENCES,
   project_agent_workspace_warning,
 } from "./contract";
-import { AGENT_WORKSPACE_CONTRACT_SCHEMA } from "./schema";
+import { AGENT_WORKSPACE_CONTRACT_SCHEMA, AGENT_WORKSPACE_WARNING_SCHEMA } from "./schema";
 
 describe("Agent 工作区 contract", () => {
   it("轻量 contract 满足 Node 与模型声明共用的外壳 Schema", () => {
@@ -45,31 +46,44 @@ describe("Agent 工作区 contract", () => {
     expect(change_paths.every((change_path) => !dataset_paths.has(change_path))).toBe(true);
   });
 
-  it("warning 投影只携带校对证据", () => {
-    expect(
-      project_agent_workspace_warning({
-        item_id: 1,
-        file_path: "a.txt",
-        internal_file_path: null,
-        row_number: 0,
-        src: "原文",
-        dst: "译文",
-        name_src: null,
-        name_dst: null,
-        status: "PROCESSED",
-        retry_count: 0,
-        row_id: "item:1",
-        compressed_src: "原文",
-        compressed_dst: "译文",
-        warnings: ["GLOSSARY"],
-        warning_fragments_by_code: {},
-        glossary_applications: [],
-      }),
-    ).toEqual({
+  it("警告投影满足字段契约并只输出关联证据", () => {
+    const warnings: ProofreadingWarning[] = [
+      { code: "FOREIGN_CHAR_RESIDUE", target_field: "name_dst", fragments: ["かな"] },
+      {
+        code: "TEXT_PRESERVE",
+        target_field: "name_dst",
+        source_fragments: ["{PLAYER}"],
+        translation_fragments: [],
+      },
+      { code: "PUNCTUATION_MISMATCH", target_field: "name_dst" },
+      { code: "SIMILARITY", target_field: "dst" },
+      { code: "LINE_COUNT_MISMATCH", target_field: "dst" },
+      { code: "RETRY_THRESHOLD", target_field: null },
+    ];
+    const output = project_agent_workspace_warning({
       item_id: 1,
-      warnings: ["GLOSSARY"],
-      warning_fragments_by_code: {},
+      row_id: "1",
+      file_path: "a.txt",
+      internal_file_path: null,
+      row_number: 1,
+      src: "原文",
+      dst: "译文",
+      name_src: "Alice",
+      name_dst: "かな",
+      status: "PROCESSED",
+      retry_count: 2,
+      compressed_src: "原文",
+      compressed_dst: "译文",
       glossary_applications: [],
+      warnings,
     });
+    expect(Check(AGENT_WORKSPACE_WARNING_SCHEMA, output)).toBe(true);
+    expect(output).toEqual({ item_id: 1, warnings, glossary_applications: [] });
+    expect(
+      Check(AGENT_WORKSPACE_WARNING_SCHEMA, {
+        ...output,
+        warnings: [{ code: "SIMILARITY", target_field: "name_dst" }],
+      }),
+    ).toBe(false);
   });
 });

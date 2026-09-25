@@ -165,6 +165,32 @@ export function remove_text_resource_references(
   return replace_reference_ranges(text, references, () => "");
 }
 
+/** 保持资源边界，返回替换规则可独立处理的普通文本段，包含空边界段。 */
+export function split_text_around_resource_references(text: string): string[] {
+  const parts: string[] = [];
+  let cursor = 0;
+  for (const reference of collect_text_resource_references(text)) {
+    parts.push(text.slice(cursor, reference.start));
+    cursor = reference.end;
+  }
+  parts.push(text.slice(cursor));
+  return parts;
+}
+
+/** 读取本次投影实际分配的标记位置，供统计排除仅命中临时编号的规则。 */
+export function collect_projected_text_resource_references(
+  text: string,
+  mappings: readonly TextResourceReferenceMapping[],
+): TextResourceReference[] {
+  const pattern = build_mapping_token_pattern(mappings);
+  if (pattern === null) return [];
+  return [...text.matchAll(pattern)].map((match) => ({
+    start: match.index,
+    end: match.index + match[0].length,
+    value: match[0],
+  }));
+}
+
 /** 把引用替换为任务内扁平编号 token，并返回后续字段应继续使用的序号。 */
 export function project_text_resource_references(
   text: string,

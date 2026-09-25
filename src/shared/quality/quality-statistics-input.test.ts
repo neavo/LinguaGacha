@@ -4,7 +4,7 @@ import { prepare_quality_statistics_task_input } from "./quality-statistics-inpu
 import { run_quality_statistics_task_sync } from "./quality-statistics";
 
 describe("prepare_quality_statistics_task_input", () => {
-  it("原文规则读取 src/name_src，后置替换读取 dst/name_dst", () => {
+  it("术语读取正文与姓名，后置替换只读取译文正文", () => {
     const item = { src: "HP +10", dst: "生命值 +10", name_src: "Alice", name_dst: "艾丽丝" };
     const source = prepare_quality_statistics_task_input({
       rule_key: "glossary",
@@ -20,7 +20,7 @@ describe("prepare_quality_statistics_task_input", () => {
     expect(source.text_source).toBe("src");
     expect(source.text_groups[0]?.map((part) => part.text)).toEqual(["HP +10", "Alice"]);
     expect(target.text_source).toBe("dst");
-    expect(target.text_groups[0]?.map((part) => part.text)).toEqual(["生命值 +10", "艾丽丝"]);
+    expect(target.text_groups[0]?.map((part) => part.text)).toEqual(["生命值 +10"]);
   });
 
   it("准备稳定条目 ID、规则输入和关系输入", () => {
@@ -66,5 +66,67 @@ describe("prepare_quality_statistics_task_input", () => {
     expect(run_quality_statistics_task_sync(anchored).hits_by_entry_id.anchored).toBe(1);
     expect(run_quality_statistics_task_sync(cross_line).hits_by_entry_id["cross-line"]).toBe(0);
     expect(run_quality_statistics_task_sync(cross_line_literal).hits_by_entry_id.literal).toBe(0);
+  });
+  it.each(["pre_replacement", "post_replacement"] as const)(
+    "%s 只统计正文资源范围之外的独立匹配",
+    (rule_key) => {
+      const input = prepare_quality_statistics_task_input({
+        rule_key,
+        entries: [
+          { entry_id: "name", src: "Alice", dst: "Alicia", regex: false },
+          { entry_id: "colon", src: ":", dst: "：", regex: false },
+          { entry_id: "body", src: "正文", dst: "目标", regex: false },
+          { entry_id: "chained", src: "目标", dst: "结果", regex: false },
+        ],
+        items: [
+          {
+            src: "正文 https://example.com/Alice",
+            dst: "正文 https://example.com/Alice",
+            name_src: "Alice",
+            name_dst: "Alice",
+          },
+        ],
+      });
+      expect(run_quality_statistics_task_sync(input).hits_by_entry_id).toEqual({
+        name: 0,
+        colon: 0,
+        body: 1,
+        chained: 0,
+      });
+    },
+  );
+
+  it("保护统计中正文按行、可见姓名按整段，隐藏姓名槽位不参与", () => {
+    const input = prepare_quality_statistics_task_input({
+      rule_key: "text_preserve",
+      entries: [{ entry_id: "cross", src: "<A\\nB>" }],
+      items: [
+        { src: "<A\nB>正文" },
+        { src: "正文", name_src: ["Alice<A\nB>", "ignored"] },
+        { src: "正文", name_src: ["Alice", "<A\nB>"] },
+      ],
+    });
+    const result = run_quality_statistics_task_sync(input);
+    expect(result.hits_by_entry_id).toEqual({ cross: 1 });
+    expect(result.example_item_indexes_by_entry_id.cross).toEqual([1]);
+  });
+
+  it("保护统计可匹配包住引用的结构，排除引用内部和临时编号", () => {
+    const input = prepare_quality_statistics_task_input({
+      rule_key: "text_preserve",
+      entries: [
+        { entry_id: "uri", src: "https" },
+        { entry_id: "token", src: "lg-uri" },
+        { entry_id: "digit", src: "\\d+" },
+        { entry_id: "bracket", src: "\\[[^\\]]+\\]" },
+      ],
+      items: [{ src: "[https://example.com/123]", name_src: "https://example.com/456" }],
+    });
+    expect(run_quality_statistics_task_sync(input).hits_by_entry_id).toEqual({
+      uri: 0,
+      token: 0,
+      digit: 0,
+      bracket: 1,
+    });
   });
 });

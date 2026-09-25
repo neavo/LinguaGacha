@@ -4,6 +4,7 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 
 import {
+  TextPreserveRule,
   build_text_preserve_rule,
   collect_non_blank_text_preserve_segments,
 } from "./text-preserve-rules";
@@ -106,6 +107,17 @@ describe("text-preserve-rules", () => {
     });
 
     expect(collect_non_blank_text_preserve_segments(" \t[A]\n ", rule)).toEqual(["[A]"]);
+  });
+
+  it("移除保护内容时保留词边界和换行", () => {
+    const rule = new TextPreserveRule([entry("<[^>]+>"), entry("\\s")]);
+    const analysis = rule.analyze("one<tag>two\nthree <A\nB>four");
+    expect(analysis.unpreserved_text.split("\n").map((line) => line.trim().split(/\s+/u))).toEqual([
+      ["one", "two"],
+      ["three"],
+      ["four"],
+    ]);
+    expect(analysis.segments).toEqual(["<tag>", "\n", " ", "<A\nB>"]);
   });
 
   it("只转换未保护文本", () => {

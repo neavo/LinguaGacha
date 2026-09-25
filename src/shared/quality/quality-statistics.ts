@@ -1,6 +1,21 @@
-import type { ItemTextGroup } from "../item-text";
+import type { ItemTextPart } from "../item-text";
+import {
+  collect_projected_text_resource_references,
+  type TextResourceReferenceMapping,
+} from "../text/text-resource-reference";
 import { compile_literal_patterns } from "../text/literal-matcher";
-import { compile_text_pattern, matches_text_pattern } from "../text/text-pattern";
+import {
+  compile_text_pattern,
+  matches_text_pattern,
+  type CompiledTextPattern,
+} from "../text/text-pattern";
+
+export type QualityStatisticsTextGroup = Array<
+  ItemTextPart & {
+    matching_texts?: string[]; // 替换扫描资源之间的片段，text 保留完整行供例句展示。
+    reference_mappings?: TextResourceReferenceMapping[]; // 保护统计复用投影语义，例句按映射还原。
+  }
+>;
 
 export type QualityStatisticsRuleInput = {
   entry_id: string; // worker 结果与规则条目的唯一关联键
@@ -11,7 +26,7 @@ export type QualityStatisticsRuleInput = {
 
 export type QualityStatisticsTaskInput = {
   rules: QualityStatisticsRuleInput[]; // 主线程完成归一后交给 worker 的规则
-  text_groups: ItemTextGroup[]; // 每个 item 的 src/name_src 或 dst/name_dst 字段组
+  text_groups: QualityStatisticsTextGroup[]; // 每个条目在当前规则适用范围内的匹配单元
 };
 
 export type QualityStatisticsTaskResult = {
@@ -67,7 +82,7 @@ export function run_quality_statistics_task_sync(
 /** 字面量规则共用一次 matcher 扫描；同一 item 内多字段、多次命中只计一个 hit。 */
 function assign_literal_hits(
   rules: QualityStatisticsRuleInput[],
-  text_groups: ItemTextGroup[],
+  text_groups: QualityStatisticsTextGroup[],
   hits_by_entry_id: Record<string, number>,
   candidates_by_entry_id: Record<string, ExampleCandidate[]>,
   seed_by_entry_id: ReadonlyMap<string, number>,
@@ -83,7 +98,9 @@ function assign_literal_hits(
   for (const [item_index, text_group] of text_groups.entries()) {
     const matched_entry_ids = new Set<string>();
     for (const part of text_group) {
-      matcher.scan_keys(part.text, (entry_id) => matched_entry_ids.add(entry_id));
+      for (const text of part.matching_texts ?? [part.text]) {
+        matcher.scan_keys(text, (entry_id) => matched_entry_ids.add(entry_id));
+      }
     }
     for (const entry_id of matched_entry_ids) {
       hits_by_entry_id[entry_id] = (hits_by_entry_id[entry_id] ?? 0) + 1;
@@ -99,7 +116,7 @@ function assign_literal_hits(
 /** 正则规则保持生产执行器语义；命中后与字面量规则共用同一稳定 example 选择。 */
 function assign_regex_hits(
   rules: QualityStatisticsRuleInput[],
-  text_groups: ItemTextGroup[],
+  text_groups: QualityStatisticsTextGroup[],
   hits_by_entry_id: Record<string, number>,
   candidates_by_entry_id: Record<string, ExampleCandidate[]>,
   seed_by_entry_id: ReadonlyMap<string, number>,
@@ -112,13 +129,14 @@ function assign_regex_hits(
         mode: "regex",
         case_sensitive: rule.case_sensitive,
         trim: false,
+        global: true,
       });
       if (pattern === null) throw new TypeError("Quality statistics regex must not be empty.");
       return { rule, pattern };
     });
   for (const { rule, pattern } of compiled) {
     for (const [item_index, text_group] of text_groups.entries()) {
-      if (!text_group.some((part) => matches_text_pattern(part.text, pattern))) continue;
+      if (!text_group.some((part) => matches_statistics_pattern(part, pattern))) continue;
       hits_by_entry_id[rule.entry_id] = (hits_by_entry_id[rule.entry_id] ?? 0) + 1;
       offer_example_candidate(
         candidates_by_entry_id[rule.entry_id],
@@ -127,6 +145,24 @@ function assign_regex_hits(
       );
     }
   }
+}
+
+/** 保护规则可包住完整引用，但仅命中临时标记内部不代表命中用户文本。 */
+function matches_statistics_pattern(
+  part: QualityStatisticsTextGroup[number],
+  pattern: CompiledTextPattern,
+): boolean {
+  if (part.reference_mappings === undefined || pattern.kind !== "regex") {
+    return (part.matching_texts ?? [part.text]).some((text) => matches_text_pattern(text, pattern));
+  }
+  const references = collect_projected_text_resource_references(part.text, part.reference_mappings);
+  for (const match of part.text.matchAll(pattern.regexp)) {
+    if (match[0] === "") continue; // 保护执行器只收集有实际内容的片段。
+    const end = match.index + match[0].length;
+    if (!references.some((reference) => reference.start <= match.index && end <= reference.end))
+      return true;
+  }
+  return false;
 }
 
 /** 固定二槽选择避免为每个命中分配、排序完整候选集合。 */

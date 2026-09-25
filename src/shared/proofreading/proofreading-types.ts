@@ -18,13 +18,30 @@ export const PROOFREADING_WARNING_CODES = [
 
 export type ProofreadingWarningCode = (typeof PROOFREADING_WARNING_CODES)[number];
 
-// 只有携带可定位文本片段的 warning 才进入证据字段词表。
-export const PROOFREADING_WARNING_FRAGMENT_CODES = [
-  "FOREIGN_CHAR_RESIDUE",
-  "TEXT_PRESERVE",
-] as const satisfies readonly ProofreadingWarningCode[];
+/** 警告与字段、证据一起传递；正文专属规则和条目级规则在类型上限定范围。 */
+export type ProofreadingWarning =
+  | {
+      code: "FOREIGN_CHAR_RESIDUE";
+      target_field: "dst" | "name_dst";
+      fragments: string[];
+    }
+  | {
+      code: "TEXT_PRESERVE";
+      target_field: "dst" | "name_dst";
+      source_fragments: string[];
+      translation_fragments: string[];
+    }
+  | { code: "PUNCTUATION_MISMATCH" | "GLOSSARY"; target_field: "dst" | "name_dst" }
+  | { code: "SIMILARITY" | "LINE_COUNT_MISMATCH"; target_field: "dst" }
+  | { code: "RETRY_THRESHOLD"; target_field: null };
 
-export type ProofreadingWarningFragmentCode = (typeof PROOFREADING_WARNING_FRAGMENT_CODES)[number];
+/** 列表、筛选和统计按条目去重，并沿用统一的规则顺序。 */
+export function read_proofreading_warning_codes(
+  warnings: readonly ProofreadingWarning[],
+): ProofreadingWarningCode[] {
+  const codes = new Set(warnings.map((warning) => warning.code));
+  return PROOFREADING_WARNING_CODES.filter((code) => codes.has(code));
+}
 
 export type ProofreadingWarningSummaryEntry = {
   code: ProofreadingWarningCode; // 真实 warning 类型
@@ -75,10 +92,6 @@ export const PROOFREADING_STATUS_ORDER = [
   "DUPLICATED",
 ] as const;
 
-export type ProofreadingWarningFragmentsByCode = Partial<
-  Record<ProofreadingWarningFragmentCode, string[]>
->;
-
 export type ProofreadingFilterOptions = {
   outcomes: ProofreadingOutcomeCode[];
   files: ProofreadingFileSelection;
@@ -95,8 +108,7 @@ export type ProofreadingItem = ProofreadingFileRef & {
   name_dst: ItemNameField;
   status: string;
   retry_count: number;
-  warnings: ProofreadingWarningCode[];
-  warning_fragments_by_code: ProofreadingWarningFragmentsByCode;
+  warnings: ProofreadingWarning[];
   glossary_applications: GlossaryApplication[];
 };
 
@@ -113,10 +125,7 @@ export type ProofreadingItemRecord = ProofreadingFileRef & {
 };
 
 /** worker 只返回计算事实，原始字段由发起计算时的不可变快照提供。 */
-export type ProofreadingEvaluation = Pick<
-  ProofreadingItem,
-  "warnings" | "warning_fragments_by_code" | "glossary_applications"
->;
+export type ProofreadingEvaluation = Pick<ProofreadingItem, "warnings" | "glossary_applications">;
 
 /** 单条运行态同时拥有原始字段和评估结果，不保存展示文本副本。 */
 export type ProofreadingEvaluatedItem = ProofreadingItemRecord & ProofreadingEvaluation;
@@ -247,10 +256,12 @@ export type ProofreadingSearchScope = "all" | "src" | "dst";
  */
 export function resolve_proofreading_outcomes(item: {
   status: string;
-  warnings: string[];
+  warnings: readonly ProofreadingWarning[];
 }): ProofreadingOutcomeCode[] {
   if (item.status === "PROCESSED") {
-    return item.warnings.length > 0 ? [...new Set(item.warnings)] : [PROOFREADING_NO_WARNING_CODE];
+    return item.warnings.length > 0
+      ? read_proofreading_warning_codes(item.warnings)
+      : [PROOFREADING_NO_WARNING_CODE];
   }
 
   return [item.status];
@@ -265,7 +276,7 @@ export function build_proofreading_warning_summary(
     if (item.status !== "PROCESSED") {
       return;
     }
-    new Set(item.warnings).forEach((code) => {
+    read_proofreading_warning_codes(item.warnings).forEach((code) => {
       count_by_code.set(code, (count_by_code.get(code) ?? 0) + 1);
     });
   });

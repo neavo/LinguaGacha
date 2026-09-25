@@ -188,10 +188,11 @@ describe("proofreading-reader", () => {
     };
     const view = service.read_list_view(query);
     expect(view.window_rows.map((row) => row.row_id)).toEqual(["1"]);
-    expect(view.window_rows.filter((row) => row.kind === "item")[0]?.item.warnings).toEqual([
-      "PUNCTUATION_MISMATCH",
-      "RETRY_THRESHOLD",
-    ]);
+    expect(
+      view.window_rows
+        .filter((row) => row.kind === "item")[0]
+        ?.item.warnings.map((warning) => warning.code),
+    ).toEqual(["PUNCTUATION_MISMATCH", "RETRY_THRESHOLD"]);
     expect(service.read_warning_summary()).toEqual({
       total_count: 2,
       entries: [
@@ -216,6 +217,59 @@ describe("proofreading-reader", () => {
     ).toEqual([]);
     expect(service.read_list_view(query).row_count).toBe(0);
     expect(service.read_warning_summary()).toEqual({ total_count: 0, entries: [] });
+  });
+
+  it("姓名增量修正刷新窗口与警告计数，返回证据不共享缓存引用", () => {
+    const service = createProofreadingReader();
+    const sync_state = sync_full(service, {
+      projectId: "E:/demo/names.lg",
+      revisions: { files: 1, items: 1, quality: 1, proofreading: 0 },
+      total_item_count: 1,
+      quality: create_quality(),
+      processingConfig: create_processing_config(),
+      upsertItems: [
+        create_item({
+          item_id: 1,
+          src: "原文",
+          dst: "かな",
+          name_src: "Alice",
+          name_dst: "かな",
+          status: "PROCESSED",
+        }),
+      ],
+    });
+    const view = service.read_list_view({
+      filters: { ...sync_state.defaultFilters, outcomes: ["FOREIGN_CHAR_RESIDUE"] },
+      keyword: "",
+      scope: "all",
+      is_regex: false,
+      sort_state: null,
+    });
+    expect(service.read_warning_summary()).toEqual({
+      total_count: 1,
+      entries: [{ code: "FOREIGN_CHAR_RESIDUE", count: 1 }],
+    });
+    const first = service.read_items_by_row_ids({ row_ids: ["1"] })[0]!;
+    const residue = first.warnings.find((warning) => warning.code === "FOREIGN_CHAR_RESIDUE")!;
+    residue.fragments[0] = "changed";
+    expect(service.read_items_by_row_ids({ row_ids: ["1"] })[0]?.warnings).toEqual([
+      { code: "FOREIGN_CHAR_RESIDUE", target_field: "dst", fragments: ["かな"] },
+      { code: "FOREIGN_CHAR_RESIDUE", target_field: "name_dst", fragments: ["かな"] },
+    ]);
+    service.apply_item_delta({
+      projectId: "E:/demo/names.lg",
+      revisions: { files: 1, items: 2, quality: 1, proofreading: 0 },
+      total_item_count: 1,
+      upsertItems: [],
+      patchItemIds: [1],
+      fieldPatch: { name_dst: "艾丽丝" },
+      deleteItemIds: [],
+    });
+    const row = service.read_list_window({ view_id: view.view_id, start: 0, count: 1 }).rows[0];
+    expect(row?.kind === "item" ? row.item.warnings : null).toEqual([
+      { code: "FOREIGN_CHAR_RESIDUE", target_field: "dst", fragments: ["かな"] },
+    ]);
+    expect(service.read_warning_summary().total_count).toBe(1);
   });
 
   it("默认筛选选中翻译成功和尚未完成两组", () => {
@@ -332,7 +386,10 @@ describe("proofreading-reader", () => {
     expect(first_page.total_item_count).toBe(3);
     expect(first_page.items.map((item) => item.item_id)).toEqual([5, 2]);
     expect(first_page.items[1]).toMatchObject({
-      warnings: ["GLOSSARY"],
+      warnings: [
+        { code: "FOREIGN_CHAR_RESIDUE", target_field: "name_dst", fragments: ["TargetName"] },
+        { code: "GLOSSARY", target_field: "dst" },
+      ],
       glossary_applications: [
         {
           entry_id: "hp",
@@ -353,8 +410,10 @@ describe("proofreading-reader", () => {
     expect(combined.items).toHaveLength(1);
     expect(combined.items[0]).toMatchObject({
       item_id: 1,
-      warnings: expect.arrayContaining(["FOREIGN_CHAR_RESIDUE", "GLOSSARY"]),
-      warning_fragments_by_code: { FOREIGN_CHAR_RESIDUE: ["カナ"] },
+      warnings: expect.arrayContaining([
+        { code: "FOREIGN_CHAR_RESIDUE", target_field: "dst", fragments: ["カナ"] },
+        { code: "GLOSSARY", target_field: "dst" },
+      ]),
     });
     expect(
       service
@@ -469,7 +528,7 @@ describe("proofreading-reader", () => {
     expect(view.row_count).toBe(1);
     expect(view.window_rows.filter((row) => row.kind === "item")[0]?.item).toMatchObject({
       item_id: 1,
-      warnings: expect.arrayContaining(["GLOSSARY"]),
+      warnings: expect.arrayContaining([{ code: "GLOSSARY", target_field: "dst" }]),
       glossary_applications: [
         {
           entry_id: "hp",
@@ -847,9 +906,9 @@ describe("proofreading-reader", () => {
       deleteItemIds: [],
     });
 
-    expect(service.read_items_by_row_ids({ row_ids: ["1"] })[0]?.warnings).not.toContain(
-      "TEXT_PRESERVE",
-    );
+    expect(
+      service.read_items_by_row_ids({ row_ids: ["1"] })[0]?.warnings.map((warning) => warning.code),
+    ).not.toContain("TEXT_PRESERVE");
   });
 
   it("删除 delta 会从旧视图移除对应行并保持剩余索引", () => {

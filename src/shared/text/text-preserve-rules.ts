@@ -22,7 +22,7 @@ type TextPreserveMatch = {
 export type TextPreserveAnalysis = {
   text: string; // 绑定被分析的文本，处理阶段改变后据此重新分析。
   segments: readonly string[];
-  unpreserved_text: string;
+  unpreserved_text: string; // 保护范围以空白占位，保留词边界和换行，消费方以 trim 判断是否仍有正文。
 };
 
 // 翻译与校对按 `text_type` 选择同一份预设条目。
@@ -50,7 +50,9 @@ export class TextPreserveRule {
     return {
       text,
       segments: matches.map((match) => match.value),
-      unpreserved_text: this.replace_matches(text, matches, ""),
+      unpreserved_text: this.replace_matches(text, matches, (value) =>
+        value.replace(/[^\r\n]/gu, " "),
+      ),
     };
   }
 

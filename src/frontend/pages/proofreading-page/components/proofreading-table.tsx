@@ -22,7 +22,8 @@ import {
 } from "@frontend/features/proofreading/proofreading-label-keys";
 import {
   is_proofreading_page_row_id,
-  type ProofreadingWarningCode,
+  read_proofreading_warning_codes,
+  type ProofreadingWarning,
   type ProofreadingRow,
 } from "@shared/proofreading/proofreading-types";
 import { Badge } from "@frontend/shadcn/badge";
@@ -202,7 +203,7 @@ function ProofreadingStatusIndicator(props: {
 /** 文本和页面按同一状态映射显示图标与提示。 */
 function ProofreadingStatusCell(props: {
   status: string;
-  warnings: readonly ProofreadingWarningCode[];
+  warnings: readonly ProofreadingWarning[];
   retranslating: boolean;
 }): JSX.Element | null {
   const { t } = useI18n();
@@ -229,7 +230,7 @@ function ProofreadingStatusCell(props: {
       </div>
     );
   if (StatusIcon === null && props.warnings.length === 0) return null;
-  const warning_label = props.warnings
+  const warning_label = read_proofreading_warning_codes(props.warnings)
     .map((warning) => {
       const key = PROOFREADING_WARNING_LABEL_KEY_BY_CODE[warning];
       return key === undefined ? warning : t(key);
