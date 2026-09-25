@@ -75,6 +75,8 @@ export const ko_kr_agent_page = {
   approval: {
     manual: "수동 승인",
     auto: "자동 승인",
+    manual_short: "수동 승인",
+    auto_short: "자동 승인",
     tooltip: "쓰기 권한 승인 모드",
     title: "프로젝트 데이터 쓰는 중",
     summary: {

@@ -138,7 +138,13 @@ export function AgentTaskToolbar(props: {
                         className="agent-composer__approval-icon"
                         aria-hidden="true"
                       />
-                      <span className="agent-composer__approval-label">{approval_mode_label}</span>
+                      <span className="agent-composer__approval-label">
+                        {t(
+                          props.approval_mode === "auto"
+                            ? "agent_page.approval.auto_short"
+                            : "agent_page.approval.manual_short",
+                        )}
+                      </span>
                       <ChevronDown aria-hidden="true" />
                     </AppButton>
                   }
