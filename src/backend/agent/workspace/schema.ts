@@ -6,10 +6,6 @@ import {
 import { Type, type Static, type TSchema } from "@earendil-works/pi-ai";
 
 import { ITEM_MANUAL_STATUSES, ITEM_STATUSES, ITEM_TEXT_TYPES } from "../../../domain/item";
-import {
-  PROOFREADING_WARNING_CODES,
-  PROOFREADING_WARNING_FRAGMENT_CODES,
-} from "../../../shared/proofreading/proofreading-types";
 
 import { PROMPT_KINDS } from "../../../domain/prompt";
 import { QUALITY_RULE_KINDS, type QualityRuleKind } from "../../../domain/quality";
@@ -54,10 +50,6 @@ export const AGENT_WORKSPACE_CONTRACT_SCHEMA = Type.Object(
   { additionalProperties: false },
 );
 
-/** 保留领域字面量类型，使 Schema 校验同时收窄 TypeScript 值域。 */
-const literal_union = <const T extends readonly (string | number | boolean)[]>(values: T) =>
-  Type.Union(values.map((value: T[number]) => Type.Literal(value)));
-
 export const AGENT_WORKSPACE_FP_SCHEMA = Type.String({
   minLength: AGENT_WORKSPACE_FP_LENGTH,
   maxLength: AGENT_WORKSPACE_FP_LENGTH,
@@ -94,9 +86,9 @@ export const AGENT_WORKSPACE_ITEM_SCHEMA = Type.Object(
     name_src: Type.String(),
     name_dst: Type.String(),
     file_path: Type.String(),
-    text_type: literal_union(ITEM_TEXT_TYPES),
+    text_type: Type.Enum(ITEM_TEXT_TYPES),
     row_number: Type.Integer({ minimum: 0 }),
-    status: literal_union(ITEM_STATUSES),
+    status: Type.Enum(ITEM_STATUSES),
     retry_count: Type.Integer({ minimum: 0 }),
   },
   { additionalProperties: false },
@@ -104,18 +96,52 @@ export const AGENT_WORKSPACE_ITEM_SCHEMA = Type.Object(
 
 export type AgentWorkspaceItem = Static<typeof AGENT_WORKSPACE_ITEM_SCHEMA>;
 
-const warning_fragments = Object.fromEntries(
-  PROOFREADING_WARNING_FRAGMENT_CODES.map((code) => [
-    code,
-    Type.Optional(Type.Array(Type.String())),
-  ]),
-);
+// 与共享校对联合类型保持一致，按规则限定字段和证据形状。
+const proofreading_warning_schema = Type.Union([
+  Type.Object(
+    {
+      code: Type.Literal("FOREIGN_CHAR_RESIDUE"),
+      target_field: Type.Enum(["dst", "name_dst"]),
+      fragments: Type.Array(Type.String()),
+    },
+    { additionalProperties: false },
+  ),
+  Type.Object(
+    {
+      code: Type.Literal("TEXT_PRESERVE"),
+      target_field: Type.Enum(["dst", "name_dst"]),
+      source_fragments: Type.Array(Type.String()),
+      translation_fragments: Type.Array(Type.String()),
+    },
+    { additionalProperties: false },
+  ),
+  Type.Object(
+    {
+      code: Type.Enum(["PUNCTUATION_MISMATCH", "GLOSSARY"]),
+      target_field: Type.Enum(["dst", "name_dst"]),
+    },
+    { additionalProperties: false },
+  ),
+  Type.Object(
+    {
+      code: Type.Enum(["SIMILARITY", "LINE_COUNT_MISMATCH"]),
+      target_field: Type.Literal("dst"),
+    },
+    { additionalProperties: false },
+  ),
+  Type.Object(
+    {
+      code: Type.Literal("RETRY_THRESHOLD"),
+      target_field: Type.Null(),
+    },
+    { additionalProperties: false },
+  ),
+]);
 
 export const AGENT_WORKSPACE_WARNING_SCHEMA = Type.Object(
   {
     item_id: Type.Integer({ minimum: 1 }),
-    warnings: Type.Array(literal_union(PROOFREADING_WARNING_CODES)),
-    warning_fragments_by_code: Type.Object(warning_fragments, { additionalProperties: false }),
+    warnings: Type.Array(proofreading_warning_schema),
     glossary_applications: Type.Array(
       Type.Object(
         {
@@ -156,7 +182,7 @@ export const AGENT_WORKSPACE_ITEM_UPDATE_SCHEMA = Type.Object(
     fp: AGENT_WORKSPACE_FP_SCHEMA,
     dst: Type.Optional(Type.String()),
     name_dst: Type.Optional(Type.String()),
-    status: Type.Optional(literal_union(ITEM_MANUAL_STATUSES)),
+    status: Type.Optional(Type.Enum(ITEM_MANUAL_STATUSES)),
   },
   {
     additionalProperties: false,
@@ -180,7 +206,7 @@ export const AGENT_WORKSPACE_PROMPTS_SCHEMA = Type.Object(
 
 export const AGENT_WORKSPACE_PROMPT_UPDATE_SCHEMA = Type.Object(
   {
-    kind: Type.Union(PROMPT_KINDS.map((kind) => Type.Literal(kind))),
+    kind: Type.Enum(PROMPT_KINDS),
     fp: AGENT_WORKSPACE_FP_SCHEMA,
     text: Type.String(),
   },

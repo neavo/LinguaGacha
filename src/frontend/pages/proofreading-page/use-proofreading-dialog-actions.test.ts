@@ -20,7 +20,6 @@ const item: ProofreadingClientItem = {
   status: "NONE",
   retry_count: 0,
   warnings: [],
-  warning_fragments_by_code: {},
   glossary_applications: [],
   compressed_src: "原文",
   compressed_dst: "译文",

@@ -1,20 +1,14 @@
 import {
-  PROOFREADING_WARNING_CODES,
   build_proofreading_row_id,
   compress_proofreading_text,
   resolve_proofreading_status_sort_rank,
   proofreading_page_status,
   resolve_proofreading_outcomes,
   type ProofreadingEvaluatedItem,
-  type ProofreadingItemRecord,
   type ProofreadingClientItem,
   type ProofreadingVisibleItem,
-  type ProofreadingWarningCode,
-  type ProofreadingWarningFragmentsByCode,
 } from "./proofreading-types";
 import type { PDFPageRecord } from "../pdf";
-import type { GlossaryApplication } from "../quality/glossary";
-import type { ItemNameField } from "../../domain/item";
 
 export type ProofreadingSortState = {
   column_id: string;
@@ -117,48 +111,28 @@ export function sort_proofreading_rows(
 }
 
 /**
- * 构建对外可见 item 时一次性压缩文本和克隆数组，避免 UI 改到缓存对象。
+ * 构建公开条目并压缩文本；复制姓名与证据数组以隔离窗口消费者。
  */
-export function create_proofreading_client_item(args: {
-  item: Omit<ProofreadingItemRecord, "text_type">;
-  warnings: ProofreadingWarningCode[];
-  warning_fragments_by_code: ProofreadingWarningFragmentsByCode;
-  glossary_applications: GlossaryApplication[];
-}): ProofreadingClientItem {
-  return {
-    item_id: args.item.item_id,
-    file_path: args.item.file_path,
-    internal_file_path: args.item.internal_file_path,
-    row_number: args.item.row_number,
-    src: args.item.src,
-    dst: args.item.dst,
-    name_src: clone_item_name(args.item.name_src),
-    name_dst: clone_item_name(args.item.name_dst),
-    status: args.item.status,
-    retry_count: args.item.retry_count,
-    // 与筛选和统计共用词表顺序，检查执行顺序不决定展示顺序。
-    warnings: PROOFREADING_WARNING_CODES.filter((code) => args.warnings.includes(code)),
-    warning_fragments_by_code: {
-      ...(args.warning_fragments_by_code.FOREIGN_CHAR_RESIDUE === undefined
-        ? {}
-        : { FOREIGN_CHAR_RESIDUE: [...args.warning_fragments_by_code.FOREIGN_CHAR_RESIDUE] }),
-      ...(args.warning_fragments_by_code.TEXT_PRESERVE === undefined
-        ? {}
-        : { TEXT_PRESERVE: [...args.warning_fragments_by_code.TEXT_PRESERVE] }),
-    },
-    glossary_applications: args.glossary_applications.map((application) => ({
-      ...application,
-      fields: application.fields.map((field) => ({ ...field })),
-    })),
-    row_id: build_proofreading_row_id(args.item.item_id),
-    compressed_src: compress_proofreading_text(args.item.src),
-    compressed_dst: compress_proofreading_text(args.item.dst),
-  };
-}
-
-/** 隔离数组形式的姓名槽位，避免列表消费者改写条目事实。 */
-function clone_item_name(value: ItemNameField): ItemNameField {
-  return Array.isArray(value) ? [...value] : value;
+export function create_proofreading_client_item(
+  item: ProofreadingEvaluatedItem,
+): ProofreadingClientItem {
+  return structuredClone({
+    item_id: item.item_id,
+    file_path: item.file_path,
+    internal_file_path: item.internal_file_path,
+    row_number: item.row_number,
+    src: item.src,
+    dst: item.dst,
+    name_src: item.name_src,
+    name_dst: item.name_dst,
+    status: item.status,
+    retry_count: item.retry_count,
+    warnings: item.warnings,
+    glossary_applications: item.glossary_applications,
+    row_id: build_proofreading_row_id(item.item_id),
+    compressed_src: compress_proofreading_text(item.src),
+    compressed_dst: compress_proofreading_text(item.dst),
+  });
 }
 
 /**

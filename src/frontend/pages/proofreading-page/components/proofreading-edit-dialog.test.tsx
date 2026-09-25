@@ -30,7 +30,7 @@ vi.mock("@frontend/widgets/app-editor/app-editor", () => {
       variant?: "editor" | "field";
       read_only: boolean;
       aria_invalid?: boolean;
-      marks?: Array<{ start: number; end: number; tone: "success" | "warning" }>;
+      marks?: Array<{ start: number; end: number; tone: "success" | "warning"; tooltip?: string }>;
       on_change?: (next_value: string) => void;
     }) => {
       const marks = props.marks ?? [];
@@ -41,7 +41,6 @@ vi.mock("@frontend/widgets/app-editor/app-editor", () => {
             .join(" ")}
           data-variant={props.variant ?? "editor"}
           data-readonly={props.read_only ? "true" : "false"}
-          data-mark-count={marks.length}
         >
           <textarea
             aria-label={props.aria_label}
@@ -58,6 +57,7 @@ vi.mock("@frontend/widgets/app-editor/app-editor", () => {
               key={`${mark.start}:${mark.end}:${index}`}
               className={`app-text-mark app-text-mark--${mark.tone}`}
               data-tone={mark.tone}
+              title={mark.tooltip}
             >
               {props.value.slice(mark.start, mark.end)}
             </span>
@@ -113,7 +113,9 @@ vi.mock("@frontend/shadcn/tooltip", () => {
     Tooltip: (props: { children?: ReactNode; render?: ReactNode }) => (
       <>{props.render ?? props.children}</>
     ),
-    TooltipContent: (props: { children: ReactNode }) => <div>{props.children}</div>,
+    TooltipContent: (props: { children: ReactNode }) => (
+      <div data-test-tooltip>{props.children}</div>
+    ),
     TooltipTrigger: (props: { children?: ReactNode; render?: ReactNode }) => (
       <>{props.render ?? props.children}</>
     ),
@@ -135,8 +137,7 @@ function create_proofreading_item(): ProofreadingItem {
     name_dst: null,
     status: "PROCESSED",
     retry_count: 0,
-    warnings: ["GLOSSARY"],
-    warning_fragments_by_code: {},
+    warnings: [{ code: "GLOSSARY", target_field: "dst" }],
     glossary_applications: [
       {
         entry_id: "magic",
@@ -229,34 +230,160 @@ describe("ProofreadingEditDialog", () => {
     return rendered;
   }
 
-  it("术语检查胶囊的未落实提示使用原文到译文格式", async () => {
-    const rendered = await render_dialog();
-
-    expect(rendered.textContent).toContain("魔法 -> Magic");
-    expect(rendered.textContent).toContain("美優 -> 美优");
+  it("术语提示按实际数据分组，失败条目和空警告也展示应用结果", async () => {
+    const rendered = await render_dialog({
+      item: { ...create_proofreading_item(), status: "ERROR", warnings: [] },
+    });
+    const tooltip = rendered.querySelector(
+      ".proofreading-page__dialog-status-strip [data-test-tooltip]",
+    )!;
+    const groups = [...tooltip.querySelectorAll("section")];
+    expect(groups.map((group) => group.querySelector("p")?.textContent)).toEqual([
+      "proofreading_page.glossary.missing",
+      "proofreading_page.glossary.applied",
+    ]);
     expect(
-      [...rendered.querySelectorAll("[data-variant='editor']")].map((editor) =>
-        editor.getAttribute("data-mark-count"),
-      ),
-    ).toEqual(["2", "1"]);
+      groups.map((group) => [...group.querySelectorAll("li")].map((node) => node.textContent)),
+    ).toEqual([["美優 -> 美优"], ["魔法 -> Magic"]]);
+    expect(
+      rendered.querySelector(".app-text-mark[data-tone='warning']")?.getAttribute("title"),
+    ).toBe("proofreading_page.glossary.missing\n美優 -> 美优");
+    expect(
+      rendered.querySelector(".app-text-mark[data-tone='success']")?.getAttribute("title"),
+    ).toBe("proofreading_page.glossary.applied\n魔法 -> Magic");
   });
 
-  it("外文残留胶囊显示完整残留片段", async () => {
+  it("同一术语在正文和姓名命中时仅列一次，草稿修正后展示成功项", async () => {
+    const item: ProofreadingItem = {
+      ...create_proofreading_item(),
+      src: "Alice",
+      dst: "艾丽丝",
+      name_src: "Alice",
+      name_dst: "旧译名",
+      warnings: [{ code: "GLOSSARY", target_field: "name_dst" }],
+      glossary_applications: [
+        {
+          entry_id: "alice",
+          src: "Alice",
+          dst: "艾丽丝",
+          case_sensitive: false,
+          fields: [
+            { source_field: "src", target_field: "dst", applied: true },
+            { source_field: "name_src", target_field: "name_dst", applied: false },
+          ],
+        },
+      ],
+    };
+    const rendered = await render_dialog({
+      item,
+      state: create_dialog_state({ draft_item: { dst: "艾丽丝", name_dst: "旧译名" } }),
+    });
+    const badge = rendered.querySelector(".proofreading-page__dialog-status-strip")!;
+    expect(badge.textContent).toContain("proofreading_page.glossary.partial");
+    expect([...badge.querySelectorAll("li")].map((node) => node.textContent)).toEqual([
+      "Alice -> 艾丽丝",
+    ]);
+    expect([...badge.querySelectorAll("p")].map((node) => node.textContent)).toEqual([
+      "proofreading_page.glossary.missing",
+    ]);
+    await render_dialog({
+      item,
+      state: create_dialog_state({ draft_item: { dst: "艾丽丝", name_dst: "艾丽丝" } }),
+    });
+    expect(badge.textContent).toContain("proofreading_page.glossary.applied");
+    expect([...badge.querySelectorAll("p")].map((node) => node.textContent)).toEqual([
+      "proofreading_page.glossary.applied",
+    ]);
+    expect([...badge.querySelectorAll("li")].map((node) => node.textContent)).toEqual([
+      "Alice -> 艾丽丝",
+    ]);
+  });
+
+  it("残留直接合并去重，保护片段按两侧合并并省略空组", async () => {
+    const item: ProofreadingItem = {
+      ...create_proofreading_item(),
+      glossary_applications: [],
+      warnings: [
+        { code: "FOREIGN_CHAR_RESIDUE", target_field: "dst", fragments: ["か\u3099", "OpenAI"] },
+        { code: "FOREIGN_CHAR_RESIDUE", target_field: "name_dst", fragments: ["OpenAI", "アリス"] },
+        {
+          code: "TEXT_PRESERVE",
+          target_field: "dst",
+          source_fragments: ["{PLAYER}"],
+          translation_fragments: ["{PLAYER2}"],
+        },
+        {
+          code: "TEXT_PRESERVE",
+          target_field: "name_dst",
+          source_fragments: ["{PLAYER}"],
+          translation_fragments: ["{NAME}"],
+        },
+      ],
+    };
+    const rendered = await render_dialog({ item });
+    const badges = [...rendered.querySelectorAll(".proofreading-page__dialog-status-badge-wrap")];
+    expect(badges).toHaveLength(2);
+    expect(badges[0]!.querySelector("p")).toBeNull();
+    expect([...badges[0]!.querySelectorAll("li")].map((node) => node.textContent)).toEqual([
+      "か\u3099",
+      "OpenAI",
+      "アリス",
+    ]);
+    const groups = [...badges[1]!.querySelectorAll("section")];
+    expect(groups.map((group) => group.querySelector("p")?.textContent)).toEqual([
+      "proofreading_page.fields.source",
+      "proofreading_page.fields.translation",
+    ]);
+    expect(
+      groups.map((group) => [...group.querySelectorAll("li")].map((node) => node.textContent)),
+    ).toEqual([["{PLAYER}"], ["{PLAYER2}", "{NAME}"]]);
+    await render_dialog({
+      item: {
+        ...item,
+        warnings: [
+          {
+            code: "TEXT_PRESERVE",
+            target_field: "name_dst",
+            source_fragments: [],
+            translation_fragments: ["{NAME}"],
+          },
+        ],
+      },
+    });
+    const tooltip = rendered.querySelector(
+      ".proofreading-page__dialog-status-strip [data-test-tooltip]",
+    )!;
+    expect(tooltip.querySelectorAll("section")).toHaveLength(1);
+    expect(tooltip.querySelector("p")?.textContent).toBe("proofreading_page.fields.translation");
+    expect(tooltip.querySelector("li")?.textContent).toBe("{NAME}");
+  });
+
+  it("无目标条目的警告只显示胶囊，空证据也不建立提示", async () => {
     const rendered = await render_dialog({
       item: {
         ...create_proofreading_item(),
-        warnings: ["FOREIGN_CHAR_RESIDUE"],
-        warning_fragments_by_code: { FOREIGN_CHAR_RESIDUE: ["か\u3099", "OpenAI"] },
         glossary_applications: [],
+        warnings: [
+          { code: "SIMILARITY", target_field: "dst" },
+          { code: "LINE_COUNT_MISMATCH", target_field: "dst" },
+          { code: "PUNCTUATION_MISMATCH", target_field: "name_dst" },
+          { code: "RETRY_THRESHOLD", target_field: null },
+          { code: "FOREIGN_CHAR_RESIDUE", target_field: "dst", fragments: [] },
+          {
+            code: "TEXT_PRESERVE",
+            target_field: "dst",
+            source_fragments: [],
+            translation_fragments: [],
+          },
+        ],
       },
     });
-
-    expect(rendered.textContent).toContain("proofreading_page.warning.foreign_char_residue");
-    expect(rendered.textContent).toContain(
-      "proofreading_page.tooltip.foreign_char_residue_fragments",
+    expect(rendered.querySelectorAll(".proofreading-page__dialog-status-badge-wrap")).toHaveLength(
+      6,
     );
-    expect(rendered.textContent).toContain("か\u3099");
-    expect(rendered.textContent).toContain("OpenAI");
+    expect(
+      rendered.querySelector(".proofreading-page__dialog-status-strip [data-test-tooltip]"),
+    ).toBeNull();
   });
 
   it("文件栏按需显示 TRANS 内部路径", async () => {

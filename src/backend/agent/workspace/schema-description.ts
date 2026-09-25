@@ -47,6 +47,8 @@ export function create_schema_renderer(named_schemas: ReadonlyMap<TSchema, strin
     if (named !== undefined && definition !== schema) return named;
     const comment = annotate ? schema_comment(schema) : "";
     const value = schema as unknown as Record<string, unknown>;
+    if (Array.isArray(value.enum))
+      return `${comment}(${value.enum.map((entry) => JSON.stringify(entry)).join(" | ")})`;
     if ("const" in value) return `${comment}${JSON.stringify(value.const)}`;
     if (Array.isArray(value.anyOf)) {
       if (value.type !== undefined)
@@ -107,6 +109,7 @@ const SCHEMA_CONSTRAINTS = {
 const SUPPORTED_SCHEMA_KEYS = new Set([
   "type",
   "const",
+  "enum",
   "anyOf",
   "items",
   "properties",

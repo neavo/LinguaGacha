@@ -43,4 +43,24 @@ describe("run_quality_rule_statistics_worker_task", () => {
       run_quality_rule_statistics_worker_task({ ...input, include_subset_parents: false }),
     ).not.toHaveProperty("subset_parents_by_entry_id");
   });
+  it.each(["pre_replacement", "text_preserve"] as const)(
+    "%s 的例句保留原始引用和上下文",
+    (rule_key) => {
+      const source = "正文 [https://example.com/a]";
+      const input = prepare_quality_statistics_task_input({
+        rule_key,
+        entries:
+          rule_key === "text_preserve"
+            ? [{ entry_id: "rule", src: "\\[[^\\]]+\\]" }]
+            : [{ entry_id: "rule", src: "正文", dst: "文本", regex: false }],
+        items: [{ src: source }],
+      });
+      expect(
+        run_quality_rule_statistics_worker_task({ ...input, include_subset_parents: false }),
+      ).toMatchObject({
+        hits_by_entry_id: { rule: 1 },
+        examples_by_entry_id: { rule: [source] },
+      });
+    },
+  );
 });

@@ -1,6 +1,5 @@
 import {
   build_text_preserve_rule,
-  collect_non_blank_text_preserve_segments,
   type TextPreserveRule,
 } from "../../../../shared/text/text-preserve-rules";
 import {
@@ -8,9 +7,9 @@ import {
   type CompiledTextReplacements,
 } from "../../../../shared/text/text-replacement-rules";
 import {
-  prepare_translation_source_line,
+  prepare_translation_source,
   type PreparedTranslationSourceLine,
-} from "../../../../shared/text/translation-source-line";
+} from "../../../../shared/text/translation-source";
 import type {
   TextProcessingConfig,
   TextQualitySnapshot,
@@ -64,51 +63,36 @@ export class TranslationPrePipeline {
     request_id = 0,
   ): TranslationPrePipelineContext {
     const text_type = String(item.text_type ?? "TXT").toUpperCase();
-    const actor_text = read_optional_item_name_text(item.name_src);
-    const actor_projection = actor_text === null ? null : this.project_text(actor_text);
-    const source_projection = this.project_text(String(item.src ?? "").replace(/\r\n|\r/gu, "\n"));
     const preserve_rule = build_text_preserve_rule({
       mode: this.quality_snapshot.text_preserve_mode,
       text_type,
       entries: this.quality_snapshot.text_preserve_entries,
     });
-    const actor_src = actor_projection?.text ?? null;
-    const source = source_projection.text;
-    const context: TranslationPrePipelineContext = {
-      prepared_lines: [],
-      request_item: null,
-      samples: [],
+    const prepared = prepare_translation_source({
+      src: String(item.src ?? ""),
+      name_src: read_optional_item_name_text(item.name_src),
+      text_type,
+      config: this.config,
       preserve_rule,
-      reference_mappings: source_projection.mappings,
-      actor_reference_mappings: actor_projection?.mappings ?? [],
+      pre_replacements: this.pre_replacements,
+      start_ordinal: this.next_reference_ordinal,
+    });
+    this.next_reference_ordinal = prepared.body.next_ordinal;
+    const context: TranslationPrePipelineContext = {
+      prepared_lines: prepared.prepared_lines,
+      request_item: null,
+      samples: prepared.samples,
+      preserve_rule,
+      reference_mappings: prepared.body.mappings,
+      actor_reference_mappings: prepared.name?.mappings ?? [],
     };
-    for (const raw_text of source.split("\n")) {
-      const prepared_line = prepare_translation_source_line({
-        raw_text,
-        text_type,
-        config: this.config,
-        preserve_rule: context.preserve_rule,
-        pre_replacements: this.pre_replacements,
-        reference_mappings: context.reference_mappings,
-      });
-      context.prepared_lines.push(prepared_line);
-      context.samples.push(...prepared_line.samples);
-    }
-    context.samples = [
-      ...new Set([
-        ...(actor_src === null
-          ? []
-          : collect_non_blank_text_preserve_segments(actor_src, context.preserve_rule)),
-        ...context.samples,
-      ]),
-    ];
     const has_translatable = context.prepared_lines.some((line) => line.state === "translatable");
     if (has_translatable) {
       context.request_item = {
         request_id,
         item_index,
         text_src: context.prepared_lines.map((line) => line.prepared_text).join("\n"),
-        actor_src,
+        actor_src: prepared.name?.text ?? null,
       };
     }
     return context;

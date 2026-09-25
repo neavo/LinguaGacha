@@ -11,10 +11,11 @@ describe("工作区 Schema 说明", () => {
     );
   });
 
-  it("保留必填、可选、联合分支和 TypeScript 无法表达的约束", () => {
+  it("保留字段、枚举、联合分支和数值约束", () => {
     const schema = Type.Object(
       {
         id: Type.Integer({ minimum: 1 }),
+        mode: Type.Enum(["read", "write"]),
         text: Type.Optional(Type.String({ minLength: 2, maxLength: 8, pattern: "^[a-z]+$" })),
         value: Type.Union([
           Type.Null(),
@@ -33,6 +34,7 @@ describe("工作区 Schema 说明", () => {
     for (const expected of [
       "type Update =",
       "id: PositiveInteger",
+      'mode: ("read" | "write")',
       "text?: string",
       "value: (null |",
       'kind: "number"',

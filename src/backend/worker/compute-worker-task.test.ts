@@ -44,8 +44,8 @@ describe("run_compute_worker_task", () => {
         {
           item_id: 1,
           evaluation: {
-            warnings: ["FOREIGN_CHAR_RESIDUE"],
-            warning_fragments_by_code: { FOREIGN_CHAR_RESIDUE: ["カナ"] },
+            warnings: [{ code: "FOREIGN_CHAR_RESIDUE", target_field: "dst", fragments: ["カナ"] }],
+
             glossary_applications: [],
           },
         },

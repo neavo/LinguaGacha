@@ -1,7 +1,7 @@
 import { create_schema_renderer } from "./schema-description";
 import type { TSchema } from "@earendil-works/pi-ai";
 
-import { read_json_integer, type JsonRecord } from "../../../domain/json";
+import { read_json_integer } from "../../../domain/json";
 import { PROMPT_KINDS } from "../../../domain/prompt";
 import { QUALITY_RULE_KINDS, type QualityRuleKind } from "../../../domain/quality";
 import type { ProofreadingClientItem } from "../../../shared/proofreading/proofreading-types";
@@ -16,6 +16,7 @@ import {
   AGENT_WORKSPACE_QUALITY_SCHEMAS,
   AGENT_WORKSPACE_WARNING_SCHEMA,
   type AgentWorkspaceRuntimeContract,
+  type AgentWorkspaceWarning,
 } from "./schema";
 
 /** 工作区固定只读路径；宿主协议与 Backend 只消费这份布局词表。 */
@@ -170,7 +171,7 @@ const definition = {
     warnings: {
       path: AGENT_WORKSPACE_PATHS.warnings,
       format: "jsonl" as const,
-      purpose: "加载快照时的校对警告证据，按 `item_id` 关联条目",
+      purpose: "当前快照的校对警告与字段级证据，按 `item_id` 关联条目",
       identity: ["item_id"],
       schema: AGENT_WORKSPACE_WARNING_SCHEMA,
       reference: reference_path("items"),
@@ -314,20 +315,13 @@ export const AGENT_WORKSPACE_REFERENCES: Readonly<Record<string, string>> = Obje
   ),
 );
 
-/** warning 只保存关联身份和判决证据，不复制 item 当前值。 */
-export function project_agent_workspace_warning(item: ProofreadingClientItem): JsonRecord {
-  return {
+/** 按工作区 Schema 输出条目身份和校对证据，复制嵌套数组以隔离调用方。 */
+export function project_agent_workspace_warning(
+  item: ProofreadingClientItem,
+): AgentWorkspaceWarning {
+  return structuredClone({
     item_id: read_json_integer(item.item_id, 0),
-    warnings: [...item.warnings],
-    warning_fragments_by_code: Object.fromEntries(
-      Object.entries(item.warning_fragments_by_code).map(([code, fragments]) => [
-        code,
-        [...(fragments ?? [])],
-      ]),
-    ),
-    glossary_applications: item.glossary_applications.map((application) => ({
-      ...application,
-      fields: application.fields.map((field) => ({ ...field })),
-    })),
-  } as JsonRecord;
+    warnings: item.warnings,
+    glossary_applications: item.glossary_applications,
+  });
 }

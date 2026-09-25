@@ -250,19 +250,7 @@ const PROOFREADING_DEFAULT_WINDOW_COUNT = 160; // 默认窗口大小控制每次
 const PROOFREADING_CONTEXT_RADIUS = 2; // 固定前后各两条，避免 UI 与 reader 各自维护窗口语义
 
 /**
- * 在响应边界构造展示字段并隔离可变数组，运行态不持有展示文本副本。
- */
-function to_client_item(item: ProofreadingEvaluatedItem): ProofreadingClientItem {
-  return create_proofreading_client_item({
-    item,
-    warnings: item.warnings,
-    warning_fragments_by_code: item.warning_fragments_by_code,
-    glossary_applications: item.glossary_applications,
-  });
-}
-
-/**
- * 字符串去重保持首次出现顺序，筛选项和 warning 片段都依赖这个稳定性
+ * 字符串去重保持首次出现顺序，供筛选项使用
  */
 function unique_strings(values: string[]): string[] {
   return [...new Set(values)];
@@ -680,7 +668,7 @@ function build_window_rows(args: {
     .slice(args.start, args.start + args.count)
     .flatMap((row_id): ProofreadingRow[] => {
       const item = args.state.item_by_id.get(row_id);
-      if (item) return build_proofreading_visible_items([to_client_item(item)]);
+      if (item) return build_proofreading_visible_items([create_proofreading_client_item(item)]);
       const record = args.state.page_by_id.get(row_id);
       if (!record) return [];
       const { file_path, page } = record;
@@ -1116,7 +1104,9 @@ export function createProofreadingReader() {
       });
       return {
         total_item_count: items.length,
-        items: items.slice(bounds.start, bounds.start + bounds.count).map(to_client_item),
+        items: items
+          .slice(bounds.start, bounds.start + bounds.count)
+          .map(create_proofreading_client_item),
       };
     },
     /** 汇总当前成功译文的真实 warning，不创建 GUI 列表视图。 */
@@ -1215,7 +1205,7 @@ export function createProofreadingReader() {
       const current_state = state;
       return query.row_ids.flatMap((row_id) => {
         const item = current_state.item_by_id.get(row_id);
-        return item === undefined ? [] : [to_client_item(item)];
+        return item === undefined ? [] : [create_proofreading_client_item(item)];
       });
     },
     /**
@@ -1314,7 +1304,7 @@ export function createProofreadingReader() {
         }
         const item = row.item;
         if (!item_has_glossary_miss(item)) without_glossary_miss_count++;
-        if (!item.warnings.includes("GLOSSARY")) continue;
+        if (!item.warnings.some((warning) => warning.code === "GLOSSARY")) continue;
         for (const application of item.glossary_applications) {
           if (application.fields.every((field) => field.applied)) continue;
           const previous = terms.get(application.entry_id);

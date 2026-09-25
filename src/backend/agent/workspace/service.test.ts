@@ -354,8 +354,7 @@ describe("AgentWorkspaceService", () => {
     expect(read_jsonl(path.join(active_path, AGENT_WORKSPACE_PATHS.warnings))).toEqual([
       {
         item_id: 1,
-        warnings: ["GLOSSARY"],
-        warning_fragments_by_code: {},
+        warnings: [{ code: "GLOSSARY", target_field: "dst" }],
         glossary_applications: [],
       },
     ]);
@@ -999,8 +998,7 @@ function create_fixture(temp_dir: string, native_fs?: NativeFs) {
           row_id: "item:1",
           compressed_src: String(warning_item["src"]),
           compressed_dst: "",
-          warnings: ["GLOSSARY" as const],
-          warning_fragments_by_code: {},
+          warnings: [{ code: "GLOSSARY" as const, target_field: "dst" as const }],
           glossary_applications: [],
         },
       ],

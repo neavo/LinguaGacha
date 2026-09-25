@@ -37,7 +37,10 @@ describe("proofreading types", () => {
     expect(
       resolve_proofreading_outcomes({
         status: "PROCESSED",
-        warnings: ["FOREIGN_CHAR_RESIDUE", "GLOSSARY"],
+        warnings: [
+          { code: "FOREIGN_CHAR_RESIDUE", target_field: "dst", fragments: [] },
+          { code: "GLOSSARY", target_field: "dst" },
+        ],
       }),
     ).toEqual(["FOREIGN_CHAR_RESIDUE", "GLOSSARY"]);
     expect(resolve_proofreading_outcomes({ status: "ERROR", warnings: [] })).toEqual(["ERROR"]);
@@ -46,9 +49,31 @@ describe("proofreading types", () => {
   it("按固定类型顺序汇总成功译文的校对警告", () => {
     expect(
       build_proofreading_warning_summary([
-        { status: "PROCESSED", warnings: ["GLOSSARY", "FOREIGN_CHAR_RESIDUE"] },
-        { status: "PROCESSED", warnings: ["GLOSSARY", "GLOSSARY"] },
-        { status: "ERROR", warnings: ["TEXT_PRESERVE"] },
+        {
+          status: "PROCESSED",
+          warnings: [
+            { code: "GLOSSARY", target_field: "dst" },
+            { code: "FOREIGN_CHAR_RESIDUE", target_field: "dst", fragments: [] },
+          ],
+        },
+        {
+          status: "PROCESSED",
+          warnings: [
+            { code: "GLOSSARY", target_field: "dst" },
+            { code: "GLOSSARY", target_field: "name_dst" },
+          ],
+        },
+        {
+          status: "ERROR",
+          warnings: [
+            {
+              code: "TEXT_PRESERVE",
+              target_field: "dst",
+              source_fragments: [],
+              translation_fragments: [],
+            },
+          ],
+        },
       ]),
     ).toEqual({
       total_count: 3,

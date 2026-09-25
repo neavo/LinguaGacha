@@ -25,7 +25,6 @@ function create_row(
       text_type: "NONE",
       retry_count: 0,
       warnings: [],
-      warning_fragments_by_code: {},
       glossary_applications: [],
     },
   };

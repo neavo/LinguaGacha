@@ -15,6 +15,8 @@ import { AppEditor } from "@frontend/widgets/app-editor/app-editor";
 import type { AppTextMark } from "@frontend/widgets/app-editor/app-editor-code-mirror";
 import {
   format_proofreading_glossary_term,
+  read_proofreading_warning_codes,
+  type ProofreadingWarningCode,
   type ProofreadingItem,
 } from "@shared/proofreading/proofreading-types";
 import { Badge } from "@frontend/shadcn/badge";
@@ -74,17 +76,19 @@ function resolve_status_badge_tone(status: string): ProofreadingBadgeTone {
 }
 
 /** 空片段不占提示区，保留可复制的逐条正文。 */
-function render_fragment_section(title: string, fragments: string[]): JSX.Element | null {
+function render_fragment_section(title: string | null, fragments: string[]): JSX.Element | null {
   if (fragments.length === 0) {
     return null;
   }
 
   return (
     <section className="proofreading-page__dialog-badge-tooltip-section">
-      <p className="proofreading-page__dialog-badge-tooltip-title font-medium">{title}</p>
+      {title === null ? null : (
+        <p className="proofreading-page__dialog-badge-tooltip-title font-medium">{title}</p>
+      )}
       <ul className="proofreading-page__dialog-badge-tooltip-list">
-        {fragments.map((fragment) => (
-          <li key={fragment} className="proofreading-page__dialog-badge-tooltip-item">
+        {fragments.map((fragment, index) => (
+          <li key={index} className="proofreading-page__dialog-badge-tooltip-item">
             {fragment}
           </li>
         ))}
@@ -93,61 +97,62 @@ function render_fragment_section(title: string, fragments: string[]): JSX.Elemen
   );
 }
 
-/** 提示分别列出已应用与缺失术语，与字段级判定保持一致。 */
-function render_glossary_tooltip_content(
-  applications: GlossaryApplication[],
+/** 对照提示统一按原文、译文分组；空侧省略，双方为空时不建立提示。 */
+function render_comparison_tooltip(
+  source: string[],
+  translation: string[],
   t: ReturnType<typeof useI18n>["t"],
 ): JSX.Element | null {
-  const { applied, failed } = split_glossary_applications(applications);
-  if (applied.length === 0 && failed.length === 0) {
-    return null;
-  }
-
+  if (source.length === 0 && translation.length === 0) return null;
   return (
     <div className="proofreading-page__dialog-badge-tooltip-copy">
-      {render_fragment_section(
-        t("proofreading_page.tooltip.glossary_applied_terms"),
-        applied.map(format_proofreading_glossary_term),
-      )}
-      {render_fragment_section(
-        t("proofreading_page.tooltip.glossary_missing_terms"),
-        failed.map(format_proofreading_glossary_term),
-      )}
+      {render_fragment_section(t("proofreading_page.fields.source"), source)}
+      {render_fragment_section(t("proofreading_page.fields.translation"), translation)}
     </div>
   );
 }
 
-/** 将有具体片段的警告映射为可复制的 tooltip 内容。 */
-function render_warning_tooltip_content(
-  item: ProofreadingItem,
-  warning: string,
+/** 提示直接按当前字段应用事实分组，独立于条目警告和胶囊状态。 */
+function render_glossary_tooltip_content(
+  applications: GlossaryApplication[],
   t: ReturnType<typeof useI18n>["t"],
 ): JSX.Element | null {
-  if (warning === "FOREIGN_CHAR_RESIDUE") {
-    const fragments = item.warning_fragments_by_code.FOREIGN_CHAR_RESIDUE ?? [];
-    return fragments.length === 0 ? null : (
-      <div className="proofreading-page__dialog-badge-tooltip-copy">
-        {render_fragment_section(
-          t("proofreading_page.tooltip.foreign_char_residue_fragments"),
-          fragments,
-        )}
-      </div>
+  if (applications.length === 0) return null;
+  const failed: string[] = [];
+  const applied: string[] = [];
+  // 应用结果已按 entry_id 汇总全部命中字段，任一字段缺失即归入未落实组。
+  for (const application of applications) {
+    const target = application.fields.some((field) => !field.applied) ? failed : applied;
+    target.push(format_proofreading_glossary_term(application));
+  }
+  return (
+    <div className="proofreading-page__dialog-badge-tooltip-copy">
+      {render_fragment_section(t("proofreading_page.glossary.missing"), failed)}
+      {render_fragment_section(t("proofreading_page.glossary.applied"), applied)}
+    </div>
+  );
+}
+
+/** 提示只展示合并后的具体证据，没有目标条目的规则仅显示胶囊。 */
+function render_warning_tooltip_content(
+  item: ProofreadingItem,
+  code: ProofreadingWarningCode,
+  t: ReturnType<typeof useI18n>["t"],
+): JSX.Element | null {
+  if (code === "FOREIGN_CHAR_RESIDUE") {
+    const fragments = item.warnings.flatMap((warning) =>
+      warning.code === code ? warning.fragments : [],
+    );
+    return render_fragment_section(null, [...new Set(fragments)]);
+  }
+  if (code === "TEXT_PRESERVE") {
+    const warnings = item.warnings.filter((warning) => warning.code === code);
+    return render_comparison_tooltip(
+      [...new Set(warnings.flatMap((warning) => warning.source_fragments))],
+      [...new Set(warnings.flatMap((warning) => warning.translation_fragments))],
+      t,
     );
   }
-
-  if (warning === "TEXT_PRESERVE") {
-    const fragments = item.warning_fragments_by_code.TEXT_PRESERVE;
-    if (fragments === undefined) {
-      return null;
-    }
-
-    return (
-      <div className="proofreading-page__dialog-badge-tooltip-copy">
-        {render_fragment_section(t("proofreading_page.tooltip.text_preserve_failed"), fragments)}
-      </div>
-    );
-  }
-
   return null;
 }
 
@@ -176,21 +181,6 @@ function render_status_badge(args: {
 /** 匹配文本采用编辑器的 LF 换行，使高亮偏移与显示正文一致。 */
 function normalize_code_editor_match_text(text: string): string {
   return text.replace(/\r\n|\r/gu, "\n");
-}
-
-/** 只有所有目标字段均命中才算已应用，任一字段缺失即归入失败。 */
-function split_glossary_applications(applications: GlossaryApplication[]): {
-  applied: GlossaryApplication[];
-  failed: GlossaryApplication[];
-} {
-  return {
-    applied: applications.filter((application) =>
-      application.fields.every((field) => field.applied),
-    ),
-    failed: applications.filter((application) =>
-      application.fields.some((field) => !field.applied),
-    ),
-  };
 }
 
 /** 编辑窗沿用后端已锁定的源字段集合，只对草稿目标字段重新求值。 */
@@ -246,15 +236,10 @@ function build_glossary_field_marks(args: {
       )
       .every((field) => field.applied);
     if (!source_field && !applied) return [];
-    const label = format_proofreading_glossary_term(application);
     return match.ranges.map((range) => ({
       ...range,
       tone: applied ? ("success" as const) : ("warning" as const),
-      tooltip: `${args.t(
-        applied
-          ? "proofreading_page.glossary.tooltip_applied"
-          : "proofreading_page.glossary.tooltip_missing",
-      )}\n${label}`,
+      tooltip: `${args.t(applied ? "proofreading_page.glossary.applied" : "proofreading_page.glossary.missing")}\n${format_proofreading_glossary_term(application)}`,
     }));
   });
 }
@@ -340,7 +325,10 @@ function resolve_name_glossary_state(
   );
   return {
     tone: has_failed ? "warning" : name_applications.length > 0 ? "success" : "neutral",
-    applications: name_applications,
+    applications: name_applications.map((application) => ({
+      ...application,
+      fields: application.fields.filter((field) => field.source_field === "name_src"),
+    })),
   };
 }
 
@@ -414,10 +402,9 @@ export function ProofreadingEditDialog(props: ProofreadingEditDialogProps): JSX.
     glossary_applications,
     t,
   );
-  const visible_warning_codes =
-    glossary_badge_state === null
-      ? item.warnings
-      : item.warnings.filter((warning) => warning !== "GLOSSARY");
+  const visible_warning_codes = read_proofreading_warning_codes(item.warnings).filter(
+    (code) => glossary_badge_state === null || code !== "GLOSSARY",
+  );
   const source_name = read_item_name_text(item.name_src);
   const translation_name = draft_item.name_dst;
   const file_path_label =
