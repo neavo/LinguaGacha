@@ -75,6 +75,8 @@ export const ja_jp_agent_page = {
   approval: {
     manual: "手動承認",
     auto: "自動承認",
+    manual_short: "手動承認",
+    auto_short: "自動承認",
     tooltip: "書き込み権限の承認モード",
     title: "プロジェクトデータを書き込み中",
     summary: {

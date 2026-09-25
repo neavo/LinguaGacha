@@ -73,6 +73,8 @@ export const de_de_agent_page = {
   approval: {
     manual: "Manuelle Genehmigung",
     auto: "Automatische Genehmigung",
+    manual_short: "Manuell",
+    auto_short: "Auto",
     tooltip: "Genehmigungsmodus für Schreibzugriffe",
     title: "Projektdaten werden geschrieben",
     summary: {

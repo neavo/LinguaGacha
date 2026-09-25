@@ -73,6 +73,8 @@ export const zh_cn_agent_page = {
   approval: {
     manual: "手动批准",
     auto: "自动批准",
+    manual_short: "手动批准",
+    auto_short: "自动批准",
     tooltip: "写入权限审批模式",
     title: "正在写入工程数据",
     summary: {
