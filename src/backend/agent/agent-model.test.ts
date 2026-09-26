@@ -310,7 +310,6 @@ describe("Agent 模型注册", () => {
 
     expect(resolved.model.reasoning).toBe(false);
     expect(resolved.thinkingLevel).toBe("off");
-    expect(resolved.model_config.thinking.level).toBe("OFF");
     const provider_config = runtime.getRegisteredProviderConfig("openai");
     if (provider_config?.streamSimple === undefined) {
       throw new Error("Agent 缺少 provider streamSimple");
@@ -357,6 +356,26 @@ describe("Agent 模型注册", () => {
     expect(register_agent_model(runtime, config, TEST_REQUEST_IDENTITY, catalog).model.id).toBe(
       "test-model",
     );
+  });
+  it("Agent 保留保持默认供批量翻译继承，并在公共载荷入口清除自动控制", async () => {
+    const runtime = await create_model_runtime();
+    const resolved = register_agent_model(
+      runtime,
+      build_config("OpenAI", { thinking: { level: "DEFAULT" } }),
+      TEST_REQUEST_IDENTITY,
+      catalog,
+    );
+    expect(resolved.model_config.thinking.level).toBe("DEFAULT");
+    const provider = runtime.getRegisteredProviderConfig("openai");
+    if (provider?.streamSimple === undefined) throw new Error("Agent 缺少 streamSimple");
+    void provider.streamSimple(resolved.model, normalizeContext({ messages: [] }), {
+      reasoning: "high",
+    });
+    const options = api_mocks.streamSimple.mock.calls.at(-1)?.[2];
+    if (options?.onPayload === undefined) throw new Error("Agent 缺少 onPayload");
+    expect(
+      await options.onPayload({ messages: [], reasoning: { effort: "high" } }, resolved.model),
+    ).toEqual({ messages: [] });
   });
 });
 

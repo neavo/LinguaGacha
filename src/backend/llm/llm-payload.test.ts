@@ -161,6 +161,64 @@ describe("Pi 载荷的产品规则", () => {
       "runtime.internal_invariant",
     );
   });
+  it("保持默认移除自动思考控制，再应用用户扩展", () => {
+    const source = { messages: [], reasoning: { effort: "low" }, reasoning_effort: "low" };
+    const snapshot = create_snapshot({
+      thinking_level: "DEFAULT",
+      extra_body: { reasoning_effort: "high" },
+    });
+    expect(apply_request_overrides(snapshot, source)).toEqual({
+      messages: [],
+      reasoning_effort: "high",
+    });
+    expect(source.reasoning).toEqual({ effort: "low" });
+  });
+
+  it("保持默认仅清理嵌套控制项，保留其他选项和用户扩展", () => {
+    const snapshot = create_snapshot({ thinking_level: "DEFAULT" });
+    expect(
+      apply_request_overrides(
+        snapshot,
+        {
+          messages: [],
+          chat_template_args: { effort: "high", tool_format: "json" },
+          thinking_budget_tokens: 1024,
+        },
+        {
+          chatTemplateArgs: { effort: { $var: "thinking.effort" }, tool_format: "json" },
+          thinkingTokenBudgetField: "thinking_budget_tokens",
+        },
+      ),
+    ).toEqual({ messages: [], chat_template_args: { tool_format: "json" } });
+    expect(
+      apply_request_overrides(
+        { ...snapshot, api_format: "Anthropic", extra_body: { thinking: { type: "adaptive" } } },
+        {
+          thinking: { type: "disabled" },
+          output_config: { effort: "high", format: { type: "json_schema" } },
+        },
+      ),
+    ).toEqual({
+      thinking: { type: "adaptive" },
+      output_config: { format: { type: "json_schema" } },
+    });
+    expect(
+      apply_request_overrides(
+        {
+          ...snapshot,
+          api_format: "Google",
+          extra_body: { thinkingConfig: { thinkingBudget: 777 } },
+        },
+        {
+          contents: [],
+          config: { thinkingConfig: { thinkingBudget: 0 }, responseMimeType: "application/json" },
+        },
+      ),
+    ).toEqual({
+      contents: [],
+      config: { thinkingConfig: { thinkingBudget: 777 }, responseMimeType: "application/json" },
+    });
+  });
 });
 
 /** 构造请求的最小输入，用例只覆盖相关字段。 */

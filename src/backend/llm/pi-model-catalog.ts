@@ -15,7 +15,8 @@ import type { ModelCatalogSnapshot } from "../../shared/model-catalog";
 /** 消费方只能读取当前目录，更新由组合根编排。 */
 export type PiModelCatalogReader = Pick<PiModelCatalog, "read_models">;
 type ProviderEntry = { modified: number; etag?: string; models: PiCatalogModel[] };
-type CatalogCache = { version: 1; providers: Record<string, ProviderEntry> };
+const CATALOG_VERSION = 2; // 地址参与模板匹配，旧缓存缺少该事实，按可重建缓存失效。
+type CatalogCache = { version: typeof CATALOG_VERSION; providers: Record<string, ProviderEntry> };
 const CATALOG_FILE = "pi-model-catalog.json";
 const REMOTE_ROOT = "https://pi.dev/api/models/providers/";
 const CHECK_TIMEOUT_MS = 15_000;
@@ -31,7 +32,7 @@ export class PiModelCatalog {
   private readonly builtin = read_builtin_pi_models(); // 离线基线随应用版本更新。
   private readonly generated_at = getBuiltinModelDataGeneratedAt() ?? 0; // 缓存和远端数据取得覆盖优先级的时间下限。
   private readonly file_path: string;
-  private cache: CatalogCache = { version: 1, providers: {} }; // 保存远端数据及条件请求凭据。
+  private cache: CatalogCache = { version: CATALOG_VERSION, providers: {} }; // 保存远端数据及条件请求凭据。
   private models: readonly PiCatalogModel[]; // 当前请求可见的完整能力快照。
   private revision = 0;
   private readonly instance_id = crypto.randomUUID();
@@ -82,7 +83,7 @@ export class PiModelCatalog {
     const timeout = setTimeout(() => fetch_controller.abort(), CHECK_TIMEOUT_MS);
     const providers = this.providers;
     const next: CatalogCache = {
-      version: 1,
+      version: CATALOG_VERSION,
       providers: { ...this.cache.providers },
     };
     let cursor = 0;
@@ -182,7 +183,7 @@ export class PiModelCatalog {
       throw new Error("Invalid Pi catalog cache");
     const source = value as Record<string, unknown>;
     if (
-      source.version !== 1 ||
+      source.version !== CATALOG_VERSION ||
       typeof source.providers !== "object" ||
       source.providers === null ||
       Array.isArray(source.providers)
@@ -217,7 +218,7 @@ export class PiModelCatalog {
         this.log.warning("Pi 模型能力缓存供应商条目无效。", { error, context: { provider } });
       }
     }
-    return { version: 1, providers };
+    return { version: CATALOG_VERSION, providers };
   }
 
   /** 同供应商同 ID 的远端条目覆盖基线，其余内置条目继续可用。 */
@@ -241,6 +242,7 @@ function read_catalog_model(provider: string, id: string, value: unknown): PiCat
     model.provider !== provider ||
     typeof model.api !== "string" ||
     !model.api ||
+    typeof model.baseUrl !== "string" ||
     typeof model.reasoning !== "boolean" ||
     typeof model.contextWindow !== "number" ||
     !Number.isSafeInteger(model.contextWindow) ||
@@ -256,6 +258,7 @@ function read_catalog_model(provider: string, id: string, value: unknown): PiCat
     id,
     provider,
     api: model.api,
+    baseUrl: model.baseUrl,
     reasoning: model.reasoning,
     contextWindow: model.contextWindow,
     maxTokens: model.maxTokens,
@@ -273,6 +276,7 @@ function same_models(left: readonly PiCatalogModel[], right: readonly PiCatalogM
           provider: model.provider,
           id: model.id,
           api: model.api,
+          baseUrl: model.baseUrl,
           reasoning: model.reasoning,
           contextWindow: model.contextWindow,
           maxTokens: model.maxTokens,

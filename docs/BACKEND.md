@@ -23,7 +23,9 @@
 
 内置模型目录按 ID 补齐缺失模型并提供重置模板；已有用户配置与选择保留。预设下架后可删除，仍有模板时可重置且禁止删除。`ModelService` 每次操作共用一份目录判断权限，快照的 `can_reset` 不持久化，类型仍记录来源与分组。目录允许空数组；读取、解析或结构校验失败在配置写入前报错，避免把资源损坏解释为下架。
 
-`PiModelCatalog` 由共享业务组合根持有，将 Pi 内置能力与 `userdata/pi-model-catalog.json` 中较新的供应商数据合并。GUI 启动后通过系统代理后台检查一次，CLI 读取已有缓存。单个供应商失败保留旧值，网络超时仍可应用已完成的结果。缓存直接写入原路径，损坏时回退内置目录。能力发生变化时等待 `RuntimeOperationGate` 空闲，再由 `ModelService` 读取最新配置、修正失效档位并同步切换目录。保存失败时保留当前运行目录并记录诊断。Agent 和 OneShot 显式读取同一目录，Agent 的 `ModelRuntime` 关闭独立联网刷新。
+`PiModelCatalog` 由共享业务组合根持有，合并 Pi 内置能力与 `userdata/pi-model-catalog.json` 中较新的供应商数据。目录与缓存保留 `baseUrl`，地址变化参与更新判断。旧版或损坏缓存回退内置目录，缓存经原路径写入。
+
+GUI 启动后通过系统代理后台检查一次，CLI 读取已有缓存。单个供应商失败保留旧值，网络超时仍可应用已完成的结果。能力变化时等待 `RuntimeOperationGate` 空闲，再由 `ModelService` 读取最新配置、修正失效档位并同步切换目录；保存失败保留运行目录并记录诊断。Agent 与 OneShot 显式读取同一目录，Agent 的 `ModelRuntime` 关闭独立联网刷新。
 
 `POST /api/models/copy` 接受源配置内部 ID `model_id`，一次保存后返回 `snapshot` 和 `copied_model_id`。复制源模型当前完整配置，按协议进入对应自定义分类末尾；SakuraLLM 禁止复制。副本使用新 ID，名称按当前应用语言在整个模型集合中避重，有效模型选择保留原值。
 
@@ -141,15 +143,17 @@ project, files, items, pdf, quality, prompts, proofreading
 - 翻译 work unit 在 pre-pipeline 前从原始 source fields 计算术语覆盖，再以全局开关和非空 `dst` 裁出 Prompt 激活条目；PromptBuilder 只格式化已激活条目，不根据预处理或模型输入文本再次匹配。
 - 批量翻译以外的重型计算通过 `ComputeWorkerClient` 提交无状态 compute task；worker 不读数据库、不写 `.lg`、不发布事件、不持有项目 cache。
 - `src/backend/llm` 统一处理模型能力、请求准备、协议载荷和结果。模型管理、OneShot 与 Agent 共用能力结果，Pi 模型构造直接消费该结果。持久化 `Model` 保存用户配置，远端可用模型列表由供应商 REST API 提供。
-- 能力目录优先精确匹配名称，变种 ID 在字母数字边界内取最长且唯一的标准模型 ID。容量取同名记录的最大上下文与输出规格。思考模板先匹配协议，再按原厂、聚合目录、托管平台的显式优先级选择。唯一未知来源可用，多个未知来源按能力缺失处理。缺少容量时使用 Agent 安全值，最终请求保留用户的真实模型 ID。
+- 模型名称优先精确匹配，变种 ID 按字母数字边界取最长且唯一的标准 ID。容量取同名记录的最大规格，缺失时使用 Agent 安全值；请求保留用户模型 ID。
+- 思考模板优先匹配规范化 API 根地址、模型 ID 和目标协议。未命中时按协议、原厂、聚合目录、托管平台的顺序回退；唯一未知来源可用，多个未知来源视为能力缺失。地址沿用请求规范化规则，路径参与匹配。
 - `llm-overrides.ts` 保存模型与端点修正。同协议思考映射和兼容配置按字段合并，`null` 表示档位不受支持。OpenAI 两种协议回退时仅借用思考能力与档位，Azure Responses 与 Responses 共用兼容契约。Agent 运行容量规则归 [`AGENT_RUNTIME.md`](AGENT_RUNTIME.md)。
-- `llm-request.ts` 准备配置与生成选项，`llm-payload.ts` 合并最终载荷。请求头通过适配器选项发送，端点按精确主机名匹配，用户扩展头按大小写不敏感覆盖默认值。OneShot 的分块与重试共享 `run_id`，批量任务及每个密钥的模型测试各自独立。Agent 对话身份归 [`AGENT_RUNTIME.md`](AGENT_RUNTIME.md)。
-- OneShot 在适配器入口调用 `normalizeContext()`，Agent 由 `ModelRuntime` 归一化上下文。Anthropic 与 Google 合并用户扩展后保留结构化思考设置，Google 单次请求最终使用应用的取消信号。
-- 产品思考档位按操作语义合并同效果别名，包括关闭思考；共享映射由 Pi adapter 转为供应商接口值。
+- `llm-request.ts` 准备配置与生成选项。请求头通过适配器选项发送，端点按精确主机名匹配，用户扩展头按大小写不敏感覆盖。OneShot 分块与重试共享 `run_id`，批量任务及每个密钥的模型测试各自独立。Agent 对话身份归 [`AGENT_RUNTIME.md`](AGENT_RUNTIME.md)。
+- OneShot 在适配器入口调用 `normalizeContext()`，Agent 由 `ModelRuntime` 归一化上下文。
+- `DEFAULT`（保持默认）适用于所有模型；`OFF` 表示显式关闭，其余等级由能力目录提供。新建自定义模型初始为 `OFF`，配置写入口将失效档位归一化为可用值。`DEFAULT` 独立于等级升降，产品配置与批量翻译继承保留该值；Pi 使用 `off` 作为内部占位。
+- `llm-payload.ts` 统一处理 OneShot 与 Agent 载荷。保持默认时清理 SDK 自动思考控制，再合并生成设置和用户扩展。显式档位下，Anthropic 与 Google 保留结构化思考设置；OpenAI 用户扩展最终覆盖。Google 单次请求最后写入应用取消信号。
 - `LLMClient` 拥有 OneShot 的总时限、取消和请求终态，Pi 的 `maxRetries` 固定为 `0`。供应商请求失败归 `request_error`，长度截断和不支持的工具调用归 `response_error`，正常终止的正文交给消费方校验。供应商用量逐项转为有限非负整数，数字字符串按数值处理，缺失或非法值按零计入已知用量。输入、思考和输出采用互斥口径，思考用量以供应商总输出为上限，worker 校验归一后的用量。
 - `src/backend/network` 是普通后端与 Agent 工作区 HTTP 的共用传输所有者。工作区调用和代理通信归 [`AGENT_RUNTIME.md`](AGENT_RUNTIME.md)。`BackendResources` 在业务服务启动前把它安装为当前 Backend Runtime worker 或 CLI 进程的 `globalThis.fetch`，同时安装同版本的 Request、Response、Headers 和 FormData，关闭时一起恢复，避免 Electron 内置 Undici 与应用依赖混用。模型 adapter、模型列表和 Web Search 从该入口取用 transport。HTTP 入口按请求隔离状态码、接收时刻及重试时间，LLM 端口传递事实，调度器决定恢复策略。每次请求按当前 Electron session 代理规则选路，loopback 固定直连。解析失败、路由不受支持或代理失败都结束请求，不绕过代理静默直连，也不改写进程全局 dispatcher。
 - OneShot 的 HTTP 状态由统一 transport 在请求异步上下文中采集，再附到 `LLMClient` 结果；该边界保留 SDK 压平错误后丢失的状态码，网络层不解释翻译语义。
-- OpenAI Chat Completions 与 Responses 是显式独立的 `api_format`，不按 URL 或模型名自动探测，也不互相重试或降级；模型配置归一化时统一把失效思考档位调整为当前模型可用值并在配置写入口持久化，模型快照不会向消费方暴露失效档位，请求阶段只保留 `off` 兜底。两种协议的原生思考载荷与 Responses 连续性由 `pi-ai` 生成，项目只补协议生成字段、把 Responses 系统指令规范为 `developer`，并让显式 `extra_body` 最终覆盖。
+- OpenAI Chat Completions 与 Responses 由 `api_format` 显式区分。原生思考载荷与 Responses 连续性由 `pi-ai` 生成，产品载荷策略统一 Responses 系统指令角色为 `developer`。
 
 ## 5. 数据库与 `.lg` 存储
 

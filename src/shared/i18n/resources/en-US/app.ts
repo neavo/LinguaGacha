@@ -27,8 +27,9 @@ export const en_us_app = {
     },
     thinking_level: {
       label: "Thinking level",
-      default: "Default",
-      unsupported: "The selected model is not supported yet",
+      default: "Keep default",
+      default_description:
+        "Send no thinking level configuration data; follow the platform’s default settings entirely.",
       off: "Off",
       low: "Low",
       medium: "Medium",

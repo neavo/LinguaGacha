@@ -1,4 +1,4 @@
-import { act, type ReactNode } from "react";
+import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -7,44 +7,6 @@ import { create_model_snapshot } from "@frontend/pages/model-page/model-test-fix
 
 vi.mock("@frontend/app/locale/locale-context", () => ({
   useI18n: () => ({ locale: "zh-CN", t: (key: string) => key }),
-}));
-
-vi.mock("@frontend/shadcn/select", () => ({
-  Select: (props: {
-    children: ReactNode;
-    value: string;
-    disabled?: boolean;
-    onValueChange: (value: string) => void;
-  }) => (
-    <select
-      value={props.value}
-      disabled={props.disabled}
-      onChange={(event) => props.onValueChange(event.currentTarget.value)}
-    >
-      {props.children}
-    </select>
-  ),
-  SelectTrigger: () => null,
-  SelectValue: () => null,
-  SelectContent: (props: { children?: ReactNode; render?: ReactNode }) => (
-    <>{props.render ?? props.children}</>
-  ),
-  SelectGroup: (props: { children?: ReactNode; render?: ReactNode }) => (
-    <>{props.render ?? props.children}</>
-  ),
-  SelectItem: (props: { children: ReactNode; value: string }) => (
-    <option value={props.value}>{props.children}</option>
-  ),
-}));
-
-vi.mock("@frontend/shadcn/tooltip", () => ({
-  Tooltip: (props: { children?: ReactNode; render?: ReactNode }) => (
-    <>{props.render ?? props.children}</>
-  ),
-  TooltipTrigger: (props: { children?: ReactNode; render?: ReactNode }) => (
-    <>{props.render ?? props.children}</>
-  ),
-  TooltipContent: (props: { children: ReactNode }) => <div role="tooltip">{props.children}</div>,
 }));
 
 describe("ModelBasicSettingsDialog", () => {
@@ -56,6 +18,7 @@ describe("ModelBasicSettingsDialog", () => {
     container?.remove();
     container = null;
     root = null;
+    vi.useRealTimers();
   });
 
   it("打开的模型 ID 输入器在本地提交期间保持可选择且拒绝 Enter 提交", async () => {
@@ -138,7 +101,8 @@ describe("ModelBasicSettingsDialog", () => {
           open
           model={create_model_snapshot({
             api_format: "OpenAIResponses",
-            available_thinking_levels: ["LOW", "HIGH"],
+            thinking: { level: "LOW" },
+            available_thinking_levels: ["DEFAULT", "LOW", "HIGH"],
           })}
           readonly={false}
           onPatch={on_patch}
@@ -149,21 +113,21 @@ describe("ModelBasicSettingsDialog", () => {
       );
     });
 
-    const thinking_select = document.querySelector("select");
-    if (!(thinking_select instanceof HTMLSelectElement)) {
-      throw new Error("思考档位选择器未挂载。");
-    }
-    expect(thinking_select.querySelector('option[value="MAX"]')).toBeNull();
-    expect(thinking_select.querySelector('option[value="HIGH"]')).not.toBeNull();
-    await act(async () => {
-      thinking_select.value = "HIGH";
-      thinking_select.dispatchEvent(new Event("change", { bubbles: true }));
-    });
+    const trigger = document.querySelector<HTMLButtonElement>('[data-slot="select-trigger"]')!;
+    await act(async () => trigger.click());
+    const options = [...document.querySelectorAll<HTMLElement>('[role="option"]')];
+    expect(options.map((item) => item.textContent)).toEqual(
+      ["low", "high", "default"].map((level) => `app.model.thinking_level.${level}`),
+    );
+    expect(options.at(-1)?.previousElementSibling?.getAttribute("data-slot")).toBe(
+      "select-separator",
+    );
+    await act(async () => options[1]!.click());
 
     expect(on_patch).toHaveBeenCalledWith({ thinking: { level: "HIGH" } });
   });
 
-  it("没有可用思考档位时显示默认、禁用并说明原因", async () => {
+  it("仅有保持默认时仍提供可用的选择器", async () => {
     container = document.createElement("div");
     document.body.append(container);
     root = createRoot(container);
@@ -172,7 +136,10 @@ describe("ModelBasicSettingsDialog", () => {
         <ModelBasicSettingsDialog
           test_disabled={true}
           open
-          model={create_model_snapshot({ available_thinking_levels: [] })}
+          model={create_model_snapshot({
+            thinking: { level: "DEFAULT" },
+            available_thinking_levels: ["DEFAULT"],
+          })}
           readonly={false}
           onPatch={async () => {}}
           onRequestOpenSelector={() => {}}
@@ -182,11 +149,21 @@ describe("ModelBasicSettingsDialog", () => {
       );
     });
 
-    const thinking_select = document.querySelector("select");
-    expect(thinking_select?.disabled).toBe(true);
-    expect(thinking_select?.parentElement?.tabIndex).toBe(0);
-    expect(document.querySelector('[role="tooltip"]')?.textContent).toBe(
-      "app.model.thinking_level.unsupported",
+    const trigger = document.querySelector<HTMLButtonElement>('[data-slot="select-trigger"]')!;
+    expect(trigger.disabled).toBe(false);
+    expect(trigger.textContent).toContain("app.model.thinking_level.default");
+    await act(async () => trigger.click());
+    const options = [...document.querySelectorAll<HTMLElement>('[role="option"]')];
+    expect(options).toHaveLength(1);
+    expect(document.querySelector('[data-slot="select-separator"]')).toBeNull();
+    vi.useFakeTimers();
+    await act(async () => {
+      options[0]!.dispatchEvent(new MouseEvent("mouseenter", { bubbles: true }));
+      options[0]!.dispatchEvent(new MouseEvent("mousemove", { bubbles: true }));
+      vi.runAllTimers();
+    });
+    expect(document.querySelector('[role="tooltip"][data-open]')?.textContent).toBe(
+      "app.model.thinking_level.default_description",
     );
   });
 });

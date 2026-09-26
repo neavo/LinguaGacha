@@ -31,15 +31,15 @@ describe("ModelSelectionMenu", () => {
             type: "PRESET",
             agent_limits: { context_window: 128_000, max_output_tokens: 32_000 },
             thinking_level: "HIGH",
-            available_thinking_levels: ["OFF", "HIGH"],
+            available_thinking_levels: ["DEFAULT", "OFF", "HIGH"],
           },
           {
             id: "b",
             name: "模型 B",
             type: "PRESET",
             agent_limits: { context_window: 128_000, max_output_tokens: 32_000 },
-            thinking_level: "OFF",
-            available_thinking_levels: [],
+            thinking_level: "DEFAULT",
+            available_thinking_levels: ["DEFAULT"],
           },
         ],
       },
@@ -60,7 +60,7 @@ describe("ModelSelectionMenu", () => {
     await open_models();
     vi.useFakeTimers();
     const model = [
-      ...document.querySelectorAll<HTMLElement>('[data-slot="dropdown-menu-item"]'),
+      ...document.querySelectorAll<HTMLElement>('[data-slot="dropdown-menu-sub-trigger"]'),
     ].find((item) => item.textContent === "模型 B")!;
     const name = model.querySelector<HTMLElement>("span")!;
     expect(model.hasAttribute("title")).toBe(false);
@@ -103,25 +103,56 @@ describe("ModelSelectionMenu", () => {
     expect(host.querySelector("button")?.getAttribute("aria-expanded")).toBe("false");
   });
 
-  it("等级叶子一次提交模型与等级并关闭根菜单", async () => {
-    await open_models();
-    const model = [
-      ...document.querySelectorAll<HTMLElement>('[data-slot="dropdown-menu-sub-trigger"]'),
-    ].find((item) => item.textContent === "模型 A")!;
-    await act(async () =>
-      model.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, key: "ArrowRight" })),
-    );
-    const level = [...document.querySelectorAll<HTMLElement>('[role="menuitemradio"]')].find(
-      (item) => item.getAttribute("aria-checked") === "true",
-    )!;
-    await act(async () => level.click());
-    expect(controller.select_model).toHaveBeenCalledExactlyOnceWith({
-      target: "translation",
-      model_id: "a",
-      thinking_level: "HIGH",
-    });
-    expect(host.querySelector("button")?.getAttribute("aria-expanded")).toBe("false");
-  });
+  it.each(["HIGH", "DEFAULT"] as const)(
+    "等级 %s 一次提交模型与等级并关闭根菜单",
+    async (selected_level) => {
+      await open_models();
+      const model = [
+        ...document.querySelectorAll<HTMLElement>('[data-slot="dropdown-menu-sub-trigger"]'),
+      ].find((item) => item.textContent === "模型 A")!;
+      await act(async () =>
+        model.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, key: "ArrowRight" })),
+      );
+      const level = [...document.querySelectorAll<HTMLElement>('[role="menuitemradio"]')].find(
+        (item) => item.textContent === `app.model.thinking_level.${selected_level.toLowerCase()}`,
+      )!;
+      await act(async () => level.click());
+      expect(controller.select_model).toHaveBeenCalledExactlyOnceWith({
+        target: "translation",
+        model_id: "a",
+        thinking_level: selected_level,
+      });
+      expect(host.querySelector("button")?.getAttribute("aria-expanded")).toBe("false");
+    },
+  );
+
+  it.each(["模型 A", "模型 B"])(
+    "%s 的保持默认位于末尾并提供说明，单项时没有分隔线",
+    async (name) => {
+      await open_models();
+      const model = [
+        ...document.querySelectorAll<HTMLElement>('[data-slot="dropdown-menu-sub-trigger"]'),
+      ].find((item) => item.textContent === name)!;
+      await act(async () =>
+        model.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, key: "ArrowRight" })),
+      );
+      const items = [...document.querySelectorAll<HTMLElement>('[role="menuitemradio"]')];
+      const last = items.at(-1)!;
+      expect(last.textContent).toBe("app.model.thinking_level.default");
+      expect(last.previousElementSibling?.getAttribute("role") === "separator").toBe(
+        name === "模型 A",
+      );
+      vi.useFakeTimers();
+      await act(async () => {
+        last.dispatchEvent(new MouseEvent("mouseenter", { bubbles: true }));
+        last.dispatchEvent(new MouseEvent("mousemove", { bubbles: true }));
+        vi.runAllTimers();
+      });
+      expect(document.querySelector('[role="tooltip"][data-open]')?.textContent).toBe(
+        "app.model.thinking_level.default_description",
+      );
+    },
+  );
 
   /** 从工作台的根菜单进入模型分类，使用真实 Base UI 观察选择与关闭行为。 */
   async function open_models(): Promise<void> {

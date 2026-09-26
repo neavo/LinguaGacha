@@ -1,13 +1,13 @@
-import type { JSX } from "react";
+import { Fragment, type JSX } from "react";
 import { Boxes, Circle, CircleCheck } from "lucide-react";
 
 import { MODEL_TYPES, type ModelThinkingLevel, type ModelUsage } from "@domain/model";
 import { useI18n } from "@frontend/app/locale/locale-context";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@frontend/shadcn/tooltip";
 import {
+  AppDropdownMenuSeparator,
   AppDropdownMenuRadioGroup,
   AppDropdownMenuRadioItem,
-  AppDropdownMenuItem,
   AppDropdownMenuSub,
   AppDropdownMenuSubContent,
   AppDropdownMenuSubTrigger,
@@ -17,7 +17,7 @@ import { read_selected_model, type ModelSelectionController } from "./use-model-
 import {
   MODEL_THINKING_LEVEL_LABEL_KEY,
   MODEL_TYPE_TITLE_KEY,
-  read_model_thinking_level_label_key,
+  order_model_thinking_levels,
 } from "./model-selection-meta";
 import type { ModelSelectionInput, ModelSelectionOption } from "@shared/model-selection";
 
@@ -35,7 +35,7 @@ export function ModelSelectionMenu(
   const selected = read_selected_model(props.controller, props.usage);
   const selected_name = selected?.name || selected?.id || t("app.model.selection.unavailable");
   const thinking_label =
-    selected === null ? null : t(read_model_thinking_level_label_key(selected));
+    selected === null ? null : t(MODEL_THINKING_LEVEL_LABEL_KEY[selected.thinking_level]);
   const disabled = Boolean(props.disabled) || props.controller.loading || props.controller.updating;
 
   return (
@@ -97,7 +97,7 @@ export function ModelSelectionOptions(props: {
             <AppDropdownMenuSubContent>
               {models.map((model) => {
                 const ModelIcon = model.id === selected_id ? CircleCheck : Circle;
-                // 两类菜单项共用名称内容。提示挂在文本上，选择与展开由菜单项负责。
+                // 名称提示挂在文本上，菜单项负责选择与展开。
                 const content = (
                   <>
                     <ModelIcon aria-hidden="true" />
@@ -109,7 +109,7 @@ export function ModelSelectionOptions(props: {
                     </Tooltip>
                   </>
                 );
-                return model.available_thinking_levels.length > 0 ? (
+                return (
                   <AppDropdownMenuSub key={model.id}>
                     <AppDropdownMenuSubTrigger
                       disabled={disabled}
@@ -132,15 +132,6 @@ export function ModelSelectionOptions(props: {
                       />
                     </AppDropdownMenuSubContent>
                   </AppDropdownMenuSub>
-                ) : (
-                  <AppDropdownMenuItem
-                    key={model.id}
-                    disabled={disabled}
-                    aria-current={model.id === selected_id ? "true" : undefined}
-                    onClick={() => props.on_select({ model_id: model.id })}
-                  >
-                    {content}
-                  </AppDropdownMenuItem>
                 );
               })}
             </AppDropdownMenuSubContent>
@@ -160,16 +151,32 @@ function ThinkingLevelOptions(props: {
   const { t } = useI18n();
   return (
     <AppDropdownMenuRadioGroup value={props.model.thinking_level}>
-      {props.model.available_thinking_levels.map((level) => (
-        <AppDropdownMenuRadioItem
-          key={level}
-          value={level}
-          disabled={props.disabled}
-          onClick={() => props.on_select(level)}
-        >
-          {t(MODEL_THINKING_LEVEL_LABEL_KEY[level])}
-        </AppDropdownMenuRadioItem>
-      ))}
+      {order_model_thinking_levels(props.model.available_thinking_levels).map((level, index) => {
+        const item = (
+          <AppDropdownMenuRadioItem
+            value={level}
+            disabled={props.disabled}
+            onClick={() => props.on_select(level)}
+          >
+            {t(MODEL_THINKING_LEVEL_LABEL_KEY[level])}
+          </AppDropdownMenuRadioItem>
+        );
+        return (
+          <Fragment key={level}>
+            {level === "DEFAULT" && index > 0 ? <AppDropdownMenuSeparator /> : null}
+            {level === "DEFAULT" ? (
+              <Tooltip>
+                <TooltipTrigger render={item} />
+                <TooltipContent side="right">
+                  {t("app.model.thinking_level.default_description")}
+                </TooltipContent>
+              </Tooltip>
+            ) : (
+              item
+            )}
+          </Fragment>
+        );
+      })}
     </AppDropdownMenuRadioGroup>
   );
 }

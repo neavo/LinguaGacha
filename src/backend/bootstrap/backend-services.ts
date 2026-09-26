@@ -206,7 +206,6 @@ export class BackendServices {
       execution: options.workerExecution,
     });
     const task_engine = new BatchTranslationRunner({
-      catalog: this.modelCatalog,
       llmClient: llm_client,
       builtinRoot: paths.get_builtin_root(),
       taskStore: new BatchTranslationProjectStore(

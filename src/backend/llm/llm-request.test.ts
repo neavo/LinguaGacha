@@ -93,18 +93,10 @@ describe("LLM 请求策略", () => {
     expect(read_request_timeout_ms({ request_timeout: 0 })).toBe(1_000);
   });
 
-  it("只为 OneShot 解析通用温度和输出上限", () => {
+  it("OneShot 传递自定义温度并区分自动与显式输出上限", () => {
     const openai = read_model_request_snapshot(
       create_model({
         generation: { temperature_custom_enable: true, temperature: 0.3 },
-        threshold: { output_token_limit: 0 },
-      }),
-      TEST_REQUEST_IDENTITY,
-    );
-    const anthropic = read_model_request_snapshot(
-      create_model({
-        api_format: "Anthropic",
-        thinking: { level: "HIGH" },
         threshold: { output_token_limit: 0 },
       }),
       TEST_REQUEST_IDENTITY,
@@ -115,7 +107,6 @@ describe("LLM 请求策略", () => {
     );
 
     expect(resolve_one_shot_generation_options(openai)).toEqual({ temperature: 0.3 });
-    expect(resolve_one_shot_generation_options(anthropic)).toEqual({});
     expect(resolve_one_shot_generation_options(anthropic_explicit)).toEqual({ maxTokens: 4096 });
   });
 
@@ -154,6 +145,19 @@ describe("LLM 请求策略", () => {
     expect(resolve_one_shot_generation_options(snapshot).samplingParams).toEqual(
       enabled ? { top_p: 0.8 } : undefined,
     );
+  });
+  it.each(["DEFAULT", "OFF", "HIGH"] as const)("Anthropic %s 根据显式思考意图处理温度", (level) => {
+    const snapshot = read_model_request_snapshot(
+      create_model({
+        api_format: "Anthropic",
+        thinking: { level },
+        generation: { temperature_custom_enable: true, temperature: 0.3 },
+      }),
+      TEST_REQUEST_IDENTITY,
+    );
+    const options = resolve_one_shot_generation_options(snapshot);
+    if (level === "HIGH") expect(options).not.toHaveProperty("temperature");
+    else expect(options.temperature).toBe(0.3);
   });
 });
 

@@ -51,7 +51,8 @@ export function register_agent_model(
         ...options,
         apiKey: api_key,
         headers: { ...snapshot.headers },
-        onPayload: (payload) => apply_request_overrides(snapshot, payload),
+        onPayload: (payload, active_model) =>
+          apply_request_overrides(snapshot, payload, active_model.compat),
       }),
   } satisfies Parameters<ModelRuntime["registerProvider"]>[1];
   model_runtime.registerProvider(pi.model.provider, provider_config);
@@ -67,8 +68,7 @@ export function register_agent_model(
       },
     });
   }
-  // SDK provider 标识协议适配器；任务继承应用接入点身份及本轮生效档位。
-  configured_model.thinking.level = Model.normalize_thinking_level(pi.thinkingLevel.toUpperCase());
+  // 批量翻译继承产品配置中的 `DEFAULT`，SDK 档位单独供会话运行使用。
   return {
     model,
     thinkingLevel: pi.thinkingLevel,

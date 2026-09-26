@@ -30,6 +30,7 @@ const create_pi_request = (
     resolve_model_capability(
       {
         api_format: snapshot.api_format,
+        api_url: snapshot.base_url,
         model_id: snapshot.model_id,
         agent: DEFAULT_MODEL_AGENT_CONFIG,
       },
@@ -702,6 +703,88 @@ describe("pi-ai 请求适配", () => {
     expect(request.options).toMatchObject({ reasoning: "high" });
     expect(payload["model"]).toBe("vendor/models/gemini-3.6-flash:free");
     expect(config["thinkingConfig"]).toEqual({ includeThoughts: true, thinkingLevel: "HIGH" });
+  });
+});
+
+describe("保持默认的真实适配器载荷", () => {
+  it.each([
+    ["OpenAI", "sample", { thinkingFormat: "openrouter" }],
+    ["OpenAI", "sample", { thinkingFormat: "deepseek" }],
+    ["OpenAI", "sample", { thinkingFormat: "qwen-chat-template" }],
+    ["OpenAIResponses", "sample", {}],
+    ["Anthropic", "claude-sonnet-4-5", {}],
+    ["Anthropic", "claude-opus-4-8", { forceAdaptiveThinking: true }],
+    ["Google", "gemini-2.5-flash", {}],
+  ] as const)("%s %s %j 保持默认时省略思考控制", async (api_format, model_id, compat) => {
+    const configured = ConfiguredModel.from_json(
+      create_model({ api_format, model_id, thinking: { level: "DEFAULT" } }),
+      "test",
+    );
+    const capability = {
+      ...resolve_model_capability(configured, []),
+      reasoning: true,
+      available_thinking_levels: ["DEFAULT", "OFF", "HIGH"] as const,
+      compat,
+    };
+    const snapshot = read_model_request_snapshot(configured.to_json(), TEST_REQUEST_IDENTITY);
+    const request = resolve_one_shot_pi_request(
+      snapshot,
+      [{ role: "user", content: "Hello" }],
+      new AbortController().signal,
+      capability,
+    );
+    const payload = await capture_payload(request);
+    for (const field of [
+      "reasoning",
+      "reasoning_effort",
+      "thinking",
+      "enable_thinking",
+      "chat_template_kwargs",
+      "output_config.effort",
+      "config.thinkingConfig",
+    ])
+      expect(payload).not.toHaveProperty(field);
+    expect(request.model.reasoning).toBe(true);
+  });
+
+  it("官方接入点优先使用自身模板，未知中转沿用原目录回退", async () => {
+    const records = [
+      {
+        id: "shared",
+        provider: "openrouter",
+        api: "openai-completions" as const,
+        baseUrl: "https://router.example/v1",
+        reasoning: true,
+        contextWindow: 32000,
+        maxTokens: 4096,
+        compat: { thinkingFormat: "openrouter" as const },
+      },
+      {
+        id: "shared",
+        provider: "nvidia",
+        api: "openai-completions" as const,
+        baseUrl: "https://integrate.api.nvidia.com/v1",
+        reasoning: true,
+        contextWindow: 32000,
+        maxTokens: 4096,
+        compat: { supportsReasoningEffort: false },
+      },
+    ];
+    for (const api_url of ["https://integrate.api.nvidia.com/v1", "https://relay.example/v1"]) {
+      const configured = ConfiguredModel.from_json(
+        create_model({ model_id: "shared", api_url, thinking: { level: "LOW" } }),
+        "test",
+      );
+      const request = resolve_one_shot_pi_request(
+        read_model_request_snapshot(configured.to_json(), TEST_REQUEST_IDENTITY),
+        [{ role: "user", content: "Hello" }],
+        new AbortController().signal,
+        resolve_model_capability(configured, records),
+      );
+      const payload = await capture_payload(request);
+      if (api_url.includes("nvidia.com")) expect(payload).not.toHaveProperty("reasoning");
+      else expect(payload).toHaveProperty("reasoning.effort", "low");
+    }
   });
 });
 
