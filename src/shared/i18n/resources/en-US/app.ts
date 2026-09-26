@@ -28,8 +28,7 @@ export const en_us_app = {
     thinking_level: {
       label: "Thinking level",
       default: "Keep default",
-      default_description:
-        "Send no thinking level configuration data; follow the platform’s default settings entirely.",
+      default_description: "Send no thinking level data; follow the platform’s default settings.",
       off: "Off",
       low: "Low",
       medium: "Medium",

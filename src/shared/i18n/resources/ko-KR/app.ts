@@ -28,8 +28,7 @@ export const ko_kr_app = {
     thinking_level: {
       label: "생각 수준",
       default: "기본값 유지",
-      default_description:
-        "생각 수준 설정 데이터를 전혀 보내지 않고 플랫폼의 기본 설정을 그대로 따릅니다.",
+      default_description: "생각 수준 데이터를 전혀 보내지 않고 플랫폼의 기본 설정을 따릅니다.",
       off: "끄기",
       low: "낮음",
       medium: "보통",
