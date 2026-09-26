@@ -6,7 +6,7 @@ import type { AgentUsageSnapshot } from "@shared/agent";
 
 import { useI18n } from "@frontend/app/locale/locale-context";
 import { ModelSelectionOptions } from "@frontend/features/model-selection/model-selection-menu";
-import { read_model_thinking_level_label_key } from "@frontend/features/model-selection/model-selection-meta";
+import { MODEL_THINKING_LEVEL_LABEL_KEY } from "@frontend/features/model-selection/model-selection-meta";
 import {
   read_selected_model,
   type ModelSelectionController,
@@ -40,7 +40,9 @@ export function AgentComposerModelControls(props: {
   const selected_model_name =
     selected_model?.name || selected_model?.id || t("app.model.selection.unavailable");
   const selected_thinking_label =
-    selected_model === null ? null : t(read_model_thinking_level_label_key(selected_model));
+    selected_model === null
+      ? null
+      : t(MODEL_THINKING_LEVEL_LABEL_KEY[selected_model.thinking_level]);
   const model_selection_label = t("app.model.selection.label");
   const model_selection_aria_label = `${model_selection_label}: ${selected_model_name}${selected_thinking_label === null ? "" : ` · ${selected_thinking_label}`}`;
   // 已有会话使用实际容量，选择变化只影响下一次模型操作。
@@ -61,7 +63,9 @@ export function AgentComposerModelControls(props: {
       ? t("agent_page.batch_translation_model.follow")
       : batch_model?.name || batch_model?.id || t("app.model.selection.unavailable");
   const batch_thinking_label =
-    batch_model === undefined ? null : t(read_model_thinking_level_label_key(batch_model));
+    batch_model === undefined
+      ? null
+      : t(MODEL_THINKING_LEVEL_LABEL_KEY[batch_model.thinking_level]);
   const batch_tooltip = t("agent_page.batch_translation_model.tooltip");
   const FollowModelIcon = batch_model_id === null ? CircleCheck : Circle;
   return (

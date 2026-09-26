@@ -27,8 +27,9 @@ export const de_de_app = {
     },
     thinking_level: {
       label: "Denkstufe",
-      default: "Standard",
-      unsupported: "Das ausgewählte Modell wird noch nicht unterstützt",
+      default: "Standard beibehalten",
+      default_description:
+        "Keine Daten zur Konfiguration der Denkstufe senden; vollständig den Standardeinstellungen der Plattform folgen.",
       off: "Off",
       low: "Low",
       medium: "Medium",

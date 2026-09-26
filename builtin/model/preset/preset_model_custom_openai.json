@@ -4,7 +4,7 @@
   "api_format": "OpenAI",
   "api_url": "https://api.openai.com/v1",
   "api_key": "no_key_required",
-  "model_id": "gpt-5.6-luna",
+  "model_id": "gpt-6-luna",
   "request": {
     "extra_headers": {},
     "extra_body": {},

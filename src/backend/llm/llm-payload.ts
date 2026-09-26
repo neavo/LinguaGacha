@@ -1,3 +1,4 @@
+import type { Api, Model as PiModel } from "@earendil-works/pi-ai";
 import { is_json_record } from "../../domain/json";
 import type { ModelApiFormat } from "../../domain/model";
 import { AppError } from "../../shared/error";
@@ -7,70 +8,118 @@ import {
   type ModelRequestSnapshot,
 } from "./llm-request";
 
-/** 单次翻译补齐 Pi 选项无法表达的产品生成规则，再合并公共扩展策略。 */
+type PiCompat = PiModel<Api>["compat"];
+
+/** 单次请求仅增加生成设置，思考与用户扩展和 Agent 共用同一入口。 */
 export function apply_one_shot_request_overrides(
   snapshot: ModelRequestSnapshot,
   payload: unknown,
   signal: AbortSignal,
+  compat?: PiCompat,
 ): Record<string, unknown> {
-  const top_p = read_custom_number(snapshot.generation, "top_p");
-  if (snapshot.api_format === "Google") {
-    const record = read_pi_record(payload, "Google");
-    const config = { ...read_pi_record(record["config"], "Google", "config") };
-    if (top_p !== null) config["topP"] = top_p;
-    const max_tokens = resolve_max_tokens_for_request(snapshot);
-    if (max_tokens === null) delete config["maxOutputTokens"];
-    else config["maxOutputTokens"] = max_tokens;
-    config["safetySettings"] = [
-      { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" },
-      { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_NONE" },
-      { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_NONE" },
-      { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_NONE" },
-    ];
-    return {
-      ...record,
-      config: { ...apply_google_extensions(config, snapshot), abortSignal: signal },
-    };
-  }
-  if (snapshot.api_format === "Anthropic") {
-    const source = { ...read_pi_record(payload, "Anthropic") };
-    if (top_p !== null && !is_anthropic_thinking_enabled(source["thinking"]))
-      source["top_p"] = top_p;
-    return apply_anthropic_extensions(source, snapshot);
-  }
-  return apply_request_overrides(snapshot, payload);
+  return apply_request_overrides(snapshot, payload, compat, signal);
 }
 
-/** 按协议合并用户扩展，保留结构化思考配置和产品指令角色。 */
+/** 清理自动思考控制后合并生成设置和用户扩展；`one_shot_signal` 标识单次请求。 */
 export function apply_request_overrides(
   snapshot: ModelRequestSnapshot,
   payload: unknown,
+  compat?: PiCompat,
+  one_shot_signal?: AbortSignal,
 ): Record<string, unknown> {
-  const record = read_pi_record(payload, snapshot.api_format);
+  const record = { ...read_pi_record(payload, snapshot.api_format) };
+  if (snapshot.thinking_level === "DEFAULT")
+    remove_thinking_controls(record, snapshot.api_format, compat);
+  const top_p =
+    one_shot_signal === undefined ? null : read_custom_number(snapshot.generation, "top_p");
   if (snapshot.api_format === "Google") {
+    const config = { ...read_pi_record(record["config"], "Google", "config") };
+    if (one_shot_signal !== undefined) {
+      if (top_p !== null) config["topP"] = top_p;
+      const max_tokens = resolve_max_tokens_for_request(snapshot);
+      if (max_tokens === null) delete config["maxOutputTokens"];
+      else config["maxOutputTokens"] = max_tokens;
+      config["safetySettings"] = [
+        { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" },
+        { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_NONE" },
+        { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_NONE" },
+        { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_NONE" },
+      ];
+    }
     return {
       ...record,
-      config: apply_google_extensions(
-        read_pi_record(record["config"], "Google", "config"),
-        snapshot,
-      ),
+      config: {
+        ...apply_google_extensions(config, snapshot),
+        ...(one_shot_signal === undefined ? {} : { abortSignal: one_shot_signal }),
+      },
     };
   }
-  if (snapshot.api_format === "Anthropic") return apply_anthropic_extensions(record, snapshot);
+  if (snapshot.api_format === "Anthropic") {
+    if (top_p !== null && !is_anthropic_thinking_enabled(record["thinking"]))
+      record["top_p"] = top_p;
+    return apply_anthropic_extensions(record, snapshot);
+  }
   if (snapshot.api_format === "OpenAIResponses") {
     const input = record["input"];
     if (!Array.isArray(input)) throw invalid_pi_payload("OpenAIResponses", "input");
     // 产品 Responses 指令固定使用 `developer`，补偿 Pi 仍将角色绑定 `reasoning` 的行为。
     // https://github.com/earendil-works/pi/issues/7445：上游满足该契约后才可删除。
-    return {
-      ...record,
-      input: input.map((item) =>
-        is_json_record(item) && item["role"] === "system" ? { ...item, role: "developer" } : item,
-      ),
-      ...snapshot.extra_body,
-    };
+    record["input"] = input.map((item) =>
+      is_json_record(item) && item["role"] === "system" ? { ...item, role: "developer" } : item,
+    );
   }
   return { ...record, ...snapshot.extra_body };
+}
+
+/** 清理 SDK 自动生成的思考控制，用户扩展随后合并。 */
+function remove_thinking_controls(
+  record: Record<string, unknown>,
+  format: ModelApiFormat,
+  compat: PiCompat,
+): void {
+  if (format === "Google") {
+    const config = { ...read_pi_record(record["config"], format, "config") };
+    delete config["thinkingConfig"];
+    record["config"] = config;
+    return;
+  }
+  if (format === "Anthropic") {
+    delete record["thinking"];
+    remove_nested_fields(record, "output_config", ["effort"]);
+    return;
+  }
+  for (const key of ["reasoning", "reasoning_effort", "thinking", "enable_thinking"])
+    delete record[key];
+  if (format === "OpenAIResponses") return;
+  const budget_field =
+    compat && "thinkingTokenBudgetField" in compat ? compat.thinkingTokenBudgetField : undefined;
+  delete record[budget_field ?? "thinking_token_budget"];
+  const kwargs = compat && "chatTemplateKwargs" in compat ? compat.chatTemplateKwargs : undefined;
+  const args = compat && "chatTemplateArgs" in compat ? compat.chatTemplateArgs : undefined;
+  for (const [field, template] of [
+    ["chat_template_kwargs", kwargs],
+    ["chat_template_args", args],
+  ] as const) {
+    const keys = ["enable_thinking", "preserve_thinking"];
+    for (const [key, value] of Object.entries(template ?? {})) {
+      // Pi 的对象模板值表示思考变量；标量值承载普通配置。
+      if (is_json_record(value)) keys.push(key);
+    }
+    remove_nested_fields(record, field, keys);
+  }
+}
+
+/** 复制嵌套对象后清理指定字段，保留 SDK 原始载荷及其余输出选项。 */
+function remove_nested_fields(
+  record: Record<string, unknown>,
+  field: string,
+  keys: readonly string[],
+): void {
+  if (!is_json_record(record[field])) return;
+  const value = { ...record[field] };
+  for (const key of keys) delete value[key];
+  if (Object.keys(value).length === 0) delete record[field];
+  else record[field] = value;
 }
 
 /** Pi 生成的思考设置具有结构化配置的优先级，扩展可补充其余字段。 */

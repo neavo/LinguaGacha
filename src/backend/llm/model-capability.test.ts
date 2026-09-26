@@ -46,7 +46,7 @@ describe("统一模型能力", () => {
       context_window: 128_000,
       max_tokens: 8_000,
       reasoning: false,
-      available_thinking_levels: [],
+      available_thinking_levels: ["DEFAULT"],
     });
     const small = resolve_model_capability(
       create_model("OpenAIResponses", "small-window"),
@@ -68,7 +68,13 @@ describe("统一模型能力", () => {
     (api_format) => {
       const capability = resolve_capability(api_format, "doubao-seed-evolving");
 
-      expect(capability.available_thinking_levels).toEqual(["OFF", "LOW", "MEDIUM", "HIGH"]);
+      expect(capability.available_thinking_levels).toEqual([
+        "DEFAULT",
+        "OFF",
+        "LOW",
+        "MEDIUM",
+        "HIGH",
+      ]);
     },
   );
 
@@ -98,7 +104,7 @@ describe("统一模型能力", () => {
       },
     ];
     const completions = resolve_model_capability(create_model("OpenAI", "toggle-model"), catalog);
-    expect(completions.available_thinking_levels).toEqual(["OFF", "LOW"]);
+    expect(completions.available_thinking_levels).toEqual(["DEFAULT", "OFF", "LOW"]);
     expect(completions.compat).toMatchObject({
       thinkingFormat: "deepseek",
       requiresReasoningContentOnAssistantMessages: true,
@@ -106,25 +112,66 @@ describe("统一模型能力", () => {
     expect(
       resolve_model_capability(create_model("OpenAIResponses", "toggle-model"), catalog)
         .available_thinking_levels,
-    ).toEqual(["OFF", "LOW", "MEDIUM", "HIGH"]);
+    ).toEqual(["DEFAULT", "OFF", "LOW", "MEDIUM", "HIGH"]);
   });
 
-  it("未知模型不猜测思考能力并使用安全容量", () => {
-    const capability = resolve_capability("OpenAIResponses", "unknown-model");
+  it.each(["OpenAIResponses", "SakuraLLM"] as const)(
+    "%s 能力缺失时提供保持默认和安全容量",
+    (format) => {
+      const capability = resolve_capability(format, "unknown-model");
 
-    expect(capability.available_thinking_levels).toEqual([]);
-    expect(capability.agent_limits.context_window).toBeGreaterThan(0);
-    expect(capability.agent_limits.max_output_tokens).toBeGreaterThan(0);
-    expect(capability.agent_limits.max_output_tokens).toBeLessThan(
-      capability.agent_limits.context_window,
-    );
-    expect(resolve_pi_thinking_level("HIGH", capability.available_thinking_levels)).toBe("off");
-  });
+      expect(capability.available_thinking_levels).toEqual(["DEFAULT"]);
+      expect(capability.agent_limits.context_window).toBeGreaterThan(0);
+      expect(capability.agent_limits.max_output_tokens).toBeGreaterThan(0);
+      expect(capability.agent_limits.max_output_tokens).toBeLessThan(
+        capability.agent_limits.context_window,
+      );
+      expect(resolve_pi_thinking_level("HIGH", capability.available_thinking_levels)).toBe("off");
+    },
+  );
 
   it("模型配置归一化时把失效档位调整为更低或最低可用档位", () => {
     expect(adjust_model_thinking_level("MAX", ["OFF", "LOW", "HIGH"])).toBe("HIGH");
     expect(adjust_model_thinking_level("LOW", ["HIGH", "MAX"])).toBe("HIGH");
-    expect(adjust_model_thinking_level("HIGH", [])).toBe("OFF");
+    expect(adjust_model_thinking_level("HIGH", ["DEFAULT"])).toBe("DEFAULT");
+  });
+
+  it("地址、协议与模型共同命中优先于供应商排序，未知地址沿用回退", () => {
+    const router: PiCatalogModel = {
+      ...create_catalog_model("shared-model"),
+      api: "openai-completions",
+      provider: "openrouter",
+      baseUrl: "https://router.example/v1",
+      compat: { thinkingFormat: "openrouter" },
+    };
+    const hosted: PiCatalogModel = {
+      ...router,
+      provider: "nvidia",
+      baseUrl: "https://hosted.example/v1",
+      compat: { supportsReasoningEffort: false },
+    };
+    const model = Model.from_json(
+      {
+        api_format: "OpenAI",
+        model_id: "shared-model",
+        api_url: "https://HOSTED.example:443/v1/chat/completions/",
+      },
+      "test",
+    );
+    expect(resolve_model_capability(model, [router, hosted]).compat).toEqual(hosted.compat);
+    const relay = Model.from_json(
+      { ...model.to_json(), api_url: "https://relay.example/v1" },
+      "test",
+    );
+    expect(resolve_model_capability(relay, [hosted, router]).compat).toEqual(router.compat);
+    const other_path = Model.from_json(
+      { ...model.to_json(), api_url: "https://hosted.example/other/v1" },
+      "test",
+    );
+    expect(resolve_model_capability(other_path, [hosted, router]).compat).toEqual(router.compat);
+    expect(
+      resolve_model_capability(model, [router, { ...hosted, api: "openai-responses" }]).compat,
+    ).toEqual(router.compat);
   });
 
   it("精确匹配优先，否则选择最长且唯一的分隔变种", () => {
@@ -172,13 +219,13 @@ describe("统一模型能力", () => {
       expect(
         resolve_model_capability(create_model("OpenAIResponses", "shared-model"), catalog)
           .available_thinking_levels,
-      ).toEqual(["LOW", "HIGH", "MAX"]);
+      ).toEqual(["DEFAULT", "LOW", "HIGH", "MAX"]);
     }
     const catalog: PiCatalogModel[] = [hosted, aggregated, native];
     expect(
       resolve_model_capability(create_model("OpenAIResponses", "shared-model"), catalog)
         .available_thinking_levels,
-    ).toEqual(["HIGH"]);
+    ).toEqual(["DEFAULT", "HIGH"]);
   });
 
   it("同协议优先于跨协议原厂，未知来源冲突不依赖目录顺序猜测", () => {
@@ -192,7 +239,7 @@ describe("统一模型能力", () => {
     expect(
       resolve_model_capability(create_model("OpenAI", "shared-model"), catalog)
         .available_thinking_levels,
-    ).toEqual(["HIGH"]);
+    ).toEqual(["DEFAULT", "HIGH"]);
     const first = { ...exact, provider: "unknown-one" };
     const second = { ...exact, provider: "unknown-two", reasoning: false };
     for (const catalog of [
@@ -202,7 +249,7 @@ describe("统一模型能力", () => {
       expect(
         resolve_model_capability(create_model("OpenAI", "shared-model"), catalog)
           .available_thinking_levels,
-      ).toEqual([]);
+      ).toEqual(["DEFAULT"]);
     }
   });
 
@@ -263,6 +310,7 @@ function create_catalog_model(id: string): PiCatalogModel {
   return {
     id,
     api: "openai-responses",
+    baseUrl: "https://api.openai.com/v1",
     provider: "openai",
     reasoning: true,
     contextWindow: 0,

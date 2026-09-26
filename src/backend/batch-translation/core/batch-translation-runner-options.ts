@@ -1,5 +1,4 @@
 import type { LLMClientPort } from "../../llm/llm-types";
-import type { PiModelCatalogReader } from "../../llm/pi-model-catalog";
 import type { TranslationContext } from "../planning/translation-plan-types";
 import type { TextTaskItemRecord } from "../../../shared/text/text-types";
 import type { LogManager } from "../../log/log-manager";
@@ -21,7 +20,6 @@ export type BatchTranslationRunContext = Readonly<{
  * BatchTranslationRunner 依赖由 BackendServices 注入，保证后台任务只通过固定端口读写工程事实
  */
 export interface BatchTranslationRunnerOptions {
-  catalog: PiModelCatalogReader;
   builtinRoot: string; // 用于任务启动日志读取提示词模板，保持宿主与 worker 内置资产根一致
   taskStore: Pick<
     BatchTranslationProjectStore,

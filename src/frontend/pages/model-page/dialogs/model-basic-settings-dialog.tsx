@@ -1,9 +1,12 @@
 import { PencilLine, RefreshCw, Send } from "lucide-react";
-import { type JSX, useEffect, useState } from "react";
+import { Fragment, type JSX, useEffect, useState } from "react";
 
 import { is_model_thinking_level } from "@domain/model";
 import { useI18n } from "@frontend/app/locale/locale-context";
-import { MODEL_THINKING_LEVEL_LABEL_KEY } from "@frontend/features/model-selection/model-selection-meta";
+import {
+  MODEL_THINKING_LEVEL_LABEL_KEY,
+  order_model_thinking_levels,
+} from "@frontend/features/model-selection/model-selection-meta";
 import type { ModelEntrySnapshot } from "@frontend/pages/model-page/types";
 import { AppButton } from "@frontend/widgets/app-button";
 import { Input } from "@frontend/shadcn/input";
@@ -12,11 +15,12 @@ import {
   SelectContent,
   SelectGroup,
   SelectItem,
+  SelectSeparator,
   SelectTrigger,
   SelectValue,
 } from "@frontend/shadcn/select";
-import { Textarea } from "@frontend/shadcn/textarea";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@frontend/shadcn/tooltip";
+import { Textarea } from "@frontend/shadcn/textarea";
 import { AppPageDialog } from "@frontend/widgets/app-page-dialog";
 import { SettingCardRow } from "@frontend/widgets/setting-card-row/setting-card-row";
 
@@ -48,11 +52,7 @@ export function ModelBasicSettingsDialog(props: ModelBasicSettingsDialogProps): 
   }
 
   const model = props.model;
-  const thinking_unavailable = model.available_thinking_levels.length === 0;
-  const current_thinking_available = model.available_thinking_levels.includes(model.thinking.level);
-  const thinking_label = current_thinking_available
-    ? t(MODEL_THINKING_LEVEL_LABEL_KEY[model.thinking.level])
-    : t("app.model.thinking_level.default");
+  const thinking_label = t(MODEL_THINKING_LEVEL_LABEL_KEY[model.thinking.level]);
 
   /** 项目可能在输入弹窗保持打开时进入锁定态，提交点必须再次守卫。 */
   async function commit_model_id_input(): Promise<void> {
@@ -187,45 +187,51 @@ export function ModelBasicSettingsDialog(props: ModelBasicSettingsDialogProps): 
               title={t("model_page.fields.thinking.title")}
               description={t("model_page.fields.thinking.description")}
               action={
-                <Tooltip>
-                  <TooltipTrigger
-                    render={
-                      <span className="inline-flex" tabIndex={thinking_unavailable ? 0 : undefined}>
-                        <Select
-                          value={current_thinking_available ? model.thinking.level : "DEFAULT"}
-                          disabled={props.readonly || thinking_unavailable}
-                          onValueChange={(next_value) => {
-                            if (is_model_thinking_level(next_value)) {
-                              void props.onPatch({
-                                thinking: {
-                                  level: next_value,
-                                },
-                              });
-                            }
-                          }}
-                        >
-                          <SelectTrigger className="model-page__field">
-                            <SelectValue>{thinking_label}</SelectValue>
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectGroup>
-                              {model.available_thinking_levels.map((thinking_level) => (
-                                <SelectItem key={thinking_level} value={thinking_level}>
-                                  {t(MODEL_THINKING_LEVEL_LABEL_KEY[thinking_level])}
-                                </SelectItem>
-                              ))}
-                            </SelectGroup>
-                          </SelectContent>
-                        </Select>
-                      </span>
+                <Select
+                  value={model.thinking.level}
+                  disabled={props.readonly}
+                  onValueChange={(next_value) => {
+                    if (is_model_thinking_level(next_value)) {
+                      void props.onPatch({
+                        thinking: {
+                          level: next_value,
+                        },
+                      });
                     }
-                  />
-                  {thinking_unavailable ? (
-                    <TooltipContent>
-                      <p>{t("app.model.thinking_level.unsupported")}</p>
-                    </TooltipContent>
-                  ) : null}
-                </Tooltip>
+                  }}
+                >
+                  <SelectTrigger className="model-page__field">
+                    <SelectValue>{thinking_label}</SelectValue>
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectGroup>
+                      {order_model_thinking_levels(model.available_thinking_levels).map(
+                        (level, index) => {
+                          const item = (
+                            <SelectItem value={level}>
+                              {t(MODEL_THINKING_LEVEL_LABEL_KEY[level])}
+                            </SelectItem>
+                          );
+                          return (
+                            <Fragment key={level}>
+                              {level === "DEFAULT" && index > 0 ? <SelectSeparator /> : null}
+                              {level === "DEFAULT" ? (
+                                <Tooltip>
+                                  <TooltipTrigger render={item} />
+                                  <TooltipContent side="right">
+                                    {t("app.model.thinking_level.default_description")}
+                                  </TooltipContent>
+                                </Tooltip>
+                              ) : (
+                                item
+                              )}
+                            </Fragment>
+                          );
+                        },
+                      )}
+                    </SelectGroup>
+                  </SelectContent>
+                </Select>
               }
             />
           </div>

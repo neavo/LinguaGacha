@@ -63,7 +63,7 @@ describe("ModelService 配置管理", () => {
     expect(commit).toHaveBeenCalledOnce();
     expect(publish).toHaveBeenCalledOnce();
     expect(read_config_model_records(app_setting_service.read_setting())[0]?.["thinking"]).toEqual({
-      level: "OFF",
+      level: "DEFAULT",
     });
   });
 
@@ -648,7 +648,7 @@ describe("ModelService 配置管理", () => {
     );
     expect(selected_snapshot.models.find((model) => model["id"] === "stale")).toMatchObject({
       thinking_level: "HIGH",
-      available_thinking_levels: ["LOW", "HIGH", "MAX"],
+      available_thinking_levels: ["DEFAULT", "LOW", "HIGH", "MAX"],
     });
     const persisted = read_config_model_records(app_setting_service.read_setting());
     expect(persisted.find((model) => model["id"] === "stale")?.["thinking"]).toEqual({
@@ -1024,6 +1024,26 @@ describe("ModelService 配置管理", () => {
       "新名称",
     );
     runtime_gate.finish_runtime(lease);
+  });
+  it("保持默认经保存、换模和目录刷新保持不变", async () => {
+    const { service, app_setting_service } = await create_model_service([
+      create_model({ id: "active", thinking: { level: "HIGH" } }),
+    ]);
+    service.select_model({ target: "agent", model_id: "active", thinking_level: "DEFAULT" });
+    service.update_model({ model_id: "active", patch: { model_id: "unknown-model" } });
+    await service.apply_catalog(
+      [],
+      () => {},
+      new AbortController().signal,
+      () => {},
+    );
+    expect(read_config_model_records(app_setting_service.read_setting())[0]?.["thinking"]).toEqual({
+      level: "DEFAULT",
+    });
+    expect(read_selection_snapshot(service.get_selection_snapshot()).models[0]).toMatchObject({
+      thinking_level: "DEFAULT",
+      available_thinking_levels: ["DEFAULT"],
+    });
   });
 });
 

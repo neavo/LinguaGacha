@@ -27,8 +27,9 @@ export const ja_jp_app = {
     },
     thinking_level: {
       label: "思考レベル",
-      default: "既定",
-      unsupported: "選択したモデルには未対応です",
+      default: "既定のまま",
+      default_description:
+        "思考レベルの設定データを一切送信せず、プラットフォームの既定の設定に完全に従います。",
       off: "オフ",
       low: "低",
       medium: "中",

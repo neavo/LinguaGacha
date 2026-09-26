@@ -136,7 +136,9 @@ export function resolve_one_shot_generation_options(
   const temperature = read_custom_number(snapshot.generation, "temperature");
   if (
     temperature !== null &&
-    (snapshot.api_format !== "Anthropic" || snapshot.thinking_level === "OFF")
+    (snapshot.api_format !== "Anthropic" ||
+      snapshot.thinking_level === "OFF" ||
+      snapshot.thinking_level === "DEFAULT")
   ) {
     result.temperature = temperature;
   }

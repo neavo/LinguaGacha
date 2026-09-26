@@ -89,7 +89,8 @@ describe("AgentComposerModelControls", () => {
     await render();
     expect(batch_trigger().textContent).toContain("模型 A·app.model.thinking_level.high");
 
-    controller.snapshot.models[0]!.available_thinking_levels = [];
+    controller.snapshot.models[0]!.available_thinking_levels = ["DEFAULT"];
+    controller.snapshot.models[0]!.thinking_level = "DEFAULT";
     await render();
     expect(main_trigger().textContent).toContain("app.model.thinking_level.default");
     expect(batch_trigger().textContent).toContain("app.model.thinking_level.default");

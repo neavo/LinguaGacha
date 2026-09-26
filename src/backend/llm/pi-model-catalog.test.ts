@@ -8,6 +8,7 @@ const builtin = vi.hoisted(() => ({
   alpha: {
     id: "shared",
     provider: "alpha",
+    baseUrl: "https://alpha.example/v1",
     api: "openai-completions",
     reasoning: false,
     contextWindow: 100,
@@ -16,6 +17,7 @@ const builtin = vi.hoisted(() => ({
   beta: {
     id: "other",
     provider: "beta",
+    baseUrl: "https://beta.example/v1",
     api: "anthropic-messages",
     reasoning: false,
     contextWindow: 200,
@@ -119,7 +121,7 @@ describe("PiModelCatalog", () => {
     await writeFile(
       file_path,
       JSON.stringify({
-        version: 1,
+        version: 2,
         providers: {
           alpha: {
             modified: Date.parse("2025-12-31T00:00:00Z"),
@@ -135,7 +137,7 @@ describe("PiModelCatalog", () => {
     await writeFile(
       file_path,
       JSON.stringify({
-        version: 1,
+        version: 2,
         providers: {
           alpha: {
             modified: Date.parse(modified),
@@ -173,7 +175,7 @@ describe("PiModelCatalog", () => {
     await writeFile(
       file_path,
       JSON.stringify({
-        version: 1,
+        version: 2,
         providers: {
           alpha: {
             modified: Date.parse(modified),
@@ -295,5 +297,54 @@ describe("PiModelCatalog", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+  it("仅地址变化也发布能力更新，缓存重启保留地址", async () => {
+    const { catalog, paths } = await create_catalog();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) =>
+        url.endsWith("/alpha")
+          ? response("alpha", { baseUrl: "https://new.example/v1" })
+          : new Response(null, { status: 304 }),
+      ),
+    );
+    const apply = vi.fn(async (_models, commit) => commit());
+    await catalog.check(apply);
+    expect(apply).toHaveBeenCalledOnce();
+    expect(
+      new PiModelCatalog(paths, { warning: vi.fn() })
+        .read_models()
+        .find((model) => model.provider === "alpha")?.baseUrl,
+    ).toBe("https://new.example/v1");
+  });
+
+  it("缺少地址的旧版缓存使用内置目录重建且不复用条件请求凭据", async () => {
+    const { paths, file_path } = await create_catalog();
+    await mkdir(path.dirname(file_path), { recursive: true });
+    await writeFile(
+      file_path,
+      JSON.stringify({
+        version: 1,
+        providers: {
+          alpha: {
+            modified: Date.parse(modified),
+            etag: '"old"',
+            models: [{ ...builtin.alpha, baseUrl: undefined }],
+          },
+        },
+      }),
+    );
+    const catalog = new PiModelCatalog(paths, { warning: vi.fn() });
+    const fetch_mock = vi.fn(async () => new Response(null, { status: 304 }));
+    vi.stubGlobal("fetch", fetch_mock);
+    await catalog.check(async (_models, commit) => commit());
+    expect(catalog.read_models().find((model) => model.provider === "alpha")?.baseUrl).toBe(
+      builtin.alpha.baseUrl,
+    );
+    expect(fetch_mock.mock.calls).toEqual(
+      expect.arrayContaining([
+        [expect.stringContaining("/alpha"), expect.objectContaining({ headers: {} })],
+      ]),
+    );
   });
 });

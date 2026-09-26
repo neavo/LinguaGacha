@@ -147,7 +147,8 @@ export function resolve_one_shot_pi_request(
       ? { reasoning: resolved.thinkingLevel }
       : {}),
     ...(snapshot.api_format === "Anthropic" ? { interleavedThinking: false } : {}),
-    onPayload: (payload) => apply_one_shot_request_overrides(snapshot, payload, signal),
+    onPayload: (payload, active_model) =>
+      apply_one_shot_request_overrides(snapshot, payload, signal, active_model.compat),
   };
   // Google / Anthropic 由 `streamSimple` 转换思考档位，OpenAI 直接调用以保留自动输出上限语义。
   const provider_stream =

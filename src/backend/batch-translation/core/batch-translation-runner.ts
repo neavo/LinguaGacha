@@ -1,4 +1,3 @@
-import { resolve_model_capability } from "../../llm/model-capability";
 import type { TextQualitySnapshot } from "../../../shared/text/text-types";
 import type { TextTaskItemRecord } from "../../../shared/text/text-types";
 import { AppError } from "../../../shared/error";
@@ -40,7 +39,6 @@ const TRANSLATION_RETRY_LIMIT = 3; // 单条翻译在拆分后最多重试三次
  * Backend Runtime 与 CLI 共用的翻译调度、限流、重试和提交循环
  */
 export class BatchTranslationRunner {
-  private readonly catalog: BatchTranslationRunnerOptions["catalog"];
   private readonly builtin_root: string; // 让 Backend 启动日志和 worker 使用同一套内置提示词
   private readonly task_store: BatchTranslationRunnerOptions["taskStore"]; // 后台任务唯一项目数据写入口，BatchTranslationRunner 不直接碰 database
   private readonly task_runtime: BatchTranslationRunnerOptions["taskRuntime"]; // 任务锁、取消、快照与请求压力的最小运行态能力
@@ -53,7 +51,6 @@ export class BatchTranslationRunner {
    * 注入任务执行依赖，保证任务数据写入口和 work-unit executor 边界可测试
    */
   public constructor(options: BatchTranslationRunnerOptions) {
-    this.catalog = options.catalog;
     this.builtin_root = options.builtinRoot;
     this.task_store = options.taskStore;
     this.task_runtime = options.taskRuntime;
@@ -87,11 +84,7 @@ export class BatchTranslationRunner {
       await this.task_runtime.publish_config(handle, {
         model_name: run_context.model.name,
         model_id: run_context.model.model_id,
-        thinking_level:
-          resolve_model_capability(run_context.model, this.catalog.read_models())
-            .available_thinking_levels.length === 0
-            ? null
-            : run_context.model.thinking.level,
+        thinking_level: run_context.model.thinking.level,
         source_language: String(run_context.config_snapshot["source_language"]),
         target_language: String(run_context.config_snapshot["target_language"]),
       });

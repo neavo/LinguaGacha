@@ -19,6 +19,7 @@ import {
   type ModelAgentConfig,
   type ModelAgentLimits,
 } from "../../domain/model-agent";
+import { normalize_pi_api_url } from "./llm-request";
 import { MODEL_CAPABILITY_OVERRIDES, type ModelCapabilityOverride } from "./llm-overrides";
 
 /** 模型容量规格缺失时的安全运行容量；不据模型名猜测规格。 */
@@ -39,7 +40,7 @@ const PRODUCT_TO_PI_LEVEL = {
   HIGH: "high",
   XHIGH: "xhigh",
   MAX: "max",
-} as const satisfies Record<ModelThinkingLevel, PiModelThinkingLevel>;
+} as const satisfies Record<Exclude<ModelThinkingLevel, "DEFAULT">, PiModelThinkingLevel>;
 
 /** 同协议按已知来源选择完整模板；原厂优先，聚合目录次之，托管平台最后。 */
 const MODEL_PROVIDER_ORDER = [
@@ -68,6 +69,7 @@ export type PiCatalogModel = Readonly<
   Pick<
     PiModel<Api>,
     | "id"
+    | "baseUrl"
     | "provider"
     | "api"
     | "reasoning"
@@ -89,7 +91,7 @@ export type ResolvedModelCapability = Readonly<{
   compat?: PiCatalogModel["compat"];
 }>;
 
-type ModelCapabilityInput = Pick<Model, "api_format" | "model_id" | "agent">;
+type ModelCapabilityInput = Pick<Model, "api_format" | "api_url" | "model_id" | "agent">;
 
 /**
  * 解析唯一运行能力；容量来自目录，协议能力合并必要修正，再应用用户 Agent 配置。
@@ -99,7 +101,7 @@ export function resolve_model_capability(
   catalog: readonly PiCatalogModel[],
 ): ResolvedModelCapability {
   const matches = match_pi_catalog_models(model.model_id, catalog);
-  const pi_template = select_pi_thinking_template(model.api_format, matches);
+  const pi_template = select_pi_thinking_template(model, matches);
   const app_override = match_model_capability_override(model.model_id);
   const protocol_override = app_override?.protocols[model.api_format];
   const reasoning = protocol_override?.reasoning ?? pi_template?.reasoning === true;
@@ -129,7 +131,7 @@ export function resolve_model_capability(
   return {
     agent_config: agent.config,
     agent_limits: agent.limits,
-    available_thinking_levels,
+    available_thinking_levels: ["DEFAULT", ...available_thinking_levels],
     context_window,
     max_tokens,
     reasoning,
@@ -159,9 +161,10 @@ export function adjust_model_thinking_level(
   const requested_index = MODEL_THINKING_LEVELS.indexOf(current_level);
   for (let index = requested_index - 1; index > 0; index -= 1) {
     const candidate = MODEL_THINKING_LEVELS[index];
-    if (candidate !== undefined && available_levels.includes(candidate)) return candidate;
+    if (candidate !== undefined && candidate !== "OFF" && available_levels.includes(candidate))
+      return candidate;
   }
-  return available_levels.find((level) => level !== "OFF") ?? "OFF";
+  return available_levels.find((level) => level !== "DEFAULT" && level !== "OFF") ?? "DEFAULT";
 }
 
 /** 只把可用且被产品暴露的档位投影为 Pi 值。 */
@@ -169,7 +172,10 @@ export function resolve_pi_thinking_level(
   level: ModelThinkingLevel,
   available_levels: readonly ModelThinkingLevel[],
 ): PiModelThinkingLevel {
-  return available_levels.includes(level) ? PRODUCT_TO_PI_LEVEL[level] : "off";
+  // `DEFAULT` 映射为 Pi 的内部占位值，最终控制字段由请求快照决定。
+  return level !== "DEFAULT" && available_levels.includes(level)
+    ? PRODUCT_TO_PI_LEVEL[level]
+    : "off";
 }
 
 /** 模型修正先按名称定位，容量和协议能力在各自消费边界读取。 */
@@ -213,18 +219,31 @@ function contains_canonical_id(configured_id: string, canonical_id: string): boo
   return false;
 }
 
-/** ID 首尾和非字母数字字符都构成模型名匹配边界。 */
+/** 字母数字属于模型名，其他字符构成名称匹配边界。 */
 function is_model_id_word_character(value: string | undefined): boolean {
   return value !== undefined && /[a-z0-9]/u.test(value);
 }
 
-/** 从匹配记录中选择当前协议真正能消费的一条思考模板。 */
+/** 完整请求身份优先，按协议与供应商顺序回退，选出一条完整思考模板。 */
 function select_pi_thinking_template(
-  api_format: ModelApiFormat,
+  model: ModelCapabilityInput,
   matches: readonly PiCatalogModel[],
 ): PiCatalogModel | null {
-  for (const api of resolve_pi_api_order(api_format)) {
-    const candidates = matches.filter((model) => model.api === api);
+  const endpoint = normalize_catalog_endpoint(model.api_url, model.api_format);
+  const configured_id = model.model_id.trim().toLowerCase();
+  const api_order = resolve_pi_api_order(model.api_format);
+  const exact =
+    endpoint === null
+      ? []
+      : matches.filter(
+          (candidate) =>
+            candidate.id.toLowerCase() === configured_id &&
+            candidate.api === api_order[0] &&
+            normalize_catalog_endpoint(candidate.baseUrl, model.api_format) === endpoint,
+        );
+  const templates = exact.length > 0 ? exact : matches;
+  for (const api of api_order) {
+    const candidates = templates.filter((candidate) => candidate.api === api);
     if (candidates.length === 0) continue;
     for (const provider of MODEL_PROVIDER_ORDER) {
       const candidate = candidates.find((model) => model.provider === provider);
@@ -294,7 +313,9 @@ function resolve_available_thinking_levels(
     maxTokens: 0,
   };
   const supported = new Set(getSupportedThinkingLevels(probe));
-  return MODEL_THINKING_LEVELS.filter((level) => supported.has(PRODUCT_TO_PI_LEVEL[level]));
+  return MODEL_THINKING_LEVELS.filter(
+    (level) => level !== "DEFAULT" && supported.has(PRODUCT_TO_PI_LEVEL[level]),
+  );
 }
 
 /** 根据已解析的模型容量应用产品的自动输出上限规则。 */
@@ -343,4 +364,10 @@ function resolve_agent_limits(
         : parsed_config,
     limits: { context_window, max_output_tokens },
   };
+}
+
+/** 与请求共用 API 根地址规则，URL 标准化处理主机大小写和默认端口，路径仍参与匹配。 */
+function normalize_catalog_endpoint(url: string, api_format: ModelApiFormat): string | null {
+  const parsed = URL.parse(normalize_pi_api_url(url, api_format));
+  return parsed === null ? null : parsed.href.replace(/\/+$/u, "");
 }

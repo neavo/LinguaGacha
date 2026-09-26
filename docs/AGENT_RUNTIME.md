@@ -68,7 +68,7 @@
 
 ## 3. 模型、资源与 skill
 
-- Agent 与 OneShot 共用 [`BACKEND.md`](BACKEND.md) 定义的唯一模型能力解析和请求覆盖边界。模型配置中的 `agent.context_window` 与 `agent.max_output_tokens` 各自以 `0` 表示自动：自动上下文采用统一能力解析器提供的模型窗口；自动输出先取模型最大输出与产品档位的较小值，模型最大窗口低于 500K 时产品档位为 32K，否则为 64K。用户非零值优先，最终输出仍不得超过 `context_window - 32K`；格式损坏或无法容纳固定预留时整组恢复 `0/0`。每次 Agent 模型操作前把生效容量与已经确认可用的思考等级同步到既有 `AgentSession`，请求期保持该档位稳定。页面从 `context_window - max_output_tokens - 32K` 起预警；设置作用于同一对话的下一次模型操作，不重建或清空模型历史。模型页 generation 和 threshold 输入 / 输出 token 设置只作用于 OneShot。隐藏“继续”消息在操作发起时按当前 `app_language` 解析。
+- Agent 与 OneShot 共用 [`BACKEND.md`](BACKEND.md) 定义的唯一模型能力解析和请求覆盖边界。模型配置中的 `agent.context_window` 与 `agent.max_output_tokens` 各自以 `0` 表示自动：自动上下文采用统一能力解析器提供的模型窗口；自动输出先取模型最大输出与产品档位的较小值，模型最大窗口低于 500K 时产品档位为 32K，否则为 64K。用户非零值优先，最终输出仍不得超过 `context_window - 32K`；格式损坏或无法容纳固定预留时整组恢复 `0/0`。每次 Agent 模型操作前把生效容量与产品选项映射后的 Pi 档位同步到既有 `AgentSession`，请求期保持该配置稳定。页面从 `context_window - max_output_tokens - 32K` 起预警；设置作用于同一对话的下一次模型操作，不重建或清空模型历史。模型页 generation 和 threshold 输入 / 输出 token 设置只作用于 OneShot。隐藏“继续”消息在操作发起时按当前 `app_language` 解析。
 - Agent 模型在 Pi 请求边界固定声明 text / image 输入；消息附件中的批注与文件清单进入文本提示，普通文件由 `workspace_run` 按需读取；图片清单中的序号对应视觉输入，规范 WebP 直接交给当前供应商，OneShot 仍只声明 text。产品不探测或配置具体模型的视觉能力，不自动删图、降级或回退 JPEG，供应商拒绝图片时沿用普通模型失败语义。
 - Pi 把系统指令与工具声明写入 `system` 消息。`SessionManager` 根据压缩记录和 `context_edit` 生成模型上下文，保留被排除的原始条目。产品修订通过 SDK 写入历史，再调用 `refreshContext()` 同步检查缓存。
 - 公开 `context` 优先使用 SDK `getContextUsage()` 的有效用量，压缩后尚无有效统计时按当前内容及生效系统指令估算。`message_end` 先通知再写入历史，统计在历史提交后刷新。恢复压缩失败时可能已排除失败响应，也需重新读取上下文。
