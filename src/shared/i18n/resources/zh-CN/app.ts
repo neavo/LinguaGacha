@@ -27,7 +27,7 @@ export const zh_cn_app = {
     thinking_level: {
       label: "思考等级",
       default: "保持默认",
-      default_description: "不发送任何思考挡位设置数据，完全遵循平台的默认设置",
+      default_description: "不发送任何思考挡位数据，遵循平台的默认设置",
       off: "关",
       low: "低",
       medium: "中",

@@ -29,7 +29,7 @@ export const de_de_app = {
       label: "Denkstufe",
       default: "Standard beibehalten",
       default_description:
-        "Keine Daten zur Konfiguration der Denkstufe senden; vollständig den Standardeinstellungen der Plattform folgen.",
+        "Keine Daten zur Denkstufe senden; den Standardeinstellungen der Plattform folgen.",
       off: "Off",
       low: "Low",
       medium: "Medium",
