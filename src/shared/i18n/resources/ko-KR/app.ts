@@ -34,7 +34,7 @@ export const ko_kr_app = {
       medium: "보통",
       high: "높음",
       xhigh: "매우 높음",
-      max: "최대",
+      max: "MAX",
     },
   },
   action: {
