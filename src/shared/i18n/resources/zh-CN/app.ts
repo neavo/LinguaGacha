@@ -33,7 +33,7 @@ export const zh_cn_app = {
       medium: "中",
       high: "高",
       xhigh: "特高",
-      max: "最大",
+      max: "MAX",
     },
   },
   action: {

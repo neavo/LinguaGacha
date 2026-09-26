@@ -34,7 +34,7 @@ export const ja_jp_app = {
       medium: "中",
       high: "高",
       xhigh: "非常に高い",
-      max: "最大",
+      max: "MAX",
     },
   },
   action: {
