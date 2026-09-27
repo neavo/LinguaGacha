@@ -88,18 +88,9 @@
 - See [Wiki - Supported Formats](https://github.com/neavo/LinguaGacha/wiki/%E6%94%AF%E6%8C%81%E7%9A%84%E6%96%87%E4%BB%B6%E6%A0%BC%E5%BC%8F) for examples. Submit format requests via [ISSUES](https://github.com/neavo/LinguaGacha/issues)
 
 ## Recent Updates 📅
-- 20260923 v0.123.1
-  - Added support for new models [#926](../../issues/926)
-    - `GPT 6 Sol`
-    - `GPT 6 Luna`
-    - `Claude Opus 5.5`
-  - Fixes and improvements [#929](../../issues/929) [#930](../../issues/930)
-
-- 20260922 v0.123.0
-  - `AGENT` - Upload reference files [#917](../../issues/917)
-  - `AGENT` - Output speed statistics [#920](../../issues/920)
-  - Fixed an issue that could cause translation tasks to stop [#922](../../issues/922)
-  - Fixes and improvements [#921](../../issues/921) [#923](../../issues/923)
+- 20260927 v0.124.0
+  - `AGENT` - Custom skills
+  - Fixes and improvements [#933](../../issues/933) [#934](../../issues/934) [#937](../../issues/937) [#938](../../issues/938) [#940](../../issues/940)
 
 ## Development Guide 🛠️
 - Install [Go](https://go.dev) and [`Node.js`](https://nodejs.org)
