@@ -329,6 +329,7 @@ export const de_de_app = {
       context_compaction_failed: "Agent-Kontextkomprimierung fehlgeschlagen …",
       session_cleanup_failed: "Agent-Sitzungsbereinigung fehlgeschlagen …",
       tool_execution_failed: "Agent-Werkzeugausführung fehlgeschlagen …",
+      web_search_provider_failed: "Anfrage beim Websuchanbieter fehlgeschlagen …",
       skill_load_failed: "Agent-Skill-Laden fehlgeschlagen …",
     },
     api_gateway: {

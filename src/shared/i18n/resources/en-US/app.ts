@@ -318,6 +318,7 @@ export const en_us_app = {
       context_compaction_failed: "Agent context compaction failed …",
       session_cleanup_failed: "Agent session cleanup failed …",
       tool_execution_failed: "Agent tool execution failed …",
+      web_search_provider_failed: "Web search provider request failed …",
       skill_load_failed: "Agent skill loading failed …",
     },
     api_gateway: {

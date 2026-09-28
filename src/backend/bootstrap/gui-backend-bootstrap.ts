@@ -110,7 +110,10 @@ export class GuiBackendBootstrap {
         workerExecution: this.options.workerExecution,
       });
       this.services = services;
-      const web_search = new WebSearchService(resources.metadata.read_version_or_default());
+      const web_search = new WebSearchService(
+        resources.metadata.read_version_or_default(),
+        resources.logManager,
+      );
       this.web_search = web_search;
       const images = new AgentImageService(this.options.imageHost);
       this.images = images;
