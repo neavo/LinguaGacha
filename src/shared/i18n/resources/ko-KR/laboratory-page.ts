@@ -3,6 +3,13 @@ import type { LocaleMessageSchema } from "../../types";
 export const ko_kr_laboratory_page = {
   title: "실험실",
   fields: {
+    agent_batch_translation_thinking_adaptive_enable: {
+      title: "사고 수준 자동 조정",
+      description:
+        "번역 작업에서 깊은 사고는 종종 Token 소비를 <emphasis>3~5배 증가</emphasis>시킵니다" +
+        "\n" +
+        "이 기능을 활성화하면 번역 작업의 사고 수준을 자동으로 조정하여 Token 효율을 높입니다. 기본적으로 활성화됩니다",
+    },
     prompt_enhancement_enable: {
       title: "프롬프트 강화",
       description:

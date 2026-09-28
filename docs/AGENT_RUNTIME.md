@@ -35,7 +35,10 @@
 
 - 当前回合至多建立一个 `pendingDecision`，由 `AgentDecisionCoordinator` 持有普通问题与写入授权的待回答状态、取消和一次性裁决，各自使用窄 resolve API。后端等待宿主提交答案，公开决定不携带期限；裁决先清除 pending，再在下一事件循环恢复工具。reset、工程切换和 dispose 取消当前等待。
 - 自动选择由前端会话时钟拥有，通过现有 resolve API 提交默认答案；后端只等待宿主裁决。同一决定的快照恢复与切页保留剩余时间，前端重载重新计时；输入聚焦、断线、快照恢复或命令占用期间冻结，条件解除后续计，卸载输入框释放聚焦。提交受理后停止计时，失败通知一次并保留问题供手动重试。逐秒变化通过独立 countdown 订阅发布。
-- Agent 批量翻译模型偏好属于应用设置 `model_selection.agent_batch_translation`，默认 `null` 表示跟随，显式模型 ID 表示固定选择，跨会话与工程保留；由 `ModelService` 校验并保存，运行中允许修改，删除被引用的模型或修复失效配置时恢复跟随。`run_batch_item_translation` 调用时同步解析偏好：跟随使用成功建会话或换模后保存的 Agent 生效配置与思考档位，固定选择使用该模型自身保存配置，即使其 ID 等于当前 Agent 模型也保持固定语义。批量入口选择模型及等级通过统一选模命令保存，等级仍属于模型全局配置，引用同一模型的入口共享该值；跟随项不编辑等级。每次批量翻译调用冻结所用配置，运行中修改偏好影响后续调用。
+- 批量翻译偏好 `model_selection.agent_batch_translation` 随应用设置持久化，由 `ModelService` 校验和保存。`null` 表示跟随，模型 ID 表示固定选择；删除模型或修复失效选择时恢复跟随。
+- `run_batch_item_translation` 每次调用由 `agent-model.ts` 解析模型。跟随使用当前 Agent 生效配置；固定选择使用模型保存配置，同一模型 ID 也遵循固定语义。本次调用的分批请求与重试共用配置快照，运行中修改偏好供后续调用采用。
+- 实验室开关 `agent_batch_translation_thinking_adaptive_enable` 默认开启并持久化。跟随翻译取最低可用档位，包含 `OFF`、排除 `DEFAULT`；能力缺失时沿用生效档位。临时档位只进入本次调用的模型副本，关闭开关后沿用 Agent 档位。
+- 批量入口通过统一选模命令保存模型及等级。等级属于模型全局配置，引用同一模型的入口共享该值；跟随项仅选择模型来源。
 - Agent 模型与思考档位属于应用设置，运行中保存后在下一次普通轮次、失败继续或手动压缩开始前采用。普通命令在受理前完成模型预检；FIFO 自动轮次在实际执行时通过同一模型同步方法预检，失败记入该轮并暂停剩余队列。轮内工具循环与 steer 使用当前轮次配置。公开 context 携带当前会话的历史 tokens 与实际 limits。
 - `AgentService` 用 Pi 的 `getSessionStats()` 汇总当前 SDK 历史，并在历史修订重建内存分支时累加被移除路径的用量。产品会话的累计 `usage` 包含 `input`、`output`、`cacheRead`、`cacheWrite`，通过完整快照和 `usage` 事件同步，重置与工程切换清零。累计输入包含每次请求重复携带的历史上下文，与当前 `context` 占用分开统计。
 - 工程写入审批偏好 `agent_approval_mode` 默认 `manual`，随应用设置持久化，跨对话重置、工程切换和应用重启保留。renderer 通过应用设置快照与 `settings.changed` 消费。

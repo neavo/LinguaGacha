@@ -34,6 +34,7 @@ const toast_fixture: { current: ToastFixture } = {
   current: create_toast_fixture(),
 };
 
+/** 保持翻译函数引用稳定，避免触发 Hook 的重复同步。 */
 const translate = (key: string): string => key;
 
 vi.mock("@frontend/app/state/use-desktop-state", () => {
@@ -69,19 +70,15 @@ vi.mock("@frontend/app/desktop/desktop-api", () => {
   };
 });
 
+/** 真实设置归一入口提供其余字段，覆盖值用于模拟保存回包。 */
 function create_settings_snapshot(overrides: Partial<SettingsSnapshot> = {}): SettingsSnapshot {
   return normalize_setting_snapshot({
-    app_language: "ZH",
-    source_language: "JA",
-    target_language: "ZH",
-    request_timeout: 300,
-    prompt_enhancement_enable: true,
     mtool_optimizer_enable: false,
-    skip_duplicate_source_text_enable: true,
     ...overrides,
   });
 }
 
+/** 模拟页面消费的运行快照和设置提交边界。 */
 function create_runtime_fixture(): RuntimeFixture {
   const settings_snapshot = create_settings_snapshot();
   return {
@@ -112,6 +109,7 @@ function create_runtime_fixture(): RuntimeFixture {
   };
 }
 
+/** 同步执行反馈任务，使测试观察实际保存路径。 */
 function create_toast_fixture(): ToastFixture {
   return {
     push_toast: vi.fn(),
@@ -142,11 +140,13 @@ describe("useLaboratoryPageState", () => {
     vi.mocked(api_fetch).mockReset();
   });
 
+  /** 暴露 Hook 的最新返回值。 */
   function LaboratoryProbe(): JSX.Element | null {
     latest_state = useLaboratoryPageState();
     return null;
   }
 
+  /** 挂载 Hook 并等待设置快照同步。 */
   async function render_hook(): Promise<void> {
     if (container === null) {
       container = document.createElement("div");
@@ -159,20 +159,20 @@ describe("useLaboratoryPageState", () => {
     });
   }
 
-  it("Agent 运行中可提交提示词增强，预过滤仍锁定", async () => {
+  it("Agent 运行中可保存思考自适应，预过滤受运行锁约束", async () => {
+    const field = "agent_batch_translation_thinking_adaptive_enable";
     runtime_fixture.current.runtime_snapshot = { revision: 1, owner: "agent" };
     vi.mocked(api_fetch).mockResolvedValue({
-      settings: create_settings_snapshot({ prompt_enhancement_enable: false }),
+      settings: create_settings_snapshot({ [field]: false }),
     } as never);
     await render_hook();
     await act(async () => {
-      await latest_state?.update_prompt_enhancement_enable(false);
-      await latest_state?.update_mtool_optimizer_enable(true);
+      await latest_state?.update_setting(field, false);
+      await latest_state?.update_setting("mtool_optimizer_enable", true);
     });
-    expect(vi.mocked(api_fetch).mock.calls).toEqual([
-      ["/api/settings/update", { prompt_enhancement_enable: false }],
-    ]);
-    expect(latest_state?.snapshot.prompt_enhancement_enable).toBe(false);
+    expect(vi.mocked(api_fetch).mock.calls).toEqual([["/api/settings/update", { [field]: false }]]);
+    expect(latest_state?.snapshot[field]).toBe(false);
     expect(runtime_fixture.current.commit_project_write).not.toHaveBeenCalled();
+    expect(toast_fixture.current.run_modal_progress_toast).not.toHaveBeenCalled();
   });
 });

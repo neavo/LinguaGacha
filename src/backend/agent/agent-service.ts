@@ -5,7 +5,6 @@ import type { AgentImageService } from "./agent-image-service";
 import type { AgentFileAttachment } from "../../shared/agent";
 import { prepare_agent_message, type PreparedAgentMessage } from "./agent-message-input";
 import { BatchTranslationCompletionError } from "../batch-translation/batch-translation-runtime";
-import { resolve_agent_batch_translation_model } from "../model/model-config-resolver";
 import type { BatchTranslationResult } from "../../domain/batch-translation";
 import type { Model } from "../../domain/model";
 import { create_agent_batch_item_translation_tool } from "./model-tools/batch-translation";
@@ -59,7 +58,7 @@ import { t_main_log } from "../log/log-text";
 import type { ProjectSessionState } from "../project/project-session-state";
 import type { RuntimeLease, RuntimeOperationGate } from "../runtime-operation-gate";
 import { AgentDecisionCoordinator } from "./agent-decision";
-import { register_agent_model } from "./agent-model";
+import { register_agent_model, resolve_agent_batch_translation_model } from "./agent-model";
 import type { PiModelCatalogReader } from "../llm/pi-model-catalog";
 import {
   append_agent_session_seed,
@@ -1098,6 +1097,7 @@ export class AgentService {
             const model = resolve_agent_batch_translation_model(
               this.settings.read_setting(),
               runtime.model_config,
+              this.catalog.read_models(),
             );
             const result = await this.batch_translation.run_under_agent(
               lease,

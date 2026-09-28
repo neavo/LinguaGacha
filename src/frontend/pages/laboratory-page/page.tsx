@@ -1,8 +1,12 @@
-import type { JSX } from "react";
+import type { JSX, ReactNode } from "react";
+import { PROJECT_SETTING_KEYS } from "@domain/setting";
 import type { ScreenComponentProps } from "@frontend/app/navigation/types";
 import { useI18n } from "@frontend/app/locale/locale-context";
 import "@frontend/pages/laboratory-page/laboratory-page.css";
-import { useLaboratoryPageState } from "@frontend/pages/laboratory-page/use-laboratory-page-state";
+import {
+  useLaboratoryPageState,
+  type LaboratoryField,
+} from "@frontend/pages/laboratory-page/use-laboratory-page-state";
 import { BooleanSegmentedToggle } from "@frontend/widgets/boolean-segmented-toggle";
 import { SettingHelpButton } from "@frontend/widgets/setting-help-button";
 import { SettingCardRow } from "@frontend/widgets/setting-card-row/setting-card-row";
@@ -10,24 +14,30 @@ import { SettingCardRow } from "@frontend/widgets/setting-card-row/setting-card-
 /** 实验选项通过页面状态入口保存，仅工程预过滤操作消费运行锁。 */
 export function LaboratoryPage(_props: ScreenComponentProps): JSX.Element {
   const { locale, t } = useI18n();
-  const laboratory_page_state = useLaboratoryPageState();
-  /** 三个开关共用标签、伸展布局和禁用状态的消费方式。 */
-  function render_boolean_toggle(options: {
-    title_key:
-      | "laboratory_page.fields.prompt_enhancement_enable.title"
-      | "laboratory_page.fields.mtool_optimizer_enable.title"
-      | "laboratory_page.fields.skip_duplicate_source_text_enable.title";
-    value: boolean;
-    disabled: boolean;
-    on_value_change: (next_value: boolean) => void;
-  }): JSX.Element {
+  const { snapshot, pending_state, runtime_locked, update_setting } = useLaboratoryPageState();
+
+  /** 用同一字段关联文案、值、禁用状态和保存命令。 */
+  function render_setting(field: LaboratoryField, title_suffix?: ReactNode): JSX.Element {
+    const title = t(`laboratory_page.fields.${field}.title`);
     return (
-      <BooleanSegmentedToggle
-        aria_label={t(options.title_key)}
-        value={options.value}
-        stretch
-        disabled={options.disabled}
-        on_value_change={options.on_value_change}
+      <SettingCardRow
+        title={title}
+        title_suffix={title_suffix}
+        description={t(`laboratory_page.fields.${field}.description`)}
+        action={
+          <BooleanSegmentedToggle
+            aria_label={title}
+            value={snapshot[field]}
+            stretch
+            disabled={
+              pending_state[field] ||
+              (runtime_locked && PROJECT_SETTING_KEYS.some((key) => key === field))
+            }
+            on_value_change={(value) => {
+              void update_setting(field, value);
+            }}
+          />
+        }
       />
     );
   }
@@ -35,55 +45,17 @@ export function LaboratoryPage(_props: ScreenComponentProps): JSX.Element {
   return (
     <div className="laboratory-page page-shell page-shell--full">
       <section className="laboratory-page__list" aria-label={t("laboratory_page.title")}>
-        <SettingCardRow
-          title={t("laboratory_page.fields.mtool_optimizer_enable.title")}
-          title_suffix={
-            <SettingHelpButton
-              url={`https://github.com/neavo/LinguaGacha/wiki/MToolOptimizer${locale === "zh-CN" ? "" : "EN"}`}
-              aria_label={t("laboratory_page.fields.mtool_optimizer_enable.title")}
-              className="laboratory-page__help-button"
-            />
-          }
-          description={t("laboratory_page.fields.mtool_optimizer_enable.description")}
-          action={render_boolean_toggle({
-            title_key: "laboratory_page.fields.mtool_optimizer_enable.title",
-            value: laboratory_page_state.snapshot.mtool_optimizer_enable,
-            disabled:
-              laboratory_page_state.runtime_locked ||
-              laboratory_page_state.pending_state.mtool_optimizer_enable,
-            on_value_change: (next_value) => {
-              void laboratory_page_state.update_mtool_optimizer_enable(next_value);
-            },
-          })}
-        />
-
-        <SettingCardRow
-          title={t("laboratory_page.fields.skip_duplicate_source_text_enable.title")}
-          description={t("laboratory_page.fields.skip_duplicate_source_text_enable.description")}
-          action={render_boolean_toggle({
-            title_key: "laboratory_page.fields.skip_duplicate_source_text_enable.title",
-            value: laboratory_page_state.snapshot.skip_duplicate_source_text_enable,
-            disabled:
-              laboratory_page_state.runtime_locked ||
-              laboratory_page_state.pending_state.skip_duplicate_source_text_enable,
-            on_value_change: (next_value) => {
-              void laboratory_page_state.update_skip_duplicate_source_text_enable(next_value);
-            },
-          })}
-        />
-
-        <SettingCardRow
-          title={t("laboratory_page.fields.prompt_enhancement_enable.title")}
-          description={t("laboratory_page.fields.prompt_enhancement_enable.description")}
-          action={render_boolean_toggle({
-            title_key: "laboratory_page.fields.prompt_enhancement_enable.title",
-            value: laboratory_page_state.snapshot.prompt_enhancement_enable,
-            disabled: laboratory_page_state.pending_state.prompt_enhancement_enable,
-            on_value_change: (next_value) => {
-              void laboratory_page_state.update_prompt_enhancement_enable(next_value);
-            },
-          })}
-        />
+        {render_setting(
+          "mtool_optimizer_enable",
+          <SettingHelpButton
+            url={`https://github.com/neavo/LinguaGacha/wiki/MToolOptimizer${locale === "zh-CN" ? "" : "EN"}`}
+            aria_label={t("laboratory_page.fields.mtool_optimizer_enable.title")}
+            className="laboratory-page__help-button"
+          />,
+        )}
+        {render_setting("skip_duplicate_source_text_enable")}
+        {render_setting("prompt_enhancement_enable")}
+        {render_setting("agent_batch_translation_thinking_adaptive_enable")}
       </section>
     </div>
   );

@@ -3,6 +3,13 @@ import type { LocaleMessageSchema } from "../../types";
 export const ja_jp_laboratory_page = {
   title: "実験室",
   fields: {
+    agent_batch_translation_thinking_adaptive_enable: {
+      title: "思考レベル自動調整",
+      description:
+        "翻訳タスクで深い思考を行うと、Token 消費量が <emphasis>3～5 倍増加</emphasis> することがあります" +
+        "\n" +
+        "有効にすると、翻訳タスクの思考レベルを自動調整し、Token 効率を高めます。既定で有効です",
+    },
     prompt_enhancement_enable: {
       title: "プロンプト強化",
       description:

@@ -35,29 +35,29 @@ vi.mock("@frontend/widgets/boolean-segmented-toggle", () => ({
     <button
       type="button"
       aria-label={props.aria_label}
-      data-value={String(props.value)}
       disabled={props.disabled}
       onClick={() => props.on_value_change(!props.value)}
     />
   ),
 }));
 
+/** 提供页面可编辑值和运行状态，保存命令由断言观察。 */
 function create_laboratory_state_fixture() {
   return {
     snapshot: {
       prompt_enhancement_enable: true,
+      agent_batch_translation_thinking_adaptive_enable: true,
       mtool_optimizer_enable: true,
       skip_duplicate_source_text_enable: true,
     },
     pending_state: {
       prompt_enhancement_enable: false,
+      agent_batch_translation_thinking_adaptive_enable: false,
       mtool_optimizer_enable: false,
       skip_duplicate_source_text_enable: false,
     },
     runtime_locked: false,
-    update_prompt_enhancement_enable: vi.fn(async (_next_value: boolean) => {}),
-    update_mtool_optimizer_enable: vi.fn(async (_next_value: boolean) => {}),
-    update_skip_duplicate_source_text_enable: vi.fn(async (_next_value: boolean) => {}),
+    update_setting: vi.fn(async (_field: string, _next_value: boolean) => {}),
   };
 }
 
@@ -79,6 +79,7 @@ describe("LaboratoryPage", () => {
     laboratory_state_fixture.current = null;
   });
 
+  /** 挂载页面以验证用户点击和禁用态。 */
   async function mount_page(): Promise<void> {
     container = document.createElement("div");
     document.body.append(container);
@@ -88,17 +89,16 @@ describe("LaboratoryPage", () => {
     });
   }
 
-  it("展示提示词增强开关并按设置值提交", async () => {
+  it("点击思考自适应开关提交新值", async () => {
+    const field = "agent_batch_translation_thinking_adaptive_enable";
     await mount_page();
-    const toggle = container?.querySelector(
-      'button[aria-label="laboratory_page.fields.prompt_enhancement_enable.title"]',
+    const toggle = container?.querySelector<HTMLButtonElement>(
+      `button[aria-label="laboratory_page.fields.${field}.title"]`,
     );
     await act(async () => {
-      (toggle as HTMLButtonElement | undefined)?.click();
+      toggle?.click();
     });
-    expect(laboratory_state_fixture.current?.update_prompt_enhancement_enable).toHaveBeenCalledWith(
-      false,
-    );
+    expect(laboratory_state_fixture.current?.update_setting).toHaveBeenCalledWith(field, false);
   });
 
   it("运行时占用只禁用会同步工程的开关", async () => {
@@ -108,10 +108,15 @@ describe("LaboratoryPage", () => {
     };
     await mount_page();
 
-    const toggle = container?.querySelector(
-      'button[aria-label="laboratory_page.fields.prompt_enhancement_enable.title"]',
-    );
-    expect((toggle as HTMLButtonElement | null)?.disabled).toBe(false);
+    for (const field of [
+      "prompt_enhancement_enable",
+      "agent_batch_translation_thinking_adaptive_enable",
+    ]) {
+      const toggle = container?.querySelector<HTMLButtonElement>(
+        `button[aria-label="laboratory_page.fields.${field}.title"]`,
+      );
+      expect(toggle?.disabled).toBe(false);
+    }
     expect(
       container?.querySelector<HTMLButtonElement>(
         'button[aria-label="laboratory_page.fields.mtool_optimizer_enable.title"]',

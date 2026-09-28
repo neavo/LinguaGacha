@@ -36,18 +36,6 @@ export function resolve_model_for_usage(config: JsonRecord, usage: ModelUsage): 
     : (Model.from_json(model, String(model["id"] ?? "")).to_json() as JsonRecord);
 }
 
-/** 跟随时使用 Agent 已生效的配置；显式选择按模型自身保存配置执行。 */
-export function resolve_agent_batch_translation_model(
-  config: JsonRecord,
-  agent_model: Model,
-): Model {
-  const model_id = normalize_model_selection(config["model_selection"]).agent_batch_translation;
-  if (model_id === null) return agent_model;
-  const model = read_config_model_records(config).find((item) => item["id"] === model_id);
-  if (model === undefined) throw new AppError("model.not_found");
-  return Model.from_json(model, model_id);
-}
-
 /**
  * 内置目录同时决定初始化与重置权限；损坏资源必须报错，避免被当作预设下架。
  */

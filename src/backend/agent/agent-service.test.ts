@@ -33,7 +33,7 @@ import type { AgentWebSearchPort } from "./model-tools/web-search";
 import * as workspace_tools from "./model-tools/workspace";
 import { ProjectSessionState } from "../project/project-session-state";
 import { RuntimeOperationGate } from "../runtime-operation-gate";
-import { read_builtin_pi_models } from "../llm/pi-model-catalog";
+import { read_builtin_pi_models, type PiModelCatalogReader } from "../llm/pi-model-catalog";
 
 /** 集中保存模型定义与公开快照的共同 skill 身份，避免协议断言复制语言矩阵。 */
 const skill_test_fixture = vi.hoisted(() => {
@@ -187,7 +187,10 @@ vi.mock("./agent-system-prompt", async (original) => ({
   load_agent_system_prompt: agent_resource_fixture.system_prompt_loader,
   load_agent_personality: () => "default-personality-fixture",
 }));
-vi.mock("./agent-model", () => ({ register_agent_model: agent_model_registrar }));
+vi.mock("./agent-model", async (original) => ({
+  ...(await original<typeof import("./agent-model")>()),
+  register_agent_model: agent_model_registrar,
+}));
 
 import { AgentService } from "./agent-service";
 import { AgentSkillsService } from "./agent-skills-service";
@@ -304,13 +307,7 @@ function register_fake_agent_model(model_runtime: ModelRuntime, config: JsonReco
   return {
     model,
     thinkingLevel: "off" as const,
-    model_config: AppModel.from_json(
-      {
-        ...resolve_model_for_usage(config, "agent"),
-        thinking: { level: "OFF" },
-      },
-      String(selected),
-    ),
+    model_config: AppModel.from_json(resolve_model_for_usage(config, "agent"), String(selected)),
   };
 }
 
@@ -3282,6 +3279,45 @@ describe("AgentService", () => {
     expect(run.mock.calls.at(-1)?.[2]).toMatchObject({ id: "next" });
   });
 
+  it("跟随批量调用临时降档，轮内关闭开关只影响后续调用并保留 Agent 配置", async () => {
+    fake_agent_state.batch_mode = true;
+    fake_agent_state.batch_retries = 1;
+    const run = vi.fn<
+      import("../batch-translation/batch-translation-service").BatchTranslationService["run_under_agent"]
+    >(async () => {
+      fixture.set_translation_thinking_adaptive(false);
+      return { status: "done", progress: normalize_batch_translation_progress({}) };
+    });
+    const fixture = await create_service(
+      true,
+      undefined,
+      undefined,
+      { run_under_agent: run },
+      undefined,
+      {
+        read_models: () => [
+          {
+            id: "next-model",
+            api: "openai-completions",
+            provider: "openai",
+            baseUrl: "https://example.test/v1",
+            reasoning: true,
+            contextWindow: 128_000,
+            maxTokens: 16_000,
+          },
+        ],
+      },
+    );
+    fixture.select_agent_model("next");
+
+    await fixture.service.send_message({ text: "执行翻译", attachments: [] });
+    await wait_for_idle(fixture.service);
+
+    expect(run).toHaveBeenCalledTimes(2);
+    // 同轮第二次调用恢复高档位，同时证明首次降档隔离了 Agent 生效配置。
+    expect(run.mock.calls.map((call) => call[2].thinking.level)).toEqual(["OFF", "HIGH"]);
+  });
+
   it.each([{ cleanup_failed: false }, { cleanup_failed: true }])(
     "用户停止后同轮暂停，后续用户轮次可继续，$cleanup_failed",
     async ({ cleanup_failed }) => {
@@ -3434,6 +3470,7 @@ describe("AgentService", () => {
         originalHeight: 1,
       }),
     },
+    catalog: PiModelCatalogReader = { read_models: read_builtin_pi_models },
   ): Promise<{
     service: AgentService;
     skills: AgentSkillsService;
@@ -3448,6 +3485,7 @@ describe("AgentService", () => {
     select_batch_translation_model: (model_id: string | null) => void;
     set_personality: (value: string | null) => void;
     set_approval_mode: (value: AgentApprovalMode) => void;
+    set_translation_thinking_adaptive: (value: boolean) => void;
     session_state: ProjectSessionState;
   }> {
     const session_state = new ProjectSessionState();
@@ -3458,12 +3496,14 @@ describe("AgentService", () => {
     let app_language: AppLanguage = "ZH";
     let personality: string | null = null;
     let approval_mode: AgentApprovalMode = "manual";
+    let translation_thinking_adaptive = true;
     const settings = {
       read_setting: () => {
         return {
           app_language,
           agent_personality: personality,
           agent_approval_mode: approval_mode,
+          agent_batch_translation_thinking_adaptive_enable: translation_thinking_adaptive,
           model_selection: {
             translation: "active",
             agent: agent_model_id,
@@ -3559,7 +3599,7 @@ describe("AgentService", () => {
     );
     const service = new AgentService({
       skills,
-      catalog: { read_models: read_builtin_pi_models },
+      catalog,
       images,
       batchTranslation: batch_translation ?? {
         run_under_agent: async () => ({
@@ -3589,6 +3629,9 @@ describe("AgentService", () => {
     return {
       set_approval_mode: (value) => {
         approval_mode = value;
+      },
+      set_translation_thinking_adaptive: (value) => {
+        translation_thinking_adaptive = value;
       },
       set_personality: (value: string | null) => {
         personality = value;
