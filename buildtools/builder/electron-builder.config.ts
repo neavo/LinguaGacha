@@ -1,6 +1,6 @@
 import type { Configuration } from "electron-builder";
 
-import { LOCALES } from "../../src/shared/i18n/types";
+import { LOCALES } from "../../src/domain/app-language";
 
 export default {
   appId: "me.neavo.linguagacha",

@@ -1,5 +1,6 @@
 import type { ProjectItemPublicRecord } from "../../domain/item";
-import type { JsonRecord } from "../../domain/json";
+import type { QualityRuleBlock } from "../../shared/quality/quality-rule-state";
+import type { ProjectPrompts } from "../../domain/prompt";
 import type { ProjectDataSectionRevisions } from "../../shared/project-event";
 
 /**
@@ -39,10 +40,10 @@ export interface CacheReadPort {
     readFileEntries(): CacheFileEntry[];
   };
   readonly quality: {
-    readBlock(): JsonRecord;
+    readBlock(): QualityRuleBlock;
   };
   readonly prompts: {
-    readBlock(): JsonRecord;
+    readBlock(): ProjectPrompts;
   };
 
   readSectionRevisions(): ProjectDataSectionRevisions;

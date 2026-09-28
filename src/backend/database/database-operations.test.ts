@@ -12,11 +12,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { JsonTool } from "../../shared/utils/json-tool";
 import { ZstdTool } from "./zstd-tool";
-import { migration_orchestrator } from "../migration/migration-orchestrator";
+import * as migrations from "../migration/database-migrations";
 import {
   PROJECT_DATABASE_APPLIED_WRITEBACK_MIGRATIONS_META_KEY,
   PROJECT_DATABASE_WRITEBACK_MIGRATION_IDS,
-} from "../migration/migration-orchestrator";
+} from "../migration/database-migrations";
 import { ProjectDataReader } from "../project/project-data-reader";
 import { ProjectDatabase } from "./database-operations";
 
@@ -379,12 +379,10 @@ describe("ProjectDatabase", () => {
     const lg_path = project_path("open-failed.lg");
     const open_failure = new Error("migration failed");
     let connection_close: ReturnType<typeof vi.spyOn> | null = null;
-    vi.spyOn(migration_orchestrator, "run_project_database_migrations").mockImplementationOnce(
-      (db) => {
-        connection_close = vi.spyOn(db, "close");
-        throw open_failure;
-      },
-    );
+    vi.spyOn(migrations, "run_project_database_migrations").mockImplementationOnce((db) => {
+      connection_close = vi.spyOn(db, "close");
+      throw open_failure;
+    });
 
     expect(() => database.get_all_meta(lg_path)).toThrow(
       expect.objectContaining({

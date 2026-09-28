@@ -2,7 +2,7 @@ import path from "node:path";
 
 import { default_native_fs } from "../../../native/native-fs";
 import { relocate_directory_items } from "../path-relocation";
-import type { MigrationDescriptor, StartupMigrationContext } from "../migration-types";
+import type { StartupMigration, StartupMigrationContext } from "../migration-types";
 
 // 旧提示词预设目录名固定，迁移只把 zh/en 下的 .txt 用户预设合并到当前 userdata。
 const RESOURCE_DIR_NAME = "resource";
@@ -23,7 +23,7 @@ const PROMPT_PRESET_EXTENSION = ".txt";
  * 不处理范围：
  * 只迁移 `.txt` 预设文件；目标同名文件代表当前用户事实，保留目标并清理旧源。
  */
-export const prompt_user_preset_layout_migration: MigrationDescriptor = {
+export const prompt_user_preset_layout_migration: StartupMigration = {
   id: "prompt-user-preset-layout",
   order: 200,
   /**

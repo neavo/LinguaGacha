@@ -7,6 +7,7 @@
 - `ApiGatewayServer` 是 Electron 运行态公开 `/api/*` 的唯一装配点；`register_api_routes` 在单一注册表中把公开路径绑定到 `BackendServices`，JSON 与文件流共用错误出口和请求关闭屏障。
 - 普通 loaded-project query / write 从 `ProjectSessionState` 取得目标工程；create、open、preview、`/api/session/source-files/summary` 和打开前 settings alignment 是可以接收显式路径的生命周期例外。source-files summary 只按共享互斥扩展名目录递归发现并去重，返回文件总数与各格式命中数，不读取内容或向 renderer 公开文件路径。
 - Gateway 只监听本机地址，CORS 只允许 `Content-Type`，renderer 不依赖额外私有请求头。
+- JSON 命令入口校验对象结构，服务校验业务字段。质量规则接口共用 `shared/quality/quality-rule-api`，页面消费完整切片。
 - JSON 成功响应为 `{ ok: true, data }`，失败响应为 `{ ok: false, error: { code, details? } }`；`APP_ERROR_DEFINITIONS` 是错误码、严重度和 HTTP 状态的唯一词表。公开错误不携带服务端本地化文案、request id、diagnostic context、cause、stack 或供应商原始异常，request id 只保留在后端日志上下文中。
 - 公开 SSE topic 固定为 `project.data_changed`、`batch_translation.snapshot_changed`、`runtime.snapshot_changed`、`agent.session_event`、`settings.changed`、`model_catalog.updated`，`data` 使用严格 JSON 序列化。`POST /api/runtime/snapshot` 返回带单调 `revision` 的当前运行所有者 `batch_translation | agent | model_test | null`。`GET /api/models/catalog/snapshot` 与目录更新事件共用 `instance_id + started_at + revision` 快照。
 - 通用质量规则由切片 query / update 读写，校对 query 统一分发列表、上下文、筛选面板与真实 warning 类型计数。items update 对正文译文的实际修改统一完成条目并清零 `retry_count`，相同非空译文可以确认 `ERROR` 结果，显式人工状态最后覆盖且同样清零，姓名译文保持正文状态与重试历史；清空命令以必填 `reset_status` 决定是否同时恢复状态和重试次数，替换保留独立的后端意图命令。
@@ -83,7 +84,7 @@ project, files, items, pdf, quality, prompts, proofreading
 
 - `/api/session/project/manifest` 只返回项目身份、revision 索引和 counts，不预热大 section。
 - 功能 query 返回其结果依赖的 `sectionRevisions`；只有基于已消费快照形成的用户写入或预演提交才以这些 revision 做乐观锁。任务启动和面向当前项目事实的 reset 不携带 revision，由运行或项目写 lease 后读取当前事实；`projectRevision` 只是所有 section revision 的最大值，不是独立全序或可写锁。
-- `CacheManager` 是当前 session 的热读缓存根；query 只组合 cache、按需数据库读取和 shared 纯规则，不建立第二套项目事实。
+- `CacheManager` 持有当前会话的热读缓存，查询组合缓存、按需数据库读取和共享纯规则。质量规则与提示词在读取边界归一，缓存和查询保留完整类型；空会话使用完整空块。
 - 文本源文件与需要重读原始 asset 的格式统一通过 shared 解码入口把 bytes 转成字符串，固定按 BOM、调用方声明编码、严格 UTF-8、传统编码探测的顺序裁决；无法确定或不支持的编码按文件解析失败处理。
 - 文本内资源引用由 shared 纯规则统一识别 Base64 data URI、带 `://` scheme 的 URI 和带已知扩展名的无 scheme 路径；格式 reader 在拥有完整格式语义时立即决定槽位范围与格式规则状态，已生成 Item 的自动规则统一写为 `RULE_SKIPPED`，`EXCLUDED` 只表达用户手动排除。项目预过滤重新扫描通用文本内容，只有移除引用后各行均无正文时才跳过整个 Item；语言过滤使用独立状态。
 - Markdown 文本统一由 Markdown V2 的 AST 块 reader / writer 处理：`.md` 生成 `file_type: MD_V2`、`text_type: MD` Item，`row` 是 Markdown 块起始物理行，块内 URI 与 Base64 保持原始文本并随普通块直接写回。
@@ -170,7 +171,8 @@ project, files, items, pdf, quality, prompts, proofreading
 - 数据库边界按 SQLite 数值码识别锁冲突。公开响应使用业务错误码，日志保留失败阶段、路径摘要、SQLite 原码和异常链。回滚或收尾失败同时保留主异常与清理异常。
 - `pdf_documents` 保存来源摘要，`pdf_pages` 以 `(file_path, page)` 保存页面 JSON，原始字节归 assets。读取按原页序组合，写入仅更新目标页。导入事务核对资产 SHA-256，拒绝解析后变化的来源。文字、字体与坐标提取作为可再生工作材料，不进入存储。
 - asset 存在 `assets` 表，以 Zstd blob 落库；压缩格式集中在 `src/backend/database/zstd-tool.ts`，数据库读取向上返回解压后的 bytes。
-- 新建与既有工程共用打开迁移入口：按实际表和列补齐结构，再执行业务写回迁移。执行成功后在同一事务内记录 `applied_writeback_migrations`，完成记录由迁移执行器唯一写入。迁移清单归 registry。
+- 迁移入口独立持有清单：`startup-migrations` 升级应用文件，`database-migrations` 升级数据库，`project-open-migrations` 准备工程写入。
+- 数据库连接就绪前先补结构，再逐项原子提交数据与 `applied_writeback_migrations` 标记。迁移 ID 和阶段内顺序属于历史工程升级契约。
 - 启动期迁移完成后读取设置。迁移自行记录可继续初始化的错误；抛出的异常由组合根记录、释放资源并中止启动。版本内置资产始终只读。
 - 用户技能迁移以当前入口为准：入口已存在或旧目标缺失时静默跳过，其它错误记录警告并继续启动。跳过时保留旧入口，当前目录由运行期按需创建。
 - 工程打开时，文件迁移在事务内按目标文件合并当前可见 Item，使多个格式迁移可以串行组合。历史 `file_type: MD` 在缓存热机和 session loaded 前一次性转为 `MD_V2`。

@@ -18,7 +18,6 @@
     "resolveJsonModule": true,
     "skipLibCheck": true,
     "paths": {
-      "@backend/api/api-base-url": ["./src/backend/api/api-base-url.ts"],
       "@domain/*": ["./src/domain/*"],
       "@frontend/*": ["./src/frontend/*"],
       "@gui/bridge-api": ["./src/gui/bridge/bridge-api.ts"],

@@ -4,6 +4,24 @@ import { describe, expect, it, vi } from "vitest";
 import { register_post_json_route } from "./api-request";
 
 describe("register_post_json_route", () => {
+  it.each([null, [], "text", 1, true])("拒绝非对象 JSON 请求 %j", async (body) => {
+    const app = new Hono();
+    const handler = vi.fn(() => ({}));
+    const on_error = vi.fn(() => new Response(null, { status: 400 }));
+    register_post_json_route(app, "/api/test", handler, on_error);
+    const response = await app.request("/api/test", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    expect(response.status).toBe(400);
+    expect(handler).not.toHaveBeenCalled();
+    expect(on_error).toHaveBeenCalledWith(
+      expect.objectContaining({ code: "request.validation_failed" }),
+      "/api/test",
+      expect.any(String),
+    );
+  });
   it("解析 JSON 并返回统一成功响应壳", async () => {
     const app = new Hono();
     const handler = vi.fn((body) => ({ echoed: body["value"] ?? null }));

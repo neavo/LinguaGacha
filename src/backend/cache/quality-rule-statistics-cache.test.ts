@@ -1,3 +1,4 @@
+import { create_empty_quality_rule_block } from "../project/project-data-reader";
 import { describe, expect, it, vi } from "vitest";
 
 import type { ProjectItemPublicRecord } from "../../domain/item";
@@ -29,9 +30,26 @@ function create_cache_read_port(): AnalysisCacheReadPort {
     },
     quality: {
       readBlock: vi.fn(() => ({
-        glossary: { entries: [{ entry_id: "hp", src: "HP", dst: "生命值" }] },
+        ...create_empty_quality_rule_block(),
+        glossary: {
+          enabled: true,
+          mode: "off" as const,
+          revision: 1,
+          entries: [{ entry_id: "hp", src: "HP", dst: "生命值", info: "", case_sensitive: false }],
+        },
         post_replacement: {
-          entries: [{ entry_id: "hp-post", src: "生命值", dst: "体力", regex: false }],
+          enabled: true,
+          mode: "off" as const,
+          revision: 1,
+          entries: [
+            {
+              entry_id: "hp-post",
+              src: "生命值",
+              dst: "体力",
+              regex: false,
+              case_sensitive: false,
+            },
+          ],
         },
       })),
     },

@@ -1,31 +1,26 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useProjectChangeSignal } from "@frontend/app/state/use-desktop-state";
 import { useProjectChangeSeqForSections } from "@frontend/app/state/project-change-signal";
-import {
-  read_quality_rule_snapshot,
-  type QualityRuleQuerySlice,
-  type QualityRuleType,
-} from "@frontend/features/quality-rule-editor/quality-rule-api-client";
+import { read_quality_rule_snapshot } from "@frontend/features/quality-rule-editor/quality-rule-api-client";
+import type { QualityRuleKind } from "@domain/quality";
+import type { QualityRuleSlice } from "@shared/quality/quality-rule-state";
 
 export type QualityRuleQueryStatus = "idle" | "loading" | "ready" | "error";
 type QueryState<TSlice> =
   | { status: "ready"; slice: TSlice }
   | { status: "idle" | "loading" | "error" };
-type UseQualityRuleQueryArgs<TType extends QualityRuleType, TSlice> = {
+type UseQualityRuleQueryArgs<TType extends QualityRuleKind, TSlice> = {
   rule_type: TType;
   project_path: string;
   session_ready: boolean;
   default_slice: TSlice;
-  normalize_slice: (
-    slice: QualityRuleQuerySlice<TType> | undefined,
-    section_revision: number,
-  ) => TSlice;
+  normalize_slice: (slice: QualityRuleSlice<TType>, section_revision: number) => TSlice;
   on_load_error: (error: unknown) => void;
 };
 const QUALITY_RULE_REFRESH_SECTIONS = ["quality"] as const;
 
 /** 规则查询统一拥有首次加载、已有快照刷新、重试与项目身份隔离。 */
-export function useQualityRuleQuery<TType extends QualityRuleType, TSlice>(
+export function useQualityRuleQuery<TType extends QualityRuleKind, TSlice>(
   args: UseQualityRuleQueryArgs<TType, TSlice>,
 ): {
   quality_slice: TSlice;
@@ -67,10 +62,7 @@ export function useQualityRuleQuery<TType extends QualityRuleType, TSlice>(
     try {
       const response = await read_quality_rule_snapshot(rule_type);
       if (token === request_token_ref.current && response.projectPath === project_path) {
-        const slice = normalize_slice(
-          response.qualityRule,
-          response.sectionRevisions?.quality ?? 0,
-        );
+        const slice = normalize_slice(response.qualityRule, response.sectionRevisions.quality ?? 0);
         apply_state({ status: "ready", slice });
         return slice;
       }

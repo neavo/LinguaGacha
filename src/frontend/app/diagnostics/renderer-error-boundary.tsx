@@ -1,5 +1,6 @@
 import { Component, type ErrorInfo, type ReactNode } from "react";
-import { create_text_resolver, type Locale } from "@shared/i18n";
+import { create_text_resolver } from "@shared/i18n";
+import { type Locale } from "@domain/app-language";
 import { resolve_app_language_from_locale_tag, resolve_app_locale } from "@domain/app-language";
 
 import { capture_renderer_error } from "@frontend/app/diagnostics/renderer-error-reporter";

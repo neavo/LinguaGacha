@@ -1,11 +1,11 @@
 import type { JsonRecord } from "../../../domain/json";
 import type { ProjectDatabaseWrite } from "../../database/database-operations";
-import type { MigrationDescriptor, ProjectOpenMigrationContext } from "../migration-types";
+import type { ProjectOpenMigration, ProjectOpenMigrationContext } from "../migration-types";
 
 /**
  * 质量规则默认 meta 在打开期物化，后续组装和任务快照只消费当前工程事实。
  */
-export const quality_default_meta_migration: MigrationDescriptor = {
+export const quality_default_meta_migration: ProjectOpenMigration = {
   id: "quality-default-meta",
   order: 610,
   /**

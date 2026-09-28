@@ -6,7 +6,7 @@ import { default_native_fs } from "../../../native/native-fs";
 import { AppError } from "../../../shared/error";
 import { JsonTool } from "../../../shared/utils/json-tool";
 import { relocate_directory_items } from "../path-relocation";
-import type { MigrationDescriptor, StartupMigrationContext } from "../migration-types";
+import type { StartupMigration, StartupMigrationContext } from "../migration-types";
 
 type PresetSource = "builtin" | "user";
 
@@ -41,7 +41,7 @@ const QUALITY_RULE_PRESET_DIRECTORIES = Object.values(QUALITY_RULE_PRESET_SETTIN
  * 提示词预设不在本文件处理；无法识别的旧默认预设路径清空并记录 warning，
  * 避免把无效路径继续伪装成可用配置。
  */
-export const quality_rule_preset_layout_migration: MigrationDescriptor = {
+export const quality_rule_preset_layout_migration: StartupMigration = {
   id: "quality-rule-preset-layout",
   order: 300,
   /**

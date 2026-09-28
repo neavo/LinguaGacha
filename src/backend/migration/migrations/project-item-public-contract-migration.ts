@@ -3,7 +3,10 @@ import type { DatabaseSync } from "node:sqlite";
 import { Item } from "../../../domain/item";
 import { JsonTool } from "../../../shared/utils/json-tool";
 import { row_number, row_text } from "../migration-row";
-import type { MigrationDescriptor, ProjectDatabaseMigrationContext } from "../migration-types";
+import type {
+  DatabaseWritebackMigration,
+  ProjectDatabaseMigrationContext,
+} from "../migration-types";
 
 type ItemContractRow = Record<string, unknown>;
 type ItemContractPayload = Record<string, unknown>;
@@ -20,7 +23,7 @@ const LEGACY_MARKDOWN_FILE_TYPE = "MD";
  * 生效场景：
  * `.lg` schema 可用后，打开旧工程时补齐完整公开 DTO 所需的稳定持久字段。
  */
-export const project_item_public_contract_migration: MigrationDescriptor = {
+export const project_item_public_contract_migration: DatabaseWritebackMigration = {
   id: "project-item-public-contract",
   order: 450,
   /**

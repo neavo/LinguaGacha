@@ -14,7 +14,7 @@ import type { AgentService } from "../agent/agent-service";
 import type { ApiStreamHub } from "./api-stream-hub";
 import type { JsonRecord, JsonValue } from "../../domain/json";
 import { JsonTool } from "../../shared/utils/json-tool";
-import { BACKEND_API_HOST, build_backend_api_base_url } from "./api-base-url";
+import { BACKEND_API_HOST, build_backend_api_base_url } from "../../shared/backend-api";
 import {
   AppError,
   normalize_renderer_error_report,

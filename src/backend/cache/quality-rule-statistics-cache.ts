@@ -8,7 +8,6 @@ import type {
 } from "../worker/tasks/quality-rule-statistics-worker-task";
 import type { CacheChange } from "./cache-change";
 import type { CacheReadPort } from "./cache-types";
-import { read_json_record } from "../../domain/json";
 import * as AppErrors from "../../shared/error";
 
 export type QualityRuleStatistics = Omit<
@@ -99,10 +98,10 @@ export class QualityRuleStatisticsCache {
     entry: QualityRuleStatisticsCacheEntry,
   ): Promise<QualityRuleStatistics> {
     const quality_block = this.cache_reader.quality.readBlock();
-    const slice = read_json_record(quality_block[rule_key]);
+    const slice = quality_block[rule_key];
     const input = prepare_quality_statistics_task_input({
       rule_key,
-      entries: slice["entries"] ?? [],
+      entries: slice.entries,
       items: this.cache_reader.items.readItems(),
     });
     const promise = this.worker_client

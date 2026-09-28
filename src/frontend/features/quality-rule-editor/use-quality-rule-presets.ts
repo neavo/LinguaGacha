@@ -1,11 +1,8 @@
 import { DesktopApiError } from "@frontend/app/desktop/desktop-api";
 import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import { QualityRule } from "@domain/quality";
-import type {
-  QualityRuleType,
-  QualityRuleEntryByType,
-  QualityRulePresets,
-} from "@shared/quality/quality-rule-api";
+import type { QualityRulePresets } from "@shared/quality/quality-rule-api";
+import type { QualityRuleKind, QualityRuleEntryByKind } from "@domain/quality";
 import { useDesktopState } from "@frontend/app/state/use-desktop-state";
 import { useI18n, type LocaleKey } from "@frontend/app/locale/locale-context";
 import { push_toast } from "@frontend/app/feedback/desktop-toast";
@@ -31,9 +28,9 @@ import {
 } from "./quality-rule-api-client";
 
 /** 预设状态只驻页面；默认项由应用设置投影，文件与默认引用的变更由后端命令完成。 */
-export function useQualityRulePresets<K extends QualityRuleType>(
+export function useQualityRulePresets<K extends QualityRuleKind>(
   rule_type: K,
-  entries: QualityRuleEntryByType[K][],
+  entries: QualityRuleEntryByKind[K][],
   error_key: LocaleKey,
 ) {
   const { t } = useI18n();

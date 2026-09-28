@@ -1,30 +1,21 @@
+import type { Static } from "typebox";
+import type {
+  PDF_REGION_SCHEMA,
+  PDF_PAGE_SCHEMA,
+  PDF_PAGE_UPDATE_SCHEMA,
+  PDF_DOCUMENT_SCHEMA,
+} from "./pdf-schema";
+
 /** 区域使用旋转后、scale=1 的页面坐标，原点在左上角。 */
-export type PDFRegion = { page: number; x: number; y: number; width: number; height: number };
-/** 页身份来自原稿，跨页译稿不改变页身份。 */
-export type PDFPage = PDFPageUpdate & {
-  page: number;
-  width: number;
-  height: number;
-  rotation: number;
-  label: string | null;
-};
-/** null 待处理，translate 接管原页，keep 确认保留，omit 按用户要求省略。 */
-export type PDFPageTranslation =
-  | null
-  | { kind: "translate"; markdown: string; background?: PDFRegion }
-  | { kind: "keep"; reason: string }
-  | { kind: "omit"; reason: string };
+export type PDFRegion = Static<typeof PDF_REGION_SCHEMA>;
+/** 页身份来自原稿；结构与持久化校验共用同一 Schema。 */
+export type PDFPage = Static<typeof PDF_PAGE_SCHEMA>;
 /** 整页替换的可修改事实；空译稿接管原页，但不生成独立正文。 */
-export type PDFPageUpdate = {
-  translation: PDFPageTranslation;
-  reviewed: boolean; // 核对记录独立于译稿，不证明语义完整性
-  notes: string; // 随该页保存的续做说明
-};
-/** 文档用于读取和导出组合，数据库按原页独立持久化。 */
-export type PDFDocument = {
-  digest: string;
-  pages: PDFPage[];
-};
+export type PDFPageUpdate = Static<typeof PDF_PAGE_UPDATE_SCHEMA>;
+/** null 待处理，translate 接管原页，keep 保留，omit 省略。 */
+export type PDFPageTranslation = PDFPageUpdate["translation"];
+/** 文档按原稿页组织，跨页译稿不改变页身份。 */
+export type PDFDocument = Static<typeof PDF_DOCUMENT_SCHEMA>;
 export type PDFSummary = {
   pages: number;
   translated_pages: number; // 译稿覆盖的原页数，不是输出 PDF 的页数

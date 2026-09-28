@@ -18,7 +18,7 @@ it("GUI 宿主拒绝 Backend 实现依赖", () => {
       files: [file_path, allowed_file_path, test_file_path],
       source_reader: create_source_reader((target) =>
         target === allowed_file_path
-          ? 'import { encode } from "../backend/api/api-base-url";'
+          ? 'import { encode } from "../shared/backend-api";'
           : 'import { GuiBackendBootstrap } from "../backend/bootstrap/gui-backend-bootstrap";',
       ),
     }),

@@ -1,7 +1,7 @@
 import { is_text_preserve_mode } from "../../../domain/quality";
 import type { JsonRecord } from "../../../domain/json";
 import type { ProjectDatabaseWrite } from "../../database/database-operations";
-import type { MigrationDescriptor, ProjectOpenMigrationContext } from "../migration-types";
+import type { ProjectOpenMigration, ProjectOpenMigrationContext } from "../migration-types";
 
 /**
  * 迁移背景：
@@ -14,7 +14,7 @@ import type { MigrationDescriptor, ProjectOpenMigrationContext } from "../migrat
  * 不处理范围：
  * 质量规则内容和默认预设初始化不在本文件处理。
  */
-export const text_preserve_mode_migration: MigrationDescriptor = {
+export const text_preserve_mode_migration: ProjectOpenMigration = {
   id: "text-preserve-mode",
   order: 600,
   /**

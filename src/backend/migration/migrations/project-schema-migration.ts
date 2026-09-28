@@ -1,7 +1,7 @@
 import type { DatabaseSync } from "node:sqlite";
 
 import { row_number, row_text } from "../migration-row";
-import type { MigrationDescriptor, ProjectDatabaseMigrationContext } from "../migration-types";
+import type { DatabaseSchemaMigration, ProjectDatabaseMigrationContext } from "../migration-types";
 
 /**
  * 迁移背景：
@@ -14,7 +14,7 @@ import type { MigrationDescriptor, ProjectDatabaseMigrationContext } from "../mi
  * 不处理范围：
  * 本文件只补物理结构和当前 schema 版本；规则、item、checkpoint 等业务数据写回由独立迁移点处理。
  */
-export const project_schema_migration: MigrationDescriptor = {
+export const project_schema_migration: DatabaseSchemaMigration = {
   id: "project-schema",
   order: 100,
   /**

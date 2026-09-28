@@ -1,5 +1,7 @@
 import {
   type QualityRule,
+  type QualityRuleKind,
+  type QualityRuleEntryByKind,
   type QualityRuleEntry,
   type QualityRuleGlossaryEntry,
   type TextPreserveEntry,
@@ -27,29 +29,31 @@ export function create_quality_rule_entry_id(entry_ids: Set<string>): string {
 }
 
 /** 为无项目身份的规则输入分配全新身份，并执行与项目条目相同的语义校验。 */
-export function create_quality_rule_entries(
-  rule: QualityRule,
+export function create_quality_rule_entries<K extends QualityRuleKind>(
+  rule: QualityRule<K>,
   value: unknown,
   existing_entry_ids: readonly string[] = [],
-): QualityRuleEntry[] {
+): QualityRuleEntryByKind[K][] {
   const entry_ids = new Set(existing_entry_ids);
   const entries = rule.normalize_entries(value).map((entry) => ({
     ...entry,
     entry_id: create_quality_rule_entry_id(entry_ids),
-  })) as QualityRuleEntry[];
-  return validate_quality_rule_entries(rule, entries);
+  }));
+  // 字段由具体规则归一并验证；此处恢复 TypeScript 无法追踪的规则与条目关联。
+  return validate_quality_rule_entries(rule, entries) as QualityRuleEntryByKind[K][];
 }
 
 /** 项目质量规则进入任一消费链前只在这里归一身份、字段并验证真实执行语义。 */
-export function normalize_quality_rule_entries(
-  rule: QualityRule,
+export function normalize_quality_rule_entries<K extends QualityRuleKind>(
+  rule: QualityRule<K>,
   value: unknown,
-): QualityRuleEntry[] {
+): QualityRuleEntryByKind[K][] {
   const entries = rule.normalize_entries(value).map((entry) => ({
     ...entry,
     entry_id: normalize_quality_rule_entry_id(entry.entry_id),
-  })) as QualityRuleEntry[];
-  return validate_quality_rule_entries(rule, entries);
+  }));
+  // 字段由具体规则归一并验证；此处恢复 TypeScript 无法追踪的规则与条目关联。
+  return validate_quality_rule_entries(rule, entries) as QualityRuleEntryByKind[K][];
 }
 
 /** 收窄项目身份；格式保持不透明，只约束可用性。 */

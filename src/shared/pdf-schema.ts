@@ -1,10 +1,9 @@
-import { Type } from "@earendil-works/pi-ai";
+import { Type, type Static } from "typebox";
 import { Check } from "typebox/value";
-import type { PDFDocument, PDFRegion } from "../../../../shared/pdf";
 
 const positive = Type.Number({ exclusiveMinimum: 0 });
 const digest = Type.String({ pattern: "^[a-f0-9]{64}$" });
-const PDF_REGION_SCHEMA = Type.Object(
+export const PDF_REGION_SCHEMA = Type.Object(
   {
     page: Type.Integer({ minimum: 1 }),
     x: Type.Number({ minimum: 0 }),
@@ -35,8 +34,8 @@ export const PDF_PAGE_UPDATE_SCHEMA = Type.Object(
         { additionalProperties: false },
       ),
     ]),
-    reviewed: Type.Boolean(),
-    notes: Type.String(),
+    reviewed: Type.Boolean(), // 核对记录独立于译稿，不证明语义完整性
+    notes: Type.String(), // 随该页保存的续做说明
   },
   { additionalProperties: false },
 );
@@ -58,6 +57,9 @@ export const PDF_DOCUMENT_SCHEMA = Type.Object(
   },
   { additionalProperties: false },
 );
+type PDFDocument = Static<typeof PDF_DOCUMENT_SCHEMA>;
+type PDFRegion = Static<typeof PDF_REGION_SCHEMA>;
+
 /** 持久化边界校验完整形状与页序，数组索引才能用于页面定位。 */
 export function read_pdf_document(value: unknown): PDFDocument {
   if (!Check(PDF_DOCUMENT_SCHEMA, value)) throw new Error("Invalid PDF document.");

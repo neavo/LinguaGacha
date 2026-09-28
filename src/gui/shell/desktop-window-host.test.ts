@@ -2,7 +2,7 @@ import path from "node:path";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { build_backend_api_base_url_argument } from "../../backend/api/api-base-url";
+import { build_backend_api_base_url_argument } from "../../shared/backend-api";
 import { IPC_CHANNEL_WINDOW_CLOSE_REQUEST } from "../gui-ipc-contract";
 import { resolve_title_bar_overlay_theme } from "./shell-contract";
 import { LOG_WINDOW_QUERY_KEY, LOG_WINDOW_QUERY_VALUE } from "./log-window-host";

@@ -81,6 +81,10 @@ function run_rules(files) {
   const context = create_check_context({
     files: [...source_by_path.keys()],
     project_root,
+    paths: {
+      "@frontend/*": ["src/frontend/*"],
+      "@gui/bridge-api": ["src/gui/bridge/bridge-api.ts"],
+    },
     source_reader: create_source_reader((file_path) => source_by_path.get(file_path)),
   });
 

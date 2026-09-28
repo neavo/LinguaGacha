@@ -2,7 +2,7 @@ import {
   PDF_DOCUMENT_SCHEMA,
   PDF_PAGE_SCHEMA,
   PDF_PAGE_UPDATE_SCHEMA,
-} from "../../file/formats/pdf/pdf-source";
+} from "../../../shared/pdf-schema";
 import { Type, type Static, type TSchema } from "@earendil-works/pi-ai";
 
 import { ITEM_MANUAL_STATUSES, ITEM_STATUSES, ITEM_TEXT_TYPES } from "../../../domain/item";

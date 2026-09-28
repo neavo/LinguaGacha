@@ -4,7 +4,7 @@ import type { ComputeWorkerClient } from "../worker/compute-worker-client";
 import type { CacheReadPort } from "./cache-types";
 import * as AppErrors from "../../shared/error";
 import { Item, type ProjectItemPublicRecord } from "../../domain/item";
-import { is_json_record, read_json_record, type JsonValue } from "../../domain/json";
+import { read_json_record, type JsonValue } from "../../domain/json";
 import { normalize_setting_snapshot } from "../../domain/setting";
 import type {
   ProofreadingContextQuery,
@@ -29,7 +29,6 @@ import type {
   ProofreadingWarningSummary,
 } from "../../shared/proofreading/proofreading-types";
 import type { ProofreadingListWindow } from "../../shared/proofreading/proofreading-reader";
-import type { QualitySlice, QualitySnapshot } from "../../shared/quality/quality-rule-snapshot";
 import type { ProjectDataSectionRevisions } from "../../shared/project-event";
 import type { CacheChange } from "./cache-change";
 import {
@@ -395,7 +394,7 @@ export class ProofreadingCache {
       revisions: { ...identity.key.revisions, files: Number(identity.sectionRevisions.files ?? 0) },
       total_item_count: items.length,
       upsertItems: items,
-      quality: this.normalize_quality_state(this.cache.quality.readBlock()),
+      quality: structuredClone(this.cache.quality.readBlock()),
       processingConfig: identity.key.processingConfig,
     };
   }
@@ -465,36 +464,6 @@ export class ProofreadingCache {
           ? read_json_record(extra["epub"])["doc_path"]
           : null;
     return typeof value === "string" && value !== "" ? value : null;
-  }
-
-  /**
-   * 将四类质量规则块归一为 worker 可消费快照。
-   */
-  private normalize_quality_state(block: Record<string, unknown>): QualitySnapshot {
-    return {
-      glossary: this.normalize_quality_slice(block["glossary"], "custom"),
-      pre_replacement: this.normalize_quality_slice(block["pre_replacement"], "custom"),
-      post_replacement: this.normalize_quality_slice(block["post_replacement"], "custom"),
-      text_preserve: this.normalize_quality_slice(block["text_preserve"], "smart"),
-    };
-  }
-
-  /**
-   * 过滤非法规则条目，并补齐启用状态、模式和 revision。
-   */
-  private normalize_quality_slice(value: unknown, fallback_mode: string): QualitySlice {
-    const record = read_json_record(value);
-    const entries = Array.isArray(record["entries"])
-      ? record["entries"].flatMap((entry) => {
-          return is_json_record(entry) ? [{ ...entry }] : [];
-        })
-      : [];
-    return {
-      entries,
-      enabled: record["enabled"] !== false,
-      mode: String(record["mode"] ?? fallback_mode),
-      revision: this.read_number(record["revision"], 0),
-    };
   }
 
   /**

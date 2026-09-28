@@ -1,5 +1,5 @@
 import { JsonTool } from "../../../shared/utils/json-tool";
-import { normalize_backend_api_base_url } from "@backend/api/api-base-url";
+import { normalize_backend_api_base_url } from "@shared/backend-api";
 import {
   normalize_log_level,
   read_log_content,

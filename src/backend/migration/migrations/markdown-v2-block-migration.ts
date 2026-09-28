@@ -9,7 +9,7 @@ import {
   build_translation_extras_from_items,
   type ProjectItemViewRecord,
 } from "../../project/project-write-state";
-import type { MigrationDescriptor, ProjectOpenMigrationContext } from "../migration-types";
+import type { ProjectOpenMigration, ProjectOpenMigrationContext } from "../migration-types";
 import { replace_project_file_items } from "../project-open-file-item-replacement";
 
 const LEGACY_MARKDOWN_FILE_TYPE = "MD";
@@ -26,7 +26,7 @@ type LegacyMarkdownItem = {
   skip_internal_filter: boolean;
 };
 
-export const markdown_v2_block_migration: MigrationDescriptor = {
+export const markdown_v2_block_migration: ProjectOpenMigration = {
   id: "markdown-v2-block",
   order: 900,
   /** 在 project-open 阶段准备文件级替换，让提交仍由生命周期事务统一执行。 */

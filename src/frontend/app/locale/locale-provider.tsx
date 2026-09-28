@@ -1,5 +1,6 @@
 import { createElement, useEffect, useMemo, type ReactNode } from "react";
-import { create_text_resolver, type Locale } from "@shared/i18n";
+import { create_text_resolver } from "@shared/i18n";
+import { type Locale } from "@domain/app-language";
 import { type LocaleContextValue, LocaleContext } from "./locale-context";
 
 type LocaleProviderProps = {

@@ -3,7 +3,10 @@ import type { DatabaseSync } from "node:sqlite";
 import { Item, is_item_file_type, is_item_status, is_item_text_type } from "../../../domain/item";
 import { JsonTool } from "../../../shared/utils/json-tool";
 import { row_number, row_text } from "../migration-row";
-import type { MigrationDescriptor, ProjectDatabaseMigrationContext } from "../migration-types";
+import type {
+  DatabaseWritebackMigration,
+  ProjectDatabaseMigrationContext,
+} from "../migration-types";
 
 type ItemMigrationRow = Record<string, unknown>;
 type ItemMigrationPayload = Record<string, unknown>;
@@ -29,7 +32,7 @@ const TEXT_TYPE_INFERENCE_FILE_TYPES = new Set(["XLSX", "KVJSON", "MESSAGEJSON"]
  * TRANS 私有定位字段和 `aqua` 强制翻译语义由 `trans-item-metadata-migration` 处理；
  * 损坏 JSON 保留原文，避免迁移阶段静默丢失无法解析的用户数据。
  */
-export const project_item_stable_metadata_migration: MigrationDescriptor = {
+export const project_item_stable_metadata_migration: DatabaseWritebackMigration = {
   id: "project-item-stable-metadata",
   order: 300,
   /**

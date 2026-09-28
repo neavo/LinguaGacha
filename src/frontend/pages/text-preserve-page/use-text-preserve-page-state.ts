@@ -6,7 +6,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAppNavigation } from "@frontend/app/navigation/navigation-context";
 
 import { buildProofreadingLookupQuery } from "@shared/quality/quality-rule-proofreading-query";
-import { type QualityRuleQuerySlice } from "@frontend/features/quality-rule-editor/quality-rule-api-client";
+import type { QualityRuleSlice } from "@shared/quality/quality-rule-state";
 import { useQualityRuleQuery } from "@frontend/features/quality-rule-editor/use-quality-rule-query";
 import {
   isQualityRuleStatisticsCacheReady,
@@ -40,7 +40,6 @@ import type {
   TextPreserveHitState,
 } from "@frontend/pages/text-preserve-page/types";
 import type { AppTableSortState } from "@frontend/widgets/app-table/app-table-types";
-import { normalize_text_preserve_mode } from "@domain/quality";
 
 import { build_text_preserve_rule } from "@shared/text/text-preserve-rules";
 
@@ -55,7 +54,7 @@ const TEXT_PRESERVE_RULE_TYPE = "text_preserve";
 const TEXT_PRESERVE_TITLE_KEY: LocaleKey = "text_preserve_page.title";
 // 导出接口展示给系统保存框的默认文件名。
 const TEXT_PRESERVE_EXPORT_FILE_NAME = "text_preserve.json";
-// 查询完成前与坏载荷统一回落为关闭模式。
+// 查询完成前显示关闭模式。
 const DEFAULT_MODE: TextPreserveMode = "off";
 // 首次查询前使用与后端默认语义一致的只读切片。
 const DEFAULT_QUALITY_SLICE: TextPreserveQualitySlice = {
@@ -68,22 +67,11 @@ const TEXT_PRESERVE_MODE_REFRESH_TIMEOUT_MS = 15000;
 // session 恢复排序的白名单，避免旧列 ID 进入当前表格。
 const TEXT_PRESERVE_SORT_COLUMN_IDS = new Set(["src", "info", "hit"]);
 
-// 仅该内部哨兵错误由调用方静默补偿，真实请求错误仍需反馈给用户。
-
 // 对话框总是克隆该模板，避免复用可变草稿引用。
 const EMPTY_ENTRY: TextPreserveEntryDraft = {
   src: "",
   info: "",
 };
-
-/** 按文本保护字段白名单克隆，避免重复规划联合类型中的异类字段泄漏。 */
-function clone_entry<Entry extends TextPreserveEntryDraft>(entry: Entry): Entry {
-  return {
-    entry_id: entry.entry_id,
-    src: entry.src,
-    info: entry.info,
-  } as Entry;
-}
 
 /**
  * 在保存边界按文本保护字段白名单投影并裁掉文本两端空白，同时保留稳定条目 ID。
@@ -91,22 +79,21 @@ function clone_entry<Entry extends TextPreserveEntryDraft>(entry: Entry): Entry 
 function normalize_entry<Entry extends TextPreserveEntryDraft>(entry: Entry): Entry {
   return {
     entry_id: entry.entry_id,
-    src: String(entry.src ?? "").trim(),
-    info: String(entry.info ?? "").trim(),
+    src: entry.src.trim(),
+    info: entry.info.trim(),
   } as Entry;
 }
 
 /**
- * 将后端 quality 查询收窄为页面稳定切片。
+ * 将完整质量规则查询映射为页面状态。
  */
 function normalize_text_preserve_quality_slice(
-  slice: QualityRuleQuerySlice<"text_preserve"> | undefined,
+  slice: QualityRuleSlice<"text_preserve">,
   section_revision: number,
 ): TextPreserveQualitySlice {
-  const raw_entries = slice?.entries ?? [];
   return {
-    mode: normalize_text_preserve_mode(slice?.mode),
-    entries: raw_entries.map(clone_entry),
+    mode: slice.mode,
+    entries: slice.entries,
     section_revision,
   };
 }

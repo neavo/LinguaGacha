@@ -3,13 +3,13 @@ import path from "node:path";
 import { default_native_fs as native_fs } from "../../../native/native-fs";
 import { AppError } from "../../../shared/error";
 import { t_main_log } from "../../log/log-text";
-import type { MigrationDescriptor } from "../migration-types";
+import type { StartupMigration } from "../migration-types";
 
 // 历史布局只由本迁移识别，运行期路径统一由 AppPathService 提供。
 const LEGACY_SKILL_PATH = ["agent", "skill"] as const;
 
 /** 将旧用户技能入口整体迁入当前数据目录。 */
-export const user_skills_layout_migration: MigrationDescriptor = {
+export const user_skills_layout_migration: StartupMigration = {
   id: "user-skills-layout",
   order: 400,
   /** 当前入口优先；历史技能搬迁失败只记录警告，让应用继续启动。 */

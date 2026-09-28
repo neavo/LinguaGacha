@@ -1,3 +1,5 @@
+import { create_empty_project_prompts } from "../../domain/prompt";
+import { create_empty_quality_rule_block } from "../project/project-data-reader";
 import { describe, expect, it, vi } from "vitest";
 
 import type { ProjectItemPublicRecord } from "../../domain/item";
@@ -65,16 +67,17 @@ function create_cache_read_port(options: {
     },
     quality: {
       readBlock: () => ({
+        ...create_empty_quality_rule_block(),
         glossary: {
           enabled: true,
           mode: "custom",
           revision: 1,
-          entries: [{ entry_id: "hp", src: "HP", dst: "生命值" }],
+          entries: [{ entry_id: "hp", src: "HP", dst: "生命值", info: "", case_sensitive: false }],
         },
       }),
     },
     prompts: {
-      readBlock: () => ({}),
+      readBlock: create_empty_project_prompts,
     },
   };
 }

@@ -5,7 +5,7 @@ import {
   type TextPreserveMode,
   type TextReplacementEntry,
 } from "../../domain/quality";
-import type { JsonRecord } from "../../domain/json";
+import { read_json_record, type JsonRecord } from "../../domain/json";
 import { normalize_quality_rule_entries } from "./quality-rule-entry";
 
 type QualityRuleSnapshot = {
@@ -27,7 +27,7 @@ type QualityRuleSnapshot = {
   glossary_entries: GlossaryEntry[];
 };
 
-// 页面和 reader 消费的质量规则最小快照。
+// 校对算法接收的输入形状；条目由其执行边界解析，项目缓存使用 `QualityRuleBlock` 的明确类型。
 export type QualitySlice = {
   entries: Array<Record<string, unknown>>;
   enabled: boolean;
@@ -41,13 +41,6 @@ export type QualitySnapshot = {
   pre_replacement: QualitySlice;
   post_replacement: QualitySlice;
   text_preserve: QualitySlice;
-};
-
-// 单个任务提示词的窄化快照。
-export type PromptSlice = {
-  text: string;
-  enabled: boolean;
-  revision: number;
 };
 
 /**
@@ -75,14 +68,14 @@ export class QualityRuleSnapshotTool {
    * 从嵌套 quality/prompts payload 恢复任务用快照；缺失字段按质量规则领域默认值归一
    */
   public static from_json(data: unknown): QualityRuleSnapshot {
-    const root = read_record(data);
-    const quality = read_record(root["quality"]);
-    const prompts = read_record(root["prompts"]);
-    const glossary = read_record(quality["glossary"]);
-    const text_preserve = read_record(quality["text_preserve"]);
-    const pre_replacement = read_record(quality["pre_replacement"]);
-    const post_replacement = read_record(quality["post_replacement"]);
-    const translation = read_record(prompts["translation"]);
+    const root = read_json_record(data);
+    const quality = read_json_record(root["quality"]);
+    const prompts = read_json_record(root["prompts"]);
+    const glossary = read_json_record(quality["glossary"]);
+    const text_preserve = read_json_record(quality["text_preserve"]);
+    const pre_replacement = read_json_record(quality["pre_replacement"]);
+    const post_replacement = read_json_record(quality["post_replacement"]);
+    const translation = read_json_record(prompts["translation"]);
     const glossary_rule = QualityRule.from_json("glossary");
     const text_preserve_rule = QualityRule.from_json("text_preserve");
     const pre_replacement_rule = QualityRule.from_json("pre_replacement");
@@ -94,17 +87,17 @@ export class QualityRuleSnapshotTool {
       text_preserve_entries: normalize_quality_rule_entries(
         text_preserve_rule,
         text_preserve["entries"] ?? [],
-      ) as TextPreserveEntry[],
+      ),
       pre_replacement_enable: pre_replacement_rule.normalize_enabled(pre_replacement["enabled"]),
       pre_replacement_entries: normalize_quality_rule_entries(
         pre_replacement_rule,
         pre_replacement["entries"] ?? [],
-      ) as TextReplacementEntry[],
+      ),
       post_replacement_enable: post_replacement_rule.normalize_enabled(post_replacement["enabled"]),
       post_replacement_entries: normalize_quality_rule_entries(
         post_replacement_rule,
         post_replacement["entries"] ?? [],
-      ) as TextReplacementEntry[],
+      ),
       glossary_revision: this.normalize_revision(glossary["revision"] ?? 0),
       text_preserve_revision: this.normalize_revision(text_preserve["revision"] ?? 0),
       pre_replacement_revision: this.normalize_revision(pre_replacement["revision"] ?? 0),
@@ -113,10 +106,7 @@ export class QualityRuleSnapshotTool {
       translation_prompt: String(translation["text"] ?? ""),
       translation_prompt_revision: this.normalize_revision(translation["revision"] ?? 0),
 
-      glossary_entries: normalize_quality_rule_entries(
-        glossary_rule,
-        glossary["entries"] ?? [],
-      ) as GlossaryEntry[],
+      glossary_entries: normalize_quality_rule_entries(glossary_rule, glossary["entries"] ?? []),
     };
   }
 
@@ -156,12 +146,4 @@ export class QualityRuleSnapshotTool {
       },
     };
   }
-}
-
-function read_record(value: unknown): JsonRecord {
-  return is_record(value) ? { ...value } : {};
-}
-
-function is_record(value: unknown): value is JsonRecord {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }

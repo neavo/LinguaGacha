@@ -1,7 +1,15 @@
+import {
+  type QualityRuleBlock,
+  type QualityRuleSlice,
+} from "../../shared/quality/quality-rule-state";
 import { build_project_file_records } from "./project-file-records";
 import type { JsonRecord, JsonValue } from "../../domain/json";
 import { ProjectDatabase } from "../database/database-operations";
-import { TRANSLATION_PROMPT } from "../../domain/prompt";
+import {
+  TRANSLATION_PROMPT,
+  create_empty_project_prompts,
+  type ProjectPrompts,
+} from "../../domain/prompt";
 import { QualityRule, type QualityRuleKind } from "../../domain/quality";
 import {
   collect_project_item_missing_public_fields,
@@ -215,45 +223,26 @@ export class ProjectDataReader {
   /**
    * 质量块按公开 rule type 输出，避免页面理解数据库物理命名
    */
-  public build_quality_block(project_path: string, meta: JsonRecord): JsonRecord {
-    return Object.fromEntries(
-      QualityRule.all().map((rule) => [
-        rule.kind,
-        this.build_quality_rule_slice(project_path, meta, rule.kind),
-      ]),
-    ) as JsonRecord;
-  }
-
-  /**
-   * 工程未加载时仍返回完整质量块形状，保持 query 默认切片可消费
-   */
-  public build_empty_quality_block(): JsonRecord {
-    return Object.fromEntries(
-      QualityRule.all().map((rule) => [
-        rule.kind,
-        { entries: [], enabled: false, mode: "off", revision: 0 },
-      ]),
-    ) as JsonRecord;
+  public build_quality_block(project_path: string, meta: JsonRecord): QualityRuleBlock {
+    return {
+      glossary: this.build_quality_rule_slice(project_path, meta, "glossary"),
+      pre_replacement: this.build_quality_rule_slice(project_path, meta, "pre_replacement"),
+      post_replacement: this.build_quality_rule_slice(project_path, meta, "post_replacement"),
+      text_preserve: this.build_quality_rule_slice(project_path, meta, "text_preserve"),
+    };
   }
 
   /**
    * 提示词块按公开顶层字段输出，任务快照和项目 query 共用同一 DTO
    */
-  public build_prompts_block(project_path: string, meta: JsonRecord): JsonRecord {
+  public build_prompts_block(project_path: string, meta: JsonRecord): ProjectPrompts {
     return {
       [TRANSLATION_PROMPT.store_key]: {
         revision: get_section_revision(meta, "prompts"),
         enabled: Boolean(meta[TRANSLATION_PROMPT.enabled_meta_key] ?? false),
-        text: this.get_rule_text(project_path, TRANSLATION_PROMPT.database_type),
+        text: this.database.get_rule_text(project_path, TRANSLATION_PROMPT.database_type),
       },
     };
-  }
-
-  /**
-   * 工程未加载时仍返回固定提示词形状，避免前端为未加载态写特殊解析分支
-   */
-  public build_empty_prompts_block(): JsonRecord {
-    return { [TRANSLATION_PROMPT.store_key]: { revision: 0, enabled: false, text: "" } };
   }
 
   /**
@@ -361,12 +350,12 @@ export class ProjectDataReader {
       return args.projectPath === "" ? {} : this.database.read_pdf_summaries(args.projectPath);
     if (args.section === "quality") {
       return args.projectPath === ""
-        ? this.build_empty_quality_block()
+        ? create_empty_quality_rule_block()
         : this.build_quality_block(args.projectPath, args.meta);
     }
     if (args.section === "prompts") {
       return args.projectPath === ""
-        ? this.build_empty_prompts_block()
+        ? create_empty_project_prompts()
         : this.build_prompts_block(args.projectPath, args.meta);
     }
 
@@ -376,14 +365,18 @@ export class ProjectDataReader {
   /**
    * 单个质量规则切片同时收口 entries、meta 与 revision，避免 UI 侧自行拼接
    */
-  private build_quality_rule_slice(
+  private build_quality_rule_slice<K extends QualityRuleKind>(
     project_path: string,
     meta: JsonRecord,
-    rule_type: QualityRuleKind,
-  ): JsonRecord {
+    rule_type: K,
+  ): QualityRuleSlice<K> {
     const rule = QualityRule.from_json(rule_type);
     return {
-      entries: this.get_rule_entries(project_path, rule) as unknown as JsonValue,
+      // 存储条目在读取边界按规则归一，缓存只接收合法记录。
+      entries: normalize_quality_rule_entries(
+        rule,
+        this.database.get_rules(project_path, rule.database_type),
+      ),
       enabled:
         rule.enabled_meta_key === null
           ? rule.default_enabled
@@ -434,19 +427,14 @@ export class ProjectDataReader {
     }
     return records;
   }
+}
 
-  /** 规则事实读取后立即按具体 kind 归一验证，坏项目不能进入 cache。 */
-  private get_rule_entries(project_path: string, rule: QualityRule): JsonRecord[] {
-    return normalize_quality_rule_entries(
-      rule,
-      this.database.get_rules(project_path, rule.database_type),
-    ) as JsonRecord[];
-  }
-
-  /**
-   * 提示词文本走规则文本 workflow，避免读取层知道 rules 表物理细节
-   */
-  private get_rule_text(project_path: string, rule_type: string): string {
-    return this.database.get_rule_text(project_path, rule_type);
-  }
+/** 空会话和空项目读取共用完整形状，每次创建独立条目数组。 */
+export function create_empty_quality_rule_block(): QualityRuleBlock {
+  return {
+    glossary: { enabled: false, mode: "off", entries: [], revision: 0 },
+    pre_replacement: { enabled: false, mode: "off", entries: [], revision: 0 },
+    post_replacement: { enabled: false, mode: "off", entries: [], revision: 0 },
+    text_preserve: { enabled: false, mode: "off", entries: [], revision: 0 },
+  };
 }

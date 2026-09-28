@@ -4,7 +4,10 @@ import { read_json_record } from "../../../domain/json";
 import { JsonTool } from "../../../shared/utils/json-tool";
 import { row_number, row_text } from "../migration-row";
 import { ZstdTool } from "../../database/zstd-tool";
-import type { MigrationDescriptor, ProjectDatabaseMigrationContext } from "../migration-types";
+import type {
+  DatabaseWritebackMigration,
+  ProjectDatabaseMigrationContext,
+} from "../migration-types";
 
 /**
  * 本文件只处理旧 .lg 中 TRANS 条目的持久 metadata 归一，不是运行期兼容层。
@@ -51,7 +54,7 @@ interface TransAssetRowReference extends TransItemReference {
   src: string; // 用于确认旧 item 没有被用户改写到其它行
 }
 
-export const trans_item_metadata_migration: MigrationDescriptor = {
+export const trans_item_metadata_migration: DatabaseWritebackMigration = {
   id: "trans-item-metadata",
   order: 400,
   /**

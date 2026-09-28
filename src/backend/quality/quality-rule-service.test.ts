@@ -1,3 +1,4 @@
+import { create_empty_quality_rule_block } from "../project/project-data-reader";
 import { NativeFs } from "../../native/native-fs";
 import { AppSettingService } from "../app/app-setting-service";
 import fs from "node:fs";
@@ -410,7 +411,7 @@ describe("QualityRuleService", () => {
     expect(service.query({ rule_type: "glossary" })).toMatchObject({
       qualityRule: {
         enabled: true,
-        entries: [{ entry_id: "00000", src: "HP", dst: "生命值" }],
+        entries: [{ entry_id: "00000", src: "HP", dst: "生命值", info: "", case_sensitive: false }],
       },
       sectionRevisions: { quality: 0 },
     });
@@ -531,10 +532,14 @@ describe("QualityRuleService", () => {
       readSectionRevisions: () => ({ quality: 0 }),
       quality: {
         readBlock: () => ({
+          ...create_empty_quality_rule_block(),
           glossary: {
             enabled: true,
+            mode: "off",
             revision: 0,
-            entries: [{ entry_id: "00000", src: "HP", dst: "生命值" }],
+            entries: [
+              { entry_id: "00000", src: "HP", dst: "生命值", info: "", case_sensitive: false },
+            ],
           },
         }),
       },

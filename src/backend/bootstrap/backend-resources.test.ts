@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ProjectDatabase } from "../database/database-operations";
 import { LogManager } from "../log/log-manager";
-import { migration_orchestrator } from "../migration/migration-orchestrator";
+import * as migrations from "../migration/startup-migrations";
 import { SystemProxyHttpClient } from "../network/system-proxy-http-client";
 import { BackendResources } from "./backend-resources";
 
@@ -46,7 +46,7 @@ describe("BackendResources", () => {
 
   it("启动迁移失败时阻止后续初始化并释放启动资源", async () => {
     const failure = new Error("startup migration failed");
-    vi.spyOn(migration_orchestrator, "run_startup_migrations").mockRejectedValueOnce(failure);
+    vi.spyOn(migrations, "run_startup_migrations").mockRejectedValueOnce(failure);
     const install = vi.spyOn(SystemProxyHttpClient.prototype, "install_as_global_fetch");
     const database_close = vi.spyOn(ProjectDatabase.prototype, "close");
     const log_shutdown = vi.spyOn(LogManager.prototype, "shutdown");

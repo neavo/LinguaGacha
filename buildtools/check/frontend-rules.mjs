@@ -4,14 +4,12 @@ import {
   find_pattern_errors,
   is_test_file,
   is_typescript_source,
-  resolve_relative_specifier,
   to_relative_path,
 } from "./core.mjs";
 
 const ALLOWED_GUI_CONTRACT_IMPORTS = new Set([
   "@gui/bridge-api",
   "@gui/bridge-types",
-  "@backend/api/api-base-url",
   "@gui/ipc-contract",
   "@gui/shell-contract",
 ]);
@@ -109,7 +107,7 @@ function create_frontend_page_ownership_rule() {
 
         for (const import_entry of context.read_imports(file_path)) {
           const target_page_owner = resolve_imported_page_owner(
-            context.project_root,
+            context,
             file_path,
             import_entry.specifier,
           );
@@ -190,11 +188,7 @@ function create_renderer_import_boundary_rule() {
       for (const file_path of context.files.filter(is_frontend_production_source)) {
         const relative_path = context.relative_path(file_path);
         for (const import_entry of context.read_imports(file_path)) {
-          const message = validate_renderer_import(
-            context.project_root,
-            file_path,
-            import_entry.specifier,
-          );
+          const message = validate_renderer_import(context, file_path, import_entry.specifier);
           if (message === null) {
             continue;
           }
@@ -408,7 +402,8 @@ function strip_comments_preserving_lines(content) {
 }
 
 /** 别名约束先于相对路径解析，避免包名提前返回绕过产品入口。 */
-function validate_renderer_import(project_root, file_path, specifier) {
+function validate_renderer_import(context, file_path, specifier) {
+  const { project_root } = context;
   if (specifier === "electron" || specifier.startsWith("electron/")) {
     return "renderer 不能直接导入 Electron，只能通过 window.desktopApp 接入宿主能力";
   }
@@ -416,13 +411,13 @@ function validate_renderer_import(project_root, file_path, specifier) {
     return "renderer 不能直接导入 Node 能力，只能通过 preload 暴露的窄桥接";
   }
   if (specifier.startsWith("@native/")) {
-    return "renderer 不再通过 @native 读取桌面契约；请使用 @gui/* 或 @backend/api/api-base-url 白名单";
+    return "renderer 不再通过 @native 读取桌面契约；请使用 @gui/* 宿主契约或 @shared/* 共享契约";
   }
   if (specifier.startsWith("@gui/") && !ALLOWED_GUI_CONTRACT_IMPORTS.has(specifier)) {
     return "renderer 只能通过 @gui/* 白名单读取桌面宿主契约";
   }
-  if (specifier.startsWith("@backend/") && specifier !== "@backend/api/api-base-url") {
-    return "renderer 只能通过 @backend/api/api-base-url 读取后端 API 地址契约";
+  if (specifier.startsWith("@backend/")) {
+    return "renderer 只能通过共享契约与后端通信";
   }
 
   if (
@@ -433,7 +428,8 @@ function validate_renderer_import(project_root, file_path, specifier) {
     return "业务 renderer 只能通过 widgets/app-button.tsx 使用产品按钮入口";
   }
 
-  const resolved_path = resolve_relative_specifier(file_path, specifier);
+  if (ALLOWED_GUI_CONTRACT_IMPORTS.has(specifier)) return null;
+  const resolved_path = context.resolve_import(file_path, specifier);
   if (resolved_path === null) {
     return null;
   }
@@ -459,18 +455,14 @@ function validate_renderer_import(project_root, file_path, specifier) {
   return null;
 }
 
-// 别名和相对导入必须落到同一 page owner 口径，避免换一种路径写法绕过边界。
-function resolve_imported_page_owner(project_root, file_path, specifier) {
-  const alias_prefix = "@frontend/pages/";
-  if (specifier.startsWith(alias_prefix)) {
-    return specifier.slice(alias_prefix.length).split("/")[0] ?? null;
-  }
-
-  const resolved_path = resolve_relative_specifier(file_path, specifier);
+/** 统一解析目标文件所属页面，别名与相对路径遵循同一所有权。 */
+function resolve_imported_page_owner(context, file_path, specifier) {
+  const { project_root } = context;
+  const resolved_path = context.resolve_import(file_path, specifier);
   return resolved_path === null ? null : resolve_page_owner(project_root, resolved_path);
 }
 
-// page owner 是 pages 下第一层目录名；目录外文件没有页面所有权。
+/** 页面所有者是 `pages` 下的第一层目录名。 */
 function resolve_page_owner(project_root, file_path) {
   const pages_root = path.join(project_root, "src/frontend/pages");
   if (!is_inside(file_path, pages_root)) {

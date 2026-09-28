@@ -1,4 +1,4 @@
-import { existsSync, readdirSync, statSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -36,21 +36,27 @@ function collect_files(start_paths) {
 }
 
 /** 为规则提供文件范围与源码读取能力，测试和 CLI 共用这一构造入口。 */
-export function create_check_context({ project_root, files, source_reader }) {
+export function create_check_context({ project_root, files, source_reader, paths = {} }) {
   return {
     files,
     project_root,
     ...source_reader,
+    /** 扩展名只改变导入写法，边界判断使用同一模块身份。 */
+    resolve_import(file_path, specifier) {
+      const target = resolve_import_specifier(project_root, paths, file_path, specifier);
+      return target === null ? null : target.replace(/\.(?:ts|tsx)$/u, "");
+    },
     relative_path: (file_path) => to_relative_path(project_root, file_path),
   };
 }
 
 /** 执行一组规则，源码快照由 CLI 统一注入。 */
-function run_boundary_rules({ project_root, roots, rules }, source_reader) {
+function run_boundary_rules({ project_root, roots, rules }, source_reader, paths) {
   const context = create_check_context({
     project_root,
     files: collect_files(roots),
     source_reader,
+    paths,
   });
   return rules.flatMap((rule) => {
     return rule.check(context).map((error) => ({
@@ -82,11 +88,14 @@ function format_boundary_errors(title, errors) {
  */
 export function run_check_cli(suites) {
   const source_reader = create_source_reader();
+  const {
+    compilerOptions: { paths },
+  } = JSON.parse(readFileSync(path.join(suites[0].project_root, "tsconfig.base.json"), "utf8"));
   const messages = [];
   let has_errors = false;
 
   for (const suite of suites) {
-    const errors = run_boundary_rules(suite, source_reader);
+    const errors = run_boundary_rules(suite, source_reader, paths);
     messages.push(format_boundary_errors(suite.title, errors));
     has_errors = has_errors || errors.length > 0;
   }
@@ -100,14 +109,24 @@ export function run_check_cli(suites) {
   console.log(output);
 }
 
-/**
- * 相对导入先解析到磁盘路径，非相对包名保持原值。
- */
-export function resolve_relative_specifier(file_path, specifier) {
-  if (!specifier.startsWith(".")) {
-    return null;
+/** 相对路径和 TypeScript 别名共用解析；包名交给各边界规则判断。 */
+function resolve_import_specifier(project_root, paths, file_path, specifier) {
+  if (specifier.startsWith(".")) return path.resolve(path.dirname(file_path), specifier);
+  const exact = paths[specifier];
+  if (exact) return path.resolve(project_root, exact[0]);
+  const patterns = Object.keys(paths)
+    .filter((key) => key.endsWith("*"))
+    .sort((a, b) => b.length - a.length);
+  for (const pattern of patterns) {
+    const prefix = pattern.slice(0, -1);
+    if (specifier.startsWith(prefix)) {
+      return path.resolve(
+        project_root,
+        paths[pattern][0].replace("*", specifier.slice(prefix.length)),
+      );
+    }
   }
-  return path.resolve(path.dirname(file_path), specifier);
+  return null;
 }
 
 /**
@@ -162,4 +181,18 @@ function collect_files_into(current_path, files) {
     }
     collect_files_into(path.join(current_path, entry), files);
   }
+}
+
+/** 将完整路径、省略扩展名和目录入口关联到同一源码。 */
+export function index_source_module_paths(files) {
+  const result = new Map();
+  for (const file_path of files.filter(is_typescript_source)) {
+    const without_extension = file_path.replace(/\.(?:ts|tsx)$/, "");
+    result.set(without_extension, file_path);
+    result.set(file_path, file_path);
+    if (path.basename(without_extension) === "index") {
+      result.set(path.dirname(without_extension), file_path);
+    }
+  }
+  return result;
 }

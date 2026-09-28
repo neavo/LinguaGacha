@@ -1,3 +1,6 @@
+import { create_empty_quality_rule_block } from "../../project/project-data-reader";
+import { normalize_quality_rule_entries } from "../../../shared/quality/quality-rule-entry";
+import { QualityRule } from "../../../domain/quality";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -914,9 +917,22 @@ function create_fixture(temp_dir: string, native_fs?: NativeFs) {
   };
   const items = [create_item(1), create_item(2)];
   const item_by_id = new Map(items.map((item) => [item.item_id, item]));
-  const quality = Object.fromEntries(
-    QUALITY_RULE_KINDS.map((kind) => [kind, { entries: [create_quality_entry(kind)] }]),
-  ) as JsonRecord;
+  const quality = create_empty_quality_rule_block();
+  quality.glossary.entries = normalize_quality_rule_entries(QualityRule.from_json("glossary"), [
+    create_quality_entry("glossary"),
+  ]);
+  quality.pre_replacement.entries = normalize_quality_rule_entries(
+    QualityRule.from_json("pre_replacement"),
+    [create_quality_entry("pre_replacement")],
+  );
+  quality.post_replacement.entries = normalize_quality_rule_entries(
+    QualityRule.from_json("post_replacement"),
+    [create_quality_entry("post_replacement")],
+  );
+  quality.text_preserve.entries = normalize_quality_rule_entries(
+    QualityRule.from_json("text_preserve"),
+    [create_quality_entry("text_preserve")],
+  );
   const cache: CacheReadPort = {
     items: {
       readItems: () => items,
@@ -928,7 +944,7 @@ function create_fixture(temp_dir: string, native_fs?: NativeFs) {
     quality: { readBlock: () => quality },
     prompts: {
       readBlock: () => ({
-        translation: { enabled: true, text: "翻译正文" },
+        translation: { enabled: true, text: "翻译正文", revision: 1 },
       }),
     },
 
