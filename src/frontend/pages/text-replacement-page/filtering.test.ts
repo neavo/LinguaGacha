@@ -9,7 +9,6 @@ describe("text replacement filtering", () => {
         { entry_id: "apple", src: "A", dst: "apple", regex: false, case_sensitive: false },
         { entry_id: "banana", src: "B", dst: "banana", regex: true, case_sensitive: true },
       ],
-      entry_ids: ["apple", "banana"],
       filter_state: { keyword: "banana", scope: "dst", is_regex: false },
     });
 

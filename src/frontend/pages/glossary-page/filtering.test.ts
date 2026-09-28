@@ -16,9 +16,8 @@ describe("glossary filtering", () => {
         { entry_id: "apple-id", src: "apple", dst: "苹果", info: "fruit", case_sensitive: false },
         { entry_id: "pear-id", src: "pear", dst: "梨", info: "food", case_sensitive: true },
       ],
-      entry_ids: ["apple-id", "pear-id"],
       filter_state: { keyword: "fruit", scope: "info", is_regex: false },
-      sort_state: { field: null, direction: null },
+      sort_state: null,
       hit_sort_available: false,
       hit_state,
     });
@@ -34,9 +33,8 @@ describe("glossary filtering", () => {
         { entry_id: "a", src: "A", dst: "", info: "", case_sensitive: false },
         { entry_id: "c", src: "C", dst: "", info: "", case_sensitive: false },
       ],
-      entry_ids: ["b", "a", "c"],
       filter_state: { keyword: "", scope: "all", is_regex: false },
-      sort_state: { field: "rule", direction: "ascending" },
+      sort_state: { column_id: "rule", direction: "ascending" },
       hit_sort_available: false,
       hit_state,
     });

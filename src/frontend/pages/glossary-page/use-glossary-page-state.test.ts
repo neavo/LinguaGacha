@@ -27,6 +27,7 @@ const {
   };
 });
 
+/** 构造测试自有术语，固定工程初始事实。 */
 function create_default_glossary_entries(): GlossaryEntry[] {
   return [
     {
@@ -209,6 +210,7 @@ let runtime_snapshot: { revision: number; owner: "batch_translation" | "agent" |
 let project_change_seq = 0;
 let project_change_sections: Array<"items" | "quality"> = ["quality"];
 
+/** 通知测试工程订阅者消费最新快照。 */
 function notify_project_store_listeners(): void {
   project_change_seq += 1;
   for (const listener of project_store_listeners) {
@@ -216,6 +218,7 @@ function notify_project_store_listeners(): void {
   }
 }
 
+/** 按测试场景准备统计缓存和修订状态。 */
 function create_statistics_cache(
   args: Partial<QualityRuleStatisticsCacheSnapshot>,
 ): QualityRuleStatisticsCacheSnapshot {
@@ -521,6 +524,7 @@ vi.mock("@frontend/app/locale/locale-context", () => {
   };
 });
 
+/** 通过公开 Hook 输出观察页面状态与操作结果。 */
 function Probe(props: {
   render_version: number;
   on_ready: (state: ReturnType<typeof useGlossaryPageState>) => void;
@@ -580,6 +584,7 @@ describe("useGlossaryPageState", () => {
     vi.useRealTimers();
   });
 
+  /** 挂载隔离的页面状态并等待首次查询完成。 */
   async function mount_probe(): Promise<void> {
     container = document.createElement("div");
     document.body.append(container);
@@ -610,6 +615,7 @@ describe("useGlossaryPageState", () => {
     });
   }
 
+  /** 推进虚拟时钟，等待筛选防抖完成。 */
   async function flush_filter_debounce(): Promise<void> {
     await act(async () => {
       vi.advanceTimersByTime(INPUT_QUERY_DEBOUNCE_MS);
@@ -770,13 +776,13 @@ describe("useGlossaryPageState", () => {
     await mount_probe();
 
     await act(async () => {
-      latest_state?.apply_table_sort_state({
+      latest_state?.table.apply_table_sort_state({
         column_id: "hit",
         direction: "descending",
       });
     });
-    expect(latest_state?.sort_state.field).toBe("hit");
-    expect(latest_state?.filtered_entries.map((entry) => entry.entry_id)).toEqual([
+    expect(latest_state?.table.sort_state?.column_id).toBe("hit");
+    expect(latest_state?.table.filtered_entries.map((entry) => entry.entry_id)).toEqual([
       "梨::2",
       "苹果::0",
       "香蕉::1",
@@ -806,17 +812,17 @@ describe("useGlossaryPageState", () => {
       }),
     );
     await act(async () => {
-      latest_state?.apply_table_selection({
+      latest_state?.table.apply_table_selection({
         selected_row_ids: ["梨::2"],
         active_row_id: "梨::2",
         anchor_row_id: "梨::2",
       });
     });
     await act(async () => {
-      await latest_state?.delete_selected_entries();
+      await latest_state?.editing.delete_selected_entries();
     });
     await act(async () => {
-      await latest_state?.confirm_pending_action();
+      await latest_state?.editing.confirm_pending_action();
     });
 
     current_statistics_cache = create_statistics_cache({
@@ -832,8 +838,8 @@ describe("useGlossaryPageState", () => {
 
     expect(latest_state?.hit_ready).toBe(false);
     expect(latest_state?.hit_sort_available).toBe(true);
-    expect(latest_state?.sort_state.field).toBe("hit");
-    expect(latest_state?.filtered_entries.map((entry) => entry.entry_id)).toEqual([
+    expect(latest_state?.table.sort_state?.column_id).toBe("hit");
+    expect(latest_state?.table.filtered_entries.map((entry) => entry.entry_id)).toEqual([
       "苹果::0",
       "香蕉::1",
     ]);
@@ -866,7 +872,7 @@ describe("useGlossaryPageState", () => {
     await mount_probe();
 
     await act(async () => {
-      latest_state?.apply_table_sort_state({
+      latest_state?.table.apply_table_sort_state({
         column_id: "hit",
         direction: "descending",
       });
@@ -874,7 +880,7 @@ describe("useGlossaryPageState", () => {
 
     expect(latest_state?.hit_ready).toBe(false);
     expect(latest_state?.hit_sort_available).toBe(false);
-    expect(latest_state?.filtered_entries.map((entry) => entry.entry_id)).toEqual([
+    expect(latest_state?.table.filtered_entries.map((entry) => entry.entry_id)).toEqual([
       "苹果::0",
       "香蕉::1",
     ]);
@@ -885,12 +891,12 @@ describe("useGlossaryPageState", () => {
     api_fetch_mock.mockReturnValueOnce(new Promise(() => {}));
 
     await act(async () => {
-      latest_state?.open_create_dialog();
+      latest_state?.editing.open_create_dialog();
     });
-    expect(latest_state?.dialog_state.open).toBe(true);
+    expect(latest_state?.editing.dialog_state.open).toBe(true);
 
     await act(async () => {
-      latest_state?.update_dialog_draft({
+      latest_state?.editing.update_dialog_draft({
         src: "香蕉",
         dst: "Banana",
         info: "水果",
@@ -898,11 +904,11 @@ describe("useGlossaryPageState", () => {
     });
 
     await act(async () => {
-      void latest_state?.save_dialog_entry();
+      void latest_state?.editing.save_dialog_entry();
       await Promise.resolve();
     });
 
-    expect(latest_state?.dialog_state.open).toBe(false);
+    expect(latest_state?.editing.dialog_state.open).toBe(false);
     expect(api_fetch_mock).toHaveBeenCalledWith("/api/quality/rules/update", {
       rule_type: "glossary",
       expected_section_revisions: { quality: 1 },
@@ -939,26 +945,26 @@ describe("useGlossaryPageState", () => {
     );
 
     await act(async () => {
-      latest_state?.open_create_dialog();
+      latest_state?.editing.open_create_dialog();
     });
     await act(async () => {
-      latest_state?.update_dialog_draft({
+      latest_state?.editing.update_dialog_draft({
         src: "苹果",
         dst: "Malus",
         info: "新说明",
       });
     });
     await act(async () => {
-      await latest_state?.save_dialog_entry();
+      await latest_state?.editing.save_dialog_entry();
     });
 
-    expect(latest_state?.dialog_state.open).toBe(false);
-    expect(latest_state?.import_confirm_state.open).toBe(true);
-    expect(latest_state?.import_confirm_state.duplicate_count).toBe(1);
+    expect(latest_state?.editing.dialog_state.open).toBe(false);
+    expect(latest_state?.editing.import_confirm_state.open).toBe(true);
+    expect(latest_state?.editing.import_confirm_state.duplicate_count).toBe(1);
     expect(api_fetch_mock).not.toHaveBeenCalled();
 
     await act(async () => {
-      await latest_state?.import_duplicate_overwrite();
+      await latest_state?.editing.import_duplicate_overwrite();
     });
 
     expect(api_fetch_mock).toHaveBeenLastCalledWith("/api/quality/rules/update", {
@@ -974,34 +980,7 @@ describe("useGlossaryPageState", () => {
         },
       ],
     });
-    expect(latest_state?.import_confirm_state.open).toBe(false);
-  });
-
-  it("新增重复术语选择跳过时不会保存未变化快照", async () => {
-    await mount_probe();
-
-    await act(async () => {
-      latest_state?.open_create_dialog();
-    });
-    await act(async () => {
-      latest_state?.update_dialog_draft({
-        src: "苹果",
-        dst: "Malus",
-        info: "新说明",
-      });
-    });
-    await act(async () => {
-      await latest_state?.save_dialog_entry();
-    });
-
-    expect(latest_state?.import_confirm_state.open).toBe(true);
-
-    await act(async () => {
-      await latest_state?.import_duplicate_skip();
-    });
-
-    expect(api_fetch_mock).not.toHaveBeenCalled();
-    expect(latest_state?.import_confirm_state.open).toBe(false);
+    expect(latest_state?.editing.import_confirm_state.open).toBe(false);
   });
 
   it("编辑术语撞到已有原文时先确认，覆盖后删除被合并条目", async () => {
@@ -1040,25 +1019,25 @@ describe("useGlossaryPageState", () => {
     );
 
     await act(async () => {
-      latest_state?.open_edit_dialog("qr:banana");
+      latest_state?.editing.open_edit_dialog("qr:banana");
     });
     await act(async () => {
-      latest_state?.update_dialog_draft({
+      latest_state?.editing.update_dialog_draft({
         src: "苹果",
         dst: "Malus",
         info: "新说明",
       });
     });
     await act(async () => {
-      await latest_state?.save_dialog_entry();
+      await latest_state?.editing.save_dialog_entry();
     });
 
-    expect(latest_state?.dialog_state.open).toBe(false);
-    expect(latest_state?.import_confirm_state.open).toBe(true);
+    expect(latest_state?.editing.dialog_state.open).toBe(false);
+    expect(latest_state?.editing.import_confirm_state.open).toBe(true);
     expect(api_fetch_mock).not.toHaveBeenCalled();
 
     await act(async () => {
-      await latest_state?.import_duplicate_overwrite();
+      await latest_state?.editing.import_duplicate_overwrite();
     });
 
     expect(api_fetch_mock).toHaveBeenLastCalledWith("/api/quality/rules/update", {
@@ -1101,10 +1080,10 @@ describe("useGlossaryPageState", () => {
     );
 
     await act(async () => {
-      latest_state?.open_create_dialog();
+      latest_state?.editing.open_create_dialog();
     });
     await act(async () => {
-      latest_state?.update_dialog_draft({
+      latest_state?.editing.update_dialog_draft({
         src: "香蕉",
         dst: "Banana",
         info: "水果",
@@ -1113,21 +1092,21 @@ describe("useGlossaryPageState", () => {
 
     let save_promise: Promise<void> = Promise.resolve();
     await act(async () => {
-      save_promise = latest_state?.save_dialog_entry() ?? Promise.resolve();
+      save_promise = latest_state?.editing.save_dialog_entry() ?? Promise.resolve();
       await Promise.resolve();
     });
     await act(async () => {
       apply_quality_write_result(write_result);
     });
 
-    expect(latest_state?.filtered_entries.map((entry) => entry.entry.src)).toEqual(["苹果"]);
+    expect(latest_state?.table.filtered_entries.map((entry) => entry.entry.src)).toEqual(["苹果"]);
 
     await act(async () => {
       resolve_save(write_result);
       await save_promise;
     });
 
-    expect(latest_state?.filtered_entries.map((entry) => entry.entry.src)).toEqual([
+    expect(latest_state?.table.filtered_entries.map((entry) => entry.entry.src)).toEqual([
       "苹果",
       "香蕉",
     ]);
@@ -1159,10 +1138,10 @@ describe("useGlossaryPageState", () => {
     );
 
     await act(async () => {
-      latest_state?.open_create_dialog();
+      latest_state?.editing.open_create_dialog();
     });
     await act(async () => {
-      latest_state?.update_dialog_draft({
+      latest_state?.editing.update_dialog_draft({
         src: "香蕉",
         dst: "Banana",
         info: "水果",
@@ -1171,7 +1150,7 @@ describe("useGlossaryPageState", () => {
 
     let save_promise: Promise<void> = Promise.resolve();
     await act(async () => {
-      save_promise = latest_state?.save_dialog_entry() ?? Promise.resolve();
+      save_promise = latest_state?.editing.save_dialog_entry() ?? Promise.resolve();
       await Promise.resolve();
     });
     await act(async () => {
@@ -1193,7 +1172,9 @@ describe("useGlossaryPageState", () => {
     });
     await rerender_probe();
 
-    expect(latest_state?.filtered_entries.map((entry) => entry.entry.src)).not.toContain("香蕉");
+    expect(latest_state?.table.filtered_entries.map((entry) => entry.entry.src)).not.toContain(
+      "香蕉",
+    );
 
     await act(async () => {
       resolve_save(stale_project_write_result);
@@ -1224,8 +1205,10 @@ describe("useGlossaryPageState", () => {
     });
     await rerender_probe();
 
-    expect(latest_state?.filtered_entries.map((entry) => entry.entry.src)).toContain("橘子");
-    expect(latest_state?.filtered_entries.map((entry) => entry.entry.src)).not.toContain("香蕉");
+    expect(latest_state?.table.filtered_entries.map((entry) => entry.entry.src)).toContain("橘子");
+    expect(latest_state?.table.filtered_entries.map((entry) => entry.entry.src)).not.toContain(
+      "香蕉",
+    );
   });
 
   it("保存仅修改翻译或说明时保留旧统计 ready 与 badge", async () => {
@@ -1251,18 +1234,18 @@ describe("useGlossaryPageState", () => {
     expect(latest_state?.hit_badge_by_entry_id["苹果::0"]?.hits).toBe(1);
 
     await act(async () => {
-      latest_state?.open_edit_dialog("苹果::0");
+      latest_state?.editing.open_edit_dialog("苹果::0");
     });
 
     await act(async () => {
-      latest_state?.update_dialog_draft({
+      latest_state?.editing.update_dialog_draft({
         dst: "Malus",
         info: "新的说明",
       });
     });
 
     await act(async () => {
-      await latest_state?.save_dialog_entry();
+      await latest_state?.editing.save_dialog_entry();
     });
 
     expect(api_fetch_mock).toHaveBeenCalledWith("/api/quality/rules/update", {
@@ -1328,15 +1311,15 @@ describe("useGlossaryPageState", () => {
       );
 
     await act(async () => {
-      await latest_state?.import_entries_from_path("E:/demo/glossary.json");
+      await latest_state?.editing.import_entries_from_path("E:/demo/glossary.json");
     });
 
-    expect(latest_state?.import_confirm_state.open).toBe(true);
-    expect(latest_state?.import_confirm_state.duplicate_count).toBe(1);
+    expect(latest_state?.editing.import_confirm_state.open).toBe(true);
+    expect(latest_state?.editing.import_confirm_state.duplicate_count).toBe(1);
     expect(api_fetch_mock).toHaveBeenCalledTimes(1);
 
     await act(async () => {
-      await latest_state?.import_duplicate_skip();
+      await latest_state?.editing.import_duplicate_skip();
     });
 
     expect(api_fetch_mock).toHaveBeenLastCalledWith("/api/quality/rules/update", {
@@ -1359,7 +1342,7 @@ describe("useGlossaryPageState", () => {
         },
       ],
     });
-    expect(latest_state?.import_confirm_state.open).toBe(false);
+    expect(latest_state?.editing.import_confirm_state.open).toBe(false);
   });
 
   it("导入保存失败时恢复原来的冻结结果成员", async () => {
@@ -1367,11 +1350,11 @@ describe("useGlossaryPageState", () => {
     await mount_probe();
 
     await act(async () => {
-      latest_state?.update_filter_keyword("苹果");
+      latest_state?.table.update_filter_keyword("苹果");
     });
-    expect(latest_state?.filter_state.keyword).toBe("苹果");
+    expect(latest_state?.table.filter_state.keyword).toBe("苹果");
     await flush_filter_debounce();
-    expect(latest_state?.filtered_entries.map((entry) => entry.entry.src)).toEqual(["苹果"]);
+    expect(latest_state?.table.filtered_entries.map((entry) => entry.entry.src)).toEqual(["苹果"]);
 
     run_state.quality.glossary.entries = [
       ...create_default_glossary_entries(),
@@ -1386,7 +1369,7 @@ describe("useGlossaryPageState", () => {
     run_state.quality.glossary.revision = 2;
     run_state.revisions.sections.quality = 2;
     await rerender_probe();
-    expect(latest_state?.filtered_entries.map((entry) => entry.entry.src)).toEqual(["苹果"]);
+    expect(latest_state?.table.filtered_entries.map((entry) => entry.entry.src)).toEqual(["苹果"]);
 
     api_fetch_mock
       .mockResolvedValueOnce({
@@ -1403,10 +1386,10 @@ describe("useGlossaryPageState", () => {
       .mockRejectedValueOnce(new Error("保存失败"));
 
     await act(async () => {
-      await latest_state?.import_entries_from_path("E:/demo/glossary.json");
+      await latest_state?.editing.import_entries_from_path("E:/demo/glossary.json");
     });
 
-    expect(latest_state?.filtered_entries.map((entry) => entry.entry.src)).toEqual(["苹果"]);
+    expect(latest_state?.table.filtered_entries.map((entry) => entry.entry.src)).toEqual(["苹果"]);
   });
 
   it("导入重复术语确认时基于最新术语表快照重算写入内容", async () => {
@@ -1464,10 +1447,10 @@ describe("useGlossaryPageState", () => {
       );
 
     await act(async () => {
-      await latest_state?.import_entries_from_path("E:/demo/glossary.json");
+      await latest_state?.editing.import_entries_from_path("E:/demo/glossary.json");
     });
 
-    expect(latest_state?.import_confirm_state.open).toBe(true);
+    expect(latest_state?.editing.import_confirm_state.open).toBe(true);
 
     run_state.quality.glossary.entries = [
       {
@@ -1490,7 +1473,7 @@ describe("useGlossaryPageState", () => {
     await rerender_probe();
 
     await act(async () => {
-      await latest_state?.import_duplicate_skip();
+      await latest_state?.editing.import_duplicate_skip();
     });
 
     expect(api_fetch_mock).toHaveBeenLastCalledWith("/api/quality/rules/update", {
@@ -1520,7 +1503,7 @@ describe("useGlossaryPageState", () => {
         },
       ],
     });
-    expect(latest_state?.import_confirm_state.open).toBe(false);
+    expect(latest_state?.editing.import_confirm_state.open).toBe(false);
   });
 
   it("导入遇到重复术语时覆盖可用新规则改写旧值", async () => {
@@ -1554,10 +1537,10 @@ describe("useGlossaryPageState", () => {
       );
 
     await act(async () => {
-      await latest_state?.import_entries_from_path("E:/demo/glossary.json");
+      await latest_state?.editing.import_entries_from_path("E:/demo/glossary.json");
     });
     await act(async () => {
-      await latest_state?.import_duplicate_overwrite();
+      await latest_state?.editing.import_duplicate_overwrite();
     });
 
     expect(api_fetch_mock).toHaveBeenLastCalledWith("/api/quality/rules/update", {
@@ -1589,13 +1572,13 @@ describe("useGlossaryPageState", () => {
     });
 
     await act(async () => {
-      await latest_state?.import_entries_from_path("E:/demo/glossary.json");
+      await latest_state?.editing.import_entries_from_path("E:/demo/glossary.json");
     });
     await act(async () => {
-      latest_state?.close_import_duplicate_confirm();
+      latest_state?.editing.close_import_duplicate_confirm();
     });
 
-    expect(latest_state?.import_confirm_state.open).toBe(false);
+    expect(latest_state?.editing.import_confirm_state.open).toBe(false);
     expect(api_fetch_mock).toHaveBeenCalledTimes(1);
   });
 
@@ -1620,24 +1603,24 @@ describe("useGlossaryPageState", () => {
     await mount_probe();
 
     act(() => {
-      latest_state?.update_filter_keyword("苹果");
+      latest_state?.table.update_filter_keyword("苹果");
     });
-    expect(latest_state?.filter_state.keyword).toBe("苹果");
-    expect(latest_state?.filtered_entries.map((entry) => entry.entry.src)).toEqual([
+    expect(latest_state?.table.filter_state.keyword).toBe("苹果");
+    expect(latest_state?.table.filtered_entries.map((entry) => entry.entry.src)).toEqual([
       "苹果",
       "香蕉",
     ]);
     await act(async () => {
       vi.advanceTimersByTime(INPUT_QUERY_DEBOUNCE_MS - 1);
     });
-    expect(latest_state?.filtered_entries.map((entry) => entry.entry.src)).toEqual([
+    expect(latest_state?.table.filtered_entries.map((entry) => entry.entry.src)).toEqual([
       "苹果",
       "香蕉",
     ]);
     await act(async () => {
       vi.advanceTimersByTime(1);
     });
-    expect(latest_state?.filtered_entries.map((entry) => entry.entry.src)).toEqual(["苹果"]);
+    expect(latest_state?.table.filtered_entries.map((entry) => entry.entry.src)).toEqual(["苹果"]);
 
     run_state.quality = {
       ...run_state.quality,
@@ -1664,8 +1647,8 @@ describe("useGlossaryPageState", () => {
     };
     await rerender_probe();
 
-    expect(latest_state?.filter_state.keyword).toBe("苹果");
-    expect(latest_state?.filtered_entries).toEqual([]);
+    expect(latest_state?.table.filter_state.keyword).toBe("苹果");
+    expect(latest_state?.table.filtered_entries).toEqual([]);
   });
 
   it("Agent 运行中锁定术语表写入，筛选、查看与另存预设仍可用", async () => {
@@ -1673,39 +1656,39 @@ describe("useGlossaryPageState", () => {
     await mount_probe();
 
     expect(latest_state?.readonly).toBe(true);
-    expect(latest_state?.reorder_disabled).toBe(true);
+    expect(latest_state?.table.reorder_disabled).toBe(true);
 
     act(() => {
-      latest_state?.update_filter_keyword("苹果");
-      latest_state?.open_create_dialog();
+      latest_state?.table.update_filter_keyword("苹果");
+      latest_state?.editing.open_create_dialog();
     });
 
-    expect(latest_state?.filter_state.keyword).toBe("苹果");
-    expect(latest_state?.dialog_state.open).toBe(false);
+    expect(latest_state?.table.filter_state.keyword).toBe("苹果");
+    expect(latest_state?.editing.dialog_state.open).toBe(false);
 
     act(() => {
-      latest_state?.open_edit_dialog("苹果::0");
+      latest_state?.editing.open_edit_dialog("苹果::0");
     });
-    expect(latest_state?.dialog_state.open).toBe(true);
-    expect(latest_state?.dialog_state.mode).toBe("edit");
+    expect(latest_state?.editing.dialog_state.open).toBe(true);
+    expect(latest_state?.editing.dialog_state.mode).toBe("edit");
 
     await act(async () => {
-      latest_state?.update_dialog_draft({ dst: "Apple readonly" });
-      await latest_state?.save_dialog_entry();
+      latest_state?.editing.update_dialog_draft({ dst: "Apple readonly" });
+      await latest_state?.editing.save_dialog_entry();
     });
 
-    expect(latest_state?.dialog_state.open).toBe(true);
+    expect(latest_state?.editing.dialog_state.open).toBe(true);
 
     await act(async () => {
-      await latest_state?.import_entries_from_path("E:/demo/glossary.json");
+      await latest_state?.editing.import_entries_from_path("E:/demo/glossary.json");
     });
 
     expect(api_fetch_mock).not.toHaveBeenCalled();
     act(() => {
-      latest_state?.request_save_preset();
+      latest_state?.presets.request_save_preset();
     });
-    expect(latest_state?.preset_input_state.open).toBe(true);
-    expect(latest_state?.preset_input_state.mode).toBe("save");
+    expect(latest_state?.presets.preset_input_state.open).toBe(true);
+    expect(latest_state?.presets.preset_input_state.mode).toBe("save");
   });
 
   it("重新进入术语表页时保留搜索排序和选中位置", async () => {
@@ -1728,12 +1711,12 @@ describe("useGlossaryPageState", () => {
     await mount_probe();
 
     await act(async () => {
-      latest_state?.update_filter_keyword("苹果");
-      latest_state?.apply_table_sort_state({
+      latest_state?.table.update_filter_keyword("苹果");
+      latest_state?.table.apply_table_sort_state({
         column_id: "dst",
         direction: "descending",
       });
-      latest_state?.apply_table_selection({
+      latest_state?.table.apply_table_selection({
         selected_row_ids: ["苹果::0"],
         active_row_id: "苹果::0",
         anchor_row_id: "苹果::0",
@@ -1749,13 +1732,13 @@ describe("useGlossaryPageState", () => {
 
     await mount_probe();
 
-    expect(latest_state?.filter_state.keyword).toBe("苹果");
-    expect(latest_state?.sort_state).toEqual({
-      field: "dst",
+    expect(latest_state?.table.filter_state.keyword).toBe("苹果");
+    expect(latest_state?.table.sort_state).toEqual({
+      column_id: "dst",
       direction: "descending",
     });
-    expect(latest_state?.selected_entry_ids).toEqual(["苹果::0"]);
-    expect(latest_state?.active_entry_id).toBe("苹果::0");
-    expect(latest_state?.restore_scroll_entry_id).toBe("苹果::0");
+    expect(latest_state?.table.selected_entry_ids).toEqual(["苹果::0"]);
+    expect(latest_state?.table.active_entry_id).toBe("苹果::0");
+    expect(latest_state?.table.restore_scroll_entry_id).toBe("苹果::0");
   });
 });

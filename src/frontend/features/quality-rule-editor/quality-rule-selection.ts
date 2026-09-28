@@ -65,14 +65,11 @@ export function resolve_quality_rule_boolean_menu_state<Entry, Id extends string
 }
 
 /** 按表格已经裁决的最终身份顺序投影规则条目。 */
-export function order_quality_rule_entries_by_id<Entry>(
+export function order_quality_rule_entries_by_id<Entry extends { entry_id: string }>(
   entries: Entry[],
-  current_entry_ids: readonly string[],
   ordered_entry_ids: readonly string[],
 ): Entry[] {
-  const entry_by_id = new Map(
-    current_entry_ids.map((entry_id, index) => [entry_id, entries[index]]),
-  );
+  const entry_by_id = new Map(entries.map((entry) => [entry.entry_id, entry]));
 
   return ordered_entry_ids.map((entry_id) => entry_by_id.get(entry_id)!);
 }

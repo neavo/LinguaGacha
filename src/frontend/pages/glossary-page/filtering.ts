@@ -1,9 +1,7 @@
 import type {
   GlossaryEntry,
-  GlossaryEntryId,
   GlossaryFilterState,
   GlossarySortDirection,
-  GlossarySortField,
   GlossarySortState,
   GlossaryHitState,
   GlossaryVisibleEntry,
@@ -15,7 +13,6 @@ import {
 
 type BuildGlossaryFilterResultOptions = {
   entries: GlossaryEntry[];
-  entry_ids: GlossaryEntryId[];
   filter_state: GlossaryFilterState;
   sort_state: GlossarySortState;
   hit_sort_available: boolean;
@@ -27,6 +24,7 @@ type BuildGlossaryFilterResult = {
   invalid_regex_message: string | null;
 };
 
+/** 把页面选定字段交给共享关键词匹配器。 */
 function build_keyword_matcher(filter_state: GlossaryFilterState): {
   invalid_regex_message: string | null;
   matches: (entry: GlossaryEntry) => boolean;
@@ -42,10 +40,11 @@ function build_keyword_matcher(filter_state: GlossaryFilterState): {
   });
 }
 
+/** 按当前列比较术语字段或命中统计。 */
 function resolve_glossary_sort_comparison(
   left_entry: GlossaryVisibleEntry,
   right_entry: GlossaryVisibleEntry,
-  field: GlossarySortField,
+  field: string,
   direction: GlossarySortDirection,
   hit_state: GlossaryHitState,
 ): number {
@@ -68,17 +67,18 @@ function resolve_glossary_sort_comparison(
   return direction === "ascending" ? left_value - right_value : right_value - left_value;
 }
 
+/** 排序展示副本，等值条目沿用项目原顺序。 */
 function apply_glossary_sort(
   visible_entries: GlossaryVisibleEntry[],
   sort_state: GlossarySortState,
   hit_sort_available: boolean,
   hit_state: GlossaryHitState,
 ): GlossaryVisibleEntry[] {
-  if (sort_state.field === null || sort_state.direction === null) {
+  if (sort_state === null) {
     return visible_entries;
   }
 
-  if (sort_state.field === "hit" && !hit_sort_available) {
+  if (sort_state.column_id === "hit" && !hit_sort_available) {
     return visible_entries;
   }
 
@@ -87,7 +87,7 @@ function apply_glossary_sort(
     const comparison_result = resolve_glossary_sort_comparison(
       left_entry,
       right_entry,
-      sort_state.field,
+      sort_state.column_id,
       sort_state.direction,
       hit_state,
     );
@@ -101,7 +101,7 @@ function apply_glossary_sort(
 }
 
 /**
- * 将术语条目与同索引 ID 组合为只读展示结果；无对应 ID 的脏快照不会进入表格。
+ * 按条目自身身份构建筛选结果，并保留原位置供稳定排序使用。
  */
 export function build_glossary_filter_result(
   options: BuildGlossaryFilterResultOptions,
@@ -115,10 +115,7 @@ export function build_glossary_filter_result(
   }
 
   const visible_entries = options.entries.flatMap((entry, source_index) => {
-    const entry_id = options.entry_ids[source_index];
-    if (entry_id === undefined) {
-      return [];
-    }
+    const entry_id = entry.entry_id;
 
     return keyword_matcher.matches(entry) ? [{ entry, entry_id, source_index }] : [];
   });

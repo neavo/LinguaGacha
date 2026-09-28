@@ -17,11 +17,10 @@ describe("quality rule selection", () => {
   it("按表格最终身份顺序投影规则条目", () => {
     expect(
       order_quality_rule_entries_by_id(
-        ["A", "B", "C", "D"],
-        ["a", "b", "c", "d"],
+        ["a", "b", "c", "d"].map((entry_id) => ({ entry_id })),
         ["a", "d", "b", "c"],
       ),
-    ).toEqual(["A", "D", "B", "C"]);
+    ).toEqual(["a", "d", "b", "c"].map((entry_id) => ({ entry_id })));
   });
 
   it.each([

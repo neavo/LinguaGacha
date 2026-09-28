@@ -1,14 +1,4 @@
-import type { QualityRuleQueryStatus } from "@frontend/features/quality-rule-editor/use-quality-rule-query";
-import type { QualityRuleImportConfirmState } from "@frontend/widgets/quality-rule-import-confirm-dialog/quality-rule-import-confirm-state";
-import type { AppTableSortState } from "@frontend/widgets/app-table/app-table-types";
-import type { QualityRuleConfirmState } from "@frontend/features/quality-rule-editor/quality-rule-confirm-state";
-
-import type { LocaleKey } from "@frontend/app/locale/locale-context";
-import type {
-  QualityRuleTextPreserveEntry as TextPreserveEntry,
-  TextPreserveMode,
-} from "@domain/quality";
-import type { PresetInputState, PresetItem } from "@frontend/features/preset-editor/preset-types";
+import type { QualityRuleTextPreserveEntry as TextPreserveEntry } from "@domain/quality";
 
 export type {
   QualityRuleTextPreserveEntry as TextPreserveEntry,
@@ -17,19 +7,10 @@ export type {
 
 export type TextPreserveEntryId = string;
 /** 创建草稿尚未分配项目身份，编辑草稿保留既有身份。 */
-export type TextPreserveEntryDraft = Omit<TextPreserveEntry, "entry_id"> & { entry_id?: string };
+export type TextPreserveEntryDraft =
+  import("@frontend/features/quality-rule-editor/use-quality-rule-editing").QualityRuleDraft<TextPreserveEntry>;
 
 export type TextPreserveDialogMode = "create" | "edit";
-
-export type TextPreserveDialogState = {
-  open: boolean;
-  mode: TextPreserveDialogMode;
-  target_entry_id: TextPreserveEntryId | null;
-  insert_after_entry_id: TextPreserveEntryId | null;
-  draft_entry: TextPreserveEntryDraft;
-  saving: boolean;
-  invalid: boolean;
-};
 
 export type TextPreserveFilterScope = "all" | "src" | "info";
 
@@ -53,73 +34,5 @@ export type TextPreserveHitBadgeState = {
   tooltip: string;
 };
 
-export type TextPreserveVisibleEntry = {
-  entry: TextPreserveEntry;
-  entry_id: TextPreserveEntryId;
-  source_index: number;
-};
-
-type TextPreserveSortState = AppTableSortState | null;
-
-export type UseTextPreservePageStateResult = {
-  quality_status: QualityRuleQueryStatus;
-  reload_quality_rule_snapshot: () => void;
-  title_key: LocaleKey;
-  mode: TextPreserveMode;
-  mode_updating: boolean;
-  filtered_entries: TextPreserveVisibleEntry[];
-  filter_state: TextPreserveFilterState;
-  sort_state: TextPreserveSortState;
-  invalid_filter_message: string | null;
-  readonly: boolean;
-  reorder_disabled: boolean;
-  hit_state: TextPreserveHitState;
-  hit_ready: boolean;
-  hit_badge_by_entry_id: Record<TextPreserveEntryId, TextPreserveHitBadgeState>;
-  preset_items: PresetItem[];
-  selected_entry_ids: TextPreserveEntryId[];
-  active_entry_id: TextPreserveEntryId | null;
-  selection_anchor_entry_id: TextPreserveEntryId | null;
-  restore_scroll_entry_id: TextPreserveEntryId | null;
-  preset_menu_open: boolean;
-  dialog_state: TextPreserveDialogState;
-  confirm_state: QualityRuleConfirmState;
-  import_confirm_state: QualityRuleImportConfirmState;
-  preset_input_state: PresetInputState;
-  update_filter_keyword: (next_keyword: string) => void;
-  update_filter_scope: (next_scope: TextPreserveFilterScope) => void;
-  update_filter_regex: (next_is_regex: boolean) => void;
-  apply_table_sort_state: (next_sort_state: AppTableSortState | null) => void;
-  apply_table_selection: (
-    payload: import("@frontend/widgets/app-table/app-table-types").AppTableSelectionChange,
-  ) => void;
-  update_mode: (next_mode: TextPreserveMode) => Promise<void>;
-  open_create_dialog: () => void;
-  open_edit_dialog: (entry_id: TextPreserveEntryId) => void;
-  update_dialog_draft: (patch: Partial<TextPreserveEntryDraft>) => void;
-  import_entries_from_path: (path: string) => Promise<void>;
-  import_entries_from_picker: () => Promise<void>;
-  export_entries_from_picker: () => Promise<void>;
-  open_preset_menu: () => Promise<void>;
-  apply_preset: (virtual_id: string) => Promise<void>;
-  request_reset_entries: () => void;
-  request_save_preset: () => void;
-  request_rename_preset: (preset_item: PresetItem) => void;
-  request_delete_preset: (preset_item: PresetItem) => void;
-  set_default_preset: (virtual_id: string) => Promise<void>;
-  cancel_default_preset: () => Promise<void>;
-  delete_selected_entries: () => Promise<void>;
-  reorder_entries: (ordered_entry_ids: TextPreserveEntryId[]) => Promise<void>;
-  query_entry_source: (entry_id: TextPreserveEntryId) => Promise<void>;
-  save_dialog_entry: () => Promise<void>;
-  request_close_dialog: () => Promise<void>;
-  confirm_pending_action: () => Promise<void>;
-  close_confirm_dialog: () => void;
-  import_duplicate_skip: () => Promise<void>;
-  import_duplicate_overwrite: () => Promise<void>;
-  close_import_duplicate_confirm: () => void;
-  update_preset_input_value: (next_value: string) => void;
-  submit_preset_input: () => Promise<void>;
-  close_preset_input_dialog: () => void;
-  set_preset_menu_open: (next_open: boolean) => void;
-};
+export type TextPreserveVisibleEntry =
+  import("@frontend/features/quality-rule-editor/use-quality-rule-table").QualityRuleVisibleEntry<TextPreserveEntry>;

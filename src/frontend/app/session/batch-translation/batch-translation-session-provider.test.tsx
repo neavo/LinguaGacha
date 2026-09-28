@@ -69,36 +69,6 @@ vi.mock("@frontend/widgets/app-alert-dialog", () => {
   };
 });
 
-vi.mock(
-  "@frontend/widgets/quality-rule-import-confirm-dialog/quality-rule-import-confirm-dialog",
-  () => {
-    return {
-      QualityRuleImportConfirmDialog: (props: {
-        state: { open: boolean; duplicate_count: number; submitting: boolean };
-        on_skip: () => Promise<void>;
-        on_overwrite: () => Promise<void>;
-        on_close: () => void;
-      }) => {
-        if (!props.state.open) {
-          return null;
-        }
-
-        return (
-          <button
-            type="button"
-            data-testid="quality-import-dialog"
-            data-duplicate-count={String(props.state.duplicate_count)}
-            data-submitting={String(props.state.submitting)}
-            onClick={() => {
-              void props.on_overwrite();
-            }}
-          />
-        );
-      },
-    };
-  },
-);
-
 /** 隔离后台任务，测试常驻侧栏的组合与回调。 */
 function create_batch_translation_task_fixture(
   overrides: Partial<BatchTranslationTask> = {},

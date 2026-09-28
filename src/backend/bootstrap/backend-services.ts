@@ -173,6 +173,7 @@ export class BackendServices {
     });
     const handle_project_event = this.cache_manager.handleProjectEvent.bind(this.cache_manager);
     const adapt_project_change = create_project_change_publisher(options.database, session_state);
+    /** 缓存提交后生成公开工程事件，空变更结束本次发布。 */
     const publish_project_change = (request: Parameters<typeof adapt_project_change>[0]) => {
       const event = adapt_project_change(request);
       if (event !== null) {
@@ -270,6 +271,7 @@ export class BackendServices {
     this.quality = {
       rules: new QualityRuleService(
         paths,
+        this.app_setting_service,
         session_state,
         write_store,
         this.runtime_gate,

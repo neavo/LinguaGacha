@@ -10,7 +10,7 @@ import { GlossaryEditDialog } from "@frontend/pages/glossary-page/components/glo
 import { PresetNameDialog } from "@frontend/features/preset-editor/preset-name-dialog";
 import type { GlossaryFilterScope } from "@frontend/pages/glossary-page/types";
 import { GlossaryTable } from "@frontend/pages/glossary-page/components/glossary-table";
-import { QualityRuleImportConfirmDialog } from "@frontend/widgets/quality-rule-import-confirm-dialog/quality-rule-import-confirm-dialog";
+import { QualityRuleDuplicateConfirmDialog } from "@frontend/features/quality-rule-editor/quality-rule-duplicate-confirm-dialog";
 import { useGlossaryPageState } from "@frontend/pages/glossary-page/use-glossary-page-state";
 import { FileDropZone } from "@frontend/widgets/file-drop-zone/file-drop-zone";
 import { SearchBar, type SearchBarScopeOption } from "@frontend/widgets/search-bar/search-bar";
@@ -28,15 +28,15 @@ export function GlossaryPage(_props: ScreenComponentProps): JSX.Element {
   const { t } = useI18n();
 
   const glossary_page_state = useGlossaryPageState();
-  const regex_state_label = glossary_page_state.filter_state.is_regex
+  const regex_state_label = glossary_page_state.table.filter_state.is_regex
     ? t("app.state.enabled")
     : t("app.state.disabled");
   const scope_button_label =
-    glossary_page_state.filter_state.scope === "all"
+    glossary_page_state.table.filter_state.scope === "all"
       ? t("quality_rule_editor.filter.scope.label")
-      : t(GLOSSARY_SCOPE_LABEL_KEY_BY_SCOPE[glossary_page_state.filter_state.scope]);
+      : t(GLOSSARY_SCOPE_LABEL_KEY_BY_SCOPE[glossary_page_state.table.filter_state.scope]);
   const scope_state_label = t(
-    GLOSSARY_SCOPE_LABEL_KEY_BY_SCOPE[glossary_page_state.filter_state.scope],
+    GLOSSARY_SCOPE_LABEL_KEY_BY_SCOPE[glossary_page_state.table.filter_state.scope],
   );
   const scope_tooltip = t("app.tooltip.value", {
     TITLE: t("quality_rule_editor.filter.scope.tooltip_label"),
@@ -74,23 +74,23 @@ export function GlossaryPage(_props: ScreenComponentProps): JSX.Element {
     <div className="glossary-page page-shell page-shell--full">
       <SearchBar
         variant="filter"
-        keyword={glossary_page_state.filter_state.keyword}
+        keyword={glossary_page_state.table.filter_state.keyword}
         placeholder={t("quality_rule_editor.filter.placeholder")}
         clear_label={t("quality_rule_editor.filter.clear")}
-        invalid_message={glossary_page_state.invalid_filter_message}
-        on_keyword_change={glossary_page_state.update_filter_keyword}
+        invalid_message={glossary_page_state.table.invalid_filter_message}
+        on_keyword_change={glossary_page_state.table.update_filter_keyword}
         scope={{
-          value: glossary_page_state.filter_state.scope,
+          value: glossary_page_state.table.filter_state.scope,
           button_label: scope_button_label,
           tooltip: scope_tooltip,
           options: glossary_scope_options,
-          on_change: glossary_page_state.update_filter_scope,
+          on_change: glossary_page_state.table.update_filter_scope,
         }}
         regex={{
-          value: glossary_page_state.filter_state.is_regex,
+          value: glossary_page_state.table.filter_state.is_regex,
           label: t("quality_rule_editor.filter.regex"),
           tooltip: regex_tooltip,
-          on_change: glossary_page_state.update_filter_regex,
+          on_change: glossary_page_state.table.update_filter_regex,
         }}
       />
       <div className="glossary-page__table-host">
@@ -98,7 +98,7 @@ export function GlossaryPage(_props: ScreenComponentProps): JSX.Element {
           label={t("app.drop.import_here")}
           disabled={glossary_page_state.readonly}
           on_path_drop={(path) => {
-            void glossary_page_state.import_entries_from_path(path);
+            void glossary_page_state.editing.import_entries_from_path(path);
           }}
           on_drop_issue={(issue) => {
             push_toast(
@@ -108,21 +108,21 @@ export function GlossaryPage(_props: ScreenComponentProps): JSX.Element {
           }}
         >
           <GlossaryTable
-            entries={glossary_page_state.filtered_entries}
-            sort_state={glossary_page_state.sort_state}
+            entries={glossary_page_state.table.filtered_entries}
+            sort_state={glossary_page_state.table.sort_state}
             readonly={glossary_page_state.readonly}
-            reorder_disabled={glossary_page_state.reorder_disabled}
+            reorder_disabled={glossary_page_state.table.reorder_disabled}
             hit_sort_available={glossary_page_state.hit_sort_available}
-            selected_entry_ids={glossary_page_state.selected_entry_ids}
-            active_entry_id={glossary_page_state.active_entry_id}
-            anchor_entry_id={glossary_page_state.selection_anchor_entry_id}
-            restore_scroll_entry_id={glossary_page_state.restore_scroll_entry_id}
+            selected_entry_ids={glossary_page_state.table.selected_entry_ids}
+            active_entry_id={glossary_page_state.table.active_entry_id}
+            anchor_entry_id={glossary_page_state.table.selection_anchor_entry_id}
+            restore_scroll_entry_id={glossary_page_state.table.restore_scroll_entry_id}
             hit_badge_by_entry_id={glossary_page_state.hit_badge_by_entry_id}
-            on_sort_change={glossary_page_state.apply_table_sort_state}
-            on_selection_change={glossary_page_state.apply_table_selection}
-            on_open_edit={glossary_page_state.open_edit_dialog}
+            on_sort_change={glossary_page_state.table.apply_table_sort_state}
+            on_selection_change={glossary_page_state.table.apply_table_selection}
+            on_open_edit={glossary_page_state.editing.open_edit_dialog}
             on_toggle_case_sensitive={glossary_page_state.toggle_case_sensitive_for_selected}
-            on_reorder={glossary_page_state.reorder_entries}
+            on_reorder={glossary_page_state.editing.reorder_entries}
             on_query_entry_source={glossary_page_state.query_entry_source_from_hit}
             on_search_entry_relations={glossary_page_state.search_entry_relations_from_hit}
           />
@@ -130,55 +130,60 @@ export function GlossaryPage(_props: ScreenComponentProps): JSX.Element {
       </div>
       <GlossaryCommandBar
         enabled={glossary_page_state.enabled}
-        preset_items={glossary_page_state.preset_items}
-        preset_menu_open={glossary_page_state.preset_menu_open}
-        selected_entry_count={glossary_page_state.selected_entry_ids.length}
+        preset_items={glossary_page_state.presets.preset_items}
+        preset_menu_open={glossary_page_state.presets.preset_menu_open}
+        selected_entry_count={glossary_page_state.table.selected_entry_ids.length}
         readonly={glossary_page_state.readonly}
         on_toggle_enabled={glossary_page_state.update_enabled}
-        on_create={glossary_page_state.open_create_dialog}
-        on_delete_selected={glossary_page_state.delete_selected_entries}
-        on_import={glossary_page_state.import_entries_from_picker}
-        on_export={glossary_page_state.export_entries_from_picker}
-        on_open_preset_menu={glossary_page_state.open_preset_menu}
-        on_apply_preset={glossary_page_state.apply_preset}
-        on_request_reset={glossary_page_state.request_reset_entries}
-        on_request_save_preset={glossary_page_state.request_save_preset}
-        on_request_rename_preset={glossary_page_state.request_rename_preset}
-        on_request_delete_preset={glossary_page_state.request_delete_preset}
-        on_set_default_preset={glossary_page_state.set_default_preset}
-        on_cancel_default_preset={glossary_page_state.cancel_default_preset}
-        on_preset_menu_open_change={glossary_page_state.set_preset_menu_open}
+        on_create={glossary_page_state.editing.open_create_dialog}
+        on_delete_selected={glossary_page_state.editing.delete_selected_entries}
+        on_import={glossary_page_state.editing.import_entries_from_picker}
+        on_export={glossary_page_state.editing.export_entries_from_picker}
+        on_open_preset_menu={glossary_page_state.presets.open_preset_menu}
+        on_apply_preset={glossary_page_state.editing.apply_preset}
+        on_request_reset={glossary_page_state.editing.request_reset_entries}
+        on_request_save_preset={glossary_page_state.presets.request_save_preset}
+        on_request_rename_preset={glossary_page_state.presets.request_rename_preset}
+        on_request_delete_preset={glossary_page_state.presets.request_delete_preset}
+        on_set_default_preset={glossary_page_state.presets.set_default_preset}
+        on_cancel_default_preset={glossary_page_state.presets.cancel_default_preset}
+        on_preset_menu_open_change={glossary_page_state.presets.set_preset_menu_open}
       />
       <GlossaryEditDialog
-        open={glossary_page_state.dialog_state.open}
-        mode={glossary_page_state.dialog_state.mode}
-        entry={glossary_page_state.dialog_state.draft_entry}
-        saving={glossary_page_state.dialog_state.saving}
+        open={glossary_page_state.editing.dialog_state.open}
+        mode={glossary_page_state.editing.dialog_state.mode}
+        entry={glossary_page_state.editing.dialog_state.draft_entry}
+        saving={glossary_page_state.editing.dialog_state.saving}
         readonly={glossary_page_state.readonly}
-        on_change={glossary_page_state.update_dialog_draft}
-        on_save={glossary_page_state.save_dialog_entry}
-        on_close={glossary_page_state.request_close_dialog}
+        on_change={glossary_page_state.editing.update_dialog_draft}
+        on_save={glossary_page_state.editing.save_dialog_entry}
+        on_close={glossary_page_state.editing.request_close_dialog}
       />
       <QualityRuleConfirmDialog
-        state={glossary_page_state.confirm_state}
+        state={glossary_page_state.editing.confirm_state}
         on_confirm={() => {
-          void glossary_page_state.confirm_pending_action();
+          void glossary_page_state.editing.confirm_pending_action();
         }}
-        on_close={glossary_page_state.close_confirm_dialog}
+        on_close={glossary_page_state.editing.close_confirm_dialog}
       />
-      <QualityRuleImportConfirmDialog
-        state={glossary_page_state.import_confirm_state}
-        on_skip={glossary_page_state.import_duplicate_skip}
-        on_overwrite={glossary_page_state.import_duplicate_overwrite}
-        on_close={glossary_page_state.close_import_duplicate_confirm}
+      <QualityRuleDuplicateConfirmDialog
+        state={glossary_page_state.editing.import_confirm_state}
+        on_skip={glossary_page_state.editing.import_duplicate_skip}
+        on_overwrite={glossary_page_state.editing.import_duplicate_overwrite}
+        on_close={glossary_page_state.editing.close_import_duplicate_confirm}
+      />
+      <QualityRuleConfirmDialog
+        state={glossary_page_state.presets.confirm_state}
+        on_confirm={glossary_page_state.presets.confirm_pending_action}
+        on_close={glossary_page_state.presets.close_confirm_dialog}
       />
       <PresetNameDialog
-        state={glossary_page_state.preset_input_state}
-        on_change={glossary_page_state.update_preset_input_value}
+        state={glossary_page_state.presets.preset_input_state}
+        on_change={glossary_page_state.presets.update_preset_input_value}
         on_submit={() => {
-          void glossary_page_state.submit_preset_input();
+          void glossary_page_state.presets.submit_preset_input();
         }}
-        on_close={glossary_page_state.close_preset_input_dialog}
+        on_close={glossary_page_state.presets.close_preset_input_dialog}
       />
     </div>
   );

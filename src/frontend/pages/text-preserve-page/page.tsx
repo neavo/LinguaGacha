@@ -10,7 +10,7 @@ import { TextPreserveEditDialog } from "@frontend/pages/text-preserve-page/compo
 import { PresetNameDialog } from "@frontend/features/preset-editor/preset-name-dialog";
 import { TextPreserveTable } from "@frontend/pages/text-preserve-page/components/text-preserve-table";
 import type { TextPreserveFilterScope } from "@frontend/pages/text-preserve-page/types";
-import { QualityRuleImportConfirmDialog } from "@frontend/widgets/quality-rule-import-confirm-dialog/quality-rule-import-confirm-dialog";
+import { QualityRuleDuplicateConfirmDialog } from "@frontend/features/quality-rule-editor/quality-rule-duplicate-confirm-dialog";
 import { useTextPreservePageState } from "@frontend/pages/text-preserve-page/use-text-preserve-page-state";
 import { FileDropZone } from "@frontend/widgets/file-drop-zone/file-drop-zone";
 import { SearchBar, type SearchBarScopeOption } from "@frontend/widgets/search-bar/search-bar";
@@ -28,13 +28,13 @@ export function TextPreservePage(_props: ScreenComponentProps): JSX.Element {
 
   const page_state = useTextPreservePageState();
   const scope_button_label =
-    page_state.filter_state.scope === "all"
+    page_state.table.filter_state.scope === "all"
       ? t("quality_rule_editor.filter.scope.label")
-      : t(TEXT_PRESERVE_SCOPE_LABEL_KEY_BY_SCOPE[page_state.filter_state.scope]);
+      : t(TEXT_PRESERVE_SCOPE_LABEL_KEY_BY_SCOPE[page_state.table.filter_state.scope]);
   const scope_state_label = t(
-    TEXT_PRESERVE_SCOPE_LABEL_KEY_BY_SCOPE[page_state.filter_state.scope],
+    TEXT_PRESERVE_SCOPE_LABEL_KEY_BY_SCOPE[page_state.table.filter_state.scope],
   );
-  const regex_state_label = page_state.filter_state.is_regex
+  const regex_state_label = page_state.table.filter_state.is_regex
     ? t("app.state.enabled")
     : t("app.state.disabled");
   const scope_tooltip = t("app.tooltip.value", {
@@ -73,23 +73,23 @@ export function TextPreservePage(_props: ScreenComponentProps): JSX.Element {
     <div className="text-preserve-page page-shell page-shell--full">
       <SearchBar
         variant="filter"
-        keyword={page_state.filter_state.keyword}
+        keyword={page_state.table.filter_state.keyword}
         placeholder={t("quality_rule_editor.filter.placeholder")}
         clear_label={t("quality_rule_editor.filter.clear")}
-        invalid_message={page_state.invalid_filter_message}
-        on_keyword_change={page_state.update_filter_keyword}
+        invalid_message={page_state.table.invalid_filter_message}
+        on_keyword_change={page_state.table.update_filter_keyword}
         scope={{
-          value: page_state.filter_state.scope,
+          value: page_state.table.filter_state.scope,
           button_label: scope_button_label,
           tooltip: scope_tooltip,
           options: text_preserve_scope_options,
-          on_change: page_state.update_filter_scope,
+          on_change: page_state.table.update_filter_scope,
         }}
         regex={{
-          value: page_state.filter_state.is_regex,
+          value: page_state.table.filter_state.is_regex,
           label: t("quality_rule_editor.filter.regex"),
           tooltip: regex_tooltip,
-          on_change: page_state.update_filter_regex,
+          on_change: page_state.table.update_filter_regex,
         }}
       />
       <div className="text-preserve-page__table-host">
@@ -97,7 +97,7 @@ export function TextPreservePage(_props: ScreenComponentProps): JSX.Element {
           label={t("app.drop.import_here")}
           disabled={page_state.readonly}
           on_path_drop={(path) => {
-            void page_state.import_entries_from_path(path);
+            void page_state.editing.import_entries_from_path(path);
           }}
           on_drop_issue={(issue) => {
             push_toast(
@@ -108,21 +108,21 @@ export function TextPreservePage(_props: ScreenComponentProps): JSX.Element {
         >
           <TextPreserveTable
             title_key={page_state.title_key}
-            entries={page_state.filtered_entries}
-            sort_state={page_state.sort_state}
+            entries={page_state.table.filtered_entries}
+            sort_state={page_state.table.sort_state}
             readonly={page_state.readonly}
-            reorder_disabled={page_state.reorder_disabled}
+            reorder_disabled={page_state.table.reorder_disabled}
             hit_running={page_state.hit_state.running}
             hit_ready={page_state.hit_ready}
-            selected_entry_ids={page_state.selected_entry_ids}
-            active_entry_id={page_state.active_entry_id}
-            anchor_entry_id={page_state.selection_anchor_entry_id}
-            restore_scroll_entry_id={page_state.restore_scroll_entry_id}
+            selected_entry_ids={page_state.table.selected_entry_ids}
+            active_entry_id={page_state.table.active_entry_id}
+            anchor_entry_id={page_state.table.selection_anchor_entry_id}
+            restore_scroll_entry_id={page_state.table.restore_scroll_entry_id}
             hit_badge_by_entry_id={page_state.hit_badge_by_entry_id}
-            on_sort_change={page_state.apply_table_sort_state}
-            on_selection_change={page_state.apply_table_selection}
-            on_open_edit={page_state.open_edit_dialog}
-            on_reorder={page_state.reorder_entries}
+            on_sort_change={page_state.table.apply_table_sort_state}
+            on_selection_change={page_state.table.apply_table_selection}
+            on_open_edit={page_state.editing.open_edit_dialog}
+            on_reorder={page_state.editing.reorder_entries}
             on_query_entry_source={page_state.query_entry_source}
           />
         </FileDropZone>
@@ -131,58 +131,63 @@ export function TextPreservePage(_props: ScreenComponentProps): JSX.Element {
         title_key={page_state.title_key}
         mode={page_state.mode}
         mode_updating={page_state.mode_updating}
-        preset_items={page_state.preset_items}
-        preset_menu_open={page_state.preset_menu_open}
-        selected_entry_count={page_state.selected_entry_ids.length}
+        preset_items={page_state.presets.preset_items}
+        preset_menu_open={page_state.presets.preset_menu_open}
+        selected_entry_count={page_state.table.selected_entry_ids.length}
         readonly={page_state.readonly}
         on_mode_change={page_state.update_mode}
-        on_create={page_state.open_create_dialog}
-        on_delete_selected={page_state.delete_selected_entries}
-        on_import={page_state.import_entries_from_picker}
-        on_export={page_state.export_entries_from_picker}
-        on_open_preset_menu={page_state.open_preset_menu}
-        on_apply_preset={page_state.apply_preset}
-        on_request_reset={page_state.request_reset_entries}
-        on_request_save_preset={page_state.request_save_preset}
-        on_request_rename_preset={page_state.request_rename_preset}
-        on_request_delete_preset={page_state.request_delete_preset}
-        on_set_default_preset={page_state.set_default_preset}
-        on_cancel_default_preset={page_state.cancel_default_preset}
-        on_preset_menu_open_change={page_state.set_preset_menu_open}
+        on_create={page_state.editing.open_create_dialog}
+        on_delete_selected={page_state.editing.delete_selected_entries}
+        on_import={page_state.editing.import_entries_from_picker}
+        on_export={page_state.editing.export_entries_from_picker}
+        on_open_preset_menu={page_state.presets.open_preset_menu}
+        on_apply_preset={page_state.editing.apply_preset}
+        on_request_reset={page_state.editing.request_reset_entries}
+        on_request_save_preset={page_state.presets.request_save_preset}
+        on_request_rename_preset={page_state.presets.request_rename_preset}
+        on_request_delete_preset={page_state.presets.request_delete_preset}
+        on_set_default_preset={page_state.presets.set_default_preset}
+        on_cancel_default_preset={page_state.presets.cancel_default_preset}
+        on_preset_menu_open_change={page_state.presets.set_preset_menu_open}
       />
       <TextPreserveEditDialog
-        open={page_state.dialog_state.open}
-        mode={page_state.dialog_state.mode}
-        entry={page_state.dialog_state.draft_entry}
-        saving={page_state.dialog_state.saving}
+        open={page_state.editing.dialog_state.open}
+        mode={page_state.editing.dialog_state.mode}
+        entry={page_state.editing.dialog_state.draft_entry}
+        saving={page_state.editing.dialog_state.saving}
         readonly={page_state.readonly}
-        invalid={page_state.dialog_state.invalid}
-        on_change={page_state.update_dialog_draft}
-        on_save={page_state.save_dialog_entry}
-        on_close={page_state.request_close_dialog}
+        invalid={page_state.editing.dialog_state.invalid}
+        on_change={page_state.editing.update_dialog_draft}
+        on_save={page_state.editing.save_dialog_entry}
+        on_close={page_state.editing.request_close_dialog}
       />
       <QualityRuleConfirmDialog
-        state={page_state.confirm_state}
+        state={page_state.editing.confirm_state}
         on_confirm={() => {
-          void page_state.confirm_pending_action();
+          void page_state.editing.confirm_pending_action();
         }}
-        on_close={page_state.close_confirm_dialog}
+        on_close={page_state.editing.close_confirm_dialog}
       />
-      <QualityRuleImportConfirmDialog
-        state={page_state.import_confirm_state}
-        on_skip={page_state.import_duplicate_skip}
-        on_overwrite={page_state.import_duplicate_overwrite}
-        on_close={page_state.close_import_duplicate_confirm}
+      <QualityRuleDuplicateConfirmDialog
+        state={page_state.editing.import_confirm_state}
+        on_skip={page_state.editing.import_duplicate_skip}
+        on_overwrite={page_state.editing.import_duplicate_overwrite}
+        on_close={page_state.editing.close_import_duplicate_confirm}
+      />
+      <QualityRuleConfirmDialog
+        state={page_state.presets.confirm_state}
+        on_confirm={page_state.presets.confirm_pending_action}
+        on_close={page_state.presets.close_confirm_dialog}
       />
       <PresetNameDialog
-        state={page_state.preset_input_state}
+        state={page_state.presets.preset_input_state}
         name_placeholder_key="text_preserve_page.preset.dialog.name_placeholder"
         save_shortcut_variant="outlined"
-        on_change={page_state.update_preset_input_value}
+        on_change={page_state.presets.update_preset_input_value}
         on_submit={() => {
-          void page_state.submit_preset_input();
+          void page_state.presets.submit_preset_input();
         }}
-        on_close={page_state.close_preset_input_dialog}
+        on_close={page_state.presets.close_preset_input_dialog}
       />
     </div>
   );
