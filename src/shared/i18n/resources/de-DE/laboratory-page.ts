@@ -7,9 +7,11 @@ export const de_de_laboratory_page = {
     agent_batch_translation_thinking_adaptive_enable: {
       title: "Adaptives Denkniveau",
       description:
-        "Tiefes Nachdenken erhöht den Token-Verbrauch bei Übersetzungsaufgaben häufig <emphasis>um das 3- bis 5-Fache</emphasis>" +
+        "Bei Übersetzungsaufgaben verbraucht tiefes Nachdenken <emphasis>3- bis 5-mal so viele Tokens</emphasis>" +
         "\n" +
-        "Wenn aktiviert, wird das Denkniveau bei Übersetzungsaufgaben automatisch angepasst, um die Token-Effizienz zu verbessern. Standardmäßig aktiviert.",
+        "Passt das Denkniveau bei Übersetzungsaufgaben intelligent an" +
+        "\n" +
+        "Um die Token-Effizienz zu steigern sowie Zeit und Kosten zu sparen, standardmäßig aktiviert",
     },
     prompt_enhancement_enable: {
       title: "Prompt-Verbesserung",
@@ -26,7 +28,7 @@ export const de_de_laboratory_page = {
     skip_duplicate_source_text_enable: {
       title: "Doppelten Quelltext überspringen",
       description:
-        "Pro Datei teilen Einträge mit gleichem Text, Figurennamen und Textregeln <emphasis>eine Übersetzung</emphasis>. Standardmäßig aktiviert.",
+        "Einträge mit gleichem Quelltext in derselben Datei teilen <emphasis>eine Übersetzung</emphasis>, standardmäßig aktiviert",
     },
   },
   feedback: {
