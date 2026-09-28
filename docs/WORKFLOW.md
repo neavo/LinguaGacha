@@ -61,7 +61,7 @@
 |宿主加载、组合根、资源定位或跨进程通信与启动契约变化|低层测试不足以证明变化时，对受影响的契约执行真实 Electron 集成或 smoke 验证|
 |Agent 文件上传、图片处理与宿主协议|上传存储、消息准备、草稿与 Workspace 输出的目标测试。字节传输与关闭行为验证真实 Gateway / Bootstrap。编解码或 IPC 变化运行 `src/native/agent-image-host.test.ts` 和 Workspace bootstrap 的真实 Electron 验证|
 |端到端 UI 冒烟|用户明确要求时执行；或已识别具体高风险，且低层验证不足以证明结果时执行。需要启动真机应用时使用 `npm run dev`|
-|Windows Go launcher|在受影响的 `buildtools/builder/win-cli` 或 `buildtools/builder/win-berserker` 内执行 `go test ./...`|
+|Windows Go launcher|在受影响的 `buildtools/builder/win-cli` 或 `buildtools/builder/win-berserker` 内执行 `go test ./...`；`win-berserker` 的进程测试须在 Windows 执行|
 |构建、Vite、electron-builder、afterPack、发布资产|`npm run build`，并按下文核对受影响的产物契约|
 |renderer 热更新边界或运行态刷新策略|`npm test -- --project node buildtools/vite/renderer-runtime-reload.test.mjs`，以真实 Vite 和隐藏 Electron 窗口验证热更新保留状态与运行态重建|
 

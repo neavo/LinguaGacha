@@ -44,7 +44,7 @@ export function run_gui_entry(options: GuiEntryOptions): void {
   let log_window_host: LogWindowHost | null = null; // 日志窗口由独立宿主管理，避免主窗口生命周期和日志诊断窗口互相持有复杂状态
   let backend_ready: BackendRuntimeReady | null = null; // main 持有固定启动快照，首次创建与重建窗口共用
   let desktop_update_service: DesktopUpdateService | null = null; // 更新下载和启动副作用只在 main 的单一服务入口执行
-  let is_app_shutdown_in_progress = false; // 退出流程只允许进入一次，防止 before-quit、fatal 和窗口关闭同时触发重复清理
+  let shutdown_promise: Promise<void> | null = null; // 所有退出请求等待同一次清理与退出动作
   let is_renderer_confirmed_app_quit = false; // renderer 已确认退出时，主窗口 close 事件不再反向弹出网页确认流程
 
   /**
@@ -133,7 +133,7 @@ export function run_gui_entry(options: GuiEntryOptions): void {
       appVersion: ready.appVersion,
       rendererDiagnostics: renderer_process_diagnostics,
       shouldBypassCloseConfirmation: () => {
-        return is_app_shutdown_in_progress || is_renderer_confirmed_app_quit;
+        return shutdown_promise !== null || is_renderer_confirmed_app_quit;
       },
       onClosed: () => {
         win = null;
@@ -155,6 +155,7 @@ export function run_gui_entry(options: GuiEntryOptions): void {
       });
     }
 
+    const update_service = desktop_update_service;
     register_desktop_ipc_handlers({
       getMainWindow: () => {
         return win;
@@ -165,35 +166,51 @@ export function run_gui_entry(options: GuiEntryOptions): void {
       markRendererConfirmedAppQuit: () => {
         is_renderer_confirmed_app_quit = true;
       },
-      quitAfterBackendShutdown: quit_app_after_backend_shutdown,
       recordRendererDiagnostics: renderer_process_diagnostics.recordRendererDiagnostics,
       readAppLanguage: () => backend_runtime.readAppLanguage(),
-      updateService: desktop_update_service,
+      updateService: {
+        download_release: update_service.download_release.bind(update_service),
+        launch_berserker: async (request) => {
+          const launch = await update_service.prepare_berserker(request);
+          await quit_app_after_backend_shutdown(0, launch);
+          return { status: "launched" };
+        },
+      },
     });
   }
 
   /**
    * 退出前先关闭 Backend，确保 Gateway、ProjectDatabase 和日志系统按顺序收尾。
    */
-  async function quit_app_after_backend_shutdown(exit_code: number): Promise<void> {
-    if (is_app_shutdown_in_progress) {
-      return;
-    }
-
-    is_app_shutdown_in_progress = true;
-    try {
-      await backend_runtime.stop();
-    } finally {
+  function quit_app_after_backend_shutdown(
+    exit_code: number,
+    launch_update?: () => Promise<void>,
+  ): Promise<void> {
+    if (shutdown_promise !== null) return shutdown_promise;
+    // 先保存 Promise 再清理，关闭窗口触发的重入请求共用同一次退出。
+    shutdown_promise = Promise.resolve().then(async () => {
       try {
-        await pdf_host.dispose();
+        try {
+          await backend_runtime.stop();
+        } finally {
+          await pdf_host.dispose();
+        }
+        await launch_update?.();
+      } catch (error) {
+        exit_code = 1;
+        try_show_native_error_dialog(
+          "LinguaGacha 退出失败 / Shutdown failed",
+          error instanceof Error ? error.message : String(error),
+        );
       } finally {
         app.exit(exit_code);
       }
-    }
+    });
+    return shutdown_promise;
   }
 
   install_main_fatal_error_handler({
-    isAppShutdownInProgress: () => is_app_shutdown_in_progress,
+    isAppShutdownInProgress: () => shutdown_promise !== null,
     quitAfterBackendShutdown: quit_app_after_backend_shutdown,
     getBackendRuntimeClient: () => backend_runtime,
   });
@@ -207,10 +224,6 @@ export function run_gui_entry(options: GuiEntryOptions): void {
 
   // Electron 原生退出前拦截一次，用统一 Backend 收尾路径替代直接退出。
   app.on("before-quit", (event) => {
-    if (backend_runtime.isStopped()) {
-      return;
-    }
-
     event.preventDefault();
     void quit_app_after_backend_shutdown(0);
   });
@@ -239,7 +252,7 @@ export function run_gui_entry(options: GuiEntryOptions): void {
       register_runtime_ipc_handlers();
       // Backend、更新器和 IPC 完整就绪后才允许 macOS Dock 恢复窗口。
       app.on("activate", () => {
-        if (!is_app_shutdown_in_progress && (win === null || win.isDestroyed())) {
+        if (shutdown_promise === null && (win === null || win.isDestroyed())) {
           create_main_window_for_runtime();
         }
       });

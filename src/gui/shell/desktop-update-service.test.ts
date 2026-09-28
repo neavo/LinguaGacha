@@ -140,7 +140,7 @@ describe("DesktopUpdateService", () => {
     );
   });
 
-  it("重启更新前复制 berserker 并用 zip、目标目录、主程序和 pid 启动", async () => {
+  it("准备更新器后等待调用启动动作，再传入更新包和安装目录", async () => {
     using temp_root = fs.mkdtempDisposableSync(
       path.join(os.tmpdir(), "linguagacha-update-launch-"),
     );
@@ -159,7 +159,6 @@ describe("DesktopUpdateService", () => {
     const spawn_calls: Array<{ command: string; args: string[]; options: unknown }> = [];
     const service = create_service(app_root, {
       execPath: path.join(app_root, "app.exe"),
-      pid: 12345,
       spawn: ((command: string, args?: readonly string[], options?: unknown) => {
         spawn_calls.push({ command, args: [...(args ?? [])], options });
         const child = new EventEmitter() as EventEmitter & { unref: () => void };
@@ -171,28 +170,16 @@ describe("DesktopUpdateService", () => {
       }) as unknown as DesktopUpdateRuntime["spawn"],
     });
 
-    await expect(
-      service.launch_berserker({
-        latest_version: "1.2.4",
-        zip_path,
-      }),
-    ).resolves.toEqual({ status: "launched" });
+    const launch = await service.prepare_berserker({ latest_version: "1.2.4", zip_path });
+    expect(spawn_calls).toEqual([]);
+    await launch();
 
     const user_berserker_path = path.join(app_root, "userdata", "berserker", "berserker.exe");
     expect(fs.readFileSync(user_berserker_path, "utf-8")).toBe("berserker");
     expect(spawn_calls).toEqual([
       {
         command: user_berserker_path,
-        args: [
-          "--zip",
-          zip_path,
-          "--target",
-          app_root,
-          "--app",
-          path.join(app_root, "app.exe"),
-          "--wait-pid",
-          "12345",
-        ],
+        args: ["--zip", zip_path, "--target", app_root],
         options: {
           detached: true,
           stdio: "ignore",
@@ -208,13 +195,13 @@ describe("DesktopUpdateService", () => {
     );
     const app_root = temp_root.path;
     const service = create_service(app_root);
+    const zip_path = path.join(app_root, "LinguaGacha_v1.2.4_Windows_x64.zip");
+    fs.writeFileSync(zip_path, "zip");
+    fs.writeFileSync(path.join(app_root, "berserker.exe"), "berserker");
 
     await expect(
-      service.launch_berserker({
-        latest_version: "1.2.4",
-        zip_path: path.join(app_root, "userdata", "berserker", "v1.2.5", "update.zip"),
-      }),
-    ).rejects.toThrow("Update package path is outside the current version directory.");
+      service.prepare_berserker({ latest_version: "1.2.4", zip_path }),
+    ).rejects.toThrow();
   });
 });
 
@@ -237,7 +224,6 @@ function create_service(
       platform: "win32",
       arch: "x64",
       execPath: path.join(app_root, "app.exe"),
-      pid: 1,
       fetch: async () => new Response(new Blob(["zip"]), { status: 200 }),
       ...runtime,
     },

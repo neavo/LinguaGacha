@@ -144,6 +144,8 @@ describe("BackendRuntimeClient", () => {
     await expect(language).resolves.toBe("EN");
 
     const stop = client.stop();
+    const repeated_stop = client.stop();
+    expect(repeated_stop).toBe(stop);
     const stop_request = get_last_request(worker, "stop");
     worker.emit("message", {
       type: "response",
@@ -262,7 +264,6 @@ describe("BackendRuntimeClient", () => {
 
     await expect(language).rejects.toThrow("Backend runtime worker exited: 0.");
     expect(on_unexpected_exit).toHaveBeenCalledTimes(1);
-    expect(client.isStopped()).toBe(true);
   });
 
   it("error 先于 exit 到达时立即关闭请求入口且只上报一次", async () => {
@@ -281,7 +282,6 @@ describe("BackendRuntimeClient", () => {
     );
     worker.emit("exit", 1);
     expect(on_unexpected_exit).toHaveBeenCalledTimes(1);
-    expect(client.isStopped()).toBe(true);
   });
 
   it("启动失败只拒绝 start，不误报 ready 后异常退出", async () => {
@@ -297,7 +297,6 @@ describe("BackendRuntimeClient", () => {
 
     await expect(start).rejects.toThrow("启动失败");
     expect(on_unexpected_exit).not.toHaveBeenCalled();
-    expect(client.isStopped()).toBe(true);
   });
 
   it("主动停止期间 worker 提前退出也会拒绝 stop，不触发意外退出回调", async () => {
