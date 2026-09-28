@@ -7,9 +7,11 @@ export const en_us_laboratory_page = {
     agent_batch_translation_thinking_adaptive_enable: {
       title: "Adaptive Thinking Level",
       description:
-        "Deep thinking often <emphasis>increases token usage by 3–5 times</emphasis> in translation tasks" +
+        "In translation tasks, deep thinking <emphasis>uses 3–5 times as many tokens</emphasis>" +
         "\n" +
-        "When enabled, automatically adjusts the thinking level in translation tasks to improve token efficiency. Enabled by default.",
+        "Intelligently adjusts thinking levels in translation tasks" +
+        "\n" +
+        "To improve token efficiency and save time and money, enabled by default",
     },
     prompt_enhancement_enable: {
       title: "Prompt Enhancement",
@@ -26,7 +28,7 @@ export const en_us_laboratory_page = {
     skip_duplicate_source_text_enable: {
       title: "Skip Duplicate Source Text",
       description:
-        "Per file, entries with identical text, character names and text rules share <emphasis>one translation</emphasis>. Enabled by default.",
+        "Entries with identical source text in the same file share <emphasis>one translation</emphasis>, enabled by default",
     },
   },
   feedback: {

@@ -20,7 +20,7 @@
 .skills-page__group-header {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 0;
 }
 
 .skills-page__group-header > h2 {

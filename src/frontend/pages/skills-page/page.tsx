@@ -16,7 +16,7 @@ import {
   SORTABLE_PROVIDER_OPTIONS,
 } from "@frontend/widgets/interactions/sortable";
 import { useSortable } from "@dnd-kit/react/sortable";
-import { CircleHelp, GripVertical } from "lucide-react";
+import { BadgeHelp, GripVertical } from "lucide-react";
 import { Card } from "@frontend/shadcn/card";
 import { Tooltip, TooltipTrigger, TooltipContent } from "@frontend/shadcn/tooltip";
 import { useAppNavigation } from "@frontend/app/navigation/navigation-context";
@@ -127,11 +127,11 @@ function SkillsList({
               render={
                 <AppButton
                   variant="ghost"
-                  size="icon-sm"
+                  size="icon-xs"
                   aria-label={t("skills_page.install.title")}
                   onClick={() => set_help_open(true)}
                 >
-                  <CircleHelp aria-hidden="true" />
+                  <BadgeHelp aria-hidden="true" />
                 </AppButton>
               }
             />

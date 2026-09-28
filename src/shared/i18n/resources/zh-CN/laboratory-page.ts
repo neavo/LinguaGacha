@@ -4,9 +4,9 @@ export const zh_cn_laboratory_page = {
     agent_batch_translation_thinking_adaptive_enable: {
       title: "思考等级自适应",
       description:
-        "在翻译任务中深度思考往往会 <emphasis>增加 3-5 倍</emphasis> 的 Token 消耗" +
+        "在翻译任务中，深度思考会 <emphasis>产生 3-5 倍</emphasis> 的 Token 消耗" +
         "\n" +
-        "启用此功能时，将自动调整翻译任务中的思考挡位以提升 Token 效率，默认启用",
+        "启用此功能时，翻译任务的思考挡位会智能调整以提升 Token 效率、节约时间与费用，默认启用",
     },
     prompt_enhancement_enable: {
       title: "提示词增强",
@@ -23,7 +23,7 @@ export const zh_cn_laboratory_page = {
     skip_duplicate_source_text_enable: {
       title: "跳过重复原文",
       description:
-        "同一文件中正文、角色名和文本规则均相同的条目只翻译一次，<emphasis>重复项会复用已翻译的译文</emphasis>，默认启用",
+        "同一文件中的相同原文条目只翻译一次，<emphasis>重复项会复用已翻译的译文</emphasis>，默认启用",
     },
   },
   feedback: {

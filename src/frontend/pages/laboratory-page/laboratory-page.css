@@ -6,4 +6,5 @@
 
 .laboratory-page__help-button {
   margin-inline-start: -4px;
+  color: var(--muted-foreground);
 }

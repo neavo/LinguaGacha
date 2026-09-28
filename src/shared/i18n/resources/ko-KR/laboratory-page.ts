@@ -6,9 +6,9 @@ export const ko_kr_laboratory_page = {
     agent_batch_translation_thinking_adaptive_enable: {
       title: "사고 수준 자동 조정",
       description:
-        "번역 작업에서 깊은 사고는 종종 Token 소비를 <emphasis>3~5배 증가</emphasis>시킵니다" +
+        "번역 작업에서 깊은 사고를 사용하면 Token 소비량이 <emphasis>3~5배가 됩니다</emphasis>" +
         "\n" +
-        "이 기능을 활성화하면 번역 작업의 사고 수준을 자동으로 조정하여 Token 효율을 높입니다. 기본적으로 활성화됩니다",
+        "이 기능을 활성화하면 번역 작업의 사고 수준을 지능적으로 조정하여 Token 효율을 높이고 시간과 비용을 절약합니다. 기본적으로 활성화됩니다",
     },
     prompt_enhancement_enable: {
       title: "프롬프트 강화",
@@ -25,7 +25,7 @@ export const ko_kr_laboratory_page = {
     skip_duplicate_source_text_enable: {
       title: "중복 원문 건너뛰기",
       description:
-        "같은 파일에서 본문·캐릭터 이름·텍스트 규칙이 같은 항목은 한 번만 번역하고 <emphasis>번역문을 재사용</emphasis>합니다. 기본값은 사용입니다.",
+        "같은 파일 내의 원문이 같은 항목은 한 번만 번역하고 <emphasis>번역문을 재사용</emphasis>합니다. 기본값은 사용입니다.",
     },
   },
   feedback: {
