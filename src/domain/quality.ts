@@ -132,6 +132,7 @@ const QUALITY_RULE_KIND_SET = new Set<QualityRuleKind>(QUALITY_RULE_KINDS);
 export class QualityRule {
   public readonly kind: QualityRuleKind; // 质量规则槽位类型
 
+  /** 固定已经校验的规则类型，字段映射统一由领域对象提供。 */
   private constructor(kind: QualityRuleKind) {
     this.kind = kind;
   }
@@ -196,9 +197,9 @@ export class QualityRule {
   }
 
   /**
-   * 默认预设 setting key 由规则槽位唯一决定
+   * 默认预设设置键由规则槽位唯一决定
    */
-  public get default_preset_setting_key(): string {
+  public get default_preset_setting_key(): QualityRuleModel["default_preset_setting_key"] {
     return QUALITY_RULE_MODEL[this.kind].default_preset_setting_key;
   }
 
@@ -332,16 +333,19 @@ export function normalize_text_preserve_mode(
   return is_text_preserve_mode(normalized) ? normalized : fallback;
 }
 
+/** 校验公开规则类型，供边界输入收窄。 */
 export function is_quality_rule_kind(value: unknown): value is QualityRuleKind {
   return QUALITY_RULE_KIND_SET.has(value as QualityRuleKind);
 }
 
+/** 可选对象缺失时返回空记录。 */
 function read_record(value: unknown): JsonRecord {
   return typeof value === "object" && value !== null && !Array.isArray(value)
     ? (value as JsonRecord)
     : {};
 }
 
+/** 必填对象形状错误时中止解析。 */
 function require_record(value: unknown, message: string): JsonRecord {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
     throw new TypeError(message);
@@ -349,6 +353,7 @@ function require_record(value: unknown, message: string): JsonRecord {
   return value as JsonRecord;
 }
 
+/** 字符串字段仅在缺失且声明默认值时使用默认值。 */
 function read_string_field(record: JsonRecord, key: string, fallback?: string): string {
   const value = record[key];
   if (value === undefined && fallback !== undefined) return fallback;
@@ -356,6 +361,7 @@ function read_string_field(record: JsonRecord, key: string, fallback?: string): 
   return value;
 }
 
+/** 保留可选字段缺失语义，类型错误交给调用方处理。 */
 function read_optional_string_field(record: JsonRecord, key: string): string | undefined {
   const value = record[key];
   if (value === undefined) return undefined;
@@ -363,6 +369,7 @@ function read_optional_string_field(record: JsonRecord, key: string): string | u
   return value;
 }
 
+/** 布尔字段缺失时使用领域默认值。 */
 function read_boolean_field(record: JsonRecord, key: string, fallback: boolean): boolean {
   const value = record[key];
   if (value === undefined) return fallback;

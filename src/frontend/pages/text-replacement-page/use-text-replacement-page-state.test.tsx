@@ -197,6 +197,7 @@ let current_hit_cache: QualityRuleStatisticsCacheSnapshot;
 let project_change_seq = 0;
 let project_change_sections: Array<"items" | "quality"> = ["quality"];
 
+/** 准备命中结果，独立控制统计是否就绪。 */
 function create_hit_cache(
   args: Partial<QualityRuleStatisticsCacheSnapshot>,
 ): QualityRuleStatisticsCacheSnapshot {
@@ -502,6 +503,7 @@ vi.mock("@frontend/app/locale/locale-context", () => {
   };
 });
 
+/** 通过公开 Hook 输出观察页面状态与操作结果。 */
 function Probe(props: {
   on_ready: (state: ReturnType<typeof useTextReplacementPageState>) => void;
 }): JSX.Element | null {
@@ -567,6 +569,7 @@ describe("useTextReplacementPageState", () => {
     vi.useRealTimers();
   });
 
+  /** 挂载隔离的页面状态并等待首次查询完成。 */
   async function mount_probe(): Promise<void> {
     container = document.createElement("div");
     document.body.append(container);
@@ -635,10 +638,10 @@ describe("useTextReplacementPageState", () => {
       );
 
     await act(async () => {
-      await latest_state?.apply_preset("builtin:demo.json");
+      await latest_state?.editing.apply_preset("builtin:demo.json");
     });
     await act(async () => {
-      await latest_state?.import_duplicate_overwrite();
+      await latest_state?.editing.import_duplicate_overwrite();
     });
 
     expect(api_fetch_mock).toHaveBeenLastCalledWith("/api/quality/rules/update", {

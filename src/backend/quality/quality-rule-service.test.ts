@@ -1,3 +1,5 @@
+import { NativeFs } from "../../native/native-fs";
+import { AppSettingService } from "../app/app-setting-service";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -23,7 +25,7 @@ describe("QualityRuleService", () => {
       rule_type: "glossary",
       virtual_id: "user:delete-fixture.json",
     });
-    expect(fs.existsSync(String(result.path))).toBe(false);
+    expect(result.user_presets).toEqual([]);
     await expect(
       service.delete_rule_preset({
         rule_type: "glossary",
@@ -31,6 +33,66 @@ describe("QualityRuleService", () => {
       }),
     ).rejects.toMatchObject({ code: "request.validation_failed" });
   });
+  it("重命名和删除默认预设时同步持久化默认引用并返回同一快照", async () => {
+    const { service, settings } = create_service();
+    service.save_rule_preset({ rule_type: "glossary", name: "old", entries: [] });
+    settings.update_app_settings({ glossary_default_preset: "user:old.json" });
+    const renamed = service.rename_rule_preset({
+      rule_type: "glossary",
+      virtual_id: "user:old.json",
+      new_name: "new",
+    });
+    expect(renamed.user_presets.map((item) => item.virtual_id)).toEqual(["user:new.json"]);
+    expect(renamed.settings.glossary_default_preset).toBe("user:new.json");
+    const deleted = await service.delete_rule_preset({
+      rule_type: "glossary",
+      virtual_id: "user:new.json",
+    });
+    expect(deleted.user_presets).toEqual([]);
+    expect(deleted.settings.glossary_default_preset).toBe("");
+    expect(settings.read_setting().glossary_default_preset).toBe("");
+  });
+
+  it.each(["rename", "delete"] as const)(
+    "%s 的设置写入失败时恢复原预设文件与默认引用",
+    async (operation) => {
+      const { service, settings } = create_service();
+      service.save_rule_preset({ rule_type: "text_preserve", name: "old", entries: [] });
+      settings.update_app_settings({ text_preserve_default_preset: "user:old.json" });
+      vi.spyOn(settings, "update_app_settings").mockImplementationOnce(() => {
+        throw new Error("disk full");
+      });
+      const request = { rule_type: "text_preserve", virtual_id: "user:old.json", new_name: "new" };
+      await expect(
+        Promise.resolve().then(() =>
+          operation === "rename"
+            ? service.rename_rule_preset(request)
+            : service.delete_rule_preset(request),
+        ),
+      ).rejects.toThrow("disk full");
+      expect(
+        service.list_rule_presets(request).user_presets.map((item) => item.virtual_id),
+      ).toEqual(["user:old.json"]);
+      expect(service.read_rule_preset(request).entries).toEqual([]);
+      expect(settings.read_setting().text_preserve_default_preset).toBe("user:old.json");
+    },
+  );
+
+  it("暂存文件清理失败保留提交事实和期间更新的默认设置", async () => {
+    const { service, settings, native_fs } = create_service();
+    service.save_rule_preset({ rule_type: "glossary", name: "old", entries: [] });
+    settings.update_app_settings({ glossary_default_preset: "user:old.json" });
+    vi.spyOn(native_fs, "remove_async").mockImplementationOnce(async () => {
+      settings.update_app_settings({ glossary_default_preset: "user:other.json" });
+      throw new Error("cleanup failed");
+    });
+    await expect(
+      service.delete_rule_preset({ rule_type: "glossary", virtual_id: "user:old.json" }),
+    ).rejects.toMatchObject({ code: "data.committed_sync_failed" });
+    expect(service.list_rule_presets({ rule_type: "glossary" }).user_presets).toEqual([]);
+    expect(settings.read_setting().glossary_default_preset).toBe("user:other.json");
+  });
+
   const cleanup_paths: string[] = [];
   const cleanup_databases: ProjectDatabase[] = [];
 
@@ -360,6 +422,8 @@ describe("QualityRuleService", () => {
   function create_service(runtime_owner: "batch_translation" | "agent" | null = null): {
     service: QualityRuleService;
     app_root: string;
+    settings: AppSettingService;
+    native_fs: NativeFs;
   } {
     const app_root = fs.mkdtempSync(path.join(os.tmpdir(), "linguagacha-quality-test-"));
     cleanup_paths.push(app_root);
@@ -370,14 +434,18 @@ describe("QualityRuleService", () => {
       platform: process.platform,
     });
     const database = null as unknown as ProjectDatabase;
+    const settings = new AppSettingService(paths);
+    const native_fs = new NativeFs();
     const service = new QualityRuleService(
       paths,
+      settings,
       new ProjectSessionState(),
       new ProjectWriteStore(database, vi.fn(), null),
       create_runtime_gate(runtime_owner),
       create_cache(),
+      native_fs,
     );
-    return { service, app_root };
+    return { service, app_root, settings, native_fs };
   }
 
   /**
@@ -409,6 +477,7 @@ describe("QualityRuleService", () => {
     return {
       service: new QualityRuleService(
         paths,
+        new AppSettingService(paths),
         session_state,
         new ProjectWriteStore(database, project_event_bus, publisher.publish_project_change),
         runtime_gate,

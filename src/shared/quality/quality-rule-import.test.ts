@@ -199,7 +199,7 @@ describe("preview_quality_rule_import", () => {
     ]);
   });
 
-  it("已有同源规则在预览结果中保留最后一条目标字段", () => {
+  it("空导入保留已有重复规则，避免改写无关条目", () => {
     const preview = preview_quality_rule_import({
       rule_type: QualityRuleImportRuleTypeValue.GLOSSARY,
       existing: [
@@ -209,8 +209,7 @@ describe("preview_quality_rule_import", () => {
       incoming: [],
     });
 
-    expect(preview.overwrite_entries).toHaveLength(1);
-    expect(preview.overwrite_entries[0]?.dst).toBe("新值");
+    expect(preview.overwrite_entries.map((entry) => entry.dst)).toEqual(["旧值", "新值"]);
   });
 });
 

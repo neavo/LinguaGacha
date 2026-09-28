@@ -40,18 +40,6 @@ type GlossaryTableProps = {
   on_search_entry_relations: (entry_id: GlossaryEntryId) => void;
 };
 
-/** 将术语排序字段映射到通用表格列；未排序时统一返回 null。 */
-function map_glossary_sort_state(sort_state: GlossarySortState): AppTableSortState | null {
-  if (sort_state.field === null || sort_state.direction === null) {
-    return null;
-  }
-
-  return {
-    column_id: sort_state.field,
-    direction: sort_state.direction,
-  };
-}
-
 type GlossaryRuleBadgeProps = {
   enabled: boolean;
   tooltip: string;
@@ -235,7 +223,7 @@ export function GlossaryTable(props: GlossaryTableProps): JSX.Element {
           selected_row_ids={props.selected_entry_ids}
           active_row_id={props.active_entry_id}
           anchor_row_id={props.anchor_entry_id}
-          sort_state={map_glossary_sort_state(props.sort_state)}
+          sort_state={props.sort_state}
           get_row_id={(entry) => entry.entry_id}
           scroll_to_row={
             props.restore_scroll_entry_id === null

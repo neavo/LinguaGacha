@@ -9,7 +9,6 @@ describe("text preserve filtering", () => {
         { entry_id: "newline", src: "\\N", info: "line break" },
         { entry_id: "color", src: "\\C", info: "color" },
       ],
-      entry_ids: ["newline", "color"],
       filter_state: { keyword: "break", scope: "info", is_regex: false },
     });
 
@@ -27,7 +26,7 @@ describe("text preserve filtering", () => {
     expect(
       sort_text_preserve_entries(entries, { column_id: "hit", direction: "descending" }, true, {
         running: false,
-        entry_ids: ["a", "b", "c"],
+        entry_ids: [],
         hits_by_entry_id: { a: 1, b: 3, c: 1 },
       }).map((entry) => entry.entry_id),
     ).toEqual(["b", "a", "c"]);

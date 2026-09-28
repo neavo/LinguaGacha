@@ -155,6 +155,7 @@ let runtime_snapshot: { revision: number; owner: "batch_translation" | "agent" |
 let project_change_seq = 0;
 let project_change_sections: Array<"items" | "quality"> = ["quality"];
 
+/** 准备命中结果，独立控制统计是否就绪。 */
 function create_hit_cache(
   args: Partial<QualityRuleStatisticsCacheSnapshot>,
 ): QualityRuleStatisticsCacheSnapshot {
@@ -466,6 +467,7 @@ vi.mock("@frontend/app/locale/locale-context", () => {
   };
 });
 
+/** 通过公开 Hook 输出观察页面状态与操作结果。 */
 function Probe(props: {
   on_ready: (state: ReturnType<typeof useTextPreservePageState>) => void;
 }): JSX.Element | null {
@@ -543,6 +545,7 @@ describe("useTextPreservePageState", () => {
     vi.useRealTimers();
   });
 
+  /** 挂载隔离的页面状态并等待首次查询完成。 */
   async function mount_probe(): Promise<void> {
     container = document.createElement("div");
     document.body.append(container);
@@ -704,27 +707,27 @@ describe("useTextPreservePageState", () => {
     await mount_probe();
 
     await act(async () => {
-      latest_state?.open_create_dialog();
+      latest_state?.editing.open_create_dialog();
     });
     await act(async () => {
-      latest_state?.update_dialog_draft({
+      latest_state?.editing.update_dialog_draft({
         src: "\\U0001F600",
         info: "旧写法",
       });
     });
     await act(async () => {
-      await latest_state?.save_dialog_entry();
+      await latest_state?.editing.save_dialog_entry();
     });
 
-    expect(latest_state?.dialog_state.invalid).toBe(true);
+    expect(latest_state?.editing.dialog_state.invalid).toBe(true);
     expect(push_toast_mock).toHaveBeenCalledWith(
       "error",
       expect.stringContaining("quality_rule_editor.feedback.regex_invalid"),
     );
     expect(api_fetch_mock).not.toHaveBeenCalled();
-    await act(async () => latest_state?.update_dialog_draft({ info: "修正说明" }));
-    expect(latest_state?.dialog_state.invalid).toBe(true);
-    await act(async () => latest_state?.update_dialog_draft({ src: "valid" }));
-    expect(latest_state?.dialog_state.invalid).toBe(false);
+    await act(async () => latest_state?.editing.update_dialog_draft({ info: "修正说明" }));
+    expect(latest_state?.editing.dialog_state.invalid).toBe(true);
+    await act(async () => latest_state?.editing.update_dialog_draft({ src: "valid" }));
+    expect(latest_state?.editing.dialog_state.invalid).toBe(false);
   });
 });

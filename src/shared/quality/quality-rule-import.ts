@@ -134,7 +134,12 @@ function merge_quality_rule_import_entries(args: {
     order_offset: args.existing.length,
   });
   const grouped_items = group_import_items_by_identity([...existing_items, ...incoming_items]);
-  const kept_entries = merge_grouped_import_entries(args.rule_type, grouped_items);
+  const changed_identities = new Set(incoming_items.map((item) => item.identity));
+  const kept_entries = [...grouped_items].flatMap(([identity, items]) =>
+    changed_identities.has(identity)
+      ? [merge_import_group(args.rule_type, items)]
+      : items.map((item) => ({ order: item.order, entry: item.entry })),
+  );
   kept_entries.sort((left, right) => left.order - right.order);
 
   return kept_entries.map((entry) => ({ ...entry.entry }));
@@ -184,19 +189,13 @@ function group_import_items_by_identity(
 }
 
 /** 组内按输入顺序覆盖目标字段，输出位置沿用首个条目。 */
-function merge_grouped_import_entries(
+function merge_import_group(
   rule_type: QualityRuleImportRuleType,
-  grouped_items: Map<string, [QualityRuleImportItem, ...QualityRuleImportItem[]]>,
-): QualityRuleKeptEntry[] {
-  const kept_entries: QualityRuleKeptEntry[] = [];
-  for (const items of grouped_items.values()) {
-    const base = { ...items[0].entry };
-    for (const item of items.slice(1)) {
-      overwrite_import_entry_into_base(rule_type, base, item.entry);
-    }
-    kept_entries.push({ order: items[0].order, entry: base });
-  }
-  return kept_entries;
+  items: [QualityRuleImportItem, ...QualityRuleImportItem[]],
+): QualityRuleKeptEntry {
+  const base = { ...items[0].entry };
+  for (const item of items.slice(1)) overwrite_import_entry_into_base(rule_type, base, item.entry);
+  return { order: items[0].order, entry: base };
 }
 
 // 覆盖动作只写当前规则类型允许的目标字段，避免携带未知导入元数据。
@@ -275,10 +274,12 @@ function classify_duplicate_kind(
   return "different-target";
 }
 
+/** 裁去导入原文的首尾空白。 */
 function normalize_quality_rule_import_src(src: unknown): string {
   return typeof src === "string" ? src.trim() : "";
 }
 
+/** 补齐导入比较字段，后续按规则类型选择覆盖字段。 */
 function normalize_quality_rule_import_entry(entry: JsonRecord): JsonRecord {
   return {
     ...entry,
@@ -299,11 +300,13 @@ function get_overwrite_fields(rule_type: QualityRuleImportRuleType) {
       : (["dst"] as const);
 }
 
+/** 按规则类型读取供重复分类使用的目标文本。 */
 function read_target_text(rule_type: QualityRuleImportRuleType, entry: JsonRecord): string {
   const field = rule_type === "TEXT_PRESERVE" ? "info" : "dst";
   return String(entry[field] ?? "").trim();
 }
 
+/** 读取并裁去比较字段的首尾空白。 */
 function read_text(record: JsonRecord, field: string): string {
   return String(record[field] ?? "").trim();
 }
@@ -321,6 +324,25 @@ function build_pattern_identity(rule_type: QualityRuleImportRuleType, entry: Jso
   ]);
 }
 
+/** 判断可读取字段的非数组对象。 */
 function is_record(value: unknown): value is JsonRecord {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/** 只比较当前规则实际拥有的字段和身份，导入归一时添加的其它字段不构成修改。 */
+export function quality_rule_entries_equal(
+  rule_type: QualityRuleImportRuleType,
+  left: readonly JsonRecord[],
+  right: readonly JsonRecord[],
+): boolean {
+  const fields =
+    rule_type === "TEXT_PRESERVE"
+      ? ["entry_id", "src", "info"]
+      : rule_type === "GLOSSARY"
+        ? ["entry_id", "src", "dst", "info", "case_sensitive"]
+        : ["entry_id", "src", "dst", "regex", "case_sensitive"];
+  return (
+    left.length === right.length &&
+    left.every((entry, index) => fields.every((field) => entry[field] === right[index]?.[field]))
+  );
 }

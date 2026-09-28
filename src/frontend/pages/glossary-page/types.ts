@@ -3,19 +3,10 @@ import type { GlossaryEntry } from "@shared/quality/glossary";
 
 export type GlossaryEntryId = string;
 /** 创建草稿尚未分配项目身份，编辑草稿保留既有身份。 */
-export type GlossaryEntryDraft = Omit<GlossaryEntry, "entry_id"> & { entry_id?: string };
+export type GlossaryEntryDraft =
+  import("@frontend/features/quality-rule-editor/use-quality-rule-editing").QualityRuleDraft<GlossaryEntry>;
 
 export type GlossaryDialogMode = "create" | "edit";
-
-export type GlossaryDialogState = {
-  open: boolean;
-  mode: GlossaryDialogMode;
-  target_entry_id: GlossaryEntryId | null;
-  insert_after_entry_id: GlossaryEntryId | null;
-  draft_entry: GlossaryEntryDraft;
-  dirty: boolean;
-  saving: boolean;
-};
 
 export type GlossaryFilterScope = "all" | "src" | "dst" | "info";
 
@@ -41,22 +32,11 @@ export type GlossaryHitBadgeState = {
   tooltip: string;
 };
 
-export type GlossarySortField = "src" | "dst" | "info" | "rule" | "hit";
-
 export type GlossarySortDirection = "ascending" | "descending";
 
 export type GlossarySortState =
-  | {
-      field: null;
-      direction: null;
-    }
-  | {
-      field: GlossarySortField;
-      direction: GlossarySortDirection;
-    };
+  | import("@frontend/widgets/app-table/app-table-types").AppTableSortState
+  | null;
 
-export type GlossaryVisibleEntry = {
-  entry: GlossaryEntry;
-  entry_id: GlossaryEntryId;
-  source_index: number;
-};
+export type GlossaryVisibleEntry =
+  import("@frontend/features/quality-rule-editor/use-quality-rule-table").QualityRuleVisibleEntry<GlossaryEntry>;

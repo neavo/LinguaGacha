@@ -1,32 +1,16 @@
 import { api_fetch } from "@frontend/app/desktop/desktop-api";
 import type {
-  QualityRuleKind,
-  QualityRuleGlossaryEntry,
-  QualityRuleTextPreserveEntry,
-  QualityRuleTextReplacementEntry,
-} from "@domain/quality";
-
-type QualityRuleSectionRevisions = Record<string, number | undefined>;
-export type QualityRuleType = QualityRuleKind;
-
-type QualityRuleEntryByType = {
-  glossary: QualityRuleGlossaryEntry;
-  pre_replacement: QualityRuleTextReplacementEntry;
-  post_replacement: QualityRuleTextReplacementEntry;
-  text_preserve: QualityRuleTextPreserveEntry;
-};
-
-export type QualityRuleQuerySlice<TType extends QualityRuleType = QualityRuleType> = {
-  enabled?: unknown;
-  mode?: unknown;
-  entries?: QualityRuleEntryByType[TType][];
-};
-
-type QualityRuleQueryResponse<TType extends QualityRuleType = QualityRuleType> = {
-  projectPath: string;
-  sectionRevisions?: QualityRuleSectionRevisions;
-  qualityRule?: QualityRuleQuerySlice<TType>;
-};
+  QualityRuleEntryByType,
+  QualityRuleType,
+  QualityRuleQueryResponse,
+  QualityRuleQuerySlice,
+  QualityRulePresets,
+  QualityRulePresetChange,
+  QualityRuleUpdateRequest,
+} from "@shared/quality/quality-rule-api";
+import type { ProjectWriteResultPayload } from "@frontend/app/state/desktop-project-write";
+import type { SettingsSnapshotPayload } from "@frontend/app/state/desktop-state-context";
+export type { QualityRuleType, QualityRuleQuerySlice };
 
 /**
  * 通过统一质量规则查询入口读取指定规则切片，页面负责在边界处窄化载荷。
@@ -75,4 +59,56 @@ export async function export_quality_rule_entries<TType extends QualityRuleType>
     entries: args.entries,
   });
   return true;
+}
+
+/** 规则写入沿用工程提交回执；调用者必须通过工程写入口执行。 */
+export function update_quality_rule<K extends QualityRuleType>(
+  request: QualityRuleUpdateRequest<K>,
+): Promise<ProjectWriteResultPayload> {
+  return api_fetch("/api/quality/rules/update", request);
+}
+/** 读取预设目录快照，默认标记由设置快照提供。 */
+export function read_quality_rule_presets(rule_type: QualityRuleType): Promise<QualityRulePresets> {
+  return api_fetch("/api/quality/rules/presets", { rule_type });
+}
+/** 读取预设条目，应用和重复确认由编辑流程负责。 */
+export async function read_quality_rule_preset<K extends QualityRuleType>(
+  rule_type: K,
+  virtual_id: string,
+): Promise<QualityRuleEntryByType[K][]> {
+  const response = await api_fetch<{ entries: QualityRuleEntryByType[K][] }>(
+    "/api/quality/rules/presets/read",
+    { rule_type, virtual_id },
+  );
+  return response.entries;
+}
+/** 保存当前规则为用户预设。 */
+export function save_quality_rule_preset<K extends QualityRuleType>(
+  rule_type: K,
+  name: string,
+  entries: QualityRuleEntryByType[K][],
+): Promise<unknown> {
+  return api_fetch("/api/quality/rules/presets/save", { rule_type, name, entries });
+}
+/** 用一个后端命令更新名称和关联的默认引用。 */
+export function rename_quality_rule_preset(
+  rule_type: QualityRuleType,
+  virtual_id: string,
+  new_name: string,
+): Promise<QualityRulePresetChange> {
+  return api_fetch("/api/quality/rules/presets/rename", { rule_type, virtual_id, new_name });
+}
+/** 等待文件与默认引用的删除命令完成。 */
+export function delete_quality_rule_preset(
+  rule_type: QualityRuleType,
+  virtual_id: string,
+): Promise<QualityRulePresetChange> {
+  return api_fetch("/api/quality/rules/presets/delete", { rule_type, virtual_id });
+}
+/** 通过应用设置入口保存默认预设引用。 */
+export function update_quality_rule_default_preset(
+  key: string,
+  value: string,
+): Promise<SettingsSnapshotPayload> {
+  return api_fetch("/api/settings/update", { [key]: value });
 }

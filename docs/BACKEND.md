@@ -29,6 +29,12 @@ GUI 启动后通过系统代理后台检查一次，CLI 读取已有缓存。单
 
 `POST /api/models/copy` 接受源配置内部 ID `model_id`，一次保存后返回 `snapshot` 和 `copied_model_id`。复制源模型当前完整配置，按协议进入对应自定义分类末尾；SakuraLLM 禁止复制。副本使用新 ID，名称按当前应用语言在整个模型集合中避重，有效模型选择保留原值。
 
+质量规则接口类型归 `shared/quality/quality-rule-api`。`QualityRuleService` 的预设重命名、删除同时维护默认引用，返回预设列表与设置快照。
+
+- 文件先移至新名称或临时路径，`AppSettingService` 保存配置失败时恢复原文件。
+- 提交后清理临时文件并发布设置通知；失败返回 `data.committed_sync_failed`，前端重读事实。清理失败的临时文件不进入预设列表。
+- 补偿覆盖进程内失败，文件和配置之间仍存在崩溃窗口。
+
 ## 2. 状态拥有者
 
 |状态 / 边界|拥有者|唯一写入口 / 读出口|

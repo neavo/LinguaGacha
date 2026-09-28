@@ -1,6 +1,5 @@
 import type {
   TextPreserveEntry,
-  TextPreserveEntryId,
   TextPreserveFilterState,
   TextPreserveHitState,
   TextPreserveVisibleEntry,
@@ -12,7 +11,6 @@ import {
 
 type BuildTextPreserveFilterResultOptions = {
   entries: TextPreserveEntry[];
-  entry_ids: TextPreserveEntryId[];
   filter_state: TextPreserveFilterState;
 };
 
@@ -21,6 +19,7 @@ type BuildTextPreserveFilterResult = {
   invalid_regex_message: string | null;
 };
 
+/** 把页面选定字段交给共享关键词匹配器。 */
 function build_keyword_matcher(filter_state: TextPreserveFilterState): {
   invalid_regex_message: string | null;
   matches: (entry: TextPreserveEntry) => boolean;
@@ -35,7 +34,7 @@ function build_keyword_matcher(filter_state: TextPreserveFilterState): {
 }
 
 /**
- * 将保护条目与同索引 ID 组合为只读展示结果；无对应 ID 的脏快照不会进入表格。
+ * 按条目自身身份构建筛选结果，并保留原位置供稳定排序使用。
  */
 export function build_text_preserve_filter_result(
   options: BuildTextPreserveFilterResultOptions,
@@ -50,10 +49,7 @@ export function build_text_preserve_filter_result(
 
   return {
     visible_entries: options.entries.flatMap((entry, source_index) => {
-      const entry_id = options.entry_ids[source_index];
-      if (entry_id === undefined) {
-        return [];
-      }
+      const entry_id = entry.entry_id;
 
       return keyword_matcher.matches(entry) ? [{ entry, entry_id, source_index }] : [];
     }),

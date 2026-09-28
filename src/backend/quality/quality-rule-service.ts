@@ -1,3 +1,12 @@
+import { randomUUID } from "node:crypto";
+import type { AppSettingService } from "../app/app-setting-service";
+import type {
+  QualityRuleQueryResponse,
+  QualityRuleQuerySlice,
+  QualityRulePresets,
+  QualityRulePresetItem,
+  QualityRulePresetChange,
+} from "../../shared/quality/quality-rule-api";
 import path from "node:path";
 
 import type { JsonRecord, JsonValue } from "../../domain/json";
@@ -11,7 +20,7 @@ import type { RuntimeOperationGate } from "../runtime-operation-gate";
 import type { ProjectWriteResult } from "../../shared/project-event";
 
 import { QualityRule, type QualityRuleKind } from "../../domain/quality";
-import { is_json_record, read_json_record } from "../../domain/json";
+import { read_json_record } from "../../domain/json";
 import * as AppErrors from "../../shared/error";
 import { NativeFs, default_native_fs } from "../../native/native-fs";
 import {
@@ -30,49 +39,28 @@ const DEFAULT_QUALITY_RULE_UPDATE_SOURCE = "quality_rule_update";
  * 封装质量规则 CRUD、预设 IO 和 revision 对齐。
  */
 export class QualityRuleService {
-  private readonly paths: AppPathService; // 质量规则预设目录与虚拟路径的解析入口
-
-  private readonly session_state: ProjectSessionState; // 页面级质量规则 / 提示词写入口以 会话状态作为当前工程目标
-
-  private readonly write_store: ProjectWriteStore; // 工程质量 / 提示词事实统一交由 ProjectWriteStore 提交
-
-  private readonly runtime_gate: RuntimeOperationGate; // 用户与 Agent 写入口共享串行门禁
-
-  private readonly cache: CacheReadPort; // 查询只读取当前 loaded 工程热事实
-
-  private readonly native_fs: NativeFs; // 规则、提示词预设和导入导出的唯一文件 IO 入口
-
-  /**
-   * 初始化质量规则依赖，保持外部写入口清晰。
-   */
+  /** 注入共享状态拥有者，预设文件与默认设置在同一命令内协调。 */
   public constructor(
-    paths: AppPathService,
-    session_state: ProjectSessionState,
-    write_store: ProjectWriteStore,
-    runtime_gate: RuntimeOperationGate,
-    cache: CacheReadPort,
-    native_fs: NativeFs = default_native_fs,
-  ) {
-    this.paths = paths;
-
-    this.session_state = session_state;
-    this.write_store = write_store;
-    this.runtime_gate = runtime_gate;
-    this.cache = cache;
-    this.native_fs = native_fs;
-  }
+    private readonly paths: AppPathService, // 预设目录和路径身份
+    private readonly settings: AppSettingService, // 默认预设引用的唯一持久化入口
+    private readonly session_state: ProjectSessionState, // 当前工程身份
+    private readonly write_store: ProjectWriteStore, // 工程事实提交
+    private readonly runtime_gate: RuntimeOperationGate, // 用户与 Agent 共用写入互斥
+    private readonly cache: CacheReadPort, // 工程规则热读快照
+    private readonly native_fs: NativeFs = default_native_fs, // 预设与导入导出的磁盘操作
+  ) {}
 
   /**
    * 读取单个质量规则切片。
    */
-  public query(request: JsonRecord): JsonRecord {
+  public query(request: JsonRecord): QualityRuleQueryResponse {
     const project_path = this.session_state.require_loaded_project_path();
-    const rule_type = this.normalize_rule_type(request["rule_type"]);
+    const rule_type = QualityRule.from_json(request["rule_type"]).kind;
     const quality_block = this.cache.quality.readBlock();
     return {
       projectPath: project_path,
-      sectionRevisions: this.cache.readSectionRevisions() as unknown as JsonValue,
-      qualityRule: this.normalize_record(quality_block[rule_type]) as unknown as JsonValue,
+      sectionRevisions: this.cache.readSectionRevisions(),
+      qualityRule: read_json_record(quality_block[rule_type]) as QualityRuleQuerySlice,
     };
   }
 
@@ -88,7 +76,7 @@ export class QualityRuleService {
   /** 取得用户项目写 lease 后统一规范化并提交规则事实。 */
   private async update_under_lease(request: JsonRecord): Promise<ProjectWriteResult> {
     this.assert_no_legacy_fields(request, ["expected_revision"]);
-    const rule_type = this.normalize_rule_type(request["rule_type"]);
+    const rule_type = QualityRule.from_json(request["rule_type"]).kind;
     const project_path = this.session_state.require_loaded_project_path();
     const has_entries = Object.hasOwn(request, "entries");
     const entries = has_entries
@@ -100,10 +88,11 @@ export class QualityRuleService {
         diagnostic_context: { reason: "empty_quality_rule_update" },
       });
     }
+    const rule = QualityRule.from_json(rule_type);
     const meta_entries: JsonRecord = {};
     for (const [key, value] of Object.entries(meta)) {
-      const meta_key = this.resolve_rule_meta_key(rule_type, key);
-      const meta_value = this.normalize_rule_meta_value(rule_type, key, value);
+      const meta_key = rule.resolve_meta_key(key);
+      const meta_value = rule.normalize_meta_value(key, value) as JsonValue;
       meta_entries[meta_key] = meta_value;
     }
     return await this.write_store.save_quality_rules({
@@ -116,11 +105,11 @@ export class QualityRuleService {
         entries === undefined
           ? undefined
           : {
-              databaseType: QualityRule.from_json(rule_type).database_type,
+              databaseType: rule.database_type,
               entries,
             },
       metaEntries: meta_entries,
-      revisionKey: this.build_rule_revision_key(rule_type),
+      revisionKey: rule.revision_meta_key,
     });
   }
 
@@ -128,11 +117,14 @@ export class QualityRuleService {
    * 从外部文件导入规则预演结果，保持导入解析在服务内收口
    */
   public async import_rules(request: JsonRecord): Promise<JsonRecord> {
-    const rule_type = this.normalize_rule_type(request["rule_type"]);
+    const rule_type = QualityRule.from_json(request["rule_type"]).kind;
     const file_path = String(request["path"] ?? "");
     const entries = this.create_rule_entries(
       rule_type,
-      (await this.load_rules_from_file(file_path)) as unknown as JsonValue,
+      (await load_quality_rule_entries_from_file(
+        file_path,
+        this.native_fs,
+      )) as unknown as JsonValue,
     );
     return { entries: entries as unknown as JsonValue };
   }
@@ -142,17 +134,17 @@ export class QualityRuleService {
    */
   public async export_rules(request: JsonRecord): Promise<JsonRecord> {
     const file_path = String(request["path"] ?? "");
-    const rule_type = this.normalize_rule_type(request["rule_type"]);
+    const rule_type = QualityRule.from_json(request["rule_type"]).kind;
     const entries = this.normalize_rule_entries(rule_type, request["entries"]);
     const base_path = this.without_extension(file_path);
-    await this.export_rules_to_files(base_path, entries);
+    await export_quality_rule_entries_to_files(base_path, entries, this.native_fs);
     return { path: `${base_path}.json`.replace(/\\/g, "/") };
   }
 
   /**
    * 列出内置和用户规则预设，统一虚拟 id 语义
    */
-  public list_rule_presets(request: JsonRecord): JsonRecord {
+  public list_rule_presets(request: JsonRecord): QualityRulePresets {
     const preset_directory = QualityRule.from_json(request["rule_type"]).preset_directory;
     return {
       builtin_presets: this.list_preset_items(
@@ -160,13 +152,13 @@ export class QualityRuleService {
         this.paths.get_quality_rule_builtin_preset_dir(preset_directory),
         this.paths.get_quality_rule_builtin_preset_relative_dir(preset_directory),
         ".json",
-      ) as unknown as JsonValue,
+      ),
       user_presets: this.list_preset_items(
         "user",
         this.paths.get_quality_rule_user_preset_dir(preset_directory),
         undefined,
         ".json",
-      ) as unknown as JsonValue,
+      ),
     };
   }
 
@@ -174,7 +166,7 @@ export class QualityRuleService {
    * 读取规则预设内容，隐藏内置和用户目录差异
    */
   public read_rule_preset(request: JsonRecord): JsonRecord {
-    const rule_type = this.normalize_rule_type(request["rule_type"]);
+    const rule_type = QualityRule.from_json(request["rule_type"]).kind;
     const preset_directory = QualityRule.from_json(rule_type).preset_directory;
     const preset_path = this.resolve_rule_preset_file(
       preset_directory,
@@ -199,7 +191,7 @@ export class QualityRuleService {
   public save_rule_preset(request: JsonRecord): JsonRecord {
     const preset_directory = QualityRule.from_json(request["rule_type"]).preset_directory;
     const name = this.normalize_preset_name(String(request["name"] ?? ""));
-    const rule_type = this.normalize_rule_type(request["rule_type"]);
+    const rule_type = QualityRule.from_json(request["rule_type"]).kind;
     const entries = this.normalize_rule_entries(rule_type, request["entries"]);
     const directory = this.paths.get_quality_rule_user_preset_dir(preset_directory);
     this.native_fs.make_dir(directory);
@@ -226,67 +218,107 @@ export class QualityRuleService {
   /**
    * 重命名用户规则预设，保护内置预设不可变边界
    */
-  public rename_rule_preset(request: JsonRecord): JsonRecord {
-    const preset_directory = QualityRule.from_json(request["rule_type"]).preset_directory;
-    const current_file = this.resolve_rule_preset_file(
-      preset_directory,
-      String(request["virtual_id"] ?? ""),
-    );
-    if (current_file.source !== "user") {
-      throw new AppErrors.AppError("request.validation_failed");
-    }
-    const directory = this.paths.get_quality_rule_user_preset_dir(preset_directory);
-    const new_file = resolve_preset_file({
-      virtual_id: `user:${this.normalize_preset_name(String(request["new_name"] ?? ""))}.json`,
+  public rename_rule_preset(request: JsonRecord): QualityRulePresetChange {
+    const rule = QualityRule.from_json(request["rule_type"]);
+    const id = String(request["virtual_id"] ?? "");
+    const current = this.resolve_rule_preset_file(rule.preset_directory, id);
+    if (current.source !== "user") throw new AppErrors.AppError("request.validation_failed");
+    const directory = this.paths.get_quality_rule_user_preset_dir(rule.preset_directory);
+    const next_id = `user:${this.normalize_preset_name(String(request["new_name"] ?? ""))}.json`;
+    const next = resolve_preset_file({
+      virtual_id: next_id,
       extension: ".json",
       builtin_directory: directory,
       user_directory: directory,
     });
-    this.native_fs.rename(current_file.file_path, new_file.file_path);
+    if (id === next_id) return this.preset_change_snapshot(rule.kind);
+    if (
+      this.native_fs.exists(next.file_path) &&
+      this.native_fs.to_identity_path(current.file_path) !==
+        this.native_fs.to_identity_path(next.file_path)
+    )
+      throw new AppErrors.AppError("request.validation_failed");
+    const key = rule.default_preset_setting_key;
+    const is_default = this.settings.read_setting()[key] === id;
+    this.native_fs.rename(current.file_path, next.file_path);
+    try {
+      if (is_default) this.settings.update_app_settings({ [key]: next_id }, false);
+    } catch (error) {
+      try {
+        this.native_fs.rename(next.file_path, current.file_path);
+      } catch (rollback_error) {
+        throw new AggregateError(
+          [error, rollback_error],
+          "Failed to restore renamed quality preset.",
+        );
+      }
+      throw error;
+    }
+    if (is_default) this.publish_preset_settings(key);
+    return this.preset_change_snapshot(rule.kind);
+  }
+
+  /** 先暂存文件，再同步清除默认引用；设置失败恢复原文件，已提交后的清理失败保留提交事实。 */
+  public async delete_rule_preset(request: JsonRecord): Promise<QualityRulePresetChange> {
+    const rule = QualityRule.from_json(request["rule_type"]);
+    const id = String(request["virtual_id"] ?? "");
+    const file = this.resolve_rule_preset_file(rule.preset_directory, id);
+    if (file.source !== "user") throw new AppErrors.AppError("request.validation_failed");
+    const staged = `${file.file_path}.pending-delete-${randomUUID()}`;
+    const key = rule.default_preset_setting_key;
+    const is_default = this.settings.read_setting()[key] === id;
+    this.native_fs.rename(file.file_path, staged);
+    try {
+      if (is_default) this.settings.update_app_settings({ [key]: "" }, false);
+    } catch (error) {
+      try {
+        this.native_fs.rename(staged, file.file_path);
+      } catch (rollback_error) {
+        throw new AggregateError(
+          [error, rollback_error],
+          "Failed to restore deleted quality preset.",
+        );
+      }
+      throw error;
+    }
+    // 到这里预设和默认引用已提交；清理错误不能覆盖期间用户更新的设置或同名新预设。
+    try {
+      await this.native_fs.remove_async(staged);
+    } catch (cause) {
+      if (is_default) this.publish_preset_settings(key, cause);
+      throw new AppErrors.AppError("data.committed_sync_failed", {
+        cause,
+        public_details: { committed: true },
+      });
+    }
+    if (is_default) this.publish_preset_settings(key);
+    return this.preset_change_snapshot(rule.kind);
+  }
+
+  /** 从已提交事实组装预设列表与设置，供前端同步消费。 */
+  private preset_change_snapshot(kind: QualityRuleKind): QualityRulePresetChange {
     return {
-      item: this.build_preset_item("user", new_file.file_name, directory, ".json"),
+      ...this.list_rule_presets({ rule_type: kind }),
+      settings: this.settings.build_setting_snapshot(this.settings.read_setting()),
     };
   }
 
-  /**
-   * 删除用户规则预设，避免调用方误删内置资源
-   */
-  public async delete_rule_preset(request: JsonRecord): Promise<JsonRecord> {
-    const preset_directory = QualityRule.from_json(request["rule_type"]).preset_directory;
-    const preset_file = this.resolve_rule_preset_file(
-      preset_directory,
-      String(request["virtual_id"] ?? ""),
-    );
-    if (preset_file.source !== "user") {
-      throw new AppErrors.AppError("request.validation_failed");
+  /** 文件与配置完成后才发布；通知失败保留已提交语义。 */
+  private publish_preset_settings(key: string, previous_failure?: unknown): void {
+    try {
+      this.settings.publish_settings_changed([key]);
+    } catch (cause) {
+      throw new AppErrors.AppError("data.committed_sync_failed", {
+        cause:
+          previous_failure === undefined
+            ? cause
+            : new AggregateError(
+                [previous_failure, cause],
+                "Preset cleanup and notification failed.",
+              ),
+        public_details: { committed: true },
+      });
     }
-    await this.native_fs.remove_async(preset_file.file_path);
-    return { path: preset_file.file_path.replace(/\\/g, "/") };
-  }
-
-  /**
-   * 生成规则 revision key，避免调用方拼接 meta 名称
-   */
-  private build_rule_revision_key(rule_type: QualityRuleKind): string {
-    return QualityRule.from_json(rule_type).revision_meta_key;
-  }
-
-  /**
-   * 规则 meta key 由领域对象解析，避免服务层保留旧字符串映射表
-   */
-  private resolve_rule_meta_key(rule_type: QualityRuleKind, key: string): string {
-    return QualityRule.from_json(rule_type).resolve_meta_key(key);
-  }
-
-  /**
-   * 归一规则 meta 值，兼容旧项目缺失字段
-   */
-  private normalize_rule_meta_value(
-    rule_type: QualityRuleKind,
-    key: string,
-    value: JsonValue,
-  ): JsonValue {
-    return QualityRule.from_json(rule_type).normalize_meta_value(key, value) as JsonValue;
   }
 
   /**
@@ -300,13 +332,6 @@ export class QualityRuleService {
         });
       }
     }
-  }
-
-  /**
-   * 归一规则类型，保护质量规则接口只接受已知分组
-   */
-  private normalize_rule_type(value: JsonValue | undefined): QualityRuleKind {
-    return QualityRule.from_json(value).kind;
   }
 
   /**
@@ -333,7 +358,7 @@ export class QualityRuleService {
   ): JsonRecord[] {
     try {
       const rule = QualityRule.from_json(rule_type);
-      const current_slice = this.normalize_record(this.cache.quality.readBlock()[rule_type]);
+      const current_slice = read_json_record(this.cache.quality.readBlock()[rule_type]);
       const current_entries = normalize_quality_rule_entries(rule, current_slice["entries"] ?? []);
       return create_quality_rule_entries(
         rule,
@@ -346,27 +371,6 @@ export class QualityRuleService {
   }
 
   /**
-   * 缺失规则切片按空记录返回，由页面使用领域默认值补齐。
-   */
-  private normalize_record(value: unknown): JsonRecord {
-    return is_json_record(value) ? (value as JsonRecord) : {};
-  }
-
-  /**
-   * 按扩展名读取规则文件，保持导入格式分发集中
-   */
-  private async load_rules_from_file(file_path: string): Promise<unknown[]> {
-    return load_quality_rule_entries_from_file(file_path, this.native_fs);
-  }
-
-  /**
-   * 按目标扩展名导出规则，隐藏 JSON 与表格写出差异
-   */
-  private async export_rules_to_files(base_path: string, entries: JsonRecord[]): Promise<void> {
-    await export_quality_rule_entries_to_files(base_path, entries, this.native_fs);
-  }
-
-  /**
    * 遍历预设目录，生成 UI 可消费的稳定列表
    */
   private list_preset_items(
@@ -374,7 +378,7 @@ export class QualityRuleService {
     directory: string,
     resolved_path_dir: string | undefined,
     extension: ".json" | ".txt",
-  ): JsonRecord[] {
+  ): QualityRulePresetItem[] {
     if (source === "user") {
       this.native_fs.make_dir(directory);
     } else if (!this.native_fs.exists(directory)) {
@@ -396,7 +400,7 @@ export class QualityRuleService {
     file_name: string,
     path_dir: string,
     extension: ".json" | ".txt",
-  ): JsonRecord {
+  ): QualityRulePresetItem {
     const preset_file = resolve_preset_file({
       virtual_id: `${source}:${file_name}`,
       extension,
