@@ -3,11 +3,18 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { WebSearchService } from "./web-search-service";
 import type { AgentWebSearchProvider } from "./model-tools/web-search";
+import type { LogManager } from "../log/log-manager";
 
 const TEST_CLIENT_VERSION = "1.2.3";
+// 实际响应首段；保留尾部说明，验证识别允许提示句后继续附加正文。
+const EXA_RATE_LIMIT_TEXT =
+  "You've hit Exa's free MCP rate limit. To continue using without limits, create your own Exa API key.";
 
 describe("Agent Web 多源搜索服务", () => {
+  const log_manager = { warning: vi.fn<LogManager["warning"]>() };
+
   afterEach(() => {
+    log_manager.warning.mockClear();
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
   });
@@ -34,7 +41,7 @@ describe("Agent Web 多源搜索服务", () => {
       anysearch: [{}, { status: 429 }],
       keenable: [{}, { status: 429 }],
     });
-    const service = new WebSearchService(TEST_CLIENT_VERSION);
+    const service = new WebSearchService(TEST_CLIENT_VERSION, log_manager);
     const signal = new AbortController().signal;
     try {
       for (const [failed, succeeded] of [
@@ -81,7 +88,7 @@ describe("Agent Web 多源搜索服务", () => {
     const network = create_mcp_network({
       exa: [{ status: 404 }, { text: "重连结果" }],
     });
-    const service = new WebSearchService(TEST_CLIENT_VERSION);
+    const service = new WebSearchService(TEST_CLIENT_VERSION, log_manager);
 
     await expect(service.search("重连查询", new AbortController().signal)).resolves.toEqual({
       provider: "exa",
@@ -105,7 +112,7 @@ describe("Agent Web 多源搜索服务", () => {
       anysearch: [{ status: 429 }],
       keenable: [{ status: 429 }],
     });
-    const service = new WebSearchService(TEST_CLIENT_VERSION);
+    const service = new WebSearchService(TEST_CLIENT_VERSION, log_manager);
     const signal = new AbortController().signal;
     try {
       await expect(service.search("首次查询", signal)).resolves.toEqual({
@@ -134,7 +141,7 @@ describe("Agent Web 多源搜索服务", () => {
         ? new Response(null, { status: 404 })
         : initialize_response(request.provider, request.id, false);
     });
-    const service = new WebSearchService(TEST_CLIENT_VERSION);
+    const service = new WebSearchService(TEST_CLIENT_VERSION, log_manager);
     try {
       await expect(service.search("地址失效", new AbortController().signal)).resolves.toEqual({
         provider: "tavily",
@@ -171,7 +178,7 @@ describe("Agent Web 多源搜索服务", () => {
         notify_started();
       });
     });
-    const service = new WebSearchService(TEST_CLIENT_VERSION);
+    const service = new WebSearchService(TEST_CLIENT_VERSION, log_manager);
     const caller = new AbortController();
     try {
       const reason = new Error("用户停止搜索");
@@ -181,6 +188,7 @@ describe("Agent Web 多源搜索服务", () => {
       await result;
       expect(http_cancelled).toBe(true);
       expect(network.methods.every((request) => request.provider === "exa")).toBe(true);
+      expect(log_manager.warning).not.toHaveBeenCalled();
     } finally {
       caller.abort();
       await service.dispose();
@@ -197,7 +205,7 @@ describe("Agent Web 多源搜索服务", () => {
         if (exa_connections === 2) timeout.abort(new DOMException("预算耗尽", "TimeoutError"));
       }
     });
-    const service = new WebSearchService(TEST_CLIENT_VERSION);
+    const service = new WebSearchService(TEST_CLIENT_VERSION, log_manager);
     try {
       await expect(service.search("限时查询", new AbortController().signal)).resolves.toEqual({
         provider: "tavily",
@@ -218,7 +226,7 @@ describe("Agent Web 多源搜索服务", () => {
         return new Response(null, { status: 500 });
       }
     });
-    const service = new WebSearchService(TEST_CLIENT_VERSION);
+    const service = new WebSearchService(TEST_CLIENT_VERSION, log_manager);
     try {
       await service.search("首次查询", new AbortController().signal);
       expect(close).toHaveBeenCalledTimes(1);
@@ -235,27 +243,28 @@ describe("Agent Web 多源搜索服务", () => {
 
   it("单个连接释放失败时仍关闭其余连接并汇总错误", async () => {
     create_mcp_network({ exa: [{ status: 429 }] });
-    const service = new WebSearchService(TEST_CLIENT_VERSION);
+    const service = new WebSearchService(TEST_CLIENT_VERSION, log_manager);
     await service.search("建立两个会话", new AbortController().signal);
     const original_close = Client.prototype.close;
     const failure = new Error("连接清理失败");
-    const close = vi
-      .spyOn(Client.prototype, "close")
-      .mockImplementationOnce(async function (this: Client) {
-        await original_close.call(this);
-        throw failure;
-      });
+    const close = vi.spyOn(Client.prototype, "close").mockImplementationOnce(async function (
+      this: Client,
+    ) {
+      await original_close.call(this);
+      throw failure;
+    });
     await expect(service.dispose()).rejects.toMatchObject({
       errors: [expect.objectContaining({ errors: [failure] })],
     });
     expect(close).toHaveBeenCalledTimes(2);
   });
 
-  it("Tavily 以成功正文返回额度错误时继续尝试下一来源", async () => {
+  it.each([false, true])("连续正文限流时继续回退，错误标记为 %s", async (tool_error) => {
     const network = create_mcp_network({
-      exa: [{ status: 429 }],
+      exa: [{ text: ` \n${EXA_RATE_LIMIT_TEXT}\n `, tool_error }],
       tavily: [
         {
+          tool_error,
           text: JSON.stringify({
             code: "monthly_cap_reached_bonus_eligible",
           }),
@@ -263,18 +272,48 @@ describe("Agent Web 多源搜索服务", () => {
       ],
       firecrawl: [{ text: "Firecrawl 结果" }],
     });
-    const service = new WebSearchService(TEST_CLIENT_VERSION);
+    const service = new WebSearchService(TEST_CLIENT_VERSION, log_manager);
 
-    await expect(service.search("额度回退", new AbortController().signal)).resolves.toEqual({
-      provider: "firecrawl",
-      text: "Firecrawl 结果",
+    try {
+      await expect(service.search("额度回退", new AbortController().signal)).resolves.toEqual({
+        provider: "firecrawl",
+        text: "Firecrawl 结果",
+      });
+      expect(network.tool_calls.map((request) => request.provider)).toEqual([
+        "exa",
+        "tavily",
+        "firecrawl",
+      ]);
+      expect(log_manager.warning.mock.calls.map(([, payload]) => payload?.context)).toEqual([
+        { provider: "exa", code: "rate_limited" },
+        { provider: "tavily", code: "rate_limited" },
+      ]);
+      expect(log_manager.warning.mock.calls[0]?.[1]?.error).toMatchObject({
+        cause: new Error(EXA_RATE_LIMIT_TEXT),
+      });
+    } finally {
+      await service.dispose();
+    }
+  });
+
+  it.each([
+    ["exa", `Title: Exa 限流说明\n正文引用：${EXA_RATE_LIMIT_TEXT}`],
+    ["tavily", EXA_RATE_LIMIT_TEXT],
+  ] as const)("%s 的普通正文不会被误判为 Exa 限流", async (provider, text) => {
+    create_mcp_network({
+      exa: [provider === "exa" ? { text } : { status: 429 }],
+      tavily: [{ text }],
     });
-    expect(network.tool_calls.map((request) => request.provider)).toEqual([
-      "exa",
-      "tavily",
-      "firecrawl",
-    ]);
-    await service.dispose();
+    const service = new WebSearchService(TEST_CLIENT_VERSION, log_manager);
+    try {
+      await expect(service.search("限流说明", new AbortController().signal)).resolves.toEqual({
+        provider,
+        text,
+      });
+      expect(log_manager.warning).toHaveBeenCalledTimes(provider === "exa" ? 0 : 1);
+    } finally {
+      await service.dispose();
+    }
   });
 
   it.each([
@@ -285,17 +324,27 @@ describe("Agent Web 多源搜索服务", () => {
     "%s时保留明确稳定错误",
     async (_scenario, reply, code) => {
       create_mcp_network({
-        exa: [reply],
-        tavily: [reply],
+        exa: [code === "web_search.rate_limited" ? { text: EXA_RATE_LIMIT_TEXT } : reply],
+        tavily: [
+          code === "web_search.rate_limited"
+            ? { text: JSON.stringify({ code: "monthly_cap_reached_bonus_eligible" }) }
+            : reply,
+        ],
         firecrawl: [reply],
         anysearch: [reply],
         keenable: [reply],
       });
-      const service = new WebSearchService(TEST_CLIENT_VERSION);
+      const service = new WebSearchService(TEST_CLIENT_VERSION, log_manager);
 
       await expect(service.search("失败查询", new AbortController().signal)).rejects.toMatchObject({
         details: { code },
       });
+      expect(log_manager.warning.mock.calls.map(([, payload]) => payload?.context)).toEqual(
+        ["exa", "tavily", "firecrawl", "anysearch", "keenable"].map((provider) => ({
+          provider,
+          code: code.replace("web_search.", ""),
+        })),
+      );
       await service.dispose();
     },
   );
@@ -304,7 +353,7 @@ describe("Agent Web 多源搜索服务", () => {
     create_mcp_network({}, () => {
       throw new SdkError(SdkErrorCode.RequestTimeout, "Request timed out");
     });
-    const service = new WebSearchService(TEST_CLIENT_VERSION);
+    const service = new WebSearchService(TEST_CLIENT_VERSION, log_manager);
     try {
       await expect(service.search("SDK 超时", new AbortController().signal)).rejects.toMatchObject({
         details: { code: "web_search.timeout" },
@@ -330,7 +379,7 @@ describe("Agent Web 多源搜索服务", () => {
         },
       });
     });
-    const service = new WebSearchService(TEST_CLIENT_VERSION);
+    const service = new WebSearchService(TEST_CLIENT_VERSION, log_manager);
     try {
       await expect(service.search("混合结果", new AbortController().signal)).resolves.toEqual({
         provider: "exa",
@@ -349,7 +398,7 @@ describe("Agent Web 多源搜索服务", () => {
       anysearch: [{ status: 500 }],
       keenable: [{ status: 500 }],
     });
-    const service = new WebSearchService(TEST_CLIENT_VERSION);
+    const service = new WebSearchService(TEST_CLIENT_VERSION, log_manager);
 
     await expect(service.search("混合失败", new AbortController().signal)).rejects.toMatchObject({
       details: { code: "web_search.unavailable" },
@@ -362,7 +411,7 @@ describe("Agent Web 多源搜索服务", () => {
     timeout.abort(new DOMException("超时", "TimeoutError"));
     vi.spyOn(AbortSignal, "timeout").mockReturnValue(timeout.signal);
     create_mcp_network();
-    const service = new WebSearchService(TEST_CLIENT_VERSION);
+    const service = new WebSearchService(TEST_CLIENT_VERSION, log_manager);
 
     await expect(service.search("超时查询", new AbortController().signal)).rejects.toMatchObject({
       details: { code: "web_search.timeout" },
@@ -372,7 +421,7 @@ describe("Agent Web 多源搜索服务", () => {
 
   it("调用前已取消时不触达任何供应商", async () => {
     const network = create_mcp_network();
-    const service = new WebSearchService(TEST_CLIENT_VERSION);
+    const service = new WebSearchService(TEST_CLIENT_VERSION, log_manager);
     const controller = new AbortController();
     controller.abort(new Error("提前取消"));
 

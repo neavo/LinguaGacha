@@ -324,6 +324,7 @@ export const ja_jp_app = {
       context_compaction_failed: "Agent のコンテキスト圧縮に失敗しました …",
       session_cleanup_failed: "Agent のセッションをクリーンアップできませんでした …",
       tool_execution_failed: "Agent のツール実行中にエラーが発生しました …",
+      web_search_provider_failed: "ウェブ検索プロバイダーへのリクエストに失敗しました …",
       skill_load_failed: "Agent スキルを読み込めませんでした …",
     },
     api_gateway: {

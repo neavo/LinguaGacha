@@ -313,6 +313,7 @@ export const zh_cn_app = {
       context_compaction_failed: "Agent 上下文压缩失败 …",
       session_cleanup_failed: "Agent 会话清理失败 …",
       tool_execution_failed: "Agent 工具执行异常 …",
+      web_search_provider_failed: "网页搜索来源请求失败 …",
       skill_load_failed: "Agent 技能加载失败 …",
     },
     api_gateway: {

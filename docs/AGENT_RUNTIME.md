@@ -111,6 +111,7 @@
 - `datasets.pages` 与 `changes.pages.updates` 分别公开页面快照和完整可修改载荷，路径为 `pages/entries.jsonl` 与 `changes/pages/updates.jsonl`。页面提交、拒绝 scope、实际写入回执及审批计数统一使用 `pages`。工作区 Schema 复用 PDF 内容结构；提交意图、指纹和更新解析归工程写入层。预演以对象身份查快照指纹，区分输入错误与外部漂移；提交刷新快照并保留相容 `work/`。PDF 来源与导出规则归 [BACKEND](BACKEND.md)。
 
 - GUI 的 `WebSearchService` 拥有应用级供应商连接与成功来源偏好，工程切换不重置；工具按顺序调用，组合根先等待 Agent 释放，再关闭搜索连接。MCP 使用 [`BACKEND.md`](BACKEND.md) 的共用 HTTP transport；单家连接、调用与会话重建共用一次预算。取消或超时必须关闭本地连接，以终止旧协议取消通知之外仍可能存活的 HTTP。
+- 供应商可能将业务错误作为成功正文返回。搜索服务优先识别已确认的业务错误，再判定 MCP 结果；每个失败来源通过 `LogManager` 保留渠道、分类和原始原因，回退成功后仍可追溯。模型只接收有效正文或稳定汇总错误码。
 
 - `run_batch_item_translation` 是处理 `items` 的顺序工具，接收全部条目或明确 `item_id` 范围及是否纳入失败条目的决定。工具以当前轮次的 Agent lease 调用共享 `BatchTranslationService`，批量引擎在运行中自行提交译文，等待提交与收尾后返回终态、本轮条目进度和工程条目累计进度。范围、失败条目决定与执行分流归 Agent 工作流。工具取消单向传给翻译，Agent lease 在 SDK settle 后释放，后续工作区操作重新加载工程快照。`stop_source: user` 使 AgentService 缓存停止结果并暂停同轮翻译调用，重复调用返回缓存结果。用户取消后的收尾失败也保留停止事实与诊断。自动工具循环和压缩沿用暂停，新用户 round、显式 continue、重新运行、reset 与工程切换清理缓存。共享运行态、请求恢复与提交协议归 [`BACKEND.md`](BACKEND.md)。
 

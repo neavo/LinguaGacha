@@ -8,6 +8,8 @@ import {
 } from "@modelcontextprotocol/client";
 
 import { is_json_record } from "../../domain/json";
+import type { LogManager } from "../log/log-manager";
+import { t_main_log } from "../log/log-text";
 import { AgentToolError } from "./model-tools/definition";
 import type {
   AgentWebSearchPort,
@@ -46,6 +48,7 @@ const SEARCH_PROVIDER_SPECS = Object.freeze([
       query,
       numResults: WEB_SEARCH_RESULT_LIMIT,
     }),
+    classify_failure: classify_exa_failure,
   },
   {
     name: "tavily",
@@ -105,7 +108,10 @@ export class WebSearchService {
   private disposed = false; // 组合根释放后阻止重新触达任何供应商
 
   /** 工具按 sequential 调用，组合根先等待 Agent 释放，再关闭本服务。 */
-  public constructor(private readonly client_version: string) {}
+  public constructor(
+    private readonly client_version: string,
+    private readonly log_manager: Pick<LogManager, "warning">,
+  ) {}
 
   /** 从当前首选开始串行尝试，成功来源晋升；调用方取消不触发后续来源。 */
   public readonly search: AgentWebSearchPort = async (
@@ -131,11 +137,17 @@ export class WebSearchService {
       } catch (error) {
         if (caller_signal.aborted) throw caller_signal.reason;
         if (this.disposed) throw new AgentToolError({ code: "web_search.unavailable" });
-        failures.push(
-          timeout_signal.aborted
-            ? new SearchProviderError(provider.name, "timeout", error)
-            : normalize_provider_error(provider.name, error),
-        );
+        const failure = timeout_signal.aborted
+          ? new SearchProviderError(provider.name, "timeout", error)
+          : normalize_provider_error(provider.name, error);
+        failures.push(failure);
+        // 回退成功也要保留失败来源；最终受控错误只向模型公开汇总分类。
+        this.log_manager.warning(t_main_log("app.diagnostic.agent.web_search_provider_failed"), {
+          source: "web_search",
+          error: failure,
+          context: { provider: failure.provider, code: failure.code },
+          targets: { console: false },
+        });
       }
     }
     throw create_search_error(failures);
@@ -234,17 +246,22 @@ function read_search_text(spec: SearchProviderSpec, result: CallToolResult): str
     .map((block) => block.text.trim())
     .filter((block) => block !== "")
     .join("\n\n");
-  if (result.isError === true) {
+  // 已知业务错误优先于通用标记，避免同一限流正文因 isError 不同而改变分类。
+  const failure_code = spec.classify_failure?.(text);
+  if (failure_code || result.isError === true) {
     throw new SearchProviderError(
       spec.name,
-      "upstream_failed",
+      failure_code ?? "upstream_failed",
       text === "" ? undefined : new Error(text),
     );
   }
   if (text === "") throw new SearchProviderError(spec.name, "empty_result");
-  const failure_code = spec.classify_failure?.(text);
-  if (failure_code) throw new SearchProviderError(spec.name, failure_code);
   return text;
+}
+
+/** Exa 的免费 MCP 限流可能作为成功正文返回，仅匹配已确认的提示前缀。 */
+function classify_exa_failure(text: string): SearchProviderFailureCode | null {
+  return text.startsWith("You've hit Exa's free MCP rate limit.") ? "rate_limited" : null;
 }
 
 /** Tavily 的 keyless 额度耗尽以成功工具正文返回，需恢复为真实限流失败。 */
@@ -253,6 +270,7 @@ function classify_tavily_failure(text: string): SearchProviderFailureCode | null
   try {
     value = JSON.parse(text);
   } catch {
+    // 正常搜索正文可以是纯文本，解析失败时继续按普通结果处理。
     return null;
   }
   return is_json_record(value) && value["code"] === "monthly_cap_reached_bonus_eligible"
