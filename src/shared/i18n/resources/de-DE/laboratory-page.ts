@@ -4,6 +4,13 @@ import type { LocaleMessageSchema } from "../../types";
 export const de_de_laboratory_page = {
   title: "Labor",
   fields: {
+    agent_batch_translation_thinking_adaptive_enable: {
+      title: "Adaptives Denkniveau",
+      description:
+        "Tiefes Nachdenken erhöht den Token-Verbrauch bei Übersetzungsaufgaben häufig <emphasis>um das 3- bis 5-Fache</emphasis>" +
+        "\n" +
+        "Wenn aktiviert, wird das Denkniveau bei Übersetzungsaufgaben automatisch angepasst, um die Token-Effizienz zu verbessern. Standardmäßig aktiviert.",
+    },
     prompt_enhancement_enable: {
       title: "Prompt-Verbesserung",
       description:

@@ -44,6 +44,7 @@ export type SettingSnapshot = {
   deduplication_in_bilingual: boolean;
   write_translated_name_fields_to_file: boolean;
   prompt_enhancement_enable: boolean;
+  agent_batch_translation_thinking_adaptive_enable: boolean; // 应用偏好，控制 Agent 跟随翻译的临时档位。
   mtool_optimizer_enable: boolean;
   skip_duplicate_source_text_enable: boolean;
   glossary_default_preset: string;
@@ -78,6 +79,7 @@ export const SETTING_KEYS = [
   "deduplication_in_bilingual",
   "write_translated_name_fields_to_file",
   "prompt_enhancement_enable",
+  "agent_batch_translation_thinking_adaptive_enable",
   "mtool_optimizer_enable",
   "skip_duplicate_source_text_enable",
   "glossary_default_preset",
@@ -96,6 +98,7 @@ const BOOLEAN_SETTING_KEYS = new Set([
   "deduplication_in_bilingual",
   "write_translated_name_fields_to_file",
   "prompt_enhancement_enable",
+  "agent_batch_translation_thinking_adaptive_enable",
   "mtool_optimizer_enable",
   "skip_duplicate_source_text_enable",
 ]);
@@ -116,6 +119,7 @@ export const DEFAULT_SETTING: JsonRecord = {
   deduplication_in_bilingual: true,
   write_translated_name_fields_to_file: true,
   prompt_enhancement_enable: true,
+  agent_batch_translation_thinking_adaptive_enable: true,
   mtool_optimizer_enable: true,
   skip_duplicate_source_text_enable: true,
   glossary_default_preset: "",
@@ -338,6 +342,10 @@ export function normalize_setting_snapshot(value: unknown): SettingSnapshot {
     prompt_enhancement_enable: read_boolean_setting(
       record["prompt_enhancement_enable"],
       "prompt_enhancement_enable",
+    ),
+    agent_batch_translation_thinking_adaptive_enable: read_boolean_setting(
+      record["agent_batch_translation_thinking_adaptive_enable"],
+      "agent_batch_translation_thinking_adaptive_enable",
     ),
     mtool_optimizer_enable: read_boolean_setting(
       record["mtool_optimizer_enable"],

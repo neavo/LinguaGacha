@@ -8,9 +8,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { JsonRecord } from "../../domain/json";
 import { Model, type ModelApiFormat } from "../../domain/model";
-import { resolve_model_capability } from "../llm/model-capability";
+import { resolve_model_capability, type PiCatalogModel } from "../llm/model-capability";
 import { read_builtin_pi_models } from "../llm/pi-model-catalog";
-import { register_agent_model } from "./agent-model";
+import { register_agent_model, resolve_agent_batch_translation_model } from "./agent-model";
 
 const catalog = { read_models: read_builtin_pi_models };
 
@@ -28,6 +28,96 @@ vi.mock("@earendil-works/pi-ai/api/openai-responses.lazy", () => ({
 
 const TEST_USER_AGENT = "LinguaGacha/Test";
 const TEST_REQUEST_IDENTITY = { user_agent: TEST_USER_AGENT, session_id: "test-session" };
+
+describe("Agent 批量翻译模型", () => {
+  it.each([
+    { enabled: true, current: "HIGH", off: true, expected: "OFF" },
+    { enabled: true, current: "HIGH", off: false, expected: "LOW" },
+    { enabled: true, current: "DEFAULT", off: false, expected: "LOW" },
+    { enabled: false, current: "HIGH", off: true, expected: "HIGH" },
+  ])(
+    "跟随：$current → $expected（自适应 $enabled，支持关闭 $off）",
+    ({ enabled, current, off, expected }) => {
+      const agent_model = Model.from_json(
+        {
+          api_format: "OpenAIResponses",
+          model_id: "fixture-model",
+          thinking: { level: current },
+        },
+        "active",
+      );
+      const config = {
+        agent_batch_translation_thinking_adaptive_enable: enabled,
+        model_selection: { agent_batch_translation: null },
+        models: [agent_model.to_json()],
+      };
+      const original = structuredClone(config);
+      const models: PiCatalogModel[] = [
+        {
+          id: "fixture-model",
+          api: "openai-responses",
+          provider: "openai",
+          baseUrl: "https://example.test/v1",
+          reasoning: true,
+          contextWindow: 128_000,
+          maxTokens: 16_000,
+          thinkingLevelMap: {
+            off: off ? "none" : null,
+            minimal: null,
+            low: "low",
+            medium: null,
+            high: "high",
+            xhigh: null,
+            max: null,
+          },
+        },
+      ];
+
+      const result = resolve_agent_batch_translation_model(config, agent_model, models);
+
+      expect(result.to_json()).toEqual({ ...agent_model.to_json(), thinking: { level: expected } });
+      expect(agent_model.thinking.level).toBe(current);
+      expect(config).toEqual(original);
+    },
+  );
+
+  it("缺少能力时保留生效配置，固定选择同一 ID 时仍使用保存配置", () => {
+    const agent_model = Model.from_json(
+      { model_id: "fixture-model", thinking: { level: "LOW" } },
+      "a",
+    );
+    const config = {
+      model_selection: { agent: "b", agent_batch_translation: null as string | null },
+      models: [{ ...agent_model.to_json(), thinking: { level: "HIGH" } }],
+    };
+    const models: PiCatalogModel[] = [
+      {
+        id: "fixture-model",
+        api: "openai-completions",
+        provider: "openai",
+        baseUrl: "https://example.test/v1",
+        reasoning: true,
+        contextWindow: 128_000,
+        maxTokens: 16_000,
+      },
+    ];
+    expect(resolve_agent_batch_translation_model(config, agent_model, []).thinking.level).toBe(
+      "LOW",
+    );
+    // 缺失开关沿用默认开启；相同模型的跟随和固定选择具有不同语义。
+    expect(resolve_agent_batch_translation_model(config, agent_model, models).thinking.level).toBe(
+      "OFF",
+    );
+    config.model_selection.agent_batch_translation = "a";
+    expect(resolve_agent_batch_translation_model(config, agent_model, models).thinking.level).toBe(
+      "HIGH",
+    );
+    config.model_selection.agent_batch_translation = "missing";
+    expect(() => resolve_agent_batch_translation_model(config, agent_model, [])).toThrow(
+      "model.not_found",
+    );
+  });
+});
 
 beforeEach(() => {
   api_mocks.streamSimple.mockClear();
@@ -357,7 +447,7 @@ describe("Agent 模型注册", () => {
       "test-model",
     );
   });
-  it("Agent 保留保持默认供批量翻译继承，并在公共载荷入口清除自动控制", async () => {
+  it("Agent 保留产品档位，并在保持默认时清除公共载荷中的自动控制", async () => {
     const runtime = await create_model_runtime();
     const resolved = register_agent_model(
       runtime,

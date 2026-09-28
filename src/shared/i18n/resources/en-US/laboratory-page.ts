@@ -4,6 +4,13 @@ import type { LocaleMessageSchema } from "../../types";
 export const en_us_laboratory_page = {
   title: "Laboratory",
   fields: {
+    agent_batch_translation_thinking_adaptive_enable: {
+      title: "Adaptive Thinking Level",
+      description:
+        "Deep thinking often <emphasis>increases token usage by 3–5 times</emphasis> in translation tasks" +
+        "\n" +
+        "When enabled, automatically adjusts the thinking level in translation tasks to improve token efficiency. Enabled by default.",
+    },
     prompt_enhancement_enable: {
       title: "Prompt Enhancement",
       description:

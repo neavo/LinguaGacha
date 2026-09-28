@@ -148,7 +148,7 @@ project, files, items, pdf, quality, prompts, proofreading
 - `llm-overrides.ts` 保存模型与端点修正。同协议思考映射和兼容配置按字段合并，`null` 表示档位不受支持。OpenAI 两种协议回退时仅借用思考能力与档位，Azure Responses 与 Responses 共用兼容契约。Agent 运行容量规则归 [`AGENT_RUNTIME.md`](AGENT_RUNTIME.md)。
 - `llm-request.ts` 准备配置与生成选项。请求头通过适配器选项发送，端点按精确主机名匹配，用户扩展头按大小写不敏感覆盖。OneShot 分块与重试共享 `run_id`，批量任务及每个密钥的模型测试各自独立。Agent 对话身份归 [`AGENT_RUNTIME.md`](AGENT_RUNTIME.md)。
 - OneShot 在适配器入口调用 `normalizeContext()`，Agent 由 `ModelRuntime` 归一化上下文。
-- `DEFAULT`（保持默认）适用于所有模型；`OFF` 表示显式关闭，其余等级由能力目录提供。新建自定义模型初始为 `OFF`，配置写入口将失效档位归一化为可用值。`DEFAULT` 独立于等级升降，产品配置与批量翻译继承保留该值；Pi 使用 `off` 作为内部占位。
+- `DEFAULT`（保持默认）适用于所有模型；`OFF` 表示显式关闭，其余等级由能力目录提供。新建自定义模型初始为 `OFF`，配置写入口将失效档位归一化为可用值。`DEFAULT` 独立于等级升降，Pi 使用 `off` 作为内部占位；Agent 批量翻译的临时档位策略归 [`AGENT_RUNTIME.md`](AGENT_RUNTIME.md)。
 - `llm-payload.ts` 统一处理 OneShot 与 Agent 载荷。保持默认时清理 SDK 自动思考控制，再合并生成设置和用户扩展。显式档位下，Anthropic 与 Google 保留结构化思考设置；OpenAI 用户扩展最终覆盖。Google 单次请求最后写入应用取消信号。
 - `LLMClient` 拥有 OneShot 的总时限、取消和请求终态，Pi 的 `maxRetries` 固定为 `0`。供应商请求失败归 `request_error`，长度截断和不支持的工具调用归 `response_error`，正常终止的正文交给消费方校验。供应商用量逐项转为有限非负整数，数字字符串按数值处理，缺失或非法值按零计入已知用量。输入、思考和输出采用互斥口径，思考用量以供应商总输出为上限，worker 校验归一后的用量。
 - `src/backend/network` 是普通后端与 Agent 工作区 HTTP 的共用传输所有者。工作区调用和代理通信归 [`AGENT_RUNTIME.md`](AGENT_RUNTIME.md)。`BackendResources` 在业务服务启动前把它安装为当前 Backend Runtime worker 或 CLI 进程的 `globalThis.fetch`，同时安装同版本的 Request、Response、Headers 和 FormData，关闭时一起恢复，避免 Electron 内置 Undici 与应用依赖混用。模型 adapter、模型列表和 Web Search 从该入口取用 transport。HTTP 入口按请求隔离状态码、接收时刻及重试时间，LLM 端口传递事实，调度器决定恢复策略。每次请求按当前 Electron session 代理规则选路，loopback 固定直连。解析失败、路由不受支持或代理失败都结束请求，不绕过代理静默直连，也不改写进程全局 dispatcher。
