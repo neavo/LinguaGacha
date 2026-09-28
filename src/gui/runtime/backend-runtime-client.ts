@@ -33,7 +33,8 @@ export class BackendRuntimeClient {
   private start_promise: Promise<BackendRuntimeReady> | null = null; // 固化单次启动结果，禁止复用实例重启
   private start_reject: ((error: Error) => void) | null = null; // worker 提前退出时结算尚未 ready 的 start
   private ready = false; // 只有 ready 后退出才属于应用运行期故障
-  private stopped = false; // 主动 stop 只抑制 unexpected-exit 回调，不跳过 pending 拒绝
+  private stop_promise: Promise<void> | null = null; // 重复停止等待同一次资源清理
+  private stopped = false; // 主动停止或启动失败后，抑制意外退出回调
   private exit_handled = false; // error 与 exit 可能连续到达，只允许结算一次
 
   /** 构造时固定单个 worker 生命周期所需的 Electron main 宿主端口。 */
@@ -92,24 +93,26 @@ export class BackendRuntimeClient {
     return this.start_promise;
   }
 
-  /** 是否已没有可接受控制请求的 worker。 */
-  public isStopped(): boolean {
-    return this.stopped || this.worker === null;
-  }
-
   /** 请求 worker 完整释放 Backend 资源，随后终止线程句柄。 */
-  public async stop(): Promise<void> {
+  public stop(): Promise<void> {
+    if (this.stop_promise !== null) return this.stop_promise;
     const worker = this.worker;
-    if (worker === null || this.stopped) return;
+    if (worker === null || this.stopped) return Promise.resolve();
     this.stopped = true;
-    try {
-      await this.request({ type: "stop", requestId: randomUUID() });
-    } finally {
-      this.worker = null;
-      for (const controller of this.host_controllers.values()) controller.abort();
-      this.host_controllers.clear();
-      await worker.terminate();
-    }
+    this.stop_promise = (async () => {
+      try {
+        await this.request({ type: "stop", requestId: randomUUID() });
+      } finally {
+        for (const controller of this.host_controllers.values()) controller.abort();
+        this.host_controllers.clear();
+        try {
+          await worker.terminate();
+        } finally {
+          this.worker = null;
+        }
+      }
+    })();
+    return this.stop_promise;
   }
 
   /** 从 Backend 所有的设置服务读取当前应用语言。 */

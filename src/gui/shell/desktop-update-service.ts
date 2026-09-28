@@ -15,7 +15,6 @@ import type {
   DesktopUpdateDownloadProgress,
   DesktopUpdateDownloadResult,
   DesktopUpdateLaunchRequest,
-  DesktopUpdateLaunchResult,
 } from "../bridge/bridge-types";
 
 const BERSERKER_EXECUTABLE_NAME = "berserker.exe";
@@ -35,7 +34,6 @@ export type DesktopUpdateRuntime = {
   platform: NodeJS.Platform;
   arch: NodeJS.Architecture; // 当前运行包架构，自动更新只能覆盖同架构包
   execPath: string;
-  pid: number;
   fetch: DesktopUpdateFetch;
   spawn: DesktopUpdateSpawn;
 };
@@ -64,7 +62,6 @@ export class DesktopUpdateService {
       platform: options.runtime.platform ?? process.platform,
       arch: options.runtime.arch ?? process.arch,
       execPath: options.runtime.execPath ?? process.execPath,
-      pid: options.runtime.pid ?? process.pid,
       fetch: options.runtime.fetch,
       spawn: options.runtime.spawn ?? child_process.spawn,
     };
@@ -138,11 +135,11 @@ export class DesktopUpdateService {
   }
 
   /**
-   * 复制发布包内的更新器并启动，主应用退出由 IPC handler 统一触发。
+   * 先准备更新器，返回的启动动作只在应用完成业务收尾后执行。
    */
-  public async launch_berserker(
+  public async prepare_berserker(
     request: DesktopUpdateLaunchRequest,
-  ): Promise<DesktopUpdateLaunchResult> {
+  ): Promise<() => Promise<void>> {
     const version_dir = this.get_version_dir(request.latest_version);
     const resolved_zip_path = path.resolve(request.zip_path);
     if (!is_path_inside(resolved_zip_path, version_dir)) {
@@ -160,24 +157,14 @@ export class DesktopUpdateService {
       throw new Error("Update package architecture does not match the current application.");
     }
 
+    await fs.access(resolved_zip_path);
     await fs.mkdir(this.update_root_dir, { recursive: true });
     const packaged_berserker_path = path.join(this.app_root, BERSERKER_EXECUTABLE_NAME);
     const user_berserker_path = path.join(this.update_root_dir, BERSERKER_EXECUTABLE_NAME);
     await fs.copyFile(packaged_berserker_path, user_berserker_path);
 
-    const args = [
-      "--zip",
-      resolved_zip_path,
-      "--target",
-      this.app_root,
-      "--app",
-      this.runtime.execPath,
-      "--wait-pid",
-      this.runtime.pid.toString(),
-    ];
-    await spawn_berserker(this.runtime.spawn, user_berserker_path, args);
-
-    return { status: "launched" };
+    const args = ["--zip", resolved_zip_path, "--target", this.app_root];
+    return () => spawn_berserker(this.runtime.spawn, user_berserker_path, args);
   }
 
   /**

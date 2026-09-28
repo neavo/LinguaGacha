@@ -20,6 +20,10 @@
 
 - PDF 打印资源归 Electron 宿主。`buildtools/build-pdf-print.mjs` 生成内嵌 KaTeX 字体的样式，GUI 注入样式路径与共享字体目录。宿主首次打印读取界面字体并缓存内嵌样式，打印窗口只允许 `data:` 资源。
 
+### Windows 应用更新
+
+- 更新入口复用页面保存。更新器准备失败时应用仍可用；进入收尾后，后端和 PDF 宿主均成功关闭才启动 Go。收尾或启动失败由原生错误框报告后退出。安装契约见 [CLI](CLI.md#windows-更新器)。
+
 ### 开发热更新与模块生命周期
 
 - Context 与消费 Hook 归 `*-context.ts`，状态装配归 `*-provider.tsx`，实例类型通过类型导入引用。词典更新经 `LocaleProvider` 发布，沿用同一 `LocaleContext`。

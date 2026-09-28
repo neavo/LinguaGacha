@@ -51,3 +51,9 @@ CLI job 开始前若 Bootstrap 或入口初始化失败，只写 stderr 并返�
 - Windows 发布包提供 Go 编译的 `cli.exe` console launcher：定位同目录 `app.exe`，追加 `--cli`，继承 stdin/stdout/stderr，并返回子进程退出码。
 - `afterPack` 在对应 Go module 内先运行测试再构建并复制 launcher；缺少 Go 工具链、测试失败或产物缺失都会使打包失败。
 - macOS 与 Linux 不维护独立 CLI 二进制，使用主程序追加 `--cli`。
+
+### Windows 更新器
+
+- `win-berserker` 接收 `--zip` 和 `--target`，主程序路径由安装目录确定。[GUI 收尾](FRONTEND.md#windows-应用更新) 成功后才启动更新器。
+- Windows 进程退出时可能暂时拒绝路径查询，更新器在当前退出期限内重查。持续失败保留原始进程诊断。
+- 安装采用直接覆盖，部分失败需要手动覆盖完整发行包恢复。独立日志位于安装目录的 `log/update.log`，与应用日志一起收集，每次运行覆盖旧日志。

@@ -399,7 +399,7 @@ function AppContent(): JSX.Element {
   }
 
   /**
-   * 串起下载、回退发布页和启动更新器三个更新确认分支。
+   * 编排更新下载与重启确认，离页保存成功后才交给宿主收尾。
    */
   async function handle_confirm_update_dialog(): Promise<void> {
     if (update_dialog_state.phase === "confirming") {
@@ -444,6 +444,10 @@ function AppContent(): JSX.Element {
       zip_path,
     });
     try {
+      if (!(await prepare_page_leave())) {
+        set_update_dialog_state({ phase: "ready_to_restart", release, zip_path });
+        return;
+      }
       await window.desktopApp.launchUpdate({
         latest_version: release.latest_version,
         zip_path,

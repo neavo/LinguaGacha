@@ -207,11 +207,9 @@ describe("桌面 IPC 宿主", () => {
     });
   });
 
-  it("更新器启动成功后触发统一 Backend 收尾退出", async () => {
+  it("更新请求交给 GUI 组合根编排", async () => {
     const launch_berserker = vi.fn(async () => ({ status: "launched" as const }));
-    const quit_after_backend_shutdown = vi.fn(async () => undefined);
     await register_handlers({
-      quitAfterBackendShutdown: quit_after_backend_shutdown,
       updateService: {
         launch_berserker,
       },
@@ -228,7 +226,6 @@ describe("桌面 IPC 宿主", () => {
       latest_version: "1.2.4",
       zip_path: "zip",
     });
-    expect(quit_after_backend_shutdown).toHaveBeenCalledWith(0);
   });
 
   it("renderer 诊断 IPC 会按发送方交给诊断注册器", async () => {
@@ -418,7 +415,6 @@ async function register_handlers(
     mainWindow?: unknown | null;
     logWindowHost?: { toggle: () => void } | null;
     markRendererConfirmedAppQuit?: () => void;
-    quitAfterBackendShutdown?: (exit_code: number) => Promise<void>;
     recordRendererDiagnostics?: (sender: unknown, payload: unknown) => void;
     readAppLanguage?: () => Promise<unknown>;
     updateService?: {
@@ -435,7 +431,6 @@ async function register_handlers(
     getMainWindow: () => (options.mainWindow ?? null) as never,
     getLogWindowHost: () => (options.logWindowHost ?? null) as never,
     markRendererConfirmedAppQuit: options.markRendererConfirmedAppQuit ?? vi.fn(),
-    quitAfterBackendShutdown: options.quitAfterBackendShutdown ?? vi.fn(async () => undefined),
     recordRendererDiagnostics: (options.recordRendererDiagnostics ?? vi.fn()) as never,
     readAppLanguage: options.readAppLanguage ?? (async () => "ZH"),
     updateService: {
@@ -447,9 +442,7 @@ async function register_handlers(
   });
 }
 
-/**
- * 支撑当前测试场景的专用辅助逻辑。
- */
+/** 向已注册的单向 IPC 通道发送测试消息。 */
 function emit_send(channel: string, event: { sender: unknown }, ...args: unknown[]): void {
   const listener = electron_mock.send_handlers.get(channel);
   if (listener === undefined) {
@@ -458,7 +451,6 @@ function emit_send(channel: string, event: { sender: unknown }, ...args: unknown
   listener(event, ...args);
 }
 
-// invoke 收口测试中的共享步骤，保证断言只关注当前行为。
 /**
  * 模拟 IPC 通信行为。
  */

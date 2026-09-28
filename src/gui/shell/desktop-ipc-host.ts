@@ -45,7 +45,6 @@ export type DesktopIpcHandlerOptions = {
     ) => Promise<DesktopUpdateDownloadResult>;
     launch_berserker: (request: DesktopUpdateLaunchRequest) => Promise<DesktopUpdateLaunchResult>;
   };
-  quitAfterBackendShutdown: (exit_code: number) => Promise<void>;
 };
 
 /**
@@ -96,13 +95,11 @@ export function register_desktop_ipc_handlers(options: DesktopIpcHandlerOptions)
     },
   );
 
-  // 外部更新器启动成功后进入统一 Backend 收尾路径。
+  // 更新退出由 GUI 组合根统一编排，IPC 只转发请求。
   ipcMain.handle(
     IPC_CHANNEL_UPDATE_LAUNCH_BERSERKER,
     async (_event, request: DesktopUpdateLaunchRequest) => {
-      const result = await options.updateService.launch_berserker(request);
-      void options.quitAfterBackendShutdown(0);
-      return result;
+      return await options.updateService.launch_berserker(request);
     },
   );
 

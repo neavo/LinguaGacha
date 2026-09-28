@@ -3,6 +3,7 @@ import path from "node:path";
 
 import type { BackendRuntimeReady } from "../shared/backend-runtime";
 import type { DesktopUpdateServiceOptions } from "./shell/desktop-update-service";
+import type { DesktopIpcHandlerOptions } from "./shell/desktop-ipc-host";
 import { run_gui_entry } from "./gui-entry";
 
 const mocks = vi.hoisted(() => {
@@ -18,7 +19,6 @@ const mocks = vi.hoisted(() => {
   const backend_stop = vi.fn(async () => undefined);
   const backend_read_language = vi.fn(async () => "ZH");
   const backend_record_diagnostic = vi.fn(async () => undefined);
-  let backend_stopped = false;
 
   /** 以可控 ready 与 stop 替代线程，观察 GUI 的启动关闭顺序。 */
   class BackendRuntimeClient {
@@ -28,15 +28,14 @@ const mocks = vi.hoisted(() => {
     }
 
     start = backend_start;
-    stop = vi.fn(async () => {
-      backend_stopped = true;
-      await backend_stop();
-    });
+    stop = backend_stop;
     readAppLanguage = backend_read_language;
     recordHostDiagnostic = backend_record_diagnostic;
-    isStopped = () => backend_stopped;
   }
 
+  const launch_update = vi.fn(async () => undefined);
+  const prepare_update = vi.fn(async () => launch_update);
+  const dispose_pdf = vi.fn(async () => undefined);
   const cleanup_updates = vi.fn(async () => undefined);
   const update_options: DesktopUpdateServiceOptions[] = [];
   /** 隔离更新下载和清理，只验证当前 GUI 的宿主装配。 */
@@ -47,6 +46,8 @@ const mocks = vi.hoisted(() => {
     }
 
     cleanup_berserker_version_dirs = cleanup_updates;
+    prepare_berserker = prepare_update;
+    download_release = vi.fn();
   }
 
   return {
@@ -57,13 +58,13 @@ const mocks = vi.hoisted(() => {
     backend_stop,
     backend_read_language,
     backend_record_diagnostic,
-    reset_backend_stopped: () => {
-      backend_stopped = false;
-    },
     BackendRuntimeClient,
     DesktopUpdateService,
     update_options,
     cleanup_updates,
+    launch_update,
+    prepare_update,
+    dispose_pdf,
     app_exit: vi.fn(),
     app_quit: vi.fn(),
     resolve_proxy: vi.fn(async () => "DIRECT"),
@@ -99,6 +100,9 @@ vi.mock("electron", () => ({
   shell: { openPath: mocks.open_path },
   dialog: { showSaveDialog: mocks.show_save_dialog },
 }));
+vi.mock("../native/pdf-host", () => ({
+  create_pdf_host: () => Object.assign(vi.fn(), { dispose: mocks.dispose_pdf }),
+}));
 vi.mock("./runtime/backend-runtime-client", () => ({
   BackendRuntimeClient: mocks.BackendRuntimeClient,
 }));
@@ -132,9 +136,10 @@ describe("run_gui_entry", () => {
     mocks.app_listeners.clear();
     mocks.backend_instances.length = 0;
     mocks.update_options.length = 0;
-    mocks.reset_backend_stopped();
     vi.clearAllMocks();
     mocks.backend_start.mockResolvedValue(mocks.ready);
+    mocks.backend_stop.mockResolvedValue(undefined);
+    mocks.dispose_pdf.mockResolvedValue(undefined);
   });
 
   it("Backend ready 后以 Electron 默认会话装配更新器、IPC 和窗口", async () => {
@@ -247,6 +252,59 @@ describe("run_gui_entry", () => {
       mocks.app_exit.mock.invocationCallOrder[0] ?? Number.POSITIVE_INFINITY,
     );
   });
+
+  it("更新等待业务收尾，重复退出不能提前结束应用", async () => {
+    const stopped = Promise.withResolvers<undefined>();
+    mocks.backend_stop.mockReturnValueOnce(stopped.promise);
+    run_gui_entry({
+      desktopBundleDir: "E:/app/dist-electron",
+      backendRuntimeWorkerEntryUrl: new URL("file:///worker.js"),
+    });
+    await vi.waitFor(() => expect(mocks.register_ipc).toHaveBeenCalledOnce());
+    const options = mocks.register_ipc.mock.calls[0]?.[0] as DesktopIpcHandlerOptions;
+    const updating = options.updateService.launch_berserker({
+      latest_version: "1.2.4",
+      zip_path: "update.zip",
+    });
+    await vi.waitFor(() => expect(mocks.backend_stop).toHaveBeenCalledOnce());
+    mocks.app_listeners.get("before-quit")?.({ preventDefault: vi.fn() });
+    expect(mocks.launch_update).not.toHaveBeenCalled();
+    expect(mocks.app_exit).not.toHaveBeenCalled();
+    stopped.resolve(undefined);
+    await updating;
+    expect(mocks.backend_stop).toHaveBeenCalledOnce();
+    expect(mocks.dispose_pdf.mock.invocationCallOrder[0]).toBeLessThan(
+      mocks.launch_update.mock.invocationCallOrder[0]!,
+    );
+    expect(mocks.launch_update.mock.invocationCallOrder[0]).toBeLessThan(
+      mocks.app_exit.mock.invocationCallOrder[0]!,
+    );
+    expect(mocks.app_exit).toHaveBeenCalledExactlyOnceWith(0);
+  });
+
+  it.each(["backend", "pdf", "launch"])(
+    "%s 失败会报告并退出，收尾失败不能启动更新器",
+    async (stage) => {
+      if (stage === "backend")
+        mocks.backend_stop.mockRejectedValueOnce(new Error("cleanup failed"));
+      if (stage === "pdf") mocks.dispose_pdf.mockRejectedValueOnce(new Error("cleanup failed"));
+      if (stage === "launch") mocks.launch_update.mockRejectedValueOnce(new Error("launch failed"));
+      run_gui_entry({
+        desktopBundleDir: "E:/app/dist-electron",
+        backendRuntimeWorkerEntryUrl: new URL("file:///worker.js"),
+      });
+      await vi.waitFor(() => expect(mocks.register_ipc).toHaveBeenCalledOnce());
+      const options = mocks.register_ipc.mock.calls[0]?.[0] as DesktopIpcHandlerOptions;
+      await options.updateService.launch_berserker({
+        latest_version: "1.2.4",
+        zip_path: "update.zip",
+      });
+      if (stage !== "launch") expect(mocks.launch_update).not.toHaveBeenCalled();
+      expect(mocks.dispose_pdf).toHaveBeenCalledOnce();
+      expect(mocks.show_native_error).toHaveBeenCalled();
+      expect(mocks.app_exit).toHaveBeenCalledExactlyOnceWith(1);
+    },
+  );
 
   it("Backend 意外退出时显示原生错误并走故障退出码", async () => {
     run_gui_entry({
