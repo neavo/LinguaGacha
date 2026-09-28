@@ -19,12 +19,16 @@ describe("user_skills_layout_migration", () => {
     write_file(path.join(fixture.source, ".gitignore"), "ignored/");
     const workspace = path.join(path.dirname(fixture.source), "workspace", "work", "note.txt");
     write_file(workspace, "work");
-    const failure = new Error("rename failed");
+    const failure = Object.assign(new Error("rename failed"), { code: "ENOENT" }); // 搬迁阶段的缺失仍需记录警告。
     vi.spyOn(default_native_fs, "rename").mockImplementationOnce(() => {
       throw failure;
     });
 
-    await expect(fixture.run()).rejects.toMatchObject({ cause: failure });
+    await fixture.run();
+    expect(fixture.warning).toHaveBeenCalledWith(expect.any(String), {
+      source: "migration",
+      error: failure,
+    });
     expect(fs.readFileSync(path.join(fixture.source, "fixture", "SKILL.md"), "utf8")).toBe("skill");
     expect(fs.existsSync(fixture.destination)).toBe(false);
 
@@ -42,13 +46,17 @@ describe("user_skills_layout_migration", () => {
     expect(fs.readFileSync(workspace, "utf8")).toBe("work");
   });
 
-  it("没有旧入口时由运行期按需创建新目录", async () => {
+  it.each(["missing", "broken-link"])("旧入口为 %s 时静默保留现场", async (kind) => {
     using fixture = create_fixture();
+    if (kind === "broken-link")
+      create_link(fixture.source, path.join(fixture.root, "missing"), "absolute");
     await fixture.run();
+    expect(fixture.warning).not.toHaveBeenCalled();
+    if (kind === "broken-link") expect(fs.lstatSync(fixture.source).isSymbolicLink()).toBe(true);
     expect(fs.existsSync(fixture.destination)).toBe(false);
   });
 
-  it.each(["directory", "file", "broken-link"])("目标为 %s 时保留双方并报告冲突", async (kind) => {
+  it.each(["directory", "file", "broken-link"])("当前入口为 %s 时静默保留双方", async (kind) => {
     using fixture = create_fixture();
     write_file(path.join(fixture.source, "old.txt"), "old");
     if (kind === "directory") write_file(path.join(fixture.destination, "new.txt"), "new");
@@ -59,10 +67,8 @@ describe("user_skills_layout_migration", () => {
         fixture.destination,
       );
 
-    await expect(fixture.run()).rejects.toMatchObject({
-      code: "file.io_failed",
-      cause: { code: "file.already_exists" },
-    });
+    await fixture.run();
+    expect(fixture.warning).not.toHaveBeenCalled();
     expect(fs.readFileSync(path.join(fixture.source, "old.txt"), "utf8")).toBe("old");
     if (kind === "directory")
       expect(fs.readFileSync(path.join(fixture.destination, "new.txt"), "utf8")).toBe("new");
@@ -70,11 +76,11 @@ describe("user_skills_layout_migration", () => {
     else expect(fs.lstatSync(fixture.destination).isSymbolicLink()).toBe(true);
   });
 
-  it("绝对目录链接迁移后指向原技能目录", async () => {
+  it.each(["absolute", "relative"] as const)("%s 目录链接迁移后指向原技能目录", async (kind) => {
     using fixture = create_fixture();
     const target = path.join(fixture.root, "external");
     write_file(path.join(target, "SKILL.md"), "skill");
-    create_link(fixture.source, target, "absolute");
+    create_link(fixture.source, target, kind);
 
     await fixture.run();
     expect(fs.existsSync(fixture.source)).toBe(false);
@@ -82,7 +88,7 @@ describe("user_skills_layout_migration", () => {
     expect(fs.realpathSync(fixture.destination)).toBe(fs.realpathSync(target));
   });
 
-  it("相对链接新入口创建后清理失败，下次启动完成迁移", async () => {
+  it("相对链接新入口创建后清理失败，记录警告并在下次启动保留双方", async () => {
     using fixture = create_fixture();
     const target = path.join(fixture.root, "external");
     write_file(path.join(target, "SKILL.md"), "skill");
@@ -92,35 +98,42 @@ describe("user_skills_layout_migration", () => {
       throw failure;
     });
 
-    await expect(fixture.run()).rejects.toMatchObject({ cause: failure });
+    await fixture.run();
+    expect(fixture.warning).toHaveBeenCalledWith(expect.any(String), {
+      source: "migration",
+      error: failure,
+    });
     expect(fs.realpathSync(fixture.source)).toBe(fs.realpathSync(target));
     expect(fs.realpathSync(fixture.destination)).toBe(fs.realpathSync(target));
 
+    fixture.warning.mockClear();
     await fixture.run();
-    expect(fs.existsSync(fixture.source)).toBe(false);
+    expect(fixture.warning).not.toHaveBeenCalled();
+    expect(fs.realpathSync(fixture.source)).toBe(fs.realpathSync(target));
     expect(fs.lstatSync(fixture.destination).isSymbolicLink()).toBe(true);
     expect(fs.readFileSync(path.join(fixture.destination, "SKILL.md"), "utf8")).toBe("skill");
   });
 
-  it("新链接依赖旧链接时按冲突保留，避免清理后破坏新入口", async () => {
+  it("新链接依赖旧链接时保留双方，新入口继续可用", async () => {
     using fixture = create_fixture();
     const target = path.join(fixture.root, "external");
     write_file(path.join(target, "SKILL.md"), "skill");
     create_link(fixture.source, target, "absolute");
     create_link(fixture.destination, fixture.source, "relative");
-    await expect(fixture.run()).rejects.toMatchObject({ cause: { code: "file.already_exists" } });
+    await fixture.run();
+    expect(fixture.warning).not.toHaveBeenCalled();
     expect(fs.readFileSync(path.join(fixture.destination, "SKILL.md"), "utf8")).toBe("skill");
   });
 
-  it.each(["file", "broken-link"])("旧入口为 %s 时报告失败并保留入口", async (kind) => {
+  it("旧入口为文件时记录警告并保留入口", async () => {
     using fixture = create_fixture();
-    if (kind === "file") write_file(fixture.source, "old");
-    else create_link(fixture.source, path.join(fixture.root, "missing"), "absolute");
-    await expect(fixture.run()).rejects.toMatchObject({
-      cause: { code: kind === "file" ? "file.invalid_structure" : "ENOENT" },
+    write_file(fixture.source, "old");
+    await fixture.run();
+    expect(fixture.warning).toHaveBeenCalledWith(expect.any(String), {
+      source: "migration",
+      error: expect.objectContaining({ code: "file.invalid_structure" }),
     });
-    if (kind === "file") expect(fs.readFileSync(fixture.source, "utf8")).toBe("old");
-    else expect(fs.lstatSync(fixture.source).isSymbolicLink()).toBe(true);
+    expect(fs.readFileSync(fixture.source, "utf8")).toBe("old");
     expect(fs.existsSync(fixture.destination)).toBe(false);
   });
 });
@@ -136,13 +149,18 @@ function create_fixture() {
   vi.spyOn(paths, "get_data_root").mockReturnValue(path.join(temporary.path, "data"));
   const source = paths.get_user_data_path("agent", "skill");
   const destination = paths.get_agent_user_skill_dir();
+  const warning = vi.fn<LogManager["warning"]>();
   return {
     root: temporary.path,
     source,
     destination,
-    /** 把同步迁移结果统一交给异步断言。 */
-    async run() {
-      await user_skills_layout_migration.run_startup?.({ paths, log_manager: {} as LogManager });
+    warning,
+    /** 按启动钩子的实际返回值执行迁移。 */
+    run() {
+      return user_skills_layout_migration.run_startup?.({
+        paths,
+        log_manager: { warning } as unknown as LogManager,
+      });
     },
     [Symbol.dispose]: temporary[Symbol.dispose],
   };
