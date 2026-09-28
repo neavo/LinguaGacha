@@ -1,3 +1,4 @@
+import type { SettingsUpdateResponse } from "../../shared/settings";
 import { ProofreadingPagePreview } from "../proofreading/proofreading-page-preview";
 import { resolve_workspace_runtime_entry } from "../../native/workspace-runtime";
 import { pathToFileURL } from "node:url";
@@ -76,7 +77,7 @@ export interface BackendAppServices {
   paths: AppPathService;
   metadata: AppMetadataService;
   settings: AppSettingService;
-  updateSettings: (request: JsonRecord) => Promise<JsonRecord>; // 设置命令统一编排工程同步与补偿
+  updateSettings: (request: JsonRecord) => Promise<SettingsUpdateResponse>; // 设置命令统一编排工程同步与补偿
 }
 
 export interface BackendRuntimeServices {

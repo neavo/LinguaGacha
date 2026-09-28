@@ -4,7 +4,7 @@ import { AppSettingService } from "../app/app-setting-service";
 import { ProjectDatabase } from "../database/database-operations";
 import { LogManager } from "../log/log-manager";
 import { set_main_log_language_reader, t_main_log } from "../log/log-text";
-import { migration_orchestrator } from "../migration/migration-orchestrator";
+import { run_startup_migrations } from "../migration/startup-migrations";
 import {
   SystemProxyHttpClient,
   type SystemProxyResolver,
@@ -55,7 +55,7 @@ export class BackendResources {
         t_main_log("app.log.app_version", { VERSION: metadata.read_version() }),
         log_manager,
       );
-      await migration_orchestrator.run_startup_migrations({ paths, log_manager });
+      await run_startup_migrations({ paths, log_manager });
       const settings = new AppSettingService(paths);
       set_main_log_language_reader(() => settings.read_app_language());
       system_proxy_http_client = new SystemProxyHttpClient(options.systemProxyResolver);

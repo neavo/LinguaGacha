@@ -2,7 +2,7 @@ import crypto from "node:crypto";
 
 import type { Hono } from "hono";
 
-import type { JsonRecord, JsonValue } from "../../domain/json";
+import { is_json_record, type JsonRecord, type JsonValue } from "../../domain/json";
 import { AppError } from "../../shared/error";
 import { ok } from "./api-types";
 
@@ -52,9 +52,10 @@ export function register_post_json_route(
     "POST",
     path_name,
     async (request) => {
-      const body = (await request.json().catch((error: unknown) => {
+      const body: unknown = await request.json().catch((error: unknown) => {
         throw new AppError("request.invalid_json", { cause: error });
-      })) as JsonRecord;
+      });
+      if (!is_json_record(body)) throw new AppError("request.validation_failed");
       return Response.json(ok(await handler(body)));
     },
     on_error,

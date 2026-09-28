@@ -34,7 +34,7 @@ import {
 } from "@shared/agent";
 import { normalize_agent_todos } from "@shared/agent-todo";
 import { is_json_record, read_json_record, type JsonRecord } from "@domain/json";
-import { LOCALES } from "@shared/i18n/types";
+import { LOCALES } from "@domain/app-language";
 import { api_fetch, api_get, open_event_stream } from "@frontend/app/desktop/desktop-api";
 import {
   read_agent_input_history,

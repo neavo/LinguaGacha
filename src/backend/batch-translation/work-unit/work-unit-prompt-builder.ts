@@ -1,10 +1,8 @@
 import path from "node:path";
 
 import { JsonTool } from "../../../shared/utils/json-tool";
-import {
-  build_translation_output_format,
-  type TranslationPromptLanguage,
-} from "../../../shared/text/translation-output-format";
+import { build_translation_output_format } from "../../../shared/text/translation-output-format";
+import { type TranslationPromptLanguage } from "../../../domain/app-language";
 import type { TextQualitySnapshot, TextTaskItemRecord } from "../../../shared/text/text-types";
 import type { LLMMessage } from "../../llm/llm-types";
 import { default_native_fs } from "../../../native/native-fs";

@@ -2,7 +2,7 @@ import { is_json_record, type JsonRecord } from "../../../domain/json";
 import { MODEL_USAGES, normalize_model_selection } from "../../../domain/model";
 import { default_native_fs } from "../../../native/native-fs";
 import { JsonTool } from "../../../shared/utils/json-tool";
-import type { MigrationDescriptor, StartupMigrationContext } from "../migration-types";
+import type { StartupMigration, StartupMigrationContext } from "../migration-types";
 
 const LEGACY_ACTIVE_MODEL_ID_KEY = "activate_model_id";
 
@@ -10,7 +10,7 @@ const LEGACY_ACTIVE_MODEL_ID_KEY = "activate_model_id";
  * 迁移背景：旧配置只保存一个激活模型，当前配置按 translation、analysis、agent
  * 三种用途分别保存选择。迁移必须在 AppSettingService 首次归一配置前读取旧字段。
  */
-export const model_selection_migration: MigrationDescriptor = {
+export const model_selection_migration: StartupMigration = {
   id: "model-selection",
   order: 400,
   run_startup(context: StartupMigrationContext): void {

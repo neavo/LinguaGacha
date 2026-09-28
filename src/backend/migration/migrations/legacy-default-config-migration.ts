@@ -1,7 +1,7 @@
 import path from "node:path";
 
 import { default_native_fs } from "../../../native/native-fs";
-import type { MigrationDescriptor, StartupMigrationContext } from "../migration-types";
+import type { StartupMigration, StartupMigrationContext } from "../migration-types";
 
 // 旧默认配置只围绕这两个固定资源名迁移，当前目标由 AppPathService 提供。
 const CONFIG_FILE_NAME = "config.json";
@@ -19,7 +19,7 @@ const RESOURCE_DIR_NAME = "resource";
  * 不处理范围：
  * 当前配置已存在时绝不覆盖；损坏 JSON 不在这里校验，由设置读取层按当前规则归一。
  */
-export const legacy_default_config_migration: MigrationDescriptor = {
+export const legacy_default_config_migration: StartupMigration = {
   id: "legacy-default-config",
   order: 100,
   /**

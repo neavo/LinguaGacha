@@ -25,7 +25,7 @@ describe("backend boundary rules", () => {
         'import "node:fs/promises";',
         'app.get("/api/quality", handler);',
       ].join("\n"),
-      "src/cli/main.ts": 'import "../backend/agent/agent-service";',
+      "src/cli/main.ts": 'import "../backend/project/project-write-store.ts";',
       "src/shared/error/app-error.ts": [
         'export const APP_ERROR_DEFINITIONS = { bad: { message: "visible" } };',
         "export interface AppErrorOptions {}",
@@ -48,7 +48,7 @@ describe("backend boundary rules", () => {
         "src/backend/quality/service.ts:1",
         "src/backend/quality/service.ts:2",
         "src/backend/quality/service.ts:3",
-        "src/cli/main.ts:-",
+        "src/cli/main.ts:1",
         "src/shared/error/app-error.ts:1",
       ].sort(),
     );
@@ -94,7 +94,7 @@ describe("backend boundary rules", () => {
   it("拒绝 CLI 经中间服务传递依赖 Agent 或 API", () => {
     const errors = run_rules({
       "src/backend/feature/service.ts": 'import "../agent/agent-service";',
-      "src/cli/main.ts": 'import "../backend/feature/service";',
+      "src/cli/main.ts": 'import "../backend/feature/service.ts";',
     });
 
     expect(errors).toContainEqual(

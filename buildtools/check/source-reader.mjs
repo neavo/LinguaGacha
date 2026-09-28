@@ -45,13 +45,23 @@ export function create_source_reader(read = (file_path) => readFileSync(file_pat
     const source = read_source(file_path);
     if (source.imports === undefined) {
       const imports = [];
+      const runtime_imports = []; // 加载图排除类型引用，完整导入列表仍用于边界检查。
       // 只把字符串目标视为可静态追踪的依赖，类型导入同样参与边界检查。
       const collect = (node) => {
         if (node.source?.type === "Literal" && typeof node.source.value === "string") {
-          imports.push({
+          const entry = {
             line: line_number_at(source.content, node.start),
             specifier: node.source.value,
-          });
+          };
+          imports.push(entry);
+          const type_only =
+            node.importKind === "type" ||
+            node.exportKind === "type" ||
+            (node.specifiers?.length > 0 &&
+              node.specifiers.every(
+                (specifier) => specifier.importKind === "type" || specifier.exportKind === "type",
+              ));
+          if (!type_only) runtime_imports.push(entry);
         }
       };
       new Visitor({
@@ -61,11 +71,17 @@ export function create_source_reader(read = (file_path) => readFileSync(file_pat
         ImportExpression: collect,
       }).visit(read_ast(file_path));
       source.imports = imports;
+      source.runtime_imports = runtime_imports;
     }
     return source.imports;
   }
 
-  return { read_file, read_ast, read_imports };
+  /** 运行依赖追踪排除编译后消失的类型引用，仍包含转发和静态可知的动态导入。 */
+  function read_runtime_imports(file_path) {
+    read_imports(file_path);
+    return read_source(file_path).runtime_imports;
+  }
+  return { read_file, read_ast, read_imports, read_runtime_imports };
 }
 
 /** 源码位置使用 UTF-16 偏移；诊断行号同时识别 ECMAScript 的全部行终止符。 */

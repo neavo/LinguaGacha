@@ -1,6 +1,7 @@
+import { LOCALES } from "../../domain/app-language";
 import { describe, expect, it } from "vitest";
 
-import { create_text_resolver, format_i18n_message, LOCALES, MESSAGE_MAP_BY_LOCALE } from "./index";
+import { create_text_resolver, format_i18n_message, MESSAGE_MAP_BY_LOCALE } from "./index";
 
 describe("shared i18n", () => {
   it("所有 locale 保持相同消息 key 和插值参数", () => {

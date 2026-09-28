@@ -6,7 +6,7 @@ import { useCallback, useMemo } from "react";
 import { useAppNavigation } from "@frontend/app/navigation/navigation-context";
 
 import { buildProofreadingLookupQuery } from "@shared/quality/quality-rule-proofreading-query";
-import { type QualityRuleQuerySlice } from "@frontend/features/quality-rule-editor/quality-rule-api-client";
+import type { QualityRuleSlice } from "@shared/quality/quality-rule-state";
 import { useQualityRuleQuery } from "@frontend/features/quality-rule-editor/use-quality-rule-query";
 import {
   isQualityRuleStatisticsCacheReady,
@@ -66,17 +66,6 @@ const DEFAULT_QUALITY_SLICE: TextReplacementQualitySlice = {
   section_revision: 0,
 };
 
-/** 按替换规则字段白名单克隆，避免重复规划联合类型中的异类字段泄漏。 */
-function clone_entry<Entry extends TextReplacementEntryDraft>(entry: Entry): Entry {
-  return {
-    entry_id: entry.entry_id,
-    src: entry.src,
-    dst: entry.dst,
-    regex: entry.regex,
-    case_sensitive: entry.case_sensitive,
-  } as Entry;
-}
-
 /** 新项目或清空筛选时的完整筛选状态。 */
 function create_empty_filter_state(): TextReplacementFilterState {
   return {
@@ -100,16 +89,15 @@ function normalize_entry<Entry extends TextReplacementEntryDraft>(entry: Entry):
 }
 
 /**
- * 将后端 quality 查询收窄为页面稳定切片。
+ * 将完整质量规则查询映射为页面状态。
  */
 function normalize_text_replacement_quality_slice(
-  slice: QualityRuleQuerySlice<"pre_replacement" | "post_replacement"> | undefined,
+  slice: QualityRuleSlice<"pre_replacement" | "post_replacement">,
   section_revision: number,
 ): TextReplacementQualitySlice {
-  const raw_entries = slice?.entries ?? [];
   return {
-    enabled: slice?.enabled === undefined ? true : Boolean(slice.enabled),
-    entries: raw_entries.map(clone_entry),
+    enabled: slice.enabled,
+    entries: slice.entries,
     section_revision,
   };
 }
@@ -445,7 +433,7 @@ export function useTextReplacementPageState(variant: TextReplacementVariant) {
     hit_ready,
     hit_badge_by_entry_id,
 
-    update_enabled: editing.update_enabled,
+    update_enabled: (enabled: boolean) => editing.update_meta_with_feedback({ enabled }),
     toggle_regex_for_selected,
     toggle_case_sensitive_for_selected,
     query_entry_source,

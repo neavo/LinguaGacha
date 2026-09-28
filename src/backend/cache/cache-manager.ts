@@ -1,10 +1,11 @@
 import type { AppSettingService } from "../app/app-setting-service";
 import type { ProjectDatabase } from "../database/database-operations";
 import type { LogManager } from "../log/log-manager";
-import { ProjectDataReader } from "../project/project-data-reader";
+import { ProjectDataReader, create_empty_quality_rule_block } from "../project/project-data-reader";
 import type { ProjectEvent } from "../project/project-events";
 import type { ComputeWorkerClient } from "../worker/compute-worker-client";
-import type { JsonRecord } from "../../domain/json";
+import { type QualityRuleBlock } from "../../shared/quality/quality-rule-state";
+import { create_empty_project_prompts, type ProjectPrompts } from "../../domain/prompt";
 import { createProofreadingReader } from "../../shared/proofreading/proofreading-reader";
 import type { ProjectDataSectionRevisions } from "../../shared/project-event";
 import { create_cache_change, type CacheChange } from "./cache-change";
@@ -17,24 +18,29 @@ import { QualityRuleStatisticsCache } from "./quality-rule-statistics-cache";
 /**
  * CacheManager 内部的小型数据块缓存；只隔离顶层对象，嵌套 JSON 按不可变值使用。
  */
-class ProjectDataBlockCache {
-  private block: JsonRecord = {};
+class ProjectDataBlockCache<T extends object> {
+  private block: T; // 当前完整块；替换与清理均由此缓存拥有。
 
   /** 恢复钩子由组合根提供，每次读取先确认热缓存可用。 */
-  public constructor(private readonly before_read: () => void) {}
+  public constructor(
+    private readonly before_read: () => void,
+    private readonly create_empty: () => T,
+  ) {
+    this.block = create_empty();
+  }
 
   /** 替换时隔离顶层引用，嵌套项目事实按不可变值共享。 */
-  public replace(block: JsonRecord): void {
+  public replace(block: T): void {
     this.block = { ...block };
   }
 
   /** 工程卸载时释放该数据块。 */
   public clear(): void {
-    this.block = {};
+    this.block = this.create_empty();
   }
 
   /** 恢复完成后返回顶层副本，避免调用者修改缓存结构。 */
-  public readBlock(): JsonRecord {
+  public readBlock(): T {
     this.before_read();
     return { ...this.block };
   }
@@ -52,8 +58,14 @@ export class CacheManager implements CacheReadPort {
   private section_revisions: ProjectDataSectionRevisions = {}; // 对外暴露的 section revision 快照。
   public readonly items = new ItemCache(() => this.recover_if_needed());
   public readonly files = new FileCache(() => this.recover_if_needed());
-  public readonly quality = new ProjectDataBlockCache(() => this.recover_if_needed());
-  public readonly prompts = new ProjectDataBlockCache(() => this.recover_if_needed());
+  public readonly quality = new ProjectDataBlockCache<QualityRuleBlock>(
+    () => this.recover_if_needed(),
+    create_empty_quality_rule_block,
+  );
+  public readonly prompts = new ProjectDataBlockCache<ProjectPrompts>(
+    () => this.recover_if_needed(),
+    create_empty_project_prompts,
+  );
 
   public readonly proofreading: ProofreadingCache;
   public readonly qualityStatistics: QualityRuleStatisticsCache;

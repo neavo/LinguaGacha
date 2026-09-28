@@ -1,5 +1,6 @@
 import { createContext, useContext } from "react";
-import type { Locale, LocaleKey } from "@shared/i18n";
+import type { LocaleKey } from "@shared/i18n";
+import type { Locale } from "@domain/app-language";
 
 export type LocaleContextValue = {
   locale: Locale;

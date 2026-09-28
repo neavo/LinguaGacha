@@ -5,13 +5,16 @@ import { QualityRule } from "../../../domain/quality";
 import { create_quality_rule_entry_id } from "../../../shared/quality/quality-rule-entry";
 import { JsonTool } from "../../../shared/utils/json-tool";
 import { row_text } from "../migration-row";
-import type { MigrationDescriptor, ProjectDatabaseMigrationContext } from "../migration-types";
+import type {
+  DatabaseWritebackMigration,
+  ProjectDatabaseMigrationContext,
+} from "../migration-types";
 
 // 写回迁移只以当前短身份作为白名单；格式仍不是运行期领域契约。
 const CURRENT_QUALITY_RULE_ENTRY_ID_PATTERN = /^[0-9A-HJKMNP-TV-Z]{5}$/u;
 
 /** 依赖 project-rule-storage 先把条目规则归一为单行数组。 */
-export const quality_rule_entry_identity_migration: MigrationDescriptor = {
+export const quality_rule_entry_identity_migration: DatabaseWritebackMigration = {
   id: "quality-rule-entry-identity",
   order: 250,
   run_project_database_writeback(context: ProjectDatabaseMigrationContext): void {

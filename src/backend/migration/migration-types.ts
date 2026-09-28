@@ -6,7 +6,7 @@ import type { AppPathService } from "../app/app-path-service";
 import type { AppSettingService } from "../app/app-setting-service";
 
 /**
- * startup hook 只服务应用启动期文件迁移，必须先于 AppSettingService 读取配置执行。
+ * 启动迁移在 `AppSettingService` 首次读取配置前升级应用文件。
  */
 export interface StartupMigrationContext {
   paths: AppPathService; // appRoot/builtinRoot/dataRoot/userdata 的唯一权威，不允许迁移点自行猜根目录
@@ -14,14 +14,14 @@ export interface StartupMigrationContext {
 }
 
 /**
- * project database hook 只拿 SQLite 句柄，确保 `.lg` 物理迁移仍在 database workflow 内执行。
+ * 数据库迁移使用 SQLite 句柄，在连接就绪前升级 `.lg`。
  */
 export interface ProjectDatabaseMigrationContext {
   db: DatabaseSync; // 已打开 WAL/NORMAL，并由 ProjectDatabase 负责连接生命周期
 }
 
 /**
- * project open hook 只生成类型化写入，由 ProjectLifecycleService 放回同一事务提交。
+ * 工程打开迁移准备类型化写入，由 `ProjectLifecycleService` 在同一事务提交。
  */
 export interface ProjectOpenMigrationContext {
   project_path: string; // 本次 load_project 的唯一 .lg 目标，类型化写入不能跨工程
@@ -29,17 +29,22 @@ export interface ProjectOpenMigrationContext {
   app_setting_service: AppSettingService; // 只提供当前应用设置，用于旧业务槽位的选择规则
 }
 
-/**
- * 单场景迁移描述符：同一个文件只实现自己需要的生命周期 hook。
- */
-export interface MigrationDescriptor {
-  readonly id: string; // 写回迁移持久标记，改名等同新增迁移，必须谨慎
-  readonly order: number; // 只表达同一 hook 内的依赖顺序，不承载业务优先级
-  run_startup?(context: StartupMigrationContext): void | Promise<void>; // 迁移应用级文件，抛出异常会中止启动
-  run_project_database_schema?(context: ProjectDatabaseMigrationContext): void; // schema hook 只补物理结构，必须幂等
-  run_project_database_writeback?(context: ProjectDatabaseMigrationContext): void; // writeback hook 写回业务事实，并由编排器按 id 标记
-  /** open hook 只返回类型化写入，不自行开启或提交事务。 */
-  build_project_open_writes?(
+/** 标识属于持久化契约，顺序只表达同一生命周期内的依赖。 */
+interface MigrationIdentity {
+  readonly id: string; // 数据库写回使用的持久标记。
+  readonly order: number; // 同一阶段内的执行顺序。
+}
+export interface StartupMigration extends MigrationIdentity {
+  run_startup(context: StartupMigrationContext): void | Promise<void>;
+}
+export interface DatabaseSchemaMigration extends MigrationIdentity {
+  run_project_database_schema(context: ProjectDatabaseMigrationContext): void;
+}
+export interface DatabaseWritebackMigration extends MigrationIdentity {
+  run_project_database_writeback(context: ProjectDatabaseMigrationContext): void;
+}
+export interface ProjectOpenMigration extends MigrationIdentity {
+  build_project_open_writes(
     context: ProjectOpenMigrationContext,
   ): Promise<ProjectDatabaseWrite[]> | ProjectDatabaseWrite[];
 }

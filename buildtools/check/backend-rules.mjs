@@ -4,7 +4,7 @@ import {
   find_pattern_errors,
   is_test_file,
   is_typescript_source,
-  resolve_relative_specifier,
+  index_source_module_paths,
 } from "./core.mjs";
 
 const API_GATEWAY_RELATIVE_PATH = "src/backend/api/api-gateway-server.ts";
@@ -102,7 +102,7 @@ function create_backend_api_dependency_rule() {
       for (const file_path of context.files.filter(is_backend_feature_source)) {
         const relative_path = context.relative_path(file_path);
         for (const import_entry of context.read_imports(file_path)) {
-          const target = resolve_relative_specifier(file_path, import_entry.specifier);
+          const target = context.resolve_import(file_path, import_entry.specifier);
           if (target === null || !is_path_inside(target, api_root)) {
             continue;
           }
@@ -140,7 +140,7 @@ function create_cli_dependency_rule() {
       for (const file_path of cli_files) {
         const relative_path = context.relative_path(file_path);
         for (const import_entry of context.read_imports(file_path)) {
-          const target = resolve_relative_specifier(file_path, import_entry.specifier);
+          const target = context.resolve_import(file_path, import_entry.specifier);
           if (
             target === null ||
             (!forbidden_direct_roots.some((root) => is_path_inside(target, root)) &&
@@ -174,19 +174,6 @@ function create_cli_dependency_rule() {
   };
 }
 
-/** 将 TypeScript 文件与目录 index 归一为相对 import 可解析的模块路径。 */
-function index_source_module_paths(files) {
-  const result = new Map();
-  for (const file_path of files.filter(is_typescript_source)) {
-    const without_extension = file_path.replace(/\.(?:ts|tsx)$/, "");
-    result.set(without_extension, file_path);
-    if (path.basename(without_extension) === "index") {
-      result.set(path.dirname(without_extension), file_path);
-    }
-  }
-  return result;
-}
-
 /** 沿仓库内相对 import 递归查找 CLI 可达的受限运行时目录。 */
 function collect_reachable_forbidden_imports(
   file_path,
@@ -199,7 +186,7 @@ function collect_reachable_forbidden_imports(
   visited.add(file_path);
   const result = new Set();
   for (const import_entry of context.read_imports(file_path)) {
-    const target = resolve_relative_specifier(file_path, import_entry.specifier);
+    const target = context.resolve_import(file_path, import_entry.specifier);
     if (target === null) continue;
     if (forbidden_roots.some((root) => is_path_inside(target, root))) {
       result.add(target);
@@ -234,7 +221,7 @@ function create_backend_services_dependency_rule() {
         const relative_path = context.relative_path(file_path);
         if (relative_path !== BACKEND_SERVICES_RELATIVE_PATH) continue;
         for (const import_entry of context.read_imports(file_path)) {
-          const target = resolve_relative_specifier(file_path, import_entry.specifier);
+          const target = context.resolve_import(file_path, import_entry.specifier);
           if (target === null || !forbidden_roots.some((root) => is_path_inside(target, root))) {
             continue;
           }
@@ -285,7 +272,7 @@ function create_llm_model_dependency_rule() {
       for (const file_path of context.files.filter(is_llm_production_source)) {
         const relative_path = context.relative_path(file_path);
         for (const import_entry of context.read_imports(file_path)) {
-          const target = resolve_relative_specifier(file_path, import_entry.specifier);
+          const target = context.resolve_import(file_path, import_entry.specifier);
           if (target === null || !is_path_inside(target, model_root)) {
             continue;
           }

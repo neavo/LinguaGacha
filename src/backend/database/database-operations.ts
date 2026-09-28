@@ -3,12 +3,12 @@ import type { ProjectPreview } from "../../shared/project-preview";
 import { build_project_translation_stats } from "../../shared/project-translation-stats";
 import { build_project_file_paths } from "../../shared/project/project-file-paths";
 import type { PDFDocument, PDFDocumentRecord, PDFPage, PDFSummary } from "../../shared/pdf";
-import { read_pdf_document } from "../file/formats/pdf/pdf-source";
+import { read_pdf_document } from "../../shared/pdf-schema";
 import path from "node:path";
 import { createHash } from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
 
-import { migration_orchestrator } from "../migration/migration-orchestrator";
+import { run_project_database_migrations } from "../migration/database-migrations";
 import { ZstdTool } from "./zstd-tool";
 import { JsonTool } from "../../shared/utils/json-tool";
 import * as AppErrors from "../../shared/error";
@@ -562,7 +562,7 @@ export class ProjectDatabase {
       db.exec("PRAGMA synchronous=NORMAL");
       this.apply_project_storage_mode(normalized_path, db);
       operation = "migration";
-      migration_orchestrator.run_project_database_migrations(db);
+      run_project_database_migrations(db);
       record.ready = true;
       return record;
     } catch (error) {

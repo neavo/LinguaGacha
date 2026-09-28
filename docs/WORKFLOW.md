@@ -41,10 +41,10 @@
 |---|---|
 |TypeScript 源码、类型、测试或影响其解析的配置变化|`npm run typecheck`；本次运行 `npm run build` 时使用其内置类型检查结果|
 |lint 覆盖的源码、测试、脚本或规则配置变化|`npm run lint`，同时检查前端 `react/only-export-components` 导出边界|
-|`src/`、`buildtools/` 中受架构和错误规则检查的源码或规则实现变化|`npm run check`，覆盖错误契约及 GUI、前端、后端边界|
+|`src/`、`buildtools/` 中受架构和错误规则检查的源码或规则实现变化|`npm run check`，覆盖错误契约、基础层、迁移及 GUI、前后端边界|
 |格式化脚本支持的源码、CSS、JSON 或相关配置变化|`npm run format -- --check <文件路径...>`；需要修复时对相同文件执行 `npm run format -- <文件路径...>` 后复查|
 
-`npm run check` 的源码快照由 `buildtools/check/source-reader.mjs` 按次执行持有，四组规则共享。导入边界包含类型导入和转发导出；解析失败携带文件位置终止检查。
+`npm run check` 共用源码快照和别名解析。边界检查包含类型导入、转发及字符串动态导入；迁移加载检查仅追踪运行依赖。解析失败携带位置终止检查。
 
 格式化入口 `buildtools/format-related-files.mjs` 支持显式文件路径；省略路径时收集暂存、未暂存和未跟踪的变更文件。工作区有其它任务改动时传入本任务路径。Markdown 与 YAML 通过文本或元数据检查验证。
 

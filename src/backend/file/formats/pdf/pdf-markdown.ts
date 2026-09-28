@@ -8,7 +8,7 @@ import type { Element, ElementContent, Root } from "hast";
 import type { Html } from "mdast";
 import type { PDFDocument, PDFRegion } from "../../../../shared/pdf";
 import { MARKDOWN_CJK, MARKDOWN_MATH, MARKDOWN_ALERT } from "../../../../shared/markdown-plugins";
-import { validate_pdf_region } from "./pdf-source";
+import { validate_pdf_region } from "../../../../shared/pdf-schema";
 
 export type PDFMarkdown = { html: string; images: Map<string, PDFRegion> };
 

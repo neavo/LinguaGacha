@@ -3,7 +3,7 @@ import { ChevronDown, Languages, ScrollText } from "lucide-react";
 
 import type { NavigationGroup, RouteId } from "@frontend/app/navigation/types";
 import { is_app_language, type AppLanguage } from "@domain/app-language";
-import { APP_LANGUAGE_DEFINITIONS } from "@shared/i18n/types";
+import { APP_LANGUAGE_DEFINITIONS } from "@domain/app-language";
 import { AppAppearanceMenu } from "@frontend/app/shell/app-appearance-menu";
 import {
   Sidebar,

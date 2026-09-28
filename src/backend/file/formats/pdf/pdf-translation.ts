@@ -1,6 +1,6 @@
 import { escapeText } from "entities";
 import type { PDFDocument, PDFPage, PDFRegion } from "../../../../shared/pdf";
-import { validate_pdf_region, read_pdf_document } from "./pdf-source";
+import { validate_pdf_region, read_pdf_document } from "../../../../shared/pdf-schema";
 import { pdf_markdown, type PDFMarkdown } from "./pdf-markdown";
 import styles from "./pdf-print.css?raw";
 

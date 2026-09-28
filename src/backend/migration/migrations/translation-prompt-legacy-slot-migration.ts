@@ -1,7 +1,7 @@
 import { resolve_prompt_template_language } from "../../../domain/app-language";
 import type { JsonRecord } from "../../../domain/json";
 import type { ProjectDatabaseWrite } from "../../database/database-operations";
-import type { MigrationDescriptor, ProjectOpenMigrationContext } from "../migration-types";
+import type { ProjectOpenMigration, ProjectOpenMigrationContext } from "../migration-types";
 
 // 旧语言槽位、当前统一槽位和一次性完成标记都写在这里，避免跨文件隐藏迁移契约。
 const LEGACY_TRANSLATION_PROMPT_ZH_RULE_TYPE = "CUSTOM_PROMPT_ZH";
@@ -21,7 +21,7 @@ const TRANSLATION_PROMPT_RULE_TYPE = "translation_prompt";
  * 不处理范围：
  * rules 表旧大写类型和文本 payload 形状已在数据库写回迁移中归一；本文件只处理跨槽位业务语义。
  */
-export const translation_prompt_legacy_slot_migration: MigrationDescriptor = {
+export const translation_prompt_legacy_slot_migration: ProjectOpenMigration = {
   id: "translation-prompt-legacy-slot",
   order: 700,
   /**

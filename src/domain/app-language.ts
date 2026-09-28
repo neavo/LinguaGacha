@@ -1,7 +1,18 @@
-import { APP_LANGUAGE_DEFINITIONS, type AppLanguage, type Locale } from "../shared/i18n/types";
-import type { TranslationPromptLanguage } from "../shared/text/translation-output-format";
+// 设置编码沿用持久化值；顺序和语言自称同时供菜单及发行包消费。
+export const APP_LANGUAGE_DEFINITIONS = [
+  { code: "ZH", locale: "zh-CN", name: "中文" },
+  { code: "JA", locale: "ja-JP", name: "日本語" },
+  { code: "KO", locale: "ko-KR", name: "한국어" },
+  { code: "EN", locale: "en-US", name: "English" },
+  { code: "DE", locale: "de-DE", name: "Deutsch" },
+] as const;
 
-export type { AppLanguage } from "../shared/i18n/types";
+export type AppLanguage = (typeof APP_LANGUAGE_DEFINITIONS)[number]["code"];
+export type Locale = (typeof APP_LANGUAGE_DEFINITIONS)[number]["locale"];
+export const LOCALES: readonly Locale[] = APP_LANGUAGE_DEFINITIONS.map(({ locale }) => locale);
+
+/** 内置提示词模板使用的语言值域。 */
+export type TranslationPromptLanguage = "zh" | "en";
 
 /** 菜单值使用严格校验；设置及系统输入由归一化入口处理。 */
 export function is_app_language(value: unknown): value is AppLanguage {

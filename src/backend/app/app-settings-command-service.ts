@@ -1,3 +1,4 @@
+import type { SettingsUpdateResponse } from "../../shared/settings";
 import {
   Setting,
   PROJECT_SETTING_KEYS,
@@ -23,7 +24,7 @@ export class AppSettingsCommandService {
   ) {}
 
   /** 保存用户修改；涉及已加载工程时统一完成同步与失败补偿。 */
-  public async update(request: JsonRecord): Promise<JsonRecord> {
+  public async update(request: JsonRecord): Promise<SettingsUpdateResponse> {
     if (
       Object.hasOwn(request, "agent_approval_mode") &&
       !is_agent_approval_mode(request["agent_approval_mode"])
@@ -86,7 +87,7 @@ export class AppSettingsCommandService {
       return {
         settings: this.settings.build_setting_snapshot(this.settings.read_setting()),
         ...result,
-      } as unknown as JsonRecord;
+      };
     });
   }
 

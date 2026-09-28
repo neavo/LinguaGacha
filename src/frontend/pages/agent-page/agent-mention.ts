@@ -4,7 +4,8 @@ import {
   format_agent_reference,
   type AgentFileCandidate,
 } from "@shared/agent-reference";
-import { create_text_resolver, type Locale } from "@shared/i18n";
+import { create_text_resolver } from "@shared/i18n";
+import { type Locale } from "@domain/app-language";
 
 const DEFAULT_FILE_CANDIDATE_LIMIT = 3; // 默认展示数量由产品要求确定。
 const SEARCH_FILE_CANDIDATE_LIMIT = 20; // 限制搜索菜单规模。

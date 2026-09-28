@@ -25,12 +25,16 @@ describe("quality rule api client", () => {
     });
   });
 
-  it("导入规则时只返回数组 entries", async () => {
+  it("导入消费后端条目并传播解析失败", async () => {
     const entries = [{ entry_id: "hp", src: "HP", dst: "生命值", info: "", case_sensitive: false }];
-    api_fetch_mock.mockResolvedValueOnce({ entries }).mockResolvedValueOnce({ entries: null });
+    api_fetch_mock
+      .mockResolvedValueOnce({ entries })
+      .mockRejectedValueOnce(new Error("invalid rules"));
 
     await expect(import_quality_rule_entries("glossary", "E:/rules.json")).resolves.toBe(entries);
-    await expect(import_quality_rule_entries("glossary", "E:/bad.json")).resolves.toEqual([]);
+    await expect(import_quality_rule_entries("glossary", "E:/bad.json")).rejects.toThrow(
+      "invalid rules",
+    );
     expect(api_fetch_mock).toHaveBeenNthCalledWith(1, "/api/quality/rules/import", {
       rule_type: "glossary",
       path: "E:/rules.json",

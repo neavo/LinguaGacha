@@ -1,5 +1,5 @@
 import { read_json_boolean, type JsonRecord } from "./json";
-import { AppError } from "../shared/error";
+import { AppError } from "../shared/error/app-error";
 
 export const TEXT_PRESERVE_MODES = ["off", "smart", "custom"] as const; // 文本保护模式是公开 meta、页面状态和规则执行共同使用的稳定值域
 
@@ -40,10 +40,13 @@ export type GlossaryEntry = {
 export type QualityRuleGlossaryEntry = GlossaryEntry & { entry_id: string };
 export type QualityRuleTextReplacementEntry = TextReplacementEntry & { entry_id: string };
 export type QualityRuleTextPreserveEntry = TextPreserveEntry & { entry_id: string };
-export type QualityRuleEntry =
-  | QualityRuleGlossaryEntry
-  | QualityRuleTextReplacementEntry
-  | QualityRuleTextPreserveEntry;
+export type QualityRuleEntryByKind = {
+  glossary: QualityRuleGlossaryEntry;
+  pre_replacement: QualityRuleTextReplacementEntry;
+  post_replacement: QualityRuleTextReplacementEntry;
+  text_preserve: QualityRuleTextPreserveEntry;
+};
+export type QualityRuleEntry = QualityRuleEntryByKind[QualityRuleKind];
 
 /** 尚未进入项目身份边界的规则字段输入。 */
 export type QualityRuleEntryInput = GlossaryEntry | TextReplacementEntry | TextPreserveEntry;
@@ -129,17 +132,19 @@ const QUALITY_RULE_KIND_SET = new Set<QualityRuleKind>(QUALITY_RULE_KINDS);
 /**
  * QualityRule 是质量规则槽位实体，统一计算数据库类型、预设目录和 meta key。
  */
-export class QualityRule {
-  public readonly kind: QualityRuleKind; // 质量规则槽位类型
+export class QualityRule<K extends QualityRuleKind = QualityRuleKind> {
+  public readonly kind: K; // 质量规则槽位类型
 
   /** 固定已经校验的规则类型，字段映射统一由领域对象提供。 */
-  private constructor(kind: QualityRuleKind) {
+  private constructor(kind: K) {
     this.kind = kind;
   }
 
   /**
    * 反序列化公开 kind 或 rule_type 字段，拒绝未知规则防止落库形成新分组
    */
+  public static from_json<K extends QualityRuleKind>(payload: K): QualityRule<K>;
+  public static from_json(payload: unknown): QualityRule;
   public static from_json(payload: unknown): QualityRule {
     if (is_quality_rule_kind(payload)) {
       return new QualityRule(payload);

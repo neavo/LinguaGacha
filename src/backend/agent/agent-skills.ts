@@ -13,7 +13,7 @@ import {
 import type { AgentSkillSource } from "../../shared/agent-skills";
 import { default_native_fs, type NativeFs } from "../../native/native-fs";
 import type { AgentSkillDisplayDescriptions } from "../../shared/agent";
-import { LOCALES } from "../../shared/i18n/types";
+import { LOCALES } from "../../domain/app-language";
 import type { AppPathService } from "../app/app-path-service";
 import type { LogManager } from "../log/log-manager";
 import { t_main_log } from "../log/log-text";

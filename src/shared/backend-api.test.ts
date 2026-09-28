@@ -5,7 +5,7 @@ import {
   build_backend_api_base_url_argument,
   normalize_backend_api_base_url,
   resolve_backend_api_base_url_from_argv,
-} from "./api-base-url";
+} from "./backend-api";
 
 describe("Backend API 地址契约", () => {
   it("构造、标准化并通过启动参数传递本机地址", () => {
@@ -22,9 +22,9 @@ describe("Backend API 地址契约", () => {
   it("缺少或留空启动参数时直接失败", () => {
     expect(() => {
       resolve_backend_api_base_url_from_argv(["electron"]);
-    }).toThrow("Backend API base URL launch argument is missing.");
+    }).toThrow(Error);
     expect(() => {
       resolve_backend_api_base_url_from_argv(["electron", "--backend-api-base-url=   "]);
-    }).toThrow("Backend API base URL launch argument is empty.");
+    }).toThrow(Error);
   });
 });

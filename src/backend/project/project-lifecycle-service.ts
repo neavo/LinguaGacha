@@ -11,7 +11,7 @@ import { log_source_file_parse_failures } from "../file/source-file-parse-failur
 import { SourceFileParsePipeline } from "../file/source-file-parse-pipeline";
 import type { LogManager } from "../log/log-manager";
 import { t_main_log } from "../log/log-text";
-import { migration_orchestrator } from "../migration/migration-orchestrator";
+import { build_project_open_writes } from "../migration/project-open-migrations";
 import {
   build_project_item_persistent_records,
   collect_project_item_missing_public_fields,
@@ -167,7 +167,7 @@ export class ProjectLifecycleService {
     const project_path = this.require_body_string(body, "path");
     this.assert_project_file_exists(project_path);
     // 打开期迁移只生成 operation，和 updated_at 一起提交后才暴露 loaded 状态
-    const migration_writes = await migration_orchestrator.build_project_open_writes({
+    const migration_writes = await build_project_open_writes({
       project_path,
       database: this.database,
       app_setting_service: this.app_setting_service,

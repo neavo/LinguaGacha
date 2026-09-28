@@ -3,7 +3,8 @@ import { en_us_messages } from "./resources/en-US";
 import { de_de_messages } from "./resources/de-DE";
 import { ja_jp_messages } from "./resources/ja-JP";
 import { ko_kr_messages } from "./resources/ko-KR";
-import type { Locale, LocaleMessageSchema } from "./types";
+import type { Locale } from "../../domain/app-language";
+import type { LocaleMessageSchema } from "./types";
 
 type JoinPath<prefix extends string, key extends string> = prefix extends ""
   ? key
@@ -71,4 +72,4 @@ export function create_text_resolver(locale: Locale): TextResolver {
   return (key, params) => format_i18n_message(locale, key, params);
 }
 
-export { LOCALES, type Locale, type LocaleMessageSchema } from "./types";
+export type { LocaleMessageSchema } from "./types";

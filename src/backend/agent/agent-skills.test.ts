@@ -4,7 +4,7 @@ import path from "node:path";
 
 import { describe, expect, it, vi } from "vitest";
 
-import { LOCALES } from "../../shared/i18n/types";
+import { LOCALES } from "../../domain/app-language";
 import { AppPathService } from "../app/app-path-service";
 import { default_native_fs } from "../../native/native-fs";
 import { format_agent_skills_for_system_prompt, load_agent_skills } from "./agent-skills";

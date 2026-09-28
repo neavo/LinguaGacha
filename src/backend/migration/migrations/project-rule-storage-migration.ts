@@ -3,7 +3,10 @@ import type { DatabaseSync } from "node:sqlite";
 import { JsonTool } from "../../../shared/utils/json-tool";
 import { is_json_record, read_json_record } from "../../../domain/json";
 import { row_number, row_text } from "../migration-row";
-import type { MigrationDescriptor, ProjectDatabaseMigrationContext } from "../migration-types";
+import type {
+  DatabaseWritebackMigration,
+  ProjectDatabaseMigrationContext,
+} from "../migration-types";
 
 type RuleMigrationRow = Record<string, unknown>;
 
@@ -42,7 +45,7 @@ const CURRENT_RULE_TEXT_TYPES = new Set([
  * 旧翻译提示词 ZH/EN 槽位是否要补写到当前 `translation_prompt`，
  * 属于项目打开期业务语义迁移，不在本文件读应用语言或生成类型化写入。
  */
-export const project_rule_storage_migration: MigrationDescriptor = {
+export const project_rule_storage_migration: DatabaseWritebackMigration = {
   id: "project-rule-storage",
   order: 200,
   /**

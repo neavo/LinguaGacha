@@ -1,12 +1,9 @@
+import type { TranslationPromptLanguage } from "../../domain/app-language";
+
 /**
  * 翻译提示词和响应解码共享的输出协议模式。
  */
 export type TranslationPromptMode = "text" | "actor_text";
-
-/**
- * 内置提示词模板当前只维护中英文两套输出格式说明。
- */
-export type TranslationPromptLanguage = "zh" | "en";
 
 /**
  * 构建翻译提示词中的 JSONLINE 输出格式示例。

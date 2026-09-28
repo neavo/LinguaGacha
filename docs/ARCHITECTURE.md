@@ -51,5 +51,7 @@ flowchart LR
 - `src/shared` 承载可复用的纯规则、协议词表、reader 与无状态工具，不依赖 React、DOM、Electron、Node FS、SQLite、服务单例或可变全局状态。
 - `src/native` 收口真实磁盘 IO、路径身份和平台路径策略；backend 与 worker 不绕过它处理平台差异。
 - `src/backend` 拥有项目事实、任务执行、数据库和出站模型请求，不依赖 renderer。
-- `src/gui` 是 Electron 宿主、Backend Runtime 客户端、IPC、preload、窗口和外链策略边界；生产代码除 API base URL 参数编码外不得导入 backend 实现，该约束由 `npm run check` 验证。
+- `src/gui` 是 Electron 宿主、Backend Runtime 客户端、IPC、preload、窗口和外链策略边界；生产代码不得导入 backend 实现，该约束由 `npm run check` 验证。
 - `src/frontend` 只消费宿主契约、后端公开协议、`src/domain` 与 `src/shared`，不导入 backend 或 native 实现。
+- 应用语言持久化编码、界面 Locale 和发行包语言资源共用 `domain/app-language`。宿主与后端共用 `shared/backend-api` 的地址契约。
+- 数据库、PDF 格式与 Agent Workspace 共用 `shared/pdf-schema` 校验，`shared/pdf` 从该 Schema 推导数据类型。

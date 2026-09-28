@@ -1,9 +1,6 @@
 import { useCallback, useLayoutEffect, useRef, useState } from "react";
-import type {
-  QualityRuleEntryByType,
-  QualityRuleType,
-  QualityRuleUpdateRequest,
-} from "@shared/quality/quality-rule-api";
+import type { QualityRuleUpdateRequest } from "@shared/quality/quality-rule-api";
+import type { QualityRuleEntryByKind, QualityRuleKind } from "@domain/quality";
 import { create_quality_rule_entry_id } from "@shared/quality/quality-rule-entry";
 import {
   QualityRuleImportRuleTypeValue,
@@ -60,16 +57,16 @@ const IMPORT_KIND = {
 type ApplyOptions = { source: "import" | "preset" | "dialog"; refresh: ResultRefreshPolicy };
 
 /** 页面编辑只持有草稿和意图，项目事实、事务恢复和结果版本门闩继续使用现有拥有者。 */
-export function useQualityRuleEditing<K extends QualityRuleType>(options: {
+export function useQualityRuleEditing<K extends QualityRuleKind>(options: {
   rule_type: K;
   project_path: string;
-  entries: QualityRuleEntryByType[K][];
+  entries: QualityRuleEntryByKind[K][];
   section_revision: number;
   readonly: boolean;
   reorder_disabled: boolean;
-  empty_entry: QualityRuleDraft<QualityRuleEntryByType[K]>;
-  normalize: <E extends QualityRuleDraft<QualityRuleEntryByType[K]>>(entry: E) => E;
-  validate: (entry: QualityRuleDraft<QualityRuleEntryByType[K]>) => string | null;
+  empty_entry: QualityRuleDraft<QualityRuleEntryByKind[K]>;
+  normalize: <E extends QualityRuleDraft<QualityRuleEntryByKind[K]>>(entry: E) => E;
+  validate: (entry: QualityRuleDraft<QualityRuleEntryByKind[K]>) => string | null;
   selection: Pick<
     ProjectSessionTableUiStateController<unknown, unknown>,
     | "selected_row_ids"
@@ -85,7 +82,7 @@ export function useQualityRuleEditing<K extends QualityRuleType>(options: {
   export_file_name: string;
   error_key: LocaleKey;
 }) {
-  type Entry = QualityRuleEntryByType[K];
+  type Entry = QualityRuleEntryByKind[K];
   const { t } = useI18n();
   const { commit_project_write } = useDesktopState();
   const current = useRef(options); // 确认操作读取最近一次已提交的 React 快照及其修订。
@@ -189,11 +186,11 @@ export function useQualityRuleEditing<K extends QualityRuleType>(options: {
     },
     [commit_project_write],
   );
-  /** 通过元信息提交入口更新开关并反馈失败。 */
-  const update_enabled = useCallback(
-    async (enabled: boolean): Promise<void> => {
+  /** 按页面规则类型提交元信息并反馈失败。 */
+  const update_meta_with_feedback = useCallback(
+    async (meta: NonNullable<QualityRuleUpdateRequest<K>["meta"]>): Promise<void> => {
       try {
-        await update_meta({ enabled });
+        await update_meta(meta);
       } catch (error) {
         report(error);
       }
@@ -450,7 +447,7 @@ export function useQualityRuleEditing<K extends QualityRuleType>(options: {
     },
     save_entries_snapshot,
     update_meta,
-    update_enabled,
+    update_meta_with_feedback,
     delete_selected_entries,
     request_reset_entries,
     confirm_pending_action,

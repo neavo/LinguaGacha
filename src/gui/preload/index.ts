@@ -15,7 +15,7 @@ import {
   IPC_CHANNEL_WINDOW_CLOSE_REQUEST,
   IPC_CHANNEL_REQUEST_USER_ATTENTION,
 } from "../gui-ipc-contract";
-import { resolve_backend_api_base_url_from_argv } from "../../backend/api/api-base-url";
+import { resolve_backend_api_base_url_from_argv } from "../../shared/backend-api";
 import { resolve_desktop_shell_info } from "../shell/shell-contract";
 import { DESKTOP_BRIDGE_GLOBAL_NAME, type DesktopBridgeApi } from "../bridge/bridge-api";
 import type {

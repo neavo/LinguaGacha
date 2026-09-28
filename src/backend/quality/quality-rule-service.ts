@@ -2,7 +2,9 @@ import { randomUUID } from "node:crypto";
 import type { AppSettingService } from "../app/app-setting-service";
 import type {
   QualityRuleQueryResponse,
-  QualityRuleQuerySlice,
+  QualityRuleEntriesResponse,
+  QualityRuleExportResponse,
+  QualityRulePresetSaveResponse,
   QualityRulePresets,
   QualityRulePresetItem,
   QualityRulePresetChange,
@@ -19,7 +21,7 @@ import { ProjectSessionState } from "../project/project-session-state";
 import type { RuntimeOperationGate } from "../runtime-operation-gate";
 import type { ProjectWriteResult } from "../../shared/project-event";
 
-import { QualityRule, type QualityRuleKind } from "../../domain/quality";
+import { QualityRule, type QualityRuleKind, type QualityRuleEntry } from "../../domain/quality";
 import { read_json_record } from "../../domain/json";
 import * as AppErrors from "../../shared/error";
 import { NativeFs, default_native_fs } from "../../native/native-fs";
@@ -60,7 +62,7 @@ export class QualityRuleService {
     return {
       projectPath: project_path,
       sectionRevisions: this.cache.readSectionRevisions(),
-      qualityRule: read_json_record(quality_block[rule_type]) as QualityRuleQuerySlice,
+      qualityRule: quality_block[rule_type],
     };
   }
 
@@ -116,23 +118,20 @@ export class QualityRuleService {
   /**
    * 从外部文件导入规则预演结果，保持导入解析在服务内收口
    */
-  public async import_rules(request: JsonRecord): Promise<JsonRecord> {
+  public async import_rules(request: JsonRecord): Promise<QualityRuleEntriesResponse> {
     const rule_type = QualityRule.from_json(request["rule_type"]).kind;
     const file_path = String(request["path"] ?? "");
     const entries = this.create_rule_entries(
       rule_type,
-      (await load_quality_rule_entries_from_file(
-        file_path,
-        this.native_fs,
-      )) as unknown as JsonValue,
+      await load_quality_rule_entries_from_file(file_path, this.native_fs),
     );
-    return { entries: entries as unknown as JsonValue };
+    return { entries };
   }
 
   /**
    * 导出规则到用户选择路径，避免页面处理文件格式细节
    */
-  public async export_rules(request: JsonRecord): Promise<JsonRecord> {
+  public async export_rules(request: JsonRecord): Promise<QualityRuleExportResponse> {
     const file_path = String(request["path"] ?? "");
     const rule_type = QualityRule.from_json(request["rule_type"]).kind;
     const entries = this.normalize_rule_entries(rule_type, request["entries"]);
@@ -165,7 +164,7 @@ export class QualityRuleService {
   /**
    * 读取规则预设内容，隐藏内置和用户目录差异
    */
-  public read_rule_preset(request: JsonRecord): JsonRecord {
+  public read_rule_preset(request: JsonRecord): QualityRuleEntriesResponse {
     const rule_type = QualityRule.from_json(request["rule_type"]).kind;
     const preset_directory = QualityRule.from_json(rule_type).preset_directory;
     const preset_path = this.resolve_rule_preset_file(
@@ -181,14 +180,14 @@ export class QualityRuleService {
       });
     }
     return {
-      entries: this.create_rule_entries(rule_type, data as JsonValue) as unknown as JsonValue,
+      entries: this.create_rule_entries(rule_type, data),
     };
   }
 
   /**
    * 保存用户规则预设，确保文件名和目录规则一致
    */
-  public save_rule_preset(request: JsonRecord): JsonRecord {
+  public save_rule_preset(request: JsonRecord): QualityRulePresetSaveResponse {
     const preset_directory = QualityRule.from_json(request["rule_type"]).preset_directory;
     const name = this.normalize_preset_name(String(request["name"] ?? ""));
     const rule_type = QualityRule.from_json(request["rule_type"]).kind;
@@ -202,9 +201,8 @@ export class QualityRuleService {
       user_directory: directory,
     });
     const preset_entries = entries.map((entry) => {
-      const result = { ...entry };
-      delete result["entry_id"];
-      return result;
+      const { entry_id: _entry_id, ...fields } = entry;
+      return fields;
     });
     this.native_fs.write_file_sync(
       preset_file.file_path,
@@ -337,34 +335,24 @@ export class QualityRuleService {
   /**
    * 归一规则条目列表，确保写入数据库前字段完整
    */
-  private normalize_rule_entries(
-    rule_type: QualityRuleKind,
-    value: JsonValue | undefined,
-  ): JsonRecord[] {
+  private normalize_rule_entries(rule_type: QualityRuleKind, value: unknown): QualityRuleEntry[] {
     try {
-      return normalize_quality_rule_entries(
-        QualityRule.from_json(rule_type),
-        value,
-      ) as JsonRecord[];
+      return normalize_quality_rule_entries(QualityRule.from_json(rule_type), value);
     } catch (cause) {
       throw new AppErrors.AppError("request.validation_failed", { cause });
     }
   }
 
   /** 外部文件和预设不复用项目身份，并避开当前 kind 的全部既有身份。 */
-  private create_rule_entries(
-    rule_type: QualityRuleKind,
-    value: JsonValue | undefined,
-  ): JsonRecord[] {
+  private create_rule_entries(rule_type: QualityRuleKind, value: unknown): QualityRuleEntry[] {
     try {
       const rule = QualityRule.from_json(rule_type);
-      const current_slice = read_json_record(this.cache.quality.readBlock()[rule_type]);
-      const current_entries = normalize_quality_rule_entries(rule, current_slice["entries"] ?? []);
+      const current_entries = this.cache.quality.readBlock()[rule_type].entries;
       return create_quality_rule_entries(
         rule,
         value,
         current_entries.map((entry) => entry.entry_id),
-      ) as JsonRecord[];
+      );
     } catch (cause) {
       throw new AppErrors.AppError("request.validation_failed", { cause });
     }

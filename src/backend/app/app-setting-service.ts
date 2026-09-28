@@ -1,3 +1,5 @@
+import type { SettingsSnapshotResponse } from "../../shared/settings";
+import type { SettingSnapshot } from "../../domain/setting";
 import type { JsonRecord, JsonValue } from "../../domain/json";
 import { AppPathService } from "./app-path-service";
 import { JsonTool } from "../../shared/utils/json-tool";
@@ -48,16 +50,16 @@ export class AppSettingService {
   /**
    * 读取应用设置快照，保持 UI 只消费白名单字段
    */
-  public get_app_settings(): JsonRecord {
+  public get_app_settings(): SettingsSnapshotResponse {
     const setting = this.read_setting_entity();
     this.save_setting(setting.to_json() as JsonRecord);
-    return { settings: setting.to_snapshot() as JsonRecord };
+    return { settings: setting.to_snapshot() };
   }
 
   /**
    * 保存白名单字段；跨工程命令延后广播，待两个存储完成后发布设置
    */
-  public update_app_settings(request: JsonRecord, publish = true): JsonRecord {
+  public update_app_settings(request: JsonRecord, publish = true): SettingsSnapshotResponse {
     let setting = this.read_setting_entity();
     const changed_keys: string[] = [];
     for (const [key, value] of Object.entries(request)) {
@@ -70,7 +72,7 @@ export class AppSettingService {
       this.save_setting(setting.to_json() as JsonRecord);
       if (publish) this.publish_settings_changed(changed_keys, setting.to_json() as JsonRecord);
     }
-    return { settings: setting.to_snapshot() as JsonRecord };
+    return { settings: setting.to_snapshot() };
   }
 
   /**
@@ -84,7 +86,7 @@ export class AppSettingService {
       this.save_setting(setting.to_json() as JsonRecord);
       this.publish_settings_changed(["recent_projects"], setting.to_json() as JsonRecord);
     }
-    return { settings: setting.to_snapshot() as JsonRecord };
+    return { settings: setting.to_snapshot() };
   }
 
   /**
@@ -98,7 +100,7 @@ export class AppSettingService {
       this.save_setting(setting.to_json() as JsonRecord);
       this.publish_settings_changed(["recent_projects"], setting.to_json() as JsonRecord);
     }
-    return { settings: setting.to_snapshot() as JsonRecord };
+    return { settings: setting.to_snapshot() };
   }
 
   /**
@@ -128,8 +130,8 @@ export class AppSettingService {
   /**
    * 构建设置响应快照，隔离 config.json 内部形状
    */
-  public build_setting_snapshot(setting: JsonRecord): JsonRecord {
-    return Setting.from_json(setting).to_snapshot() as JsonRecord;
+  public build_setting_snapshot(setting: JsonRecord): SettingSnapshot {
+    return Setting.from_json(setting).to_snapshot();
   }
 
   /**

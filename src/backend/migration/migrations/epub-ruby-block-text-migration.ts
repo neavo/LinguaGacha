@@ -3,7 +3,7 @@ import { read_json_record, type JsonValue } from "../../../domain/json";
 import type { ProjectDatabase, ProjectDatabaseWrite } from "../../database/database-operations";
 import { EpubAst, read_epub_extra } from "../../file/formats/epub/epub-ast";
 import { replace_project_file_items } from "../project-open-file-item-replacement";
-import type { MigrationDescriptor, ProjectOpenMigrationContext } from "../migration-types";
+import type { ProjectOpenMigration, ProjectOpenMigrationContext } from "../migration-types";
 
 /**
  * 迁移背景：
@@ -21,7 +21,7 @@ import type { MigrationDescriptor, ProjectOpenMigrationContext } from "../migrat
  * 不将当前 reader 新发现的正文补入旧项目。asset 缺失、解析失败，或任一旧候选无法匹配、
  * 正文或摘要不符、重复占用同一原块时，保留该 EPUB 的全部旧条目；其它文件仍可独立迁移。
  */
-export const epub_ruby_block_text_migration: MigrationDescriptor = {
+export const epub_ruby_block_text_migration: ProjectOpenMigration = {
   id: "epub-ruby-block-text",
   order: 800,
   /**

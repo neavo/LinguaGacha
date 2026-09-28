@@ -6,7 +6,7 @@ import { useCallback, useMemo } from "react";
 import { useAppNavigation } from "@frontend/app/navigation/navigation-context";
 
 import { buildProofreadingLookupQuery } from "@shared/quality/quality-rule-proofreading-query";
-import { type QualityRuleQuerySlice } from "@frontend/features/quality-rule-editor/quality-rule-api-client";
+import type { QualityRuleSlice } from "@shared/quality/quality-rule-state";
 import { useQualityRuleQuery } from "@frontend/features/quality-rule-editor/use-quality-rule-query";
 import {
   isQualityRuleStatisticsCacheReady,
@@ -82,16 +82,15 @@ function normalize_dialog_entry<Entry extends GlossaryEntryDraft>(entry: Entry):
 }
 
 /**
- * 将后端 quality 查询收窄为页面稳定切片。
+ * 将完整质量规则查询映射为页面状态。
  */
 function normalize_glossary_quality_slice(
-  slice: QualityRuleQuerySlice<"glossary"> | undefined,
+  slice: QualityRuleSlice<"glossary">,
   section_revision: number,
 ): GlossaryQualitySlice {
-  const raw_entries = Array.isArray(slice?.entries) ? slice.entries : [];
   return {
-    enabled: slice?.enabled === undefined ? true : Boolean(slice.enabled),
-    entries: raw_entries.map((entry) => normalize_dialog_entry(entry)),
+    enabled: slice.enabled,
+    entries: slice.entries,
     section_revision,
   };
 }
@@ -373,7 +372,7 @@ export function useGlossaryPageState() {
     hit_sort_available,
     hit_badge_by_entry_id,
 
-    update_enabled: editing.update_enabled,
+    update_enabled: (enabled: boolean) => editing.update_meta_with_feedback({ enabled }),
     toggle_case_sensitive_for_selected,
     query_entry_source_from_hit,
     search_entry_relations_from_hit,
