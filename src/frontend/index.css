@@ -101,7 +101,7 @@
   --ui-radius-card: 4px;
   --ui-radius-button: 4px;
   --ui-radius-pill: 999px;
-  --sidebar: #ebeef2;
+  --sidebar: var(--background);
   --sidebar-foreground: #25272c;
   --sidebar-primary: #ad5a17;
   --sidebar-primary-foreground: #fff7ed;
@@ -109,7 +109,6 @@
   --sidebar-accent-foreground: #4b515b;
   --sidebar-border: #d2d7df;
   --sidebar-ring: #d97924;
-  --ui-titlebar-surface: #f4f5f7;
   --ui-card-default-surface: color-mix(in srgb, var(--card) 95%, white 5%);
   --ui-card-default-border: color-mix(in srgb, var(--border) 72%, white 28%);
   --ui-card-default-border-hover: color-mix(in srgb, var(--border) 72%, var(--primary) 28%);
@@ -300,7 +299,6 @@ a,
   --chart-3: #ee6f4d;
   --chart-4: #d98b36;
   --chart-5: #8ea0b5;
-  --sidebar: #14171d;
   --sidebar-foreground: #eef1f5;
   --sidebar-primary: #f49a51;
   --sidebar-primary-foreground: #2b1b0f;
@@ -308,7 +306,6 @@ a,
   --sidebar-accent-foreground: #eef1f5;
   --sidebar-border: #303640;
   --sidebar-ring: #f4a261;
-  --ui-titlebar-surface: #121319;
   --ui-card-default-surface: color-mix(in srgb, var(--card) 96%, white 4%);
   --ui-card-default-border: color-mix(in srgb, var(--border) 82%, white 18%);
   --ui-card-default-border-hover: color-mix(in srgb, var(--border) 68%, var(--primary) 32%);

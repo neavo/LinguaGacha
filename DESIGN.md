@@ -22,10 +22,9 @@ colors:
   chart-amber: "#f2b84b"
   chart-coral: "#d85f42"
   chart-slate: "#7a8491"
-  sidebar: "#ebeef2"
+  sidebar: "{colors.background}"
   sidebar-accent: "#e1e5eb"
   sidebar-border: "#d2d7df"
-  titlebar-surface: "#f4f5f7"
   dark-background: "#111318"
   dark-foreground: "#eef1f5"
   dark-card: "#171a20"
@@ -47,10 +46,9 @@ colors:
   dark-chart-coral: "#ee6f4d"
   dark-chart-amber: "#d98b36"
   dark-chart-slate: "#8ea0b5"
-  dark-sidebar: "#14171d"
+  dark-sidebar: "{colors.dark-background}"
   dark-sidebar-accent: "#20242b"
   dark-sidebar-border: "#303640"
-  dark-titlebar-surface: "#121319"
 typography:
   display:
     fontFamily: "Twemoji, LGMono, LGBaseFont, Segoe UI, Microsoft YaHei UI, PingFang SC, system-ui, sans-serif"
@@ -286,13 +284,12 @@ LinguaGacha 像一台可靠的本地炼金台：固定标题栏和侧栏围住�
 
 ### Neutral
 
-- **冷灰工作台** (`#f3f4f6` / `#111318`): 应用主背景和工作区基底。
+- **冷灰工作台** (`#f3f4f6` / `#111318`): 连续、安静的窗口底面。
 - **石墨正文** (`#25272c` / `#eef1f5`): 正文、标题和图标默认色，避免纯黑纯白的生硬对比。
 - **近白卡片与浮层** (`#fbfcfd` / `#171a20`): 卡片、弹层、表格头、输入和编辑器承载面。
 - **雾灰静音面** (`#e5e7eb` / `#1d2128`): hover、只读态、筛选区和弱层级背景。
 - **浅冷灰强调面** (`#eef0f3` / `#252a32`): 选择、hover 与低强度分组状态。
 - **柔冷灰边框** (`#d6dae0` / `#343a44`): 分割线、输入边框、表格线和卡片描边。
-- **侧栏与标题栏冷灰** (`#ebeef2` / `#14171d`, `#f4f5f7` / `#121319`): 稳定桌面壳层，与工作区形成轻微分区。
 
 ### Named Rules
 
@@ -336,7 +333,7 @@ LinguaGacha 像一台可靠的本地炼金台：固定标题栏和侧栏围住�
 
 主窗口以 1280 × 800px 为创建与最小尺寸基线，占满可用视口并锁定外层滚动；平台标题栏高度由宿主注入，缺省为 40px。标题栏下方采用固定侧栏加弹性工作区：侧栏展开 256px、折叠 72px；工作区四周使用 16px 内边距与 16px 主节奏，密集分组降到 12px 或 8px，滚动只发生在工作区和指定生产组件内部。
 
-工作区左上角使用 8px 壳层圆角与 1px 顶边、左边分界，页面默认填满可用宽高，不套网页式居中内容容器。壳层背景只使用低对比径向与纵向渐变，维持工作区层次而不形成装饰焦点。项目首页在 1180px 和 760px 设置防御性窄视口收叠，但生产窗口不会低于 1280px；这些规则不是全局移动端体系，CSS 的 320px 最小宽度也只是 renderer 兜底。
+标题栏、侧栏与工作区共用纯色底面，形成连续的桌面壳层。层级由工作区边界、卡片和交互状态表达。
 
 只有连续阅读会从满幅工作面中切出内部阅读栏：Agent 时间线与连接状态以输入器的 1120px 工作宽度为基准，向内收窄 48px，最大宽度为 1072px；空态任务建议限制为 520px。输入器仍固定在同一工作面底部，滚动只属于上方对话区。表格、编辑器、校对上下文和结构化日志继续按任务需要利用可用宽度，展开详情时才把原文、译文或术语字段并列。
 

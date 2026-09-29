@@ -1,21 +1,15 @@
-import type {
-  DesktopPlatform,
-  DesktopShellInfo,
-  ResolvedThemeMode,
-  TitleBarControlSide,
-} from "../bridge/bridge-types";
+import type { DesktopPlatform, DesktopShellInfo, ResolvedThemeMode } from "../bridge/bridge-types";
 
 export const DESKTOP_TITLE_BAR_HEIGHT = 40; // 标题栏高度由桌面契约统一定义，main overlay 与 renderer CSS 变量共同消费
 export const DESKTOP_TITLE_BAR_OVERLAY_HEIGHT = DESKTOP_TITLE_BAR_HEIGHT - 1; // Windows/Linux 的原生 overlay 会盖住网页内容；少占 1px，让渲染层分隔线保持可见
 
-const MACOS_TITLE_BAR_SAFE_AREA_START = 80; // macOS 预留左侧红绿灯安全区，优先贴合系统原生布局而不是做镜像对称
-const MACOS_TITLE_BAR_SAFE_AREA_END = 0;
-const OVERLAY_TITLE_BAR_SAFE_AREA_START = 0; // Overlay 平台把原生控件放在右侧，需要给 renderer 留出稳定的逻辑安全区
+const MACOS_TITLE_BAR_SAFE_AREA_START = 80; // macOS 左侧为原生红绿灯预留安全区
+const TITLE_BAR_SAFE_AREA_NONE = 0;
 const OVERLAY_TITLE_BAR_SAFE_AREA_END = 144;
 
-const LIGHT_TITLE_BAR_OVERLAY_COLOR = "#F4F5F7"; // 原生 overlay 配色必须和 renderer 的 --ui-titlebar-surface 保持一致
+const LIGHT_TITLE_BAR_OVERLAY_COLOR = "#F3F4F6"; // 原生底色对应 `src/frontend/index.css` 的 `:root --background`
 const LIGHT_TITLE_BAR_SYMBOL_COLOR = "#1F2329";
-const DARK_TITLE_BAR_OVERLAY_COLOR = "#121319";
+const DARK_TITLE_BAR_OVERLAY_COLOR = "#111318"; // 原生底色对应 `src/frontend/index.css` 的 `.dark --background`
 const DARK_TITLE_BAR_SYMBOL_COLOR = "#EEF2F7";
 
 export type DesktopTitleBarOverlayTheme = {
@@ -29,60 +23,17 @@ export function uses_title_bar_overlay(platform: DesktopPlatform): boolean {
   return platform === "win32" || platform === "linux";
 }
 
-// renderer 只关心控制按钮的逻辑侧，不直接分支 Electron 平台细节
-export function resolve_title_bar_control_side(platform: DesktopPlatform): TitleBarControlSide {
-  let control_side: TitleBarControlSide = "none";
-
-  if (platform === "darwin") {
-    control_side = "left";
-  } else if (uses_title_bar_overlay(platform)) {
-    control_side = "right";
-  } else {
-    control_side = "none";
-  }
-
-  return control_side;
-}
-
-// 起始侧安全区用于避开 macOS 红绿灯，overlay 平台无需预留
-export function resolve_title_bar_safe_area_start(platform: DesktopPlatform): number {
-  let safe_area_start = 0;
-
-  if (platform === "darwin") {
-    safe_area_start = MACOS_TITLE_BAR_SAFE_AREA_START;
-  } else if (uses_title_bar_overlay(platform)) {
-    safe_area_start = OVERLAY_TITLE_BAR_SAFE_AREA_START;
-  } else {
-    safe_area_start = 0;
-  }
-
-  return safe_area_start;
-}
-
-// 结束侧安全区用于避开 Windows/Linux 原生 overlay 控制按钮
-export function resolve_title_bar_safe_area_end(platform: DesktopPlatform): number {
-  let safe_area_end = 0;
-
-  if (platform === "darwin") {
-    safe_area_end = MACOS_TITLE_BAR_SAFE_AREA_END;
-  } else if (uses_title_bar_overlay(platform)) {
-    safe_area_end = OVERLAY_TITLE_BAR_SAFE_AREA_END;
-  } else {
-    safe_area_end = 0;
-  }
-
-  return safe_area_end;
-}
-
 // preload 暴露完整 shell 快照，renderer 不再重复计算平台布局规则
 export function resolve_desktop_shell_info(platform: DesktopPlatform): DesktopShellInfo {
+  const is_macos = platform === "darwin";
+  const uses_overlay = uses_title_bar_overlay(platform); // Windows/Linux 的原生控制按钮位于右侧
   return {
     platform,
-    usesTitleBarOverlay: uses_title_bar_overlay(platform),
+    usesTitleBarOverlay: uses_overlay,
     titleBarHeight: DESKTOP_TITLE_BAR_HEIGHT,
-    titleBarControlSide: resolve_title_bar_control_side(platform),
-    titleBarSafeAreaStart: resolve_title_bar_safe_area_start(platform),
-    titleBarSafeAreaEnd: resolve_title_bar_safe_area_end(platform),
+    titleBarControlSide: is_macos ? "left" : uses_overlay ? "right" : "none",
+    titleBarSafeAreaStart: is_macos ? MACOS_TITLE_BAR_SAFE_AREA_START : TITLE_BAR_SAFE_AREA_NONE,
+    titleBarSafeAreaEnd: uses_overlay ? OVERLAY_TITLE_BAR_SAFE_AREA_END : TITLE_BAR_SAFE_AREA_NONE,
   };
 }
 

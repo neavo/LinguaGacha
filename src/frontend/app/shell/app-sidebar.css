@@ -5,17 +5,11 @@
   max-width: var(--sidebar-width);
   min-width: var(--sidebar-width);
   border-right: 0;
-  background: transparent;
   overflow: hidden;
   transition:
     width 260ms cubic-bezier(0.22, 1, 0.36, 1),
     max-width 260ms cubic-bezier(0.22, 1, 0.36, 1),
-    min-width 260ms cubic-bezier(0.22, 1, 0.36, 1),
-    background-color 180ms ease;
-}
-
-.shell-sidebar [data-slot="sidebar-inner"] {
-  background: transparent;
+    min-width 260ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .shell-sidebar__scroll {
@@ -35,7 +29,6 @@
   flex-direction: column;
   gap: 6px;
   padding: 8px 8px 10px;
-  background: transparent;
   transition: padding 260ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 

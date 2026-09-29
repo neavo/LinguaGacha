@@ -75,7 +75,7 @@ import {
 } from "@shared/project-source-formats";
 
 /**
- * 项目页只消费侧栏折叠状态，主体数据来自 DesktopState。
+ * 页面入口接收导航层的折叠状态，当前布局由 CSS 决定。
  */
 type ProjectPageProps = {
   is_sidebar_collapsed: boolean;
@@ -155,16 +155,6 @@ type SettingsPayload = {
       name?: string;
     }>;
   };
-};
-
-/**
- * 创建和打开两个主面板的标题区配置。
- */
-type PanelHeaderProps = {
-  icon: LucideIcon;
-  title: string;
-  subtitle: string;
-  tone: "source" | "project";
 };
 
 /**
@@ -385,37 +375,6 @@ function open_context_menu_at_click_position(event: MouseEvent<HTMLButtonElement
       buttons: 2,
       view: window,
     }),
-  );
-}
-
-/**
- * 渲染创建/打开面板标题，tone 只影响局部标记色。
- */
-function PanelHeader(props: PanelHeaderProps): JSX.Element {
-  const Icon = props.icon;
-
-  return (
-    <CardHeader>
-      <div className="project-home__panel-heading">
-        <span
-          className={cn(
-            "project-home__panel-mark",
-            props.tone === "source"
-              ? "project-home__panel-mark--source"
-              : "project-home__panel-mark--project",
-          )}
-          aria-hidden="true"
-        >
-          <Icon className="size-[17px] stroke-[1.9]" />
-        </span>
-        <div className="project-home__panel-copy">
-          <CardTitle className="project-home__panel-title">{props.title}</CardTitle>
-          <CardDescription className="project-home__panel-description">
-            {props.subtitle}
-          </CardDescription>
-        </div>
-      </div>
-    </CardHeader>
   );
 }
 
@@ -1395,12 +1354,14 @@ export function ProjectPage(_props: ProjectPageProps): JSX.Element {
       <div className="project-home page-shell page-shell--full">
         <div className="project-home__layout">
           <Card variant="panel" className="project-home__panel">
-            <PanelHeader
-              icon={FilePlus}
-              title={t("project_page.create.title")}
-              subtitle={t("project_page.create.subtitle")}
-              tone="source"
-            />
+            <CardHeader>
+              <CardTitle className="project-home__panel-title">
+                {t("project_page.create.title")}
+              </CardTitle>
+              <CardDescription className="project-home__panel-description">
+                {t("project_page.create.subtitle")}
+              </CardDescription>
+            </CardHeader>
 
             <CardContent className="project-home__panel-content">
               {source_dropzone}
@@ -1456,12 +1417,14 @@ export function ProjectPage(_props: ProjectPageProps): JSX.Element {
           </Card>
 
           <Card variant="panel" className="project-home__panel">
-            <PanelHeader
-              icon={FileInput}
-              title={t("project_page.open.title")}
-              subtitle={t("project_page.open.subtitle")}
-              tone="project"
-            />
+            <CardHeader>
+              <CardTitle className="project-home__panel-title">
+                {t("project_page.open.title")}
+              </CardTitle>
+              <CardDescription className="project-home__panel-description">
+                {t("project_page.open.subtitle")}
+              </CardDescription>
+            </CardHeader>
 
             <CardContent className="project-home__panel-content">
               {open_dropzone}
