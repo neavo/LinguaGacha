@@ -140,6 +140,8 @@ export const ko_kr_app = {
     VI: "베트남어",
   },
   navigation_action: {
+    expand_sidebar: "사이드바 펼치기",
+    collapse_sidebar: "사이드바 접기",
     appearance: "모양",
     font: "글꼴",
     font_option: {

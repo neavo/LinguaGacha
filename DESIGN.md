@@ -95,7 +95,7 @@ spacing:
   dense-section-gap: "12px"
   dense-list-gap: "8px"
   control-height: "32px"
-  sidebar-item-height: "38px"
+  sidebar-item-height: "36px"
   sidebar-expanded: "256px"
   sidebar-collapsed: "72px"
   toolbar-button-height: "36px"
@@ -431,10 +431,8 @@ Portal 浮层遵循固定语义栈：Dialog 与 Sheet 使用 `--ui-layer-overlay
 
 ### Navigation
 
-- **Structure:** 左侧桌面导航展开 256px、折叠 72px；主项高 38px，折叠态图标按钮为 40px。
-- **Active State:** 活跃项使用 3px 左侧选择轨和浅 accent 背景；hover 只增加轻量色面，父级活跃态降低轨与背景强度。
-- **Motion:** 色面和透明度反馈通常使用 `180ms ease`；选择轨变形使用 220ms、壳层折叠和子项展开使用 260ms，后二者采用 `cubic-bezier(0.22, 1, 0.36, 1)`。
-- **Desktop Feel:** 导航项保持直角，不转成网页标签或移动端抽屉。
+- **Spatial Memory:** 展开与折叠应保留用户对导航位置的空间记忆，方便反复操作。
+- **Controls:** 标题栏按钮和平台快捷键负责切换侧栏。重复选择当前页面用于确认所在位置，避免在导航中意外改变布局。
 
 ### Tables
 

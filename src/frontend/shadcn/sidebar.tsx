@@ -1,5 +1,4 @@
 import * as React from "react";
-import { cva, type VariantProps } from "class-variance-authority";
 import { mergeProps } from "@base-ui/react/merge-props";
 import { useRender } from "@base-ui/react/use-render";
 import { cn } from "@frontend/shadcn/classnames";
@@ -7,13 +6,16 @@ import { Separator } from "@frontend/shadcn/separator";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@frontend/shadcn/tooltip";
 import { type SidebarContextProps, SidebarContext, useSidebar } from "./sidebar-context";
 
-const SIDEBAR_COOKIE_NAME = "sidebar_state";
-const SIDEBAR_COOKIE_MAX_AGE = 60 * 60 * 24 * 7;
 const SIDEBAR_WIDTH = "16rem";
 const SIDEBAR_WIDTH_ICON = "3rem";
-const SIDEBAR_KEYBOARD_SHORTCUT = "b";
+// 占位与实体共用宽度动效，避免工作区边界在折叠过程中错位。
+const SIDEBAR_TRANSITION =
+  "transition-[width] duration-[260ms] ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none";
+// 按钮只负责交互状态，行高、图标列与文字布局由应用侧栏统一定义。
+const SIDEBAR_BUTTON_INTERACTION =
+  "outline-hidden focus-visible:outline-1 focus-visible:outline-offset-[-1px] focus-visible:outline-sidebar-ring disabled:pointer-events-none disabled:opacity-50 aria-disabled:pointer-events-none aria-disabled:opacity-50";
 
-/** 同步受控或本地展开状态，供侧栏与标题栏共用切换动作。 */
+/** 共享展开状态与切换动作；应用根负责持久化，控件只通知状态变化。 */
 function SidebarProvider({
   defaultOpen = true,
   open: openProp,
@@ -37,30 +39,14 @@ function SidebarProvider({
       } else {
         _setOpen(openState);
       }
-
-      // 写入 cookie 以保留侧边栏状态
-      document.cookie = `${SIDEBAR_COOKIE_NAME}=${openState}; path=/; max-age=${SIDEBAR_COOKIE_MAX_AGE}`;
     },
     [setOpenProp, open],
   );
 
-  // 切换侧边栏状态的辅助函数
+  // 所有交互经同一入口提交，受控模式由宿主确认新状态。
   const toggleSidebar = React.useCallback(() => {
     return setOpen((open) => !open);
   }, [setOpen]);
-
-  // 添加切换侧边栏的键盘快捷键
-  React.useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === SIDEBAR_KEYBOARD_SHORTCUT && (event.metaKey || event.ctrlKey)) {
-        event.preventDefault();
-        toggleSidebar();
-      }
-    };
-
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [toggleSidebar]);
 
   const state = open ? "expanded" : "collapsed"; // 暴露 data-state 方便 Tailwind 按展开或折叠状态设置样式
 
@@ -85,10 +71,7 @@ function SidebarProvider({
             ...style,
           } as React.CSSProperties
         }
-        className={cn(
-          "group/sidebar-wrapper flex min-h-svh w-full has-data-[variant=inset]:bg-sidebar",
-          className,
-        )}
+        className={cn("flex min-h-svh w-full", className)}
         {...props}
       >
         {children}
@@ -97,64 +80,30 @@ function SidebarProvider({
   );
 }
 
-function Sidebar({
-  side = "left",
-  variant = "sidebar",
-  collapsible = "offcanvas",
-  className,
-  children,
-  ...props
-}: React.ComponentProps<"div"> & {
-  side?: "left" | "right";
-  variant?: "sidebar" | "floating" | "inset";
-  collapsible?: "offcanvas" | "icon" | "none";
-}) {
+/** 固定在左侧的导航与工作区占位同步收缩，折叠后保留图标入口。 */
+function Sidebar({ className, children, ...props }: React.ComponentProps<"div">) {
   const { state } = useSidebar();
-
-  if (collapsible === "none") {
-    return (
-      <div
-        data-slot="sidebar"
-        className={cn(
-          "flex h-full w-(--sidebar-width) flex-col bg-sidebar text-sidebar-foreground",
-          className,
-        )}
-        {...props}
-      >
-        {children}
-      </div>
-    );
-  }
 
   return (
     <div
-      className="group peer text-sidebar-foreground"
+      className="group text-sidebar-foreground"
       data-state={state}
-      data-collapsible={state === "collapsed" ? collapsible : ""}
-      data-variant={variant}
-      data-side={side}
+      data-collapsible={state === "collapsed" ? "icon" : ""}
       data-slot="sidebar"
     >
       {/* 桌面端侧边栏占位间距由这里处理 */}
       <div
         data-slot="sidebar-gap"
         className={cn(
-          "relative w-(--sidebar-width) bg-transparent transition-[width] duration-200 ease-linear",
-          "group-data-[collapsible=offcanvas]:w-0",
-          "group-data-[side=right]:rotate-180",
-          variant === "floating" || variant === "inset"
-            ? "group-data-[collapsible=icon]:w-[calc(var(--sidebar-width-icon)+(--spacing(4)))]"
-            : "group-data-[collapsible=icon]:w-(--sidebar-width-icon)",
+          "relative w-(--sidebar-width) group-data-[collapsible=icon]:w-(--sidebar-width-icon)",
+          SIDEBAR_TRANSITION,
         )}
       />
       <div
         data-slot="sidebar-container"
-        data-side={side}
         className={cn(
-          "fixed inset-y-0 z-10 flex h-svh w-(--sidebar-width) transition-[left,right,width] duration-200 ease-linear data-[side=left]:left-0 data-[side=left]:group-data-[collapsible=offcanvas]:left-[calc(var(--sidebar-width)*-1)] data-[side=right]:right-0 data-[side=right]:group-data-[collapsible=offcanvas]:right-[calc(var(--sidebar-width)*-1)]",
-          variant === "floating" || variant === "inset" // floating 和 inset 变体需要调整内边距
-            ? "p-2 group-data-[collapsible=icon]:w-[calc(var(--sidebar-width-icon)+(--spacing(4))+2px)]"
-            : "group-data-[collapsible=icon]:w-(--sidebar-width-icon) group-data-[side=left]:border-r group-data-[side=right]:border-l",
+          "fixed inset-y-0 left-0 z-10 flex h-svh w-(--sidebar-width) group-data-[collapsible=icon]:w-(--sidebar-width-icon)",
+          SIDEBAR_TRANSITION,
           className,
         )}
         {...props}
@@ -162,7 +111,7 @@ function Sidebar({
         <div
           data-sidebar="sidebar"
           data-slot="sidebar-inner"
-          className="flex size-full flex-col bg-sidebar group-data-[variant=floating]:rounded-lg group-data-[variant=floating]:shadow-sm group-data-[variant=floating]:ring-1 group-data-[variant=floating]:ring-sidebar-border"
+          className="flex size-full flex-col bg-sidebar"
         >
           {children}
         </div>
@@ -171,19 +120,18 @@ function Sidebar({
   );
 }
 
+/** 工作区填满侧栏占位之外的剩余空间。 */
 function SidebarInset({ className, ...props }: React.ComponentProps<"main">) {
   return (
     <main
       data-slot="sidebar-inset"
-      className={cn(
-        "relative flex w-full flex-1 flex-col bg-background peer-data-[variant=inset]:m-2 peer-data-[variant=inset]:ml-0 peer-data-[variant=inset]:rounded-xl peer-data-[variant=inset]:shadow-sm peer-data-[variant=inset]:peer-data-[state=collapsed]:ml-2",
-        className,
-      )}
+      className={cn("relative flex w-full flex-1 flex-col bg-background", className)}
       {...props}
     />
   );
 }
 
+/** 将全局操作放在导航滚动区之外。 */
 function SidebarFooter({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div
@@ -195,6 +143,7 @@ function SidebarFooter({ className, ...props }: React.ComponentProps<"div">) {
   );
 }
 
+/** 使用统一分隔线标识导航分组边界。 */
 function SidebarSeparator({ className, ...props }: React.ComponentProps<typeof Separator>) {
   return (
     <Separator
@@ -206,20 +155,19 @@ function SidebarSeparator({ className, ...props }: React.ComponentProps<typeof S
   );
 }
 
+/** 两种侧栏状态均允许导航内容独立滚动。 */
 function SidebarContent({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div
       data-slot="sidebar-content"
       data-sidebar="content"
-      className={cn(
-        "no-scrollbar flex min-h-0 flex-1 flex-col gap-0 overflow-auto group-data-[collapsible=icon]:overflow-hidden",
-        className,
-      )}
+      className={cn("no-scrollbar flex min-h-0 flex-1 flex-col gap-0 overflow-auto", className)}
       {...props}
     />
   );
 }
 
+/** 为同组导航项提供布局容器。 */
 function SidebarGroup({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div
@@ -231,6 +179,7 @@ function SidebarGroup({ className, ...props }: React.ComponentProps<"div">) {
   );
 }
 
+/** 将分组内容约束在侧栏可用宽度内。 */
 function SidebarGroupContent({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div
@@ -242,6 +191,7 @@ function SidebarGroupContent({ className, ...props }: React.ComponentProps<"div"
   );
 }
 
+/** 主导航与子导航共用列表结构，层级缩进由调用方提供。 */
 function SidebarMenu({ className, ...props }: React.ComponentProps<"ul">) {
   return (
     <ul
@@ -253,42 +203,21 @@ function SidebarMenu({ className, ...props }: React.ComponentProps<"ul">) {
   );
 }
 
+/** 容纳导航按钮及其可选的子列表。 */
 function SidebarMenuItem({ className, ...props }: React.ComponentProps<"li">) {
   return (
     <li
       data-slot="sidebar-menu-item"
       data-sidebar="menu-item"
-      className={cn("group/menu-item relative", className)}
+      className={cn("relative", className)}
       {...props}
     />
   );
 }
 
-const sidebarMenuButtonVariants = cva(
-  "peer/menu-button group/menu-button flex w-full items-center gap-2 overflow-hidden rounded-md p-2 text-left text-sm outline-hidden transition-[width,height,padding] group-has-data-[sidebar=menu-action]/menu-item:pr-8 group-data-[collapsible=icon]:size-8! group-data-[collapsible=icon]:p-2! focus-visible:outline-1 focus-visible:outline-offset-[-1px] focus-visible:outline-sidebar-ring disabled:pointer-events-none disabled:opacity-50 aria-disabled:pointer-events-none aria-disabled:opacity-50 [&_svg]:size-4 [&_svg]:shrink-0 [&>span:last-child]:truncate",
-  {
-    variants: {
-      variant: {
-        default: "",
-        outline: "bg-background shadow-[0_0_0_1px_hsl(var(--sidebar-border))]",
-      },
-      size: {
-        default: "h-8 text-sm",
-        sm: "h-7 text-xs",
-        lg: "h-12 text-sm group-data-[collapsible=icon]:p-0!",
-      },
-    },
-    defaultVariants: {
-      variant: "default",
-      size: "default",
-    },
-  },
-);
-
+/** 统一导航按钮的交互状态，并在折叠时展示可选提示。 */
 function SidebarMenuButton({
   isActive = false,
-  variant = "default",
-  size = "default",
   tooltip,
   className,
   children,
@@ -296,8 +225,8 @@ function SidebarMenuButton({
   ...props
 }: useRender.ComponentProps<"button"> & {
   isActive?: boolean;
-  tooltip?: string | React.ComponentProps<typeof TooltipContent>;
-} & VariantProps<typeof sidebarMenuButtonVariants>) {
+  tooltip?: string;
+}) {
   const { state } = useSidebar();
   const button = useRender({
     defaultTagName: "button",
@@ -305,90 +234,28 @@ function SidebarMenuButton({
       {
         "data-slot": "sidebar-menu-button",
         "data-sidebar": "menu-button",
-        "data-size": size,
         "data-active": isActive,
-        className: cn(sidebarMenuButtonVariants({ variant, size }), className),
+        className: cn(SIDEBAR_BUTTON_INTERACTION, className),
         children,
       } as React.ComponentProps<"button">,
       props,
     ),
     render,
-    state: { slot: "sidebar-menu-button", sidebar: "menu-button", size, active: isActive },
+    state: { slot: "sidebar-menu-button", sidebar: "menu-button", active: isActive },
   });
 
   if (!tooltip) {
     return button;
   }
 
-  if (typeof tooltip === "string") {
-    tooltip = {
-      children: tooltip,
-    };
-  }
-
   return (
     <Tooltip>
       <TooltipTrigger render={button} />
-      <TooltipContent side="right" align="center" hidden={state !== "collapsed"} {...tooltip} />
+      <TooltipContent side="right" align="center" hidden={state !== "collapsed"}>
+        {tooltip}
+      </TooltipContent>
     </Tooltip>
   );
-}
-
-function SidebarMenuSub({ className, ...props }: React.ComponentProps<"ul">) {
-  return (
-    <ul
-      data-slot="sidebar-menu-sub"
-      data-sidebar="menu-sub"
-      className={cn(
-        "mx-3.5 flex min-w-0 translate-x-px flex-col gap-1 border-l border-sidebar-border px-2.5 py-0.5 group-data-[collapsible=icon]:hidden",
-        className,
-      )}
-      {...props}
-    />
-  );
-}
-
-function SidebarMenuSubItem({ className, ...props }: React.ComponentProps<"li">) {
-  return (
-    <li
-      data-slot="sidebar-menu-sub-item"
-      data-sidebar="menu-sub-item"
-      className={cn("group/menu-sub-item relative", className)}
-      {...props}
-    />
-  );
-}
-
-function SidebarMenuSubButton({
-  size = "md",
-  isActive = false,
-  children,
-  render,
-  className,
-  ...props
-}: useRender.ComponentProps<"a"> & {
-  size?: "sm" | "md";
-  isActive?: boolean;
-}) {
-  return useRender({
-    defaultTagName: "a",
-    props: mergeProps<"a">(
-      {
-        "data-slot": "sidebar-menu-sub-button",
-        "data-sidebar": "menu-sub-button",
-        "data-size": size,
-        "data-active": isActive,
-        className: cn(
-          "flex h-7 min-w-0 -translate-x-px items-center gap-2 overflow-hidden rounded-md px-2 text-sidebar-foreground outline-hidden group-data-[collapsible=icon]:hidden focus-visible:outline-1 focus-visible:outline-offset-[-1px] focus-visible:outline-sidebar-ring disabled:pointer-events-none disabled:opacity-50 aria-disabled:pointer-events-none aria-disabled:opacity-50 data-[size=md]:text-sm data-[size=sm]:text-xs [&>span:last-child]:truncate [&>svg]:size-4 [&>svg]:shrink-0 [&>svg]:text-sidebar-accent-foreground",
-          className,
-        ),
-        children,
-      } as React.ComponentProps<"a">,
-      props,
-    ),
-    render,
-    state: { slot: "sidebar-menu-sub-button", sidebar: "menu-sub-button", size, active: isActive },
-  });
 }
 
 export {
@@ -401,9 +268,6 @@ export {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
-  SidebarMenuSub,
-  SidebarMenuSubButton,
-  SidebarMenuSubItem,
   SidebarProvider,
   SidebarSeparator,
 };

@@ -49,16 +49,22 @@
   background: transparent;
   color: var(--foreground);
   transition:
-    background-color 180ms ease,
+    background-color 120ms ease,
     transform 220ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .topbar__menu-button:hover {
-  background: color-mix(in srgb, var(--accent) 88%, transparent);
+  background: var(--muted);
 }
 
 .topbar__menu-button:active {
+  background: var(--sidebar-accent);
   transform: scale(0.96);
+}
+
+.topbar__menu-button:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
 }
 
 .topbar__brand {

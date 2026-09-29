@@ -23,10 +23,12 @@ type AppAppearanceMenuProps = {
   is_collapsed: boolean;
 };
 
+/** 将菜单载荷收窄为字体设置允许的值。 */
 function is_font_preference(value: string): value is FontPreference {
   return value === "lg-base" || value === "system";
 }
 
+/** 将菜单载荷收窄为主题设置允许的值。 */
 function is_theme_preference(value: string): value is ThemePreference {
   return value === "system" || value === "light" || value === "dark";
 }
@@ -45,9 +47,9 @@ export function AppAppearanceMenu(props: AppAppearanceMenuProps): JSX.Element {
       <AppDropdownMenu>
         <AppDropdownMenuTrigger
           render={
-            <SidebarMenuButton className="sidebar-bottom-button" aria-label={appearance_label}>
-              <Palette size={16} className="sidebar-bottom-button__icon" />
-              <span className="sidebar-bottom-button__text">{appearance_label}</span>
+            <SidebarMenuButton className="sidebar-row" aria-label={appearance_label}>
+              <Palette className="sidebar-row__icon" />
+              <span className="sidebar-row__label">{appearance_label}</span>
             </SidebarMenuButton>
           }
         />

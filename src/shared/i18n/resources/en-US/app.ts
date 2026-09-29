@@ -142,6 +142,8 @@ export const en_us_app = {
     VI: "Vietnamese",
   },
   navigation_action: {
+    expand_sidebar: "Expand sidebar",
+    collapse_sidebar: "Collapse sidebar",
     appearance: "Appearance",
     font: "Font",
     font_option: {
