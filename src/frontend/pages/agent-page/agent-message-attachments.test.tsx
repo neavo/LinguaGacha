@@ -1,11 +1,25 @@
+const files = vi.hoisted(() => ({
+  open: vi.fn(),
+  api: vi.fn(async (route: string, body: { path: string }) =>
+    route.endsWith("activate-path")
+      ? { status: "cancelled" }
+      : {
+          path: body.path,
+          name: "文件",
+          kind: "file",
+          preview: body.path.endsWith(".pdf") ? null : "image",
+        },
+  ),
+}));
+import { AgentFileContext } from "./agent-file-context";
 vi.mock("@frontend/app/desktop/desktop-api", () => ({
+  api_fetch: files.api,
   api_blob: async () => new Blob([], { type: "image/png" }),
-  api_file_url: (path: string) => `http://localhost${path}`,
 }));
 import { uploaded_file } from "../../../test/agent-upload-fixture";
-import { act, createElement, type ComponentProps } from "react";
+import { act, type ComponentProps } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { TooltipProvider } from "@frontend/shadcn/tooltip";
 
@@ -23,6 +37,11 @@ describe("AgentMessageAttachments", () => {
   let container: HTMLDivElement | null = null;
   let root: Root | null = null;
 
+  beforeEach(() => {
+    files.open.mockClear();
+    files.api.mockClear();
+  });
+
   afterEach(async () => {
     if (root !== null) await act(async () => root?.unmount());
     container?.remove();
@@ -30,14 +49,23 @@ describe("AgentMessageAttachments", () => {
     root = null;
   });
 
+  /** 草稿与已发送附件消费相同的页面文件动作。 */
+  function view_attachments(props: AgentMessageAttachmentsProps) {
+    return (
+      <TooltipProvider>
+        <AgentFileContext value={{ open_file: files.open, session_id: "session", active: true }}>
+          <AgentMessageAttachments {...props} />
+        </AgentFileContext>
+      </TooltipProvider>
+    );
+  }
+
   /** 保持真实附件组件与浮层，注入本例交互入口。 */
   async function render_attachments(props: AgentMessageAttachmentsProps): Promise<HTMLDivElement> {
     container = document.createElement("div");
     document.body.append(container);
     root = createRoot(container);
-    await act(async () =>
-      root?.render(createElement(TooltipProvider, null, <AgentMessageAttachments {...props} />)),
-    );
+    await act(async () => root?.render(view_attachments(props)));
     return container;
   }
 
@@ -58,9 +86,14 @@ describe("AgentMessageAttachments", () => {
     }
   });
 
-  it("普通文件关联下载路径，草稿可直接移除", async () => {
+  it("普通草稿文件使用另存为，移除按钮不触发文件动作", async () => {
     const on_remove = vi.fn();
-    const file = { ...uploaded_file("document", null), name: "长 文件名.pdf", size: 128 };
+    const file = {
+      ...uploaded_file("document", null),
+      name: "长 文件名.pdf",
+      path: "uploads/document.pdf",
+      size: 128,
+    };
     const view = await render_attachments({
       mode: "draft",
       attachments: [file],
@@ -69,9 +102,18 @@ describe("AgentMessageAttachments", () => {
       on_retry: vi.fn(),
       on_update_annotation: vi.fn(),
     });
-    expect(view.querySelector("a")?.textContent).toBe(file.name);
-    expect(view.querySelector("a")?.getAttribute("href")).toContain("/api/agent/uploads/document");
-    await act(async () => view.querySelector<HTMLButtonElement>("button")?.click());
+    const file_button = view.querySelector<HTMLButtonElement>(".agent-attachment__body")!;
+    expect(file_button.textContent).toBe(file.name);
+    await act(async () => file_button.click());
+    expect(files.api).toHaveBeenLastCalledWith("/api/agent/workspace/activate-path", {
+      path: file.path,
+    });
+    expect(files.open).not.toHaveBeenCalled();
+    files.api.mockClear();
+    await act(async () =>
+      view.querySelector<HTMLButtonElement>('button[aria-label="app.action.delete"]')!.click(),
+    );
+    expect(files.api).not.toHaveBeenCalled();
     expect(on_remove).toHaveBeenCalledWith(0);
   });
 
@@ -83,7 +125,7 @@ describe("AgentMessageAttachments", () => {
         uploaded_file("webp-a"),
       ],
     });
-    const buttons = view.querySelectorAll<HTMLButtonElement>("button[aria-label]");
+    const buttons = view.querySelectorAll<HTMLButtonElement>("button.agent-attachment__body");
 
     expect(buttons[1]?.querySelector("img")).not.toBeNull();
     expect(buttons[0]?.textContent).toBe("旧回复片段");
@@ -99,7 +141,11 @@ describe("AgentMessageAttachments", () => {
 
     await act(async () => buttons[1]?.click());
     const dialog = document.body.querySelector('[data-slot="dialog-content"]');
-    expect(dialog?.querySelector("img")).not.toBeNull();
+    expect(dialog).toBeNull();
+    expect(files.open).toHaveBeenCalledWith(
+      "uploads/webp-a.png",
+      expect.objectContaining({ preview: "image" }),
+    );
     expect(
       [...document.body.querySelectorAll("button")].some(
         (button) => button.getAttribute("aria-label") === "app.action.delete",
@@ -164,13 +210,7 @@ describe("AgentMessageAttachments", () => {
         .querySelector<HTMLButtonElement>('button[aria-label="agent_page.annotation.title 2"]')
         ?.click(),
     );
-    await act(async () =>
-      root?.render(
-        <TooltipProvider>
-          <AgentMessageAttachments {...props} attachments={[annotation]} />
-        </TooltipProvider>,
-      ),
-    );
+    await act(async () => root?.render(view_attachments({ ...props, attachments: [annotation] })));
     expect(document.body.querySelector("blockquote")?.textContent).toBe("引用原文");
     await act(async () =>
       document.body
@@ -180,7 +220,7 @@ describe("AgentMessageAttachments", () => {
     expect(on_update_annotation).toHaveBeenCalledWith(0, "评论");
   });
 
-  it("附件块删除不打开图片预览，锁定草稿仍可预览但无法移除", async () => {
+  it("附件块移除不打开标签，锁定草稿仍可查看但无法移除", async () => {
     const on_remove = vi.fn();
     const props: AgentMessageAttachmentsProps = {
       mode: "draft",
@@ -196,25 +236,20 @@ describe("AgentMessageAttachments", () => {
     );
     expect(on_remove).toHaveBeenCalledExactlyOnceWith(0);
     expect(document.body.querySelector('[data-slot="dialog-content"]')).toBeNull();
-    await act(async () =>
-      root?.render(
-        <TooltipProvider>
-          <AgentMessageAttachments {...props} disabled />
-        </TooltipProvider>,
-      ),
-    );
+    await act(async () => root?.render(view_attachments({ ...props, disabled: true })));
     const remove = view.querySelector<HTMLButtonElement>('button[aria-label="app.action.delete"]');
     expect(remove?.disabled).toBe(true);
     await act(async () => remove?.click());
     expect(on_remove).toHaveBeenCalledOnce();
     await act(async () =>
-      view
-        .querySelector<HTMLButtonElement>('button[aria-label="agent_page.image.title 1"]')
-        ?.click(),
+      view.querySelector<HTMLButtonElement>(".agent-attachment__body")?.click(),
     );
     const dialog = document.body.querySelector('[data-slot="dialog-content"]');
-    expect(dialog?.querySelector("img")).not.toBeNull();
-    expect(dialog?.querySelector('button[aria-label="app.action.delete"]')).toBeNull();
+    expect(dialog).toBeNull();
+    expect(files.open).toHaveBeenCalledWith(
+      "uploads/preview.png",
+      expect.objectContaining({ preview: "image" }),
+    );
   });
 });
 

@@ -180,6 +180,34 @@ describe("AgentWorkspaceService", () => {
     );
   });
 
+  it("文件入口统一描述文档、图片、目录和上传文件的原名称", async () => {
+    const fixture = await create_file_fixture(temp_dir);
+    expect(fixture.service.describe_file(fixture.href)).toMatchObject({
+      kind: "file",
+      preview: "markdown",
+      name: "结果 # %23.md",
+    });
+    expect(fixture.service.describe_file("work/")).toMatchObject({
+      kind: "directory",
+      preview: null,
+    });
+    fs.writeFileSync(path.join(fixture.workspace_root, "work", "data.bin"), "data");
+    expect(fixture.service.describe_file("work/data.bin").preview).toBeNull();
+    const file = await fixture.service.uploads.upload(
+      "原始 名称.png",
+      new Blob([new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10])]).stream(),
+      new AbortController().signal,
+    );
+    const href = file.path.split("/").map(encodeURIComponent).join("/");
+    expect(fixture.service.describe_file(href)).toMatchObject({
+      path: href,
+      name: file.name,
+      preview: "image",
+    });
+    await fixture.service.activate_path(href);
+    expect(fixture.pick_save_path).toHaveBeenCalledWith(file.name);
+  });
+
   it("文档预览返回规范路径和完整文本，复用编码探测且无需保存对话框", async () => {
     const fixture = await create_file_fixture(temp_dir);
     fs.writeFileSync(

@@ -1,10 +1,10 @@
+/* 画布保持透明，底色由承载页面或预览容器提供。 */
 .media-viewport__viewport {
   position: relative;
   min-width: 0;
   min-height: 0;
   flex: 1;
   overflow: hidden;
-  background: var(--popover);
   cursor: grab;
   outline: none;
   user-select: none;
@@ -35,8 +35,7 @@
   will-change: transform;
 }
 
-.media-viewport__content > img,
-.media-viewport__content > div > svg {
+.media-viewport__content > img {
   display: block;
   width: auto;
   max-width: none;

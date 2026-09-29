@@ -1,8 +1,8 @@
 import { act, StrictMode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { useAgentDocuments } from "./use-agent-documents";
-import type { AgentDocument } from "@shared/agent-workspace-file";
+import { useAgentPreviews } from "./use-agent-previews";
+import type { AgentFile } from "@shared/agent-workspace-file";
 
 const mocks = vi.hoisted(() => ({
   api: vi.fn(),
@@ -23,24 +23,15 @@ vi.mock("@frontend/app/session/project-session-ui-state-context", () => ({
 
 let root: Root;
 let container: HTMLDivElement;
-let state: ReturnType<typeof useAgentDocuments>;
+let state: ReturnType<typeof useAgentPreviews>;
 /** 直接观察 Hook 的公开状态，异步验证不依赖菜单和 Markdown 渲染。 */
 function Harness({ session }: { session: string }) {
-  state = useAgentDocuments(session);
+  state = useAgentPreviews(session);
   return null;
 }
-/** 用文件内容区分旧响应与当前文件，避免只断言调用次数。 */
-function document(path: string, content = "正文"): AgentDocument {
-  return { sessionId: "session", path, content };
-}
-/** 手动完成网络请求，稳定复现关闭、离页及乱序响应。 */
-function pending_read() {
-  let resolve!: (value: AgentDocument) => void;
-  const promise = new Promise<AgentDocument>((finish) => {
-    resolve = finish;
-  });
-  mocks.api.mockReturnValueOnce(promise);
-  return resolve;
+/** 文件名称用于区分恢复结果与用户重新打开的描述。 */
+function document(path: string, name = "报告"): AgentFile {
+  return { path, name, kind: "file", preview: "markdown" };
 }
 /** 同一根节点的会话 key 与页面生产入口一致。 */
 async function render(session = "session"): Promise<void> {
@@ -64,49 +55,41 @@ afterEach(async () => {
   await act(async () => root.unmount());
 });
 
-it("并行查看按最新意图选中，同一路径共用读取", async () => {
+it("文件描述直接打开标签，重复打开更新内容意图，普通切换保留阅读状态", async () => {
   await render();
-  const finish = pending_read();
-  let first!: Promise<void>;
-  let duplicate!: Promise<void>;
-  await act(async () => {
-    first = state.open_document("work/a.md");
-    duplicate = state.open_document("work/a.md");
-  });
-  expect(mocks.api).toHaveBeenCalledOnce();
-  await act(async () => state.open_document("work/b.md"));
-  await act(async () => {
-    finish(document("work/a.md"));
-    await Promise.all([first, duplicate]);
-  });
-  expect(state.documents.map((item) => item.path)).toEqual(["work/b.md", "work/a.md"]);
+  await act(async () => state.open_file("work/a.md#first", document("work/a.md")));
+  const first = state.documents[0]!.activation;
+  await act(async () => state.open_file("work/b.md", document("work/b.md")));
+  await act(async () => state.open_file("work/a.md#second", document("work/a.md", "更新")));
+  expect(state.documents.map((file) => file.path)).toEqual(["work/a.md", "work/b.md"]);
+  expect(state.documents[0]).toMatchObject({ name: "更新", anchor: "second" });
+  expect(state.documents[0]!.activation).toBeGreaterThan(first);
+  expect(mocks.api).not.toHaveBeenCalled();
+  await act(async () => state.close("work/a.md"));
   expect(state.selected).toBe("work/b.md");
 });
 
-it("关闭与换会话取消读取，迟到响应不重开标签", async () => {
+it.each(["close", "reset"])("恢复期间 %s 使迟到描述失效", async (action) => {
+  mocks.saved = {
+    session_id: "session",
+    paths: ["work/a.md", "work/b.md"],
+    selected: "work/a.md",
+    scroll: {},
+  };
+  const finish = new Map<string, (file: AgentFile) => void>();
+  mocks.api.mockImplementation(
+    (_route, body) => new Promise<AgentFile>((resolve) => finish.set(body.path, resolve)),
+  );
   await render();
-  await act(async () => state.open_document("work/a.md"));
-  const finish = pending_read();
-  let reading!: Promise<void>;
+  if (action === "close") {
+    await act(async () => state.open_file("work/a.md", document("work/a.md")));
+    await act(async () => state.close("work/a.md"));
+  } else await render("next-session");
   await act(async () => {
-    reading = state.open_document("work/a.md");
+    for (const [path, resolve] of finish) resolve(document(path));
   });
-  await act(async () => state.close("work/a.md"));
-  await act(async () => {
-    finish(document("work/a.md", "已关闭"));
-    await reading;
-  });
-  expect(state.documents).toEqual([]);
-  const finish_old = pending_read();
-  await act(async () => {
-    reading = state.open_document("work/a.md");
-  });
-  await render("next-session");
-  await act(async () => {
-    finish_old(document("work/a.md", "旧会话"));
-    await reading;
-  });
-  expect(state.documents).toEqual([]);
+  expect(state.documents.map((file) => file.path)).toEqual(action === "close" ? ["work/b.md"] : []);
+  expect(state.selected).toBeNull();
   expect(mocks.toast).not.toHaveBeenCalled();
 });
 
@@ -117,10 +100,10 @@ it("恢复期间选择对话仍恢复文件和阅读位置，保留用户选中�
     selected: "work/a.md",
     scroll: { "work/a.md": 80 },
   };
-  let finish!: (value: AgentDocument) => void;
+  let finish!: (value: AgentFile) => void;
   mocks.api.mockImplementation(
     () =>
-      new Promise<AgentDocument>((resolve) => {
+      new Promise<AgentFile>((resolve) => {
         finish = resolve;
       }),
   );

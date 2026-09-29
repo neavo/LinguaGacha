@@ -2,13 +2,16 @@ import { describe, expect, it } from "vitest";
 import { calculate_media_fit_scale, clamp_media_pan } from "./media-geometry";
 
 describe("媒体预览几何计算", () => {
-  it("使用单一居中适应比例且不放大小媒体", () => {
-    expect(
-      calculate_media_fit_scale({ width: 1000, height: 800 }, { width: 2000, height: 1000 }),
-    ).toBe(0.5);
-    expect(
-      calculate_media_fit_scale({ width: 1000, height: 800 }, { width: 400, height: 300 }),
-    ).toBe(1);
+  it.each([1, 1.25, 2])("DPR %s 时位图默认不超过原始物理像素，文档按视口适配", (ratio) => {
+    const viewport = { width: 1000, height: 800 };
+    const image = { width: 320, height: 180 };
+    expect(calculate_media_fit_scale(viewport, image, ratio, "image") * image.width * ratio).toBe(
+      320,
+    );
+    expect(calculate_media_fit_scale(viewport, image, ratio, "document")).toBe(1000 / 320);
+    expect(calculate_media_fit_scale({ width: 100, height: 80 }, image, ratio, "image")).toBe(
+      100 / 320,
+    );
   });
 
   it("按各轴独立限制适应尺寸媒体的平移范围", () => {

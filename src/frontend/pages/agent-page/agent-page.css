@@ -1796,9 +1796,10 @@
   user-select: text;
 }
 
-/* 状态点与决定按钮共享扩散节奏，光环从各自主体边缘向外展开。 */
+/* 状态点、决定按钮和后台待回复标签共享扩散节奏。 */
 .agent-status-mark--running,
 .agent-round-footer[data-running="true"] .agent-round-footer__activity,
+.agent-pages__tab[data-needs-response]::before,
 .agent-decision-action__icon--deadline::before {
   animation: agent-status-mark-pulse 1s ease-out infinite;
 }
@@ -1826,6 +1827,7 @@
   }
 
   .agent-status-mark--running,
+  .agent-pages__tab[data-needs-response]::before,
   .agent-round-footer[data-running="true"] .agent-round-footer__activity {
     animation: none;
     box-shadow: 0 0 0 3px color-mix(in srgb, var(--agent-status-color) 35%, transparent);

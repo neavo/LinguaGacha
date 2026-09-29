@@ -1,3 +1,11 @@
+/** 文件入口返回的当前会话资源描述。 */
+export type AgentFile = Readonly<{
+  path: string; // 规范化并逐段编码的工作区相对路径，作为标签身份。
+  name: string; // 上传文件保留原名称，其它文件使用工作区名称。
+  preview: "markdown" | "image" | null;
+  kind: "file" | "directory";
+}>;
+
 export type AgentDocument = Readonly<{
   sessionId: string;
   path: string; // 规范化、逐段编码的工作区相对链接，也是标签身份。

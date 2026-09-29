@@ -1,3 +1,4 @@
+import { useDevicePixelRatio } from "@frontend/widgets/interactions/use-device-pixel-ratio";
 import {
   type JSX,
   memo,
@@ -32,10 +33,10 @@ import { resolve_visible_error_message } from "@frontend/app/feedback/visible-er
 import { useI18n } from "@frontend/app/locale/locale-context";
 import { resolve_agent_workspace_href } from "@shared/agent-workspace-file";
 import { AgentMarkdownLink } from "./agent-markdown-link";
-import { AgentDocumentContext, AgentMarkdownPathContext } from "./agent-document-context";
+import { AgentFileContext, AgentMarkdownPathContext } from "./agent-file-context";
 import type { Heading, Root, RootContent } from "mdast";
 import { visit } from "unist-util-visit";
-import { AgentMediaPreviewDialog } from "./agent-media-preview-dialog";
+import { AgentFileTrigger } from "./agent-file-trigger";
 
 import "streamdown/styles.css";
 import "katex/dist/katex.min.css";
@@ -289,7 +290,7 @@ function AgentMarkdownDiagramError({ chart }: MermaidErrorComponentProps): JSX.E
   );
 }
 
-/** 图片继续复用附件的媒体预览；组件身份不随流式正文追加而变化。 */
+/** 工作区图片共用文件入口，其它来源只保留内联展示。 */
 function AgentMarkdownImage({
   node: _node,
   src,
@@ -298,14 +299,16 @@ function AgentMarkdownImage({
   ...props
 }: ComponentProps<"img"> & ExtraProps): JSX.Element | null {
   const { t } = useI18n();
-  const [open, set_open] = useState(false);
+  const pixel_ratio = useDevicePixelRatio();
+  const [intrinsic, set_intrinsic] = useState({ source: "", width: 0 });
   const base_path = useContext(AgentMarkdownPathContext);
-  const documents = useContext(AgentDocumentContext);
-  const [local_source, set_local_source] = useState<{ source: string; url: string } | null>(null);
+  const documents = useContext(AgentFileContext);
+  const [local_source, set_local_source] = useState<{
+    source: string;
+    url: string;
+    mime: string;
+  } | null>(null);
   const relative = typeof src === "string" && !/^(?:[a-z][a-z\d+.-]*:|\/\/)/iu.test(src);
-  useEffect(() => {
-    if (documents?.active === false) set_open(false);
-  }, [documents?.active]);
   const session_id = documents?.session_id;
   useEffect(() => {
     if (!relative || !src || !session_id) return;
@@ -317,7 +320,7 @@ function AgentMarkdownImage({
       const blob = await api_blob(`/api/agent/workspace/image?${query}`, controller.signal);
       if (controller.signal.aborted) return;
       url = URL.createObjectURL(blob);
-      set_local_source({ source: src, url });
+      set_local_source({ source: src, url, mime: blob.type });
     })().catch((error: unknown) => {
       if (!controller.signal.aborted)
         push_toast(
@@ -334,30 +337,53 @@ function AgentMarkdownImage({
   const source =
     relative && session_id ? (local_source?.source === src ? local_source.url : undefined) : src;
   const label = alt?.trim() || title?.trim() || t("agent_page.image.title");
-  return (
-    <>
-      <button
-        type="button"
-        className="agent-markdown__image-trigger"
-        aria-label={label}
-        aria-haspopup="dialog"
-        title={t("agent_page.image.open_preview")}
-        onClick={() => set_open(true)}
-      >
-        <img
-          {...props}
-          src={source}
-          alt={label}
-          title={title}
-          loading={props.loading ?? "lazy"}
-          decoding={props.decoding ?? "async"}
-        />
-      </button>
-      <AgentMediaPreviewDialog open={open} title={label} onClose={() => set_open(false)}>
-        <img src={source} alt={label} decoding="async" />
-      </AgentMediaPreviewDialog>
-    </>
+  // 只限制有 MIME 依据且未指定排版尺寸的位图；矢量图与作者尺寸保留 CSS 语义。
+  const actual_width =
+    local_source?.source === src &&
+    local_source.mime.startsWith("image/") &&
+    local_source.mime !== "image/svg+xml" &&
+    intrinsic.source === source &&
+    props.width === undefined &&
+    props.height === undefined &&
+    props.style?.width === undefined &&
+    props.style?.height === undefined
+      ? intrinsic.width / pixel_ratio
+      : undefined;
+  const image = (
+    <img
+      {...props}
+      src={source}
+      style={{
+        ...(props.height === undefined ? {} : { height: `${props.height}px` }),
+        ...props.style,
+        ...(actual_width === undefined
+          ? {}
+          : { width: actual_width, maxWidth: props.style?.maxWidth ?? "100%" }),
+      }}
+      onLoad={(event) => {
+        set_intrinsic({ source: source ?? "", width: event.currentTarget.naturalWidth });
+        props.onLoad?.(event);
+      }}
+      alt={label}
+      title={title}
+      loading={props.loading ?? "lazy"}
+      decoding={props.decoding ?? "async"}
+    />
   );
+  if (relative && documents && typeof src === "string") {
+    const path = resolve_agent_workspace_href(src, base_path);
+    return (
+      <AgentFileTrigger
+        path={path}
+        render={
+          <button type="button" className="agent-markdown__image-trigger" aria-label={label} />
+        }
+      >
+        {image}
+      </AgentFileTrigger>
+    );
+  }
+  return image;
 }
 
 /** 文档标题生成稳定的页内锚点；作用域由每份文档的面板限定。 */

@@ -4,23 +4,28 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // 当前组件的外部协作者集中在同一可重置夹具中，测试仍观察最终 DOM。
 const mocks = vi.hoisted(() => ({
+  t: (key: string) => key,
+  open_file: vi.fn(),
   open_external_url: vi.fn(),
   api_fetch: vi.fn(),
+  api_blob: vi.fn(),
   push_toast: vi.fn(),
 }));
 
 vi.mock("@frontend/app/desktop/desktop-api", () => ({
   open_external_url: mocks.open_external_url,
   api_fetch: mocks.api_fetch,
+  api_blob: mocks.api_blob,
 }));
 vi.mock("@frontend/app/feedback/desktop-toast", () => ({ push_toast: mocks.push_toast }));
 vi.mock("@frontend/app/locale/locale-context", () => ({
-  useI18n: () => ({ t: (key: string) => key }),
+  useI18n: () => ({ t: mocks.t }),
 }));
 vi.mock("@frontend/app/appearance/appearance-context", () => ({
   useAppearance: () => ({ resolved_theme: "light" }),
 }));
 
+import { AgentFileContext } from "./agent-file-context";
 import { AgentMarkdown } from "./agent-markdown";
 
 describe("AgentMarkdown", () => {
@@ -31,7 +36,13 @@ describe("AgentMarkdown", () => {
     mocks.open_external_url.mockReset();
     mocks.open_external_url.mockResolvedValue(undefined);
     mocks.api_fetch.mockReset();
-    mocks.api_fetch.mockResolvedValue({ status: "opened" });
+    mocks.api_fetch.mockImplementation(async (_route, body) => ({
+      path: body.path,
+      name: "报告",
+      kind: "file",
+      preview: "markdown",
+    }));
+    mocks.open_file.mockClear();
     mocks.push_toast.mockReset();
   });
 
@@ -55,11 +66,15 @@ describe("AgentMarkdown", () => {
     }
     await act(async () =>
       root?.render(
-        <AgentMarkdown
-          text={text}
-          streaming={streaming}
-          {...(document_path ? { document_path } : {})}
-        />,
+        <AgentFileContext
+          value={{ session_id: "session", active: true, open_file: mocks.open_file }}
+        >
+          <AgentMarkdown
+            text={text}
+            streaming={streaming}
+            {...(document_path ? { document_path } : {})}
+          />
+        </AgentFileContext>,
       ),
     );
     return container;
@@ -94,6 +109,9 @@ describe("AgentMarkdown", () => {
     expect(view.querySelector<HTMLImageElement>('img[src="https://example.com/a.png"]')?.alt).toBe(
       "示意图",
     );
+    expect(
+      view.querySelector('img[src="https://example.com/a.png"]')!.closest("button"),
+    ).toBeNull();
   });
 
   it("被过滤的目标呈现文本，页内链接保留原生跳转", async () => {
@@ -113,16 +131,34 @@ describe("AgentMarkdown", () => {
     expect(mocks.api_fetch).not.toHaveBeenCalled();
   });
 
-  it("Markdown 图片使用与附件相同的媒体预览画布", async () => {
-    const view = await render_markdown("![示意图](https://example.com/a.png)", false);
-    const trigger = view.querySelector<HTMLButtonElement>(".agent-markdown__image-trigger");
-    if (trigger === null) throw new Error("缺少 Markdown 图片预览入口");
-
-    await act(async () => trigger.click());
-
-    const dialog = document.body.querySelector('[data-slot="dialog-content"]');
-    expect(dialog?.querySelector('img[src="https://example.com/a.png"]')).not.toBeNull();
-    expect(dialog?.querySelector(".media-viewport__viewport")).not.toBeNull();
+  it.each([
+    ["image/png", "![配图](work/image.png)", "160px"],
+    ["image/svg+xml", "![配图](work/image.svg)", ""],
+    ["image/png", '<img src="work/image.png" width="120" />', ""],
+    ["image/png", '<img src="work/image.png" height="90" />', ""],
+  ])("正文 %s 根据 MIME 和作者尺寸决定像素上限", async (mime, text, width) => {
+    vi.spyOn(window, "devicePixelRatio", "get").mockReturnValue(2);
+    mocks.api_blob.mockResolvedValue(new Blob(["image"], { type: mime }));
+    try {
+      await render_markdown("", false);
+      await act(async () =>
+        root!.render(
+          <AgentFileContext
+            value={{ session_id: "session", active: true, open_file: async () => undefined }}
+          >
+            <AgentMarkdown text={text} streaming={false} />
+          </AgentFileContext>,
+        ),
+      );
+      const image = container!.querySelector("img")!;
+      Object.defineProperty(image, "naturalWidth", { value: 320 });
+      await act(async () => image.dispatchEvent(new Event("load")));
+      expect(image.style.width).toBe(width);
+      if (text.includes('width="120"')) expect(image.getAttribute("width")).toBe("120");
+      if (text.includes('height="90"')) expect(image.style.height).toBe("90px");
+    } finally {
+      vi.restoreAllMocks();
+    }
   });
 
   it("代码使用官方高亮并提供复制和下载入口", async () => {
@@ -154,9 +190,10 @@ describe("AgentMarkdown", () => {
     expect(view.querySelector("a")).toBeNull();
     await render_markdown("[报告](work/report.md)", false);
     await act(async () => view.querySelector("a")?.click());
-    expect(mocks.api_fetch).toHaveBeenCalledWith("/api/agent/workspace/activate-path", {
-      path: "work/report.md",
-    });
+    expect(mocks.open_file).toHaveBeenCalledWith(
+      "work/report.md",
+      expect.objectContaining({ preview: "markdown" }),
+    );
   });
 
   it("流式正文保留富文本与未完成语法，结束后渲染表格", async () => {

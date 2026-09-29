@@ -1,3 +1,4 @@
+import type { AgentFile } from "../../../shared/agent-workspace-file";
 import type { AgentFileCandidate } from "../../../shared/agent-reference";
 import { create_workspace_host } from "./host";
 import { AgentUploadStore } from "./uploads";
@@ -217,6 +218,37 @@ export class AgentWorkspaceService {
     return path.join(this.root_path, AGENT_WORKSPACE_WORK_ROOT);
   }
 
+  /** 文件入口共用规范路径、上传名称和预览能力。 */
+  public describe_file(href: unknown): AgentFile {
+    const { mime: _mime, ...file } = this.describe_target(this.resolve_path(href));
+    return file;
+  }
+
+  /** 已解析目标复用上传记录与 MIME 规则，菜单、读取和保存采用同一文件身份。 */
+  private describe_target(target: WorkspacePath): AgentFile & { mime: string | null } {
+    const relative = path.relative(this.root_path, target.path).split(path.sep).join("/");
+    const href = relative.split("/").map(encodeURIComponent).join("/");
+    const upload = this.uploads.list().find((file) => file.path === relative);
+    const mime =
+      upload?.imageMimeType ??
+      WORKSPACE_IMAGE_TYPES[path.extname(target.path).toLowerCase()] ??
+      null;
+    return {
+      path: href,
+      name: upload?.name ?? path.basename(target.path),
+      kind: target.kind,
+      mime,
+      preview:
+        target.kind === "directory"
+          ? null
+          : mime
+            ? "image"
+            : is_agent_markdown_path(href)
+              ? "markdown"
+              : null,
+    };
+  }
+
   /** 文件保存确认时的内容；等待用户选择位置期间不占用脚本互斥。 */
   public async activate_path(href: unknown): Promise<AgentWorkspaceLinkResult> {
     const target = this.resolve_path(href);
@@ -226,7 +258,7 @@ export class AgentWorkspaceService {
         await this.options.openDirectory(target.path);
         return { status: "opened" };
       }
-      const destination = await this.options.pickSavePath(path.basename(target.path));
+      const destination = await this.options.pickSavePath(this.describe_target(target).name);
       if (destination === null) return { status: "cancelled" };
       return await this.exclusive(async () => {
         if (version !== this.link_versions[target.scope]) {
@@ -293,7 +325,7 @@ export class AgentWorkspaceService {
   /** 允许的图片类型统一映射为响应 MIME，字节仍经有界读取。 */
   public async read_document_image(href: unknown): Promise<{ bytes: Uint8Array; mime: string }> {
     const target = this.resolve_path(href);
-    const mime = WORKSPACE_IMAGE_TYPES[path.extname(target.path).toLowerCase()];
+    const { mime } = this.describe_target(target);
     if (!mime) throw new AppErrors.AppError("file.invalid_structure");
     const file = this.read_preview_file(href, AGENT_IMAGE_MAX_BYTES);
     return { bytes: file.bytes, mime };
@@ -958,6 +990,7 @@ export type AgentWorkspacePort = Pick<
   | "activate_path"
   | "read_document"
   | "read_document_image"
+  | "describe_file"
   | "invalidate_links"
 > & {
   uploads: Pick<AgentUploadStore, "upload" | "get" | "read_image" | "open" | "clear" | "cancel">;

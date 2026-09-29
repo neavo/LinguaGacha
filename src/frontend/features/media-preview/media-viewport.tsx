@@ -1,3 +1,4 @@
+import { useDevicePixelRatio } from "@frontend/widgets/interactions/use-device-pixel-ratio";
 import {
   type JSX,
   useCallback,
@@ -13,6 +14,8 @@ import { AppButton } from "@frontend/widgets/app-button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@frontend/shadcn/tooltip";
 import "./media-viewport.css";
 import {
+  type MediaImage,
+  type MediaMode,
   type MediaSize,
   type MediaPoint,
   calculate_media_fit_scale,
@@ -26,7 +29,8 @@ const ZOOM_STEP = 1.25;
 
 type MediaViewportProps = {
   label: string;
-  children: ReactNode;
+  image: MediaImage;
+  mode: MediaMode;
   extra_controls?: ReactNode;
 };
 
@@ -58,32 +62,39 @@ export function MediaControl(props: {
   );
 }
 
-/** 图片与图表共用的居中画布；内容身份变化由调用方通过 key 重置视图。 */
+/** 图片与文档共用的居中画布；内容身份变化由调用方通过 key 重置视图。 */
 export function MediaViewport(props: MediaViewportProps): JSX.Element {
   const { t } = useI18n();
   const viewport_ref = useRef<HTMLDivElement | null>(null);
-  const media_ref = useRef<HTMLDivElement | null>(null);
+  const image_ref = useRef<HTMLImageElement | null>(null);
+  const pixel_ratio = useDevicePixelRatio();
   const drag_ref = useRef<{
     pointer_id: number;
     start: MediaPoint;
     pan: MediaPoint;
   } | null>(null);
   const [viewport, set_viewport] = useState<MediaSize>({ width: 0, height: 0 }); // 视口尺寸与媒体固有尺寸分别测量。
-  const [media, set_media] = useState<MediaSize>({ width: 0, height: 0 });
+  const [loaded, set_loaded] = useState({ url: "", width: 0, height: 0 }); // 固有尺寸绑定 URL，换图期间不沿用旧尺寸。
+  const media = loaded.url === props.image.url ? loaded : { width: 0, height: 0 };
   const [zoom, set_zoom] = useState(1); // 倍率相对于居中适应尺寸。
   const [pan, set_pan] = useState<MediaPoint>({ x: 0, y: 0 }); // 平移以画布中心为原点。
   const [dragging, set_dragging] = useState(false);
-  const fit_scale = calculate_media_fit_scale(viewport, media);
+  const fit_scale = calculate_media_fit_scale(
+    viewport,
+    media,
+    props.image.mime === "image/svg+xml" ? 1 : pixel_ratio,
+    props.mode,
+  );
   const ready = fit_scale > 0;
 
-  /** 同时测量视口和媒体固有尺寸，确保二者变化后仍使用同一适应比例。 */
-  const measure = useCallback((): void => {
-    const viewport_element = viewport_ref.current;
-    const media_element = media_ref.current;
-    if (viewport_element === null || media_element === null) return;
-    set_viewport({ width: viewport_element.clientWidth, height: viewport_element.clientHeight });
-    set_media({ width: media_element.offsetWidth, height: media_element.offsetHeight });
-  }, []);
+  /** 固有尺寸只来自图像；缓存命中和异步加载走同一入口。 */
+  const measure_image = useCallback((): void => {
+    const image = image_ref.current;
+    if (image?.complete && image.naturalWidth > 0) {
+      set_loaded({ url: props.image.url, width: image.naturalWidth, height: image.naturalHeight });
+    }
+  }, [props.image.url]);
+  useEffect(measure_image, [measure_image]);
 
   /** 把任意平移值收敛到当前尺寸与倍率允许的范围。 */
   const clamp_pan = useCallback(
@@ -114,17 +125,19 @@ export function MediaViewport(props: MediaViewportProps): JSX.Element {
     [clamp_pan, pan.x, pan.y, ready, zoom],
   );
 
-  // 图片加载和弹窗尺寸变化都可能改变适应比例。
+  // 隐藏标签的零尺寸不覆盖上次视口，恢复后由 ResizeObserver 重新测量。
   useEffect(() => {
-    const viewport_element = viewport_ref.current;
-    const media_element = media_ref.current;
-    if (viewport_element === null || media_element === null) return;
+    const element = viewport_ref.current;
+    if (!element) return;
+    const measure = (): void => {
+      if (element.clientWidth > 0 && element.clientHeight > 0)
+        set_viewport({ width: element.clientWidth, height: element.clientHeight });
+    };
     const observer = new ResizeObserver(measure);
-    observer.observe(viewport_element);
-    observer.observe(media_element);
+    observer.observe(element);
     measure();
     return () => observer.disconnect();
-  }, [measure]);
+  }, []);
 
   // 尺寸变化后重新夹取旧平移，避免媒体停留在新的可见范围外。
   useEffect(() => {
@@ -235,18 +248,21 @@ export function MediaViewport(props: MediaViewportProps): JSX.Element {
         </MediaControl>
         {props.extra_controls}
       </div>
-      <div
-        ref={media_ref}
-        className="media-viewport__media"
-        style={{ visibility: ready ? "visible" : "hidden" }}
-      >
+      <div className="media-viewport__media" style={{ visibility: ready ? "visible" : "hidden" }}>
         <div
           className="media-viewport__content"
           style={{
             transform: `translate3d(${pan.x}px, ${pan.y}px, 0) scale(${fit_scale * zoom})`,
           }}
         >
-          {props.children}
+          <img
+            key={props.image.url}
+            ref={image_ref}
+            src={props.image.url}
+            alt={props.label}
+            onLoad={measure_image}
+            draggable={false}
+          />
         </div>
       </div>
     </div>

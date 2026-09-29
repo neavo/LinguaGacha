@@ -2125,6 +2125,17 @@ describe("AgentService", () => {
     await expect(
       service.read_workspace_document({ sessionId: "old", path: "work/report.md" }),
     ).rejects.toMatchObject({ code: "file.not_found" });
+    const file = {
+      path: "work/report.md",
+      name: "报告",
+      kind: "file" as const,
+      preview: "markdown" as const,
+    };
+    vi.spyOn(workspace, "describe_file").mockReturnValue(file);
+    expect(service.describe_workspace_file({ sessionId, path: file.path })).toEqual(file);
+    expect(() =>
+      service.describe_workspace_file({ sessionId: "old", path: file.path }),
+    ).toThrowError(expect.objectContaining({ code: "file.not_found" }));
     let finish_read!: (value: { path: string; content: string }) => void;
     vi.spyOn(workspace, "read_document").mockImplementationOnce(
       () =>
@@ -2147,6 +2158,7 @@ describe("AgentService", () => {
       initialize: vi.fn(async () => undefined),
       activate_path: vi.fn(async () => ({ status: "cancelled" as const })),
       read_document: vi.fn(async () => ({ path: "work/report.md", content: "报告" })),
+      describe_file: vi.fn(),
       read_document_image: vi.fn(async () => ({ bytes: new Uint8Array(), mime: "image/png" })),
       invalidate_links: vi.fn(),
       reset_workspace: vi.fn(async () => undefined),
@@ -3571,6 +3583,7 @@ describe("AgentService", () => {
         initialize: vi.fn(async () => undefined),
         activate_path: vi.fn(async () => ({ status: "cancelled" as const })),
         read_document: vi.fn(async () => ({ path: "work/report.md", content: "报告" })),
+        describe_file: vi.fn(),
         read_document_image: vi.fn(async () => ({ bytes: new Uint8Array(), mime: "image/png" })),
         invalidate_links: vi.fn(),
         reset_workspace: vi.fn(async () => undefined),

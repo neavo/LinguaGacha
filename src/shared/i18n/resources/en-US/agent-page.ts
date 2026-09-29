@@ -3,7 +3,6 @@ export const en_us_agent_page = {
     conversation: "Conversation",
     view: "View",
     save_as: "Save as",
-    needs_response: "Needs response",
     read_failed: "Unable to read document",
   },
   batch_translation_model: {
@@ -26,7 +25,7 @@ export const en_us_agent_page = {
     copy_format: "Copy as {format}",
     download_format: "Download as {format}",
   },
-  image: { title: "Image", open_preview: "Open image preview" },
+  image: { title: "Image" },
   loading: "Restoring session …",
   empty: {
     message: "「Aibō」，what shall we do next  ( •̀ ᗜ •́ )つ▱",
