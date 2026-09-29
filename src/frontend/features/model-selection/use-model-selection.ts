@@ -85,7 +85,7 @@ export function useModelSelection(): ModelSelectionController {
     [t],
   );
 
-  /** 同时比较选择和全局等级，允许当前模型换档及其它模型沿用已选档位。 */
+  /** 同时比较选择和全局等级，允许当前模型调整等级及其它模型沿用已选等级。 */
   const select_model = useCallback(
     async (change: ModelSelectionChange): Promise<void> => {
       const level = "thinking_level" in change ? change.thinking_level : undefined;

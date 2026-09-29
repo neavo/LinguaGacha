@@ -136,11 +136,11 @@ export function GlossaryEditDialog(props: GlossaryEditDialogProps): JSX.Element 
                   </span>
                 </span>
                 <span className="glossary-page__dialog-rule-title font-medium">
-                  {t("glossary_page.rule.case_sensitive")}
+                  {t("quality_rule_editor.rule.case_sensitive")}
                 </span>
               </div>
               <BooleanSegmentedToggle
-                aria_label={t("glossary_page.rule.case_sensitive")}
+                aria_label={t("quality_rule_editor.rule.case_sensitive")}
                 value={props.entry.case_sensitive}
                 disabled={disabled}
                 on_value_change={(next_value) => {

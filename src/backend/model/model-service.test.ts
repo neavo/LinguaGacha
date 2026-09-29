@@ -377,7 +377,7 @@ describe("ModelService 配置管理", () => {
       expected_level: "HIGH",
     },
   ])(
-    "$api_format $model_id 首次读取旧配置时持久化失效思考档位的修正",
+    "$api_format $model_id 首次读取旧配置时持久化失效思考等级的修正",
     async ({ model_id, api_format, level, expected_level }) => {
       const { service, app_setting_service } = await create_model_service([
         create_model({
@@ -568,7 +568,7 @@ describe("ModelService 配置管理", () => {
     });
   });
 
-  it("选择模型时更新思考档位并保持选择快照狭窄", async () => {
+  it("选择模型时更新思考等级并保持选择快照狭窄", async () => {
     const { service } = await create_model_service([
       create_model({ id: "preset", type: "PRESET" }),
       create_model({ id: "openai", type: "CUSTOM_OPENAI", model_id: "gpt-5.6-luna" }),
@@ -596,7 +596,7 @@ describe("ModelService 配置管理", () => {
       request: { target: "unknown", model_id: "preset", thinking_level: "HIGH" },
     },
     {
-      name: "非法思考档位",
+      name: "非法思考等级",
       request: { target: "agent", model_id: "preset", thinking_level: "UNKNOWN" },
     },
   ])("$name 不落盘", async ({ request }) => {
@@ -607,7 +607,7 @@ describe("ModelService 配置管理", () => {
     expect(service.get_selection_snapshot()).toEqual(before);
   });
 
-  it("不支持思考档位的模型拒绝显式等级", async () => {
+  it("不支持思考等级的模型拒绝显式等级", async () => {
     const { service, app_setting_service } = await create_model_service([
       create_model({ id: "sakura", type: "PRESET", api_format: "SakuraLLM" }),
     ]);
@@ -620,7 +620,7 @@ describe("ModelService 配置管理", () => {
     });
   });
 
-  it("修改模型 ID 与选择模型时都保持有效思考档位", async () => {
+  it("修改模型 ID 与选择模型时都保持有效思考等级", async () => {
     const { service, app_setting_service } = await create_model_service([
       create_model({
         api_format: "OpenAIResponses",
@@ -992,7 +992,7 @@ describe("ModelService 配置管理", () => {
     );
   });
 
-  it("运行中可保存后续执行的模型选择和思考档位", async () => {
+  it("运行中可保存后续执行的模型选择和思考等级", async () => {
     const { service, runtime_gate } = await create_model_service([
       create_model({ id: "a", type: "CUSTOM_OPENAI" }),
       create_model({ id: "b", type: "CUSTOM_OPENAI" }),

@@ -61,13 +61,7 @@ export function TextPreserveTable(props: TextPreserveTableProps): JSX.Element {
         id: "src",
         title: t("quality_rule_editor.fields.rule"),
         align: "left",
-        sortable: {
-          action_labels: {
-            ascending: t("quality_rule_editor.sort.ascending"),
-            descending: t("quality_rule_editor.sort.descending"),
-            clear: t("quality_rule_editor.sort.clear"),
-          },
-        },
+        sortable: {},
         head_class_name: "text-preserve-page__table-rule-head",
         cell_class_name: "text-preserve-page__table-rule-cell",
         render_cell: (payload) => (
@@ -79,13 +73,7 @@ export function TextPreserveTable(props: TextPreserveTableProps): JSX.Element {
         id: "info",
         title: t("text_preserve_page.fields.note"),
         align: "left",
-        sortable: {
-          action_labels: {
-            ascending: t("quality_rule_editor.sort.ascending"),
-            descending: t("quality_rule_editor.sort.descending"),
-            clear: t("quality_rule_editor.sort.clear"),
-          },
-        },
+        sortable: {},
         head_class_name: "text-preserve-page__table-note-head",
         cell_class_name: "text-preserve-page__table-note-cell",
         render_cell: (payload) => (
@@ -95,16 +83,11 @@ export function TextPreserveTable(props: TextPreserveTableProps): JSX.Element {
       {
         kind: "data",
         id: "hit",
-        title: t("text_preserve_page.fields.hit"),
+        title: t("quality_rule_editor.fields.hit"),
         width: 120,
         align: "center",
         sortable: {
           disabled: !props.hit_ready,
-          action_labels: {
-            ascending: t("quality_rule_editor.sort.ascending"),
-            descending: t("quality_rule_editor.sort.descending"),
-            clear: t("quality_rule_editor.sort.clear"),
-          },
         },
         head_class_name: "text-preserve-page__table-hit-head",
         cell_class_name: "text-preserve-page__table-hit-cell",
@@ -118,7 +101,6 @@ export function TextPreserveTable(props: TextPreserveTableProps): JSX.Element {
               entry_id={payload.row_id}
               running={props.hit_running}
               badge_state={props.hit_badge_by_entry_id[payload.row_id] ?? null}
-              query_label={t("app.action.query")}
               on_query_entry_source={props.on_query_entry_source}
             />
           );

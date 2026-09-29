@@ -5,10 +5,7 @@ export const ja_jp_proofreading_page = {
     view: "開いて表示",
     title: "ページプレビュー",
     source_page: "{PAGE} ページ",
-    retry: "再試行",
     select_files: "ファイルを選択",
-    page_count: "{COUNT} ページ",
-    item_count: "{COUNT} 件",
     text_only: "この操作にはテキスト項目を選択してください",
     failed: "プレビューに失敗しました",
     previous: "前のページ",
@@ -43,11 +40,6 @@ export const ja_jp_proofreading_page = {
       tooltip_label: "検索範囲",
       all: "すべて",
     },
-  },
-  sort: {
-    ascending: "昇順",
-    descending: "降順",
-    clear: "キャンセル",
   },
   status: {
     excluded: "除外済み",
@@ -92,8 +84,8 @@ export const ja_jp_proofreading_page = {
     load_failed: "前後の文脈を読み込めません",
   },
   confirm: {
-    retranslate_description: "{COUNT} 件の項目を再翻訳しますか？",
-    clear_translation_description: "{COUNT} 件の項目の訳文を消去しますか？",
+    retranslate_description: "{COUNT} 件の項目を再翻訳しますか …?",
+    clear_translation_description: "{COUNT} 件の項目の訳文を消去しますか …?",
   },
   feedback: {
     loading_toast: "データを読み込み中 …",

@@ -22,7 +22,6 @@ export const en_us_text_preserve_page = {
   },
   fields: {
     note: "Remarks (For reference only, no actual effect)",
-    hit: "Hits",
   },
   filter: {
     scope: {
@@ -30,19 +29,10 @@ export const en_us_text_preserve_page = {
       note: "Remarks",
     },
   },
-  preset: {
-    dialog: {
-      name_placeholder: "Please enter preset name …",
-    },
-  },
-  hit: {
-    hit_count: "Matched Item Count: {COUNT}",
-  },
   feedback: {
-    load_failed: "Failed to load text preservation rules. Please try again later.",
-    preset_name_required: "Preset name cannot be empty",
-    unknown_error: "The operation failed. Please try again later.",
+    load_failed: "Failed to load text preservation rules. Please try again later …",
+    unknown_error: "The operation failed. Please try again later …",
     mode_refresh_pending:
-      "The text preserve mode was updated, and the proofreading cache is still refreshing. Please check again shortly.",
+      "The text preserve mode was updated, and the proofreading cache is still refreshing. Please check again shortly …",
   },
 } satisfies LocaleMessageSchema<typeof zh_cn_text_preserve_page>;

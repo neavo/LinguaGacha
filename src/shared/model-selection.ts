@@ -29,8 +29,8 @@ export type ModelSelectionOption = JsonRecord & {
   type: ModelType;
   name: string;
   agent_limits: ModelAgentLimits; // Agent 空会话展示与运行时共用的实际容量
-  thinking_level: ModelThinkingLevel; // 模型当前持久化的全局思考档位
-  available_thinking_levels: ModelThinkingLevel[]; // 后端能力解析确认可直接下传的档位
+  thinking_level: ModelThinkingLevel; // 模型当前持久化的全局思考等级
+  available_thinking_levels: ModelThinkingLevel[]; // 后端能力解析确认可直接下传的等级
 };
 
 /** renderer 查询与选择命令共用的公开快照。 */

@@ -40,9 +40,8 @@ export const en_us_expert_settings_page = {
     },
   },
   feedback: {
-    refresh_failed: "Unable to refresh expert settings right now. Please try again later.",
-    update_failed: "Failed to save the setting. Please try again later.",
+    refresh_failed: "Unable to refresh expert settings right now. Please try again later …",
     preceding_lines_threshold_invalid:
-      "Preceding lines threshold must be a number within the valid range.",
+      "Preceding lines threshold must be a number within the valid range …",
   },
 } satisfies LocaleMessageSchema<typeof zh_cn_expert_settings_page>;

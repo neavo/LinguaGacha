@@ -22,8 +22,6 @@ type QualityRuleHitBadgeProps = {
   entry_id: string;
   running: boolean;
   badge_state: QualityRuleHitBadgeState | null;
-  query_label: string;
-  relation_label?: string;
   on_query_entry_source: (entry_id: string) => Promise<void>;
   on_search_entry_relations?: (entry_id: string) => void;
 };
@@ -34,7 +32,7 @@ const TONE_BY_KIND = {
   unmatched: "failure",
 } as const;
 
-/** 三类质量规则表共用命中状态、查询动作与关系菜单，页面提供业务动作与文案。 */
+/** 三类质量规则表共用命中状态、查询动作与关系菜单，页面提供业务动作与命中结果。 */
 export function QualityRuleHitBadge(props: QualityRuleHitBadgeProps): JSX.Element | null {
   const { t } = useI18n();
 
@@ -86,11 +84,7 @@ export function QualityRuleHitBadge(props: QualityRuleHitBadgeProps): JSX.Elemen
     );
   }
 
-  if (
-    props.badge_state.kind !== "related" ||
-    props.relation_label === undefined ||
-    props.on_search_entry_relations === undefined
-  ) {
+  if (props.badge_state.kind !== "related" || props.on_search_entry_relations === undefined) {
     return (
       <Tooltip>
         <TooltipTrigger
@@ -147,14 +141,14 @@ export function QualityRuleHitBadge(props: QualityRuleHitBadgeProps): JSX.Elemen
               void props.on_query_entry_source(props.entry_id);
             }}
           >
-            {props.query_label}
+            {t("quality_rule_editor.hit.query_source")}
           </AppDropdownMenuItem>
           <AppDropdownMenuItem
             onClick={() => {
               props.on_search_entry_relations?.(props.entry_id);
             }}
           >
-            {props.relation_label}
+            {t("quality_rule_editor.hit.search_relation")}
           </AppDropdownMenuItem>
         </AppDropdownMenuGroup>
       </AppDropdownMenuContent>

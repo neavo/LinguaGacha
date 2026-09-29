@@ -42,9 +42,8 @@ export const de_de_expert_settings_page = {
   },
   feedback: {
     refresh_failed:
-      "Experteneinstellungen können derzeit nicht aktualisiert werden. Bitte versuchen Sie es später erneut.",
-    update_failed: "Fehler beim Speichern der Einstellung. Bitte versuchen Sie es später erneut.",
+      "Experteneinstellungen können derzeit nicht aktualisiert werden. Bitte versuchen Sie es später erneut …",
     preceding_lines_threshold_invalid:
-      "Der Schwellenwert für vorhergehende Zeilen muss eine Zahl innerhalb des gültigen Bereichs sein.",
+      "Der Schwellenwert für vorhergehende Zeilen muss eine Zahl innerhalb des gültigen Bereichs sein …",
   },
 } satisfies LocaleMessageSchema<typeof zh_cn_expert_settings_page>;

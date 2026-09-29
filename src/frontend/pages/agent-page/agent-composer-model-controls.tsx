@@ -21,7 +21,7 @@ import {
   AppDropdownMenuSeparator,
 } from "@frontend/widgets/app-dropdown-menu";
 
-/** 输入底栏的模型选择、上下文用量和思考档位共用一个配置控制器。 */
+/** 输入底栏的模型选择、上下文用量和思考等级共用一个配置控制器。 */
 export function AgentComposerModelControls(props: {
   locked?: boolean;
   controller: ModelSelectionController;

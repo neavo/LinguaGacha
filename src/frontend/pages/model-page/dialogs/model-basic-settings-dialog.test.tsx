@@ -89,7 +89,7 @@ describe("ModelBasicSettingsDialog", () => {
     expect(on_patch).not.toHaveBeenCalled();
   });
 
-  it("Responses 模型只显示并提交后端确认可用的思考档位", async () => {
+  it("Responses 模型只显示并提交后端确认可用的思考等级", async () => {
     container = document.createElement("div");
     document.body.append(container);
     root = createRoot(container);

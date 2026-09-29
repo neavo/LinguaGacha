@@ -19,7 +19,7 @@ const GLOSSARY_SCOPE_LABEL_KEY_BY_SCOPE = {
   all: "quality_rule_editor.filter.scope.all",
   src: "quality_rule_editor.fields.source",
   dst: "glossary_page.fields.translation",
-  info: "glossary_page.filter.scope.description",
+  info: "glossary_page.fields.description",
 } satisfies Record<GlossaryFilterScope, LocaleKey>;
 
 const GLOSSARY_FILTER_SCOPES: GlossaryFilterScope[] = ["all", "src", "dst", "info"];

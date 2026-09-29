@@ -130,7 +130,7 @@ describe("useSettingsEditor", () => {
       select_snapshot,
       pending_fields: PENDING_FIELDS,
       refresh_error_key: "basic_settings_page.feedback.refresh_failed",
-      update_error_key: "basic_settings_page.feedback.update_failed",
+      update_error_key: "app.feedback.settings_save_failed",
     });
     return null;
   }
@@ -226,10 +226,7 @@ describe("useSettingsEditor", () => {
         source_language: false,
         request_timeout: true,
       });
-      expect(push_toast).toHaveBeenCalledWith(
-        "error",
-        "basic_settings_page.feedback.update_failed",
-      );
+      expect(push_toast).toHaveBeenCalledWith("error", "app.feedback.settings_save_failed");
 
       timeout_request.resolve({
         settings: create_settings_snapshot({

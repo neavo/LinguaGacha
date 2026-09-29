@@ -35,7 +35,7 @@ type ModelBasicSettingsDialogProps = {
   onClose: () => void;
 };
 
-/** 编辑模型名称、连接信息和思考档位的基础设置对话框。 */
+/** 编辑模型名称、连接信息和思考等级的基础设置对话框。 */
 export function ModelBasicSettingsDialog(props: ModelBasicSettingsDialogProps): JSX.Element | null {
   const { t } = useI18n();
   const [is_model_id_editor_open, set_is_model_id_editor_open] = useState(false);

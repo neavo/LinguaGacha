@@ -95,13 +95,7 @@ export function GlossaryTable(props: GlossaryTableProps): JSX.Element {
         id: "src",
         title: t("quality_rule_editor.fields.source"),
         align: "left",
-        sortable: {
-          action_labels: {
-            ascending: t("quality_rule_editor.sort.ascending"),
-            descending: t("quality_rule_editor.sort.descending"),
-            clear: t("quality_rule_editor.sort.clear"),
-          },
-        },
+        sortable: {},
         head_class_name: "glossary-page__table-source-head",
         cell_class_name: "glossary-page__table-source-cell",
         render_cell: (payload) => {
@@ -113,13 +107,7 @@ export function GlossaryTable(props: GlossaryTableProps): JSX.Element {
         id: "dst",
         title: t("glossary_page.fields.translation"),
         align: "left",
-        sortable: {
-          action_labels: {
-            ascending: t("quality_rule_editor.sort.ascending"),
-            descending: t("quality_rule_editor.sort.descending"),
-            clear: t("quality_rule_editor.sort.clear"),
-          },
-        },
+        sortable: {},
         head_class_name: "glossary-page__table-translation-head",
         cell_class_name: "glossary-page__table-translation-cell",
         render_cell: (payload) => {
@@ -131,13 +119,7 @@ export function GlossaryTable(props: GlossaryTableProps): JSX.Element {
         id: "info",
         title: t("glossary_page.fields.description"),
         align: "left",
-        sortable: {
-          action_labels: {
-            ascending: t("quality_rule_editor.sort.ascending"),
-            descending: t("quality_rule_editor.sort.descending"),
-            clear: t("quality_rule_editor.sort.clear"),
-          },
-        },
+        sortable: {},
         head_class_name: "glossary-page__table-description-head",
         cell_class_name: "glossary-page__table-description-cell",
         render_cell: (payload) => (
@@ -150,18 +132,12 @@ export function GlossaryTable(props: GlossaryTableProps): JSX.Element {
         title: t("quality_rule_editor.fields.rule"),
         width: 96,
         align: "center",
-        sortable: {
-          action_labels: {
-            ascending: t("quality_rule_editor.sort.ascending"),
-            descending: t("quality_rule_editor.sort.descending"),
-            clear: t("quality_rule_editor.sort.clear"),
-          },
-        },
+        sortable: {},
         head_class_name: "glossary-page__table-rule-head",
         cell_class_name: "glossary-page__table-rule-cell",
         render_cell: (payload) => {
           const case_tooltip = t("app.tooltip.value", {
-            TITLE: t("glossary_page.rule.case_sensitive"),
+            TITLE: t("quality_rule_editor.rule.case_sensitive"),
             VALUE: t(payload.row.entry.case_sensitive ? "app.state.enabled" : "app.state.disabled"),
           });
 
@@ -173,16 +149,11 @@ export function GlossaryTable(props: GlossaryTableProps): JSX.Element {
       {
         kind: "data",
         id: "hit",
-        title: t("glossary_page.fields.hit"),
+        title: t("quality_rule_editor.fields.hit"),
         width: 120,
         align: "center",
         sortable: {
           disabled: !props.hit_sort_available,
-          action_labels: {
-            ascending: t("quality_rule_editor.sort.ascending"),
-            descending: t("quality_rule_editor.sort.descending"),
-            clear: t("quality_rule_editor.sort.clear"),
-          },
         },
         head_class_name: "glossary-page__table-hit-head",
         cell_class_name: "glossary-page__table-hit-cell",
@@ -196,8 +167,6 @@ export function GlossaryTable(props: GlossaryTableProps): JSX.Element {
               entry_id={payload.row_id}
               running={false}
               badge_state={props.hit_badge_by_entry_id[payload.row_id] ?? null}
-              query_label={t("glossary_page.hit.action.query_source")}
-              relation_label={t("glossary_page.hit.action.search_relation")}
               on_query_entry_source={props.on_query_entry_source}
               on_search_entry_relations={props.on_search_entry_relations}
             />

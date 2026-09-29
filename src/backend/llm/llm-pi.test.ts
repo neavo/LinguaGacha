@@ -103,7 +103,7 @@ describe("pi-ai 请求适配", () => {
     expect(payload).not.toHaveProperty("store");
   });
   it.each(["OpenAI", "OpenAIResponses"] as const)(
-    "%s DeepSeek Flash 保留新请求 ID 并发送各可用思考档位",
+    "%s DeepSeek Flash 保留新请求 ID 并发送各可用思考等级",
     async (api_format) => {
       const capability = resolve_model_capability(
         ConfiguredModel.from_json({ api_format, model_id: "deepseek-flash" }, "test-model"),
@@ -139,7 +139,7 @@ describe("pi-ai 请求适配", () => {
   );
 
   it.each(["OpenAI", "OpenAIResponses"] as const)(
-    "%s GLM-5.3 由 Pi 目录与适配器生成各可用档位的请求",
+    "%s GLM-5.3 由 Pi 目录与适配器生成各可用等级的请求",
     async (api_format) => {
       for (const [level, effort] of [
         ["LOW", "low"],
@@ -158,7 +158,7 @@ describe("pi-ai 请求适配", () => {
   );
 
   it.each(["OpenAI", "OpenAIResponses"] as const)(
-    "%s 豆包把关闭思考发送为 minimal，并保留开启档位",
+    "%s 豆包把关闭思考发送为 minimal，并保留开启等级",
     async (api_format) => {
       for (const [level, effort] of [
         ["OFF", "minimal"],
@@ -433,7 +433,7 @@ describe("pi-ai 请求适配", () => {
     expect(payload).not.toHaveProperty("include");
   });
 
-  it("GPT Responses 的可用档位启用 Pi reasoning 连续性", async () => {
+  it("GPT Responses 的可用等级启用 Pi reasoning 连续性", async () => {
     const request = resolve_request({
       api_format: "OpenAIResponses",
       model_id: "gpt-5.5",
@@ -456,7 +456,7 @@ describe("pi-ai 请求适配", () => {
     ]);
   });
 
-  it("Kimi K3 的可用档位由 Pi 直接生成最终 payload", async () => {
+  it("Kimi K3 的可用等级由 Pi 直接生成最终 payload", async () => {
     const request = resolve_request({
       api_format: "OpenAI",
       model_id: "kimi-k3",
@@ -482,7 +482,7 @@ describe("pi-ai 请求适配", () => {
   });
 
   it.each(["OpenAI", "OpenAIResponses"] as const)(
-    "%s DeepSeek V4 Pro 由 Pi 目录与适配器生成各可用档位的请求",
+    "%s DeepSeek V4 Pro 由 Pi 目录与适配器生成各可用等级的请求",
     async (api_format) => {
       for (const [level, effort] of [
         ["OFF", undefined],
@@ -684,7 +684,7 @@ describe("pi-ai 请求适配", () => {
     expect(config).not.toHaveProperty("maxOutputTokens");
   });
 
-  it("让 Pi catalog 为带前后缀的 Gemini 保留原始 ID与可用档位", async () => {
+  it("让 Pi catalog 为带前后缀的 Gemini 保留原始 ID与可用等级", async () => {
     const request = resolve_request({
       api_format: "Google",
       api_url: "https://google-proxy.example/api",

@@ -159,7 +159,7 @@ function AgentQuestionDecision(props: {
                       className="agent-decision-icon agent-decision-custom__submit"
                       size="icon-xs"
                       disabled={!can_submit}
-                      aria-label={t("agent_page.decision.confirm")}
+                      aria-label={t("app.action.confirm")}
                       aria-keyshortcuts={can_submit ? "Enter" : undefined}
                       // 保持输入框焦点，点击发送不会先恢复零秒计时。
                       onPointerDown={(event) => event.preventDefault()}
@@ -170,7 +170,7 @@ function AgentQuestionDecision(props: {
                   }
                 />
                 <TooltipContent>
-                  <ShortcutTooltipRow label={t("agent_page.decision.confirm")} shortcut="submit" />
+                  <ShortcutTooltipRow label={t("app.action.confirm")} shortcut="submit" />
                 </TooltipContent>
               </Tooltip>
             </InputGroupAddon>

@@ -109,7 +109,7 @@ function create_empty_filter_state(): TextPreserveFilterState {
 
 /** 把命中数投影为文本保护徽章说明。 */
 function build_hit_badge_tooltip(t: (key: LocaleKey) => string, hits: number): string {
-  return t("text_preserve_page.hit.hit_count").replace("{COUNT}", hits.toString());
+  return t("quality_rule_editor.hit.hit_count").replace("{COUNT}", hits.toString());
 }
 
 /**
@@ -265,11 +265,7 @@ export function useTextPreservePageState() {
     },
     [t],
   );
-  const presets = useQualityRulePresets(
-    TEXT_PRESERVE_RULE_TYPE,
-    entries.map(normalize_entry),
-    "text_preserve_page.feedback.unknown_error",
-  );
+  const presets = useQualityRulePresets(TEXT_PRESERVE_RULE_TYPE, entries.map(normalize_entry));
   const editing = useQualityRuleEditing({
     rule_type: TEXT_PRESERVE_RULE_TYPE,
     project_path:
@@ -286,7 +282,6 @@ export function useTextPreservePageState() {
     set_result_refresh: set_pending_result_refresh,
     close_preset_menu: () => presets.set_preset_menu_open(false),
     export_file_name: TEXT_PRESERVE_EXPORT_FILE_NAME,
-    error_key: "text_preserve_page.feedback.unknown_error",
   });
 
   const { update_meta } = editing;

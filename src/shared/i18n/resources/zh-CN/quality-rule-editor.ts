@@ -10,10 +10,15 @@ export const zh_cn_quality_rule_editor = {
   feedback: {
     regex_invalid: "正则表达式无效",
     source_required: "原文不能为空",
+    save_failed: "规则保存失败",
+    update_failed: "规则设置保存失败",
+    import_failed: "规则导入失败",
+    export_failed: "规则导出失败",
   },
   fields: {
     rule: "规则",
     source: "原文",
+    hit: "命中",
   },
   filter: {
     clear: "清空",
@@ -26,14 +31,12 @@ export const zh_cn_quality_rule_editor = {
       tooltip_label: "搜索范围",
     },
   },
-  sort: {
-    ascending: "正序",
-    clear: "取消",
-    descending: "反序",
-  },
   hit: {
     hit_count: "命中条目数：{COUNT}",
     relation_line: "{CHILD} -> {PARENT}",
     subset_relations: "存在包含关系：",
+    query_source: "查询出处",
+    search_relation: "查询包含关系",
   },
+  rule: { case_sensitive: "大小写敏感" },
 } as const;

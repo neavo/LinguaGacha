@@ -75,13 +75,6 @@ function sort_workbench_entries(
 export function WorkbenchFileTable(props: WorkbenchFileTableProps): JSX.Element {
   const { t } = useI18n();
   const [sort_state, set_sort_state] = useState<AppTableSortState | null>(null);
-  const sort_action_labels = useMemo(() => {
-    return {
-      ascending: t("workbench_page.sort.ascending"),
-      descending: t("workbench_page.sort.descending"),
-      clear: t("workbench_page.sort.clear"),
-    };
-  }, [t]);
   const sorted_entries = useMemo(() => {
     return sort_workbench_entries(props.entries, sort_state);
   }, [props.entries, sort_state]);
@@ -93,9 +86,7 @@ export function WorkbenchFileTable(props: WorkbenchFileTableProps): JSX.Element 
         id: "file",
         title: t("workbench_page.table.file_name"),
         align: "left",
-        sortable: {
-          action_labels: sort_action_labels,
-        },
+        sortable: {},
         head_class_name: "workbench-page__table-file-head",
         cell_class_name: "workbench-page__table-file-cell",
         render_cell: (payload) => {
@@ -139,9 +130,7 @@ export function WorkbenchFileTable(props: WorkbenchFileTableProps): JSX.Element 
         title: t("workbench_page.table.progress"),
         width: 120,
         align: "center",
-        sortable: {
-          action_labels: sort_action_labels,
-        },
+        sortable: {},
         head_class_name: "workbench-page__table-progress-head",
         cell_class_name: "workbench-page__table-progress-cell",
         render_cell: (payload) => {
@@ -192,7 +181,7 @@ export function WorkbenchFileTable(props: WorkbenchFileTableProps): JSX.Element 
         },
       },
     ];
-  }, [props.on_prepare_entry_action, props.on_reset, props.readonly, sort_action_labels, t]);
+  }, [props.on_prepare_entry_action, props.on_reset, props.readonly, t]);
 
   return (
     <Card variant="table" className="workbench-page__table-card">

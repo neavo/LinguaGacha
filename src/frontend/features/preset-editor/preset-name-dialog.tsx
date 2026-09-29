@@ -10,7 +10,6 @@ import type { PresetInputState } from "./preset-types";
 
 type PresetNameDialogProps = {
   state: PresetInputState;
-  name_placeholder_key?: LocaleKey;
   save_shortcut_variant?: "default" | "outlined";
   on_change: (next_value: string) => void;
   on_submit: () => void;
@@ -83,7 +82,7 @@ export function PresetNameDialog(props: PresetNameDialogProps): JSX.Element {
         autoFocus
         value={props.state.value}
         disabled={props.state.submitting}
-        placeholder={t(props.name_placeholder_key ?? "preset_editor.dialog.name_placeholder")}
+        placeholder={t("preset_editor.dialog.name_placeholder")}
         onChange={(event) => {
           props.on_change(event.target.value);
         }}

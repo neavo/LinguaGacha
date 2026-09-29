@@ -3,7 +3,7 @@ import type { LocaleMessageSchema } from "../../types";
 export const ja_jp_custom_prompt_page = {
   save: {
     discard: "未保存の変更を元に戻す",
-    waiting: "タスクが実行中です。後で保存してください。",
+    waiting: "タスクが実行中です。後で保存してください …",
   },
   title: "カスタムプロンプト",
   header: {
@@ -15,14 +15,13 @@ export const ja_jp_custom_prompt_page = {
   },
   confirm: {
     reset: {
-      description: "データをリセットしますか？",
+      description: "データをリセットしますか …?",
     },
   },
   feedback: {
-    load_failed: "プロンプトを読み込めませんでした。再試行してください。",
-    save_failed: "プロンプトを保存できませんでした。編集内容は保持されています。",
-    import_failed: "タスクの実行に失敗しました …",
-    export_failed: "タスクの実行に失敗しました …",
-    preset_failed: "タスクの実行に失敗しました …",
+    load_failed: "プロンプトを読み込めませんでした。再試行してください …",
+    save_failed: "プロンプトを保存できませんでした。編集内容は保持されています …",
+    import_failed: "プロンプトをインポートできませんでした",
+    export_failed: "プロンプトをエクスポートできませんでした",
   },
 } satisfies LocaleMessageSchema<typeof zh_cn_custom_prompt_page>;

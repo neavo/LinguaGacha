@@ -10,22 +10,17 @@ export const zh_cn_workbench_page = {
     agent_only: "此文件仅能使用 AGENT 翻译",
     actions: "操作",
   },
-  sort: {
-    ascending: "按升序排序",
-    descending: "按降序排序",
-    clear: "清除排序",
-  },
   feedback: {
     refresh_failed: "工作台刷新失败",
     add_file_loading_toast: "正在添加文件并刷新缓存 …",
-    no_valid_file: "没有可添加的有效文件。",
-    file_action_failed: "文件操作失败，请稍后重试。",
-    close_project_failed: "关闭工程失败，请稍后重试。",
+    no_valid_file: "没有可添加的有效文件",
+    file_action_failed: "文件操作失败，请稍后重试 …",
+    close_project_failed: "关闭工程失败，请稍后重试 …",
   },
   action: {
     add_file: "添加",
     generate_translation: "生成译文",
-    close_project: "关闭项目",
+    close_project: "关闭工程",
     reset: "重置翻译状态",
     translation_task: "翻译",
     start_translation: "开始翻译",
@@ -34,7 +29,7 @@ export const zh_cn_workbench_page = {
   },
   translation_export: {
     checking: "正在检查校对警告 …",
-    check_failed: "读取校对警告失败，仍可继续生成当前译文。",
+    check_failed: "读取校对警告失败，仍可继续生成当前译文 …",
     warning_description:
       "检查到 {COUNT} 个校对警告，推荐使用 AGENT 自动审校后再生成译文，是否确认继续 …?",
     warning_list: "校对警告",
@@ -42,14 +37,14 @@ export const zh_cn_workbench_page = {
     continue_generate: "继续生成",
   },
   reorder: {
-    failed: "文件顺序保存失败，请稍后再试。",
+    failed: "文件顺序保存失败，请稍后再试 …",
   },
   dialog: {
     import_conflict: {
-      description: "检测到 {COUNT} 个同名文件，请选择处理方式 …?",
+      description: "检测到 {COUNT} 个同名文件，请选择处理方式 …",
     },
     inherit_import: {
-      description: "是否使用当前项目中已完成的翻译文本填充新文件 …?",
+      description: "是否使用当前工程中已完成的翻译文本填充新文件 …?",
       fill: "填充",
       do_not_fill: "不填充",
     },

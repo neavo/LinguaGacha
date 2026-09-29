@@ -68,7 +68,7 @@ export function AgentMessageAttachments(props: AgentMessageAttachmentsProps): JS
             ? name +
               "\n" +
               status +
-              (attachment.status === "failed" ? " · " + t("agent_page.upload.retry") : "")
+              (attachment.status === "failed" ? " · " + t("app.action.retry") : "")
             : name;
           const content = (
             <>

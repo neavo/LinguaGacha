@@ -115,7 +115,7 @@ describe("useModelSelection", () => {
     expect(container.textContent).toContain("openai:OFF:false");
   });
 
-  it("在选模命令中更新当前模型的思考档位并消费统一窄回包", async () => {
+  it("在选模命令中更新当前模型的思考等级并消费统一窄回包", async () => {
     api.get.mockResolvedValue(snapshot("preset"));
     api.fetch.mockResolvedValue(snapshot("preset", "HIGH"));
     const container = await render_probe();
@@ -254,7 +254,7 @@ function Probe(): JSX.Element {
   );
 }
 
-/** 构造后端窄回包，覆盖用途与思考档位。 */
+/** 构造后端窄回包，覆盖用途与思考等级。 */
 function snapshot(
   selected: string,
   thinking_level: ModelThinkingLevel = "OFF",

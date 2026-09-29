@@ -4,11 +4,9 @@ export const ko_kr_basic_settings_page = {
   title: "기본 설정",
   fields: {
     source_language: {
-      title: "원문 언어",
       description: "현재 프로젝트의 입력 텍스트 언어를 설정합니다",
     },
     target_language: {
-      title: "번역문 언어",
       description: "현재 프로젝트의 출력 텍스트 언어를 설정합니다",
     },
     project_save_mode: {
@@ -33,10 +31,8 @@ export const ko_kr_basic_settings_page = {
     },
   },
   feedback: {
-    refresh_failed: "기본 설정을 새로 고칠 수 없습니다. 잠시 후 다시 시도해 주세요.",
-    update_failed: "설정을 저장하지 못했습니다. 잠시 후 다시 시도해 주세요.",
-    request_timeout_invalid: "요청 제한 시간에 유효한 범위의 숫자를 입력해 주세요.",
-    pick_directory_failed: "폴더를 선택하지 못했습니다. 지정 저장 폴더를 다시 선택해 주세요.",
-    source_language_loading_toast: "프로젝트 캐시 새로 고치는 중 …",
+    refresh_failed: "기본 설정을 새로 고칠 수 없습니다. 잠시 후 다시 시도해 주세요 …",
+    request_timeout_invalid: "요청 제한 시간에 유효한 범위의 숫자를 입력해 주세요 …",
+    pick_directory_failed: "폴더를 선택하지 못했습니다. 지정 저장 폴더를 다시 선택해 주세요 …",
   },
 } satisfies LocaleMessageSchema<typeof zh_cn_basic_settings_page>;

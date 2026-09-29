@@ -49,7 +49,7 @@ type PiModelSettings = Readonly<{
   input: PiModel<PiApi>["input"];
 }>;
 
-/** 消费调用方唯一解析的能力，构造 Pi 模型与当前请求思考档位。 */
+/** 消费调用方唯一解析的能力，构造 Pi 模型与当前请求思考等级。 */
 export function resolve_pi_model(
   snapshot: ModelRequestSnapshot,
   capability: ResolvedModelCapability,
@@ -150,7 +150,7 @@ export function resolve_one_shot_pi_request(
     onPayload: (payload, active_model) =>
       apply_one_shot_request_overrides(snapshot, payload, signal, active_model.compat),
   };
-  // Google / Anthropic 由 `streamSimple` 转换思考档位，OpenAI 直接调用以保留自动输出上限语义。
+  // Google / Anthropic 由 `streamSimple` 转换思考等级，OpenAI 直接调用以保留自动输出上限语义。
   const provider_stream =
     snapshot.api_format === "Google" || snapshot.api_format === "Anthropic"
       ? resolved.streamSimple

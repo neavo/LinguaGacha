@@ -23,9 +23,9 @@ export const zh_cn_batch_translation = {
   },
   feedback: {
     stats_refresh_failed: "工程翻译统计刷新失败",
-    done: "翻译完成 …",
-    stopped: "翻译停止 …",
-    done_with_errors: "翻译完成，部分条目失败 …",
+    done: "翻译完成",
+    stopped: "翻译停止",
+    done_with_errors: "翻译完成，部分条目失败",
     keys_retry_wait: "无可用密钥，已重试 {count} 次，下一次重试 {seconds} 秒 …",
     keys_retry_running: "无可用密钥，已重试 {count} 次，正在重试 …",
     refresh_failed: "翻译任务状态刷新失败",
@@ -35,7 +35,7 @@ export const zh_cn_batch_translation = {
     reset_failed_failed: "重置失败条目失败",
   },
   confirm: {
-    reset_all_description: "是否确认重置整个项目的翻译进度 …?",
+    reset_all_description: "是否确认重置整个工程的翻译进度 …?",
     reset_failed_description: "是否确认重置失败的翻译条目 …?",
     generate_description: "是否确认生成当前可用译文 …?",
     stop_description: "是否确认停止当前翻译任务 …?",

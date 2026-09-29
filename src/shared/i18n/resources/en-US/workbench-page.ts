@@ -13,17 +13,12 @@ export const en_us_workbench_page = {
     agent_only: "This file can only be translated using AGENT",
     actions: "Actions",
   },
-  sort: {
-    ascending: "Sort ascending",
-    descending: "Sort descending",
-    clear: "Clear sort",
-  },
   feedback: {
-    refresh_failed: "Failed to refresh workbench.",
+    refresh_failed: "Failed to refresh workbench",
     add_file_loading_toast: "Adding file and refreshing cache …",
-    no_valid_file: "No valid files can be added.",
-    file_action_failed: "File operation failed. Please try again later.",
-    close_project_failed: "Failed to close the project. Please try again later.",
+    no_valid_file: "No valid files can be added",
+    file_action_failed: "File operation failed. Please try again later …",
+    close_project_failed: "Failed to close the project. Please try again later …",
   },
   action: {
     add_file: "Add",
@@ -38,7 +33,7 @@ export const en_us_workbench_page = {
   translation_export: {
     checking: "Checking proofreading warnings …",
     check_failed:
-      "Proofreading warnings could not be loaded. You can still generate the current translation.",
+      "Proofreading warnings could not be loaded. You can still generate the current translation …",
     warning_description:
       "Detected {COUNT} proofreading warnings. We recommend using AGENT to review and fix them automatically before generating the translation. Continue anyway …?",
     warning_list: "Proofreading warnings",
@@ -46,11 +41,11 @@ export const en_us_workbench_page = {
     continue_generate: "Generate Anyway",
   },
   reorder: {
-    failed: "Failed to save the file order. Please try again later.",
+    failed: "Failed to save the file order. Please try again later …",
   },
   dialog: {
     import_conflict: {
-      description: "{COUNT} files with the same name were detected. Choose how to handle them …?",
+      description: "{COUNT} files with the same name were detected. Choose how to handle them …",
     },
     inherit_import: {
       description: "Use completed translations from the current project to fill the new files …?",

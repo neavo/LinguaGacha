@@ -33,8 +33,5 @@ export const en_us_laboratory_page = {
   },
   feedback: {
     refresh_failed: "Unable to refresh laboratory settings. Please try again …",
-    update_failed: "Failed to save laboratory settings. Please try again …",
-    mtool_optimizer_loading_toast: "Refreshing project cache …",
-    skip_duplicate_source_text_loading_toast: "Refreshing project cache …",
   },
 } satisfies LocaleMessageSchema<typeof zh_cn_laboratory_page>;

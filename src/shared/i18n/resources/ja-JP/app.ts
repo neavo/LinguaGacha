@@ -11,7 +11,7 @@ export const ja_jp_app = {
     app_name: "LinguaGacha",
   },
   model: {
-    catalog_updated: "モデルデータベースを更新しました …",
+    catalog_updated: "モデルデータベースを更新しました",
     type: {
       preset: "プリセットモデル",
       google: "カスタム Google モデル",
@@ -26,10 +26,9 @@ export const ja_jp_app = {
       update_failed: "モデル選択を保存できませんでした。しばらくしてから再試行してください …",
     },
     thinking_level: {
-      label: "思考レベル",
       default: "既定のまま",
       default_description:
-        "思考レベルのデータを一切送信せず、プラットフォームの既定の設定に従います。",
+        "思考レベルのデータを一切送信せず、プラットフォームの既定の設定に従います",
       off: "オフ",
       low: "低",
       medium: "中",
@@ -51,7 +50,6 @@ export const ja_jp_app = {
     export: "エクスポート",
     import: "インポート",
     preset: "プリセット",
-    query: "検索",
     reset: "リセット",
     retry: "再試行",
     save: "保存",
@@ -64,42 +62,42 @@ export const ja_jp_app = {
     select_folder: "フォルダーを選択",
   },
   feedback: {
-    initial_load_failed: "アプリのデータを読み込めませんでした。再試行してください。",
-    export_success: "データをエクスポートしました …",
-    import_success: "データをインポートしました …",
-    no_valid_data: "有効なデータがありません …",
-    update_failed: "更新できませんでした …",
-    project_settings_aligned: "現在の設定に合わせてプロジェクト設定を更新しました …",
+    initial_load_failed: "アプリのデータを読み込めませんでした。再試行してください …",
+    export_success: "データをエクスポートしました",
+    import_success: "データをインポートしました",
+    no_valid_data: "有効なデータがありません",
+    update_failed: "更新できませんでした",
+    project_settings_aligned: "現在の設定に合わせてプロジェクト設定を更新しました",
+    project_cache_loading: "プロジェクトのキャッシュを更新中 …",
+    settings_save_failed: "設定を保存できませんでした。しばらくしてから再試行してください …",
   },
   error_boundary: {
     eyebrow: "Renderer Runtime",
     title: "ページの実行中にエラーが発生しました",
     description:
-      "このウィンドウは保護画面に切り替わりました。エラーの詳細はログに記録されています。",
+      "このウィンドウは保護画面に切り替わりました。エラーの詳細はログに記録されています …",
   },
   project_settings_alignment: {
     field: {
-      source_language: "入力言語",
-      target_language: "出力言語",
       mtool_optimizer_enable: "MTool オプティマイザー",
       skip_duplicate_source_text_enable: "重複する原文をスキップ",
     },
   },
   close_confirm: {
-    description: "アプリを終了しますか？",
+    description: "アプリを終了しますか …?",
   },
   quality_rule_import: {
-    duplicate_description: "重複するルールが {COUNT} 件あります。処理方法を選択してください。",
+    duplicate_description: "重複するルールが {COUNT} 件あります。処理方法を選択してください …",
   },
   update: {
-    confirm_description: "LinguaGacha v{VERSION} が見つかりました。更新をダウンロードしますか？",
+    confirm_description: "LinguaGacha v{VERSION} が見つかりました。更新をダウンロードしますか …?",
     restart_confirm: "再起動して更新",
     launching: "処理中 …",
   },
   drop: {
     multiple_unavailable: "一度にドロップできるファイルは 1 個です",
     unavailable:
-      "ドロップしたファイルのローカルパスを取得できません。クリックしてインポートしてください。",
+      "ドロップしたファイルのローカルパスを取得できません。クリックしてインポートしてください …",
     import_here: "ドロップしてルールファイルをインポート",
   },
   toggle: {
@@ -189,13 +187,13 @@ export const ja_jp_app = {
   error: {
     request: {
       validation_failed: {
-        message: "リクエストのパラメーターが無効です …",
+        message: "リクエストのパラメーターが無効です",
       },
       invalid_json: {
-        message: "リクエストの JSON が無効です …",
+        message: "リクエストの JSON が無効です",
       },
       route_not_found: {
-        message: "API ルートが見つかりません …",
+        message: "API ルートが見つかりません",
       },
     },
     project: {
@@ -203,30 +201,30 @@ export const ja_jp_app = {
         message: "プロジェクトファイルは既に存在します。別のファイル名を選択してください …",
       },
       not_loaded: {
-        message: "プロジェクトが読み込まれていません …",
+        message: "プロジェクトが読み込まれていません",
       },
       not_found: {
-        message: "プロジェクトファイルが見つかりません …",
+        message: "プロジェクトファイルが見つかりません",
       },
     },
     translation: {
-      export_failed: { message: "訳文のエクスポートに失敗しました …" },
+      export_failed: { message: "訳文のエクスポートに失敗しました" },
     },
     file: {
       already_exists: {
         message: "同名のファイルまたはフォルダーが存在します。別の名前を指定してください …",
       },
       not_found: {
-        message: "ファイルが見つかりません …",
+        message: "ファイルが見つかりません",
       },
       parse_failed: {
-        message: "ファイルの内容を解析できませんでした …",
+        message: "ファイルの内容を解析できませんでした",
       },
       invalid_structure: {
-        message: "ファイルの構造が形式の要件を満たしていません …",
+        message: "ファイルの構造が形式の要件を満たしていません",
       },
       io_failed: {
-        message: "ファイルの読み書きに失敗しました …",
+        message: "ファイルの読み書きに失敗しました",
       },
     },
     database: {
@@ -248,7 +246,7 @@ export const ja_jp_app = {
     },
     model: {
       not_found: {
-        message: "モデル設定が見つかりません …",
+        message: "モデル設定が見つかりません",
       },
       provider_failed: {
         message: "モデルサービスへのリクエストに失敗しました。API 設定を確認してください …",
@@ -256,10 +254,10 @@ export const ja_jp_app = {
     },
     worker: {
       failed: {
-        message: "バックグラウンド実行チャネルでエラーが発生しました …",
+        message: "バックグラウンド実行チャネルでエラーが発生しました",
       },
       execution_failed: {
-        message: "バックグラウンドタスクの実行に失敗しました …",
+        message: "バックグラウンドタスクの実行に失敗しました",
       },
     },
     runtime: {
@@ -267,54 +265,54 @@ export const ja_jp_app = {
         message: "モデルが実行中です。しばらくしてから再試行してください …",
       },
       capability_missing: {
-        message: "現在の実行環境に必要な機能がありません …",
+        message: "現在の実行環境に必要な機能がありません",
       },
       disposed: {
-        message: "実行リソースは解放されています …",
+        message: "実行リソースは解放されています",
       },
       cancelled: {
-        message: "操作をキャンセルしました …",
+        message: "操作をキャンセルしました",
       },
       internal_invariant: {
-        message: "内部状態に異常があります …",
+        message: "内部状態に異常があります",
       },
     },
     language: {
       invalid_target_language: {
-        message: "翻訳先の言語が無効です …",
+        message: "翻訳先の言語が無効です",
       },
       unsupported_all_target_language: {
-        message: "翻訳先に「すべて」は指定できません …",
+        message: "翻訳先に「すべて」は指定できません",
       },
       unknown_source_language_code: {
-        message: "原文の言語コードが無効です …",
+        message: "原文の言語コードが無効です",
       },
     },
     quality: {
       unknown_rule_type: {
-        message: "品質ルールの種類が無効です …",
+        message: "品質ルールの種類が無効です",
       },
       unsupported_rule_meta: {
-        message: "品質ルールの設定項目が無効です …",
+        message: "品質ルールの設定項目が無効です",
       },
     },
     prompt: {
       unknown_prompt_type: {
-        message: "プロンプトの種類が無効です …",
+        message: "プロンプトの種類が無効です",
       },
     },
     desktop: {
       missing_backend_api_base_url: {
-        message: "Backend API のアドレスが設定されていません …",
+        message: "Backend API のアドレスが設定されていません",
       },
       http_error: {
-        message: "リクエストに失敗しました：{PATH} …",
+        message: "リクエストに失敗しました：{PATH}",
       },
       network_failed: {
-        message: "ネットワークリクエストに失敗しました：{PATH} …",
+        message: "ネットワークリクエストに失敗しました：{PATH}",
       },
       timeout: {
-        message: "リクエストがタイムアウトしました：{PATH} …",
+        message: "リクエストがタイムアウトしました：{PATH}",
       },
     },
   },
@@ -357,7 +355,6 @@ export const ja_jp_app = {
     },
   },
   log: {
-    api_gateway_started: "API Gateway を起動しました - {BASE_URL}",
     api_test_fail: "API テストに失敗しました …",
     api_test_key: "テスト中のキー：",
     api_test_messages: "タスクのプロンプト：",
@@ -388,4 +385,6 @@ export const ja_jp_app = {
     translation_task_result: "翻訳結果：",
     translation_response_partially_invalid: "一部の訳文が検証に失敗しました …",
   },
+  sort: { ascending: "昇順", descending: "降順", clear: "並べ替えを解除" },
+  language_role: { source: "原文の言語", target: "訳文の言語" },
 } satisfies LocaleMessageSchema<typeof zh_cn_app>;

@@ -44,7 +44,7 @@ export type SettingSnapshot = {
   deduplication_in_bilingual: boolean;
   write_translated_name_fields_to_file: boolean;
   prompt_enhancement_enable: boolean;
-  agent_batch_translation_thinking_adaptive_enable: boolean; // 应用偏好，控制 Agent 跟随翻译的临时档位。
+  agent_batch_translation_thinking_adaptive_enable: boolean; // 应用偏好，控制 Agent 跟随翻译的临时等级。
   mtool_optimizer_enable: boolean;
   skip_duplicate_source_text_enable: boolean;
   glossary_default_preset: string;

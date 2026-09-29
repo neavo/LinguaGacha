@@ -38,14 +38,14 @@ export const ko_kr_model_page = {
   },
   confirm: {
     delete: {
-      description: "모델을 삭제할까요?",
+      description: "모델을 삭제할까요 …?",
     },
     reset: {
-      description: "모델을 초기화할까요?",
+      description: "모델을 초기화할까요 …?",
     },
   },
   feedback: {
-    copy_success: "접속 지점을 복제했습니다 …\n그룹: {CATEGORY}\n이름: {NAME}",
+    copy_success: "모델을 복제했습니다\n그룹: {CATEGORY}\n이름: {NAME}",
     copy_failed: "모델을 복제하지 못했습니다. 잠시 후 다시 시도해 주세요 …",
     refresh_failed: "모델 정보를 새로 고치지 못했습니다. 잠시 후 다시 시도해 주세요 …",
     add_failed: "모델을 추가하지 못했습니다. 잠시 후 다시 시도해 주세요 …",

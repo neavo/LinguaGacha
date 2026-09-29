@@ -38,14 +38,14 @@ export const ja_jp_model_page = {
   },
   confirm: {
     delete: {
-      description: "モデルを削除しますか？",
+      description: "モデルを削除しますか …?",
     },
     reset: {
-      description: "モデルをリセットしますか？",
+      description: "モデルをリセットしますか …?",
     },
   },
   feedback: {
-    copy_success: "接続先を複製しました …\nグループ：{CATEGORY}\n名前：{NAME}",
+    copy_success: "モデルを複製しました\nグループ：{CATEGORY}\n名前：{NAME}",
     copy_failed: "モデルを複製できませんでした。しばらくしてから再試行してください …",
     refresh_failed: "モデル情報を更新できませんでした。しばらくしてから再試行してください …",
     add_failed: "モデルを追加できませんでした。しばらくしてから再試行してください …",

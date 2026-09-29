@@ -33,7 +33,7 @@ export function GlossaryContextMenuItems(props: GlossaryContextMenuItemsProps): 
       <AppContextMenuSub>
         <AppContextMenuSubTrigger disabled={props.readonly}>
           <CaseSensitive />
-          {t("glossary_page.rule.case_sensitive")}
+          {t("quality_rule_editor.rule.case_sensitive")}
         </AppContextMenuSubTrigger>
         <AppContextMenuSubContent>
           <AppContextMenuRadioGroup

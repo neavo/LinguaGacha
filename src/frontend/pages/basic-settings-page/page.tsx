@@ -127,7 +127,7 @@ export function BasicSettingsPage(_props: BasicSettingsPageProps): JSX.Element {
       <section className="basic-settings-page__list" aria-label={t("basic_settings_page.title")}>
         <SettingCardRow
           action_width="content"
-          title={t("basic_settings_page.fields.source_language.title")}
+          title={t("app.language_role.source")}
           description={t("basic_settings_page.fields.source_language.description")}
           action={
             <Select
@@ -157,7 +157,7 @@ export function BasicSettingsPage(_props: BasicSettingsPageProps): JSX.Element {
 
         <SettingCardRow
           action_width="content"
-          title={t("basic_settings_page.fields.target_language.title")}
+          title={t("app.language_role.target")}
           description={t("basic_settings_page.fields.target_language.description")}
           action={
             <Select

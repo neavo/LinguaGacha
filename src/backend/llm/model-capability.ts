@@ -32,7 +32,7 @@ const LARGE_CONTEXT_WINDOW_THRESHOLD = 500_000;
 const SMALL_AUTOMATIC_OUTPUT_LIMIT = 32_000;
 const LARGE_AUTOMATIC_OUTPUT_LIMIT = 64_000;
 
-/** 产品档位到 Pi 档位的唯一投影，未进入该表的值不会发给 adapter。 */
+/** 产品等级到 Pi 等级的唯一投影，未进入该表的值不会发给 adapter。 */
 const PRODUCT_TO_PI_LEVEL = {
   OFF: "off",
   LOW: "low",
@@ -152,7 +152,7 @@ export function match_pi_catalog_models(
   return catalog.filter((model) => model.id.toLowerCase() === canonical_id);
 }
 
-/** 配置归一化时修正失效档位；请求阶段不再隐式升降档。 */
+/** 配置归一化时修正失效等级；请求阶段不再隐式调整等级。 */
 export function adjust_model_thinking_level(
   current_level: ModelThinkingLevel,
   available_levels: readonly ModelThinkingLevel[],
@@ -167,7 +167,7 @@ export function adjust_model_thinking_level(
   return available_levels.find((level) => level !== "DEFAULT" && level !== "OFF") ?? "DEFAULT";
 }
 
-/** 只把可用且被产品暴露的档位投影为 Pi 值。 */
+/** 只把可用且被产品暴露的等级投影为 Pi 值。 */
 export function resolve_pi_thinking_level(
   level: ModelThinkingLevel,
   available_levels: readonly ModelThinkingLevel[],
@@ -255,7 +255,7 @@ function select_pi_thinking_template(
   return null;
 }
 
-/** 兼容字段属于具体协议；OpenAI 两种格式回退只借用思考档位，不携带供应商传输规则。 */
+/** 兼容字段属于具体协议；OpenAI 两种格式回退只借用思考等级，不携带供应商传输规则。 */
 function read_template_compat(
   api_format: ModelApiFormat,
   template: PiCatalogModel | null,

@@ -5,7 +5,7 @@ export const en_us_project_page = {
   title: "Project Home",
   create: {
     title: "Create Project",
-    subtitle: "Select source to create a self-contained .lg project.",
+    subtitle: "Select source to create a self-contained .lg project",
     drop_title: "Click or Drag Source File",
     ready_status: "{COUNT} source files selected",
     loading_toast: "Creating project …",
@@ -24,7 +24,7 @@ export const en_us_project_page = {
   },
   open: {
     title: "Open Project",
-    subtitle: "Load .lg to continue with saved progress and rules.",
+    subtitle: "Load .lg to continue with saved progress and rules",
     drop_title: "Click or Drag .lg File",
     recent_title: "Recent Projects",
     empty: "No recent projects",
@@ -37,7 +37,7 @@ export const en_us_project_page = {
     failed_generic: "Failed to load project",
     action: "Open Project",
     remove_unavailable:
-      "Unable to remove this recent project entry right now. Please try again later.",
+      "Unable to remove this recent project entry right now. Please try again later …",
     missing_file_description: "The project file is invalid. Remove it from the list …?",
   },
   preview: {
@@ -49,7 +49,7 @@ export const en_us_project_page = {
     progress: "Progress",
   },
   loading_stages: {
-    project: "Loading project skeleton …",
+    project: "Loading project information …",
     files: "Loading project files …",
     items: "Loading project items …",
     quality: "Loading quality rules …",
@@ -78,9 +78,9 @@ export const en_us_project_page = {
     vntextpatch: "VNTextPatch Game Text",
     trans_project: "Translator++ Project",
     trans_export: "Translator++ Game Text",
-    wolf: "WOLF Offical Tran-Tool",
+    wolf: "WOLF Official Translation Tool Game Text",
   },
   drop_multiple_unavailable: "Only one file or folder can be dropped at a time",
   drop_unavailable:
-    "The local path of the dropped file is unavailable right now. Please use the picker instead.",
+    "The local path of the dropped file is unavailable right now. Please use the picker instead …",
 } satisfies LocaleMessageSchema<typeof zh_cn_project_page>;

@@ -4,7 +4,7 @@ export const ja_jp_project_page = {
   title: "プロジェクト",
   create: {
     title: "新しいプロジェクト",
-    subtitle: "元ファイルから .lg を作成。作成後は元ファイル不要。",
+    subtitle: "元ファイルから .lg を作成。作成後は元ファイル不要",
     drop_title: "クリックまたは元ファイルをドロップ",
     ready_status: "元ファイルを {COUNT} 個選択しました",
     loading_toast: "プロジェクトを作成中 …",
@@ -23,7 +23,7 @@ export const ja_jp_project_page = {
   },
   open: {
     title: "プロジェクトを開く",
-    subtitle: ".lg を開き、翻訳進捗・ルールを引き継いで再開。",
+    subtitle: ".lg を開き、翻訳進捗・ルールを引き継いで再開",
     drop_title: "クリックまたは .lg ファイルをドロップ",
     recent_title: "最近開いた項目",
     empty: "最近開いたプロジェクトはありません",
@@ -35,8 +35,8 @@ export const ja_jp_project_page = {
     failed: "プロジェクトを読み込めませんでした：{ERROR}",
     failed_generic: "プロジェクトを読み込めませんでした",
     action: "プロジェクトを開く",
-    remove_unavailable: "最近使った項目を削除できません。しばらくしてから再試行してください。",
-    missing_file_description: "プロジェクトファイルが利用できません。一覧から削除しますか？",
+    remove_unavailable: "最近使った項目を削除できません。しばらくしてから再試行してください …",
+    missing_file_description: "プロジェクトファイルが利用できません。一覧から削除しますか …?",
   },
   preview: {
     title: "プロジェクト概要",
@@ -47,7 +47,7 @@ export const ja_jp_project_page = {
     progress: "翻訳進捗",
   },
   loading_stages: {
-    project: "プロジェクト構造を読み込み中 …",
+    project: "プロジェクトの基本情報を読み込み中 …",
     files: "プロジェクトのファイルを読み込み中 …",
     items: "プロジェクトの項目を読み込み中 …",
     quality: "品質ルールを読み込み中 …",
@@ -80,5 +80,5 @@ export const ja_jp_project_page = {
   },
   drop_multiple_unavailable: "一度にドロップできるファイルまたはフォルダーは 1 個です",
   drop_unavailable:
-    "ドロップしたファイルのローカルパスを取得できません。クリックして選択してください。",
+    "ドロップしたファイルのローカルパスを取得できません。クリックして選択してください …",
 } satisfies LocaleMessageSchema<typeof zh_cn_project_page>;

@@ -43,7 +43,7 @@ export function format_project_settings_aligned_toast(args: {
   if (args.changed_fields.source_language === true) {
     rows.push(
       args.t("app.tooltip.value", {
-        TITLE: args.t("app.project_settings_alignment.field.source_language"),
+        TITLE: args.t("app.language_role.source"),
         VALUE: format_language_label(args.settings.source_language, args.t),
       }),
     );
@@ -52,7 +52,7 @@ export function format_project_settings_aligned_toast(args: {
   if (args.changed_fields.target_language === true) {
     rows.push(
       args.t("app.tooltip.value", {
-        TITLE: args.t("app.project_settings_alignment.field.target_language"),
+        TITLE: args.t("app.language_role.target"),
         VALUE: format_language_label(args.settings.target_language, args.t),
       }),
     );

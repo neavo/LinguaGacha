@@ -26,7 +26,7 @@ export type ModelRequestSnapshot = Readonly<{
   extra_body: Readonly<JsonRecord>;
   generation: Readonly<JsonRecord>;
   output_token_limit: number; // `0` 和 `-1` 表示单次输出上限自动。
-  thinking_level: ModelThinkingLevel; // 配置写入口确认的产品思考档位。
+  thinking_level: ModelThinkingLevel; // 配置写入口确认的产品思考等级。
 }>;
 
 const DEFAULT_OUTPUT_TOKEN_LIMIT = 4096; // 缺少旧配置字段时的单次输出上限。

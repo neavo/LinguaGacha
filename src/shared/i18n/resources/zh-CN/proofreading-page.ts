@@ -3,10 +3,7 @@ export const zh_cn_proofreading_page = {
     view: "进入查看",
     title: "页面预览",
     source_page: "第 {PAGE} 页",
-    retry: "重试",
     select_files: "请选择文件",
-    page_count: "{COUNT} 页",
-    item_count: "{COUNT} 条",
     text_only: "请选择文本条目执行此操作",
     failed: "预览加载失败",
     previous: "上一页",
@@ -41,11 +38,6 @@ export const zh_cn_proofreading_page = {
       tooltip_label: "搜索范围",
       all: "全部",
     },
-  },
-  sort: {
-    ascending: "正序",
-    descending: "反序",
-    clear: "取消",
   },
   status: {
     excluded: "已排除",

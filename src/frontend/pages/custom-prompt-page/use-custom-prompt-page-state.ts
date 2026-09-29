@@ -6,7 +6,7 @@ import type { SettingsSnapshotPayload } from "@frontend/app/state/desktop-state-
 import { useDesktopState } from "@frontend/app/state/use-desktop-state";
 import { push_toast } from "@frontend/app/feedback/desktop-toast";
 import { resolve_visible_error_message } from "@frontend/app/feedback/visible-error-message";
-import { useI18n } from "@frontend/app/locale/locale-context";
+import { useI18n, type LocaleKey } from "@frontend/app/locale/locale-context";
 import {
   build_user_preset_virtual_id,
   create_empty_preset_input_state,
@@ -150,7 +150,7 @@ export function useCustomPromptPageState(): UseCustomPromptPageStateResult {
     } catch (error) {
       push_toast(
         "error",
-        resolve_visible_error_message(error, t, t("custom_prompt_page.feedback.preset_failed")),
+        resolve_visible_error_message(error, t, t("preset_editor.feedback.load_failed")),
       );
     }
   }, [refresh_preset_menu, t]);
@@ -173,7 +173,7 @@ export function useCustomPromptPageState(): UseCustomPromptPageStateResult {
       } catch (error) {
         push_toast(
           "error",
-          resolve_visible_error_message(error, t, t("custom_prompt_page.feedback.preset_failed")),
+          resolve_visible_error_message(error, t, t("preset_editor.feedback.load_failed")),
         );
       }
     },
@@ -232,18 +232,17 @@ export function useCustomPromptPageState(): UseCustomPromptPageStateResult {
         return false;
       }
 
+      let error_key: LocaleKey = "preset_editor.feedback.save_failed";
       try {
         await api_fetch("/api/quality/prompts/presets/save", {
           name: normalized_name,
           text: prompt_text.trim(),
         });
+        error_key = "preset_editor.feedback.load_failed";
         await refresh_preset_menu();
         return true;
       } catch (error) {
-        push_toast(
-          "error",
-          resolve_visible_error_message(error, t, t("custom_prompt_page.feedback.preset_failed")),
-        );
+        push_toast("error", resolve_visible_error_message(error, t, t(error_key)));
         return false;
       }
     },
@@ -259,6 +258,7 @@ export function useCustomPromptPageState(): UseCustomPromptPageStateResult {
         return false;
       }
 
+      let error_key: LocaleKey = "preset_editor.feedback.rename_failed";
       try {
         const payload = await api_fetch<{ item?: CustomPromptPresetItem }>(
           "/api/quality/prompts/presets/rename",
@@ -269,6 +269,7 @@ export function useCustomPromptPageState(): UseCustomPromptPageStateResult {
         );
         const target_preset = preset_items.find((item) => item.virtual_id === virtual_id);
         if (target_preset?.is_default) {
+          error_key = "preset_editor.feedback.default_update_failed";
           const settings_payload = await api_fetch<SettingsSnapshotPayload>(
             "/api/settings/update",
             {
@@ -279,13 +280,11 @@ export function useCustomPromptPageState(): UseCustomPromptPageStateResult {
           );
           apply_settings_snapshot(settings_payload);
         }
+        error_key = "preset_editor.feedback.load_failed";
         await refresh_preset_menu();
         return true;
       } catch (error) {
-        push_toast(
-          "error",
-          resolve_visible_error_message(error, t, t("custom_prompt_page.feedback.preset_failed")),
-        );
+        push_toast("error", resolve_visible_error_message(error, t, t(error_key)));
         return false;
       }
     },
@@ -303,7 +302,11 @@ export function useCustomPromptPageState(): UseCustomPromptPageStateResult {
       } catch (error) {
         push_toast(
           "error",
-          resolve_visible_error_message(error, t, t("custom_prompt_page.feedback.preset_failed")),
+          resolve_visible_error_message(
+            error,
+            t,
+            t("preset_editor.feedback.default_update_failed"),
+          ),
         );
       }
     },
@@ -402,25 +405,25 @@ export function useCustomPromptPageState(): UseCustomPromptPageStateResult {
   /** 删除预设并清除指向它的默认引用。 */
   const delete_preset = useCallback(
     async (virtual_id: string): Promise<boolean> => {
+      let error_key: LocaleKey = "preset_editor.feedback.delete_failed";
       try {
         await api_fetch("/api/quality/prompts/presets/delete", {
           virtual_id,
         });
         const target_preset = preset_items.find((item) => item.virtual_id === virtual_id);
         if (target_preset?.is_default) {
+          error_key = "preset_editor.feedback.default_update_failed";
           const settings_payload = await api_fetch<SettingsSnapshotPayload>(
             "/api/settings/update",
             { [TRANSLATION_PROMPT.default_preset_setting_key]: "" },
           );
           apply_settings_snapshot(settings_payload);
         }
+        error_key = "preset_editor.feedback.load_failed";
         await refresh_preset_menu();
         return true;
       } catch (error) {
-        push_toast(
-          "error",
-          resolve_visible_error_message(error, t, t("custom_prompt_page.feedback.preset_failed")),
-        );
+        push_toast("error", resolve_visible_error_message(error, t, t(error_key)));
         return false;
       }
     },

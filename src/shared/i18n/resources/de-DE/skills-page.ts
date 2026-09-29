@@ -7,7 +7,7 @@ export const de_de_skills_page = {
   personality_description: "Persönlichkeitseinstellungen des intelligenten Assistenten",
   install: {
     title: "Installationsanleitung",
-    description: "Sende den Skill-Link an AGENT und bitte ihn, den Skill zu installieren.",
+    description: "Sende den Skill-Link an AGENT und bitte ihn, den Skill zu installieren",
     placeholder: "[Skill-Link hier eingeben]",
     request: "Bitte installiere diesen Skill für mich: {LINK}",
   },
@@ -27,17 +27,17 @@ export const de_de_skills_page = {
     saved: "Gespeichert",
     discard: "Änderungen verwerfen und neu laden",
     overwrite: "Datei überschreiben",
-    conflict: "Die Datei wurde extern geändert. Neu laden oder ausdrücklich überschreiben.",
+    conflict: "Die Datei wurde extern geändert. Neu laden oder ausdrücklich überschreiben …",
     invalid_name:
-      "Maximal 64 Kleinbuchstaben, Ziffern und einzelne Bindestriche. Anfang und Ende müssen alphanumerisch sein.",
-    invalid_description: "Eine einzeilige Beschreibung mit maximal 1024 Zeichen eingeben.",
+      "Maximal 64 Kleinbuchstaben, Ziffern und einzelne Bindestriche. Anfang und Ende müssen alphanumerisch sein …",
+    invalid_description: "Eine einzeilige Beschreibung mit maximal 1024 Zeichen eingeben …",
     unsupported:
-      "Diese Datei ist kein UTF-8-Text oder größer als 2 MB und kann hier nicht bearbeitet werden.",
+      "Diese Datei ist kein UTF-8-Text oder größer als 2 MB und kann hier nicht bearbeitet werden …",
   },
   feedback: {
-    duplicate_name: "Dateiname bereits vorhanden …",
-    operation_failed: "Dateiaktion fehlgeschlagen …",
-    load_failed: "Skills konnten nicht geladen werden …",
-    save_failed: "Skill-Einstellungen konnten nicht gespeichert werden …",
+    duplicate_name: "Dateiname bereits vorhanden",
+    operation_failed: "Dateiaktion fehlgeschlagen",
+    load_failed: "Skills konnten nicht geladen werden",
+    save_failed: "Skill-Einstellungen konnten nicht gespeichert werden",
   },
 } as const;

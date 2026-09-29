@@ -4,7 +4,7 @@ export const ko_kr_project_page = {
   title: "프로젝트 홈",
   create: {
     title: "새 프로젝트",
-    subtitle: "원본 파일로 .lg 생성. 생성 후 원본 파일은 필요 없습니다.",
+    subtitle: "원본 파일로 .lg 생성. 생성 후 원본 파일은 필요 없습니다",
     drop_title: "클릭하거나 원본 파일 놓기",
     ready_status: "원본 파일 {COUNT}개 선택됨",
     loading_toast: "프로젝트 생성 중 …",
@@ -23,7 +23,7 @@ export const ko_kr_project_page = {
   },
   open: {
     title: "프로젝트 열기",
-    subtitle: "기존 .lg 프로젝트 파일을 열어 번역 진행 상황과 규칙을 이어서 작업합니다.",
+    subtitle: "기존 .lg 프로젝트 파일을 열어 번역 진행 상황과 규칙을 이어서 작업합니다",
     drop_title: "클릭하거나 .lg 파일 놓기",
     recent_title: "최근 열었던 프로젝트",
     empty: "최근 열었던 프로젝트가 없습니다",
@@ -35,8 +35,8 @@ export const ko_kr_project_page = {
     failed: "프로젝트 불러오기 실패: {ERROR}",
     failed_generic: "프로젝트 불러오기 실패",
     action: "프로젝트 열기",
-    remove_unavailable: "최근 사용 기록을 제거할 수 없습니다. 잠시 후 다시 시도해 주세요.",
-    missing_file_description: "프로젝트 파일을 사용할 수 없습니다. 목록에서 제거할까요?",
+    remove_unavailable: "최근 사용 기록을 제거할 수 없습니다. 잠시 후 다시 시도해 주세요 …",
+    missing_file_description: "프로젝트 파일을 사용할 수 없습니다. 목록에서 제거할까요 …?",
   },
   preview: {
     title: "프로젝트 개요",
@@ -47,7 +47,7 @@ export const ko_kr_project_page = {
     progress: "번역 진행률",
   },
   loading_stages: {
-    project: "프로젝트 구조 불러오는 중 …",
+    project: "프로젝트 기본 정보 불러오는 중 …",
     files: "프로젝트 파일 불러오는 중 …",
     items: "프로젝트 항목 불러오는 중 …",
     quality: "품질 규칙 불러오는 중 …",
@@ -79,5 +79,5 @@ export const ko_kr_project_page = {
     wolf: "WOLF 공식 번역 도구 게임 텍스트",
   },
   drop_multiple_unavailable: "한 번에 파일 또는 폴더 하나만 놓을 수 있습니다",
-  drop_unavailable: "놓은 파일의 로컬 경로를 읽을 수 없습니다. 클릭하여 선택해 주세요.",
+  drop_unavailable: "놓은 파일의 로컬 경로를 읽을 수 없습니다. 클릭하여 선택해 주세요 …",
 } satisfies LocaleMessageSchema<typeof zh_cn_project_page>;

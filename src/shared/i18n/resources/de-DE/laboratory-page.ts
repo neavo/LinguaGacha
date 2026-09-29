@@ -33,10 +33,6 @@ export const de_de_laboratory_page = {
   },
   feedback: {
     refresh_failed:
-      "Laboreinstellungen können derzeit nicht aktualisiert werden. Bitte versuchen Sie es später erneut.",
-    update_failed:
-      "Fehler beim Speichern der Laboreinstellungen. Bitte versuchen Sie es später erneut.",
-    mtool_optimizer_loading_toast: "Projekt-Cache wird aktualisiert …",
-    skip_duplicate_source_text_loading_toast: "Projekt-Cache wird aktualisiert …",
+      "Laboreinstellungen können derzeit nicht aktualisiert werden. Bitte versuchen Sie es später erneut …",
   },
 } satisfies LocaleMessageSchema<typeof zh_cn_laboratory_page>;

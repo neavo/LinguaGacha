@@ -11,17 +11,22 @@ export const ko_kr_preset_editor = {
   },
   confirm: {
     delete: {
-      description: "프리셋을 삭제할까요?",
+      description: "프리셋을 삭제할까요 …?",
     },
     overwrite: {
-      description: "프리셋을 덮어쓸까요?",
+      description: "프리셋을 덮어쓸까요 …?",
     },
   },
   dialog: {
     name_placeholder: "프리셋 이름 입력 …",
   },
   feedback: {
-    exists: "파일이 이미 있습니다 …",
+    exists: "파일이 이미 있습니다",
     name_required: "프리셋 이름은 비워 둘 수 없습니다",
+    load_failed: "프리셋을 불러오지 못했습니다",
+    save_failed: "프리셋을 저장하지 못했습니다",
+    rename_failed: "프리셋 이름을 변경하지 못했습니다",
+    delete_failed: "프리셋을 삭제하지 못했습니다",
+    default_update_failed: "기본 프리셋 설정을 저장하지 못했습니다",
   },
 } satisfies LocaleMessageSchema<typeof zh_cn_preset_editor>;

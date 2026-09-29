@@ -5,10 +5,7 @@ export const ko_kr_proofreading_page = {
     view: "열어서 보기",
     title: "페이지 미리보기",
     source_page: "{PAGE} 페이지",
-    retry: "다시 시도",
     select_files: "파일 선택",
-    page_count: "{COUNT}페이지",
-    item_count: "{COUNT}개 항목",
     text_only: "이 작업에는 텍스트 항목을 선택하세요",
     failed: "미리보기 실패",
     previous: "이전 페이지",
@@ -43,11 +40,6 @@ export const ko_kr_proofreading_page = {
       tooltip_label: "검색 범위",
       all: "전체",
     },
-  },
-  sort: {
-    ascending: "오름차순",
-    descending: "내림차순",
-    clear: "취소",
   },
   status: {
     excluded: "제외됨",
@@ -92,8 +84,8 @@ export const ko_kr_proofreading_page = {
     load_failed: "문맥을 읽을 수 없습니다",
   },
   confirm: {
-    retranslate_description: "항목 {COUNT}개를 다시 번역할까요?",
-    clear_translation_description: "항목 {COUNT}개의 번역문을 비울까요?",
+    retranslate_description: "항목 {COUNT}개를 다시 번역할까요 …?",
+    clear_translation_description: "항목 {COUNT}개의 번역문을 비울까요 …?",
   },
   feedback: {
     loading_toast: "데이터 불러오는 중 …",

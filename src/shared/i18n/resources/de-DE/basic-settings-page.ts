@@ -5,11 +5,9 @@ export const de_de_basic_settings_page = {
   title: "Grundeinstellungen",
   fields: {
     source_language: {
-      title: "Quellsprache",
       description: "Legt die Sprache des Eingabetexts im aktuellen Projekt fest",
     },
     target_language: {
-      title: "Zielsprache",
       description: "Legt die Sprache des Ausgabetexts im aktuellen Projekt fest",
     },
     project_save_mode: {
@@ -39,12 +37,10 @@ export const de_de_basic_settings_page = {
   },
   feedback: {
     refresh_failed:
-      "Grundeinstellungen können derzeit nicht aktualisiert werden. Bitte versuchen Sie es später erneut.",
-    update_failed: "Fehler beim Speichern der Einstellung. Bitte versuchen Sie es später erneut.",
+      "Grundeinstellungen können derzeit nicht aktualisiert werden. Bitte versuchen Sie es später erneut …",
     request_timeout_invalid:
-      "Das Anfrage-Timeout muss eine Zahl innerhalb des gültigen Bereichs sein.",
+      "Das Anfrage-Timeout muss eine Zahl innerhalb des gültigen Bereichs sein …",
     pick_directory_failed:
-      "Ordnerauswahl fehlgeschlagen. Bitte wählen Sie das feste Speicherverzeichnis erneut aus.",
-    source_language_loading_toast: "Projekt-Cache wird aktualisiert …",
+      "Ordnerauswahl fehlgeschlagen. Bitte wählen Sie das feste Speicherverzeichnis erneut aus …",
   },
 } satisfies LocaleMessageSchema<typeof zh_cn_basic_settings_page>;

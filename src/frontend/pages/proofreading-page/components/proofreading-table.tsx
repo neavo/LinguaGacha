@@ -310,13 +310,7 @@ export function ProofreadingTable(props: ProofreadingTableProps): JSX.Element {
         kind: "data",
         id: "src",
         title: t("proofreading_page.fields.source"),
-        sortable: {
-          action_labels: {
-            ascending: t("proofreading_page.sort.ascending"),
-            descending: t("proofreading_page.sort.descending"),
-            clear: t("proofreading_page.sort.clear"),
-          },
-        },
+        sortable: {},
         head_class_name: "proofreading-page__table-source-head",
         cell_class_name: "proofreading-page__table-source-cell",
         render_cell: (payload) => {
@@ -341,13 +335,7 @@ export function ProofreadingTable(props: ProofreadingTableProps): JSX.Element {
         kind: "data",
         id: "dst",
         title: t("proofreading_page.fields.translation"),
-        sortable: {
-          action_labels: {
-            ascending: t("proofreading_page.sort.ascending"),
-            descending: t("proofreading_page.sort.descending"),
-            clear: t("proofreading_page.sort.clear"),
-          },
-        },
+        sortable: {},
         head_class_name: "proofreading-page__table-translation-head",
         cell_class_name: "proofreading-page__table-translation-cell",
         render_cell: (payload) => {
@@ -373,13 +361,7 @@ export function ProofreadingTable(props: ProofreadingTableProps): JSX.Element {
         title: t("proofreading_page.fields.status"),
         width: 108,
         align: "center",
-        sortable: {
-          action_labels: {
-            ascending: t("proofreading_page.sort.ascending"),
-            descending: t("proofreading_page.sort.descending"),
-            clear: t("proofreading_page.sort.clear"),
-          },
-        },
+        sortable: {},
         head_class_name: "proofreading-page__table-status-head",
         cell_class_name: "proofreading-page__table-status-cell",
         render_cell: (payload) => {

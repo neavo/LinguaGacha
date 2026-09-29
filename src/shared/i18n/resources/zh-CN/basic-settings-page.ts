@@ -2,12 +2,10 @@ export const zh_cn_basic_settings_page = {
   title: "基础设置",
   fields: {
     source_language: {
-      title: "原文语言",
-      description: "设置当前项目中输入文本的语言",
+      description: "设置当前工程中输入文本的语言",
     },
     target_language: {
-      title: "译文语言",
-      description: "设置当前项目中输出文本的语言",
+      description: "设置当前工程中输出文本的语言",
     },
     project_save_mode: {
       title: "工程文件保存位置",
@@ -29,10 +27,8 @@ export const zh_cn_basic_settings_page = {
     },
   },
   feedback: {
-    refresh_failed: "当前无法刷新基础设置，请稍后重试。",
-    update_failed: "设置保存失败，请稍后重试。",
-    request_timeout_invalid: "请求超时时间必须填写为有效范围内的数字。",
-    pick_directory_failed: "目录选择失败，请重新选择固定保存目录。",
-    source_language_loading_toast: "正在刷新项目缓存 …",
+    refresh_failed: "当前无法刷新基础设置，请稍后重试 …",
+    request_timeout_invalid: "请求超时时间必须填写为有效范围内的数字 …",
+    pick_directory_failed: "目录选择失败，请重新选择固定保存目录 …",
   },
 } as const;

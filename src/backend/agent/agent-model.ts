@@ -15,7 +15,7 @@ import type { PiModelCatalogReader } from "../llm/pi-model-catalog";
 import { resolve_pi_model, type PiApi } from "../llm/llm-pi";
 import { read_config_model_records, resolve_model_for_usage } from "../model/model-config-resolver";
 
-/** 每次批量调用解析偏好；固定选择使用保存配置，跟随可按模型能力临时降低思考档位。 */
+/** 每次批量调用解析偏好；固定选择使用保存配置，跟随可按模型能力临时降低思考等级。 */
 export function resolve_agent_batch_translation_model(
   config: JsonRecord,
   agent_model: Model,
@@ -29,12 +29,12 @@ export function resolve_agent_batch_translation_model(
   }
   if (!normalize_setting_snapshot(config).agent_batch_translation_thinking_adaptive_enable)
     return agent_model;
-  // 能力集合按档位升序排列；`DEFAULT` 表示平台默认，不参与最低档位选择。
+  // 能力集合按等级升序排列；`DEFAULT` 表示平台默认，不参与最低等级选择。
   const level = resolve_model_capability(agent_model, catalog).available_thinking_levels.find(
     (candidate) => candidate !== "DEFAULT",
   );
   if (level === undefined) return agent_model;
-  // 副本隔离本次翻译档位与 Agent 会话配置。
+  // 副本隔离本次翻译等级与 Agent 会话配置。
   return Model.from_json({ ...agent_model.to_json(), thinking: { level } }, agent_model.id);
 }
 
@@ -92,7 +92,7 @@ export function register_agent_model(
       },
     });
   }
-  // 保留产品档位供后续批量调用解析，SDK 档位单独供会话运行使用。
+  // 保留产品等级供后续批量调用解析，SDK 等级单独供会话运行使用。
   return {
     model,
     thinkingLevel: pi.thinkingLevel,

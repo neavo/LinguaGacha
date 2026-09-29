@@ -97,6 +97,7 @@ import type {
   AppTableColumn,
   AppTableRowModel,
   AppTableSelectionChange,
+  AppTableSortState,
 } from "@frontend/widgets/app-table/app-table-types";
 
 type TestRow = {
@@ -383,6 +384,43 @@ describe("AppTable", () => {
     mounted_containers.push(rendered.container);
     return rendered.container;
   }
+
+  it("排序按钮提示下一次动作，按升序、降序、清除循环", async () => {
+    const changed = vi.fn();
+    function SortProbe() {
+      const [sort_state, set_sort_state] = useState<AppTableSortState | null>(null);
+      return create_default_props({
+        columns: [
+          {
+            kind: "data",
+            id: "label",
+            title: "名称",
+            sortable: {},
+            render_cell: ({ row }) => row.label,
+          },
+        ],
+        sort_state,
+        on_sort_change: (next) => {
+          changed(next);
+          set_sort_state(next);
+        },
+      });
+    }
+    const container = await mount(<SortProbe />);
+    for (const action of ["ascending", "descending", "clear"] as const) {
+      const button = container.querySelector<HTMLButtonElement>(
+        `button[aria-label="app.sort.${action}"]`,
+      );
+      expect(button).not.toBeNull();
+      await act(async () => button!.click());
+    }
+    expect(changed.mock.calls).toEqual([
+      [{ column_id: "label", direction: "ascending" }],
+      [{ column_id: "label", direction: "descending" }],
+      [null],
+    ]);
+    expect(container.querySelector('[aria-label="app.sort.ascending"]')).not.toBeNull();
+  });
 
   it("双击目标行与 Enter 活动行共用激活入口，多选保持原有选区", async () => {
     const on_row_activate = vi.fn();

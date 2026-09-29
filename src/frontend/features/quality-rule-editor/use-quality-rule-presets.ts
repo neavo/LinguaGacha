@@ -31,7 +31,6 @@ import {
 export function useQualityRulePresets<K extends QualityRuleKind>(
   rule_type: K,
   entries: QualityRuleEntryByKind[K][],
-  error_key: LocaleKey,
 ) {
   const { t } = useI18n();
   const { settings_snapshot, apply_settings_snapshot, project_snapshot, refresh_settings } =
@@ -74,13 +73,13 @@ export function useQualityRulePresets<K extends QualityRuleKind>(
   }, [project_snapshot.path, rule_type]);
 
   /** 把当前操作错误映射为一条用户反馈。 */
-  function report(error: unknown): void {
-    push_toast("error", resolve_visible_error_message(error, t, t(error_key)));
+  function report(error: unknown, key: LocaleKey): void {
+    push_toast("error", resolve_visible_error_message(error, t, t(key)));
   }
   /** 已提交错误不能重试原文件操作；重读两端事实后结束原命令。 */
-  async function handle_command_error(error: unknown): Promise<boolean> {
+  async function handle_command_error(error: unknown, key: LocaleKey): Promise<boolean> {
     if (!(error instanceof DesktopApiError) || error.code !== "data.committed_sync_failed") {
-      report(error);
+      report(error, key);
       return false;
     }
     let failure = error as unknown;
@@ -89,7 +88,7 @@ export function useQualityRulePresets<K extends QualityRuleKind>(
     } catch (cause) {
       failure = new AggregateError([error, cause], "Failed to reload committed preset state.");
     }
-    report(failure);
+    report(failure, "preset_editor.feedback.load_failed");
     return true;
   }
   /** 重读预设列表，旧页面的回包随页面失效。 */
@@ -107,7 +106,7 @@ export function useQualityRulePresets<K extends QualityRuleKind>(
     } catch (error) {
       if (token === generation.current) {
         set_preset_menu_open(false);
-        report(error);
+        report(error, "preset_editor.feedback.load_failed");
       }
     }
   }
@@ -144,13 +143,15 @@ export function useQualityRulePresets<K extends QualityRuleKind>(
   /** 保存预设并读取目录结果。 */
   async function save_preset(name: string): Promise<boolean> {
     const token = generation.current;
+    let error_key: LocaleKey = "preset_editor.feedback.save_failed";
     try {
       await save_quality_rule_preset(rule_type, name, entries);
       if (token !== generation.current) return false;
+      error_key = "preset_editor.feedback.load_failed";
       await refresh_preset_menu();
       return token === generation.current;
     } catch (error) {
-      if (token === generation.current) report(error);
+      if (token === generation.current) report(error, error_key);
       return false;
     }
   }
@@ -164,7 +165,10 @@ export function useQualityRulePresets<K extends QualityRuleKind>(
       set_preset_snapshot(result);
       return true;
     } catch (error) {
-      return token === generation.current && (await handle_command_error(error));
+      return (
+        token === generation.current &&
+        (await handle_command_error(error, "preset_editor.feedback.rename_failed"))
+      );
     }
   }
   /** 保存规则槽位的默认引用并应用设置回包。 */
@@ -177,7 +181,7 @@ export function useQualityRulePresets<K extends QualityRuleKind>(
         ),
       );
     } catch (error) {
-      report(error);
+      report(error, "preset_editor.feedback.default_update_failed");
     }
   }
   /** 结束命名并释放本次输入。 */
@@ -246,7 +250,8 @@ export function useQualityRulePresets<K extends QualityRuleKind>(
         if (succeeded) close_preset_input_dialog();
       }
     } catch (error) {
-      if (token === generation.current) succeeded = await handle_command_error(error);
+      if (token === generation.current)
+        succeeded = await handle_command_error(error, "preset_editor.feedback.delete_failed");
     }
     if (token !== generation.current) return;
     busy.current = false;

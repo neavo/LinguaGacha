@@ -11,7 +11,7 @@ export const ko_kr_app = {
     app_name: "LinguaGacha",
   },
   model: {
-    catalog_updated: "모델 데이터베이스가 업데이트되었습니다 …",
+    catalog_updated: "모델 데이터베이스가 업데이트되었습니다",
     type: {
       preset: "프리셋 모델",
       google: "사용자 지정 Google 모델",
@@ -26,9 +26,8 @@ export const ko_kr_app = {
       update_failed: "모델 선택을 저장하지 못했습니다. 잠시 후 다시 시도해 주세요 …",
     },
     thinking_level: {
-      label: "생각 수준",
       default: "기본값 유지",
-      default_description: "생각 수준 데이터를 전혀 보내지 않고 플랫폼의 기본 설정을 따릅니다.",
+      default_description: "생각 수준 데이터를 전혀 보내지 않고 플랫폼의 기본 설정을 따릅니다",
       off: "끄기",
       low: "낮음",
       medium: "보통",
@@ -50,7 +49,6 @@ export const ko_kr_app = {
     export: "내보내기",
     import: "가져오기",
     preset: "프리셋",
-    query: "조회",
     reset: "초기화",
     retry: "다시 시도",
     save: "저장",
@@ -63,40 +61,40 @@ export const ko_kr_app = {
     select_folder: "폴더 선택",
   },
   feedback: {
-    initial_load_failed: "앱 데이터를 불러오지 못했습니다. 다시 시도해 주세요.",
-    export_success: "데이터를 내보냈습니다 …",
-    import_success: "데이터를 가져왔습니다 …",
-    no_valid_data: "유효한 데이터가 없습니다 …",
-    update_failed: "업데이트에 실패했습니다 …",
-    project_settings_aligned: "현재 설정에 맞춰 프로젝트 설정을 업데이트했습니다 …",
+    initial_load_failed: "앱 데이터를 불러오지 못했습니다. 다시 시도해 주세요 …",
+    export_success: "데이터를 내보냈습니다",
+    import_success: "데이터를 가져왔습니다",
+    no_valid_data: "유효한 데이터가 없습니다",
+    update_failed: "업데이트에 실패했습니다",
+    project_settings_aligned: "현재 설정에 맞춰 프로젝트 설정을 업데이트했습니다",
+    project_cache_loading: "프로젝트 캐시 새로 고치는 중 …",
+    settings_save_failed: "설정을 저장하지 못했습니다. 잠시 후 다시 시도해 주세요 …",
   },
   error_boundary: {
     eyebrow: "Renderer Runtime",
     title: "페이지 실행 중 오류가 발생했습니다",
-    description: "현재 창을 보호 화면으로 전환했습니다. 오류 상세 내용은 로그에 기록되었습니다.",
+    description: "현재 창을 보호 화면으로 전환했습니다. 오류 상세 내용은 로그에 기록되었습니다 …",
   },
   project_settings_alignment: {
     field: {
-      source_language: "입력 언어",
-      target_language: "출력 언어",
       mtool_optimizer_enable: "MTool 최적화",
       skip_duplicate_source_text_enable: "중복 원문 건너뛰기",
     },
   },
   close_confirm: {
-    description: "앱을 종료할까요?",
+    description: "앱을 종료할까요 …?",
   },
   quality_rule_import: {
-    duplicate_description: "중복 규칙 {COUNT}개를 발견했습니다. 처리 방법을 선택해 주세요.",
+    duplicate_description: "중복 규칙 {COUNT}개를 발견했습니다. 처리 방법을 선택해 주세요 …",
   },
   update: {
-    confirm_description: "LinguaGacha v{VERSION} 업데이트가 있습니다. 다운로드할까요?",
+    confirm_description: "LinguaGacha v{VERSION} 업데이트가 있습니다. 다운로드할까요 …?",
     restart_confirm: "다시 시작하여 업데이트",
     launching: "처리 중 …",
   },
   drop: {
     multiple_unavailable: "한 번에 파일 하나만 놓을 수 있습니다",
-    unavailable: "놓은 파일의 로컬 경로를 읽을 수 없습니다. 클릭하여 가져와 주세요.",
+    unavailable: "놓은 파일의 로컬 경로를 읽을 수 없습니다. 클릭하여 가져와 주세요 …",
     import_here: "놓아서 규칙 파일 가져오기",
   },
   toggle: {
@@ -186,42 +184,42 @@ export const ko_kr_app = {
   error: {
     request: {
       validation_failed: {
-        message: "요청 매개변수가 잘못되었습니다 …",
+        message: "요청 매개변수가 잘못되었습니다",
       },
       invalid_json: {
-        message: "요청 JSON이 잘못되었습니다 …",
+        message: "요청 JSON이 잘못되었습니다",
       },
       route_not_found: {
-        message: "API 경로가 없습니다 …",
+        message: "API 경로가 없습니다",
       },
     },
     project: {
       already_exists: { message: "프로젝트 파일이 이미 존재합니다. 다른 파일 이름을 선택하세요 …" },
       not_loaded: {
-        message: "프로젝트가 열려 있지 않습니다 …",
+        message: "프로젝트가 열려 있지 않습니다",
       },
       not_found: {
-        message: "프로젝트 파일이 없습니다 …",
+        message: "프로젝트 파일이 없습니다",
       },
     },
     translation: {
-      export_failed: { message: "번역문 내보내기에 실패했습니다 …" },
+      export_failed: { message: "번역문 내보내기에 실패했습니다" },
     },
     file: {
       already_exists: {
         message: "같은 이름의 파일 또는 폴더가 있습니다. 다른 이름을 사용하세요 …",
       },
       not_found: {
-        message: "파일이 없습니다 …",
+        message: "파일이 없습니다",
       },
       parse_failed: {
-        message: "파일 내용을 해석하지 못했습니다 …",
+        message: "파일 내용을 해석하지 못했습니다",
       },
       invalid_structure: {
-        message: "파일 구조가 형식 요구 사항에 맞지 않습니다 …",
+        message: "파일 구조가 형식 요구 사항에 맞지 않습니다",
       },
       io_failed: {
-        message: "파일 읽기·쓰기에 실패했습니다 …",
+        message: "파일 읽기·쓰기에 실패했습니다",
       },
     },
     database: {
@@ -240,7 +238,7 @@ export const ko_kr_app = {
     },
     model: {
       not_found: {
-        message: "모델 설정이 없습니다 …",
+        message: "모델 설정이 없습니다",
       },
       provider_failed: {
         message: "모델 서비스 요청에 실패했습니다. API 설정을 확인해 주세요 …",
@@ -248,10 +246,10 @@ export const ko_kr_app = {
     },
     worker: {
       failed: {
-        message: "백그라운드 실행 채널에 오류가 발생했습니다 …",
+        message: "백그라운드 실행 채널에 오류가 발생했습니다",
       },
       execution_failed: {
-        message: "백그라운드 작업 실행에 실패했습니다 …",
+        message: "백그라운드 작업 실행에 실패했습니다",
       },
     },
     runtime: {
@@ -259,54 +257,54 @@ export const ko_kr_app = {
         message: "모델이 실행 중입니다. 잠시 후 다시 시도해 주세요 …",
       },
       capability_missing: {
-        message: "현재 실행 환경에 필요한 기능이 없습니다 …",
+        message: "현재 실행 환경에 필요한 기능이 없습니다",
       },
       disposed: {
-        message: "실행 리소스가 해제되었습니다 …",
+        message: "실행 리소스가 해제되었습니다",
       },
       cancelled: {
-        message: "작업이 취소되었습니다 …",
+        message: "작업이 취소되었습니다",
       },
       internal_invariant: {
-        message: "내부 상태에 오류가 있습니다 …",
+        message: "내부 상태에 오류가 있습니다",
       },
     },
     language: {
       invalid_target_language: {
-        message: "대상 언어가 잘못되었습니다 …",
+        message: "대상 언어가 잘못되었습니다",
       },
       unsupported_all_target_language: {
-        message: "대상 언어로 전체 언어를 선택할 수 없습니다 …",
+        message: "대상 언어로 전체 언어를 선택할 수 없습니다",
       },
       unknown_source_language_code: {
-        message: "원문 언어 코드가 잘못되었습니다 …",
+        message: "원문 언어 코드가 잘못되었습니다",
       },
     },
     quality: {
       unknown_rule_type: {
-        message: "품질 규칙 유형이 잘못되었습니다 …",
+        message: "품질 규칙 유형이 잘못되었습니다",
       },
       unsupported_rule_meta: {
-        message: "품질 규칙 설정 항목이 잘못되었습니다 …",
+        message: "품질 규칙 설정 항목이 잘못되었습니다",
       },
     },
     prompt: {
       unknown_prompt_type: {
-        message: "프롬프트 유형이 잘못되었습니다 …",
+        message: "프롬프트 유형이 잘못되었습니다",
       },
     },
     desktop: {
       missing_backend_api_base_url: {
-        message: "Backend API 주소가 설정되지 않았습니다 …",
+        message: "Backend API 주소가 설정되지 않았습니다",
       },
       http_error: {
-        message: "요청 실패: {PATH} …",
+        message: "요청 실패: {PATH}",
       },
       network_failed: {
-        message: "네트워크 요청 실패: {PATH} …",
+        message: "네트워크 요청 실패: {PATH}",
       },
       timeout: {
-        message: "요청 시간 초과: {PATH} …",
+        message: "요청 시간 초과: {PATH}",
       },
     },
   },
@@ -349,7 +347,6 @@ export const ko_kr_app = {
     },
   },
   log: {
-    api_gateway_started: "API Gateway 시작됨 - {BASE_URL}",
     api_test_fail: "API 테스트에 실패했습니다 …",
     api_test_key: "테스트 중인 키:",
     api_test_messages: "작업 프롬프트:",
@@ -380,4 +377,6 @@ export const ko_kr_app = {
     translation_task_result: "번역 결과:",
     translation_response_partially_invalid: "일부 번역문이 검증을 통과하지 못했습니다 …",
   },
+  sort: { ascending: "오름차순", descending: "내림차순", clear: "정렬 해제" },
+  language_role: { source: "원문 언어", target: "번역문 언어" },
 } satisfies LocaleMessageSchema<typeof zh_cn_app>;
