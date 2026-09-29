@@ -1,57 +1,90 @@
-# LinguaGacha 架构边界
+# LinguaGacha 架构设计
 
-本文只记录进程拓扑、跨层依赖和运行时主链路。命令、后端共享边界、产品 Agent、前端运行态与验证流程分别进入对应专题文档；产品语义和视觉权威不在这里展开。
+LinguaGacha 让 GUI、CLI 与产品 Agent 共用后端业务能力，工程事实由同一套写入流程维护。
 
-## 1. 专题地图
+进程隔离用于保持桌面响应，并让计算、取消和资源释放有各自的执行边界。
 
-|问题|唯一归宿|
+## 🧭 专题入口
+
+|需要理解的设计意图|归宿|
 |---|---|
-|系统分层、进程拓扑、跨层边界、运行时主链路|本文|
-|CLI 入口、命令、临时工程、资源、输出、平台启动器|[`CLI.md`](CLI.md)|
-|后端 API / SSE、状态、任务、数据库、`.lg` 存储|[`BACKEND.md`](BACKEND.md)|
-|产品 Agent 会话、模型历史、启动资源、skill、工具、宿主能力、页面消费|[`AGENT_RUNTIME.md`](AGENT_RUNTIME.md)|
-|Electron / preload / renderer、共享运行态、页面 query、导航、样式消费|[`FRONTEND.md`](FRONTEND.md)|
-|阅读路径与验证矩阵|[`WORKFLOW.md`](WORKFLOW.md)|
+|进程隔离、依赖方向与资源生命周期|本文|
+|CLI 的临时工程、设置继承与机器输出|[CLI](CLI.md)|
+|工程一致性、任务恢复、文件存储与网络策略|[BACKEND](BACKEND.md)|
+|产品 Agent 的会话、工作材料、授权与运行环境|[AGENT_RUNTIME](AGENT_RUNTIME.md)|
+|前端状态寿命、交互恢复、宿主接入与应用更新|[FRONTEND](FRONTEND.md)|
+|源码定位、开发命令与验证选择|[WORKFLOW](WORKFLOW.md)|
 
-## 2. 运行时拓扑
+文档收录与维护规则见 [AGENTS.md](../AGENTS.md)。
 
-- `src/index.ts` 是唯一产品入口，只按显式 `--cli` 分发 GUI 或 CLI；入口适配器显式注入安装根、只读内置资产根、桌面 bundle 与 `BackendWorkerExecution`，Backend 和 worker 不从当前目录反推这些边界。`builtin` 随主应用打进 `app.asar`。
-- GUI 的完整 Backend Runtime 运行在独立 `worker_thread`，其中由 `GuiBackendBootstrap` 组装共享资源、业务服务、Agent、事件流与 Gateway；Electron main 只拥有应用、窗口、IPC、shell 和更新器。renderer 仍通过本机 HTTP / SSE 消费 Gateway，不直接使用线程消息。
-- GUI main 与 Backend Runtime 只交换 `src/shared/backend-runtime.ts` 定义的结构化控制协议和工作区运行目录：ready、stop、语言读取、宿主诊断，以及代理解析、打开目录、选择保存路径以及图片处理和 HTML 打印的宿主回调（导出与 Agent 共用目录打开能力）。宿主操作以 requestId 隔离并发。图片与打印取消通过 host_cancel 传回 main，关闭窗口并等待结果结算；其它原生操作的取消只结束 worker 等待，迟到回包丢弃。runtime 关闭或 worker 退出同时中止待决图片与打印窗口。Agent 工作区子进程的请求通信归 [`AGENT_RUNTIME.md`](AGENT_RUNTIME.md)。worker 意外退出直接结束应用，不回退同进程、不自动重启。
-- 图片宿主 `src/native/agent-image-host.ts` 在独立隐藏窗口执行 Chromium 编解码，策略与缓存归 Agent 后端。窗口超时、取消和资源释放沿宿主请求生命周期完成。
-- HTML 打印宿主在 `src/native/pdf-host.ts`，由 GUI main 持有；惰性创建专用 session 和隐藏窗口，串行复用窗口且每次加载新文档。宿主从工作区部署目录加载并缓存打印资源，字体与图片使用内嵌 data 资源。宿主独占 CSP，禁止文档脚本、外部资源、Node 集成、弹窗与权限请求；打印前等待字体与图片，并测量标题和图注以限制图片高度；取消、超时和失败销毁窗口，结算后才能执行下一任务，入口关闭时 dispose。
-- PDF 计算在独立线程中执行：BackendServices 拥有单文档串行 PDFWorker，入口注入共享运行目录；文件格式、预览、项目导入与导出服务必须显式接收其 PDFExecution，打印回调由 PDFWorker 持有。取消须等待线程终止及关联打印收尾，下次任务再启动。测试和源码运行通过显式同进程模式复用文档实现。Agent 已有独立 Node 进程，直接执行同一 PDF 模块。最终文件写入仍由后端文件服务拥有。
-- CLI 在当前进程线性创建 `BackendResources` 与 `BackendServices`，通过窄 `CLIJobServices` 消费类型化业务能力、批量翻译快照订阅和 completion。
-- GUI Backend Runtime 在发布态固定运行于独立 `worker_thread`；work-unit、planning 和 compute 的正式执行统一注入 `worker_threads`，三者的 `in_process` 只允许测试或源码运行显式选择，不作为失败回退。
-- `BackendResources` 统一拥有路径、迁移、设置、普通 HTTP transport、数据库与日志；`BackendServices` 统一拥有工程、批量翻译、cache、模型、质量和文件能力，并向 GUI Agent 暴露同一组工程会话、运行门禁、cache 与唯一写入口。两者都不依赖 Agent 或 API 适配层。
-- Backend Runtime worker 由 `GuiBackendBootstrap` 串行管理共享资源 → 业务服务 → Agent → Gateway 的启动和严格逆序关闭，单项失败不跳过后续释放。CLI 按 job 的线性生命周期逆序释放业务服务和共享资源。transport 的网络语义归 [`BACKEND.md`](BACKEND.md)。
+## 🧩 进程隔离
+
+GUI 将完整后端放入独立 `worker_thread`，使业务执行与 Electron 窗口生命周期分开。
+
+- renderer 通过本机 HTTP / SSE 消费后端。
+- main 与后端通过线程消息处理启动、关闭和宿主回调。
+- CLI 在当前进程中创建共享后端，按单次任务释放服务。
 
 ```mermaid
 flowchart LR
-    I["src/index.ts"] --> G["GUI 入口"]
-    I --> C["CLI 入口"]
-    G --> M["Electron main 宿主"]
-    M --> BG["Backend Runtime worker\nGuiBackendBootstrap"]
-    C --> BC["BackendResources + BackendServices"]
-    BG --> GS["BackendServices.batchTranslation"]
-    BG --> D["Agent + Node Workspace + Gateway"]
-    BC --> CS["BackendServices"]
-    GS --> S["BatchTranslationService"]
-    CS --> S
-    D -->|"run_batch_item_translation"| S
-    S --> E["BatchTranslationRunner"]
-    E --> W["worker_threads"]
-    BG -->|"HTTP / SSE"| R["preload / renderer"]
-    M --> R
+    Entry(["产品入口"]) --> Main("Electron main")
+    Entry --> CLI("CLI")
+    Main --> Runtime("Backend Runtime worker")
+    Main --> Renderer("preload / renderer")
+    Renderer -->|"HTTP / SSE"| Runtime
+    Runtime --> Services("共享后端业务能力")
+    CLI --> Services
+    Runtime --> Agent("产品 Agent")
+    Agent --> Services
+    Agent --> Workspace("Node 工作区子进程")
+    Services --> Workers("计算与翻译线程")
 ```
 
-## 3. 跨层依赖
+GUI 与 CLI 在各自环境中实例化共享后端，让翻译、工程写入和导出沿用同一套业务语义。GUI 的 `GuiBackendBootstrap` 额外装配 Agent 与 Gateway。
 
-- `src/domain` 只承载跨层实体、值对象、合法值集合和贴身判断规则，不反向依赖 backend、frontend 或 Electron。
-- `src/shared` 承载可复用的纯规则、协议词表、reader 与无状态工具，不依赖 React、DOM、Electron、Node FS、SQLite、服务单例或可变全局状态。
-- `src/native` 收口真实磁盘 IO、路径身份和平台路径策略；backend 与 worker 不绕过它处理平台差异。
-- `src/backend` 拥有项目事实、任务执行、数据库和出站模型请求，不依赖 renderer。
-- `src/gui` 是 Electron 宿主、Backend Runtime 客户端、IPC、preload、窗口和外链策略边界；生产代码不得导入 backend 实现，该约束由 `npm run check` 验证。
-- `src/frontend` 只消费宿主契约、后端公开协议、`src/domain` 与 `src/shared`，不导入 backend 或 native 实现。
-- 应用语言持久化编码、界面 Locale 和发行包语言资源共用 `domain/app-language`。宿主与后端共用 `shared/backend-api` 的地址契约。
-- 数据库、PDF 格式与 Agent Workspace 共用 `shared/pdf-schema` 校验，`shared/pdf` 从该 Schema 推导数据类型。
+资源路径由入口显式注入：安装根、只读内置资源根和工作区运行目录随应用版本确定。这样，工作目录变化不会改变线程或子进程使用的资源。
+
+正式运行的执行策略有两条约束：
+
+- GUI 后端与重型计算使用独立线程。`in_process` 供测试或源码运行显式选择。
+- 后端 worker 意外退出会结束应用。继续运行需要重新建立工程会话、运行占用和所有在途操作的一致状态。
+
+## 🔗 依赖方向
+
+共享能力按依赖范围放置：
+
+- `src/domain` 与 `src/shared` 保存领域值和纯规则，让后端、renderer 与工作区使用相同语义。
+- `src/native` 处理平台 IO，使平台差异集中在文件与宿主边界。
+- 界面通过公开协议消费业务能力，依赖方向由 `buildtools/check/` 校验。
+
+后端装配分为基础资源和业务服务：
+
+- `BackendResources` 管理基础资源。
+- `BackendServices` 组织业务服务，供 CLI 和产品 Agent 复用。
+- Gateway 将已装配的服务适配为公开协议。
+
+## ⏳ 关闭与宿主操作
+
+关闭沿依赖关系逆序进行：
+
+1. 停止受理并取消在途操作。
+2. 等待使用者收尾。
+3. 释放业务服务和基础资源。
+
+单项清理失败后仍继续后续释放，并保留错误，避免遗留仍在运行的下层资源。
+
+### Chromium 宿主
+
+图片编解码和 HTML 打印需要 Chromium，由 main 持有隐藏窗口。
+
+- 后端决定业务策略并写入文件。
+- 宿主执行图像或打印操作。
+- 打印文档使用内嵌资源，并禁用脚本和外部访问，限制生成内容的资源访问范围。
+
+### 取消与交付
+
+图片或打印取消后，关闭窗口并等待请求结算。PDF 计算线程和 Agent 子进程也等关联宿主请求收尾后再释放占用，避免下一任务接管仍在使用的文件或窗口。
+
+其它原生操作取消后结束调用方等待，并丢弃迟到回包。
+
+PDF 的正式预览与导出共用文档实现：后端在独立线程中计算，Agent 在已有 Node 子进程中调用同一模块，使预览与交付使用相同的排版语义。
