@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import { configure_packaged_esbuild } from "./native/esbuild-runtime";
 
 import {
   build_worker_threads_backend_worker_execution_from_desktop_bundle_dir,
@@ -8,7 +9,7 @@ import {
 } from "./backend/worker/worker-execution";
 
 /**
- * 统一产品入口只负责 GUI/CLI 分发，不直接持有任何业务服务。
+ * 统一产品入口配置原生工具环境，再分发 GUI/CLI。
  */
 void run_product_entry();
 
@@ -17,6 +18,7 @@ void run_product_entry();
  */
 async function run_product_entry(): Promise<void> {
   const desktop_bundle_dir = resolve_desktop_bundle_dir_from_module_url(import.meta.url); // 产品入口所在的构建根目录。
+  configure_packaged_esbuild(desktop_bundle_dir); // 必须早于 GUI/CLI 动态导入及 worker 创建。
   const worker_execution =
     build_worker_threads_backend_worker_execution_from_desktop_bundle_dir(desktop_bundle_dir); // worker_execution 把 worker_threads 入口契约注入后续启动链路。
   if (should_run_cli()) {

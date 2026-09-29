@@ -1,11 +1,11 @@
 import {
-  Client,
-  SdkError,
-  SdkErrorCode,
-  SdkHttpError,
-  StreamableHTTPClientTransport,
+  McpClient,
+  McpHttpError,
+  McpSessionExpiredError,
+  McpTimeoutError,
+  StreamableHttpTransport,
   type CallToolResult,
-} from "@modelcontextprotocol/client";
+} from "@earendil-works/pi-mcp";
 
 import { is_json_record } from "../../domain/json";
 import type { LogManager } from "../log/log-manager";
@@ -103,7 +103,7 @@ class SearchProviderError extends Error {
 
 /** 应用级固定搜索服务；成功来源晋升，并在后续失败时环形回访其它来源。 */
 export class WebSearchService {
-  private readonly clients = new Map<AgentWebSearchProvider, Client>(); // 拥有连接中的客户端及可复用会话
+  private readonly clients = new Map<AgentWebSearchProvider, McpClient>(); // 拥有连接中的客户端及可复用会话
   private preferred_provider_index = 0; // 仅随应用进程存在，工程切换不重置
   private disposed = false; // 组合根释放后阻止重新触达任何供应商
 
@@ -168,60 +168,64 @@ export class WebSearchService {
     }
   }
 
-  /** 仅已携带会话的工具调用 404 才重建；第二次失败也释放会话，预算始终由外层拥有。 */
+  /** 单家操作拥有握手、调用与重建的取消；仅会话过期重试一次，共用外层预算。 */
   private async search_provider(
     spec: SearchProviderSpec,
     query: string,
     signal: AbortSignal,
   ): Promise<string> {
-    for (let attempt = 0; ; attempt += 1) {
-      const client = await this.require_client(spec, signal);
-      const has_session = client.transport?.sessionId !== undefined; // 记录发送时的会话事实，关闭后 transport 可能清空
-      try {
-        const result = await client.callTool(
-          { name: spec.tool, arguments: spec.create_arguments(query) },
-          { signal },
-        );
-        return read_search_text(spec, result);
-      } catch (error) {
-        // initialize 协议的取消只发送通知；关闭本地连接才能同时终止尚未返回的 HTTP。
-        if (
-          signal.aborted ||
-          (error instanceof SdkError && error.code === SdkErrorCode.RequestTimeout)
-        ) {
+    signal.throwIfAborted();
+    let cancelled_close: Promise<void> | undefined; // 取消监听器启动关闭，操作退出前等待结算
+    const cancel = (): void => {
+      // Pi 的 connect 不接收 signal；关闭客户端同时中断握手和工具请求的 HTTP。
+      cancelled_close = this.close_client(spec.name, signal.reason);
+      // 监听器不能 await，先接住拒绝；finally 会等待并传播同一关闭错误。
+      void cancelled_close.catch(() => undefined);
+    };
+    signal.addEventListener("abort", cancel, { once: true });
+    try {
+      for (let attempt = 0; ; attempt += 1) {
+        const client = await this.require_client(spec, signal);
+        signal.throwIfAborted();
+        try {
+          const result = await client.callTool(spec.tool, spec.create_arguments(query), { signal });
+          return read_search_text(spec, result);
+        } catch (error) {
+          if (signal.aborted) throw error;
+          if (error instanceof McpTimeoutError) {
+            await this.close_client(spec.name, error);
+            throw error;
+          }
+          if (!(error instanceof McpSessionExpiredError)) throw error;
           await this.close_client(spec.name, error);
-          throw error;
+          if (attempt > 0) throw error;
         }
-        if (!(has_session && error instanceof SdkHttpError && error.status === 404)) throw error;
-        await this.close_client(spec.name, error);
-        if (attempt > 0) throw error;
       }
+    } finally {
+      signal.removeEventListener("abort", cancel);
+      await cancelled_close;
     }
   }
 
   /** 延迟创建并登记所有权；默认 initialize 握手与全局 fetch 共用现有供应商及系统代理契约。 */
-  private async require_client(spec: SearchProviderSpec, signal: AbortSignal): Promise<Client> {
+  private async require_client(spec: SearchProviderSpec, signal: AbortSignal): Promise<McpClient> {
     signal.throwIfAborted();
     if (this.disposed) throw new AgentToolError({ code: "web_search.unavailable" });
     const existing = this.clients.get(spec.name);
     if (existing !== undefined) return existing;
-    const client = new Client({ name: "LinguaGacha", version: this.client_version });
-    const transport = new StreamableHTTPClientTransport(new URL(spec.url), {
-      requestInit: spec.headers === undefined ? {} : { headers: spec.headers },
+    const client = new McpClient({ name: "LinguaGacha", version: this.client_version });
+    const transport = new StreamableHttpTransport({
+      url: spec.url,
+      ...(spec.headers === undefined ? {} : { headers: spec.headers }),
     });
     this.clients.set(spec.name, client);
     // 迟到的旧连接关闭通知只能释放自身，不能删除已经替换的新连接。
-    client.onclose = () => {
+    client.onClose(() => {
       if (this.clients.get(spec.name) === client) this.clients.delete(spec.name);
-    };
-    try {
-      await client.connect(transport, { signal });
-      signal.throwIfAborted();
-      return client;
-    } catch (error) {
-      await this.close_client(spec.name, error);
-      throw error;
-    }
+    });
+    // `connect` 失败由 Pi 关闭连接，`onClose` 同步移除登记；取消由单家操作结算。
+    await client.connect(transport);
+    return client;
   }
 
   /** 先移除拥有的引用再关闭；清理失败时同时保留触发清理的原始原因。 */
@@ -284,10 +288,10 @@ function normalize_provider_error(
   error: unknown,
 ): SearchProviderError {
   if (error instanceof SearchProviderError) return error;
-  if (error instanceof SdkHttpError && error.status === 429) {
+  if (error instanceof McpHttpError && error.status === 429) {
     return new SearchProviderError(provider, "rate_limited", error);
   }
-  if (error instanceof SdkError && error.code === SdkErrorCode.RequestTimeout) {
+  if (error instanceof McpTimeoutError) {
     return new SearchProviderError(provider, "timeout", error);
   }
   return new SearchProviderError(provider, "unavailable", error);

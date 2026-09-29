@@ -1,4 +1,4 @@
-import { Client, SdkError, SdkErrorCode } from "@modelcontextprotocol/client";
+import { McpClient, McpTimeoutError } from "@earendil-works/pi-mcp";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { WebSearchService } from "./web-search-service";
@@ -180,16 +180,33 @@ describe("Agent Web 多源搜索服务", () => {
     });
     const service = new WebSearchService(TEST_CLIENT_VERSION, log_manager);
     const caller = new AbortController();
+    const closing = Promise.withResolvers<void>();
+    const release_close = Promise.withResolvers<void>(); // 延迟连接收尾，验证搜索等待资源释放
+    const original_close = McpClient.prototype.close;
+    vi.spyOn(McpClient.prototype, "close").mockImplementationOnce(async function (this: McpClient) {
+      await original_close.call(this);
+      closing.resolve();
+      await release_close.promise;
+    });
     try {
       const reason = new Error("用户停止搜索");
-      const result = expect(service.search("等待响应", caller.signal)).rejects.toBe(reason);
+      let settled = false;
+      const result = expect(
+        service.search("等待响应", caller.signal).finally(() => {
+          settled = true;
+        }),
+      ).rejects.toBe(reason);
       await started;
       caller.abort(reason);
-      await result;
+      await closing.promise;
       expect(http_cancelled).toBe(true);
+      expect(settled).toBe(false);
+      release_close.resolve();
+      await result;
       expect(network.methods.every((request) => request.provider === "exa")).toBe(true);
       expect(log_manager.warning).not.toHaveBeenCalled();
     } finally {
+      release_close.resolve();
       caller.abort();
       await service.dispose();
     }
@@ -220,7 +237,7 @@ describe("Agent Web 多源搜索服务", () => {
   });
 
   it("连接失败会释放客户端，关闭服务后拒绝新搜索", async () => {
-    const close = vi.spyOn(Client.prototype, "close");
+    const close = vi.spyOn(McpClient.prototype, "close");
     const network = create_mcp_network({}, (request) => {
       if (request.provider === "exa" && request.method === "initialize") {
         return new Response(null, { status: 500 });
@@ -245,10 +262,10 @@ describe("Agent Web 多源搜索服务", () => {
     create_mcp_network({ exa: [{ status: 429 }] });
     const service = new WebSearchService(TEST_CLIENT_VERSION, log_manager);
     await service.search("建立两个会话", new AbortController().signal);
-    const original_close = Client.prototype.close;
+    const original_close = McpClient.prototype.close;
     const failure = new Error("连接清理失败");
-    const close = vi.spyOn(Client.prototype, "close").mockImplementationOnce(async function (
-      this: Client,
+    const close = vi.spyOn(McpClient.prototype, "close").mockImplementationOnce(async function (
+      this: McpClient,
     ) {
       await original_close.call(this);
       throw failure;
@@ -351,7 +368,7 @@ describe("Agent Web 多源搜索服务", () => {
 
   it("SDK 请求超时保留超时分类", async () => {
     create_mcp_network({}, () => {
-      throw new SdkError(SdkErrorCode.RequestTimeout, "Request timed out");
+      throw new McpTimeoutError(1);
     });
     const service = new WebSearchService(TEST_CLIENT_VERSION, log_manager);
     try {

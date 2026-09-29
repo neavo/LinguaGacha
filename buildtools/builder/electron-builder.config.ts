@@ -2,6 +2,18 @@ import type { Configuration } from "electron-builder";
 
 import { LOCALES } from "../../src/domain/app-language";
 
+// 白名单与平台排除项共用一个文件匹配器。
+// 独立的负向匹配器会默认包含整个工程。
+const APP_FILES = [
+  "build/dist/**/*",
+  "build/dist-electron/**/*",
+  "builtin/**/*",
+  "!node_modules/**/*.map",
+  // 应用使用普通 SDK 入口；上游截图与独立 RPC bundle 不参与该加载链。
+  "!node_modules/@earendil-works/pi-coding-agent/docs/images/**/*",
+  "!node_modules/@earendil-works/pi-coding-agent/dist/bundle/**/*",
+];
+
 export default {
   appId: "me.neavo.linguagacha",
   asar: true,
@@ -17,16 +29,9 @@ export default {
     output: "build/release/${version}",
   },
   afterPack: "buildtools/builder/after-pack.mjs",
-  files: [
-    "build/dist/**/*",
-    "build/dist-electron/**/*",
-    "builtin/**/*",
-    "!node_modules/**/*.map",
-    // 应用使用普通 SDK 入口；上游截图与独立 RPC bundle 不参与该加载链。
-    "!node_modules/@earendil-works/pi-coding-agent/docs/images/**/*",
-    "!node_modules/@earendil-works/pi-coding-agent/dist/bundle/**/*",
-  ],
   win: {
+    // Pi 的 `npm-shrinkwrap.json` 在当前 npm 下会装入所有平台包，发行时按目标架构筛选。
+    files: [...APP_FILES, "!**/node_modules/@esbuild/!(win32-${arch}){,/**/*}"],
     target: ["zip"],
     artifactName: "${productName}_v${version}_Windows_${arch}.${ext}",
     executableName: "app",
@@ -34,6 +39,7 @@ export default {
     extraFiles: [{ from: "version.txt", to: "version.txt" }],
   },
   mac: {
+    files: [...APP_FILES, "!**/node_modules/@esbuild/!(darwin-${arch}){,/**/*}"],
     target: ["dmg"],
     artifactName: "${productName}_v${version}_macOS_${arch}.${ext}",
     category: "public.app-category.productivity",
@@ -45,6 +51,7 @@ export default {
     sign: false,
   },
   linux: {
+    files: [...APP_FILES, "!**/node_modules/@esbuild/!(linux-${arch}){,/**/*}"],
     target: ["AppImage"],
     artifactName: "${productName}_v${version}_Linux_${arch}.${ext}",
     category: "Utility",
