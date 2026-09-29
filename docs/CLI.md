@@ -1,59 +1,48 @@
-# LinguaGacha CLI 命令模式
+# LinguaGacha CLI 设计
 
-本文是 CLI 入口、命令协议、临时 `.lg`、资源注入、输出语义和平台启动器的唯一归宿。CLI 不承载 HTTP / SSE、数据库或 renderer 正文。
+CLI 面向文件输入、翻译和导出的一次性任务，复用应用已有的模型配置与后端业务能力。
 
-## 1. 入口边界
+- 进程装配见 [ARCHITECTURE](ARCHITECTURE.md)。
+- 命令帮助与验证入口见 [WORKFLOW](WORKFLOW.md)。
 
-- CLI 只能由产品入口中的显式 `--cli` 触发，用户参数从 `--cli` 后开始读取；文件名、进程名或平台启动器名称不参与分发。
-- job 期间后端 console / window 日志关闭；人类可读启动提示和入口错误走 stderr，机器状态走 stdout JSONL。
-- CLI 完成导出后不自动打开输出目录。
-- CLI job 通过窄 `CLIJobServices` 契约消费类型化业务能力；组合根与资源生命周期归 [`ARCHITECTURE.md`](ARCHITECTURE.md)。
+## 📦 临时工程与设置继承
 
-## 2. 命令协议
+每次任务使用临时 `.lg`，让文件导入、质量规则、翻译提交和导出沿用工程流程。
 
-全局层只保留 `--help` 与 `--version`，业务层只接受一个动词。
+任务内的设置来源分为三类：
 
-|命令|必填参数|可选资源|产物|
-|---|---|---|---|
-|`translate`|`--input` 可重复、`--output-dir`、`--source-language`、`--target-language`|`--prompt .txt`、`--glossary .json/.xlsx`、`--pre-replacement .json/.xlsx`、`--post-replacement .json/.xlsx`、`--text-preserve .json/.xlsx`|译文写入 `--output-dir`，双语文件写入固定 `bilingual/` 子目录|
+- 源语言、目标语言和外部资源由本次命令明确指定。
+- 默认预设在任务内关闭，避免 GUI 中保存的预设意外进入命令行输入。
+- 模型、并发、预过滤等其余设置沿用当前应用配置。
 
-- `--input` 保留传入顺序；支持格式、路径身份和去重继续由文件域处理。
-- 源语言允许 `ALL`，目标语言不允许 `ALL`，两者都走共享语言值域归一。
-- 解析阶段校验参数形状和资源扩展名，输入与资源的真实存在性在 job 边界统一校验。
-- 成功、help、version 返回 `0`，运行期错误返回 `1`，usage 错误返回 `2`。
+临时覆盖只对本次任务生效。任务结束后撤销覆盖、卸载工程并清理目录，收尾错误与执行错误一起报告。
 
-## 3. 临时工程与设置
+## 📡 机器输出与完成语义
 
-- 每个 job 独占一个临时 `.lg`；无论成功、任务失败还是导出失败，都撤销 transient 设置、卸载工程并删除临时目录。
-- CLI 显式覆盖源语言、目标语言、完成后打开目录行为，并关闭术语表、文本保护、译前替换、译后替换、翻译提示词的默认预设；只有命令行资源写入本次工程。
-- 未被上述覆盖的 translation 用途模型选择、并发、提示词增强、预过滤和导出相关设置沿用当前应用设置，CLI 不是全量配置隔离环境。
-- `build_cli_task_input` 只把显式资源解析成项目领域输入，统一由 `ProjectLifecycleService.apply_task_input` 写入；CLI 不接触 database、meta 或 revision。
-- job 通过 `BatchTranslationService.subscribe` 显示本轮目标与执行进度，等待当前 run 的 completion 后仅在 `done` 时导出。恢复与取消规则归 [`BACKEND.md`](BACKEND.md)。收尾始终撤销订阅。
+任务运行时使用独立的输出通道，方便调用方持续解析机器结果：
 
-## 4. 输出协议
+|通道|内容|
+|---|---|
+|stdout|JSONL 任务状态|
+|stderr|启动提示与入口错误|
+|日志目标|诊断记录|
 
-CLI job 根据工程文件摘要排除 PDF，在存在文本条目时才启动批量翻译，完成事件的可选 `excluded_files` 列出这些工程相对路径，导出阶段同样排除它们。全 PDF 输入不发模型请求，也不生成伪完成的译文。当前 CLI job 不创建 Agent 会话，PDF 翻译须在 Agent 中执行。
+任务快照用于展示进度。CLI 等待 `completion` 覆盖的执行和资源收尾完成，并仅在结果为 `done` 时导出。
 
-help / version 输出普通文本。进入 job 后，stdout 每行输出一个紧凑 JSON 对象：
+启动初始化失败发生在任务受理前。此时调用方需要检查退出码和 stderr，任务 JSONL 事件可能尚未开始。
 
-|`type`|稳定字段|语义|
-|---|---|---|
-|`started`|`command`、ISO `timestamp`|job 开始，最多一次|
-|`progress`|`command`、`status`、ISO `timestamp`、`stats`|初始全零和与上一条相同的统计不重复输出|
-|`finished`|`command`、`status`、ISO `timestamp`、失败时的 `error.message`|job 终态，最多一次|
+### PDF 输入
 
-`progress.stats` 固定为 `total`、`skipped`、`failed`、`completed`、`pending`、`percent`，不暴露内部 `TaskSnapshot.progress` 字段名。成功事件不重复输出调用方已知的 `--output-dir`；诊断日志只进入日志目标。
+CLI 使用处理文本条目的批量引擎，PDF 翻译需要产品 Agent 的页面处理流程。
 
-CLI job 开始前若 Bootstrap 或入口初始化失败，只写 stderr 并返回运行期错误码，不承诺 JSONL 生命周期事件。
+- 任务与导出都排除 PDF。
+- 完成结果列出被排除的文件。
+- 全 PDF 输入不发起模型请求，也不生成译文。
 
-## 5. 平台启动器与打包
+## 🪟 平台入口
 
-- Windows 发布包提供 Go 编译的 `cli.exe` console launcher：定位同目录 `app.exe`，追加 `--cli`，继承 stdin/stdout/stderr，并返回子进程退出码。
-- `afterPack` 在对应 Go module 内先运行测试再构建并复制 launcher；缺少 Go 工具链、测试失败或产物缺失都会使打包失败。
-- macOS 与 Linux 不维护独立 CLI 二进制，使用主程序追加 `--cli`。
+各平台通过显式 `--cli` 使用同一套分发规则。
 
-### Windows 更新器
-
-- `win-berserker` 接收 `--zip` 和 `--target`，主程序路径由安装目录确定。[GUI 收尾](FRONTEND.md#windows-应用更新) 成功后才启动更新器。
-- Windows 进程退出时可能暂时拒绝路径查询，更新器在当前退出期限内重查。持续失败保留原始进程诊断。
-- 安装采用直接覆盖，部分失败需要手动覆盖完整发行包恢复。独立日志位于安装目录的 `log/update.log`，与应用日志一起收集，每次运行覆盖旧日志。
+- Windows 的 `cli.exe` 提供控制台入口，转发到同目录主程序，并继承标准流与退出码。
+- 主程序完成 CLI 后主动退出，保证等待它的启动器能够返回。
+- macOS 与 Linux 直接使用主程序的 `--cli` 模式。
