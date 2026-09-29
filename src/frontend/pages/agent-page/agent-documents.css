@@ -1,0 +1,159 @@
+.agent-pages {
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  overflow: hidden;
+  gap: 0;
+}
+
+.agent-pages__tabs {
+  width: 100%;
+  min-height: 40px;
+  height: auto;
+  flex: 0 0 auto;
+  justify-content: flex-start;
+  gap: 4px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  border-radius: 0;
+  padding: 4px 8px;
+  background: var(--background);
+}
+
+.agent-pages__tabs[hidden],
+.agent-pages__panel[hidden] {
+  display: none;
+}
+
+.agent-pages__panel {
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.agent-pages__tab-group,
+.agent-pages__tabs > .agent-pages__tab,
+.agent-pages__tabs > .agent-pages__tab[data-active] {
+  position: relative;
+  display: grid;
+  flex: 0 0 auto;
+  align-items: center;
+  height: 30px;
+  min-width: 128px;
+  max-width: 256px;
+  border-radius: var(--ui-radius-button);
+  background: color-mix(in srgb, var(--muted) 70%, var(--background));
+}
+
+/* 两个操作区直接分列，关闭区域全高且与文件名区域互不重叠。 */
+.agent-pages__tab-group {
+  grid-template-columns: minmax(0, 1fr) 32px;
+}
+
+.agent-pages__tabs > .agent-pages__tab {
+  padding-right: 32px;
+}
+
+.agent-pages__tab-group:hover,
+.agent-pages__tabs > .agent-pages__tab:hover,
+.agent-pages__tabs > .agent-pages__tab[data-active]:hover {
+  background: var(--accent);
+}
+
+.agent-pages__tab-group:has([data-active])::after,
+.agent-pages__tabs > .agent-pages__tab[data-active]::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: 0;
+  width: 16px;
+  height: 2px;
+  transform: translateX(-50%);
+  border-radius: var(--ui-radius-pill);
+  background: color-mix(in srgb, var(--primary) 84%, white 16%);
+  pointer-events: none;
+}
+
+.agent-pages__tab {
+  height: 30px;
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr);
+  align-items: center;
+  gap: 0;
+  padding: 0;
+  font-size: 13px;
+  box-shadow: none;
+  color: var(--muted-foreground);
+  background: transparent;
+}
+
+/* 文件名和关闭按钮共享外壳，内部按钮只表达文字与焦点。 */
+.agent-pages__tab-group > .agent-pages__tab[data-active] {
+  background: transparent;
+}
+
+.agent-pages__tab > svg {
+  justify-self: center;
+}
+
+.agent-pages__tab[data-active] {
+  color: var(--foreground);
+}
+
+.agent-pages__tab svg,
+.agent-pages__close svg {
+  width: 14px;
+  height: 14px;
+  flex: 0 0 auto;
+}
+
+.agent-pages__filename {
+  text-align: center;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.agent-pages__close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+  padding: 0;
+  border: 0;
+  border-radius: 0 var(--ui-radius-button) var(--ui-radius-button) 0;
+  background: transparent;
+  color: var(--muted-foreground);
+  cursor: pointer;
+}
+
+.agent-pages__close:hover {
+  color: var(--foreground);
+}
+
+.agent-pages__close:focus-visible {
+  outline: 1px solid var(--ring);
+  outline-offset: -1px;
+}
+
+.agent-pages__attention {
+  color: var(--primary);
+  font-size: 12px;
+}
+
+.agent-document {
+  height: 100%;
+  overflow: auto;
+  scrollbar-gutter: stable;
+}
+
+.agent-document__body {
+  width: 100%;
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 20px 24px 40px;
+}

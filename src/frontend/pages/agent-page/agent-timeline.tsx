@@ -58,6 +58,7 @@ const AGENT_THINKING_AUTO_COLLAPSE_DELAY_MS = 3_000; // 给用户留出确认终
 
 /** 页面传入时间线事实、用户命令和思考块跟随重置版本。 */
 type AgentTimelineProps = {
+  active?: boolean;
   skills: readonly AgentSkillSnapshot[];
   entries: readonly AgentEntry[];
 
@@ -75,6 +76,9 @@ type AgentTimelineProps = {
 export function AgentTimeline(props: AgentTimelineProps): JSX.Element {
   const { t } = useI18n();
   const [selected_tool_id, set_selected_tool_id] = useState<string | null>(null);
+  useEffect(() => {
+    if (props.active === false) set_selected_tool_id(null);
+  }, [props.active]);
   const previous_rounds_ref = useRef<readonly AgentRoundEntries[]>([]);
   const rounds = useMemo(() => {
     const next = build_agent_rounds(previous_rounds_ref.current, props.entries);

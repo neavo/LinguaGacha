@@ -1,6 +1,13 @@
 import type { zh_cn_agent_page } from "../zh-CN/agent-page";
 import type { LocaleMessageSchema } from "../../types";
 export const ko_kr_agent_page = {
+  document: {
+    conversation: "대화",
+    view: "보기",
+    save_as: "다른 이름으로 저장",
+    needs_response: "응답 대기",
+    read_failed: "문서를 읽을 수 없습니다",
+  },
   batch_translation_model: {
     follow: "같은 모델 사용",
     follow_option: "AGENT와 같은 모델 사용",

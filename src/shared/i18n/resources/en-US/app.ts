@@ -217,6 +217,7 @@ export const en_us_app = {
       parse_failed: {
         message: "File content parsing failed",
       },
+      preview_too_large: { message: "This file is too large to preview. Save it to view locally." },
       invalid_structure: {
         message: "The file structure does not match the expected format",
       },

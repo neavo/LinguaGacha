@@ -225,6 +225,9 @@ export const de_de_app = {
       parse_failed: {
         message: "Dateiinhalt-Analyse fehlgeschlagen",
       },
+      preview_too_large: {
+        message: "Die Datei ist zu groß für die Vorschau. Speichern Sie sie zur lokalen Ansicht.",
+      },
       invalid_structure: {
         message: "Die Dateistruktur entspricht nicht dem erwarteten Format",
       },

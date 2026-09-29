@@ -48,7 +48,7 @@ export function useAgentFollowLatest(initial_following: boolean): AgentFollowLat
       if (!following_ref.current || pending_follow_frame_ref.current !== null) return;
       pending_follow_frame_ref.current = requestAnimationFrame(() => {
         pending_follow_frame_ref.current = null;
-        if (following_ref.current) write_scroll_end(target);
+        if (following_ref.current && !target.closest("[hidden]")) write_scroll_end(target);
       });
     },
     [write_scroll_end],

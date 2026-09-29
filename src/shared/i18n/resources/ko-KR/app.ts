@@ -215,6 +215,7 @@ export const ko_kr_app = {
       parse_failed: {
         message: "파일 내용을 해석하지 못했습니다",
       },
+      preview_too_large: { message: "파일이 너무 커서 미리 볼 수 없습니다. 저장한 후 확인하세요." },
       invalid_structure: {
         message: "파일 구조가 형식 요구 사항에 맞지 않습니다",
       },

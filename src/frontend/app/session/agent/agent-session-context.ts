@@ -17,6 +17,12 @@ export type { AgentInputSession } from "./agent-session-store";
 
 export const AgentSessionStoreContext = createContext<AgentSessionStore | null>(null);
 
+/** 对话身份随权威快照变化；页面资源以此隔离生命周期。 */
+export function useAgentSessionId(): string | null {
+  const store = use_agent_store();
+  return useSyncExternalStore(store.subscribe_controls, store.get_session_id, store.get_session_id);
+}
+
 /** 高频测速只通知当前回合状态条的实时数字。 */
 export function useAgentTokenSpeed(): AgentTokenSpeedSnapshot {
   const store = use_agent_store();

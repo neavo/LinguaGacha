@@ -84,6 +84,26 @@ describe("ApiGatewayServer", () => {
     });
   });
 
+  it("文档与配图通过真实 HTTP 返回正文和原始字节，响应不缓存", async () => {
+    const { baseUrl } = await create_gateway().start();
+    const response = await post_json(baseUrl, "/api/agent/workspace/document", {
+      sessionId: "session",
+      path: "work/report.md",
+    });
+    expect(await response.json()).toEqual({
+      ok: true,
+      data: { sessionId: "session", path: "work/report.md", content: "# 报告\n检查通过" },
+    });
+    const image = await fetch(
+      `${baseUrl}/api/agent/workspace/image?sessionId=session&path=work%2Fchart.png`,
+    );
+    expect(image.headers.get("Content-Type")).toBe("image/png");
+    expect(image.headers.get("Cache-Control")).toBe("no-store");
+    expect(new Uint8Array(await image.arrayBuffer())).toEqual(
+      Uint8Array.from([0, 255, 1, 128, 13, 10]),
+    );
+  });
+
   it("二进制上传与下载通过真实 HTTP 原样往返，未知身份复用公开错误壳", async () => {
     const gateway = create_gateway();
     const { baseUrl } = await gateway.start();
@@ -381,6 +401,14 @@ describe("ApiGatewayServer", () => {
       upload_file: (name: string, body: ReadableStream<Uint8Array>, signal: AbortSignal) =>
         uploads.upload(name, body, signal),
       read_upload: (id: string) => uploads.open(id),
+      read_workspace_document: async (request: { sessionId: string; path: string }) => ({
+        ...request,
+        content: "# 报告\n检查通过",
+      }),
+      read_workspace_image: async () => ({
+        mime: "image/png",
+        bytes: Uint8Array.from([0, 255, 1, 128, 13, 10]),
+      }),
       get_snapshot: vi.fn(() => ({
         revision: 0,
         state: "idle",

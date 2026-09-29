@@ -1,6 +1,6 @@
 # LinguaGacha 工作流
 
-本文提供项目阅读路径、验证命令及其触发条件。始终适用的行动规则归 [AGENTS.md](../AGENTS.md)，长期文档治理方法归 [project-doc](../.codex/skills/project-doc/SKILL.md)，测试设计、诊断与整理方法归 [project-test](../.codex/skills/project-test/SKILL.md)。
+本文提供项目阅读路径、验证命令及其触发条件。始终适用的行动规则归 [AGENTS.md](../AGENTS.md)，测试设计、诊断与整理方法归 [project-test](../.codex/skills/project-test/SKILL.md)。
 
 ## 1. 阅读路径
 

@@ -1,4 +1,0 @@
-interface:
-  display_name: "Project Docs"
-  short_description: "审查与同步长期工程事实，整理文档归属并核对受影响的入口引用"
-  default_prompt: "使用 $project-doc 审查或维护项目声明的长期工程文档，核对稳定事实、权威归宿和受影响的引用。"

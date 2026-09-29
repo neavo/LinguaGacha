@@ -212,6 +212,7 @@ export const zh_cn_app = {
       parse_failed: {
         message: "文件内容解析失败",
       },
+      preview_too_large: { message: "文件过大，无法预览，请另存为后查看" },
       invalid_structure: {
         message: "文件结构不符合格式要求",
       },

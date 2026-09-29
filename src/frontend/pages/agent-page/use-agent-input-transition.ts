@@ -24,6 +24,7 @@ type AgentInputTransition = Readonly<{
 export function useAgentInputTransition(
   decision: AgentPendingDecision | null,
   composer: RefObject<AgentComposerHandle | null>,
+  active_page = true,
 ): AgentInputTransition {
   const region_ref = useRef<HTMLDivElement>(null);
   const area_ref = useRef<HTMLDivElement>(null);
@@ -45,6 +46,14 @@ export function useAgentInputTransition(
     const panel = decision_ref.current;
     if (!region || !area || !status || !composer_slot || !panel) return;
 
+    if (!active_page) {
+      cancel_animations(animations_ref.current);
+      region.style.removeProperty("height");
+      delete region.dataset.transitioning;
+      initialized_ref.current = false;
+      restore_focus_ref.current = false;
+      return;
+    }
     const opening = decision !== null;
     const active = document.activeElement;
     const focus_in_input =
@@ -181,10 +190,16 @@ export function useAgentInputTransition(
       { height: `${end.region}px` },
     ]).onfinish = finish;
     return stop_observing;
-  }, [decision, composer]);
+  }, [decision, composer, active_page]);
 
   useEffect(() => {
-    if (decision !== null || retained_decision !== null || !restore_focus_ref.current) return;
+    if (
+      !active_page ||
+      decision !== null ||
+      retained_decision !== null ||
+      !restore_focus_ref.current
+    )
+      return;
     // 等 Composer 同步 CodeMirror 的可编辑属性后恢复焦点，阅读区的新焦点优先。
     if (
       document.activeElement === document.body ||
@@ -193,7 +208,7 @@ export function useAgentInputTransition(
       composer.current?.focus();
     }
     restore_focus_ref.current = false;
-  }, [decision, retained_decision, composer]);
+  }, [decision, retained_decision, composer, active_page]);
 
   useLayoutEffect(
     () => () => {

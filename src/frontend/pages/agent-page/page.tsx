@@ -1,753 +1,139 @@
-import type { AgentApprovalMode } from "@domain/setting";
-import { format_agent_reference } from "@shared/agent-reference";
-import { type JSX, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
-import {
-  ArrowDownToLine,
-  BookOpenText,
-  Bot,
-  Drama,
-  ListChecks,
-  ScanText,
-  Sparkles,
-} from "lucide-react";
-
-import type { ModelSelectionInput } from "@shared/model-selection";
-import {
-  AGENT_INPUT_QUEUE_LIMIT,
-  type AgentEntry,
-  type AgentMessageInput,
-  type AgentQueuedInput,
-} from "@shared/agent";
-import { push_toast } from "@frontend/app/feedback/desktop-toast";
-import { resolve_visible_error_message } from "@frontend/app/feedback/visible-error-message";
-import { useI18n, type LocaleKey } from "@frontend/app/locale/locale-context";
-import {
-  read_selected_model,
-  useModelSelection,
-} from "@frontend/features/model-selection/use-model-selection";
-import { useDesktopState, useRuntimeSnapshot } from "@frontend/app/state/use-desktop-state";
-import type { SettingsSnapshotPayload } from "@frontend/app/state/desktop-state-context";
-import { api_fetch } from "@frontend/app/desktop/desktop-api";
-import { useAppNavigation } from "@frontend/app/navigation/navigation-context";
+import { useEffect, useLayoutEffect, useMemo, useRef, type JSX } from "react";
+import { FileText, MessageSquareText, X } from "lucide-react";
 import type { ScreenComponentProps } from "@frontend/app/navigation/types";
-import { AppConfirmDialog } from "@frontend/widgets/app-alert-dialog";
-import { AppButton } from "@frontend/widgets/app-button";
-import { resolve_shortcut_platform } from "@frontend/widgets/interactions/keyboard-shortcuts";
-import { ShortcutTooltipRow } from "@frontend/widgets/interactions/shortcut-kbd";
-import { useActionShortcut } from "@frontend/widgets/interactions/use-action-shortcut";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@frontend/shadcn/tooltip";
+import { useAppNavigation } from "@frontend/app/navigation/navigation-context";
 import {
   useAgentControls,
-  useAgentInput,
-  useAgentTodo,
-  useAgentQueue,
-  useAgentSessionActions,
-  useAgentSkills,
-  useAgentTimeline,
+  useAgentSessionId,
 } from "@frontend/app/session/agent/agent-session-context";
-import { AgentDecision } from "./agent-decision";
-import { AgentComposer, type AgentComposerHandle } from "./agent-composer";
-import { AgentInlineEditor, type AgentInlineEditTarget } from "./agent-inline-editor";
-import { AgentInputQueue } from "./agent-input-queue";
-import { type AgentMentionInstruction } from "./agent-mention";
-import { AgentTaskStatus } from "./agent-task-status";
-import { AgentTimeline } from "./agent-timeline";
-import { useAgentFollowLatest } from "./agent-scroll";
-import { useAgentInputTransition } from "./use-agent-input-transition";
-import "./agent-page.css";
+import { useI18n } from "@frontend/app/locale/locale-context";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@frontend/shadcn/tabs";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@frontend/shadcn/tooltip";
+import { AgentConversation } from "./agent-conversation";
+import { AgentDocumentPage } from "./agent-document";
+import { AgentDocumentContext } from "./agent-document-context";
+import { useAgentDocuments } from "./use-agent-documents";
+import "./agent-documents.css";
 
-/** 空会话任务入口按配置顺序展示，关联技能加载后可用。 */
-const AGENT_TASK_SUGGESTIONS = [
-  {
-    skillName: "roleplay",
-    suggestionKey: "agent_page.empty.suggestions.roleplay",
-    Icon: Drama,
-  },
-  {
-    skillName: "glossary",
-    suggestionKey: "agent_page.empty.suggestions.extract_terminology",
-    Icon: ListChecks,
-  },
-  {
-    skillName: "translation",
-    suggestionKey: "agent_page.empty.suggestions.translate_full_text",
-    Icon: BookOpenText,
-  },
-  {
-    skillName: "translation",
-    suggestionKey: "agent_page.empty.suggestions.review_translation",
-    Icon: ScanText,
-  },
-] as const;
-/** 同一个系统确认框承接首条发送与已有对话关闭思考两个用户动作。 */
-type PendingThinkingOffAction =
-  | { kind: "send"; message: AgentMessageInput }
-  | { kind: "select_model"; change: ModelSelectionInput };
+const CONVERSATION_TAB = "conversation";
 
-/** 会话事实由跨路由 session 提供，页面组合交互入口并持有原位编辑状态。 */
+/** 对话身份决定全部页内资源的生命周期。 */
 export function AgentPage(_props: ScreenComponentProps): JSX.Element {
+  const session_id = useAgentSessionId();
+  return <AgentPages key={session_id ?? "restoring"} session_id={session_id ?? ""} />;
+}
+
+/** 页内标签保留组件实例，会话身份变化才整体释放旧页面。 */
+function AgentPages({ session_id }: { session_id: string }): JSX.Element {
   const { t } = useI18n();
-
-  const { entries } = useAgentTimeline();
-  const controls = useAgentControls();
-  const { inputQueue } = useAgentQueue();
-  const { todos } = useAgentTodo();
-  const { skills } = useAgentSkills();
-  const input = useAgentInput();
-  const { agent_input_request, clear_agent_input_request } = useAppNavigation();
-  const consumed_input_request = useRef<typeof agent_input_request>(null); // `StrictMode` 重放副作用时跳过已消费请求。
-  const agent_actions = useAgentSessionActions();
-  const model_selection = useModelSelection();
-  const runtime_snapshot = useRuntimeSnapshot();
-  const { settings_snapshot, apply_settings_snapshot, initial_state_status } = useDesktopState();
-  const [approval_updating, set_approval_updating] = useState(false); // 保存期间禁用模式选择。
-  const page_ref = useRef<HTMLDivElement | null>(null);
-  const conversation_ref = useRef<HTMLElement | null>(null);
-  const conversation_content_ref = useRef<HTMLDivElement | null>(null);
-  const composer_ref = useRef<AgentComposerHandle | null>(null);
-  const {
-    following: follow_latest,
-    follow_content: follow_conversation_content,
-    scroll_to_end: scroll_conversation_to_end,
-    activate: activate_conversation_follow,
-    deactivate: deactivate_conversation_follow,
-    handle_scroll: handle_conversation_scroll,
-  } = useAgentFollowLatest(true);
-  const [follow_reset_revision, set_follow_reset_revision] = useState(0);
-  const [reset_dialog_open, set_reset_dialog_open] = useState(false);
-  const [pending_thinking_off_action, set_pending_thinking_off_action] =
-    useState<PendingThinkingOffAction | null>(null);
-  /** 页面只允许一个历史或队列目标进入原位编辑，普通 Composer 始终保持独立草稿。 */
-  const [active_inline_edit, set_active_inline_edit] = useState<AgentInlineEditTarget | null>(null);
-
-  /** 页面级快捷键与按钮共享同一条跟随切换入口。 */
-  const toggle_follow_latest = useCallback((): void => {
-    if (follow_latest) {
-      deactivate_conversation_follow();
-      return;
-    }
-    set_follow_reset_revision((revision) => revision + 1);
-    activate_conversation_follow(conversation_ref.current);
-  }, [activate_conversation_follow, deactivate_conversation_follow, follow_latest]);
-
-  useActionShortcut({
-    action: "follow_latest",
-    enabled: true,
-    allow_in_text_editing: true,
-    on_trigger: toggle_follow_latest,
-  });
-  const is_running = controls.state === "running";
-  // apply 一旦进入公开 running 工具帧就不可取消；后端仍保留同一权威守卫。
-  const workspace_apply_running = entries.some(
-    (entry) =>
-      entry.kind === "tool_call" &&
-      entry.toolName === "workspace_apply" &&
-      entry.status === "running",
+  const root = useRef<HTMLDivElement>(null);
+  const { pendingDecision } = useAgentControls();
+  const { agent_input_request } = useAppNavigation();
+  const state = useAgentDocuments(session_id);
+  const { select } = state;
+  const conversation_active = state.selected === null;
+  const context = useMemo(
+    () => ({ open_document: state.open_document, session_id, active: true }),
+    [state.open_document, session_id],
   );
-  const agent_restoring = controls.transport === "restoring";
-  const last_compaction = entries.findLast((entry) => entry.kind === "context_compaction");
-  const compacting = last_compaction?.status === "running";
-  // 宿主指令只在会话已恢复、命令已收束且共享运行时空闲时开放；可压缩性直接采用后端事实。
-  const instruction_ready =
-    controls.transport === "ready" &&
-    controls.state === "idle" &&
-    controls.command === null &&
-    runtime_snapshot.owner === null;
-  const compact_available = instruction_ready && controls.context.compactable;
-  // 暂停队列复用 Composer 的 continue 提交，不建立独立恢复控件。
-  const can_continue_queue = !is_running && inputQueue.paused && inputQueue.items.length > 0;
-  // 公开回合先回 idle、共享 lease 后释放；两者之间统一显示为 Agent 自身结算。
-  const agent_settling = !is_running && !compacting && runtime_snapshot.owner === "agent";
-  const unavailable_reason =
-    controls.transport === "disconnected"
-      ? "disconnected"
-      : agent_restoring || controls.transport === "restore_failed"
-        ? "restoring"
-        : agent_settling
-          ? "settling"
-          : runtime_snapshot.owner !== null && runtime_snapshot.owner !== "agent"
-            ? "runtime_busy"
-            : null;
-
-  // 会话被 reset、换工程或其它入口替换后，原位编辑目标失去事实即自动退出。
+  const inactive_context = useMemo(() => ({ ...context, active: false }), [context]);
   useEffect(() => {
-    if (active_inline_edit === null) return;
-    const target_exists =
-      active_inline_edit.kind === "queue"
-        ? inputQueue.items.some((item) => item.id === active_inline_edit.itemId)
-        : entries.some((entry) => entry.id === active_inline_edit.entryId);
-    if (!target_exists) set_active_inline_edit(null);
-  }, [active_inline_edit, entries, inputQueue.items]);
-
-  /** 开启跟随时在布局阶段归底；后续内容变化由统一观察入口接管。 */
+    if (agent_input_request) select(null);
+  }, [agent_input_request, select]);
+  /** 关闭后从已提交的 DOM 恢复焦点，最后一个标签关闭时回到对话面板。 */
+  const focus_current = (): void => {
+    const target = !root.current?.querySelector<HTMLElement>('[role="tablist"]')?.hidden
+      ? root.current?.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]')
+      : root.current?.querySelector<HTMLElement>('[role="tabpanel"]:not([hidden])');
+    target?.focus({ preventScroll: true });
+  };
+  const previous_selected = useRef(state.selected);
   useLayoutEffect(() => {
-    const conversation = conversation_ref.current;
-    if (conversation !== null && follow_latest) scroll_conversation_to_end(conversation);
-  }, [follow_latest, scroll_conversation_to_end]);
-
-  // 外层只有一个显式滚动写入者；图片、详情与流式内容的尺寸变化共用同一观察入口。
-  useLayoutEffect(() => {
-    const conversation = conversation_ref.current;
-    const content = conversation_content_ref.current;
-    if (conversation === null || content === null) return;
-    const observer = new ResizeObserver(() => follow_conversation_content(conversation));
-    observer.observe(conversation);
-    observer.observe(content);
-    follow_conversation_content(conversation);
-    return () => observer.disconnect();
-  }, [follow_conversation_content]);
-
-  /** 命令失败只投影为页面 Toast，不写回共享会话状态。 */
-  const show_command_error = useCallback(
-    (error: unknown, fallback_key: LocaleKey): void => {
-      push_toast("error", resolve_visible_error_message(error, t, t(fallback_key)));
-    },
-    [t],
-  );
-
-  const selected_agent_model = read_selected_model(model_selection, "agent");
-  // 公开时间线出现条目才表示用户已经开始当前对话；隐藏会话种子不参与 UI 判断。
-  const conversation_started = entries.length > 0;
-  /** 只警告支持思考且明确关闭思考的模型，不把能力缺失误报为用户选择。 */
-  const thinking_off_confirmation_required =
-    !can_continue_queue &&
-    !conversation_started &&
-    selected_agent_model?.thinking_level === "OFF" &&
-    selected_agent_model.available_thinking_levels.includes("OFF");
-
-  /** 页面内所有普通发送共用同一条实际提交出口，确认框只延迟调用它。 */
-  const send_message = useCallback(
-    async (message: AgentMessageInput): Promise<boolean> => {
-      const request = can_continue_queue
-        ? agent_actions.continue(
-            message.text === "" && message.attachments.length === 0 ? undefined : message,
-          )
-        : agent_actions.send(message);
-      try {
-        await request;
-        return true;
-      } catch (error: unknown) {
-        show_command_error(
-          error,
-          can_continue_queue ? "agent_page.error.continue" : "agent_page.error.send",
-        );
-        return false;
-      }
-    },
-    [agent_actions, can_continue_queue, show_command_error],
-  );
-
-  /** 普通发送继续使用底部 Composer；历史修订已由消息原位编辑器独立承接。 */
-  const submit_message = (message: AgentMessageInput): void => {
-    if (active_inline_edit !== null) return;
-    if (thinking_off_confirmation_required) {
-      set_pending_thinking_off_action({ kind: "send", message });
-      return;
-    }
-    void send_message(message);
-  };
-
-  /** 已有对话关闭思考前保存整份选择，确认后一次提交模型与等级。 */
-  const change_agent_model_selection = (change: ModelSelectionInput): void => {
-    const next_model = model_selection.snapshot.models.find(
-      (model) => model.id === change.model_id,
-    );
-    const next_level = change.thinking_level ?? next_model?.thinking_level;
-    if (
-      conversation_started &&
-      selected_agent_model !== null &&
-      selected_agent_model.thinking_level !== "OFF" &&
-      next_level === "OFF"
-    ) {
-      set_pending_thinking_off_action({ kind: "select_model", change });
-      return;
-    }
-    void model_selection.select_model({ target: "agent", ...change });
-  };
-
-  /** 审批偏好使用应用设置链路，保存成功前展示已确认的模式。 */
-  const change_approval_mode = useCallback(
-    async (approval_mode: AgentApprovalMode): Promise<void> => {
-      if (approval_mode === settings_snapshot.agent_approval_mode) return;
-      set_approval_updating(true);
-      try {
-        const payload = await api_fetch<SettingsSnapshotPayload>("/api/settings/update", {
-          agent_approval_mode: approval_mode,
-        });
-        apply_settings_snapshot(payload);
-      } catch (error) {
-        show_command_error(error, "agent_page.error.approval_mode");
-      } finally {
-        set_approval_updating(false);
-      }
-    },
-    [apply_settings_snapshot, settings_snapshot.agent_approval_mode, show_command_error],
-  );
-
-  /** Mention 指令直接调用宿主压缩；筛选文本由 Composer 在动作前移除。 */
-  const compact_context = useCallback((): void => {
-    void agent_actions.compactContext().catch((error: unknown) => {
-      show_command_error(error, "agent_page.error.compact");
-    });
-  }, [agent_actions, show_command_error]);
-  /** 主 Composer 的宿主指令目录；动作不进入消息正文或原位编辑器。 */
-  const instructions: readonly AgentMentionInstruction[] = [
-    {
-      id: "compact_context",
-      title: t("agent_page.mention.instructions.compact_context.title"),
-      description:
-        instruction_ready && !controls.context.compactable
-          ? t("agent_page.mention.instructions.compact_context.unnecessary")
-          : "",
-      disabled: !compact_available,
-      execute: compact_context,
-    },
-  ];
-
-  /** 发送失败保留确认框；模型更新沿用通用控制器自身的错误提示与恢复。 */
-  const confirm_pending_thinking_off_action = async (): Promise<void> => {
-    const action = pending_thinking_off_action;
-    if (action === null) return;
-    if (action.kind === "select_model") {
-      await model_selection.select_model({ target: "agent", ...action.change });
-      set_pending_thinking_off_action(null);
-    } else if (await send_message(action.message)) {
-      set_pending_thinking_off_action(null);
-    }
-  };
-
-  /** 取消只撤销待确认动作，不发送消息也不更新模型。 */
-  const close_pending_thinking_off_action = (): void => {
-    set_pending_thinking_off_action(null);
-  };
-
-  /** 历史消息编辑只建立独立原位目标，不改写普通 Composer 草稿。 */
-  const start_edit = useCallback(
-    (entry: Extract<AgentEntry, { kind: "user_message" | "assistant_message" }>): void => {
-      set_active_inline_edit(
-        entry.kind === "user_message"
-          ? {
-              kind: "entry",
-              entryId: entry.id,
-              role: "user",
-              message: {
-                text: entry.text,
-                attachments: structuredClone(entry.attachments),
-              },
-            }
-          : {
-              kind: "entry",
-              entryId: entry.id,
-              role: "assistant",
-              message: {
-                text: entry.parts
-                  .filter((part) => part.kind === "text")
-                  .map((part) => part.text)
-                  .join(""),
-                attachments: [],
-              },
-            },
-      );
-    },
-    [],
-  );
-
-  /** 原位修订统一走现有后端命令；成功后由编辑器关闭自身。 */
-  const save_inline_edit = useCallback(
-    async (message: AgentMessageInput): Promise<void> => {
-      const target = active_inline_edit;
-      if (target === null) return;
-      if (target.kind === "queue") {
-        await agent_actions.updateQueuedMessage(target.itemId, message);
-        input.replace_history(target.message.text, message.text);
-        return;
-      }
-      await agent_actions.reviseLatestRound(target.entryId, message);
-      if (target.role === "user") {
-        input.replace_history(target.message.text, message.text);
-      }
-    },
-    [active_inline_edit, agent_actions, input],
-  );
-
-  /** 保存成功和取消共用同一关闭入口；失败由原位编辑器保留草稿。 */
-  const cancel_inline_edit = useCallback((): void => {
-    set_active_inline_edit(null);
-  }, []);
-
-  /** 时间线与队列只决定编辑目标，共享同一套编辑器装配。 */
-  const render_inline_editor = useCallback(
-    (target: AgentInlineEditTarget): JSX.Element => {
-      return (
-        <AgentInlineEditor
-          target={target}
-          skills={skills}
-          command={controls.command}
-          unavailable_reason={unavailable_reason}
-          on_save={save_inline_edit}
-          on_saved={cancel_inline_edit}
-          on_cancel={cancel_inline_edit}
-        />
-      );
-    },
-    [controls.command, cancel_inline_edit, save_inline_edit, skills, unavailable_reason],
-  );
-
-  /** 仅在当前历史目标的位置挂载原位编辑器。 */
-  const render_entry_editor = useCallback(
-    (entry: Extract<AgentEntry, { kind: "user_message" | "assistant_message" }>) => {
-      if (
-        active_inline_edit?.kind !== "entry" ||
-        active_inline_edit.entryId !== entry.id ||
-        active_inline_edit.role !== (entry.kind === "user_message" ? "user" : "assistant")
-      ) {
-        return null;
-      }
-      return render_inline_editor(active_inline_edit);
-    },
-    [active_inline_edit, render_inline_editor],
-  );
-
-  /** 队列目标复用同一原位编辑器。 */
-  const start_queue_edit = (item: AgentQueuedInput): void => {
-    set_active_inline_edit({
-      kind: "queue",
-      itemId: item.id,
-      message: { text: item.text, attachments: structuredClone(item.attachments) },
-    });
-  };
-
-  /** 仅在当前队列目标的位置挂载原位编辑器。 */
-  const render_queue_editor = useCallback(
-    (item: AgentQueuedInput) => {
-      if (active_inline_edit?.kind !== "queue" || active_inline_edit.itemId !== item.id) {
-        return null;
-      }
-      return render_inline_editor(active_inline_edit);
-    },
-    [active_inline_edit, render_inline_editor],
-  );
-
-  /** 队列窄命令共享页面 Toast 映射，不污染会话状态。 */
-  const run_queue_command = (
-    command: () => Promise<void>,
-    fallback_key: LocaleKey,
-  ): Promise<void> => {
-    return command().catch((error: unknown) => show_command_error(error, fallback_key));
-  };
-
-  /** stop 失败保留运行态，由页面 Toast 提示后允许继续尝试。 */
-  const stop = useCallback(async (): Promise<void> => {
-    try {
-      await agent_actions.stop();
-    } catch (error) {
-      show_command_error(error, "agent_page.error.stop");
-    }
-  }, [agent_actions, show_command_error]);
-
-  /** “继续”把所有尾部失败交给后端唯一恢复入口判断并续跑。 */
-  const continue_latest_round = useCallback((): void => {
-    void agent_actions.continue().catch((error: unknown) => {
-      show_command_error(error, "agent_page.error.continue");
-    });
-  }, [agent_actions, show_command_error]);
-
-  /** 时间线批注写入普通 Composer 草稿，由用户继续编辑和发送。 */
-  const add_response_annotation = useCallback(
-    (annotation: Parameters<AgentComposerHandle["add_response_annotation"]>[0]): void => {
-      composer_ref.current?.add_response_annotation(annotation);
-    },
-    [],
-  );
-
-  // 状态区只在存在内容时占位；容量判断与共享队列上限保持同源。
-  const has_input_queue = inputQueue.items.length > 0;
-  const queue_full = inputQueue.items.length >= AGENT_INPUT_QUEUE_LIMIT;
-  const pending_decision = controls.pendingDecision;
-  const input_transition = useAgentInputTransition(pending_decision, composer_ref);
-
-  // 会话就绪后尝试写入，编辑器统一判断输入锁。锁状态变化时重新尝试。
-  useEffect(() => {
-    const request = agent_input_request;
-    if (!request || consumed_input_request.current === request || controls.transport !== "ready")
-      return;
-    const draft = input.draft.read();
-    const preserve =
-      request.mode === "if-empty" && (draft.text.trim() !== "" || draft.attachments.length > 0);
-    if (!preserve) {
-      if (!composer_ref.current?.write_draft(request.text, request.selection)) return;
-      input.draft.write({ text: request.text, attachments: [] });
-    }
-    consumed_input_request.current = request;
-    clear_agent_input_request();
-  }, [
-    agent_input_request,
-    clear_agent_input_request,
-    input,
-    controls.transport,
-    active_inline_edit,
-    input_transition.locked,
-    controls.command,
-  ]);
-
-  const follow_latest_label = t("agent_page.action.follow_latest");
-  // 可访问性属性使用标准键名；Tooltip 继续显示用户熟悉的平台符号。
-  const follow_latest_aria_shortcut =
-    resolve_shortcut_platform() === "mac" ? "Meta+E" : "Control+E";
-  const follow_latest_status = t("app.tooltip.value", {
-    TITLE: follow_latest_label,
-    VALUE: t(follow_latest ? "app.state.enabled" : "app.state.disabled"),
-  });
-  const follow_latest_control = (
-    <Tooltip>
-      <TooltipTrigger
-        render={
-          <AppButton
-            type="button"
-            className="agent-page__follow-control"
-            size="icon-sm"
-            variant="outline"
-            aria-label={follow_latest_label}
-            aria-pressed={follow_latest}
-            aria-keyshortcuts={follow_latest_aria_shortcut}
-            onClick={toggle_follow_latest}
-          >
-            <ArrowDownToLine aria-hidden="true" />
-          </AppButton>
-        }
-      />
-      <TooltipContent>
-        <ShortcutTooltipRow label={follow_latest_status} shortcut="follow_latest" />
-      </TooltipContent>
-    </Tooltip>
-  );
-
+    if (previous_selected.current === state.selected) return;
+    previous_selected.current = state.selected;
+    const target = root.current?.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]');
+    if (state.documents.length > 0) target?.focus({ preventScroll: true });
+  }, [state.selected, state.documents.length]);
   return (
-    <div ref={page_ref} className="agent-page">
-      <section
-        ref={conversation_ref}
-        className="agent-page__conversation"
-        aria-label={t("agent_page.title")}
-        data-following={follow_latest || undefined}
-        onScroll={(event) => handle_conversation_scroll(event.currentTarget)}
+    <Tabs
+      ref={root}
+      className="agent-pages"
+      value={state.selected ?? CONVERSATION_TAB}
+      onValueChange={(value) => select(value === CONVERSATION_TAB ? null : String(value))}
+    >
+      <TabsList
+        className="agent-pages__tabs"
+        hidden={state.documents.length === 0}
+        activateOnFocus={false}
       >
-        <div ref={conversation_content_ref} className="agent-page__conversation-content">
-          {controls.transport === "restore_failed" ? (
-            <div className="agent-page__empty" role="alert">
-              <div className="agent-page__empty-intro">
-                <Bot className="agent-page__empty-icon" aria-hidden="true" />
-                <p>{t("agent_page.error.restore")}</p>
-                <AppButton
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  onClick={agent_actions.reconnect}
-                >
-                  {t("app.action.retry")}
-                </AppButton>
-              </div>
-            </div>
-          ) : agent_restoring ? (
-            <div className="agent-page__empty" role="status">
-              <div className="agent-page__empty-intro">
-                <Bot className="agent-page__empty-icon" aria-hidden="true" />
-                <p>{t("agent_page.loading")}</p>
-              </div>
-            </div>
-          ) : entries.length === 0 ? (
-            <div className="agent-page__empty">
-              <div className="agent-page__empty-intro">
-                <Bot className="agent-page__empty-icon" aria-hidden="true" />
-                <p className="agent-page__empty-message">{t("agent_page.empty.message")}</p>
-              </div>
-              <div className="agent-page__suggestions">
-                <button
-                  type="button"
-                  className="agent-page__suggestion"
-                  onClick={() =>
-                    composer_ref.current?.write_draft(
-                      t("agent_page.empty.suggestions.capabilities"),
-                    )
-                  }
-                >
-                  <Sparkles className="agent-page__suggestion-icon" aria-hidden="true" />
-                  <span className="agent-page__suggestion-label">
-                    {t("agent_page.empty.suggestions.capabilities")}
-                  </span>
-                </button>
-                {AGENT_TASK_SUGGESTIONS.filter((suggestion) =>
-                  skills.some((skill) => skill.name === suggestion.skillName),
-                ).map(({ skillName, suggestionKey, Icon }) => (
-                  <button
-                    key={suggestionKey}
-                    type="button"
-                    className="agent-page__suggestion"
-                    onClick={() =>
-                      composer_ref.current?.write_draft(
-                        `${t(suggestionKey)} ${format_agent_reference({ kind: "skill", name: skillName })}`,
-                      )
-                    }
-                  >
-                    <Icon className="agent-page__suggestion-icon" aria-hidden="true" />
-                    <span className="agent-page__suggestion-label">
-                      {t(suggestionKey)}{" "}
-                      <span className="agent-mention-token">
-                        <span>{format_agent_reference({ kind: "skill", name: skillName })}</span>
-                      </span>
-                    </span>
-                  </button>
-                ))}
-              </div>
-            </div>
-          ) : (
-            <AgentTimeline
-              skills={skills}
-              entries={entries}
-              follow_reset_revision={follow_reset_revision}
-              on_continue={continue_latest_round}
-              on_edit={start_edit}
-              render_entry_editor={render_entry_editor}
-              on_add_annotation={add_response_annotation}
-              revision_disabled={
-                controls.command !== null ||
-                active_inline_edit !== null ||
-                is_running ||
-                compacting ||
-                unavailable_reason !== null
-              }
-              continue_disabled={
-                controls.command !== null || is_running || compacting || unavailable_reason !== null
-              }
-              annotation_disabled={
-                controls.command !== null ||
-                active_inline_edit !== null ||
-                unavailable_reason !== null
-              }
-            />
-          )}
-        </div>
-      </section>
-
-      <div ref={input_transition.region_ref} className="agent-page__bottom-region">
-        <div ref={input_transition.area_ref} className="agent-page__input-area">
-          <div
-            ref={input_transition.status_ref}
-            className="agent-page__status-zone"
-            inert={input_transition.locked || undefined}
-          >
-            <AgentTaskStatus todos={todos} running={is_running} />
-            {has_input_queue ? (
-              <div className="agent-page__status-queue-row">
-                <AgentInputQueue
-                  queue={inputQueue}
-                  disabled={
-                    controls.command !== null ||
-                    active_inline_edit !== null ||
-                    unavailable_reason !== null ||
-                    compacting
-                  }
-                  active_edit_item_id={
-                    active_inline_edit?.kind === "queue" ? active_inline_edit.itemId : null
-                  }
-                  render_item_editor={render_queue_editor}
-                  on_edit={start_queue_edit}
-                  on_delete={(id) =>
-                    run_queue_command(
-                      () => agent_actions.deleteQueuedMessage(id),
-                      "agent_page.error.queue_delete",
-                    )
-                  }
-                  on_reorder={(ids) =>
-                    run_queue_command(
-                      () => agent_actions.reorderQueuedMessages(ids),
-                      "agent_page.error.queue_reorder",
-                    )
-                  }
-                  on_send_now={(id) =>
-                    run_queue_command(
-                      () => agent_actions.sendQueuedMessage(id),
-                      "agent_page.error.queue_send",
-                    )
-                  }
-                />
-              </div>
+        <TabsTrigger className="agent-pages__tab" value={CONVERSATION_TAB}>
+          <MessageSquareText aria-hidden="true" />
+          <span className="agent-pages__filename">
+            {t("agent_page.document.conversation")}
+            {pendingDecision ? (
+              <span className="agent-pages__attention">
+                {t("agent_page.document.needs_response")}
+              </span>
             ) : null}
-            {follow_latest_control}
-          </div>
-
-          <div className="agent-page__operation-zone">
-            <div
-              ref={input_transition.decision_ref}
-              className="agent-page__decision-slot"
-              inert={pending_decision === null || undefined}
-            >
-              {input_transition.visible_decision === null ? null : (
-                <AgentDecision
-                  decision={input_transition.visible_decision}
-                  title_ref={input_transition.title_ref}
-                />
-              )}
-            </div>
-            <div
-              ref={input_transition.composer_slot_ref}
-              className="agent-page__composer-slot"
-              inert={input_transition.locked || undefined}
-            >
-              <AgentComposer
-                ref={composer_ref}
-                file_drop_target_ref={page_ref}
-                locked={active_inline_edit !== null || input_transition.locked}
-                skills={skills}
-                instructions={instructions}
-                running={is_running}
-                stop_disabled={workspace_apply_running}
-                compacting={compacting}
-                unavailable_reason={unavailable_reason}
-                command={controls.command}
-                can_continue_queue={can_continue_queue}
-                queue_full={queue_full}
-                can_reset={!agent_restoring && entries.length > 0}
-                context={controls.context}
-                usage={controls.usage}
-                approval_mode={settings_snapshot.agent_approval_mode}
-                approval_disabled={initial_state_status !== "ready" || approval_updating}
-                model_selection={model_selection}
-                input_session={input}
-                on_send={submit_message}
-                on_agent_model_select={change_agent_model_selection}
-                on_approval_mode_change={change_approval_mode}
-                on_stop={stop}
-                on_reset={() => set_reset_dialog_open(true)}
-              />
-            </div>
-          </div>
-        </div>
-      </div>
-      <AppConfirmDialog
-        open={pending_thinking_off_action !== null}
-        description={t("agent_page.confirm.thinking_off")}
-        submitting={
-          pending_thinking_off_action?.kind === "select_model"
-            ? model_selection.updating
-            : controls.command === "send"
-        }
-        onConfirm={confirm_pending_thinking_off_action}
-        onClose={close_pending_thinking_off_action}
-      />
-      <AppConfirmDialog
-        open={reset_dialog_open}
-        description={t("agent_page.confirm.new_task")}
-        submitting={controls.command === "reset"}
-        onConfirm={async () => {
-          try {
-            await agent_actions.reset();
-            set_reset_dialog_open(false);
-          } catch (error) {
-            show_command_error(error, "agent_page.error.reset");
-          }
-        }}
-        onClose={() => set_reset_dialog_open(false)}
-      />
-    </div>
+          </span>
+        </TabsTrigger>
+        {state.documents.map((document) => (
+          <span className="agent-pages__tab-group" key={document.path}>
+            <Tooltip>
+              <TooltipTrigger
+                render={<TabsTrigger className="agent-pages__tab" value={document.path} />}
+              >
+                <FileText aria-hidden="true" />
+                <span className="agent-pages__filename">
+                  {decodeURIComponent(document.path.split("/").at(-1)!)}
+                </span>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">{decodeURIComponent(document.path)}</TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <button
+                    type="button"
+                    className="agent-pages__close"
+                    aria-label={t("app.action.close")}
+                    onClick={() => {
+                      state.close(document.path);
+                      requestAnimationFrame(focus_current);
+                    }}
+                  />
+                }
+              >
+                <X aria-hidden="true" />
+              </TooltipTrigger>
+              <TooltipContent side="bottom">{t("app.action.close")}</TooltipContent>
+            </Tooltip>
+          </span>
+        ))}
+      </TabsList>
+      <TabsContent className="agent-pages__panel" value={CONVERSATION_TAB} keepMounted>
+        <AgentDocumentContext value={conversation_active ? context : inactive_context}>
+          <AgentConversation active={conversation_active} />
+        </AgentDocumentContext>
+      </TabsContent>
+      {state.documents.map((document) => (
+        <TabsContent
+          className="agent-pages__panel"
+          key={document.path}
+          value={document.path}
+          keepMounted
+        >
+          <AgentDocumentContext
+            value={state.selected === document.path ? context : inactive_context}
+          >
+            <AgentDocumentPage
+              document={document}
+              active={state.selected === document.path}
+              scroll={state.scroll.current}
+            />
+          </AgentDocumentContext>
+        </TabsContent>
+      ))}
+    </Tabs>
   );
 }

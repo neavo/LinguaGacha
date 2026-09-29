@@ -220,6 +220,9 @@ export const ja_jp_app = {
       parse_failed: {
         message: "ファイルの内容を解析できませんでした",
       },
+      preview_too_large: {
+        message: "ファイルが大きすぎるためプレビューできません。保存して確認してください。",
+      },
       invalid_structure: {
         message: "ファイルの構造が形式の要件を満たしていません",
       },
