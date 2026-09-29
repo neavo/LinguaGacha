@@ -119,6 +119,7 @@ export function register_api_routes(context: ApiRouteContext): void {
       },
     });
   });
+  context.postJson("/api/agent/workspace/file", (body) => agent.describe_workspace_file(body));
   context.postJson("/api/agent/workspace/document", (body) => agent.read_workspace_document(body));
   context.request("GET", "/api/agent/workspace/image", async (request) => {
     const query = new URL(request.url).searchParams;

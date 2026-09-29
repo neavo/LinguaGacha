@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, type JSX } from "react";
-import { FileText, MessageSquareText, X } from "lucide-react";
+import { FileText, Image, MessageSquareText, X } from "lucide-react";
 import type { ScreenComponentProps } from "@frontend/app/navigation/types";
 import { useAppNavigation } from "@frontend/app/navigation/navigation-context";
 import {
@@ -10,9 +10,9 @@ import { useI18n } from "@frontend/app/locale/locale-context";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@frontend/shadcn/tabs";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@frontend/shadcn/tooltip";
 import { AgentConversation } from "./agent-conversation";
-import { AgentDocumentPage } from "./agent-document";
-import { AgentDocumentContext } from "./agent-document-context";
-import { useAgentDocuments } from "./use-agent-documents";
+import { AgentPreviewPage } from "./agent-preview";
+import { AgentFileContext } from "./agent-file-context";
+import { useAgentPreviews } from "./use-agent-previews";
 import "./agent-documents.css";
 
 const CONVERSATION_TAB = "conversation";
@@ -29,12 +29,12 @@ function AgentPages({ session_id }: { session_id: string }): JSX.Element {
   const root = useRef<HTMLDivElement>(null);
   const { pendingDecision } = useAgentControls();
   const { agent_input_request } = useAppNavigation();
-  const state = useAgentDocuments(session_id);
+  const state = useAgentPreviews(session_id);
   const { select } = state;
   const conversation_active = state.selected === null;
   const context = useMemo(
-    () => ({ open_document: state.open_document, session_id, active: true }),
-    [state.open_document, session_id],
+    () => ({ open_file: state.open_file, session_id, active: true }),
+    [state.open_file, session_id],
   );
   const inactive_context = useMemo(() => ({ ...context, active: false }), [context]);
   useEffect(() => {
@@ -66,16 +66,13 @@ function AgentPages({ session_id }: { session_id: string }): JSX.Element {
         hidden={state.documents.length === 0}
         activateOnFocus={false}
       >
-        <TabsTrigger className="agent-pages__tab" value={CONVERSATION_TAB}>
+        <TabsTrigger
+          className="agent-pages__tab"
+          value={CONVERSATION_TAB}
+          data-needs-response={pendingDecision && !conversation_active ? "" : undefined}
+        >
           <MessageSquareText aria-hidden="true" />
-          <span className="agent-pages__filename">
-            {t("agent_page.document.conversation")}
-            {pendingDecision ? (
-              <span className="agent-pages__attention">
-                {t("agent_page.document.needs_response")}
-              </span>
-            ) : null}
-          </span>
+          <span className="agent-pages__filename">{t("agent_page.document.conversation")}</span>
         </TabsTrigger>
         {state.documents.map((document) => (
           <span className="agent-pages__tab-group" key={document.path}>
@@ -83,10 +80,12 @@ function AgentPages({ session_id }: { session_id: string }): JSX.Element {
               <TooltipTrigger
                 render={<TabsTrigger className="agent-pages__tab" value={document.path} />}
               >
-                <FileText aria-hidden="true" />
-                <span className="agent-pages__filename">
-                  {decodeURIComponent(document.path.split("/").at(-1)!)}
-                </span>
+                {document.preview === "image" ? (
+                  <Image aria-hidden="true" />
+                ) : (
+                  <FileText aria-hidden="true" />
+                )}
+                <span className="agent-pages__filename">{document.name}</span>
               </TooltipTrigger>
               <TooltipContent side="bottom">{decodeURIComponent(document.path)}</TooltipContent>
             </Tooltip>
@@ -112,9 +111,9 @@ function AgentPages({ session_id }: { session_id: string }): JSX.Element {
         ))}
       </TabsList>
       <TabsContent className="agent-pages__panel" value={CONVERSATION_TAB} keepMounted>
-        <AgentDocumentContext value={conversation_active ? context : inactive_context}>
+        <AgentFileContext value={conversation_active ? context : inactive_context}>
           <AgentConversation active={conversation_active} />
-        </AgentDocumentContext>
+        </AgentFileContext>
       </TabsContent>
       {state.documents.map((document) => (
         <TabsContent
@@ -123,15 +122,13 @@ function AgentPages({ session_id }: { session_id: string }): JSX.Element {
           value={document.path}
           keepMounted
         >
-          <AgentDocumentContext
-            value={state.selected === document.path ? context : inactive_context}
-          >
-            <AgentDocumentPage
+          <AgentFileContext value={state.selected === document.path ? context : inactive_context}>
+            <AgentPreviewPage
               document={document}
               active={state.selected === document.path}
               scroll={state.scroll.current}
             />
-          </AgentDocumentContext>
+          </AgentFileContext>
         </TabsContent>
       ))}
     </Tabs>

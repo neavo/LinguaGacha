@@ -1,4 +1,4 @@
-import type { AgentDocument } from "../../shared/agent-workspace-file";
+import type { AgentFile, AgentDocument } from "../../shared/agent-workspace-file";
 import { normalize_agent_approval_mode } from "../../domain/setting";
 import type { AgentSkillsService } from "./agent-skills-service";
 import type { AgentFilesResponse } from "../../shared/agent-reference";
@@ -272,6 +272,12 @@ export class AgentService {
     this.assert_not_disposed();
     if (this.session_reset !== null) throw new AppErrors.AppError("runtime.busy");
     return this.workspace.activate_path(is_json_record(request) ? request["path"] : undefined);
+  }
+
+  /** 文件描述绑定当前会话，菜单无法复用旧会话的同名工作文件。 */
+  public describe_workspace_file(request: JsonRecord): AgentFile {
+    this.assert_workspace_preview_session(request["sessionId"]);
+    return this.workspace.describe_file(request["path"]);
   }
 
   /** 请求和响应都绑定对话身份，防止旧页面读取重建后的同名文件。 */

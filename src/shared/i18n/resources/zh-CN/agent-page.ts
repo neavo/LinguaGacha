@@ -3,7 +3,6 @@ export const zh_cn_agent_page = {
     conversation: "对话",
     view: "查看",
     save_as: "另存为",
-    needs_response: "等待回复",
     read_failed: "无法读取文档",
   },
   batch_translation_model: {
@@ -26,7 +25,7 @@ export const zh_cn_agent_page = {
     copy_format: "复制为 {format}",
     download_format: "下载为 {format}",
   },
-  image: { title: "图片", open_preview: "打开图片预览" },
+  image: { title: "图片" },
   loading: "正在恢复会话 …",
   empty: {
     message: "「搭档」，我们接下来做点什么呢  ( •̀ ᗜ •́ )つ▱",

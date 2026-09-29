@@ -66,6 +66,8 @@ function PreviewPane(props: {
         <MediaViewport
           key={actual_page}
           label={title}
+          mode="document"
+          image={{ url: result.image, mime: "image/png" }}
           extra_controls={
             side === "translation" && (result.count ?? 0) > 1 ? (
               <>
@@ -86,9 +88,7 @@ function PreviewPane(props: {
               </>
             ) : undefined
           }
-        >
-          <img src={result.image} alt={title} draggable={false} />
-        </MediaViewport>
+        />
       ) : null}
       {status !== "ready" && (
         <div className="proofreading-page__preview-feedback" role="status">

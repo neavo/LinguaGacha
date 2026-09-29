@@ -1,3 +1,4 @@
+import { useDevicePixelRatio } from "@frontend/widgets/interactions/use-device-pixel-ratio";
 import { type JSX, useEffect, useMemo, useRef } from "react";
 
 import {
@@ -19,6 +20,7 @@ const WAVEFORM_CANVAS_HEIGHT = WAVEFORM_ROW_COUNT * WAVEFORM_ROW_STEP_PX;
 
 /** 按设备像素比绘制会话采样的波形，颜色沿用当前主题。 */
 export function BatchTranslationWaveform(props: BatchTranslationWaveformProps): JSX.Element {
+  const device_pixel_ratio = useDevicePixelRatio();
   const canvas_ref = useRef<HTMLCanvasElement | null>(null);
 
   const column_heights = useMemo(() => {
@@ -36,7 +38,6 @@ export function BatchTranslationWaveform(props: BatchTranslationWaveformProps): 
       return;
     }
 
-    const device_pixel_ratio = window.devicePixelRatio || 1;
     canvas_element.width = Math.round(WAVEFORM_CANVAS_WIDTH * device_pixel_ratio);
     canvas_element.height = Math.round(WAVEFORM_CANVAS_HEIGHT * device_pixel_ratio);
     context.setTransform(device_pixel_ratio, 0, 0, device_pixel_ratio, 0, 0);
@@ -66,7 +67,7 @@ export function BatchTranslationWaveform(props: BatchTranslationWaveformProps): 
         context.fillText("▨", draw_x, draw_y);
       }
     });
-  }, [column_heights]);
+  }, [column_heights, device_pixel_ratio]);
 
   return (
     <div className="batch-translation__waveform">

@@ -40,6 +40,7 @@ const POST_PATHS = new Set([
   "/api/agent/message",
   "/api/agent/workspace/activate-path",
   "/api/agent/workspace/document",
+  "/api/agent/workspace/file",
   "/api/agent/question/resolve",
   "/api/agent/write-approval/resolve",
   "/api/agent/queue/update",

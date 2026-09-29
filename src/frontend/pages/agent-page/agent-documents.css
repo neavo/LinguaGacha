@@ -12,11 +12,12 @@
   height: auto;
   flex: 0 0 auto;
   justify-content: flex-start;
-  gap: 4px;
+  gap: 8px;
   overflow-x: auto;
   overflow-y: hidden;
   border-radius: 0;
-  padding: 4px 8px;
+  /* 为 6px 扩散光环预留空间，提示出现时不改变标签栏尺寸。 */
+  padding: 8px;
   background: var(--background);
 }
 
@@ -26,6 +27,9 @@
 }
 
 .agent-pages__panel {
+  /* 面板分配内容高度，媒体画布依靠 flex 占满剩余空间。 */
+  display: flex;
+  flex-direction: column;
   min-width: 0;
   min-height: 0;
   overflow: hidden;
@@ -140,9 +144,13 @@
   outline-offset: -1px;
 }
 
-.agent-pages__attention {
-  color: var(--primary);
-  font-size: 12px;
+.agent-pages__tab[data-needs-response]::before {
+  --agent-status-color: var(--primary);
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
 }
 
 .agent-document {

@@ -5,7 +5,6 @@ export const ja_jp_agent_page = {
     conversation: "会話",
     view: "表示",
     save_as: "名前を付けて保存",
-    needs_response: "返信待ち",
     read_failed: "文書を読み込めません",
   },
   batch_translation_model: {
@@ -28,7 +27,7 @@ export const ja_jp_agent_page = {
     copy_format: "{format} としてコピー",
     download_format: "{format} としてダウンロード",
   },
-  image: { title: "画像", open_preview: "画像のプレビューを開く" },
+  image: { title: "画像" },
   loading: "セッションを復元中 …",
   empty: {
     message: "「あいぼう」、次は何をしようか  ( •̀ ᗜ •́ )つ▱",

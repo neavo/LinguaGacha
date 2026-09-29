@@ -15,10 +15,11 @@ vi.mock("@frontend/widgets/app-page-dialog", () => ({
 // happy-dom 通过固定尺寸验证画布挂载、翻页和刷新之间的状态归属。
 beforeEach(() => {
   vi.useFakeTimers();
+  vi.spyOn(HTMLImageElement.prototype, "complete", "get").mockReturnValue(true);
   vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(500);
   vi.spyOn(HTMLElement.prototype, "clientHeight", "get").mockReturnValue(500);
-  vi.spyOn(HTMLElement.prototype, "offsetWidth", "get").mockReturnValue(1000);
-  vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockReturnValue(1000);
+  vi.spyOn(HTMLImageElement.prototype, "naturalWidth", "get").mockReturnValue(1000);
+  vi.spyOn(HTMLImageElement.prototype, "naturalHeight", "get").mockReturnValue(1000);
 });
 afterEach(() => {
   vi.restoreAllMocks();

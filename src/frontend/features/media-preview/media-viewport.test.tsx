@@ -11,17 +11,20 @@ it("画布滚轮取消外层滚动，拖动限制边界，重置恢复居中适�
   vi.useFakeTimers();
   vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(500);
   vi.spyOn(HTMLElement.prototype, "clientHeight", "get").mockReturnValue(500);
-  vi.spyOn(HTMLElement.prototype, "offsetWidth", "get").mockReturnValue(1000);
-  vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockReturnValue(1000);
+  vi.spyOn(HTMLImageElement.prototype, "naturalWidth", "get").mockReturnValue(1000);
+  vi.spyOn(HTMLImageElement.prototype, "naturalHeight", "get").mockReturnValue(1000);
+  vi.spyOn(HTMLImageElement.prototype, "complete", "get").mockReturnValue(true);
   const container = document.createElement("div");
   document.body.append(container);
   const root = createRoot(container);
   try {
     await act(async () =>
       root.render(
-        <MediaViewport label="图片">
-          <img src="data:image/png;base64,aQ==" alt="图片" />
-        </MediaViewport>,
+        <MediaViewport
+          label="图片"
+          mode="image"
+          image={{ url: "data:image/png;base64,aQ==", mime: "image/png" }}
+        />,
       ),
     );
     await act(async () => {

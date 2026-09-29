@@ -5,7 +5,6 @@ export const ko_kr_agent_page = {
     conversation: "대화",
     view: "보기",
     save_as: "다른 이름으로 저장",
-    needs_response: "응답 대기",
     read_failed: "문서를 읽을 수 없습니다",
   },
   batch_translation_model: {
@@ -28,7 +27,7 @@ export const ko_kr_agent_page = {
     copy_format: "{format} 형식으로 복사",
     download_format: "{format} 형식으로 다운로드",
   },
-  image: { title: "이미지", open_preview: "이미지 미리 보기 열기" },
+  image: { title: "이미지" },
   loading: "세션 복원 중 …",
   empty: {
     message: "「Aibō」, 다음엔 뭘 할까  ( •̀ ᗜ •́ )つ▱",

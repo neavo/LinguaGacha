@@ -1,6 +1,7 @@
-import { act, StrictMode, useEffect, type JSX } from "react";
+import { act, StrictMode, useEffect, useState, type JSX } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { AgentMessageAttachments } from "./agent-message-attachments";
 import { AgentMarkdown } from "./agent-markdown";
 
 const mocks = vi.hoisted(() => ({
@@ -10,6 +11,8 @@ const mocks = vi.hoisted(() => ({
   mounts: vi.fn(),
   unmounts: vi.fn(),
   session: "session-1",
+  needs_response: false,
+  draft_attachment: false,
   saved: null as unknown,
   t: (key: string) => key,
   get: (): unknown => mocks.saved,
@@ -32,13 +35,14 @@ vi.mock("@frontend/app/navigation/navigation-context", () => ({
 }));
 vi.mock("@frontend/app/session/agent/agent-session-context", () => ({
   useAgentSessionId: () => mocks.session,
-  useAgentControls: () => ({ pendingDecision: null }),
+  useAgentControls: () => ({ pendingDecision: mocks.needs_response ? { kind: "question" } : null }),
 }));
 vi.mock("@frontend/app/session/project-session-ui-state-context", () => ({
   useProjectSessionUiState: () => ({ get_page_ui_state: mocks.get, set_page_ui_state: mocks.set }),
 }));
 vi.mock("./agent-conversation", () => ({
   AgentConversation: function Conversation(): JSX.Element {
+    const [attached, set_attached] = useState(mocks.draft_attachment);
     useEffect(() => {
       mocks.mounts();
       return () => {
@@ -48,7 +52,31 @@ vi.mock("./agent-conversation", () => ({
     return (
       <div>
         <textarea defaultValue="草稿" />
-        <AgentMarkdown text="[报告](work/report.md)\n\n[附件](work/other.md)" streaming={false} />
+        <AgentMessageAttachments
+          mode="draft"
+          disabled={false}
+          attachments={
+            attached
+              ? [
+                  {
+                    kind: "file",
+                    uploadId: "draft",
+                    name: "chart.png",
+                    path: "work/chart.png",
+                    size: 1,
+                    imageMimeType: "image/png",
+                  },
+                ]
+              : []
+          }
+          on_remove={() => set_attached(false)}
+          on_retry={() => undefined}
+          on_update_annotation={() => undefined}
+        />
+        <AgentMarkdown
+          text="[报告](work/report.md)\n\n[附件](work/other.md)\n\n[图片](work/chart.png)\n\n[文件](work/data.bin)"
+          streaming={false}
+        />
       </div>
     );
   },
@@ -63,6 +91,8 @@ describe("Agent 文档标签", () => {
     mocks.blob.mockReset();
     mocks.blob.mockResolvedValue(new Blob([new Uint8Array([0, 255])], { type: "image/png" }));
     mocks.session = "session-1";
+    mocks.needs_response = false;
+    mocks.draft_attachment = false;
     mocks.saved = null;
     mocks.mounts.mockClear();
     mocks.unmounts.mockClear();
@@ -71,6 +101,13 @@ describe("Agent 文档标签", () => {
     mocks.api.mockImplementation(async (_route: string, body: { path: string }) => ({
       sessionId: mocks.session,
       path: body.path,
+      kind: "file",
+      name: decodeURIComponent(body.path.split("/").at(-1)!),
+      preview: body.path.endsWith(".png")
+        ? "image"
+        : body.path.endsWith(".bin")
+          ? null
+          : "markdown",
       content: "# 结论\n\n报告正文\n\n[下一份](./other.md)",
     }));
     container = document.createElement("div");
@@ -90,14 +127,9 @@ describe("Agent 文档标签", () => {
     expect(element).not.toBeNull();
     await act(async () => (element as HTMLElement).click());
   }
-  /** 从文件链接菜单进入用户动作。 */
-  async function menu(path: string, action = "view"): Promise<void> {
+  /** 真实文件入口打开标签，页面测试只观察标签与内容生命周期。 */
+  async function open_link(path: string): Promise<void> {
     await click(container.querySelector(`a[href="${path}"]`));
-    await click(
-      [...document.querySelectorAll('[role="menuitem"]')].find(
-        (item) => item.textContent === `agent_page.document.${action}`,
-      ) ?? null,
-    );
   }
   /** 按可见文件名定位标签，避免耦合 Tooltip 的实现。 */
   function tab(path: string): Element | null {
@@ -108,18 +140,12 @@ describe("Agent 文档标签", () => {
     );
   }
 
-  it("默认无标签栏，保存沿用旧接口，查看后文档独占页面且对话实例保持", async () => {
+  it("打开、切换和关闭文档标签时保留对话实例", async () => {
     await render();
     const list = container.querySelector<HTMLElement>('[role="tablist"]')!;
     const input = container.querySelector("textarea")!;
     expect(list.hidden).toBe(true);
-    mocks.api.mockResolvedValueOnce({ status: "cancelled" });
-    await menu("work/report.md", "save_as");
-    expect(mocks.api).toHaveBeenLastCalledWith("/api/agent/workspace/activate-path", {
-      path: "work/report.md",
-    });
-    expect(list.hidden).toBe(true);
-    await menu("work/report.md");
+    await open_link("work/report.md");
     expect(list.hidden).toBe(false);
     expect(document.querySelector('[role="menu"]')).toBeNull();
     expect(input.closest<HTMLElement>('[role="tabpanel"]')?.hidden).toBe(true);
@@ -128,38 +154,26 @@ describe("Agent 文档标签", () => {
     expect(container.querySelector("textarea")).toBe(input);
     expect(input.closest<HTMLElement>('[role="tabpanel"]')?.hidden).toBe(false);
     expect(mocks.mounts).toHaveBeenCalledOnce();
-    await menu("work/report.md");
+    await open_link("work/report.md");
     expect(container.querySelectorAll(".agent-document")).toHaveLength(1);
     await click(container.querySelector(".agent-pages__close"));
     expect(list.hidden).toBe(true);
     expect(mocks.unmounts).not.toHaveBeenCalled();
   });
 
-  it("读取失败只 Toast，更新失败保留已打开正文", async () => {
-    await render();
-    mocks.api.mockRejectedValueOnce(new Error("missing"));
-    await menu("work/report.md");
-    expect(container.querySelector<HTMLElement>('[role="tablist"]')?.hidden).toBe(true);
-    expect(container.querySelector(".agent-document")).toBeNull();
-    expect(mocks.toast).toHaveBeenCalledOnce();
-    await menu("work/report.md");
-    await click(container.querySelector('[role="tab"]'));
-    mocks.api.mockRejectedValueOnce(new Error("busy"));
-    await click(tab("work/report.md"));
-    expect(container.querySelector(".agent-document")?.textContent).toContain("报告正文");
-    expect(mocks.toast).toHaveBeenCalledTimes(2);
-  });
-
   it("文档配图通过会话资源接口读取，关闭页面释放 Blob", async () => {
     const revoke = vi.spyOn(URL, "revokeObjectURL");
     try {
       await render();
-      mocks.api.mockResolvedValueOnce({
+      mocks.api.mockImplementation(async (_route: string, body: { path: string }) => ({
         sessionId: "session-1",
-        path: "work/report.md",
+        path: body.path,
+        name: "report.md",
+        kind: "file",
+        preview: "markdown",
         content: "![配图](./chart%20%23.png)",
-      });
-      await menu("work/report.md");
+      }));
+      await open_link("work/report.md");
       const source = container.querySelector(".agent-document img")?.getAttribute("src");
       expect(source).toMatch(/^blob:/);
       const request = new URL(mocks.blob.mock.calls[0]![0] as string, "http://localhost");
@@ -172,9 +186,68 @@ describe("Agent 文档标签", () => {
     }
   });
 
+  it("图片进入独立标签，重复打开复用画布，关闭释放资源", async () => {
+    const revoke = vi.spyOn(URL, "revokeObjectURL");
+    try {
+      await render();
+      await open_link("work/chart.png");
+      const image = container.querySelector(".media-viewport__viewport img")!;
+      expect(image.getAttribute("src")).toMatch(/^blob:/);
+      expect(tab("work/chart.png")?.getAttribute("aria-selected")).toBe("true");
+      await click(container.querySelector('[role="tab"]'));
+      await open_link("work/chart.png");
+      expect(container.querySelectorAll(".media-viewport__viewport")).toHaveLength(1);
+      await click(container.querySelector(".agent-pages__close"));
+      expect(revoke).toHaveBeenCalledWith(image.getAttribute("src"));
+    } finally {
+      revoke.mockRestore();
+    }
+  });
+
+  it("待回复仅在对话未激活时提示，切回隐藏、离开恢复且不追加文本", async () => {
+    await render();
+    await open_link("work/report.md");
+    const conversation = container.querySelector('[role="tab"]')!;
+    const title = conversation.textContent;
+    expect(conversation.hasAttribute("data-needs-response")).toBe(false);
+    mocks.needs_response = true;
+    await render();
+    expect(conversation.hasAttribute("data-needs-response")).toBe(true);
+    expect(conversation.textContent).toBe(title);
+    await click(conversation);
+    expect(conversation.hasAttribute("data-needs-response")).toBe(false);
+    await click(tab("work/report.md"));
+    expect(conversation.hasAttribute("data-needs-response")).toBe(true);
+    mocks.needs_response = false;
+    await render();
+    expect(conversation.hasAttribute("data-needs-response")).toBe(false);
+    expect(conversation.textContent).toBe(title);
+  });
+
+  it("草稿图片打开标签后保留输入与选区，移除引用不关闭预览且正文入口复用标签", async () => {
+    mocks.draft_attachment = true;
+    await render();
+    const input = container.querySelector("textarea")!;
+    input.value = "继续编辑的草稿";
+    input.setSelectionRange(2, 5);
+    await click(container.querySelector(".agent-attachment__body"));
+    expect(tab("work/chart.png")?.getAttribute("aria-selected")).toBe("true");
+    expect(document.querySelector('[data-slot="dialog-content"]')).toBeNull();
+    await click(container.querySelector('[role="tab"]'));
+    expect(container.querySelector("textarea")).toBe(input);
+    expect(input.value).toBe("继续编辑的草稿");
+    expect([input.selectionStart, input.selectionEnd]).toEqual([2, 5]);
+    await click(container.querySelector(".agent-attachment__remove"));
+    expect(container.querySelector(".agent-attachment")).toBeNull();
+    expect(tab("work/chart.png")).not.toBeNull();
+    await open_link("work/chart.png");
+    expect(container.querySelectorAll(".media-viewport__viewport")).toHaveLength(1);
+    expect(tab("work/chart.png")?.getAttribute("aria-selected")).toBe("true");
+  });
+
   it("离开再回来按轻量记录恢复，在 StrictMode 重连时仍保留标签", async () => {
     await render();
-    await menu("work/report.md");
+    await open_link("work/report.md");
     const viewport = container.querySelector<HTMLElement>(".agent-document")!;
     viewport.scrollTop = 80;
     await act(async () => viewport.dispatchEvent(new Event("scroll", { bubbles: true })));
