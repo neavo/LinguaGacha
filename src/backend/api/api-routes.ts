@@ -119,6 +119,18 @@ export function register_api_routes(context: ApiRouteContext): void {
       },
     });
   });
+  context.postJson("/api/agent/workspace/document", (body) => agent.read_workspace_document(body));
+  context.request("GET", "/api/agent/workspace/image", async (request) => {
+    const query = new URL(request.url).searchParams;
+    const image = await agent.read_workspace_image(query.get("path"), query.get("sessionId"));
+    return new Response(new Uint8Array(image.bytes), {
+      headers: {
+        "Content-Type": image.mime,
+        "X-Content-Type-Options": "nosniff",
+        "Cache-Control": "no-store",
+      },
+    });
+  });
   context.postJson("/api/agent/workspace/activate-path", (body) =>
     agent.activate_workspace_path(body),
   );

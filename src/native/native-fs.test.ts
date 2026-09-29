@@ -29,6 +29,14 @@ afterEach(async () => {
 });
 
 describe("原生文件系统门面", () => {
+  it("预览读取限制字节数并保留短文件的完整字节", () => {
+    const target = path.join(temp_dir, "preview.bin");
+    fs.writeFileSync(target, Buffer.from([0, 255, 1, 128]));
+    const native_fs = new NativeFs();
+    expect(native_fs.read_prefix(target, 2)).toEqual(Buffer.from([0, 255]));
+    expect(native_fs.read_prefix(target, 8)).toEqual(Buffer.from([0, 255, 1, 128]));
+  });
+
   it.each(["copy", "write"])("%s 完成后替换目标并保留原始字节", (operation) => {
     const native_fs = new NativeFs();
     const source = path.join(temp_dir, "source.bin");

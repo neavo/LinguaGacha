@@ -1,4 +1,11 @@
 export const de_de_agent_page = {
+  document: {
+    conversation: "Unterhaltung",
+    view: "Ansehen",
+    save_as: "Speichern unter",
+    needs_response: "Antwort erforderlich",
+    read_failed: "Dokument konnte nicht gelesen werden",
+  },
   batch_translation_model: {
     follow: "Wie AGENT",
     follow_option: "AGENT-Modell verwenden",

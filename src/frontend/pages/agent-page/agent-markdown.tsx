@@ -3,10 +3,9 @@ import {
   memo,
   useEffect,
   useMemo,
-  useRef,
+  useContext,
   useState,
   type ComponentProps,
-  type MouseEvent,
   type WheelEvent,
   type PointerEvent,
   type KeyboardEvent,
@@ -27,11 +26,15 @@ import {
 } from "streamdown";
 
 import { useAppearance } from "@frontend/app/appearance/appearance-context";
-import { open_external_url, api_fetch } from "@frontend/app/desktop/desktop-api";
+import { api_blob } from "@frontend/app/desktop/desktop-api";
 import { push_toast } from "@frontend/app/feedback/desktop-toast";
 import { resolve_visible_error_message } from "@frontend/app/feedback/visible-error-message";
 import { useI18n } from "@frontend/app/locale/locale-context";
-import type { AgentWorkspaceLinkResult } from "@shared/agent";
+import { resolve_agent_workspace_href } from "@shared/agent-workspace-file";
+import { AgentMarkdownLink } from "./agent-markdown-link";
+import { AgentDocumentContext, AgentMarkdownPathContext } from "./agent-document-context";
+import type { Heading, Root, RootContent } from "mdast";
+import { visit } from "unist-util-visit";
 import { AgentMediaPreviewDialog } from "./agent-media-preview-dialog";
 
 import "streamdown/styles.css";
@@ -41,6 +44,7 @@ import "./agent-markdown.css";
 type AgentMarkdownProps = {
   text: string;
   streaming: boolean;
+  document_path?: string;
 };
 
 const MARKDOWN_DIAGRAM_OPTIONS = { errorComponent: AgentMarkdownDiagramError };
@@ -48,6 +52,7 @@ const MARKDOWN_CONTROLS = { mermaid: { fullscreen: false } };
 // 保留产品的原始 HTML 展示；URL 在唯一转换入口沿用既有协议边界。
 const MARKDOWN_REHYPE_PLUGINS = [defaultRehypePlugins.raw!]; // Streamdown 的 raw 插件是产品保留原始 HTML 的固定依赖。
 const MARKDOWN_REMARK_PLUGINS = [...Object.values(defaultRemarkPlugins), MARKDOWN_ALERT];
+const DOCUMENT_REMARK_PLUGINS = [...MARKDOWN_REMARK_PLUGINS, agent_document_headings];
 const MARKDOWN_URL_PROTOCOL = /^(?:https?|ircs?|mailto|xmpp)$/iu;
 const MERMAID_NODE_RADIUS = 4;
 const MERMAID_EDGE_LABEL_RADIUS = 3;
@@ -82,14 +87,7 @@ const MARKDOWN_COMPONENTS: Components = {
   blockquote: "blockquote",
   hr: "hr",
   strong: "strong",
-  a: ({ node: _node, href, children, ...props }) =>
-    href ? (
-      <a {...props} href={href}>
-        {children}
-      </a>
-    ) : (
-      <span>{children}</span>
-    ),
+  a: AgentMarkdownLink,
   img: AgentMarkdownImage,
   table: AgentMarkdownTable,
 };
@@ -99,7 +97,6 @@ export const AgentMarkdown = memo(function AgentMarkdown(props: AgentMarkdownPro
   const { t } = useI18n();
   const { resolved_theme } = useAppearance();
 
-  const pending_links = useRef(new Set<string>()); // 同正文的重复链接共用待决状态
   const [diagram_config, set_diagram_config] = useState<MermaidConfig>(() => ({
     theme: resolved_theme === "dark" ? "dark" : "default",
   }));
@@ -140,61 +137,35 @@ export const AgentMarkdown = memo(function AgentMarkdown(props: AgentMarkdownPro
     resetView: t("app.media.reset_zoom"),
   };
 
-  /** 事件委托保留组件映射身份；读取属性原值，避免相对工作区路径变为后端 URL。 */
-  const activate_link = async (event: MouseEvent<HTMLDivElement>): Promise<void> => {
-    if (event.defaultPrevented || !(event.target instanceof Element)) return;
-    const anchor = event.target.closest<HTMLAnchorElement>("a[href]");
-    const href = anchor?.getAttribute("href");
-    if (!href || href.startsWith("#") || !event.currentTarget.contains(anchor)) return;
-    event.preventDefault();
-    if (pending_links.current.has(href)) return;
-    pending_links.current.add(href);
-    try {
-      if (/^(?:[a-z][a-z\d+.-]*:|\/\/)/iu.test(href)) {
-        await open_external_url(href.startsWith("//") ? `https:${href}` : href);
-      } else {
-        const result = await api_fetch<AgentWorkspaceLinkResult>(
-          "/api/agent/workspace/activate-path",
-          { path: href },
-        );
-        if (result.status === "saved") push_toast("success", t("agent_page.file_saved"));
-      }
-    } catch (error: unknown) {
-      push_toast(
-        "error",
-        resolve_visible_error_message(error, t, t("agent_page.error.activate_link")),
-      );
-    } finally {
-      pending_links.current.delete(href);
-    }
-  };
-
   return (
-    <div
-      className="agent-markdown"
-      onClick={activate_link}
-      onWheelCapture={scroll_past_inline_diagram}
-      onPointerDownCapture={focus_inline_diagram}
-      onKeyDownCapture={leave_inline_diagram}
-    >
-      {/* 关闭默认块间距，避免原始 HTML 块额外叠加留白。 */}
-      <Streamdown
-        className="agent-markdown__content space-y-0"
-        isAnimating={props.streaming}
-        parseIncompleteMarkdown={props.streaming}
-        plugins={plugins}
-        components={MARKDOWN_COMPONENTS}
-        rehypePlugins={MARKDOWN_REHYPE_PLUGINS}
-        remarkPlugins={MARKDOWN_REMARK_PLUGINS}
-        urlTransform={filter_markdown_url}
-        mermaid={MARKDOWN_DIAGRAM_OPTIONS}
-        translations={translations}
-        controls={MARKDOWN_CONTROLS}
-        codeBlockMaxHeight={0}
+    <AgentMarkdownPathContext value={props.document_path ?? ""}>
+      <div
+        className="agent-markdown"
+        onWheelCapture={scroll_past_inline_diagram}
+        onPointerDownCapture={focus_inline_diagram}
+        onKeyDownCapture={leave_inline_diagram}
       >
-        {props.text}
-      </Streamdown>
-    </div>
+        {/* 关闭默认块间距，避免原始 HTML 块额外叠加留白。 */}
+        <Streamdown
+          className="agent-markdown__content space-y-0"
+          // 文档一次解析完整语法树，使重复标题和引用定义在整篇内共享作用域。
+          mode={props.document_path ? "static" : "streaming"}
+          isAnimating={props.streaming}
+          parseIncompleteMarkdown={props.streaming}
+          plugins={plugins}
+          components={MARKDOWN_COMPONENTS}
+          rehypePlugins={MARKDOWN_REHYPE_PLUGINS}
+          remarkPlugins={props.document_path ? DOCUMENT_REMARK_PLUGINS : MARKDOWN_REMARK_PLUGINS}
+          urlTransform={filter_markdown_url}
+          mermaid={MARKDOWN_DIAGRAM_OPTIONS}
+          translations={translations}
+          controls={MARKDOWN_CONTROLS}
+          codeBlockMaxHeight={0}
+        >
+          {props.text}
+        </Streamdown>
+      </div>
+    </AgentMarkdownPathContext>
   );
 });
 
@@ -328,7 +299,40 @@ function AgentMarkdownImage({
 }: ComponentProps<"img"> & ExtraProps): JSX.Element | null {
   const { t } = useI18n();
   const [open, set_open] = useState(false);
+  const base_path = useContext(AgentMarkdownPathContext);
+  const documents = useContext(AgentDocumentContext);
+  const [local_source, set_local_source] = useState<{ source: string; url: string } | null>(null);
+  const relative = typeof src === "string" && !/^(?:[a-z][a-z\d+.-]*:|\/\/)/iu.test(src);
+  useEffect(() => {
+    if (documents?.active === false) set_open(false);
+  }, [documents?.active]);
+  const session_id = documents?.session_id;
+  useEffect(() => {
+    if (!relative || !src || !session_id) return;
+    const controller = new AbortController();
+    let url: string | null = null;
+    void (async () => {
+      const path = resolve_agent_workspace_href(src, base_path);
+      const query = new URLSearchParams({ path, sessionId: session_id });
+      const blob = await api_blob(`/api/agent/workspace/image?${query}`, controller.signal);
+      if (controller.signal.aborted) return;
+      url = URL.createObjectURL(blob);
+      set_local_source({ source: src, url });
+    })().catch((error: unknown) => {
+      if (!controller.signal.aborted)
+        push_toast(
+          "error",
+          resolve_visible_error_message(error, t, t("agent_page.document.read_failed")),
+        );
+    });
+    return () => {
+      controller.abort();
+      if (url !== null) URL.revokeObjectURL(url);
+    };
+  }, [base_path, relative, session_id, src, t]);
   if (!src) return null;
+  const source =
+    relative && session_id ? (local_source?.source === src ? local_source.url : undefined) : src;
   const label = alt?.trim() || title?.trim() || t("agent_page.image.title");
   return (
     <>
@@ -342,7 +346,7 @@ function AgentMarkdownImage({
       >
         <img
           {...props}
-          src={src}
+          src={source}
           alt={label}
           title={title}
           loading={props.loading ?? "lazy"}
@@ -350,8 +354,34 @@ function AgentMarkdownImage({
         />
       </button>
       <AgentMediaPreviewDialog open={open} title={label} onClose={() => set_open(false)}>
-        <img src={src} alt={label} decoding="async" />
+        <img src={source} alt={label} decoding="async" />
       </AgentMediaPreviewDialog>
     </>
   );
+}
+
+/** 文档标题生成稳定的页内锚点；作用域由每份文档的面板限定。 */
+function agent_document_headings(): (tree: Root) => void {
+  return (tree) => {
+    const used = new Set<string>();
+    visit(tree, "heading", (node: Heading) => {
+      const base = heading_text(node)
+        .toLowerCase()
+        .replace(/[^\p{L}\p{N}\p{M}_\-\s]/gu, "")
+        .replace(/\s/gu, "-");
+      let id = base;
+      let index = 0;
+      while (used.has(id)) id = `${base}-${++index}`;
+      used.add(id);
+      node.data = { ...node.data, hProperties: { ...node.data?.hProperties, id } };
+    });
+  };
+}
+
+/** 提取标题内的文字、行内代码和图片替代文本，生成可链接的标识。 */
+function heading_text(node: RootContent): string {
+  if ("value" in node) return node.value;
+  if ("alt" in node) return node.alt ?? "";
+  if ("children" in node) return node.children.map(heading_text).join("");
+  return "";
 }

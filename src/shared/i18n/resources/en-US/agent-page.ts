@@ -1,4 +1,11 @@
 export const en_us_agent_page = {
+  document: {
+    conversation: "Conversation",
+    view: "View",
+    save_as: "Save as",
+    needs_response: "Needs response",
+    read_failed: "Unable to read document",
+  },
   batch_translation_model: {
     follow: "Follow Agent",
     follow_option: "Use the AGENT model",

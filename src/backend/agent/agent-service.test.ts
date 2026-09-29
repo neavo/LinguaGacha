@@ -2114,12 +2114,40 @@ describe("AgentService", () => {
     expect(fake_agent_state.tool_names.at(-1)).toContain("web_search");
   });
 
+  it("预览读取在请求前后校验会话，重置期间的旧响应失效", async () => {
+    const { service, workspace } = await create_service(true);
+    const sessionId = service.get_snapshot().sessionId;
+    expect(await service.read_workspace_document({ sessionId, path: "work/report.md" })).toEqual({
+      sessionId,
+      path: "work/report.md",
+      content: "报告",
+    });
+    await expect(
+      service.read_workspace_document({ sessionId: "old", path: "work/report.md" }),
+    ).rejects.toMatchObject({ code: "file.not_found" });
+    let finish_read!: (value: { path: string; content: string }) => void;
+    vi.spyOn(workspace, "read_document").mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish_read = resolve;
+        }),
+    );
+    const pending_read = service.read_workspace_document({ sessionId, path: "work/report.md" });
+    // 读取响应在会话切换之后到达，不能返回同名旧文件。
+    const check_read = expect(pending_read).rejects.toMatchObject({ code: "file.not_found" });
+    await service.reset();
+    finish_read({ path: "work/report.md", content: "旧正文" });
+    await check_read;
+  });
+
   it("Electron 工作区端口初始化并区分会话与工程 reset", async () => {
     const workspace = {
       uploads: fake_uploads(),
       list_files: () => [],
       initialize: vi.fn(async () => undefined),
       activate_path: vi.fn(async () => ({ status: "cancelled" as const })),
+      read_document: vi.fn(async () => ({ path: "work/report.md", content: "报告" })),
+      read_document_image: vi.fn(async () => ({ bytes: new Uint8Array(), mime: "image/png" })),
       invalidate_links: vi.fn(),
       reset_workspace: vi.fn(async () => undefined),
       reset_project: vi.fn(async () => undefined),
@@ -3472,6 +3500,7 @@ describe("AgentService", () => {
     },
     catalog: PiModelCatalogReader = { read_models: read_builtin_pi_models },
   ): Promise<{
+    workspace: AgentWorkspacePort;
     service: AgentService;
     skills: AgentSkillsService;
     publish: ReturnType<typeof vi.fn>;
@@ -3541,6 +3570,8 @@ describe("AgentService", () => {
         list_files: () => [],
         initialize: vi.fn(async () => undefined),
         activate_path: vi.fn(async () => ({ status: "cancelled" as const })),
+        read_document: vi.fn(async () => ({ path: "work/report.md", content: "报告" })),
+        read_document_image: vi.fn(async () => ({ bytes: new Uint8Array(), mime: "image/png" })),
         invalidate_links: vi.fn(),
         reset_workspace: vi.fn(async () => undefined),
         reset_project: vi.fn(async () => undefined),
@@ -3637,6 +3668,7 @@ describe("AgentService", () => {
         personality = value;
       },
       service,
+      workspace: effective_workspace,
       skills,
       publish,
       read_items,

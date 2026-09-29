@@ -24,7 +24,11 @@ import {
   has_agent_workspace_applied_changes,
   resolve_agent_workspace_writes,
 } from "../../project/agent-workspace-write";
-import { AgentWorkspaceService, type AgentWorkspaceRunPort } from "./service";
+import {
+  AGENT_DOCUMENT_MAX_BYTES,
+  AgentWorkspaceService,
+  type AgentWorkspaceRunPort,
+} from "./service";
 import {
   AGENT_WORKSPACE_CHANGE_PATHS,
   AGENT_WORKSPACE_CONTRACT,
@@ -174,6 +178,52 @@ describe("AgentWorkspaceService", () => {
     expect(fs.readFileSync(path.join(fixture.workspace_root, "work/image.webp"), "utf8")).toBe(
       "image",
     );
+  });
+
+  it("文档预览返回规范路径和完整文本，复用编码探测且无需保存对话框", async () => {
+    const fixture = await create_file_fixture(temp_dir);
+    fs.writeFileSync(
+      fixture.file,
+      Buffer.concat([Buffer.from([0xff, 0xfe]), Buffer.from("# 结论\n报告", "utf16le")]),
+    );
+    expect(await fixture.service.read_document(fixture.href + "#结论")).toEqual({
+      path: "work/%E7%BB%93%E6%9E%9C%20%23%20%2523.md",
+      content: "# 结论\n报告",
+    });
+    expect(fixture.pick_save_path).not.toHaveBeenCalled();
+    expect(fixture.run).not.toHaveBeenCalled();
+    await expect(fixture.service.read_document("../outside.md")).rejects.toMatchObject({
+      code: "request.validation_failed",
+    });
+    await expect(fixture.service.read_document("work/missing.md")).rejects.toMatchObject({
+      code: "file.not_found",
+    });
+    await expect(fixture.service.read_document("work/data.bin")).rejects.toMatchObject({
+      code: "file.invalid_structure",
+    });
+    fs.writeFileSync(fixture.file, Buffer.alloc(AGENT_DOCUMENT_MAX_BYTES + 1));
+    await expect(fixture.service.read_document(fixture.href)).rejects.toMatchObject({
+      code: "file.preview_too_large",
+    });
+  });
+
+  it("预览图片保持字节，多份读取互不占锁，脚本写入期间拒绝预览", async () => {
+    const fixture = await create_file_fixture(temp_dir);
+    const bytes = Buffer.from([137, 80, 78, 71, 0, 255]);
+    fs.writeFileSync(path.join(fixture.workspace_root, "work", "chart.png"), bytes);
+    const [document, image] = await Promise.all([
+      fixture.service.read_document(fixture.href),
+      fixture.service.read_document_image("work/chart.png"),
+    ]);
+    expect(document.content).toBe("报告");
+    expect(image).toEqual({ bytes, mime: "image/png" });
+    fixture.run.mockImplementationOnce(async () => {
+      await expect(fixture.service.read_document(fixture.href)).rejects.toMatchObject({
+        code: "runtime.busy",
+      });
+      return { execution: workspace_execution(), todos: [] };
+    });
+    await run_workspace(fixture);
   });
 
   it("保存编码文件链接并打开目录，保留源文件且不建立快照", async () => {

@@ -11,6 +11,7 @@ import { register_api_routes } from "./api-routes";
 // 公开 HTTP 路径属于客户端契约，独立清单用于发现误删、改名与重复注册。
 const GET_PATHS = new Set([
   "/api/agent/files",
+  "/api/agent/workspace/image",
   "/api/agent/uploads/:id",
   "/api/health",
   "/api/events/stream",
@@ -38,6 +39,7 @@ const POST_PATHS = new Set([
   "/api/runtime/snapshot",
   "/api/agent/message",
   "/api/agent/workspace/activate-path",
+  "/api/agent/workspace/document",
   "/api/agent/question/resolve",
   "/api/agent/write-approval/resolve",
   "/api/agent/queue/update",

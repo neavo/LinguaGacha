@@ -79,6 +79,7 @@
 - `AgentFileDropTarget` 管理文件拖入区域。主输入接收整页拖入，原位编辑只接收局部拖入。CodeMirror 在默认读取文件文本前消费文件事件，按当前权限交给所属 `AgentInputDraft`。外层冒泡入口接收其余区域，捕获阶段清除拖放反馈。普通文本拖放由编辑器处理。
 - `AgentMessageAttachments` 共用草稿与已发送附件的展示，修改动作交还所属草稿。图片通过 API 读取原文件，组件持有并释放符合 CSP 的 Blob URL。上传与会话契约归 [AGENT_RUNTIME](AGENT_RUNTIME.md)。
 - Agent renderer 由 `AgentSessionStore` 作为唯一会话镜像，按 timeline、controls、queue、todo、skills、input 与 countdown 切片订阅，各切片独立更新。entry upsert 只替换目标条目，正常命令通过事件更新状态。时间线 round 与 Markdown 组件按稳定 entry / 真实文本输入复用，发送按钮在 command 开始后立即以 `aria-busy` 表示受理中。页面拥有主 Composer 的宿主指令列表及其标题、描述、禁用态和动作，Composer 负责筛选与即时触发。Agent 会话恢复、用户决定与连接世代的跨层消费契约归 [`AGENT_RUNTIME.md`](AGENT_RUNTIME.md)。
+- 文档预览服务于当前对话的临时工作文件。跨路由只保留阅读记录，返回时重新读取正文，使预览生命周期与工作文件一致。
 - `AgentMarkdown` 将正文解析、高亮与图表交给 Streamdown 插件，接入桌面链接、图片预览和交互边界；Mermaid 配置消费应用主题令牌。图表容器的可用宽度由应用 CSS 提供，SVG 布局与自然尺寸由 Mermaid 决定。图表激活态由 DOM 焦点拥有，失焦或 Escape 后滚轮恢复页面滚动；图表文字和经过图表的选区不进入正文批注。
 - Agent 工具详情在首次查看标签时生成阅读文档，按原始内容复用输入、输出各一份结果，只挂载当前查看器。输出逐块递归解释完整的内嵌 JSON，统一 LF 并裁剪首尾空白行，保留正文缩进与内部空行；空白块占一行，无输出生成空文档。会话保留原始块。格式化器在清理后生成文本和语义范围，`AppEditor` 在同一事务更新文档与范围，通过单个 CodeMirror 视口显示，不重新解析阅读文档。
 - 校对按警告类别展示，提示合并正文与姓名证据：残留直接列出，文本保护分原译文两组，术语分未落实、已落实两组并使用 `SRC -> DST`。空组省略，具体片段决定提示内容。一般警告随保存结果刷新；术语提示与胶囊分别消费草稿应用结果，沿用后端术语身份和字段范围。

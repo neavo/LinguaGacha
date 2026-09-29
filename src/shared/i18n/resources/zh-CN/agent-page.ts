@@ -1,4 +1,11 @@
 export const zh_cn_agent_page = {
+  document: {
+    conversation: "对话",
+    view: "查看",
+    save_as: "另存为",
+    needs_response: "等待回复",
+    read_failed: "无法读取文档",
+  },
   batch_translation_model: {
     follow: "保持一致",
     follow_option: "与 AGENT 模型保持一致",

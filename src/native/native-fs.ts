@@ -30,6 +30,23 @@ export function normalize_native_file_bytes(content: unknown): Uint8Array {
  * Backend / worker 唯一文件系统门面，所有真实磁盘 IO 都先经过平台路径策略。
  */
 export class NativeFs {
+  /** 同步有界读取供工作区预览使用，字节捕获期间脚本和清理无法插入。 */
+  public read_prefix(file_path: string, length: number): Buffer {
+    const handle = fs.openSync(this.to_native_path(file_path), "r");
+    try {
+      const buffer = Buffer.alloc(length);
+      let count = 0;
+      while (count < length) {
+        const size = fs.readSync(handle, buffer, count, length - count, null);
+        if (size === 0) break;
+        count += size;
+      }
+      return buffer.subarray(0, count);
+    } finally {
+      fs.closeSync(handle);
+    }
+  }
+
   /** 打开供调用方持有的原生文件句柄。调用方负责在所有结束路径关闭句柄。 */
   public async open_file(file_path: string, flags: string): Promise<FileHandle> {
     return await fs.promises.open(this.to_native_path(file_path), flags);

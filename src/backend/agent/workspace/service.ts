@@ -4,6 +4,9 @@ import { AgentUploadStore } from "./uploads";
 import { AGENT_IMAGE_INPUT_MAX_BYTES, type AgentImageService } from "../agent-image-service";
 import type { AgentImage } from "../../../shared/agent-image";
 import path from "node:path";
+import { decode_text_content } from "../../../shared/utils/text-tool";
+import { is_agent_markdown_path } from "../../../shared/agent-workspace-file";
+
 import { agent_workspace_page_fingerprint } from "../../project/agent-workspace-page-write";
 import type { PDFHost } from "../../../shared/pdf";
 import { randomBytes } from "node:crypto";
@@ -79,6 +82,19 @@ import {
   AGENT_WORKSPACE_RUNTIME_POLICY,
 } from "./runtime/policy";
 import { write_agent_workspace_sources, type AgentWorkspaceSourceFile } from "./sources";
+
+/** 预览采用有界读取，完整文件通过另存为交付。 */
+export const AGENT_DOCUMENT_MAX_BYTES = 2 * 1024 * 1024;
+const AGENT_IMAGE_MAX_BYTES = 16 * 1024 * 1024;
+
+const WORKSPACE_IMAGE_TYPES: Readonly<Record<string, string>> = {
+  ".png": "image/png",
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".gif": "image/gif",
+  ".webp": "image/webp",
+  ".svg": "image/svg+xml",
+};
 
 const RUN_ID_BYTES = 6; // 会话内执行记录使用 48 位随机标识，缩短返回给模型的文件路径
 
@@ -241,6 +257,46 @@ export class AgentWorkspaceService {
       if (AppErrors.is_app_error(cause)) throw cause;
       throw new AppErrors.AppError("file.io_failed", { cause });
     }
+  }
+
+  /** 检查脚本互斥后同步捕获有界字节；多份预览可独立读取，异步解码不占写锁。 */
+  private read_preview_file(href: unknown, max_bytes: number): { path: string; bytes: Uint8Array } {
+    if (this.busy) throw new AppErrors.AppError("runtime.busy");
+    const target = this.resolve_path(href);
+    if (target.kind !== "file") throw new AppErrors.AppError("file.invalid_structure");
+    try {
+      const bytes = this.native_fs.read_prefix(target.path, max_bytes + 1);
+      if (bytes.length > max_bytes) throw new AppErrors.AppError("file.preview_too_large");
+      return {
+        path: path
+          .relative(this.root_path, target.path)
+          .split(path.sep)
+          .map(encodeURIComponent)
+          .join("/"),
+        bytes,
+      };
+    } catch (cause) {
+      if (AppErrors.is_app_error(cause)) throw cause;
+      throw new AppErrors.AppError("file.io_failed", { cause });
+    }
+  }
+
+  /** 文档只解码一次捕获的字节，跨会话交付由 AgentService 复核。 */
+  public async read_document(href: unknown): Promise<{ path: string; content: string }> {
+    if (typeof href !== "string" || !is_agent_markdown_path(href)) {
+      throw new AppErrors.AppError("file.invalid_structure");
+    }
+    const file = this.read_preview_file(href, AGENT_DOCUMENT_MAX_BYTES);
+    return { path: file.path, content: await decode_text_content(file.bytes) };
+  }
+
+  /** 允许的图片类型统一映射为响应 MIME，字节仍经有界读取。 */
+  public async read_document_image(href: unknown): Promise<{ bytes: Uint8Array; mime: string }> {
+    const target = this.resolve_path(href);
+    const mime = WORKSPACE_IMAGE_TYPES[path.extname(target.path).toLowerCase()];
+    if (!mime) throw new AppErrors.AppError("file.invalid_structure");
+    const file = this.read_preview_file(href, AGENT_IMAGE_MAX_BYTES);
+    return { bytes: file.bytes, mime };
   }
 
   /** 会话开始失效时立即隔离待决保存，不等待旧模型和脚本停止。 */
@@ -900,6 +956,8 @@ export type AgentWorkspacePort = Pick<
   | "reset_workspace"
   | "reset_project"
   | "activate_path"
+  | "read_document"
+  | "read_document_image"
   | "invalidate_links"
 > & {
   uploads: Pick<AgentUploadStore, "upload" | "get" | "read_image" | "open" | "clear" | "cancel">;

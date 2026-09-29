@@ -37,6 +37,8 @@
 }
 
 .workspace-frame[data-layout="edge-to-edge"] {
+  /* 贴边页面的背景由宿主圆角裁剪，保持工作区边界连续。 */
+  overflow: clip;
   padding: 0;
 }
 

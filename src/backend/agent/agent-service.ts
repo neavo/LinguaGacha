@@ -1,3 +1,4 @@
+import type { AgentDocument } from "../../shared/agent-workspace-file";
 import { normalize_agent_approval_mode } from "../../domain/setting";
 import type { AgentSkillsService } from "./agent-skills-service";
 import type { AgentFilesResponse } from "../../shared/agent-reference";
@@ -271,6 +272,32 @@ export class AgentService {
     this.assert_not_disposed();
     if (this.session_reset !== null) throw new AppErrors.AppError("runtime.busy");
     return this.workspace.activate_path(is_json_record(request) ? request["path"] : undefined);
+  }
+
+  /** 请求和响应都绑定对话身份，防止旧页面读取重建后的同名文件。 */
+  public async read_workspace_document(request: JsonRecord): Promise<AgentDocument> {
+    this.assert_workspace_preview_session(request["sessionId"]);
+    const document = await this.workspace.read_document(request["path"]);
+    this.assert_workspace_preview_session(request["sessionId"]);
+    return { sessionId: this.session_id, ...document };
+  }
+
+  /** 配图与正文共用会话边界，旧会话的图片响应同样失效。 */
+  public async read_workspace_image(
+    href: string | null,
+    session_id: string | null,
+  ): Promise<{ bytes: Uint8Array; mime: string }> {
+    this.assert_workspace_preview_session(session_id);
+    const image = await this.workspace.read_document_image(href);
+    this.assert_workspace_preview_session(session_id);
+    return image;
+  }
+
+  /** 清理期间拒绝读取，清理后按对话身份拒绝迟到请求。 */
+  private assert_workspace_preview_session(session_id: unknown): void {
+    this.assert_not_disposed();
+    if (this.session_reset !== null) throw new AppErrors.AppError("runtime.busy");
+    if (session_id !== this.session_id) throw new AppErrors.AppError("file.not_found");
   }
 
   /** 上传不占用模型或脚本互斥，文件身份仍属于当前工程会话。 */
