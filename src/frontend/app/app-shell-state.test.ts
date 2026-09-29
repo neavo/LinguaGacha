@@ -72,6 +72,30 @@ describe("App 更新弹窗状态", () => {
 });
 
 describe("App 项目导航状态", () => {
+  it.each([
+    { project_loaded: false, project_session_status: "idle", disabled: true },
+    { project_loaded: true, project_session_status: "warming", disabled: true },
+    { project_loaded: true, project_session_status: "ready", disabled: false },
+  ] as const)(
+    "技能入口在 loaded=$project_loaded、session=$project_session_status 时遵循工程就绪状态",
+    ({ project_loaded, project_session_status, disabled }) => {
+      expect(
+        resolve_disabled_route_ids({ project_loaded, project_session_status }).has("skills"),
+      ).toBe(disabled);
+      expect(
+        resolve_route_selection({
+          route_id: "skills",
+          project_loaded,
+          project_session_status,
+          pending_target_route: null,
+        }),
+      ).toEqual({
+        selected_route: disabled ? "project-home" : "skills",
+        pending_target_route: disabled ? "skills" : null,
+      });
+    },
+  );
+
   it("项目就绪后直接选择自定义提示词", () => {
     expect(
       resolve_route_selection({
