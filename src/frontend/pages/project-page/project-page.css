@@ -48,43 +48,6 @@
   grid-auto-rows: minmax(0, 1fr);
 }
 
-.project-home__panel-heading {
-  display: flex;
-  min-width: 0;
-  align-items: flex-start;
-  gap: 12px;
-}
-
-.project-home__panel-mark {
-  display: inline-flex;
-  width: 32px;
-  height: 32px;
-  flex: 0 0 32px;
-  align-items: center;
-  justify-content: center;
-  border: 1px solid var(--project-home-line);
-  border-radius: var(--ui-radius-card);
-  background: color-mix(in srgb, var(--accent) 54%, transparent);
-}
-
-.project-home__panel-mark--source {
-  color: var(--project-home-source);
-  background: color-mix(in srgb, var(--project-home-source) 10%, transparent);
-}
-
-.project-home__panel-mark--project {
-  color: var(--project-home-project);
-  background: color-mix(in srgb, var(--project-home-project) 10%, transparent);
-}
-
-.project-home__panel-copy {
-  display: flex;
-  min-width: 0;
-  max-width: 560px;
-  flex-direction: column;
-  gap: 6px;
-}
-
 .project-home__panel-title {
   font-size: 18px;
   line-height: 1.25;

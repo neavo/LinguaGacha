@@ -20,10 +20,9 @@ import { register_text_context_menu } from "./text-context-menu";
 
 const WINDOW_STANDARD_WIDTH = 1280; // 与旧桌面版 AppFluentWindow 对齐，后续 Electron UI 也以 1280 x 800 作为标准开发基线
 const WINDOW_STANDARD_HEIGHT = 800;
-const WINDOW_BACKGROUND_COLOR = "#F8FAFC"; // 主窗口背景要早于 renderer 首帧生效，避免加载阶段出现默认白屏或暗色闪烁
 const DEVTOOLS_TOGGLE_KEY = "F12"; // 主窗口隐藏菜单栏后，开发态仍保留显式快捷键作为 DevTools 唯一稳定入口
 const DEVTOOLS_TOGGLE_WITH_MODIFIER_KEY = "i";
-// DEVTOOLS INSPECT WITH MODIFIER KEY 是持久化或快捷键契约，集中保存避免调用点散落魔术字符串。
+// 与 Ctrl/Cmd + Shift 组合，触发 Chromium 元素检查。
 const DEVTOOLS_INSPECT_WITH_MODIFIER_KEY = "c";
 const PRELOAD_ENTRY_FILE_NAME = "preload.mjs"; // preload 产物名必须与 electron-vite 开发态和发布态输出一致，否则 window.desktopApp 不会注入
 const DEVTOOLS_ENTER_INSPECT_MODE_SCRIPT = `
@@ -168,29 +167,14 @@ export function sync_title_bar_overlay(
  * 判断当前是否由 renderer dev server 驱动，用来收口开发态专属能力
  */
 function is_development_mode(): boolean {
-  let development_mode = false;
-
-  if (RENDERER_DEV_SERVER_URL) {
-    development_mode = true;
-  } else {
-    development_mode = false;
-  }
-
-  return development_mode;
-}
-
-/**
- * 桌面 bundle 根只用于定位同层 renderer 产物，不承载应用 APP_ROOT 语义
- */
-function resolve_desktop_bundle_root(desktop_bundle_dir: string): string {
-  return path.join(desktop_bundle_dir, "..");
+  return Boolean(RENDERER_DEV_SERVER_URL);
 }
 
 /**
  * 发布态固定加载 build/dist，开发态由 dev server 接管页面入口
  */
 function resolve_renderer_dist(desktop_bundle_dir: string): string {
-  return path.join(resolve_desktop_bundle_root(desktop_bundle_dir), "dist");
+  return path.join(desktop_bundle_dir, "..", "dist");
 }
 
 /**
@@ -203,15 +187,7 @@ function is_devtools_shortcut(input: Electron.Input): boolean {
     input.key.toLowerCase() === DEVTOOLS_TOGGLE_WITH_MODIFIER_KEY &&
     input.shift &&
     (input.control || input.meta);
-  let devtools_shortcut = false;
-
-  if (is_function_shortcut || is_modifier_shortcut) {
-    devtools_shortcut = true;
-  } else {
-    devtools_shortcut = false;
-  }
-
-  return devtools_shortcut;
+  return is_function_shortcut || is_modifier_shortcut;
 }
 
 /**
@@ -277,8 +253,8 @@ async function open_devtools_and_toggle_inspect_mode(target_window: BrowserWindo
     try {
       // 直接调用 Chromium DevTools 前端提供的 API，复用浏览器自己的元素定位切换逻辑
       await devtools_contents.executeJavaScript(DEVTOOLS_ENTER_INSPECT_MODE_SCRIPT, true);
-    } catch (error) {
-      void error;
+    } catch {
+      // DevTools 关闭或其内部 API 不可用时，元素定位失败可忽略；应用窗口仍可继续使用。
     }
   }
 }
@@ -305,12 +281,10 @@ function register_development_devtools_shortcut(target_window: BrowserWindow): v
  * 统一把窗口带回前台，供加载失败、失去响应和关闭确认等异常路径复用
  */
 function show_window_if_hidden(target_window: BrowserWindow): void {
-  if (target_window.isVisible()) {
-    target_window.focus();
-  } else {
+  if (!target_window.isVisible()) {
     target_window.show();
-    target_window.focus();
   }
+  target_window.focus();
 }
 
 /**
@@ -437,6 +411,10 @@ function create_window_options(
   app_version: string,
 ): BrowserWindowConstructorOptions {
   const vite_public = process.env.VITE_PUBLIC ?? resolve_renderer_dist(desktop_bundle_dir);
+  // renderer 解析用户偏好前，窗口底色与原生按钮区共用本次系统主题快照。
+  const title_bar_theme = resolve_title_bar_overlay_theme(
+    nativeTheme.shouldUseDarkColors ? "dark" : "light",
+  );
   const window_options: BrowserWindowConstructorOptions = {
     title: "LinguaGacha",
     width: WINDOW_STANDARD_WIDTH,
@@ -444,7 +422,7 @@ function create_window_options(
     minWidth: WINDOW_STANDARD_WIDTH,
     minHeight: WINDOW_STANDARD_HEIGHT,
     show: false,
-    backgroundColor: WINDOW_BACKGROUND_COLOR,
+    backgroundColor: title_bar_theme.color,
     autoHideMenuBar: true,
     icon: path.join(vite_public, "icon.png"),
     webPreferences: {
@@ -465,9 +443,7 @@ function create_window_options(
   } else if (uses_title_bar_overlay(process.platform as DesktopPlatform)) {
     // Windows 和 Linux 通过 Overlay 把原生控制按钮保留下来，避免沦为纯网页外壳
     window_options.titleBarStyle = "hidden";
-    window_options.titleBarOverlay = resolve_title_bar_overlay_theme(
-      nativeTheme.shouldUseDarkColors ? "dark" : "light",
-    );
+    window_options.titleBarOverlay = title_bar_theme;
   } else {
     // 未知平台兜底为真正无边框，至少保证自定义壳层策略仍然成立
     window_options.frame = false;

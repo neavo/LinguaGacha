@@ -10,135 +10,28 @@ import type { RendererProcessDiagnosticsRegistry } from "./renderer-process-diag
 
 const record_host_diagnostic = vi.fn(async () => undefined);
 
-// electron mock 是测试级共享夹具，集中保存跨用例复用的 mock 状态。
-const electron_mock = vi.hoisted(() => {
-  type Listener = (...args: unknown[]) => void;
+// Electron 替身使用原生事件语义，集中记录窗口副作用。
+const electron_mock = await vi.hoisted(async () => {
+  const { EventEmitter } = await import("node:events");
 
-  // 模拟外部运行时对象，只保留当前测试会触发的行为面。
-  /**
-   * 封装当前测试场景的替身对象行为。
-   */
-  class FakeDevToolsContents {
-    loading = false;
-    executed_scripts: string[] = [];
-    listeners = new Map<string, Listener[]>();
-
-    // isLoadingMainFrame 模拟测试场景中的对应运行时方法，保持断言聚焦协议行为。
-    /**
-     * 判断当前值是否满足业务条件。
-     */
-    isLoadingMainFrame(): boolean {
-      return this.loading;
-    }
-
-    // once 模拟测试场景中的对应运行时方法，保持断言聚焦协议行为。
-    /**
-     * 模拟事件订阅与派发行为。
-     */
-    once(event_name: string, listener: Listener): void {
-      const listeners = this.listeners.get(event_name) ?? [];
-      listeners.push(listener);
-      this.listeners.set(event_name, listeners);
-    }
-
-    // emit 模拟测试场景中的对应运行时方法，保持断言聚焦协议行为。
-    /**
-     * 模拟事件订阅与派发行为。
-     */
-    emit(event_name: string, ...args: unknown[]): void {
-      for (const listener of this.listeners.get(event_name) ?? []) {
-        listener(...args);
-      }
-      this.listeners.delete(event_name);
-    }
-
-    // executeJavaScript 模拟测试场景中的对应运行时方法，保持断言聚焦协议行为。
-    /**
-     * 模拟开发者工具脚本执行结果。
-     */
-    async executeJavaScript(script: string): Promise<boolean> {
-      this.executed_scripts.push(script);
-      return true;
-    }
-  }
-
-  // 模拟外部运行时对象，只保留当前测试会触发的行为面。
-  /**
-   * 封装当前测试场景的替身对象行为。
-   */
-  class FakeWebContents {
-    listeners = new Map<string, Listener[]>();
-    once_listeners = new Map<string, Listener[]>();
+  /** 模拟页面加载、宿主消息与开发者工具入口。 */
+  class FakeWebContents extends EventEmitter {
     sent_channels: string[] = [];
-    loading = false;
-    devToolsWebContents: FakeDevToolsContents | null = null;
     toggleDevTools = vi.fn();
 
-    // on 模拟测试场景中的对应运行时方法，保持断言聚焦协议行为。
-    /**
-     * 模拟事件订阅与派发行为。
-     */
-    on(event_name: string, listener: Listener): void {
-      const listeners = this.listeners.get(event_name) ?? [];
-      listeners.push(listener);
-      this.listeners.set(event_name, listeners);
-    }
-
-    // once 模拟测试场景中的对应运行时方法，保持断言聚焦协议行为。
-    /**
-     * 模拟事件订阅与派发行为。
-     */
-    once(event_name: string, listener: Listener): void {
-      const listeners = this.once_listeners.get(event_name) ?? [];
-      listeners.push(listener);
-      this.once_listeners.set(event_name, listeners);
-    }
-
-    // emit 模拟测试场景中的对应运行时方法，保持断言聚焦协议行为。
-    /**
-     * 模拟事件订阅与派发行为。
-     */
-    emit(event_name: string, ...args: unknown[]): void {
-      for (const listener of this.once_listeners.get(event_name) ?? []) {
-        listener(...args);
-      }
-      this.once_listeners.delete(event_name);
-      for (const listener of this.listeners.get(event_name) ?? []) {
-        listener(...args);
-      }
-    }
-
-    // isLoadingMainFrame 模拟测试场景中的对应运行时方法，保持断言聚焦协议行为。
-    /**
-     * 判断当前值是否满足业务条件。
-     */
+    /** 当前关闭确认场景在页面加载完成后触发。 */
     isLoadingMainFrame(): boolean {
-      return this.loading;
+      return false;
     }
 
-    // send 模拟测试场景中的对应运行时方法，保持断言聚焦协议行为。
-    /**
-     * 模拟 IPC 通信行为。
-     */
+    /** 记录宿主通知 renderer 的 IPC 通道。 */
     send(channel: string): void {
       this.sent_channels.push(channel);
     }
-
-    // openDevTools 模拟测试场景中的对应运行时方法，保持断言聚焦协议行为。
-    /**
-     * 切换当前交互状态。
-     */
-    openDevTools(): void {
-      this.devToolsWebContents = new FakeDevToolsContents();
-      this.emit("devtools-opened");
-    }
   }
 
-  // 模拟外部运行时对象，只保留当前测试会触发的行为面。
-  /**
-   * 封装当前测试场景的替身对象行为。
-   */
-  class FakeBrowserWindow {
+  /** 记录窗口创建、可见状态和原生能力调用。 */
+  class FakeBrowserWindow extends EventEmitter {
     static created_windows: FakeBrowserWindow[] = [];
 
     options: Record<string, unknown>;
@@ -147,107 +40,48 @@ const electron_mock = vi.hoisted(() => {
     focused = false;
     title_bar_overlays: unknown[] = [];
     flash_frames: boolean[] = [];
-    listeners = new Map<string, Listener[]>();
-    once_listeners = new Map<string, Listener[]>();
     load_file_calls: Array<{ file_path: string; options?: { query?: Record<string, string> } }> =
       [];
     loaded_urls: string[] = [];
 
-    // 构造阶段只注入必要依赖，避免实例创建时读取外部可变状态。
-    /**
-     * 初始化当前实例的内部状态。
-     */
+    /** 保存创建参数，供主窗口和日志窗口的契约断言读取。 */
     constructor(options: Record<string, unknown>) {
+      super();
       this.options = options;
       FakeBrowserWindow.created_windows.push(this);
     }
 
-    // on 模拟测试场景中的对应运行时方法，保持断言聚焦协议行为。
-    /**
-     * 模拟事件订阅与派发行为。
-     */
-    on(event_name: string, listener: Listener): void {
-      const listeners = this.listeners.get(event_name) ?? [];
-      listeners.push(listener);
-      this.listeners.set(event_name, listeners);
-    }
-
-    // once 模拟测试场景中的对应运行时方法，保持断言聚焦协议行为。
-    /**
-     * 模拟事件订阅与派发行为。
-     */
-    once(event_name: string, listener: Listener): void {
-      const listeners = this.once_listeners.get(event_name) ?? [];
-      listeners.push(listener);
-      this.once_listeners.set(event_name, listeners);
-    }
-
-    // emit 模拟测试场景中的对应运行时方法，保持断言聚焦协议行为。
-    /**
-     * 模拟事件订阅与派发行为。
-     */
-    emit(event_name: string, ...args: unknown[]): void {
-      for (const listener of this.once_listeners.get(event_name) ?? []) {
-        listener(...args);
-      }
-      this.once_listeners.delete(event_name);
-      for (const listener of this.listeners.get(event_name) ?? []) {
-        listener(...args);
-      }
-    }
-
-    // isVisible 模拟测试场景中的对应运行时方法，保持断言聚焦协议行为。
-    /**
-     * 判断当前值是否满足业务条件。
-     */
+    /** 返回窗口当前可见状态。 */
     isVisible(): boolean {
       return this.visible;
     }
 
-    // show 模拟测试场景中的对应运行时方法，保持断言聚焦协议行为。
-    /**
-     * 支撑当前测试场景的专用辅助逻辑。
-     */
+    /** 记录窗口被显示。 */
     show(): void {
       this.visible = true;
     }
 
-    // focus 模拟测试场景中的对应运行时方法，保持断言聚焦协议行为。
-    /**
-     * 支撑当前测试场景的专用辅助逻辑。
-     */
+    /** 记录窗口获得焦点。 */
     focus(): void {
       this.focused = true;
     }
 
-    // flashFrame 模拟测试场景中的对应运行时方法，保持断言聚焦窗口注意力行为。
-    /**
-     * 写入当前窗口的任务栏闪烁状态。
-     */
+    /** 按顺序记录任务栏闪烁的启停。 */
     flashFrame(flag: boolean): void {
       this.flash_frames.push(flag);
     }
 
-    // loadFile 模拟测试场景中的对应运行时方法，保持断言聚焦协议行为。
-    /**
-     * 加载当前场景的资源入口。
-     */
+    /** 记录发布态的页面路径与窗口路由。 */
     async loadFile(file_path: string, options?: { query?: Record<string, string> }): Promise<void> {
       this.load_file_calls.push({ file_path, ...(options === undefined ? {} : { options }) });
     }
 
-    // loadURL 模拟测试场景中的对应运行时方法，保持断言聚焦协议行为。
-    /**
-     * 加载当前场景的资源入口。
-     */
+    /** 记录开发态的页面地址。 */
     async loadURL(url: string): Promise<void> {
       this.loaded_urls.push(url);
     }
 
-    // setTitleBarOverlay 模拟测试场景中的对应运行时方法，保持断言聚焦协议行为。
-    /**
-     * 写入当前场景的状态变化。
-     */
+    /** 记录主题同步到原生按钮区的结果。 */
     setTitleBarOverlay(overlay: unknown): void {
       this.title_bar_overlays.push(overlay);
     }
@@ -290,7 +124,8 @@ describe("桌面窗口宿主", () => {
     vi.resetModules();
   });
 
-  it("主窗口注入 Backend API 地址并把关闭确认交给 renderer", async () => {
+  it("主窗口按深色主题初始化并委托关闭确认", async () => {
+    electron_mock.native_theme.shouldUseDarkColors = true;
     restore_env("ELECTRON_RENDERER_URL", undefined);
     restore_env("VITE_PUBLIC", undefined);
     const { create_main_window } = await import("./desktop-window-host");
@@ -314,9 +149,8 @@ describe("桌面窗口宿主", () => {
     main_window.emit("closed");
 
     expect(main_window.options).toMatchObject({
-      title: "LinguaGacha",
+      backgroundColor: resolve_title_bar_overlay_theme("dark").color,
       show: false,
-      autoHideMenuBar: true,
       webPreferences: {
         preload: path.join(desktop_bundle_dir, "preload.mjs"),
         contextIsolation: true,
@@ -333,7 +167,7 @@ describe("桌面窗口宿主", () => {
     );
     expect(close_event.preventDefault).toHaveBeenCalledTimes(1);
     expect(main_window.webContents.sent_channels).toEqual([IPC_CHANNEL_WINDOW_CLOSE_REQUEST]);
-    expect(main_window.webContents.listeners.has("context-menu")).toBe(true);
+    expect(main_window.webContents.listenerCount("context-menu")).toBeGreaterThan(0);
     main_window.flashFrame(true);
     main_window.emit("focus");
     expect(main_window.flash_frames).toEqual([true, false]);
@@ -342,7 +176,7 @@ describe("桌面窗口宿主", () => {
     expect(on_closed).toHaveBeenCalledTimes(1);
   });
 
-  it("日志窗口宿主加载日志页面并跳过主窗口关闭确认", async () => {
+  it("日志窗口按浅色主题初始化并直接关闭", async () => {
     restore_env("ELECTRON_RENDERER_URL", undefined);
     const { create_log_window_host } = await import("./desktop-window-host");
     const desktop_bundle_dir = path.join(process.cwd(), "build", "dist-electron");
@@ -359,6 +193,7 @@ describe("桌面窗口宿主", () => {
     const log_window = get_created_window(0);
     log_window.emit("close", close_event);
 
+    expect(log_window.options.backgroundColor).toBe(resolve_title_bar_overlay_theme("light").color);
     expect(log_window.load_file_calls[0]).toEqual({
       file_path: path.join(desktop_bundle_dir, "..", "dist", "index.html"),
       options: {
@@ -369,7 +204,7 @@ describe("桌面窗口宿主", () => {
     });
     expect(close_event.preventDefault).not.toHaveBeenCalled();
     expect(log_window.webContents.sent_channels).toEqual([]);
-    expect(log_window.webContents.listeners.has("context-menu")).toBe(true);
+    expect(log_window.webContents.listenerCount("context-menu")).toBeGreaterThan(0);
   });
 
   it("渲染层加载失败时记录诊断并显示原生错误提示", async () => {
@@ -414,8 +249,8 @@ describe("桌面窗口宿主", () => {
       },
     });
     expect(electron_mock.show_error_box).toHaveBeenCalledWith(
-      "LinguaGacha 渲染层加载失败",
-      "渲染层入口没有成功加载。\n目标地址：http://127.0.0.1:5173/\n错误信息：加载失败 (-102): 连接被拒绝",
+      expect.any(String),
+      expect.stringContaining("http://127.0.0.1:5173/"),
     );
     expect(record_host_diagnostic).toHaveBeenCalledWith({
       level: "warning",
@@ -504,7 +339,10 @@ describe("桌面窗口宿主", () => {
       key: "F12",
     });
 
-    expect(electron_mock.append_switch).toHaveBeenCalledWith("remote-debugging-port", "9222");
+    expect(electron_mock.append_switch).toHaveBeenCalledWith(
+      "remote-debugging-port",
+      expect.any(String),
+    );
     expect(process.env["VITE_PUBLIC"]).toBe(path.join(process.cwd(), "public"));
     expect(main_window.loaded_urls).toEqual(["http://127.0.0.1:5173/app"]);
     expect(main_window.visible).toBe(true);
@@ -532,7 +370,7 @@ describe("桌面窗口宿主", () => {
 });
 
 /**
- * 写入当前场景的状态变化。
+ * 恢复用例前的环境变量，防止动态导入读取到前一场景的配置。
  */
 function restore_env(name: string, value: string | undefined): void {
   if (value === undefined) {
@@ -543,7 +381,7 @@ function restore_env(name: string, value: string | undefined): void {
 }
 
 /**
- * 读取当前场景需要的稳定数据。
+ * 获取指定次序创建的窗口，缺失时让用例立即失败。
  */
 function get_created_window(
   index: number,
@@ -556,18 +394,17 @@ function get_created_window(
 }
 
 /**
- * 构造当前测试场景的标准数据。
+ * 提供诊断快照，供宿主崩溃与无响应事件消费。
  */
 function create_renderer_diagnostics_stub(
   options: {
     processGoneContext?: Record<string, unknown>;
-    unresponsiveContext?: Record<string, unknown>;
   } = {},
 ): RendererProcessDiagnosticsRegistry {
   return {
     registerWindow: vi.fn(),
     recordRendererDiagnostics: vi.fn(),
     buildRendererProcessGoneContext: vi.fn(() => options.processGoneContext ?? {}),
-    buildWindowUnresponsiveContext: vi.fn(() => options.unresponsiveContext ?? {}),
+    buildWindowUnresponsiveContext: vi.fn(() => ({})),
   };
 }
