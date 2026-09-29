@@ -146,6 +146,8 @@ export const de_de_app = {
     VI: "Vietnamesisch",
   },
   navigation_action: {
+    expand_sidebar: "Seitenleiste ausklappen",
+    collapse_sidebar: "Seitenleiste einklappen",
     appearance: "Darstellung",
     font: "Schriftart",
     font_option: {

@@ -143,6 +143,8 @@ export const ja_jp_app = {
     VI: "ベトナム語",
   },
   navigation_action: {
+    expand_sidebar: "サイドバーを展開",
+    collapse_sidebar: "サイドバーを折りたたむ",
     appearance: "外観",
     font: "フォント",
     font_option: {

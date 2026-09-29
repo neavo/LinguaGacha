@@ -1,4 +1,4 @@
-export type ShortcutAction = "save" | "create" | "delete" | "follow_latest";
+export type ShortcutAction = "save" | "create" | "delete" | "follow_latest" | "toggle_sidebar";
 export type ShortcutLabel = ShortcutAction | "cancel" | "submit" | "newline";
 
 export type ShortcutPlatform = "mac" | "default";
@@ -23,6 +23,7 @@ const SHORTCUT_LABELS = {
     create: "⌘N",
     delete: "⌘⌫",
     follow_latest: "⌘E",
+    toggle_sidebar: "⌘B",
     cancel: "Esc",
     submit: "Enter",
     newline: "Shift+Enter",
@@ -32,6 +33,7 @@ const SHORTCUT_LABELS = {
     create: "Ctrl+N",
     delete: "Del",
     follow_latest: "Ctrl+E",
+    toggle_sidebar: "Ctrl+B",
     cancel: "Esc",
     submit: "Enter",
     newline: "Shift+Enter",
@@ -43,8 +45,10 @@ const PRIMARY_SHORTCUT_KEYS = {
   save: "s",
   create: "n",
   follow_latest: "e",
+  toggle_sidebar: "b",
 } satisfies Record<PrimaryShortcutAction, string>;
 
+/** 为快捷键平台识别提供浏览器环境信息。 */
 function get_runtime_navigator(): NavigatorLike | undefined {
   if (typeof navigator === "undefined") {
     return undefined;
@@ -53,6 +57,7 @@ function get_runtime_navigator(): NavigatorLike | undefined {
   return navigator as NavigatorLike;
 }
 
+/** 将宿主平台归并为快捷键使用的两类修饰键。 */
 export function resolve_shortcut_platform(
   navigator_like: NavigatorLike | undefined = get_runtime_navigator(),
 ): ShortcutPlatform {
@@ -67,6 +72,7 @@ export function resolve_shortcut_platform(
   return /Mac|iPhone|iPad|iPod/i.test(platform_text) ? "mac" : "default";
 }
 
+/** 为提示与菜单提供统一的平台键帽文案。 */
 export function get_shortcut_label(
   action: ShortcutLabel,
   platform: ShortcutPlatform = resolve_shortcut_platform(),
@@ -74,6 +80,7 @@ export function get_shortcut_label(
   return SHORTCUT_LABELS[platform][action];
 }
 
+/** 只接受平台主修饰键，排除带额外修饰键的其它操作。 */
 function has_plain_primary_modifier(
   event: ShortcutKeyboardEvent,
   platform: ShortcutPlatform,
@@ -89,6 +96,7 @@ function has_plain_primary_modifier(
   return event.ctrlKey && !event.metaKey;
 }
 
+/** 输入法组字期间保留按键，其余事件按动作键匹配。 */
 function is_primary_shortcut_event(
   event: ShortcutKeyboardEvent,
   action: PrimaryShortcutAction,
@@ -101,6 +109,7 @@ function is_primary_shortcut_event(
   return event.key.toLowerCase() === PRIMARY_SHORTCUT_KEYS[action];
 }
 
+/** 删除动作遵循各平台惯用键位。 */
 function is_delete_shortcut_event(
   event: ShortcutKeyboardEvent,
   platform: ShortcutPlatform,
@@ -116,6 +125,7 @@ function is_delete_shortcut_event(
   return !event.ctrlKey && !event.metaKey && event.key === "Delete";
 }
 
+/** 按动作选择主修饰键或删除键的匹配规则。 */
 export function is_action_shortcut_event(
   event: ShortcutKeyboardEvent,
   action: ShortcutAction,
@@ -128,6 +138,7 @@ export function is_action_shortcut_event(
   return is_primary_shortcut_event(event, action, platform);
 }
 
+/** 弹窗拥有其内部按键，页面级动作需避开该区域。 */
 function is_element_inside_dialog(element: Element): boolean {
   return (
     element.closest("[data-slot='dialog-content']") !== null ||
@@ -137,6 +148,7 @@ function is_element_inside_dialog(element: Element): boolean {
   );
 }
 
+/** 原生输入、富文本与代码编辑器共同构成文本编辑目标。 */
 function is_element_text_editing_target(element: Element): boolean {
   if (element.closest(".cm-editor") !== null) {
     return true;

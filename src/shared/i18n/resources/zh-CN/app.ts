@@ -139,6 +139,8 @@ export const zh_cn_app = {
     VI: "越南文",
   } satisfies Record<LanguageCode, string>,
   navigation_action: {
+    expand_sidebar: "展开导航栏",
+    collapse_sidebar: "折叠导航栏",
     appearance: "变换自如",
     font: "字体",
     font_option: {

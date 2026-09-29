@@ -14,9 +14,6 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
-  SidebarMenuSub,
-  SidebarMenuSubButton,
-  SidebarMenuSubItem,
   SidebarSeparator,
 } from "@frontend/shadcn/sidebar";
 import { useSidebar } from "@frontend/shadcn/sidebar-context";
@@ -57,26 +54,14 @@ export function AppSidebar(props: AppSidebarProps): JSX.Element {
   const is_collapsed = state === "collapsed";
 
   return (
-    <Sidebar
-      collapsible="icon"
-      className="shell-sidebar top-10 h-[calc(100svh-40px)] border-r border-sidebar-border"
-    >
+    <Sidebar className="shell-sidebar top-10 h-[calc(100svh-40px)]">
       <SidebarContent className="shell-sidebar__scroll">
         {props.groups.map((group, group_index) => (
-          <div
-            key={group.id}
-            className={cn(
-              "sidebar-group-wrapper",
-              group_index === 0 && "sidebar-group-wrapper--first",
-              group_index > 0 && "sidebar-group-wrapper--separated",
-            )}
-          >
-            {group_index > 0 ? (
-              <SidebarSeparator className="sidebar-group-separator mx-0 w-full" />
-            ) : null}
+          <div key={group.id}>
+            {group_index > 0 ? <SidebarSeparator className="sidebar-group-separator" /> : null}
             <SidebarGroup className="sidebar-group">
               <SidebarGroupContent>
-                <SidebarMenu className="sidebar-group__items">
+                <SidebarMenu>
                   {group.items.map((item) => {
                     const Icon = item.icon;
                     const has_children = (item.children?.length ?? 0) > 0;
@@ -94,12 +79,11 @@ export function AppSidebar(props: AppSidebarProps): JSX.Element {
                           false));
 
                     return (
-                      <SidebarMenuItem key={item.id} className="sidebar-entry">
+                      <SidebarMenuItem key={item.id}>
                         <SidebarMenuButton
                           className={cn(
-                            "sidebar-item",
-                            is_active && "sidebar-item--active",
-                            has_active_child && "sidebar-item--parent-active",
+                            "sidebar-row",
+                            !is_active && has_active_child && "sidebar-row--parent-active",
                           )}
                           isActive={is_active}
                           disabled={is_disabled}
@@ -107,20 +91,15 @@ export function AppSidebar(props: AppSidebarProps): JSX.Element {
                           onClick={() => {
                             if (has_children) {
                               props.on_toggle_group(item.id);
-                              props.on_select_route(item.id);
-                            } else {
-                              props.on_select_route(item.id);
                             }
+                            props.on_select_route(item.id);
                           }}
                           aria-label={t(item.title_key)}
                         >
-                          <Icon size={18} className="sidebar-item__icon" />
-                          <span className={cn("sidebar-item__label", is_active && "font-medium")}>
-                            {t(item.title_key)}
-                          </span>
+                          <Icon className="sidebar-row__icon" />
+                          <span className="sidebar-row__label">{t(item.title_key)}</span>
                           {has_children ? (
                             <ChevronDown
-                              size={15}
                               className={cn(
                                 "sidebar-item__chevron",
                                 is_expanded && "sidebar-item__chevron--expanded",
@@ -136,45 +115,31 @@ export function AppSidebar(props: AppSidebarProps): JSX.Element {
                             )}
                             aria-hidden={!is_subitems_open}
                           >
-                            <SidebarMenuSub className="sidebar-subitems border-0 mx-0 translate-x-0 px-0 py-0">
+                            <SidebarMenu className="sidebar-subitems">
                               {item.children?.map((child) => {
                                 const ChildIcon = child.icon;
                                 const is_child_active = child.id === props.selected_route;
                                 const is_child_disabled = props.disabled_route_ids.has(child.id);
 
                                 return (
-                                  <SidebarMenuSubItem key={child.id}>
-                                    <SidebarMenuSubButton
+                                  <SidebarMenuItem key={child.id}>
+                                    <SidebarMenuButton
                                       isActive={is_child_active}
-                                      className={cn(
-                                        "sidebar-subitem",
-                                        is_child_active && "sidebar-subitem--active",
-                                      )}
-                                      render={
-                                        <button
-                                          disabled={is_child_disabled}
-                                          onClick={() => {
-                                            props.on_select_route(child.id);
-                                          }}
-                                          aria-label={t(child.title_key)}
-                                          tabIndex={is_subitems_open ? 0 : -1}
-                                        >
-                                          <ChildIcon size={16} className="sidebar-subitem__icon" />
-                                          <span
-                                            className={cn(
-                                              "sidebar-subitem__label",
-                                              is_child_active && "font-medium",
-                                            )}
-                                          >
-                                            {t(child.title_key)}
-                                          </span>
-                                        </button>
-                                      }
-                                    />
-                                  </SidebarMenuSubItem>
+                                      className="sidebar-row"
+                                      disabled={is_child_disabled}
+                                      onClick={() => props.on_select_route(child.id)}
+                                      aria-label={t(child.title_key)}
+                                      tabIndex={is_subitems_open ? 0 : -1}
+                                    >
+                                      <ChildIcon className="sidebar-row__icon" />
+                                      <span className="sidebar-row__label">
+                                        {t(child.title_key)}
+                                      </span>
+                                    </SidebarMenuButton>
+                                  </SidebarMenuItem>
                                 );
                               })}
-                            </SidebarMenuSub>
+                            </SidebarMenu>
                           </div>
                         ) : null}
                       </SidebarMenuItem>
@@ -188,21 +153,21 @@ export function AppSidebar(props: AppSidebarProps): JSX.Element {
       </SidebarContent>
 
       <SidebarFooter className="shell-sidebar__bottom">
-        <SidebarMenu className="sidebar-bottom-actions">
+        <SidebarMenu>
           <SidebarMenuItem>
             <SidebarMenuButton
-              className="sidebar-bottom-button"
+              className="sidebar-row"
               tooltip={t("app.navigation_action.logs")}
               aria-label={t("app.navigation_action.logs")}
               onClick={props.on_open_logs}
             >
-              <span className="sidebar-bottom-button__icon-wrap">
-                <ScrollText size={16} className="sidebar-bottom-button__icon" />
+              <span className="sidebar-row__icon">
+                <ScrollText size={16} />
                 {props.show_log_badge ? (
-                  <span className="sidebar-bottom-button__badge-dot" aria-hidden="true" />
+                  <span className="sidebar-badge-dot" aria-hidden="true" />
                 ) : null}
               </span>
-              <span className="sidebar-bottom-button__text">{t("app.navigation_action.logs")}</span>
+              <span className="sidebar-row__label">{t("app.navigation_action.logs")}</span>
             </SidebarMenuButton>
           </SidebarMenuItem>
 
@@ -213,12 +178,12 @@ export function AppSidebar(props: AppSidebarProps): JSX.Element {
               <AppDropdownMenuTrigger
                 render={
                   <SidebarMenuButton
-                    className="sidebar-bottom-button"
+                    className="sidebar-row"
                     disabled={props.is_language_updating}
                     aria-label={t("app.navigation_action.language")}
                   >
-                    <Languages size={16} className="sidebar-bottom-button__icon" />
-                    <span className="sidebar-bottom-button__text">
+                    <Languages className="sidebar-row__icon" />
+                    <span className="sidebar-row__label">
                       {t("app.navigation_action.language")}
                     </span>
                   </SidebarMenuButton>
@@ -254,7 +219,7 @@ export function AppSidebar(props: AppSidebarProps): JSX.Element {
           <SidebarMenuItem>
             <SidebarMenuButton
               className={cn(
-                "sidebar-profile",
+                "sidebar-row",
                 props.is_profile_update_available && "sidebar-profile--update",
               )}
               tooltip={t(props.profile_tooltip_key)}
@@ -268,12 +233,10 @@ export function AppSidebar(props: AppSidebarProps): JSX.Element {
                   alt="LinguaGacha"
                 />
                 {props.is_profile_update_available ? (
-                  <span className="sidebar-profile__update-dot" aria-hidden="true" />
+                  <span className="sidebar-badge-dot" aria-hidden="true" />
                 ) : null}
               </span>
-              <span className="sidebar-profile__text font-medium">
-                {t(props.profile_label_key)}
-              </span>
+              <span className="sidebar-row__label font-medium">{t(props.profile_label_key)}</span>
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>
