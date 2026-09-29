@@ -21,8 +21,9 @@ const PROJECT_LOAD_ENTRY_ROUTE_IDS: ReadonlySet<RouteId> = new Set([
   "proofreading",
   "workbench",
 ]);
-// 依赖已有项目内容的页面在项目未加载时禁用。
+// 这些页面的导航入口在项目未加载时禁用。
 const PROJECT_LOADED_ONLY_ROUTE_IDS: ReadonlySet<RouteId> = new Set([
+  "skills",
   "glossary",
   "text-preserve",
   "pre-translation-replacement",
