@@ -1,130 +1,10 @@
-import type { ChangeEvent, ReactNode } from "react";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
+
+import { TooltipProvider } from "@frontend/shadcn/tooltip";
 
 import { SearchBar, type SearchBarScopeOption } from "@frontend/widgets/search-bar/search-bar";
-
-vi.mock("@frontend/widgets/app-button", () => {
-  return {
-    AppButton: (props: {
-      "aria-label"?: string;
-      children: ReactNode;
-      disabled?: boolean;
-      onClick?: () => void;
-      type?: "button";
-    }) => (
-      <button
-        type={props.type ?? "button"}
-        aria-label={props["aria-label"]}
-        disabled={props.disabled}
-        onClick={props.onClick}
-      >
-        {props.children}
-      </button>
-    ),
-  };
-});
-
-vi.mock("@frontend/shadcn/card", () => {
-  return {
-    Card: (props: { children: ReactNode; className?: string; role?: string; variant?: string }) => (
-      <section role={props.role} className={props.className} data-variant={props.variant}>
-        {props.children}
-      </section>
-    ),
-    CardContent: (props: { children: ReactNode; className?: string }) => (
-      <div className={props.className}>{props.children}</div>
-    ),
-  };
-});
-
-vi.mock("@frontend/widgets/app-dropdown-menu", () => {
-  return {
-    AppDropdownMenu: (props: { children?: ReactNode; render?: ReactNode }) => (
-      <>{props.render ?? props.children}</>
-    ),
-    AppDropdownMenuContent: (props: { children: ReactNode }) => <div>{props.children}</div>,
-    AppDropdownMenuRadioGroup: (props: {
-      children: ReactNode;
-      onValueChange?: (value: string) => void;
-      value: string;
-    }) => (
-      <div data-scope-value={props.value} data-testid="search-bar-scope-options">
-        {props.children}
-      </div>
-    ),
-    AppDropdownMenuRadioItem: (props: { children: ReactNode; value: string }) => (
-      <div data-value={props.value}>{props.children}</div>
-    ),
-    AppDropdownMenuTrigger: (props: { children?: ReactNode; render?: ReactNode }) => (
-      <>{props.render ?? props.children}</>
-    ),
-  };
-});
-
-vi.mock("@frontend/shadcn/input-group", () => {
-  return {
-    InputGroup: (props: { children: ReactNode; className?: string; "data-disabled"?: string }) => (
-      <div className={props.className} data-disabled={props["data-disabled"]}>
-        {props.children}
-      </div>
-    ),
-    InputGroupAddon: (props: { children: ReactNode; className?: string }) => (
-      <div className={props.className}>{props.children}</div>
-    ),
-    InputGroupButton: (props: {
-      "aria-label"?: string;
-      children: ReactNode;
-      className?: string;
-      disabled?: boolean;
-      onClick?: () => void;
-      size?: string;
-      type?: "button";
-    }) => (
-      <button
-        type={props.type ?? "button"}
-        aria-label={props["aria-label"]}
-        className={props.className}
-        disabled={props.disabled}
-        data-size={props.size}
-        onClick={props.onClick}
-      >
-        {props.children}
-      </button>
-    ),
-    InputGroupInput: (props: {
-      "aria-invalid"?: boolean;
-      className?: string;
-      disabled?: boolean;
-      onChange?: (event: ChangeEvent<HTMLInputElement>) => void;
-      placeholder?: string;
-      value: string;
-    }) => (
-      <input
-        aria-invalid={props["aria-invalid"]}
-        className={props.className}
-        disabled={props.disabled}
-        placeholder={props.placeholder}
-        value={props.value}
-        onChange={props.onChange}
-      />
-    ),
-  };
-});
-
-vi.mock("@frontend/shadcn/tooltip", () => {
-  return {
-    Tooltip: (props: { children?: ReactNode; render?: ReactNode }) => (
-      <>{props.render ?? props.children}</>
-    ),
-    TooltipContent: (props: { children: ReactNode }) => <div>{props.children}</div>,
-    TooltipTrigger: (props: { children?: ReactNode; render?: ReactNode }) => (
-      <>{props.render ?? props.children}</>
-    ),
-    TooltipTarget: (props: { children: ReactNode }) => <span>{props.children}</span>,
-  };
-});
 
 type TestScope = "all" | "src";
 
@@ -170,47 +50,49 @@ describe("SearchBar", () => {
 
     await act(async () => {
       root?.render(
-        <SearchBar<TestScope>
-          variant="replace"
-          keyword={options.keyword ?? "苹果"}
-          placeholder="搜索"
-          clear_label="清空搜索"
-          invalid_message={options.invalid_message ?? null}
-          search_disabled={options.search_disabled}
-          on_keyword_change={() => undefined}
-          replace_text={options.replace_text ?? "梨"}
-          replace_placeholder="替换为"
-          replace_clear_label="清空替换"
-          replace_actions_disabled={options.replace_actions_disabled === true}
-          on_replace_text_change={() => undefined}
-          replace_next_label="替换当前"
-          replace_all_label="全部替换"
-          on_replace_next={
-            options.on_replace_next ??
-            (() => {
-              replace_next_calls += 1;
-            })
-          }
-          on_replace_all={
-            options.on_replace_all ??
-            (() => {
-              replace_all_calls += 1;
-            })
-          }
-          scope={{
-            value: "all",
-            button_label: "范围",
-            tooltip: "当前范围",
-            options: SCOPE_OPTIONS,
-            on_change: () => undefined,
-          }}
-          regex={{
-            value: false,
-            label: "正则",
-            tooltip: "正则开关",
-            on_change: () => undefined,
-          }}
-        />,
+        <TooltipProvider>
+          <SearchBar<TestScope>
+            variant="replace"
+            keyword={options.keyword ?? "苹果"}
+            placeholder="搜索"
+            clear_label="清空搜索"
+            invalid_message={options.invalid_message ?? null}
+            search_disabled={options.search_disabled}
+            on_keyword_change={() => undefined}
+            replace_text={options.replace_text ?? "梨"}
+            replace_placeholder="替换为"
+            replace_clear_label="清空替换"
+            replace_actions_disabled={options.replace_actions_disabled === true}
+            on_replace_text_change={() => undefined}
+            replace_next_label="替换当前"
+            replace_all_label="全部替换"
+            on_replace_next={
+              options.on_replace_next ??
+              (() => {
+                replace_next_calls += 1;
+              })
+            }
+            on_replace_all={
+              options.on_replace_all ??
+              (() => {
+                replace_all_calls += 1;
+              })
+            }
+            scope={{
+              value: "all",
+              button_label: "范围",
+              tooltip: "当前范围",
+              options: SCOPE_OPTIONS,
+              on_change: () => undefined,
+            }}
+            regex={{
+              value: false,
+              label: "正则",
+              tooltip: "正则开关",
+              on_change: () => undefined,
+            }}
+          />
+        </TooltipProvider>,
       );
     });
   }

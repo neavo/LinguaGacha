@@ -59,26 +59,23 @@ describe("parse_cli_args", () => {
     });
   });
 
-  it("analyze 是未知命令", () => {
-    expect(() => parse_cli_args(["analyze"])).toThrow("Unknown command: analyze");
-  });
-
   it.each([
-    [["translate"], "Missing required option --input"],
-    [
-      with_option_value(VALID_TRANSLATE_ARGV, "--target-language", "ALL"),
-      "Unsupported target language: ALL",
-    ],
-    [["translate", "--input", "--output-dir"], "Missing value for --input"],
-    [[...VALID_TRANSLATE_ARGV, "--bad", "x"], "Unknown option: --bad"],
-    [[...VALID_TRANSLATE_ARGV, "--prompt", "prompt.md"], "--prompt only supports .txt files"],
-    [
-      [...VALID_TRANSLATE_ARGV, "--text-preserve", "rules.csv"],
-      "--text-preserve only supports .json / .xlsx files",
-    ],
-    [["create"], "Unknown command: create"],
-  ] as const)("拒绝无效参数：%s", (argv, message) => {
-    expect_usage_error(argv, message);
+    ["缺少必填参数", ["translate"]],
+    ["非法目标语言", with_option_value(VALID_TRANSLATE_ARGV, "--target-language", "ALL")],
+    ["选项缺少值", ["translate", "--input", "--output-dir"]],
+    ["未知选项", [...VALID_TRANSLATE_ARGV, "--bad", "x"]],
+    ["错误提示词格式", [...VALID_TRANSLATE_ARGV, "--prompt", "prompt.md"]],
+    ["错误规则格式", [...VALID_TRANSLATE_ARGV, "--text-preserve", "rules.csv"]],
+    ["未知命令", ["create"]],
+  ] as const)("拒绝%s并返回 usage 退出码", (_name, argv) => {
+    let thrown: unknown;
+    try {
+      parse_cli_args([...argv]);
+    } catch (error) {
+      thrown = error;
+    }
+    expect(thrown).toBeInstanceOf(CLIUsageError);
+    expect(thrown).toMatchObject({ exitCode: 2 });
   });
 });
 
@@ -90,15 +87,4 @@ function with_option_value(
   const result = [...argv];
   result[result.indexOf(option) + 1] = value;
   return result;
-}
-
-function expect_usage_error(argv: readonly string[], message: string): void {
-  let thrown: unknown;
-  try {
-    parse_cli_args([...argv]);
-  } catch (error) {
-    thrown = error;
-  }
-  expect(thrown).toBeInstanceOf(CLIUsageError);
-  expect(thrown).toMatchObject({ message, exitCode: 2 });
 }

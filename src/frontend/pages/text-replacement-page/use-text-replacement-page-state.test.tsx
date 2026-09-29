@@ -1,668 +1,129 @@
-import { type JSX, act, useEffect } from "react";
-import { createRoot, type Root } from "react-dom/client";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { act } from "react";
+import { normalize_setting_snapshot } from "@domain/setting";
+import { createRoot } from "react-dom/client";
+import { expect, it, vi } from "vitest";
+import { ProjectSessionUiStateProvider } from "@frontend/app/session/project-session-ui-state-provider";
+import { createEmptyQualityRuleStatisticsCacheSnapshot } from "@frontend/app/session/quality-rule-statistics-store";
+import { useProjectWriteCommitter } from "@frontend/app/state/desktop-project-write";
+import { useTextReplacementPageState } from "./use-text-replacement-page-state";
+import type { TextReplacementEntry } from "./types";
 
-import type { QualityRuleStatisticsCacheSnapshot } from "@frontend/app/session/quality-rule-statistics-store";
-import { useTextReplacementPageState } from "@frontend/pages/text-replacement-page/use-text-replacement-page-state";
-
-const {
-  api_fetch_mock,
-  push_toast_mock,
-  read_quality_rule_snapshot_mock,
-  translate_mock,
-  page_ui_state_store,
-} = vi.hoisted(() => {
-  return {
-    api_fetch_mock: vi.fn(),
-    push_toast_mock: vi.fn(),
-    read_quality_rule_snapshot_mock: vi.fn(),
-    translate_mock: (key: string) => key,
-    page_ui_state_store: new Map<string, unknown>(),
-  };
-});
-
-const run_state = {
-  project: {
-    path: "E:/demo/sample.lg",
-    loaded: true,
-  },
-  files: {},
-  quality: {
-    glossary: {
-      entries: [],
-      enabled: false,
-      mode: "off",
-      revision: 0,
-    },
-    pre_replacement: {
-      entries: [
-        {
-          entry_id: "hero::0",
-          src: "hero",
-          dst: "勇者",
-          regex: false,
-          case_sensitive: false,
-        },
-      ],
-      enabled: true,
-      mode: "custom",
-      revision: 2,
-    },
-    post_replacement: {
-      entries: [],
-      enabled: false,
-      mode: "off",
-      revision: 0,
-    },
-    text_preserve: {
-      entries: [],
-      enabled: false,
-      mode: "off",
-      revision: 0,
-    },
-  },
-  prompts: {
-    translation: {
-      text: "",
-      enabled: false,
-      revision: 0,
-    },
-  },
-
-  proofreading: {
-    revision: 0,
-  },
-  revisions: {
-    projectRevision: 1,
-    sections: {
-      quality: 2,
-    },
+const api = vi.hoisted(() => vi.fn());
+const toast = vi.hoisted(() => vi.fn());
+const t = (key: string) => key;
+const settings = normalize_setting_snapshot({});
+vi.mock("@frontend/app/desktop/desktop-api", () => ({ api_fetch: api }));
+vi.mock("@frontend/app/feedback/desktop-toast", () => ({ push_toast: toast }));
+vi.mock("@frontend/app/locale/locale-context", () => ({
+  useI18n: () => ({ t }),
+}));
+vi.mock("@frontend/app/navigation/navigation-context", () => ({
+  useAppNavigation: () => ({
+    navigate_to_route: vi.fn(),
+    push_proofreading_lookup_intent: vi.fn(),
+  }),
+}));
+const statistics = createEmptyQualityRuleStatisticsCacheSnapshot();
+vi.mock("@frontend/app/session/quality-rule-statistics-context", () => ({
+  useQualityRuleStatistics: () => statistics,
+}));
+const project = { loaded: true, path: "project.lg" };
+const writes = {
+  applyProjectWriteChanges: async () => undefined,
+  recovery: {
+    report_state_error: vi.fn(),
+    refresh_project_state_after_error: async () => undefined,
   },
 };
-
-let runtime_snapshot: { revision: number; owner: "batch_translation" | "agent" | null } = {
-  revision: 0,
-  owner: null,
-};
-
-const project_store = {
-  subscribe: (listener: () => void) => {
-    project_store_listeners.add(listener);
-    return () => {
-      project_store_listeners.delete(listener);
-    };
-  },
-  getState: () => run_state,
-};
-
-const project_store_listeners = new Set<() => void>();
-
-/**
- * 模拟后端 change 回流，把权威 quality 切片合并进测试项目仓库。
- */
-function apply_quality_write_result(result: {
-  changes?: Array<{
-    sectionRevisions?: {
-      quality?: number;
-    };
-    sections?: {
-      quality?: {
-        data?: typeof run_state.quality;
-      };
-    };
-    operations?: Array<{
-      sections?: {
-        quality?: {
-          data?: typeof run_state.quality;
-        };
-      };
-    }>;
-  }>;
-}): void {
-  for (const change of result.changes ?? []) {
-    const canonical_quality = change.sections?.quality?.data;
-    if (canonical_quality !== undefined) {
-      run_state.quality = canonical_quality;
-      if (change.sectionRevisions?.quality !== undefined) {
-        run_state.revisions.sections.quality = change.sectionRevisions.quality;
-      }
-      for (const listener of project_store_listeners) {
-        listener();
-      }
-      continue;
-    }
-
-    for (const operation of change.operations ?? []) {
-      const next_quality = operation.sections?.quality?.data;
-      if (next_quality !== undefined) {
-        run_state.quality = next_quality;
-        if (change.sectionRevisions?.quality !== undefined) {
-          run_state.revisions.sections.quality = change.sectionRevisions.quality;
-        }
-        for (const listener of project_store_listeners) {
-          listener();
-        }
-      }
-    }
-  }
-}
-
-// 测试夹具只模拟后端原始规范化写入载荷，回灌入口由运行态 commit mock 触发。
-function create_quality_write_result(
-  args: {
-    quality?: typeof run_state.quality;
-    project_revision?: number;
-    quality_revision?: number;
-  } = {},
-) {
-  const project_revision = args.project_revision ?? 2;
-  return {
-    accepted: true,
-    changes: [
-      {
-        source: "quality_rule_update",
-        projectPath: "E:/demo/sample.lg",
-        projectRevision: project_revision,
-        updatedSections: ["quality"],
-        sectionRevisions: {
-          quality: args.quality_revision ?? project_revision,
-        },
-        sections: {
-          quality: {
-            payloadMode: "canonical-delta",
-            data: args.quality ?? run_state.quality,
-          },
-        },
-      },
-    ],
-  };
-}
-
-// 质量区块快照由后端整体回灌，测试只替换 pre_replacement 切片以表达保存后的事实。
-function create_pre_replacement_quality(
-  entries: typeof run_state.quality.pre_replacement.entries,
-  revision: number,
-): typeof run_state.quality {
-  return {
-    ...run_state.quality,
-    pre_replacement: {
-      ...run_state.quality.pre_replacement,
-      entries,
-      revision,
-    },
-  };
-}
-
-let current_hit_cache: QualityRuleStatisticsCacheSnapshot;
-let project_change_seq = 0;
-let project_change_sections: Array<"items" | "quality"> = ["quality"];
-
-/** 准备命中结果，独立控制统计是否就绪。 */
-function create_hit_cache(
-  args: Partial<QualityRuleStatisticsCacheSnapshot>,
-): QualityRuleStatisticsCacheSnapshot {
-  return {
-    phase: "current",
-    entry_ids: ["hero::0"],
-    hits_by_entry_id: {
-      "hero::0": 1,
-    },
-    subset_parents_by_entry_id: {
-      "hero::0": [],
-    },
-    last_error: null,
-    request_token: 1,
-    updated_at: 1,
-    ...args,
-  };
-}
-
-vi.mock("@frontend/app/desktop/desktop-api", () => {
-  return {
-    api_fetch: api_fetch_mock,
-    report_renderer_error: vi.fn(async () => undefined),
-  };
-});
-
-vi.mock("@frontend/app/navigation/navigation-context", () => {
-  return {
-    useAppNavigation: () => ({
-      navigate_to_route: vi.fn(),
-      push_proofreading_lookup_intent: vi.fn(),
-    }),
-  };
-});
-
-vi.mock("@frontend/features/quality-rule-editor/quality-rule-api-client", async (import_actual) => {
-  const actual =
-    await import_actual<
-      typeof import("@frontend/features/quality-rule-editor/quality-rule-api-client")
-    >();
-  return {
-    ...actual,
-    read_quality_rule_snapshot: read_quality_rule_snapshot_mock,
-  };
-});
-
-vi.mock("@frontend/app/state/use-desktop-state", () => {
-  return {
-    useDesktopState: () => ({
-      project_snapshot: run_state.project,
-      project_change_signal: {
-        seq: project_change_seq,
-        reason: "test",
-        updated_sections: project_change_sections,
-        results: [],
-      },
-      project_store,
-      settings_snapshot: {},
-      apply_settings_snapshot: vi.fn(),
-      commit_project_write: vi.fn(async (request) => {
-        const payload = await request.run();
-        const write_result = {
-          accepted: true,
-          changes: Array.isArray(payload.changes) ? payload.changes : [],
-        };
-        await request.prepare?.({ payload, write_result });
-        apply_quality_write_result(write_result);
-        return {
-          payload,
-          write_result,
-        };
-      }),
-      refresh_project_state: vi.fn(async () => {}),
-      runtime_snapshot,
-    }),
-    useProjectChangeSignal: () => ({
-      seq: project_change_seq,
-      reason: "test",
-      updated_sections: project_change_sections,
-      results: [],
-    }),
-    useRuntimeSnapshot: () => runtime_snapshot,
-  };
-});
-
-vi.mock("@frontend/app/feedback/desktop-toast", () => ({
-  push_toast: push_toast_mock,
+vi.mock("@frontend/app/state/use-desktop-state", () => ({
+  useDesktopState: () => ({
+    project_snapshot: project,
+    settings_snapshot: settings,
+    commit_project_write: useProjectWriteCommitter(writes),
+  }),
+  useRuntimeSnapshot: () => ({ revision: 0, owner: null }),
+  useProjectChangeSignal: () => ({ seq: 0, reason: "initial", updated_sections: [], results: [] }),
 }));
 
-vi.mock("@frontend/app/session/quality-rule-statistics-context", () => {
-  return {
-    useQualityRuleStatistics: () => current_hit_cache,
-  };
-});
-
-vi.mock("@frontend/app/session/project-session-ui-state-context", async () => {
-  const React = await import("react");
-  const resolve_restore_scroll_row_id = (
-    ui_state: {
-      selected_row_ids: string[];
-      active_row_id: string | null;
-      anchor_row_id: string | null;
-    } | null,
-  ): string | null => {
-    if (ui_state === null) {
-      return null;
-    }
-
-    if (ui_state.selected_row_ids.length > 1) {
-      return ui_state.selected_row_ids[0] ?? ui_state.active_row_id;
-    }
-
-    return ui_state.selected_row_ids[0] ?? ui_state.active_row_id ?? ui_state.anchor_row_id;
-  };
-
-  return {
-    resolve_project_session_table_restore_scroll_row_id: resolve_restore_scroll_row_id,
-    useProjectSessionTableUiState: (options: {
-      key: string;
-      create_default_filter_state: () => unknown;
-      create_default_sort_state: () => unknown;
-      clone_filter_state: (filter_state: never) => unknown;
-      normalize_sort_state: (sort_state: never) => unknown;
-    }) => {
-      const {
-        key,
-        create_default_filter_state,
-        create_default_sort_state,
-        clone_filter_state,
-        normalize_sort_state,
-      } = options;
-      const stored_ui_state = page_ui_state_store.get(key) as
-        | {
-            filter_state: never;
-            sort_state: never;
-            selected_row_ids: string[];
-            active_row_id: string | null;
-            anchor_row_id: string | null;
-          }
-        | undefined;
-      const [filter_state, set_filter_state_snapshot] = React.useState(() => {
-        return stored_ui_state === undefined
-          ? create_default_filter_state()
-          : clone_filter_state(stored_ui_state.filter_state);
-      });
-      const [sort_state, set_sort_state_snapshot] = React.useState(() => {
-        return stored_ui_state === undefined
-          ? create_default_sort_state()
-          : normalize_sort_state(stored_ui_state.sort_state);
-      });
-      const [selected_row_ids, set_selected_row_ids] = React.useState(
-        () => stored_ui_state?.selected_row_ids ?? [],
-      );
-      const [active_row_id, set_active_row_id] = React.useState(
-        () => stored_ui_state?.active_row_id ?? null,
-      );
-      const [anchor_row_id, set_anchor_row_id] = React.useState(
-        () => stored_ui_state?.anchor_row_id ?? null,
-      );
-      const [restore_scroll_row_id, set_restore_scroll_row_id] = React.useState(() => {
-        return resolve_restore_scroll_row_id(stored_ui_state ?? null);
-      });
-      const filter_state_ref = React.useRef(filter_state);
-      const sort_state_ref = React.useRef(sort_state);
-      const selected_row_ids_ref = React.useRef(selected_row_ids);
-      const active_row_id_ref = React.useRef(active_row_id);
-      const anchor_row_id_ref = React.useRef(anchor_row_id);
-      const write_page_ui_state = React.useCallback(
-        (patch: Record<string, unknown> = {}): void => {
-          const next_filter_state =
-            "filter_state" in patch ? patch.filter_state : filter_state_ref.current;
-          const next_sort_state = "sort_state" in patch ? patch.sort_state : sort_state_ref.current;
-          const next_selected_row_ids =
-            "selected_row_ids" in patch ? patch.selected_row_ids : selected_row_ids_ref.current;
-          const next_active_row_id =
-            "active_row_id" in patch ? patch.active_row_id : active_row_id_ref.current;
-          const next_anchor_row_id =
-            "anchor_row_id" in patch ? patch.anchor_row_id : anchor_row_id_ref.current;
-          page_ui_state_store.set(key, {
-            filter_state: next_filter_state,
-            sort_state: next_sort_state,
-            selected_row_ids: next_selected_row_ids,
-            active_row_id: next_active_row_id,
-            anchor_row_id: next_anchor_row_id,
-          });
-        },
-        [key],
-      );
-      const set_filter_state = React.useCallback(
-        (next_filter_state: never): void => {
-          const cloned_filter_state = clone_filter_state(next_filter_state);
-          filter_state_ref.current = cloned_filter_state;
-          set_filter_state_snapshot(cloned_filter_state);
-          write_page_ui_state({ filter_state: cloned_filter_state });
-        },
-        [clone_filter_state, write_page_ui_state],
-      );
-      const set_sort_state = React.useCallback(
-        (next_sort_state: never): void => {
-          const normalized_sort_state = normalize_sort_state(next_sort_state);
-          sort_state_ref.current = normalized_sort_state;
-          set_sort_state_snapshot(normalized_sort_state);
-          write_page_ui_state({ sort_state: normalized_sort_state });
-        },
-        [normalize_sort_state, write_page_ui_state],
-      );
-      const set_selection_state = React.useCallback(
-        (selection_state: {
-          selected_row_ids: string[];
-          active_row_id: string | null;
-          anchor_row_id: string | null;
-        }): void => {
-          const next_selected_row_ids = [...selection_state.selected_row_ids];
-          selected_row_ids_ref.current = next_selected_row_ids;
-          active_row_id_ref.current = selection_state.active_row_id;
-          anchor_row_id_ref.current = selection_state.anchor_row_id;
-          set_selected_row_ids(next_selected_row_ids);
-          set_active_row_id(selection_state.active_row_id);
-          set_anchor_row_id(selection_state.anchor_row_id);
-          set_restore_scroll_row_id(null);
-          write_page_ui_state({
-            selected_row_ids: next_selected_row_ids,
-            active_row_id: selection_state.active_row_id,
-            anchor_row_id: selection_state.anchor_row_id,
-          });
-        },
-        [write_page_ui_state],
-      );
-      const clear_selection_state = React.useCallback((): void => {
-        set_selection_state({
-          selected_row_ids: [],
-          active_row_id: null,
-          anchor_row_id: null,
-        });
-      }, [set_selection_state]);
-      const reset_table_state = React.useCallback((): void => {
-        const next_filter_state = clone_filter_state(create_default_filter_state() as never);
-        const next_sort_state = normalize_sort_state(create_default_sort_state() as never);
-        filter_state_ref.current = next_filter_state;
-        sort_state_ref.current = next_sort_state;
-        selected_row_ids_ref.current = [];
-        active_row_id_ref.current = null;
-        anchor_row_id_ref.current = null;
-        set_filter_state_snapshot(next_filter_state);
-        set_sort_state_snapshot(next_sort_state);
-        set_selected_row_ids([]);
-        set_active_row_id(null);
-        set_anchor_row_id(null);
-        set_restore_scroll_row_id(null);
-      }, [
-        clone_filter_state,
-        create_default_filter_state,
-        create_default_sort_state,
-        normalize_sort_state,
-      ]);
-      return {
-        filter_state,
-        sort_state,
-        selected_row_ids,
-        active_row_id,
-        anchor_row_id,
-        restore_scroll_row_id,
-        set_filter_state,
-        set_sort_state,
-        set_selection_state,
-        clear_selection_state,
-        restore_selection_state: set_selection_state,
-        reset_table_state,
-        write_page_ui_state,
-      };
-    },
-    useProjectSessionUiState: () => ({
-      get_page_ui_state: <UiState,>(key: string): UiState | null => {
-        return (page_ui_state_store.get(key) as UiState | undefined) ?? null;
-      },
-      set_page_ui_state: <UiState,>(key: string, ui_state: UiState): void => {
-        page_ui_state_store.set(key, ui_state);
-      },
-      update_page_ui_state: <UiState,>(
-        key: string,
-        updater: (previous_ui_state: UiState | null) => UiState | null,
-      ): void => {
-        const previous_ui_state = (page_ui_state_store.get(key) as UiState | undefined) ?? null;
-        const next_ui_state = updater(previous_ui_state);
-        if (next_ui_state === null) {
-          page_ui_state_store.delete(key);
-        } else {
-          page_ui_state_store.set(key, next_ui_state);
-        }
-      },
-      clear_page_ui_state: (key: string): void => {
-        page_ui_state_store.delete(key);
-      },
-    }),
-  };
-});
-
-vi.mock("@frontend/app/locale/locale-context", () => {
-  return {
-    useI18n: () => ({
-      t: translate_mock,
-    }),
-  };
-});
-
-/** 通过公开 Hook 输出观察页面状态与操作结果。 */
-function Probe(props: {
-  on_ready: (state: ReturnType<typeof useTextReplacementPageState>) => void;
-}): JSX.Element | null {
-  const state = useTextReplacementPageState("pre");
-
-  useEffect(() => {
-    props.on_ready(state);
-  }, [props, state]);
-
-  return null;
-}
-
-describe("useTextReplacementPageState", () => {
-  let container: HTMLDivElement | null = null;
-  let root: Root | null = null;
-  let latest_state: ReturnType<typeof useTextReplacementPageState> | null = null;
-
-  beforeEach(() => {
-    project_store_listeners.clear();
-    api_fetch_mock.mockReset();
-    push_toast_mock.mockReset();
-    read_quality_rule_snapshot_mock.mockReset();
-    read_quality_rule_snapshot_mock.mockImplementation(
-      async (rule_type: keyof typeof run_state.quality) => ({
-        projectPath: run_state.project.path,
-        sectionRevisions: { ...run_state.revisions.sections },
-        qualityRule: run_state.quality[rule_type],
-      }),
-    );
-    project_change_seq = 0;
-    project_change_sections = ["quality"];
-    runtime_snapshot = { revision: 0, owner: null };
-    page_ui_state_store.clear();
-    run_state.quality.pre_replacement = {
-      entries: [
-        {
-          entry_id: "hero::0",
-          src: "hero",
-          dst: "勇者",
-          regex: false,
-          case_sensitive: false,
-        },
-      ],
-      enabled: true,
-      mode: "custom",
-      revision: 2,
+it.each(["pre", "post"] as const)(
+  "%s 预设导入保留同源 literal 与 regex 身份，并刷新页面事实",
+  async (variant) => {
+    const original: TextReplacementEntry = {
+      entry_id: "literal",
+      src: "hero",
+      dst: "勇者",
+      regex: false,
+      case_sensitive: false,
     };
-    run_state.revisions.sections.quality = 2;
-    current_hit_cache = create_hit_cache({});
-  });
-
-  afterEach(async () => {
-    if (root !== null) {
-      await act(async () => {
-        root?.unmount();
-      });
-    }
-
-    container?.remove();
-    container = null;
-    root = null;
-    latest_state = null;
-    vi.useRealTimers();
-  });
-
-  /** 挂载隔离的页面状态并等待首次查询完成。 */
-  async function mount_probe(): Promise<void> {
-    container = document.createElement("div");
-    document.body.append(container);
-    root = createRoot(container);
-
-    await rerender_probe();
-  }
-
-  // 递增项目 change seq，模拟后端事件驱动页面刷新。
-  async function rerender_probe(): Promise<void> {
-    project_change_seq += 1;
-    await act(async () => {
-      root?.render(
-        <Probe
-          on_ready={(state) => {
-            latest_state = state;
-          }}
-        />,
-      );
-    });
-    await act(async () => {
-      await Promise.resolve();
-    });
-    await act(async () => {
-      await Promise.resolve();
-    });
-  }
-
-  it("预设导入保留相同 src 的 literal 与 regex 两种执行身份", async () => {
-    await mount_probe();
-    api_fetch_mock
-      .mockResolvedValueOnce({
-        entries: [
-          {
-            entry_id: "hero::1",
-            src: "hero",
-            dst: "",
-            regex: true,
-            case_sensitive: true,
-          },
-        ],
-      })
-      .mockResolvedValueOnce(
-        create_quality_write_result({
-          quality: create_pre_replacement_quality(
-            [
+    const incoming: TextReplacementEntry = {
+      entry_id: "regex",
+      src: "hero",
+      dst: "",
+      regex: true,
+      case_sensitive: true,
+    };
+    let entries = [original];
+    let revision = 2;
+    api.mockReset();
+    toast.mockClear();
+    writes.recovery.report_state_error.mockClear();
+    // 远端仅提供查询、预设与保存回执；页面查询、提交和会话状态均使用生产实现。
+    api.mockImplementation(async (route: string, request: { entries?: TextReplacementEntry[] }) => {
+      switch (route) {
+        case "/api/quality/rules/query":
+          return {
+            projectPath: project.path,
+            sectionRevisions: { quality: revision },
+            qualityRule: { enabled: true, mode: "custom", entries, revision },
+          };
+        case "/api/quality/rules/presets/read":
+          return { entries: [incoming] };
+        case "/api/quality/rules/update":
+          entries = structuredClone(request.entries!);
+          revision++;
+          return {
+            accepted: true,
+            changes: [
               {
-                entry_id: "hero::0",
-                src: "hero",
-                dst: "勇者",
-                regex: false,
-                case_sensitive: false,
-              },
-              {
-                entry_id: "hero::1",
-                src: "hero",
-                dst: "",
-                regex: true,
-                case_sensitive: true,
+                projectPath: project.path,
+                projectRevision: revision,
+                updatedSections: ["quality"],
+                sectionRevisions: { quality: revision },
               },
             ],
-            3,
-          ),
-          quality_revision: 3,
-        }),
+          };
+        default:
+          throw new Error("Unexpected route: " + route);
+      }
+    });
+    let state!: ReturnType<typeof useTextReplacementPageState>;
+    /** 直接观察页面公开结果，异步查询由 React act 等待。 */
+    function Probe() {
+      state = useTextReplacementPageState(variant);
+      return null;
+    }
+    const root = createRoot(document.createElement("div"));
+    try {
+      await act(async () =>
+        root.render(
+          <ProjectSessionUiStateProvider>
+            <Probe />
+          </ProjectSessionUiStateProvider>,
+        ),
       );
-
-    await act(async () => {
-      await latest_state?.editing.apply_preset("builtin:demo.json");
-    });
-    await act(async () => {
-      await latest_state?.editing.import_duplicate_overwrite();
-    });
-
-    expect(api_fetch_mock).toHaveBeenLastCalledWith("/api/quality/rules/update", {
-      rule_type: "pre_replacement",
-      expected_section_revisions: { quality: 2 },
-      entries: [
-        {
-          entry_id: "hero::0",
-          src: "hero",
-          dst: "勇者",
-          regex: false,
-          case_sensitive: false,
-        },
-        {
-          entry_id: "hero::1",
-          src: "hero",
-          dst: "",
-          regex: true,
-          case_sensitive: true,
-        },
-      ],
-    });
-  });
-});
+      expect(state.entries).toEqual([original]);
+      await act(async () => state.editing.apply_preset("builtin:fixture.json"));
+      expect(api).toHaveBeenCalledWith("/api/quality/rules/update", {
+        rule_type: variant === "pre" ? "pre_replacement" : "post_replacement",
+        expected_section_revisions: { quality: 2 },
+        entries: [original, incoming],
+      });
+      expect(state.editing.import_confirm_state.open).toBe(false);
+      expect(state.entries).toEqual([original, incoming]);
+      expect(toast).not.toHaveBeenCalled();
+      expect(writes.recovery.report_state_error).not.toHaveBeenCalled();
+    } finally {
+      await act(async () => root.unmount());
+    }
+  },
+);

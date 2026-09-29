@@ -47,6 +47,8 @@ describe("应用模态窗", () => {
     );
 
     click_button("app.action.confirm");
+    expect(on_confirm).toHaveBeenCalledTimes(1);
+    expect(on_close).not.toHaveBeenCalled();
     click_button("app.action.cancel");
     expect(on_confirm).toHaveBeenCalledTimes(1);
     expect(on_close).toHaveBeenCalledTimes(1);
@@ -67,9 +69,14 @@ describe("应用模态窗", () => {
     );
 
     click_button("覆盖");
-    click_button("跳过");
-    click_button("app.action.cancel");
     expect(on_primary).toHaveBeenCalledTimes(1);
+    expect(on_secondary).not.toHaveBeenCalled();
+    expect(on_close).not.toHaveBeenCalled();
+    click_button("跳过");
+    expect(on_primary).toHaveBeenCalledTimes(1);
+    expect(on_secondary).toHaveBeenCalledTimes(1);
+    expect(on_close).not.toHaveBeenCalled();
+    click_button("app.action.cancel");
     expect(on_secondary).toHaveBeenCalledTimes(1);
     expect(on_close).toHaveBeenCalledTimes(1);
   });

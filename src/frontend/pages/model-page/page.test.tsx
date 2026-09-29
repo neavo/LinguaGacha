@@ -1,8 +1,7 @@
-import { act, type ReactNode } from "react";
+import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import type { ModelEntrySnapshot } from "@frontend/pages/model-page/types";
 import { create_model_snapshot } from "@frontend/pages/model-page/model-test-fixture";
 import { ModelPage } from "./page";
 
@@ -19,12 +18,6 @@ vi.mock("@frontend/app/feedback/desktop-toast", () => ({ push_toast: push_toast_
 
 vi.mock("@frontend/pages/model-page/use-model-page-state", () => ({
   useModelPageState: use_model_page_state_mock,
-}));
-
-vi.mock("@frontend/pages/model-page/components/model-item-chip", () => ({
-  ModelItemChip: (props: { model: ModelEntrySnapshot; menu: ReactNode }) => (
-    <article aria-label={props.model.name}>{props.menu}</article>
-  ),
 }));
 
 vi.mock("@frontend/pages/model-page/dialogs/model-advanced-settings-dialog", () => ({
@@ -45,17 +38,6 @@ vi.mock("@frontend/pages/model-page/dialogs/model-task-settings-dialog", () => (
 
 vi.mock("@frontend/widgets/app-alert-dialog", () => ({
   AppConfirmDialog: () => null,
-}));
-
-vi.mock("@frontend/widgets/app-dropdown-menu", () => ({
-  AppDropdownMenuContent: (props: { children: ReactNode }) => <div>{props.children}</div>,
-  AppDropdownMenuGroup: (props: { children: ReactNode }) => <div>{props.children}</div>,
-  AppDropdownMenuItem: (props: { children: ReactNode; onClick?: () => void }) => (
-    <button type="button" onClick={props.onClick}>
-      {props.children}
-    </button>
-  ),
-  AppDropdownMenuSeparator: () => <hr />,
 }));
 
 /** 隔离页面动作分发，交互效果由对应 Hook 测试负责。 */
@@ -139,18 +121,22 @@ describe("ModelPage", () => {
       root?.render(<ModelPage is_sidebar_collapsed={false} />);
     });
 
-    const source = container.querySelector<HTMLElement>('article[aria-label="OpenAI 模型"]')!;
-    const target = container.querySelector<HTMLElement>('article[aria-label="另一个模型"]')!;
-    /** 限定条目后查找可见动作，检验页面闭包是否误用了其它模型 ID。 */
-    const find_button = (entry: HTMLElement, label: string): HTMLButtonElement =>
-      [...entry.querySelectorAll("button")].find((button) => button.textContent === label)!;
-
-    await act(async () => {
-      find_button(source, "app.action.reset").click();
-      find_button(target, "app.action.delete").click();
-      find_button(target, "model_page.action.copy").click();
-      find_button(target, "model_page.action.basic_settings").click();
-    });
+    /** 打开实际条目菜单，验证页面绑定的目标身份。 */
+    async function select(model_name: string, label: string): Promise<void> {
+      const trigger = [...container!.querySelectorAll("button")].find(
+        (button) => button.textContent === model_name,
+      )!;
+      await act(async () => trigger.click());
+      const menu = document.querySelector('[role="menu"][data-open]')!;
+      const item = [...menu.querySelectorAll<HTMLElement>('[role="menuitem"]')].find(
+        (item) => item.textContent === label,
+      )!;
+      await act(async () => item.click());
+    }
+    await select("OpenAI 模型", "app.action.reset");
+    await select("另一个模型", "app.action.delete");
+    await select("另一个模型", "model_page.action.copy");
+    await select("另一个模型", "model_page.action.basic_settings");
 
     expect(state.request_reset_model).toHaveBeenCalledExactlyOnceWith("model-openai-1");
     expect(state.request_delete_model).toHaveBeenCalledExactlyOnceWith("other");

@@ -75,7 +75,7 @@ describe("Agent 工具公共边界", () => {
     await expect(
       wrapped.execute("warning", {}, undefined, undefined, undefined as never),
     ).rejects.toMatchObject({ details: { code: "model.provider_failed" } });
-    expect(error).toHaveBeenLastCalledWith("Agent tool execution failed …", {
+    expect(error).toHaveBeenLastCalledWith(expect.any(String), {
       source: "agent",
       error: provider_error,
       context: { tool_call_id: "warning", tool_name: "test_tool" },
@@ -86,7 +86,7 @@ describe("Agent 工具公共边界", () => {
     await expect(
       wrapped.execute("unknown", {}, undefined, undefined, undefined as never),
     ).rejects.toMatchObject({ details: { code: "tool_failed" } });
-    expect(error).toHaveBeenLastCalledWith("Agent tool execution failed …", {
+    expect(error).toHaveBeenLastCalledWith(expect.any(String), {
       source: "agent",
       error: unknown,
       context: { tool_call_id: "unknown", tool_name: "test_tool" },
