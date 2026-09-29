@@ -1,9 +1,9 @@
 import { expect, it, vi } from "vitest";
 import { ProofreadingPagePreview } from "./proofreading-page-preview";
 import { ProjectSessionState } from "../project/project-session-state";
-import { PDFWorker } from "../file/formats/pdf/pdf-worker";
-import { create_pdf_fixture } from "../file/formats/pdf/test-support";
-import { read_pdf_document } from "../file/formats/pdf/pdf-document";
+import { PDFWorker } from "../file/pdf/pdf-worker";
+import { create_pdf_fixture } from "../file/pdf/test-support";
+import { read_pdf_document } from "../file/pdf/pdf-document";
 
 it("预览按需打印并复用分页，核对更新不重印，无输出页不调用打印", async () => {
   const source = create_pdf_fixture();

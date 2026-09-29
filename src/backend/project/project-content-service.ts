@@ -1,6 +1,6 @@
 import { build_project_file_records } from "./project-file-records";
 import type { PDFDocument } from "../../shared/pdf";
-import type { PDFExecution } from "../file/formats/pdf/pdf-worker";
+import type { PDFExecution } from "../file/pdf/pdf-worker";
 import type { JsonRecord, JsonValue, MutableJsonRecord } from "../../domain/json";
 import type { AppSettingService } from "../app/app-setting-service";
 import { ProjectDatabase } from "../database/database-operations";

@@ -1,0 +1,68 @@
+import path from "node:path";
+import { AppError } from "../../../shared/error";
+
+import type { Item } from "../../../domain/item";
+import {
+  group_items as group_file_items,
+  type ExportPaths,
+  type FileFormatServiceConfig,
+} from "../file-format-shared";
+import { EpubAst } from "./epub-ast";
+import { EpubWriter } from "./epub-writer";
+
+/**
+ * EPUB 格式门面，在后端文件域编排 AST 解析和资产写回。
+ */
+export class EPUBFormat {
+  /**
+   * AST 抽取器在读取时生成可回放定位信息，写回器会复用同一协议
+   */
+  private readonly ast = new EpubAst();
+
+  /**
+   * 写回器持有格式配置，门面只负责按文件分组和目标路径分派
+   */
+  private readonly writer: EpubWriter;
+
+  /**
+   * 构造时绑定文件格式配置，保证译文/双语路径和去重策略在一次导出中一致
+   */
+  public constructor(config: FileFormatServiceConfig) {
+    this.writer = new EpubWriter(config);
+  }
+
+  /**
+   * EPUB 读取交给 AST 层处理，门面保留统一 FileFormat 接口形状
+   */
+  public async read_from_stream(content: Uint8Array, rel_path: string): Promise<Item[]> {
+    return this.ast.read_from_stream(content, rel_path);
+  }
+
+  /**
+   * 写回依赖原始 asset 的书籍结构，同时生成译文版和双语对照版。
+   */
+  public async write_to_path(
+    items: Item[],
+    paths: ExportPaths,
+    asset_reader: (rel_path: string) => Buffer | null,
+  ): Promise<void> {
+    for (const [rel_path, file_items] of group_file_items(items, "EPUB")) {
+      const original_content = asset_reader(rel_path);
+      if (original_content === null) {
+        throw new AppError("file.not_found", { public_details: { file: rel_path } });
+      }
+      await this.writer.build_epub(
+        original_content,
+        file_items,
+        path.join(paths.translated_path, rel_path),
+        false,
+      );
+      await this.writer.build_epub(
+        original_content,
+        file_items,
+        path.join(paths.bilingual_path, rel_path),
+        true,
+      );
+    }
+  }
+}

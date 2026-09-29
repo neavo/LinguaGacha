@@ -1,25 +1,25 @@
-import type { PDFExecution } from "./formats/pdf/pdf-worker";
-import { PDFFormat } from "./formats/pdf/pdf-format";
+import type { PDFExecution } from "./pdf/pdf-worker";
+import { PDFFormat } from "./pdf/pdf-format";
 import path from "node:path";
 
 import { Item } from "../../domain/item";
-import { ASSFormat } from "./formats/ass-format";
-import { KVJSONFormat } from "./formats/kvjson-format";
-import { MDV2Format } from "./formats/markdown/md-v2-format";
-import { MESSAGEJSONFormat } from "./formats/messagejson-format";
-import { RenPyFormat } from "./formats/renpy/renpy-format";
-import { SRTFormat } from "./formats/srt-format";
-import { TRANSFormat } from "./formats/trans/trans-format";
-import { TXTFormat } from "./formats/txt-format";
-import { XLSXFormat } from "./formats/xlsx-format";
-import { EPUBFormat } from "./formats/epub/epub-format";
+import { ASSFormat } from "./ass/ass-format";
+import { KVJSONFormat } from "./kvjson/kvjson-format";
+import { MDV2Format } from "./markdown/md-v2-format";
+import { MESSAGEJSONFormat } from "./messagejson/messagejson-format";
+import { RenPyFormat } from "./renpy/renpy-format";
+import { SRTFormat } from "./srt/srt-format";
+import { TRANSFormat } from "./trans/trans-format";
+import { TXTFormat } from "./txt/txt-format";
+import { XLSXFormat } from "./xlsx/xlsx-format";
+import { EPUBFormat } from "./epub/epub-format";
 import { NativeFs, default_native_fs } from "../../native/native-fs";
 import {
   type FileFormatReadResult,
   type FileFormatWriteContext,
   type FileFormatServiceConfig,
   type ProjectSourceFileEntry,
-} from "../file/formats/file-format-shared";
+} from "./file-format-shared";
 import {
   PROJECT_SOURCE_FORMATS,
   type ProjectSourceFormatId,
@@ -78,7 +78,7 @@ export class FileFormatService {
   }
 
   /**
-   * 按扩展名分发到具体格式处理器，JSON/XLSX 保持历史优先级回退顺序
+   * 按扩展名分发；JSON 先尝试键值对象，再尝试消息数组。
    */
   public async parse_asset(rel_path: string, content: Uint8Array): Promise<FileFormatReadResult> {
     const ext = path.extname(rel_path).toLowerCase();

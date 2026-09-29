@@ -1,5 +1,5 @@
 import { create_empty_agent_workspace_intent_batch } from "../../project/agent-workspace-write";
-import { read_pdf_document } from "../../file/formats/pdf/pdf-document";
+import { read_pdf_document } from "../../file/pdf/pdf-document";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -11,7 +11,7 @@ import {
   create_workspace_runtime_fixture,
   workspace_execution,
 } from "../../../test/agent-workspace-fixture";
-import { create_pdf_fixture } from "../../file/formats/pdf/test-support";
+import { create_pdf_fixture } from "../../file/pdf/test-support";
 import { agent_workspace_page_fingerprint } from "../../project/agent-workspace-page-write";
 import { ProjectDataReader } from "../../project/project-data-reader";
 import type { PDFHost, PDFPageUpdate } from "../../../shared/pdf";

@@ -1,7 +1,7 @@
 import { Item } from "../../../domain/item";
 import { read_json_record, type JsonValue } from "../../../domain/json";
 import type { ProjectDatabase, ProjectDatabaseWrite } from "../../database/database-operations";
-import { EpubAst, read_epub_extra } from "../../file/formats/epub/epub-ast";
+import { EpubAst, read_epub_extra } from "../../file/epub/epub-ast";
 import { replace_project_file_items } from "../project-open-file-item-replacement";
 import type { ProjectOpenMigration, ProjectOpenMigrationContext } from "../migration-types";
 

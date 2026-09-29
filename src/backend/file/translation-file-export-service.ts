@@ -1,11 +1,11 @@
-import type { PDFExecution } from "./formats/pdf/pdf-worker";
+import type { PDFExecution } from "./pdf/pdf-worker";
 import { AppError, is_app_error } from "../../shared/error";
 import type {
   PDFFileExportResult,
   TranslationFileExportResult,
 } from "../../shared/translation-export";
-import { render_pdf_translation } from "./formats/pdf/pdf-translation";
-import { PDFFormat } from "./formats/pdf/pdf-format";
+import { render_pdf_translation } from "./pdf/pdf-translation";
+import { PDFFormat } from "./pdf/pdf-format";
 import path from "node:path";
 import type { PDFDocumentRecord } from "../../shared/pdf";
 
@@ -20,7 +20,7 @@ import { resolve_app_locale, type AppLanguage } from "../../domain/app-language"
 import { normalize_setting_snapshot, type SettingSnapshot } from "../../domain/setting";
 import { create_text_resolver, format_i18n_message, type LocaleKey } from "../../shared/i18n";
 import { NativeFs, default_native_fs } from "../../native/native-fs";
-import type { ExportPaths } from "./formats/file-format-shared";
+import type { ExportPaths } from "./file-format-shared";
 import { build_project_item_duplicate_key } from "../../shared/project/project-item-duplicates";
 
 /**

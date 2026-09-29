@@ -32,8 +32,8 @@ await build_package(
 await build_package(
   "@lg/pdf",
   {
-    index: "src/backend/file/formats/pdf/pdf-document.ts",
-    worker: "src/backend/file/formats/pdf/pdf-worker-entry.ts",
+    index: "src/backend/file/pdf/pdf-document.ts",
+    worker: "src/backend/file/pdf/pdf-worker-entry.ts",
   },
   { ".": "./index.mjs", "./worker": "./worker.mjs" },
   ["mupdf"],

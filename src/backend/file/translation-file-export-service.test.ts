@@ -1,5 +1,5 @@
-import { read_pdf_document } from "./formats/pdf/pdf-document";
-import { create_pdf_execution, create_pdf_fixture } from "./formats/pdf/test-support";
+import { read_pdf_document } from "./pdf/pdf-document";
+import { create_pdf_execution, create_pdf_fixture } from "./pdf/test-support";
 import type { PDFDocument } from "../../shared/pdf";
 import fs from "node:fs";
 import os from "node:os";

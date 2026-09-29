@@ -3,7 +3,7 @@ import { read_json_record, type JsonRecord, type JsonValue } from "../../../doma
 import {
   parse_markdown_v2_document,
   type MarkdownV2Unit,
-} from "../../file/formats/markdown/md-v2-document";
+} from "../../file/markdown/md-v2-document";
 import type { ProjectDatabase, ProjectDatabaseWrite } from "../../database/database-operations";
 import {
   build_translation_extras_from_items,
