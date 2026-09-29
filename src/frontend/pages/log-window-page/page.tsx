@@ -481,6 +481,7 @@ export function LogWindowPage(): JSX.Element {
               </AppButton>
               <SearchBarMenuAction
                 value={logs.date}
+                active={logs.date !== null}
                 button_label={
                   logs.date === null ? t("log_window_page.history.date") : format_date(logs.date)
                 }
