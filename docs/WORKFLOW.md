@@ -69,7 +69,7 @@ Vitest 在 `buildtools/vitest/vitest.config.ts` 中划分 `node` 与 `renderer`�
 
 `src/backend/agent/workspace/runtime/bootstrap.test.ts` 在仓库外的独立目录使用生产构建与 Electron 验证标准 npm 导入、真实程序入口、自然退出、文件权限、IPC、网页流读取与取消。发布资产或入口定位变化时，以 `LINGUAGACHA_TEST_ELECTRON` 和 `LINGUAGACHA_TEST_WORKSPACE_RUNTIME` 指定发行包可执行文件和运行目录，复用该集成入口验证部署产物。
 
-PDF 变更按风险运行 `src/backend/file/pdf/`、`agent-workspace-page-write`、工作区 `service.integration.test.ts` 与数据库、`ProjectWriteStore` 的来源及事务测试。`pdf-worker.test.ts` 验证独立部署线程的计算、打印回调、取消与重启。
+PDF 变更按风险运行 `src/backend/file/pdf/`、`agent-workspace-page-write`、工作区 `service.test.ts` 与数据库、`ProjectWriteStore` 的来源及事务测试。`pdf-worker.test.ts` 验证独立部署线程的计算、打印回调、取消与重启。
 
 `src/native/pdf-host.test.ts` 验证真实 Electron 打印和取消，`LINGUAGACHA_PDF_QA_DIR` 可保留产物供视觉检查。该测试使用已生成的工作区依赖和打印资源，应在构建完成后运行。验证发行包打印资源时，设置 `LINGUAGACHA_TEST_WORKSPACE_RUNTIME` 并使用默认开发 Electron 执行测试脚本。
 

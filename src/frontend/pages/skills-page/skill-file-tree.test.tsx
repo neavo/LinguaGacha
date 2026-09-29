@@ -1,11 +1,13 @@
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { create_text_resolver } from "@shared/i18n";
 import { LocaleProvider } from "@frontend/app/locale/locale-provider";
 import { TooltipProvider } from "@frontend/shadcn/tooltip";
 import { SkillFileTree } from "./skill-file-tree";
 
 describe("技能文件树", () => {
+  const t = create_text_resolver("zh-CN");
   let host: HTMLDivElement;
   let root: Root;
   const change = vi.fn();
@@ -86,7 +88,11 @@ describe("技能文件树", () => {
     await render();
     await act(async () => entry_button("references").click());
     await act(async () =>
-      (host.querySelector('button[aria-label="新增文件"]') as HTMLButtonElement).click(),
+      host
+        .querySelector<HTMLButtonElement>(
+          `button[aria-label="${t("skills_page.editor.create_file")}"]`,
+        )!
+        .click(),
     );
     await enter_name("guide.md");
     await act(async () =>
@@ -105,7 +111,7 @@ describe("技能文件树", () => {
 
   it("改名提交目标路径，删除等待确认，内置树保留文件选择", async () => {
     await render();
-    await row_action("改名");
+    await row_action(t("skills_page.editor.rename"));
     await enter_name("renamed.md");
     await act(async () =>
       document
@@ -120,19 +126,19 @@ describe("技能文件树", () => {
       destination: "renamed.md",
     });
     change.mockClear();
-    await row_action("删除");
+    await row_action(t("skills_page.editor.delete"));
     expect(change).not.toHaveBeenCalled();
     const dialog = document.querySelector('[role="alertdialog"]')!;
     await act(async () =>
       [...dialog.querySelectorAll("button")]
-        .find((button) => button.textContent === "删除")!
+        .find((button) => button.textContent === t("skills_page.editor.delete"))!
         .click(),
     );
     expect(change).toHaveBeenCalledExactlyOnceWith({ operation: "delete", path: "note.md" });
     expect(open).not.toHaveBeenCalled();
     await render(true);
-    expect(host.querySelector('[aria-label="新增文件"]')).toBeNull();
-    expect(host.querySelector('[aria-label="改名"]')).toBeNull();
+    expect(host.querySelector(`[aria-label="${t("skills_page.editor.create_file")}"]`)).toBeNull();
+    expect(host.querySelector(`[aria-label="${t("skills_page.editor.rename")}"]`)).toBeNull();
     await act(async () => entry_button("note.md").click());
     expect(open).toHaveBeenCalledExactlyOnceWith("note.md");
   });
@@ -227,7 +233,9 @@ describe("技能文件树", () => {
     });
     await act(async () => root_entry.click());
     await act(async () =>
-      host.querySelector<HTMLButtonElement>('[aria-label="新增文件"]')!.click(),
+      host
+        .querySelector<HTMLButtonElement>(`[aria-label="${t("skills_page.editor.create_file")}"]`)!
+        .click(),
     );
     await enter_name("root-note");
     await act(async () =>
@@ -236,6 +244,8 @@ describe("技能文件树", () => {
         .dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })),
     );
     expect(change).toHaveBeenLastCalledWith({ operation: "create_file", path: "root-note.md" });
-    expect(root_entry.parentElement?.querySelector('[aria-label="删除"]')).toBeNull();
+    expect(
+      root_entry.parentElement?.querySelector(`[aria-label="${t("skills_page.editor.delete")}"]`),
+    ).toBeNull();
   });
 });

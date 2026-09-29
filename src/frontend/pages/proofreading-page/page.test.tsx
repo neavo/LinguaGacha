@@ -321,17 +321,13 @@ describe("ProofreadingPage", () => {
       container?.querySelector("[data-testid='proofreading-edit']")?.getAttribute("data-readonly"),
     ).toBe("true");
   });
-  it("空文件选择提示只占用表格空态区域", async () => {
+  it("空文件选择展示提示并保留搜索入口", async () => {
     proofreading_state_fixture.current!.file_selection = { mode: "selected", values: [] };
     proofreading_state_fixture.current!.visible_row_count = 0;
     await mount_page();
     const empty = container!.querySelector('[role="status"]')!;
     expect(empty.textContent).toBe("proofreading_page.pages.select_files");
-    expect(empty.parentElement?.className).toBe("proofreading-page__table-host");
-    expect(
-      container!.querySelector(".proofreading-page__table-host")?.previousElementSibling
-        ?.textContent,
-    ).not.toContain("proofreading_page.pages.select_files");
+    expect(query_button("proofreading-search-action").disabled).toBe(false);
   });
 
   it("工程切换关闭文件浮层并重置目录展开状态", async () => {

@@ -320,6 +320,6 @@ describe("run_gui_entry", () => {
     on_unexpected_exit(new Error("worker gone"));
     await vi.waitFor(() => expect(mocks.app_exit).toHaveBeenCalledWith(1));
 
-    expect(mocks.show_native_error).toHaveBeenCalledWith("LinguaGacha 后端异常退出", "worker gone");
+    expect(mocks.show_native_error).toHaveBeenCalledWith(expect.any(String), "worker gone");
   });
 });

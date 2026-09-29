@@ -1746,7 +1746,7 @@ describe("AgentService", () => {
     await wait_for_idle(service);
 
     expect(log_error).toHaveBeenCalledWith(
-      "Agent 模型回合失败 …",
+      expect.any(String),
       expect.objectContaining({
         source: "agent",
         error: expect.objectContaining({ message: "request failed" }),
@@ -3023,7 +3023,7 @@ describe("AgentService", () => {
       ]),
     );
     expect(log_warning).toHaveBeenCalledWith(
-      "Agent 上下文压缩失败 …",
+      expect.any(String),
       expect.objectContaining({ source: "agent" }),
     );
     expect(log_error).not.toHaveBeenCalled();

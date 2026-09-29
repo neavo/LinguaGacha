@@ -27,10 +27,8 @@ vi.mock("../batch-translation/planning/planning-worker-pool", () => {
 
 import { BackendServices } from "./backend-services";
 import type { BackendServicesOptions } from "./backend-services";
-import { BatchTranslationService } from "../batch-translation/batch-translation-service";
 import { BatchTranslationRuntime } from "../batch-translation/batch-translation-runtime";
 import { ComputeWorkerClient } from "../worker/compute-worker-client";
-import { RuntimeOperationGate } from "../runtime-operation-gate";
 
 const TEST_APP_ROOT = "E:/linguagacha-backend-test";
 
@@ -89,71 +87,41 @@ describe("BackendServices", () => {
     compute_worker_dispose.mockRestore();
   });
 
-  it("把任务快照交给入口事件出口", async () => {
-    let publish_snapshot: Parameters<BatchTranslationService["subscribe"]>[0] | undefined;
-    const subscribe_spy = vi
-      .spyOn(BatchTranslationService.prototype, "subscribe")
-      .mockImplementation((listener) => {
-        publish_snapshot = listener;
-        return vi.fn();
-      });
+  it("会话变化发布实际任务快照，关闭后解除订阅", async () => {
     const options = create_backend_services_options();
     const services = new BackendServices(options);
+    try {
+      await services.state.session.clear();
+      expect(options.publishEvent).toHaveBeenCalledWith("batch_translation.snapshot_changed", {
+        batch_translation: await services.batchTranslation.snapshot(),
+      });
+    } finally {
+      await services.dispose();
+    }
     vi.mocked(options.publishEvent).mockClear();
-
-    expect(publish_snapshot).toBeDefined();
-    await publish_snapshot?.({
-      revision: 7,
-      status: "running",
-      source: "standalone",
-      request_in_flight_count: 2,
-      request_recovery: null,
-      progress: {
-        line: 1,
-        total_line: 3,
-        processed_line: 1,
-        error_line: 0,
-        total_tokens: 10,
-        total_output_tokens: 4,
-        total_reasoning_tokens: 0,
-        total_input_tokens: 6,
-        time: 1,
-        start_time: 2,
-      },
-      scope: { kind: "all" },
-    });
-    await services.dispose();
-    subscribe_spy.mockRestore();
-
-    expect(options.publishEvent).toHaveBeenCalledWith(
-      "batch_translation.snapshot_changed",
-      expect.objectContaining({
-        batch_translation: expect.objectContaining({ revision: 7, source: "standalone" }),
-      }),
-    );
+    await services.state.session.clear();
+    expect(options.publishEvent).not.toHaveBeenCalled();
   });
 
-  it("把统一运行时快照交给入口事件出口", async () => {
-    let publish_snapshot: Parameters<RuntimeOperationGate["subscribe"]>[0] | undefined;
-    const subscribe_spy = vi
-      .spyOn(RuntimeOperationGate.prototype, "subscribe")
-      .mockImplementation((listener) => {
-        publish_snapshot = listener;
-        return vi.fn();
-      });
+  it("实际运行租约的取得与释放均发布快照，关闭后解除订阅", async () => {
     const options = create_backend_services_options();
     const services = new BackendServices(options);
+    try {
+      const lease = services.state.runtimeGate.begin_runtime("agent");
+      expect(options.publishEvent).toHaveBeenLastCalledWith("runtime.snapshot_changed", {
+        runtime: expect.objectContaining({ owner: "agent" }),
+      });
+      services.state.runtimeGate.finish_runtime(lease);
+      expect(options.publishEvent).toHaveBeenLastCalledWith("runtime.snapshot_changed", {
+        runtime: expect.objectContaining({ owner: null }),
+      });
+    } finally {
+      await services.dispose();
+    }
     vi.mocked(options.publishEvent).mockClear();
-
-    expect(publish_snapshot).toBeDefined();
-    publish_snapshot?.({ revision: 3, owner: "agent" });
-
-    await services.dispose();
-    subscribe_spy.mockRestore();
-
-    expect(options.publishEvent).toHaveBeenCalledWith("runtime.snapshot_changed", {
-      runtime: { revision: 3, owner: "agent" },
-    });
+    const lease = services.state.runtimeGate.begin_runtime("agent");
+    services.state.runtimeGate.finish_runtime(lease);
+    expect(options.publishEvent).not.toHaveBeenCalled();
   });
 
   it("运行中允许保存纯应用设置", async () => {

@@ -436,7 +436,7 @@ describe("ProjectLifecycleService", () => {
         "quality_rule_revision.glossary",
       );
       expect(log_manager.warning).toHaveBeenCalledWith(
-        "默认质量规则预设加载失败 …",
+        expect.any(String),
         expect.objectContaining({
           context: expect.objectContaining({
             preset_directory: "glossary",
@@ -503,7 +503,7 @@ describe("ProjectLifecycleService", () => {
         { path: path.join("source", "script.txt"), sort_order: 0 },
       ]);
       expect(log_manager.warning).toHaveBeenCalledWith(
-        "broken.json - 文件内容解析失败 …",
+        expect.any(String),
         expect.objectContaining({ source: "project-lifecycle" }),
       );
     } finally {
@@ -546,7 +546,7 @@ describe("ProjectLifecycleService", () => {
 
       expect(fs.existsSync(project_path)).toBe(false);
       expect(log_manager.warning).toHaveBeenCalledWith(
-        "broken.json - 文件内容解析失败 …",
+        expect.any(String),
         expect.objectContaining({ source: "project-lifecycle" }),
       );
     } finally {

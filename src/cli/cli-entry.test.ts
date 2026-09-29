@@ -1,3 +1,4 @@
+import { build_cli_help } from "./cli-output";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -66,8 +67,8 @@ describe("run_cli_entry", () => {
       2,
     );
 
-    expect(stderr.messages.join("")).toContain("Missing required option --input");
-    expect(stderr.messages.join("")).toContain("全局参数 | Global Options:");
+    expect(stderr.messages[0]).toContain("--input");
+    expect(stderr.messages.join("")).toContain(build_cli_help());
     expect(run_cli_command_mock).not.toHaveBeenCalled();
   });
 

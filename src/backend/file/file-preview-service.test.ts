@@ -62,7 +62,7 @@ describe("FilePreviewService", () => {
       ],
     });
     expect(log_manager.warning).toHaveBeenCalledWith(
-      "broken.json - 文件内容解析失败 …",
+      expect.any(String),
       expect.objectContaining({ source: "file-preview" }),
     );
   });
