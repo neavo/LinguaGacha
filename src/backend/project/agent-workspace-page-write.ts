@@ -2,7 +2,7 @@ import { isDeepStrictEqual } from "node:util";
 import { createHash } from "node:crypto";
 import { AGENT_WORKSPACE_FP_LENGTH } from "../../shared/project/agent-workspace";
 import type { PDFDocumentRecord, PDFPageRecord, PDFPage, PDFPageUpdate } from "../../shared/pdf";
-import { render_pdf_page_translation } from "../file/formats/pdf/pdf-translation";
+import { render_pdf_page_translation } from "../file/pdf/pdf-translation";
 import type { AgentWorkspaceRejectedChange } from "./agent-workspace-write";
 
 /** 工作区提交按来源页定位，line 只用于回执定位提交文件中的记录。 */

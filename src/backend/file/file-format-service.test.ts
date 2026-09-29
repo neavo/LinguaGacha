@@ -1,4 +1,4 @@
-import { create_pdf_execution } from "./formats/pdf/test-support";
+import { create_pdf_execution } from "./pdf/test-support";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -6,7 +6,7 @@ import { spreadsheet_fixture } from "../../test/spreadsheet-fixture";
 
 import { describe, expect, it } from "vitest";
 
-import { FileFormatService } from "../file/file-format-service";
+import { FileFormatService } from "./file-format-service";
 import { PROJECT_SOURCE_FORMATS } from "../../shared/project-source-formats";
 
 /**

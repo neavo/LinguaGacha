@@ -1,4 +1,4 @@
-import { create_pdf_execution } from "../file/formats/pdf/test-support";
+import { create_pdf_execution } from "../file/pdf/test-support";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";

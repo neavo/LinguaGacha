@@ -1,5 +1,5 @@
-import { read_pdf_document } from "../file/formats/pdf/pdf-document";
-import { create_pdf_fixture } from "../file/formats/pdf/test-support";
+import { read_pdf_document } from "../file/pdf/pdf-document";
+import { create_pdf_fixture } from "../file/pdf/test-support";
 import fs from "node:fs";
 import { spawn } from "node:child_process";
 import { once } from "node:events";

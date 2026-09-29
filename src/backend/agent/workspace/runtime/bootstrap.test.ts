@@ -11,7 +11,7 @@ import { afterAll, beforeAll, expect, it } from "vitest";
 import { AGENT_WORKSPACE_CONTRACT, AGENT_WORKSPACE_REFERENCES } from "../contract";
 import { AgentWorkspaceRunner, AgentWorkspaceRunError, type AgentWorkspaceOutput } from "./runner";
 import { AGENT_WORKSPACE_RUN_ROOT, AGENT_WORKSPACE_RUNTIME_POLICY } from "./policy";
-import { create_pdf_fixture } from "../../../file/formats/pdf/test-support";
+import { create_pdf_fixture } from "../../../file/pdf/test-support";
 import { BackendResources } from "../../../bootstrap/backend-resources";
 import { BackendServices } from "../../../bootstrap/backend-services";
 import { AgentWorkspaceService } from "../service";

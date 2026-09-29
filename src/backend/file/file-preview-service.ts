@@ -1,7 +1,7 @@
 import type { JsonRecord, JsonValue } from "../../domain/json";
-import type { PDFExecution } from "./formats/pdf/pdf-worker";
+import type { PDFExecution } from "./pdf/pdf-worker";
 import { AppSettingService } from "../app/app-setting-service";
-import { FileFormatService } from "../file/file-format-service";
+import { FileFormatService } from "./file-format-service";
 import { normalize_setting_snapshot } from "../../domain/setting";
 import { NativeFs, default_native_fs } from "../../native/native-fs";
 import type { LogManager } from "../log/log-manager";

@@ -5,9 +5,9 @@ import { Item } from "../../domain/item";
 import { NativeFs, default_native_fs } from "../../native/native-fs";
 import type { SourceFileParseFailureRecord } from "../../shared/source-file-parse-failure";
 import { build_source_file_parse_failure } from "./source-file-parse-failure-reporter";
-import { FileFormatService } from "../file/file-format-service";
+import { FileFormatService } from "./file-format-service";
 import type { PDFDocument } from "../../shared/pdf";
-import type { ProjectSourceFileEntry, ProjectFileType } from "../file/formats/file-format-shared";
+import type { ProjectSourceFileEntry, ProjectFileType } from "./file-format-shared";
 
 export type SourceFileParseCommand = {
   source_path: string; // 用户选择的真实文件路径，只允许解析流水线读取

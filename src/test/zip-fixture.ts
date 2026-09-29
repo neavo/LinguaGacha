@@ -1,5 +1,5 @@
 import JSZip from "jszip";
-import { write_zip, type ZipContents } from "../backend/file/zip";
+import { write_zip, type ZipContents } from "../backend/file/epub/epub-zip";
 
 export { write_zip };
 export type { ZipContents };

@@ -4,7 +4,7 @@ import { AppError } from "../../shared/error";
 import type { PDFDocument, PDFPage } from "../../shared/pdf";
 import type { ProjectDatabase } from "../database/database-operations";
 import type { ProjectSessionState } from "../project/project-session-state";
-import type { PDFExecution } from "../file/formats/pdf/pdf-worker";
+import type { PDFExecution } from "../file/pdf/pdf-worker";
 
 type Preview = {
   id: string;

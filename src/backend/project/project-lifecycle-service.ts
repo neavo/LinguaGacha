@@ -1,5 +1,5 @@
 import type { ProjectPreviewResponse } from "../../shared/project-preview";
-import type { PDFExecution } from "../file/formats/pdf/pdf-worker";
+import type { PDFExecution } from "../file/pdf/pdf-worker";
 import type { PDFDocument } from "../../shared/pdf";
 import path from "node:path";
 

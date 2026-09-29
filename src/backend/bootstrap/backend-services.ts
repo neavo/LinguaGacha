@@ -2,7 +2,7 @@ import type { SettingsUpdateResponse } from "../../shared/settings";
 import { ProofreadingPagePreview } from "../proofreading/proofreading-page-preview";
 import { resolve_workspace_runtime_entry } from "../../native/workspace-runtime";
 import { pathToFileURL } from "node:url";
-import { PDFWorker } from "../file/formats/pdf/pdf-worker";
+import { PDFWorker } from "../file/pdf/pdf-worker";
 import type { PDFHost } from "../../shared/pdf";
 import { AppMetadataService } from "../app/app-metadata-service";
 import { AppPathService } from "../app/app-path-service";

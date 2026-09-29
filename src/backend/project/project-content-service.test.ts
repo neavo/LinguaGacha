@@ -1,5 +1,5 @@
-import { create_pdf_execution } from "../file/formats/pdf/test-support";
-import { create_pdf_fixture } from "../file/formats/pdf/test-support";
+import { create_pdf_execution } from "../file/pdf/test-support";
+import { create_pdf_fixture } from "../file/pdf/test-support";
 import { ProjectDataReader } from "./project-data-reader";
 import fs from "node:fs";
 import os from "node:os";

@@ -1,10 +1,10 @@
-import { create_pdf_execution, create_pdf_fixture } from "./formats/pdf/test-support";
+import { create_pdf_execution, create_pdf_fixture } from "./pdf/test-support";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 
-import { FileFormatService } from "../file/file-format-service";
+import { FileFormatService } from "./file-format-service";
 import { SourceFileParsePipeline } from "./source-file-parse-pipeline";
 import { ProjectDatabase } from "../database/database-operations";
 import { ProjectDataReader } from "../project/project-data-reader";

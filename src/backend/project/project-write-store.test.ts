@@ -1,5 +1,5 @@
-import { read_pdf_document } from "../file/formats/pdf/pdf-document";
-import { create_pdf_fixture } from "../file/formats/pdf/test-support";
+import { read_pdf_document } from "../file/pdf/pdf-document";
+import { create_pdf_fixture } from "../file/pdf/test-support";
 import { agent_workspace_page_fingerprint } from "./agent-workspace-page-write";
 import fs from "node:fs";
 import os from "node:os";

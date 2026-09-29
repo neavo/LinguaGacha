@@ -1,4 +1,4 @@
-import { read_pdf_document } from "../backend/file/formats/pdf/pdf-document";
+import { read_pdf_document } from "../backend/file/pdf/pdf-document";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import fs from "node:fs/promises";
@@ -8,7 +8,7 @@ import { createRequire } from "node:module";
 import { pathToFileURL } from "node:url";
 import { build } from "vite";
 import { expect, it } from "vitest";
-import { create_pdf_fixture } from "../backend/file/formats/pdf/test-support";
+import { create_pdf_fixture } from "../backend/file/pdf/test-support";
 import * as mupdf from "mupdf";
 
 it("真实打印加载字体、保持图文分页并在取消后释放窗口", async () => {
@@ -30,7 +30,7 @@ it("真实打印加载字体、保持图文分页并在取消后释放窗口", a
         lib: {
           entry: {
             host: path.resolve("src/native/pdf-host.ts"),
-            document: path.resolve("src/backend/file/formats/pdf/pdf-document.ts"),
+            document: path.resolve("src/backend/file/pdf/pdf-document.ts"),
           },
           formats: ["es"],
           fileName: (_format, name) => `${name}.mjs`,

@@ -1,4 +1,4 @@
-import { create_pdf_execution } from "../file/formats/pdf/test-support";
+import { create_pdf_execution } from "../file/pdf/test-support";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ProjectSessionState } from "./project-session-state";
 import fs from "node:fs";
