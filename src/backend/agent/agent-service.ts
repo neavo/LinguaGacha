@@ -497,6 +497,7 @@ export class AgentService {
       const prepared = await this.prepare_message(item);
       if (this.runtime !== runtime || !runtime.steer_ready)
         throw new AppErrors.AppError("runtime.busy");
+      // 当前会话关闭输入扩展；`steer` 只入队，`message_start` 确认实际消费。
       await runtime.session.steer(prepared.text, prepared.images);
       return this.get_acknowledgement();
     } catch (error) {
@@ -1336,8 +1337,8 @@ export class AgentService {
       expandPromptTemplates: false,
       images,
       // SDK 在异步 preflight 完成前仍处于 idle；失效后必须在真正启动模型前截断。
-      preflightResult: (accepted) => {
-        if (accepted && !this.prompt_is_current(runtime, generation)) {
+      preflightResult: (disposition) => {
+        if (disposition === "started" && !this.prompt_is_current(runtime, generation)) {
           throw new AppErrors.AppError("runtime.cancelled", {
             diagnostic_context: {
               resource: "agent_prompt",
