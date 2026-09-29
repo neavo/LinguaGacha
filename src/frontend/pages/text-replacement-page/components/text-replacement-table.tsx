@@ -99,13 +99,7 @@ export function TextReplacementTable(props: TextReplacementTableProps): JSX.Elem
         id: "src",
         title: t("quality_rule_editor.fields.source"),
         align: "left",
-        sortable: {
-          action_labels: {
-            ascending: t("quality_rule_editor.sort.ascending"),
-            descending: t("quality_rule_editor.sort.descending"),
-            clear: t("quality_rule_editor.sort.clear"),
-          },
-        },
+        sortable: {},
         head_class_name: "text-replacement-page__table-source-head",
         cell_class_name: "text-replacement-page__table-source-cell",
         render_cell: (payload) => (
@@ -117,13 +111,7 @@ export function TextReplacementTable(props: TextReplacementTableProps): JSX.Elem
         id: "dst",
         title: t("text_replacement_page.fields.replacement"),
         align: "left",
-        sortable: {
-          action_labels: {
-            ascending: t("quality_rule_editor.sort.ascending"),
-            descending: t("quality_rule_editor.sort.descending"),
-            clear: t("quality_rule_editor.sort.clear"),
-          },
-        },
+        sortable: {},
         head_class_name: "text-replacement-page__table-replacement-head",
         cell_class_name: "text-replacement-page__table-replacement-cell",
         render_cell: (payload) => (
@@ -136,13 +124,7 @@ export function TextReplacementTable(props: TextReplacementTableProps): JSX.Elem
         title: t("quality_rule_editor.fields.rule"),
         width: 120,
         align: "center",
-        sortable: {
-          action_labels: {
-            ascending: t("quality_rule_editor.sort.ascending"),
-            descending: t("quality_rule_editor.sort.descending"),
-            clear: t("quality_rule_editor.sort.clear"),
-          },
-        },
+        sortable: {},
         head_class_name: "text-replacement-page__table-rule-head",
         cell_class_name: "text-replacement-page__table-rule-cell",
         render_cell: (payload) => {
@@ -151,7 +133,7 @@ export function TextReplacementTable(props: TextReplacementTableProps): JSX.Elem
             VALUE: t(payload.row.entry.regex ? "app.state.enabled" : "app.state.disabled"),
           });
           const case_tooltip = t("app.tooltip.value", {
-            TITLE: t("text_replacement_page.rule.case_sensitive"),
+            TITLE: t("quality_rule_editor.rule.case_sensitive"),
             VALUE: t(payload.row.entry.case_sensitive ? "app.state.enabled" : "app.state.disabled"),
           });
 
@@ -174,16 +156,11 @@ export function TextReplacementTable(props: TextReplacementTableProps): JSX.Elem
       {
         kind: "data",
         id: "hit",
-        title: t("text_replacement_page.fields.hit"),
+        title: t("quality_rule_editor.fields.hit"),
         width: 120,
         align: "center",
         sortable: {
           disabled: !props.hit_ready,
-          action_labels: {
-            ascending: t("quality_rule_editor.sort.ascending"),
-            descending: t("quality_rule_editor.sort.descending"),
-            clear: t("quality_rule_editor.sort.clear"),
-          },
         },
         head_class_name: "text-replacement-page__table-hit-head",
         cell_class_name: "text-replacement-page__table-hit-cell",
@@ -197,8 +174,6 @@ export function TextReplacementTable(props: TextReplacementTableProps): JSX.Elem
               entry_id={payload.row_id}
               running={props.hit_running}
               badge_state={props.hit_badge_by_entry_id[payload.row_id] ?? null}
-              query_label={t("app.action.query")}
-              relation_label={t("text_replacement_page.hit.action.search_relation")}
               on_query_entry_source={props.on_query_entry_source}
               on_search_entry_relations={props.on_search_entry_relations}
             />

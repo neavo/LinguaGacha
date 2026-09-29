@@ -115,7 +115,7 @@ export function GlossaryCommandBar(props: GlossaryCommandBarProps): JSX.Element 
             items={props.preset_items}
             open={props.preset_menu_open}
             project_write_disabled={props.readonly}
-            trigger_label={t("glossary_page.action.preset")}
+            trigger_label={t("app.action.preset")}
             on_open={props.on_open_preset_menu}
             on_open_change={props.on_preset_menu_open_change}
             on_apply={props.on_apply_preset}

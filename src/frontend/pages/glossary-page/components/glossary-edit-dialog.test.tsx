@@ -84,7 +84,7 @@ describe("GlossaryEditDialog", () => {
     await act(async () => {
       document
         .querySelector<HTMLButtonElement>(
-          '[aria-label="glossary_page.rule.case_sensitive"] button[aria-pressed="false"]',
+          '[aria-label="quality_rule_editor.rule.case_sensitive"] button[aria-pressed="false"]',
         )
         ?.click();
       find_button("app.action.save")?.click();

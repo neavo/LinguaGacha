@@ -52,7 +52,6 @@ describe("PresetNameDialog", () => {
             submitting: false,
             target_virtual_id: null,
           }}
-          name_placeholder_key="text_preserve_page.preset.dialog.name_placeholder"
           on_change={on_change}
           on_submit={on_submit}
           on_close={() => {}}

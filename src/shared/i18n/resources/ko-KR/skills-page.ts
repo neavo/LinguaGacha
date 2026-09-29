@@ -7,7 +7,7 @@ export const ko_kr_skills_page = {
   personality_description: "지능형 어시스턴트의 역할 설정",
   install: {
     title: "설치 안내",
-    description: "스킬 링크를 AGENT에 보내고 이 스킬을 설치해 달라고 요청하세요.",
+    description: "스킬 링크를 AGENT에 보내고 이 스킬을 설치해 달라고 요청하세요",
     placeholder: "[여기에 스킬 링크 입력]",
     request: "이 스킬을 설치해 주세요: {LINK}",
   },
@@ -27,16 +27,16 @@ export const ko_kr_skills_page = {
     saved: "저장됨",
     discard: "변경 취소 후 다시 불러오기",
     overwrite: "파일 덮어쓰기",
-    conflict: "외부에서 파일이 변경되었습니다. 다시 불러오거나 덮어쓰세요.",
+    conflict: "외부에서 파일이 변경되었습니다. 다시 불러오거나 덮어쓰세요 …",
     invalid_name:
-      "64자 이내의 영문 소문자, 숫자, 단일 하이픈을 사용하고 영숫자로 시작하고 끝내세요.",
-    invalid_description: "1024자 이내의 설명을 한 줄로 입력하세요.",
-    unsupported: "UTF-8 텍스트가 아니거나 2 MB를 초과하여 편집할 수 없습니다.",
+      "64자 이내의 영문 소문자, 숫자, 단일 하이픈을 사용하고 영숫자로 시작하고 끝내세요 …",
+    invalid_description: "1024자 이내의 설명을 한 줄로 입력하세요 …",
+    unsupported: "UTF-8 텍스트가 아니거나 2 MB를 초과하여 편집할 수 없습니다 …",
   },
   feedback: {
-    duplicate_name: "파일 이름이 중복됩니다 …",
-    operation_failed: "파일 작업에 실패했습니다 …",
-    load_failed: "스킬을 불러오지 못했습니다 …",
-    save_failed: "스킬 설정을 저장하지 못했습니다 …",
+    duplicate_name: "파일 이름이 중복됩니다",
+    operation_failed: "파일 작업에 실패했습니다",
+    load_failed: "스킬을 불러오지 못했습니다",
+    save_failed: "스킬 설정을 저장하지 못했습니다",
   },
 } as const;

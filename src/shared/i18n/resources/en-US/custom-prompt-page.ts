@@ -4,7 +4,7 @@ import type { LocaleMessageSchema } from "../../types";
 export const en_us_custom_prompt_page = {
   save: {
     discard: "Discard unsaved changes",
-    waiting: "Wait for the current task to finish before saving.",
+    waiting: "Wait for the current task to finish before saving …",
   },
   title: "Custom Prompts",
   header: {
@@ -21,10 +21,9 @@ export const en_us_custom_prompt_page = {
     },
   },
   feedback: {
-    load_failed: "Could not load the prompt. Please try again.",
-    save_failed: "Could not save the prompt. Your edits have been kept.",
-    import_failed: "Task failed …",
-    export_failed: "Task failed …",
-    preset_failed: "Task failed …",
+    load_failed: "Could not load the prompt. Please try again …",
+    save_failed: "Could not save the prompt. Your edits have been kept …",
+    import_failed: "Failed to import the prompt",
+    export_failed: "Failed to export the prompt",
   },
 } satisfies LocaleMessageSchema<typeof zh_cn_custom_prompt_page>;

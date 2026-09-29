@@ -12,11 +12,16 @@ export const de_de_quality_rule_editor = {
   },
   feedback: {
     regex_invalid: "Ungültiger regulärer Ausdruck",
-    source_required: "Quelltext ist erforderlich.",
+    source_required: "Quelltext ist erforderlich",
+    save_failed: "Regeln konnten nicht gespeichert werden",
+    update_failed: "Regeleinstellungen konnten nicht gespeichert werden",
+    import_failed: "Regeln konnten nicht importiert werden",
+    export_failed: "Regeln konnten nicht exportiert werden",
   },
   fields: {
     rule: "Regel",
     source: "Quelle",
+    hit: "Treffer",
   },
   filter: {
     clear: "Löschen",
@@ -29,14 +34,12 @@ export const de_de_quality_rule_editor = {
       tooltip_label: "Suchbereich",
     },
   },
-  sort: {
-    ascending: "Aufsteigend",
-    clear: "Löschen",
-    descending: "Absteigend",
-  },
   hit: {
     hit_count: "Anzahl übereinstimmender Einträge: {COUNT}",
     relation_line: "{CHILD} -> {PARENT}",
     subset_relations: "Enthält Teilmengenbeziehungen:",
+    query_source: "Quelle abfragen",
+    search_relation: "Teilmengenbeziehungen abfragen",
   },
+  rule: { case_sensitive: "Groß-/Kleinschreibung beachten" },
 } satisfies LocaleMessageSchema<typeof zh_cn_quality_rule_editor>;

@@ -102,7 +102,7 @@ function PreviewPane(props: {
                 size="sm"
                 onClick={() => set_request({ page: request.page })}
               >
-                {t("proofreading_page.pages.retry")}
+                {t("app.action.retry")}
               </AppButton>
             </>
           )}

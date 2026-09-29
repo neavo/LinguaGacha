@@ -4,9 +4,7 @@ export const zh_cn_laboratory_page = {
     agent_batch_translation_thinking_adaptive_enable: {
       title: "思考等级自适应",
       description:
-        "在翻译任务中，深度思考会 <emphasis>产生 3-5 倍</emphasis> 的 Token 消耗" +
-        "\n" +
-        "启用此功能时，翻译任务的思考挡位会智能调整以提升 Token 效率、节约时间与费用，默认启用",
+        "在翻译任务中，深度思考会 <emphasis>产生 3-5 倍</emphasis> 的 Token 消耗\n启用此功能时，翻译任务的思考等级会智能调整以提升 Token 效率、节约时间与费用，默认启用",
     },
     prompt_enhancement_enable: {
       title: "提示词增强",
@@ -28,8 +26,5 @@ export const zh_cn_laboratory_page = {
   },
   feedback: {
     refresh_failed: "当前无法刷新实验室设置，请稍后重试 …",
-    update_failed: "实验室设置保存失败，请稍后重试 …",
-    mtool_optimizer_loading_toast: "正在刷新项目缓存 …",
-    skip_duplicate_source_text_loading_toast: "正在刷新项目缓存 …",
   },
 } as const;

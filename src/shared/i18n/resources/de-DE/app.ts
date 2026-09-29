@@ -11,7 +11,7 @@ export const de_de_app = {
     app_name: "LinguaGacha",
   },
   model: {
-    catalog_updated: "Modelldatenbank wurde aktualisiert …",
+    catalog_updated: "Modelldatenbank wurde aktualisiert",
     type: {
       preset: "Voreingestellte Modelle",
       google: "Benutzerdefinierte Google-Modelle",
@@ -26,10 +26,9 @@ export const de_de_app = {
       update_failed: "Modellauswahl konnte nicht gespeichert werden. Bitte erneut versuchen …",
     },
     thinking_level: {
-      label: "Denkstufe",
       default: "Standard beibehalten",
       default_description:
-        "Keine Daten zur Denkstufe senden; den Standardeinstellungen der Plattform folgen.",
+        "Keine Daten zur Denkstufe senden; den Standardeinstellungen der Plattform folgen",
       off: "Off",
       low: "Low",
       medium: "Medium",
@@ -51,7 +50,6 @@ export const de_de_app = {
     export: "Exportieren",
     import: "Importieren",
     preset: "Voreinstellung",
-    query: "Abfrage",
     reset: "Zurücksetzen",
     retry: "Erneut versuchen",
     save: "Speichern",
@@ -65,23 +63,24 @@ export const de_de_app = {
   },
   feedback: {
     initial_load_failed:
-      "Die Anwendungsdaten konnten nicht geladen werden. Bitte erneut versuchen.",
-    export_success: "Daten exportiert …",
-    import_success: "Daten importiert …",
-    no_valid_data: "Keine gültigen Daten …",
-    update_failed: "Aktualisierung fehlgeschlagen …",
-    project_settings_aligned: "Projekteinstellungen von aktuellen Einstellungen übernommen …",
+      "Die Anwendungsdaten konnten nicht geladen werden. Bitte erneut versuchen …",
+    export_success: "Daten exportiert",
+    import_success: "Daten importiert",
+    no_valid_data: "Keine gültigen Daten",
+    update_failed: "Aktualisierung fehlgeschlagen",
+    project_settings_aligned: "Projekteinstellungen von aktuellen Einstellungen übernommen",
+    project_cache_loading: "Projekt-Cache wird aktualisiert …",
+    settings_save_failed:
+      "Fehler beim Speichern der Einstellung. Bitte versuchen Sie es später erneut …",
   },
   error_boundary: {
     eyebrow: "Renderer-Laufzeit",
     title: "Seiten-Laufzeitfehler",
     description:
-      "Dieses Fenster wurde in die geschützte Ansicht gewechselt, und die Fehlerdetails wurden in die Protokolle geschrieben.",
+      "Dieses Fenster wurde in die geschützte Ansicht gewechselt, und die Fehlerdetails wurden in die Protokolle geschrieben …",
   },
   project_settings_alignment: {
     field: {
-      source_language: "Quellsprache",
-      target_language: "Zielsprache",
       mtool_optimizer_enable: "MTool-Optimierer",
       skip_duplicate_source_text_enable: "Doppelten Quelltext überspringen",
     },
@@ -91,7 +90,7 @@ export const de_de_app = {
   },
   quality_rule_import: {
     duplicate_description:
-      "{COUNT} doppelte Regeln wurden erkannt. Wählen Sie, wie damit umgegangen werden soll …?",
+      "{COUNT} doppelte Regeln wurden erkannt. Wählen Sie, wie damit umgegangen werden soll …",
   },
   update: {
     confirm_description: "LinguaGacha v{VERSION} ist verfügbar. Update herunterladen …?",
@@ -101,7 +100,7 @@ export const de_de_app = {
   drop: {
     multiple_unavailable: "Es kann nur eine Datei gleichzeitig abgelegt werden",
     unavailable:
-      "Der lokale Pfad der abgelegten Datei ist derzeit nicht verfügbar. Bitte verwenden Sie stattdessen die Dateiauswahl.",
+      "Der lokale Pfad der abgelegten Datei ist derzeit nicht verfügbar. Bitte verwenden Sie stattdessen die Dateiauswahl …",
     import_here: "Zum Importieren der Regeldatei loslassen",
   },
   toggle: {
@@ -192,13 +191,13 @@ export const de_de_app = {
   error: {
     request: {
       validation_failed: {
-        message: "Die Anfrageparameter sind ungültig …",
+        message: "Die Anfrageparameter sind ungültig",
       },
       invalid_json: {
-        message: "Das Anfrage-JSON ist ungültig …",
+        message: "Das Anfrage-JSON ist ungültig",
       },
       route_not_found: {
-        message: "Die API-Route existiert nicht …",
+        message: "Die API-Route existiert nicht",
       },
     },
     project: {
@@ -206,14 +205,14 @@ export const de_de_app = {
         message: "Die Projektdatei existiert bereits. Bitte einen anderen Dateinamen wählen …",
       },
       not_loaded: {
-        message: "Kein Projekt geladen …",
+        message: "Kein Projekt geladen",
       },
       not_found: {
-        message: "Die Projektdatei existiert nicht …",
+        message: "Die Projektdatei existiert nicht",
       },
     },
     translation: {
-      export_failed: { message: "Export der Übersetzung fehlgeschlagen …" },
+      export_failed: { message: "Export der Übersetzung fehlgeschlagen" },
     },
     file: {
       already_exists: {
@@ -221,16 +220,16 @@ export const de_de_app = {
           "Eine Datei oder ein Ordner mit diesem Namen existiert bereits. Bitte einen anderen Namen wählen …",
       },
       not_found: {
-        message: "Die Datei existiert nicht …",
+        message: "Die Datei existiert nicht",
       },
       parse_failed: {
-        message: "Dateiinhalt-Analyse fehlgeschlagen …",
+        message: "Dateiinhalt-Analyse fehlgeschlagen",
       },
       invalid_structure: {
-        message: "Die Dateistruktur entspricht nicht dem erwarteten Format …",
+        message: "Die Dateistruktur entspricht nicht dem erwarteten Format",
       },
       io_failed: {
-        message: "Datei-Lese- oder Schreibvorgang fehlgeschlagen …",
+        message: "Datei-Lese- oder Schreibvorgang fehlgeschlagen",
       },
     },
     database: {
@@ -252,7 +251,7 @@ export const de_de_app = {
     },
     model: {
       not_found: {
-        message: "Die Modellkonfiguration existiert nicht …",
+        message: "Die Modellkonfiguration existiert nicht",
       },
       provider_failed: {
         message:
@@ -261,10 +260,10 @@ export const de_de_app = {
     },
     worker: {
       failed: {
-        message: "Der Hintergrundausführungskanal ist fehlgeschlagen …",
+        message: "Der Hintergrundausführungskanal ist fehlgeschlagen",
       },
       execution_failed: {
-        message: "Die Hintergrundaufgabe ist fehlgeschlagen …",
+        message: "Die Hintergrundaufgabe ist fehlgeschlagen",
       },
     },
     runtime: {
@@ -272,54 +271,54 @@ export const de_de_app = {
         message: "Die Modelllaufzeit ist belegt. Bitte versuchen Sie es später erneut …",
       },
       capability_missing: {
-        message: "Der aktuellen Laufzeitumgebung fehlt eine erforderliche Fähigkeit …",
+        message: "Der aktuellen Laufzeitumgebung fehlt eine erforderliche Fähigkeit",
       },
       disposed: {
-        message: "Die Laufzeitressource wurde freigegeben …",
+        message: "Die Laufzeitressource wurde freigegeben",
       },
       cancelled: {
-        message: "Der Vorgang wurde abgebrochen …",
+        message: "Der Vorgang wurde abgebrochen",
       },
       internal_invariant: {
-        message: "Interner Zustandsfehler …",
+        message: "Interner Zustandsfehler",
       },
     },
     language: {
       invalid_target_language: {
-        message: "Die Zielsprache ist ungültig …",
+        message: "Die Zielsprache ist ungültig",
       },
       unsupported_all_target_language: {
-        message: "Die Zielsprache kann nicht Alle sein …",
+        message: "Die Zielsprache kann nicht Alle sein",
       },
       unknown_source_language_code: {
-        message: "Der Quellsprachcode ist ungültig …",
+        message: "Der Quellsprachcode ist ungültig",
       },
     },
     quality: {
       unknown_rule_type: {
-        message: "Der Qualitätsregeltyp ist ungültig …",
+        message: "Der Qualitätsregeltyp ist ungültig",
       },
       unsupported_rule_meta: {
-        message: "Die Qualitätsregeleinstellung ist ungültig …",
+        message: "Die Qualitätsregeleinstellung ist ungültig",
       },
     },
     prompt: {
       unknown_prompt_type: {
-        message: "Der Prompt-Typ ist ungültig …",
+        message: "Der Prompt-Typ ist ungültig",
       },
     },
     desktop: {
       missing_backend_api_base_url: {
-        message: "Backend-API-URL ist nicht konfiguriert …",
+        message: "Backend-API-URL ist nicht konfiguriert",
       },
       http_error: {
-        message: "Anfrage fehlgeschlagen: {PATH} …",
+        message: "Anfrage fehlgeschlagen: {PATH}",
       },
       network_failed: {
-        message: "Netzwerkanfrage fehlgeschlagen: {PATH} …",
+        message: "Netzwerkanfrage fehlgeschlagen: {PATH}",
       },
       timeout: {
-        message: "Anfrage-Zeitüberschreitung: {PATH} …",
+        message: "Anfrage-Zeitüberschreitung: {PATH}",
       },
     },
   },
@@ -364,7 +363,6 @@ export const de_de_app = {
     },
   },
   log: {
-    api_gateway_started: "API Gateway gestartet - {BASE_URL}",
     api_test_fail: "API-Test fehlgeschlagen …",
     api_test_key: "Teste Schlüssel:",
     api_test_messages: "Aufgaben-Prompts:",
@@ -398,4 +396,6 @@ export const de_de_app = {
     translation_task_result: "Übersetzungsergebnis:",
     translation_response_partially_invalid: "Einige Übersetzungen konnten nicht validiert werden …",
   },
+  sort: { ascending: "Aufsteigend", descending: "Absteigend", clear: "Sortierung aufheben" },
+  language_role: { source: "Quellsprache", target: "Zielsprache" },
 } satisfies LocaleMessageSchema<typeof zh_cn_app>;

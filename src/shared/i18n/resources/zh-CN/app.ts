@@ -10,7 +10,7 @@ export const zh_cn_app = {
     app_name: "LinguaGacha",
   },
   model: {
-    catalog_updated: "模型数据库已更新 …",
+    catalog_updated: "模型数据库已更新",
     type: {
       preset: "预设模型",
       google: "自定义 Google 模型",
@@ -25,9 +25,8 @@ export const zh_cn_app = {
       update_failed: "模型选择保存失败，请稍后重试 …",
     },
     thinking_level: {
-      label: "思考等级",
       default: "保持默认",
-      default_description: "不发送任何思考挡位数据，遵循平台的默认设置",
+      default_description: "不发送任何思考等级数据，遵循平台的默认设置",
       off: "关",
       low: "低",
       medium: "中",
@@ -49,7 +48,6 @@ export const zh_cn_app = {
     export: "导出",
     import: "导入",
     preset: "预设",
-    query: "查询",
     reset: "重置",
     retry: "重试",
     save: "保存",
@@ -62,22 +60,22 @@ export const zh_cn_app = {
     select_folder: "选择文件夹",
   },
   feedback: {
-    initial_load_failed: "应用数据加载失败，请重试。",
-    export_success: "数据已导出 …",
-    import_success: "数据已导入 …",
-    no_valid_data: "没有有效数据 …",
-    update_failed: "更新失败 …",
-    project_settings_aligned: "已按当前设置更新项目设置 …",
+    initial_load_failed: "应用数据加载失败，请重试 …",
+    export_success: "数据已导出",
+    import_success: "数据已导入",
+    no_valid_data: "没有有效数据",
+    update_failed: "更新失败",
+    project_settings_aligned: "已按当前设置更新工程设置",
+    project_cache_loading: "正在刷新工程缓存 …",
+    settings_save_failed: "设置保存失败，请稍后重试 …",
   },
   error_boundary: {
     eyebrow: "Renderer Runtime",
     title: "页面运行时发生异常",
-    description: "当前窗口已切换到保护视图，异常详情已经写入日志。",
+    description: "当前窗口已切换到保护视图，异常详情已经写入日志 …",
   },
   project_settings_alignment: {
     field: {
-      source_language: "输入语言",
-      target_language: "输出语言",
       mtool_optimizer_enable: "MTool 优化器",
       skip_duplicate_source_text_enable: "跳过重复原文",
     },
@@ -86,7 +84,7 @@ export const zh_cn_app = {
     description: "是否确认退出应用 …?",
   },
   quality_rule_import: {
-    duplicate_description: "检测到 {COUNT} 条重复规则，请选择处理方式 …?",
+    duplicate_description: "检测到 {COUNT} 条重复规则，请选择处理方式 …",
   },
   update: {
     confirm_description: "检查到 LinguaGacha v{VERSION}，是否下载更新 …?",
@@ -95,7 +93,7 @@ export const zh_cn_app = {
   },
   drop: {
     multiple_unavailable: "一次只能拖拽一个文件",
-    unavailable: "当前无法读取拖拽文件的本地路径，请换用点击导入。",
+    unavailable: "当前无法读取拖拽文件的本地路径，请换用点击导入 …",
     import_here: "松手即可导入规则文件",
   },
   toggle: {
@@ -185,40 +183,40 @@ export const zh_cn_app = {
   error: {
     request: {
       validation_failed: {
-        message: "请求参数无效 …",
+        message: "请求参数无效",
       },
       invalid_json: {
-        message: "请求 JSON 无效 …",
+        message: "请求 JSON 无效",
       },
       route_not_found: {
-        message: "API 路由不存在 …",
+        message: "API 路由不存在",
       },
     },
     project: {
       already_exists: { message: "工程文件已存在，请选择其他文件名 …" },
       not_loaded: {
-        message: "工程未加载 …",
+        message: "工程未加载",
       },
       not_found: {
-        message: "工程文件不存在 …",
+        message: "工程文件不存在",
       },
     },
     translation: {
-      export_failed: { message: "译文导出失败 …" },
+      export_failed: { message: "译文导出失败" },
     },
     file: {
       already_exists: { message: "同名文件或文件夹已存在，请使用其它名称 …" },
       not_found: {
-        message: "文件不存在 …",
+        message: "文件不存在",
       },
       parse_failed: {
-        message: "文件内容解析失败 …",
+        message: "文件内容解析失败",
       },
       invalid_structure: {
-        message: "文件结构不符合格式要求 …",
+        message: "文件结构不符合格式要求",
       },
       io_failed: {
-        message: "文件读写失败 …",
+        message: "文件读写失败",
       },
     },
     database: {
@@ -237,7 +235,7 @@ export const zh_cn_app = {
     },
     model: {
       not_found: {
-        message: "模型配置不存在 …",
+        message: "模型配置不存在",
       },
       provider_failed: {
         message: "模型服务请求失败，请检查接口配置 …",
@@ -245,10 +243,10 @@ export const zh_cn_app = {
     },
     worker: {
       failed: {
-        message: "后台执行通道失败 …",
+        message: "后台执行通道失败",
       },
       execution_failed: {
-        message: "后台任务执行失败 …",
+        message: "后台任务执行失败",
       },
     },
     runtime: {
@@ -256,54 +254,54 @@ export const zh_cn_app = {
         message: "模型运行时正在执行中，请稍后再试 …",
       },
       capability_missing: {
-        message: "当前运行环境缺少必要能力 …",
+        message: "当前运行环境缺少必要能力",
       },
       disposed: {
-        message: "运行资源已释放 …",
+        message: "运行资源已释放",
       },
       cancelled: {
-        message: "操作已取消 …",
+        message: "操作已取消",
       },
       internal_invariant: {
-        message: "内部状态异常 …",
+        message: "内部状态异常",
       },
     },
     language: {
       invalid_target_language: {
-        message: "目标语言无效 …",
+        message: "目标语言无效",
       },
       unsupported_all_target_language: {
-        message: "目标语言不支持全部语言 …",
+        message: "目标语言不支持全部语言",
       },
       unknown_source_language_code: {
-        message: "源语言代码无效 …",
+        message: "源语言代码无效",
       },
     },
     quality: {
       unknown_rule_type: {
-        message: "质量规则类型无效 …",
+        message: "质量规则类型无效",
       },
       unsupported_rule_meta: {
-        message: "质量规则配置项无效 …",
+        message: "质量规则配置项无效",
       },
     },
     prompt: {
       unknown_prompt_type: {
-        message: "提示词类型无效 …",
+        message: "提示词类型无效",
       },
     },
     desktop: {
       missing_backend_api_base_url: {
-        message: "Backend API 地址未配置 …",
+        message: "Backend API 地址未配置",
       },
       http_error: {
-        message: "请求失败：{PATH} …",
+        message: "请求失败：{PATH}",
       },
       network_failed: {
-        message: "网络请求失败：{PATH} …",
+        message: "网络请求失败：{PATH}",
       },
       timeout: {
-        message: "请求超时：{PATH} …",
+        message: "请求超时：{PATH}",
       },
     },
   },
@@ -345,7 +343,6 @@ export const zh_cn_app = {
     },
   },
   log: {
-    api_gateway_started: "API Gateway 已启动 - {BASE_URL}",
     api_test_fail: "接口测试失败 …",
     api_test_key: "正在测试密钥：",
     api_test_messages: "任务提示词：",
@@ -376,4 +373,6 @@ export const zh_cn_app = {
     translation_task_result: "翻译结果：",
     translation_response_partially_invalid: "部分译文无法通过校验 …",
   },
+  sort: { ascending: "升序", descending: "降序", clear: "清除排序" },
+  language_role: { source: "原文语言", target: "译文语言" },
 } as const;

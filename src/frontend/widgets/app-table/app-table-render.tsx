@@ -1,3 +1,4 @@
+import { useI18n } from "@frontend/app/locale/locale-context";
 import { resolve_app_table_row_zebra } from "./app-table-virtualization";
 import { useSortable } from "@dnd-kit/react/sortable";
 import { SORTABLE_OPTIONS } from "@frontend/widgets/interactions/sortable";
@@ -21,29 +22,9 @@ import type {
   AppTableColumn,
   AppTableCellPayload,
   AppTableRowEvent,
-  AppTableDataColumn,
   AppTableSortDirection,
 } from "@frontend/widgets/app-table/app-table-types";
 
-/** 排序按钮提示下一次操作；禁用排序时不占用操作位。 */
-function resolve_sort_action_label(args: {
-  direction: AppTableSortDirection | null;
-  column: AppTableDataColumn<unknown>;
-}): string | null {
-  if (args.column.sortable === undefined || args.column.sortable.disabled) {
-    return null;
-  }
-
-  if (args.direction === null) {
-    return args.column.sortable.action_labels.ascending;
-  }
-
-  if (args.direction === "ascending") {
-    return args.column.sortable.action_labels.descending;
-  }
-
-  return args.column.sortable.action_labels.clear;
-}
 /** 表头组合排序入口与自定义内容，无操作时将预留空间还给标题。 */
 export function AppTableHeadCell<Row>(args: {
   column: AppTableColumn<Row>;
@@ -51,6 +32,7 @@ export function AppTableHeadCell<Row>(args: {
   on_cycle_sort: (() => void) | null;
   has_divider: boolean;
 }): JSX.Element {
+  const { t } = useI18n();
   if (args.column.kind === "drag") {
     return (
       <TableHead
@@ -65,10 +47,17 @@ export function AppTableHeadCell<Row>(args: {
     );
   }
 
-  const action_label = resolve_sort_action_label({
-    direction: args.direction,
-    column: args.column as AppTableDataColumn<unknown>,
-  });
+  // 表头拥有排序动作的固定文案，列只声明可排序能力。
+  const action_label =
+    args.column.sortable === undefined || args.column.sortable.disabled
+      ? null
+      : t(
+          args.direction === null
+            ? "app.sort.ascending"
+            : args.direction === "ascending"
+              ? "app.sort.descending"
+              : "app.sort.clear",
+        );
   const Icon =
     args.direction === "ascending"
       ? ArrowUp

@@ -22,7 +22,6 @@ export const de_de_text_preserve_page = {
   },
   fields: {
     note: "Anmerkungen (nur zur Referenz, ohne Wirkung)",
-    hit: "Treffer",
   },
   filter: {
     scope: {
@@ -30,20 +29,11 @@ export const de_de_text_preserve_page = {
       note: "Bemerkungen",
     },
   },
-  preset: {
-    dialog: {
-      name_placeholder: "Bitte Namen der Voreinstellung eingeben …",
-    },
-  },
-  hit: {
-    hit_count: "Anzahl übereinstimmender Einträge: {COUNT}",
-  },
   feedback: {
     load_failed:
-      "Texterhaltungsregeln konnten nicht geladen werden. Bitte später erneut versuchen.",
-    preset_name_required: "Name der Voreinstellung darf nicht leer sein",
-    unknown_error: "Der Vorgang ist fehlgeschlagen. Bitte versuchen Sie es später erneut.",
+      "Texterhaltungsregeln konnten nicht geladen werden. Bitte später erneut versuchen …",
+    unknown_error: "Der Vorgang ist fehlgeschlagen. Bitte versuchen Sie es später erneut …",
     mode_refresh_pending:
-      "Der Textschutz-Modus wurde aktualisiert und der Korrektur-Cache wird noch aktualisiert. Bitte überprüfen Sie es in Kürze erneut.",
+      "Der Textschutz-Modus wurde aktualisiert und der Korrektur-Cache wird noch aktualisiert. Bitte überprüfen Sie es in Kürze erneut …",
   },
 } satisfies LocaleMessageSchema<typeof zh_cn_text_preserve_page>;

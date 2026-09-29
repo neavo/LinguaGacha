@@ -12,11 +12,16 @@ export const en_us_quality_rule_editor = {
   },
   feedback: {
     regex_invalid: "Invalid regular expression",
-    source_required: "Source text is required.",
+    source_required: "Source text is required",
+    save_failed: "Failed to save rules",
+    update_failed: "Failed to save rule settings",
+    import_failed: "Failed to import rules",
+    export_failed: "Failed to export rules",
   },
   fields: {
     rule: "Rule",
     source: "Source",
+    hit: "Hits",
   },
   filter: {
     clear: "Clear",
@@ -29,14 +34,12 @@ export const en_us_quality_rule_editor = {
       tooltip_label: "Search Scope",
     },
   },
-  sort: {
-    ascending: "Ascending",
-    clear: "Clear",
-    descending: "Descending",
-  },
   hit: {
     hit_count: "Matched item count: {COUNT}",
     relation_line: "{CHILD} -> {PARENT}",
     subset_relations: "Contains subset relations:",
+    query_source: "Query source",
+    search_relation: "Query subset relations",
   },
+  rule: { case_sensitive: "Case-sensitive" },
 } satisfies LocaleMessageSchema<typeof zh_cn_quality_rule_editor>;

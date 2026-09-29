@@ -69,8 +69,6 @@ describe("QualityRuleHitBadge", () => {
           entry_id="rule-1"
           running={false}
           badge_state={{ kind: "matched", hits: 2, tooltip: "命中 2" }}
-          query_label="查询"
-          relation_label="关系"
           on_query_entry_source={async () => {}}
           on_search_entry_relations={() => {}}
           {...overrides}
@@ -100,8 +98,16 @@ describe("QualityRuleHitBadge", () => {
     });
     const action_buttons = [...rendered.querySelectorAll("button")];
 
-    await act(async () => action_buttons.find((button) => button.textContent === "查询")?.click());
-    await act(async () => action_buttons.find((button) => button.textContent === "关系")?.click());
+    await act(async () =>
+      action_buttons
+        .find((button) => button.textContent === "quality_rule_editor.hit.query_source")
+        ?.click(),
+    );
+    await act(async () =>
+      action_buttons
+        .find((button) => button.textContent === "quality_rule_editor.hit.search_relation")
+        ?.click(),
+    );
 
     expect(on_query_entry_source).toHaveBeenCalledWith("rule-1");
     expect(on_search_entry_relations).toHaveBeenCalledWith("rule-1");

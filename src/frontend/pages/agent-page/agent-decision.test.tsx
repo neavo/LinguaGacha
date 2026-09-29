@@ -69,7 +69,7 @@ describe("AgentDecision", () => {
       ".agent-decision-custom > label",
     );
     const confirm = container.querySelector<HTMLButtonElement>(
-      'button[aria-label="agent_page.decision.confirm"]',
+      'button[aria-label="app.action.confirm"]',
     );
     if (input === null || custom_badge === null || confirm === null) {
       throw new Error("缺少自定义操作");
@@ -138,7 +138,7 @@ describe("AgentDecision", () => {
     await render_decision(root, question_decision());
     await enter_custom_text(container.querySelector<HTMLInputElement>("input")!, "按章节处理");
     const confirm = container.querySelector<HTMLButtonElement>(
-      'button[aria-label="agent_page.decision.confirm"]',
+      'button[aria-label="app.action.confirm"]',
     )!;
     await act(async () => {
       confirm.dispatchEvent(new MouseEvent("mouseenter", { bubbles: true }));
@@ -146,7 +146,7 @@ describe("AgentDecision", () => {
       await vi.advanceTimersByTimeAsync(1);
     });
     const tooltip = document.querySelector('[role="tooltip"][data-open]');
-    expect(tooltip?.textContent).toContain("agent_page.decision.confirm");
+    expect(tooltip?.textContent).toContain("app.action.confirm");
     expect(tooltip?.querySelector("kbd")?.textContent).toBe("Enter");
   });
 

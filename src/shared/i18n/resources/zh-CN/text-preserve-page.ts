@@ -19,7 +19,6 @@ export const zh_cn_text_preserve_page = {
   },
   fields: {
     note: "备注（仅作备忘，无实际作用）",
-    hit: "命中",
   },
   filter: {
     scope: {
@@ -27,18 +26,9 @@ export const zh_cn_text_preserve_page = {
       note: "备注",
     },
   },
-  preset: {
-    dialog: {
-      name_placeholder: "请输入预设名称 …",
-    },
-  },
-  hit: {
-    hit_count: "命中条目数：{COUNT}",
-  },
   feedback: {
-    load_failed: "文本保护规则加载失败，请稍后重试。",
-    preset_name_required: "预设名称不能为空",
-    unknown_error: "当前操作失败，请稍后重试。",
-    mode_refresh_pending: "文本保护模式已切换，校对缓存仍在刷新，请稍后再看结果。",
+    load_failed: "文本保护规则加载失败，请稍后重试 …",
+    unknown_error: "当前操作失败，请稍后重试 …",
+    mode_refresh_pending: "文本保护模式已切换，校对缓存仍在刷新，请稍后再看结果 …",
   },
 } as const;

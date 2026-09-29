@@ -181,7 +181,6 @@ export function TextPreservePage(_props: ScreenComponentProps): JSX.Element {
       />
       <PresetNameDialog
         state={page_state.presets.preset_input_state}
-        name_placeholder_key="text_preserve_page.preset.dialog.name_placeholder"
         save_shortcut_variant="outlined"
         on_change={page_state.presets.update_preset_input_value}
         on_submit={() => {

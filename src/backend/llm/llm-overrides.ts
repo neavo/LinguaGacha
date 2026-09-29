@@ -29,9 +29,9 @@ export type ModelCapabilityOverride = Readonly<{
   };
 }>;
 
-// 两种 OpenAI 协议共用档位语义；null 显式关闭 Pi 的默认档位回退。
+// 两种 OpenAI 协议共用等级语义；null 显式关闭 Pi 的默认等级回退。
 const DOUBAO_THINKING_LEVEL_MAP: CompleteThinkingLevelMap = Object.freeze({
-  off: "minimal", // 豆包以 minimal 表达关闭思考，产品不另设同义档位。
+  off: "minimal", // 豆包以 minimal 表达关闭思考，产品不另设同义等级。
   minimal: null,
   low: "low",
   medium: "medium",

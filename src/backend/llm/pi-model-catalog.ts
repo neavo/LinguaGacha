@@ -299,7 +299,7 @@ function stable(value: unknown): unknown {
   );
 }
 
-/** 档位映射会参与请求参数生成，值必须符合 Pi 的公开契约。 */
+/** 等级映射会参与请求参数生成，值必须符合 Pi 的公开契约。 */
 function valid_thinking_map(value: unknown): value is ThinkingLevelMap {
   if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
   const levels = new Set(["off", "minimal", "low", "medium", "high", "xhigh", "max"]);

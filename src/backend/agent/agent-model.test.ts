@@ -305,7 +305,7 @@ describe("Agent 模型注册", () => {
     expect(resolved.model).toMatchObject({ contextWindow: 400_000, maxTokens: 50_000 });
   });
 
-  it("GPT Responses 注册模型明确支持的思考挡位", async () => {
+  it("GPT Responses 注册模型明确支持的思考等级", async () => {
     const runtime = await create_model_runtime();
     const resolved = register_agent_model(
       runtime,
@@ -447,7 +447,7 @@ describe("Agent 模型注册", () => {
       "test-model",
     );
   });
-  it("Agent 保留产品档位，并在保持默认时清除公共载荷中的自动控制", async () => {
+  it("Agent 保留产品等级，并在保持默认时清除公共载荷中的自动控制", async () => {
     const runtime = await create_model_runtime();
     const resolved = register_agent_model(
       runtime,

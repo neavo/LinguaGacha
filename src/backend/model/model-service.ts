@@ -758,7 +758,7 @@ export class ModelService {
 
   /**
    * 归一模型对象并同步能力派生字段；已有 ID 不重新取 UUID，避免初始化消耗新增模型的确定 ID。
-   * 思考档位在这里统一修正，保证快照与持久化模型不会暴露当前模型不支持的值。
+   * 思考等级在这里统一修正，保证快照与持久化模型不会暴露当前模型不支持的值。
    */
   private normalize_model(model: JsonRecord, catalog = this.catalog.read_models()): JsonRecord {
     const existing_id = String(model["id"] ?? "").trim();

@@ -173,7 +173,7 @@ describe("useBasicSettingsState", () => {
     ]);
     expect(toast_fixture.current.push_toast).toHaveBeenCalledExactlyOnceWith(
       "error",
-      "basic_settings_page.feedback.update_failed",
+      "app.feedback.settings_save_failed",
     );
   });
 

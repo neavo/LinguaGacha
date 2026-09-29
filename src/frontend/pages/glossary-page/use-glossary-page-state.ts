@@ -284,11 +284,7 @@ export function useGlossaryPageState() {
     [t],
   );
 
-  const presets = useQualityRulePresets(
-    "glossary",
-    entries.map(normalize_dialog_entry),
-    "glossary_page.feedback.preset_failed",
-  );
+  const presets = useQualityRulePresets("glossary", entries.map(normalize_dialog_entry));
   const editing = useQualityRuleEditing({
     rule_type: "glossary",
     project_path:
@@ -305,7 +301,6 @@ export function useGlossaryPageState() {
     set_result_refresh: set_pending_result_refresh,
     close_preset_menu: () => presets.set_preset_menu_open(false),
     export_file_name: "glossary.json",
-    error_key: "glossary_page.feedback.save_failed",
   });
   const { save_entries_snapshot } = editing;
   /** 将大小写规则批量应用到当前选区。 */

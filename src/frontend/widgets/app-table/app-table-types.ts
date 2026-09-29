@@ -17,12 +17,6 @@ export type AppTableSelectionState = {
 
 export type AppTableSelectionChange = AppTableSelectionState;
 
-type AppTableSortActionLabels = {
-  ascending: string;
-  descending: string;
-  clear: string;
-};
-
 export type AppTableRowEvent<Row> = {
   row: Row;
   row_id: string;
@@ -70,7 +64,6 @@ export type AppTableDataColumn<Row> = AppTableColumnBase & {
   title: ReactNode;
   sortable?: {
     disabled?: boolean;
-    action_labels: AppTableSortActionLabels;
   };
   render_head?: (payload: {
     direction: AppTableSortDirection | null;

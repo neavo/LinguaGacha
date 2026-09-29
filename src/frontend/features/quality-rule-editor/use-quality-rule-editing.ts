@@ -80,7 +80,6 @@ export function useQualityRuleEditing<K extends QualityRuleKind>(options: {
   set_result_refresh: (value: PendingResultRefresh | null) => void;
   close_preset_menu: () => void;
   export_file_name: string;
-  error_key: LocaleKey;
 }) {
   type Entry = QualityRuleEntryByKind[K];
   const { t } = useI18n();
@@ -109,8 +108,8 @@ export function useQualityRuleEditing<K extends QualityRuleKind>(options: {
 
   /** 把当前操作错误映射为一条用户反馈。 */
   const report = useCallback(
-    (error: unknown) => {
-      push_toast("error", resolve_visible_error_message(error, t, t(current.current.error_key)));
+    (error: unknown, key: LocaleKey) => {
+      push_toast("error", resolve_visible_error_message(error, t, t(key)));
     },
     [t],
   );
@@ -152,7 +151,7 @@ export function useQualityRuleEditing<K extends QualityRuleKind>(options: {
       } catch (error) {
         if (token === generation.current) {
           state.set_result_refresh(null);
-          report(error);
+          report(error, "quality_rule_editor.feedback.save_failed");
         }
         return false;
       } finally {
@@ -192,7 +191,7 @@ export function useQualityRuleEditing<K extends QualityRuleKind>(options: {
       try {
         await update_meta(meta);
       } catch (error) {
-        report(error);
+        report(error, "quality_rule_editor.feedback.update_failed");
       }
     },
     [report, update_meta],
@@ -350,7 +349,13 @@ export function useQualityRuleEditing<K extends QualityRuleKind>(options: {
         { source, refresh: REBUILD_RESULT_REFRESH },
       );
     } catch (error) {
-      if (token === generation.current) report(error);
+      if (token === generation.current)
+        report(
+          error,
+          source === "preset"
+            ? "preset_editor.feedback.load_failed"
+            : "quality_rule_editor.feedback.import_failed",
+        );
     }
   }
   /** 把有效文件路径交给共享导入流程。 */
@@ -366,7 +371,7 @@ export function useQualityRuleEditing<K extends QualityRuleKind>(options: {
       const path = await pick_quality_rule_import_path();
       if (path !== null && token === generation.current) await import_entries_from_path(path);
     } catch (error) {
-      if (token === generation.current) report(error);
+      if (token === generation.current) report(error, "quality_rule_editor.feedback.import_failed");
     }
   }
   /** 导出当前快照，用户完成选择后反馈结果。 */
@@ -381,7 +386,7 @@ export function useQualityRuleEditing<K extends QualityRuleKind>(options: {
       )
         push_toast("success", t("app.feedback.export_success"));
     } catch (error) {
-      report(error);
+      report(error, "quality_rule_editor.feedback.export_failed");
     }
   }
   /** 冻结本次待删除身份，供确认后提交。 */

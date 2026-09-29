@@ -13,18 +13,13 @@ export const de_de_workbench_page = {
     agent_only: "Diese Datei kann nur mit AGENT übersetzt werden",
     actions: "Aktionen",
   },
-  sort: {
-    ascending: "Aufsteigend sortieren",
-    descending: "Absteigend sortieren",
-    clear: "Sortierung löschen",
-  },
   feedback: {
-    refresh_failed: "Fehler beim Aktualisieren der Werkbank.",
+    refresh_failed: "Fehler beim Aktualisieren der Werkbank",
     add_file_loading_toast: "Datei wird hinzugefügt und Cache aktualisiert …",
-    no_valid_file: "Keine gültigen Dateien können hinzugefügt werden.",
-    file_action_failed: "Dateioperation fehlgeschlagen. Bitte versuchen Sie es später erneut.",
+    no_valid_file: "Keine gültigen Dateien können hinzugefügt werden",
+    file_action_failed: "Dateioperation fehlgeschlagen. Bitte versuchen Sie es später erneut …",
     close_project_failed:
-      "Fehler beim Schließen des Projekts. Bitte versuchen Sie es später erneut.",
+      "Fehler beim Schließen des Projekts. Bitte versuchen Sie es später erneut …",
   },
   action: {
     add_file: "Hinzufügen",
@@ -39,7 +34,7 @@ export const de_de_workbench_page = {
   translation_export: {
     checking: "Korrekturwarnungen werden geprüft …",
     check_failed:
-      "Korrekturwarnungen konnten nicht geladen werden. Die aktuelle Übersetzung kann trotzdem erstellt werden.",
+      "Korrekturwarnungen konnten nicht geladen werden. Die aktuelle Übersetzung kann trotzdem erstellt werden …",
     warning_description:
       "Es wurden {COUNT} Korrekturwarnungen gefunden. Wir empfehlen, sie vor dem Erstellen der Übersetzung automatisch mit AGENT zu prüfen und zu beheben. Trotzdem fortfahren …?",
     warning_list: "Korrekturwarnungen",
@@ -47,12 +42,12 @@ export const de_de_workbench_page = {
     continue_generate: "Trotzdem erstellen",
   },
   reorder: {
-    failed: "Fehler beim Speichern der Dateireihenfolge. Bitte versuchen Sie es später erneut.",
+    failed: "Fehler beim Speichern der Dateireihenfolge. Bitte versuchen Sie es später erneut …",
   },
   dialog: {
     import_conflict: {
       description:
-        "{COUNT} Dateien mit demselben Namen wurden erkannt. Wählen Sie, wie damit umgegangen werden soll …?",
+        "{COUNT} Dateien mit demselben Namen wurden erkannt. Wählen Sie, wie damit umgegangen werden soll …",
     },
     inherit_import: {
       description:

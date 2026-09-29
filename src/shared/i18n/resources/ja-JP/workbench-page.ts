@@ -12,18 +12,13 @@ export const ja_jp_workbench_page = {
     agent_only: "このファイルは AGENT でのみ翻訳できます",
     actions: "操作",
   },
-  sort: {
-    ascending: "昇順で並べ替え",
-    descending: "降順で並べ替え",
-    clear: "並べ替えを解除",
-  },
   feedback: {
     refresh_failed: "ワークベンチを更新できませんでした",
     add_file_loading_toast: "ファイルを追加し、キャッシュを更新中 …",
-    no_valid_file: "追加できる有効なファイルがありません。",
-    file_action_failed: "ファイル操作に失敗しました。しばらくしてから再試行してください。",
+    no_valid_file: "追加できる有効なファイルがありません",
+    file_action_failed: "ファイル操作に失敗しました。しばらくしてから再試行してください …",
     close_project_failed:
-      "プロジェクトを閉じられませんでした。しばらくしてから再試行してください。",
+      "プロジェクトを閉じられませんでした。しばらくしてから再試行してください …",
   },
   action: {
     add_file: "追加",
@@ -37,33 +32,33 @@ export const ja_jp_workbench_page = {
   },
   translation_export: {
     checking: "校正の警告を確認中 …",
-    check_failed: "校正の警告を読み込めませんでした。現在の訳文は引き続き出力できます。",
+    check_failed: "校正の警告を読み込めませんでした。現在の訳文は引き続き出力できます …",
     warning_description:
-      "校正の警告が {COUNT} 件あります。AGENT で自動校正してから訳文を出力することをおすすめします。このまま続けますか？",
+      "校正の警告が {COUNT} 件あります。AGENT で自動校正してから訳文を出力することをおすすめします。このまま続けますか …?",
     warning_list: "校正の警告",
     retry_check: "再確認",
     continue_generate: "出力を続ける",
   },
   reorder: {
-    failed: "ファイルの順序を保存できませんでした。しばらくしてから再試行してください。",
+    failed: "ファイルの順序を保存できませんでした。しばらくしてから再試行してください …",
   },
   dialog: {
     import_conflict: {
-      description: "同名のファイルが {COUNT} 個あります。処理方法を選択してください。",
+      description: "同名のファイルが {COUNT} 個あります。処理方法を選択してください …",
     },
     inherit_import: {
-      description: "現在のプロジェクトの翻訳済みテキストを使って、新しいファイルを埋めますか？",
+      description: "現在のプロジェクトの翻訳済みテキストを使って、新しいファイルを埋めますか …?",
       fill: "埋める",
       do_not_fill: "埋めない",
     },
     reset: {
-      description: "このファイルの翻訳状態をリセットしますか？",
+      description: "このファイルの翻訳状態をリセットしますか …?",
     },
     delete: {
-      description: "選択したファイルと、そのすべての翻訳項目を削除しますか？",
+      description: "選択したファイルと、そのすべての翻訳項目を削除しますか …?",
     },
     close_project: {
-      description: "現在のプロジェクトを閉じますか？",
+      description: "現在のプロジェクトを閉じますか …?",
     },
   },
 } satisfies LocaleMessageSchema<typeof zh_cn_workbench_page>;

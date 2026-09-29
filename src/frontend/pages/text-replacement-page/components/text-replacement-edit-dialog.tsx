@@ -158,11 +158,11 @@ export function TextReplacementEditDialog(props: TextReplacementEditDialogProps)
                   </span>
                 </span>
                 <span className="text-replacement-page__dialog-rule-title font-medium">
-                  {t("text_replacement_page.rule.case_sensitive")}
+                  {t("quality_rule_editor.rule.case_sensitive")}
                 </span>
               </div>
               <BooleanSegmentedToggle
-                aria_label={t("text_replacement_page.rule.case_sensitive")}
+                aria_label={t("quality_rule_editor.rule.case_sensitive")}
                 value={props.entry.case_sensitive}
                 disabled={disabled}
                 on_value_change={(next_value) => {

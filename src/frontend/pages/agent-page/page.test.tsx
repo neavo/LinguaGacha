@@ -1367,7 +1367,7 @@ function get_editor(container: HTMLElement): EditorView {
   return editor;
 }
 
-/** 通过合并后的模型菜单选择思考档位。 */
+/** 通过合并后的模型菜单选择思考等级。 */
 async function select_agent_thinking_level(container: HTMLElement, label: string): Promise<void> {
   const trigger = container.querySelector<HTMLButtonElement>(
     'button[aria-label^="app.model.selection.label"]',
@@ -1393,7 +1393,7 @@ async function select_agent_thinking_level(container: HTMLElement, label: string
   const option = Array.from(
     document.body.querySelectorAll<HTMLElement>('[role="menuitemradio"]'),
   ).find((candidate) => candidate.textContent?.trim() === label);
-  if (option === undefined) throw new Error(`缺少思考档位：${label}`);
+  if (option === undefined) throw new Error(`缺少思考等级：${label}`);
   await act(async () => option.click());
 }
 

@@ -30,8 +30,5 @@ export const ko_kr_laboratory_page = {
   },
   feedback: {
     refresh_failed: "실험실 설정을 새로 고칠 수 없습니다. 잠시 후 다시 시도해 주세요 …",
-    update_failed: "실험실 설정을 저장하지 못했습니다. 잠시 후 다시 시도해 주세요 …",
-    mtool_optimizer_loading_toast: "프로젝트 캐시 새로 고치는 중 …",
-    skip_duplicate_source_text_loading_toast: "프로젝트 캐시 새로 고치는 중 …",
   },
 } satisfies LocaleMessageSchema<typeof zh_cn_laboratory_page>;

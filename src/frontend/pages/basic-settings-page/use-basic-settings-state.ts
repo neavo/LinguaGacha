@@ -53,7 +53,7 @@ export function useBasicSettingsState(): UseBasicSettingsStateResult {
     select_snapshot: build_basic_settings_snapshot,
     pending_fields: BASIC_SETTINGS_PENDING_FIELDS,
     refresh_error_key: "basic_settings_page.feedback.refresh_failed",
-    update_error_key: "basic_settings_page.feedback.update_failed",
+    update_error_key: "app.feedback.settings_save_failed",
   });
   const runtime_locked = project_snapshot.loaded && is_runtime_busy(runtime_snapshot);
 
@@ -76,7 +76,7 @@ export function useBasicSettingsState(): UseBasicSettingsStateResult {
       };
       if (field === "source_language" && project_snapshot.loaded) {
         await run_modal_progress_toast({
-          message: t("basic_settings_page.feedback.source_language_loading_toast"),
+          message: t("app.feedback.project_cache_loading"),
           task: save,
         });
       } else {

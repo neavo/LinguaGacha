@@ -25,9 +25,9 @@ export const ja_jp_batch_translation = {
   },
   feedback: {
     stats_refresh_failed: "プロジェクトの翻訳統計を更新できませんでした",
-    done: "翻訳が完了しました …",
-    stopped: "翻訳を停止しました …",
-    done_with_errors: "翻訳が完了しましたが、一部の項目が失敗しました …",
+    done: "翻訳が完了しました",
+    stopped: "翻訳を停止しました",
+    done_with_errors: "翻訳が完了しましたが、一部の項目が失敗しました",
     keys_retry_wait: "利用可能なキーがありません。再試行 {count} 回、次の再試行まで {seconds} 秒 …",
     keys_retry_running: "利用可能なキーがありません。再試行 {count} 回、再試行中 …",
     refresh_failed: "翻訳タスクの状態を更新できませんでした",
@@ -37,10 +37,10 @@ export const ja_jp_batch_translation = {
     reset_failed_failed: "失敗した項目をリセットできませんでした",
   },
   confirm: {
-    reset_all_description: "プロジェクト全体の翻訳進捗をリセットしますか？",
-    reset_failed_description: "翻訳に失敗した項目をリセットしますか？",
-    generate_description: "現在利用できる訳文を出力しますか？",
-    stop_description: "現在の翻訳タスクを停止しますか？",
+    reset_all_description: "プロジェクト全体の翻訳進捗をリセットしますか …?",
+    reset_failed_description: "翻訳に失敗した項目をリセットしますか …?",
+    generate_description: "現在利用できる訳文を出力しますか …?",
+    stop_description: "現在の翻訳タスクを停止しますか …?",
   },
   action: { stop: "停止" },
 } satisfies LocaleMessageSchema<typeof zh_cn_batch_translation>;

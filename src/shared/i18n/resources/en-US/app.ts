@@ -11,7 +11,7 @@ export const en_us_app = {
     app_name: "LinguaGacha",
   },
   model: {
-    catalog_updated: "Model database updated …",
+    catalog_updated: "Model database updated",
     type: {
       preset: "Preset Models",
       google: "Custom Google Models",
@@ -26,9 +26,8 @@ export const en_us_app = {
       update_failed: "Failed to save model selection. Please try again …",
     },
     thinking_level: {
-      label: "Thinking level",
       default: "Keep default",
-      default_description: "Send no thinking level data; follow the platform’s default settings.",
+      default_description: "Send no thinking level data; follow the platform’s default settings",
       off: "Off",
       low: "Low",
       medium: "Medium",
@@ -50,7 +49,6 @@ export const en_us_app = {
     export: "Export",
     import: "Import",
     preset: "Preset",
-    query: "Query",
     reset: "Reset",
     retry: "Retry",
     save: "Save",
@@ -63,23 +61,23 @@ export const en_us_app = {
     select_folder: "Select Folder",
   },
   feedback: {
-    initial_load_failed: "Could not load app data. Please try again.",
-    export_success: "Data exported …",
-    import_success: "Data imported …",
-    no_valid_data: "No valid data …",
-    update_failed: "Update failed …",
-    project_settings_aligned: "Project settings updated from current settings …",
+    initial_load_failed: "Could not load app data. Please try again …",
+    export_success: "Data exported",
+    import_success: "Data imported",
+    no_valid_data: "No valid data",
+    update_failed: "Update failed",
+    project_settings_aligned: "Project settings updated from current settings",
+    project_cache_loading: "Refreshing project cache …",
+    settings_save_failed: "Failed to save the setting. Please try again later …",
   },
   error_boundary: {
     eyebrow: "Renderer Runtime",
     title: "Page runtime error",
     description:
-      "This window switched to the protected view, and the error details were written to logs.",
+      "This window switched to the protected view, and the error details were written to logs …",
   },
   project_settings_alignment: {
     field: {
-      source_language: "Source language",
-      target_language: "Target language",
       mtool_optimizer_enable: "MTool optimizer",
       skip_duplicate_source_text_enable: "Skip duplicate source text",
     },
@@ -88,7 +86,7 @@ export const en_us_app = {
     description: "Confirm exiting the app …?",
   },
   quality_rule_import: {
-    duplicate_description: "{COUNT} duplicate rules were detected. Choose how to handle them …?",
+    duplicate_description: "{COUNT} duplicate rules were detected. Choose how to handle them …",
   },
   update: {
     confirm_description: "LinguaGacha v{VERSION} is available. Download the update …?",
@@ -98,7 +96,7 @@ export const en_us_app = {
   drop: {
     multiple_unavailable: "Only one file can be dropped at a time",
     unavailable:
-      "The local path of the dropped file is unavailable right now. Please use the import picker instead.",
+      "The local path of the dropped file is unavailable right now. Please use the import picker instead …",
     import_here: "Release to import the rule file",
   },
   toggle: {
@@ -188,42 +186,42 @@ export const en_us_app = {
   error: {
     request: {
       validation_failed: {
-        message: "The request parameters are invalid …",
+        message: "The request parameters are invalid",
       },
       invalid_json: {
-        message: "The request JSON is invalid …",
+        message: "The request JSON is invalid",
       },
       route_not_found: {
-        message: "The API route does not exist …",
+        message: "The API route does not exist",
       },
     },
     project: {
       already_exists: { message: "The project file already exists. Choose another file name …" },
       not_loaded: {
-        message: "No project is loaded …",
+        message: "No project is loaded",
       },
       not_found: {
-        message: "The project file does not exist …",
+        message: "The project file does not exist",
       },
     },
     translation: {
-      export_failed: { message: "Translation export failed …" },
+      export_failed: { message: "Translation export failed" },
     },
     file: {
       already_exists: {
         message: "A file or folder with this name already exists. Choose another name …",
       },
       not_found: {
-        message: "The file does not exist …",
+        message: "The file does not exist",
       },
       parse_failed: {
-        message: "File content parsing failed …",
+        message: "File content parsing failed",
       },
       invalid_structure: {
-        message: "The file structure does not match the expected format …",
+        message: "The file structure does not match the expected format",
       },
       io_failed: {
-        message: "File read or write failed …",
+        message: "File read or write failed",
       },
     },
     database: {
@@ -242,7 +240,7 @@ export const en_us_app = {
     },
     model: {
       not_found: {
-        message: "The model configuration does not exist …",
+        message: "The model configuration does not exist",
       },
       provider_failed: {
         message: "The model service request failed. Please check the API settings …",
@@ -250,10 +248,10 @@ export const en_us_app = {
     },
     worker: {
       failed: {
-        message: "The background execution channel failed …",
+        message: "The background execution channel failed",
       },
       execution_failed: {
-        message: "The background task failed …",
+        message: "The background task failed",
       },
     },
     runtime: {
@@ -261,54 +259,54 @@ export const en_us_app = {
         message: "The model runtime is busy. Please try again later …",
       },
       capability_missing: {
-        message: "The current runtime is missing a required capability …",
+        message: "The current runtime is missing a required capability",
       },
       disposed: {
-        message: "The runtime resource has been disposed …",
+        message: "The runtime resource has been disposed",
       },
       cancelled: {
-        message: "The operation was cancelled …",
+        message: "The operation was cancelled",
       },
       internal_invariant: {
-        message: "Internal state error …",
+        message: "Internal state error",
       },
     },
     language: {
       invalid_target_language: {
-        message: "The target language is invalid …",
+        message: "The target language is invalid",
       },
       unsupported_all_target_language: {
-        message: "The target language cannot be All …",
+        message: "The target language cannot be All",
       },
       unknown_source_language_code: {
-        message: "The source language code is invalid …",
+        message: "The source language code is invalid",
       },
     },
     quality: {
       unknown_rule_type: {
-        message: "The quality rule type is invalid …",
+        message: "The quality rule type is invalid",
       },
       unsupported_rule_meta: {
-        message: "The quality rule setting is invalid …",
+        message: "The quality rule setting is invalid",
       },
     },
     prompt: {
       unknown_prompt_type: {
-        message: "The prompt type is invalid …",
+        message: "The prompt type is invalid",
       },
     },
     desktop: {
       missing_backend_api_base_url: {
-        message: "Backend API URL is not configured …",
+        message: "Backend API URL is not configured",
       },
       http_error: {
-        message: "Request failed: {PATH} …",
+        message: "Request failed: {PATH}",
       },
       network_failed: {
-        message: "Network request failed: {PATH} …",
+        message: "Network request failed: {PATH}",
       },
       timeout: {
-        message: "Request timed out: {PATH} …",
+        message: "Request timed out: {PATH}",
       },
     },
   },
@@ -351,7 +349,6 @@ export const en_us_app = {
     },
   },
   log: {
-    api_gateway_started: "API Gateway started - {BASE_URL}",
     api_test_fail: "API test failed …",
     api_test_key: "Testing Key:",
     api_test_messages: "Task Prompts:",
@@ -383,4 +380,6 @@ export const en_us_app = {
     translation_task_result: "Translation Result:",
     translation_response_partially_invalid: "Some translations failed validation …",
   },
+  sort: { ascending: "Ascending", descending: "Descending", clear: "Clear sort" },
+  language_role: { source: "Source Language", target: "Target Language" },
 } satisfies LocaleMessageSchema<typeof zh_cn_app>;

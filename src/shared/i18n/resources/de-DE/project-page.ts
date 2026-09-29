@@ -5,7 +5,7 @@ export const de_de_project_page = {
   title: "Projekt-Startseite",
   create: {
     title: "Projekt erstellen",
-    subtitle: "Wählen Sie eine Quelle, um ein eigenständiges .lg-Projekt zu erstellen.",
+    subtitle: "Wählen Sie eine Quelle, um ein eigenständiges .lg-Projekt zu erstellen",
     drop_title: "Klicken oder Quelldatei hierher ziehen",
     ready_status: "{COUNT} Quelldateien ausgewählt",
     loading_toast: "Projekt wird erstellt …",
@@ -24,7 +24,7 @@ export const de_de_project_page = {
   },
   open: {
     title: "Projekt öffnen",
-    subtitle: ".lg öffnen: Übersetzungsfortschritt und Regeln fortsetzen.",
+    subtitle: ".lg öffnen: Übersetzungsfortschritt und Regeln fortsetzen",
     drop_title: "Klicken oder .lg-Datei hierher ziehen",
     recent_title: "Letzte Projekte",
     empty: "Keine letzten Projekte",
@@ -37,7 +37,7 @@ export const de_de_project_page = {
     failed_generic: "Fehler beim Laden des Projekts",
     action: "Projekt öffnen",
     remove_unavailable:
-      "Dieser letzte Projekteintrag kann derzeit nicht entfernt werden. Bitte versuchen Sie es später erneut.",
+      "Dieser letzte Projekteintrag kann derzeit nicht entfernt werden. Bitte versuchen Sie es später erneut …",
     missing_file_description: "Die Projektdatei ist ungültig. Aus der Liste entfernen …?",
   },
   preview: {
@@ -49,7 +49,7 @@ export const de_de_project_page = {
     progress: "Fortschritt",
   },
   loading_stages: {
-    project: "Projektgrundgerüst wird geladen …",
+    project: "Projektinformationen werden geladen …",
     files: "Projektdateien werden geladen …",
     items: "Projekteinträge werden geladen …",
     quality: "Qualitätsregeln werden geladen …",
@@ -82,5 +82,5 @@ export const de_de_project_page = {
   },
   drop_multiple_unavailable: "Es kann nur eine Datei oder ein Ordner gleichzeitig abgelegt werden",
   drop_unavailable:
-    "Der lokale Pfad der abgelegten Datei ist derzeit nicht verfügbar. Bitte verwenden Sie stattdessen die Dateiauswahl.",
+    "Der lokale Pfad der abgelegten Datei ist derzeit nicht verfügbar. Bitte verwenden Sie stattdessen die Dateiauswahl …",
 } satisfies LocaleMessageSchema<typeof zh_cn_project_page>;

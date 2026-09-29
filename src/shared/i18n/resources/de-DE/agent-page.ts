@@ -8,7 +8,7 @@ export const de_de_agent_page = {
   thinking: "Denkprozess",
   thinking_active: "Denkt nach",
   diagram: {
-    render_failed: "Diagramm konnte nicht gerendert werden. Der Mermaid-Quelltext wird angezeigt.",
+    render_failed: "Diagramm konnte nicht gerendert werden. Der Mermaid-Quelltext wird angezeigt …",
   },
   markdown: {
     copy_code: "Code kopieren",
@@ -95,7 +95,6 @@ export const de_de_agent_page = {
     custom: "Benutzerdefiniert",
     custom_placeholder: "Benutzerdefinierte Antwort eingeben …",
     cancel: "Frage abbrechen",
-    confirm: "Bestätigen",
   },
   compaction: {
     running: "Kontext wird komprimiert …",
@@ -155,27 +154,27 @@ export const de_de_agent_page = {
   upload: {
     uploading: "Wird hochgeladen",
     failed: "Upload fehlgeschlagen",
-    retry: "Erneut versuchen",
   },
-  file_saved: "Datei gespeichert.",
+  file_saved: "Datei gespeichert",
   error: {
-    activate_link: "Der Link konnte nicht verarbeitet werden.",
-    decision: "Die Entscheidung konnte nicht gesendet werden. Bitte erneut versuchen.",
-    restore: "Die Sitzung konnte nicht wiederhergestellt werden. Bitte erneut versuchen.",
-    connection: "Verbindung unterbrochen. Wiederverbindung wird abgewartet.",
-    send: "Die Nachricht konnte nicht gesendet werden. Der Entwurf wurde beibehalten.",
-    continue: "Die Aufgabe konnte nicht fortgesetzt werden. Bitte erneut versuchen.",
-    edit: "Die Nachricht konnte nicht bearbeitet werden. Die Änderungen wurden beibehalten.",
+    activate_link: "Der Link konnte nicht verarbeitet werden",
+    decision: "Die Entscheidung konnte nicht gesendet werden. Bitte erneut versuchen …",
+    restore: "Die Sitzung konnte nicht wiederhergestellt werden. Bitte erneut versuchen …",
+    connection: "Verbindung unterbrochen. Wiederverbindung wird abgewartet …",
+    send: "Die Nachricht konnte nicht gesendet werden. Der Entwurf wurde beibehalten …",
+    continue: "Die Aufgabe konnte nicht fortgesetzt werden. Bitte erneut versuchen …",
+    edit: "Die Nachricht konnte nicht bearbeitet werden. Die Änderungen wurden beibehalten …",
     queue_update:
-      "Die vorgemerkte Nachricht konnte nicht bearbeitet werden. Die Änderungen wurden beibehalten.",
-    queue_delete: "Die vorgemerkte Nachricht konnte nicht gelöscht werden. Bitte erneut versuchen.",
-    queue_reorder: "Die Warteschlange konnte nicht sortiert werden. Bitte erneut versuchen.",
-    queue_send: "Die Nachricht konnte nicht sofort gesendet werden. Sie bleibt vorgemerkt.",
-    stop: "Die Aufgabe konnte nicht gestoppt werden. Bitte erneut versuchen.",
-    reset: "Eine neue Aufgabe konnte nicht erstellt werden. Bitte erneut versuchen.",
+      "Die vorgemerkte Nachricht konnte nicht bearbeitet werden. Die Änderungen wurden beibehalten …",
+    queue_delete:
+      "Die vorgemerkte Nachricht konnte nicht gelöscht werden. Bitte erneut versuchen …",
+    queue_reorder: "Die Warteschlange konnte nicht sortiert werden. Bitte erneut versuchen …",
+    queue_send: "Die Nachricht konnte nicht sofort gesendet werden. Sie bleibt vorgemerkt …",
+    stop: "Die Aufgabe konnte nicht gestoppt werden. Bitte erneut versuchen …",
+    reset: "Eine neue Aufgabe konnte nicht erstellt werden. Bitte erneut versuchen …",
     approval_mode:
-      "Der Genehmigungsmodus für Schreibanfragen konnte nicht aktualisiert werden. Bitte erneut versuchen.",
-    compact: "Der Kontext konnte nicht komprimiert werden. Bitte erneut versuchen.",
+      "Der Genehmigungsmodus für Schreibanfragen konnte nicht aktualisiert werden. Bitte erneut versuchen …",
+    compact: "Der Kontext konnte nicht komprimiert werden. Bitte erneut versuchen …",
   },
   unavailable: {
     restoring: "Sitzung wird wiederhergestellt",

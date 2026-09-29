@@ -25,9 +25,9 @@ export const ko_kr_batch_translation = {
   },
   feedback: {
     stats_refresh_failed: "프로젝트 번역 통계를 새로 고치지 못했습니다",
-    done: "번역 완료 …",
-    stopped: "번역 중지 …",
-    done_with_errors: "번역 완료, 일부 항목 실패 …",
+    done: "번역 완료",
+    stopped: "번역 중지",
+    done_with_errors: "번역 완료, 일부 항목 실패",
     keys_retry_wait: "사용 가능한 키가 없습니다. {count}회 재시도, 다음 재시도까지 {seconds}초 …",
     keys_retry_running: "사용 가능한 키가 없습니다. {count}회 재시도, 재시도 중 …",
     refresh_failed: "번역 작업 상태를 새로 고치지 못했습니다",
@@ -37,10 +37,10 @@ export const ko_kr_batch_translation = {
     reset_failed_failed: "실패 항목을 초기화하지 못했습니다",
   },
   confirm: {
-    reset_all_description: "프로젝트 전체의 번역 진행 상황을 초기화할까요?",
-    reset_failed_description: "번역에 실패한 항목을 초기화할까요?",
-    generate_description: "현재 사용 가능한 번역문을 생성할까요?",
-    stop_description: "현재 번역 작업을 중지할까요?",
+    reset_all_description: "프로젝트 전체의 번역 진행 상황을 초기화할까요 …?",
+    reset_failed_description: "번역에 실패한 항목을 초기화할까요 …?",
+    generate_description: "현재 사용 가능한 번역문을 생성할까요 …?",
+    stop_description: "현재 번역 작업을 중지할까요 …?",
   },
   action: { stop: "중지" },
 } satisfies LocaleMessageSchema<typeof zh_cn_batch_translation>;

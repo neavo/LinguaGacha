@@ -546,7 +546,7 @@ describe("AgentMessageEditor", () => {
     await click_send(view);
     expect(on_submit).not.toHaveBeenCalled();
     const retry = [...view.querySelectorAll("button")].find((button) =>
-      button.getAttribute("aria-label")?.includes("agent_page.upload.retry"),
+      button.getAttribute("aria-label")?.includes("app.action.retry"),
     );
     await act(async () => retry?.click());
     await click_send(view);

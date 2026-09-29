@@ -376,6 +376,12 @@ describe("useCustomPromptPageState", () => {
     expect(latest_state?.confirm_state).toEqual({ kind: null });
     expect(latest_state?.prompt_text).toBe("项目提示词");
     expect(latest_state?.enabled).toBe(false);
+    expect(toast_fixture.current.push_toast).toHaveBeenCalledExactlyOnceWith(
+      "error",
+      source === "file"
+        ? "custom_prompt_page.feedback.import_failed"
+        : "preset_editor.feedback.load_failed",
+    );
     if (source === "preset") {
       expect(latest_state?.preset_menu_open).toBe(true);
     }

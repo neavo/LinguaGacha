@@ -47,7 +47,7 @@ export function useLaboratoryPageState(): UseLaboratoryPageStateResult {
     select_snapshot: build_laboratory_snapshot,
     pending_fields: LABORATORY_PENDING_FIELDS,
     refresh_error_key: "laboratory_page.feedback.refresh_failed",
-    update_error_key: "laboratory_page.feedback.update_failed",
+    update_error_key: "app.feedback.settings_save_failed",
   });
   const runtime_locked = project_snapshot.loaded && is_runtime_busy(runtime_snapshot);
 
@@ -72,8 +72,8 @@ export function useLaboratoryPageState(): UseLaboratoryPageStateResult {
       if (affects_project && project_snapshot.loaded) {
         const message =
           field === "mtool_optimizer_enable"
-            ? "laboratory_page.feedback.mtool_optimizer_loading_toast"
-            : "laboratory_page.feedback.skip_duplicate_source_text_loading_toast";
+            ? "app.feedback.project_cache_loading"
+            : "app.feedback.project_cache_loading";
         await run_modal_progress_toast({ message: t(message), task: save });
       } else {
         await save();

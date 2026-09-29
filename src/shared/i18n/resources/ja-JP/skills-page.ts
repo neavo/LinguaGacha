@@ -7,8 +7,7 @@ export const ja_jp_skills_page = {
   personality_description: "アシスタントのキャラクター設定",
   install: {
     title: "インストールガイド",
-    description:
-      "スキルのリンクを AGENT に送り、「このスキルをインストールして」と伝えてください。",
+    description: "スキルのリンクを AGENT に送り、「このスキルをインストールして」と伝えてください",
     placeholder: "[ここにスキルのリンクを入力]",
     request: "このスキルをインストールしてください：{LINK}",
   },
@@ -28,16 +27,16 @@ export const ja_jp_skills_page = {
     saved: "保存済み",
     discard: "変更を破棄して再読み込み",
     overwrite: "ファイルを上書き",
-    conflict: "ファイルが外部で変更されました。再読み込みするか、上書きしてください。",
+    conflict: "ファイルが外部で変更されました。再読み込みするか、上書きしてください …",
     invalid_name:
-      "名前は64文字以内の英小文字、数字、単一のハイフンを使用し、先頭と末尾は英数字にしてください。",
-    invalid_description: "1024文字以内の説明を1行で入力してください。",
-    unsupported: "UTF-8テキストではないか、2 MBを超えているため編集できません。",
+      "名前は64文字以内の英小文字、数字、単一のハイフンを使用し、先頭と末尾は英数字にしてください …",
+    invalid_description: "1024文字以内の説明を1行で入力してください …",
+    unsupported: "UTF-8テキストではないか、2 MBを超えているため編集できません …",
   },
   feedback: {
-    duplicate_name: "ファイル名が重複しています …",
-    operation_failed: "ファイル操作に失敗しました …",
-    load_failed: "スキルの読み込みに失敗しました …",
-    save_failed: "スキル設定の保存に失敗しました …",
+    duplicate_name: "ファイル名が重複しています",
+    operation_failed: "ファイル操作に失敗しました",
+    load_failed: "スキルの読み込みに失敗しました",
+    save_failed: "スキル設定の保存に失敗しました",
   },
 } as const;

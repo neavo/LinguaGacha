@@ -21,7 +21,6 @@ export const ja_jp_text_preserve_page = {
   },
   fields: {
     note: "備考（メモ専用、動作への影響なし）",
-    hit: "一致",
   },
   filter: {
     scope: {
@@ -29,19 +28,10 @@ export const ja_jp_text_preserve_page = {
       note: "備考",
     },
   },
-  preset: {
-    dialog: {
-      name_placeholder: "プリセット名を入力 …",
-    },
-  },
-  hit: {
-    hit_count: "一致する項目数：{COUNT}",
-  },
   feedback: {
-    load_failed: "テキスト保護ルールを読み込めませんでした。しばらくしてから再試行してください。",
-    preset_name_required: "プリセット名を入力してください",
-    unknown_error: "操作に失敗しました。しばらくしてから再試行してください。",
+    load_failed: "テキスト保護ルールを読み込めませんでした。しばらくしてから再試行してください …",
+    unknown_error: "操作に失敗しました。しばらくしてから再試行してください …",
     mode_refresh_pending:
-      "テキスト保護モードを切り替えました。校正キャッシュの更新後に結果を確認してください。",
+      "テキスト保護モードを切り替えました。校正キャッシュの更新後に結果を確認してください …",
   },
 } satisfies LocaleMessageSchema<typeof zh_cn_text_preserve_page>;

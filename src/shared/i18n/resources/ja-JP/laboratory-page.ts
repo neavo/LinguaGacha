@@ -30,8 +30,5 @@ export const ja_jp_laboratory_page = {
   },
   feedback: {
     refresh_failed: "実験室の設定を更新できません。しばらくしてから再試行してください …",
-    update_failed: "実験室の設定を保存できませんでした。しばらくしてから再試行してください …",
-    mtool_optimizer_loading_toast: "プロジェクトのキャッシュを更新中 …",
-    skip_duplicate_source_text_loading_toast: "プロジェクトのキャッシュを更新中 …",
   },
 } satisfies LocaleMessageSchema<typeof zh_cn_laboratory_page>;

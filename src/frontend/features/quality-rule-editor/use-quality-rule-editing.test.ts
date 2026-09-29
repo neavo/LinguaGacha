@@ -2,6 +2,7 @@ import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, expect, it, vi } from "vitest";
 import { useQualityRuleEditing } from "./use-quality-rule-editing";
+import { push_toast } from "@frontend/app/feedback/desktop-toast";
 
 const api = vi.hoisted(() => vi.fn(async () => ({ accepted: true, changes: [] })));
 vi.mock("@frontend/app/desktop/desktop-api", () => ({ api_fetch: api }));
@@ -11,7 +12,7 @@ vi.mock("@frontend/app/state/use-desktop-state", () => ({
   }),
 }));
 vi.mock("@frontend/app/locale/locale-context", () => ({
-  useI18n: () => ({ t: (key: string) => key }),
+  useI18n: () => ({ t: (key: string) => `resolved:${key}` }),
 }));
 vi.mock("@frontend/app/feedback/desktop-toast", () => ({ push_toast: vi.fn() }));
 const entries = [{ entry_id: "original", src: "foo", info: "old" }];
@@ -42,7 +43,6 @@ function Probe() {
     set_result_refresh: vi.fn(),
     close_preset_menu: vi.fn(),
     export_file_name: "rules.json",
-    error_key: "text_preserve_page.feedback.unknown_error",
   });
   return null;
 }
@@ -58,7 +58,10 @@ async function prepare(info: string): Promise<void> {
 afterEach(async () => {
   if (root) await act(async () => root!.unmount());
   root = null;
-  api.mockClear();
+  api.mockReset();
+  api.mockResolvedValue({ accepted: true, changes: [] });
+  vi.clearAllMocks();
+  vi.unstubAllGlobals();
 });
 
 it("手工重复规则取消后恢复草稿，覆盖沿用目标身份", async () => {
@@ -86,4 +89,41 @@ it("相同内容结束编辑且不重复提交", async () => {
   await act(async () => editing.save_dialog_entry());
   expect(editing.import_confirm_state.open).toBe(false);
   expect(api).not.toHaveBeenCalled();
+});
+
+it.each([
+  ["import", "quality_rule_editor.feedback.import_failed"],
+  ["export", "quality_rule_editor.feedback.export_failed"],
+  ["save", "quality_rule_editor.feedback.save_failed"],
+  ["preset", "preset_editor.feedback.load_failed"],
+] as const)("%s 的未知错误按操作反馈一次", async (operation, key) => {
+  await prepare("new");
+  vi.stubGlobal("desktopApp", {
+    pickGlossaryExportPath: async () => ({ canceled: false, paths: ["rules.json"] }),
+  });
+  api.mockRejectedValueOnce(new Error("Unexpected failure"));
+  await act(async () => {
+    if (operation === "import") await editing.import_entries_from_path("rules.json");
+    if (operation === "export") await editing.export_entries_from_picker();
+    if (operation === "save")
+      await editing.save_entries_snapshot([{ ...entries[0]!, info: "new" }]);
+    if (operation === "preset") await editing.apply_preset("user:rules.json");
+  });
+  expect(push_toast).toHaveBeenCalledExactlyOnceWith("error", `resolved:${key}`);
+});
+
+it("已知错误码优先于导入兜底文案且只反馈一次", async () => {
+  await prepare("new");
+  api.mockRejectedValueOnce(
+    Object.assign(new Error("Read failed"), {
+      name: "DesktopApiError",
+      code: "file.io_failed",
+      details: {},
+    }),
+  );
+  await act(async () => editing.import_entries_from_path("rules.json"));
+  expect(push_toast).toHaveBeenCalledExactlyOnceWith(
+    "error",
+    "resolved:app.error.file.io_failed.message",
+  );
 });

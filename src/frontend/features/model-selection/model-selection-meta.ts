@@ -10,7 +10,7 @@ export const MODEL_TYPE_TITLE_KEY = {
   CUSTOM_ANTHROPIC: "app.model.type.anthropic",
 } as const satisfies Record<ModelType, LocaleKey>;
 
-/** 模型管理与任务入口共享同一思考档位文案。 */
+/** 模型管理与任务入口共享同一思考等级文案。 */
 export const MODEL_THINKING_LEVEL_LABEL_KEY = {
   DEFAULT: "app.model.thinking_level.default",
   OFF: "app.model.thinking_level.off",

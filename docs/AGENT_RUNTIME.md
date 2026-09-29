@@ -37,9 +37,9 @@
 - 自动选择由前端会话时钟拥有，通过现有 resolve API 提交默认答案；后端只等待宿主裁决。同一决定的快照恢复与切页保留剩余时间，前端重载重新计时；输入聚焦、断线、快照恢复或命令占用期间冻结，条件解除后续计，卸载输入框释放聚焦。提交受理后停止计时，失败通知一次并保留问题供手动重试。逐秒变化通过独立 countdown 订阅发布。
 - 批量翻译偏好 `model_selection.agent_batch_translation` 随应用设置持久化，由 `ModelService` 校验和保存。`null` 表示跟随，模型 ID 表示固定选择；删除模型或修复失效选择时恢复跟随。
 - `run_batch_item_translation` 每次调用由 `agent-model.ts` 解析模型。跟随使用当前 Agent 生效配置；固定选择使用模型保存配置，同一模型 ID 也遵循固定语义。本次调用的分批请求与重试共用配置快照，运行中修改偏好供后续调用采用。
-- 实验室开关 `agent_batch_translation_thinking_adaptive_enable` 默认开启并持久化。跟随翻译取最低可用档位，包含 `OFF`、排除 `DEFAULT`；能力缺失时沿用生效档位。临时档位只进入本次调用的模型副本，关闭开关后沿用 Agent 档位。
+- 实验室开关 `agent_batch_translation_thinking_adaptive_enable` 默认开启并持久化。跟随翻译取最低可用等级，包含 `OFF`、排除 `DEFAULT`；能力缺失时沿用生效等级。临时等级只进入本次调用的模型副本，关闭开关后沿用 Agent 等级。
 - 批量入口通过统一选模命令保存模型及等级。等级属于模型全局配置，引用同一模型的入口共享该值；跟随项仅选择模型来源。
-- Agent 模型与思考档位属于应用设置，运行中保存后在下一次普通轮次、失败继续或手动压缩开始前采用。普通命令在受理前完成模型预检；FIFO 自动轮次在实际执行时通过同一模型同步方法预检，失败记入该轮并暂停剩余队列。轮内工具循环与 steer 使用当前轮次配置。公开 context 携带当前会话的历史 tokens 与实际 limits。
+- Agent 模型与思考等级属于应用设置，运行中保存后在下一次普通轮次、失败继续或手动压缩开始前采用。普通命令在受理前完成模型预检；FIFO 自动轮次在实际执行时通过同一模型同步方法预检，失败记入该轮并暂停剩余队列。轮内工具循环与 steer 使用当前轮次配置。公开 context 携带当前会话的历史 tokens 与实际 limits。
 - `AgentService` 用 Pi 的 `getSessionStats()` 汇总当前 SDK 历史，并在历史修订重建内存分支时累加被移除路径的用量。产品会话的累计 `usage` 包含 `input`、`output`、`cacheRead`、`cacheWrite`，通过完整快照和 `usage` 事件同步，重置与工程切换清零。累计输入包含每次请求重复携带的历史上下文，与当前 `context` 占用分开统计。
 - 工程写入审批偏好 `agent_approval_mode` 默认 `manual`，随应用设置持久化，跨对话重置、工程切换和应用重启保留。renderer 通过应用设置快照与 `settings.changed` 消费。
 - `workspace_apply` 每批开始时读取偏好：`auto` 直接提交，`manual` 等待本批审批。运行中修改偏好影响后续批次，已展示的审批继续等待原裁决。审批摘要与提交使用同一份已准备差异，按业务种类统计实际变化的对象数。
@@ -71,7 +71,7 @@
 
 ## 3. 模型、资源与 skill
 
-- Agent 与 OneShot 共用 [`BACKEND.md`](BACKEND.md) 定义的唯一模型能力解析和请求覆盖边界。模型配置中的 `agent.context_window` 与 `agent.max_output_tokens` 各自以 `0` 表示自动：自动上下文采用统一能力解析器提供的模型窗口；自动输出先取模型最大输出与产品档位的较小值，模型最大窗口低于 500K 时产品档位为 32K，否则为 64K。用户非零值优先，最终输出仍不得超过 `context_window - 32K`；格式损坏或无法容纳固定预留时整组恢复 `0/0`。每次 Agent 模型操作前把生效容量与产品选项映射后的 Pi 档位同步到既有 `AgentSession`，请求期保持该配置稳定。页面从 `context_window - max_output_tokens - 32K` 起预警；设置作用于同一对话的下一次模型操作，不重建或清空模型历史。模型页 generation 和 threshold 输入 / 输出 token 设置只作用于 OneShot。隐藏“继续”消息在操作发起时按当前 `app_language` 解析。
+- Agent 与 OneShot 共用 [`BACKEND.md`](BACKEND.md) 定义的唯一模型能力解析和请求覆盖边界。模型配置中的 `agent.context_window` 与 `agent.max_output_tokens` 各自以 `0` 表示自动：自动上下文采用统一能力解析器提供的模型窗口；自动输出先取模型最大输出与产品档位的较小值，模型最大窗口低于 500K 时产品档位为 32K，否则为 64K。用户非零值优先，最终输出仍不得超过 `context_window - 32K`；格式损坏或无法容纳固定预留时整组恢复 `0/0`。每次 Agent 模型操作前把生效容量与产品选项映射后的 Pi 思考等级同步到既有 `AgentSession`，请求期保持该配置稳定。页面从 `context_window - max_output_tokens - 32K` 起预警；设置作用于同一对话的下一次模型操作，不重建或清空模型历史。模型页 generation 和 threshold 输入 / 输出 token 设置只作用于 OneShot。隐藏“继续”消息在操作发起时按当前 `app_language` 解析。
 - Agent 模型在 Pi 请求边界固定声明 text / image 输入；消息附件中的批注与文件清单进入文本提示，普通文件由 `workspace_run` 按需读取；图片清单中的序号对应视觉输入，规范 WebP 直接交给当前供应商，OneShot 仍只声明 text。产品不探测或配置具体模型的视觉能力，不自动删图、降级或回退 JPEG，供应商拒绝图片时沿用普通模型失败语义。
 - Pi 把系统指令与工具声明写入 `system` 消息。`SessionManager` 根据压缩记录和 `context_edit` 生成模型上下文，保留被排除的原始条目。产品修订通过 SDK 写入历史，再调用 `refreshContext()` 同步检查缓存。
 - 公开 `context` 优先使用 SDK `getContextUsage()` 的有效用量，压缩后尚无有效统计时按当前内容及生效系统指令估算。`message_end` 先通知再写入历史，统计在历史提交后刷新。恢复压缩失败时可能已排除失败响应，也需重新读取上下文。

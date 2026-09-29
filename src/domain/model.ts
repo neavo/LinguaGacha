@@ -44,7 +44,7 @@ export const MODEL_THINKING_LEVELS = [
   "HIGH",
   "XHIGH",
   "MAX",
-] as const; // 保持默认适用于所有模型；其余档位由模型能力决定
+] as const; // 保持默认适用于所有模型；其余等级由模型能力决定
 
 export type ModelUsage = (typeof MODEL_USAGES)[number];
 /** 执行用途的模型选择与 Agent 批量翻译偏好。 */
@@ -80,7 +80,7 @@ type ModelThresholdConfig = {
 };
 
 type ModelThinkingConfig = {
-  level: ModelThinkingLevel; // 思考挡位
+  level: ModelThinkingLevel; // 思考等级
 };
 
 type ModelGenerationConfig = {
@@ -133,7 +133,7 @@ export class Model {
   public readonly agent: ModelAgentConfig; // 0 表示自动的 Agent 容量配置
   public readonly request: ModelRequestConfig; // 请求层配置快照
   public readonly threshold: ModelThresholdConfig; // 阈值配置快照
-  public readonly thinking: ModelThinkingConfig; // 思考挡位配置快照
+  public readonly thinking: ModelThinkingConfig; // 思考等级配置快照
   public readonly generation: ModelGenerationConfig; // 生成参数配置快照
 
   /** 保存已归一的模型快照，配置对象由 from_json 建立。 */
@@ -314,7 +314,7 @@ export class Model {
     };
   }
 
-  /** 将保存配置中的档位收窄到共享思考值域。 */
+  /** 将保存配置中的等级收窄到共享思考值域。 */
   private static normalize_thinking_config(value: unknown): ModelThinkingConfig {
     const record = read_json_model_record(value);
     return {
@@ -357,7 +357,7 @@ export function is_model_api_format(value: unknown): value is ModelApiFormat {
   return MODEL_API_FORMAT_SET.has(value as ModelApiFormat);
 }
 
-/** 校验共享思考档位，具体模型支持范围由能力解析决定。 */
+/** 校验共享思考等级，具体模型支持范围由能力解析决定。 */
 export function is_model_thinking_level(value: unknown): value is ModelThinkingLevel {
   return MODEL_THINKING_LEVEL_SET.has(value as ModelThinkingLevel);
 }

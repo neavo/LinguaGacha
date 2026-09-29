@@ -64,7 +64,7 @@ describe("统一模型能力", () => {
   });
 
   it.each(["OpenAI", "OpenAIResponses"] as const)(
-    "%s 豆包提供关闭思考与三个独立思考档位",
+    "%s 豆包提供关闭思考与三个独立思考等级",
     (api_format) => {
       const capability = resolve_capability(api_format, "doubao-seed-evolving");
 
@@ -95,7 +95,7 @@ describe("统一模型能力", () => {
     });
   });
 
-  it("开关型思考按当前协议投影档位和历史要求", () => {
+  it("开关型思考按当前协议投影等级和历史要求", () => {
     const catalog: PiCatalogModel[] = [
       {
         ...create_catalog_model("toggle-model"),
@@ -130,7 +130,7 @@ describe("统一模型能力", () => {
     },
   );
 
-  it("模型配置归一化时把失效档位调整为更低或最低可用档位", () => {
+  it("模型配置归一化时把失效等级调整为更低或最低可用等级", () => {
     expect(adjust_model_thinking_level("MAX", ["OFF", "LOW", "HIGH"])).toBe("HIGH");
     expect(adjust_model_thinking_level("LOW", ["HIGH", "MAX"])).toBe("HIGH");
     expect(adjust_model_thinking_level("HIGH", ["DEFAULT"])).toBe("DEFAULT");
@@ -253,7 +253,7 @@ describe("统一模型能力", () => {
     }
   });
 
-  it("局部模型修正保留同协议目录字段，跨协议仅沿用档位", () => {
+  it("局部模型修正保留同协议目录字段，跨协议仅沿用等级", () => {
     const catalog: PiCatalogModel[] = [
       {
         ...create_catalog_model("grok-4.6"),

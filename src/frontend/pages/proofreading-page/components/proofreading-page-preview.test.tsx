@@ -90,7 +90,7 @@ it("译稿翻页与失败重试只更新右栏，卸载取消读取并释放预�
     expect(container.querySelectorAll("img")).toHaveLength(2);
     expect(button("proofreading_page.pages.next").disabled).toBe(true);
     expect(container.querySelectorAll(".media-viewport__viewport")[1]).toBe(translation);
-    await act(async () => button("proofreading_page.pages.retry").click());
+    await act(async () => button("app.action.retry").click());
     expect(api_fetch).toHaveBeenLastCalledWith(
       "/api/proofreading/page",
       expect.objectContaining({ action: "translation", page: 3, output_page: 2 }),

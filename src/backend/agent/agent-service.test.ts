@@ -3279,7 +3279,7 @@ describe("AgentService", () => {
     expect(run.mock.calls.at(-1)?.[2]).toMatchObject({ id: "next" });
   });
 
-  it("跟随批量调用临时降档，轮内关闭开关只影响后续调用并保留 Agent 配置", async () => {
+  it("跟随批量调用临时降低等级，轮内关闭开关只影响后续调用并保留 Agent 配置", async () => {
     fake_agent_state.batch_mode = true;
     fake_agent_state.batch_retries = 1;
     const run = vi.fn<
@@ -3314,7 +3314,7 @@ describe("AgentService", () => {
     await wait_for_idle(fixture.service);
 
     expect(run).toHaveBeenCalledTimes(2);
-    // 同轮第二次调用恢复高档位，同时证明首次降档隔离了 Agent 生效配置。
+    // 同轮第二次调用恢复高等级，同时证明首次降低等级隔离了 Agent 生效配置。
     expect(run.mock.calls.map((call) => call[2].thinking.level)).toEqual(["OFF", "HIGH"]);
   });
 

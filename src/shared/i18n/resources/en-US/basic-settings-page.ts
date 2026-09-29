@@ -5,11 +5,9 @@ export const en_us_basic_settings_page = {
   title: "Basic Settings",
   fields: {
     source_language: {
-      title: "Source Language",
       description: "Set the language of the input text in the current project",
     },
     target_language: {
-      title: "Target Language",
       description: "Set the language of the output text in the current project",
     },
     project_save_mode: {
@@ -37,11 +35,9 @@ export const en_us_basic_settings_page = {
     },
   },
   feedback: {
-    refresh_failed: "Unable to refresh basic settings right now. Please try again later.",
-    update_failed: "Failed to save the setting. Please try again later.",
-    request_timeout_invalid: "Request timeout must be a number within the valid range.",
+    refresh_failed: "Unable to refresh basic settings right now. Please try again later …",
+    request_timeout_invalid: "Request timeout must be a number within the valid range …",
     pick_directory_failed:
-      "Directory selection failed. Please choose the fixed save directory again.",
-    source_language_loading_toast: "Refreshing project cache …",
+      "Directory selection failed. Please choose the fixed save directory again …",
   },
 } satisfies LocaleMessageSchema<typeof zh_cn_basic_settings_page>;

@@ -2,7 +2,7 @@ export const zh_cn_project_page = {
   title: "工程主页",
   create: {
     title: "新建工程",
-    subtitle: "选择源文件创建 .lg 工程文件，创建完成后即不再需要源文件。",
+    subtitle: "选择源文件创建 .lg 工程文件，创建完成后即不再需要源文件",
     drop_title: "点击或拖拽源文件",
     ready_status: "已选择 {COUNT} 个源文件",
     loading_toast: "正在创建工程 …",
@@ -21,11 +21,11 @@ export const zh_cn_project_page = {
   },
   open: {
     title: "打开工程",
-    subtitle: "加载现有的 .lg 工程文件以继承翻译进度、翻译规则继续工作。",
+    subtitle: "加载现有的 .lg 工程文件以继承翻译进度、翻译规则继续工作",
     drop_title: "点击或拖拽 .lg 文件",
     recent_title: "最近打开",
     empty: "暂无最近打开的工程",
-    ready_status: "项目已就绪",
+    ready_status: "工程已就绪",
     preview_loading_toast: "正在读取工程预览 …",
     loading_toast: "正在加载工程 …",
     preview_unavailable: "读取工程预览失败：{ERROR}",
@@ -33,7 +33,7 @@ export const zh_cn_project_page = {
     failed: "加载工程失败：{ERROR}",
     failed_generic: "加载工程失败",
     action: "打开工程",
-    remove_unavailable: "当前无法移除这条最近使用记录，请稍后重试。",
+    remove_unavailable: "当前无法移除这条最近使用记录，请稍后重试 …",
     missing_file_description: "工程文件已失效，是否从列表中移除 …?",
   },
   preview: {
@@ -45,9 +45,9 @@ export const zh_cn_project_page = {
     progress: "翻译进度",
   },
   loading_stages: {
-    project: "正在加载项目骨架 …",
-    files: "正在加载项目文件 …",
-    items: "正在加载项目条目 …",
+    project: "正在加载工程基本信息 …",
+    files: "正在加载工程文件 …",
+    items: "正在加载工程条目 …",
     quality: "正在加载质量规则 …",
     prompts: "正在加载提示词配置 …",
     proofreading: "正在加载校对视图 …",
@@ -77,5 +77,5 @@ export const zh_cn_project_page = {
     wolf: "WOLF 官方翻译工具游戏文本",
   },
   drop_multiple_unavailable: "一次只能拖拽一个文件或文件夹",
-  drop_unavailable: "当前无法读取拖拽文件的本地路径，请换用点击选择。",
+  drop_unavailable: "当前无法读取拖拽文件的本地路径，请换用点击选择 …",
 } as const;

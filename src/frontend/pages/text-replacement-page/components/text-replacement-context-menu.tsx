@@ -62,7 +62,7 @@ export function TextReplacementContextMenuItems(
       <AppContextMenuSub>
         <AppContextMenuSubTrigger disabled={props.readonly}>
           <CaseSensitive />
-          {t("text_replacement_page.rule.case_sensitive")}
+          {t("quality_rule_editor.rule.case_sensitive")}
         </AppContextMenuSubTrigger>
         <AppContextMenuSubContent>
           <AppContextMenuRadioGroup

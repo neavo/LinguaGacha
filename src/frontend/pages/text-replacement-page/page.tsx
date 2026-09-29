@@ -43,7 +43,7 @@ export function TextReplacementPage(props: TextReplacementPageProps): JSX.Elemen
     TEXT_REPLACEMENT_SCOPE_LABEL_KEY_BY_SCOPE[page_state.table.filter_state.scope],
   );
   const scope_tooltip = t("app.tooltip.value", {
-    TITLE: t("text_replacement_page.filter.scope.tooltip_label"),
+    TITLE: t("quality_rule_editor.filter.scope.tooltip_label"),
     VALUE: scope_state_label,
   });
   const regex_tooltip = t("app.tooltip.value", {

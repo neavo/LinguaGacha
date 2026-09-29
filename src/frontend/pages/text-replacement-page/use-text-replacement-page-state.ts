@@ -116,7 +116,7 @@ function build_hit_badge_tooltip(
   ];
 
   if (subset_parents.length > 0) {
-    tooltip_lines.push(t("text_replacement_page.hit.subset_relations"));
+    tooltip_lines.push(t("quality_rule_editor.hit.subset_relations"));
     tooltip_lines.push(
       ...subset_parents.map((label) => {
         return t("quality_rule_editor.hit.relation_line")
@@ -290,11 +290,7 @@ export function useTextReplacementPageState(variant: TextReplacementVariant) {
     },
     [t],
   );
-  const presets = useQualityRulePresets(
-    config.rule_type,
-    entries.map(normalize_entry),
-    "text_replacement_page.feedback.preset_failed",
-  );
+  const presets = useQualityRulePresets(config.rule_type, entries.map(normalize_entry));
   const editing = useQualityRuleEditing({
     rule_type: config.rule_type,
     project_path:
@@ -311,7 +307,6 @@ export function useTextReplacementPageState(variant: TextReplacementVariant) {
     set_result_refresh: set_pending_result_refresh,
     close_preset_menu: () => presets.set_preset_menu_open(false),
     export_file_name: config.export_file_name,
-    error_key: "text_replacement_page.feedback.save_failed",
   });
   const { save_entries_snapshot } = editing;
 

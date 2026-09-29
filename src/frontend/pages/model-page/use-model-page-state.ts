@@ -201,7 +201,7 @@ function normalize_threshold_snapshot(candidate: unknown): ModelThresholdSnapsho
   };
 }
 
-/** 思考档位统一使用模型领域归一规则。 */
+/** 思考等级统一使用模型领域归一规则。 */
 function normalize_thinking_snapshot(candidate: unknown): ModelThinkingSnapshot {
   const source =
     typeof candidate === "object" && candidate !== null
