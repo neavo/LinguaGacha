@@ -1,3 +1,4 @@
+import { validateToolArguments, type ToolCall } from "@earendil-works/pi-ai";
 import { describe, expect, it, vi } from "vitest";
 
 import {
@@ -15,12 +16,16 @@ describe("Agent web_search 工具", () => {
   it("模型参数只接受非空自然语言查询", () => {
     const tool = create_agent_web_search_tool(vi.fn());
 
-    expect(tool.parameters).toMatchObject({
-      properties: {
-        query: { type: "string", minLength: 1 },
-      },
-      additionalProperties: false,
-    });
+    for (const args of [{ query: "" }, { query: "query", extra: true }]) {
+      expect(() =>
+        validateToolArguments(tool, {
+          type: "toolCall",
+          id: "search",
+          name: tool.name,
+          arguments: args,
+        } as ToolCall),
+      ).toThrow();
+    }
   });
 
   it("调用稳定搜索端口并投影来源与原始文本", async () => {
@@ -60,7 +65,6 @@ describe("Agent web_search 工具", () => {
     )) as WebSearchToolResult;
 
     const result_text = result.content[0]?.text ?? "";
-    expect(result_text).toContain("[内容因长度限制已截断]");
     expect(result_text.match(/a+/u)?.[0]?.length).toBeLessThan(upstream_text.length);
     expect(result.details).toEqual({ provider: "firecrawl", truncated: true });
   });

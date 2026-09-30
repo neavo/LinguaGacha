@@ -6,7 +6,7 @@ import { pathToFileURL } from "node:url";
 import { describe, expect, it } from "vitest";
 
 import { type AgentSkillDefinition } from "../agent-skills";
-import { create_agent_skill_tools } from "./skill";
+import { create_agent_read_skill_tool } from "./read-skill";
 
 describe("Agent 技能读取工具", () => {
   it("按名称读取会话 skill 的默认正文和包内相对文件", async () => {
@@ -161,7 +161,7 @@ function create_fixture(source: "user" | "builtin", name: string, body: string) 
       },
     ],
   };
-  const [tool] = create_agent_skill_tools(() => catalog.skills, {
+  const tool = create_agent_read_skill_tool(() => catalog.skills, {
     get_agent_user_skill_dir: () => user_root,
     get_agent_builtin_skill_dir: () => builtin_root,
   });
@@ -191,7 +191,7 @@ function write_file(file_path: string, content: string): void {
 
 /** 通过工具公开入口执行查询；此工具不消费会话上下文。 */
 async function execute(
-  tool: ReturnType<typeof create_agent_skill_tools>[number],
+  tool: ReturnType<typeof create_agent_read_skill_tool>,
   input: { name: string; path?: string },
 ) {
   return await tool!.execute("read", input, undefined, undefined, undefined as never);

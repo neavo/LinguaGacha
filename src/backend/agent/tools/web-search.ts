@@ -1,43 +1,40 @@
+import { define_agent_tool } from "../tool-definition";
 import { Type } from "@earendil-works/pi-ai";
-import { defineTool, type ToolDefinition } from "@earendil-works/pi-coding-agent";
+import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
 
 const WEB_SEARCH_MAX_TEXT_CHARS = 50_000; // 避免供应商正文无界占用模型上下文
 const TRUNCATION_NOTICE = "[内容因长度限制已截断]"; // 截断后保留模型可见的不完整性事实
 
-const WEB_SEARCH_PARAMETERS = Type.Object(
-  {
-    query: Type.String({
-      minLength: 1,
-      description: "用自然语言描述希望找到的理想网页，而非只填写关键词。",
-    }),
-  },
-  { additionalProperties: false },
-);
-
 /** details 与内部诊断共用的稳定供应商身份。 */
 export type AgentWebSearchProvider = "exa" | "tavily" | "firecrawl" | "anysearch" | "keenable";
 
-/** 搜索端口返回模型正文及其实际来源，不泄漏 MCP 响应对象。 */
+/** 搜索端口提供模型正文和来源标识。 */
 export type AgentWebSearchResult = Readonly<{
   provider: AgentWebSearchProvider;
   text: string;
 }>;
 
-/** Agent 工具层使用的固定搜索端口，不向会话层泄漏 MCP 类型。 */
+/** 工具层通过搜索端口获取正文和来源。 */
 export type AgentWebSearchPort = (
   query: string,
   signal: AbortSignal,
 ) => Promise<AgentWebSearchResult>;
 
-/** 搜索只负责发现候选 URL；网页读取与处理由 Workspace Node 脚本完成。 */
+/** 搜索提供候选 URL。工作区脚本负责读取和处理网页。 */
 export function create_agent_web_search_tool(search: AgentWebSearchPort): ToolDefinition {
-  return defineTool({
+  return define_agent_tool({
     name: "web_search",
-    label: "搜索网页",
-    description:
-      "搜索公开互联网，优先使用自然语言而非关键词组合，需要网页正文时，通过 workspace_run 读取并处理对应 URL。",
+    description: "搜索互联网。",
     executionMode: "sequential",
-    parameters: WEB_SEARCH_PARAMETERS,
+    parameters: Type.Object(
+      {
+        query: Type.String({
+          minLength: 1,
+          description: "用自然语言描述搜索目标。",
+        }),
+      },
+      { additionalProperties: false },
+    ),
     execute: async (_tool_call_id, params, signal) => {
       signal?.throwIfAborted();
       const result = await search(params.query, signal ?? new AbortController().signal);

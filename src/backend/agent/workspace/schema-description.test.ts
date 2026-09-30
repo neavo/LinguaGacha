@@ -1,6 +1,7 @@
 import { Type, type TSchema } from "@earendil-works/pi-ai";
 import { describe, expect, it } from "vitest";
 
+import { check_typescript } from "../../../test/typescript-fixture";
 import { create_schema_renderer } from "./schema-description";
 
 describe("工作区 Schema 说明", () => {
@@ -33,10 +34,10 @@ describe("工作区 Schema 说明", () => {
     const declaration = create_schema_renderer(new Map([[schema, "Update"]])).declarations();
     for (const expected of [
       "type Update =",
-      "id: PositiveInteger",
+      "id: number",
       'mode: ("read" | "write")',
       "text?: string",
-      "value: (null |",
+      "value: (\n    | null",
       'kind: "number"',
       "最少字段数: 3",
       "最短字符数: 2",
@@ -48,6 +49,7 @@ describe("工作区 Schema 说明", () => {
     ])
       expect(declaration).toContain(expected);
     expect(declaration).not.toContain("[key: string]");
+    check_typescript([declaration]);
   });
 
   it("引用命名结构并保留开放对象的字段约束，正文不能终止生成注释", () => {
@@ -68,7 +70,7 @@ describe("工作区 Schema 说明", () => {
     expect(renderer.render(entry)).toBe("Entry");
     const declaration = renderer.declarations();
     expect(declaration).toContain("[key: string]: Array<Entry>");
-    expect(declaration).toContain("id: string; [key: string]: unknown");
+    expect(declaration).toContain("id: string;\n  [key: string]: unknown");
     expect(declaration).toContain("文本 *\\/ 后续");
   });
 });

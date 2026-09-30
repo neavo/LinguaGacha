@@ -1,12 +1,20 @@
 import { scheduler } from "node:timers/promises";
 
-import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
+import { defineTool, type ToolDefinition } from "@earendil-works/pi-coding-agent";
+import type { TSchema } from "@earendil-works/pi-ai";
 
-import type { JsonRecord } from "../../../domain/json";
-import { is_app_error } from "../../../shared/error";
-import { JsonTool } from "../../../shared/utils/json-tool";
-import type { LogManager } from "../../log/log-manager";
-import { t_main_log } from "../../log/log-text";
+import type { JsonRecord } from "../../domain/json";
+import { is_app_error } from "../../shared/error";
+import { JsonTool } from "../../shared/utils/json-tool";
+import type { LogManager } from "../log/log-manager";
+import { t_main_log } from "../log/log-text";
+
+/** SDK 的 `label` 统一取工具 `name`。 */
+export function define_agent_tool<TParams extends TSchema, TDetails = unknown, TState = unknown>(
+  definition: Omit<ToolDefinition<TParams, TDetails, TState>, "label">,
+) {
+  return defineTool({ ...definition, label: definition.name });
+}
 
 type AgentToolFailure = JsonRecord & { code: string };
 

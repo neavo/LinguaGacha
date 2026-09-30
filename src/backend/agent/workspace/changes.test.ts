@@ -4,10 +4,7 @@ import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { NativeFs } from "../../../native/native-fs";
 import { prepare_agent_workspace_changes } from "./changes";
-import {
-  AGENT_WORKSPACE_CHANGE_PATHS,
-  AGENT_WORKSPACE_QUALITY_CHANGE_OPERATIONS,
-} from "./contract";
+import { AGENT_WORKSPACE_CHANGE_PATHS, AGENT_WORKSPACE_QUALITY_CHANGE_OPERATIONS } from "./paths";
 import { QUALITY_RULE_KINDS } from "../../../domain/quality";
 
 const workspaces: string[] = [];

@@ -13,6 +13,7 @@ ws.emitImage("work/detail.png", { maxEdge: 3840 });
 // @ts-expect-error 尺寸使用数字。
 ws.emitImage("work/detail.png", { maxEdge: "3840" });
 const reference: string = ws.contract.datasets.items.reference;
+const skillDirectory: string = ws.userSkillDirectory;
 // @ts-expect-error 宿主打印请求必须包含 html。
 ws.host({ kind: "print_pdf" });
 `,

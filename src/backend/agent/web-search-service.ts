@@ -10,12 +10,12 @@ import {
 import { is_json_record } from "../../domain/json";
 import type { LogManager } from "../log/log-manager";
 import { t_main_log } from "../log/log-text";
-import { AgentToolError } from "./model-tools/definition";
+import { AgentToolError } from "./tool-definition";
 import type {
   AgentWebSearchPort,
   AgentWebSearchProvider,
   AgentWebSearchResult,
-} from "./model-tools/web-search";
+} from "./tools/web-search";
 
 const WEB_SEARCH_PROVIDER_TIMEOUT_MS = 8_000; // 单家连接、调用与会话重建共用一次预算
 const WEB_SEARCH_RESULT_LIMIT = 10; // 仅约束支持数量参数的供应商，不构成模型侧契约

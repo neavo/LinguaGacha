@@ -2,9 +2,9 @@ import { Type } from "@earendil-works/pi-ai";
 import { defineTool } from "@earendil-works/pi-coding-agent";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { AppError } from "../../../shared/error";
-import { set_main_log_language_reader } from "../../log/log-text";
-import { AgentToolError, agent_tool_result, prepare_agent_tool } from "./definition";
+import { AppError } from "../../shared/error";
+import { set_main_log_language_reader } from "../log/log-text";
+import { AgentToolError, agent_tool_result, prepare_agent_tool } from "./tool-definition";
 
 describe("Agent 工具公共边界", () => {
   afterEach(() => {

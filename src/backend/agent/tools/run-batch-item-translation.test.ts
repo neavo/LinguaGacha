@@ -1,6 +1,6 @@
 import { validateToolArguments, type ToolCall } from "@earendil-works/pi-ai";
 import { describe, expect, it, vi } from "vitest";
-import { create_agent_batch_item_translation_tool } from "./batch-translation";
+import { create_agent_batch_item_translation_tool } from "./run-batch-item-translation";
 import { normalize_batch_translation_progress } from "../../../domain/batch-translation";
 
 describe("Agent 条目批量翻译工具", () => {

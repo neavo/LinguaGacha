@@ -1,11 +1,19 @@
-import { create_schema_renderer } from "./schema-description";
-import type { TSchema } from "@earendil-works/pi-ai";
+import { Check } from "typebox/value";
+import {
+  AGENT_WORKSPACE_PATHS,
+  AGENT_WORKSPACE_QUALITY_ENTRY_PATHS,
+  AGENT_WORKSPACE_QUALITY_CHANGE_OPERATIONS,
+  AGENT_WORKSPACE_QUALITY_CHANGE_PATHS,
+  AGENT_WORKSPACE_CHANGE_PATHS,
+} from "../workspace/paths";
+import type { AgentWorkspaceQualityChangeOperation } from "../workspace/paths";
+import { create_schema_renderer } from "../workspace/schema-description";
+import { Type, type Static, type TSchema } from "@earendil-works/pi-ai";
 
-import { read_json_integer } from "../../../domain/json";
 import { PROMPT_KINDS } from "../../../domain/prompt";
 import { QUALITY_RULE_KINDS, type QualityRuleKind } from "../../../domain/quality";
-import type { ProofreadingClientItem } from "../../../shared/proofreading/proofreading-types";
 import {
+  AGENT_WORKSPACE_FP_SCHEMA,
   AGENT_WORKSPACE_PAGE_SCHEMA,
   AGENT_WORKSPACE_PAGE_UPDATE_SCHEMA,
   AGENT_WORKSPACE_ITEM_SCHEMA,
@@ -15,70 +23,55 @@ import {
   AGENT_WORKSPACE_PROJECT_META_SCHEMA,
   AGENT_WORKSPACE_QUALITY_SCHEMAS,
   AGENT_WORKSPACE_WARNING_SCHEMA,
-  type AgentWorkspaceRuntimeContract,
-  type AgentWorkspaceWarning,
-} from "./schema";
+} from "../workspace/schema";
 
-/** 工作区固定只读路径；宿主协议与 Backend 只消费这份布局词表。 */
-export const AGENT_WORKSPACE_PATHS = Object.freeze({
-  projectMeta: "project_meta.json",
-  contract: "contract.json",
-  reference: "reference",
-  items: "items/entries.jsonl",
-  pages: "pages/entries.jsonl",
-  warnings: "items/warnings.jsonl",
-  prompts: "prompts.json",
-} as const);
-
-/** 四类质量规则直接按领域 kind 落盘。 */
-export const AGENT_WORKSPACE_QUALITY_ENTRY_PATHS = Object.freeze(
-  Object.fromEntries(QUALITY_RULE_KINDS.map((kind) => [kind, `${kind}/entries.jsonl`])) as Record<
-    QualityRuleKind,
-    string
-  >,
-);
-
-/** 质量规则的三种对象操作各占一个 JSONL 文件。 */
-export const AGENT_WORKSPACE_QUALITY_CHANGE_OPERATIONS = Object.freeze([
-  "creates",
-  "updates",
-  "deletes",
-] as const);
-
-/** 固定 quality change 文件允许的操作名。 */
-export type AgentWorkspaceQualityChangeOperation =
-  (typeof AGENT_WORKSPACE_QUALITY_CHANGE_OPERATIONS)[number];
-
-/** 每个 quality kind 复用同一 changes/<kind>/<operation>.jsonl 布局。 */
-export const AGENT_WORKSPACE_QUALITY_CHANGE_PATHS = Object.freeze(
-  Object.fromEntries(
-    QUALITY_RULE_KINDS.map((kind) => [
-      kind,
-      Object.freeze(
-        Object.fromEntries(
-          AGENT_WORKSPACE_QUALITY_CHANGE_OPERATIONS.map((operation) => [
-            operation,
-            `changes/${kind}/${operation}.jsonl`,
-          ]),
-        ) as Record<AgentWorkspaceQualityChangeOperation, string>,
+/** 磁盘 contract、脚本运行时与模型声明共同消费的外壳 Schema。 */
+export const AGENT_WORKSPACE_CONTRACT_SCHEMA = Type.Object(
+  {
+    datasets: Type.Record(
+      Type.String(),
+      Type.Object(
+        {
+          path: Type.String(),
+          format: Type.Union([Type.Literal("json"), Type.Literal("jsonl")]),
+          reference: Type.String(),
+          purpose: Type.Optional(Type.String()),
+          identity: Type.Optional(Type.Array(Type.String())),
+        },
+        { additionalProperties: false },
       ),
-    ]),
-  ) as Record<QualityRuleKind, Readonly<Record<AgentWorkspaceQualityChangeOperation, string>>>,
+    ),
+    changes: Type.Record(
+      Type.String(),
+      Type.Record(
+        Type.String(),
+        Type.Object(
+          {
+            path: Type.String(),
+            format: Type.Literal("jsonl"),
+            reference: Type.String(),
+            identity: Type.Optional(Type.Array(Type.String())),
+          },
+          { additionalProperties: false },
+        ),
+      ),
+    ),
+    apply: Type.Object({}, { additionalProperties: true }),
+  },
+  { additionalProperties: false },
 );
 
-/** 模型可写的全部固定 change 路径；datasets 本身始终只读。 */
-export const AGENT_WORKSPACE_CHANGE_PATHS = Object.freeze({
-  pages: Object.freeze({ updates: "changes/pages/updates.jsonl" }),
-  items: Object.freeze({ updates: "changes/items/updates.jsonl" }),
-  prompts: Object.freeze({ updates: "changes/prompts/updates.jsonl" }),
-  ...AGENT_WORKSPACE_QUALITY_CHANGE_PATHS,
-});
+/** 脚本通过索引定位数据与变更文件，通过参考资料读取记录约束。 */
+export type AgentWorkspaceRuntimeContract = Readonly<
+  Static<typeof AGENT_WORKSPACE_CONTRACT_SCHEMA>
+>;
 
-/** item 提交建议只控制上下文与失败恢复成本，不构成后端硬门。 */
+/** 条目批量建议用于控制上下文与失败恢复成本。 */
 const AGENT_WORKSPACE_PREFERRED_ITEM_UPDATE_ROWS = 100;
 
 /** 参考资料按业务主题聚合，读取与修改共享同一份语义。 */
 const reference_path = (topic: string): string => `${AGENT_WORKSPACE_PATHS.reference}/${topic}.md`;
+/** 四类质量规则共享排序、冲突与批次语义。 */
 const quality_notes = [
   "一次提交会处理完整批次中的 `creates`、`updates` 和 `deletes`。",
   "同一对象的删除已接受时，更新返回 `merge_conflict`。依赖删除的新增或更新，在删除失败时可能返回 `dependency_conflict`。",
@@ -86,6 +79,7 @@ const quality_notes = [
   "插入位置相同时，先处理更新再处理新增，各自按变更文件中的行序排列。最后按对应领域规则整理结果。",
   "质量规则变更没有建议或强制的单批行数上限。",
 ];
+/** 参考资料随工作区提供给模型，说明提交副作用和跨记录关系。 */
 const reference_notes: Readonly<Record<string, readonly string[]>> = {
   project_meta: ["工程元数据描述当前快照的语言、完整数量和文件顺序。"],
   items: [
@@ -122,6 +116,7 @@ const quality_entry_datasets = Object.fromEntries<DatasetDefinition>(
     },
   ]),
 ) as Record<QualityRuleKind, DatasetDefinition>;
+/** 按领域类型和操作名关联变更路径与记录约束。 */
 const quality_changes = Object.fromEntries<
   Record<AgentWorkspaceQualityChangeOperation, ChangeDefinition>
 >(
@@ -243,7 +238,7 @@ const apply_contract = {
   },
 };
 
-/** 索引只公开定位信息；记录约束由参考文档按原 Schema 展开。 */
+/** 索引公开定位信息，参考文档按记录 Schema 展开约束。 */
 function project_entries<T extends { schema: TSchema }>(entries: Record<string, T>) {
   return Object.fromEntries(
     Object.entries(entries).map(([name, { schema: _schema, ...entry }]) => [name, entry]),
@@ -286,9 +281,20 @@ export const AGENT_WORKSPACE_REFERENCES: Readonly<Record<string, string>> = Obje
     Object.entries(reference_notes).map(([topic, notes]) => {
       const reference = reference_path(topic);
       const records = reference_records.filter((entry) => entry.reference === reference);
-      const renderer = create_schema_renderer(
-        new Map(records.map((entry) => [entry.schema, entry.name])),
+      const named_schemas = new Map<TSchema, string>(
+        records.map((entry) => [entry.schema, entry.name]),
       );
+      // 同一主题多次引用指纹时集中说明，其余主题直接展示字段约束。
+      if (
+        records.filter(
+          (entry) =>
+            (entry.schema as { properties?: Record<string, TSchema> }).properties?.fp ===
+            AGENT_WORKSPACE_FP_SCHEMA,
+        ).length > 1
+      ) {
+        named_schemas.set(AGENT_WORKSPACE_FP_SCHEMA, "WorkspaceFingerprint");
+      }
+      const renderer = create_schema_renderer(named_schemas);
       return [
         reference,
         [
@@ -315,13 +321,24 @@ export const AGENT_WORKSPACE_REFERENCES: Readonly<Record<string, string>> = Obje
   ),
 );
 
-/** 按工作区 Schema 输出条目身份和校对证据，复制嵌套数组以隔离调用方。 */
-export function project_agent_workspace_warning(
-  item: ProofreadingClientItem,
-): AgentWorkspaceWarning {
-  return structuredClone({
-    item_id: read_json_integer(item.item_id, 0),
-    warnings: item.warnings,
-    glossary_applications: item.glossary_applications,
-  });
+/** 校验磁盘契约，复制并冻结公开副本，隔离工作区脚本与借入对象。 */
+export function create_workspace_contract(contract: unknown): AgentWorkspaceRuntimeContract {
+  if (!Check(AGENT_WORKSPACE_CONTRACT_SCHEMA, contract))
+    throw new Error("Workspace contract does not match the runtime schema.");
+  return deep_freeze(structuredClone(contract));
+}
+/** 模型类型和属性声明与运行时校验使用同一外壳 Schema。 */
+export function describe_workspace_contract() {
+  return {
+    types: create_schema_renderer(
+      new Map([[AGENT_WORKSPACE_CONTRACT_SCHEMA, "WorkspaceContract"]]),
+    ).declarations(),
+    member: "contract: WorkspaceContract;",
+  };
+}
+/** 输入来自 `structuredClone` 的独立副本，逐层冻结公开对象。 */
+function deep_freeze<T>(value: T): T {
+  if (typeof value !== "object" || value === null) return value;
+  for (const child of Object.values(value)) deep_freeze(child);
+  return Object.freeze(value);
 }

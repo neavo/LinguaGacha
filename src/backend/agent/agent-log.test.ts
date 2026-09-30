@@ -26,7 +26,7 @@ it("图片工具日志只保留来源摘要和媒体类型", () => {
     content: [{ type: "text" }, { type: "image", mimeType: "image/webp" }],
   });
 });
-import { agent_tool_result } from "./model-tools/definition";
+import { agent_tool_result } from "./tool-definition";
 
 describe("AgentSessionLog", () => {
   afterEach(() => vi.useRealTimers());

@@ -1,16 +1,15 @@
 import { Type } from "@earendil-works/pi-ai";
-import { defineTool } from "@earendil-works/pi-coding-agent";
 
 import { read_json_record } from "../../../domain/json";
 import { AGENT_DOING_TEXT_LIMIT, normalize_agent_doing } from "../../../shared/agent-doing";
-import { agent_tool_result, AgentToolError } from "./definition";
+import { define_agent_tool, agent_tool_result, AgentToolError } from "../tool-definition";
 
 /** 正在处理的内容直接写入会话，运行状态由宿主独立维护。 */
 export function create_agent_doing_tool(write: (text: string | null) => void) {
-  return defineTool({
+  return define_agent_tool({
     name: "doing",
-    label: "更新「正在处理」UI 组件的状态",
-    description: "新文本覆盖，完成、放弃或结束处理时传入 `null` 清空，内容跨回合保留。",
+    description:
+      "设置当前处理阶段，新文本立即覆盖，完成、放弃或结束处理时传入 `null` 清空，内容跨回合保留。",
     executionMode: "sequential",
     parameters: Type.Object(
       {

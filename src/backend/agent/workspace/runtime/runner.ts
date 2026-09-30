@@ -1,10 +1,6 @@
-import { Check } from "typebox/value";
-import {
-  WORKSPACE_HOST_REQUEST_SCHEMA,
-  WORKSPACE_IMAGE_REQUEST_SCHEMA,
-  type WorkspaceHostPort,
-  type WorkspaceRequest,
-} from "./host-contract";
+import type { WorkspaceRequest } from "./protocol";
+import { execute_image_request } from "../../tools/emit-image";
+import { execute_host_request, type WorkspaceHostPort } from "../../tools/host";
 import { fork, type ForkOptions } from "node:child_process";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
@@ -217,19 +213,13 @@ export class AgentWorkspaceRunner {
         if (requests.has(id)) throw new Error("Workspace runtime reused a request id.");
         const controller = new AbortController();
         requests.set(id, controller);
+        // 生命周期归 runner，参数校验与业务执行归具体工具。
         const execute = async () => {
-          if (request.kind === "emit_image") {
-            if (!Check(WORKSPACE_IMAGE_REQUEST_SCHEMA, request) || !emit_image)
-              throw new Error("Invalid workspace image request.");
-            await emit_image(request.path, controller.signal, request.options);
-            return null;
-          }
+          if (request.kind === "emit_image")
+            return await execute_image_request(request, controller.signal, emit_image);
           if (request.kind === "resolve_proxy" && typeof request.url === "string")
             return await this.system_proxy_resolver.resolveProxy(request.url, controller.signal);
-          if (!Check(WORKSPACE_HOST_REQUEST_SCHEMA, request))
-            throw new Error("Invalid workspace host request.");
-          if (!host) throw new Error("Workspace host unavailable.");
-          return await host(request, controller.signal);
+          return await execute_host_request(request, controller.signal, host);
         };
         const operation = execute()
           .then(

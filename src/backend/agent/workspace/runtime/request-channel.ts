@@ -1,4 +1,4 @@
-import type { WorkspaceRequest, WorkspaceRequestResult } from "./host-contract";
+import type { WorkspaceRequest, WorkspaceRequestResult } from "./protocol";
 import type {
   AgentWorkspaceRuntimeChildMessage,
   AgentWorkspaceRuntimeParentMessage,

@@ -1,3 +1,5 @@
+import { bind_emit_image } from "../../tools/emit-image";
+import { bind_host } from "../../tools/host";
 import { readFile } from "node:fs/promises";
 import { isBuiltin, registerHooks } from "node:module";
 
@@ -62,18 +64,8 @@ Object.defineProperty(globalThis, "ws", {
   value: create_agent_workspace_runtime_api(
     contract,
     start.userSkillDirectory,
-    async (request, signal) => {
-      const result = await request_channel.call(request, signal);
-      if (typeof result === "string" || result === null) throw new Error("Invalid host response.");
-      return result;
-    },
-    async (path, options) => {
-      await request_channel.call({
-        kind: "emit_image",
-        path,
-        ...(options === undefined ? {} : { options }),
-      });
-    },
+    bind_host(request_channel),
+    bind_emit_image(request_channel),
   ),
 });
 process.channel?.unref();
