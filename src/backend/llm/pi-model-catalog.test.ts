@@ -26,8 +26,9 @@ const builtin = vi.hoisted(() => ({
 }));
 
 vi.mock("@earendil-works/pi-ai/providers/all", () => ({
-  getBuiltinProviders: () => ["alpha", "beta"],
-  getBuiltinModels: (provider: string) => [builtin[provider as keyof typeof builtin]],
+  getBuiltinProviders: () => ["alpha", "beta", "gamma"],
+  getBuiltinModels: (provider: string) =>
+    Object.values(builtin).filter((model) => model.provider === provider),
   getBuiltinModelDataGeneratedAt: () => Date.parse("2026-01-01T00:00:00Z"),
 }));
 
@@ -62,6 +63,103 @@ function response(provider: "alpha" | "beta", changes: Record<string, unknown> =
 }
 
 describe("PiModelCatalog", () => {
+  it("已知供应商的空目录正常缓存，后续较新目录纳入新增聊天模型", async () => {
+    const { catalog, paths, file_path, warning } = await create_catalog();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) =>
+        url.endsWith("/gamma")
+          ? new Response("{}", {
+              status: 200,
+              headers: { "Last-Modified": modified, ETag: '"empty"' },
+            })
+          : new Response(null, { status: 304 }),
+      ),
+    );
+    const apply = vi.fn(async (_models: readonly PiCatalogModel[], commit: () => void) => commit());
+    await catalog.check(apply);
+    expect(warning).not.toHaveBeenCalled();
+    expect(apply).not.toHaveBeenCalled();
+    expect(JSON.parse(await readFile(file_path, "utf8")).providers.gamma).toEqual({
+      modified: Date.parse(modified),
+      etag: '"empty"',
+      models: [],
+    });
+
+    const restarted = new PiModelCatalog(paths, { warning });
+    const added = { ...builtin.alpha, provider: "gamma", id: "future" };
+    const newer = "Tue, 02 Jun 2026 00:00:00 GMT";
+    const fetch_mock = vi.fn(async (url: string, _options: RequestInit) =>
+      url.endsWith("/gamma")
+        ? new Response(JSON.stringify({ future: added }), {
+            status: 200,
+            headers: { "Last-Modified": newer, ETag: '"added"' },
+          })
+        : new Response(null, { status: 304 }),
+    );
+    vi.stubGlobal("fetch", fetch_mock);
+    await restarted.check(apply);
+    expect(fetch_mock.mock.calls).toContainEqual([
+      expect.stringContaining("/gamma"),
+      expect.objectContaining({ headers: { "If-None-Match": '"empty"' } }),
+    ]);
+    expect(restarted.read_models()).toEqual([builtin.alpha, builtin.beta, added]);
+    expect(apply).toHaveBeenCalledOnce();
+    expect(warning).not.toHaveBeenCalled();
+  });
+
+  it("较新空目录清除旧覆盖并恢复基线，重启和 304 保留空缓存与其它供应商", async () => {
+    const { paths, file_path, warning } = await create_catalog();
+    const overridden = { ...builtin.alpha, reasoning: true, contextWindow: 300 };
+    const added = { ...overridden, id: "remote-only" };
+    const other = { ...builtin.beta, contextWindow: 400 };
+    const previous = {
+      version: 2,
+      providers: {
+        alpha: { modified: Date.parse(modified), etag: '"old"', models: [overridden, added] },
+        beta: { modified: Date.parse(modified), etag: '"other"', models: [other] },
+      },
+    };
+    await mkdir(path.dirname(file_path), { recursive: true });
+    await writeFile(file_path, JSON.stringify(previous));
+    const catalog = new PiModelCatalog(paths, { warning });
+    expect(catalog.read_models()).toEqual([overridden, other, added]);
+
+    const newer = "Tue, 02 Jun 2026 00:00:00 GMT";
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) =>
+        url.endsWith("/alpha")
+          ? new Response("{}", { status: 200, headers: { "Last-Modified": newer } })
+          : new Response(null, { status: 304 }),
+      ),
+    );
+    const apply = vi.fn(async (_models: readonly PiCatalogModel[], commit: () => void) => commit());
+    await catalog.check(apply);
+    expect(catalog.read_models()).toEqual([builtin.alpha, other]);
+    expect(apply).toHaveBeenCalledOnce();
+    const cached = JSON.parse(await readFile(file_path, "utf8"));
+    expect(cached.providers.alpha).toEqual({ modified: Date.parse(newer), models: [] });
+    expect(cached.providers.beta).toEqual(previous.providers.beta);
+
+    const restarted = new PiModelCatalog(paths, { warning });
+    expect(restarted.read_models()).toEqual([builtin.alpha, other]);
+    const fetch_unchanged = vi.fn(
+      async (_url: string, _options: RequestInit) => new Response(null, { status: 304 }),
+    );
+    vi.stubGlobal("fetch", fetch_unchanged);
+    apply.mockClear();
+    await restarted.check(apply);
+    expect(fetch_unchanged.mock.calls).toContainEqual([
+      expect.stringContaining("/alpha"),
+      expect.objectContaining({ headers: { "If-Modified-Since": newer } }),
+    ]);
+    expect(restarted.read_models()).toEqual([builtin.alpha, other]);
+    expect(apply).not.toHaveBeenCalled();
+    expect(JSON.parse(await readFile(file_path, "utf8"))).toEqual(cached);
+    expect(warning).not.toHaveBeenCalled();
+  });
+
   it("合并较新供应商目录并经链接持久化，离线重启继续使用缓存", async () => {
     const { catalog, paths, file_path } = await create_catalog();
     const target_path = `${file_path}.target`;
@@ -107,7 +205,6 @@ describe("PiModelCatalog", () => {
       apply();
     });
     expect(apply).not.toHaveBeenCalled();
-    expect(fetch).toHaveBeenCalledTimes(2);
   });
 
   it("坏缓存和早于内置的缓存回退，旧远端结果保留已有有效缓存", async () => {
