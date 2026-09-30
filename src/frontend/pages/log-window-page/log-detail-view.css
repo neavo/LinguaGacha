@@ -22,6 +22,12 @@
   line-height: 1.4;
 }
 
+.log-detail-view--diagnostics {
+  /* 诊断区限高并独立滚动，为 JSON 正文保留阅读空间。 */
+  max-height: 40%;
+  flex: 0 1 auto;
+}
+
 .log-detail-view__summary {
   display: grid;
   gap: 4px;
@@ -49,7 +55,7 @@
   border-color: color-mix(in srgb, var(--ui-failure) 34%, var(--border) 66%);
 }
 
-.log-detail-view__error,
+.log-detail-view__error:not(:first-child),
 .log-detail-view__result,
 .log-detail-view__process {
   margin-top: 12px;
@@ -73,8 +79,7 @@
   overflow-wrap: anywhere;
 }
 
-.log-detail-view__items,
-.log-detail-view__sources {
+.log-detail-view__items {
   margin: 0;
   padding: 0;
   list-style: none;
@@ -107,8 +112,7 @@
   font-size: var(--ui-font-size-12);
 }
 
-.log-detail-view__translation-pair,
-.log-detail-view__term {
+.log-detail-view__translation-pair {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
 }
@@ -148,14 +152,6 @@
   text-overflow: ellipsis;
 }
 
-.log-detail-view__empty-result {
-  padding: 12px;
-  border: 1px solid var(--border);
-  border-radius: var(--ui-radius-card);
-  color: var(--muted-foreground);
-  background: color-mix(in srgb, var(--muted) 24%, var(--ui-card-default-surface) 76%);
-}
-
 .log-detail-view__process {
   display: grid;
   gap: 12px;
@@ -172,16 +168,6 @@
   margin-bottom: 6px;
 }
 
-.log-detail-view__sources {
-  display: grid;
-  gap: 6px;
-}
-
-.log-detail-view__sources li {
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-}
-
 .log-window-page__content--detail-expanded .log-detail-view__translation-pair {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
@@ -189,17 +175,4 @@
 .log-window-page__content--detail-expanded .log-detail-view__translation-pair > :nth-child(2) {
   border-top: 0;
   border-left: 1px solid var(--border);
-}
-
-.log-window-page__content--detail-expanded .log-detail-view__term {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-}
-
-.log-window-page__content--detail-expanded .log-detail-view__term > :not(:first-child) {
-  border-top: 0;
-  border-left: 1px solid var(--border);
-}
-
-.log-window-page__content--detail-expanded .log-detail-view__term-info {
-  grid-column: auto;
 }

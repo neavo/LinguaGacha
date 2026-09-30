@@ -4,7 +4,11 @@ import { useI18n } from "@frontend/app/locale/locale-context";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@frontend/shadcn/tooltip";
 import { Badge } from "@frontend/shadcn/badge";
 import { AppEditor } from "@frontend/widgets/app-editor/app-editor";
-import { format_log_readable_text, format_log_error_text } from "@shared/log";
+import {
+  format_log_content_text,
+  format_log_readable_text,
+  format_log_error_text,
+} from "@shared/log";
 import "@frontend/pages/log-window-page/log-detail-view.css";
 
 /** 详情视图只接收已由 desktop-api 收窄的完整日志。 */
@@ -12,24 +16,43 @@ type LogDetailViewProps = {
   detail: LogDetail;
 };
 
-/** 按 LogContent 判别字段渲染普通文本、翻译对照或分析术语详情。 */
+/** 按 LogContent 判别字段渲染普通文本、Agent JSON 或翻译对照。 */
 export function LogDetailView(props: LogDetailViewProps): JSX.Element {
   const { t } = useI18n();
   const { content } = props.detail;
 
+  // 普通文本通过 format_log_readable_text 展示诊断，结构化正文单独展示诊断。
+  const error_text =
+    typeof content === "string" ? "" : format_log_error_text(props.detail.error, false);
+  // 两种结构化正文共用诊断区，堆栈独立于 JSON 语法解析。
+  const error_view =
+    error_text === "" ? null : (
+      <section className="log-detail-view__error">
+        <h3>{t("log_window_page.detail.content.error")}</h3>
+        <pre>{error_text}</pre>
+      </section>
+    );
+
   if (typeof content === "string" || content.kind === "agent") {
     return (
-      <AppEditor
-        variant="viewer"
-        class_name="log-window-page__detail-editor"
-        value={format_log_readable_text(props.detail)}
-        aria_label={t("log_window_page.detail.title")}
-      />
+      <>
+        <AppEditor
+          variant="viewer"
+          syntax={typeof content === "string" ? "plain" : "json"}
+          class_name="log-window-page__detail-editor"
+          value={
+            typeof content === "string"
+              ? format_log_readable_text(props.detail)
+              : format_log_content_text(content)
+          }
+          aria_label={t("log_window_page.detail.title")}
+        />
+        {error_view === null ? null : (
+          <div className="log-detail-view log-detail-view--diagnostics">{error_view}</div>
+        )}
+      </>
     );
   }
-
-  // 结构化结果已有独立内容布局，异常只追加诊断字段，避免再次生成正文投影。
-  const error_text = format_log_error_text(props.detail.error, false);
 
   return (
     <div className="log-detail-view">
@@ -39,12 +62,7 @@ export function LogDetailView(props: LogDetailViewProps): JSX.Element {
         ))}
       </div>
 
-      {error_text === "" ? null : (
-        <section className="log-detail-view__error">
-          <h3>{t("log_window_page.detail.content.error")}</h3>
-          <pre>{error_text}</pre>
-        </section>
-      )}
+      {error_view}
 
       <section className="log-detail-view__result">
         <ol className="log-detail-view__items">

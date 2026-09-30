@@ -99,9 +99,6 @@
   text-overflow: ellipsis;
   white-space: nowrap;
   font-size: var(--ui-font-size-12);
-}
-
-.log-window-page__table-muted {
   color: var(--muted-foreground);
   font-variant-numeric: tabular-nums;
   text-align: center;
@@ -194,22 +191,11 @@
   border: 0;
   border-radius: 0;
   box-shadow: none;
-}
-
-.log-window-page__detail-editor,
-.log-window-page__detail-editor.app-editor--readonly,
-.log-window-page__detail-editor.app-editor--readonly:has(.cm-editor.cm-focused),
-.log-window-page__detail-editor.app-editor--readonly .cm-editor,
-.log-window-page__detail-editor.app-editor--readonly .cm-gutters {
   background: var(--ui-card-default-surface);
 }
 
 .log-window-page__detail-editor .cm-editor {
   font-size: var(--ui-font-size-12);
-}
-
-.log-window-page__detail-editor .cm-content {
-  letter-spacing: 0;
 }
 
 .log-window-page__status {
