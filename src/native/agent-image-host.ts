@@ -1,4 +1,5 @@
 import { BrowserWindow } from "electron";
+import { run_window_task } from "./window-task";
 import type { AgentImageHost, AgentImagePolicy } from "../shared/agent-image";
 
 const IMAGE_HOST_TIMEOUT_MS = 30_000;
@@ -10,22 +11,21 @@ export const prepare_agent_image: AgentImageHost = async (operation, signal) => 
     show: false,
     webPreferences: { sandbox: true, contextIsolation: true, nodeIntegration: false },
   });
-  const close = () => {
-    if (!window.isDestroyed()) window.destroy();
-  };
-  const timeout = setTimeout(close, IMAGE_HOST_TIMEOUT_MS);
-  signal.addEventListener("abort", close, { once: true });
-  try {
-    await window.loadURL(
-      'data:text/html,<meta http-equiv="Content-Security-Policy" content="default-src \'none\'; img-src blob: data:">',
+  return await run_window_task(window, signal, IMAGE_HOST_TIMEOUT_MS, async (step) => {
+    await step("load", () =>
+      window.loadURL(
+        'data:text/html,<meta http-equiv="Content-Security-Policy" content="default-src \'none\'; img-src blob: data:">',
+      ),
     );
     const request = {
       data: Buffer.from(operation.bytes).toString("base64"),
       mimeType: operation.mimeType,
       policy: operation.policy,
     };
-    const result = (await window.webContents.executeJavaScript(
-      `(${encode_image.toString()})(${JSON.stringify(request)})`,
+    const result = (await step("encode", () =>
+      window.webContents.executeJavaScript(
+        `(${encode_image.toString()})(${JSON.stringify(request)})`,
+      ),
     )) as {
       data: string;
       width: number;
@@ -33,7 +33,6 @@ export const prepare_agent_image: AgentImageHost = async (operation, signal) => 
       originalWidth: number;
       originalHeight: number;
     };
-    signal.throwIfAborted();
     return {
       bytes: new Uint8Array(Buffer.from(result.data, "base64")),
       width: result.width,
@@ -41,11 +40,7 @@ export const prepare_agent_image: AgentImageHost = async (operation, signal) => 
       originalWidth: result.originalWidth,
       originalHeight: result.originalHeight,
     };
-  } finally {
-    clearTimeout(timeout);
-    signal.removeEventListener("abort", close);
-    close();
-  }
+  });
 };
 
 /** 此函数独立序列化到隔离 renderer，所有策略来自后端请求，不能捕获模块变量。 */

@@ -30,7 +30,7 @@ export class ProofreadingPagePreview {
 
   /** 先撤销排队与活动计算，再释放当前预览引用。 */
   private clear(): void {
-    this.current?.controller.abort();
+    this.current?.controller.abort(new AppError("runtime.cancelled"));
     this.current = null;
   }
 

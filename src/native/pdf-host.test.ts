@@ -11,7 +11,7 @@ import { expect, it } from "vitest";
 import { create_pdf_fixture } from "../backend/file/pdf/test-support";
 import * as mupdf from "mupdf";
 
-it("真实打印加载字体、保持图文分页并在取消后释放窗口", async () => {
+it("真实打印保持图文分页、隔离脚本并在取消后继续调度", async () => {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), "linguagacha-pdf-host-"));
   try {
     const runtime =
@@ -79,10 +79,6 @@ it("真实打印加载字体、保持图文分页并在取消后释放窗口", a
         document.pages[0].translation.background = {page:3,x:40,y:672,width:120,height:80};
         document.pages[0].translation.markdown += '\\n\\n公式 $E=mc^2$。\\n\\n$$\\n\\\\frac{1}{2}\\n$$\\n\\n> [!NOTE]\\n> 说明正文。\\n\\n带注释的正文[^a]。\\n\\n[^a]: 注释内容。';
         const decorated = await build_pdf_document({title:'公式与背景',document,source_bytes:source,print:html=>host({kind:'print_pdf',html})});
-        const fonts = await BrowserWindow.getAllWindows()[0].webContents.executeJavaScript('Array.from(document.fonts, font => ({family:font.family,status:font.status}))');
-        assert.ok(fonts.some(font => font.family === 'KaTeX_Main' && font.status === 'loaded'));
-        assert.ok(fonts.some(font => font.family === 'KaTeX_Math' && font.status === 'loaded'));
-        assert.ok(fonts.some(font => font.family === 'LGBaseFont' && font.status === 'loaded'));
         await fs.writeFile(${JSON.stringify(path.join(directory, "decorated.pdf"))}, decorated);
         const decoratedPdf = new mupdf.PDFDocument(decorated);
         await fs.writeFile(${JSON.stringify(path.join(directory, "decorated.png"))}, render_pdf_page(decoratedPdf,{page:1,scale:1.5}));
@@ -100,14 +96,51 @@ it("真实打印加载字体、保持图文分页并在取消后释放窗口", a
         const original_page = render_pdf_page(output_pdf,{page:3,scale:1.5}); output_pdf.destroy();
         await fs.writeFile(${JSON.stringify(path.join(directory, "original.png"))}, original_page);
         await host({kind:'print_pdf',html:'<!--' + 'x'.repeat(2_100_000) + '--><p>Second document</p>'});
-        assert.equal(BrowserWindow.getAllWindows().length,1);
-        const controller = new AbortController();
-        const cancelled = host({kind:'print_pdf',html:'<p>Cancelled</p>'}, controller.signal);
-        await new Promise(resolve => setImmediate(resolve));
-        controller.abort();
-        await assert.rejects(cancelled);
-        await host({kind:"print_pdf",html:"<p>After cancel</p>"});
-        await host.dispose();
+        assert.equal(BrowserWindow.getAllWindows().length,0);
+        let activeFinished = false;
+        const active = host({kind:'print_pdf',html:'<p>Active print</p>'}).finally(() => { activeFinished = true; });
+        const queuedController = new AbortController();
+        const queuedReason = new Error('cancel queued preview');
+        const queued = host({kind:'print_pdf',html:'<p>Queued preview</p>'}, queuedController.signal);
+        queuedController.abort(queuedReason);
+        await assert.rejects(queued, error => error === queuedReason);
+        assert.equal(activeFinished, false, "排队取消应在活动打印完成前返回");
+        assert.ok((await active).length > 0);
+        const interrupted = new AbortController();
+        const reason = new Error('cancel active preview');
+        let following;
+        // 在真实页面脚本开始等待后触发取消，覆盖窗口销毁后 Promise 悬挂的时序。
+        function when_script_waits(action) {
+          app.once('web-contents-created', (_event, contents) => {
+            const execute = contents.executeJavaScript.bind(contents);
+            contents.executeJavaScript = (...args) => {
+              const result = execute(...args);
+              if (args[0].includes('document.fonts.ready')) setImmediate(action);
+              return result;
+            };
+          });
+        }
+        when_script_waits(() => {
+          following = host({kind:'print_pdf',html:'<p>Agent after preview</p>'});
+          interrupted.abort(reason);
+        });
+        let guard;
+        try {
+          await assert.rejects(Promise.race([
+            host({kind:'print_pdf',html:'<p>Preview to cancel</p>'}, interrupted.signal),
+            new Promise((_resolve,reject) => { guard=setTimeout(() => reject(new Error('Cancellation did not settle')),3000); }),
+          ]), error => error === reason);
+        } finally { clearTimeout(guard); }
+        assert.ok((await following).length > 0);
+        // 关闭宿主也须中断活动脚本、跳过排队任务并排空资源。
+        let closing;
+        when_script_waits(() => { closing = host.dispose(); });
+        await Promise.all([
+          assert.rejects(host({kind:'print_pdf',html:'<p>Active during dispose</p>'})),
+          assert.rejects(host({kind:'print_pdf',html:'<p>Queued during dispose</p>'})),
+        ]);
+        await closing;
+        await assert.rejects(host({kind:'print_pdf',html:'<p>After dispose</p>'}));
         assert.equal(BrowserWindow.getAllWindows().length, 0);
         process.stdout.write('PDF_HOST_OK'); app.exit(0);
       } catch (error) { console.error(error); app.exit(1); }

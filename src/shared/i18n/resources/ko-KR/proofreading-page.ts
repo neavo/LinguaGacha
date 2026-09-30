@@ -3,10 +3,9 @@ import type { LocaleMessageSchema } from "../../types";
 export const ko_kr_proofreading_page = {
   pages: {
     view: "열어서 보기",
-    title: "페이지 미리보기",
+    title: "미리보기",
     source_page: "{PAGE} 페이지",
     select_files: "파일 선택",
-    text_only: "이 작업에는 텍스트 항목을 선택하세요",
     failed: "미리보기 실패",
     previous: "이전 페이지",
     next: "다음 페이지",

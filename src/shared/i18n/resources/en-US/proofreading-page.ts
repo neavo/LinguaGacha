@@ -4,10 +4,9 @@ import type { LocaleMessageSchema } from "../../types";
 export const en_us_proofreading_page = {
   pages: {
     view: "Open preview",
-    title: "Page preview",
+    title: "Preview",
     source_page: "Page {PAGE}",
     select_files: "Select files",
-    text_only: "Select text items for this operation",
     failed: "Preview failed",
     previous: "Previous page",
     next: "Next page",

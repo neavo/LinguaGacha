@@ -50,7 +50,7 @@ vi.mock("../worker/worker-execution", () => ({
 vi.mock("../log/log-text", () => ({ t_main_log: (key: string) => `translated:${key}` }));
 
 describe("run_backend_runtime", () => {
-  it("图片宿主取消等待清理回包，迟到成功也不能恢复已取消调用", async () => {
+  it.each([true, false])("图片宿主取消等待清理回包，回包成功=%s 时保留取消原因", async (ok) => {
     const port = create_port();
     await run_backend_runtime({
       appRoot: "E:/app",
@@ -78,16 +78,18 @@ describe("run_backend_runtime", () => {
     port.emit({
       type: "host_response",
       requestId: request.requestId,
-      result: {
-        ok: true,
-        data: {
-          bytes: new Uint8Array([1]),
-          width: 1,
-          height: 1,
-          originalWidth: 1,
-          originalHeight: 1,
-        },
-      },
+      result: ok
+        ? {
+            ok: true,
+            data: {
+              bytes: new Uint8Array([1]),
+              width: 1,
+              height: 1,
+              originalWidth: 1,
+              originalHeight: 1,
+            },
+          }
+        : { ok: false, error: { name: "Error", message: "Window closed" } },
     });
     await rejected;
   });

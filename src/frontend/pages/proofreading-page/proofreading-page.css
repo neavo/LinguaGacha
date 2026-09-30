@@ -46,7 +46,8 @@
 }
 
 .proofreading-page__table-text {
-  display: inline-block;
+  /* 独立页面条目用块盒居中，避免行内基线在文字下方留下额外空隙。 */
+  display: block;
   min-width: 0;
   flex: 1 1 auto;
   overflow: hidden;
@@ -478,7 +479,7 @@
   border-top: 1px solid var(--border);
 }
 
-/* 最后一行只吸收剩余高度；内容溢出时各行不收缩，避免横向分隔线重叠。 */
+/* 最后一行吸收剩余高度。内容溢出时保留各行高度，避免横向分隔线重叠。 */
 .proofreading-page__context-item:last-child {
   flex-grow: 1;
 }

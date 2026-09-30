@@ -40,7 +40,7 @@ export async function run_backend_runtime(args: {
   port: BackendRuntimePort;
 }): Promise<void> {
   const pending_host_requests = new Map<string, PendingHostRequest>(); // requestId 隔离并发宿主回调
-  // 原生宿主操作不支持中止；取消只结束 worker 的等待，迟到回包由 requestId 丢弃。
+  // 窗口宿主取消须等资源释放回包。其它原生操作只结束 worker 的等待。
   const call_host = async (
     operation: BackendRuntimeHostOperation,
     signal?: AbortSignal,
@@ -70,6 +70,7 @@ export async function run_backend_runtime(args: {
     args.port.postMessage({ type: "host_request", requestId: request_id, operation });
     return await result;
   };
+  /** 运行时关闭或启动失败时结算等待，并释放信号监听。 */
   const reject_pending_host_requests = (reason: unknown): void => {
     for (const pending of pending_host_requests.values()) {
       if (pending.signal !== undefined && pending.abortListener !== undefined) {
@@ -124,17 +125,20 @@ export async function run_backend_runtime(args: {
       if (pending.signal !== undefined && pending.abortListener !== undefined) {
         pending.signal.removeEventListener("abort", pending.abortListener);
       }
-      if (message.result.ok) pending.resolve(message.result.data);
+      // 宿主回包确认回收完成，取消原因仍归持有业务信号的 worker。
+      if (pending.signal?.aborted) pending.reject(pending.signal.reason);
+      else if (message.result.ok) pending.resolve(message.result.data);
       else pending.reject(to_error(message.result.error));
       return;
     }
     void handle_control_message(message);
   });
 
+  /** 控制请求按原始身份回传结构化结果。 */
   const respond = (request_id: string, result: BackendRuntimeResult): void => {
     args.port.postMessage({ type: "response", requestId: request_id, result });
   };
-  // 控制请求各自结算为 response；业务异常不得逃逸成 worker 级未处理拒绝。
+  // 控制请求各自结算为 response，业务异常在当前请求内回传。
   const handle_control_message = async (
     message: Exclude<BackendRuntimeMainMessage, { type: "host_response" }>,
   ): Promise<void> => {

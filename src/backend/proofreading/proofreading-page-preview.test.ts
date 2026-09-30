@@ -89,7 +89,7 @@ it("工程切换取消正在打印的旧预览，失败打印可以重试", asyn
   };
   try {
     const result = service.query(request);
-    const rejected = expect(result).rejects.toThrow();
+    const rejected = expect(result).rejects.toMatchObject({ code: "runtime.cancelled" });
     await started;
     await session.clear();
     await rejected;
