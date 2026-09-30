@@ -28,15 +28,15 @@ export function read_builtin_pi_models(): readonly PiCatalogModel[] {
 
 /** 应用实例持有的一份 Pi 能力事实；网络检查只产生候选，应用由 ModelService 编排。 */
 export class PiModelCatalog {
-  private readonly providers: readonly string[] = getBuiltinProviders(); // 更新范围沿用当前依赖包的供应商集合。
+  private readonly providers: readonly string[] = getBuiltinProviders(); // 无聊天模型的已知供应商也参与更新，以接纳后续新增模型。
   private readonly builtin = read_builtin_pi_models(); // 离线基线随应用版本更新。
   private readonly generated_at = getBuiltinModelDataGeneratedAt() ?? 0; // 缓存和远端数据取得覆盖优先级的时间下限。
   private readonly file_path: string;
   private cache: CatalogCache = { version: CATALOG_VERSION, providers: {} }; // 保存远端数据及条件请求凭据。
   private models: readonly PiCatalogModel[]; // 当前请求可见的完整能力快照。
-  private revision = 0;
-  private readonly instance_id = crypto.randomUUID();
-  private readonly started_at = Math.round((performance.timeOrigin + performance.now()) * 1000);
+  private revision = 0; // 当前实例成功应用能力更新的次数。
+  private readonly instance_id = crypto.randomUUID(); // 区分后端重启前后的目录通知。
+  private readonly started_at = Math.round((performance.timeOrigin + performance.now()) * 1000); // 微秒启动时间，用于判断通知所属实例的新旧。
   private controller: AbortController | null = null; // 退出时同时取消下载和空闲等待。
 
   /** 启动时读取有效缓存，单个供应商损坏时保留其它供应商的能力。 */
@@ -95,6 +95,7 @@ export class PiModelCatalog {
             if (provider === undefined) break;
             try {
               const entry = await this.fetch_provider(provider, fetch_signal);
+              // 整份替换供应商覆盖，空目录清除旧覆盖并恢复内置基线。
               if (entry !== null) next.providers[provider] = entry;
             } catch (error) {
               if (!fetch_signal.aborted)
@@ -172,7 +173,6 @@ export class PiModelCatalog {
     const models = Object.entries(payload).map(([id, value]) =>
       read_catalog_model(provider, id, value),
     );
-    if (models.length === 0) throw new Error(`Pi catalog ${provider}: empty provider body`);
     const etag = response.headers.get("ETag");
     return { modified, ...(etag === null ? {} : { etag }), models };
   }
@@ -198,8 +198,7 @@ export class PiModelCatalog {
       if (
         typeof modified !== "number" ||
         !Number.isSafeInteger(modified) ||
-        !Array.isArray(record.models) ||
-        record.models.length === 0
+        !Array.isArray(record.models)
       ) {
         this.log.warning("Pi 模型能力缓存供应商条目无效。", { context: { provider } });
         continue;
