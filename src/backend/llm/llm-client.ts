@@ -13,8 +13,12 @@ import type { PiModelCatalogReader } from "./pi-model-catalog";
 import { DEFAULT_MODEL_AGENT_CONFIG } from "../../domain/model-agent";
 import type { LLMRequestBody, LLMClientPort, LLMRequestResult } from "./llm-types";
 import { with_http_response_info } from "../network/http-response-info";
+import type { ChatGPTAuthService } from "../auth/chatgpt-auth-service";
+import { AppError } from "../../shared/error";
+import { observe_chatgpt_request } from "./chatgpt-request";
 
 interface LLMClientOptions {
+  auth?: Pick<ChatGPTAuthService, "bind" | "resolve">;
   userAgent: string; // 由应用元信息层注入，LLMClient 不读取 version.txt
   catalog: PiModelCatalogReader;
 }
@@ -23,11 +27,13 @@ interface LLMClientOptions {
 export class LLMClient implements LLMClientPort {
   private readonly user_agent: string; // 当前 Backend 实例的固定请求身份
   private readonly catalog: PiModelCatalogReader; // 请求开始时解析能力，运行占用期间目录保持稳定。
+  private readonly auth: LLMClientOptions["auth"]; // 每次派发时解析本轮绑定的账户凭据。
 
   /** User-Agent 由组合根注入，避免请求层读取应用资源。 */
   public constructor(options: LLMClientOptions) {
     this.user_agent = options.userAgent;
     this.catalog = options.catalog;
+    this.auth = options.auth;
   }
 
   /** 在单次请求上下文内附加 HTTP 事实，避免依赖 SDK 的错误文本。 */
@@ -51,12 +57,6 @@ export class LLMClient implements LLMClientPort {
       },
       this.catalog.read_models(),
     );
-    const request = resolve_one_shot_pi_request(
-      snapshot,
-      body.messages,
-      controller.signal,
-      capability,
-    );
     // 外部信号记录用户取消，独立超时标记保留同时发生时的结果优先级。
     let timeout = false;
     const timer = setTimeout(() => {
@@ -71,18 +71,62 @@ export class LLMClient implements LLMClientPort {
       if (signal.aborted) {
         return empty_llm_result({ cancelled: true });
       }
+      const request = resolve_one_shot_pi_request(
+        snapshot,
+        body.messages,
+        controller.signal,
+        capability,
+      );
+      let payload_error: AppError | null = null;
+      const on_payload = request.options.onPayload;
+      request.options.onPayload = async (payload, model) => {
+        try {
+          return await on_payload?.(payload, model);
+        } catch (error) {
+          if (error instanceof AppError) payload_error = error;
+          throw error;
+        }
+      };
+      const observation = snapshot.auth_type === "oauth" ? observe_chatgpt_request() : null;
+      if (snapshot.auth_type === "oauth") {
+        if (this.auth === undefined) throw new AppError("model.auth_required");
+        const auth = await this.auth.resolve(
+          body.auth_session ?? this.auth.bind(),
+          controller.signal,
+        );
+        if (auth.apiKey === undefined) throw new AppError("model.auth_required");
+        request.options.apiKey = auth.apiKey;
+        Object.assign(request.options, observation!.options);
+      }
       const message = await request
         .stream(request.model, request.context, request.options)
         .result();
       if (timeout) return empty_llm_result({ timeout: true });
       if (signal.aborted) return empty_llm_result({ cancelled: true });
+      if (payload_error !== null)
+        return empty_llm_result({
+          request_error: build_request_error(payload_error, snapshot, body),
+          retryable: false,
+        });
+      const failure = observation?.failure();
+      if (failure)
+        return empty_llm_result({
+          request_error: build_request_error(failure.error, snapshot, body),
+          retryable: failure.retryable,
+        });
 
       const response_result = contentText(message.content, "").trim();
       return normalize_pi_result(snapshot, message, response_result);
     } catch (error) {
       if (timeout) return empty_llm_result({ timeout: true });
       if (signal.aborted) return empty_llm_result({ cancelled: true });
-      return empty_llm_result({ request_error: build_request_error(error, snapshot, body) });
+      return empty_llm_result({
+        request_error: build_request_error(error, snapshot, body),
+        ...(error instanceof AppError &&
+        (error.code !== "model.provider_failed" || error.diagnostic_context["retryable"] === false)
+          ? { retryable: false }
+          : {}),
+      });
     } finally {
       clearTimeout(timer);
       signal.removeEventListener("abort", abort_listener);
@@ -177,6 +221,7 @@ function build_request_error(
   body: LLMRequestBody,
 ): LogError {
   return to_log_error(error, {
+    ...(error instanceof AppError ? error.diagnostic_context : {}),
     api_format: snapshot.api_format,
     ...(snapshot.model_id === "" ? {} : { model_id: snapshot.model_id }),
     run_id: body.run_id,

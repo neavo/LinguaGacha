@@ -15,6 +15,27 @@ const TEST_USER_AGENT = "LinguaGacha/v1.2.3 (https://github.com/neavo/LinguaGach
 const TEST_REQUEST_IDENTITY = { user_agent: TEST_USER_AGENT, session_id: "test-session" };
 
 describe("LLM 请求策略", () => {
+  it("OAuth 地址及大小写混合认证头不能由配置改写", () => {
+    const identity = { user_agent: "test", session_id: "run" };
+    const model = {
+      auth_type: "oauth",
+      api_format: "OpenAIResponses",
+      api_url: "https://api.openai.com/v1",
+    };
+    expect(() =>
+      read_model_request_snapshot({ ...model, api_url: "https://other.test/v1" }, identity),
+    ).toThrow();
+    expect(() =>
+      read_model_request_snapshot(
+        {
+          ...model,
+          request: { extra_headers_custom_enable: true, extra_headers: { AUTHORIZATION: "other" } },
+        },
+        identity,
+      ),
+    ).toThrow();
+  });
+
   it("把模型配置收窄为共享请求快照", () => {
     const snapshot = read_model_request_snapshot(
       create_model({

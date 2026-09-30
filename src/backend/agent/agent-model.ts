@@ -1,8 +1,11 @@
 import {
+  createProvider,
+  type ProviderStreams,
   type Model as PiModel,
   type ModelThinkingLevel as PiModelThinkingLevel,
 } from "@earendil-works/pi-ai";
 import type { ModelRuntime } from "@earendil-works/pi-coding-agent";
+import { lazyStream } from "@earendil-works/pi-ai/api/lazy";
 
 import type { JsonRecord } from "../../domain/json";
 import { Model, normalize_model_selection } from "../../domain/model";
@@ -13,6 +16,8 @@ import { apply_request_overrides } from "../llm/llm-payload";
 import { resolve_model_capability, type PiCatalogModel } from "../llm/model-capability";
 import type { PiModelCatalogReader } from "../llm/pi-model-catalog";
 import { resolve_pi_model, type PiApi } from "../llm/llm-pi";
+import type { ChatGPTAuthService } from "../auth/chatgpt-auth-service";
+import { observe_chatgpt_request } from "../llm/chatgpt-request";
 import { read_config_model_records, resolve_model_for_usage } from "../model/model-config-resolver";
 
 /** 每次批量调用解析偏好；固定选择使用保存配置，跟随可按模型能力临时降低思考等级。 */
@@ -44,6 +49,7 @@ export function register_agent_model(
   config: JsonRecord,
   identity: ModelRequestIdentity,
   catalog: PiModelCatalogReader,
+  auth?: Pick<ChatGPTAuthService, "bind" | "resolve">,
 ): {
   model: PiModel<PiApi>;
   thinkingLevel: PiModelThinkingLevel;
@@ -79,7 +85,84 @@ export function register_agent_model(
           apply_request_overrides(snapshot, payload, active_model.compat),
       }),
   } satisfies Parameters<ModelRuntime["registerProvider"]>[1];
-  model_runtime.registerProvider(pi.model.provider, provider_config);
+  if (snapshot.auth_type === "oauth") {
+    if (auth === undefined) throw new AppErrors.AppError("model.auth_required");
+    const session_id = auth.bind();
+    const authenticated_stream =
+      (stream: ProviderStreams["streamSimple"]): ProviderStreams["streamSimple"] =>
+      (active_model, context, options) =>
+        lazyStream(active_model, async () => {
+          // 压缩或 SDK 重试可能传回旧 apiKey，真实派发点重新解析并覆盖它。
+          const credential = await auth
+            .resolve(session_id, options?.signal)
+            .catch((error: unknown) => {
+              // SDK 的重试入口消费 AssistantMessage；只把已分类的临时故障映射为其标准信号。
+              if (
+                error instanceof AppErrors.AppError &&
+                error.diagnostic_context["retryable"] === true
+              )
+                throw new Error(`${error.diagnostic_context["status"] ?? 503}: ${error.message}`, {
+                  cause: error,
+                });
+              throw error;
+            });
+          const observation = observe_chatgpt_request(options?.fetch);
+          const source = stream(active_model, context, {
+            ...options,
+            ...credential,
+            ...observation.options,
+            maxRetries: 0,
+            headers: { ...snapshot.headers },
+            onPayload: (payload, model) => apply_request_overrides(snapshot, payload, model.compat),
+          });
+          return (async function* () {
+            for await (const event of source) {
+              const failure = observation.failure();
+              if (event.type === "error" && failure !== null) {
+                yield {
+                  ...event,
+                  error: {
+                    ...event.error,
+                    errorMessage: [
+                      failure.error.diagnostic_context["status"] ??
+                        (failure.retryable ? 503 : undefined),
+                      failure.error.diagnostic_context["provider_code"],
+                      failure.error.message,
+                    ]
+                      .filter((part) => part !== undefined)
+                      .join(": "),
+                  },
+                };
+              } else yield event;
+            }
+          })();
+        });
+    model_runtime.registerNativeProvider(
+      createProvider({
+        id: pi.model.provider,
+        name: "ChatGPT",
+        baseUrl: pi.model.baseUrl,
+        models: [pi.model],
+        auth: {
+          apiKey: {
+            name: "ChatGPT",
+            check: async () => ({ type: "oauth", source: "ChatGPT" }),
+            // ModelRuntime 每次 prepareRequest 都委托应用认证，SDK 传入的旧 apiKey 不参与解析。
+            resolve: async ({ signal }) => ({
+              auth: await auth.resolve(session_id, signal),
+              source: "ChatGPT",
+            }),
+          },
+        },
+        api: {
+          stream: authenticated_stream(pi.stream),
+          streamSimple: authenticated_stream(pi.streamSimple),
+        },
+      }),
+    );
+  } else {
+    model_runtime.registerProvider(pi.model.provider, provider_config);
+  }
   const model = model_runtime.getModel(pi.model.provider, snapshot.model_id) as
     | PiModel<PiApi>
     | undefined;

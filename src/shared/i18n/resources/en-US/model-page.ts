@@ -2,6 +2,10 @@ import { zh_cn_model_page } from "../zh-CN/model-page";
 import type { LocaleMessageSchema } from "../../types";
 
 export const en_us_model_page = {
+  auth: {
+    login: "Click to sign in",
+    logout: "Sign out",
+  },
   title: "Model Management",
   category: {
     preset: {
@@ -22,6 +26,8 @@ export const en_us_model_page = {
   },
   copy_name: "{NAME}_copy",
   action: {
+    reset: "Reset model",
+    delete: "Delete model",
     copy: "Duplicate",
     basic_settings: "Basic Settings",
     task_settings: "Task Settings",
@@ -38,6 +44,7 @@ export const en_us_model_page = {
     },
   },
   confirm: {
+    logout: { description: "Are you sure you want to sign out …?" },
     delete: {
       description: "Confirm deleting the model …?",
     },

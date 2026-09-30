@@ -247,6 +247,7 @@ export const en_us_app = {
       not_found: {
         message: "The model configuration does not exist",
       },
+      auth_required: { message: "Please sign in to your account first …" },
       provider_failed: {
         message: "The model service request failed. Please check the API settings …",
       },

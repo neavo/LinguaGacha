@@ -259,6 +259,7 @@ export const ja_jp_app = {
       not_found: {
         message: "モデル設定が見つかりません",
       },
+      auth_required: { message: "先にアカウントにログインしてください …" },
       provider_failed: {
         message: "モデルサービスへのリクエストに失敗しました。API 設定を確認してください …",
       },

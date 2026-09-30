@@ -78,6 +78,7 @@ export const APP_ERROR_DEFINITIONS = {
     status: 502,
     severity: "warning",
   },
+  "model.auth_required": { status: 409, severity: "expected" },
   "worker.failed": {
     status: 502,
     severity: "warning",

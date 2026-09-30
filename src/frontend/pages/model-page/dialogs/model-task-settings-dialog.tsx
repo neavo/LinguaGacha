@@ -66,28 +66,30 @@ export function ModelTaskSettingsDialog(props: ModelTaskSettingsDialogProps): JS
             }
           />
 
-          <SettingCardRow
-            title={t("model_page.fields.output_token_limit.title")}
-            description={t("model_page.fields.output_token_limit.description")}
-            action={
-              <Input
-                className="model-page__field"
-                type="number"
-                min={THRESHOLD_INPUT_MIN}
-                max={THRESHOLD_INPUT_MAX}
-                step={1}
-                disabled={props.readonly}
-                value={props.model.threshold.output_token_limit}
-                onChange={(event) => {
-                  void props.onPatch({
-                    threshold: {
-                      output_token_limit: normalize_number_input(event.target.value),
-                    },
-                  });
-                }}
-              />
-            }
-          />
+          {props.model.auth_type !== "oauth" ? (
+            <SettingCardRow
+              title={t("model_page.fields.output_token_limit.title")}
+              description={t("model_page.fields.output_token_limit.description")}
+              action={
+                <Input
+                  className="model-page__field"
+                  type="number"
+                  min={THRESHOLD_INPUT_MIN}
+                  max={THRESHOLD_INPUT_MAX}
+                  step={1}
+                  disabled={props.readonly}
+                  value={props.model.threshold.output_token_limit}
+                  onChange={(event) => {
+                    void props.onPatch({
+                      threshold: {
+                        output_token_limit: normalize_number_input(event.target.value),
+                      },
+                    });
+                  }}
+                />
+              }
+            />
+          ) : null}
 
           <SettingCardRow
             title={t("model_page.fields.concurrency_limit.title")}

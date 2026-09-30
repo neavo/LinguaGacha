@@ -242,6 +242,7 @@ export const zh_cn_app = {
       not_found: {
         message: "模型配置不存在",
       },
+      auth_required: { message: "请先登录账号 …" },
       provider_failed: {
         message: "模型服务请求失败，请检查接口配置 …",
       },

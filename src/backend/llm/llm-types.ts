@@ -13,6 +13,7 @@ export interface LLMMessage {
  * 调用方发送 LLM 请求时使用的唯一请求壳。
  */
 export interface LLMRequestBody {
+  auth_session?: string; // 本轮绑定的 OAuth 会话，不承载 token。
   run_id: string; // OneShot 运行身份，同时用于供应商会话路由、诊断与迟到结果隔离
   work_unit_id: string; // 本轮分块的诊断身份，重试和 Key 轮换继续复用 run_id
   model: JsonValue; // 保留任务启动快照形状，请求边界收窄供应商字段。
@@ -35,6 +36,7 @@ export interface LLMRequestResult {
   http_received_at?: number; // 真实响应接收时间，毫秒。
   retry_after_ms?: number; // 服务端要求的有效等待时长，由请求调度器应用策略。
   request_error?: LogError; // 保留供应商或传输异常错误，缺失表示没有请求级失败
+  retryable?: boolean; // false 表示配置、授权或套餐额度问题，调度器必须结束执行。
   response_error?: LogError; // 已收到响应但终态不适合消费，例如输出截断；由业务决定内容重试。
 }
 

@@ -224,6 +224,7 @@ describe("Pi 载荷的产品规则", () => {
 /** 构造请求的最小输入，用例只覆盖相关字段。 */
 function create_snapshot(overrides: Partial<ModelRequestSnapshot> = {}): ModelRequestSnapshot {
   return {
+    auth_type: "api_key",
     api_format: "OpenAI",
     api_keys: ["key"],
     base_url: "https://example.test",

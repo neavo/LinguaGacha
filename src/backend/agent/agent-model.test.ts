@@ -4,6 +4,7 @@ import {
   type ProviderStreams,
 } from "@earendil-works/pi-ai";
 import { ModelRuntime } from "@earendil-works/pi-coding-agent";
+import { isRetryableAssistantError } from "@earendil-works/pi-ai/compat";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { JsonRecord } from "../../domain/json";
@@ -124,6 +125,148 @@ beforeEach(() => {
 });
 
 describe("Agent 模型注册", () => {
+  it.each([
+    [429, "subscription_sharing_usage_limit_exceeded", false],
+    [503, "subscription_sharing_usage_unavailable", true],
+    [403, "subscription_sharing_user_not_eligible", false],
+  ] as const)("ChatGPT %s/%s 将恢复语义传入 Agent 重试边界", async (status, code, retryable) => {
+    const { openAIResponsesApi } = await vi.importActual<
+      typeof import("@earendil-works/pi-ai/api/openai-responses.lazy")
+    >("@earendil-works/pi-ai/api/openai-responses.lazy");
+    api_mocks.streamSimple.mockImplementationOnce(openAIResponsesApi().streamSimple);
+    const runtime = await create_model_runtime();
+    const resolved = register_agent_model(
+      runtime,
+      build_config("OpenAIResponses", { auth_type: "oauth", api_url: "https://api.openai.com/v1" }),
+      TEST_REQUEST_IDENTITY,
+      catalog,
+      { bind: () => "session", resolve: async () => ({ apiKey: "token" }) },
+    );
+    const message = await runtime
+      .streamSimple(
+        resolved.model,
+        { messages: [{ role: "user", content: "test", timestamp: 0 }] },
+        {
+          fetch: async () =>
+            Response.json({ error: { code, message: "provider message" } }, { status }),
+          maxRetries: 0,
+        },
+      )
+      .result();
+    expect(message.stopReason).toBe("error");
+    expect(message.errorMessage).toContain(code);
+    expect(message.errorMessage).toContain("provider message");
+    expect(isRetryableAssistantError(message)).toBe(retryable);
+  });
+  it("OAuth 每次请求覆盖 SDK 旧凭据，工具声明使用 namespace 且返回后继续保留", async () => {
+    const { openAIResponsesApi } = await vi.importActual<
+      typeof import("@earendil-works/pi-ai/api/openai-responses.lazy")
+    >("@earendil-works/pi-ai/api/openai-responses.lazy");
+    api_mocks.streamSimple
+      .mockImplementationOnce(openAIResponsesApi().streamSimple)
+      .mockImplementationOnce(openAIResponsesApi().streamSimple);
+    const runtime = await create_model_runtime();
+    let token = "current-token";
+    const resolve = vi.fn(async () => ({ apiKey: token }));
+    const resolved = register_agent_model(
+      runtime,
+      build_config("OpenAIResponses", {
+        auth_type: "oauth",
+        api_url: "https://api.openai.com/v1",
+      }),
+      TEST_REQUEST_IDENTITY,
+      catalog,
+      { bind: () => "bound-session", resolve },
+    );
+    const bodies: Record<string, unknown>[] = [];
+    const headers: Headers[] = [];
+    const fetch = vi.fn<typeof globalThis.fetch>(async (input, init) => {
+      const request = new Request(input, init);
+      headers.push(request.headers);
+      bodies.push((await request.json()) as Record<string, unknown>);
+      const call = {
+        type: "function_call",
+        id: "fc_call",
+        call_id: "call",
+        name: "translate",
+        namespace: "linguagacha",
+        arguments: "{}",
+        status: "completed",
+      };
+      const events = [
+        { type: "response.output_item.added", output_index: 0, item: { ...call, arguments: "" } },
+        { type: "response.output_item.done", output_index: 0, item: call },
+        {
+          type: "response.completed",
+          response: {
+            id: "resp_one",
+            status: "completed",
+            output: [call],
+            usage: { input_tokens: 1, output_tokens: 1, total_tokens: 2 },
+          },
+        },
+      ];
+      return new Response(events.map((event) => `data: ${JSON.stringify(event)}\n\n`).join(""), {
+        headers: { "content-type": "text/event-stream" },
+      });
+    });
+    const user = { role: "user" as const, content: "translate", timestamp: 0 };
+    const first = await runtime
+      .streamSimple(
+        resolved.model,
+        {
+          messages: [user],
+          tools: [
+            {
+              name: "translate",
+              description: "Translate",
+              parameters: { type: "object", properties: {} },
+            },
+          ],
+        },
+        { fetch, apiKey: "stale-sdk-token", maxRetries: 0 },
+      )
+      .result();
+    expect(first.stopReason).toBe("toolUse");
+    expect(first.content[0]).toMatchObject({
+      type: "toolCall",
+      namespace: "linguagacha",
+      name: "translate",
+    });
+    expect(bodies[0]?.["tools"]).toMatchObject([{ type: "namespace", name: "linguagacha" }]);
+    token = "refreshed-token";
+    const call_id = first.content[0]?.type === "toolCall" ? first.content[0].id : "";
+    await runtime
+      .streamSimple(
+        resolved.model,
+        {
+          messages: [
+            user,
+            first,
+            {
+              role: "toolResult",
+              toolCallId: call_id,
+              toolName: "translate",
+              content: [{ type: "text", text: "translated" }],
+              isError: false,
+              timestamp: 1,
+            },
+          ],
+        },
+        { fetch, apiKey: "stale-sdk-token", maxRetries: 0 },
+      )
+      .result();
+    expect(headers.map((header) => header.get("authorization"))).toEqual([
+      "Bearer current-token",
+      "Bearer refreshed-token",
+    ]);
+    expect(bodies[1]?.["input"]).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ type: "function_call", namespace: "linguagacha" }),
+      ]),
+    );
+    expect(resolve.mock.calls.length).toBeGreaterThanOrEqual(2);
+  });
   it("真实 ModelRuntime 与 adapter 最终发送产品会话身份", async () => {
     const { openAICompletionsApi } = await vi.importActual<
       typeof import("@earendil-works/pi-ai/api/openai-completions.lazy")

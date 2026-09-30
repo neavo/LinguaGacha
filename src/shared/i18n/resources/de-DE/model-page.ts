@@ -2,6 +2,10 @@ import { zh_cn_model_page } from "../zh-CN/model-page";
 import type { LocaleMessageSchema } from "../../types";
 
 export const de_de_model_page = {
+  auth: {
+    login: "Zum Anmelden klicken",
+    logout: "Abmelden",
+  },
   title: "Modellverwaltung",
   category: {
     preset: {
@@ -22,6 +26,8 @@ export const de_de_model_page = {
   },
   copy_name: "{NAME}_Kopie",
   action: {
+    reset: "Modell zurücksetzen",
+    delete: "Modell löschen",
     copy: "Duplizieren",
     basic_settings: "Grundeinstellungen",
     task_settings: "Aufgabeneinstellungen",
@@ -38,6 +44,7 @@ export const de_de_model_page = {
     },
   },
   confirm: {
+    logout: { description: "Möchten Sie sich wirklich abmelden …?" },
     delete: {
       description: "Modell wirklich löschen …?",
     },

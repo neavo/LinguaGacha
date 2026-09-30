@@ -8,6 +8,33 @@ afterEach(() => {
 });
 
 describe("provider-model-list", () => {
+  it("ChatGPT 目录保留服务端顺序、显示名和可见范围", async () => {
+    const fetch_mock = vi.fn(async () =>
+      Response.json({
+        models: [
+          { slug: "model-z", display_name: "First model", visibility: "list" },
+          { slug: "hidden", display_name: "Hidden", visibility: "hidden" },
+          { slug: "model-a", display_name: "Second model", visibility: "list" },
+        ],
+      }),
+    );
+    vi.stubGlobal("fetch", fetch_mock);
+    const resolve = vi.fn(async () => ({ apiKey: "oauth-token" }));
+    await expect(
+      list_available_models(
+        { auth_type: "oauth", api_format: "OpenAIResponses", api_url: "https://api.openai.com/v1" },
+        {
+          bind: () => "session",
+          resolve,
+        },
+      ),
+    ).resolves.toEqual([
+      { id: "model-z", name: "First model" },
+      { id: "model-a", name: "Second model" },
+    ]);
+    expect(resolve).toHaveBeenCalledWith("session");
+    expect(fetch_mock).toHaveBeenCalledOnce();
+  });
   it.each([
     ["OpenAI", "https://api.example/v1"],
     ["OpenAIResponses", "https://api.example/v1/responses/"],
@@ -29,7 +56,7 @@ describe("provider-model-list", () => {
           extra_headers_custom_enable: true,
         },
       }),
-    ).resolves.toEqual(["model-a", "model-z"]);
+    ).resolves.toEqual(["model-a", "model-z"].map((id) => ({ id, name: id })));
 
     expect(fetch_mock).toHaveBeenCalledWith(
       "https://api.example/v1/models",
@@ -65,7 +92,7 @@ describe("provider-model-list", () => {
           extra_headers_custom_enable: true,
         },
       }),
-    ).resolves.toEqual(["models/gemini-a", "models/gemini-z"]);
+    ).resolves.toEqual(["models/gemini-a", "models/gemini-z"].map((id) => ({ id, name: id })));
 
     const first_url = new URL(String(fetch_mock.mock.calls[0]?.[0]));
     const second_url = new URL(String(fetch_mock.mock.calls[1]?.[0]));
@@ -103,7 +130,7 @@ describe("provider-model-list", () => {
         api_key: "anthropic-key",
         api_url: "",
       }),
-    ).resolves.toEqual(["claude-a", "claude-z"]);
+    ).resolves.toEqual(["claude-a", "claude-z"].map((id) => ({ id, name: id })));
 
     expect(fetch_mock).toHaveBeenCalledWith("https://api.anthropic.com/v1/models", {
       headers: expect.objectContaining({
@@ -127,7 +154,7 @@ describe("provider-model-list", () => {
       }),
     ).rejects.toMatchObject({
       code: "model.provider_failed",
-      public_details: { status: 401 },
+      public_details: { status: 401, message: "unauthorized" },
     });
   });
 });

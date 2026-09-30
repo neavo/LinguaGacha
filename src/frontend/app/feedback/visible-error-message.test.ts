@@ -5,6 +5,15 @@ import { resolve_visible_error_message } from "./visible-error-message";
 import type { LocaleKey } from "@shared/i18n";
 
 describe("resolve_visible_error_message", () => {
+  it("模型接口错误直接展示原文，不套用错误类别文案", () => {
+    const error = new DesktopApiError({
+      code: "model.provider_failed",
+      details: { message: "Your plan usage limit has been reached." },
+    });
+    expect(resolve_visible_error_message(error, (key) => key, "操作失败")).toBe(
+      "Your plan usage limit has been reached.",
+    );
+  });
   it("按 DesktopApiError code 和 details 解析本地化展示文案", () => {
     const error = DesktopApiError.local("network_failed", { path: "/api/batch-translation/start" });
 

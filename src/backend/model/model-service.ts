@@ -5,6 +5,7 @@ import type { LogManager } from "../log/log-manager";
 import { AppPathService } from "../app/app-path-service";
 import { AppSettingService } from "../app/app-setting-service";
 import { list_available_models } from "../llm/provider-model-list";
+import type { ChatGPTAuthService } from "../auth/chatgpt-auth-service";
 import {
   adjust_model_thinking_level,
   resolve_model_capability,
@@ -12,11 +13,12 @@ import {
 } from "../llm/model-capability";
 import type { PiModelCatalogReader } from "../llm/pi-model-catalog";
 import type { LLMClientPort, LLMMessage, LLMRequestResult } from "../llm/llm-types";
-import { collect_api_keys } from "../llm/llm-request";
+import { collect_api_keys, read_model_request_snapshot } from "../llm/llm-request";
 import {
   MODEL_USAGES,
   Model,
   is_model_thinking_level,
+  is_pinned_model,
   normalize_model_selection,
   type CustomModelType,
   type ModelSelection,
@@ -36,7 +38,7 @@ import { resolve_app_locale } from "../../domain/app-language";
 import { format_i18n_message, type LocaleKey } from "../../shared/i18n";
 import { JsonTool } from "../../shared/utils/json-tool";
 import * as AppErrors from "../../shared/error";
-import { NativeFs, default_native_fs } from "../../native/native-fs";
+import { default_native_fs } from "../../native/native-fs";
 import type { RuntimeOperationGate } from "../runtime-operation-gate";
 import type { ModelSelectionSnapshot } from "../../shared/model-selection";
 
@@ -75,7 +77,7 @@ export class ModelService {
   private readonly llm_client: LLMClientPort; // 父线程真实模型请求入口，与任务共用网络边界
   private readonly runtime_gate: RuntimeOperationGate; // 接口测试独占运行时，配置管理不占用
   private readonly log_manager: Pick<LogManager, "info" | "warning"> | undefined; // 只记录模型探测诊断
-  private readonly native_fs: NativeFs; // 统一读取内置模型预设文件
+  private readonly native_fs = default_native_fs; // 统一读取内置模型预设文件
   private readonly catalog: PiModelCatalogReader; // 配置归一化与公开快照共用当前能力事实。
 
   /**
@@ -88,14 +90,13 @@ export class ModelService {
     runtime_gate: RuntimeOperationGate,
     catalog: PiModelCatalogReader,
     log_manager?: Pick<LogManager, "info" | "warning">,
-    native_fs: NativeFs = default_native_fs,
+    private readonly auth?: ChatGPTAuthService,
   ) {
     this.paths = paths;
     this.app_setting_service = app_setting_service;
     this.llm_client = llm_client;
     this.runtime_gate = runtime_gate;
     this.log_manager = log_manager;
-    this.native_fs = native_fs;
     this.catalog = catalog;
   }
 
@@ -363,7 +364,7 @@ export class ModelService {
   public async list_available_models(request: JsonRecord): Promise<JsonRecord> {
     const { config } = this.load_setting_with_models(false);
     const model = this.get_model_from_request(config, request);
-    const models = await list_available_models(model);
+    const models = await list_available_models(model, this.auth);
     return { models: models as unknown as JsonValue };
   }
 
@@ -403,20 +404,23 @@ export class ModelService {
     model: JsonRecord,
     signal: AbortSignal,
   ): Promise<JsonRecord> {
-    const keys = collect_api_keys(String(model["api_key"] ?? ""));
+    const oauth = model["auth_type"] === "oauth";
+    const auth_session = oauth ? this.auth?.bind() : undefined;
+    const keys = oauth ? [""] : collect_api_keys(String(model["api_key"] ?? ""));
     const key_results: Array<JsonRecord> = [];
     const app_language = config["app_language"];
     const messages = this.build_model_test_messages(String(model["api_format"] ?? "OpenAI"));
     for (const api_key of keys) {
       signal.throwIfAborted();
       const model_for_test = { ...model, api_key };
-      const masked_key = this.mask_api_key(api_key);
+      const masked_key = oauth ? "ChatGPT" : this.mask_api_key(api_key);
       this.log_model_test_key_start(app_language, masked_key, messages);
       const started_at = Date.now();
       const result = await this.llm_client.request(
         {
           run_id: crypto.randomUUID(),
           work_unit_id: "model-test",
+          ...(auth_session === undefined ? {} : { auth_session }),
           model: model_for_test as unknown as JsonValue,
           config_snapshot: config as unknown as JsonValue,
           messages,
@@ -804,6 +808,8 @@ export class ModelService {
         result[key] = String(value ?? "");
       }
     }
+    if (result["auth_type"] === "oauth")
+      read_model_request_snapshot(result, { user_agent: "", session_id: "" });
     return this.normalize_model(result);
   }
 
@@ -812,7 +818,10 @@ export class ModelService {
    */
   private sort_models(models: JsonRecord[]): JsonRecord[] {
     return [...models].sort((a, b) => {
-      return Model.resolve_type_sort_order(a["type"]) - Model.resolve_type_sort_order(b["type"]);
+      return (
+        Model.resolve_type_sort_order(a["type"]) - Model.resolve_type_sort_order(b["type"]) ||
+        Number(is_pinned_model(b)) - Number(is_pinned_model(a))
+      );
     });
   }
 

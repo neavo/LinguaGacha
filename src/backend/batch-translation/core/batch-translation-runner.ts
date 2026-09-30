@@ -39,6 +39,7 @@ const TRANSLATION_RETRY_LIMIT = 3; // 单条翻译在拆分后最多重试三次
  * Backend Runtime 与 CLI 共用的翻译调度、限流、重试和提交循环
  */
 export class BatchTranslationRunner {
+  private readonly auth: BatchTranslationRunnerOptions["auth"]; // 任务启动时绑定共享账户会话。
   private readonly builtin_root: string; // 让 Backend 启动日志和 worker 使用同一套内置提示词
   private readonly task_store: BatchTranslationRunnerOptions["taskStore"]; // 后台任务唯一项目数据写入口，BatchTranslationRunner 不直接碰 database
   private readonly task_runtime: BatchTranslationRunnerOptions["taskRuntime"]; // 任务锁、取消、快照与请求压力的最小运行态能力
@@ -56,6 +57,7 @@ export class BatchTranslationRunner {
     this.task_runtime = options.taskRuntime;
     this.executor_client = options.executorClient;
     this.llm_client = options.llmClient;
+    this.auth = options.auth;
     this.task_planner = options.taskPlanner;
     this.log_replay = new TranslationLogReplay(options.logManager);
   }
@@ -77,6 +79,9 @@ export class BatchTranslationRunner {
     const retranslate = command.operation === "retranslate";
     const mode = command.operation === "translate" ? command.mode : "continue";
     try {
+      const auth_session = run_context.model.auth_type === "oauth" ? this.auth?.bind() : undefined;
+      if (run_context.model.auth_type === "oauth" && auth_session === undefined)
+        throw new Error("ChatGPT authentication is not configured");
       await this.task_runtime.publish_status(handle, "running");
       release_database_lease = this.task_store.acquire_project_lease(
         `task:${handle.run_id}:translation`,
@@ -106,6 +111,7 @@ export class BatchTranslationRunner {
       );
       const rate = this.rate_pool.resolve(run_context.model);
       const request_scheduler = new TranslationRequestScheduler({
+        ...(auth_session === undefined ? {} : { auth_session }),
         model: run_context.model,
         client: this.llm_client,
         rate,

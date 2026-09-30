@@ -1,6 +1,10 @@
 import type { zh_cn_model_page } from "../zh-CN/model-page";
 import type { LocaleMessageSchema } from "../../types";
 export const ko_kr_model_page = {
+  auth: {
+    login: "클릭하여 로그인",
+    logout: "로그아웃",
+  },
   title: "모델 관리",
   category: {
     preset: {
@@ -21,6 +25,8 @@ export const ko_kr_model_page = {
   },
   copy_name: "{NAME}_사본",
   action: {
+    reset: "모델 초기화",
+    delete: "모델 삭제",
     copy: "복제",
     basic_settings: "기본 설정",
     task_settings: "작업 설정",
@@ -37,6 +43,7 @@ export const ko_kr_model_page = {
     },
   },
   confirm: {
+    logout: { description: "로그아웃하시겠습니까 …?" },
     delete: {
       description: "모델을 삭제할까요 …?",
     },

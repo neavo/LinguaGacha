@@ -26,6 +26,7 @@ import { LogManager } from "../log/log-manager";
 import { LLMClient } from "../llm/llm-client";
 import { PiModelCatalog } from "../llm/pi-model-catalog";
 import { ModelService } from "../model/model-service";
+import { ChatGPTAuthService } from "../auth/chatgpt-auth-service";
 import { ProjectContentService } from "../project/project-content-service";
 import { create_project_change_publisher } from "../project/project-write-event-adapter";
 import { ProjectDataReader } from "../project/project-data-reader";
@@ -113,6 +114,7 @@ export interface BackendFileServices {
  * GUI 与 CLI 共享的业务服务组合根；状态拥有者只在这里装配。
  */
 export class BackendServices {
+  public readonly modelAuth: ChatGPTAuthService; // GUI、CLI 和 Agent 共用账户生命周期。
   public readonly modelCatalog: PiModelCatalog; // GUI 与 CLI 共用的模型能力事实。
   private catalog_check: Promise<void> | null = null; // 唯一启动守卫，关闭时等待已取消的检查收束。
   private readonly publish_event: BackendServicesOptions["publishEvent"]; // 目录应用完成后才通知消费方。
@@ -152,7 +154,12 @@ export class BackendServices {
     this.app_setting_service = options.appSettingService;
     this.logManager = options.logManager;
     this.modelCatalog = new PiModelCatalog(paths, this.logManager);
-    const llm_client = new LLMClient({ userAgent: user_agent, catalog: this.modelCatalog });
+    this.modelAuth = new ChatGPTAuthService(paths, this.runtime_gate, options.publishEvent);
+    const llm_client = new LLMClient({
+      userAgent: user_agent,
+      catalog: this.modelCatalog,
+      auth: this.modelAuth,
+    });
     if (options.workerExecution.kind === "worker_threads" && !options.workspaceRuntimeDirectory)
       throw new Error("PDF runtime directory is required for worker execution.");
     this.pdf_worker = new PDFWorker(
@@ -208,6 +215,7 @@ export class BackendServices {
       execution: options.workerExecution,
     });
     const task_engine = new BatchTranslationRunner({
+      auth: this.modelAuth,
       llmClient: llm_client,
       builtinRoot: paths.get_builtin_root(),
       taskStore: new BatchTranslationProjectStore(
@@ -314,6 +322,7 @@ export class BackendServices {
       this.runtime_gate,
       this.modelCatalog,
       this.logManager,
+      this.modelAuth,
     );
     this.batchTranslation = new BatchTranslationService(
       task_engine,
@@ -381,6 +390,11 @@ export class BackendServices {
       if (result.status === "rejected") {
         errors.push(result.reason);
       }
+    }
+    try {
+      await this.modelAuth.dispose();
+    } catch (error) {
+      errors.push(error);
     }
     if (errors.length > 0) {
       throw new AggregateError(errors, "Failed to close BackendServices resources.");

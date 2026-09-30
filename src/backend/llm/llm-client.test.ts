@@ -57,6 +57,43 @@ beforeEach(() => {
 });
 
 describe("LLMClient", () => {
+  it("OAuth 每次派发使用当前凭据并沿用任务绑定的会话", async () => {
+    const auth = {
+      bind: vi.fn(() => "current-session"),
+      resolve: vi
+        .fn()
+        .mockResolvedValueOnce({ apiKey: "token-one" })
+        .mockResolvedValueOnce({ apiKey: "token-two" }),
+    };
+    const client = new LLMClient({
+      userAgent: TEST_USER_AGENT,
+      catalog: { read_models: read_builtin_pi_models },
+      auth,
+    });
+    api_mocks.responses.mockImplementation(() =>
+      completed_stream(create_message({ content: [{ type: "text", text: "ok" }] })),
+    );
+    const body = {
+      ...create_body({
+        auth_type: "oauth",
+        api_format: "OpenAIResponses",
+        api_url: "https://api.openai.com/v1",
+      }),
+      auth_session: "bound-session",
+    };
+    const signal = new AbortController().signal;
+    for (let attempt = 0; attempt < 2; attempt += 1)
+      expect((await client.request(body, signal)).response_result).toBe("ok");
+    expect(auth.bind).not.toHaveBeenCalled();
+    expect(auth.resolve.mock.calls.map(([session]) => session)).toEqual([
+      "bound-session",
+      "bound-session",
+    ]);
+    expect(api_mocks.responses.mock.calls.map(([, , options]) => options?.apiKey)).toEqual([
+      "token-one",
+      "token-two",
+    ]);
+  });
   it.each([
     {
       usage: {

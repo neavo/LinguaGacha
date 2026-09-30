@@ -1,6 +1,15 @@
 import { useEffect, useEffectEvent, type MutableRefObject } from "react";
 
-import { api_get, open_event_stream } from "@frontend/app/desktop/desktop-api";
+import {
+  api_get,
+  api_fetch,
+  DesktopApiError,
+  open_event_stream,
+} from "@frontend/app/desktop/desktop-api";
+import { apply_model_auth_snapshot } from "./model-auth-store";
+import { MODEL_AUTH_CHANGED_EVENT_TOPIC, type ChatGPTAuthSnapshot } from "@shared/model-auth";
+import type { ApiErrorPayload } from "@shared/error";
+import { resolve_visible_error_message } from "@frontend/app/feedback/visible-error-message";
 import { push_toast } from "@frontend/app/feedback/desktop-toast";
 import { resolve_app_locale, type AppLanguage } from "@domain/app-language";
 import { format_i18n_message } from "@shared/i18n";
@@ -76,6 +85,26 @@ export function useDesktopEventStream(options: DesktopEventStreamOptions): void 
       );
     }
   });
+
+  const apply_auth = useEffectEvent(
+    (payload: { snapshot: ChatGPTAuthSnapshot; error?: ApiErrorPayload }): void => {
+      if (!apply_model_auth_snapshot(payload.snapshot)) return;
+      if (payload.error !== undefined) {
+        const text = (
+          key: Parameters<typeof format_i18n_message>[1],
+          params?: Record<string, string>,
+        ) => format_i18n_message(resolve_app_locale(options.appLanguage), key, params);
+        push_toast(
+          "error",
+          resolve_visible_error_message(
+            new DesktopApiError(payload.error),
+            text,
+            text("app.error.model.provider_failed.message"),
+          ),
+        );
+      }
+    },
+  );
 
   useEffect(() => {
     let event_source: EventSource | null = null;
@@ -262,6 +291,17 @@ export function useDesktopEventStream(options: DesktopEventStreamOptions): void 
             return;
           }
           refresh_catalog();
+          void api_fetch<{ snapshot: ChatGPTAuthSnapshot }>("/api/models/auth/snapshot", {})
+            .then((payload) => {
+              if (!cancelled) apply_auth(payload);
+            })
+            .catch((error: unknown) => {
+              if (!cancelled)
+                report_state_error(error, {
+                  source: "state-recovery",
+                  context: { stage: "refresh_model_auth" },
+                });
+            });
           if (opened_once) {
             void restore_state_after_reconnect();
           }
@@ -272,6 +312,15 @@ export function useDesktopEventStream(options: DesktopEventStreamOptions): void 
           handle_task_snapshot_changed as EventListener,
         );
         event_source.addEventListener("settings.changed", handle_settings_changed as EventListener);
+        event_source.addEventListener(MODEL_AUTH_CHANGED_EVENT_TOPIC, ((
+          event: MessageEvent<string>,
+        ) => {
+          const payload = parse_event_payload(event) as {
+            snapshot: ChatGPTAuthSnapshot;
+            error?: ApiErrorPayload;
+          };
+          apply_auth(payload);
+        }) as EventListener);
         event_source.addEventListener(
           MODEL_CATALOG_UPDATED_EVENT_TOPIC,
           handle_catalog_updated as EventListener,

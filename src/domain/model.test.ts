@@ -34,6 +34,7 @@ describe("Model", () => {
     );
 
     expect(model.to_json()).toEqual({
+      auth_type: "api_key",
       id: "generated-id",
       type: "PRESET",
       name: "demo-model",

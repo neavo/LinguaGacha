@@ -96,42 +96,46 @@ export function ModelBasicSettingsDialog(props: ModelBasicSettingsDialogProps): 
               }
             />
 
-            <SettingCardRow
-              action_width="content"
-              title={t("model_page.fields.api_url.title")}
-              description={t("model_page.fields.api_url.description")}
-              action={
-                <Input
-                  className="model-page__field model-page__field--lg"
-                  value={model.api_url}
-                  readOnly={props.readonly}
-                  placeholder={t("model_page.fields.api_url.placeholder")}
-                  onChange={(event) => {
-                    void props.onPatch({
-                      api_url: event.target.value.trim(),
-                    });
-                  }}
+            {model.auth_type !== "oauth" ? (
+              <>
+                <SettingCardRow
+                  action_width="content"
+                  title={t("model_page.fields.api_url.title")}
+                  description={t("model_page.fields.api_url.description")}
+                  action={
+                    <Input
+                      className="model-page__field model-page__field--lg"
+                      value={model.api_url}
+                      readOnly={props.readonly}
+                      placeholder={t("model_page.fields.api_url.placeholder")}
+                      onChange={(event) => {
+                        void props.onPatch({
+                          api_url: event.target.value.trim(),
+                        });
+                      }}
+                    />
+                  }
                 />
-              }
-            />
 
-            <SettingCardRow
-              className="model-page__setting-card-row--block"
-              title={t("model_page.fields.api_key.title")}
-              description={t("model_page.fields.api_key.description")}
-              action={
-                <Textarea
-                  value={model.api_key}
-                  readOnly={props.readonly}
-                  placeholder={t("model_page.fields.api_key.placeholder")}
-                  onChange={(event) => {
-                    void props.onPatch({
-                      api_key: event.target.value,
-                    });
-                  }}
+                <SettingCardRow
+                  className="model-page__setting-card-row--block"
+                  title={t("model_page.fields.api_key.title")}
+                  description={t("model_page.fields.api_key.description")}
+                  action={
+                    <Textarea
+                      value={model.api_key}
+                      readOnly={props.readonly}
+                      placeholder={t("model_page.fields.api_key.placeholder")}
+                      onChange={(event) => {
+                        void props.onPatch({
+                          api_key: event.target.value,
+                        });
+                      }}
+                    />
+                  }
                 />
-              }
-            />
+              </>
+            ) : null}
 
             <SettingCardRow
               action_width="content"

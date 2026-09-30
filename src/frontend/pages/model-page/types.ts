@@ -1,5 +1,7 @@
 import type { ModelApiFormat, ModelThinkingLevel, ModelType } from "@domain/model";
 import type { ModelAgentConfig } from "@domain/model-agent";
+import type { ModelAuthType } from "@domain/model";
+import type { AvailableModel } from "@shared/model-catalog";
 
 export type ModelRequestSnapshot = {
   extra_headers: Record<string, string>;
@@ -34,6 +36,7 @@ export type ModelEntrySnapshot = {
   api_format: ModelApiFormat;
   api_url: string;
   api_key: string;
+  auth_type: ModelAuthType;
   model_id: string;
   available_thinking_levels: ModelThinkingLevel[];
   agent: ModelAgentConfig;
@@ -55,13 +58,14 @@ export type ModelDialogState =
 
 export type ModelConfirmState =
   | { kind: null; model_id: null }
+  | { kind: "logout"; model_id: null }
   | { kind: "delete"; model_id: string }
   | { kind: "reset"; model_id: string };
 
 export type ModelSelectorState = {
   open: boolean;
   model_id: string | null;
-  available_models: string[];
+  available_models: AvailableModel[];
   filter_text: string;
   is_loading: boolean;
 };

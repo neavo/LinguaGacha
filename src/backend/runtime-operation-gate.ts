@@ -10,6 +10,7 @@ export type RuntimeActivityListener = (snapshot: Readonly<RuntimeActivitySnapsho
 export class RuntimeOperationGate {
   private active_runtime: RuntimeLease | null = null; // 对象身份同时承担迟到释放校验
   private project_write_running = false; // 项目写不公开为模型 owner，只阻止并发运行与写入
+  private model_auth_write_running = false; // 账户提交与任务启动互斥，浏览器授权等待期间不占用。
   private skill_write_running = false; // 技能保存到集合发布期间阻止 Agent 取得执行占用。
   private revision = 0; // 仅在公开 owner 变化时推进
   private readonly listeners = new Set<RuntimeActivityListener>(); // 组合根用它桥接 SSE
@@ -31,6 +32,7 @@ export class RuntimeOperationGate {
     if (
       this.active_runtime !== null ||
       this.project_write_running ||
+      this.model_auth_write_running ||
       (owner === "agent" && this.skill_write_running)
     ) {
       throw new AppErrors.AppError("runtime.busy");
@@ -81,6 +83,19 @@ export class RuntimeOperationGate {
       this.idle_waiters.add(settle);
       signal.addEventListener("abort", abort, { once: true });
     });
+  }
+
+  /** 账户凭据替换只锁提交阶段，防止任务在异步落盘期间取得旧连接。 */
+  public async run_model_auth_write<T>(operation: () => Promise<T>): Promise<T> {
+    if (this.active_runtime !== null || this.model_auth_write_running)
+      throw new AppErrors.AppError("runtime.busy");
+    this.model_auth_write_running = true;
+    try {
+      return await operation();
+    } finally {
+      this.model_auth_write_running = false;
+      this.notify_idle();
+    }
   }
 
   /** 用户写入和工程生命周期操作要求整个模型运行时空闲。 */

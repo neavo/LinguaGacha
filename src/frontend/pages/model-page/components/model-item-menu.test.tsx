@@ -7,6 +7,13 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { create_model_snapshot } from "@frontend/pages/model-page/model-test-fixture";
 import { ModelItemMenu } from "./model-item-menu";
+import { apply_model_auth_snapshot } from "@frontend/app/state/model-auth-store";
+
+const { api_fetch_mock } = vi.hoisted(() => ({ api_fetch_mock: vi.fn() }));
+vi.mock("@frontend/app/desktop/desktop-api", () => ({
+  api_fetch: api_fetch_mock,
+  open_external_url: vi.fn(),
+}));
 
 describe("ModelItemMenu", () => {
   let container: HTMLDivElement | null = null;
@@ -17,6 +24,7 @@ describe("ModelItemMenu", () => {
     container?.remove();
     container = null;
     root = null;
+    api_fetch_mock.mockReset();
   });
 
   /** 挂载菜单并暴露页面回调，测试只观察可用操作。 */
@@ -24,10 +32,12 @@ describe("ModelItemMenu", () => {
     const props = {
       model: create_model_snapshot(),
       readonly: false,
+      auth_disabled: false,
       on_open_settings: vi.fn(),
       on_copy: vi.fn(),
       on_reset: vi.fn(),
       on_delete: vi.fn(),
+      on_logout: vi.fn(),
       ...overrides,
     };
     container = document.createElement("div");
@@ -62,6 +72,37 @@ describe("ModelItemMenu", () => {
     expect(props.on_copy).toHaveBeenCalledOnce();
   });
 
+  it("OAuth 登录入口置顶，登录后退出入口移到底部，普通模型操作顺序稳定", async () => {
+    const snapshot = {
+      instance_id: "menu-order",
+      revision: 0,
+      connected: false,
+    };
+    apply_model_auth_snapshot(snapshot);
+    api_fetch_mock.mockResolvedValue({ snapshot });
+    await render_menu({ model: create_model_snapshot({ auth_type: "oauth" }) });
+    const labels = () =>
+      [...document.querySelectorAll('[role="menuitem"]')].map((item) => item.textContent);
+    const text = create_text_resolver("zh-CN");
+    const model_actions = [
+      "basic_settings",
+      "task_settings",
+      "advanced_settings",
+      "copy",
+      "reset",
+    ].map((action) => text(`model_page.action.${action}` as LocaleKey));
+    expect(labels()).toEqual([text("model_page.auth.login"), ...model_actions]);
+    await act(async () => apply_model_auth_snapshot({ ...snapshot, revision: 1, connected: true }));
+    expect(labels()).toEqual([...model_actions, text("model_page.auth.logout")]);
+    await act(async () =>
+      apply_model_auth_snapshot({
+        ...snapshot,
+        revision: 2,
+      }),
+    );
+    expect(labels()).toEqual([text("model_page.auth.login"), ...model_actions]);
+  });
+
   it("SakuraLLM 隐藏复制入口", async () => {
     await render_menu({ model: create_model_snapshot({ api_format: "SakuraLLM" }) });
     expect(menu_item("model_page.action.copy")).toBeUndefined();
@@ -73,10 +114,12 @@ describe("ModelItemMenu", () => {
       model: create_model_snapshot({ can_reset }),
     });
     const copy = menu_item("model_page.action.copy")!;
-    const write = menu_item(can_reset ? "app.action.reset" : "app.action.delete")!;
+    const write = menu_item(can_reset ? "model_page.action.reset" : "model_page.action.delete")!;
     expect(copy.getAttribute("aria-disabled")).toBe("true");
     expect(write.getAttribute("aria-disabled")).toBe("true");
-    expect(menu_item(can_reset ? "app.action.delete" : "app.action.reset")).toBeUndefined();
+    expect(
+      menu_item(can_reset ? "model_page.action.delete" : "model_page.action.reset"),
+    ).toBeUndefined();
     await act(async () => {
       copy.click();
       write.click();

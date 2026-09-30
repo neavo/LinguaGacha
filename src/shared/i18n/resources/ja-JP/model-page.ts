@@ -1,6 +1,10 @@
 import type { zh_cn_model_page } from "../zh-CN/model-page";
 import type { LocaleMessageSchema } from "../../types";
 export const ja_jp_model_page = {
+  auth: {
+    login: "クリックしてログイン",
+    logout: "ログアウト",
+  },
   title: "モデル管理",
   category: {
     preset: {
@@ -21,6 +25,8 @@ export const ja_jp_model_page = {
   },
   copy_name: "{NAME}_コピー",
   action: {
+    reset: "モデルをリセット",
+    delete: "モデルを削除",
     copy: "複製",
     basic_settings: "基本設定",
     task_settings: "タスク設定",
@@ -37,6 +43,7 @@ export const ja_jp_model_page = {
     },
   },
   confirm: {
+    logout: { description: "ログアウトしますか …？" },
     delete: {
       description: "モデルを削除しますか …?",
     },
