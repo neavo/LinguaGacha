@@ -32,7 +32,7 @@ import {
   normalize_agent_assistant_message_parts,
   normalize_agent_message_input,
 } from "@shared/agent";
-import { normalize_agent_todos } from "@shared/agent-todo";
+import { normalize_agent_doing } from "@shared/agent-doing";
 import { is_json_record, read_json_record, type JsonRecord } from "@domain/json";
 import { LOCALES } from "@domain/app-language";
 import { api_fetch, api_get, open_event_stream } from "@frontend/app/desktop/desktop-api";
@@ -68,6 +68,7 @@ export type AgentTimelineSlice = Readonly<{ entries: readonly AgentEntry[] }>;
 
 export type AgentControlsSlice = Readonly<{
   state: AgentSessionState;
+  doing: string | null; // 模型维护的任务阶段
   pendingDecision: AgentPendingDecision | null;
   context: AgentContextSnapshot;
   usage: AgentUsageSnapshot;
@@ -76,7 +77,6 @@ export type AgentControlsSlice = Readonly<{
 }>;
 
 export type AgentQueueSlice = Readonly<{ inputQueue: AgentInputQueueSnapshot }>;
-export type AgentTodoSlice = Readonly<{ todos: readonly string[] }>;
 export type AgentSkillsSlice = Readonly<{ skills: readonly AgentSkillSnapshot[] }>;
 
 export type AgentInputSession = {
@@ -103,21 +103,14 @@ export type AgentSessionActions = Readonly<{
   reconnect: () => void;
 }>;
 
-type StoreSlice =
-  | "speed"
-  | "timeline"
-  | "controls"
-  | "queue"
-  | "todo"
-  | "skills"
-  | "input"
-  | "countdown";
+type StoreSlice = "speed" | "timeline" | "controls" | "queue" | "skills" | "input" | "countdown";
 type Listener = () => void;
 type CommandEventQueue = { base_revision: number; events: AgentSessionEvent[] };
 
 const EMPTY_TIMELINE: AgentTimelineSlice = { entries: [] };
 const EMPTY_CONTROLS: AgentControlsSlice = {
   state: "idle",
+  doing: null,
   pendingDecision: null,
   context: { tokens: null, compactable: false, limits: null },
   usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
@@ -127,7 +120,6 @@ const EMPTY_CONTROLS: AgentControlsSlice = {
 const EMPTY_QUEUE: AgentQueueSlice = {
   inputQueue: { paused: false, canSendNow: false, items: [] },
 };
-const EMPTY_TODO: AgentTodoSlice = { todos: [] };
 const EMPTY_SKILLS: AgentSkillsSlice = { skills: [] };
 
 /** renderer 侧唯一 Agent 会话镜像；后端事实经 revision 校验进入切片，本地决策时钟独立发布。 */
@@ -137,7 +129,6 @@ export class AgentSessionStore {
   private timeline = EMPTY_TIMELINE;
   private controls = EMPTY_CONTROLS;
   private queue = EMPTY_QUEUE;
-  private todo = EMPTY_TODO;
   private skills = EMPTY_SKILLS;
   private input: AgentInputSession;
   private revision = 0;
@@ -154,7 +145,6 @@ export class AgentSessionStore {
     timeline: new Set(),
     controls: new Set(),
     queue: new Set(),
-    todo: new Set(),
     skills: new Set(),
     input: new Set(),
     countdown: new Set(),
@@ -217,8 +207,6 @@ export class AgentSessionStore {
   public readonly get_controls = (): AgentControlsSlice => this.controls;
   /** 返回后端拥有的输入队列快照。 */
   public readonly get_queue = (): AgentQueueSlice => this.queue;
-  /** 返回当前会话任务步骤。 */
-  public readonly get_todo = (): AgentTodoSlice => this.todo;
   /** 返回当前可用技能集合。 */
   public readonly get_skills = (): AgentSkillsSlice => this.skills;
   /** 返回当前对话身份，用于隔离异步文件查询。 */
@@ -240,9 +228,6 @@ export class AgentSessionStore {
   /** 只通知队列顺序与能力变化。 */
   public readonly subscribe_queue = (listener: Listener): (() => void) =>
     this.subscribe("queue", listener);
-  /** 只通知任务步骤变化。 */
-  public readonly subscribe_todo = (listener: Listener): (() => void) =>
-    this.subscribe("todo", listener);
   /** 只通知技能集合变化。 */
   public readonly subscribe_skills = (listener: Listener): (() => void) =>
     this.subscribe("skills", listener);
@@ -318,6 +303,7 @@ export class AgentSessionStore {
     const next = { ...this.controls, ...patch };
     if (
       next.state === this.controls.state &&
+      next.doing === this.controls.doing &&
       next.pendingDecision === this.controls.pendingDecision &&
       next.context.tokens === this.controls.context.tokens &&
       next.context.compactable === this.controls.context.compactable &&
@@ -413,11 +399,11 @@ export class AgentSessionStore {
     this.set_token_speed(snapshot.tokenSpeed);
     this.timeline = { entries: snapshot.entries };
     this.queue = { inputQueue: snapshot.inputQueue };
-    this.todo = { todos: snapshot.todos };
     this.skills = { skills: snapshot.skills };
     this.controls = {
       ...this.controls,
       state: snapshot.state,
+      doing: snapshot.doing,
       pendingDecision: snapshot.pendingDecision,
       context: snapshot.context,
       usage: snapshot.usage,
@@ -425,7 +411,6 @@ export class AgentSessionStore {
     this.sync_countdown();
     this.emit("timeline");
     this.emit("queue");
-    this.emit("todo");
     this.emit("skills");
     this.emit("controls");
   }
@@ -483,9 +468,8 @@ export class AgentSessionStore {
         this.queue = { inputQueue: event.inputQueue };
         this.emit("queue");
         break;
-      case "todo":
-        this.todo = { todos: event.todos };
-        this.emit("todo");
+      case "doing":
+        this.set_controls({ doing: event.doing });
         break;
       case "entry_upsert": {
         const entries = [...this.timeline.entries];
@@ -764,14 +748,14 @@ function normalize_snapshot(value: unknown): AgentSessionSnapshot {
     : [];
   const skills = Array.isArray(record["skills"]) ? record["skills"].flatMap(normalize_skill) : [];
   const input_queue = normalize_input_queue(record["inputQueue"]);
-  const todos = normalize_todos(record["todos"]);
+  const doing = normalize_doing(record["doing"]);
   const token_speed = normalize_token_speed(record["tokenSpeed"]);
   const context = normalize_context(record["context"]);
   const usage = normalize_usage(record["usage"]);
   if (
     pending_decision === undefined ||
     input_queue === null ||
-    todos === null ||
+    doing === undefined ||
     context === null ||
     usage === null ||
     token_speed === undefined
@@ -786,7 +770,7 @@ function normalize_snapshot(value: unknown): AgentSessionSnapshot {
     entries,
     skills,
     inputQueue: input_queue,
-    todos,
+    doing,
     context,
     usage,
     tokenSpeed: token_speed,
@@ -821,9 +805,9 @@ function normalize_agent_event(value: unknown): AgentSessionEvent | null {
         ? null
         : { type: "input_queue", revision, inputQueue: input_queue };
     }
-    case "todo": {
-      const todos = normalize_todos(record["todos"]);
-      return todos === null ? null : { type: "todo", revision, todos };
+    case "doing": {
+      const doing = normalize_doing(record["doing"]);
+      return doing === undefined ? null : { type: "doing", revision, doing };
     }
     case "token_speed": {
       const token_speed = normalize_token_speed(record["tokenSpeed"]);
@@ -895,12 +879,12 @@ function normalize_optional_revision(value: unknown): number | null {
   return typeof value === "number" && Number.isSafeInteger(value) && value >= 0 ? value : null;
 }
 
-/** Todo 与后端和脚本运行时共用边界规则；非法帧交给 revision 恢复权威快照。 */
-function normalize_todos(value: unknown): string[] | null {
+/** 非法 `doing` 帧由 `revision` 缺口触发快照恢复。 */
+function normalize_doing(value: unknown): string | null | undefined {
   try {
-    return normalize_agent_todos(value);
+    return normalize_agent_doing(value);
   } catch {
-    return null;
+    return undefined;
   }
 }
 

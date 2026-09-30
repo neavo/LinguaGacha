@@ -120,9 +120,6 @@ const agent_model_registrar = vi.hoisted(() => vi.fn());
 // 该窗口刚好容纳固定保留量与输出预留，用于稳定触发自动压缩边界。
 const TEST_COMPACTION_CONTEXT_WINDOW = 65_001;
 const FAKE_WORKSPACE_SCRIPT = "console.log(JSON.stringify({ items: [] }));";
-const FAKE_TODO_WRITE_SCRIPT = 'ws.todo.write(["基础扫描"]); console.log(null);';
-const FAKE_TODO_READ_SCRIPT = "console.log(JSON.stringify({ todos: ws.todo.read() }));";
-const FAKE_TODO_CLEAR_SCRIPT = "ws.todo.write([]); console.log(null);";
 
 const fake_agent_state = vi.hoisted(() => ({
   mode: "success" as
@@ -136,9 +133,11 @@ const fake_agent_state = vi.hoisted(() => ({
     | "streaming"
     | "thinking"
     | "tool_only"
-    | "todo_write"
-    | "todo_read"
-    | "todo_clear"
+    | "doing_write"
+    | "doing_pending"
+    | "doing_update"
+    | "doing_invalid"
+    | "doing_clear"
     | "invalid_tool"
     | "tool_compaction"
     | "overflow"
@@ -354,6 +353,9 @@ function create_fake_response(context: TranscriptContext): FauxResponseStep {
     );
   }
   if (after_tool_call) {
+    if (fake_agent_state.mode === "doing_pending") {
+      return async (_context, options) => await wait_for_pending_release(options?.signal);
+    }
     if (fake_agent_state.mode === "tools") return fauxAssistantMessage("查询完成");
     if (fake_agent_state.mode === "tools_error") {
       return fauxAssistantMessage("部分结果", {
@@ -426,23 +428,22 @@ function create_fake_response(context: TranscriptContext): FauxResponseStep {
       { stopReason: "toolUse" },
     );
   }
-  if (fake_agent_state.mode === "todo_write") {
-    return fauxAssistantMessage(
-      fauxToolCall("workspace_run", { script: FAKE_TODO_WRITE_SCRIPT }, { id: "todo-write" }),
-      { stopReason: "toolUse" },
-    );
-  }
-  if (fake_agent_state.mode === "todo_read") {
-    return fauxAssistantMessage(
-      fauxToolCall("workspace_run", { script: FAKE_TODO_READ_SCRIPT }, { id: "todo-read" }),
-      { stopReason: "toolUse" },
-    );
-  }
-  if (fake_agent_state.mode === "todo_clear") {
-    return fauxAssistantMessage(
-      fauxToolCall("workspace_run", { script: FAKE_TODO_CLEAR_SCRIPT }, { id: "todo-clear" }),
-      { stopReason: "toolUse" },
-    );
+  if (
+    ["doing_write", "doing_pending", "doing_update", "doing_clear", "doing_invalid"].includes(
+      fake_agent_state.mode,
+    )
+  ) {
+    const text =
+      fake_agent_state.mode === "doing_invalid"
+        ? ""
+        : fake_agent_state.mode === "doing_clear"
+          ? null
+          : fake_agent_state.mode === "doing_update"
+            ? "核验结果"
+            : "基础扫描";
+    return fauxAssistantMessage(fauxToolCall("doing", { text }, { id: "doing-1" }), {
+      stopReason: "toolUse",
+    });
   }
   if (fake_agent_state.mode === "invalid_tool") {
     return fauxAssistantMessage(
@@ -2035,7 +2036,7 @@ describe("AgentService", () => {
       entries: [],
       skills: skill_test_fixture.snapshots,
       inputQueue: { paused: false, canSendNow: false, items: [] },
-      todos: [],
+      doing: null,
       tokenSpeed: null,
       context: { tokens: null, compactable: false, limits: null },
       usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
@@ -2053,6 +2054,7 @@ describe("AgentService", () => {
       [
         "run_batch_item_translation",
         "ask_user",
+        "doing",
         "workspace_run",
         "workspace_apply",
         "read_skill",
@@ -2065,40 +2067,98 @@ describe("AgentService", () => {
     ]);
   });
 
-  it("Node Todo 跨普通回合保留、公开投影并随 Agent reset 清空", async () => {
-    const { service, publish } = await create_service();
-    fake_agent_state.mode = "todo_write";
-
+  it("`doing` 更新、保留、去重和清空", async () => {
+    const { service, publish, runtime_gate } = await create_service();
+    fake_agent_state.mode = "doing_pending";
     await service.send_message({ text: "开始长任务", attachments: [] });
-    await wait_for_idle(service);
-    expect(service.get_snapshot().todos).toEqual(["基础扫描"]);
+    await vi.waitFor(() => expect(fake_agent_state.release_pending).not.toBeNull());
+    expect(service.get_snapshot()).toMatchObject({ state: "running", doing: "基础扫描" });
     expect(publish).toHaveBeenCalledWith(
       "agent.session_event",
-      expect.objectContaining({ type: "todo", todos: ["基础扫描"] }),
+      expect.objectContaining({ type: "doing", doing: "基础扫描" }),
     );
+    service.stop();
+    await vi.waitFor(() => expect(runtime_gate.get_snapshot().owner).toBeNull());
+    expect(service.get_snapshot().doing).toBe("基础扫描");
 
-    fake_agent_state.mode = "todo_read";
-    await service.send_message({ text: "下一回合读取 Todo", attachments: [] });
+    const count = () =>
+      publish.mock.calls.filter(([, event]) => (event as AgentSessionEvent).type === "doing")
+        .length;
+    const before = count();
+    fake_agent_state.mode = "doing_write";
+    await service.send_message({ text: "继续同一阶段", attachments: [] });
     await wait_for_idle(service);
-    expect(read_tool_output(service, "todo-read")).toEqual(
-      workspace_execution({ todos: ["基础扫描"] }),
+    expect(service.get_snapshot().doing).toBe("基础扫描");
+    expect(count()).toBe(before);
+
+    fake_agent_state.mode = "doing_update";
+    await service.send_message({ text: "核验", attachments: [] });
+    await wait_for_idle(service);
+    expect(service.get_snapshot().doing).toBe("核验结果");
+    expect(read_tool_output(service, "doing-1")).toEqual({ text: "核验结果" });
+    fake_agent_state.mode = "doing_invalid";
+    await service.send_message({ text: "无效输入", attachments: [] });
+    await wait_for_idle(service);
+    expect(service.get_snapshot().doing).toBe("核验结果");
+    fake_agent_state.mode = "doing_clear";
+    await service.send_message({ text: "完成", attachments: [] });
+    await wait_for_idle(service);
+    expect(service.get_snapshot().doing).toBeNull();
+    expect(publish).toHaveBeenCalledWith(
+      "agent.session_event",
+      expect.objectContaining({ type: "doing", doing: null }),
     );
+  });
 
-    fake_agent_state.mode = "todo_clear";
-    await service.send_message({ text: "完成剩余工作", attachments: [] });
+  it("执行失败、等待问题和审批均保留模型设置的 `doing` 内容", async () => {
+    const { service, workspace } = await create_service();
+    fake_agent_state.mode = "doing_write";
+    await service.send_message({ text: "开始任务", attachments: [] });
     await wait_for_idle(service);
-    expect(service.get_snapshot().todos).toEqual([]);
+    vi.spyOn(workspace, "run").mockRejectedValueOnce(new Error("工作区执行失败"));
+    fake_agent_state.mode = "tool_only";
+    await service.send_message({ text: "执行工具", attachments: [] });
+    await wait_for_idle(service);
+    expect(service.get_snapshot()).toMatchObject({
+      doing: "基础扫描",
+      entries: expect.arrayContaining([
+        expect.objectContaining({ kind: "tool_call", toolName: "workspace_run", status: "error" }),
+      ]),
+    });
+    fake_agent_state.mode = "tools_error";
+    await service.send_message({ text: "模型失败", attachments: [] });
+    await wait_for_idle(service);
+    expect(service.get_snapshot().doing).toBe("基础扫描");
+    for (const mode of ["question", "write"] as const) {
+      fake_agent_state.mode = mode;
+      await service.send_message({ text: "等待决定", attachments: [] });
+      await vi.waitFor(() => expect(service.get_snapshot().pendingDecision).not.toBeNull());
+      expect(service.get_snapshot().doing).toBe("基础扫描");
+      const pending = service.get_snapshot().pendingDecision;
+      if (pending?.kind === "question")
+        service.resolve_question({ id: pending.id, response: { kind: "cancel" } });
+      else if (pending?.kind === "write_approval")
+        service.resolve_write_approval({ id: pending.id, decision: "reject" });
+      else throw new Error("缺少待决定请求");
+      await wait_for_idle(service);
+      expect(service.get_snapshot().doing).toBe("基础扫描");
+    }
+  });
 
-    fake_agent_state.mode = "todo_write";
-    await service.send_message({ text: "建立重置基线", attachments: [] });
-    await wait_for_idle(service);
-    await service.reset();
-    expect(service.get_snapshot().todos).toEqual([]);
-    fake_agent_state.mode = "todo_read";
-    await service.send_message({ text: "读取 Todo", attachments: [] });
-    await wait_for_idle(service);
-
-    expect(read_tool_output(service, "todo-read")).toEqual(workspace_execution({ todos: [] }));
+  it("重置对话、切换工程和销毁会话清空 doing", async () => {
+    const { service, session_state } = await create_service();
+    for (const clear of [
+      () => service.reset(),
+      () => session_state.mark_loaded("next.lg"),
+      () => service.dispose(),
+    ]) {
+      fake_agent_state.mode = "doing_write";
+      await service.send_message({ text: "建立正在处理的内容", attachments: [] });
+      await wait_for_idle(service);
+      expect(service.get_snapshot().doing).toBe("基础扫描");
+      await clear();
+      expect(service.get_snapshot().doing).toBeNull();
+    }
   });
 
   it("仅在宿主搜索能力可用时注册 web_search", async () => {
@@ -2163,10 +2223,9 @@ describe("AgentService", () => {
       invalidate_links: vi.fn(),
       reset_workspace: vi.fn(async () => undefined),
       reset_project: vi.fn(async () => undefined),
-      run: vi.fn(async (_script, todos) => ({
+      run: vi.fn(async () => ({
         images: [],
         execution: workspace_execution(),
-        todos: [...todos],
       })),
       apply_workspace: vi.fn(),
     } satisfies AgentWorkspacePort;
@@ -2278,13 +2337,13 @@ describe("AgentService", () => {
 
   it("停止会封口普通运行工具，迟到结果不能改写历史", async () => {
     const { service, runtime_gate } = await create_service();
-    fake_agent_state.mode = "todo_write";
+    fake_agent_state.mode = "tool_only";
     fake_agent_state.hold_tool_execution = true;
     await service.send_message({ text: "查询", attachments: [] });
     await vi.waitFor(() => {
       expect(service.get_snapshot().entries).toEqual(
         expect.arrayContaining([
-          expect.objectContaining({ kind: "tool_call", id: "todo-write", status: "running" }),
+          expect.objectContaining({ kind: "tool_call", id: "tool-only", status: "running" }),
         ]),
       );
     });
@@ -2295,7 +2354,7 @@ describe("AgentService", () => {
       expect.objectContaining({ kind: "user_message", status: "stopped" }),
       expect.objectContaining({
         kind: "tool_call",
-        id: "todo-write",
+        id: "tool-only",
         status: "stopped",
         output: null,
       }),
@@ -2304,7 +2363,7 @@ describe("AgentService", () => {
     fake_agent_state.release_tool_execution?.();
     await vi.waitFor(() => expect(runtime_gate.get_snapshot().owner).toBeNull());
     expect(service.get_snapshot().entries).toEqual(stopped_entries);
-    expect(service.get_snapshot().todos).toEqual([]);
+    expect(service.get_snapshot().doing).toBeNull();
   });
 
   it("workspace_apply 运行期间拒绝停止，提交终帧仍成为唯一结果", async () => {
@@ -2399,7 +2458,7 @@ describe("AgentService", () => {
       entries: [],
       skills: skill_test_fixture.snapshots,
       inputQueue: { paused: false, canSendNow: false, items: [] },
-      todos: [],
+      doing: null,
       tokenSpeed: null,
       context: { tokens: null, compactable: false, limits: null },
       usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
@@ -3588,18 +3647,9 @@ describe("AgentService", () => {
         invalidate_links: vi.fn(),
         reset_workspace: vi.fn(async () => undefined),
         reset_project: vi.fn(async () => undefined),
-        run: vi.fn<AgentWorkspacePort["run"]>(async (script, todos) => {
+        run: vi.fn<AgentWorkspacePort["run"]>(async () => {
           await wait_for_held_tool();
-          if (script === FAKE_TODO_WRITE_SCRIPT)
-            return { images: [], execution: workspace_execution(), todos: ["基础扫描"] };
-          if (script === FAKE_TODO_READ_SCRIPT) {
-            const result = { todos: [...todos] };
-            return { images: [], execution: workspace_execution(result), todos: [...todos] };
-          }
-          if (script === FAKE_TODO_CLEAR_SCRIPT)
-            return { images: [], execution: workspace_execution(), todos: [] };
-          const result = { items: read_items() };
-          return { images: [], execution: workspace_execution(result), todos: [...todos] };
+          return { images: [], execution: workspace_execution({ items: read_items() }) };
         }),
         apply_workspace: vi.fn(async (request_approval) => {
           await request_approval?.({

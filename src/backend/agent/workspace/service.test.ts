@@ -85,13 +85,9 @@ describe("AgentWorkspaceService", () => {
       await request.emitImage!("work/页面 # %23.webp", signal, { maxEdge: 3840 });
       fs.unlinkSync(file);
       await expect(request.emitImage!("../outside.webp", signal)).rejects.toBeDefined();
-      return { execution: workspace_execution(), todos: [] };
+      return workspace_execution();
     });
-    const result = await fixture.service.run(
-      VALID_WORKSPACE_SCRIPT,
-      [],
-      new AbortController().signal,
-    );
+    const result = await fixture.service.run(VALID_WORKSPACE_SCRIPT, new AbortController().signal);
     expect(result.images.map(({ image }) => Buffer.from(image.data, "base64").toString())).toEqual([
       "first",
       "second",
@@ -108,12 +104,12 @@ describe("AgentWorkspaceService", () => {
       fs.writeFileSync(path.join(request.workspacePath, image_path), "image");
       for (let i = 0; i < limit; i++) await request.emitImage!(image_path, signal);
       await expect(request.emitImage!(image_path, signal)).rejects.toThrow(image_path);
-      return { execution: workspace_execution(), todos: [] };
+      return workspace_execution();
     });
     expect((await run_workspace(fixture)).images).toHaveLength(limit);
     fixture.run.mockImplementationOnce(async (request, signal) => {
       await request.emitImage!(image_path, signal);
-      return { execution: workspace_execution(), todos: [] };
+      return workspace_execution();
     });
     expect((await run_workspace(fixture)).images).toHaveLength(1);
   });
@@ -145,7 +141,7 @@ describe("AgentWorkspaceService", () => {
       const prepared = await fixture.prepare_image(Buffer.from("image"));
       fixture.prepare_image.mockResolvedValueOnce({ ...prepared, data: "A".repeat(remaining) });
       await request.emitImage!(image_path, signal);
-      return { execution: workspace_execution(), todos: [] };
+      return workspace_execution();
     });
     const result = await run_workspace(fixture);
     expect(result.images).toHaveLength(count);
@@ -153,7 +149,7 @@ describe("AgentWorkspaceService", () => {
     expect(result.images.reduce((total, { image }) => total + image.data.length, 0)).toBe(limit);
     fixture.run.mockImplementationOnce(async (request, signal) => {
       await request.emitImage!(refused_path, signal);
-      return { execution: workspace_execution(), todos: [] };
+      return workspace_execution();
     });
     expect((await run_workspace(fixture)).images.map((image) => image.path)).toEqual([
       refused_path,
@@ -259,7 +255,7 @@ describe("AgentWorkspaceService", () => {
       await expect(fixture.service.read_document(fixture.href)).rejects.toMatchObject({
         code: "runtime.busy",
       });
-      return { execution: workspace_execution(), todos: [] };
+      return workspace_execution();
     });
     await run_workspace(fixture);
   });
@@ -387,7 +383,7 @@ describe("AgentWorkspaceService", () => {
         code: "runtime.busy",
       });
       await expect(fixture.service.activate_path("work/")).resolves.toEqual({ status: "opened" });
-      return { execution: workspace_execution(), todos: [] };
+      return workspace_execution();
     });
     await run_workspace(fixture);
     expect(fs.existsSync(path.join(temp_dir, "saved.md"))).toBe(false);
@@ -545,7 +541,7 @@ describe("AgentWorkspaceService", () => {
 
     await run_workspace(fixture);
     fixture.snapshot.sectionRevisions.items = 2;
-    await fixture.service.run(VALID_WORKSPACE_SCRIPT, [], new AbortController().signal);
+    await fixture.service.run(VALID_WORKSPACE_SCRIPT, new AbortController().signal);
     expect(fs.readFileSync(work_file, "utf-8")).toBe('{"step":1}\n');
 
     await fixture.service.reset_workspace();
@@ -580,7 +576,7 @@ describe("AgentWorkspaceService", () => {
     await expect(run_workspace(fixture)).rejects.toThrow("warning query failed");
     expect(fixture.active_path()).toBe(previous_path);
     expect(fs.readFileSync(work_file, "utf-8")).toBe("state");
-    await fixture.service.run(VALID_WORKSPACE_SCRIPT, [], new AbortController().signal);
+    await fixture.service.run(VALID_WORKSPACE_SCRIPT, new AbortController().signal);
   });
 
   it("并行落盘失败会等待其它写入结算后再清理半成品", async () => {
@@ -646,7 +642,7 @@ describe("AgentWorkspaceService", () => {
     );
 
     await expect(
-      fixture.service.run("throw new Error();", ["恢复任务"], new AbortController().signal),
+      fixture.service.run("throw new Error();", new AbortController().signal),
     ).rejects.toMatchObject({
       public_details: {
         action: "workspace_run",
@@ -664,7 +660,6 @@ describe("AgentWorkspaceService", () => {
         scriptPath,
         stdoutPath: `${run_path}.stdout.log`,
         stderrPath: `${run_path}.stderr.log`,
-        todos: ["恢复任务"],
         host: expect.any(Function),
         emitImage: expect.any(Function),
       },
@@ -675,7 +670,7 @@ describe("AgentWorkspaceService", () => {
 
     fixture.run.mockRejectedValueOnce(new Error("host disconnected"));
     await expect(
-      fixture.service.run(VALID_WORKSPACE_SCRIPT, [], new AbortController().signal),
+      fixture.service.run(VALID_WORKSPACE_SCRIPT, new AbortController().signal),
     ).rejects.toMatchObject({ public_details: { action: "workspace_run" } });
     expect(fixture.active_path()).not.toBe("");
     expect(fs.readFileSync(work_file, "utf-8")).toBe("state");
@@ -958,7 +953,7 @@ describe("AgentWorkspaceService", () => {
     fs.writeFileSync(change_file, "pending");
     fixture.snapshot.sectionRevisions[section] = 2;
 
-    await fixture.service.run(VALID_WORKSPACE_SCRIPT, [], new AbortController().signal);
+    await fixture.service.run(VALID_WORKSPACE_SCRIPT, new AbortController().signal);
     expect(fs.readFileSync(change_file, "utf-8")).toBe("");
   });
 
@@ -975,7 +970,7 @@ describe("AgentWorkspaceService", () => {
     await expect(run_workspace(fixture)).rejects.toThrow("warning query failed");
     expect(fs.existsSync(work_file)).toBe(false);
 
-    await fixture.service.run(VALID_WORKSPACE_SCRIPT, [], new AbortController().signal);
+    await fixture.service.run(VALID_WORKSPACE_SCRIPT, new AbortController().signal);
     expect(fs.existsSync(work_file)).toBe(false);
   });
 });
@@ -984,7 +979,7 @@ describe("AgentWorkspaceService", () => {
 async function run_workspace(
   fixture: ReturnType<typeof create_fixture>,
 ): ReturnType<AgentWorkspaceService["run"]> {
-  return await fixture.service.run(VALID_WORKSPACE_SCRIPT, [], new AbortController().signal);
+  return await fixture.service.run(VALID_WORKSPACE_SCRIPT, new AbortController().signal);
 }
 
 /** 用真实磁盘工作区替换宿主脚本端口，其余协作者保持最小可观察 fake。 */
@@ -1039,10 +1034,7 @@ function create_fixture(temp_dir: string, native_fs?: NativeFs) {
     readSectionRevisions: () => ({ ...snapshot.sectionRevisions }),
     snapshot: () => ({ ...snapshot, sectionRevisions: { ...snapshot.sectionRevisions } }),
   };
-  const run = vi.fn<AgentWorkspaceRunPort>(async (request) => ({
-    execution: workspace_execution(),
-    todos: [...request.todos],
-  }));
+  const run = vi.fn<AgentWorkspaceRunPort>(async () => workspace_execution());
   const write_store = vi.fn<ProjectWriteStore["apply_agent_workspace_changes"]>(async (request) => {
     const outcome = resolve_agent_workspace_writes({
       batch: request.batch,
@@ -1319,7 +1311,7 @@ it("PDF 零条目工程按页保存、隔离旧指纹，语言变化后重建工
       runtimeGate: { run_agent_project_write: async (operation) => operation() },
       writeStore: services.state.writes,
       logManager: resources.logManager,
-      run: async () => ({ execution: workspace_execution(), todos: [] }),
+      run: async () => workspace_execution(),
       runtimeDirectory: create_workspace_runtime_fixture(directory.path),
       openDirectory: async () => {},
       pickSavePath: async () => null,
@@ -1339,7 +1331,7 @@ it("PDF 零条目工程按页保存、隔离旧指纹，语言变化后重建工
     );
     expect(workspace.list_files()).toContainEqual({ kind: "upload", path: upload.path, size: 6 });
     await workspace.initialize();
-    await workspace.run("", [], new AbortController().signal);
+    await workspace.run("", new AbortController().signal);
     const root = resources.paths.get_agent_workspace_root_dir();
     const project_path = services.state.session.require_loaded_project_path();
     // 每次从数据库重读，验证保存与重开后的事实而非缓存引用。
@@ -1419,11 +1411,11 @@ it("PDF 零条目工程按页保存、隔离旧指纹，语言变化后重建工
     expect(after.sectionRevisions.items).toBe(before.sectionRevisions.items);
     expect(after.sectionRevisions.files).toBe(before.sectionRevisions.files);
     expect(after.sectionRevisions.pdf).toBeGreaterThan(before.sectionRevisions.pdf ?? 0);
-    await workspace.run("", [], new AbortController().signal);
+    await workspace.run("", new AbortController().signal);
     expect(fs.statSync(source_path).mtimeMs).toBe(source_mtime);
     expect((await save(original_fp, { ...draft, notes: "stale" }))["status"]).toBe("rejected");
     expect(read_document().pages[0]!.notes).toBe("等待版式核对");
-    await workspace.run("", [], new AbortController().signal);
+    await workspace.run("", new AbortController().signal);
     const baseline = read_document();
     const baseline_fp = agent_workspace_page_fingerprint(
       "book.pdf",
@@ -1464,7 +1456,7 @@ it("PDF 零条目工程按页保存、隔离旧指纹，语言变化后重建工
     ]);
     expect(read_document().pages[0]!.notes).toBe("等待版式核对");
     expect(read_document().pages[2]).toEqual(original.pages[2]);
-    await workspace.run("", [], new AbortController().signal);
+    await workspace.run("", new AbortController().signal);
     expect(
       (
         await save(
@@ -1485,7 +1477,7 @@ it("PDF 零条目工程按页保存、隔离旧指纹，语言变化后重建工
       target_language: "DE",
     });
     resources.database.close_project(project_path);
-    await workspace.run("", [], new AbortController().signal);
+    await workspace.run("", new AbortController().signal);
     const rows = fs
       .readFileSync(path.join(root, "pages/entries.jsonl"), "utf8")
       .trim()

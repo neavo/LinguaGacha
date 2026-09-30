@@ -38,7 +38,6 @@ beforeEach(() => {
     scriptPath: "work/runs/test.mjs",
     stdoutPath: "work/runs/test.stdout.log",
     stderrPath: "work/runs/test.stderr.log",
-    todos: [],
   };
   handles = [];
   const open = default_native_fs.open_file.bind(default_native_fs);
@@ -55,21 +54,17 @@ afterEach(() => {
 });
 
 describe("AgentWorkspaceRunner", () => {
-  it("两路文件始终建立，正常退出后结算 Todo 并关闭句柄", async () => {
+  it("两路文件始终建立，正常退出后关闭句柄", async () => {
     const { child, result } = await start_run();
     expect(child.send).toHaveBeenCalledWith(
-      expect.objectContaining({ type: "start", todos: [] }),
+      expect.objectContaining({ type: "start" }),
       expect.any(Function),
     );
-    child.emit("message", { type: "todos", todos: ["核验结果"] });
     child.emit("close", 0);
     await expect(result).resolves.toMatchObject({
-      execution: {
-        exitCode: 0,
-        stdout: { path: request.stdoutPath, bytes: 0, content: "" },
-        stderr: { path: request.stderrPath, bytes: 0, content: "" },
-      },
-      todos: ["核验结果"],
+      exitCode: 0,
+      stdout: { path: request.stdoutPath, bytes: 0, content: "" },
+      stderr: { path: request.stderrPath, bytes: 0, content: "" },
     });
     expect(fs.readFileSync(output_path("stdout"), "utf8")).toBe("");
     expect(fs.readFileSync(output_path("stderr"), "utf8")).toBe("");
@@ -182,7 +177,7 @@ describe("AgentWorkspaceRunner", () => {
       },
       stderr: { path: request.stderrPath, content: [{ code: "notice" }] },
     };
-    if (code === 0) await expect(result).resolves.toMatchObject({ execution });
+    if (code === 0) await expect(result).resolves.toMatchObject(execution);
     else await expect(result).rejects.toMatchObject({ execution });
     expect(fs.readFileSync(output_path("stdout"), "utf8")).toBe(stdout);
     expect(handles.map((handle) => handle.fd)).toEqual([-1, -1]);
@@ -194,7 +189,7 @@ describe("AgentWorkspaceRunner", () => {
       const { child, result } = await start_run();
       child.write_stdout(text);
       child.emit("close", 0);
-      await expect(result).resolves.toMatchObject({ execution: { stdout: { content: text } } });
+      await expect(result).resolves.toMatchObject({ stdout: { content: text } });
       expect(fs.readFileSync(output_path("stdout"), "utf8")).toBe(text);
     },
   );
@@ -207,7 +202,7 @@ describe("AgentWorkspaceRunner", () => {
     child.write_stderr(json);
     const read = vi.spyOn(default_native_fs, "read_text_file");
     child.emit("close", 0);
-    const { execution } = await result;
+    const execution = await result;
     expect(execution.stdout).toEqual({
       path: request.stdoutPath,
       bytes: Buffer.byteLength(json) + 6,
@@ -255,14 +250,6 @@ describe("AgentWorkspaceRunner", () => {
     );
     expect(fork).not.toHaveBeenCalled();
     expect(handles[0]?.fd).toBe(-1);
-  });
-
-  it("非法 Todo 是协议失败，回收后才结算", async () => {
-    const { child, result } = await start_run();
-    child.emit("message", { type: "todos", todos: [" "] });
-    expect(child.kill).toHaveBeenCalledOnce();
-    child.emit("close", null);
-    await expect(result).rejects.toThrow();
   });
 });
 

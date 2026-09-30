@@ -67,13 +67,13 @@ import {
   type AgentSessionSeed,
 } from "./agent-session-seed";
 import { create_agent_skill_tools } from "./model-tools/skill";
+import { create_agent_doing_tool } from "./model-tools/doing";
 import { create_agent_question_tools } from "./model-tools/question";
 import { AgentInputQueue } from "./agent-input-queue";
 import { create_agent_web_search_tool, type AgentWebSearchPort } from "./model-tools/web-search";
 import type { AgentWorkspacePort } from "./workspace/service";
 import {
   create_agent_workspace_tools,
-  type AgentTodoPort,
   type AgentWorkspaceApprovalPort,
 } from "./model-tools/workspace";
 import { format_agent_skills_for_system_prompt } from "./agent-skills";
@@ -209,7 +209,7 @@ export class AgentService {
   private readonly images: AgentServiceOptions["images"];
   private readonly log_manager: AgentServiceOptions["logManager"];
   private readonly publish: AgentServiceOptions["publish"];
-  private todos: string[] = []; // 对话级有序待办；Node 脚本成功后才原子替换
+  private doing: string | null = null; // 模型拥有内容，宿主只在会话清理时清空
   private readonly input_queue = new AgentInputQueue(); // 当前产品会话的待发送输入；不写入 Pi follow-up
   private readonly decisions: AgentDecisionCoordinator; // 当前回合唯一用户决策及其取消生命周期
   private readonly unsubscribe_project_session: () => void;
@@ -371,7 +371,7 @@ export class AgentService {
       entries: structuredClone(this.entries),
       skills: this.get_skill_snapshot(),
       inputQueue: this.input_queue.read_snapshot(this.can_send_queued_now()),
-      todos: [...this.todos],
+      doing: this.doing,
       context: structuredClone(this.context),
       usage: { ...this.usage },
       tokenSpeed: structuredClone(this.token_speed_snapshot),
@@ -690,7 +690,7 @@ export class AgentService {
     this.token_speed.reset();
     this.token_speed_updated_at = null;
     this.token_speed_snapshot = null;
-    this.todos = [];
+    this.doing = null;
     this.input_queue.reset();
     this.runtime_generation += 1;
     this.unsubscribe_project_session();
@@ -1159,6 +1159,7 @@ export class AgentService {
             throw error;
           }
         }),
+        create_agent_doing_tool((text) => this.update_doing(text)),
         ...create_agent_question_tools({
           wait_for_answer: (tool_call_id, question, signal) =>
             this.decisions.wait_for_question(tool_call_id, question, signal),
@@ -1187,7 +1188,6 @@ export class AgentService {
             },
             apply_workspace: (...args) => this.workspace.apply_workspace(...args),
           },
-          todo: this.todo_port(),
           approval: this.workspace_approval_port(),
         }),
         ...create_agent_skill_tools(() => this.skills.get_current(), this.paths),
@@ -1842,7 +1842,7 @@ export class AgentService {
     this.translation_paused_result = null;
     this.latest_output_checkpoint = null;
     this.pending_assistant_checkpoint = null;
-    this.todos = [];
+    this.doing = null;
     this.input_queue.reset();
     const reset = Promise.all([
       acceptance?.catch(() => undefined),
@@ -1974,22 +1974,11 @@ export class AgentService {
     );
   }
 
-  /** 只有仍绑定当前会话的 SDK runtime 可以提交成功结束的 Node Todo。 */
-  private todo_port(): AgentTodoPort {
-    return {
-      read: () => [...this.todos],
-      write: (todos) => {
-        if (this.disposed || this.runtime === null) return;
-        if (
-          todos.length === this.todos.length &&
-          todos.every((item, index) => item === this.todos[index])
-        ) {
-          return;
-        }
-        this.todos = [...todos];
-        this.publish_event({ type: "todo", todos: [...this.todos] });
-      },
-    };
+  /** 会话清理期间忽略旧工具调用。 */
+  private update_doing(text: string | null): void {
+    if (this.disposed || this.runtime === null || this.doing === text) return;
+    this.doing = text;
+    this.publish_event({ type: "doing", doing: text });
   }
 
   /** `workspace_apply` 读取应用审批偏好，当前批次决定由会话协调器持有。 */

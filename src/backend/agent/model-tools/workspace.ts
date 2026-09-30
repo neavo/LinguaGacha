@@ -23,12 +23,6 @@ export type AgentWorkspaceApprovalPort = {
   ) => Promise<void>;
 };
 
-/** AgentService 持有跨回合 Todo，脚本工具只协调调用前后的不可变快照。 */
-export type AgentTodoPort = {
-  read: () => string[];
-  write: (todos: readonly string[]) => void;
-};
-
 /** 参数只描述脚本输入；环境和完整 API 随工具说明公开。 */
 const WORKSPACE_RUN_PARAMETERS = Type.Object(
   {
@@ -141,7 +135,6 @@ const WORKSPACE_APPLY_PARAMETERS = Type.Object({}, { additionalProperties: false
 /** 工作区由单一服务持有，模型接口由脚本与提交批次组成。 */
 export function create_agent_workspace_tools(options: {
   workspace: Pick<AgentWorkspacePort, "run" | "apply_workspace">;
-  todo: AgentTodoPort;
   approval: AgentWorkspaceApprovalPort;
 }): ToolDefinition[] {
   return [
@@ -155,12 +148,8 @@ export function create_agent_workspace_tools(options: {
         // SDK 未提供 signal 时仍传入永不取消的标准信号，服务端口无需处理双态。
         const effective_signal = signal ?? new AbortController().signal;
         effective_signal.throwIfAborted();
-        const { execution, todos, images } = await options.workspace.run(
-          params.script,
-          options.todo.read(),
-          effective_signal,
-        );
-        // run 的协作者可能在取消后才结算；Todo 只提交仍有效的工具调用结果。
+        const { execution, images } = await options.workspace.run(params.script, effective_signal);
+        // 服务返回后再次检查取消状态，拦截迟到的执行结果。
         effective_signal.throwIfAborted();
         const result = agent_tool_result({
           ...execution,
@@ -177,7 +166,6 @@ export function create_agent_workspace_tools(options: {
                 })),
               }),
         });
-        options.todo.write(todos);
         return {
           ...result,
           content: [

@@ -4,7 +4,6 @@ import type { WorkspaceRequest, WorkspaceRequestResult } from "./host-contract";
 export type AgentWorkspaceRuntimeParentMessage =
   | {
       type: "start";
-      todos: string[];
       userSkillDirectory: string; // 应用级用户技能目录，直接写入并跨会话保留
       skillRoots: readonly string[]; // 带尾斜线的原目录 file: URL，含逻辑入口与真实位置
     }
@@ -15,5 +14,4 @@ export type AgentWorkspaceRuntimeParentMessage =
     };
 export type AgentWorkspaceRuntimeChildMessage =
   | { type: "request"; id: number; request: WorkspaceRequest }
-  | { type: "cancel"; id: number }
-  | { type: "todos"; todos: string[] };
+  | { type: "cancel"; id: number };

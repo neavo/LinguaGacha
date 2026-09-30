@@ -79,51 +79,50 @@ it("上传原文件在真实工作区只读，可复制到 work 后修改", asyn
     await writeFile('work/copy.bin', 'changed');
     console.log(JSON.stringify({original, copy: await readFile('work/copy.bin', 'utf8')}));
   `);
-  expect(result.execution.exitCode).toBe(0);
+  expect(result.exitCode).toBe(0);
   expect(await readFile(path.join(workspace, "uploads/input.bin"), "utf8")).toBe("original");
   expect(await readFile(path.join(workspace, "work/copy.bin"), "utf8")).toBe("changed");
 });
 
-it("独立部署目录支持原生模块、主程序身份、自然退出和异步 Todo", async () => {
+it("独立部署目录支持原生模块、主程序身份、自然退出和异步输出", async () => {
   await mkdir(path.join(workspace, "work/scripts"));
   await writeFile(
     path.join(workspace, "work/scripts/helper.js"),
-    "export const value = ws.todo.read()[0];",
+    "export const value = ws.contract.datasets.items.path;",
   );
   await writeFile(path.join(workspace, "work/scripts/helper.cjs"), "module.exports = 42;");
   const result = await run(`
     import fs from 'node:fs/promises';
     import { fileURLToPath } from 'node:url';
     import value from '../scripts/helper.cjs';
-    import { value as todo } from '../scripts/helper.js';
+    import { value as itemPath } from '../scripts/helper.js';
     await fs.writeFile('work/state.json', JSON.stringify(value));
-    console.log(JSON.stringify({ main: fileURLToPath(import.meta.url) === process.argv[1], value, todo }));
+    console.log(JSON.stringify({ main: fileURLToPath(import.meta.url) === process.argv[1], value, itemPath }));
     console.error('ordinary stderr');
-    setTimeout(() => { console.log('async finished'); ws.todo.write(['核验结果']); }, 10);
+    setTimeout(() => { console.log('async finished'); }, 10);
     export default 1n;
   `);
-  expect(result.execution).toMatchObject({
+  expect(result).toMatchObject({
     exitCode: 0,
     signal: null,
     stderr: { content: "ordinary stderr\n" },
   });
-  expect(output_content(result.execution.stdout)).toBe(
-    '{"main":true,"value":42,"todo":"发现目标"}\nasync finished\n',
+  expect(output_content(result.stdout)).toBe(
+    `${JSON.stringify({ main: true, value: 42, itemPath: AGENT_WORKSPACE_CONTRACT.datasets.items!.path })}\nasync finished\n`,
   );
-  expect(result.todos).toEqual(["核验结果"]);
-  expect(await readFile(path.join(workspace, result.execution.stdout.path), "utf8")).toBe(
-    output_content(result.execution.stdout),
+  expect(await readFile(path.join(workspace, result.stdout.path), "utf8")).toBe(
+    output_content(result.stdout),
   );
   expect(
     (
       await run(
         "import fs from 'node:fs/promises'; console.log(await fs.readFile('work/state.json', 'utf8')); ",
       )
-    ).execution.stdout,
+    ).stdout,
   ).toMatchObject({ content: "42\n" });
   const empty = await run("// 没有输出的普通程序也成功");
-  expect(empty.execution.exitCode).toBe(0);
-  for (const output of [empty.execution.stdout, empty.execution.stderr]) {
+  expect(empty.exitCode).toBe(0);
+  for (const output of [empty.stdout, empty.stderr]) {
     expect(output).toMatchObject({ bytes: 0, content: "" });
     expect(await readFile(path.join(workspace, output.path), "utf8")).toBe("");
   }
@@ -146,9 +145,9 @@ it("权限模式直接导入 MuPDF WASM 和 Markdown npm 包", async () => {
     } finally { pdf.destroy(); }
 
   `);
-  expect(result.execution.exitCode).toBe(0);
-  expect(JSON.stringify(output_content(result.execution.stdout))).toContain("First half");
-  expect(JSON.stringify(output_content(result.execution.stdout))).toContain("heading");
+  expect(result.exitCode).toBe(0);
+  expect(JSON.stringify(output_content(result.stdout))).toContain("First half");
+  expect(JSON.stringify(output_content(result.stdout))).toContain("heading");
 });
 
 it.each(["user", "builtin"])(
@@ -218,7 +217,7 @@ it.each(["user", "builtin"])(
         throw new Error(JSON.stringify(error.execution), { cause: error });
       throw error;
     });
-    expect(output_content(result.execution.stdout)).toEqual({
+    expect(output_content(result.stdout)).toEqual({
       type: "heading",
       path: "work/fixture.pdf",
     });
@@ -246,10 +245,10 @@ it("用户技能目录链接可创建、替换和删除包，失败前的写入�
       await fs.writeFile(path.join(ws.userSkillDirectory, 'retained.txt'), content);
       process.exitCode = 1;
     `).catch((error: unknown) => {
-      if (error instanceof AgentWorkspaceRunError) return { execution: error.execution };
+      if (error instanceof AgentWorkspaceRunError) return error.execution;
       throw error;
     });
-    expect(result.execution.exitCode).toBe(1);
+    expect(result.exitCode).toBe(1);
     expect(await readFile(path.join(target, "retained.txt"), "utf8")).toBe("updated");
     await expect(readFile(path.join(target, "fixture/SKILL.md"))).rejects.toMatchObject({
       code: "ENOENT",
@@ -291,7 +290,6 @@ it("发布态 ASAR 技能在原目录授权下导入脚本、资源和预装依�
   const start: AgentWorkspaceRuntimeParentMessage = {
     type: "start",
     userSkillDirectory: skill_paths.get_agent_user_skill_dir(),
-    todos: [],
     skillRoots: [pathToFileURL(skill_root + path.sep).href],
   };
   // 普通 Node 测试宿主不识别 ASAR。由真实 Electron 加载生产 bootstrap，重放父进程初始化消息。
@@ -384,7 +382,7 @@ it("直接执行技能、apply、再次执行和重置均读取原包当前文�
     });
     await service.initialize();
     // 两个空根先运行一次，后续新增文件在下一 run 自然可读。
-    await service.run("console.log('ready');", [], AbortSignal.timeout(RUN_TIMEOUT_MS));
+    await service.run("console.log('ready');", AbortSignal.timeout(RUN_TIMEOUT_MS));
     const entry = path.join(resources.paths.get_agent_user_skill_dir(), "fixture", "entry.mjs");
     await mkdir(path.dirname(entry), { recursive: true });
     // 原包替换正文，下一进程必须看到新版本；apply 使用真实工程写入口。
@@ -401,20 +399,20 @@ it("直接执行技能、apply、再次执行和重置均读取原包当前文�
     `;
     await writeFile(entry, module_body("第一版"));
     const script = `const {update} = await import(${JSON.stringify(pathToFileURL(entry).href)}); await update();`;
-    await service.run(script, [], AbortSignal.timeout(RUN_TIMEOUT_MS));
+    await service.run(script, AbortSignal.timeout(RUN_TIMEOUT_MS));
     expect(await service.apply_workspace(async () => {})).toMatchObject({ status: "applied" });
     expect(services.state.cache.items.readItems()[0]?.dst).toBe("第一版");
     await writeFile(entry, module_body("第二版"));
-    const result = await service.run(script, [], AbortSignal.timeout(RUN_TIMEOUT_MS));
+    const result = await service.run(script, AbortSignal.timeout(RUN_TIMEOUT_MS));
     expect(result.execution.stdout).toMatchObject({
       content: { before: "第一版", after: "第二版" },
     });
     await service.reset_workspace();
     expect(
-      (await service.run(script, [], AbortSignal.timeout(RUN_TIMEOUT_MS))).execution.stdout,
+      (await service.run(script, AbortSignal.timeout(RUN_TIMEOUT_MS))).execution.stdout,
     ).toMatchObject({ content: { before: "第一版", after: "第二版" } });
     await unlink(entry);
-    await expect(service.run(script, [], AbortSignal.timeout(RUN_TIMEOUT_MS))).rejects.toThrow();
+    await expect(service.run(script, AbortSignal.timeout(RUN_TIMEOUT_MS))).rejects.toThrow();
   } finally {
     await services.dispose();
     await resources.dispose();
@@ -473,7 +471,7 @@ it("网页流、重定向与代理等待在真实子进程中工作", async () =
       for await (const chunk of streamed.body.pipeThrough(new TextDecoderStream())) html += chunk;
       console.log(JSON.stringify({ text, html, url: response.url }));
     `);
-    expect(output_content(result.execution.stdout)).toEqual({
+    expect(output_content(result.stdout)).toEqual({
       text: '<article><h1>Hello</h1><p><a href="/target">世界</a></p></article>',
       html: '<article><h1>Hello</h1><p><a href="/target">世界</a></p></article>',
       url: `http://127.0.0.1:${address.port}/page`,
@@ -497,7 +495,7 @@ it("网页流、重定向与代理等待在真实子进程中工作", async () =
     );
     await ready;
     release("UNSUPPORTED");
-    expect(output_content((await pending).execution.stdout)).toContain(
+    expect(output_content((await pending).stdout)).toContain(
       "System proxy returned no supported route",
     );
   } finally {
@@ -521,7 +519,7 @@ it("权限保护部署与快照，失败保留输出、位置和已写文件", a
     ]) { try { await operation(); } catch (error) { failures.push(error.code); } }
     console.log(JSON.stringify(failures));
   `);
-  expect(output_content(result.execution.stdout)).toEqual(Array(5).fill("ERR_ACCESS_DENIED"));
+  expect(output_content(result.stdout)).toEqual(Array(5).fill("ERR_ACCESS_DENIED"));
   await expect(
     run(
       `import fs from 'node:fs/promises'; await fs.writeFile('work/kept.txt','kept'); console.log('before error'); throw new Error('program failed');`,
@@ -539,7 +537,7 @@ it("权限保护部署与快照，失败保留输出、位置和已写文件", a
   ).rejects.toMatchObject({
     execution: { exitCode: 7, stderr: { content: { message: "intentional exit" } } },
   });
-  expect((await run("process.exit(0);")).execution.exitCode).toBe(0);
+  expect((await run("process.exit(0);")).exitCode).toBe(0);
 });
 
 it("取消在途代理等待后回收进程，并解除宿主请求", async () => {
@@ -633,12 +631,11 @@ it.each([false, true])(
           scriptPath,
           stdoutPath: `${AGENT_WORKSPACE_RUN_ROOT}/task.stdout.log`,
           stderrPath: `${AGENT_WORKSPACE_RUN_ROOT}/task.stderr.log`,
-          todos: [],
         },
         AbortSignal.timeout(RUN_TIMEOUT_MS),
       );
-      expect(result.execution.exitCode).toBe(0);
-      expect(output_content(result.execution.stdout)).toMatch(/^linked\s*$/u);
+      expect(result.exitCode).toBe(0);
+      expect(output_content(result.stdout)).toMatch(/^linked\s*$/u);
       expect(await readFile(path.join(external, "result.md"), "utf8")).toBe("linked");
       expect(
         JSON.parse(await readFile(path.join(actual_workspace, "changes/result.json"), "utf8")),
@@ -675,7 +672,7 @@ it("emitImage 通过真实 IPC 等待接收，宿主拒绝可由脚本捕获", a
   );
   expect(paths).toEqual(["work/第一页.webp", "work/第二页.webp"]);
   expect(edges).toEqual([undefined, AGENT_IMAGE_MAX_EDGE]);
-  expect(output_content(result.execution.stdout)).toContain("image rejected");
+  expect(output_content(result.stdout)).toContain("image rejected");
 });
 
 it("页面更新模块在部署工作区解析记录并判定目标", async () => {
@@ -686,9 +683,7 @@ it("页面更新模块在部署工作区解析记录并判定目标", async () =
     const missing = resolve_agent_workspace_page_updates([valid.intent], []);
     console.log(JSON.stringify(missing.rejected));
   `);
-  expect(output_content(result.execution.stdout)).toMatchObject([
-    { reason: "target_missing", line: 2 },
-  ]);
+  expect(output_content(result.stdout)).toMatchObject([{ reason: "target_missing", line: 2 }]);
 });
 
 it("工作区预装表格、ZIP 和编码库在权限模式下读写并自然退出", async () => {
@@ -715,8 +710,8 @@ it("工作区预装表格、ZIP 和编码库在权限模式下读写并自然退
   `,
     AbortSignal.timeout(10000),
   );
-  expect(result.execution.exitCode).toBe(0);
-  expect(output_content(result.execution.stdout)).toBe("file libraries ready\n");
+  expect(result.exitCode).toBe(0);
+  expect(output_content(result.stdout)).toBe("file libraries ready\n");
 });
 
 /** 保存真实 ESM 文件并通过生产 runner 观察进程结果。 */
@@ -740,7 +735,6 @@ async function run(
       scriptPath,
       stdoutPath: `${AGENT_WORKSPACE_RUN_ROOT}/task-${sequence}.stdout.log`,
       stderrPath: `${AGENT_WORKSPACE_RUN_ROOT}/task-${sequence}.stderr.log`,
-      todos: ["发现目标"],
       ...(host === undefined ? {} : { host }),
       ...(emitImage === undefined ? {} : { emitImage }),
     },

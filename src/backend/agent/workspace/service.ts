@@ -74,7 +74,7 @@ import {
 import {
   AgentWorkspaceRunError,
   type AgentWorkspaceRunRequest,
-  type AgentWorkspaceRunResult,
+  type AgentWorkspaceExecution,
 } from "./runtime/runner";
 import { prepare_agent_workspace_changes } from "./changes";
 import {
@@ -110,7 +110,7 @@ type AgentWorkspaceStoreResult = {
 export type AgentWorkspaceRunPort = (
   request: AgentWorkspaceRunRequest,
   signal: AbortSignal,
-) => Promise<AgentWorkspaceRunResult>;
+) => Promise<AgentWorkspaceExecution>;
 
 export type AgentWorkspaceImage = Readonly<{ path: string; image: AgentImage }>;
 
@@ -567,9 +567,8 @@ export class AgentWorkspaceService {
   /** 脚本直接修改可写工作目录；失败、超时和停止都保留已经完成的文件写入。 */
   public async run(
     script: string,
-    todos: readonly string[],
     signal: AbortSignal,
-  ): Promise<AgentWorkspaceRunResult & { images: AgentWorkspaceImage[] }> {
+  ): Promise<{ execution: AgentWorkspaceExecution; images: AgentWorkspaceImage[] }> {
     return await this.exclusive(async () => {
       // 槽位按请求到达顺序分配，异步转换完成顺序不能改变模型看到的图片顺序。
       const output_images = new Set<{ path: string; image: AgentImage | null }>();
@@ -599,13 +598,12 @@ export class AgentWorkspaceService {
         const run_path = `${AGENT_WORKSPACE_RUN_ROOT}/${randomBytes(RUN_ID_BYTES).toString("hex")}`;
         const script_path = `${run_path}.mjs`;
         await this.native_fs.write_file(path.join(this.root_path, script_path), script);
-        const result = await this.options.run(
+        const execution = await this.options.run(
           {
             workspacePath: this.root_path,
             scriptPath: script_path,
             stdoutPath: `${run_path}.stdout.log`,
             stderrPath: `${run_path}.stderr.log`,
-            todos,
             emitImage: async (relative, image_signal, options) => {
               image_signal.throwIfAborted();
               if (output_images.size >= AGENT_WORKSPACE_RUNTIME_POLICY.imageCount)
@@ -653,7 +651,7 @@ export class AgentWorkspaceService {
           signal,
         );
         return {
-          ...result,
+          execution,
           images: [...output_images.values()].flatMap(({ path, image }) =>
             image === null ? [] : [{ path, image }],
           ),

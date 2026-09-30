@@ -230,7 +230,7 @@ export type AgentSessionSnapshot = JsonRecord & {
   entries: AgentEntry[];
   skills: AgentSkillSnapshot[];
   inputQueue: AgentInputQueueSnapshot;
-  todos: string[]; // 当前对话的有序待办；空数组不占用固定展示位
+  doing: string | null; // 模型正在处理的任务阶段，跨回合保留
   context: AgentContextSnapshot;
   usage: AgentUsageSnapshot;
   tokenSpeed: AgentTokenSpeedSnapshot;
@@ -249,7 +249,7 @@ export type AgentSessionEventPayload = JsonRecord &
     | { type: "skills_changed"; skills: AgentSkillSnapshot[] }
     | { type: "pending_decision"; pendingDecision: AgentPendingDecision | null }
     | { type: "input_queue"; inputQueue: AgentInputQueueSnapshot }
-    | { type: "todo"; todos: string[] }
+    | { type: "doing"; doing: string | null }
     | { type: "token_speed"; tokenSpeed: AgentTokenSpeedSnapshot }
     | { type: "context"; context: AgentContextSnapshot }
     | { type: "usage"; usage: AgentUsageSnapshot }

@@ -142,7 +142,7 @@ export const ja_jp_agent_page = {
       "モデルの思考をオフにすると AGENT のタスク遂行能力が大きく低下します。続けますか …?",
   },
   status: { running: "処理中", success: "完了", error: "失敗", stopped: "停止済み" },
-  todo: { pending: "やること" },
+  doing: { current: "作業中" },
   tool: {
     details: "{tool} ツール呼び出しの詳細",
     input: "入力",
