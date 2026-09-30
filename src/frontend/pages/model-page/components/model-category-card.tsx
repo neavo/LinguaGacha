@@ -5,6 +5,7 @@ import { useReorder } from "@frontend/widgets/interactions/use-reorder";
 
 import type { ModelEntrySnapshot } from "@frontend/pages/model-page/types";
 import { Card, CardContent } from "@frontend/shadcn/card";
+import { is_pinned_model } from "@domain/model";
 
 type ModelCategoryCardProps = {
   title: string;
@@ -21,6 +22,7 @@ type ModelCategoryCardProps = {
 export function ModelCategoryCard(props: ModelCategoryCardProps): JSX.Element {
   const reorder = useReorder({
     ids: props.models.map((model) => model.id),
+    disabled_ids: props.models.filter(is_pinned_model).map((model) => model.id),
     disabled: props.disabled,
     on_reorder: props.on_reorder,
   });

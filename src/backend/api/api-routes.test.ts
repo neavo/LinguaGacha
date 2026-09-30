@@ -21,6 +21,9 @@ const GET_PATHS = new Set([
 ]);
 
 const POST_PATHS = new Set([
+  "/api/models/auth/snapshot",
+  "/api/models/auth/login",
+  "/api/models/auth/logout",
   "/api/agent/personality/read",
   "/api/agent/personality/save",
   "/api/skills/delete",

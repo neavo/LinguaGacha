@@ -5,6 +5,7 @@ export function create_model_snapshot(
   overrides: Partial<ModelEntrySnapshot> = {},
 ): ModelEntrySnapshot {
   return {
+    auth_type: "api_key",
     id: "model-1",
     type: "PRESET",
     can_reset: true,

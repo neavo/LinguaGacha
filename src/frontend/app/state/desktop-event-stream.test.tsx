@@ -14,8 +14,17 @@ const { open_event_stream_mock, api_get_mock, push_toast_mock } = vi.hoisted(() 
   };
 });
 
-vi.mock("@frontend/app/desktop/desktop-api", () => {
+vi.mock("@frontend/app/desktop/desktop-api", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@frontend/app/desktop/desktop-api")>();
   return {
+    ...actual,
+    api_fetch: vi.fn(async () => ({
+      snapshot: {
+        instance_id: "auth-test",
+        revision: 0,
+        connected: false,
+      },
+    })),
     open_event_stream: open_event_stream_mock,
     api_get: api_get_mock,
   };
@@ -128,6 +137,22 @@ function create_event_stream_options(
 }
 
 describe("useDesktopEventStream", () => {
+  it("浏览器授权的异步失败通过全局 Toast 展示", () => {
+    const event_stream = create_event_source_stub();
+    open_event_stream_mock.mockReturnValue(event_stream.event_source);
+    render_event_stream(create_event_stream_options());
+    act(() =>
+      event_stream.emit("model.auth_changed", {
+        snapshot: {
+          instance_id: "failed-login",
+          revision: 1,
+          connected: false,
+        },
+        error: { code: "model.provider_failed", details: { message: "Permission denied" } },
+      }),
+    );
+    expect(push_toast_mock).toHaveBeenCalledWith("error", "Permission denied");
+  });
   afterEach(async () => {
     if (root !== null) {
       await act(async () => {

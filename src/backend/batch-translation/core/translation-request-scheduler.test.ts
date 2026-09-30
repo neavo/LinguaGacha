@@ -9,6 +9,28 @@ import { TranslationRequestScheduler } from "./translation-request-scheduler";
 const failure = () => response({ http_status: 429, request_error: log_error_from_message("限流") });
 
 describe("TranslationRequestScheduler", () => {
+  it("不可重试错误立即拒绝排队批次并停止新派发", async () => {
+    const first = deferred();
+    const request = vi.fn<LLMClientPort["request"]>().mockReturnValue(first.promise);
+    const { scheduler } = setup(request, "key", { concurrency_limit: 1, rpm_limit: 0 });
+    const signal = new AbortController().signal;
+    const results = [
+      scheduler.request(body("one"), signal),
+      scheduler.request(body("two"), signal),
+    ];
+    const finished = Promise.allSettled(results);
+    first.resolve(
+      response({
+        retryable: false,
+        request_error: log_error_from_message("subscription_sharing_usage_limit_exceeded"),
+      }),
+    );
+    expect((await finished).map((result) => result.status)).toEqual(["rejected", "rejected"]);
+    await expect(scheduler.request(body("three"), signal)).rejects.toMatchObject({
+      code: "model.provider_failed",
+    });
+    expect(request).toHaveBeenCalledOnce();
+  });
   beforeEach(() => {
     vi.useFakeTimers();
     vi.setSystemTime(0);

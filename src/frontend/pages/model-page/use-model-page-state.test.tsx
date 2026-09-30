@@ -90,6 +90,47 @@ describe("useModelPageState", () => {
     runtime.owner = null;
   });
 
+  it("退出先进入页面确认，取消不请求，确认后才提交退出", async () => {
+    api_fetch_mock.mockResolvedValue(create_snapshot());
+    await render_hook();
+    api_fetch_mock.mockClear();
+    await act(async () => latest_state!.request_logout());
+    expect(latest_state!.confirm_state).toEqual({ kind: "logout", model_id: null });
+    expect(api_fetch_mock).not.toHaveBeenCalled();
+    await act(async () => latest_state!.close_confirm());
+    expect(latest_state!.confirm_state.kind).toBeNull();
+    expect(api_fetch_mock).not.toHaveBeenCalled();
+    await act(async () => latest_state!.request_logout());
+    api_fetch_mock.mockResolvedValueOnce({
+      snapshot: {
+        instance_id: "logout",
+        revision: 1,
+        connected: false,
+      },
+    });
+    await act(async () => latest_state!.confirm_dialog());
+    expect(api_fetch_mock).toHaveBeenCalledExactlyOnceWith("/api/models/auth/logout", {});
+    expect(push_toast).not.toHaveBeenCalled();
+    expect(latest_state!.confirm_state.kind).toBeNull();
+    expect(latest_state!.readonly).toBe(false);
+  });
+
+  it("退出失败使用 Toast，确认期间任务开始则拒绝退出", async () => {
+    api_fetch_mock.mockResolvedValue(create_snapshot());
+    await render_hook();
+    await act(async () => latest_state!.request_logout());
+    api_fetch_mock.mockRejectedValueOnce(new Error("logout failed"));
+    await act(async () => latest_state!.confirm_dialog());
+    expect(push_toast).toHaveBeenCalledWith("error", "app.error.model.provider_failed.message");
+    expect(latest_state!.readonly).toBe(false);
+    await act(async () => latest_state!.request_logout());
+    runtime.owner = "agent";
+    await act(async () => root?.render(<Probe />));
+    api_fetch_mock.mockClear();
+    await act(async () => latest_state!.confirm_dialog());
+    expect(api_fetch_mock).not.toHaveBeenCalled();
+  });
+
   /** 同组模型隔着另一分组，验证重排不会移动其它分组的位置。 */
   function create_reorder_snapshot() {
     const payload = create_snapshot();

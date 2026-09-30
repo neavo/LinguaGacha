@@ -4,6 +4,7 @@ import { type JSX, useEffect, useMemo, useRef } from "react";
 import { useI18n } from "@frontend/app/locale/locale-context";
 import { useDebouncedValue } from "@frontend/widgets/interactions/use-debounce";
 import type { ModelEntrySnapshot } from "@frontend/pages/model-page/types";
+import type { AvailableModel } from "@shared/model-catalog";
 import { Input } from "@frontend/shadcn/input";
 import { ScrollArea } from "@frontend/shadcn/scroll-area";
 import { AppButton } from "@frontend/widgets/app-button";
@@ -12,7 +13,7 @@ import { AppPageDialog } from "@frontend/widgets/app-page-dialog";
 type ModelSelectorDialogProps = {
   open: boolean;
   model: ModelEntrySnapshot | null;
-  available_models: string[];
+  available_models: AvailableModel[];
   filter_text: string;
   is_loading: boolean;
   onFilterTextChange: (next_text: string) => void;
@@ -56,7 +57,7 @@ export function ModelSelectorDialog(props: ModelSelectorDialogProps): JSX.Elemen
     if (keyword === "") {
       return available_models;
     } else {
-      return available_models.filter((model_name) => model_name.toLowerCase().includes(keyword));
+      return available_models.filter((model) => model.id.toLowerCase().includes(keyword));
     }
   }, [available_models, debounced_filter_text]);
 
@@ -97,16 +98,16 @@ export function ModelSelectorDialog(props: ModelSelectorDialogProps): JSX.Elemen
               <div className="model-page__selector-options">
                 {filtered_models.map((model_name) => (
                   <AppButton
-                    key={model_name}
+                    key={model_name.id}
                     type="button"
                     variant="outline"
                     size="sm"
                     className="model-page__selector-item"
                     onClick={() => {
-                      void onSelectModelId(model_name);
+                      void onSelectModelId(model_name.id);
                     }}
                   >
-                    {model_name}
+                    {model_name.id}
                   </AppButton>
                 ))}
               </div>

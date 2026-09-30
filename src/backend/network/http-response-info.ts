@@ -8,6 +8,11 @@ interface HttpResponseInfo {
 
 const response_info = new AsyncLocalStorage<HttpResponseInfo>(); // 每次请求独立采集，SDK 的异步调用沿用所属上下文。
 
+/** 认证刷新属于独立 HTTP 操作，其状态不能覆盖外层模型推理的响应事实。 */
+export function without_http_response_info<T>(operation: () => T): T {
+  return response_info.exit(operation);
+}
+
 /** SDK 会把 HTTP 错误压成文本，此处在同一异步调用链中保留响应事实。 */
 export async function with_http_response_info<T extends object>(
   operation: () => Promise<T>,

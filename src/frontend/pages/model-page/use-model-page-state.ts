@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { api_fetch } from "@frontend/app/desktop/desktop-api";
+import type { AvailableModel } from "@shared/model-catalog";
+import type { ChatGPTAuthSnapshot } from "@shared/model-auth";
+import { apply_model_auth_snapshot } from "@frontend/app/state/model-auth-store";
 import { useRuntimeSnapshot } from "@frontend/app/state/use-desktop-state";
 import { useModelCatalogRevision } from "@frontend/app/state/model-catalog-store";
 import { is_runtime_busy } from "@frontend/app/state/runtime-activity-store";
@@ -35,7 +38,7 @@ type ModelCopyPayload = ModelPageSnapshotPayload & {
 };
 
 type ModelListPayload = {
-  models?: string[];
+  models?: AvailableModel[];
 };
 
 type ModelTestPayload = Partial<ModelTestResult>;
@@ -55,6 +58,7 @@ type UseModelPageStateResult = {
   request_copy_model: (model_id: string) => Promise<void>;
   request_delete_model: (model_id: string) => void;
   request_reset_model: (model_id: string) => void;
+  request_logout: () => void;
   request_reorder_models: (model_type: ModelType, ordered_model_ids: string[]) => Promise<void>;
   update_model_patch: (model_id: string, patch: Record<string, unknown>) => Promise<void>;
   request_test_model: (model_id: string) => Promise<void>;
@@ -245,6 +249,7 @@ function normalize_model_entry(
     api_format: Model.normalize_api_format(source.api_format),
     api_url: String(source.api_url ?? ""),
     api_key: String(source.api_key ?? ""),
+    auth_type: source.auth_type === "oauth" ? "oauth" : "api_key",
     model_id: String(source.model_id ?? ""),
     available_thinking_levels: Array.isArray(source.available_thinking_levels)
       ? source.available_thinking_levels.filter(is_model_thinking_level)
@@ -628,6 +633,11 @@ export function useModelPageState(): UseModelPageStateResult {
     [readonly],
   );
 
+  /** 账户退出由页面持有确认状态，菜单关闭后确认框继续存在。 */
+  const request_logout = useCallback((): void => {
+    if (!test_disabled) set_confirm_state({ kind: "logout", model_id: null });
+  }, [test_disabled]);
+
   /** 提交模型顺序并同步列表结果。 */
   const request_reorder_models = useCallback(
     async (model_type: ModelType, ordered_model_ids: string[]): Promise<void> => {
@@ -710,22 +720,27 @@ export function useModelPageState(): UseModelPageStateResult {
     set_dialog_state(close_dialog_state());
   }
 
-  /** 执行模型删除或预设恢复，结束后释放忙碌状态。 */
+  /** 页面确认后执行删除、重置或账户退出，共用提交互斥与错误反馈。 */
   const confirm_dialog = useCallback(async (): Promise<void> => {
     const current_confirm_state = confirm_state;
     set_confirm_state(close_confirm_state());
 
-    if (current_confirm_state.kind === null || current_confirm_state.model_id === null) {
+    if (current_confirm_state.kind === null) {
       return;
     }
-    if (readonly) {
+    if (readonly || (current_confirm_state.kind === "logout" && test_disabled)) {
       return;
     }
 
     set_is_action_running(true);
 
     try {
-      if (current_confirm_state.kind === "delete") {
+      if (current_confirm_state.kind === "logout") {
+        const payload = await api_fetch<{
+          snapshot: ChatGPTAuthSnapshot;
+        }>("/api/models/auth/logout", {});
+        apply_model_auth_snapshot(payload.snapshot);
+      } else if (current_confirm_state.kind === "delete") {
         const payload = await api_fetch<ModelPageSnapshotPayload>("/api/models/delete", {
           model_id: current_confirm_state.model_id,
         });
@@ -742,12 +757,20 @@ export function useModelPageState(): UseModelPageStateResult {
     } catch (error) {
       push_toast(
         "error",
-        resolve_visible_error_message(error, t, t("model_page.feedback.update_failed")),
+        resolve_visible_error_message(
+          error,
+          t,
+          t(
+            current_confirm_state.kind === "logout"
+              ? "app.error.model.provider_failed.message"
+              : "model_page.feedback.update_failed",
+          ),
+        ),
       );
     } finally {
       set_is_action_running(false);
     }
-  }, [confirm_state, dialog_state.model_id, readonly, t]);
+  }, [confirm_state, dialog_state.model_id, readonly, test_disabled, t]);
 
   /** 取消当前模型确认流程。 */
   function close_confirm(): void {
@@ -808,9 +831,7 @@ export function useModelPageState(): UseModelPageStateResult {
           return {
             ...previous_state,
             model_id,
-            available_models: Array.isArray(payload.models)
-              ? payload.models.map((model_name) => String(model_name))
-              : [],
+            available_models: Array.isArray(payload.models) ? payload.models : [],
             is_loading: false,
           };
         });
@@ -862,6 +883,7 @@ export function useModelPageState(): UseModelPageStateResult {
     request_copy_model,
     request_delete_model,
     request_reset_model,
+    request_logout,
     request_reorder_models,
     update_model_patch,
     request_test_model,

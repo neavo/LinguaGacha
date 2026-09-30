@@ -1,6 +1,13 @@
 import type { StreamOptions } from "@earendil-works/pi-ai";
 
-import { Model, type ModelApiFormat, type ModelThinkingLevel } from "../../domain/model";
+import {
+  Model,
+  CHATGPT_BASE_URL,
+  type ModelAuthType,
+  type ModelApiFormat,
+  type ModelThinkingLevel,
+} from "../../domain/model";
+import { create_provider_error } from "../network/provider-error";
 import {
   read_json_integer,
   read_json_record,
@@ -18,8 +25,9 @@ export type ModelRequestIdentity = Readonly<{
 
 /** 单次翻译与 Agent 共用的请求快照；模型能力独立解析后交给 Pi 模型构造。 */
 export type ModelRequestSnapshot = Readonly<{
+  auth_type: ModelAuthType;
   api_format: ModelApiFormat; // 用户选定的请求协议，与目录模板来源独立。
-  api_keys: readonly string[]; // 至少保留一个凭据或免密占位值。
+  api_keys: readonly string[]; // API Key 路径至少保留一个凭据；OAuth 不在快照中保存 token。
   base_url: string;
   model_id: string; // 最终请求保留用户配置的原始模型 ID。
   headers: Readonly<Record<string, string>>;
@@ -80,9 +88,34 @@ export function read_model_request_snapshot(
   const threshold = read_json_record(record["threshold"]);
   const thinking = read_json_record(record["thinking"]);
   const base_url = normalize_pi_api_url(String(record["api_url"] ?? ""), api_format);
+  const auth_type = record["auth_type"] === "oauth" ? "oauth" : "api_key";
+  if (auth_type === "oauth") {
+    const generation = read_json_record(record["generation"]);
+    for (const field of ["temperature", "top_p"])
+      if (generation[`${field}_custom_enable`] === true)
+        throw create_provider_error(`Unsupported field: ${field}`, undefined, { retryable: false });
+    if (api_format !== "OpenAIResponses" || base_url !== CHATGPT_BASE_URL)
+      throw create_provider_error("ChatGPT requires the official Responses endpoint", undefined, {
+        retryable: false,
+      });
+    const headers = read_enabled_record(request, "extra_headers", "extra_headers_custom_enable");
+    for (const key of Object.keys(headers)) {
+      if (
+        [
+          "authorization",
+          "host",
+          "openai-organization",
+          "openai-project",
+          "chatgpt-account-id",
+        ].includes(key.toLowerCase())
+      )
+        throw create_provider_error(`Reserved header: ${key}`, undefined, { retryable: false });
+    }
+  }
   return {
+    auth_type,
     api_format,
-    api_keys: collect_api_keys(String(record["api_key"] ?? "")),
+    api_keys: auth_type === "oauth" ? [] : collect_api_keys(String(record["api_key"] ?? "")),
     base_url,
     model_id: String(record["model_id"] ?? ""),
     headers: build_request_headers(
@@ -133,6 +166,7 @@ export function resolve_one_shot_generation_options(
   snapshot: ModelRequestSnapshot,
 ): Pick<StreamOptions, "temperature" | "maxTokens" | "samplingParams"> {
   const result: Pick<StreamOptions, "temperature" | "maxTokens" | "samplingParams"> = {};
+  if (snapshot.auth_type === "oauth") return result;
   const temperature = read_custom_number(snapshot.generation, "temperature");
   if (
     temperature !== null &&

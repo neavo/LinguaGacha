@@ -9,7 +9,7 @@ type DesktopApiErrorLike = Error & {
 export type VisibleErrorTextResolver = (key: LocaleKey, params?: Record<string, string>) => string;
 
 /**
- * 普通页面错误展示只消费 DesktopApiError 的稳定 code，其他异常退回页面语境文案。
+ * 模型接口使用后端公开的原始消息，其余错误按稳定 code 或页面语境展示。
  */
 export function resolve_visible_error_message(
   error: unknown,
@@ -17,6 +17,12 @@ export function resolve_visible_error_message(
   fallback_message: string,
 ): string {
   if (is_desktop_api_error_like(error)) {
+    if (
+      error.code === "model.provider_failed" &&
+      typeof error.details["message"] === "string" &&
+      error.details["message"].trim() !== ""
+    )
+      return error.details["message"];
     const message_key = is_app_error_code(error.code)
       ? app_error_message_key(error.code)
       : (`app.error.desktop.${error.code}.message` as LocaleKey);

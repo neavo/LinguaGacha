@@ -64,6 +64,7 @@ import type { ProjectSessionState } from "../project/project-session-state";
 import type { RuntimeLease, RuntimeOperationGate } from "../runtime-operation-gate";
 import { AgentDecisionCoordinator } from "./agent-decision";
 import { register_agent_model, resolve_agent_batch_translation_model } from "./agent-model";
+import type { ChatGPTAuthService } from "../auth/chatgpt-auth-service";
 import type { PiModelCatalogReader } from "../llm/pi-model-catalog";
 import {
   append_agent_session_seed,
@@ -160,6 +161,7 @@ type AgentServicePaths = Pick<
 >;
 
 type AgentServiceOptions = {
+  auth?: ChatGPTAuthService;
   skills: Pick<AgentSkillsService, "get_current" | "subscribe" | "refresh">;
   catalog: PiModelCatalogReader;
   batchTranslation: Pick<
@@ -191,6 +193,7 @@ type LoadedAgentResources = Readonly<{
  * 单个后端 Agent 产品会话的状态拥有者；通用模型生命周期交给 AgentSession。
  */
 export class AgentService {
+  private readonly auth: ChatGPTAuthService | undefined; // 从共享后端取得本轮 OAuth 凭据。
   private readonly catalog: PiModelCatalogReader; // 每轮准备时读取组合根持有的当前目录。
   private readonly token_speed = new AgentTokenSpeed(); // 失败继续复用回合累计统计。
   private token_speed_updated_at: number | null = null; // 计数和发布共用节流时间。
@@ -236,6 +239,7 @@ export class AgentService {
 
   /** 会话订阅返回 reset Promise，保证工程生命周期等待旧 Agent 完整退出。 */
   public constructor(options: AgentServiceOptions) {
+    this.auth = options.auth;
     this.catalog = options.catalog;
     this.batch_translation = options.batchTranslation;
     this.paths = options.paths;
@@ -1066,6 +1070,7 @@ export class AgentService {
         session_id: runtime.session_id,
       },
       this.catalog,
+      this.auth,
     );
     await runtime.session.setModel(resolved_model.model);
     runtime.session.settingsManager.applyOverrides(build_agent_session_settings());
@@ -1093,6 +1098,7 @@ export class AgentService {
         session_id,
       },
       this.catalog,
+      this.auth,
     );
     const settings_manager = SettingsManager.inMemory(build_agent_session_settings(), {
       projectTrusted: false,

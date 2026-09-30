@@ -52,6 +52,7 @@ function create_model_page_state() {
       refresh_snapshot: vi.fn(),
       snapshot: { models: [model] },
       readonly: false,
+      test_disabled: false,
       grouped_categories: [
         {
           type: "PRESET",
@@ -88,6 +89,7 @@ function create_model_page_state() {
       request_reorder_models: vi.fn(),
       request_reset_model: vi.fn(),
       request_delete_model: vi.fn(),
+      request_logout: vi.fn(),
     },
   };
 }
@@ -133,8 +135,8 @@ describe("ModelPage", () => {
       )!;
       await act(async () => item.click());
     }
-    await select("OpenAI 模型", "app.action.reset");
-    await select("另一个模型", "app.action.delete");
+    await select("OpenAI 模型", "model_page.action.reset");
+    await select("另一个模型", "model_page.action.delete");
     await select("另一个模型", "model_page.action.copy");
     await select("另一个模型", "model_page.action.basic_settings");
 

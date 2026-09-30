@@ -19,7 +19,9 @@
   "dependencies": {
     "@earendil-works/pi-ai": "^0.99.1",
     "@earendil-works/pi-coding-agent": "^0.99.1",
-    "@earendil-works/pi-mcp": "^0.99.1"
+    "@earendil-works/pi-mcp": "^0.99.1",
+    "jose": "^6.2.12",
+    "proper-lockfile": "^4.1.2"
   },
   "devDependencies": {
     "@base-ui/react": "^1.8.0",
@@ -45,6 +47,7 @@
     "@tanstack/react-virtual": "^3.14.13",
     "@types/hast": "^3.0.5",
     "@types/mdast": "^4.0.4",
+    "@types/proper-lockfile": "^4.1.4",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "@types/unist": "^3.0.3",

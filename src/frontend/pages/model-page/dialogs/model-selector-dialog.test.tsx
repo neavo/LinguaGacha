@@ -72,7 +72,10 @@ function ModelSelectorProbe(props: {
     <ModelSelectorDialog
       open={true}
       model={create_model_snapshot()}
-      available_models={["alpha-model", "beta-model", "gamma-model"]}
+      available_models={["alpha-model", "beta-model", "gamma-model"].map((id) => ({
+        id,
+        name: "Display title",
+      }))}
       filter_text={filter_text}
       is_loading={false}
       onFilterTextChange={set_filter_text}
@@ -110,7 +113,7 @@ describe("ModelSelectorDialog", () => {
     });
   }
 
-  it("筛选输入即时显示，列表在防抖到期后刷新", async () => {
+  it("列表显示模型 ID，筛选输入即时显示且列表在防抖到期后刷新", async () => {
     vi.useFakeTimers();
     await render_dialog();
     if (container === null) {

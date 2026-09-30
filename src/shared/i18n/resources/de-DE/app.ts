@@ -264,6 +264,7 @@ export const de_de_app = {
       not_found: {
         message: "Die Modellkonfiguration existiert nicht",
       },
+      auth_required: { message: "Bitte melden Sie sich zuerst bei Ihrem Konto an …" },
       provider_failed: {
         message:
           "Die Modellservice-Anfrage ist fehlgeschlagen. Bitte überprüfen Sie die API-Einstellungen …",

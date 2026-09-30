@@ -1,5 +1,36 @@
 [
   {
+    "id": "preset-chatgpt",
+    "type": "PRESET",
+    "name": "ChatGPT",
+    "api_format": "OpenAIResponses",
+    "api_url": "https://api.openai.com/v1",
+    "api_key": "",
+    "model_id": "gpt-6-luna",
+    "request": {
+      "extra_headers": {},
+      "extra_body": {},
+      "extra_headers_custom_enable": false,
+      "extra_body_custom_enable": false
+    },
+    "threshold": {
+      "input_token_limit": 768,
+      "output_token_limit": 0,
+      "rpm_limit": 0,
+      "concurrency_limit": 0
+    },
+    "thinking": {
+      "level": "OFF"
+    },
+    "generation": {
+      "temperature": 0.95,
+      "temperature_custom_enable": false,
+      "top_p": 0.95,
+      "top_p_custom_enable": false
+    },
+    "auth_type": "oauth"
+  },
+  {
     "id": "preset-sakura",
     "type": "PRESET",
     "name": "SakuraLLM",

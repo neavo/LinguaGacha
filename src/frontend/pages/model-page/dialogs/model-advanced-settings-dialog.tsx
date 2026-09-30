@@ -323,101 +323,104 @@ export function ModelAdvancedSettingsDialog(
             />
           ))}
 
-          {SLIDER_FIELD_CONFIGS.map((field_config) => {
-            const current_value = slider_values[field_config.field_name] ?? 0;
-            const current_text = slider_texts[field_config.field_name] ?? current_value.toFixed(2);
-            const current_enabled = Boolean(model.generation[field_config.enabled_key]);
+          {model.auth_type === "oauth"
+            ? null
+            : SLIDER_FIELD_CONFIGS.map((field_config) => {
+                const current_value = slider_values[field_config.field_name] ?? 0;
+                const current_text =
+                  slider_texts[field_config.field_name] ?? current_value.toFixed(2);
+                const current_enabled = Boolean(model.generation[field_config.enabled_key]);
 
-            return (
-              <Card key={field_config.field_name}>
-                <CardContent className="model-page__advanced-card-content">
-                  <div className="model-page__advanced-card-head">
-                    <div className="model-page__advanced-card-copy">
-                      <CardTitle>{t(field_config.title_key)}</CardTitle>
-                      <CardDescription>{t(field_config.description_key)}</CardDescription>
-                    </div>
+                return (
+                  <Card key={field_config.field_name}>
+                    <CardContent className="model-page__advanced-card-content">
+                      <div className="model-page__advanced-card-head">
+                        <div className="model-page__advanced-card-copy">
+                          <CardTitle>{t(field_config.title_key)}</CardTitle>
+                          <CardDescription>{t(field_config.description_key)}</CardDescription>
+                        </div>
 
-                    <div className="model-page__advanced-inline-control">
-                      {current_enabled ? (
-                        <div className="model-page__advanced-number-field">
-                          <Input
-                            type="number"
-                            min={field_config.min}
-                            max={field_config.max}
-                            step={field_config.step}
-                            inputMode="decimal"
-                            value={current_text}
-                            disabled={props.readonly}
-                            onChange={(event) => {
-                              const next_text = event.target.value;
-                              set_slider_texts((previous_state) => {
-                                return {
-                                  ...previous_state,
-                                  [field_config.field_name]: next_text,
-                                };
-                              });
-                            }}
-                            onBlur={() => {
-                              const trimmed_text = current_text.trim();
-                              const parsed_value = Number(trimmed_text);
-                              if (trimmed_text !== "" && Number.isFinite(parsed_value)) {
-                                const normalized_value = normalize_slider_value(
-                                  field_config,
-                                  parsed_value,
-                                );
-                                set_slider_values((previous_state) => {
-                                  return {
-                                    ...previous_state,
-                                    [field_config.field_name]: normalized_value,
-                                  };
-                                });
-                                set_slider_texts((previous_state) => {
-                                  return {
-                                    ...previous_state,
-                                    [field_config.field_name]: normalized_value.toFixed(2),
-                                  };
-                                });
-
-                                if (normalized_value !== current_value) {
-                                  void props.onPatch({
-                                    generation: {
-                                      [field_config.field_name]: normalized_value,
-                                    },
+                        <div className="model-page__advanced-inline-control">
+                          {current_enabled ? (
+                            <div className="model-page__advanced-number-field">
+                              <Input
+                                type="number"
+                                min={field_config.min}
+                                max={field_config.max}
+                                step={field_config.step}
+                                inputMode="decimal"
+                                value={current_text}
+                                disabled={props.readonly}
+                                onChange={(event) => {
+                                  const next_text = event.target.value;
+                                  set_slider_texts((previous_state) => {
+                                    return {
+                                      ...previous_state,
+                                      [field_config.field_name]: next_text,
+                                    };
                                   });
-                                }
-                              } else {
-                                set_slider_texts((previous_state) => {
-                                  return {
-                                    ...previous_state,
-                                    [field_config.field_name]: current_value.toFixed(2),
-                                  };
-                                });
-                              }
+                                }}
+                                onBlur={() => {
+                                  const trimmed_text = current_text.trim();
+                                  const parsed_value = Number(trimmed_text);
+                                  if (trimmed_text !== "" && Number.isFinite(parsed_value)) {
+                                    const normalized_value = normalize_slider_value(
+                                      field_config,
+                                      parsed_value,
+                                    );
+                                    set_slider_values((previous_state) => {
+                                      return {
+                                        ...previous_state,
+                                        [field_config.field_name]: normalized_value,
+                                      };
+                                    });
+                                    set_slider_texts((previous_state) => {
+                                      return {
+                                        ...previous_state,
+                                        [field_config.field_name]: normalized_value.toFixed(2),
+                                      };
+                                    });
+
+                                    if (normalized_value !== current_value) {
+                                      void props.onPatch({
+                                        generation: {
+                                          [field_config.field_name]: normalized_value,
+                                        },
+                                      });
+                                    }
+                                  } else {
+                                    set_slider_texts((previous_state) => {
+                                      return {
+                                        ...previous_state,
+                                        [field_config.field_name]: current_value.toFixed(2),
+                                      };
+                                    });
+                                  }
+                                }}
+                              />
+                            </div>
+                          ) : null}
+
+                          <BooleanSegmentedToggle
+                            aria_label={t(field_config.title_key)}
+                            value={current_enabled}
+                            className="model-page__advanced-toggle-group"
+                            stretch
+                            disabled={props.readonly}
+                            on_value_change={(next_value) => {
+                              void props.onPatch({
+                                generation: {
+                                  [field_config.enabled_key]: next_value,
+                                },
+                              });
                             }}
                           />
                         </div>
-                      ) : null}
-
-                      <BooleanSegmentedToggle
-                        aria_label={t(field_config.title_key)}
-                        value={current_enabled}
-                        className="model-page__advanced-toggle-group"
-                        stretch
-                        disabled={props.readonly}
-                        on_value_change={(next_value) => {
-                          void props.onPatch({
-                            generation: {
-                              [field_config.enabled_key]: next_value,
-                            },
-                          });
-                        }}
-                      />
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            );
-          })}
+                      </div>
+                    </CardContent>
+                  </Card>
+                );
+              })}
 
           {REQUEST_JSON_FIELD_CONFIGS.map((field_config) => {
             const draft = request_json_drafts[field_config.field_name];

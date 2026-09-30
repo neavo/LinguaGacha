@@ -245,6 +245,7 @@ export const ko_kr_app = {
       not_found: {
         message: "모델 설정이 없습니다",
       },
+      auth_required: { message: "먼저 계정에 로그인해 주세요 …" },
       provider_failed: {
         message: "모델 서비스 요청에 실패했습니다. API 설정을 확인해 주세요 …",
       },

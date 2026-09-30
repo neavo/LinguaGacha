@@ -1,6 +1,7 @@
 import { read_json_record } from "../../../domain/json";
 import { AppError, log_error_from_message, type LogError } from "../../../shared/error";
 import { collect_api_keys, read_request_timeout_ms } from "../../llm/llm-request";
+import { create_provider_error } from "../../network/provider-error";
 import type { LLMClientPort, LLMRequestBody, LLMRequestResult } from "../../llm/llm-types";
 import type { TranslationRequestPort } from "../protocol/translation-request";
 import type {
@@ -35,6 +36,7 @@ interface PendingRequest {
 }
 
 interface SchedulerOptions {
+  auth_session?: string;
   model: LLMRequestBody["model"];
   client: LLMClientPort;
   rate: TranslationRequestRate;
@@ -44,6 +46,7 @@ interface SchedulerOptions {
 
 /** 本轮唯一请求队列；每次真实派发才匹配密钥，同时取得并发与速率资格。 */
 export class TranslationRequestScheduler implements TranslationRequestPort {
+  private terminal_error: unknown = null; // 终止错误立即关闭派发，等待调用者完成已有流水线收尾。
   private readonly keys: RequestKey[];
   private readonly queue: PendingRequest[] = [];
   private recovery_retry_count = 0; // 本次连续全部不可用期间真正派发的恢复请求总数。
@@ -61,7 +64,11 @@ export class TranslationRequestScheduler implements TranslationRequestPort {
     this.auto_concurrency = limits.auto_concurrency;
     this.concurrency_limit = limits.concurrency_limit;
     options.rate.set_rps_limit(this.concurrency_limit);
-    this.keys = [...new Set(collect_api_keys(String(model["api_key"] ?? "")))].map((value) => ({
+    this.keys = [
+      ...new Set(
+        model["auth_type"] === "oauth" ? [""] : collect_api_keys(String(model["api_key"] ?? "")),
+      ),
+    ].map((value) => ({
       value,
       failures: 0,
       in_flight: 0,
@@ -77,6 +84,7 @@ export class TranslationRequestScheduler implements TranslationRequestPort {
 
   /** 一个 Promise 对应一个逻辑请求，换密钥重试仍留在本轮队列。 */
   public request(body: LLMRequestBody, signal: AbortSignal): Promise<LLMRequestResult> {
+    if (this.terminal_error !== null) return Promise.reject(this.terminal_error);
     if (signal.aborted) return Promise.reject(new AppError("runtime.cancelled"));
     return new Promise((resolve, reject) => {
       const pending: PendingRequest = {
@@ -116,6 +124,13 @@ export class TranslationRequestScheduler implements TranslationRequestPort {
     if (this.keys.some((key) => key.state === "ready")) this.recovery_retry_count = 0;
     if (this.timer !== null) clearTimeout(this.timer);
     this.timer = null;
+    if (this.terminal_error !== null) {
+      for (const pending of this.queue.splice(0)) {
+        pending.signal.removeEventListener("abort", pending.abort);
+        pending.reject(this.terminal_error);
+      }
+      return;
+    }
     while (this.queue.length > 0 && this.in_flight < this.concurrency_limit) {
       // 同一个 signal 的 abort 监听依次执行；前一个监听重新派发时，后续请求也已取消。
       const head = this.queue[0]!;
@@ -204,6 +219,9 @@ export class TranslationRequestScheduler implements TranslationRequestPort {
       const result = await this.options.client.request(
         {
           ...pending.body,
+          ...(this.options.auth_session === undefined
+            ? {}
+            : { auth_session: this.options.auth_session }),
           model: { ...read_json_record(pending.body.model), api_key: key.value },
         },
         pending.signal,
@@ -217,6 +235,16 @@ export class TranslationRequestScheduler implements TranslationRequestPort {
           key.available_at = Date.now();
         }
       } else if (result.timeout || result.request_error !== undefined) {
+        if (
+          result.retryable === false ||
+          (this.options.auth_session !== undefined && key.failures >= KEY_COOLDOWN_STEPS_MS.length)
+        ) {
+          throw create_provider_error(
+            result.request_error?.message ?? "Model request timed out.",
+            result.http_status,
+            { retryable: false, failure: result.request_error },
+          );
+        }
         if (result.http_status === HTTP_TOO_MANY_REQUESTS) {
           this.adjust_concurrency(version, false);
           const delay = Math.min(
@@ -242,6 +270,7 @@ export class TranslationRequestScheduler implements TranslationRequestPort {
         outcome = { result: { ...result, ...pending.usage } };
       }
     } catch (error) {
+      this.terminal_error = error;
       // 客户端已将预期网络错误归一；抛出的异常属于基础设施错误，不能惩罚密钥。
       outcome = { error };
     } finally {

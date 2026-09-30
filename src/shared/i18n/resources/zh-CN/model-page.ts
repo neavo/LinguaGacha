@@ -1,4 +1,8 @@
 export const zh_cn_model_page = {
+  auth: {
+    login: "点击登录",
+    logout: "退出登录",
+  },
   title: "模型管理",
   category: {
     preset: {
@@ -19,6 +23,8 @@ export const zh_cn_model_page = {
   },
   copy_name: "{NAME}_副本",
   action: {
+    reset: "重置模型",
+    delete: "删除模型",
     copy: "生成副本",
     basic_settings: "基础设置",
     task_settings: "任务设置",
@@ -35,6 +41,7 @@ export const zh_cn_model_page = {
     },
   },
   confirm: {
+    logout: { description: "是否确认退出登录 …？" },
     delete: {
       description: "是否确认删除模型 …?",
     },

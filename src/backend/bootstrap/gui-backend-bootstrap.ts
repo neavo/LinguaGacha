@@ -148,6 +148,7 @@ export class GuiBackendBootstrap {
         services.state.runtimeGate,
       );
       const agent = new AgentService({
+        auth: services.modelAuth,
         skills,
         catalog: services.modelCatalog,
         images,

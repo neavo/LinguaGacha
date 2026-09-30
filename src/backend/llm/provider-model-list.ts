@@ -1,10 +1,15 @@
 import { read_json_record, type JsonRecord, type JsonValue } from "../../domain/json";
 import { Model } from "../../domain/model";
+import { CHATGPT_BASE_URL } from "../../domain/model";
+import type { AvailableModel } from "../../shared/model-catalog";
+import { create_provider_error, read_provider_response_error } from "../network/provider-error";
+import type { ChatGPTAuthService } from "../auth/chatgpt-auth-service";
 import * as AppErrors from "../../shared/error";
 import {
   get_primary_api_key,
   normalize_google_api_base_url,
   normalize_openai_sdk_base_url,
+  read_model_request_snapshot,
 } from "./llm-request";
 
 // 模型列表探测沿用浏览器 UA，减少部分服务商对 Node 默认 UA 的拒绝概率。
@@ -15,8 +20,38 @@ const GOOGLE_MODEL_LIST_PAGE_SIZE = 1000;
 /**
  * 按供应商协议查询远端实时模型列表；任务级 Key 轮换不参与模型列表探测。
  */
-export async function list_available_models(model: JsonRecord): Promise<string[]> {
+export async function list_available_models(
+  model: JsonRecord,
+  auth?: Pick<ChatGPTAuthService, "bind" | "resolve">,
+): Promise<AvailableModel[]> {
   try {
+    if (model["auth_type"] === "oauth") {
+      if (auth === undefined) throw new AppErrors.AppError("model.auth_required");
+      const snapshot = read_model_request_snapshot(model, {
+        user_agent: BROWSER_USER_AGENT,
+        session_id: "model-list",
+      });
+      const credential = await auth.resolve(auth.bind());
+      const data = read_json_record(
+        await fetch_json(`${CHATGPT_BASE_URL}/models`, {
+          ...snapshot.headers,
+          Authorization: `Bearer ${credential.apiKey}`,
+        }),
+      );
+      const entries = Array.isArray(data["models"]) ? data["models"] : [];
+      return entries.flatMap((value) => {
+        const item = read_json_record(value);
+        return item["visibility"] === "list" && typeof item["slug"] === "string"
+          ? [
+              {
+                id: item["slug"],
+                name:
+                  typeof item["display_name"] === "string" ? item["display_name"] : item["slug"],
+              },
+            ]
+          : [];
+      });
+    }
     const api_format = Model.normalize_api_format(String(model["api_format"] ?? "OpenAI"));
     let models: string[];
     if (api_format === "Google") {
@@ -26,11 +61,11 @@ export async function list_available_models(model: JsonRecord): Promise<string[]
     } else {
       models = await fetch_openai_available_models(model);
     }
-    return models.sort();
+    return models.sort().map((id) => ({ id, name: id }));
   } catch (error) {
     // fetch_json 已完成公开状态收窄；重复包装会丢失这份安全诊断。
-    if (AppErrors.is_app_error(error) && error.code === "model.provider_failed") throw error;
-    throw new AppErrors.AppError("model.provider_failed", { cause: error });
+    if (AppErrors.is_app_error(error)) throw error;
+    throw create_provider_error(error);
   }
 }
 
@@ -94,10 +129,7 @@ async function fetch_anthropic_available_models(model: JsonRecord): Promise<stri
 async function fetch_json(url: string, headers: Record<string, string>): Promise<JsonValue> {
   const response = await fetch(url, { headers, method: "GET" });
   if (!response.ok) {
-    throw new AppErrors.AppError("model.provider_failed", {
-      public_details: { status: response.status },
-      cause: response,
-    });
+    throw await read_provider_response_error(response);
   }
   return (await response.json()) as JsonValue;
 }

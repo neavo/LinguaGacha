@@ -47,6 +47,15 @@ export const MODEL_THINKING_LEVELS = [
 ] as const; // 保持默认适用于所有模型；其余等级由模型能力决定
 
 export type ModelUsage = (typeof MODEL_USAGES)[number];
+
+export type ModelAuthType = "api_key" | "oauth";
+export const CHATGPT_BASE_URL = "https://api.openai.com/v1";
+const CHATGPT_PRESET_ID = "preset-chatgpt";
+
+/** 只固定内置 ChatGPT 预设；副本拥有新 ID，继续使用普通排序。 */
+export function is_pinned_model(model: Readonly<{ id?: unknown; type?: unknown }>): boolean {
+  return model.id === CHATGPT_PRESET_ID && model.type === "PRESET";
+}
 /** 执行用途的模型选择与 Agent 批量翻译偏好。 */
 export type ModelSelection = {
   translation: string;
@@ -129,6 +138,7 @@ export class Model {
   public readonly api_format: ModelApiFormat; // API 格式
   public readonly api_url: string; // API 地址
   public readonly api_key: string; // API Key
+  public readonly auth_type: ModelAuthType; // 认证来源独立于模型名称和协议。
   public readonly model_id: string; // 服务商模型 ID
   public readonly agent: ModelAgentConfig; // 0 表示自动的 Agent 容量配置
   public readonly request: ModelRequestConfig; // 请求层配置快照
@@ -144,6 +154,7 @@ export class Model {
     api_format: ModelApiFormat;
     api_url: string;
     api_key: string;
+    auth_type: ModelAuthType;
     model_id: string;
     agent: ModelAgentConfig;
     request: ModelRequestConfig;
@@ -157,6 +168,7 @@ export class Model {
     this.api_format = fields.api_format;
     this.api_url = fields.api_url;
     this.api_key = fields.api_key;
+    this.auth_type = fields.auth_type;
     this.model_id = fields.model_id;
     this.agent = fields.agent;
     this.request = fields.request;
@@ -179,6 +191,7 @@ export class Model {
       api_format: Model.normalize_api_format(record["api_format"]),
       api_url: String(record["api_url"] ?? ""),
       api_key: String(record["api_key"] ?? "no_key_required"),
+      auth_type: record["auth_type"] === "oauth" ? "oauth" : "api_key",
       model_id,
       agent,
       request: Model.normalize_request_config(record["request"]),
@@ -197,6 +210,7 @@ export class Model {
       api_format: this.api_format,
       api_url: this.api_url,
       api_key: this.api_key,
+      auth_type: this.auth_type,
       model_id: this.model_id,
       agent: this.agent,
       request: this.request,

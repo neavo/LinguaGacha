@@ -225,6 +225,13 @@ export function register_api_routes(context: ApiRouteContext): void {
   );
 
   const models = services.model;
+  context.postJson("/api/models/auth/snapshot", () => ({
+    snapshot: services.modelAuth.snapshot(),
+  }));
+  context.postJson("/api/models/auth/login", async () => ({
+    url: await services.modelAuth.login(),
+  }));
+  context.postJson("/api/models/auth/logout", () => services.modelAuth.logout());
   context.app.get("/api/models/selection", (hono_context) =>
     hono_context.json(ok(models.get_selection_snapshot())),
   );

@@ -57,10 +57,15 @@ export function ModelPage(_props: ModelPageProps): JSX.Element {
             ? t("model_page.confirm.delete.description")
             : model_page_state.confirm_state.kind === "reset"
               ? t("model_page.confirm.reset.description")
-              : ""
+              : model_page_state.confirm_state.kind === "logout"
+                ? t("model_page.confirm.logout.description")
+                : ""
         }
         onConfirm={model_page_state.confirm_dialog}
         onClose={model_page_state.close_confirm}
+        confirmDisabled={
+          model_page_state.confirm_state.kind === "logout" && model_page_state.test_disabled
+        }
       />
 
       <ModelBasicSettingsDialog
@@ -159,11 +164,13 @@ export function ModelPage(_props: ModelPageProps): JSX.Element {
                     <ModelItemMenu
                       model={model}
                       readonly={model_page_state.readonly}
+                      auth_disabled={model_page_state.test_disabled}
                       on_open_settings={(kind) => model_page_state.open_dialog(kind, model.id)}
                       on_copy={() => {
                         void model_page_state.request_copy_model(model.id);
                       }}
                       on_reset={() => model_page_state.request_reset_model(model.id)}
+                      on_logout={model_page_state.request_logout}
                       on_delete={() => model_page_state.request_delete_model(model.id)}
                     />
                   }

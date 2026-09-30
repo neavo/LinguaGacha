@@ -2,6 +2,7 @@ import type { Api, Model as PiModel } from "@earendil-works/pi-ai";
 import { is_json_record } from "../../domain/json";
 import type { ModelApiFormat } from "../../domain/model";
 import { AppError } from "../../shared/error";
+import { apply_chatgpt_payload } from "./chatgpt-request";
 import {
   read_custom_number,
   resolve_max_tokens_for_request,
@@ -68,7 +69,9 @@ export function apply_request_overrides(
       is_json_record(item) && item["role"] === "system" ? { ...item, role: "developer" } : item,
     );
   }
-  return { ...record, ...snapshot.extra_body };
+  return snapshot.auth_type === "oauth"
+    ? apply_chatgpt_payload(record, snapshot.extra_body)
+    : { ...record, ...snapshot.extra_body };
 }
 
 /** 清理 SDK 自动生成的思考控制，用户扩展随后合并。 */

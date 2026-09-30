@@ -975,6 +975,43 @@ describe("ModelService 配置管理", () => {
     expect(read_request_model_ids_by_type(snapshot.models, "CUSTOM_ANTHROPIC")).toEqual(["a1"]);
   });
 
+  it("ChatGPT 内置预设在读取、重排和重置后固定首位，副本保留自定义排序", async () => {
+    const pinned = create_model({ id: "preset-chatgpt", type: "PRESET", name: "ChatGPT" });
+    const { service, app_setting_service } = await create_model_service(
+      [
+        create_model({ id: "first", type: "PRESET" }),
+        create_model({ id: "second", type: "PRESET" }),
+        { ...pinned, name: "我的账号" },
+        create_model({ id: "custom-first", type: "CUSTOM_OPENAI" }),
+        create_model({ id: "chatgpt-copy", type: "CUSTOM_OPENAI", name: "ChatGPT" }),
+      ],
+      { builtin_models: [pinned] },
+    );
+    const preset_ids = (response: JsonRecord) =>
+      read_request_model_ids_by_type(read_request_model_snapshot(response).models, "PRESET");
+    expect(preset_ids(service.get_snapshot())).toEqual(["preset-chatgpt", "first", "second"]);
+    expect(
+      preset_ids(
+        service.reorder_model({ ordered_model_ids: ["second", "first", "preset-chatgpt"] }),
+      ),
+    ).toEqual(["preset-chatgpt", "second", "first"]);
+    expect(read_config_model_records(app_setting_service.read_setting())[0]?.["id"]).toBe(
+      "preset-chatgpt",
+    );
+    expect(preset_ids(service.reset_preset_model({ model_id: "preset-chatgpt" }))).toEqual([
+      "preset-chatgpt",
+      "second",
+      "first",
+    ]);
+    const copied = read_request_model_snapshot(
+      service.reorder_model({ ordered_model_ids: ["chatgpt-copy", "custom-first"] }),
+    );
+    expect(read_request_model_ids_by_type(copied.models, "CUSTOM_OPENAI")).toEqual([
+      "chatgpt-copy",
+      "custom-first",
+    ]);
+  });
+
   it("重排请求必须完整匹配单个模型分组", async () => {
     const { service } = await create_model_service([
       create_model({ id: "a", type: "PRESET" }),
@@ -1130,7 +1167,7 @@ describe("ModelService 远端模型能力", () => {
     process_fetch.mockResolvedValue(json_response({ data: [{ id: "model-a" }] }));
 
     await expect(service.list_available_models({ model_id: "openai-1" })).resolves.toEqual({
-      models: ["model-a"],
+      models: [{ id: "model-a", name: "model-a" }],
     });
     await expect(service.list_available_models({ model_id: "missing" })).rejects.toThrow(
       "model.not_found",
