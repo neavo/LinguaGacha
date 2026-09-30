@@ -1,7 +1,7 @@
 import { validateToolArguments, type ToolCall } from "@earendil-works/pi-ai";
 import { describe, expect, it, vi } from "vitest";
 
-import { create_agent_question_tools } from "./question";
+import { create_agent_ask_user_tool } from "./ask-user";
 
 type QuestionToolResult = { details: unknown };
 
@@ -11,7 +11,7 @@ describe("ask_user 工具", () => {
       outcome: "selected" as const,
       optionId: "focused",
     }));
-    const tool = create_agent_question_tools({ wait_for_answer })[0];
+    const tool = create_agent_ask_user_tool({ wait_for_answer });
     if (tool === undefined) throw new Error("缺少 ask_user 工具");
     const params = {
       prompt: "  选择处理范围  ",
@@ -52,7 +52,7 @@ describe("ask_user 工具", () => {
   });
 
   it("只接受二至三个固定选项并校验内容", async () => {
-    const tool = create_agent_question_tools({ wait_for_answer: vi.fn() })[0];
+    const tool = create_agent_ask_user_tool({ wait_for_answer: vi.fn() });
     if (tool === undefined) throw new Error("缺少 ask_user 工具");
     expect(() => validateToolArguments(tool, tool_call({ prompt: "问题", options: [] }))).toThrow();
     expect(() =>

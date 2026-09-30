@@ -2,7 +2,7 @@ import { McpClient, McpTimeoutError } from "@earendil-works/pi-mcp";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { WebSearchService } from "./web-search-service";
-import type { AgentWebSearchProvider } from "./model-tools/web-search";
+import type { AgentWebSearchProvider } from "./tools/web-search";
 import type { LogManager } from "../log/log-manager";
 
 const TEST_CLIENT_VERSION = "1.2.3";

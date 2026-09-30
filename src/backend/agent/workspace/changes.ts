@@ -9,10 +9,7 @@ import { QUALITY_RULE_KINDS, type QualityRuleKind } from "../../../domain/qualit
 import { JsonTool } from "../../../shared/utils/json-tool";
 import { iterate_utf8_lf_lines } from "../../../shared/utils/text-tool";
 import type { NativeFs } from "../../../native/native-fs";
-import {
-  AGENT_WORKSPACE_CHANGE_PATHS,
-  AGENT_WORKSPACE_QUALITY_CHANGE_OPERATIONS,
-} from "./contract";
+import { AGENT_WORKSPACE_CHANGE_PATHS, AGENT_WORKSPACE_QUALITY_CHANGE_OPERATIONS } from "./paths";
 import {
   create_empty_agent_workspace_intent_batch,
   type AgentWorkspaceIntentBatch,

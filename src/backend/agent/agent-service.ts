@@ -1,3 +1,7 @@
+import {
+  create_agent_workspace_apply_tool,
+  type AgentWorkspaceApprovalPort,
+} from "./tools/workspace-apply";
 import type { AgentFile, AgentDocument } from "../../shared/agent-workspace-file";
 import { normalize_agent_approval_mode } from "../../domain/setting";
 import type { AgentSkillsService } from "./agent-skills-service";
@@ -8,7 +12,7 @@ import { prepare_agent_message, type PreparedAgentMessage } from "./agent-messag
 import { BatchTranslationCompletionError } from "../batch-translation/batch-translation-runtime";
 import type { BatchTranslationResult } from "../../domain/batch-translation";
 import type { Model } from "../../domain/model";
-import { create_agent_batch_item_translation_tool } from "./model-tools/batch-translation";
+import { create_agent_batch_item_translation_tool } from "./tools/run-batch-item-translation";
 import {
   InMemoryCredentialStore,
   type AssistantMessage,
@@ -66,23 +70,20 @@ import {
   load_agent_session_seed,
   type AgentSessionSeed,
 } from "./agent-session-seed";
-import { create_agent_skill_tools } from "./model-tools/skill";
-import { create_agent_doing_tool } from "./model-tools/doing";
-import { create_agent_question_tools } from "./model-tools/question";
+import { create_agent_read_skill_tool } from "./tools/read-skill";
+import { create_agent_doing_tool } from "./tools/doing";
+import { create_agent_ask_user_tool } from "./tools/ask-user";
 import { AgentInputQueue } from "./agent-input-queue";
-import { create_agent_web_search_tool, type AgentWebSearchPort } from "./model-tools/web-search";
+import { create_agent_web_search_tool, type AgentWebSearchPort } from "./tools/web-search";
 import type { AgentWorkspacePort } from "./workspace/service";
-import {
-  create_agent_workspace_tools,
-  type AgentWorkspaceApprovalPort,
-} from "./model-tools/workspace";
+import { create_agent_workspace_run_tool } from "./tools/workspace-run";
 import { format_agent_skills_for_system_prompt } from "./agent-skills";
 import {
   insert_agent_personality,
   load_agent_personality,
   load_agent_system_prompt,
 } from "./agent-system-prompt";
-import { AgentToolError, prepare_agent_tool } from "./model-tools/definition";
+import { AgentToolError, prepare_agent_tool } from "./tool-definition";
 
 import { AgentTokenSpeed } from "./agent-token-speed";
 import { AgentSessionLog } from "./agent-log";
@@ -1160,37 +1161,28 @@ export class AgentService {
           }
         }),
         create_agent_doing_tool((text) => this.update_doing(text)),
-        ...create_agent_question_tools({
+        create_agent_ask_user_tool({
           wait_for_answer: (tool_call_id, question, signal) =>
             this.decisions.wait_for_question(tool_call_id, question, signal),
         }),
-        ...create_agent_workspace_tools({
+        create_agent_workspace_run_tool({
           workspace: {
-            run: async (...args) => {
-              // 文件写入在失败或取消前也可能完成，进程收尾后统一同步磁盘事实。
-              const result = await this.workspace.run(...args).then(
-                (value) => ({ ok: true as const, value }),
-                (error: unknown) => ({ ok: false as const, error }),
-              );
-              try {
-                await this.skills.refresh();
-              } catch (error) {
-                // 程序和刷新同时失败时保留程序错误，刷新异常另记诊断。
-                if (result.ok) throw error;
-                this.log_manager.error(t_main_log("app.diagnostic.agent.tool_execution_failed"), {
-                  source: "agent",
-                  error,
-                  context: { tool_name: "workspace_run", action: "refresh_skills" },
-                });
-              }
-              if (!result.ok) throw result.error;
-              return result.value;
-            },
-            apply_workspace: (...args) => this.workspace.apply_workspace(...args),
+            run: (...args) => this.workspace.run(...args),
           },
+
+          refresh_skills: () => this.skills.refresh(),
+          log_refresh_error: (error) =>
+            this.log_manager.error(t_main_log("app.diagnostic.agent.tool_execution_failed"), {
+              source: "agent",
+              error,
+              context: { tool_name: "workspace_run", action: "refresh_skills" },
+            }),
+        }),
+        create_agent_workspace_apply_tool({
+          workspace: this.workspace,
           approval: this.workspace_approval_port(),
         }),
-        ...create_agent_skill_tools(() => this.skills.get_current(), this.paths),
+        create_agent_read_skill_tool(() => this.skills.get_current(), this.paths),
         ...(this.web_search === undefined ? [] : [create_agent_web_search_tool(this.web_search)]),
       ].map((tool) => prepare_agent_tool(tool, this.log_manager)),
       resourceLoader: resource_loader,

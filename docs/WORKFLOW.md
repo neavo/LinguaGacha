@@ -29,8 +29,8 @@
 |问题|实现入口|
 |---|---|
 |Agent 会话与指令|[Agent](../src/backend/agent/)、[公开会话类型](../src/shared/agent.ts)、[运行时资源](../builtin/)|
-|工具与工作区|[工具](../src/backend/agent/model-tools/)、[工作区](../src/backend/agent/workspace/)|
-|模型可读契约|[Schema](../src/backend/agent/workspace/schema.ts)、[契约生成](../src/backend/agent/workspace/contract.ts)|
+|工具与工作区|[工具](../src/backend/agent/tools/)、[工作区](../src/backend/agent/workspace/)|
+|模型可读契约|[Schema](../src/backend/agent/workspace/schema.ts)、[契约生成](../src/backend/agent/tools/contract.ts)|
 |宿主桥与传输|[GUI](../src/gui/)、[桌面传输](../src/frontend/app/desktop/)|
 |前端运行态|[共享状态](../src/frontend/app/state/)、[会话](../src/frontend/app/session/)|
 |业务交互与页面|[共享能力](../src/frontend/features/)、[页面](../src/frontend/pages/)|
@@ -145,7 +145,7 @@ GUI、preload、native 或 Backend Runtime worker 变化时，先运行相关目
 
 ### Agent 工作区与图片
 
-工作区或 Node runtime 变化时，运行 `workspace/`、`model-tools/` 及受影响的 Backend Runtime / main 测试。
+工作区或 Node runtime 变化时，运行 `workspace/`、`tools/` 及受影响的 Backend Runtime / main 测试。
 
 加载、权限、文件边界、代理或流读取涉及真实环境时，使用 [bootstrap.test.ts](../src/backend/agent/workspace/runtime/bootstrap.test.ts)。它在仓库外通过生产构建和真实 Electron 验证执行环境。
 

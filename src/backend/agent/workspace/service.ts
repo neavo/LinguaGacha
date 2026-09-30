@@ -1,6 +1,9 @@
+import type { ProofreadingClientItem } from "../../../shared/proofreading/proofreading-types";
+import type { AgentWorkspaceWarning } from "./schema";
+import { create_image_output, summarize_images } from "../tools/emit-image";
 import type { AgentFile } from "../../../shared/agent-workspace-file";
 import type { AgentFileCandidate } from "../../../shared/agent-reference";
-import { create_workspace_host } from "./host";
+import { create_workspace_host } from "../tools/host";
 import { AgentUploadStore } from "./uploads";
 import { AGENT_IMAGE_INPUT_MAX_BYTES, type AgentImageService } from "../agent-image-service";
 import type { AgentImage } from "../../../shared/agent-image";
@@ -63,25 +66,19 @@ import {
 import type { AgentWorkspaceRejectedChange } from "../../project/agent-workspace-write";
 import {
   AGENT_WORKSPACE_CHANGE_PATHS,
-  AGENT_WORKSPACE_CONTRACT,
-  AGENT_WORKSPACE_REFERENCES,
   AGENT_WORKSPACE_PATHS,
   AGENT_WORKSPACE_QUALITY_CHANGE_OPERATIONS,
   AGENT_WORKSPACE_QUALITY_CHANGE_PATHS,
   AGENT_WORKSPACE_QUALITY_ENTRY_PATHS,
-  project_agent_workspace_warning,
-} from "./contract";
+} from "./paths";
+import { AGENT_WORKSPACE_CONTRACT, AGENT_WORKSPACE_REFERENCES } from "../tools/contract";
 import {
   AgentWorkspaceRunError,
   type AgentWorkspaceRunRequest,
   type AgentWorkspaceExecution,
 } from "./runtime/runner";
 import { prepare_agent_workspace_changes } from "./changes";
-import {
-  AGENT_WORKSPACE_RUN_ROOT,
-  AGENT_WORKSPACE_WORK_ROOT,
-  AGENT_WORKSPACE_RUNTIME_POLICY,
-} from "./runtime/policy";
+import { AGENT_WORKSPACE_RUN_ROOT, AGENT_WORKSPACE_WORK_ROOT } from "./runtime/policy";
 import { write_agent_workspace_sources, type AgentWorkspaceSourceFile } from "./sources";
 
 /** 预览采用有界读取，完整文件通过另存为交付。 */
@@ -570,25 +567,21 @@ export class AgentWorkspaceService {
     signal: AbortSignal,
   ): Promise<{ execution: AgentWorkspaceExecution; images: AgentWorkspaceImage[] }> {
     return await this.exclusive(async () => {
-      // 槽位按请求到达顺序分配，异步转换完成顺序不能改变模型看到的图片顺序。
-      const output_images = new Set<{ path: string; image: AgentImage | null }>();
-      let image_bytes = 0; // 仅累计已接收图片的 base64 字节，本次程序结束后释放额度。
-      // 失败记录保留定位信息，供后续程序从已有文件重新输出。
-      const image_summary = () =>
-        [...output_images.values()].flatMap(({ path, image }) =>
-          image === null
-            ? []
-            : [
-                {
-                  path,
-                  mime_type: image.mimeType,
-                  width: image.width,
-                  height: image.height,
-                  original_width: image.originalWidth,
-                  original_height: image.originalHeight,
-                },
-              ],
+      const image_output = create_image_output(async (relative, image_signal, options) => {
+        // CodeAct 使用文件路径，链接解码只用于现有 resolve_path 入口。
+        const target = this.resolve_path(relative.split("/").map(encodeURIComponent).join("/"));
+        if (
+          target.kind !== "file" ||
+          this.native_fs.stat(target.path).size > AGENT_IMAGE_INPUT_MAX_BYTES
+        )
+          throw new Error("Image input is not a supported size file.");
+        const image = await this.options.images.prepare(
+          this.native_fs.read_file(target.path),
+          image_signal,
+          options,
         );
+        return image;
+      });
       const active = this.active;
       if (active === null || !this.read_freshness(active).snapshotFresh) {
         await this.create_snapshot_locked();
@@ -604,44 +597,7 @@ export class AgentWorkspaceService {
             scriptPath: script_path,
             stdoutPath: `${run_path}.stdout.log`,
             stderrPath: `${run_path}.stderr.log`,
-            emitImage: async (relative, image_signal, options) => {
-              image_signal.throwIfAborted();
-              if (output_images.size >= AGENT_WORKSPACE_RUNTIME_POLICY.imageCount)
-                throw new Error(
-                  `Cannot emit ${JSON.stringify(relative)}: this program accepts at most ${AGENT_WORKSPACE_RUNTIME_POLICY.imageCount} images. Emit remaining images in subsequent workspace_run calls.`,
-                );
-              const entry = { path: relative, image: null as AgentImage | null };
-              output_images.add(entry);
-              try {
-                // CodeAct 使用文件路径，链接解码只用于现有 resolve_path 入口。
-                const target = this.resolve_path(
-                  relative.split("/").map(encodeURIComponent).join("/"),
-                );
-                if (
-                  target.kind !== "file" ||
-                  this.native_fs.stat(target.path).size > AGENT_IMAGE_INPUT_MAX_BYTES
-                )
-                  throw new Error("Image input is not a supported size file.");
-                const image = await this.options.images.prepare(
-                  this.native_fs.read_file(target.path),
-                  image_signal,
-                  options,
-                );
-                image_signal.throwIfAborted();
-                if (
-                  image_bytes + image.data.length >
-                  AGENT_WORKSPACE_RUNTIME_POLICY.imageOutputBytes
-                )
-                  throw new Error(
-                    `Cannot emit ${JSON.stringify(relative)}: total encoded image data would exceed ${AGENT_WORKSPACE_RUNTIME_POLICY.imageOutputBytes / 1024 / 1024} MiB for this program. Split images across subsequent workspace_run calls, or crop relevant regions or lower maxEdge before retrying.`,
-                  );
-                image_bytes += image.data.length;
-                entry.image = image;
-              } finally {
-                // 被拒绝的请求释放预留槽位，脚本捕获错误后仍可继续输出。
-                if (entry.image === null) output_images.delete(entry);
-              }
-            },
+            emitImage: image_output.emitImage,
             host: create_workspace_host({
               root: this.root_path,
               nativeFs: this.native_fs,
@@ -652,9 +608,7 @@ export class AgentWorkspaceService {
         );
         return {
           execution,
-          images: [...output_images.values()].flatMap(({ path, image }) =>
-            image === null ? [] : [{ path, image }],
-          ),
+          images: image_output.read(),
         };
       } catch (error) {
         if (signal.aborted) throw error;
@@ -665,7 +619,9 @@ export class AgentWorkspaceService {
               action: "workspace_run",
               message: error.message,
               ...error.execution,
-              ...(output_images.size === 0 ? {} : { images: image_summary() }),
+              ...(image_output.read().length === 0
+                ? {}
+                : { images: summarize_images(image_output.read()) }),
             },
             diagnostic_context: { reason: "agent_workspace_execution_failed" },
           });
@@ -1354,5 +1310,16 @@ function workspace_error_with_action(
     cause: error,
     public_details: { action },
     diagnostic_context: reason === undefined ? {} : { reason },
+  });
+}
+
+/** 按工作区 Schema 输出条目身份和校对证据，复制嵌套数组以隔离调用方。 */
+export function project_agent_workspace_warning(
+  item: ProofreadingClientItem,
+): AgentWorkspaceWarning {
+  return structuredClone({
+    item_id: read_json_integer(item.item_id, 0),
+    warnings: item.warnings,
+    glossary_applications: item.glossary_applications,
   });
 }

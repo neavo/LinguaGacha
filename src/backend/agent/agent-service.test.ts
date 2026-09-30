@@ -29,8 +29,8 @@ import type { ModelRuntime } from "@earendil-works/pi-coding-agent";
 import type { AppLanguage } from "../../domain/app-language";
 import type { JsonRecord } from "../../domain/json";
 import type { AgentCommandAck, AgentSessionEvent } from "../../shared/agent";
-import type { AgentWebSearchPort } from "./model-tools/web-search";
-import * as workspace_tools from "./model-tools/workspace";
+import type { AgentWebSearchPort } from "./tools/web-search";
+import * as workspace_tools from "./tools/workspace-run";
 import { ProjectSessionState } from "../project/project-session-state";
 import { RuntimeOperationGate } from "../runtime-operation-gate";
 import { read_builtin_pi_models, type PiModelCatalogReader } from "../llm/pi-model-catalog";
@@ -1592,16 +1592,13 @@ describe("AgentService", () => {
       ...texts.map((text): TextContent => ({ type: "text", text })),
       { type: "image", data: "image-fixture", mimeType: "image/webp" },
     ];
-    const create_tools = workspace_tools.create_agent_workspace_tools;
+    const create_tools = workspace_tools.create_agent_workspace_run_tool;
     const mock = vi
-      .spyOn(workspace_tools, "create_agent_workspace_tools")
-      .mockImplementation((options) =>
-        create_tools(options).map((tool) =>
-          tool.name === "workspace_run"
-            ? { ...tool, execute: async () => ({ content, details: {} }) }
-            : tool,
-        ),
-      );
+      .spyOn(workspace_tools, "create_agent_workspace_run_tool")
+      .mockImplementation((options) => ({
+        ...create_tools(options),
+        execute: async () => ({ content, details: {} }),
+      }));
     try {
       const { service, publish } = await create_service();
       fake_agent_state.mode = "tool_only";

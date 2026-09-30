@@ -1,3 +1,7 @@
+import { project_agent_workspace_warning } from "./service";
+import { Check } from "typebox/value";
+import { AGENT_WORKSPACE_WARNING_SCHEMA } from "./schema";
+import type { ProofreadingWarning } from "../../../shared/proofreading/proofreading-types";
 import { read_pdf_document } from "../../file/pdf/pdf-document";
 import { BackendResources } from "../../bootstrap/backend-resources";
 import { BackendServices } from "../../bootstrap/backend-services";
@@ -41,13 +45,12 @@ import {
 } from "./service";
 import {
   AGENT_WORKSPACE_CHANGE_PATHS,
-  AGENT_WORKSPACE_CONTRACT,
-  AGENT_WORKSPACE_REFERENCES,
   AGENT_WORKSPACE_PATHS,
   AGENT_WORKSPACE_QUALITY_CHANGE_OPERATIONS,
   AGENT_WORKSPACE_QUALITY_CHANGE_PATHS,
   AGENT_WORKSPACE_QUALITY_ENTRY_PATHS,
-} from "./contract";
+} from "./paths";
+import { AGENT_WORKSPACE_CONTRACT, AGENT_WORKSPACE_REFERENCES } from "../tools/contract";
 import { AgentWorkspaceRunError } from "./runtime/runner";
 import {
   AGENT_WORKSPACE_RUN_ROOT,
@@ -112,48 +115,6 @@ describe("AgentWorkspaceService", () => {
       return workspace_execution();
     });
     expect((await run_workspace(fixture)).images).toHaveLength(1);
-  });
-
-  it("累计大小超限释放占位且不占额度，捕获后可补足额度并在下一次程序重新输出", async () => {
-    const fixture = create_fixture(temp_dir);
-    await fixture.service.initialize();
-    const limit = AGENT_WORKSPACE_RUNTIME_POLICY.imageOutputBytes;
-    const count = AGENT_WORKSPACE_RUNTIME_POLICY.imageCount;
-    const chunk = Math.floor(limit / (count - 1) / 4) * 4 - 4;
-    const remaining = limit - chunk * (count - 1); // 留出一个槽位与少量字节，验证拒绝后两者都能复用。
-    const image_path = "work/image.webp";
-    const refused_path = "work/refused.webp";
-    fixture.prepare_image.mockImplementation(async (bytes) => ({
-      data: "A".repeat(Buffer.from(bytes).toString() === "refused" ? remaining + 4 : chunk),
-      mimeType: "image/webp",
-      width: 1,
-      height: 1,
-      originalWidth: 1,
-      originalHeight: 1,
-    }));
-    fixture.run.mockImplementationOnce(async (request, signal) => {
-      fs.writeFileSync(path.join(request.workspacePath, image_path), "image");
-      fs.writeFileSync(path.join(request.workspacePath, refused_path), "refused");
-      for (let i = 0; i < count - 1; i++) await request.emitImage!(image_path, signal);
-      // 重复拒绝覆盖占位泄漏，成功补足额度同时证明失败没有增加累计大小。
-      for (let i = 0; i < count; i++)
-        await expect(request.emitImage!(refused_path, signal)).rejects.toThrow(refused_path);
-      const prepared = await fixture.prepare_image(Buffer.from("image"));
-      fixture.prepare_image.mockResolvedValueOnce({ ...prepared, data: "A".repeat(remaining) });
-      await request.emitImage!(image_path, signal);
-      return workspace_execution();
-    });
-    const result = await run_workspace(fixture);
-    expect(result.images).toHaveLength(count);
-    expect(result.images.every((image) => image.path === image_path)).toBe(true);
-    expect(result.images.reduce((total, { image }) => total + image.data.length, 0)).toBe(limit);
-    fixture.run.mockImplementationOnce(async (request, signal) => {
-      await request.emitImage!(refused_path, signal);
-      return workspace_execution();
-    });
-    expect((await run_workspace(fixture)).images.map((image) => image.path)).toEqual([
-      refused_path,
-    ]);
   });
 
   it("失败输出只携带图片摘要，恢复时可读取保留的文件", async () => {
@@ -1547,4 +1508,45 @@ it("PDF 零条目工程按页保存、隔离旧指纹，语言变化后重建工
     await services.dispose();
     await resources.dispose();
   }
+});
+
+it("警告投影满足字段契约并只输出关联证据", () => {
+  const warnings: ProofreadingWarning[] = [
+    { code: "FOREIGN_CHAR_RESIDUE", target_field: "name_dst", fragments: ["かな"] },
+    {
+      code: "TEXT_PRESERVE",
+      target_field: "name_dst",
+      source_fragments: ["{PLAYER}"],
+      translation_fragments: [],
+    },
+    { code: "PUNCTUATION_MISMATCH", target_field: "name_dst" },
+    { code: "SIMILARITY", target_field: "dst" },
+    { code: "LINE_COUNT_MISMATCH", target_field: "dst" },
+    { code: "RETRY_THRESHOLD", target_field: null },
+  ];
+  const output = project_agent_workspace_warning({
+    item_id: 1,
+    row_id: "1",
+    file_path: "a.txt",
+    internal_file_path: null,
+    row_number: 1,
+    src: "原文",
+    dst: "译文",
+    name_src: "Alice",
+    name_dst: "かな",
+    status: "PROCESSED",
+    retry_count: 2,
+    compressed_src: "原文",
+    compressed_dst: "译文",
+    glossary_applications: [],
+    warnings,
+  });
+  expect(Check(AGENT_WORKSPACE_WARNING_SCHEMA, output)).toBe(true);
+  expect(output).toEqual({ item_id: 1, warnings, glossary_applications: [] });
+  expect(
+    Check(AGENT_WORKSPACE_WARNING_SCHEMA, {
+      ...output,
+      warnings: [{ code: "SIMILARITY", target_field: "name_dst" }],
+    }),
+  ).toBe(false);
 });

@@ -14,42 +14,6 @@ import {
   AGENT_WORKSPACE_QUALITY_BUSINESS_FIELDS,
 } from "../../../shared/project/agent-workspace";
 
-const open_record_schema = Type.Object({}, { additionalProperties: true });
-
-export const AGENT_WORKSPACE_DATASET_CONTRACT_SCHEMA = Type.Object(
-  {
-    path: Type.String(),
-    format: Type.Union([Type.Literal("json"), Type.Literal("jsonl")]),
-    reference: Type.String(),
-    purpose: Type.Optional(Type.String()),
-    identity: Type.Optional(Type.Array(Type.String())),
-  },
-  { additionalProperties: false },
-);
-
-export const AGENT_WORKSPACE_CHANGE_CONTRACT_SCHEMA = Type.Object(
-  {
-    path: Type.String(),
-    format: Type.Literal("jsonl"),
-    reference: Type.String(),
-    identity: Type.Optional(Type.Array(Type.String())),
-  },
-  { additionalProperties: false },
-);
-
-/** 磁盘 contract、脚本运行时与模型声明共同消费的外壳 Schema。 */
-export const AGENT_WORKSPACE_CONTRACT_SCHEMA = Type.Object(
-  {
-    datasets: Type.Record(Type.String(), AGENT_WORKSPACE_DATASET_CONTRACT_SCHEMA),
-    changes: Type.Record(
-      Type.String(),
-      Type.Record(Type.String(), AGENT_WORKSPACE_CHANGE_CONTRACT_SCHEMA),
-    ),
-    apply: open_record_schema,
-  },
-  { additionalProperties: false },
-);
-
 export const AGENT_WORKSPACE_FP_SCHEMA = Type.String({
   minLength: AGENT_WORKSPACE_FP_LENGTH,
   maxLength: AGENT_WORKSPACE_FP_LENGTH,
@@ -168,11 +132,6 @@ export const AGENT_WORKSPACE_WARNING_SCHEMA = Type.Object(
 );
 
 export type AgentWorkspaceWarning = Static<typeof AGENT_WORKSPACE_WARNING_SCHEMA>;
-
-/** Runtime 方法只依赖 contract 的稳定路径和限制视图；其余开放字段原样投影给模型。 */
-export type AgentWorkspaceRuntimeContract = Readonly<
-  Static<typeof AGENT_WORKSPACE_CONTRACT_SCHEMA>
->;
 
 const UPDATE_MIN_PROPERTIES = 3; // 身份、指纹与至少一个待更新字段
 
