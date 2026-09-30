@@ -7,6 +7,18 @@ import { create_source_reader } from "./source-reader.mjs";
 import { create_frontend_boundary_rules } from "./frontend-rules.mjs";
 
 describe("frontend boundary rules", () => {
+  it("阻止固定字号绕过偏好，允许变量和布局零字号", () => {
+    const errors = run_rules({
+      "src/frontend/widgets/type.css": ".a { font-size: 13px; }",
+      "src/frontend/widgets/type.tsx": 'const view = <span className="text-[12px]" />;',
+      "src/frontend/widgets/valid.css":
+        ".a { font-size: var(--ui-font-size-13); } .b { font-size: 0; }",
+    });
+    expect(errors.map((error) => error.relative_path).sort()).toEqual([
+      "src/frontend/widgets/type.css",
+      "src/frontend/widgets/type.tsx",
+    ]);
+  });
   it("每条 renderer 边界都能从公开规则入口报告对应违规", () => {
     const errors = run_rules({
       "src/frontend/hooks/legacy.ts": 'import "electron";',

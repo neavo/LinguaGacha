@@ -47,7 +47,7 @@
   border-radius: 0;
   background: transparent;
   color: var(--sidebar-foreground);
-  font-size: 14px;
+  font-size: var(--ui-font-size-14);
   line-height: 1.2;
   text-align: left;
   overflow: hidden;

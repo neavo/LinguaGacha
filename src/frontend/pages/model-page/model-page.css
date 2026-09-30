@@ -57,14 +57,14 @@
 .model-page__category-title {
   margin: 0;
   color: var(--foreground);
-  font-size: 14px;
+  font-size: var(--ui-font-size-14);
   line-height: 1.25;
 }
 
 .model-page__category-description {
   margin: 0;
   color: var(--muted-foreground);
-  font-size: 12px;
+  font-size: var(--ui-font-size-12);
   line-height: 1.25;
 }
 
@@ -286,7 +286,7 @@
   gap: 10px;
   min-height: 320px;
   color: var(--muted-foreground);
-  font-size: 13px;
+  font-size: var(--ui-font-size-13);
 }
 
 .model-page__selector-empty {
@@ -296,7 +296,7 @@
   justify-content: flex-start;
   padding: 5px 8px;
   color: var(--muted-foreground);
-  font-size: 13px;
+  font-size: var(--ui-font-size-13);
   font-weight: 400;
   line-height: 1.25;
   text-align: left;

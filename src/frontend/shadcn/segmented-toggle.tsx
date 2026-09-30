@@ -45,7 +45,7 @@ export function SegmentedToggle<Value extends string>(
           key={option.value}
           value={option.value}
           className={cn(
-            "inline-flex h-7 min-w-16 shrink-0 items-center justify-center rounded-none border border-input bg-background px-2.5 text-[13px] font-medium whitespace-nowrap text-muted-foreground transition-colors outline-none first:rounded-l-[var(--ui-radius-button)] last:rounded-r-[var(--ui-radius-button)] not-first:border-l-0 hover:bg-muted hover:text-foreground focus:z-10 focus-visible:z-10 focus-visible:border-ring disabled:pointer-events-none disabled:opacity-50 data-pressed:z-10 data-pressed:border-primary data-pressed:bg-primary data-pressed:text-primary-foreground data-pressed:hover:bg-primary/92 data-pressed:hover:text-primary-foreground",
+            "inline-flex h-7 min-w-16 shrink-0 items-center justify-center rounded-none border border-input bg-background px-2.5 text-[length:var(--ui-font-size-13)] font-medium whitespace-nowrap text-muted-foreground transition-colors outline-none first:rounded-l-[var(--ui-radius-button)] last:rounded-r-[var(--ui-radius-button)] not-first:border-l-0 hover:bg-muted hover:text-foreground focus:z-10 focus-visible:z-10 focus-visible:border-ring disabled:pointer-events-none disabled:opacity-50 data-pressed:z-10 data-pressed:border-primary data-pressed:bg-primary data-pressed:text-primary-foreground data-pressed:hover:bg-primary/92 data-pressed:hover:text-primary-foreground",
             props.stretch ? "flex-1" : undefined,
           )}
         >

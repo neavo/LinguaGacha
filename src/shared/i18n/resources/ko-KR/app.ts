@@ -144,6 +144,8 @@ export const ko_kr_app = {
     collapse_sidebar: "사이드바 접기",
     appearance: "모양",
     font: "글꼴",
+    font_size: "글꼴 크기",
+    font_size_option: { normal: "표준", larger: "큰 글꼴", largest: "더 큰 글꼴" },
     font_option: {
       lg_base: "LGBase",
       system: "시스템 글꼴",

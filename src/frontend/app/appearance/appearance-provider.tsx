@@ -1,13 +1,16 @@
 import { ThemeProvider, useTheme } from "next-themes";
-import { type JSX, useEffect, useState, type ReactNode } from "react";
+import { type JSX, useEffect, useLayoutEffect, useState, type ReactNode } from "react";
 import type { ResolvedThemeMode } from "@gui/bridge-types";
 import {
   type ThemePreference,
   type FontPreference,
   type AppearanceContextValue,
   AppearanceContext,
+  normalize_font_size,
+  type FontSizePreference,
 } from "./appearance-context";
 
+const FONT_SIZE_STORAGE_KEY = "lg-font-size"; // 本机窗口共用的字体大小偏好
 const THEME_STORAGE_KEY = "lg-theme-mode"; // 跨窗口持久化契约，由 next-themes 负责同步
 const FONT_FAMILY_STORAGE_KEY = "lg-base-font-mode"; // 沿用 enabled / disabled 存储值，避免迁移既有偏好
 
@@ -43,6 +46,18 @@ function AppearanceStateProvider({ children }: { children: ReactNode }): JSX.Ele
   const [font_preference, set_font_preference] = useState<FontPreference>(() =>
     read_font_preference(),
   );
+  const [font_size_preference, set_font_size_preference] = useState<FontSizePreference>(() =>
+    normalize_font_size(window.localStorage.getItem(FONT_SIZE_STORAGE_KEY)),
+  );
+  // 在绘制与编辑器测量前投影档位，CSS 唯一拥有实际字号。
+  useLayoutEffect(() => {
+    document.documentElement.dataset.lgFontSize = font_size_preference;
+  }, [font_size_preference]);
+  useEffect(() => {
+    if (window.localStorage.getItem(FONT_SIZE_STORAGE_KEY) !== font_size_preference) {
+      window.localStorage.setItem(FONT_SIZE_STORAGE_KEY, font_size_preference);
+    }
+  }, [font_size_preference]);
   const theme_preference = normalize_theme_preference(theme);
   const resolved_theme = resolve_theme_mode(resolvedTheme);
 
@@ -56,8 +71,11 @@ function AppearanceStateProvider({ children }: { children: ReactNode }): JSX.Ele
   }, [font_preference]);
 
   useEffect(() => {
-    // storage 事件只会送达其他窗口；当前窗口由 set_font_preference 立即更新。
+    // storage 事件同步其他窗口的偏好，当前窗口由对应 setter 更新。
     function handle_storage(event: StorageEvent): void {
+      if (event.key === FONT_SIZE_STORAGE_KEY || event.key === null) {
+        set_font_size_preference(normalize_font_size(event.newValue));
+      }
       if (event.key === FONT_FAMILY_STORAGE_KEY) {
         set_font_preference(event.newValue === "disabled" ? "system" : "lg-base");
       }
@@ -78,6 +96,8 @@ function AppearanceStateProvider({ children }: { children: ReactNode }): JSX.Ele
     theme_preference,
     resolved_theme,
     font_preference,
+    font_size_preference,
+    set_font_size_preference,
     set_theme_preference: setTheme,
     set_font_preference,
   };

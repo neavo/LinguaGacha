@@ -32,7 +32,7 @@
   display: flex;
   align-items: center;
   min-width: 0;
-  font-size: 13px;
+  font-size: var(--ui-font-size-13);
   font-weight: 400;
   color: var(--foreground);
 }
@@ -108,7 +108,7 @@
   padding: 10px 12px;
   border-bottom: 1px solid var(--ui-table-divider-soft);
   color: var(--destructive);
-  font-size: 12px;
+  font-size: var(--ui-font-size-12);
 }
 .skill-editor__error > div {
   display: flex;
@@ -120,7 +120,7 @@
   flex-direction: column;
   gap: 8px;
   padding: 24px;
-  font-size: 13px;
+  font-size: var(--ui-font-size-13);
   color: var(--muted-foreground);
 }
 .skill-tree__toolbar {
@@ -130,7 +130,7 @@
   flex-shrink: 0;
   padding: 0 8px;
   gap: 4px;
-  font-size: 12px;
+  font-size: var(--ui-font-size-12);
 }
 .skill-tree__title {
   flex: 1;
@@ -205,7 +205,7 @@
   border: 0;
   background: transparent;
   text-align: left;
-  font-size: 12px;
+  font-size: var(--ui-font-size-12);
   cursor: pointer;
 }
 .skill-tree__name {
@@ -273,7 +273,7 @@
   display: inline-flex;
   flex-shrink: 0;
   gap: 8px;
-  font-size: 12px;
+  font-size: var(--ui-font-size-12);
   white-space: nowrap;
   color: var(--muted-foreground);
 }

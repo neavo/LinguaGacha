@@ -68,14 +68,14 @@
 }
 
 .workbench-page__stat-card-title {
-  font-size: 14px;
+  font-size: var(--ui-font-size-14);
 }
 
 .workbench-page__stat-card-value {
   margin: 0;
   display: flex;
   align-items: center;
-  font-size: 42px;
+  font-size: var(--ui-font-size-42);
   line-height: 1;
   letter-spacing: -0.025em;
   color: var(--foreground);
@@ -96,7 +96,7 @@
 .workbench-page__stat-card-unit {
   display: inline-flex;
   align-items: center;
-  font-size: 14px;
+  font-size: var(--ui-font-size-14);
   color: var(--workbench-unit);
 }
 

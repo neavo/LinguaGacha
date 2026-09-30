@@ -8,7 +8,7 @@
   width: 100%;
   margin: 0;
   color: var(--foreground);
-  font-size: 13px;
+  font-size: var(--ui-font-size-13);
   line-height: 1.65;
   overflow-wrap: anywhere;
   user-select: text;
@@ -28,13 +28,13 @@
 }
 
 .agent-markdown h1 {
-  font-size: 16px;
+  font-size: var(--ui-font-size-16);
 }
 
 .agent-markdown h2 {
   border-bottom: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
   padding-bottom: 5px;
-  font-size: 14px;
+  font-size: var(--ui-font-size-14);
 }
 
 .agent-markdown h3,
@@ -42,7 +42,7 @@
 .agent-markdown h5,
 .agent-markdown h6 {
   color: color-mix(in srgb, var(--foreground) 88%, var(--muted-foreground));
-  font-size: 13px;
+  font-size: var(--ui-font-size-13);
 }
 
 .agent-markdown p,
@@ -140,7 +140,7 @@
   border-radius: var(--ui-radius-button);
   background: var(--muted);
   padding: 1px 4px;
-  font-size: 12px;
+  font-size: var(--ui-font-size-12);
 }
 
 /* Code and syntax highlighting */
@@ -166,7 +166,7 @@
   border-top: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
   padding-top: 8px;
   color: var(--muted-foreground);
-  font-size: 12px;
+  font-size: var(--ui-font-size-12);
 }
 
 .agent-markdown [data-footnotes] ol {
@@ -182,7 +182,7 @@
 .agent-markdown__diagram-error > p {
   margin: 0 0 6px;
   color: var(--ui-failure);
-  font-size: 12px;
+  font-size: var(--ui-font-size-12);
 }
 
 .agent-markdown__diagram-error pre {
@@ -265,7 +265,7 @@
 
 .agent-markdown [data-streamdown="code-block-body"] {
   padding: 8px 10px;
-  font-size: 12px;
+  font-size: var(--ui-font-size-12);
 }
 
 .agent-markdown [data-streamdown="code-block-body"] pre {
@@ -330,7 +330,7 @@
   border: 0;
   border-bottom: 1px solid var(--border);
   padding: 6px 8px;
-  font-size: 13px;
+  font-size: var(--ui-font-size-13);
 }
 
 .agent-markdown

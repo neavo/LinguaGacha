@@ -28,7 +28,7 @@
 .setting-card-row__title {
   margin: 0;
   color: var(--foreground);
-  font-size: 14px;
+  font-size: var(--ui-font-size-14);
   line-height: 1.25;
 }
 
@@ -41,7 +41,7 @@
 .setting-card-row__description {
   margin: 0;
   color: var(--muted-foreground);
-  font-size: 12px;
+  font-size: var(--ui-font-size-12);
   overflow-wrap: anywhere;
   line-height: 1.4;
 }

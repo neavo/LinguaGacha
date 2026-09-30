@@ -150,6 +150,12 @@ export const de_de_app = {
     collapse_sidebar: "Seitenleiste einklappen",
     appearance: "Darstellung",
     font: "Schriftart",
+    font_size: "Schriftgröße",
+    font_size_option: {
+      normal: "Standard",
+      larger: "Größere Schrift",
+      largest: "Noch größere Schrift",
+    },
     font_option: {
       lg_base: "LGBase",
       system: "Systemschriftart",

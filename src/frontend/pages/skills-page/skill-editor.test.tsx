@@ -79,6 +79,8 @@ describe("技能编辑工作面", () => {
               resolved_theme: "light",
               theme_preference: "light",
               font_preference: "system",
+              font_size_preference: "normal",
+              set_font_size_preference: () => {},
               set_theme_preference: () => {},
               set_font_preference: () => {},
             }}

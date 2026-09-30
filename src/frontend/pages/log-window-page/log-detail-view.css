@@ -4,7 +4,7 @@
   overflow: auto;
   padding: 12px;
   color: var(--foreground);
-  font-size: 12px;
+  font-size: var(--ui-font-size-12);
   line-height: 1.6;
 }
 
@@ -17,7 +17,7 @@
 }
 
 .log-detail-view h3 {
-  font-size: 13px;
+  font-size: var(--ui-font-size-13);
   font-weight: 600;
   line-height: 1.4;
 }
@@ -104,7 +104,7 @@
   right: 10px;
   color: var(--muted-foreground);
   font-variant-numeric: tabular-nums;
-  font-size: 12px;
+  font-size: var(--ui-font-size-12);
 }
 
 .log-detail-view__translation-pair,
@@ -127,7 +127,7 @@
 .log-detail-view__field dt {
   margin-bottom: 4px;
   color: var(--muted-foreground);
-  font-size: 12px;
+  font-size: var(--ui-font-size-12);
   font-weight: 600;
 }
 

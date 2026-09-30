@@ -2,6 +2,7 @@ import type { JSX } from "react";
 import { Palette } from "lucide-react";
 
 import {
+  normalize_font_size,
   type FontPreference,
   type ThemePreference,
   useAppearance,
@@ -36,8 +37,14 @@ function is_theme_preference(value: string): value is ThemePreference {
 /** 以显式单选项呈现完整外观偏好，避免切换按钮隐藏当前状态和可选目标。 */
 export function AppAppearanceMenu(props: AppAppearanceMenuProps): JSX.Element {
   const { t } = useI18n();
-  const { font_preference, set_font_preference, set_theme_preference, theme_preference } =
-    useAppearance();
+  const {
+    font_size_preference,
+    set_font_size_preference,
+    font_preference,
+    set_font_preference,
+    set_theme_preference,
+    theme_preference,
+  } = useAppearance();
   const appearance_label = t("app.navigation_action.appearance");
   const font_label = t("app.navigation_action.font");
   const theme_label = t("app.navigation_action.theme");
@@ -76,6 +83,24 @@ export function AppAppearanceMenu(props: AppAppearanceMenuProps): JSX.Element {
               </AppDropdownMenuRadioItem>
               <AppDropdownMenuRadioItem value="system">
                 {t("app.navigation_action.font_option.system")}
+              </AppDropdownMenuRadioItem>
+            </AppDropdownMenuRadioGroup>
+          </AppDropdownMenuGroup>
+          <AppDropdownMenuGroup className="mt-1">
+            <AppDropdownMenuLabel>{t("app.navigation_action.font_size")}</AppDropdownMenuLabel>
+            <AppDropdownMenuRadioGroup
+              aria-label={t("app.navigation_action.font_size")}
+              value={font_size_preference}
+              onValueChange={(value) => set_font_size_preference(normalize_font_size(value))}
+            >
+              <AppDropdownMenuRadioItem value="normal">
+                {t("app.navigation_action.font_size_option.normal")}
+              </AppDropdownMenuRadioItem>
+              <AppDropdownMenuRadioItem value="larger">
+                {t("app.navigation_action.font_size_option.larger")}
+              </AppDropdownMenuRadioItem>
+              <AppDropdownMenuRadioItem value="largest">
+                {t("app.navigation_action.font_size_option.largest")}
               </AppDropdownMenuRadioItem>
             </AppDropdownMenuRadioGroup>
           </AppDropdownMenuGroup>

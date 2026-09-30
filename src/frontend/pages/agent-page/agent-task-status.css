@@ -18,7 +18,7 @@
   border: var(--agent-status-border);
   border-radius: var(--ui-radius-card);
   color: var(--muted-foreground);
-  font-size: 12px;
+  font-size: var(--ui-font-size-12);
   line-height: 1.5;
 }
 

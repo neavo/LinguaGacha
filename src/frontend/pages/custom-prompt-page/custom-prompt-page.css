@@ -46,7 +46,7 @@
 .custom-prompt-page__readonly-strip-label {
   margin: 0;
   flex-shrink: 0;
-  font-size: 12px;
+  font-size: var(--ui-font-size-12);
   color: var(--foreground);
 }
 
@@ -60,7 +60,7 @@
   white-space: nowrap;
   overflow-wrap: normal;
   color: color-mix(in srgb, var(--foreground) 72%, var(--muted-foreground) 28%);
-  font-size: 12px;
+  font-size: var(--ui-font-size-12);
 }
 
 .custom-prompt-page__editor-host {
@@ -80,7 +80,7 @@
   overflow: auto;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
-  font-size: 12px;
+  font-size: var(--ui-font-size-12);
   line-height: 1.55;
 }
 
@@ -115,7 +115,7 @@
 }
 
 .custom-prompt-page__toggle-tooltip-html {
-  font-size: 12px;
+  font-size: var(--ui-font-size-12);
   line-height: 1.55;
 }
 

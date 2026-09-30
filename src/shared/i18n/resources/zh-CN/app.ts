@@ -143,6 +143,8 @@ export const zh_cn_app = {
     collapse_sidebar: "折叠导航栏",
     appearance: "变换自如",
     font: "字体",
+    font_size: "字体大小",
+    font_size_option: { normal: "标准", larger: "较大字体", largest: "更大字体" },
     font_option: {
       lg_base: "LGBase",
       system: "系统字体",

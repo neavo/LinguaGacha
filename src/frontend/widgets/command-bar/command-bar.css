@@ -25,7 +25,7 @@
 
 .command-bar__hint {
   flex-shrink: 0;
-  font-size: 12px;
+  font-size: var(--ui-font-size-12);
   line-height: 1.4;
   color: var(--muted-foreground);
   text-align: right;
