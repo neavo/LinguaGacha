@@ -87,15 +87,11 @@ jobs:
 
   build-macos:
     needs: prepare
+    runs-on: macos-26
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - arch: x64
-            runner: macos-26-intel
-          - arch: arm64
-            runner: macos-26
-    runs-on: ${{ matrix.runner }}
+        arch: [x64, arm64]
     permissions:
       contents: write
 
