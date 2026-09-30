@@ -85,6 +85,10 @@
 - 具体示例可见 [Wiki - 支持的文件格式](https://github.com/neavo/LinguaGacha/wiki/%E6%94%AF%E6%8C%81%E7%9A%84%E6%96%87%E4%BB%B6%E6%A0%BC%E5%BC%8F)，更多格式将持续添加，你也可以在 [ISSUES](https://github.com/neavo/LinguaGacha/issues) 中提出你的需求
 
 ## 近期更新 📅
+- 20260930 v0.124.1
+  - 新增模型支持 - `GPT 6.1 Sol`
+  - 修复与改进 [#943](../../issues/943) [#944](../../issues/944) [#946](../../issues/946)
+
 - 20260927 v0.124.0
   - `AGENT` - 自定义技能
   - 修复与改进 [#933](../../issues/933) [#934](../../issues/934) [#937](../../issues/937) [#938](../../issues/938) [#940](../../issues/940)
