@@ -31,7 +31,6 @@ import { AgentSessionProvider } from "@frontend/app/session/agent/agent-session-
 import {
   useAgentControls,
   useAgentInput,
-  useAgentTodo,
   useAgentQueue,
   useAgentSessionActions,
   useAgentSkills,
@@ -43,11 +42,10 @@ function useAgentSession() {
   const timeline = useAgentTimeline();
   const controls = useAgentControls();
   const queue = useAgentQueue();
-  const todo = useAgentTodo();
   const skills = useAgentSkills();
   const input = useAgentInput();
   const actions = useAgentSessionActions();
-  return { ...timeline, ...controls, ...queue, ...todo, ...skills, input, ...actions };
+  return { ...timeline, ...controls, ...queue, ...skills, input, ...actions };
 }
 
 /** 多个会话入口共享同一份会话协议夹具，避免各用例维护平行字段形状。 */
@@ -367,7 +365,7 @@ describe("AgentSessionStore", () => {
     expect(latest.usage.input).toBe(20);
   });
 
-  it("用合法 Todo 事件替换全部待办，并拒绝空事项", async () => {
+  it("正在处理的内容随增量事件覆盖，并拒绝空白文本", async () => {
     let latest!: ReturnType<typeof useAgentSession>;
     await render_probe(() => {
       latest = useAgentSession();
@@ -376,19 +374,54 @@ describe("AgentSessionStore", () => {
 
     await act(async () => {
       event_source.emit(AGENT_SESSION_EVENT_TOPIC, {
-        type: "todo",
-        todos: ["读取工程", "检查章节", "汇总结果"],
+        type: "doing",
+        doing: "检查章节",
       });
     });
-    expect(latest.todos).toEqual(["读取工程", "检查章节", "汇总结果"]);
+    expect(latest.doing).toBe("检查章节");
 
     await act(async () => {
       event_source.emit(AGENT_SESSION_EVENT_TOPIC, {
-        type: "todo",
-        todos: ["读取工程", " "],
+        type: "doing",
+        doing: " ",
       });
     });
-    expect(latest.todos).toEqual(["读取工程", "检查章节", "汇总结果"]);
+    expect(latest.doing).toBe("检查章节");
+  });
+
+  it("快照与增量事件恢复 `doing` 内容", async () => {
+    desktop_api_mocks.api_get.mockResolvedValueOnce(agent_snapshot({ doing: "检查章节" }));
+    const store = new AgentSessionStore(window.localStorage, vi.fn());
+    store.connect();
+    event_source.emit_open();
+    try {
+      await vi.waitFor(() => expect(store.get_controls().transport).toBe("ready"));
+      expect(store.get_controls().doing).toBe("检查章节");
+      event_source.emit(AGENT_SESSION_EVENT_TOPIC, { type: "session_state", state: "running" });
+      event_source.emit(AGENT_SESSION_EVENT_TOPIC, {
+        type: "pending_decision",
+        pendingDecision: countdown_question(),
+      });
+      event_source.emit(AGENT_SESSION_EVENT_TOPIC, { type: "doing", doing: "汇总结果" });
+      event_source.emit(AGENT_SESSION_EVENT_TOPIC, {
+        type: "pending_decision",
+        pendingDecision: null,
+      });
+      event_source.emit(AGENT_SESSION_EVENT_TOPIC, { type: "session_state", state: "idle" });
+      expect(store.get_controls()).toMatchObject({ state: "idle", doing: "汇总结果" });
+      const revision = event_source.current_revision;
+      desktop_api_mocks.api_get.mockResolvedValueOnce(
+        agent_snapshot({ revision, doing: "恢复事项" }),
+      );
+      event_source.emit_open();
+      await vi.waitFor(() =>
+        expect(store.get_controls()).toMatchObject({ transport: "ready", doing: "恢复事项" }),
+      );
+      event_source.emit(AGENT_SESSION_EVENT_TOPIC, { type: "doing", doing: null });
+      expect(store.get_controls().doing).toBeNull();
+    } finally {
+      store.disconnect();
+    }
   });
 
   it("上下文容量独立于 token 变化更新到会话切片", async () => {
@@ -821,7 +854,7 @@ describe("AgentSessionStore", () => {
         pendingDecision: null,
         entries: [],
         skills: [],
-        todos: [],
+        doing: null,
         context: { tokens: null, compactable: false, limits: null },
       },
     ],
@@ -833,7 +866,7 @@ describe("AgentSessionStore", () => {
         entries: [],
         skills: [],
         inputQueue: { paused: false, canSendNow: false, items: [] },
-        todos: [],
+        doing: null,
       },
     ],
     [
@@ -843,7 +876,7 @@ describe("AgentSessionStore", () => {
         entries: [],
         skills: [],
         inputQueue: { paused: false, canSendNow: false, items: [] },
-        todos: [],
+        doing: null,
         context: { tokens: null, compactable: false, limits: null },
       },
     ],
@@ -863,7 +896,7 @@ describe("AgentSessionStore", () => {
         entries: [],
         skills: [],
         inputQueue: { paused: false, canSendNow: false, items: [] },
-        todos: [],
+        doing: null,
         context: { tokens: null, compactable: false, limits: null },
       })
       .mockResolvedValueOnce(
@@ -891,7 +924,7 @@ describe("AgentSessionStore", () => {
       pendingDecision: null,
       entries: [],
       inputQueue: { paused: false, canSendNow: true, items: [] },
-      todos: [],
+      doing: null,
       context: { tokens: null, compactable: false, limits: null },
       tokenSpeed: null,
       usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
@@ -1127,7 +1160,7 @@ describe("AgentSessionStore", () => {
       ],
       skills: [],
       inputQueue: { paused: false, canSendNow: true, items: [] },
-      todos: [],
+      doing: null,
       context: { tokens: null, compactable: false, limits: null },
       tokenSpeed: null,
       usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
@@ -1826,7 +1859,7 @@ function agent_snapshot(overrides: Partial<AgentSessionSnapshot> = {}): AgentSes
     entries: [],
     skills: [],
     inputQueue: { paused: false, canSendNow: false, items: [] },
-    todos: [],
+    doing: null,
     context: { tokens: null, compactable: false, limits: null },
     usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
     tokenSpeed: null,

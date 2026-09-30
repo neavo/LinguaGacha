@@ -27,7 +27,6 @@ import {
 import type {
   AgentControlsSlice,
   AgentInputSession,
-  AgentTodoSlice,
   AgentQueueSlice,
   AgentSessionActions,
   AgentSkillsSlice,
@@ -37,7 +36,6 @@ import type {
 type AgentPageState = AgentTimelineSlice &
   AgentControlsSlice &
   AgentQueueSlice &
-  AgentTodoSlice &
   AgentSkillsSlice &
   AgentSessionActions & { input: AgentInputSession };
 
@@ -149,6 +147,7 @@ vi.mock("@frontend/app/session/agent/agent-session-context", () => ({
   useAgentTimeline: () => ({ entries: page_state.current.entries }),
   useAgentControls: () => ({
     state: page_state.current.state,
+    doing: page_state.current.doing,
     pendingDecision: page_state.current.pendingDecision,
     context: page_state.current.context,
     usage: page_state.current.usage,
@@ -156,7 +155,6 @@ vi.mock("@frontend/app/session/agent/agent-session-context", () => ({
     command: page_state.current.command,
   }),
   useAgentQueue: () => ({ inputQueue: page_state.current.inputQueue }),
-  useAgentTodo: () => ({ todos: page_state.current.todos }),
   useAgentSkills: () => ({ skills: page_state.current.skills }),
   useAgentInput: () => page_state.current.input,
   useAgentDecisionCountdown: () => null,
@@ -930,14 +928,14 @@ describe("AgentConversation", () => {
       }),
     };
     const send = vi.fn(async () => undefined);
-    const view = await render_page({ input, send });
+    const view = await render_page({ input, send, doing: "检查章节" });
     const host = view.querySelector<HTMLElement>(".cm-content")!;
     const editor = EditorView.findFromDOM(host)!;
     await act(async () => {
       editor.dispatch({ changes: { from: 0, insert: "保留这份草稿" }, selection: { anchor: 3 } });
       host.focus();
     });
-    await render_page({ input, send, pendingDecision: pending_write_decision });
+    await render_page({ input, send, doing: "核验结果", pendingDecision: pending_write_decision });
     const body = view.querySelector(".agent-page__composer-slot")!;
     expect(body.hasAttribute("inert")).toBe(true);
     const follow_button = get_button_by_label(view, "agent_page.action.follow_latest");
@@ -950,7 +948,9 @@ describe("AgentConversation", () => {
         .dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
     });
     expect(send).not.toHaveBeenCalled();
-    await render_page({ input, send, pendingDecision: null });
+    await render_page({ input, send, doing: "核验结果", pendingDecision: null });
+    expect(view.querySelector(".agent-doing__text")?.textContent).toBe("核验结果");
+    expect(view.querySelector(".agent-doing .agent-status-mark--running")).toBeNull();
     expect(body.hasAttribute("inert")).toBe(false);
     expect(EditorView.findFromDOM(host)).toBe(editor);
     expect(editor.state.doc.toString()).toBe("保留这份草稿");
@@ -1282,7 +1282,7 @@ function build_state(overrides: Partial<AgentPageState> = {}): AgentPageState {
     ],
     skills: [],
     inputQueue: { paused: false, canSendNow: false, items: [] },
-    todos: [],
+    doing: null,
     context: { tokens: null, compactable: false, limits: null },
     usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
     transport: "ready",

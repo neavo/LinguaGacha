@@ -4,12 +4,11 @@ import { useI18n } from "@frontend/app/locale/locale-context";
 import { useBatchTranslationSession } from "@frontend/app/session/batch-translation/batch-translation-session-context";
 import { build_translation_task_summary_display } from "@frontend/features/batch-translation/batch-translation-display";
 import { BatchTranslationSummary } from "@frontend/features/batch-translation/batch-translation-summary";
-import { AgentTodo } from "./agent-todo";
 import "./agent-task-status.css";
 
-/** 翻译活跃时占用 Todo 状态位，终态恢复会话保留的 Todo。 */
+/** 翻译活跃时占用「正在处理」状态位，终态恢复会话保留的 `doing`。 */
 export function AgentTaskStatus(props: {
-  todos: readonly string[];
+  doing: string | null;
   running: boolean;
 }): JSX.Element | null {
   const { t } = useI18n();
@@ -17,7 +16,21 @@ export function AgentTaskStatus(props: {
   const metrics = task.translation_task_metrics;
   const stats = useProjectTranslationStats();
   const display = build_translation_task_summary_display(metrics, t);
-  if (display.speed_text === null) return <AgentTodo {...props} />;
+  if (display.speed_text === null) {
+    if (props.doing === null) return null;
+    return (
+      <div className="agent-doing" role="status">
+        <span className="agent-doing__lead">
+          <span
+            className={`agent-status-mark${props.running ? " agent-status-mark--pending agent-status-mark--running" : ""}`}
+            aria-hidden="true"
+          />
+          <span className="agent-doing__label">{t("agent_page.doing.current")}</span>
+        </span>
+        <span className="agent-doing__text">{props.doing}</span>
+      </div>
+    );
+  }
   return (
     <BatchTranslationSummary
       class_name="agent-translation-status"

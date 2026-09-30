@@ -145,7 +145,7 @@ export const en_us_agent_page = {
     error: "Failed",
     stopped: "Stopped",
   },
-  todo: { pending: "Pending items" },
+  doing: { current: "Working on" },
   tool: {
     details: "{tool} tool call details",
     input: "Input",

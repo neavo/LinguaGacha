@@ -10,7 +10,6 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 
 import { is_json_record, type JsonRecord, type JsonValue } from "../../../../domain/json";
-import { normalize_agent_todos } from "../../../../shared/agent-todo";
 import type { AgentImageOptions } from "../../../../shared/agent-image";
 import { default_native_fs } from "../../../../native/native-fs";
 import { resolve_workspace_runtime_entry } from "../../../../native/workspace-runtime";
@@ -27,7 +26,6 @@ export type AgentWorkspaceRunRequest = Readonly<{
   scriptPath: string; // 同一执行的三个文件路径由 WorkspaceService 唯一确定
   stdoutPath: string;
   stderrPath: string;
-  todos: readonly string[];
   host?: WorkspaceHostPort; // 父进程内绑定本次工作区执行，不经过 IPC 序列化
   emitImage?: (path: string, signal: AbortSignal, options?: AgentImageOptions) => Promise<void>;
 }>;
@@ -45,7 +43,6 @@ export type AgentWorkspaceOutput = Readonly<
 type WorkspaceProcessResult = {
   exitCode: number | null;
   signal: string | null;
-  todos: string[];
   failure?: string; // 可修复的执行失败，读取输出文件后再形成完整错误记录
 };
 
@@ -55,11 +52,6 @@ export type AgentWorkspaceExecution = Readonly<{
   signal: string | null;
   stdout: AgentWorkspaceOutput;
   stderr: AgentWorkspaceOutput;
-}>;
-
-export type AgentWorkspaceRunResult = Readonly<{
-  execution: AgentWorkspaceExecution;
-  todos: string[];
 }>;
 
 /** 程序失败保留可修复的执行记录；宿主故障继续使用应用诊断通道。 */
@@ -96,11 +88,11 @@ export class AgentWorkspaceRunner {
     this.paths = options.paths;
   }
 
-  /** 等待 close 后才返回，调用方据此释放工作区互斥并提交 Todo。 */
+  /** 等待 close 后才返回，调用方据此释放工作区互斥。 */
   public async run(
     request: AgentWorkspaceRunRequest,
     signal: AbortSignal,
-  ): Promise<AgentWorkspaceRunResult> {
+  ): Promise<AgentWorkspaceExecution> {
     signal.throwIfAborted();
     // 宿主先解析祖先链接，cwd、预加载与授权使用同一真实位置，子进程无需读取上层链接。
     const workspace_path = default_native_fs.real_path(request.workspacePath);
@@ -163,7 +155,6 @@ export class AgentWorkspaceRunner {
 
     const process_result = await this.run_process(
       path.resolve(workspace_path, request.scriptPath),
-      request.todos,
       user_skill_directory,
       [...new Set(skill_paths.map((entry) => pathToFileURL(entry + path.sep).href))],
       launch_options,
@@ -180,13 +171,12 @@ export class AgentWorkspaceRunner {
     };
     if (process_result.failure !== undefined)
       throw new AgentWorkspaceRunError(process_result.failure, execution);
-    return { execution, todos: process_result.todos };
+    return execution;
   }
 
   /** 子进程直接写入日志文件。父进程只处理 IPC 和生命周期，close 后再读取结果。 */
   private run_process(
     script_path: string,
-    initial_todos: readonly string[],
     user_skill_directory: string,
     skill_roots: readonly string[],
     launch_options: ForkOptions,
@@ -200,7 +190,6 @@ export class AgentWorkspaceRunner {
       const requests = new Map<number, AbortController>();
       const operations = new Set<Promise<void>>(); // 回收前等待宿主资源实际结算
       let closed = false;
-      let todos = [...initial_todos]; // 只有正常退出才提交最后一份有效 Todo
       let terminal_error: unknown; // 首个终止原因拥有结果，close 只负责回收与结算
       const timeout_error = new Error("Workspace program timed out.");
 
@@ -282,9 +271,6 @@ export class AgentWorkspaceRunner {
             case "cancel":
               requests.get(message.id)?.abort(new Error("Workspace request was cancelled."));
               break;
-            case "todos":
-              todos = normalize_agent_todos(message.todos);
-              break;
             default:
               throw new Error("Workspace runtime sent an invalid message.");
           }
@@ -305,7 +291,6 @@ export class AgentWorkspaceRunner {
             resolve({
               exitCode,
               signal: exitSignal ?? null,
-              todos,
               ...(terminal_error === timeout_error
                 ? { failure: timeout_error.message }
                 : exitCode !== 0
@@ -316,7 +301,6 @@ export class AgentWorkspaceRunner {
       });
       send({
         type: "start",
-        todos,
         userSkillDirectory: user_skill_directory,
         skillRoots: skill_roots,
       });

@@ -4,11 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { format_agent_workspace_typescript_api } from "../workspace/runtime/api-description";
 import type { AgentWorkspacePort } from "../workspace/service";
-import {
-  create_agent_workspace_tools,
-  type AgentTodoPort,
-  type AgentWorkspaceApprovalPort,
-} from "./workspace";
+import { create_agent_workspace_tools, type AgentWorkspaceApprovalPort } from "./workspace";
 
 type WorkspaceToolResult = { details: unknown; content: { type: string; text: string }[] };
 
@@ -17,7 +13,6 @@ describe("Agent 工作区工具", () => {
     const workspace = build_workspace_port();
     workspace.run = vi.fn(async () => ({
       execution: workspace_execution(),
-      todos: [],
       images: [
         {
           path: "work/image.webp",
@@ -34,7 +29,6 @@ describe("Agent 工作区工具", () => {
     }));
     const tools = create_agent_workspace_tools({
       workspace,
-      todo: build_todo_port(),
       approval: build_approval_port(),
     });
     const result = await read_tool(tools, "workspace_run").execute(
@@ -65,10 +59,8 @@ describe("Agent 工作区工具", () => {
   });
   it("两个工具只适配脚本参数、取消信号与服务结果", async () => {
     const workspace = build_workspace_port();
-    const todo = build_todo_port(["发现目标"]);
     const tools = create_agent_workspace_tools({
       workspace,
-      todo,
       approval: build_approval_port(),
     });
     const script_tool = read_tool(tools, "workspace_run");
@@ -91,10 +83,8 @@ describe("Agent 工作区工具", () => {
 
     expect(workspace.run).toHaveBeenCalledWith(
       "console.log(JSON.stringify({ changed: 2 }));",
-      ["发现目标"],
       expect.any(AbortSignal),
     );
-    expect(todo.write).toHaveBeenCalledWith(["核验结果"]);
     expect(workspace.apply_workspace).toHaveBeenCalledOnce();
     expect(script.details).toEqual(workspace_execution({ changed: 2 }));
     expect(JSON.parse(script.content[0]!.text)).toEqual(script.details);
@@ -104,7 +94,6 @@ describe("Agent 工作区工具", () => {
   it("公开完整脚本 API 并校验两个工具的参数边界", () => {
     const tools = create_agent_workspace_tools({
       workspace: build_workspace_port(),
-      todo: build_todo_port(),
       approval: build_approval_port(),
     });
     const script_tool = read_tool(tools, "workspace_run");
@@ -119,7 +108,7 @@ describe("Agent 工作区工具", () => {
     expect(() => validate(apply_tool, { target: "items" })).toThrow();
   });
 
-  it("调用期间取消时不提交迟到的 Todo", async () => {
+  it("调用期间取消时拒绝迟到的执行结果", async () => {
     const workspace = build_workspace_port();
     let release_run = (): void => undefined;
     const run_released = new Promise<void>((resolve) => {
@@ -127,13 +116,11 @@ describe("Agent 工作区工具", () => {
     });
     workspace.run = vi.fn(async () => {
       await run_released;
-      return { images: [], execution: workspace_execution(), todos: ["迟到事项"] };
+      return { images: [], execution: workspace_execution() };
     });
-    const todo = build_todo_port(["原有事项"]);
     const script_tool = read_tool(
       create_agent_workspace_tools({
         workspace,
-        todo,
         approval: build_approval_port(),
       }),
       "workspace_run",
@@ -153,28 +140,6 @@ describe("Agent 工作区工具", () => {
     release_run();
 
     await expect(result).rejects.toBe(reason);
-    expect(todo.write).not.toHaveBeenCalled();
-  });
-
-  it("脚本失败时保留调用前 Todo", async () => {
-    const workspace = build_workspace_port();
-    workspace.run = vi.fn(async () => Promise.reject(new Error("脚本失败")));
-    const todo = build_todo_port(["恢复任务"]);
-    const script_tool = read_tool(
-      create_agent_workspace_tools({ workspace, todo, approval: build_approval_port() }),
-      "workspace_run",
-    );
-
-    await expect(
-      script_tool.execute(
-        "script",
-        { script: "throw new Error();" },
-        undefined,
-        undefined,
-        undefined as never,
-      ),
-    ).rejects.toThrow("脚本失败");
-    expect(todo.write).not.toHaveBeenCalled();
   });
 });
 
@@ -204,7 +169,6 @@ function build_workspace_port(): Pick<AgentWorkspacePort, "run" | "apply_workspa
     run: vi.fn(async () => ({
       images: [],
       execution: workspace_execution({ changed: 2 }),
-      todos: ["核验结果"],
     })),
     apply_workspace: vi.fn(async (request_approval) => {
       await request_approval?.({
@@ -221,16 +185,6 @@ function build_workspace_port(): Pick<AgentWorkspacePort, "run" | "apply_workspa
         changes: { items: { updated: 2 } },
       };
     }),
-  };
-}
-
-/** 隔离工具调用期间的 Todo 副本与最终提交。 */
-function build_todo_port(
-  todos: string[] = [],
-): AgentTodoPort & { write: ReturnType<typeof vi.fn<(todos: readonly string[]) => void>> } {
-  return {
-    read: () => [...todos],
-    write: vi.fn<(todos: readonly string[]) => void>(),
   };
 }
 

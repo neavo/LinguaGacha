@@ -141,7 +141,7 @@ export const ko_kr_agent_page = {
     thinking_off: "모델의 생각 기능을 끄면 AGENT의 작업 수행 능력이 크게 저하됩니다. 계속할까요 …?",
   },
   status: { running: "처리 중", success: "완료", error: "실패", stopped: "중지됨" },
-  todo: { pending: "할 일" },
+  doing: { current: "처리 중" },
   tool: {
     details: "{tool} 도구 호출 상세 정보",
     input: "입력",

@@ -852,18 +852,11 @@
   overflow: clip;
 }
 
-.agent-todo,
 .agent-input-queue {
   box-sizing: border-box;
   background: transparent;
 }
 
-.agent-todo {
-  border: var(--agent-status-border);
-  border-radius: var(--ui-radius-card);
-}
-
-.agent-todo,
 .agent-input-queue__item:not(.agent-input-queue__item--editing) {
   height: var(--agent-status-row-height);
   transition: background-color 120ms ease;
@@ -882,97 +875,9 @@
   min-width: 0;
 }
 
-.agent-todo:hover,
-.agent-todo:focus-visible,
 .agent-input-queue__item:not(.agent-input-queue__item--editing):hover,
 .agent-input-queue__item:not(.agent-input-queue__item--editing):focus-within {
   background: var(--accent);
-}
-
-.agent-todo {
-  /* 两侧状态信息按内容占宽，队首任务填充剩余空间并在不足时截断。 */
-  display: flex;
-  width: min(100%, 420px);
-  flex: 0 0 auto;
-  align-items: center;
-  gap: 8px;
-  margin: 0 auto;
-  padding: 0 12px;
-  color: var(--muted-foreground);
-  cursor: help;
-  font-size: 12px;
-  line-height: 1;
-}
-
-.agent-todo:focus-visible {
-  outline: 1px solid var(--ring);
-  outline-offset: -1px;
-}
-
-.agent-todo__lead {
-  display: flex;
-  min-width: 0;
-  align-items: center;
-  gap: 8px;
-}
-
-.agent-todo__label {
-  overflow: hidden;
-  font-weight: 500;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.agent-todo__item {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  color: var(--foreground);
-  font-weight: 500;
-  text-align: center;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.agent-todo__more {
-  flex: 0 0 auto;
-  color: var(--muted-foreground);
-  font-weight: 500;
-  font-variant-numeric: tabular-nums;
-}
-
-/* 浮层受可用高度约束，列表独立滚动，让浮层箭头保留在滚动区域外。 */
-.agent-todo__tooltip {
-  display: flex;
-  max-height: var(--available-height);
-  width: var(--anchor-width);
-  max-width: var(--available-width);
-  flex-direction: column;
-  align-items: stretch;
-  overflow: visible;
-  line-height: 1.5;
-  white-space: normal;
-  animation: none;
-}
-
-.agent-todo__tooltip ul {
-  display: grid;
-  min-height: 0;
-  gap: 4px;
-  margin: 0;
-  overflow-y: auto;
-  overscroll-behavior-y: contain;
-  padding-inline-start: 16px;
-  list-style: disc outside;
-}
-
-.agent-todo__tooltip ul:focus-visible {
-  outline: 1px solid currentColor;
-  outline-offset: -1px;
-}
-
-.agent-todo__tooltip li {
-  overflow-wrap: anywhere;
 }
 
 .agent-input-queue {

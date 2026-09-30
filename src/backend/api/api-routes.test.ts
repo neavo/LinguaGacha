@@ -141,7 +141,7 @@ describe("register_api_routes", () => {
         entries: [],
         skills: [],
         inputQueue: { paused: false, canSendNow: false, items: [] },
-        todos: [],
+        doing: null,
         context: { tokens: null, compactable: false, limits: null },
       },
     });
@@ -300,7 +300,7 @@ function create_route_fixture() {
       entries: [],
       skills: [],
       inputQueue: { paused: false, canSendNow: false, items: [] },
-      todos: [],
+      doing: null,
       context: { tokens: null, compactable: false, limits: null },
     })),
     send_message,

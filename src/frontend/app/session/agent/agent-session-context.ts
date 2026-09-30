@@ -5,7 +5,6 @@ import type {
   AgentSessionStore,
   AgentControlsSlice,
   AgentInputSession,
-  AgentTodoSlice,
   AgentQueueSlice,
   AgentSessionActions,
   AgentSkillsSlice,
@@ -39,7 +38,7 @@ export function useAgentTimeline(): AgentTimelineSlice {
   return useSyncExternalStore(store.subscribe_timeline, store.get_timeline, store.get_timeline);
 }
 
-/** 订阅运行状态、待决问题与命令占用。 */
+/** 订阅运行状态、正在处理的内容、待决问题与命令占用。 */
 export function useAgentControls(): AgentControlsSlice {
   const store = use_agent_store();
   return useSyncExternalStore(store.subscribe_controls, store.get_controls, store.get_controls);
@@ -49,12 +48,6 @@ export function useAgentControls(): AgentControlsSlice {
 export function useAgentQueue(): AgentQueueSlice {
   const store = use_agent_store();
   return useSyncExternalStore(store.subscribe_queue, store.get_queue, store.get_queue);
-}
-
-/** 订阅当前会话的任务步骤。 */
-export function useAgentTodo(): AgentTodoSlice {
-  const store = use_agent_store();
-  return useSyncExternalStore(store.subscribe_todo, store.get_todo, store.get_todo);
 }
 
 /** 订阅当前可用技能资源。 */

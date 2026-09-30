@@ -38,7 +38,6 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@frontend/shadcn/toolti
 import {
   useAgentControls,
   useAgentInput,
-  useAgentTodo,
   useAgentQueue,
   useAgentSessionActions,
   useAgentSkills,
@@ -90,7 +89,6 @@ export function AgentConversation({ active = true }: { active?: boolean }): JSX.
   const { entries } = useAgentTimeline();
   const controls = useAgentControls();
   const { inputQueue } = useAgentQueue();
-  const { todos } = useAgentTodo();
   const { skills } = useAgentSkills();
   const input = useAgentInput();
   const { agent_input_request, clear_agent_input_request } = useAppNavigation();
@@ -650,7 +648,7 @@ export function AgentConversation({ active = true }: { active?: boolean }): JSX.
             className="agent-page__status-zone"
             inert={input_transition.locked || undefined}
           >
-            <AgentTaskStatus todos={todos} running={is_running} />
+            <AgentTaskStatus doing={controls.doing} running={is_running} />
             {has_input_queue ? (
               <div className="agent-page__status-queue-row">
                 <AgentInputQueue

@@ -8,7 +8,6 @@ describe("Agent Workspace 工具说明投影", () => {
     check_typescript([
       `${format_agent_workspace_typescript_api()}
 ws.host({ kind: "print_pdf", html: "<p>preview</p>" }).then(result => result.path);
-ws.todo.write(["核验"]);
 ws.emitImage("work/page.png");
 ws.emitImage("work/detail.png", { maxEdge: 3840 });
 // @ts-expect-error 尺寸使用数字。

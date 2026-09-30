@@ -416,7 +416,7 @@ describe("ApiGatewayServer", () => {
         entries: [],
         skills: [],
         inputQueue: { paused: false, canSendNow: false, items: [] },
-        todos: [],
+        doing: null,
         context: { tokens: null, compactable: false, limits: null },
       })),
       send_message: vi.fn(),

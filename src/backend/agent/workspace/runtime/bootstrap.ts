@@ -62,14 +62,6 @@ Object.defineProperty(globalThis, "ws", {
   value: create_agent_workspace_runtime_api(
     contract,
     start.userSkillDirectory,
-    start.todos,
-    (todos) => {
-      // send 自身负责刷新待发送消息；发送失败成为程序失败，不能提交未送达的 Todo。
-      void send_message({ type: "todos", todos }).catch((error: unknown) => {
-        console.error(error);
-        process.exit(1);
-      });
-    },
     async (request, signal) => {
       const result = await request_channel.call(request, signal);
       if (typeof result === "string" || result === null) throw new Error("Invalid host response.");
@@ -86,7 +78,7 @@ Object.defineProperty(globalThis, "ws", {
 });
 process.channel?.unref();
 
-/** 原生 IPC 交换应用状态、图片输出与宿主请求，程序文本走标准流。 */
+/** 原生 IPC 交换图片输出与宿主请求，程序文本走标准流。 */
 function send_message(message: AgentWorkspaceRuntimeChildMessage): Promise<void> {
   return new Promise((resolve, reject) => {
     if (process.send === undefined || !process.connected) {
