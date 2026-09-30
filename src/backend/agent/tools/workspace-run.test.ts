@@ -78,7 +78,7 @@ describe("workspace_run", () => {
 /** 注入工作区执行端口，刷新结果由会话集成测试验证。 */
 function create_tool(run: AgentWorkspacePort["run"]) {
   return create_agent_workspace_run_tool({
-    workspace: { run },
+    run,
     refresh_skills: async () => {},
     log_refresh_error: () => {},
   });

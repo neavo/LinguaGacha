@@ -1,4 +1,3 @@
-import type { WorkspaceHostPort } from "../../tools/host";
 import type { AgentWorkspaceRunRequest } from "./runner";
 import { execFileSync } from "node:child_process";
 import { cp, mkdir, mkdtemp, readFile, rm, symlink, unlink, writeFile } from "node:fs/promises";
@@ -207,10 +206,12 @@ it.each(["user", "builtin"])(
   `,
       undefined,
       undefined,
-      async (request) => {
-        expect(request.kind).toBe("print_pdf");
-        expect(request.html).toContain("fixture");
-        return { path: "work/printed.pdf" };
+      {
+        host: async (request) => {
+          expect(request.kind).toBe("print_pdf");
+          expect(request.html).toContain("fixture");
+          return { path: "work/printed.pdf" };
+        },
       },
     ).catch((error: unknown) => {
       if (error instanceof AgentWorkspaceRunError)
@@ -647,6 +648,50 @@ it.each([false, true])(
   },
 );
 
+it("doing 在真实 IPC 回包后已生效，程序仍运行且后续失败保留阶段", async () => {
+  let text: string | null = null;
+  let release = (): void => undefined;
+  let ready = (): void => undefined;
+  // 代理请求暂停后续步骤，以明确的完成信号观察 IPC 写入时序。
+  const blocked = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const waiting = new Promise<void>((resolve) => {
+    ready = resolve;
+  });
+  const write = (value: string | null): void => {
+    text = value;
+  };
+  let settled = false;
+  const pending = run(
+    `
+    import assert from 'node:assert/strict';
+    await ws.doing(' 检查章节 ');
+    await assert.rejects(ws.doing(''));
+    await fetch('https://example.test/hold');
+    `,
+    undefined,
+    async () => {
+      ready();
+      await blocked;
+      throw new Error("后续执行失败");
+    },
+    { doing: write },
+  ).finally(() => {
+    settled = true;
+  });
+  const rejected = expect(pending).rejects.toBeInstanceOf(AgentWorkspaceRunError);
+  try {
+    await Promise.race([waiting, pending]);
+    expect(text).toBe("检查章节");
+    expect(settled).toBe(false);
+  } finally {
+    release();
+    await rejected;
+  }
+  expect(text).toBe("检查章节");
+});
+
 it("emitImage 通过真实 IPC 等待接收，宿主拒绝可由脚本捕获", async () => {
   const paths: string[] = [];
   const edges: (number | undefined)[] = [];
@@ -662,12 +707,13 @@ it("emitImage 通过真实 IPC 等待接收，宿主拒绝可由脚本捕获", a
   `,
     undefined,
     undefined,
-    undefined,
-    async (path, _signal, options) => {
-      if (path === "invalid") throw new Error("image rejected");
-      await new Promise<void>((resolve) => setTimeout(resolve, 10));
-      paths.push(path);
-      edges.push(options?.maxEdge);
+    {
+      emitImage: async (path, _signal, options) => {
+        if (path === "invalid") throw new Error("image rejected");
+        await new Promise<void>((resolve) => setTimeout(resolve, 10));
+        paths.push(path);
+        edges.push(options?.maxEdge);
+      },
     },
   );
   expect(paths).toEqual(["work/第一页.webp", "work/第二页.webp"]);
@@ -719,8 +765,7 @@ async function run(
   script: string,
   signal: AbortSignal = AbortSignal.timeout(RUN_TIMEOUT_MS),
   resolveProxy: (url: string, signal?: AbortSignal) => Promise<string> = async () => "DIRECT",
-  host?: WorkspaceHostPort,
-  emitImage?: AgentWorkspaceRunRequest["emitImage"],
+  tools: Pick<AgentWorkspaceRunRequest, "host" | "emitImage" | "doing"> = {},
 ) {
   const scriptPath = `${AGENT_WORKSPACE_RUN_ROOT}/task-${++sequence}.mjs`;
   await writeFile(path.join(workspace, scriptPath), script);
@@ -735,8 +780,7 @@ async function run(
       scriptPath,
       stdoutPath: `${AGENT_WORKSPACE_RUN_ROOT}/task-${sequence}.stdout.log`,
       stderrPath: `${AGENT_WORKSPACE_RUN_ROOT}/task-${sequence}.stderr.log`,
-      ...(host === undefined ? {} : { host }),
-      ...(emitImage === undefined ? {} : { emitImage }),
+      ...tools,
     },
     signal,
   );

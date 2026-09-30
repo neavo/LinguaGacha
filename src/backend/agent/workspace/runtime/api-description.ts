@@ -1,4 +1,5 @@
 import { describe_emit_image } from "../../tools/emit-image";
+import { describe_doing } from "../../tools/doing";
 import { describe_host } from "../../tools/host";
 import { describe_workspace_contract } from "../../tools/contract";
 import { describe_user_skill_directory } from "../../tools/user-skill-directory";
@@ -17,6 +18,7 @@ export function format_agent_workspace_typescript_api(): string {
       contract.member,
       describe_user_skill_directory(),
       describe_emit_image(),
+      describe_doing(),
       describe_host(),
     ].map((member) =>
       member

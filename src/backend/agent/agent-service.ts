@@ -71,7 +71,6 @@ import {
   type AgentSessionSeed,
 } from "./agent-session-seed";
 import { create_agent_read_skill_tool } from "./tools/read-skill";
-import { create_agent_doing_tool } from "./tools/doing";
 import { create_agent_ask_user_tool } from "./tools/ask-user";
 import { AgentInputQueue } from "./agent-input-queue";
 import { create_agent_web_search_tool, type AgentWebSearchPort } from "./tools/web-search";
@@ -1160,14 +1159,20 @@ export class AgentService {
             throw error;
           }
         }),
-        create_agent_doing_tool((text) => this.update_doing(text)),
         create_agent_ask_user_tool({
           wait_for_answer: (tool_call_id, question, signal) =>
             this.decisions.wait_for_question(tool_call_id, question, signal),
         }),
         create_agent_workspace_run_tool({
-          workspace: {
-            run: (...args) => this.workspace.run(...args),
+          run: (script, signal) => {
+            // 每次执行绑定所属运行时和世代，停止或重置后的旧回调不能更新会话。
+            const generation = this.runtime_generation;
+            return this.workspace.run(script, signal, (text) => {
+              signal.throwIfAborted();
+              if (!this.runtime_is_current(runtime, generation))
+                throw new AppErrors.AppError("runtime.cancelled");
+              this.update_doing(text);
+            });
           },
 
           refresh_skills: () => this.skills.refresh(),
@@ -1966,9 +1971,9 @@ export class AgentService {
     );
   }
 
-  /** 会话清理期间忽略旧工具调用。 */
+  /** 阶段变化时发布唯一会话事实，执行有效性由绑定回调检查。 */
   private update_doing(text: string | null): void {
-    if (this.disposed || this.runtime === null || this.doing === text) return;
+    if (this.doing === text) return;
     this.doing = text;
     this.publish_event({ type: "doing", doing: text });
   }

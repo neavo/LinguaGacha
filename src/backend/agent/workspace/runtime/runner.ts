@@ -1,5 +1,6 @@
 import type { WorkspaceRequest } from "./protocol";
 import { execute_image_request } from "../../tools/emit-image";
+import { execute_doing_request } from "../../tools/doing";
 import { execute_host_request, type WorkspaceHostPort } from "../../tools/host";
 import { fork, type ForkOptions } from "node:child_process";
 import path from "node:path";
@@ -24,6 +25,7 @@ export type AgentWorkspaceRunRequest = Readonly<{
   stderrPath: string;
   host?: WorkspaceHostPort; // 父进程内绑定本次工作区执行，不经过 IPC 序列化
   emitImage?: (path: string, signal: AbortSignal, options?: AgentImageOptions) => Promise<void>;
+  doing?: (text: string | null) => void; // 本次执行借用会话写入口，不持有状态副本
 }>;
 
 export type AgentWorkspaceOutputContent = string | JsonRecord | JsonValue[];
@@ -155,8 +157,7 @@ export class AgentWorkspaceRunner {
       [...new Set(skill_paths.map((entry) => pathToFileURL(entry + path.sep).href))],
       launch_options,
       signal,
-      request.host,
-      request.emitImage,
+      request,
     );
     const execution: AgentWorkspaceExecution = {
       scriptPath: request.scriptPath,
@@ -177,8 +178,7 @@ export class AgentWorkspaceRunner {
     skill_roots: readonly string[],
     launch_options: ForkOptions,
     signal: AbortSignal,
-    host: WorkspaceHostPort | undefined,
-    emit_image: AgentWorkspaceRunRequest["emitImage"],
+    run_request: AgentWorkspaceRunRequest,
   ): Promise<WorkspaceProcessResult> {
     signal.throwIfAborted();
     return new Promise((resolve, reject) => {
@@ -215,11 +215,13 @@ export class AgentWorkspaceRunner {
         requests.set(id, controller);
         // 生命周期归 runner，参数校验与业务执行归具体工具。
         const execute = async () => {
+          if (request.kind === "doing")
+            return execute_doing_request(request, controller.signal, run_request.doing);
           if (request.kind === "emit_image")
-            return await execute_image_request(request, controller.signal, emit_image);
+            return await execute_image_request(request, controller.signal, run_request.emitImage);
           if (request.kind === "resolve_proxy" && typeof request.url === "string")
             return await this.system_proxy_resolver.resolveProxy(request.url, controller.signal);
-          return await execute_host_request(request, controller.signal, host);
+          return await execute_host_request(request, controller.signal, run_request.host);
         };
         const operation = execute()
           .then(

@@ -28,6 +28,7 @@ export function create_agent_read_skill_tool(
       "读取指定技能的正文或包内参考文件：",
       "- `content` 是正文。",
       "- `base_url` 是以 `/` 结尾的技能原包根目录 `file:` URL。",
+      "在后续 `workspace_run` 脚本中，将返回的 `base_url` 值赋给同名变量，再用 `await import(new URL('scripts/example.mjs', base_url).href)` 加载技能脚本。",
     ].join("\n\n"),
     parameters: Type.Object(
       {

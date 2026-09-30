@@ -588,22 +588,27 @@ describe("AgentWorkspaceService", () => {
     expect(fs.readdirSync(fixture.workspace_root)).toEqual([...environment_files, "sources"]);
   });
 
-  it("脚本错误和 runtime 故障都保留已经写入的工作文件", async () => {
+  it("脚本错误和 runtime 故障保留已经写入的工作文件与阶段", async () => {
     const fixture = create_fixture(temp_dir);
+    let doing: string | null = null;
+    const write_doing = (text: string | null): void => {
+      doing = text;
+    };
     await fixture.service.initialize();
     await run_workspace(fixture);
     const active_path = fixture.active_path();
     const work_file = path.join(fixture.workspace_root, AGENT_WORKSPACE_WORK_ROOT, "state.json");
     fs.writeFileSync(work_file, "state");
-    fixture.run.mockRejectedValueOnce(
-      new AgentWorkspaceRunError("脚本失败", {
+    fixture.run.mockImplementationOnce(async (request) => {
+      request.doing!("检查章节");
+      throw new AgentWorkspaceRunError("脚本失败", {
         ...workspace_execution({ completed: 1 }, { message: "脚本失败" }),
         exitCode: 1,
-      }),
-    );
+      });
+    });
 
     await expect(
-      fixture.service.run("throw new Error();", new AbortController().signal),
+      fixture.service.run("throw new Error();", new AbortController().signal, write_doing),
     ).rejects.toMatchObject({
       public_details: {
         action: "workspace_run",
@@ -621,6 +626,7 @@ describe("AgentWorkspaceService", () => {
         scriptPath,
         stdoutPath: `${run_path}.stdout.log`,
         stderrPath: `${run_path}.stderr.log`,
+        doing: write_doing,
         host: expect.any(Function),
         emitImage: expect.any(Function),
       },
@@ -629,6 +635,7 @@ describe("AgentWorkspaceService", () => {
     expect(fixture.active_path()).not.toBe("");
     expect(fs.readFileSync(work_file, "utf-8")).toBe("state");
 
+    expect(doing).toBe("检查章节");
     fixture.run.mockRejectedValueOnce(new Error("host disconnected"));
     await expect(
       fixture.service.run(VALID_WORKSPACE_SCRIPT, new AbortController().signal),

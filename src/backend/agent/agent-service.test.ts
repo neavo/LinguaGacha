@@ -133,11 +133,6 @@ const fake_agent_state = vi.hoisted(() => ({
     | "streaming"
     | "thinking"
     | "tool_only"
-    | "doing_write"
-    | "doing_pending"
-    | "doing_update"
-    | "doing_invalid"
-    | "doing_clear"
     | "invalid_tool"
     | "tool_compaction"
     | "overflow"
@@ -353,9 +348,6 @@ function create_fake_response(context: TranscriptContext): FauxResponseStep {
     );
   }
   if (after_tool_call) {
-    if (fake_agent_state.mode === "doing_pending") {
-      return async (_context, options) => await wait_for_pending_release(options?.signal);
-    }
     if (fake_agent_state.mode === "tools") return fauxAssistantMessage("查询完成");
     if (fake_agent_state.mode === "tools_error") {
       return fauxAssistantMessage("部分结果", {
@@ -427,23 +419,6 @@ function create_fake_response(context: TranscriptContext): FauxResponseStep {
       fauxToolCall("workspace_run", { script: FAKE_WORKSPACE_SCRIPT }, { id: "tool-only" }),
       { stopReason: "toolUse" },
     );
-  }
-  if (
-    ["doing_write", "doing_pending", "doing_update", "doing_clear", "doing_invalid"].includes(
-      fake_agent_state.mode,
-    )
-  ) {
-    const text =
-      fake_agent_state.mode === "doing_invalid"
-        ? ""
-        : fake_agent_state.mode === "doing_clear"
-          ? null
-          : fake_agent_state.mode === "doing_update"
-            ? "核验结果"
-            : "基础扫描";
-    return fauxAssistantMessage(fauxToolCall("doing", { text }, { id: "doing-1" }), {
-      stopReason: "toolUse",
-    });
   }
   if (fake_agent_state.mode === "invalid_tool") {
     return fauxAssistantMessage(
@@ -2051,7 +2026,6 @@ describe("AgentService", () => {
       [
         "run_batch_item_translation",
         "ask_user",
-        "doing",
         "workspace_run",
         "workspace_apply",
         "read_skill",
@@ -2064,9 +2038,15 @@ describe("AgentService", () => {
     ]);
   });
 
-  it("`doing` 更新、保留、去重和清空", async () => {
-    const { service, publish, runtime_gate } = await create_service();
-    fake_agent_state.mode = "doing_pending";
+  it("脚本阶段即时发布，停止后保留，后续回合去重、更新和清空", async () => {
+    const { service, workspace, publish, runtime_gate } = await create_service();
+    const run = vi.spyOn(workspace, "run");
+    run.mockImplementationOnce(async (_script, signal, doing) => {
+      doing!("基础扫描");
+      await wait_for_pending_release(signal);
+      return { images: [], execution: workspace_execution() };
+    });
+    fake_agent_state.mode = "tool_only";
     await service.send_message({ text: "开始长任务", attachments: [] });
     await vi.waitFor(() => expect(fake_agent_state.release_pending).not.toBeNull());
     expect(service.get_snapshot()).toMatchObject({ state: "running", doing: "基础扫描" });
@@ -2078,26 +2058,26 @@ describe("AgentService", () => {
     await vi.waitFor(() => expect(runtime_gate.get_snapshot().owner).toBeNull());
     expect(service.get_snapshot().doing).toBe("基础扫描");
 
-    const count = () =>
-      publish.mock.calls.filter(([, event]) => (event as AgentSessionEvent).type === "doing")
-        .length;
-    const before = count();
-    fake_agent_state.mode = "doing_write";
+    const before = count_published_events(publish, "doing");
+    run.mockImplementationOnce(async (_script, _signal, doing) => {
+      doing!("基础扫描");
+      return { images: [], execution: workspace_execution() };
+    });
     await service.send_message({ text: "继续同一阶段", attachments: [] });
     await wait_for_idle(service);
-    expect(service.get_snapshot().doing).toBe("基础扫描");
-    expect(count()).toBe(before);
+    expect(count_published_events(publish, "doing")).toBe(before);
 
-    fake_agent_state.mode = "doing_update";
+    run.mockImplementationOnce(async (_script, _signal, doing) => {
+      doing!("核验结果");
+      return { images: [], execution: workspace_execution() };
+    });
     await service.send_message({ text: "核验", attachments: [] });
     await wait_for_idle(service);
     expect(service.get_snapshot().doing).toBe("核验结果");
-    expect(read_tool_output(service, "doing-1")).toEqual({ text: "核验结果" });
-    fake_agent_state.mode = "doing_invalid";
-    await service.send_message({ text: "无效输入", attachments: [] });
-    await wait_for_idle(service);
-    expect(service.get_snapshot().doing).toBe("核验结果");
-    fake_agent_state.mode = "doing_clear";
+    run.mockImplementationOnce(async (_script, _signal, doing) => {
+      doing!(null);
+      return { images: [], execution: workspace_execution() };
+    });
     await service.send_message({ text: "完成", attachments: [] });
     await wait_for_idle(service);
     expect(service.get_snapshot().doing).toBeNull();
@@ -2107,12 +2087,34 @@ describe("AgentService", () => {
     );
   });
 
+  it.each(["stop", "reset"] as const)("%s 后拒绝已结束脚本的阶段更新", async (boundary) => {
+    const { service, workspace, publish, runtime_gate } = await create_service();
+    let old_write: ((text: string | null) => void) | undefined;
+    vi.spyOn(workspace, "run").mockImplementationOnce(async (_script, _signal, doing) => {
+      old_write = doing;
+      doing!("基础扫描");
+      return { images: [], execution: workspace_execution() };
+    });
+    fake_agent_state.mode = "tool_only";
+    await service.send_message({ text: "开始", attachments: [] });
+    // 已结束执行的信号仍有效，拒绝更新必须依靠所属会话和运行世代。
+    await wait_for_idle(service);
+    await vi.waitFor(() => expect(runtime_gate.get_snapshot().owner).toBeNull());
+    if (boundary === "reset") await service.reset();
+    else service.stop();
+    await vi.waitFor(() => expect(runtime_gate.get_snapshot().owner).toBeNull());
+    const before = publish.mock.calls.length;
+    expect(() => old_write!("迟到更新")).toThrow();
+    expect(publish.mock.calls.length).toBe(before);
+    expect(service.get_snapshot().doing).toBe(boundary === "reset" ? null : "基础扫描");
+  });
+
   it("执行失败、等待问题和审批均保留模型设置的 `doing` 内容", async () => {
     const { service, workspace } = await create_service();
-    fake_agent_state.mode = "doing_write";
-    await service.send_message({ text: "开始任务", attachments: [] });
-    await wait_for_idle(service);
-    vi.spyOn(workspace, "run").mockRejectedValueOnce(new Error("工作区执行失败"));
+    vi.spyOn(workspace, "run").mockImplementationOnce(async (_script, _signal, doing) => {
+      doing!("基础扫描");
+      throw new Error("工作区执行失败");
+    });
     fake_agent_state.mode = "tool_only";
     await service.send_message({ text: "执行工具", attachments: [] });
     await wait_for_idle(service);
@@ -2143,13 +2145,17 @@ describe("AgentService", () => {
   });
 
   it("重置对话、切换工程和销毁会话清空 doing", async () => {
-    const { service, session_state } = await create_service();
+    const { service, workspace, session_state } = await create_service();
     for (const clear of [
       () => service.reset(),
       () => session_state.mark_loaded("next.lg"),
       () => service.dispose(),
     ]) {
-      fake_agent_state.mode = "doing_write";
+      vi.spyOn(workspace, "run").mockImplementationOnce(async (_script, _signal, doing) => {
+        doing!("基础扫描");
+        return { images: [], execution: workspace_execution() };
+      });
+      fake_agent_state.mode = "tool_only";
       await service.send_message({ text: "建立正在处理的内容", attachments: [] });
       await wait_for_idle(service);
       expect(service.get_snapshot().doing).toBe("基础扫描");

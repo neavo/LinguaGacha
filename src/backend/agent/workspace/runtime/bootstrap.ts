@@ -1,4 +1,5 @@
 import { bind_emit_image } from "../../tools/emit-image";
+import { bind_doing } from "../../tools/doing";
 import { bind_host } from "../../tools/host";
 import { readFile } from "node:fs/promises";
 import { isBuiltin, registerHooks } from "node:module";
@@ -61,12 +62,11 @@ const client = new SystemProxyHttpClient(
 client.install_as_global_fetch();
 const contract: unknown = JSON.parse(await readFile("contract.json", "utf8"));
 Object.defineProperty(globalThis, "ws", {
-  value: create_agent_workspace_runtime_api(
-    contract,
-    start.userSkillDirectory,
-    bind_host(request_channel),
-    bind_emit_image(request_channel),
-  ),
+  value: create_agent_workspace_runtime_api(contract, start.userSkillDirectory, {
+    host: bind_host(request_channel),
+    emitImage: bind_emit_image(request_channel),
+    doing: bind_doing(request_channel),
+  }),
 });
 process.channel?.unref();
 
