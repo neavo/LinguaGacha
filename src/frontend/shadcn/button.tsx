@@ -4,7 +4,7 @@ import { Button as ButtonPrimitive } from "@base-ui/react/button";
 import { cn } from "@frontend/shadcn/classnames";
 
 const buttonVariants = cva(
-  "group/button inline-flex shrink-0 items-center justify-center rounded-[var(--ui-radius-button)] border border-transparent bg-clip-padding text-[13px] font-medium whitespace-nowrap transition-[color,background-color,border-color,transform] outline-none select-none focus-visible:border-ring active:not-aria-[haspopup]:translate-y-px disabled:pointer-events-none disabled:opacity-50 aria-invalid:border-destructive dark:aria-invalid:border-destructive/50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+  "group/button inline-flex shrink-0 items-center justify-center rounded-[var(--ui-radius-button)] border border-transparent bg-clip-padding text-[length:var(--ui-font-size-13)] font-medium whitespace-nowrap transition-[color,background-color,border-color,transform] outline-none select-none focus-visible:border-ring active:not-aria-[haspopup]:translate-y-px disabled:pointer-events-none disabled:opacity-50 aria-invalid:border-destructive dark:aria-invalid:border-destructive/50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
   {
     variants: {
       variant: {
@@ -30,7 +30,7 @@ const buttonVariants = cva(
         "icon-sm": "size-7",
         "icon-lg": "size-9",
         toolbar:
-          "h-[var(--ui-toolbar-button-height)] gap-2 px-[var(--ui-toolbar-button-padding-x)] text-[12px] has-data-[icon=inline-end]:pr-[calc(var(--ui-toolbar-button-padding-x)-2px)] has-data-[icon=inline-start]:pl-[calc(var(--ui-toolbar-button-padding-x)-2px)]",
+          "h-[var(--ui-toolbar-button-height)] gap-2 px-[var(--ui-toolbar-button-padding-x)] text-[length:var(--ui-font-size-12)] has-data-[icon=inline-end]:pr-[calc(var(--ui-toolbar-button-padding-x)-2px)] has-data-[icon=inline-start]:pl-[calc(var(--ui-toolbar-button-padding-x)-2px)]",
       },
     },
     defaultVariants: {

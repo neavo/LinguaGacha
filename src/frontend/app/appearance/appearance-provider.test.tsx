@@ -65,7 +65,15 @@ function AppearanceProbe(props: {
   return (
     <>
       <button onClick={() => appearance.set_font_preference("system")}>system-font</button>
-      <button onClick={() => appearance.set_theme_preference("dark")}>dark-theme</button>
+      <button
+        aria-label="larger-font"
+        onClick={() => appearance.set_font_size_preference("larger")}
+      >
+        larger-font
+      </button>
+      <button aria-label="dark-theme" onClick={() => appearance.set_theme_preference("dark")}>
+        dark-theme
+      </button>
     </>
   );
 }
@@ -80,6 +88,7 @@ describe("AppearanceProvider", () => {
     document.documentElement.classList.remove("dark");
     document.documentElement.style.colorScheme = "";
     delete document.documentElement.dataset.lgBaseFont;
+    delete document.documentElement.dataset.lgFontSize;
     system_dark = false;
     system_theme_listeners.clear();
     set_title_bar_theme.mockReset();
@@ -103,6 +112,7 @@ describe("AppearanceProvider", () => {
         root?.unmount();
       });
     }
+    delete document.documentElement.dataset.lgFontSize;
     container?.remove();
     root = null;
     container = null;
@@ -138,7 +148,7 @@ describe("AppearanceProvider", () => {
     expect(set_title_bar_theme).toHaveBeenLastCalledWith("light");
 
     await act(async () => {
-      view.querySelector<HTMLButtonElement>("button:nth-of-type(2)")?.click();
+      view.querySelector<HTMLButtonElement>('button[aria-label="dark-theme"]')?.click();
     });
     expect(snapshots.at(-1)?.theme_preference).toBe("dark");
     expect(window.localStorage.getItem("lg-theme-mode")).toBe("dark");
@@ -175,5 +185,26 @@ describe("AppearanceProvider", () => {
     expect(snapshots.at(-1)?.theme_preference).toBe("light");
     expect(snapshots.at(-1)?.resolved_theme).toBe("light");
     expect(set_title_bar_theme).toHaveBeenLastCalledWith("light");
+  });
+  it("恢复字号、保存本窗口选择，并接受跨窗口变更和清除", async () => {
+    window.localStorage.setItem("lg-font-size", "largest");
+    const view = await render_provider([]);
+    expect(document.documentElement.dataset.lgFontSize).toBe("largest");
+    await act(async () => {
+      view.querySelector<HTMLButtonElement>('button[aria-label="larger-font"]')?.click();
+    });
+    expect(document.documentElement.dataset.lgFontSize).toBe("larger");
+    expect(window.localStorage.getItem("lg-font-size")).toBe("larger");
+    for (const [value, expected] of [
+      ["largest", "largest"],
+      ["invalid", "normal"],
+      ["larger", "larger"],
+      [null, "normal"],
+    ] as const) {
+      await act(async () => {
+        window.dispatchEvent(new StorageEvent("storage", { key: "lg-font-size", newValue: value }));
+      });
+      expect(document.documentElement.dataset.lgFontSize).toBe(expected);
+    }
   });
 });

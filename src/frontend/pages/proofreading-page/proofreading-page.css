@@ -181,7 +181,7 @@
 
 .proofreading-page__filter-group-label {
   margin: 0;
-  font-size: 13px;
+  font-size: var(--ui-font-size-13);
   font-weight: 400;
   line-height: 1.2;
 }
@@ -327,7 +327,7 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 12px;
+  font-size: var(--ui-font-size-12);
   line-height: 1.25;
 }
 
@@ -374,7 +374,7 @@
   justify-content: flex-start;
   padding: 5px 8px;
   color: var(--muted-foreground);
-  font-size: 13px;
+  font-size: var(--ui-font-size-13);
   font-weight: 400;
   line-height: 1.25;
   text-align: left;
@@ -422,7 +422,7 @@
   color: var(--muted-foreground);
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 13px;
+  font-size: var(--ui-font-size-13);
   line-height: 1.35;
 }
 
@@ -511,7 +511,7 @@
 .proofreading-page__context-row-number {
   color: var(--muted-foreground);
   font-variant-numeric: tabular-nums;
-  font-size: 13px;
+  font-size: var(--ui-font-size-13);
 }
 
 .proofreading-page__context-pair {
@@ -539,7 +539,7 @@
 .proofreading-page__context-field dt {
   margin-bottom: 4px;
   color: var(--muted-foreground);
-  font-size: 13px;
+  font-size: var(--ui-font-size-13);
   font-weight: 600;
   line-height: 1.2;
 }
@@ -549,7 +549,7 @@
   overflow-wrap: anywhere;
   white-space: pre-wrap;
   cursor: text;
-  font-size: 13px;
+  font-size: var(--ui-font-size-13);
   line-height: 1.7;
   user-select: text;
 }
@@ -623,7 +623,7 @@
 
 .proofreading-page__dialog-status-title {
   margin: 0;
-  font-size: 13px;
+  font-size: var(--ui-font-size-13);
   line-height: 1.2;
 }
 
@@ -657,7 +657,7 @@
 .proofreading-page__dialog-badge-tooltip-title {
   margin: 0;
   color: inherit;
-  font-size: 12px;
+  font-size: var(--ui-font-size-12);
   line-height: 1.35;
 }
 
@@ -672,13 +672,13 @@
 .proofreading-page__dialog-badge-tooltip-item {
   overflow-wrap: anywhere;
   color: color-mix(in srgb, var(--background) 88%, var(--foreground) 12%);
-  font-size: 12px;
+  font-size: var(--ui-font-size-12);
   line-height: 1.45;
   white-space: pre-wrap;
 }
 
 .proofreading-page__dialog-content-title {
-  font-size: 13px;
+  font-size: var(--ui-font-size-13);
   line-height: 1.2;
 }
 
@@ -757,7 +757,7 @@
   align-items: center;
   gap: 8px;
   padding: 4px 0;
-  font-size: 12px;
+  font-size: var(--ui-font-size-12);
   text-align: start;
 }
 .proofreading-page__file-row:hover,
@@ -805,7 +805,7 @@ button.proofreading-page__file-body:hover > .app-badge {
   margin: 0;
   padding: 4px 8px;
   color: var(--muted-foreground);
-  font-size: 12px;
+  font-size: var(--ui-font-size-12);
 }
 
 .proofreading-page__table-empty {

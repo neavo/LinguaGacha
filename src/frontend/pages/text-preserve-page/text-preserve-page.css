@@ -131,7 +131,7 @@
 }
 
 .text-preserve-page__dialog-section-title {
-  font-size: 13px;
+  font-size: var(--ui-font-size-13);
   line-height: 1.2;
 }
 

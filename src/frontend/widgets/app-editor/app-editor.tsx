@@ -285,7 +285,7 @@ function create_editor_extensions(args: {
  * 正文通过 `aria_label` 命名。调用方用普通容器组合字段，避免 `label` 将点击转发给内部换行按钮。
  */
 export function AppEditor(props: AppEditorProps): JSX.Element {
-  const { resolved_theme } = useAppearance();
+  const { resolved_theme, font_size_preference } = useAppearance();
   const { t } = useI18n();
   const config = normalize_app_editor_props(props);
   const { indent_with_tab, read_only, syntax, variant } = config;
@@ -297,6 +297,10 @@ export function AppEditor(props: AppEditorProps): JSX.Element {
   const editor_mount_ref = useRef<HTMLDivElement | null>(null);
   const editor_view_ref = useRef<EditorView | null>(null);
   useImperativeHandle(props.ref, () => ({ focus: () => editor_view_ref.current?.focus() }), []);
+  // CSS 字号变化后刷新行盒与光标测量，沿用当前文档和选区。
+  useEffect(() => {
+    editor_view_ref.current?.requestMeasure();
+  }, [font_size_preference]);
   const on_change_ref = useRef(config.on_change);
   const on_blur_ref = useRef(config.on_blur);
   const suppress_change_ref = useRef(false);

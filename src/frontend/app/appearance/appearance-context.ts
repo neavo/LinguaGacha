@@ -2,12 +2,21 @@ import { createContext, useContext } from "react";
 import type { ResolvedThemeMode } from "@gui/bridge-types";
 
 export type ThemePreference = "system" | ResolvedThemeMode;
+export type FontSizePreference = "normal" | "larger" | "largest";
+
+/** 存储缺失或值失效时使用标准字体大小，菜单载荷共用此边界。 */
+export function normalize_font_size(value: string | null): FontSizePreference {
+  return value === "larger" || value === "largest" ? value : "normal";
+}
+
 export type FontPreference = "lg-base" | "system";
 
 export type AppearanceContextValue = {
   theme_preference: ThemePreference;
   resolved_theme: ResolvedThemeMode;
   font_preference: FontPreference;
+  font_size_preference: FontSizePreference;
+  set_font_size_preference: (preference: FontSizePreference) => void;
   set_theme_preference: (preference: ThemePreference) => void;
   set_font_preference: (preference: FontPreference) => void;
 };

@@ -29,7 +29,7 @@
 .app-editor .cm-editor {
   height: 100%;
   font-family: var(--ui-font-family-base);
-  font-size: 13px;
+  font-size: var(--ui-font-size-13);
 }
 
 .app-editor .cm-editor.cm-focused {
@@ -165,14 +165,11 @@
 }
 
 .app-editor--field {
-  height: 32px;
-  min-height: 32px;
-  flex: 0 0 32px;
-}
-
-.app-editor--field .cm-editor {
-  height: 100%;
-  font-size: 13px;
+  /* 行盒、上下内边距与边框共同决定高度，最大字号也能完整显示。 */
+  --app-editor-field-height: max(32px, calc(var(--ui-font-size-13) * 1.5 + 12px));
+  height: var(--app-editor-field-height);
+  min-height: var(--app-editor-field-height);
+  flex: 0 0 var(--app-editor-field-height);
 }
 
 .app-editor--field .cm-scroller {
@@ -189,11 +186,6 @@
   letter-spacing: 0em;
   white-space: pre;
   overflow-wrap: normal;
-}
-
-.app-editor--field .cm-line {
-  height: 20px;
-  line-height: 20px;
 }
 
 .app-editor .cm-placeholder {
@@ -275,6 +267,6 @@
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   color: inherit;
-  font-size: 12px;
+  font-size: var(--ui-font-size-12);
   line-height: 1.5;
 }

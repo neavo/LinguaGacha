@@ -13,7 +13,7 @@
 .skills-page__group > h2,
 .skills-page__group-header > h2 {
   margin: 0 0 4px;
-  font-size: 14px;
+  font-size: var(--ui-font-size-14);
   font-weight: 500;
 }
 
@@ -108,7 +108,7 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 14px;
+  font-size: var(--ui-font-size-14);
   font-weight: 500;
 }
 
@@ -129,7 +129,7 @@
   text-overflow: ellipsis;
   white-space: nowrap;
   color: var(--muted-foreground);
-  font-size: 12px;
+  font-size: var(--ui-font-size-12);
   line-height: 1.5;
   user-select: none;
 }
@@ -139,7 +139,7 @@
   justify-content: center;
   min-height: 60px;
   padding: 16px;
-  font-size: 13px;
+  font-size: var(--ui-font-size-13);
   color: var(--muted-foreground);
   text-align: center;
 }

@@ -147,6 +147,12 @@ export const ja_jp_app = {
     collapse_sidebar: "サイドバーを折りたたむ",
     appearance: "外観",
     font: "フォント",
+    font_size: "フォントサイズ",
+    font_size_option: {
+      normal: "標準",
+      larger: "大きめのフォント",
+      largest: "さらに大きいフォント",
+    },
     font_option: {
       lg_base: "LGBase",
       system: "システムフォント",

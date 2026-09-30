@@ -8,13 +8,16 @@ import { TooltipProvider } from "@frontend/shadcn/tooltip";
 import { AppAppearanceMenu } from "./app-appearance-menu";
 
 const appearance = vi.hoisted(() => ({
+  font_size_preference: "normal",
+  set_font_size_preference: vi.fn(),
   font_preference: "lg-base" as "lg-base" | "system",
   theme_preference: "system" as "system" | "light" | "dark",
   set_font_preference: vi.fn(),
   set_theme_preference: vi.fn(),
 }));
 
-vi.mock("@frontend/app/appearance/appearance-context", () => ({
+vi.mock("@frontend/app/appearance/appearance-context", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@frontend/app/appearance/appearance-context")>()),
   useAppearance: () => appearance,
 }));
 
@@ -31,6 +34,7 @@ describe("AppAppearanceMenu", () => {
     container?.remove();
     root = null;
     container = null;
+    appearance.set_font_size_preference.mockReset();
     appearance.set_font_preference.mockReset();
     appearance.set_theme_preference.mockReset();
   });
@@ -95,5 +99,14 @@ describe("AppAppearanceMenu", () => {
 
     expect(appearance.set_font_preference).toHaveBeenCalledWith("system");
     expect(appearance.set_theme_preference).toHaveBeenCalledWith("dark");
+  });
+  it("展示当前字体大小并提交用户选择", async () => {
+    await render_menu();
+    await open_menu();
+    expect(find_option("标准").hasAttribute("data-checked")).toBe(true);
+    await act(async () => {
+      find_option("更大字体").click();
+    });
+    expect(appearance.set_font_size_preference).toHaveBeenCalledWith("largest");
   });
 });

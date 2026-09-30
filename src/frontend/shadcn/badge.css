@@ -14,7 +14,7 @@
   border-radius: var(--ui-radius-pill);
   background: var(--secondary);
   color: var(--secondary-foreground);
-  font-size: 12px;
+  font-size: var(--ui-font-size-12);
   font-weight: 500;
   font-variant-numeric: tabular-nums;
   line-height: 1;

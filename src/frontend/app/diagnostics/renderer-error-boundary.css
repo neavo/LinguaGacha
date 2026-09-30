@@ -18,12 +18,12 @@
 .renderer-error-boundary__eyebrow {
   margin: 0 0 10px;
   color: var(--ui-color-text-muted, #5f6b7a);
-  font-size: 13px;
+  font-size: var(--ui-font-size-13);
 }
 
 .renderer-error-boundary__title {
   margin: 0;
-  font-size: 24px;
+  font-size: var(--ui-font-size-24);
   font-weight: 650;
   letter-spacing: 0;
 }
@@ -31,6 +31,6 @@
 .renderer-error-boundary__description {
   margin: 14px 0 0;
   color: var(--ui-color-text-secondary, #394150);
-  font-size: 14px;
+  font-size: var(--ui-font-size-14);
   line-height: 1.7;
 }

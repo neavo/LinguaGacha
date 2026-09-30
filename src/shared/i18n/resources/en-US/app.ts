@@ -146,6 +146,8 @@ export const en_us_app = {
     collapse_sidebar: "Collapse sidebar",
     appearance: "Appearance",
     font: "Font",
+    font_size: "Font size",
+    font_size_option: { normal: "Standard", larger: "Larger font", largest: "Even larger font" },
     font_option: {
       lg_base: "LGBase",
       system: "System Font",

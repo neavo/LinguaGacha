@@ -57,6 +57,7 @@ export function create_frontend_boundary_rules() {
     create_renderer_px_first_literal_rule(),
     create_renderer_radius_literal_rule(),
     create_renderer_token_owner_rule(),
+    create_renderer_font_size_rule(),
   ];
 }
 
@@ -346,7 +347,7 @@ function create_renderer_radius_literal_rule() {
       const errors = [];
       for (const file_path of context.files) {
         const relative_path = context.relative_path(file_path);
-        if (!is_renderer_radius_semantic_scope(relative_path, file_path)) {
+        if (!is_renderer_style_scope(relative_path, file_path)) {
           continue;
         }
         const content = context.read_file(file_path);
@@ -495,8 +496,8 @@ function is_px_first_literal_scope(relative_path) {
   );
 }
 
-/** 圆角规则覆盖产品与基础控件源码，排除测试。 */
-function is_renderer_radius_semantic_scope(relative_path, file_path) {
+/** 样式消费规则覆盖产品与基础控件源码，排除测试。 */
+function is_renderer_style_scope(relative_path, file_path) {
   return (
     !is_test_file(file_path) &&
     /\.(css|ts|tsx)$/.test(file_path) &&
@@ -510,4 +511,26 @@ function is_inside(file_path, directory_path) {
   return (
     relative_path === "" || (!relative_path.startsWith("..") && !path.isAbsolute(relative_path))
   );
+}
+
+/** 固定字号会绕过用户偏好。零字号与相对单位用于布局和局部比例。 */
+function create_renderer_font_size_rule() {
+  return {
+    name: "renderer 字号消费边界",
+    check: (context) => {
+      const errors = [];
+      for (const file_path of context.files) {
+        const relative_path = context.relative_path(file_path);
+        if (!is_renderer_style_scope(relative_path, file_path)) continue;
+        const content = strip_comments_preserving_lines(context.read_file(file_path));
+        const matches = find_pattern_errors(
+          content,
+          /font-size\s*:\s*[1-9]\d*(?:\.\d+)?px|fontSize\s*:\s*["'][1-9]\d*(?:\.\d+)?px|text-\[[1-9]\d*(?:\.\d+)?px\]/g,
+          () => "字号须消费全局字号变量，确保跟随用户字号偏好",
+        );
+        for (const match of matches) errors.push({ ...match, relative_path });
+      }
+      return errors;
+    },
+  };
 }

@@ -229,7 +229,7 @@ export function AgentResponseAnnotationSelection(
                   ref={action_ref}
                   type="button"
                   variant="ghost"
-                  className="rounded-[inherit] text-[12px] [&_svg]:text-primary"
+                  className="rounded-[inherit] text-[length:var(--ui-font-size-12)] [&_svg]:text-primary"
                   onMouseDown={(event) => event.preventDefault()}
                   onClick={edit}
                 >

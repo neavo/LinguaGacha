@@ -12,7 +12,7 @@ export function AppContentState(props: AppContentStateProps): JSX.Element {
   const { t } = useI18n();
   return (
     <div
-      className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 p-4 text-sm text-muted-foreground"
+      className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 p-4 text-[length:var(--ui-font-size-13)] text-muted-foreground"
       role={props.status === "error" ? "alert" : "status"}
     >
       {props.status === "loading" ? (

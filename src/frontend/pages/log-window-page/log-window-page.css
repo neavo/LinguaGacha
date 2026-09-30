@@ -98,7 +98,7 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 12px;
+  font-size: var(--ui-font-size-12);
 }
 
 .log-window-page__table-muted {
@@ -113,7 +113,7 @@
   align-items: baseline;
   gap: 6px;
   color: var(--foreground);
-  font-size: 12px;
+  font-size: var(--ui-font-size-12);
 }
 
 .log-window-page__message-level {
@@ -167,7 +167,7 @@
 
 .log-window-page__detail-head h2 {
   margin: 0;
-  font-size: 13px;
+  font-size: var(--ui-font-size-13);
   font-weight: 600;
 }
 
@@ -205,7 +205,7 @@
 }
 
 .log-window-page__detail-editor .cm-editor {
-  font-size: 12px;
+  font-size: var(--ui-font-size-12);
 }
 
 .log-window-page__detail-editor .cm-content {
@@ -219,5 +219,5 @@
   gap: 8px;
   padding: 12px;
   color: var(--muted-foreground);
-  font-size: 13px;
+  font-size: var(--ui-font-size-13);
 }

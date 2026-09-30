@@ -60,6 +60,21 @@
 @custom-variant dark (&:is(.dark *));
 
 :root {
+  /* 数字后缀表示标准档位尺寸，实际字号随用户选择的基线增加。 */
+  --ui-font-size-base: 14px;
+  --ui-font-size-10: calc(var(--ui-font-size-base) - 4px);
+  --ui-font-size-11: calc(var(--ui-font-size-base) - 3px);
+  --ui-font-size-12: calc(var(--ui-font-size-base) - 2px);
+  --ui-font-size-13: calc(var(--ui-font-size-base) - 1px);
+  --ui-font-size-14: var(--ui-font-size-base);
+  --ui-font-size-16: calc(var(--ui-font-size-base) + 2px);
+  --ui-font-size-18: calc(var(--ui-font-size-base) + 4px);
+  --ui-font-size-20: calc(var(--ui-font-size-base) + 6px);
+  --ui-font-size-24: calc(var(--ui-font-size-base) + 10px);
+  --ui-font-size-30: calc(var(--ui-font-size-base) + 16px);
+  --ui-font-size-36: calc(var(--ui-font-size-base) + 22px);
+  --ui-font-size-42: calc(var(--ui-font-size-base) + 28px);
+
   /* Font preferences only change the text fallback chain; Twemoji remains the emoji provider. */
   --ui-font-family-text: "LGMono", "LGBaseFont";
   --ui-font-family-base:
@@ -197,6 +212,7 @@ body,
 }
 
 body {
+  font-size: var(--ui-font-size-16);
   margin: 0;
   overflow: hidden;
   user-select: none;
@@ -225,6 +241,15 @@ a,
 }
 
 @theme inline {
+  --text-xs: var(--ui-font-size-12);
+  --text-sm: var(--ui-font-size-14);
+  --text-base: var(--ui-font-size-16);
+  --text-lg: var(--ui-font-size-18);
+  --text-xl: var(--ui-font-size-20);
+  --text-2xl: var(--ui-font-size-24);
+  --text-3xl: var(--ui-font-size-30);
+  --text-4xl: var(--ui-font-size-36);
+
   --font-heading: var(--font-sans);
   --font-sans: var(--ui-font-family-base);
   --font-mono: var(--ui-font-family-base);
@@ -499,7 +524,7 @@ a,
   [data-slot="table-head"] {
     height: var(--table-head-height-current);
     padding-inline: var(--table-cell-x-current);
-    font-size: 12px;
+    font-size: var(--ui-font-size-12);
     color: var(--muted-foreground);
     background: var(--table-header-bg-current);
   }
@@ -521,7 +546,7 @@ a,
   [data-slot="table-cell"] {
     height: var(--table-row-height-current);
     padding-inline: var(--table-cell-x-current);
-    font-size: 13px;
+    font-size: var(--ui-font-size-13);
   }
 
   .cn-toast__title {
@@ -592,7 +617,7 @@ a,
 
   .cn-toast__title {
     color: inherit;
-    font-size: 13px;
+    font-size: var(--ui-font-size-13);
     font-weight: 500;
     line-height: 1.5;
     white-space: pre-line;
@@ -600,7 +625,7 @@ a,
 
   .cn-toast__description {
     color: #3f3f3f;
-    font-size: 13px;
+    font-size: var(--ui-font-size-13);
     font-weight: 400;
     line-height: 1.4;
     white-space: pre-line;
@@ -648,4 +673,11 @@ a,
   [data-sonner-toaster][data-sonner-theme="dark"] .cn-toast__description {
     color: hsl(0 0% 91%);
   }
+}
+
+:root[data-lg-font-size="larger"] {
+  --ui-font-size-base: 15px;
+}
+:root[data-lg-font-size="largest"] {
+  --ui-font-size-base: 16px;
 }

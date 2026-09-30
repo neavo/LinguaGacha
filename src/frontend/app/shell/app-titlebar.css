@@ -74,6 +74,6 @@
 }
 
 .topbar__brand strong {
-  font-size: 14px;
+  font-size: var(--ui-font-size-14);
   color: var(--foreground);
 }

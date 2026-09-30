@@ -4,6 +4,7 @@ import {
   memo,
   useEffect,
   useMemo,
+  useRef,
   useContext,
   useState,
   type ComponentProps,
@@ -96,18 +97,23 @@ const MARKDOWN_COMPONENTS: Components = {
 /** Streamdown 拥有流式语义、高亮和图表；本入口组装产品排版与桌面交互。 */
 export const AgentMarkdown = memo(function AgentMarkdown(props: AgentMarkdownProps): JSX.Element {
   const { t } = useI18n();
-  const { resolved_theme } = useAppearance();
+  const { resolved_theme, font_size_preference } = useAppearance();
 
+  const markdown_ref = useRef<HTMLDivElement>(null);
   const [diagram_config, set_diagram_config] = useState<MermaidConfig>(() => ({
     theme: resolved_theme === "dark" ? "dark" : "default",
   }));
-  // next-themes 在 effect 中写入根节点主题，下一帧读取已生效的 CSS 令牌。
+  // 等待外观投影生效，再读取配色和正文实际字号供图表布局使用。
   useEffect(() => {
-    const frame = requestAnimationFrame(() =>
-      set_diagram_config(build_mermaid_config(resolved_theme)),
-    );
+    const frame = requestAnimationFrame(() => {
+      if (markdown_ref.current) {
+        set_diagram_config(
+          build_mermaid_config(resolved_theme, getComputedStyle(markdown_ref.current).fontSize),
+        );
+      }
+    });
     return () => cancelAnimationFrame(frame);
-  }, [resolved_theme]);
+  }, [resolved_theme, font_size_preference]);
   // 配置由插件实例拥有；主题改变通过公开 plugins 身份通知 Streamdown。
   const plugins = useMemo(
     () => ({
@@ -141,6 +147,7 @@ export const AgentMarkdown = memo(function AgentMarkdown(props: AgentMarkdownPro
   return (
     <AgentMarkdownPathContext value={props.document_path ?? ""}>
       <div
+        ref={markdown_ref}
         className="agent-markdown"
         onWheelCapture={scroll_past_inline_diagram}
         onPointerDownCapture={focus_inline_diagram}
@@ -248,7 +255,7 @@ function filter_markdown_url(value: string): string {
 }
 
 /** 图表配色消费应用令牌，实例、缓存与渲染生命周期归官方插件。 */
-function build_mermaid_config(theme: "light" | "dark"): MermaidConfig {
+function build_mermaid_config(theme: "light" | "dark", font_size: string): MermaidConfig {
   const style = getComputedStyle(document.documentElement);
   const token = (name: string): string => style.getPropertyValue(name).trim();
   return {
@@ -272,7 +279,7 @@ function build_mermaid_config(theme: "light" | "dark"): MermaidConfig {
       titleColor: token("--foreground"),
       strokeWidth: 1,
       fontFamily: "var(--ui-font-family-base)",
-      fontSize: "13px",
+      fontSize: font_size,
     },
   };
 }

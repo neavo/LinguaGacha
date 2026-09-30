@@ -10,7 +10,7 @@ function Input({ className, spellCheck = false, type, ...props }: React.Componen
       data-slot="input"
       spellCheck={spellCheck}
       className={cn(
-        "h-8 w-full min-w-0 select-text rounded-lg border border-input bg-popover px-2.5 py-1 text-base transition-colors outline-none file:inline-flex file:h-6 file:border-0 file:bg-transparent file:text-sm file:font-medium file:text-foreground placeholder:text-muted-foreground focus-visible:border-ring read-only:cursor-text read-only:bg-muted/50 read-only:text-muted-foreground disabled:pointer-events-none disabled:cursor-not-allowed disabled:bg-muted/50 disabled:opacity-50 aria-invalid:border-destructive aria-invalid:bg-destructive/5 md:text-sm",
+        "h-8 w-full min-w-0 select-text rounded-lg border border-input bg-popover px-2.5 py-1 text-[length:var(--ui-font-size-13)] transition-colors outline-none file:inline-flex file:h-6 file:border-0 file:bg-transparent file:text-[length:var(--ui-font-size-13)] file:font-medium file:text-foreground placeholder:text-muted-foreground focus-visible:border-ring read-only:cursor-text read-only:bg-muted/50 read-only:text-muted-foreground disabled:pointer-events-none disabled:cursor-not-allowed disabled:bg-muted/50 disabled:opacity-50 aria-invalid:border-destructive aria-invalid:bg-destructive/5",
         className,
       )}
       {...props}
