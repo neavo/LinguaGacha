@@ -1,9 +1,10 @@
-import type { ModelApiFormat, ModelThinkingLevel, ModelType } from "@domain/model";
+import type { ModelSpeedLevel, ModelApiFormat, ModelThinkingLevel, ModelType } from "@domain/model";
 import type { ModelAgentConfig } from "@domain/model-agent";
 import type { ModelAuthType } from "@domain/model";
 import type { AvailableModel } from "@shared/model-catalog";
 
 export type ModelRequestSnapshot = {
+  speed_level: ModelSpeedLevel;
   extra_headers: Record<string, string>;
   extra_headers_custom_enable: boolean;
   extra_body: Record<string, unknown>;

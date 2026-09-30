@@ -161,6 +161,41 @@ describe("Pi 载荷的产品规则", () => {
       "runtime.internal_invariant",
     );
   });
+  it.each([
+    ["DEFAULT", undefined],
+    ["STANDARD", "default"],
+    ["FAST", "priority"],
+    ["ULTRAFAST", "ultrafast"],
+  ] as const)("Responses 速度 %s 在两种认证方式下映射并保留扩展覆盖", (speed_level, expected) => {
+    const snapshot = create_snapshot({ api_format: "OpenAIResponses", speed_level });
+    const source = { input: [], service_tier: "auto" };
+    const results = [
+      apply_request_overrides(snapshot, source),
+      apply_request_overrides(
+        { ...snapshot, auth_type: "oauth" },
+        { ...source, stream: true, store: false },
+      ),
+    ];
+    for (const result of results) {
+      if (expected === undefined) expect(result).not.toHaveProperty("service_tier");
+      else expect(result.service_tier).toBe(expected);
+    }
+    expect(source.service_tier).toBe("auto");
+    expect(
+      apply_request_overrides({ ...snapshot, extra_body: { service_tier: "custom" } }, source)
+        .service_tier,
+    ).toBe("custom");
+  });
+
+  it.each(["OpenAI", "Google", "Anthropic", "SakuraLLM"] as const)(
+    "%s 不应用速度配置",
+    (api_format) => {
+      const snapshot = create_snapshot({ api_format, speed_level: "FAST" });
+      const source = api_format === "Google" ? { config: {}, contents: [] } : { messages: [] };
+      expect(apply_request_overrides(snapshot, source)).not.toHaveProperty("service_tier");
+    },
+  );
+
   it("保持默认移除自动思考控制，再应用用户扩展", () => {
     const source = { messages: [], reasoning: { effort: "low" }, reasoning_effort: "low" };
     const snapshot = create_snapshot({
@@ -233,6 +268,7 @@ function create_snapshot(overrides: Partial<ModelRequestSnapshot> = {}): ModelRe
     extra_body: {},
     generation: {},
     output_token_limit: 4096,
+    speed_level: "DEFAULT",
     thinking_level: "OFF",
     ...overrides,
   };

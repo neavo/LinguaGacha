@@ -65,6 +65,16 @@ export const ja_jp_model_page = {
     test_failed: "モデルのテストに失敗しました。しばらくしてから再試行してください …",
   },
   fields: {
+    speed: {
+      ultrafast: "UltraFast",
+      default_description: "速度レベルを指定せず、プラットフォームの既定設定を使用します。",
+      title: "速度レベル",
+      description:
+        "モデルの速度レベルを設定します。実際に適用されるかどうかはプロバイダーが決定し、適用時には追加料金が発生します。",
+      standard: "標準",
+      fast: "高速",
+      default: "既定のまま",
+    },
     context_window: {
       title: "コンテキストウィンドウ",
       description: "AGENT タスクにのみ適用。0 = 自動",

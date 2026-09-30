@@ -66,6 +66,16 @@ export const en_us_model_page = {
     test_failed: "Failed to test the model. Please try again later …",
   },
   fields: {
+    speed: {
+      ultrafast: "UltraFast",
+      default_description: "Leave the speed level unspecified and use the platform default.",
+      title: "Speed level",
+      description:
+        "Set the model’s speed level. The provider determines whether it takes effect. Additional charges apply when it does.",
+      standard: "Standard",
+      fast: "Fast",
+      default: "Keep default",
+    },
     context_window: {
       title: "Context Window",
       description: "Only applies to AGENT tasks; 0 = automatic",

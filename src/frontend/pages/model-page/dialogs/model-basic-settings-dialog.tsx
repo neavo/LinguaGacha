@@ -1,7 +1,7 @@
 import { PencilLine, RefreshCw, Send } from "lucide-react";
 import { Fragment, type JSX, useEffect, useState } from "react";
 
-import { is_model_thinking_level } from "@domain/model";
+import { MODEL_SPEED_LEVELS, is_model_speed_level, is_model_thinking_level } from "@domain/model";
 import { useI18n } from "@frontend/app/locale/locale-context";
 import {
   MODEL_THINKING_LEVEL_LABEL_KEY,
@@ -35,7 +35,15 @@ type ModelBasicSettingsDialogProps = {
   onClose: () => void;
 };
 
-/** 编辑模型名称、连接信息和思考等级的基础设置对话框。 */
+/** 显示文案与协议参数分别由界面和请求层拥有。 */
+const SPEED_LABEL_KEYS = {
+  STANDARD: "model_page.fields.speed.standard",
+  FAST: "model_page.fields.speed.fast",
+  ULTRAFAST: "model_page.fields.speed.ultrafast",
+  DEFAULT: "model_page.fields.speed.default",
+} as const;
+
+/** 编辑模型名称、连接信息、思考与速度等级。 */
 export function ModelBasicSettingsDialog(props: ModelBasicSettingsDialogProps): JSX.Element | null {
   const { t } = useI18n();
   const [is_model_id_editor_open, set_is_model_id_editor_open] = useState(false);
@@ -238,6 +246,51 @@ export function ModelBasicSettingsDialog(props: ModelBasicSettingsDialogProps): 
                 </Select>
               }
             />
+            {model.api_format === "OpenAIResponses" ? (
+              <SettingCardRow
+                action_width="content"
+                title={t("model_page.fields.speed.title")}
+                description={t("model_page.fields.speed.description")}
+                action={
+                  <Select
+                    value={model.request.speed_level}
+                    disabled={props.readonly}
+                    onValueChange={(value) => {
+                      if (is_model_speed_level(value))
+                        void props.onPatch({ request: { speed_level: value } });
+                    }}
+                  >
+                    <SelectTrigger className="model-page__field">
+                      <SelectValue>{t(SPEED_LABEL_KEYS[model.request.speed_level])}</SelectValue>
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectGroup>
+                        {MODEL_SPEED_LEVELS.map((level) => {
+                          const item = (
+                            <SelectItem value={level}>{t(SPEED_LABEL_KEYS[level])}</SelectItem>
+                          );
+                          return (
+                            <Fragment key={level}>
+                              {level === "DEFAULT" ? <SelectSeparator /> : null}
+                              {level === "DEFAULT" ? (
+                                <Tooltip>
+                                  <TooltipTrigger render={item} />
+                                  <TooltipContent side="right">
+                                    {t("model_page.fields.speed.default_description")}
+                                  </TooltipContent>
+                                </Tooltip>
+                              ) : (
+                                item
+                              )}
+                            </Fragment>
+                          );
+                        })}
+                      </SelectGroup>
+                    </SelectContent>
+                  </Select>
+                }
+              />
+            ) : null}
           </div>
         </div>
       </AppPageDialog>

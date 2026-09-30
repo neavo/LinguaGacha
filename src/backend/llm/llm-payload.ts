@@ -1,6 +1,6 @@
 import type { Api, Model as PiModel } from "@earendil-works/pi-ai";
 import { is_json_record } from "../../domain/json";
-import type { ModelApiFormat } from "../../domain/model";
+import type { ModelSpeedLevel, ModelApiFormat } from "../../domain/model";
 import { AppError } from "../../shared/error";
 import { apply_chatgpt_payload } from "./chatgpt-request";
 import {
@@ -8,6 +8,13 @@ import {
   resolve_max_tokens_for_request,
   type ModelRequestSnapshot,
 } from "./llm-request";
+
+/** 产品速度值与 Responses 服务档位的唯一映射。 */
+const RESPONSE_SERVICE_TIERS = {
+  STANDARD: "default",
+  FAST: "priority",
+  ULTRAFAST: "ultrafast",
+} as const satisfies Record<Exclude<ModelSpeedLevel, "DEFAULT">, string>;
 
 type PiCompat = PiModel<Api>["compat"];
 
@@ -61,6 +68,9 @@ export function apply_request_overrides(
     return apply_anthropic_extensions(record, snapshot);
   }
   if (snapshot.api_format === "OpenAIResponses") {
+    // 应用档位先覆盖 SDK 自动值，用户自定义请求体仍拥有最终覆盖权。
+    if (snapshot.speed_level === "DEFAULT") delete record["service_tier"];
+    else record["service_tier"] = RESPONSE_SERVICE_TIERS[snapshot.speed_level];
     const input = record["input"];
     if (!Array.isArray(input)) throw invalid_pi_payload("OpenAIResponses", "input");
     // 产品 Responses 指令固定使用 `developer`，补偿 Pi 仍将角色绑定 `reasoning` 的行为。

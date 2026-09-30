@@ -706,7 +706,22 @@ describe("pi-ai 请求适配", () => {
   });
 });
 
-describe("保持默认的真实适配器载荷", () => {
+describe("真实适配器的产品参数", () => {
+  it("Responses 适配器将模型速度配置送入实际请求", async () => {
+    const configured = ConfiguredModel.from_json(
+      create_model({ api_format: "OpenAIResponses", request: { speed_level: "FAST" } }),
+      "test",
+    );
+    const request = resolve_one_shot_pi_request(
+      read_model_request_snapshot(configured.to_json(), TEST_REQUEST_IDENTITY),
+      [{ role: "user", content: "Hello" }],
+      new AbortController().signal,
+      resolve_model_capability(configured, []),
+    );
+    const payload = await capture_payload(request);
+    expect(payload.service_tier).toBe("priority");
+  });
+
   it.each([
     ["OpenAI", "sample", { thinkingFormat: "openrouter" }],
     ["OpenAI", "sample", { thinkingFormat: "deepseek" }],
