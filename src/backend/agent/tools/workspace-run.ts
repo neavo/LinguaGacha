@@ -14,7 +14,7 @@ import app_package from "../../../../package.json";
 
 /** 执行程序并刷新技能事实，随后投影模型可见的执行记录与图片。 */
 export function create_agent_workspace_run_tool(options: {
-  workspace: Pick<AgentWorkspacePort, "run">;
+  run: (script: string, signal: AbortSignal) => ReturnType<AgentWorkspacePort["run"]>;
   refresh_skills: () => Promise<unknown>;
   log_refresh_error: (error: unknown) => void;
 }): ToolDefinition {
@@ -28,9 +28,6 @@ export function create_agent_workspace_run_tool(options: {
       "- 每次调用启动独立 Node.js 进程，跨调用的数据通过文件交接。",
       `- 脚本保存到 ${AGENT_WORKSPACE_RUN_ROOT}/*.mjs`,
       "- 当前工作目录（`cwd`）是工作区根目录，文件相对路径从这里解析，脚本内的相对 `import` 从脚本文件所在目录解析。",
-      "- `ws.contract`：提供数据集、变更路径、参考入口与通用提交规则，一般先读取目标的 `reference`，了解记录结构、修改格式和副作用。",
-      "- `read_skill`：提供原包根目录的 `base_url`，用 `await import(new URL('scripts/example.mjs', base_url).href)` 加载技能脚本。",
-      "- `ws.host`：提供宿主原生能力。",
       `- 预装包：${app_package.workspacePackages.join("、")}，通过标准 import 使用。`,
       "  - `@lg/workspace/item-contexts` 提供 `queryItemContexts`，用于取得条目的邻近语境。调用约定见导出函数注释，可用 `readFile(new URL(import.meta.resolve('@lg/workspace/item-contexts')), 'utf8')` 读取模块。",
       "  - `@lg/text` 提供与应用共用的字面匹配能力。",
@@ -104,7 +101,7 @@ export function create_agent_workspace_run_tool(options: {
       // SDK 未提供 signal 时仍传入永不取消的标准信号，服务端口无需处理双态。
       const effective_signal = signal ?? new AbortController().signal;
       effective_signal.throwIfAborted();
-      const outcome = await options.workspace.run(params.script, effective_signal).then(
+      const outcome = await options.run(params.script, effective_signal).then(
         (value) => ({ ok: true as const, value }),
         (error: unknown) => ({ ok: false as const, error }),
       );

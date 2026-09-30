@@ -333,7 +333,13 @@ export function describe_workspace_contract() {
     types: create_schema_renderer(
       new Map([[AGENT_WORKSPACE_CONTRACT_SCHEMA, "WorkspaceContract"]]),
     ).declarations(),
-    member: "contract: WorkspaceContract;",
+    member: [
+      "/**",
+      " * 提供数据集、变更路径、参考入口与通用提交规则。",
+      " * 一般先读取目标的 `reference`，了解记录结构、修改格式和副作用。",
+      " */",
+      "contract: WorkspaceContract;",
+    ].join("\n"),
   };
 }
 /** 输入来自 `structuredClone` 的独立副本，逐层冻结公开对象。 */

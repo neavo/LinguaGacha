@@ -561,10 +561,11 @@ export class AgentWorkspaceService {
     };
   }
 
-  /** 脚本直接修改可写工作目录；失败、超时和停止都保留已经完成的文件写入。 */
+  /** 脚本已完成的写入跨失败和停止保留，阶段更新由本次执行借用会话写入口。 */
   public async run(
     script: string,
     signal: AbortSignal,
+    doing?: AgentWorkspaceRunRequest["doing"],
   ): Promise<{ execution: AgentWorkspaceExecution; images: AgentWorkspaceImage[] }> {
     return await this.exclusive(async () => {
       const image_output = create_image_output(async (relative, image_signal, options) => {
@@ -598,6 +599,7 @@ export class AgentWorkspaceService {
             stdoutPath: `${run_path}.stdout.log`,
             stderrPath: `${run_path}.stderr.log`,
             emitImage: image_output.emitImage,
+            ...(doing === undefined ? {} : { doing }),
             host: create_workspace_host({
               root: this.root_path,
               nativeFs: this.native_fs,

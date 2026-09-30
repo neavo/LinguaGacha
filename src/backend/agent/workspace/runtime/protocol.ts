@@ -1,10 +1,12 @@
 import type { Static } from "@earendil-works/pi-ai";
 import type { WorkspaceHostRequest, WorkspaceHostResult } from "../../tools/host";
 import type { WORKSPACE_IMAGE_REQUEST_SCHEMA } from "../../tools/emit-image";
+import type { WORKSPACE_DOING_REQUEST_SCHEMA } from "../../tools/doing";
 
 export type WorkspaceRequest =
   | { kind: "resolve_proxy"; url: string }
   | Static<typeof WORKSPACE_IMAGE_REQUEST_SCHEMA>
+  | Static<typeof WORKSPACE_DOING_REQUEST_SCHEMA>
   | WorkspaceHostRequest;
 export type WorkspaceRequestResult = string | null | WorkspaceHostResult;
 

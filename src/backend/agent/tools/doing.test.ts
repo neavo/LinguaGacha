@@ -1,48 +1,31 @@
-import { validateToolArguments, type ToolCall } from "@earendil-works/pi-ai";
 import { describe, expect, it, vi } from "vitest";
-import { create_agent_doing_tool } from "./doing";
+import { execute_doing_request } from "./doing";
 
-describe("doing 工具", () => {
-  it("SDK 准备参数后写入会话，并返回设置与清空结果", async () => {
+describe("doing 脚本请求", () => {
+  it("校验并立即写入规范化阶段，null 清空", () => {
     const write = vi.fn();
-    const tool = create_agent_doing_tool(write);
-    for (const text of ["检查章节", null]) {
-      const params = validateToolArguments(tool, {
-        type: "toolCall",
-        id: "doing-1",
-        name: "doing",
-        arguments: tool.prepareArguments!({ text }),
-      } as ToolCall);
-      const result = await tool.execute("doing-1", params, undefined, undefined, {} as never);
-      expect(result.details).toEqual({ text });
-      expect(write).toHaveBeenLastCalledWith(text);
-    }
+    const signal = new AbortController().signal;
+    execute_doing_request({ kind: "doing", text: " 检查章节 " }, signal, write);
+    expect(write).toHaveBeenLastCalledWith("检查章节");
+    execute_doing_request({ kind: "doing", text: null }, signal, write);
+    expect(write).toHaveBeenLastCalledWith(null);
   });
 
-  it("`doing` 拒绝空字符串和额外字段", () => {
-    const tool = create_agent_doing_tool(vi.fn());
-    expect(() => tool.prepareArguments!({ text: "" })).toThrowError(
-      expect.objectContaining({ details: { code: "invalid_doing" }, cause: expect.any(TypeError) }),
-    );
-    expect(() =>
-      validateToolArguments(tool, {
-        type: "toolCall",
-        id: "doing-1",
-        name: "doing",
-        arguments: tool.prepareArguments!({ text: null, extra: true }),
-      } as ToolCall),
-    ).toThrow();
-  });
-
-  it("取消调用不写入会话", async () => {
+  it("非法或已取消的请求不写入会话", () => {
     const write = vi.fn();
-    const tool = create_agent_doing_tool(write);
     const controller = new AbortController();
+    for (const request of [
+      { kind: "doing", text: "" },
+      { kind: "doing", text: null, extra: true },
+      { kind: "other", text: "检查章节" },
+    ]) {
+      expect(() => execute_doing_request(request, controller.signal, write)).toThrow();
+    }
     const reason = new Error("停止");
     controller.abort(reason);
-    await expect(
-      tool.execute("doing-1", { text: null }, controller.signal, undefined, {} as never),
-    ).rejects.toBe(reason);
+    expect(() =>
+      execute_doing_request({ kind: "doing", text: null }, controller.signal, write),
+    ).toThrow(reason);
     expect(write).not.toHaveBeenCalled();
   });
 });
