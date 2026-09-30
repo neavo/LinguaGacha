@@ -127,6 +127,63 @@ describe("ModelBasicSettingsDialog", () => {
     expect(on_patch).toHaveBeenCalledWith({ thinking: { level: "HIGH" } });
   });
 
+  it.each(["OpenAIResponses", "OpenAI"] as const)(
+    "%s 按协议展示速度选项并保存",
+    async (api_format) => {
+      container = document.createElement("div");
+      document.body.append(container);
+      root = createRoot(container);
+      const on_patch = vi.fn(async () => {});
+      await act(async () => {
+        root?.render(
+          <ModelBasicSettingsDialog
+            open
+            test_disabled
+            model={create_model_snapshot({ api_format })}
+            readonly={false}
+            onPatch={on_patch}
+            onRequestOpenSelector={() => {}}
+            onRequestTestModel={() => {}}
+            onClose={() => {}}
+          />,
+        );
+      });
+      const triggers = [
+        ...document.querySelectorAll<HTMLButtonElement>('[data-slot="select-trigger"]'),
+      ];
+      const speed = triggers.find((item) =>
+        item.textContent?.includes("model_page.fields.speed.default"),
+      );
+      if (api_format !== "OpenAIResponses") {
+        expect(speed).toBeUndefined();
+        return;
+      }
+      expect(speed).toBeDefined();
+      await act(async () => speed!.click());
+      const options = [...document.querySelectorAll<HTMLElement>('[role="option"]')];
+      expect(options.map((item) => item.textContent)).toEqual(
+        ["standard", "fast", "ultrafast", "default"].map(
+          (level) => "model_page.fields.speed." + level,
+        ),
+      );
+      expect(options[3]?.previousElementSibling?.getAttribute("data-slot")).toBe(
+        "select-separator",
+      );
+      vi.useFakeTimers();
+      await act(async () => {
+        options[3]!.dispatchEvent(new MouseEvent("mouseenter", { bubbles: true }));
+        options[3]!.dispatchEvent(new MouseEvent("mousemove", { bubbles: true }));
+        vi.runAllTimers();
+      });
+      expect(document.querySelector('[role="tooltip"][data-open]')?.textContent).toBe(
+        "model_page.fields.speed.default_description",
+      );
+      vi.useRealTimers();
+      await act(async () => options[2]!.click());
+      expect(on_patch).toHaveBeenCalledWith({ request: { speed_level: "ULTRAFAST" } });
+    },
+  );
+
   it("仅有保持默认时仍提供可用的选择器", async () => {
     container = document.createElement("div");
     document.body.append(container);

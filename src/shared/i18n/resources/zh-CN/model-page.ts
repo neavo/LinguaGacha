@@ -63,6 +63,15 @@ export const zh_cn_model_page = {
     test_failed: "模型测试失败，请稍后再试 …",
   },
   fields: {
+    speed: {
+      ultrafast: "UltraFast",
+      default_description: "不指定速度等级，遵循平台的默认设置",
+      title: "速度等级",
+      description: "设置模型的速度等级，实际是否生效由供应商决定，生效时会产生额外费用",
+      standard: "标准",
+      fast: "快速",
+      default: "保持默认",
+    },
     context_window: {
       title: "上下文窗口",
       description: "仅对 AGENT 任务生效，0 = 自动",

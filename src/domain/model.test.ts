@@ -5,6 +5,13 @@ import { AGENT_COMPACTION_RESERVE_TOKENS, DEFAULT_MODEL_AGENT_CONFIG } from "./m
 import { MODEL_TYPES, Model, normalize_model_selection } from "./model";
 
 describe("Model", () => {
+  it("速度配置补齐默认值，并通过序列化保留选择", () => {
+    expect(
+      Model.from_json({ request: { speed_level: "invalid" } }, "test").request.speed_level,
+    ).toBe("DEFAULT");
+    const model = Model.from_json({ request: { speed_level: "ULTRAFAST" } }, "test");
+    expect(Model.from_json(model.to_json(), "copy").request.speed_level).toBe("ULTRAFAST");
+  });
   it("从不完整及旧设置生成稳定的模型快照", () => {
     const model = Model.from_json(
       {
@@ -44,6 +51,7 @@ describe("Model", () => {
       model_id: "",
       agent: DEFAULT_MODEL_AGENT_CONFIG,
       request: {
+        speed_level: "DEFAULT",
         extra_headers: { "X-Trace": "1" },
         extra_headers_custom_enable: true,
         extra_body: {},

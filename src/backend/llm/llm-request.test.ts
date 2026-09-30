@@ -47,6 +47,7 @@ describe("LLM 请求策略", () => {
           extra_headers: { "X-Test": "yes" },
           extra_body_custom_enable: true,
           extra_body: { custom: true },
+          speed_level: "FAST",
         },
       }),
       TEST_REQUEST_IDENTITY,
@@ -61,6 +62,7 @@ describe("LLM 请求策略", () => {
       extra_body: { custom: true },
       output_token_limit: 4096,
       thinking_level: "OFF",
+      speed_level: "FAST",
     });
     expect(snapshot).not.toHaveProperty("provider");
   });

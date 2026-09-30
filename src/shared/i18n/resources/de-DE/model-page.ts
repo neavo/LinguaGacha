@@ -71,6 +71,17 @@ export const de_de_model_page = {
     test_failed: "Fehler beim Testen des Modells. Bitte versuchen Sie es später erneut …",
   },
   fields: {
+    speed: {
+      ultrafast: "UltraFast",
+      default_description:
+        "Keine Geschwindigkeitsstufe vorgeben und die Standardeinstellung der Plattform verwenden.",
+      title: "Geschwindigkeitsstufe",
+      description:
+        "Legt die Geschwindigkeitsstufe des Modells fest. Der Anbieter entscheidet, ob sie angewendet wird. Bei Anwendung fallen zusätzliche Gebühren an.",
+      standard: "Standard",
+      fast: "Schnell",
+      default: "Standard beibehalten",
+    },
     context_window: {
       title: "Kontextfenster",
       description: "Gilt nur für AGENT-Aufgaben; 0 = automatisch",

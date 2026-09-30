@@ -46,6 +46,20 @@ export const MODEL_THINKING_LEVELS = [
   "MAX",
 ] as const; // 保持默认适用于所有模型；其余等级由模型能力决定
 
+/** 速度选项固定展示，DEFAULT 表示交由供应商选择服务档位。 */
+export const MODEL_SPEED_LEVELS = ["STANDARD", "FAST", "ULTRAFAST", "DEFAULT"] as const;
+export type ModelSpeedLevel = (typeof MODEL_SPEED_LEVELS)[number];
+
+/** 收窄配置与界面输入，供请求快照共用。 */
+export function is_model_speed_level(value: unknown): value is ModelSpeedLevel {
+  return MODEL_SPEED_LEVELS.some((level) => level === value);
+}
+
+/** 旧配置或非法值采用保持默认，避免意外指定付费档位。 */
+export function normalize_model_speed_level(value: unknown): ModelSpeedLevel {
+  return is_model_speed_level(value) ? value : "DEFAULT";
+}
+
 export type ModelUsage = (typeof MODEL_USAGES)[number];
 
 export type ModelAuthType = "api_key" | "oauth";
@@ -75,6 +89,7 @@ const CUSTOM_MODEL_TYPE_BY_API_FORMAT = {
 } as const satisfies Record<ModelApiFormat, CustomModelType | null>;
 
 type ModelRequestConfig = {
+  speed_level: ModelSpeedLevel; // Responses 请求服务档位，与思考等级独立。
   extra_headers: JsonRecord; // 请求层额外 headers
   extra_headers_custom_enable: boolean; // 是否启用自定义 headers
   extra_body: JsonRecord; // 请求层额外 body
@@ -102,13 +117,6 @@ type ModelGenerationConfig = {
 const MODEL_TYPE_SET = new Set<ModelType>(MODEL_TYPES);
 const MODEL_API_FORMAT_SET = new Set<ModelApiFormat>(MODEL_API_FORMATS);
 const MODEL_THINKING_LEVEL_SET = new Set<ModelThinkingLevel>(MODEL_THINKING_LEVELS);
-
-const DEFAULT_REQUEST_CONFIG: ModelRequestConfig = {
-  extra_headers: {},
-  extra_headers_custom_enable: false,
-  extra_body: {},
-  extra_body_custom_enable: false,
-};
 
 const DEFAULT_THRESHOLD_CONFIG: ModelThresholdConfig = {
   input_token_limit: 512,
@@ -299,8 +307,8 @@ export class Model {
   private static normalize_request_config(value: unknown): ModelRequestConfig {
     const record = read_json_model_record(value);
     return {
-      ...DEFAULT_REQUEST_CONFIG,
       ...record,
+      speed_level: normalize_model_speed_level(record["speed_level"]),
       extra_headers: { ...read_json_record(record["extra_headers"]) },
       extra_body: { ...read_json_record(record["extra_body"]) },
       extra_headers_custom_enable: Boolean(record["extra_headers_custom_enable"]),

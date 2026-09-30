@@ -24,7 +24,13 @@ import type {
   ModelThresholdSnapshot,
 } from "@frontend/pages/model-page/types";
 import { normalize_model_agent_config } from "@domain/model-agent";
-import { MODEL_TYPES, Model, is_model_thinking_level, type ModelType } from "@domain/model";
+import {
+  normalize_model_speed_level,
+  MODEL_TYPES,
+  Model,
+  is_model_thinking_level,
+  type ModelType,
+} from "@domain/model";
 import { MODEL_TYPE_TITLE_KEY } from "@frontend/features/model-selection/model-selection-meta";
 
 type ModelPageSnapshotPayload = {
@@ -170,6 +176,7 @@ function normalize_request_snapshot(candidate: unknown): ModelRequestSnapshot {
       : {};
 
   return {
+    speed_level: normalize_model_speed_level(source.speed_level),
     extra_headers: Object.fromEntries(
       Object.entries(headers_source).map(([key, value]) => {
         return [String(key), String(value)];

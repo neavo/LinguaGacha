@@ -65,6 +65,16 @@ export const ko_kr_model_page = {
     test_failed: "모델 테스트에 실패했습니다. 잠시 후 다시 시도해 주세요 …",
   },
   fields: {
+    speed: {
+      ultrafast: "UltraFast",
+      default_description: "속도 수준을 지정하지 않고 플랫폼 기본 설정을 따릅니다.",
+      title: "속도 수준",
+      description:
+        "모델의 속도 수준을 설정합니다. 실제 적용 여부는 제공업체가 결정하며, 적용 시 추가 요금이 발생합니다.",
+      standard: "표준",
+      fast: "빠름",
+      default: "기본값 유지",
+    },
     context_window: {
       title: "컨텍스트 창",
       description: "AGENT 작업에만 적용, 0 = 자동",

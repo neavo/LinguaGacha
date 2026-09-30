@@ -2,6 +2,8 @@ import type { StreamOptions } from "@earendil-works/pi-ai";
 
 import {
   Model,
+  normalize_model_speed_level,
+  type ModelSpeedLevel,
   CHATGPT_BASE_URL,
   type ModelAuthType,
   type ModelApiFormat,
@@ -34,6 +36,7 @@ export type ModelRequestSnapshot = Readonly<{
   extra_body: Readonly<JsonRecord>;
   generation: Readonly<JsonRecord>;
   output_token_limit: number; // `0` 和 `-1` 表示单次输出上限自动。
+  speed_level: ModelSpeedLevel; // 固定本轮请求档位，仅 Responses 消费。
   thinking_level: ModelThinkingLevel; // 配置写入口确认的产品思考等级。
 }>;
 
@@ -129,6 +132,7 @@ export function read_model_request_snapshot(
       threshold["output_token_limit"],
       DEFAULT_OUTPUT_TOKEN_LIMIT,
     ),
+    speed_level: normalize_model_speed_level(request["speed_level"]),
     thinking_level: Model.normalize_thinking_level(thinking["level"]),
   };
 }

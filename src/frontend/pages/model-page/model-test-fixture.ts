@@ -20,6 +20,7 @@ export function create_model_snapshot(
       max_output_tokens: 0,
     },
     request: {
+      speed_level: "DEFAULT",
       extra_headers: { Authorization: "Bearer token" },
       extra_headers_custom_enable: false,
       extra_body: { temperature: 1 },
