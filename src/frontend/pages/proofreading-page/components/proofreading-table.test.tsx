@@ -85,6 +85,11 @@ describe("ProofreadingTable", () => {
     item: ProofreadingRow,
     on_open_edit = vi.fn(),
     on_selection_change = vi.fn(),
+    options: {
+      readonly?: boolean;
+      selected_row_ids?: string[];
+      on_retranslate?: (ids: string[], preferred_row_id?: string | null) => void;
+    } = {},
   ): Promise<void> {
     container = document.createElement("div");
     document.body.append(container);
@@ -97,11 +102,11 @@ describe("ProofreadingTable", () => {
             items={[item]}
             visible_row_count={1}
             sort_state={null}
-            selected_row_ids={[]}
+            selected_row_ids={options.selected_row_ids ?? []}
             active_row_id={item.row_id}
             anchor_row_id={null}
             retranslating_row_ids={[]}
-            readonly={false}
+            readonly={options.readonly ?? false}
             get_row_at_index={(index) => (index === 0 ? item : undefined)}
             get_row_id_at_index={(index) => (index === 0 ? item.row_id : undefined)}
             resolve_row_index={(id) => (id === item.row_id ? 0 : undefined)}
@@ -114,7 +119,7 @@ describe("ProofreadingTable", () => {
             on_selection_change={on_selection_change}
             on_selection_error={() => {}}
             on_open_edit={on_open_edit}
-            on_request_retranslate_row_ids={() => {}}
+            on_request_retranslate_row_ids={options.on_retranslate ?? (() => {})}
             on_request_clear_translation_row_ids={() => {}}
             on_request_set_translation_status_row_ids={() => {}}
           />
@@ -122,6 +127,54 @@ describe("ProofreadingTable", () => {
       );
     });
   }
+
+  it.each(["text", "page", "mixed", "readonly"])(
+    "%s 选区只显示适用操作，文本写操作保留完整目标集合",
+    async (kind) => {
+      vi.useFakeTimers();
+      const page: ProofreadingRow = {
+        kind: "page",
+        row_id: 'page:["book.pdf",1]',
+        page: { file_path: "book.pdf", page: 1, status: "PROCESSED" },
+      };
+      const item = kind === "page" ? page : create_visible_item({});
+      const ids =
+        kind === "mixed"
+          ? [item.row_id, page.row_id]
+          : kind === "text"
+            ? [item.row_id, "2"]
+            : [item.row_id];
+      const on_retranslate = vi.fn();
+      await render_table(item, vi.fn(), vi.fn(), {
+        readonly: kind === "readonly",
+        selected_row_ids: ids,
+        on_retranslate,
+      });
+      await act(async () => {
+        container!
+          .querySelector('.app-table__table--body [data-row-index="0"]')!
+          .dispatchEvent(
+            new MouseEvent("contextmenu", { bubbles: true, cancelable: true, button: 2 }),
+          );
+      });
+      const items = Array.from(document.querySelectorAll<HTMLElement>('[role="menuitem"]'));
+      // 文案键定位具体动作，验证选区权限决定的操作可达性。
+      for (const action of ["retranslate", "clear_translation", "set_translation_status"]) {
+        expect(
+          items.some((item) => item.textContent === `proofreading_page.action.${action}`),
+        ).toBe(kind === "text");
+      }
+      if (kind === "text") {
+        await act(async () => {
+          items
+            .find((item) => item.textContent === "proofreading_page.action.retranslate")!
+            .click();
+          vi.runAllTimers();
+        });
+        expect(on_retranslate).toHaveBeenCalledWith(ids, item.row_id);
+      }
+    },
+  );
 
   it("姓名悬停通过统一提示展示全文", async () => {
     vi.useFakeTimers();

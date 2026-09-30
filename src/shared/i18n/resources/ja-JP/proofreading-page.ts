@@ -3,10 +3,9 @@ import type { LocaleMessageSchema } from "../../types";
 export const ja_jp_proofreading_page = {
   pages: {
     view: "開いて表示",
-    title: "ページプレビュー",
+    title: "プレビュー",
     source_page: "{PAGE} ページ",
     select_files: "ファイルを選択",
-    text_only: "この操作にはテキスト項目を選択してください",
     failed: "プレビューに失敗しました",
     previous: "前のページ",
     next: "次のページ",

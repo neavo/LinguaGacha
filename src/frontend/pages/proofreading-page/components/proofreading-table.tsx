@@ -399,15 +399,12 @@ export function ProofreadingTable(props: ProofreadingTableProps): JSX.Element {
           on_row_activate={props.on_open_edit}
           render_row_context_menu_items={(payload) => {
             const target_row_ids = payload.target_row_ids;
-            const text_only = target_row_ids.every((id) => !is_proofreading_page_row_id(id));
+            // 批量写操作面向整个选区，混合选区只提供当前条目的查看入口。
+            const can_change_text =
+              !props.readonly && target_row_ids.every((id) => !is_proofreading_page_row_id(id));
 
             return (
               <AppContextMenuGroup>
-                {!text_only && (
-                  <span className="px-2 text-xs text-muted-foreground">
-                    {t("proofreading_page.pages.text_only")}
-                  </span>
-                )}
                 <AppContextMenuItem
                   aria-keyshortcuts="Enter"
                   onClick={() => {
@@ -424,51 +421,55 @@ export function ProofreadingTable(props: ProofreadingTableProps): JSX.Element {
                   )}
                   <AppContextMenuShortcut>Enter</AppContextMenuShortcut>
                 </AppContextMenuItem>
-                <AppContextMenuItem
-                  disabled={props.readonly || !text_only}
-                  onClick={() => {
-                    run_after_context_menu_close(() => {
-                      props.on_request_retranslate_row_ids(target_row_ids, payload.row_id);
-                    });
-                  }}
-                >
-                  <RefreshCcw />
-                  {t("proofreading_page.action.retranslate")}
-                </AppContextMenuItem>
-                <AppContextMenuItem
-                  disabled={props.readonly || !text_only}
-                  onClick={() => {
-                    run_after_context_menu_close(() => {
-                      props.on_request_clear_translation_row_ids(target_row_ids, payload.row_id);
-                    });
-                  }}
-                >
-                  <Eraser />
-                  {t("proofreading_page.action.clear_translation")}
-                </AppContextMenuItem>
-                <AppContextMenuSub>
-                  <AppContextMenuSubTrigger disabled={props.readonly || !text_only}>
-                    <ListChecks />
-                    {t("proofreading_page.action.set_translation_status")}
-                  </AppContextMenuSubTrigger>
-                  <AppContextMenuSubContent>
-                    {ITEM_MANUAL_STATUSES.map((status) => (
-                      <AppContextMenuItem
-                        key={status}
-                        disabled={props.readonly || !text_only}
-                        onClick={() => {
-                          props.on_request_set_translation_status_row_ids(
+                {can_change_text && (
+                  <>
+                    <AppContextMenuItem
+                      onClick={() => {
+                        run_after_context_menu_close(() => {
+                          props.on_request_retranslate_row_ids(target_row_ids, payload.row_id);
+                        });
+                      }}
+                    >
+                      <RefreshCcw />
+                      {t("proofreading_page.action.retranslate")}
+                    </AppContextMenuItem>
+                    <AppContextMenuItem
+                      onClick={() => {
+                        run_after_context_menu_close(() => {
+                          props.on_request_clear_translation_row_ids(
                             target_row_ids,
-                            status,
                             payload.row_id,
                           );
-                        }}
-                      >
-                        {t(PROOFREADING_STATUS_LABEL_KEY_BY_CODE[status])}
-                      </AppContextMenuItem>
-                    ))}
-                  </AppContextMenuSubContent>
-                </AppContextMenuSub>
+                        });
+                      }}
+                    >
+                      <Eraser />
+                      {t("proofreading_page.action.clear_translation")}
+                    </AppContextMenuItem>
+                    <AppContextMenuSub>
+                      <AppContextMenuSubTrigger>
+                        <ListChecks />
+                        {t("proofreading_page.action.set_translation_status")}
+                      </AppContextMenuSubTrigger>
+                      <AppContextMenuSubContent>
+                        {ITEM_MANUAL_STATUSES.map((status) => (
+                          <AppContextMenuItem
+                            key={status}
+                            onClick={() => {
+                              props.on_request_set_translation_status_row_ids(
+                                target_row_ids,
+                                status,
+                                payload.row_id,
+                              );
+                            }}
+                          >
+                            {t(PROOFREADING_STATUS_LABEL_KEY_BY_CODE[status])}
+                          </AppContextMenuItem>
+                        ))}
+                      </AppContextMenuSubContent>
+                    </AppContextMenuSub>
+                  </>
+                )}
               </AppContextMenuGroup>
             );
           }}
