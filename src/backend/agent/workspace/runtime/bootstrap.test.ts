@@ -328,7 +328,7 @@ it("发布态 ASAR 技能在原目录授权下导入脚本、资源和预装依�
   });
 });
 
-it("直接执行技能、apply、再次执行和重置均读取原包当前文件", async () => {
+it("删除变更目录后继续执行技能、提交和重置", async () => {
   const app_root = await mkdtemp(path.join(root, "lifecycle-"));
   await writeFile(path.join(app_root, "version.txt"), "0.0.0");
   const source = path.join(app_root, "source.txt");
@@ -384,6 +384,13 @@ it("直接执行技能、apply、再次执行和重置均读取原包当前文�
     await service.initialize();
     // 两个空根先运行一次，后续新增文件在下一 run 自然可读。
     await service.run("console.log('ready');", AbortSignal.timeout(RUN_TIMEOUT_MS));
+    await service.run(
+      `
+      import { rm } from 'node:fs/promises';
+      await rm('changes', { recursive: true });
+    `,
+      AbortSignal.timeout(RUN_TIMEOUT_MS),
+    );
     const entry = path.join(resources.paths.get_agent_user_skill_dir(), "fixture", "entry.mjs");
     await mkdir(path.dirname(entry), { recursive: true });
     // 原包替换正文，下一进程必须看到新版本；apply 使用真实工程写入口。

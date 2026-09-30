@@ -96,6 +96,14 @@ const WORKSPACE_IMAGE_TYPES: Readonly<Record<string, string>> = {
 
 const RUN_ID_BYTES = 6; // 会话内执行记录使用 48 位随机标识，缩短返回给模型的文件路径
 
+/** 公开失败阶段，供模型恢复与诊断定位使用。 */
+enum WorkspaceRunPhase {
+  PREPARE_SNAPSHOT = "prepare_snapshot",
+  PREPARE_WORKSPACE = "prepare_workspace",
+  SAVE_SCRIPT = "save_script",
+  EXECUTE = "execute",
+}
+
 type AgentWorkspaceStoreResult = {
   applied: AgentWorkspaceAppliedSummary;
   rejected: AgentWorkspaceRejectedChange[];
@@ -583,15 +591,28 @@ export class AgentWorkspaceService {
         );
         return image;
       });
-      const active = this.active;
-      if (active === null || !this.read_freshness(active).snapshotFresh) {
-        await this.create_snapshot_locked();
-      }
+      let phase = WorkspaceRunPhase.PREPARE_SNAPSHOT; // 记录本次调用推进到的阶段，供失败诊断使用。
       try {
         signal.throwIfAborted();
+        const active = this.active;
+        if (active === null || !this.read_freshness(active).snapshotFresh) {
+          await this.create_snapshot_locked();
+        }
+        phase = WorkspaceRunPhase.PREPARE_WORKSPACE;
+        // 脚本可删除可写目录。每次执行前补齐目录，保留已有提交意图。
+        const directories = new Set([
+          AGENT_WORKSPACE_RUN_ROOT,
+          ...all_change_paths().map((relative) => path.posix.dirname(relative)),
+        ]);
+        for (const relative of directories) {
+          signal.throwIfAborted();
+          await this.native_fs.make_dir_async(path.join(this.root_path, relative));
+        }
+        phase = WorkspaceRunPhase.SAVE_SCRIPT;
         const run_path = `${AGENT_WORKSPACE_RUN_ROOT}/${randomBytes(RUN_ID_BYTES).toString("hex")}`;
         const script_path = `${run_path}.mjs`;
         await this.native_fs.write_file(path.join(this.root_path, script_path), script);
+        phase = WorkspaceRunPhase.EXECUTE;
         const execution = await this.options.run(
           {
             workspacePath: this.root_path,
@@ -628,7 +649,10 @@ export class AgentWorkspaceService {
             diagnostic_context: { reason: "agent_workspace_execution_failed" },
           });
         }
-        throw workspace_recovery_error(error, "agent_workspace_execute_host_failed");
+        throw workspace_error_with_action(error, "workspace_run", "agent_workspace_host_failed", {
+          phase,
+          root: this.root_path,
+        });
       }
     });
   }
@@ -655,7 +679,11 @@ export class AgentWorkspaceService {
         if (AppErrors.is_app_error(error) && error.code === "request.validation_failed")
           throw error;
         await this.clear_snapshot();
-        throw workspace_recovery_error(error, "agent_workspace_apply_prepare_failed");
+        throw workspace_error_with_action(
+          error,
+          "workspace_run",
+          "agent_workspace_apply_prepare_failed",
+        );
       }
       let preview: ReturnType<typeof resolve_agent_workspace_writes>;
       let all_rejected: AgentWorkspaceRejectedChange[];
@@ -691,7 +719,11 @@ export class AgentWorkspaceService {
         );
       } catch (error) {
         await this.clear_snapshot();
-        throw workspace_recovery_error(error, "agent_workspace_apply_preview_failed");
+        throw workspace_error_with_action(
+          error,
+          "workspace_run",
+          "agent_workspace_apply_preview_failed",
+        );
       }
       if (!has_agent_workspace_applied_changes(preview.applied)) {
         const status = derive_agent_workspace_apply_status({}, all_rejected);
@@ -952,7 +984,7 @@ export type AgentWorkspacePort = Pick<
   uploads: Pick<AgentUploadStore, "upload" | "get" | "read_image" | "open" | "clear" | "cancel">;
 };
 
-/** 输入均为 realpath 结果，包含根目录本身。 */
+/** 比较绝对路径的目录边界，包含根目录本身。 */
 function is_inside_path(root: string, target: string): boolean {
   const relative = path.relative(root, target);
   return relative !== ".." && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative);
@@ -1287,31 +1319,43 @@ function workspace_validation_error(reason: string): AppErrors.AppError {
   });
 }
 
-/** 无法继续使用当前目录的错误统一回到按需工作区脚本。 */
-function workspace_recovery_error(error: unknown, reason: string): AppErrors.AppError {
-  return workspace_error_with_action(error, "workspace_run", reason);
-}
-
-/** 包装错误时保留稳定 code、公开详情、诊断上下文和原始 cause。 */
+/** 统一包装一次异常并保留原始 `cause`。运行失败提供阶段与安全的 IO 定位信息。 */
 function workspace_error_with_action(
   error: unknown,
   action: "workspace_run" | "workspace_apply",
   reason?: string,
+  run?: Readonly<{ phase: WorkspaceRunPhase; root: string }>,
 ): AppErrors.AppError {
-  if (AppErrors.is_app_error(error)) {
-    return new AppErrors.AppError(error.code, {
-      cause: error,
-      public_details: { ...error.public_details, action },
-      diagnostic_context: {
-        ...error.diagnostic_context,
-        ...(reason === undefined ? {} : { reason }),
-      },
-    });
+  const app_error = AppErrors.is_app_error(error) ? error : null;
+  let code: AppErrors.AppErrorCode = app_error?.code ?? "runtime.internal_invariant";
+  const details: JsonRecord = { ...app_error?.public_details, action };
+  if (run !== undefined) {
+    details["phase"] = run.phase;
+    const system = error instanceof Error ? (error as NodeJS.ErrnoException) : null;
+    if (
+      app_error === null &&
+      typeof system?.code === "string" &&
+      typeof system.syscall === "string"
+    ) {
+      code = system.code === "ENOENT" ? "file.not_found" : "file.io_failed";
+      details["system_code"] = system.code;
+      details["operation"] = system.syscall;
+      // 只公开工作区内的相对路径，部署目录与外部链接目标由原始 cause 提供诊断。
+      if (typeof system.path === "string") {
+        const target = path.resolve(run.root, system.path);
+        if (is_inside_path(run.root, target))
+          details["path"] = path.relative(run.root, target).split(path.sep).join("/");
+      }
+    }
   }
-  return new AppErrors.AppError("runtime.internal_invariant", {
+  return new AppErrors.AppError(code, {
     cause: error,
-    public_details: { action },
-    diagnostic_context: reason === undefined ? {} : { reason },
+    public_details: details,
+    diagnostic_context: {
+      ...app_error?.diagnostic_context,
+      ...(reason === undefined ? {} : { reason }),
+      ...(run === undefined ? {} : { phase: run.phase }),
+    },
   });
 }
 

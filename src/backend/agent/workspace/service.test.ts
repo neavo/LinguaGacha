@@ -421,6 +421,50 @@ describe("AgentWorkspaceService", () => {
     expect(fixture.active_path()).toBe(active_path);
   });
 
+  it("补齐缺失变更子目录时保留提交意图、工作材料和快照", async () => {
+    const fixture = create_fixture(temp_dir);
+    await fixture.service.initialize();
+    await run_workspace(fixture);
+    const changes = path.join(fixture.workspace_root, AGENT_WORKSPACE_CHANGE_PATHS.items.updates);
+    const work = path.join(fixture.workspace_root, "work", "notes.txt");
+    fs.writeFileSync(changes, "pending");
+    fs.writeFileSync(work, "notes");
+    fs.rmSync(path.join(fixture.workspace_root, "changes/pages"), { recursive: true });
+
+    await run_workspace(fixture);
+
+    expect(fs.readFileSync(changes, "utf8")).toBe("pending");
+    expect(fs.readFileSync(work, "utf8")).toBe("notes");
+    expect(fs.statSync(path.join(fixture.workspace_root, "changes/pages")).isDirectory()).toBe(
+      true,
+    );
+    expect(fixture.query_warnings).toHaveBeenCalledOnce();
+  });
+
+  it("目录被文件占用时报告 IO 定位信息，解除冲突后可再次运行", async () => {
+    const fixture = create_fixture(temp_dir);
+    await fixture.service.initialize();
+    await run_workspace(fixture);
+    const changes = path.join(fixture.workspace_root, "changes");
+    fs.rmSync(changes, { recursive: true });
+    fs.writeFileSync(changes, "conflict");
+
+    await expect(run_workspace(fixture)).rejects.toMatchObject({
+      code: "file.io_failed",
+      public_details: {
+        action: "workspace_run",
+        phase: "prepare_workspace",
+        operation: "mkdir",
+        path: expect.stringMatching(/^changes(?:\/items)?$/),
+        system_code: expect.any(String),
+      },
+    });
+    expect(fs.readFileSync(changes, "utf8")).toBe("conflict");
+    fs.unlinkSync(changes);
+    await expect(run_workspace(fixture)).resolves.toBeDefined();
+    expect(fixture.query_warnings).toHaveBeenCalledOnce();
+  });
+
   it("重新初始化解除旧依赖链接并清理工作材料，部署目录保持完整", async () => {
     const fixture = create_fixture(temp_dir);
     await fixture.service.initialize();
@@ -534,7 +578,11 @@ describe("AgentWorkspaceService", () => {
     fixture.snapshot.sectionRevisions.items = 2;
     fixture.query_warnings.mockRejectedValueOnce(new Error("warning query failed"));
 
-    await expect(run_workspace(fixture)).rejects.toThrow("warning query failed");
+    await expect(run_workspace(fixture)).rejects.toMatchObject({
+      code: "runtime.internal_invariant",
+      public_details: { phase: "prepare_snapshot" },
+      cause: expect.objectContaining({ message: "warning query failed" }),
+    });
     expect(fixture.active_path()).toBe(previous_path);
     expect(fs.readFileSync(work_file, "utf-8")).toBe("state");
     await fixture.service.run(VALID_WORKSPACE_SCRIPT, new AbortController().signal);
@@ -583,7 +631,9 @@ describe("AgentWorkspaceService", () => {
     await new Promise<void>((resolve) => setImmediate(resolve));
     release_delayed_write();
 
-    await expect(script).rejects.toThrow("contract write failed");
+    await expect(script).rejects.toMatchObject({
+      cause: expect.objectContaining({ message: "contract write failed" }),
+    });
     expect(cleanup_started_while_write_pending).toBe(false);
     expect(fs.readdirSync(fixture.workspace_root)).toEqual([...environment_files, "sources"]);
   });
@@ -642,6 +692,26 @@ describe("AgentWorkspaceService", () => {
     ).rejects.toMatchObject({ public_details: { action: "workspace_run" } });
     expect(fixture.active_path()).not.toBe("");
     expect(fs.readFileSync(work_file, "utf-8")).toBe("state");
+
+    fixture.run.mockRejectedValueOnce(
+      Object.assign(new Error("missing runtime"), {
+        code: "ENOENT",
+        syscall: "realpath",
+        path: path.join(temp_dir, "runtime", "missing"),
+      }),
+    );
+    const failure = await run_workspace(fixture).catch((error: unknown) => error);
+    expect(failure).toEqual(
+      expect.objectContaining({
+        code: "file.not_found",
+        public_details: {
+          action: "workspace_run",
+          phase: "execute",
+          operation: "realpath",
+          system_code: "ENOENT",
+        },
+      }),
+    );
   });
 
   it("apply 只提交显式 change，成功后销毁快照并保留 work", async () => {
@@ -935,7 +1005,9 @@ describe("AgentWorkspaceService", () => {
     else fixture.setting.target_language = "EN";
     fixture.query_warnings.mockRejectedValueOnce(new Error("warning query failed"));
 
-    await expect(run_workspace(fixture)).rejects.toThrow("warning query failed");
+    await expect(run_workspace(fixture)).rejects.toMatchObject({
+      cause: expect.objectContaining({ message: "warning query failed" }),
+    });
     expect(fs.existsSync(work_file)).toBe(false);
 
     await fixture.service.run(VALID_WORKSPACE_SCRIPT, new AbortController().signal);
