@@ -12,7 +12,7 @@ type ItemContractRow = Record<string, unknown>;
 type ItemContractPayload = Record<string, unknown>;
 
 // 完整公开 DTO 契约需要这些文件类型在缺失 text_type 时保留历史推断语义。
-const TEXT_TYPE_INFERENCE_FILE_TYPES = new Set(["XLSX", "KVJSON", "MESSAGEJSON"]);
+const TEXT_TYPE_INFERENCE_FILE_TYPES = new Set(["XLSX", "KVJSON", "MESSAGEJSON", "XLIFF"]);
 const LEGACY_MARKDOWN_FILE_TYPE = "MD";
 
 /**

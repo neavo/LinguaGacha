@@ -12,6 +12,7 @@ import { SRTFormat } from "./srt/srt-format";
 import { TRANSFormat } from "./trans/trans-format";
 import { TXTFormat } from "./txt/txt-format";
 import { XLSXFormat } from "./xlsx/xlsx-format";
+import { XLIFFFormat } from "./xliff/xliff-format";
 import { EPUBFormat } from "./epub/epub-format";
 import { NativeFs, default_native_fs } from "../../native/native-fs";
 import {
@@ -29,7 +30,11 @@ import {
 
 // 文件发现与摘要统计共用同一扩展名映射，避免支持范围产生第二份白名单。
 const PROJECT_SOURCE_FORMAT_ID_BY_EXTENSION = new Map<string, ProjectSourceFormatId>(
-  PROJECT_SOURCE_FORMATS.map((format) => [format.extension, format.id]),
+  PROJECT_SOURCE_FORMATS.flatMap((format) =>
+    ("extensions" in format ? format.extensions : [format.extension]).map(
+      (extension) => [extension, format.id] as const,
+    ),
+  ),
 );
 
 /**
@@ -45,6 +50,7 @@ export class FileFormatService {
   private readonly kvjson: KVJSONFormat;
   private readonly messagejson: MESSAGEJSONFormat;
   private readonly xlsx: XLSXFormat;
+  private readonly xliff: XLIFFFormat;
   private readonly trans: TRANSFormat;
   private readonly renpy: RenPyFormat;
   private readonly epub: EPUBFormat;
@@ -65,6 +71,7 @@ export class FileFormatService {
     this.kvjson = new KVJSONFormat();
     this.messagejson = new MESSAGEJSONFormat(config);
     this.xlsx = new XLSXFormat();
+    this.xliff = new XLIFFFormat();
     this.trans = new TRANSFormat();
     this.renpy = new RenPyFormat(config);
     this.epub = new EPUBFormat(config);
@@ -103,6 +110,10 @@ export class FileFormatService {
         break;
       case ".xlsx":
         format = this.xlsx;
+        break;
+      case ".xlf":
+      case ".xliff":
+        format = this.xliff;
         break;
       case ".json": {
         const items = await this.kvjson.read_from_stream(content, rel_path);
@@ -212,6 +223,7 @@ export class FileFormatService {
     await this.kvjson.write_to_path(items, paths);
     await this.messagejson.write_to_path(items, paths);
     await this.xlsx.write_to_path(items, paths, asset_reader);
+    await this.xliff.write_to_path(items, paths, asset_reader);
     await this.trans.write_to_path(items, paths, asset_reader);
     await this.renpy.write_to_path(items, paths, asset_reader);
     await this.epub.write_to_path(items, paths, asset_reader);

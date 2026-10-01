@@ -82,6 +82,7 @@
 - [Translator++](https://dreamsavior.net/translator-plusplus) 项目文件 `.trans`
 - [Translator++](https://dreamsavior.net/translator-plusplus) 导出游戏文本 `.xlsx`
 - [WOLF 官方翻译工具](https://silversecond.booth.pm/items/5151747) 导出游戏文本 `.xlsx`
+- [XLIFF 2.0](https://docs.oasis-open.org/xliff/xliff-core/v2.0/os/xliff-core-v2.0-os.html) 翻译交换文件 `.xlf .xliff`（按 unit id 稳定匹配）
 - 具体示例可见 [Wiki - 支持的文件格式](https://github.com/neavo/LinguaGacha/wiki/%E6%94%AF%E6%8C%81%E7%9A%84%E6%96%87%E4%BB%B6%E6%A0%BC%E5%BC%8F)，更多格式将持续添加，你也可以在 [ISSUES](https://github.com/neavo/LinguaGacha/issues) 中提出你的需求
 
 ## 近期更新 📅
