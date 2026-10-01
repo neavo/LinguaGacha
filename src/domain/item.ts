@@ -30,6 +30,7 @@ export const ITEM_FILE_TYPES = [
   "TRANS",
   "KVJSON",
   "MESSAGEJSON",
+  "XLIFF",
 ] as const;
 
 export const ITEM_TEXT_TYPES = ["NONE", "MD", "KAG", "WOLF", "RENPY", "RPGMAKER"] as const; // 文本的实际类型
@@ -80,7 +81,7 @@ const ITEM_STATUS_SET = new Set<ItemStatus>(ITEM_STATUSES);
 const ITEM_MANUAL_STATUS_SET = new Set<ItemManualStatus>(ITEM_MANUAL_STATUSES);
 const ITEM_FILE_TYPE_SET = new Set<ItemFileType>(ITEM_FILE_TYPES);
 const ITEM_TEXT_TYPE_SET = new Set<ItemTextType>(ITEM_TEXT_TYPES);
-const TEXT_TYPE_INFERENCE_FILE_TYPES = new Set<ItemFileType>(["XLSX", "KVJSON", "MESSAGEJSON"]);
+const TEXT_TYPE_INFERENCE_FILE_TYPES = new Set<ItemFileType>(["XLSX", "KVJSON", "MESSAGEJSON", "XLIFF"]);
 // 全量公开写回必须携带这些稳定字段，避免页面层用默认值覆盖真实持久事实
 const PROJECT_ITEM_PUBLIC_REQUIRED_FIELDS = [
   "src",
