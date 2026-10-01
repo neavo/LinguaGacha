@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
-import { createModels, createProvider, type ModelAuth } from "@earendil-works/pi-ai";
+import type { ModelAuth } from "@earendil-works/pi-ai";
+import { createModels, createProvider } from "@earendil-works/pi-ai/models";
 import { openAIResponsesApi } from "@earendil-works/pi-ai/api/openai-responses.lazy";
 import { raceWithAbortSignal } from "@earendil-works/pi-ai/utils/abort";
 import { AppError, to_api_error_payload } from "../../shared/error";

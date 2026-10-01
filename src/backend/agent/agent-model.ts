@@ -1,9 +1,9 @@
-import {
-  createProvider,
-  type ProviderStreams,
-  type Model as PiModel,
-  type ModelThinkingLevel as PiModelThinkingLevel,
+import type {
+  ProviderStreams,
+  Model as PiModel,
+  ModelThinkingLevel as PiModelThinkingLevel,
 } from "@earendil-works/pi-ai";
+import { createProvider } from "@earendil-works/pi-ai/models";
 import type { ModelRuntime } from "@earendil-works/pi-coding-agent";
 import { lazyStream } from "@earendil-works/pi-ai/api/lazy";
 
