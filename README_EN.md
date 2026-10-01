@@ -88,13 +88,13 @@
 - See [Wiki - Supported Formats](https://github.com/neavo/LinguaGacha/wiki/%E6%94%AF%E6%8C%81%E7%9A%84%E6%96%87%E4%BB%B6%E6%A0%BC%E5%BC%8F) for examples. Submit format requests via [ISSUES](https://github.com/neavo/LinguaGacha/issues)
 
 ## Recent Updates 📅
-- 20260930 v0.124.1
-  - Added model support - `GPT 6.1 Sol`
-  - Fixes and improvements [#943](../../issues/943) [#944](../../issues/944) [#946](../../issues/946)
-
-- 20260927 v0.124.0
-  - `AGENT` - Custom skills
-  - Fixes and improvements [#933](../../issues/933) [#934](../../issues/934) [#937](../../issues/937) [#938](../../issues/938) [#940](../../issues/940)
+- 20261001 v0.125.0
+  - Added `Global Font Size` [#949](../../issues/949)
+  - Added `ChatGPT Login` [#951](../../issues/951)
+    - You can now use your Codex Plan quota
+    - You can now activate `GPT Fast/UltraFast` mode
+  - Fixes and improvements [#948](../../issues/948) [#950](../../issues/950)
+  - Happy birthday to our motherland, China! ( •̀ ω •́ )✧
 
 ## Development Guide 🛠️
 - Install [Go](https://go.dev) and [`Node.js`](https://nodejs.org)
