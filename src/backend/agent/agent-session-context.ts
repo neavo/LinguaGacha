@@ -8,10 +8,10 @@ import type { AgentContextSnapshot } from "../../shared/agent";
 
 export const AGENT_KEEP_RECENT_TOKENS = 32_000;
 
-/** 条目身份决定用量是否覆盖当前前缀；时间戳相同的摘要与响应也不会误用旧用量。 */
+/** 条目身份决定用量是否覆盖当前前缀。时间戳相同的摘要与响应也不会误用旧用量。 */
 export function read_agent_session_context(
   view: ContextView,
-  model: Model<Api>,
+  model: Model<Api> | null,
 ): AgentContextSnapshot {
   const boundary = Math.max(
     view.head?.id ?? 0,
@@ -33,6 +33,9 @@ export function read_agent_session_context(
   return {
     tokens,
     compactable: tokens > AGENT_KEEP_RECENT_TOKENS && tail !== view.head?.id,
-    limits: { context_window: model.contextWindow, max_output_tokens: model.maxTokens },
+    limits:
+      model === null
+        ? null
+        : { context_window: model.contextWindow, max_output_tokens: model.maxTokens },
   };
 }

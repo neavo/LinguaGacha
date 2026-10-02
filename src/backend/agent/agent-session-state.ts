@@ -1,4 +1,4 @@
-import { defineDoc, type EntryId } from "@earendil-works/pi-durable";
+import { defineDocFamily, type EntryId, type ConversationId } from "@earendil-works/pi-durable";
 import type {
   AgentEntry,
   AgentEntryStatus,
@@ -20,8 +20,11 @@ export type AgentRoundRecord = {
   averageTokensPerSecond: number | null;
 };
 
-/** 产品事实跨分叉保留；条目关联按不可变身份筛选，避免复制队列、恢复旧审批。 */
+/** 产品事实跨分叉保留。条目关联按不可变身份筛选，避免复制队列、恢复旧审批。 */
 export type AgentSessionState = {
+  activeConversationId: ConversationId | null; // 与 SDK 分叉在同一事务中更新
+  seeded: boolean; // 首次配置模型时写入种子，重开沿用已有历史
+  taskCreatedAt: Record<string, number>; // SDK 任务没有绝对时间，保留公开压缩条目的时间
   queue: AgentInputQueueState;
   doing: string | null;
   pendingDecision: AgentPendingDecision | null;
@@ -30,11 +33,15 @@ export type AgentSessionState = {
   stoppedEntries: Record<string, { roundId: string; entry: AgentEntry }>;
 };
 
-export const AgentSessionDoc = defineDoc<AgentSessionState>({
+export const AgentSessionDoc = defineDocFamily<AgentSessionState, null>({
   kind: "linguagacha.session",
   version: 1,
   scope: "session",
+  family: true,
   initial: () => ({
+    activeConversationId: null,
+    seeded: false,
+    taskCreatedAt: {},
     queue: { items: [], paused: false },
     doing: null,
     pendingDecision: null,

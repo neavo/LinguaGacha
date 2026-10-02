@@ -11,7 +11,7 @@ import { AgentSessionDoc } from "./agent-session-state";
 import { project_agent_session_entries } from "./agent-session-view";
 
 it("已提交历史按用户、助手、工具和后续回答投影，隐藏继续输入不新增条目", () => {
-  const state = AgentSessionDoc.definition.initial();
+  const state = AgentSessionDoc.definition.initial(null);
   state.inputs = {
     input: {
       roundId: "round",

@@ -1,3 +1,7 @@
+import { DatabaseSync } from "node:sqlite";
+import { NodeSqliteDatabase } from "@earendil-works/pi-durable/storage/sqlite/node";
+import { AgentSessionStore } from "../database/agent-session-store";
+import { randomBytes } from "node:crypto";
 import type { AgentApprovalMode } from "../../domain/setting";
 import { AgentTokenSpeed } from "./agent-token-speed";
 import { uploaded_file } from "../../test/agent-upload-fixture";
@@ -522,6 +526,7 @@ function wait_for_summary_release(signal: AbortSignal | undefined): Promise<Assi
 
 describe("AgentService", () => {
   const services: AgentService[] = [];
+  const databases: DatabaseSync[] = [];
 
   beforeEach(() => {
     fake_agent_state.batch_mode = false;
@@ -568,6 +573,7 @@ describe("AgentService", () => {
     fake_agent_state.release_pending?.();
     fake_agent_state.release_summary?.();
     await Promise.all(services.splice(0).map(async (service) => await service.dispose()));
+    for (const database of databases.splice(0)) database.close();
   });
 
   it("快照沿用技能加载结果的展示顺序，并在变更状态前拒绝非法消息", async () => {
@@ -621,7 +627,7 @@ describe("AgentService", () => {
     const events = publish.mock.calls.map(([, payload]) => payload);
     const revisions = events.map((event) => event["revision"]);
 
-    expect(revisions).toEqual(revisions.map((_, index) => index + 1));
+    expect(revisions).toEqual(revisions.map((_, index) => Number(revisions[0]) + index));
     expect(acknowledgement).toEqual({ revision: revisions.at(-1) });
     expect(acknowledgement).not.toHaveProperty("entries");
     expect(service.get_snapshot().revision).toBe(revisions.at(-1));
@@ -1521,7 +1527,7 @@ describe("AgentService", () => {
     fake_agent_state.mode = "tool_only";
     let running_event_send_turn_completed = false;
     let tool_started_before_running_turn = false;
-    // publish 的下一轮代表本地 SSE 获得写出机会；工具执行体不得抢在它之前。
+    // publish 的下一轮代表本地 SSE 获得写出机会。工具执行体不得抢在它之前。
     publish.mockImplementation((_topic, payload) => {
       const event = payload as AgentSessionEvent;
       if (
@@ -2151,8 +2157,11 @@ describe("AgentService", () => {
       describe_file: vi.fn(),
       read_document_image: vi.fn(async () => ({ bytes: new Uint8Array(), mime: "image/png" })),
       invalidate_links: vi.fn(),
-      reset_workspace: vi.fn(async () => undefined),
-      reset_project: vi.fn(async () => undefined),
+      create_session: vi.fn(async () => randomBytes(6).toString("base64url")),
+      activate_session: vi.fn(async () => undefined),
+      close: vi.fn(async () => undefined),
+      delete_session: vi.fn(async () => undefined),
+      cancel_uploads: vi.fn(),
       run: vi.fn(async () => ({
         images: [],
         execution: workspace_execution(),
@@ -2175,9 +2184,9 @@ describe("AgentService", () => {
       { code: "runtime.busy" },
     );
     await reset;
-    expect(workspace.reset_workspace).toHaveBeenCalledOnce();
+    expect(workspace.delete_session).toHaveBeenCalledOnce();
     await session_state.mark_loaded("next.lg");
-    expect(workspace.reset_project).toHaveBeenCalledWith("next.lg");
+    expect(workspace.activate_session).toHaveBeenCalledTimes(3);
     const invalidations = workspace.invalidate_links.mock.calls.length;
     const dispose = service.dispose();
     expect(workspace.invalidate_links).toHaveBeenCalledTimes(invalidations + 1);
@@ -2597,7 +2606,7 @@ describe("AgentService", () => {
     expect(service.get_snapshot()).toMatchObject({ state: "idle", entries: [] });
 
     await expect(sending).rejects.toMatchObject({
-      diagnostic_context: { reason: "agent_message_invalidated" },
+      code: "runtime.cancelled",
     });
     expect(service.get_snapshot()).toMatchObject({ state: "idle", entries: [] });
     expect(fake_agent_state.model_call_count).toBe(0);
@@ -3566,6 +3575,34 @@ describe("AgentService", () => {
     runtime_gate.finish_runtime(lease);
   });
 
+  it("工程 A 切换到 B 后再打开 A，恢复原身份和历史并等待新指令", async () => {
+    const { service, session_state } = await create_service();
+    await service.send_message({ text: "工程 A", attachments: [] });
+    await wait_for_idle(service);
+    const original = service.get_snapshot();
+    await session_state.mark_loaded("next.lg");
+    await service.send_message({ text: "工程 B", attachments: [] });
+    await wait_for_idle(service);
+    expect(service.get_snapshot().sessionId).not.toBe(original.sessionId);
+    const calls = fake_agent_state.model_call_count;
+    await session_state.mark_loaded("test.lg");
+    expect(service.get_snapshot()).toMatchObject({
+      sessionId: original.sessionId,
+      entries: original.entries,
+      usage: original.usage,
+      state: "idle",
+      pendingDecision: null,
+      inputQueue: { items: [], paused: false },
+    });
+    expect(fake_agent_state.model_call_count).toBe(calls);
+    await service.reset();
+    const reset = service.get_snapshot().sessionId;
+    expect(reset).not.toBe(original.sessionId);
+    await session_state.mark_loaded("next.lg");
+    await session_state.mark_loaded("test.lg");
+    expect(service.get_snapshot()).toMatchObject({ sessionId: reset, entries: [] });
+  });
+
   /** 只替换资源、模型与领域协作者，生命周期、门禁和 AgentSession 仍走生产实现。 */
   async function create_service(
     load_resources = true,
@@ -3662,8 +3699,11 @@ describe("AgentService", () => {
         describe_file: vi.fn(),
         read_document_image: vi.fn(async () => ({ bytes: new Uint8Array(), mime: "image/png" })),
         invalidate_links: vi.fn(),
-        reset_workspace: vi.fn(async () => undefined),
-        reset_project: vi.fn(async () => undefined),
+        create_session: vi.fn(async () => randomBytes(6).toString("base64url")),
+        activate_session: vi.fn(async () => undefined),
+        close: vi.fn(async () => undefined),
+        delete_session: vi.fn(async () => undefined),
+        cancel_uploads: vi.fn(),
         run: vi.fn<AgentWorkspacePort["run"]>(async () => {
           await wait_for_held_tool();
           return { images: [], execution: workspace_execution({ items: read_items() }) };
@@ -3708,7 +3748,24 @@ describe("AgentService", () => {
       { warning: log_warning },
       runtime_gate,
     );
+    const connections = new Map<string, NodeSqliteDatabase>();
+    const database = {
+      open_agent_store: (project: string) => {
+        let connection = connections.get(project);
+        if (connection === undefined) {
+          const sqlite = new DatabaseSync(":memory:");
+          sqlite.exec(
+            "CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT); CREATE TABLE agent_sessions (id TEXT PRIMARY KEY, data TEXT)",
+          );
+          databases.push(sqlite);
+          connection = new NodeSqliteDatabase(sqlite);
+          connections.set(project, connection);
+        }
+        return new AgentSessionStore(connection, () => {});
+      },
+    };
     const service = new AgentService({
+      database,
       skills,
       catalog,
       images,
@@ -3736,6 +3793,9 @@ describe("AgentService", () => {
       publish,
     });
     if (load_resources) await service.load_resources();
+    publish.mockClear();
+    if (vi.isMockFunction(effective_workspace.invalidate_links))
+      effective_workspace.invalidate_links.mockClear();
     services.push(service);
     return {
       set_approval_mode: (value) => {
@@ -3856,7 +3916,5 @@ function fake_uploads(): AgentWorkspacePort["uploads"] {
     read_image: (id) => Buffer.from(id),
     upload: vi.fn(),
     open: vi.fn(),
-    cancel: vi.fn(),
-    clear: vi.fn(async () => undefined),
   };
 }

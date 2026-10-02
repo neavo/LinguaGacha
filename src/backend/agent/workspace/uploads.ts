@@ -9,18 +9,24 @@ const AGENT_UPLOAD_ROOT = "uploads";
 const NAME_MAX_CHARACTERS = 80;
 const IMAGE_HEADER_BYTES = 256;
 
-/** 当前会话上传文件的唯一写入者；完整发布后才向草稿和模型暴露身份。 */
+/** 当前会话上传文件的唯一写入者。完整发布后才向草稿和模型暴露身份。 */
 export class AgentUploadStore {
   private readonly records = new Map<string, AgentFileAttachment>(); // 只登记完整发布的文件
   private readonly pending = new Set<Promise<AgentFileAttachment>>(); // 清理等待这些任务释放文件句柄
-  private lifetime = new AbortController(); // 会话失效后拒绝新上传并取消旧读取
-  private clearing: Promise<void> | null = null; // 并发清理共用一次目录删除
+  private readonly lifetime = new AbortController(); // 会话失效后拒绝新上传并取消旧读取
 
   /** 上传目录固定在工作区根下，磁盘操作统一经过 `NativeFs`。 */
   constructor(
     private readonly root: string,
     private readonly fs: NativeFs,
-  ) {}
+    records: readonly AgentFileAttachment[] = [],
+    private readonly save_record: (file: AgentFileAttachment) => Promise<void> = async () => {},
+  ) {
+    for (const record of records) {
+      if (this.fs.exists(path.join(root, record.path)))
+        this.records.set(record.uploadId, { ...record });
+    }
+  }
 
   /** 每次上传捕获当前会话的取消信号，登记到关闭屏障。 */
   public upload(
@@ -48,7 +54,7 @@ export class AgentUploadStore {
     return [...this.records.values()].map((file) => ({ ...file }));
   }
 
-  /** 普通文件可流式下载；发送图片才读取有界的完整字节。 */
+  /** 普通文件可流式下载。发送图片才读取有界的完整字节。 */
   public read_image(id: string): Uint8Array {
     const record = this.get(id);
     const file = path.join(this.root, record.path);
@@ -68,23 +74,10 @@ export class AgentUploadStore {
     return { file, stream: this.fs.create_read_stream(path.join(this.root, file.path)) };
   }
 
-  /** 清理先失效身份并取消上传，等文件句柄关闭后才删除目录。 */
-  public clear(): Promise<void> {
-    if (this.clearing !== null) return this.clearing;
+  /** 关闭只取消在途上传并等待句柄释放，已经发布的文件继续保留。 */
+  public async close(): Promise<void> {
     this.cancel();
-    const operation = Promise.allSettled(this.pending)
-      .then(() =>
-        this.fs.remove_async(path.join(this.root, AGENT_UPLOAD_ROOT), {
-          recursive: true,
-          force: true,
-        }),
-      )
-      .finally(() => {
-        this.lifetime = new AbortController();
-        this.clearing = null;
-      });
-    this.clearing = operation;
-    return operation;
+    await Promise.allSettled(this.pending);
   }
 
   /** 停止受理并解除身份，目录删除由工作区等待工具退出后执行。 */
@@ -141,6 +134,8 @@ export class AgentUploadStore {
         size,
         imageMimeType: read_image_type(header),
       };
+      await this.save_record(record);
+      signal.throwIfAborted();
       this.records.set(id, record);
       published = true;
       return { ...record };

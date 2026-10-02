@@ -40,9 +40,11 @@ it("任意字节和空文件原样保存，清理名称并隔离同名上传", a
   expect(fs.readFileSync(path.join(root, first.path))).toEqual(Buffer.from(bytes));
   expect(fs.statSync(path.join(root, second.path)).size).toBe(0);
   expect(() => uploads.get("missing")).toThrow();
-  await uploads.clear();
+  await uploads.close();
   expect(() => uploads.get(first.uploadId)).toThrow();
-  expect(fs.existsSync(path.join(root, "uploads"))).toBe(false);
+  expect(fs.readdirSync(path.join(root, "uploads")).some((name) => name.endsWith(".part"))).toBe(
+    false,
+  );
 });
 
 it("图片按跨分块文件头识别，上传保留原字节", async () => {
@@ -57,7 +59,7 @@ it("图片按跨分块文件头识别，上传保留原字节", async () => {
   expect(uploads.read_image(file.uploadId)).toEqual(Buffer.from(bytes));
 });
 
-it("重置取消等待中的读取，清理半成品且旧身份不能进入新会话", async () => {
+it("关闭取消等待中的读取，清理半成品且旧身份不能进入新会话", async () => {
   const { root, uploads } = store();
   let cancelled = false;
   const pending = uploads.upload(
@@ -70,14 +72,43 @@ it("重置取消等待中的读取，清理半成品且旧身份不能进入新�
     new AbortController().signal,
   );
   const rejected = expect(pending).rejects.toMatchObject({ code: "runtime.cancelled" });
-  await uploads.clear();
+  await uploads.close();
   await rejected;
   expect(cancelled).toBe(true);
-  expect(fs.existsSync(path.join(root, "uploads"))).toBe(false);
-  const next = await uploads.upload(
+  expect(fs.readdirSync(path.join(root, "uploads")).some((name) => name.endsWith(".part"))).toBe(
+    false,
+  );
+  const reopened = new AgentUploadStore(root, new NativeFs());
+  const next = await reopened.upload(
     "next.bin",
     stream(Uint8Array.of(9)),
     new AbortController().signal,
   );
-  expect(uploads.get(next.uploadId).size).toBe(1);
+  expect(reopened.get(next.uploadId).size).toBe(1);
+});
+
+it("关闭保留完整文件，登记可重开，缺失文件不阻止其它附件恢复", async () => {
+  const { root, uploads } = store();
+  const first = await uploads.upload(
+    "原名.txt",
+    stream(Buffer.from("保留")),
+    new AbortController().signal,
+  );
+  const missing = await uploads.upload(
+    "已删除.txt",
+    stream(Buffer.from("删除")),
+    new AbortController().signal,
+  );
+  await uploads.close();
+  fs.unlinkSync(path.join(root, missing.path));
+  const restored = new AgentUploadStore(
+    root,
+    new NativeFs(),
+    JSON.parse(JSON.stringify([first, missing])),
+  );
+  expect(restored.get(first.uploadId)).toEqual(first);
+  expect(restored.list()).toEqual([first]);
+  expect(fs.readFileSync(path.join(root, first.path), "utf8")).toBe("保留");
+  expect(() => restored.get(missing.uploadId)).toThrow("file.not_found");
+  await restored.close();
 });

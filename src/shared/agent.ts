@@ -4,7 +4,7 @@ import type { Locale } from "../domain/app-language";
 /** AgentService 与 renderer 共享的唯一 SSE topic。 */
 export const AGENT_SESSION_EVENT_TOPIC = "agent.session_event";
 
-/** 一次工作区链接激活的完成结果；取消是正常交互。 */
+/** 一次工作区链接激活的完成结果。取消是正常交互。 */
 export type AgentWorkspaceLinkResult = Readonly<{ status: "saved" | "opened" | "cancelled" }>;
 
 /** skill 展示描述是按应用支持语言补全的 UI 值，不参与模型能力判断。 */
@@ -20,13 +20,13 @@ export type AgentSkillSnapshot = JsonRecord & {
 export type AgentAssistantMessagePart = JsonRecord &
   ({ kind: "text"; text: string } | { kind: "thinking"; text: string });
 
-/** 公开 assistant 条目使用非空元组；内容可见性由共享归一化入口保证。 */
+/** 公开 assistant 条目使用非空元组。内容可见性由共享归一化入口保证。 */
 export type AgentAssistantMessageParts = [
   AgentAssistantMessagePart,
   ...AgentAssistantMessagePart[],
 ];
 
-/** 会话只表达当前是否占用运行时；每轮与每个条目的结果由自身 status 持有。 */
+/** 会话只表达当前是否占用运行时。每轮与每个条目的结果由自身 status 持有。 */
 export type AgentSessionState = "idle" | "running";
 
 /** 当前模型可见历史及其是否存在可压缩的旧段。 */
@@ -36,10 +36,10 @@ export type AgentContextSnapshot = JsonRecord & {
   compactable: boolean; // 后端按当前 SDK 历史判定手动压缩入口是否可用
 };
 
-/** 每个时间线条目独立持有结果；会话 state 不再复制轮次终态。 */
+/** 每个时间线条目独立持有结果。会话 state 不再复制轮次终态。 */
 export type AgentEntryStatus = "running" | "success" | "error" | "stopped";
 
-/** 待审批写入的结构化变更摘要；按业务种类统计受影响对象数量。 */
+/** 待审批写入的结构化变更摘要。按业务种类统计受影响对象数量。 */
 export type AgentPendingWriteSummary = Readonly<{
   pages: number; // 本批实际变化的 PDF 原页数
   items: number;
@@ -73,7 +73,7 @@ export type AgentQuestion = JsonRecord & {
     | [AgentQuestionOption, AgentQuestionOption, AgentQuestionOption];
 };
 
-/** Renderer 对当前问题的一次性决定；固定选项、自定义文本与取消互斥。 */
+/** Renderer 对当前问题的一次性决定。固定选项、自定义文本与取消互斥。 */
 export type AgentQuestionResponse = JsonRecord &
   ({ kind: "option"; optionId: string } | { kind: "custom"; text: string } | { kind: "cancel" });
 
@@ -97,7 +97,7 @@ export type AgentPendingDecision = JsonRecord &
 
 /** 单条用户消息最多发送到视觉通道的图片数。 */
 export const AGENT_MESSAGE_IMAGE_LIMIT = 10;
-/** 当前会话最多保留的待发送输入数；renderer 与 AgentService 共用同一产品上限。 */
+/** 当前会话最多保留的待发送输入数。renderer 与 AgentService 共用同一产品上限。 */
 export const AGENT_INPUT_QUEUE_LIMIT = 5;
 /** 上传成功后的不可变文件记录，路径只由后端生成。 */
 export type AgentFileAttachment = JsonRecord & {
@@ -118,7 +118,7 @@ export type AgentResponseAnnotationAttachment = Extract<
   { kind: "response_annotation" }
 >;
 
-/** Renderer 与公开 message API 共用的完整用户消息；附件数组同时拥有展示顺序。 */
+/** Renderer 与公开 message API 共用的完整用户消息。附件数组同时拥有展示顺序。 */
 export type AgentMessageInput = JsonRecord & {
   text: string;
   attachments: AgentMessageAttachment[];
@@ -134,14 +134,14 @@ export function agent_message_request(message: AgentMessageInput): JsonRecord {
   };
 }
 
-/** 产品输入队列完全驻留于当前会话内存；sending 表示正在准备或已交给 Pi、尚未确认消费。 */
+/** 产品输入队列完全驻留于当前会话内存。sending 表示正在准备或已交给 Pi、尚未确认消费。 */
 export type AgentQueuedInput = AgentMessageInput & {
   id: string;
   status: "queued" | "sending";
   createdAt: number;
 };
 
-/** paused 只阻止自动续取；canSendNow 表示当前运行时已经到达 Pi 可 steer 的阶段。 */
+/** paused 只阻止自动续取。canSendNow 表示当前运行时已经到达 Pi 可 steer 的阶段。 */
 export type AgentInputQueueSnapshot = JsonRecord & {
   paused: boolean;
   canSendNow: boolean;
@@ -162,14 +162,14 @@ type AgentToolEntryBase = JsonRecord & {
   createdAt: number;
 };
 
-/** 工具终帧按顺序保留文本块原文；数组为空表示没有文本输出，块间排版由前端负责。 */
+/** 工具终帧按顺序保留文本块原文。数组为空表示没有文本输出，块间排版由前端负责。 */
 export type AgentToolEntry = AgentToolEntryBase &
   (
     | { status: "running" | "stopped"; output: null }
     | { status: "success" | "error"; output: string[] }
   );
 
-/** 上下文压缩沿用时间线条目状态；压缩不可停止，因此不公开 stopped。 */
+/** 上下文压缩沿用时间线条目状态。压缩不可停止，因此不公开 stopped。 */
 export type AgentContextCompactionEntry = JsonRecord & {
   kind: "context_compaction";
   id: string;
@@ -241,7 +241,7 @@ export type AgentCommandAck = Readonly<{
   revision: number;
 }>;
 
-/** AgentService 发布前的事件事实；单调 revision 只由统一发布入口分配。 */
+/** AgentService 发布前的事件事实。单调 revision 只由统一发布入口分配。 */
 export type AgentSessionEventPayload = JsonRecord &
   (
     | { type: "entry_upsert"; entry: AgentEntry }
@@ -256,7 +256,7 @@ export type AgentSessionEventPayload = JsonRecord &
     | { type: "snapshot_seed"; snapshot: AgentSessionSnapshot }
   );
 
-/** SSE 以单调 revision 排序；重复、旧帧与缺口由 renderer 显式处理。 */
+/** SSE 以单调 revision 排序。重复、旧帧与缺口由 renderer 显式处理。 */
 export type AgentSessionEvent = AgentSessionEventPayload & { revision: number };
 
 /** 校验公开 assistant parts，删除纯空白并合并相邻同类，同时保留可见正文原值。 */
@@ -354,3 +354,7 @@ export function normalize_agent_revision_request(
     ? null
     : { entryId: entry_id, message };
 }
+
+/** 产品会话身份同时用于工程登记和本机目录。SDK 记录身份由 SDK 管理。 */
+export const AGENT_SESSION_ID_PATTERN = /^[a-zA-Z0-9_-]{8}$/u;
+export const AGENT_SESSION_ID_BYTES = 6;

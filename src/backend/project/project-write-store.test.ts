@@ -39,7 +39,7 @@ describe("ProjectWriteStore", () => {
     const source = path.join(path.dirname(project_path), "source.pdf");
     fs.writeFileSync(source, bytes);
     const document = read_pdf_document(bytes);
-    database.transaction(project_path, () => {
+    await database.transaction(project_path, () => {
       database.add_asset_from_source(project_path, "book.pdf", source, document, 0);
     });
     const original = database.set_meta.bind(database);
@@ -326,7 +326,7 @@ describe("ProjectWriteStore", () => {
     const write_transaction_states: boolean[] = [];
     let transaction_active = false;
     vi.spyOn(database, "transaction").mockImplementation(
-      <T>(target_path: string, callback: () => T): T =>
+      <T>(target_path: string, callback: () => T): Promise<T> =>
         original_transaction(target_path, () => {
           transaction_active = true;
           try {
@@ -533,8 +533,8 @@ describe("ProjectWriteStore", () => {
     const original_transaction = database.transaction.bind(database);
     const transaction = vi
       .spyOn(database, "transaction")
-      .mockImplementation(<T>(target_path: string, callback: () => T): T => {
-        const result = original_transaction(target_path, callback);
+      .mockImplementation(async <T>(target_path: string, callback: () => T): Promise<T> => {
+        const result = await original_transaction(target_path, callback);
         calls.push("commit");
         return result;
       });

@@ -5,7 +5,9 @@ import {
   GenerationTask,
   CompactionTask,
   Harness,
-  MemoryStorage,
+  type Storage,
+  type Cursor,
+  type Page,
   hook,
   section,
   AssistantEntry,
@@ -92,9 +94,10 @@ export type AgentExecution = {
 
 type SessionOptions = {
   sessionId: string;
+  storage: Storage;
   cwd: string;
   models: MutableModels;
-  model: Model<Api>;
+  model: Model<Api> | null;
   thinkingLevel: ModelThinkingLevel;
   seed: AgentSessionSeed;
   tools: ToolRegistration[];
@@ -111,13 +114,13 @@ type SessionOptions = {
 /** 产品会话直接使用 durable 公共接口，拥有输入、历史、恢复与压缩的提交边界。 */
 export class AgentSession {
   public readonly models: MutableModels;
-  public model: Model<Api>;
+  public model: Model<Api> | null;
   public readonly log: AgentSessionLog;
   public execution: AgentExecution | null = null;
   public entries: AgentEntry[] = [];
   public context: AgentContextSnapshot = { tokens: null, compactable: false, limits: null };
   public usage: AgentUsageSnapshot = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
-  public state: Readonly<AgentSessionState> = AgentSessionDoc.definition.initial();
+  public state: Readonly<AgentSessionState> = AgentSessionDoc.definition.initial(null);
   private harness!: Harness;
   private conversation!: Conversation; // 当前分支唯一入口，只在创建与修订成功后切换
   private readonly records = new Map<number, EntryRecord>(); // 完整历史缓存保留压缩前的公开条目
@@ -142,7 +145,7 @@ export class AgentSession {
     this.model = options.model;
     this.log = options.log;
     const stream = this.models.streamSimple.bind(this.models);
-    // 所有 Agent 请求与摘要共用真实派发入口；这里只观察流，不另外拼装公开正文。
+    // 所有 Agent 请求与摘要共用真实派发入口。这里只观察流，不另外拼装公开正文。
     this.models.streamSimple = (model, context, request) =>
       lazyStream(model, async () => {
         const execution = this.execution;
@@ -236,7 +239,7 @@ export class AgentSession {
             async (_input, context) => {
               // 认证的异步准备先结束，随后各 section 才冻结本次请求的最新人格与技能目录。
               await session.models.getAuth(
-                session.model,
+                session.require_model(),
                 context.abortSignal === undefined ? {} : { signal: context.abortSignal },
               );
               return options.systemPrompt();
@@ -271,7 +274,7 @@ export class AgentSession {
       }),
     );
     session.harness = await Harness.open(
-      new MemoryStorage(),
+      options.storage,
       {
         models: session.models,
         registry,
@@ -331,11 +334,24 @@ export class AgentSession {
             record: change.value,
             createdAt: previous?.createdAt ?? Date.now(),
           });
-          if (change.value.kind === "pi.compaction")
+          if (change.value.kind === "pi.compaction") {
+            if (previous === undefined) {
+              const id = change.value.id;
+              const createdAt = session.tasks.get(id)!.createdAt;
+              void session
+                .change((state) => {
+                  state.taskCreatedAt[id] = createdAt;
+                })
+                .catch(options.onReport);
+            }
             session.observe_compaction(change.value.id, previous);
+          }
         } else if (change.type === "document" && change.value !== null) {
           // kind 对应固定 token 的 JSON 契约，值为 SDK 提供的不可变提交快照。
-          if (change.record.kind === AgentSessionDoc.definition.kind)
+          if (
+            change.record.kind === AgentSessionDoc.definition.kind &&
+            change.record.key === options.sessionId
+          )
             session.state = change.value as AgentSessionState;
           else if (
             change.record.kind === LiveDoc.definition.kind &&
@@ -352,19 +368,130 @@ export class AgentSession {
       session.revision = publication.seq;
       session.schedule_refresh();
     });
-    session.conversation = await session.harness.root(BACKGROUND_CONTEXT, {
-      agent: {
-        model: { provider: options.model.provider, modelId: options.model.id },
-        thinkingLevel: options.thinkingLevel,
-      },
-      init: async (tx, id) => {
-        await tx.appendEntry(id, { kind: "linguagacha.start" });
-        await append_agent_session_seed(tx, id, options.seed, options.model);
-      },
-    });
-    session.schedule_refresh();
-    await session.flush();
+    try {
+      await session.restore_records();
+      const active = session.state.activeConversationId;
+      if (active === null) {
+        session.conversation = await session.harness.root(BACKGROUND_CONTEXT, {
+          init: async (tx, id) => {
+            const state = await tx.doc(AgentSessionDoc, options.sessionId, null);
+            state.activeConversationId = id;
+            await tx.appendEntry(id, { kind: "linguagacha.start" });
+          },
+        });
+      } else {
+        const conversation = await session.harness.conversation(active, BACKGROUND_CONTEXT);
+        if (conversation === undefined) throw new AppError("file.invalid_structure");
+        session.conversation = conversation;
+      }
+      await session.recover();
+      if (options.model !== null) await session.configure(options.model, options.thinkingLevel);
+      session.schedule_refresh();
+      await session.flush();
+    } catch (error) {
+      session.closed = true;
+      session.unsubscribe();
+      await session.harness.close(BACKGROUND_CONTEXT);
+      throw error;
+    }
     return session;
+  }
+
+  /** 模型仅在用户发起请求前配置，打开历史不要求凭据或供应商仍存在。 */
+  private require_model(): Model<Api> {
+    if (this.model === null) throw new AppError("runtime.internal_invariant");
+    return this.model;
+  }
+
+  /** 历史读取和实时提交使用同一缓存及投影。订阅本身不会回放旧记录。 */
+  private async restore_records(): Promise<void> {
+    const storage = this.options.storage;
+    const scan = async <T>(
+      read: (cursor: Cursor | undefined) => Promise<Page<T, Cursor>>,
+    ): Promise<T[]> => {
+      const result: T[] = [];
+      let cursor: Cursor | undefined;
+      do {
+        const page = await read(cursor);
+        result.push(...page.items);
+        cursor = page.next;
+      } while (cursor !== undefined);
+      return result;
+    };
+    this.state =
+      (await this.harness.snapshot(AgentSessionDoc, this.options.sessionId, BACKGROUND_CONTEXT)) ??
+      AgentSessionDoc.definition.initial(null);
+    for (const conversation of await scan((cursor) =>
+      storage.scanConversations({}, 100, cursor, BACKGROUND_CONTEXT),
+    )) {
+      this.conversations.set(conversation.id, conversation);
+      for (const entry of await scan((cursor) =>
+        storage.scanEntries({ conversationId: conversation.id }, 100, cursor, BACKGROUND_CONTEXT),
+      ))
+        this.records.set(entry.id, entry);
+      this.live.set(
+        conversation.id,
+        (await this.harness.snapshot(LiveDoc, conversation.id, BACKGROUND_CONTEXT)) ?? {},
+      );
+      this.usages.set(
+        conversation.id,
+        (await this.harness.snapshot(UsageDoc, conversation.id, BACKGROUND_CONTEXT)) ?? {
+          models: {},
+          tools: {},
+        },
+      );
+    }
+    for (const record of await scan((cursor) =>
+      storage.scanSubmissions({}, 100, cursor, BACKGROUND_CONTEXT),
+    ))
+      this.submissions.set(record.id, record);
+    for (const record of await scan((cursor) =>
+      storage.scanTasks({}, 100, cursor, BACKGROUND_CONTEXT),
+    ))
+      this.tasks.set(record.id, { record, createdAt: this.state.taskCreatedAt[record.id] ?? 0 });
+  }
+
+  /** 先全部标记取消，再启动 SDK 收尾，防止打开历史时重新运行工具或模型。 */
+  private async recover(): Promise<void> {
+    this.schedule_refresh();
+    await this.flush();
+    const entries = this.entries;
+    const inspection = await this.harness.inspect(BACKGROUND_CONTEXT);
+    for (const submission of inspection.submissions)
+      if (submission.status === "queued")
+        await this.harness.abortSubmission(submission.id, BACKGROUND_CONTEXT);
+    for (const task of inspection.tasks)
+      await this.harness.abortTask(task.record.id, BACKGROUND_CONTEXT);
+    if (inspection.tasks.length > 0) {
+      this.harness.resume();
+      await Promise.all(
+        inspection.tasks.map(({ record }) =>
+          this.harness.waitForTask(record.id, BACKGROUND_CONTEXT),
+        ),
+      );
+    }
+    this.schedule_refresh();
+    await this.flush();
+    await this.change((state) => {
+      let roundId: string | null = null;
+      for (const entry of entries) {
+        if (entry.kind === "user_message" && entry.delivery === "round") roundId = entry.id;
+        if (
+          entry.kind !== "context_compaction" &&
+          roundId !== null &&
+          state.rounds[roundId]?.status === "running"
+        )
+          state.stoppedEntries[entry.id] = { roundId, entry: freeze_entry(entry) };
+      }
+      for (const [id, round] of Object.entries(state.rounds)) {
+        if (round.status !== "running") continue;
+        round.status = "stopped";
+        round.endedAt = Date.now();
+        delete state.stoppedEntries[id];
+      }
+      state.queue = { items: [], paused: false };
+      state.pendingDecision = null;
+    });
   }
 
   /** 原生自动压缩与产品主动压缩共用互斥判据。 */
@@ -395,14 +522,17 @@ export class AgentSession {
   /** 产品事实只经 `Harness` 事务写入，返回前同步公开投影。 */
   public async change(change: (state: AgentSessionState) => void): Promise<void> {
     await this.harness.commit(async (tx) => {
-      change(await tx.doc(AgentSessionDoc));
+      change(await tx.doc(AgentSessionDoc, this.options.sessionId, null));
     }, BACKGROUND_CONTEXT);
     await this.flush();
   }
   /** 队列规则直接操作事务草稿，失败时由 `Harness` 原子回滚。 */
   public async change_queue<T>(change: (queue: AgentInputQueue) => T): Promise<T> {
     const result = await this.harness.commit(
-      async (tx) => change(new AgentInputQueue((await tx.doc(AgentSessionDoc)).queue)),
+      async (tx) =>
+        change(
+          new AgentInputQueue((await tx.doc(AgentSessionDoc, this.options.sessionId, null)).queue),
+        ),
       BACKGROUND_CONTEXT,
     );
     await this.flush();
@@ -415,6 +545,12 @@ export class AgentSession {
       BACKGROUND_CONTEXT,
     );
     this.model = model;
+    if (!this.state.seeded) {
+      await this.harness.commit(async (tx) => {
+        await append_agent_session_seed(tx, this.conversation.id, this.options.seed, model);
+        (await tx.doc(AgentSessionDoc, this.options.sessionId, null)).seeded = true;
+      }, BACKGROUND_CONTEXT);
+    }
     this.schedule_refresh();
     await this.flush();
   }
@@ -468,13 +604,13 @@ export class AgentSession {
     return accepted;
   }
 
-  /** Hook 只收束受理和未消费输入；生成退出后的恢复由同一产品执行串行接管。 */
+  /** Hook 只收束受理和未消费输入。生成退出后的恢复由同一产品执行串行接管。 */
   private async before_yield(message: AssistantMessage, task: TaskId): Promise<void> {
     const execution = this.execution;
     if (
       execution === null ||
       execution.controller.signal.aborted ||
-      !isRecoverableLength(message, this.model.maxTokens)
+      !isRecoverableLength(message, this.require_model().maxTokens)
     )
       return;
     execution.phase = "recovering";
@@ -565,7 +701,8 @@ export class AgentSession {
     }
     execution.phase = "settling";
     if (
-      (this.context.tokens ?? 0) > this.model.contextWindow - AGENT_COMPACTION_RESERVE_TOKENS &&
+      (this.context.tokens ?? 0) >
+        this.require_model().contextWindow - AGENT_COMPACTION_RESERVE_TOKENS &&
       this.context.compactable
     ) {
       try {
@@ -647,12 +784,7 @@ export class AgentSession {
     const activeRound =
       execution.roundId !== null && this.state.rounds[execution.roundId]?.status === "running";
     const frozen = (activeRound && roundStart >= 0 ? this.entries.slice(roundStart) : []).map(
-      (entry) =>
-        entry.status !== "running" || entry.kind === "context_compaction"
-          ? entry
-          : entry.kind === "tool_call"
-            ? { ...entry, status: "stopped" as const, output: null }
-            : { ...entry, status: "stopped" as const },
+      freeze_entry,
     );
     const task = this.live.get(this.conversation.id)?.run?.taskId;
     if (
@@ -713,15 +845,16 @@ export class AgentSession {
       {
         ownership: { kind: "ownerless" },
         init: async (tx, id) => {
+          (await tx.doc(AgentSessionDoc, this.options.sessionId, null)).activeConversationId = id;
           if (entry.kind === "assistant_message" && prepared !== null)
             await tx.appendEntry(AssistantEntry, id, {
               model: [
                 {
                   role: "assistant",
                   content: [{ type: "text", text: prepared.text }],
-                  api: this.model.api,
-                  provider: this.model.provider,
-                  model: this.model.id,
+                  api: this.require_model().api,
+                  provider: this.require_model().provider,
+                  model: this.require_model().id,
                   stopReason: "stop",
                   timestamp: Date.now(),
                   usage: {
@@ -742,7 +875,7 @@ export class AgentSession {
     this.schedule_refresh();
     await this.flush();
   }
-  /** 关闭即使取消提交失败也会封闭并 join 原生任务；调用者保留原始失败。 */
+  /** 关闭即使取消提交失败也会封闭并 join 原生任务。调用者保留原始失败。 */
   public close(): Promise<void> {
     if (this.closing !== null) return this.closing;
     this.closing = (async () => {
@@ -803,7 +936,9 @@ export class AgentSession {
           );
           if (consumed.length > 0) {
             await this.harness.commit(async (tx) => {
-              const queue = new AgentInputQueue((await tx.doc(AgentSessionDoc)).queue);
+              const queue = new AgentInputQueue(
+                (await tx.doc(AgentSessionDoc, this.options.sessionId, null)).queue,
+              );
               for (const item of consumed) queue.commit_send(item.id);
             }, BACKGROUND_CONTEXT);
             this.dirty = true;
@@ -812,13 +947,18 @@ export class AgentSession {
           this.entries = project_agent_session_entries(
             this.branch_records(),
             this.submissions,
-            [...this.tasks.values()].filter(({ record }) =>
-              this.visible(record.conversationId, record.id),
-            ),
+            [...this.tasks.values()]
+              .filter(({ record }) => this.visible(record.conversationId, record.id))
+              .map((task) => ({
+                ...task,
+                createdAt: this.state.taskCreatedAt[task.record.id] ?? task.createdAt,
+              })),
             this.live.get(this.conversation.id) ?? {},
             this.state,
           );
-          this.context = read_agent_session_context(view, this.model);
+          this.context = this.state.seeded
+            ? read_agent_session_context(view, this.model)
+            : { tokens: null, compactable: false, limits: null };
           this.usage = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
           for (const state of this.usages.values())
             for (const usage of Object.values(state.models))
@@ -863,4 +1003,12 @@ export class AgentSession {
         queueMicrotask(() => this.options.onCompactionFailure(reason, error));
     }
   }
+}
+
+/** 正常停止和恢复共用公开终态规则，避免遗留 running 条目。 */
+function freeze_entry(entry: AgentEntry): AgentEntry {
+  if (entry.status !== "running" || entry.kind === "context_compaction") return entry;
+  return entry.kind === "tool_call"
+    ? { ...entry, status: "stopped", output: null }
+    : { ...entry, status: "stopped" };
 }

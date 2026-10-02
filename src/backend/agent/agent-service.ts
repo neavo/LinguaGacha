@@ -1,3 +1,5 @@
+import type { ProjectDatabase } from "../database/database-operations";
+import type { AgentSessionStore } from "../database/agent-session-store";
 import {
   create_agent_workspace_apply_tool,
   type AgentWorkspaceApprovalPort,
@@ -12,7 +14,7 @@ import { prepare_agent_message, type PreparedAgentMessage } from "./agent-messag
 import { BatchTranslationCompletionError } from "../batch-translation/batch-translation-runtime";
 import type { Model } from "../../domain/model";
 import { create_agent_batch_item_translation_tool } from "./tools/run-batch-item-translation";
-import { type AssistantMessageEvent, uuidv7 } from "@earendil-works/pi-ai";
+import { type AssistantMessageEvent } from "@earendil-works/pi-ai";
 import { createModels } from "@earendil-works/pi-ai/models";
 import { isDeepStrictEqual } from "node:util";
 import { AgentSession, type AgentExecution } from "./agent-session";
@@ -73,6 +75,7 @@ type AgentServicePaths = Pick<
 >;
 
 type AgentServiceOptions = {
+  database: Pick<ProjectDatabase, "open_agent_store">;
   auth?: ChatGPTAuthService;
   skills: Pick<AgentSkillsService, "get_current" | "subscribe" | "refresh">;
   catalog: PiModelCatalogReader;
@@ -101,7 +104,7 @@ type LoadedAgentResources = Readonly<{
   sessionSeed: AgentSessionSeed;
 }>;
 
-/** 产品命令协调唯一会话与运行租约；历史和公开条目来自 durable 提交。 */
+/** 产品命令协调唯一会话与运行租约。历史和公开条目来自 durable 提交。 */
 export class AgentService {
   private readonly auth: ChatGPTAuthService | undefined;
   private readonly catalog: PiModelCatalogReader;
@@ -123,7 +126,9 @@ export class AgentService {
   private readonly token_speed = new AgentTokenSpeed();
   private token_speed_snapshot: AgentTokenSpeedSnapshot = null;
   private token_speed_updated_at: number | null = null;
-  private session_id = uuidv7();
+  private session_id = "inactive"; // 无工程时的快照身份，激活后采用持久化身份
+  private readonly database: AgentServiceOptions["database"];
+  private store: AgentSessionStore | null = null; // 工程连接的使用权覆盖 SDK 与上传收尾
   private session: AgentSession | null = null;
   private model_config: Model | null = null; // 当前主模型配置供批量翻译跟随解析
   private execution: AgentExecution | null = null;
@@ -135,6 +140,7 @@ export class AgentService {
 
   /** 连接工程生命周期、技能变更与决定协调器，会话事实统一提交后发布。 */
   public constructor(options: AgentServiceOptions) {
+    this.database = options.database;
     this.auth = options.auth;
     this.catalog = options.catalog;
     this.batch_translation = options.batchTranslation;
@@ -165,7 +171,7 @@ export class AgentService {
           .catch((error) => this.warn_cleanup_failure(error));
     });
     this.unsubscribe_project_session = this.session_state.subscribe_change((change) =>
-      this.reset_session("project", change.loaded ? change.projectPath : null),
+      this.activate_project(change.loaded ? change.projectPath : null),
     );
   }
 
@@ -222,7 +228,7 @@ export class AgentService {
 
   /** Gateway 关闭前取消请求体读取，让在途上传及时退出。 */
   public cancel_uploads(): void {
-    this.workspace.uploads.cancel();
+    this.workspace.cancel_uploads();
   }
 
   /** 文件下载遵守会话关闭屏障，存储层拥有定位与流的创建。 */
@@ -316,6 +322,8 @@ export class AgentService {
       sessionSeed: session_seed,
     };
     this.published = this.get_snapshot();
+    const project = this.session_state.snapshot();
+    if (project.loaded) await this.activate_project(project.projectPath);
   }
 
   /** 运行中入队，空闲时占用租约并完成模型与附件预检。 */
@@ -545,11 +553,28 @@ export class AgentService {
     this.assert_not_disposed();
     const resetLease = this.execution === null ? this.runtime_gate.begin_runtime("agent") : null;
     try {
-      await this.reset_session("workspace");
-      return this.ack();
+      const project = this.session_state.snapshot();
+      if (project.loaded) {
+        await this.transition(async () => {
+          const id = this.store === null ? null : this.session_id;
+          this.session?.log.reset("workspace");
+          await this.close_session();
+          const store = this.database.open_agent_store(project.projectPath);
+          try {
+            await store.reset();
+          } finally {
+            await store.close();
+          }
+          if (id !== null) await this.workspace.delete_session(id);
+          await this.open_project(project.projectPath);
+        });
+      } else {
+        await this.skills.refresh();
+      }
     } finally {
       if (resetLease !== null) this.runtime_gate.finish_runtime(resetLease);
     }
+    return this.ack();
   }
   /** 先解除外部订阅，再等待当前清理与执行退出。 */
   public async dispose(): Promise<void> {
@@ -558,7 +583,7 @@ export class AgentService {
     this.unsubscribe_project_session();
     this.unsubscribe_skills();
     if (this.session_reset !== null) await this.session_reset;
-    await this.reset_session("project", null);
+    await this.transition(() => this.close_session());
   }
 
   /** 每次运行只有一个控制器和租约，迟到操作依执行对象身份失效。 */
@@ -619,33 +644,14 @@ export class AgentService {
   ): Promise<void> {
     if (queuedId !== undefined)
       await this.require_session().change_queue((queue) => queue.begin_send(queuedId));
-    let session = this.session;
-    const created = session === null;
-    try {
-      if (session === null) {
-        await this.skills.refresh();
-        this.assert_execution(execution);
-        session = await this.create_session(execution);
-      } else await this.update_model(session, execution);
-      const prepared = await this.prepare_message(message);
-      this.assert_execution(execution);
-      const active_session = session;
-      if (created) this.session = active_session;
-      const accepted = await this.submit_round(
-        active_session,
-        execution,
-        message,
-        prepared,
-        queuedId,
-      );
-      this.launch(execution, () => this.drive(active_session, execution, accepted));
-    } catch (error) {
-      if (created && session !== null && execution.settlement === null) {
-        if (this.session === session) this.session = null;
-        await session.close();
-      }
-      throw error;
-    }
+    this.require_resources();
+    const session = this.require_session();
+    await this.skills.refresh();
+    const prepared = await this.prepare_message(message);
+    this.assert_execution(execution);
+    await this.update_model(session, execution);
+    const accepted = await this.submit_round(session, execution, message, prepared, queuedId);
+    this.launch(execution, () => this.drive(session, execution, accepted));
   }
 
   /** 显式发送、修订与 FIFO 共用轮次初始化，速度与恢复额度随新轮次重置。 */
@@ -712,7 +718,7 @@ export class AgentService {
         }
       }
     } finally {
-      // 取消后的任务结算和在途受理都属于原执行；其租约只能由这里最终释放。
+      // 取消后的任务结算和在途受理都属于原执行。其租约只能由这里最终释放。
       await execution.acceptance?.catch(() => undefined); // 受理失败已回传命令，仍需释放原执行。
       if (execution.controller.signal.aborted) await session.abort();
       await session.flush();
@@ -728,31 +734,27 @@ export class AgentService {
       this.catalog,
       this.auth,
     );
-    const available = await session.models.getAvailable(resolved.model.provider);
+    if (session.state.seeded) {
+      const available = await session.models.getAvailable(resolved.model.provider);
+      this.assert_execution(execution);
+      if (!available.some((model) => model.id === resolved.model.id))
+        throw new AppErrors.AppError("model.auth_required");
+    }
     this.assert_execution(execution);
-    if (!available.some((model) => model.id === resolved.model.id))
-      throw new AppErrors.AppError("model.auth_required");
     await session.configure(resolved.model, resolved.thinkingLevel);
     this.model_config = resolved.model_config;
   }
   /** 会话创建时绑定宿主能力，动态提示在真实请求准备完成后读取。 */
-  private async create_session(execution: AgentExecution): Promise<AgentSession> {
+  private async create_session(store: AgentSessionStore): Promise<AgentSession> {
     const resources = this.require_resources();
     const models = createModels();
-    const resolved = register_agent_model(
-      models,
-      this.settings.read_setting(),
-      { user_agent: this.user_agent, session_id: this.session_id },
-      this.catalog,
-      this.auth,
-    );
-    this.model_config = resolved.model_config;
     const session = await AgentSession.open({
       sessionId: this.session_id,
+      storage: await store.open_storage(),
       cwd: this.paths.get_app_root(),
       models,
-      model: resolved.model,
-      thinkingLevel: resolved.thinkingLevel,
+      model: null,
+      thinkingLevel: "off",
       seed: resources.sessionSeed,
       tools: this.create_tools(),
       continueText: () => this.read_continue_text(),
@@ -770,7 +772,6 @@ export class AgentService {
       onReport: (error) => this.warn_cleanup_failure(error),
       onCompactionFailure: (reason, error) => this.compaction_failure(reason, error),
     });
-    session.execution = execution;
     return session;
   }
   /** 产品工具复用后端服务与当前租约，统一经过错误和参数边界。 */
@@ -940,40 +941,80 @@ export class AgentService {
     this.runtime_gate.finish_runtime(execution.lease);
     this.publish_snapshot();
   }
-  /** 先隔离旧会话，再等待受理和结算，工作区清理串行复用同一屏障。 */
-  private reset_session(
-    scope: "workspace" | "project",
-    project_path: string | null = null,
-  ): Promise<void> {
-    if (this.session_reset !== null) return this.session_reset;
+  /** 命令和工程生命周期共用关闭屏障。所有权切换只在旧使用者收尾后发生。 */
+  private transition(operation: () => Promise<void>): Promise<void> {
+    if (this.session_reset !== null)
+      return this.session_reset.then(() => this.transition(operation));
+    const pending = operation();
+    this.session_reset = pending;
+    return pending.finally(() => {
+      if (this.session_reset === pending) this.session_reset = null;
+      this.publish_snapshot(true);
+    });
+  }
+
+  /** 串行关闭旧工程执行，再恢复目标工程的持久化对话。 */
+  private activate_project(project: string | null): Promise<void> {
+    return this.transition(async () => {
+      this.session?.log.reset("project");
+      await this.close_session();
+      if (project !== null) await this.open_project(project);
+    });
+  }
+
+  /** 产品身份与上传先于模型请求可用，首次打开空工程也不需要模型配置。 */
+  private async open_project(project: string): Promise<void> {
+    this.require_resources();
+    const store = this.database.open_agent_store(project);
+    this.store = store;
+    try {
+      const record =
+        (await store.read()) ?? (await store.create(await this.workspace.create_session()));
+      this.session_id = record.id;
+      await this.workspace.activate_session(record.id, record.data.uploads, (file) =>
+        store.save_upload(record.id, file),
+      );
+      this.session = await this.create_session(store);
+    } catch (error) {
+      await this.close_session();
+      throw error;
+    }
+  }
+
+  /** 关闭保存事实并释放资源。目录删除只由显式重置和数量清理负责。 */
+  private async close_session(): Promise<void> {
     const session = this.session;
     const execution = this.execution;
+    const store = this.store;
     execution?.controller.abort();
     if (execution !== null) execution.phase = "stopped";
-    session?.log.reset(scope);
     this.session = null;
-    this.session_id = uuidv7();
     this.images.clear();
-    this.workspace.uploads.cancel();
+    this.workspace.cancel_uploads();
     this.workspace.invalidate_links();
     this.decisions.reset();
     this.token_speed.reset();
     this.token_speed_snapshot = null;
-    const reset = (async () => {
-      await execution?.acceptance?.catch(() => undefined); // 原受理命令已取得失败，关闭继续等待资源。
-      await session?.close();
-      await execution?.settlement;
+    try {
+      try {
+        await execution?.acceptance?.catch(() => undefined); // 受理失败由命令报告，关闭继续收尾。
+        if (session !== null && execution !== null) await session.stop(execution, null);
+        await execution?.settlement;
+      } finally {
+        try {
+          await this.workspace.close();
+        } finally {
+          await session?.close();
+        }
+      }
+    } finally {
       if (execution !== null) this.release(execution);
-      await this.skills.refresh();
-      if (scope === "project") await this.workspace.reset_project(project_path);
-      else await this.workspace.reset_workspace();
-    })();
-    this.session_reset = reset;
-    return reset.finally(() => {
-      if (this.session_reset === reset) this.session_reset = null;
-      this.publish_snapshot(true);
-    });
+      this.store = null;
+      this.session_id = "inactive";
+      await store?.close();
+    }
   }
+
   /** 异步准备结束后复核执行身份与取消状态，阻断迟到写入。 */
   private assert_execution(execution: AgentExecution): void {
     this.assert_not_disposed();
@@ -1082,7 +1123,7 @@ function read_queue_message_request(
   return { id: read_queue_id(request), message };
 }
 
-/** 空 continue 不制造消息；携带 message 时仍复用完整用户消息边界。 */
+/** 空 continue 不制造消息。携带 message 时仍复用完整用户消息边界。 */
 function read_agent_continue_message(
   request: JsonRecord,
   resolve_file: (id: string) => AgentFileAttachment,
