@@ -1,3 +1,4 @@
+import { agent_tool_call } from "../../../test/agent-tool-fixture";
 import { validateToolArguments, type ToolCall } from "@earendil-works/pi-ai";
 import { describe, expect, it, vi } from "vitest";
 import { create_agent_batch_item_translation_tool } from "./run-batch-item-translation";
@@ -32,12 +33,10 @@ describe("Agent 条目批量翻译工具", () => {
     expect(() => call({})).toThrow();
     const signal = new AbortController().signal;
     const settled = vi.fn();
-    const result = tool
-      .execute("batch", request, signal, undefined, undefined as never)
-      .then((value) => {
-        settled();
-        return value;
-      });
+    const result = tool.execute(request, ...agent_tool_call("batch", signal)).then((value) => {
+      settled();
+      return value;
+    });
     await Promise.resolve();
     expect(settled).not.toHaveBeenCalled();
     expect(run).toHaveBeenCalledWith(request, signal);

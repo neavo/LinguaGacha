@@ -1,0 +1,866 @@
+import { BACKGROUND_CONTEXT, withAbortSignal } from "@earendil-works/chord/context";
+import {
+  createRegistry,
+  defineExtension,
+  GenerationTask,
+  CompactionTask,
+  Harness,
+  MemoryStorage,
+  hook,
+  section,
+  AssistantEntry,
+  LiveDoc,
+  UsageDoc,
+  type Conversation,
+  type ConversationRecord,
+  type EntryId,
+  type EntryRecord,
+  type Submission,
+  type SubmissionRecord,
+  type TaskId,
+  type LiveState,
+  type UsageState,
+} from "@earendil-works/pi-durable";
+import type { ToolRegistration, ToolExecutionResult } from "@earendil-works/pi-durable";
+import { lazyStream } from "@earendil-works/pi-ai/api/lazy";
+import { isRecoverableLength } from "@earendil-works/pi-ai/utils/overflow";
+import {
+  uuidv7,
+  type MutableModels,
+  type Model,
+  type Api,
+  type ModelThinkingLevel,
+  type AssistantMessageEvent,
+  type AssistantMessage,
+} from "@earendil-works/pi-ai";
+import type {
+  AgentContextSnapshot,
+  AgentEntry,
+  AgentMessageInput,
+  AgentUsageSnapshot,
+  AgentEntryStatus,
+} from "../../shared/agent";
+import type { RuntimeLease } from "../runtime-operation-gate";
+import type { BatchTranslationResult } from "../../domain/batch-translation";
+import { AGENT_COMPACTION_RESERVE_TOKENS } from "../../domain/model-agent";
+import { AppError } from "../../shared/error";
+import type { PreparedAgentMessage } from "./agent-message-input";
+import { AgentInputQueue } from "./agent-input-queue";
+import {
+  AgentSessionDoc,
+  type AgentSessionState,
+  type AgentInputRecord,
+} from "./agent-session-state";
+import {
+  project_agent_session_entries,
+  assistant_entry_id,
+  type AgentTaskFact,
+} from "./agent-session-view";
+import { AGENT_KEEP_RECENT_TOKENS, read_agent_session_context } from "./agent-session-context";
+import { append_agent_session_seed, type AgentSessionSeed } from "./agent-session-seed";
+import { AgentSessionLog } from "./agent-log";
+import { project_assistant_message_parts } from "./agent-message";
+import { AgentToolError, agent_tool_result } from "./tool-definition";
+
+const COMPACTION_SETTINGS = {
+  enabled: true,
+  reserveTokens: AGENT_COMPACTION_RESERVE_TOKENS,
+  keepRecentTokens: AGENT_KEEP_RECENT_TOKENS,
+  backgroundTokens: 0,
+};
+const RETRY_SETTINGS = { enabled: true, maxRetries: 3, baseDelayMs: 2_000 };
+
+type SubmittedInput = {
+  submission: Submission;
+  input: AgentInputRecord;
+  prepared: PreparedAgentMessage;
+};
+/** 唯一执行对象同时承担迟到身份校验和资源所有权，恢复时沿用同一租约。 */
+export type AgentExecution = {
+  readonly controller: AbortController;
+  readonly lease: RuntimeLease;
+  roundId: string | null;
+  phase: "preparing" | "running" | "recovering" | "compacting" | "settling" | "stopped";
+  acceptance: Promise<unknown> | null;
+  settlement: Promise<void> | null;
+  recoveryUsed: boolean;
+  recoveryTask: TaskId | null;
+  steer: SubmittedInput | null;
+  retrySteer: SubmittedInput | null;
+  translationPaused: BatchTranslationResult | null;
+};
+
+type SessionOptions = {
+  sessionId: string;
+  cwd: string;
+  models: MutableModels;
+  model: Model<Api>;
+  thinkingLevel: ModelThinkingLevel;
+  seed: AgentSessionSeed;
+  tools: ToolRegistration[];
+  systemPrompt: () => string;
+  skillsPrompt: () => string;
+  continueText: () => string;
+  log: AgentSessionLog;
+  onChange: () => void;
+  onModelEvent: (event: AssistantMessageEvent) => void;
+  onReport: (error: unknown) => void;
+  onCompactionFailure: (reason: string, error: string) => void;
+};
+
+/** 产品会话直接使用 durable 公共接口，拥有输入、历史、恢复与压缩的提交边界。 */
+export class AgentSession {
+  public readonly models: MutableModels;
+  public model: Model<Api>;
+  public readonly log: AgentSessionLog;
+  public execution: AgentExecution | null = null;
+  public entries: AgentEntry[] = [];
+  public context: AgentContextSnapshot = { tokens: null, compactable: false, limits: null };
+  public usage: AgentUsageSnapshot = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
+  public state: Readonly<AgentSessionState> = AgentSessionDoc.definition.initial();
+  private harness!: Harness;
+  private conversation!: Conversation; // 当前分支唯一入口，只在创建与修订成功后切换
+  private readonly records = new Map<number, EntryRecord>(); // 完整历史缓存保留压缩前的公开条目
+  private readonly conversations = new Map<number, ConversationRecord>(); // 祖先关系用于计算分叉的可见历史
+  private readonly submissions = new Map<number, SubmissionRecord>(); // 受理回执关联产品输入与实际历史条目
+  private readonly tasks = new Map<number, AgentTaskFact>();
+  private readonly live = new Map<number, LiveState>(); // 各分支的已提交流式进度
+  private readonly usages = new Map<number, UsageState>(); // 跨分支累计消耗，修订保留已发生费用
+  private compactionReason: "manual" | "threshold" | "length" = "manual";
+  private revision = 0; // 丢弃跨越新提交的异步上下文读取结果
+  private refreshWork: Promise<void> | null = null;
+  private dirty = false;
+  private closed = false;
+  private closing: Promise<void> | null = null;
+  private unsubscribe = () => {};
+  private latestParts: ReturnType<typeof project_assistant_message_parts> = null; // 停止时冲刷尚未达到 SDK 提交窗口的正文
+  private latestTimestamp = 0;
+
+  /** 会话独占模型流观察器，使取消、正文收尾与速度统计使用同一执行身份。 */
+  private constructor(private readonly options: SessionOptions) {
+    this.models = options.models;
+    this.model = options.model;
+    this.log = options.log;
+    const stream = this.models.streamSimple.bind(this.models);
+    // 所有 Agent 请求与摘要共用真实派发入口；这里只观察流，不另外拼装公开正文。
+    this.models.streamSimple = (model, context, request) =>
+      lazyStream(model, async () => {
+        const execution = this.execution;
+        const signal =
+          execution === null
+            ? request?.signal
+            : request?.signal === undefined
+              ? execution.controller.signal
+              : AbortSignal.any([request.signal, execution.controller.signal]);
+        const source = stream(model, context, {
+          ...request,
+          sessionId: this.options.sessionId,
+          ...(signal === undefined ? {} : { signal }),
+        });
+        const isSummary = this.is_compacting;
+        const observe = (event: AssistantMessageEvent): void => {
+          if (!isSummary) {
+            const message =
+              event.type === "done"
+                ? event.message
+                : event.type === "error"
+                  ? event.error
+                  : event.partial;
+            if (event.type === "start") this.log.handle_event({ type: "message_start", message });
+            else if (event.type === "done" || event.type === "error")
+              this.log.handle_event({ type: "message_end", message });
+            else this.log.handle_event({ type: "message_update", message });
+            if (execution === this.execution && execution?.phase !== "stopped") {
+              this.latestParts = project_assistant_message_parts(message);
+              this.latestTimestamp = message.timestamp;
+              this.options.onModelEvent(event);
+            }
+          }
+        };
+        return (async function* () {
+          for await (const event of source) {
+            observe(event);
+            yield event;
+          }
+        })();
+      });
+  }
+
+  /** 装配内存 `Harness`、产品工具与提交订阅，种子完成后才交付可用会话。 */
+  public static async open(options: SessionOptions): Promise<AgentSession> {
+    const session = new AgentSession(options);
+    const registry = createRegistry();
+    registry.install(
+      defineExtension({
+        name: "linguagacha",
+        tools: options.tools.map((tool) => ({
+          ...tool,
+          execute: async (params, api, context) => {
+            const execution = session.execution;
+            const callContext =
+              execution === null ? context : withAbortSignal(execution.controller.signal, context);
+            let result: ToolExecutionResult;
+            try {
+              result = await tool.execute(params, api, callContext);
+            } catch (error) {
+              result = {
+                ...agent_tool_result(
+                  error instanceof AgentToolError ? error.details : { code: "tool_failed" },
+                ),
+                isError: true,
+              };
+              if (callContext.abortSignal?.aborted) {
+                session.log.handle_event({
+                  type: "tool_execution_end",
+                  toolCallId: api.callId,
+                  toolName: tool.name,
+                  result: { content: result.content ?? [], details: result.details },
+                  isError: true,
+                });
+                throw error;
+              }
+            }
+            session.log.handle_event({
+              type: "tool_execution_end",
+              toolCallId: api.callId,
+              toolName: tool.name,
+              result: { ...result, content: result.content ?? [] },
+              isError: result.isError === true,
+            });
+            return result;
+          },
+        })),
+        sections: [
+          section(
+            "preamble",
+            async (_input, context) => {
+              // 认证的异步准备先结束，随后各 section 才冻结本次请求的最新人格与技能目录。
+              await session.models.getAuth(
+                session.model,
+                context.abortSignal === undefined ? {} : { signal: context.abortSignal },
+              );
+              return options.systemPrompt();
+            },
+            { tag: false },
+          ),
+          section("cwd", () => options.cwd),
+          section("available_skills", () => options.skillsPrompt() || undefined),
+        ],
+        hooks: [
+          hook(GenerationTask, {
+            onYield: async (message, api) => {
+              await session.before_yield(message, api.taskId);
+              return undefined;
+            },
+            afterResponse: async (message) => {
+              if (
+                message.stopReason !== "length" &&
+                message.stopReason !== "error" &&
+                session.execution !== null
+              )
+                session.execution.recoveryUsed = false;
+            },
+          }),
+          hook(CompactionTask, {
+            beforeCompact: async (compaction) => {
+              if (compaction.reason === "overflow" && session.execution !== null)
+                session.execution.recoveryUsed = true;
+            },
+          }),
+        ],
+      }),
+    );
+    session.harness = await Harness.open(
+      new MemoryStorage(),
+      {
+        models: session.models,
+        registry,
+        settings: {
+          stream: { cacheRetention: "short" },
+          compaction: COMPACTION_SETTINGS,
+          retry: RETRY_SETTINGS,
+          steeringMode: "one-at-a-time",
+          followUpMode: "one-at-a-time",
+        },
+        onReport: options.onReport,
+      },
+      BACKGROUND_CONTEXT,
+    );
+    session.unsubscribe = session.harness.subscribeCommits((publication) => {
+      for (const change of publication.changes) {
+        if (change.type === "entry") {
+          session.records.set(change.value.id, change.value);
+          for (const message of change.value.model ?? []) {
+            if (message.role === "assistant")
+              for (const call of message.content) {
+                if (call.type === "toolCall")
+                  session.log.handle_event({
+                    type: "tool_execution_start",
+                    toolCallId: call.id,
+                    toolName: call.name,
+                    args: call.arguments,
+                  });
+              }
+            // Schema 失败绕过工具执行体，仍需原生回执封口，日志按调用身份去重。
+            if (message.role === "toolResult")
+              session.log.handle_event({
+                type: "tool_execution_end",
+                toolCallId: message.toolCallId,
+                toolName: message.toolName,
+                result: message,
+                isError: message.isError === true,
+              });
+          }
+        } else if (change.type === "conversation")
+          session.conversations.set(change.value.id, change.value);
+        else if (change.type === "submission") {
+          const previous = session.submissions.get(change.value.id);
+          const record = change.value;
+          session.submissions.set(record.id, record);
+          if (
+            previous?.entry === undefined &&
+            record.entry !== undefined &&
+            record.requestId !== undefined &&
+            session.state.inputs[record.requestId]?.delivery === "steer" &&
+            session.execution !== null
+          )
+            session.execution.recoveryUsed = false;
+        } else if (change.type === "task") {
+          const previous = session.tasks.get(change.value.id);
+          session.tasks.set(change.value.id, {
+            record: change.value,
+            createdAt: previous?.createdAt ?? Date.now(),
+          });
+          if (change.value.kind === "pi.compaction")
+            session.observe_compaction(change.value.id, previous);
+        } else if (change.type === "document" && change.value !== null) {
+          // kind 对应固定 token 的 JSON 契约，值为 SDK 提供的不可变提交快照。
+          if (change.record.kind === AgentSessionDoc.definition.kind)
+            session.state = change.value as AgentSessionState;
+          else if (
+            change.record.kind === LiveDoc.definition.kind &&
+            change.conversationId !== undefined
+          )
+            session.live.set(change.conversationId, change.value as LiveState);
+          else if (
+            change.record.kind === UsageDoc.definition.kind &&
+            change.conversationId !== undefined
+          )
+            session.usages.set(change.conversationId, change.value as UsageState);
+        }
+      }
+      session.revision = publication.seq;
+      session.schedule_refresh();
+    });
+    session.conversation = await session.harness.root(BACKGROUND_CONTEXT, {
+      agent: {
+        model: { provider: options.model.provider, modelId: options.model.id },
+        thinkingLevel: options.thinkingLevel,
+      },
+      init: async (tx, id) => {
+        await tx.appendEntry(id, { kind: "linguagacha.start" });
+        await append_agent_session_seed(tx, id, options.seed, options.model);
+      },
+    });
+    session.schedule_refresh();
+    await session.flush();
+    return session;
+  }
+
+  /** 原生自动压缩与产品主动压缩共用互斥判据。 */
+  public get is_compacting(): boolean {
+    return (
+      (this.live.get(this.conversation?.id)?.compactions?.length ?? 0) > 0 ||
+      this.execution?.phase === "compacting"
+    );
+  }
+  /** 恢复、压缩和停止期间关闭即时输入受理。 */
+  public get can_steer(): boolean {
+    return (
+      this.execution?.phase === "running" &&
+      !this.execution.controller.signal.aborted &&
+      !this.is_compacting
+    );
+  }
+  /** 只读命令取得队列副本，写操作经 `change_queue` 提交。 */
+  public get queue(): AgentInputQueue {
+    return new AgentInputQueue(structuredClone(this.state.queue));
+  }
+  /** 分叉切点使用完整可见历史，保留已被压缩排除的公开事实。 */
+  public get tail(): EntryId {
+    const records = this.branch_records();
+    return records.at(-1)!.id;
+  }
+
+  /** 产品事实只经 `Harness` 事务写入，返回前同步公开投影。 */
+  public async change(change: (state: AgentSessionState) => void): Promise<void> {
+    await this.harness.commit(async (tx) => {
+      change(await tx.doc(AgentSessionDoc));
+    }, BACKGROUND_CONTEXT);
+    await this.flush();
+  }
+  /** 队列规则直接操作事务草稿，失败时由 `Harness` 原子回滚。 */
+  public async change_queue<T>(change: (queue: AgentInputQueue) => T): Promise<T> {
+    const result = await this.harness.commit(
+      async (tx) => change(new AgentInputQueue((await tx.doc(AgentSessionDoc)).queue)),
+      BACKGROUND_CONTEXT,
+    );
+    await this.flush();
+    return result;
+  }
+  /** 后续请求采用新模型，当前历史和累计用量继续属于同一会话。 */
+  public async configure(model: Model<Api>, thinkingLevel: ModelThinkingLevel): Promise<void> {
+    await this.conversation.configure(
+      { model: { provider: model.provider, modelId: model.id }, thinkingLevel },
+      BACKGROUND_CONTEXT,
+    );
+    this.model = model;
+    this.schedule_refresh();
+    await this.flush();
+  }
+  /** 先登记产品输入，再受理 SDK 提交，草稿消费等待真实入历史回执。 */
+  public async submit(
+    message: AgentMessageInput,
+    prepared: PreparedAgentMessage,
+    execution: AgentExecution,
+    delivery: "round" | "steer" | "hidden",
+    queuedId: string | null = null,
+  ): Promise<SubmittedInput> {
+    execution.controller.signal.throwIfAborted();
+    const requestId = uuidv7();
+    if (delivery === "round") execution.roundId = requestId;
+    if (execution.roundId === null) throw new Error("Agent execution has no round");
+    const input: AgentInputRecord = { roundId: execution.roundId, message, delivery, queuedId };
+    const checkpoint = this.tail;
+    await this.change((state) => {
+      state.inputs[requestId] = input;
+      if (delivery === "round")
+        state.rounds[requestId] = {
+          status: "running",
+          checkpoint,
+          endedAt: null,
+          averageTokensPerSecond: null,
+        };
+    });
+    execution.controller.signal.throwIfAborted();
+    if (delivery === "round")
+      this.log.begin_run(execution.roundId, queuedId === null ? "prompt" : "queued");
+    const submission = await this.conversation.submit(
+      {
+        type: "input",
+        content: [{ type: "text", text: prepared.text }, ...prepared.images],
+        requestId,
+        whenBusy: delivery === "steer" ? "steer" : "reject",
+      },
+      withAbortSignal(execution.controller.signal, BACKGROUND_CONTEXT),
+    );
+    const accepted = { submission, input, prepared };
+    if (delivery === "steer") execution.steer = accepted;
+    this.log.handle_event({
+      type: "message_start",
+      message: {
+        role: "user",
+        content: [{ type: "text", text: prepared.text }, ...prepared.images],
+        timestamp: Date.now(),
+      },
+    });
+    await this.flush();
+    return accepted;
+  }
+
+  /** Hook 只收束受理和未消费输入；生成退出后的恢复由同一产品执行串行接管。 */
+  private async before_yield(message: AssistantMessage, task: TaskId): Promise<void> {
+    const execution = this.execution;
+    if (
+      execution === null ||
+      execution.controller.signal.aborted ||
+      !isRecoverableLength(message, this.model.maxTokens)
+    )
+      return;
+    execution.phase = "recovering";
+    execution.recoveryTask = task;
+    await execution.acceptance?.catch(() => undefined); // 受理错误由原命令回传，这里只等待其退出。
+    const steer = execution.steer;
+    if (steer !== null && (await steer.submission.abort(BACKGROUND_CONTEXT)) === "aborted") {
+      execution.retrySteer = steer;
+      execution.steer = null;
+      await this.change_queue((queue) => queue.cancel_send());
+    }
+  }
+
+  /** 等待当前全部原生生成，再决定恢复、收尾压缩和产品终态。 */
+  public async run(accepted: SubmittedInput, execution: AgentExecution): Promise<void> {
+    let current = accepted;
+    const firstSubmission = accepted.submission.id;
+    for (;;) {
+      const settled = await current.submission.wait(BACKGROUND_CONTEXT);
+      await this.conversation.waitForIdle(BACKGROUND_CONTEXT);
+      await execution.acceptance?.catch(() => undefined); // 受理错误由原命令回传，这里只等待其退出。
+      await this.conversation.waitForIdle(BACKGROUND_CONTEXT);
+      await this.flush();
+      if (execution.controller.signal.aborted) return;
+      const failed = [...this.submissions.values()].find(
+        (record) =>
+          record.id >= firstSubmission &&
+          record.type === "input" &&
+          record.entry !== undefined &&
+          record.status === "unanswered" &&
+          record.requestId !== undefined &&
+          this.state.inputs[record.requestId]?.roundId === execution.roundId,
+      );
+      if (failed?.status === "unanswered")
+        throw new Error(typeof failed.detail === "string" ? failed.detail : failed.reason);
+      if (settled.status === "unanswered")
+        throw new Error(typeof settled.detail === "string" ? settled.detail : settled.reason);
+      const recovery = execution.recoveryTask;
+      if (recovery === null) break;
+      execution.recoveryTask = null;
+      const task = await this.harness.waitForTask(recovery, BACKGROUND_CONTEXT);
+      const result = task.state.outcome;
+      if (
+        result.status !== "completed" ||
+        typeof result.result !== "object" ||
+        result.result === null ||
+        !("entryId" in result.result) ||
+        typeof result.result.entryId !== "number"
+      )
+        throw new Error("Truncated response has no committed entry");
+      const entryId = result.result.entryId as EntryId;
+      await this.harness.commit(
+        (tx) =>
+          tx.appendEntry(this.conversation.id, {
+            kind: "linguagacha.context-edit",
+            edits: [{ target: entryId, action: "omit" }],
+          }),
+        BACKGROUND_CONTEXT,
+      );
+      if (execution.recoveryUsed)
+        throw new Error("Truncated response recovery failed after one compact-and-retry attempt.");
+      execution.recoveryUsed = true;
+      if (!(await this.compact("length", execution)))
+        throw new Error("Truncated response recovery could not compact history.");
+      execution.controller.signal.throwIfAborted();
+      execution.phase = "running";
+      const steer = execution.retrySteer;
+      execution.retrySteer = null;
+      if (steer !== null) {
+        if (steer.input.queuedId !== null)
+          await this.change_queue((queue) => queue.begin_send(steer.input.queuedId!));
+        current = await this.submit(
+          steer.input.message,
+          steer.prepared,
+          execution,
+          "steer",
+          steer.input.queuedId,
+        );
+      } else {
+        const text = this.options.continueText();
+        current = await this.submit(
+          { text, attachments: [] },
+          { text, images: [] },
+          execution,
+          "hidden",
+        );
+      }
+    }
+    execution.phase = "settling";
+    if (
+      (this.context.tokens ?? 0) > this.model.contextWindow - AGENT_COMPACTION_RESERVE_TOKENS &&
+      this.context.compactable
+    ) {
+      try {
+        await this.compact("threshold", execution);
+      } catch (error) {
+        if (!execution.controller.signal.aborted)
+          this.options.onCompactionFailure("threshold", String(error));
+      }
+    }
+  }
+
+  /** 摘要任务结束与摘要写入均完成后，才允许产品轮次继续。 */
+  public async compact(
+    reason: "manual" | "threshold" | "length",
+    execution: AgentExecution,
+  ): Promise<boolean> {
+    execution.controller.signal.throwIfAborted();
+    execution.phase = "compacting";
+    this.compactionReason = reason;
+    this.options.onChange();
+    try {
+      const id = await this.conversation.compact(
+        undefined,
+        withAbortSignal(execution.controller.signal, BACKGROUND_CONTEXT),
+      );
+      await this.flush();
+      const task = await this.harness.waitForTask(id, BACKGROUND_CONTEXT);
+      const outcome = task.state.outcome;
+      if (outcome.status !== "completed")
+        throw new Error(
+          outcome.status === "failed" ? outcome.error.message : "Compaction cancelled",
+        );
+      const result = outcome.result;
+      if (result.submissionId !== undefined) {
+        const submitted = await this.harness.submission(result.submissionId, BACKGROUND_CONTEXT);
+        if ((await submitted?.wait(BACKGROUND_CONTEXT))?.status !== "done")
+          throw new Error("Compaction summary was not placed");
+      }
+      await this.flush();
+      return result.entryId !== undefined || result.submissionId !== undefined;
+    } finally {
+      if (!execution.controller.signal.aborted) execution.phase = "settling";
+      this.options.onChange();
+    }
+  }
+
+  /** 成功与失败结算保留停止边界已经冻结的轮次终态。 */
+  public async finish_round(
+    execution: AgentExecution,
+    status: Extract<AgentEntryStatus, "success" | "error" | "stopped">,
+    average: number | null,
+  ): Promise<void> {
+    const roundId = execution.roundId;
+    if (roundId === null) return;
+    await this.change((state) => {
+      const round = state.rounds[roundId];
+      if (round !== undefined && round.status !== "stopped") {
+        round.status = status;
+        round.endedAt = Date.now();
+        round.averageTokensPerSecond = average;
+      }
+    });
+  }
+  /** 撤回未消费的即时输入并恢复草稿，已入历史的输入由提交回执消费。 */
+  public async cancel_inputs(execution: AgentExecution): Promise<void> {
+    const steer = execution.steer;
+    if (steer !== null) {
+      await steer.submission.abort(BACKGROUND_CONTEXT);
+      execution.steer = null;
+    }
+    await this.flush();
+    await this.change_queue((queue) => queue.cancel_send());
+  }
+  /** 先冻结公开终态，再等待底层退出，迟到工具结果仍进入诊断。 */
+  public async stop(execution: AgentExecution, average: number | null): Promise<void> {
+    const abort = this.conversation.abort(BACKGROUND_CONTEXT);
+    void abort.catch(this.options.onReport);
+    const roundStart = this.entries.findIndex((entry) => entry.id === execution.roundId);
+    const activeRound =
+      execution.roundId !== null && this.state.rounds[execution.roundId]?.status === "running";
+    const frozen = (activeRound && roundStart >= 0 ? this.entries.slice(roundStart) : []).map(
+      (entry) =>
+        entry.status !== "running" || entry.kind === "context_compaction"
+          ? entry
+          : entry.kind === "tool_call"
+            ? { ...entry, status: "stopped" as const, output: null }
+            : { ...entry, status: "stopped" as const },
+    );
+    const task = this.live.get(this.conversation.id)?.run?.taskId;
+    if (
+      task !== undefined &&
+      execution.roundId !== null &&
+      this.state.rounds[execution.roundId]?.status === "running" &&
+      this.latestParts !== null
+    ) {
+      const entry: AgentEntry = {
+        kind: "assistant_message",
+        id: assistant_entry_id(task, 0),
+        parts: this.latestParts,
+        status: "stopped",
+        createdAt: this.latestTimestamp,
+      };
+      const index = frozen.findIndex((item) => item.id === entry.id);
+      if (index < 0) frozen.push(entry);
+      else frozen[index] = entry;
+    }
+    await this.change((state) => {
+      for (const entry of frozen)
+        state.stoppedEntries[entry.id] = { roundId: execution.roundId!, entry };
+      const round = execution.roundId === null ? undefined : state.rounds[execution.roundId];
+      if (round !== undefined && round.status === "running") {
+        round.status = "stopped";
+        round.endedAt = Date.now();
+        round.averageTokensPerSecond = average;
+        delete state.stoppedEntries[execution.roundId!];
+      }
+      const queue = new AgentInputQueue(state.queue);
+      queue.cancel_send();
+      queue.pause();
+      state.pendingDecision = null;
+    });
+  }
+  /** 租约释放前等待原生任务退出，关闭过程共用已有的收尾 Promise。 */
+  public async abort(): Promise<void> {
+    if (this.closing !== null) return this.closing;
+    await this.conversation.abort(BACKGROUND_CONTEXT, { background: true });
+    await this.flush();
+  }
+
+  /** 预检后的修订通过分叉替换活动历史，产品队列和 `doing` 跨分叉保留。 */
+  public async revise(entry: AgentEntry, prepared: PreparedAgentMessage | null): Promise<void> {
+    const records = this.branch_records();
+    let checkpoint: EntryId;
+    if (entry.kind === "user_message" && entry.delivery === "round")
+      checkpoint = this.state.rounds[entry.id]!.checkpoint;
+    else {
+      const index = records.findIndex(
+        (record) => assistant_entry_id(record.byTaskId, record.id) === entry.id,
+      );
+      if (index < 1) throw new AppError("request.validation_failed");
+      checkpoint = records[index - 1]!.id;
+    }
+    this.conversation = await this.conversation.fork(
+      checkpoint,
+      {
+        ownership: { kind: "ownerless" },
+        init: async (tx, id) => {
+          if (entry.kind === "assistant_message" && prepared !== null)
+            await tx.appendEntry(AssistantEntry, id, {
+              model: [
+                {
+                  role: "assistant",
+                  content: [{ type: "text", text: prepared.text }],
+                  api: this.model.api,
+                  provider: this.model.provider,
+                  model: this.model.id,
+                  stopReason: "stop",
+                  timestamp: Date.now(),
+                  usage: {
+                    input: 0,
+                    output: 0,
+                    cacheRead: 0,
+                    cacheWrite: 0,
+                    totalTokens: 0,
+                    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+                  },
+                },
+              ],
+            });
+        },
+      },
+      BACKGROUND_CONTEXT,
+    );
+    this.schedule_refresh();
+    await this.flush();
+  }
+  /** 关闭即使取消提交失败也会封闭并 join 原生任务；调用者保留原始失败。 */
+  public close(): Promise<void> {
+    if (this.closing !== null) return this.closing;
+    this.closing = (async () => {
+      try {
+        await this.conversation.abort(BACKGROUND_CONTEXT, { background: true });
+        await this.flush();
+      } finally {
+        this.closed = true;
+        this.unsubscribe();
+        await this.harness.close(BACKGROUND_CONTEXT);
+      }
+    })();
+    return this.closing;
+  }
+
+  /** 沿祖先切点取最小上界，排除历次分叉已经放弃的后续事实。 */
+  private visible(conversation: number, id: number): boolean {
+    let record = this.conversations.get(this.conversation.id);
+    if (record?.id === conversation) return true;
+    let ceiling = Number.MAX_SAFE_INTEGER;
+    while (record?.parent !== undefined) {
+      ceiling = Math.min(ceiling, record.parent.at);
+      if (record.parent.conversationId === conversation) return id <= ceiling;
+      record = this.conversations.get(record.parent.conversationId);
+    }
+    return false;
+  }
+  /** 公开时间线采用完整分支历史，模型上下文的压缩与编辑另行计算。 */
+  private branch_records(): EntryRecord[] {
+    return [...this.records.values()]
+      .filter((entry) => this.visible(entry.conversationId, entry.id))
+      .sort((a, b) => a.id - b.id);
+  }
+  /** 合并提交通知，异步读取期间提交版本或分支改变时重取，避免混用上下文。 */
+  private schedule_refresh(): void {
+    this.dirty = true;
+    if (this.refreshWork !== null || this.closed) return;
+    this.refreshWork = Promise.resolve()
+      .then(async () => {
+        while (this.dirty && !this.closed) {
+          this.dirty = false;
+          if (this.conversation === undefined) continue;
+          const revision = this.revision;
+          const conversation = this.conversation;
+          const view = await conversation.context(BACKGROUND_CONTEXT);
+          if (revision !== this.revision || conversation !== this.conversation) {
+            this.dirty = true;
+            continue;
+          }
+          const consumed = this.state.queue.items.filter((item) =>
+            [...this.submissions.values()].some(
+              (record) =>
+                record.type === "input" &&
+                record.entry !== undefined &&
+                record.requestId !== undefined &&
+                this.state.inputs[record.requestId]?.queuedId === item.id,
+            ),
+          );
+          if (consumed.length > 0) {
+            await this.harness.commit(async (tx) => {
+              const queue = new AgentInputQueue((await tx.doc(AgentSessionDoc)).queue);
+              for (const item of consumed) queue.commit_send(item.id);
+            }, BACKGROUND_CONTEXT);
+            this.dirty = true;
+            continue;
+          }
+          this.entries = project_agent_session_entries(
+            this.branch_records(),
+            this.submissions,
+            [...this.tasks.values()].filter(({ record }) =>
+              this.visible(record.conversationId, record.id),
+            ),
+            this.live.get(this.conversation.id) ?? {},
+            this.state,
+          );
+          this.context = read_agent_session_context(view, this.model);
+          this.usage = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
+          for (const state of this.usages.values())
+            for (const usage of Object.values(state.models))
+              for (const key of ["input", "output", "cacheRead", "cacheWrite"] as const)
+                this.usage[key] += usage[key];
+          this.options.onChange();
+        }
+      })
+      .catch((error) => {
+        if (!this.closed) this.options.onReport(error);
+      })
+      .finally(() => {
+        this.refreshWork = null;
+        if (this.dirty && !this.closed) this.schedule_refresh();
+      });
+  }
+  /** 命令回执等待公开投影追上全部已观察提交。 */
+  public async flush(): Promise<void> {
+    while (this.refreshWork !== null) await this.refreshWork;
+  }
+  /** 每个原生压缩任务只记录一次起止，手动任务附带产品触发原因。 */
+  private observe_compaction(id: number, previous: AgentTaskFact | undefined): void {
+    const task = this.tasks.get(id)!;
+    const input = task.record.input;
+    const nativeReason =
+      typeof input === "object" && input !== null && "reason" in input
+        ? String(input.reason)
+        : "manual";
+    const reason = nativeReason === "manual" ? this.compactionReason : nativeReason;
+    if (previous === undefined) this.log.handle_event({ type: "compaction_start", reason });
+    if (task.record.state.status === "terminal" && previous?.record.state.status !== "terminal") {
+      const outcome = task.record.state.outcome;
+      const error = outcome.status === "failed" ? outcome.error.message : undefined;
+      this.log.handle_event({
+        type: "compaction_end",
+        reason,
+        aborted: outcome.status === "aborted",
+        ...(outcome.status === "completed" ? { result: outcome.result } : {}),
+        ...(error === undefined ? {} : { errorMessage: error }),
+      });
+      if (error !== undefined)
+        queueMicrotask(() => this.options.onCompactionFailure(reason, error));
+    }
+  }
+}

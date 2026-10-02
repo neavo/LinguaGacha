@@ -33,7 +33,9 @@ describe("AgentInputQueue", () => {
     queue.cancel_send();
     expect(queue.read_snapshot(true).items[1]?.status).toBe("queued");
     queue.begin_send(second.id);
-    expect(queue.commit_send()?.id).toBe(second.id);
+    queue.cancel_send();
+    expect(queue.commit_send(second.id)?.id).toBe(second.id);
+    expect(queue.commit_send(second.id)).toBeNull();
   });
 
   it("暂停保留队列，恢复后继续按 FIFO 取出", () => {
@@ -46,7 +48,7 @@ describe("AgentInputQueue", () => {
     const next = queue.read_next()!;
     expect(next.text).toBe("一");
     queue.begin_send(next.id);
-    queue.commit_send();
+    queue.commit_send(next.id);
     expect(queue.read_snapshot(true).paused).toBe(false);
   });
 

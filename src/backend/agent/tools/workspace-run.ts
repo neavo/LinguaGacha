@@ -1,6 +1,6 @@
 import { summarize_images } from "./emit-image";
 import { Type } from "@earendil-works/pi-ai";
-import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
+import type { ToolRegistration } from "@earendil-works/pi-durable";
 
 import { define_agent_tool, agent_tool_result } from "../tool-definition";
 import { AGENT_WORKSPACE_CONTRACT } from "./contract";
@@ -17,7 +17,7 @@ export function create_agent_workspace_run_tool(options: {
   run: (script: string, signal: AbortSignal) => ReturnType<AgentWorkspacePort["run"]>;
   refresh_skills: () => Promise<unknown>;
   log_refresh_error: (error: unknown) => void;
-}): ToolDefinition {
+}): ToolRegistration {
   return define_agent_tool({
     name: "workspace_run",
     description: [
@@ -96,7 +96,8 @@ export function create_agent_workspace_run_tool(options: {
       },
       { additionalProperties: false },
     ),
-    execute: async (_tool_call_id, params, signal) => {
+    execute: async (params, _api, context) => {
+      const signal = context.abortSignal;
       // SDK 未提供 signal 时仍传入永不取消的标准信号，服务端口无需处理双态。
       const effective_signal = signal ?? new AbortController().signal;
       effective_signal.throwIfAborted();

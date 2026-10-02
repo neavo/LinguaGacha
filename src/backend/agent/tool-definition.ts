@@ -1,6 +1,7 @@
 import { scheduler } from "node:timers/promises";
 
-import { defineTool, type ToolDefinition } from "@earendil-works/pi-coding-agent";
+import { defineTool, type ToolRegistration } from "@earendil-works/pi-durable";
+import type { JsonValue } from "@earendil-works/chord";
 import type { TSchema } from "@earendil-works/pi-ai";
 
 import type { JsonRecord } from "../../domain/json";
@@ -9,11 +10,16 @@ import { JsonTool } from "../../shared/utils/json-tool";
 import type { LogManager } from "../log/log-manager";
 import { t_main_log } from "../log/log-text";
 
-/** SDK 的 `label` 统一取工具 `name`。 */
-export function define_agent_tool<TParams extends TSchema, TDetails = unknown, TState = unknown>(
-  definition: Omit<ToolDefinition<TParams, TDetails, TState>, "label">,
+/** 工具直接采用 durable 的参数与调用上下文；副作用默认不可安全重放。 */
+export function define_agent_tool<TParams extends TSchema, TDetails extends JsonValue = JsonValue>(
+  definition: ToolRegistration<TParams, TDetails>,
 ) {
-  return defineTool({ ...definition, label: definition.name });
+  // 产品工具已经拥有输出额度；SDK 再次裁剪会破坏结构化 JSON 和图片说明。
+  return defineTool({
+    replay: "unsafe",
+    outputLimits: { maxBytes: Number.MAX_SAFE_INTEGER, maxLines: Number.MAX_SAFE_INTEGER },
+    ...definition,
+  });
 }
 
 type AgentToolFailure = JsonRecord & { code: string };
@@ -49,9 +55,9 @@ function normalize_agent_tool_error(cause: unknown): AgentToolError {
 
 /** 统一校验模型参数根、保证 SSE 首帧时序，并把非预期执行异常留在应用诊断中。 */
 export function prepare_agent_tool(
-  tool: ToolDefinition,
+  tool: ToolRegistration,
   log_manager: Pick<LogManager, "error">,
-): ToolDefinition {
+): ToolRegistration {
   const parameters = tool.parameters as unknown as JsonRecord; // TypeBox symbol 元数据不参与模型可见根结构判断
   if (
     parameters["type"] !== "object" ||
@@ -63,7 +69,7 @@ export function prepare_agent_tool(
   }
   return {
     ...tool,
-    execute: async (...args: Parameters<ToolDefinition["execute"]>) => {
+    execute: async (...args: Parameters<ToolRegistration["execute"]>) => {
       await scheduler.yield();
       try {
         return await tool.execute(...args);
@@ -75,7 +81,7 @@ export function prepare_agent_tool(
           log_manager.error(t_main_log("app.diagnostic.agent.tool_execution_failed"), {
             source: "agent",
             error: cause,
-            context: { tool_call_id: args[0], tool_name: tool.name },
+            context: { tool_call_id: args[1].callId, tool_name: tool.name },
           });
         }
         throw normalize_agent_tool_error(cause);

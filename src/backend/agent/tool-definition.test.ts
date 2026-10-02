@@ -1,5 +1,6 @@
+import { agent_tool_call } from "../../test/agent-tool-fixture";
 import { Type } from "@earendil-works/pi-ai";
-import { defineTool } from "@earendil-works/pi-coding-agent";
+import { defineTool } from "@earendil-works/pi-durable";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { AppError } from "../../shared/error";
@@ -33,7 +34,6 @@ describe("Agent 工具公共边界", () => {
     const wrapped = prepare_agent_tool(
       defineTool({
         name: "test_tool",
-        label: "测试",
         description: "测试",
         parameters: Type.Object({}),
         execute,
@@ -43,24 +43,20 @@ describe("Agent 工具公共边界", () => {
 
     const tool_error = new AgentToolError({ code: "test.invalid" });
     execute.mockRejectedValueOnce(tool_error);
-    await expect(
-      wrapped.execute("domain", {}, undefined, undefined, undefined as never),
-    ).rejects.toBe(tool_error);
+    await expect(wrapped.execute({}, ...agent_tool_call("domain"))).rejects.toBe(tool_error);
 
     const validation_error = new AppError("request.validation_failed");
     execute.mockRejectedValueOnce(validation_error);
-    await expect(
-      wrapped.execute("validation", {}, undefined, undefined, undefined as never),
-    ).rejects.toMatchObject({ details: { code: validation_error.code } });
+    await expect(wrapped.execute({}, ...agent_tool_call("validation"))).rejects.toMatchObject({
+      details: { code: validation_error.code },
+    });
 
     execute.mockRejectedValueOnce(
       new AppError("data.revision_conflict", {
         public_details: { section: "quality", expected_revision: 2, current_revision: 3 },
       }),
     );
-    await expect(
-      wrapped.execute("revision", {}, undefined, undefined, undefined as never),
-    ).rejects.toMatchObject({
+    await expect(wrapped.execute({}, ...agent_tool_call("revision"))).rejects.toMatchObject({
       details: {
         code: "data.revision_conflict",
         section: "quality",
@@ -72,9 +68,9 @@ describe("Agent 工具公共边界", () => {
 
     const provider_error = new AppError("model.provider_failed");
     execute.mockRejectedValueOnce(provider_error);
-    await expect(
-      wrapped.execute("warning", {}, undefined, undefined, undefined as never),
-    ).rejects.toMatchObject({ details: { code: "model.provider_failed" } });
+    await expect(wrapped.execute({}, ...agent_tool_call("warning"))).rejects.toMatchObject({
+      details: { code: "model.provider_failed" },
+    });
     expect(error).toHaveBeenLastCalledWith(expect.any(String), {
       source: "agent",
       error: provider_error,
@@ -83,9 +79,9 @@ describe("Agent 工具公共边界", () => {
 
     const unknown = new Error("provider secret");
     execute.mockRejectedValueOnce(unknown);
-    await expect(
-      wrapped.execute("unknown", {}, undefined, undefined, undefined as never),
-    ).rejects.toMatchObject({ details: { code: "tool_failed" } });
+    await expect(wrapped.execute({}, ...agent_tool_call("unknown"))).rejects.toMatchObject({
+      details: { code: "tool_failed" },
+    });
     expect(error).toHaveBeenLastCalledWith(expect.any(String), {
       source: "agent",
       error: unknown,
@@ -96,7 +92,6 @@ describe("Agent 工具公共边界", () => {
   it("统一注册边界拒绝非普通对象根 Schema", () => {
     const invalid = defineTool({
       name: "invalid_tool",
-      label: "非法工具",
       description: "测试",
       parameters: Type.Union([Type.Object({}), Type.Object({ value: Type.String() })], {
         type: "object",

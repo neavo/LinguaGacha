@@ -1,3 +1,4 @@
+import { agent_tool_call } from "../../../test/agent-tool-fixture";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -194,5 +195,5 @@ async function execute(
   tool: ReturnType<typeof create_agent_read_skill_tool>,
   input: { name: string; path?: string },
 ) {
-  return await tool!.execute("read", input, undefined, undefined, undefined as never);
+  return await tool!.execute(input, ...agent_tool_call("read"));
 }

@@ -3,8 +3,7 @@ import type {
   Model as PiModel,
   ModelThinkingLevel as PiModelThinkingLevel,
 } from "@earendil-works/pi-ai";
-import { createProvider } from "@earendil-works/pi-ai/models";
-import type { ModelRuntime } from "@earendil-works/pi-coding-agent";
+import { createProvider, type MutableModels } from "@earendil-works/pi-ai/models";
 import { lazyStream } from "@earendil-works/pi-ai/api/lazy";
 
 import type { JsonRecord } from "../../domain/json";
@@ -43,9 +42,9 @@ export function resolve_agent_batch_translation_model(
   return Model.from_json({ ...agent_model.to_json(), thinking: { level } }, agent_model.id);
 }
 
-/** 把当前统一请求快照注册到 coding-agent 模型运行时。 */
+/** 把当前统一请求快照注册到 Pi 模型集合。 */
 export function register_agent_model(
-  model_runtime: ModelRuntime,
+  models: MutableModels,
   config: JsonRecord,
   identity: ModelRequestIdentity,
   catalog: PiModelCatalogReader,
@@ -68,23 +67,16 @@ export function register_agent_model(
     maxTokens: capability.agent_limits.max_output_tokens,
     input: ["text", "image"],
   });
-  const provider_config = {
-    name: `LinguaGacha ${pi.model.provider}`,
-    baseUrl: pi.model.baseUrl,
-    apiKey: api_key,
-    api: pi.model.api,
-    authHeader: false,
-    models: [pi.model],
-    // SDK 压缩可使用独立路由身份，最终请求仍采用产品对话身份及本轮配置。
-    streamSimple: (active_model, context, options) =>
-      pi.streamSimple(active_model, context, {
-        ...options,
-        apiKey: api_key,
-        headers: { ...snapshot.headers },
-        onPayload: (payload, active_model) =>
-          apply_request_overrides(snapshot, payload, active_model.compat),
-      }),
-  } satisfies Parameters<ModelRuntime["registerProvider"]>[1];
+  const provider_name = `LinguaGacha ${pi.model.provider}`;
+  // 模型能力与实际载荷各自保持原有边界，用户扩展在最终 onPayload 生效。
+  const configured_stream: ProviderStreams["streamSimple"] = (active_model, context, options) =>
+    pi.streamSimple(active_model, context, {
+      ...options,
+      apiKey: api_key,
+      headers: { ...snapshot.headers },
+      onPayload: (payload, active_model) =>
+        apply_request_overrides(snapshot, payload, active_model.compat),
+    });
   if (snapshot.auth_type === "oauth") {
     if (auth === undefined) throw new AppErrors.AppError("model.auth_required");
     const session_id = auth.bind();
@@ -137,7 +129,7 @@ export function register_agent_model(
             }
           })();
         });
-    model_runtime.registerNativeProvider(
+    models.setProvider(
       createProvider({
         id: pi.model.provider,
         name: "ChatGPT",
@@ -147,7 +139,7 @@ export function register_agent_model(
           apiKey: {
             name: "ChatGPT",
             check: async () => ({ type: "oauth", source: "ChatGPT" }),
-            // ModelRuntime 每次 prepareRequest 都委托应用认证，SDK 传入的旧 apiKey 不参与解析。
+            // 请求派发时由应用认证服务解析凭据，SDK 传入的旧 apiKey 不参与解析。
             resolve: async ({ signal }) => ({
               auth: await auth.resolve(session_id, signal),
               source: "ChatGPT",
@@ -161,11 +153,23 @@ export function register_agent_model(
       }),
     );
   } else {
-    model_runtime.registerProvider(pi.model.provider, provider_config);
+    models.setProvider(
+      createProvider({
+        id: pi.model.provider,
+        name: provider_name,
+        baseUrl: pi.model.baseUrl,
+        models: [pi.model],
+        auth: {
+          apiKey: {
+            name: provider_name,
+            resolve: async () => ({ auth: { apiKey: api_key }, source: "LinguaGacha" }),
+          },
+        },
+        api: { stream: configured_stream, streamSimple: configured_stream },
+      }),
+    );
   }
-  const model = model_runtime.getModel(pi.model.provider, snapshot.model_id) as
-    | PiModel<PiApi>
-    | undefined;
+  const model = models.getModel(pi.model.provider, snapshot.model_id) as PiModel<PiApi> | undefined;
   if (model === undefined) {
     throw new AppErrors.AppError("runtime.internal_invariant", {
       diagnostic_context: {

@@ -120,12 +120,6 @@ describe("AgentSessionLog", () => {
     log.handle_event({
       type: "message_update",
       message,
-      assistantMessageEvent: {
-        type: "text_delta",
-        contentIndex: 0,
-        delta: "部分回答",
-        partial: message,
-      },
     });
     log.request_stop();
     expect(records().filter((record) => record.event === "message")).toHaveLength(1);
@@ -158,7 +152,6 @@ describe("AgentSessionLog", () => {
       reason: "threshold",
       result: undefined,
       aborted: false,
-      willRetry: false,
       errorMessage: "压缩失败",
     });
     log.finish_run("success");
