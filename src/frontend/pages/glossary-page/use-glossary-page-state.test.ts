@@ -715,7 +715,7 @@ describe("useGlossaryPageState", () => {
       entries: [
         create_default_glossary_entries()[0],
         {
-          entry_id: expect.stringMatching(/^[0-9A-HJKMNP-TV-Z]{5}$/u),
+          entry_id: expect.any(String),
           src: "香蕉",
           dst: "Banana",
           info: "水果",

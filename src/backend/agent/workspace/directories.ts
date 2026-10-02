@@ -1,6 +1,6 @@
 import path from "node:path";
-import { randomBytes } from "node:crypto";
-import { AGENT_SESSION_ID_BYTES, AGENT_SESSION_ID_PATTERN } from "../../../shared/agent";
+import { random_id } from "../../../shared/utils/base62";
+import { AGENT_SESSION_ID_LENGTH, AGENT_SESSION_ID_PATTERN } from "../../../shared/agent";
 import { AppError } from "../../../shared/error";
 import type { NativeFs } from "../../../native/native-fs";
 
@@ -30,7 +30,7 @@ export class AgentWorkspaceDirectories {
   public async create(): Promise<string> {
     await this.initialize();
     for (;;) {
-      const id = randomBytes(AGENT_SESSION_ID_BYTES).toString("base64url");
+      const id = random_id(AGENT_SESSION_ID_LENGTH);
       try {
         await this.fs.make_dir_exclusive(this.path(id));
         return id;

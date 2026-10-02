@@ -16,6 +16,9 @@ import type {
   DesktopUpdateDownloadResult,
   DesktopUpdateLaunchRequest,
 } from "../bridge/bridge-types";
+import { random_id } from "../../shared/utils/base62";
+
+const WRITE_PROBE_ID_LENGTH = 12;
 
 const BERSERKER_EXECUTABLE_NAME = "berserker.exe";
 const DOWNLOAD_TEMP_SUFFIX = ".download";
@@ -316,7 +319,7 @@ async function can_write_directory(directory: string): Promise<boolean> {
     await fs.mkdir(directory, { recursive: true });
     const probe_path = path.join(
       directory,
-      `.linguagacha_update_probe_${Date.now().toString()}_${Math.random().toString(16).slice(2)}`,
+      `.linguagacha_update_probe_${random_id(WRITE_PROBE_ID_LENGTH)}`,
     );
     await fs.writeFile(probe_path, "");
     await fs.rm(probe_path, { force: true });

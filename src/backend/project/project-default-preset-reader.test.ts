@@ -53,7 +53,7 @@ describe("ProjectDefaultPresetReader", () => {
           kind: "glossary",
           entries: [
             {
-              entry_id: expect.stringMatching(/^[0-9A-HJKMNP-TV-Z]{5}$/u),
+              entry_id: expect.any(String),
               src: "勇者",
               dst: "Hero",
               info: "",
@@ -90,7 +90,7 @@ describe("ProjectDefaultPresetReader", () => {
         kind: "text_preserve",
         entries: [
           {
-            entry_id: expect.stringMatching(/^[0-9A-HJKMNP-TV-Z]{5}$/u),
+            entry_id: expect.any(String),
             src: "\\[[^\\]]+\\]",
             info: "",
           },

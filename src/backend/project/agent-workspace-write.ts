@@ -3,7 +3,7 @@ import {
   resolve_agent_workspace_page_updates,
   type AgentWorkspacePageUpdateIntent,
 } from "./agent-workspace-page-write";
-import { createHash } from "node:crypto";
+import { fingerprint } from "../utils/fingerprint";
 import { isDeepStrictEqual } from "node:util";
 
 import { Item, type ItemNameField } from "../../domain/item";
@@ -170,7 +170,7 @@ export function project_agent_workspace_item(item: JsonRecord): JsonRecord {
     status: Item.normalize_status(item["status"]),
     retry_count: read_json_integer(item["retry_count"], 0),
   };
-  return { ...row, fp: fingerprint(item_fingerprint_tuple(row)) };
+  return { ...row, fp: workspace_fingerprint(item_fingerprint_tuple(row)) };
 }
 
 /** 把 quality entry 的内部身份与业务字段投影为带当前位置的工作区对象。 */
@@ -182,7 +182,7 @@ export function project_agent_workspace_quality_entry(
   const row = project_quality_business_entry(kind, entry);
   return {
     id: row["id"],
-    fp: fingerprint(quality_fingerprint_tuple(kind, row)),
+    fp: workspace_fingerprint(quality_fingerprint_tuple(kind, row)),
     sort,
     ...Object.fromEntries(
       AGENT_WORKSPACE_QUALITY_BUSINESS_FIELDS[kind].map((field) => [field, row[field]]),
@@ -192,7 +192,7 @@ export function project_agent_workspace_quality_entry(
 
 /** prompt 指纹同时绑定 kind 与正文，避免不同提示词共享同一事实身份。 */
 export function project_agent_workspace_prompt(kind: PromptKind, text: string): JsonRecord {
-  return { fp: fingerprint(["prompt", kind, text]), text };
+  return { fp: workspace_fingerprint(["prompt", kind, text]), text };
 }
 
 /** 对当前对象事实重放整批意图，返回实际写入、拒绝与可提交候选。 */
@@ -275,11 +275,8 @@ export function derive_agent_workspace_apply_status(
 }
 
 /** 指纹是工作区会话内的短冲突令牌，不作为持久身份或安全摘要。 */
-function fingerprint(tuple: JsonValue[]): string {
-  return createHash("sha256")
-    .update(JsonTool.stringifyStrict(tuple))
-    .digest("base64url")
-    .slice(0, AGENT_WORKSPACE_FP_LENGTH);
+function workspace_fingerprint(tuple: JsonValue[]): string {
+  return fingerprint(JsonTool.stringifyStrict(tuple), AGENT_WORKSPACE_FP_LENGTH);
 }
 
 /** item fp 覆盖工作区公开的完整对象事实，任何字段漂移都会失效。 */

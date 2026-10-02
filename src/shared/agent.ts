@@ -1,6 +1,7 @@
 import type { ModelAgentLimits } from "../domain/model-agent";
 import type { JsonRecord } from "../domain/json";
 import type { Locale } from "../domain/app-language";
+import { base62_pattern } from "./utils/base62";
 /** AgentService 与 renderer 共享的唯一 SSE topic。 */
 export const AGENT_SESSION_EVENT_TOPIC = "agent.session_event";
 
@@ -355,6 +356,6 @@ export function normalize_agent_revision_request(
     : { entryId: entry_id, message };
 }
 
-/** 产品会话身份同时用于工程登记和本机目录。SDK 记录身份由 SDK 管理。 */
-export const AGENT_SESSION_ID_PATTERN = /^[a-zA-Z0-9_-]{8}$/u;
-export const AGENT_SESSION_ID_BYTES = 6;
+/** 产品会话的生成、工程读取与目录清理共用同一身份长度。 */
+export const AGENT_SESSION_ID_LENGTH = 8;
+export const AGENT_SESSION_ID_PATTERN = base62_pattern(AGENT_SESSION_ID_LENGTH);

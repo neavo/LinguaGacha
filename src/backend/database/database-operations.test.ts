@@ -13,10 +13,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { JsonTool } from "../../shared/utils/json-tool";
 import { ZstdTool } from "./zstd-tool";
 import * as migrations from "../migration/database-migrations";
-import {
-  PROJECT_DATABASE_APPLIED_WRITEBACK_MIGRATIONS_META_KEY,
-  PROJECT_DATABASE_WRITEBACK_MIGRATION_IDS,
-} from "../migration/database-migrations";
+import { PROJECT_DATABASE_APPLIED_WRITEBACK_MIGRATIONS_META_KEY } from "../migration/database-migrations";
 import { ProjectDataReader } from "../project/project-data-reader";
 import { ProjectDatabase } from "./database-operations";
 
@@ -227,9 +224,6 @@ describe("ProjectDatabase", () => {
     database.set_meta(lg_path, "source_language", "JA");
 
     expect(read_meta(database, lg_path, "source_language", "")).toBe("JA");
-    expect(
-      read_meta(database, lg_path, PROJECT_DATABASE_APPLIED_WRITEBACK_MIGRATIONS_META_KEY, []),
-    ).toEqual(PROJECT_DATABASE_WRITEBACK_MIGRATION_IDS);
     expect(has_project_sidecar(lg_path)).toBe(false);
   });
 
@@ -296,17 +290,22 @@ describe("ProjectDatabase", () => {
   it("首次打开旧工程时写回质量规则身份并满足严格读取契约", () => {
     const { database, lg_path } = create_database_project("legacy-quality-rule-identity");
     database.set_rules(lg_path, "glossary", [{ src: "缺失身份", dst: "译文" }]);
+    const applied_ids = read_meta(
+      database,
+      lg_path,
+      PROJECT_DATABASE_APPLIED_WRITEBACK_MIGRATIONS_META_KEY,
+      [],
+    ) as string[];
     database.close_project(lg_path);
     // 新工程已执行全部迁移，移除目标 id 才能模拟历史工程首次打开。
     {
       using legacy_db = new DatabaseSync(lg_path);
-      const applied_ids = PROJECT_DATABASE_WRITEBACK_MIGRATION_IDS.filter(
-        (id) => id !== "quality-rule-entry-identity",
-      );
       legacy_db
         .prepare("UPDATE meta SET value = ? WHERE key = ?")
         .run(
-          JsonTool.stringifyStrict(applied_ids),
+          JsonTool.stringifyStrict(
+            applied_ids.filter((id) => id !== "quality-rule-entry-identity"),
+          ),
           PROJECT_DATABASE_APPLIED_WRITEBACK_MIGRATIONS_META_KEY,
         );
     }

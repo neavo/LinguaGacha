@@ -68,6 +68,7 @@ describe("adapt_project_change", () => {
       items: { payloadMode: "canonical-delta", changedIds: [1] },
     });
 
+    expect(event?.eventId).toMatch(/^[0-9A-Za-z]{12}$/u);
     expect(event?.items).toMatchObject({
       payloadMode: "canonical-delta",
       changedIds: [1],

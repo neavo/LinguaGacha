@@ -1,5 +1,7 @@
 import { afterEach, expect, it } from "vitest";
 import fs from "node:fs";
+import { DatabaseSync } from "node:sqlite";
+import { ACTIVE_AGENT_SESSION_KEY } from "./agent-session-store";
 import os from "node:os";
 import path from "node:path";
 import { Harness, createRegistry, defineDoc } from "@earendil-works/pi-durable";
@@ -77,4 +79,26 @@ it("SDK 与工程并发提交、失败回滚，关闭后只复制 lg 即可恢�
   expect(reopened.get_all_meta(copy)).toMatchObject({ name: "测试" });
   await restored.close();
   reopened.close();
+});
+
+it("读取工程时拒绝已登记但格式非法的会话身份", async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "lg-agent-invalid-id-"));
+  roots.push(root);
+  const file = path.join(root, "project.lg");
+  const database = new ProjectDatabase();
+  database.create_project(file, "测试");
+  const store = database.open_agent_store(file);
+  try {
+    await store.create("session1");
+    using raw = new DatabaseSync(file);
+    for (const id of ["../other", "abCD12_3", "abcD1234\n"]) {
+      // 同时篡改登记行和激活指针，确保失败来自格式边界而非记录缺失。
+      raw.prepare("UPDATE agent_sessions SET id = ?").run(id);
+      database.set_meta(file, ACTIVE_AGENT_SESSION_KEY, id);
+      await expect(store.read()).rejects.toMatchObject({ code: "file.invalid_structure" });
+    }
+  } finally {
+    await store.close();
+    database.close();
+  }
 });

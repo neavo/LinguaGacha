@@ -70,7 +70,7 @@ describe("normalize_quality_rule_entries", () => {
     ]);
 
     expect(entries).toHaveLength(1);
-    expect(entries[0]?.entry_id).toMatch(/^[0-9A-HJKMNP-TV-Z]{5}$/u);
+    expect(entries[0]?.entry_id).toMatch(/^[0-9A-Za-z]{5}$/u);
     expect(entries[0]?.entry_id).not.toBe("external");
   });
 

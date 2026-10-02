@@ -63,9 +63,8 @@ export class AgentSessionStore {
     return { id, data: { uploads: message.attachments as AgentFileAttachment[] } };
   }
 
-  /** 身份登记和激活指针一起提交，上传可以先于第一条模型消息发生。 */
+  /** 登记工作区已生成的身份，与激活指针一起提交，上传可先于第一条模型消息发生。 */
   public async create(id: string): Promise<AgentSessionRecord> {
-    if (!AGENT_SESSION_ID_PATTERN.test(id)) throw new AppError("request.validation_failed");
     const data: AgentSessionData = { uploads: [] };
     await this.database.transaction(async (tx) => {
       await tx.run("INSERT INTO agent_sessions (id, data) VALUES (?, ?)", id, JSON.stringify(data));

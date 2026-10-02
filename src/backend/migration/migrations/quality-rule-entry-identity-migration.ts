@@ -2,7 +2,11 @@ import type { DatabaseSync } from "node:sqlite";
 
 import { is_json_record, type JsonValue } from "../../../domain/json";
 import { QualityRule } from "../../../domain/quality";
-import { create_quality_rule_entry_id } from "../../../shared/quality/quality-rule-entry";
+import {
+  create_quality_rule_entry_id,
+  QUALITY_RULE_ENTRY_ID_LENGTH,
+} from "../../../shared/quality/quality-rule-entry";
+import { base62_pattern } from "../../../shared/utils/base62";
 import { JsonTool } from "../../../shared/utils/json-tool";
 import { row_text } from "../migration-row";
 import type {
@@ -10,8 +14,8 @@ import type {
   ProjectDatabaseMigrationContext,
 } from "../migration-types";
 
-// 写回迁移只以当前短身份作为白名单；格式仍不是运行期领域契约。
-const CURRENT_QUALITY_RULE_ENTRY_ID_PATTERN = /^[0-9A-HJKMNP-TV-Z]{5}$/u;
+// 迁移标记缺失时会重放，保留符合当前生成契约的身份以维持引用稳定。
+const CURRENT_QUALITY_RULE_ENTRY_ID_PATTERN = base62_pattern(QUALITY_RULE_ENTRY_ID_LENGTH);
 
 /** 依赖 project-rule-storage 先把条目规则归一为单行数组。 */
 export const quality_rule_entry_identity_migration: DatabaseWritebackMigration = {
@@ -22,7 +26,7 @@ export const quality_rule_entry_identity_migration: DatabaseWritebackMigration =
   },
 };
 
-/** 将历史规则身份一次性写回当前生成形状，运行期无需保留格式兼容分支。 */
+/** 补齐或修复规则身份，重放时保留已分配的合法身份。 */
 export function run_quality_rule_entry_identity_migration(db: DatabaseSync): void {
   const read_rule_row = db.prepare("SELECT data FROM rules WHERE type = ?");
   const update_rule_row = db.prepare("UPDATE rules SET data = ? WHERE type = ?");
@@ -57,7 +61,7 @@ function migrate_rule_entries(entries: JsonValue[]): { entries: JsonValue[]; cha
       const entry_id = entry["entry_id"];
       return is_current_quality_rule_entry_id(entry_id) ? [entry_id] : [];
     }),
-  ); // 预留所有可保留身份，生成时不得抢占后续事实。
+  );
   const kept_entry_ids = new Set<string>(); // 只允许每个白名单身份的首项保留。
   let changed = false;
   const migrated_entries = entries.map((entry) => {

@@ -1,4 +1,5 @@
 import { TRANSLATION_PROMPT } from "../../domain/prompt";
+import { random_id } from "../../shared/utils/base62";
 import os from "node:os";
 import path from "node:path";
 import * as AppErrors from "../../shared/error";
@@ -11,6 +12,8 @@ export interface AppPathServiceOptions {
   env?: NodeJS.ProcessEnv; // 只读取 APPIMAGE 运行形态
   nativeFs?: NativeFs;
 }
+
+const WRITE_PROBE_ID_LENGTH = 12;
 
 const HOME_DATA_ROOT_NAME = "LinguaGacha";
 const BUILTIN_DIR_NAME = "builtin";
@@ -288,7 +291,7 @@ export class AppPathService {
       this.native_fs.make_dir(directory);
       const probe_path = path.join(
         directory,
-        `.linguagacha_write_probe_${Date.now().toString()}_${Math.random().toString(16).slice(2)}`,
+        `.linguagacha_write_probe_${random_id(WRITE_PROBE_ID_LENGTH)}`,
       );
       this.native_fs.write_file_sync(probe_path, "");
       this.native_fs.unlink(probe_path, { force: true });

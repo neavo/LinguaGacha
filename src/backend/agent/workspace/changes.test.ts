@@ -175,6 +175,8 @@ describe("Agent workspace change parser", () => {
       { item_id: 1, fp: "abcd", dst: "" },
       { item_id: 2, fp: "!!!!", dst: "X" },
       { item_id: 3, fp: "abcd" },
+      { item_id: 4, fp: "ab-_", dst: "X" },
+      { item_id: 5, fp: "abcd\n", dst: "X" },
     ];
     write(
       workspace,
@@ -189,6 +191,8 @@ describe("Agent workspace change parser", () => {
     expect(parsed.rejected).toMatchObject([
       { id: 2, line: 2, path: "/fp", reason: "invalid_change" },
       { id: 3, line: 3, path: "/", reason: "invalid_change" },
+      { id: 4, line: 4, path: "/fp", reason: "invalid_change" },
+      { id: 5, line: 5, path: "/fp", reason: "invalid_change" },
     ]);
   });
 });

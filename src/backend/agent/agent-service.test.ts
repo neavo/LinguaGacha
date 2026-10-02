@@ -1,7 +1,8 @@
 import { DatabaseSync } from "node:sqlite";
 import { NodeSqliteDatabase } from "@earendil-works/pi-durable/storage/sqlite/node";
 import { AgentSessionStore } from "../database/agent-session-store";
-import { randomBytes } from "node:crypto";
+import { random_id } from "../../shared/utils/base62";
+import { AGENT_SESSION_ID_LENGTH } from "../../shared/agent";
 import type { AgentApprovalMode } from "../../domain/setting";
 import { AgentTokenSpeed } from "./agent-token-speed";
 import { uploaded_file } from "../../test/agent-upload-fixture";
@@ -2157,7 +2158,7 @@ describe("AgentService", () => {
       describe_file: vi.fn(),
       read_document_image: vi.fn(async () => ({ bytes: new Uint8Array(), mime: "image/png" })),
       invalidate_links: vi.fn(),
-      create_session: vi.fn(async () => randomBytes(6).toString("base64url")),
+      create_session: vi.fn(async () => random_id(AGENT_SESSION_ID_LENGTH)),
       activate_session: vi.fn(async () => undefined),
       close: vi.fn(async () => undefined),
       delete_session: vi.fn(async () => undefined),
@@ -3699,7 +3700,7 @@ describe("AgentService", () => {
         describe_file: vi.fn(),
         read_document_image: vi.fn(async () => ({ bytes: new Uint8Array(), mime: "image/png" })),
         invalidate_links: vi.fn(),
-        create_session: vi.fn(async () => randomBytes(6).toString("base64url")),
+        create_session: vi.fn(async () => random_id(AGENT_SESSION_ID_LENGTH)),
         activate_session: vi.fn(async () => undefined),
         close: vi.fn(async () => undefined),
         delete_session: vi.fn(async () => undefined),

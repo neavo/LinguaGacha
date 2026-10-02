@@ -654,7 +654,7 @@ describe("AgentWorkspaceService", () => {
     });
     const { scriptPath } = fixture.run.mock.lastCall![0];
     expect(path.posix.dirname(scriptPath)).toBe(AGENT_WORKSPACE_RUN_ROOT);
-    expect(path.posix.extname(scriptPath)).toBe(".mjs");
+    expect(path.posix.basename(scriptPath)).toMatch(/^[0-9A-Za-z]{12}\.mjs$/u);
     const run_path = scriptPath.slice(0, -".mjs".length);
     expect(fixture.run).toHaveBeenLastCalledWith(
       {
