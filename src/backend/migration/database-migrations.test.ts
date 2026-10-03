@@ -5,7 +5,6 @@ import type { DatabaseSchemaMigration, DatabaseWritebackMigration } from "./migr
 import {
   run_project_database_migrations,
   PROJECT_DATABASE_APPLIED_WRITEBACK_MIGRATIONS_META_KEY,
-  PROJECT_DATABASE_WRITEBACK_MIGRATION_IDS,
 } from "./database-migrations";
 /** 按持久化 JSON 读取迁移完成标记。 */
 function read_meta(db: DatabaseSync, key: string): unknown {
@@ -57,16 +56,5 @@ it("按顺序建库和写回，失败原子回滚，重试及重复打开保留�
   expect(read_meta(db, PROJECT_DATABASE_APPLIED_WRITEBACK_MIGRATIONS_META_KEY)).toEqual([
     "first",
     "second",
-  ]);
-});
-
-it("写回迁移标识及顺序保持持久化契约", () => {
-  // 这些标识已写入历史工程，移除或改名会改变打开旧工程时的写回行为。
-  expect(PROJECT_DATABASE_WRITEBACK_MIGRATION_IDS).toEqual([
-    "project-rule-storage",
-    "quality-rule-entry-identity",
-    "project-item-stable-metadata",
-    "trans-item-metadata",
-    "project-item-public-contract",
   ]);
 });

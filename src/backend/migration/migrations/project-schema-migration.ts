@@ -12,7 +12,7 @@ import type { DatabaseSchemaMigration, ProjectDatabaseMigrationContext } from ".
  * `ProjectDatabase` 首次打开任意 `.lg` 连接时执行，先补齐 schema，再允许其它迁移读取项目事实。
  *
  * 不处理范围：
- * 本文件只补物理结构和当前 schema 版本；规则、item、checkpoint 等业务数据写回由独立迁移点处理。
+ * 本文件只补物理结构和当前 schema 版本。规则、item、checkpoint 等业务数据写回由独立迁移点处理。
  */
 export const project_schema_migration: DatabaseSchemaMigration = {
   id: "project-schema",
@@ -41,6 +41,10 @@ function ensure_current_schema(db: DatabaseSync): void {
       CREATE TABLE IF NOT EXISTS meta (
         key TEXT PRIMARY KEY,
         value TEXT NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS agent_sessions (
+        id TEXT PRIMARY KEY,
+        data TEXT NOT NULL CHECK (json_valid(data))
       );
       CREATE TABLE IF NOT EXISTS assets (
         id INTEGER PRIMARY KEY AUTOINCREMENT,

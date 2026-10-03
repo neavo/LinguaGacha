@@ -17,8 +17,9 @@
     "typecheck": "tsc -b"
   },
   "dependencies": {
-    "@earendil-works/pi-ai": "^0.99.2",
-    "@earendil-works/pi-coding-agent": "^0.99.2",
+    "@earendil-works/chord": "1.0.0",
+    "@earendil-works/pi-ai": "1.0.0",
+    "@earendil-works/pi-durable": "1.0.0",
     "@earendil-works/pi-mcp": "^0.99.2",
     "jose": "^6.2.12",
     "proper-lockfile": "^4.1.2"

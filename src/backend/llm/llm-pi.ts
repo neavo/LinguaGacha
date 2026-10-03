@@ -20,7 +20,7 @@ import { apply_one_shot_request_overrides } from "./llm-payload";
 import type { LLMMessage } from "./llm-types";
 import { resolve_pi_thinking_level, type ResolvedModelCapability } from "./model-capability";
 
-// Pi provider 身份只用于 adapter 与 ModelRuntime 注册，项目策略直接使用 api_format。
+// Pi provider 身份只用于 adapter 与模型集合注册，项目策略直接使用 api_format。
 export type PiApi =
   | "openai-completions"
   | "openai-responses"

@@ -139,7 +139,7 @@ export class ProjectLifecycleService {
   }
 
   /**
-   * 读取当前工程快照；公开 loaded/path 只来自 会话权威
+   * 读取当前工程快照。公开 loaded/path 只来自 会话权威
    */
   public async get_project_snapshot(): Promise<JsonRecord> {
     const state = this.session_state.snapshot();
@@ -161,7 +161,7 @@ export class ProjectLifecycleService {
   }
 
   /**
-   * 在生命周期租约内完成迁移、缓存热机和会话切换；create 复用此入口避免嵌套租约。
+   * 在生命周期租约内完成迁移、缓存热机和会话切换。create 复用此入口避免嵌套租约。
    */
   private async load_project_under_lease(body: JsonRecord): Promise<JsonRecord> {
     const project_path = this.require_body_string(body, "path");
@@ -173,7 +173,7 @@ export class ProjectLifecycleService {
       app_setting_service: this.app_setting_service,
     });
 
-    this.database.transaction(project_path, () => {
+    await this.database.transaction(project_path, () => {
       this.database.set_meta(project_path, "updated_at", this.build_timestamp());
       for (const write of migration_writes) {
         write(this.database);
@@ -321,7 +321,7 @@ export class ProjectLifecycleService {
   }
 
   /**
-   * 读取 create-commit 设置镜像；缺字段时回到当前应用设置，保持空请求可创建空工程
+   * 读取 create-commit 设置镜像。缺字段时回到当前应用设置，保持空请求可创建空工程
    */
   private read_create_project_settings(value: JsonValue | undefined): ProjectWriteSettings {
     const current = this.build_current_project_settings();
@@ -360,7 +360,7 @@ export class ProjectLifecycleService {
   }
 
   /**
-   * 只在存在候选源文件且全部解析失败时阻断；空工程创建仍保留原有测试和内部语义。
+   * 只在存在候选源文件且全部解析失败时阻断。空工程创建仍保留原有测试和内部语义。
    */
   private assert_create_commit_has_importable_files(draft: CreateCommitParsedDraft): void {
     if (draft.files.length > 0 || draft.failed_files.length === 0) {

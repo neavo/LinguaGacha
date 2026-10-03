@@ -19,10 +19,6 @@ const DATABASE_WRITEBACK_MIGRATIONS: readonly DatabaseWritebackMigration[] = [
 ];
 export const PROJECT_DATABASE_APPLIED_WRITEBACK_MIGRATIONS_META_KEY =
   "applied_writeback_migrations";
-/** 当前写回标记及顺序与历史工程共用，来源仅为数据库迁移清单。 */
-export const PROJECT_DATABASE_WRITEBACK_MIGRATION_IDS = DATABASE_WRITEBACK_MIGRATIONS.toSorted(
-  (left, right) => left.order - right.order,
-).map(({ id }) => id);
 
 /** 首次打开连接先补结构，再执行逐项原子写回；完成标记与数据在同一事务保存。 */
 export function run_project_database_migrations(

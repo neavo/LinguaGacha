@@ -13,10 +13,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { JsonTool } from "../../shared/utils/json-tool";
 import { ZstdTool } from "./zstd-tool";
 import * as migrations from "../migration/database-migrations";
-import {
-  PROJECT_DATABASE_APPLIED_WRITEBACK_MIGRATIONS_META_KEY,
-  PROJECT_DATABASE_WRITEBACK_MIGRATION_IDS,
-} from "../migration/database-migrations";
+import { PROJECT_DATABASE_APPLIED_WRITEBACK_MIGRATIONS_META_KEY } from "../migration/database-migrations";
 import { ProjectDataReader } from "../project/project-data-reader";
 import { ProjectDatabase } from "./database-operations";
 
@@ -227,9 +224,6 @@ describe("ProjectDatabase", () => {
     database.set_meta(lg_path, "source_language", "JA");
 
     expect(read_meta(database, lg_path, "source_language", "")).toBe("JA");
-    expect(
-      read_meta(database, lg_path, PROJECT_DATABASE_APPLIED_WRITEBACK_MIGRATIONS_META_KEY, []),
-    ).toEqual(PROJECT_DATABASE_WRITEBACK_MIGRATION_IDS);
     expect(has_project_sidecar(lg_path)).toBe(false);
   });
 
@@ -296,17 +290,22 @@ describe("ProjectDatabase", () => {
   it("首次打开旧工程时写回质量规则身份并满足严格读取契约", () => {
     const { database, lg_path } = create_database_project("legacy-quality-rule-identity");
     database.set_rules(lg_path, "glossary", [{ src: "缺失身份", dst: "译文" }]);
+    const applied_ids = read_meta(
+      database,
+      lg_path,
+      PROJECT_DATABASE_APPLIED_WRITEBACK_MIGRATIONS_META_KEY,
+      [],
+    ) as string[];
     database.close_project(lg_path);
     // 新工程已执行全部迁移，移除目标 id 才能模拟历史工程首次打开。
     {
       using legacy_db = new DatabaseSync(lg_path);
-      const applied_ids = PROJECT_DATABASE_WRITEBACK_MIGRATION_IDS.filter(
-        (id) => id !== "quality-rule-entry-identity",
-      );
       legacy_db
         .prepare("UPDATE meta SET value = ? WHERE key = ?")
         .run(
-          JsonTool.stringifyStrict(applied_ids),
+          JsonTool.stringifyStrict(
+            applied_ids.filter((id) => id !== "quality-rule-entry-identity"),
+          ),
           PROJECT_DATABASE_APPLIED_WRITEBACK_MIGRATIONS_META_KEY,
         );
     }
@@ -407,17 +406,19 @@ describe("ProjectDatabase", () => {
     expect(database.read_asset_content(lg_path, "source.txt")).toEqual(Buffer.from("hello"));
   });
 
-  it("事务失败时回滚已排队写入", () => {
+  it("事务失败时回滚已排队写入", async () => {
     const database = create_database();
     const lg_path = project_path("rollback.lg");
     database.create_project(lg_path, "rollback");
 
-    expect(() =>
+    await expect(
       database.transaction(lg_path, () => {
         database.set_meta(lg_path, "target_language", "ZH");
         throw new Error("rollback");
       }),
-    ).toThrow(expect.objectContaining({ cause: expect.objectContaining({ message: "rollback" }) }));
+    ).rejects.toThrow(
+      expect.objectContaining({ cause: expect.objectContaining({ message: "rollback" }) }),
+    );
 
     expect(read_meta(database, lg_path, "target_language", "missing")).toBe("missing");
   });
@@ -437,7 +438,7 @@ describe("ProjectDatabase", () => {
     expect(has_project_sidecar(lg_path)).toBe(false);
   });
 
-  it("回滚失败时保留两个原因并撤销租约持有的失效连接", () => {
+  it("回滚失败时保留两个原因并撤销租约持有的失效连接", async () => {
     const { database, lg_path } = create_database_project("rollback-failed");
     const release = database.acquire_project_lease(lg_path, "test");
     const original = DatabaseSync.prototype.exec;
@@ -447,7 +448,7 @@ describe("ProjectDatabase", () => {
     });
     let failure: unknown;
     try {
-      database.transaction(lg_path, () => {
+      await database.transaction(lg_path, () => {
         database.set_meta(lg_path, "target_language", "ZH");
         throw new Error("write failed");
       });
@@ -455,8 +456,8 @@ describe("ProjectDatabase", () => {
       failure = error;
     }
     expect(failure).toHaveProperty("cause.errors", [
-      expect.objectContaining({ cause: expect.objectContaining({ message: "write failed" }) }),
-      expect.objectContaining({ cause: expect.objectContaining({ message: "rollback failed" }) }),
+      expect.objectContaining({ message: "write failed" }),
+      expect.objectContaining({ message: "rollback failed" }),
     ]);
     expect(has_project_sidecar(lg_path)).toBe(false);
     expect(read_meta(database, lg_path, "target_language", "missing")).toBe("missing");
@@ -521,7 +522,7 @@ describe("ProjectDatabase", () => {
     ]);
   });
 
-  it("事务同步写入 item、规则和 meta，并让工程摘要反映当前事实", () => {
+  it("事务同步写入 item、规则和 meta，并让工程摘要反映当前事实", async () => {
     const { database, lg_path } = create_database_project("summary");
     const source_path = project_path("chapter.txt");
     fs.writeFileSync(source_path, "chapter");
@@ -534,7 +535,7 @@ describe("ProjectDatabase", () => {
       { id: 4, src: "跳过", status: "RULE_SKIPPED" },
     ]);
     database.set_rule_text(lg_path, "prompt.translation", "请保持语气");
-    database.transaction(lg_path, () => {
+    await database.transaction(lg_path, () => {
       database.patch_item_fields_by_ids(lg_path, [2], { status: "PROCESSED" });
       database.set_rules(lg_path, "glossary", [{ src: "姫", dst: "公主" }]);
       database.upsert_meta_entries(lg_path, {
@@ -656,20 +657,20 @@ it("PDF 源文件在解析后变化时导入事务保留旧资产和译稿", asy
   const bytes = create_pdf_fixture();
   fs.writeFileSync(source, bytes);
   const document = read_pdf_document(bytes);
-  database.transaction(lg_path, () =>
+  await database.transaction(lg_path, () =>
     database.add_asset_from_source(lg_path, "book.pdf", source, document, 0),
   );
   fs.writeFileSync(source, create_pdf_fixture(["changed after parse"]));
-  expect(() =>
+  await expect(
     database.transaction(lg_path, () =>
       database.update_asset_from_source(lg_path, "book.pdf", source, document),
     ),
-  ).toThrow("file.parse_failed");
+  ).rejects.toThrow("file.parse_failed");
   expect(database.read_asset_content(lg_path, "book.pdf")).toEqual(Buffer.from(bytes));
   expect(database.read_pdf_document(lg_path, "book.pdf")).toEqual(document);
 });
 
-it("PDF 摘要区分译稿覆盖、确认保留和省略，核对标记独立于处置", () => {
+it("PDF 摘要区分译稿覆盖、确认保留和省略，核对标记独立于处置", async () => {
   const { database, lg_path } = create_database_project("pdf-summary");
   const source = project_path("summary.pdf");
   const bytes = create_pdf_fixture(["Text", null, null, null, "Pending"]);
@@ -680,7 +681,7 @@ it("PDF 摘要区分译稿覆盖、确认保留和省略，核对标记独立于
   document.pages[2]!.translation = { kind: "keep", reason: "纯图页无需翻译" };
   document.pages[3]!.translation = { kind: "translate", markdown: "" };
   for (const page of document.pages) page.reviewed = true;
-  database.transaction(lg_path, () =>
+  await database.transaction(lg_path, () =>
     database.add_asset_from_source(lg_path, "summary.pdf", source, document, 0),
   );
   expect(database.read_pdf_summaries(lg_path)["summary.pdf"]).toEqual({

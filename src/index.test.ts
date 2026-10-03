@@ -242,7 +242,7 @@ export { verify as run_cli_entry, verify as run_gui_entry };
       },
     });
     await writeFile(path.join(source, "package.json"), JSON.stringify({ type: "module" }));
-    const pi_require = createRequire(import.meta.resolve("@earendil-works/pi-coding-agent"));
+    const pi_require = createRequire(import.meta.resolve("@earendil-works/chord"));
     const esbuild_manifest = pi_require.resolve("esbuild/package.json");
     const esbuild_require = createRequire(esbuild_manifest);
     const platform_package = `@esbuild/${process.platform}-${process.arch}`;

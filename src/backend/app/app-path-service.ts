@@ -1,4 +1,5 @@
 import { TRANSLATION_PROMPT } from "../../domain/prompt";
+import { random_id } from "../../shared/utils/identifier";
 import os from "node:os";
 import path from "node:path";
 import * as AppErrors from "../../shared/error";
@@ -106,7 +107,7 @@ export class AppPathService {
     return this.data_root;
   }
 
-  /** 返回版本内置资产根；发布态位于 app.asar，开发态位于仓库 builtin。 */
+  /** 返回版本内置资产根。发布态位于 app.asar，开发态位于仓库 builtin。 */
   public get_builtin_root(): string {
     return this.builtin_root;
   }
@@ -142,7 +143,7 @@ export class AppPathService {
     return this.get_user_data_path(BERSERKER_DIR_NAME);
   }
 
-  /** 返回一次性 Agent 数据工作区根目录；启动与会话清理共用同一落点。 */
+  /** 返回 Agent 工作区父目录。会话材料按持久化身份独立保存。 */
   public get_agent_workspace_root_dir(): string {
     return this.get_user_data_path(AGENT_WORKSPACE_DIR_NAME);
   }
@@ -286,10 +287,7 @@ export class AppPathService {
   private can_write_directory(directory: string): boolean {
     try {
       this.native_fs.make_dir(directory);
-      const probe_path = path.join(
-        directory,
-        `.linguagacha_write_probe_${Date.now().toString()}_${Math.random().toString(16).slice(2)}`,
-      );
+      const probe_path = path.join(directory, `.linguagacha_write_probe_${random_id()}`);
       this.native_fs.write_file_sync(probe_path, "");
       this.native_fs.unlink(probe_path, { force: true });
       return true;

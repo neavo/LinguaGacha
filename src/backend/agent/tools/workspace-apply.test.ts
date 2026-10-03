@@ -1,3 +1,4 @@
+import { agent_tool_call } from "../../../test/agent-tool-fixture";
 import { describe, expect, it, vi } from "vitest";
 import { validateToolArguments, type ToolCall } from "@earendil-works/pi-ai";
 import { create_agent_workspace_apply_tool } from "./workspace-apply";
@@ -19,9 +20,7 @@ describe("workspace_apply", () => {
         arguments: { target: "items" },
       } as ToolCall),
     ).toThrow();
-    expect((await tool.execute("apply", {}, undefined, undefined, {} as never)).details).toEqual(
-      result,
-    );
+    expect((await tool.execute({}, ...agent_tool_call("apply"))).details).toEqual(result);
     expect(apply_workspace).toHaveBeenCalledWith(undefined);
   });
 });

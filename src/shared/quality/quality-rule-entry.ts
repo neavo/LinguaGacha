@@ -10,19 +10,15 @@ import {
 import { compile_text_replacements } from "../text/text-replacement-rules";
 import { build_text_preserve_rule } from "../text/text-preserve-rules";
 import { compile_glossary } from "./glossary";
+import { random_id } from "../utils/identifier";
 
-// Crockford Base32 排除易混淆字符；5 位提供 25 bit，碰撞由同 kind 集合重试消解。
-const QUALITY_RULE_ENTRY_ID_ALPHABET = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
-const QUALITY_RULE_ENTRY_ID_LENGTH = 5;
+const QUALITY_RULE_ENTRY_ID_LENGTH = 6;
 
 /** 为明确的新规则分配短身份，并立即保留到调用方集合中避免同批碰撞。 */
 export function create_quality_rule_entry_id(entry_ids: Set<string>): string {
   let entry_id = "";
   do {
-    entry_id = Array.from(
-      crypto.getRandomValues(new Uint8Array(QUALITY_RULE_ENTRY_ID_LENGTH)),
-      (value) => QUALITY_RULE_ENTRY_ID_ALPHABET[value & 31],
-    ).join("");
+    entry_id = random_id(QUALITY_RULE_ENTRY_ID_LENGTH);
   } while (entry_ids.has(entry_id));
   entry_ids.add(entry_id);
   return entry_id;
@@ -56,7 +52,7 @@ export function normalize_quality_rule_entries<K extends QualityRuleKind>(
   return validate_quality_rule_entries(rule, entries) as QualityRuleEntryByKind[K][];
 }
 
-/** 收窄项目身份；格式保持不透明，只约束可用性。 */
+/** 读取已有非空身份，保留历史编码。 */
 function normalize_quality_rule_entry_id(value: unknown): string {
   if (typeof value !== "string" || value.trim() === "") {
     throw new TypeError("Quality rule entry_id must not be empty.");

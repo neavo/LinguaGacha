@@ -152,7 +152,12 @@ describe("GuiBackendBootstrap 集成", () => {
         appRoot: app_root,
         builtinRoot: path.join(app_root, "builtin"),
       });
-      const uploads = path.join(paths.get_agent_workspace_root_dir(), "uploads");
+      const snapshot = await (await fetch(apiBaseUrl + "/api/agent/snapshot")).json();
+      const uploads = path.join(
+        paths.get_agent_workspace_root_dir(),
+        snapshot.data.sessionId,
+        "uploads",
+      );
       const pending = new Promise<void>((resolve) => {
         const request = http.request(
           `${apiBaseUrl}/api/agent/uploads?name=unfinished.bin`,
@@ -175,7 +180,7 @@ describe("GuiBackendBootstrap 集成", () => {
       );
       await bootstrap.stop();
       await pending;
-      expect(fs.existsSync(uploads)).toBe(false);
+      expect(fs.readdirSync(uploads)).toEqual([]);
       expect(bootstrap.isStopped()).toBe(true);
     } finally {
       await bootstrap.stop();
@@ -269,7 +274,30 @@ describe("GuiBackendBootstrap 集成", () => {
         appRoot: app_root,
         builtinRoot: path.join(app_root, "builtin"),
       });
-      const directory = path.join(paths.get_agent_workspace_root_dir(), "work", "报告");
+      const source = path.join(app_root, "source.txt");
+      fs.writeFileSync(source, "source");
+      const project = await fetch(started.apiBaseUrl + "/api/session/project/create", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          path: path.join(app_root, "test.lg"),
+          source_paths: [source],
+          project_settings: {
+            source_language: "EN",
+            target_language: "ZH",
+            skip_duplicate_source_text_enable: true,
+            mtool_optimizer_enable: false,
+          },
+        }),
+      });
+      expect(await project.json()).toMatchObject({ ok: true });
+      const current = await (await fetch(started.apiBaseUrl + "/api/agent/snapshot")).json();
+      const directory = path.join(
+        paths.get_agent_workspace_root_dir(),
+        current.data.sessionId,
+        "work",
+        "报告",
+      );
       fs.mkdirSync(directory, { recursive: true });
       const file = path.join(directory, "结果 # 1.md");
       fs.writeFileSync(file, "报告");

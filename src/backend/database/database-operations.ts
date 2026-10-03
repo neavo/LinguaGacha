@@ -7,6 +7,8 @@ import { read_pdf_document } from "../../shared/pdf-schema";
 import path from "node:path";
 import { createHash } from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
+import { NodeSqliteDatabase } from "@earendil-works/pi-durable/storage/sqlite/node";
+import { AgentSessionStore } from "./agent-session-store";
 
 import { run_project_database_migrations } from "../migration/database-migrations";
 import { ZstdTool } from "./zstd-tool";
@@ -23,7 +25,7 @@ import {
 
 type DatabaseRow = Record<string, unknown>;
 
-// SQLite 的 IN 参数统一在数据库边界分块；业务批量大小不应复用这个存储安全值。
+// SQLite 的 IN 参数统一在数据库边界分块。业务批量大小不应复用这个存储安全值。
 const SQLITE_IN_CLAUSE_CHUNK_SIZE = 500;
 const SQLITE_AUTO_VACUUM_FULL = 1; // SQLite 的 FULL 自动回收模式。
 const SQLITE_BUSY_TIMEOUT_MS = 5000; // 连接建立后即生效，覆盖首次 WAL 初始化。
@@ -46,6 +48,7 @@ export type ProjectDatabaseWrite = (database: ProjectDatabase) => void;
 interface ProjectDatabaseConnectionRecord {
   readonly normalized_path: string; // 连接表的唯一键，避免同一 .lg 因相对路径重复打开
   readonly db: DatabaseSync;
+  readonly access: NodeSqliteDatabase; // SDK 访问与工程事务共用同一串行调度
   use_count: number; // 同步作用域与长任务租约共同持有连接，全部释放后关闭。
   ready: boolean; // 初始化或关闭失败的连接留待回收，不能交给业务使用。
 }
@@ -152,7 +155,7 @@ export class ProjectDatabase {
     }
     this.storage_maintenance_deferred_paths.delete(normalized_path);
     try {
-      this.transaction(normalized_path, () => {
+      this.initialize_transaction(normalized_path, () => {
         const now = new Date().toISOString();
         this.upsert_meta_entries(normalized_path, { name, created_at: now, updated_at: now });
         initialize?.();
@@ -188,9 +191,9 @@ export class ProjectDatabase {
   }
 
   /**
-   * 以 BEGIN IMMEDIATE 执行同步回调；回调内的 typed 方法复用当前 scoped 连接。
+   * 新建文件尚无共享使用者，同步初始化结束后才交付工程。
    */
-  public transaction<T>(project_path: string, callback: () => T): T {
+  private initialize_transaction<T>(project_path: string, callback: () => T): T {
     let committed = false; // COMMIT 成功后，收尾失败只能要求重载。
     try {
       return this.with_project_connection(project_path, (db) => {
@@ -219,6 +222,37 @@ export class ProjectDatabase {
       if (committed) throw this.committed_error(error, project_path);
       throw error;
     }
+  }
+
+  /** SDK 事务跨异步阶段持有连接，工程事务共用其队列以避免交错。同步事务体复用已有读写方法。 */
+  public async transaction<T>(project_path: string, callback: () => T): Promise<T> {
+    const release = this.acquire_project_lease(project_path, "transaction");
+    const record = this.open_project_record(path.resolve(project_path));
+    let result!: T;
+    let failure: AppErrors.AppError | undefined;
+    try {
+      result = await record.access.transaction(async () => callback());
+    } catch (error) {
+      // 回滚失败的连接不能被剩余使用权继续复用，释放时关闭它。
+      if (record.db.isTransaction) record.ready = false;
+      failure = database_error(error, project_path, "transaction");
+    }
+    try {
+      release();
+    } catch (error) {
+      if (failure !== undefined)
+        throw database_cleanup_error(failure, database_error(error, project_path, "close"));
+      throw this.committed_error(error, project_path);
+    }
+    if (failure !== undefined) throw failure;
+    return result;
+  }
+
+  /** Agent 持有工程连接直到 SDK、上传与会话关闭全部结束。 */
+  public open_agent_store(project_path: string): AgentSessionStore {
+    const release = this.acquire_project_lease(project_path, "agent");
+    const record = this.open_project_record(path.resolve(project_path));
+    return new AgentSessionStore(record.access, release);
   }
 
   /** 提交后关闭失败沿用已提交错误协议，调用者只能重载，不能重放写入。 */
@@ -273,7 +307,7 @@ export class ProjectDatabase {
     });
   }
 
-  /** 替换资产同时更新 PDF 来源；摘要不符时由外层事务回滚两者。 */
+  /** 替换资产同时更新 PDF 来源。摘要不符时由外层事务回滚两者。 */
   public update_asset_from_source(
     project_path: string,
     asset_path: string,
@@ -286,7 +320,7 @@ export class ProjectDatabase {
     });
   }
 
-  /** 导入准备与资产写入之间源文件可能变化；摘要校验与文档替换共用外层事务。 */
+  /** 导入准备与资产写入之间源文件可能变化。摘要校验与文档替换共用外层事务。 */
   private replace_pdf_source(
     db: DatabaseSync,
     file_path: string,
@@ -553,7 +587,13 @@ export class ProjectDatabase {
       const db = new DatabaseSync(this.native_fs.to_native_path(normalized_path), {
         timeout: SQLITE_BUSY_TIMEOUT_MS,
       });
-      record = { normalized_path, db, use_count: 0, ready: false };
+      record = {
+        normalized_path,
+        db,
+        access: new NodeSqliteDatabase(db),
+        use_count: 0,
+        ready: false,
+      };
       // 登记后再初始化，关闭失败仍由本实例持有并回收。
       this.connection_records.set(normalized_path, record);
       operation = "journal_mode";
@@ -579,7 +619,7 @@ export class ProjectDatabase {
   }
 
   /**
-   * 将 .lg 物理回收模式统一为 FULL；整理暂缓不影响数据库事实读取，由后续实例重新尝试。
+   * 将 .lg 物理回收模式统一为 FULL。整理暂缓不影响数据库事实读取，由后续实例重新尝试。
    */
   private apply_project_storage_mode(normalized_path: string, db: DatabaseSync): void {
     if (this.storage_maintenance_deferred_paths.has(normalized_path)) {
@@ -593,7 +633,7 @@ export class ProjectDatabase {
       db.exec("PRAGMA auto_vacuum=FULL");
       db.exec("VACUUM");
     } catch {
-      // 物理回收不改变业务数据语义；当前实例暂缓后续整理，让正常迁移继续判断工程是否可用。
+      // 物理回收不改变业务数据语义。当前实例暂缓后续整理，让正常迁移继续判断工程是否可用。
       this.storage_maintenance_deferred_paths.add(normalized_path);
     }
   }
@@ -670,7 +710,7 @@ export class ProjectDatabase {
   }
 
   /**
-   * 由内部任务数据路由调用的窄 revision 推进入口；公开读取和 ack 仍由 项目域计算
+   * 由内部任务数据路由调用的窄 revision 推进入口。公开读取和 ack 仍由 项目域计算
    */
   private advance_section_revisions(db: DatabaseSync, sections: string[]): JsonValue {
     const supported_sections = new Set(["files", "items"]);

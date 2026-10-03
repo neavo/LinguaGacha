@@ -1,5 +1,5 @@
 import { Type } from "@earendil-works/pi-ai";
-import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
+import type { ToolRegistration } from "@earendil-works/pi-durable";
 
 import type { AgentApprovalMode } from "../../../domain/setting";
 import type { AgentPendingWriteSummary } from "../../../shared/agent";
@@ -21,7 +21,7 @@ export type AgentWorkspaceApprovalPort = {
 export function create_agent_workspace_apply_tool(options: {
   workspace: Pick<AgentWorkspacePort, "apply_workspace">;
   approval: AgentWorkspaceApprovalPort;
-}): ToolDefinition {
+}): ToolRegistration {
   return define_agent_tool({
     name: "workspace_apply",
     description: [
@@ -47,7 +47,9 @@ export function create_agent_workspace_apply_tool(options: {
     ].join("\n"),
     executionMode: "sequential",
     parameters: Type.Object({}, { additionalProperties: false }),
-    execute: async (tool_call_id, _params, signal) => {
+    execute: async (_params, api, context) => {
+      const tool_call_id = api.callId;
+      const signal = context.abortSignal;
       signal?.throwIfAborted();
       // 每批开始时确定审批方式，期间修改偏好只影响后续批次。
       const result = await options.workspace.apply_workspace(

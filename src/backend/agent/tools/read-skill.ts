@@ -1,7 +1,7 @@
 import path from "node:path";
 
 import { Type } from "@earendil-works/pi-ai";
-import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
+import type { ToolRegistration } from "@earendil-works/pi-durable";
 
 import { default_native_fs, type NativeFs } from "../../../native/native-fs";
 import {
@@ -20,7 +20,7 @@ export function create_agent_read_skill_tool(
   get_skills: () => readonly AgentSkillDefinition[],
   paths: AgentSkillPaths,
   native_fs: AgentSkillNativeFs = default_native_fs,
-): ToolDefinition {
+): ToolRegistration {
   return define_agent_tool({
     name: "read_skill",
     executionMode: "sequential",
@@ -45,7 +45,8 @@ export function create_agent_read_skill_tool(
       },
       { additionalProperties: false },
     ),
-    execute: async (_tool_call_id, params, signal) => {
+    execute: async (params, _api, context) => {
+      const signal = context.abortSignal;
       signal?.throwIfAborted();
       const resource_path = normalize_skill_resource_path(params.path);
       if (resource_path === null) {

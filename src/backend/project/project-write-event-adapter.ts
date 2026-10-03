@@ -16,6 +16,7 @@ import type {
 } from "../../shared/project-event";
 import { ProjectDataReader } from "./project-data-reader";
 import type { ProjectSessionState } from "./project-session-state";
+import { random_id } from "../../shared/utils/identifier";
 
 export type ProjectWriteChangeRequest = {
   projectPath: string;
@@ -62,7 +63,7 @@ export function adapt_project_change(
   // 工程 revision 取全量最大值；事件只投影本次变化 section 的当前 revision。
   return {
     type: "project.changed",
-    eventId: `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`,
+    eventId: random_id(),
     source: normalized.source,
     projectPath: project_path,
     projectRevision: Math.max(...Object.values(all_section_revisions), 0),

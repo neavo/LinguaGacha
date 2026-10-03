@@ -1,4 +1,29 @@
-import type { AgentSessionEvent } from "@earendil-works/pi-coding-agent";
+import type { Message, AssistantMessage } from "@earendil-works/pi-ai";
+
+/** 日志消费已经观察到的执行事实，独立于 SDK 的公开事件适配与界面终态。 */
+export type AgentLogInput =
+  | { type: "message_start" | "message_end"; message: Message }
+  | {
+      type: "message_update";
+      message: AssistantMessage;
+    }
+  | { type: "tool_execution_start"; toolCallId: string; toolName: string; args: unknown }
+  | {
+      type: "tool_execution_end";
+      toolCallId: string;
+      toolName: string;
+      result: { content: readonly unknown[]; details?: unknown };
+      isError: boolean;
+    }
+  | { type: "compaction_start"; reason: string }
+  | {
+      type: "compaction_end";
+      reason: string;
+      result?: unknown;
+      aborted: boolean;
+      errorMessage?: string;
+    };
+
 import { uuidv7 } from "@earendil-works/pi-ai";
 
 import { is_json_record, type JsonValue } from "../../domain/json";
@@ -120,7 +145,7 @@ export class AgentSessionLog {
   }
 
   /** 订阅早于公开状态筛选；重置后的旧 SDK 终帧仍写入旧会话。 */
-  public handle_event(event: AgentSessionEvent): void {
+  public handle_event(event: AgentLogInput): void {
     switch (event.type) {
       case "message_start":
         if (event.message.role === "user") {

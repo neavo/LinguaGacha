@@ -3,15 +3,15 @@ import os from "node:os";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { JsonTool } from "../../../shared/utils/json-tool";
 import { run_quality_rule_entry_identity_migration } from "./quality-rule-entry-identity-migration";
 
-const CURRENT_ENTRY_ID_PATTERN = /^[0-9A-HJKMNP-TV-Z]{5}$/u; // 迁移白名单是测试的独立格式依据。
+afterEach(() => vi.restoreAllMocks());
 
 describe("run_quality_rule_entry_identity_migration", () => {
-  it("保留白名单内唯一身份并重建其余身份", () => {
+  it("预留已有身份、避开碰撞并保持迁移重放稳定", () => {
     using temp_dir = fs.mkdtempDisposableSync(
       path.join(os.tmpdir(), "linguagacha-quality-rule-identity-migration-"),
     );
@@ -23,33 +23,41 @@ describe("run_quality_rule_entry_identity_migration", () => {
     write_meta(db, "quality_rule_revision.pre_replacement", 2);
     write_meta(db, "quality_rule_revision.post_replacement", 1);
     write_rules(db, "glossary", [
-      { entry_id: "ABCDE", src: "保留", dst: "A" },
-      { entry_id: "ABCDE", src: "重复", dst: "B" },
-      { entry_id: "legacy", src: "旧格式", dst: "C" },
       { src: "缺失", dst: "D" },
+      { entry_id: "ABCDE", src: "保留", dst: "A" },
+      { entry_id: " ABCDE ", src: "重复", dst: "B" },
+      { entry_id: "000000", src: "后续身份", dst: "C" },
     ]);
-    write_rules(db, "text_preserve", [{ entry_id: "ABCDE", src: "跨 kind 保持" }]);
+    write_rules(db, "text_preserve", [
+      { entry_id: "ABCDE", src: "跨 kind 保持" },
+      { entry_id: "legacy-entry", src: "已有身份" },
+    ]);
     write_rules(db, "pre_translation_replacement", [{ entry_id: " VWXYZ ", src: "前", dst: "后" }]);
 
+    // 首次候选命中后续条目的身份，验证预留集合确实参与碰撞处理。
+    let random_byte = 0;
+    vi.spyOn(crypto, "getRandomValues").mockImplementation(((value: Uint8Array) => {
+      return value.fill(random_byte++);
+    }) as typeof crypto.getRandomValues);
     run_quality_rule_entry_identity_migration(db);
 
     const glossary = read_rules(db, "glossary");
-    const glossary_ids = glossary.map((entry) => String(entry["entry_id"]));
-    expect(glossary_ids[0]).toBe("ABCDE");
+    const glossary_ids = glossary.map((entry) => entry["entry_id"]);
+    expect(glossary_ids.every((id) => typeof id === "string" && id !== "")).toBe(true);
+    expect(glossary_ids[1]).toBe("ABCDE");
+    expect(glossary_ids[3]).toBe("000000");
     expect(new Set(glossary_ids)).toHaveLength(glossary_ids.length);
-    expect(glossary_ids).toEqual(
-      glossary_ids.map(() => expect.stringMatching(CURRENT_ENTRY_ID_PATTERN)),
-    );
     expect(glossary.map(({ entry_id: _entry_id, ...entry }) => entry)).toEqual([
+      { src: "缺失", dst: "D" },
       { src: "保留", dst: "A" },
       { src: "重复", dst: "B" },
-      { src: "旧格式", dst: "C" },
-      { src: "缺失", dst: "D" },
+      { src: "后续身份", dst: "C" },
     ]);
-    expect(read_rules(db, "text_preserve")).toEqual([{ entry_id: "ABCDE", src: "跨 kind 保持" }]);
-    expect(read_rules(db, "pre_translation_replacement")[0]?.["entry_id"]).toMatch(
-      CURRENT_ENTRY_ID_PATTERN,
-    );
+    expect(read_rules(db, "text_preserve")).toEqual([
+      { entry_id: "ABCDE", src: "跨 kind 保持" },
+      { entry_id: "legacy-entry", src: "已有身份" },
+    ]);
+    expect(read_rules(db, "pre_translation_replacement")[0]?.["entry_id"]).toBe("VWXYZ");
     expect(read_meta(db, "quality_rule_revision.glossary")).toBe(current_quality_revision + 1);
     expect(read_meta(db, "quality_rule_revision.pre_replacement")).toBe(
       current_quality_revision + 1,
@@ -102,14 +110,10 @@ function write_rules(db: DatabaseSync, type: string, entries: unknown[]): void {
   );
 }
 
-/** 读取迁移后的规则数组，形状违约时让测试直接失败。 */
+/** 读取夹具已插入的规则行，缺行直接暴露迁移异常。 */
 function read_rules(db: DatabaseSync, type: string): Array<Record<string, unknown>> {
-  const row = db.prepare("SELECT data FROM rules WHERE type = ?").get(type);
-  const entries = row === undefined ? [] : JsonTool.parseStrict<unknown>(String(row["data"]));
-  if (!Array.isArray(entries)) {
-    throw new TypeError("Expected migrated rule entries to be an array.");
-  }
-  return entries as Array<Record<string, unknown>>;
+  const row = db.prepare("SELECT data FROM rules WHERE type = ?").get(type)!;
+  return JsonTool.parseStrict<Array<Record<string, unknown>>>(String(row["data"]));
 }
 
 /** 读取完整规则行，用于证明重复执行不会继续改写持久事实。 */

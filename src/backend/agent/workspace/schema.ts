@@ -9,15 +9,10 @@ import { ITEM_MANUAL_STATUSES, ITEM_STATUSES, ITEM_TEXT_TYPES } from "../../../d
 
 import { PROMPT_KINDS } from "../../../domain/prompt";
 import { QUALITY_RULE_KINDS, type QualityRuleKind } from "../../../domain/quality";
-import {
-  AGENT_WORKSPACE_FP_LENGTH,
-  AGENT_WORKSPACE_QUALITY_BUSINESS_FIELDS,
-} from "../../../shared/project/agent-workspace";
+import { AGENT_WORKSPACE_QUALITY_BUSINESS_FIELDS } from "../../../shared/project/agent-workspace";
 
 export const AGENT_WORKSPACE_FP_SCHEMA = Type.String({
-  minLength: AGENT_WORKSPACE_FP_LENGTH,
-  maxLength: AGENT_WORKSPACE_FP_LENGTH,
-  pattern: "^[A-Za-z0-9_-]+$",
+  minLength: 1,
   description: "从当前快照原样复制对象指纹，提交时用它检查对象是否已变化。",
 });
 

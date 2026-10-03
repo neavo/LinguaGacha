@@ -262,7 +262,7 @@ export class ProjectWriteStore {
   }
 
   /**
-   * 工作台结构性写入集中提交 asset、items 与 meta；当前事实命令须显式关闭 revision guard。
+   * 工作台结构性写入集中提交 asset、items 与 meta。当前事实命令须显式关闭 revision guard。
    */
   public async replace_project_items_and_files(
     request: {
@@ -530,7 +530,7 @@ export class ProjectWriteStore {
   }
 
   /**
-   * 一次性应用领域任务输入；物理规则类型、meta key 与 revision 都留在 project 内部。
+   * 一次性应用领域任务输入。物理规则类型、meta key 与 revision 都留在 project 内部。
    */
   public async apply_task_input(request: {
     projectPath: string;
@@ -864,7 +864,7 @@ export class ProjectWriteStore {
   }
 
   /**
-   * 在同一事务内校验并提交；提交后的缓存、公开事件或 ack 读取失败统一标记 committed。
+   * 在同一事务内校验并提交。提交后的缓存、公开事件或 ack 读取失败统一标记 committed。
    */
   private async commit_runtime_change(
     request: RuntimeCommitRequest,
@@ -878,7 +878,7 @@ export class ProjectWriteStore {
       sections: request.sections,
       sectionModes: request.sectionModes,
     };
-    this.database.transaction(request.projectPath, () => {
+    await this.database.transaction(request.projectPath, () => {
       // guard、快照和写入必须共享同一个 BEGIN IMMEDIATE，不能给并发提交留下检查后窗口。
       const revision_context = request.requireExpectedSectionRevisions
         ? this.assert_expected_section_revisions(
@@ -909,7 +909,7 @@ export class ProjectWriteStore {
         ? {}
         : { sectionModes: prepared_change.sectionModes }),
     };
-    // 事务已经提交；后续任一步失败都必须携带能够读取到的最新 revision，禁止调用方重试。
+    // 事务已经提交。后续任一步失败都必须携带能够读取到的最新 revision，禁止调用方重试。
     let committed_section_revisions: ProjectDataSectionRevisions = {};
     try {
       committed_section_revisions = build_section_revisions_from_meta(
@@ -1214,7 +1214,7 @@ export class ProjectWriteStore {
   }
 
   /**
-   * 优先沿用可信持久计数；旧项目缺失计数时从数据库摘要补齐，再应用状态增量。
+   * 优先沿用可信持久计数。旧项目缺失计数时从数据库摘要补齐，再应用状态增量。
    */
   private build_translation_extras_after_status_changes(
     project_path: string,
