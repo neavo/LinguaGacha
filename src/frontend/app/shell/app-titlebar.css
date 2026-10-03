@@ -1,4 +1,6 @@
 .shell-topbar {
+  /* 拖动规则由标题栏持有。滚动内容的 `no-drag` 矩形不会随视觉裁剪而消失。 */
+  -webkit-app-region: drag;
   display: grid;
   grid-template-columns:
     var(--titlebar-safe-area-start, 0px)
@@ -38,6 +40,7 @@
 }
 
 .topbar__menu-button {
+  -webkit-app-region: no-drag;
   display: inline-flex;
   align-items: center;
   justify-content: center;

@@ -226,20 +226,6 @@ svg {
   -webkit-user-drag: none;
 }
 
-button,
-input,
-textarea,
-select,
-a,
-[role="button"],
-[data-slot="button"] {
-  -webkit-app-region: no-drag;
-}
-
-.titlebar {
-  -webkit-app-region: drag;
-}
-
 @theme inline {
   --text-xs: var(--ui-font-size-12);
   --text-sm: var(--ui-font-size-14);
@@ -657,6 +643,7 @@ a,
   }
 
   .cn-progress-toast-modal-layer {
+    -webkit-app-region: no-drag;
     position: fixed;
     inset: 0;
     z-index: var(--ui-layer-blocking-overlay);

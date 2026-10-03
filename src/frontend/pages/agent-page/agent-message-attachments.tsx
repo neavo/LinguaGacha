@@ -182,7 +182,7 @@ export function AgentMessageAttachments(props: AgentMessageAttachmentsProps): JS
             {open ? (
               <PopoverPrimitive.Portal>
                 <PopoverPrimitive.Positioner
-                  className="isolate z-(--ui-layer-popover)"
+                  className="isolate z-(--ui-layer-popover) [-webkit-app-region:no-drag]"
                   side="top"
                   align="start"
                   sideOffset={6}
