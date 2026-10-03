@@ -16,6 +16,8 @@ import {
 const BROWSER_USER_AGENT =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36";
 const GOOGLE_MODEL_LIST_PAGE_SIZE = 1000;
+// TODO(#955): 上游修复无 `client_version` 时缺少新模型的问题后，移除该参数。
+const CHATGPT_MODEL_LIST_CLIENT_VERSION = "0.160.0";
 
 /**
  * 按供应商协议查询远端实时模型列表；任务级 Key 轮换不参与模型列表探测。
@@ -33,10 +35,13 @@ export async function list_available_models(
       });
       const credential = await auth.resolve(auth.bind());
       const data = read_json_record(
-        await fetch_json(`${CHATGPT_BASE_URL}/models`, {
-          ...snapshot.headers,
-          Authorization: `Bearer ${credential.apiKey}`,
-        }),
+        await fetch_json(
+          `${CHATGPT_BASE_URL}/models?client_version=${CHATGPT_MODEL_LIST_CLIENT_VERSION}`,
+          {
+            ...snapshot.headers,
+            Authorization: `Bearer ${credential.apiKey}`,
+          },
+        ),
       );
       const entries = Array.isArray(data["models"]) ? data["models"] : [];
       return entries.flatMap((value) => {
