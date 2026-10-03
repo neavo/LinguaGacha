@@ -107,6 +107,41 @@ describe("AppEditor", () => {
     expect(on_change).not.toHaveBeenCalled();
   });
 
+  it("后台查看器首次显示才恢复阅读位置，滚动回调只在激活时发布", async () => {
+    container = document.createElement("div");
+    document.body.append(container);
+    root = createRoot(container);
+    const on_scroll = vi.fn();
+    /** 同一实例切换可见性，验证初始位置只消费一次。 */
+    const render = async (active: boolean) => {
+      await act(async () =>
+        root?.render(
+          <AppEditor
+            variant="viewer"
+            value="one\ntwo"
+            aria_label="预览"
+            active={active}
+            initial_scroll_top={80}
+            on_scroll={on_scroll}
+          />,
+        ),
+      );
+    };
+    await render(false);
+    const view = EditorView.findFromDOM(get_editor_content(container))!;
+    expect(view.scrollDOM.scrollTop).toBe(0);
+    view.scrollDOM.dispatchEvent(new Event("scroll"));
+    expect(on_scroll).not.toHaveBeenCalled();
+    await render(true);
+    expect(view.scrollDOM.scrollTop).toBe(80);
+    view.scrollDOM.scrollTop = 120;
+    view.scrollDOM.dispatchEvent(new Event("scroll"));
+    expect(on_scroll).toHaveBeenLastCalledWith(120);
+    await render(false);
+    await render(true);
+    expect(view.scrollDOM.scrollTop).toBe(120);
+  });
+
   it("字段形态会把外部多行值归一成单行", async () => {
     container = document.createElement("div");
     document.body.append(container);

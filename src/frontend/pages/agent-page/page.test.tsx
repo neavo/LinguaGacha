@@ -3,6 +3,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AgentMessageAttachments } from "./agent-message-attachments";
 import { AgentMarkdown } from "./agent-markdown";
+import { EditorView } from "@codemirror/view";
 
 const mocks = vi.hoisted(() => ({
   api: vi.fn(),
@@ -74,7 +75,7 @@ vi.mock("./agent-conversation", () => ({
           on_update_annotation={() => undefined}
         />
         <AgentMarkdown
-          text="[报告](work/report.md)\n\n[附件](work/other.md)\n\n[图片](work/chart.png)\n\n[文件](work/data.bin)"
+          text="[报告](work/report.md)\n\n[附件](work/other.md)\n\n[图片](work/chart.png)\n\n[文件](work/data.bin)\n\n[JSON](work/data.json)\n\n[JSONL](work/data.jsonl)"
           streaming={false}
         />
       </div>
@@ -107,8 +108,14 @@ describe("Agent 文档标签", () => {
         ? "image"
         : body.path.endsWith(".bin")
           ? null
-          : "markdown",
-      content: "# 结论\n\n报告正文\n\n[下一份](./other.md)",
+          : body.path.endsWith(".json")
+            ? "json"
+            : body.path.endsWith(".jsonl")
+              ? "jsonl"
+              : "markdown",
+      content: /\.jsonl?$/u.test(body.path)
+        ? '{"id":9007199254740993}'
+        : "# 结论\n\n报告正文\n\n[下一份](./other.md)",
     }));
     container = document.createElement("div");
     document.body.append(container);
@@ -159,6 +166,29 @@ describe("Agent 文档标签", () => {
     await click(container.querySelector(".agent-pages__close"));
     expect(list.hidden).toBe(true);
     expect(mocks.unmounts).not.toHaveBeenCalled();
+  });
+
+  it.each(["json", "jsonl"])("%s 链接打开预览，重新打开复用标签并读取新内容", async (format) => {
+    await render();
+    const path = `work/data.${format}`;
+    await open_link(path);
+    const view = EditorView.findFromDOM(
+      container.querySelector(".agent-code-document .cm-content")!,
+    )!;
+    expect(tab(path)?.getAttribute("aria-selected")).toBe("true");
+    expect(
+      mocks.api.mock.calls.some(([route]) => route === "/api/agent/workspace/activate-path"),
+    ).toBe(false);
+    await click(container.querySelector('[role="tab"]'));
+    const original = mocks.api.getMockImplementation()!;
+    mocks.api.mockImplementation(async (route, body) => ({
+      ...(await original(route, body)),
+      content: '{"updated":true}',
+    }));
+    await open_link(path);
+    expect(container.querySelectorAll(".agent-code-document")).toHaveLength(1);
+    expect(JSON.parse(view.state.doc.toString())).toEqual({ updated: true });
+    expect(tab(path)?.getAttribute("aria-selected")).toBe("true");
   });
 
   it("文档配图通过会话资源接口读取，关闭页面释放 Blob", async () => {
@@ -245,10 +275,13 @@ describe("Agent 文档标签", () => {
     expect(tab("work/chart.png")?.getAttribute("aria-selected")).toBe("true");
   });
 
-  it("离开再回来按轻量记录恢复，在 StrictMode 重连时仍保留标签", async () => {
+  it.each([
+    ["work/report.md", ".agent-document"],
+    ["work/data.jsonl", ".agent-code-document .cm-scroller"],
+  ])("%s 离开再回来按轻量记录恢复，在 StrictMode 重连时仍保留标签", async (path, selector) => {
     await render();
-    await open_link("work/report.md");
-    const viewport = container.querySelector<HTMLElement>(".agent-document")!;
+    await open_link(path);
+    const viewport = container.querySelector<HTMLElement>(selector)!;
     viewport.scrollTop = 80;
     await act(async () => viewport.dispatchEvent(new Event("scroll", { bubbles: true })));
     await act(async () => root.unmount());
@@ -260,7 +293,7 @@ describe("Agent 文档标签", () => {
         </StrictMode>,
       ),
     );
-    expect(container.querySelector(".agent-document")?.scrollTop).toBe(80);
-    expect(tab("work/report.md")?.getAttribute("aria-selected")).toBe("true");
+    expect(container.querySelector(selector)?.scrollTop).toBe(80);
+    expect(tab(path)?.getAttribute("aria-selected")).toBe("true");
   });
 });

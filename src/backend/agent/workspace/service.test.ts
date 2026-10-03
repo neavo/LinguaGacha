@@ -172,6 +172,24 @@ describe("AgentWorkspaceService", () => {
     expect(fixture.pick_save_path).toHaveBeenCalledWith(file.name);
   });
 
+  it.each(["json", "jsonl"])(
+    "%s 描述与读取使用同一格式规则，原始内容可包含格式错误",
+    async (format) => {
+      const fixture = await create_file_fixture(temp_dir);
+      const name = `data.${format.toUpperCase()}`;
+      const content = '{"id":9007199254740993}\n{unfinished';
+      const file = path.join(fixture.workspace_root, "work", name);
+      fs.writeFileSync(file, content);
+      const href = `work/${name}?v=1#record`;
+      expect(fixture.service.describe_file(href)).toMatchObject({
+        preview: format,
+        path: `work/${name}`,
+      });
+      expect(await fixture.service.read_document(href)).toEqual({ path: `work/${name}`, content });
+      expect(fixture.pick_save_path).not.toHaveBeenCalled();
+    },
+  );
+
   it("文档预览返回规范路径和完整文本，复用编码探测且无需保存对话框", async () => {
     const fixture = await create_file_fixture(temp_dir);
     fs.writeFileSync(

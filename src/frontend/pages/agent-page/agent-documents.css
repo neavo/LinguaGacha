@@ -165,3 +165,12 @@
   margin: 0 auto;
   padding: 20px 24px 40px;
 }
+
+.agent-code-document {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  padding: 16px;
+}
