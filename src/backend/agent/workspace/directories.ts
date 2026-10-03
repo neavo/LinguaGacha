@@ -1,5 +1,5 @@
 import path from "node:path";
-import { random_id } from "../../../shared/utils/base62";
+import { random_id } from "../../../shared/utils/identifier";
 import { AGENT_SESSION_ID_LENGTH, AGENT_SESSION_ID_PATTERN } from "../../../shared/agent";
 import { AppError } from "../../../shared/error";
 import type { NativeFs } from "../../../native/native-fs";

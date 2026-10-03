@@ -10,7 +10,7 @@ import {
 import { compile_text_replacements } from "../text/text-replacement-rules";
 import { build_text_preserve_rule } from "../text/text-preserve-rules";
 import { compile_glossary } from "./glossary";
-import { random_id } from "../utils/base62";
+import { random_id } from "../utils/identifier";
 
 export const QUALITY_RULE_ENTRY_ID_LENGTH = 5;
 

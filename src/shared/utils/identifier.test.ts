@@ -1,5 +1,5 @@
 import { afterEach, expect, it, vi } from "vitest";
-import { base62_pattern, random_id } from "./base62";
+import { base62_pattern, random_id } from "./identifier";
 
 afterEach(() => vi.restoreAllMocks());
 

@@ -15,7 +15,7 @@ import { is_agent_markdown_path } from "../../../shared/agent-workspace-file";
 
 import { agent_workspace_page_fingerprint } from "../../project/agent-workspace-page-write";
 import type { PDFHost } from "../../../shared/pdf";
-import { random_id } from "../../../shared/utils/base62";
+import { random_id } from "../../../shared/utils/identifier";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 

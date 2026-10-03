@@ -16,7 +16,7 @@ import type {
   DesktopUpdateDownloadResult,
   DesktopUpdateLaunchRequest,
 } from "../bridge/bridge-types";
-import { random_id } from "../../shared/utils/base62";
+import { random_id } from "../../shared/utils/identifier";
 
 const WRITE_PROBE_ID_LENGTH = 12;
 

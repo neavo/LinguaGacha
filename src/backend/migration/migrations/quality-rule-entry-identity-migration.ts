@@ -6,7 +6,7 @@ import {
   create_quality_rule_entry_id,
   QUALITY_RULE_ENTRY_ID_LENGTH,
 } from "../../../shared/quality/quality-rule-entry";
-import { base62_pattern } from "../../../shared/utils/base62";
+import { base62_pattern } from "../../../shared/utils/identifier";
 import { JsonTool } from "../../../shared/utils/json-tool";
 import { row_text } from "../migration-row";
 import type {

@@ -14,7 +14,7 @@ import {
   AGENT_WORKSPACE_QUALITY_BUSINESS_FIELDS,
 } from "../../../shared/project/agent-workspace";
 
-import { base62_pattern } from "../../../shared/utils/base62";
+import { base62_pattern } from "../../../shared/utils/identifier";
 
 export const AGENT_WORKSPACE_FP_SCHEMA = Type.String({
   pattern: base62_pattern(AGENT_WORKSPACE_FP_LENGTH).source,

@@ -1,3 +1,4 @@
+// 字符顺序同时用于内容指纹编码，调整顺序会改变已有指纹。
 export const BASE62_ALPHABET = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
 
 const RANDOM_ACCEPT_LIMIT = 248; // 字节范围内最大的 62 整倍数，拒绝余数区间以保证均匀分布。

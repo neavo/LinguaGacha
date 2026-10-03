@@ -1,7 +1,7 @@
 import { DatabaseSync } from "node:sqlite";
 import { NodeSqliteDatabase } from "@earendil-works/pi-durable/storage/sqlite/node";
 import { AgentSessionStore } from "../database/agent-session-store";
-import { random_id } from "../../shared/utils/base62";
+import { random_id } from "../../shared/utils/identifier";
 import { AGENT_SESSION_ID_LENGTH } from "../../shared/agent";
 import type { AgentApprovalMode } from "../../domain/setting";
 import { AgentTokenSpeed } from "./agent-token-speed";

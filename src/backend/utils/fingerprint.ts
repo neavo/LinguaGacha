@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { BASE62_ALPHABET } from "../../shared/utils/base62";
+import { BASE62_ALPHABET } from "../../shared/utils/identifier";
 
 const BASE62_RADIX = BigInt(BASE62_ALPHABET.length);
 

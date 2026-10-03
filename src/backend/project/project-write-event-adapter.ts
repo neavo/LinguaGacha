@@ -16,7 +16,7 @@ import type {
 } from "../../shared/project-event";
 import { ProjectDataReader } from "./project-data-reader";
 import type { ProjectSessionState } from "./project-session-state";
-import { random_id } from "../../shared/utils/base62";
+import { random_id } from "../../shared/utils/identifier";
 
 const PROJECT_EVENT_ID_LENGTH = 12;
 

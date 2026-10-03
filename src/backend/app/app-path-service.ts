@@ -1,5 +1,5 @@
 import { TRANSLATION_PROMPT } from "../../domain/prompt";
-import { random_id } from "../../shared/utils/base62";
+import { random_id } from "../../shared/utils/identifier";
 import os from "node:os";
 import path from "node:path";
 import * as AppErrors from "../../shared/error";

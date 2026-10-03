@@ -71,7 +71,6 @@ describe("normalize_quality_rule_entries", () => {
 
     expect(entries).toHaveLength(1);
     expect(entries[0]?.entry_id).toMatch(/^[0-9A-Za-z]{5}$/u);
-    expect(entries[0]?.entry_id).not.toBe("external");
   });
 
   it("短身份碰撞时继续生成并保留成功结果", () => {

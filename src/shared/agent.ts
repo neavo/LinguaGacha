@@ -1,7 +1,7 @@
 import type { ModelAgentLimits } from "../domain/model-agent";
 import type { JsonRecord } from "../domain/json";
 import type { Locale } from "../domain/app-language";
-import { base62_pattern } from "./utils/base62";
+import { base62_pattern } from "./utils/identifier";
 /** AgentService 与 renderer 共享的唯一 SSE topic。 */
 export const AGENT_SESSION_EVENT_TOPIC = "agent.session_event";
 
