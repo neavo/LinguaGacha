@@ -1,5 +1,5 @@
 import { Type } from "@earendil-works/pi-ai";
-import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
+import type { ToolRegistration } from "@earendil-works/pi-durable";
 import type {
   AgentBatchTranslationRequest,
   BatchTranslationResult,
@@ -12,7 +12,7 @@ export function create_agent_batch_item_translation_tool(
     request: AgentBatchTranslationRequest,
     signal: AbortSignal,
   ) => Promise<BatchTranslationResult>,
-): ToolDefinition {
+): ToolRegistration {
   return define_agent_tool({
     name: "run_batch_item_translation",
     description: [
@@ -61,7 +61,7 @@ export function create_agent_batch_item_translation_tool(
       { additionalProperties: false },
     ),
     executionMode: "sequential",
-    execute: async (_id, params, signal) =>
-      agent_tool_result(await run(params, signal ?? new AbortController().signal)),
+    execute: async (params, _api, context) =>
+      agent_tool_result(await run(params, context.abortSignal ?? new AbortController().signal)),
   });
 }

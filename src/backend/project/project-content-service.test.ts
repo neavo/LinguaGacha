@@ -1099,7 +1099,7 @@ describe("ProjectContentService", () => {
     const source_path = project_path("a.txt");
     fs.writeFileSync(source_path, "a", "utf-8");
     database.add_asset_from_source(lg_path, "a.txt", source_path, null, 0);
-    const transaction_spy = vi.spyOn(database, "transaction").mockImplementation(() => {
+    const transaction_spy = vi.spyOn(database, "transaction").mockImplementation(async () => {
       throw new Error("事务失败");
     });
 

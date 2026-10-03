@@ -1,3 +1,4 @@
+import { agent_tool_call } from "../../../test/agent-tool-fixture";
 import { validateToolArguments, type ToolCall } from "@earendil-works/pi-ai";
 import { describe, expect, it, vi } from "vitest";
 
@@ -25,11 +26,8 @@ describe("ask_user 工具", () => {
 
     validateToolArguments(tool, tool_call(params));
     const result = (await tool.execute(
-      "question-1",
       params,
-      undefined,
-      undefined,
-      undefined as never,
+      ...agent_tool_call("question-1"),
     )) as QuestionToolResult;
 
     expect(wait_for_answer).toHaveBeenCalledWith(
@@ -87,7 +85,6 @@ describe("ask_user 工具", () => {
     ).toThrow();
     await expect(
       tool.execute(
-        "question-1",
         {
           prompt: "问题",
           options: [
@@ -95,14 +92,11 @@ describe("ask_user 工具", () => {
             { id: "same", label: "选项二" },
           ],
         },
-        undefined,
-        undefined,
-        undefined as never,
+        ...agent_tool_call("question-1"),
       ),
     ).rejects.toThrow('"code":"invalid_question"');
     await expect(
       tool.execute(
-        "question-2",
         {
           prompt: "问题",
           description: "  ",
@@ -111,9 +105,7 @@ describe("ask_user 工具", () => {
             { id: "complete", label: "完整处理" },
           ],
         },
-        undefined,
-        undefined,
-        undefined as never,
+        ...agent_tool_call("question-2"),
       ),
     ).rejects.toThrow('"code":"invalid_question"');
   });

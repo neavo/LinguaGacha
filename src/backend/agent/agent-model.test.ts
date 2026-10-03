@@ -1,9 +1,5 @@
-import {
-  InMemoryCredentialStore,
-  normalizeContext,
-  type ProviderStreams,
-} from "@earendil-works/pi-ai";
-import { ModelRuntime } from "@earendil-works/pi-coding-agent";
+import { normalizeContext, type ProviderStreams } from "@earendil-works/pi-ai";
+import { createModels } from "@earendil-works/pi-ai/models";
 import { isRetryableAssistantError } from "@earendil-works/pi-ai/compat";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -134,7 +130,7 @@ describe("Agent 模型注册", () => {
       typeof import("@earendil-works/pi-ai/api/openai-responses.lazy")
     >("@earendil-works/pi-ai/api/openai-responses.lazy");
     api_mocks.streamSimple.mockImplementationOnce(openAIResponsesApi().streamSimple);
-    const runtime = await create_model_runtime();
+    const runtime = createModels();
     const resolved = register_agent_model(
       runtime,
       build_config("OpenAIResponses", { auth_type: "oauth", api_url: "https://api.openai.com/v1" }),
@@ -165,7 +161,7 @@ describe("Agent 模型注册", () => {
     api_mocks.streamSimple
       .mockImplementationOnce(openAIResponsesApi().streamSimple)
       .mockImplementationOnce(openAIResponsesApi().streamSimple);
-    const runtime = await create_model_runtime();
+    const runtime = createModels();
     let token = "current-token";
     const resolve = vi.fn(async () => ({ apiKey: token }));
     const resolved = register_agent_model(
@@ -267,12 +263,12 @@ describe("Agent 模型注册", () => {
     );
     expect(resolve.mock.calls.length).toBeGreaterThanOrEqual(2);
   });
-  it("真实 ModelRuntime 与 adapter 最终发送产品会话身份", async () => {
+  it("真实 MutableModels 与 adapter 最终发送产品会话身份", async () => {
     const { openAICompletionsApi } = await vi.importActual<
       typeof import("@earendil-works/pi-ai/api/openai-completions.lazy")
     >("@earendil-works/pi-ai/api/openai-completions.lazy");
     api_mocks.streamSimple.mockImplementationOnce(openAICompletionsApi().streamSimple);
-    const runtime = await create_model_runtime();
+    const runtime = createModels();
     const resolved = register_agent_model(
       runtime,
       build_config("OpenAI", { api_url: "https://opencode.ai/zen/go/v1" }),
@@ -306,7 +302,7 @@ describe("Agent 模型注册", () => {
   });
 
   it("将统一解析的 Agent 自动容量注册到运行时", async () => {
-    const runtime = await create_model_runtime();
+    const runtime = createModels();
     const config = { api_format: "OpenAIResponses", model_id: "deepseek-flash" };
     const { agent_limits } = resolve_model_capability(
       Model.from_json(config, "active"),
@@ -328,7 +324,7 @@ describe("Agent 模型注册", () => {
   it.each(["OpenAI", "OpenAIResponses"] as const)(
     "%s Agent 注册并转交关闭思考的模型映射",
     async (api_format) => {
-      const runtime = await create_model_runtime();
+      const runtime = createModels();
       const resolved = register_agent_model(
         runtime,
         build_config(api_format, { model_id: "doubao-seed-evolving" }),
@@ -337,7 +333,7 @@ describe("Agent 模型注册", () => {
       );
       expect(resolved.thinkingLevel).toBe("off");
       expect(resolved.model_config.thinking.level).toBe("OFF");
-      const provider = runtime.getRegisteredProviderConfig("openai");
+      const provider = runtime.getProvider("openai");
       if (provider?.streamSimple === undefined) throw new Error("Agent 缺少 provider streamSimple");
       // Agent core 关闭思考时省略 reasoning；注册结果须将 off 映射交给共享适配器。
       void provider.streamSimple(resolved.model, normalizeContext({ messages: [] }));
@@ -348,7 +344,7 @@ describe("Agent 模型注册", () => {
   );
 
   it("注册统一模型事实，并在 streamSimple 强制 LinguaGacha 请求策略", async () => {
-    const runtime = await create_model_runtime();
+    const runtime = createModels();
     const resolved = register_agent_model(
       runtime,
       build_config("OpenAI", {
@@ -378,17 +374,10 @@ describe("Agent 模型注册", () => {
       name: "Test",
       reasoning: true,
     });
-    const provider_config = runtime.getRegisteredProviderConfig("openai");
-    expect(provider_config).toMatchObject({
-      api: "openai-completions",
-      apiKey: "secret-1",
-      authHeader: false,
-      models: [
-        expect.objectContaining({
-          id: "kimi-k3",
-        }),
-      ],
-    });
+    const provider_config = runtime.getProvider("openai");
+    expect(runtime.getModels("openai")).toEqual([
+      expect.objectContaining({ id: "kimi-k3", api: "openai-completions" }),
+    ]);
     expect(await runtime.getAuth(resolved.model)).toMatchObject({
       auth: {
         apiKey: "secret-1",
@@ -434,7 +423,7 @@ describe("Agent 模型注册", () => {
   });
 
   it("同一运行时重新注册模型时采用最新容量", async () => {
-    const runtime = await create_model_runtime();
+    const runtime = createModels();
     register_agent_model(runtime, build_config("OpenAI"), TEST_REQUEST_IDENTITY, catalog);
     const resolved = register_agent_model(
       runtime,
@@ -449,7 +438,7 @@ describe("Agent 模型注册", () => {
   });
 
   it("GPT Responses 注册模型明确支持的思考等级", async () => {
-    const runtime = await create_model_runtime();
+    const runtime = createModels();
     const resolved = register_agent_model(
       runtime,
       build_config("OpenAIResponses", {
@@ -475,7 +464,7 @@ describe("Agent 模型注册", () => {
       model_id: "gpt-5.5",
       thinking: { level: "XHIGH" },
     });
-    const provider_config = runtime.getRegisteredProviderConfig("openai");
+    const provider_config = runtime.getProvider("openai");
     if (provider_config?.streamSimple === undefined) {
       throw new Error("Agent 缺少 Responses streamSimple");
     }
@@ -509,7 +498,7 @@ describe("Agent 模型注册", () => {
   });
 
   it("Responses 未收录模型不启用 reasoning", async () => {
-    const runtime = await create_model_runtime();
+    const runtime = createModels();
     const resolved = register_agent_model(
       runtime,
       build_config("OpenAIResponses", {
@@ -524,7 +513,7 @@ describe("Agent 模型注册", () => {
   });
 
   it("未知模型不猜测思考能力，禁用的扩展配置也不进入 Agent", async () => {
-    const runtime = await create_model_runtime();
+    const runtime = createModels();
     const resolved = register_agent_model(
       runtime,
       build_config("OpenAI", {
@@ -543,7 +532,7 @@ describe("Agent 模型注册", () => {
 
     expect(resolved.model.reasoning).toBe(false);
     expect(resolved.thinkingLevel).toBe("off");
-    const provider_config = runtime.getRegisteredProviderConfig("openai");
+    const provider_config = runtime.getProvider("openai");
     if (provider_config?.streamSimple === undefined) {
       throw new Error("Agent 缺少 provider streamSimple");
     }
@@ -555,7 +544,7 @@ describe("Agent 模型注册", () => {
   });
 
   it("Agent 使用统一 policy 归一后的模型 URL", async () => {
-    const runtime = await create_model_runtime();
+    const runtime = createModels();
     const resolved = register_agent_model(
       runtime,
       build_config("SakuraLLM"),
@@ -584,14 +573,14 @@ describe("Agent 模型注册", () => {
       },
       ...models,
     ];
-    const runtime = await create_model_runtime();
+    const runtime = createModels();
 
     expect(register_agent_model(runtime, config, TEST_REQUEST_IDENTITY, catalog).model.id).toBe(
       "test-model",
     );
   });
   it("Agent 保留产品等级，并在保持默认时清除公共载荷中的自动控制", async () => {
-    const runtime = await create_model_runtime();
+    const runtime = createModels();
     const resolved = register_agent_model(
       runtime,
       build_config("OpenAI", { thinking: { level: "DEFAULT" } }),
@@ -599,7 +588,7 @@ describe("Agent 模型注册", () => {
       catalog,
     );
     expect(resolved.model_config.thinking.level).toBe("DEFAULT");
-    const provider = runtime.getRegisteredProviderConfig("openai");
+    const provider = runtime.getProvider("openai");
     if (provider?.streamSimple === undefined) throw new Error("Agent 缺少 streamSimple");
     void provider.streamSimple(resolved.model, normalizeContext({ messages: [] }), {
       reasoning: "high",
@@ -611,15 +600,6 @@ describe("Agent 模型注册", () => {
     ).toEqual({ messages: [] });
   });
 });
-
-/** 以内存凭据创建离线运行时，隔离用户模型和网络发现。 */
-async function create_model_runtime(): Promise<ModelRuntime> {
-  return await ModelRuntime.create({
-    credentials: new InMemoryCredentialStore(),
-    modelsPath: null,
-    allowModelNetwork: false,
-  });
-}
 
 /** 构造只包含 Agent 模型解析所需字段的设置快照。 */
 function build_config(api_format: ModelApiFormat, overrides: JsonRecord = {}): JsonRecord {

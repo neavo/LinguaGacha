@@ -5,7 +5,7 @@ import { normalize_project_change_event } from "@frontend/app/state/desktop-proj
 describe("desktop project change normalizer", () => {
   it("收窄合法 field-patch，并把 status 固定到 item 状态词表", () => {
     const event = normalize_project_change_event({
-      eventId: "event-1",
+      eventId: "0a1B2c3D4e5F",
       source: "proofreading_apply_item_changes",
       projectPath: "E:/demo/demo.lg",
       projectRevision: 2,
@@ -22,6 +22,7 @@ describe("desktop project change normalizer", () => {
       },
     });
 
+    expect(event?.eventId).toBe("0a1B2c3D4e5F");
     expect(event?.operations[0]?.items).toEqual({
       payloadMode: "field-patch",
       fieldPatch: {
@@ -51,6 +52,7 @@ describe("desktop project change normalizer", () => {
       },
     });
 
+    expect(event?.eventId).toBe("event-2");
     expect(event?.operations[0]?.items).toEqual({
       payloadMode: "section-invalidated",
       changedIds: [2],

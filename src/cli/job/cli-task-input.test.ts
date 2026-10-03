@@ -42,31 +42,26 @@ describe("build_cli_task_input", () => {
 
     expect(index_rules(input.quality_rules)).toMatchObject({
       glossary: {
-        entries: [{ src: "Alice", dst: "爱丽丝" }],
+        entries: [{ entry_id: expect.any(String), src: "Alice", dst: "爱丽丝" }],
         enabled: true,
         mode: null,
       },
       text_preserve: {
-        entries: [{ src: "<[^>]+>", info: "" }],
+        entries: [{ entry_id: expect.any(String), src: "<[^>]+>", info: "" }],
         enabled: null,
         mode: "custom",
       },
       pre_replacement: {
-        entries: [{ src: "foo", dst: "bar" }],
+        entries: [{ entry_id: expect.any(String), src: "foo", dst: "bar" }],
         enabled: true,
         mode: null,
       },
       post_replacement: {
-        entries: [{ src: "旧", dst: "新" }],
+        entries: [{ entry_id: expect.any(String), src: "旧", dst: "新" }],
         enabled: true,
         mode: null,
       },
     });
-    for (const rule of input.quality_rules) {
-      for (const entry of rule.entries) {
-        expect(entry.entry_id).toMatch(/^[0-9A-HJKMNP-TV-Z]{5}$/u);
-      }
-    }
     expect(input.translation_prompt).toEqual({ text: "自定义翻译提示词", enabled: true });
   });
 

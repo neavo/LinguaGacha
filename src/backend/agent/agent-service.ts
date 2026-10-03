@@ -1,3 +1,5 @@
+import type { ProjectDatabase } from "../database/database-operations";
+import type { AgentSessionStore } from "../database/agent-session-store";
 import {
   create_agent_workspace_apply_tool,
   type AgentWorkspaceApprovalPort,
@@ -10,67 +12,39 @@ import type { AgentImageService } from "./agent-image-service";
 import type { AgentFileAttachment } from "../../shared/agent";
 import { prepare_agent_message, type PreparedAgentMessage } from "./agent-message-input";
 import { BatchTranslationCompletionError } from "../batch-translation/batch-translation-runtime";
-import type { BatchTranslationResult } from "../../domain/batch-translation";
 import type { Model } from "../../domain/model";
 import { create_agent_batch_item_translation_tool } from "./tools/run-batch-item-translation";
-import {
-  InMemoryCredentialStore,
-  type AssistantMessage,
-  type AssistantMessageEvent,
-  type ImageContent,
-  type TextContent,
-  uuidv7,
-} from "@earendil-works/pi-ai";
-import {
-  createAgentSession,
-  DefaultResourceLoader,
-  ModelRuntime,
-  SessionManager,
-  SettingsManager,
-  type AgentSession,
-  type AgentSessionEvent as PiAgentSessionEvent,
-} from "@earendil-works/pi-coding-agent";
+import { type AssistantMessageEvent } from "@earendil-works/pi-ai";
+import { createModels } from "@earendil-works/pi-ai/models";
+import { isDeepStrictEqual } from "node:util";
+import { AgentSession, type AgentExecution } from "./agent-session";
 
 import { resolve_app_locale } from "../../domain/app-language";
 import { is_json_record, type JsonRecord } from "../../domain/json";
-import { AGENT_COMPACTION_RESERVE_TOKENS } from "../../domain/model-agent";
 import {
   AGENT_SESSION_EVENT_TOPIC,
-  normalize_agent_assistant_message_parts,
   normalize_agent_message_input,
   normalize_agent_revision_request,
-  type AgentAssistantMessageParts,
   type AgentWorkspaceLinkResult,
   type AgentCommandAck,
-  type AgentContextSnapshot,
   type AgentTokenSpeedSnapshot,
-  type AgentUsageSnapshot,
-  type AgentEntry,
-  type AgentEntryStatus,
   type AgentMessageInput,
-  type AgentSessionEvent,
   type AgentSessionEventPayload,
   type AgentSessionSnapshot,
-  type AgentSessionState,
 } from "../../shared/agent";
 import * as AppErrors from "../../shared/error";
 import { format_i18n_message } from "../../shared/i18n";
-import { JsonTool } from "../../shared/utils/json-tool";
 import type { AppPathService } from "../app/app-path-service";
 import type { AppSettingService } from "../app/app-setting-service";
 import type { LogManager } from "../log/log-manager";
 import { t_main_log } from "../log/log-text";
 import type { ProjectSessionState } from "../project/project-session-state";
-import type { RuntimeLease, RuntimeOperationGate } from "../runtime-operation-gate";
+import type { RuntimeOperationGate } from "../runtime-operation-gate";
 import { AgentDecisionCoordinator } from "./agent-decision";
 import { register_agent_model, resolve_agent_batch_translation_model } from "./agent-model";
 import type { ChatGPTAuthService } from "../auth/chatgpt-auth-service";
 import type { PiModelCatalogReader } from "../llm/pi-model-catalog";
-import {
-  append_agent_session_seed,
-  load_agent_session_seed,
-  type AgentSessionSeed,
-} from "./agent-session-seed";
+import { load_agent_session_seed, type AgentSessionSeed } from "./agent-session-seed";
 import { create_agent_read_skill_tool } from "./tools/read-skill";
 import { create_agent_ask_user_tool } from "./tools/ask-user";
 import { AgentInputQueue } from "./agent-input-queue";
@@ -87,69 +61,9 @@ import { AgentToolError, prepare_agent_tool } from "./tool-definition";
 
 import { AgentTokenSpeed } from "./agent-token-speed";
 import { AgentSessionLog } from "./agent-log";
-import { project_assistant_message_parts } from "./agent-message";
-import { AGENT_KEEP_RECENT_TOKENS, read_agent_session_context } from "./agent-session-context";
 
-const AGENT_TOKEN_SPEED_PUBLISH_INTERVAL_MS = 250; // 数值最多 4Hz，采样仍消费每个增量
-const AGENT_STREAM_PUBLISH_INTERVAL_MS = 100; // assistant 完整公开条目最多 10Hz；工具与终态不等待
-/** 产品会话使用固定压缩预算，不读取 coding-agent 用户设置。 */
-function build_agent_session_settings() {
-  return {
-    images: { autoResize: false }, // 所有产品图片已由唯一后端入口处理，SDK 直接消费固定字节。
-    enableInstallTelemetry: false,
-    enableSkillCommands: false,
-    compaction: {
-      enabled: true,
-      reserveTokens: AGENT_COMPACTION_RESERVE_TOKENS,
-      keepRecentTokens: AGENT_KEEP_RECENT_TOKENS,
-    },
-    retry: { enabled: true, maxRetries: 3, baseDelayMs: 2_000 },
-  };
-}
-
-type AgentRuntime = {
-  readonly session_id: string; // 冻结初始 UUID，修订重建 SDK 历史和压缩均沿用产品对话身份
-  log: AgentSessionLog; // 跟随 SDK 生命周期，独立于公开时间线的提前封口
-  session: AgentSession;
-  model_config: Model; // 随 SDK 成功换模同步的应用配置；批量翻译跟随时以此作为继承来源
-  unsubscribe: () => void;
-  steer_ready: boolean; // Pi 已进入 agent loop 且当前不在压缩阶段
-};
-
-type AgentAssistantStreamBlock = {
-  content_index: number;
-  kind: "text" | "thinking";
-  chunks: string[];
-};
-
-type AgentAssistantStream = {
-  created_at: number;
-  blocks: AgentAssistantStreamBlock[];
-};
-
-/** 公开消息只保存当前可修改位置；完整模型历史仍由 SessionManager 单独拥有。 */
-type AgentHistoryCheckpoint = {
-  entry_id: string;
-  leaf_id: string | null;
-};
-
-/** 修订角色显式决定是重新调用模型，还是直接写入人工 assistant。 */
-type AgentRevision = {
-  checkpoint: AgentHistoryCheckpoint;
-  prefix: readonly AgentEntry[];
-  message: AgentMessageInput;
-  role: "user" | "assistant";
-};
-
-/** 新输入与隐藏续跑共用模型执行主链，但只有前者创建公开 user 轮次。 */
-type AgentModelRequest =
-  | { kind: "prompt" | "queued"; text: string; images: ImageContent[] }
-  | { kind: "continue" };
-
-type AgentAssistantStreamDelta = Extract<
-  AssistantMessageEvent,
-  { type: "text_delta" | "thinking_delta" }
->;
+const AGENT_TOKEN_SPEED_PUBLISH_INTERVAL_MS = 250;
+const AGENT_TOKEN_SPEED_DECIMAL_PLACES = 2;
 
 type AgentServicePaths = Pick<
   AppPathService,
@@ -161,6 +75,7 @@ type AgentServicePaths = Pick<
 >;
 
 type AgentServiceOptions = {
+  database: Pick<ProjectDatabase, "open_agent_store">;
   auth?: ChatGPTAuthService;
   skills: Pick<AgentSkillsService, "get_current" | "subscribe" | "refresh">;
   catalog: PiModelCatalogReader;
@@ -189,56 +104,43 @@ type LoadedAgentResources = Readonly<{
   sessionSeed: AgentSessionSeed;
 }>;
 
-/**
- * 单个后端 Agent 产品会话的状态拥有者；通用模型生命周期交给 AgentSession。
- */
+/** 产品命令协调唯一会话与运行租约。历史和公开条目来自 durable 提交。 */
 export class AgentService {
-  private readonly auth: ChatGPTAuthService | undefined; // 从共享后端取得本轮 OAuth 凭据。
-  private readonly catalog: PiModelCatalogReader; // 每轮准备时读取组合根持有的当前目录。
-  private readonly token_speed = new AgentTokenSpeed(); // 失败继续复用回合累计统计。
-  private token_speed_updated_at: number | null = null; // 计数和发布共用节流时间。
-  private token_speed_snapshot: AgentTokenSpeedSnapshot = null; // 等待期间保留最近展示值。
-  private session_id = uuidv7(); // 对话重置时换代，前端据此清理草稿文件引用
+  private readonly auth: ChatGPTAuthService | undefined;
+  private readonly catalog: PiModelCatalogReader;
   private readonly batch_translation: AgentServiceOptions["batchTranslation"];
   private readonly paths: AgentServiceOptions["paths"];
   private readonly settings: AgentServiceOptions["settings"];
-  private readonly skills: AgentServiceOptions["skills"]; // 菜单、模型目录与读取工具共用的当前技能入口。
-  private readonly unsubscribe_skills: () => void; // 关闭时解除订阅，停止接收集合变更。
+  private readonly skills: AgentServiceOptions["skills"];
   private readonly user_agent: string;
   private readonly session_state: ProjectSessionState;
-  private readonly runtime_gate: RuntimeOperationGate; // task / Agent 互斥与 Agent 写工具授权来源
-  private readonly web_search: AgentWebSearchPort | undefined; // 缺失即不向模型注册 GUI 专属搜索能力
-  private readonly workspace: AgentWorkspacePort; // Agent 恒定工作面；初始化失败直接阻止会话启动
+  private readonly runtime_gate: RuntimeOperationGate;
+  private readonly web_search: AgentWebSearchPort | undefined;
+  private readonly workspace: AgentWorkspacePort;
   private readonly images: AgentServiceOptions["images"];
   private readonly log_manager: AgentServiceOptions["logManager"];
   private readonly publish: AgentServiceOptions["publish"];
-  private doing: string | null = null; // 模型拥有内容，宿主只在会话清理时清空
-  private readonly input_queue = new AgentInputQueue(); // 当前产品会话的待发送输入；不写入 Pi follow-up
-  private readonly decisions: AgentDecisionCoordinator; // 当前回合唯一用户决策及其取消生命周期
+  private readonly unsubscribe_skills: () => void;
   private readonly unsubscribe_project_session: () => void;
-  private runtime: AgentRuntime | null = null; // 模型历史只存活于当前工程会话世代
-  private session_reset: Promise<void> | null = null; // 清理完成前禁止新消息跨会话进入
-  private operation_acceptance: Promise<AgentCommandAck> | null = null; // 串行覆盖建会话、换模与异步操作启动
-  private runtime_settlement: Promise<void> | null = null; // 后台模型与压缩操作统一纳入关闭屏障
-  private runtime_lease: RuntimeLease | null = null; // 从消息受理覆盖到 SDK 最终 settle
-  private translation_paused_result: BatchTranslationResult | null = null; // 用户停止后在当前 round 内暂停翻译能力
-  private runtime_generation = 0; // stop/reset/dispose 统一令迟到异步阶段失效
-  private state: AgentSessionState = "idle"; // 只表达当前回合是否运行，结果归各条目
-  private entries: AgentEntry[] = []; // 本次 reset 以来唯一的公开时间线事实
-  private context: AgentContextSnapshot = { tokens: null, compactable: false, limits: null }; // 模型历史估算与手动压缩能力的同源快照
-  private removed_usage: AgentUsageSnapshot = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }; // 历史修订移出 SDK 会话的已发生用量
-  private usage: AgentUsageSnapshot = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }; // 最近发布的完整用量，供快照读取与事件去重
-  private assistant_stream: AgentAssistantStream | null = null; // 当前生成消息的窄字符串增量
-  private assistant_stream_publish_timer: ReturnType<typeof setTimeout> | null = null; // 固定窗口唯一发布计时器
-  private latest_round_checkpoint: AgentHistoryCheckpoint | null = null; // 最新 user 轮次写入前的位置
-  private latest_output_checkpoint: AgentHistoryCheckpoint | null = null; // 最新轮次最终可见 assistant 写入前的位置
-  private pending_assistant_checkpoint: { leaf_id: string | null } | null = null; // message_start 到首个可见 part 的暂存位置
-  private resources: LoadedAgentResources | null = null; // 启动期基础提示词和会话种子。
-  private revision = 0; // 当前产品会话公开事件的全局单调序号；reset 与工程切换均不回退
-  private disposed = false; // 关闭后永久拒绝命令和事件发布
+  private readonly decisions: AgentDecisionCoordinator;
+  private readonly token_speed = new AgentTokenSpeed();
+  private token_speed_snapshot: AgentTokenSpeedSnapshot = null;
+  private token_speed_updated_at: number | null = null;
+  private session_id = "inactive"; // 无工程时的快照身份，激活后采用持久化身份
+  private readonly database: AgentServiceOptions["database"];
+  private store: AgentSessionStore | null = null; // 工程连接的使用权覆盖 SDK 与上传收尾
+  private session: AgentSession | null = null;
+  private model_config: Model | null = null; // 当前主模型配置供批量翻译跟随解析
+  private execution: AgentExecution | null = null;
+  private session_reset: Promise<void> | null = null;
+  private resources: LoadedAgentResources | null = null;
+  private revision = 0;
+  private disposed = false;
+  private published: AgentSessionSnapshot | null = null;
 
-  /** 会话订阅返回 reset Promise，保证工程生命周期等待旧 Agent 完整退出。 */
+  /** 连接工程生命周期、技能变更与决定协调器，会话事实统一提交后发布。 */
   public constructor(options: AgentServiceOptions) {
+    this.database = options.database;
     this.auth = options.auth;
     this.catalog = options.catalog;
     this.batch_translation = options.batchTranslation;
@@ -247,7 +149,7 @@ export class AgentService {
     this.skills = options.skills;
     this.unsubscribe_skills = this.skills.subscribe(() => {
       if (!this.disposed && this.resources !== null && this.session_reset === null) {
-        this.publish_event({ type: "skills_changed", skills: this.get_skill_snapshot() });
+        this.publish_snapshot();
       }
     });
     this.user_agent = options.userAgent;
@@ -258,16 +160,10 @@ export class AgentService {
     this.images = options.images;
     this.log_manager = options.logManager;
     this.publish = options.publish;
-    this.decisions = new AgentDecisionCoordinator(() => {
-      if (this.disposed) return;
-      this.publish_event({
-        type: "pending_decision",
-        pendingDecision: this.decisions.read_pending(),
-      });
-      this.publish_input_queue();
-    });
+    // 决定随当前工具等待存活，直接发布协调器事实，重开时由 SDK 取消遗留任务。
+    this.decisions = new AgentDecisionCoordinator(() => this.publish_snapshot());
     this.unsubscribe_project_session = this.session_state.subscribe_change((change) =>
-      this.reset_session("project", change.loaded ? change.projectPath : null),
+      this.activate_project(change.loaded ? change.projectPath : null),
     );
   }
 
@@ -324,7 +220,7 @@ export class AgentService {
 
   /** Gateway 关闭前取消请求体读取，让在途上传及时退出。 */
   public cancel_uploads(): void {
-    this.workspace.uploads.cancel();
+    this.workspace.cancel_uploads();
   }
 
   /** 文件下载遵守会话关闭屏障，存储层拥有定位与流的创建。 */
@@ -340,10 +236,11 @@ export class AgentService {
 
   /** 附件转换是异步边界，所有调用者在提交消息前统一复核运行世代。 */
   private async prepare_message(message: AgentMessageInput): Promise<PreparedAgentMessage> {
-    const generation = this.runtime_generation;
+    const execution = this.execution;
     const prepared = await prepare_agent_message(message, this.workspace.uploads, this.images);
     this.assert_not_disposed();
-    if (generation !== this.runtime_generation) throw new AppErrors.AppError("runtime.cancelled");
+    if (execution !== this.execution || execution?.controller.signal.aborted)
+      throw new AppErrors.AppError("runtime.cancelled");
     return prepared;
   }
 
@@ -365,40 +262,45 @@ export class AgentService {
       }));
   }
 
-  /** 返回独立的公开快照，技能沿用当前集合顺序。 */
+  /** 快照由相同的提交事实投影，调用者只能取得独立值。 */
   public get_snapshot(): AgentSessionSnapshot {
+    const session = this.session;
+    const execution = this.execution;
+    const state =
+      execution !== null && execution.roundId !== null && !execution.controller.signal.aborted
+        ? "running"
+        : "idle";
     return {
       sessionId: this.session_id,
       revision: this.revision,
-      state: this.state,
+      state,
       pendingDecision: this.decisions.read_pending(),
-      entries: structuredClone(this.entries),
+      entries: structuredClone(session?.entries ?? []),
       skills: this.get_skill_snapshot(),
-      inputQueue: this.input_queue.read_snapshot(this.can_send_queued_now()),
-      doing: this.doing,
-      context: structuredClone(this.context),
-      usage: { ...this.usage },
+      inputQueue: (session?.queue ?? new AgentInputQueue()).read_snapshot(this.can_send_now()),
+      doing: session?.state.doing ?? null,
+      context: structuredClone(
+        session?.context ?? { tokens: null, compactable: false, limits: null },
+      ),
+      usage: { ...(session?.usage ?? { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }) },
       tokenSpeed: structuredClone(this.token_speed_snapshot),
     };
   }
-
-  /** 普通问题的决定只恢复 ask_user，不建立公开 user 消息。 */
-  public resolve_question(request: JsonRecord): AgentCommandAck {
-    this.assert_not_disposed();
+  /** 协调器同步清除决定并发布事件，回执指向浮层关闭后的修订。 */
+  public async resolve_question(request: JsonRecord): Promise<AgentCommandAck> {
+    this.assert_available();
     this.decisions.resolve_question(request);
-    return this.get_acknowledgement();
+    return this.ack();
   }
-
-  /** 写入授权只恢复当前 workspace_apply，不接受普通问题答案。 */
-  public resolve_write_approval(request: JsonRecord): AgentCommandAck {
-    this.assert_not_disposed();
+  /** 工程授权与问题回答共用决定提交边界。 */
+  public async resolve_write_approval(request: JsonRecord): Promise<AgentCommandAck> {
+    this.assert_available();
     this.decisions.resolve_write_approval(request);
-    return this.get_acknowledgement();
+    return this.ack();
   }
 
   /** 启动期加载必需基础资源，并通过技能服务准备空白对话的候选。 */
   public async load_resources(): Promise<void> {
-    await this.workspace.initialize();
     const base_system_prompt = load_agent_system_prompt(this.paths);
     const default_personality = load_agent_personality(this.paths);
     const session_seed = load_agent_session_seed(this.paths);
@@ -408,1619 +310,779 @@ export class AgentService {
       defaultPersonality: default_personality,
       sessionSeed: session_seed,
     };
+    this.published = this.get_snapshot();
+    const project = this.session_state.snapshot();
+    if (project.loaded) await this.activate_project(project.projectPath);
   }
 
-  /** 同步校验消息，以单一 Promise 串行完成建会话或刷新模型请求快照。 */
+  /** 运行中入队，空闲时占用租约并完成模型与附件预检。 */
   public async send_message(request: JsonRecord): Promise<AgentCommandAck> {
-    this.assert_not_disposed();
-    if (this.session_reset !== null) {
-      throw new AppErrors.AppError("runtime.busy");
-    }
-    if (this.decisions.has_pending) {
-      throw new AppErrors.AppError("runtime.busy");
-    }
-    const message = normalize_agent_message_input(request, this.resolve_file);
-    if (message === null) {
-      throw new AppErrors.AppError("request.validation_failed", {
-        diagnostic_context: { reason: "empty_agent_message" },
-      });
-    }
-    if (this.session_reset !== null || this.decisions.has_pending)
-      throw new AppErrors.AppError("runtime.busy");
+    this.assert_queue_available();
     this.session_state.require_loaded_project_path();
-    if (this.state === "running") {
-      this.input_queue.enqueue(message);
-      this.publish_input_queue();
-      return this.get_acknowledgement();
+    const message = this.read_message(request);
+    if (this.get_snapshot().state === "running") {
+      await this.require_session().change_queue((queue) => queue.enqueue(message));
+      return this.ack();
     }
-    if (this.input_queue.is_paused) {
+    if (this.session?.queue.is_paused)
       throw agent_queue_validation_error("agent_continue_required");
-    }
     this.require_resources();
-    const runtime_lease = this.runtime_gate.begin_runtime("agent");
-    this.runtime_lease = runtime_lease;
-    return await this.track_operation_acceptance(this.accept_round(message, runtime_lease));
+    const execution = this.begin_execution();
+    return this.accept(execution, () => this.accept_round(execution, message));
   }
-
-  /** 只允许修改仍在等待的队列项；发送中的内容已经交给 Pi，不能再改写。 */
+  /** 编辑只作用于尚未发送的草稿，附件身份在服务边界解析。 */
   public async update_queued_message(request: JsonRecord): Promise<AgentCommandAck> {
-    this.assert_queue_command_available();
+    this.assert_queue_available();
     const { id, message } = read_queue_message_request(request, this.resolve_file);
-    this.assert_queue_command_available();
-    this.input_queue.update(id, message);
-    this.publish_input_queue();
-    return this.get_acknowledgement();
+    await this.require_session().change_queue((queue) => queue.update(id, message));
+    return this.ack();
   }
-
-  /** 删除等待项后由队列自行解除无项目标暂停态。 */
-  public delete_queued_message(request: JsonRecord): AgentCommandAck {
-    this.assert_queue_command_available();
-    this.input_queue.delete(read_queue_id(request));
-    this.publish_input_queue();
-    return this.get_acknowledgement();
+  /** 删除草稿经队列事务校验发送状态并同步暂停态。 */
+  public async delete_queued_message(request: JsonRecord): Promise<AgentCommandAck> {
+    this.assert_queue_available();
+    await this.require_session().change_queue((queue) => queue.delete(read_queue_id(request)));
+    return this.ack();
   }
-
-  /** 重排请求必须完整列出当前队列身份，避免部分顺序覆盖并发变化。 */
-  public reorder_queued_messages(request: JsonRecord): AgentCommandAck {
-    this.assert_queue_command_available();
+  /** 重排校验完整身份排列，`sending` 项仍属于队列。 */
+  public async reorder_queued_messages(request: JsonRecord): Promise<AgentCommandAck> {
+    this.assert_queue_available();
     const ids = request["ids"];
-    if (!Array.isArray(ids) || ids.some((id) => typeof id !== "string")) {
+    if (!Array.isArray(ids) || ids.some((id) => typeof id !== "string"))
       throw agent_queue_validation_error("agent_input_queue_invalid_order");
-    }
-    this.input_queue.reorder(ids as string[]);
-    this.publish_input_queue();
-    return this.get_acknowledgement();
+    await this.require_session().change_queue((queue) => queue.reorder(ids as string[]));
+    return this.ack();
   }
-
-  /** 运行中交给 Pi steer；空闲时将选中项作为新公开轮次启动，其他暂停项保持不动。 */
+  /** 运行中按 `steer` 受理选中草稿，准备失败时恢复发送占用。 */
   public async send_queued_message(request: JsonRecord): Promise<AgentCommandAck> {
-    this.assert_queue_command_available();
+    this.assert_queue_available();
     this.session_state.require_loaded_project_path();
+    const session = this.require_session();
     const id = read_queue_id(request);
-    if (this.state === "running") {
-      const runtime = this.runtime;
-      if (runtime === null || !runtime.steer_ready) throw new AppErrors.AppError("runtime.busy");
-      const item = this.input_queue.begin_send(id);
-      this.publish_input_queue();
-      return this.track_operation_acceptance(this.accept_steer(runtime, item));
-    }
-    this.require_resources();
-    const item = this.input_queue.read(id);
-    const runtime_lease = this.runtime_gate.begin_runtime("agent");
-    this.runtime_lease = runtime_lease;
-    return await this.track_operation_acceptance(this.accept_round(item, runtime_lease, item.id));
-  }
-
-  /** steer 的准备占位与失败回滚属于同一个受理操作，轮次结束会等待它结算。 */
-  private async accept_steer(
-    runtime: AgentRuntime,
-    item: AgentMessageInput,
-  ): Promise<AgentCommandAck> {
-    const generation = this.runtime_generation;
-    try {
-      const prepared = await this.prepare_message(item);
-      if (this.runtime !== runtime || !runtime.steer_ready)
+    const item = session.queue.read(id);
+    if (this.execution !== null) {
+      const execution = this.execution;
+      if (!session.can_steer || execution.acceptance !== null)
         throw new AppErrors.AppError("runtime.busy");
-      // 当前会话关闭输入扩展；`steer` 只入队，`message_start` 确认实际消费。
-      await runtime.session.steer(prepared.text, prepared.images);
-      return this.get_acknowledgement();
-    } catch (error) {
-      if (this.runtime_is_current(runtime, generation)) {
-        this.input_queue.cancel_send();
-        this.publish_input_queue();
-      }
-      throw error;
+      await session.change_queue((queue) => queue.begin_send(id));
+      return this.accept(
+        execution,
+        async () => {
+          try {
+            const prepared = await this.prepare_message(item);
+            this.assert_execution(execution);
+            if (!session.can_steer) {
+              await session.change_queue((queue) => queue.cancel_send());
+              return;
+            }
+            await session.submit(item, prepared, execution, "steer", id);
+          } catch (error) {
+            await session.change_queue((queue) => queue.cancel_send());
+            throw error;
+          }
+        },
+        false,
+      );
     }
+    const execution = this.begin_execution();
+    return this.accept(execution, () => this.accept_round(execution, item, id));
   }
-
-  /** 最新轮次输入与最终输出可独立修订；原输入修订为自身即表示重试。 */
-  public async revise_latest_round(request: JsonRecord): Promise<AgentCommandAck> {
-    this.assert_revision_available();
-    const revision = normalize_agent_revision_request(request, this.resolve_file);
-    if (revision === null) {
-      throw new AppErrors.AppError("request.validation_failed", {
-        diagnostic_context: { reason: "agent_revision_unavailable" },
-      });
-    }
-    this.assert_revision_available();
-    const user_index = this.entries.findLastIndex(
+  /** 失败轮次以隐藏输入续跑，暂停草稿在同一租约内恢复 FIFO。 */
+  public async continue_session(request: JsonRecord): Promise<AgentCommandAck> {
+    this.assert_queue_available();
+    this.session_state.require_loaded_project_path();
+    const session = this.require_session();
+    const round = session.entries.findLast(
       (entry) => entry.kind === "user_message" && entry.delivery === "round",
     );
-    const user = this.entries[user_index];
-    const round_checkpoint = this.latest_round_checkpoint;
-    if (
-      user?.kind === "user_message" &&
-      revision.entryId === user.id &&
-      round_checkpoint?.entry_id === user.id &&
-      user.status !== "running"
-    ) {
-      return await this.begin_revision({
-        checkpoint: round_checkpoint,
-        prefix: this.entries.slice(0, user_index),
-        message: revision.message,
-        role: "user",
+    const failed =
+      round?.kind === "user_message" && round.delivery === "round" && round.status === "error";
+    const message = read_agent_continue_message(request, this.resolve_file);
+    if (!session.queue.has_items && !failed)
+      throw agent_queue_validation_error("agent_continue_unavailable");
+    if (message !== null && !session.queue.has_items)
+      throw agent_queue_validation_error("agent_continue_message_without_queue");
+    const execution = this.begin_execution();
+    return this.accept(execution, async () => {
+      await session.change_queue((queue) => {
+        if (message !== null) queue.enqueue(message);
+        queue.resume();
       });
-    }
-
-    const output_index = this.entries.findLastIndex(
-      (entry, index) => index > user_index && entry.kind === "assistant_message",
-    );
-    const output = this.entries[output_index];
-    const output_checkpoint = this.latest_output_checkpoint;
-    if (
-      output?.kind === "assistant_message" &&
-      revision.entryId === output.id &&
-      output_checkpoint?.entry_id === output.id &&
-      output.status !== "running" &&
-      revision.message.text !== "" &&
-      revision.message.attachments.length === 0
-    ) {
-      return await this.begin_revision({
-        checkpoint: output_checkpoint,
-        prefix: this.entries.slice(0, output_index),
-        message: revision.message,
-        role: "assistant",
-      });
-    }
-
-    throw new AppErrors.AppError("request.validation_failed", {
-      diagnostic_context: { reason: "agent_revision_unavailable" },
+      if (failed) {
+        await this.update_model(session, execution);
+        execution.roundId = round.id;
+        execution.phase = "running";
+        this.token_speed_snapshot =
+          round.averageTokensPerSecond === null
+            ? null
+            : {
+                roundId: round.id,
+                tokensPerSecond: Number(
+                  round.averageTokensPerSecond.toFixed(AGENT_TOKEN_SPEED_DECIMAL_PLACES),
+                ),
+              };
+        await session.change((state) => {
+          const previous = state.rounds[round.id]!;
+          previous.status = "running";
+          previous.endedAt = null;
+          previous.averageTokensPerSecond = null;
+        });
+        const text = this.read_continue_text();
+        const accepted = await session.submit(
+          { text, attachments: [] },
+          { text, images: [] },
+          execution,
+          "hidden",
+        );
+        session.log.begin_run(round.id, "continue");
+        this.launch(execution, () => this.drive(session, execution, accepted));
+      } else {
+        const next = session.queue.read_next();
+        if (next === null) throw agent_queue_validation_error("agent_continue_unavailable");
+        await this.accept_round(execution, next, next.id);
+      }
     });
   }
-
-  /** 唯一继续入口原子追加可选队尾消息，并恢复失败轮次或暂停队列。 */
-  public async continue_session(request: JsonRecord): Promise<AgentCommandAck> {
-    this.assert_not_disposed();
-    if (this.session_reset !== null || this.state !== "idle") {
-      throw new AppErrors.AppError("runtime.busy");
-    }
-    this.session_state.require_loaded_project_path();
-    const message = read_agent_continue_message(request, this.resolve_file);
-    if (this.session_reset !== null || this.state !== "idle")
-      throw new AppErrors.AppError("runtime.busy");
-    const runtime = this.runtime;
-    const continue_failed_round =
-      this.entries.findLast((entry) => entry.kind === "user_message" && entry.delivery === "round")
-        ?.status === "error";
-    const continue_failed = runtime !== null && continue_failed_round;
-    if (!this.input_queue.has_items && !continue_failed) {
-      throw new AppErrors.AppError("request.validation_failed", {
-        diagnostic_context: { reason: "agent_continue_unavailable" },
-      });
-    }
-    if (message !== null && !this.input_queue.has_items) {
-      throw agent_queue_validation_error("agent_continue_message_without_queue");
-    }
-    const runtime_lease = this.runtime_gate.begin_runtime("agent");
-    this.runtime_lease = runtime_lease;
-    let delegated = false;
-    try {
-      if (message !== null) this.input_queue.enqueue(message);
-      if (this.input_queue.has_items) this.input_queue.resume();
-      this.publish_input_queue();
-      const acceptance =
-        continue_failed && runtime !== null
-          ? this.accept_continue(runtime, runtime_lease)
-          : this.accept_next_queued_message(runtime_lease);
-      delegated = true;
-      return await this.track_operation_acceptance(acceptance);
-    } catch (error) {
-      this.input_queue.pause();
-      this.publish_input_queue();
-      if (!delegated) this.finish_runtime(runtime_lease);
-      throw error;
-    }
-  }
-
-  /** 空闲会话以当前模型配置压缩旧历史；运行互斥与可压缩性都由后端复核。 */
-  public async compact_context(): Promise<AgentCommandAck> {
-    this.assert_not_disposed();
-    if (this.session_reset !== null || this.state !== "idle" || this.decisions.has_pending) {
-      throw new AppErrors.AppError("runtime.busy");
-    }
-    if (!this.context.compactable) {
-      throw new AppErrors.AppError("request.validation_failed", {
-        diagnostic_context: { reason: "agent_context_not_compactable" },
-      });
-    }
-    this.session_state.require_loaded_project_path();
-    const runtime = this.runtime;
-    if (runtime === null) {
-      throw new AppErrors.AppError("runtime.internal_invariant", {
-        diagnostic_context: { reason: "agent_compaction_runtime_missing" },
-      });
-    }
-    const runtime_lease = this.runtime_gate.begin_runtime("agent");
-    this.runtime_lease = runtime_lease;
-    return await this.track_operation_acceptance(
-      this.accept_context_compaction(runtime, runtime_lease),
+  /** 限制最新轮次的可修订目标，完成预检后才切换历史分支。 */
+  public async revise_latest_round(request: JsonRecord): Promise<AgentCommandAck> {
+    this.assert_available();
+    if (this.execution !== null) throw new AppErrors.AppError("runtime.busy");
+    const session = this.require_session();
+    const revision = normalize_agent_revision_request(request, this.resolve_file);
+    if (revision === null) throw agent_queue_validation_error("agent_revision_unavailable");
+    const userIndex = session.entries.findLastIndex(
+      (entry) => entry.kind === "user_message" && entry.delivery === "round",
     );
+    const user = session.entries[userIndex];
+    const output = session.entries.findLast(
+      (entry, index) => index > userIndex && entry.kind === "assistant_message",
+    );
+    const target =
+      revision.entryId === user?.id ? user : revision.entryId === output?.id ? output : undefined;
+    if (
+      target === undefined ||
+      target.status === "running" ||
+      (target.kind === "assistant_message" &&
+        (revision.message.text === "" || revision.message.attachments.length > 0))
+    )
+      throw agent_queue_validation_error("agent_revision_unavailable");
+    this.session_state.require_loaded_project_path();
+    const execution = this.begin_execution();
+    return this.accept(execution, async () => {
+      if (target.kind === "assistant_message") {
+        session.log.revise(user!.id, "assistant", revision.message.text);
+        await session.revise(target, revision.message.text);
+        this.release(execution);
+        return;
+      }
+      await this.update_model(session, execution);
+      const prepared = await this.prepare_message(revision.message);
+      this.assert_execution(execution);
+      session.log.revise(user!.id, "user", revision.message.text);
+      await session.revise(target, null);
+      const accepted = await this.submit_round(session, execution, revision.message, prepared);
+      this.launch(execution, () => this.drive(session, execution, accepted));
+    });
   }
-
-  /** 清空当前对话，并在消息受理与旧运行时完全退出后返回最终空快照。 */
+  /** 手动压缩先受理并发布运行态，摘要结算由后台持有租约。 */
+  public async compact_context(): Promise<AgentCommandAck> {
+    this.assert_queue_available();
+    if (this.execution !== null) throw new AppErrors.AppError("runtime.busy");
+    const session = this.require_session();
+    if (!session.context.compactable)
+      throw agent_queue_validation_error("agent_context_not_compactable");
+    this.session_state.require_loaded_project_path();
+    const execution = this.begin_execution();
+    return this.accept(execution, async () => {
+      await this.update_model(session, execution);
+      this.assert_execution(execution);
+      this.launch(execution, async () => {
+        try {
+          await session.compact("manual", execution);
+        } catch (error) {
+          if (!execution.controller.signal.aborted)
+            this.compaction_failure("manual", String(error));
+        } finally {
+          this.release(execution);
+        }
+      });
+      // 排在原生压缩受理之后的短提交，使命令回执包含 running 条目，无需等待摘要。
+      await session.change(() => {});
+    });
+  }
+  /** 拒绝中断工程提交与压缩，其余执行先公开停止再由收尾释放租约。 */
+  public async stop(): Promise<AgentCommandAck> {
+    this.assert_not_disposed();
+    const session = this.session;
+    const execution = this.execution;
+    if (
+      session?.is_compacting ||
+      session?.entries.some(
+        (entry) =>
+          entry.kind === "tool_call" &&
+          entry.toolName === "workspace_apply" &&
+          entry.status === "running",
+      )
+    )
+      throw new AppErrors.AppError("runtime.busy");
+    if (execution === null) return this.ack();
+    execution.phase = "stopped";
+    execution.controller.abort();
+    this.decisions.reset();
+    session?.log.request_stop();
+    const average = this.token_speed.finish_round(performance.now());
+    this.token_speed_snapshot = null;
+    if (session !== null) await session.stop(execution, average);
+    this.publish_snapshot();
+    return this.ack();
+  }
+  /** 空闲重置也占用 Agent 租约，防止清理与其他运行重叠。 */
   public async reset(): Promise<AgentCommandAck> {
     this.assert_not_disposed();
-    const existing_lease = this.runtime_lease;
-    const reset_lease = existing_lease ?? this.runtime_gate.begin_runtime("agent");
-    if (existing_lease === null) this.runtime_lease = reset_lease;
+    const resetLease = this.execution === null ? this.runtime_gate.begin_runtime("agent") : null;
     try {
-      await this.reset_session("workspace");
-      return this.get_acknowledgement();
-    } finally {
-      if (existing_lease === null) this.finish_runtime(reset_lease);
-    }
-  }
-
-  /** 立即封口公开轮次并保留历史；压缩与 workspace_apply 不接受中途停止。 */
-  public stop(): AgentCommandAck {
-    this.assert_not_disposed();
-    if (
-      this.find_open_compaction_entry() !== undefined ||
-      this.find_open_workspace_apply_entry() !== undefined ||
-      this.runtime?.session.isCompacting === true
-    ) {
-      throw new AppErrors.AppError("runtime.busy");
-    }
-    this.runtime?.log.request_stop();
-    this.flush_assistant_stream();
-    this.runtime?.session.clearQueue();
-    this.input_queue.cancel_send();
-    this.input_queue.pause();
-    this.publish_input_queue();
-    this.runtime_generation += 1;
-    this.finish_current_round("stopped");
-    this.set_state("idle");
-    const runtime = this.runtime;
-    if (runtime !== null) {
-      try {
-        runtime.session.abortCompaction();
-      } catch (error) {
-        this.warn_cleanup_failure(error);
+      const project = this.session_state.snapshot();
+      if (project.loaded) {
+        await this.transition(async () => {
+          const id = this.store === null ? null : this.session_id;
+          this.session?.log.reset("workspace");
+          await this.close_session();
+          const store = this.database.open_agent_store(project.projectPath);
+          try {
+            await store.reset();
+          } finally {
+            await store.close();
+          }
+          if (id !== null) await this.workspace.delete_session(id);
+          await this.open_project(project.projectPath);
+        });
+      } else {
+        await this.skills.refresh();
       }
-      void runtime.session.abort().catch((error: unknown) => this.warn_cleanup_failure(error));
+    } finally {
+      if (resetLease !== null) this.runtime_gate.finish_runtime(resetLease);
     }
-    return this.get_acknowledgement();
+    return this.ack();
   }
-
-  /** dispose 不再发布事件，但会等待 reset、消息受理与所有运行时清理。 */
+  /** 先解除外部订阅，再等待当前清理与执行退出。 */
   public async dispose(): Promise<void> {
     if (this.disposed) return;
     this.disposed = true;
-    this.images.clear();
-    this.workspace.uploads.cancel();
-    this.workspace.invalidate_links();
-    this.clear_assistant_stream();
-    this.decisions.reset();
+    this.unsubscribe_project_session();
+    this.unsubscribe_skills();
+    if (this.session_reset !== null) await this.session_reset;
+    await this.transition(() => this.close_session());
+  }
+
+  /** 每次运行只有一个控制器和租约，迟到操作依执行对象身份失效。 */
+  private begin_execution(): AgentExecution {
+    const lease = this.runtime_gate.begin_runtime("agent");
+    const execution: AgentExecution = {
+      lease,
+      controller: new AbortController(),
+      roundId: null,
+      phase: "preparing",
+      acceptance: null,
+      settlement: null,
+      recoveryUsed: false,
+      recoveryTask: null,
+      steer: null,
+      retrySteer: null,
+      translationPaused: null,
+    };
+    this.execution = execution;
+    if (this.session !== null) this.session.execution = execution;
+    return execution;
+  }
+  /** 区分命令受理与后台结算，受理失败只释放尚未转交的租约。 */
+  private async accept(
+    execution: AgentExecution,
+    operation: () => Promise<void>,
+    releaseOnFailure = true,
+  ): Promise<AgentCommandAck> {
+    const acceptance = operation();
+    execution.acceptance = acceptance;
+    try {
+      await acceptance;
+      return this.ack();
+    } catch (error) {
+      if (releaseOnFailure && execution.settlement === null) {
+        await this.session?.change_queue((queue) => {
+          queue.cancel_send();
+          queue.pause();
+        });
+        this.release(execution);
+      }
+      throw error;
+    } finally {
+      if (execution.acceptance === acceptance) execution.acceptance = null;
+    }
+  }
+  /** 登记后台结算 Promise，供停止、重置和销毁等待同一执行。 */
+  private launch(execution: AgentExecution, operation: () => Promise<void>): void {
+    const settlement = operation();
+    execution.settlement = settlement;
+    void settlement.catch((error) => this.warn_cleanup_failure(error));
+  }
+  /** 附件与模型预检成功后才受理轮次，失败时保留待发送草稿。 */
+  private async accept_round(
+    execution: AgentExecution,
+    message: AgentMessageInput,
+    queuedId?: string,
+  ): Promise<void> {
+    if (queuedId !== undefined)
+      await this.require_session().change_queue((queue) => queue.begin_send(queuedId));
+    this.require_resources();
+    const session = this.require_session();
+    await this.skills.refresh();
+    const prepared = await this.prepare_message(message);
+    this.assert_execution(execution);
+    await this.update_model(session, execution);
+    const accepted = await this.submit_round(session, execution, message, prepared, queuedId);
+    this.launch(execution, () => this.drive(session, execution, accepted));
+  }
+
+  /** 显式发送、修订与 FIFO 共用轮次初始化，速度与恢复额度随新轮次重置。 */
+  private async submit_round(
+    session: AgentSession,
+    execution: AgentExecution,
+    message: AgentMessageInput,
+    prepared: PreparedAgentMessage,
+    queuedId?: string,
+  ): ReturnType<AgentSession["submit"]> {
+    execution.phase = "running";
+    execution.translationPaused = null;
+    execution.recoveryUsed = false;
     this.token_speed.reset();
     this.token_speed_updated_at = null;
     this.token_speed_snapshot = null;
-    this.doing = null;
-    this.input_queue.reset();
-    this.runtime_generation += 1;
-    this.unsubscribe_project_session();
-    this.unsubscribe_skills();
-    const runtime = this.runtime;
-    const reset = this.session_reset;
-    runtime?.log.reset("dispose");
-    const acceptance = this.operation_acceptance;
-    const settlement = this.runtime_settlement;
-    this.runtime = null;
-    await Promise.all([
-      reset,
-      acceptance?.catch(() => undefined),
-      settlement?.catch(() => undefined),
-      runtime === null ? undefined : this.close_runtime(runtime),
-    ]);
-    await this.workspace.reset_project(null);
+    return session.submit(message, prepared, execution, "round", queuedId ?? null);
+  }
+  /** 串行结算轮次并续取 FIFO，失败暂停队列，最终统一释放租约。 */
+  private async drive(
+    session: AgentSession,
+    execution: AgentExecution,
+    initial: Awaited<ReturnType<AgentSession["submit"]>>,
+  ): Promise<void> {
+    let accepted = initial;
+    try {
+      for (;;) {
+        let success = false;
+        try {
+          await session.run(accepted, execution);
+          success = !execution.controller.signal.aborted;
+        } catch (error) {
+          if (!execution.controller.signal.aborted) this.log_request_failure(error);
+        }
+        session.log.finish_run(success ? "success" : "error");
+        if (execution.controller.signal.aborted) break;
+        await session.finish_round(
+          execution,
+          success ? "success" : "error",
+          this.token_speed.finish_round(performance.now()),
+        );
+        this.token_speed_snapshot = null;
+        await session.cancel_inputs(execution);
+        if (!success) {
+          await session.change_queue((queue) => queue.pause());
+          break;
+        }
+        const next = session.queue.read_next();
+        if (next === null) break;
+        execution.phase = "preparing";
+        await session.change_queue((queue) => queue.begin_send(next.id));
+        try {
+          await this.update_model(session, execution);
+          const prepared = await this.prepare_message(next);
+          this.assert_execution(execution);
+          accepted = await this.submit_round(session, execution, next, prepared, next.id);
+        } catch (error) {
+          await session.change_queue((queue) => {
+            queue.cancel_send();
+            queue.pause();
+          });
+          if (!execution.controller.signal.aborted) this.log_request_failure(error);
+          break;
+        }
+      }
+    } finally {
+      // 取消后的任务结算和在途受理都属于原执行。其租约只能由这里最终释放。
+      await execution.acceptance?.catch(() => undefined); // 受理失败已回传命令，仍需释放原执行。
+      if (execution.controller.signal.aborted) await session.abort();
+      await session.flush();
+      this.release(execution);
+    }
+  }
+  /** 已存在的会话在配置前检查认证，失败保留原有历史。 */
+  private async update_model(session: AgentSession, execution: AgentExecution): Promise<void> {
+    const resolved = register_agent_model(
+      session.models,
+      this.settings.read_setting(),
+      { user_agent: this.user_agent, session_id: this.session_id },
+      this.catalog,
+      this.auth,
+    );
+    if (session.state.seeded) {
+      const available = await session.models.getAvailable(resolved.model.provider);
+      this.assert_execution(execution);
+      if (!available.some((model) => model.id === resolved.model.id))
+        throw new AppErrors.AppError("model.auth_required");
+    }
+    this.assert_execution(execution);
+    await session.configure(resolved.model, resolved.thinkingLevel);
+    this.model_config = resolved.model_config;
+  }
+  /** 会话创建时绑定宿主能力，动态提示在真实请求准备完成后读取。 */
+  private async create_session(store: AgentSessionStore): Promise<AgentSession> {
+    const resources = this.require_resources();
+    const models = createModels();
+    const session = await AgentSession.open({
+      sessionId: this.session_id,
+      storage: await store.open_storage(),
+      cwd: this.paths.get_app_root(),
+      models,
+      seed: resources.sessionSeed,
+      tools: this.create_tools(),
+      continueText: () => this.read_continue_text(),
+      systemPrompt: () => {
+        const override = this.settings.read_setting().agent_personality;
+        return insert_agent_personality(
+          resources.baseSystemPrompt,
+          typeof override === "string" ? override : resources.defaultPersonality,
+        );
+      },
+      skillsPrompt: () => format_agent_skills_for_system_prompt(this.skills.get_current()),
+      log: new AgentSessionLog(this.log_manager),
+      onChange: () => this.publish_snapshot(),
+      onModelEvent: (event) => this.observe_model(event),
+      onReport: (error) => this.warn_cleanup_failure(error),
+      onCompactionFailure: (reason, error) => this.compaction_failure(reason, error),
+    });
+    return session;
+  }
+  /** 产品工具复用后端服务与当前租约，统一经过错误和参数边界。 */
+  private create_tools() {
+    return [
+      create_agent_batch_item_translation_tool(async (request, signal) => {
+        const execution = this.require_execution();
+        if (execution.translationPaused !== null) return execution.translationPaused;
+        this.session_state.require_loaded_project_path();
+        signal.throwIfAborted();
+        this.runtime_gate.assert_current_runtime(execution.lease, "agent");
+        const model = resolve_agent_batch_translation_model(
+          this.settings.read_setting(),
+          this.model_config!,
+          this.catalog.read_models(),
+        );
+        try {
+          const result = await this.batch_translation.run_under_agent(
+            execution.lease,
+            signal,
+            model,
+            request,
+          );
+          if (this.execution === execution && result.stop_source === "user")
+            execution.translationPaused = result;
+          return result;
+        } catch (error) {
+          if (error instanceof BatchTranslationCompletionError) {
+            if (this.execution === execution && error.result.stop_source === "user")
+              execution.translationPaused = error.result;
+            this.log_request_failure(error);
+            throw new AgentToolError({ code: "tool_failed", ...error.result }, error);
+          }
+          throw error;
+        }
+      }),
+      create_agent_ask_user_tool({
+        wait_for_answer: (id, question, signal) =>
+          this.decisions.wait_for_question(id, question, signal),
+      }),
+      create_agent_workspace_run_tool({
+        run: (script, signal) => {
+          const execution = this.require_execution();
+          return this.workspace.run(script, signal, (text) => {
+            signal.throwIfAborted();
+            this.assert_execution(execution);
+            void this.require_session()
+              .change((state) => {
+                state.doing = text;
+              })
+              .catch((error) => this.warn_cleanup_failure(error));
+          });
+        },
+        refresh_skills: () => this.skills.refresh(),
+        log_refresh_error: (error) => this.log_request_failure(error),
+      }),
+      create_agent_workspace_apply_tool({
+        workspace: this.workspace,
+        approval: this.workspace_approval_port(),
+      }),
+      create_agent_read_skill_tool(() => this.skills.get_current(), this.paths),
+      ...(this.web_search === undefined ? [] : [create_agent_web_search_tool(this.web_search)]),
+    ].map((tool) => prepare_agent_tool(tool, this.log_manager));
+  }
+  /** 每个可见增量参与速度统计，公开速度按时间窗口合并。 */
+  private observe_model(event: AssistantMessageEvent): void {
+    const execution = this.execution;
+    if (execution === null || execution.controller.signal.aborted || execution.roundId === null)
+      return;
+    if (
+      event.type === "text_delta" ||
+      event.type === "thinking_delta" ||
+      event.type === "toolcall_delta"
+    ) {
+      const content = event.partial.content[event.contentIndex];
+      if (event.delta !== "" && !(content?.type === "thinking" && content.redacted))
+        this.token_speed.record(event.delta, event.contentIndex, performance.now());
+      const now = performance.now();
+      if (
+        this.token_speed_updated_at === null ||
+        now - this.token_speed_updated_at >= AGENT_TOKEN_SPEED_PUBLISH_INTERVAL_MS
+      ) {
+        this.token_speed_updated_at = now;
+        const speed = this.token_speed.measure(now);
+        if (speed !== null)
+          this.token_speed_snapshot = {
+            roundId: execution.roundId,
+            tokensPerSecond: Number(speed.toFixed(AGENT_TOKEN_SPEED_DECIMAL_PLACES)),
+          };
+        this.publish_snapshot();
+      }
+    } else if (event.type === "done" || event.type === "error") {
+      const message = event.type === "done" ? event.message : event.error;
+      this.token_speed.finish_response(performance.now(), message.usage.output);
+      this.token_speed_updated_at = null;
+    }
+  }
+  /** 比较独立快照发布增量，历史替换时发送完整种子供重连一致消费。 */
+  private publish_snapshot(force = false): void {
+    if (this.disposed || (this.session_reset !== null && !force)) return;
+    const next = this.get_snapshot();
+    const previous = this.published;
+    const replaced =
+      previous !== null &&
+      (previous.entries.length > next.entries.length ||
+        previous.entries.some((entry, index) => next.entries[index]?.id !== entry.id));
+    if (force || previous === null || previous.sessionId !== next.sessionId || replaced) {
+      this.revision++;
+      next.revision = this.revision;
+      this.publish(AGENT_SESSION_EVENT_TOPIC, {
+        type: "snapshot_seed",
+        revision: this.revision,
+        snapshot: next,
+      });
+    } else {
+      if (!isDeepStrictEqual(next.tokenSpeed, previous.tokenSpeed))
+        this.publish_event({ type: "token_speed", tokenSpeed: next.tokenSpeed });
+      for (const entry of next.entries)
+        if (
+          !isDeepStrictEqual(
+            entry,
+            previous.entries.find((old) => old.id === entry.id),
+          )
+        )
+          this.publish_event({ type: "entry_upsert", entry });
+      if (next.state !== previous.state)
+        this.publish_event({ type: "session_state", state: next.state });
+      if (!isDeepStrictEqual(next.pendingDecision, previous.pendingDecision))
+        this.publish_event({ type: "pending_decision", pendingDecision: next.pendingDecision });
+      if (!isDeepStrictEqual(next.inputQueue, previous.inputQueue))
+        this.publish_event({ type: "input_queue", inputQueue: next.inputQueue });
+      if (next.doing !== previous.doing) this.publish_event({ type: "doing", doing: next.doing });
+      if (!isDeepStrictEqual(next.context, previous.context))
+        this.publish_event({ type: "context", context: next.context });
+      if (!isDeepStrictEqual(next.usage, previous.usage))
+        this.publish_event({ type: "usage", usage: next.usage });
+      if (!isDeepStrictEqual(next.skills, previous.skills))
+        this.publish_event({ type: "skills_changed", skills: next.skills });
+    }
+    this.published = structuredClone({ ...next, revision: this.revision });
+  }
+  /** 全部会话事件共享单调递增修订号。 */
+  private publish_event(event: AgentIncrementalEvent): void {
+    this.revision++;
+    this.publish(AGENT_SESSION_EVENT_TOPIC, { ...event, revision: this.revision });
+  }
+  /** 回执指向已发布的最新修订，前端以事件更新会话事实。 */
+  private ack(): AgentCommandAck {
+    this.publish_snapshot();
+    return { revision: this.revision };
+  }
+  /** 即时发送同时受用户决定、产品阶段与全局运行占用约束。 */
+  private can_send_now(): boolean {
+    return (
+      !this.decisions.has_pending &&
+      (this.execution === null
+        ? this.runtime_gate.get_snapshot().owner === null
+        : this.session?.can_steer === true)
+    );
+  }
+  /** 旧执行只释放自己的租约，当前身份匹配时才清空会话运行态。 */
+  private release(execution: AgentExecution): void {
+    if (this.execution === execution) {
+      this.execution = null;
+      if (this.session?.execution === execution) this.session.execution = null;
+    }
+    this.runtime_gate.finish_runtime(execution.lease);
+    this.publish_snapshot();
+  }
+  /** 命令和工程生命周期共用关闭屏障。所有权切换只在旧使用者收尾后发生。 */
+  private transition(operation: () => Promise<void>): Promise<void> {
+    if (this.session_reset !== null)
+      return this.session_reset.then(() => this.transition(operation));
+    const pending = operation();
+    this.session_reset = pending;
+    return pending.finally(() => {
+      if (this.session_reset === pending) this.session_reset = null;
+      this.publish_snapshot(true);
+    });
   }
 
-  /** 在当前运行世代准备运行时，启动回合前才移除队列输入。 */
-  private async accept_round(
-    message: AgentMessageInput,
-    runtime_lease: RuntimeLease,
-    queued_id?: string,
-  ): Promise<AgentCommandAck> {
-    let prompt_started = false;
-    const generation = this.runtime_generation;
-    let runtime = this.runtime;
-    const created = runtime === null;
+  /** 串行关闭旧工程执行，再恢复目标工程的持久化对话。 */
+  private activate_project(project: string | null): Promise<void> {
+    return this.transition(async () => {
+      this.session?.log.reset("project");
+      await this.close_session();
+      if (project !== null) await this.open_project(project);
+    });
+  }
+
+  /** 产品身份与上传先于模型请求可用，首次打开空工程也不需要模型配置。 */
+  private async open_project(project: string): Promise<void> {
+    this.require_resources();
+    const store = this.database.open_agent_store(project);
+    this.store = store;
     try {
-      if (queued_id !== undefined) {
-        this.input_queue.begin_send(queued_id);
-        this.publish_input_queue();
-      }
-      const model_settings = this.settings.read_setting();
-      if (runtime === null) {
-        await this.skills.refresh();
-        this.assert_current_acceptance(generation);
-        runtime = await this.create_runtime(model_settings);
-      } else {
-        await this.update_runtime_model(runtime, model_settings);
-      }
-      this.assert_current_acceptance(generation);
-      const prepared = await this.prepare_message(message);
-      this.assert_current_acceptance(generation);
-      // 异步准备成功后才提交候选运行时。
-      if (created) {
-        this.runtime = runtime;
-        this.publish_context();
-      }
-      if (queued_id !== undefined) {
-        this.input_queue.commit_send();
-        this.publish_input_queue();
-      }
-      const prompt = this.start_round(runtime, generation, message, prepared, runtime_lease);
-      this.track_runtime_settlement(prompt);
-      prompt_started = true;
-      return this.get_acknowledgement();
-    } finally {
-      if (!prompt_started) {
-        if (created) {
-          if (this.runtime === runtime) this.runtime = null;
-          if (runtime !== null) await this.close_runtime(runtime);
-        }
-        if (queued_id !== undefined && generation === this.runtime_generation) {
-          this.input_queue.cancel_send();
-          this.input_queue.pause();
-          this.publish_input_queue();
-        }
-        this.finish_runtime(runtime_lease);
-      }
+      const record =
+        (await store.read()) ?? (await store.create(await this.workspace.create_session()));
+      this.session_id = record.id;
+      await this.workspace.activate_session(record.id, record.data.uploads, (file) =>
+        store.save_upload(record.id, file),
+      );
+      this.session = await this.create_session(store);
+    } catch (error) {
+      await this.close_session();
+      throw error;
     }
   }
 
-  /** 重置和工程切换可发生在任一准备阶段，迟到结果只能清理自己的候选。 */
-  private assert_current_acceptance(generation: number): void {
-    if (this.disposed || generation !== this.runtime_generation) {
+  /** 关闭保存事实并释放资源。目录删除只由显式重置和数量清理负责。 */
+  private async close_session(): Promise<void> {
+    const session = this.session;
+    const execution = this.execution;
+    const store = this.store;
+    execution?.controller.abort();
+    if (execution !== null) execution.phase = "stopped";
+    this.session = null;
+    this.images.clear();
+    this.workspace.cancel_uploads();
+    this.workspace.invalidate_links();
+    this.decisions.reset();
+    this.token_speed.reset();
+    this.token_speed_snapshot = null;
+    try {
+      try {
+        await execution?.acceptance?.catch(() => undefined); // 受理失败由命令报告，关闭继续收尾。
+        if (session !== null && execution !== null) await session.stop(execution, null);
+        await execution?.settlement;
+      } finally {
+        try {
+          await this.workspace.close();
+        } finally {
+          await session?.close();
+        }
+      }
+    } finally {
+      if (execution !== null) this.release(execution);
+      this.store = null;
+      this.session_id = "inactive";
+      await store?.close();
+    }
+  }
+
+  /** 异步准备结束后复核执行身份与取消状态，阻断迟到写入。 */
+  private assert_execution(execution: AgentExecution): void {
+    this.assert_not_disposed();
+    if (this.execution !== execution || execution.controller.signal.aborted)
       throw new AppErrors.AppError("request.validation_failed", {
         diagnostic_context: { reason: "agent_message_invalidated" },
       });
-    }
   }
-
-  /** 已解除暂停的继续命令从产品 FIFO 选择队首，复用普通队列受理链。 */
-  private accept_next_queued_message(runtime_lease: RuntimeLease): Promise<AgentCommandAck> {
-    const item = this.input_queue.read_next();
-    if (item === null) {
-      throw new AppErrors.AppError("runtime.internal_invariant", {
-        diagnostic_context: { reason: "agent_continue_queue_missing" },
-      });
-    }
-    this.require_resources();
-    return this.accept_round(item, runtime_lease, item.id);
+  /** 工具只能使用当前有效执行持有的租约。 */
+  private require_execution(): AgentExecution {
+    const execution = this.execution;
+    if (execution === null) throw new AppErrors.AppError("runtime.internal_invariant");
+    this.assert_execution(execution);
+    return execution;
   }
-
-  /** 重试与修改共享同一受理边界，目标检查通过后才取得运行 lease。 */
-  private async begin_revision(revision: AgentRevision): Promise<AgentCommandAck> {
-    this.require_resources();
-    this.session_state.require_loaded_project_path();
-    const runtime = this.runtime;
-    if (runtime === null) {
-      throw new AppErrors.AppError("request.validation_failed", {
-        diagnostic_context: { reason: "agent_revision_runtime_missing" },
-      });
-    }
-    const runtime_lease = this.runtime_gate.begin_runtime("agent");
-    this.runtime_lease = runtime_lease;
-    return await this.track_operation_acceptance(
-      this.accept_revision(runtime, revision, runtime_lease),
-    );
+  /** 需要历史的命令在空白会话中按请求错误拒绝。 */
+  private require_session(): AgentSession {
+    if (this.session === null) throw new AppErrors.AppError("request.validation_failed");
+    return this.session;
   }
-
-  /** 模型预检成功后才裁剪；提交段只改内存历史并立即建立唯一替代版本。 */
-  private async accept_revision(
-    runtime: AgentRuntime,
-    revision: AgentRevision,
-    runtime_lease: RuntimeLease,
-  ): Promise<AgentCommandAck> {
-    let prompt_started = false;
-    try {
-      const generation = this.runtime_generation;
-      await this.update_runtime_model(runtime, this.settings.read_setting());
-      if (this.disposed || generation !== this.runtime_generation || this.runtime !== runtime) {
-        throw new AppErrors.AppError("request.validation_failed", {
-          diagnostic_context: { reason: "agent_revision_invalidated" },
-        });
-      }
-
-      const prepared =
-        revision.role === "assistant" ? null : await this.prepare_message(revision.message);
-      runtime.log.revise(
-        this.latest_round_checkpoint!.entry_id,
-        revision.role,
-        revision.message.text,
-      );
-      this.replace_active_history(runtime, revision.checkpoint.leaf_id);
-      this.pending_assistant_checkpoint = null;
-      if (revision.role === "assistant") {
-        this.replace_with_assistant(runtime, revision.prefix, revision.message.text);
-        return this.get_acknowledgement();
-      }
-
-      const prompt = this.start_round(
-        runtime,
-        generation,
-        revision.message,
-        prepared!,
-        runtime_lease,
-        revision.prefix,
-      );
-      this.track_runtime_settlement(prompt);
-      prompt_started = true;
-      return this.get_acknowledgement();
-    } finally {
-      if (!prompt_started) this.finish_runtime(runtime_lease);
-    }
+  /** 启动资源属于组合根前置条件，缺失表示内部生命周期错误。 */
+  private require_resources(): LoadedAgentResources {
+    if (this.resources === null) throw new AppErrors.AppError("runtime.internal_invariant");
+    return this.resources;
   }
-
-  /** SessionManager 在内存模式下用根到 leaf 的单一路径替换整棵旧树。 */
-  private replace_active_history(runtime: AgentRuntime, leaf_id: string | null): void {
-    const before = runtime.session.getSessionStats().tokens;
-    if (leaf_id === null) runtime.session.sessionManager.newSession();
-    else runtime.session.sessionManager.createBranchedSession(leaf_id);
-    const after = runtime.session.getSessionStats().tokens;
-    // SDK 内存分支只保留新路径，差额属于同一产品对话已发生的用量。
-    for (const key of ["input", "output", "cacheRead", "cacheWrite"] as const) {
-      this.removed_usage[key] += before[key] - after[key];
-    }
-    runtime.session.refreshContext();
-    this.context = read_agent_session_context(runtime.session);
-    this.publish_usage();
+  /** 统一解析用户消息与附件引用，非法输入在入队前拒绝。 */
+  private read_message(value: unknown): AgentMessageInput {
+    const message = normalize_agent_message_input(value, this.resolve_file);
+    if (message === null) throw new AppErrors.AppError("request.validation_failed");
+    return message;
   }
-
-  /** 人工修改的 assistant 是零 usage 的正常历史消息，不触发供应商请求。 */
-  private replace_with_assistant(
-    runtime: AgentRuntime,
-    prefix: readonly AgentEntry[],
-    text: string,
-  ): void {
-    const model = runtime.session.model;
-    if (model === undefined) {
-      throw new AppErrors.AppError("runtime.internal_invariant", {
-        diagnostic_context: { reason: "agent_revision_model_missing" },
-      });
-    }
-    const created_at = Date.now();
-    const checkpoint_leaf = runtime.session.sessionManager.getLeafId();
-    runtime.session.sessionManager.appendMessage({
-      role: "assistant",
-      content: [{ type: "text", text }],
-      api: model.api,
-      provider: model.provider,
-      model: model.id,
-      usage: {
-        input: 0,
-        output: 0,
-        cacheRead: 0,
-        cacheWrite: 0,
-        totalTokens: 0,
-        cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
-      },
-      stopReason: "stop",
-      timestamp: created_at,
-    });
-    runtime.session.refreshContext();
-    const entry: AgentEntry = {
-      kind: "assistant_message",
-      id: uuidv7(),
-      parts: [{ kind: "text", text }],
-      status: "success",
-      createdAt: created_at,
-    };
-    this.entries = [...structuredClone(prefix), entry];
-    this.latest_output_checkpoint = { entry_id: entry.id, leaf_id: checkpoint_leaf };
-    this.context = read_agent_session_context(runtime.session);
-    this.state = "idle";
-    this.publish_snapshot_seed();
+  /** 关闭后的命令统一返回生命周期错误。 */
+  private assert_not_disposed(): void {
+    if (this.disposed) throw new AppErrors.AppError("runtime.disposed");
   }
-
-  /** 继续受理只更新模型并启动失败 round 的唯一尾部恢复。 */
-  private async accept_continue(
-    runtime: AgentRuntime,
-    runtime_lease: RuntimeLease,
-  ): Promise<AgentCommandAck> {
-    let continuation_started = false;
-    try {
-      const generation = this.runtime_generation;
-      await this.update_runtime_model(runtime, this.settings.read_setting());
-      if (this.disposed || generation !== this.runtime_generation || this.runtime !== runtime) {
-        throw new AppErrors.AppError("request.validation_failed", {
-          diagnostic_context: { reason: "agent_continue_invalidated" },
-        });
-      }
-      this.translation_paused_result = null;
-      const continuation = this.run_continue(runtime, generation, runtime_lease);
-      this.track_runtime_settlement(continuation);
-      continuation_started = true;
-      return this.get_acknowledgement();
-    } finally {
-      if (!continuation_started) this.finish_runtime(runtime_lease);
-    }
+  /** 会话清理期间阻止命令进入即将失效的状态。 */
+  private assert_available(): void {
+    this.assert_not_disposed();
+    if (this.session_reset !== null) throw new AppErrors.AppError("runtime.busy");
   }
-
-  /** 手动压缩独占共享运行时，但不建立模型 round 或改变公开会话状态。 */
-  private async accept_context_compaction(
-    runtime: AgentRuntime,
-    runtime_lease: RuntimeLease,
-  ): Promise<AgentCommandAck> {
-    let compaction_started = false;
-    try {
-      const generation = this.runtime_generation;
-      await this.update_runtime_model(runtime, this.settings.read_setting());
-      if (
-        !this.runtime_is_current(runtime, generation) ||
-        this.state !== "idle" ||
-        !this.context.compactable
-      ) {
-        throw new AppErrors.AppError("request.validation_failed", {
-          diagnostic_context: { reason: "agent_compaction_invalidated" },
-        });
-      }
-      this.begin_context_compaction();
-      const compaction = this.run_context_compaction(runtime, runtime_lease);
-      this.track_runtime_settlement(compaction);
-      compaction_started = true;
-      return this.get_acknowledgement();
-    } finally {
-      if (!compaction_started) this.finish_runtime(runtime_lease);
-    }
+  /** 等待用户决定时暂停队列命令，保留当前审批上下文。 */
+  private assert_queue_available(): void {
+    this.assert_available();
+    if (this.decisions.has_pending) throw new AppErrors.AppError("runtime.busy");
   }
-
-  /** 手动压缩在后台结算，公开终态与诊断继续由统一压缩事件拥有。 */
-  private async run_context_compaction(
-    runtime: AgentRuntime,
-    runtime_lease: RuntimeLease,
-  ): Promise<void> {
-    try {
-      await runtime.session.compact();
-    } catch {
-      // AgentSession.compact 在拒绝前已同步发布 compaction_end，公开失败与诊断由该事件收束。
-    } finally {
-      this.finish_runtime(runtime_lease);
-    }
-  }
-
-  /** 新轮次记录模型写入前的唯一切点；替代操作通过 snapshot_seed 原子换掉旧尾部。 */
-  private start_round(
-    runtime: AgentRuntime,
-    generation: number,
-    message: AgentMessageInput,
-    prepared: PreparedAgentMessage,
-    runtime_lease: RuntimeLease,
-    replacement_prefix?: readonly AgentEntry[],
-  ): Promise<void> {
-    this.start_round_entry(runtime, message, replacement_prefix);
-    return this.run_round(runtime, generation, runtime_lease, {
-      kind: "prompt",
-      ...prepared,
-    });
-  }
-
-  /** 建立公开 round 与 SDK history checkpoint；steer 输入不经过此入口。 */
-  private start_round_entry(
-    runtime: AgentRuntime,
-    message: AgentMessageInput,
-    replacement_prefix?: readonly AgentEntry[],
-  ): void {
-    this.translation_paused_result = null;
-    const entry: AgentEntry = {
-      kind: "user_message",
-      id: uuidv7(),
-      delivery: "round",
-      text: message.text,
-      attachments: message.attachments,
-      status: "running",
-      createdAt: Date.now(),
-      endedAt: null,
-      averageTokensPerSecond: null,
-    };
-    this.token_speed.reset();
-    this.token_speed_updated_at = null;
-    this.publish_token_speed(null);
-    const checkpoint = {
-      entry_id: entry.id,
-      leaf_id: runtime.session.sessionManager.getLeafId(),
-    };
-    this.latest_round_checkpoint = checkpoint;
-    this.latest_output_checkpoint = null;
-    this.pending_assistant_checkpoint = null;
-    if (replacement_prefix === undefined) {
-      this.upsert_entry(entry);
-      this.set_state("running");
-    } else {
-      this.entries = [...structuredClone(replacement_prefix), entry];
-      this.state = "running";
-      this.publish_snapshot_seed();
-    }
-  }
-
-  /** 恢复原 user 轮次并以隐藏消息继续，保留失败前的公开条目与模型历史。 */
-  private continue_failed_round(
-    runtime: AgentRuntime,
-    generation: number,
-    runtime_lease: RuntimeLease,
-  ): Promise<void> {
-    const user = this.entries.findLast(
-      (entry) => entry.kind === "user_message" && entry.delivery === "round",
-    );
-    if (user?.kind !== "user_message" || user.delivery !== "round" || user.status !== "error") {
-      throw new AppErrors.AppError("runtime.internal_invariant", {
-        diagnostic_context: { reason: "agent_failed_round_missing" },
-      });
-    }
-    this.pending_assistant_checkpoint = null;
-    // 先恢复已显示的均速，再切回运行态，避免状态条在首个新增量前短暂丢失速度。
-    this.token_speed_updated_at = null;
-    this.publish_token_speed(user.averageTokensPerSecond);
-    this.upsert_entry({ ...user, status: "running", endedAt: null, averageTokensPerSecond: null });
-    this.set_state("running");
-    return this.run_round(runtime, generation, runtime_lease, { kind: "continue" });
-  }
-
-  /** 同一请求快照同时更新模型身份、容量、压缩预留与思考等级。 */
-  private async update_runtime_model(
-    runtime: AgentRuntime,
-    model_settings: JsonRecord,
-  ): Promise<void> {
-    const resolved_model = register_agent_model(
-      runtime.session.modelRuntime,
-      model_settings,
-      {
-        user_agent: this.user_agent,
-        session_id: runtime.session_id,
-      },
-      this.catalog,
-      this.auth,
-    );
-    await runtime.session.setModel(resolved_model.model);
-    runtime.session.settingsManager.applyOverrides(build_agent_session_settings());
-    runtime.session.setThinkingLevel(resolved_model.thinkingLevel);
-    runtime.model_config = resolved_model.model_config;
-    this.publish_context();
-  }
-
-  /** 创建完全内存化的 SDK 会话，并关闭默认工具与运行期资源发现。 */
-  private async create_runtime(model_settings: JsonRecord): Promise<AgentRuntime> {
-    const resources = this.require_resources();
-    const app_root = this.paths.get_app_root();
-    const session_manager = SessionManager.inMemory(app_root);
-    const session_id = session_manager.getSessionId();
-    const model_runtime = await ModelRuntime.create({
-      credentials: new InMemoryCredentialStore(),
-      modelsPath: null,
-      allowModelNetwork: false,
-    });
-    const resolved_model = register_agent_model(
-      model_runtime,
-      model_settings,
-      {
-        user_agent: this.user_agent,
-        session_id,
-      },
-      this.catalog,
-      this.auth,
-    );
-    const settings_manager = SettingsManager.inMemory(build_agent_session_settings(), {
-      projectTrusted: false,
-    });
-    const resource_loader = new DefaultResourceLoader({
-      cwd: app_root,
-      agentDir: app_root,
-      settingsManager: settings_manager,
-      noExtensions: true,
-      noSkills: true,
-      noPromptTemplates: true,
-      noThemes: true,
-      noContextFiles: true,
-      systemPrompt: resources.baseSystemPrompt,
-      appendSystemPrompt: [],
-    });
-    await resource_loader.reload();
-    append_agent_session_seed(session_manager, resources.sessionSeed, resolved_model.model);
-    const { session } = await createAgentSession({
-      cwd: app_root,
-      agentDir: app_root,
-      modelRuntime: model_runtime,
-      model: resolved_model.model,
-      thinkingLevel: resolved_model.thinkingLevel,
-      noTools: "builtin",
-      customTools: [
-        create_agent_batch_item_translation_tool(async (request, signal) => {
-          const lease = this.runtime_lease;
-          if (lease === null) throw new AppErrors.AppError("runtime.internal_invariant");
-          if (this.translation_paused_result !== null) return this.translation_paused_result;
-          const generation = this.runtime_generation;
-          try {
-            this.session_state.require_loaded_project_path();
-            signal.throwIfAborted();
-            this.runtime_gate.assert_current_runtime(lease, "agent");
-            const model = resolve_agent_batch_translation_model(
-              this.settings.read_setting(),
-              runtime.model_config,
-              this.catalog.read_models(),
-            );
-            const result = await this.batch_translation.run_under_agent(
-              lease,
-              signal,
-              model,
-              request,
-            );
-            if (generation === this.runtime_generation && result.stop_source === "user") {
-              this.translation_paused_result = result;
-            }
-            return result;
-          } catch (error) {
-            if (error instanceof BatchTranslationCompletionError) {
-              if (generation === this.runtime_generation && error.result.stop_source === "user") {
-                this.translation_paused_result = error.result;
-              }
-              // 翻译边界投影取消事实；原始收尾异常进入本地诊断。
-              this.log_manager.error(t_main_log("app.diagnostic.agent.tool_execution_failed"), {
-                source: "agent",
-                error,
-                context: { tool_name: "run_batch_item_translation" },
-              });
-              throw new AgentToolError({ code: "tool_failed", ...error.result }, error);
-            }
-            throw error;
-          }
-        }),
-        create_agent_ask_user_tool({
-          wait_for_answer: (tool_call_id, question, signal) =>
-            this.decisions.wait_for_question(tool_call_id, question, signal),
-        }),
-        create_agent_workspace_run_tool({
-          run: (script, signal) => {
-            // 每次执行绑定所属运行时和世代，停止或重置后的旧回调不能更新会话。
-            const generation = this.runtime_generation;
-            return this.workspace.run(script, signal, (text) => {
-              signal.throwIfAborted();
-              if (!this.runtime_is_current(runtime, generation))
-                throw new AppErrors.AppError("runtime.cancelled");
-              this.update_doing(text);
-            });
-          },
-
-          refresh_skills: () => this.skills.refresh(),
-          log_refresh_error: (error) =>
-            this.log_manager.error(t_main_log("app.diagnostic.agent.tool_execution_failed"), {
-              source: "agent",
-              error,
-              context: { tool_name: "workspace_run", action: "refresh_skills" },
-            }),
-        }),
-        create_agent_workspace_apply_tool({
-          workspace: this.workspace,
-          approval: this.workspace_approval_port(),
-        }),
-        create_agent_read_skill_tool(() => this.skills.get_current(), this.paths),
-        ...(this.web_search === undefined ? [] : [create_agent_web_search_tool(this.web_search)]),
-      ].map((tool) => prepare_agent_tool(tool, this.log_manager)),
-      resourceLoader: resource_loader,
-      sessionManager: session_manager,
-      settingsManager: settings_manager,
-    });
-    // 模板与历史保持稳定，每次请求在原位插入当前人格，并附加最新技能目录。
-    const transform_context = session.agent.transformContext;
-    session.agent.transformContext = async (messages, signal) => {
-      const original = transform_context ? await transform_context(messages, signal) : messages;
-      const catalog = format_agent_skills_for_system_prompt(this.skills.get_current());
-      const override = this.settings.read_setting().agent_personality;
-      const personality = typeof override === "string" ? override : resources.defaultPersonality;
-      const context = original.map((message) => {
-        // DefaultResourceLoader 将固定模板放入 preamble，按请求替换并保留历史原文。
-        if (message.role !== "system" || typeof message.sections?.preamble !== "string")
-          return message;
-        return {
-          ...message,
-          sections: {
-            ...message.sections,
-            preamble: insert_agent_personality(message.sections.preamble, personality),
-          },
-        };
-      });
-      if (!catalog) return context;
-      return [
-        {
-          role: "system",
-          content: "",
-          sections: { available_skills: catalog },
-          timestamp: Date.now(),
-        },
-        ...context,
-      ];
-    };
-    const runtime: AgentRuntime = {
-      session_id,
-      log: new AgentSessionLog(this.log_manager),
-      session,
-      model_config: resolved_model.model_config,
-      unsubscribe: () => undefined,
-      steer_ready: false,
-    };
-    runtime.unsubscribe = session.subscribe((event) => {
-      runtime.log.handle_event(event);
-      if (this.runtime?.session === session) this.handle_agent_event(event);
-    });
-    return runtime;
-  }
-
-  /** SDK 拥有单个 round 内的工具循环与压缩；产品只在 settle 后消费 FIFO。 */
-  private async run_round(
-    runtime: AgentRuntime,
-    generation: number,
-    runtime_lease: RuntimeLease,
-    request: AgentModelRequest,
-  ): Promise<void> {
-    let outcome: Extract<AgentEntryStatus, "success" | "error"> = "success";
-    let next_request: AgentModelRequest | null = null;
-    // 恢复会从模型上下文排除失败响应，运行结果必须由本次执行事件独立确认。
-    let request_error: string | null = null; // 后续响应成功时清除本次执行的中间失败。
-    const unsubscribe_result = runtime.session.subscribe((event) => {
-      if (event.type === "message_end" && event.message.role === "assistant") {
-        request_error =
-          event.message.stopReason === "error"
-            ? (event.message.errorMessage ?? "Agent model turn failed.")
-            : null;
-      } else if (
-        event.type === "compaction_end" &&
-        event.reason === "overflow" &&
-        event.result === undefined
-      ) {
-        request_error = event.errorMessage ?? "Agent context recovery failed.";
-      }
-    });
-    runtime.log.begin_run(this.latest_round_checkpoint!.entry_id, request.kind);
-    try {
-      // 普通入口已在受理前完成预检；FIFO 在实际出队执行时采用新设置，失败归入该轮终态。
-      if (request.kind === "queued")
-        await this.update_runtime_model(runtime, this.settings.read_setting());
-      if (!this.prompt_is_current(runtime, generation)) return;
-      if (request.kind === "continue") await this.send_continue(runtime);
-      else await this.send_prompt(runtime, generation, request.text, request.images);
-      if (this.prompt_is_current(runtime, generation) && request_error !== null) {
-        outcome = "error";
-        this.log_request_failure(new Error(request_error));
-      }
-    } catch (error) {
-      if (this.prompt_is_current(runtime, generation)) {
-        outcome = "error";
-        this.log_request_failure(error);
-      }
-    } finally {
-      unsubscribe_result();
-      runtime.log.finish_run(outcome);
-      if (this.prompt_is_current(runtime, generation)) {
-        this.flush_assistant_stream();
-        this.finish_current_round(outcome);
-        runtime.steer_ready = false;
-        // 轮次可能在 steer 的图片准备期间结束；先等受理回滚，避免同一队列身份被两条链消费。
-        await this.operation_acceptance?.catch(() => undefined);
-        this.input_queue.cancel_send();
-        if (outcome === "error") this.input_queue.pause();
-        const next = outcome === "success" ? this.input_queue.read_next() : null;
-        if (next !== null) {
-          // 先占位再准备，期间仍可收新消息，但不能修改正在准备的队首。
-          this.input_queue.begin_send(next.id);
-          this.publish_input_queue();
-          try {
-            const prepared = await this.prepare_message(next);
-            if (this.prompt_is_current(runtime, generation)) {
-              this.input_queue.commit_send();
-              this.start_round_entry(runtime, next);
-              next_request = { kind: "queued", ...prepared };
-            }
-          } catch (error) {
-            if (this.prompt_is_current(runtime, generation)) {
-              this.input_queue.cancel_send();
-              this.input_queue.pause();
-              this.log_request_failure(error);
-            }
-          }
-        }
-        if (this.runtime_is_current(runtime, generation)) this.publish_input_queue();
-        if (next_request === null && this.prompt_is_current(runtime, generation))
-          this.set_state("idle");
-      }
-      if (next_request === null) this.finish_runtime(runtime_lease);
-    }
-    if (next_request !== null) {
-      await this.run_round(runtime, generation, runtime_lease, next_request);
-    }
-  }
-
-  /** 初始 round 统一通过 SDK preflight 防止失效请求启动模型。 */
-  private async send_prompt(
-    runtime: AgentRuntime,
-    generation: number,
-    text: string,
-    images: ImageContent[],
-  ): Promise<void> {
-    await runtime.session.prompt(text, {
-      expandPromptTemplates: false,
-      images,
-      // SDK 在异步 preflight 完成前仍处于 idle；失效后必须在真正启动模型前截断。
-      preflightResult: (disposition) => {
-        if (disposition === "started" && !this.prompt_is_current(runtime, generation)) {
-          throw new AppErrors.AppError("runtime.cancelled", {
-            diagnostic_context: {
-              resource: "agent_prompt",
-              reason: "agent_message_invalidated",
-            },
-          });
-        }
-      },
-    });
-  }
-
-  /** 以隐藏消息恢复失败 round；压缩重试由 SDK 的下一请求预检统一处理。 */
-  private async run_continue(
-    runtime: AgentRuntime,
-    generation: number,
-    runtime_lease: RuntimeLease,
-  ): Promise<void> {
-    let round_started = false;
-    try {
-      if (this.runtime_is_current(runtime, generation)) {
-        const prompt = this.continue_failed_round(runtime, generation, runtime_lease);
-        round_started = true;
-        await prompt;
-      }
-    } catch {
-      // 模型与压缩事件已经发布权威失败条目和诊断，命令 Promise 不建立第二套错误通道。
-      this.input_queue.pause();
-      this.publish_input_queue();
-    } finally {
-      if (!round_started) {
-        if (this.runtime_is_current(runtime, generation)) this.set_state("idle");
-        this.finish_runtime(runtime_lease);
-      }
-    }
-  }
-
-  /** 将 SDK 事件收窄为按真实顺序追加的公开时间线；中间失败不冒充最终失败。 */
-  private handle_agent_event(event: PiAgentSessionEvent): void {
-    if (
-      event.type === "turn_end" ||
-      event.type === "agent_settled" ||
-      (event.type === "entry_appended" && event.entry.type === "context_edit")
-    ) {
-      // message_end 通知早于 SDK 落库；这些边界已提交历史，直接读取 SessionManager。
-      this.publish_context();
-      return;
-    }
-    if (event.type === "compaction_start") {
-      this.begin_context_compaction();
-      return;
-    }
-    if (event.type === "compaction_end") {
-      const result = event.result;
-      const entry = this.find_open_compaction_entry() ?? {
-        kind: "context_compaction" as const,
-        id: uuidv7(),
-        status: "running" as const,
-        createdAt: Date.now(),
-      };
-      const success = result !== undefined && !event.aborted && event.errorMessage === undefined;
-      this.upsert_entry({ ...entry, status: success ? "success" : "error" });
-      if (event.errorMessage !== undefined) {
-        this.log_manager.warning(t_main_log("app.diagnostic.agent.context_compaction_failed"), {
-          source: "agent",
-          context: { reason: event.reason, error: event.errorMessage },
-        });
-      }
-      this.publish_context();
-      return;
-    }
-    if (event.type === "agent_start" || event.type === "turn_start") {
-      if (this.runtime !== null) this.runtime.steer_ready = true;
-      this.publish_input_queue();
-      return;
-    }
-    if (event.type === "agent_end") {
-      if (this.runtime !== null) this.runtime.steer_ready = false;
-      this.publish_input_queue();
-      return;
-    }
-    // stop 会先切 idle 再取消 SDK，因此取消过程中到达的事件天然失效。
-    if (this.state !== "running") return;
-    if (event.type === "message_start" && event.message.role === "user") {
-      const item = this.input_queue.commit_send();
-      if (item !== null) {
-        const now = Date.now();
-        this.upsert_entry({
-          kind: "user_message",
-          id: uuidv7(),
-          delivery: "steer",
-          text: item.text,
-          attachments: item.attachments,
-          status: "success",
-          createdAt: now,
-          endedAt: now,
-        });
-        this.publish_input_queue();
-      }
-      return;
-    }
-    if (event.type === "message_start" && event.message.role === "assistant") {
-      this.pending_assistant_checkpoint = {
-        leaf_id: this.runtime?.session.sessionManager.getLeafId() ?? null,
-      };
-      return;
-    }
-    if (event.type === "message_update") {
-      const delta = event.assistantMessageEvent;
-      if (
-        delta.type === "text_delta" ||
-        delta.type === "thinking_delta" ||
-        delta.type === "toolcall_delta"
-      ) {
-        const content = delta.partial.content[delta.contentIndex];
-        if (delta.delta !== "" && !(content?.type === "thinking" && content.redacted === true)) {
-          const now = performance.now();
-          this.token_speed.record(delta.delta, delta.contentIndex, now);
-          this.publish_realtime_token_speed(now);
-        }
-      }
-      if (delta.type === "text_delta" || delta.type === "thinking_delta") {
-        this.append_assistant_stream_delta(delta);
-      }
-      return;
-    }
-    if (event.type === "message_end") {
-      if (event.message.role === "assistant") {
-        // 结算响应采样后保留展示值，覆盖工具执行和模型等待期间，直到下一次输出更新。
-        this.token_speed.finish_response(performance.now(), event.message.usage.output);
-        this.token_speed_updated_at = null;
-        this.clear_assistant_stream();
-        this.upsert_assistant_message(
-          event.message,
-          event.message.stopReason === "error" ? "error" : "success",
-        );
-        this.pending_assistant_checkpoint = null;
-      }
-      return;
-    }
-    if (event.type === "tool_execution_start") {
-      // SDK 参数先序列化为不可变公开值，后续执行不得通过原对象引用改写时间线输入。
-      this.upsert_entry({
-        kind: "tool_call",
-        id: event.toolCallId,
-        toolName: event.toolName,
-        input: JsonTool.stringifyStrict(event.args),
-        status: "running",
-        output: null,
-        createdAt: Date.now(),
-      });
-      return;
-    }
-    if (event.type === "tool_execution_end") {
-      const running_entry = this.entries.find(
-        (entry) => entry.kind === "tool_call" && entry.id === event.toolCallId,
-      );
-      if (running_entry?.kind !== "tool_call") {
-        throw new AppErrors.AppError("runtime.internal_invariant", {
-          diagnostic_context: {
-            reason: "agent_tool_start_missing",
-            tool_call_id: event.toolCallId,
-          },
-        });
-      }
-      this.upsert_entry({
-        ...running_entry,
-        status: event.isError ? "error" : "success",
-        output: event.result.content.flatMap((part: TextContent | ImageContent) =>
-          part.type === "text" ? [part.text] : [],
-        ),
-      });
-    }
-  }
-
-  /** Pi 以最终 assistant 承载模型错误；公开状态由轮次终态统一表达。 */
+  /** 模型执行异常进入应用诊断，公开时间线另行结算。 */
   private log_request_failure(error: unknown): void {
     this.log_manager.error(t_main_log("app.diagnostic.agent.model_round_failed"), {
       source: "agent",
       error,
     });
   }
-
-  /** 以 Pi 的完整 partial / final 消息校正公开 parts，同一模型消息始终原位覆盖。 */
-  private upsert_assistant_message(message: AssistantMessage, status: AgentEntryStatus): void {
-    this.upsert_assistant_parts(
-      project_assistant_message_parts(message),
-      message.timestamp,
-      status,
-    );
-  }
-
-  /** running 与 canonical final 复用同一条目身份；空终帧只封口已有可见内容。 */
-  private upsert_assistant_parts(
-    parts: AgentAssistantMessageParts | null,
-    created_at: number,
-    status: AgentEntryStatus,
-  ): void {
-    const existing = this.find_open_assistant_entry();
-    const next_parts = parts ?? existing?.parts; // 空终帧不覆盖已经公开的流式内容。
-    if (next_parts === undefined) return;
-    if (existing === undefined) {
-      const entry: AgentEntry = {
-        kind: "assistant_message",
-        id: uuidv7(),
-        parts: next_parts,
-        status,
-        createdAt: created_at,
-      };
-      this.upsert_entry(entry);
-      const checkpoint = this.pending_assistant_checkpoint;
-      if (checkpoint !== null) {
-        this.latest_output_checkpoint = {
-          entry_id: entry.id,
-          leaf_id: checkpoint.leaf_id,
-        };
-      }
-    } else {
-      this.upsert_entry({ ...existing, parts: next_parts, status });
-    }
-  }
-
-  /** 单个 SDK delta 只保存窄字符串，完整投影延迟到固定发布窗口。 */
-  private append_assistant_stream_delta(event: AgentAssistantStreamDelta): void {
-    if (event.delta === "") return;
-    const kind = event.type === "text_delta" ? "text" : "thinking";
-    const content = event.partial.content[event.contentIndex];
-    if (content?.type !== kind || (content.type === "thinking" && content.redacted === true)) {
-      return;
-    }
-    const stream = (this.assistant_stream ??= {
-      created_at: event.partial.timestamp,
-      blocks: [],
-    });
-    const last = stream.blocks.at(-1);
-    if (last?.content_index === event.contentIndex) last.chunks.push(event.delta);
-    else stream.blocks.push({ content_index: event.contentIndex, kind, chunks: [event.delta] });
-    if (this.assistant_stream_publish_timer !== null) return;
-    this.assistant_stream_publish_timer = setTimeout(() => {
-      this.assistant_stream_publish_timer = null;
-      this.publish_assistant_stream();
-    }, AGENT_STREAM_PUBLISH_INTERVAL_MS);
-  }
-
-  /** 发布当前完整累积内容，但保留增量供下一窗口继续追加。 */
-  private publish_assistant_stream(): void {
-    const stream = this.assistant_stream;
-    if (stream === null) return;
-    const parts = normalize_agent_assistant_message_parts(
-      stream.blocks.map((block) => ({ kind: block.kind, text: block.chunks.join("") })),
-    );
-    this.upsert_assistant_parts(parts, stream.created_at, "running");
-  }
-
-  /** stop 与异常收尾公开窗口内最新正文后销毁流。 */
-  private flush_assistant_stream(): void {
-    if (this.assistant_stream_publish_timer !== null) {
-      clearTimeout(this.assistant_stream_publish_timer);
-      this.assistant_stream_publish_timer = null;
-    }
-    try {
-      this.publish_assistant_stream();
-    } finally {
-      this.assistant_stream = null;
-    }
-  }
-
-  /** final、reset 与 dispose 丢弃非权威增量，阻止迟到 timer 回流。 */
-  private clear_assistant_stream(): void {
-    if (this.assistant_stream_publish_timer !== null) {
-      clearTimeout(this.assistant_stream_publish_timer);
-      this.assistant_stream_publish_timer = null;
-    }
-    this.assistant_stream = null;
-  }
-
-  /** 同 id 只替换原位置，确保工具终帧不会改变后端确认的时间线顺序。 */
-  private upsert_entry(entry: AgentEntry): void {
-    const next = structuredClone(entry);
-    const index = this.entries.findIndex((item) => item.id === entry.id);
-    if (index < 0) this.entries.push(next);
-    else this.entries[index] = next;
-    this.publish_event({ type: "entry_upsert", entry: next });
-  }
-
-  /** 流式增量只归入最后一个尚未终结的 assistant 条目。 */
-  private find_open_assistant_entry():
-    | Extract<AgentEntry, { kind: "assistant_message" }>
-    | undefined {
-    return this.entries.findLast(
-      (entry): entry is Extract<AgentEntry, { kind: "assistant_message" }> =>
-        entry.kind === "assistant_message" && entry.status === "running",
-    );
-  }
-
-  /** 自动与手动压缩共用同一个公开开始事实；重复 SDK start 保持幂等。 */
-  private begin_context_compaction(): void {
-    const compaction = this.find_latest_compaction_entry();
-    if (compaction?.status === "running") return;
-    if (this.runtime !== null) this.runtime.steer_ready = false;
-    this.publish_input_queue();
-    this.upsert_entry(
-      compaction?.status === "error"
-        ? { ...compaction, status: "running" }
-        : {
-            kind: "context_compaction",
-            id: uuidv7(),
-            status: "running",
-            createdAt: Date.now(),
-          },
-    );
-  }
-
-  /** 连续自动压缩尝试复用最近一次失败条目，时间线始终只有一个诊断位置。 */
-  private find_latest_compaction_entry():
-    | Extract<AgentEntry, { kind: "context_compaction" }>
-    | undefined {
-    return this.entries.findLast(
-      (entry): entry is Extract<AgentEntry, { kind: "context_compaction" }> =>
-        entry.kind === "context_compaction",
-    );
-  }
-
-  /** 压缩终态只覆盖当前 running 条目。 */
-  private find_open_compaction_entry():
-    | Extract<AgentEntry, { kind: "context_compaction" }>
-    | undefined {
-    const entry = this.find_latest_compaction_entry();
-    return entry?.status === "running" ? entry : undefined;
-  }
-
-  /** apply 从开始校验到 SDK 接收终帧都不可停止，避免提交事实被迟到取消覆盖。 */
-  private find_open_workspace_apply_entry(): AgentEntry | undefined {
-    return this.entries.find(
-      (entry) =>
-        entry.kind === "tool_call" &&
-        entry.toolName === "workspace_apply" &&
-        entry.status === "running",
-    );
-  }
-
-  /** 先封口本轮开放的子条目，再冻结轮次结果；终态只在后端写一次。 */
-  private finish_current_round(
-    outcome: Extract<AgentEntryStatus, "success" | "error" | "stopped">,
-  ): void {
-    const user_index = this.entries.findLastIndex(
-      (entry) =>
-        entry.kind === "user_message" && entry.delivery === "round" && entry.status === "running",
-    );
-    if (user_index < 0) return;
-    this.token_speed_updated_at = null;
-    const average_tokens_per_second = this.token_speed.finish_round(performance.now());
-    for (const entry of this.entries.slice(user_index + 1)) {
-      if (entry.status !== "running") continue;
-      // 压缩终态只由 SDK compaction_end 确认，轮次收尾不代写结果。
-      if (entry.kind === "context_compaction") continue;
-      if (entry.kind === "tool_call") {
-        this.upsert_entry({ ...entry, status: "stopped", output: null });
-        continue;
-      }
-      this.upsert_entry({ ...entry, status: outcome });
-    }
-    const user = this.entries[user_index];
-    if (user?.kind === "user_message" && user.delivery === "round" && user.status === "running") {
-      this.upsert_entry({
-        ...user,
-        status: outcome,
-        endedAt: Date.now(),
-        averageTokensPerSecond: average_tokens_per_second,
-      });
-    }
-    this.publish_token_speed(null);
-  }
-
-  /** 每次模型历史变化后发布完整上下文快照。 */
-  private publish_context(): void {
-    const session = this.runtime?.session;
-    if (session === undefined) return;
-    this.context = read_agent_session_context(session);
-    this.publish_event({ type: "context", context: structuredClone(this.context) });
-    this.publish_usage();
-  }
-
-  /** SDK 汇总模型调用，产品层补回历史修订移出的已发生用量。 */
-  private publish_usage(): void {
-    const tokens = this.runtime?.session.getSessionStats().tokens;
-    if (tokens === undefined) return;
-    const usage: AgentUsageSnapshot = {
-      input: this.removed_usage.input + tokens.input,
-      output: this.removed_usage.output + tokens.output,
-      cacheRead: this.removed_usage.cacheRead + tokens.cacheRead,
-      cacheWrite: this.removed_usage.cacheWrite + tokens.cacheWrite,
-    };
-    if (
-      (["input", "output", "cacheRead", "cacheWrite"] as const).every(
-        (key) => this.usage[key] === usage[key],
-      )
-    )
-      return;
-    this.usage = usage;
-    this.publish_event({ type: "usage", usage: { ...usage } });
-  }
-
-  /** 分词与实时发布共用更新节奏，即使数值不变也限制分词频率。 */
-  private publish_realtime_token_speed(now: number): void {
-    if (
-      this.token_speed_updated_at !== null &&
-      now - this.token_speed_updated_at < AGENT_TOKEN_SPEED_PUBLISH_INTERVAL_MS
-    )
-      return;
-    this.token_speed_updated_at = now;
-    this.publish_token_speed(this.token_speed.measure(now));
-  }
-
-  /** 实时数据绑定当前回合，按显示精度去重，结束结果由回合条目承载。 */
-  private publish_token_speed(tokens_per_second: number | null): void {
-    const round_id = this.latest_round_checkpoint?.entry_id;
-    const speed: AgentTokenSpeedSnapshot =
-      tokens_per_second === null || round_id === undefined
-        ? null
-        : { roundId: round_id, tokensPerSecond: Number(tokens_per_second.toFixed(2)) };
-    if (
-      this.token_speed_snapshot?.roundId === speed?.roundId &&
-      this.token_speed_snapshot?.tokensPerSecond === speed?.tokensPerSecond
-    )
-      return;
-    this.token_speed_snapshot = speed;
-    this.publish_event({ type: "token_speed", tokenSpeed: structuredClone(speed) });
-  }
-
-  /** 状态未变化时不发布重复 SSE。 */
-  private set_state(state: AgentSessionState): void {
-    if (this.state === state) return;
-    this.state = state;
-    this.publish_event({ type: "session_state", state });
-  }
-
-  /** 输入队列与可 steer 能力始终以完整快照发布，renderer 可幂等替换。 */
-  private publish_input_queue(): void {
-    this.publish_event({
-      type: "input_queue",
-      inputQueue: this.input_queue.read_snapshot(this.can_send_queued_now()),
-    });
-  }
-
-  /** 只有 Pi agent loop 可接收 steer，空闲时则由共享 runtime gate 决定。 */
-  private can_send_queued_now(): boolean {
-    if (this.decisions.has_pending) return false;
-    if (this.state === "running") return this.runtime?.steer_ready === true;
-    return this.runtime_gate.get_snapshot().owner === null;
-  }
-
-  /** AgentService 的所有增量在唯一入口分配 revision，再复用同一公开 topic。 */
-  private publish_event(event: AgentIncrementalEvent): void {
-    this.revision += 1;
-    this.publish(AGENT_SESSION_EVENT_TOPIC, { ...event, revision: this.revision });
-  }
-
-  /** seed 先占用 revision，再以同一个值构造内外两层快照边界。 */
-  private publish_snapshot_seed(): void {
-    this.revision += 1;
-    const event: AgentSessionEvent = {
-      type: "snapshot_seed",
-      revision: this.revision,
-      snapshot: this.get_snapshot(),
-    };
-    this.publish(AGENT_SESSION_EVENT_TOPIC, event);
-  }
-
-  /** 命令回执只暴露同步受理完成时的事件边界，不复制会话历史。 */
-  private get_acknowledgement(): AgentCommandAck {
-    return { revision: this.revision };
-  }
-
-  /** 立即隔离公开会话；工程切换还把新工程路径交给 sources 生命周期。 */
-  private reset_session(
-    scope: "workspace" | "project",
-    project_path: string | null = null,
-  ): Promise<void> {
-    if (this.session_reset !== null) return this.session_reset;
-    this.session_id = uuidv7();
-    this.images.clear();
-    this.workspace.uploads.cancel();
-    this.workspace.invalidate_links();
-    this.runtime_generation += 1;
-    this.clear_assistant_stream();
-    const runtime = this.runtime;
-    runtime?.log.reset(scope);
-    const acceptance = this.operation_acceptance;
-    const settlement = this.runtime_settlement;
-    this.runtime = null;
-    this.state = "idle";
-    this.decisions.reset();
-    this.entries = [];
-    this.token_speed.reset();
-    this.token_speed_updated_at = null;
-    this.token_speed_snapshot = null;
-    this.context = { tokens: null, compactable: false, limits: null };
-    this.removed_usage = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
-    this.usage = { ...this.removed_usage };
-    this.latest_round_checkpoint = null;
-    this.translation_paused_result = null;
-    this.latest_output_checkpoint = null;
-    this.pending_assistant_checkpoint = null;
-    this.doing = null;
-    this.input_queue.reset();
-    const reset = Promise.all([
-      acceptance?.catch(() => undefined),
-      settlement?.catch(() => undefined),
-      runtime === null ? undefined : this.close_runtime(runtime),
-      this.skills.refresh(),
-    ])
-      .then(async () => {
-        if (scope === "project") {
-          await this.workspace.reset_project(project_path);
-        } else {
-          await this.workspace.reset_workspace();
-        }
-        // 先恢复技能通知再发布最终快照，避免队列保存落在快照与清理屏障之间。
-        if (this.session_reset === reset) this.session_reset = null;
-        if (!this.disposed) {
-          this.publish_snapshot_seed();
-        }
-      })
-      .finally(() => {
-        if (this.session_reset === reset) this.session_reset = null;
-      });
-    this.session_reset = reset;
-    return reset;
-  }
-
-  /** SDK 运行时只有一个关闭入口，清理失败记录 warning 但仍继续 dispose。 */
-  private async close_runtime(runtime: AgentRuntime): Promise<void> {
-    try {
-      runtime.session.abortCompaction();
-    } catch (error) {
-      this.warn_cleanup_failure(error);
-    }
-    try {
-      await runtime.session.abort();
-    } catch (error) {
-      this.warn_cleanup_failure(error);
-    } finally {
-      try {
-        runtime.unsubscribe();
-      } catch (error) {
-        this.warn_cleanup_failure(error);
-      }
-      try {
-        runtime.session.dispose();
-      } catch (error) {
-        this.warn_cleanup_failure(error);
-      }
-    }
-  }
-
-  /** 清理失败不改变已完成的会话隔离，只保留诊断。 */
+  /** 后台收尾失败保留原始错误供本地诊断。 */
   private warn_cleanup_failure(error: unknown): void {
     this.log_manager.warning(t_main_log("app.diagnostic.agent.session_cleanup_failed"), {
       source: "agent",
       error,
     });
   }
-
-  /** 所有异步受理共享同一关闭屏障，命令类型不再各自复制清理时序。 */
-  private async track_operation_acceptance(
-    acceptance: Promise<AgentCommandAck>,
-  ): Promise<AgentCommandAck> {
-    this.operation_acceptance = acceptance;
-    try {
-      return await acceptance;
-    } finally {
-      if (this.operation_acceptance === acceptance) this.operation_acceptance = null;
-    }
+  /** 压缩失败记录触发原因，供区分手动、阈值和恢复路径。 */
+  private compaction_failure(reason: string, error: string): void {
+    this.log_manager.warning(t_main_log("app.diagnostic.agent.context_compaction_failed"), {
+      source: "agent",
+      context: { reason, error },
+    });
   }
-
-  /** 当前唯一后台运行持有关闭屏障，并按 Promise 身份清除自身。 */
-  private track_runtime_settlement(settlement: Promise<void>): void {
-    this.runtime_settlement = settlement;
-    // 迟到的收尾只能清除自身持有的关闭屏障。
-    const clear_settlement = () => {
-      if (this.runtime_settlement === settlement) this.runtime_settlement = null;
-    };
-    void settlement.then(clear_settlement, clear_settlement);
-  }
-
-  /** 同时清除本地引用和共享 owner；迟到 lease 由 gate 身份校验忽略。 */
-  private finish_runtime(lease: RuntimeLease): void {
-    if (this.runtime_lease === lease) this.runtime_lease = null;
-    this.runtime_gate.finish_runtime(lease);
-    if (!this.disposed && this.session_reset === null && this.input_queue.has_items) {
-      this.publish_input_queue();
-    }
-  }
-
-  /** 运行时世代守卫供压缩与 prompt 共用，不把 idle 压缩误判为失效。 */
-  private runtime_is_current(runtime: AgentRuntime, generation: number): boolean {
-    return this.runtime === runtime && generation === this.runtime_generation;
-  }
-
-  /** prompt 只有仍绑定当前运行时、未被终止且处于公开回合时才能发布最终状态。 */
-  private prompt_is_current(runtime: AgentRuntime, generation: number): boolean {
-    return this.runtime_is_current(runtime, generation) && this.state === "running";
-  }
-
-  /** 资源加载是发送消息的硬前置，不能用部分资源降级启动。 */
-  private require_resources(): LoadedAgentResources {
-    if (this.resources === null) {
-      throw new AppErrors.AppError("runtime.internal_invariant", {
-        diagnostic_context: { reason: "agent_resources_not_loaded" },
-      });
-    }
-    return this.resources;
-  }
-
-  /** 失败 round 使用隐藏模型消息续跑，不制造公开 user 轮次。 */
-  private async send_continue(runtime: AgentRuntime): Promise<void> {
-    await runtime.session.sendCustomMessage(
-      {
-        customType: "linguagacha_continue",
-        content: [{ type: "text", text: this.read_continue_text() }],
-        display: false,
-      },
-      { triggerTurn: true },
-    );
-  }
-
-  /** 隐藏续跑消息在操作发起时读取当前 UI 语言。 */
+  /** 隐藏继续消息采用当前应用语言。 */
   private read_continue_text(): string {
-    const setting = this.settings.read_setting();
     return format_i18n_message(
-      resolve_app_locale(setting["app_language"]),
+      resolve_app_locale(this.settings.read_setting()["app_language"]),
       "agent_runtime.message.continue",
     );
   }
-
-  /** 阶段变化时发布唯一会话事实，执行有效性由绑定回调检查。 */
-  private update_doing(text: string | null): void {
-    if (this.doing === text) return;
-    this.doing = text;
-    this.publish_event({ type: "doing", doing: text });
-  }
-
-  /** `workspace_apply` 读取应用审批偏好，当前批次决定由会话协调器持有。 */
+  /** 每批读取审批偏好，拒绝决定作为安全工具错误交回模型。 */
   private workspace_approval_port(): AgentWorkspaceApprovalPort {
     return {
       read_mode: () =>
         normalize_agent_approval_mode(this.settings.read_setting()["agent_approval_mode"]),
-      wait_for_decision: async (tool_call_id, summary, signal) => {
-        const decision = await this.decisions.wait_for_write_approval(
-          tool_call_id,
-          summary,
-          signal,
-        );
-        if (decision === "reject") {
+      wait_for_decision: async (id, summary, signal) => {
+        if ((await this.decisions.wait_for_write_approval(id, summary, signal)) === "reject")
           throw new AgentToolError({ code: "approval_denied", action: "await_user" });
-        }
       },
     };
-  }
-
-  /** dispose 后的命令必须失败，避免重新创建已脱离订阅的运行时。 */
-  private assert_not_disposed(): void {
-    if (this.disposed) throw new AppErrors.AppError("runtime.disposed");
-  }
-
-  /** 消息改写只允许发生在稳定空闲态。 */
-  private assert_revision_available(): void {
-    this.assert_not_disposed();
-    if (this.session_reset !== null || this.state !== "idle") {
-      throw new AppErrors.AppError("runtime.busy");
-    }
-  }
-
-  /** 队列命令可与模型回合并行，但不能穿透 reset 关闭屏障。 */
-  private assert_queue_command_available(): void {
-    this.assert_not_disposed();
-    if (this.session_reset !== null || this.decisions.has_pending) {
-      throw new AppErrors.AppError("runtime.busy");
-    }
   }
 }
 
@@ -2046,7 +1108,7 @@ function read_queue_message_request(
   return { id: read_queue_id(request), message };
 }
 
-/** 空 continue 不制造消息；携带 message 时仍复用完整用户消息边界。 */
+/** 空 continue 不制造消息。携带 message 时仍复用完整用户消息边界。 */
 function read_agent_continue_message(
   request: JsonRecord,
   resolve_file: (id: string) => AgentFileAttachment,

@@ -1,3 +1,4 @@
+import { agent_tool_call } from "../../../test/agent-tool-fixture";
 import { validateToolArguments, type ToolCall } from "@earendil-works/pi-ai";
 import { describe, expect, it, vi } from "vitest";
 
@@ -37,11 +38,8 @@ describe("Agent web_search 工具", () => {
     const signal = new AbortController().signal;
 
     const result = (await tool.execute(
-      "search",
       { query: "当前示例" },
-      signal,
-      undefined,
-      undefined as never,
+      ...agent_tool_call("search", signal),
     )) as WebSearchToolResult;
 
     expect(search).toHaveBeenCalledWith("当前示例", signal);
@@ -57,11 +55,8 @@ describe("Agent web_search 工具", () => {
     }));
 
     const result = (await create_agent_web_search_tool(search).execute(
-      "search",
       { query: "大量结果" },
-      undefined,
-      undefined,
-      undefined as never,
+      ...agent_tool_call("search"),
     )) as WebSearchToolResult;
 
     const result_text = result.content[0]?.text ?? "";
@@ -76,11 +71,8 @@ describe("Agent web_search 工具", () => {
 
     await expect(
       create_agent_web_search_tool(search).execute(
-        "search",
         { query: "不会搜索" },
-        controller.signal,
-        undefined,
-        undefined as never,
+        ...agent_tool_call("search", controller.signal),
       ),
     ).rejects.toThrow("提前取消");
     expect(search).not.toHaveBeenCalled();

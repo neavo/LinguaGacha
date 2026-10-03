@@ -1,5 +1,5 @@
 import { Type, type Static } from "@earendil-works/pi-ai";
-import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
+import type { ToolRegistration } from "@earendil-works/pi-durable";
 
 import {
   AGENT_QUESTION_OPTION_MAX,
@@ -100,7 +100,7 @@ function normalize_question(params: Static<typeof ASK_USER_PARAMETERS>): AgentQu
 }
 
 /** ask_user 把阻塞性决定交给宿主 UI，并将一次性结果返回当前工具轮次。 */
-export function create_agent_ask_user_tool(question: AgentQuestionPort): ToolDefinition {
+export function create_agent_ask_user_tool(question: AgentQuestionPort): ToolRegistration {
   return define_agent_tool({
     name: "ask_user",
     description: [
@@ -119,7 +119,9 @@ export function create_agent_ask_user_tool(question: AgentQuestionPort): ToolDef
     ].join("\n"),
     executionMode: "sequential",
     parameters: ASK_USER_PARAMETERS,
-    execute: async (tool_call_id, params, signal) => {
+    execute: async (params, api, context) => {
+      const tool_call_id = api.callId;
+      const signal = context.abortSignal;
       const result = await question.wait_for_answer(
         tool_call_id,
         normalize_question(params),

@@ -381,7 +381,7 @@ it("删除变更目录后继续执行技能、提交和重置", async () => {
       openDirectory: async () => {},
       pickSavePath: async () => null,
     });
-    await service.initialize();
+    await service.activate_session("test0001", [], async () => {});
     // 两个空根先运行一次，后续新增文件在下一 run 自然可读。
     await service.run("console.log('ready');", AbortSignal.timeout(RUN_TIMEOUT_MS));
     await service.run(
@@ -393,7 +393,7 @@ it("删除变更目录后继续执行技能、提交和重置", async () => {
     );
     const entry = path.join(resources.paths.get_agent_user_skill_dir(), "fixture", "entry.mjs");
     await mkdir(path.dirname(entry), { recursive: true });
-    // 原包替换正文，下一进程必须看到新版本；apply 使用真实工程写入口。
+    // 原包替换正文，下一进程必须看到新版本。apply 使用真实工程写入口。
     const module_body = (value: string) => `
       import { readFile, writeFile } from 'node:fs/promises';
       export async function update() {
@@ -415,7 +415,9 @@ it("删除变更目录后继续执行技能、提交和重置", async () => {
     expect(result.execution.stdout).toMatchObject({
       content: { before: "第一版", after: "第二版" },
     });
-    await service.reset_workspace();
+    await service.close();
+    await service.delete_session("test0001");
+    await service.activate_session("test0001", [], async () => {});
     expect(
       (await service.run(script, AbortSignal.timeout(RUN_TIMEOUT_MS))).execution.stdout,
     ).toMatchObject({ content: { before: "第一版", after: "第二版" } });
@@ -484,7 +486,7 @@ it("网页流、重定向与代理等待在真实子进程中工作", async () =
       html: '<article><h1>Hello</h1><p><a href="/target">世界</a></p></article>',
       url: `http://127.0.0.1:${address.port}/page`,
     });
-    // 先收到代理请求，再返回错误；等待宿主期间 IPC 必须维持子进程存活。
+    // 先收到代理请求，再返回错误。等待宿主期间 IPC 必须维持子进程存活。
     let release!: (rules: string) => void;
     let started!: () => void;
     const ready = new Promise<void>((resolve) => {

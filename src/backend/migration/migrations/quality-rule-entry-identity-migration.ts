@@ -10,9 +10,6 @@ import type {
   ProjectDatabaseMigrationContext,
 } from "../migration-types";
 
-// 写回迁移只以当前短身份作为白名单；格式仍不是运行期领域契约。
-const CURRENT_QUALITY_RULE_ENTRY_ID_PATTERN = /^[0-9A-HJKMNP-TV-Z]{5}$/u;
-
 /** 依赖 project-rule-storage 先把条目规则归一为单行数组。 */
 export const quality_rule_entry_identity_migration: DatabaseWritebackMigration = {
   id: "quality-rule-entry-identity",
@@ -22,7 +19,7 @@ export const quality_rule_entry_identity_migration: DatabaseWritebackMigration =
   },
 };
 
-/** 将历史规则身份一次性写回当前生成形状，运行期无需保留格式兼容分支。 */
+/** 补齐或修复规则身份，重放时保留已分配的合法身份。 */
 export function run_quality_rule_entry_identity_migration(db: DatabaseSync): void {
   const read_rule_row = db.prepare("SELECT data FROM rules WHERE type = ?");
   const update_rule_row = db.prepare("UPDATE rules SET data = ? WHERE type = ?");
@@ -47,40 +44,39 @@ export function run_quality_rule_entry_identity_migration(db: DatabaseSync): voi
   }
 }
 
-/** 预留全部白名单身份后再修复，避免新身份抢占后续应保留的事实。 */
+/** 先预留全部非空身份，避免新身份抢占后续事实。迁移重放沿用已有编码。 */
 function migrate_rule_entries(entries: JsonValue[]): { entries: JsonValue[]; changed: boolean } {
   const occupied_entry_ids = new Set(
     entries.flatMap((entry) => {
       if (!is_json_record(entry)) {
         return [];
       }
-      const entry_id = entry["entry_id"];
-      return is_current_quality_rule_entry_id(entry_id) ? [entry_id] : [];
+      const entry_id = read_entry_id(entry["entry_id"]);
+      return entry_id === "" ? [] : [entry_id];
     }),
-  ); // 预留所有可保留身份，生成时不得抢占后续事实。
-  const kept_entry_ids = new Set<string>(); // 只允许每个白名单身份的首项保留。
+  );
+  const kept_entry_ids = new Set<string>(); // 同类重复身份只保留首项。
   let changed = false;
   const migrated_entries = entries.map((entry) => {
     if (!is_json_record(entry)) {
       return entry;
     }
-    const entry_id = entry["entry_id"];
-    if (is_current_quality_rule_entry_id(entry_id) && !kept_entry_ids.has(entry_id)) {
-      kept_entry_ids.add(entry_id);
-      return entry;
-    }
+    const entry_id = read_entry_id(entry["entry_id"]);
+    const next_id =
+      entry_id !== "" && !kept_entry_ids.has(entry_id)
+        ? entry_id
+        : create_quality_rule_entry_id(occupied_entry_ids);
+    kept_entry_ids.add(next_id);
+    if (next_id === entry["entry_id"]) return entry;
     changed = true;
-    return {
-      ...entry,
-      entry_id: create_quality_rule_entry_id(occupied_entry_ids),
-    };
+    return { ...entry, entry_id: next_id };
   });
   return { entries: migrated_entries, changed };
 }
 
-/** 白名单只定义本次写回可保留的身份，不进入运行期校验。 */
-function is_current_quality_rule_entry_id(value: unknown): value is string {
-  return typeof value === "string" && CURRENT_QUALITY_RULE_ENTRY_ID_PATTERN.test(value);
+/** 与运行期采用相同的去空白规则，缺失或无效类型由迁移分配新身份。 */
+function read_entry_id(value: unknown): string {
+  return typeof value === "string" ? value.trim() : "";
 }
 
 /** 多个 kind 的同批身份变化共用一个 aggregate quality revision。 */

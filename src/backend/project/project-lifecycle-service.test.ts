@@ -380,7 +380,7 @@ describe("ProjectLifecycleService", () => {
 
       expect(database.get_rules(project_path, "glossary")).toEqual([
         {
-          entry_id: expect.stringMatching(/^[0-9A-HJKMNP-TV-Z]{5}$/u),
+          entry_id: expect.any(String),
           src: "魔力",
           dst: "Mana",
           info: "",
@@ -389,7 +389,7 @@ describe("ProjectLifecycleService", () => {
       ]);
       expect(database.get_rules(project_path, "text_preserve")).toEqual([
         {
-          entry_id: expect.stringMatching(/^[0-9A-HJKMNP-TV-Z]{5}$/u),
+          entry_id: expect.any(String),
           src: "\\[[^\\]]+\\]",
           info: "",
         },

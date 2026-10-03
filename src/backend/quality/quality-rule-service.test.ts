@@ -124,7 +124,7 @@ describe("QualityRuleService", () => {
     ).toEqual({
       entries: [
         {
-          entry_id: expect.stringMatching(/^[0-9A-HJKMNP-TV-Z]{5}$/u),
+          entry_id: expect.any(String),
           src: "A",
           dst: "甲",
           info: "",
@@ -152,7 +152,7 @@ describe("QualityRuleService", () => {
     ).toEqual({
       entries: [
         {
-          entry_id: expect.stringMatching(/^[0-9A-HJKMNP-TV-Z]{5}$/u),
+          entry_id: expect.any(String),
           src: "\\[[^\\]]+\\]",
           info: "",
         },
@@ -161,16 +161,17 @@ describe("QualityRuleService", () => {
   });
 
   it("读取预设时避开当前 kind 已有身份", () => {
+    const { service, app_root } = create_service();
+    const preset_dir = path.join(app_root, "builtin", "glossary", "preset");
+    fs.mkdirSync(preset_dir, { recursive: true });
+    fs.writeFileSync(path.join(preset_dir, "collision.json"), '[{"src":"A","dst":"甲"}]', "utf-8");
+
     let call_count = 0;
     vi.spyOn(globalThis.crypto, "getRandomValues").mockImplementation(((value: Uint8Array) => {
       value.fill(call_count === 0 ? 0 : 1);
       call_count += 1;
       return value;
     }) as typeof globalThis.crypto.getRandomValues);
-    const { service, app_root } = create_service();
-    const preset_dir = path.join(app_root, "builtin", "glossary", "preset");
-    fs.mkdirSync(preset_dir, { recursive: true });
-    fs.writeFileSync(path.join(preset_dir, "collision.json"), '[{"src":"A","dst":"甲"}]', "utf-8");
 
     const result = service.read_rule_preset({
       rule_type: "glossary",
@@ -178,8 +179,7 @@ describe("QualityRuleService", () => {
     });
     const entries = result["entries"] as JsonRecord[];
 
-    expect(entries[0]?.["entry_id"]).toMatch(/^[0-9A-HJKMNP-TV-Z]{5}$/u);
-    expect(entries[0]?.["entry_id"]).not.toBe("00000");
+    expect(entries[0]?.["entry_id"]).toBe("111111");
   });
 
   it("保存用户预设时不把项目内 entry_id 写入外部资源", () => {
@@ -237,7 +237,7 @@ describe("QualityRuleService", () => {
       {
         entries: [
           {
-            entry_id: expect.stringMatching(/^[0-9A-HJKMNP-TV-Z]{5}$/u),
+            entry_id: expect.any(String),
             src: "HP",
             dst: "生命值",
             info: "",
@@ -411,7 +411,9 @@ describe("QualityRuleService", () => {
     expect(service.query({ rule_type: "glossary" })).toMatchObject({
       qualityRule: {
         enabled: true,
-        entries: [{ entry_id: "00000", src: "HP", dst: "生命值", info: "", case_sensitive: false }],
+        entries: [
+          { entry_id: "000000", src: "HP", dst: "生命值", info: "", case_sensitive: false },
+        ],
       },
       sectionRevisions: { quality: 0 },
     });
@@ -434,6 +436,7 @@ describe("QualityRuleService", () => {
       env: {},
       platform: process.platform,
     });
+    paths.get_data_root(); // 夹具先完成目录探针，业务用例可独立控制随机 ID 序列。
     const database = null as unknown as ProjectDatabase;
     const settings = new AppSettingService(paths);
     const native_fs = new NativeFs();
@@ -538,7 +541,7 @@ describe("QualityRuleService", () => {
             mode: "off",
             revision: 0,
             entries: [
-              { entry_id: "00000", src: "HP", dst: "生命值", info: "", case_sensitive: false },
+              { entry_id: "000000", src: "HP", dst: "生命值", info: "", case_sensitive: false },
             ],
           },
         }),

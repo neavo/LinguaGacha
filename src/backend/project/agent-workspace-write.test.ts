@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import type { JsonRecord } from "../../domain/json";
 import type { PromptKind } from "../../domain/prompt";
-import { QUALITY_RULE_KINDS, type QualityRuleKind } from "../../domain/quality";
+import { type QualityRuleKind } from "../../domain/quality";
 import {
   create_empty_agent_workspace_intent_batch,
   derive_agent_workspace_apply_status,
@@ -37,7 +37,9 @@ describe("Agent 工作区对象写入规则", () => {
       }),
     ).toEqual(item);
     expect(quality).toMatchObject({ id: "A12BC", src: "姫", dst: "公主", info: "称谓", sort: 2 });
-    expect(String(item["fp"])).toMatch(/^[\w-]{4}$/u);
+    for (const row of [item, quality, prompt]) {
+      expect(row["fp"]).toMatch(/^[0-9A-Za-z]{4}$/u);
+    }
     expect(project_agent_workspace_item(create_item(42))["fp"]).toBe(item["fp"]);
     expect(
       project_agent_workspace_quality_entry(
@@ -348,6 +350,7 @@ describe("Agent 工作区对象写入规则", () => {
   });
 });
 
+/** 对象写入用例关闭重复过滤，避免自动传播改变本用例的写入范围。 */
 function resolve(
   batch_value: AgentWorkspaceIntentBatch,
   current: Omit<AgentWorkspaceCurrentFacts, "duplicateFilterEnabled">,
@@ -358,6 +361,7 @@ function resolve(
   });
 }
 
+/** 复用完整批次的默认结构，各用例只声明本次提交意图。 */
 function batch(args: {
   items?: AgentWorkspaceIntentBatch["items"];
   prompts?: AgentWorkspaceIntentBatch["prompts"];
@@ -365,12 +369,9 @@ function batch(args: {
 }): AgentWorkspaceIntentBatch {
   const empty = create_empty_agent_workspace_intent_batch();
   return {
-    pages: [],
-    items: args.items ?? [],
-    prompts: args.prompts ?? [],
-    quality: Object.fromEntries(
-      QUALITY_RULE_KINDS.map((kind) => [kind, args.quality?.[kind] ?? empty.quality[kind]]),
-    ) as Record<QualityRuleKind, AgentWorkspaceQualityIntents>,
+    ...empty,
+    ...args,
+    quality: { ...empty.quality, ...args.quality },
   };
 }
 

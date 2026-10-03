@@ -103,7 +103,7 @@ export class NativeFs {
   }
 
   /**
-   * 判断路径是否存在；缺失和不可访问都按 false 处理，匹配 Node existsSync 语义。
+   * 判断路径是否存在。缺失和不可访问都按 false 处理，匹配 Node existsSync 语义。
    */
   public exists(target_path: string): boolean {
     return fs.existsSync(this.to_native_path(target_path));
@@ -147,8 +147,19 @@ export class NativeFs {
     return fs.readdirSync(this.to_native_path(directory), { withFileTypes: true });
   }
 
+  /** 原子占用新会话目录，碰撞由调用方重新生成身份。 */
+  public async make_dir_exclusive(directory: string): Promise<void> {
+    await fs.promises.mkdir(this.to_native_path(directory));
+  }
+
+  /** 深层文件写入不会可靠更新时间，工作区由宿主显式记录最近使用。 */
+  public async touch_directory(directory: string): Promise<void> {
+    const now = new Date();
+    await fs.promises.utimes(this.to_native_path(directory), now, now);
+  }
+
   /**
-   * 判断目录创建是否可以跳过；空目录和文件系统根都不是可创建的业务目录。
+   * 判断目录创建是否可以跳过。空目录和文件系统根都不是可创建的业务目录。
    */
   private should_skip_make_dir(directory: string): boolean {
     return directory === "" || this.path_policy.is_filesystem_root(directory);
@@ -165,7 +176,7 @@ export class NativeFs {
   }
 
   /**
-   * 递归创建目录；空目录和文件系统根目录视为已存在，无需额外动作。
+   * 递归创建目录。空目录和文件系统根目录视为已存在，无需额外动作。
    */
   public make_dir(directory: string): void {
     if (this.should_skip_make_dir(directory)) {
@@ -229,7 +240,7 @@ export class NativeFs {
   }
 
   /**
-   * 同步追加日志文本；日志目录缺失时由门面补齐。
+   * 同步追加日志文本。日志目录缺失时由门面补齐。
    */
   public append_text_file(file_path: string, text: string): void {
     this.ensure_parent_dir(file_path);
@@ -300,7 +311,7 @@ export class NativeFs {
     fs.copyFileSync(native_source, native_destination);
   }
 
-  /** 用户文件和目录统一异步删除；Electron 的同步递归删除不能可靠处理 Windows 只读属性。 */
+  /** 用户文件和目录统一异步删除。Electron 的同步递归删除不能可靠处理 Windows 只读属性。 */
   public async remove_async(target_path: string, options: NativeRemoveOptions = {}): Promise<void> {
     await fs.promises.rm(this.to_native_path(target_path), options);
   }
@@ -312,7 +323,7 @@ export class NativeFs {
     try {
       fs.unlinkSync(this.to_native_path(target_path));
     } catch (error) {
-      // 临时文件可能尚未创建；只有明确允许缺失的清理操作忽略 ENOENT。
+      // 临时文件可能尚未创建。只有明确允许缺失的清理操作忽略 ENOENT。
       if (options.force && error instanceof Error && "code" in error && error.code === "ENOENT")
         return;
       throw error;

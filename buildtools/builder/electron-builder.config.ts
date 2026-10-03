@@ -9,9 +9,6 @@ const APP_FILES = [
   "build/dist-electron/**/*",
   "builtin/**/*",
   "!node_modules/**/*.map",
-  // 应用使用普通 SDK 入口；上游截图与独立 RPC bundle 不参与该加载链。
-  "!node_modules/@earendil-works/pi-coding-agent/docs/images/**/*",
-  "!node_modules/@earendil-works/pi-coding-agent/dist/bundle/**/*",
 ];
 
 export default {

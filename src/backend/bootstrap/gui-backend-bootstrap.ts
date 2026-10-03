@@ -39,7 +39,7 @@ export interface GuiBackendBootstrapStartResult {
   readAppLanguage: () => unknown;
 }
 
-/** GUI Backend 的完整组合根；Agent、SSE 与 Gateway 在该入口恒定存在。 */
+/** GUI Backend 的完整组合根。Agent、SSE 与 Gateway 在该入口恒定存在。 */
 export class GuiBackendBootstrap {
   private state: GuiBackendBootstrapState = "idle";
   private resources: BackendResources | null = null;
@@ -148,6 +148,7 @@ export class GuiBackendBootstrap {
         services.state.runtimeGate,
       );
       const agent = new AgentService({
+        database: resources.database,
         auth: services.modelAuth,
         skills,
         catalog: services.modelCatalog,
@@ -241,7 +242,7 @@ export class GuiBackendBootstrap {
     this.images = null;
     const gateway = this.gateway;
     this.gateway = null;
-    // Gateway 先停止受理；接口测试属于在途 HTTP，必须同时取消才能完成请求排空。
+    // Gateway 先停止受理。接口测试属于在途 HTTP，必须同时取消才能完成请求排空。
     await Promise.all([
       collect_failure(failures, async () => await gateway?.stop()),
       collect_failure(failures, async () => await this.services?.model.dispose()),

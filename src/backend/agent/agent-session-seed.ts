@@ -1,5 +1,10 @@
 import type { Api, Model } from "@earendil-works/pi-ai";
-import type { SessionManager } from "@earendil-works/pi-coding-agent";
+import {
+  AssistantEntry,
+  UserEntry,
+  type Tx,
+  type ConversationId,
+} from "@earendil-works/pi-durable";
 
 import { is_json_record } from "../../domain/json";
 import { default_native_fs, type NativeFs } from "../../native/native-fs";
@@ -9,7 +14,6 @@ import type { AppPathService } from "../app/app-path-service";
 
 type AgentSessionSeedPaths = Pick<AppPathService, "get_agent_session_seed_path">;
 type AgentSessionSeedNativeFs = Pick<NativeFs, "read_text_file">;
-type AgentSessionSeedManager = Pick<SessionManager, "appendMessage">;
 
 type AgentSessionSeedMessage = Readonly<{
   role: "user" | "assistant";
@@ -64,34 +68,41 @@ export function load_agent_session_seed(
 }
 
 /** 把种子写入模型历史而不进入 AgentService 的公开 UI 时间线。 */
-export function append_agent_session_seed(
-  session_manager: AgentSessionSeedManager,
+export async function append_agent_session_seed(
+  tx: Tx,
+  conversation_id: ConversationId,
   seed: AgentSessionSeed,
   model: Model<Api>,
-): void {
+): Promise<void> {
   const timestamp = Date.now();
   for (const message of seed) {
     if (message.role === "user") {
-      session_manager.appendMessage({ role: "user", content: message.content, timestamp });
+      await tx.appendEntry(UserEntry, conversation_id, {
+        model: [{ role: "user", content: message.content, timestamp }],
+      });
       continue;
     }
-    session_manager.appendMessage({
-      role: "assistant",
-      // SDK 的 assistant 消息类型要求 usage，种子并非真实响应，数值全程置零
-      content: [{ type: "text", text: message.content }],
-      api: model.api,
-      provider: model.provider,
-      model: model.id,
-      usage: {
-        input: 0,
-        output: 0,
-        cacheRead: 0,
-        cacheWrite: 0,
-        totalTokens: 0,
-        cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
-      },
-      stopReason: "stop",
-      timestamp,
+    await tx.appendEntry(AssistantEntry, conversation_id, {
+      model: [
+        {
+          role: "assistant",
+          // SDK 的 assistant 消息类型要求 usage，种子并非真实响应，数值全程置零
+          content: [{ type: "text", text: message.content }],
+          api: model.api,
+          provider: model.provider,
+          model: model.id,
+          usage: {
+            input: 0,
+            output: 0,
+            cacheRead: 0,
+            cacheWrite: 0,
+            totalTokens: 0,
+            cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+          },
+          stopReason: "stop",
+          timestamp,
+        },
+      ],
     });
   }
 }

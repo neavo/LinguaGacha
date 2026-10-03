@@ -396,7 +396,7 @@ describe("ApiGatewayServer", () => {
   /** 网关测试只模拟公开 Agent 协议。 */
   function create_agent_service_stub(): AgentService {
     const uploads = new AgentUploadStore(create_app_root(), new NativeFs());
-    cleanup_callbacks.push(() => uploads.clear());
+    cleanup_callbacks.push(() => uploads.close());
     return {
       upload_file: (name: string, body: ReadableStream<Uint8Array>, signal: AbortSignal) =>
         uploads.upload(name, body, signal),

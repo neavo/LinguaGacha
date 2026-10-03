@@ -1,3 +1,4 @@
+import { agent_tool_call } from "../../../test/agent-tool-fixture";
 import { describe, expect, it, vi } from "vitest";
 import { workspace_execution } from "../../../test/agent-workspace-fixture";
 import { create_agent_workspace_run_tool } from "./workspace-run";
@@ -23,11 +24,8 @@ describe("workspace_run", () => {
     }));
     const tool = create_tool(run);
     const result = await tool.execute(
-      "image",
       { script: "await ws.emitImage('work/image.webp');" },
-      undefined,
-      undefined,
-      {} as never,
+      ...agent_tool_call("image"),
     );
     expect(result.content).toContainEqual({
       type: "image",
@@ -62,11 +60,8 @@ describe("workspace_run", () => {
     const reason = new Error("停止任务");
 
     const result = script_tool.execute(
-      "script",
       { script: "console.log(null);" },
-      controller.signal,
-      undefined,
-      undefined as never,
+      ...agent_tool_call("script", controller.signal),
     );
     await vi.waitFor(() => expect(run).toHaveBeenCalledOnce());
     controller.abort(reason);
