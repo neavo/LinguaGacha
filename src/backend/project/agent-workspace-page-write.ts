@@ -1,6 +1,5 @@
 import { isDeepStrictEqual } from "node:util";
-import { fingerprint } from "../utils/fingerprint";
-import { AGENT_WORKSPACE_FP_LENGTH } from "../../shared/project/agent-workspace";
+import { agent_workspace_fingerprint } from "./agent-workspace-fingerprint";
 import type { PDFDocumentRecord, PDFPageRecord, PDFPage, PDFPageUpdate } from "../../shared/pdf";
 import { render_pdf_page_translation } from "../file/pdf/pdf-translation";
 import type { AgentWorkspaceRejectedChange } from "./agent-workspace-write";
@@ -23,7 +22,7 @@ export function agent_workspace_page_fingerprint(
 ): string {
   const translation = page.translation;
   const facts = [
-    // 固定字段顺序消除 JSON 键序差异，页指纹与其它工作区对象使用同一摘要长度。
+    // 固定字段顺序消除 JSON 键序差异。
     file_path,
     digest,
     page.page,
@@ -51,7 +50,7 @@ export function agent_workspace_page_fingerprint(
     page.reviewed,
     page.notes,
   ];
-  return fingerprint(JSON.stringify(facts), AGENT_WORKSPACE_FP_LENGTH);
+  return agent_workspace_fingerprint(JSON.stringify(facts));
 }
 
 /** 预演与事务提交共用页级校验，冲突只拒绝对应原页。 */

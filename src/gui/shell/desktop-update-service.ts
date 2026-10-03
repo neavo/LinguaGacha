@@ -18,8 +18,6 @@ import type {
 } from "../bridge/bridge-types";
 import { random_id } from "../../shared/utils/identifier";
 
-const WRITE_PROBE_ID_LENGTH = 12;
-
 const BERSERKER_EXECUTABLE_NAME = "berserker.exe";
 const DOWNLOAD_TEMP_SUFFIX = ".download";
 const WINDOWS_PLATFORM: NodeJS.Platform = "win32";
@@ -317,10 +315,7 @@ function read_content_length(headers: Headers): number | null {
 async function can_write_directory(directory: string): Promise<boolean> {
   try {
     await fs.mkdir(directory, { recursive: true });
-    const probe_path = path.join(
-      directory,
-      `.linguagacha_update_probe_${random_id(WRITE_PROBE_ID_LENGTH)}`,
-    );
+    const probe_path = path.join(directory, `.linguagacha_update_probe_${random_id()}`);
     await fs.writeFile(probe_path, "");
     await fs.rm(probe_path, { force: true });
     return true;

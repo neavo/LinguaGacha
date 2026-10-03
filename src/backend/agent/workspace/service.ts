@@ -96,8 +96,6 @@ const WORKSPACE_IMAGE_TYPES: Readonly<Record<string, string>> = {
   ".svg": "image/svg+xml",
 };
 
-const RUN_ID_LENGTH = 12; // 会话内执行记录使用短标识，缩短返回给模型的文件路径。
-
 /** 公开失败阶段，供模型恢复与诊断定位使用。 */
 enum WorkspaceRunPhase {
   PREPARE_SNAPSHOT = "prepare_snapshot",
@@ -664,7 +662,7 @@ export class AgentWorkspaceService {
           await this.native_fs.make_dir_async(path.join(this.root_path, relative));
         }
         phase = WorkspaceRunPhase.SAVE_SCRIPT;
-        const run_path = `${AGENT_WORKSPACE_RUN_ROOT}/${random_id(RUN_ID_LENGTH)}`;
+        const run_path = `${AGENT_WORKSPACE_RUN_ROOT}/${random_id()}`;
         const script_path = `${run_path}.mjs`;
         await this.native_fs.write_file(path.join(this.root_path, script_path), script);
         phase = WorkspaceRunPhase.EXECUTE;

@@ -59,7 +59,7 @@ it("原子创建撞名后重试并保留已有目录内容", async () => {
   fs.writeFileSync(path.join(directories.path("00000000"), "keep"), "existing");
   let attempt = 0;
   vi.spyOn(crypto, "getRandomValues").mockImplementation(((bytes: Uint8Array) => {
-    bytes.fill(attempt++ === 0 ? 0 : 36);
+    bytes.fill(attempt++ === 0 ? 0 : 10);
     return bytes;
   }) as typeof crypto.getRandomValues);
 

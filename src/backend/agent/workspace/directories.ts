@@ -4,8 +4,7 @@ import { AppError } from "../../../shared/error";
 import type { NativeFs } from "../../../native/native-fs";
 
 export const AGENT_WORKSPACE_LIMIT = 20;
-const AGENT_SESSION_ID_LENGTH = 8;
-// 回收只识别已使用的会话目录命名范围，覆盖 Base64url 与 Base62，独立于新身份生成策略。
+// 回收覆盖历史 Base64url、Base62 与新生成的 Base36 目录，独立于身份读取约束。
 const SESSION_DIRECTORY_PATTERN = /^[A-Za-z0-9_-]{8}$/u;
 
 /** 只管理 workspace 的直接会话子目录，目录链接的目标不参与递归清理。 */
@@ -29,7 +28,7 @@ export class AgentWorkspaceDirectories {
   public async create(): Promise<string> {
     await this.fs.make_dir_async(this.root);
     for (;;) {
-      const id = random_id(AGENT_SESSION_ID_LENGTH);
+      const id = random_id();
       try {
         await this.fs.make_dir_exclusive(this.path(id));
         return id;

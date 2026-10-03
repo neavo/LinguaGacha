@@ -13,8 +13,6 @@ export interface AppPathServiceOptions {
   nativeFs?: NativeFs;
 }
 
-const WRITE_PROBE_ID_LENGTH = 12;
-
 const HOME_DATA_ROOT_NAME = "LinguaGacha";
 const BUILTIN_DIR_NAME = "builtin";
 const USER_DATA_DIR_NAME = "userdata";
@@ -289,10 +287,7 @@ export class AppPathService {
   private can_write_directory(directory: string): boolean {
     try {
       this.native_fs.make_dir(directory);
-      const probe_path = path.join(
-        directory,
-        `.linguagacha_write_probe_${random_id(WRITE_PROBE_ID_LENGTH)}`,
-      );
+      const probe_path = path.join(directory, `.linguagacha_write_probe_${random_id()}`);
       this.native_fs.write_file_sync(probe_path, "");
       this.native_fs.unlink(probe_path, { force: true });
       return true;

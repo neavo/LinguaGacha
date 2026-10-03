@@ -3,7 +3,7 @@ import {
   resolve_agent_workspace_page_updates,
   type AgentWorkspacePageUpdateIntent,
 } from "./agent-workspace-page-write";
-import { fingerprint } from "../utils/fingerprint";
+import { agent_workspace_fingerprint } from "./agent-workspace-fingerprint";
 import { isDeepStrictEqual } from "node:util";
 
 import { Item, type ItemNameField } from "../../domain/item";
@@ -28,10 +28,7 @@ import {
 } from "../../shared/project/project-item-write-planner";
 import type { ProjectItemWriteChange } from "./project-write-request";
 
-import {
-  AGENT_WORKSPACE_FP_LENGTH,
-  AGENT_WORKSPACE_QUALITY_BUSINESS_FIELDS,
-} from "../../shared/project/agent-workspace";
+import { AGENT_WORKSPACE_QUALITY_BUSINESS_FIELDS } from "../../shared/project/agent-workspace";
 
 export type AgentWorkspaceRejectionReason =
   | "invalid_change"
@@ -274,9 +271,9 @@ export function derive_agent_workspace_apply_status(
   return rejected.length > 0 ? "rejected" : "unchanged";
 }
 
-/** 指纹是工作区会话内的短冲突令牌，不作为持久身份或安全摘要。 */
+/** 按稳定元组顺序序列化对象事实，再生成工作区指纹。 */
 function workspace_fingerprint(tuple: JsonValue[]): string {
-  return fingerprint(JsonTool.stringifyStrict(tuple), AGENT_WORKSPACE_FP_LENGTH);
+  return agent_workspace_fingerprint(JsonTool.stringifyStrict(tuple));
 }
 
 /** item fp 覆盖工作区公开的完整对象事实，任何字段漂移都会失效。 */

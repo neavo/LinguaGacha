@@ -70,7 +70,7 @@ describe("normalize_quality_rule_entries", () => {
     ]);
 
     expect(entries).toHaveLength(1);
-    expect(entries[0]?.entry_id).toMatch(/^[0-9A-Za-z]{5}$/u);
+    expect(entries[0]?.entry_id).toMatch(/^[0-9a-z]{6}$/u);
   });
 
   it("短身份碰撞时继续生成并保留成功结果", () => {
@@ -84,9 +84,9 @@ describe("normalize_quality_rule_entries", () => {
     }) as typeof globalThis.crypto.getRandomValues);
 
     try {
-      const entry_ids = new Set(["00000"]);
-      expect(create_quality_rule_entry_id(entry_ids)).toBe("11111");
-      expect(entry_ids).toEqual(new Set(["00000", "11111"]));
+      const entry_ids = new Set(["000000"]);
+      expect(create_quality_rule_entry_id(entry_ids)).toBe("111111");
+      expect(entry_ids).toEqual(new Set(["000000", "111111"]));
     } finally {
       random_spy.mockRestore();
     }

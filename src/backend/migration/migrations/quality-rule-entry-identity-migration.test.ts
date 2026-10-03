@@ -26,7 +26,7 @@ describe("run_quality_rule_entry_identity_migration", () => {
       { src: "缺失", dst: "D" },
       { entry_id: "ABCDE", src: "保留", dst: "A" },
       { entry_id: " ABCDE ", src: "重复", dst: "B" },
-      { entry_id: "00000", src: "后续身份", dst: "C" },
+      { entry_id: "000000", src: "后续身份", dst: "C" },
     ]);
     write_rules(db, "text_preserve", [
       { entry_id: "ABCDE", src: "跨 kind 保持" },
@@ -45,7 +45,7 @@ describe("run_quality_rule_entry_identity_migration", () => {
     const glossary_ids = glossary.map((entry) => entry["entry_id"]);
     expect(glossary_ids.every((id) => typeof id === "string" && id !== "")).toBe(true);
     expect(glossary_ids[1]).toBe("ABCDE");
-    expect(glossary_ids[3]).toBe("00000");
+    expect(glossary_ids[3]).toBe("000000");
     expect(new Set(glossary_ids)).toHaveLength(glossary_ids.length);
     expect(glossary.map(({ entry_id: _entry_id, ...entry }) => entry)).toEqual([
       { src: "缺失", dst: "D" },

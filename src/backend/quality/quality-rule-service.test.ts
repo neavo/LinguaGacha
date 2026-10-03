@@ -179,7 +179,7 @@ describe("QualityRuleService", () => {
     });
     const entries = result["entries"] as JsonRecord[];
 
-    expect(entries[0]?.["entry_id"]).toBe("11111");
+    expect(entries[0]?.["entry_id"]).toBe("111111");
   });
 
   it("保存用户预设时不把项目内 entry_id 写入外部资源", () => {
@@ -411,7 +411,9 @@ describe("QualityRuleService", () => {
     expect(service.query({ rule_type: "glossary" })).toMatchObject({
       qualityRule: {
         enabled: true,
-        entries: [{ entry_id: "00000", src: "HP", dst: "生命值", info: "", case_sensitive: false }],
+        entries: [
+          { entry_id: "000000", src: "HP", dst: "生命值", info: "", case_sensitive: false },
+        ],
       },
       sectionRevisions: { quality: 0 },
     });
@@ -539,7 +541,7 @@ describe("QualityRuleService", () => {
             mode: "off",
             revision: 0,
             entries: [
-              { entry_id: "00000", src: "HP", dst: "生命值", info: "", case_sensitive: false },
+              { entry_id: "000000", src: "HP", dst: "生命值", info: "", case_sensitive: false },
             ],
           },
         }),

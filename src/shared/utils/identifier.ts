@@ -1,11 +1,11 @@
-// 字符顺序同时用于内容指纹编码，调整顺序会改变已有指纹。
-export const BASE62_ALPHABET = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
+const BASE36_ALPHABET = "0123456789abcdefghijklmnopqrstuvwxyz";
+const DEFAULT_ID_LENGTH = 8;
 
-const RANDOM_ACCEPT_LIMIT = 248; // 字节范围内最大的 62 整倍数，拒绝余数区间以保证均匀分布。
+const RANDOM_ACCEPT_LIMIT = 252; // 字节范围内最大的 36 整倍数，拒绝余数区间以保证均匀分布。
 const RANDOM_BATCH_MAX_BYTES = 65_536; // `getRandomValues` 单次调用的字节上限。
 
-/** 生成均匀分布的短标识，调用方选择长度并处理碰撞。 */
-export function random_id(length: number): string {
+/** 生成均匀分布的 Base36 短标识，默认 8 位，调用方负责处理碰撞。 */
+export function random_id(length: number = DEFAULT_ID_LENGTH): string {
   if (!Number.isSafeInteger(length) || length <= 0) {
     throw new RangeError("length must be a positive safe integer.");
   }
@@ -15,7 +15,7 @@ export function random_id(length: number): string {
       new Uint8Array(Math.min(length - result.length, RANDOM_BATCH_MAX_BYTES)),
     );
     for (const byte of bytes) {
-      if (byte < RANDOM_ACCEPT_LIMIT) result += BASE62_ALPHABET[byte % BASE62_ALPHABET.length];
+      if (byte < RANDOM_ACCEPT_LIMIT) result += BASE36_ALPHABET[byte % BASE36_ALPHABET.length];
     }
   }
   return result;

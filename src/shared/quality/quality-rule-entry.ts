@@ -12,7 +12,7 @@ import { build_text_preserve_rule } from "../text/text-preserve-rules";
 import { compile_glossary } from "./glossary";
 import { random_id } from "../utils/identifier";
 
-const QUALITY_RULE_ENTRY_ID_LENGTH = 5;
+const QUALITY_RULE_ENTRY_ID_LENGTH = 6;
 
 /** 为明确的新规则分配短身份，并立即保留到调用方集合中避免同批碰撞。 */
 export function create_quality_rule_entry_id(entry_ids: Set<string>): string {
@@ -52,7 +52,7 @@ export function normalize_quality_rule_entries<K extends QualityRuleKind>(
   return validate_quality_rule_entries(rule, entries) as QualityRuleEntryByKind[K][];
 }
 
-/** 收窄项目身份；格式保持不透明，只约束可用性。 */
+/** 读取已有非空身份，保留历史编码。 */
 function normalize_quality_rule_entry_id(value: unknown): string {
   if (typeof value !== "string" || value.trim() === "") {
     throw new TypeError("Quality rule entry_id must not be empty.");
