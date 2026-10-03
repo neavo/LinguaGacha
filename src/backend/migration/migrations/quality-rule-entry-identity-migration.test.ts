@@ -8,8 +8,6 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { JsonTool } from "../../../shared/utils/json-tool";
 import { run_quality_rule_entry_identity_migration } from "./quality-rule-entry-identity-migration";
 
-const CURRENT_ENTRY_ID_PATTERN = /^[0-9A-Za-z]{5}$/u; // 迁移白名单是测试的独立格式依据。
-
 afterEach(() => vi.restoreAllMocks());
 
 describe("run_quality_rule_entry_identity_migration", () => {
@@ -27,12 +25,12 @@ describe("run_quality_rule_entry_identity_migration", () => {
     write_rules(db, "glossary", [
       { src: "缺失", dst: "D" },
       { entry_id: "ABCDE", src: "保留", dst: "A" },
-      { entry_id: "ABCDE", src: "重复", dst: "B" },
+      { entry_id: " ABCDE ", src: "重复", dst: "B" },
       { entry_id: "00000", src: "后续身份", dst: "C" },
     ]);
     write_rules(db, "text_preserve", [
       { entry_id: "ABCDE", src: "跨 kind 保持" },
-      { entry_id: "0azIO", src: "Base62 保持" },
+      { entry_id: "legacy-entry", src: "已有身份" },
     ]);
     write_rules(db, "pre_translation_replacement", [{ entry_id: " VWXYZ ", src: "前", dst: "后" }]);
 
@@ -44,13 +42,11 @@ describe("run_quality_rule_entry_identity_migration", () => {
     run_quality_rule_entry_identity_migration(db);
 
     const glossary = read_rules(db, "glossary");
-    const glossary_ids = glossary.map((entry) => String(entry["entry_id"]));
+    const glossary_ids = glossary.map((entry) => entry["entry_id"]);
+    expect(glossary_ids.every((id) => typeof id === "string" && id !== "")).toBe(true);
     expect(glossary_ids[1]).toBe("ABCDE");
     expect(glossary_ids[3]).toBe("00000");
     expect(new Set(glossary_ids)).toHaveLength(glossary_ids.length);
-    expect(glossary_ids).toEqual(
-      glossary_ids.map(() => expect.stringMatching(CURRENT_ENTRY_ID_PATTERN)),
-    );
     expect(glossary.map(({ entry_id: _entry_id, ...entry }) => entry)).toEqual([
       { src: "缺失", dst: "D" },
       { src: "保留", dst: "A" },
@@ -59,11 +55,9 @@ describe("run_quality_rule_entry_identity_migration", () => {
     ]);
     expect(read_rules(db, "text_preserve")).toEqual([
       { entry_id: "ABCDE", src: "跨 kind 保持" },
-      { entry_id: "0azIO", src: "Base62 保持" },
+      { entry_id: "legacy-entry", src: "已有身份" },
     ]);
-    expect(read_rules(db, "pre_translation_replacement")[0]?.["entry_id"]).toMatch(
-      CURRENT_ENTRY_ID_PATTERN,
-    );
+    expect(read_rules(db, "pre_translation_replacement")[0]?.["entry_id"]).toBe("VWXYZ");
     expect(read_meta(db, "quality_rule_revision.glossary")).toBe(current_quality_revision + 1);
     expect(read_meta(db, "quality_rule_revision.pre_replacement")).toBe(
       current_quality_revision + 1,

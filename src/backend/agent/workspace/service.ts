@@ -404,11 +404,6 @@ export class AgentWorkspaceService {
     }
   }
 
-  /** 应用启动只准备父目录。会话身份确定后才激活对应材料。 */
-  public async initialize(): Promise<void> {
-    await this.directories.initialize();
-  }
-
   /** 为新产品对话占用独立目录。 */
   public create_session(): Promise<string> {
     return this.directories.create();
@@ -433,7 +428,6 @@ export class AgentWorkspaceService {
       },
     );
     await this.clear_snapshot();
-    this.source_session = null;
     await this.native_fs.remove_async(path.join(this.root_path, "sources"), {
       recursive: true,
       force: true,
@@ -727,7 +721,7 @@ export class AgentWorkspaceService {
     return await this.exclusive(async () => {
       const active = this.require_active();
       const freshness = this.read_freshness(active);
-      if (!freshness.workCompatible) {
+      if (!freshness.projectCompatible) {
         await this.clear_snapshot();
         throw workspace_validation_error("agent_workspace_stale");
       }
@@ -835,27 +829,27 @@ export class AgentWorkspaceService {
     });
   }
 
-  /** 比较当前工程事实。work 只依赖工程身份与语言，不依赖普通 section revision。 */
+  /** 工程身份或语言变化使提交基线失效，分区修订变化只要求下次运行刷新快照。 */
   private read_freshness(active: ActiveAgentWorkspace): {
     snapshotFresh: boolean;
-    workCompatible: boolean;
+    projectCompatible: boolean;
   } {
     const snapshot = this.options.cache.snapshot();
     const language_key = JsonTool.stringifyStrict(
       read_workspace_language(this.options.settings.read_setting()),
     );
-    const work_compatible =
+    const project_compatible =
       snapshot.projectPath === active.projectPath &&
       snapshot.epoch === active.projectEpoch &&
       language_key === active.languageKey;
     const snapshot_fresh =
-      work_compatible &&
+      project_compatible &&
       PROJECT_DATA_SECTIONS.every(
         (section) =>
           read_json_integer(snapshot.sectionRevisions[section], 0) ===
           read_json_integer(active.revisions[section], 0),
       );
-    return { snapshotFresh: snapshot_fresh, workCompatible: work_compatible };
+    return { snapshotFresh: snapshot_fresh, projectCompatible: project_compatible };
   }
 
   /** Agent 预演读取项目持久镜像，确保审批采用与事务提交相同的重复过滤口径。 */
@@ -963,7 +957,6 @@ export class AgentWorkspaceService {
 export type AgentWorkspacePort = Pick<
   AgentWorkspaceService,
   | "list_files"
-  | "initialize"
   | "run"
   | "apply_workspace"
   | "create_session"

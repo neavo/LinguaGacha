@@ -1,8 +1,7 @@
 import { DatabaseSync } from "node:sqlite";
 import { NodeSqliteDatabase } from "@earendil-works/pi-durable/storage/sqlite/node";
 import { AgentSessionStore } from "../database/agent-session-store";
-import { random_id } from "../../shared/utils/identifier";
-import { AGENT_SESSION_ID_LENGTH } from "../../shared/agent";
+import { randomUUID } from "node:crypto";
 import type { AgentApprovalMode } from "../../domain/setting";
 import { AgentTokenSpeed } from "./agent-token-speed";
 import { uploaded_file } from "../../test/agent-upload-fixture";
@@ -1879,7 +1878,7 @@ describe("AgentService", () => {
     expect(JSON.stringify(fake_agent_state.model_contexts.at(-1))).not.toContain("原输入");
   });
 
-  it("修改最新 assistant 不调用模型，并保留此前完整工具历史", async () => {
+  it("认证失效时仍可修改最新 assistant，并保留此前完整工具历史", async () => {
     const { service } = await create_service(true);
     fake_agent_state.mode = "tools";
     await service.send_message({ text: "开始", attachments: [] });
@@ -1910,6 +1909,7 @@ describe("AgentService", () => {
       }),
     ).rejects.toThrow("request.validation_failed");
 
+    fake_agent_state.auth_configured = false;
     await service.revise_latest_round({
       entryId: assistant.id,
       message: { text: "人工修订", attachments: [] },
@@ -1922,6 +1922,7 @@ describe("AgentService", () => {
       status: "success",
     });
 
+    fake_agent_state.auth_configured = true;
     fake_agent_state.mode = "success";
     await service.send_message({ text: "下一轮", attachments: [] });
     await wait_for_idle(service);
@@ -2148,33 +2149,12 @@ describe("AgentService", () => {
     await check_read;
   });
 
-  it("Electron 工作区端口初始化并区分会话与工程 reset", async () => {
-    const workspace = {
-      uploads: fake_uploads(),
-      list_files: () => [],
-      initialize: vi.fn(async () => undefined),
-      activate_path: vi.fn(async () => ({ status: "cancelled" as const })),
-      read_document: vi.fn(async () => ({ path: "work/report.md", content: "报告" })),
-      describe_file: vi.fn(),
-      read_document_image: vi.fn(async () => ({ bytes: new Uint8Array(), mime: "image/png" })),
-      invalidate_links: vi.fn(),
-      create_session: vi.fn(async () => random_id(AGENT_SESSION_ID_LENGTH)),
-      activate_session: vi.fn(async () => undefined),
-      close: vi.fn(async () => undefined),
-      delete_session: vi.fn(async () => undefined),
-      cancel_uploads: vi.fn(),
-      run: vi.fn(async () => ({
-        images: [],
-        execution: workspace_execution(),
-      })),
-      apply_workspace: vi.fn(),
-    } satisfies AgentWorkspacePort;
-    const { service, session_state } = await create_service(true, undefined, workspace);
+  it("工作区端口随会话切换失效链接，显式重置删除材料", async () => {
+    const { service, session_state, workspace } = await create_service();
 
     await service.send_message({ text: "批量处理", attachments: [] });
     await wait_for_idle(service);
 
-    expect(workspace.initialize).toHaveBeenCalledOnce();
     await expect(service.activate_workspace_path({ path: "work/report.md" })).resolves.toEqual({
       status: "cancelled",
     });
@@ -2188,7 +2168,7 @@ describe("AgentService", () => {
     expect(workspace.delete_session).toHaveBeenCalledOnce();
     await session_state.mark_loaded("next.lg");
     expect(workspace.activate_session).toHaveBeenCalledTimes(3);
-    const invalidations = workspace.invalidate_links.mock.calls.length;
+    const invalidations = vi.mocked(workspace.invalidate_links).mock.calls.length;
     const dispose = service.dispose();
     expect(workspace.invalidate_links).toHaveBeenCalledTimes(invalidations + 1);
     await dispose;
@@ -2216,9 +2196,9 @@ describe("AgentService", () => {
     expect(log_error).not.toHaveBeenCalled();
   });
 
-  it("停止会冲刷窗口内最新正文并阻止迟到 running 帧", async () => {
+  it("停止冻结最新正文、隔离迟到帧，并支持重开后离线修订", async () => {
     vi.useFakeTimers();
-    const { service, publish, log_error } = await create_service();
+    const { service, publish, log_error, session_state } = await create_service();
     fake_agent_state.mode = "streaming";
     fake_agent_state.stream_token_size = 1;
     fake_agent_state.stream_tokens_per_second = 40;
@@ -2272,6 +2252,21 @@ describe("AgentService", () => {
       service.get_snapshot().entries.find((entry) => entry.id === stopped_assistant?.id),
     ).toEqual(stopped_assistant);
     expect(service.get_snapshot().tokenSpeed).toEqual(stopped_snapshot.tokenSpeed);
+    await session_state.mark_loaded("other.lg");
+    await session_state.mark_loaded("test.lg");
+    fake_agent_state.auth_configured = false;
+    await service.revise_latest_round({
+      entryId: stopped_assistant!.id,
+      message: { text: "停止后的人工修订", attachments: [] },
+    });
+    expect(service.get_snapshot().entries).toMatchObject([
+      { kind: "user_message", status: "stopped" },
+      {
+        kind: "assistant_message",
+        parts: [{ kind: "text", text: "停止后的人工修订" }],
+        status: "success",
+      },
+    ]);
     expect(log_error).not.toHaveBeenCalled();
   });
 
@@ -2579,18 +2574,18 @@ describe("AgentService", () => {
     expect(fake_agent_state.model_call_count).toBe(1);
   });
 
-  it("消息修改预检失败时不裁剪公开时间线或模型历史", async () => {
+  it("用户输入修订预检失败时不裁剪公开时间线或模型历史", async () => {
     const { service } = await create_service();
     await service.send_message({ text: "第一轮", attachments: [] });
     await wait_for_idle(service);
     const before = service.get_snapshot();
-    const assistant = before.entries.findLast((entry) => entry.kind === "assistant_message");
-    if (assistant === undefined) throw new Error("缺少 assistant 条目");
+    const user = before.entries.findLast((entry) => entry.kind === "user_message");
+    if (user === undefined) throw new Error("缺少 user 条目");
     fake_agent_state.auth_configured = false;
 
     await expect(
       service.revise_latest_round({
-        entryId: assistant.id,
+        entryId: user.id,
         message: { text: "不会提交", attachments: [] },
       }),
     ).rejects.toThrow("model.auth_required");
@@ -3694,13 +3689,12 @@ describe("AgentService", () => {
       ({
         uploads: fake_uploads(),
         list_files: () => [],
-        initialize: vi.fn(async () => undefined),
         activate_path: vi.fn(async () => ({ status: "cancelled" as const })),
         read_document: vi.fn(async () => ({ path: "work/report.md", content: "报告" })),
         describe_file: vi.fn(),
         read_document_image: vi.fn(async () => ({ bytes: new Uint8Array(), mime: "image/png" })),
         invalidate_links: vi.fn(),
-        create_session: vi.fn(async () => random_id(AGENT_SESSION_ID_LENGTH)),
+        create_session: vi.fn(async () => randomUUID()),
         activate_session: vi.fn(async () => undefined),
         close: vi.fn(async () => undefined),
         delete_session: vi.fn(async () => undefined),

@@ -1,6 +1,5 @@
 import { afterEach, expect, it } from "vitest";
 import fs from "node:fs";
-import { DatabaseSync } from "node:sqlite";
 import { ACTIVE_AGENT_SESSION_KEY } from "./agent-session-store";
 import os from "node:os";
 import path from "node:path";
@@ -22,7 +21,7 @@ it("SDK 与工程并发提交、失败回滚，关闭后只复制 lg 即可恢�
   const database = new ProjectDatabase();
   database.create_project(file, "测试");
   const store = database.open_agent_store(file);
-  await store.create("session1");
+  await store.create("-t75szF5");
   const state = defineDoc({
     kind: "test.counter",
     version: 1,
@@ -44,7 +43,7 @@ it("SDK 与工程并发提交、失败回滚，关闭后只复制 lg 即可恢�
             await tx.appendEntry(conversation.id, { kind: "test.entry", data: i });
           }, BACKGROUND_CONTEXT),
           database.transaction(file, () => database.set_meta(file, "progress", i)),
-          store.save_upload("session1", uploaded_file(String(i))),
+          store.save_upload("-t75szF5", uploaded_file(String(i))),
         ]),
       ),
     );
@@ -71,7 +70,7 @@ it("SDK 与工程并发提交、失败回滚，关闭后只复制 lg 即可恢�
     { models: createModels(), registry: createRegistry() },
     BACKGROUND_CONTEXT,
   );
-  expect((await restored.read())?.id).toBe("session1");
+  expect((await restored.read())?.id).toBe("-t75szF5");
   expect(await sdk.snapshot(state, BACKGROUND_CONTEXT)).toEqual({ count: 10 });
   await sdk.close(BACKGROUND_CONTEXT);
   await restored.reset();
@@ -81,7 +80,7 @@ it("SDK 与工程并发提交、失败回滚，关闭后只复制 lg 即可恢�
   reopened.close();
 });
 
-it("读取工程时拒绝已登记但格式非法的会话身份", async () => {
+it("读取工程时拒绝无效激活指针和缺失登记", async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "lg-agent-invalid-id-"));
   roots.push(root);
   const file = path.join(root, "project.lg");
@@ -89,11 +88,8 @@ it("读取工程时拒绝已登记但格式非法的会话身份", async () => {
   database.create_project(file, "测试");
   const store = database.open_agent_store(file);
   try {
-    await store.create("session1");
-    using raw = new DatabaseSync(file);
-    for (const id of ["../other", "abCD12_3", "abcD1234\n"]) {
-      // 同时篡改登记行和激活指针，确保失败来自格式边界而非记录缺失。
-      raw.prepare("UPDATE agent_sessions SET id = ?").run(id);
+    await store.create("-t75szF5");
+    for (const id of [null, 1, "", "missing"]) {
       database.set_meta(file, ACTIVE_AGENT_SESSION_KEY, id);
       await expect(store.read()).rejects.toMatchObject({ code: "file.invalid_structure" });
     }

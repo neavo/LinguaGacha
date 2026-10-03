@@ -1,5 +1,5 @@
 import { afterEach, expect, it, vi } from "vitest";
-import { base62_pattern, random_id } from "./identifier";
+import { random_id } from "./identifier";
 
 afterEach(() => vi.restoreAllMocks());
 
@@ -23,13 +23,4 @@ it("接受 0 到 247，拒绝 248 到 255 并补足长度", () => {
 
 it.each([0, -1, 1.5, NaN, Infinity, Number.MAX_SAFE_INTEGER + 1])("拒绝无效长度 %s", (length) => {
   expect(() => random_id(length)).toThrow(RangeError);
-  expect(() => base62_pattern(length)).toThrow(RangeError);
-});
-
-it("格式规则严格匹配整串 Base62", () => {
-  const pattern = base62_pattern(4);
-  for (const value of ["09AZ", "azIO", "lO01"]) expect(pattern.test(value)).toBe(true);
-  for (const value of ["", "abc", "abcde", "ab-_", "a/bc", "中文AB", "abcd\n"]) {
-    expect(pattern.test(value)).toBe(false);
-  }
 });

@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, expect, it } from "vitest";
 import { NativeFs } from "../../../native/native-fs";
+import type { AgentFileAttachment } from "../../../shared/agent";
 import { AgentUploadStore } from "./uploads";
 
 const roots: string[] = [];
@@ -57,6 +58,49 @@ it("图片按跨分块文件头识别，上传保留原字节", async () => {
   );
   expect(file.imageMimeType).toBe("image/png");
   expect(uploads.read_image(file.uploadId)).toEqual(Buffer.from(bytes));
+});
+
+it("登记失败回收已移动的上传文件，重试后可恢复登记", async () => {
+  const { root } = store();
+  let fail = true;
+  const records: AgentFileAttachment[] = [];
+  const uploads = new AgentUploadStore(root, new NativeFs(), [], async (file) => {
+    if (fail) throw new Error("登记失败");
+    records.push(file);
+  });
+  const upload = () =>
+    uploads.upload("retry.txt", stream(Uint8Array.of(9)), new AbortController().signal);
+  await expect(upload()).rejects.toMatchObject({ code: "file.io_failed" });
+  expect(fs.readdirSync(path.join(root, "uploads"))).toEqual([]);
+  expect(uploads.list()).toEqual([]);
+  fail = false;
+  const file = await upload();
+  await uploads.close();
+  expect(new AgentUploadStore(root, new NativeFs(), records).get(file.uploadId)).toEqual(file);
+});
+
+it("登记期间关闭等待上传收尾，已提交的文件可在重开后读取", async () => {
+  const { root } = store();
+  const saving = Promise.withResolvers<AgentFileAttachment>();
+  const saved = Promise.withResolvers<void>();
+  const uploads = new AgentUploadStore(root, new NativeFs(), [], async (file) => {
+    saving.resolve(file);
+    await saved.promise;
+  });
+  const upload = uploads.upload(
+    "saved.txt",
+    stream(Uint8Array.of(9)),
+    new AbortController().signal,
+  );
+  const record = await saving.promise;
+  const rejected = expect(upload).rejects.toMatchObject({ code: "runtime.cancelled" });
+  const closing = uploads.close();
+  saved.resolve();
+  await closing;
+  await rejected;
+  const restored = new AgentUploadStore(root, new NativeFs(), [record]);
+  expect(restored.get(record.uploadId)).toEqual(record);
+  expect(fs.readFileSync(path.join(root, record.path))).toEqual(Buffer.from([9]));
 });
 
 it("关闭取消等待中的读取，清理半成品且旧身份不能进入新会话", async () => {

@@ -20,8 +20,8 @@ it("按时间清理会话，失败下次重试并保留链接目标与其它目�
   const directories = new AgentWorkspaceDirectories(root, native, report);
   const ids: string[] = [];
   for (let i = 0; i < AGENT_WORKSPACE_LIMIT + 2; i++) {
-    const id = await directories.create();
-    expect(id).toMatch(/^[0-9A-Za-z]{8}$/u);
+    const id = i === 1 ? "-t75szF5" : await directories.create();
+    if (i === 1) fs.mkdirSync(directories.path(id));
     ids.push(id);
     fs.utimesSync(directories.path(id), 1_600_000_000 + i, 1_600_000_000 + i);
   }
@@ -68,9 +68,22 @@ it("原子创建撞名后重试并保留已有目录内容", async () => {
   expect(report).not.toHaveBeenCalled();
 });
 
-it("路径入口拒绝目录穿越与非法会话身份", () => {
+it("路径入口接受既有身份并拒绝越界目录名", () => {
   const directories = new AgentWorkspaceDirectories(os.tmpdir(), new NativeFs(), vi.fn());
-  for (const id of ["../other", "abCD12_3", "abcD1234\n"]) {
+  for (const id of ["-t75szF5", "abCD12_3", "session-long-name"]) {
+    expect(directories.path(id)).toBe(path.join(os.tmpdir(), id));
+  }
+  for (const id of [
+    "",
+    ".",
+    "..",
+    "../other",
+    "..\\other",
+    "/other",
+    "C:other",
+    "abc\0def",
+    ".. ",
+  ]) {
     expect(() => directories.path(id)).toThrowError(
       expect.objectContaining({ code: "request.validation_failed" }),
     );

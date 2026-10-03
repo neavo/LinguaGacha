@@ -11,13 +11,16 @@ import { JsonTool } from "../../shared/utils/json-tool";
 import { project_assistant_message_parts } from "./agent-message";
 import type { AgentSessionState } from "./agent-session-state";
 
-export type AgentTaskRecord = TaskRecord<JsonValue, JsonValue, JsonValue>;
-export type AgentTaskFact = { record: AgentTaskRecord; createdAt: number };
+/** SDK 任务补上产品记录的绝对时间，供重开后的压缩条目沿用。 */
+export type AgentTaskFact = {
+  record: TaskRecord<JsonValue, JsonValue, JsonValue>;
+  createdAt: number;
+};
 /** 流式与已提交响应按生成任务共用身份，手工修订以条目身份区分。 */
 export const assistant_entry_id = (task: number | undefined, entry: number): string =>
   `assistant:${task ?? `entry:${entry}`}`;
 
-/** 完整分支历史与已提交进度共用一套公开转换；缓存从不接受业务写入。 */
+/** 完整分支历史与已提交进度共用一套公开转换，缓存只用于读取。 */
 export function project_agent_session_entries(
   records: readonly EntryRecord[],
   submissions: ReadonlyMap<number, SubmissionRecord>,
@@ -76,6 +79,7 @@ export function project_agent_session_entries(
         if (
           parts !== null &&
           (!frozenRound ||
+            record.byTaskId === undefined || // 人工修订由用户提交，停止只冻结原执行的结果
             state.stoppedEntries[assistant_entry_id(record.byTaskId, record.id)] !== undefined)
         )
           output.push({
@@ -84,13 +88,12 @@ export function project_agent_session_entries(
               kind: "assistant_message",
               id: assistant_entry_id(record.byTaskId, record.id),
               parts,
-              status: status(
+              status:
                 message.stopReason === "error"
                   ? "error"
                   : message.stopReason === "aborted"
                     ? "stopped"
                     : "success",
-              ),
               createdAt: message.timestamp,
             },
           });

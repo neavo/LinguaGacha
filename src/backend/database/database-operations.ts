@@ -224,7 +224,7 @@ export class ProjectDatabase {
     }
   }
 
-  /** 运行期事务与 SDK 提交共用队列。同步事务体内仍复用已有 typed 读写方法。 */
+  /** SDK 事务跨异步阶段持有连接，工程事务共用其队列以避免交错。同步事务体复用已有读写方法。 */
   public async transaction<T>(project_path: string, callback: () => T): Promise<T> {
     const release = this.acquire_project_lease(project_path, "transaction");
     const record = this.open_project_record(path.resolve(project_path));

@@ -834,10 +834,10 @@ describe("AgentWorkspaceService", () => {
     const fixture = await create_fixture(temp_dir);
     await run_workspace(fixture);
     write_rows(fixture.active_path(), AGENT_WORKSPACE_QUALITY_CHANGE_PATHS.glossary.updates, [
-      { id: "glossary-1", fp: "AAAA", dst: "姬" },
+      { id: "glossary-1", fp: "opaque-fingerprint", dst: "姬" },
     ]);
     write_rows(fixture.active_path(), AGENT_WORKSPACE_CHANGE_PATHS.prompts.updates, [
-      { kind: "translation", fp: "BBBB", text: "新翻译正文" },
+      { kind: "translation", fp: "unknown-fingerprint", text: "新翻译正文" },
     ]);
 
     await expect(fixture.service.apply_workspace()).resolves.toMatchObject({
@@ -1150,7 +1150,6 @@ async function create_fixture(temp_dir: string, native_fs?: NativeFs) {
     pickSavePath: pick_save_path,
     ...(native_fs === undefined ? {} : { nativeFs: native_fs }),
   });
-  await service.initialize();
   await service.activate_session("test0001", [], async () => {});
   return {
     service,
@@ -1261,8 +1260,6 @@ function all_change_paths(): string[] {
 /** 使用真实工作文件与宿主选择结果观察保存边界。 */
 async function create_file_fixture(temp_dir: string) {
   const fixture = await create_fixture(temp_dir);
-  await fixture.service.initialize();
-  await fixture.service.activate_session("test0001", [], async () => {});
   const file = path.join(fixture.workspace_root, "work", "结果 # %23.md");
   fs.mkdirSync(path.dirname(file), { recursive: true });
   fs.writeFileSync(file, "报告");
@@ -1337,7 +1334,6 @@ it("PDF 零条目工程按页保存、隔离旧指纹，语言变化后重建工
     expect(workspace.list_files()).toEqual([
       { kind: "workspace", path: "book.pdf", count: 3, unit: "pages" },
     ]);
-    await workspace.initialize();
     await workspace.activate_session("test0001", [], async () => {});
     const upload = await workspace.uploads.upload(
       "参考.txt",
@@ -1489,7 +1485,6 @@ it("PDF 零条目工程按页保存、隔离旧指纹，语言变化后重建工
         )
       )["status"],
     ).toBe("applied");
-    await workspace.initialize();
     resources.settings.set_transient_overrides({ source_language: "ALL", target_language: "DE" });
     resources.database.upsert_meta_entries(project_path, {
       source_language: "ALL",

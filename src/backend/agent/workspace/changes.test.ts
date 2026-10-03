@@ -125,14 +125,14 @@ describe("Agent workspace change parser", () => {
     );
   });
 
-  it("按对象契约解析 prompt 与 quality 意图并拒绝格式错误的 fp", async () => {
+  it("按对象契约解析 prompt 与 quality 意图并拒绝缺失指纹", async () => {
     const workspace = create_workspace();
     write(
       workspace,
       AGENT_WORKSPACE_CHANGE_PATHS.prompts.updates,
       [
         JSON.stringify({ kind: "translation", fp: "abcd", text: "正文" }),
-        JSON.stringify({ kind: "translation", fp: "abcde", text: "正文" }),
+        JSON.stringify({ kind: "translation", text: "正文" }),
       ].join("\n"),
     );
     write(
@@ -169,14 +169,13 @@ describe("Agent workspace change parser", () => {
       }),
     );
   });
-  it("解析入口执行 fp 格式及至少一个变更字段的约束", async () => {
+  it("解析入口接受不透明指纹并校验类型、非空和变更字段", async () => {
     const workspace = create_workspace();
     const rows = [
-      { item_id: 1, fp: "abcd", dst: "" },
-      { item_id: 2, fp: "!!!!", dst: "X" },
+      { item_id: 1, fp: "opaque-fingerprint", dst: "" },
+      { item_id: 2, fp: 42, dst: "X" },
       { item_id: 3, fp: "abcd" },
-      { item_id: 4, fp: "ab-_", dst: "X" },
-      { item_id: 5, fp: "abcd\n", dst: "X" },
+      { item_id: 4, fp: "", dst: "X" },
     ];
     write(
       workspace,
@@ -187,12 +186,13 @@ describe("Agent workspace change parser", () => {
       nativeFs: new NativeFs(),
       workspacePath: workspace,
     });
-    expect(parsed.batch.items).toEqual([{ line: 1, item_id: 1, fp: "abcd", update: { dst: "" } }]);
+    expect(parsed.batch.items).toEqual([
+      { line: 1, item_id: 1, fp: "opaque-fingerprint", update: { dst: "" } },
+    ]);
     expect(parsed.rejected).toMatchObject([
       { id: 2, line: 2, path: "/fp", reason: "invalid_change" },
       { id: 3, line: 3, path: "/", reason: "invalid_change" },
       { id: 4, line: 4, path: "/fp", reason: "invalid_change" },
-      { id: 5, line: 5, path: "/fp", reason: "invalid_change" },
     ]);
   });
 });

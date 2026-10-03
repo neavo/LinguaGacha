@@ -12,7 +12,7 @@ import { build_text_preserve_rule } from "../text/text-preserve-rules";
 import { compile_glossary } from "./glossary";
 import { random_id } from "../utils/identifier";
 
-export const QUALITY_RULE_ENTRY_ID_LENGTH = 5;
+const QUALITY_RULE_ENTRY_ID_LENGTH = 5;
 
 /** 为明确的新规则分配短身份，并立即保留到调用方集合中避免同批碰撞。 */
 export function create_quality_rule_entry_id(entry_ids: Set<string>): string {

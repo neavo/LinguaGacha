@@ -1,6 +1,6 @@
 import { SqliteStorage, type SqliteDatabase } from "@earendil-works/pi-durable/storage/sqlite";
 import type { AgentFileAttachment } from "../../shared/agent";
-import { normalize_agent_message_input, AGENT_SESSION_ID_PATTERN } from "../../shared/agent";
+import { normalize_agent_message_input } from "../../shared/agent";
 import { AppError } from "../../shared/error";
 
 export const ACTIVE_AGENT_SESSION_KEY = "active_session";
@@ -37,8 +37,7 @@ export class AgentSessionStore {
     );
     if (active === undefined) return null;
     const id: unknown = JSON.parse(active.value);
-    if (typeof id !== "string" || !AGENT_SESSION_ID_PATTERN.test(id))
-      throw new AppError("file.invalid_structure");
+    if (typeof id !== "string" || id === "") throw new AppError("file.invalid_structure");
     const row = await this.database.get<{ data: string }>(
       "SELECT data FROM agent_sessions WHERE id = ?",
       id,

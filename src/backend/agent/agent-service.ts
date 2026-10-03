@@ -160,16 +160,8 @@ export class AgentService {
     this.images = options.images;
     this.log_manager = options.logManager;
     this.publish = options.publish;
-    this.decisions = new AgentDecisionCoordinator(() => {
-      if (this.disposed) return;
-      const session = this.session;
-      if (session !== null)
-        void session
-          .change((state) => {
-            state.pendingDecision = this.decisions.read_pending();
-          })
-          .catch((error) => this.warn_cleanup_failure(error));
-    });
+    // 决定随当前工具等待存活，直接发布协调器事实，重开时由 SDK 取消遗留任务。
+    this.decisions = new AgentDecisionCoordinator(() => this.publish_snapshot());
     this.unsubscribe_project_session = this.session_state.subscribe_change((change) =>
       this.activate_project(change.loaded ? change.projectPath : null),
     );
@@ -282,7 +274,7 @@ export class AgentService {
       sessionId: this.session_id,
       revision: this.revision,
       state,
-      pendingDecision: session?.state.pendingDecision ?? null,
+      pendingDecision: this.decisions.read_pending(),
       entries: structuredClone(session?.entries ?? []),
       skills: this.get_skill_snapshot(),
       inputQueue: (session?.queue ?? new AgentInputQueue()).read_snapshot(this.can_send_now()),
@@ -294,24 +286,21 @@ export class AgentService {
       tokenSpeed: structuredClone(this.token_speed_snapshot),
     };
   }
-  /** 提交回答后等待决定事实清除，使回执包含浮层关闭事件。 */
+  /** 协调器同步清除决定并发布事件，回执指向浮层关闭后的修订。 */
   public async resolve_question(request: JsonRecord): Promise<AgentCommandAck> {
     this.assert_available();
     this.decisions.resolve_question(request);
-    await this.session?.change(() => {});
     return this.ack();
   }
   /** 工程授权与问题回答共用决定提交边界。 */
   public async resolve_write_approval(request: JsonRecord): Promise<AgentCommandAck> {
     this.assert_available();
     this.decisions.resolve_write_approval(request);
-    await this.session?.change(() => {});
     return this.ack();
   }
 
   /** 启动期加载必需基础资源，并通过技能服务准备空白对话的候选。 */
   public async load_resources(): Promise<void> {
-    await this.workspace.initialize();
     const base_system_prompt = load_agent_system_prompt(this.paths);
     const default_personality = load_agent_personality(this.paths);
     const session_seed = load_agent_session_seed(this.paths);
@@ -479,19 +468,17 @@ export class AgentService {
     this.session_state.require_loaded_project_path();
     const execution = this.begin_execution();
     return this.accept(execution, async () => {
-      await this.update_model(session, execution);
-      const prepared = await this.prepare_message(revision.message);
-      this.assert_execution(execution);
-      session.log.revise(
-        user!.id,
-        target.kind === "assistant_message" ? "assistant" : "user",
-        revision.message.text,
-      );
-      await session.revise(target, target.kind === "assistant_message" ? prepared : null);
       if (target.kind === "assistant_message") {
+        session.log.revise(user!.id, "assistant", revision.message.text);
+        await session.revise(target, revision.message.text);
         this.release(execution);
         return;
       }
+      await this.update_model(session, execution);
+      const prepared = await this.prepare_message(revision.message);
+      this.assert_execution(execution);
+      session.log.revise(user!.id, "user", revision.message.text);
+      await session.revise(target, null);
       const accepted = await this.submit_round(session, execution, revision.message, prepared);
       this.launch(execution, () => this.drive(session, execution, accepted));
     });
@@ -636,7 +623,7 @@ export class AgentService {
     execution.settlement = settlement;
     void settlement.catch((error) => this.warn_cleanup_failure(error));
   }
-  /** 候选会话完成附件准备后才公开，失败候选负责关闭自身资源。 */
+  /** 附件与模型预检成功后才受理轮次，失败时保留待发送草稿。 */
   private async accept_round(
     execution: AgentExecution,
     message: AgentMessageInput,
@@ -753,8 +740,6 @@ export class AgentService {
       storage: await store.open_storage(),
       cwd: this.paths.get_app_root(),
       models,
-      model: null,
-      thinkingLevel: "off",
       seed: resources.sessionSeed,
       tools: this.create_tools(),
       continueText: () => this.read_continue_text(),

@@ -381,7 +381,6 @@ it("删除变更目录后继续执行技能、提交和重置", async () => {
       openDirectory: async () => {},
       pickSavePath: async () => null,
     });
-    await service.initialize();
     await service.activate_session("test0001", [], async () => {});
     // 两个空根先运行一次，后续新增文件在下一 run 自然可读。
     await service.run("console.log('ready');", AbortSignal.timeout(RUN_TIMEOUT_MS));

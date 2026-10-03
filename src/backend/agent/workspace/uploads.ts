@@ -86,7 +86,7 @@ export class AgentUploadStore {
     this.records.clear();
   }
 
-  /** 流式写入临时文件，关闭句柄后在同一回合内发布路径和身份。 */
+  /** 流式写入临时文件，落盘并完成持久化登记后发布路径和身份。 */
   private async save(
     name: string,
     body: ReadableStream<Uint8Array>,
@@ -102,7 +102,7 @@ export class AgentUploadStore {
       void reader.cancel(signal.reason).catch(() => undefined);
     };
     signal.addEventListener("abort", cancel, { once: true });
-    let published = false; // 失败时只删除当前上传的半成品
+    let published = false; // 持久化登记成功后保留文件，关闭期间的迟到取消也不能破坏已保存引用
     try {
       signal.throwIfAborted();
       await this.fs.make_dir_async(directory);
@@ -124,7 +124,7 @@ export class AgentUploadStore {
         }
       }
       signal.throwIfAborted();
-      // 发布和登记在同一同步回合内完成，reset 无法插入两者之间。
+      // 文件先落盘，登记成功后才公开。关闭会等待整个上传，重置随后清理目录。
       this.fs.rename(temporary, destination);
       const record: AgentFileAttachment = {
         kind: "file",
@@ -135,9 +135,9 @@ export class AgentUploadStore {
         imageMimeType: read_image_type(header),
       };
       await this.save_record(record);
+      published = true;
       signal.throwIfAborted();
       this.records.set(id, record);
-      published = true;
       return { ...record };
     } catch (cause) {
       signal.throwIfAborted();
@@ -147,7 +147,10 @@ export class AgentUploadStore {
       signal.removeEventListener("abort", cancel);
       await reader.cancel().catch(() => undefined); // 断线后流可能已关闭，文件清理仍须完成。
       reader.releaseLock();
-      if (!published) await this.fs.remove_async(temporary, { force: true });
+      if (!published) {
+        await this.fs.remove_async(temporary, { force: true });
+        await this.fs.remove_async(destination, { force: true });
+      }
     }
   }
 }

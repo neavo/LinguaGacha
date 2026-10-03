@@ -1,7 +1,6 @@
 import type { ModelAgentLimits } from "../domain/model-agent";
 import type { JsonRecord } from "../domain/json";
 import type { Locale } from "../domain/app-language";
-import { base62_pattern } from "./utils/identifier";
 /** AgentService 与 renderer 共享的唯一 SSE topic。 */
 export const AGENT_SESSION_EVENT_TOPIC = "agent.session_event";
 
@@ -135,7 +134,7 @@ export function agent_message_request(message: AgentMessageInput): JsonRecord {
   };
 }
 
-/** 产品输入队列完全驻留于当前会话内存。sending 表示正在准备或已交给 Pi、尚未确认消费。 */
+/** 队列随当前会话提交，重开时清空。`sending` 表示正在准备或等待 SDK 确认消费。 */
 export type AgentQueuedInput = AgentMessageInput & {
   id: string;
   status: "queued" | "sending";
@@ -355,7 +354,3 @@ export function normalize_agent_revision_request(
     ? null
     : { entryId: entry_id, message };
 }
-
-/** 产品会话的生成、工程读取与目录清理共用同一身份长度。 */
-export const AGENT_SESSION_ID_LENGTH = 8;
-export const AGENT_SESSION_ID_PATTERN = base62_pattern(AGENT_SESSION_ID_LENGTH);

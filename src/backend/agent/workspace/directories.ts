@@ -1,10 +1,12 @@
 import path from "node:path";
 import { random_id } from "../../../shared/utils/identifier";
-import { AGENT_SESSION_ID_LENGTH, AGENT_SESSION_ID_PATTERN } from "../../../shared/agent";
 import { AppError } from "../../../shared/error";
 import type { NativeFs } from "../../../native/native-fs";
 
 export const AGENT_WORKSPACE_LIMIT = 20;
+const AGENT_SESSION_ID_LENGTH = 8;
+// 回收只识别已使用的会话目录命名范围，覆盖 Base64url 与 Base62，独立于新身份生成策略。
+const SESSION_DIRECTORY_PATTERN = /^[A-Za-z0-9_-]{8}$/u;
 
 /** 只管理 workspace 的直接会话子目录，目录链接的目标不参与递归清理。 */
 export class AgentWorkspaceDirectories {
@@ -15,20 +17,17 @@ export class AgentWorkspaceDirectories {
     private readonly report: (error: unknown) => void,
   ) {}
 
-  /** 准备会话目录的共同父目录。 */
-  public async initialize(): Promise<void> {
-    await this.fs.make_dir_async(this.root);
-  }
-
-  /** 校验单段会话身份后定位目录。 */
+  /** 持久身份原样定位直接子目录，路径约束集中在文件系统入口。 */
   public path(id: string): string {
-    if (!AGENT_SESSION_ID_PATTERN.test(id)) throw new AppError("request.validation_failed");
+    // 分隔符和盘符会改变路径归属，末尾点或空格会被 Windows 归一化。
+    if (id === "" || /[\\/\0:]/u.test(id) || /[. ]$/u.test(id))
+      throw new AppError("request.validation_failed");
     return path.join(this.root, id);
   }
 
   /** 原子占用随机目录，撞名时生成新的身份。 */
   public async create(): Promise<string> {
-    await this.initialize();
+    await this.fs.make_dir_async(this.root);
     for (;;) {
       const id = random_id(AGENT_SESSION_ID_LENGTH);
       try {
@@ -67,7 +66,7 @@ export class AgentWorkspaceDirectories {
           (entry) =>
             entry.isDirectory() &&
             !entry.isSymbolicLink() &&
-            AGENT_SESSION_ID_PATTERN.test(entry.name) &&
+            SESSION_DIRECTORY_PATTERN.test(entry.name) &&
             entry.name !== active,
         )
         .map((entry) => ({ id: entry.name, modified: this.fs.stat(this.path(entry.name)).mtimeMs }))

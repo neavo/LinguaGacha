@@ -20,11 +20,3 @@ export function random_id(length: number): string {
   }
   return result;
 }
-
-/** 生成固定长度的完整匹配规则，供读取边界与 JSON Schema 共用。 */
-export function base62_pattern(length: number): RegExp {
-  if (!Number.isSafeInteger(length) || length <= 0) {
-    throw new RangeError("length must be a positive safe integer.");
-  }
-  return new RegExp(`^[${BASE62_ALPHABET}]{${length}}$`, "u");
-}

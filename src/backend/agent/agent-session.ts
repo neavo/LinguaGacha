@@ -97,8 +97,6 @@ type SessionOptions = {
   storage: Storage;
   cwd: string;
   models: MutableModels;
-  model: Model<Api> | null;
-  thinkingLevel: ModelThinkingLevel;
   seed: AgentSessionSeed;
   tools: ToolRegistration[];
   systemPrompt: () => string;
@@ -114,7 +112,7 @@ type SessionOptions = {
 /** 产品会话直接使用 durable 公共接口，拥有输入、历史、恢复与压缩的提交边界。 */
 export class AgentSession {
   public readonly models: MutableModels;
-  public model: Model<Api> | null;
+  public model: Model<Api> | null = null; // 打开历史不解析模型，请求前由 `configure` 采用当前配置
   public readonly log: AgentSessionLog;
   public execution: AgentExecution | null = null;
   public entries: AgentEntry[] = [];
@@ -126,7 +124,7 @@ export class AgentSession {
   private readonly records = new Map<number, EntryRecord>(); // 完整历史缓存保留压缩前的公开条目
   private readonly conversations = new Map<number, ConversationRecord>(); // 祖先关系用于计算分叉的可见历史
   private readonly submissions = new Map<number, SubmissionRecord>(); // 受理回执关联产品输入与实际历史条目
-  private readonly tasks = new Map<number, AgentTaskFact>();
+  private readonly compactions = new Map<number, AgentTaskFact>(); // 只有压缩任务需要独立公开条目
   private readonly live = new Map<number, LiveState>(); // 各分支的已提交流式进度
   private readonly usages = new Map<number, UsageState>(); // 跨分支累计消耗，修订保留已发生费用
   private compactionReason: "manual" | "threshold" | "length" = "manual";
@@ -136,13 +134,15 @@ export class AgentSession {
   private closed = false;
   private closing: Promise<void> | null = null;
   private unsubscribe = () => {};
-  private latestParts: ReturnType<typeof project_assistant_message_parts> = null; // 停止时冲刷尚未达到 SDK 提交窗口的正文
-  private latestTimestamp = 0;
+  private latestResponse: {
+    parts: ReturnType<typeof project_assistant_message_parts>;
+    createdAt: number;
+    source: Pick<AssistantMessage, "api" | "provider" | "model">;
+  } | null = null; // 只保存值副本，SDK 对流式消息的后续修改不能改写停止快照
 
   /** 会话独占模型流观察器，使取消、正文收尾与速度统计使用同一执行身份。 */
   private constructor(private readonly options: SessionOptions) {
     this.models = options.models;
-    this.model = options.model;
     this.log = options.log;
     const stream = this.models.streamSimple.bind(this.models);
     // 所有 Agent 请求与摘要共用真实派发入口。这里只观察流，不另外拼装公开正文。
@@ -174,8 +174,11 @@ export class AgentSession {
               this.log.handle_event({ type: "message_end", message });
             else this.log.handle_event({ type: "message_update", message });
             if (execution === this.execution && execution?.phase !== "stopped") {
-              this.latestParts = project_assistant_message_parts(message);
-              this.latestTimestamp = message.timestamp;
+              this.latestResponse = {
+                parts: project_assistant_message_parts(message),
+                createdAt: message.timestamp,
+                source: { api: message.api, provider: message.provider, model: message.model },
+              };
               this.options.onModelEvent(event);
             }
           }
@@ -189,7 +192,7 @@ export class AgentSession {
       });
   }
 
-  /** 装配内存 `Harness`、产品工具与提交订阅，种子完成后才交付可用会话。 */
+  /** 装配 `Harness`、产品工具与提交订阅，遗留任务收尾后才交付会话。 */
   public static async open(options: SessionOptions): Promise<AgentSession> {
     const session = new AgentSession(options);
     const registry = createRegistry();
@@ -328,24 +331,22 @@ export class AgentSession {
             session.execution !== null
           )
             session.execution.recoveryUsed = false;
-        } else if (change.type === "task") {
-          const previous = session.tasks.get(change.value.id);
-          session.tasks.set(change.value.id, {
+        } else if (change.type === "task" && change.value.kind === CompactionTask.definition.name) {
+          const previous = session.compactions.get(change.value.id);
+          const createdAt = previous?.createdAt ?? Date.now();
+          session.compactions.set(change.value.id, {
             record: change.value,
-            createdAt: previous?.createdAt ?? Date.now(),
+            createdAt,
           });
-          if (change.value.kind === "pi.compaction") {
-            if (previous === undefined) {
-              const id = change.value.id;
-              const createdAt = session.tasks.get(id)!.createdAt;
-              void session
-                .change((state) => {
-                  state.taskCreatedAt[id] = createdAt;
-                })
-                .catch(options.onReport);
-            }
-            session.observe_compaction(change.value.id, previous);
+          if (previous === undefined) {
+            const id = change.value.id;
+            void session
+              .change((state) => {
+                state.taskCreatedAt[id] = createdAt;
+              })
+              .catch(options.onReport);
           }
+          session.observe_compaction(change.value.id, previous);
         } else if (change.type === "document" && change.value !== null) {
           // kind 对应固定 token 的 JSON 契约，值为 SDK 提供的不可变提交快照。
           if (
@@ -385,9 +386,6 @@ export class AgentSession {
         session.conversation = conversation;
       }
       await session.recover();
-      if (options.model !== null) await session.configure(options.model, options.thinkingLevel);
-      session.schedule_refresh();
-      await session.flush();
     } catch (error) {
       session.closed = true;
       session.unsubscribe();
@@ -446,9 +444,12 @@ export class AgentSession {
     ))
       this.submissions.set(record.id, record);
     for (const record of await scan((cursor) =>
-      storage.scanTasks({}, 100, cursor, BACKGROUND_CONTEXT),
+      storage.scanTasks({ kind: CompactionTask.definition.name }, 100, cursor, BACKGROUND_CONTEXT),
     ))
-      this.tasks.set(record.id, { record, createdAt: this.state.taskCreatedAt[record.id] ?? 0 });
+      this.compactions.set(record.id, {
+        record,
+        createdAt: this.state.taskCreatedAt[record.id] ?? 0,
+      });
   }
 
   /** 先全部标记取消，再启动 SDK 收尾，防止打开历史时重新运行工具或模型。 */
@@ -470,8 +471,6 @@ export class AgentSession {
         ),
       );
     }
-    this.schedule_refresh();
-    await this.flush();
     await this.change((state) => {
       let roundId: string | null = null;
       for (const entry of entries) {
@@ -490,7 +489,6 @@ export class AgentSession {
         delete state.stoppedEntries[id];
       }
       state.queue = { items: [], paused: false };
-      state.pendingDecision = null;
     });
   }
 
@@ -787,18 +785,20 @@ export class AgentSession {
       freeze_entry,
     );
     const task = this.live.get(this.conversation.id)?.run?.taskId;
+    const latest = this.latestResponse;
     if (
       task !== undefined &&
       execution.roundId !== null &&
       this.state.rounds[execution.roundId]?.status === "running" &&
-      this.latestParts !== null
+      latest !== null &&
+      latest.parts !== null
     ) {
       const entry: AgentEntry = {
         kind: "assistant_message",
         id: assistant_entry_id(task, 0),
-        parts: this.latestParts,
+        parts: latest.parts,
         status: "stopped",
-        createdAt: this.latestTimestamp,
+        createdAt: latest.createdAt,
       };
       const index = frozen.findIndex((item) => item.id === entry.id);
       if (index < 0) frozen.push(entry);
@@ -806,7 +806,13 @@ export class AgentSession {
     }
     await this.change((state) => {
       for (const entry of frozen)
-        state.stoppedEntries[entry.id] = { roundId: execution.roundId!, entry };
+        state.stoppedEntries[entry.id] = {
+          roundId: execution.roundId!,
+          entry,
+          ...(task !== undefined && entry.id === assistant_entry_id(task, 0) && latest !== null
+            ? { source: latest.source }
+            : {}),
+        };
       const round = execution.roundId === null ? undefined : state.rounds[execution.roundId];
       if (round !== undefined && round.status === "running") {
         round.status = "stopped";
@@ -817,7 +823,6 @@ export class AgentSession {
       const queue = new AgentInputQueue(state.queue);
       queue.cancel_send();
       queue.pause();
-      state.pendingDecision = null;
     });
   }
   /** 租约释放前等待原生任务退出，关闭过程共用已有的收尾 Promise。 */
@@ -828,33 +833,41 @@ export class AgentSession {
   }
 
   /** 预检后的修订通过分叉替换活动历史，产品队列和 `doing` 跨分叉保留。 */
-  public async revise(entry: AgentEntry, prepared: PreparedAgentMessage | null): Promise<void> {
+  public async revise(entry: AgentEntry, text: string | null): Promise<void> {
     const records = this.branch_records();
     let checkpoint: EntryId;
+    let original: Pick<AssistantMessage, "api" | "provider" | "model"> | undefined;
     if (entry.kind === "user_message" && entry.delivery === "round")
       checkpoint = this.state.rounds[entry.id]!.checkpoint;
     else {
-      const index = records.findIndex(
+      // 生成任务先提交系统条目，正文可能只存在于停止快照。按最后条目确定分叉切点。
+      const index = records.findLastIndex(
         (record) => assistant_entry_id(record.byTaskId, record.id) === entry.id,
       );
       if (index < 1) throw new AppError("request.validation_failed");
-      checkpoint = records[index - 1]!.id;
+      const message = records[index]!.model?.findLast((message) => message.role === "assistant");
+      original = message ?? this.state.stoppedEntries[entry.id]?.source;
+      if (original === undefined) throw new AppError("request.validation_failed");
+      checkpoint = records[message === undefined ? index : index - 1]!.id;
     }
     this.conversation = await this.conversation.fork(
       checkpoint,
       {
         ownership: { kind: "ownerless" },
         init: async (tx, id) => {
-          (await tx.doc(AgentSessionDoc, this.options.sessionId, null)).activeConversationId = id;
-          if (entry.kind === "assistant_message" && prepared !== null)
+          const state = await tx.doc(AgentSessionDoc, this.options.sessionId, null);
+          state.activeConversationId = id;
+          delete state.stoppedEntries[entry.id]; // 修订替代停止快照，投影不能再补回旧正文
+          if (original !== undefined && text !== null)
             await tx.appendEntry(AssistantEntry, id, {
               model: [
                 {
                   role: "assistant",
-                  content: [{ type: "text", text: prepared.text }],
-                  api: this.require_model().api,
-                  provider: this.require_model().provider,
-                  model: this.require_model().id,
+                  content: [{ type: "text", text }],
+                  // 人工修订沿用历史消息的来源元数据，重开后也无需解析当前模型或认证。
+                  api: original.api,
+                  provider: original.provider,
+                  model: original.model,
                   stopReason: "stop",
                   timestamp: Date.now(),
                   usage: {
@@ -947,7 +960,7 @@ export class AgentSession {
           this.entries = project_agent_session_entries(
             this.branch_records(),
             this.submissions,
-            [...this.tasks.values()]
+            [...this.compactions.values()]
               .filter(({ record }) => this.visible(record.conversationId, record.id))
               .map((task) => ({
                 ...task,
@@ -981,7 +994,7 @@ export class AgentSession {
   }
   /** 每个原生压缩任务只记录一次起止，手动任务附带产品触发原因。 */
   private observe_compaction(id: number, previous: AgentTaskFact | undefined): void {
-    const task = this.tasks.get(id)!;
+    const task = this.compactions.get(id)!;
     const input = task.record.input;
     const nativeReason =
       typeof input === "object" && input !== null && "reason" in input

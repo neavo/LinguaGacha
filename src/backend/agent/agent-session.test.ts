@@ -34,8 +34,6 @@ async function create_session() {
     storage: new MemoryStorage(),
     cwd: process.cwd(),
     models,
-    model: provider.getModel(),
-    thinkingLevel: "off",
     seed: [
       { role: "user", content: "种子输入" },
       { role: "assistant", content: "种子回答" },
@@ -51,6 +49,7 @@ async function create_session() {
     onCompactionFailure: vi.fn(),
   });
   onTestFinished(() => session.close());
+  await session.configure(provider.getModel(), "off");
   return { session, provider };
 }
 
@@ -110,12 +109,10 @@ async function open(store: AgentSessionStore) {
   const provider = fauxProvider();
   const models = createModels();
   const session = await AgentSession.open({
-    sessionId: "session1",
+    sessionId: (await store.read())!.id,
     storage: await store.open_storage(),
     cwd: process.cwd(),
     models,
-    model: null,
-    thinkingLevel: "off",
     seed: [],
     tools: [],
     systemPrompt: () => "",
@@ -158,17 +155,17 @@ async function talk(session: AgentSession, text: string) {
   session.execution = null;
 }
 
-it("真实 lg 重开恢复修订分支和用量，丢弃队列，并在新指令后继续", async () => {
+it("既有身份重开恢复历史，无模型时可修订助手，后续请求采用修订内容", async () => {
   const { database, file } = project();
   let store = database.open_agent_store(file);
-  await store.create("session1");
+  await store.create("-t75szF5");
   const first = await open(store);
   first.models.setProvider(first.provider.provider);
   await first.session.configure(first.provider.getModel(), "off");
   first.provider.setResponses([fauxAssistantMessage("原回答")]);
   await talk(first.session, "问题");
   const assistant = first.session.entries.find((entry) => entry.kind === "assistant_message")!;
-  await first.session.revise(assistant, { text: "修订回答", images: [] });
+  await first.session.revise(assistant, "修订回答");
   await first.session.change_queue((queue) => queue.enqueue({ text: "待发送", attachments: [] }));
   const expected = structuredClone(first.session.entries);
   const usage = structuredClone(first.session.usage);
@@ -180,12 +177,25 @@ it("真实 lg 重开恢复修订分支和用量，丢弃队列，并在新指令
   expect(restored.session.usage).toEqual(usage);
   expect(restored.session.queue.read_snapshot(false).items).toEqual([]);
   expect(restored.provider.state.callCount).toBe(0);
+  await restored.session.revise(restored.session.entries.at(-1)!, "离线修订");
+  expect(restored.session.usage).toEqual(usage);
   restored.models.setProvider(restored.provider.provider);
   await restored.session.configure(restored.provider.getModel(), "off");
-  restored.provider.setResponses([fauxAssistantMessage("继续回答")]);
+  const respond = vi.fn<FauxResponseFactory>(() => fauxAssistantMessage("继续回答"));
+  restored.provider.setResponses([respond]);
   await talk(restored.session, "继续");
   expect(restored.session.entries).toContainEqual(
     expect.objectContaining({ kind: "user_message", text: "继续" }),
+  );
+  expect(respond.mock.calls[0]![0].messages).toContainEqual(
+    expect.objectContaining({
+      role: "assistant",
+      content: [{ type: "text", text: "离线修订" }],
+      api: first.provider.getModel().api,
+      provider: first.provider.getModel().provider,
+      model: first.provider.getModel().id,
+      usage: expect.objectContaining({ totalTokens: 0 }),
+    }),
   );
   await restored.session.close();
   await store.close();
