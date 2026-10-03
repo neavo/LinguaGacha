@@ -75,7 +75,7 @@ function SelectContent({
         align={align}
         alignItemWithTrigger={alignItemWithTrigger}
         sideOffset={alignItemWithTrigger ? 0 : SELECT_SIDE_OFFSET}
-        className="isolate z-(--ui-layer-popover)"
+        className="isolate z-(--ui-layer-popover) [-webkit-app-region:no-drag]"
       >
         <SelectPrimitive.Popup
           data-slot="select-content"

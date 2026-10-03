@@ -1,3 +1,10 @@
+import { execFile } from "node:child_process";
+import fs from "node:fs/promises";
+import { createRequire } from "node:module";
+import os from "node:os";
+import { promisify } from "node:util";
+import tailwindcss from "@tailwindcss/vite";
+import { createServer } from "vite";
 import path from "node:path";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -408,3 +415,176 @@ function create_renderer_diagnostics_stub(
     buildWindowUnresponsiveContext: vi.fn(() => ({})),
   };
 }
+
+// 生产样式通过 WM_NCHITTEST 验证窗口拖动与裁剪边界。
+it.skipIf(process.platform !== "win32")(
+  "滚动内容不侵占标题栏，控件与浮层保留原生交互区域",
+  async () => {
+    const directory = await fs.mkdtemp(path.join(os.tmpdir(), "linguagacha-drag-"));
+    const server = await createServer({
+      configFile: false,
+      appType: "custom",
+      root: process.cwd(),
+      optimizeDeps: { noDiscovery: true, include: [] },
+      plugins: [tailwindcss()],
+      logLevel: "error",
+      server: { host: "127.0.0.1", port: 0, watch: null },
+    });
+    try {
+      server.middlewares.use("/__drag_probe", (_request, response) => {
+        response.setHeader("Content-Type", "text/html");
+        response.end(`
+        <style>
+          .probe-scroll { margin-left:250px; height:400px; overflow:auto }
+          .probe-spacer { height:150px }
+          .probe-tail { height:1500px }
+          #scroll-control { display:block; width:100%; height:32px }
+          #floating { position:fixed; width:200px; height:30px }
+        </style>
+        <header class="shell-topbar"><div></div><div class="topbar__content">
+          <button class="topbar__menu-button">Menu</button><span>App</span>
+        </div><div></div></header>
+        <section class="probe-scroll"><div class="probe-spacer"></div>
+          <button id="scroll-control">Content</button>
+          <div class="probe-tail"></div>
+        </section>
+        <script type="module">
+          import '/src/frontend/index.css';
+          import '/src/frontend/app/shell/app-titlebar.css';
+          import { APP_MENU_POSITIONER_CLASS_NAME } from '/src/frontend/widgets/app-menu.ts';
+          window.menuClass = APP_MENU_POSITIONER_CLASS_NAME;
+        </script>
+      `);
+      });
+      await server.listen();
+      const url = `${server.resolvedUrls!.local[0]}__drag_probe`;
+      // 将 CSS 采样点换算到物理屏幕坐标，查询本测试窗口的原生命中。
+      await fs.writeFile(
+        path.join(directory, "hit.ps1"),
+        String.raw`
+param([long]$WindowHandle, [double]$Scale, [string]$Points)
+Add-Type @"
+using System;
+using System.Runtime.InteropServices;
+// Win32 消息绑定与坐标转换共用同一物理像素坐标系。
+public class WindowHit {
+  [StructLayout(LayoutKind.Sequential)] public struct POINT { public int X; public int Y; }
+  [DllImport("user32.dll")] public static extern IntPtr SendMessage(IntPtr window,uint message,IntPtr w,IntPtr l);
+  [DllImport("user32.dll")] public static extern bool ClientToScreen(IntPtr window,ref POINT point);
+  [DllImport("user32.dll")] public static extern IntPtr SetThreadDpiAwarenessContext(IntPtr context);
+}
+"@
+[WindowHit]::SetThreadDpiAwarenessContext([IntPtr](-4)) | Out-Null
+$window = [IntPtr]$WindowHandle
+$results = foreach ($sample in ($Points | ConvertFrom-Json)) {
+  $point = New-Object WindowHit+POINT
+  $point.X = [int]($sample.x * $Scale)
+  $point.Y = [int]($sample.y * $Scale)
+  [WindowHit]::ClientToScreen($window, [ref]$point) | Out-Null
+  $position = ($point.Y -shl 16) -bor ($point.X -band 65535)
+  [WindowHit]::SendMessage($window, 0x84, [IntPtr]::Zero, [IntPtr]$position).ToInt64()
+}
+ConvertTo-Json -Compress -InputObject @($results)
+`,
+      );
+      await fs.writeFile(
+        path.join(directory, "main.cjs"),
+        `
+      const { app, BrowserWindow } = require('electron');
+      const { execFile } = require('node:child_process');
+      const { promisify } = require('node:util');
+      const path = require('node:path');
+      const assert = require('node:assert/strict');
+      app.setPath('userData', path.join(__dirname, 'profile'));
+      app.commandLine.appendSwitch('force-device-scale-factor', '1.25');
+      const HTCLIENT = 1, HTCAPTION = 2;
+      // 有界重试让 Electron 的区域更新消息先完成。
+      const pause = () => new Promise(resolve => setTimeout(resolve, 50));
+      (async () => {
+        await app.whenReady();
+        const win = new BrowserWindow({
+          show:false, width:1000, height:650, titleBarStyle:'hidden',
+          titleBarOverlay:{height:40,color:'#eeeeee',symbolColor:'#000000'},
+          webPreferences:{backgroundThrottling:false}
+        });
+        // 布局观测与交互只发生在独立测试窗口。
+        const evaluate = code => win.webContents.executeJavaScript(code);
+        await win.loadURL(${JSON.stringify(url)});
+        const scale = await evaluate('devicePixelRatio');
+        const handle = win.getNativeWindowHandle().readBigUInt64LE().toString();
+        // 采样点跟随实际布局，按钮尺寸与标题栏高度可以自由调整。
+        const points = await evaluate(\`(() => {
+          const bar = document.querySelector('.shell-topbar').getBoundingClientRect();
+          const button = document.querySelector('.topbar__menu-button').getBoundingClientRect();
+          const content = document.querySelector('.probe-scroll').getBoundingClientRect();
+          const y = bar.y + bar.height / 2;
+          return window.probePoints = [
+            {x:button.x + button.width / 2, y},
+            {x:(button.right + content.left) / 2, y},
+            {x:content.x + content.width / 2, y}
+          ];
+        })()\`);
+        // 同时核对按钮、标题栏左侧与内容上方三个原生命中区域。
+        async function check(label, expected) {
+          // 原生区域通过异步消息更新，等待有界的最终命中结果。
+          const deadline = Date.now() + 5000;
+          let actual;
+          do {
+            const result = await promisify(execFile)('pwsh', [
+              '-NoProfile','-File',path.join(__dirname,'hit.ps1'),handle,String(scale),JSON.stringify(points)
+            ], {windowsHide:true, timeout:10000});
+            actual = JSON.parse(result.stdout);
+            if (JSON.stringify(actual) === JSON.stringify(expected)) return;
+            await pause();
+          } while (Date.now() < deadline);
+          assert.deepEqual(actual, expected, label);
+        }
+        const normal = [HTCLIENT, HTCAPTION, HTCAPTION];
+        await check('initial titlebar and button', normal);
+        // 将普通按钮完整滚出视口，并让其未裁剪矩形覆盖标题栏采样点。
+        await evaluate(\`(() => {
+          const scroll = document.querySelector('.probe-scroll');
+          const button = document.getElementById('scroll-control').getBoundingClientRect();
+          const bar = document.querySelector('.shell-topbar').getBoundingClientRect();
+          scroll.scrollTop += button.top - bar.top - (bar.height - button.height) / 2;
+        })()\`);
+        assert.equal(await evaluate('document.getElementById("scroll-control").getBoundingClientRect().bottom <= document.querySelector(".probe-scroll").getBoundingClientRect().top'), true);
+        await check('clipped scrolling button', normal);
+        await evaluate(\`
+          const floating = document.createElement('div');
+          floating.id = 'floating';
+          floating.className = window.menuClass;
+          document.body.append(floating);
+          floating.style.left = (window.probePoints[2].x - floating.offsetWidth / 2) + 'px';
+          floating.style.top = (window.probePoints[2].y - floating.offsetHeight / 2) + 'px';
+        \`);
+        await check('menu over titlebar', [HTCLIENT, HTCAPTION, HTCLIENT]);
+        await evaluate('document.getElementById("floating").remove()');
+        await check('menu closed', normal);
+        await evaluate('const backdrop=document.createElement("div"); backdrop.className="cn-progress-toast-modal-layer"; document.body.append(backdrop)');
+        await check('blocking backdrop', [HTCLIENT, HTCLIENT, HTCLIENT]);
+        await evaluate('document.querySelector(".cn-progress-toast-modal-layer").remove()');
+        await check('backdrop closed', normal);
+        win.destroy();
+        console.log('DRAG_REGIONS_OK');
+        app.quit();
+      })().catch(error => { console.error(error); app.exit(1); });
+    `,
+      );
+      const electron = createRequire(import.meta.url)("electron") as string;
+      const env: NodeJS.ProcessEnv = { ...process.env, NODE_OPTIONS: "" };
+      delete env.ELECTRON_RUN_AS_NODE;
+      const result = await promisify(execFile)(electron, [path.join(directory, "main.cjs")], {
+        windowsHide: true,
+        timeout: 60_000,
+        env,
+      });
+      expect(result.stdout).toContain("DRAG_REGIONS_OK");
+    } finally {
+      await server.close();
+      // 目录仅由本测试创建，退出 Electron 后回收其独立配置与探针。
+      await fs.rm(directory, { recursive: true, force: true });
+    }
+  },
+  90_000,
+);

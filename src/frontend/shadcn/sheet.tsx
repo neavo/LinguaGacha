@@ -21,13 +21,13 @@ function SheetPortal(props: SheetPrimitive.Portal.Props): React.JSX.Element {
   return <SheetPrimitive.Portal data-slot="sheet-portal" {...props} />;
 }
 
-/** 显隐跟随 Dialog 过渡状态，退出样式持续到 Portal 卸载。 */
+/** 遮罩覆盖窗口并承接原生交互，退出过渡结束后随 Portal 释放拖动区域。 */
 function SheetOverlay({ className, ...props }: SheetPrimitive.Backdrop.Props): React.JSX.Element {
   return (
     <SheetPrimitive.Backdrop
       data-slot="sheet-overlay"
       className={cn(
-        "fixed inset-0 z-(--ui-layer-overlay) bg-black/10 opacity-100 transition-opacity duration-200 ease-in-out supports-backdrop-filter:backdrop-blur-xs data-starting-style:opacity-0 data-ending-style:opacity-0 motion-reduce:transition-none",
+        "[-webkit-app-region:no-drag] fixed inset-0 z-(--ui-layer-overlay) bg-black/10 opacity-100 transition-opacity duration-200 ease-in-out supports-backdrop-filter:backdrop-blur-xs data-starting-style:opacity-0 data-ending-style:opacity-0 motion-reduce:transition-none",
         className,
       )}
       {...props}

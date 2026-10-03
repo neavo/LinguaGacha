@@ -38,10 +38,7 @@ export function AppTitlebar(props: AppTitlebarProps): JSX.Element {
   });
 
   return (
-    <header
-      className="titlebar shell-topbar"
-      data-titlebar-control-side={shell_info.titleBarControlSide}
-    >
+    <header className="shell-topbar" data-titlebar-control-side={shell_info.titleBarControlSide}>
       <div className="topbar__safe-area topbar__safe-area--start" aria-hidden="true" />
       <div className="topbar__content">
         <div className="topbar__left">

@@ -118,7 +118,7 @@ export function AppActionDialog(props: AppActionDialogProps): JSX.Element {
       <AlertDialogPrimitive.Portal data-slot="alert-dialog-portal">
         <AlertDialogPrimitive.Backdrop
           data-slot="alert-dialog-overlay"
-          className="fixed inset-0 z-(--ui-layer-overlay) bg-black/10 duration-100 supports-backdrop-filter:backdrop-blur-xs data-open:animate-in data-open:fade-in-0 data-closed:animate-out data-closed:fade-out-0"
+          className="[-webkit-app-region:no-drag] fixed inset-0 z-(--ui-layer-overlay) bg-black/10 duration-100 supports-backdrop-filter:backdrop-blur-xs data-open:animate-in data-open:fade-in-0 data-closed:animate-out data-closed:fade-out-0"
         />
         <AlertDialogPrimitive.Popup
           data-slot="alert-dialog-content"

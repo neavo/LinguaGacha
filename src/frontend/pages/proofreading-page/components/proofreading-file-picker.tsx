@@ -168,7 +168,11 @@ export function ProofreadingFilePicker(props: {
         {t("proofreading_page.action.files")}
       </Popover.Trigger>
       <Popover.Portal>
-        <Popover.Positioner sideOffset={4} align="start" className="z-(--ui-layer-overlay)">
+        <Popover.Positioner
+          sideOffset={4}
+          align="start"
+          className="z-(--ui-layer-overlay) [-webkit-app-region:no-drag]"
+        >
           <Popover.Popup
             className="proofreading-page__file-picker"
             aria-label={t("proofreading_page.action.files")}

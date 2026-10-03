@@ -421,7 +421,7 @@ export function LogWindowPage(): JSX.Element {
       }
     >
       <header
-        className="titlebar shell-topbar log-window-page__titlebar"
+        className="shell-topbar log-window-page__titlebar"
         data-titlebar-control-side={shell_info.titleBarControlSide}
       >
         <div className="topbar__safe-area topbar__safe-area--start" aria-hidden="true" />

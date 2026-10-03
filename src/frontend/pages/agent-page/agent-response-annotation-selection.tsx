@@ -206,7 +206,7 @@ export function AgentResponseAnnotationSelection(
         : createPortal(
             <div
               ref={refs.setFloating}
-              className={`isolate z-(--ui-layer-popover)${selection.mode === "action" ? " agent-response-annotation-popover" : ""}`}
+              className={`isolate z-(--ui-layer-popover) [-webkit-app-region:no-drag]${selection.mode === "action" ? " agent-response-annotation-popover" : ""}`}
               style={floatingStyles}
               role={selection.mode === "action" ? "toolbar" : undefined}
               aria-label={selection.mode === "action" ? t("agent_page.annotation.add") : undefined}
