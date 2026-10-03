@@ -11,7 +11,7 @@ import { AGENT_IMAGE_INPUT_MAX_BYTES, type AgentImageService } from "../agent-im
 import type { AgentImage } from "../../../shared/agent-image";
 import path from "node:path";
 import { decode_text_content } from "../../../shared/utils/text-tool";
-import { is_agent_markdown_path } from "../../../shared/agent-workspace-file";
+import { resolve_agent_text_format } from "../../../shared/agent-workspace-file";
 
 import { agent_workspace_page_fingerprint } from "../../project/agent-workspace-page-write";
 import type { PDFHost } from "../../../shared/pdf";
@@ -258,13 +258,7 @@ export class AgentWorkspaceService {
       kind: target.kind,
       mime,
       preview:
-        target.kind === "directory"
-          ? null
-          : mime
-            ? "image"
-            : is_agent_markdown_path(href)
-              ? "markdown"
-              : null,
+        target.kind === "directory" ? null : mime ? "image" : resolve_agent_text_format(href),
     };
   }
 
@@ -334,7 +328,7 @@ export class AgentWorkspaceService {
 
   /** 文档只解码一次捕获的字节，跨会话交付由 AgentService 复核。 */
   public async read_document(href: unknown): Promise<{ path: string; content: string }> {
-    if (typeof href !== "string" || !is_agent_markdown_path(href)) {
+    if (typeof href !== "string" || resolve_agent_text_format(href) === null) {
       throw new AppErrors.AppError("file.invalid_structure");
     }
     const file = this.read_preview_file(href, AGENT_DOCUMENT_MAX_BYTES);

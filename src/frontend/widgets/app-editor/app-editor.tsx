@@ -80,6 +80,9 @@ type AppEditorViewerProps = AppEditorBaseProps & {
   variant: "viewer";
   syntax?: AppEditorSyntax;
   ranges?: readonly AppViewerRange[] | undefined;
+  active?: boolean; // 隐藏视图延迟恢复位置，并暂停发布滚动记录。
+  initial_scroll_top?: number; // 首次可见时消费，后续滚动由编辑器实例持有。
+  on_scroll?: (top: number) => void;
 };
 
 type AppEditorProps = AppEditorDocumentProps | AppEditorFieldProps | AppEditorViewerProps;
@@ -296,6 +299,12 @@ export function AppEditor(props: AppEditorProps): JSX.Element {
     props.variant === "viewer" ? (props.ranges ?? empty_viewer_ranges) : empty_viewer_ranges;
   const editor_mount_ref = useRef<HTMLDivElement | null>(null);
   const editor_view_ref = useRef<EditorView | null>(null);
+  const viewer_active = props.variant !== "viewer" || props.active !== false;
+  const pending_scroll_top = useRef(
+    props.variant === "viewer" ? props.initial_scroll_top : undefined,
+  );
+  const on_scroll_ref = useRef<AppEditorViewerProps["on_scroll"]>(undefined);
+  on_scroll_ref.current = props.variant === "viewer" && viewer_active ? props.on_scroll : undefined;
   useImperativeHandle(props.ref, () => ({ focus: () => editor_view_ref.current?.focus() }), []);
   // CSS 字号变化后刷新行盒与光标测量，沿用当前文档和选区。
   useEffect(() => {
@@ -341,6 +350,11 @@ export function AppEditor(props: AppEditorProps): JSX.Element {
       doc: initial_value_ref.current,
       extensions: [
         initial_extensions_ref.current,
+        EditorView.domEventHandlers({
+          scroll(_event, view) {
+            on_scroll_ref.current?.(view.scrollDOM.scrollTop);
+          },
+        }),
         editor_viewer_ranges_compartment.of(create_app_viewer_ranges(initial_ranges_ref.current)),
         ...create_editor_extensions({
           theme_extension: initial_theme_extension_ref.current,
@@ -385,10 +399,23 @@ export function AppEditor(props: AppEditorProps): JSX.Element {
     editor_view_ref.current = editor_view;
 
     return () => {
+      // StrictMode 重建实例时也恢复已消费的初始位置，隐藏标签保留尚未应用的位置。
+      pending_scroll_top.current ??= editor_view.scrollDOM.scrollTop;
       editor_view.destroy();
       editor_view_ref.current = null;
     };
   }, []);
+
+  // 后台标签挂载时没有布局，首次显示时才消费初始位置。
+  useEffect(() => {
+    const view = editor_view_ref.current;
+    if (!view || !viewer_active) return;
+    view.requestMeasure();
+    if (pending_scroll_top.current !== undefined) {
+      view.scrollDOM.scrollTop = pending_scroll_top.current;
+      pending_scroll_top.current = undefined;
+    }
+  }, [viewer_active]);
 
   useEffect(() => {
     const editor_view = editor_view_ref.current;
