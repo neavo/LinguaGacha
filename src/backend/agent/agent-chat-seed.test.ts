@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { NativeFs } from "../../native/native-fs";
 import { AppPathService } from "../app/app-path-service";
-import { load_agent_session_seed } from "./agent-session-seed";
+import { load_agent_chat_seed } from "./agent-chat-seed";
 
 const cleanup_roots: string[] = []; // 每个用例独立建临时应用根，统一在 afterEach 回收
 
@@ -27,7 +27,7 @@ describe("Agent 会话种子加载", () => {
     ];
     write_seed(paths, JSON.stringify(messages));
 
-    const loaded = load_agent_session_seed(paths, new NativeFs());
+    const loaded = load_agent_chat_seed(paths, new NativeFs());
     expect(loaded.map(({ role }) => role)).toEqual(messages.map(({ role }) => role));
     expect(loaded.map(({ content }) => content)).toEqual(
       messages.map(({ content }) => content.trim()),
@@ -38,7 +38,7 @@ describe("Agent 会话种子加载", () => {
     const paths = create_paths();
     write_seed(paths, "[]");
 
-    expect(load_agent_session_seed(paths, new NativeFs())).toEqual([]);
+    expect(load_agent_chat_seed(paths, new NativeFs())).toEqual([]);
   });
 
   it("资源缺失时保留原始读取异常", () => {
@@ -46,7 +46,7 @@ describe("Agent 会话种子加载", () => {
     let thrown: unknown;
 
     try {
-      load_agent_session_seed(paths, new NativeFs());
+      load_agent_chat_seed(paths, new NativeFs());
     } catch (error) {
       thrown = error;
     }
@@ -59,7 +59,7 @@ describe("Agent 会话种子加载", () => {
     const paths = create_paths();
     write_seed(paths, "{ 不是 JSON");
 
-    expect(() => load_agent_session_seed(paths, new NativeFs())).toThrow(
+    expect(() => load_agent_chat_seed(paths, new NativeFs())).toThrow(
       expect.objectContaining({ code: "file.parse_failed" }),
     );
   });
@@ -75,7 +75,7 @@ describe("Agent 会话种子加载", () => {
     const paths = create_paths();
     write_seed(paths, JSON.stringify(value));
 
-    expect(() => load_agent_session_seed(paths, new NativeFs())).toThrow(
+    expect(() => load_agent_chat_seed(paths, new NativeFs())).toThrow(
       expect.objectContaining({ code: "file.invalid_structure" }),
     );
   });
@@ -95,7 +95,7 @@ function create_paths(): AppPathService {
 
 /** 沿真实加载路径准备资源字节。 */
 function write_seed(paths: AppPathService, content: string): void {
-  const file_path = paths.get_agent_session_seed_path();
+  const file_path = paths.get_agent_chat_seed_path();
   fs.mkdirSync(path.dirname(file_path), { recursive: true });
   fs.writeFileSync(file_path, content, "utf-8");
 }

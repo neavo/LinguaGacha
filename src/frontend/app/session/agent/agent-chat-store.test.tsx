@@ -1,4 +1,4 @@
-import { AgentSessionStore } from "./agent-session-store";
+import { AgentChatStore } from "./agent-chat-store";
 import { uploaded_file } from "../../../../test/agent-upload-fixture";
 const decision_toast = vi.hoisted(() => vi.fn());
 vi.mock("@frontend/app/locale/locale-context", () => ({
@@ -10,12 +10,12 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
-  AGENT_SESSION_EVENT_TOPIC,
+  AGENT_CHAT_EVENT_TOPIC,
   type AgentPendingDecision,
   type AgentEntry,
   type AgentEntryStatus,
   type AgentMessageAttachment,
-  type AgentSessionSnapshot,
+  type AgentChatSnapshot,
 } from "@shared/agent";
 import { AGENT_INPUT_HISTORY_STORAGE_KEY } from "./agent-input-history";
 
@@ -27,21 +27,21 @@ const desktop_api_mocks = vi.hoisted(() => ({
 
 vi.mock("@frontend/app/desktop/desktop-api", () => desktop_api_mocks);
 
-import { AgentSessionProvider } from "@frontend/app/session/agent/agent-session-provider";
+import { AgentChatProvider } from "@frontend/app/session/agent/agent-chat-provider";
 import {
-  AgentSessionStoreContext,
+  AgentChatStoreContext,
   useAgentControls,
   useAgentInput,
   useAgentQueue,
-  useAgentSessionActions,
+  useAgentChatActions,
   useAgentSkills,
   useAgentTimeline,
-} from "@frontend/app/session/agent/agent-session-context";
+} from "@frontend/app/session/agent/agent-chat-context";
 
 /** 测试探针聚合公开切片，统一观察会话与命令结果。 */
-function useAgentSession() {
+function useAgentChat() {
   const structure = useAgentTimeline();
-  const { timeline: store } = useContext(AgentSessionStoreContext)!;
+  const { timeline: store } = useContext(AgentChatStoreContext)!;
   const snapshot = useMemo(() => {
     let entries = structure.entryIds.map((id) => store.entry(id)!);
     return {
@@ -63,12 +63,12 @@ function useAgentSession() {
   const queue = useAgentQueue();
   const skills = useAgentSkills();
   const input = useAgentInput();
-  const actions = useAgentSessionActions();
+  const actions = useAgentChatActions();
   return { ...timeline, ...controls, ...queue, ...skills, input, ...actions };
 }
 
 /** 多个会话入口共享同一份会话协议夹具，避免各用例维护平行字段形状。 */
-const TEST_SKILLS: AgentSessionSnapshot["skills"] = [
+const TEST_SKILLS: AgentChatSnapshot["skills"] = [
   {
     name: "glossary-audit",
     displayDescriptions: {
@@ -114,7 +114,7 @@ class FakeEventSource {
   /** 通过真实 MessageEvent.data 形状投递 JSON 载荷。 */
   public emit(type: string, payload: unknown): void {
     let next = payload;
-    if (type === AGENT_SESSION_EVENT_TOPIC && typeof payload === "object" && payload !== null) {
+    if (type === AGENT_CHAT_EVENT_TOPIC && typeof payload === "object" && payload !== null) {
       const record = payload as Record<string, unknown>;
       const explicit_revision = record["revision"];
       if (typeof explicit_revision === "number") this.revision = explicit_revision;
@@ -129,7 +129,7 @@ class FakeEventSource {
   /** 业务变化显式装入当前批次协议，原始帧仍由 `emit` 投递。 */
   public change(payload: Record<string, unknown>): void {
     const { revision, ...change } = payload;
-    this.emit(AGENT_SESSION_EVENT_TOPIC, { type: "session_update", revision, changes: [change] });
+    this.emit(AGENT_CHAT_EVENT_TOPIC, { type: "chat_update", revision, changes: [change] });
   }
 
   /** 绕过 JSON 编码以验证损坏帧的恢复路径。 */
@@ -143,7 +143,7 @@ class FakeEventSource {
   }
 }
 
-describe("AgentSessionStore", () => {
+describe("AgentChatStore", () => {
   let container: HTMLDivElement | null = null;
   let root: Root | null = null;
   let event_source: FakeEventSource;
@@ -159,14 +159,100 @@ describe("AgentSessionStore", () => {
         skills: TEST_SKILLS,
       }),
     );
-    desktop_api_mocks.api_fetch
-      .mockReset()
-      .mockImplementation(async () => ({ revision: event_source.current_revision }));
+    desktop_api_mocks.api_fetch.mockReset().mockImplementation(async () => ({
+      revision: event_source.current_revision,
+      status: "accepted",
+    }));
     desktop_api_mocks.open_event_stream.mockReset().mockReturnValue(event_source);
   });
 
+  it("发送结果未知时重试沿用命令身份，重建 Store 只查询已受理结果", async () => {
+    const first = new AgentChatStore(window.localStorage, vi.fn());
+    first.connect();
+    await vi.waitFor(() => expect(first.get_controls().transport).toBe("ready"));
+    const message = { text: "原输入", attachments: [] };
+    first.get_input().draft.write(message);
+    desktop_api_mocks.api_fetch.mockRejectedValueOnce(new Error("offline"));
+    await expect(first.actions.send(message)).rejects.toThrow("offline");
+    const original = desktop_api_mocks.api_fetch.mock.calls.at(-1)![1];
+    desktop_api_mocks.api_fetch.mockImplementation(async (path) => ({
+      revision: event_source.current_revision,
+      status: path === "/api/agent/input-status" ? "unknown" : "accepted",
+    }));
+    await first.actions.send(message);
+    expect(desktop_api_mocks.api_fetch.mock.calls.at(-1)![1]).toEqual(original);
+    expect(first.get_input().draft.read().text).toBe("");
+    desktop_api_mocks.api_fetch.mockRejectedValueOnce(new Error("lost reply"));
+    await expect(first.actions.send(message)).rejects.toThrow("lost reply");
+    expect(desktop_api_mocks.api_fetch.mock.calls.at(-1)![1]).not.toEqual(original);
+    first.disconnect();
+    desktop_api_mocks.api_fetch
+      .mockClear()
+      .mockResolvedValue({ revision: event_source.current_revision, status: "accepted" });
+    const reopened = new AgentChatStore(window.localStorage, vi.fn());
+    reopened.connect();
+    try {
+      await vi.waitFor(() => expect(reopened.get_controls().transport).toBe("ready"));
+      expect(desktop_api_mocks.api_fetch).toHaveBeenCalledOnce();
+      expect(desktop_api_mocks.api_fetch.mock.calls[0]![0]).toBe("/api/agent/input-status");
+      expect(reopened.get_input().read_history()).toContain(message.text);
+    } finally {
+      reopened.disconnect();
+    }
+  });
+
+  it("迟到的发送回执只消费原草稿，保留等待期间的新输入", async () => {
+    const store = new AgentChatStore(window.localStorage, vi.fn());
+    store.connect();
+    try {
+      await vi.waitFor(() => expect(store.get_controls().transport).toBe("ready"));
+      const message = { text: "原草稿", attachments: [] };
+      store.get_input().draft.write(message);
+      const receipt = Promise.withResolvers<unknown>();
+      desktop_api_mocks.api_fetch.mockImplementationOnce(() => receipt.promise);
+      const sending = store.actions.send(message);
+      await vi.waitFor(() => expect(desktop_api_mocks.api_fetch).toHaveBeenCalledOnce());
+      store.get_input().draft.write({ text: "新草稿", attachments: [] });
+      receipt.resolve({ revision: event_source.current_revision, status: "accepted" });
+      await sending;
+      expect(store.get_input().draft.read().text).toBe("新草稿");
+      expect(store.get_input().read_history()).toContain("原草稿");
+    } finally {
+      store.disconnect();
+    }
+  });
+
+  it("查询未确认命令期间切换对话，原发送不能进入新对话", async () => {
+    const store = new AgentChatStore(window.localStorage, vi.fn());
+    store.connect();
+    try {
+      await vi.waitFor(() => expect(store.get_controls().transport).toBe("ready"));
+      event_source.emit_open();
+      desktop_api_mocks.api_fetch.mockRejectedValueOnce(new Error("offline"));
+      await expect(store.actions.send({ text: "待确认", attachments: [] })).rejects.toThrow(
+        "offline",
+      );
+      const status = Promise.withResolvers<unknown>();
+      desktop_api_mocks.api_fetch
+        .mockClear()
+        .mockImplementation(async (path) =>
+          path === "/api/agent/input-status" ? status.promise : { revision: 0, status: "accepted" },
+        );
+      const sending = store.actions.send({ text: "原对话的新输入", attachments: [] });
+      await vi.waitFor(() => expect(desktop_api_mocks.api_fetch).toHaveBeenCalledOnce());
+      desktop_api_mocks.api_get.mockResolvedValue(agent_snapshot({ chatId: "other-chat" }));
+      event_source.emit_open();
+      await vi.waitFor(() => expect(store.get_chat_id()).toBe("other-chat"));
+      status.resolve({ revision: event_source.current_revision, status: "unknown" });
+      await expect(sending).rejects.toMatchObject({ code: "runtime.cancelled" });
+      expect(desktop_api_mocks.api_fetch).toHaveBeenCalledOnce();
+    } finally {
+      store.disconnect();
+    }
+  });
+
   it("同一批次先更新正文与控制事实，再一次通知各自读者", async () => {
-    const store = new AgentSessionStore(window.localStorage, vi.fn());
+    const store = new AgentChatStore(window.localStorage, vi.fn());
     store.connect();
     try {
       await vi.waitFor(() => expect(store.get_controls().transport).toBe("ready"));
@@ -180,20 +266,20 @@ describe("AgentSessionStore", () => {
       store.timeline.subscribe_entry("assistant-1", observed);
       const controlsChanged = vi.fn();
       store.subscribe_controls(controlsChanged);
-      event_source.emit(AGENT_SESSION_EVENT_TOPIC, {
-        type: "session_update",
+      event_source.emit(AGENT_CHAT_EVENT_TOPIC, {
+        type: "chat_update",
         changes: [
           { type: "entry_upsert", entry: assistant_entry("assistant-1", "已完成", "success", 1) },
-          { type: "session_state", state: "running" },
-          { type: "session_state", state: "idle" },
+          { type: "chat_status", state: "running" },
+          { type: "chat_status", state: "idle" },
           { type: "doing", doing: "完成" },
         ],
       });
       expect(observed).toHaveBeenCalledOnce();
       expect(controlsChanged).toHaveBeenCalledOnce();
       const previous = store.timeline.entry("assistant-1");
-      event_source.emit(AGENT_SESSION_EVENT_TOPIC, {
-        type: "session_update",
+      event_source.emit(AGENT_CHAT_EVENT_TOPIC, {
+        type: "chat_update",
         changes: [
           {
             type: "entry_upsert",
@@ -210,7 +296,7 @@ describe("AgentSessionStore", () => {
   });
 
   it("速度独立发布，重复值不通知，并从 revision 缺口快照恢复", async () => {
-    const store = new AgentSessionStore(window.localStorage, vi.fn());
+    const store = new AgentChatStore(window.localStorage, vi.fn());
     const speed_changed = vi.fn();
     const timeline_changed = vi.fn();
     store.subscribe_token_speed(speed_changed);
@@ -267,10 +353,10 @@ describe("AgentSessionStore", () => {
   });
 
   it("StrictMode effect 重放后仍能完成会话恢复", async () => {
-    let latest!: ReturnType<typeof useAgentSession>;
+    let latest!: ReturnType<typeof useAgentChat>;
     /** 在 StrictMode 重放期间订阅同一公开会话。 */
     function Probe(): null {
-      latest = useAgentSession();
+      latest = useAgentChat();
       return null;
     }
     container = document.createElement("div");
@@ -280,9 +366,9 @@ describe("AgentSessionStore", () => {
     await act(async () =>
       root?.render(
         <StrictMode>
-          <AgentSessionProvider>
+          <AgentChatProvider>
             <Probe />
-          </AgentSessionProvider>
+          </AgentChatProvider>
         </StrictMode>,
       ),
     );
@@ -300,9 +386,9 @@ describe("AgentSessionStore", () => {
   });
 
   it("按 id 覆盖完整条目并保留首次出现的真实顺序", async () => {
-    let latest!: ReturnType<typeof useAgentSession>;
+    let latest!: ReturnType<typeof useAgentChat>;
     await render_probe(() => {
-      latest = useAgentSession();
+      latest = useAgentChat();
     });
     await wait_for(() => expect(latest.transport).toBe("ready"));
     await act(async () => {
@@ -342,9 +428,9 @@ describe("AgentSessionStore", () => {
       .mockResolvedValueOnce(
         agent_snapshot({ revision: 3, context: { tokens: 300, compactable: true, limits: null } }),
       );
-    let latest!: ReturnType<typeof useAgentSession>;
+    let latest!: ReturnType<typeof useAgentChat>;
     await render_probe(() => {
-      latest = useAgentSession();
+      latest = useAgentChat();
     });
     await wait_for(() => expect(latest.transport).toBe("ready"));
 
@@ -375,9 +461,9 @@ describe("AgentSessionStore", () => {
   });
 
   it("只接纳合法上下文用量事件，非法帧不覆盖当前值", async () => {
-    let latest!: ReturnType<typeof useAgentSession>;
+    let latest!: ReturnType<typeof useAgentChat>;
     await render_probe(() => {
-      latest = useAgentSession();
+      latest = useAgentChat();
     });
     await wait_for(() => expect(latest.transport).toBe("ready"));
 
@@ -410,9 +496,9 @@ describe("AgentSessionStore", () => {
     desktop_api_mocks.api_get.mockResolvedValue(
       agent_snapshot({ usage: { input: 10, output: 2, cacheRead: 5, cacheWrite: 1 } }),
     );
-    let latest!: ReturnType<typeof useAgentSession>;
+    let latest!: ReturnType<typeof useAgentChat>;
     await render_probe(() => {
-      latest = useAgentSession();
+      latest = useAgentChat();
     });
     await wait_for(() => expect(latest.transport).toBe("ready"));
     expect(latest.usage).toEqual({ input: 10, output: 2, cacheRead: 5, cacheWrite: 1 });
@@ -435,9 +521,9 @@ describe("AgentSessionStore", () => {
   });
 
   it("正在处理的内容随增量事件覆盖，并拒绝空白文本", async () => {
-    let latest!: ReturnType<typeof useAgentSession>;
+    let latest!: ReturnType<typeof useAgentChat>;
     await render_probe(() => {
-      latest = useAgentSession();
+      latest = useAgentChat();
     });
     await wait_for(() => expect(latest.transport).toBe("ready"));
 
@@ -460,13 +546,13 @@ describe("AgentSessionStore", () => {
 
   it("快照与增量事件恢复 `doing` 内容", async () => {
     desktop_api_mocks.api_get.mockResolvedValueOnce(agent_snapshot({ doing: "检查章节" }));
-    const store = new AgentSessionStore(window.localStorage, vi.fn());
+    const store = new AgentChatStore(window.localStorage, vi.fn());
     store.connect();
     event_source.emit_open();
     try {
       await vi.waitFor(() => expect(store.get_controls().transport).toBe("ready"));
       expect(store.get_controls().doing).toBe("检查章节");
-      event_source.change({ type: "session_state", state: "running" });
+      event_source.change({ type: "chat_status", state: "running" });
       event_source.change({
         type: "pending_decision",
         pendingDecision: countdown_question(),
@@ -476,7 +562,7 @@ describe("AgentSessionStore", () => {
         type: "pending_decision",
         pendingDecision: null,
       });
-      event_source.change({ type: "session_state", state: "idle" });
+      event_source.change({ type: "chat_status", state: "idle" });
       expect(store.get_controls()).toMatchObject({ state: "idle", doing: "汇总结果" });
       const revision = event_source.current_revision;
       desktop_api_mocks.api_get.mockResolvedValueOnce(
@@ -494,9 +580,9 @@ describe("AgentSessionStore", () => {
   });
 
   it("上下文容量独立于 token 变化更新到会话切片", async () => {
-    let latest!: ReturnType<typeof useAgentSession>;
+    let latest!: ReturnType<typeof useAgentChat>;
     await render_probe(() => {
-      latest = useAgentSession();
+      latest = useAgentChat();
     });
     await wait_for(() => expect(latest.transport).toBe("ready"));
     for (const context_window of [128_000, 256_000]) {
@@ -519,9 +605,9 @@ describe("AgentSessionStore", () => {
   });
 
   it("用完整队列事件替换投影，并转发队列协议命令", async () => {
-    let latest!: ReturnType<typeof useAgentSession>;
+    let latest!: ReturnType<typeof useAgentChat>;
     await render_probe(() => {
-      latest = useAgentSession();
+      latest = useAgentChat();
     });
     await wait_for(() => expect(latest.transport).toBe("ready"));
     const item = {
@@ -550,7 +636,10 @@ describe("AgentSessionStore", () => {
       ["/api/agent/queue/update", { id: item.id, message: { text: "修改后", attachments: [] } }],
       ["/api/agent/queue/delete", { id: item.id }],
       ["/api/agent/queue/reorder", { ids: [item.id] }],
-      ["/api/agent/queue/send", { id: item.id }],
+      [
+        "/api/agent/queue/send",
+        { id: item.id, chatId: expect.any(String), commandId: expect.any(String) },
+      ],
     ]);
     expect(latest.input.draft.read()).toEqual({ text: "普通草稿", attachments: [] });
     expect(latest.input.read_history()).toEqual([]);
@@ -558,27 +647,13 @@ describe("AgentSessionStore", () => {
 
   it("运行中仍受理普通发送并在 ack 后清空草稿", async () => {
     desktop_api_mocks.api_get.mockResolvedValue(agent_snapshot({ state: "running" }));
-    desktop_api_mocks.api_fetch.mockResolvedValue(
-      agent_snapshot({
-        state: "running",
-        inputQueue: {
-          paused: false,
-          canSendNow: false,
-          items: [
-            {
-              id: "queue-1",
-              text: "排队",
-              attachments: [],
-              status: "queued",
-              createdAt: 1,
-            },
-          ],
-        },
-      }),
-    );
-    let latest!: ReturnType<typeof useAgentSession>;
+    desktop_api_mocks.api_fetch.mockResolvedValue({
+      revision: event_source.current_revision,
+      status: "accepted",
+    });
+    let latest!: ReturnType<typeof useAgentChat>;
     await render_probe(() => {
-      latest = useAgentSession();
+      latest = useAgentChat();
     });
     await wait_for(() => expect(latest.transport).toBe("ready"));
     latest.input.draft.write({ text: "排队", attachments: [] });
@@ -586,6 +661,8 @@ describe("AgentSessionStore", () => {
     await act(async () => latest.send({ text: "排队", attachments: [] }));
 
     expect(desktop_api_mocks.api_fetch).toHaveBeenCalledWith("/api/agent/message", {
+      chatId: expect.any(String),
+      commandId: expect.any(String),
       text: "排队",
       attachments: [],
     });
@@ -605,11 +682,11 @@ describe("AgentSessionStore", () => {
           status: "running",
         },
       });
-      return { revision: event_source.current_revision };
+      return { revision: event_source.current_revision, status: "accepted" };
     });
-    let latest!: ReturnType<typeof useAgentSession>;
+    let latest!: ReturnType<typeof useAgentChat>;
     await render_probe(() => {
-      latest = useAgentSession();
+      latest = useAgentChat();
     });
     await wait_for(() => expect(latest.transport).toBe("ready"));
 
@@ -647,11 +724,11 @@ describe("AgentSessionStore", () => {
         type: "pending_decision",
         pendingDecision: null,
       });
-      return { revision: event_source.current_revision };
+      return { revision: event_source.current_revision, status: "accepted" };
     });
-    let latest!: ReturnType<typeof useAgentSession>;
+    let latest!: ReturnType<typeof useAgentChat>;
     await render_probe(() => {
-      latest = useAgentSession();
+      latest = useAgentChat();
     });
     await wait_for(() => expect(latest.transport).toBe("ready"));
 
@@ -683,11 +760,11 @@ describe("AgentSessionStore", () => {
         type: "pending_decision",
         pendingDecision: null,
       });
-      return { revision: event_source.current_revision };
+      return { revision: event_source.current_revision, status: "accepted" };
     });
-    let latest!: ReturnType<typeof useAgentSession>;
+    let latest!: ReturnType<typeof useAgentChat>;
     await render_probe(() => {
-      latest = useAgentSession();
+      latest = useAgentChat();
     });
     await wait_for(() => expect(latest.transport).toBe("ready"));
 
@@ -730,11 +807,11 @@ describe("AgentSessionStore", () => {
         type: "pending_decision",
         pendingDecision: null,
       });
-      return { revision: event_source.current_revision };
+      return { revision: event_source.current_revision, status: "accepted" };
     });
-    let latest!: ReturnType<typeof useAgentSession>;
+    let latest!: ReturnType<typeof useAgentChat>;
     await render_probe(() => {
-      latest = useAgentSession();
+      latest = useAgentChat();
     });
     expect(latest.transport).toBe("ready");
     await act(async () => {
@@ -752,9 +829,9 @@ describe("AgentSessionStore", () => {
     vi.useFakeTimers();
     const pending = countdown_question();
     desktop_api_mocks.api_get.mockResolvedValue(agent_snapshot({ pendingDecision: pending }));
-    let latest!: ReturnType<typeof useAgentSession>;
+    let latest!: ReturnType<typeof useAgentChat>;
     await render_probe(() => {
-      latest = useAgentSession();
+      latest = useAgentChat();
     });
     await act(async () => {
       await vi.advanceTimersByTimeAsync(60_000);
@@ -782,9 +859,9 @@ describe("AgentSessionStore", () => {
     desktop_api_mocks.api_get.mockResolvedValue(
       agent_snapshot({ pendingDecision: countdown_question() }),
     );
-    let latest!: ReturnType<typeof useAgentSession>;
+    let latest!: ReturnType<typeof useAgentChat>;
     await render_probe(() => {
-      latest = useAgentSession();
+      latest = useAgentChat();
     });
     let reject!: (error: Error) => void;
     desktop_api_mocks.api_fetch.mockImplementationOnce(
@@ -818,9 +895,9 @@ describe("AgentSessionStore", () => {
   });
 
   it("畸形决策增量保持最近一次完整控制状态", async () => {
-    let latest!: ReturnType<typeof useAgentSession>;
+    let latest!: ReturnType<typeof useAgentChat>;
     await render_probe(() => {
-      latest = useAgentSession();
+      latest = useAgentChat();
     });
     await wait_for(() => expect(latest.transport).toBe("ready"));
     const pending = {
@@ -896,10 +973,13 @@ describe("AgentSessionStore", () => {
         },
       }),
     );
-    desktop_api_mocks.api_fetch.mockResolvedValue(agent_snapshot({ state: "running" }));
-    let latest!: ReturnType<typeof useAgentSession>;
+    desktop_api_mocks.api_fetch.mockResolvedValue({
+      revision: event_source.current_revision,
+      status: "accepted",
+    });
+    let latest!: ReturnType<typeof useAgentChat>;
     await render_probe(() => {
-      latest = useAgentSession();
+      latest = useAgentChat();
     });
     await wait_for(() => expect(latest.transport).toBe("ready"));
     latest.input.draft.write({ text: "追加消息", attachments: [] });
@@ -907,6 +987,8 @@ describe("AgentSessionStore", () => {
     await act(async () => latest.continue({ text: "追加消息", attachments: [] }));
 
     expect(desktop_api_mocks.api_fetch).toHaveBeenCalledWith("/api/agent/continue", {
+      chatId: expect.any(String),
+      commandId: expect.any(String),
       message: { text: "追加消息", attachments: [] },
     });
     expect(latest.input.draft.read()).toEqual({ text: "", attachments: [] });
@@ -949,9 +1031,9 @@ describe("AgentSessionStore", () => {
     ],
   ])("缺失必需快照字段 %s 时按当前协议失败", async (_field, snapshot) => {
     desktop_api_mocks.api_get.mockResolvedValue(snapshot);
-    let latest!: ReturnType<typeof useAgentSession>;
+    let latest!: ReturnType<typeof useAgentChat>;
     await render_probe(() => {
-      latest = useAgentSession();
+      latest = useAgentChat();
     });
     await wait_for(() => expect(latest.transport).toBe("restore_failed"));
   });
@@ -969,9 +1051,9 @@ describe("AgentSessionStore", () => {
       .mockResolvedValueOnce(
         agent_snapshot({ entries: [assistant_entry("assistant-current", "已恢复", "success", 2)] }),
       );
-    let latest!: ReturnType<typeof useAgentSession>;
+    let latest!: ReturnType<typeof useAgentChat>;
     await render_probe(() => {
-      latest = useAgentSession();
+      latest = useAgentChat();
     });
     await wait_for(() => expect(latest.transport).toBe("restore_failed"));
     expect(latest.entries).toEqual([]);
@@ -985,7 +1067,7 @@ describe("AgentSessionStore", () => {
 
   it("skill 清单只接纳完整的新 UI 描述协议", async () => {
     desktop_api_mocks.api_get.mockResolvedValue({
-      sessionId: "test-session",
+      chatId: "test-chat",
       revision: 0,
       state: "idle",
       pendingDecision: null,
@@ -1008,9 +1090,9 @@ describe("AgentSessionStore", () => {
         },
       ],
     });
-    let latest!: ReturnType<typeof useAgentSession>;
+    let latest!: ReturnType<typeof useAgentChat>;
     await render_probe(() => {
-      latest = useAgentSession();
+      latest = useAgentChat();
     });
     await wait_for(() => expect(latest.transport).toBe("ready"));
 
@@ -1019,7 +1101,7 @@ describe("AgentSessionStore", () => {
 
   it("只接纳字段完整且值域合法的时间线条目", async () => {
     desktop_api_mocks.api_get.mockResolvedValue({
-      sessionId: "test-session",
+      chatId: "test-chat",
       revision: 0,
       state: "idle",
       pendingDecision: null,
@@ -1230,9 +1312,9 @@ describe("AgentSessionStore", () => {
       tokenSpeed: null,
       usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
     });
-    let latest!: ReturnType<typeof useAgentSession>;
+    let latest!: ReturnType<typeof useAgentChat>;
     await render_probe(() => {
-      latest = useAgentSession();
+      latest = useAgentChat();
     });
     await wait_for(() => expect(latest.transport).toBe("ready"));
 
@@ -1333,10 +1415,10 @@ describe("AgentSessionStore", () => {
         }),
       );
     const texts: string[] = [];
-    let latest!: ReturnType<typeof useAgentSession>;
+    let latest!: ReturnType<typeof useAgentChat>;
 
     await render_probe(() => {
-      const state = useAgentSession();
+      const state = useAgentChat();
       latest = state;
       useEffect(() => {
         const entry = state.entries.at(-1);
@@ -1374,9 +1456,9 @@ describe("AgentSessionStore", () => {
   });
 
   it("损坏帧触发权威 snapshot 自愈而不永久停在断线态", async () => {
-    let latest!: ReturnType<typeof useAgentSession>;
+    let latest!: ReturnType<typeof useAgentChat>;
     await render_probe(() => {
-      latest = useAgentSession();
+      latest = useAgentChat();
     });
     await wait_for(() => expect(latest.transport).toBe("ready"));
     desktop_api_mocks.api_get.mockResolvedValueOnce(
@@ -1386,7 +1468,7 @@ describe("AgentSessionStore", () => {
       }),
     );
 
-    await act(async () => event_source.emit_raw(AGENT_SESSION_EVENT_TOPIC, "{"));
+    await act(async () => event_source.emit_raw(AGENT_CHAT_EVENT_TOPIC, "{"));
     await wait_for(() => expect(desktop_api_mocks.api_get).toHaveBeenCalledTimes(2));
     await wait_for(() => expect(latest.transport).toBe("ready"));
     expect(latest.entries).toEqual([
@@ -1395,15 +1477,13 @@ describe("AgentSessionStore", () => {
   });
 
   it("发送规范文本，受理后原子记录历史并清空草稿", async () => {
-    desktop_api_mocks.api_fetch.mockResolvedValue(
-      agent_snapshot({
-        state: "running",
-        skills: TEST_SKILLS,
-      }),
-    );
-    let latest!: ReturnType<typeof useAgentSession>;
+    desktop_api_mocks.api_fetch.mockResolvedValue({
+      revision: event_source.current_revision,
+      status: "accepted",
+    });
+    let latest!: ReturnType<typeof useAgentChat>;
     await render_probe(() => {
-      latest = useAgentSession();
+      latest = useAgentChat();
     });
     await wait_for(() => expect(latest.transport).toBe("ready"));
     latest.input.draft.write({ text: '  请处理 @skill("corpus-search")  ', attachments: [] });
@@ -1413,6 +1493,8 @@ describe("AgentSessionStore", () => {
     });
 
     expect(desktop_api_mocks.api_fetch).toHaveBeenCalledWith("/api/agent/message", {
+      chatId: expect.any(String),
+      commandId: expect.any(String),
       text: '请处理 @skill("corpus-search")',
       attachments: [],
     });
@@ -1431,9 +1513,9 @@ describe("AgentSessionStore", () => {
         skills: TEST_SKILLS,
       }),
     );
-    let latest!: ReturnType<typeof useAgentSession>;
+    let latest!: ReturnType<typeof useAgentChat>;
     await render_probe(() => {
-      latest = useAgentSession();
+      latest = useAgentChat();
     });
     await wait_for(() => expect(latest.transport).toBe("ready"));
     const entries = latest.entries;
@@ -1451,19 +1533,22 @@ describe("AgentSessionStore", () => {
       attachments: [uploaded_file("old")],
     });
     await act(async () =>
-      event_source.emit(AGENT_SESSION_EVENT_TOPIC, {
+      event_source.emit(AGENT_CHAT_EVENT_TOPIC, {
         type: "snapshot_seed",
-        snapshot: agent_snapshot({ revision: 2, sessionId: "new-session" }),
+        snapshot: agent_snapshot({ revision: 2, chatId: "new-chat" }),
       }),
     );
     expect(latest.input.draft.read()).toEqual({ text: "", attachments: [] });
   });
 
   it("纯图片受理后清空完整草稿且不写入文本历史", async () => {
-    desktop_api_mocks.api_fetch.mockResolvedValue(agent_snapshot({ state: "running" }));
-    let latest!: ReturnType<typeof useAgentSession>;
+    desktop_api_mocks.api_fetch.mockResolvedValue({
+      revision: event_source.current_revision,
+      status: "accepted",
+    });
+    let latest!: ReturnType<typeof useAgentChat>;
     await render_probe(() => {
-      latest = useAgentSession();
+      latest = useAgentChat();
     });
     await wait_for(() => expect(latest.transport).toBe("ready"));
     latest.input.draft.write({ text: "", attachments: image_attachments("webp-image") });
@@ -1473,6 +1558,8 @@ describe("AgentSessionStore", () => {
     });
 
     expect(desktop_api_mocks.api_fetch).toHaveBeenCalledWith("/api/agent/message", {
+      chatId: expect.any(String),
+      commandId: expect.any(String),
       text: "",
       attachments: [{ kind: "file", uploadId: "webp-image" }],
     });
@@ -1482,10 +1569,13 @@ describe("AgentSessionStore", () => {
 
   it("以原输入修订轮次表示重试，且不改写输入历史或草稿", async () => {
     window.localStorage.setItem(AGENT_INPUT_HISTORY_STORAGE_KEY, JSON.stringify(["历史消息"]));
-    desktop_api_mocks.api_fetch.mockResolvedValue(agent_snapshot({ state: "running" }));
-    let latest!: ReturnType<typeof useAgentSession>;
+    desktop_api_mocks.api_fetch.mockResolvedValue({
+      revision: event_source.current_revision,
+      status: "accepted",
+    });
+    let latest!: ReturnType<typeof useAgentChat>;
     await render_probe(() => {
-      latest = useAgentSession();
+      latest = useAgentChat();
     });
     await wait_for(() => expect(latest.transport).toBe("ready"));
     latest.input.draft.write({
@@ -1498,6 +1588,8 @@ describe("AgentSessionStore", () => {
     });
 
     expect(desktop_api_mocks.api_fetch).toHaveBeenCalledWith("/api/agent/round/revise", {
+      chatId: expect.any(String),
+      commandId: expect.any(String),
       entryId: "user-1",
       message: { text: "历史消息", attachments: [] },
     });
@@ -1515,10 +1607,13 @@ describe("AgentSessionStore", () => {
     desktop_api_mocks.api_get.mockResolvedValue(
       agent_snapshot({ entries: [user_entry("user-1", "旧消息", ["old-image"])] }),
     );
-    desktop_api_mocks.api_fetch.mockResolvedValue(agent_snapshot());
-    let latest!: ReturnType<typeof useAgentSession>;
+    desktop_api_mocks.api_fetch.mockResolvedValue({
+      revision: event_source.current_revision,
+      status: "accepted",
+    });
+    let latest!: ReturnType<typeof useAgentChat>;
     await render_probe(() => {
-      latest = useAgentSession();
+      latest = useAgentChat();
     });
     await wait_for(() => expect(latest.transport).toBe("ready"));
     latest.input.draft.write({ text: "普通草稿", attachments: image_attachments("draft-image") });
@@ -1528,6 +1623,8 @@ describe("AgentSessionStore", () => {
     });
 
     expect(desktop_api_mocks.api_fetch).toHaveBeenCalledWith("/api/agent/round/revise", {
+      chatId: expect.any(String),
+      commandId: expect.any(String),
       entryId: "user-1",
       message: { text: "新消息", attachments: [] },
     });
@@ -1541,10 +1638,10 @@ describe("AgentSessionStore", () => {
   });
 
   it("消费页面卸载后仍保留完整草稿", async () => {
-    let latest: ReturnType<typeof useAgentSession> | null = null;
+    let latest: ReturnType<typeof useAgentChat> | null = null;
     /** 用页面挂载与卸载观察 Provider 保留的草稿。 */
     function Probe(): null {
-      latest = useAgentSession();
+      latest = useAgentChat();
       return null;
     }
     container = document.createElement("div");
@@ -1552,7 +1649,7 @@ describe("AgentSessionStore", () => {
     root = createRoot(container);
     const render_visible = async (visible: boolean): Promise<void> => {
       await act(async () =>
-        root?.render(<AgentSessionProvider>{visible ? <Probe /> : null}</AgentSessionProvider>),
+        root?.render(<AgentChatProvider>{visible ? <Probe /> : null}</AgentChatProvider>),
       );
     };
 
@@ -1574,7 +1671,7 @@ describe("AgentSessionStore", () => {
     latest = null;
     await render_visible(true);
 
-    const restored_session = latest as ReturnType<typeof useAgentSession> | null;
+    const restored_session = latest as ReturnType<typeof useAgentChat> | null;
     expect(restored_session?.input.draft.read()).toEqual({
       text: '检查 @skill("glossary-audit")',
       attachments: [
@@ -1596,9 +1693,9 @@ describe("AgentSessionStore", () => {
           resolve_send = resolve;
         }),
     );
-    let latest!: ReturnType<typeof useAgentSession>;
+    let latest!: ReturnType<typeof useAgentChat>;
     await render_probe(() => {
-      latest = useAgentSession();
+      latest = useAgentChat();
     });
     await wait_for(() => expect(latest.transport).toBe("ready"));
 
@@ -1617,10 +1714,10 @@ describe("AgentSessionStore", () => {
         context: { tokens: 200, compactable: true, limits: null },
       });
       event_source.change({
-        type: "session_state",
+        type: "chat_status",
         state: "running",
       });
-      resolve_send({ revision: event_source.current_revision });
+      resolve_send({ revision: event_source.current_revision, status: "accepted" });
       await result;
     });
 
@@ -1640,9 +1737,9 @@ describe("AgentSessionStore", () => {
           resolve_send = resolve;
         }),
     );
-    let latest!: ReturnType<typeof useAgentSession>;
+    let latest!: ReturnType<typeof useAgentChat>;
     await render_probe(() => {
-      latest = useAgentSession();
+      latest = useAgentChat();
     });
     await wait_for(() => expect(latest.transport).toBe("ready"));
 
@@ -1664,6 +1761,7 @@ describe("AgentSessionStore", () => {
 
     desktop_api_mocks.api_fetch.mockImplementation(async () => ({
       revision: event_source.current_revision,
+      status: "accepted",
     }));
     await act(async () => {
       await latest.send({ text: "再次继续", attachments: [] });
@@ -1678,9 +1776,9 @@ describe("AgentSessionStore", () => {
           resolve_send = resolve;
         }),
     );
-    let latest!: ReturnType<typeof useAgentSession>;
+    let latest!: ReturnType<typeof useAgentChat>;
     await render_probe(() => {
-      latest = useAgentSession();
+      latest = useAgentChat();
     });
     await wait_for(() => expect(latest.transport).toBe("ready"));
 
@@ -1695,7 +1793,7 @@ describe("AgentSessionStore", () => {
     expect(desktop_api_mocks.api_fetch).toHaveBeenCalledOnce();
     await second;
     await act(async () => {
-      resolve_send({ revision: event_source.current_revision });
+      resolve_send({ revision: event_source.current_revision, status: "accepted" });
       await first;
     });
     await first;
@@ -1704,9 +1802,9 @@ describe("AgentSessionStore", () => {
   it("发送失败向页面回传错误并保留草稿与快照", async () => {
     const offline = new Error("offline");
     desktop_api_mocks.api_fetch.mockRejectedValue(offline);
-    let latest!: ReturnType<typeof useAgentSession>;
+    let latest!: ReturnType<typeof useAgentChat>;
     await render_probe(() => {
-      latest = useAgentSession();
+      latest = useAgentChat();
     });
     await wait_for(() => expect(latest.transport).toBe("ready"));
     latest.input.draft.write({ text: "重试草稿", attachments: [] });
@@ -1731,12 +1829,12 @@ describe("AgentSessionStore", () => {
         type: "entry_upsert",
         entry: assistant_entry("assistant-1", "已停止", "stopped", 1),
       });
-      event_source.change({ type: "session_state", state: "idle" });
-      return { revision: event_source.current_revision };
+      event_source.change({ type: "chat_status", state: "idle" });
+      return { revision: event_source.current_revision, status: "accepted" };
     });
-    let latest!: ReturnType<typeof useAgentSession>;
+    let latest!: ReturnType<typeof useAgentChat>;
     await render_probe(() => {
-      latest = useAgentSession();
+      latest = useAgentChat();
     });
     await wait_for(() => expect(latest.transport).toBe("ready"));
 
@@ -1758,9 +1856,9 @@ describe("AgentSessionStore", () => {
     );
     const offline = new Error("offline");
     desktop_api_mocks.api_fetch.mockRejectedValue(offline);
-    let latest!: ReturnType<typeof useAgentSession>;
+    let latest!: ReturnType<typeof useAgentChat>;
     await render_probe(() => {
-      latest = useAgentSession();
+      latest = useAgentChat();
     });
     await wait_for(() => expect(latest.transport).toBe("ready"));
     const previous_entries = latest.entries;
@@ -1785,17 +1883,20 @@ describe("AgentSessionStore", () => {
         type: "entry_upsert",
         entry: { ...failed_compaction, status: "running" },
       });
-      return { revision: event_source.current_revision };
+      return { revision: event_source.current_revision, status: "accepted" };
     });
-    let latest!: ReturnType<typeof useAgentSession>;
+    let latest!: ReturnType<typeof useAgentChat>;
     await render_probe(() => {
-      latest = useAgentSession();
+      latest = useAgentChat();
     });
     await wait_for(() => expect(latest.transport).toBe("ready"));
 
     await act(async () => latest.continue());
 
-    expect(desktop_api_mocks.api_fetch).toHaveBeenCalledWith("/api/agent/continue", {});
+    expect(desktop_api_mocks.api_fetch).toHaveBeenCalledWith("/api/agent/continue", {
+      chatId: expect.any(String),
+      commandId: expect.any(String),
+    });
     expect(latest.entries).toEqual([{ ...failed_compaction, status: "running" }]);
     expect(latest.command).toBeNull();
   });
@@ -1808,9 +1909,9 @@ describe("AgentSessionStore", () => {
           resolve_reset = resolve;
         }),
     );
-    let latest!: ReturnType<typeof useAgentSession>;
+    let latest!: ReturnType<typeof useAgentChat>;
     await render_probe(() => {
-      latest = useAgentSession();
+      latest = useAgentChat();
     });
     await wait_for(() => expect(latest.transport).toBe("ready"));
     let result!: Promise<void>;
@@ -1822,7 +1923,7 @@ describe("AgentSessionStore", () => {
     expect(desktop_api_mocks.api_fetch).toHaveBeenCalledWith("/api/agent/reset");
 
     await act(async () => {
-      event_source.emit(AGENT_SESSION_EVENT_TOPIC, {
+      event_source.emit(AGENT_CHAT_EVENT_TOPIC, {
         type: "snapshot_seed",
         revision: 1,
         snapshot: agent_snapshot({ revision: 1, skills: TEST_SKILLS.slice(0, 1) }),
@@ -1841,9 +1942,9 @@ describe("AgentSessionStore", () => {
   it("重置失败向页面回传错误并保留当前快照", async () => {
     const offline = new Error("offline");
     desktop_api_mocks.api_fetch.mockRejectedValue(offline);
-    let latest!: ReturnType<typeof useAgentSession>;
+    let latest!: ReturnType<typeof useAgentChat>;
     await render_probe(() => {
-      latest = useAgentSession();
+      latest = useAgentChat();
     });
     await wait_for(() => expect(latest.transport).toBe("ready"));
     const previous_entries = latest.entries;
@@ -1868,9 +1969,9 @@ describe("AgentSessionStore", () => {
     root = createRoot(container);
     await act(async () =>
       root?.render(
-        <AgentSessionProvider>
+        <AgentChatProvider>
           <Probe />
-        </AgentSessionProvider>,
+        </AgentChatProvider>,
       ),
     );
   }
@@ -1913,9 +2014,9 @@ function image_attachments(...images: string[]): AgentMessageAttachment[] {
 }
 
 /** 为恢复和重连提供完整会话载荷。 */
-function agent_snapshot(overrides: Partial<AgentSessionSnapshot> = {}): AgentSessionSnapshot {
+function agent_snapshot(overrides: Partial<AgentChatSnapshot> = {}): AgentChatSnapshot {
   return {
-    sessionId: "test-session",
+    chatId: "test-chat",
     revision: 0,
     state: "idle",
     pendingDecision: null,

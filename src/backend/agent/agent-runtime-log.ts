@@ -82,7 +82,8 @@ type AgentLogEvent =
 
 export type AgentLogContent = AgentLogEvent & {
   kind: "agent";
-  session_id: string;
+  runtime_id: string;
+  chat_id: string;
   round_id?: string;
   run_id?: string;
 };
@@ -91,16 +92,19 @@ type AgentLogRun = { run_id: string; round_id: string; started_at: string; stopp
 type AgentLogMessage = { started_at: string; parts: AgentLogPart[] };
 
 /** 每个 SDK runtime 持有执行归属和待写诊断，随会话刷新及关闭完成落盘。 */
-export class AgentSessionLog {
+export class AgentRuntimeLog {
   private readonly pending: LogAppendPayload[] = []; // 接收时冻结时间与身份，提交线外统一落盘
-  private readonly session_id = uuidv7(); // reset 后的迟到事件仍属于创建它的 runtime
+  private readonly runtime_id = uuidv7(); // reset 后的迟到事件仍属于创建它的 runtime
   private run: AgentLogRun | null = null; // 仅活动尝试拥有 round/run 关联与停止意图
   private assistant: AgentLogMessage | null = null; // 缓存尚未结束的可见正文，供停止时结算
   private compaction_started_at: string | null = null; // 手动压缩也可独立于 run 执行
   private readonly tool_start_times = new Map<string, string>(); // 并行工具分别配对终帧
 
   /** 共用应用日志写入口，记录器只拥有执行关联状态。 */
-  public constructor(private readonly log_manager: Pick<LogManager, "append">) {}
+  public constructor(
+    private readonly log_manager: Pick<LogManager, "append">,
+    private readonly chat_id: string,
+  ) {}
 
   /** continue 保留轮次身份，每次真正执行分配新的 run，耗时不包含失败后的用户等待。 */
   public begin_run(round_id: string, mode: "prompt" | "queued" | "continue"): void {
@@ -274,7 +278,8 @@ export class AgentSessionLog {
     const content: AgentLogContent = {
       kind: "agent",
       ...event,
-      session_id: this.session_id,
+      runtime_id: this.runtime_id,
+      chat_id: this.chat_id,
       ...(this.run === null ? {} : { round_id: this.run.round_id, run_id: this.run.run_id }),
     };
     this.pending.push({

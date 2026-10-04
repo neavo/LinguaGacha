@@ -66,9 +66,7 @@ describe("AgentMarkdown", () => {
     }
     await act(async () =>
       root?.render(
-        <AgentFileContext
-          value={{ session_id: "session", active: true, open_file: mocks.open_file }}
-        >
+        <AgentFileContext value={{ chat_id: "session", active: true, open_file: mocks.open_file }}>
           <AgentMarkdown
             text={text}
             streaming={streaming}
@@ -144,7 +142,7 @@ describe("AgentMarkdown", () => {
       await act(async () =>
         root!.render(
           <AgentFileContext
-            value={{ session_id: "session", active: true, open_file: async () => undefined }}
+            value={{ chat_id: "session", active: true, open_file: async () => undefined }}
           >
             <AgentMarkdown text={text} streaming={false} />
           </AgentFileContext>,

@@ -53,7 +53,7 @@ describe("AgentMessageAttachments", () => {
   function view_attachments(props: AgentMessageAttachmentsProps) {
     return (
       <TooltipProvider>
-        <AgentFileContext value={{ open_file: files.open, session_id: "session", active: true }}>
+        <AgentFileContext value={{ open_file: files.open, chat_id: "session", active: true }}>
           <AgentMessageAttachments {...props} />
         </AgentFileContext>
       </TooltipProvider>

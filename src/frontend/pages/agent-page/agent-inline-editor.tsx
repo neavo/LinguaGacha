@@ -2,10 +2,7 @@ import { AgentInputDraft } from "@frontend/app/session/agent/agent-input-draft";
 import { type JSX, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import type { AgentMessageInput, AgentSkillSnapshot } from "@shared/agent";
-import type {
-  AgentCommand,
-  AgentInputSession,
-} from "@frontend/app/session/agent/agent-session-context";
+import type { AgentCommand, AgentInputState } from "@frontend/app/session/agent/agent-chat-context";
 import { useI18n, type LocaleKey } from "@frontend/app/locale/locale-context";
 import { resolve_visible_error_message } from "@frontend/app/feedback/visible-error-message";
 import { push_toast } from "@frontend/app/feedback/desktop-toast";
@@ -48,7 +45,7 @@ export function AgentInlineEditor(props: AgentInlineEditorProps): JSX.Element {
 
   const composer_ref = useRef<AgentMessageEditorHandle | null>(null);
   const [draft] = useState(() => new AgentInputDraft(props.target.message));
-  // 保存只锁定当前编辑器，普通 Composer 和 Agent session 不参与这段瞬时状态。
+  // 保存只锁定当前编辑器，普通 Composer 和 Agent Chat 不参与这段瞬时状态。
   const [status, set_status] = useState<"idle" | "saving">("idle");
 
   /** 保存期间禁止取消，失败后仍保留可编辑草稿。 */
@@ -56,7 +53,7 @@ export function AgentInlineEditor(props: AgentInlineEditorProps): JSX.Element {
     if (status === "saving") return;
     props.on_cancel();
   }, [props.on_cancel, status]);
-  const input_session = useMemo<AgentInputSession>(
+  const input_state = useMemo<AgentInputState>(
     () => ({
       revision: 0,
       draft,
@@ -119,7 +116,7 @@ export function AgentInlineEditor(props: AgentInlineEditorProps): JSX.Element {
         on_cancel={cancel_edit}
         read_only={read_only}
         skills={props.skills}
-        input_session={input_session}
+        input_state={input_state}
         on_submit={submit}
         render_actions={({ has_content, uploads_pending }) => {
           const can_submit =

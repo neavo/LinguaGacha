@@ -193,8 +193,8 @@ export class AppPathService {
   /**
    * 返回必需的内置 Agent 会话种子路径。
    */
-  public get_agent_session_seed_path(): string {
-    return this.get_builtin_path("session_seed.json");
+  public get_agent_chat_seed_path(): string {
+    return this.get_builtin_path("chat_seed.json");
   }
 
   /**

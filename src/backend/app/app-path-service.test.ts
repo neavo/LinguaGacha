@@ -44,9 +44,7 @@ describe("AppPathService", () => {
     expect(service.get_log_dir()).toBe(path.join(app_root, "log"));
     expect(service.get_model_preset_dir()).toBe(path.join(builtin_root, "model", "preset"));
     expect(service.get_agent_system_prompt_path()).toBe(path.join(builtin_root, "system.md"));
-    expect(service.get_agent_session_seed_path()).toBe(
-      path.join(builtin_root, "session_seed.json"),
-    );
+    expect(service.get_agent_chat_seed_path()).toBe(path.join(builtin_root, "chat_seed.json"));
     expect(service.get_agent_builtin_skill_dir()).toBe(path.join(builtin_root, "skills"));
     expect(service.get_agent_user_skill_dir()).toBe(path.join(app_root, "userdata", "skills"));
     expect(service.get_quality_rule_builtin_preset_dir("glossary")).toBe(

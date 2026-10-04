@@ -42,9 +42,7 @@ describe("AgentMarkdownLink", () => {
   async function render_links(paths: string[]): Promise<HTMLDivElement> {
     await act(async () =>
       root.render(
-        <AgentFileContext
-          value={{ open_file: mocks.open_file, session_id: "session", active: true }}
-        >
+        <AgentFileContext value={{ open_file: mocks.open_file, chat_id: "session", active: true }}>
           {paths.map((href) => (
             <AgentMarkdownLink key={href} href={href}>
               文件

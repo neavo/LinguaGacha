@@ -2,7 +2,7 @@ import {
   useAgentEntry,
   useAgentRound,
   useAgentTimeline,
-} from "@frontend/app/session/agent/agent-session-context";
+} from "@frontend/app/session/agent/agent-chat-context";
 import { find_agent_mention_ranges } from "./agent-mention";
 import {
   type JSX,

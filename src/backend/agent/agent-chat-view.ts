@@ -13,7 +13,7 @@ import type { JsonValue } from "@earendil-works/chord";
 import type { AgentEntry, AgentUsageSnapshot } from "../../shared/agent";
 import { JsonTool } from "../../shared/utils/json-tool";
 import { project_assistant_message_parts } from "./agent-message";
-import type { AgentInputRecord, AgentSessionState } from "./agent-session-state";
+import type { AgentInputRecord, AgentChatData } from "./agent-chat-data";
 
 /** 流式与正式响应使用同一任务身份，人工修订使用条目身份。 */
 export const assistant_entry_id = (task: number | undefined, entry: number): string =>
@@ -26,7 +26,7 @@ type Row = { order: number; entry: AgentEntry; round: string | undefined };
 export type AgentTimelineChange = { replace: boolean; entries: AgentEntry[] };
 
 /** 可重建的公开投影。原始事实和查询索引只在这里保存，正文更新不扫描历史。 */
-export class AgentSessionView {
+export class AgentChatView {
   public readonly records = new Map<number, EntryRecord>(); // 已读取的 SDK 历史，供分支恢复与修订定位
   public readonly conversations = new Map<number, ConversationRecord>(); // 分支继承关系，用于计算祖先切点
   public readonly submissions = new Map<number, SubmissionRecord>(); // 产品输入与实际历史条目的关联回执
@@ -35,7 +35,7 @@ export class AgentSessionView {
   public readonly pendingUsages = new Map<number, UsageState>(); // 结算后释放的用量回执
   public usage: AgentUsageSnapshot = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
   private conversationId: number | undefined;
-  private state!: Readonly<AgentSessionState>; // 本次投影采用的已提交产品状态
+  private state!: Readonly<AgentChatData>; // 本次投影采用的已提交产品状态
   private readonly bounds = new Map<number, number>(); // 各祖先分支可见条目的最大身份
   private readonly rows = new Map<string, Row>();
   private readonly inputs = new Map<number, AgentInputRecord>(); // 历史条目到产品输入的查询索引
@@ -99,7 +99,7 @@ export class AgentSessionView {
   }
 
   /** 结算已捕获提交，分支切换时重建索引，其余情况更新受影响条目。 */
-  public refresh(conversationId: number, state: Readonly<AgentSessionState>): void {
+  public refresh(conversationId: number, state: Readonly<AgentChatData>): void {
     if (conversationId !== this.conversationId) {
       this.conversationId = conversationId;
       this.bounds.clear();
@@ -178,7 +178,7 @@ export class AgentSessionView {
     submissions: ReadonlyMap<number, SubmissionRecord>,
     tasks: readonly TaskRecordValue[],
     live: Readonly<LiveState>,
-    state: Readonly<AgentSessionState>,
+    state: Readonly<AgentChatData>,
   ): void {
     this.state = state;
     this.rows.clear();

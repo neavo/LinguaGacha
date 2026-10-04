@@ -40,10 +40,10 @@ import {
   useAgentEntry,
   useAgentInput,
   useAgentQueue,
-  useAgentSessionActions,
+  useAgentChatActions,
   useAgentSkills,
   useAgentTimeline,
-} from "@frontend/app/session/agent/agent-session-context";
+} from "@frontend/app/session/agent/agent-chat-context";
 import { AgentDecision } from "./agent-decision";
 import { AgentComposer, type AgentComposerHandle } from "./agent-composer";
 import { AgentInlineEditor, type AgentInlineEditTarget } from "./agent-inline-editor";
@@ -83,7 +83,7 @@ type PendingThinkingOffAction =
   | { kind: "send"; message: AgentMessageInput }
   | { kind: "select_model"; change: ModelSelectionInput };
 
-/** 会话事实由跨路由 session 提供，页面组合交互入口并持有原位编辑状态。 */
+/** 会话事实由跨路由 Chat Store 提供，页面组合交互入口并持有原位编辑状态。 */
 export function AgentConversation({ active = true }: { active?: boolean }): JSX.Element {
   const { t } = useI18n();
 
@@ -94,7 +94,7 @@ export function AgentConversation({ active = true }: { active?: boolean }): JSX.
   const input = useAgentInput();
   const { agent_input_request, clear_agent_input_request } = useAppNavigation();
   const consumed_input_request = useRef<typeof agent_input_request>(null); // `StrictMode` 重放副作用时跳过已消费请求。
-  const agent_actions = useAgentSessionActions();
+  const agent_actions = useAgentChatActions();
   const model_selection = useModelSelection();
   const runtime_snapshot = useRuntimeSnapshot();
   const { settings_snapshot, apply_settings_snapshot, initial_state_status } = useDesktopState();
@@ -721,7 +721,7 @@ export function AgentConversation({ active = true }: { active?: boolean }): JSX.
                 approval_mode={settings_snapshot.agent_approval_mode}
                 approval_disabled={initial_state_status !== "ready" || approval_updating}
                 model_selection={model_selection}
-                input_session={input}
+                input_state={input}
                 on_send={submit_message}
                 on_agent_model_select={change_agent_model_selection}
                 on_approval_mode_change={change_approval_mode}

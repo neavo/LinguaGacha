@@ -42,7 +42,7 @@ function ensure_current_schema(db: DatabaseSync): void {
         key TEXT PRIMARY KEY,
         value TEXT NOT NULL
       );
-      CREATE TABLE IF NOT EXISTS agent_sessions (
+      CREATE TABLE IF NOT EXISTS agent_chats (
         id TEXT PRIMARY KEY,
         data TEXT NOT NULL CHECK (json_valid(data))
       );

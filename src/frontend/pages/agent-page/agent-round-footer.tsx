@@ -4,7 +4,7 @@ import { useI18n, type LocaleKey } from "@frontend/app/locale/locale-context";
 import {
   useAgentControls,
   useAgentTokenSpeed,
-} from "@frontend/app/session/agent/agent-session-context";
+} from "@frontend/app/session/agent/agent-chat-context";
 import { useAgentElapsed } from "./agent-entry-status";
 
 type RoundEntry = Extract<AgentEntry, { kind: "user_message"; delivery: "round" }>;

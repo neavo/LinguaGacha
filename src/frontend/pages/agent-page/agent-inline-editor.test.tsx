@@ -3,10 +3,10 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { AgentMessageInput } from "@shared/agent";
-import type { AgentInputSession } from "@frontend/app/session/agent/agent-session-context";
+import type { AgentInputState } from "@frontend/app/session/agent/agent-chat-context";
 
 type MockComposerProps = {
-  input_session: AgentInputSession;
+  input_state: AgentInputState;
   read_only?: boolean;
   on_submit: (message: AgentMessageInput) => void;
   on_cancel?: () => void;
@@ -28,7 +28,7 @@ vi.mock("@frontend/app/feedback/visible-error-message", () => ({
 vi.mock("./agent-message-editor", () => ({
   AgentMessageEditor: (props: MockComposerProps) => (
     <div data-read_only={props.read_only ? "true" : "false"}>
-      <span data-draft>{props.input_session.draft.read().text}</span>
+      <span data-draft>{props.input_state.draft.read().text}</span>
       <button
         type="button"
         data-send

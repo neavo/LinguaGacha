@@ -2,24 +2,24 @@ import type { AgentEntry, AgentTokenSpeedSnapshot } from "@shared/agent";
 import { createContext, useCallback, useContext, useSyncExternalStore } from "react";
 import type { AgentDecisionCountdownSnapshot } from "./agent-decision-countdown";
 import type {
-  AgentSessionStore,
+  AgentChatStore,
   AgentControlsSlice,
-  AgentInputSession,
+  AgentInputState,
   AgentQueueSlice,
-  AgentSessionActions,
+  AgentChatActions,
   AgentSkillsSlice,
   AgentTimelineSlice,
-} from "./agent-session-store";
+} from "./agent-chat-store";
 
-export type { AgentCommand, AgentTransportState } from "./agent-session-store";
-export type { AgentInputSession } from "./agent-session-store";
+export type { AgentCommand, AgentTransportState } from "./agent-chat-store";
+export type { AgentInputState } from "./agent-chat-store";
 
-export const AgentSessionStoreContext = createContext<AgentSessionStore | null>(null);
+export const AgentChatStoreContext = createContext<AgentChatStore | null>(null);
 
 /** 对话身份随权威快照变化。页面资源以此隔离生命周期。 */
-export function useAgentSessionId(): string | null {
+export function useAgentChatId(): string | null {
   const store = use_agent_store();
-  return useSyncExternalStore(store.subscribe_controls, store.get_session_id, store.get_session_id);
+  return useSyncExternalStore(store.subscribe_controls, store.get_chat_id, store.get_chat_id);
 }
 
 /** 高频测速只通知当前回合状态条的实时数字。 */
@@ -79,7 +79,7 @@ export function useAgentSkills(): AgentSkillsSlice {
 }
 
 /** 读取跨路由保留的草稿与输入历史入口。 */
-export function useAgentInput(): AgentInputSession {
+export function useAgentInput(): AgentInputState {
   const store = use_agent_store();
   return useSyncExternalStore(store.subscribe_input, store.get_input, store.get_input);
 }
@@ -91,15 +91,15 @@ export function useAgentDecisionCountdown(): AgentDecisionCountdownSnapshot {
 }
 
 /** actions 在 Store 生命周期内保持同一对象和函数身份，不订阅任何业务切片。 */
-export function useAgentSessionActions(): AgentSessionActions {
+export function useAgentChatActions(): AgentChatActions {
   return use_agent_store().actions;
 }
 
 /** 限定 Hook 的 Provider 边界，避免创建平行会话。 */
-function use_agent_store(): AgentSessionStore {
-  const store = useContext(AgentSessionStoreContext);
+function use_agent_store(): AgentChatStore {
+  const store = useContext(AgentChatStoreContext);
   if (store === null) {
-    throw new Error("Agent session hooks must be used inside AgentSessionProvider.");
+    throw new Error("Agent chat hooks must be used inside AgentChatProvider.");
   }
   return store;
 }

@@ -535,11 +535,11 @@ export function DesktopStateProvider(props: { children: ReactNode }): JSX.Elemen
       return;
     }
 
-    const session_identity = begin_project_state_session(project_snapshot.path.trim());
+    const chat_identity = begin_project_state_session(project_snapshot.path.trim());
     set_project_session_status("warming");
     set_project_session_stage(null);
     const manifest = await api_fetch<ProjectManifestPayload>("/api/session/project/manifest", {});
-    if (!is_current_project_session_warming(session_identity)) {
+    if (!is_current_project_session_warming(chat_identity)) {
       return;
     }
 
@@ -553,18 +553,18 @@ export function DesktopStateProvider(props: { children: ReactNode }): JSX.Elemen
     }
     if (
       manifest_project_path !== next_project_snapshot.path ||
-      manifest_project_path !== session_identity.path
+      manifest_project_path !== chat_identity.path
     ) {
       throw new AppError("runtime.internal_invariant", {
         diagnostic_context: {
           reason: "project_state_manifest_identity_mismatch",
           manifest_project_path,
           snapshot_project_path: next_project_snapshot.path,
-          current_project_path: session_identity.path,
+          current_project_path: chat_identity.path,
         },
       });
     }
-    const queued_project_changes = complete_project_state_session(session_identity);
+    const queued_project_changes = complete_project_state_session(chat_identity);
     sync_project_snapshot(next_project_snapshot);
     publish_project_change_results([
       {

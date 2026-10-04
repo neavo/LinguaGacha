@@ -70,7 +70,7 @@ it("原子创建撞名后重试并保留已有目录内容", async () => {
 
 it("路径入口接受既有身份并拒绝越界目录名", () => {
   const directories = new AgentWorkspaceDirectories(os.tmpdir(), new NativeFs(), vi.fn());
-  for (const id of ["-t75szF5", "abCD12_3", "session-long-name"]) {
+  for (const id of ["-t75szF5", "abCD12_3", "chat-long-name"]) {
     expect(directories.path(id)).toBe(path.join(os.tmpdir(), id));
   }
   for (const id of [

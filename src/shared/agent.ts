@@ -2,7 +2,7 @@ import type { ModelAgentLimits } from "../domain/model-agent";
 import type { JsonRecord } from "../domain/json";
 import type { Locale } from "../domain/app-language";
 /** AgentService 与 renderer 共享的唯一 SSE topic。 */
-export const AGENT_SESSION_EVENT_TOPIC = "agent.session_event";
+export const AGENT_CHAT_EVENT_TOPIC = "agent.chat_event";
 
 /** 一次工作区链接激活的完成结果。取消是正常交互。 */
 export type AgentWorkspaceLinkResult = Readonly<{ status: "saved" | "opened" | "cancelled" }>;
@@ -27,7 +27,7 @@ export type AgentAssistantMessageParts = [
 ];
 
 /** 会话只表达当前是否占用运行时。每轮与每个条目的结果由自身 status 持有。 */
-export type AgentSessionState = "idle" | "running";
+export type AgentChatStatus = "idle" | "running";
 
 /** 当前模型可见历史及其是否存在可压缩的旧段。 */
 export type AgentContextSnapshot = JsonRecord & {
@@ -221,10 +221,10 @@ export type AgentUsageSnapshot = JsonRecord & {
 };
 
 /** GET `snapshot` 与 `snapshot_seed` 共用的完整会话形状。 */
-export type AgentSessionSnapshot = JsonRecord & {
-  sessionId: string; // 对话重置与工程切换后改变，草稿据此清理旧文件引用。
+export type AgentChatSnapshot = JsonRecord & {
+  chatId: string; // 对话重置与工程切换后改变，草稿据此清理旧文件引用。
   revision: number;
-  state: AgentSessionState;
+  state: AgentChatStatus;
   pendingDecision: AgentPendingDecision | null;
   entries: AgentEntry[];
   skills: AgentSkillSnapshot[];
@@ -240,11 +240,19 @@ export type AgentCommandAck = Readonly<{
   revision: number;
 }>;
 
+/** 产品输入操作与 SDK 输入尝试分别拥有身份，传输重试只能复用同一操作。 */
+export const AGENT_INPUT_COMMAND_ID_LIMIT = 128;
+export type AgentInputCommandKind = "send" | "queue_send" | "revise" | "continue";
+export type AgentInputCommandStatus = "pending" | "accepted" | "cancelled";
+export type AgentInputCommandAck = AgentCommandAck & {
+  status: AgentInputCommandStatus | "unknown";
+};
+
 /** AgentService 发布前的事件事实。单调 `revision` 只由统一发布入口分配。 */
-export type AgentSessionChange = JsonRecord &
+export type AgentChatChange = JsonRecord &
   (
     | { type: "entry_upsert"; entry: AgentEntry }
-    | { type: "session_state"; state: AgentSessionState }
+    | { type: "chat_status"; state: AgentChatStatus }
     | { type: "skills_changed"; skills: AgentSkillSnapshot[] }
     | { type: "pending_decision"; pendingDecision: AgentPendingDecision | null }
     | { type: "input_queue"; inputQueue: AgentInputQueueSnapshot }
@@ -255,12 +263,12 @@ export type AgentSessionChange = JsonRecord &
   );
 
 /** 一批变化共享修订号，前端先全部应用再通知订阅者。 */
-export type AgentSessionEventPayload =
-  | { type: "snapshot_seed"; snapshot: AgentSessionSnapshot }
-  | { type: "session_update"; changes: AgentSessionChange[] };
+export type AgentChatEventPayload =
+  | { type: "snapshot_seed"; snapshot: AgentChatSnapshot }
+  | { type: "chat_update"; changes: AgentChatChange[] };
 
 /** SSE 以单调 `revision` 排序。重复、旧帧与缺口由 renderer 显式处理。 */
-export type AgentSessionEvent = AgentSessionEventPayload & { revision: number };
+export type AgentChatEvent = AgentChatEventPayload & { revision: number };
 
 /** 校验公开 assistant parts，删除纯空白并合并相邻同类，同时保留可见正文原值。 */
 export function normalize_agent_assistant_message_parts(

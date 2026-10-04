@@ -24,9 +24,9 @@ const session = vi.hoisted(() => ({
   countdown: null as AgentDecisionCountdownSnapshot,
   actions: { resolveQuestion: vi.fn(), resolveWriteApproval: vi.fn(), setQuestionFocused: vi.fn() },
 }));
-vi.mock("@frontend/app/session/agent/agent-session-context", () => ({
+vi.mock("@frontend/app/session/agent/agent-chat-context", () => ({
   useAgentDecisionCountdown: () => session.countdown,
-  useAgentSessionActions: () => session.actions,
+  useAgentChatActions: () => session.actions,
 }));
 
 describe("AgentDecision", () => {

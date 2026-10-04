@@ -29,7 +29,7 @@ export function AgentPreviewPage({
   scroll: Record<string, number>;
 }): JSX.Element {
   const { t } = useI18n();
-  const session = useContext(AgentFileContext)?.session_id;
+  const chat_id = useContext(AgentFileContext)?.chat_id;
   // 内容与读取意图一起发布，旧正文不能消费新锚点，图片 MIME 与 URL 保持同批次。
   const [content, set_content] = useState<AgentPreviewContent | null>(null);
   const [error, set_error] = useState<string | null>(null);
@@ -42,7 +42,7 @@ export function AgentPreviewPage({
     set_error(null);
     void (async () => {
       if (document.preview === "image") {
-        const query = new URLSearchParams({ path: document.path, sessionId: session ?? "" });
+        const query = new URLSearchParams({ path: document.path, chatId: chat_id ?? "" });
         const blob = await api_blob(`/api/agent/workspace/image?${query}`, controller.signal);
         if (controller.signal.aborted) return;
         url = URL.createObjectURL(blob);
@@ -50,7 +50,7 @@ export function AgentPreviewPage({
       } else {
         const result = await api_fetch<AgentDocument>(
           "/api/agent/workspace/document",
-          { path: document.path, sessionId: session },
+          { path: document.path, chatId: chat_id },
           controller.signal,
         );
         if (controller.signal.aborted) return;
@@ -81,7 +81,7 @@ export function AgentPreviewPage({
       controller.abort();
       if (url) URL.revokeObjectURL(url);
     };
-  }, [document.path, document.preview, document.activation, session, retry]);
+  }, [document.path, document.preview, document.activation, chat_id, retry]);
   if (error)
     return (
       <div className="agent-document">

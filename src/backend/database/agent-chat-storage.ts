@@ -3,10 +3,9 @@ import type { AgentFileAttachment } from "../../shared/agent";
 import { normalize_agent_message_input } from "../../shared/agent";
 import { AppError } from "../../shared/error";
 
-export const ACTIVE_AGENT_SESSION_KEY = "active_session";
+export const ACTIVE_AGENT_CHAT_KEY = "active_chat";
 
-export type AgentSessionData = { uploads: AgentFileAttachment[] };
-export type AgentSessionRecord = { id: string; data: AgentSessionData };
+export type AgentChatRecord = { id: string; data: { uploads: AgentFileAttachment[] } };
 
 // ponytail: 首版每个工程只保留一个产品对话。多对话删除上线时改为按会话树回收 SDK 记录。
 const SDK_TABLES = [
@@ -22,7 +21,7 @@ const SDK_TABLES = [
 ] as const;
 
 /** 同一工程连接上的产品登记与 SDK 存储。使用权由服务关闭，不由 Harness 关闭。 */
-export class AgentSessionStore {
+export class AgentChatStorage {
   /** 借用工程连接，保存其使用权释放入口。 */
   constructor(
     private readonly database: SqliteDatabase,
@@ -30,16 +29,16 @@ export class AgentSessionStore {
   ) {}
 
   /** 从激活指针恢复登记，并校验工程文件携带的上传路径。 */
-  public async read(): Promise<AgentSessionRecord | null> {
+  public async read(): Promise<AgentChatRecord | null> {
     const active = await this.database.get<{ value: string }>(
       "SELECT value FROM meta WHERE key = ?",
-      ACTIVE_AGENT_SESSION_KEY,
+      ACTIVE_AGENT_CHAT_KEY,
     );
     if (active === undefined) return null;
     const id: unknown = JSON.parse(active.value);
     if (typeof id !== "string" || id === "") throw new AppError("file.invalid_structure");
     const row = await this.database.get<{ data: string }>(
-      "SELECT data FROM agent_sessions WHERE id = ?",
+      "SELECT data FROM agent_chats WHERE id = ?",
       id,
     );
     if (row === undefined) throw new AppError("file.invalid_structure");
@@ -63,13 +62,13 @@ export class AgentSessionStore {
   }
 
   /** 登记工作区已生成的身份，与激活指针一起提交，上传可先于第一条模型消息发生。 */
-  public async create(id: string): Promise<AgentSessionRecord> {
-    const data: AgentSessionData = { uploads: [] };
+  public async create(id: string): Promise<AgentChatRecord> {
+    const data: AgentChatRecord["data"] = { uploads: [] };
     await this.database.transaction(async (tx) => {
-      await tx.run("INSERT INTO agent_sessions (id, data) VALUES (?, ?)", id, JSON.stringify(data));
+      await tx.run("INSERT INTO agent_chats (id, data) VALUES (?, ?)", id, JSON.stringify(data));
       await tx.run(
         "INSERT INTO meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-        ACTIVE_AGENT_SESSION_KEY,
+        ACTIVE_AGENT_CHAT_KEY,
         JSON.stringify(id),
       );
     });
@@ -79,14 +78,11 @@ export class AgentSessionStore {
   /** 上传登记在同一事务内读改写，并发上传不会覆盖彼此。 */
   public async save_upload(id: string, file: AgentFileAttachment): Promise<void> {
     await this.database.transaction(async (tx) => {
-      const row = await tx.get<{ data: string }>(
-        "SELECT data FROM agent_sessions WHERE id = ?",
-        id,
-      );
+      const row = await tx.get<{ data: string }>("SELECT data FROM agent_chats WHERE id = ?", id);
       if (row === undefined) throw new AppError("runtime.cancelled");
-      const data = JSON.parse(row.data) as AgentSessionData;
+      const data = JSON.parse(row.data) as AgentChatRecord["data"];
       data.uploads = [...(data.uploads ?? []), file];
-      await tx.run("UPDATE agent_sessions SET data = ? WHERE id = ?", JSON.stringify(data), id);
+      await tx.run("UPDATE agent_chats SET data = ? WHERE id = ?", JSON.stringify(data), id);
     });
   }
 
@@ -107,8 +103,8 @@ export class AgentSessionStore {
   public async reset(): Promise<void> {
     await this.database.transaction(async (tx) => {
       for (const table of SDK_TABLES) await tx.exec("DROP TABLE IF EXISTS " + table);
-      await tx.run("DELETE FROM agent_sessions");
-      await tx.run("DELETE FROM meta WHERE key = ?", ACTIVE_AGENT_SESSION_KEY);
+      await tx.run("DELETE FROM agent_chats");
+      await tx.run("DELETE FROM meta WHERE key = ?", ACTIVE_AGENT_CHAT_KEY);
     });
   }
 

@@ -48,7 +48,7 @@ import {
   resolve_app_editor_readonly_extensions,
   resolve_app_editor_theme_extensions,
 } from "@frontend/widgets/app-editor/app-editor-code-mirror";
-import type { AgentInputSession } from "@frontend/app/session/agent/agent-session-context";
+import type { AgentInputState } from "@frontend/app/session/agent/agent-chat-context";
 import {
   create_agent_mention_candidates,
   find_agent_mention_ranges,
@@ -89,7 +89,7 @@ type AgentMessageEditorProps = {
   read_only: boolean;
   skills: readonly AgentSkillSnapshot[];
   instructions?: readonly AgentMentionInstruction[] | undefined;
-  input_session: AgentInputSession;
+  input_state: AgentInputState;
   on_submit: (message: AgentMessageInput) => void;
   on_cancel?: (() => void) | undefined;
   /** 消费方统一决定按钮与提交权限，包含只读、内容和图片处理条件。 */
@@ -110,8 +110,8 @@ const input_history_navigation_annotations = [
   Transaction.addToHistory.of(false),
   input_history_navigation_annotation.of(true),
 ];
-/** Session 受理后的草稿同步不进入撤销栈，也不冒充用户编辑。 */
-const input_session_sync_annotations = [Transaction.addToHistory.of(false)];
+/** Chat 受理后的草稿同步不进入撤销栈，也不冒充用户编辑。 */
+const input_state_sync_annotations = [Transaction.addToHistory.of(false)];
 
 // 三个 Compartment 只承接运行期配置，不参与草稿事实。
 const theme_compartment = new Compartment();
@@ -174,11 +174,11 @@ export function AgentMessageEditor(props: AgentMessageEditorProps): JSX.Element 
   const menu_index_ref = useRef(0);
   const last_query_key_ref = useRef("");
   // CodeMirror 回调从 ref 读取最新跨路由输入状态；历史索引只属于当前 Composer。
-  const input_session_ref = useRef(props.input_session);
+  const input_state_ref = useRef(props.input_state);
   const input_history_index_ref = useRef<number | null>(null);
   const draft = useSyncExternalStore(
-    props.input_session.draft.subscribe,
-    props.input_session.draft.read,
+    props.input_state.draft.subscribe,
+    props.input_state.draft.read,
   );
   const draft_attachments = draft.attachments;
   const [snapshot, set_snapshot] = useState<EditorSnapshot>(EMPTY_EDITOR_SNAPSHOT);
@@ -221,12 +221,12 @@ export function AgentMessageEditor(props: AgentMessageEditorProps): JSX.Element 
   can_append_files_ref.current = can_append_files;
   // 编辑器只创建一次，首次锁定态必须在首帧扩展中生效，不能等待后续 effect。
   const initial_editor_read_only_ref = useRef(editor_read_only);
-  const input_revision = props.input_session.revision;
+  const input_revision = props.input_state.revision;
 
   menu_open_ref.current = menu_open;
   matching_candidates_ref.current = matching_candidates;
   menu_index_ref.current = menu_index;
-  input_session_ref.current = props.input_session;
+  input_state_ref.current = props.input_state;
   cancel_edit_ref.current = editor_read_only ? undefined : props.on_cancel;
 
   useEffect(() => {
@@ -273,7 +273,7 @@ export function AgentMessageEditor(props: AgentMessageEditorProps): JSX.Element 
                 event.preventDefault();
                 event.stopPropagation();
                 if (can_append_files_ref.current)
-                  input_session_ref.current.draft.append(transfer.files);
+                  input_state_ref.current.draft.append(transfer.files);
                 return true;
               },
             }),
@@ -334,9 +334,9 @@ export function AgentMessageEditor(props: AgentMessageEditorProps): JSX.Element 
                   )
                 ) {
                   input_history_index_ref.current = null;
-                  input_session_ref.current.draft.write({
+                  input_state_ref.current.draft.write({
                     text: state.doc.toString(),
-                    attachments: input_session_ref.current.draft.read().attachments,
+                    attachments: input_state_ref.current.draft.read().attachments,
                   });
                 }
                 emit_snapshot(state);
@@ -367,11 +367,11 @@ export function AgentMessageEditor(props: AgentMessageEditorProps): JSX.Element 
   useEffect(() => {
     const view = view_ref.current;
     if (view === null) return;
-    const current = input_session_ref.current.draft.read();
+    const current = input_state_ref.current.draft.read();
     if (view.state.doc.toString() === current.text) return;
     input_history_index_ref.current = null;
-    write_agent_message_text(view, current.text, input_session_sync_annotations);
-  }, [props.input_session, input_revision, draft.text]);
+    write_agent_message_text(view, current.text, input_state_sync_annotations);
+  }, [props.input_state, input_revision, draft.text]);
 
   useEffect(() => {
     view_ref.current?.dispatch({
@@ -458,21 +458,21 @@ export function AgentMessageEditor(props: AgentMessageEditorProps): JSX.Element 
 
   /** 同步更新异步判定、可见附件与跨路由草稿，唯一数组同时拥有混排顺序。 */
   const write_draft_attachments = useCallback((attachments: AgentDraftAttachment[]): void => {
-    input_session_ref.current.draft.write({
-      text: view_ref.current?.state.doc.toString() ?? input_session_ref.current.draft.read().text,
+    input_state_ref.current.draft.write({
+      text: view_ref.current?.state.doc.toString() ?? input_state_ref.current.draft.read().text,
       attachments,
     });
   }, []);
 
   /** 输入只交给常驻草稿，上传状态和取消由草稿自身拥有。 */
   const append_files = (files: Iterable<File>): void => {
-    if (can_append_files) props.input_session.draft.append(files);
+    if (can_append_files) props.input_state.draft.append(files);
   };
 
   /** 按混合附件列表的原始索引删除，并同步权威草稿。 */
   const remove_attachment = (index: number): void => {
     write_draft_attachments(
-      input_session_ref.current.draft
+      input_state_ref.current.draft
         .read()
         .attachments.filter((_, attachment_index) => attachment_index !== index),
     );
@@ -480,7 +480,7 @@ export function AgentMessageEditor(props: AgentMessageEditorProps): JSX.Element 
 
   /** 附件组件只提交用户意图，Composer 仍在当前权威草稿中按原索引写入。 */
   const update_annotation = (index: number, comment: string): void => {
-    const current = input_session_ref.current.draft.read().attachments;
+    const current = input_state_ref.current.draft.read().attachments;
     const annotation = current[index];
     if (annotation?.kind !== "response_annotation") return;
     write_draft_attachments(
@@ -506,7 +506,7 @@ export function AgentMessageEditor(props: AgentMessageEditorProps): JSX.Element 
       add_response_annotation(annotation) {
         if (editor_read_only || assistant_editing) return;
         write_draft_attachments([
-          ...input_session_ref.current.draft.read().attachments,
+          ...input_state_ref.current.draft.read().attachments,
           structuredClone(annotation),
         ]);
         view_ref.current?.focus();
@@ -519,13 +519,13 @@ export function AgentMessageEditor(props: AgentMessageEditorProps): JSX.Element 
     [assistant_editing, editor_read_only, write_draft_attachments],
   );
 
-  /** Composer 只提交当前投影；受理后的历史与草稿由常驻 Agent session 原子更新。 */
+  /** Composer 只提交当前投影；受理后的历史与草稿由常驻 Agent Chat Store 原子更新。 */
   const submit = (): void => {
     const view = view_ref.current;
     if (view === null || !actions.can_submit) return;
     const text = view.state.doc.toString().trim();
     if (
-      input_session_ref.current.draft
+      input_state_ref.current.draft
         .read()
         .attachments.some((attachment) => attachment.kind === "upload")
     )
@@ -533,7 +533,7 @@ export function AgentMessageEditor(props: AgentMessageEditorProps): JSX.Element 
     props.on_submit({
       text,
       attachments: structuredClone(
-        input_session_ref.current.draft
+        input_state_ref.current.draft
           .read()
           .attachments.filter((attachment) => attachment.kind !== "upload"),
       ),
@@ -629,7 +629,7 @@ export function AgentMessageEditor(props: AgentMessageEditorProps): JSX.Element 
           disabled={editor_read_only}
           on_update_annotation={update_annotation}
           on_remove={remove_attachment}
-          on_retry={(id) => props.input_session.draft.retry(id)}
+          on_retry={(id) => props.input_state.draft.retry(id)}
         />
       ) : null}
       <div className="agent-composer__editor">
@@ -717,7 +717,7 @@ export function AgentMessageEditor(props: AgentMessageEditorProps): JSX.Element 
 
   /** 仅从视觉首行进入历史；越过最新消息时恢复原始草稿，两端都消费按键。 */
   function navigate_input_history(view: EditorView, direction: "older" | "newer"): boolean {
-    const input_history = input_session_ref.current.read_history();
+    const input_history = input_state_ref.current.read_history();
     if (view.composing || view.state.readOnly) return false;
     const current_index = input_history_index_ref.current;
 
@@ -741,7 +741,7 @@ export function AgentMessageEditor(props: AgentMessageEditorProps): JSX.Element 
       input_history_index_ref.current = null;
       write_agent_message_text(
         view,
-        input_session_ref.current.draft.read().text,
+        input_state_ref.current.draft.read().text,
         input_history_navigation_annotations,
       );
       return true;

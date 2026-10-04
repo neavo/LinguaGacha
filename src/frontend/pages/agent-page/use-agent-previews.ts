@@ -8,7 +8,7 @@ import { useProjectSessionUiState } from "@frontend/app/session/project-session-
 
 export type OpenAgentPreview = AgentFile & { anchor: string | null; activation: number };
 type PreviewUiState = {
-  session_id: string;
+  chat_id: string;
   paths: string[];
   selected: string | null;
   scroll: Record<string, number>;
@@ -16,7 +16,7 @@ type PreviewUiState = {
 type PreviewState = { documents: OpenAgentPreview[]; selected: string | null };
 
 /** 页面只拥有标签描述和阅读位置，正文与图片由内容面板读取。 */
-export function useAgentPreviews(session_id: string) {
+export function useAgentPreviews(chat_id: string) {
   const { t } = useI18n();
   const text = useRef(t); // 请求在语言切换后完成时使用当前文案，文件读取不随语言重启。
   text.current = t;
@@ -71,7 +71,7 @@ export function useAgentPreviews(session_id: string) {
   useEffect(() => {
     let active = true; // StrictMode 重连或离页后，旧恢复批次不能写回新实例。
     const restore_intent = intent.current;
-    if (session_id && saved?.session_id === session_id) {
+    if (chat_id && saved?.chat_id === chat_id) {
       scroll.current = saved.scroll;
       // 恢复期间手动打开或关闭文件会取消对应读取，迟到描述不能重新打开旧标签。
       const restoring_requests = saved.paths.map((path) => {
@@ -79,7 +79,7 @@ export function useAgentPreviews(session_id: string) {
         requests.current.set(path, controller);
         return api_fetch<AgentFile>(
           "/api/agent/workspace/file",
-          { path, sessionId: session_id },
+          { path, chatId: chat_id },
           controller.signal,
         )
           .then((file) => (controller.signal.aborted ? null : file))
@@ -125,18 +125,18 @@ export function useAgentPreviews(session_id: string) {
       for (const controller of pending.values()) controller.abort();
       pending.clear();
     };
-  }, [saved, session_id]);
+  }, [saved, chat_id]);
 
   // 各预览更新同一份阅读位置记录，保存无需逐次触发 React 渲染。
   useEffect(() => {
-    if (!session_id || restoring.current) return;
+    if (!chat_id || restoring.current) return;
     set_page_ui_state<PreviewUiState>("agent-documents", {
-      session_id,
+      chat_id,
       paths: state.documents.map((document) => document.path),
       selected: state.selected,
       scroll: scroll.current,
     });
-  }, [state, session_id, set_page_ui_state]);
+  }, [state, chat_id, set_page_ui_state]);
 
   return { ...state, select, close, open_file, scroll };
 }

@@ -127,7 +127,7 @@ type ActiveAgentWorkspace = {
 };
 
 /** 当前工作区文件世代共享的 `sources` 身份与 `project_meta` 映射。 */
-type AgentWorkspaceSourceSession = {
+type AgentWorkspaceSourceCache = {
   projectPath: string; // 关联的当前工程身份
   projectEpoch: number; // 隔离同路径重新加载后的旧投影
   filesRevision: number; // 只在源资产集合变化时重新生成
@@ -143,7 +143,7 @@ type WorkspacePath = Readonly<{
 /** 当前 Agent 会话磁盘工作区。协调跨快照 work、当前数据快照与 apply。 */
 export class AgentWorkspaceService {
   private upload_store: AgentUploadStore | null = null; // 随目录切换重建当前上传登记
-  private session_id: string | null = null; // 当前目录归属，关闭期间解除绑定
+  private chat_id: string | null = null; // 当前目录归属，关闭期间解除绑定
   private readonly directories: AgentWorkspaceDirectories;
 
   /** 文件入口只取得当前激活会话的上传登记。 */
@@ -154,8 +154,8 @@ export class AgentWorkspaceService {
 
   /** 所有相对路径绑定当前会话目录。 */
   private get root_path(): string {
-    if (this.session_id === null) throw new AppErrors.AppError("project.not_loaded");
-    return this.directories.path(this.session_id);
+    if (this.chat_id === null) throw new AppErrors.AppError("project.not_loaded");
+    return this.directories.path(this.chat_id);
   }
 
   /** 查询现有文件事实，不触发工作区生成或解析原稿。 */
@@ -180,7 +180,7 @@ export class AgentWorkspaceService {
     ];
   }
   private active: ActiveAgentWorkspace | null = null; // 当前磁盘快照的工程身份、语言和版本基线
-  private source_session: AgentWorkspaceSourceSession | null = null; // 当前激活目录内的源文件投影
+  private source_cache: AgentWorkspaceSourceCache | null = null; // 当前激活目录内的源文件投影
   private busy = false; // snapshot、script 与 apply 共用的进程内互斥
   private readonly link_versions = { work: 0, sources: 0, snapshot: 0, uploads: 0 }; // 原生对话框等待期间的来源有效期
 
@@ -397,18 +397,18 @@ export class AgentWorkspaceService {
   }
 
   /** 为新产品对话占用独立目录。 */
-  public create_session(): Promise<string> {
+  public create_chat(): Promise<string> {
     return this.directories.create();
   }
 
   /** 旧执行必须已经收尾。相对路径、上传与预览共用当前会话目录。 */
-  public async activate_session(
+  public async activate_chat(
     id: string,
     uploads: readonly AgentFileAttachment[],
     saveUpload: (file: AgentFileAttachment) => Promise<void>,
   ): Promise<void> {
     await this.close();
-    this.session_id = id;
+    this.chat_id = id;
     await this.native_fs.make_dir_async(this.root_path);
     this.upload_store = new AgentUploadStore(
       this.root_path,
@@ -450,18 +450,18 @@ export class AgentWorkspaceService {
     await this.upload_store?.close();
     this.upload_store = null;
     this.active = null;
-    this.source_session = null;
-    this.session_id = null;
+    this.source_cache = null;
+    this.chat_id = null;
   }
 
   /** 显式重置在旧执行关闭后删除其材料。 */
-  public delete_session(id: string): Promise<void> {
+  public delete_chat(id: string): Promise<void> {
     return this.directories.remove(id);
   }
 
   /** 工具完成、失败或取消后记录本次使用。 */
   private async touch(): Promise<void> {
-    if (this.session_id !== null) await this.directories.touch(this.session_id);
+    if (this.chat_id !== null) await this.directories.touch(this.chat_id);
   }
 
   /** 工作区工具按需建立完整只读快照和空 change 文件。 */
@@ -868,7 +868,7 @@ export class AgentWorkspaceService {
     filesRevision: number;
     files: ReadonlyArray<{ file_path: string; file_type: string }>;
   }): Promise<AgentWorkspaceSourceFile[]> {
-    const current = this.source_session;
+    const current = this.source_cache;
     if (
       current?.projectPath === args.projectPath &&
       current.projectEpoch === args.projectEpoch &&
@@ -878,7 +878,7 @@ export class AgentWorkspaceService {
     }
     const source_path = path.join(this.root_path, "sources");
     this.link_versions.sources += 1;
-    this.source_session = null;
+    this.source_cache = null;
     // 激活已隔离旧工作区，snapshot、run 与 apply 由 exclusive 串行。完整生成前应用内没有 sources 读者。
     await this.native_fs.remove_async(source_path, { recursive: true, force: true });
     try {
@@ -889,7 +889,7 @@ export class AgentWorkspaceService {
         readAsset: (file_path) =>
           this.options.database.read_asset_content(args.projectPath, file_path),
       });
-      this.source_session = { ...args, files: files.map((file) => ({ ...file })) };
+      this.source_cache = { ...args, files: files.map((file) => ({ ...file })) };
       return files;
     } catch (error) {
       await this.remove_workspace_directory(source_path);
@@ -951,10 +951,10 @@ export type AgentWorkspacePort = Pick<
   | "list_files"
   | "run"
   | "apply_workspace"
-  | "create_session"
-  | "activate_session"
+  | "create_chat"
+  | "activate_chat"
   | "close"
-  | "delete_session"
+  | "delete_chat"
   | "cancel_uploads"
   | "activate_path"
   | "read_document"

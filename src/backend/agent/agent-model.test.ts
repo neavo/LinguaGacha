@@ -24,7 +24,7 @@ vi.mock("@earendil-works/pi-ai/api/openai-responses.lazy", () => ({
 }));
 
 const TEST_USER_AGENT = "LinguaGacha/Test";
-const TEST_REQUEST_IDENTITY = { user_agent: TEST_USER_AGENT, session_id: "test-session" };
+const TEST_REQUEST_IDENTITY = { user_agent: TEST_USER_AGENT };
 
 describe("Agent 批量翻译模型", () => {
   it.each([
@@ -263,7 +263,7 @@ describe("Agent 模型注册", () => {
     );
     expect(resolve.mock.calls.length).toBeGreaterThanOrEqual(2);
   });
-  it("真实 MutableModels 与 adapter 最终发送产品会话身份", async () => {
+  it("真实 MutableModels 与 adapter 最终发送 SDK 供应商身份", async () => {
     const { openAICompletionsApi } = await vi.importActual<
       typeof import("@earendil-works/pi-ai/api/openai-completions.lazy")
     >("@earendil-works/pi-ai/api/openai-completions.lazy");
@@ -289,7 +289,7 @@ describe("Agent 模型注册", () => {
         {
           fetch,
           maxRetries: 0,
-          // SDK 压缩与供应商归属层可能提供独立身份，最终发送仍归产品策略拥有。
+          // 请求身份由 SDK 当前分支决定，模型注册阶段不能冻结它。
           sessionId: "sdk-summary",
           transformHeaders: () => ({ "x-opencode-session": "sdk-summary", "User-Agent": "pi" }),
         },
@@ -297,7 +297,7 @@ describe("Agent 模型注册", () => {
       .result();
     expect(fetch).toHaveBeenCalledOnce();
     const headers = new Request(...fetch.mock.calls[0]!).headers;
-    expect(headers.get("x-opencode-session")).toBe("test-session");
+    expect(headers.get("x-opencode-session")).toBe("sdk-summary");
     expect(headers.get("user-agent")).toBe(TEST_USER_AGENT);
   });
 

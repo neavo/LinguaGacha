@@ -1,8 +1,8 @@
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { expect, it, vi } from "vitest";
-import { AgentSessionStoreContext } from "@frontend/app/session/agent/agent-session-context";
-import { AgentSessionStore } from "@frontend/app/session/agent/agent-session-store";
+import { AgentChatStoreContext } from "@frontend/app/session/agent/agent-chat-context";
+import { AgentChatStore } from "@frontend/app/session/agent/agent-chat-store";
 import { api_get } from "@frontend/app/desktop/desktop-api";
 import type { AgentFilesResponse } from "@shared/agent-reference";
 import { useAgentMentionFiles } from "./use-agent-mention-files";
@@ -15,9 +15,9 @@ vi.mock("@frontend/app/state/use-desktop-state", () => ({
 it("菜单查询按上传完成刷新，跨会话迟到结果不会覆盖新文件", async () => {
   const host = document.createElement("div");
   const root = createRoot(host);
-  let sessionId = "one";
-  const store = new AgentSessionStore(window.localStorage, vi.fn());
-  vi.spyOn(store, "get_session_id").mockImplementation(() => sessionId);
+  let chatId = "one";
+  const store = new AgentChatStore(window.localStorage, vi.fn());
+  vi.spyOn(store, "get_chat_id").mockImplementation(() => chatId);
   const pending: ((value: AgentFilesResponse) => void)[] = [];
   vi.mocked(api_get).mockImplementation(
     () => new Promise((resolve) => pending.push(resolve as (value: AgentFilesResponse) => void)),
@@ -32,9 +32,9 @@ it("菜单查询按上传完成刷新，跨会话迟到结果不会覆盖新文�
   async function render(open: boolean, upload = "") {
     await act(async () =>
       root.render(
-        <AgentSessionStoreContext.Provider value={store}>
+        <AgentChatStoreContext.Provider value={store}>
           <Probe open={open} upload={upload} />
-        </AgentSessionStoreContext.Provider>,
+        </AgentChatStoreContext.Provider>,
       ),
     );
   }
@@ -45,7 +45,7 @@ it("菜单查询按上传完成刷新，跨会话迟到结果不会覆盖新文�
     expect(value!.status).toBe("loading");
     await act(async () =>
       pending.shift()!({
-        sessionId: "one",
+        chatId: "one",
         files: [{ kind: "workspace", path: "书.epub", count: 12, unit: "items" }],
       }),
     );
@@ -53,15 +53,15 @@ it("菜单查询按上传完成刷新，跨会话迟到结果不会覆盖新文�
     await render(true, "uploaded");
     expect(api_get).toHaveBeenCalledTimes(2);
     const old = pending.shift()!;
-    sessionId = "two";
+    chatId = "two";
     await render(true, "uploaded");
     await act(async () =>
-      old({ sessionId: "one", files: [{ kind: "upload", path: "uploads/old.txt", size: 1 }] }),
+      old({ chatId: "one", files: [{ kind: "upload", path: "uploads/old.txt", size: 1 }] }),
     );
     expect(value!.files).toEqual([]);
     await act(async () =>
       pending.shift()!({
-        sessionId: "two",
+        chatId: "two",
         files: [{ kind: "upload", path: "uploads/new.txt", size: 2 }],
       }),
     );

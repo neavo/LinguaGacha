@@ -316,14 +316,14 @@ function AgentMarkdownImage({
     mime: string;
   } | null>(null);
   const relative = typeof src === "string" && !/^(?:[a-z][a-z\d+.-]*:|\/\/)/iu.test(src);
-  const session_id = documents?.session_id;
+  const chat_id = documents?.chat_id;
   useEffect(() => {
-    if (!relative || !src || !session_id) return;
+    if (!relative || !src || !chat_id) return;
     const controller = new AbortController();
     let url: string | null = null;
     void (async () => {
       const path = resolve_agent_workspace_href(src, base_path);
-      const query = new URLSearchParams({ path, sessionId: session_id });
+      const query = new URLSearchParams({ path, chatId: chat_id });
       const blob = await api_blob(`/api/agent/workspace/image?${query}`, controller.signal);
       if (controller.signal.aborted) return;
       url = URL.createObjectURL(blob);
@@ -339,10 +339,10 @@ function AgentMarkdownImage({
       controller.abort();
       if (url !== null) URL.revokeObjectURL(url);
     };
-  }, [base_path, relative, session_id, src, t]);
+  }, [base_path, relative, chat_id, src, t]);
   if (!src) return null;
   const source =
-    relative && session_id ? (local_source?.source === src ? local_source.url : undefined) : src;
+    relative && chat_id ? (local_source?.source === src ? local_source.url : undefined) : src;
   const label = alt?.trim() || title?.trim() || t("agent_page.image.title");
   // 只限制有 MIME 依据且未指定排版尺寸的位图；矢量图与作者尺寸保留 CSS 语义。
   const actual_width =

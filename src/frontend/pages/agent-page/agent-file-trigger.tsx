@@ -76,7 +76,7 @@ export function AgentFileTrigger({
     try {
       const next = await api_fetch<AgentFile>(
         "/api/agent/workspace/file",
-        { path, sessionId: context?.session_id },
+        { path, chatId: context?.chat_id },
         request.signal,
       );
       if (request.signal.aborted) return;

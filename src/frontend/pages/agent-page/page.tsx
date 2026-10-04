@@ -2,10 +2,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, type JSX } from "react";
 import { FileText, Image, MessageSquareText, X } from "lucide-react";
 import type { ScreenComponentProps } from "@frontend/app/navigation/types";
 import { useAppNavigation } from "@frontend/app/navigation/navigation-context";
-import {
-  useAgentControls,
-  useAgentSessionId,
-} from "@frontend/app/session/agent/agent-session-context";
+import { useAgentControls, useAgentChatId } from "@frontend/app/session/agent/agent-chat-context";
 import { useI18n } from "@frontend/app/locale/locale-context";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@frontend/shadcn/tabs";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@frontend/shadcn/tooltip";
@@ -19,22 +16,22 @@ const CONVERSATION_TAB = "conversation";
 
 /** 对话身份决定全部页内资源的生命周期。 */
 export function AgentPage(_props: ScreenComponentProps): JSX.Element {
-  const session_id = useAgentSessionId();
-  return <AgentPages key={session_id ?? "restoring"} session_id={session_id ?? ""} />;
+  const chat_id = useAgentChatId();
+  return <AgentPages key={chat_id ?? "restoring"} chat_id={chat_id ?? ""} />;
 }
 
 /** 页内标签保留组件实例，会话身份变化才整体释放旧页面。 */
-function AgentPages({ session_id }: { session_id: string }): JSX.Element {
+function AgentPages({ chat_id }: { chat_id: string }): JSX.Element {
   const { t } = useI18n();
   const root = useRef<HTMLDivElement>(null);
   const { pendingDecision } = useAgentControls();
   const { agent_input_request } = useAppNavigation();
-  const state = useAgentPreviews(session_id);
+  const state = useAgentPreviews(chat_id);
   const { select } = state;
   const conversation_active = state.selected === null;
   const context = useMemo(
-    () => ({ open_file: state.open_file, session_id, active: true }),
-    [state.open_file, session_id],
+    () => ({ open_file: state.open_file, chat_id, active: true }),
+    [state.open_file, chat_id],
   );
   const inactive_context = useMemo(() => ({ ...context, active: false }), [context]);
   useEffect(() => {

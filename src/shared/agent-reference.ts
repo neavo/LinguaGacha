@@ -47,4 +47,4 @@ export type AgentFileCandidate =
   | { kind: "workspace"; path: string; count: number; unit: "items" | "pages" }
   | { kind: "upload"; path: string; size: number };
 
-export type AgentFilesResponse = { sessionId: string; files: AgentFileCandidate[] };
+export type AgentFilesResponse = { chatId: string; files: AgentFileCandidate[] };

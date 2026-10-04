@@ -155,7 +155,7 @@ describe("GuiBackendBootstrap 集成", () => {
       const snapshot = await (await fetch(apiBaseUrl + "/api/agent/snapshot")).json();
       const uploads = path.join(
         paths.get_agent_workspace_root_dir(),
-        snapshot.data.sessionId,
+        snapshot.data.chatId,
         "uploads",
       );
       const pending = new Promise<void>((resolve) => {
@@ -294,7 +294,7 @@ describe("GuiBackendBootstrap 集成", () => {
       const current = await (await fetch(started.apiBaseUrl + "/api/agent/snapshot")).json();
       const directory = path.join(
         paths.get_agent_workspace_root_dir(),
-        current.data.sessionId,
+        current.data.chatId,
         "work",
         "报告",
       );
@@ -429,7 +429,7 @@ function create_options(app_root: string) {
     paths.get_agent_system_prompt_path(),
     "Test system prompt.\n{{agent_personality}}",
   );
-  fs.writeFileSync(paths.get_agent_session_seed_path(), "[]");
+  fs.writeFileSync(paths.get_agent_chat_seed_path(), "[]");
   fs.mkdirSync(paths.get_model_preset_dir(), { recursive: true });
   fs.writeFileSync(path.join(paths.get_model_preset_dir(), "preset_model_builtin.json"), "[]");
   for (const type of Model.custom_types()) {

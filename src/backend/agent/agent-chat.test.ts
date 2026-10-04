@@ -19,19 +19,19 @@ import {
   type FauxResponseFactory,
 } from "@earendil-works/pi-ai";
 import { ProjectDatabase } from "../database/database-operations";
-import type { AgentSessionStore } from "../database/agent-session-store";
-import { AgentSession, type AgentExecution } from "./agent-session";
-import { AgentSessionDoc } from "./agent-session-state";
-import { AgentSessionLog } from "./agent-log";
+import type { AgentChatStorage } from "../database/agent-chat-storage";
+import { AgentChat, type AgentExecution } from "./agent-chat";
+import { AgentChatDoc } from "./agent-chat-data";
+import { AgentRuntimeLog } from "./agent-runtime-log";
 
 /** 隔离远程流，事务、提交订阅与历史投影使用真实 Harness。 */
-async function create_session() {
+async function create_chat() {
   // 预留窗口，避免 fake 缓存计量差异提前触发自动压缩。
-  const provider = fauxProvider({ models: [{ id: "session-model", contextWindow: 256_000 }] });
+  const provider = fauxProvider({ models: [{ id: "chat-model", contextWindow: 256_000 }] });
   const models = createModels();
   models.setProvider(provider.provider);
-  const session = await AgentSession.open({
-    sessionId: "session-test",
+  const chat = await AgentChat.open({
+    chatId: "chat-test",
     storage: new MemoryStorage(),
     cwd: process.cwd(),
     models,
@@ -43,22 +43,22 @@ async function create_session() {
     systemPrompt: () => "测试系统指令",
     skillsPrompt: () => "",
     continueText: () => "继续",
-    log: new AgentSessionLog({ append: vi.fn() }),
+    log: new AgentRuntimeLog({ append: vi.fn() }, "chat-test"),
     onChange: vi.fn(),
     onModelEvent: vi.fn(),
     onReport: vi.fn(),
     onCompactionFailure: vi.fn(),
   });
-  onTestFinished(() => session.close());
-  await session.configure(provider.getModel(), "off");
-  return { session, provider };
+  onTestFinished(() => chat.close());
+  await chat.configure(provider.getModel(), "off");
+  return { chat, provider };
 }
 
 it("种子进入模型历史，公开时间线从真实输入开始", async () => {
-  const { session, provider } = await create_session();
+  const { chat, provider } = await create_chat();
   const respond = vi.fn<FauxResponseFactory>(() => fauxAssistantMessage("完成"));
   provider.setResponses([respond]);
-  await talk(session, "正文");
+  await talk(chat, "正文");
   const messages = respond.mock.calls[0]![0].messages.filter(
     (message) => message.role !== "system",
   );
@@ -67,42 +67,46 @@ it("种子进入模型历史，公开时间线从真实输入开始", async () =
     { role: "assistant", content: [{ type: "text", text: "种子回答" }] },
     { role: "user", content: [{ type: "text", text: "正文" }] },
   ]);
-  expect(session.entries).toMatchObject([
+  expect(chat.entries).toMatchObject([
     { kind: "user_message", text: "正文" },
     { kind: "assistant_message", parts: [{ kind: "text", text: "完成" }] },
   ]);
 });
 
 it("队列事务失败完整回滚，读出的副本无法修改已提交事实", async () => {
-  const { session } = await create_session();
-  const queued = await session.change_queue((queue) =>
+  const { chat } = await create_chat();
+  const queued = await chat.change_queue((queue) =>
     queue.enqueue({ text: "保留", attachments: [] }),
   );
-  const before = session.queue.read_snapshot(false);
+  const before = chat.queue.read_snapshot(false);
   await expect(
-    session.change_queue((queue) => {
+    chat.change_queue((queue) => {
       queue.delete(queued.id);
       queue.enqueue({ text: "回滚", attachments: [] });
       throw new Error("提交失败");
     }),
   ).rejects.toThrow("提交失败");
-  session.queue.delete(queued.id);
+  chat.queue.delete(queued.id);
   queued.text = "外部改写";
-  expect(session.queue.read_snapshot(false)).toEqual(before);
+  expect(chat.queue.read_snapshot(false)).toEqual(before);
 });
 
-it("生成、历史修订与压缩请求共用产品会话身份", async () => {
-  const { session, provider } = await create_session();
+it("供应商身份在修订后改变，同一分支的生成和压缩共用身份", async () => {
+  const { chat, provider } = await create_chat();
   const respond = vi.fn<FauxResponseFactory>(() => fauxAssistantMessage("完成"));
   provider.setResponses([respond, respond, respond]);
   // 两轮历史超过近期保留预算，使手动压缩实际请求模型。
   const history = "history ".repeat(16_000);
-  await talk(session, history);
-  await session.revise(session.entries.at(-1)!, "修订回答");
-  const execution = await talk(session, history);
-  expect(await session.compact("manual", execution)).toBe(true);
+  await talk(chat, history);
+  await chat.revise(chat.entries.at(-1)!, "修订回答");
+  const execution = await talk(chat, history);
+  expect(await chat.compact("manual", execution)).toBe(true);
   expect(respond).toHaveBeenCalledTimes(3);
-  for (const [, options] of respond.mock.calls) expect(options?.sessionId).toBe("session-test");
+  const ids = respond.mock.calls.map(([, options]) => options?.sessionId);
+  expect(ids[0]).toEqual(expect.any(String));
+  expect(ids[0]).not.toBe("chat-test");
+  expect(ids[1]).not.toBe(ids[0]);
+  expect(ids[2]).toBe(ids[1]);
 });
 
 const roots: string[] = [];
@@ -112,7 +116,7 @@ afterEach(() => {
 
 /** 用真实工程文件验证关闭后重开，避免内存存储掩盖持久化问题。 */
 function project() {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), "lg-session-"));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "lg-chat-"));
   roots.push(root);
   const file = path.join(root, "project.lg");
   const database = new ProjectDatabase();
@@ -120,12 +124,12 @@ function project() {
   return { database, file };
 }
 /** 以无模型配置打开历史，模型只在新指令前注册。 */
-async function open(store: AgentSessionStore) {
+async function open(store: AgentChatStorage) {
   const provider = fauxProvider();
   const models = createModels();
   const append = vi.fn();
-  const session = await AgentSession.open({
-    sessionId: (await store.read())!.id,
+  const chat = await AgentChat.open({
+    chatId: (await store.read())!.id,
     storage: await store.open_storage(),
     cwd: process.cwd(),
     models,
@@ -134,7 +138,7 @@ async function open(store: AgentSessionStore) {
     systemPrompt: () => "",
     skillsPrompt: () => "",
     continueText: () => "继续",
-    log: new AgentSessionLog({ append }),
+    log: new AgentRuntimeLog({ append }, "chat-test"),
     onChange: vi.fn(),
     onModelEvent: vi.fn(),
     onReport: (error) => {
@@ -142,10 +146,10 @@ async function open(store: AgentSessionStore) {
     },
     onCompactionFailure: vi.fn(),
   });
-  return { session, provider, models, append };
+  return { chat, provider, models, append };
 }
 /** 经产品轮次入口提交并结算，供内存与磁盘场景共用。 */
-async function talk(session: AgentSession, text: string) {
+async function talk(chat: AgentChat, text: string) {
   const execution: AgentExecution = {
     controller: new AbortController(),
     lease: { owner: "agent" },
@@ -159,16 +163,16 @@ async function talk(session: AgentSession, text: string) {
     retrySteer: null,
     translationPaused: null,
   };
-  session.execution = execution;
-  const input = await session.submit(
+  chat.execution = execution;
+  const input = await chat.submit(
     { text, attachments: [] },
     { text, images: [] },
     execution,
     "round",
   );
-  await session.run(input, execution);
-  await session.finish_round(execution, "success", null);
-  session.execution = null;
+  await chat.run(input, execution);
+  await chat.finish_round(execution, "success", null);
+  chat.execution = null;
   return execution;
 }
 
@@ -178,30 +182,30 @@ it("既有身份重开恢复历史，无模型时可修订助手，后续请求�
   await store.create("-t75szF5");
   const first = await open(store);
   first.models.setProvider(first.provider.provider);
-  await first.session.configure(first.provider.getModel(), "off");
+  await first.chat.configure(first.provider.getModel(), "off");
   first.provider.setResponses([fauxAssistantMessage("原回答")]);
-  await talk(first.session, "问题");
-  const assistant = first.session.entries.find((entry) => entry.kind === "assistant_message")!;
-  await first.session.revise(assistant, "修订回答");
-  await first.session.change_queue((queue) => queue.enqueue({ text: "待发送", attachments: [] }));
-  const expected = structuredClone(first.session.entries);
-  const usage = structuredClone(first.session.usage);
-  await first.session.close();
+  await talk(first.chat, "问题");
+  const assistant = first.chat.entries.find((entry) => entry.kind === "assistant_message")!;
+  await first.chat.revise(assistant, "修订回答");
+  await first.chat.change_queue((queue) => queue.enqueue({ text: "待发送", attachments: [] }));
+  const expected = structuredClone(first.chat.entries);
+  const usage = structuredClone(first.chat.usage);
+  await first.chat.close();
   await store.close();
   store = database.open_agent_store(file);
   const restored = await open(store);
-  expect(restored.session.entries).toEqual(expected);
-  expect(restored.session.usage).toEqual(usage);
-  expect(restored.session.queue.read_snapshot(false).items).toEqual([]);
+  expect(restored.chat.entries).toEqual(expected);
+  expect(restored.chat.usage).toEqual(usage);
+  expect(restored.chat.queue.read_snapshot(false).items).toEqual([]);
   expect(restored.provider.state.callCount).toBe(0);
-  await restored.session.revise(restored.session.entries.at(-1)!, "离线修订");
-  expect(restored.session.usage).toEqual(usage);
+  await restored.chat.revise(restored.chat.entries.at(-1)!, "离线修订");
+  expect(restored.chat.usage).toEqual(usage);
   restored.models.setProvider(restored.provider.provider);
-  await restored.session.configure(restored.provider.getModel(), "off");
+  await restored.chat.configure(restored.provider.getModel(), "off");
   const respond = vi.fn<FauxResponseFactory>(() => fauxAssistantMessage("继续回答"));
   restored.provider.setResponses([respond]);
-  await talk(restored.session, "继续");
-  expect(restored.session.entries).toContainEqual(
+  await talk(restored.chat, "继续");
+  expect(restored.chat.entries).toContainEqual(
     expect.objectContaining({ kind: "user_message", text: "继续" }),
   );
   expect(respond.mock.calls[0]![0].messages).toContainEqual(
@@ -214,31 +218,60 @@ it("既有身份重开恢复历史，无模型时可修订助手，后续请求�
       usage: expect.objectContaining({ totalTokens: 0 }),
     }),
   );
-  await restored.session.close();
+  await restored.chat.close();
   await store.close();
   database.close();
+});
+
+it("供应商身份随 SQLite 重开和模型重新配置保留", async () => {
+  const { database, file } = project();
+  const store = database.open_agent_store(file);
+  await store.create("identity-chat");
+  const first = await open(store);
+  first.models.setProvider(first.provider.provider);
+  await first.chat.configure(first.provider.getModel(), "off");
+  const before = vi.fn<FauxResponseFactory>(() => fauxAssistantMessage("第一次"));
+  first.provider.setResponses([before]);
+  await talk(first.chat, "开始");
+  await first.chat.close();
+  await store.close();
+  const reopenedStore = database.open_agent_store(file);
+  const restored = await open(reopenedStore);
+  try {
+    restored.models.setProvider(restored.provider.provider);
+    await restored.chat.configure(restored.provider.getModel(), "off");
+    const after = vi.fn<FauxResponseFactory>(() => fauxAssistantMessage("继续"));
+    restored.provider.setResponses([after]);
+    await talk(restored.chat, "重开后继续");
+    expect(after.mock.calls[0]![1]?.sessionId).toBe(before.mock.calls[0]![1]?.sessionId);
+    expect(after.mock.calls[0]![1]?.sessionId).toEqual(expect.any(String));
+  } finally {
+    await restored.chat.close();
+    await reopenedStore.close();
+    database.close();
+  }
 });
 
 it("压缩条目只依赖 SDK 任务，重开保留身份顺序和状态，关闭冲刷待写日志", async () => {
   const { database, file } = project();
   const store = database.open_agent_store(file);
-  await store.create("compaction-session");
+  await store.create("compaction-chat");
   const first = await open(store);
   let restored: Awaited<ReturnType<typeof open>> | undefined;
   try {
     first.models.setProvider(first.provider.provider);
-    await first.session.configure(first.provider.getModel(), "off");
+    await first.chat.configure(first.provider.getModel(), "off");
     first.provider.setResponses([
       fauxAssistantMessage("回答一"),
       fauxAssistantMessage("回答二"),
       fauxAssistantMessage("摘要"),
     ]);
     const history = "history ".repeat(16_000);
-    await talk(first.session, history);
-    const execution = await talk(first.session, history);
-    await first.session.compact("manual", execution);
-    const expected = first.session.entries.map(({ kind, id, status }) => ({ kind, id, status }));
-    const compacted = first.session.entries.filter((entry) => entry.kind === "context_compaction");
+    await talk(first.chat, history);
+    const execution = await talk(first.chat, history);
+    await first.chat.compact("manual", execution);
+    const expected = first.chat.entries.map(({ kind, id, status }) => ({ kind, id, status }));
+    const compacted = first.chat.entries.filter((entry) => entry.kind === "context_compaction");
     expect(compacted.length).toBeGreaterThan(0);
     for (const entry of compacted)
       expect(entry).toEqual({
@@ -246,21 +279,21 @@ it("压缩条目只依赖 SDK 任务，重开保留身份顺序和状态，关�
         id: expect.any(String),
         status: "success",
       });
-    first.session.log.begin_run("closing-round", "prompt");
-    await first.session.close();
+    first.chat.log.begin_run("closing-round", "prompt");
+    await first.chat.close();
     expect(first.append).toHaveBeenCalledWith(
       expect.objectContaining({
         content: expect.objectContaining({ event: "run_start", round_id: "closing-round" }),
       }),
     );
     restored = await open(store);
-    expect(restored.session.entries.map(({ kind, id, status }) => ({ kind, id, status }))).toEqual(
+    expect(restored.chat.entries.map(({ kind, id, status }) => ({ kind, id, status }))).toEqual(
       expected,
     );
     expect(restored.provider.state.callCount).toBe(0);
   } finally {
-    await restored?.session.close();
-    await first.session.close();
+    await restored?.chat.close();
+    await first.chat.close();
     await store.close();
     database.close();
   }
@@ -309,9 +342,23 @@ it("遗留工具任务只执行 SDK 取消收尾，恢复后保留公开工具�
   const conversation = await harness.root(BACKGROUND_CONTEXT, {
     agent: { model: { provider: provider.getModel().provider, modelId: provider.getModel().id } },
     init: async (tx, id) => {
-      const state = await tx.doc(AgentSessionDoc, "session1", null);
+      const state = await tx.doc(AgentChatDoc, "session1", null);
       state.activeConversationId = id;
       state.seeded = true;
+      state.commands.admitted = {
+        kind: "send",
+        request: {},
+        status: "pending",
+        conversationId: id,
+        requestId: "request",
+      };
+      state.commands.unsubmitted = {
+        kind: "send",
+        request: {},
+        status: "pending",
+        conversationId: id,
+        requestId: "missing",
+      };
       const start = await tx.appendEntry(id, { kind: "test.start" });
       state.inputs.request = {
         roundId: "round",
@@ -336,14 +383,16 @@ it("遗留工具任务只执行 SDK 取消收尾，恢复后保留公开工具�
   await harness.close(BACKGROUND_CONTEXT);
   const restored = await open(store);
   expect(execute).toHaveBeenCalledOnce();
+  expect(restored.chat.state.commands.admitted?.status).toBe("accepted");
+  expect(restored.chat.state.commands.unsubmitted?.status).toBe("cancelled");
   expect(restored.provider.state.callCount).toBe(0);
-  expect(restored.session.entries).toContainEqual(
+  expect(restored.chat.entries).toContainEqual(
     expect.objectContaining({ kind: "tool_call", status: "stopped" }),
   );
-  expect(restored.session.entries).toContainEqual(
+  expect(restored.chat.entries).toContainEqual(
     expect.objectContaining({ kind: "user_message", status: "stopped" }),
   );
-  await restored.session.close();
+  await restored.chat.close();
   await store.close();
   database.close();
 });

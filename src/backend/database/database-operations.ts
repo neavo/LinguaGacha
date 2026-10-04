@@ -8,7 +8,7 @@ import path from "node:path";
 import { createHash } from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
 import { NodeSqliteDatabase } from "@earendil-works/pi-durable/storage/sqlite/node";
-import { AgentSessionStore } from "./agent-session-store";
+import { AgentChatStorage } from "./agent-chat-storage";
 
 import { run_project_database_migrations } from "../migration/database-migrations";
 import { ZstdTool } from "./zstd-tool";
@@ -249,10 +249,10 @@ export class ProjectDatabase {
   }
 
   /** Agent 持有工程连接直到 SDK、上传与会话关闭全部结束。 */
-  public open_agent_store(project_path: string): AgentSessionStore {
+  public open_agent_store(project_path: string): AgentChatStorage {
     const release = this.acquire_project_lease(project_path, "agent");
     const record = this.open_project_record(path.resolve(project_path));
-    return new AgentSessionStore(record.access, release);
+    return new AgentChatStorage(record.access, release);
   }
 
   /** 提交后关闭失败沿用已提交错误协议，调用者只能重载，不能重放写入。 */

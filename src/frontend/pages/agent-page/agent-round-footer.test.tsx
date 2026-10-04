@@ -6,7 +6,7 @@ import { AgentRoundFooter } from "./agent-round-footer";
 
 const state = vi.hoisted(() => ({ speed: null as AgentTokenSpeedSnapshot, transport: "ready" }));
 const read_speed = vi.hoisted(() => vi.fn(() => state.speed));
-vi.mock("@frontend/app/session/agent/agent-session-context", () => ({
+vi.mock("@frontend/app/session/agent/agent-chat-context", () => ({
   useAgentTokenSpeed: read_speed,
   useAgentControls: () => ({ transport: state.transport }),
 }));

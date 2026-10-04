@@ -1,6 +1,6 @@
 import { afterEach, expect, it } from "vitest";
 import fs from "node:fs";
-import { ACTIVE_AGENT_SESSION_KEY } from "./agent-session-store";
+import { ACTIVE_AGENT_CHAT_KEY } from "./agent-chat-storage";
 import os from "node:os";
 import path from "node:path";
 import { Harness, createRegistry, defineDoc } from "@earendil-works/pi-durable";
@@ -90,7 +90,7 @@ it("读取工程时拒绝无效激活指针和缺失登记", async () => {
   try {
     await store.create("-t75szF5");
     for (const id of [null, 1, "", "missing"]) {
-      database.set_meta(file, ACTIVE_AGENT_SESSION_KEY, id);
+      database.set_meta(file, ACTIVE_AGENT_CHAT_KEY, id);
       await expect(store.read()).rejects.toMatchObject({ code: "file.invalid_structure" });
     }
   } finally {
