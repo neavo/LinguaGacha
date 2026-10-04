@@ -21,10 +21,5 @@ export const zh_cn_preset_editor = {
   feedback: {
     exists: "文件已存在",
     name_required: "预设名称不能为空",
-    load_failed: "预设加载失败",
-    save_failed: "预设保存失败",
-    rename_failed: "预设重命名失败",
-    delete_failed: "预设删除失败",
-    default_update_failed: "默认预设设置保存失败",
   },
 } as const;

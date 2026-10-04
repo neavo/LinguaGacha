@@ -1,11 +1,10 @@
+import { push_error_toast } from "@frontend/app/feedback/desktop-toast";
 import { AgentInputDraft } from "@frontend/app/session/agent/agent-input-draft";
 import { type JSX, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import type { AgentMessageInput, AgentSkillSnapshot } from "@shared/agent";
 import type { AgentCommand, AgentInputState } from "@frontend/app/session/agent/agent-chat-context";
 import { useI18n, type LocaleKey } from "@frontend/app/locale/locale-context";
-import { resolve_visible_error_message } from "@frontend/app/feedback/visible-error-message";
-import { push_toast } from "@frontend/app/feedback/desktop-toast";
 import { AgentMessageEditor, type AgentMessageEditorHandle } from "./agent-message-editor";
 import { AppButton } from "@frontend/widgets/app-button";
 import { LoaderCircle } from "lucide-react";
@@ -69,9 +68,6 @@ export function AgentInlineEditor(props: AgentInlineEditorProps): JSX.Element {
     composer_ref.current?.focus();
   }, []);
 
-  const error_key: LocaleKey =
-    props.target.kind === "queue" ? "agent_page.error.queue_update" : "agent_page.error.edit";
-
   const save = useCallback(
     async (message: AgentMessageInput): Promise<void> => {
       // 受理失败不关闭编辑器，确保用户可以直接修正并再次提交原草稿。
@@ -80,11 +76,11 @@ export function AgentInlineEditor(props: AgentInlineEditorProps): JSX.Element {
         await props.on_save(message);
         props.on_saved(message);
       } catch (caught_error) {
-        push_toast("error", resolve_visible_error_message(caught_error, t, t(error_key)));
+        push_error_toast(t("app.feedback.modify_failed"), caught_error);
         set_status("idle");
       }
     },
-    [error_key, props.on_save, props.on_saved, t],
+    [props.on_save, props.on_saved, t],
   );
 
   const submit = useCallback(

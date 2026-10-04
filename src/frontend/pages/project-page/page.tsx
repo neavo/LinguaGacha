@@ -1,3 +1,10 @@
+import {
+  push_error_toast,
+  push_toast,
+  push_progress_toast,
+  update_progress_toast,
+  dismiss_toast,
+} from "@frontend/app/feedback/desktop-toast";
 import type { ProjectPreview, ProjectPreviewResponse } from "@shared/project-preview";
 import { format_local_timestamp } from "@shared/utils/format-local-timestamp";
 import { TranslationProgressBadge } from "@frontend/features/translation-progress/translation-progress-badge";
@@ -26,13 +33,7 @@ import {
 } from "react";
 
 import type { SettingsSnapshot } from "@frontend/app/state/desktop-state-context";
-import {
-  push_toast,
-  push_progress_toast,
-  update_progress_toast,
-  dismiss_toast,
-} from "@frontend/app/feedback/desktop-toast";
-import { resolve_visible_error_message } from "@frontend/app/feedback/visible-error-message";
+
 import { useDesktopState } from "@frontend/app/state/use-desktop-state";
 import { AppButton } from "@frontend/widgets/app-button";
 import {
@@ -284,24 +285,6 @@ function build_default_project_file_name(source_path: string): string {
   const has_extension = file_name.lastIndexOf(".") > 0;
   const base_name = has_extension ? extract_stem(file_name) : file_name;
   return `${base_name}.lg`;
-}
-
-/**
- * 格式化错误提示，有可见错误详情时填充模板占位。
- */
-function format_project_error_message(args: {
-  template: string;
-  generic_text: string;
-  error: unknown;
-  t: ReturnType<typeof useI18n>["t"];
-}): string {
-  const error_detail = resolve_visible_error_message(args.error, args.t, "").trim();
-
-  if (error_detail === "") {
-    return args.generic_text;
-  } else {
-    return args.template.replace("{ERROR}", error_detail);
-  }
 }
 
 /**
@@ -719,15 +702,7 @@ export function ProjectPage(_props: ProjectPageProps): JSX.Element {
           path: project_path,
         });
       } else {
-        push_toast(
-          "warning",
-          format_project_error_message({
-            template: t("project_page.open.preview_unavailable"),
-            generic_text: t("project_page.open.preview_unavailable_generic"),
-            error,
-            t,
-          }),
-        );
+        push_error_toast(t("project_page.open.preview_unavailable"), error);
       }
 
       set_selected_project(null);
@@ -965,10 +940,7 @@ export function ProjectPage(_props: ProjectPageProps): JSX.Element {
               project_settings: build_project_prefilter_settings(settings_snapshot),
             },
           );
-          const failure_toast = format_source_file_parse_failure_toast({
-            value: create_payload.failed_files,
-            text: t,
-          });
+          const failure_toast = format_source_file_parse_failure_toast(create_payload.failed_files);
           if (failure_toast !== null) {
             push_toast("warning", failure_toast);
           }
@@ -998,20 +970,12 @@ export function ProjectPage(_props: ProjectPageProps): JSX.Element {
       clear_selected_source();
       clear_selected_project();
     } catch (error) {
-      const parse_failure_toast = format_source_file_parse_failure_error_toast({ error, text: t });
+      const parse_failure_toast = format_source_file_parse_failure_error_toast(error);
       if (parse_failure_toast !== null) {
-        push_toast("error", parse_failure_toast);
+        push_error_toast(t("app.feedback.create_failed"), parse_failure_toast);
         return;
       }
-      push_toast(
-        "error",
-        format_project_error_message({
-          template: t("project_page.create.failed"),
-          generic_text: t("project_page.create.failed_generic"),
-          error,
-          t,
-        }),
-      );
+      push_error_toast(t("app.feedback.create_failed"), error);
       return;
     } finally {
       set_is_creating_project(false);
@@ -1092,15 +1056,7 @@ export function ProjectPage(_props: ProjectPageProps): JSX.Element {
         );
       }
     } catch (error) {
-      push_toast(
-        "error",
-        format_project_error_message({
-          template: t("project_page.open.failed"),
-          generic_text: t("project_page.open.failed_generic"),
-          error,
-          t,
-        }),
-      );
+      push_error_toast(t("app.feedback.load_failed"), error);
       return;
     } finally {
       set_is_opening_project(false);
@@ -1117,10 +1073,7 @@ export function ProjectPage(_props: ProjectPageProps): JSX.Element {
       });
       await refresh_recent_projects();
     } catch (error) {
-      push_toast(
-        "error",
-        resolve_visible_error_message(error, t, t("project_page.open.remove_unavailable")),
-      );
+      push_error_toast(t("project_page.open.remove_unavailable"), error);
     }
   }
 

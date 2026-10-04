@@ -10,8 +10,4 @@ export const ja_jp_glossary_page = {
     translation: "訳文",
     description: "説明",
   },
-  feedback: {
-    load_failed: "用語集を読み込めませんでした。しばらくしてから再試行してください …",
-    query_failed: "用語集を検索できませんでした",
-  },
 } satisfies LocaleMessageSchema<typeof zh_cn_glossary_page>;

@@ -81,7 +81,6 @@ export const de_de_proofreading_page = {
   },
   context: {
     loading: "Kontext wird geladen …",
-    load_failed: "Kontext konnte nicht geladen werden",
   },
   confirm: {
     retranslate_description: "{COUNT} Einträge wirklich neu übersetzen …?",
@@ -89,13 +88,10 @@ export const de_de_proofreading_page = {
   },
   feedback: {
     loading_toast: "Daten werden geladen …",
-    refresh_failed: "Fehler beim Aktualisieren der Korrektur",
-    selection_failed: "Fehler beim Lesen der Auswahl",
-    save_failed: "Speichern fehlgeschlagen",
-    replace_failed: "Ersetzen fehlgeschlagen",
-    retranslate_failed: "Neuübersetzung fehlgeschlagen",
-    clear_translation_failed: "Fehler beim Löschen der Übersetzungen",
-    set_status_failed: "Fehler beim Setzen des Übersetzungsstatus",
+    selection_failed: "Fehler beim Lesen der Auswahl …",
+    replace_failed: "Ersetzen fehlgeschlagen …",
+    retranslate_failed: "Neuübersetzung fehlgeschlagen …",
+    clear_translation_failed: "Fehler beim Löschen der Übersetzungen …",
     replace_done: "Ersetzung abgeschlossen: {N} Einträge geändert",
     replace_no_change: "Kein Inhalt zum Ersetzen",
     no_match: "Keine Übereinstimmungen gefunden",

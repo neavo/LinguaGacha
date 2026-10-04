@@ -58,13 +58,9 @@ export function GlossaryPage(_props: ScreenComponentProps): JSX.Element {
     return (
       <div className="glossary-page page-shell page-shell--full">
         {glossary_page_state.quality_status === "error" ? (
-          <AppContentState
-            status="error"
-            message={t("glossary_page.feedback.load_failed")}
-            on_retry={glossary_page_state.reload_quality_rule_snapshot}
-          />
+          <AppContentState status="error" />
         ) : (
-          <AppContentState status="loading" message={t("app.action.loading")} />
+          <AppContentState status="loading" />
         )}
       </div>
     );

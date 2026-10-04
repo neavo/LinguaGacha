@@ -499,7 +499,7 @@ describe("TranslationFileExportService", () => {
 
       const text = create_text_resolver("zh-CN");
       expect(log_collector.error).toHaveBeenCalledExactlyOnceWith(
-        text("app.error.translation.export_failed.message"),
+        text("app.feedback.translation_export_failed"),
         { source: "file-export", error },
       );
       expect(log_collector.info).toHaveBeenCalledExactlyOnceWith(

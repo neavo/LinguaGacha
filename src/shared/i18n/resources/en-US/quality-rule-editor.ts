@@ -13,10 +13,6 @@ export const en_us_quality_rule_editor = {
   feedback: {
     regex_invalid: "Invalid regular expression",
     source_required: "Source text is required",
-    save_failed: "Failed to save rules",
-    update_failed: "Failed to save rule settings",
-    import_failed: "Failed to import rules",
-    export_failed: "Failed to export rules",
   },
   fields: {
     rule: "Rule",

@@ -1,6 +1,6 @@
+import { push_error_toast } from "@frontend/app/feedback/desktop-toast";
 import { type JSX, useEffect, useState, type KeyboardEvent } from "react";
 
-import { push_toast } from "@frontend/app/feedback/desktop-toast";
 import { parse_bounded_setting_number_draft } from "@frontend/features/settings-editor/setting-number-draft";
 import { useI18n } from "@frontend/app/locale/locale-context";
 import "@frontend/pages/expert-settings-page/expert-settings-page.css";
@@ -72,7 +72,10 @@ export function ExpertSettingsPage(_props: ExpertSettingsPageProps): JSX.Element
   /** 非法输入保留草稿，合法输入交给设置入口保存。 */
   async function commit_preceding_lines_threshold_draft(): Promise<void> {
     if (parsed_preceding_lines_threshold === null) {
-      push_toast("error", t("expert_settings_page.feedback.preceding_lines_threshold_invalid"));
+      push_error_toast(
+        t("app.feedback.save_failed"),
+        t("expert_settings_page.feedback.preceding_lines_threshold_invalid"),
+      );
       set_is_preceding_lines_threshold_editing(true);
       return;
     }

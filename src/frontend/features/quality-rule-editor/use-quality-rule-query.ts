@@ -78,12 +78,11 @@ export function useQualityRuleQuery<TType extends QualityRuleKind, TSlice>(
 
   /** 页面重试和事件重查共用通知策略。 */
   const reload_quality_rule_snapshot = useCallback((): void => {
-    const had_snapshot = state_ref.current.status === "ready";
     const request = refresh_quality_rule_snapshot();
     const token = request_token_ref.current;
     void request.catch((error: unknown) => {
-      // 首次失败由内容区提供恢复入口；已有内容的刷新失败由页面通知。
-      if (had_snapshot && token === request_token_ref.current) on_load_error(error);
+      // 当前请求失败由操作入口通知，旧世代不能向新工程弹出错误。
+      if (token === request_token_ref.current) on_load_error(error);
     });
   }, [on_load_error, refresh_quality_rule_snapshot]);
 

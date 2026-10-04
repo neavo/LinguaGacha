@@ -95,13 +95,17 @@ describe("技能编辑工作面", () => {
       ),
     );
   }
-  it("初次加载展示具体错误，并能重试进入编辑器", async () => {
+  it("初次加载失败保留退出入口，重新进入恢复编辑器", async () => {
     await render("user", new DesktopApiError({ code: "file.not_found" }));
-    expect(container.textContent).toContain(t("app.error.file.not_found.message"));
-    const retry = [...container.querySelectorAll("button")].find(
-      (button) => button.textContent === t("app.action.retry"),
-    );
-    await act(async () => retry!.click());
+    expect(container.textContent).toContain(t("app.feedback.content_unavailable"));
+    expect(
+      [...container.querySelectorAll("button")].some(
+        (button) => button.textContent === t("app.action.retry"),
+      ),
+    ).toBe(false);
+    await act(async () => root!.unmount());
+    container.remove();
+    await render("user");
     expect(container.querySelector(".cm-content")?.textContent).toContain("name: sample");
   });
 
@@ -129,10 +133,6 @@ describe("技能编辑工作面", () => {
       name: "sample",
     });
     expect(container.querySelector(".cm-content")).toBeNull();
-  });
-  it("未知加载错误使用加载语境的兜底文案", async () => {
-    await render("user", new Error("unavailable"));
-    expect(container.textContent).toContain(t("skills_page.feedback.load_failed"));
   });
   it("用户主文件在同一编辑器展示字段和正文，普通文件直接展示文本", async () => {
     await render("user");

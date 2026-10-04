@@ -188,6 +188,9 @@ vi.mock("@frontend/app/feedback/desktop-toast", () => ({
   get push_progress_toast() {
     return toast_fixture.current.push_progress_toast;
   },
+  get push_error_toast() {
+    return toast_fixture.current.push_toast;
+  },
   get push_toast() {
     return toast_fixture.current.push_toast;
   },
@@ -1333,7 +1336,7 @@ describe("useProofreadingPageState", () => {
     ).toBe("foo");
   });
 
-  it("筛选面板统计会跟随弹窗筛选输入统一 250ms 防抖", async () => {
+  it("筛选面板统计会跟随弹窗输入防抖后统一查询", async () => {
     vi.useFakeTimers();
     await render_hook();
 
@@ -2519,8 +2522,8 @@ describe("useProofreadingPageState", () => {
     expect(latest_state).not.toBeNull();
     expect(latest_state?.cache_status).toBe("error");
     expect(toast_fixture.current.push_toast).toHaveBeenCalledWith(
-      "error",
-      "proofreading_page.feedback.refresh_failed",
+      "app.feedback.refresh_failed",
+      expect.any(Error),
     );
   });
 

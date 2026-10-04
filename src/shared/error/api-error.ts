@@ -9,6 +9,7 @@ import type { JsonValue } from "../../domain/json";
 
 export interface ApiErrorPayload {
   code: AppErrorCode;
+  message: string;
   details?: AppErrorPublicDetails;
 }
 
@@ -25,11 +26,12 @@ export type ApiSuccessEnvelope = {
 export type ApiEnvelope = ApiSuccessEnvelope | ApiErrorEnvelope;
 
 /**
- * API 公开形状只暴露安全字段，诊断上下文和 cause 链只能进入日志。
+ * API 传递错误码与具体原因，诊断上下文和 cause 链进入日志。
  */
 export function to_api_error_payload(error: AppError): ApiErrorPayload {
   return {
     code: error.code,
+    message: error.message,
     ...(Object.keys(error.public_details).length > 0 ? { details: error.public_details } : {}),
   };
 }

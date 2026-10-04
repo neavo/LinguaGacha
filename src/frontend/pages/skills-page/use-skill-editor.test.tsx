@@ -1,4 +1,3 @@
-import { create_text_resolver, type LocaleKey } from "@shared/i18n";
 const runtime_state = vi.hoisted(() => ({ owner: null as "agent" | null }));
 vi.mock("@frontend/app/state/use-desktop-state", () => ({
   useRuntimeSnapshot: () => runtime_state,
@@ -9,15 +8,21 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AgentSkillFile, AgentSkillIdentity } from "@shared/agent-skills";
 import { useSkillEditor } from "./use-skill-editor";
-import { SKILL_AUTOSAVE_DELAY_MS } from "./skill-editor-document";
-import { format_skill_editor_document, read_skill_editor_document } from "./skill-editor-document";
+import {
+  SKILL_AUTOSAVE_DELAY_MS,
+  format_skill_editor_document,
+  read_skill_editor_document,
+} from "./skill-editor-document";
 
 const mocks = vi.hoisted(() => ({ api: vi.fn(), toast: vi.fn(), t: (key: string) => key }));
 vi.mock("@frontend/app/desktop/desktop-api", async (original) => ({
   ...(await original<typeof import("@frontend/app/desktop/desktop-api")>()),
   api_fetch: mocks.api,
 }));
-vi.mock("@frontend/app/feedback/desktop-toast", () => ({ push_toast: mocks.toast }));
+vi.mock("@frontend/app/feedback/desktop-toast", () => ({
+  push_error_toast: mocks.toast,
+  push_toast: mocks.toast,
+}));
 vi.mock("@frontend/app/locale/locale-context", () => ({ useI18n: () => ({ t: mocks.t }) }));
 
 describe("技能自动保存", () => {
@@ -89,13 +94,12 @@ describe("技能自动保存", () => {
   /** 保存请求的顺序是自动保存协议的一部分。 */
   const saves = () => mocks.api.mock.calls.filter(([url]) => url.endsWith("/save"));
 
-  it("整包删除报错后查询确认包已不存在，显示通用错误并结束旧文件编辑", async () => {
-    const text = create_text_resolver("zh-CN");
-    mocks.t = (key: string) => text(key as LocaleKey);
+  it("整包删除失败后查询确认已删除，反馈原始原因并结束编辑", async () => {
+    const error = new DesktopApiError({ code: "file.io_failed" });
     await act(async () => root.render(<Harness />));
     const original_api = mocks.api.getMockImplementation()!;
     mocks.api.mockImplementation(async (url, body, signal) => {
-      if (url === "/api/skills/delete") throw new DesktopApiError({ code: "file.io_failed" });
+      if (url === "/api/skills/delete") throw error;
       if (url === "/api/skills/tree") throw new DesktopApiError({ code: "file.not_found" });
       return original_api(url, body, signal);
     });
@@ -103,7 +107,7 @@ describe("技能自动保存", () => {
       expect(await editor.delete_skill()).toBe(true);
     });
     expect(editor.file).toBeNull();
-    expect(mocks.toast).toHaveBeenCalledWith("error", text("app.error.file.io_failed.message"));
+    expect(mocks.toast).toHaveBeenCalledExactlyOnceWith(expect.any(String), error);
     await act(async () => vi.advanceTimersByTime(SKILL_AUTOSAVE_DELAY_MS * 2));
     expect(saves()).toHaveLength(0);
   });
@@ -118,7 +122,7 @@ describe("技能自动保存", () => {
     });
     expect(editor.file).toBe(previous);
     expect(editor.draft).toBe(draft);
-    expect(editor.error).not.toBe("");
+    expect(mocks.toast).toHaveBeenCalled();
     await act(async () => vi.advanceTimersByTime(SKILL_AUTOSAVE_DELAY_MS * 2));
     expect(saves()).toHaveLength(0);
   });
@@ -258,7 +262,7 @@ describe("技能自动保存", () => {
     });
     expect(editor.file?.path).toBe("SKILL.md");
     expect(read_skill_editor_document(editor.draft).body).toBe("keep me");
-    expect(editor.error).not.toBe("");
+    expect(mocks.toast).toHaveBeenCalled();
     save = undefined;
     await act(async () => {
       expect(await editor.flush()).toBe(true);
@@ -309,7 +313,7 @@ describe("技能自动保存", () => {
     expect(saves()).toHaveLength(0);
     await act(async () => vi.advanceTimersByTimeAsync(SKILL_AUTOSAVE_DELAY_MS * 2));
     expect(saves()).toHaveLength(1);
-    expect(editor.error).toBe("");
+    expect(editor.save_failure).toBeNull();
   });
   it("离页等待在途文件操作，文件操作失败时仍留在当前页", async () => {
     const previous = mocks.api.getMockImplementation()!;
@@ -339,8 +343,8 @@ describe("技能自动保存", () => {
       expect(await changed).toBe(false);
       expect(await leaving).toBe(false);
     });
-    expect(editor.error).toBe("");
-    expect(mocks.toast).toHaveBeenCalledWith("error", "skills_page.feedback.operation_failed");
+    expect(editor.save_failure).toBeNull();
+    expect(mocks.toast).toHaveBeenCalledWith("app.feedback.operation_failed", expect.any(Error));
   });
   it("重名使用通知，保存错误状态独立且允许继续自动保存", async () => {
     const previous = mocks.api.getMockImplementation()!;
@@ -352,10 +356,10 @@ describe("技能自动保存", () => {
       expect(await editor.change_file({ operation: "create_file", path: "note.md" })).toBe(false);
     });
     expect(mocks.toast).toHaveBeenCalledExactlyOnceWith(
-      "error",
-      "skills_page.feedback.duplicate_name",
+      "app.feedback.operation_failed",
+      expect.any(Error),
     );
-    expect(editor.error).toBe("");
+    expect(editor.save_failure).toBeNull();
     await edit("continue");
     await act(async () => vi.advanceTimersByTimeAsync(SKILL_AUTOSAVE_DELAY_MS));
     expect(disk.document?.body).toBe("continue");
@@ -369,7 +373,10 @@ describe("技能自动保存", () => {
       expect(await editor.change_file({ operation: "create_file", path: "note.md" })).toBe(false);
     });
     expect(mocks.api.mock.calls.some(([url]) => url.endsWith("/change"))).toBe(false);
-    expect(mocks.toast).toHaveBeenCalledWith("error", editor.error);
+    expect(mocks.toast).toHaveBeenCalledWith(
+      "app.feedback.save_failed",
+      expect.objectContaining({ message: "disk full" }),
+    );
     expect(editor.dirty).toBe(true);
   });
   it("放弃修改并重新加载后清除保存错误和冲突状态", async () => {
@@ -380,12 +387,12 @@ describe("技能自动保存", () => {
     await act(async () => {
       expect(await editor.flush()).toBe(false);
     });
-    expect(editor.conflict).toBe(true);
+    expect(editor.save_failure).toBe("conflict");
     await act(async () => {
       expect(await editor.recover()).toBe(true);
     });
-    expect(editor.error).toBe("");
-    expect(editor.conflict).toBe(false);
+    expect(editor.save_failure).toBeNull();
+    expect(editor.save_failure).toBeNull();
     expect(editor.dirty).toBe(false);
     expect(read_skill_editor_document(editor.draft).body).toBe("original");
   });
@@ -424,6 +431,9 @@ describe("技能自动保存", () => {
     });
     expect(editor.tree?.entries).toEqual(entries);
     expect(editor.file).toBeNull();
-    expect(editor.error).toBe("skills_page.feedback.load_failed");
+    expect(mocks.toast).toHaveBeenCalledWith(
+      "app.feedback.load_failed",
+      expect.objectContaining({ message: "read failed" }),
+    );
   });
 });

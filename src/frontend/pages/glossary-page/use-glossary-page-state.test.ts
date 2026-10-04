@@ -304,6 +304,7 @@ vi.mock("@frontend/app/state/use-desktop-state", () => {
 });
 
 vi.mock("@frontend/app/feedback/desktop-toast", () => ({
+  push_error_toast: push_toast_mock,
   push_toast: push_toast_mock,
 }));
 
@@ -505,7 +506,7 @@ describe("useGlossaryPageState", () => {
 
     expect(latest_state?.enabled).toBe(true);
     expect(push_toast_mock).not.toHaveBeenCalledWith("success", expect.anything());
-    expect(push_toast_mock).toHaveBeenCalledWith("error", expect.anything());
+    expect(push_toast_mock).toHaveBeenCalledWith(expect.anything(), expect.any(Error));
   });
 
   it("首次进入页面时直接读取预热后的统计结果", async () => {

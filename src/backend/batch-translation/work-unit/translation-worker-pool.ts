@@ -371,11 +371,11 @@ export class TranslationWorkerPool implements WorkUnitExecutor {
       task.resolve(message.data);
       return;
     }
+    const failure = normalize_log_error(message.error, "Work unit execution failed.");
     task.reject(
       new AppError("worker.failed", {
-        diagnostic_context: {
-          failure: normalize_log_error(message.error, "Work unit execution failed."),
-        },
+        message: failure.message,
+        diagnostic_context: { failure },
       }),
     );
   }

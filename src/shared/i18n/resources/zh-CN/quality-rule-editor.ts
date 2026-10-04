@@ -10,10 +10,6 @@ export const zh_cn_quality_rule_editor = {
   feedback: {
     regex_invalid: "正则表达式无效",
     source_required: "原文不能为空",
-    save_failed: "规则保存失败",
-    update_failed: "规则设置保存失败",
-    import_failed: "规则导入失败",
-    export_failed: "规则导出失败",
   },
   fields: {
     rule: "规则",

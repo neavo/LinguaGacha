@@ -1,3 +1,4 @@
+import { push_error_toast } from "@frontend/app/feedback/desktop-toast";
 import {
   type JSX,
   useEffect,
@@ -10,8 +11,6 @@ import {
 import { api_fetch } from "@frontend/app/desktop/desktop-api";
 import { useDesktopState, useProjectChangeSignal } from "@frontend/app/state/use-desktop-state";
 import { useProjectChangeSeqForSections } from "@frontend/app/state/project-change-signal";
-import { push_toast } from "@frontend/app/feedback/desktop-toast";
-import { resolve_visible_error_message } from "@frontend/app/feedback/visible-error-message";
 import { useI18n } from "@frontend/app/locale/locale-context";
 import type { ProjectDataSection } from "@shared/project-event";
 import type {
@@ -38,16 +37,12 @@ export function ProjectTranslationStatsProvider(props: { children: ReactNode }):
   const consumed_seq = useRef(change_seq);
 
   const report_error = useEffectEvent((error: unknown, retry: () => void): void => {
-    push_toast(
-      "error",
-      resolve_visible_error_message(error, t, t("batch_translation.feedback.stats_refresh_failed")),
-      {
-        action: {
-          label: t("app.action.retry"),
-          onClick: retry,
-        },
+    push_error_toast(t("batch_translation.feedback.stats_refresh_failed"), error, {
+      action: {
+        label: t("app.action.retry"),
+        onClick: retry,
       },
-    );
+    });
   });
 
   useLayoutEffect(() => {

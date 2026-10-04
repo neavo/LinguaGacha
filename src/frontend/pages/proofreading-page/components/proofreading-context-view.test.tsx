@@ -69,7 +69,6 @@ describe("ProofreadingContextView", () => {
         target_row_id="20"
         file_path="chapter.txt"
         draft_item={{ dst: "草稿译文", name_dst: "新姓名" }}
-        on_retry={() => {}}
       />,
     );
 
@@ -94,15 +93,13 @@ describe("ProofreadingContextView", () => {
     );
   });
 
-  it("显示加载和可重试错误状态", () => {
-    const on_retry = vi.fn();
+  it("显示加载和紧凑不可用状态", () => {
     const rendered = render_view(
       <ProofreadingContextView
         state={{ status: "loading" }}
         target_row_id="20"
         file_path="chapter.txt"
         draft_item={{ dst: "", name_dst: "" }}
-        on_retry={on_retry}
       />,
     );
     expect(rendered.querySelector("[role='status']")?.textContent).toContain(
@@ -115,16 +112,11 @@ describe("ProofreadingContextView", () => {
         target_row_id="20"
         file_path="chapter.txt"
         draft_item={{ dst: "", name_dst: "" }}
-        on_retry={on_retry}
       />,
     );
-    const retry = [...rendered.querySelectorAll("button")].find(
-      (button) => button.textContent === "app.action.retry",
+    expect(rendered.querySelector("[role='status']")?.textContent).toContain(
+      "app.feedback.content_unavailable",
     );
-    expect(rendered.querySelector("[role='alert']")?.textContent).toContain(
-      "proofreading_page.context.load_failed",
-    );
-    act(() => retry?.click());
-    expect(on_retry).toHaveBeenCalledOnce();
+    expect(rendered.querySelector("button")).toBeNull();
   });
 });

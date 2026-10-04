@@ -8,7 +8,7 @@ import type {
   ProofreadingDialogState,
 } from "@frontend/pages/proofreading-page/proofreading-page-ui-types";
 import { Badge } from "@frontend/shadcn/badge";
-import { AppButton } from "@frontend/widgets/app-button";
+import { AppContentState } from "@frontend/widgets/app-content-state";
 import { read_optional_item_name_text } from "@shared/item-name";
 
 type ProofreadingContextViewProps = {
@@ -16,7 +16,6 @@ type ProofreadingContextViewProps = {
   target_row_id: string;
   file_path: string;
   draft_item: ProofreadingDialogState["draft_item"];
-  on_retry: () => void;
 };
 
 /** 保留原字符以支持复制，同时为三类空白叠加可见标记。 */
@@ -83,14 +82,7 @@ export function ProofreadingContextView(props: ProofreadingContextViewProps): JS
   }
 
   if (props.state.status === "error") {
-    return (
-      <div className="proofreading-page__context-state" role="alert">
-        <span>{t("proofreading_page.context.load_failed")}</span>
-        <AppButton type="button" variant="outline" size="sm" onClick={props.on_retry}>
-          {t("app.action.retry")}
-        </AppButton>
-      </div>
-    );
+    return <AppContentState status="error" />;
   }
 
   return (

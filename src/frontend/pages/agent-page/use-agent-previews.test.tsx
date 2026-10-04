@@ -15,7 +15,10 @@ const mocks = vi.hoisted(() => ({
   t: (key: string): string => key,
 }));
 vi.mock("@frontend/app/desktop/desktop-api", () => ({ api_fetch: mocks.api }));
-vi.mock("@frontend/app/feedback/desktop-toast", () => ({ push_toast: mocks.toast }));
+vi.mock("@frontend/app/feedback/desktop-toast", () => ({
+  push_error_toast: mocks.toast,
+  push_toast: mocks.toast,
+}));
 vi.mock("@frontend/app/locale/locale-context", () => ({ useI18n: () => ({ t: mocks.t }) }));
 vi.mock("@frontend/app/session/project-session-ui-state-context", () => ({
   useProjectSessionUiState: () => ({ get_page_ui_state: mocks.get, set_page_ui_state: mocks.set }),

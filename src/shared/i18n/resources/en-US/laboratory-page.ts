@@ -31,7 +31,4 @@ export const en_us_laboratory_page = {
         "Entries with identical source text in the same file share <emphasis>one translation</emphasis>, enabled by default",
     },
   },
-  feedback: {
-    refresh_failed: "Unable to refresh laboratory settings. Please try again …",
-  },
 } satisfies LocaleMessageSchema<typeof zh_cn_laboratory_page>;

@@ -55,16 +55,10 @@ export const zh_cn_model_page = {
   },
   feedback: {
     copy_success: "模型已复制\n分组：{CATEGORY}\n名称：{NAME}",
-    copy_failed: "复制模型失败，请稍后再试 …",
-    refresh_failed: "模型列表刷新失败，请稍后重试 …",
-    add_failed: "新增模型失败，请稍后再试 …",
-    update_failed: "模型配置保存失败，请稍后再试 …",
-    reorder_failed: "模型顺序保存失败，请稍后再试 …",
     delete_last_one: "每个分类至少需要保留一个模型，无法删除 …",
     agent_limits_adjusted: "设置值非法，已为您自动调整为可用配置 …",
     json_format_error: "JSON 格式错误，请输入有效的 JSON 对象 …",
-    selector_load_failed: "获取模型列表失败，请检查接口配置 …",
-    test_failed: "模型测试失败，请稍后再试 …",
+    test_failed: "模型测试失败 …",
   },
   fields: {
     speed: {

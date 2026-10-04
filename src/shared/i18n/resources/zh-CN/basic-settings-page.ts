@@ -27,8 +27,7 @@ export const zh_cn_basic_settings_page = {
     },
   },
   feedback: {
-    refresh_failed: "当前无法刷新基础设置，请稍后重试 …",
     request_timeout_invalid: "请求超时时间必须填写为有效范围内的数字 …",
-    pick_directory_failed: "目录选择失败，请重新选择固定保存目录 …",
+    pick_directory_failed: "目录选择失败 …",
   },
 } as const;

@@ -20,11 +20,4 @@ export const de_de_custom_prompt_page = {
       description: "Daten wirklich zurücksetzen …?",
     },
   },
-  feedback: {
-    load_failed: "Die Anweisung konnte nicht geladen werden. Bitte erneut versuchen …",
-    save_failed:
-      "Die Anweisung konnte nicht gespeichert werden. Ihre Änderungen bleiben erhalten …",
-    import_failed: "Der Prompt konnte nicht importiert werden",
-    export_failed: "Der Prompt konnte nicht exportiert werden",
-  },
 } satisfies LocaleMessageSchema<typeof zh_cn_custom_prompt_page>;

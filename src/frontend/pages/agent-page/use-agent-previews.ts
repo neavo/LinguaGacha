@@ -1,8 +1,7 @@
+import { push_error_toast } from "@frontend/app/feedback/desktop-toast";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { AgentFile } from "@shared/agent-workspace-file";
 import { api_fetch } from "@frontend/app/desktop/desktop-api";
-import { push_toast } from "@frontend/app/feedback/desktop-toast";
-import { resolve_visible_error_message } from "@frontend/app/feedback/visible-error-message";
 import { useI18n } from "@frontend/app/locale/locale-context";
 import { useProjectSessionUiState } from "@frontend/app/session/project-session-ui-state-context";
 
@@ -86,10 +85,7 @@ export function useAgentPreviews(chat_id: string) {
           .catch((error: unknown) => {
             if (!controller.signal.aborted) {
               const t = text.current;
-              push_toast(
-                "error",
-                resolve_visible_error_message(error, t, t("agent_page.document.read_failed")),
-              );
+              push_error_toast(t("app.feedback.read_failed"), error);
             }
             return null;
           });

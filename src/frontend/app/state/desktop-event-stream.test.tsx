@@ -32,7 +32,10 @@ vi.mock("@frontend/app/desktop/desktop-api", async (importOriginal) => {
   };
 });
 
-vi.mock("@frontend/app/feedback/desktop-toast", () => ({ push_toast: push_toast_mock }));
+vi.mock("@frontend/app/feedback/desktop-toast", () => ({
+  push_error_toast: push_toast_mock,
+  push_toast: push_toast_mock,
+}));
 
 let root: Root | null = null;
 let container: HTMLDivElement | null = null;
@@ -156,7 +159,7 @@ describe("useDesktopEventStream", () => {
           login: {
             id: "attempt",
             status: "failed",
-            error: { code: "model.provider_failed", details: { message: "Permission denied" } },
+            error: { code: "model.provider_failed", message: "Permission denied" },
           },
         },
       }),

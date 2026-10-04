@@ -1,4 +1,8 @@
-import { read_skill_editor_document, skill_editor_layout } from "./skill-editor-document";
+import {
+  read_skill_editor_document,
+  skill_editor_layout,
+  SKILL_AUTOSAVE_DELAY_MS,
+} from "./skill-editor-document";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -10,7 +14,6 @@ import { PageLeaveProvider } from "@frontend/app/navigation/page-leave-provider"
 import { TooltipProvider } from "@frontend/shadcn/tooltip";
 import { PersonalityEditor } from "./personality-editor";
 import { create_text_resolver } from "@shared/i18n";
-import { SKILL_AUTOSAVE_DELAY_MS } from "./skill-editor-document";
 
 const t = create_text_resolver("zh-CN");
 const mocks = vi.hoisted(() => ({ api: vi.fn(), owner: null as "agent" | null }));
@@ -213,12 +216,15 @@ describe("角色设定编辑", () => {
     await act(async () => vi.advanceTimersByTime(SKILL_AUTOSAVE_DELAY_MS));
     expect(read_skill_editor_document(view().state.doc.toString()).body).toBe("Unsaved role");
     expect(disk.body).toBe("Custom role");
-    expect(container.querySelector('[role="alert"]')).not.toBeNull();
-    expect(status()).toBe(t("skills_page.editor.modified"));
-    const retry = [...container.querySelectorAll("button")].find(
-      (button) => button.textContent === "重试",
-    )!;
-    await act(async () => retry.click());
+    expect(container.querySelector('[role="alert"]')).toBeNull();
+    expect(status()).toBe(t("skills_page.editor.save_failed"));
+    await act(async () => vi.advanceTimersByTime(SKILL_AUTOSAVE_DELAY_MS * 2));
+    expect(disk.body).toBe("Custom role");
+    await act(async () =>
+      container
+        .querySelector(".skill-editor")!
+        .dispatchEvent(new KeyboardEvent("keydown", { key: "s", ctrlKey: true, bubbles: true })),
+    );
     expect(disk.body).toBe("Unsaved role");
     expect(container.querySelector('[role="alert"]')).toBeNull();
     expect(status()).toBe(t("skills_page.editor.saved"));

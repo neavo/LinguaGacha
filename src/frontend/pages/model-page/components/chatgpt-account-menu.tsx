@@ -1,7 +1,6 @@
+import { push_error_toast } from "@frontend/app/feedback/desktop-toast";
 import { type JSX, type ReactNode, useEffect } from "react";
 import { api_fetch } from "@frontend/app/desktop/desktop-api";
-import { push_toast } from "@frontend/app/feedback/desktop-toast";
-import { resolve_visible_error_message } from "@frontend/app/feedback/visible-error-message";
 import { useI18n } from "@frontend/app/locale/locale-context";
 import {
   apply_model_auth_snapshot,
@@ -32,15 +31,7 @@ export function ChatGPTAccountMenu(props: {
         if (!cancelled) apply_model_auth_snapshot(result.snapshot);
       })
       .catch((error: unknown) => {
-        if (!cancelled)
-          push_toast(
-            "error",
-            resolve_visible_error_message(
-              error,
-              t,
-              error instanceof Error ? error.message : t("app.error.model.provider_failed.message"),
-            ),
-          );
+        if (!cancelled) push_error_toast(t("app.feedback.model_request_failed"), error);
       });
     return () => {
       cancelled = true;

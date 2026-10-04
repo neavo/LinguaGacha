@@ -1,11 +1,11 @@
-import { AppButton } from "@frontend/widgets/app-button";
+import { push_error_toast } from "@frontend/app/feedback/desktop-toast";
+import { AppContentState } from "@frontend/widgets/app-content-state";
 import type { AgentDocument } from "@shared/agent-workspace-file";
 import { AppEditor } from "@frontend/widgets/app-editor/app-editor";
 import type { AppViewerRange } from "@frontend/widgets/app-editor/app-editor-code-mirror";
 import { api_fetch, api_blob } from "@frontend/app/desktop/desktop-api";
 import { MediaViewport } from "@frontend/features/media-preview/media-viewport";
 import { useI18n } from "@frontend/app/locale/locale-context";
-import { resolve_visible_error_message } from "@frontend/app/feedback/visible-error-message";
 import { AgentFileContext } from "./agent-file-context";
 import { useLayoutEffect, useRef, useEffect, useState, useContext, type JSX } from "react";
 import { AgentMarkdown } from "./agent-markdown";
@@ -32,14 +32,13 @@ export function AgentPreviewPage({
   const chat_id = useContext(AgentFileContext)?.chat_id;
   // 内容与读取意图一起发布，旧正文不能消费新锚点，图片 MIME 与 URL 保持同批次。
   const [content, set_content] = useState<AgentPreviewContent | null>(null);
-  const [error, set_error] = useState<string | null>(null);
-  const [retry, set_retry] = useState(0);
+  const [failed, set_failed] = useState(false);
   const text = useRef(t); // 在途请求的反馈使用当前界面语言。
   text.current = t;
   useEffect(() => {
     const controller = new AbortController();
     let url: string | null = null;
-    set_error(null);
+    set_failed(false);
     void (async () => {
       if (document.preview === "image") {
         const query = new URLSearchParams({ path: document.path, chatId: chat_id ?? "" });
@@ -68,29 +67,16 @@ export function AgentPreviewPage({
     })().catch((error: unknown) => {
       if (!controller.signal.aborted) {
         set_content(null);
-        set_error(
-          resolve_visible_error_message(
-            error,
-            text.current,
-            text.current("agent_page.document.read_failed"),
-          ),
-        );
+        set_failed(true);
+        push_error_toast(text.current("app.feedback.read_failed"), error);
       }
     });
     return () => {
       controller.abort();
       if (url) URL.revokeObjectURL(url);
     };
-  }, [document.path, document.preview, document.activation, chat_id, retry]);
-  if (error)
-    return (
-      <div className="agent-document">
-        <p>{error}</p>
-        <AppButton onClick={() => set_retry((value) => value + 1)}>
-          {t("app.action.retry")}
-        </AppButton>
-      </div>
-    );
+  }, [document.path, document.preview, document.activation, chat_id]);
+  if (failed) return <AppContentState status="error" />;
   if (content === null)
     return (
       <div className="agent-document" aria-busy="true">

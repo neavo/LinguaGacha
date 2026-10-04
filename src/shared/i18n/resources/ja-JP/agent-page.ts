@@ -5,7 +5,6 @@ export const ja_jp_agent_page = {
     conversation: "会話",
     view: "表示",
     save_as: "名前を付けて保存",
-    read_failed: "文書を読み込めません",
   },
   batch_translation_model: {
     follow: "同じモデル",
@@ -119,7 +118,6 @@ export const ja_jp_agent_page = {
     edit: "編集",
     copy: "コピー",
     copied: "コピーしました",
-    copy_failed: "コピーできませんでした",
     follow_latest: "最新を追従",
   },
   editing: {
@@ -157,16 +155,12 @@ export const ja_jp_agent_page = {
   upload: { uploading: "アップロード中", failed: "アップロードに失敗" },
   file_saved: "ファイルを保存しました",
   error: {
-    activate_link: "リンクを処理できませんでした",
+    activate_link: "リンクを処理できませんでした …",
     decision: "回答を送信できませんでした。再試行してください …",
     restore: "セッションを復元できませんでした。再試行してください …",
     connection: "接続が切れました。再接続を待っています …",
     send: "送信できませんでした。下書きは保持されています …",
     continue: "続行できませんでした。再試行してください …",
-    edit: "メッセージを更新できませんでした。編集内容は保持されています …",
-    queue_update: "待機中のメッセージを更新できませんでした。編集内容は保持されています …",
-    queue_delete: "待機中のメッセージを削除できませんでした。再試行してください …",
-    queue_reorder: "キューの順序を更新できませんでした。再試行してください …",
     queue_send: "メッセージを今すぐ送信できませんでした。キューに保持されています …",
     stop: "停止できませんでした。再試行してください …",
     reset: "新しいタスクを作成できませんでした。再試行してください …",

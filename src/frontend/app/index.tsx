@@ -1,3 +1,4 @@
+import { push_error_toast } from "@frontend/app/feedback/desktop-toast";
 import { TranslationExportProvider } from "@frontend/app/session/translation-export/translation-export-provider";
 import { PageLeaveProvider } from "@frontend/app/navigation/page-leave-provider";
 import { usePageLeave } from "@frontend/app/navigation/page-leave-context";
@@ -39,9 +40,7 @@ import {
   useBatchTranslationSnapshot,
 } from "@frontend/app/state/use-desktop-state";
 import { DesktopProgressToast } from "@frontend/app/feedback/desktop-progress-toast";
-import { push_toast } from "@frontend/app/feedback/desktop-toast";
 import { AgentCompletionAttention } from "@frontend/app/feedback/agent-completion-attention";
-import { resolve_visible_error_message } from "@frontend/app/feedback/visible-error-message";
 import "@frontend/app/shell/app-shell.css";
 import type { AgentInputRequest, RouteId } from "@frontend/app/navigation/types";
 import { LocaleProvider } from "@frontend/app/locale/locale-provider";
@@ -272,7 +271,7 @@ function AppContent(): JSX.Element {
       set_selected_route(next_route.selected_route);
       set_agent_input_request(request ?? null);
     })().catch((error: unknown) => {
-      push_toast("error", resolve_visible_error_message(error, t, t("app.feedback.update_failed")));
+      push_error_toast(t("app.feedback.update_failed"), error);
     });
   }
 
@@ -324,14 +323,14 @@ function AppContent(): JSX.Element {
   function handle_open_logs(): void {
     set_log_badge_visible(false);
     void window.desktopApp.openLogWindow().catch((error: unknown) => {
-      push_toast("error", resolve_visible_error_message(error, t, t("app.feedback.update_failed")));
+      push_error_toast(t("app.feedback.update_failed"), error);
     });
   }
 
   /** 将语言选择提交给共享设置入口。 */
   function handle_select_app_language(language: AppLanguage): void {
     void update_app_language(language).catch((error: unknown) => {
-      push_toast("error", resolve_visible_error_message(error, t, t("app.feedback.update_failed")));
+      push_error_toast(t("app.feedback.update_failed"), error);
     });
   }
 
@@ -424,10 +423,7 @@ function AppContent(): JSX.Element {
           phase: "confirming",
           release,
         });
-        push_toast(
-          "error",
-          resolve_visible_error_message(error, t, t("app.feedback.update_failed")),
-        );
+        push_error_toast(t("app.feedback.update_failed"), error);
       }
       return;
     }
@@ -458,7 +454,7 @@ function AppContent(): JSX.Element {
         release,
         zip_path,
       });
-      push_toast("error", resolve_visible_error_message(error, t, t("app.feedback.update_failed")));
+      push_error_toast(t("app.feedback.update_failed"), error);
     }
   }
 
@@ -476,10 +472,7 @@ function AppContent(): JSX.Element {
         zip_path: null,
       });
       void open_external_url(result.release_url).catch((error: unknown) => {
-        push_toast(
-          "error",
-          resolve_visible_error_message(error, t, t("app.feedback.update_failed")),
-        );
+        push_error_toast(t("app.feedback.update_failed"), error);
       });
       return;
     }
@@ -499,7 +492,7 @@ function AppContent(): JSX.Element {
     }
 
     void open_external_url(GITHUB_REPOSITORY_URL).catch((error: unknown) => {
-      push_toast("error", resolve_visible_error_message(error, t, t("app.feedback.update_failed")));
+      push_error_toast(t("app.feedback.update_failed"), error);
     });
   }
 
@@ -515,7 +508,7 @@ function AppContent(): JSX.Element {
       await window.desktopApp.quitApp();
     } catch (error) {
       set_close_confirm_submitting(false);
-      push_toast("error", resolve_visible_error_message(error, t, t("app.feedback.update_failed")));
+      push_error_toast(t("app.feedback.update_failed"), error);
     }
   }
 
@@ -605,13 +598,13 @@ function AppContent(): JSX.Element {
               ) : initial_state_status === "error" ? (
                 <AppContentState
                   status="error"
-                  message={t("app.feedback.initial_load_failed")}
+
                   on_retry={() => {
                     void load_initial_state();
                   }}
                 />
               ) : (
-                <AppContentState status="loading" message={t("app.action.loading")} />
+                <AppContentState status="loading" />
               )}
             </SidebarInset>
           </section>

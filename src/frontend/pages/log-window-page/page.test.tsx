@@ -211,6 +211,15 @@ describe("日志窗口", () => {
     });
     expect(mocks.detail).toHaveBeenLastCalledWith("20260913:1", "rev", expect.any(AbortSignal));
   });
+  it("详情读取失败后重新打开同一条日志即可恢复", async () => {
+    await mount();
+    mocks.detail.mockRejectedValueOnce(new Error("read interrupted"));
+    const row = container!.querySelector<HTMLElement>('[data-log-row-id="20260913:1"]')!;
+    await act(async () => row.click());
+    expect(container!.textContent).toContain("app.feedback.content_unavailable");
+    await act(async () => row.dispatchEvent(new MouseEvent("dblclick", { bubbles: true })));
+    expect(container!.textContent).toContain("详情20260913:1");
+  });
   it("接近底部自动翻页，保持选择，回到顶部和整体读取错误仍可重试", async () => {
     await mount();
     const buttons = [...container!.querySelectorAll("button")];
@@ -247,7 +256,8 @@ describe("日志窗口", () => {
         </StrictMode>,
       );
     });
-    expect(container!.textContent).toContain("log_window_page.history.failed");
+    expect(container!.querySelector(".log-window-page__table")).not.toBeNull();
+    expect(container!.textContent).not.toContain("app.feedback.read_failed");
   });
   it("正在读取或没有更早记录时滚动不触发额外请求", async () => {
     await mount();

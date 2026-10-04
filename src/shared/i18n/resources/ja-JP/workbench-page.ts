@@ -13,10 +13,8 @@ export const ja_jp_workbench_page = {
     actions: "操作",
   },
   feedback: {
-    refresh_failed: "ワークベンチを更新できませんでした",
     add_file_loading_toast: "ファイルを追加し、キャッシュを更新中 …",
     no_valid_file: "追加できる有効なファイルがありません",
-    file_action_failed: "ファイル操作に失敗しました。しばらくしてから再試行してください …",
     close_project_failed:
       "プロジェクトを閉じられませんでした。しばらくしてから再試行してください …",
   },
@@ -38,9 +36,6 @@ export const ja_jp_workbench_page = {
     warning_list: "校正の警告",
     retry_check: "再確認",
     continue_generate: "出力を続ける",
-  },
-  reorder: {
-    failed: "ファイルの順序を保存できませんでした。しばらくしてから再試行してください …",
   },
   dialog: {
     import_conflict: {

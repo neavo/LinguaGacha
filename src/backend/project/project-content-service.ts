@@ -44,7 +44,6 @@ import {
 } from "./project-write-state";
 
 import * as AppErrors from "../../shared/error";
-import { t_main_log } from "../log/log-text";
 
 type ProjectAssetRecord = { path: string; sort_order: number };
 
@@ -603,7 +602,6 @@ export class ProjectContentService {
       failures: failed_files,
       log_manager: this.log_manager,
       source: "project-import",
-      text: t_main_log,
     });
   }
 

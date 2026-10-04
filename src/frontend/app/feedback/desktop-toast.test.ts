@@ -25,9 +25,10 @@ afterEach(async () => {
 
 it("恢复动作持续可用并交给通知展示层", () => {
   const action = { label: "撤销", onClick: vi.fn() };
-  notifications.push_toast("error", "保存失败", { action });
-  expect(toast.error).toHaveBeenCalledWith("保存失败", {
+  notifications.push_error_toast("保存失败 …", new Error("disk full"), { action });
+  expect(toast.error).toHaveBeenCalledWith("保存失败 …", {
     action,
+    description: "disk full",
     duration: Number.POSITIVE_INFINITY,
   });
 });

@@ -39,7 +39,6 @@ export const ja_jp_expert_settings_page = {
     },
   },
   feedback: {
-    refresh_failed: "エキスパート設定を更新できません。しばらくしてから再試行してください …",
     preceding_lines_threshold_invalid: "前文の最大行数には有効な範囲の数値を入力してください …",
   },
 } satisfies LocaleMessageSchema<typeof zh_cn_expert_settings_page>;

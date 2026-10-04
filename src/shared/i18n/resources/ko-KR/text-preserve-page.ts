@@ -29,7 +29,6 @@ export const ko_kr_text_preserve_page = {
     },
   },
   feedback: {
-    load_failed: "텍스트 보호 규칙을 불러오지 못했습니다. 잠시 후 다시 시도해 주세요 …",
     unknown_error: "작업에 실패했습니다. 잠시 후 다시 시도해 주세요 …",
     mode_refresh_pending:
       "텍스트 보호 모드를 변경했습니다. 교정 캐시가 아직 새로 고쳐지고 있으니 잠시 후 결과를 확인해 주세요 …",

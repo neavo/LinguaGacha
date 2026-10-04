@@ -15,7 +15,10 @@ vi.mock("@frontend/app/desktop/desktop-api", () => ({
   read_log_dates: mocks.dates,
 }));
 
-vi.mock("@frontend/app/feedback/desktop-toast", () => ({ push_toast: mocks.toast }));
+vi.mock("@frontend/app/feedback/desktop-toast", () => ({
+  push_error_toast: mocks.toast,
+  push_toast: mocks.toast,
+}));
 vi.mock("@frontend/app/locale/locale-context", () => ({ useI18n: () => ({ t: mocks.text }) }));
 
 /** 构造单日期分页响应，保留前后游标约束。 */
@@ -136,7 +139,10 @@ describe("useLogPages", () => {
     await act(async () => {
       current.load_older();
     });
-    expect(mocks.toast).toHaveBeenCalledExactlyOnceWith("error", "log_window_page.history.failed");
+    expect(mocks.toast).toHaveBeenCalledExactlyOnceWith(
+      "app.feedback.read_failed",
+      expect.any(Error),
+    );
     expect(current.entries.map((entry) => entry.line)).toEqual([10]);
     expect(current.failed).toBe(false);
     const calls = mocks.page.mock.calls.length;

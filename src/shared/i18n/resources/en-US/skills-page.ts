@@ -12,6 +12,7 @@ export const en_us_skills_page = {
     request: "Please install this skill for me: {LINK}",
   },
   editor: {
+    save_failed: "Save failed",
     reset: "Reset",
     delete_skill_confirm: "Confirm deleting the skill …?",
     reset_skill_confirm: "Confirm resetting the skill …?",
@@ -27,16 +28,10 @@ export const en_us_skills_page = {
     saved: "Saved",
     discard: "Discard changes and reload",
     overwrite: "Overwrite file",
-    conflict: "This file changed externally. Reload it or explicitly overwrite it …",
+    conflict: "Version conflict",
     invalid_name:
       "Use up to 64 lowercase letters, digits and single hyphens. Start and end with a letter or digit …",
     invalid_description: "Enter a single-line description of up to 1024 characters …",
     unsupported: "This file is not UTF-8 text or exceeds 2 MB and cannot be edited here …",
-  },
-  feedback: {
-    duplicate_name: "Duplicate file name",
-    operation_failed: "File operation failed",
-    load_failed: "Failed to load skills",
-    save_failed: "Failed to save skill settings",
   },
 } as const;

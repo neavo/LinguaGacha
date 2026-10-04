@@ -229,7 +229,7 @@ describe("ChatGPT 账户共享凭据", () => {
         status: "failed",
         error: {
           code: "model.provider_failed",
-          details: { message: "ChatGPT sign-in timed out." },
+          message: "ChatGPT sign-in timed out.",
         },
       }),
     );
@@ -283,7 +283,7 @@ describe("ChatGPT 账户共享凭据", () => {
           login: {
             id: started.id,
             status: "failed",
-            error: { code: "model.provider_failed", details: { message: "Permission denied" } },
+            error: { code: "model.provider_failed", message: "Permission denied" },
           },
         }),
       }),

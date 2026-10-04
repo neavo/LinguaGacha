@@ -1,27 +1,31 @@
 import type { JSX } from "react";
-import { CircleAlert, LoaderCircle } from "lucide-react";
+import { LoaderCircle } from "lucide-react";
 import { useI18n } from "@frontend/app/locale/locale-context";
 import { AppButton } from "@frontend/widgets/app-button";
 
-type AppContentStateProps =
-  | { status: "loading"; message: string }
-  | { status: "error"; message: string; on_retry: () => void };
+type AppContentStateProps = {
+  status: "loading" | "error";
+  message?: string;
+  on_retry?: () => void;
+};
 
-/** 内容不可读时占用原内容区域，重试仍由查询拥有者执行。 */
+/** 内容状态表达可用性，专用恢复动作由调用者按需提供。 */
 export function AppContentState(props: AppContentStateProps): JSX.Element {
   const { t } = useI18n();
   return (
     <div
-      className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 p-4 text-[length:var(--ui-font-size-13)] text-muted-foreground"
-      role={props.status === "error" ? "alert" : "status"}
+      className="flex items-center justify-center gap-2 p-4 text-[length:var(--ui-font-size-13)] text-muted-foreground"
+      role="status"
     >
       {props.status === "loading" ? (
         <LoaderCircle className="size-5 animate-spin" aria-hidden="true" />
-      ) : (
-        <CircleAlert className="size-5" aria-hidden="true" />
-      )}
-      <p>{props.message}</p>
-      {props.status === "error" ? (
+      ) : null}
+      <p>
+        {props.status === "loading"
+          ? (props.message ?? t("app.action.loading"))
+          : t("app.feedback.content_unavailable")}
+      </p>
+      {props.status === "error" && props.on_retry ? (
         <AppButton variant="outline" size="sm" onClick={props.on_retry}>
           {t("app.action.retry")}
         </AppButton>

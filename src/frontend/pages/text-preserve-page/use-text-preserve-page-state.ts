@@ -1,3 +1,9 @@
+import {
+  push_error_toast,
+  ModalProgressToastTimeoutError,
+  push_toast,
+  run_modal_progress_toast,
+} from "@frontend/app/feedback/desktop-toast";
 import { useQualityRuleTable } from "@frontend/features/quality-rule-editor/use-quality-rule-table";
 import { useQualityRuleEditing } from "@frontend/features/quality-rule-editor/use-quality-rule-editing";
 import { useQualityRulePresets } from "@frontend/features/quality-rule-editor/use-quality-rule-presets";
@@ -17,12 +23,7 @@ import {
 import { useQualityRuleStatistics } from "@frontend/app/session/quality-rule-statistics-context";
 import { useDesktopState, useRuntimeSnapshot } from "@frontend/app/state/use-desktop-state";
 import { is_runtime_busy } from "@frontend/app/state/runtime-activity-store";
-import {
-  ModalProgressToastTimeoutError,
-  push_toast,
-  run_modal_progress_toast,
-} from "@frontend/app/feedback/desktop-toast";
-import { resolve_visible_error_message } from "@frontend/app/feedback/visible-error-message";
+
 import { useI18n, type LocaleKey } from "@frontend/app/locale/locale-context";
 
 import {
@@ -140,10 +141,7 @@ export function useTextPreservePageState() {
   /** 将查询失败交给页面反馈入口。 */
   const handle_quality_rule_load_error = useCallback(
     (error: unknown): void => {
-      push_toast(
-        "error",
-        resolve_visible_error_message(error, t, t("text_preserve_page.feedback.load_failed")),
-      );
+      push_error_toast(t("app.feedback.load_failed"), error);
     },
     [t],
   );
@@ -241,7 +239,7 @@ export function useTextPreservePageState() {
   /** 按统一错误契约解析文本保护操作失败。 */
   const push_action_error_toast = useCallback(
     (error: unknown): void => {
-      push_toast("error", resolve_visible_error_message(error, t, unknown_error_message));
+      push_error_toast(unknown_error_message, error);
     },
     [t, unknown_error_message],
   );

@@ -1,3 +1,4 @@
+import { push_error_toast, push_toast } from "@frontend/app/feedback/desktop-toast";
 import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
 
 import { api_fetch } from "@frontend/app/desktop/desktop-api";
@@ -17,8 +18,7 @@ import {
   useBatchTranslationSnapshot,
 } from "@frontend/app/state/use-desktop-state";
 import { is_runtime_busy } from "@frontend/app/state/runtime-activity-store";
-import { push_toast } from "@frontend/app/feedback/desktop-toast";
-import { resolve_visible_error_message } from "@frontend/app/feedback/visible-error-message";
+
 import { useI18n } from "@frontend/app/locale/locale-context";
 import type { LocaleKey } from "@shared/i18n";
 import {
@@ -200,10 +200,7 @@ export function useBatchTranslationTask(
       );
       sync_runtime_task_snapshot(normalize_batch_translation_snapshot(task_payload));
     } catch (error) {
-      push_toast(
-        "error",
-        resolve_visible_error_message(error, t, t("batch_translation.feedback.refresh_failed")),
-      );
+      push_error_toast(t("batch_translation.feedback.refresh_failed"), error);
     }
   }, [clear_translation_task_state, project_snapshot.loaded, sync_runtime_task_snapshot, t]);
 
@@ -243,10 +240,7 @@ export function useBatchTranslationTask(
         set_translation_waveform_history([]);
       }
     } catch (error) {
-      push_toast(
-        "error",
-        resolve_visible_error_message(error, t, t("batch_translation.feedback.start_failed")),
-      );
+      push_error_toast(t("batch_translation.feedback.start_failed"), error);
     }
   }, [
     sync_runtime_task_snapshot,
@@ -334,7 +328,7 @@ export function useBatchTranslationTask(
         fallback_message = t("batch_translation.feedback.reset_failed_failed");
       }
 
-      push_toast("error", resolve_visible_error_message(error, t, fallback_message));
+      push_error_toast(fallback_message, error);
       set_task_confirm_state((previous_state) => {
         if (previous_state === null) {
           return null;

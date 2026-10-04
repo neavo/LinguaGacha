@@ -1,3 +1,4 @@
+import { push_error_toast } from "@frontend/app/feedback/desktop-toast";
 import { AGENT_SKILL_MAIN_FILE, type AgentSkillFileEntry } from "@shared/agent-skills";
 import { SkillEditorToolbar, SkillEditorWorkspace } from "./skill-editor";
 import { personality_editor_extension } from "./skill-editor-extension";
@@ -7,8 +8,6 @@ import { useI18n } from "@frontend/app/locale/locale-context";
 import { usePageLeave } from "@frontend/app/navigation/page-leave-context";
 import { useRuntimeSnapshot } from "@frontend/app/state/use-desktop-state";
 import { api_fetch } from "@frontend/app/desktop/desktop-api";
-import { resolve_visible_error_message } from "@frontend/app/feedback/visible-error-message";
-import { AppButton } from "@frontend/widgets/app-button";
 import { AppContentState } from "@frontend/widgets/app-content-state";
 import { AppEditor } from "@frontend/widgets/app-editor/app-editor";
 import { Card } from "@frontend/shadcn/card";
@@ -46,7 +45,15 @@ export function PersonalityEditor({ on_back }: { on_back: () => void }): JSX.Ele
         locked={locked || !editor.saved}
         action="reset"
         on_action={editor.reset}
-        status={!editor.saved ? null : editor.dirty || editor.saving ? "modified" : "saved"}
+        status={
+          !editor.saved
+            ? null
+            : editor.save_failed
+              ? "save_failed"
+              : editor.dirty || editor.saving
+                ? "modified"
+                : "saved"
+        }
         on_back={() => {
           void editor.flush().then((ok) => {
             if (ok) on_back();
@@ -55,13 +62,7 @@ export function PersonalityEditor({ on_back }: { on_back: () => void }): JSX.Ele
       />
       {!editor.saved ? (
         <Card className="skill-editor__state">
-          <AppContentState
-            status={editor.error ? "error" : "loading"}
-            message={editor.error || t("app.action.loading")}
-            on_retry={() => {
-              void editor.reload();
-            }}
-          />
+          <AppContentState status={editor.busy ? "loading" : "error"} />
         </Card>
       ) : (
         <SkillEditorWorkspace
@@ -72,33 +73,6 @@ export function PersonalityEditor({ on_back }: { on_back: () => void }): JSX.Ele
           on_open={editor.flush}
         >
           <Card className="skill-editor__content" data-readonly={locked || undefined}>
-            {editor.error && (
-              <div className="skill-editor__error" role="alert">
-                {editor.error}
-                <div>
-                  <AppButton
-                    size="sm"
-                    variant="outline"
-                    disabled={locked || editor.saving}
-                    onClick={() => {
-                      void editor.flush();
-                    }}
-                  >
-                    {t("app.action.retry")}
-                  </AppButton>
-                  <AppButton
-                    size="sm"
-                    variant="ghost"
-                    disabled={editor.busy || editor.saving}
-                    onClick={() => {
-                      void editor.reload();
-                    }}
-                  >
-                    {t("skills_page.editor.discard")}
-                  </AppButton>
-                </div>
-              </div>
-            )}
             <AppEditor
               key={editor.reset_count}
               class_name="skill-editor__text"
@@ -124,7 +98,7 @@ export function PersonalityEditor({ on_back }: { on_back: () => void }): JSX.Ele
 type PersonalityEditorState = {
   saved: AgentPersonality | null;
   draft: string;
-  error: string;
+  save_failed: boolean; // 失败后等待新输入或显式保存，避免自动重试循环。
   busy: boolean;
   saving: boolean;
   composing: boolean;
@@ -140,7 +114,7 @@ function usePersonalityEditor() {
   const [state, set_state] = useState<PersonalityEditorState>({
     saved: null,
     draft: "",
-    error: "",
+    save_failed: false,
     busy: false,
     saving: false,
     composing: false,
@@ -166,9 +140,8 @@ function usePersonalityEditor() {
   const report = useCallback(
     (error: unknown, context: "load_failed" | "save_failed" = "save_failed") => {
       const text = environment.current.t;
-      update({
-        error: resolve_visible_error_message(error, text, text(`skills_page.feedback.${context}`)),
-      });
+      if (context === "save_failed") update({ save_failed: true });
+      push_error_toast(text(`app.feedback.${context}`), error);
     },
     [update],
   );
@@ -178,7 +151,7 @@ function usePersonalityEditor() {
     reading.current?.abort();
     const controller = new AbortController();
     reading.current = controller;
-    update({ busy: true, error: "" });
+    update({ busy: true, save_failed: false });
     try {
       const saved = await api_fetch<AgentPersonality>(
         "/api/agent/personality/read",
@@ -209,7 +182,7 @@ function usePersonalityEditor() {
     if (writing.current) return await writing.current;
     /** 一个保存请求结束后检查期间产生的新输入。 */
     const run = async (): Promise<boolean> => {
-      update({ error: "" });
+      update({ save_failed: false });
       try {
         while (mounted.current && !resetting.current) {
           const { saved, draft, composing } = current.current;
@@ -240,7 +213,7 @@ function usePersonalityEditor() {
   }, [cancel, report, update]);
   const dirty = state.saved !== null && state.draft !== state.saved.body;
   useEffect(() => {
-    if (dirty && !locked && !state.busy && !state.saving && !state.composing && !state.error)
+    if (dirty && !locked && !state.busy && !state.saving && !state.composing && !state.save_failed)
       timer.current = setTimeout(() => {
         void save();
       }, SKILL_AUTOSAVE_DELAY_MS);
@@ -264,7 +237,7 @@ function usePersonalityEditor() {
         update({
           saved,
           draft: saved.body,
-          error: "",
+          save_failed: false,
           reset_count: current.current.reset_count + 1,
         });
         return true;
@@ -297,7 +270,8 @@ function usePersonalityEditor() {
     flush,
     /** 新输入解除错误暂停，交给自动保存继续提交。 */
     edit: (draft: string) => {
-      if (!environment.current.locked && !current.current.busy) update({ draft, error: "" });
+      if (!environment.current.locked && !current.current.busy)
+        update({ draft, save_failed: false });
     },
     /** 组词开始时取消倒计时，结束后重新等待输入停顿。 */
     compose: (composing: boolean) => {

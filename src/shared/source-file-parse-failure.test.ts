@@ -14,9 +14,14 @@ describe("source file parse failure", () => {
           rel_path: " data/demo.json ",
           filename: " demo.json ",
           code: " file.parse_failed ",
+          message: "Parser rejected the file",
         },
         { filename: "missing-code.json" },
-        { filename: "unknown-code.json", code: "file.unknown" },
+        {
+          filename: "unknown-code.json",
+          code: "file.unknown",
+          message: "Parser rejected the file",
+        },
         null,
       ]),
     ).toEqual([
@@ -25,32 +30,29 @@ describe("source file parse failure", () => {
         rel_path: "data/demo.json",
         filename: "demo.json",
         code: "file.parse_failed",
+        message: "Parser rejected the file",
       },
     ]);
   });
 
-  it("逐行格式化全部失败文件及本地化原因", () => {
+  it("逐行保留全部文件的原始原因", () => {
     expect(
-      format_source_file_parse_failure_notice({
-        failures: [
-          {
-            source_path: "E:/source/a.json",
-            rel_path: "a.json",
-            filename: "a.json",
-            code: "file.parse_failed",
-          },
-          {
-            source_path: "E:/source/b.xlsx",
-            rel_path: "b.xlsx",
-            filename: "b.xlsx",
-            code: "file.invalid_structure",
-          },
-        ],
-        text: (key) => `原因:${key}`,
-      }),
-    ).toBe(
-      "a.json - 原因:app.error.file.parse_failed.message\n" +
-        "b.xlsx - 原因:app.error.file.invalid_structure.message",
-    );
+      format_source_file_parse_failure_notice([
+        {
+          source_path: "E:/source/a.json",
+          rel_path: "a.json",
+          filename: "a.json",
+          code: "file.parse_failed",
+          message: "Parser rejected the file",
+        },
+        {
+          source_path: "E:/source/b.xlsx",
+          rel_path: "b.xlsx",
+          filename: "b.xlsx",
+          code: "file.invalid_structure",
+          message: "Parser rejected the file",
+        },
+      ]),
+    ).toBe("a.json - Parser rejected the file\n" + "b.xlsx - Parser rejected the file");
   });
 });

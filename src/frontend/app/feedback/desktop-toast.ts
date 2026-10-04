@@ -1,6 +1,7 @@
 import { toast } from "sonner";
+import { read_error_message } from "@shared/error/app-error";
 
-type DesktopToastKind = "info" | "warning" | "error" | "success";
+type DesktopToastKind = "info" | "warning" | "success";
 type DesktopToastId = string | number;
 type DesktopToastAction = { label: string; onClick: () => void };
 type DesktopToastOptions = {
@@ -58,9 +59,25 @@ export function push_toast(
     ...(dismissible === undefined ? {} : { dismissible, closeButton: dismissible }),
     ...(persistent || action !== undefined || dismissible === false
       ? { duration: Number.POSITIVE_INFINITY }
-      : kind === "error"
-        ? { duration: ERROR_TOAST_DURATION_MS }
-        : {}),
+      : {}),
+  });
+}
+
+/** 标题由操作拥有者本地化，原因由异常源头提供；一次失败只在拥有者处通知。 */
+export function push_error_toast(
+  title: string,
+  error: unknown,
+  options: DesktopToastOptions = {},
+): DesktopToastId {
+  const { persistent, ...presentation } = options;
+  return toast.error(title, {
+    ...presentation,
+    description: read_error_message(error),
+    duration:
+      persistent || options.action || options.dismissible === false
+        ? Number.POSITIVE_INFINITY
+        : ERROR_TOAST_DURATION_MS,
+    ...(options.dismissible === undefined ? {} : { closeButton: options.dismissible }),
   });
 }
 

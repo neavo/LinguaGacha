@@ -6,7 +6,6 @@ export const ja_jp_log_window_page = {
     date: "ログの日付",
     loading: "ログを読み込み中…",
     empty: "ログはありません",
-    failed: "ログを読み込めませんでした",
     expired: "この日付のログは削除されました",
   },
   level: {
@@ -45,7 +44,6 @@ export const ja_jp_log_window_page = {
     loading: "ログの詳細を読み込み中 …",
     unavailable:
       "ログの詳細は現在のプロセスのメモリから解放されています。ログファイルを確認してください …",
-    failed: "ログの詳細を読み込めませんでした",
     content: {
       source_text: "原文",
       translated_text: "訳文",

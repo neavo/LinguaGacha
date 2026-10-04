@@ -31,6 +31,7 @@ vi.mock("@frontend/app/state/use-desktop-state", () => ({
 }));
 
 vi.mock("@frontend/app/feedback/desktop-toast", () => ({
+  push_error_toast: push_toast,
   push_toast,
 }));
 
@@ -129,8 +130,6 @@ describe("useSettingsEditor", () => {
     latest_state = useSettingsEditor({
       select_snapshot,
       pending_fields: PENDING_FIELDS,
-      refresh_error_key: "basic_settings_page.feedback.refresh_failed",
-      update_error_key: "app.feedback.settings_save_failed",
     });
     return null;
   }
@@ -226,7 +225,7 @@ describe("useSettingsEditor", () => {
         source_language: false,
         request_timeout: true,
       });
-      expect(push_toast).toHaveBeenCalledWith("error", "app.feedback.settings_save_failed");
+      expect(push_toast).toHaveBeenCalledWith("app.feedback.save_failed", expect.any(Error));
 
       timeout_request.resolve({
         settings: create_settings_snapshot({
@@ -253,7 +252,7 @@ describe("useSettingsEditor", () => {
     },
   );
 
-  it("刷新失败时保留当前投影并显示页面指定的错误", async () => {
+  it("刷新失败时保留当前投影并显示通用刷新标题", async () => {
     runtime_fixture.current.refresh_settings = vi.fn(async () => {
       throw new Error("refresh_failed");
     });
@@ -264,6 +263,6 @@ describe("useSettingsEditor", () => {
       source_language: "JA",
       request_timeout: 300,
     });
-    expect(push_toast).toHaveBeenCalledWith("error", "basic_settings_page.feedback.refresh_failed");
+    expect(push_toast).toHaveBeenCalledWith("app.feedback.refresh_failed", expect.any(Error));
   });
 });

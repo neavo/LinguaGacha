@@ -12,7 +12,10 @@ vi.mock("@frontend/app/desktop/desktop-api", () => ({ api_fetch }));
 vi.mock("@frontend/app/locale/locale-context", () => ({
   useI18n: () => ({ t: (key: string) => key }),
 }));
-vi.mock("@frontend/app/feedback/desktop-toast", () => ({ push_toast: vi.fn() }));
+vi.mock("@frontend/app/feedback/desktop-toast", () => ({
+  push_error_toast: vi.fn(),
+  push_toast: vi.fn(),
+}));
 vi.mock("@frontend/app/navigation/navigation-context", () => ({
   useAppNavigation: () => ({ selected_route: "agent", navigate_to_agent: vi.fn() }),
 }));

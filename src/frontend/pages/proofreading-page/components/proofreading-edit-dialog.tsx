@@ -543,9 +543,6 @@ export function ProofreadingEditDialog(props: ProofreadingEditDialogProps): JSX.
             target_row_id={String(item.item_id)}
             file_path={item.file_path}
             draft_item={draft_item}
-            on_retry={() => {
-              void props.on_open_context();
-            }}
           />
         ) : null}
         <ProofreadingDetailLayout

@@ -153,6 +153,8 @@ it("关闭保留完整文件，登记可重开，缺失文件不阻止其它附�
   expect(restored.get(first.uploadId)).toEqual(first);
   expect(restored.list()).toEqual([first]);
   expect(fs.readFileSync(path.join(root, first.path), "utf8")).toBe("保留");
-  expect(() => restored.get(missing.uploadId)).toThrow("file.not_found");
+  expect(() => restored.get(missing.uploadId)).toThrow(
+    expect.objectContaining({ code: "file.not_found" }),
+  );
   await restored.close();
 });

@@ -1,11 +1,11 @@
+import { push_error_toast } from "@frontend/app/feedback/desktop-toast";
+import { read_error_message } from "@shared/error";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { PROJECT_SETTING_KEYS } from "@domain/setting";
 import type { ProjectWriteResultPayload } from "@frontend/app/state/desktop-project-write";
 import { api_fetch } from "@frontend/app/desktop/desktop-api";
-import { push_toast } from "@frontend/app/feedback/desktop-toast";
-import { resolve_visible_error_message } from "@frontend/app/feedback/visible-error-message";
-import { useI18n, type LocaleKey } from "@frontend/app/locale/locale-context";
+import { useI18n } from "@frontend/app/locale/locale-context";
 import type {
   SettingsSnapshot,
   SettingsSnapshotPayload,
@@ -18,8 +18,6 @@ type SettingsEditorOptions<
 > = {
   select_snapshot: (settings_snapshot: SettingsSnapshot) => Snapshot;
   pending_fields: readonly PendingField[];
-  refresh_error_key: LocaleKey;
-  update_error_key: LocaleKey;
 };
 
 /**
@@ -75,10 +73,10 @@ export function useSettingsEditor<
       try {
         sync_snapshot(await refresh_settings());
       } catch (error) {
-        push_toast("error", resolve_visible_error_message(error, t, t(options.refresh_error_key)));
+        push_error_toast(t("app.feedback.refresh_failed"), error);
       }
     })();
-  }, [options.refresh_error_key, refresh_settings, sync_snapshot, t]);
+  }, [refresh_settings, sync_snapshot, t]);
 
   const commit_update = useCallback(
     async (field: PendingField, patch: Partial<Snapshot>): Promise<SettingsSnapshot | null> => {
@@ -111,13 +109,14 @@ export function useSettingsEditor<
       } catch (error) {
         // 工程可能已提交；优先恢复权威值，查询失败时使用提交前值，始终只替换本次字段。
         let restored = previous_snapshot;
+        let failure = error;
         if (affects_project) {
           try {
             restored = options.select_snapshot(await refresh_settings());
           } catch (refresh_error) {
-            push_toast(
-              "error",
-              resolve_visible_error_message(refresh_error, t, t(options.refresh_error_key)),
+            failure = new Error(
+              `${read_error_message(error)}\n${read_error_message(refresh_error)}`,
+              { cause: refresh_error },
             );
           }
         }
@@ -126,7 +125,7 @@ export function useSettingsEditor<
         );
         snapshot_ref.current = { ...snapshot_ref.current, ...restored_patch };
         set_snapshot(snapshot_ref.current);
-        push_toast("error", resolve_visible_error_message(error, t, t(options.update_error_key)));
+        push_error_toast(t("app.feedback.save_failed"), failure);
         return null;
       } finally {
         set_pending_state((previous_state) => ({
@@ -138,8 +137,6 @@ export function useSettingsEditor<
     [
       apply_settings_snapshot,
       commit_project_write,
-      options.update_error_key,
-      options.refresh_error_key,
       options.select_snapshot,
       refresh_settings,
       sync_snapshot,

@@ -1,3 +1,4 @@
+import { push_error_toast } from "@frontend/app/feedback/desktop-toast";
 import { AppContentState } from "@frontend/widgets/app-content-state";
 import {
   CalendarDays,
@@ -8,7 +9,15 @@ import {
   Minimize2,
   ScrollText,
 } from "lucide-react";
-import { type JSX, useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
+import {
+  type JSX,
+  useCallback,
+  useEffect,
+  useEffectEvent,
+  useMemo,
+  useState,
+  type CSSProperties,
+} from "react";
 
 import { read_log_detail, type LogDetail, type LogEntry } from "@frontend/app/desktop/desktop-api";
 import { useI18n, type LocaleKey } from "@frontend/app/locale/locale-context";
@@ -80,7 +89,7 @@ function scroll_log_table_to_top(): void {
 
 /** 日志窗口只持有轻量事件，详情按选中项读取并在当前筛选结果内导航。 */
 export function LogWindowPage(): JSX.Element {
-  const [detail_request, set_detail_request] = useState(0); // 同一选中日志的显式重试序号。
+  const [detail_request, set_detail_request] = useState(0); // 重新打开同一日志时触发读取。
   const { t } = useI18n();
   const shell_info = window.desktopApp.shell;
   const [scroll_anchor, set_scroll_anchor] = useState<AppTableScrollAnchor>({
@@ -249,6 +258,9 @@ export function LogWindowPage(): JSX.Element {
     };
   }, [next_event_id, previous_event_id, select_event_id, selected_event_id]);
 
+  const notify_detail_error = useEffectEvent((error: unknown) => {
+    push_error_toast(t("app.feedback.read_failed"), error);
+  });
   // 详情正文按当前选中行懒加载，避免完整日志进入列表 state 和筛选排序热路径
   useEffect(() => {
     if (selected_event_id === null || selected_event_revision === undefined) {
@@ -271,8 +283,9 @@ export function LogWindowPage(): JSX.Element {
             : { status: "ready", event_id: selected_event_id, detail },
         );
       })
-      .catch(() => {
+      .catch((error: unknown) => {
         if (!disposed) {
+          notify_detail_error(error);
           set_detail_state({ status: "failed", event_id: selected_event_id, detail: null });
         }
       });
@@ -316,6 +329,7 @@ export function LogWindowPage(): JSX.Element {
   }, [latest_event_id, select_event_id, selection_state.active_row_id, logs.following]);
 
   // 数据更新前捕获表格锚点，裁掉较新页时保持当前阅读位置。
+  /** 补读前记录可见行锚点，插入历史记录后恢复阅读位置。 */
   function load_older(): void {
     if (logs.loading || !logs.can_load_older) return;
     const first_row = document.querySelector(
@@ -387,13 +401,7 @@ export function LogWindowPage(): JSX.Element {
           fallback_value = t("log_window_page.detail.unavailable");
           break;
         case "failed":
-          return (
-            <AppContentState
-              status="error"
-              message={t("log_window_page.detail.failed")}
-              on_retry={() => set_detail_request((request) => request + 1)}
-            />
-          );
+          return <AppContentState status="error" />;
         case "ready":
           return <LogDetailView detail={detail_state.detail} />;
       }
@@ -523,15 +531,9 @@ export function LogWindowPage(): JSX.Element {
                   load_older();
               }}
             >
-              {logs.failed || logs.expired ? (
+              {logs.expired ? (
                 <div className="log-window-page__status" role="alert">
-                  <span>
-                    {t(
-                      logs.expired
-                        ? "log_window_page.history.expired"
-                        : "log_window_page.history.failed",
-                    )}
-                  </span>
+                  <span>{t("log_window_page.history.expired")}</span>
                   <AppButton variant="ghost" size="sm" onClick={logs.refresh}>
                     {t("app.action.retry")}
                   </AppButton>
@@ -555,6 +557,7 @@ export function LogWindowPage(): JSX.Element {
                 on_selection_change={apply_log_selection}
                 on_sort_change={() => undefined}
                 on_row_activate={() => {
+                  if (detail_state.status === "failed") set_detail_request((value) => value + 1);
                   set_detail_expanded(true);
                 }}
                 box_selection_enabled={false}
@@ -635,6 +638,8 @@ export function LogWindowPage(): JSX.Element {
                         className="log-window-page__detail-action"
                         aria-label={detail_expand_label}
                         onClick={() => {
+                          if (!detail_expanded && detail_state.status === "failed")
+                            set_detail_request((value) => value + 1);
                           set_detail_expanded((previous_value) => !previous_value);
                         }}
                       >

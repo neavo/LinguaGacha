@@ -1,3 +1,6 @@
+import { push_error_toast } from "@frontend/app/feedback/desktop-toast";
+import { create_text_resolver } from "@shared/i18n";
+import { resolve_app_locale } from "@domain/app-language";
 import { type JSX, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { RouteId } from "@frontend/app/navigation/types";
 import { api_fetch } from "@frontend/app/desktop/desktop-api";
@@ -213,6 +216,9 @@ export function DesktopStateProvider(props: { children: ReactNode }): JSX.Elemen
     ...EMPTY_PROJECT_STATE_IDENTITY,
   });
   const pending_session_project_changes_ref = useRef<ProjectChangeEventForState[]>([]); // 当前项目 query 首刷完成前暂存事件，避免 session 初始化窗口漏同步
+
+  const settings_language = useRef(settings_snapshot.app_language); // LocaleProvider 位于内层，初始化失败从这里读取最新语言。
+  settings_language.current = settings_snapshot.app_language;
 
   const apply_settings_snapshot = useCallback(
     (payload: SettingsSnapshotPayload): SettingsSnapshot => {
@@ -651,6 +657,12 @@ export function DesktopStateProvider(props: { children: ReactNode }): JSX.Elemen
         source: "state-recovery",
         context: { stage: "load_initial_state" },
       });
+      push_error_toast(
+        create_text_resolver(resolve_app_locale(settings_language.current))(
+          "app.feedback.initial_load_failed",
+        ),
+        error,
+      );
       set_initial_state_status("error");
     }
   }, [

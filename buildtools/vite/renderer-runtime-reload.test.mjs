@@ -36,6 +36,10 @@ it("真实热更新保留语言和通知状态，Context 与 Store 依赖变更�
       "src/frontend/widgets/progress-toast-ring/progress-toast-ring.tsx",
       "export function ProgressToastRing() { return <span />; }",
     );
+    await write(
+      "src/shared/error/app-error.ts",
+      await fs.readFile("src/shared/error/app-error.ts", "utf8"),
+    );
     await write("src/shared/i18n/en.ts", 'export const message = "EN initial";');
     await write("src/shared/i18n/zh.ts", 'export const message = "ZH initial";');
     await write(
@@ -106,6 +110,7 @@ it("真实热更新保留语言和通知状态，Context 与 Store 依赖变更�
         alias: {
           "@frontend": frontend,
           "@shared/i18n": path.join(directory, "src/shared/i18n/index.ts"),
+          "@shared/error/app-error": path.join(directory, "src/shared/error/app-error.ts"),
         },
       },
       server: { host: "127.0.0.1", port: 0, watch: { ignored: ["**/profile/**"] } },

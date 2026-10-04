@@ -1,3 +1,4 @@
+import { push_error_toast } from "@frontend/app/feedback/desktop-toast";
 import { PersonalityEditor } from "./personality-editor";
 import { Badge } from "@frontend/shadcn/badge";
 import { type JSX, useEffect, useRef, useState, type Ref } from "react";
@@ -24,8 +25,6 @@ import { AppActionDialog } from "@frontend/widgets/app-alert-dialog";
 import { AppButton } from "@frontend/widgets/app-button";
 import { BooleanSegmentedToggle } from "@frontend/widgets/boolean-segmented-toggle";
 import { api_fetch } from "@frontend/app/desktop/desktop-api";
-import { push_toast } from "@frontend/app/feedback/desktop-toast";
-import { resolve_visible_error_message } from "@frontend/app/feedback/visible-error-message";
 import { useDesktopState, useRuntimeSnapshot } from "@frontend/app/state/use-desktop-state";
 import "./skills-page.css";
 import { SkillEditor } from "./skill-editor";
@@ -80,13 +79,7 @@ function SkillsList({
   if (state.status !== "ready")
     return (
       <div className="skills-page page-shell page-shell--full">
-        <AppContentState
-          status={state.status}
-          message={t(
-            state.status === "error" ? "skills_page.feedback.load_failed" : "app.action.loading",
-          )}
-          on_retry={state.retry}
-        />
+        <AppContentState status={state.status} />
       </div>
     );
 
@@ -279,7 +272,6 @@ function useSkillsPageState(active: boolean) {
   const [snapshot, set_snapshot] = useState<AgentSkillsSnapshot>({ skills: [] });
   const [status, set_status] = useState<"loading" | "ready" | "error">("loading");
   const [pending, set_pending] = useState(false);
-  const [refresh, set_refresh] = useState(0);
   const saving = useRef(false); // 同步拦截同一帧内的重复提交。
   const mounted = useRef(false); // 离开页面后停止发布命令反馈。
   const reading = useRef<AbortController | null>(null); // 保存开始时取消旧读取。
@@ -303,14 +295,16 @@ function useSkillsPageState(active: boolean) {
         set_snapshot(next);
         set_status("ready");
       },
-      () => {
-        if (!controller.signal.aborted) set_status("error");
+      (error: unknown) => {
+        if (controller.signal.aborted) return;
+        set_status((previous) => (previous === "ready" ? "ready" : "error"));
+        push_error_toast(t("app.feedback.load_failed"), error);
       },
     );
     return () => {
       controller.abort();
     };
-  }, [settings_snapshot, refresh, active]);
+  }, [settings_snapshot, active, t]);
 
   /** 以服务端回包更新页面，提交失败时保留上次成功快照。 */
   async function save(path: string, body: Record<string, unknown>): Promise<void> {
@@ -324,11 +318,7 @@ function useSkillsPageState(active: boolean) {
       set_snapshot(next);
       set_status("ready");
     } catch (error) {
-      if (mounted.current)
-        push_toast(
-          "error",
-          resolve_visible_error_message(error, t, t("skills_page.feedback.save_failed")),
-        );
+      if (mounted.current) push_error_toast(t("app.feedback.save_failed"), error);
     } finally {
       saving.current = false;
       if (mounted.current) set_pending(false);
@@ -339,10 +329,6 @@ function useSkillsPageState(active: boolean) {
     snapshot,
     status,
     pending,
-    retry: () => {
-      set_status("loading");
-      set_refresh((value) => value + 1);
-    },
     set_enabled: (source: AgentSkillSource, name: string, enabled: boolean) =>
       save("/api/skills/enabled", { source, name, enabled }),
     reorder: (names: string[]) => save("/api/skills/reorder", { names }),

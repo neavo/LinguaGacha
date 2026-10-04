@@ -158,7 +158,7 @@ describe("Pi 载荷的产品规则", () => {
     ["OpenAIResponses", { input: null }],
   ] as const)("拒绝 %s 的无效 SDK 载荷", (api_format, payload) => {
     expect(() => apply_request_overrides(create_snapshot({ api_format }), payload)).toThrow(
-      "runtime.internal_invariant",
+      expect.objectContaining({ code: "runtime.internal_invariant" }),
     );
   });
   it.each([

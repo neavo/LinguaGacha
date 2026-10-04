@@ -591,7 +591,7 @@ describe("AgentService", () => {
     const first = service.input_command("send", request);
     const duplicate = service.input_command("send", request);
     expect(() => service.input_command("send", { ...request, text: "冲突内容" })).toThrow(
-      "request.validation_failed",
+      expect.objectContaining({ code: "request.validation_failed" }),
     );
     await expect(first).rejects.toThrow("reply lost");
     await expect(duplicate).rejects.toThrow("reply lost");
@@ -632,7 +632,9 @@ describe("AgentService", () => {
     await service.input_command("revise", revision);
     expect(service.get_snapshot().entries).toEqual(revised);
     await service.reset();
-    expect(() => service.input_command("send", request)).toThrow("request.validation_failed");
+    expect(() => service.input_command("send", request)).toThrow(
+      expect.objectContaining({ code: "request.validation_failed" }),
+    );
   });
 
   it("快照沿用技能加载结果的展示顺序，并在变更状态前拒绝非法消息", async () => {
@@ -640,19 +642,19 @@ describe("AgentService", () => {
 
     expect(fixture.service.get_snapshot().skills).toEqual(skill_test_fixture.snapshots);
     await expect(fixture.service.send_message({ message: "旧协议" })).rejects.toThrow(
-      "request.validation_failed",
+      expect.objectContaining({ code: "request.validation_failed" }),
     );
     await expect(fixture.service.send_message({ text: 1, attachments: [] })).rejects.toThrow(
-      "request.validation_failed",
+      expect.objectContaining({ code: "request.validation_failed" }),
     );
     await expect(fixture.service.send_message({ text: "正文" })).rejects.toThrow(
-      "request.validation_failed",
+      expect.objectContaining({ code: "request.validation_failed" }),
     );
     await expect(fixture.service.send_message({ text: "正文", attachments: [1] })).rejects.toThrow(
-      "request.validation_failed",
+      expect.objectContaining({ code: "request.validation_failed" }),
     );
     await expect(fixture.service.send_message({ text: " \n ", attachments: [] })).rejects.toThrow(
-      "request.validation_failed",
+      expect.objectContaining({ code: "request.validation_failed" }),
     );
     expect(fixture.service.get_snapshot()).toMatchObject({ state: "idle", entries: [] });
   });
@@ -1968,7 +1970,7 @@ describe("AgentService", () => {
         entryId: intermediate_assistant.id,
         message: { text: "越过最终输出", attachments: [] },
       }),
-    ).rejects.toThrow("request.validation_failed");
+    ).rejects.toThrow(expect.objectContaining({ code: "request.validation_failed" }));
     await expect(
       service.revise_latest_round({
         entryId: assistant.id,
@@ -1977,7 +1979,7 @@ describe("AgentService", () => {
           attachments: [uploaded_file("image")],
         },
       }),
-    ).rejects.toThrow("request.validation_failed");
+    ).rejects.toThrow(expect.objectContaining({ code: "request.validation_failed" }));
 
     fake_agent_state.auth_configured = false;
     await service.revise_latest_round({
@@ -2008,13 +2010,15 @@ describe("AgentService", () => {
     await wait_for_idle(service);
     const before = service.get_snapshot();
 
-    await expect(service.continue_chat({})).rejects.toThrow("request.validation_failed");
+    await expect(service.continue_chat({})).rejects.toThrow(
+      expect.objectContaining({ code: "request.validation_failed" }),
+    );
     await expect(
       service.revise_latest_round({
         entryId: "stale",
         message: { text: "越权修改", attachments: [] },
       }),
-    ).rejects.toThrow("request.validation_failed");
+    ).rejects.toThrow(expect.objectContaining({ code: "request.validation_failed" }));
 
     expect(service.get_snapshot()).toEqual(before);
     expect(fake_agent_state.model_call_count).toBe(1);
@@ -2395,7 +2399,7 @@ describe("AgentService", () => {
       );
     });
 
-    await expect(service.stop()).rejects.toThrow("runtime.busy");
+    await expect(service.stop()).rejects.toThrow(expect.objectContaining({ code: "runtime.busy" }));
     expect(service.get_snapshot()).toMatchObject({ state: "running" });
 
     fake_agent_state.release_tool_execution?.();
@@ -2641,7 +2645,7 @@ describe("AgentService", () => {
     fake_agent_state.auth_configured = false;
 
     await expect(service.send_message({ text: "不会追加", attachments: [] })).rejects.toThrow(
-      "model.auth_required",
+      expect.objectContaining({ code: "model.auth_required" }),
     );
 
     expect(service.get_snapshot()).toEqual(before);
@@ -2662,7 +2666,7 @@ describe("AgentService", () => {
         entryId: user.id,
         message: { text: "不会提交", attachments: [] },
       }),
-    ).rejects.toThrow("model.auth_required");
+    ).rejects.toThrow(expect.objectContaining({ code: "model.auth_required" }));
 
     expect(service.get_snapshot()).toEqual(before);
     expect(fake_agent_state.model_call_count).toBe(1);
@@ -2985,17 +2989,23 @@ describe("AgentService", () => {
 
   it("运行中与历史不足固定保留量时拒绝手动压缩", async () => {
     const { service } = await create_service();
-    await expect(service.compact_context()).rejects.toThrow("request.validation_failed");
+    await expect(service.compact_context()).rejects.toThrow(
+      expect.objectContaining({ code: "request.validation_failed" }),
+    );
 
     await service.send_message({ text: "短历史", attachments: [] });
     await wait_for_idle(service);
     expect(service.get_snapshot().context.compactable).toBe(false);
-    await expect(service.compact_context()).rejects.toThrow("request.validation_failed");
+    await expect(service.compact_context()).rejects.toThrow(
+      expect.objectContaining({ code: "request.validation_failed" }),
+    );
 
     fake_agent_state.mode = "pending";
     await service.send_message({ text: "持续运行", attachments: [] });
     await vi.waitFor(() => expect(service.get_snapshot().state).toBe("running"));
-    await expect(service.compact_context()).rejects.toThrow("runtime.busy");
+    await expect(service.compact_context()).rejects.toThrow(
+      expect.objectContaining({ code: "runtime.busy" }),
+    );
     await service.stop();
   });
 
@@ -3197,7 +3207,7 @@ describe("AgentService", () => {
     const first = service.send_message({ text: "第一轮", attachments: [] });
     const second = service.send_message({ text: "第二轮", attachments: [] });
 
-    await expect(second).rejects.toThrow("runtime.busy");
+    await expect(second).rejects.toThrow(expect.objectContaining({ code: "runtime.busy" }));
     await expect(first).resolves.toEqual({ revision: expect.any(Number) });
     expect(service.get_snapshot().state).toBe("running");
     expect(service.get_snapshot().entries).toEqual([expect.objectContaining({ text: "第一轮" })]);
@@ -3341,14 +3351,16 @@ describe("AgentService", () => {
     await vi.waitFor(() => expect(runtime_gate.get_snapshot().owner).toBeNull());
     expect(service.get_snapshot().inputQueue.canSendNow).toBe(true);
     const task_lease = runtime_gate.begin_runtime("batch_translation");
-    await expect(service.continue_chat({})).rejects.toThrow("runtime.busy");
+    await expect(service.continue_chat({})).rejects.toThrow(
+      expect.objectContaining({ code: "runtime.busy" }),
+    );
     expect(service.get_snapshot().inputQueue).toMatchObject({
       paused: true,
       items: [{ text: "第二轮" }],
     });
     runtime_gate.finish_runtime(task_lease);
     await expect(service.send_message({ text: "不得越过队首", attachments: [] })).rejects.toThrow(
-      "request.validation_failed",
+      expect.objectContaining({ code: "request.validation_failed" }),
     );
 
     fake_agent_state.mode = "success";
@@ -3629,7 +3641,7 @@ describe("AgentService", () => {
     const { service } = await create_service(false);
 
     await expect(service.send_message({ text: "开始", attachments: [] })).rejects.toThrow(
-      "runtime.internal_invariant",
+      expect.objectContaining({ code: "runtime.internal_invariant" }),
     );
   });
 
@@ -3638,7 +3650,7 @@ describe("AgentService", () => {
     const lease = runtime_gate.begin_runtime("batch_translation");
 
     await expect(service.send_message({ text: "开始", attachments: [] })).rejects.toThrow(
-      "runtime.busy",
+      expect.objectContaining({ code: "runtime.busy" }),
     );
     runtime_gate.finish_runtime(lease);
   });

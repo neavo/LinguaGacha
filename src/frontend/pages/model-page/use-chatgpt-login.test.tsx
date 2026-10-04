@@ -12,7 +12,10 @@ vi.mock("@frontend/app/desktop/desktop-api", async (original) => ({
   api_fetch: mocks.api,
   open_external_url: mocks.open,
 }));
-vi.mock("@frontend/app/feedback/desktop-toast", () => ({ push_toast: mocks.toast }));
+vi.mock("@frontend/app/feedback/desktop-toast", () => ({
+  push_error_toast: mocks.toast,
+  push_toast: mocks.toast,
+}));
 vi.mock("@frontend/app/locale/locale-context", () => ({
   useI18n: () => ({ t: (key: string) => key }),
 }));
@@ -178,12 +181,15 @@ describe("ChatGPT 登录交互", () => {
         login: {
           id: "first",
           status: "failed",
-          error: { code: "model.provider_failed", details: { message } },
+          error: { code: "model.provider_failed", message },
         },
       });
     });
     expect(button("start").disabled).toBe(false);
-    expect(mocks.toast).toHaveBeenCalledExactlyOnceWith("error", message);
+    expect(mocks.toast).toHaveBeenCalledExactlyOnceWith(
+      "app.feedback.model_request_failed",
+      expect.any(Error),
+    );
   });
 
   it("准备链接失败只提示一次，按钮恢复为可以重新登录", async () => {

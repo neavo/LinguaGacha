@@ -32,7 +32,7 @@ describe("record_app_error", () => {
     expect(file_record["level"]).toBe("warning");
     expect(file_record["source"]).toBe("test");
     expect(file_record["error"]).toMatchObject({
-      message: "model.provider_failed",
+      message: "provider boom",
       context: {
         code: "model.provider_failed",
         request_id: "request-1",

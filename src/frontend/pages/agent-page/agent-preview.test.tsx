@@ -35,7 +35,7 @@ afterEach(async () => {
 });
 
 it.each(["json", "jsonl"] as const)(
-  "%s 解析失败显示读取失败，修复后重试恢复只读高亮视图",
+  "%s 解析失败提示不可用，重新打开恢复只读高亮视图",
   async (format) => {
     vi.mocked(api_fetch).mockResolvedValueOnce({
       content: format === "json" ? "{bad}" : '{"ok":1}\n{bad}',
@@ -56,14 +56,28 @@ it.each(["json", "jsonl"] as const)(
         />,
       ),
     );
-    expect(container.querySelector(".agent-document p")?.textContent).toBe(
-      "agent_page.document.read_failed",
+    expect(container.querySelector("[role=status]")?.textContent).toBe(
+      "app.feedback.content_unavailable",
     );
     expect(container.querySelector(".cm-content")).toBeNull();
     vi.mocked(api_fetch).mockResolvedValueOnce({ content: '{"ok":1}' });
-    const retry = container.querySelector<HTMLButtonElement>("button")!;
-    expect(retry.textContent).toBe("app.action.retry");
-    await act(async () => retry.click());
+    expect(container.querySelector("button")).toBeNull();
+    await act(async () =>
+      root.render(
+        <AgentPreviewPage
+          active
+          scroll={{}}
+          document={{
+            path: `work/data.${format}`,
+            name: `data.${format}`,
+            kind: "file",
+            preview: format,
+            anchor: null,
+            activation: 1,
+          }}
+        />,
+      ),
+    );
     const view = EditorView.findFromDOM(container.querySelector(".cm-content")!)!;
     expect(view.state.readOnly).toBe(true);
     expect(container.querySelector(".cm-viewer-number")?.textContent).toBe("1");

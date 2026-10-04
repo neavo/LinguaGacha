@@ -9,8 +9,4 @@ export const de_de_text_replacement_page = {
   rule: {
     regex: "Regulärer Ausdruck",
   },
-  feedback: {
-    load_failed: "Ersetzungsregeln konnten nicht geladen werden. Bitte später erneut versuchen …",
-    query_failed: "Fehler bei der Abfrage der Ersetzungsregel",
-  },
 } satisfies LocaleMessageSchema<typeof zh_cn_text_replacement_page>;

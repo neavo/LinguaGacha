@@ -58,20 +58,10 @@ export const de_de_model_page = {
   },
   feedback: {
     copy_success: "Modell dupliziert\nGruppe: {CATEGORY}\nName: {NAME}",
-    copy_failed: "Fehler beim Duplizieren des Modells. Bitte versuchen Sie es später erneut …",
-    refresh_failed:
-      "Fehler beim Aktualisieren der Modellübersicht. Bitte versuchen Sie es später erneut …",
-    add_failed: "Fehler beim Hinzufügen des Modells. Bitte versuchen Sie es später erneut …",
-    update_failed:
-      "Fehler beim Speichern der Modellkonfiguration. Bitte versuchen Sie es später erneut …",
-    reorder_failed:
-      "Fehler beim Speichern der Modellreihenfolge. Bitte versuchen Sie es später erneut …",
     delete_last_one: "In jeder Kategorie muss mindestens ein Modell verbleiben …",
     agent_limits_adjusted:
       "Ungültige Einstellungen wurden automatisch auf eine gültige Konfiguration angepasst …",
     json_format_error: "JSON-Formatfehler. Bitte geben Sie ein gültiges JSON-Objekt ein …",
-    selector_load_failed:
-      "Fehler beim Laden der Modellliste. Bitte überprüfen Sie die API-Konfiguration …",
     test_failed: "Fehler beim Testen des Modells. Bitte versuchen Sie es später erneut …",
   },
   fields: {

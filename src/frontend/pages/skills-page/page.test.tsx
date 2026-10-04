@@ -18,7 +18,10 @@ vi.mock("@frontend/app/navigation/navigation-context", () => ({
   useAppNavigation: () => ({ navigate_to_agent: mocks.navigate_to_agent }),
 }));
 vi.mock("@frontend/app/desktop/desktop-api", () => ({ api_fetch: mocks.api }));
-vi.mock("@frontend/app/feedback/desktop-toast", () => ({ push_toast: mocks.toast }));
+vi.mock("@frontend/app/feedback/desktop-toast", () => ({
+  push_error_toast: mocks.toast,
+  push_toast: mocks.toast,
+}));
 vi.mock("@frontend/app/state/use-desktop-state", () => ({
   useRuntimeSnapshot: () => ({ owner: mocks.owner }),
   useDesktopState: () => ({ settings_snapshot: mocks.settings }),
@@ -216,6 +219,6 @@ describe("技能页面", () => {
     );
     await act(async () => toggle?.click());
     expect(toggle?.getAttribute("aria-pressed")).toBe("false");
-    expect(mocks.toast).toHaveBeenCalledExactlyOnceWith("error", expect.any(String));
+    expect(mocks.toast).toHaveBeenCalledExactlyOnceWith(expect.any(String), expect.any(Error));
   });
 });

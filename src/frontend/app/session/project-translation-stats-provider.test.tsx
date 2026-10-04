@@ -21,7 +21,10 @@ vi.mock("@frontend/app/state/use-desktop-state", () => ({
   useProjectChangeSignal: () => fixture.signal,
 }));
 vi.mock("@frontend/app/desktop/desktop-api", () => ({ api_fetch: fixture.query }));
-vi.mock("@frontend/app/feedback/desktop-toast", () => ({ push_toast: fixture.toast }));
+vi.mock("@frontend/app/feedback/desktop-toast", () => ({
+  push_error_toast: fixture.toast,
+  push_toast: fixture.toast,
+}));
 vi.mock("@frontend/app/locale/locale-context", () => ({
   useI18n: () => ({ t: (key: string) => key }),
 }));

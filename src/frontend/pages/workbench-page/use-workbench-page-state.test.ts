@@ -84,6 +84,9 @@ vi.mock("@frontend/app/state/use-desktop-state", () => {
 });
 
 vi.mock("@frontend/app/feedback/desktop-toast", () => ({
+  get push_error_toast() {
+    return toast_fixture.current.push_toast;
+  },
   get push_toast() {
     return toast_fixture.current.push_toast;
   },

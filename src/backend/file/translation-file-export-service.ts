@@ -116,8 +116,11 @@ export class TranslationFileExportService {
       return result;
     } catch (error) {
       this.log_manager?.error(
-        this.export_log_text(config, "app.error.translation.export_failed.message"),
-        { source: FILE_EXPORT_LOG_SOURCE, error },
+        this.export_log_text(config, "app.feedback.translation_export_failed"),
+        {
+          source: FILE_EXPORT_LOG_SOURCE,
+          error,
+        },
       );
       throw is_app_error(error)
         ? error

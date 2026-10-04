@@ -46,8 +46,6 @@ export function useLaboratoryPageState(): UseLaboratoryPageStateResult {
   const { snapshot, pending_state, commit_update } = useSettingsEditor({
     select_snapshot: build_laboratory_snapshot,
     pending_fields: LABORATORY_PENDING_FIELDS,
-    refresh_error_key: "laboratory_page.feedback.refresh_failed",
-    update_error_key: "app.feedback.settings_save_failed",
   });
   const runtime_locked = project_snapshot.loaded && is_runtime_busy(runtime_snapshot);
 

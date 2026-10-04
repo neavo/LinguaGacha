@@ -1,7 +1,6 @@
+import { push_error_toast } from "@frontend/app/feedback/desktop-toast";
 import { type JSX, useEffect, useRef, type ReactNode } from "react";
 import { useI18n } from "@frontend/app/locale/locale-context";
-import { push_toast } from "@frontend/app/feedback/desktop-toast";
-import { resolve_visible_error_message } from "@frontend/app/feedback/visible-error-message";
 import { AgentChatStore } from "./agent-chat-store";
 import { AgentChatStoreContext } from "./agent-chat-context";
 
@@ -14,9 +13,12 @@ export function AgentChatProvider(props: { children: ReactNode }): JSX.Element {
   text.current = t;
   const store_ref = useRef<AgentChatStore | null>(null);
   if (store_ref.current === null) {
-    store_ref.current = new AgentChatStore(window.localStorage, (error) => {
+    store_ref.current = new AgentChatStore(window.localStorage, (error, context) => {
       const t = text.current;
-      push_toast("error", resolve_visible_error_message(error, t, t("agent_page.error.decision")));
+      push_error_toast(
+        t(context === "restore" ? "agent_page.error.restore" : "agent_page.error.decision"),
+        error,
+      );
     });
   }
   const store = store_ref.current;

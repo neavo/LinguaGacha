@@ -1,9 +1,9 @@
+import { push_error_toast } from "@frontend/app/feedback/desktop-toast";
 import { useCallback, useEffect, useState, type Dispatch, type SetStateAction } from "react";
 
 import { api_fetch } from "@frontend/app/desktop/desktop-api";
 import type { ProjectWriteResultPayload } from "@frontend/app/state/desktop-project-write";
 import type { LocaleKey } from "@frontend/app/locale/locale-context";
-import { resolve_visible_error_message } from "@frontend/app/feedback/visible-error-message";
 import { normalize_source_paths } from "@frontend/app/desktop/source-paths";
 import {
   format_source_file_parse_failure_error_toast,
@@ -27,7 +27,7 @@ type PendingImportFilesRequest = {
   conflict_signature: string; // 用于识别对话期间文件视图是否变化
 };
 
-type WorkbenchImportFlowToastKind = "info" | "success" | "warning" | "error";
+type WorkbenchImportFlowToastKind = "info" | "success" | "warning";
 
 type WorkbenchImportFilesFlowOptions = {
   readonly: boolean;
@@ -197,10 +197,9 @@ export function useWorkbenchImportFilesFlow(
       const import_payload = await options.run_project_file_write(import_plan, async (body) => {
         return await api_fetch<ProjectWriteResultPayload>("/api/workbench/files/import", body);
       });
-      const failure_toast = format_source_file_parse_failure_toast({
-        value: (import_payload as { failed_files?: unknown }).failed_files,
-        text: options.t,
-      });
+      const failure_toast = format_source_file_parse_failure_toast(
+        (import_payload as { failed_files?: unknown }).failed_files,
+      );
       if (failure_toast !== null) {
         options.push_toast("warning", failure_toast);
       }
@@ -252,7 +251,10 @@ export function useWorkbenchImportFilesFlow(
 
       const normalized_source_paths = normalize_source_paths(source_paths);
       if (normalized_source_paths.length === 0) {
-        options.push_toast("error", options.t("workbench_page.feedback.no_valid_file"));
+        push_error_toast(
+          options.t("app.feedback.operation_failed"),
+          options.t("workbench_page.feedback.no_valid_file"),
+        );
         return;
       }
 
@@ -289,12 +291,10 @@ export function useWorkbenchImportFilesFlow(
             });
           }
 
-          const failure_toast = format_source_file_parse_failure_toast({
-            value: raw_failed_files,
-            text: options.t,
-          });
+          const failure_toast = format_source_file_parse_failure_toast(raw_failed_files);
           if (failure_toast !== null) {
-            options.push_toast(parsed_files.length > 0 ? "warning" : "error", failure_toast);
+            if (parsed_files.length > 0) options.push_toast("warning", failure_toast);
+            else push_error_toast(options.t("app.feedback.operation_failed"), failure_toast);
             parse_failure_toast_shown = true;
           }
         },
@@ -308,7 +308,10 @@ export function useWorkbenchImportFilesFlow(
         if (parsed_files.length === 0 && parse_failure_toast_shown) {
           return;
         }
-        options.push_toast("error", options.t("workbench_page.feedback.no_valid_file"));
+        push_error_toast(
+          options.t("app.feedback.operation_failed"),
+          options.t("workbench_page.feedback.no_valid_file"),
+        );
         return;
       }
 
@@ -368,23 +371,13 @@ export function useWorkbenchImportFilesFlow(
       await execute_import_files_request(pending_import_files_request, "inherit");
       return true;
     } catch (error) {
-      const parse_failure_toast = format_source_file_parse_failure_error_toast({
-        error,
-        text: options.t,
-      });
+      const parse_failure_toast = format_source_file_parse_failure_error_toast(error);
       if (parse_failure_toast !== null) {
-        options.push_toast("error", parse_failure_toast);
+        push_error_toast(options.t("app.feedback.operation_failed"), parse_failure_toast);
         options.set_dialog_submitting(false);
         return true;
       }
-      options.push_toast(
-        "error",
-        resolve_visible_error_message(
-          error,
-          options.t,
-          options.t("workbench_page.feedback.file_action_failed"),
-        ),
-      );
+      push_error_toast(options.t("app.feedback.operation_failed"), error);
       options.set_dialog_submitting(false);
       return true;
     }
@@ -413,14 +406,7 @@ export function useWorkbenchImportFilesFlow(
       try {
         await accept_import_conflict_action("skip");
       } catch (error) {
-        options.push_toast(
-          "error",
-          resolve_visible_error_message(
-            error,
-            options.t,
-            options.t("workbench_page.feedback.file_action_failed"),
-          ),
-        );
+        push_error_toast(options.t("app.feedback.operation_failed"), error);
         options.set_dialog_submitting(false);
       }
       return true;
@@ -435,23 +421,13 @@ export function useWorkbenchImportFilesFlow(
     try {
       await execute_import_files_request(pending_import_files_request, "none");
     } catch (error) {
-      const parse_failure_toast = format_source_file_parse_failure_error_toast({
-        error,
-        text: options.t,
-      });
+      const parse_failure_toast = format_source_file_parse_failure_error_toast(error);
       if (parse_failure_toast !== null) {
-        options.push_toast("error", parse_failure_toast);
+        push_error_toast(options.t("app.feedback.operation_failed"), parse_failure_toast);
         options.set_dialog_submitting(false);
         return true;
       }
-      options.push_toast(
-        "error",
-        resolve_visible_error_message(
-          error,
-          options.t,
-          options.t("workbench_page.feedback.file_action_failed"),
-        ),
-      );
+      push_error_toast(options.t("app.feedback.operation_failed"), error);
       options.set_dialog_submitting(false);
     }
     return true;

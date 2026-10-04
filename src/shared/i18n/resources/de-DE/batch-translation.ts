@@ -24,7 +24,8 @@ export const de_de_batch_translation = {
     active_requests: "Echtzeit-Aufgaben",
   },
   feedback: {
-    stats_refresh_failed: "Die Übersetzungsstatistik des Projekts konnte nicht aktualisiert werden",
+    stats_refresh_failed:
+      "Die Übersetzungsstatistik des Projekts konnte nicht aktualisiert werden …",
     done: "Übersetzung abgeschlossen",
     stopped: "Übersetzung gestoppt",
     done_with_errors: "Übersetzung abgeschlossen, einige Einträge sind fehlgeschlagen",
@@ -32,11 +33,11 @@ export const de_de_batch_translation = {
       "Keine Schlüssel verfügbar. {count} Wiederholungen, nächster Versuch in {seconds} Sekunden …",
     keys_retry_running:
       "Keine Schlüssel verfügbar. {count} Wiederholungen, erneuter Versuch läuft …",
-    refresh_failed: "Fehler beim Aktualisieren der Übersetzungsaufgabe",
-    start_failed: "Fehler beim Starten der Übersetzungsaufgabe",
-    stop_failed: "Fehler beim Stoppen der Übersetzungsaufgabe",
-    reset_all_failed: "Fehler beim Zurücksetzen des gesamten Übersetzungsfortschritts",
-    reset_failed_failed: "Fehler beim Zurücksetzen der fehlgeschlagenen Übersetzungseinträge",
+    refresh_failed: "Fehler beim Aktualisieren der Übersetzungsaufgabe …",
+    start_failed: "Fehler beim Starten der Übersetzungsaufgabe …",
+    stop_failed: "Fehler beim Stoppen der Übersetzungsaufgabe …",
+    reset_all_failed: "Fehler beim Zurücksetzen des gesamten Übersetzungsfortschritts …",
+    reset_failed_failed: "Fehler beim Zurücksetzen der fehlgeschlagenen Übersetzungseinträge …",
   },
   confirm: {
     reset_all_description:

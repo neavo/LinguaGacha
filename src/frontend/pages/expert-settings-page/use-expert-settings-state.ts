@@ -43,8 +43,6 @@ export function useExpertSettingsState(): UseExpertSettingsStateResult {
   const { snapshot, pending_state, commit_update } = useSettingsEditor({
     select_snapshot: build_expert_settings_snapshot,
     pending_fields: EXPERT_SETTINGS_PENDING_FIELDS,
-    refresh_error_key: "expert_settings_page.feedback.refresh_failed",
-    update_error_key: "app.feedback.settings_save_failed",
   });
   const update_preceding_lines_threshold = useCallback(
     async (next_value: number): Promise<void> => {

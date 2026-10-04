@@ -93,7 +93,9 @@ describe("ProjectDatabase", () => {
     const database = create_database();
     const target = project_path("existing.lg");
     fs.writeFileSync(target, "existing content");
-    expect(() => database.create_project(target, "replacement")).toThrow("project.already_exists");
+    expect(() => database.create_project(target, "replacement")).toThrow(
+      expect.objectContaining({ code: "project.already_exists" }),
+    );
     expect(fs.readFileSync(target, "utf8")).toBe("existing content");
   });
 
@@ -109,7 +111,9 @@ describe("ProjectDatabase", () => {
         throw Object.assign(new Error("database is locked"), { errcode: 5 });
       return original.call(this, sql);
     });
-    expect(() => database.create_project(target, "failed")).toThrow("database.busy");
+    expect(() => database.create_project(target, "failed")).toThrow(
+      expect.objectContaining({ code: "database.busy" }),
+    );
     expect(fs.existsSync(target)).toBe(false);
     expect(has_project_sidecar(target)).toBe(false);
     failure.mockRestore();
@@ -665,7 +669,7 @@ it("PDF 源文件在解析后变化时导入事务保留旧资产和译稿", asy
     database.transaction(lg_path, () =>
       database.update_asset_from_source(lg_path, "book.pdf", source, document),
     ),
-  ).rejects.toThrow("file.parse_failed");
+  ).rejects.toThrow(expect.objectContaining({ code: "file.parse_failed" }));
   expect(database.read_asset_content(lg_path, "book.pdf")).toEqual(Buffer.from(bytes));
   expect(database.read_pdf_document(lg_path, "book.pdf")).toEqual(document);
 });

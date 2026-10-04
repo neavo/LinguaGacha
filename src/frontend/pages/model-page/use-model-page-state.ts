@@ -1,3 +1,4 @@
+import { push_error_toast, push_toast } from "@frontend/app/feedback/desktop-toast";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { api_fetch } from "@frontend/app/desktop/desktop-api";
@@ -7,8 +8,7 @@ import { apply_model_auth_snapshot } from "@frontend/app/state/model-auth-store"
 import { useRuntimeSnapshot } from "@frontend/app/state/use-desktop-state";
 import { useModelCatalogRevision } from "@frontend/app/state/model-catalog-store";
 import { is_runtime_busy } from "@frontend/app/state/runtime-activity-store";
-import { push_toast } from "@frontend/app/feedback/desktop-toast";
-import { resolve_visible_error_message } from "@frontend/app/feedback/visible-error-message";
+
 import { useI18n, type LocaleKey } from "@frontend/app/locale/locale-context";
 import type {
   ModelCategorySnapshot,
@@ -465,14 +465,8 @@ export function useModelPageState(): UseModelPageStateResult {
       set_load_status("ready");
     } catch (error) {
       if (token !== load_request_ref.current) return;
-      if (loaded_ref.current) {
-        push_toast(
-          "error",
-          resolve_visible_error_message(error, t, t("model_page.feedback.refresh_failed")),
-        );
-      } else {
-        set_load_status("error");
-      }
+      push_error_toast(t("app.feedback.refresh_failed"), error);
+      if (!loaded_ref.current) set_load_status("error");
     }
   }, [t]);
 
@@ -530,10 +524,7 @@ export function useModelPageState(): UseModelPageStateResult {
         }
       } catch (error) {
         if (latest_patch_request_id_by_model_ref.current[model_id] === request_id) {
-          push_toast(
-            "error",
-            resolve_visible_error_message(error, t, t("model_page.feedback.update_failed")),
-          );
+          push_error_toast(t("app.feedback.save_failed"), error);
           void refresh_snapshot();
         }
       }
@@ -556,10 +547,7 @@ export function useModelPageState(): UseModelPageStateResult {
         });
         set_snapshot(normalize_model_page_snapshot(payload));
       } catch (error) {
-        push_toast(
-          "error",
-          resolve_visible_error_message(error, t, t("model_page.feedback.add_failed")),
-        );
+        push_error_toast(t("app.feedback.create_failed"), error);
       } finally {
         set_is_action_running(false);
       }
@@ -587,10 +575,7 @@ export function useModelPageState(): UseModelPageStateResult {
           }),
         );
       } catch (error) {
-        push_toast(
-          "error",
-          resolve_visible_error_message(error, t, t("model_page.feedback.copy_failed")),
-        );
+        push_error_toast(t("app.feedback.copy_failed"), error);
       } finally {
         set_is_action_running(false);
       }
@@ -670,9 +655,9 @@ export function useModelPageState(): UseModelPageStateResult {
           ordered_model_ids,
         });
         set_snapshot(normalize_model_page_snapshot(payload));
-      } catch {
+      } catch (error) {
         set_snapshot(previous_snapshot);
-        push_toast("error", t("model_page.feedback.reorder_failed"));
+        push_error_toast(t("app.feedback.save_failed"), error);
       } finally {
         set_is_action_running(false);
       }
@@ -697,16 +682,10 @@ export function useModelPageState(): UseModelPageStateResult {
         if (result.success) {
           push_toast("success", result.result_msg);
         } else {
-          push_toast(
-            "error",
-            result.result_msg === "" ? t("model_page.feedback.test_failed") : result.result_msg,
-          );
+          push_error_toast(t("model_page.feedback.test_failed"), result.result_msg);
         }
       } catch (error) {
-        push_toast(
-          "error",
-          resolve_visible_error_message(error, t, t("model_page.feedback.test_failed")),
-        );
+        push_error_toast(t("model_page.feedback.test_failed"), error);
       } finally {
         set_is_testing(false);
       }
@@ -762,17 +741,13 @@ export function useModelPageState(): UseModelPageStateResult {
         set_snapshot(normalize_model_page_snapshot(payload));
       }
     } catch (error) {
-      push_toast(
-        "error",
-        resolve_visible_error_message(
-          error,
-          t,
-          t(
-            current_confirm_state.kind === "logout"
-              ? "app.error.model.provider_failed.message"
-              : "model_page.feedback.update_failed",
-          ),
+      push_error_toast(
+        t(
+          current_confirm_state.kind === "logout"
+            ? "app.feedback.model_request_failed"
+            : "app.feedback.save_failed",
         ),
+        error,
       );
     } finally {
       set_is_action_running(false);
@@ -850,10 +825,7 @@ export function useModelPageState(): UseModelPageStateResult {
             is_loading: false,
           };
         });
-        push_toast(
-          "error",
-          resolve_visible_error_message(error, t, t("model_page.feedback.selector_load_failed")),
-        );
+        push_error_toast(t("app.feedback.read_failed"), error);
       }
     },
     [t],

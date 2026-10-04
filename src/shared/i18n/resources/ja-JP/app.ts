@@ -22,8 +22,6 @@ export const ja_jp_app = {
     selection: {
       label: "モデルを選択",
       unavailable: "利用できるモデルがありません",
-      load_failed: "モデル選択を読み込めませんでした。しばらくしてから再試行してください …",
-      update_failed: "モデル選択を保存できませんでした。しばらくしてから再試行してください …",
     },
     thinking_level: {
       default: "既定のまま",
@@ -62,14 +60,30 @@ export const ja_jp_app = {
     select_folder: "フォルダーを選択",
   },
   feedback: {
+    load_failed: "読み込みに失敗しました …",
+    refresh_failed: "更新に失敗しました …",
+    query_failed: "検索に失敗しました …",
+    modify_failed: "変更に失敗しました …",
+    create_failed: "作成に失敗しました …",
+    delete_failed: "削除に失敗しました …",
+    rename_failed: "名前の変更に失敗しました …",
+    import_failed: "インポートに失敗しました …",
+    export_failed: "エクスポートに失敗しました …",
+    copy_failed: "コピーに失敗しました …",
+    read_failed: "読み取りに失敗しました …",
+    operation_failed: "操作に失敗しました …",
+    content_unavailable: "内容を表示できません",
+    save_failed: "保存に失敗しました …",
+    translation_export_failed: "訳文のエクスポートに失敗しました …",
+    model_request_failed: "モデルへのリクエストに失敗しました …",
+    validation_failed: "リクエストのパラメーターが無効です",
     initial_load_failed: "アプリのデータを読み込めませんでした。再試行してください …",
     export_success: "データをエクスポートしました",
     import_success: "データをインポートしました",
     no_valid_data: "有効なデータがありません",
-    update_failed: "更新できませんでした",
+    update_failed: "更新できませんでした …",
     project_settings_aligned: "現在の設定に合わせてプロジェクト設定を更新しました",
     project_cache_loading: "プロジェクトのキャッシュを更新中 …",
-    settings_save_failed: "設定を保存できませんでした。しばらくしてから再試行してください …",
   },
   error_boundary: {
     eyebrow: "Renderer Runtime",
@@ -192,142 +206,7 @@ export const ja_jp_app = {
     excel_files: "Excel ファイル (*.xlsx)",
     supported_txt_files: "対応ファイル (*.txt)",
   },
-  error: {
-    request: {
-      validation_failed: {
-        message: "リクエストのパラメーターが無効です",
-      },
-      invalid_json: {
-        message: "リクエストの JSON が無効です",
-      },
-      route_not_found: {
-        message: "API ルートが見つかりません",
-      },
-    },
-    project: {
-      already_exists: {
-        message: "プロジェクトファイルは既に存在します。別のファイル名を選択してください …",
-      },
-      not_loaded: {
-        message: "プロジェクトが読み込まれていません",
-      },
-      not_found: {
-        message: "プロジェクトファイルが見つかりません",
-      },
-    },
-    translation: {
-      export_failed: { message: "訳文のエクスポートに失敗しました" },
-    },
-    file: {
-      already_exists: {
-        message: "同名のファイルまたはフォルダーが存在します。別の名前を指定してください …",
-      },
-      not_found: {
-        message: "ファイルが見つかりません",
-      },
-      parse_failed: {
-        message: "ファイルの内容を解析できませんでした",
-      },
-      preview_too_large: {
-        message: "ファイルが大きすぎるためプレビューできません。保存して確認してください。",
-      },
-      invalid_structure: {
-        message: "ファイルの構造が形式の要件を満たしていません",
-      },
-      io_failed: {
-        message: "ファイルの読み書きに失敗しました",
-      },
-    },
-    database: {
-      busy: {
-        message: "プロジェクトデータベースが使用中です。しばらくしてから再試行してください …",
-      },
-      conflict: {
-        message: "データベースへの書き込みが競合しました。更新して再試行してください …",
-      },
-    },
-    data: {
-      revision_conflict: {
-        message: "データのバージョンが変わりました。更新して再試行してください …",
-      },
-      committed_sync_failed: {
-        message:
-          "データは保存されましたが、その後の処理に失敗しました。プロジェクトを再読み込みしてください …",
-      },
-    },
-    model: {
-      not_found: {
-        message: "モデル設定が見つかりません",
-      },
-      auth_required: { message: "先にアカウントにログインしてください …" },
-      provider_failed: {
-        message: "モデルサービスへのリクエストに失敗しました。API 設定を確認してください …",
-      },
-    },
-    worker: {
-      failed: {
-        message: "バックグラウンド実行チャネルでエラーが発生しました",
-      },
-      execution_failed: {
-        message: "バックグラウンドタスクの実行に失敗しました",
-      },
-    },
-    runtime: {
-      busy: {
-        message: "モデルが実行中です。しばらくしてから再試行してください …",
-      },
-      capability_missing: {
-        message: "現在の実行環境に必要な機能がありません",
-      },
-      disposed: {
-        message: "実行リソースは解放されています",
-      },
-      cancelled: {
-        message: "操作をキャンセルしました",
-      },
-      internal_invariant: {
-        message: "内部状態に異常があります",
-      },
-    },
-    language: {
-      invalid_target_language: {
-        message: "翻訳先の言語が無効です",
-      },
-      unsupported_all_target_language: {
-        message: "翻訳先に「すべて」は指定できません",
-      },
-      unknown_source_language_code: {
-        message: "原文の言語コードが無効です",
-      },
-    },
-    quality: {
-      unknown_rule_type: {
-        message: "品質ルールの種類が無効です",
-      },
-      unsupported_rule_meta: {
-        message: "品質ルールの設定項目が無効です",
-      },
-    },
-    prompt: {
-      unknown_prompt_type: {
-        message: "プロンプトの種類が無効です",
-      },
-    },
-    desktop: {
-      missing_backend_api_base_url: {
-        message: "Backend API のアドレスが設定されていません",
-      },
-      http_error: {
-        message: "リクエストに失敗しました：{PATH}",
-      },
-      network_failed: {
-        message: "ネットワークリクエストに失敗しました：{PATH}",
-      },
-      timeout: {
-        message: "リクエストがタイムアウトしました：{PATH}",
-      },
-    },
-  },
+
   diagnostic: {
     agent: {
       model_round_failed: "Agent のモデルターンに失敗しました …",

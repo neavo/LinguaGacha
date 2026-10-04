@@ -57,15 +57,9 @@ export const ko_kr_model_page = {
   },
   feedback: {
     copy_success: "모델을 복제했습니다\n그룹: {CATEGORY}\n이름: {NAME}",
-    copy_failed: "모델을 복제하지 못했습니다. 잠시 후 다시 시도해 주세요 …",
-    refresh_failed: "모델 정보를 새로 고치지 못했습니다. 잠시 후 다시 시도해 주세요 …",
-    add_failed: "모델을 추가하지 못했습니다. 잠시 후 다시 시도해 주세요 …",
-    update_failed: "모델 설정을 저장하지 못했습니다. 잠시 후 다시 시도해 주세요 …",
-    reorder_failed: "모델 순서를 저장하지 못했습니다. 잠시 후 다시 시도해 주세요 …",
     delete_last_one: "각 분류에는 모델이 하나 이상 있어야 하므로 삭제할 수 없습니다 …",
     agent_limits_adjusted: "설정값이 잘못되어 사용 가능한 값으로 자동 조정했습니다 …",
     json_format_error: "JSON 형식이 잘못되었습니다. 유효한 JSON 객체를 입력해 주세요 …",
-    selector_load_failed: "모델 목록을 가져오지 못했습니다. API 설정을 확인해 주세요 …",
     test_failed: "모델 테스트에 실패했습니다. 잠시 후 다시 시도해 주세요 …",
   },
   fields: {

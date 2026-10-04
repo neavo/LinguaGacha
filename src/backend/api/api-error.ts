@@ -9,7 +9,7 @@ import {
 import { api_error } from "./api-types";
 
 /**
- * API 错误只映射为公开 AppError，底层异常、栈和敏感路径不会进入响应壳。
+ * API 错误归一为 AppError，保留具体原因；堆栈和诊断对象由日志保存。
  */
 export function normalize_api_error(error: unknown): AppError {
   if (is_app_error(error)) {
@@ -29,12 +29,13 @@ export function normalize_api_error(error: unknown): AppError {
 }
 
 /**
- * 响应壳只包含稳定错误码和安全详情；request_id 仅用于服务端日志关联。
+ * 响应壳包含稳定错误码、原因和公开详情；request_id 用于服务端日志关联。
  */
 export function api_error_envelope(error: AppError) {
   return api_error(to_api_error_payload(error));
 }
 
+/** 文件错误按 Node 错误码归类，原始原因随 cause 保留。 */
 function read_node_error_code(error: unknown): string {
   return typeof error === "object" &&
     error !== null &&
@@ -44,6 +45,7 @@ function read_node_error_code(error: unknown): string {
     : "";
 }
 
+/** 公开文件定位使用末段名称，完整路径由原始异常提供。 */
 function safe_path_detail(error: unknown): AppErrorPublicDetails {
   const candidate =
     typeof error === "object" && error !== null && "path" in error ? String(error.path ?? "") : "";

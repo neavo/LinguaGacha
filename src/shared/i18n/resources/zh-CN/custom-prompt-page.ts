@@ -16,10 +16,4 @@ export const zh_cn_custom_prompt_page = {
       description: "是否确认重置数据 …?",
     },
   },
-  feedback: {
-    load_failed: "提示词加载失败，请重试 …",
-    save_failed: "提示词保存失败，编辑内容已保留 …",
-    import_failed: "提示词导入失败",
-    export_failed: "提示词导出失败",
-  },
 } as const;

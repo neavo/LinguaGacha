@@ -23,6 +23,7 @@ vi.mock("@frontend/app/locale/locale-context", () => {
 });
 
 vi.mock("@frontend/app/feedback/desktop-toast", () => ({
+  push_error_toast: push_toast_mock,
   push_toast: push_toast_mock,
 }));
 
@@ -185,7 +186,7 @@ describe("BasicSettingsPage", () => {
 
     expect(get_current_basic_settings_state().update_request_timeout).not.toHaveBeenCalled();
     expect(push_toast_mock).toHaveBeenCalledWith(
-      "error",
+      "app.feedback.save_failed",
       "basic_settings_page.feedback.request_timeout_invalid",
     );
   });

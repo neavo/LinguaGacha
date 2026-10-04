@@ -138,7 +138,7 @@ describe("ProjectWriteStore", () => {
         items: [{ item_id: 99, patch: { dst: "不存在" } }],
         translationExtras: {},
       }),
-    ).rejects.toThrow("runtime.internal_invariant");
+    ).rejects.toThrow(expect.objectContaining({ code: "runtime.internal_invariant" }));
   });
 
   it("人工 Item 变化会推进 proofreading revision 并更新翻译统计", async () => {

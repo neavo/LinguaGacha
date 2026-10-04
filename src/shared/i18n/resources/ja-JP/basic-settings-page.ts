@@ -30,7 +30,6 @@ export const ja_jp_basic_settings_page = {
     },
   },
   feedback: {
-    refresh_failed: "基本設定を更新できません。しばらくしてから再試行してください …",
     request_timeout_invalid: "タイムアウトには有効な範囲の数値を入力してください …",
     pick_directory_failed: "フォルダーを選択できませんでした。固定の保存先を選び直してください …",
   },

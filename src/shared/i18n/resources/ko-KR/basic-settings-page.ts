@@ -31,7 +31,6 @@ export const ko_kr_basic_settings_page = {
     },
   },
   feedback: {
-    refresh_failed: "기본 설정을 새로 고칠 수 없습니다. 잠시 후 다시 시도해 주세요 …",
     request_timeout_invalid: "요청 제한 시간에 유효한 범위의 숫자를 입력해 주세요 …",
     pick_directory_failed: "폴더를 선택하지 못했습니다. 지정 저장 폴더를 다시 선택해 주세요 …",
   },

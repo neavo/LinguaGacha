@@ -14,10 +14,8 @@ export const en_us_workbench_page = {
     actions: "Actions",
   },
   feedback: {
-    refresh_failed: "Failed to refresh workbench",
     add_file_loading_toast: "Adding file and refreshing cache …",
     no_valid_file: "No valid files can be added",
-    file_action_failed: "File operation failed. Please try again later …",
     close_project_failed: "Failed to close the project. Please try again later …",
   },
   action: {
@@ -39,9 +37,6 @@ export const en_us_workbench_page = {
     warning_list: "Proofreading warnings",
     retry_check: "Check Again",
     continue_generate: "Generate Anyway",
-  },
-  reorder: {
-    failed: "Failed to save the file order. Please try again later …",
   },
   dialog: {
     import_conflict: {

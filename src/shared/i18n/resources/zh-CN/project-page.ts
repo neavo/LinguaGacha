@@ -7,8 +7,6 @@ export const zh_cn_project_page = {
     ready_status: "已选择 {COUNT} 个源文件",
     loading_toast: "正在创建工程 …",
     unavailable: "该目录下没有支持的源文件",
-    failed: "创建工程失败：{ERROR}",
-    failed_generic: "创建工程失败",
     default_preset_loaded: "已自动加载默认预设：{NAMES} …",
     default_presets: {
       glossary: "术语表",
@@ -28,12 +26,10 @@ export const zh_cn_project_page = {
     ready_status: "工程已就绪",
     preview_loading_toast: "正在读取工程预览 …",
     loading_toast: "正在加载工程 …",
-    preview_unavailable: "读取工程预览失败：{ERROR}",
-    preview_unavailable_generic: "读取工程预览失败",
-    failed: "加载工程失败：{ERROR}",
-    failed_generic: "加载工程失败",
+    preview_unavailable: "读取工程预览失败 …",
+
     action: "打开工程",
-    remove_unavailable: "当前无法移除这条最近使用记录，请稍后重试 …",
+    remove_unavailable: "移除最近使用记录失败 …",
     missing_file_description: "工程文件已失效，是否从列表中移除 …?",
   },
   preview: {

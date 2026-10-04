@@ -1,6 +1,6 @@
+import { push_error_toast } from "@frontend/app/feedback/desktop-toast";
 import { useCallback, useRef, useState } from "react";
 
-import { resolve_visible_error_message } from "@frontend/app/feedback/visible-error-message";
 import type { LocaleKey } from "@frontend/app/locale/locale-context";
 import {
   create_apply_item_changes_plan,
@@ -15,14 +15,14 @@ import type {
 import type { ProjectDataSectionRevisions } from "@shared/project-event";
 import type { ProofreadingDialogState } from "@frontend/pages/proofreading-page/proofreading-page-ui-types";
 
-type ProofreadingToastPusher = (kind: "warning" | "error", message: string) => void;
+type ProofreadingToastPusher = (kind: "warning", message: string) => void;
 
 type LocaleTextResolver = (key: LocaleKey, params?: Record<string, string>) => string;
 
 type ProofreadingProjectWriteRunner = (args: {
   path: string;
   plan: ProofreadingCommandPlan | null;
-  fallback_error_key: "proofreading_page.feedback.save_failed";
+  fallback_error_key: "app.feedback.save_failed";
   preferred_row_id?: string | null;
   close_dialog?: boolean;
 }) => Promise<void>;
@@ -97,14 +97,7 @@ export function useProofreadingDialogActions(
         target_item = (await options.read_items_by_row_ids([row_id]))[0];
       } catch (error) {
         if (dialog_request_id_ref.current === request_id) {
-          options.push_toast(
-            "error",
-            resolve_visible_error_message(
-              error,
-              options.t,
-              options.t("proofreading_page.feedback.refresh_failed"),
-            ),
-          );
+          push_error_toast(options.t("app.feedback.refresh_failed"), error);
         }
         return;
       }
@@ -176,9 +169,18 @@ export function useProofreadingDialogActions(
       };
     });
 
-    // 请求失败与空响应统一进入可重试错误态，不需要保留供应商异常。
-    const items = await options.read_context(target_row_id).catch(() => []);
+    // 通知与状态只接纳当前条目的请求，关闭重开上下文即可重新读取。
+    let failure: unknown;
+    const items = await options.read_context(target_row_id).catch((error: unknown) => {
+      failure = error;
+      return [];
+    });
     const has_target = items.some((item) => item.row_id === target_row_id);
+    if (dialog_request_id_ref.current === request_id && !has_target)
+      push_error_toast(
+        options.t("app.feedback.read_failed"),
+        failure ?? "The requested entry is absent from the context response.",
+      );
     set_dialog_state((previous_state) => {
       if (
         dialog_request_id_ref.current !== request_id ||
@@ -208,14 +210,7 @@ export function useProofreadingDialogActions(
         : undefined;
     } catch (error) {
       // 保存前的权威查询也属于本次操作；失败时保留弹窗草稿供重试。
-      options.push_toast(
-        "error",
-        resolve_visible_error_message(
-          error,
-          options.t,
-          options.t("proofreading_page.feedback.save_failed"),
-        ),
-      );
+      push_error_toast(options.t("app.feedback.save_failed"), error);
       return;
     }
     if (target_item === undefined) {
@@ -254,7 +249,7 @@ export function useProofreadingDialogActions(
             },
           ],
         }),
-        fallback_error_key: "proofreading_page.feedback.save_failed",
+        fallback_error_key: "app.feedback.save_failed",
         preferred_row_id: dialog_state.target_row_id,
         close_dialog: true,
       });

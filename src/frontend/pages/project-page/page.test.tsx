@@ -46,6 +46,7 @@ vi.mock("@frontend/app/state/use-desktop-state", () => {
 vi.mock("@frontend/app/feedback/desktop-toast", () => ({
   dismiss_toast: dismiss_toast_mock,
   push_progress_toast: push_progress_toast_mock,
+  push_error_toast: push_toast_mock,
   push_toast: push_toast_mock,
   update_progress_toast: update_progress_toast_mock,
 }));

@@ -13,10 +13,8 @@ export const ko_kr_workbench_page = {
     actions: "작업",
   },
   feedback: {
-    refresh_failed: "작업대를 새로 고치지 못했습니다",
     add_file_loading_toast: "파일 추가 및 캐시 새로 고치는 중 …",
     no_valid_file: "추가할 수 있는 유효한 파일이 없습니다",
-    file_action_failed: "파일 작업에 실패했습니다. 잠시 후 다시 시도해 주세요 …",
     close_project_failed: "프로젝트를 닫지 못했습니다. 잠시 후 다시 시도해 주세요 …",
   },
   action: {
@@ -37,9 +35,6 @@ export const ko_kr_workbench_page = {
     warning_list: "교정 경고",
     retry_check: "다시 확인",
     continue_generate: "생성 계속",
-  },
-  reorder: {
-    failed: "파일 순서를 저장하지 못했습니다. 잠시 후 다시 시도해 주세요 …",
   },
   dialog: {
     import_conflict: {

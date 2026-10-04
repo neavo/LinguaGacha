@@ -17,7 +17,10 @@ vi.mock("@frontend/app/desktop/desktop-api", () => ({
   api_fetch: mocks.api_fetch,
   api_blob: mocks.api_blob,
 }));
-vi.mock("@frontend/app/feedback/desktop-toast", () => ({ push_toast: mocks.push_toast }));
+vi.mock("@frontend/app/feedback/desktop-toast", () => ({
+  push_error_toast: mocks.push_toast,
+  push_toast: mocks.push_toast,
+}));
 vi.mock("@frontend/app/locale/locale-context", () => ({
   useI18n: () => ({ t: mocks.t }),
 }));

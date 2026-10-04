@@ -207,12 +207,14 @@ export class PlanningWorkerPool {
       } else if (message.status === "cancelled") {
         pending.reject(this.cancelled_error());
       } else {
+        const failure =
+          message.status === "error"
+            ? normalize_log_error(message.error, "Planning token counting failed.")
+            : null;
         pending.reject(
           new AppError("worker.execution_failed", {
-            diagnostic_context:
-              message.status === "error"
-                ? { failure: normalize_log_error(message.error, "Planning token counting failed.") }
-                : { batch_id: pending.id },
+            message: failure?.message ?? "Planning token counts do not match the requested batch.",
+            diagnostic_context: failure === null ? { batch_id: pending.id } : { failure },
           }),
         );
       }

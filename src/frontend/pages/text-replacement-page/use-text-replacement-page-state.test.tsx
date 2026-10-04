@@ -13,7 +13,10 @@ const toast = vi.hoisted(() => vi.fn());
 const t = (key: string) => key;
 const settings = normalize_setting_snapshot({});
 vi.mock("@frontend/app/desktop/desktop-api", () => ({ api_fetch: api }));
-vi.mock("@frontend/app/feedback/desktop-toast", () => ({ push_toast: toast }));
+vi.mock("@frontend/app/feedback/desktop-toast", () => ({
+  push_error_toast: toast,
+  push_toast: toast,
+}));
 vi.mock("@frontend/app/locale/locale-context", () => ({
   useI18n: () => ({ t }),
 }));

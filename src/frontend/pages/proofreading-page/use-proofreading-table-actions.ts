@@ -216,10 +216,7 @@ export function useProofreadingTableActions(
         count: range.count,
       };
       void options.read_list_window(range).catch((error) => {
-        options.report_proofreading_list_error(
-          error,
-          options.t("proofreading_page.feedback.refresh_failed"),
-        );
+        options.report_proofreading_list_error(error, options.t("app.feedback.refresh_failed"));
       });
     },
     [options],
@@ -269,10 +266,7 @@ export function useProofreadingTableActions(
         mark_loading: false,
       })
       .catch((error) => {
-        options.report_proofreading_list_error(
-          error,
-          options.t("proofreading_page.feedback.refresh_failed"),
-        );
+        options.report_proofreading_list_error(error, options.t("app.feedback.refresh_failed"));
       });
   }, [options]);
 
@@ -330,10 +324,7 @@ export function useProofreadingTableActions(
         }),
       ]);
     } catch (error) {
-      options.report_proofreading_list_error(
-        error,
-        options.t("proofreading_page.feedback.refresh_failed"),
-      );
+      options.report_proofreading_list_error(error, options.t("app.feedback.refresh_failed"));
     } finally {
       options.set_filter_dialog_open(false);
       options.filter_dialog_open_ref.current = false;

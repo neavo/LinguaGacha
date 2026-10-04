@@ -22,8 +22,6 @@ export const ko_kr_app = {
     selection: {
       label: "모델 선택",
       unavailable: "사용 가능한 모델이 없습니다",
-      load_failed: "모델 선택을 불러오지 못했습니다. 잠시 후 다시 시도해 주세요 …",
-      update_failed: "모델 선택을 저장하지 못했습니다. 잠시 후 다시 시도해 주세요 …",
     },
     thinking_level: {
       default: "기본값 유지",
@@ -61,14 +59,30 @@ export const ko_kr_app = {
     select_folder: "폴더 선택",
   },
   feedback: {
+    load_failed: "불러오기 실패 …",
+    refresh_failed: "새로 고침 실패 …",
+    query_failed: "조회 실패 …",
+    modify_failed: "수정 실패 …",
+    create_failed: "생성 실패 …",
+    delete_failed: "삭제 실패 …",
+    rename_failed: "이름 변경 실패 …",
+    import_failed: "가져오기 실패 …",
+    export_failed: "내보내기 실패 …",
+    copy_failed: "복사 실패 …",
+    read_failed: "읽기 실패 …",
+    operation_failed: "작업 실패 …",
+    content_unavailable: "콘텐츠를 사용할 수 없습니다",
+    save_failed: "저장 실패 …",
+    translation_export_failed: "번역 내보내기 실패 …",
+    model_request_failed: "모델 요청 실패 …",
+    validation_failed: "요청 매개변수가 잘못되었습니다",
     initial_load_failed: "앱 데이터를 불러오지 못했습니다. 다시 시도해 주세요 …",
     export_success: "데이터를 내보냈습니다",
     import_success: "데이터를 가져왔습니다",
     no_valid_data: "유효한 데이터가 없습니다",
-    update_failed: "업데이트에 실패했습니다",
+    update_failed: "업데이트에 실패했습니다 …",
     project_settings_aligned: "현재 설정에 맞춰 프로젝트 설정을 업데이트했습니다",
     project_cache_loading: "프로젝트 캐시 새로 고치는 중 …",
-    settings_save_failed: "설정을 저장하지 못했습니다. 잠시 후 다시 시도해 주세요 …",
   },
   error_boundary: {
     eyebrow: "Renderer Runtime",
@@ -185,135 +199,7 @@ export const ko_kr_app = {
     excel_files: "Excel 파일 (*.xlsx)",
     supported_txt_files: "지원 파일 (*.txt)",
   },
-  error: {
-    request: {
-      validation_failed: {
-        message: "요청 매개변수가 잘못되었습니다",
-      },
-      invalid_json: {
-        message: "요청 JSON이 잘못되었습니다",
-      },
-      route_not_found: {
-        message: "API 경로가 없습니다",
-      },
-    },
-    project: {
-      already_exists: { message: "프로젝트 파일이 이미 존재합니다. 다른 파일 이름을 선택하세요 …" },
-      not_loaded: {
-        message: "프로젝트가 열려 있지 않습니다",
-      },
-      not_found: {
-        message: "프로젝트 파일이 없습니다",
-      },
-    },
-    translation: {
-      export_failed: { message: "번역문 내보내기에 실패했습니다" },
-    },
-    file: {
-      already_exists: {
-        message: "같은 이름의 파일 또는 폴더가 있습니다. 다른 이름을 사용하세요 …",
-      },
-      not_found: {
-        message: "파일이 없습니다",
-      },
-      parse_failed: {
-        message: "파일 내용을 해석하지 못했습니다",
-      },
-      preview_too_large: { message: "파일이 너무 커서 미리 볼 수 없습니다. 저장한 후 확인하세요." },
-      invalid_structure: {
-        message: "파일 구조가 형식 요구 사항에 맞지 않습니다",
-      },
-      io_failed: {
-        message: "파일 읽기·쓰기에 실패했습니다",
-      },
-    },
-    database: {
-      busy: { message: "프로젝트 데이터베이스가 사용 중입니다. 잠시 후 다시 시도하세요 …" },
-      conflict: {
-        message: "데이터베이스 쓰기 충돌이 발생했습니다. 새로 고친 후 다시 시도해 주세요 …",
-      },
-    },
-    data: {
-      revision_conflict: {
-        message: "데이터 버전이 변경되었습니다. 새로 고친 후 다시 시도해 주세요 …",
-      },
-      committed_sync_failed: {
-        message: "데이터는 저장되었지만 후속 처리에 실패했습니다. 프로젝트를 다시 불러오세요 …",
-      },
-    },
-    model: {
-      not_found: {
-        message: "모델 설정이 없습니다",
-      },
-      auth_required: { message: "먼저 계정에 로그인해 주세요 …" },
-      provider_failed: {
-        message: "모델 서비스 요청에 실패했습니다. API 설정을 확인해 주세요 …",
-      },
-    },
-    worker: {
-      failed: {
-        message: "백그라운드 실행 채널에 오류가 발생했습니다",
-      },
-      execution_failed: {
-        message: "백그라운드 작업 실행에 실패했습니다",
-      },
-    },
-    runtime: {
-      busy: {
-        message: "모델이 실행 중입니다. 잠시 후 다시 시도해 주세요 …",
-      },
-      capability_missing: {
-        message: "현재 실행 환경에 필요한 기능이 없습니다",
-      },
-      disposed: {
-        message: "실행 리소스가 해제되었습니다",
-      },
-      cancelled: {
-        message: "작업이 취소되었습니다",
-      },
-      internal_invariant: {
-        message: "내부 상태에 오류가 있습니다",
-      },
-    },
-    language: {
-      invalid_target_language: {
-        message: "대상 언어가 잘못되었습니다",
-      },
-      unsupported_all_target_language: {
-        message: "대상 언어로 전체 언어를 선택할 수 없습니다",
-      },
-      unknown_source_language_code: {
-        message: "원문 언어 코드가 잘못되었습니다",
-      },
-    },
-    quality: {
-      unknown_rule_type: {
-        message: "품질 규칙 유형이 잘못되었습니다",
-      },
-      unsupported_rule_meta: {
-        message: "품질 규칙 설정 항목이 잘못되었습니다",
-      },
-    },
-    prompt: {
-      unknown_prompt_type: {
-        message: "프롬프트 유형이 잘못되었습니다",
-      },
-    },
-    desktop: {
-      missing_backend_api_base_url: {
-        message: "Backend API 주소가 설정되지 않았습니다",
-      },
-      http_error: {
-        message: "요청 실패: {PATH}",
-      },
-      network_failed: {
-        message: "네트워크 요청 실패: {PATH}",
-      },
-      timeout: {
-        message: "요청 시간 초과: {PATH}",
-      },
-    },
-  },
+
   diagnostic: {
     agent: {
       model_round_failed: "Agent 모델 턴이 실패했습니다 …",

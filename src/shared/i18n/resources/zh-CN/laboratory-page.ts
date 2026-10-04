@@ -24,7 +24,4 @@ export const zh_cn_laboratory_page = {
         "同一文件中的相同原文条目只翻译一次，<emphasis>重复项会复用已翻译的译文</emphasis>，默认启用",
     },
   },
-  feedback: {
-    refresh_failed: "当前无法刷新实验室设置，请稍后重试 …",
-  },
 } as const;

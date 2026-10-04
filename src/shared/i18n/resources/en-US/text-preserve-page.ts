@@ -30,7 +30,6 @@ export const en_us_text_preserve_page = {
     },
   },
   feedback: {
-    load_failed: "Failed to load text preservation rules. Please try again later …",
     unknown_error: "The operation failed. Please try again later …",
     mode_refresh_pending:
       "The text preserve mode was updated, and the proofreading cache is still refreshing. Please check again shortly …",

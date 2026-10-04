@@ -620,7 +620,7 @@ export function useProofreadingCacheActions(
 
       const reported = options.report_proofreading_list_error(
         error,
-        options.t("proofreading_page.feedback.refresh_failed"),
+        options.t("app.feedback.refresh_failed"),
       );
       if (!reported) {
         return;

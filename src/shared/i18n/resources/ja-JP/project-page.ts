@@ -9,8 +9,6 @@ export const ja_jp_project_page = {
     ready_status: "元ファイルを {COUNT} 個選択しました",
     loading_toast: "プロジェクトを作成中 …",
     unavailable: "このフォルダーに対応する元ファイルはありません",
-    failed: "プロジェクトを作成できませんでした：{ERROR}",
-    failed_generic: "プロジェクトを作成できませんでした",
     default_preset_loaded: "既定のプリセットを自動で読み込みました：{NAMES} …",
     default_presets: {
       glossary: "用語集",
@@ -30,10 +28,8 @@ export const ja_jp_project_page = {
     ready_status: "プロジェクトの準備ができました",
     preview_loading_toast: "プロジェクトのプレビューを読み込み中 …",
     loading_toast: "プロジェクトを読み込み中 …",
-    preview_unavailable: "プロジェクトのプレビューを読み込めませんでした：{ERROR}",
-    preview_unavailable_generic: "プロジェクトのプレビューを読み込めませんでした",
-    failed: "プロジェクトを読み込めませんでした：{ERROR}",
-    failed_generic: "プロジェクトを読み込めませんでした",
+    preview_unavailable: "プロジェクトのプレビューを読み込めませんでした …",
+
     action: "プロジェクトを開く",
     remove_unavailable: "最近使った項目を削除できません。しばらくしてから再試行してください …",
     missing_file_description: "プロジェクトファイルが利用できません。一覧から削除しますか …?",

@@ -1,8 +1,8 @@
+import { push_error_toast, push_toast, dismiss_toast } from "@frontend/app/feedback/desktop-toast";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { api_fetch, DesktopApiError } from "@frontend/app/desktop/desktop-api";
-import { push_toast, dismiss_toast } from "@frontend/app/feedback/desktop-toast";
-import { resolve_visible_error_message } from "@frontend/app/feedback/visible-error-message";
+
 import { useI18n } from "@frontend/app/locale/locale-context";
 import type {
   ProjectWriteOperation,
@@ -104,7 +104,7 @@ export function useCustomPromptEditorState(): UseCustomPromptEditorStateResult {
   const identity_generation_ref = useRef(0); // 项目切换与卸载隔离旧查询和在途写入回包。
   const previous_app_language_ref = useRef(settings_snapshot.app_language);
   const readonly_ref = useRef(readonly); // 异步保存读取最新占用状态，Effect 也借此识别解锁。
-  const save_error_toast_ref = useRef<ReturnType<typeof push_toast> | null>(null); // 保存恢复通知随当前尝试和页面生命周期失效。
+  const save_error_toast_ref = useRef<ReturnType<typeof push_error_toast> | null>(null); // 保存恢复通知随当前尝试和页面生命周期失效。
 
   /** 关闭恢复通知并使已排队的旧点击失效。 */
   const clear_save_error = useCallback((): void => {
@@ -144,23 +144,19 @@ export function useCustomPromptEditorState(): UseCustomPromptEditorStateResult {
   const notify_save_error = useCallback(
     (error: unknown, generation: number): void => {
       if (identity_generation_ref.current !== generation) return;
-      const toast_id = push_toast(
-        "error",
-        resolve_visible_error_message(error, t, t("custom_prompt_page.feedback.save_failed")),
-        {
-          action: {
-            label: t("custom_prompt_page.save.discard"),
-            onClick: () => {
-              if (save_error_toast_ref.current !== toast_id) return;
-              debounced_prompt_save.cancel();
-              clear_save_error();
-              desired_ref.current = persisted_ref.current;
-              set_prompt_text(persisted_ref.current.text);
-              set_enabled(persisted_ref.current.enabled);
-            },
+      const toast_id = push_error_toast(t("app.feedback.save_failed"), error, {
+        action: {
+          label: t("custom_prompt_page.save.discard"),
+          onClick: () => {
+            if (save_error_toast_ref.current !== toast_id) return;
+            debounced_prompt_save.cancel();
+            clear_save_error();
+            desired_ref.current = persisted_ref.current;
+            set_prompt_text(persisted_ref.current.text);
+            set_enabled(persisted_ref.current.enabled);
           },
         },
-      );
+      });
       save_error_toast_ref.current = toast_id;
     },
     [clear_save_error, debounced_prompt_save, t],
@@ -285,10 +281,7 @@ export function useCustomPromptEditorState(): UseCustomPromptEditorStateResult {
       }
     } catch (error) {
       if (identity_generation_ref.current === generation) {
-        push_toast(
-          "error",
-          resolve_visible_error_message(error, t, t("custom_prompt_page.feedback.load_failed")),
-        );
+        push_error_toast(t("app.feedback.load_failed"), error);
       }
     }
   }, [fetch_prompt_template, t]);
@@ -323,8 +316,11 @@ export function useCustomPromptEditorState(): UseCustomPromptEditorStateResult {
       persisted_ref.current = slice;
       prompts_revision_ref.current = prompt_snapshot.prompts_revision;
       set_load_status("ready");
-    } catch {
-      if (identity_generation_ref.current === generation) set_load_status("error");
+    } catch (error) {
+      if (identity_generation_ref.current === generation) {
+        set_load_status("error");
+        push_error_toast(t("app.feedback.load_failed"), error);
+      }
     }
   }, [
     clear_save_error,

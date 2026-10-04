@@ -81,7 +81,6 @@ export const en_us_proofreading_page = {
   },
   context: {
     loading: "Loading context …",
-    load_failed: "Failed to load context",
   },
   confirm: {
     retranslate_description: "Confirm retranslating {COUNT} entries …?",
@@ -89,13 +88,10 @@ export const en_us_proofreading_page = {
   },
   feedback: {
     loading_toast: "Loading data …",
-    refresh_failed: "Failed to refresh proofreading",
-    selection_failed: "Failed to read selection",
-    save_failed: "Save failed",
-    replace_failed: "Replace failed",
-    retranslate_failed: "Retranslate failed",
-    clear_translation_failed: "Failed to clear translations",
-    set_status_failed: "Failed to set translation status",
+    selection_failed: "Failed to read selection …",
+    replace_failed: "Replace failed …",
+    retranslate_failed: "Retranslate failed …",
+    clear_translation_failed: "Failed to clear translations …",
     replace_done: "Replace complete: changed {N} items",
     replace_no_change: "No content to replace",
     no_match: "No matches found",
