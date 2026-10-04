@@ -32,7 +32,7 @@ import {
 import type { MutableModels } from "@earendil-works/pi-ai/models";
 import type { AppLanguage } from "../../domain/app-language";
 import type { JsonRecord } from "../../domain/json";
-import type { AgentCommandAck, AgentSessionEvent } from "../../shared/agent";
+import type { AgentCommandAck, AgentSessionChange, AgentSessionEvent } from "../../shared/agent";
 import type { AgentWebSearchPort } from "./tools/web-search";
 import * as workspace_tools from "./tools/workspace-run";
 import { ProjectSessionState } from "../project/project-session-state";
@@ -623,8 +623,20 @@ describe("AgentService", () => {
     const { service, publish } = await create_service();
 
     const acknowledgement = await service.send_message({ text: "开始", attachments: [] });
-    const events = publish.mock.calls.map(([, payload]) => payload);
-    const revisions = events.map((event) => event["revision"]);
+    const revisions = publish.mock.calls.map(([, event]) => event["revision"]);
+    expect(
+      publish.mock.calls.every(
+        ([, event]) => event["type"] === "snapshot_seed" || event["type"] === "session_update",
+      ),
+    ).toBe(true);
+    expect(
+      publish.mock.calls.some(
+        ([, event]) =>
+          event["type"] === "session_update" &&
+          Array.isArray(event["changes"]) &&
+          event["changes"].length > 0,
+      ),
+    ).toBe(true);
 
     expect(revisions).toEqual(revisions.map((_, index) => Number(revisions[0]) + index));
     expect(acknowledgement).toEqual({ revision: revisions.at(-1) });
@@ -959,13 +971,13 @@ describe("AgentService", () => {
     await fixture.skills.refresh();
     expect(fixture.service.get_snapshot().skills.map(({ name }) => name)).toContain("new-skill");
     expect(fixture.service.get_snapshot()).toMatchObject({ sessionId: session_id, entries: [] });
-    expect(fixture.publish).toHaveBeenCalledWith(
+    expect(change_calls(fixture.publish)).toContainEqual([
       "agent.session_event",
       expect.objectContaining({
         type: "skills_changed",
         skills: expect.arrayContaining([expect.objectContaining({ name: "new-skill" })]),
       }),
-    );
+    ]);
 
     await fixture.service.send_message({ text: '@skill("new-skill") 开始', attachments: [] });
     await wait_for_idle(fixture.service);
@@ -1132,8 +1144,8 @@ describe("AgentService", () => {
         },
       ],
     });
-    const round_end_index = publish.mock.calls.findIndex(([, event]) => {
-      const entry = event["entry"];
+    const round_end_index = change_calls(publish).findIndex(([, event]) => {
+      const entry = "entry" in event ? event.entry : undefined;
       return (
         event["type"] === "entry_upsert" &&
         typeof entry === "object" &&
@@ -1143,7 +1155,7 @@ describe("AgentService", () => {
         typeof (entry as JsonRecord)["endedAt"] === "number"
       );
     });
-    const idle_index = publish.mock.calls.findIndex(
+    const idle_index = change_calls(publish).findIndex(
       ([, event]) => event["type"] === "session_state" && event["state"] === "idle",
     );
     expect(round_end_index).toBeGreaterThan(-1);
@@ -1170,8 +1182,8 @@ describe("AgentService", () => {
       await service.send_message({ text: "开始", attachments: [] });
       await vi.runAllTimersAsync();
       await wait_for_idle(service);
-      const speeds = publish.mock.calls.flatMap(([, payload]) => {
-        const event = payload as AgentSessionEvent;
+      const speeds = change_calls(publish).flatMap(([, payload]) => {
+        const event = payload as PublishedChange;
         return event.type === "token_speed" ? [event.tokenSpeed?.tokensPerSecond ?? null] : [];
       });
       expect(measurements).toBeGreaterThan(1);
@@ -1195,7 +1207,7 @@ describe("AgentService", () => {
     await vi.runAllTimersAsync();
     await wait_for_idle(service);
 
-    const events = publish.mock.calls.map(([, payload]) => payload as AgentSessionEvent);
+    const events = change_calls(publish).map(([, payload]) => payload as PublishedChange);
     const assistant_entries = events.flatMap((event) =>
       event.type === "entry_upsert" && event.entry.kind === "assistant_message"
         ? [event.entry]
@@ -1251,7 +1263,7 @@ describe("AgentService", () => {
     await service.send_message({ text: "x".repeat(400), attachments: [] });
     await wait_for_idle(service);
 
-    const context_events = publish.mock.calls
+    const context_events = change_calls(publish)
       .map(([, event]) => event)
       .filter((event) => event["type"] === "context");
     expect(context_events[0]).toEqual({
@@ -1338,8 +1350,8 @@ describe("AgentService", () => {
       ],
       status: "success",
     });
-    const running_assistant_entries = publish.mock.calls.flatMap(([, payload]) => {
-      const event = payload as AgentSessionEvent;
+    const running_assistant_entries = change_calls(publish).flatMap(([, payload]) => {
+      const event = payload as PublishedChange;
       return event.type === "entry_upsert" &&
         event.entry.kind === "assistant_message" &&
         event.entry.status === "running"
@@ -1368,8 +1380,8 @@ describe("AgentService", () => {
     const round_id = service.get_snapshot().entries[0]!.id;
     const waiting_speed = service.get_snapshot().tokenSpeed;
     expect(waiting_speed).toEqual({ roundId: round_id, tokensPerSecond: expect.any(Number) });
-    const live_events = publish.mock.calls.flatMap(([, payload]) => {
-      const event = payload as AgentSessionEvent;
+    const live_events = change_calls(publish).flatMap(([, payload]) => {
+      const event = payload as PublishedChange;
       return event.type === "token_speed" ? [event.tokenSpeed] : [];
     });
     expect(live_events.at(-1)).toEqual(waiting_speed);
@@ -1384,14 +1396,14 @@ describe("AgentService", () => {
       averageTokensPerSecond: expect.any(Number),
     });
     expect(service.get_snapshot().tokenSpeed).toBeNull();
-    expect(publish.mock.calls).toContainEqual([
+    expect(change_calls(publish)).toContainEqual([
       "agent.session_event",
       expect.objectContaining({ type: "entry_upsert", entry: failed_round }),
     ]);
 
     fake_agent_state.mode = "pending";
     fake_agent_state.hold_idle = true;
-    const continue_event_start = publish.mock.calls.length;
+    const continue_event_start = change_calls(publish).length;
     await service.continue_session({});
     await vi.waitFor(() => expect(fake_agent_state.release_pending).not.toBeNull());
     const resumed_speed = service.get_snapshot().tokenSpeed;
@@ -1399,9 +1411,9 @@ describe("AgentService", () => {
       roundId: round_id,
       tokensPerSecond: Number(failed_round.averageTokensPerSecond!.toFixed(2)),
     });
-    const continue_events = publish.mock.calls
+    const continue_events = change_calls(publish)
       .slice(continue_event_start)
-      .map(([, event]) => event as AgentSessionEvent);
+      .map(([, event]) => event as PublishedChange);
     const speed_index = continue_events.findIndex((event) => event.type === "token_speed");
     const running_index = continue_events.findIndex(
       (event) =>
@@ -1528,15 +1540,16 @@ describe("AgentService", () => {
     let tool_started_before_running_turn = false;
     // publish 的下一轮代表本地 SSE 获得写出机会。工具执行体不得抢在它之前。
     publish.mockImplementation((_topic, payload) => {
-      const event = payload as AgentSessionEvent;
-      if (
-        event.type === "entry_upsert" &&
-        event.entry.kind === "tool_call" &&
-        event.entry.status === "running"
-      ) {
-        setImmediate(() => {
-          running_event_send_turn_completed = true;
-        });
+      for (const event of unpack_event(payload)) {
+        if (
+          event.type === "entry_upsert" &&
+          event.entry.kind === "tool_call" &&
+          event.entry.status === "running"
+        ) {
+          setImmediate(() => {
+            running_event_send_turn_completed = true;
+          });
+        }
       }
     });
     read_items.mockImplementation(() => {
@@ -1578,13 +1591,13 @@ describe("AgentService", () => {
           output: texts,
         }),
       );
-      expect(publish).toHaveBeenCalledWith(
+      expect(change_calls(publish)).toContainEqual([
         "agent.session_event",
         expect.objectContaining({
           type: "entry_upsert",
           entry: expect.objectContaining({ kind: "tool_call", status: "success", output: texts }),
         }),
-      );
+      ]);
     } finally {
       mock.mockRestore();
     }
@@ -1596,7 +1609,7 @@ describe("AgentService", () => {
 
     await service.send_message({ text: "查询", attachments: [] });
     await wait_for_idle(service);
-    expect(publish).toHaveBeenCalledWith(
+    expect(change_calls(publish)).toContainEqual([
       "agent.session_event",
       expect.objectContaining({
         type: "entry_upsert",
@@ -1609,10 +1622,10 @@ describe("AgentService", () => {
           output: null,
         }),
       }),
-    );
-    const published_tool_entries = publish.mock.calls
+    ]);
+    const published_tool_entries = change_calls(publish)
       .flatMap(([, payload]) => {
-        const entry = payload["entry"];
+        const entry = "entry" in payload ? payload.entry : undefined;
         return typeof entry === "object" && entry !== null && !Array.isArray(entry)
           ? [entry as JsonRecord]
           : [];
@@ -1628,9 +1641,9 @@ describe("AgentService", () => {
           "output" in entry,
       ),
     ).toBe(true);
-    const published_events = publish.mock.calls.map(([, payload]) => payload);
+    const published_events = change_calls(publish).map(([, payload]) => payload);
     const first_tool_success_index = published_events.findIndex((event) => {
-      const entry = event["entry"];
+      const entry = "entry" in event ? event.entry : undefined;
       return (
         event["type"] === "entry_upsert" &&
         typeof entry === "object" &&
@@ -1641,7 +1654,7 @@ describe("AgentService", () => {
       );
     });
     const next_assistant_index = published_events.findIndex((event, index) => {
-      const entry = event["entry"];
+      const entry = "entry" in event ? event.entry : undefined;
       return (
         index > first_tool_success_index &&
         event["type"] === "entry_upsert" &&
@@ -1775,7 +1788,7 @@ describe("AgentService", () => {
     expect(revised_usage.input).toBeGreaterThan(first_usage.input);
     expect(revised_usage.output).toBe(first_usage.output * 2);
     expect(revised_usage.cacheWrite).toBeGreaterThan(first_usage.cacheWrite);
-    expect(publish.mock.calls.some(([, event]) => event["type"] === "usage")).toBe(true);
+    expect(change_calls(publish).some(([, event]) => event["type"] === "usage")).toBe(true);
 
     const revised_user = service
       .get_snapshot()
@@ -1984,10 +1997,10 @@ describe("AgentService", () => {
     await service.send_message({ text: "开始长任务", attachments: [] });
     await vi.waitFor(() => expect(fake_agent_state.release_pending).not.toBeNull());
     expect(service.get_snapshot()).toMatchObject({ state: "running", doing: "基础扫描" });
-    expect(publish).toHaveBeenCalledWith(
+    expect(change_calls(publish)).toContainEqual([
       "agent.session_event",
       expect.objectContaining({ type: "doing", doing: "基础扫描" }),
-    );
+    ]);
     await service.stop();
     await vi.waitFor(() => expect(runtime_gate.get_snapshot().owner).toBeNull());
     expect(service.get_snapshot().doing).toBe("基础扫描");
@@ -2015,10 +2028,10 @@ describe("AgentService", () => {
     await service.send_message({ text: "完成", attachments: [] });
     await wait_for_idle(service);
     expect(service.get_snapshot().doing).toBeNull();
-    expect(publish).toHaveBeenCalledWith(
+    expect(change_calls(publish)).toContainEqual([
       "agent.session_event",
       expect.objectContaining({ type: "doing", doing: null }),
-    );
+    ]);
   });
 
   it.each(["stop", "reset"] as const)("%s 后拒绝已结束脚本的阶段更新", async (boundary) => {
@@ -2037,9 +2050,9 @@ describe("AgentService", () => {
     if (boundary === "reset") await service.reset();
     else await service.stop();
     await vi.waitFor(() => expect(runtime_gate.get_snapshot().owner).toBeNull());
-    const before = publish.mock.calls.length;
+    const before = change_calls(publish).length;
     expect(() => old_write!("迟到更新")).toThrow();
-    expect(publish.mock.calls.length).toBe(before);
+    expect(change_calls(publish).length).toBe(before);
     expect(service.get_snapshot().doing).toBe(boundary === "reset" ? null : "基础扫描");
   });
 
@@ -2226,8 +2239,8 @@ describe("AgentService", () => {
         expect.objectContaining({ kind: "assistant_message", status: "stopped" }),
       ],
     });
-    const stopped_index = publish.mock.calls.findLastIndex(([, payload]) => {
-      const event = payload as AgentSessionEvent;
+    const stopped_index = change_calls(publish).findLastIndex(([, payload]) => {
+      const event = payload as PublishedChange;
       return (
         event.type === "entry_upsert" &&
         event.entry.kind === "assistant_message" &&
@@ -2238,14 +2251,16 @@ describe("AgentService", () => {
     await vi.runAllTimersAsync();
 
     expect(
-      publish.mock.calls.slice(stopped_index + 1).some(([, payload]) => {
-        const event = payload as AgentSessionEvent;
-        return (
-          event.type === "entry_upsert" &&
-          event.entry.kind === "assistant_message" &&
-          event.entry.status === "running"
-        );
-      }),
+      change_calls(publish)
+        .slice(stopped_index + 1)
+        .some(([, payload]) => {
+          const event = payload as PublishedChange;
+          return (
+            event.type === "entry_upsert" &&
+            event.entry.kind === "assistant_message" &&
+            event.entry.status === "running"
+          );
+        }),
     ).toBe(false);
     expect(
       service.get_snapshot().entries.find((entry) => entry.id === stopped_assistant?.id),
@@ -2454,15 +2469,17 @@ describe("AgentService", () => {
     await vi.runAllTimersAsync();
     await expect(resetting).resolves.toEqual({ revision: expect.any(Number) });
     expect(service.get_snapshot()).toMatchObject({ state: "idle", entries: [] });
-    const seed_index = publish.mock.calls.findLastIndex(
+    const seed_index = change_calls(publish).findLastIndex(
       ([, payload]) => payload["type"] === "snapshot_seed",
     );
     expect(seed_index).toBeGreaterThan(-1);
     expect(
-      publish.mock.calls.slice(seed_index + 1).some(([, payload]) => {
-        const event = payload as AgentSessionEvent;
-        return event.type === "entry_upsert" && event.entry.kind === "assistant_message";
-      }),
+      change_calls(publish)
+        .slice(seed_index + 1)
+        .some(([, payload]) => {
+          const event = payload as PublishedChange;
+          return event.type === "entry_upsert" && event.entry.kind === "assistant_message";
+        }),
     ).toBe(false);
   });
 
@@ -2935,7 +2952,7 @@ describe("AgentService", () => {
       await wait_for_idle(service);
     }
     const after_compaction = service.get_snapshot();
-    const usage_tokens = publish.mock.calls.flatMap(([, event]) =>
+    const usage_tokens = change_calls(publish).flatMap(([, event]) =>
       event["type"] === "context" ? [Number((event["context"] as JsonRecord)["tokens"])] : [],
     );
 
@@ -3055,7 +3072,7 @@ describe("AgentService", () => {
     fake_agent_state.release_tool_execution?.();
     await wait_for_idle(service);
 
-    const events = publish.mock.calls.map(([, event]) => event as AgentSessionEvent);
+    const events = change_calls(publish).map(([, event]) => event as PublishedChange);
     const compaction_end_index = events.findIndex(
       (event) =>
         event.type === "entry_upsert" &&
@@ -3878,7 +3895,7 @@ function read_tool_output(service: AgentService, id: string): JsonRecord {
 
 /** 事件数量本身是 reset/生命周期只发布一次 seed 的公开契约。 */
 function count_published_events(publish: ReturnType<typeof vi.fn>, type: string): number {
-  return publish.mock.calls.filter(([, event]) => event["type"] === type).length;
+  return change_calls(publish).filter(([, event]) => event["type"] === type).length;
 }
 
 /** 集中断言每轮都必须保持的系统指令边界，避免多个用例复制长清单。 */
@@ -3909,4 +3926,26 @@ function fake_uploads(): AgentWorkspacePort["uploads"] {
     upload: vi.fn(),
     open: vi.fn(),
   };
+}
+
+/** 行为用例检查批次中的业务变化，传输修订用例仍检查原始帧。 */
+type PublishedChange = (
+  | AgentSessionChange
+  | Extract<AgentSessionEvent, { type: "snapshot_seed" }>
+) & { revision: number };
+/** 展开一个传输批次，保留该批次共享的修订号。 */
+function unpack_event(payload: JsonRecord): PublishedChange[] {
+  const event = payload as AgentSessionEvent;
+  return event.type === "session_update"
+    ? event.changes.map((change) => ({ ...change, revision: event.revision }))
+    : [event];
+}
+/** 按实际发布顺序读取业务变化，供行为断言使用。 */
+function change_calls(publish: { mock: { calls: unknown[][] } }): Array<[string, PublishedChange]> {
+  return publish.mock.calls.flatMap(([topic, payload]) =>
+    unpack_event(payload as JsonRecord).map((event): [string, PublishedChange] => [
+      String(topic),
+      event,
+    ]),
+  );
 }

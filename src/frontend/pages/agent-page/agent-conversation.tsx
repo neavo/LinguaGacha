@@ -37,6 +37,7 @@ import { useActionShortcut } from "@frontend/widgets/interactions/use-action-sho
 import { Tooltip, TooltipContent, TooltipTrigger } from "@frontend/shadcn/tooltip";
 import {
   useAgentControls,
+  useAgentEntry,
   useAgentInput,
   useAgentQueue,
   useAgentSessionActions,
@@ -86,7 +87,7 @@ type PendingThinkingOffAction =
 export function AgentConversation({ active = true }: { active?: boolean }): JSX.Element {
   const { t } = useI18n();
 
-  const { entries } = useAgentTimeline();
+  const timeline = useAgentTimeline();
   const controls = useAgentControls();
   const { inputQueue } = useAgentQueue();
   const { skills } = useAgentSkills();
@@ -141,17 +142,10 @@ export function AgentConversation({ active = true }: { active?: boolean }): JSX.
     on_trigger: toggle_follow_latest,
   });
   const is_running = controls.state === "running";
-  // apply 一旦进入公开 running 工具帧就不可取消；后端仍保留同一权威守卫。
-  const workspace_apply_running = entries.some(
-    (entry) =>
-      entry.kind === "tool_call" &&
-      entry.toolName === "workspace_apply" &&
-      entry.status === "running",
-  );
+  const workspace_apply_running = timeline.workspaceApplyRunning;
   const agent_restoring = controls.transport === "restoring";
-  const last_compaction = entries.findLast((entry) => entry.kind === "context_compaction");
-  const compacting = last_compaction?.status === "running";
-  // 宿主指令只在会话已恢复、命令已收束且共享运行时空闲时开放；可压缩性直接采用后端事实。
+  const compacting = timeline.compacting;
+  // 宿主指令只在会话已恢复、命令已收束且共享运行时空闲时开放。可压缩性直接采用后端事实。
   const instruction_ready =
     controls.transport === "ready" &&
     controls.state === "idle" &&
@@ -160,7 +154,7 @@ export function AgentConversation({ active = true }: { active?: boolean }): JSX.
   const compact_available = instruction_ready && controls.context.compactable;
   // 暂停队列复用 Composer 的 continue 提交，不建立独立恢复控件。
   const can_continue_queue = !is_running && inputQueue.paused && inputQueue.items.length > 0;
-  // 公开回合先回 idle、共享 lease 后释放；两者之间统一显示为 Agent 自身结算。
+  // 公开回合先回 idle、共享 lease 后释放。两者之间统一显示为 Agent 自身结算。
   const agent_settling = !is_running && !compacting && runtime_snapshot.owner === "agent";
   const unavailable_reason =
     controls.transport === "disconnected"
@@ -173,23 +167,26 @@ export function AgentConversation({ active = true }: { active?: boolean }): JSX.
             ? "runtime_busy"
             : null;
 
+  const edit_entry = useAgentEntry(
+    active_inline_edit?.kind === "entry" ? active_inline_edit.entryId : null,
+  );
   // 会话被 reset、换工程或其它入口替换后，原位编辑目标失去事实即自动退出。
   useEffect(() => {
     if (active_inline_edit === null) return;
     const target_exists =
       active_inline_edit.kind === "queue"
         ? inputQueue.items.some((item) => item.id === active_inline_edit.itemId)
-        : entries.some((entry) => entry.id === active_inline_edit.entryId);
+        : edit_entry !== undefined;
     if (!target_exists) set_active_inline_edit(null);
-  }, [active_inline_edit, entries, inputQueue.items]);
+  }, [active_inline_edit, edit_entry, inputQueue.items]);
 
-  /** 开启跟随时在布局阶段归底；后续内容变化由统一观察入口接管。 */
+  /** 开启跟随时在布局阶段归底。后续内容变化由统一观察入口接管。 */
   useLayoutEffect(() => {
     const conversation = conversation_ref.current;
     if (active && conversation !== null && follow_latest) scroll_conversation_to_end(conversation);
   }, [active, follow_latest, scroll_conversation_to_end]);
 
-  // 外层只有一个显式滚动写入者；图片、详情与流式内容的尺寸变化共用同一观察入口。
+  // 外层只有一个显式滚动写入者。图片、详情与流式内容的尺寸变化共用同一观察入口。
   useLayoutEffect(() => {
     const conversation = conversation_ref.current;
     const content = conversation_content_ref.current;
@@ -210,8 +207,8 @@ export function AgentConversation({ active = true }: { active?: boolean }): JSX.
   );
 
   const selected_agent_model = read_selected_model(model_selection, "agent");
-  // 公开时间线出现条目才表示用户已经开始当前对话；隐藏会话种子不参与 UI 判断。
-  const conversation_started = entries.length > 0;
+  // 公开时间线出现条目才表示用户已经开始当前对话。隐藏会话种子不参与 UI 判断。
+  const conversation_started = timeline.entryIds.length > 0;
   /** 只警告支持思考且明确关闭思考的模型，不把能力缺失误报为用户选择。 */
   const thinking_off_confirmation_required =
     !can_continue_queue &&
@@ -241,7 +238,7 @@ export function AgentConversation({ active = true }: { active?: boolean }): JSX.
     [agent_actions, can_continue_queue, show_command_error],
   );
 
-  /** 普通发送继续使用底部 Composer；历史修订已由消息原位编辑器独立承接。 */
+  /** 普通发送继续使用底部 Composer。历史修订已由消息原位编辑器独立承接。 */
   const submit_message = (message: AgentMessageInput): void => {
     if (active_inline_edit !== null) return;
     if (thinking_off_confirmation_required) {
@@ -288,13 +285,13 @@ export function AgentConversation({ active = true }: { active?: boolean }): JSX.
     [apply_settings_snapshot, settings_snapshot.agent_approval_mode, show_command_error],
   );
 
-  /** Mention 指令直接调用宿主压缩；筛选文本由 Composer 在动作前移除。 */
+  /** Mention 指令直接调用宿主压缩。筛选文本由 Composer 在动作前移除。 */
   const compact_context = useCallback((): void => {
     void agent_actions.compactContext().catch((error: unknown) => {
       show_command_error(error, "agent_page.error.compact");
     });
   }, [agent_actions, show_command_error]);
-  /** 主 Composer 的宿主指令目录；动作不进入消息正文或原位编辑器。 */
+  /** 主 Composer 的宿主指令目录。动作不进入消息正文或原位编辑器。 */
   const instructions: readonly AgentMentionInstruction[] = [
     {
       id: "compact_context",
@@ -308,7 +305,7 @@ export function AgentConversation({ active = true }: { active?: boolean }): JSX.
     },
   ];
 
-  /** 发送失败保留确认框；模型更新沿用通用控制器自身的错误提示与恢复。 */
+  /** 发送失败保留确认框。模型更新沿用通用控制器自身的错误提示与恢复。 */
   const confirm_pending_thinking_off_action = async (): Promise<void> => {
     const action = pending_thinking_off_action;
     if (action === null) return;
@@ -356,7 +353,7 @@ export function AgentConversation({ active = true }: { active?: boolean }): JSX.
     [],
   );
 
-  /** 原位修订统一走现有后端命令；成功后由编辑器关闭自身。 */
+  /** 原位修订统一走现有后端命令。成功后由编辑器关闭自身。 */
   const save_inline_edit = useCallback(
     async (message: AgentMessageInput): Promise<void> => {
       const target = active_inline_edit;
@@ -374,7 +371,7 @@ export function AgentConversation({ active = true }: { active?: boolean }): JSX.
     [active_inline_edit, agent_actions, input],
   );
 
-  /** 保存成功和取消共用同一关闭入口；失败由原位编辑器保留草稿。 */
+  /** 保存成功和取消共用同一关闭入口。失败由原位编辑器保留草稿。 */
   const cancel_inline_edit = useCallback((): void => {
     set_active_inline_edit(null);
   }, []);
@@ -464,7 +461,7 @@ export function AgentConversation({ active = true }: { active?: boolean }): JSX.
     [],
   );
 
-  // 状态区只在存在内容时占位；容量判断与共享队列上限保持同源。
+  // 状态区只在存在内容时占位。容量判断与共享队列上限保持同源。
   const has_input_queue = inputQueue.items.length > 0;
   const queue_full = inputQueue.items.length >= AGENT_INPUT_QUEUE_LIMIT;
   const pending_decision = controls.pendingDecision;
@@ -501,7 +498,7 @@ export function AgentConversation({ active = true }: { active?: boolean }): JSX.
   ]);
 
   const follow_latest_label = t("agent_page.action.follow_latest");
-  // 可访问性属性使用标准键名；Tooltip 继续显示用户熟悉的平台符号。
+  // 可访问性属性使用标准键名。Tooltip 继续显示用户熟悉的平台符号。
   const follow_latest_aria_shortcut =
     resolve_shortcut_platform() === "mac" ? "Meta+E" : "Control+E";
   const follow_latest_status = t("app.tooltip.value", {
@@ -566,7 +563,7 @@ export function AgentConversation({ active = true }: { active?: boolean }): JSX.
                 <p>{t("agent_page.loading")}</p>
               </div>
             </div>
-          ) : entries.length === 0 ? (
+          ) : timeline.entryIds.length === 0 ? (
             <div className="agent-page__empty">
               <div className="agent-page__empty-intro">
                 <Bot className="agent-page__empty-icon" aria-hidden="true" />
@@ -615,7 +612,6 @@ export function AgentConversation({ active = true }: { active?: boolean }): JSX.
             <AgentTimeline
               active={active}
               skills={skills}
-              entries={entries}
               follow_reset_revision={follow_reset_revision}
               on_continue={continue_latest_round}
               on_edit={start_edit}
@@ -719,7 +715,7 @@ export function AgentConversation({ active = true }: { active?: boolean }): JSX.
                 command={controls.command}
                 can_continue_queue={can_continue_queue}
                 queue_full={queue_full}
-                can_reset={!agent_restoring && entries.length > 0}
+                can_reset={!agent_restoring && timeline.entryIds.length > 0}
                 context={controls.context}
                 usage={controls.usage}
                 approval_mode={settings_snapshot.agent_approval_mode}

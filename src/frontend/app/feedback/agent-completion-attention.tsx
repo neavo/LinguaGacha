@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import {
   useAgentControls,
+  useAgentEntry,
   useAgentTimeline,
 } from "@frontend/app/session/agent/agent-session-context";
 
@@ -9,7 +10,8 @@ import {
  */
 export function AgentCompletionAttention(): null {
   const { state } = useAgentControls();
-  const { entries } = useAgentTimeline();
+  const { latestRoundId } = useAgentTimeline();
+  const round = useAgentEntry(latestRoundId);
   const was_running_ref = useRef(false); // 只记住已观察到的运行，避免恢复历史终态时补发提醒
 
   useEffect(() => {
@@ -20,13 +22,10 @@ export function AgentCompletionAttention(): null {
     if (!was_running_ref.current) return;
     was_running_ref.current = false;
     // 时间线按发生顺序追加，普通用户轮次的终态决定是否提醒。
-    const round = entries.findLast(
-      (entry) => entry.kind === "user_message" && entry.delivery === "round",
-    );
     if (round?.status === "success" || round?.status === "error") {
       window.desktopApp.requestUserAttention();
     }
-  }, [entries, state]);
+  }, [round, state]);
 
   return null;
 }

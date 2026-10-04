@@ -29,7 +29,7 @@ import {
   type AgentCommandAck,
   type AgentTokenSpeedSnapshot,
   type AgentMessageInput,
-  type AgentSessionEventPayload,
+  type AgentSessionChange,
   type AgentSessionSnapshot,
 } from "../../shared/agent";
 import * as AppErrors from "../../shared/error";
@@ -95,7 +95,18 @@ type AgentServiceOptions = {
   publish: (topic: string, payload: JsonRecord) => void;
 };
 
-type AgentIncrementalEvent = Exclude<AgentSessionEventPayload, { type: "snapshot_seed" }>;
+type AgentSessionFields = Pick<
+  AgentSessionSnapshot,
+  | "sessionId"
+  | "state"
+  | "pendingDecision"
+  | "skills"
+  | "inputQueue"
+  | "doing"
+  | "context"
+  | "usage"
+  | "tokenSpeed"
+>;
 
 /** 启动时加载的基础提示词和会话种子。 */
 type LoadedAgentResources = Readonly<{
@@ -136,7 +147,7 @@ export class AgentService {
   private resources: LoadedAgentResources | null = null;
   private revision = 0;
   private disposed = false;
-  private published: AgentSessionSnapshot | null = null;
+  private publishedFields: AgentSessionFields | null = null; // 上一批已发布的控制字段，用于抑制重复通知
 
   /** 连接工程生命周期、技能变更与决定协调器，会话事实统一提交后发布。 */
   public constructor(options: AgentServiceOptions) {
@@ -264,6 +275,14 @@ export class AgentService {
 
   /** 快照由相同的提交事实投影，调用者只能取得独立值。 */
   public get_snapshot(): AgentSessionSnapshot {
+    return {
+      ...this.read_fields(),
+      revision: this.revision,
+      entries: structuredClone(this.session?.entries ?? []),
+    };
+  }
+  /** 读取会话控制字段，用于事件比较和完整快照组装。 */
+  private read_fields(): AgentSessionFields {
     const session = this.session;
     const execution = this.execution;
     const state =
@@ -272,10 +291,8 @@ export class AgentService {
         : "idle";
     return {
       sessionId: this.session_id,
-      revision: this.revision,
       state,
       pendingDecision: this.decisions.read_pending(),
-      entries: structuredClone(session?.entries ?? []),
       skills: this.get_skill_snapshot(),
       inputQueue: (session?.queue ?? new AgentInputQueue()).read_snapshot(this.can_send_now()),
       doing: session?.state.doing ?? null,
@@ -310,7 +327,7 @@ export class AgentService {
       defaultPersonality: default_personality,
       sessionSeed: session_seed,
     };
-    this.published = this.get_snapshot();
+    this.publishedFields = this.read_fields();
     const project = this.session_state.snapshot();
     if (project.loaded) await this.activate_project(project.projectPath);
   }
@@ -320,7 +337,7 @@ export class AgentService {
     this.assert_queue_available();
     this.session_state.require_loaded_project_path();
     const message = this.read_message(request);
-    if (this.get_snapshot().state === "running") {
+    if (this.read_fields().state === "running") {
       await this.require_session().change_queue((queue) => queue.enqueue(message));
       return this.ack();
     }
@@ -854,54 +871,57 @@ export class AgentService {
       this.token_speed_updated_at = null;
     }
   }
-  /** 比较独立快照发布增量，历史替换时发送完整种子供重连一致消费。 */
+  /** 投影直接提供条目变化。这里只比较会话控制字段。 */
   private publish_snapshot(force = false): void {
     if (this.disposed || (this.session_reset !== null && !force)) return;
-    const next = this.get_snapshot();
-    const previous = this.published;
-    const replaced =
-      previous !== null &&
-      (previous.entries.length > next.entries.length ||
-        previous.entries.some((entry, index) => next.entries[index]?.id !== entry.id));
-    if (force || previous === null || previous.sessionId !== next.sessionId || replaced) {
+    const fields = this.read_fields();
+    const previous = this.publishedFields;
+    const timeline = this.session?.view.take_change();
+    if (
+      force ||
+      previous === null ||
+      previous.sessionId !== fields.sessionId ||
+      timeline?.replace
+    ) {
       this.revision++;
-      next.revision = this.revision;
+      const snapshot = {
+        ...fields,
+        revision: this.revision,
+        entries: structuredClone(this.session?.entries ?? []),
+      };
       this.publish(AGENT_SESSION_EVENT_TOPIC, {
         type: "snapshot_seed",
         revision: this.revision,
-        snapshot: next,
+        snapshot,
       });
     } else {
-      if (!isDeepStrictEqual(next.tokenSpeed, previous.tokenSpeed))
-        this.publish_event({ type: "token_speed", tokenSpeed: next.tokenSpeed });
-      for (const entry of next.entries)
-        if (
-          !isDeepStrictEqual(
-            entry,
-            previous.entries.find((old) => old.id === entry.id),
-          )
-        )
-          this.publish_event({ type: "entry_upsert", entry });
-      if (next.state !== previous.state)
-        this.publish_event({ type: "session_state", state: next.state });
-      if (!isDeepStrictEqual(next.pendingDecision, previous.pendingDecision))
-        this.publish_event({ type: "pending_decision", pendingDecision: next.pendingDecision });
-      if (!isDeepStrictEqual(next.inputQueue, previous.inputQueue))
-        this.publish_event({ type: "input_queue", inputQueue: next.inputQueue });
-      if (next.doing !== previous.doing) this.publish_event({ type: "doing", doing: next.doing });
-      if (!isDeepStrictEqual(next.context, previous.context))
-        this.publish_event({ type: "context", context: next.context });
-      if (!isDeepStrictEqual(next.usage, previous.usage))
-        this.publish_event({ type: "usage", usage: next.usage });
-      if (!isDeepStrictEqual(next.skills, previous.skills))
-        this.publish_event({ type: "skills_changed", skills: next.skills });
+      const changes: AgentSessionChange[] = [];
+      if (!isDeepStrictEqual(fields.tokenSpeed, previous.tokenSpeed))
+        changes.push({ type: "token_speed", tokenSpeed: fields.tokenSpeed });
+      for (const entry of timeline?.entries ?? []) changes.push({ type: "entry_upsert", entry });
+      if (fields.state !== previous.state)
+        changes.push({ type: "session_state", state: fields.state });
+      if (!isDeepStrictEqual(fields.pendingDecision, previous.pendingDecision))
+        changes.push({ type: "pending_decision", pendingDecision: fields.pendingDecision });
+      if (!isDeepStrictEqual(fields.inputQueue, previous.inputQueue))
+        changes.push({ type: "input_queue", inputQueue: fields.inputQueue });
+      if (fields.doing !== previous.doing) changes.push({ type: "doing", doing: fields.doing });
+      if (!isDeepStrictEqual(fields.context, previous.context))
+        changes.push({ type: "context", context: fields.context });
+      if (!isDeepStrictEqual(fields.usage, previous.usage))
+        changes.push({ type: "usage", usage: fields.usage });
+      if (!isDeepStrictEqual(fields.skills, previous.skills))
+        changes.push({ type: "skills_changed", skills: fields.skills });
+      if (changes.length > 0) {
+        this.revision++;
+        this.publish(AGENT_SESSION_EVENT_TOPIC, {
+          type: "session_update",
+          revision: this.revision,
+          changes: structuredClone(changes),
+        });
+      }
     }
-    this.published = structuredClone({ ...next, revision: this.revision });
-  }
-  /** 全部会话事件共享单调递增修订号。 */
-  private publish_event(event: AgentIncrementalEvent): void {
-    this.revision++;
-    this.publish(AGENT_SESSION_EVENT_TOPIC, { ...event, revision: this.revision });
+    this.publishedFields = fields;
   }
   /** 回执指向已发布的最新修订，前端以事件更新会话事实。 */
   private ack(): AgentCommandAck {

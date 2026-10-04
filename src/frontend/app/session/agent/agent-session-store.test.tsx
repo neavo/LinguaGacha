@@ -5,7 +5,7 @@ vi.mock("@frontend/app/locale/locale-context", () => ({
   useI18n: () => ({ t: (key: string) => key }),
 }));
 vi.mock("@frontend/app/feedback/desktop-toast", () => ({ push_toast: decision_toast }));
-import { act, StrictMode, useEffect } from "react";
+import { act, StrictMode, useEffect, useContext, useMemo, useSyncExternalStore } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -29,6 +29,7 @@ vi.mock("@frontend/app/desktop/desktop-api", () => desktop_api_mocks);
 
 import { AgentSessionProvider } from "@frontend/app/session/agent/agent-session-provider";
 import {
+  AgentSessionStoreContext,
   useAgentControls,
   useAgentInput,
   useAgentQueue,
@@ -39,7 +40,25 @@ import {
 
 /** 测试探针聚合公开切片，统一观察会话与命令结果。 */
 function useAgentSession() {
-  const timeline = useAgentTimeline();
+  const structure = useAgentTimeline();
+  const { timeline: store } = useContext(AgentSessionStoreContext)!;
+  const snapshot = useMemo(() => {
+    let entries = structure.entryIds.map((id) => store.entry(id)!);
+    return {
+      read: () => entries,
+      subscribe(listener: () => void) {
+        const update = () => {
+          entries = structure.entryIds.map((id) => store.entry(id)!);
+          listener();
+        };
+        const subscriptions = structure.entryIds.map((id) => store.subscribe_entry(id, update));
+        update();
+        return () => subscriptions.forEach((unsubscribe) => unsubscribe());
+      },
+    };
+  }, [store, structure.entryIds]);
+  const entries = useSyncExternalStore(snapshot.subscribe, snapshot.read, snapshot.read);
+  const timeline = { entries };
   const controls = useAgentControls();
   const queue = useAgentQueue();
   const skills = useAgentSkills();
@@ -107,6 +126,12 @@ class FakeEventSource {
     this.listeners.get(type)?.(new MessageEvent(type, { data: JSON.stringify(next) }));
   }
 
+  /** 业务变化显式装入当前批次协议，原始帧仍由 `emit` 投递。 */
+  public change(payload: Record<string, unknown>): void {
+    const { revision, ...change } = payload;
+    this.emit(AGENT_SESSION_EVENT_TOPIC, { type: "session_update", revision, changes: [change] });
+  }
+
   /** 绕过 JSON 编码以验证损坏帧的恢复路径。 */
   public emit_raw(type: string, data: string): void {
     this.listeners.get(type)?.(new MessageEvent(type, { data }));
@@ -140,6 +165,50 @@ describe("AgentSessionStore", () => {
     desktop_api_mocks.open_event_stream.mockReset().mockReturnValue(event_source);
   });
 
+  it("同一批次先更新正文与控制事实，再一次通知各自读者", async () => {
+    const store = new AgentSessionStore(window.localStorage, vi.fn());
+    store.connect();
+    try {
+      await vi.waitFor(() => expect(store.get_controls().transport).toBe("ready"));
+      const observed = vi.fn(() => {
+        expect(store.timeline.entry("assistant-1")).toMatchObject({
+          status: "success",
+          parts: [{ text: "已完成" }],
+        });
+        expect(store.get_controls()).toMatchObject({ state: "idle", doing: "完成" });
+      });
+      store.timeline.subscribe_entry("assistant-1", observed);
+      const controlsChanged = vi.fn();
+      store.subscribe_controls(controlsChanged);
+      event_source.emit(AGENT_SESSION_EVENT_TOPIC, {
+        type: "session_update",
+        changes: [
+          { type: "entry_upsert", entry: assistant_entry("assistant-1", "已完成", "success", 1) },
+          { type: "session_state", state: "running" },
+          { type: "session_state", state: "idle" },
+          { type: "doing", doing: "完成" },
+        ],
+      });
+      expect(observed).toHaveBeenCalledOnce();
+      expect(controlsChanged).toHaveBeenCalledOnce();
+      const previous = store.timeline.entry("assistant-1");
+      event_source.emit(AGENT_SESSION_EVENT_TOPIC, {
+        type: "session_update",
+        changes: [
+          {
+            type: "entry_upsert",
+            entry: assistant_entry("assistant-1", "不完整批次", "running", 1),
+          },
+          { type: "usage", usage: { input: -1 } },
+        ],
+      });
+      expect(store.timeline.entry("assistant-1")).toBe(previous);
+      expect(observed).toHaveBeenCalledOnce();
+    } finally {
+      store.disconnect();
+    }
+  });
+
   it("速度独立发布，重复值不通知，并从 revision 缺口快照恢复", async () => {
     const store = new AgentSessionStore(window.localStorage, vi.fn());
     const speed_changed = vi.fn();
@@ -150,17 +219,17 @@ describe("AgentSessionStore", () => {
     try {
       await vi.waitFor(() => expect(store.get_controls().transport).toBe("ready"));
       timeline_changed.mockClear();
-      event_source.emit(AGENT_SESSION_EVENT_TOPIC, {
+      event_source.change({
         type: "token_speed",
         tokenSpeed: { roundId: "round-1", tokensPerSecond: 42.25 },
       });
-      event_source.emit(AGENT_SESSION_EVENT_TOPIC, {
+      event_source.change({
         type: "token_speed",
         tokenSpeed: { roundId: "round-1", tokensPerSecond: 42.25 },
       });
       expect(store.get_token_speed()?.tokensPerSecond).toBe(42.25);
       expect(speed_changed).toHaveBeenCalledOnce();
-      event_source.emit(AGENT_SESSION_EVENT_TOPIC, {
+      event_source.change({
         type: "token_speed",
         tokenSpeed: { roundId: "round-2", tokensPerSecond: 42.25 },
       });
@@ -177,17 +246,17 @@ describe("AgentSessionStore", () => {
           ],
         }),
       );
-      event_source.emit(AGENT_SESSION_EVENT_TOPIC, {
+      event_source.change({
         type: "token_speed",
         revision: 5,
         tokenSpeed: { roundId: "round-2", tokensPerSecond: 99 },
       });
       await vi.waitFor(() => expect(store.get_token_speed()?.tokensPerSecond).toBe(30));
-      expect(store.get_timeline().entries[0]).toMatchObject({
+      expect(store.timeline.entry("round-1")).toMatchObject({
         id: "round-1",
         averageTokensPerSecond: 21.5,
       });
-      event_source.emit(AGENT_SESSION_EVENT_TOPIC, {
+      event_source.change({
         type: "token_speed",
         tokenSpeed: null,
       });
@@ -237,11 +306,11 @@ describe("AgentSessionStore", () => {
     });
     await wait_for(() => expect(latest.transport).toBe("ready"));
     await act(async () => {
-      event_source.emit(AGENT_SESSION_EVENT_TOPIC, {
+      event_source.change({
         type: "entry_upsert",
         entry: assistant_entry("assistant-2", "第一段", "running", 2),
       });
-      event_source.emit(AGENT_SESSION_EVENT_TOPIC, {
+      event_source.change({
         type: "entry_upsert",
         entry: {
           kind: "assistant_message",
@@ -280,12 +349,12 @@ describe("AgentSessionStore", () => {
     await wait_for(() => expect(latest.transport).toBe("ready"));
 
     await act(async () => {
-      event_source.emit(AGENT_SESSION_EVENT_TOPIC, {
+      event_source.change({
         type: "context",
         revision: 1,
         context: { tokens: 100, compactable: false, limits: null },
       });
-      event_source.emit(AGENT_SESSION_EVENT_TOPIC, {
+      event_source.change({
         type: "context",
         revision: 1,
         context: { tokens: 200, compactable: true, limits: null },
@@ -294,7 +363,7 @@ describe("AgentSessionStore", () => {
     expect(latest.context).toEqual({ tokens: 100, compactable: false, limits: null });
 
     await act(async () => {
-      event_source.emit(AGENT_SESSION_EVENT_TOPIC, {
+      event_source.change({
         type: "context",
         revision: 3,
         context: { tokens: 300, compactable: true, limits: null },
@@ -313,7 +382,7 @@ describe("AgentSessionStore", () => {
     await wait_for(() => expect(latest.transport).toBe("ready"));
 
     await act(async () => {
-      event_source.emit(AGENT_SESSION_EVENT_TOPIC, {
+      event_source.change({
         type: "context",
         context: { tokens: 31_488, compactable: true, limits: null },
       });
@@ -321,15 +390,15 @@ describe("AgentSessionStore", () => {
     expect(latest.context).toEqual({ tokens: 31_488, compactable: true, limits: null });
 
     await act(async () => {
-      event_source.emit(AGENT_SESSION_EVENT_TOPIC, {
+      event_source.change({
         type: "context",
         context: { tokens: -1, compactable: true, limits: null },
       });
-      event_source.emit(AGENT_SESSION_EVENT_TOPIC, {
+      event_source.change({
         type: "context",
         context: { tokens: 1.5, compactable: false, limits: null },
       });
-      event_source.emit(AGENT_SESSION_EVENT_TOPIC, {
+      event_source.change({
         type: "context",
         context: null,
       });
@@ -348,7 +417,7 @@ describe("AgentSessionStore", () => {
     await wait_for(() => expect(latest.transport).toBe("ready"));
     expect(latest.usage).toEqual({ input: 10, output: 2, cacheRead: 5, cacheWrite: 1 });
     await act(async () =>
-      event_source.emit(AGENT_SESSION_EVENT_TOPIC, {
+      event_source.change({
         type: "usage",
         revision: 1,
         usage: { input: 20, output: 4, cacheRead: 12, cacheWrite: 2 },
@@ -356,7 +425,7 @@ describe("AgentSessionStore", () => {
     );
     expect(latest.usage).toEqual({ input: 20, output: 4, cacheRead: 12, cacheWrite: 2 });
     await act(async () =>
-      event_source.emit(AGENT_SESSION_EVENT_TOPIC, {
+      event_source.change({
         type: "usage",
         revision: 2,
         usage: { input: -1, output: 4, cacheRead: 12, cacheWrite: 2 },
@@ -373,7 +442,7 @@ describe("AgentSessionStore", () => {
     await wait_for(() => expect(latest.transport).toBe("ready"));
 
     await act(async () => {
-      event_source.emit(AGENT_SESSION_EVENT_TOPIC, {
+      event_source.change({
         type: "doing",
         doing: "检查章节",
       });
@@ -381,7 +450,7 @@ describe("AgentSessionStore", () => {
     expect(latest.doing).toBe("检查章节");
 
     await act(async () => {
-      event_source.emit(AGENT_SESSION_EVENT_TOPIC, {
+      event_source.change({
         type: "doing",
         doing: " ",
       });
@@ -397,17 +466,17 @@ describe("AgentSessionStore", () => {
     try {
       await vi.waitFor(() => expect(store.get_controls().transport).toBe("ready"));
       expect(store.get_controls().doing).toBe("检查章节");
-      event_source.emit(AGENT_SESSION_EVENT_TOPIC, { type: "session_state", state: "running" });
-      event_source.emit(AGENT_SESSION_EVENT_TOPIC, {
+      event_source.change({ type: "session_state", state: "running" });
+      event_source.change({
         type: "pending_decision",
         pendingDecision: countdown_question(),
       });
-      event_source.emit(AGENT_SESSION_EVENT_TOPIC, { type: "doing", doing: "汇总结果" });
-      event_source.emit(AGENT_SESSION_EVENT_TOPIC, {
+      event_source.change({ type: "doing", doing: "汇总结果" });
+      event_source.change({
         type: "pending_decision",
         pendingDecision: null,
       });
-      event_source.emit(AGENT_SESSION_EVENT_TOPIC, { type: "session_state", state: "idle" });
+      event_source.change({ type: "session_state", state: "idle" });
       expect(store.get_controls()).toMatchObject({ state: "idle", doing: "汇总结果" });
       const revision = event_source.current_revision;
       desktop_api_mocks.api_get.mockResolvedValueOnce(
@@ -417,7 +486,7 @@ describe("AgentSessionStore", () => {
       await vi.waitFor(() =>
         expect(store.get_controls()).toMatchObject({ transport: "ready", doing: "恢复事项" }),
       );
-      event_source.emit(AGENT_SESSION_EVENT_TOPIC, { type: "doing", doing: null });
+      event_source.change({ type: "doing", doing: null });
       expect(store.get_controls().doing).toBeNull();
     } finally {
       store.disconnect();
@@ -432,7 +501,7 @@ describe("AgentSessionStore", () => {
     await wait_for(() => expect(latest.transport).toBe("ready"));
     for (const context_window of [128_000, 256_000]) {
       await act(async () =>
-        event_source.emit(AGENT_SESSION_EVENT_TOPIC, {
+        event_source.change({
           type: "context",
           context: {
             tokens: 64_000,
@@ -463,7 +532,7 @@ describe("AgentSessionStore", () => {
       createdAt: 1,
     };
     await act(async () => {
-      event_source.emit(AGENT_SESSION_EVENT_TOPIC, {
+      event_source.change({
         type: "input_queue",
         inputQueue: { paused: true, canSendNow: true, items: [item] },
       });
@@ -528,7 +597,7 @@ describe("AgentSessionStore", () => {
       agent_snapshot({ context: { tokens: 64_000, compactable: true, limits: null } }),
     );
     desktop_api_mocks.api_fetch.mockImplementationOnce(async () => {
-      event_source.emit(AGENT_SESSION_EVENT_TOPIC, {
+      event_source.change({
         type: "entry_upsert",
         entry: {
           kind: "context_compaction",
@@ -574,7 +643,7 @@ describe("AgentSessionStore", () => {
     };
     desktop_api_mocks.api_get.mockResolvedValue(agent_snapshot({ pendingDecision: waiting }));
     desktop_api_mocks.api_fetch.mockImplementationOnce(async () => {
-      event_source.emit(AGENT_SESSION_EVENT_TOPIC, {
+      event_source.change({
         type: "pending_decision",
         pendingDecision: null,
       });
@@ -610,7 +679,7 @@ describe("AgentSessionStore", () => {
     };
     desktop_api_mocks.api_get.mockResolvedValue(agent_snapshot({ pendingDecision: pending }));
     desktop_api_mocks.api_fetch.mockImplementationOnce(async () => {
-      event_source.emit(AGENT_SESSION_EVENT_TOPIC, {
+      event_source.change({
         type: "pending_decision",
         pendingDecision: null,
       });
@@ -657,7 +726,7 @@ describe("AgentSessionStore", () => {
     vi.useFakeTimers();
     desktop_api_mocks.api_get.mockResolvedValue(agent_snapshot({ pendingDecision: pending }));
     desktop_api_mocks.api_fetch.mockImplementationOnce(async () => {
-      event_source.emit(AGENT_SESSION_EVENT_TOPIC, {
+      event_source.change({
         type: "pending_decision",
         pendingDecision: null,
       });
@@ -769,7 +838,7 @@ describe("AgentSessionStore", () => {
     };
 
     await act(async () => {
-      event_source.emit(AGENT_SESSION_EVENT_TOPIC, {
+      event_source.change({
         type: "pending_decision",
         pendingDecision: pending,
       });
@@ -777,8 +846,8 @@ describe("AgentSessionStore", () => {
     expect(latest.pendingDecision).toEqual(pending);
 
     await act(async () => {
-      event_source.emit(AGENT_SESSION_EVENT_TOPIC, { type: "pending_decision" });
-      event_source.emit(AGENT_SESSION_EVENT_TOPIC, {
+      event_source.change({ type: "pending_decision" });
+      event_source.change({
         type: "pending_decision",
         pendingDecision: {
           ...pending,
@@ -786,14 +855,14 @@ describe("AgentSessionStore", () => {
           summary: { ...pending.summary, pages: undefined },
         },
       });
-      event_source.emit(AGENT_SESSION_EVENT_TOPIC, {
+      event_source.change({
         type: "pending_decision",
         pendingDecision: {
           ...pending,
           summary: { ...pending.summary, items: 0 },
         },
       });
-      event_source.emit(AGENT_SESSION_EVENT_TOPIC, {
+      event_source.change({
         type: "pending_decision",
         pendingDecision: {
           kind: "question",
@@ -1282,7 +1351,7 @@ describe("AgentSessionStore", () => {
       }, [state.entries]);
     });
     await wait_for(() => expect(desktop_api_mocks.open_event_stream).toHaveBeenCalledOnce());
-    event_source.emit(AGENT_SESSION_EVENT_TOPIC, {
+    event_source.change({
       type: "entry_upsert",
       entry: assistant_entry("assistant-1", "订阅期条目", "running", 1),
     });
@@ -1370,7 +1439,7 @@ describe("AgentSessionStore", () => {
     const entries = latest.entries;
     latest.input.draft.write({ text: "草稿", attachments: [uploaded_file("old")] });
     await act(async () =>
-      event_source.emit(AGENT_SESSION_EVENT_TOPIC, {
+      event_source.change({
         type: "skills_changed",
         skills: TEST_SKILLS.slice(0, 1),
       }),
@@ -1539,15 +1608,15 @@ describe("AgentSessionStore", () => {
       await Promise.resolve();
     });
     await act(async () => {
-      event_source.emit(AGENT_SESSION_EVENT_TOPIC, {
+      event_source.change({
         type: "entry_upsert",
         entry: assistant_entry("assistant-2", "SSE 新消息", "running", 2),
       });
-      event_source.emit(AGENT_SESSION_EVENT_TOPIC, {
+      event_source.change({
         type: "context",
         context: { tokens: 200, compactable: true, limits: null },
       });
-      event_source.emit(AGENT_SESSION_EVENT_TOPIC, {
+      event_source.change({
         type: "session_state",
         state: "running",
       });
@@ -1583,7 +1652,7 @@ describe("AgentSessionStore", () => {
       await Promise.resolve();
     });
     await act(async () => {
-      event_source.emit(AGENT_SESSION_EVENT_TOPIC, {
+      event_source.change({
         type: "context",
         context: { tokens: 200, compactable: true, limits: null },
       });
@@ -1658,11 +1727,11 @@ describe("AgentSessionStore", () => {
       }),
     );
     desktop_api_mocks.api_fetch.mockImplementationOnce(async () => {
-      event_source.emit(AGENT_SESSION_EVENT_TOPIC, {
+      event_source.change({
         type: "entry_upsert",
         entry: assistant_entry("assistant-1", "已停止", "stopped", 1),
       });
-      event_source.emit(AGENT_SESSION_EVENT_TOPIC, { type: "session_state", state: "idle" });
+      event_source.change({ type: "session_state", state: "idle" });
       return { revision: event_source.current_revision };
     });
     let latest!: ReturnType<typeof useAgentSession>;
@@ -1712,7 +1781,7 @@ describe("AgentSessionStore", () => {
     };
     desktop_api_mocks.api_get.mockResolvedValue(agent_snapshot({ entries: [failed_compaction] }));
     desktop_api_mocks.api_fetch.mockImplementationOnce(async () => {
-      event_source.emit(AGENT_SESSION_EVENT_TOPIC, {
+      event_source.change({
         type: "entry_upsert",
         entry: { ...failed_compaction, status: "running" },
       });

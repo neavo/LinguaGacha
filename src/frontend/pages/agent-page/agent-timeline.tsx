@@ -1,3 +1,8 @@
+import {
+  useAgentEntry,
+  useAgentRound,
+  useAgentTimeline,
+} from "@frontend/app/session/agent/agent-session-context";
 import { find_agent_mention_ranges } from "./agent-mention";
 import {
   type JSX,
@@ -5,7 +10,6 @@ import {
   useEffect,
   useId,
   useLayoutEffect,
-  useMemo,
   useRef,
   useState,
   type ReactNode,
@@ -40,13 +44,6 @@ type Translate = ReturnType<typeof useI18n>["t"];
 type UserEntry = Extract<AgentEntry, { kind: "user_message" }>;
 type AssistantEntry = Extract<AgentEntry, { kind: "assistant_message" }>;
 type ContextCompactionEntry = Extract<AgentEntry, { kind: "context_compaction" }>;
-type AgentRoundEntry = UserEntry | AssistantEntry | AgentToolEntry | ContextCompactionEntry;
-/** `round` 用户条目拥有随后输出与 `steer` 输入，直到下一个 `round` 开始。 */
-type AgentRoundEntries = {
-  user: Extract<UserEntry, { delivery: "round" }>;
-  entries: AgentRoundEntry[];
-};
-
 /** 压缩条目使用独立状态句式，不复用普通轮次结果文案。 */
 const AGENT_COMPACTION_LABEL_KEYS: Readonly<Record<ContextCompactionEntry["status"], LocaleKey>> =
   Object.freeze({
@@ -56,11 +53,10 @@ const AGENT_COMPACTION_LABEL_KEYS: Readonly<Record<ContextCompactionEntry["statu
   });
 const AGENT_THINKING_AUTO_COLLAPSE_DELAY_MS = 3_000; // 给用户留出确认终态的短暂视觉窗口
 
-/** 页面传入时间线事实、用户命令和思考块跟随重置版本。 */
+/** 页面提供交互与展示设置，时间线事实由各层独立订阅。 */
 type AgentTimelineProps = {
   active?: boolean;
   skills: readonly AgentSkillSnapshot[];
-  entries: readonly AgentEntry[];
 
   follow_reset_revision: number;
   on_continue: () => void;
@@ -72,45 +68,36 @@ type AgentTimelineProps = {
   annotation_disabled: boolean;
 };
 
-/** 时间线独立拥有条目次序、详情状态与运行指示。 */
+/** 时间线订阅轮次顺序，仅在本地保存工具详情选择。 */
 export function AgentTimeline(props: AgentTimelineProps): JSX.Element {
   const { t } = useI18n();
   const [selected_tool_id, set_selected_tool_id] = useState<string | null>(null);
   useEffect(() => {
     if (props.active === false) set_selected_tool_id(null);
   }, [props.active]);
-  const previous_rounds_ref = useRef<readonly AgentRoundEntries[]>([]);
-  const rounds = useMemo(() => {
-    const next = build_agent_rounds(previous_rounds_ref.current, props.entries);
-    previous_rounds_ref.current = next;
-    return next;
-  }, [props.entries]);
-  const selected_tool =
-    props.entries.find(
-      (entry): entry is AgentToolEntry =>
-        entry.kind === "tool_call" && entry.id === selected_tool_id,
-    ) ?? null;
+  const { roundIds } = useAgentTimeline();
+  const selected = useAgentEntry(selected_tool_id);
+  const selected_tool = selected?.kind === "tool_call" ? selected : null;
   return (
     <>
       <AgentResponseAnnotationSelection
         disabled={props.annotation_disabled}
         on_add={props.on_add_annotation}
       >
-        {rounds.map((round, index) => (
+        {roundIds.map((roundId, index) => (
           <AgentRound
-            key={round.user.id}
-            round={round}
+            key={roundId}
+            roundId={roundId}
             skills={props.skills}
 
             follow_reset_revision={props.follow_reset_revision}
             t={t}
-            latest={index === rounds.length - 1}
-            revision_available={index === rounds.length - 1}
+            revision_available={index === roundIds.length - 1}
             on_continue={props.on_continue}
             on_edit={props.on_edit}
             render_entry_editor={props.render_entry_editor}
-            revision_disabled={index === rounds.length - 1 ? props.revision_disabled : false}
-            continue_disabled={index === rounds.length - 1 ? props.continue_disabled : false}
+            revision_disabled={index === roundIds.length - 1 ? props.revision_disabled : false}
+            continue_disabled={index === roundIds.length - 1 ? props.continue_disabled : false}
             on_open_tool={set_selected_tool_id}
           />
         ))}
@@ -122,48 +109,12 @@ export function AgentTimeline(props: AgentTimelineProps): JSX.Element {
   );
 }
 
-/** user 条目是公开轮次边界，后续条目按后端顺序归入当前轮次。 */
-function group_agent_rounds(entries: readonly AgentEntry[]): AgentRoundEntries[] {
-  const rounds: AgentRoundEntries[] = [];
-  for (const entry of entries) {
-    if (entry.kind === "user_message" && entry.delivery === "round") {
-      rounds.push({ user: entry, entries: [] });
-      continue;
-    }
-    const round = rounds.at(-1);
-    if (round === undefined) {
-      throw new Error(`Agent timeline entry ${entry.id} has no owning user round.`);
-    }
-    round.entries.push(entry);
-  }
-  return rounds;
-}
-
-/** 只重建含变更 entry 的 round；其余 round 与内部 entries 数组保持身份。 */
-function build_agent_rounds(
-  previous: readonly AgentRoundEntries[],
-  entries: readonly AgentEntry[],
-): AgentRoundEntries[] {
-  return group_agent_rounds(entries).map((round, index) => {
-    const existing = previous[index];
-    if (
-      existing?.user === round.user &&
-      existing.entries.length === round.entries.length &&
-      existing.entries.every((entry, entry_index) => entry === round.entries[entry_index])
-    ) {
-      return existing;
-    }
-    return round;
-  });
-}
-
 type AgentRoundProps = {
   skills: readonly AgentSkillSnapshot[];
-  round: AgentRoundEntries;
+  roundId: string;
 
   follow_reset_revision: number;
   t: Translate;
-  latest: boolean;
   revision_available: boolean;
   on_continue: () => void;
   on_edit: (entry: UserEntry | AssistantEntry) => void;
@@ -174,8 +125,10 @@ type AgentRoundProps = {
 };
 
 /** 单个轮次统一渲染用户消息、公开条目、恢复入口与最终状态。 */
-const AgentRound = memo(function AgentRound(props: AgentRoundProps): JSX.Element {
-  const { user, entries } = props.round;
+const AgentRound = memo(function AgentRound(props: AgentRoundProps): ReactNode {
+  const user = useAgentEntry(props.roundId);
+  const { entryIds, latestAssistantId } = useAgentRound(props.roundId);
+  if (user?.kind !== "user_message" || user.delivery !== "round") return null;
   const mention_ranges = find_agent_mention_ranges(user.text, props.skills);
   const mention_only =
     mention_ranges.length === 1 &&
@@ -183,9 +136,6 @@ const AgentRound = memo(function AgentRound(props: AgentRoundProps): JSX.Element
     mention_ranges[0]?.to === user.text.length;
   const revision_available = props.revision_available && user.status !== "running";
   const show_failure_continue = revision_available && user.status === "error";
-  const latest_output = entries.findLast(
-    (entry): entry is AssistantEntry => entry.kind === "assistant_message",
-  );
   const user_editor = props.render_entry_editor?.(user) ?? null;
   return (
     <>
@@ -218,58 +168,15 @@ const AgentRound = memo(function AgentRound(props: AgentRoundProps): JSX.Element
           </article>
         )}
       </AgentMessageFrame>
-      {entries.map((entry) => {
-        if (entry.kind === "user_message") {
-          const ranges = find_agent_mention_ranges(entry.text, props.skills);
-          return (
-            <AgentMessageFrame key={entry.id} role="user" actions={null}>
-              <article className="agent-message agent-message--user">
-                {entry.attachments.length > 0 ? (
-                  <AgentMessageAttachments mode="sent" attachments={entry.attachments} />
-                ) : null}
-                {entry.text === "" ? null : (
-                  <p className="agent-message__user-text">
-                    {render_agent_mention_text(entry.text, ranges)}
-                  </p>
-                )}
-              </article>
-            </AgentMessageFrame>
-          );
-        }
-        const view = (
-          <AgentEntryView
-            key={entry.id}
-            entry={entry}
-            t={props.t}
-            follow_reset_revision={props.follow_reset_revision}
-            on_open_tool={props.on_open_tool}
-          />
-        );
-        if (entry.kind !== "assistant_message") return view;
-        const editable =
-          revision_available &&
-          entry.id === latest_output?.id &&
-          entry.parts.some((part) => part.kind === "text" && part.text.trim() !== "");
-        const entry_editor = editable ? (props.render_entry_editor?.(entry) ?? null) : null;
-        return (
-          <AgentMessageFrame
-            key={entry.id}
-            role="assistant"
-            actions={
-              editable && entry_editor === null ? (
-                <AgentMessageActions
-                  entry={entry}
-                  t={props.t}
-                  disabled={props.revision_disabled}
-                  on_edit={props.on_edit}
-                />
-              ) : null
-            }
-          >
-            {entry_editor ?? view}
-          </AgentMessageFrame>
-        );
-      })}
+      {entryIds.map((id) => (
+        <AgentRoundItem
+          key={id}
+          {...props}
+          entryId={id}
+          latestAssistantId={latestAssistantId}
+          revisionAvailable={revision_available}
+        />
+      ))}
       {show_failure_continue ? (
         <AgentContinueEntry
           label={props.t("app.error.model.provider_failed.message")}
@@ -281,29 +188,69 @@ const AgentRound = memo(function AgentRound(props: AgentRoundProps): JSX.Element
       <AgentRoundFooter user={user} />
     </>
   );
-}, agent_round_props_equal);
+});
 
-/** 历史 round 不消费命令禁用态或编辑器工厂，command 更新只提交最后一轮操作区。 */
-function agent_round_props_equal(previous: AgentRoundProps, next: AgentRoundProps): boolean {
-  if (
-    previous.round !== next.round ||
-    previous.follow_reset_revision !== next.follow_reset_revision ||
-    previous.t !== next.t ||
-    previous.latest !== next.latest ||
-    previous.revision_available !== next.revision_available ||
-    previous.on_edit !== next.on_edit ||
-    previous.on_open_tool !== next.on_open_tool
-  ) {
-    return false;
+/** 每行直接订阅条目，正文增量不会触发轮次容器重新遍历。 */
+const AgentRoundItem = memo(function AgentRoundItem(
+  props: AgentRoundProps & {
+    entryId: string;
+    latestAssistantId: string | undefined;
+    revisionAvailable: boolean;
+  },
+): ReactNode {
+  const entry = useAgentEntry(props.entryId);
+  if (entry === undefined) return null;
+  if (entry.kind === "user_message") {
+    const ranges = find_agent_mention_ranges(entry.text, props.skills);
+    return (
+      <AgentMessageFrame key={entry.id} role="user" actions={null}>
+        <article className="agent-message agent-message--user">
+          {entry.attachments.length > 0 ? (
+            <AgentMessageAttachments mode="sent" attachments={entry.attachments} />
+          ) : null}
+          {entry.text === "" ? null : (
+            <p className="agent-message__user-text">
+              {render_agent_mention_text(entry.text, ranges)}
+            </p>
+          )}
+        </article>
+      </AgentMessageFrame>
+    );
   }
-  if (!next.latest) return true;
-  return (
-    previous.on_continue === next.on_continue &&
-    previous.render_entry_editor === next.render_entry_editor &&
-    previous.revision_disabled === next.revision_disabled &&
-    previous.continue_disabled === next.continue_disabled
+  const view = (
+    <AgentEntryView
+      key={entry.id}
+      entry={entry}
+      t={props.t}
+      follow_reset_revision={props.follow_reset_revision}
+      on_open_tool={props.on_open_tool}
+    />
   );
-}
+  if (entry.kind !== "assistant_message") return view;
+  const editable =
+    props.revisionAvailable &&
+    entry.id === props.latestAssistantId &&
+    entry.parts.some((part) => part.kind === "text" && part.text.trim() !== "");
+  const entry_editor = editable ? (props.render_entry_editor?.(entry) ?? null) : null;
+  return (
+    <AgentMessageFrame
+      key={entry.id}
+      role="assistant"
+      actions={
+        editable && entry_editor === null ? (
+          <AgentMessageActions
+            entry={entry}
+            t={props.t}
+            disabled={props.revision_disabled}
+            on_edit={props.on_edit}
+          />
+        ) : null
+      }
+    >
+      {entry_editor ?? view}
+    </AgentMessageFrame>
+  );
+});
 
 /** 消息容器统一拥有角色对齐与操作归属，工具和轮次状态不进入该结构。 */
 function AgentMessageFrame(props: {
@@ -319,7 +266,7 @@ function AgentMessageFrame(props: {
   );
 }
 
-/** 复制与修改共用当前消息操作区；复制不改变会话状态。 */
+/** 复制与修改共用当前消息操作区。复制不改变会话状态。 */
 function AgentMessageActions(props: {
   entry: UserEntry | AssistantEntry;
   t: Translate;
@@ -413,7 +360,7 @@ function AgentContinueEntry(props: {
 }
 
 type AgentEntryViewProps = {
-  entry: Exclude<AgentRoundEntry, { kind: "user_message" }>;
+  entry: Exclude<AgentEntry, { kind: "user_message" }>;
   t: Translate;
   on_open_tool: (id: string) => void;
   follow_reset_revision: number;
@@ -435,20 +382,7 @@ const AgentEntryView = memo(function AgentEntryView(props: AgentEntryViewProps):
     );
   }
   return render_assistant_entry(entry, props.t, props.follow_reset_revision);
-}, agent_entry_view_props_equal);
-
-/** 每种条目只比较真正参与自身正文渲染的 props，控制按钮变化不穿透 Markdown。 */
-function agent_entry_view_props_equal(
-  previous: AgentEntryViewProps,
-  next: AgentEntryViewProps,
-): boolean {
-  if (previous.entry !== next.entry || previous.t !== next.t) return false;
-  if (next.entry.kind === "assistant_message") {
-    return previous.follow_reset_revision === next.follow_reset_revision;
-  }
-  if (next.entry.kind === "context_compaction") return true;
-  return previous.on_open_tool === next.on_open_tool;
-}
+});
 
 /** 压缩是由 SDK 拥有的无详情模型历史边界。 */
 function AgentContextCompactionEntry(props: {
@@ -465,7 +399,7 @@ function AgentContextCompactionEntry(props: {
   );
 }
 
-/** 用已知非重叠范围渲染用户正文；未知 marker 与普通文本保持原样。 */
+/** 用已知非重叠范围渲染用户正文。未知 marker 与普通文本保持原样。 */
 function render_agent_mention_text(
   text: string,
   ranges: readonly AgentReferenceRange[],

@@ -11,7 +11,14 @@ const agent_mock = vi.hoisted(() => ({
 
 vi.mock("@frontend/app/session/agent/agent-session-context", () => ({
   useAgentControls: () => ({ state: (agent_mock.session as { state: string }).state }),
-  useAgentTimeline: () => ({ entries: (agent_mock.session as { entries: AgentEntry[] }).entries }),
+  useAgentTimeline: () => ({
+    latestRoundId:
+      (agent_mock.session as { entries: AgentEntry[] }).entries.findLast(
+        (entry) => entry.kind === "user_message" && entry.delivery === "round",
+      )?.id ?? null,
+  }),
+  useAgentEntry: (id: string | null) =>
+    (agent_mock.session as { entries: AgentEntry[] }).entries.find((entry) => entry.id === id),
 }));
 
 import { AgentCompletionAttention } from "@frontend/app/feedback/agent-completion-attention";
