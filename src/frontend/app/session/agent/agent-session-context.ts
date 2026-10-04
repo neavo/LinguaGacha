@@ -1,5 +1,5 @@
-import type { AgentTokenSpeedSnapshot } from "@shared/agent";
-import { createContext, useContext, useSyncExternalStore } from "react";
+import type { AgentEntry, AgentTokenSpeedSnapshot } from "@shared/agent";
+import { createContext, useCallback, useContext, useSyncExternalStore } from "react";
 import type { AgentDecisionCountdownSnapshot } from "./agent-decision-countdown";
 import type {
   AgentSessionStore,
@@ -16,7 +16,7 @@ export type { AgentInputSession } from "./agent-session-store";
 
 export const AgentSessionStoreContext = createContext<AgentSessionStore | null>(null);
 
-/** 对话身份随权威快照变化；页面资源以此隔离生命周期。 */
+/** 对话身份随权威快照变化。页面资源以此隔离生命周期。 */
 export function useAgentSessionId(): string | null {
   const store = use_agent_store();
   return useSyncExternalStore(store.subscribe_controls, store.get_session_id, store.get_session_id);
@@ -32,10 +32,32 @@ export function useAgentTokenSpeed(): AgentTokenSpeedSnapshot {
   );
 }
 
-/** 只订阅时间线，控制与计时更新不触发消息区重绘。 */
+/** 订阅时间线顺序和操作状态，消息正文通过条目订阅更新。 */
 export function useAgentTimeline(): AgentTimelineSlice {
   const store = use_agent_store();
   return useSyncExternalStore(store.subscribe_timeline, store.get_timeline, store.get_timeline);
+}
+
+/** 单个条目只在自己的内容变化或被快照移除时更新。 */
+export function useAgentEntry(id: string | null): AgentEntry | undefined {
+  const { timeline } = use_agent_store();
+  const subscribe = useCallback(
+    (listener: () => void) => timeline.subscribe_entry(id, listener),
+    [timeline, id],
+  );
+  const read = useCallback(() => timeline.entry(id), [timeline, id]);
+  return useSyncExternalStore(subscribe, read, read);
+}
+
+/** 轮次只订阅条目顺序，正文更新由各行消费。 */
+export function useAgentRound(id: string): {
+  entryIds: readonly string[];
+  latestAssistantId: string | undefined;
+} {
+  const { timeline } = use_agent_store();
+  const read = useCallback(() => timeline.round(id), [timeline, id]);
+  const entryIds = useSyncExternalStore(timeline.subscribe, read, read);
+  return { entryIds, latestAssistantId: timeline.latest_assistant(id) };
 }
 
 /** 订阅运行状态、正在处理的内容、待决问题与命令占用。 */

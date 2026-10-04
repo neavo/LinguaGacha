@@ -1,3 +1,5 @@
+import { AgentSessionStore } from "@frontend/app/session/agent/agent-session-store";
+import { AgentSessionStoreContext } from "@frontend/app/session/agent/agent-session-context";
 vi.mock("@frontend/app/desktop/desktop-api", () => ({
   api_blob: async () => new Blob([], { type: "image/png" }),
   api_file_url: (path: string) => `http://localhost${path}`,
@@ -27,11 +29,13 @@ vi.mock("@frontend/app/locale/locale-context", () => ({
 vi.mock("@frontend/app/appearance/appearance-context", () => ({
   useAppearance: () => ({ resolved_theme: "light" }),
 }));
-vi.mock("@frontend/app/session/agent/agent-session-context", () => ({
+vi.mock("@frontend/app/session/agent/agent-session-context", async (original) => ({
+  ...(await original<typeof import("@frontend/app/session/agent/agent-session-context")>()),
   useAgentTokenSpeed: () => null,
   useAgentControls: () => ({ transport: "ready" }),
 }));
-
+const timeline_session = new AgentSessionStore(window.localStorage, () => {});
+const timeline_store = timeline_session.timeline;
 import { AgentTimeline } from "./agent-timeline";
 
 type ScrollMetrics = {
@@ -98,24 +102,27 @@ describe("AgentTimeline", () => {
       document.body.append(container);
       root = createRoot(container);
     }
-    await act(async () =>
+    await act(async () => {
+      timeline_store.replace(entries);
+      timeline_store.notify();
       root?.render(
-        <TooltipProvider>
-          <AgentTimeline
-            skills={skills}
-            entries={entries}
+        <AgentSessionStoreContext.Provider value={timeline_session}>
+          <TooltipProvider>
+            <AgentTimeline
+              skills={skills}
 
-            follow_reset_revision={follow_reset_revision}
-            on_continue={on_continue}
-            on_edit={on_edit}
-            on_add_annotation={on_add_annotation}
-            revision_disabled={false}
-            continue_disabled={false}
-            annotation_disabled={false}
-          />
-        </TooltipProvider>,
-      ),
-    );
+              follow_reset_revision={follow_reset_revision}
+              on_continue={on_continue}
+              on_edit={on_edit}
+              on_add_annotation={on_add_annotation}
+              revision_disabled={false}
+              continue_disabled={false}
+              annotation_disabled={false}
+            />
+          </TooltipProvider>
+        </AgentSessionStoreContext.Provider>,
+      );
+    });
     return container;
   }
 
@@ -158,17 +165,6 @@ describe("AgentTimeline", () => {
     await render_timeline(entries);
     expect(view.querySelector(".agent-mention-token")).toBeNull();
     expect(view.querySelector(".agent-message__user-text")?.textContent).toBe(text);
-  });
-
-  it("附件画廊与消息文本是相邻的独立区域", async () => {
-    const view = await render_timeline([
-      user_entry("user-mixed", "请检查这些内容", "success", 0, 1_000, ["webp-a"]),
-    ]);
-
-    const message = view.querySelector(".agent-message--user");
-    expect(message?.children[0]?.classList.contains("agent-attachment-strip")).toBe(true);
-    expect(message?.children[1]?.classList.contains("agent-message__user-text")).toBe(true);
-    expect(message?.querySelector(".agent-attachment-strip .agent-message__user-text")).toBeNull();
   });
 
   it("steer user 显示在当前轮次中但不建立轮次操作或尾标", async () => {

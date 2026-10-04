@@ -1,3 +1,4 @@
+import { AgentTimelineStore } from "@frontend/app/session/agent/agent-timeline-store";
 vi.mock("./use-agent-mention-files", () => ({
   useAgentMentionFiles: () => ({ files: [], status: "idle" }),
 }));
@@ -23,6 +24,7 @@ import {
   AGENT_INPUT_QUEUE_LIMIT,
   type AgentAssistantMessageParts,
   type AgentEntryStatus,
+  type AgentEntry,
 } from "@shared/agent";
 import type {
   AgentControlsSlice,
@@ -30,11 +32,9 @@ import type {
   AgentQueueSlice,
   AgentSessionActions,
   AgentSkillsSlice,
-  AgentTimelineSlice,
 } from "@frontend/app/session/agent/agent-session-store";
 
-type AgentPageState = AgentTimelineSlice &
-  AgentControlsSlice &
+type AgentPageState = { entries: AgentEntry[] } & AgentControlsSlice &
   AgentQueueSlice &
   AgentSkillsSlice &
   AgentSessionActions & { input: AgentInputSession };
@@ -144,7 +144,12 @@ function install_scroll_metrics(target: HTMLElement, metrics: ScrollMetrics): vo
 
 vi.mock("@frontend/app/session/agent/agent-session-context", () => ({
   useAgentTokenSpeed: () => null,
-  useAgentTimeline: () => ({ entries: page_state.current.entries }),
+  useAgentTimeline: () => read_test_timeline().read(),
+  useAgentEntry: (id: string | null) => read_test_timeline().entry(id),
+  useAgentRound: (id: string) => ({
+    entryIds: read_test_timeline().round(id),
+    latestAssistantId: read_test_timeline().latest_assistant(id),
+  }),
   useAgentControls: () => ({
     state: page_state.current.state,
     doing: page_state.current.doing,
@@ -246,7 +251,7 @@ describe("AgentConversation", () => {
     overrides: Partial<AgentPageState> = {},
     active = true,
   ): Promise<HTMLDivElement> {
-    // 真实 Store 在草稿 revision 变化前保留输入端口；普通运行态更新继续消费同一份草稿。
+    // 真实 Store 在草稿 `revision` 变化前保留输入端口。普通运行态更新继续消费同一份草稿。
     const previous_input = root === null ? undefined : page_state.current.input;
     page_state.current = build_state(overrides);
     page_state.current.input = overrides.input ?? previous_input ?? page_state.current.input;
@@ -1440,4 +1445,16 @@ function get_portal_cancel_button(): HTMLButtonElement {
   const button = dialog?.querySelector<HTMLButtonElement>('[data-slot="alert-dialog-cancel"]');
   if (button === null || button === undefined) throw new Error("缺少弹窗取消按钮");
   return button;
+}
+
+/** 页面交互夹具通过真实结构索引提供订阅快照。 */
+const test_timeline = new AgentTimelineStore();
+let test_timeline_entries: readonly AgentEntry[] | undefined;
+/** 只在夹具条目集合替换后更新索引，模拟稳定的结构快照。 */
+function read_test_timeline(): AgentTimelineStore {
+  if (test_timeline_entries !== page_state.current.entries) {
+    test_timeline_entries = page_state.current.entries;
+    test_timeline.replace(test_timeline_entries);
+  }
+  return test_timeline;
 }

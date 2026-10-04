@@ -141,7 +141,7 @@ export type AgentQueuedInput = AgentMessageInput & {
   createdAt: number;
 };
 
-/** paused 只阻止自动续取。canSendNow 表示当前运行时已经到达 Pi 可 steer 的阶段。 */
+/** paused 只阻止自动续取。canSendNow 表示当前运行时已经到达 Pi 可 `steer` 的阶段。 */
 export type AgentInputQueueSnapshot = JsonRecord & {
   paused: boolean;
   canSendNow: boolean;
@@ -176,7 +176,7 @@ export type AgentContextCompactionEntry = JsonRecord & {
   status: Extract<AgentEntryStatus, "running" | "success" | "error">;
 };
 
-/** round 与 steer 共用的不可变用户消息字段。 */
+/** `round` 与 `steer` 共用的不可变用户消息字段。 */
 type AgentUserEntryBase = AgentMessageInput & {
   kind: "user_message";
   id: string;
@@ -220,7 +220,7 @@ export type AgentUsageSnapshot = JsonRecord & {
   cacheWrite: number; // 写入缓存的输入
 };
 
-/** GET snapshot 与 snapshot_seed 共用的完整会话形状。 */
+/** GET `snapshot` 与 `snapshot_seed` 共用的完整会话形状。 */
 export type AgentSessionSnapshot = JsonRecord & {
   sessionId: string; // 对话重置与工程切换后改变，草稿据此清理旧文件引用。
   revision: number;
@@ -240,8 +240,8 @@ export type AgentCommandAck = Readonly<{
   revision: number;
 }>;
 
-/** AgentService 发布前的事件事实。单调 revision 只由统一发布入口分配。 */
-export type AgentSessionEventPayload = JsonRecord &
+/** AgentService 发布前的事件事实。单调 `revision` 只由统一发布入口分配。 */
+export type AgentSessionChange = JsonRecord &
   (
     | { type: "entry_upsert"; entry: AgentEntry }
     | { type: "session_state"; state: AgentSessionState }
@@ -252,10 +252,14 @@ export type AgentSessionEventPayload = JsonRecord &
     | { type: "token_speed"; tokenSpeed: AgentTokenSpeedSnapshot }
     | { type: "context"; context: AgentContextSnapshot }
     | { type: "usage"; usage: AgentUsageSnapshot }
-    | { type: "snapshot_seed"; snapshot: AgentSessionSnapshot }
   );
 
-/** SSE 以单调 revision 排序。重复、旧帧与缺口由 renderer 显式处理。 */
+/** 一批变化共享修订号，前端先全部应用再通知订阅者。 */
+export type AgentSessionEventPayload =
+  | { type: "snapshot_seed"; snapshot: AgentSessionSnapshot }
+  | { type: "session_update"; changes: AgentSessionChange[] };
+
+/** SSE 以单调 `revision` 排序。重复、旧帧与缺口由 renderer 显式处理。 */
 export type AgentSessionEvent = AgentSessionEventPayload & { revision: number };
 
 /** 校验公开 assistant parts，删除纯空白并合并相邻同类，同时保留可见正文原值。 */

@@ -15,15 +15,10 @@ import {
   LiveDoc,
   UsageDoc,
   type Conversation,
-  type ConversationRecord,
   type EntryId,
-  type EntryRecord,
   type Submission,
-  type SubmissionRecord,
   type TaskId,
   type TaskRecord,
-  type LiveState,
-  type UsageState,
 } from "@earendil-works/pi-durable";
 import type { ToolRegistration, ToolExecutionResult } from "@earendil-works/pi-durable";
 import { lazyStream } from "@earendil-works/pi-ai/api/lazy";
@@ -55,7 +50,7 @@ import {
   type AgentSessionState,
   type AgentInputRecord,
 } from "./agent-session-state";
-import { project_agent_session_entries, assistant_entry_id } from "./agent-session-view";
+import { AgentSessionView, assistant_entry_id } from "./agent-session-view";
 import { AGENT_KEEP_RECENT_TOKENS, read_agent_session_context } from "./agent-session-context";
 import { append_agent_session_seed, type AgentSessionSeed } from "./agent-session-seed";
 import { AgentSessionLog } from "./agent-log";
@@ -113,23 +108,27 @@ export class AgentSession {
   public model: Model<Api> | null = null; // 打开历史不解析模型，请求前由 `configure` 采用当前配置
   public readonly log: AgentSessionLog;
   public execution: AgentExecution | null = null;
-  public entries: AgentEntry[] = [];
+  public readonly view = new AgentSessionView();
+  /** 按需取得公开历史，日常增量由投影直接发布。 */
+  public get entries(): AgentEntry[] {
+    return this.view.entries;
+  }
   public context: AgentContextSnapshot = { tokens: null, compactable: false, limits: null };
-  public usage: AgentUsageSnapshot = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
+  /** 读取全部分支累计消耗，修订历史仍保留已发生用量。 */
+  public get usage(): AgentUsageSnapshot {
+    return this.view.usage;
+  }
   public state: Readonly<AgentSessionState> = AgentSessionDoc.definition.initial(null);
   private harness!: Harness;
   private conversation!: Conversation; // 当前分支唯一入口，只在创建与修订成功后切换
-  private readonly records = new Map<number, EntryRecord>(); // 完整历史缓存保留压缩前的公开条目
-  private readonly conversations = new Map<number, ConversationRecord>(); // 祖先关系用于计算分叉的可见历史
-  private readonly submissions = new Map<number, SubmissionRecord>(); // 受理回执关联产品输入与实际历史条目
-  private readonly compactions = new Map<number, TaskRecord<JsonValue, JsonValue, JsonValue>>(); // 只有压缩任务需要独立公开条目
-  private readonly live = new Map<number, LiveState>(); // 各分支的已提交流式进度
-  private readonly usages = new Map<number, UsageState>(); // 跨分支累计消耗，修订保留已发生费用
   private readonly compactionFailures: Array<{ reason: string; error: string }> = []; // 提交后刷新时交付宿主诊断
   private compactionReason: "manual" | "threshold" | "length" = "manual";
-  private revision = 0; // 丢弃跨越新提交的异步上下文读取结果
+  private contextRevision = 0; // 正文进度和队列变化不能使在途上下文查询失效
+  private contextDirty = true; // 模型历史或配置变化使上下文查询失效
+  private readonly consumedInputs = new Set<string>(); // 已入历史、等待在提交线外消费的草稿
   private refreshWork: Promise<void> | null = null;
-  private dirty = false;
+  private refreshFailure: unknown; // 投影失败时命令不能用旧修订号确认成功
+  private dirty = false; // 提交后仍有投影工作，与上下文查询独立
   private closed = false;
   private closing: Promise<void> | null = null;
   private unsubscribe = () => {};
@@ -301,21 +300,10 @@ export class AgentSession {
             change.record.key === options.sessionId
           )
             session.state = change.value as AgentSessionState;
-          else if (
-            change.record.kind === LiveDoc.definition.kind &&
-            change.conversationId !== undefined
-          )
-            session.live.set(change.conversationId, change.value as LiveState);
-          else if (
-            change.record.kind === UsageDoc.definition.kind &&
-            change.conversationId !== undefined
-          )
-            session.usages.set(change.conversationId, change.value as UsageState);
         }
       }
       for (const change of publication.changes) {
         if (change.type === "entry") {
-          session.records.set(change.value.id, change.value);
           for (const message of change.value.model ?? []) {
             if (message.role === "assistant")
               for (const call of message.content) {
@@ -337,12 +325,17 @@ export class AgentSession {
                 isError: message.isError === true,
               });
           }
-        } else if (change.type === "conversation")
-          session.conversations.set(change.value.id, change.value);
-        else if (change.type === "submission") {
-          const previous = session.submissions.get(change.value.id);
+        } else if (change.type === "submission") {
+          const previous = session.view.submissions.get(change.value.id);
           const record = change.value;
-          session.submissions.set(record.id, record);
+          if (
+            previous?.entry === undefined &&
+            record.entry !== undefined &&
+            record.requestId !== undefined
+          ) {
+            const queuedId = session.state.inputs[record.requestId]?.queuedId;
+            if (queuedId != null) session.consumedInputs.add(queuedId);
+          }
           if (
             previous?.entry === undefined &&
             record.entry !== undefined &&
@@ -352,12 +345,19 @@ export class AgentSession {
           )
             session.execution.recoveryUsed = false;
         } else if (change.type === "task" && change.value.kind === CompactionTask.definition.name) {
-          const previous = session.compactions.get(change.value.id);
-          session.compactions.set(change.value.id, change.value);
-          session.observe_compaction(change.value.id, previous);
+          const previous = session.view.compactions.get(change.value.id);
+          session.observe_compaction(change.value, previous);
         }
       }
-      session.revision = publication.seq;
+      session.view.observe(publication);
+      if (
+        publication.changes.some(
+          (change) => change.type === "entry" || change.type === "conversation",
+        )
+      ) {
+        session.contextRevision++;
+        session.contextDirty = true;
+      }
       session.schedule_refresh();
     });
     try {
@@ -414,16 +414,12 @@ export class AgentSession {
     for (const conversation of await scan((cursor) =>
       storage.scanConversations({}, 100, cursor, BACKGROUND_CONTEXT),
     )) {
-      this.conversations.set(conversation.id, conversation);
-      for (const entry of await scan((cursor) =>
-        storage.scanEntries({ conversationId: conversation.id }, 100, cursor, BACKGROUND_CONTEXT),
-      ))
-        this.records.set(entry.id, entry);
-      this.live.set(
+      this.view.conversations.set(conversation.id, conversation);
+      this.view.live.set(
         conversation.id,
         (await this.harness.snapshot(LiveDoc, conversation.id, BACKGROUND_CONTEXT)) ?? {},
       );
-      this.usages.set(
+      this.view.pendingUsages.set(
         conversation.id,
         (await this.harness.snapshot(UsageDoc, conversation.id, BACKGROUND_CONTEXT)) ?? {
           models: {},
@@ -431,14 +427,23 @@ export class AgentSession {
         },
       );
     }
+    const active = this.state.activeConversationId;
+    if (active !== null) {
+      const conversation = await this.harness.conversation(active, BACKGROUND_CONTEXT);
+      if (conversation === undefined) throw new AppError("file.invalid_structure");
+      for (const entry of await scan((cursor) =>
+        conversation.entries({}, 100, cursor, BACKGROUND_CONTEXT),
+      ))
+        this.view.records.set(entry.id, entry);
+    }
     for (const record of await scan((cursor) =>
       storage.scanSubmissions({}, 100, cursor, BACKGROUND_CONTEXT),
     ))
-      this.submissions.set(record.id, record);
+      this.view.submissions.set(record.id, record);
     for (const record of await scan((cursor) =>
       storage.scanTasks({ kind: CompactionTask.definition.name }, 100, cursor, BACKGROUND_CONTEXT),
     ))
-      this.compactions.set(record.id, record);
+      this.view.compactions.set(record.id, record);
   }
 
   /** 先全部标记取消，再启动 SDK 收尾，防止打开历史时重新运行工具或模型。 */
@@ -484,7 +489,7 @@ export class AgentSession {
   /** 原生自动压缩与产品主动压缩共用互斥判据。 */
   public get is_compacting(): boolean {
     return (
-      (this.live.get(this.conversation?.id)?.compactions?.length ?? 0) > 0 ||
+      (this.view.live.get(this.conversation?.id)?.compactions?.length ?? 0) > 0 ||
       this.execution?.phase === "compacting"
     );
   }
@@ -502,7 +507,7 @@ export class AgentSession {
   }
   /** 分叉切点使用完整可见历史，保留已被压缩排除的公开事实。 */
   public get tail(): EntryId {
-    const records = this.branch_records();
+    const records = this.view.branch_records();
     return records.at(-1)!.id;
   }
 
@@ -532,6 +537,8 @@ export class AgentSession {
       BACKGROUND_CONTEXT,
     );
     this.model = model;
+    this.contextRevision++;
+    this.contextDirty = true;
     if (!this.state.seeded) {
       await this.harness.commit(async (tx) => {
         await append_agent_session_seed(tx, this.conversation.id, this.options.seed, model);
@@ -622,7 +629,7 @@ export class AgentSession {
       await this.conversation.waitForIdle(BACKGROUND_CONTEXT);
       await this.flush();
       if (execution.controller.signal.aborted) return;
-      const failed = [...this.submissions.values()].find(
+      const failed = [...this.view.submissions.values()].find(
         (record) =>
           record.id >= firstSubmission &&
           record.type === "input" &&
@@ -767,13 +774,14 @@ export class AgentSession {
   public async stop(execution: AgentExecution, average: number | null): Promise<void> {
     const abort = this.conversation.abort(BACKGROUND_CONTEXT);
     void abort.catch(this.options.onReport);
-    const roundStart = this.entries.findIndex((entry) => entry.id === execution.roundId);
+    const entries = this.entries;
+    const roundStart = entries.findIndex((entry) => entry.id === execution.roundId);
     const activeRound =
       execution.roundId !== null && this.state.rounds[execution.roundId]?.status === "running";
-    const frozen = (activeRound && roundStart >= 0 ? this.entries.slice(roundStart) : []).map(
+    const frozen = (activeRound && roundStart >= 0 ? entries.slice(roundStart) : []).map(
       freeze_entry,
     );
-    const task = this.live.get(this.conversation.id)?.run?.taskId;
+    const task = this.view.live.get(this.conversation.id)?.run?.taskId;
     const latest = this.latestResponse;
     if (
       task !== undefined &&
@@ -823,7 +831,7 @@ export class AgentSession {
 
   /** 预检后的修订通过分叉替换活动历史，产品队列和 `doing` 跨分叉保留。 */
   public async revise(entry: AgentEntry, text: string | null): Promise<void> {
-    const records = this.branch_records();
+    const records = this.view.branch_records();
     let checkpoint: EntryId;
     let original: Pick<AssistantMessage, "api" | "provider" | "model"> | undefined;
     if (entry.kind === "user_message" && entry.delivery === "round")
@@ -897,25 +905,7 @@ export class AgentSession {
     return this.closing;
   }
 
-  /** 沿祖先切点取最小上界，排除历次分叉已经放弃的后续事实。 */
-  private visible(conversation: number, id: number): boolean {
-    let record = this.conversations.get(this.conversation.id);
-    if (record?.id === conversation) return true;
-    let ceiling = Number.MAX_SAFE_INTEGER;
-    while (record?.parent !== undefined) {
-      ceiling = Math.min(ceiling, record.parent.at);
-      if (record.parent.conversationId === conversation) return id <= ceiling;
-      record = this.conversations.get(record.parent.conversationId);
-    }
-    return false;
-  }
-  /** 公开时间线采用完整分支历史，模型上下文的压缩与编辑另行计算。 */
-  private branch_records(): EntryRecord[] {
-    return [...this.records.values()]
-      .filter((entry) => this.visible(entry.conversationId, entry.id))
-      .sort((a, b) => a.id - b.id);
-  }
-  /** 合并提交通知，异步读取期间提交版本或分支改变时重取，避免混用上下文。 */
+  /** 合并提交后的工作，仅历史或模型配置变化触发上下文查询。 */
   private schedule_refresh(): void {
     this.dirty = true;
     if (this.refreshWork !== null || this.closed) return;
@@ -925,53 +915,36 @@ export class AgentSession {
           this.dirty = false;
           this.flush_diagnostics();
           if (this.conversation === undefined) continue;
-          const revision = this.revision;
           const conversation = this.conversation;
-          const view = await conversation.context(BACKGROUND_CONTEXT);
-          if (revision !== this.revision || conversation !== this.conversation) {
-            this.dirty = true;
-            continue;
+          if (this.contextDirty) {
+            const revision = this.contextRevision;
+            const view = await conversation.context(BACKGROUND_CONTEXT);
+            if (revision !== this.contextRevision || conversation !== this.conversation) {
+              this.dirty = true;
+              continue;
+            }
+            this.context = this.state.seeded
+              ? read_agent_session_context(view, this.model)
+              : { tokens: null, compactable: false, limits: null };
+            this.contextDirty = false;
           }
-          const consumed = this.state.queue.items.filter((item) =>
-            [...this.submissions.values()].some(
-              (record) =>
-                record.type === "input" &&
-                record.entry !== undefined &&
-                record.requestId !== undefined &&
-                this.state.inputs[record.requestId]?.queuedId === item.id,
-            ),
-          );
-          if (consumed.length > 0) {
+          if (this.consumedInputs.size > 0) {
+            const consumed = [...this.consumedInputs];
             await this.harness.commit(async (tx) => {
               const queue = new AgentInputQueue(
                 (await tx.doc(AgentSessionDoc, this.options.sessionId, null)).queue,
               );
-              for (const item of consumed) queue.commit_send(item.id);
+              for (const id of consumed) queue.commit_send(id);
             }, BACKGROUND_CONTEXT);
-            this.dirty = true;
-            continue;
+            for (const id of consumed) this.consumedInputs.delete(id);
           }
-          this.entries = project_agent_session_entries(
-            this.branch_records(),
-            this.submissions,
-            [...this.compactions.values()].filter((record) =>
-              this.visible(record.conversationId, record.id),
-            ),
-            this.live.get(this.conversation.id) ?? {},
-            this.state,
-          );
-          this.context = this.state.seeded
-            ? read_agent_session_context(view, this.model)
-            : { tokens: null, compactable: false, limits: null };
-          this.usage = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
-          for (const state of this.usages.values())
-            for (const usage of Object.values(state.models))
-              for (const key of ["input", "output", "cacheRead", "cacheWrite"] as const)
-                this.usage[key] += usage[key];
+          this.view.refresh(conversation.id, this.state);
+          this.refreshFailure = undefined;
           this.options.onChange();
         }
       })
       .catch((error) => {
+        this.refreshFailure = error;
         if (!this.closed) this.options.onReport(error);
       })
       .finally(() => {
@@ -982,6 +955,7 @@ export class AgentSession {
   /** 命令回执等待公开投影追上全部已观察提交。 */
   public async flush(): Promise<void> {
     while (this.refreshWork !== null) await this.refreshWork;
+    if (this.refreshFailure !== undefined) throw this.refreshFailure;
     this.flush_diagnostics();
   }
   /** 提交线外统一处理诊断，关闭与命令回执等待同一出口。 */
@@ -992,10 +966,9 @@ export class AgentSession {
   }
   /** 每个原生压缩任务只记录一次起止，手动任务附带产品触发原因。 */
   private observe_compaction(
-    id: number,
+    task: TaskRecord<JsonValue, JsonValue, JsonValue>,
     previous: TaskRecord<JsonValue, JsonValue, JsonValue> | undefined,
   ): void {
-    const task = this.compactions.get(id)!;
     const input = task.input;
     const nativeReason =
       typeof input === "object" && input !== null && "reason" in input

@@ -1,3 +1,5 @@
+import { AgentTimelineStore } from "./agent-timeline-store";
+export type { AgentTimelineSlice } from "./agent-timeline-store";
 import { AgentInputDraft } from "./agent-input-draft";
 import { agent_message_request } from "@shared/agent";
 import type {
@@ -13,6 +15,7 @@ import type {
   AgentQuestionResponse,
   AgentQueuedInput,
   AgentSessionEvent,
+  AgentSessionChange,
   AgentSessionSnapshot,
   AgentSessionState,
   AgentSkillDisplayDescriptions,
@@ -64,8 +67,6 @@ export type AgentCommand =
 
 export type AgentTransportState = "restoring" | "ready" | "restore_failed" | "disconnected";
 
-export type AgentTimelineSlice = Readonly<{ entries: readonly AgentEntry[] }>;
-
 export type AgentControlsSlice = Readonly<{
   state: AgentSessionState;
   doing: string | null; // 模型维护的任务阶段
@@ -103,11 +104,10 @@ export type AgentSessionActions = Readonly<{
   reconnect: () => void;
 }>;
 
-type StoreSlice = "speed" | "timeline" | "controls" | "queue" | "skills" | "input" | "countdown";
+type StoreSlice = "speed" | "controls" | "queue" | "skills" | "input" | "countdown";
 type Listener = () => void;
 type CommandEventQueue = { base_revision: number; events: AgentSessionEvent[] };
 
-const EMPTY_TIMELINE: AgentTimelineSlice = { entries: [] };
 const EMPTY_CONTROLS: AgentControlsSlice = {
   state: "idle",
   doing: null,
@@ -122,27 +122,28 @@ const EMPTY_QUEUE: AgentQueueSlice = {
 };
 const EMPTY_SKILLS: AgentSkillsSlice = { skills: [] };
 
-/** renderer 侧唯一 Agent 会话镜像；后端事实经 revision 校验进入切片，本地决策时钟独立发布。 */
+/** renderer 侧唯一 Agent 会话镜像。后端事实经 `revision` 校验进入切片，本地决策时钟独立发布。 */
 export class AgentSessionStore {
   private session_id: string | null = null;
   private token_speed: AgentTokenSpeedSnapshot = null;
-  private timeline = EMPTY_TIMELINE;
+  public readonly timeline = new AgentTimelineStore();
+  private batching = false; // 快照与增量批次共用的跨切片通知屏障
+  private readonly pendingSlices = new Set<StoreSlice>(); // 每个切片在批次结束时只通知一次
   private controls = EMPTY_CONTROLS;
   private queue = EMPTY_QUEUE;
   private skills = EMPTY_SKILLS;
   private input: AgentInputSession;
   private revision = 0;
   private loaded_once = false;
-  private connection_generation = 0; // 每次连接或断开都推进，隔离迟到的 SSE / snapshot 异步结果
+  private connection_generation = 0; // 每次连接或断开都推进，隔离迟到的 SSE / `snapshot` 异步结果
   private event_source: EventSource | null = null;
-  private restoring_generation: number | null = null; // 同一连接世代只允许一个 snapshot 恢复请求
-  private pending_events: AgentSessionEvent[] = []; // snapshot 期间暂存，成功后按 revision 重放
+  private restoring_generation: number | null = null; // 同一连接世代只允许一个 `snapshot` 恢复请求
+  private pending_events: AgentSessionEvent[] = []; // `snapshot` 期间暂存，成功后按 `revision` 重放
   private command_events: CommandEventQueue | null = null;
   private readonly draft = new AgentInputDraft();
   private input_history: string[];
   private readonly listeners: Record<StoreSlice, Set<Listener>> = {
     speed: new Set(),
-    timeline: new Set(),
     controls: new Set(),
     queue: new Set(),
     skills: new Set(),
@@ -202,7 +203,7 @@ export class AgentSessionStore {
     this.subscribe("speed", listener);
 
   /** 返回时间线缓存，供独立消息区订阅。 */
-  public readonly get_timeline = (): AgentTimelineSlice => this.timeline;
+  public readonly get_timeline = this.timeline.read;
   /** 返回后端控制事实与前端命令占用。 */
   public readonly get_controls = (): AgentControlsSlice => this.controls;
   /** 返回后端拥有的输入队列快照。 */
@@ -219,9 +220,9 @@ export class AgentSessionStore {
   public readonly subscribe_countdown = (listener: Listener): (() => void) =>
     this.subscribe("countdown", listener);
 
-  /** 只通知消息与工具条目变化。 */
+  /** 只通知时间线结构和操作状态，正文由条目订阅者消费。 */
   public readonly subscribe_timeline = (listener: Listener): (() => void) =>
-    this.subscribe("timeline", listener);
+    this.timeline.subscribe(listener);
   /** 只通知运行、连接和命令控制变化。 */
   public readonly subscribe_controls = (listener: Listener): (() => void) =>
     this.subscribe("controls", listener);
@@ -235,7 +236,7 @@ export class AgentSessionStore {
   public readonly subscribe_input = (listener: Listener): (() => void) =>
     this.subscribe("input", listener);
 
-  /** Provider 挂载后先建立并订阅 SSE，再读取 snapshot；重复连接会令旧异步结果失效。 */
+  /** Provider 挂载后先建立并订阅 SSE，再读取 `snapshot`。重复连接会令旧异步结果失效。 */
   public connect(): void {
     const generation = ++this.connection_generation;
     this.event_source?.close();
@@ -261,7 +262,7 @@ export class AgentSessionStore {
     return generation === this.connection_generation;
   }
 
-  /** 拿到 EventSource 后立即挂载事件监听，再读取 snapshot，避免恢复窗口丢失增量。 */
+  /** 拿到 EventSource 后立即挂载事件监听，再读取 `snapshot`，避免恢复窗口丢失增量。 */
   private async connect_event_stream(generation: number): Promise<void> {
     try {
       const source = open_event_stream();
@@ -295,6 +296,10 @@ export class AgentSessionStore {
 
   /** 只通知受影响的切片订阅者。 */
   private emit(slice: StoreSlice): void {
+    if (this.batching) {
+      this.pendingSlices.add(slice);
+      return;
+    }
     for (const listener of this.listeners[slice]) listener();
   }
 
@@ -359,7 +364,7 @@ export class AgentSessionStore {
     this.set_controls({ transport: this.loaded_once ? "disconnected" : "restore_failed" });
   };
 
-  /** 完整 snapshot 在 SSE 监听就绪后读取；恢复期间事件暂存，成功后按 revision 重放。 */
+  /** 完整 `snapshot` 在 SSE 监听就绪后读取。恢复期间事件暂存，成功后按 `revision` 重放。 */
   private async restore_snapshot(generation: number): Promise<void> {
     if (!this.is_current(generation) || this.restoring_generation === generation) return;
     this.restoring_generation = generation;
@@ -386,33 +391,38 @@ export class AgentSessionStore {
     }
   }
 
-  /** 旧快照不得覆盖已确认的新投影；合法恢复一次性替换完整业务切片。 */
+  /** 旧快照不得覆盖已确认的新投影。合法恢复一次性替换完整业务切片。 */
   private apply_snapshot(snapshot: AgentSessionSnapshot): void {
     if (snapshot.revision < this.revision) return;
-    if (this.session_id !== null && snapshot.sessionId !== this.session_id) {
-      this.draft.clear();
-      this.input = this.create_input_session(this.input.revision + 1);
-      this.emit("input");
+    this.batching = true;
+    try {
+      if (this.session_id !== null && snapshot.sessionId !== this.session_id) {
+        this.draft.clear();
+        this.input = this.create_input_session(this.input.revision + 1);
+        this.emit("input");
+      }
+      this.session_id = snapshot.sessionId;
+      this.revision = snapshot.revision;
+      this.set_token_speed(snapshot.tokenSpeed);
+      this.timeline.replace(snapshot.entries);
+      this.queue = { inputQueue: snapshot.inputQueue };
+      this.skills = { skills: snapshot.skills };
+      this.controls = {
+        ...this.controls,
+        state: snapshot.state,
+        doing: snapshot.doing,
+        pendingDecision: snapshot.pendingDecision,
+        context: snapshot.context,
+        usage: snapshot.usage,
+      };
+      this.sync_countdown();
+      this.emit("queue");
+      this.emit("skills");
+      this.emit("controls");
+    } finally {
+      this.batching = false;
     }
-    this.session_id = snapshot.sessionId;
-    this.revision = snapshot.revision;
-    this.set_token_speed(snapshot.tokenSpeed);
-    this.timeline = { entries: snapshot.entries };
-    this.queue = { inputQueue: snapshot.inputQueue };
-    this.skills = { skills: snapshot.skills };
-    this.controls = {
-      ...this.controls,
-      state: snapshot.state,
-      doing: snapshot.doing,
-      pendingDecision: snapshot.pendingDecision,
-      context: snapshot.context,
-      usage: snapshot.usage,
-    };
-    this.sync_countdown();
-    this.emit("timeline");
-    this.emit("queue");
-    this.emit("skills");
-    this.emit("controls");
+    this.notify_changes();
   }
 
   /** 快照恢复与增量事件按回合身份和数值去重，保留切片引用稳定性。 */
@@ -434,7 +444,7 @@ export class AgentSessionStore {
     return true;
   }
 
-  /** 返回 false 表示发现 revision 缺口，调用方必须转入完整快照恢复。 */
+  /** 返回 false 表示发现 `revision` 缺口，调用方必须转入完整快照恢复。 */
   private apply_event(event: AgentSessionEvent): boolean {
     if (event.revision <= this.revision) return true;
     if (event.revision !== this.revision + 1) return false;
@@ -444,44 +454,57 @@ export class AgentSessionStore {
     }
 
     this.revision = event.revision;
-    switch (event.type) {
+    this.batching = true;
+    try {
+      for (const change of event.changes) this.apply_change(change);
+    } finally {
+      this.batching = false;
+    }
+    this.notify_changes();
+    return true;
+  }
+
+  /** 快照与增量批次都在事实完整写入后通知，订阅回调可读取其他切片。 */
+  private notify_changes(): void {
+    this.timeline.notify();
+    const slices = [...this.pendingSlices];
+    this.pendingSlices.clear();
+    for (const slice of slices) this.emit(slice);
+  }
+
+  /** 写入已校验的单项事实，订阅通知统一在批次结束后发出。 */
+  private apply_change(change: AgentSessionChange): void {
+    switch (change.type) {
       case "skills_changed":
-        this.skills = { skills: event.skills };
+        this.skills = { skills: change.skills };
         this.emit("skills");
         break;
       case "token_speed":
-        this.set_token_speed(event.tokenSpeed);
+        this.set_token_speed(change.tokenSpeed);
         break;
       case "session_state":
-        this.set_controls({ state: event.state });
+        this.set_controls({ state: change.state });
         break;
       case "pending_decision":
-        this.set_controls({ pendingDecision: event.pendingDecision });
+        this.set_controls({ pendingDecision: change.pendingDecision });
         break;
       case "context":
-        this.set_controls({ context: event.context });
+        this.set_controls({ context: change.context });
         break;
       case "usage":
-        this.set_controls({ usage: event.usage });
+        this.set_controls({ usage: change.usage });
         break;
       case "input_queue":
-        this.queue = { inputQueue: event.inputQueue };
+        this.queue = { inputQueue: change.inputQueue };
         this.emit("queue");
         break;
       case "doing":
-        this.set_controls({ doing: event.doing });
+        this.set_controls({ doing: change.doing });
         break;
-      case "entry_upsert": {
-        const entries = [...this.timeline.entries];
-        const index = entries.findIndex((entry) => entry.id === event.entry.id);
-        if (index < 0) entries.push(event.entry);
-        else entries[index] = event.entry;
-        this.timeline = { entries };
-        this.emit("timeline");
+      case "entry_upsert":
+        this.timeline.update([change.entry]);
         break;
-      }
     }
-    return true;
   }
 
   /** 同步占用唯一命令槽，并记录受理期间的事件基线。 */
@@ -677,7 +700,7 @@ export class AgentSessionStore {
     );
   };
 
-  /** 手动与自动决定共用受理入口；失败通知一次，保留问题供手动重试。 */
+  /** 手动与自动决定共用受理入口。失败通知一次，保留问题供手动重试。 */
   private async submit_decision(
     id: string,
     request: () => Promise<AgentCommandAck>,
@@ -713,7 +736,7 @@ export class AgentSessionStore {
     };
   }
 
-  /** 受理后更新纯文本历史并清空草稿，用输入 revision 通知编辑器。 */
+  /** 受理后更新纯文本历史并清空草稿，用输入 `revision` 通知编辑器。 */
   private accept_message(message: AgentMessageInput): void {
     if (message.text !== "") {
       this.input_history = update_agent_input_history(
@@ -777,55 +800,62 @@ function normalize_snapshot(value: unknown): AgentSessionSnapshot {
   };
 }
 
-/** SSE 顶层判别失败时丢弃单帧；后续 revision 缺口会触发权威恢复。 */
+/** SSE 顶层判别失败时丢弃单帧。后续 `revision` 缺口会触发权威恢复。 */
 function normalize_agent_event(value: unknown): AgentSessionEvent | null {
   const record = read_json_record(value);
   const revision = normalize_optional_revision(record["revision"]);
   if (revision === null) return null;
+  if (record["type"] === "snapshot_seed") {
+    const snapshot = normalize_snapshot(record["snapshot"]);
+    return snapshot.revision === revision ? { type: "snapshot_seed", revision, snapshot } : null;
+  }
+  if (record["type"] !== "session_update" || !Array.isArray(record["changes"])) return null;
+  const changes: AgentSessionChange[] = [];
+  for (const value of record["changes"]) {
+    const change = normalize_agent_change(value);
+    if (change === null) return null;
+    changes.push(change);
+  }
+  return { type: "session_update", revision, changes };
+}
+
+/** 批次须整体通过协议校验，不能先应用其中的部分条目。 */
+function normalize_agent_change(value: unknown): AgentSessionChange | null {
+  const record = read_json_record(value);
   switch (record["type"]) {
-    case "snapshot_seed": {
-      const snapshot = normalize_snapshot(record["snapshot"]);
-      return snapshot.revision === revision ? { type: "snapshot_seed", revision, snapshot } : null;
-    }
     case "skills_changed":
       return Array.isArray(record["skills"])
-        ? { type: "skills_changed", revision, skills: record["skills"].flatMap(normalize_skill) }
+        ? { type: "skills_changed", skills: record["skills"].flatMap(normalize_skill) }
         : null;
     case "session_state":
-      return { type: "session_state", revision, state: normalize_state(record["state"]) };
+      return { type: "session_state", state: normalize_state(record["state"]) };
     case "pending_decision": {
       const pending = normalize_pending_decision(record["pendingDecision"]);
-      return pending === undefined
-        ? null
-        : { type: "pending_decision", revision, pendingDecision: pending };
+      return pending === undefined ? null : { type: "pending_decision", pendingDecision: pending };
     }
     case "input_queue": {
       const input_queue = normalize_input_queue(record["inputQueue"]);
-      return input_queue === null
-        ? null
-        : { type: "input_queue", revision, inputQueue: input_queue };
+      return input_queue === null ? null : { type: "input_queue", inputQueue: input_queue };
     }
     case "doing": {
       const doing = normalize_doing(record["doing"]);
-      return doing === undefined ? null : { type: "doing", revision, doing };
+      return doing === undefined ? null : { type: "doing", doing };
     }
     case "token_speed": {
       const token_speed = normalize_token_speed(record["tokenSpeed"]);
-      return token_speed === undefined
-        ? null
-        : { type: "token_speed", revision, tokenSpeed: token_speed };
+      return token_speed === undefined ? null : { type: "token_speed", tokenSpeed: token_speed };
     }
     case "context": {
       const context = normalize_context(record["context"]);
-      return context === null ? null : { type: "context", revision, context };
+      return context === null ? null : { type: "context", context };
     }
     case "usage": {
       const usage = normalize_usage(record["usage"]);
-      return usage === null ? null : { type: "usage", revision, usage };
+      return usage === null ? null : { type: "usage", usage };
     }
     case "entry_upsert": {
       const entry = normalize_entry(record["entry"])[0];
-      return entry === undefined ? null : { type: "entry_upsert", revision, entry };
+      return entry === undefined ? null : { type: "entry_upsert", entry };
     }
     default:
       return null;
@@ -847,7 +877,7 @@ function normalize_token_speed(value: unknown): AgentTokenSpeedSnapshot | undefi
     : undefined;
 }
 
-/** 累计用量必须完整且非负，非法事件由 revision 缺口恢复。 */
+/** 累计用量必须完整且非负，非法事件由 `revision` 缺口恢复。 */
 function normalize_usage(value: unknown): AgentUsageSnapshot | null {
   if (!is_json_record(value)) return null;
   const { input, output, cacheRead, cacheWrite } = value;
@@ -1067,7 +1097,7 @@ function normalize_state(value: unknown): AgentSessionState {
   throw new TypeError("Agent snapshot state is invalid.");
 }
 
-/** 在 snapshot / SSE 边界按种类收窄用户决定。 */
+/** 在 `snapshot` / SSE 边界按种类收窄用户决定。 */
 function normalize_pending_decision(value: unknown): AgentPendingDecision | null | undefined {
   if (value === null) return null;
   if (value === undefined || !is_json_record(value)) return undefined;
