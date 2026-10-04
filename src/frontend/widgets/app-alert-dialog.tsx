@@ -19,8 +19,8 @@ type AppDialogActionPosition = "primary" | "secondary";
 
 type AppDialogBaseProps = {
   open: boolean;
-  title?: string | undefined;
-  description: string;
+  title?: string | null | undefined; // null 省略可见标题，并用主操作为弹窗命名。
+  description: ReactNode;
   details?: ReactNode; // 动作弹窗可在无障碍描述之外承载结构化业务详情
   onClose: () => void;
   submitting?: boolean | undefined;
@@ -96,7 +96,7 @@ export function AppActionDialog(props: AppActionDialogProps): JSX.Element {
   const { t } = useI18n();
   const submitting = props.submitting ?? false;
   const submitting_icon = props.submittingIcon ?? true;
-  const title = props.title ?? t("app.action.confirm");
+  const title = props.title === null ? null : (props.title ?? t("app.action.confirm"));
   const submitting_action = submitting ? (props.submittingAction ?? "primary") : null;
   const close_handled_ref = useRef(false); // 同一次关闭只向受控状态拥有者回流一次
   useLayoutEffect(() => {
@@ -122,18 +122,22 @@ export function AppActionDialog(props: AppActionDialogProps): JSX.Element {
         />
         <AlertDialogPrimitive.Popup
           data-slot="alert-dialog-content"
+          aria-label={title === null ? props.primaryAction.label : undefined}
           className="fixed top-1/2 left-1/2 z-(--ui-layer-overlay) grid w-full max-w-xs -translate-x-1/2 -translate-y-1/2 gap-4 rounded-xl bg-popover p-4 text-popover-foreground ring-1 ring-foreground/10 duration-100 outline-none sm:max-w-sm data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95"
         >
           <div data-slot="alert-dialog-header" className="grid place-items-start gap-1.5 text-left">
-            <AlertDialogPrimitive.Title
-              data-slot="alert-dialog-title"
-              className="font-heading text-base font-medium"
-            >
-              {title}
-            </AlertDialogPrimitive.Title>
+            {title === null ? null : (
+              <AlertDialogPrimitive.Title
+                data-slot="alert-dialog-title"
+                className="font-heading text-base font-medium"
+              >
+                {title}
+              </AlertDialogPrimitive.Title>
+            )}
             <AlertDialogPrimitive.Description
+              render={<div />}
               data-slot="alert-dialog-description"
-              className="text-sm text-balance whitespace-pre-line text-left text-muted-foreground md:text-pretty *:[a]:underline *:[a]:underline-offset-3 *:[a]:hover:text-foreground"
+              className="w-full min-w-0 text-sm text-balance whitespace-pre-line text-left text-muted-foreground md:text-pretty *:[a]:underline *:[a]:underline-offset-3 *:[a]:hover:text-foreground"
             >
               {props.description}
             </AlertDialogPrimitive.Description>
@@ -143,7 +147,7 @@ export function AppActionDialog(props: AppActionDialogProps): JSX.Element {
           )}
           <div
             data-slot="alert-dialog-footer"
-            className="-mx-4 -mb-4 flex flex-col-reverse gap-2 rounded-b-xl border-t bg-muted/50 p-4 sm:flex-row sm:justify-end"
+            className="-mx-4 -mb-4 flex flex-col-reverse gap-2 rounded-b-xl border-t bg-muted/50 p-4 sm:flex-row sm:flex-wrap sm:justify-end"
           >
             <AppButton
               variant="outline"

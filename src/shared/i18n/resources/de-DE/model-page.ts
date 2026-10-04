@@ -3,7 +3,11 @@ import type { LocaleMessageSchema } from "../../types";
 
 export const de_de_model_page = {
   auth: {
-    login: "Zum Anmelden klicken",
+    open_login_page: "Anmeldeseite im Standardbrowser öffnen",
+    copy_link: "Link kopieren",
+    copied: "Kopiert",
+    success: "Zum Anmelden klicken …",
+    login: "Anmelden",
     logout: "Abmelden",
   },
   title: "Modellverwaltung",

@@ -21,6 +21,7 @@ type ModelItemMenuProps = {
   on_reset: () => void;
   on_delete: () => void;
   on_logout: () => void;
+  on_login: () => void;
 };
 
 /** 菜单拥有操作可见性；运行忙碌时仍允许查看只读设置。 */
@@ -75,7 +76,11 @@ export function ModelItemMenu(props: ModelItemMenuProps): JSX.Element {
   return (
     <AppDropdownMenuContent align="center">
       {props.model.auth_type === "oauth" ? (
-        <ChatGPTAccountMenu readonly={props.auth_disabled} on_logout={props.on_logout}>
+        <ChatGPTAccountMenu
+          readonly={props.auth_disabled}
+          on_logout={props.on_logout}
+          on_login={props.on_login}
+        >
           {model_actions}
         </ChatGPTAccountMenu>
       ) : (

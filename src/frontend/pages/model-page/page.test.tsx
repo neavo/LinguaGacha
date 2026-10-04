@@ -38,6 +38,7 @@ vi.mock("@frontend/pages/model-page/dialogs/model-task-settings-dialog", () => (
 
 vi.mock("@frontend/widgets/app-alert-dialog", () => ({
   AppConfirmDialog: () => null,
+  AppActionDialog: () => null,
 }));
 
 /** 隔离页面动作分发，交互效果由对应 Hook 测试负责。 */

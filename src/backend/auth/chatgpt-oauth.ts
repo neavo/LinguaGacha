@@ -1,10 +1,9 @@
 import { randomBytes, createHash, randomUUID } from "node:crypto";
 import { createServer } from "node:http";
 import { createRemoteJWKSet, customFetch, jwtVerify } from "jose";
-import type { OAuthCredential, OAuthAuth } from "@earendil-works/pi-ai";
+import type { OAuthCredential } from "@earendil-works/pi-ai";
 import { AppError } from "../../shared/error";
 import { is_json_record } from "../../domain/json";
-import type { ChatGPTRegistration } from "./chatgpt-credential-store";
 import { CHATGPT_BASE_URL } from "../../domain/model";
 import { create_provider_error, read_provider_response_error } from "../network/provider-error";
 
@@ -115,10 +114,9 @@ async function read_metadata(
 /** 登录只确认身份和套餐授权；目录获取与推理始终由用户另行触发。 */
 export async function start_chatgpt_login(options: {
   host_id: string;
-  registration: ChatGPTRegistration | null;
   signal: AbortSignal;
 }): Promise<{ url: string; completion: Promise<ChatGPTCredential> }> {
-  const { signal, registration } = options;
+  const { signal } = options;
   signal.throwIfAborted();
   // state 校验回调归属，nonce 校验身份 token，verifier 留在后端参与 code 交换。
   const state = randomBytes(AUTH_RANDOM_BYTES).toString("base64url");
@@ -148,14 +146,8 @@ export async function start_chatgpt_login(options: {
       return;
     }
     const code = url.searchParams.get("code");
-    const client_id = url.searchParams.get("client_id") ?? registration?.client_id;
-    if (
-      error ||
-      !code ||
-      !client_id ||
-      client_id === "dynamic_agent_client" ||
-      (registration !== null && registration.client_id !== client_id)
-    ) {
+    const client_id = url.searchParams.get("client_id");
+    if (error || !code || !client_id || client_id === "dynamic_agent_client") {
       response.writeHead(400).end("Authorization failed. Return to LinguaGacha.");
       callback.reject(
         auth_error(
@@ -194,11 +186,9 @@ export async function start_chatgpt_login(options: {
   const redirect_uri = `http://127.0.0.1:${address.port}${CALLBACK_PATH}`;
   const url = new URL(AUTHORIZE_URL);
   url.search = new URLSearchParams({
-    // 授权地址通过 renderer 打开，只带邮箱提示，ID token 保留在后端。
-    client_id: registration?.client_id ?? "dynamic_agent_client",
-    ...(registration === null
-      ? { agent_name_hint: "LinguaGacha" }
-      : { login_hint: registration.email }),
+    // 显式登录总是重新选择账号；已签发 client ID 只用于当前凭据的刷新与撤销。
+    client_id: "dynamic_agent_client",
+    agent_name_hint: "LinguaGacha",
     ext_agent_host_id: options.host_id,
     response_type: "code",
     redirect_uri,
@@ -235,11 +225,7 @@ export async function start_chatgpt_login(options: {
         requiredClaims: ["exp", "sub", "nonce"],
         algorithms: ["RS256"],
       });
-      if (
-        payload["nonce"] !== nonce ||
-        !payload.sub ||
-        (registration !== null && registration.subject !== payload.sub)
-      )
+      if (payload["nonce"] !== nonce || !payload.sub)
         throw auth_error("ChatGPT identity verification failed.");
       return {
         type: "oauth",
@@ -258,28 +244,22 @@ export async function start_chatgpt_login(options: {
   return { url: url.toString(), completion };
 }
 
-/** Pi 负责锁内到期检查，应用刷新保留注册身份并保留可判定的 OAuth 错误。 */
-export const chatgpt_oauth: OAuthAuth = {
-  name: "ChatGPT",
-  isSubscription: true,
-  login: async () => {
-    throw auth_error("Start ChatGPT sign-in from model settings.");
-  },
-  refresh: async (value, signal) => {
-    const credential = value as ChatGPTCredential;
-    const data = await request_token(
-      new URLSearchParams({
-        grant_type: "refresh_token",
-        client_id: credential.clientId,
-        refresh_token: credential.refresh,
-        resource: CHATGPT_API_URL,
-      }),
-      signal,
-    );
-    return { ...credential, ...token_fields(data) };
-  },
-  toAuth: async (credential) => ({ apiKey: credential.access }),
-};
+/** 刷新保持会话身份，调用方负责串行化及按当前会话提交结果。 */
+export async function refresh_chatgpt_credential(
+  credential: ChatGPTCredential,
+  signal: AbortSignal,
+): Promise<ChatGPTCredential> {
+  const data = await request_token(
+    new URLSearchParams({
+      grant_type: "refresh_token",
+      client_id: credential.clientId,
+      refresh_token: credential.refresh,
+      resource: CHATGPT_API_URL,
+    }),
+    signal,
+  );
+  return { ...credential, ...token_fields(data) };
+}
 
 /** 向官方发现的端点撤销可续期会话，本地清理由账户服务持有。 */
 export async function revoke_chatgpt_session(

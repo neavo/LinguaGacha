@@ -1,5 +1,9 @@
 export const zh_cn_model_page = {
   auth: {
+    open_login_page: "使用默认浏览器打开登录页",
+    copy_link: "复制链接",
+    copied: "已复制",
+    success: "点击登录 …",
     login: "点击登录",
     logout: "退出登录",
   },

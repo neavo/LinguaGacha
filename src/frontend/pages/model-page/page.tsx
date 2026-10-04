@@ -15,6 +15,8 @@ import { ModelTaskSettingsDialog } from "@frontend/pages/model-page/dialogs/mode
 import { useModelPageState } from "@frontend/pages/model-page/use-model-page-state";
 import { AppButton } from "@frontend/widgets/app-button";
 import { AppConfirmDialog } from "@frontend/widgets/app-alert-dialog";
+import { useChatGPTLogin } from "./use-chatgpt-login";
+import { ChatGPTLoginDialog } from "./dialogs/chatgpt-login-dialog";
 
 type ModelPageProps = {
   is_sidebar_collapsed: boolean;
@@ -23,6 +25,7 @@ type ModelPageProps = {
 /** 管理模型配置与排序；具体任务使用哪个模型由各任务入口选择。 */
 export function ModelPage(_props: ModelPageProps): JSX.Element {
   const { t } = useI18n();
+  const chatgpt_login = useChatGPTLogin();
 
   const model_page_state = useModelPageState();
   const selector_model =
@@ -50,6 +53,7 @@ export function ModelPage(_props: ModelPageProps): JSX.Element {
 
   return (
     <>
+      <ChatGPTLoginDialog login={chatgpt_login} />
       <AppConfirmDialog
         open={model_page_state.confirm_state.kind !== null}
         description={
@@ -164,7 +168,10 @@ export function ModelPage(_props: ModelPageProps): JSX.Element {
                     <ModelItemMenu
                       model={model}
                       readonly={model_page_state.readonly}
-                      auth_disabled={model_page_state.test_disabled}
+                      auth_disabled={model_page_state.test_disabled || chatgpt_login.busy}
+                      on_login={() => {
+                        void chatgpt_login.start();
+                      }}
                       on_open_settings={(kind) => model_page_state.open_dialog(kind, model.id)}
                       on_copy={() => {
                         void model_page_state.request_copy_model(model.id);

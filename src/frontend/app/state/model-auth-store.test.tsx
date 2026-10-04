@@ -13,7 +13,7 @@ it("账户快照拒绝迟到修订，支持补读和新后端实例", async () =
   }
   try {
     await act(async () => root.render(<Probe />));
-    const snapshot = { instance_id: "current", revision: 2, connected: true };
+    const snapshot = { instance_id: "current", revision: 2, login: null, connected: true };
     await act(async () => {
       apply_model_auth_snapshot(snapshot);
     });
@@ -27,7 +27,7 @@ it("账户快照拒绝迟到修订，支持补读和新后端实例", async () =
     });
     expect(container.textContent).toBe("disconnected");
     await act(async () => {
-      apply_model_auth_snapshot({ instance_id: "next", revision: 0, connected: true });
+      apply_model_auth_snapshot({ instance_id: "next", revision: 0, login: null, connected: true });
     });
     expect(container.textContent).toBe("connected");
   } finally {

@@ -177,6 +177,7 @@ describe("应用模态窗", () => {
     expect(on_confirm).toHaveBeenCalledTimes(1);
   });
 
+  /** 挂载公共弹窗，由可见操作观察组件行为。 */
   function render_dialog(element: JSX.Element): void {
     container = document.createElement("div");
     document.body.append(container);
@@ -186,6 +187,7 @@ describe("应用模态窗", () => {
     });
   }
 
+  /** 按动作名称定位按钮，避免依赖布局位置。 */
   function read_button(text: string): HTMLButtonElement | null {
     return (
       Array.from(document.body.querySelectorAll<HTMLButtonElement>("button")).find(
@@ -194,6 +196,7 @@ describe("应用模态窗", () => {
     );
   }
 
+  /** 在 React 更新边界内提交按钮操作。 */
   function click_button(text: string): void {
     act(() => {
       read_button(text)?.click();

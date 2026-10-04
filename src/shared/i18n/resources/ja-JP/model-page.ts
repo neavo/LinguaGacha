@@ -2,6 +2,10 @@ import type { zh_cn_model_page } from "../zh-CN/model-page";
 import type { LocaleMessageSchema } from "../../types";
 export const ja_jp_model_page = {
   auth: {
+    open_login_page: "既定のブラウザーでログインページを開く",
+    copy_link: "リンクをコピー",
+    copied: "コピーしました",
+    success: "クリックしてログイン …",
     login: "クリックしてログイン",
     logout: "ログアウト",
   },

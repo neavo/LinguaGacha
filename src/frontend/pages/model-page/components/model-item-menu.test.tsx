@@ -12,7 +12,6 @@ import { apply_model_auth_snapshot } from "@frontend/app/state/model-auth-store"
 const { api_fetch_mock } = vi.hoisted(() => ({ api_fetch_mock: vi.fn() }));
 vi.mock("@frontend/app/desktop/desktop-api", () => ({
   api_fetch: api_fetch_mock,
-  open_external_url: vi.fn(),
 }));
 
 describe("ModelItemMenu", () => {
@@ -38,6 +37,7 @@ describe("ModelItemMenu", () => {
       on_reset: vi.fn(),
       on_delete: vi.fn(),
       on_logout: vi.fn(),
+      on_login: vi.fn(),
       ...overrides,
     };
     container = document.createElement("div");
@@ -72,35 +72,21 @@ describe("ModelItemMenu", () => {
     expect(props.on_copy).toHaveBeenCalledOnce();
   });
 
-  it("OAuth 登录入口置顶，登录后退出入口移到底部，普通模型操作顺序稳定", async () => {
-    const snapshot = {
-      instance_id: "menu-order",
-      revision: 0,
-      connected: false,
-    };
+  it("OAuth 账户入口随连接状态切换并转交页面操作", async () => {
+    const snapshot = { instance_id: "menu-login", revision: 0, login: null, connected: false };
     apply_model_auth_snapshot(snapshot);
     api_fetch_mock.mockResolvedValue({ snapshot });
-    await render_menu({ model: create_model_snapshot({ auth_type: "oauth" }) });
-    const labels = () =>
-      [...document.querySelectorAll('[role="menuitem"]')].map((item) => item.textContent);
-    const text = create_text_resolver("zh-CN");
-    const model_actions = [
-      "basic_settings",
-      "task_settings",
-      "advanced_settings",
-      "copy",
-      "reset",
-    ].map((action) => text(`model_page.action.${action}` as LocaleKey));
-    expect(labels()).toEqual([text("model_page.auth.login"), ...model_actions]);
+    const props = await render_menu({ model: create_model_snapshot({ auth_type: "oauth" }) });
+    await act(async () => {
+      menu_item("model_page.auth.login")!.click();
+    });
+    expect(props.on_login).toHaveBeenCalledOnce();
     await act(async () => apply_model_auth_snapshot({ ...snapshot, revision: 1, connected: true }));
-    expect(labels()).toEqual([...model_actions, text("model_page.auth.logout")]);
-    await act(async () =>
-      apply_model_auth_snapshot({
-        ...snapshot,
-        revision: 2,
-      }),
-    );
-    expect(labels()).toEqual([text("model_page.auth.login"), ...model_actions]);
+    expect(menu_item("model_page.auth.login")).toBeUndefined();
+    await act(async () => {
+      menu_item("model_page.auth.logout")!.click();
+    });
+    expect(props.on_logout).toHaveBeenCalledOnce();
   });
 
   it("SakuraLLM 隐藏复制入口", async () => {
