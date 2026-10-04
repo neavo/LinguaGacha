@@ -174,7 +174,6 @@ export type AgentContextCompactionEntry = JsonRecord & {
   kind: "context_compaction";
   id: string;
   status: Extract<AgentEntryStatus, "running" | "success" | "error">;
-  createdAt: number;
 };
 
 /** round 与 steer 共用的不可变用户消息字段。 */

@@ -972,7 +972,6 @@ describe("AgentConversation", () => {
           kind: "context_compaction",
           id: "compaction-1",
           status: "error",
-          createdAt: 1_500,
         },
         user_entry("user-2", "继续检查", "error", 2_000, 3_000),
         assistant_entry("assistant-1", "部分结果", "error", 2_500),

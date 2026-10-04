@@ -534,7 +534,6 @@ describe("AgentSessionStore", () => {
           kind: "context_compaction",
           id: "manual-compaction",
           status: "running",
-          createdAt: 1,
         },
       });
       return { revision: event_source.current_revision };
@@ -553,7 +552,6 @@ describe("AgentSessionStore", () => {
         kind: "context_compaction",
         id: "manual-compaction",
         status: "running",
-        createdAt: 1,
       },
     ]);
     expect(latest.command).toBeNull();
@@ -1149,13 +1147,11 @@ describe("AgentSessionStore", () => {
           kind: "context_compaction",
           id: "compaction-success",
           status: "success",
-          createdAt: 14,
         },
         {
           kind: "context_compaction",
           id: "compaction-stopped",
           status: "stopped",
-          createdAt: 15,
         },
       ],
       skills: [],
@@ -1246,7 +1242,6 @@ describe("AgentSessionStore", () => {
         kind: "context_compaction",
         id: "compaction-success",
         status: "success",
-        createdAt: 14,
       },
     ]);
   });
@@ -1714,7 +1709,6 @@ describe("AgentSessionStore", () => {
       kind: "context_compaction" as const,
       id: "compaction-1",
       status: "error" as const,
-      createdAt: 1,
     };
     desktop_api_mocks.api_get.mockResolvedValue(agent_snapshot({ entries: [failed_compaction] }));
     desktop_api_mocks.api_fetch.mockImplementationOnce(async () => {
