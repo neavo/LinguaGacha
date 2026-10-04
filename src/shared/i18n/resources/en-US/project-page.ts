@@ -10,8 +10,6 @@ export const en_us_project_page = {
     ready_status: "{COUNT} source files selected",
     loading_toast: "Creating project …",
     unavailable: "No supported source files found in this directory",
-    failed: "Failed to create project: {ERROR}",
-    failed_generic: "Failed to create project",
     default_preset_loaded: "Default presets loaded: {NAMES} …",
     default_presets: {
       glossary: "Glossary",
@@ -31,10 +29,8 @@ export const en_us_project_page = {
     ready_status: "Project Ready",
     preview_loading_toast: "Reading project preview …",
     loading_toast: "Loading project …",
-    preview_unavailable: "Failed to read project preview: {ERROR}",
-    preview_unavailable_generic: "Failed to read project preview",
-    failed: "Failed to load project: {ERROR}",
-    failed_generic: "Failed to load project",
+    preview_unavailable: "Failed to read project preview …",
+
     action: "Open Project",
     remove_unavailable:
       "Unable to remove this recent project entry right now. Please try again later …",

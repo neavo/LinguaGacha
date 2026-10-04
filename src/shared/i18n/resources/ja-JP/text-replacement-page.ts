@@ -8,8 +8,4 @@ export const ja_jp_text_replacement_page = {
   rule: {
     regex: "正規表現",
   },
-  feedback: {
-    load_failed: "置換ルールを読み込めませんでした。しばらくしてから再試行してください …",
-    query_failed: "置換ページで検索できませんでした",
-  },
 } satisfies LocaleMessageSchema<typeof zh_cn_text_replacement_page>;

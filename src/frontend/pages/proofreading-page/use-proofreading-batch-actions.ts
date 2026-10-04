@@ -27,7 +27,7 @@ type ProofreadingProjectWriteRunner = (args: {
   plan: ProofreadingCommandPlan | null;
   fallback_error_key:
     | "proofreading_page.feedback.clear_translation_failed"
-    | "proofreading_page.feedback.set_status_failed";
+    | "app.feedback.modify_failed";
   preferred_row_id?: string | null;
   success_message_builder?: ((changed_count: number) => string) | null;
   empty_warning_message?: string | null;
@@ -216,7 +216,7 @@ export function useProofreadingBatchActions(
           },
           changes: target_item_ids.map((item_id) => ({ item_id, status })),
         }),
-        fallback_error_key: "proofreading_page.feedback.set_status_failed",
+        fallback_error_key: "app.feedback.modify_failed",
         preferred_row_id,
         success_message_builder: (changed_count) => {
           return t("proofreading_page.feedback.set_status_success")

@@ -30,8 +30,6 @@ export const de_de_text_preserve_page = {
     },
   },
   feedback: {
-    load_failed:
-      "Texterhaltungsregeln konnten nicht geladen werden. Bitte später erneut versuchen …",
     unknown_error: "Der Vorgang ist fehlgeschlagen. Bitte versuchen Sie es später erneut …",
     mode_refresh_pending:
       "Der Textschutz-Modus wurde aktualisiert und der Korrektur-Cache wird noch aktualisiert. Bitte überprüfen Sie es in Kürze erneut …",

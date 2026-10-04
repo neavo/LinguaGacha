@@ -35,7 +35,6 @@ export const en_us_basic_settings_page = {
     },
   },
   feedback: {
-    refresh_failed: "Unable to refresh basic settings right now. Please try again later …",
     request_timeout_invalid: "Request timeout must be a number within the valid range …",
     pick_directory_failed:
       "Directory selection failed. Please choose the fixed save directory again …",

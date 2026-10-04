@@ -280,3 +280,13 @@
 .skill-editor__status[data-status="modified"] .skill-editor__status-label {
   color: var(--primary);
 }
+
+.skill-editor__status[data-status="save_failed"] .skill-editor__status-label,
+.skill-editor__status[data-status="conflict"] .skill-editor__status-label {
+  color: var(--destructive);
+}
+
+.skill-editor__recovery {
+  display: flex;
+  gap: 8px;
+}

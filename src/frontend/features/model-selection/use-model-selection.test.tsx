@@ -18,7 +18,10 @@ vi.mock("@frontend/app/desktop/desktop-api", () => ({
   api_get: api.get,
   api_fetch: api.fetch,
 }));
-vi.mock("@frontend/app/feedback/desktop-toast", () => ({ push_toast }));
+vi.mock("@frontend/app/feedback/desktop-toast", () => ({
+  push_error_toast: push_toast,
+  push_toast,
+}));
 vi.mock("@frontend/app/feedback/visible-error-message", () => ({
   resolve_visible_error_message: (_error: unknown, _t: unknown, fallback: string) => fallback,
 }));
@@ -79,7 +82,7 @@ describe("useModelSelection", () => {
       model_id: "openai",
     });
     expect(container.querySelector("output")?.textContent).toBe("follow");
-    expect(push_toast).toHaveBeenCalledWith("error", "app.model.selection.update_failed");
+    expect(push_toast).toHaveBeenCalledWith("app.feedback.save_failed", expect.any(Error));
     api.fetch.mockResolvedValueOnce(snapshot("preset", "OFF", "openai"));
     await act(async () => find_button(container, "batch").click());
     expect(container.querySelector("output")?.textContent).toBe("openai");

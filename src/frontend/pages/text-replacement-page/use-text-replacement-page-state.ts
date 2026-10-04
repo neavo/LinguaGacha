@@ -1,3 +1,4 @@
+import { push_error_toast } from "@frontend/app/feedback/desktop-toast";
 import { useQualityRuleTable } from "@frontend/features/quality-rule-editor/use-quality-rule-table";
 import { useQualityRuleEditing } from "@frontend/features/quality-rule-editor/use-quality-rule-editing";
 import { useQualityRulePresets } from "@frontend/features/quality-rule-editor/use-quality-rule-presets";
@@ -17,8 +18,6 @@ import {
 import { useQualityRuleStatistics } from "@frontend/app/session/quality-rule-statistics-context";
 import { useDesktopState, useRuntimeSnapshot } from "@frontend/app/state/use-desktop-state";
 import { is_runtime_busy } from "@frontend/app/state/runtime-activity-store";
-import { push_toast } from "@frontend/app/feedback/desktop-toast";
-import { resolve_visible_error_message } from "@frontend/app/feedback/visible-error-message";
 import { useI18n, type LocaleKey } from "@frontend/app/locale/locale-context";
 
 import {
@@ -159,10 +158,7 @@ export function useTextReplacementPageState(variant: TextReplacementVariant) {
   /** 将查询失败交给页面反馈入口。 */
   const handle_quality_rule_load_error = useCallback(
     (error: unknown): void => {
-      push_toast(
-        "error",
-        resolve_visible_error_message(error, t, t("text_replacement_page.feedback.load_failed")),
-      );
+      push_error_toast(t("app.feedback.load_failed"), error);
     },
     [t],
   );
@@ -376,10 +372,7 @@ export function useTextReplacementPageState(variant: TextReplacementVariant) {
         );
         navigate_to_route("proofreading");
       } catch (error) {
-        push_toast(
-          "error",
-          resolve_visible_error_message(error, t, t("text_replacement_page.feedback.query_failed")),
-        );
+        push_error_toast(t("app.feedback.query_failed"), error);
       }
     },
     [

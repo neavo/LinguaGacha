@@ -9,8 +9,6 @@ export const ko_kr_project_page = {
     ready_status: "원본 파일 {COUNT}개 선택됨",
     loading_toast: "프로젝트 생성 중 …",
     unavailable: "이 폴더에 지원하는 원본 파일이 없습니다",
-    failed: "프로젝트 생성 실패: {ERROR}",
-    failed_generic: "프로젝트 생성 실패",
     default_preset_loaded: "기본 프리셋을 자동으로 불러왔습니다: {NAMES} …",
     default_presets: {
       glossary: "용어집",
@@ -30,10 +28,8 @@ export const ko_kr_project_page = {
     ready_status: "프로젝트 준비 완료",
     preview_loading_toast: "프로젝트 미리 보기 읽는 중 …",
     loading_toast: "프로젝트 불러오는 중 …",
-    preview_unavailable: "프로젝트 미리 보기 읽기 실패: {ERROR}",
-    preview_unavailable_generic: "프로젝트 미리 보기 읽기 실패",
-    failed: "프로젝트 불러오기 실패: {ERROR}",
-    failed_generic: "프로젝트 불러오기 실패",
+    preview_unavailable: "프로젝트 미리 보기 읽기 실패 …",
+
     action: "프로젝트 열기",
     remove_unavailable: "최근 사용 기록을 제거할 수 없습니다. 잠시 후 다시 시도해 주세요 …",
     missing_file_description: "프로젝트 파일을 사용할 수 없습니다. 목록에서 제거할까요 …?",

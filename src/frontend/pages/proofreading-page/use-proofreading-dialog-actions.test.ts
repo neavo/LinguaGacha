@@ -7,6 +7,9 @@ import type {
   ProofreadingContextItem,
 } from "@shared/proofreading/proofreading-types";
 
+const push_toast = vi.hoisted(() => vi.fn());
+vi.mock("@frontend/app/feedback/desktop-toast", () => ({ push_error_toast: push_toast }));
+
 const item: ProofreadingClientItem = {
   item_id: 1,
   row_id: "1",
@@ -31,7 +34,6 @@ describe("useProofreadingDialogActions", () => {
   let state: ReturnType<typeof useProofreadingDialogActions> | null;
   const read_items = vi.fn<() => Promise<ProofreadingClientItem[]>>();
   const read_context = vi.fn<() => Promise<ProofreadingContextItem[]>>();
-  const push_toast = vi.fn();
   const options = {
     list_revisions: { items: 7, proofreading: 1 },
     visible_item_by_id: new Map([["1", item]]),
@@ -76,7 +78,7 @@ describe("useProofreadingDialogActions", () => {
     });
 
     expect(state?.dialog_state.open).toBe(false);
-    expect(push_toast).toHaveBeenCalledWith("error", expect.any(String));
+    expect(push_toast).toHaveBeenCalledWith(expect.any(String), expect.any(Error));
     push_toast.mockClear();
     await act(async () => {
       await state?.open_edit_dialog("1");

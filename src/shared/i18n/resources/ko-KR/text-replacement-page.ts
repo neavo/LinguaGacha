@@ -8,8 +8,4 @@ export const ko_kr_text_replacement_page = {
   rule: {
     regex: "정규 표현식",
   },
-  feedback: {
-    load_failed: "치환 규칙을 불러오지 못했습니다. 잠시 후 다시 시도해 주세요 …",
-    query_failed: "치환 페이지 조회 실패",
-  },
 } satisfies LocaleMessageSchema<typeof zh_cn_text_replacement_page>;

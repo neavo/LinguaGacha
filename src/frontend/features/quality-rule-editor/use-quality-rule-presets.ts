@@ -1,3 +1,4 @@
+import { push_error_toast, push_toast } from "@frontend/app/feedback/desktop-toast";
 import { DesktopApiError } from "@frontend/app/desktop/desktop-api";
 import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import { QualityRule } from "@domain/quality";
@@ -5,8 +6,7 @@ import type { QualityRulePresets } from "@shared/quality/quality-rule-api";
 import type { QualityRuleKind, QualityRuleEntryByKind } from "@domain/quality";
 import { useDesktopState } from "@frontend/app/state/use-desktop-state";
 import { useI18n, type LocaleKey } from "@frontend/app/locale/locale-context";
-import { push_toast } from "@frontend/app/feedback/desktop-toast";
-import { resolve_visible_error_message } from "@frontend/app/feedback/visible-error-message";
+
 import {
   create_empty_preset_input_state,
   decorate_preset_items,
@@ -74,7 +74,7 @@ export function useQualityRulePresets<K extends QualityRuleKind>(
 
   /** 把当前操作错误映射为一条用户反馈。 */
   function report(error: unknown, key: LocaleKey): void {
-    push_toast("error", resolve_visible_error_message(error, t, t(key)));
+    push_error_toast(t(key), error);
   }
   /** 已提交错误不能重试原文件操作；重读两端事实后结束原命令。 */
   async function handle_command_error(error: unknown, key: LocaleKey): Promise<boolean> {
@@ -88,7 +88,7 @@ export function useQualityRulePresets<K extends QualityRuleKind>(
     } catch (cause) {
       failure = new AggregateError([error, cause], "Failed to reload committed preset state.");
     }
-    report(failure, "preset_editor.feedback.load_failed");
+    report(failure, "app.feedback.load_failed");
     return true;
   }
   /** 重读预设列表，旧页面的回包随页面失效。 */
@@ -106,7 +106,7 @@ export function useQualityRulePresets<K extends QualityRuleKind>(
     } catch (error) {
       if (token === generation.current) {
         set_preset_menu_open(false);
-        report(error, "preset_editor.feedback.load_failed");
+        report(error, "app.feedback.load_failed");
       }
     }
   }
@@ -143,11 +143,11 @@ export function useQualityRulePresets<K extends QualityRuleKind>(
   /** 保存预设并读取目录结果。 */
   async function save_preset(name: string): Promise<boolean> {
     const token = generation.current;
-    let error_key: LocaleKey = "preset_editor.feedback.save_failed";
+    let error_key: LocaleKey = "app.feedback.save_failed";
     try {
       await save_quality_rule_preset(rule_type, name, entries);
       if (token !== generation.current) return false;
-      error_key = "preset_editor.feedback.load_failed";
+      error_key = "app.feedback.load_failed";
       await refresh_preset_menu();
       return token === generation.current;
     } catch (error) {
@@ -167,7 +167,7 @@ export function useQualityRulePresets<K extends QualityRuleKind>(
     } catch (error) {
       return (
         token === generation.current &&
-        (await handle_command_error(error, "preset_editor.feedback.rename_failed"))
+        (await handle_command_error(error, "app.feedback.rename_failed"))
       );
     }
   }
@@ -181,7 +181,7 @@ export function useQualityRulePresets<K extends QualityRuleKind>(
         ),
       );
     } catch (error) {
-      report(error, "preset_editor.feedback.default_update_failed");
+      report(error, "app.feedback.save_failed");
     }
   }
   /** 结束命名并释放本次输入。 */
@@ -251,7 +251,7 @@ export function useQualityRulePresets<K extends QualityRuleKind>(
       }
     } catch (error) {
       if (token === generation.current)
-        succeeded = await handle_command_error(error, "preset_editor.feedback.delete_failed");
+        succeeded = await handle_command_error(error, "app.feedback.delete_failed");
     }
     if (token !== generation.current) return;
     busy.current = false;

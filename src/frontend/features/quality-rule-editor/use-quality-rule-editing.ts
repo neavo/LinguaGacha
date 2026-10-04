@@ -1,3 +1,4 @@
+import { push_error_toast, push_toast } from "@frontend/app/feedback/desktop-toast";
 import { useCallback, useLayoutEffect, useRef, useState } from "react";
 import type { QualityRuleUpdateRequest } from "@shared/quality/quality-rule-api";
 import type { QualityRuleEntryByKind, QualityRuleKind } from "@domain/quality";
@@ -9,8 +10,7 @@ import {
 import { useDesktopState } from "@frontend/app/state/use-desktop-state";
 import type { ProjectSessionTableUiStateController } from "@frontend/app/session/project-session-ui-state-context";
 import { useI18n, type LocaleKey } from "@frontend/app/locale/locale-context";
-import { push_toast } from "@frontend/app/feedback/desktop-toast";
-import { resolve_visible_error_message } from "@frontend/app/feedback/visible-error-message";
+
 import {
   PRESERVE_RESULT_REFRESH,
   REBUILD_RESULT_REFRESH,
@@ -109,7 +109,7 @@ export function useQualityRuleEditing<K extends QualityRuleKind>(options: {
   /** 把当前操作错误映射为一条用户反馈。 */
   const report = useCallback(
     (error: unknown, key: LocaleKey) => {
-      push_toast("error", resolve_visible_error_message(error, t, t(key)));
+      push_error_toast(t(key), error);
     },
     [t],
   );
@@ -151,7 +151,7 @@ export function useQualityRuleEditing<K extends QualityRuleKind>(options: {
       } catch (error) {
         if (token === generation.current) {
           state.set_result_refresh(null);
-          report(error, "quality_rule_editor.feedback.save_failed");
+          report(error, "app.feedback.save_failed");
         }
         return false;
       } finally {
@@ -191,7 +191,7 @@ export function useQualityRuleEditing<K extends QualityRuleKind>(options: {
       try {
         await update_meta(meta);
       } catch (error) {
-        report(error, "quality_rule_editor.feedback.update_failed");
+        report(error, "app.feedback.save_failed");
       }
     },
     [report, update_meta],
@@ -274,7 +274,7 @@ export function useQualityRuleEditing<K extends QualityRuleKind>(options: {
     const error = options.validate(draft);
     if (error !== null) {
       set_dialog_state({ ...dialog_state, invalid: true });
-      push_toast("error", error);
+      push_error_toast(t("app.feedback.save_failed"), error);
       return;
     }
     const entry = {
@@ -352,9 +352,7 @@ export function useQualityRuleEditing<K extends QualityRuleKind>(options: {
       if (token === generation.current)
         report(
           error,
-          source === "preset"
-            ? "preset_editor.feedback.load_failed"
-            : "quality_rule_editor.feedback.import_failed",
+          source === "preset" ? "app.feedback.load_failed" : "app.feedback.import_failed",
         );
     }
   }
@@ -371,7 +369,7 @@ export function useQualityRuleEditing<K extends QualityRuleKind>(options: {
       const path = await pick_quality_rule_import_path();
       if (path !== null && token === generation.current) await import_entries_from_path(path);
     } catch (error) {
-      if (token === generation.current) report(error, "quality_rule_editor.feedback.import_failed");
+      if (token === generation.current) report(error, "app.feedback.import_failed");
     }
   }
   /** 导出当前快照，用户完成选择后反馈结果。 */
@@ -386,7 +384,7 @@ export function useQualityRuleEditing<K extends QualityRuleKind>(options: {
       )
         push_toast("success", t("app.feedback.export_success"));
     } catch (error) {
-      report(error, "quality_rule_editor.feedback.export_failed");
+      report(error, "app.feedback.export_failed");
     }
   }
   /** 冻结本次待删除身份，供确认后提交。 */

@@ -5,7 +5,10 @@ import { LocaleProvider } from "@frontend/app/locale/locale-provider";
 import { SkillEntryNameDialog } from "./skill-entry-name-dialog";
 
 const toast = vi.hoisted(() => vi.fn());
-vi.mock("@frontend/app/feedback/desktop-toast", () => ({ push_toast: toast }));
+vi.mock("@frontend/app/feedback/desktop-toast", () => ({
+  push_error_toast: toast,
+  push_toast: toast,
+}));
 
 describe("技能名称弹窗", () => {
   let root: Root;

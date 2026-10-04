@@ -1,3 +1,8 @@
+import {
+  push_error_toast,
+  push_toast,
+  run_modal_progress_toast,
+} from "@frontend/app/feedback/desktop-toast";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
@@ -8,7 +13,7 @@ import {
 import { capture_renderer_error } from "@frontend/app/diagnostics/renderer-error-reporter";
 
 import { is_runtime_busy } from "@frontend/app/state/runtime-activity-store";
-import { push_toast, run_modal_progress_toast } from "@frontend/app/feedback/desktop-toast";
+
 import {
   create_workbench_delete_files_plan,
   create_workbench_planner_settings,
@@ -23,7 +28,6 @@ import type {
 } from "@frontend/app/state/desktop-project-write";
 import { useI18n } from "@frontend/app/locale/locale-context";
 import { api_fetch } from "@frontend/app/desktop/desktop-api";
-import { resolve_visible_error_message } from "@frontend/app/feedback/visible-error-message";
 import { format_source_file_parse_failure_error_toast } from "@frontend/app/feedback/source-file-parse-failure-feedback";
 import {
   close_dialog_state,
@@ -401,15 +405,10 @@ export function useWorkbenchPageState(): UseWorkbenchPageStateResult {
           return EMPTY_SNAPSHOT;
         }
 
-        const message = resolve_visible_error_message(
-          error,
-          t,
-          t("workbench_page.feedback.refresh_failed"),
-        );
         set_cache_status("error");
         set_file_op_running(false);
         set_settled_project_path(project_snapshot.path);
-        push_toast("error", message);
+        push_error_toast(t("app.feedback.refresh_failed"), error);
         return snapshot_ref.current;
       } finally {
         if (request_id === refresh_generation_ref.current) {
@@ -695,8 +694,8 @@ export function useWorkbenchPageState(): UseWorkbenchPageStateResult {
         await run_project_file_write(reorder_plan, async (body) => {
           return await api_fetch<ProjectWriteResultPayload>("/api/workbench/files/reorder", body);
         });
-      } catch {
-        push_toast("error", t("workbench_page.reorder.failed"));
+      } catch (error) {
+        push_error_toast(t("app.feedback.save_failed"), error);
       }
     },
     [entries.length, get_workbench_planning_state, readonly, run_project_file_write, t],
@@ -768,18 +767,18 @@ export function useWorkbenchPageState(): UseWorkbenchPageStateResult {
         }
       }
     } catch (error) {
-      const parse_failure_toast = format_source_file_parse_failure_error_toast({ error, text: t });
+      const parse_failure_toast = format_source_file_parse_failure_error_toast(error);
       if (parse_failure_toast !== null) {
-        push_toast("error", parse_failure_toast);
+        push_error_toast(t("app.feedback.operation_failed"), parse_failure_toast);
         set_dialog_submitting(false);
         return;
       }
       const fallback_message =
         current_dialog_state.kind === "close-project"
           ? t("workbench_page.feedback.close_project_failed")
-          : t("workbench_page.feedback.file_action_failed");
+          : t("app.feedback.operation_failed");
 
-      push_toast("error", resolve_visible_error_message(error, t, fallback_message));
+      push_error_toast(fallback_message, error);
       set_dialog_submitting(false);
     }
   }

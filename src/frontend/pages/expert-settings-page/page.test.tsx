@@ -23,6 +23,7 @@ vi.mock("@frontend/app/locale/locale-context", () => {
 });
 
 vi.mock("@frontend/app/feedback/desktop-toast", () => ({
+  push_error_toast: push_toast_mock,
   push_toast: push_toast_mock,
 }));
 
@@ -178,7 +179,7 @@ describe("ExpertSettingsPage", () => {
       get_current_expert_settings_state().update_preceding_lines_threshold,
     ).not.toHaveBeenCalled();
     expect(push_toast_mock).toHaveBeenCalledWith(
-      "error",
+      "app.feedback.save_failed",
       "expert_settings_page.feedback.preceding_lines_threshold_invalid",
     );
   });

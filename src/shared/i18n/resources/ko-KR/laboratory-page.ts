@@ -28,7 +28,4 @@ export const ko_kr_laboratory_page = {
         "같은 파일 내의 원문이 같은 항목은 한 번만 번역하고 <emphasis>번역문을 재사용</emphasis>합니다. 기본값은 사용입니다.",
     },
   },
-  feedback: {
-    refresh_failed: "실험실 설정을 새로 고칠 수 없습니다. 잠시 후 다시 시도해 주세요 …",
-  },
 } satisfies LocaleMessageSchema<typeof zh_cn_laboratory_page>;

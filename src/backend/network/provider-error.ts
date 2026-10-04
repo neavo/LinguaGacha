@@ -21,12 +21,11 @@ export function create_provider_error(
       (candidate): candidate is string => typeof candidate === "string" && candidate.trim() !== "",
     ) ?? (status === undefined ? "Model request failed." : `HTTP ${status}`);
   const error = new AppError("model.provider_failed", {
-    public_details: { message, ...(status === undefined ? {} : { status }) },
+    message,
+    public_details: status === undefined ? {} : { status },
     diagnostic_context: { ...context, status, provider_code: code, param: detail["param"] },
     ...(value instanceof Error ? { cause: value } : {}),
   });
-  // 日志与 Pi 流也消费 Error.message；稳定分类始终使用 AppError.code。
-  error.message = message;
   return error;
 }
 

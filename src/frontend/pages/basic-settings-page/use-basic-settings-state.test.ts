@@ -45,6 +45,9 @@ vi.mock("@frontend/app/state/use-desktop-state", () => {
 });
 
 vi.mock("@frontend/app/feedback/desktop-toast", () => ({
+  get push_error_toast() {
+    return toast_fixture.current.push_toast;
+  },
   get push_toast() {
     return toast_fixture.current.push_toast;
   },
@@ -172,8 +175,8 @@ describe("useBasicSettingsState", () => {
       ["/api/settings/update", { source_language: "EN" }],
     ]);
     expect(toast_fixture.current.push_toast).toHaveBeenCalledExactlyOnceWith(
-      "error",
-      "app.feedback.settings_save_failed",
+      "app.feedback.save_failed",
+      expect.any(Error),
     );
   });
 

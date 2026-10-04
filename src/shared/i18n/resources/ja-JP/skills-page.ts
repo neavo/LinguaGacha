@@ -12,6 +12,7 @@ export const ja_jp_skills_page = {
     request: "このスキルをインストールしてください：{LINK}",
   },
   editor: {
+    save_failed: "保存失敗",
     reset: "リセット",
     delete_skill_confirm: "スキルを削除しますか …?",
     reset_skill_confirm: "スキルをリセットしますか …?",
@@ -27,16 +28,10 @@ export const ja_jp_skills_page = {
     saved: "保存済み",
     discard: "変更を破棄して再読み込み",
     overwrite: "ファイルを上書き",
-    conflict: "ファイルが外部で変更されました。再読み込みするか、上書きしてください …",
+    conflict: "バージョンの競合",
     invalid_name:
       "名前は64文字以内の英小文字、数字、単一のハイフンを使用し、先頭と末尾は英数字にしてください …",
     invalid_description: "1024文字以内の説明を1行で入力してください …",
     unsupported: "UTF-8テキストではないか、2 MBを超えているため編集できません …",
-  },
-  feedback: {
-    duplicate_name: "ファイル名が重複しています",
-    operation_failed: "ファイル操作に失敗しました",
-    load_failed: "スキルの読み込みに失敗しました",
-    save_failed: "スキル設定の保存に失敗しました",
   },
 } as const;

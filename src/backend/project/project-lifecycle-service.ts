@@ -10,7 +10,6 @@ import { FileFormatService } from "../file/file-format-service";
 import { log_source_file_parse_failures } from "../file/source-file-parse-failure-reporter";
 import { SourceFileParsePipeline } from "../file/source-file-parse-pipeline";
 import type { LogManager } from "../log/log-manager";
-import { t_main_log } from "../log/log-text";
 import { build_project_open_writes } from "../migration/project-open-migrations";
 import {
   build_project_item_persistent_records,
@@ -399,7 +398,6 @@ export class ProjectLifecycleService {
       failures: failed_files,
       log_manager: this.log_manager,
       source: "project-lifecycle",
-      text: t_main_log,
     });
   }
 

@@ -31,8 +31,4 @@ export const de_de_laboratory_page = {
         "Einträge mit gleichem Quelltext in derselben Datei teilen <emphasis>eine Übersetzung</emphasis>, standardmäßig aktiviert",
     },
   },
-  feedback: {
-    refresh_failed:
-      "Laboreinstellungen können derzeit nicht aktualisiert werden. Bitte versuchen Sie es später erneut …",
-  },
 } satisfies LocaleMessageSchema<typeof zh_cn_laboratory_page>;

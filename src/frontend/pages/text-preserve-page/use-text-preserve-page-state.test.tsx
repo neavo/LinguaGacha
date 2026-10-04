@@ -14,6 +14,7 @@ const settings = normalize_setting_snapshot({});
 vi.mock("@frontend/app/desktop/desktop-api", () => ({ api_fetch: api }));
 vi.mock("@frontend/app/feedback/desktop-toast", async (import_actual) => ({
   ...(await import_actual<typeof import("@frontend/app/feedback/desktop-toast")>()),
+  push_error_toast: toast,
   push_toast: toast,
   run_modal_progress_toast: async <T,>(args: { task: () => Promise<T> }) => args.task(),
 }));
@@ -140,7 +141,7 @@ it("非法转义阻止保存，修改备注保留错误，修正规则清除错�
   await act(async () => state.editing.save_dialog_entry());
   expect(state.editing.dialog_state.invalid).toBe(true);
   expect(api).not.toHaveBeenCalled();
-  expect(toast).toHaveBeenCalledWith("error", expect.any(String));
+  expect(toast).toHaveBeenCalledWith("app.feedback.save_failed", expect.any(String));
   await act(async () => state.editing.update_dialog_draft({ info: "修正说明" }));
   expect(state.editing.dialog_state.invalid).toBe(true);
   await act(async () => state.editing.update_dialog_draft({ src: "valid" }));

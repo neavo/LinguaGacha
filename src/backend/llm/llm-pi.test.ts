@@ -257,7 +257,7 @@ describe("pi-ai 请求适配", () => {
 
     expect(() =>
       create_pi_request(snapshot, [{ role: "user", content: "   " }], new AbortController().signal),
-    ).toThrow("request.validation_failed");
+    ).toThrow(expect.objectContaining({ code: "request.validation_failed" }));
   });
 
   it("让 Pi 构造 OpenAI payload，再应用当前生成、思考和 extra_body 规则", async () => {

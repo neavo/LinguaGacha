@@ -1,4 +1,7 @@
-import { create_empty_quality_rule_block } from "../project/project-data-reader";
+import {
+  create_empty_quality_rule_block,
+  get_section_revision,
+} from "../project/project-data-reader";
 import { NativeFs } from "../../native/native-fs";
 import { AppSettingService } from "../app/app-setting-service";
 import fs from "node:fs";
@@ -10,7 +13,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { ProjectDatabase } from "../database/database-operations";
 import type { JsonRecord } from "../../domain/json";
 import { ProjectWriteStore } from "../project/project-write-store";
-import { get_section_revision } from "../project/project-data-reader";
+
 import { RuntimeOperationGate } from "../runtime-operation-gate";
 import { ProjectSessionState } from "../project/project-session-state";
 import { AppPathService } from "../app/app-path-service";
@@ -210,19 +213,19 @@ describe("QualityRuleService", () => {
         rule_type: "glossary",
         virtual_id: "builtin:../demo.json",
       }),
-    ).toThrow("request.validation_failed");
+    ).toThrow(expect.objectContaining({ code: "request.validation_failed" }));
     expect(() =>
       service.read_rule_preset({
         rule_type: "glossary",
         virtual_id: "builtin:folder/demo.json",
       }),
-    ).toThrow("request.validation_failed");
+    ).toThrow(expect.objectContaining({ code: "request.validation_failed" }));
     expect(() =>
       service.read_rule_preset({
         rule_type: "glossary",
         virtual_id: "builtin:folder\\demo.json",
       }),
-    ).toThrow("request.validation_failed");
+    ).toThrow(expect.objectContaining({ code: "request.validation_failed" }));
   });
 
   it("导入与导出外部规则时保持服务响应形状", async () => {
@@ -269,7 +272,7 @@ describe("QualityRuleService", () => {
     fs.writeFileSync(json_path, '[{"src":"HP","dst":"生命值"},42]', "utf-8");
 
     await expect(service.import_rules({ rule_type: "glossary", path: json_path })).rejects.toThrow(
-      "request.validation_failed",
+      expect.objectContaining({ code: "request.validation_failed" }),
     );
   });
 
@@ -293,7 +296,7 @@ describe("QualityRuleService", () => {
     ];
 
     for (const write of project_writes) {
-      await expect(write()).rejects.toThrow("runtime.busy");
+      await expect(write()).rejects.toThrow(expect.objectContaining({ code: "runtime.busy" }));
     }
     expect(() =>
       service.save_rule_preset({
@@ -344,7 +347,7 @@ describe("QualityRuleService", () => {
         expected_section_revisions: { quality: 0 },
         entries: [],
       }),
-    ).rejects.toThrow("data.revision_conflict");
+    ).rejects.toThrow(expect.objectContaining({ code: "data.revision_conflict" }));
     expect(publisher.publish_project_change).not.toHaveBeenCalled();
     expect(database.get_rules(lg_path, "glossary")).toEqual([
       { entry_id: "hp", src: "HP", dst: "生命值", info: "", case_sensitive: false },
@@ -384,7 +387,7 @@ describe("QualityRuleService", () => {
         expected_section_revisions: { quality: 0 },
         entries: [{ src: "HP", dst: "生命值" }],
       }),
-    ).rejects.toThrow("request.validation_failed");
+    ).rejects.toThrow(expect.objectContaining({ code: "request.validation_failed" }));
   });
 
   it("保存质量规则时拒绝旧 expected_revision 字段", async () => {
@@ -399,7 +402,7 @@ describe("QualityRuleService", () => {
         expected_section_revisions: { quality: 0 },
         entries: [],
       }),
-    ).rejects.toThrow("request.validation_failed");
+    ).rejects.toThrow(expect.objectContaining({ code: "request.validation_failed" }));
     expect(publisher.publish_project_change).not.toHaveBeenCalled();
   });
 

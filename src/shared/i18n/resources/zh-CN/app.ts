@@ -21,8 +21,6 @@ export const zh_cn_app = {
     selection: {
       label: "选择模型",
       unavailable: "暂无可用模型",
-      load_failed: "模型选择加载失败，请稍后重试 …",
-      update_failed: "模型选择保存失败，请稍后重试 …",
     },
     thinking_level: {
       default: "保持默认",
@@ -60,14 +58,30 @@ export const zh_cn_app = {
     select_folder: "选择文件夹",
   },
   feedback: {
-    initial_load_failed: "应用数据加载失败，请重试 …",
+    load_failed: "加载失败 …",
+    refresh_failed: "刷新失败 …",
+    query_failed: "查询失败 …",
+    modify_failed: "修改失败 …",
+    create_failed: "创建失败 …",
+    delete_failed: "删除失败 …",
+    rename_failed: "重命名失败 …",
+    import_failed: "导入失败 …",
+    export_failed: "导出失败 …",
+    copy_failed: "复制失败 …",
+    read_failed: "读取失败 …",
+    operation_failed: "操作失败 …",
+    content_unavailable: "内容暂不可用",
+    save_failed: "保存失败 …",
+    translation_export_failed: "译文导出失败 …",
+    model_request_failed: "模型请求失败 …",
+    validation_failed: "请求参数无效",
+    initial_load_failed: "应用数据加载失败 …",
     export_success: "数据已导出",
     import_success: "数据已导入",
     no_valid_data: "没有有效数据",
-    update_failed: "更新失败",
+    update_failed: "更新失败 …",
     project_settings_aligned: "已按当前设置更新工程设置",
     project_cache_loading: "正在刷新工程缓存 …",
-    settings_save_failed: "设置保存失败，请稍后重试 …",
   },
   error_boundary: {
     eyebrow: "Renderer Runtime",
@@ -184,133 +198,7 @@ export const zh_cn_app = {
     excel_files: "Excel 文件 (*.xlsx)",
     supported_txt_files: "支持的文件 (*.txt)",
   },
-  error: {
-    request: {
-      validation_failed: {
-        message: "请求参数无效",
-      },
-      invalid_json: {
-        message: "请求 JSON 无效",
-      },
-      route_not_found: {
-        message: "API 路由不存在",
-      },
-    },
-    project: {
-      already_exists: { message: "工程文件已存在，请选择其他文件名 …" },
-      not_loaded: {
-        message: "工程未加载",
-      },
-      not_found: {
-        message: "工程文件不存在",
-      },
-    },
-    translation: {
-      export_failed: { message: "译文导出失败" },
-    },
-    file: {
-      already_exists: { message: "同名文件或文件夹已存在，请使用其它名称 …" },
-      not_found: {
-        message: "文件不存在",
-      },
-      parse_failed: {
-        message: "文件内容解析失败",
-      },
-      preview_too_large: { message: "文件过大，无法预览，请另存为后查看" },
-      invalid_structure: {
-        message: "文件结构不符合格式要求",
-      },
-      io_failed: {
-        message: "文件读写失败",
-      },
-    },
-    database: {
-      busy: { message: "工程数据库暂时无法取得访问锁，请稍后重试 …" },
-      conflict: {
-        message: "数据库写入冲突，请刷新后重试 …",
-      },
-    },
-    data: {
-      revision_conflict: {
-        message: "数据版本已变化，请刷新后重试 …",
-      },
-      committed_sync_failed: {
-        message: "数据已写入，但后续处理失败，请重新加载工程 …",
-      },
-    },
-    model: {
-      not_found: {
-        message: "模型配置不存在",
-      },
-      auth_required: { message: "请先登录账号 …" },
-      provider_failed: {
-        message: "模型服务请求失败，请检查接口配置 …",
-      },
-    },
-    worker: {
-      failed: {
-        message: "后台执行通道失败",
-      },
-      execution_failed: {
-        message: "后台任务执行失败",
-      },
-    },
-    runtime: {
-      busy: {
-        message: "模型运行时正在执行中，请稍后再试 …",
-      },
-      capability_missing: {
-        message: "当前运行环境缺少必要能力",
-      },
-      disposed: {
-        message: "运行资源已释放",
-      },
-      cancelled: {
-        message: "操作已取消",
-      },
-      internal_invariant: {
-        message: "内部状态异常",
-      },
-    },
-    language: {
-      invalid_target_language: {
-        message: "目标语言无效",
-      },
-      unsupported_all_target_language: {
-        message: "目标语言不支持全部语言",
-      },
-      unknown_source_language_code: {
-        message: "源语言代码无效",
-      },
-    },
-    quality: {
-      unknown_rule_type: {
-        message: "质量规则类型无效",
-      },
-      unsupported_rule_meta: {
-        message: "质量规则配置项无效",
-      },
-    },
-    prompt: {
-      unknown_prompt_type: {
-        message: "提示词类型无效",
-      },
-    },
-    desktop: {
-      missing_backend_api_base_url: {
-        message: "Backend API 地址未配置",
-      },
-      http_error: {
-        message: "请求失败：{PATH}",
-      },
-      network_failed: {
-        message: "网络请求失败：{PATH}",
-      },
-      timeout: {
-        message: "请求超时：{PATH}",
-      },
-    },
-  },
+
   diagnostic: {
     agent: {
       model_round_failed: "Agent 模型回合失败 …",

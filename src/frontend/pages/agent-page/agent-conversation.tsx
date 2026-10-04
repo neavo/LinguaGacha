@@ -1,3 +1,5 @@
+import { AppContentState } from "@frontend/widgets/app-content-state";
+import { push_error_toast } from "@frontend/app/feedback/desktop-toast";
 import type { AgentApprovalMode } from "@domain/setting";
 import { format_agent_reference } from "@shared/agent-reference";
 import { type JSX, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
@@ -18,8 +20,6 @@ import {
   type AgentMessageInput,
   type AgentQueuedInput,
 } from "@shared/agent";
-import { push_toast } from "@frontend/app/feedback/desktop-toast";
-import { resolve_visible_error_message } from "@frontend/app/feedback/visible-error-message";
 import { useI18n, type LocaleKey } from "@frontend/app/locale/locale-context";
 import {
   read_selected_model,
@@ -201,7 +201,7 @@ export function AgentConversation({ active = true }: { active?: boolean }): JSX.
   /** 命令失败只投影为页面 Toast，不写回共享会话状态。 */
   const show_command_error = useCallback(
     (error: unknown, fallback_key: LocaleKey): void => {
-      push_toast("error", resolve_visible_error_message(error, t, t(fallback_key)));
+      push_error_toast(t(fallback_key), error);
     },
     [t],
   );
@@ -542,20 +542,7 @@ export function AgentConversation({ active = true }: { active?: boolean }): JSX.
       >
         <div ref={conversation_content_ref} className="agent-page__conversation-content">
           {controls.transport === "restore_failed" ? (
-            <div className="agent-page__empty" role="alert">
-              <div className="agent-page__empty-intro">
-                <Bot className="agent-page__empty-icon" aria-hidden="true" />
-                <p>{t("agent_page.error.restore")}</p>
-                <AppButton
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  onClick={agent_actions.reconnect}
-                >
-                  {t("app.action.retry")}
-                </AppButton>
-              </div>
-            </div>
+            <AppContentState status="error" on_retry={agent_actions.reconnect} />
           ) : agent_restoring ? (
             <div className="agent-page__empty" role="status">
               <div className="agent-page__empty-intro">
@@ -663,13 +650,13 @@ export function AgentConversation({ active = true }: { active?: boolean }): JSX.
                   on_delete={(id) =>
                     run_queue_command(
                       () => agent_actions.deleteQueuedMessage(id),
-                      "agent_page.error.queue_delete",
+                      "app.feedback.delete_failed",
                     )
                   }
                   on_reorder={(ids) =>
                     run_queue_command(
                       () => agent_actions.reorderQueuedMessages(ids),
-                      "agent_page.error.queue_reorder",
+                      "app.feedback.modify_failed",
                     )
                   }
                   on_send_now={(id) =>

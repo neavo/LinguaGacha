@@ -11,8 +11,4 @@ export const de_de_glossary_page = {
     translation: "Übersetzung",
     description: "Beschreibung",
   },
-  feedback: {
-    load_failed: "Glossar konnte nicht geladen werden. Bitte später erneut versuchen …",
-    query_failed: "Fehler bei der Korrekturabfrage",
-  },
 } satisfies LocaleMessageSchema<typeof zh_cn_glossary_page>;

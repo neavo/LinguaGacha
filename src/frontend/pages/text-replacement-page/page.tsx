@@ -62,13 +62,9 @@ export function TextReplacementPage(props: TextReplacementPageProps): JSX.Elemen
     return (
       <div className="text-replacement-page page-shell page-shell--full">
         {page_state.quality_status === "error" ? (
-          <AppContentState
-            status="error"
-            message={t("text_replacement_page.feedback.load_failed")}
-            on_retry={page_state.reload_quality_rule_snapshot}
-          />
+          <AppContentState status="error" />
         ) : (
-          <AppContentState status="loading" message={t("app.action.loading")} />
+          <AppContentState status="loading" />
         )}
       </div>
     );

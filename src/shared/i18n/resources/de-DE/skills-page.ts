@@ -12,6 +12,7 @@ export const de_de_skills_page = {
     request: "Bitte installiere diesen Skill für mich: {LINK}",
   },
   editor: {
+    save_failed: "Speichern fehlgeschlagen",
     reset: "Zurücksetzen",
     delete_skill_confirm: "Skill wirklich löschen …?",
     reset_skill_confirm: "Skill wirklich zurücksetzen …?",
@@ -27,17 +28,11 @@ export const de_de_skills_page = {
     saved: "Gespeichert",
     discard: "Änderungen verwerfen und neu laden",
     overwrite: "Datei überschreiben",
-    conflict: "Die Datei wurde extern geändert. Neu laden oder ausdrücklich überschreiben …",
+    conflict: "Versionskonflikt",
     invalid_name:
       "Maximal 64 Kleinbuchstaben, Ziffern und einzelne Bindestriche. Anfang und Ende müssen alphanumerisch sein …",
     invalid_description: "Eine einzeilige Beschreibung mit maximal 1024 Zeichen eingeben …",
     unsupported:
       "Diese Datei ist kein UTF-8-Text oder größer als 2 MB und kann hier nicht bearbeitet werden …",
-  },
-  feedback: {
-    duplicate_name: "Dateiname bereits vorhanden",
-    operation_failed: "Dateiaktion fehlgeschlagen",
-    load_failed: "Skills konnten nicht geladen werden",
-    save_failed: "Skill-Einstellungen konnten nicht gespeichert werden",
   },
 } as const;

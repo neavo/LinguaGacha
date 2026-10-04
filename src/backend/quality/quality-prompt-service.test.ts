@@ -86,7 +86,7 @@ describe("QualityPromptService", () => {
         service.read_preset({
           virtual_id,
         }),
-      ).toThrow("request.validation_failed");
+      ).toThrow(expect.objectContaining({ code: "request.validation_failed" }));
     }
   });
 
@@ -121,7 +121,7 @@ describe("QualityPromptService", () => {
         enabled: true,
         expected_section_revisions: { prompts: 0 },
       }),
-    ).rejects.toThrow("runtime.busy");
+    ).rejects.toThrow(expect.objectContaining({ code: "runtime.busy" }));
     expect(() =>
       service.save_preset({
         name: "busy-allowed",

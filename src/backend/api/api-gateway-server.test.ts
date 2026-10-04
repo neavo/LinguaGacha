@@ -49,7 +49,10 @@ describe("ApiGatewayServer", () => {
     const { baseUrl } = await gateway.start();
     const response = await post_json(baseUrl, "/api/session/project/create", {});
     expect(response.status).toBe(423);
-    expect(await response.json()).toEqual({ ok: false, error: { code: "database.busy" } });
+    expect(await response.json()).toEqual({
+      ok: false,
+      error: { code: "database.busy", message: "database is locked" },
+    });
     expect(warning).toHaveBeenCalledWith(
       expect.any(String),
       expect.objectContaining({

@@ -25,7 +25,7 @@ describe("log error", () => {
       "unknown",
     );
     expect(snapshot.cause_chain).toMatchObject([
-      { message: "database.busy", context: { operation: "journal_mode", sqlite_code: 5 } },
+      { message: "database is locked", context: { operation: "journal_mode", sqlite_code: 5 } },
       { message: "database is locked" },
       { message: "close failed" },
     ]);

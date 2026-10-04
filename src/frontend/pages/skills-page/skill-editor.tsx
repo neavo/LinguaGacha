@@ -54,12 +54,43 @@ export function SkillEditor({
       }}
     >
       <SkillEditorToolbar
+        recovery={
+          editor.save_failure === "conflict" && (
+            <div className="skill-editor__recovery">
+              <AppButton
+                size="sm"
+                variant="ghost"
+                disabled={editor.busy || editor.saving}
+                onClick={() => {
+                  void editor.recover();
+                }}
+              >
+                {t("skills_page.editor.discard")}
+              </AppButton>
+
+              <AppButton
+                size="sm"
+                variant="outline"
+                disabled={locked || editor.saving}
+                onClick={() => {
+                  void editor.recover(true);
+                }}
+              >
+                {t("skills_page.editor.overwrite")}
+              </AppButton>
+            </div>
+          )
+        }
         path={path_parts}
         status={
           skill.source === "user" && editor.file?.text != null
-            ? editor.dirty || editor.saving
-              ? "modified"
-              : "saved"
+            ? editor.save_failure === "conflict"
+              ? "conflict"
+              : editor.save_failure
+                ? "save_failed"
+                : editor.dirty || editor.saving
+                  ? "modified"
+                  : "saved"
             : null
         }
         busy={editor.busy || leaving}
@@ -78,17 +109,7 @@ export function SkillEditor({
       />
       {editor.loading || !editor.tree || !editor.file ? (
         <Card className="skill-editor__state">
-          <AppContentState
-            status={editor.loading ? "loading" : "error"}
-            message={
-              editor.loading
-                ? t("app.action.loading")
-                : editor.error || t("skills_page.feedback.load_failed")
-            }
-            on_retry={() => {
-              void editor.reload();
-            }}
-          />
+          <AppContentState status={editor.loading ? "loading" : "error"} />
         </Card>
       ) : (
         <SkillEditorWorkspace
@@ -100,45 +121,6 @@ export function SkillEditor({
           on_change={editor.change_file}
         >
           <Card className="skill-editor__content" data-readonly={readonly || undefined}>
-            {editor.error && (
-              <div className="skill-editor__error" role="alert">
-                <span>{editor.conflict ? t("skills_page.editor.conflict") : editor.error}</span>
-                <div>
-                  <AppButton
-                    size="sm"
-                    variant="outline"
-                    disabled={locked || editor.saving}
-                    onClick={() => {
-                      void editor.flush();
-                    }}
-                  >
-                    {t("app.action.retry")}
-                  </AppButton>
-                  <AppButton
-                    size="sm"
-                    variant="ghost"
-                    disabled={editor.busy || editor.saving}
-                    onClick={() => {
-                      void editor.recover();
-                    }}
-                  >
-                    {t("skills_page.editor.discard")}
-                  </AppButton>
-                  {editor.conflict && (
-                    <AppButton
-                      size="sm"
-                      variant="outline"
-                      disabled={locked || editor.saving}
-                      onClick={() => {
-                        void editor.recover(true);
-                      }}
-                    >
-                      {t("skills_page.editor.overwrite")}
-                    </AppButton>
-                  )}
-                </div>
-              </div>
-            )}
             {editor.invalid && !readonly && (
               <div className="skill-editor__error">
                 <span>{t(`skills_page.editor.invalid_${editor.invalid}`)}</span>
@@ -191,7 +173,8 @@ export function SkillEditor({
 /** 文件与角色编辑共用导航、保存反馈和危险操作，具体写入由各自编辑状态拥有。 */
 export function SkillEditorToolbar(props: {
   path: string[];
-  status: "saved" | "modified" | null; // 草稿有差异或保存尚在进行时均为已修改，防止在途撤销提前显示已保存。
+  status: "saved" | "modified" | "save_failed" | "conflict" | null;
+  recovery?: ReactNode; // 草稿有差异或保存尚在进行时均为已修改，防止在途撤销提前显示已保存。
   busy: boolean;
   locked: boolean;
   action?: "delete" | "reset" | undefined;
@@ -256,25 +239,28 @@ export function SkillEditorToolbar(props: {
           </div>
         }
         hint={
-          props.action ? (
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <AppButton
-                    variant="ghost"
-                    size="icon"
-                    className={props.action === "delete" ? "hover:text-destructive" : undefined}
-                    disabled={props.busy || props.locked}
-                    aria-label={action_label}
-                    onClick={() => set_confirming(true)}
-                  />
-                }
-              >
-                {props.action === "reset" ? <RotateCcw /> : <Trash2 />}
-              </TooltipTrigger>
-              <TooltipContent side="left">{action_label}</TooltipContent>
-            </Tooltip>
-          ) : undefined
+          <>
+            {props.recovery}
+            {props.action ? (
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <AppButton
+                      variant="ghost"
+                      size="icon"
+                      className={props.action === "delete" ? "hover:text-destructive" : undefined}
+                      disabled={props.busy || props.locked}
+                      aria-label={action_label}
+                      onClick={() => set_confirming(true)}
+                    />
+                  }
+                >
+                  {props.action === "reset" ? <RotateCcw /> : <Trash2 />}
+                </TooltipTrigger>
+                <TooltipContent side="left">{action_label}</TooltipContent>
+              </Tooltip>
+            ) : null}
+          </>
         }
       />
       {props.action && (

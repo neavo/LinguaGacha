@@ -1,4 +1,4 @@
-import { push_toast } from "@frontend/app/feedback/desktop-toast";
+import { push_error_toast } from "@frontend/app/feedback/desktop-toast";
 import { useI18n } from "@frontend/app/locale/locale-context";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { read_log_dates, read_log_page } from "@frontend/app/desktop/desktop-api";
@@ -90,6 +90,7 @@ export function useLogPages(selectedId: string | null) {
     let older = false; // 滚动请求可在状态检查期间排队
     let older_loading = false; // 历史读取或队列已占位时合并重复滚动
     let expired = false;
+    let failure_notified = false; // 连续后台轮询失败只通知一次，成功后恢复通知。
     let reset_revision = 0; // 文件失效通知页面清空选择与详情
     let entries: LogEntry[] = [];
 
@@ -189,6 +190,7 @@ export function useLogPages(selectedId: string | null) {
           older = true;
           delay = 0;
         }
+        failure_notified = false;
         older_loading = older;
         publish(
           older && page.entries.length === 0,
@@ -197,12 +199,13 @@ export function useLogPages(selectedId: string | null) {
             page.entries.length > 0 ||
             page.status !== "ready",
         );
-      } catch {
+      } catch (error) {
         if (controller.signal.aborted) return;
+        if (!failure_notified) push_error_toast(t("app.feedback.read_failed"), error);
+        failure_notified = true;
         older_loading = false;
         if (direction === "before") {
           older = false;
-          push_toast("error", t("log_window_page.history.failed"));
           set_following(false);
         }
         publish(false, direction !== "before", false);

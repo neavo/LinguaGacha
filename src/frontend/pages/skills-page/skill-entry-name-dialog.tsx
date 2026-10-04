@@ -1,6 +1,6 @@
+import { push_error_toast } from "@frontend/app/feedback/desktop-toast";
 import { type JSX, useState } from "react";
 import { useI18n } from "@frontend/app/locale/locale-context";
-import { push_toast } from "@frontend/app/feedback/desktop-toast";
 import { Input } from "@frontend/shadcn/input";
 import { AppButton } from "@frontend/widgets/app-button";
 import { AppPageDialog } from "@frontend/widgets/app-page-dialog";
@@ -24,7 +24,7 @@ export function SkillEntryNameDialog(props: Props): JSX.Element {
     if (disabled || !name.trim()) return;
     // 在补后缀之前拒绝路径与末尾点，避免将非法输入变成另一个合法名称。
     if (/[/\\]/.test(name) || /[. ]$/.test(name)) {
-      push_toast("error", t("app.error.request.validation_failed.message"));
+      push_error_toast(t("app.feedback.save_failed"), t("app.feedback.validation_failed"));
       return;
     }
     const final_name =

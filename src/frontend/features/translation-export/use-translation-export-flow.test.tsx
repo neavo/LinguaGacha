@@ -13,7 +13,10 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("@frontend/app/desktop/desktop-api", () => ({ api_fetch: mocks.api_fetch }));
-vi.mock("@frontend/app/feedback/desktop-toast", () => ({ push_toast: mocks.push_toast }));
+vi.mock("@frontend/app/feedback/desktop-toast", () => ({
+  push_error_toast: mocks.push_toast,
+  push_toast: mocks.push_toast,
+}));
 vi.mock("@frontend/app/locale/locale-context", () => ({
   useI18n: () => ({ t: (key: string) => key }),
 }));
@@ -194,16 +197,16 @@ describe("useTranslationExportFlow", () => {
       await latest_flow?.confirm_export();
     });
     expect(mocks.push_toast).toHaveBeenLastCalledWith(
-      "error",
-      "app.error.translation.export_failed.message",
+      "app.feedback.translation_export_failed",
+      expect.any(Error),
     );
     expect(latest_flow?.state.phase).toBe("ready");
     await act(async () => {
       await latest_flow?.confirm_export();
     });
     expect(mocks.push_toast).toHaveBeenLastCalledWith(
-      "error",
-      "app.error.translation.export_failed.message",
+      "app.feedback.translation_export_failed",
+      expect.any(Error),
     );
     expect(latest_flow?.state.phase).toBe("ready");
   });

@@ -23,10 +23,5 @@ export const ko_kr_preset_editor = {
   feedback: {
     exists: "파일이 이미 있습니다",
     name_required: "프리셋 이름은 비워 둘 수 없습니다",
-    load_failed: "프리셋을 불러오지 못했습니다",
-    save_failed: "프리셋을 저장하지 못했습니다",
-    rename_failed: "프리셋 이름을 변경하지 못했습니다",
-    delete_failed: "프리셋을 삭제하지 못했습니다",
-    default_update_failed: "기본 프리셋 설정을 저장하지 못했습니다",
   },
 } satisfies LocaleMessageSchema<typeof zh_cn_preset_editor>;

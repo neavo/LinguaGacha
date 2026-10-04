@@ -7,7 +7,6 @@ export const de_de_log_window_page = {
     date: "Protokolldatum",
     loading: "Protokolle werden gelesen…",
     empty: "Keine Protokolle",
-    failed: "Protokolle konnten nicht gelesen werden",
     expired: "Protokolle dieses Datums wurden entfernt",
   },
   level: {
@@ -46,7 +45,6 @@ export const de_de_log_window_page = {
     loading: "Protokolldetail wird geladen …",
     unavailable:
       "Das Protokolldetail wurde aus dem aktuellen Prozessspeicher entfernt. Bitte überprüfen Sie die Protokolldatei …",
-    failed: "Fehler beim Laden des Protokolldetails",
     content: {
       source_text: "Ausgangstext",
       translated_text: "Übersetzung",

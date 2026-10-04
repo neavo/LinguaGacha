@@ -13,10 +13,6 @@ export const de_de_quality_rule_editor = {
   feedback: {
     regex_invalid: "Ungültiger regulärer Ausdruck",
     source_required: "Quelltext ist erforderlich",
-    save_failed: "Regeln konnten nicht gespeichert werden",
-    update_failed: "Regeleinstellungen konnten nicht gespeichert werden",
-    import_failed: "Regeln konnten nicht importiert werden",
-    export_failed: "Regeln konnten nicht exportiert werden",
   },
   fields: {
     rule: "Regel",

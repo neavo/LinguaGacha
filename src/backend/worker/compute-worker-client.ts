@@ -36,6 +36,7 @@ export class ComputeWorkerClient {
   private active_task: PendingTask | null = null; // 单飞所有者，后续任务必须等待它结算
   private disposed = false; // 销毁后拒绝新任务，也禁止异常退出时重建 worker
 
+  /** 线程模式提前创建唯一 worker，同进程模式直接使用计算入口。 */
   public constructor(options: ComputeWorkerClientOptions) {
     this.execution = options.execution;
     if (this.execution.kind === "worker_threads") {
@@ -104,6 +105,7 @@ export class ComputeWorkerClient {
     } satisfies ComputeWorkerIncomingMessage);
   }
 
+  /** 同进程任务经统一结算入口推进队列。 */
   private async execute_in_process(task: PendingTask): Promise<void> {
     try {
       if (task.signal.aborted) {
@@ -138,6 +140,7 @@ export class ComputeWorkerClient {
     this.drain_queue();
   }
 
+  /** 绑定当前线程的消息与退出事件，异常处理负责重建。 */
   private create_worker(): Worker {
     if (this.execution.kind !== "worker_threads") {
       throw new Error("ComputeWorkerClient requires worker_threads mode to create a worker.");
@@ -156,6 +159,7 @@ export class ComputeWorkerClient {
     return worker;
   }
 
+  /** 回包只结算当前任务，原因与诊断共用同一异常快照。 */
   private finish_worker_message(message: ComputeWorkerOutgoingMessage): void {
     const task = this.active_task;
     if (task === null || task.id !== message.id) {
@@ -164,13 +168,13 @@ export class ComputeWorkerClient {
     if (message.ok) {
       this.finish_task(task.id, message.data, null);
     } else {
+      const failure = normalize_log_error(message.error, "Compute worker execution failed.");
       this.finish_task(
         task.id,
         null,
         new AppError("worker.execution_failed", {
-          diagnostic_context: {
-            failure: normalize_log_error(message.error, "Compute worker execution failed."),
-          },
+          message: failure.message,
+          diagnostic_context: { failure },
         }),
       );
     }
@@ -208,11 +212,13 @@ export class ComputeWorkerClient {
     }
   }
 
+  /** 结算失败时解除取消监听，避免已结束任务继续持有客户端。 */
   private reject_task(task: PendingTask, error: unknown): void {
     task.signal.removeEventListener("abort", task.abort_listener);
     task.reject(error);
   }
 
+  /** 销毁错误附带队列长度，便于定位资源生命周期。 */
   private create_disposed_error(): AppError {
     return new AppError("runtime.disposed", {
       public_details: { resource: "ComputeWorkerClient" },
@@ -220,6 +226,7 @@ export class ComputeWorkerClient {
     });
   }
 
+  /** 主动取消使用稳定错误码供调用者识别。 */
   private create_cancelled_error(): AppError {
     return new AppError("runtime.cancelled", {
       public_details: { resource: "compute_worker" },

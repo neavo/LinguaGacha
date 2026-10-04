@@ -2,7 +2,17 @@ import { AgentTimelineStore } from "./agent-timeline-store";
 export type { AgentTimelineSlice } from "./agent-timeline-store";
 import { AppError } from "@shared/error";
 import { AgentInputDraft } from "./agent-input-draft";
-import { agent_message_request } from "@shared/agent";
+import {
+  agent_message_request,
+  AGENT_QUESTION_DESCRIPTION_LIMIT,
+  AGENT_QUESTION_LABEL_LIMIT,
+  AGENT_QUESTION_OPTION_MAX,
+  AGENT_QUESTION_OPTION_MIN,
+  AGENT_QUESTION_PROMPT_LIMIT,
+  AGENT_CHAT_EVENT_TOPIC,
+  normalize_agent_assistant_message_parts,
+  normalize_agent_message_input,
+} from "@shared/agent";
 import type {
   AgentCommandAck,
   AgentInputCommandKind,
@@ -28,16 +38,7 @@ import type {
   AgentUsageSnapshot,
   AgentWriteApprovalDecision,
 } from "@shared/agent";
-import {
-  AGENT_QUESTION_DESCRIPTION_LIMIT,
-  AGENT_QUESTION_LABEL_LIMIT,
-  AGENT_QUESTION_OPTION_MAX,
-  AGENT_QUESTION_OPTION_MIN,
-  AGENT_QUESTION_PROMPT_LIMIT,
-  AGENT_CHAT_EVENT_TOPIC,
-  normalize_agent_assistant_message_parts,
-  normalize_agent_message_input,
-} from "@shared/agent";
+
 import { normalize_agent_doing } from "@shared/agent-doing";
 import { is_json_record, read_json_record, type JsonRecord } from "@domain/json";
 import { LOCALES } from "@domain/app-language";
@@ -164,16 +165,19 @@ export class AgentChatStore {
     countdown: new Set(),
   };
   private readonly countdown: AgentDecisionCountdown;
-  private readonly on_decision_error: (error: unknown) => void;
+  private readonly on_error: (error: unknown, context: "decision" | "restore") => void;
   private readonly storage: Storage;
 
   public readonly actions: AgentChatActions;
 
   /** 建立稳定的命令入口与草稿会话，连接由生命周期入口启动。 */
-  public constructor(storage: Storage, on_decision_error: (error: unknown) => void) {
+  public constructor(
+    storage: Storage,
+    on_error: (error: unknown, context: "decision" | "restore") => void,
+  ) {
     this.storage = storage;
     this.pending_input = read_pending_input(storage);
-    this.on_decision_error = on_decision_error;
+    this.on_error = on_error;
     this.countdown = new AgentDecisionCountdown(
       () => this.emit("countdown"),
       (decision) => {
@@ -297,8 +301,11 @@ export class AgentChatStore {
         if (this.is_current(generation)) this.set_transport_failure();
       };
       await this.restore_snapshot(generation);
-    } catch {
-      if (this.is_current(generation)) this.set_transport_failure();
+    } catch (error) {
+      if (this.is_current(generation)) {
+        this.on_error(error, "restore");
+        this.set_transport_failure();
+      }
     }
   }
 
@@ -397,8 +404,11 @@ export class AgentChatStore {
       if (!this.is_current(generation)) return;
       this.loaded_once = true;
       this.set_controls({ transport: "ready" });
-    } catch {
-      if (this.is_current(generation)) this.set_transport_failure();
+    } catch (error) {
+      if (this.is_current(generation)) {
+        this.on_error(error, "restore");
+        this.set_transport_failure();
+      }
     } finally {
       if (this.restoring_generation === generation) this.restoring_generation = null;
       this.sync_countdown();
@@ -812,7 +822,7 @@ export class AgentChatStore {
     try {
       await this.execute_command("decision", request);
     } catch (error) {
-      this.on_decision_error(error);
+      this.on_error(error, "decision");
     }
   }
 

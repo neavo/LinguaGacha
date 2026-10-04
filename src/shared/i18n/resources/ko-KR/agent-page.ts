@@ -5,7 +5,6 @@ export const ko_kr_agent_page = {
     conversation: "대화",
     view: "보기",
     save_as: "다른 이름으로 저장",
-    read_failed: "문서를 읽을 수 없습니다",
   },
   batch_translation_model: {
     follow: "같은 모델 사용",
@@ -119,7 +118,6 @@ export const ko_kr_agent_page = {
     edit: "수정",
     copy: "복사",
     copied: "복사됨",
-    copy_failed: "복사 실패",
     follow_latest: "최신 내용 따라가기",
   },
   editing: {
@@ -156,16 +154,12 @@ export const ko_kr_agent_page = {
   upload: { uploading: "업로드 중", failed: "업로드 실패" },
   file_saved: "파일을 저장했습니다",
   error: {
-    activate_link: "링크를 처리하지 못했습니다",
+    activate_link: "링크를 처리하지 못했습니다 …",
     decision: "결정을 제출하지 못했습니다. 다시 시도해 주세요 …",
     restore: "세션을 복원하지 못했습니다. 다시 시도해 주세요 …",
     connection: "연결이 끊어졌습니다. 재연결을 기다리고 있습니다 …",
     send: "전송하지 못했습니다. 초안은 보관되어 있습니다 …",
     continue: "계속하지 못했습니다. 다시 시도해 주세요 …",
-    edit: "메시지를 수정하지 못했습니다. 편집 내용은 보관되어 있습니다 …",
-    queue_update: "대기 중인 메시지를 수정하지 못했습니다. 편집 내용은 보관되어 있습니다 …",
-    queue_delete: "대기 중인 메시지를 삭제하지 못했습니다. 다시 시도해 주세요 …",
-    queue_reorder: "대기열 순서를 변경하지 못했습니다. 다시 시도해 주세요 …",
     queue_send: "메시지를 즉시 전송하지 못했습니다. 대기열에 보관되어 있습니다 …",
     stop: "중지하지 못했습니다. 다시 시도해 주세요 …",
     reset: "새 작업을 만들지 못했습니다. 다시 시도해 주세요 …",

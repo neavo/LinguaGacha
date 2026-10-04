@@ -24,10 +24,5 @@ export const de_de_preset_editor = {
   feedback: {
     exists: "Datei existiert bereits",
     name_required: "Name der Voreinstellung ist erforderlich",
-    load_failed: "Voreinstellungen konnten nicht geladen werden",
-    save_failed: "Die Voreinstellung konnte nicht gespeichert werden",
-    rename_failed: "Die Voreinstellung konnte nicht umbenannt werden",
-    delete_failed: "Die Voreinstellung konnte nicht gelöscht werden",
-    default_update_failed: "Die Standardvoreinstellung konnte nicht gespeichert werden",
   },
 } satisfies LocaleMessageSchema<typeof zh_cn_preset_editor>;

@@ -1,4 +1,10 @@
 import {
+  push_error_toast,
+  dismiss_toast,
+  push_progress_toast,
+  push_toast,
+} from "@frontend/app/feedback/desktop-toast";
+import {
   clone_content_filters,
   type ProofreadingContentFilters,
   create_empty_filter_options,
@@ -28,12 +34,7 @@ import {
   useBatchTranslationSnapshot,
 } from "@frontend/app/state/use-desktop-state";
 import { is_runtime_busy } from "@frontend/app/state/runtime-activity-store";
-import {
-  dismiss_toast,
-  push_progress_toast,
-  push_toast,
-} from "@frontend/app/feedback/desktop-toast";
-import { resolve_visible_error_message } from "@frontend/app/feedback/visible-error-message";
+
 import { useI18n } from "@frontend/app/locale/locale-context";
 import { useProjectSessionTableUiState } from "@frontend/app/session/project-session-ui-state-context";
 import type { ProofreadingCommandPlan } from "@shared/proofreading/proofreading-command-planner";
@@ -250,16 +251,14 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
 
   const handle_api_error = useCallback(
     (error: unknown, fallback_message: string): void => {
-      const message = resolve_visible_error_message(error, t, fallback_message);
-      push_toast("error", message);
+      push_error_toast(fallback_message, error);
     },
     [t],
   );
 
   const report_proofreading_list_error = useCallback(
     (error: unknown, fallback_message: string): boolean => {
-      const message = resolve_visible_error_message(error, t, fallback_message);
-      push_toast("error", message);
+      push_error_toast(fallback_message, error);
       return true;
     },
     [t],
@@ -380,10 +379,10 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
       path: string;
       plan: ProofreadingCommandPlan | null;
       fallback_error_key:
-        | "proofreading_page.feedback.save_failed"
+        | "app.feedback.save_failed"
         | "proofreading_page.feedback.replace_failed"
         | "proofreading_page.feedback.clear_translation_failed"
-        | "proofreading_page.feedback.set_status_failed";
+        | "app.feedback.modify_failed";
       preferred_row_id?: string | null;
       pending_replace_cursor?: number | null;
       success_message_builder?: ((changed_count: number) => string) | null;
@@ -516,7 +515,7 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
       void run_filter_panel_query(filters, {
         mark_loading: true,
       }).catch((error) => {
-        report_proofreading_list_error(error, t("proofreading_page.feedback.refresh_failed"));
+        report_proofreading_list_error(error, t("app.feedback.refresh_failed"));
       });
     },
     INPUT_QUERY_DEBOUNCE_MS,
@@ -678,7 +677,7 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
           });
         });
       } catch (error) {
-        report_proofreading_list_error(error, t("proofreading_page.feedback.refresh_failed"));
+        report_proofreading_list_error(error, t("app.feedback.refresh_failed"));
       }
     },
     [
@@ -723,7 +722,7 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
         force: true,
         mark_loading: false,
       }).catch((error) => {
-        report_proofreading_list_error(error, t("proofreading_page.feedback.refresh_failed"));
+        report_proofreading_list_error(error, t("app.feedback.refresh_failed"));
       });
     },
     [report_proofreading_list_error, run_filter_panel_query, t],

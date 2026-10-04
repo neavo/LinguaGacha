@@ -44,6 +44,9 @@ vi.mock("@frontend/app/state/use-desktop-state", () => {
 });
 
 vi.mock("@frontend/app/feedback/desktop-toast", () => ({
+  get push_error_toast() {
+    return toast_fixture.current.push_toast;
+  },
   get push_toast() {
     return toast_fixture.current.push_toast;
   },
@@ -377,10 +380,8 @@ describe("useCustomPromptPageState", () => {
     expect(latest_state?.prompt_text).toBe("项目提示词");
     expect(latest_state?.enabled).toBe(false);
     expect(toast_fixture.current.push_toast).toHaveBeenCalledExactlyOnceWith(
-      "error",
-      source === "file"
-        ? "custom_prompt_page.feedback.import_failed"
-        : "preset_editor.feedback.load_failed",
+      source === "file" ? "app.feedback.import_failed" : "app.feedback.load_failed",
+      expect.any(Error),
     );
     if (source === "preset") {
       expect(latest_state?.preset_menu_open).toBe(true);

@@ -1,17 +1,18 @@
-import { AGENT_SKILL_MAIN_FILE } from "@shared/agent-skills";
-import { useCallback, useEffect, useRef, useState } from "react";
-import { api_fetch, DesktopApiError } from "@frontend/app/desktop/desktop-api";
-import { resolve_visible_error_message } from "@frontend/app/feedback/visible-error-message";
-import { push_toast } from "@frontend/app/feedback/desktop-toast";
-import { useRuntimeSnapshot } from "@frontend/app/state/use-desktop-state";
-import { useI18n } from "@frontend/app/locale/locale-context";
+import { push_error_toast } from "@frontend/app/feedback/desktop-toast";
+import { read_error_message } from "@shared/error";
 import {
+  AGENT_SKILL_MAIN_FILE,
   validate_agent_skill_document,
   type AgentSkillFile,
   type AgentSkillFileChange,
   type AgentSkillIdentity,
   type AgentSkillTree,
 } from "@shared/agent-skills";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { api_fetch, DesktopApiError } from "@frontend/app/desktop/desktop-api";
+import { useRuntimeSnapshot } from "@frontend/app/state/use-desktop-state";
+import { useI18n } from "@frontend/app/locale/locale-context";
+
 import {
   SKILL_AUTOSAVE_DELAY_MS,
   format_skill_editor_document,
@@ -27,8 +28,7 @@ type EditorState = {
   busy: boolean;
   saving: boolean;
   composing: boolean;
-  error: string;
-  conflict: boolean;
+  save_failure: "failed" | "conflict" | null; // 失败暂停自动保存，冲突决定可用的恢复操作。
 };
 /** 草稿和保存基线统一使用 LF，与编辑器的逻辑行表示一致。 */
 function file_draft(file: AgentSkillFile): string {
@@ -52,8 +52,7 @@ export function useSkillEditor(identity: AgentSkillIdentity) {
     busy: false,
     saving: false,
     composing: false,
-    error: "",
-    conflict: false,
+    save_failure: null,
   });
   const current = useRef(state); // 异步回调读取最新输入，避免捕获旧渲染。
   const mounted = useRef(false); // 卸载后停止向页面发布请求结果。
@@ -76,22 +75,21 @@ export function useSkillEditor(identity: AgentSkillIdentity) {
   const report = useCallback(
     (error: unknown, context: "load_failed" | "save_failed" = "save_failed") => {
       const text = environment.current.t;
-      update({
-        error: resolve_visible_error_message(error, text, text(`skills_page.feedback.${context}`)),
-        conflict: error instanceof DesktopApiError && error.code === "data.revision_conflict",
-      });
+      if (context === "save_failed")
+        update({
+          save_failure:
+            error instanceof DesktopApiError && error.code === "data.revision_conflict"
+              ? "conflict"
+              : "failed",
+        });
+      push_error_toast(text(`app.feedback.${context}`), error);
     },
     [update],
   );
   /** 文件命令的失败通过通知反馈，不占用正文保存的恢复状态。 */
   const notify = useCallback((error: unknown) => {
     const text = environment.current.t;
-    push_toast(
-      "error",
-      error instanceof DesktopApiError && error.code === "file.already_exists"
-        ? text("skills_page.feedback.duplicate_name")
-        : resolve_visible_error_message(error, text, text("skills_page.feedback.operation_failed")),
-    );
+    push_error_toast(text("app.feedback.operation_failed"), error);
   }, []);
 
   /** 初始化和重试共用读取流程，取消旧查询后才接收新结果。 */
@@ -99,7 +97,7 @@ export function useSkillEditor(identity: AgentSkillIdentity) {
     reading.current?.abort();
     const controller = new AbortController();
     reading.current = controller;
-    update({ loading: true, error: "" });
+    update({ loading: true });
     try {
       const skill = current.current.file?.skill ?? current.current.tree?.skill ?? identity;
       const tree = await api_fetch<AgentSkillTree>("/api/skills/tree", skill, controller.signal);
@@ -136,7 +134,7 @@ export function useSkillEditor(identity: AgentSkillIdentity) {
     if (write.current) return await write.current;
     /** 每轮提交前重新检查组词和字段状态。 */
     const run = async (): Promise<boolean> => {
-      update({ error: "", conflict: false });
+      update({ save_failure: null });
       while (mounted.current) {
         if (deleting.current) return true;
         if (current.current.composing) return false;
@@ -189,7 +187,7 @@ export function useSkillEditor(identity: AgentSkillIdentity) {
       !state.composing &&
       !state.busy &&
       !state.saving &&
-      !state.error
+      !state.save_failure
     )
       timer.current = setTimeout(() => {
         void flush();
@@ -217,7 +215,7 @@ export function useSkillEditor(identity: AgentSkillIdentity) {
       tree = await api_fetch<AgentSkillTree>("/api/skills/tree", skill);
     } catch (error) {
       if (!(error instanceof DesktopApiError) || error.code !== "file.not_found") throw error;
-      update({ file: null, tree: null, draft: "", error: "", conflict: false });
+      update({ file: null, tree: null, draft: "", save_failure: null });
       return true;
     }
     update({ tree });
@@ -236,8 +234,7 @@ export function useSkillEditor(identity: AgentSkillIdentity) {
     update({
       file,
       draft: file_draft(file),
-      error: "",
-      conflict: false,
+      save_failure: null,
       reset_count: current.current.reset_count + 1,
     });
     return false;
@@ -254,16 +251,6 @@ export function useSkillEditor(identity: AgentSkillIdentity) {
     if (change.operation === "delete" && affected) {
       if (write.current) await write.current;
     } else if (!(await flush())) {
-      const invalid = current.current.file?.document
-        ? validate_agent_skill_document(read_skill_editor_document(current.current.draft))
-        : null;
-      push_toast(
-        "error",
-        current.current.error ||
-          (invalid
-            ? environment.current.t(`skills_page.editor.invalid_${invalid}`)
-            : environment.current.t("skills_page.feedback.save_failed")),
-      );
       return false;
     }
     const previous = current.current.file;
@@ -279,7 +266,11 @@ export function useSkillEditor(identity: AgentSkillIdentity) {
         try {
           await refresh_after_delete_failure(previous.skill);
         } catch (refresh) {
-          report(refresh, "load_failed");
+          // 无法确认删除后的事实时暂停自动保存，避免重新创建可能已删除的文件。
+          update({ save_failure: "failed" });
+          throw new Error(`${read_error_message(error)}\n${read_error_message(refresh)}`, {
+            cause: refresh,
+          });
         }
       }
       throw error;
@@ -304,7 +295,7 @@ export function useSkillEditor(identity: AgentSkillIdentity) {
         ...tree.skill,
         path: next_path,
       });
-      update({ file, draft: file_draft(file), error: "", conflict: false });
+      update({ file, draft: file_draft(file), save_failure: null });
     } catch (error) {
       // 文件命令已经完成。读取失败进入页面重载，避免重复执行创建或删除。
       update({ file: null });
@@ -324,8 +315,7 @@ export function useSkillEditor(identity: AgentSkillIdentity) {
     });
     update({
       file,
-      error: "",
-      conflict: false,
+      save_failure: null,
       ...(!overwrite
         ? { draft: file_draft(file), reset_count: current.current.reset_count + 1 }
         : {}),
@@ -380,18 +370,23 @@ export function useSkillEditor(identity: AgentSkillIdentity) {
           if (!file) return false;
           await api_fetch("/api/skills/delete", file.skill);
           // 删除成功后清除保存基线，离页和延迟回调都无法重新写入旧包。
-          update({ file: null, tree: null, draft: "", error: "", conflict: false });
+          update({ file: null, tree: null, draft: "", save_failure: null });
           return true;
         } catch (error) {
-          notify(error);
           const skill = current.current.file?.skill;
           if (skill) {
             try {
-              return await refresh_after_delete_failure(skill);
+              const removed = await refresh_after_delete_failure(skill);
+              notify(error);
+              return removed;
             } catch (refresh) {
-              report(refresh, "load_failed");
+              update({ save_failure: "failed" });
+              throw new Error(`${read_error_message(error)}\n${read_error_message(refresh)}`, {
+                cause: refresh,
+              });
             }
           }
+          notify(error);
           return false;
         } finally {
           deleting.current = false;
@@ -404,7 +399,7 @@ export function useSkillEditor(identity: AgentSkillIdentity) {
     /** 输入更新草稿后清除上一次保存错误，恢复自动保存。 */
     edit: (draft: string) => {
       if (!environment.current.locked && !current.current.busy)
-        update({ draft, error: "", conflict: false });
+        update({ draft, save_failure: null });
     },
     /** 组词开始时取消待保存任务，结束后由草稿监听恢复计时。 */
     compose: (composing: boolean) => {

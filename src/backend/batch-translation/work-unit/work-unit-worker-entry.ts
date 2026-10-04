@@ -42,14 +42,15 @@ class WorkerLLMClient implements TranslationRequestPort {
     if (request === undefined) return;
     this.pending.delete(message.requestId);
     if (message.result.ok) request.resolve(message.result.data);
-    else
+    else {
+      const failure = normalize_log_error(message.result.error, "LLM request failed.");
       request.reject(
         new AppError("worker.failed", {
-          diagnostic_context: {
-            failure: normalize_log_error(message.result.error, "LLM request failed."),
-          },
+          message: failure.message,
+          diagnostic_context: { failure },
         }),
       );
+    }
   }
 }
 

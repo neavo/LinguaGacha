@@ -154,7 +154,8 @@ describe("provider-model-list", () => {
       }),
     ).rejects.toMatchObject({
       code: "model.provider_failed",
-      public_details: { status: 401, message: "unauthorized" },
+      message: "unauthorized",
+      public_details: { status: 401 },
     });
   });
 });

@@ -4,7 +4,6 @@ import type { LogManager } from "../log/log-manager";
 import * as AppErrors from "../../shared/error";
 import type { SourceFileParseFailureRecord } from "../../shared/source-file-parse-failure";
 import { format_source_file_parse_failure_notice } from "../../shared/source-file-parse-failure";
-import type { TextResolver } from "../../shared/i18n";
 
 /**
  * 将格式解析异常转成统一失败记录，保证项目创建和工作台导入共用同一份报告语义。
@@ -20,6 +19,7 @@ export function build_source_file_parse_failure(args: {
     rel_path: args.rel_path,
     filename: path.basename(args.source_path),
     code: app_error.code,
+    message: app_error.message,
   };
 }
 
@@ -30,31 +30,24 @@ export function log_source_file_parse_failures(args: {
   failures: SourceFileParseFailureRecord[];
   log_manager: Pick<LogManager, "warning"> | null;
   source: string;
-  text: TextResolver;
 }): void {
   if (args.failures.length === 0 || args.log_manager === null) {
     return;
   }
-  args.log_manager.warning(
-    format_source_file_parse_failure_notice({
-      failures: args.failures,
-      text: args.text,
-    }),
-    {
-      source: args.source,
-      context: {
-        failed_files: args.failures.map((failure) => ({
-          source_path: failure.source_path,
-          rel_path: failure.rel_path,
-          code: failure.code,
-        })),
-      },
+  args.log_manager.warning(format_source_file_parse_failure_notice(args.failures), {
+    source: args.source,
+    context: {
+      failed_files: args.failures.map((failure) => ({
+        source_path: failure.source_path,
+        rel_path: failure.rel_path,
+        code: failure.code,
+      })),
     },
-  );
+  });
 }
 
 /**
- * 源文件解析失败只暴露稳定错误码；底层 Error 留在日志 cause 或诊断上下文里。
+ * 源文件解析失败保留具体原因，稳定错误码供程序分类。
  */
 function normalize_source_file_parse_error(error: unknown): AppErrors.AppError {
   if (AppErrors.is_app_error(error)) {

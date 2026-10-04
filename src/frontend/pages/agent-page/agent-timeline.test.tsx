@@ -19,7 +19,10 @@ import type {
 import { TooltipProvider } from "@frontend/shadcn/tooltip";
 
 const push_toast = vi.hoisted(() => vi.fn());
-vi.mock("@frontend/app/feedback/desktop-toast", () => ({ push_toast }));
+vi.mock("@frontend/app/feedback/desktop-toast", () => ({
+  push_error_toast: push_toast,
+  push_toast,
+}));
 vi.mock("@frontend/app/locale/locale-context", () => ({
   useI18n: () => ({
     t: (key: string, params?: Record<string, string>) =>
@@ -255,7 +258,7 @@ describe("AgentTimeline", () => {
     expect(
       error.compareDocumentPosition(latest_footer) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).not.toBe(0);
-    expect(error.textContent).toContain("app.error.model.provider_failed.message");
+    expect(error.textContent).toContain("app.feedback.model_request_failed");
     expect(error.textContent).toContain("agent_page.action.continue");
     await act(async () => error.click());
     expect(on_continue).toHaveBeenCalledOnce();
@@ -316,7 +319,10 @@ describe("AgentTimeline", () => {
       ...view.querySelectorAll<HTMLButtonElement>(".agent-message-actions button"),
     ].find((item) => item.textContent === "agent_page.action.copy")!;
     await act(async () => button.click());
-    expect(push_toast).toHaveBeenCalledExactlyOnceWith("error", "agent_page.action.copy_failed");
+    expect(push_toast).toHaveBeenCalledExactlyOnceWith(
+      "app.feedback.copy_failed",
+      expect.any(Error),
+    );
     expect(button.textContent).toBe("agent_page.action.copy");
   });
 
@@ -352,7 +358,7 @@ describe("AgentTimeline", () => {
       "agent_page.compaction.error",
     );
     const continue_button = view.querySelector<HTMLButtonElement>(".agent-continue-entry");
-    expect(continue_button?.textContent).toContain("app.error.model.provider_failed.message");
+    expect(continue_button?.textContent).toContain("app.feedback.model_request_failed");
     await act(async () => continue_button?.click());
     expect(on_continue).toHaveBeenCalledOnce();
   });

@@ -4,7 +4,10 @@ const decision_toast = vi.hoisted(() => vi.fn());
 vi.mock("@frontend/app/locale/locale-context", () => ({
   useI18n: () => ({ t: (key: string) => key }),
 }));
-vi.mock("@frontend/app/feedback/desktop-toast", () => ({ push_toast: decision_toast }));
+vi.mock("@frontend/app/feedback/desktop-toast", () => ({
+  push_error_toast: decision_toast,
+  push_toast: decision_toast,
+}));
 import { act, StrictMode, useEffect, useContext, useMemo, useSyncExternalStore } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -883,7 +886,10 @@ describe("AgentChatStore", () => {
       reject(new Error("connection failed"));
       await submission;
     });
-    expect(decision_toast).toHaveBeenCalledExactlyOnceWith("error", "agent_page.error.decision");
+    expect(decision_toast).toHaveBeenCalledExactlyOnceWith(
+      "agent_page.error.decision",
+      expect.any(Error),
+    );
     expect(latest.pendingDecision?.id).toBe("countdown-question");
     await act(async () => latest.reconnect());
     await act(async () => {

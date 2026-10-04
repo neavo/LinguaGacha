@@ -37,15 +37,9 @@ export function ModelPage(_props: ModelPageProps): JSX.Element {
     return (
       <div className="model-page page-shell page-shell--full">
         {model_page_state.load_status === "error" ? (
-          <AppContentState
-            status="error"
-            message={t("model_page.feedback.refresh_failed")}
-            on_retry={() => {
-              void model_page_state.refresh_snapshot();
-            }}
-          />
+          <AppContentState status="error" />
         ) : (
-          <AppContentState status="loading" message={t("app.action.loading")} />
+          <AppContentState status="loading" />
         )}
       </div>
     );

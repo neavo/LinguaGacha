@@ -9,8 +9,4 @@ export const en_us_text_replacement_page = {
   rule: {
     regex: "Regular Expression",
   },
-  feedback: {
-    load_failed: "Failed to load replacement rules. Please try again later …",
-    query_failed: "Failed to query replacement rule",
-  },
 } satisfies LocaleMessageSchema<typeof zh_cn_text_replacement_page>;

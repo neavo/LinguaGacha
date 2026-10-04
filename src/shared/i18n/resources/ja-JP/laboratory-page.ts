@@ -28,7 +28,4 @@ export const ja_jp_laboratory_page = {
         "同一ファイル内の原文が同じ項目は一度だけ翻訳し、<emphasis>訳文を再利用</emphasis>します。既定で有効です。",
     },
   },
-  feedback: {
-    refresh_failed: "実験室の設定を更新できません。しばらくしてから再試行してください …",
-  },
 } satisfies LocaleMessageSchema<typeof zh_cn_laboratory_page>;

@@ -29,15 +29,9 @@ export function CustomPromptPage(): JSX.Element {
     return (
       <div className="custom-prompt-page page-shell page-shell--full">
         {page_state.load_status === "error" ? (
-          <AppContentState
-            status="error"
-            message={t("custom_prompt_page.feedback.load_failed")}
-            on_retry={() => {
-              void page_state.reload_prompt();
-            }}
-          />
+          <AppContentState status="error" />
         ) : (
-          <AppContentState status="loading" message={t("app.action.loading")} />
+          <AppContentState status="loading" />
         )}
       </div>
     );

@@ -1,8 +1,8 @@
+import { push_error_toast, push_toast } from "@frontend/app/feedback/desktop-toast";
 import { useEffect, useEffectEvent, useRef, useState } from "react";
 import { api_fetch, DesktopApiError, open_external_url } from "@frontend/app/desktop/desktop-api";
 import { useI18n } from "@frontend/app/locale/locale-context";
-import { push_toast } from "@frontend/app/feedback/desktop-toast";
-import { resolve_visible_error_message } from "@frontend/app/feedback/visible-error-message";
+
 import {
   apply_model_auth_snapshot,
   useModelAuthSnapshot,
@@ -33,10 +33,7 @@ export function useChatGPTLogin() {
 
   /** 本地调用与授权失败共用项目错误文案规则。 */
   function report_error(error: unknown): void {
-    push_toast(
-      "error",
-      resolve_visible_error_message(error, t, t("app.error.model.provider_failed.message")),
-    );
+    push_error_toast(t("app.feedback.model_request_failed"), error);
   }
 
   /** 成功与失败统一反馈，主动取消静默结束。 */

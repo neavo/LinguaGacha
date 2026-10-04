@@ -593,6 +593,8 @@ svg {
     display: flex;
     flex-direction: column;
     gap: 2px;
+    min-width: 0;
+    user-select: text;
   }
 
   .cn-toast__icon {
@@ -614,7 +616,10 @@ svg {
     font-size: var(--ui-font-size-13);
     font-weight: 400;
     line-height: 1.4;
-    white-space: pre-line;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    max-height: min(40vh, 320px);
+    overflow-y: auto;
   }
 
   .cn-toast__close {
@@ -631,6 +636,8 @@ svg {
 
   .cn-toast--error .cn-toast__icon {
     color: color-mix(in srgb, var(--ui-failure) 78%, var(--foreground) 22%);
+    align-self: flex-start;
+    margin-top: 2px;
   }
 
   .cn-toast--success .cn-toast__icon {

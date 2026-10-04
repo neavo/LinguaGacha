@@ -1,3 +1,4 @@
+import { push_error_toast } from "@frontend/app/feedback/desktop-toast";
 import {
   useAgentEntry,
   useAgentRound,
@@ -25,7 +26,6 @@ import type {
   AgentToolEntry,
 } from "@shared/agent";
 import { useI18n, type LocaleKey } from "@frontend/app/locale/locale-context";
-import { push_toast } from "@frontend/app/feedback/desktop-toast";
 import { AppButton } from "@frontend/widgets/app-button";
 import { type AgentReferenceRange } from "@shared/agent-reference";
 import { AgentMarkdown } from "./agent-markdown";
@@ -179,7 +179,7 @@ const AgentRound = memo(function AgentRound(props: AgentRoundProps): ReactNode {
       ))}
       {show_failure_continue ? (
         <AgentContinueEntry
-          label={props.t("app.error.model.provider_failed.message")}
+          label={props.t("app.feedback.model_request_failed")}
           action_label={props.t("agent_page.action.continue")}
           disabled={props.continue_disabled}
           on_continue={props.on_continue}
@@ -287,12 +287,12 @@ function AgentMessageActions(props: {
   /** 复制结果通过当前按钮反馈，宿主失败使用统一提示。 */
   const copy = (): void => {
     if (typeof navigator === "undefined" || navigator.clipboard === undefined) {
-      push_toast("error", props.t("agent_page.action.copy_failed"));
+      push_error_toast(props.t("app.feedback.copy_failed"), "Clipboard access is unavailable.");
       return;
     }
     void navigator.clipboard.writeText(copy_text).then(
       () => set_copy_state("copied"),
-      () => push_toast("error", props.t("agent_page.action.copy_failed")),
+      (error: unknown) => push_error_toast(props.t("app.feedback.copy_failed"), error),
     );
   };
   const copy_label_key =

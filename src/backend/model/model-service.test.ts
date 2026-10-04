@@ -190,9 +190,13 @@ describe("ModelService 配置管理", () => {
       { model_id: "sakura" },
     ];
     for (const request of invalid_requests) {
-      expect(() => service.copy_model(request)).toThrow("request.validation_failed");
+      expect(() => service.copy_model(request)).toThrow(
+        expect.objectContaining({ code: "request.validation_failed" }),
+      );
     }
-    expect(() => service.copy_model({ model_id: "missing" })).toThrow("model.not_found");
+    expect(() => service.copy_model({ model_id: "missing" })).toThrow(
+      expect.objectContaining({ code: "model.not_found" }),
+    );
     expect(save).not.toHaveBeenCalled();
     save.mockImplementationOnce(() => {
       throw new Error("disk full");
@@ -241,7 +245,7 @@ describe("ModelService 配置管理", () => {
     expect(original.agent_batch_translation).toBeNull();
     expect(() =>
       service.select_model({ target: "agent_batch_translation", model_id: "missing" }),
-    ).toThrow("model.not_found");
+    ).toThrow(expect.objectContaining({ code: "model.not_found" }));
     const selected = service.select_model({ target: "agent_batch_translation", model_id: "b" });
     expect(selected.model_selection).toEqual({ ...original, agent_batch_translation: "b" });
     expect(app_setting_service.read_setting()["model_selection"]).toEqual(selected.model_selection);
@@ -306,7 +310,9 @@ describe("ModelService 配置管理", () => {
     service.get_selection_snapshot();
     const before = app_setting_service.read_setting();
     const save = vi.spyOn(app_setting_service, "save_setting");
-    expect(() => service.select_model(request)).toThrow("request.validation_failed");
+    expect(() => service.select_model(request)).toThrow(
+      expect.objectContaining({ code: "request.validation_failed" }),
+    );
     expect(save).not.toHaveBeenCalled();
     expect(app_setting_service.read_setting()).toEqual(before);
   });
@@ -530,7 +536,9 @@ describe("ModelService 配置管理", () => {
   it("未知模型类型不能新增自定义模型", async () => {
     const { service } = await create_model_service([]);
 
-    expect(() => service.add_model({ model_type: "PRESET" })).toThrow("request.validation_failed");
+    expect(() => service.add_model({ model_type: "PRESET" })).toThrow(
+      expect.objectContaining({ code: "request.validation_failed" }),
+    );
   });
 
   it("选择单个用途不会改变另外两个用途，且公开快照不含敏感配置", async () => {
@@ -603,7 +611,9 @@ describe("ModelService 配置管理", () => {
     const { service } = await create_model_service([create_model({ id: "preset" })]);
     const before = service.get_selection_snapshot();
 
-    expect(() => service.select_model(request)).toThrow("request.validation_failed");
+    expect(() => service.select_model(request)).toThrow(
+      expect.objectContaining({ code: "request.validation_failed" }),
+    );
     expect(service.get_selection_snapshot()).toEqual(before);
   });
 
@@ -614,7 +624,7 @@ describe("ModelService 配置管理", () => {
 
     expect(() =>
       service.select_model({ target: "agent", model_id: "sakura", thinking_level: "HIGH" }),
-    ).toThrow("request.validation_failed");
+    ).toThrow(expect.objectContaining({ code: "request.validation_failed" }));
     expect(read_config_model_records(app_setting_service.read_setting())[0]?.["thinking"]).toEqual({
       level: "OFF",
     });
@@ -664,7 +674,7 @@ describe("ModelService 配置管理", () => {
     const before = service.get_selection_snapshot();
 
     expect(() => service.select_model({ target: "agent", model_id: "missing" })).toThrow(
-      "model.not_found",
+      expect.objectContaining({ code: "model.not_found" }),
     );
 
     expect(service.get_selection_snapshot()).toEqual(before);
@@ -716,8 +726,12 @@ describe("ModelService 配置管理", () => {
     const preset = create_model({ id: "preset", type: "PRESET" });
     const { service } = await create_model_service([preset], { builtin_models: [preset] });
 
-    expect(() => service.delete_model({ model_id: "preset" })).toThrow("request.validation_failed");
-    expect(() => service.delete_model({ model_id: "missing" })).toThrow("model.not_found");
+    expect(() => service.delete_model({ model_id: "preset" })).toThrow(
+      expect.objectContaining({ code: "request.validation_failed" }),
+    );
+    expect(() => service.delete_model({ model_id: "missing" })).toThrow(
+      expect.objectContaining({ code: "model.not_found" }),
+    );
   });
 
   it("下架预设保留用户配置和选择，删除后修复引用且重新加载不会补回", async () => {
@@ -744,7 +758,9 @@ describe("ModelService 配置管理", () => {
       can_reset: false,
     });
     expect(app_setting_service.read_setting()).toEqual(before);
-    expect(() => service.reset_preset_model({ model_id: "retired" })).toThrow("model.not_found");
+    expect(() => service.reset_preset_model({ model_id: "retired" })).toThrow(
+      expect.objectContaining({ code: "model.not_found" }),
+    );
 
     service.delete_model({ model_id: "retired" });
     expect(read_request_model_snapshot(service.get_snapshot()).models).not.toEqual(
@@ -789,8 +805,12 @@ describe("ModelService 配置管理", () => {
     ]);
     const before = app_setting_service.read_setting();
     await writeFile(path.join(paths.get_model_preset_dir(), "preset_model_builtin.json"), "{");
-    expect(() => service.get_snapshot()).toThrow("file.parse_failed");
-    expect(() => service.delete_model({ model_id: "preset" })).toThrow("file.parse_failed");
+    expect(() => service.get_snapshot()).toThrow(
+      expect.objectContaining({ code: "file.parse_failed" }),
+    );
+    expect(() => service.delete_model({ model_id: "preset" })).toThrow(
+      expect.objectContaining({ code: "file.parse_failed" }),
+    );
     expect(app_setting_service.read_setting()).toEqual(before);
   });
 
@@ -884,7 +904,7 @@ describe("ModelService 配置管理", () => {
         model_id: "custom",
         patch: { agent: { context_window: 288_000, unknown: 1 } },
       }),
-    ).toThrow("request.validation_failed");
+    ).toThrow(expect.objectContaining({ code: "request.validation_failed" }));
     expect(app_setting_service.read_setting()).toEqual(after_reset);
   });
 
@@ -895,12 +915,12 @@ describe("ModelService 配置管理", () => {
 
     expect(() =>
       service.update_model({ model_id: "missing", patch: { name: "updated-name" } }),
-    ).toThrow("model.not_found");
+    ).toThrow(expect.objectContaining({ code: "model.not_found" }));
     expect(() =>
       service.update_model({ model_id: "custom", patch: { forbidden: "value" } }),
-    ).toThrow("request.validation_failed");
+    ).toThrow(expect.objectContaining({ code: "request.validation_failed" }));
     expect(() => service.update_model({ model_id: "custom", patch: { threshold: "bad" } })).toThrow(
-      "request.validation_failed",
+      expect.objectContaining({ code: "request.validation_failed" }),
     );
   });
 
@@ -946,9 +966,11 @@ describe("ModelService 配置管理", () => {
     ]);
 
     expect(() => service.reset_preset_model({ model_id: "custom" })).toThrow(
-      "request.validation_failed",
+      expect.objectContaining({ code: "request.validation_failed" }),
     );
-    expect(() => service.reset_preset_model({ model_id: "preset" })).toThrow("model.not_found");
+    expect(() => service.reset_preset_model({ model_id: "preset" })).toThrow(
+      expect.objectContaining({ code: "model.not_found" }),
+    );
   });
 
   it("重排模型只调整目标分组并保留其他分组成员", async () => {
@@ -1019,13 +1041,13 @@ describe("ModelService 配置管理", () => {
     ]);
 
     expect(() => service.reorder_model({ ordered_model_ids: [] })).toThrow(
-      "request.validation_failed",
+      expect.objectContaining({ code: "request.validation_failed" }),
     );
     expect(() => service.reorder_model({ ordered_model_ids: ["missing", "b"] })).toThrow(
-      "model.not_found",
+      expect.objectContaining({ code: "model.not_found" }),
     );
     expect(() => service.reorder_model({ ordered_model_ids: ["b", "a"] })).toThrow(
-      "request.validation_failed",
+      expect.objectContaining({ code: "request.validation_failed" }),
     );
   });
 
@@ -1108,9 +1130,15 @@ describe("ModelService 远端模型能力", () => {
     });
     const test = service.test_model({ model_id: "a" });
     expect(runtime_gate.get_snapshot().owner).toBe("model_test");
-    expect(() => runtime_gate.begin_runtime("agent")).toThrow("runtime.busy");
-    await expect(runtime_gate.run_project_write(() => undefined)).rejects.toThrow("runtime.busy");
-    await expect(service.test_model({ model_id: "a" })).rejects.toThrow("runtime.busy");
+    expect(() => runtime_gate.begin_runtime("agent")).toThrow(
+      expect.objectContaining({ code: "runtime.busy" }),
+    );
+    await expect(runtime_gate.run_project_write(() => undefined)).rejects.toThrow(
+      expect.objectContaining({ code: "runtime.busy" }),
+    );
+    await expect(service.test_model({ model_id: "a" })).rejects.toThrow(
+      expect.objectContaining({ code: "runtime.busy" }),
+    );
     service.update_model({ model_id: "a", patch: { api_key: "changed" } });
     service.delete_model({ model_id: "a" });
     release();
@@ -1126,7 +1154,9 @@ describe("ModelService 远端模型能力", () => {
       create_model({ id: "a" }),
     ]);
     const lease = runtime_gate.begin_runtime("batch_translation");
-    await expect(service.test_model({ model_id: "a" })).rejects.toThrow("runtime.busy");
+    await expect(service.test_model({ model_id: "a" })).rejects.toThrow(
+      expect.objectContaining({ code: "runtime.busy" }),
+    );
     expect(llm_request).not.toHaveBeenCalled();
     runtime_gate.finish_runtime(lease);
     llm_request.mockRejectedValueOnce(new Error("request failure"));
@@ -1170,7 +1200,7 @@ describe("ModelService 远端模型能力", () => {
       models: [{ id: "model-a", name: "model-a" }],
     });
     await expect(service.list_available_models({ model_id: "missing" })).rejects.toThrow(
-      "model.not_found",
+      expect.objectContaining({ code: "model.not_found" }),
     );
   });
 

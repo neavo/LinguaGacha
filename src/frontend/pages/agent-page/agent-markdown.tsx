@@ -1,3 +1,4 @@
+import { push_error_toast } from "@frontend/app/feedback/desktop-toast";
 import { useDevicePixelRatio } from "@frontend/widgets/interactions/use-device-pixel-ratio";
 import {
   type JSX,
@@ -29,8 +30,6 @@ import {
 
 import { useAppearance } from "@frontend/app/appearance/appearance-context";
 import { api_blob } from "@frontend/app/desktop/desktop-api";
-import { push_toast } from "@frontend/app/feedback/desktop-toast";
-import { resolve_visible_error_message } from "@frontend/app/feedback/visible-error-message";
 import { useI18n } from "@frontend/app/locale/locale-context";
 import { resolve_agent_workspace_href } from "@shared/agent-workspace-file";
 import { AgentMarkdownLink } from "./agent-markdown-link";
@@ -329,11 +328,7 @@ function AgentMarkdownImage({
       url = URL.createObjectURL(blob);
       set_local_source({ source: src, url, mime: blob.type });
     })().catch((error: unknown) => {
-      if (!controller.signal.aborted)
-        push_toast(
-          "error",
-          resolve_visible_error_message(error, t, t("agent_page.document.read_failed")),
-        );
+      if (!controller.signal.aborted) push_error_toast(t("app.feedback.read_failed"), error);
     });
     return () => {
       controller.abort();

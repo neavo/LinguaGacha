@@ -1,3 +1,4 @@
+import { push_error_toast, push_toast } from "@frontend/app/feedback/desktop-toast";
 import {
   useContext,
   useEffect,
@@ -10,8 +11,7 @@ import {
 import type { AgentFile } from "@shared/agent-workspace-file";
 import type { AgentWorkspaceLinkResult } from "@shared/agent";
 import { api_fetch } from "@frontend/app/desktop/desktop-api";
-import { push_toast } from "@frontend/app/feedback/desktop-toast";
-import { resolve_visible_error_message } from "@frontend/app/feedback/visible-error-message";
+
 import { useI18n } from "@frontend/app/locale/locale-context";
 import {
   AppContextMenu,
@@ -45,10 +45,7 @@ export function AgentFileTrigger({
   }, [context?.active, path]);
   /** 文件操作共用一次用户可见错误反馈。 */
   const report = (error: unknown): void => {
-    push_toast(
-      "error",
-      resolve_visible_error_message(error, t, t("agent_page.error.activate_link")),
-    );
+    push_error_toast(t("agent_page.error.activate_link"), error);
   };
   /** 保存对话框返回前合并重复保存，取消时安静结束。 */
   const save = async (): Promise<void> => {

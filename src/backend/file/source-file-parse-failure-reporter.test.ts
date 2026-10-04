@@ -1,6 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { create_text_resolver } from "../../shared/i18n";
 import { AppError } from "../../shared/error";
 import {
   build_source_file_parse_failure,
@@ -21,6 +20,7 @@ describe("source-file-parse-failure-reporter", () => {
       rel_path: "nested/broken.json",
       filename: "broken.json",
       code: "file.parse_failed",
+      message: "bad json",
     });
     expect(
       build_source_file_parse_failure({
@@ -57,7 +57,6 @@ describe("source-file-parse-failure-reporter", () => {
       failures: [failure],
       log_manager: { warning },
       source: "file-preview",
-      text: create_text_resolver("zh-CN"),
     });
 
     expect(warning).toHaveBeenCalledWith(expect.stringContaining("broken.json"), {

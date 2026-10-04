@@ -12,16 +12,16 @@ describe("project write request", () => {
       items: 2,
     });
     expect(() => normalize_project_expected_section_revisions({ items: "2" })).toThrow(
-      "request.validation_failed",
+      expect.objectContaining({ code: "request.validation_failed" }),
     );
     expect(() => normalize_project_expected_section_revisions({ items: 1.5 })).toThrow(
-      "request.validation_failed",
+      expect.objectContaining({ code: "request.validation_failed" }),
     );
   });
 
   it("需要 revision guard 的写入拒绝缺失 map", () => {
     expect(() => require_project_expected_section_revisions(undefined)).toThrow(
-      "request.validation_failed",
+      expect.objectContaining({ code: "request.validation_failed" }),
     );
   });
 
@@ -37,7 +37,7 @@ describe("project write request", () => {
       },
     ]);
     expect(() => normalize_translation_item_patches([{ id: 1, dst: "旧契约" }])).toThrow(
-      "runtime.internal_invariant",
+      expect.objectContaining({ code: "runtime.internal_invariant" }),
     );
   });
 });

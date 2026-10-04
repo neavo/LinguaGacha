@@ -1,6 +1,6 @@
+import { push_error_toast } from "@frontend/app/feedback/desktop-toast";
 import { type JSX, useEffect, useMemo, useState, type KeyboardEvent } from "react";
 
-import { push_toast } from "@frontend/app/feedback/desktop-toast";
 import { parse_bounded_setting_number_draft } from "@frontend/features/settings-editor/setting-number-draft";
 import { get_language_label_key } from "@frontend/app/locale/language-label";
 import { useI18n } from "@frontend/app/locale/locale-context";
@@ -97,9 +97,13 @@ export function BasicSettingsPage(_props: BasicSettingsPageProps): JSX.Element {
     set_request_timeout_draft(String(basic_settings_state.snapshot.request_timeout));
   }, [basic_settings_state.snapshot.request_timeout, is_request_timeout_editing]);
 
+  /** 校验输入后提交超时设置，无效草稿留在当前编辑状态。 */
   async function commit_request_timeout_draft(): Promise<void> {
     if (parsed_request_timeout === null) {
-      push_toast("error", t("basic_settings_page.feedback.request_timeout_invalid"));
+      push_error_toast(
+        t("app.feedback.save_failed"),
+        t("basic_settings_page.feedback.request_timeout_invalid"),
+      );
       set_is_request_timeout_editing(true);
       return;
     }
@@ -113,6 +117,7 @@ export function BasicSettingsPage(_props: BasicSettingsPageProps): JSX.Element {
     await basic_settings_state.update_request_timeout(parsed_request_timeout);
     set_is_request_timeout_editing(false);
   }
+  /** Enter 与失焦共用提交入口。 */
   function handle_request_timeout_key_down(event: KeyboardEvent<HTMLInputElement>): void {
     if (event.key !== "Enter") {
       return;

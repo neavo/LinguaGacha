@@ -56,6 +56,7 @@ vi.mock("@frontend/app/state/use-desktop-state", () => {
 });
 
 vi.mock("@frontend/app/feedback/desktop-toast", () => ({
+  push_error_toast: push_toast_mock,
   push_toast: push_toast_mock,
 }));
 
@@ -458,7 +459,10 @@ describe("useBatchTranslationTask", () => {
     });
     await flush_microtasks();
 
-    expect(push_toast_mock).toHaveBeenCalledWith("error", "batch_translation.feedback.stop_failed");
+    expect(push_toast_mock).toHaveBeenCalledWith(
+      "batch_translation.feedback.stop_failed",
+      expect.any(Error),
+    );
     expect(latest_state?.task_confirm_state).toMatchObject({
       kind: "stop-translation",
       submitting: false,
@@ -737,8 +741,8 @@ describe("useBatchTranslationTask", () => {
       }),
     );
     expect(push_toast_mock).toHaveBeenCalledWith(
-      "error",
       "batch_translation.feedback.reset_failed_failed",
+      expect.any(Error),
     );
   });
 });

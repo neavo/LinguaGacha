@@ -7,8 +7,4 @@ export const zh_cn_glossary_page = {
     translation: "译文",
     description: "描述",
   },
-  feedback: {
-    load_failed: "术语表加载失败，请稍后重试 …",
-    query_failed: "术语表查询失败",
-  },
 } as const;

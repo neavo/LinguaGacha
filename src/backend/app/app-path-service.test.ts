@@ -121,7 +121,7 @@ describe("resolve_preset_file", () => {
         builtin_directory,
         user_directory,
       }),
-    ).toThrow("request.validation_failed");
+    ).toThrow(expect.objectContaining({ code: "request.validation_failed" }));
   });
 
   it.each([
@@ -140,7 +140,7 @@ describe("resolve_preset_file", () => {
         builtin_directory: "builtin-root",
         user_directory: "user-root",
       }),
-    ).toThrow("request.validation_failed");
+    ).toThrow(expect.objectContaining({ code: "request.validation_failed" }));
   });
 });
 

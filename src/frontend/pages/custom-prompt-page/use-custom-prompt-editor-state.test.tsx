@@ -60,6 +60,7 @@ vi.mock("@frontend/app/state/use-desktop-state", () => {
 });
 
 vi.mock("@frontend/app/feedback/desktop-toast", () => ({
+  push_error_toast: push_toast_mock,
   push_toast: push_toast_mock,
   dismiss_toast: dismiss_toast_mock,
 }));
@@ -345,7 +346,7 @@ describe("useCustomPromptEditorState", () => {
       }),
     ]);
     expect(query_count).toBe(2);
-    expect(push_toast_mock).not.toHaveBeenCalledWith("error", expect.anything());
+    expect(push_toast_mock).not.toHaveBeenCalledWith(expect.anything(), expect.any(Error));
   });
 
   it("普通失败不推进基线，下一次编辑使用原 revision 重试", async () => {
@@ -363,8 +364,8 @@ describe("useCustomPromptEditorState", () => {
       await Promise.resolve();
     });
     expect(push_toast_mock).toHaveBeenCalledWith(
-      "error",
-      "custom_prompt_page.feedback.save_failed",
+      "app.feedback.save_failed",
+      expect.any(Error),
       expect.objectContaining({
         action: { label: "custom_prompt_page.save.discard", onClick: expect.any(Function) },
       }),

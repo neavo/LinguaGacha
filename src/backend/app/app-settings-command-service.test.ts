@@ -114,7 +114,9 @@ describe("AppSettingsCommandService", () => {
     f.on_commit.mockReturnValue(publication.promise);
     const update = f.service.update({ target_language: "EN" });
     await vi.waitFor(() => expect(f.on_commit).toHaveBeenCalledOnce());
-    expect(() => f.gate.begin_runtime("agent")).toThrow("runtime.busy");
+    expect(() => f.gate.begin_runtime("agent")).toThrow(
+      expect.objectContaining({ code: "runtime.busy" }),
+    );
     expect(f.publish).not.toHaveBeenCalled();
     // 等待工程发布期间，纯应用配置仍可保存。
     await f.service.update({ request_timeout: 600 });

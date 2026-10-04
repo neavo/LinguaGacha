@@ -23,7 +23,10 @@ vi.mock("@frontend/app/state/use-desktop-state", () => ({
 vi.mock("@frontend/app/locale/locale-context", () => ({
   useI18n: () => ({ t: (key: string) => key }),
 }));
-vi.mock("@frontend/app/feedback/desktop-toast", () => ({ push_toast: mocks.toast }));
+vi.mock("@frontend/app/feedback/desktop-toast", () => ({
+  push_error_toast: mocks.toast,
+  push_toast: mocks.toast,
+}));
 
 import { useQualityRulePresets } from "./use-quality-rule-presets";
 
@@ -48,8 +51,8 @@ it.each([false, true])("保存预设按实际失败阶段反馈，刷新阶段�
   await act(async () => current.update_preset_input_value("new"));
   await act(async () => current.submit_preset_input());
   expect(mocks.toast).toHaveBeenCalledExactlyOnceWith(
-    "error",
-    refresh_failed ? "preset_editor.feedback.load_failed" : "preset_editor.feedback.save_failed",
+    refresh_failed ? "app.feedback.load_failed" : "app.feedback.save_failed",
+    expect.any(Error),
   );
   expect(current.preset_input_state).toMatchObject({ open: true, submitting: false });
 });

@@ -1,9 +1,8 @@
+import { push_error_toast } from "@frontend/app/feedback/desktop-toast";
 import { useContext, useRef, type ComponentProps, type JSX } from "react";
 import type { ExtraProps } from "streamdown";
 import { resolve_agent_workspace_href } from "@shared/agent-workspace-file";
 import { open_external_url } from "@frontend/app/desktop/desktop-api";
-import { push_toast } from "@frontend/app/feedback/desktop-toast";
-import { resolve_visible_error_message } from "@frontend/app/feedback/visible-error-message";
 import { useI18n } from "@frontend/app/locale/locale-context";
 import { AgentFileTrigger } from "./agent-file-trigger";
 import { AgentFileContext, AgentMarkdownPathContext } from "./agent-file-context";
@@ -42,10 +41,7 @@ export function AgentMarkdownLink({
     try {
       await open_external_url(href.startsWith("//") ? `https:${href}` : href);
     } catch (error) {
-      push_toast(
-        "error",
-        resolve_visible_error_message(error, t, t("agent_page.error.activate_link")),
-      );
+      push_error_toast(t("agent_page.error.activate_link"), error);
     } finally {
       pending.current = false;
     }

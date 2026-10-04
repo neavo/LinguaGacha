@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { act } from "react";
+import { useEffect, useState, act } from "react";
+
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -20,6 +20,9 @@ type HookSnapshot = {
   flow: WorkbenchImportFilesFlow;
   dialog_state: WorkbenchDialogState;
 };
+
+const error_toast = vi.hoisted(() => vi.fn());
+vi.mock("@frontend/app/feedback/desktop-toast", () => ({ push_error_toast: error_toast }));
 
 const api_fetch_mock = vi.mocked(api_fetch);
 
@@ -43,6 +46,7 @@ describe("useWorkbenchImportFilesFlow", () => {
     container = null;
     root = null;
     api_fetch_mock.mockReset();
+    error_toast.mockReset();
   });
 
   it("新增文件先进入继承确认，取消继承后提交后端导入命令", async () => {
@@ -235,6 +239,7 @@ describe("useWorkbenchImportFilesFlow", () => {
         {
           filename: "broken.json",
           code: "file.parse_failed",
+          message: "Parser rejected the file",
         },
       ],
     });
@@ -249,10 +254,7 @@ describe("useWorkbenchImportFilesFlow", () => {
     });
 
     expect(latest_snapshot(snapshots).dialog_state.kind).toBe("inherit-import-files");
-    expect(push_toast).toHaveBeenCalledWith(
-      "warning",
-      "broken.json - app.error.file.parse_failed.message",
-    );
+    expect(push_toast).toHaveBeenCalledWith("warning", "broken.json - Parser rejected the file");
   });
 
   it("全部文件解析失败时只展示一次阻断错误", async () => {
@@ -262,6 +264,7 @@ describe("useWorkbenchImportFilesFlow", () => {
         {
           filename: "broken.json",
           code: "file.parse_failed",
+          message: "Parser rejected the file",
         },
       ],
     });
@@ -273,11 +276,11 @@ describe("useWorkbenchImportFilesFlow", () => {
     });
 
     expect(latest_snapshot(snapshots).dialog_state.kind).toBeNull();
-    expect(push_toast).toHaveBeenCalledOnce();
-    expect(push_toast).toHaveBeenCalledWith(
-      "error",
-      "broken.json - app.error.file.parse_failed.message",
+    expect(error_toast).toHaveBeenCalledExactlyOnceWith(
+      "app.feedback.operation_failed",
+      "broken.json - Parser rejected the file",
     );
+    expect(push_toast).not.toHaveBeenCalled();
   });
 
   async function mount_hook(

@@ -3,7 +3,6 @@ export const de_de_agent_page = {
     conversation: "Unterhaltung",
     view: "Ansehen",
     save_as: "Speichern unter",
-    read_failed: "Dokument konnte nicht gelesen werden",
   },
   batch_translation_model: {
     follow: "Wie AGENT",
@@ -117,7 +116,6 @@ export const de_de_agent_page = {
     edit: "Bearbeiten",
     copy: "Kopieren",
     copied: "Kopiert",
-    copy_failed: "Kopieren fehlgeschlagen",
     follow_latest: "Neueste verfolgen",
   },
   editing: {
@@ -163,18 +161,12 @@ export const de_de_agent_page = {
   },
   file_saved: "Datei gespeichert",
   error: {
-    activate_link: "Der Link konnte nicht verarbeitet werden",
+    activate_link: "Der Link konnte nicht verarbeitet werden …",
     decision: "Die Entscheidung konnte nicht gesendet werden. Bitte erneut versuchen …",
     restore: "Die Sitzung konnte nicht wiederhergestellt werden. Bitte erneut versuchen …",
     connection: "Verbindung unterbrochen. Wiederverbindung wird abgewartet …",
     send: "Die Nachricht konnte nicht gesendet werden. Der Entwurf wurde beibehalten …",
     continue: "Die Aufgabe konnte nicht fortgesetzt werden. Bitte erneut versuchen …",
-    edit: "Die Nachricht konnte nicht bearbeitet werden. Die Änderungen wurden beibehalten …",
-    queue_update:
-      "Die vorgemerkte Nachricht konnte nicht bearbeitet werden. Die Änderungen wurden beibehalten …",
-    queue_delete:
-      "Die vorgemerkte Nachricht konnte nicht gelöscht werden. Bitte erneut versuchen …",
-    queue_reorder: "Die Warteschlange konnte nicht sortiert werden. Bitte erneut versuchen …",
     queue_send: "Die Nachricht konnte nicht sofort gesendet werden. Sie bleibt vorgemerkt …",
     stop: "Die Aufgabe konnte nicht gestoppt werden. Bitte erneut versuchen …",
     reset: "Eine neue Aufgabe konnte nicht erstellt werden. Bitte erneut versuchen …",

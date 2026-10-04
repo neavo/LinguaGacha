@@ -1,6 +1,6 @@
-import { create_pdf_execution } from "../file/pdf/test-support";
-import { create_pdf_fixture } from "../file/pdf/test-support";
-import { ProjectDataReader } from "./project-data-reader";
+import { create_pdf_execution, create_pdf_fixture } from "../file/pdf/test-support";
+
+import { ProjectDataReader, get_section_revision } from "./project-data-reader";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -18,7 +18,7 @@ import type {
   ProjectWriteChangeRequest,
 } from "./project-write-event-adapter";
 import { ProjectWriteStore } from "./project-write-store";
-import { get_section_revision } from "./project-data-reader";
+
 import { ProjectSessionState } from "./project-session-state";
 import type { ProjectChangeEvent } from "../../shared/project-event";
 
@@ -304,7 +304,7 @@ describe("ProjectContentService", () => {
           target_language: "ZH",
         },
       }),
-    ).rejects.toThrow("project.not_found");
+    ).rejects.toThrow(expect.objectContaining({ code: "project.not_found" }));
 
     expect(fs.existsSync(missing_path)).toBe(false);
     database.close();
@@ -591,7 +591,7 @@ describe("ProjectContentService", () => {
         translation_extras: {},
         prefilter_config: {},
       }),
-    ).rejects.toThrow("request.validation_failed");
+    ).rejects.toThrow(expect.objectContaining({ code: "request.validation_failed" }));
 
     expect(database.get_all_items(lg_path)).toEqual([
       create_persistent_item({ dst: "old", status: "PROCESSED" }),
@@ -624,7 +624,7 @@ describe("ProjectContentService", () => {
         service.reset_translation({
           mode: "failed",
         }),
-      ).rejects.toThrow("runtime.busy");
+      ).rejects.toThrow(expect.objectContaining({ code: "runtime.busy" }));
     } finally {
       release_parse();
     }
@@ -655,7 +655,7 @@ describe("ProjectContentService", () => {
         project_settings: { source_language: "JA" },
         expected_section_revisions: { items: 0 },
       }),
-    ).rejects.toThrow("request.validation_failed");
+    ).rejects.toThrow(expect.objectContaining({ code: "request.validation_failed" }));
 
     expect(database.get_all_items(lg_path)).toEqual([create_persistent_item()]);
     database.close();
@@ -690,7 +690,7 @@ describe("ProjectContentService", () => {
         service.reset_translation({
           mode: "failed",
         }),
-      ).rejects.toThrow("runtime.busy");
+      ).rejects.toThrow(expect.objectContaining({ code: "runtime.busy" }));
     } finally {
       release_parse();
     }
@@ -775,6 +775,7 @@ describe("ProjectContentService", () => {
           rel_path: "broken.json",
           filename: "broken.json",
           code: "file.parse_failed",
+          message: expect.any(String),
         },
       ],
     });
@@ -811,6 +812,7 @@ describe("ProjectContentService", () => {
             rel_path: "broken.json",
             filename: "broken.json",
             code: "file.parse_failed",
+            message: expect.any(String),
           },
         ],
       },
@@ -1047,7 +1049,7 @@ describe("ProjectContentService", () => {
         mode: "all",
         project_settings: { source_language: "JA" },
       }),
-    ).rejects.toThrow("runtime.busy");
+    ).rejects.toThrow(expect.objectContaining({ code: "runtime.busy" }));
 
     expect(database.get_all_items(lg_path)).toEqual([
       { id: 1, src: "旧", dst: "old", status: "PROCESSED" },
@@ -1064,7 +1066,7 @@ describe("ProjectContentService", () => {
         mode: "settings_only",
         project_settings: { source_language: "JA" },
       }),
-    ).rejects.toThrow("runtime.busy");
+    ).rejects.toThrow(expect.objectContaining({ code: "runtime.busy" }));
 
     expect(read_meta(database, lg_path, "source_language", "")).toBe("");
     database.close();
@@ -1085,7 +1087,7 @@ describe("ProjectContentService", () => {
         ordered_rel_paths: ["b.txt", "a.txt"],
         expected_section_revisions: { files: 0 },
       }),
-    ).rejects.toThrow("runtime.busy");
+    ).rejects.toThrow(expect.objectContaining({ code: "runtime.busy" }));
 
     expect(database.get_all_asset_records(lg_path)).toEqual([
       { path: "a.txt", sort_order: 0 },
@@ -1139,7 +1141,7 @@ describe("ProjectContentService", () => {
         mode: "failed",
         expected_section_revisions: { items: 1 },
       }),
-    ).rejects.toThrow("request.validation_failed");
+    ).rejects.toThrow(expect.objectContaining({ code: "request.validation_failed" }));
 
     database.close();
   });

@@ -20,10 +20,4 @@ export const en_us_custom_prompt_page = {
       description: "Confirm resetting data …?",
     },
   },
-  feedback: {
-    load_failed: "Could not load the prompt. Please try again …",
-    save_failed: "Could not save the prompt. Your edits have been kept …",
-    import_failed: "Failed to import the prompt",
-    export_failed: "Failed to export the prompt",
-  },
 } satisfies LocaleMessageSchema<typeof zh_cn_custom_prompt_page>;

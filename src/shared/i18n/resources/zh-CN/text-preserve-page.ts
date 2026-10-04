@@ -27,7 +27,6 @@ export const zh_cn_text_preserve_page = {
     },
   },
   feedback: {
-    load_failed: "文本保护规则加载失败，请稍后重试 …",
     unknown_error: "当前操作失败，请稍后重试 …",
     mode_refresh_pending: "文本保护模式已切换，校对缓存仍在刷新，请稍后再看结果 …",
   },

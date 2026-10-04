@@ -29,7 +29,6 @@ export const ja_jp_text_preserve_page = {
     },
   },
   feedback: {
-    load_failed: "テキスト保護ルールを読み込めませんでした。しばらくしてから再試行してください …",
     unknown_error: "操作に失敗しました。しばらくしてから再試行してください …",
     mode_refresh_pending:
       "テキスト保護モードを切り替えました。校正キャッシュの更新後に結果を確認してください …",

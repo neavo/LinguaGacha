@@ -93,13 +93,13 @@ describe("AgentDecisionCoordinator", () => {
     );
     expect(() =>
       coordinator.resolve_write_approval({ id: "write-1", decision: "allow_session" }),
-    ).toThrow("request.validation_failed");
+    ).toThrow(expect.objectContaining({ code: "request.validation_failed" }));
     expect(coordinator.read_pending()?.id).toBe("write-1");
     coordinator.resolve_write_approval({ id: "write-1", decision: "allow_once" });
     expect(coordinator.read_pending()).toBeNull();
     await expect(result).resolves.toBe("allow_once");
     expect(() => coordinator.resolve_write_approval({ id: "write-1", decision: "reject" })).toThrow(
-      "runtime.busy",
+      expect.objectContaining({ code: "runtime.busy" }),
     );
   });
 
@@ -122,15 +122,15 @@ describe("AgentDecisionCoordinator", () => {
         id: "old-question",
         response: { kind: "option", optionId: "safe" },
       }),
-    ).toThrow("runtime.busy");
+    ).toThrow(expect.objectContaining({ code: "runtime.busy" }));
     expect(() =>
       coordinator.resolve_question({
         id: "question-1",
         response: { kind: "option", optionId: "unknown" },
       }),
-    ).toThrow("request.validation_failed");
+    ).toThrow(expect.objectContaining({ code: "request.validation_failed" }));
     expect(coordinator.read_pending()).toMatchObject({ id: "question-1" });
     coordinator.reset();
-    await expect(pending).rejects.toThrow("runtime.cancelled");
+    await expect(pending).rejects.toThrow(expect.objectContaining({ code: "runtime.cancelled" }));
   });
 });

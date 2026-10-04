@@ -6,7 +6,6 @@ export const ko_kr_log_window_page = {
     date: "로그 날짜",
     loading: "로그 읽는 중…",
     empty: "로그 없음",
-    failed: "로그를 읽지 못했습니다",
     expired: "이 날짜의 로그가 삭제되었습니다",
   },
   level: {
@@ -45,7 +44,6 @@ export const ko_kr_log_window_page = {
     loading: "로그 상세 정보 읽는 중 …",
     unavailable:
       "로그 상세 정보가 현재 프로세스 메모리에서 해제되었습니다. 로그 파일을 확인해 주세요 …",
-    failed: "로그 상세 정보를 읽지 못했습니다",
     content: {
       source_text: "원문",
       translated_text: "번역문",

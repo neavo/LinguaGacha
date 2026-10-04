@@ -27,7 +27,7 @@ describe("模型接口原始错误", () => {
     expect(error).toMatchObject({
       code: "model.provider_failed",
       message,
-      public_details: { message },
+      public_details: { status: 403 },
     });
     expect(error.diagnostic_context).toMatchObject({ status: 403, provider_code: code });
     expect(JSON.stringify(error)).not.toContain("must-not-leak");

@@ -23,10 +23,5 @@ export const ja_jp_preset_editor = {
   feedback: {
     exists: "ファイルは既に存在します",
     name_required: "プリセット名を入力してください",
-    load_failed: "プリセットを読み込めませんでした",
-    save_failed: "プリセットを保存できませんでした",
-    rename_failed: "プリセット名を変更できませんでした",
-    delete_failed: "プリセットを削除できませんでした",
-    default_update_failed: "既定のプリセット設定を保存できませんでした",
   },
 } satisfies LocaleMessageSchema<typeof zh_cn_preset_editor>;

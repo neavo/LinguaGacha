@@ -1,11 +1,10 @@
+import { push_error_toast } from "@frontend/app/feedback/desktop-toast";
 import type { TranslationFileExportResult } from "@shared/translation-export";
-import { resolve_visible_error_message } from "@frontend/app/feedback/visible-error-message";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { format_agent_reference } from "@shared/agent-reference";
 import type { ProofreadingWarningSummary } from "@shared/proofreading/proofreading-types";
 import { api_fetch } from "@frontend/app/desktop/desktop-api";
-import { push_toast } from "@frontend/app/feedback/desktop-toast";
 import { useI18n } from "@frontend/app/locale/locale-context";
 import { useAppNavigation } from "@frontend/app/navigation/navigation-context";
 import { useDesktopState } from "@frontend/app/state/use-desktop-state";
@@ -131,10 +130,7 @@ export function useTranslationExportFlow(): TranslationExportFlow {
       apply_state({ phase: "closed" });
     } catch (error) {
       if (generation !== request_generation_ref.current) return;
-      push_toast(
-        "error",
-        resolve_visible_error_message(error, t, t("app.error.translation.export_failed.message")),
-      );
+      push_error_toast(t("app.feedback.translation_export_failed"), error);
       apply_state(current_state);
     }
   }, [apply_state, t]);

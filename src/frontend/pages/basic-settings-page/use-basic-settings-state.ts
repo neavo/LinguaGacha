@@ -1,8 +1,11 @@
+import {
+  push_error_toast,
+  push_toast,
+  run_modal_progress_toast,
+} from "@frontend/app/feedback/desktop-toast";
 import { useCallback } from "react";
 
-import { push_toast, run_modal_progress_toast } from "@frontend/app/feedback/desktop-toast";
 import { format_project_settings_aligned_toast } from "@frontend/app/feedback/project-settings-alignment-feedback";
-import { resolve_visible_error_message } from "@frontend/app/feedback/visible-error-message";
 import { useI18n } from "@frontend/app/locale/locale-context";
 import { useDesktopState, useRuntimeSnapshot } from "@frontend/app/state/use-desktop-state";
 import { is_runtime_busy } from "@frontend/app/state/runtime-activity-store";
@@ -52,8 +55,6 @@ export function useBasicSettingsState(): UseBasicSettingsStateResult {
   const { snapshot, pending_state, commit_update } = useSettingsEditor({
     select_snapshot: build_basic_settings_snapshot,
     pending_fields: BASIC_SETTINGS_PENDING_FIELDS,
-    refresh_error_key: "basic_settings_page.feedback.refresh_failed",
-    update_error_key: "app.feedback.settings_save_failed",
   });
   const runtime_locked = project_snapshot.loaded && is_runtime_busy(runtime_snapshot);
 
@@ -107,14 +108,7 @@ export function useBasicSettingsState(): UseBasicSettingsStateResult {
             project_fixed_path: selected_path,
           });
         } catch (error) {
-          push_toast(
-            "error",
-            resolve_visible_error_message(
-              error,
-              t,
-              t("basic_settings_page.feedback.pick_directory_failed"),
-            ),
-          );
+          push_error_toast(t("basic_settings_page.feedback.pick_directory_failed"), error);
         }
         return;
       }

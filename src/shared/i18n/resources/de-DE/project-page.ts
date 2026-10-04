@@ -10,8 +10,6 @@ export const de_de_project_page = {
     ready_status: "{COUNT} Quelldateien ausgewählt",
     loading_toast: "Projekt wird erstellt …",
     unavailable: "Keine unterstützten Quelldateien in diesem Verzeichnis gefunden",
-    failed: "Fehler beim Erstellen des Projekts: {ERROR}",
-    failed_generic: "Fehler beim Erstellen des Projekts",
     default_preset_loaded: "Standard-Voreinstellungen geladen: {NAMES} …",
     default_presets: {
       glossary: "Glossar",
@@ -31,10 +29,8 @@ export const de_de_project_page = {
     ready_status: "Projekt bereit",
     preview_loading_toast: "Projektvorschau wird gelesen …",
     loading_toast: "Projekt wird geladen …",
-    preview_unavailable: "Fehler beim Lesen der Projektvorschau: {ERROR}",
-    preview_unavailable_generic: "Fehler beim Lesen der Projektvorschau",
-    failed: "Fehler beim Laden des Projekts: {ERROR}",
-    failed_generic: "Fehler beim Laden des Projekts",
+    preview_unavailable: "Fehler beim Lesen der Projektvorschau …",
+
     action: "Projekt öffnen",
     remove_unavailable:
       "Dieser letzte Projekteintrag kann derzeit nicht entfernt werden. Bitte versuchen Sie es später erneut …",

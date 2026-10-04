@@ -115,6 +115,6 @@ describe("model-config-resolver", () => {
       read_config_model_preset_records({
         get_model_preset_dir: () => temp_root.path,
       }),
-    ).toThrow("file.invalid_structure");
+    ).toThrow(expect.objectContaining({ code: "file.invalid_structure" }));
   });
 });

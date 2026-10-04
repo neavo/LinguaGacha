@@ -80,7 +80,6 @@ export const ko_kr_proofreading_page = {
   },
   context: {
     loading: "문맥 읽는 중 …",
-    load_failed: "문맥을 읽을 수 없습니다",
   },
   confirm: {
     retranslate_description: "항목 {COUNT}개를 다시 번역할까요 …?",
@@ -88,13 +87,10 @@ export const ko_kr_proofreading_page = {
   },
   feedback: {
     loading_toast: "데이터 불러오는 중 …",
-    refresh_failed: "교정 페이지를 새로 고치지 못했습니다",
-    selection_failed: "선택 영역을 읽지 못했습니다",
-    save_failed: "저장 실패",
-    replace_failed: "치환 실패",
-    retranslate_failed: "재번역 실패",
-    clear_translation_failed: "번역문 비우기 실패",
-    set_status_failed: "번역 상태 설정 실패",
+    selection_failed: "선택 영역을 읽지 못했습니다 …",
+    replace_failed: "치환 실패 …",
+    retranslate_failed: "재번역 실패 …",
+    clear_translation_failed: "번역문 비우기 실패 …",
     replace_done: "치환 완료: {N}개 변경",
     replace_no_change: "바꿀 내용이 없습니다",
     no_match: "일치하는 항목이 없습니다",

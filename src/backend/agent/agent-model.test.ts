@@ -111,7 +111,7 @@ describe("Agent 批量翻译模型", () => {
     );
     config.model_selection.agent_batch_translation = "missing";
     expect(() => resolve_agent_batch_translation_model(config, agent_model, [])).toThrow(
-      "model.not_found",
+      expect.objectContaining({ code: "model.not_found" }),
     );
   });
 });

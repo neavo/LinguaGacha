@@ -19,7 +19,10 @@ vi.mock("@frontend/app/state/use-desktop-state", () => ({
   useRuntimeSnapshot: () => runtime,
 }));
 
-vi.mock("@frontend/app/feedback/desktop-toast", () => ({ push_toast }));
+vi.mock("@frontend/app/feedback/desktop-toast", () => ({
+  push_error_toast: push_toast,
+  push_toast,
+}));
 
 vi.mock("@frontend/app/locale/locale-context", () => ({
   useI18n: () => ({ t: translate }),
@@ -121,7 +124,7 @@ describe("useModelPageState", () => {
     await act(async () => latest_state!.request_logout());
     api_fetch_mock.mockRejectedValueOnce(new Error("logout failed"));
     await act(async () => latest_state!.confirm_dialog());
-    expect(push_toast).toHaveBeenCalledWith("error", "app.error.model.provider_failed.message");
+    expect(push_toast).toHaveBeenCalledWith("app.feedback.model_request_failed", expect.any(Error));
     expect(latest_state!.readonly).toBe(false);
     await act(async () => latest_state!.request_logout());
     runtime.owner = "agent";
@@ -235,7 +238,10 @@ describe("useModelPageState", () => {
     await act(async () => latest_state!.request_copy_model("custom"));
     expect(latest_state!.snapshot).toBe(before);
     expect(latest_state!.readonly).toBe(false);
-    expect(push_toast).toHaveBeenCalledExactlyOnceWith("error", "model_page.feedback.copy_failed");
+    expect(push_toast).toHaveBeenCalledExactlyOnceWith(
+      "app.feedback.copy_failed",
+      expect.any(Error),
+    );
   });
 
   it("运行中可复制配置，测试接口保持禁用", async () => {
@@ -257,7 +263,10 @@ describe("useModelPageState", () => {
     api_fetch_mock.mockRejectedValueOnce(new Error("offline"));
     await render_hook();
     expect(latest_state?.load_status).toBe("error");
-    expect(push_toast).not.toHaveBeenCalled();
+    expect(push_toast).toHaveBeenCalledExactlyOnceWith(
+      "app.feedback.refresh_failed",
+      expect.objectContaining({ message: "offline" }),
+    );
     api_fetch_mock.mockResolvedValue(create_snapshot());
     await act(async () => latest_state?.refresh_snapshot());
     expect(latest_state?.load_status).toBe("ready");
@@ -266,7 +275,7 @@ describe("useModelPageState", () => {
     await act(async () => latest_state?.refresh_snapshot());
     expect(latest_state?.snapshot).toBe(snapshot);
     expect(latest_state?.load_status).toBe("ready");
-    expect(push_toast).toHaveBeenCalledWith("error", "model_page.feedback.refresh_failed");
+    expect(push_toast).toHaveBeenCalledWith("app.feedback.refresh_failed", expect.any(Error));
   });
 
   it("加载并分组模型，自定义分组内唯一模型不能删除", async () => {

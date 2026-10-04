@@ -1,11 +1,10 @@
+import { push_error_toast } from "@frontend/app/feedback/desktop-toast";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import type { ModelUsage } from "@domain/model";
 import { useRuntimeSnapshot } from "@frontend/app/state/use-desktop-state";
 import { useModelCatalogRevision } from "@frontend/app/state/model-catalog-store";
 import { api_fetch, api_get } from "@frontend/app/desktop/desktop-api";
-import { push_toast } from "@frontend/app/feedback/desktop-toast";
-import { resolve_visible_error_message } from "@frontend/app/feedback/visible-error-message";
 import { useI18n } from "@frontend/app/locale/locale-context";
 import {
   normalize_model_selection_snapshot,
@@ -47,10 +46,7 @@ export function useModelSelection(): ModelSelectionController {
       })
       .catch((error: unknown) => {
         if (mounted && settings_revision === settings_revision_ref.current) {
-          push_toast(
-            "error",
-            resolve_visible_error_message(error, t, t("app.model.selection.load_failed")),
-          );
+          push_error_toast(t("app.feedback.load_failed"), error);
         }
       })
       .finally(() => {
@@ -73,10 +69,7 @@ export function useModelSelection(): ModelSelectionController {
         const next = normalize_model_selection_snapshot(payload);
         set_snapshot(next);
       } catch (error) {
-        push_toast(
-          "error",
-          resolve_visible_error_message(error, t, t("app.model.selection.update_failed")),
-        );
+        push_error_toast(t("app.feedback.save_failed"), error);
       } finally {
         updating_ref.current = false;
         set_updating(false);

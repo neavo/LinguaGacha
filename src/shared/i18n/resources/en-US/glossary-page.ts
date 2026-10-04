@@ -11,8 +11,4 @@ export const en_us_glossary_page = {
     translation: "Translation",
     description: "Description",
   },
-  feedback: {
-    load_failed: "Failed to load the glossary. Please try again later …",
-    query_failed: "Failed to query proofreading",
-  },
 } satisfies LocaleMessageSchema<typeof zh_cn_glossary_page>;

@@ -4,7 +4,6 @@ export const zh_cn_log_window_page = {
     date: "日志日期",
     loading: "正在读取日志 …",
     empty: "暂无日志",
-    failed: "日志读取失败",
     expired: "该日期的日志已清理",
   },
   level: {
@@ -42,7 +41,6 @@ export const zh_cn_log_window_page = {
     empty: "请选择一条日志查看详情 …",
     loading: "正在读取日志详情 …",
     unavailable: "日志文件已清理或记录不可用 …",
-    failed: "日志详情读取失败",
     content: {
       source_text: "原文",
       translated_text: "译文",

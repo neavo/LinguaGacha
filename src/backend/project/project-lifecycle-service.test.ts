@@ -62,20 +62,24 @@ describe("ProjectLifecycleService", () => {
       task_busy: true,
     });
 
-    await expect(service.load_project({ path: next_project_path })).rejects.toThrow("runtime.busy");
+    await expect(service.load_project({ path: next_project_path })).rejects.toThrow(
+      expect.objectContaining({ code: "runtime.busy" }),
+    );
     await expect(
       service.create_project_commit({
         path: path.join(temp_dir, "created.lg"),
         source_paths: [],
       }),
-    ).rejects.toThrow("runtime.busy");
+    ).rejects.toThrow(expect.objectContaining({ code: "runtime.busy" }));
     await expect(
       service.apply_task_input({
         quality_rules: [],
         translation_prompt: null,
       }),
-    ).rejects.toThrow("runtime.busy");
-    await expect(service.unload_project()).rejects.toThrow("runtime.busy");
+    ).rejects.toThrow(expect.objectContaining({ code: "runtime.busy" }));
+    await expect(service.unload_project()).rejects.toThrow(
+      expect.objectContaining({ code: "runtime.busy" }),
+    );
 
     expect(session_state.snapshot()).toEqual({
       loaded: true,
@@ -463,7 +467,7 @@ describe("ProjectLifecycleService", () => {
         path: path.join(app_root, "legacy-payload.lg"),
         draft: { files: [], items: [] },
       }),
-    ).rejects.toThrow("request.validation_failed");
+    ).rejects.toThrow(expect.objectContaining({ code: "request.validation_failed" }));
   });
 
   it("create-commit 跳过解析失败源文件并继续创建可用文件", async () => {
@@ -495,6 +499,7 @@ describe("ProjectLifecycleService", () => {
             rel_path: path.join("source", "broken.json"),
             filename: "broken.json",
             code: "file.parse_failed",
+            message: expect.any(String),
           },
         ],
       });
@@ -539,6 +544,7 @@ describe("ProjectLifecycleService", () => {
               rel_path: path.join("source", "broken.json"),
               filename: "broken.json",
               code: "file.parse_failed",
+              message: expect.any(String),
             },
           ],
         },
@@ -584,7 +590,7 @@ describe("ProjectLifecycleService", () => {
       service.get_project_preview({
         path: path.join(create_temp_dir(), "missing.lg"),
       }),
-    ).toThrow("project.not_found");
+    ).toThrow(expect.objectContaining({ code: "project.not_found" }));
   });
 
   it("unload 先发布内部卸载事件，再清理会话和 database 缓存", async () => {

@@ -3,7 +3,6 @@ export const en_us_agent_page = {
     conversation: "Conversation",
     view: "View",
     save_as: "Save as",
-    read_failed: "Unable to read document",
   },
   batch_translation_model: {
     follow: "Follow Agent",
@@ -117,7 +116,6 @@ export const en_us_agent_page = {
     edit: "Edit",
     copy: "Copy",
     copied: "Copied",
-    copy_failed: "Copy failed",
     follow_latest: "Follow latest",
   },
   editing: {
@@ -160,16 +158,12 @@ export const en_us_agent_page = {
   upload: { uploading: "Uploading", failed: "Upload failed" },
   file_saved: "File saved",
   error: {
-    activate_link: "Failed to process the link",
+    activate_link: "Failed to process the link …",
     decision: "Could not submit your decision. Please try again …",
     restore: "The session could not be restored. Try again …",
     connection: "Connection interrupted. Waiting to reconnect …",
     send: "Message could not be sent. Your draft was preserved …",
     continue: "The task could not continue. Try again …",
-    edit: "The message could not be edited. Your changes were preserved …",
-    queue_update: "The queued message could not be edited. Your changes were preserved …",
-    queue_delete: "The queued message could not be deleted. Try again …",
-    queue_reorder: "The queue could not be reordered. Try again …",
     queue_send: "The message could not be sent now. It remains queued …",
     stop: "The task could not be stopped. Try again …",
     reset: "A new task could not be created. Try again …",

@@ -22,8 +22,6 @@ export const de_de_app = {
     selection: {
       label: "Modell auswählen",
       unavailable: "Kein Modell verfügbar",
-      load_failed: "Modellauswahl konnte nicht geladen werden. Bitte erneut versuchen …",
-      update_failed: "Modellauswahl konnte nicht gespeichert werden. Bitte erneut versuchen …",
     },
     thinking_level: {
       default: "Standard beibehalten",
@@ -62,16 +60,31 @@ export const de_de_app = {
     select_folder: "Ordner auswählen",
   },
   feedback: {
+    load_failed: "Laden fehlgeschlagen …",
+    refresh_failed: "Aktualisieren fehlgeschlagen …",
+    query_failed: "Abfrage fehlgeschlagen …",
+    modify_failed: "Änderung fehlgeschlagen …",
+    create_failed: "Erstellen fehlgeschlagen …",
+    delete_failed: "Löschen fehlgeschlagen …",
+    rename_failed: "Umbenennen fehlgeschlagen …",
+    import_failed: "Import fehlgeschlagen …",
+    export_failed: "Export fehlgeschlagen …",
+    copy_failed: "Kopieren fehlgeschlagen …",
+    read_failed: "Lesen fehlgeschlagen …",
+    operation_failed: "Vorgang fehlgeschlagen …",
+    content_unavailable: "Inhalt nicht verfügbar",
+    save_failed: "Speichern fehlgeschlagen …",
+    translation_export_failed: "Übersetzungsexport fehlgeschlagen …",
+    model_request_failed: "Modellanfrage fehlgeschlagen …",
+    validation_failed: "Ungültige Anfrageparameter",
     initial_load_failed:
       "Die Anwendungsdaten konnten nicht geladen werden. Bitte erneut versuchen …",
     export_success: "Daten exportiert",
     import_success: "Daten importiert",
     no_valid_data: "Keine gültigen Daten",
-    update_failed: "Aktualisierung fehlgeschlagen",
+    update_failed: "Aktualisierung fehlgeschlagen …",
     project_settings_aligned: "Projekteinstellungen von aktuellen Einstellungen übernommen",
     project_cache_loading: "Projekt-Cache wird aktualisiert …",
-    settings_save_failed:
-      "Fehler beim Speichern der Einstellung. Bitte versuchen Sie es später erneut …",
   },
   error_boundary: {
     eyebrow: "Renderer-Laufzeit",
@@ -196,144 +209,7 @@ export const de_de_app = {
     excel_files: "Excel-Dateien (*.xlsx)",
     supported_txt_files: "Unterstützte Dateien (*.txt)",
   },
-  error: {
-    request: {
-      validation_failed: {
-        message: "Die Anfrageparameter sind ungültig",
-      },
-      invalid_json: {
-        message: "Das Anfrage-JSON ist ungültig",
-      },
-      route_not_found: {
-        message: "Die API-Route existiert nicht",
-      },
-    },
-    project: {
-      already_exists: {
-        message: "Die Projektdatei existiert bereits. Bitte einen anderen Dateinamen wählen …",
-      },
-      not_loaded: {
-        message: "Kein Projekt geladen",
-      },
-      not_found: {
-        message: "Die Projektdatei existiert nicht",
-      },
-    },
-    translation: {
-      export_failed: { message: "Export der Übersetzung fehlgeschlagen" },
-    },
-    file: {
-      already_exists: {
-        message:
-          "Eine Datei oder ein Ordner mit diesem Namen existiert bereits. Bitte einen anderen Namen wählen …",
-      },
-      not_found: {
-        message: "Die Datei existiert nicht",
-      },
-      parse_failed: {
-        message: "Dateiinhalt-Analyse fehlgeschlagen",
-      },
-      preview_too_large: {
-        message: "Die Datei ist zu groß für die Vorschau. Speichern Sie sie zur lokalen Ansicht.",
-      },
-      invalid_structure: {
-        message: "Die Dateistruktur entspricht nicht dem erwarteten Format",
-      },
-      io_failed: {
-        message: "Datei-Lese- oder Schreibvorgang fehlgeschlagen",
-      },
-    },
-    database: {
-      busy: { message: "Die Projektdatenbank ist belegt. Bitte später erneut versuchen …" },
-      conflict: {
-        message:
-          "Datenbank-Schreibkonflikt. Bitte aktualisieren Sie die Daten und versuchen Sie es erneut …",
-      },
-    },
-    data: {
-      revision_conflict: {
-        message:
-          "Die Datenversion hat sich geändert. Bitte aktualisieren Sie die Daten und versuchen Sie es erneut …",
-      },
-      committed_sync_failed: {
-        message:
-          "Die Daten wurden gespeichert, aber die nachfolgende Verarbeitung ist fehlgeschlagen. Bitte das Projekt neu laden …",
-      },
-    },
-    model: {
-      not_found: {
-        message: "Die Modellkonfiguration existiert nicht",
-      },
-      auth_required: { message: "Bitte melden Sie sich zuerst bei Ihrem Konto an …" },
-      provider_failed: {
-        message:
-          "Die Modellservice-Anfrage ist fehlgeschlagen. Bitte überprüfen Sie die API-Einstellungen …",
-      },
-    },
-    worker: {
-      failed: {
-        message: "Der Hintergrundausführungskanal ist fehlgeschlagen",
-      },
-      execution_failed: {
-        message: "Die Hintergrundaufgabe ist fehlgeschlagen",
-      },
-    },
-    runtime: {
-      busy: {
-        message: "Die Modelllaufzeit ist belegt. Bitte versuchen Sie es später erneut …",
-      },
-      capability_missing: {
-        message: "Der aktuellen Laufzeitumgebung fehlt eine erforderliche Fähigkeit",
-      },
-      disposed: {
-        message: "Die Laufzeitressource wurde freigegeben",
-      },
-      cancelled: {
-        message: "Der Vorgang wurde abgebrochen",
-      },
-      internal_invariant: {
-        message: "Interner Zustandsfehler",
-      },
-    },
-    language: {
-      invalid_target_language: {
-        message: "Die Zielsprache ist ungültig",
-      },
-      unsupported_all_target_language: {
-        message: "Die Zielsprache kann nicht Alle sein",
-      },
-      unknown_source_language_code: {
-        message: "Der Quellsprachcode ist ungültig",
-      },
-    },
-    quality: {
-      unknown_rule_type: {
-        message: "Der Qualitätsregeltyp ist ungültig",
-      },
-      unsupported_rule_meta: {
-        message: "Die Qualitätsregeleinstellung ist ungültig",
-      },
-    },
-    prompt: {
-      unknown_prompt_type: {
-        message: "Der Prompt-Typ ist ungültig",
-      },
-    },
-    desktop: {
-      missing_backend_api_base_url: {
-        message: "Backend-API-URL ist nicht konfiguriert",
-      },
-      http_error: {
-        message: "Anfrage fehlgeschlagen: {PATH}",
-      },
-      network_failed: {
-        message: "Netzwerkanfrage fehlgeschlagen: {PATH}",
-      },
-      timeout: {
-        message: "Anfrage-Zeitüberschreitung: {PATH}",
-      },
-    },
-  },
+
   diagnostic: {
     agent: {
       model_round_failed: "Agent-Modellrunde fehlgeschlagen …",

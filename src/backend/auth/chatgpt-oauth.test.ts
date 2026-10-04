@@ -68,7 +68,7 @@ describe("ChatGPT 浏览器授权协议", () => {
       ).rejects.toMatchObject({
         code: "model.provider_failed",
         message: "Original provider message",
-        public_details: { message: "Original provider message" },
+        public_details: { status },
         diagnostic_context: { provider_code: code, status, retryable, auth_invalid },
       });
     },

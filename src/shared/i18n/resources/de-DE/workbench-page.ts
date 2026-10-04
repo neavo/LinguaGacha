@@ -14,10 +14,8 @@ export const de_de_workbench_page = {
     actions: "Aktionen",
   },
   feedback: {
-    refresh_failed: "Fehler beim Aktualisieren der Werkbank",
     add_file_loading_toast: "Datei wird hinzugefügt und Cache aktualisiert …",
     no_valid_file: "Keine gültigen Dateien können hinzugefügt werden",
-    file_action_failed: "Dateioperation fehlgeschlagen. Bitte versuchen Sie es später erneut …",
     close_project_failed:
       "Fehler beim Schließen des Projekts. Bitte versuchen Sie es später erneut …",
   },
@@ -40,9 +38,6 @@ export const de_de_workbench_page = {
     warning_list: "Korrekturwarnungen",
     retry_check: "Erneut prüfen",
     continue_generate: "Trotzdem erstellen",
-  },
-  reorder: {
-    failed: "Fehler beim Speichern der Dateireihenfolge. Bitte versuchen Sie es später erneut …",
   },
   dialog: {
     import_conflict: {

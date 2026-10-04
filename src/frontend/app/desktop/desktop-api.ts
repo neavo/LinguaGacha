@@ -12,6 +12,8 @@ import {
 } from "@shared/log";
 import {
   is_app_error_code,
+  APP_ERROR_DEFINITIONS,
+  read_error_message,
   normalize_log_error,
   type ApiErrorPayload,
   type AppErrorCode,
@@ -55,6 +57,12 @@ export type DesktopLocalErrorCode =
 
 export type DesktopApiErrorCode = AppErrorCode | DesktopLocalErrorCode;
 
+const DESKTOP_ERROR_MESSAGES: Record<DesktopLocalErrorCode, string> = {
+  missing_backend_api_base_url: "The backend API address is unavailable.",
+  http_error: "The server returned an invalid response.",
+  network_failed: "The network request failed.",
+};
+
 const GITHUB_LATEST_RELEASE_URL = "https://api.github.com/repos/neavo/LinguaGacha/releases/latest";
 
 /**
@@ -69,10 +77,20 @@ export class DesktopApiError extends Error {
    */
   constructor(args: {
     code: DesktopApiErrorCode;
+    message?: string;
     details?: Record<string, unknown>;
     cause?: unknown;
   }) {
-    super(args.code, args.cause === undefined ? undefined : { cause: args.cause });
+    super(
+      args.message?.trim() ||
+        read_error_message(
+          args.cause,
+          is_app_error_code(args.code)
+            ? APP_ERROR_DEFINITIONS[args.code].message
+            : DESKTOP_ERROR_MESSAGES[args.code],
+        ),
+      args.cause === undefined ? undefined : { cause: args.cause },
+    );
     this.name = "DesktopApiError";
     this.code = args.code;
     this.details = args.details ?? {};
@@ -100,6 +118,7 @@ function build_desktop_api_error<data_type>(
   const code = is_app_error_code(error?.code) ? error.code : "http_error";
   return new DesktopApiError({
     code,
+    message: error?.message ?? "The server returned an invalid response.",
     details: error?.details ?? { path },
   });
 }

@@ -12,10 +12,6 @@ export const ko_kr_quality_rule_editor = {
   feedback: {
     regex_invalid: "정규식이 잘못되었습니다",
     source_required: "원문은 비워 둘 수 없습니다",
-    save_failed: "규칙을 저장하지 못했습니다",
-    update_failed: "규칙 설정을 저장하지 못했습니다",
-    import_failed: "규칙을 가져오지 못했습니다",
-    export_failed: "규칙을 내보내지 못했습니다",
   },
   fields: {
     rule: "규칙",

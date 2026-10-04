@@ -22,8 +22,6 @@ export const en_us_app = {
     selection: {
       label: "Select model",
       unavailable: "No model available",
-      load_failed: "Failed to load model selection. Please try again …",
-      update_failed: "Failed to save model selection. Please try again …",
     },
     thinking_level: {
       default: "Keep default",
@@ -61,14 +59,30 @@ export const en_us_app = {
     select_folder: "Select Folder",
   },
   feedback: {
+    load_failed: "Load failed …",
+    refresh_failed: "Refresh failed …",
+    query_failed: "Query failed …",
+    modify_failed: "Change failed …",
+    create_failed: "Creation failed …",
+    delete_failed: "Deletion failed …",
+    rename_failed: "Rename failed …",
+    import_failed: "Import failed …",
+    export_failed: "Export failed …",
+    copy_failed: "Copy failed …",
+    read_failed: "Read failed …",
+    operation_failed: "Operation failed …",
+    content_unavailable: "Content unavailable",
+    save_failed: "Save failed …",
+    translation_export_failed: "Translation export failed …",
+    model_request_failed: "Model request failed …",
+    validation_failed: "Invalid request parameters",
     initial_load_failed: "Could not load app data. Please try again …",
     export_success: "Data exported",
     import_success: "Data imported",
     no_valid_data: "No valid data",
-    update_failed: "Update failed",
+    update_failed: "Update failed …",
     project_settings_aligned: "Project settings updated from current settings",
     project_cache_loading: "Refreshing project cache …",
-    settings_save_failed: "Failed to save the setting. Please try again later …",
   },
   error_boundary: {
     eyebrow: "Renderer Runtime",
@@ -187,135 +201,7 @@ export const en_us_app = {
     excel_files: "Excel files (*.xlsx)",
     supported_txt_files: "Supported files (*.txt)",
   },
-  error: {
-    request: {
-      validation_failed: {
-        message: "The request parameters are invalid",
-      },
-      invalid_json: {
-        message: "The request JSON is invalid",
-      },
-      route_not_found: {
-        message: "The API route does not exist",
-      },
-    },
-    project: {
-      already_exists: { message: "The project file already exists. Choose another file name …" },
-      not_loaded: {
-        message: "No project is loaded",
-      },
-      not_found: {
-        message: "The project file does not exist",
-      },
-    },
-    translation: {
-      export_failed: { message: "Translation export failed" },
-    },
-    file: {
-      already_exists: {
-        message: "A file or folder with this name already exists. Choose another name …",
-      },
-      not_found: {
-        message: "The file does not exist",
-      },
-      parse_failed: {
-        message: "File content parsing failed",
-      },
-      preview_too_large: { message: "This file is too large to preview. Save it to view locally." },
-      invalid_structure: {
-        message: "The file structure does not match the expected format",
-      },
-      io_failed: {
-        message: "File read or write failed",
-      },
-    },
-    database: {
-      busy: { message: "The project database is busy. Please try again later …" },
-      conflict: {
-        message: "Database write conflict. Please refresh and try again …",
-      },
-    },
-    data: {
-      revision_conflict: {
-        message: "The data version changed. Please refresh and try again …",
-      },
-      committed_sync_failed: {
-        message: "Data was saved, but subsequent processing failed. Reload the project …",
-      },
-    },
-    model: {
-      not_found: {
-        message: "The model configuration does not exist",
-      },
-      auth_required: { message: "Please sign in to your account first …" },
-      provider_failed: {
-        message: "The model service request failed. Please check the API settings …",
-      },
-    },
-    worker: {
-      failed: {
-        message: "The background execution channel failed",
-      },
-      execution_failed: {
-        message: "The background task failed",
-      },
-    },
-    runtime: {
-      busy: {
-        message: "The model runtime is busy. Please try again later …",
-      },
-      capability_missing: {
-        message: "The current runtime is missing a required capability",
-      },
-      disposed: {
-        message: "The runtime resource has been disposed",
-      },
-      cancelled: {
-        message: "The operation was cancelled",
-      },
-      internal_invariant: {
-        message: "Internal state error",
-      },
-    },
-    language: {
-      invalid_target_language: {
-        message: "The target language is invalid",
-      },
-      unsupported_all_target_language: {
-        message: "The target language cannot be All",
-      },
-      unknown_source_language_code: {
-        message: "The source language code is invalid",
-      },
-    },
-    quality: {
-      unknown_rule_type: {
-        message: "The quality rule type is invalid",
-      },
-      unsupported_rule_meta: {
-        message: "The quality rule setting is invalid",
-      },
-    },
-    prompt: {
-      unknown_prompt_type: {
-        message: "The prompt type is invalid",
-      },
-    },
-    desktop: {
-      missing_backend_api_base_url: {
-        message: "Backend API URL is not configured",
-      },
-      http_error: {
-        message: "Request failed: {PATH}",
-      },
-      network_failed: {
-        message: "Network request failed: {PATH}",
-      },
-      timeout: {
-        message: "Request timed out: {PATH}",
-      },
-    },
-  },
+
   diagnostic: {
     agent: {
       model_round_failed: "Agent model turn failed …",

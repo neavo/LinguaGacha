@@ -112,12 +112,13 @@ describe("quality rule query lifecycle", () => {
     expect(read_quality_rule_snapshot_mock).toHaveBeenCalledTimes(2);
   });
 
-  it("首次失败提供重试，已有快照刷新失败时保留内容并通知", async () => {
+  it("首次失败通知，已有快照刷新失败时保留内容", async () => {
     const error = new Error("load failed");
     read_quality_rule_snapshot_mock.mockRejectedValue(error);
     await act(async () => root.render(<QueryProbe project_path="E:/demo/demo.lg" />));
     expect(current_state?.quality_status).toBe("error");
-    expect(on_load_error).not.toHaveBeenCalled();
+    expect(on_load_error).toHaveBeenCalledExactlyOnceWith(error);
+    on_load_error.mockClear();
 
     read_quality_rule_snapshot_mock.mockResolvedValue({
       projectPath: "E:/demo/demo.lg",

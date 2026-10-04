@@ -12,10 +12,6 @@ export const ja_jp_quality_rule_editor = {
   feedback: {
     regex_invalid: "正規表現が無効です",
     source_required: "原文を入力してください",
-    save_failed: "ルールを保存できませんでした",
-    update_failed: "ルールの設定を保存できませんでした",
-    import_failed: "ルールをインポートできませんでした",
-    export_failed: "ルールをエクスポートできませんでした",
   },
   fields: {
     rule: "ルール",

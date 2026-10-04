@@ -58,15 +58,9 @@ export const en_us_model_page = {
   },
   feedback: {
     copy_success: "Model duplicated\nGroup: {CATEGORY}\nName: {NAME}",
-    copy_failed: "Failed to duplicate the model. Please try again later …",
-    refresh_failed: "Failed to refresh the model snapshot. Please try again later …",
-    add_failed: "Failed to add the model. Please try again later …",
-    update_failed: "Failed to save the model configuration. Please try again later …",
-    reorder_failed: "Failed to save the model order. Please try again later …",
     delete_last_one: "At least one model must remain in each category …",
     agent_limits_adjusted: "Invalid settings were adjusted to a valid configuration …",
     json_format_error: "JSON format error. Please enter a valid JSON object …",
-    selector_load_failed: "Failed to load the model list. Please check the API configuration …",
     test_failed: "Failed to test the model. Please try again later …",
   },
   fields: {

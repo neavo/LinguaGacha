@@ -37,7 +37,6 @@ export const zh_cn_expert_settings_page = {
     },
   },
   feedback: {
-    refresh_failed: "当前无法刷新专家设置，请稍后重试 …",
     preceding_lines_threshold_invalid: "参考上文行数阈值必须填写为有效范围内的数字 …",
   },
 } as const;

@@ -80,7 +80,6 @@ export const ja_jp_proofreading_page = {
   },
   context: {
     loading: "前後の文脈を読み込み中 …",
-    load_failed: "前後の文脈を読み込めません",
   },
   confirm: {
     retranslate_description: "{COUNT} 件の項目を再翻訳しますか …?",
@@ -88,13 +87,10 @@ export const ja_jp_proofreading_page = {
   },
   feedback: {
     loading_toast: "データを読み込み中 …",
-    refresh_failed: "校正画面を更新できませんでした",
-    selection_failed: "選択範囲を読み込めませんでした",
-    save_failed: "保存できませんでした",
-    replace_failed: "置換できませんでした",
-    retranslate_failed: "再翻訳できませんでした",
-    clear_translation_failed: "訳文を消去できませんでした",
-    set_status_failed: "翻訳状態を設定できませんでした",
+    selection_failed: "選択範囲を読み込めませんでした …",
+    replace_failed: "置換できませんでした …",
+    retranslate_failed: "再翻訳できませんでした …",
+    clear_translation_failed: "訳文を消去できませんでした …",
     replace_done: "置換完了：{N} 件を変更",
     replace_no_change: "置換する内容がありません",
     no_match: "一致する項目が見つかりません",

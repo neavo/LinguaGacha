@@ -41,7 +41,6 @@ export const ko_kr_expert_settings_page = {
     },
   },
   feedback: {
-    refresh_failed: "전문가 설정을 새로 고칠 수 없습니다. 잠시 후 다시 시도해 주세요 …",
     preceding_lines_threshold_invalid:
       "앞선 문맥의 최대 줄 수에 유효한 범위의 숫자를 입력해 주세요 …",
   },

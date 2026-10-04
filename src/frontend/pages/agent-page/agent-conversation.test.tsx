@@ -173,7 +173,10 @@ vi.mock("@frontend/app/state/use-desktop-state", () => ({
     apply_settings_snapshot: settings_state.apply_snapshot,
   }),
 }));
-vi.mock("@frontend/app/feedback/desktop-toast", () => ({ push_toast }));
+vi.mock("@frontend/app/feedback/desktop-toast", () => ({
+  push_error_toast: push_toast,
+  push_toast,
+}));
 vi.mock("@frontend/features/model-selection/use-model-selection", async (import_original) => {
   const actual =
     await import_original<
@@ -600,7 +603,7 @@ describe("AgentConversation", () => {
   it("恢复失败时显示单一重试入口并重新连接", async () => {
     const reconnect = vi.fn();
     const view = await render_page({ transport: "restore_failed", reconnect });
-    const alert = view.querySelector<HTMLElement>('[role="alert"]');
+    const alert = view.querySelector<HTMLElement>('[role="status"]');
     const retry_button = [...view.querySelectorAll<HTMLButtonElement>("button")].find(
       (button) => button.textContent === "app.action.retry",
     );
@@ -1006,7 +1009,7 @@ describe("AgentConversation", () => {
     await act(async () => {
       get_button_by_label(view, "agent_page.action.stop").click();
       await vi.waitFor(() =>
-        expect(push_toast).toHaveBeenCalledWith("error", "agent_page.error.stop"),
+        expect(push_toast).toHaveBeenCalledWith("agent_page.error.stop", expect.any(Error)),
       );
     });
 
@@ -1025,7 +1028,7 @@ describe("AgentConversation", () => {
       await vi.waitFor(() => expect(push_toast).toHaveBeenCalledOnce());
     });
 
-    expect(push_toast).toHaveBeenCalledWith("error", "agent_page.error.send");
+    expect(push_toast).toHaveBeenCalledWith("agent_page.error.send", expect.any(Error));
     expect(view.querySelector(".agent-composer__error")).toBeNull();
   });
 
@@ -1181,7 +1184,7 @@ describe("AgentConversation", () => {
         ?.click(),
     );
     await vi.waitFor(() =>
-      expect(push_toast).toHaveBeenCalledWith("error", "agent_page.error.edit"),
+      expect(push_toast).toHaveBeenCalledWith("app.feedback.modify_failed", expect.any(Error)),
     );
 
     expect(get_editor(view).state.doc.toString()).toBe("新输入");
@@ -1270,7 +1273,7 @@ describe("AgentConversation", () => {
     await act(async () => reset_button.click());
     await act(async () => get_portal_action_button().click());
     expect(reset).toHaveBeenCalledOnce();
-    expect(push_toast).toHaveBeenCalledWith("error", "agent_page.error.reset");
+    expect(push_toast).toHaveBeenCalledWith("agent_page.error.reset", expect.any(Error));
     expect(document.body.querySelector('[data-slot="alert-dialog-content"]')).not.toBeNull();
   });
 });

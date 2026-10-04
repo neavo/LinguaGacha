@@ -26,10 +26,6 @@ describe("backend boundary rules", () => {
         'app.get("/api/quality", handler);',
       ].join("\n"),
       "src/cli/main.ts": 'import "../backend/project/project-write-store.ts";',
-      "src/shared/error/app-error.ts": [
-        'export const APP_ERROR_DEFINITIONS = { bad: { message: "visible" } };',
-        "export interface AppErrorOptions {}",
-      ].join("\n"),
     });
 
     expect(
@@ -49,7 +45,6 @@ describe("backend boundary rules", () => {
         "src/backend/quality/service.ts:2",
         "src/backend/quality/service.ts:3",
         "src/cli/main.ts:1",
-        "src/shared/error/app-error.ts:1",
       ].sort(),
     );
   });
@@ -66,10 +61,6 @@ describe("backend boundary rules", () => {
         ].join("\n"),
         "src/native/native-fs.ts": 'import "node:fs/promises";',
         "src/backend/agent/workspace/runtime/bootstrap.ts": 'import "node:fs/promises";',
-        "src/shared/error/app-error.ts": [
-          'export const APP_ERROR_DEFINITIONS = { ok: { status: 400, severity: "expected" } };',
-          "export interface AppErrorOptions {}",
-        ].join("\n"),
       }),
     ).toEqual([]);
   });

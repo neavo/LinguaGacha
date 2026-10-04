@@ -57,15 +57,9 @@ export const ja_jp_model_page = {
   },
   feedback: {
     copy_success: "モデルを複製しました\nグループ：{CATEGORY}\n名前：{NAME}",
-    copy_failed: "モデルを複製できませんでした。しばらくしてから再試行してください …",
-    refresh_failed: "モデル情報を更新できませんでした。しばらくしてから再試行してください …",
-    add_failed: "モデルを追加できませんでした。しばらくしてから再試行してください …",
-    update_failed: "モデル設定を保存できませんでした。しばらくしてから再試行してください …",
-    reorder_failed: "モデルの順序を保存できませんでした。しばらくしてから再試行してください …",
     delete_last_one: "各カテゴリにはモデルが 1 つ以上必要なため、削除できません …",
     agent_limits_adjusted: "設定値が無効なため、利用できる値に自動調整しました …",
     json_format_error: "JSON の形式が無効です。有効な JSON オブジェクトを入力してください …",
-    selector_load_failed: "モデル一覧を取得できませんでした。API 設定を確認してください …",
     test_failed: "モデルのテストに失敗しました。しばらくしてから再試行してください …",
   },
   fields: {

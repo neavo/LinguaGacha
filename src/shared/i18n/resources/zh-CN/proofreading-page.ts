@@ -78,7 +78,6 @@ export const zh_cn_proofreading_page = {
   },
   context: {
     loading: "正在读取上下文 …",
-    load_failed: "无法读取上下文",
   },
   confirm: {
     retranslate_description: "是否确认重新翻译 {COUNT} 个条目 …?",
@@ -86,13 +85,10 @@ export const zh_cn_proofreading_page = {
   },
   feedback: {
     loading_toast: "数据加载中 …",
-    refresh_failed: "校对页刷新失败",
-    selection_failed: "读取选区失败",
-    save_failed: "保存失败",
-    replace_failed: "替换失败",
-    retranslate_failed: "重新翻译失败",
-    clear_translation_failed: "清空译文失败",
-    set_status_failed: "设置翻译状态失败",
+    selection_failed: "读取选区失败 …",
+    replace_failed: "替换失败 …",
+    retranslate_failed: "重新翻译失败 …",
+    clear_translation_failed: "清空译文失败 …",
     replace_done: "替换完成：变更 {N} 条",
     replace_no_change: "没有需要替换的内容",
     no_match: "未找到匹配项",

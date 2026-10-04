@@ -444,6 +444,7 @@ describe("desktop-api", () => {
             ok: false,
             error: {
               code: "data.revision_conflict",
+              message: "The file changed on disk.",
               details: { section: "items" },
             },
           }),
@@ -458,7 +459,7 @@ describe("desktop-api", () => {
     await expect(promise).rejects.toMatchObject({
       code: "data.revision_conflict",
       details: { section: "items" },
-      message: "data.revision_conflict",
+      message: "The file changed on disk.",
     });
     await expect(promise).rejects.toBeInstanceOf(DesktopApiError);
   });

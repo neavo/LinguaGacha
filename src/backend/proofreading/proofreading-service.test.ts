@@ -136,7 +136,7 @@ describe("ProofreadingService", () => {
       async () => await service.replace_all({}),
       async () => await service.clear_translations({}),
     ]) {
-      await expect(operation()).rejects.toThrow("runtime.busy");
+      await expect(operation()).rejects.toThrow(expect.objectContaining({ code: "runtime.busy" }));
     }
   });
 
@@ -273,31 +273,31 @@ describe("ProofreadingService", () => {
         ],
         expected_section_revisions: { items: 0, proofreading: 0 },
       }),
-    ).rejects.toThrow("request.validation_failed");
+    ).rejects.toThrow(expect.objectContaining({ code: "request.validation_failed" }));
     await expect(
       service.apply_item_changes({
         changes: [{ item_id: 1, dst: null }],
         expected_section_revisions: { items: 0, proofreading: 0 },
       }),
-    ).rejects.toThrow("request.validation_failed");
+    ).rejects.toThrow(expect.objectContaining({ code: "request.validation_failed" }));
     await expect(
       service.apply_item_changes({
         changes: [{ item_id: Number.MAX_SAFE_INTEGER + 1, dst: "A" }],
         expected_section_revisions: { items: 0, proofreading: 0 },
       }),
-    ).rejects.toThrow("request.validation_failed");
+    ).rejects.toThrow(expect.objectContaining({ code: "request.validation_failed" }));
     await expect(
       service.apply_item_changes({
         changes: [{ item_id: 1 }],
         expected_section_revisions: { items: 0, proofreading: 0 },
       }),
-    ).rejects.toThrow("request.validation_failed");
+    ).rejects.toThrow(expect.objectContaining({ code: "request.validation_failed" }));
     await expect(
       service.apply_item_changes({
         changes: [{ item_id: 1, dst: "A", legacy: true }],
         expected_section_revisions: { items: 0, proofreading: 0 },
       }),
-    ).rejects.toThrow("request.validation_failed");
+    ).rejects.toThrow(expect.objectContaining({ code: "request.validation_failed" }));
     await expect(
       service.apply_item_changes({
         changes: [
@@ -306,7 +306,7 @@ describe("ProofreadingService", () => {
         ],
         expected_section_revisions: { items: 0, proofreading: 0 },
       }),
-    ).rejects.toThrow("request.validation_failed");
+    ).rejects.toThrow(expect.objectContaining({ code: "request.validation_failed" }));
 
     expect(database.get_all_items(lg_path)).toEqual([
       create_project_item({ id: 1, dst: "旧译文" }),
@@ -607,7 +607,7 @@ describe("ProofreadingService", () => {
         item_ids: [1],
         expected_section_revisions: { items: 0, proofreading: 0 },
       }),
-    ).rejects.toThrow("request.validation_failed");
+    ).rejects.toThrow(expect.objectContaining({ code: "request.validation_failed" }));
 
     expect(database.get_all_items(lg_path)).toEqual([create_project_item({ dst: "旧译文" })]);
     expect(publisher.publish_project_change).not.toHaveBeenCalled();
@@ -672,7 +672,7 @@ describe("ProofreadingService", () => {
         changes: [{ item_id: 1, status: "ERROR" }],
         expected_section_revisions: { items: 1, proofreading: 1 },
       }),
-    ).rejects.toThrow("request.validation_failed");
+    ).rejects.toThrow(expect.objectContaining({ code: "request.validation_failed" }));
 
     expect(database.get_all_items(lg_path)).toEqual([
       create_project_item({ dst: "新译文", status: "EXCLUDED", retry_count: 0 }),
@@ -711,7 +711,7 @@ describe("ProofreadingService", () => {
         is_regex: false,
         expected_section_revisions: { items: 1, proofreading: 0 },
       }),
-    ).rejects.toThrow("data.revision_conflict");
+    ).rejects.toThrow(expect.objectContaining({ code: "data.revision_conflict" }));
 
     expect(database.get_all_items(lg_path)).toEqual([create_project_item({ dst: "旧译文" })]);
     expect(publisher.publish_project_change).not.toHaveBeenCalled();
@@ -727,7 +727,7 @@ describe("ProofreadingService", () => {
         changes: [{ item_id: 1, dst: "新译文" }],
         expected_section_revisions: { items: 0, proofreading: 3 },
       }),
-    ).rejects.toThrow("data.revision_conflict");
+    ).rejects.toThrow(expect.objectContaining({ code: "data.revision_conflict" }));
 
     expect(read_meta(database, lg_path, "translation_extras", null)).toBeNull();
     expect(publisher.publish_project_change).not.toHaveBeenCalled();
@@ -768,7 +768,7 @@ describe("ProofreadingService", () => {
         changes: [{ item_id: 1, dst: "译文" }],
         expected_section_revisions: { items: "not-a-number", proofreading: 0 },
       }),
-    ).rejects.toThrow("request.validation_failed");
+    ).rejects.toThrow(expect.objectContaining({ code: "request.validation_failed" }));
 
     expect(read_meta(database, lg_path, "project_runtime_revision.items", 0)).toBe(0);
   });
@@ -803,6 +803,6 @@ describe("ProofreadingService", () => {
         changes: [{ item_id: 1, dst: "译文" }],
         expected_section_revisions: { items: 0, proofreading: 0 },
       }),
-    ).rejects.toThrow("project.not_loaded");
+    ).rejects.toThrow(expect.objectContaining({ code: "project.not_loaded" }));
   });
 });

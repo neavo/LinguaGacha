@@ -11,11 +11,9 @@ export const zh_cn_workbench_page = {
     actions: "操作",
   },
   feedback: {
-    refresh_failed: "工作台刷新失败",
     add_file_loading_toast: "正在添加文件并刷新缓存 …",
     no_valid_file: "没有可添加的有效文件",
-    file_action_failed: "文件操作失败，请稍后重试 …",
-    close_project_failed: "关闭工程失败，请稍后重试 …",
+    close_project_failed: "关闭工程失败 …",
   },
   action: {
     add_file: "添加",
@@ -35,9 +33,6 @@ export const zh_cn_workbench_page = {
     warning_list: "校对警告",
     retry_check: "重新检查",
     continue_generate: "继续生成",
-  },
-  reorder: {
-    failed: "文件顺序保存失败，请稍后再试 …",
   },
   dialog: {
     import_conflict: {

@@ -8,8 +8,6 @@ import type { LogManager } from "../log/log-manager";
 import { SourceFileParsePipeline } from "./source-file-parse-pipeline";
 import { log_source_file_parse_failures } from "./source-file-parse-failure-reporter";
 import type { SourceFileParseFailureRecord } from "../../shared/source-file-parse-failure";
-import { resolve_app_locale } from "../../domain/app-language";
-import { create_text_resolver, type TextResolver } from "../../shared/i18n";
 
 /**
  * 文件解析预演服务；公开源文件草稿只由 Backend 文件域解析
@@ -85,7 +83,6 @@ export class FilePreviewService {
       failures: failed_files,
       log_manager: this.log_manager,
       source: "file-preview",
-      text: this.create_text_resolver(),
     });
   }
 
@@ -103,14 +100,6 @@ export class FilePreviewService {
       this.pdf_execution,
       this.native_fs,
     );
-  }
-
-  /**
-   * 日志文案跟随当前应用语言，和 API 错误文案保持同一入口。
-   */
-  private create_text_resolver(): TextResolver {
-    const config = normalize_setting_snapshot(this.app_setting_service.read_setting());
-    return create_text_resolver(resolve_app_locale(config.app_language));
   }
 
   /**

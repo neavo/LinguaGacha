@@ -11,7 +11,6 @@ const API_GATEWAY_RELATIVE_PATH = "src/backend/api/api-gateway-server.ts";
 const API_ROUTES_RELATIVE_PATH = "src/backend/api/api-routes.ts";
 const NATIVE_FS_RELATIVE_PATH = "src/native/native-fs.ts";
 const WORKSPACE_RUNTIME_BOOTSTRAP_PATH = "src/backend/agent/workspace/runtime/bootstrap.ts";
-const APP_ERROR_RELATIVE_PATH = "src/shared/error/app-error.ts";
 const SYSTEM_PROXY_HTTP_CLIENT_RELATIVE_PATH = "src/backend/network/system-proxy-http-client.ts";
 const BACKEND_SERVICES_RELATIVE_PATH = "src/backend/bootstrap/backend-services.ts";
 
@@ -30,7 +29,6 @@ export function create_backend_boundary_rules() {
     create_llm_model_dependency_rule(),
     create_native_fs_boundary_rule(),
     create_sqlite_boundary_rule(),
-    create_app_error_definition_rule(),
     create_sse_json_boundary_rule(),
   ];
 }
@@ -382,32 +380,6 @@ function create_sqlite_boundary_rule() {
   };
 }
 
-/** 错误定义表只保存结构策略，公开文案继续由 i18n 持有。 */
-function create_app_error_definition_rule() {
-  return {
-    name: "错误定义表边界",
-    check: (context) => {
-      const error_file = context.files.find((file_path) => {
-        return context.relative_path(file_path) === APP_ERROR_RELATIVE_PATH;
-      });
-      if (error_file === undefined) {
-        return [];
-      }
-
-      const content = context.read_file(error_file);
-      const definition_block = read_app_error_definition_block(content);
-      const relative_path = context.relative_path(error_file);
-      return find_pattern_errors(definition_block.content, /\b(?:message|action)\s*:/g, () => {
-        return "APP_ERROR_DEFINITIONS 只能保存数据读取策略，用户可见文案必须放在 i18n 资源";
-      }).map((match) => ({
-        ...match,
-        line: match.line + definition_block.start_line - 1,
-        relative_path,
-      }));
-    },
-  };
-}
-
 /** SSE 公开 data 统一使用严格 JSON 序列化。 */
 function create_sse_json_boundary_rule() {
   return {
@@ -495,17 +467,4 @@ function is_database_or_migration_path(relative_path) {
     relative_path.startsWith("src/backend/database/") ||
     relative_path.startsWith("src/backend/migration/")
   );
-}
-
-/** 只截取错误定义常量，避免同文件接口字段产生误报。 */
-function read_app_error_definition_block(content) {
-  const start = content.indexOf("export const APP_ERROR_DEFINITIONS");
-  if (start < 0) {
-    return { content: "", start_line: 1 };
-  }
-  const end = content.indexOf("export interface AppErrorOptions", start);
-  return {
-    content: end < 0 ? content.slice(start) : content.slice(start, end),
-    start_line: content.slice(0, start).split(/\r?\n/).length,
-  };
 }

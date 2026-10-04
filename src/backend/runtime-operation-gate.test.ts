@@ -6,7 +6,9 @@ describe("RuntimeOperationGate", () => {
   it("技能写入与 Agent 双向互斥，失败后释放占用且不限制其它模型任务", async () => {
     const gate = new RuntimeOperationGate();
     const lease = gate.begin_runtime("agent");
-    await expect(gate.run_skill_write(() => undefined)).rejects.toThrow("runtime.busy");
+    await expect(gate.run_skill_write(() => undefined)).rejects.toThrow(
+      expect.objectContaining({ code: "runtime.busy" }),
+    );
     gate.finish_runtime(lease);
     let release!: () => void;
     const writing = gate.run_skill_write(
@@ -15,7 +17,9 @@ describe("RuntimeOperationGate", () => {
           release = resolve;
         }),
     );
-    expect(() => gate.begin_runtime("agent")).toThrow("runtime.busy");
+    expect(() => gate.begin_runtime("agent")).toThrow(
+      expect.objectContaining({ code: "runtime.busy" }),
+    );
     const batch = gate.begin_runtime("batch_translation");
     release();
     await writing;
@@ -65,7 +69,9 @@ describe("RuntimeOperationGate", () => {
 
     const lease = gate.begin_runtime("agent");
     expect(gate.get_snapshot()).toEqual({ revision: 1, owner: "agent" });
-    expect(() => gate.begin_runtime("batch_translation")).toThrow("runtime.busy");
+    expect(() => gate.begin_runtime("batch_translation")).toThrow(
+      expect.objectContaining({ code: "runtime.busy" }),
+    );
     gate.finish_runtime(lease);
 
     expect(gate.get_snapshot()).toEqual({ revision: 2, owner: null });
@@ -85,13 +91,19 @@ describe("RuntimeOperationGate", () => {
         }),
     );
 
-    expect(() => gate.begin_runtime("batch_translation")).toThrow("runtime.busy");
-    await expect(gate.run_project_write(() => undefined)).rejects.toThrow("runtime.busy");
+    expect(() => gate.begin_runtime("batch_translation")).toThrow(
+      expect.objectContaining({ code: "runtime.busy" }),
+    );
+    await expect(gate.run_project_write(() => undefined)).rejects.toThrow(
+      expect.objectContaining({ code: "runtime.busy" }),
+    );
     release_write();
     await running_write;
 
     const runtime_lease = gate.begin_runtime("batch_translation");
-    await expect(gate.run_project_write(() => undefined)).rejects.toThrow("runtime.busy");
+    await expect(gate.run_project_write(() => undefined)).rejects.toThrow(
+      expect.objectContaining({ code: "runtime.busy" }),
+    );
     gate.finish_runtime(runtime_lease);
   });
 
@@ -110,7 +122,9 @@ describe("RuntimeOperationGate", () => {
   it("Agent 项目写只在 Agent 运行租约内放行", async () => {
     const gate = new RuntimeOperationGate();
 
-    await expect(gate.run_agent_project_write(() => undefined)).rejects.toThrow("runtime.busy");
+    await expect(gate.run_agent_project_write(() => undefined)).rejects.toThrow(
+      expect.objectContaining({ code: "runtime.busy" }),
+    );
     const lease = gate.begin_runtime("agent");
     await expect(gate.run_agent_project_write(() => "ok")).resolves.toBe("ok");
     gate.finish_runtime(lease);

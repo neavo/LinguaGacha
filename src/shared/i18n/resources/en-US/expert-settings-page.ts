@@ -40,7 +40,6 @@ export const en_us_expert_settings_page = {
     },
   },
   feedback: {
-    refresh_failed: "Unable to refresh expert settings right now. Please try again later …",
     preceding_lines_threshold_invalid:
       "Preceding lines threshold must be a number within the valid range …",
   },

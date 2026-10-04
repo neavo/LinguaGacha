@@ -1,3 +1,4 @@
+import { push_error_toast } from "@frontend/app/feedback/desktop-toast";
 import { useCallback, type MutableRefObject } from "react";
 
 import type { LocaleKey } from "@frontend/app/locale/locale-context";
@@ -11,7 +12,6 @@ import {
   type ProofreadingClientItem,
   type ProofreadingListView,
 } from "@shared/proofreading/proofreading-types";
-import { resolve_visible_error_message } from "@frontend/app/feedback/visible-error-message";
 import {
   create_search_pattern,
   find_first_translation_replace,
@@ -25,7 +25,7 @@ const PROOFREADING_REPLACE_SCAN_CHUNK_ROWS = 256;
 
 type LocaleTextResolver = (key: LocaleKey, params?: Record<string, string>) => string;
 
-type ProofreadingToastPusher = (kind: "success" | "warning" | "error", message: string) => void;
+type ProofreadingToastPusher = (kind: "success" | "warning", message: string) => void;
 
 type ProofreadingProjectWriteRunner = (args: {
   path: string;
@@ -86,14 +86,7 @@ export function useProofreadingReplaceActions(
       }
       search_pattern = compiled_pattern;
     } catch (error) {
-      options.push_toast(
-        "error",
-        `${options.t("proofreading_page.feedback.regex_invalid")}: ${resolve_visible_error_message(
-          error,
-          options.t,
-          "",
-        )}`,
-      );
+      push_error_toast(options.t("proofreading_page.feedback.replace_failed"), error);
       return;
     }
 
@@ -190,14 +183,7 @@ export function useProofreadingReplaceActions(
       }
       search_pattern = compiled_pattern;
     } catch (error) {
-      options.push_toast(
-        "error",
-        `${options.t("proofreading_page.feedback.regex_invalid")}: ${resolve_visible_error_message(
-          error,
-          options.t,
-          "",
-        )}`,
-      );
+      push_error_toast(options.t("proofreading_page.feedback.replace_failed"), error);
       return;
     }
 
