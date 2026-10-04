@@ -1,28 +1,24 @@
 import path from "node:path";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import lockfile from "proper-lockfile";
-import type { Credential, CredentialStore } from "@earendil-works/pi-ai";
 import { default_native_fs } from "../../native/native-fs";
 import { AppError } from "../../shared/error";
 import type { ChatGPTCredential } from "./chatgpt-oauth";
 
-/** 已验证账户与已签发客户端的映射，退出后保留用于再次授权。 */
-export type ChatGPTRegistration = { client_id: string; subject: string; email: string };
 type AccountFile = {
   host_id: string; // 同一应用数据目录的稳定安装标识。
-  registration: ChatGPTRegistration | null; // 注册映射独立于 token 生命周期。
   credential: ChatGPTCredential | null; // 锁内整体替换的当前会话凭据。
   login_id: string | null; // 跨进程取消与退出使旧浏览器回调失效。
 };
 
-const LOCK_RETRIES = { retries: 100, minTimeout: 100, maxTimeout: 250 }; // 等待正在完成的刷新或撤销，最多约 25 秒。
+const LOCK_RETRIES = { retries: 100, minTimeout: 100, maxTimeout: 250 }; // 跨进程锁等待有界，刷新锁覆盖最长 15 秒的 token 请求。
 
-/** 一个文件与一把跨进程锁拥有登录、刷新和退出写入，原子替换避免半份凭据。 */
-export class ChatGPTCredentialStore implements CredentialStore {
+/** 账户写锁只保护本地提交，会话刷新锁单独协调网络轮换。 */
+export class ChatGPTCredentialStore {
   /** 文件路径由应用路径服务注入。 */
   public constructor(private readonly file_path: string) {}
 
-  /** 缺失文件表示尚未注册，损坏文件保留 IO 错误供调用方处理。 */
+  /** 只读取当前字段，旧文件的注册绑定在下次原子写入时自然移除。 */
   public read_account(): AccountFile {
     try {
       const value = JSON.parse(
@@ -30,60 +26,32 @@ export class ChatGPTCredentialStore implements CredentialStore {
       ) as AccountFile;
       if (typeof value.host_id !== "string" || !Object.hasOwn(value, "credential"))
         throw new Error("Invalid ChatGPT credential file");
-      return value;
+      return { host_id: value.host_id, credential: value.credential, login_id: value.login_id };
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === "ENOENT")
-        return { host_id: "", registration: null, credential: null, login_id: null };
+        return { host_id: "", credential: null, login_id: null };
       throw new AppError("file.io_failed", { cause: error });
     }
   }
 
-  /** Pi 读取原始凭据，到期判断交给 `Models.getAuth()`。 */
-  public async read(provider_id: string): Promise<Credential | undefined> {
-    return provider_id === "openai" ? (this.read_account().credential ?? undefined) : undefined;
-  }
-
-  /** 满足 Pi 凭据枚举契约，只返回非敏感元数据。 */
-  public async list(): Promise<readonly { providerId: string; type: "oauth" }[]> {
-    return this.read_account().credential === null ? [] : [{ providerId: "openai", type: "oauth" }];
-  }
-
-  /** Pi 刷新回调在文件锁内运行，明确失效时清除同一会话的 token。 */
-  public async modify(
-    _provider_id: string,
-    change: (current: Credential | undefined) => Promise<Credential | undefined>,
-  ): Promise<Credential | undefined> {
-    return this.update(async (account) => {
-      try {
-        const credential = await change(account.credential ?? undefined);
-        if (credential !== undefined) account.credential = credential as ChatGPTCredential;
-      } catch (error) {
-        // Pi 用 ModelsError 包装 refresh 错误；仍在同一锁内清除已确认失效的旧会话。
-        for (let current = error; current instanceof Error; current = current.cause)
-          if (
-            current instanceof AppError &&
-            (current.code === "model.auth_required" ||
-              current.diagnostic_context["auth_invalid"] === true)
-          ) {
-            account.credential = null;
-            this.save(account);
-            break;
-          }
-        throw error;
-      }
-      return account.credential ?? undefined;
+  /** 同一会话的刷新跨进程串行，新登录使用独立的锁，不等待旧会话网络请求。 */
+  public async with_refresh_lock<T>(session_id: string, operation: () => Promise<T>): Promise<T> {
+    default_native_fs.make_dir(path.dirname(this.file_path));
+    const session_key = createHash("sha256").update(session_id).digest("hex");
+    // proper-lockfile 按目标路径登记锁，刷新与账户写入必须使用不同目标。
+    const release = await lockfile.lock(`${this.file_path}.refresh-${session_key}`, {
+      realpath: false,
+      retries: LOCK_RETRIES,
     });
+    try {
+      return await operation();
+    } finally {
+      await release();
+    }
   }
 
-  /** Pi 删除契约与其它写入共用文件锁，账户注册信息继续保留。 */
-  public async delete(): Promise<void> {
-    await this.update(async (account) => {
-      account.credential = null;
-    });
-  }
-
-  /** 锁内总是重新读磁盘；浏览器等待不占锁，token 轮换从网络交换覆盖到落盘。 */
-  public async update<T>(operation: (account: AccountFile) => Promise<T>): Promise<T> {
+  /** 锁内重新读磁盘并同步提交；回调只修改本地记录，不执行网络操作。 */
+  public async update<T>(operation: (account: AccountFile) => T): Promise<T> {
     default_native_fs.make_dir(path.dirname(this.file_path));
     const release = await lockfile.lock(this.file_path, {
       realpath: false,
@@ -92,7 +60,7 @@ export class ChatGPTCredentialStore implements CredentialStore {
     try {
       const account = this.read_account();
       if (account.host_id === "") account.host_id = `urn:uuid:${randomUUID()}`;
-      const result = await operation(account);
+      const result = operation(account);
       this.save(account);
       return result;
     } finally {

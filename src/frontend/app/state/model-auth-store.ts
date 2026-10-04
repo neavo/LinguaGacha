@@ -4,7 +4,7 @@ import type { ChatGPTAuthSnapshot } from "@shared/model-auth";
 let snapshot: ChatGPTAuthSnapshot | null = null;
 const listeners = new Set<() => void>();
 
-/** HTTP 回包与 SSE 使用同一账户摘要，页面卸载不结束后端登录流程。 */
+/** HTTP 回包与 SSE 使用同一账户及授权摘要，迟到回包不能覆盖新结果。 */
 export function apply_model_auth_snapshot(next: ChatGPTAuthSnapshot): boolean {
   if (snapshot?.instance_id === next.instance_id && snapshot.revision > next.revision) return false;
   snapshot = next;

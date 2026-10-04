@@ -1,6 +1,6 @@
 import { exportJWK, generateKeyPair, SignJWT } from "jose";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { start_chatgpt_login, chatgpt_oauth } from "./chatgpt-oauth";
+import { start_chatgpt_login, refresh_chatgpt_credential } from "./chatgpt-oauth";
 
 const real_fetch = globalThis.fetch;
 afterEach(() => {
@@ -14,7 +14,6 @@ describe("ChatGPT 浏览器授权协议", () => {
     const controller = new AbortController();
     const login = await start_chatgpt_login({
       host_id: "urn:uuid:fixture-host",
-      registration: null,
       signal: controller.signal,
     });
     const url = new URL(login.url);
@@ -52,8 +51,18 @@ describe("ChatGPT 浏览器授权协议", () => {
         ),
       );
       await expect(
-        chatgpt_oauth.refresh(
-          { type: "oauth", access: "old", refresh: "refresh", expires: 0, clientId: "client" },
+        refresh_chatgpt_credential(
+          {
+            type: "oauth",
+            access: "old",
+            refresh: "refresh",
+            expires: 0,
+            clientId: "client",
+            subject: "account",
+            email: "account@example.test",
+            session_id: "session",
+            scopes: [],
+          },
           new AbortController().signal,
         ),
       ).rejects.toMatchObject({
@@ -72,7 +81,6 @@ describe("ChatGPT 浏览器授权协议", () => {
       const controller = new AbortController();
       const login = await start_chatgpt_login({
         host_id: "urn:uuid:fixture-host",
-        registration: null,
         signal: controller.signal,
       });
       const url = new URL(login.url);
@@ -145,16 +153,16 @@ describe("ChatGPT 浏览器授权协议", () => {
     },
   );
 
-  it("取消关闭真实回调监听，重复授权使用已签发 client ID", async () => {
+  it("取消关闭真实回调监听，新授权始终重新注册", async () => {
     const controller = new AbortController();
     const login = await start_chatgpt_login({
       host_id: "urn:uuid:host",
-      registration: { client_id: "saved-client", subject: "subject", email: "mail@example.test" },
       signal: controller.signal,
     });
     const url = new URL(login.url);
-    expect(url.searchParams.get("client_id")).toBe("saved-client");
-    expect(url.searchParams.has("agent_name_hint")).toBe(false);
+    expect(url.searchParams.get("client_id")).toBe("dynamic_agent_client");
+    expect(url.searchParams.has("agent_name_hint")).toBe(true);
+    expect(url.searchParams.has("login_hint")).toBe(false);
     const rejected = expect(login.completion).rejects.toMatchObject({ code: "runtime.cancelled" });
     controller.abort();
     await rejected;

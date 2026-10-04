@@ -3,6 +3,10 @@ import type { LocaleMessageSchema } from "../../types";
 
 export const en_us_model_page = {
   auth: {
+    open_login_page: "Open sign-in page in default browser",
+    copy_link: "Copy link",
+    copied: "Copied",
+    success: "Click to sign in …",
     login: "Click to sign in",
     logout: "Sign out",
   },

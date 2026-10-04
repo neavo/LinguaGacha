@@ -1,5 +1,5 @@
-import { type JSX, type ReactNode, useEffect, useState } from "react";
-import { api_fetch, open_external_url } from "@frontend/app/desktop/desktop-api";
+import { type JSX, type ReactNode, useEffect } from "react";
+import { api_fetch } from "@frontend/app/desktop/desktop-api";
 import { push_toast } from "@frontend/app/feedback/desktop-toast";
 import { resolve_visible_error_message } from "@frontend/app/feedback/visible-error-message";
 import { useI18n } from "@frontend/app/locale/locale-context";
@@ -19,11 +19,11 @@ import {
 export function ChatGPTAccountMenu(props: {
   readonly: boolean;
   on_logout: () => void;
+  on_login: () => void;
   children: ReactNode;
 }): JSX.Element {
   const { t } = useI18n();
   const snapshot = useModelAuthSnapshot();
-  const [busy, set_busy] = useState(false);
   useEffect(() => {
     let cancelled = false;
     // 只补读本地账户摘要，让 CLI 的退出或重新登录在再次打开设置时可见。
@@ -47,33 +47,13 @@ export function ChatGPTAccountMenu(props: {
     };
   }, [t]);
 
-  /** 每次点击取得同一后端登录地址，连接成功由 SSE 更新两态快照。 */
-  async function login(): Promise<void> {
-    set_busy(true);
-    try {
-      const result = await api_fetch<{ url: string }>("/api/models/auth/login", {});
-      await open_external_url(result.url);
-    } catch (error) {
-      push_toast(
-        "error",
-        resolve_visible_error_message(
-          error,
-          t,
-          error instanceof Error ? error.message : t("app.error.model.provider_failed.message"),
-        ),
-      );
-    } finally {
-      set_busy(false);
-    }
-  }
-
   const account_action = (
     <AppDropdownMenuGroup>
       <AppDropdownMenuItem
-        disabled={props.readonly || busy}
+        disabled={props.readonly}
         onClick={() => {
           if (snapshot?.connected) props.on_logout();
-          else void login();
+          else props.on_login();
         }}
       >
         {snapshot?.connected ? <LogOut /> : <LogIn />}

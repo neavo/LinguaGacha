@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { DesktopRefreshScheduler } from "@frontend/app/state/desktop-refresh-scheduler";
 import { useDesktopEventStream } from "@frontend/app/state/desktop-event-stream";
+import { useModelAuthSnapshot } from "./model-auth-store";
 import { format_i18n_message } from "@shared/i18n";
 
 const { open_event_stream_mock, api_get_mock, push_toast_mock } = vi.hoisted(() => {
@@ -23,6 +24,7 @@ vi.mock("@frontend/app/desktop/desktop-api", async (importOriginal) => {
         instance_id: "auth-test",
         revision: 0,
         connected: false,
+        login: null,
       },
     })),
     open_event_stream: open_event_stream_mock,
@@ -37,6 +39,7 @@ let container: HTMLDivElement | null = null;
 
 type DesktopEventStreamOptions = Parameters<typeof useDesktopEventStream>[0];
 
+/** 保留浏览器事件注册与重连入口，载荷经过真实消费函数。 */
 function create_event_source_stub(): {
   event_source: EventSource;
   emit: (event_name: string, payload: Record<string, unknown>) => void;
@@ -90,17 +93,20 @@ async function wait_for_condition(predicate: () => boolean, attempts = 20): Prom
   throw new Error("等待事件流状态收敛失败。");
 }
 
+/** 从公开账户订阅观察 SSE 的实际落地结果。 */
 function EventStreamProbe(props: {
   options: Omit<DesktopEventStreamOptions, "schedulerRef">;
-}): JSX.Element | null {
+}): JSX.Element {
   const scheduler_ref = useRef<DesktopRefreshScheduler | null>(null);
+  const auth = useModelAuthSnapshot();
   useDesktopEventStream({
     ...props.options,
     schedulerRef: scheduler_ref,
   });
-  return null;
+  return <output>{auth?.login?.status}</output>;
 }
 
+/** 挂载唯一订阅拥有者，测试通过模拟浏览器事件推进状态。 */
 function render_event_stream(options: Omit<DesktopEventStreamOptions, "schedulerRef">): void {
   container = document.createElement("div");
   document.body.append(container);
@@ -137,7 +143,7 @@ function create_event_stream_options(
 }
 
 describe("useDesktopEventStream", () => {
-  it("浏览器授权的异步失败通过全局 Toast 展示", () => {
+  it("账户事件只更新快照，授权反馈由登录流程负责", () => {
     const event_stream = create_event_source_stub();
     open_event_stream_mock.mockReturnValue(event_stream.event_source);
     render_event_stream(create_event_stream_options());
@@ -147,11 +153,16 @@ describe("useDesktopEventStream", () => {
           instance_id: "failed-login",
           revision: 1,
           connected: false,
+          login: {
+            id: "attempt",
+            status: "failed",
+            error: { code: "model.provider_failed", details: { message: "Permission denied" } },
+          },
         },
-        error: { code: "model.provider_failed", details: { message: "Permission denied" } },
       }),
     );
-    expect(push_toast_mock).toHaveBeenCalledWith("error", "Permission denied");
+    expect(container?.textContent).toBe("failed");
+    expect(push_toast_mock).not.toHaveBeenCalled();
   });
   afterEach(async () => {
     if (root !== null) {

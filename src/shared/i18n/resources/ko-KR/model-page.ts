@@ -2,6 +2,10 @@ import type { zh_cn_model_page } from "../zh-CN/model-page";
 import type { LocaleMessageSchema } from "../../types";
 export const ko_kr_model_page = {
   auth: {
+    open_login_page: "기본 브라우저에서 로그인 페이지 열기",
+    copy_link: "링크 복사",
+    copied: "복사됨",
+    success: "클릭하여 로그인 …",
     login: "클릭하여 로그인",
     logout: "로그아웃",
   },
