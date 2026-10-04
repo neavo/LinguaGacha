@@ -1,3 +1,4 @@
+import type { JsonValue } from "@earendil-works/chord";
 import { BACKGROUND_CONTEXT, withAbortSignal } from "@earendil-works/chord/context";
 import {
   createRegistry,
@@ -20,6 +21,7 @@ import {
   type Submission,
   type SubmissionRecord,
   type TaskId,
+  type TaskRecord,
   type LiveState,
   type UsageState,
 } from "@earendil-works/pi-durable";
@@ -53,11 +55,7 @@ import {
   type AgentSessionState,
   type AgentInputRecord,
 } from "./agent-session-state";
-import {
-  project_agent_session_entries,
-  assistant_entry_id,
-  type AgentTaskFact,
-} from "./agent-session-view";
+import { project_agent_session_entries, assistant_entry_id } from "./agent-session-view";
 import { AGENT_KEEP_RECENT_TOKENS, read_agent_session_context } from "./agent-session-context";
 import { append_agent_session_seed, type AgentSessionSeed } from "./agent-session-seed";
 import { AgentSessionLog } from "./agent-log";
@@ -124,9 +122,10 @@ export class AgentSession {
   private readonly records = new Map<number, EntryRecord>(); // 完整历史缓存保留压缩前的公开条目
   private readonly conversations = new Map<number, ConversationRecord>(); // 祖先关系用于计算分叉的可见历史
   private readonly submissions = new Map<number, SubmissionRecord>(); // 受理回执关联产品输入与实际历史条目
-  private readonly compactions = new Map<number, AgentTaskFact>(); // 只有压缩任务需要独立公开条目
+  private readonly compactions = new Map<number, TaskRecord<JsonValue, JsonValue, JsonValue>>(); // 只有压缩任务需要独立公开条目
   private readonly live = new Map<number, LiveState>(); // 各分支的已提交流式进度
   private readonly usages = new Map<number, UsageState>(); // 跨分支累计消耗，修订保留已发生费用
+  private readonly compactionFailures: Array<{ reason: string; error: string }> = []; // 提交后刷新时交付宿主诊断
   private compactionReason: "manual" | "threshold" | "length" = "manual";
   private revision = 0; // 丢弃跨越新提交的异步上下文读取结果
   private refreshWork: Promise<void> | null = null;
@@ -293,6 +292,27 @@ export class AgentSession {
       BACKGROUND_CONTEXT,
     );
     session.unsubscribe = session.harness.subscribeCommits((publication) => {
+      // 整批文档先接收，后续状态判断不依赖提交内各类 change 的排列顺序。
+      for (const change of publication.changes) {
+        if (change.type === "document" && change.value !== null) {
+          // kind 对应固定 token 的 JSON 契约，值为 SDK 提供的不可变提交快照。
+          if (
+            change.record.kind === AgentSessionDoc.definition.kind &&
+            change.record.key === options.sessionId
+          )
+            session.state = change.value as AgentSessionState;
+          else if (
+            change.record.kind === LiveDoc.definition.kind &&
+            change.conversationId !== undefined
+          )
+            session.live.set(change.conversationId, change.value as LiveState);
+          else if (
+            change.record.kind === UsageDoc.definition.kind &&
+            change.conversationId !== undefined
+          )
+            session.usages.set(change.conversationId, change.value as UsageState);
+        }
+      }
       for (const change of publication.changes) {
         if (change.type === "entry") {
           session.records.set(change.value.id, change.value);
@@ -333,37 +353,8 @@ export class AgentSession {
             session.execution.recoveryUsed = false;
         } else if (change.type === "task" && change.value.kind === CompactionTask.definition.name) {
           const previous = session.compactions.get(change.value.id);
-          const createdAt = previous?.createdAt ?? Date.now();
-          session.compactions.set(change.value.id, {
-            record: change.value,
-            createdAt,
-          });
-          if (previous === undefined) {
-            const id = change.value.id;
-            void session
-              .change((state) => {
-                state.taskCreatedAt[id] = createdAt;
-              })
-              .catch(options.onReport);
-          }
+          session.compactions.set(change.value.id, change.value);
           session.observe_compaction(change.value.id, previous);
-        } else if (change.type === "document" && change.value !== null) {
-          // kind 对应固定 token 的 JSON 契约，值为 SDK 提供的不可变提交快照。
-          if (
-            change.record.kind === AgentSessionDoc.definition.kind &&
-            change.record.key === options.sessionId
-          )
-            session.state = change.value as AgentSessionState;
-          else if (
-            change.record.kind === LiveDoc.definition.kind &&
-            change.conversationId !== undefined
-          )
-            session.live.set(change.conversationId, change.value as LiveState);
-          else if (
-            change.record.kind === UsageDoc.definition.kind &&
-            change.conversationId !== undefined
-          )
-            session.usages.set(change.conversationId, change.value as UsageState);
         }
       }
       session.revision = publication.seq;
@@ -390,6 +381,7 @@ export class AgentSession {
       session.closed = true;
       session.unsubscribe();
       await session.harness.close(BACKGROUND_CONTEXT);
+      session.flush_diagnostics();
       throw error;
     }
     return session;
@@ -446,10 +438,7 @@ export class AgentSession {
     for (const record of await scan((cursor) =>
       storage.scanTasks({ kind: CompactionTask.definition.name }, 100, cursor, BACKGROUND_CONTEXT),
     ))
-      this.compactions.set(record.id, {
-        record,
-        createdAt: this.state.taskCreatedAt[record.id] ?? 0,
-      });
+      this.compactions.set(record.id, record);
   }
 
   /** 先全部标记取消，再启动 SDK 收尾，防止打开历史时重新运行工具或模型。 */
@@ -898,7 +887,11 @@ export class AgentSession {
       } finally {
         this.closed = true;
         this.unsubscribe();
-        await this.harness.close(BACKGROUND_CONTEXT);
+        try {
+          await this.harness.close(BACKGROUND_CONTEXT);
+        } finally {
+          this.flush_diagnostics();
+        }
       }
     })();
     return this.closing;
@@ -930,6 +923,7 @@ export class AgentSession {
       .then(async () => {
         while (this.dirty && !this.closed) {
           this.dirty = false;
+          this.flush_diagnostics();
           if (this.conversation === undefined) continue;
           const revision = this.revision;
           const conversation = this.conversation;
@@ -960,12 +954,9 @@ export class AgentSession {
           this.entries = project_agent_session_entries(
             this.branch_records(),
             this.submissions,
-            [...this.compactions.values()]
-              .filter(({ record }) => this.visible(record.conversationId, record.id))
-              .map((task) => ({
-                ...task,
-                createdAt: this.state.taskCreatedAt[task.record.id] ?? task.createdAt,
-              })),
+            [...this.compactions.values()].filter((record) =>
+              this.visible(record.conversationId, record.id),
+            ),
             this.live.get(this.conversation.id) ?? {},
             this.state,
           );
@@ -991,19 +982,29 @@ export class AgentSession {
   /** 命令回执等待公开投影追上全部已观察提交。 */
   public async flush(): Promise<void> {
     while (this.refreshWork !== null) await this.refreshWork;
+    this.flush_diagnostics();
+  }
+  /** 提交线外统一处理诊断，关闭与命令回执等待同一出口。 */
+  private flush_diagnostics(): void {
+    this.log.flush();
+    for (const { reason, error } of this.compactionFailures.splice(0))
+      this.options.onCompactionFailure(reason, error);
   }
   /** 每个原生压缩任务只记录一次起止，手动任务附带产品触发原因。 */
-  private observe_compaction(id: number, previous: AgentTaskFact | undefined): void {
+  private observe_compaction(
+    id: number,
+    previous: TaskRecord<JsonValue, JsonValue, JsonValue> | undefined,
+  ): void {
     const task = this.compactions.get(id)!;
-    const input = task.record.input;
+    const input = task.input;
     const nativeReason =
       typeof input === "object" && input !== null && "reason" in input
         ? String(input.reason)
         : "manual";
     const reason = nativeReason === "manual" ? this.compactionReason : nativeReason;
     if (previous === undefined) this.log.handle_event({ type: "compaction_start", reason });
-    if (task.record.state.status === "terminal" && previous?.record.state.status !== "terminal") {
-      const outcome = task.record.state.outcome;
+    if (task.state.status === "terminal" && previous?.state.status !== "terminal") {
+      const outcome = task.state.outcome;
       const error = outcome.status === "failed" ? outcome.error.message : undefined;
       this.log.handle_event({
         type: "compaction_end",
@@ -1012,8 +1013,7 @@ export class AgentSession {
         ...(outcome.status === "completed" ? { result: outcome.result } : {}),
         ...(error === undefined ? {} : { errorMessage: error }),
       });
-      if (error !== undefined)
-        queueMicrotask(() => this.options.onCompactionFailure(reason, error));
+      if (error !== undefined) this.compactionFailures.push({ reason, error });
     }
   }
 }

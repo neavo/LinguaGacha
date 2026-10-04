@@ -123,6 +123,7 @@ function project() {
 async function open(store: AgentSessionStore) {
   const provider = fauxProvider();
   const models = createModels();
+  const append = vi.fn();
   const session = await AgentSession.open({
     sessionId: (await store.read())!.id,
     storage: await store.open_storage(),
@@ -133,7 +134,7 @@ async function open(store: AgentSessionStore) {
     systemPrompt: () => "",
     skillsPrompt: () => "",
     continueText: () => "继续",
-    log: new AgentSessionLog({ append: vi.fn() }),
+    log: new AgentSessionLog({ append }),
     onChange: vi.fn(),
     onModelEvent: vi.fn(),
     onReport: (error) => {
@@ -141,7 +142,7 @@ async function open(store: AgentSessionStore) {
     },
     onCompactionFailure: vi.fn(),
   });
-  return { session, provider, models };
+  return { session, provider, models, append };
 }
 /** 经产品轮次入口提交并结算，供内存与磁盘场景共用。 */
 async function talk(session: AgentSession, text: string) {
@@ -216,6 +217,53 @@ it("既有身份重开恢复历史，无模型时可修订助手，后续请求�
   await restored.session.close();
   await store.close();
   database.close();
+});
+
+it("压缩条目只依赖 SDK 任务，重开保留身份顺序和状态，关闭冲刷待写日志", async () => {
+  const { database, file } = project();
+  const store = database.open_agent_store(file);
+  await store.create("compaction-session");
+  const first = await open(store);
+  let restored: Awaited<ReturnType<typeof open>> | undefined;
+  try {
+    first.models.setProvider(first.provider.provider);
+    await first.session.configure(first.provider.getModel(), "off");
+    first.provider.setResponses([
+      fauxAssistantMessage("回答一"),
+      fauxAssistantMessage("回答二"),
+      fauxAssistantMessage("摘要"),
+    ]);
+    const history = "history ".repeat(16_000);
+    await talk(first.session, history);
+    const execution = await talk(first.session, history);
+    await first.session.compact("manual", execution);
+    const expected = first.session.entries.map(({ kind, id, status }) => ({ kind, id, status }));
+    const compacted = first.session.entries.filter((entry) => entry.kind === "context_compaction");
+    expect(compacted.length).toBeGreaterThan(0);
+    for (const entry of compacted)
+      expect(entry).toEqual({
+        kind: "context_compaction",
+        id: expect.any(String),
+        status: "success",
+      });
+    first.session.log.begin_run("closing-round", "prompt");
+    await first.session.close();
+    expect(first.append).toHaveBeenCalledWith(
+      expect.objectContaining({
+        content: expect.objectContaining({ event: "run_start", round_id: "closing-round" }),
+      }),
+    );
+    restored = await open(store);
+    expect(restored.session.entries.map(({ kind, id, status }) => ({ kind, id, status }))).toEqual(
+      expected,
+    );
+    expect(restored.provider.state.callCount).toBe(0);
+  } finally {
+    await restored?.session.close();
+    await first.session.close();
+    await store.close();
+    database.close();
+  }
 });
 
 it("遗留工具任务只执行 SDK 取消收尾，恢复后保留公开工具条目且不重跑", async () => {

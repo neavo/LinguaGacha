@@ -956,14 +956,19 @@ function normalize_context(value: unknown): AgentContextSnapshot | null {
 
 /** 按条目种类收窄消息及生命周期字段，无效条目交由上层判定。 */
 function normalize_entry(value: unknown): AgentEntry[] {
-  if (
-    !is_json_record(value) ||
-    typeof value["id"] !== "string" ||
-    typeof value["createdAt"] !== "number" ||
-    !Number.isInteger(value["createdAt"])
-  ) {
-    return [];
+  if (!is_json_record(value) || typeof value["id"] !== "string") return [];
+  if (value["kind"] === "context_compaction") {
+    const status = normalize_entry_status(value["status"]);
+    if (status === null || status === "stopped") return [];
+    return [
+      {
+        kind: "context_compaction",
+        id: value["id"],
+        status,
+      },
+    ];
   }
+  if (typeof value["createdAt"] !== "number" || !Number.isInteger(value["createdAt"])) return [];
   if (value["kind"] === "user_message") {
     const status = normalize_entry_status(value["status"]);
     const ended_at = value["endedAt"];
@@ -1014,18 +1019,6 @@ function normalize_entry(value: unknown): AgentEntry[] {
         kind: "assistant_message",
         id: value["id"],
         parts,
-        status,
-        createdAt: value["createdAt"],
-      },
-    ];
-  }
-  if (value["kind"] === "context_compaction") {
-    const status = normalize_entry_status(value["status"]);
-    if (status === null || status === "stopped") return [];
-    return [
-      {
-        kind: "context_compaction",
-        id: value["id"],
         status,
         createdAt: value["createdAt"],
       },

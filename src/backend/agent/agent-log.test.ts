@@ -61,6 +61,7 @@ describe("AgentSessionLog", () => {
       details.text = "修改后的结果";
       log.finish_run("success");
 
+      log.flush();
       const date = manager.files.list_dates()[0]!;
       const records = fs
         .readFileSync(path.join(directory.path, `app.${date}.jsonl`), "utf8")
@@ -122,8 +123,10 @@ describe("AgentSessionLog", () => {
       message,
     });
     log.request_stop();
+    log.flush();
     expect(records().filter((record) => record.event === "message")).toHaveLength(1);
     log.finish_run("success");
+    log.flush();
     const messages = records().filter((record) => record.event === "message");
     expect(messages).toMatchObject([
       {
@@ -155,6 +158,8 @@ describe("AgentSessionLog", () => {
       errorMessage: "压缩失败",
     });
     log.finish_run("success");
+    expect(records()).toEqual([]);
+    log.flush();
     const starts = records().filter((record) => record.event === "run_start");
     expect(starts[0]?.session_id).toBe(starts[1]?.session_id);
     expect(starts[0]?.round_id).toBe(starts[1]?.round_id);

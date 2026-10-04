@@ -9,7 +9,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type {
   AgentAssistantMessageParts,
-  AgentContextCompactionEntry,
   AgentEntry,
   AgentEntryStatus,
   AgentSkillSnapshot,
@@ -351,7 +350,7 @@ describe("AgentTimeline", () => {
     ];
     const view = await render_timeline([
       ...round,
-      compaction_entry("compaction-1", "error", 1_500),
+      { kind: "context_compaction", id: "compaction-1", status: "error" },
     ]);
     expect(view.querySelector(".agent-context-compaction")?.textContent).toContain(
       "agent_page.compaction.error",
@@ -731,13 +730,4 @@ function tool_entry(
   }
   if (output === null) throw new Error("成功或失败工具必须携带输出");
   return { ...base, status, output: [output] };
-}
-
-/** 以独立压缩事件验证其在时间线中的顺序与状态。 */
-function compaction_entry(
-  id: string,
-  status: AgentContextCompactionEntry["status"],
-  createdAt: number,
-): AgentContextCompactionEntry {
-  return { kind: "context_compaction", id, status, createdAt };
 }

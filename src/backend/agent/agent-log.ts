@@ -1,3 +1,4 @@
+import type { LogAppendPayload } from "../../shared/log";
 import type { Message, AssistantMessage } from "@earendil-works/pi-ai";
 
 /** 日志消费已经观察到的执行事实，独立于 SDK 的公开事件适配与界面终态。 */
@@ -89,8 +90,9 @@ export type AgentLogContent = AgentLogEvent & {
 type AgentLogRun = { run_id: string; round_id: string; started_at: string; stopped: boolean };
 type AgentLogMessage = { started_at: string; parts: AgentLogPart[] };
 
-/** 每个 SDK runtime 持有自己的日志归属；只保留未结束操作，不复制公开时间线。 */
+/** 每个 SDK runtime 持有执行归属和待写诊断，随会话刷新及关闭完成落盘。 */
 export class AgentSessionLog {
+  private readonly pending: LogAppendPayload[] = []; // 接收时冻结时间与身份，提交线外统一落盘
   private readonly session_id = uuidv7(); // reset 后的迟到事件仍属于创建它的 runtime
   private run: AgentLogRun | null = null; // 仅活动尝试拥有 round/run 关联与停止意图
   private assistant: AgentLogMessage | null = null; // 缓存尚未结束的可见正文，供停止时结算
@@ -262,7 +264,12 @@ export class AgentSessionLog {
     });
   }
 
-  /** 附加会话身份并写入日志窗口，正文不进入终端。 */
+  /** 会话在提交回调之外刷新或关闭时，按接收顺序写出日志。 */
+  public flush(): void {
+    for (const payload of this.pending.splice(0)) this.log_manager.append(payload);
+  }
+
+  /** 在接收时固定会话身份和载荷，待会话刷新时写入日志窗口。 */
   private append(event: AgentLogEvent): void {
     const content: AgentLogContent = {
       kind: "agent",
@@ -270,7 +277,7 @@ export class AgentSessionLog {
       session_id: this.session_id,
       ...(this.run === null ? {} : { round_id: this.run.round_id, run_id: this.run.run_id }),
     };
-    this.log_manager.append({
+    this.pending.push({
       level: "status" in event && event.status === "error" ? "error" : "info",
       source: "agent",
       content,

@@ -11,11 +11,6 @@ import { JsonTool } from "../../shared/utils/json-tool";
 import { project_assistant_message_parts } from "./agent-message";
 import type { AgentSessionState } from "./agent-session-state";
 
-/** SDK 任务补上产品记录的绝对时间，供重开后的压缩条目沿用。 */
-export type AgentTaskFact = {
-  record: TaskRecord<JsonValue, JsonValue, JsonValue>;
-  createdAt: number;
-};
 /** 流式与已提交响应按生成任务共用身份，手工修订以条目身份区分。 */
 export const assistant_entry_id = (task: number | undefined, entry: number): string =>
   `assistant:${task ?? `entry:${entry}`}`;
@@ -24,7 +19,7 @@ export const assistant_entry_id = (task: number | undefined, entry: number): str
 export function project_agent_session_entries(
   records: readonly EntryRecord[],
   submissions: ReadonlyMap<number, SubmissionRecord>,
-  tasks: readonly AgentTaskFact[],
+  tasks: readonly TaskRecord<JsonValue, JsonValue, JsonValue>[],
   live: Readonly<LiveState>,
   state: Readonly<AgentSessionState>,
 ): AgentEntry[] {
@@ -144,7 +139,7 @@ export function project_agent_session_entries(
         },
       });
   }
-  for (const { record, createdAt } of tasks) {
+  for (const record of tasks) {
     if (record.kind !== "pi.compaction") continue;
     const state = record.state;
     output.push({
@@ -152,7 +147,6 @@ export function project_agent_session_entries(
       entry: {
         kind: "context_compaction",
         id: `compaction:${record.id}`,
-        createdAt,
         status:
           state.status === "terminal"
             ? state.outcome.status === "completed"
@@ -162,9 +156,14 @@ export function project_agent_session_entries(
       },
     });
   }
+  // 压缩终态由 SDK 任务拥有，停止快照只覆盖产品消息与工具。
   const projected = output
     .sort((a, b) => a.order - b.order)
-    .map(({ entry }) => state.stoppedEntries[entry.id]?.entry ?? entry);
+    .map(({ entry }) =>
+      entry.kind === "context_compaction"
+        ? entry
+        : (state.stoppedEntries[entry.id]?.entry ?? entry),
+    );
   // 停止时冲刷的最后正文可能尚未进入 SDK 节流提交，只在所属轮次仍可见时补回。
   for (const { entry, roundId } of Object.values(state.stoppedEntries)) {
     if (projected.some((candidate) => candidate.id === entry.id)) continue;

@@ -20,7 +20,6 @@ export type AgentRoundRecord = {
 export type AgentSessionState = {
   activeConversationId: ConversationId | null; // 与 SDK 分叉在同一事务中更新
   seeded: boolean; // 首次配置模型时写入种子，重开沿用已有历史
-  taskCreatedAt: Record<string, number>; // SDK 任务没有绝对时间，保留公开压缩条目的时间
   queue: AgentInputQueueState;
   doing: string | null;
   inputs: Record<string, AgentInputRecord>;
@@ -43,7 +42,6 @@ export const AgentSessionDoc = defineDocFamily<AgentSessionState, null>({
   initial: () => ({
     activeConversationId: null,
     seeded: false,
-    taskCreatedAt: {},
     queue: { items: [], paused: false },
     doing: null,
     inputs: {},
