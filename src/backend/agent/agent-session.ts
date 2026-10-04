@@ -140,12 +140,11 @@ export class AgentSession {
     source: Pick<AssistantMessage, "api" | "provider" | "model">;
   } | null = null; // 只保存值副本，SDK 对流式消息的后续修改不能改写停止快照
 
-  /** 会话独占模型流观察器，使取消、正文收尾与速度统计使用同一执行身份。 */
+  /** 生成与摘要共用请求派发入口，统一会话身份、取消信号和流式观察。 */
   private constructor(private readonly options: SessionOptions) {
     this.models = options.models;
     this.log = options.log;
     const stream = this.models.streamSimple.bind(this.models);
-    // 所有 Agent 请求与摘要共用真实派发入口。这里只观察流，不另外拼装公开正文。
     this.models.streamSimple = (model, context, request) =>
       lazyStream(model, async () => {
         const execution = this.execution;
@@ -157,6 +156,7 @@ export class AgentSession {
               : AbortSignal.any([request.signal, execution.controller.signal]);
         const source = stream(model, context, {
           ...request,
+          // 历史修订仍属同一产品对话，因此生成与压缩统一覆盖 SDK 分叉后新建的供应商身份。
           sessionId: this.options.sessionId,
           ...(signal === undefined ? {} : { signal }),
         });
