@@ -26,7 +26,8 @@ import { AgentSessionLog } from "./agent-log";
 
 /** 隔离远程流，事务、提交订阅与历史投影使用真实 Harness。 */
 async function create_session() {
-  const provider = fauxProvider();
+  // 预留窗口，避免 fake 缓存计量差异提前触发自动压缩。
+  const provider = fauxProvider({ models: [{ id: "session-model", contextWindow: 256_000 }] });
   const models = createModels();
   models.setProvider(provider.provider);
   const session = await AgentSession.open({
@@ -88,6 +89,20 @@ it("队列事务失败完整回滚，读出的副本无法修改已提交事实"
   session.queue.delete(queued.id);
   queued.text = "外部改写";
   expect(session.queue.read_snapshot(false)).toEqual(before);
+});
+
+it("生成、历史修订与压缩请求共用产品会话身份", async () => {
+  const { session, provider } = await create_session();
+  const respond = vi.fn<FauxResponseFactory>(() => fauxAssistantMessage("完成"));
+  provider.setResponses([respond, respond, respond]);
+  // 两轮历史超过近期保留预算，使手动压缩实际请求模型。
+  const history = "history ".repeat(16_000);
+  await talk(session, history);
+  await session.revise(session.entries.at(-1)!, "修订回答");
+  const execution = await talk(session, history);
+  expect(await session.compact("manual", execution)).toBe(true);
+  expect(respond).toHaveBeenCalledTimes(3);
+  for (const [, options] of respond.mock.calls) expect(options?.sessionId).toBe("session-test");
 });
 
 const roots: string[] = [];
@@ -153,6 +168,7 @@ async function talk(session: AgentSession, text: string) {
   await session.run(input, execution);
   await session.finish_round(execution, "success", null);
   session.execution = null;
+  return execution;
 }
 
 it("既有身份重开恢复历史，无模型时可修订助手，后续请求采用修订内容", async () => {

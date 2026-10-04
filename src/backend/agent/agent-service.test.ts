@@ -159,7 +159,6 @@ const fake_agent_state = vi.hoisted(() => ({
   context_window: 288_000,
   max_tokens: 32_000,
   model_call_count: 0,
-  retry_failures_remaining: 0,
   summary_failures_remaining: 0,
   hold_next_summary: false,
   release_summary: null as (() => void) | null,
@@ -382,11 +381,12 @@ function create_fake_response(context: TranscriptContext): FauxResponseStep {
       errorMessage: "request failed",
     });
   }
-  if (fake_agent_state.mode === "retry" && fake_agent_state.retry_failures_remaining > 0) {
-    fake_agent_state.retry_failures_remaining -= 1;
+  if (fake_agent_state.mode === "retry") {
+    // 一次容量不足后恢复，覆盖自动重试及等待期间取消。
+    fake_agent_state.mode = "success";
     return fauxAssistantMessage([], {
       stopReason: "error",
-      errorMessage: "overloaded_error",
+      errorMessage: "Selected model is at capacity",
     });
   }
   if (fake_agent_state.mode === "thinking") {
@@ -545,7 +545,6 @@ describe("AgentService", () => {
     fake_agent_state.context_window = 288_000;
     fake_agent_state.max_tokens = 32_000;
     fake_agent_state.model_call_count = 0;
-    fake_agent_state.retry_failures_remaining = 0;
     fake_agent_state.summary_failures_remaining = 0;
     fake_agent_state.hold_next_summary = false;
     fake_agent_state.release_summary = null;
@@ -2629,11 +2628,10 @@ describe("AgentService", () => {
     expect(fake_agent_state.model_call_count).toBe(1);
   });
 
-  it("首次过载后自动重试成功，不公开中间失败", async () => {
+  it("首次容量不足后自动重试成功，不公开中间失败", async () => {
     vi.useFakeTimers();
     const { service, log_error } = await create_service();
     fake_agent_state.mode = "retry";
-    fake_agent_state.retry_failures_remaining = 1;
 
     await service.send_message({ text: "重试", attachments: [] });
     await vi.runAllTimersAsync();
@@ -2785,7 +2783,6 @@ describe("AgentService", () => {
     vi.useFakeTimers();
     const { service, log_error } = await create_service();
     fake_agent_state.mode = "retry";
-    fake_agent_state.retry_failures_remaining = 1;
     await service.send_message({ text: "取消重试", attachments: [] });
     await vi.advanceTimersByTimeAsync(0);
     expect(fake_agent_state.model_call_count).toBe(1);

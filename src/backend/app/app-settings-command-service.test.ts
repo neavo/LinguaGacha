@@ -110,19 +110,15 @@ describe("AppSettingsCommandService", () => {
 
   it("同步目标语言时持有完整写租约，成功后才广播设置", async () => {
     const f = create_service();
-    let release!: () => void;
-    f.on_commit.mockImplementation(
-      () =>
-        new Promise<void>((resolve) => {
-          release = resolve;
-        }),
-    );
+    const publication = Promise.withResolvers<void>();
+    f.on_commit.mockReturnValue(publication.promise);
     const update = f.service.update({ target_language: "EN" });
+    await vi.waitFor(() => expect(f.on_commit).toHaveBeenCalledOnce());
     expect(() => f.gate.begin_runtime("agent")).toThrow("runtime.busy");
     expect(f.publish).not.toHaveBeenCalled();
     // 等待工程发布期间，纯应用配置仍可保存。
     await f.service.update({ request_timeout: 600 });
-    release();
+    publication.resolve();
     await expect(update).resolves.toMatchObject({
       settings: { target_language: "EN", request_timeout: 600 },
       accepted: true,
