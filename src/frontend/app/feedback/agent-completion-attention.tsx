@@ -3,7 +3,7 @@ import {
   useAgentControls,
   useAgentEntry,
   useAgentTimeline,
-} from "@frontend/app/session/agent/agent-session-context";
+} from "@frontend/app/session/agent/agent-chat-context";
 
 /**
  * 跨路由观察 Agent 终态；宿主只收到无参数的注意力请求，不承载 Agent 业务字段。

@@ -12,11 +12,11 @@ import type {
   SubmissionRecord,
 } from "@earendil-works/pi-durable";
 import { expect, it } from "vitest";
-import { AgentSessionDoc } from "./agent-session-state";
-import { AgentSessionView } from "./agent-session-view";
+import { AgentChatDoc } from "./agent-chat-data";
+import { AgentChatView } from "./agent-chat-view";
 
 it("已提交历史按用户、助手、工具和后续回答投影，隐藏继续输入不新增条目", () => {
-  const state = AgentSessionDoc.definition.initial(null);
+  const state = AgentChatDoc.definition.initial(null);
   state.inputs = {
     input: {
       roundId: "round",
@@ -87,7 +87,7 @@ it("已提交历史按用户、助手、工具和后续回答投影，隐藏继�
       },
     ],
   ]);
-  const view = new AgentSessionView();
+  const view = new AgentChatView();
   view.reset(records, submissions, [], {}, state);
   expect(view.entries).toMatchObject([
     { kind: "user_message", id: "round", text: "查询", status: "success", endedAt: 10 },
@@ -106,7 +106,7 @@ it("已提交历史按用户、助手、工具和后续回答投影，隐藏继�
 it("流式变化只返回当前条目，终帧与提交变化顺序不影响恢复结果", () => {
   const conversationId = 1 as ConversationId;
   const taskId = 5000 as TaskId;
-  const state = AgentSessionDoc.definition.initial(null);
+  const state = AgentChatDoc.definition.initial(null);
   state.inputs.input = {
     roundId: "round",
     message: { text: "问题", attachments: [] },
@@ -119,7 +119,7 @@ it("流式变化只返回当前条目，终帧与提交变化顺序不影响恢�
     endedAt: null,
     averageTokensPerSecond: null,
   };
-  const view = new AgentSessionView();
+  const view = new AgentChatView();
   view.conversations.set(conversationId, { id: conversationId });
   view.submissions.set(1, {
     id: 1 as SubmissionId,
@@ -220,7 +220,7 @@ it("流式变化只返回当前条目，终帧与提交变化顺序不影响恢�
     entries: [{ id: "assistant:5000", status: "success", parts: [{ text: "完整回答" }] }],
   });
   expect(view.entries[1]).toBe(oldEntry);
-  const restored = new AgentSessionView();
+  const restored = new AgentChatView();
   restored.reset(view.branch_records(), view.submissions, [], {}, state);
   expect(restored.entries).toEqual(view.entries);
 });

@@ -22,7 +22,7 @@ import { ENDPOINT_REQUEST_OVERRIDES } from "./llm-overrides";
 /** 身份由任务或对话拥有，请求准备只读取本次冻结值。 */
 export type ModelRequestIdentity = Readonly<{
   user_agent: string;
-  session_id: string;
+  session_id?: string | undefined;
 }>;
 
 /** 单次翻译与 Agent 共用的请求快照；模型能力独立解析后交给 Pi 模型构造。 */
@@ -152,7 +152,9 @@ export function build_request_headers(
   delete headers["user-agent"];
   return {
     "User-Agent": user_agent,
-    ...(endpoint === undefined ? {} : { [endpoint.session_header]: identity.session_id }),
+    ...(endpoint === undefined || identity.session_id === undefined
+      ? {}
+      : { [endpoint.session_header]: identity.session_id }),
     ...headers,
   };
 }

@@ -12,30 +12,30 @@ import * as AppErrors from "../../shared/error";
 import { JsonTool } from "../../shared/utils/json-tool";
 import type { AppPathService } from "../app/app-path-service";
 
-type AgentSessionSeedPaths = Pick<AppPathService, "get_agent_session_seed_path">;
-type AgentSessionSeedNativeFs = Pick<NativeFs, "read_text_file">;
+type AgentChatSeedPaths = Pick<AppPathService, "get_agent_chat_seed_path">;
+type AgentChatSeedNativeFs = Pick<NativeFs, "read_text_file">;
 
-type AgentSessionSeedMessage = Readonly<{
+type AgentChatSeedMessage = Readonly<{
   role: "user" | "assistant";
   content: string;
 }>;
 
 /** 每个新 Agent 会话最先进入模型历史的有序 user / assistant 消息列表，可为空。 */
-export type AgentSessionSeed = readonly AgentSessionSeedMessage[];
+export type AgentChatSeed = readonly AgentChatSeedMessage[];
 
 /** 所有结构错误共享同一诊断语义，调用方无需理解资源内部 schema。 */
-function throw_invalid_agent_session_seed(file_path: string): never {
+function throw_invalid_agent_chat_seed(file_path: string): never {
   throw new AppErrors.AppError("file.invalid_structure", {
-    diagnostic_context: { reason: "invalid_agent_session_seed", path: file_path },
+    diagnostic_context: { reason: "invalid_agent_chat_seed", path: file_path },
   });
 }
 
 /** 读取必需的内置会话种子；缺失或结构损坏时阻止启动。 */
-export function load_agent_session_seed(
-  paths: AgentSessionSeedPaths,
-  native_fs: AgentSessionSeedNativeFs = default_native_fs,
-): AgentSessionSeed {
-  const file_path = paths.get_agent_session_seed_path();
+export function load_agent_chat_seed(
+  paths: AgentChatSeedPaths,
+  native_fs: AgentChatSeedNativeFs = default_native_fs,
+): AgentChatSeed {
+  const file_path = paths.get_agent_chat_seed_path();
   let parsed: unknown;
   try {
     parsed = JsonTool.parseStrict(native_fs.read_text_file(file_path));
@@ -43,16 +43,16 @@ export function load_agent_session_seed(
     if (error instanceof SyntaxError) {
       throw new AppErrors.AppError("file.parse_failed", {
         cause: error,
-        diagnostic_context: { reason: "agent_session_seed_parse_failed", path: file_path },
+        diagnostic_context: { reason: "agent_chat_seed_parse_failed", path: file_path },
       });
     }
     throw new AppErrors.AppError("file.io_failed", {
       cause: error,
-      diagnostic_context: { reason: "agent_session_seed_read_failed", path: file_path },
+      diagnostic_context: { reason: "agent_chat_seed_read_failed", path: file_path },
     });
   }
   if (!Array.isArray(parsed)) {
-    throw_invalid_agent_session_seed(file_path);
+    throw_invalid_agent_chat_seed(file_path);
   }
   return parsed.map((value) => {
     if (
@@ -61,17 +61,17 @@ export function load_agent_session_seed(
       (value["role"] !== "user" && value["role"] !== "assistant") ||
       typeof value["content"] !== "string"
     ) {
-      throw_invalid_agent_session_seed(file_path);
+      throw_invalid_agent_chat_seed(file_path);
     }
     return { role: value["role"], content: value["content"].trim() };
   });
 }
 
 /** 把种子写入模型历史而不进入 AgentService 的公开 UI 时间线。 */
-export async function append_agent_session_seed(
+export async function append_agent_chat_seed(
   tx: Tx,
   conversation_id: ConversationId,
-  seed: AgentSessionSeed,
+  seed: AgentChatSeed,
   model: Model<Api>,
 ): Promise<void> {
   const timestamp = Date.now();

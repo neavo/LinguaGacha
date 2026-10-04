@@ -381,7 +381,7 @@ it("删除变更目录后继续执行技能、提交和重置", async () => {
       openDirectory: async () => {},
       pickSavePath: async () => null,
     });
-    await service.activate_session("test0001", [], async () => {});
+    await service.activate_chat("test0001", [], async () => {});
     // 两个空根先运行一次，后续新增文件在下一 run 自然可读。
     await service.run("console.log('ready');", AbortSignal.timeout(RUN_TIMEOUT_MS));
     await service.run(
@@ -416,8 +416,8 @@ it("删除变更目录后继续执行技能、提交和重置", async () => {
       content: { before: "第一版", after: "第二版" },
     });
     await service.close();
-    await service.delete_session("test0001");
-    await service.activate_session("test0001", [], async () => {});
+    await service.delete_chat("test0001");
+    await service.activate_chat("test0001", [], async () => {});
     expect(
       (await service.run(script, AbortSignal.timeout(RUN_TIMEOUT_MS))).execution.stdout,
     ).toMatchObject({ content: { before: "第一版", after: "第二版" } });

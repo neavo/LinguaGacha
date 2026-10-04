@@ -33,7 +33,7 @@ afterEach(async () => {
 async function render(active = true) {
   await act(async () =>
     root.render(
-      <AgentFileContext value={{ open_file: mocks.open, session_id: "session", active }}>
+      <AgentFileContext value={{ open_file: mocks.open, chat_id: "session", active }}>
         <AgentFileTrigger path={file.path} render={<button />}>
           报告
         </AgentFileTrigger>

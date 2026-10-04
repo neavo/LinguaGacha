@@ -320,7 +320,7 @@ export const en_us_app = {
     agent: {
       model_round_failed: "Agent model turn failed …",
       context_compaction_failed: "Agent context compaction failed …",
-      session_cleanup_failed: "Agent session cleanup failed …",
+      chat_cleanup_failed: "Agent chat cleanup failed …",
       tool_execution_failed: "Agent tool execution failed …",
       web_search_provider_failed: "Web search provider request failed …",
       skill_load_failed: "Agent skill loading failed …",

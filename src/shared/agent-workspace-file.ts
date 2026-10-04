@@ -9,7 +9,7 @@ export type AgentFile = Readonly<{
 }>;
 
 export type AgentDocument = Readonly<{
-  sessionId: string;
+  chatId: string;
   path: string; // 规范化、逐段编码的工作区相对链接，也是标签身份。
   content: string;
 }>;

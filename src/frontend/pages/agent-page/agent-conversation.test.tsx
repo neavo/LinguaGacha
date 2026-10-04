@@ -28,16 +28,16 @@ import {
 } from "@shared/agent";
 import type {
   AgentControlsSlice,
-  AgentInputSession,
+  AgentInputState,
   AgentQueueSlice,
-  AgentSessionActions,
+  AgentChatActions,
   AgentSkillsSlice,
-} from "@frontend/app/session/agent/agent-session-store";
+} from "@frontend/app/session/agent/agent-chat-store";
 
 type AgentPageState = { entries: AgentEntry[] } & AgentControlsSlice &
   AgentQueueSlice &
   AgentSkillsSlice &
-  AgentSessionActions & { input: AgentInputSession };
+  AgentChatActions & { input: AgentInputState };
 
 const navigation = vi.hoisted(() => ({
   agent_input_request: null as AgentInputRequest | null,
@@ -142,7 +142,7 @@ function install_scroll_metrics(target: HTMLElement, metrics: ScrollMetrics): vo
   });
 }
 
-vi.mock("@frontend/app/session/agent/agent-session-context", () => ({
+vi.mock("@frontend/app/session/agent/agent-chat-context", () => ({
   useAgentTokenSpeed: () => null,
   useAgentTimeline: () => read_test_timeline().read(),
   useAgentEntry: (id: string | null) => read_test_timeline().entry(id),
@@ -163,7 +163,7 @@ vi.mock("@frontend/app/session/agent/agent-session-context", () => ({
   useAgentSkills: () => ({ skills: page_state.current.skills }),
   useAgentInput: () => page_state.current.input,
   useAgentDecisionCountdown: () => null,
-  useAgentSessionActions: () => page_state.current,
+  useAgentChatActions: () => page_state.current,
 }));
 vi.mock("@frontend/app/state/use-desktop-state", () => ({
   useRuntimeSnapshot: () => runtime_state.current,
@@ -923,7 +923,7 @@ describe("AgentConversation", () => {
         prompts: 0,
       },
     };
-    const input: AgentInputSession = {
+    const input: AgentInputState = {
       ...build_state().input,
       draft: new AgentInputDraft({
         text: "",

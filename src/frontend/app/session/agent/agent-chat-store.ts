@@ -1,9 +1,12 @@
 import { AgentTimelineStore } from "./agent-timeline-store";
 export type { AgentTimelineSlice } from "./agent-timeline-store";
+import { AppError } from "@shared/error";
 import { AgentInputDraft } from "./agent-input-draft";
 import { agent_message_request } from "@shared/agent";
 import type {
   AgentCommandAck,
+  AgentInputCommandKind,
+  AgentInputCommandAck,
   AgentContextSnapshot,
   AgentEntry,
   AgentEntryStatus,
@@ -14,10 +17,10 @@ import type {
   AgentQuestion,
   AgentQuestionResponse,
   AgentQueuedInput,
-  AgentSessionEvent,
-  AgentSessionChange,
-  AgentSessionSnapshot,
-  AgentSessionState,
+  AgentChatEvent,
+  AgentChatChange,
+  AgentChatSnapshot,
+  AgentChatStatus,
   AgentSkillDisplayDescriptions,
   AgentSkillSnapshot,
   AgentToolEntry,
@@ -31,7 +34,7 @@ import {
   AGENT_QUESTION_OPTION_MAX,
   AGENT_QUESTION_OPTION_MIN,
   AGENT_QUESTION_PROMPT_LIMIT,
-  AGENT_SESSION_EVENT_TOPIC,
+  AGENT_CHAT_EVENT_TOPIC,
   normalize_agent_assistant_message_parts,
   normalize_agent_message_input,
 } from "@shared/agent";
@@ -68,7 +71,7 @@ export type AgentCommand =
 export type AgentTransportState = "restoring" | "ready" | "restore_failed" | "disconnected";
 
 export type AgentControlsSlice = Readonly<{
-  state: AgentSessionState;
+  state: AgentChatStatus;
   doing: string | null; // 模型维护的任务阶段
   pendingDecision: AgentPendingDecision | null;
   context: AgentContextSnapshot;
@@ -80,14 +83,14 @@ export type AgentControlsSlice = Readonly<{
 export type AgentQueueSlice = Readonly<{ inputQueue: AgentInputQueueSnapshot }>;
 export type AgentSkillsSlice = Readonly<{ skills: readonly AgentSkillSnapshot[] }>;
 
-export type AgentInputSession = {
+export type AgentInputState = {
   revision: number;
   draft: AgentInputDraft;
   read_history: () => readonly string[];
   replace_history: (previous_text: string, next_text: string) => void;
 };
 
-export type AgentSessionActions = Readonly<{
+export type AgentChatActions = Readonly<{
   send: (message: AgentMessageInput) => Promise<void>;
   reviseLatestRound: (entryId: string, message: AgentMessageInput) => Promise<void>;
   updateQueuedMessage: (id: string, message: AgentMessageInput) => Promise<void>;
@@ -104,9 +107,18 @@ export type AgentSessionActions = Readonly<{
   reconnect: () => void;
 }>;
 
+const PENDING_INPUT_KEY = "agent.pending_input_command";
+type PendingInputCommand = {
+  chatId: string;
+  commandId: string;
+  kind: AgentInputCommandKind;
+  request: JsonRecord;
+  message: AgentMessageInput | null;
+};
+
 type StoreSlice = "speed" | "controls" | "queue" | "skills" | "input" | "countdown";
 type Listener = () => void;
-type CommandEventQueue = { base_revision: number; events: AgentSessionEvent[] };
+type CommandEventQueue = { base_revision: number; events: AgentChatEvent[] };
 
 const EMPTY_CONTROLS: AgentControlsSlice = {
   state: "idle",
@@ -123,8 +135,8 @@ const EMPTY_QUEUE: AgentQueueSlice = {
 const EMPTY_SKILLS: AgentSkillsSlice = { skills: [] };
 
 /** renderer 侧唯一 Agent 会话镜像。后端事实经 `revision` 校验进入切片，本地决策时钟独立发布。 */
-export class AgentSessionStore {
-  private session_id: string | null = null;
+export class AgentChatStore {
+  private chat_id: string | null = null;
   private token_speed: AgentTokenSpeedSnapshot = null;
   public readonly timeline = new AgentTimelineStore();
   private batching = false; // 快照与增量批次共用的跨切片通知屏障
@@ -132,16 +144,17 @@ export class AgentSessionStore {
   private controls = EMPTY_CONTROLS;
   private queue = EMPTY_QUEUE;
   private skills = EMPTY_SKILLS;
-  private input: AgentInputSession;
+  private input: AgentInputState;
   private revision = 0;
   private loaded_once = false;
   private connection_generation = 0; // 每次连接或断开都推进，隔离迟到的 SSE / `snapshot` 异步结果
   private event_source: EventSource | null = null;
   private restoring_generation: number | null = null; // 同一连接世代只允许一个 `snapshot` 恢复请求
-  private pending_events: AgentSessionEvent[] = []; // `snapshot` 期间暂存，成功后按 `revision` 重放
+  private pending_events: AgentChatEvent[] = []; // `snapshot` 期间暂存，成功后按 `revision` 重放
   private command_events: CommandEventQueue | null = null;
   private readonly draft = new AgentInputDraft();
   private input_history: string[];
+  private pending_input: PendingInputCommand | null;
   private readonly listeners: Record<StoreSlice, Set<Listener>> = {
     speed: new Set(),
     controls: new Set(),
@@ -154,11 +167,12 @@ export class AgentSessionStore {
   private readonly on_decision_error: (error: unknown) => void;
   private readonly storage: Storage;
 
-  public readonly actions: AgentSessionActions;
+  public readonly actions: AgentChatActions;
 
   /** 建立稳定的命令入口与草稿会话，连接由生命周期入口启动。 */
   public constructor(storage: Storage, on_decision_error: (error: unknown) => void) {
     this.storage = storage;
+    this.pending_input = read_pending_input(storage);
     this.on_decision_error = on_decision_error;
     this.countdown = new AgentDecisionCountdown(
       () => this.emit("countdown"),
@@ -177,7 +191,7 @@ export class AgentSessionStore {
       },
     );
     this.input_history = read_agent_input_history(storage);
-    this.input = this.create_input_session(0);
+    this.input = this.create_input_state(0);
     this.actions = {
       send: this.send,
       reviseLatestRound: this.revise_latest_round,
@@ -185,7 +199,7 @@ export class AgentSessionStore {
       deleteQueuedMessage: this.delete_queued_message,
       reorderQueuedMessages: this.reorder_queued_messages,
       sendQueuedMessage: this.send_queued_message,
-      continue: this.continue_session,
+      continue: this.continue_chat,
       compactContext: this.compact_context,
       stop: this.stop,
       reset: this.reset,
@@ -211,9 +225,9 @@ export class AgentSessionStore {
   /** 返回当前可用技能集合。 */
   public readonly get_skills = (): AgentSkillsSlice => this.skills;
   /** 返回当前对话身份，用于隔离异步文件查询。 */
-  public readonly get_session_id = (): string | null => this.session_id;
+  public readonly get_chat_id = (): string | null => this.chat_id;
   /** 返回跨路由稳定的草稿与历史入口。 */
-  public readonly get_input = (): AgentInputSession => this.input;
+  public readonly get_input = (): AgentInputState => this.input;
   /** 返回前端时钟缓存，隔离每秒更新。 */
   public readonly get_countdown = (): AgentDecisionCountdownSnapshot => this.countdown.read();
   /** 只通知决策区域的时钟变化。 */
@@ -272,7 +286,7 @@ export class AgentSessionStore {
       }
       this.event_source = source;
       let opened_once = false;
-      source.addEventListener(AGENT_SESSION_EVENT_TOPIC, ((message: MessageEvent<string>) =>
+      source.addEventListener(AGENT_CHAT_EVENT_TOPIC, ((message: MessageEvent<string>) =>
         this.receive_message(message, generation)) as EventListener);
       source.onopen = () => {
         if (!this.is_current(generation)) return;
@@ -370,17 +384,17 @@ export class AgentSessionStore {
     this.restoring_generation = generation;
     this.sync_countdown();
     try {
-      const snapshot = normalize_snapshot(
-        await api_get<AgentSessionSnapshot>("/api/agent/snapshot"),
-      );
+      const snapshot = normalize_snapshot(await api_get<AgentChatSnapshot>("/api/agent/snapshot"));
       if (!this.is_current(generation)) return;
       this.apply_snapshot(snapshot);
       const events = this.pending_events
         .splice(0)
         .sort((left, right) => left.revision - right.revision);
       if (!this.apply_events(events)) {
-        throw new TypeError("Agent session event revision gap remains after snapshot recovery.");
+        throw new TypeError("Agent chat event revision gap remains after snapshot recovery.");
       }
+      await this.reconcile_input();
+      if (!this.is_current(generation)) return;
       this.loaded_once = true;
       this.set_controls({ transport: "ready" });
     } catch {
@@ -392,16 +406,16 @@ export class AgentSessionStore {
   }
 
   /** 旧快照不得覆盖已确认的新投影。合法恢复一次性替换完整业务切片。 */
-  private apply_snapshot(snapshot: AgentSessionSnapshot): void {
+  private apply_snapshot(snapshot: AgentChatSnapshot): void {
     if (snapshot.revision < this.revision) return;
     this.batching = true;
     try {
-      if (this.session_id !== null && snapshot.sessionId !== this.session_id) {
+      if (this.chat_id !== null && snapshot.chatId !== this.chat_id) {
         this.draft.clear();
-        this.input = this.create_input_session(this.input.revision + 1);
+        this.input = this.create_input_state(this.input.revision + 1);
         this.emit("input");
       }
-      this.session_id = snapshot.sessionId;
+      this.chat_id = snapshot.chatId;
       this.revision = snapshot.revision;
       this.set_token_speed(snapshot.tokenSpeed);
       this.timeline.replace(snapshot.entries);
@@ -437,7 +451,7 @@ export class AgentSessionStore {
   }
 
   /** 顺序重放事件，遇到首个修订缺口交由快照恢复。 */
-  private apply_events(events: readonly AgentSessionEvent[]): boolean {
+  private apply_events(events: readonly AgentChatEvent[]): boolean {
     for (const event of events) {
       if (!this.apply_event(event)) return false;
     }
@@ -445,7 +459,7 @@ export class AgentSessionStore {
   }
 
   /** 返回 false 表示发现 `revision` 缺口，调用方必须转入完整快照恢复。 */
-  private apply_event(event: AgentSessionEvent): boolean {
+  private apply_event(event: AgentChatEvent): boolean {
     if (event.revision <= this.revision) return true;
     if (event.revision !== this.revision + 1) return false;
     if (event.type === "snapshot_seed") {
@@ -473,7 +487,7 @@ export class AgentSessionStore {
   }
 
   /** 写入已校验的单项事实，订阅通知统一在批次结束后发出。 */
-  private apply_change(change: AgentSessionChange): void {
+  private apply_change(change: AgentChatChange): void {
     switch (change.type) {
       case "skills_changed":
         this.skills = { skills: change.skills };
@@ -482,7 +496,7 @@ export class AgentSessionStore {
       case "token_speed":
         this.set_token_speed(change.tokenSpeed);
         break;
-      case "session_state":
+      case "chat_status":
         this.set_controls({ state: change.state });
         break;
       case "pending_decision":
@@ -536,18 +550,16 @@ export class AgentSessionStore {
     if (!acknowledgement_valid) throw new TypeError("Agent command acknowledgement is stale.");
   }
 
-  /** 统一命令占用、ack 校验与失败收尾，成功后执行页面受理动作。 */
+  /** 统一命令占用、ack 校验与失败收尾。 */
   private async execute_command(
     command: Exclude<AgentCommand, null>,
     request: () => Promise<AgentCommandAck>,
-    on_accepted?: () => void,
   ): Promise<void> {
     const queue = this.begin_command(command);
     if (queue === null) return;
     try {
       const acknowledgement = normalize_acknowledgement(await request());
       await this.finish_command(queue, acknowledgement);
-      on_accepted?.();
     } catch (error) {
       await this.finish_command(queue);
       throw error;
@@ -556,15 +568,106 @@ export class AgentSessionStore {
     }
   }
 
+  /** 命令绑定发起时的对话，先保存参数，未知结果的重试复用原身份。 */
+  private async submit_input(
+    kind: AgentInputCommandKind,
+    path: string,
+    request: JsonRecord,
+    message: AgentMessageInput | null = null,
+  ): Promise<AgentCommandAck> {
+    const chatId = this.chat_id; // 异步查询受理结果期间，对话可能已经切换
+    const previous = this.pending_input;
+    const same =
+      previous !== null &&
+      previous.chatId === this.chat_id &&
+      previous.kind === kind &&
+      JSON.stringify(previous.request) === JSON.stringify(request);
+    const status = await this.reconcile_input();
+    if (chatId !== this.chat_id) throw new AppError("runtime.cancelled");
+    if (same && status?.status === "accepted") return status;
+    if (status?.status === "pending" && !same) throw new AppError("runtime.busy");
+    if (this.pending_input === null || !same) {
+      this.pending_input = {
+        chatId: chatId!,
+        commandId: crypto.randomUUID(),
+        kind,
+        request: structuredClone(request),
+        message: message === null ? null : structuredClone(message),
+      };
+    }
+    const pending = this.pending_input;
+    // 命令身份必须先持久化，存储失败直接阻止发送，避免重载后失去幂等依据。
+    this.storage.setItem(PENDING_INPUT_KEY, JSON.stringify(pending));
+    const result = normalize_input_ack(
+      await api_fetch<AgentInputCommandAck>(path, {
+        ...pending.request,
+        chatId: pending.chatId,
+        commandId: pending.commandId,
+      }),
+    );
+    if (pending.chatId !== this.chat_id) throw new AppError("runtime.cancelled");
+    if (result.status === "accepted" || result.status === "cancelled")
+      this.finish_input(pending, result);
+    if (result.status !== "accepted") throw new AppError("runtime.cancelled");
+    return result;
+  }
+
+  /** 恢复时查询受理状态，查询失败保留命令供下一次重连核对。 */
+  private async reconcile_input(): Promise<AgentInputCommandAck | null> {
+    const pending = this.pending_input;
+    if (pending === null) return null;
+    if (pending.chatId !== this.chat_id) {
+      this.pending_input = null;
+      this.storage.removeItem(PENDING_INPUT_KEY);
+      return null;
+    }
+    const result = normalize_input_ack(
+      await api_fetch<AgentInputCommandAck>("/api/agent/input-status", {
+        chatId: pending.chatId,
+        commandId: pending.commandId,
+      }),
+    );
+    if (this.pending_input !== pending || this.chat_id !== pending.chatId) return null;
+    if (result.status === "accepted" || result.status === "cancelled")
+      this.finish_input(pending, result);
+    return result;
+  }
+
+  /** 消费已确认命令，只清除仍与该命令一致的草稿。 */
+  private finish_input(pending: PendingInputCommand, result: AgentInputCommandAck): void {
+    if (this.pending_input !== pending) return;
+    this.storage.removeItem(PENDING_INPUT_KEY);
+    this.pending_input = null;
+    const message = pending.message;
+    if (result.status === "accepted" && message !== null) {
+      if (message.text !== "")
+        this.input_history = update_agent_input_history(
+          this.storage,
+          this.input_history,
+          message.text,
+        );
+      if (
+        JSON.stringify(normalize_agent_message_input(this.draft.read())) === JSON.stringify(message)
+      ) {
+        this.draft.clear();
+        this.input = this.create_input_state(this.input.revision + 1);
+        this.emit("input");
+      }
+    }
+  }
+
   /** 规范输入，命令受理成功后再清理草稿并记录历史。 */
   private readonly send = async (message: AgentMessageInput): Promise<void> => {
     if (this.controls.transport === "restoring" || !this.loaded_once) return;
     const normalized = normalize_agent_message_input(message);
     if (normalized === null) return;
-    await this.execute_command(
-      "send",
-      () => api_fetch<AgentCommandAck>("/api/agent/message", agent_message_request(normalized)),
-      () => this.accept_message(normalized),
+    await this.execute_command("send", () =>
+      this.submit_input(
+        "send",
+        "/api/agent/message",
+        agent_message_request(normalized),
+        normalized,
+      ),
     );
   };
 
@@ -600,7 +703,7 @@ export class AgentSessionStore {
   /** 请求立即发送队列项，发送状态由后端裁决。 */
   private readonly send_queued_message = async (id: string): Promise<void> => {
     await this.execute_command("queue_send", () =>
-      api_fetch<AgentCommandAck>("/api/agent/queue/send", { id }),
+      this.submit_input("queue_send", "/api/agent/queue/send", { id }),
     );
   };
 
@@ -619,7 +722,7 @@ export class AgentSessionStore {
     const normalized = normalize_agent_message_input(message);
     if (normalized === null) return;
     await this.execute_command("revise", () =>
-      api_fetch<AgentCommandAck>("/api/agent/round/revise", {
+      this.submit_input("revise", "/api/agent/round/revise", {
         entryId: entry_id,
         message: agent_message_request(normalized),
       }),
@@ -627,7 +730,7 @@ export class AgentSessionStore {
   };
 
   /** 继续空闲会话，可附带草稿并在受理后清理。 */
-  private readonly continue_session = async (message?: AgentMessageInput): Promise<void> => {
+  private readonly continue_chat = async (message?: AgentMessageInput): Promise<void> => {
     if (
       this.controls.transport === "restoring" ||
       !this.loaded_once ||
@@ -641,14 +744,13 @@ export class AgentSessionStore {
       if (candidate === null) return;
       normalized = candidate;
     }
-    await this.execute_command(
-      "continue",
-      () =>
-        api_fetch<AgentCommandAck>(
-          "/api/agent/continue",
-          normalized === undefined ? {} : { message: agent_message_request(normalized) },
-        ),
-      normalized === undefined ? undefined : () => this.accept_message(normalized),
+    await this.execute_command("continue", () =>
+      this.submit_input(
+        "continue",
+        "/api/agent/continue",
+        normalized === undefined ? {} : { message: agent_message_request(normalized) },
+        normalized ?? null,
+      ),
     );
   };
 
@@ -720,7 +822,7 @@ export class AgentSessionStore {
   };
 
   /** 草稿与输入历史由 Store 拥有，组件通过稳定端口读取和更新。 */
-  private create_input_session(revision: number): AgentInputSession {
+  private create_input_state(revision: number): AgentInputState {
     return {
       revision,
       draft: this.draft,
@@ -735,20 +837,6 @@ export class AgentSessionStore {
       },
     };
   }
-
-  /** 受理后更新纯文本历史并清空草稿，用输入 `revision` 通知编辑器。 */
-  private accept_message(message: AgentMessageInput): void {
-    if (message.text !== "") {
-      this.input_history = update_agent_input_history(
-        this.storage,
-        this.input_history,
-        message.text,
-      );
-    }
-    this.draft.clear();
-    this.input = this.create_input_session(this.input.revision + 1);
-    this.emit("input");
-  }
 }
 
 /** 命令回包只提取合法修订号，完整事实由事件传播。 */
@@ -758,11 +846,11 @@ function normalize_acknowledgement(value: unknown): AgentCommandAck {
 }
 
 /** API 与 SSE 都是不可信 JSON 边界，完整快照必须一次通过全部公开字段。 */
-function normalize_snapshot(value: unknown): AgentSessionSnapshot {
+function normalize_snapshot(value: unknown): AgentChatSnapshot {
   const record = read_json_record(value);
-  const session_id = record["sessionId"];
-  if (typeof session_id !== "string" || session_id === "")
-    throw new TypeError("Agent session identity is invalid.");
+  const chat_id = record["chatId"];
+  if (typeof chat_id !== "string" || chat_id === "")
+    throw new TypeError("Agent chat identity is invalid.");
   const revision = normalize_revision(record["revision"], "snapshot");
   const state = normalize_state(record["state"]);
   const pending_decision = normalize_pending_decision(record["pendingDecision"]);
@@ -786,7 +874,7 @@ function normalize_snapshot(value: unknown): AgentSessionSnapshot {
     throw new TypeError("Agent snapshot is invalid.");
   }
   return {
-    sessionId: session_id,
+    chatId: chat_id,
     revision,
     state,
     pendingDecision: pending_decision,
@@ -801,7 +889,7 @@ function normalize_snapshot(value: unknown): AgentSessionSnapshot {
 }
 
 /** SSE 顶层判别失败时丢弃单帧。后续 `revision` 缺口会触发权威恢复。 */
-function normalize_agent_event(value: unknown): AgentSessionEvent | null {
+function normalize_agent_event(value: unknown): AgentChatEvent | null {
   const record = read_json_record(value);
   const revision = normalize_optional_revision(record["revision"]);
   if (revision === null) return null;
@@ -809,26 +897,26 @@ function normalize_agent_event(value: unknown): AgentSessionEvent | null {
     const snapshot = normalize_snapshot(record["snapshot"]);
     return snapshot.revision === revision ? { type: "snapshot_seed", revision, snapshot } : null;
   }
-  if (record["type"] !== "session_update" || !Array.isArray(record["changes"])) return null;
-  const changes: AgentSessionChange[] = [];
+  if (record["type"] !== "chat_update" || !Array.isArray(record["changes"])) return null;
+  const changes: AgentChatChange[] = [];
   for (const value of record["changes"]) {
     const change = normalize_agent_change(value);
     if (change === null) return null;
     changes.push(change);
   }
-  return { type: "session_update", revision, changes };
+  return { type: "chat_update", revision, changes };
 }
 
 /** 批次须整体通过协议校验，不能先应用其中的部分条目。 */
-function normalize_agent_change(value: unknown): AgentSessionChange | null {
+function normalize_agent_change(value: unknown): AgentChatChange | null {
   const record = read_json_record(value);
   switch (record["type"]) {
     case "skills_changed":
       return Array.isArray(record["skills"])
         ? { type: "skills_changed", skills: record["skills"].flatMap(normalize_skill) }
         : null;
-    case "session_state":
-      return { type: "session_state", state: normalize_state(record["state"]) };
+    case "chat_status":
+      return { type: "chat_status", state: normalize_state(record["state"]) };
     case "pending_decision": {
       const pending = normalize_pending_decision(record["pendingDecision"]);
       return pending === undefined ? null : { type: "pending_decision", pendingDecision: pending };
@@ -1092,7 +1180,7 @@ function normalize_entry_status(value: unknown): AgentEntryStatus | null {
 }
 
 /** 会话只公开空闲或运行状态，非法值触发完整恢复。 */
-function normalize_state(value: unknown): AgentSessionState {
+function normalize_state(value: unknown): AgentChatStatus {
   if (value === "idle" || value === "running") return value;
   throw new TypeError("Agent snapshot state is invalid.");
 }
@@ -1208,4 +1296,46 @@ function normalize_skill(value: unknown): AgentSkillSnapshot[] {
     display_descriptions[locale] = description.trim();
   }
   return [{ name: value["name"], displayDescriptions: display_descriptions }];
+}
+
+/** 查询与提交共用受理状态校验，未知状态不能当作成功。 */
+function normalize_input_ack(value: unknown): AgentInputCommandAck {
+  const record = read_json_record(value);
+  const status = record["status"];
+  if (
+    status !== "accepted" &&
+    status !== "cancelled" &&
+    status !== "pending" &&
+    status !== "unknown"
+  )
+    throw new TypeError("Invalid input command acknowledgement");
+  return { ...normalize_acknowledgement(record), status };
+}
+
+/** 本地存储是输入边界，损坏的记录不能成为可重发命令。 */
+function read_pending_input(storage: Storage): PendingInputCommand | null {
+  const raw = storage.getItem(PENDING_INPUT_KEY);
+  if (raw === null) return null;
+  try {
+    const value: unknown = JSON.parse(raw);
+    if (
+      !is_json_record(value) ||
+      typeof value["chatId"] !== "string" ||
+      typeof value["commandId"] !== "string" ||
+      !is_json_record(value["request"])
+    )
+      return null;
+    const kind = value["kind"];
+    if (kind !== "send" && kind !== "queue_send" && kind !== "revise" && kind !== "continue")
+      return null;
+    return {
+      chatId: value["chatId"],
+      commandId: value["commandId"],
+      kind,
+      request: value["request"],
+      message: normalize_agent_message_input(value["message"]),
+    };
+  } catch {
+    return null; // 无效 JSON 没有可识别的发送身份，不能恢复执行。
+  }
 }

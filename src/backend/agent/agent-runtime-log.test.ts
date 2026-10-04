@@ -7,10 +7,10 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { type LogAppendPayload } from "../../shared/log";
 import { LogManager } from "../log/log-manager";
 import {
-  AgentSessionLog,
+  AgentRuntimeLog,
   normalize_agent_tool_log_output,
   type AgentLogContent,
-} from "./agent-log";
+} from "./agent-runtime-log";
 
 it("图片工具日志只保留来源摘要和媒体类型", () => {
   const result = normalize_agent_tool_log_output({
@@ -28,17 +28,17 @@ it("图片工具日志只保留来源摘要和媒体类型", () => {
 });
 import { agent_tool_result } from "./tool-definition";
 
-describe("AgentSessionLog", () => {
+describe("AgentRuntimeLog", () => {
   afterEach(() => vi.useRealTimers());
 
   it("完整工具结果只存一份，文件详情可见且保留输入快照和实际起止时间", async () => {
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime("2026-09-13T00:00:00.000Z");
-    using directory = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "agent-log-"));
+    using directory = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "agent-runtime-log-"));
     const console_writer = vi.fn();
     const manager = new LogManager({ logDir: directory.path, consoleWriter: console_writer });
     try {
-      const log = new AgentSessionLog(manager);
+      const log = new AgentRuntimeLog(manager, "chat-test");
       const input = { query: "原始输入", items: Array.from({ length: 40 }, (_, index) => index) };
       const details = { text: '正文 "引号"\n'.repeat(2_000), items: input.items };
       const expected = structuredClone(details);
@@ -161,7 +161,7 @@ describe("AgentSessionLog", () => {
     expect(records()).toEqual([]);
     log.flush();
     const starts = records().filter((record) => record.event === "run_start");
-    expect(starts[0]?.session_id).toBe(starts[1]?.session_id);
+    expect(starts[0]?.runtime_id).toBe(starts[1]?.runtime_id);
     expect(starts[0]?.round_id).toBe(starts[1]?.round_id);
     expect(starts[0]?.run_id).not.toBe(starts[1]?.run_id);
     expect(records().find((record) => record.event === "compaction_end")).toMatchObject({
@@ -174,10 +174,10 @@ describe("AgentSessionLog", () => {
 });
 
 /** 用公开写入口观察事件顺序与身份，不绑定内部缓存结构。 */
-function create_log(): { log: AgentSessionLog; records: () => AgentLogContent[] } {
+function create_log(): { log: AgentRuntimeLog; records: () => AgentLogContent[] } {
   const append = vi.fn<(payload: LogAppendPayload) => void>();
   return {
-    log: new AgentSessionLog({ append }),
+    log: new AgentRuntimeLog({ append }, "chat-test"),
     records: () => append.mock.calls.map(([payload]) => payload.content as AgentLogContent),
   };
 }

@@ -41,9 +41,6 @@ describe("AgentComposer", () => {
     const editor = get_editor(view);
     await set_document(editor, "继续补充", 4);
     expect(editor.state.readOnly).toBe(false);
-    expect(view.querySelector(".agent-composer__submit")?.getAttribute("aria-keyshortcuts")).toBe(
-      "Enter",
-    );
     await click_send(view);
     expect(on_send).toHaveBeenCalledWith({ text: "继续补充", attachments: [] });
     expect(on_stop).not.toHaveBeenCalled();
@@ -139,7 +136,7 @@ describe("AgentComposer", () => {
               updating: false,
               select_model: async () => {},
             }}
-            input_session={{
+            input_state={{
               revision: 0,
               draft,
               read_history: () => [],

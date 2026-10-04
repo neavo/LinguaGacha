@@ -9,7 +9,7 @@ import { deleteCharBackward, undo } from "@codemirror/commands";
 import { EditorSelection } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 import { type AgentMessageAttachment } from "@shared/agent";
-import type { AgentInputSession } from "@frontend/app/session/agent/agent-session-context";
+import type { AgentInputState } from "@frontend/app/session/agent/agent-chat-context";
 import { TooltipProvider } from "@frontend/shadcn/tooltip";
 
 import { AgentMessageEditor, type AgentMessageEditorHandle } from "./agent-message-editor";
@@ -23,12 +23,12 @@ type RenderEditorOptions = Partial<
     | "on_cancel"
     | "skills"
     | "instructions"
-    | "input_session"
+    | "input_state"
     | "on_submit"
   >
 > & { editor_ref?: RefObject<AgentMessageEditorHandle | null> };
 
-type TestAgentInputSession = AgentInputSession & { accept_message: () => void };
+type TestAgentInputState = AgentInputState & { accept_message: () => void };
 
 const mention_files = vi.hoisted(() => ({ files: [] as AgentFileCandidate[] }));
 vi.mock("./use-agent-mention-files", () => ({
@@ -78,7 +78,7 @@ const skills = [
 describe("AgentMessageEditor", () => {
   let container: HTMLDivElement | null = null;
   let root: Root | null = null;
-  let default_input_session: TestAgentInputSession | null = null;
+  let default_input_state: TestAgentInputState | null = null;
 
   beforeEach(() => {
     mention_files.files = [];
@@ -92,7 +92,7 @@ describe("AgentMessageEditor", () => {
     container?.remove();
     container = null;
     root = null;
-    default_input_session = null;
+    default_input_state = null;
     image_mocks.upload.mockClear();
   });
 
@@ -277,8 +277,8 @@ describe("AgentMessageEditor", () => {
   });
 
   it("用纯文本历史双向浏览并恢复当前草稿", async () => {
-    const input_session = create_input_session(["第一条", '检查 @skill("glossary-audit") 完成']);
-    const view = await render_editor({ input_session });
+    const input_state = create_input_state(["第一条", '检查 @skill("glossary-audit") 完成']);
+    const view = await render_editor({ input_state });
     const editor = get_editor(view);
     await set_document(editor, "当前草稿", 4);
     await dispatch_key(editor.contentDOM, "ArrowUp");
@@ -291,8 +291,8 @@ describe("AgentMessageEditor", () => {
   });
 
   it("历史导航只从视觉首行启动，并在用户编辑后退出", async () => {
-    const input_session = create_input_session(["历史消息"]);
-    const view = await render_editor({ input_session });
+    const input_state = create_input_state(["历史消息"]);
+    const view = await render_editor({ input_state });
     const editor = get_editor(view);
     const draft = "第一行\n第二行";
     await set_document(editor, draft, draft.length);
@@ -316,18 +316,18 @@ describe("AgentMessageEditor", () => {
   });
 
   it("跨重渲染保留完整草稿，并在受理后同步清空编辑器", async () => {
-    const input_session = create_input_session();
+    const input_state = create_input_state();
     const editor_ref = createRef<AgentMessageEditorHandle>();
     const on_submit = vi.fn();
-    const view = await render_editor({ editor_ref, input_session, on_submit });
+    const view = await render_editor({ editor_ref, input_state, on_submit });
     await act(async () => editor_ref.current?.write_draft('  检查 @skill("glossary-audit")  '));
     await click_send(view);
     expect(on_submit).toHaveBeenCalledWith({
       text: '检查 @skill("glossary-audit")',
       attachments: [],
     });
-    input_session.accept_message();
-    await render_editor({ editor_ref, input_session, on_submit });
+    input_state.accept_message();
+    await render_editor({ editor_ref, input_state, on_submit });
     expect(get_editor(view).state.doc.toString()).toBe("");
   });
 
@@ -360,8 +360,8 @@ describe("AgentMessageEditor", () => {
   });
 
   it("拖入与粘贴图片均按顺序追加到草稿", async () => {
-    const input_session = create_input_session();
-    const view = await render_editor({ input_session });
+    const input_state = create_input_state();
+    const view = await render_editor({ input_state });
     const form = view.querySelector<HTMLFormElement>(".agent-composer");
     if (form === null) throw new Error("缺少 Composer 表单");
     const dropped = new File([], "drop.webp", { type: "image/webp" });
@@ -382,7 +382,7 @@ describe("AgentMessageEditor", () => {
       await Promise.resolve();
     });
 
-    expect(input_session.draft.read()).toEqual({
+    expect(input_state.draft.read()).toEqual({
       text: "",
       attachments: image_attachments("webp-drop.webp", "webp-paste.png"),
     });
@@ -392,8 +392,8 @@ describe("AgentMessageEditor", () => {
   it.each([undefined, "inline"] as const)(
     "正文拖入文本文件只上传到所属草稿，展示模式 %s",
     async (presentation) => {
-      const input_session = create_input_session();
-      const view = await render_editor({ input_session, presentation });
+      const input_state = create_input_state();
+      const view = await render_editor({ input_state, presentation });
       const editor = get_editor(view);
       await set_document(editor, "原有正文", 2);
       const selection = editor.state.selection.toJSON();
@@ -414,7 +414,7 @@ describe("AgentMessageEditor", () => {
         expect(read_text).not.toHaveBeenCalled();
         expect(editor.state.doc.toString()).toBe("原有正文");
         expect(editor.state.selection.toJSON()).toEqual(selection);
-        expect(input_session.draft.read().attachments).toEqual([uploaded_file("webp-notes.txt")]);
+        expect(input_state.draft.read().attachments).toEqual([uploaded_file("webp-notes.txt")]);
         expect(image_mocks.upload).toHaveBeenCalledOnce();
         expect(outer_drop).not.toHaveBeenCalled();
         expect(view.querySelector('[data-active="true"]')).toBeNull();
@@ -426,14 +426,14 @@ describe("AgentMessageEditor", () => {
   );
 
   it("正文文件拖放读取最新权限，助手编辑也不读取文件文本", async () => {
-    const input_session = create_input_session();
-    const view = await render_editor({ input_session });
+    const input_state = create_input_state();
+    const view = await render_editor({ input_state });
     const read_text = vi
       .spyOn(FileReader.prototype, "readAsText")
       .mockImplementation(() => undefined);
     try {
       for (const options of [{ read_only: true }, { role: "assistant" as const }]) {
-        await render_editor({ input_session, ...options });
+        await render_editor({ input_state, ...options });
         const drop = new DragEvent("drop", { bubbles: true, cancelable: true });
         Object.defineProperty(drop, "dataTransfer", {
           value: { types: ["Files"], files: [new File(["text"], "notes.txt")] },
@@ -443,7 +443,7 @@ describe("AgentMessageEditor", () => {
       }
       expect(read_text).not.toHaveBeenCalled();
       expect(image_mocks.upload).not.toHaveBeenCalled();
-      expect(input_session.draft.read().attachments).toEqual([]);
+      expect(input_state.draft.read().attachments).toEqual([]);
     } finally {
       read_text.mockRestore();
     }
@@ -451,9 +451,9 @@ describe("AgentMessageEditor", () => {
 
   it("新增批注在修改后随完整消息提交", async () => {
     const editor_ref = createRef<AgentMessageEditorHandle>();
-    const input_session = create_input_session();
+    const input_state = create_input_state();
     const on_submit = vi.fn();
-    const view = await render_editor({ editor_ref, input_session, on_submit });
+    const view = await render_editor({ editor_ref, input_state, on_submit });
 
     await act(async () =>
       editor_ref.current?.add_response_annotation({
@@ -462,7 +462,7 @@ describe("AgentMessageEditor", () => {
         comment: "原评论",
       }),
     );
-    expect(input_session.draft.read().attachments).toEqual([
+    expect(input_state.draft.read().attachments).toEqual([
       { kind: "response_annotation", selectedText: "旧回复", comment: "原评论" },
     ]);
 
@@ -493,8 +493,8 @@ describe("AgentMessageEditor", () => {
   });
 
   it("混合附件按原索引编辑而不改写草稿顺序", async () => {
-    const input_session = create_input_session();
-    input_session.draft.write({
+    const input_state = create_input_state();
+    input_state.draft.write({
       text: "",
       attachments: [
         { kind: "response_annotation", selectedText: "被引用的旧回复", comment: "内部评论" },
@@ -502,8 +502,8 @@ describe("AgentMessageEditor", () => {
       ],
     });
 
-    const view = await render_editor({ input_session });
-    expect(input_session.draft.read().attachments.map((attachment) => attachment.kind)).toEqual([
+    const view = await render_editor({ input_state });
+    expect(input_state.draft.read().attachments.map((attachment) => attachment.kind)).toEqual([
       "response_annotation",
       "file",
     ]);
@@ -516,30 +516,30 @@ describe("AgentMessageEditor", () => {
     ].find((button) => button.getAttribute("aria-label") === "app.action.delete");
     if (remove === undefined) throw new Error("缺少批注删除动作");
     await act(async () => remove.click());
-    expect(input_session.draft.read().attachments.map((attachment) => attachment.kind)).toEqual([
+    expect(input_state.draft.read().attachments.map((attachment) => attachment.kind)).toEqual([
       "file",
     ]);
   });
 
   it("文件选择返回时遵循当前编辑锁", async () => {
-    const input_session = create_input_session();
-    const view = await render_editor({ input_session });
-    await render_editor({ input_session, read_only: true });
+    const input_state = create_input_state();
+    const view = await render_editor({ input_state });
+    await render_editor({ input_state, read_only: true });
     const input = view.querySelector<HTMLInputElement>(".agent-composer__file-input")!;
     Object.defineProperty(input, "files", {
       value: [new File([], "locked.png", { type: "image/png" })],
     });
     await act(async () => input.dispatchEvent(new Event("change", { bubbles: true })));
-    expect(input_session.draft.read().attachments).toEqual([]);
+    expect(input_state.draft.read().attachments).toEqual([]);
     expect(image_mocks.upload).not.toHaveBeenCalled();
   });
 
   it("上传失败保留文件卡片，重试后可以发送", async () => {
     image_mocks.upload.mockRejectedValueOnce(new Error("offline"));
-    const input_session = create_input_session();
+    const input_state = create_input_state();
     const on_submit = vi.fn();
-    const view = await render_editor({ input_session, on_submit });
-    await act(async () => input_session.draft.append([new File(["text"], "notes.txt")]));
+    const view = await render_editor({ input_state, on_submit });
+    await act(async () => input_state.draft.append([new File(["text"], "notes.txt")]));
     expect(view.querySelector(".agent-attachment__body")?.getAttribute("aria-label")).toContain(
       "agent_page.upload.failed",
     );
@@ -602,8 +602,8 @@ describe("AgentMessageEditor", () => {
       { kind: "workspace", path: "资料/角色设定.xlsx", count: 320, unit: "items" },
       { kind: "upload", path: "uploads/角色设定.xlsx", size: 128 },
     ];
-    const input = create_input_session();
-    const view = await render_editor({ input_session: input });
+    const input = create_input_state();
+    const view = await render_editor({ input_state: input });
     const editor = get_editor(view);
     await set_document(editor, "@角色", 3);
     await wait_for_element(view, 'button[data-kind="file"]');
@@ -652,7 +652,7 @@ describe("AgentMessageEditor", () => {
       document.body.append(container);
     }
     root ??= createRoot(container);
-    default_input_session ??= create_input_session();
+    default_input_state ??= create_input_state();
     await act(async () =>
       root?.render(
         <TooltipProvider>
@@ -663,7 +663,7 @@ describe("AgentMessageEditor", () => {
             read_only={options.read_only ?? false}
             skills={options.skills ?? skills}
             instructions={options.instructions}
-            input_session={options.input_session ?? default_input_session!}
+            input_state={options.input_state ?? default_input_state!}
             on_submit={options.on_submit ?? vi.fn()}
             on_cancel={options.on_cancel}
 
@@ -695,9 +695,9 @@ function get_editor(container: HTMLElement): EditorView {
 }
 
 /** 组件测试只模拟草稿与历史读取契约，持久化责任由 Provider 和历史 helper 单独验证。 */
-function create_input_session(history: readonly string[] = []): TestAgentInputSession {
+function create_input_state(history: readonly string[] = []): TestAgentInputState {
   const draft = new AgentInputDraft();
-  const session: TestAgentInputSession = {
+  const session: TestAgentInputState = {
     revision: 0,
     draft,
     read_history: () => history,

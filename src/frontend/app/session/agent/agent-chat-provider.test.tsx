@@ -11,16 +11,16 @@ const store = vi.hoisted(() => ({
   disconnect: vi.fn(),
 }));
 
-vi.mock("./agent-session-store", () => ({
-  AgentSessionStore: class {
+vi.mock("./agent-chat-store", () => ({
+  AgentChatStore: class {
     public readonly connect = store.connect;
     public readonly disconnect = store.disconnect;
   },
 }));
 
-import { AgentSessionProvider } from "@frontend/app/session/agent/agent-session-provider";
+import { AgentChatProvider } from "@frontend/app/session/agent/agent-chat-provider";
 
-describe("AgentSessionProvider", () => {
+describe("AgentChatProvider", () => {
   let container: HTMLDivElement | null = null;
   let root: Root | null = null;
 
@@ -35,7 +35,7 @@ describe("AgentSessionProvider", () => {
     container = document.createElement("div");
     root = createRoot(container);
 
-    await act(async () => root?.render(<AgentSessionProvider>content</AgentSessionProvider>));
+    await act(async () => root?.render(<AgentChatProvider>content</AgentChatProvider>));
     expect(store.connect).toHaveBeenCalledOnce();
 
     await act(async () => root?.unmount());

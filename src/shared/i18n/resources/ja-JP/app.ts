@@ -332,7 +332,7 @@ export const ja_jp_app = {
     agent: {
       model_round_failed: "Agent のモデルターンに失敗しました …",
       context_compaction_failed: "Agent のコンテキスト圧縮に失敗しました …",
-      session_cleanup_failed: "Agent のセッションをクリーンアップできませんでした …",
+      chat_cleanup_failed: "Agent の会話をクリーンアップできませんでした …",
       tool_execution_failed: "Agent のツール実行中にエラーが発生しました …",
       web_search_provider_failed: "ウェブ検索プロバイダーへのリクエストに失敗しました …",
       skill_load_failed: "Agent スキルを読み込めませんでした …",

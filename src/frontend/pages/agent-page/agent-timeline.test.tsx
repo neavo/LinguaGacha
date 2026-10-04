@@ -1,5 +1,5 @@
-import { AgentSessionStore } from "@frontend/app/session/agent/agent-session-store";
-import { AgentSessionStoreContext } from "@frontend/app/session/agent/agent-session-context";
+import { AgentChatStore } from "@frontend/app/session/agent/agent-chat-store";
+import { AgentChatStoreContext } from "@frontend/app/session/agent/agent-chat-context";
 vi.mock("@frontend/app/desktop/desktop-api", () => ({
   api_blob: async () => new Blob([], { type: "image/png" }),
   api_file_url: (path: string) => `http://localhost${path}`,
@@ -29,12 +29,12 @@ vi.mock("@frontend/app/locale/locale-context", () => ({
 vi.mock("@frontend/app/appearance/appearance-context", () => ({
   useAppearance: () => ({ resolved_theme: "light" }),
 }));
-vi.mock("@frontend/app/session/agent/agent-session-context", async (original) => ({
-  ...(await original<typeof import("@frontend/app/session/agent/agent-session-context")>()),
+vi.mock("@frontend/app/session/agent/agent-chat-context", async (original) => ({
+  ...(await original<typeof import("@frontend/app/session/agent/agent-chat-context")>()),
   useAgentTokenSpeed: () => null,
   useAgentControls: () => ({ transport: "ready" }),
 }));
-const timeline_session = new AgentSessionStore(window.localStorage, () => {});
+const timeline_session = new AgentChatStore(window.localStorage, () => {});
 const timeline_store = timeline_session.timeline;
 import { AgentTimeline } from "./agent-timeline";
 
@@ -106,7 +106,7 @@ describe("AgentTimeline", () => {
       timeline_store.replace(entries);
       timeline_store.notify();
       root?.render(
-        <AgentSessionStoreContext.Provider value={timeline_session}>
+        <AgentChatStoreContext.Provider value={timeline_session}>
           <TooltipProvider>
             <AgentTimeline
               skills={skills}
@@ -120,7 +120,7 @@ describe("AgentTimeline", () => {
               annotation_disabled={false}
             />
           </TooltipProvider>
-        </AgentSessionStoreContext.Provider>,
+        </AgentChatStoreContext.Provider>,
       );
     });
     return container;

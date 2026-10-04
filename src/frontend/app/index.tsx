@@ -19,7 +19,7 @@ import { SCREEN_REGISTRY } from "@frontend/app/navigation/screen-registry";
 import { AppNavigationProvider } from "@frontend/app/navigation/navigation-provider";
 import { DesktopStateProvider } from "@frontend/app/state/desktop-state-provider";
 import { ProjectSessionUiStateProvider } from "@frontend/app/session/project-session-ui-state-provider";
-import { AgentSessionProvider } from "@frontend/app/session/agent/agent-session-provider";
+import { AgentChatProvider } from "@frontend/app/session/agent/agent-chat-provider";
 import { ProjectTranslationStatsProvider } from "@frontend/app/session/project-translation-stats-provider";
 import { BatchTranslationSessionProvider } from "@frontend/app/session/batch-translation/batch-translation-session-provider";
 import { QualityRuleStatisticsProvider } from "@frontend/app/session/quality-rule-statistics-provider";
@@ -587,7 +587,7 @@ function AppContent(): JSX.Element {
                   agent_input_request={agent_input_request}
                   clear_agent_input_request={() => set_agent_input_request(null)}
                 >
-                  <AgentSessionProvider>
+                  <AgentChatProvider>
                     <AgentCompletionAttention />
                     <ProjectSessionUiStateProvider>
                       <TranslationExportProvider>
@@ -600,7 +600,7 @@ function AppContent(): JSX.Element {
                         </ProjectTranslationStatsProvider>
                       </TranslationExportProvider>
                     </ProjectSessionUiStateProvider>
-                  </AgentSessionProvider>
+                  </AgentChatProvider>
                 </AppNavigationProvider>
               ) : initial_state_status === "error" ? (
                 <AppContentState

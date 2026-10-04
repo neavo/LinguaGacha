@@ -87,7 +87,8 @@ export function register_api_routes(context: ApiRouteContext): void {
   context.app.get("/api/agent/snapshot", (hono_context) =>
     hono_context.json(ok(agent.get_snapshot())),
   );
-  context.postJson("/api/agent/message", (body) => agent.send_message(body));
+  context.postJson("/api/agent/message", (body) => agent.input_command("send", body));
+  context.postJson("/api/agent/input-status", (body) => agent.input_command_status(body));
   context.request("POST", "/api/agent/uploads", async (request) => {
     const name = new URL(request.url).searchParams.get("name");
     if (name === null || name === "") throw new AppError("request.validation_failed");
@@ -123,7 +124,7 @@ export function register_api_routes(context: ApiRouteContext): void {
   context.postJson("/api/agent/workspace/document", (body) => agent.read_workspace_document(body));
   context.request("GET", "/api/agent/workspace/image", async (request) => {
     const query = new URL(request.url).searchParams;
-    const image = await agent.read_workspace_image(query.get("path"), query.get("sessionId"));
+    const image = await agent.read_workspace_image(query.get("path"), query.get("chatId"));
     return new Response(new Uint8Array(image.bytes), {
       headers: {
         "Content-Type": image.mime,
@@ -142,9 +143,9 @@ export function register_api_routes(context: ApiRouteContext): void {
   context.postJson("/api/agent/queue/update", (body) => agent.update_queued_message(body));
   context.postJson("/api/agent/queue/delete", (body) => agent.delete_queued_message(body));
   context.postJson("/api/agent/queue/reorder", (body) => agent.reorder_queued_messages(body));
-  context.postJson("/api/agent/queue/send", (body) => agent.send_queued_message(body));
-  context.postJson("/api/agent/round/revise", (body) => agent.revise_latest_round(body));
-  context.postJson("/api/agent/continue", (body) => agent.continue_session(body));
+  context.postJson("/api/agent/queue/send", (body) => agent.input_command("queue_send", body));
+  context.postJson("/api/agent/round/revise", (body) => agent.input_command("revise", body));
+  context.postJson("/api/agent/continue", (body) => agent.input_command("continue", body));
   context.postJson("/api/agent/context/compact", () => agent.compact_context());
   context.postJson("/api/agent/stop", () => agent.stop());
   context.postJson("/api/agent/reset", () => agent.reset());

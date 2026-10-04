@@ -71,7 +71,7 @@ it("文件描述直接打开标签，重复打开更新内容意图，普通切�
 
 it.each(["close", "reset"])("恢复期间 %s 使迟到描述失效", async (action) => {
   mocks.saved = {
-    session_id: "session",
+    chat_id: "session",
     paths: ["work/a.md", "work/b.md"],
     selected: "work/a.md",
     scroll: {},
@@ -95,7 +95,7 @@ it.each(["close", "reset"])("恢复期间 %s 使迟到描述失效", async (acti
 
 it("恢复期间选择对话仍恢复文件和阅读位置，保留用户选中意图", async () => {
   mocks.saved = {
-    session_id: "session",
+    chat_id: "session",
     paths: ["work/a.md"],
     selected: "work/a.md",
     scroll: { "work/a.md": 80 },

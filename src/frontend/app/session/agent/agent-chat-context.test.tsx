@@ -2,11 +2,11 @@ import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { expect, it, vi } from "vitest";
 import type { AgentEntry } from "@shared/agent";
-import { AgentSessionStore } from "./agent-session-store";
-import { AgentSessionStoreContext, useAgentEntry } from "./agent-session-context";
+import { AgentChatStore } from "./agent-chat-store";
+import { AgentChatStoreContext, useAgentEntry } from "./agent-chat-context";
 
 it("条目 Hook 只跟随当前选择，切换与移除后更新正文", async () => {
-  const store = new AgentSessionStore(window.localStorage, vi.fn());
+  const store = new AgentChatStore(window.localStorage, vi.fn());
   const first = message("first", "第一条");
   const second = message("second", "第二条");
   store.timeline.replace([first, second]);
@@ -26,9 +26,9 @@ it("条目 Hook 只跟随当前选择，切换与移除后更新正文", async (
   const show = async (id: string | null) =>
     act(async () => {
       root.render(
-        <AgentSessionStoreContext.Provider value={store}>
+        <AgentChatStoreContext.Provider value={store}>
           <Probe id={id} />
-        </AgentSessionStoreContext.Provider>,
+        </AgentChatStoreContext.Provider>,
       );
     });
   /** 模拟同一批次的条目事实与通知边界。 */

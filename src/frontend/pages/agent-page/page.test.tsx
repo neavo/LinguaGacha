@@ -34,8 +34,8 @@ vi.mock("@frontend/app/appearance/appearance-context", () => ({
 vi.mock("@frontend/app/navigation/navigation-context", () => ({
   useAppNavigation: () => ({ agent_input_request: null }),
 }));
-vi.mock("@frontend/app/session/agent/agent-session-context", () => ({
-  useAgentSessionId: () => mocks.session,
+vi.mock("@frontend/app/session/agent/agent-chat-context", () => ({
+  useAgentChatId: () => mocks.session,
   useAgentControls: () => ({ pendingDecision: mocks.needs_response ? { kind: "question" } : null }),
 }));
 vi.mock("@frontend/app/session/project-session-ui-state-context", () => ({
@@ -100,7 +100,7 @@ describe("Agent 文档标签", () => {
     mocks.toast.mockClear();
     mocks.api.mockReset();
     mocks.api.mockImplementation(async (_route: string, body: { path: string }) => ({
-      sessionId: mocks.session,
+      chatId: mocks.session,
       path: body.path,
       kind: "file",
       name: decodeURIComponent(body.path.split("/").at(-1)!),
@@ -196,7 +196,7 @@ describe("Agent 文档标签", () => {
     try {
       await render();
       mocks.api.mockImplementation(async (_route: string, body: { path: string }) => ({
-        sessionId: "session-1",
+        chatId: "session-1",
         path: body.path,
         name: "report.md",
         kind: "file",
@@ -208,7 +208,7 @@ describe("Agent 文档标签", () => {
       expect(source).toMatch(/^blob:/);
       const request = new URL(mocks.blob.mock.calls[0]![0] as string, "http://localhost");
       expect(request.searchParams.get("path")).toBe("work/chart%20%23.png");
-      expect(request.searchParams.get("sessionId")).toBe("session-1");
+      expect(request.searchParams.get("chatId")).toBe("session-1");
       await click(container.querySelector(".agent-pages__close"));
       expect(revoke).toHaveBeenCalledWith(source);
     } finally {

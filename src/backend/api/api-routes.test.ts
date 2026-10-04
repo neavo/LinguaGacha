@@ -40,6 +40,7 @@ const POST_PATHS = new Set([
   "/api/logs/page",
   "/api/diagnostics/renderer-error",
   "/api/runtime/snapshot",
+  "/api/agent/input-status",
   "/api/agent/message",
   "/api/agent/workspace/activate-path",
   "/api/agent/workspace/document",
@@ -173,7 +174,7 @@ describe("register_api_routes", () => {
     await expect(
       read_post_handler(fixture.post_json, "/api/agent/message")(message),
     ).resolves.toEqual({ revision: 7 });
-    expect(fixture.send_message).toHaveBeenCalledWith(message);
+    expect(fixture.input_command).toHaveBeenCalledWith("send", message);
     const question = { id: "question-1", response: { kind: "option", optionId: "safe" } };
     expect(read_post_handler(fixture.post_json, "/api/agent/question/resolve")(question)).toEqual({
       revision: 7,
@@ -202,12 +203,12 @@ describe("register_api_routes", () => {
     await expect(
       read_post_handler(fixture.post_json, "/api/agent/queue/send")(queued),
     ).resolves.toEqual({ revision: 7 });
-    expect(fixture.send_queued_message).toHaveBeenCalledWith(queued);
+    expect(fixture.input_command).toHaveBeenCalledWith("queue_send", queued);
     const continuation = { message: { text: "继续后追加", attachments: [] } };
     await expect(
       read_post_handler(fixture.post_json, "/api/agent/continue")(continuation),
     ).resolves.toEqual({ revision: 7 });
-    expect(fixture.continue_session).toHaveBeenCalledWith(continuation);
+    expect(fixture.input_command).toHaveBeenCalledWith("continue", continuation);
     await expect(
       read_post_handler(fixture.post_json, "/api/agent/context/compact")({}),
     ).resolves.toEqual({ revision: 7 });
@@ -216,7 +217,7 @@ describe("register_api_routes", () => {
     await expect(
       read_post_handler(fixture.post_json, "/api/agent/round/revise")(revision),
     ).resolves.toEqual({ revision: 7 });
-    expect(fixture.revise_latest_round).toHaveBeenCalledWith(revision);
+    expect(fixture.input_command).toHaveBeenCalledWith("revise", revision);
     expect(read_post_handler(fixture.post_json, "/api/agent/stop")({})).toEqual({ revision: 7 });
     expect(fixture.stop).toHaveBeenCalledWith();
     await expect(read_post_handler(fixture.post_json, "/api/agent/reset")({})).resolves.toEqual({
@@ -278,15 +279,13 @@ function create_route_fixture() {
   const post_json = vi.fn();
   const start_task = vi.fn(() => ({ accepted: true }));
   const acknowledgement = { revision: 7 };
-  const send_message = vi.fn(async () => acknowledgement);
+  const input_command = vi.fn(async () => acknowledgement);
+  const input_command_status = vi.fn(() => acknowledgement);
   const resolve_question = vi.fn(() => acknowledgement);
   const resolve_write_approval = vi.fn(() => acknowledgement);
-  const revise_latest_round = vi.fn(async () => acknowledgement);
   const update_queued_message = vi.fn(() => acknowledgement);
   const delete_queued_message = vi.fn(() => acknowledgement);
   const reorder_queued_messages = vi.fn(() => acknowledgement);
-  const send_queued_message = vi.fn(async () => acknowledgement);
-  const continue_session = vi.fn(async () => acknowledgement);
   const compact_context = vi.fn(async () => acknowledgement);
   const stop = vi.fn(() => acknowledgement);
   const reset = vi.fn(async () => acknowledgement);
@@ -306,16 +305,14 @@ function create_route_fixture() {
       doing: null,
       context: { tokens: null, compactable: false, limits: null },
     })),
-    send_message,
+    input_command,
+    input_command_status,
     resolve_question,
     resolve_write_approval,
     update_queued_message,
     delete_queued_message,
     reorder_queued_messages,
-    send_queued_message,
-    continue_session,
     compact_context,
-    revise_latest_round,
     stop,
     reset,
   } as unknown as AgentService;
@@ -372,15 +369,13 @@ function create_route_fixture() {
     catalog_snapshot,
     get,
     post_json,
-    continue_session,
     compact_context,
     delete_queued_message,
-    revise_latest_round,
     reset,
-    send_message,
+    input_command,
+    input_command_status,
     resolve_question,
     resolve_write_approval,
-    send_queued_message,
     reorder_queued_messages,
     update_queued_message,
     source_file_summary,

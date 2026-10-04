@@ -14,8 +14,8 @@ import {
 } from "@frontend/app/session/agent/agent-decision-countdown";
 import {
   useAgentDecisionCountdown,
-  useAgentSessionActions,
-} from "@frontend/app/session/agent/agent-session-context";
+  useAgentChatActions,
+} from "@frontend/app/session/agent/agent-chat-context";
 import { useI18n, type LocaleKey } from "@frontend/app/locale/locale-context";
 import {
   InputGroup,
@@ -56,7 +56,7 @@ export function AgentDecision(props: {
   title_ref?: RefObject<HTMLHeadingElement | null> | undefined;
 }): JSX.Element {
   const countdown = useAgentDecisionCountdown();
-  const actions = useAgentSessionActions();
+  const actions = useAgentChatActions();
   // 离场期间保留旧卡片，不把新问题的时钟显示在旧卡片上。
   const current_countdown = countdown?.id === props.decision.id ? countdown : null;
   return props.decision.kind === "question" ? (

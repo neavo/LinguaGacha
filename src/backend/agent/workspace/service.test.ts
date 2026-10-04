@@ -289,8 +289,8 @@ describe("AgentWorkspaceService", () => {
     expect(fs.readFileSync(fixture.destination, "utf8")).toBe("外部译文");
     fixture.pick_save_path.mockImplementationOnce(async () => {
       await fixture.service.close();
-      await fixture.service.delete_session("test0001");
-      await fixture.service.activate_session("test0001", [], async () => {});
+      await fixture.service.delete_chat("test0001");
+      await fixture.service.activate_chat("test0001", [], async () => {});
       return fixture.destination;
     });
     await expect(fixture.service.activate_path("work/output/report.md")).rejects.toMatchObject({
@@ -338,8 +338,8 @@ describe("AgentWorkspaceService", () => {
       const fixture = await create_file_fixture(temp_dir);
       fixture.pick_save_path.mockImplementationOnce(async () => {
         await fixture.service.close();
-        if (action === "reset") await fixture.service.delete_session("test0001");
-        await fixture.service.activate_session("test0001", [], async () => {});
+        if (action === "reset") await fixture.service.delete_chat("test0001");
+        await fixture.service.activate_chat("test0001", [], async () => {});
         fs.mkdirSync(path.dirname(fixture.file), { recursive: true });
         fs.writeFileSync(fixture.file, "新会话文件");
         return fixture.destination;
@@ -384,7 +384,7 @@ describe("AgentWorkspaceService", () => {
     const fixture = await create_fixture(temp_dir);
     fs.mkdirSync(path.join(fixture.workspace_root, "stale"), { recursive: true });
     fs.writeFileSync(path.join(fixture.workspace_root, "stale", "partial.json"), "{}");
-    await fixture.service.activate_session("test0001", [], async () => {});
+    await fixture.service.activate_chat("test0001", [], async () => {});
     expect(fs.existsSync(path.join(fixture.workspace_root, "stale"))).toBe(true);
 
     await run_workspace(fixture);
@@ -486,7 +486,7 @@ describe("AgentWorkspaceService", () => {
     const marker = path.join(deployed, "installed.txt");
     fs.writeFileSync(marker, "installed");
     await run_workspace(fixture);
-    await fixture.service.activate_session("test0001", [], async () => {});
+    await fixture.service.activate_chat("test0001", [], async () => {});
     expect(fs.realpathSync(modules)).toBe(deployed);
     expect(fs.readFileSync(marker, "utf8")).toBe("installed");
     expect(fs.existsSync(path.join(fixture.workspace_root, "work"))).toBe(true);
@@ -505,7 +505,7 @@ describe("AgentWorkspaceService", () => {
     await run_workspace(fixture);
     expect(fixture.read_asset_content).toHaveBeenCalledTimes(2);
     await fixture.service.close();
-    await fixture.service.activate_session("test0001", [], async () => {});
+    await fixture.service.activate_chat("test0001", [], async () => {});
     expect(fs.existsSync(path.join(fixture.workspace_root, "sources"))).toBe(false);
     await run_workspace(fixture);
     expect(fixture.read_asset_content).toHaveBeenCalledTimes(3);
@@ -519,7 +519,7 @@ describe("AgentWorkspaceService", () => {
     const fixture = await create_fixture(temp_dir, native_fs);
 
     await expect(
-      fixture.service.activate_session("test0001", [], async () => {}),
+      fixture.service.activate_chat("test0001", [], async () => {}),
     ).resolves.toBeUndefined();
     await run_workspace(fixture);
     expect(
@@ -550,8 +550,8 @@ describe("AgentWorkspaceService", () => {
     expect(fs.readFileSync(work_file, "utf-8")).toBe('{"step":1}\n');
 
     await fixture.service.close();
-    await fixture.service.delete_session("test0001");
-    await fixture.service.activate_session("test0001", [], async () => {});
+    await fixture.service.delete_chat("test0001");
+    await fixture.service.activate_chat("test0001", [], async () => {});
     expect(fs.readdirSync(path.join(fixture.workspace_root, AGENT_WORKSPACE_WORK_ROOT))).toEqual(
       [],
     );
@@ -564,7 +564,7 @@ describe("AgentWorkspaceService", () => {
     });
 
     await expect(
-      fixture.service.activate_session("test0001", [], async () => {}),
+      fixture.service.activate_chat("test0001", [], async () => {}),
     ).resolves.toBeUndefined();
     expect(fs.existsSync(path.join(fixture.workspace_root, "sources"))).toBe(false);
 
@@ -1168,7 +1168,7 @@ async function create_fixture(temp_dir: string, native_fs?: NativeFs) {
     pickSavePath: pick_save_path,
     ...(native_fs === undefined ? {} : { nativeFs: native_fs }),
   });
-  await service.activate_session("test0001", [], async () => {});
+  await service.activate_chat("test0001", [], async () => {});
   return {
     service,
     prepare_image,
@@ -1352,7 +1352,7 @@ it("PDF 零条目工程按页保存、隔离旧指纹，语言变化后重建工
     expect(workspace.list_files()).toEqual([
       { kind: "workspace", path: "book.pdf", count: 3, unit: "pages" },
     ]);
-    await workspace.activate_session("test0001", [], async () => {});
+    await workspace.activate_chat("test0001", [], async () => {});
     const upload = await workspace.uploads.upload(
       "参考.txt",
       new ReadableStream({

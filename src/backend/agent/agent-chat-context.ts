@@ -9,7 +9,7 @@ import type { AgentContextSnapshot } from "../../shared/agent";
 export const AGENT_KEEP_RECENT_TOKENS = 32_000;
 
 /** 条目身份决定用量是否覆盖当前前缀。时间戳相同的摘要与响应也不会误用旧用量。 */
-export function read_agent_session_context(
+export function read_agent_chat_context(
   view: ContextView,
   model: Model<Api> | null,
 ): AgentContextSnapshot {

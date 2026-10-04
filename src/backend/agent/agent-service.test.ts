@@ -1,6 +1,6 @@
 import { DatabaseSync } from "node:sqlite";
 import { NodeSqliteDatabase } from "@earendil-works/pi-durable/storage/sqlite/node";
-import { AgentSessionStore } from "../database/agent-session-store";
+import { AgentChatStorage } from "../database/agent-chat-storage";
 import { randomUUID } from "node:crypto";
 import type { AgentApprovalMode } from "../../domain/setting";
 import { AgentTokenSpeed } from "./agent-token-speed";
@@ -32,7 +32,7 @@ import {
 import type { MutableModels } from "@earendil-works/pi-ai/models";
 import type { AppLanguage } from "../../domain/app-language";
 import type { JsonRecord } from "../../domain/json";
-import type { AgentCommandAck, AgentSessionChange, AgentSessionEvent } from "../../shared/agent";
+import type { AgentCommandAck, AgentChatChange, AgentChatEvent } from "../../shared/agent";
 import type { AgentWebSearchPort } from "./tools/web-search";
 import * as workspace_tools from "./tools/workspace-run";
 import { ProjectSessionState } from "../project/project-session-state";
@@ -105,7 +105,7 @@ const skill_test_fixture = vi.hoisted(() => {
 });
 const agent_resource_fixture = vi.hoisted(() => {
   const system_prompt = "system-prompt-fixture";
-  const session_seed = [
+  const chat_seed = [
     { role: "user", content: "seed-user-1" },
     { role: "assistant", content: "seed-assistant-1" },
     { role: "user", content: "seed-user-2" },
@@ -113,11 +113,11 @@ const agent_resource_fixture = vi.hoisted(() => {
   ] as const;
   return {
     system_prompt,
-    session_seed,
+    chat_seed,
     system_prompt_loader: vi.fn(
       () => `${system_prompt}\n\n{{agent_personality}}\n\nfixed-after-personality-fixture`,
     ),
-    session_seed_loader: vi.fn(() => session_seed),
+    chat_seed_loader: vi.fn(() => chat_seed),
   };
 });
 const agent_model_registrar = vi.hoisted(() => vi.fn());
@@ -177,9 +177,9 @@ vi.mock("./agent-skills", async (import_original) => ({
   ...(await import_original<typeof import("./agent-skills")>()),
   load_agent_skills: skill_test_fixture.loader,
 }));
-vi.mock("./agent-session-seed", async (import_original) => ({
-  ...(await import_original<typeof import("./agent-session-seed")>()),
-  load_agent_session_seed: agent_resource_fixture.session_seed_loader,
+vi.mock("./agent-chat-seed", async (import_original) => ({
+  ...(await import_original<typeof import("./agent-chat-seed")>()),
+  load_agent_chat_seed: agent_resource_fixture.chat_seed_loader,
 }));
 vi.mock("./agent-system-prompt", async (original) => ({
   ...(await original<typeof import("./agent-system-prompt")>()),
@@ -561,7 +561,7 @@ describe("AgentService", () => {
     agent_model_registrar.mockImplementation(register_fake_agent_model);
     skill_test_fixture.loader.mockReset().mockReturnValue(skill_test_fixture.skills);
     agent_resource_fixture.system_prompt_loader.mockClear();
-    agent_resource_fixture.session_seed_loader.mockClear();
+    agent_resource_fixture.chat_seed_loader.mockClear();
   });
 
   afterEach(async () => {
@@ -573,6 +573,66 @@ describe("AgentService", () => {
     fake_agent_state.release_summary?.();
     await Promise.all(services.splice(0).map(async (service) => await service.dispose()));
     for (const database of databases.splice(0)) database.close();
+  });
+
+  it("输入命令并发及回包丢失重试只受理一次，同文新命令仍执行", async () => {
+    const { service } = await create_service();
+    const request = {
+      chatId: service.get_snapshot().chatId,
+      commandId: "send-1",
+      text: "一次输入",
+      attachments: [],
+    };
+    const send = service.send_message.bind(service);
+    vi.spyOn(service, "send_message").mockImplementationOnce(async (body) => {
+      await send(body);
+      throw new Error("reply lost");
+    });
+    const first = service.input_command("send", request);
+    const duplicate = service.input_command("send", request);
+    expect(() => service.input_command("send", { ...request, text: "冲突内容" })).toThrow(
+      "request.validation_failed",
+    );
+    await expect(first).rejects.toThrow("reply lost");
+    await expect(duplicate).rejects.toThrow("reply lost");
+    await wait_for_idle(service);
+    await expect(service.input_command("send", request)).resolves.toMatchObject({
+      status: "accepted",
+    });
+    expect(fake_agent_state.prompts).toEqual(["一次输入"]);
+    await service.input_command("send", { ...request, commandId: "send-2" });
+    await wait_for_idle(service);
+    expect(fake_agent_state.prompts).toEqual(["一次输入", "一次输入"]);
+  });
+
+  it("重复入队与重复修订按产品命令去重，旧 chat 命令被拒绝", async () => {
+    const { service } = await create_service();
+    fake_agent_state.mode = "pending";
+    await service.send_message({ text: "运行中", attachments: [] });
+    const chatId = service.get_snapshot().chatId;
+    const request = { chatId, commandId: "queue-1", text: "排队输入", attachments: [] };
+    await service.input_command("send", request);
+    await service.input_command("send", request);
+    expect(service.get_snapshot().inputQueue.items).toHaveLength(1);
+    await vi.waitFor(() => expect(fake_agent_state.release_pending).not.toBeNull());
+    fake_agent_state.mode = "success";
+    fake_agent_state.release_pending?.();
+    await wait_for_idle(service);
+    const entry = service
+      .get_snapshot()
+      .entries.findLast((entry) => entry.kind === "assistant_message")!;
+    const revision = {
+      chatId,
+      commandId: "revise-1",
+      entryId: entry.id,
+      message: { text: "离线修订", attachments: [] },
+    };
+    await service.input_command("revise", revision);
+    const revised = service.get_snapshot().entries;
+    await service.input_command("revise", revision);
+    expect(service.get_snapshot().entries).toEqual(revised);
+    await service.reset();
+    expect(() => service.input_command("send", request)).toThrow("request.validation_failed");
   });
 
   it("快照沿用技能加载结果的展示顺序，并在变更状态前拒绝非法消息", async () => {
@@ -626,13 +686,13 @@ describe("AgentService", () => {
     const revisions = publish.mock.calls.map(([, event]) => event["revision"]);
     expect(
       publish.mock.calls.every(
-        ([, event]) => event["type"] === "snapshot_seed" || event["type"] === "session_update",
+        ([, event]) => event["type"] === "snapshot_seed" || event["type"] === "chat_update",
       ),
     ).toBe(true);
     expect(
       publish.mock.calls.some(
         ([, event]) =>
-          event["type"] === "session_update" &&
+          event["type"] === "chat_update" &&
           Array.isArray(event["changes"]) &&
           event["changes"].length > 0,
       ),
@@ -958,7 +1018,7 @@ describe("AgentService", () => {
 
   it("同一对话持续接收技能变化，模型请求只使用当前目录", async () => {
     const fixture = await create_service();
-    const session_id = fixture.service.get_snapshot().sessionId;
+    const chat_id = fixture.service.get_snapshot().chatId;
     const next_skills = [
       ...skill_test_fixture.skills,
       {
@@ -970,9 +1030,9 @@ describe("AgentService", () => {
     skill_test_fixture.loader.mockReturnValue(next_skills);
     await fixture.skills.refresh();
     expect(fixture.service.get_snapshot().skills.map(({ name }) => name)).toContain("new-skill");
-    expect(fixture.service.get_snapshot()).toMatchObject({ sessionId: session_id, entries: [] });
+    expect(fixture.service.get_snapshot()).toMatchObject({ chatId: chat_id, entries: [] });
     expect(change_calls(fixture.publish)).toContainEqual([
-      "agent.session_event",
+      "agent.chat_event",
       expect.objectContaining({
         type: "skills_changed",
         skills: expect.arrayContaining([expect.objectContaining({ name: "new-skill" })]),
@@ -991,7 +1051,7 @@ describe("AgentService", () => {
     await fixture.service.send_message({ text: "继续", attachments: [] });
     await wait_for_idle(fixture.service);
     expect(fake_agent_state.system_prompts.at(-1)).not.toContain("<name>new-skill</name>");
-    expect(fixture.service.get_snapshot().sessionId).toBe(session_id);
+    expect(fixture.service.get_snapshot().chatId).toBe(chat_id);
 
     await fixture.service.reset();
     expect(fixture.service.get_snapshot().skills.map(({ name }) => name)).not.toContain(
@@ -1156,7 +1216,7 @@ describe("AgentService", () => {
       );
     });
     const idle_index = change_calls(publish).findIndex(
-      ([, event]) => event["type"] === "session_state" && event["state"] === "idle",
+      ([, event]) => event["type"] === "chat_status" && event["state"] === "idle",
     );
     expect(round_end_index).toBeGreaterThan(-1);
     expect(idle_index).toBeGreaterThan(round_end_index);
@@ -1287,7 +1347,7 @@ describe("AgentService", () => {
       limits: null,
     });
     expect(publish).toHaveBeenLastCalledWith(
-      "agent.session_event",
+      "agent.chat_event",
       expect.objectContaining({ type: "snapshot_seed", snapshot: service.get_snapshot() }),
     );
   });
@@ -1397,14 +1457,14 @@ describe("AgentService", () => {
     });
     expect(service.get_snapshot().tokenSpeed).toBeNull();
     expect(change_calls(publish)).toContainEqual([
-      "agent.session_event",
+      "agent.chat_event",
       expect.objectContaining({ type: "entry_upsert", entry: failed_round }),
     ]);
 
     fake_agent_state.mode = "pending";
     fake_agent_state.hold_idle = true;
     const continue_event_start = change_calls(publish).length;
-    await service.continue_session({});
+    await service.continue_chat({});
     await vi.waitFor(() => expect(fake_agent_state.release_pending).not.toBeNull());
     const resumed_speed = service.get_snapshot().tokenSpeed;
     expect(resumed_speed).toEqual({
@@ -1484,7 +1544,7 @@ describe("AgentService", () => {
     const records = log_append.mock.calls.map(([payload]) => payload.content);
     expect(records.filter((content) => content.event === "tool_end")).toEqual([
       expect.objectContaining({
-        session_id: started.session_id,
+        runtime_id: started.runtime_id,
         run_id: started.run_id,
         tool_call_id: started.tool_call_id,
         ended_at: expect.any(String),
@@ -1492,7 +1552,7 @@ describe("AgentService", () => {
     ]);
     expect(records.filter((content) => content.event === "run_end")).toEqual([
       expect.objectContaining({
-        session_id: started.session_id,
+        runtime_id: started.runtime_id,
         run_id: started.run_id,
         status: "stopped",
       }),
@@ -1502,7 +1562,7 @@ describe("AgentService", () => {
     await wait_for_idle(service);
     const latest = log_append.mock.calls.at(-1)?.[0].content;
     expect(latest).toMatchObject({ event: "run_end", status: "success" });
-    expect(latest.session_id).not.toBe(started.session_id);
+    expect(latest.runtime_id).not.toBe(started.runtime_id);
   });
 
   it("成功工具与 SDK Schema 失败都记录完整 start/end", async () => {
@@ -1592,7 +1652,7 @@ describe("AgentService", () => {
         }),
       );
       expect(change_calls(publish)).toContainEqual([
-        "agent.session_event",
+        "agent.chat_event",
         expect.objectContaining({
           type: "entry_upsert",
           entry: expect.objectContaining({ kind: "tool_call", status: "success", output: texts }),
@@ -1610,7 +1670,7 @@ describe("AgentService", () => {
     await service.send_message({ text: "查询", attachments: [] });
     await wait_for_idle(service);
     expect(change_calls(publish)).toContainEqual([
-      "agent.session_event",
+      "agent.chat_event",
       expect.objectContaining({
         type: "entry_upsert",
         entry: expect.objectContaining({
@@ -1711,8 +1771,7 @@ describe("AgentService", () => {
     const { service } = fixture;
     await service.send_message({ text: "原任务", attachments: [] });
     await wait_for_idle(service);
-    const identity = agent_model_registrar.mock.calls[0]?.[2];
-    expect(identity).toEqual({ user_agent: "LinguaGacha/Test", session_id: expect.any(String) });
+    const identity = service.get_snapshot().chatId;
     const user = service.get_snapshot().entries.findLast((entry) => entry.kind === "user_message");
     if (user === undefined) throw new Error("缺少 user 条目");
     await service.revise_latest_round({
@@ -1723,19 +1782,18 @@ describe("AgentService", () => {
     fixture.select_agent_model("next");
     await service.send_message({ text: "继续", attachments: [] });
     await wait_for_idle(service);
-    for (const call of agent_model_registrar.mock.calls) expect(call[2]).toEqual(identity);
+    expect(service.get_snapshot().chatId).toBe(identity);
 
     await service.reset();
     await service.send_message({ text: "新对话", attachments: [] });
     await wait_for_idle(service);
-    const reset_identity = agent_model_registrar.mock.calls.at(-1)?.[2];
-    expect(reset_identity.session_id).not.toBe(identity.session_id);
+    const reset_identity = service.get_snapshot().chatId;
+    expect(reset_identity).not.toBe(identity);
 
     await fixture.session_state.mark_loaded("next.lg");
     await service.send_message({ text: "新工程", attachments: [] });
     await wait_for_idle(service);
-    const project_identity = agent_model_registrar.mock.calls.at(-1)?.[2];
-    expect(project_identity.session_id).not.toBe(reset_identity.session_id);
+    expect(service.get_snapshot().chatId).not.toBe(reset_identity);
   });
 
   it("以相同 user 输入修订轮次时删除旧尝试并重新调用模型", async () => {
@@ -1832,7 +1890,7 @@ describe("AgentService", () => {
     }
 
     fake_agent_state.mode = "success";
-    await expect(service.continue_session({})).resolves.toEqual({ revision: expect.any(Number) });
+    await expect(service.continue_chat({})).resolves.toEqual({ revision: expect.any(Number) });
     expect(service.get_snapshot().state).toBe("running");
     await wait_for_idle(service);
 
@@ -1950,7 +2008,7 @@ describe("AgentService", () => {
     await wait_for_idle(service);
     const before = service.get_snapshot();
 
-    await expect(service.continue_session({})).rejects.toThrow("request.validation_failed");
+    await expect(service.continue_chat({})).rejects.toThrow("request.validation_failed");
     await expect(
       service.revise_latest_round({
         entryId: "stale",
@@ -1970,7 +2028,7 @@ describe("AgentService", () => {
     await session_state.mark_loaded("next.lg");
 
     expect(service.get_snapshot()).toEqual({
-      sessionId: expect.any(String),
+      chatId: expect.any(String),
       revision: expect.any(Number),
       state: "idle",
       pendingDecision: null,
@@ -1998,7 +2056,7 @@ describe("AgentService", () => {
     await vi.waitFor(() => expect(fake_agent_state.release_pending).not.toBeNull());
     expect(service.get_snapshot()).toMatchObject({ state: "running", doing: "基础扫描" });
     expect(change_calls(publish)).toContainEqual([
-      "agent.session_event",
+      "agent.chat_event",
       expect.objectContaining({ type: "doing", doing: "基础扫描" }),
     ]);
     await service.stop();
@@ -2029,7 +2087,7 @@ describe("AgentService", () => {
     await wait_for_idle(service);
     expect(service.get_snapshot().doing).toBeNull();
     expect(change_calls(publish)).toContainEqual([
-      "agent.session_event",
+      "agent.chat_event",
       expect.objectContaining({ type: "doing", doing: null }),
     ]);
   });
@@ -2126,14 +2184,14 @@ describe("AgentService", () => {
 
   it("预览读取在请求前后校验会话，重置期间的旧响应失效", async () => {
     const { service, workspace } = await create_service(true);
-    const sessionId = service.get_snapshot().sessionId;
-    expect(await service.read_workspace_document({ sessionId, path: "work/report.md" })).toEqual({
-      sessionId,
+    const chatId = service.get_snapshot().chatId;
+    expect(await service.read_workspace_document({ chatId, path: "work/report.md" })).toEqual({
+      chatId,
       path: "work/report.md",
       content: "报告",
     });
     await expect(
-      service.read_workspace_document({ sessionId: "old", path: "work/report.md" }),
+      service.read_workspace_document({ chatId: "old", path: "work/report.md" }),
     ).rejects.toMatchObject({ code: "file.not_found" });
     const file = {
       path: "work/report.md",
@@ -2142,10 +2200,10 @@ describe("AgentService", () => {
       preview: "markdown" as const,
     };
     vi.spyOn(workspace, "describe_file").mockReturnValue(file);
-    expect(service.describe_workspace_file({ sessionId, path: file.path })).toEqual(file);
-    expect(() =>
-      service.describe_workspace_file({ sessionId: "old", path: file.path }),
-    ).toThrowError(expect.objectContaining({ code: "file.not_found" }));
+    expect(service.describe_workspace_file({ chatId, path: file.path })).toEqual(file);
+    expect(() => service.describe_workspace_file({ chatId: "old", path: file.path })).toThrowError(
+      expect.objectContaining({ code: "file.not_found" }),
+    );
     let finish_read!: (value: { path: string; content: string }) => void;
     vi.spyOn(workspace, "read_document").mockImplementationOnce(
       () =>
@@ -2153,7 +2211,7 @@ describe("AgentService", () => {
           finish_read = resolve;
         }),
     );
-    const pending_read = service.read_workspace_document({ sessionId, path: "work/report.md" });
+    const pending_read = service.read_workspace_document({ chatId, path: "work/report.md" });
     // 读取响应在会话切换之后到达，不能返回同名旧文件。
     const check_read = expect(pending_read).rejects.toMatchObject({ code: "file.not_found" });
     await service.reset();
@@ -2177,9 +2235,9 @@ describe("AgentService", () => {
       { code: "runtime.busy" },
     );
     await reset;
-    expect(workspace.delete_session).toHaveBeenCalledOnce();
+    expect(workspace.delete_chat).toHaveBeenCalledOnce();
     await session_state.mark_loaded("next.lg");
-    expect(workspace.activate_session).toHaveBeenCalledTimes(3);
+    expect(workspace.activate_chat).toHaveBeenCalledTimes(3);
     const invalidations = vi.mocked(workspace.invalidate_links).mock.calls.length;
     const dispose = service.dispose();
     expect(workspace.invalidate_links).toHaveBeenCalledTimes(invalidations + 1);
@@ -2412,7 +2470,7 @@ describe("AgentService", () => {
     });
     expect(fake_agent_state.abort_count).toBe(1);
     expect(service.get_snapshot()).toEqual({
-      sessionId: expect.any(String),
+      chatId: expect.any(String),
       revision: expect.any(Number),
       state: "idle",
       pendingDecision: null,
@@ -2443,7 +2501,7 @@ describe("AgentService", () => {
     await expect(resetting).resolves.toEqual({ revision: expect.any(Number) });
     expect(service.get_snapshot()).toMatchObject({ state: "idle", entries: [] });
     expect(publish).toHaveBeenLastCalledWith(
-      "agent.session_event",
+      "agent.chat_event",
       expect.objectContaining({ type: "snapshot_seed", snapshot: service.get_snapshot() }),
     );
     fake_agent_state.mode = "success";
@@ -2720,7 +2778,7 @@ describe("AgentService", () => {
       service.get_snapshot().entries.findLast((entry) => entry.kind === "user_message"),
     ).toMatchObject({ text: "连续截断", status: "error" });
     expect(service.get_snapshot().usage.output).toBeGreaterThan(usage);
-    await service.continue_session({});
+    await service.continue_chat({});
     await wait_for_idle(service);
     expect(JSON.stringify(fake_agent_state.model_contexts.at(-1))).not.toContain("废弃的恢复尝试");
   });
@@ -2757,7 +2815,7 @@ describe("AgentService", () => {
       ).toMatchObject({ text: "触发恢复", status: "error" });
       expect(fake_agent_state.prompts).not.toContain("排队工作");
 
-      await service.continue_session({});
+      await service.continue_chat({});
       await wait_for_idle(service);
       expect(JSON.stringify(fake_agent_state.model_contexts)).not.toContain("废弃的恢复尝试");
       expect(service.get_snapshot()).toMatchObject({ inputQueue: { paused: false, items: [] } });
@@ -3283,7 +3341,7 @@ describe("AgentService", () => {
     await vi.waitFor(() => expect(runtime_gate.get_snapshot().owner).toBeNull());
     expect(service.get_snapshot().inputQueue.canSendNow).toBe(true);
     const task_lease = runtime_gate.begin_runtime("batch_translation");
-    await expect(service.continue_session({})).rejects.toThrow("runtime.busy");
+    await expect(service.continue_chat({})).rejects.toThrow("runtime.busy");
     expect(service.get_snapshot().inputQueue).toMatchObject({
       paused: true,
       items: [{ text: "第二轮" }],
@@ -3294,7 +3352,7 @@ describe("AgentService", () => {
     );
 
     fake_agent_state.mode = "success";
-    await service.continue_session({
+    await service.continue_chat({
       message: { text: "第三轮", attachments: [] },
     });
     await wait_for_idle(service);
@@ -3312,7 +3370,7 @@ describe("AgentService", () => {
     await vi.waitFor(() => expect(runtime_gate.get_snapshot().owner).toBeNull());
 
     fake_agent_state.mode = "success";
-    await service.continue_session({});
+    await service.continue_chat({});
     await wait_for_idle(service);
 
     expect(service.get_snapshot().inputQueue.items).toEqual([]);
@@ -3339,7 +3397,7 @@ describe("AgentService", () => {
     });
 
     fake_agent_state.mode = "success";
-    await service.continue_session({});
+    await service.continue_chat({});
     await wait_for_idle(service);
 
     expect(service.get_snapshot().inputQueue.items).toEqual([]);
@@ -3593,11 +3651,11 @@ describe("AgentService", () => {
     await session_state.mark_loaded("next.lg");
     await service.send_message({ text: "工程 B", attachments: [] });
     await wait_for_idle(service);
-    expect(service.get_snapshot().sessionId).not.toBe(original.sessionId);
+    expect(service.get_snapshot().chatId).not.toBe(original.chatId);
     const calls = fake_agent_state.model_call_count;
     await session_state.mark_loaded("test.lg");
     expect(service.get_snapshot()).toMatchObject({
-      sessionId: original.sessionId,
+      chatId: original.chatId,
       entries: original.entries,
       usage: original.usage,
       state: "idle",
@@ -3606,14 +3664,14 @@ describe("AgentService", () => {
     });
     expect(fake_agent_state.model_call_count).toBe(calls);
     await service.reset();
-    const reset = service.get_snapshot().sessionId;
-    expect(reset).not.toBe(original.sessionId);
+    const reset = service.get_snapshot().chatId;
+    expect(reset).not.toBe(original.chatId);
     await session_state.mark_loaded("next.lg");
     await session_state.mark_loaded("test.lg");
-    expect(service.get_snapshot()).toMatchObject({ sessionId: reset, entries: [] });
+    expect(service.get_snapshot()).toMatchObject({ chatId: reset, entries: [] });
   });
 
-  /** 只替换资源、模型与领域协作者，生命周期、门禁和 AgentSession 仍走生产实现。 */
+  /** 只替换资源、模型与领域协作者，生命周期、门禁和 AgentChat 仍走生产实现。 */
   async function create_service(
     load_resources = true,
     web_search?: AgentWebSearchPort,
@@ -3708,10 +3766,10 @@ describe("AgentService", () => {
         describe_file: vi.fn(),
         read_document_image: vi.fn(async () => ({ bytes: new Uint8Array(), mime: "image/png" })),
         invalidate_links: vi.fn(),
-        create_session: vi.fn(async () => randomUUID()),
-        activate_session: vi.fn(async () => undefined),
+        create_chat: vi.fn(async () => randomUUID()),
+        activate_chat: vi.fn(async () => undefined),
         close: vi.fn(async () => undefined),
-        delete_session: vi.fn(async () => undefined),
+        delete_chat: vi.fn(async () => undefined),
         cancel_uploads: vi.fn(),
         run: vi.fn<AgentWorkspacePort["run"]>(async () => {
           await wait_for_held_tool();
@@ -3764,13 +3822,13 @@ describe("AgentService", () => {
         if (connection === undefined) {
           const sqlite = new DatabaseSync(":memory:");
           sqlite.exec(
-            "CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT); CREATE TABLE agent_sessions (id TEXT PRIMARY KEY, data TEXT)",
+            "CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT); CREATE TABLE agent_chats (id TEXT PRIMARY KEY, data TEXT)",
           );
           databases.push(sqlite);
           connection = new NodeSqliteDatabase(sqlite);
           connections.set(project, connection);
         }
-        return new AgentSessionStore(connection, () => {});
+        return new AgentChatStorage(connection, () => {});
       },
     };
     const service = new AgentService({
@@ -3789,8 +3847,7 @@ describe("AgentService", () => {
         get_agent_builtin_skill_dir: () => skill_test_fixture.skill_root,
         get_agent_user_skill_dir: () => `${skill_test_fixture.app_root}/user-skills`,
         get_agent_system_prompt_path: () => `${skill_test_fixture.app_root}/builtin/system.md`,
-        get_agent_session_seed_path: () =>
-          `${skill_test_fixture.app_root}/builtin/session_seed.json`,
+        get_agent_chat_seed_path: () => `${skill_test_fixture.app_root}/builtin/chat_seed.json`,
       },
       settings,
       userAgent: "LinguaGacha/Test",
@@ -3929,14 +3986,13 @@ function fake_uploads(): AgentWorkspacePort["uploads"] {
 }
 
 /** 行为用例检查批次中的业务变化，传输修订用例仍检查原始帧。 */
-type PublishedChange = (
-  | AgentSessionChange
-  | Extract<AgentSessionEvent, { type: "snapshot_seed" }>
-) & { revision: number };
+type PublishedChange = (AgentChatChange | Extract<AgentChatEvent, { type: "snapshot_seed" }>) & {
+  revision: number;
+};
 /** 展开一个传输批次，保留该批次共享的修订号。 */
 function unpack_event(payload: JsonRecord): PublishedChange[] {
-  const event = payload as AgentSessionEvent;
-  return event.type === "session_update"
+  const event = payload as AgentChatEvent;
+  return event.type === "chat_update"
     ? event.changes.map((change) => ({ ...change, revision: event.revision }))
     : [event];
 }

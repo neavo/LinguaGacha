@@ -9,10 +9,7 @@ import {
   type AgentMessageInput,
   type AgentSkillSnapshot,
 } from "@shared/agent";
-import type {
-  AgentCommand,
-  AgentInputSession,
-} from "@frontend/app/session/agent/agent-session-context";
+import type { AgentCommand, AgentInputState } from "@frontend/app/session/agent/agent-chat-context";
 import { useI18n, type LocaleKey } from "@frontend/app/locale/locale-context";
 import type { ModelSelectionController } from "@frontend/features/model-selection/use-model-selection";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@frontend/shadcn/tooltip";
@@ -43,7 +40,7 @@ type AgentComposerProps = {
   approval_mode: AgentApprovalMode;
   approval_disabled: boolean;
   model_selection: ModelSelectionController;
-  input_session: AgentInputSession;
+  input_state: AgentInputState;
   on_send: (message: AgentMessageInput) => void;
   on_agent_model_select: (change: ModelSelectionInput) => void;
   on_approval_mode_change: (approval_mode: AgentApprovalMode) => void;
@@ -76,7 +73,7 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
       read_only={editor_read_only}
       skills={props.skills}
       instructions={props.instructions}
-      input_session={props.input_session}
+      input_state={props.input_state}
       on_submit={props.on_send}
       render_actions={({ has_content, uploads_pending }) => {
         const continuing_queue = props.can_continue_queue && !props.running && !locked;

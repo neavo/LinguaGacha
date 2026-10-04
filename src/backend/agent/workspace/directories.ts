@@ -5,7 +5,7 @@ import type { NativeFs } from "../../../native/native-fs";
 
 export const AGENT_WORKSPACE_LIMIT = 20;
 // 回收覆盖历史 Base64url、Base62 与新生成的 Base36 目录，独立于身份读取约束。
-const SESSION_DIRECTORY_PATTERN = /^[A-Za-z0-9_-]{8}$/u;
+const CHAT_DIRECTORY_PATTERN = /^[A-Za-z0-9_-]{8}$/u;
 
 /** 只管理 workspace 的直接会话子目录，目录链接的目标不参与递归清理。 */
 export class AgentWorkspaceDirectories {
@@ -65,7 +65,7 @@ export class AgentWorkspaceDirectories {
           (entry) =>
             entry.isDirectory() &&
             !entry.isSymbolicLink() &&
-            SESSION_DIRECTORY_PATTERN.test(entry.name) &&
+            CHAT_DIRECTORY_PATTERN.test(entry.name) &&
             entry.name !== active,
         )
         .map((entry) => ({ id: entry.name, modified: this.fs.stat(this.path(entry.name)).mtimeMs }))

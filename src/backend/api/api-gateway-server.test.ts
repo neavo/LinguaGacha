@@ -87,15 +87,15 @@ describe("ApiGatewayServer", () => {
   it("文档与配图通过真实 HTTP 返回正文和原始字节，响应不缓存", async () => {
     const { baseUrl } = await create_gateway().start();
     const response = await post_json(baseUrl, "/api/agent/workspace/document", {
-      sessionId: "session",
+      chatId: "session",
       path: "work/report.md",
     });
     expect(await response.json()).toEqual({
       ok: true,
-      data: { sessionId: "session", path: "work/report.md", content: "# 报告\n检查通过" },
+      data: { chatId: "session", path: "work/report.md", content: "# 报告\n检查通过" },
     });
     const image = await fetch(
-      `${baseUrl}/api/agent/workspace/image?sessionId=session&path=work%2Fchart.png`,
+      `${baseUrl}/api/agent/workspace/image?chatId=session&path=work%2Fchart.png`,
     );
     expect(image.headers.get("Content-Type")).toBe("image/png");
     expect(image.headers.get("Cache-Control")).toBe("no-store");
@@ -401,7 +401,7 @@ describe("ApiGatewayServer", () => {
       upload_file: (name: string, body: ReadableStream<Uint8Array>, signal: AbortSignal) =>
         uploads.upload(name, body, signal),
       read_upload: (id: string) => uploads.open(id),
-      read_workspace_document: async (request: { sessionId: string; path: string }) => ({
+      read_workspace_document: async (request: { chatId: string; path: string }) => ({
         ...request,
         content: "# 报告\n检查通过",
       }),
@@ -419,15 +419,13 @@ describe("ApiGatewayServer", () => {
         doing: null,
         context: { tokens: null, compactable: false, limits: null },
       })),
-      send_message: vi.fn(),
+      input_command: vi.fn(),
+      input_command_status: vi.fn(),
       resolve_question: vi.fn(),
       resolve_write_approval: vi.fn(),
       update_queued_message: vi.fn(),
       delete_queued_message: vi.fn(),
       reorder_queued_messages: vi.fn(),
-      send_queued_message: vi.fn(),
-      revise_latest_round: vi.fn(),
-      continue_session: vi.fn(),
       compact_context: vi.fn(),
       stop: vi.fn(),
       reset: vi.fn(),

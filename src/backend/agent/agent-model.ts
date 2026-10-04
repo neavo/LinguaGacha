@@ -10,7 +10,11 @@ import type { JsonRecord } from "../../domain/json";
 import { Model, normalize_model_selection } from "../../domain/model";
 import { normalize_setting_snapshot } from "../../domain/setting";
 import * as AppErrors from "../../shared/error";
-import { read_model_request_snapshot, type ModelRequestIdentity } from "../llm/llm-request";
+import {
+  build_request_headers,
+  read_model_request_snapshot,
+  type ModelRequestIdentity,
+} from "../llm/llm-request";
 import { apply_request_overrides } from "../llm/llm-payload";
 import { resolve_model_capability, type PiCatalogModel } from "../llm/model-capability";
 import type { PiModelCatalogReader } from "../llm/pi-model-catalog";
@@ -46,7 +50,7 @@ export function resolve_agent_batch_translation_model(
 export function register_agent_model(
   models: MutableModels,
   config: JsonRecord,
-  identity: ModelRequestIdentity,
+  identity: Pick<ModelRequestIdentity, "user_agent">,
   catalog: PiModelCatalogReader,
   auth?: Pick<ChatGPTAuthService, "bind" | "resolve">,
 ): {
@@ -58,7 +62,7 @@ export function register_agent_model(
   if (raw_model === null) throw new AppErrors.AppError("model.not_found");
   const configured_model = Model.from_json(raw_model, String(raw_model["id"] ?? ""));
   const capability = resolve_model_capability(configured_model, catalog.read_models());
-  const snapshot = read_model_request_snapshot(raw_model, identity);
+  const snapshot = read_model_request_snapshot(raw_model, { user_agent: identity.user_agent });
   const api_key = snapshot.api_keys[0] ?? "no_key_required";
   const configured_name = String(raw_model["name"] ?? "").trim();
   const pi = resolve_pi_model(snapshot, capability, {
@@ -68,12 +72,19 @@ export function register_agent_model(
     input: ["text", "image"],
   });
   const provider_name = `LinguaGacha ${pi.model.provider}`;
-  // 模型能力与实际载荷各自保持原有边界，用户扩展在最终 onPayload 生效。
+  // 供应商身份随当前 SDK 分支取得，模型注册快照只提供固定请求头。
+  const request_headers = (sessionId: string | undefined) =>
+    build_request_headers(
+      snapshot.base_url,
+      { user_agent: identity.user_agent, session_id: sessionId },
+      snapshot.headers,
+    );
+  // 用户扩展在最终 onPayload 生效。
   const configured_stream: ProviderStreams["streamSimple"] = (active_model, context, options) =>
     pi.streamSimple(active_model, context, {
       ...options,
       apiKey: api_key,
-      headers: { ...snapshot.headers },
+      headers: request_headers(options?.sessionId),
       onPayload: (payload, active_model) =>
         apply_request_overrides(snapshot, payload, active_model.compat),
     });
@@ -104,7 +115,7 @@ export function register_agent_model(
             ...credential,
             ...observation.options,
             maxRetries: 0,
-            headers: { ...snapshot.headers },
+            headers: request_headers(options?.sessionId),
             onPayload: (payload, model) => apply_request_overrides(snapshot, payload, model.compat),
           });
           return (async function* () {

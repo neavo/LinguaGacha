@@ -9,7 +9,7 @@ const agent_mock = vi.hoisted(() => ({
   request_user_attention: vi.fn(),
 }));
 
-vi.mock("@frontend/app/session/agent/agent-session-context", () => ({
+vi.mock("@frontend/app/session/agent/agent-chat-context", () => ({
   useAgentControls: () => ({ state: (agent_mock.session as { state: string }).state }),
   useAgentTimeline: () => ({
     latestRoundId:
