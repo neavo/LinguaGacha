@@ -23,6 +23,41 @@ describe("ProofreadingContextView", () => {
     root = null;
   });
 
+  it("编辑按钮传递目标条目，忙碌时禁用", () => {
+    const on_open_item = vi.fn(async () => {});
+    const view = (disabled: boolean) => (
+      <ProofreadingContextView
+        disabled={disabled}
+        on_open_item={on_open_item}
+        target_row_id="1"
+        file_path="chapter.txt"
+        draft_item={{ dst: "草稿", name_dst: "" }}
+        state={{
+          status: "ready",
+          items: [1, 2].map((id) => ({
+            row_id: String(id),
+            row_number: id,
+            src: "原文",
+            dst: "译文",
+            name_src: null,
+            name_dst: null,
+          })),
+        }}
+      />
+    );
+    const rendered = render_view(view(false));
+    act(() => {
+      rendered.querySelectorAll<HTMLButtonElement>("button")[1]!.click();
+    });
+    expect(on_open_item).toHaveBeenCalledWith("2");
+    render_view(view(true));
+    expect(
+      [...rendered.querySelectorAll<HTMLButtonElement>("button")].every(
+        (button) => button.disabled,
+      ),
+    ).toBe(true);
+  });
+
   // 复用同一 React root，便于在加载、错误与完成状态之间重渲染。
   function render_view(element: JSX.Element): HTMLDivElement {
     container ??= document.createElement("div");
@@ -34,9 +69,11 @@ describe("ProofreadingContextView", () => {
     return container;
   }
 
-  it("按自然顺序展示双栏上下文并用草稿覆盖当前译文", () => {
+  it("当前条目展示草稿译文和译名，正文保留可复制的空白", () => {
     const rendered = render_view(
       <ProofreadingContextView
+        disabled={false}
+        on_open_item={async () => {}}
         state={{
           status: "ready",
           items: [
@@ -72,10 +109,7 @@ describe("ProofreadingContextView", () => {
       />,
     );
 
-    expect(rendered.querySelectorAll("li")).toHaveLength(3);
     const current = rendered.querySelector("li[aria-current='true']");
-    expect(current?.textContent).not.toContain("当前");
-    expect(current?.textContent).toContain("#20");
     expect(current?.textContent).toContain("目标 原文　含\t缩进");
     expect(current?.textContent).toContain("草稿译文");
     expect(current?.textContent).toContain("新姓名");
@@ -96,6 +130,8 @@ describe("ProofreadingContextView", () => {
   it("显示加载和紧凑不可用状态", () => {
     const rendered = render_view(
       <ProofreadingContextView
+        disabled={false}
+        on_open_item={async () => {}}
         state={{ status: "loading" }}
         target_row_id="20"
         file_path="chapter.txt"
@@ -108,6 +144,8 @@ describe("ProofreadingContextView", () => {
 
     render_view(
       <ProofreadingContextView
+        disabled={false}
+        on_open_item={async () => {}}
         state={{ status: "error" }}
         target_row_id="20"
         file_path="chapter.txt"

@@ -115,7 +115,7 @@ function create_proofreading_state_fixture() {
         name_dst: "",
       },
       open: false,
-      saving: false,
+      pending: false,
       target_row_id: null,
     },
     filter_dialog_filters: {},

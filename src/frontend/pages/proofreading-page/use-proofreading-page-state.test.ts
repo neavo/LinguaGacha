@@ -10,7 +10,7 @@ import { api_fetch } from "@frontend/app/desktop/desktop-api";
 import { ProjectSessionUiStateProvider } from "@frontend/app/session/project-session-ui-state-provider";
 import {
   normalize_project_write_result,
-  type ProjectWriteResultPayload,
+  type ProjectWriteCommitRequest,
 } from "@frontend/app/state/desktop-project-write";
 import type { ProjectChangeSignal } from "@frontend/app/state/project-change-signal";
 import { INPUT_QUERY_DEBOUNCE_MS } from "@frontend/widgets/interactions/use-debounce";
@@ -297,15 +297,12 @@ function create_runtime_fixture(): RuntimeFixture {
       };
     }),
     project_change_signal: create_project_change_signal(0, { updatedSections: [] }),
-    commit_project_write: vi.fn(
-      async ({ run }: { run: () => Promise<ProjectWriteResultPayload> }) => {
-        const payload = await run();
-        return {
-          payload,
-          write_result: normalize_project_write_result(payload),
-        };
-      },
-    ),
+    commit_project_write: vi.fn(async ({ run, prepare }: ProjectWriteCommitRequest) => {
+      const payload = await run();
+      const write_result = normalize_project_write_result(payload);
+      await prepare?.({ payload, write_result });
+      return { payload, write_result };
+    }),
     refresh_project_state: vi.fn(async () => {}),
     refresh_batch_translation: vi.fn(async () => runtime_fixture.current.task_snapshot),
   };
@@ -395,7 +392,7 @@ function create_client_item(
 }
 
 // 生成包含首屏窗口的默认列表 view，供刷新和窗口读取测试复用。
-function create_list_view() {
+function create_list_view(item: ProofreadingClientItem = create_client_item(1)) {
   return {
     ...create_empty_proofreading_list_view(),
     projectId: "E:/demo/sample.lg",
@@ -410,8 +407,8 @@ function create_list_view() {
     window_rows: [
       {
         kind: "item" as const,
-        row_id: "1",
-        item: create_client_item(1),
+        row_id: item.row_id,
+        item,
         compressed_src: "foo",
         compressed_dst: "bar",
       },
@@ -642,6 +639,169 @@ describe("useProofreadingPageState", () => {
       changes: [{ item_id: 1, dst: "新译文", name_dst: "新姓名" }],
       expected_section_revisions: { items: 7, proofreading: 1 },
     });
+  });
+
+  it("上下文跳转先保存，再统一重置查询、选中并编辑已排除目标", async () => {
+    const client = proofreading_client_fixture.current;
+    await render_hook();
+    await act(async () => {
+      latest_state?.update_file_selection({
+        mode: "selected",
+        values: [{ file_path: "chapter1.txt", internal_file_path: null }],
+      });
+    });
+    await act(async () => {
+      await latest_state?.open_edit_dialog("1");
+    });
+    act(() => {
+      latest_state?.update_dialog_draft({ dst: "已修改译文" });
+      latest_state?.update_search_keyword("旧搜索");
+    });
+    const original_rows = latest_state?.visible_items;
+    const target = create_client_item(2, { status: "EXCLUDED" });
+    const target_view = { ...create_list_view(target), view_id: "target-view" };
+    const window_request = create_deferred<typeof target_view>();
+    client.build_proofreading_list_view.mockReturnValueOnce(window_request.promise);
+    let navigation: Promise<void> | undefined;
+    await act(async () => {
+      navigation = latest_state?.open_context_item("2");
+    });
+    expect(api_fetch).toHaveBeenCalledWith(
+      "/api/proofreading/items/update",
+      expect.objectContaining({
+        changes: [expect.objectContaining({ item_id: 1, dst: "已修改译文" })],
+      }),
+    );
+    expect(latest_state?.dialog_state.pending).toBe(true);
+    expect(latest_state?.search_keyword).toBe("旧搜索");
+    expect(latest_state?.visible_items).toBe(original_rows);
+    expect(latest_state?.dialog_state.target_row_id).toBe("1");
+    expect(client.build_proofreading_list_view).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        keyword: "",
+        filters: expect.objectContaining({
+          outcomes: expect.arrayContaining(["NONE", "EXCLUDED"]),
+          files: { mode: "default" },
+          include_without_glossary_miss: true,
+        }),
+        window_anchor: expect.objectContaining({ row_id: "2" }),
+      }),
+    );
+    // 保存事件在目标准备期间到达，导航结束后再刷新，保留目标焦点。
+    client.build_proofreading_list_view.mockResolvedValue(target_view);
+    client.read_proofreading_list_window.mockResolvedValue({
+      view_id: target_view.view_id,
+      start: 0,
+      row_count: 1,
+      rows: target_view.window_rows,
+    });
+    runtime_fixture.current.project_change_signal = create_project_change_signal(1, {
+      mode: "delta",
+      itemIds: [1],
+      sectionRevisions: { items: 8 },
+    });
+    await render_hook();
+    expect(client.sync_proofreading_cache).toHaveBeenCalledTimes(1);
+    await act(async () => {
+      window_request.resolve(target_view);
+      await navigation;
+    });
+    expect(latest_state?.search_keyword).toBe("");
+    expect(latest_state?.selected_row_ids).toEqual(["2"]);
+    expect(latest_state?.active_row_id).toBe("2");
+    expect(latest_state?.scroll_to_row?.row_id).toBe("2");
+    expect(latest_state?.dialog_state).toMatchObject({
+      open: true,
+      target_row_id: "2",
+      pending: false,
+      context: { status: "idle" },
+      draft_item: { dst: "bar-2" },
+    });
+  });
+
+  it.each(["save", "list", "detail"])("上下文跳转 %s 失败保留原查询、选区和草稿", async (stage) => {
+    await render_hook();
+    await act(async () => {
+      await latest_state?.open_edit_dialog("1");
+    });
+    act(() => {
+      latest_state?.update_search_keyword("保留搜索");
+      latest_state?.update_dialog_draft({ dst: "保留草稿" });
+    });
+    const client = proofreading_client_fixture.current;
+    const original_rows = latest_state?.visible_items;
+    const original_selection = latest_state?.selected_row_ids;
+    const error = new Error(stage);
+    if (stage === "save") vi.mocked(api_fetch).mockRejectedValueOnce(error);
+    if (stage === "list") client.build_proofreading_list_view.mockRejectedValueOnce(error);
+    if (stage === "detail")
+      client.read_proofreading_items_by_row_ids
+        .mockResolvedValueOnce([create_client_item(1)])
+        .mockRejectedValueOnce(error);
+    await act(async () => {
+      await latest_state?.open_context_item("2");
+    });
+    expect(latest_state?.search_keyword).toBe("保留搜索");
+    expect(latest_state?.visible_items).toBe(original_rows);
+    expect(latest_state?.selected_row_ids).toEqual(original_selection);
+    expect(latest_state?.dialog_state).toMatchObject({
+      open: true,
+      target_row_id: "1",
+      pending: false,
+      draft_item: { dst: "保留草稿" },
+    });
+    expect(toast_fixture.current.push_toast).toHaveBeenCalledWith(expect.any(String), error);
+    if (stage === "save") expect(client.build_proofreading_list_view).toHaveBeenCalledTimes(1);
+  });
+
+  it("上下文跳转忽略重复点击和关闭后的迟到响应", async () => {
+    await render_hook();
+    await act(async () => {
+      await latest_state?.open_edit_dialog("1");
+    });
+    const client = proofreading_client_fixture.current;
+    client.build_proofreading_list_view.mockResolvedValueOnce(
+      create_list_view(create_client_item(2)),
+    );
+    const target_request = create_deferred<ProofreadingClientItem[]>();
+    client.read_proofreading_items_by_row_ids
+      .mockResolvedValueOnce([create_client_item(1)])
+      .mockReturnValueOnce(target_request.promise);
+    let navigation: Promise<void> | undefined;
+    await act(async () => {
+      navigation = latest_state?.open_context_item("2");
+      await latest_state?.open_context_item("3");
+    });
+    expect(client.read_proofreading_items_by_row_ids).not.toHaveBeenCalledWith({ row_ids: ["3"] });
+    act(() => {
+      latest_state?.request_close_dialog();
+    });
+    await act(async () => {
+      target_request.resolve([create_client_item(2)]);
+      await navigation;
+    });
+    expect(latest_state?.dialog_state.open).toBe(false);
+    expect(latest_state?.dialog_state.target_row_id).toBeNull();
+  });
+
+  it("保存成功后的统计刷新失败不会阻止关闭编辑弹窗", async () => {
+    await render_hook();
+    await act(async () => {
+      await latest_state?.open_edit_dialog("1");
+    });
+    act(() => {
+      latest_state?.update_dialog_draft({ dst: "保存结果" });
+    });
+    const error = new Error("统计刷新失败");
+    runtime_fixture.current.refresh_batch_translation.mockRejectedValueOnce(error);
+    await act(async () => {
+      await latest_state?.save_dialog_entry();
+    });
+    expect(latest_state?.dialog_state.open).toBe(false);
+    expect(toast_fixture.current.push_toast).toHaveBeenCalledWith(
+      "app.feedback.refresh_failed",
+      error,
+    );
   });
 
   it("内容筛选确认保留搜索条的显式文件意图，空选择和全选分别生效", async () => {

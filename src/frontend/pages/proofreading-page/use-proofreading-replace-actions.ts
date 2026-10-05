@@ -1,11 +1,11 @@
+import type { ProofreadingProjectWriteRunner } from "./proofreading-page-state-contract";
 import { push_error_toast } from "@frontend/app/feedback/desktop-toast";
 import { useCallback, type MutableRefObject } from "react";
 
-import type { LocaleKey } from "@frontend/app/locale/locale-context";
+import type { TextResolver } from "@shared/i18n";
 import {
   create_replace_all_plan,
   create_apply_item_changes_plan,
-  type ProofreadingCommandPlan,
 } from "@shared/proofreading/proofreading-command-planner";
 import {
   build_proofreading_row_id,
@@ -23,20 +23,7 @@ import type { ProofreadingApiClient } from "@frontend/pages/proofreading-page/pr
 
 const PROOFREADING_REPLACE_SCAN_CHUNK_ROWS = 256;
 
-type LocaleTextResolver = (key: LocaleKey, params?: Record<string, string>) => string;
-
 type ProofreadingToastPusher = (kind: "success" | "warning", message: string) => void;
-
-type ProofreadingProjectWriteRunner = (args: {
-  path: string;
-  plan: ProofreadingCommandPlan | null;
-  fallback_error_key: "proofreading_page.feedback.replace_failed";
-  preferred_row_id?: string | null;
-  pending_replace_cursor?: number | null;
-  success_message_builder?: ((changed_count: number) => string) | null;
-  empty_warning_message?: string | null;
-  close_dialog?: boolean;
-}) => Promise<void>;
 
 type UseProofreadingReplaceActionsOptions = {
   active_row_id_ref: MutableRefObject<string | null>;
@@ -54,7 +41,8 @@ type UseProofreadingReplaceActionsOptions = {
   read_current_view_row_ids: (start: number, count: number) => Promise<string[]>;
   read_items_by_row_ids: (row_ids: string[]) => Promise<ProofreadingClientItem[]>;
   run_project_write: ProofreadingProjectWriteRunner;
-  t: LocaleTextResolver;
+  close_edit_dialog: () => void;
+  t: TextResolver;
 };
 
 type UseProofreadingReplaceActionsResult = {
@@ -66,6 +54,7 @@ type UseProofreadingReplaceActionsResult = {
 export function useProofreadingReplaceActions(
   options: UseProofreadingReplaceActionsOptions,
 ): UseProofreadingReplaceActionsResult {
+  /** 从当前游标找下一处真实变化，成功回灌时再推进游标。 */
   const replace_next_visible_match = useCallback(async (): Promise<void> => {
     if (options.readonly || options.is_refreshing || options.is_writing) {
       return;
@@ -142,6 +131,7 @@ export function useProofreadingReplaceActions(
       return;
     }
 
+    // 命中的字段单独提交，姓名替换保留正文任务状态。
     await options.run_project_write({
       path: "/api/proofreading/items/update",
       plan: create_apply_item_changes_plan({
@@ -152,8 +142,7 @@ export function useProofreadingReplaceActions(
         changes: [
           {
             item_id: Number(target_item.item_id),
-            dst: replaced_result.field === "dst" ? replaced_result.text : target_item.dst,
-            ...(replaced_result.field === "name_dst" ? { name_dst: replaced_result.text } : {}),
+            [replaced_result.field]: replaced_result.text,
           },
         ],
       }),
@@ -163,6 +152,7 @@ export function useProofreadingReplaceActions(
     });
   }, [options]);
 
+  /** 按完整查询范围替换，提交成功后结束当前编辑。 */
   const replace_all_visible_matches = useCallback(async (): Promise<void> => {
     if (options.readonly || options.is_refreshing || options.is_writing) {
       return;
@@ -212,7 +202,7 @@ export function useProofreadingReplaceActions(
       is_regex: options.is_regex,
     });
 
-    await options.run_project_write({
+    const result = await options.run_project_write({
       path: "/api/proofreading/items/replace-all",
       plan: replace_plan,
       fallback_error_key: "proofreading_page.feedback.replace_failed",
@@ -224,8 +214,8 @@ export function useProofreadingReplaceActions(
           .replace("{N}", changed_count.toString());
       },
       empty_warning_message: options.t("proofreading_page.feedback.replace_no_change"),
-      close_dialog: true,
     });
+    if (result) options.close_edit_dialog();
   }, [options]);
 
   return {

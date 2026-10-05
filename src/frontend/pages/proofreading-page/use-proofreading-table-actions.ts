@@ -6,7 +6,7 @@ import {
 } from "@frontend/pages/proofreading-page/proofreading-filter-state";
 import { useCallback, type MutableRefObject } from "react";
 
-import type { LocaleKey } from "@frontend/app/locale/locale-context";
+import type { TextResolver } from "@shared/i18n";
 import type { ProofreadingApiClient } from "@frontend/pages/proofreading-page/proofreading-api-client";
 import type {
   ProofreadingFilterOptions,
@@ -20,8 +20,6 @@ import type {
   AppTableSelectionChange,
   AppTableSortState,
 } from "@frontend/widgets/app-table/app-table-types";
-
-type LocaleTextResolver = (key: LocaleKey, params?: Record<string, string>) => string;
 
 type QueryScheduler<TArgs> = {
   cancel: () => void;
@@ -70,7 +68,7 @@ type UseProofreadingTableActionsOptions = {
     anchor_row_id: string | null;
   }) => void;
   set_table_sort_state: (sort_state: AppTableSortState | null) => void;
-  t: LocaleTextResolver;
+  t: TextResolver;
 };
 
 type UseProofreadingTableActionsResult = {

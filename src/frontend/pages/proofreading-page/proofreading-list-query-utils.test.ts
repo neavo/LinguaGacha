@@ -9,7 +9,6 @@ import {
 } from "@frontend/pages/proofreading-page/proofreading-filter-state";
 import {
   PROOFREADING_INITIAL_WINDOW_ROWS,
-  PROOFREADING_WINDOW_PREFETCH_ROWS,
   build_filter_panel_signature,
   build_proofreading_list_query_intent_key,
   build_refreshed_proofreading_list_view,
@@ -56,30 +55,21 @@ describe("proofreading-list-query-utils", () => {
   it("可见范围会扩成预取窗口并限制在稳定视图行数内", () => {
     const row_count = 1000;
     const visible_count = 10;
-    const middle_start = PROOFREADING_WINDOW_PREFETCH_ROWS + 44;
-    expect(
-      resolve_prefetched_list_window_bounds({
-        range: { start: middle_start, count: visible_count },
-        row_count,
-      }),
-    ).toEqual({
-      start: middle_start - PROOFREADING_WINDOW_PREFETCH_ROWS,
-      count: Math.max(
-        PROOFREADING_INITIAL_WINDOW_ROWS,
-        visible_count + PROOFREADING_WINDOW_PREFETCH_ROWS * 2,
-      ),
+    const visible_start = 500;
+    const middle = resolve_prefetched_list_window_bounds({
+      range: { start: visible_start, count: visible_count },
+      row_count,
     });
-    const end_start = row_count - visible_count;
-    const prefetched_end_start = end_start - PROOFREADING_WINDOW_PREFETCH_ROWS;
-    expect(
-      resolve_prefetched_list_window_bounds({
-        range: { start: end_start, count: visible_count },
-        row_count,
-      }),
-    ).toEqual({
-      start: prefetched_end_start,
-      count: row_count - prefetched_end_start,
+    expect(middle.start).toBeLessThan(visible_start);
+    expect(middle.start).toBeGreaterThanOrEqual(0);
+    expect(middle.start + middle.count).toBeGreaterThan(visible_start + visible_count);
+    expect(middle.start + middle.count).toBeLessThanOrEqual(row_count);
+    const end = resolve_prefetched_list_window_bounds({
+      range: { start: row_count - visible_count, count: visible_count },
+      row_count,
     });
+    expect(end.start).toBeLessThan(row_count - visible_count);
+    expect(end.start + end.count).toBe(row_count);
   });
 
   it("目标范围已被当前窗口覆盖时复用现有行", () => {

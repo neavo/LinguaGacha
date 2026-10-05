@@ -14,6 +14,7 @@ import type {
 } from "@frontend/widgets/app-table/app-table-types";
 import {
   build_filter_signature,
+  materialize_proofreading_filters,
   type ProofreadingViewFilterState,
 } from "@frontend/pages/proofreading-page/proofreading-filter-state";
 
@@ -63,7 +64,7 @@ export function resolve_prefetched_list_window_bounds(args: {
 }
 
 /**
- * 从当前视图恢复下一次刷新窗口；空窗口也至少读取首屏容量。
+ * 从当前视图恢复下一次刷新窗口，空窗口至少读取首屏容量。
  */
 export function resolve_list_view_window_bounds(
   list_view: ProofreadingListView,
@@ -114,7 +115,7 @@ export function build_refreshed_proofreading_list_view(args: {
 }
 
 /**
- * 查询意图键只编码用户可编辑状态；后端默认筛选变化不得让 delta 刷新重算成员。
+ * 查询意图键编码用户可编辑状态。后端默认筛选变化沿用既有 delta 窗口。
  */
 export function build_proofreading_list_query_intent_key(args: {
   filter_state: ProofreadingViewFilterState;
@@ -124,6 +125,24 @@ export function build_proofreading_list_query_intent_key(args: {
     filter_state: args.filter_state,
     sort_state: args.sort_state,
   });
+}
+
+/** 同一份筛选与排序状态生成意图键和请求，保证候选导航与普通查询使用相同契约。 */
+export function resolve_proofreading_list_query(args: {
+  filter_state: ProofreadingViewFilterState;
+  default_filters: ProofreadingFilterOptions;
+  sort_state: AppTableSortState | null;
+}): ProofreadingResolvedListQuery {
+  return {
+    query_intent_key: build_proofreading_list_query_intent_key(args),
+    query: {
+      filters: materialize_proofreading_filters(args.filter_state.selection, args.default_filters),
+      keyword: args.filter_state.search_keyword,
+      scope: args.filter_state.search_scope,
+      is_regex: args.filter_state.is_regex,
+      sort_state: args.sort_state,
+    },
+  };
 }
 
 /**
@@ -175,7 +194,7 @@ export function resolve_requested_sync_mode(args: {
 }
 
 /**
- * 文件和页面同步复用读取器事实，旧视图失效时重查；文本只接受精确行级增量。
+ * 文件和页面同步复用读取器事实，旧视图失效时重查。文本接受精确行级增量。
  */
 export function resolve_proofreading_refresh_signal(signal: {
   seq: number;

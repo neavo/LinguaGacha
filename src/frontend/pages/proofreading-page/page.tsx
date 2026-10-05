@@ -212,6 +212,7 @@ export function ProofreadingPage(_props: ScreenComponentProps): JSX.Element {
         on_close={proofreading_page_state.request_close_dialog}
         on_open_context={proofreading_page_state.open_dialog_context}
         on_close_context={proofreading_page_state.close_dialog_context}
+        on_open_context_item={proofreading_page_state.open_context_item}
         on_request_retranslate={proofreading_page_state.request_retranslate_row_ids}
         on_request_clear_translation={proofreading_page_state.request_clear_translation_row_ids}
         on_request_set_translation_status={

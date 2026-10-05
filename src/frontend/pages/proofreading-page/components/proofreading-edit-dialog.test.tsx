@@ -165,7 +165,7 @@ function create_dialog_state(
     open: true,
     target_row_id: "1",
     draft_item: { dst: "Magic 和美1优", name_dst: "" },
-    saving: false,
+    pending: false,
     context: { status: "idle" },
     ...overrides,
   };
@@ -220,6 +220,7 @@ describe("ProofreadingEditDialog", () => {
           on_close={() => {}}
           on_open_context={async () => {}}
           on_close_context={() => {}}
+          on_open_context_item={async () => {}}
           on_request_retranslate={() => {}}
           on_request_clear_translation={() => {}}
           on_request_set_translation_status={() => {}}
@@ -537,13 +538,13 @@ describe("ProofreadingEditDialog", () => {
     expect(on_open_context).toHaveBeenCalledOnce();
 
     await render_dialog({
-      state: create_dialog_state({ saving: true }),
+      state: create_dialog_state({ pending: true }),
       on_open_context,
     });
-    const saving_trigger = [...rendered.querySelectorAll("button")].find((button) =>
+    const pending_trigger = [...rendered.querySelectorAll("button")].find((button) =>
       button.textContent?.includes("proofreading_page.action.view_context"),
     );
-    expect(saving_trigger?.disabled).toBe(true);
+    expect(pending_trigger?.disabled).toBe(true);
   });
 
   it("编辑态取消按钮显示 Esc 且保存中阻止快捷关闭", async () => {
@@ -555,7 +556,7 @@ describe("ProofreadingEditDialog", () => {
     expect(rendered.querySelector("[data-dismiss-behavior='escape-only']")).not.toBeNull();
     expect(cancel_button?.querySelector("[data-slot='kbd']")?.textContent).toBe("Esc");
 
-    await render_dialog({ state: create_dialog_state({ saving: true }) });
+    await render_dialog({ state: create_dialog_state({ pending: true }) });
     expect(rendered.querySelector("[data-dismiss-behavior='blocked']")).not.toBeNull();
   });
 

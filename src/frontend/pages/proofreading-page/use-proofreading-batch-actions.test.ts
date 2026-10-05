@@ -29,7 +29,7 @@ it.each([false, true])("重翻确认提交稳定身份并完成回执或错误�
       })),
     ),
     sync_task_snapshot: vi.fn(),
-    run_project_write: vi.fn(),
+    run_project_write: vi.fn(async () => true),
     set_is_writing: vi.fn(),
     resolve_preferred_row_id: () => null,
     remember_preferred_row_id: vi.fn(),

@@ -1,6 +1,8 @@
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { apply_project_item_manual_update } from "@shared/project/project-item-update";
+import type { ProofreadingProjectWriteRunner } from "./proofreading-page-state-contract";
 import { useProofreadingDialogActions } from "./use-proofreading-dialog-actions";
 import type {
   ProofreadingClientItem,
@@ -39,8 +41,7 @@ describe("useProofreadingDialogActions", () => {
     visible_item_by_id: new Map([["1", item]]),
     read_items_by_row_ids: read_items,
     read_context,
-    run_project_write: vi.fn(async () => {}),
-    push_toast,
+    run_project_write: vi.fn<ProofreadingProjectWriteRunner>(async () => true),
     t: (key: string) => key,
   };
 
@@ -54,6 +55,7 @@ describe("useProofreadingDialogActions", () => {
     state = null;
     read_items.mockReset().mockResolvedValue([item]);
     read_context.mockReset().mockResolvedValue([]);
+    options.run_project_write.mockReset().mockResolvedValue(true);
     push_toast.mockReset();
     container = document.createElement("div");
     root = createRoot(container);
@@ -68,6 +70,59 @@ describe("useProofreadingDialogActions", () => {
       root.render(createElement(Probe));
     });
   }
+
+  it.each([false, true])(
+    "保存仅提交字段差异，保留错误条目正文状态：修改姓名 %s",
+    async (edit_name) => {
+      const current = { ...item, status: "ERROR", name_dst: ["旧名", "旁白"] };
+      read_items.mockResolvedValue([current]);
+      await render_hook();
+      await act(async () => {
+        await state?.open_edit_dialog("1");
+      });
+      if (edit_name)
+        act(() => {
+          state?.update_dialog_draft({ name_dst: "新名" });
+        });
+      await act(async () => {
+        await state?.save_dialog_entry();
+      });
+      if (edit_name) {
+        const change = options.run_project_write.mock.calls[0]![0].plan!.request_body.changes![0]!;
+        const saved = apply_project_item_manual_update(current, change)!;
+        expect(saved.status).toBe("ERROR");
+        expect(saved.name_dst).toEqual(["新名", "旁白"]);
+      } else expect(options.run_project_write).not.toHaveBeenCalled();
+      expect(state?.dialog_state.open).toBe(false);
+    },
+  );
+
+  it("保存读取同步互斥，卸载后不继续提交", async () => {
+    await render_hook();
+    await act(async () => {
+      await state?.open_edit_dialog("1");
+    });
+    act(() => {
+      state?.update_dialog_draft({ dst: "未保存译文" });
+    });
+    const request = Promise.withResolvers<ProofreadingClientItem[]>();
+    read_items.mockReturnValueOnce(request.promise);
+    let saving: Promise<void> | undefined;
+    await act(async () => {
+      saving = state?.save_dialog_entry();
+      await state?.save_dialog_entry();
+    });
+    expect(read_items).toHaveBeenCalledTimes(2);
+    await act(async () => {
+      root.unmount();
+    });
+    await act(async () => {
+      request.resolve([item]);
+      await saving;
+    });
+    expect(options.run_project_write).not.toHaveBeenCalled();
+    expect(push_toast).not.toHaveBeenCalled();
+  });
 
   it("详情读取失败时通知一次并保留当前编辑状态", async () => {
     read_items.mockRejectedValueOnce(new Error("详情读取失败"));
@@ -88,12 +143,12 @@ describe("useProofreadingDialogActions", () => {
     });
     read_items.mockRejectedValueOnce(new Error("详情读取失败"));
     await act(async () => {
-      await expect(state?.save_dialog_entry()).resolves.toBeUndefined();
+      await state?.save_dialog_entry();
     });
     expect(push_toast).toHaveBeenCalledTimes(1);
     expect(state?.dialog_state).toMatchObject({
       open: true,
-      saving: false,
+      pending: false,
       draft_item: { dst: "未保存译文" },
     });
   });

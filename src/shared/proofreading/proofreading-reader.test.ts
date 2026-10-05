@@ -572,7 +572,7 @@ describe("proofreading-reader", () => {
     expect(view.window_rows.map((row) => row.row_id)).toEqual(["2", "3"]);
   });
 
-  it("上下文跳过空行并按同文件自然顺序读取前后各两条且不替换当前列表视图", () => {
+  it("上下文跳过空行且在同文件边界停止，不替换当前列表视图", () => {
     const service = createProofreadingReader();
     const items = [
       create_item({ item_id: 1, file_path: "before.txt", dst: "前文件" }),
@@ -619,13 +619,42 @@ describe("proofreading-reader", () => {
       "9",
       "11",
       "12",
+      "14",
+      "15",
     ]);
     expect(service.read_context_items({ row_id: "15" }).map((item) => item.row_id)).toEqual([
+      "9",
+      "11",
       "12",
       "14",
       "15",
     ]);
     expect(service.read_context_items({ row_id: "missing" })).toEqual([]);
+  });
+
+  it("上下文前后各最多十条，标识符和已排除条目也计入名额", () => {
+    const reader = createProofreadingReader();
+    const items = Array.from({ length: 25 }, (_, index) =>
+      create_item({
+        item_id: index + 1,
+        dst: "",
+        src: `voice_${index + 1}`,
+        status: "EXCLUDED",
+      }),
+    );
+    sync_full(reader, {
+      projectId: "context.lg",
+      revisions: { files: 1, items: 1, quality: 1, proofreading: 0 },
+      total_item_count: items.length,
+      processingConfig: create_processing_config(),
+      quality: create_quality(),
+      upsertItems: items,
+    });
+    expect(reader.read_context_items({ row_id: "13" }).map((item) => item.row_id)).toEqual(
+      Array.from({ length: 21 }, (_, index) => String(index + 3)),
+    );
+    expect(reader.read_context_items({ row_id: "1" })).toHaveLength(11);
+    expect(reader.read_context_items({ row_id: "25" })).toHaveLength(11);
   });
 
   it("非法正则返回错误信息且不裁剪列表结果", () => {

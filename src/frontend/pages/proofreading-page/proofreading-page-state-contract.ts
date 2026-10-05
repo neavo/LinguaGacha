@@ -5,6 +5,7 @@ import type {
 } from "@shared/proofreading/proofreading-types";
 import type { ProjectDataSection, ProjectDataSectionRevisions } from "@shared/project-event";
 import type { ItemManualStatus } from "@domain/item";
+import type { ProofreadingCommandPlan } from "@shared/proofreading/proofreading-command-planner";
 import type {
   ProofreadingConfirmationAction,
   ProofreadingDialogState,
@@ -32,20 +33,23 @@ export const PROOFREADING_REQUIRED_SECTIONS: ProjectDataSection[] = [
   "proofreading",
 ];
 
+/** 返回工程提交是否成功，成功后的弹窗动作由调用者负责。 */
+export type ProofreadingProjectWriteRunner = (args: {
+  path: string;
+  plan: ProofreadingCommandPlan | null;
+  fallback_error_key:
+    | "app.feedback.save_failed"
+    | "proofreading_page.feedback.replace_failed"
+    | "proofreading_page.feedback.clear_translation_failed"
+    | "app.feedback.modify_failed";
+  preferred_row_id?: string | null;
+  pending_replace_cursor?: number;
+  success_message_builder?: (changed_count: number) => string;
+  empty_warning_message?: string;
+}) => Promise<boolean>;
+
 // session 恢复排序的白名单，避免旧列 id 进入列表查询。
 const PROOFREADING_SORT_COLUMN_IDS = new Set(["src", "dst", "status"]);
-
-// 切断 session 快照引用，避免页面排序对象被外部复用。
-function clone_app_table_sort_state(
-  sort_state: AppTableSortState | null,
-): AppTableSortState | null {
-  return sort_state === null
-    ? null
-    : {
-        column_id: sort_state.column_id,
-        direction: sort_state.direction,
-      };
-}
 
 /**
  * 只恢复当前表格支持的排序列，并切断 session 快照对象引用。
@@ -57,7 +61,7 @@ export function normalize_proofreading_sort_state(
     return null;
   }
 
-  return clone_app_table_sort_state(sort_state);
+  return { column_id: sort_state.column_id, direction: sort_state.direction };
 }
 
 export type UseProofreadingPageStateResult = {
@@ -114,6 +118,7 @@ export type UseProofreadingPageStateResult = {
   request_close_dialog: () => void;
   update_dialog_draft: (patch: Partial<ProofreadingDialogState["draft_item"]>) => void;
   open_dialog_context: () => Promise<void>;
+  open_context_item: (row_id: string) => Promise<void>;
   close_dialog_context: () => void;
   save_dialog_entry: () => Promise<void>;
   replace_next_visible_match: () => Promise<void>;

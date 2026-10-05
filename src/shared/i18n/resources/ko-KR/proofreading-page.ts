@@ -20,6 +20,7 @@ export const ko_kr_proofreading_page = {
     clear_and_reset_status: "비우고 상태 초기화",
     set_translation_status: "번역 상태 설정",
     view_context: "문맥 보기",
+    edit_item: "이 항목 편집",
     back: "돌아가기",
   },
   fields: {
