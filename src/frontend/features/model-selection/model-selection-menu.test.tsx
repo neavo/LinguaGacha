@@ -55,7 +55,7 @@ describe("ModelSelectionMenu", () => {
     vi.useRealTimers();
   });
 
-  it("失效选择下可悬停查看模型名称并点击恢复选择", async () => {
+  it("模型名称悬停无提示，失效选择下仍可点击恢复选择", async () => {
     controller.snapshot.model_selection.translation = "missing";
     await open_models();
     vi.useFakeTimers();
@@ -64,12 +64,13 @@ describe("ModelSelectionMenu", () => {
     ].find((item) => item.textContent === "模型 B")!;
     const name = model.querySelector<HTMLElement>("span")!;
     expect(model.hasAttribute("title")).toBe(false);
+    expect(name.hasAttribute("title")).toBe(false);
     await act(async () => {
       name.dispatchEvent(new MouseEvent("mouseenter", { bubbles: true }));
       name.dispatchEvent(new MouseEvent("mousemove", { bubbles: true }));
       vi.runAllTimers();
     });
-    expect(document.querySelector('[role="tooltip"][data-open]')?.textContent).toBe("模型 B");
+    expect(document.querySelector('[role="tooltip"][data-open]')).toBeNull();
     await act(async () => name.click());
     expect(controller.select_model).toHaveBeenCalledExactlyOnceWith({
       target: "translation",
