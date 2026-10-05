@@ -161,7 +161,7 @@ describe("PiModelCatalog", () => {
   });
 
   it("合并较新供应商目录并经链接持久化，离线重启继续使用缓存", async () => {
-    const { catalog, paths, file_path } = await create_catalog();
+    const { catalog, paths, file_path, warning } = await create_catalog();
     const target_path = `${file_path}.target`;
     await mkdir(path.dirname(file_path), { recursive: true });
     await writeFile(target_path, "{}");
@@ -173,7 +173,9 @@ describe("PiModelCatalog", () => {
       vi.fn(async (url: string) =>
         url.endsWith("/alpha")
           ? response("alpha", { reasoning: true, contextWindow: 300 })
-          : new Response("", { status: 503 }),
+          : url.endsWith("/beta")
+            ? new Response("", { status: 404 })
+            : new Response("{bad json", { status: 200, headers: { "Last-Modified": modified } }),
       ),
     );
     let applied: readonly PiCatalogModel[] = [];
@@ -187,6 +189,12 @@ describe("PiModelCatalog", () => {
     });
     expect(applied.find((model) => model.provider === "beta")?.contextWindow).toBe(200);
     expect(catalog.get_snapshot().revision).toBe(1);
+    for (const provider of ["beta", "gamma"])
+      expect(warning).toHaveBeenCalledWith(expect.any(String), {
+        error: expect.any(Error),
+        context: { provider },
+        targets: { console: false, window: false },
+      });
     expect(JSON.parse(await readFile(file_path, "utf8")).providers.alpha.etag).toBe('"new"');
     expect(await readFile(target_path, "utf8")).toBe(await readFile(file_path, "utf8"));
 
@@ -213,7 +221,10 @@ describe("PiModelCatalog", () => {
     await writeFile(file_path, "{bad json");
     const warning = vi.fn();
     expect(new PiModelCatalog(paths, { warning }).read_models()[0]?.contextWindow).toBe(100);
-    expect(warning).toHaveBeenCalledOnce();
+    expect(warning).toHaveBeenCalledWith(expect.any(String), {
+      error: expect.any(Error),
+      targets: { console: false, window: false },
+    });
 
     await writeFile(
       file_path,
@@ -342,7 +353,7 @@ describe("PiModelCatalog", () => {
   });
 
   it("退出取消在途下载，不应用半成品", async () => {
-    const { catalog } = await create_catalog();
+    const { catalog, warning } = await create_catalog();
     vi.stubGlobal(
       "fetch",
       vi.fn(
@@ -362,6 +373,7 @@ describe("PiModelCatalog", () => {
     await checking;
     expect(apply).not.toHaveBeenCalled();
     expect(catalog.get_snapshot().revision).toBe(0);
+    expect(warning).not.toHaveBeenCalled();
   });
 
   it("总超时保留已完成供应商并应用部分有效更新", async () => {
@@ -390,7 +402,9 @@ describe("PiModelCatalog", () => {
         300,
       );
       expect(apply).toHaveBeenCalledOnce();
-      expect(warning).toHaveBeenCalled();
+      expect(warning).toHaveBeenCalledWith(expect.any(String), {
+        targets: { console: false, window: false },
+      });
     } finally {
       vi.useRealTimers();
     }
@@ -443,5 +457,56 @@ describe("PiModelCatalog", () => {
         [expect.stringContaining("/alpha"), expect.objectContaining({ headers: {} })],
       ]),
     );
+  });
+
+  it("缓存供应商条目损坏时仅保留文件诊断，其他有效缓存继续可用", async () => {
+    const { paths, file_path, warning } = await create_catalog();
+    await mkdir(path.dirname(file_path), { recursive: true });
+    await writeFile(
+      file_path,
+      JSON.stringify({
+        version: 2,
+        providers: {
+          alpha: { modified: "invalid", models: [{ ...builtin.alpha, contextWindow: 999 }] },
+          beta: {
+            modified: Date.parse(modified),
+            models: [{ ...builtin.beta, contextWindow: 300 }],
+          },
+          gamma: {
+            modified: Date.parse(modified),
+            models: [{ ...builtin.alpha, provider: "gamma", contextWindow: 0 }],
+          },
+        },
+      }),
+    );
+    const catalog = new PiModelCatalog(paths, { warning });
+    expect(catalog.read_models()).toEqual([builtin.alpha, { ...builtin.beta, contextWindow: 300 }]);
+    for (const provider of ["alpha", "gamma"])
+      expect(warning).toHaveBeenCalledWith(expect.any(String), {
+        error: expect.any(Error),
+        context: { provider },
+        targets: { console: false, window: false },
+      });
+  });
+
+  it("缓存写入失败时保留可见警告且不切换当前目录", async () => {
+    const { catalog, file_path, warning } = await create_catalog();
+    await mkdir(file_path, { recursive: true });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) =>
+        url.endsWith("/alpha")
+          ? response("alpha", { contextWindow: 300 })
+          : new Response(null, { status: 304 }),
+      ),
+    );
+    const apply = vi.fn();
+    await catalog.check(apply);
+    expect(catalog.read_models()).toEqual([builtin.alpha, builtin.beta]);
+    expect(catalog.get_snapshot().revision).toBe(0);
+    expect(warning).toHaveBeenCalledWith(expect.any(String), {
+      error: expect.any(Error),
+    });
+    expect(apply).not.toHaveBeenCalled();
   });
 });
