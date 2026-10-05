@@ -55,6 +55,90 @@ function create_empty_translation_unit(): TranslationWorkUnit {
 }
 
 describe("TranslationWorkUnitRunner", () => {
+  it.each([
+    ["「…………」", ""],
+    ["", "模型添加的正文"],
+  ])("仅翻译姓名时原样保留正文：%j", async (src, response_text) => {
+    const requests: LLMRequestBody[] = [];
+    const runner = new TranslationWorkUnitRunner(
+      await create_template_root(),
+      create_llm_client(
+        {
+          response_result: JSON.stringify({ id: 0, actor: "眼镜美少女", text: response_text }),
+        },
+        requests,
+      ),
+    );
+    const result = await runner.execute_unit(
+      create_translation_unit({
+        model: { api_format: "OpenAI" },
+        items: [
+          { id: 1, src, name_src: "眼鏡の美少女", dst: "", status: "NONE", text_type: "KAG" },
+        ],
+      }),
+      new AbortController().signal,
+    );
+
+    expect(requests).toHaveLength(1);
+    expect(requests[0]?.messages[1]?.content).toContain('"actor":"眼鏡の美少女"');
+    expect(result.output.items).toMatchObject([
+      { dst: src, name_dst: "眼镜美少女", status: "PROCESSED" },
+    ]);
+  });
+
+  it("请求的姓名结果缺失时保留待处理状态和既有译文", async () => {
+    const runner = new TranslationWorkUnitRunner(
+      await create_template_root(),
+      create_llm_client({
+        response_result: '{"id":0,"actor":null,"text":"你好"}',
+      }),
+    );
+    const result = await runner.execute_unit(
+      create_translation_unit({
+        model: { api_format: "OpenAI" },
+        items: [
+          {
+            id: 1,
+            src: "こんにちは",
+            name_src: "虎鉄",
+            name_dst: "旧译名",
+            dst: "旧译文",
+            status: "NONE",
+          },
+        ],
+      }),
+      new AbortController().signal,
+    );
+    expect(result.output.items).toMatchObject([
+      { dst: "旧译文", name_dst: "旧译名", status: "NONE", retry_count: 1 },
+    ]);
+  });
+
+  it("SakuraLLM 对仅姓名任务本地完成并保留已有译名", async () => {
+    const llm_client = { request: vi.fn() };
+    const runner = new TranslationWorkUnitRunner(process.cwd(), llm_client);
+    const result = await runner.execute_unit(
+      create_translation_unit({
+        model: { api_format: "SakuraLLM" },
+        items: [
+          {
+            id: 1,
+            src: "「…………」",
+            name_src: "虎鉄",
+            name_dst: "既有译名",
+            dst: "",
+            status: "NONE",
+          },
+        ],
+      }),
+      new AbortController().signal,
+    );
+    expect(llm_client.request).not.toHaveBeenCalled();
+    expect(result.output.items).toMatchObject([
+      { dst: "「…………」", name_dst: "既有译名", status: "PROCESSED" },
+    ]);
+  });
+
   afterEach(async () => {
     vi.useRealTimers();
     while (cleanup_roots.length > 0) {
@@ -306,7 +390,7 @@ describe("TranslationWorkUnitRunner", () => {
       create_llm_client(
         {
           response_result:
-            '{"id":0,"actor":"lg-uri/1","text":"查看 lg-uri/2"}\n{"id":1,"actor":null,"text":"图片 lg-uri/3"}',
+            '{"id":0,"actor":"爱丽丝 lg-uri/1","text":"查看 lg-uri/2"}\n{"id":1,"actor":null,"text":"图片 lg-uri/3"}',
         },
         captured_requests,
       ),
@@ -317,7 +401,7 @@ describe("TranslationWorkUnitRunner", () => {
         {
           id: 1,
           src: "打开 https://example.com/guide",
-          name_src: "data:image/png;base64,AAAA",
+          name_src: "Alice data:image/png;base64,AAAA",
           dst: "",
           status: "NONE",
           text_type: "TXT",
@@ -339,14 +423,14 @@ describe("TranslationWorkUnitRunner", () => {
 
     expect(captured_requests[0]?.messages[1]?.content).toContain("上文 lg-uri/0");
     expect(captured_requests[0]?.messages[1]?.content).toContain(
-      '{"id":0,"actor":"lg-uri/1","text":"打开 lg-uri/2"}',
+      '{"id":0,"actor":"Alice lg-uri/1","text":"打开 lg-uri/2"}',
     );
     expect(result.output).toMatchObject({
       kind: "translation",
       items: [
         {
           dst: "查看 https://example.com/guide",
-          name_dst: "data:image/png;base64,AAAA",
+          name_dst: "爱丽丝 data:image/png;base64,AAAA",
         },
         { dst: "图片 image.png" },
       ],

@@ -9,7 +9,7 @@ import {
   TASK_PROGRESS_STATUSES,
 } from "../../domain/batch-translation";
 import { should_skip_by_language_prefilter } from "../../shared/prefilter/language-prefilter";
-import { should_skip_by_rule_prefilter } from "../../shared/prefilter/rule-prefilter";
+import { read_item_translation_candidates } from "../../shared/prefilter/item-prefilter";
 import {
   coordinate_project_duplicate_statuses,
   type ProjectItemDuplicateIdentity,
@@ -134,7 +134,7 @@ export function create_empty_translation_task_snapshot(): Record<string, unknown
 }
 
 /**
- * 按最终 item 状态重建翻译进度 meta；任务生命周期仍由 BatchTranslationSnapshot 管理。
+ * 按最终 item 状态重建翻译进度 meta。任务生命周期由 BatchTranslationSnapshot 管理。
  */
 export function build_translation_extras_from_items(args: {
   task_snapshot: Record<string, unknown>;
@@ -248,7 +248,7 @@ export function compute_project_prefilter_write(
     if (item.status === "LANGUAGE_SKIPPED" || item.status === "DUPLICATED") {
       item.status = "NONE";
     }
-    // KVJSON 的 RULE_SKIPPED 可能来自可切换的 MTool 优化；先清理后由通用规则和当前开关重算。
+    // KVJSON 的 RULE_SKIPPED 可能来自可切换的 MTool 优化，需按通用规则和当前开关重算。
     if (item.status === "RULE_SKIPPED" && file_type === "KVJSON") {
       item.status = "NONE";
     } else if (item.status === "RULE_SKIPPED") {
@@ -268,12 +268,17 @@ export function compute_project_prefilter_write(
     if (item.status !== "NONE" || item.skip_internal_filter) {
       continue;
     }
-    if (should_skip_by_rule_prefilter(item.src)) {
+    const candidates = read_item_translation_candidates(item);
+    if (candidates.length === 0) {
       item.status = "RULE_SKIPPED";
       rule_skipped += 1;
       continue;
     }
-    if (should_skip_by_language_prefilter(item.src, input.source_language)) {
+    if (
+      candidates.every((part) =>
+        should_skip_by_language_prefilter(part.text, input.source_language),
+      )
+    ) {
       item.status = "LANGUAGE_SKIPPED";
       language_skipped += 1;
     }

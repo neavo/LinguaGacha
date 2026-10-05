@@ -71,13 +71,17 @@ describe("响应解码器", () => {
     ]);
   });
 
-  it("空白译文不形成有效翻译记录", async () => {
+  it("结构解码保留空白正文，由请求对应的校验判断是否需要正文", async () => {
     const decoded = await new ResponseDecoder().decode_translation(
       '{"id":0,"text":""}\n{"id":1,"text":"   "}\n{"id":2,"text":"有效译文"}',
       "text",
     );
 
-    expect(decoded).toEqual([{ request_id: 2, text_dst: "有效译文", actor_dst: null }]);
+    expect(decoded).toEqual([
+      { request_id: 0, text_dst: "", actor_dst: null },
+      { request_id: 1, text_dst: "   ", actor_dst: null },
+      { request_id: 2, text_dst: "有效译文", actor_dst: null },
+    ]);
   });
 
   it("按 actor/text 模式解码正文和姓名译文", async () => {

@@ -21,13 +21,16 @@ import {
   type TextResourceReferenceMapping,
 } from "../../../../shared/text/text-resource-reference";
 import type { TranslationRequestItem } from "../translation-item";
+import { read_item_translation_candidates } from "../../../../shared/prefilter/item-prefilter";
+import { split_text_lines } from "../../../../shared/text/text-lines";
 
 /**
  * 翻译译前流程产物，显式保存译后恢复需要的每行状态
  */
 export interface TranslationPrePipelineContext {
+  source_text: string; // 全部正文保留时恢复原始文本，包括换行形式。
   prepared_lines: PreparedTranslationSourceLine[]; // 请求与译后恢复共用逐行准备结果。
-  request_item: TranslationRequestItem | null; // 全部行均保留时跳过请求。
+  request_item: TranslationRequestItem | null; // 正文与姓名均无需当前模型处理时跳过请求。
   samples: string[]; // 收集保护段示例，供 PromptBuilder 判断是否补控制字符说明
   preserve_rule: TextPreserveRule; // 同一条目的保护规则由译前和译后共用。
   reference_mappings: TextResourceReferenceMapping[]; // 当前请求正文的临时引用恢复映射
@@ -46,7 +49,11 @@ export class TranslationPrePipeline {
   /**
    * 绑定配置快照和质量快照，pipeline 不读取全局会话缓存
    */
-  public constructor(config: TextProcessingConfig, quality_snapshot: TextQualitySnapshot) {
+  public constructor(
+    config: TextProcessingConfig,
+    quality_snapshot: TextQualitySnapshot,
+    private readonly include_actor = true, // SakuraLLM 只处理正文，在生成请求前选择现有协议。
+  ) {
     this.config = config;
     this.quality_snapshot = quality_snapshot;
     this.pre_replacements = quality_snapshot.pre_replacement_enable
@@ -62,6 +69,8 @@ export class TranslationPrePipeline {
     item_index = 0,
     request_id = 0,
   ): TranslationPrePipelineContext {
+    const candidates = read_item_translation_candidates(item);
+    const source_text = String(item.src ?? "");
     const text_type = String(item.text_type ?? "TXT").toUpperCase();
     const preserve_rule = build_text_preserve_rule({
       mode: this.quality_snapshot.text_preserve_mode,
@@ -69,7 +78,7 @@ export class TranslationPrePipeline {
       entries: this.quality_snapshot.text_preserve_entries,
     });
     const prepared = prepare_translation_source({
-      src: String(item.src ?? ""),
+      src: source_text,
       name_src: read_optional_item_name_text(item.name_src),
       text_type,
       config: this.config,
@@ -78,21 +87,39 @@ export class TranslationPrePipeline {
       start_ordinal: this.next_reference_ordinal,
     });
     this.next_reference_ordinal = prepared.body.next_ordinal;
+    // 无正文候选时保留完整投影。正文保护规则的逐行决定由文本准备负责。
+    const prepared_lines: PreparedTranslationSourceLine[] = candidates.some(
+      (part) => part.field === "src",
+    )
+      ? prepared.prepared_lines
+      : split_text_lines(prepared.body.text).map((prepared_text) => ({
+          state: "preserved",
+          prepared_text,
+          preserve_analysis: preserve_rule.analyze(prepared_text),
+        }));
     const context: TranslationPrePipelineContext = {
-      prepared_lines: prepared.prepared_lines,
+      source_text,
+      prepared_lines,
       request_item: null,
       samples: prepared.samples,
       preserve_rule,
       reference_mappings: prepared.body.mappings,
       actor_reference_mappings: prepared.name?.mappings ?? [],
     };
-    const has_translatable = context.prepared_lines.some((line) => line.state === "translatable");
-    if (has_translatable) {
+    const has_translatable_body = context.prepared_lines.some(
+      (line) => line.state === "translatable",
+    );
+    // actor_src 表示当前协议实际请求的姓名，译后按同一请求决定姓名写回。
+    const actor_src =
+      this.include_actor && candidates.some((part) => part.field === "name_src")
+        ? (prepared.name?.text ?? null)
+        : null;
+    if (has_translatable_body || actor_src !== null) {
       context.request_item = {
         request_id,
         item_index,
         text_src: context.prepared_lines.map((line) => line.prepared_text).join("\n"),
-        actor_src: prepared.name?.text ?? null,
+        actor_src,
       };
     }
     return context;

@@ -75,14 +75,14 @@ describe("TranslationPrePipeline", () => {
     ]);
     const context = pipeline.process_item({
       src: "查看 image.png",
-      name_src: "data:image/png;base64,AAAA",
+      name_src: "Alice data:image/png;base64,AAAA",
       text_type: "TXT",
     });
 
     expect(precedings[0]?.src).toBe("上文 lg-uri/0");
     expect(context.request_item).toMatchObject({
       text_src: "查看 lg-uri/2",
-      actor_src: "lg-uri/1",
+      actor_src: "Alice lg-uri/1",
     });
     expect(context.reference_mappings).toEqual([{ token: "lg-uri/2", value: "image.png" }]);
     expect(context.actor_reference_mappings).toEqual([
@@ -112,7 +112,7 @@ describe("TranslationPrePipeline", () => {
     expect(context.prepared_lines[0]?.state).toBe("translatable");
   });
 
-  it("完全保护条目跳过请求，混合正文保留标签", () => {
+  it("完全保护正文按姓名选择请求，混合正文保留标签", () => {
     const pipeline = new TranslationPrePipeline(
       create_config(),
       create_quality_snapshot({
@@ -133,6 +133,13 @@ describe("TranslationPrePipeline", () => {
     expect(fully_preserved.request_item).toBeNull();
     expect(fully_preserved.prepared_lines[0]?.state).toBe("preserved");
     expect(fully_preserved.samples).toEqual(["<b>", "</b>"]);
+    expect(
+      pipeline.process_item({
+        src: "<b></b>",
+        name_src: "Alice",
+        text_type: "TXT",
+      }).request_item,
+    ).toMatchObject({ text_src: "<b></b>", actor_src: "Alice" });
     expect(partially_preserved.request_item?.text_src).toBe("<b>hello</b>");
   });
 

@@ -66,13 +66,13 @@ export class ResponseDecoder {
     return item === null ? [] : [item];
   }
 
-  /** 只接受安全请求 ID 与非空正文，调用方据此独立裁决每个请求 item。 */
+  /** 检查响应结构。调用方按本次请求判断必需的正文与姓名结果。 */
   private build_translation_item(
     json_data: Record<string, unknown>,
     mode: TranslationPromptMode,
   ): TranslationDecodedItem | null {
     const request_id = this.read_request_id(json_data.id);
-    if (request_id === null || typeof json_data.text !== "string" || json_data.text.trim() === "") {
+    if (request_id === null || typeof json_data.text !== "string") {
       return null;
     }
     if (mode === "text") return { request_id, text_dst: json_data.text, actor_dst: null };
