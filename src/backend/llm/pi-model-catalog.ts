@@ -21,17 +21,19 @@ const CATALOG_FILE = "pi-model-catalog.json";
 const REMOTE_ROOT = "https://pi.dev/api/models/providers/";
 const CHECK_TIMEOUT_MS = 15_000;
 const CHECK_CONCURRENCY = 4;
+// 已有有效数据接住的失败只留文件诊断，用户无需处理。
+const CATALOG_DIAGNOSTIC_TARGETS = Object.freeze({ console: false, window: false });
 /** 内置目录与远端缓存共用能力类型，纯解析器只接收调用方提供的数据。 */
 export function read_builtin_pi_models(): readonly PiCatalogModel[] {
   return getBuiltinProviders().flatMap((provider) => getBuiltinModels(provider));
 }
 
-/** 应用实例持有的一份 Pi 能力事实；网络检查只产生候选，应用由 ModelService 编排。 */
+/** 应用实例持有一份 Pi 能力事实。网络检查产生候选，应用由 `ModelService` 编排。 */
 export class PiModelCatalog {
   private readonly providers: readonly string[] = getBuiltinProviders(); // 无聊天模型的已知供应商也参与更新，以接纳后续新增模型。
   private readonly builtin = read_builtin_pi_models(); // 离线基线随应用版本更新。
   private readonly generated_at = getBuiltinModelDataGeneratedAt() ?? 0; // 缓存和远端数据取得覆盖优先级的时间下限。
-  private readonly file_path: string;
+  private readonly file_path: string; // 用户数据目录中的供应商覆盖缓存路径。
   private cache: CatalogCache = { version: CATALOG_VERSION, providers: {} }; // 保存远端数据及条件请求凭据。
   private models: readonly PiCatalogModel[]; // 当前请求可见的完整能力快照。
   private revision = 0; // 当前实例成功应用能力更新的次数。
@@ -52,7 +54,10 @@ export class PiModelCatalog {
         this.cache = this.read_cache(parsed);
       }
     } catch (error) {
-      this.log.warning("Pi 模型能力缓存无效，使用内置目录。", { error });
+      this.log.warning("Pi 模型能力缓存无效，使用内置目录。", {
+        error,
+        targets: CATALOG_DIAGNOSTIC_TARGETS,
+      });
     }
     this.models = this.merge(this.cache);
   }
@@ -86,7 +91,7 @@ export class PiModelCatalog {
       version: CATALOG_VERSION,
       providers: { ...this.cache.providers },
     };
-    let cursor = 0;
+    let cursor = 0; // 并发下载共用游标，领取供应商时不跨 `await`。
     try {
       await Promise.all(
         Array.from({ length: Math.min(CHECK_CONCURRENCY, providers.length) }, async () => {
@@ -102,6 +107,7 @@ export class PiModelCatalog {
                 this.log.warning("Pi 模型能力目录供应商检查失败。", {
                   error,
                   context: { provider },
+                  targets: CATALOG_DIAGNOSTIC_TARGETS,
                 });
             }
           }
@@ -110,7 +116,9 @@ export class PiModelCatalog {
       clearTimeout(timeout);
       if (controller.signal.aborted) return;
       if (fetch_controller.signal.aborted)
-        this.log.warning("Pi 模型能力目录检查超时，保留已完成的供应商结果。");
+        this.log.warning("Pi 模型能力目录检查超时，保留已完成的供应商结果。", {
+          targets: CATALOG_DIAGNOSTIC_TARGETS,
+        });
       const candidate = this.merge(next);
       const serialized = JSON.stringify(next);
       // 缓存经原路径写入，保留用户设置的文件链接。
@@ -131,6 +139,7 @@ export class PiModelCatalog {
         controller.signal,
       );
     } catch (error) {
+      // 本地写入或配置应用失败可能阻断更新，保留可见警告。
       if (!controller.signal.aborted) this.log.warning("Pi 模型能力目录更新失败。", { error });
     } finally {
       clearTimeout(timeout);
@@ -193,18 +202,16 @@ export class PiModelCatalog {
     for (const [provider, entry] of Object.entries(source.providers)) {
       if (!this.providers.includes(provider) || typeof entry !== "object" || entry === null)
         continue;
-      const record = entry as Record<string, unknown>;
-      const modified = record.modified;
-      if (
-        typeof modified !== "number" ||
-        !Number.isSafeInteger(modified) ||
-        !Array.isArray(record.models)
-      ) {
-        this.log.warning("Pi 模型能力缓存供应商条目无效。", { context: { provider } });
-        continue;
-      }
-      if (modified <= this.generated_at) continue;
       try {
+        const record = entry as Record<string, unknown>;
+        const modified = record.modified;
+        if (
+          typeof modified !== "number" ||
+          !Number.isSafeInteger(modified) ||
+          !Array.isArray(record.models)
+        )
+          throw new Error(`Invalid Pi catalog cache ${provider}`);
+        if (modified <= this.generated_at) continue;
         providers[provider] = {
           modified,
           ...(typeof record.etag === "string" ? { etag: record.etag } : {}),
@@ -214,7 +221,11 @@ export class PiModelCatalog {
           }),
         };
       } catch (error) {
-        this.log.warning("Pi 模型能力缓存供应商条目无效。", { error, context: { provider } });
+        this.log.warning("Pi 模型能力缓存供应商条目无效。", {
+          error,
+          context: { provider },
+          targets: CATALOG_DIAGNOSTIC_TARGETS,
+        });
       }
     }
     return { version: CATALOG_VERSION, providers };
