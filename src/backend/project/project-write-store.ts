@@ -1149,7 +1149,6 @@ export class ProjectWriteStore {
               dst: item.dst,
               name_dst: item.name_dst,
               status: item.status,
-              retry_count: item.retry_count,
             },
           ];
         })

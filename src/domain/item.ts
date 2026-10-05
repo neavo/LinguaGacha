@@ -54,7 +54,6 @@ export type ProjectItemPublicRecord = {
   file_path: string; // 项目内相对路径
   text_type: ItemTextType; // 文本规则类型
   status: ItemStatus; // 翻译状态
-  retry_count: number; // 重试次数
   skip_internal_filter: boolean; // 是否绕过内部过滤
 };
 
@@ -72,7 +71,6 @@ export type ProjectItemPersistentRecord = JsonRecord & {
   file_path: string; // 项目内相对路径
   text_type: ItemTextType; // 文本规则类型
   status: ItemStatus; // 翻译状态
-  retry_count: number; // 重试次数
   skip_internal_filter: boolean; // 是否绕过内部过滤
 };
 
@@ -93,7 +91,6 @@ const PROJECT_ITEM_PUBLIC_REQUIRED_FIELDS = [
   "file_path",
   "text_type",
   "status",
-  "retry_count",
   "skip_internal_filter",
 ] as const;
 
@@ -128,7 +125,6 @@ export class Item {
   public file_path = ""; // 文件的相对路径
   public text_type: ItemTextType = "NONE"; // 文本的实际类型
   public status: ItemStatus = "NONE"; // 翻译状态
-  public retry_count = 0; // 重试次数，当前只有单独重试的时候才增加此计数
   public skip_internal_filter = false; // 强制翻译条目绕过规则/语言类内部过滤
 
   /** Item 只能通过 from_json 收窄外部载荷，避免绕过统一值域归一。 */
@@ -158,7 +154,6 @@ export class Item {
     item.file_path = String(record["file_path"] ?? "");
     item.text_type = text_type;
     item.status = Item.normalize_status(record["status"]);
-    item.retry_count = normalize_item_number(record["retry_count"], 0);
     item.skip_internal_filter = record["skip_internal_filter"] === true;
     return item;
   }
@@ -179,7 +174,6 @@ export class Item {
       file_path: this.file_path,
       text_type: this.text_type,
       status: this.status,
-      retry_count: this.retry_count,
       skip_internal_filter: this.skip_internal_filter,
     };
     if (this.id !== undefined) {
@@ -205,7 +199,6 @@ export class Item {
       file_path: this.file_path,
       text_type: this.text_type,
       status: this.status,
-      retry_count: this.retry_count,
       skip_internal_filter: this.skip_internal_filter,
     };
   }
@@ -358,7 +351,6 @@ function build_project_item_persistent_record(
     file_path: public_record.file_path,
     text_type: public_record.text_type,
     status: public_record.status,
-    retry_count: public_record.retry_count,
     skip_internal_filter: public_record.skip_internal_filter,
   });
   return item.to_json() as ProjectItemPersistentRecord;

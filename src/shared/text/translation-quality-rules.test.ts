@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 
 import {
   collect_foreign_residue_fragments,
-  has_translation_retry_reached_review_threshold,
   has_translation_similarity_issue,
   is_translation_text_similar,
 } from "./translation-quality-rules";
@@ -67,11 +66,6 @@ describe("translation-quality-rules", () => {
     ["TH", "Latin"],
   ] as const)("%s 报告其它书写系统：%s", (targetLanguage, text) => {
     expect(collect_foreign_residue_fragments({ text, targetLanguage })).toEqual([text]);
-  });
-
-  it("重试次数达到人工校对阈值后返回 true", () => {
-    expect(has_translation_retry_reached_review_threshold(1)).toBe(false);
-    expect(has_translation_retry_reached_review_threshold(2)).toBe(true);
   });
 
   it("非空文本包含或高度重叠时判为相似，空文本或低重叠文本不相似", () => {

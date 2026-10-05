@@ -46,7 +46,6 @@ describe("EpubRubyBlockTextMigration", () => {
           file_path: "book.epub",
           text_type: "NONE",
           status: "PROCESSED",
-          retry_count: 2,
         },
       ],
       asset_content_by_path: { "book.epub": epub_asset },
@@ -70,7 +69,6 @@ describe("EpubRubyBlockTextMigration", () => {
         name_src: "宝條直希",
         name_dst: "宝条直希",
         status: "PROCESSED",
-        retry_count: 2,
       }),
     ]);
     expect((migrated_item["extra_field"] as MutableJsonRecord).epub).toEqual(

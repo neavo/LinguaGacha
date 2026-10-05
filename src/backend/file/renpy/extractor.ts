@@ -94,7 +94,8 @@ export class RenpyExtractor {
       file_type: "RENPY",
       file_path: rel_path,
       text_type: "RENPY",
-      status: dst !== "" && src !== dst ? "PROCESSED" : "NONE",
+      // 源文件已保存的正文或姓名译文变化表示接受整条结果，同名可能是有意保留。
+      status: (dst !== "" && src !== dst) || name_dst !== null ? "PROCESSED" : "NONE",
       extra_field: this.build_extra_field(block, template_stmt, target_stmt, slots),
     });
   }

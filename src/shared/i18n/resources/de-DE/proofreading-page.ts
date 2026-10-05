@@ -18,6 +18,7 @@ export const de_de_proofreading_page = {
     replace_all: "Alle ersetzen",
     retranslate: "Neu übersetzen",
     clear_translation: "Übersetzung löschen",
+    clear_translation_keep_status: "Leeren und Status beibehalten",
     clear_and_reset_status: "Löschen und Status zurücksetzen",
     set_translation_status: "Übersetzungsstatus setzen",
     view_context: "Kontext anzeigen",
@@ -54,7 +55,6 @@ export const de_de_proofreading_page = {
     similarity: "Hohe Ähnlichkeit",
     glossary: "Glossar nicht angewendet",
     punctuation_mismatch: "Abweichende Satzzeichenstruktur",
-    retry_threshold: "Wiederholungsschwelle erreicht",
     line_count_mismatch: "Zeilenanzahl stimmt nicht überein",
   },
   glossary: {
@@ -63,6 +63,8 @@ export const de_de_proofreading_page = {
     missing: "Glossar nicht angewendet",
   },
   tooltip: {
+    save_translation_status:
+      "Beim Speichern der Änderungen wird auch der Übersetzungsstatus aktualisiert",
     warning_title: "Warnung",
   },
   ungrouped_file: "Nicht gruppiert",

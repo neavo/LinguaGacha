@@ -89,7 +89,6 @@ describe("ProjectWriteStore", () => {
             dst: "译文",
             name_dst: ["译名"],
             status: "PROCESSED",
-            retry_count: 0,
           },
         },
       ],
@@ -108,7 +107,6 @@ describe("ProjectWriteStore", () => {
         name_src: "原名",
         name_dst: ["译名"],
         status: "PROCESSED",
-        retry_count: 0,
         file_path: "demo.txt",
         file_type: "TXT",
         text_type: "TXT",
@@ -155,8 +153,8 @@ describe("ProjectWriteStore", () => {
       changes: [
         {
           item_id: 1,
-          current: { dst: "", name_dst: null, status: "NONE", retry_count: 0 },
-          next: { dst: "校对译文", name_dst: null, status: "PROCESSED", retry_count: 0 },
+          current: { dst: "", name_dst: null, status: "NONE" },
+          next: { dst: "校对译文", name_dst: null, status: "PROCESSED" },
         },
       ],
     });
@@ -188,17 +186,17 @@ describe("ProjectWriteStore", () => {
     });
   });
 
-  it("重翻重复项后同步收敛同文组并保留任务重试结果", async () => {
+  it("重翻重复项后同步收敛同文组并提交任务结果", async () => {
     const { database, project_path, store, published_changes } =
       create_store("retranslation-duplicate");
-    seed_duplicate_items(database, project_path, 3);
+    seed_duplicate_items(database, project_path);
 
     const ack = await store.apply_retranslation_item_patches({
       projectPath: project_path,
       items: [
         {
           item_id: 2,
-          patch: { dst: "任务译文", status: "PROCESSED", retry_count: 3 },
+          patch: { dst: "任务译文", status: "PROCESSED" },
         },
       ],
       translationExtras: {
@@ -212,14 +210,13 @@ describe("ProjectWriteStore", () => {
 
     expect(ack.changed_item_ids).toEqual([1, 2]);
     expect(
-      read_items(database, project_path).map(({ id, status, retry_count }) => ({
+      read_items(database, project_path).map(({ id, status }) => ({
         id,
         status,
-        retry_count,
       })),
     ).toEqual([
-      { id: 1, status: "DUPLICATED", retry_count: 0 },
-      { id: 2, status: "PROCESSED", retry_count: 3 },
+      { id: 1, status: "DUPLICATED" },
+      { id: 2, status: "PROCESSED" },
     ]);
     expect(read_meta(database, project_path).translation_extras).toMatchObject({
       total_line: 1,
@@ -245,8 +242,8 @@ describe("ProjectWriteStore", () => {
       changes: [
         {
           item_id: 1,
-          current: { dst: "", name_dst: null, status: "NONE", retry_count: 0 },
-          next: { dst: "", name_dst: null, status: "EXCLUDED", retry_count: 0 },
+          current: { dst: "", name_dst: null, status: "NONE" },
+          next: { dst: "", name_dst: null, status: "EXCLUDED" },
         },
       ],
     });
@@ -597,7 +594,6 @@ describe("ProjectWriteStore", () => {
       dst: "译文",
       name_dst: "译名",
       status: "PROCESSED",
-      retry_count: 0,
     });
     expect(database.get_rules(project_path, "glossary")).toHaveLength(1);
     expect(database.get_rules(project_path, "pre_translation_replacement")).toHaveLength(1);
@@ -747,7 +743,6 @@ describe("ProjectWriteStore", () => {
     expect(read_items(database, project_path)[0]).toMatchObject({
       dst: "",
       status: "NONE",
-      retry_count: 2,
     });
     expect(database.get_rules(project_path, "glossary")).toEqual([]);
     expect(database.get_rule_text(project_path, "translation_prompt")).toBe("");
@@ -875,7 +870,6 @@ describe("ProjectWriteStore", () => {
         name_src: "原名",
         name_dst: null,
         status: "NONE",
-        retry_count: 2,
         file_path: "demo.txt",
         file_type: "TXT",
         text_type: "TXT",
@@ -885,11 +879,7 @@ describe("ProjectWriteStore", () => {
   }
 
   /** 为各写入入口提供同一组代表与被动重复事实，只让测试覆盖自身差异。 */
-  function seed_duplicate_items(
-    database: ProjectDatabase,
-    project_path: string,
-    duplicate_retry_count = 0,
-  ): void {
+  function seed_duplicate_items(database: ProjectDatabase, project_path: string): void {
     database.set_items(project_path, [
       {
         id: 1,
@@ -897,7 +887,6 @@ describe("ProjectWriteStore", () => {
         dst: "",
         name_dst: null,
         status: "NONE",
-        retry_count: 0,
         file_path: "demo.txt",
         row: 0,
       },
@@ -907,7 +896,6 @@ describe("ProjectWriteStore", () => {
         dst: "",
         name_dst: null,
         status: "DUPLICATED",
-        retry_count: duplicate_retry_count,
         file_path: "demo.txt",
         row: 1,
       },

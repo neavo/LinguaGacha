@@ -3921,7 +3921,6 @@ async function prepare_long_tool_history(
       row_number: 1,
       file_path: "large.json",
       status: "translated",
-      retry_count: 0,
     },
   ]);
   fake_agent_state.context_window = TEST_COMPACTION_CONTEXT_WINDOW;

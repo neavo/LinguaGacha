@@ -15,6 +15,7 @@ export const zh_cn_proofreading_page = {
     replace_all: "全部替换",
     retranslate: "重新翻译",
     clear_translation: "清空译文",
+    clear_translation_keep_status: "清空并保留状态",
     clear_and_reset_status: "清空并重置状态",
     set_translation_status: "设置翻译状态",
     view_context: "查看上下文",
@@ -51,7 +52,6 @@ export const zh_cn_proofreading_page = {
     similarity: "相似度过高",
     glossary: "术语未落实",
     punctuation_mismatch: "标点结构不一致",
-    retry_threshold: "重试次数达到阈值",
     line_count_mismatch: "行数不一致",
   },
   glossary: {
@@ -60,6 +60,7 @@ export const zh_cn_proofreading_page = {
     missing: "术语未落实",
   },
   tooltip: {
+    save_translation_status: "保存修改后将同步更新翻译状态",
     warning_title: "警告",
   },
   ungrouped_file: "未分组",

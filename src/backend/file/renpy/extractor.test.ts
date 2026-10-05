@@ -5,6 +5,20 @@ import { RenpyExtractor } from "./extractor";
 import { parse_document } from "./parser";
 
 describe("RenPy extractor", () => {
+  it("源文件仅修改译名时也导入为完成，同名保留无需判为缺译", () => {
+    const items = extract([
+      "translate schinese start:",
+      '    # "Alice" "Hello"',
+      '    "爱丽丝" "Hello"',
+      '    # "Bob" "Hello"',
+      '    "Bob" "你好"',
+    ]);
+    expect(items).toMatchObject([
+      { src: "Hello", dst: "Hello", name_dst: "爱丽丝", status: "PROCESSED" },
+      { src: "Hello", dst: "你好", name_dst: null, status: "PROCESSED" },
+    ]);
+  });
+
   it("把 strings 与 label 配对转换为稳定项目条目", () => {
     const items = extract([
       "translate schinese strings:",

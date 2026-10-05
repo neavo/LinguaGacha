@@ -420,9 +420,8 @@ describe("BatchTranslationRunner", () => {
           ...create_pending_item(3, "next.txt"),
           status: "PROCESSED",
           dst: "已有译文",
-          retry_count: 2,
         },
-        { ...create_pending_item(4, "last.txt"), status: "ERROR", dst: "失败译文", retry_count: 3 },
+        { ...create_pending_item(4, "last.txt"), status: "ERROR", dst: "失败译文" },
       ];
       const original = structuredClone(items);
       const execute = vi.spyOn(pool, "execute_unit");
@@ -478,9 +477,7 @@ describe("BatchTranslationRunner", () => {
           line: 0,
           error_line: 0,
         });
-        expect((await runtime.build_snapshot()).request_recovery).toMatchObject({
-          retry_count: 4,
-        });
+        expect((await runtime.build_snapshot()).request_recovery).toMatchObject({ retry_count: 4 });
         if (action === "recover") {
           recovered = true;
           await vi.advanceTimersByTimeAsync(10_000);

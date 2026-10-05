@@ -23,7 +23,6 @@ function create_row(
       name_dst: null,
       status: "NONE",
       text_type: "NONE",
-      retry_count: 0,
       warnings: [],
       glossary_applications: [],
     },

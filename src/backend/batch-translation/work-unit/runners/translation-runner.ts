@@ -1,5 +1,5 @@
 import type { JsonValue } from "../../../../domain/json";
-import { read_json_integer, read_json_record } from "../../../../domain/json";
+import { read_json_record } from "../../../../domain/json";
 import {
   TextProcessingConfigTool,
   type TextProcessingConfig,
@@ -201,8 +201,6 @@ export class TranslationWorkUnitRunner {
         item.dst = output.dst;
         if (Object.hasOwn(output, "name_dst")) item.name_dst = output.name_dst ?? null;
         item.status = "PROCESSED";
-      } else if (prepared.request_items.length === 1) {
-        item.retry_count = read_json_integer(item.retry_count, 0) + 1;
       }
     }
     return result;

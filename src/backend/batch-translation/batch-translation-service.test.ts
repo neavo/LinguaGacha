@@ -163,7 +163,6 @@ it("历史工程批量翻译保留旧分析物理数据、正式术语与资产�
       file_type: "TXT",
       text_type: "NONE",
       row: 0,
-      retry_count: 0,
     },
   ]);
   database.set_rules(project_path, "glossary", [

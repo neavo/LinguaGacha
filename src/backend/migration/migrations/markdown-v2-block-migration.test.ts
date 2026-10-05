@@ -11,13 +11,12 @@ describe("MarkdownV2BlockMigration", () => {
     const data_uri = "data:image/png;base64,AAAA";
     const fixture = create_database(
       [
-        legacy_item(1, 0, "# 标题", { dst: "# Title", status: "PROCESSED", retry_count: 1 }),
+        legacy_item(1, 0, "# 标题", { dst: "# Title", status: "PROCESSED" }),
         legacy_item(2, 1, "", { status: "EXCLUDED" }),
         legacy_item(3, 2, "段落第一行", { dst: "First", status: "PROCESSED" }),
         legacy_item(4, 3, "段落第二行", {
           dst: "Second",
           status: "PROCESSED",
-          retry_count: 3,
           skip_internal_filter: true,
         }),
         legacy_item(5, 4, "", { status: "EXCLUDED" }),
@@ -56,7 +55,6 @@ describe("MarkdownV2BlockMigration", () => {
         file_type: "MD_V2",
         text_type: "MD",
         status: "PROCESSED",
-        retry_count: 1,
       }),
       expect.objectContaining({
         id: 3,
@@ -64,7 +62,6 @@ describe("MarkdownV2BlockMigration", () => {
         dst: "First\nSecond",
         row: 2,
         status: "PROCESSED",
-        retry_count: 3,
         skip_internal_filter: true,
       }),
       expect.objectContaining({
@@ -210,7 +207,6 @@ describe("MarkdownV2BlockMigration", () => {
           file_path: "book.epub",
           text_type: "NONE",
           status: "PROCESSED",
-          retry_count: 0,
         },
       ],
       {},
@@ -252,12 +248,12 @@ function legacy_item(
     file_path: "demo.md",
     text_type: "MD",
     status: "NONE",
-    retry_count: 0,
     skip_internal_filter: false,
     ...overrides,
   };
 }
 
+/** 按值隔离读写快照，并模拟数据库为重建条目分配 ID。 */
 function create_database(
   initial_items: MutableJsonRecord[],
   initial_meta: MutableJsonRecord = {},

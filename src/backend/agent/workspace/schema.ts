@@ -48,7 +48,6 @@ export const AGENT_WORKSPACE_ITEM_SCHEMA = Type.Object(
     text_type: Type.Enum(ITEM_TEXT_TYPES),
     row_number: Type.Integer({ minimum: 0 }),
     status: Type.Enum(ITEM_STATUSES),
-    retry_count: Type.Integer({ minimum: 0 }),
   },
   { additionalProperties: false },
 );
@@ -85,13 +84,6 @@ const proofreading_warning_schema = Type.Union([
     {
       code: Type.Enum(["SIMILARITY", "LINE_COUNT_MISMATCH"]),
       target_field: Type.Literal("dst"),
-    },
-    { additionalProperties: false },
-  ),
-  Type.Object(
-    {
-      code: Type.Literal("RETRY_THRESHOLD"),
-      target_field: Type.Null(),
     },
     { additionalProperties: false },
   ),

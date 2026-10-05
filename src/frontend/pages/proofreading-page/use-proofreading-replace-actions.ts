@@ -131,7 +131,7 @@ export function useProofreadingReplaceActions(
       return;
     }
 
-    // 命中的字段单独提交，姓名替换保留正文任务状态。
+    // 只提交实际替换的字段，正文与姓名共用条目完成规则。
     await options.run_project_write({
       path: "/api/proofreading/items/update",
       plan: create_apply_item_changes_plan({

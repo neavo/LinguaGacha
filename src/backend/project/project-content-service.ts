@@ -1,3 +1,4 @@
+import { read_optional_item_name_text, read_item_name_text } from "../../shared/item-name";
 import { build_project_file_records } from "./project-file-records";
 import type { PDFDocument } from "../../shared/pdf";
 import type { PDFExecution } from "../file/pdf/pdf-worker";
@@ -282,7 +283,6 @@ export class ProjectContentService {
         item.dst = "";
         item.name_dst = null;
         item.status = "NONE";
-        item.retry_count = 0;
       }
       const settings = this.read_project_write_settings(project_path, request["project_settings"]);
       const write_output = this.compute_prefilter_output({
@@ -499,7 +499,6 @@ export class ProjectContentService {
           item.dst = "";
           item.name_dst = null;
           item.status = "NONE";
-          item.retry_count = 0;
         }
         const translation_extras = this.build_translation_extras_for_items(project_path, items);
         return await this.write_store.reset_translation_state({
@@ -804,7 +803,7 @@ export class ProjectContentService {
   }
 
   /**
-   * 将新解析条目按原文继承旧已完成译文，候选选择只在后端执行
+   * 将新解析条目按完整源身份继承旧已完成译文，候选选择只在后端执行
    */
   private inherit_completed_translations(args: {
     old_items: ProjectItemPublicRecord[];
@@ -815,94 +814,46 @@ export class ProjectContentService {
       if (Item.normalize_status(item.status) !== "NONE") {
         continue;
       }
-      const candidates = candidate_map.get(item.src);
-      if (candidates === undefined || candidates.length === 0) {
-        continue;
-      }
-      const candidate = candidates[0]!; // 上方已排除空候选组，沿用组内首个结果。
+      const candidate = candidate_map.get(this.translation_inheritance_key(item));
+      if (candidate === undefined) continue;
       item.dst = candidate.dst;
       item.name_dst = candidate.name_dst;
-      item.retry_count = candidate.retry_count;
       item.status = candidate.status;
     }
   }
 
-  /**
-   * 按原文聚合可继承译文，优先选择出现次数最多且最早出现的候选
-   */
-  private build_translation_inheritance_candidates(old_items: ProjectItemPublicRecord[]): Map<
-    string,
-    Array<{
-      dst: string;
-      name_dst: ProjectItemPublicRecord["name_dst"];
-      retry_count: number;
-      status: ProjectItemPublicRecord["status"];
-      count: number;
-      first_index: number;
-    }>
-  > {
-    const src_candidates = new Map<
-      string,
-      Map<
-        string,
-        {
-          dst: string;
-          name_dst: ProjectItemPublicRecord["name_dst"];
-          retry_count: number;
-          status: ProjectItemPublicRecord["status"];
-          count: number;
-          first_index: number;
-        }
-      >
-    >();
-    let global_index = 0;
-    for (const item of old_items) {
-      const status = Item.normalize_status(item.status);
-      if (status !== "PROCESSED" || item.dst.trim() === "") {
-        global_index += 1;
-        continue;
-      }
-      const candidates_by_dst = src_candidates.get(item.src) ?? new Map();
-      const existing_candidate = candidates_by_dst.get(item.dst);
-      if (existing_candidate === undefined) {
-        candidates_by_dst.set(item.dst, {
-          dst: item.dst,
-          name_dst: item.name_dst ?? null,
-          retry_count: item.retry_count,
-          status,
-          count: 1,
-          first_index: global_index,
-        });
-      } else {
-        existing_candidate.count += 1;
-      }
-      src_candidates.set(item.src, candidates_by_dst);
-      global_index += 1;
-    }
+  /** 源身份包含可见姓名和文本类型，整条继承不能把不同角色的译名与完成状态混用。 */
+  private translation_inheritance_key(item: ProjectItemPublicRecord): string {
+    return JSON.stringify([item.src, read_optional_item_name_text(item.name_src), item.text_type]);
+  }
 
-    const candidate_map = new Map<
-      string,
-      Array<{
-        dst: string;
-        name_dst: ProjectItemPublicRecord["name_dst"];
-        retry_count: number;
-        status: ProjectItemPublicRecord["status"];
-        count: number;
-        first_index: number;
-      }>
-    >();
-    for (const [src, candidates_by_dst] of src_candidates.entries()) {
-      candidate_map.set(
-        src,
-        [...candidates_by_dst.values()].sort((left_candidate, right_candidate) => {
-          if (left_candidate.count !== right_candidate.count) {
-            return right_candidate.count - left_candidate.count;
-          }
-          return left_candidate.first_index - right_candidate.first_index;
-        }),
-      );
+  /** 同一源身份按完整译文结果计数，优先选择最多且最早出现的已完成结果。 */
+  private build_translation_inheritance_candidates(
+    old_items: ProjectItemPublicRecord[],
+  ): Map<string, ProjectItemPublicRecord> {
+    type Candidate = {
+      item: ProjectItemPublicRecord; // 首次出现的完整结果，包含姓名形状。
+      count: number; // 同一正文与可见译名结果的出现次数。
+    };
+    const groups = new Map<string, Map<string, Candidate>>();
+    for (const item of old_items) {
+      // 人工完成允许空正文；仅姓名的完成结果也能继承。
+      if (Item.normalize_status(item.status) !== "PROCESSED") continue;
+      const key = this.translation_inheritance_key(item);
+      const candidates = groups.get(key) ?? new Map<string, Candidate>();
+      const result_key = JSON.stringify([item.dst, read_item_name_text(item.name_dst)]);
+      const candidate = candidates.get(result_key);
+      if (candidate === undefined) candidates.set(result_key, { item, count: 1 });
+      else candidate.count += 1;
+      groups.set(key, candidates);
     }
-    return candidate_map;
+    return new Map(
+      [...groups].map(([key, candidates]) => [
+        key,
+        // `Map` 保留首次出现顺序，稳定排序使同票候选沿用最早结果。
+        [...candidates.values()].sort((left, right) => right.count - left.count)[0]!.item,
+      ]),
+    );
   }
 
   /**

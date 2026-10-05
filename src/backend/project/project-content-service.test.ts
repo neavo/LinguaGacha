@@ -163,7 +163,6 @@ function create_public_item(overrides: JsonRecord = {}): JsonRecord {
     file_path: "a.txt",
     text_type: "NONE",
     status: "NONE",
-    retry_count: 0,
     skip_internal_filter: false,
     ...overrides,
   };
@@ -905,6 +904,69 @@ describe("ProjectContentService", () => {
       }),
     ]);
     database.close();
+  });
+
+  it("整条继承匹配源身份，按完整结果投票并支持空正文", async () => {
+    const { database, service, lg_path } = create_service();
+    try {
+      const source_path = project_path("names.json");
+      fs.writeFileSync(
+        source_path,
+        JSON.stringify([
+          { name: "太郎", message: "こんにちは" },
+          { name: "花子", message: "こんにちは" },
+          { name: "俊輔", message: "" },
+        ]),
+      );
+      database.set_items(
+        lg_path,
+        (
+          [
+            // 相同正文的译名分开投票，同票时保留最早的完整结果。
+            ["こんにちは", "你好", "太郎", "少数译名", "KAG"],
+            ["こんにちは", "你好", "太郎", "太郎译名", "KAG"],
+            ["こんにちは", "你好", "太郎", "太郎译名", "KAG"],
+            ["こんにちは", "错误类型译文", "花子", "错误类型译名", "RENPY"],
+            ["", "", "俊輔", "俊辅", "KAG"],
+            ["", "", "俊輔", "另一个译名", "KAG"],
+          ] as const
+        ).map(([src, dst, name_src, name_dst, text_type], index) =>
+          create_persistent_item({
+            item_id: index + 1,
+            src,
+            dst,
+            name_src,
+            name_dst,
+            text_type,
+            status: "PROCESSED",
+          }),
+        ),
+      );
+      await service.import_files({
+        files: [{ source_path, target_rel_path: "names.json" }],
+        inheritance_mode: "inherit",
+        conflict_action: "replace",
+        project_settings: { source_language: "JA", target_language: "ZH" },
+        expected_section_revisions: { files: 0, items: 0 },
+      });
+      expect(
+        (database.get_all_items(lg_path) as JsonRecord[]).filter(
+          (item) => item.file_path === "names.json",
+        ),
+      ).toMatchObject([
+        {
+          src: "こんにちは",
+          name_src: "太郎",
+          dst: "你好",
+          name_dst: "太郎译名",
+          status: "PROCESSED",
+        },
+        { src: "こんにちは", name_src: "花子", dst: "", name_dst: null, status: "NONE" },
+        { src: "", name_src: "俊輔", dst: "", name_dst: "俊辅", status: "PROCESSED" },
+      ]);
+    } finally {
+      database.close();
+    }
   });
 
   it("按完整文件集合重排 assets 并只 bump files section", async () => {

@@ -13,7 +13,6 @@ export const PROOFREADING_WARNING_CODES = [
   "GLOSSARY",
   "TEXT_PRESERVE",
   "PUNCTUATION_MISMATCH",
-  "RETRY_THRESHOLD",
 ] as const;
 
 export type ProofreadingWarningCode = (typeof PROOFREADING_WARNING_CODES)[number];
@@ -32,8 +31,7 @@ export type ProofreadingWarning =
       translation_fragments: string[];
     }
   | { code: "PUNCTUATION_MISMATCH" | "GLOSSARY"; target_field: "dst" | "name_dst" }
-  | { code: "SIMILARITY" | "LINE_COUNT_MISMATCH"; target_field: "dst" }
-  | { code: "RETRY_THRESHOLD"; target_field: null };
+  | { code: "SIMILARITY" | "LINE_COUNT_MISMATCH"; target_field: "dst" };
 
 /** 列表、筛选和统计按条目去重，并沿用统一的规则顺序。 */
 export function read_proofreading_warning_codes(
@@ -107,7 +105,6 @@ export type ProofreadingItem = ProofreadingFileRef & {
   name_src: ItemNameField;
   name_dst: ItemNameField;
   status: string;
-  retry_count: number;
   warnings: ProofreadingWarning[];
   glossary_applications: GlossaryApplication[];
 };
@@ -121,7 +118,6 @@ export type ProofreadingItemRecord = ProofreadingFileRef & {
   name_dst: ItemNameField;
   status: string;
   text_type: string;
-  retry_count: number;
 };
 
 /** worker 只返回计算事实，原始字段由发起计算时的不可变快照提供。 */

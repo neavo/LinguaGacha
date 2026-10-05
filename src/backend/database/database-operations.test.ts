@@ -592,7 +592,6 @@ describe("ProjectDatabase", () => {
         name_src: "原名",
         name_dst: null,
         status: "NONE",
-        retry_count: 2,
         file_path: "demo.txt",
         file_type: "TXT",
         text_type: "TXT",
@@ -608,7 +607,6 @@ describe("ProjectDatabase", () => {
           dst: "译文",
           name_dst: ["译名"],
           status: "PROCESSED",
-          retry_count: 0,
         },
       },
     ]);
@@ -621,7 +619,6 @@ describe("ProjectDatabase", () => {
         name_src: "原名",
         name_dst: ["译名"],
         status: "PROCESSED",
-        retry_count: 0,
         file_path: "demo.txt",
         file_type: "TXT",
         text_type: "TXT",

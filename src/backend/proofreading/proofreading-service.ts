@@ -126,20 +126,12 @@ export class ProofreadingService {
       if (item === undefined) {
         continue;
       }
-      let next_item = item;
       const dst_replace_result = replace_text_pattern({
         text: String(item["dst"] ?? ""),
         pattern,
         replacement_text: String(request["replace_text"] ?? ""),
         replacement_syntax: (request["is_regex"] ?? false) ? "javascript" : "literal",
       });
-      if (dst_replace_result.count > 0 && dst_replace_result.text !== item["dst"]) {
-        next_item =
-          apply_project_item_manual_update(next_item, {
-            dst: dst_replace_result.text,
-          }) ?? next_item;
-      }
-
       const current_name_dst = read_item_name_text(item["name_dst"]);
       const name_replace_result = replace_text_pattern({
         text: current_name_dst,
@@ -147,14 +139,11 @@ export class ProofreadingService {
         replacement_text: String(request["replace_text"] ?? ""),
         replacement_syntax: (request["is_regex"] ?? false) ? "javascript" : "literal",
       });
-      if (name_replace_result.count > 0 && name_replace_result.text !== current_name_dst) {
-        next_item =
-          apply_project_item_manual_update(next_item, {
-            name_dst: name_replace_result.text,
-          }) ?? next_item;
-      }
-
-      if (next_item === item) continue;
+      const next_item = apply_project_item_manual_update(item, {
+        dst: dst_replace_result.text,
+        name_dst: name_replace_result.text,
+      });
+      if (next_item === null) continue;
       changes.push({ item_id, current: item, next: next_item });
     }
     return await this.persist_changed_items(project_path, expected_section_revisions, changes);
@@ -179,7 +168,7 @@ export class ProofreadingService {
       });
     }
     const field_patch: ProjectChangeItemFieldPatch = reset_status
-      ? { dst: "", name_dst: null, status: "NONE", retry_count: 0 }
+      ? { dst: "", name_dst: null, status: "NONE" }
       : { dst: "", name_dst: null };
     const current_by_id = this.get_item_write_facts_by_ids(project_path, item_ids);
     const changes: ProjectItemWriteChange[] = [];
@@ -192,15 +181,7 @@ export class ProofreadingService {
       if (next_item === null) continue;
       changes.push({ item_id, current: item, next: next_item });
     }
-    if (changes.length === 0) {
-      return { accepted: true, changes: [] };
-    }
-    return await this.write_store.apply_project_item_changes({
-      projectPath: project_path,
-      expectedSectionRevisions: expected_section_revisions,
-      source: DEFAULT_PROOFREADING_UPDATE_SOURCE,
-      changes,
-    });
+    return await this.persist_changed_items(project_path, expected_section_revisions, changes);
   }
 
   /**
@@ -352,7 +333,6 @@ export class ProofreadingService {
         dst: String(item["dst"] ?? ""),
         name_dst: Item.normalize_name_field(item["name_dst"]),
         status: String(item["status"] ?? ""),
-        retry_count: Number(item["retry_count"] ?? 0),
       });
     }
     return items_by_id;
@@ -382,7 +362,6 @@ export class ProofreadingService {
         dst: String(item["dst"] ?? ""),
         name_dst: Item.normalize_name_field(item["name_dst"]),
         status: String(item["status"] ?? ""),
-        retry_count: Number(item["retry_count"] ?? 0),
       });
     }
     return items_by_id;

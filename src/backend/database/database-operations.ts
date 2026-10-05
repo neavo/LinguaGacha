@@ -942,8 +942,7 @@ export class ProjectDatabase {
              json_extract(data, '$.dst') AS dst,
              json_extract(data, '$.name_dst') AS name_dst,
              json_type(data, '$.name_dst') AS name_dst_type,
-             json_extract(data, '$.status') AS status,
-             json_extract(data, '$.retry_count') AS retry_count
+             json_extract(data, '$.status') AS status
            FROM items
            WHERE id IN (${placeholders})`,
         )
@@ -954,7 +953,6 @@ export class ProjectDatabase {
           dst: row_text(row, "dst"),
           name_dst: this.read_item_name_value(row, "name_dst", "name_dst_type"),
           status: row_text(row, "status"),
-          retry_count: row_number(row, "retry_count"),
         });
       }
     });
@@ -1004,17 +1002,13 @@ export class ProjectDatabase {
   /**
    * 将公开 item 字段 patch 编译为 SQLite json_set 路径和值。
    */
-  private build_item_field_patch_entries(
-    patch: DatabaseRow,
-    options: { clamp_retry_count: boolean },
-  ): Array<{
-    path: string;
-    value: JsonValue;
-    json: boolean;
-  }> {
+  private build_item_field_patch(patch: DatabaseRow): {
+    sql_args: string;
+    values: string[];
+  } | null {
     const normalized_patch = normalize_project_item_field_patch(patch);
     if (normalized_patch === null) {
-      return [];
+      return null;
     }
     const patch_entries: Array<{
       path: string;
@@ -1034,16 +1028,14 @@ export class ProjectDatabase {
     if (normalized_patch.status !== undefined) {
       patch_entries.push({ path: "$.status", value: normalized_patch.status, json: false });
     }
-    if (normalized_patch.retry_count !== undefined) {
-      patch_entries.push({
-        path: "$.retry_count",
-        value: options.clamp_retry_count
-          ? Math.max(0, normalized_patch.retry_count)
-          : normalized_patch.retry_count,
-        json: false,
-      });
-    }
-    return patch_entries;
+    return {
+      sql_args: patch_entries.map((entry) => (entry.json ? "?, json(?)" : "?, ?")).join(", "),
+      // 姓名数组与 null 用 JSON 绑定，正文和状态直接绑定文本。
+      values: patch_entries.flatMap((entry) => [
+        entry.path,
+        entry.json ? JsonTool.stringifyStrict(entry.value) : String(entry.value ?? ""),
+      ]),
+    };
   }
 
   /**
@@ -1060,28 +1052,15 @@ export class ProjectDatabase {
     if (normalized_ids.length === 0) {
       return;
     }
-    const patch_entries = this.build_item_field_patch_entries(patch, { clamp_retry_count: false });
-    if (patch_entries.length === 0) {
+    const compiled_patch = this.build_item_field_patch(patch);
+    if (compiled_patch === null) {
       return;
     }
-    const json_set_args = patch_entries
-      .map((patch_entry) => (patch_entry.json ? "?, json(?)" : "?, ?"))
-      .join(", ");
-    const patch_values = patch_entries.flatMap((patch_entry) => [
-      patch_entry.path,
-      patch_entry.json || typeof patch_entry.value !== "number"
-        ? String(
-            patch_entry.json
-              ? JsonTool.stringifyStrict(patch_entry.value)
-              : (patch_entry.value ?? ""),
-          )
-        : patch_entry.value,
-    ]);
     for_each_sqlite_in_clause_chunk(normalized_ids, (chunk) => {
       const placeholders = chunk.map(() => "?").join(",");
       db.prepare(
-        `UPDATE items SET data = json_set(data, ${json_set_args}) WHERE id IN (${placeholders})`,
-      ).run(...patch_values, ...chunk);
+        `UPDATE items SET data = json_set(data, ${compiled_patch.sql_args}) WHERE id IN (${placeholders})`,
+      ).run(...compiled_patch.values, ...chunk);
     });
   }
 
@@ -1098,30 +1077,15 @@ export class ProjectDatabase {
         });
       }
       const patch = this.value_record(entry["patch"]);
-      const patch_entries = this.build_item_field_patch_entries(patch, {
-        clamp_retry_count: true,
-      });
-      if (patch_entries.length === 0) {
+      const compiled_patch = this.build_item_field_patch(patch);
+      if (compiled_patch === null) {
         throw new AppErrors.AppError("request.validation_failed", {
           diagnostic_context: { reason: "empty_translation_patch" },
         });
       }
-      const json_set_args = patch_entries
-        .map((patch_entry) => (patch_entry.json ? "?, json(?)" : "?, ?"))
-        .join(", ");
-      const patch_values = patch_entries.flatMap((patch_entry) => [
-        patch_entry.path,
-        patch_entry.json || typeof patch_entry.value !== "number"
-          ? String(
-              patch_entry.json
-                ? JsonTool.stringifyStrict(patch_entry.value)
-                : (patch_entry.value ?? ""),
-            )
-          : patch_entry.value,
-      ]);
       const result = db
-        .prepare(`UPDATE items SET data = json_set(data, ${json_set_args}) WHERE id = ?`)
-        .run(...patch_values, item_id);
+        .prepare(`UPDATE items SET data = json_set(data, ${compiled_patch.sql_args}) WHERE id = ?`)
+        .run(...compiled_patch.values, item_id);
       if (Number(result.changes) !== 1) {
         throw new AppErrors.AppError("request.validation_failed", {
           diagnostic_context: { reason: "translation_patch_item_not_found", item_id },

@@ -22,7 +22,6 @@ type LegacyMarkdownItem = {
   row: number;
   file_path: string;
   status: ItemStatus;
-  retry_count: number;
   skip_internal_filter: boolean;
 };
 
@@ -130,7 +129,6 @@ export class MarkdownV2BlockMigration {
       row,
       file_path,
       status,
-      retry_count: this.read_non_negative_integer(record["retry_count"]),
       skip_internal_filter: record["skip_internal_filter"] === true,
     };
   }
@@ -197,7 +195,6 @@ export class MarkdownV2BlockMigration {
         file_path: items[0]!.file_path,
         text_type: "MD",
         status: this.aggregate_status(unit, covered_items),
-        retry_count: Math.max(0, ...covered_items.map((item) => item.retry_count)),
         skip_internal_filter: covered_items.some((item) => item.skip_internal_filter),
         extra_field: {
           markdown: {
@@ -275,17 +272,10 @@ export class MarkdownV2BlockMigration {
         name_dst: item.name_dst,
         status: item.status,
         text_type: item.text_type,
-        retry_count: item.retry_count,
         skip_internal_filter: item.skip_internal_filter,
       });
     }
     return result;
-  }
-
-  /** 历史计数统一收窄为非负整数，非法可选值按零处理。 */
-  private read_non_negative_integer(value: JsonValue | undefined): number {
-    const number_value = Number(value ?? 0);
-    return Number.isFinite(number_value) ? Math.max(0, Math.trunc(number_value)) : 0;
   }
 
   /** 迁移错误统一携带文件身份，便于项目打开失败时定位损坏来源。 */

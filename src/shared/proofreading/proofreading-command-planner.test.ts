@@ -22,7 +22,6 @@ function create_test_item(overrides: Partial<ProjectItemPublicRecord>): ProjectI
     file_path: "",
     text_type: "NONE",
     status: "NONE",
-    retry_count: 0,
     skip_internal_filter: false,
     ...overrides,
   };
@@ -37,7 +36,7 @@ describe("proofreading command planner", () => {
     const plan = create_apply_item_changes_plan({
       snapshot: create_test_snapshot([
         create_test_item({ item_id: 1, dst: "旧正文", name_dst: "旧译名" }),
-        create_test_item({ item_id: 2, status: "PROCESSED", retry_count: 2 }),
+        create_test_item({ item_id: 2, status: "ERROR" }),
       ]),
       changes: [
         { item_id: 1, dst: "新正文", name_dst: "新译名" },
@@ -59,7 +58,12 @@ describe("proofreading command planner", () => {
 
   it("姓名数组只比较第 0 槽，并在无最终变化时省略命令", () => {
     const snapshot = create_test_snapshot([
-      create_test_item({ item_id: 1, dst: "正文", name_dst: ["译名", "保留"] }),
+      create_test_item({
+        item_id: 1,
+        dst: "正文",
+        name_dst: ["译名", "保留"],
+        status: "PROCESSED",
+      }),
     ]);
     expect(
       create_apply_item_changes_plan({
@@ -75,10 +79,10 @@ describe("proofreading command planner", () => {
     ).toEqual([{ item_id: 1, name_dst: "新译名" }]);
   });
 
-  it("显式状态在必要时覆盖 dst 自动状态并清理 retry", () => {
+  it("显式状态覆盖内容修改的默认状态，同值状态省略命令", () => {
     const plan = create_apply_item_changes_plan({
       snapshot: create_test_snapshot([
-        create_test_item({ item_id: 1, dst: "旧", status: "EXCLUDED", retry_count: 0 }),
+        create_test_item({ item_id: 1, dst: "旧", status: "EXCLUDED" }),
       ]),
       changes: [{ item_id: 1, dst: "新", status: "EXCLUDED" }],
     });
@@ -86,9 +90,7 @@ describe("proofreading command planner", () => {
 
     expect(
       create_apply_item_changes_plan({
-        snapshot: create_test_snapshot([
-          create_test_item({ item_id: 1, status: "PROCESSED", retry_count: 0 }),
-        ]),
+        snapshot: create_test_snapshot([create_test_item({ item_id: 1, status: "PROCESSED" })]),
         changes: [{ item_id: 1, status: "PROCESSED" }],
       }),
     ).toBeNull();

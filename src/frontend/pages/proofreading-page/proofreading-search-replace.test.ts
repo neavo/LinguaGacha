@@ -19,7 +19,6 @@ function create_item(overrides: Partial<ProofreadingItem> = {}): ProofreadingIte
     name_src: null,
     name_dst: null,
     status: "NONE",
-    retry_count: 0,
     warnings: [],
     glossary_applications: [],
     ...overrides,

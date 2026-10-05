@@ -22,7 +22,6 @@ describe("run_compute_worker_task", () => {
             name_dst: "艾丽丝",
             status: "PROCESSED",
             text_type: "NONE",
-            retry_count: 0,
           },
         ],
         quality: {

@@ -15,7 +15,6 @@ describe("翻译目标准备", () => {
     src: "原文",
     dst: "原有译文",
     status,
-    retry_count: 3,
     file_path: "chapter.txt",
   }));
 
@@ -31,7 +30,7 @@ describe("翻译目标准备", () => {
       status: include_errors ? "NONE" : "ERROR",
       dst: "原有译文",
     });
-    expect(items[1]).toMatchObject({ status: "ERROR", retry_count: 3 });
+    expect(items[1]).toMatchObject({ status: "ERROR" });
   });
 
   it("全量补译只选普通待译与确认处理的失败条目", () => {
@@ -50,7 +49,7 @@ describe("翻译目标准备", () => {
       scope: { kind: "items", item_ids: [3, 2] },
     });
     expect([...result.target_ids]).toEqual([2, 3]);
-    expect(result.items[2]).toMatchObject({ status: "NONE", retry_count: 0 });
+    expect(result.items[2]).toMatchObject({ status: "NONE" });
     expect(items[2]?.status).toBe("PROCESSED");
   });
 

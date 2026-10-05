@@ -21,7 +21,6 @@ function create_item(
     file_path: "script.txt",
     text_type: "NONE",
     status: "NONE",
-    retry_count: 0,
     skip_internal_filter: false,
     ...overrides,
   };
@@ -101,7 +100,6 @@ describe("compute_project_prefilter_write", () => {
           src: "",
           dst: "保留",
           status: "PROCESSED",
-          retry_count: 2,
           skip_internal_filter: true,
         }),
       ]),
@@ -114,7 +112,6 @@ describe("compute_project_prefilter_write", () => {
     expect(result.items["1"]).toMatchObject({
       dst: "保留",
       status: "PROCESSED",
-      retry_count: 2,
       skip_internal_filter: true,
     });
   });

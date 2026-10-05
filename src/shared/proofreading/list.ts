@@ -126,7 +126,6 @@ export function create_proofreading_client_item(
     name_src: item.name_src,
     name_dst: item.name_dst,
     status: item.status,
-    retry_count: item.retry_count,
     warnings: item.warnings,
     glossary_applications: item.glossary_applications,
     row_id: build_proofreading_row_id(item.item_id),

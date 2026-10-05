@@ -1123,7 +1123,6 @@ async function create_fixture(temp_dir: string, native_fs?: NativeFs) {
           name_src: null,
           name_dst: null,
           status: "NONE" as const,
-          retry_count: 0,
           row_id: "item:1",
           compressed_src: String(warning_item["src"]),
           compressed_dst: "",
@@ -1204,7 +1203,6 @@ function create_item(item_id: number): ProjectItemPublicRecord {
     file_path: "script.txt",
     text_type: "NONE",
     status: "NONE",
-    retry_count: 0,
     skip_internal_filter: false,
   };
 }
@@ -1593,7 +1591,6 @@ it("警告投影满足字段契约并只输出关联证据", () => {
     { code: "PUNCTUATION_MISMATCH", target_field: "name_dst" },
     { code: "SIMILARITY", target_field: "dst" },
     { code: "LINE_COUNT_MISMATCH", target_field: "dst" },
-    { code: "RETRY_THRESHOLD", target_field: null },
   ];
   const output = project_agent_workspace_warning({
     item_id: 1,
@@ -1606,7 +1603,6 @@ it("警告投影满足字段契约并只输出关联证据", () => {
     name_src: "Alice",
     name_dst: "かな",
     status: "PROCESSED",
-    retry_count: 2,
     compressed_src: "原文",
     compressed_dst: "译文",
     glossary_applications: [],

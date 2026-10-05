@@ -29,7 +29,6 @@ export function prepare_translation_targets(
       ...item,
       ...(command.operation === "translate" && command.mode === "reset" ? { dst: "" } : {}),
       status: "NONE",
-      retry_count: 0,
     };
   });
   return { items: prepared, target_ids };

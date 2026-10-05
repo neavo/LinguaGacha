@@ -64,7 +64,6 @@ function create_item(input: {
     name_dst: input.name_dst ?? null,
     status: input.status ?? "NONE",
     text_type: "NONE",
-    retry_count: 0,
   };
 }
 
@@ -170,10 +169,7 @@ describe("proofreading-reader", () => {
       processingConfig: create_processing_config(),
       quality: create_quality(),
       upsertItems: [
-        {
-          ...create_item({ item_id: 1, src: "「こんにちは」", dst: "「你好", status: "PROCESSED" }),
-          retry_count: 2,
-        },
+        create_item({ item_id: 1, src: "「こんにちは」", dst: "「你好", status: "PROCESSED" }),
         create_item({ item_id: 2, src: "「こんにちは」", dst: "“你好”", status: "PROCESSED" }),
       ],
     });
@@ -192,13 +188,10 @@ describe("proofreading-reader", () => {
       view.window_rows
         .filter((row) => row.kind === "item")[0]
         ?.item.warnings.map((warning) => warning.code),
-    ).toEqual(["PUNCTUATION_MISMATCH", "RETRY_THRESHOLD"]);
+    ).toEqual(["PUNCTUATION_MISMATCH"]);
     expect(service.read_warning_summary()).toEqual({
-      total_count: 2,
-      entries: [
-        { code: "PUNCTUATION_MISMATCH", count: 1 },
-        { code: "RETRY_THRESHOLD", count: 1 },
-      ],
+      total_count: 1,
+      entries: [{ code: "PUNCTUATION_MISMATCH", count: 1 }],
     });
 
     service.apply_item_delta({
@@ -207,7 +200,7 @@ describe("proofreading-reader", () => {
       total_item_count: 2,
       upsertItems: [],
       patchItemIds: [1],
-      fieldPatch: { dst: "“你好”", retry_count: 0 },
+      fieldPatch: { dst: "“你好”" },
       deleteItemIds: [],
     });
     expect(
@@ -497,7 +490,6 @@ describe("proofreading-reader", () => {
           name_dst: "艾丽丝",
           status: "PROCESSED",
           text_type: "NONE",
-          retry_count: 0,
         },
         {
           item_id: 2,
@@ -510,7 +502,6 @@ describe("proofreading-reader", () => {
           name_dst: null,
           status: "PROCESSED",
           text_type: "NONE",
-          retry_count: 0,
         },
       ],
     });
@@ -677,7 +668,6 @@ describe("proofreading-reader", () => {
           name_dst: null,
           status: "PROCESSED",
           text_type: "NONE",
-          retry_count: 0,
         },
       ],
     });

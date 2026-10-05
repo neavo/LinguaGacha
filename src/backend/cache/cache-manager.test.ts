@@ -29,7 +29,6 @@ function create_item(overrides: MutableRecord = {}): MutableRecord {
     file_path: "script.txt",
     text_type: "NONE",
     status: "NONE",
-    retry_count: 0,
     skip_internal_filter: false,
     ...overrides,
   };
