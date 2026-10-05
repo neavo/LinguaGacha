@@ -114,29 +114,103 @@ describe("TranslationWorkUnitRunner", () => {
     ]);
   });
 
-  it("SakuraLLM 对仅姓名任务本地完成并保留已有译名", async () => {
-    const llm_client = { request: vi.fn() };
-    const runner = new TranslationWorkUnitRunner(process.cwd(), llm_client);
+  it("SakuraLLM 仅姓名任务独立请求，保留正文并替换旧译名", async () => {
+    const requests: LLMRequestBody[] = [];
+    const runner = new TranslationWorkUnitRunner(
+      await create_template_root(),
+      create_llm_client({ response_result: "虎铁" }, requests),
+    );
     const result = await runner.execute_unit(
       create_translation_unit({
         model: { api_format: "SakuraLLM" },
         items: [
-          {
-            id: 1,
-            src: "「…………」",
-            name_src: "虎鉄",
-            name_dst: "既有译名",
-            dst: "",
-            status: "NONE",
-          },
+          { id: 1, src: "「…………」", name_src: "虎鉄", name_dst: "旧译名", dst: "", status: "NONE" },
         ],
       }),
       new AbortController().signal,
     );
-    expect(llm_client.request).not.toHaveBeenCalled();
+    expect(requests).toHaveLength(1);
+    expect(requests[0]?.messages[1]?.content).toMatch(/\n虎鉄$/u);
     expect(result.output.items).toMatchObject([
-      { dst: "「…………」", name_dst: "既有译名", status: "PROCESSED" },
+      { dst: "「…………」", name_dst: "虎铁", status: "PROCESSED" },
     ]);
+  });
+
+  it("SakuraLLM 同批姓名复用，失败姓名只阻止相关条目并汇总用量", async () => {
+    const requests: LLMRequestBody[] = [];
+    const responses = ["甲译文\n乙译文\n丙译文", "虎铁", "  "];
+    const client = {
+      request: vi.fn(async (body: LLMRequestBody) => {
+        requests.push(body);
+        return {
+          response_result: responses.shift() ?? "",
+          response_think: "",
+          input_tokens: 2,
+          reasoning_tokens: 1,
+          output_tokens: 3,
+          cancelled: false,
+          timeout: false,
+        };
+      }),
+    };
+    const runner = new TranslationWorkUnitRunner(await create_template_root(), client);
+    const result = await runner.execute_unit(
+      create_translation_unit({
+        model: { api_format: "SakuraLLM" },
+        items: ["虎鉄", "虎鉄", "美咲"].map((name_src, index) => ({
+          id: index + 1,
+          src: ["甲", "乙", "丙"][index]!,
+          name_src,
+          dst: "旧正文",
+          name_dst: "旧译名",
+          status: "NONE",
+        })),
+      }),
+      new AbortController().signal,
+    );
+    expect(requests).toHaveLength(3);
+    expect(requests[0]?.messages[1]?.content).toMatch(/\n甲\n乙\n丙$/u);
+    expect(requests.slice(1).map((body) => body.messages[1]?.content)).toEqual([
+      expect.stringMatching(/\n虎鉄$/u),
+      expect.stringMatching(/\n美咲$/u),
+    ]);
+    expect(result.output.items).toMatchObject([
+      { dst: "甲译文", name_dst: "虎铁", status: "PROCESSED" },
+      { dst: "乙译文", name_dst: "虎铁", status: "PROCESSED" },
+      { dst: "旧正文", name_dst: "旧译名", status: "NONE" },
+    ]);
+    expect(result.metrics).toEqual({ input_tokens: 6, reasoning_tokens: 3, output_tokens: 9 });
+    expect(result.logs.map((log) => log.level)).toEqual(["info", "info", "error"]);
+    expect(read_translation_log(result.logs[1]).pairs).toEqual([{ src: "虎鉄", dst: "虎铁" }]);
+  });
+
+  it("SakuraLLM 姓名请求取消后停止后续请求且不提交半条译文", async () => {
+    const client = {
+      request: vi.fn(async () => ({
+        response_result: "正文译文",
+        response_think: "",
+        input_tokens: 1,
+        reasoning_tokens: 0,
+        output_tokens: 1,
+        cancelled: client.request.mock.calls.length === 2,
+        timeout: false,
+      })),
+    };
+    const runner = new TranslationWorkUnitRunner(await create_template_root(), client);
+    const result = await runner.execute_unit(
+      create_translation_unit({
+        model: { api_format: "SakuraLLM" },
+        items: [
+          { id: 1, src: "こんにちは", name_src: "虎鉄", dst: "", status: "NONE" },
+          { id: 2, src: "", name_src: "美咲", dst: "", status: "NONE" },
+        ],
+      }),
+      new AbortController().signal,
+    );
+    expect(client.request).toHaveBeenCalledTimes(2);
+    expect(result.outcome).toBe("stopped");
+    expect(result.output.items).toEqual([]);
+    expect(result.metrics).toEqual({ input_tokens: 2, reasoning_tokens: 0, output_tokens: 2 });
   });
 
   afterEach(async () => {
@@ -212,70 +286,6 @@ describe("TranslationWorkUnitRunner", () => {
       { id: 2, dst: "甲译文\n续行", status: "PROCESSED" },
       { id: 3, dst: "", status: "NONE" },
       { id: 4, dst: "丙译文", status: "PROCESSED" },
-    ]);
-  });
-
-  it("SakuraLLM 含姓名请求仍走固定纯文本提示词且不写姓名译文", async () => {
-    const captured_requests: LLMRequestBody[] = [];
-    const llm_client: LLMClientPort = {
-      request: vi.fn(async (body: LLMRequestBody) => {
-        captured_requests.push(body);
-        return {
-          response_think: "",
-          response_result: "你好",
-          input_tokens: 1,
-          reasoning_tokens: 0,
-          output_tokens: 1,
-          cancelled: false,
-          timeout: false,
-        };
-      }),
-    };
-    const runner = new TranslationWorkUnitRunner(await create_template_root(), llm_client);
-
-    const result = await runner.execute_unit(
-      {
-        kind: "translation",
-        unit_id: "translation-unit-1",
-        run_id: "run-1",
-        model: { ...Model.from_json({ api_format: "SakuraLLM" }, "test") },
-        config_snapshot: normalize_setting_snapshot(
-          create_config_payload({ prompt_enhancement_enable: false }),
-        ),
-        quality_snapshot: TextQualitySnapshotTool.from_api_value(create_quality_payload()),
-        payload: {
-          items: [
-            {
-              id: 1,
-              src: "こんにちは",
-              name_src: "虎鉄",
-              dst: "",
-              status: "NONE",
-              text_type: "TXT",
-            },
-          ],
-          precedings: [],
-        },
-        diagnostics: {
-          token_threshold: 512,
-          split_count: 0,
-          retry_count: 0,
-          is_initial: true,
-        },
-      },
-      new AbortController().signal,
-    );
-
-    expect(captured_requests[0]?.messages[1]?.content).toMatch(/\nこんにちは$/u);
-    expect(result.output.items).toEqual([
-      {
-        id: 1,
-        src: "こんにちは",
-        name_src: "虎鉄",
-        dst: "你好",
-        status: "PROCESSED",
-        text_type: "TXT",
-      },
     ]);
   });
 

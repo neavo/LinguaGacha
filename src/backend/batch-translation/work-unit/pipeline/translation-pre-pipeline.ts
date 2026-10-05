@@ -49,11 +49,7 @@ export class TranslationPrePipeline {
   /**
    * 绑定配置快照和质量快照，pipeline 不读取全局会话缓存
    */
-  public constructor(
-    config: TextProcessingConfig,
-    quality_snapshot: TextQualitySnapshot,
-    private readonly include_actor = true, // SakuraLLM 只处理正文，在生成请求前选择现有协议。
-  ) {
+  public constructor(config: TextProcessingConfig, quality_snapshot: TextQualitySnapshot) {
     this.config = config;
     this.quality_snapshot = quality_snapshot;
     this.pre_replacements = quality_snapshot.pre_replacement_enable
@@ -109,11 +105,10 @@ export class TranslationPrePipeline {
     const has_translatable_body = context.prepared_lines.some(
       (line) => line.state === "translatable",
     );
-    // actor_src 表示当前协议实际请求的姓名，译后按同一请求决定姓名写回。
-    const actor_src =
-      this.include_actor && candidates.some((part) => part.field === "name_src")
-        ? (prepared.name?.text ?? null)
-        : null;
+    // 姓名候选与模型协议无关，执行器负责选择请求方式。
+    const actor_src = candidates.some((part) => part.field === "name_src")
+      ? (prepared.name?.text ?? null)
+      : null;
     if (has_translatable_body || actor_src !== null) {
       context.request_item = {
         request_id,

@@ -76,15 +76,11 @@ describe("TranslationPostPipeline", () => {
       text_type: "TXT",
     });
 
-    const result = post.process_item(
-      context,
-      {
-        request_id: 0,
-        text_dst: translation,
-        actor_dst: "爱丽丝",
-      },
-      "actor_text",
-    );
+    const result = post.process_item(context, {
+      request_id: 0,
+      text_dst: translation,
+      actor_dst: "爱丽丝",
+    });
 
     expect(result.dst).toBe(expected);
   });
@@ -149,23 +145,6 @@ describe("TranslationPostPipeline", () => {
     expect(result).toBe("  a U  \nb U");
   });
 
-  it("actor/text 模式返回正文和姓名译文", () => {
-    const { pre, post } = create_pipeline_pair(create_config(), create_quality_snapshot());
-    const context = pre.process_item({
-      src: "hello",
-      name_src: "Alice",
-      text_type: "TXT",
-    });
-
-    const result = post.process_item(
-      context,
-      { request_id: 0, text_dst: "hi", actor_dst: "爱丽丝" },
-      "actor_text",
-    );
-
-    expect(result).toEqual({ dst: "hi", name_dst: "爱丽丝" });
-  });
-
   it("在译后处理末尾恢复正文和姓名中的临时引用", () => {
     const { pre, post } = create_pipeline_pair(create_config(), create_quality_snapshot());
     const context = pre.process_item({
@@ -174,11 +153,11 @@ describe("TranslationPostPipeline", () => {
       text_type: "TXT",
     });
 
-    const result = post.process_item(
-      context,
-      { request_id: 0, text_dst: "请看 lg-uri/1", actor_dst: "爱丽丝 lg-uri/0" },
-      "actor_text",
-    );
+    const result = post.process_item(context, {
+      request_id: 0,
+      text_dst: "请看 lg-uri/1",
+      actor_dst: "爱丽丝 lg-uri/0",
+    });
 
     expect(result).toEqual({
       dst: "请看 https://example.com/guide",
@@ -216,11 +195,7 @@ describe("TranslationPostPipeline", () => {
       2,
     );
 
-    const result = post.process_item(
-      context,
-      { request_id: 2, text_dst: "hi", actor_dst: "旁白" },
-      "actor_text",
-    );
+    const result = post.process_item(context, { request_id: 2, text_dst: "hi", actor_dst: "旁白" });
 
     expect(result).toEqual({ dst: "hi" });
   });
@@ -257,11 +232,7 @@ describe("TranslationPostPipeline", () => {
     const { pre, post } = create_pipeline_pair(create_config(), create_quality_snapshot());
     const context = pre.process_item({ src: "①\n②", text_type: "TXT", skip_internal_filter: true });
 
-    const result = post.process_item(
-      context,
-      { request_id: 0, text_dst: "1", actor_dst: null },
-      "text",
-    );
+    const result = post.process_item(context, { request_id: 0, text_dst: "1", actor_dst: null });
 
     expect(result.dst).toBe("1");
   });
@@ -273,11 +244,11 @@ describe("TranslationPostPipeline", () => {
       text_type: "TXT",
     });
 
-    const result = post.process_item(
-      context,
-      { request_id: 0, text_dst: "合并 lg-uri/0", actor_dst: null },
-      "text",
-    );
+    const result = post.process_item(context, {
+      request_id: 0,
+      text_dst: "合并 lg-uri/0",
+      actor_dst: null,
+    });
 
     expect(result.dst).toBe("合并 https://example.com");
   });
@@ -317,15 +288,11 @@ function process_text(
   context: TranslationPrePipelineContext,
   dsts: string[],
 ): string {
-  return post_pipeline.process_item(
-    context,
-    {
-      request_id: context.request_item?.request_id ?? 0,
-      text_dst: dsts.join("\n"),
-      actor_dst: null,
-    },
-    "text",
-  ).dst;
+  return post_pipeline.process_item(context, {
+    request_id: context.request_item?.request_id ?? 0,
+    text_dst: dsts.join("\n"),
+    actor_dst: null,
+  }).dst;
 }
 
 /**

@@ -1,5 +1,6 @@
 import type { TextTaskItemRecord } from "../../../shared/text/text-types";
 import crypto from "node:crypto";
+import { read_item_source_text_parts } from "../../../shared/item-text";
 
 import { is_task_skipped_item_status } from "../../../domain/batch-translation";
 import { read_json_integer, read_json_record, type MutableJsonRecord } from "../../../domain/json";
@@ -221,10 +222,14 @@ export class TranslationPlanner {
       const item_id = read_task_item_id(item);
       if (item_id <= 0 || seen_item_ids.has(item_id)) continue;
       seen_item_ids.add(item_id);
-      const raw_src = String(item["src"] ?? "");
-      // token 指标使用短投影，行数仍以原文为准。
-      const text = project_text_resource_references(raw_src).text;
-      const line_count = raw_src.split(/\r?\n/).filter((line) => line.trim() !== "").length;
+      const parts = read_item_source_text_parts(item);
+      // 容量包含正文与可见姓名；资源引用投影后计数，空正文姓名任务也有容量。
+      const text = project_text_resource_references(parts.map((part) => part.text).join("\n")).text;
+      const line_count = parts.reduce(
+        (count, part) =>
+          count + part.text.split(/\r?\n/).filter((line) => line.trim() !== "").length,
+        0,
+      );
       const key = build_token_count_cache_key(text);
       const token_count = this.token_cache.get(key);
       if (token_count !== undefined) {
