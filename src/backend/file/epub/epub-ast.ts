@@ -1092,6 +1092,41 @@ export class EpubAst {
       .join("");
   }
 
+  /** 整块译文写入首个正文文本槽，保留锚点、链接、资源和跳过子树的原节点。 */
+  public write_block_translation(block: Element, text: string): void {
+    let first: Text | null = null; // 整块译文只有一个写入槽，其他正文槽清空。
+    const walk = (element: Element): void => {
+      const children: ChildNode[] = [];
+      for (const node of element.children) {
+        if (isText(node)) {
+          if (first === null && node.data.trim() !== "") first = node;
+          node.data = "";
+        } else if (isTag(node)) {
+          const tag = this.local_name(node.name);
+          if (tag === "rt") {
+            // 注音失去对应原文后移除，带身份的节点转为无正文锚点。
+            const anchors = this.flatten_elements(node).filter(
+              (n) => n.attribs["id"] !== undefined || n.attribs["name"] !== undefined,
+            );
+            for (const anchor of anchors)
+              children.push(new Element("span", { ...anchor.attribs }, []));
+            continue;
+          }
+          if (!SKIP_SUBTREE_TAGS.has(tag) && !TEXT_RUN_RESOURCE_TAGS.has(tag)) walk(node);
+        }
+        children.push(node);
+      }
+      this.replace_element_children(element, children);
+    };
+    walk(block);
+    if (first !== null) (first as Text).data = this.sanitize_xml_text(text);
+    else
+      this.replace_element_children(block, [
+        new Text(this.sanitize_xml_text(text)),
+        ...block.children,
+      ]);
+  }
+
   /**
    * 读取必需 zip 文本资源，缺文件时抛出带路径的错误方便定位坏包
    */

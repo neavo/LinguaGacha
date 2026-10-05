@@ -34,8 +34,8 @@ export const APP_ERROR_DEFINITIONS = {
     status: 404,
     severity: "expected",
   },
-  "translation.export_failed": {
-    message: "Translation export failed.",
+  "translation.generation_failed": {
+    message: "Translation file generation failed.",
     status: 500,
     severity: "fault",
   },

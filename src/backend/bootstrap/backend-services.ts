@@ -19,9 +19,9 @@ import { BatchTranslationService } from "../batch-translation/batch-translation-
 import { TranslationWorkerPool } from "../batch-translation/work-unit/translation-worker-pool";
 import { FilePreviewService } from "../file/file-preview-service";
 import {
-  TranslationFileExportService,
+  TranslationFileGenerationService,
   type OutputFolderOpener,
-} from "../file/translation-file-export-service";
+} from "../file/translation-file-generation-service";
 import { LogManager } from "../log/log-manager";
 import { LLMClient } from "../llm/llm-client";
 import { PiModelCatalog } from "../llm/pi-model-catalog";
@@ -107,7 +107,7 @@ export interface BackendQualityServices {
 
 export interface BackendFileServices {
   preview: FilePreviewService;
-  translationExport: TranslationFileExportService;
+  translationGeneration: TranslationFileGenerationService;
 }
 
 /**
@@ -306,7 +306,7 @@ export class BackendServices {
         this.pdf_worker.run,
         this.logManager,
       ),
-      translationExport: new TranslationFileExportService(
+      translationGeneration: new TranslationFileGenerationService(
         options.database,
         this.app_setting_service,
         session_state,

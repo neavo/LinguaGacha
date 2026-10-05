@@ -70,8 +70,10 @@ describe("MDV2Format", () => {
     const items = await format.read_from_stream(new TextEncoder().encode(source), "docs/demo.md");
     items[0]!.id = 2;
     items[0]!.dst = "# 译题";
+    items[0]!.status = "PROCESSED";
     items[1]!.id = 1;
     items[1]!.dst = "![译图](data:image/png;base64,AAAA)";
+    items[1]!.status = "PROCESSED";
 
     await format.write_to_path([...items].reverse(), {
       translated_path: path.join(temp_dir.path, "translated"),
@@ -88,6 +90,7 @@ describe("MDV2Format", () => {
     using temp_dir = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "linguagacha-md-v2-"));
     const format = new MDV2Format();
     const item = Item.from_json({
+      status: "PROCESSED",
       src: "原文",
       dst: "译文",
       row: 0,
@@ -106,6 +109,7 @@ describe("MDV2Format", () => {
 
   it("文本级 writer 不依赖 file_type", () => {
     const item = Item.from_json({
+      status: "PROCESSED",
       id: 2,
       src: "[原文](https://example.com)",
       dst: "[译文](https://example.com)",

@@ -43,7 +43,6 @@ export const de_de_batch_translation = {
     reset_all_description:
       "Übersetzungsfortschritt für das gesamte Projekt wirklich zurücksetzen …?",
     reset_failed_description: "Fehlgeschlagene Übersetzungseinträge wirklich zurücksetzen …?",
-    generate_description: "Derzeit verfügbare Übersetzungsdateien wirklich erstellen …?",
     stop_description: "Aktuelle Übersetzungsaufgabe wirklich stoppen …?",
   },
   action: { stop: "Stoppen" },

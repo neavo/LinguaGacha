@@ -4,7 +4,7 @@ import {
   are_item_name_fields_equal,
   read_optional_item_name_text,
   read_item_name_text,
-  resolve_export_item_name,
+  resolve_output_item_name,
   write_item_name_text,
 } from "./item-name";
 
@@ -30,21 +30,21 @@ describe("item-name", () => {
 
   it("导出开启译名写回时逐条优先使用第 0 槽译名", () => {
     expect(
-      resolve_export_item_name({
+      resolve_output_item_name({
         name_src: "太郎",
         name_dst: "塔罗",
         write_translated_name_fields_to_file: true,
       }),
     ).toBe("塔罗");
     expect(
-      resolve_export_item_name({
+      resolve_output_item_name({
         name_src: "太郎",
         name_dst: null,
         write_translated_name_fields_to_file: true,
       }),
     ).toBe("太郎");
     expect(
-      resolve_export_item_name({
+      resolve_output_item_name({
         name_src: ["太郎", "花子"],
         name_dst: ["塔罗", "不使用"],
         write_translated_name_fields_to_file: true,
@@ -54,7 +54,7 @@ describe("item-name", () => {
 
   it("导出关闭译名写回时只使用源姓名事实", () => {
     expect(
-      resolve_export_item_name({
+      resolve_output_item_name({
         name_src: ["太郎", "花子"],
         name_dst: ["塔罗", "华子"],
         write_translated_name_fields_to_file: false,

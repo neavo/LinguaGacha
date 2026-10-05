@@ -37,7 +37,6 @@ export const zh_cn_batch_translation = {
   confirm: {
     reset_all_description: "是否确认重置整个工程的翻译进度 …?",
     reset_failed_description: "是否确认重置失败的翻译条目 …?",
-    generate_description: "是否确认生成当前可用译文 …?",
     stop_description: "是否确认停止当前翻译任务 …?",
   },
   action: { stop: "停止" },

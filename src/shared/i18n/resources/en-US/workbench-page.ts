@@ -20,23 +20,12 @@ export const en_us_workbench_page = {
   },
   action: {
     add_file: "Add",
-    generate_translation: "Generate Translation",
     close_project: "Close",
     reset: "Reset Translation",
     translation_task: "Translation",
     start_translation: "Start Translation",
     reset_task_all: "Reset All Data",
     reset_task_failed: "Reset Failed Data",
-  },
-  translation_export: {
-    checking: "Checking proofreading warnings …",
-    check_failed:
-      "Proofreading warnings could not be loaded. You can still generate the current translation …",
-    warning_description:
-      "Detected {COUNT} proofreading warnings. We recommend using AGENT to review and fix them automatically before generating the translation. Continue anyway …?",
-    warning_list: "Proofreading warnings",
-    retry_check: "Check Again",
-    continue_generate: "Generate Anyway",
   },
   dialog: {
     import_conflict: {

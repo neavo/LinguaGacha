@@ -209,7 +209,7 @@ export class FileFormatService {
     await this.md.write_to_path(items, paths);
     await this.ass.write_to_path(items, paths);
     await this.srt.write_to_path(items, paths);
-    await this.kvjson.write_to_path(items, paths);
+    await this.kvjson.write_to_path(items, paths, asset_reader);
     await this.messagejson.write_to_path(items, paths);
     await this.xlsx.write_to_path(items, paths, asset_reader);
     await this.trans.write_to_path(items, paths, asset_reader);

@@ -1505,7 +1505,7 @@
   opacity: 0.45;
 }
 
-.agent-composer__export,
+.agent-composer__generation,
 .agent-composer__reset,
 .agent-composer__model-trigger,
 .agent-composer__approval-trigger {
@@ -1514,7 +1514,7 @@
   font-size: var(--ui-font-size-12);
 }
 
-.agent-composer__export,
+.agent-composer__generation,
 .agent-composer__reset {
   flex: 0 0 auto;
 }

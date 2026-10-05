@@ -201,8 +201,8 @@ export function clone_translation_task_snapshot(
   };
 }
 
-/** 独立全量任务从活跃态自然完成后承接导出流程。 */
-export function should_open_translation_export_followup(
+/** 独立全量任务从活跃态自然完成后承接译文生成流程。 */
+export function should_open_translation_generation_followup(
   previous_status: BatchTranslationRunStatus,
   snapshot: BatchTranslationSnapshot,
 ): boolean {

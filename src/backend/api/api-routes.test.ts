@@ -100,7 +100,7 @@ const POST_PATHS = new Set([
   "/api/quality/prompts/presets/save",
   "/api/quality/prompts/presets/rename",
   "/api/quality/prompts/presets/delete",
-  "/api/translation/files/export",
+  "/api/translation/files/generate",
   "/api/settings/app",
   "/api/settings/update",
   "/api/settings/recent-projects/add",
@@ -327,7 +327,7 @@ function create_route_fixture() {
     },
     proofreading: { query: {}, commands: {} },
     quality: { statistics: {}, rules: {}, prompts: {} },
-    files: { preview: {}, translationExport: {} },
+    files: { preview: {}, translationGeneration: {} },
     model: {
       get_selection_snapshot: vi.fn(() => ({
         model_selection: { translation: "a", agent: "c" },

@@ -9,6 +9,7 @@ export type PDFTask =
   | { kind: "render"; bytes: Uint8Array; page: number }
   | { kind: "build"; bytes: Uint8Array; title: string; document: PDFDocument };
 export type PDFTaskResult =
+  | null // build 任务没有输出页时的正常结果。
   | PDFDocument
   | Uint8Array
   | { image: string; count: number; page: number };

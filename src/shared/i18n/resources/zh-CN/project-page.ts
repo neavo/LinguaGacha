@@ -27,7 +27,6 @@ export const zh_cn_project_page = {
     preview_loading_toast: "正在读取工程预览 …",
     loading_toast: "正在加载工程 …",
     preview_unavailable: "读取工程预览失败 …",
-
     action: "打开工程",
     remove_unavailable: "移除最近使用记录失败 …",
     missing_file_description: "工程文件已失效，是否从列表中移除 …?",

@@ -48,14 +48,16 @@ describe("ASSFormat", () => {
     await format.write_to_path(
       [
         Item.from_json({
-          src: "原文1",
-          dst: "译文1",
+          status: "PROCESSED",
+          src: "原文{{CONTENT}}1",
+          dst: "译文$&和$$",
           extra_field: "Dialogue: 0,0:00:01.00,0:00:02.00,Default,,0,0,0,,{{CONTENT}}",
           row: 0,
           file_type: "ASS",
           file_path: "anime/sub.ass",
         }),
         Item.from_json({
+          status: "PROCESSED",
           src: "原文2",
           dst: "译文2",
           extra_field: "Dialogue: 0,0:00:03.00,0:00:04.00,Default,,0,0,0,,{{CONTENT}}",
@@ -73,13 +75,13 @@ describe("ASSFormat", () => {
     expect(
       fs.readFileSync(path.join(temp_dir.path, "translated", "anime", "sub.ass"), "utf-8"),
     ).toBe(
-      "Dialogue: 0,0:00:01.00,0:00:02.00,Default,,0,0,0,,译文1\n" +
+      "Dialogue: 0,0:00:01.00,0:00:02.00,Default,,0,0,0,,译文$&和$$\n" +
         "Dialogue: 0,0:00:03.00,0:00:04.00,Default,,0,0,0,,译文2",
     );
     expect(
       fs.readFileSync(path.join(temp_dir.path, "bilingual", "anime", "sub.ass"), "utf-8"),
     ).toBe(
-      "Dialogue: 0,0:00:01.00,0:00:02.00,Default,,0,0,0,,原文1\\N译文1\n" +
+      "Dialogue: 0,0:00:01.00,0:00:02.00,Default,,0,0,0,,原文{{CONTENT}}1\\N译文$&和$$\n" +
         "Dialogue: 0,0:00:03.00,0:00:04.00,Default,,0,0,0,,原文2\\N译文2",
     );
   });
@@ -93,6 +95,7 @@ describe("ASSFormat", () => {
     await format.write_to_path(
       [
         Item.from_json({
+          status: "PROCESSED",
           src: "同文",
           dst: "同文",
           extra_field: "Dialogue: 0,0:00:01.00,0:00:02.00,Default,,0,0,0,,{{CONTENT}}",

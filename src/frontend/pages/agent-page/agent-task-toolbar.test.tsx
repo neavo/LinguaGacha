@@ -5,9 +5,9 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { TooltipProvider } from "@frontend/shadcn/tooltip";
 import { AgentTaskToolbar } from "./agent-task-toolbar";
 
-const request_export = vi.hoisted(() => vi.fn());
-vi.mock("@frontend/app/session/translation-export/translation-export-context", () => ({
-  useTranslationExport: () => ({ can_request_export: true, request_export }),
+const request_generation = vi.hoisted(() => vi.fn());
+vi.mock("@frontend/app/session/translation-generation/translation-generation-context", () => ({
+  useTranslationGeneration: () => ({ can_request_generation: true, request_generation }),
 }));
 vi.mock("@frontend/app/locale/locale-context", () => ({
   useI18n: () => ({ t: (key: string) => key }),
@@ -21,7 +21,7 @@ describe("AgentTaskToolbar", () => {
     container?.remove();
     root = null;
     container = null;
-    request_export.mockClear();
+    request_generation.mockClear();
   });
 
   it("新任务按钮与输入中的快捷键共用可用性", async () => {
@@ -53,9 +53,9 @@ describe("AgentTaskToolbar", () => {
     const on_approval_mode_change = vi.fn();
     const view = await render({ can_reset: false, on_approval_mode_change });
     await act(async () =>
-      view.querySelector<HTMLButtonElement>(".agent-composer__export")?.click(),
+      view.querySelector<HTMLButtonElement>(".agent-composer__generation")?.click(),
     );
-    expect(request_export).toHaveBeenCalledOnce();
+    expect(request_generation).toHaveBeenCalledOnce();
     await act(async () =>
       view.querySelector<HTMLButtonElement>(".agent-composer__approval-trigger")?.click(),
     );

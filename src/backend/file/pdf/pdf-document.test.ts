@@ -37,8 +37,8 @@ it("按原页尺寸和背景分组，省略页不占位置，背景位于每张�
   expect(print.mock.calls[0]![0]).toContain("Second");
   expect(print.mock.calls[0]![0]).toContain("size:300pt 300pt");
   expect(print.mock.calls[2]![0]).toContain("size:400pt 300pt");
-  expect(await read_text(result)).toEqual(["A", "B", "C", "D", "Six"]);
-  const pdf = new mupdf.PDFDocument(result);
+  expect(await read_text(result!)).toEqual(["A", "B", "C", "D", "Six"]);
+  const pdf = new mupdf.PDFDocument(result!);
   try {
     for (const [index, color] of [
       [0, [25, 102, 204]],
@@ -122,7 +122,7 @@ it("混合导出保留头尾与中间原页，译稿跨过空页连续打印，�
   });
   expect(print).toHaveBeenCalledTimes(2);
   expect(print.mock.calls[0]![0]).toContain("Fourth");
-  expect(await read_text(output)).toEqual([
+  expect(await read_text(output!)).toEqual([
     "Original 1",
     "Translated 2-4 A",
     "Translated 2-4 B",
@@ -131,7 +131,7 @@ it("混合导出保留头尾与中间原页，译稿跨过空页连续打印，�
     "Translated 6-7",
     "Original 8",
   ]);
-  const result = read_pdf_document(output);
+  const result = read_pdf_document(output!);
   expect(result.pages[4]).toMatchObject({ rotation: 90, width: 300, height: 300 });
 });
 
@@ -148,10 +148,10 @@ it("全篇译稿替换全部原页，打印失败和取消不回退原文", asyn
   };
   expect(
     await read_text(
-      await build_pdf_document({
+      (await build_pdf_document({
         ...args,
         print: async () => create_pdf_fixture(["All translated"]),
-      }),
+      }))!,
     ),
   ).toEqual(["All translated"]);
   const error = new Error("Printing failed");
@@ -258,12 +258,12 @@ it("部分替换保留原页批注，并迁移译文外链与内部页跳转", a
   document.pages[0]!.translation = { kind: "keep", reason: "保留原页与批注" };
   document.pages[1]!.translation = { kind: "translate", markdown: "Translation" };
   const result = new mupdf.PDFDocument(
-    await build_pdf_document({
+    (await build_pdf_document({
       title: "test",
       document,
       source_bytes: bytes,
       print: async () => printed_bytes,
-    }),
+    }))!,
   );
   try {
     const original_page = result.loadPage(0);
@@ -324,4 +324,17 @@ it("单页预览保留完整原稿引用并独立分页，复用导出背景合�
   } finally {
     output.destroy();
   }
+});
+
+it.each(["omit", "empty"])("全部 %s 页正常返回无产物且不调用打印", async (kind) => {
+  const bytes = create_pdf_fixture();
+  const document = read_pdf_document(bytes);
+  for (const page of document.pages)
+    page.translation =
+      kind === "omit" ? { kind: "omit", reason: "省略" } : { kind: "translate", markdown: " \n " };
+  const print = vi.fn(async () => bytes);
+  expect(
+    await build_pdf_document({ title: "empty", document, source_bytes: bytes, print }),
+  ).toBeNull();
+  expect(print).not.toHaveBeenCalled();
 });

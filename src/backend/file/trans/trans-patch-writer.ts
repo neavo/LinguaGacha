@@ -1,3 +1,4 @@
+import { read_translation_for_generation } from "../translation-generation-text";
 import type { JsonValue, MutableJsonRecord } from "../../../domain/json";
 import { AppError } from "../../../shared/error";
 import {
@@ -84,7 +85,9 @@ export function patch_trans_row(
     );
   }
 
-  if (target.snap.status !== "PROCESSED") {
+  // KV 类：未完成结果保持源行，完成空译文覆盖目标列。
+  const translation = read_translation_for_generation(target.snap);
+  if (translation === undefined) {
     files[target.file_key] = entry;
     return;
   }
@@ -99,7 +102,7 @@ export function patch_trans_row(
   while (row.length <= index_translation) {
     row.push("");
   }
-  row[index_translation] = target.snap.dst;
+  row[index_translation] = translation;
   data_list[target.row_index] = row;
   files[target.file_key] = entry;
 }

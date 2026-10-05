@@ -1,6 +1,7 @@
+import { read_translation_for_generation } from "../translation-generation-text";
 import { Item } from "../../../domain/item";
 import { read_json_record } from "../../../domain/json";
-import { read_item_name_text, resolve_export_item_name } from "../../../shared/item-name";
+import { read_item_name_text, resolve_output_item_name } from "../../../shared/item-name";
 import {
   build_skeleton,
   escape_renpy_string,
@@ -70,7 +71,11 @@ export class RenpyWriter {
       return false;
     }
 
-    const replacements = this.build_replacements(item, extra.slots);
+    const replacements = this.build_replacements(
+      item,
+      extra.slots,
+      target_literals.map((literal) => literal.value),
+    );
     if (replacements.size === 0) {
       return false;
     }
@@ -87,16 +92,25 @@ export class RenpyWriter {
   }
 
   /**
-   * NAME 槽按导出配置解析业务姓名文本，正文槽使用统一有效译文回退策略。
+   * NAME 槽按导出配置解析业务姓名文本，正文槽使用带回退 KV 规则。
    */
-  public build_replacements(item: Item, slots: RenpySlot[]): Map<number, string> {
+  public build_replacements(
+    item: Item,
+    slots: RenpySlot[],
+    source_targets: readonly string[],
+  ): Map<number, string> {
     const result = new Map<number, string>();
     for (const slot of slots) {
-      if (!Number.isInteger(slot.lit_index) || slot.lit_index < 0) {
+      // 槽位来自持久化定位信息，索引必须落在已核验的源目标字面量范围内。
+      if (
+        !Number.isInteger(slot.lit_index) ||
+        slot.lit_index < 0 ||
+        slot.lit_index >= source_targets.length
+      ) {
         continue;
       }
       if (slot.role === "NAME") {
-        const name = resolve_export_item_name({
+        const name = resolve_output_item_name({
           name_src: item.name_src,
           name_dst: item.name_dst,
           write_translated_name_fields_to_file: this.write_translated_name_fields_to_file,
@@ -108,7 +122,12 @@ export class RenpyWriter {
         continue;
       }
       if (slot.role === "DIALOGUE" || slot.role === "STRING") {
-        result.set(slot.lit_index, item.effective_dst());
+        // 带回退 KV：目标字面量来自源资产，完成空正文必须直接写空。
+        const source = source_targets[slot.lit_index]!;
+        result.set(
+          slot.lit_index,
+          read_translation_for_generation(item) ?? (source !== "" ? source : item.src),
+        );
       }
     }
     return result;
@@ -128,7 +147,8 @@ export class RenpyWriter {
     literals.forEach((literal, index) => {
       parts.push(code.slice(cursor, literal.start_col));
       const replacement = replacements.get(index);
-      if (replacement === undefined) {
+      // 同值结果保留源码写法；实际编辑统一写为普通双引号并去掉原始前缀。
+      if (replacement === undefined || replacement === literal.value) {
         parts.push(code.slice(literal.start_col, literal.end_col));
       } else {
         parts.push(`"${escape_renpy_string(replacement)}"`);

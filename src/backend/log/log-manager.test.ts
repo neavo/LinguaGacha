@@ -57,3 +57,24 @@ describe("LogManager", () => {
     expect(fs.readFileSync(file, "utf8")).toBe(before);
   });
 });
+
+it("可读错误正文在控制台与摘要保持一致，详情保留异常", async () => {
+  using directory = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "log-readable-"));
+  const lines: string[] = [];
+  const manager = new LogManager({
+    logDir: directory.path,
+    consoleWriter: (text) => lines.push(text),
+  });
+  const body = "译文生成失败 …\n原始原因";
+  manager.error({ kind: "text", text: body }, { error: new Error("原始原因") });
+  const page = await manager.files.read_page({
+    date: manager.files.list_dates()[0]!,
+    direction: "latest",
+  });
+  expect(page.entries[0]!.message_preview).toBe(body);
+  expect(lines[0]).toContain("译文生成失败");
+  expect(lines[0]).not.toContain("Error:");
+  const detail = await manager.files.read_detail(page.entries[0]!.id, page.entries[0]!.revision);
+  expect(detail?.error).toMatchObject({ message: "原始原因", stack: expect.any(String) });
+  await manager.shutdown();
+});

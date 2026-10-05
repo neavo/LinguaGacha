@@ -24,7 +24,14 @@ describe("EPUBFormat", () => {
     using temp_dir = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "linguagacha-epub-format-"));
     await expect(
       create_format().write_to_path(
-        [Item.from_json({ file_type: "EPUB", file_path: "book.epub", src: "原文", dst: "译文" })],
+        [
+          Item.from_json({
+            file_type: "EPUB",
+            file_path: "book.epub",
+            src: "原文",
+            dst: "译文",
+          }),
+        ],
         { translated_path: temp_dir.path, bilingual_path: path.join(temp_dir.path, "bilingual") },
         () => null,
       ),

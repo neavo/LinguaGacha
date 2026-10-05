@@ -73,7 +73,6 @@ export const ko_kr_app = {
     operation_failed: "작업 실패 …",
     content_unavailable: "콘텐츠를 사용할 수 없습니다",
     save_failed: "저장 실패 …",
-    translation_export_failed: "번역 내보내기 실패 …",
     model_request_failed: "모델 요청 실패 …",
     validation_failed: "요청 매개변수가 잘못되었습니다",
     initial_load_failed: "앱 데이터를 불러오지 못했습니다. 다시 시도해 주세요 …",
@@ -186,10 +185,26 @@ export const ko_kr_app = {
     builder_input: "입력:",
     builder_preceding_context: "앞선 문맥:",
   },
-  translation_export: {
+  translation_generation: {
+    action: "번역문 생성",
+    confirmation: {
+      description: "현재 사용 가능한 번역문을 생성할까요 …?",
+      checking: "교정 경고 확인 중 …",
+      check_failed: "교정 경고를 읽지 못했습니다. 현재 번역문 생성은 계속할 수 있습니다 …",
+      warning_description:
+        "교정 경고가 {COUNT}개 있습니다. AGENT로 자동 교정한 후 번역문을 생성하는 것을 권장합니다. 계속할까요 …?",
+      retry_check: "다시 확인",
+      continue_generate: "생성 계속",
+    },
     directory: {
       translated: "번역문",
       bilingual: "번역문_대역",
+    },
+    log: {
+      started: "번역문 생성 중 …",
+      succeeded: "번역문 생성 성공 …",
+      failed: "번역문 생성 실패 …",
+      open_output_folder_failed: "출력 폴더를 열지 못했습니다 …",
     },
   },
   native_file_filter: {
@@ -199,7 +214,6 @@ export const ko_kr_app = {
     excel_files: "Excel 파일 (*.xlsx)",
     supported_txt_files: "지원 파일 (*.txt)",
   },
-
   diagnostic: {
     agent: {
       model_round_failed: "Agent 모델 턴이 실패했습니다 …",
@@ -218,9 +232,6 @@ export const ko_kr_app = {
       quality_rule_load_failed: "기본 품질 규칙 프리셋을 불러오지 못했습니다 …",
       value_normalize_failed:
         "기본 프리셋 값을 정규화하지 못했습니다: {PRESET_DIRECTORY} -> {VALUE} …",
-    },
-    file_export: {
-      open_output_folder_failed: "출력 폴더를 열지 못했습니다 …",
     },
     lifecycle: {
       app_start_failed: "LinguaGacha를 시작하지 못했습니다 …",
@@ -260,8 +271,6 @@ export const ko_kr_app = {
     engine_task_stop: "작업이 중지되었습니다 …",
     engine_task_success:
       "소요 시간 {TIME}초, 텍스트 {LINES}줄, 입력 {PT} Tokens, 생각 {RT} Tokens, 출력 {CT} Tokens",
-    generate_translation_done: "번역문을 {PATH}에 저장했습니다 …",
-    generate_translation_start: "번역문 생성 중 …",
     model_response_invalid: "모델이 반환한 데이터가 유효하지 않습니다 …",
     request_failed: "요청 실패: {ERROR} …",
     request_timeout: "네트워크 요청 시간 초과",

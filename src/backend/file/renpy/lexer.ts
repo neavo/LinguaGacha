@@ -45,23 +45,44 @@ export function normalize_ws(text: string): string {
   return text.replace(/\s+/gu, " ").trim();
 }
 
-/**
- * 解析 RenPy 字符串里旧实现覆盖的基础转义，避免把控制符当成正文字符。
- */
+// 按 Ren’Py `Lexer.string()` 解释转义与空白：https://github.com/renpy/renpy/blob/master/renpy/lexer.py
+const RENPY_TEXT_ESCAPES: Readonly<Record<string, string>> = Object.freeze({
+  n: "\n",
+  "{": "{{",
+  "[": "[[",
+  "%": "%%",
+});
+const RENPY_LITERAL_ESCAPES: Readonly<Record<string, string>> = Object.freeze({
+  "\\": "\\\\",
+  '"': '\\"',
+  "\n": "\\n",
+});
+
+/** 普通字符串先按 Ren’Py 规则折叠空白，再单次消费转义，解码结果不再次解释。 */
 export function unescape_renpy_string(raw_inner: string): string {
-  return raw_inner.replace(/\\"/gu, '"').replace(/\\n/gu, "\n");
+  return raw_inner
+    .replace(/[ \n]+/gu, " ")
+    .replace(
+      /\\(u([0-9a-fA-F]{1,4})|.)/gu,
+      (_match: string, token: string, unicode: string | undefined) => {
+        if (unicode !== undefined) return String.fromCharCode(Number.parseInt(unicode, 16));
+        if (token === "u") throw new SyntaxError("Invalid RenPy Unicode escape.");
+        return RENPY_TEXT_ESCAPES[token] ?? token;
+      },
+    );
 }
 
-/**
- * 写回字符串时转义反斜杠、双引号和换行，保持输出仍是合法 RenPy 字面量。
- */
+/** 普通双引号输出保留文本值；连续空格和行边界使用显式转义以避免折叠或断行。 */
 export function escape_renpy_string(text: string): string {
-  return text.replace(/\\/gu, "\\\\").replace(/"/gu, '\\"').replace(/\n/gu, "\\n");
+  return text.replace(/[\\"\p{Cc}\p{Zl}\p{Zp}]| {2,}/gu, (token) => {
+    if (token[0] === " ") return " " + "\\ ".repeat(token.length - 1);
+    return (
+      RENPY_LITERAL_ESCAPES[token] ?? `\\u${token.charCodeAt(0).toString(16).padStart(4, "0")}`
+    );
+  });
 }
 
-/**
- * 扫描双引号字面量并记录原始范围；未闭合引号视为整行不可安全解析。
- */
+/** 扫描单行双引号字面量及 r 前缀，保存整个源码范围；未闭合字面量拒绝扫描。 */
 export function scan_double_quoted_literals(code: string): RenpyStringLiteral[] {
   const literals: RenpyStringLiteral[] = [];
   let index = 0;
@@ -70,33 +91,30 @@ export function scan_double_quoted_literals(code: string): RenpyStringLiteral[] 
       index += 1;
       continue;
     }
-    const start_col = index;
-    index += 1;
-    let raw_inner = "";
+    const raw =
+      code[index - 1] === "r" && (index === 1 || !/[\p{ID_Continue}]/u.test(code[index - 2]!));
+    const start_col = raw ? index - 1 : index;
+    const content_start = ++index;
+    let closed = false; // 结尾是被转义的引号时也不能当作已闭合。
     while (index < code.length) {
-      const char = code[index];
-      if (char === "\\" && index + 1 < code.length) {
-        raw_inner += `${code[index] ?? ""}${code[index + 1] ?? ""}`;
+      if (code[index] === "\\") {
         index += 2;
         continue;
       }
-      if (char === '"') {
-        const end_col = index + 1;
+      if (code[index] === '"') {
+        const inner = code.slice(content_start, index);
         literals.push({
           start_col,
-          end_col,
-          raw_inner,
-          value: unescape_renpy_string(raw_inner),
+          end_col: ++index,
+          raw,
+          value: raw ? inner : unescape_renpy_string(inner),
         });
-        index = end_col;
+        closed = true;
         break;
       }
-      raw_inner += char ?? "";
       index += 1;
     }
-    if (index >= code.length && code[index - 1] !== '"') {
-      return [];
-    }
+    if (!closed) return [];
   }
   return literals;
 }
@@ -114,7 +132,11 @@ export function build_skeleton(
   const parts: string[] = [];
   let cursor = 0;
   for (const literal of literals) {
-    parts.push(code.slice(cursor, literal.start_col), SKELETON_PLACEHOLDER);
+    // 保留原始前缀的骨架表达，已有工程的目标摘要仍可核验。
+    parts.push(
+      code.slice(cursor, literal.start_col),
+      literal.raw ? "r" + SKELETON_PLACEHOLDER : SKELETON_PLACEHOLDER,
+    );
     cursor = literal.end_col;
   }
   parts.push(code.slice(cursor));
@@ -126,7 +148,7 @@ export function build_skeleton(
  */
 export function normalize_speaker_token(code: string): string {
   const stripped = code.trimStart();
-  if (stripped.startsWith('"')) {
+  if (stripped.startsWith('"') || stripped.startsWith('r"')) {
     return code;
   }
   return code.replace(/^(\s*)([A-Za-z_][A-Za-z0-9_]*)(\b.*)$/u, "$1<SPEAKER>$3");

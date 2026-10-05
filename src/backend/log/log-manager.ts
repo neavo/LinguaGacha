@@ -6,6 +6,7 @@ import {
   type LogAppendPayload,
   type LogFileRecord,
   type LogLevel,
+  type LogContent,
   type LogTargets,
 } from "../../shared/log";
 import { sanitize_log_error_context, to_log_error } from "../../shared/error";
@@ -54,7 +55,10 @@ export class LogManager {
   }
 
   /** 将错误正文送入统一写入口。 */
-  public error(message: string, payload: Omit<LogAppendPayload, "level" | "content"> = {}): void {
+  public error(
+    message: LogContent,
+    payload: Omit<LogAppendPayload, "level" | "content"> = {},
+  ): void {
     this.append({ ...payload, level: "error", content: message });
   }
 

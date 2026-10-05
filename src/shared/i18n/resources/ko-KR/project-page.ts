@@ -29,7 +29,6 @@ export const ko_kr_project_page = {
     preview_loading_toast: "프로젝트 미리 보기 읽는 중 …",
     loading_toast: "프로젝트 불러오는 중 …",
     preview_unavailable: "프로젝트 미리 보기 읽기 실패 …",
-
     action: "프로젝트 열기",
     remove_unavailable: "최근 사용 기록을 제거할 수 없습니다. 잠시 후 다시 시도해 주세요 …",
     missing_file_description: "프로젝트 파일을 사용할 수 없습니다. 목록에서 제거할까요 …?",

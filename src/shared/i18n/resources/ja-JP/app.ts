@@ -74,7 +74,6 @@ export const ja_jp_app = {
     operation_failed: "操作に失敗しました …",
     content_unavailable: "内容を表示できません",
     save_failed: "保存に失敗しました …",
-    translation_export_failed: "訳文のエクスポートに失敗しました …",
     model_request_failed: "モデルへのリクエストに失敗しました …",
     validation_failed: "リクエストのパラメーターが無効です",
     initial_load_failed: "アプリのデータを読み込めませんでした。再試行してください …",
@@ -193,10 +192,26 @@ export const ja_jp_app = {
     builder_input: "入力：",
     builder_preceding_context: "前の文脈：",
   },
-  translation_export: {
+  translation_generation: {
+    action: "訳文を出力",
+    confirmation: {
+      description: "現在利用できる訳文を出力しますか …?",
+      checking: "校正の警告を確認中 …",
+      check_failed: "校正の警告を読み込めませんでした。現在の訳文は引き続き出力できます …",
+      warning_description:
+        "校正の警告が {COUNT} 件あります。AGENT で自動校正してから訳文を出力することをおすすめします。このまま続けますか …?",
+      retry_check: "再確認",
+      continue_generate: "出力を続ける",
+    },
     directory: {
       translated: "訳文",
       bilingual: "訳文_対訳",
+    },
+    log: {
+      started: "訳文を生成中 …",
+      succeeded: "訳文の生成に成功しました …",
+      failed: "訳文の生成に失敗しました …",
+      open_output_folder_failed: "出力フォルダーを開けませんでした …",
     },
   },
   native_file_filter: {
@@ -206,7 +221,6 @@ export const ja_jp_app = {
     excel_files: "Excel ファイル (*.xlsx)",
     supported_txt_files: "対応ファイル (*.txt)",
   },
-
   diagnostic: {
     agent: {
       model_round_failed: "Agent のモデルターンに失敗しました …",
@@ -225,9 +239,6 @@ export const ja_jp_app = {
       quality_rule_load_failed: "既定の品質ルールプリセットを読み込めませんでした …",
       value_normalize_failed:
         "既定のプリセット値を正規化できませんでした：{PRESET_DIRECTORY} -> {VALUE} …",
-    },
-    file_export: {
-      open_output_folder_failed: "出力フォルダーを開けませんでした …",
     },
     lifecycle: {
       app_start_failed: "LinguaGacha を起動できませんでした …",
@@ -267,8 +278,6 @@ export const ja_jp_app = {
     engine_task_stop: "タスクを停止しました …",
     engine_task_success:
       "所要時間 {TIME} 秒、テキスト {LINES} 行、入力 {PT} Tokens、思考 {RT} Tokens、出力 {CT} Tokens",
-    generate_translation_done: "訳文を {PATH} に保存しました …",
-    generate_translation_start: "訳文を生成中 …",
     model_response_invalid: "モデルから返されたデータが無効です …",
     request_failed: "リクエストに失敗しました：{ERROR} …",
     request_timeout: "ネットワークリクエストがタイムアウトしました",

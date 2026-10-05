@@ -49,6 +49,7 @@ describe("SRTFormat", () => {
     await format.write_to_path(
       [
         Item.from_json({
+          status: "PROCESSED",
           src: "同文",
           dst: "同文",
           extra_field: "00:00:01,000 --> 00:00:02,000",
@@ -57,6 +58,7 @@ describe("SRTFormat", () => {
           file_path: "video/a.srt",
         }),
         Item.from_json({
+          status: "PROCESSED",
           src: "原文",
           dst: "译文",
           extra_field: "00:00:03,000 --> 00:00:04,000",
@@ -103,6 +105,7 @@ describe("SRTFormat", () => {
     await format.write_to_path(
       [
         Item.from_json({
+          status: "PROCESSED",
           src: "同文",
           dst: "同文",
           extra_field: "00:00:01,000 --> 00:00:02,000",
@@ -121,4 +124,38 @@ describe("SRTFormat", () => {
       "1\n00:00:01,000 --> 00:00:02,000\n同文\n同文\n\n",
     );
   });
+});
+
+it.each(["", " \n "])("完成空白正文 %j 省略单语块，双语保留原文", async (dst) => {
+  using dir = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-srt-empty-"));
+  const items = [
+    Item.from_json({
+      src: "删除",
+      dst,
+      status: "PROCESSED",
+      row: 7,
+      extra_field: "00:00:01,000 --> 00:00:02,000",
+      file_type: "SRT",
+      file_path: "x.srt",
+    }),
+    Item.from_json({
+      src: "保留",
+      dst: "暂存",
+      status: "ERROR",
+      row: 9,
+      extra_field: "00:00:03,000 --> 00:00:04,000",
+      file_type: "SRT",
+      file_path: "x.srt",
+    }),
+  ];
+  const format = new SRTFormat({ target_language: "ZH", deduplication_in_bilingual: true });
+  await format.write_to_path(items, {
+    translated_path: dir.path,
+    bilingual_path: path.join(dir.path, "bi"),
+  });
+  const output = fs.readFileSync(path.join(dir.path, "x.srt"));
+  expect((await format.read_from_stream(output, "x.srt")).map((i) => [i.row, i.src])).toEqual([
+    [1, "保留"],
+  ]);
+  expect(fs.readFileSync(path.join(dir.path, "bi/x.srt"), "utf8")).toContain("删除\n\n");
 });

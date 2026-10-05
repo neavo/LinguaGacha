@@ -24,7 +24,7 @@ export function LogDetailView(props: LogDetailViewProps): JSX.Element {
   // 普通文本通过 format_log_readable_text 展示诊断，结构化正文单独展示诊断。
   const error_text =
     typeof content === "string" ? "" : format_log_error_text(props.detail.error, false);
-  // 两种结构化正文共用诊断区，堆栈独立于 JSON 语法解析。
+  // 结构化正文共用诊断区，堆栈独立于 JSON 语法解析。
   const error_view =
     error_text === "" ? null : (
       <section className="log-detail-view__error">
@@ -33,12 +33,12 @@ export function LogDetailView(props: LogDetailViewProps): JSX.Element {
       </section>
     );
 
-  if (typeof content === "string" || content.kind === "agent") {
+  if (typeof content === "string" || content.kind === "agent" || content.kind === "text") {
     return (
       <>
         <AppEditor
           variant="viewer"
-          syntax={typeof content === "string" ? "plain" : "json"}
+          syntax={typeof content === "string" || content.kind === "text" ? "plain" : "json"}
           class_name="log-window-page__detail-editor"
           value={
             typeof content === "string"

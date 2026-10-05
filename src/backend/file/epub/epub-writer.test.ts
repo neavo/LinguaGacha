@@ -554,3 +554,86 @@ describe("EPUB 正文片段写回", () => {
     expect(text).not.toContain("错误译文");
   });
 });
+
+it("EPUB 完成空正文清空，双语保留原文，未完成暂存译文不输出", async () => {
+  using dir = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-epub-empty-"));
+  const asset = await create_epub_fixture("正文");
+  const item = await create_translated_epub_item(asset, "");
+  const out = path.join(dir.path, "x.epub");
+  await create_writer().build_epub(asset, [item], out, false);
+  expect(await read_epub_entry_text(fs.readFileSync(out))).not.toContain("正文");
+  await create_writer().build_epub(asset, [item], out, true);
+  expect(await read_epub_entry_text(fs.readFileSync(out))).toContain("正文");
+  item.dst = "暂存译文";
+  item.status = "ERROR";
+  await create_writer().build_epub(asset, [item], out, false);
+  expect(await read_epub_entry_text(fs.readFileSync(out))).toContain("正文");
+});
+
+it("EPUB 空目录标签回退源文本且正常导出", async () => {
+  using dir = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-epub-nav-empty-"));
+  const asset = await create_nav_epub_fixture();
+  const items = await new EpubAst().read_from_stream(asset, "book.epub");
+  const nav = items.find((i) => read_epub_extra(i)?.["is_nav"] === true)!;
+  nav.status = "PROCESSED";
+  nav.dst = "";
+  const out = path.join(dir.path, "x.epub");
+  await create_writer().build_epub(asset, items, out, false);
+  const zip = await read_zip_fixture(fs.readFileSync(out));
+  expect(zip_text(zip, String(read_epub_extra(nav)!["doc_path"]))).toContain(nav.src);
+  expect(nav.dst).toBe("");
+});
+
+it("OPF 实际标题同步 XHTML，空书名回退原稿", async () => {
+  using dir = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-epub-title-"));
+  const zip = await read_zip_fixture(await create_epub_fixture("正文"));
+  zip.set(
+    "OPS/package.opf",
+    zip_text(zip, "OPS/package.opf").replace(
+      "<metadata/>",
+      '<metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:title>Book</dc:title></metadata>',
+    ),
+  );
+  zip.set(
+    "OPS/chapter.xhtml",
+    zip_text(zip, "OPS/chapter.xhtml").replace("<body>", "<head><title>Book</title></head><body>"),
+  );
+  const asset = await write_zip(zip);
+  const items = await new EpubAst().read_from_stream(asset, "book.epub");
+  const title = items.find((i) => read_epub_extra(i)?.["is_opf_metadata"] === true)!;
+  title.status = "PROCESSED";
+  title.dst = "新书名";
+  const out = path.join(dir.path, "x.epub");
+  await create_writer().build_epub(asset, items, out, false);
+  expect(await read_epub_entry_text(fs.readFileSync(out))).toContain("<title>新书名</title>");
+  expect(await read_epub_entry_text(fs.readFileSync(out), "OPS/package.opf")).toContain("新书名");
+  title.dst = "";
+  await create_writer().build_epub(asset, items, out, false);
+  expect(await read_epub_entry_text(fs.readFileSync(out))).toContain("<title>Book</title>");
+  expect(await read_epub_entry_text(fs.readFileSync(out), "OPS/package.opf")).toContain("Book");
+});
+
+it.each([undefined, "译文", ""])("含 ruby 的块写回 %j 保留锚点、链接和资源", async (dst) => {
+  using dir = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-epub-anchors-"));
+  const asset = await create_epub_fixture(
+    '<span id="anchor"><ruby>原<rt>yuan</rt></ruby>文</span><a href="#anchor">链接</a><img src="image.png"/>',
+  );
+  const items = await new EpubAst().read_from_stream(asset, "book.epub");
+  if (dst !== undefined) {
+    items[0]!.dst = dst;
+    items[0]!.status = "PROCESSED";
+  }
+  const out = path.join(dir.path, "x.epub");
+  await create_writer().build_epub(asset, items, out, false);
+  const text = await read_epub_entry_text(fs.readFileSync(out));
+  expect(text).toContain('id="anchor"');
+  expect(text).toContain('href="#anchor"');
+  expect(text).toContain('src="image.png"');
+  if (dst === undefined) expect(text).toContain("<rt>yuan</rt>");
+  else {
+    expect(text).not.toContain("<rt>");
+    const ast = new EpubAst();
+    const root = ast.parse_xhtml_or_html(Buffer.from(text));
+    expect(ast.build_canonical_block_text(ast.find_descendants(root, "p")[0]!)).toBe(dst);
+  }
+});

@@ -16,7 +16,7 @@ export type RenpySlotRole = "DIALOGUE" | "NAME" | "STRING";
 export interface RenpyStringLiteral {
   start_col: number;
   end_col: number;
-  raw_inner: string;
+  raw: boolean; // r 前缀使内容不参与转义解码与空白折叠。
   value: string;
 }
 

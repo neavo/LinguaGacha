@@ -4,7 +4,7 @@ import { AppError } from "../../../shared/error";
 import type { Item } from "../../../domain/item";
 import {
   group_items as group_file_items,
-  type ExportPaths,
+  type GeneratedFilePaths,
   type FileFormatServiceConfig,
 } from "../file-format-shared";
 import { EpubAst } from "./epub-ast";
@@ -43,7 +43,7 @@ export class EPUBFormat {
    */
   public async write_to_path(
     items: Item[],
-    paths: ExportPaths,
+    paths: GeneratedFilePaths,
     asset_reader: (rel_path: string) => Buffer | null,
   ): Promise<void> {
     for (const [rel_path, file_items] of group_file_items(items, "EPUB")) {

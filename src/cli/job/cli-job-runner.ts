@@ -5,7 +5,7 @@ import path from "node:path";
 
 import type { AppSettingService } from "../../backend/app/app-setting-service";
 import type { BatchTranslationService } from "../../backend/batch-translation/batch-translation-service";
-import type { TranslationFileExportService } from "../../backend/file/translation-file-export-service";
+import type { TranslationFileGenerationService } from "../../backend/file/translation-file-generation-service";
 import type { ProjectLifecycleService } from "../../backend/project/project-lifecycle-service";
 import { normalize_project_settings_snapshot } from "../../domain/setting";
 import type { JsonRecord, JsonValue } from "../../domain/json";
@@ -32,7 +32,7 @@ export interface CLIJobServices {
   };
   batchTranslation: Pick<BatchTranslationService, "subscribe" | "start_current_project">;
   files: {
-    translationExport: Pick<TranslationFileExportService, "export_files_to_directory">;
+    translationGeneration: Pick<TranslationFileGenerationService, "generate_files_to_directory">;
   };
 }
 
@@ -75,7 +75,7 @@ export async function run_cli_job(
       .map((entry) => entry.rel_path);
     if (entries.some((entry) => entry.progress.unit === "line" && entry.progress.total_count > 0))
       await start_and_wait_for_translation(backend_services, status_reporter);
-    await backend_services.files.translationExport.export_files_to_directory(
+    await backend_services.files.translationGeneration.generate_files_to_directory(
       command.outputDir,
       excluded_files,
     );

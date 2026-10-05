@@ -21,23 +21,12 @@ export const de_de_workbench_page = {
   },
   action: {
     add_file: "Hinzufügen",
-    generate_translation: "Übersetzung erstellen",
     close_project: "Schließen",
     reset: "Übersetzung zurücksetzen",
     translation_task: "Übersetzung",
     start_translation: "Übersetzung starten",
     reset_task_all: "Alle Daten zurücksetzen",
     reset_task_failed: "Fehlgeschlagenes zurücksetzen",
-  },
-  translation_export: {
-    checking: "Korrekturwarnungen werden geprüft …",
-    check_failed:
-      "Korrekturwarnungen konnten nicht geladen werden. Die aktuelle Übersetzung kann trotzdem erstellt werden …",
-    warning_description:
-      "Es wurden {COUNT} Korrekturwarnungen gefunden. Wir empfehlen, sie vor dem Erstellen der Übersetzung automatisch mit AGENT zu prüfen und zu beheben. Trotzdem fortfahren …?",
-    warning_list: "Korrekturwarnungen",
-    retry_check: "Erneut prüfen",
-    continue_generate: "Trotzdem erstellen",
   },
   dialog: {
     import_conflict: {

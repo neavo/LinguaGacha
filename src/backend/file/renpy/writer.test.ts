@@ -8,11 +8,15 @@ import { RenpyWriter } from "./writer";
 describe("RenPy 写回器", () => {
   it("按 NAME 和 DIALOGUE 槽构造替换并按序号写入字面量", () => {
     const writer = new RenpyWriter(true);
-    const item = Item.from_json({ dst: "新台词", name_dst: "新名字" });
-    const replacements = writer.build_replacements(item, [
-      { role: "NAME", lit_index: 0 },
-      { role: "DIALOGUE", lit_index: 1 },
-    ]);
+    const item = Item.from_json({ status: "PROCESSED", dst: "新台词", name_dst: "新名字" });
+    const replacements = writer.build_replacements(
+      item,
+      [
+        { role: "NAME", lit_index: 0 },
+        { role: "DIALOGUE", lit_index: 1 },
+      ],
+      ["old_name", "old_line"],
+    );
 
     expect([...replacements.entries()]).toEqual([
       [0, "新名字"],
@@ -25,11 +29,20 @@ describe("RenPy 写回器", () => {
 
   it("禁用姓名译名写回时用源姓名替换 NAME 槽", () => {
     const writer = new RenpyWriter(false);
-    const item = Item.from_json({ dst: "新台词", name_src: "原名", name_dst: "译名" });
-    const replacements = writer.build_replacements(item, [
-      { role: "NAME", lit_index: 0 },
-      { role: "DIALOGUE", lit_index: 1 },
-    ]);
+    const item = Item.from_json({
+      status: "PROCESSED",
+      dst: "新台词",
+      name_src: "原名",
+      name_dst: "译名",
+    });
+    const replacements = writer.build_replacements(
+      item,
+      [
+        { role: "NAME", lit_index: 0 },
+        { role: "DIALOGUE", lit_index: 1 },
+      ],
+      ["old_name", "old_line"],
+    );
 
     expect([...replacements.entries()]).toEqual([
       [0, "原名"],
@@ -91,10 +104,20 @@ describe("RenPy 写回器", () => {
     extra.renpy.digest.template_raw_sha1 = "bad";
 
     expect(writer.apply_item(lines.slice(), bad_digest)).toBe(false);
+    // 定位元数据可能来自旧工程，超出源目标字面量范围的槽位应跳过。
+    const out_of_range = build_apply_item(lines, {
+      dst: "new",
+      slots: [{ role: "DIALOGUE", lit_index: 1 }],
+    });
+    expect(writer.apply_item(lines.slice(), out_of_range)).toBe(false);
     expect(
       writer.apply_item(
         lines.slice(),
-        Item.from_json({ dst: "new", extra_field: { renpy: { pair: [], digest: {} } } }),
+        Item.from_json({
+          status: "PROCESSED",
+          dst: "new",
+          extra_field: { renpy: { pair: [], digest: {} } },
+        }),
       ),
     ).toBe(false);
   });
@@ -106,11 +129,38 @@ describe("RenPy 写回器", () => {
       dst: "new",
       slots: [{ role: "DIALOGUE", lit_index: 0 }],
     });
-    const bad = Item.from_json({ dst: "new", extra_field: "" });
+    const bad = Item.from_json({ status: "PROCESSED", dst: "new", extra_field: "" });
 
     writer.apply_items_to_lines(lines, [ok, bad]);
     expect(lines).toEqual(['    # e "old"', '    e "new"']);
   });
+});
+
+it("同值源码保持原切片，正文与姓名编辑采用普通字符串编码", () => {
+  const writer = new RenpyWriter(true);
+  const code = String.raw`"A\'B" r"a  \n"`;
+  expect(
+    writer.replace_literals_by_index(
+      code,
+      new Map([
+        [0, "A'B"],
+        [1, String.raw`a  \n`],
+      ]),
+    ),
+  ).toBe(code);
+  const changed = writer.replace_literals_by_index(
+    code,
+    new Map([
+      [0, "新'名"],
+      [1, "a  b\n"],
+    ]),
+  );
+  expect(
+    scan_double_quoted_literals(changed).map((literal) => [literal.raw, literal.value]),
+  ).toEqual([
+    [false, "新'名"],
+    [false, "a  b\n"],
+  ]);
 });
 
 /**
@@ -129,6 +179,7 @@ function build_apply_item(
   const target_rest = lines[1]?.replace(/^[ \t]+/u, "") ?? "";
   const target_literals = scan_double_quoted_literals(target_rest);
   return Item.from_json({
+    status: "PROCESSED",
     src: "old",
     dst: options.dst,
     name_dst: options.name_dst ?? "新名字",
@@ -153,3 +204,20 @@ function build_apply_item(
     },
   });
 }
+
+it.each(["", "已有译文"])("未完成 Ren’Py 正文回退源目标 %j，完成空正文直接清空", (source) => {
+  const writer = new RenpyWriter(true);
+  const lines = ['    old "old"', `    new "${source}"`];
+  const item = build_apply_item(lines, {
+    kind: "STRINGS",
+    dst: "暂存译文",
+    slots: [{ role: "STRING", lit_index: 0 }],
+  });
+  item.status = "ERROR";
+  writer.apply_item(lines, item);
+  expect(lines[1]).toBe(`    new "${source || "old"}"`);
+  item.status = "PROCESSED";
+  item.dst = "";
+  writer.apply_item(lines, item);
+  expect(lines[1]).toBe('    new ""');
+});

@@ -42,7 +42,7 @@ describe("MESSAGEJSONFormat", () => {
     ).resolves.toEqual([]);
   });
 
-  it("空译文写回时回退原文", async () => {
+  it("完成空译文保留对象并清空正文", async () => {
     using temp_dir = fs.mkdtempDisposableSync(
       path.join(os.tmpdir(), "linguagacha-messagejson-format-"),
     );
@@ -51,6 +51,7 @@ describe("MESSAGEJSONFormat", () => {
     await format.write_to_path(
       [
         Item.from_json({
+          status: "PROCESSED",
           src: "s1",
           dst: "",
           row: 1,
@@ -66,7 +67,7 @@ describe("MESSAGEJSONFormat", () => {
 
     expect(
       JSON.parse(fs.readFileSync(path.join(temp_dir.path, "message", "a.json"), "utf-8")),
-    ).toEqual([{ message: "s1" }]);
+    ).toEqual([{ message: "" }]);
   });
 
   it("写回时逐条优先使用第 0 槽译名并回退源姓名", async () => {
@@ -80,6 +81,7 @@ describe("MESSAGEJSONFormat", () => {
     await format.write_to_path(
       [
         Item.from_json({
+          status: "PROCESSED",
           dst: "m1",
           name_src: "hero",
           name_dst: "勇者",
@@ -88,6 +90,7 @@ describe("MESSAGEJSONFormat", () => {
           file_path: "message/a.json",
         }),
         Item.from_json({
+          status: "PROCESSED",
           dst: "m2",
           name_src: "hero",
           name_dst: "英雄",
@@ -96,6 +99,7 @@ describe("MESSAGEJSONFormat", () => {
           file_path: "message/a.json",
         }),
         Item.from_json({
+          status: "PROCESSED",
           dst: "m2b",
           name_src: "hero",
           name_dst: null,
@@ -104,12 +108,14 @@ describe("MESSAGEJSONFormat", () => {
           file_path: "message/a.json",
         }),
         Item.from_json({
+          status: "PROCESSED",
           dst: "m3",
           row: 3,
           file_type: "MESSAGEJSON",
           file_path: "message/a.json",
         }),
         Item.from_json({
+          status: "PROCESSED",
           dst: "m4",
           name_src: ["first", "tail"],
           name_dst: ["第一译名", "不会写入"],
@@ -146,6 +152,7 @@ describe("MESSAGEJSONFormat", () => {
     await format.write_to_path(
       [
         Item.from_json({
+          status: "PROCESSED",
           src: "old1",
           dst: "new1",
           name_src: "原名",
@@ -155,6 +162,7 @@ describe("MESSAGEJSONFormat", () => {
           file_path: "message/a.json",
         }),
         Item.from_json({
+          status: "PROCESSED",
           src: "old0",
           dst: "new0",
           name_src: ["甲", "乙"],

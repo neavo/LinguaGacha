@@ -14,13 +14,13 @@ import { AppError } from "../../shared/error";
 import type { AppSettingService } from "../app/app-setting-service";
 import { ProjectSessionState } from "../project/project-session-state";
 import {
-  TranslationFileExportService,
+  TranslationFileGenerationService,
   type OutputFolderOpener,
-} from "./translation-file-export-service";
+} from "./translation-file-generation-service";
 
 let temp_dir = "";
 beforeEach(() => {
-  temp_dir = fs.mkdtempSync(path.join(os.tmpdir(), "linguagacha-file-export-"));
+  temp_dir = fs.mkdtempSync(path.join(os.tmpdir(), "linguagacha-file-generation-"));
 });
 
 afterEach(() => {
@@ -28,7 +28,7 @@ afterEach(() => {
   fs.rmSync(temp_dir, { recursive: true, force: true });
 });
 
-/** 只提供导出消费的设置，避免启动应用配置存储。 */
+/** 只提供译文生成消费的设置，避免启动应用配置存储。 */
 function create_setting_service(
   options: {
     app_language?: string;
@@ -62,9 +62,9 @@ function create_database(
   } as unknown as ProjectDatabase;
 }
 
-describe("TranslationFileExportService", () => {
+describe("TranslationFileGenerationService", () => {
   it.each(["gui", "directory"] as const)(
-    "%s 导出已存译稿与确认保留的原页，全保留文件原样写出",
+    "%s 译文生成已存译稿与确认保留的原页，全保留文件原样写出",
     async (entry) => {
       const source = create_pdf_fixture();
       const document = read_pdf_document(source);
@@ -74,15 +74,21 @@ describe("TranslationFileExportService", () => {
       partial.pages[2]!.translation = { kind: "omit", reason: "装饰空页" };
       for (const page of document.pages)
         page.translation = { kind: "keep", reason: "按用户要求保留原稿" };
+      const empty = structuredClone(document);
+      for (const page of empty.pages) page.translation = { kind: "omit", reason: "省略" };
       const database = create_database(
         [],
-        { "book.pdf": Buffer.from(source), "original.pdf": Buffer.from(source) },
-        { "book.pdf": partial, "original.pdf": document },
+        {
+          "book.pdf": Buffer.from(source),
+          "original.pdf": Buffer.from(source),
+          "empty.pdf": Buffer.from(source),
+        },
+        { "book.pdf": partial, "original.pdf": document, "empty.pdf": empty },
       );
       const session = new ProjectSessionState();
       session.mark_loaded(path.join(temp_dir, "project.lg"));
       const host = vi.fn(async () => create_pdf_fixture(["Translated"]));
-      const service = new TranslationFileExportService(
+      const service = new TranslationFileGenerationService(
         database,
         create_setting_service(),
         session,
@@ -91,11 +97,30 @@ describe("TranslationFileExportService", () => {
       );
       const result =
         entry === "gui"
-          ? await service.export_files()
-          : await service.export_files_to_directory(path.join(temp_dir, "out"));
+          ? await service.generate_files()
+          : await service.generate_files_to_directory(path.join(temp_dir, "out"));
       expect(result.pdf_files).toEqual([
-        { file_path: "book.pdf", translated_pages: 1, original_pages: 1, omitted_pages: 1 },
-        { file_path: "original.pdf", translated_pages: 0, original_pages: 3, omitted_pages: 0 },
+        {
+          file_path: "book.pdf",
+          written: true,
+          translated_pages: 1,
+          original_pages: 1,
+          omitted_pages: 1,
+        },
+        {
+          file_path: "original.pdf",
+          written: true,
+          translated_pages: 0,
+          original_pages: 3,
+          omitted_pages: 0,
+        },
+        {
+          file_path: "empty.pdf",
+          written: false,
+          translated_pages: 0,
+          original_pages: 0,
+          omitted_pages: empty.pages.length,
+        },
       ]);
       expect(fs.readFileSync(path.join(result.output_path, "original.pdf"))).toEqual(
         Buffer.from(source),
@@ -108,7 +133,7 @@ describe("TranslationFileExportService", () => {
     },
   );
 
-  it("原文导出不要求打印宿主，页面顺序错误在文本文件落盘前报告", async () => {
+  it("原文译文生成不要求打印宿主，页面顺序错误在文本文件落盘前报告", async () => {
     const source = create_pdf_fixture();
     const document = read_pdf_document(source);
     const database = create_database(
@@ -128,25 +153,25 @@ describe("TranslationFileExportService", () => {
     );
     const session = new ProjectSessionState();
     session.mark_loaded(path.join(temp_dir, "project.lg"));
-    const service = new TranslationFileExportService(
+    const service = new TranslationFileGenerationService(
       database,
       create_setting_service(),
       session,
       async () => {},
       create_pdf_execution(),
     );
-    const output = await service.export_files();
+    const output = await service.generate_files();
     expect(fs.readFileSync(path.join(output.output_path, "book.pdf"))).toEqual(Buffer.from(source));
     document.pages[0]!.page = 4;
     const directory = path.join(temp_dir, "conflict");
-    await expect(service.export_files_to_directory(directory)).rejects.toMatchObject({
+    await expect(service.generate_files_to_directory(directory)).rejects.toMatchObject({
       code: "file.invalid_structure",
       public_details: { file: "book.pdf" },
     });
     expect(fs.existsSync(directory)).toBe(false);
   });
 
-  it("普通导出补齐同文件重复译文并写出 TXT 格式文件", async () => {
+  it.each(["译文", ""])("普通译文生成复用已完成正文 %j 并写出 TXT", async (dst) => {
     const project_path = path.join(temp_dir, "demo.lg");
     const session_state = new ProjectSessionState();
     session_state.mark_loaded(project_path);
@@ -154,7 +179,7 @@ describe("TranslationFileExportService", () => {
       {
         id: 1,
         src: "原文",
-        dst: "译文",
+        dst,
         status: "PROCESSED",
         file_type: "TXT",
         file_path: "script.txt",
@@ -171,7 +196,7 @@ describe("TranslationFileExportService", () => {
       },
     ]);
     const output_folder_opener = vi.fn<OutputFolderOpener>();
-    const service = new TranslationFileExportService(
+    const service = new TranslationFileGenerationService(
       database,
       create_setting_service(),
       session_state,
@@ -179,14 +204,14 @@ describe("TranslationFileExportService", () => {
       create_pdf_execution(),
     );
 
-    const result = await service.export_files();
+    const result = await service.generate_files();
     expect(fs.readFileSync(path.join(String(result.output_path), "script.txt"), "utf-8")).toBe(
-      "译文\n译文",
+      `${dst}\n${dst}`,
     );
     expect(output_folder_opener).not.toHaveBeenCalled();
   });
 
-  it("MESSAGEJSON 导出只在相同可见角色间复用译文", async () => {
+  it("MESSAGEJSON 译文生成只在相同可见角色间复用译文", async () => {
     const project_path = path.join(temp_dir, "actors.lg");
     const session_state = new ProjectSessionState();
     session_state.mark_loaded(project_path);
@@ -228,7 +253,7 @@ describe("TranslationFileExportService", () => {
         row: 2,
       },
     ]);
-    const service = new TranslationFileExportService(
+    const service = new TranslationFileGenerationService(
       database,
       create_setting_service(),
       session_state,
@@ -236,7 +261,7 @@ describe("TranslationFileExportService", () => {
       create_pdf_execution(),
     );
 
-    const result = await service.export_files();
+    const result = await service.generate_files();
 
     expect(
       JSON.parse(fs.readFileSync(path.join(String(result.output_path), "actors.json"), "utf-8")),
@@ -247,7 +272,7 @@ describe("TranslationFileExportService", () => {
     ]);
   });
 
-  it("导出时直接写出 Markdown 块中的资源引用", async () => {
+  it("译文生成时直接写出 Markdown 块中的资源引用", async () => {
     const project_path = path.join(temp_dir, "mixed.lg");
     const session_state = new ProjectSessionState();
     session_state.mark_loaded(project_path);
@@ -277,7 +302,7 @@ describe("TranslationFileExportService", () => {
       ],
       { "readme.md": Buffer.from(source) },
     );
-    const service = new TranslationFileExportService(
+    const service = new TranslationFileGenerationService(
       database,
       create_setting_service(),
       session_state,
@@ -285,14 +310,14 @@ describe("TranslationFileExportService", () => {
       create_pdf_execution(),
     );
 
-    const result = await service.export_files();
+    const result = await service.generate_files();
 
     expect(fs.readFileSync(path.join(String(result.output_path), "readme.md"), "utf-8")).toBe(
       "# Title\n\n![Cover](data:image/png;base64,AAAA)\n",
     );
   });
 
-  it("德语界面使用德语导出目录名和日志", async () => {
+  it("德语界面使用德语译文生成目录名和日志", async () => {
     const project_path = path.join(temp_dir, "demo.lg");
     const session_state = new ProjectSessionState();
     session_state.mark_loaded(project_path);
@@ -308,7 +333,7 @@ describe("TranslationFileExportService", () => {
       },
     ]);
     const log_collector = { info: vi.fn(), error: vi.fn() };
-    const service = new TranslationFileExportService(
+    const service = new TranslationFileGenerationService(
       database,
       create_setting_service({ app_language: "DE" }),
       session_state,
@@ -319,14 +344,14 @@ describe("TranslationFileExportService", () => {
     const text = create_text_resolver("de-DE"); // 验证语言选择与参数传递，文案由当前词典决定。
     const translated_path = path.join(
       temp_dir,
-      `demo_${text("app.translation_export.directory.translated")}`,
+      `demo_${text("app.translation_generation.directory.translated")}`,
     );
     const bilingual_path = path.join(
       temp_dir,
-      `demo_${text("app.translation_export.directory.bilingual")}`,
+      `demo_${text("app.translation_generation.directory.bilingual")}`,
     );
 
-    await expect(service.export_files()).resolves.toEqual({
+    await expect(service.generate_files()).resolves.toEqual({
       accepted: true,
       pdf_files: [],
       output_path: translated_path,
@@ -334,13 +359,14 @@ describe("TranslationFileExportService", () => {
 
     expect(fs.readFileSync(path.join(translated_path, "script.txt"), "utf-8")).toBe("Übersetzung");
     expect(fs.existsSync(path.join(bilingual_path, "script.txt"))).toBe(true);
-    expect(log_collector.info).toHaveBeenCalledWith(
-      text("app.log.generate_translation_done", { PATH: translated_path }),
-      { source: "file-export" },
+    expect(log_collector.info).toHaveBeenNthCalledWith(
+      2,
+      `${text("app.translation_generation.log.succeeded")}\n${translated_path}`,
+      { source: "translation-generation" },
     );
   });
 
-  it("启用设置后导出成功会打开译文输出目录", async () => {
+  it("启用设置后译文生成成功会打开译文输出目录", async () => {
     const project_path = path.join(temp_dir, "demo.lg");
     const session_state = new ProjectSessionState();
     session_state.mark_loaded(project_path);
@@ -356,7 +382,7 @@ describe("TranslationFileExportService", () => {
       },
     ]);
     const output_folder_opener = vi.fn<OutputFolderOpener>().mockResolvedValue(undefined);
-    const service = new TranslationFileExportService(
+    const service = new TranslationFileGenerationService(
       database,
       create_setting_service({ output_folder_open_on_finish: true }),
       session_state,
@@ -364,11 +390,11 @@ describe("TranslationFileExportService", () => {
       create_pdf_execution(),
     );
 
-    const result = await service.export_files();
+    const result = await service.generate_files();
     expect(output_folder_opener).toHaveBeenCalledExactlyOnceWith(result.output_path);
   });
 
-  it("CLI 导出写入指定 output-dir 并固定生成 bilingual 子目录", async () => {
+  it("CLI 译文生成写入指定 output-dir 并固定生成 bilingual 子目录", async () => {
     const project_path = path.join(temp_dir, "demo.lg");
     const output_dir = path.join(temp_dir, "cli-out");
     const session_state = new ProjectSessionState();
@@ -385,7 +411,7 @@ describe("TranslationFileExportService", () => {
       },
     ]);
     const output_folder_opener = vi.fn<OutputFolderOpener>();
-    const service = new TranslationFileExportService(
+    const service = new TranslationFileGenerationService(
       database,
       create_setting_service({ output_folder_open_on_finish: true }),
       session_state,
@@ -393,7 +419,7 @@ describe("TranslationFileExportService", () => {
       create_pdf_execution(),
     );
 
-    await expect(service.export_files_to_directory(output_dir)).resolves.toEqual({
+    await expect(service.generate_files_to_directory(output_dir)).resolves.toEqual({
       accepted: true,
       pdf_files: [],
       output_path: output_dir,
@@ -405,7 +431,7 @@ describe("TranslationFileExportService", () => {
     expect(output_folder_opener).not.toHaveBeenCalled();
   });
 
-  it("打开输出目录失败不改变导出成功结果并记录诊断日志", async () => {
+  it("打开输出目录失败不改变译文生成成功结果并记录诊断日志", async () => {
     const project_path = path.join(temp_dir, "demo.lg");
     const session_state = new ProjectSessionState();
     session_state.mark_loaded(project_path);
@@ -423,7 +449,7 @@ describe("TranslationFileExportService", () => {
     const log_collector = { info: vi.fn(), error: vi.fn() };
     const error = new Error("open failed");
     const output_folder_opener = vi.fn<OutputFolderOpener>().mockRejectedValue(error);
-    const service = new TranslationFileExportService(
+    const service = new TranslationFileGenerationService(
       database,
       create_setting_service({ output_folder_open_on_finish: true }),
       session_state,
@@ -432,16 +458,16 @@ describe("TranslationFileExportService", () => {
       log_collector,
     );
 
-    await expect(service.export_files()).resolves.toMatchObject({ accepted: true });
+    await expect(service.generate_files()).resolves.toMatchObject({ accepted: true });
 
     expect(log_collector.error).toHaveBeenCalledExactlyOnceWith(
-      create_text_resolver("zh-CN")("app.diagnostic.file_export.open_output_folder_failed"),
-      { source: "file-export", error },
+      create_text_resolver("zh-CN")("app.translation_generation.log.open_output_folder_failed"),
+      { source: "translation-generation", error },
     );
   });
 
   it.each(["gui-write", "directory-prepare", "directory-pdf"] as const)(
-    "%s 失败时统一报告导出错误并保留一份原始诊断",
+    "%s 失败时统一报告译文生成错误并保留一份原始诊断",
     async (entry) => {
       const project_path = path.join(temp_dir, "demo.lg");
       const session_state = new ProjectSessionState();
@@ -466,7 +492,7 @@ describe("TranslationFileExportService", () => {
       );
       const log_collector = { info: vi.fn(), error: vi.fn() };
       const cause = new Error("底层原因");
-      const error = new Error("导出故障", { cause });
+      const error = new Error("译文生成故障", { cause });
       const write_file = vi.spyOn(default_native_fs, "write_file");
       if (entry === "gui-write") write_file.mockRejectedValue(error);
       if (entry === "directory-prepare") {
@@ -475,7 +501,7 @@ describe("TranslationFileExportService", () => {
         });
       }
       const execute = create_pdf_execution();
-      const service = new TranslationFileExportService(
+      const service = new TranslationFileGenerationService(
         database,
         create_setting_service({ output_folder_open_on_finish: true }),
         session_state,
@@ -490,21 +516,24 @@ describe("TranslationFileExportService", () => {
 
       const result =
         entry === "gui-write"
-          ? service.export_files()
-          : service.export_files_to_directory(path.join(temp_dir, "out"));
+          ? service.generate_files()
+          : service.generate_files_to_directory(path.join(temp_dir, "out"));
       await expect(result).rejects.toMatchObject({
-        code: "translation.export_failed",
+        code: "translation.generation_failed",
         cause: error,
       });
 
       const text = create_text_resolver("zh-CN");
       expect(log_collector.error).toHaveBeenCalledExactlyOnceWith(
-        text("app.feedback.translation_export_failed"),
-        { source: "file-export", error },
+        {
+          kind: "text",
+          text: `${text("app.translation_generation.log.failed")}\n${error.message}`,
+        },
+        { source: "translation-generation", error },
       );
       expect(log_collector.info).toHaveBeenCalledExactlyOnceWith(
-        text("app.log.generate_translation_start"),
-        { source: "file-export" },
+        text("app.translation_generation.log.started"),
+        { source: "translation-generation" },
       );
       if (entry === "directory-prepare") expect(write_file).not.toHaveBeenCalled();
     },
@@ -518,13 +547,13 @@ describe("TranslationFileExportService", () => {
     vi.spyOn(database, "get_all_items").mockImplementation(() => {
       throw error;
     });
-    const service = new TranslationFileExportService(
+    const service = new TranslationFileGenerationService(
       database,
       create_setting_service(),
       session,
       async () => {},
       create_pdf_execution(),
     );
-    await expect(service.export_files()).rejects.toBe(error);
+    await expect(service.generate_files()).rejects.toBe(error);
   });
 });

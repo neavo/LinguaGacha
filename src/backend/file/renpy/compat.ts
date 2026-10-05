@@ -184,9 +184,8 @@ export function pick_best_candidate(item: Item, candidates: Item[]): Item {
  */
 function transfer_item_translation(source: Item, target: Item): void {
   target.dst = source.dst;
-  if (source.name_dst !== null) {
-    target.name_dst = source.name_dst;
-  }
+  target.name_dst = source.name_dst;
+  target.status = source.status;
 }
 
 /**

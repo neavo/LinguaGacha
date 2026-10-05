@@ -81,3 +81,15 @@ describe("log 基础模型", () => {
     expect(text).not.toContain("不应单独投影的错误消息");
   });
 });
+
+it("可读正文不重复追加异常，原始诊断保留在独立错误字段", () => {
+  const content = { kind: "text" as const, text: "译文生成失败 …\n原始原因" };
+  expect(read_log_content(content)).toEqual(content);
+  expect(read_log_content({ kind: "text", text: 1 })).toBeNull();
+  expect(
+    format_log_readable_text({
+      content,
+      error: { message: "原始原因", stack: "Error: 原始原因\n    at generate" },
+    }),
+  ).toBe(content.text);
+});

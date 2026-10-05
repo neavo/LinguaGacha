@@ -26,12 +26,12 @@ it("打印模板将已校验的原稿图片内嵌为离线资源", async () => {
   expect(html).toContain('src="data:image/png;base64,AQID"');
 });
 
-it("空译稿和省略页可独立保存，全部没有输出页时仅拒绝预览和导出", () => {
+it("空译稿和省略页返回空渲染结果", () => {
   const document = read_pdf_document(create_pdf_fixture());
   for (const page of document.pages) page.translation = { kind: "translate", markdown: " \n " };
-  expect(() => render_pdf_translation(document)).toThrow("at least one page");
+  expect(render_pdf_translation(document)).toEqual([null, null, null]);
   for (const page of document.pages) page.translation = { kind: "omit", reason: "省略" };
-  expect(() => render_pdf_translation(document)).toThrow("at least one page");
+  expect(render_pdf_translation(document)).toEqual([null, null, null]);
   document.pages[0]!.translation = null;
   expect(render_pdf_translation(document)).toEqual([null, null, null]);
   document.pages[0]!.translation = { kind: "keep", reason: "保留原页" };

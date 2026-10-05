@@ -62,6 +62,9 @@ it("独立部署线程读取、打印回调与合并共用同一引擎，取消�
       bytes: result as Uint8Array,
     })) as PDFDocument;
     expect(rebuilt.pages).toHaveLength(2);
+    const empty = structuredClone(document);
+    for (const page of empty.pages) page.translation = { kind: "omit", reason: "省略" };
+    expect(await worker.run({ ...task, document: empty })).toBeNull();
     const preview = await worker.run({
       kind: "preview",
       title: "preview",

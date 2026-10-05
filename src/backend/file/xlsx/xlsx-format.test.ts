@@ -50,44 +50,54 @@ it("WOLF 只按固定列、源单元格存在性和索引填充色选取", async
     [5, "无填充", "", "RULE_SKIPPED", "WOLFXLSX"],
   ]);
 });
-it.each(["XLSX", "WOLFXLSX"] as const)("%s 写回正确列，保留空译文和公式样文本", async (type) => {
-  using root = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-xlsx-"));
-  const original = await spreadsheet_fixture({
-    A1: "code",
-    B1: "flag",
-    C1: "type",
-    D1: "info",
-    F2: { text: "旧原文", fill: 9 },
-    H2: "保留",
-  });
-  const format = new XLSXFormat();
-  await format.write_to_path(
-    [
-      Item.from_json({
-        src: "=SUM(A1:A2)",
-        dst: "",
-        row: 2,
-        file_type: type,
-        file_path: "nested/file.xlsx",
-      }),
-    ],
-    { translated_path: root.path, bilingual_path: root.path },
-    () => original,
-  );
-  const bytes = fs.readFileSync(path.join(root.path, "nested/file.xlsx"));
-  const cells = await spreadsheet_values(bytes);
-  expect(cells[type === "XLSX" ? "A2" : "F2"]).toBe("'=SUM(A1:A2)");
-  expect(cells[type === "XLSX" ? "B2" : "G2"]).toBe("");
-  if (type === "WOLFXLSX") {
-    expect(cells.H2).toBe("保留");
-    expect((await format.read_from_stream(bytes, "wolf.xlsx"))[0]?.status).toBe("NONE");
-  }
-});
 it("WOLF 原稿缺失时拒绝写出", async () => {
   await expect(
     new XLSXFormat().write_to_path(
       [Item.from_json({ src: "x", row: 2, file_type: "WOLFXLSX", file_path: "x.xlsx" })],
       { translated_path: "unused", bilingual_path: "unused" },
+      () => null,
     ),
   ).rejects.toMatchObject({ code: "file.not_found" });
+});
+
+it.each(["XLSX", "WOLFXLSX"] as const)("%s 未完成保留源译文，完成空值清空", async (type) => {
+  using dir = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-xlsx-kv-"));
+  const original = await spreadsheet_fixture({
+    A1: "code",
+    A2: "原文",
+    F2: "原文",
+    B2: "A",
+    B3: "旧值",
+    G2: "A",
+    G3: "旧值",
+    H2: "其它内容",
+  });
+  const items = [
+    Item.from_json({
+      src: "源文",
+      dst: "B",
+      status: "ERROR",
+      row: 2,
+      file_type: type,
+      file_path: "x.xlsx",
+    }),
+    Item.from_json({
+      src: "源文",
+      dst: "",
+      status: "PROCESSED",
+      row: 3,
+      file_type: type,
+      file_path: "x.xlsx",
+    }),
+  ];
+  await new XLSXFormat().write_to_path(
+    items,
+    { translated_path: dir.path, bilingual_path: dir.path },
+    () => original,
+  );
+  const values = await spreadsheet_values(fs.readFileSync(path.join(dir.path, "x.xlsx")));
+  expect(values[type === "XLSX" ? "B2" : "G2"]).toBe("A");
+  expect(values[type === "XLSX" ? "B3" : "G3"]).toBe("");
+  expect(values.H2).toBe("其它内容");
+  expect(values[type === "XLSX" ? "A2" : "F2"]).toBe("原文");
 });
