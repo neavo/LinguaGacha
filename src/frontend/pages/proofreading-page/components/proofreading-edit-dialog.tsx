@@ -367,7 +367,10 @@ export function ProofreadingEditDialog(props: ProofreadingEditDialogProps): JSX.
   const context_trigger_ref = useRef<HTMLButtonElement>(null);
   const previous_context_open_ref = useRef(false);
   const save_label = t("app.action.save");
-  const save_disabled = props.readonly || pending;
+  const has_content_change =
+    item !== null &&
+    (draft_item.dst !== item.dst || draft_item.name_dst !== read_item_name_text(item.name_dst));
+  const save_disabled = props.readonly || pending || !has_content_change;
 
   useEffect(() => {
     if (previous_context_open_ref.current && !context_open && open) {
@@ -522,17 +525,29 @@ export function ProofreadingEditDialog(props: ProofreadingEditDialogProps): JSX.
                 {t("app.action.cancel")}
                 <ShortcutKbd action="cancel" />
               </AppButton>
-              <AppButton
-                type="button"
-                size="sm"
-                disabled={save_disabled}
-                onClick={() => {
-                  void props.on_save();
-                }}
-              >
-                {save_label}
-                <ShortcutKbd action="save" className="bg-background/18 text-primary-foreground" />
-              </AppButton>
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <AppButton
+                      type="button"
+                      size="sm"
+                      disabled={save_disabled}
+                      onClick={() => {
+                        void props.on_save();
+                      }}
+                    >
+                      {save_label}
+                      <ShortcutKbd
+                        action="save"
+                        className="bg-background/18 text-primary-foreground"
+                      />
+                    </AppButton>
+                  }
+                />
+                <TooltipContent>
+                  {t("proofreading_page.tooltip.save_translation_status")}
+                </TooltipContent>
+              </Tooltip>
             </div>
           </>
         )

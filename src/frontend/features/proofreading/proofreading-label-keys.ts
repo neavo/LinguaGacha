@@ -23,7 +23,6 @@ export const PROOFREADING_WARNING_LABEL_KEY_BY_CODE = {
   SIMILARITY: "proofreading_page.warning.similarity",
   GLOSSARY: "proofreading_page.warning.glossary",
   PUNCTUATION_MISMATCH: "proofreading_page.warning.punctuation_mismatch",
-  RETRY_THRESHOLD: "proofreading_page.warning.retry_threshold",
   LINE_COUNT_MISMATCH: "proofreading_page.warning.line_count_mismatch",
   NO_WARNING: "proofreading_page.filter.no_warning",
 } as const satisfies Record<(typeof PROOFREADING_TRANSLATED_OUTCOME_CODES)[number], LocaleKey>;

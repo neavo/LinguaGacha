@@ -16,7 +16,6 @@ describe("desktop project change normalizer", () => {
         fieldPatch: {
           dst: "译文",
           status: "PROCESSED",
-          retry_count: 2.8,
         },
         changedIds: [1, "1", 0, "bad"],
       },
@@ -28,7 +27,6 @@ describe("desktop project change normalizer", () => {
       fieldPatch: {
         dst: "译文",
         status: "PROCESSED",
-        retry_count: 2,
       },
       changedIds: [1],
       deleteIds: [],

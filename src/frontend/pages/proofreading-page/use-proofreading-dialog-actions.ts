@@ -193,7 +193,7 @@ export function useProofreadingDialogActions(
     });
   }, [dialog_state.pending, dialog_state.target_row_id, options]);
 
-  /** 草稿保存返回是否成功，调用者据此关闭或导航。 */
+  /** 保存实际内容差异，显式保存与导航共用读取、互斥和提交过程。 */
   const save_dialog_draft = useCallback(async (): Promise<boolean> => {
     const row_id = dialog_state.target_row_id;
     if (row_id === null || save_pending_ref.current) return false;
@@ -204,7 +204,7 @@ export function useProofreadingDialogActions(
       const target_item = (await options.read_items_by_row_ids([row_id]))[0];
       if (dialog_request_id_ref.current !== request_id) return false;
       if (target_item === undefined) throw new Error("The requested entry is absent.");
-      // 字段差异表达编辑意图，姓名修改保留正文任务状态。
+      // 只提交实际编辑，正文与姓名共用条目完成规则。
       const { dst, name_dst } = dialog_state.draft_item;
       const plan = create_apply_item_changes_plan({
         snapshot: { items: [target_item], section_revisions: options.list_revisions },
@@ -235,7 +235,7 @@ export function useProofreadingDialogActions(
     }
   }, [dialog_state, options]);
 
-  /** 显式保存成功后结束当前编辑。 */
+  /** 显式保存成功后结束当前编辑，无内容差异时不提交。 */
   const save_dialog_entry = useCallback(async (): Promise<void> => {
     if (await save_dialog_draft()) reset_dialog();
   }, [save_dialog_draft, reset_dialog]);

@@ -18,6 +18,7 @@ export const en_us_proofreading_page = {
     replace_all: "Replace All",
     retranslate: "Retranslate",
     clear_translation: "Clear Translation",
+    clear_translation_keep_status: "Clear and Keep Status",
     clear_and_reset_status: "Clear and Reset Status",
     set_translation_status: "Set Translation Status",
     view_context: "View Context",
@@ -54,7 +55,6 @@ export const en_us_proofreading_page = {
     similarity: "High Similarity",
     glossary: "Glossary Not Applied",
     punctuation_mismatch: "Punctuation Structure Mismatch",
-    retry_threshold: "Retry Threshold Reached",
     line_count_mismatch: "Line Count Mismatch",
   },
   glossary: {
@@ -63,6 +63,7 @@ export const en_us_proofreading_page = {
     missing: "Glossary Not Applied",
   },
   tooltip: {
+    save_translation_status: "Saving changes also updates the translation status",
     warning_title: "Warning",
   },
   ungrouped_file: "Ungrouped",

@@ -450,7 +450,6 @@ export class ProofreadingCache {
       name_dst: Item.normalize_name_field(item["name_dst"]),
       status: String(item["status"] ?? "NONE"),
       text_type: String(item["text_type"] ?? "NONE"),
-      retry_count: this.read_number(item["retry_count"], 0),
     };
   }
 

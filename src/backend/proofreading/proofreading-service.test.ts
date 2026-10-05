@@ -29,6 +29,7 @@ function read_meta(
   return (database.get_all_meta(project_path) as JsonRecord)[key] ?? default_value;
 }
 
+/** 每个用例使用独立 `.lg` 与真实写入流程，连接统一交给 `afterEach` 回收。 */
 function create_service(task_busy = false): {
   database: ProjectDatabase;
   service: ProofreadingService;
@@ -67,6 +68,7 @@ function create_runtime_gate(busy: boolean): RuntimeOperationGate {
   return gate;
 }
 
+/** 从提交后的数据库读取修订，验证事件与持久事实一致。 */
 function create_test_project_change_publisher(database: ProjectDatabase, lg_path: string) {
   return {
     publish_project_change: vi.fn((payload: JsonRecord): ProjectChangeEvent => {
@@ -110,7 +112,6 @@ function create_project_item(overrides: JsonRecord = {}): JsonRecord {
     file_type: "TXT",
     text_type: "NONE",
     status: "NONE",
-    retry_count: 0,
     skip_internal_filter: false,
     ...overrides,
   };
@@ -140,11 +141,9 @@ describe("ProofreadingService", () => {
     }
   });
 
-  it("相同非空译文仍会修正错误状态并同步翻译统计", async () => {
-    const { database, service, lg_path } = create_service();
-    database.set_items(lg_path, [
-      create_project_item({ dst: "既有译文", status: "ERROR", retry_count: 2 }),
-    ]);
+  it("同值译文无变化，显式状态确认完成并同步翻译统计", async () => {
+    const { database, service, lg_path, publisher } = create_service();
+    database.set_items(lg_path, [create_project_item({ dst: "既有译文", status: "ERROR" })]);
     database.set_meta(lg_path, "translation_extras", {
       total_line: 1,
       processed_line: 0,
@@ -156,9 +155,21 @@ describe("ProofreadingService", () => {
       changes: [{ item_id: 1, dst: "既有译文" }],
       expected_section_revisions: { items: 0, proofreading: 0 },
     });
+    expect(database.get_all_items(lg_path)).toEqual([
+      create_project_item({ dst: "既有译文", status: "ERROR" }),
+    ]);
+    expect(publisher.publish_project_change).not.toHaveBeenCalled();
+    expect(read_meta(database, lg_path, "translation_extras", {})).toMatchObject({
+      processed_line: 0,
+      error_line: 1,
+    });
+    await service.apply_item_changes({
+      changes: [{ item_id: 1, dst: "既有译文", status: "PROCESSED" }],
+      expected_section_revisions: { items: 0, proofreading: 0 },
+    });
 
     expect(database.get_all_items(lg_path)).toEqual([
-      create_project_item({ dst: "既有译文", status: "PROCESSED", retry_count: 0 }),
+      create_project_item({ dst: "既有译文", status: "PROCESSED" }),
     ]);
     expect(read_meta(database, lg_path, "translation_extras", {})).toMatchObject({
       total_line: 1,
@@ -204,7 +215,7 @@ describe("ProofreadingService", () => {
         dst: "正文",
         name_src: ["Alice", "Bob"],
         name_dst: ["新名", "保留名"],
-        status: "ERROR",
+        status: "PROCESSED",
       }),
     ]);
     expect(publisher.publish_project_change).toHaveBeenCalledTimes(1);
@@ -314,7 +325,7 @@ describe("ProofreadingService", () => {
     expect(publisher.publish_project_change).not.toHaveBeenCalled();
   });
 
-  it("只保存姓名译文时更新 name_dst 并保留正文状态", async () => {
+  it("只保存姓名译文时更新 name_dst 并完成条目", async () => {
     const { database, service, lg_path, publisher } = create_service();
     database.set_items(lg_path, [
       create_project_item({
@@ -322,7 +333,6 @@ describe("ProofreadingService", () => {
         name_src: "Alice",
         name_dst: "旧译名",
         status: "ERROR",
-        retry_count: 2,
       }),
     ]);
 
@@ -346,11 +356,13 @@ describe("ProofreadingService", () => {
         dst: "旧译文",
         name_src: "Alice",
         name_dst: "新译名",
-        status: "ERROR",
-        retry_count: 2,
+        status: "PROCESSED",
       }),
     ]);
-    expect(read_meta(database, lg_path, "translation_extras", null)).toBeNull();
+    expect(read_meta(database, lg_path, "translation_extras", null)).toMatchObject({
+      processed_line: 1,
+      error_line: 0,
+    });
     expect(publisher.publish_project_change).toHaveBeenCalledWith({
       projectPath: lg_path,
       source: "proofreading_apply_item_changes",
@@ -430,12 +442,15 @@ describe("ProofreadingService", () => {
     ]);
   });
 
-  it("替换全部固定按大小写不敏感匹配", async () => {
+  it("替换全部按大小写不敏感匹配，未命中的条目保留状态", async () => {
     const { database, service, lg_path } = create_service();
-    database.set_items(lg_path, [create_project_item({ dst: "Magic magic", status: "PROCESSED" })]);
+    database.set_items(lg_path, [
+      create_project_item({ dst: "Magic magic", status: "PROCESSED" }),
+      create_project_item({ id: 2, dst: "未命中", status: "ERROR" }),
+    ]);
 
     await service.replace_all({
-      item_ids: [1],
+      item_ids: [1, 2],
       search_text: "Magic",
       replace_text: "魔法",
       is_regex: false,
@@ -444,10 +459,11 @@ describe("ProofreadingService", () => {
 
     expect(database.get_all_items(lg_path)).toEqual([
       create_project_item({ dst: "魔法 魔法", status: "PROCESSED" }),
+      create_project_item({ id: 2, dst: "未命中", status: "ERROR" }),
     ]);
   });
 
-  it("替换全部能只更新第 0 槽姓名译文并保留正文状态", async () => {
+  it("替换全部能只更新第 0 槽姓名译文并完成条目", async () => {
     const { database, service, lg_path } = create_service();
     database.set_items(lg_path, [
       create_project_item({
@@ -455,7 +471,6 @@ describe("ProofreadingService", () => {
         name_src: "Alice",
         name_dst: "Name: Alice",
         status: "ERROR",
-        retry_count: 2,
       }),
     ]);
 
@@ -472,13 +487,12 @@ describe("ProofreadingService", () => {
         dst: "正文译文",
         name_src: "Alice",
         name_dst: "Alice",
-        status: "ERROR",
-        retry_count: 2,
+        status: "PROCESSED",
       }),
     ]);
   });
 
-  it("清空译文同时清空姓名译文并保留状态和重试计数", async () => {
+  it("清空译文同时清空姓名译文并保留状态", async () => {
     const { database, service, lg_path, publisher } = create_service();
     database.set_items(lg_path, [
       create_project_item({
@@ -486,7 +500,6 @@ describe("ProofreadingService", () => {
         name_src: ["Alice", "Bob"],
         name_dst: ["旧译名", "保留译名"],
         status: "PROCESSED",
-        retry_count: 5,
       }),
     ]);
 
@@ -512,7 +525,6 @@ describe("ProofreadingService", () => {
         name_src: ["Alice", "Bob"],
         name_dst: null,
         status: "PROCESSED",
-        retry_count: 5,
       }),
     ]);
     expect(publisher.publish_project_change).toHaveBeenCalledWith({
@@ -560,9 +572,8 @@ describe("ProofreadingService", () => {
         dst: "旧译文",
         name_dst: "旧译名",
         status: "PROCESSED",
-        retry_count: 5,
       }),
-      create_project_item({ id: 2, status: "EXCLUDED", retry_count: 3 }),
+      create_project_item({ id: 2, status: "EXCLUDED" }),
     ]);
     database.set_meta(lg_path, "translation_extras", {
       total_line: 1,
@@ -578,8 +589,8 @@ describe("ProofreadingService", () => {
     });
 
     expect(database.get_all_items(lg_path)).toEqual([
-      create_project_item({ id: 1, dst: "", name_dst: null, status: "NONE", retry_count: 0 }),
-      create_project_item({ id: 2, status: "DUPLICATED", retry_count: 0 }),
+      create_project_item({ id: 1, dst: "", name_dst: null, status: "NONE" }),
+      create_project_item({ id: 2, status: "DUPLICATED" }),
     ]);
     expect(read_meta(database, lg_path, "translation_extras", {})).toMatchObject({
       total_line: 1,
@@ -613,11 +624,9 @@ describe("ProofreadingService", () => {
     expect(publisher.publish_project_change).not.toHaveBeenCalled();
   });
 
-  it("统一 item 更新只改 status 时清除重试计数", async () => {
+  it("统一 item 更新只改 status 时同步条目状态", async () => {
     const { database, service, lg_path, publisher } = create_service();
-    database.set_items(lg_path, [
-      create_project_item({ dst: "保留译文", status: "ERROR", retry_count: 4 }),
-    ]);
+    database.set_items(lg_path, [create_project_item({ dst: "保留译文", status: "ERROR" })]);
 
     const ack = await service.apply_item_changes({
       changes: [{ item_id: 1, status: "PROCESSED" }],
@@ -638,7 +647,6 @@ describe("ProofreadingService", () => {
       create_project_item({
         dst: "保留译文",
         status: "PROCESSED",
-        retry_count: 0,
       }),
     ]);
     expect(publisher.publish_project_change).toHaveBeenCalledWith({
@@ -654,16 +662,14 @@ describe("ProofreadingService", () => {
 
   it("显式 status 覆盖 dst 自动状态，菜单外状态整批拒绝", async () => {
     const { database, service, lg_path, publisher } = create_service();
-    database.set_items(lg_path, [
-      create_project_item({ dst: "保留译文", status: "ERROR", retry_count: 4 }),
-    ]);
+    database.set_items(lg_path, [create_project_item({ dst: "保留译文", status: "ERROR" })]);
 
     await service.apply_item_changes({
       changes: [{ item_id: 1, dst: "新译文", status: "EXCLUDED" }],
       expected_section_revisions: { items: 0, proofreading: 0 },
     });
     expect(database.get_all_items(lg_path)).toEqual([
-      create_project_item({ dst: "新译文", status: "EXCLUDED", retry_count: 0 }),
+      create_project_item({ dst: "新译文", status: "EXCLUDED" }),
     ]);
     publisher.publish_project_change.mockClear();
 
@@ -675,7 +681,7 @@ describe("ProofreadingService", () => {
     ).rejects.toThrow(expect.objectContaining({ code: "request.validation_failed" }));
 
     expect(database.get_all_items(lg_path)).toEqual([
-      create_project_item({ dst: "新译文", status: "EXCLUDED", retry_count: 0 }),
+      create_project_item({ dst: "新译文", status: "EXCLUDED" }),
     ]);
     expect(publisher.publish_project_change).not.toHaveBeenCalled();
   });

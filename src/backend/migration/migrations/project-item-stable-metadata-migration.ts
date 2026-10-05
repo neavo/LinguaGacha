@@ -22,7 +22,7 @@ const TEXT_TYPE_INFERENCE_FILE_TYPES = new Set(["XLSX", "KVJSON", "MESSAGEJSON"]
 
 /**
  * 迁移背景：
- * 早期 item JSON 混入过运行中状态、`row_number` 字段、缺省 file/text 类型和非数值重试次数。
+ * 早期 item JSON 混入过运行中状态、`row_number` 字段和缺省 file/text 类型。
  * 当前 item 持久事实只允许稳定状态和值域，任务运行态不能继续从旧 payload 中临时过滤。
  *
  * 生效场景：
@@ -114,13 +114,6 @@ function normalize_item_payload(item_data: ItemMigrationRow): {
   const normalized_row = row_value_number(raw_row, 0);
   if (raw_row !== normalized_row) {
     normalized["row"] = normalized_row;
-    changed = true;
-  }
-
-  const raw_retry_count = normalized["retry_count"];
-  const normalized_retry_count = row_value_number(raw_retry_count, 0);
-  if (raw_retry_count !== normalized_retry_count) {
-    normalized["retry_count"] = normalized_retry_count;
     changed = true;
   }
 

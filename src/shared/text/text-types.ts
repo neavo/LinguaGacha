@@ -73,8 +73,7 @@ export type TextTaskItemRecord = JsonRecord & {
   name_src?: string | string[] | null;
   name_dst?: string | string[] | null;
   status?: string;
-  text_type?: string; // 决定保护规则分支，retry_count 用于任务调度诊断
-  retry_count?: number;
+  text_type?: string; // 决定保护规则分支
   skip_internal_filter?: boolean; // 强制翻译在译前准备中同样绕过内容过滤。
   extra_field?: JsonValue; // 保留格式处理器回写所需的结构化上下文
 };

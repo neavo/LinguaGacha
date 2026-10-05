@@ -12,6 +12,7 @@ describe("Item", () => {
       file_path: "script.json",
       status: "BROKEN",
       row: 1.8,
+      retry_count: 3,
     });
 
     expect(item.to_json()).toEqual({
@@ -27,9 +28,9 @@ describe("Item", () => {
       file_path: "script.json",
       text_type: "NONE",
       status: "NONE",
-      retry_count: 0,
       skip_internal_filter: false,
     });
+    expect(item.to_public_json()).not.toHaveProperty("retry_count");
   });
 
   it("译文为空时导出原文，否则导出译文", () => {

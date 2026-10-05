@@ -26,7 +26,6 @@ function evaluate(args: {
   dst: string;
   sourceLanguage: ConfiguredSourceLanguageCode;
   targetLanguage?: TargetLanguageCode;
-  retry_count?: number;
   quality?: QualitySnapshot;
   name_src?: ItemNameField;
   name_dst?: ItemNameField;
@@ -45,7 +44,6 @@ function evaluate(args: {
       name_dst: args.name_dst ?? null,
       status: "PROCESSED",
       text_type: "NONE",
-      retry_count: args.retry_count ?? 0,
     },
     quality,
     quality_context: buildProofreadingEvaluationContext(quality),
@@ -217,7 +215,7 @@ describe("proofreading-evaluator", () => {
     ).not.toContain("FOREIGN_CHAR_RESIDUE");
   });
 
-  it("识别文本保护、相似度、术语和重试阈值警告", () => {
+  it("识别文本保护、相似度和术语警告", () => {
     const quality = create_quality({
       glossary: {
         enabled: true,
@@ -237,12 +235,11 @@ describe("proofreading-evaluator", () => {
       src: "HP {PLAYER} 東京",
       dst: "HP {PLAYER2} 東京あ",
       sourceLanguage: "JA",
-      retry_count: 2,
       quality,
     });
 
     expect(item.warnings.map((warning) => warning.code)).toEqual(
-      expect.arrayContaining(["TEXT_PRESERVE", "SIMILARITY", "GLOSSARY", "RETRY_THRESHOLD"]),
+      expect.arrayContaining(["TEXT_PRESERVE", "SIMILARITY", "GLOSSARY"]),
     );
     expect(item.glossary_applications).toMatchObject([
       {
@@ -484,12 +481,8 @@ describe("proofreading-evaluator", () => {
         name_dst: "Alice",
         sourceLanguage: "EN",
         quality,
-        retry_count: 2,
       }).warnings,
-    ).toEqual([
-      { code: "FOREIGN_CHAR_RESIDUE", target_field: "name_dst", fragments: ["Alice"] },
-      { code: "RETRY_THRESHOLD", target_field: null },
-    ]);
+    ).toEqual([{ code: "FOREIGN_CHAR_RESIDUE", target_field: "name_dst", fragments: ["Alice"] }]);
   });
 
   it("注音清理和译前替换都沿用翻译的资源保护边界", () => {

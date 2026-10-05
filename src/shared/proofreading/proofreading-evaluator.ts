@@ -25,7 +25,6 @@ import { prepare_translation_source } from "../text/translation-source";
 import type { TextProcessingConfig } from "../text/text-types";
 import {
   collect_foreign_residue_fragments,
-  has_translation_retry_reached_review_threshold,
   has_translation_similarity_issue,
 } from "../text/translation-quality-rules";
 import {
@@ -263,9 +262,6 @@ export function evaluateProofreadingItem(args: {
     ) {
       warnings.push({ code: "GLOSSARY", target_field });
     }
-  }
-  if (has_translation_retry_reached_review_threshold(item.retry_count)) {
-    warnings.push({ code: "RETRY_THRESHOLD", target_field: null });
   }
   warnings.sort(
     (left, right) =>

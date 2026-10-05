@@ -35,7 +35,6 @@ describe("BatchTranslationProjectStore", () => {
           dst: "译文",
           name_dst: "译名",
           status: "PROCESSED",
-          retry_count: 0,
         },
       ],
       create_progress_snapshot({ line: 1, processed_line: 1 }),
@@ -50,7 +49,6 @@ describe("BatchTranslationProjectStore", () => {
         name_src: "原名",
         name_dst: "译名",
         status: "PROCESSED",
-        retry_count: 0,
         file_path: "demo.txt",
         file_type: "TXT",
         text_type: "TXT",
@@ -62,7 +60,6 @@ describe("BatchTranslationProjectStore", () => {
         src: "待翻",
         dst: "",
         status: "NONE",
-        retry_count: 0,
         file_path: "demo.txt",
         file_type: "TXT",
         text_type: "TXT",
@@ -99,7 +96,6 @@ describe("BatchTranslationProjectStore", () => {
           item_id: 2,
           dst: "重翻译文",
           status: "PROCESSED",
-          retry_count: 0,
         },
       ],
       create_progress_snapshot({ line: 1, processed_line: 1 }),
@@ -129,17 +125,16 @@ describe("BatchTranslationProjectStore", () => {
   it("失败重试按实际状态更新工程计数，同值失败仍提交本次用量", async () => {
     const { database, project_path, store, published_changes } = create_store();
     database.set_items(project_path, [
-      { id: 1, src: "待重试", dst: "", status: "ERROR", retry_count: 0, file_path: "a.txt" },
+      { id: 1, src: "待重试", dst: "", status: "ERROR", file_path: "a.txt" },
       {
         id: 2,
         src: "已完成",
         dst: "译文",
         status: "PROCESSED",
-        retry_count: 0,
         file_path: "a.txt",
       },
     ]);
-    const failed = { item_id: 1, dst: "", status: "ERROR", retry_count: 0 };
+    const failed = { item_id: 1, dst: "", status: "ERROR" };
     const ack = await store.commit_translation_batch(
       [failed],
       create_progress_snapshot({ total_line: 999, error_line: 999, total_tokens: 7 }),
@@ -218,7 +213,6 @@ describe("BatchTranslationProjectStore", () => {
           item_id: 1,
           dst: "译文",
           status: "PROCESSED",
-          retry_count: 0,
         },
       ],
       create_progress_snapshot({ line: 1, processed_line: 1 }),
@@ -289,7 +283,6 @@ describe("BatchTranslationProjectStore", () => {
         name_src: "原名",
         name_dst: null,
         status: "NONE",
-        retry_count: 2,
         file_path: "demo.txt",
         file_type: "TXT",
         text_type: "TXT",
@@ -301,7 +294,6 @@ describe("BatchTranslationProjectStore", () => {
         src: "待翻",
         dst: "",
         status: "NONE",
-        retry_count: 0,
         file_path: "demo.txt",
         file_type: "TXT",
         text_type: "TXT",

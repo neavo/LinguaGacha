@@ -84,10 +84,10 @@ const reference_notes: Readonly<Record<string, readonly string[]>> = {
   project_meta: ["工程元数据描述当前快照的语言、完整数量和文件顺序。"],
   items: [
     "`warnings` 按 `item_id` 关联条目，保存快照加载时的校对证据。正文与姓名属于同一个条目。",
-    "更新只提交需要变化的字段，省略字段保持当前值。修改 `dst`，或提交失败条目当前已有的非空译文以确认接受时，状态设为 `PROCESSED`，`retry_count` 清零。",
-    "单独修改 `name_dst` 保留当前状态和重试计数。显式 `status` 在译文副作用之后生效，并将 `retry_count` 清零。",
-    "同文组按 `file_path` 与 `src` 关联，`NONE` 与 `DUPLICATED` 状态由宿主按重复过滤规则自动处理。",
-    `建议每批条目更新不超过 ${AGENT_WORKSPACE_PREFERRED_ITEM_UPDATE_ROWS} 行，以控制上下文与失败恢复成本。这是建议，没有强制行数上限。`,
+    "`dst` 或 `name_dst` 实际变化时默认同步更新状态为 `PROCESSED`，同值提交不改变状态，省略的内容字段保持当前值。",
+    '显式 `status` 覆盖内容修改的默认状态，接受现有结果时可提交 `status: "PROCESSED"`，最终内容和状态均相同时，回执为无变化。',
+    "同文组按 `file_path`、`src`、可见 `name_src` 与 `text_type` 关联，`NONE` 与 `DUPLICATED` 状态由宿主按重复过滤规则自动处理。",
+    `建议每批条目更新不超过 ${AGENT_WORKSPACE_PREFERRED_ITEM_UPDATE_ROWS} 行，以控制上下文与失败恢复成本，这是建议，没有强制行数上限。`,
   ],
   pages: [
     "页面身份由 `file_path` 与从 1 开始的原稿 `page` 组成，`fp` 从当前快照复制。",

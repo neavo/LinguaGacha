@@ -41,6 +41,9 @@ describe("Agent 工作区对象写入规则", () => {
       expect(row["fp"]).toMatch(/^[0-9A-Za-z]{4}$/u);
     }
     expect(project_agent_workspace_item(create_item(42))["fp"]).toBe(item["fp"]);
+    for (const retry_count of [0, 3]) {
+      expect(project_agent_workspace_item({ ...create_item(42), retry_count })).toEqual(item);
+    }
     expect(
       project_agent_workspace_quality_entry(
         "glossary",
@@ -81,6 +84,37 @@ describe("Agent 工作区对象写入规则", () => {
     ).not.toBe(first["fp"]);
   });
 
+  it("Agent 同值译名无变化，实际修改译名时完成条目", () => {
+    const current = {
+      ...create_item(1),
+      name_src: "姫",
+      name_dst: "现有译名",
+      status: "ERROR",
+    };
+    const snapshot = { pdfDocuments: [], items: [current], quality: {}, prompts: {} };
+    expect(
+      resolve(
+        batch({
+          items: [
+            { line: 1, item_id: 1, fp: item_fp(current), update: { name_dst: current.name_dst } },
+          ],
+        }),
+        snapshot,
+      ).itemChanges,
+    ).toEqual([]);
+    const result = resolve(
+      batch({
+        items: [{ line: 1, item_id: 1, fp: item_fp(current), update: { name_dst: "公主" } }],
+      }),
+      snapshot,
+    );
+    expect(result.itemChanges[0]?.next).toMatchObject({
+      dst: "公主",
+      name_dst: "公主",
+      status: "PROCESSED",
+    });
+  });
+
   it("合并 item 的不同字段并按对象拒绝异值冲突", () => {
     const current = create_item(1);
     const fp = item_fp(current);
@@ -107,7 +141,6 @@ describe("Agent 工作区对象写入规则", () => {
     expect(merged.itemChanges[0]?.next).toMatchObject({
       dst: "译文",
       status: "EXCLUDED",
-      retry_count: 0,
     });
     expect(conflict.itemChanges).toEqual([]);
     expect(conflict.rejected).toEqual([
@@ -116,8 +149,8 @@ describe("Agent 工作区对象写入规则", () => {
   });
 
   it("Item 意图的预演包含同文组被动变化", () => {
-    const representative = { ...create_item(1), dst: "", status: "NONE", retry_count: 0 };
-    const duplicate = { ...create_item(2), dst: "", status: "DUPLICATED", retry_count: 0 };
+    const representative = { ...create_item(1), dst: "", status: "NONE" };
+    const duplicate = { ...create_item(2), dst: "", status: "DUPLICATED" };
     const result = resolve_agent_workspace_writes({
       batch: batch({
         items: [
@@ -386,7 +419,6 @@ function create_item(item_id: number): JsonRecord {
     text_type: "RENPY",
     row_number: 18,
     status: "PROCESSED",
-    retry_count: 0,
   };
 }
 

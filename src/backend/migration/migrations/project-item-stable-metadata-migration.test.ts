@@ -17,7 +17,7 @@ describe("run_project_item_stable_metadata_migration", () => {
     db.exec(`
       CREATE TABLE items (id INTEGER PRIMARY KEY AUTOINCREMENT, data TEXT NOT NULL);
       INSERT INTO items (data) VALUES ('{"src":"@12 A","status":"PROCESSED_IN_PAST","file_type":"XLSX","row_number":"7"}');
-      INSERT INTO items (data) VALUES ('{"src":"B","status":"PROCESSING"}');
+      INSERT INTO items (data) VALUES ('{"src":"B","status":"PROCESSING","retry_count":"legacy"}');
       INSERT INTO items (data) VALUES ('{"src":"legacy","status":"NONE","file_type":"MD"}');
       INSERT INTO items (data) VALUES ('not-json');
     `);
@@ -31,7 +31,6 @@ describe("run_project_item_stable_metadata_migration", () => {
         file_type: "XLSX",
         row: 7,
         text_type: "WOLF",
-        retry_count: 0,
       },
       {
         src: "B",
@@ -39,7 +38,7 @@ describe("run_project_item_stable_metadata_migration", () => {
         file_type: "NONE",
         text_type: "NONE",
         row: 0,
-        retry_count: 0,
+        retry_count: "legacy",
       },
       {
         src: "legacy",
@@ -47,7 +46,6 @@ describe("run_project_item_stable_metadata_migration", () => {
         file_type: "MD",
         text_type: "NONE",
         row: 0,
-        retry_count: 0,
       },
       "not-json",
     ]);

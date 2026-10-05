@@ -72,7 +72,6 @@ function create_item(): ProjectItemPublicRecord {
     file_path: "script.txt",
     text_type: "NONE",
     status: "PROCESSED",
-    retry_count: 0,
     skip_internal_filter: false,
   };
 }

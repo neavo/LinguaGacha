@@ -10,7 +10,7 @@ describe("resolve_quality_statistics_item_text_change_scope", () => {
       "proofreading_item_patch",
       false,
       0,
-      { status: "ERROR", retry_count: 1 },
+      { status: "ERROR" },
       "none",
     ],
     ["译名不影响正文替换统计", "proofreading_item_patch", false, 0, { name_dst: "艾丽丝" }, "none"],

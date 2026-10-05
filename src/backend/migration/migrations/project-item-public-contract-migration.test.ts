@@ -32,7 +32,7 @@ describe("run_project_item_public_contract_migration", () => {
         name_src: ["A"],
         file_type: "XLSX",
         status: "NONE",
-        retry_count: 2,
+        retry_count: "2",
         skip_internal_filter: false,
         legacy_private: { keep: true },
         dst: "",
@@ -55,7 +55,6 @@ describe("run_project_item_public_contract_migration", () => {
         file_path: "",
         text_type: "NONE",
         status: "NONE",
-        retry_count: 0,
         skip_internal_filter: false,
       },
       "not-json",
@@ -75,7 +74,6 @@ describe("run_project_item_public_contract_migration", () => {
       file_path: "a.txt",
       text_type: "NONE",
       status: "PROCESSED",
-      retry_count: 0,
       skip_internal_filter: true,
     };
 

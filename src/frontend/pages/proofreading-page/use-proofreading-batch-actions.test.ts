@@ -25,7 +25,6 @@ it.each([false, true])("重翻确认提交稳定身份并完成回执或错误�
         dst: "译文",
         name_dst: null,
         status: "PROCESSED",
-        retry_count: 0,
       })),
     ),
     sync_task_snapshot: vi.fn(),

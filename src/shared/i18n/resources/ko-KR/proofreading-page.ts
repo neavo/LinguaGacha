@@ -17,6 +17,7 @@ export const ko_kr_proofreading_page = {
     replace_all: "모두 바꾸기",
     retranslate: "다시 번역",
     clear_translation: "번역문 비우기",
+    clear_translation_keep_status: "비우고 상태 유지",
     clear_and_reset_status: "비우고 상태 초기화",
     set_translation_status: "번역 상태 설정",
     view_context: "문맥 보기",
@@ -53,7 +54,6 @@ export const ko_kr_proofreading_page = {
     similarity: "유사도가 너무 높음",
     glossary: "용어 미적용",
     punctuation_mismatch: "문장 부호 구조 불일치",
-    retry_threshold: "재시도 횟수 한도 도달",
     line_count_mismatch: "줄 수 불일치",
   },
   glossary: {
@@ -62,6 +62,7 @@ export const ko_kr_proofreading_page = {
     missing: "용어 미적용",
   },
   tooltip: {
+    save_translation_status: "변경 사항을 저장하면 번역 상태도 함께 업데이트됩니다",
     warning_title: "경고",
   },
   ungrouped_file: "미분류",

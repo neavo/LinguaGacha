@@ -225,7 +225,7 @@ function StateHandleProbe(props: {
   return null;
 }
 
-// wait_for_condition 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
+/** 有界等待 React 提交状态，条件始终未满足时报告失败。 */
 async function wait_for_condition(predicate: () => boolean, attempts = 20): Promise<void> {
   for (let index = 0; index < attempts; index += 1) {
     if (predicate()) {
@@ -240,7 +240,7 @@ async function wait_for_condition(predicate: () => boolean, attempts = 20): Prom
   throw new Error("等待运行时状态收敛失败。");
 }
 
-// flush_state_refresh_window 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
+/** 推进刷新计时器并等待异步读取结果进入 React 状态。 */
 async function flush_state_refresh_window(): Promise<void> {
   await act(async () => {
     await vi.advanceTimersByTimeAsync(DESKTOP_RUNTIME_REFRESH_INTERVAL_MS);
@@ -248,6 +248,7 @@ async function flush_state_refresh_window(): Promise<void> {
   });
 }
 
+/** 通过注册的 SSE 监听器发送序列化载荷，关闭连接时清除监听器。 */
 function create_event_source_stub(): {
   event_source: EventSourceStub;
   emit: (event_name: string, payload: Record<string, unknown>) => void;
@@ -295,7 +296,6 @@ function create_project_item(overrides: Record<string, unknown>): Record<string,
     file_path: "",
     text_type: "NONE",
     status: "NONE",
-    retry_count: 0,
     skip_internal_filter: false,
     ...overrides,
   };
@@ -959,7 +959,6 @@ describe("DesktopStateProvider", () => {
           changedIds: [1],
           fieldPatch: {
             status: "PROCESSED",
-            retry_count: 0,
           },
         },
         sections: {
@@ -987,7 +986,6 @@ describe("DesktopStateProvider", () => {
       proofreadingItemIds: [1],
       proofreadingFieldPatch: {
         status: "PROCESSED",
-        retry_count: 0,
       },
     });
 

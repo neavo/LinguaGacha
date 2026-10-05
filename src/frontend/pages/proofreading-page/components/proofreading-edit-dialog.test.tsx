@@ -18,7 +18,7 @@ vi.mock("@frontend/app/locale/locale-context", () => {
 
 vi.mock("@frontend/widgets/interactions/use-action-shortcut", () => {
   return {
-    useActionShortcut: () => {},
+    useActionShortcut: shortcut,
   };
 });
 
@@ -136,7 +136,6 @@ function create_proofreading_item(): ProofreadingItem {
     name_src: null,
     name_dst: null,
     status: "PROCESSED",
-    retry_count: 0,
     warnings: [{ code: "GLOSSARY", target_field: "dst" }],
     glossary_applications: [
       {
@@ -181,6 +180,8 @@ function get_name_textboxes(
   if (source === null || translation === null) throw new Error("缺少姓名字段编辑器。");
   return [source, translation];
 }
+
+const shortcut = vi.hoisted(() => vi.fn());
 
 describe("ProofreadingEditDialog", () => {
   let container: HTMLDivElement | null = null;
@@ -230,6 +231,30 @@ describe("ProofreadingEditDialog", () => {
     });
     return rendered;
   }
+
+  it("正文或姓名有差异时启用保存，恢复原值时按钮与快捷键均禁用", async () => {
+    const on_save = vi.fn(async () => {});
+    const rendered = await render_dialog({ on_save });
+    const save = (): HTMLButtonElement =>
+      [...rendered.querySelectorAll("button")].find((button) =>
+        button.textContent?.includes("app.action.save"),
+      )!;
+    expect(save().disabled).toBe(true);
+    expect(shortcut.mock.lastCall?.[0].enabled).toBe(false);
+    for (const draft_item of [
+      { dst: "修改正文", name_dst: "" },
+      { dst: "Magic 和美1优", name_dst: "修改姓名" },
+    ]) {
+      await render_dialog({ state: create_dialog_state({ draft_item }), on_save });
+      expect(save().disabled).toBe(false);
+      expect(shortcut.mock.lastCall?.[0].enabled).toBe(true);
+    }
+    await render_dialog({ on_save });
+    expect(save().disabled).toBe(true);
+    expect(shortcut.mock.lastCall?.[0].enabled).toBe(false);
+    save().click();
+    expect(on_save).not.toHaveBeenCalled();
+  });
 
   it("术语提示按实际数据分组，失败条目和空警告也展示应用结果", async () => {
     const rendered = await render_dialog({
@@ -368,7 +393,6 @@ describe("ProofreadingEditDialog", () => {
           { code: "SIMILARITY", target_field: "dst" },
           { code: "LINE_COUNT_MISMATCH", target_field: "dst" },
           { code: "PUNCTUATION_MISMATCH", target_field: "name_dst" },
-          { code: "RETRY_THRESHOLD", target_field: null },
           { code: "FOREIGN_CHAR_RESIDUE", target_field: "dst", fragments: [] },
           {
             code: "TEXT_PRESERVE",
@@ -380,7 +404,7 @@ describe("ProofreadingEditDialog", () => {
       },
     });
     expect(rendered.querySelectorAll(".proofreading-page__dialog-status-badge-wrap")).toHaveLength(
-      6,
+      5,
     );
     expect(
       rendered.querySelector(".proofreading-page__dialog-status-strip [data-test-tooltip]"),
@@ -418,10 +442,8 @@ describe("ProofreadingEditDialog", () => {
     const [source_input, translation_input] = get_name_textboxes(rendered);
     expect(source_input.value).toBe("Alice");
     expect(source_input.readOnly).toBe(true);
-    expect(source_input.getAttribute("data-readonly")).toBe("true");
     expect(translation_input.readOnly).toBe(false);
     expect(translation_input.disabled).toBe(false);
-    expect(translation_input.getAttribute("data-readonly")).toBe("false");
     expect(rendered.querySelector("label.proofreading-page__dialog-content-section")).toBeNull();
 
     await act(async () => {
@@ -465,7 +487,6 @@ describe("ProofreadingEditDialog", () => {
 
     expect(translation_input.readOnly).toBe(true);
     expect(translation_input.disabled).toBe(false);
-    expect(translation_input.getAttribute("data-readonly")).toBe("true");
   });
 
   it("姓名字段术语状态会跟随姓名译文草稿刷新", async () => {
@@ -547,14 +568,10 @@ describe("ProofreadingEditDialog", () => {
     expect(pending_trigger?.disabled).toBe(true);
   });
 
-  it("编辑态取消按钮显示 Esc 且保存中阻止快捷关闭", async () => {
+  it("编辑态按关闭策略处理，保存中阻止关闭", async () => {
     const rendered = await render_dialog();
-    const cancel_button = [...rendered.querySelectorAll("button")].find((button) =>
-      button.textContent?.includes("app.action.cancel"),
-    );
 
     expect(rendered.querySelector("[data-dismiss-behavior='escape-only']")).not.toBeNull();
-    expect(cancel_button?.querySelector("[data-slot='kbd']")?.textContent).toBe("Esc");
 
     await render_dialog({ state: create_dialog_state({ pending: true }) });
     expect(rendered.querySelector("[data-dismiss-behavior='blocked']")).not.toBeNull();
@@ -584,10 +601,6 @@ describe("ProofreadingEditDialog", () => {
     });
 
     expect(rendered.querySelector("[data-dismiss-behavior='default']")).not.toBeNull();
-    const back_button = [...rendered.querySelectorAll("button")].find((button) =>
-      button.textContent?.includes("proofreading_page.action.back"),
-    );
-    expect(back_button?.querySelector("[data-slot='kbd']")?.textContent).toBe("Esc");
     expect(rendered.querySelector(".proofreading-page__dialog-form")?.hasAttribute("hidden")).toBe(
       true,
     );

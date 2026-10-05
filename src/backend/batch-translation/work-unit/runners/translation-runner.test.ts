@@ -45,12 +45,7 @@ function create_empty_translation_unit(): TranslationWorkUnit {
       items: [],
       precedings: [],
     },
-    diagnostics: {
-      token_threshold: 0,
-      split_count: 1,
-      retry_count: 0,
-      is_initial: true,
-    },
+    diagnostics: { retry_count: 0, token_threshold: 0, split_count: 1, is_initial: true },
   };
 }
 
@@ -110,7 +105,7 @@ describe("TranslationWorkUnitRunner", () => {
       new AbortController().signal,
     );
     expect(result.output.items).toMatchObject([
-      { dst: "旧译文", name_dst: "旧译名", status: "NONE", retry_count: 1 },
+      { dst: "旧译文", name_dst: "旧译名", status: "NONE" },
     ]);
   });
 
@@ -599,14 +594,14 @@ describe("TranslationWorkUnitRunner", () => {
     );
 
     const result = await runner.execute_unit(
-      create_translation_unit({ model: { api_format: "OpenAI" }, retry_count: 2 }),
+      create_translation_unit({ model: { api_format: "OpenAI" } }),
       new AbortController().signal,
     );
 
     expect(result.outcome).toBe("failed");
     expect(result.output).toMatchObject({
       kind: "translation",
-      items: [{ dst: "", status: "NONE", retry_count: 3 }],
+      items: [{ dst: "", status: "NONE" }],
     });
     expect(read_translation_log(result.logs[0]).sections).toEqual([
       { title: "规则分析：", text: analysis },
@@ -755,7 +750,6 @@ describe("TranslationWorkUnitRunner", () => {
           dst: "",
           status: "NONE",
           text_type: "TXT",
-          retry_count: 2,
         })),
       }),
       new AbortController().signal,
@@ -764,11 +758,11 @@ describe("TranslationWorkUnitRunner", () => {
     expect(result.output).toMatchObject({
       kind: "translation",
       items: [
-        { id: 101, dst: "译文甲", status: "PROCESSED", retry_count: 2 },
-        { id: 102, dst: "", status: "NONE", retry_count: 2 },
-        { id: 103, dst: "译文丙", status: "PROCESSED", retry_count: 2 },
-        { id: 104, dst: "", status: "NONE", retry_count: 2 },
-        { id: 105, dst: "", status: "NONE", retry_count: 2 },
+        { id: 101, dst: "译文甲", status: "PROCESSED" },
+        { id: 102, dst: "", status: "NONE" },
+        { id: 103, dst: "译文丙", status: "PROCESSED" },
+        { id: 104, dst: "", status: "NONE" },
+        { id: 105, dst: "", status: "NONE" },
       ],
     });
     expect(result.outcome).toBe("success");
@@ -782,7 +776,7 @@ describe("TranslationWorkUnitRunner", () => {
     ]);
   });
 
-  it("完全无法解析译文即使达重试阈值也不写 fallback", async () => {
+  it("无法解析的响应保持条目待处理，交由任务规划器重试", async () => {
     const runner = new TranslationWorkUnitRunner(
       await create_template_root(),
       create_llm_client({
@@ -794,7 +788,6 @@ describe("TranslationWorkUnitRunner", () => {
       create_translation_unit({
         model: { api_format: "OpenAI" },
         src: "こんにちは",
-        retry_count: 2,
       }),
       new AbortController().signal,
     );
@@ -807,7 +800,6 @@ describe("TranslationWorkUnitRunner", () => {
           id: 1,
           dst: "",
           status: "NONE",
-          retry_count: 3,
         },
       ],
     });
@@ -825,7 +817,6 @@ describe("TranslationWorkUnitRunner", () => {
       create_translation_unit({
         model: { api_format: "SakuraLLM" },
         src: "こんにちは\n世界",
-        retry_count: 2,
       }),
       new AbortController().signal,
     );
@@ -837,7 +828,6 @@ describe("TranslationWorkUnitRunner", () => {
         {
           id: 1,
           status: "PROCESSED",
-          retry_count: 2,
         },
       ],
     });
@@ -900,12 +890,11 @@ function create_llm_client(
 }
 
 /**
- * 构造单条或多条翻译 work unit，便于测试 retry_count 和 chunk 形状差异。
+ * 构造单条或多条翻译 work unit，便于测试请求和 chunk 形状差异。
  */
 function create_translation_unit(args: {
   model: JsonRecord;
   src?: string;
-  retry_count?: number;
   items?: Array<JsonRecord>;
   config_overrides?: JsonRecord;
   quality_snapshot?: JsonRecord;
@@ -927,7 +916,6 @@ function create_translation_unit(args: {
           dst: "",
           status: "NONE",
           text_type: "TXT",
-          ...(args.retry_count === undefined ? {} : { retry_count: args.retry_count }),
         },
       ],
       precedings: [],
@@ -935,7 +923,7 @@ function create_translation_unit(args: {
     diagnostics: {
       token_threshold: 512,
       split_count: 0,
-      retry_count: args.retry_count ?? 0,
+      retry_count: 0,
       is_initial: true,
     },
   };

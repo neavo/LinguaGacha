@@ -101,13 +101,6 @@ export function normalize_translation_item_patches(
     if (Object.hasOwn(raw_item, "status")) {
       patch.status = Item.normalize_status(raw_item["status"]);
     }
-    if (Object.hasOwn(raw_item, "retry_count")) {
-      patch.retry_count = read_non_negative_integer(
-        raw_item["retry_count"],
-        "invalid_translation_retry_count",
-        item_id,
-      );
-    }
     if (Object.keys(patch).length === 0) {
       throw new AppErrors.AppError("runtime.internal_invariant", {
         diagnostic_context: { reason: "empty_translation_item_patch", item_id },
@@ -124,21 +117,6 @@ function read_positive_integer(value: JsonValue | undefined, reason: string): nu
   if (!Number.isInteger(parsed) || parsed <= 0) {
     throw new AppErrors.AppError("runtime.internal_invariant", {
       diagnostic_context: { reason },
-    });
-  }
-  return parsed;
-}
-
-/** 允许 0 的整数字段，失败时附带 item_id。 */
-function read_non_negative_integer(
-  value: JsonValue | undefined,
-  reason: string,
-  item_id: number,
-): number {
-  const parsed = Number(value);
-  if (!Number.isInteger(parsed) || parsed < 0) {
-    throw new AppErrors.AppError("runtime.internal_invariant", {
-      diagnostic_context: { reason, item_id },
     });
   }
   return parsed;

@@ -11,7 +11,6 @@ const QUALITY_STATISTICS_TRANSLATION_ITEM_SOURCES = new Set([
 // 状态和译名不属于当前规则统计的文本源；译后替换只扫描正文 dst。
 const QUALITY_STATISTICS_IGNORED_FIELDS = new Set<keyof ProjectChangeItemFieldPatch>([
   "status",
-  "retry_count",
   "name_dst",
 ]);
 

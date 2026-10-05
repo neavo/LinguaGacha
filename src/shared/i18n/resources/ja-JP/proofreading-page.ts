@@ -17,6 +17,7 @@ export const ja_jp_proofreading_page = {
     replace_all: "すべて置換",
     retranslate: "再翻訳",
     clear_translation: "訳文を消去",
+    clear_translation_keep_status: "消去して状態を維持",
     clear_and_reset_status: "消去して状態をリセット",
     set_translation_status: "翻訳状態を設定",
     view_context: "前後の文脈を表示",
@@ -53,7 +54,6 @@ export const ja_jp_proofreading_page = {
     similarity: "類似度が高すぎる",
     glossary: "用語の未適用",
     punctuation_mismatch: "句読点構造の不一致",
-    retry_threshold: "再試行回数の上限到達",
     line_count_mismatch: "行数の不一致",
   },
   glossary: {
@@ -62,6 +62,7 @@ export const ja_jp_proofreading_page = {
     missing: "用語の未適用",
   },
   tooltip: {
+    save_translation_status: "変更を保存すると、翻訳状態も更新されます",
     warning_title: "警告",
   },
   ungrouped_file: "未分類",

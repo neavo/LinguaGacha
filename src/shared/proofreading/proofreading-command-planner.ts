@@ -11,7 +11,6 @@ export type ProofreadingCommandItemSnapshot = {
   name_src?: ItemNameField;
   name_dst?: ItemNameField;
   status: string;
-  retry_count: number;
 };
 
 export type ProofreadingCommandSnapshot = {

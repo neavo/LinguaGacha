@@ -11,6 +11,7 @@ type ProofreadingConfirmDialogProps = {
   on_confirm: (action: ProofreadingConfirmationAction) => Promise<void>;
   on_close: () => void;
 };
+/** 清空的两个按钮分别提交保留状态和重置状态的意图。 */
 export function ProofreadingConfirmDialog(props: ProofreadingConfirmDialogProps): JSX.Element {
   const { t } = useI18n();
   const selection_count = props.state?.target_row_ids.length ?? 0;
@@ -31,7 +32,7 @@ export function ProofreadingConfirmDialog(props: ProofreadingConfirmDialogProps)
           onSelect: () => props.on_confirm("clear-translations-and-reset-status"),
         }}
         secondaryAction={{
-          label: t("proofreading_page.action.clear_translation"),
+          label: t("proofreading_page.action.clear_translation_keep_status"),
           onSelect: () => props.on_confirm("clear-translations"),
         }}
         onClose={props.on_close}

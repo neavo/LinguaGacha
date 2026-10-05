@@ -47,7 +47,6 @@ function create_visible_item(overrides: Partial<ProofreadingClientItem>): Proofr
     name_src: "Alice",
     name_dst: "爱丽丝",
     status: "PROCESSED",
-    retry_count: 0,
     warnings: [],
     glossary_applications: [],
     compressed_src: "src-preview",

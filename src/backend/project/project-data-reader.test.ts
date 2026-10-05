@@ -193,7 +193,6 @@ describe("ProjectDataReader", () => {
         file_type: "TXT",
         text_type: "NONE",
         status: "NONE",
-        retry_count: 0,
         skip_internal_filter: false,
       },
     ]);

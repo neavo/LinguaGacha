@@ -11,7 +11,6 @@ const BASE_ITEM = {
   dst: "旧译文",
   name_dst: ["旧译名", "保留译名"],
   status: "NONE",
-  retry_count: 2,
 };
 
 describe("project item field patch", () => {
@@ -21,7 +20,6 @@ describe("project item field patch", () => {
         dst: "新译文",
         name_dst: ["新译名", 404, "保留译名"],
         status: "PROCESSED",
-        retry_count: 2.8,
         src: "不能写回",
         broken: true,
       }),
@@ -29,7 +27,6 @@ describe("project item field patch", () => {
       dst: "新译文",
       name_dst: ["新译名", "保留译名"],
       status: "PROCESSED",
-      retry_count: 2,
     });
   });
 
@@ -59,12 +56,10 @@ describe("project item field patch", () => {
         dst: "新译文",
         name_dst: ["旧译名", "保留译名"],
         status: "PROCESSED",
-        retry_count: 0,
       }),
     ).toEqual({
       dst: "新译文",
       status: "PROCESSED",
-      retry_count: 0,
     });
   });
 
@@ -74,50 +69,58 @@ describe("project item field patch", () => {
 });
 
 describe("project item manual update", () => {
-  it.each(["", "新译文"])("正文实际改为 %j 时完成条目并清除重试历史", (dst) => {
+  it.each([null, "", ["", "保留译名"]])(
+    "提交相同空可见姓名 %j 保持无变化与字段形状",
+    (name_dst) => {
+      expect(
+        apply_project_item_manual_update(
+          { ...BASE_ITEM, name_dst, status: "ERROR" },
+          { name_dst: "" },
+        ),
+      ).toBeNull();
+    },
+  );
+
+  it("显式完成可以接受空译文", () => {
     expect(
       apply_project_item_manual_update(
-        { ...BASE_ITEM, dst: "旧译文", status: "ERROR", retry_count: 3 },
-        { dst },
+        { ...BASE_ITEM, dst: "", name_dst: null, status: "ERROR" },
+        { status: "PROCESSED" },
       ),
-    ).toEqual({ ...BASE_ITEM, dst, status: "PROCESSED", retry_count: 0 });
+    ).toEqual({ ...BASE_ITEM, dst: "", name_dst: null, status: "PROCESSED" });
+  });
+  it.each(["", "新译文"])("正文实际改为 %j 时完成条目", (dst) => {
+    expect(
+      apply_project_item_manual_update({ ...BASE_ITEM, dst: "旧译文", status: "ERROR" }, { dst }),
+    ).toEqual({ ...BASE_ITEM, dst, status: "PROCESSED" });
   });
 
-  it("相同非空译文可确认错误结果，纯 no-op 不清除重试历史", () => {
+  it("同值内容不改变失败状态，显式状态可以接受已有译文", () => {
+    const current = { ...BASE_ITEM, status: "ERROR" };
+    expect(apply_project_item_manual_update(current, { dst: current.dst })).toBeNull();
+    expect(apply_project_item_manual_update(current, { name_dst: "旧译名" })).toBeNull();
+    expect(apply_project_item_manual_update(current, {})).toBeNull();
     expect(
-      apply_project_item_manual_update(
-        { ...BASE_ITEM, status: "ERROR", retry_count: 3 },
-        { dst: "旧译文" },
-      ),
-    ).toEqual({ ...BASE_ITEM, status: "PROCESSED", retry_count: 0 });
-    expect(
-      apply_project_item_manual_update(
-        { ...BASE_ITEM, status: "PROCESSED", retry_count: 3 },
-        { dst: "旧译文" },
-      ),
-    ).toBeNull();
+      apply_project_item_manual_update(current, { dst: current.dst, status: "PROCESSED" }),
+    ).toEqual({ ...current, status: "PROCESSED" });
   });
 
-  it("显式状态覆盖正文默认状态并清零重试", () => {
+  it.each([{ dst: "新译文" }, { name_dst: "" }])("显式状态覆盖内容修改的完成状态：%j", (update) => {
     expect(
       apply_project_item_manual_update(
-        { ...BASE_ITEM, status: "ERROR", retry_count: 3 },
-        { dst: "新译文", status: "EXCLUDED" },
+        { ...BASE_ITEM, status: "ERROR" },
+        { ...update, status: "EXCLUDED" },
       ),
-    ).toEqual({ ...BASE_ITEM, dst: "新译文", status: "EXCLUDED", retry_count: 0 });
+    ).toMatchObject({ status: "EXCLUDED" });
   });
 
-  it("只修改姓名译文时保留正文状态、重试历史和其它姓名槽位", () => {
+  it.each(["", "新译名"])("可见姓名改为 %j 时完成条目并保留其它槽位", (name_dst) => {
     expect(
-      apply_project_item_manual_update(
-        { ...BASE_ITEM, status: "ERROR", retry_count: 2 },
-        { name_dst: "新译名" },
-      ),
+      apply_project_item_manual_update({ ...BASE_ITEM, status: "ERROR" }, { name_dst }),
     ).toEqual({
       ...BASE_ITEM,
-      name_dst: ["新译名", "保留译名"],
-      status: "ERROR",
-      retry_count: 2,
+      name_dst: [name_dst, "保留译名"],
+      status: "PROCESSED",
     });
   });
 });

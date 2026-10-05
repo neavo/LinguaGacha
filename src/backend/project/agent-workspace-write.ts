@@ -6,7 +6,7 @@ import {
 import { agent_workspace_fingerprint } from "./agent-workspace-fingerprint";
 import { isDeepStrictEqual } from "node:util";
 
-import { Item, type ItemNameField } from "../../domain/item";
+import { Item } from "../../domain/item";
 import { read_json_integer, type JsonRecord, type JsonValue } from "../../domain/json";
 import { PROMPT_KINDS, type PromptKind } from "../../domain/prompt";
 import { QualityRule, QUALITY_RULE_KINDS, type QualityRuleKind } from "../../domain/quality";
@@ -165,7 +165,6 @@ export function project_agent_workspace_item(item: JsonRecord): JsonRecord {
     text_type: Item.normalize_text_type(item["text_type"]),
     row_number: read_json_integer(item["row_number"] ?? item["row"], 0),
     status: Item.normalize_status(item["status"]),
-    retry_count: read_json_integer(item["retry_count"], 0),
   };
   return { ...row, fp: workspace_fingerprint(item_fingerprint_tuple(row)) };
 }
@@ -289,7 +288,6 @@ function item_fingerprint_tuple(row: JsonRecord): JsonValue[] {
     row["text_type"] ?? "NONE",
     row["row_number"] ?? 0,
     row["status"] ?? "NONE",
-    row["retry_count"] ?? 0,
   ];
 }
 
@@ -353,12 +351,13 @@ function resolve_items(
       rejected.push(item_rejection(item_id, "merge_conflict"));
       continue;
     }
-    const next = apply_project_item_manual_update(current as ItemWriteFacts, update);
+    const current_fields = pick_item_write_fields(current);
+    const next = apply_project_item_manual_update(current_fields, update);
     if (next === null) continue;
     changes.push({
       item_id,
-      current: pick_item_write_fields(current),
-      next: pick_item_write_fields(next as unknown as JsonRecord),
+      current: current_fields,
+      next,
     });
     candidates.push({
       line: Math.min(...group.map((intent) => intent.line)),
@@ -369,13 +368,6 @@ function resolve_items(
   }
   return { changes, rejected, candidates };
 }
-
-type ItemWriteFacts = JsonRecord & {
-  dst: string;
-  name_dst: ItemNameField;
-  status: string;
-  retry_count: number;
-};
 
 /** 将公开或数据库 Item 投影成重复协调需要的完整写入事实。 */
 function to_item_write_record(item: JsonRecord): ProjectItemWriteRecord[] {
@@ -392,7 +384,6 @@ function to_item_write_record(item: JsonRecord): ProjectItemWriteRecord[] {
       dst: String(item["dst"] ?? ""),
       name_dst: Item.normalize_name_field(item["name_dst"]),
       status: Item.normalize_status(item["status"]),
-      retry_count: read_json_integer(item["retry_count"], 0),
     },
   ];
 }
@@ -403,7 +394,6 @@ function pick_item_write_fields(item: JsonRecord): ProjectItemWriteChange["curre
     dst: String(item["dst"] ?? ""),
     name_dst: Item.normalize_name_field(item["name_dst"]),
     status: Item.normalize_status(item["status"]),
-    retry_count: read_json_integer(item["retry_count"], 0),
   };
 }
 

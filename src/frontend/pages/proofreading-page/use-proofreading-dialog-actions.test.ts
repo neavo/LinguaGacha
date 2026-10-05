@@ -23,7 +23,6 @@ const item: ProofreadingClientItem = {
   name_src: null,
   name_dst: null,
   status: "NONE",
-  retry_count: 0,
   warnings: [],
   glossary_applications: [],
   compressed_src: "原文",
@@ -71,31 +70,58 @@ describe("useProofreadingDialogActions", () => {
     });
   }
 
-  it.each([false, true])(
-    "保存仅提交字段差异，保留错误条目正文状态：修改姓名 %s",
-    async (edit_name) => {
-      const current = { ...item, status: "ERROR", name_dst: ["旧名", "旁白"] };
-      read_items.mockResolvedValue([current]);
+  it("保存姓名差异后完成条目并关闭弹窗", async () => {
+    const current = { ...item, status: "ERROR", name_dst: ["旧名", "旁白"] };
+    read_items.mockResolvedValue([current]);
+    await render_hook();
+    await act(async () => {
+      await state?.open_edit_dialog("1");
+    });
+    act(() => state?.update_dialog_draft({ name_dst: "新名" }));
+    await act(async () => {
+      await state?.save_dialog_entry();
+    });
+    const change = options.run_project_write.mock.calls[0]![0].plan!.request_body.changes![0]!;
+    expect(change).toEqual({ item_id: 1, name_dst: "新名" });
+    const saved = apply_project_item_manual_update(current, change)!;
+    expect(saved.status).toBe("PROCESSED");
+    expect(saved.name_dst).toEqual(["新名", "旁白"]);
+    expect(state?.dialog_state.open).toBe(false);
+  });
+
+  it.each(["navigate", "save"] as const)(
+    "无内容变化时 %s 保留失败状态且省略提交",
+    async (action) => {
+      read_items.mockResolvedValue([{ ...item, status: "ERROR" }]);
       await render_hook();
       await act(async () => {
         await state?.open_edit_dialog("1");
       });
-      if (edit_name)
-        act(() => {
-          state?.update_dialog_draft({ name_dst: "新名" });
-        });
       await act(async () => {
-        await state?.save_dialog_entry();
+        if (action === "save") await state?.save_dialog_entry();
+        else expect(await state?.save_dialog_draft()).toBe(true);
       });
-      if (edit_name) {
-        const change = options.run_project_write.mock.calls[0]![0].plan!.request_body.changes![0]!;
-        const saved = apply_project_item_manual_update(current, change)!;
-        expect(saved.status).toBe("ERROR");
-        expect(saved.name_dst).toEqual(["新名", "旁白"]);
-      } else expect(options.run_project_write).not.toHaveBeenCalled();
-      expect(state?.dialog_state.open).toBe(false);
+      expect(options.run_project_write).not.toHaveBeenCalled();
+      expect(state?.dialog_state.open).toBe(action === "navigate");
     },
   );
+
+  it("内容保存失败时保留弹窗", async () => {
+    options.run_project_write.mockResolvedValue(false);
+    await render_hook();
+    await act(async () => {
+      await state?.open_edit_dialog("1");
+    });
+    act(() => state?.update_dialog_draft({ dst: "新译文" }));
+    await act(async () => {
+      await state?.save_dialog_entry();
+    });
+    expect(state?.dialog_state).toMatchObject({
+      open: true,
+      pending: false,
+      draft_item: { dst: "新译文" },
+    });
+  });
 
   it("保存读取同步互斥，卸载后不继续提交", async () => {
     await render_hook();

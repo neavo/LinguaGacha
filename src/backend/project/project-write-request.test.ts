@@ -27,13 +27,11 @@ describe("project write request", () => {
 
   it("把任务 artifact 收窄为 typed Store 请求", () => {
     expect(
-      normalize_translation_item_patches([
-        { item_id: 1, dst: "译文", status: "PROCESSED", retry_count: 0 },
-      ]),
+      normalize_translation_item_patches([{ item_id: 1, dst: "译文", status: "PROCESSED" }]),
     ).toEqual([
       {
         item_id: 1,
-        patch: { dst: "译文", status: "PROCESSED", retry_count: 0 },
+        patch: { dst: "译文", status: "PROCESSED" },
       },
     ]);
     expect(() => normalize_translation_item_patches([{ id: 1, dst: "旧契约" }])).toThrow(

@@ -7,8 +7,6 @@ import { check_similarity_by_jaccard } from "../utils/text-tool";
 
 const TRANSLATION_SIMILARITY_THRESHOLD = 0.8; // 相似度阈值只服务校对页质量 warning
 
-const TRANSLATION_RETRY_REVIEW_THRESHOLD = 2;
-
 const GRAPHEME_SEGMENTER = new Intl.Segmenter(undefined, { granularity: "grapheme" });
 const SHORT_ASCII_UPPERCASE_LATIN_PATTERN = /^[A-Z]{2,4}$/;
 
@@ -53,14 +51,6 @@ export function collect_foreign_residue_fragments(args: {
   flush_current_fragment();
 
   return [...new Set(fragments)];
-}
-
-/**
- * 校对页在重试次数达到阈值时提示人工介入。
- */
-export function has_translation_retry_reached_review_threshold(retryCount: number): boolean {
-  const normalized_retry_count = Number.isFinite(retryCount) ? Math.trunc(retryCount) : 0;
-  return normalized_retry_count >= TRANSLATION_RETRY_REVIEW_THRESHOLD;
 }
 
 /**

@@ -31,7 +31,6 @@ export type ProjectItemViewRecord = ProjectItemDuplicateIdentity & {
   dst: string; // 译文
   name_dst: ProjectItemPublicRecord["name_dst"]; // 角色译名
   status: ProjectItemPublicRecord["status"]; // 翻译状态
-  retry_count: number; // 重试次数
   skip_internal_filter: boolean; // 是否绕过内部过滤
 };
 
@@ -95,7 +94,6 @@ export function derive_project_item_view_record_from_public(
     name_dst: item.name_dst,
     status: item.status,
     text_type: item.text_type,
-    retry_count: item.retry_count,
     skip_internal_filter: item.skip_internal_filter,
   };
 }
@@ -338,7 +336,6 @@ export function compute_project_prefilter_write(
       file_type: full_item.file_type,
       status: item.status,
       text_type: item.text_type,
-      retry_count: item.retry_count,
       skip_internal_filter: item.skip_internal_filter,
     };
   }

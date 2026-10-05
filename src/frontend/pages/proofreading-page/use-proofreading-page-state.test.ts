@@ -95,7 +95,6 @@ function create_project_item(overrides: Partial<ProjectItemPublicRecord>): Proje
     file_path: "",
     text_type: "NONE",
     status: "NONE",
-    retry_count: 0,
     skip_internal_filter: false,
     ...overrides,
   };
@@ -382,7 +381,6 @@ function create_client_item(
     name_src: null,
     name_dst: null,
     status: "NONE",
-    retry_count: 0,
     warnings: [],
     glossary_applications: [],
     compressed_src: `foo-${item_id}`,
@@ -436,7 +434,6 @@ function create_proofreading_runtime_query_response() {
           dst: "bar",
           status: "NONE",
           text_type: "NONE",
-          retry_count: 0,
         }),
       ],
       quality: quality_payload.quality,
@@ -2258,7 +2255,7 @@ describe("useProofreadingPageState", () => {
           items: {
             payloadMode: "field-patch",
             changedIds: [1, 2],
-            fieldPatch: { dst: "", name_dst: null, status: "NONE", retry_count: 0 },
+            fieldPatch: { dst: "", name_dst: null, status: "NONE" },
           },
         },
       ],

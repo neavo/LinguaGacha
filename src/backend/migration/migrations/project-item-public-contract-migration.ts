@@ -114,9 +114,6 @@ export function normalize_item_public_contract_payload(item_data: ItemContractRo
     assign_contract_field(normalized, "status", Item.normalize_status(normalized["status"])) ||
     changed;
   changed =
-    assign_contract_field(normalized, "retry_count", read_number(normalized["retry_count"], 0)) ||
-    changed;
-  changed =
     assign_contract_field(
       normalized,
       "skip_internal_filter",

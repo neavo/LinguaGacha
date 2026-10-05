@@ -26,16 +26,14 @@ describe("project item write planner", () => {
     expect(
       plan_project_item_changes({
         items: [item(1, "NONE"), current],
-        explicit_changes: [
-          change(current, { ...current, dst: "译文", status: "PROCESSED", retry_count: 0 }),
-        ],
+        explicit_changes: [change(current, { ...current, dst: "译文", status: "PROCESSED" })],
         duplicate_filter_enabled: true,
       }).map(({ item_id, patch }) => ({ item_id, patch })),
     ).toEqual([
       { item_id: 1, patch: { status: "DUPLICATED" } },
       {
         item_id: 2,
-        patch: { dst: "译文", status: "PROCESSED", retry_count: 0 },
+        patch: { dst: "译文", status: "PROCESSED" },
       },
     ]);
   });
@@ -53,7 +51,6 @@ function item(item_id: number, status: ItemStatus): ProjectItemWriteRecord {
     dst: "",
     name_dst: null,
     status,
-    retry_count: 2,
   };
 }
 
