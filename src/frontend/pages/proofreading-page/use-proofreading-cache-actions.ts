@@ -13,7 +13,7 @@ import {
   type SetStateAction,
 } from "react";
 
-import type { LocaleKey } from "@frontend/app/locale/locale-context";
+import type { TextResolver } from "@shared/i18n";
 import type { ProofreadingApiClient } from "@frontend/pages/proofreading-page/proofreading-api-client";
 import {
   clone_proofreading_filter_options,
@@ -43,8 +43,6 @@ import {
   type ProofreadingRefreshSignal,
   type ProofreadingResolvedListQuery,
 } from "@frontend/pages/proofreading-page/proofreading-list-query-utils";
-
-type LocaleTextResolver = (key: LocaleKey, params?: Record<string, string>) => string;
 
 type UseProofreadingCacheActionsOptions = {
   cache_status: "idle" | "refreshing" | "ready" | "error";
@@ -92,7 +90,7 @@ type UseProofreadingCacheActionsOptions = {
     options?: { persist?: boolean },
   ) => void;
   warm_filter_panel_query_ref: MutableRefObject<(filters: ProofreadingFilterOptions) => void>;
-  t: LocaleTextResolver;
+  t: TextResolver;
 };
 
 /** 重建、窗口范围与定位意图共用一个查询入口。 */
@@ -106,6 +104,7 @@ type ProofreadingListQueryOptions = {
 type UseProofreadingCacheActionsResult = {
   refresh_snapshot: () => Promise<void>;
   query_list_view: (
+    query: ProofreadingResolvedListQuery,
     options?: ProofreadingListQueryOptions,
   ) => Promise<ProofreadingListSnapshot | null>;
   publish_list_snapshot: (snapshot: ProofreadingListSnapshot) => void;
@@ -130,15 +129,17 @@ type UseProofreadingCacheActionsResult = {
 export function useProofreadingCacheActions(
   options: UseProofreadingCacheActionsOptions,
 ): UseProofreadingCacheActionsResult {
-  // 唯一列表构建出口：执行时读取最新意图，并以 request id 阻止过期查询发布。
+  // 唯一列表构建出口：读取明确的查询意图快照，以 request id 阻止过期结果发布。
   const query_list_view = useCallback(
-    async (query_options?: ProofreadingListQueryOptions) => {
+    async (
+      resolved_query: ProofreadingResolvedListQuery,
+      query_options?: ProofreadingListQueryOptions,
+    ) => {
       const sync_state = options.sync_state_ref.current;
       if (sync_state === null) {
         return null;
       }
 
-      const resolved_query = options.resolve_current_list_query();
       const current_snapshot = options.list_snapshot_ref.current;
       // 相同意图直接复用稳定视图；显式 rebuild 用于用户确认筛选和刷新兜底。
       if (
@@ -579,7 +580,7 @@ export function useProofreadingCacheActions(
       }
       if (should_build_list_view) {
         // 意图变化或旧窗口失效时统一走 list query，避免在刷新路径复制成员重算规则。
-        const snapshot = await query_list_view({
+        const snapshot = await query_list_view(options.resolve_current_list_query(), {
           rebuild: true,
           ...(can_reuse_current_view && refresh_window_bounds !== undefined
             ? { window_bounds: refresh_window_bounds }

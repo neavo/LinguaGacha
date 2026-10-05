@@ -21,6 +21,7 @@ export const en_us_proofreading_page = {
     clear_and_reset_status: "Clear and Reset Status",
     set_translation_status: "Set Translation Status",
     view_context: "View Context",
+    edit_item: "Edit this item",
     back: "Back",
   },
   fields: {

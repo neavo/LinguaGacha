@@ -20,6 +20,7 @@ export const ja_jp_proofreading_page = {
     clear_and_reset_status: "消去して状態をリセット",
     set_translation_status: "翻訳状態を設定",
     view_context: "前後の文脈を表示",
+    edit_item: "この項目を編集",
     back: "戻る",
   },
   fields: {

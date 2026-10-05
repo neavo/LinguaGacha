@@ -1,3 +1,4 @@
+import type { ProofreadingProjectWriteRunner } from "./proofreading-page-state-contract";
 import { is_proofreading_page_row_id } from "@shared/proofreading/proofreading-types";
 import { useCallback, useState } from "react";
 
@@ -6,33 +7,18 @@ import { api_fetch } from "@frontend/app/desktop/desktop-api";
 import type { BatchTranslationSnapshot } from "@domain/batch-translation";
 import { normalize_batch_translation_snapshot } from "@shared/batch-translation/batch-translation";
 
-import type { LocaleKey } from "@frontend/app/locale/locale-context";
+import type { TextResolver } from "@shared/i18n";
 import { PROOFREADING_STATUS_LABEL_KEY_BY_CODE } from "@frontend/features/proofreading/proofreading-label-keys";
 import {
   create_clear_translations_plan,
   create_apply_item_changes_plan,
   type ProofreadingCommandItemSnapshot,
-  type ProofreadingCommandPlan,
 } from "@shared/proofreading/proofreading-command-planner";
 import type {
   ProofreadingConfirmationAction,
   ProofreadingPendingConfirmation,
 } from "@frontend/pages/proofreading-page/proofreading-page-ui-types";
 import type { ProjectDataSectionRevisions } from "@shared/project-event";
-
-type LocaleTextResolver = (key: LocaleKey, params?: Record<string, string>) => string;
-
-type ProofreadingProjectWriteRunner = (args: {
-  path: string;
-  plan: ProofreadingCommandPlan | null;
-  fallback_error_key:
-    | "proofreading_page.feedback.clear_translation_failed"
-    | "app.feedback.modify_failed";
-  preferred_row_id?: string | null;
-  success_message_builder?: ((changed_count: number) => string) | null;
-  empty_warning_message?: string | null;
-  close_dialog?: boolean;
-}) => Promise<void>;
 
 type RetranslateTaskAck = {
   accepted?: boolean;
@@ -53,7 +39,7 @@ type UseProofreadingBatchActionsOptions = {
   remember_preferred_row_id: (preferred_row_id: string | null) => void;
   close_edit_dialog: () => void;
   handle_api_error: (error: unknown, fallback_message: string) => void;
-  t: LocaleTextResolver;
+  t: TextResolver;
 };
 
 type UseProofreadingBatchActionsResult = {
@@ -98,6 +84,7 @@ export function useProofreadingBatchActions(
   const [pending_confirmation, set_pending_confirmation] =
     useState<ProofreadingPendingConfirmation | null>(null);
 
+  /** 批量写入口同时检查文本身份、运行占用与刷新状态。 */
   const can_request_action = useCallback(
     (row_ids: string[]): boolean => {
       return (
@@ -124,6 +111,7 @@ export function useProofreadingBatchActions(
     [read_items_by_row_ids, handle_api_error, t],
   );
 
+  /** 受理重翻任务后同步运行态并结束当前编辑。 */
   const submit_retranslate_row_ids = useCallback(
     async (row_ids: string[], preferred_row_id: string | null): Promise<void> => {
       const item_ids = read_item_ids(await read_text_items(row_ids));
@@ -161,6 +149,7 @@ export function useProofreadingBatchActions(
     ],
   );
 
+  /** 清空提交成功后结束当前编辑，失败交由写入入口反馈。 */
   const submit_clear_translation_row_ids = useCallback(
     async (
       row_ids: string[],
@@ -172,7 +161,7 @@ export function useProofreadingBatchActions(
         return;
       }
 
-      await run_project_write({
+      const result = await run_project_write({
         path: "/api/proofreading/translations/clear",
         plan: create_clear_translations_plan({
           section_revisions: list_revisions,
@@ -187,13 +176,13 @@ export function useProofreadingBatchActions(
             : "proofreading_page.feedback.clear_translation_success";
           return t(feedback_key).replace("{COUNT}", changed_count.toString());
         },
-        close_dialog: dialog_open,
-        empty_warning_message: null,
       });
+      if (result && dialog_open) close_edit_dialog();
     },
-    [dialog_open, list_revisions, read_text_items, run_project_write, t],
+    [close_edit_dialog, dialog_open, list_revisions, read_text_items, run_project_write, t],
   );
 
+  /** 人工状态提交成功后结束当前编辑。 */
   const submit_set_translation_status_row_ids = useCallback(
     async (
       row_ids: string[],
@@ -207,7 +196,7 @@ export function useProofreadingBatchActions(
       }
 
       const status_label = t(PROOFREADING_STATUS_LABEL_KEY_BY_CODE[status]);
-      await run_project_write({
+      const result = await run_project_write({
         path: "/api/proofreading/items/update",
         plan: create_apply_item_changes_plan({
           snapshot: {
@@ -223,13 +212,13 @@ export function useProofreadingBatchActions(
             .replace("{COUNT}", changed_count.toString())
             .replace("{STATUS}", status_label);
         },
-        close_dialog: dialog_open,
-        empty_warning_message: null,
       });
+      if (result && dialog_open) close_edit_dialog();
     },
-    [dialog_open, list_revisions, read_text_items, run_project_write, t],
+    [close_edit_dialog, dialog_open, list_revisions, read_text_items, run_project_write, t],
   );
 
+  /** 重翻先登记待确认范围，确认后再受理任务。 */
   const request_retranslate_row_ids = useCallback(
     (row_ids: string[], preferred_row_id?: string | null): void => {
       if (!can_request_action(row_ids)) {
@@ -246,6 +235,7 @@ export function useProofreadingBatchActions(
     [can_request_action, resolve_preferred_row_id],
   );
 
+  /** 清空操作记录确认范围，保留发起时的焦点。 */
   const request_clear_translation_row_ids = useCallback(
     (row_ids: string[], preferred_row_id?: string | null): void => {
       if (!can_request_action(row_ids)) {
@@ -262,6 +252,7 @@ export function useProofreadingBatchActions(
     [can_request_action, resolve_preferred_row_id],
   );
 
+  /** 人工状态直接提交，复用共享写入与焦点恢复。 */
   const request_set_translation_status_row_ids = useCallback(
     (row_ids: string[], status: ItemManualStatus, preferred_row_id?: string | null): void => {
       if (!can_request_action(row_ids)) {
@@ -277,16 +268,19 @@ export function useProofreadingBatchActions(
     [can_request_action, resolve_preferred_row_id, submit_set_translation_status_row_ids],
   );
 
+  /** 提交中的确认保持可见，等待受理或失败反馈完成。 */
   const close_pending_confirmation = useCallback((): void => {
     set_pending_confirmation((previous_confirmation) => {
       return previous_confirmation?.submitting_action === null ? null : previous_confirmation;
     });
   }, []);
 
+  /** 工程边界切换时撤销旧确认范围。 */
   const clear_pending_confirmation = useCallback((): void => {
     set_pending_confirmation(null);
   }, []);
 
+  /** 确认动作与已登记操作匹配后，提交并释放确认状态。 */
   const confirm_pending_confirmation = useCallback(
     async (action: ProofreadingConfirmationAction): Promise<void> => {
       if (pending_confirmation === null || pending_confirmation.submitting_action !== null) {

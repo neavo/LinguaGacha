@@ -459,6 +459,8 @@
 }
 
 .proofreading-page__context-items {
+  /* 条目的 `offsetTop` 使用本列表的坐标，居中定位不受弹窗外层偏移影响。 */
+  position: relative;
   display: flex;
   min-height: 0;
   flex: 1;
@@ -472,16 +474,18 @@
   list-style: none;
 }
 
+/* 上下弹性占位均分剩余高度，内容溢出时归零。 */
+.proofreading-page__context-items::before,
+.proofreading-page__context-items::after {
+  content: "";
+  flex: 1 0 0px;
+}
+
 .proofreading-page__context-item {
   position: relative;
   display: flex;
   flex: 0 0 auto;
   border-top: 1px solid var(--border);
-}
-
-/* 最后一行吸收剩余高度。内容溢出时保留各行高度，避免横向分隔线重叠。 */
-.proofreading-page__context-item:last-child {
-  flex-grow: 1;
 }
 
 .proofreading-page__context-item:first-child {
@@ -524,7 +528,7 @@
 
 .proofreading-page__context-field {
   min-width: 0;
-  padding: 8px 76px 10px 12px;
+  padding: 8px 104px 10px 12px;
   background: color-mix(in srgb, var(--muted) 24%, var(--ui-card-default-surface) 76%);
 }
 

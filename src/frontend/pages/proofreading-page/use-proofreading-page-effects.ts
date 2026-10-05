@@ -5,7 +5,7 @@ import {
 } from "@frontend/pages/proofreading-page/proofreading-filter-state";
 import { useEffect, type MutableRefObject, type SetStateAction } from "react";
 
-import type { LocaleKey } from "@frontend/app/locale/locale-context";
+import type { TextResolver } from "@shared/i18n";
 import type { ProofreadingLookupIntent } from "@frontend/app/navigation/types";
 
 import {
@@ -23,9 +23,8 @@ type ProgressToastOptions = {
   presentation?: "inline" | "modal";
 };
 
-type LocaleTextResolver = (key: LocaleKey, params?: Record<string, string>) => string;
-
 type UseProofreadingPageEffectsOptions = {
+  navigation_pending: boolean; // 上下文导航拥有候选窗口，保存触发的刷新待导航结束后消费
   current_query_intent_key: string;
   filter_dialog_filters: ProofreadingContentFilters;
   filter_dialog_open: boolean;
@@ -67,7 +66,7 @@ type UseProofreadingPageEffectsOptions = {
     patch: Partial<ProofreadingViewFilterState>,
     options?: { persist?: boolean },
   ) => void;
-  t: LocaleTextResolver;
+  t: TextResolver;
 };
 
 /**
@@ -75,6 +74,7 @@ type UseProofreadingPageEffectsOptions = {
  */
 export function useProofreadingPageEffects(options: UseProofreadingPageEffectsOptions): void {
   const {
+    navigation_pending,
     current_query_intent_key,
     filter_dialog_filters,
     filter_dialog_open,
@@ -229,7 +229,7 @@ export function useProofreadingPageEffects(options: UseProofreadingPageEffectsOp
   useEffect(() => {
     const previous_seq = previous_proofreading_change_seq_ref.current;
 
-    if (!project_loaded || proofreading_change_signal === null) {
+    if (!project_loaded || proofreading_change_signal === null || navigation_pending) {
       return;
     }
 
@@ -238,6 +238,7 @@ export function useProofreadingPageEffects(options: UseProofreadingPageEffectsOp
       void refresh_snapshot();
     }
   }, [
+    navigation_pending,
     previous_proofreading_change_seq_ref,
     project_loaded,
     proofreading_change_signal,

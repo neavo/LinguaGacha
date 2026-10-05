@@ -14,7 +14,7 @@ export type ProofreadingDialogState = {
     dst: string;
     name_dst: string;
   };
-  saving: boolean;
+  pending: boolean; // 保存或上下文跳转期间阻止重复操作和关闭
   context: ProofreadingDialogContextState; // 与编辑草稿同属当前弹窗，关闭弹窗时一并清空
 };
 

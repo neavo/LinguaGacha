@@ -51,6 +51,7 @@ type ProofreadingEditDialogProps = {
   on_close: () => void;
   on_open_context: () => Promise<void>;
   on_close_context: () => void;
+  on_open_context_item: (row_id: string) => Promise<void>;
   on_request_retranslate: (row_ids: string[]) => void;
   on_request_clear_translation: (row_ids: string[]) => void;
   on_request_set_translation_status: (row_ids: string[], status: ItemManualStatus) => void;
@@ -361,12 +362,12 @@ function render_name_input_with_glossary_state(args: {
 export function ProofreadingEditDialog(props: ProofreadingEditDialogProps): JSX.Element | null {
   const { t } = useI18n();
   const item = props.item;
-  const { context, draft_item, open, saving } = props.state;
+  const { context, draft_item, open, pending } = props.state;
   const context_open = context.status !== "idle";
   const context_trigger_ref = useRef<HTMLButtonElement>(null);
   const previous_context_open_ref = useRef(false);
   const save_label = t("app.action.save");
-  const save_disabled = props.readonly || saving;
+  const save_disabled = props.readonly || pending;
 
   useEffect(() => {
     if (previous_context_open_ref.current && !context_open && open) {
@@ -417,7 +418,7 @@ export function ProofreadingEditDialog(props: ProofreadingEditDialogProps): JSX.
     read_optional_item_name_text(item.name_src) !== null ||
     read_optional_item_name_text(item.name_dst) !== null ||
     translation_name !== "";
-  const translation_readonly = props.readonly || saving;
+  const translation_readonly = props.readonly || pending;
   const source_name_marks = build_name_glossary_marks({
     text: source_name,
     source_field: true,
@@ -436,7 +437,7 @@ export function ProofreadingEditDialog(props: ProofreadingEditDialogProps): JSX.
       open={open}
       title={t(context_open ? "proofreading_page.action.view_context" : "app.action.edit")}
       size="viewport"
-      dismissBehavior={context_open ? "default" : saving ? "blocked" : "escape-only"}
+      dismissBehavior={pending ? "blocked" : context_open ? "default" : "escape-only"}
       onClose={context_open ? props.on_close_context : props.on_close}
       bodyClassName="overflow-hidden p-0"
       footerClassName={context_open ? undefined : "sm:justify-between"}
@@ -447,6 +448,7 @@ export function ProofreadingEditDialog(props: ProofreadingEditDialogProps): JSX.
             variant="outline"
             size="sm"
             autoFocus
+            disabled={pending}
             onClick={props.on_close_context}
           >
             {t("proofreading_page.action.back")}
@@ -459,7 +461,7 @@ export function ProofreadingEditDialog(props: ProofreadingEditDialogProps): JSX.
                 type="button"
                 variant="outline"
                 size="sm"
-                disabled={props.readonly || saving}
+                disabled={props.readonly || pending}
                 onClick={() => {
                   props.on_request_retranslate([String(item.item_id)]);
                 }}
@@ -471,7 +473,7 @@ export function ProofreadingEditDialog(props: ProofreadingEditDialogProps): JSX.
                 type="button"
                 variant="outline"
                 size="sm"
-                disabled={props.readonly || saving}
+                disabled={props.readonly || pending}
                 onClick={() => {
                   props.on_request_clear_translation([String(item.item_id)]);
                 }}
@@ -486,7 +488,7 @@ export function ProofreadingEditDialog(props: ProofreadingEditDialogProps): JSX.
                       type="button"
                       variant="outline"
                       size="sm"
-                      disabled={props.readonly || saving}
+                      disabled={props.readonly || pending}
                     >
                       <ListChecks data-icon="inline-start" />
                       {t("proofreading_page.action.set_translation_status")}
@@ -514,7 +516,7 @@ export function ProofreadingEditDialog(props: ProofreadingEditDialogProps): JSX.
                 type="button"
                 variant="outline"
                 size="sm"
-                disabled={saving}
+                disabled={pending}
                 onClick={props.on_close}
               >
                 {t("app.action.cancel")}
@@ -543,6 +545,8 @@ export function ProofreadingEditDialog(props: ProofreadingEditDialogProps): JSX.
             target_row_id={String(item.item_id)}
             file_path={item.file_path}
             draft_item={draft_item}
+            disabled={pending || props.readonly}
+            on_open_item={props.on_open_context_item}
           />
         ) : null}
         <ProofreadingDetailLayout
@@ -555,7 +559,7 @@ export function ProofreadingEditDialog(props: ProofreadingEditDialogProps): JSX.
               variant="ghost"
               size="sm"
               className="proofreading-page__dialog-context-trigger"
-              disabled={saving}
+              disabled={pending}
               onClick={() => {
                 void props.on_open_context();
               }}

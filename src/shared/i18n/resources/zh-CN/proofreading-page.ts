@@ -18,6 +18,7 @@ export const zh_cn_proofreading_page = {
     clear_and_reset_status: "清空并重置状态",
     set_translation_status: "设置翻译状态",
     view_context: "查看上下文",
+    edit_item: "编辑此条目",
     back: "返回",
   },
   fields: {

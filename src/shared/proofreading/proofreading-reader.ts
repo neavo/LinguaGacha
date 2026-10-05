@@ -247,7 +247,7 @@ type ResolvedProofreadingRows = {
 };
 
 const PROOFREADING_DEFAULT_WINDOW_COUNT = 160; // 默认窗口大小控制每次返回量，防止大项目一次复制全量行
-const PROOFREADING_CONTEXT_RADIUS = 2; // 固定前后各两条，避免 UI 与 reader 各自维护窗口语义
+const PROOFREADING_CONTEXT_RADIUS = 10; // 上下文条数由 reader 统一拥有，前后分别计算上限
 
 /**
  * 字符串去重保持首次出现顺序，供筛选项使用

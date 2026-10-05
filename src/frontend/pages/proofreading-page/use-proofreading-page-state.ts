@@ -14,7 +14,7 @@ import {
   clone_proofreading_view_filter_state,
   type ProofreadingViewFilterState,
 } from "@frontend/pages/proofreading-page/proofreading-filter-state";
-import { startTransition, useCallback, useMemo, useRef, useState } from "react";
+import { startTransition, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { api_fetch } from "@frontend/app/desktop/desktop-api";
 import type {
@@ -37,7 +37,6 @@ import { is_runtime_busy } from "@frontend/app/state/runtime-activity-store";
 
 import { useI18n } from "@frontend/app/locale/locale-context";
 import { useProjectSessionTableUiState } from "@frontend/app/session/project-session-ui-state-context";
-import type { ProofreadingCommandPlan } from "@shared/proofreading/proofreading-command-planner";
 import { useProofreadingBatchActions } from "@frontend/pages/proofreading-page/use-proofreading-batch-actions";
 import { useProofreadingCacheActions } from "@frontend/pages/proofreading-page/use-proofreading-cache-actions";
 import { useProofreadingDialogActions } from "@frontend/pages/proofreading-page/use-proofreading-dialog-actions";
@@ -49,12 +48,14 @@ import {
   PROOFREADING_REQUIRED_SECTIONS,
   normalize_proofreading_sort_state,
   type UseProofreadingPageStateResult,
+  type ProofreadingProjectWriteRunner,
 } from "@frontend/pages/proofreading-page/proofreading-page-state-contract";
 
 import {
   PROOFREADING_INITIAL_WINDOW_ROWS,
   build_proofreading_list_query_intent_key,
   resolve_proofreading_refresh_signal,
+  resolve_proofreading_list_query,
   type ProofreadingListSnapshot,
   type ProofreadingListWindowBounds,
   type ProofreadingResolvedListQuery,
@@ -69,6 +70,7 @@ import type {
 import type { ProjectDataSectionRevisions } from "@shared/project-event";
 import {
   build_proofreading_row_id,
+  PROOFREADING_OUTCOME_GROUPS,
   create_empty_proofreading_filter_panel_state,
   create_empty_proofreading_list_view,
   type ProofreadingClientItem,
@@ -208,7 +210,21 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
   const last_visible_range_signature_ref = useRef("");
   // 将 view 与创建它的查询意图绑定，避免异步刷新从平行 ref 反推身份。
   const list_snapshot_ref = useRef(list_snapshot);
-  const reset_dialog_ref = useRef<() => void>(() => undefined);
+  const context_navigation_ref = useRef<symbol | null>(null); // 同步互斥与迟到响应隔离共用一次导航身份
+  const [is_navigating, set_is_navigating] = useState(false);
+
+  /** 撤销目标准备并释放界面的导航忙碌态。 */
+  const cancel_context_navigation = useCallback((): void => {
+    context_navigation_ref.current = null;
+    set_is_navigating(false);
+  }, []);
+  // 页面卸载撤销导航身份，让迟到查询自然结束。
+  useEffect(
+    () => () => {
+      context_navigation_ref.current = null;
+    },
+    [],
+  );
 
   const visible_items = list_view.window_rows;
   const visible_row_index_by_id = useMemo(() => {
@@ -289,24 +305,11 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
 
   // 每次执行时从最新 ref 同时生成符号意图键和物化查询，避免调用方传入过期快照。
   const resolve_current_list_query = useCallback((): ProofreadingResolvedListQuery => {
-    const filter_state = table_filter_state_ref.current;
-    const sort_state_snapshot = table_sort_state_ref.current;
-    return {
-      query_intent_key: build_proofreading_list_query_intent_key({
-        filter_state,
-        sort_state: sort_state_snapshot,
-      }),
-      query: {
-        filters: materialize_proofreading_filters(
-          filter_state.selection,
-          defaultFiltersRef.current,
-        ),
-        keyword: filter_state.search_keyword,
-        scope: filter_state.search_scope,
-        is_regex: filter_state.is_regex,
-        sort_state: sort_state_snapshot,
-      },
-    };
+    return resolve_proofreading_list_query({
+      filter_state: table_filter_state_ref.current,
+      default_filters: defaultFiltersRef.current,
+      sort_state: table_sort_state_ref.current,
+    });
   }, [table_filter_state_ref, table_sort_state_ref]);
 
   // 刷新锚点只从当前窗口选择，避免为窗口外选区追加后端定位请求。
@@ -374,33 +377,15 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
   );
 
   // 所有校对写入通过项目唯一写入口提交，成功后的公开 change 再驱动列表刷新。
-  const run_project_write = useCallback(
-    async (args: {
-      path: string;
-      plan: ProofreadingCommandPlan | null;
-      fallback_error_key:
-        | "app.feedback.save_failed"
-        | "proofreading_page.feedback.replace_failed"
-        | "proofreading_page.feedback.clear_translation_failed"
-        | "app.feedback.modify_failed";
-      preferred_row_id?: string | null;
-      pending_replace_cursor?: number | null;
-      success_message_builder?: ((changed_count: number) => string) | null;
-      empty_warning_message?: string | null;
-      close_dialog?: boolean;
-    }): Promise<void> => {
+  const run_project_write = useCallback<ProofreadingProjectWriteRunner>(
+    async (args) => {
       if (args.plan === null || args.plan.changed_item_ids.length === 0) {
-        if (args.empty_warning_message !== null && args.empty_warning_message !== undefined) {
+        if (args.empty_warning_message !== undefined) {
           push_toast("warning", args.empty_warning_message);
         }
-        return;
+        return false;
       }
       const write_plan = args.plan;
-
-      if (args.pending_replace_cursor !== undefined) {
-        pending_replace_cursor_ref.current = args.pending_replace_cursor;
-      }
-      pending_write_focus_row_id_ref.current = args.preferred_row_id ?? active_row_id_ref.current;
 
       set_is_writing(true);
 
@@ -410,10 +395,21 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
           run: async () => {
             return await api_fetch<ProjectWriteResultPayload>(args.path, write_plan.request_body);
           },
+          // 登记在回灌之前，失败的请求不会留下待应用的焦点或替换游标。
+          prepare: () => {
+            if (args.pending_replace_cursor !== undefined)
+              pending_replace_cursor_ref.current = args.pending_replace_cursor;
+            pending_write_focus_row_id_ref.current =
+              args.preferred_row_id ?? active_row_id_ref.current;
+          },
         });
-        await refresh_batch_translation();
+        try {
+          await refresh_batch_translation();
+        } catch (error) {
+          handle_api_error(error, t("app.feedback.refresh_failed"));
+        }
 
-        if (args.success_message_builder !== null && args.success_message_builder !== undefined) {
+        if (args.success_message_builder !== undefined) {
           // 成功数量只消费后端规范化事实，避免候选目标把部分变化或 no-op 计为已变更。
           const changed_item_count = new Set(
             write_result.changes.flatMap((change) =>
@@ -423,11 +419,10 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
           push_toast("success", args.success_message_builder(changed_item_count));
         }
 
-        if (args.close_dialog) {
-          reset_dialog_ref.current();
-        }
+        return true;
       } catch (error) {
         handle_api_error(error, t(args.fallback_error_key));
+        return false;
       } finally {
         set_is_writing(false);
       }
@@ -474,16 +469,16 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
     open_dialog_context,
     close_dialog_context,
     save_dialog_entry,
+    save_dialog_draft,
+    show_dialog_item,
   } = useProofreadingDialogActions({
     list_revisions,
     visible_item_by_id,
     read_items_by_row_ids: read_dialog_items,
     read_context: read_dialog_context,
     run_project_write,
-    push_toast,
     t,
   });
-  reset_dialog_ref.current = reset_dialog;
 
   const {
     pending_confirmation,
@@ -553,6 +548,7 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
   ]);
 
   const clear_transient_state_for_new_project = useCallback((): void => {
+    cancel_context_navigation();
     clear_pending_confirmation();
     const empty_dialog_filters = clone_content_filters(create_empty_filter_options());
     reset_table_state({ persist: false });
@@ -571,7 +567,13 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
     pending_write_focus_row_id_ref.current = null;
     clear_refresh_scroll_anchor();
     pending_reset_filters_ref.current = false;
-  }, [clear_pending_confirmation, clear_refresh_scroll_anchor, reset_dialog, reset_table_state]);
+  }, [
+    cancel_context_navigation,
+    clear_pending_confirmation,
+    clear_refresh_scroll_anchor,
+    reset_dialog,
+    reset_table_state,
+  ]);
 
   const clear_cache_state = useCallback((): void => {
     clear_pending_confirmation();
@@ -659,7 +661,7 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
   const execute_list_query_change = useCallback(
     async (change: ListQueryChange): Promise<void> => {
       try {
-        const snapshot = await query_list_view({
+        const snapshot = await query_list_view(resolve_current_list_query(), {
           ...(change.rebuild === undefined ? {} : { rebuild: change.rebuild }),
           scroll_to_row_id: change.target_row_id,
         });
@@ -683,6 +685,7 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
     [
       publish_list_snapshot,
       query_list_view,
+      resolve_current_list_query,
       report_proofreading_list_error,
       set_table_selection_state,
       t,
@@ -693,11 +696,13 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
     void execute_list_query_change(change);
   }, INPUT_QUERY_DEBOUNCE_MS);
 
+  /** 新查询接管焦点与窗口，撤销旧写入的待恢复位置。 */
   const prepare_list_query_change = useCallback((): void => {
     pending_write_focus_row_id_ref.current = null;
     visible_range_ref.current = null;
   }, []);
 
+  /** 即时查询先取消待执行的防抖意图，再读取当前查询状态。 */
   const run_list_query_change = useCallback(
     (change: ListQueryChange): Promise<void> => {
       list_query_change_scheduler.cancel();
@@ -707,6 +712,7 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
     [execute_list_query_change, list_query_change_scheduler, prepare_list_query_change],
   );
 
+  /** 连续输入只保留最新查询意图，候选行身份随意图一起延后提交。 */
   const schedule_list_query_change = useCallback(
     (change: ListQueryChange): void => {
       prepare_list_query_change();
@@ -716,6 +722,7 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
   );
   cancel_pending_list_query_change_ref.current = list_query_change_scheduler.cancel;
 
+  /** 列表发布后后台补读统计，统一反馈读取失败。 */
   const warm_filter_panel_query = useCallback(
     (filters: ProofreadingFilterOptions): void => {
       void run_filter_panel_query(filters, {
@@ -796,11 +803,13 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
       read_current_view_row_ids,
       read_items_by_row_ids,
       run_project_write,
+      close_edit_dialog: reset_dialog,
       t,
     },
   );
 
   useProofreadingPageEffects({
+    navigation_pending: is_navigating,
     current_query_intent_key,
     filter_dialog_filters,
     filter_dialog_open,
@@ -851,6 +860,101 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
   );
   const file_selection = table_ui_state.filter_state.selection.files;
 
+  /** 保存与目标准备完成后，查询意图、列表选区和弹窗一起发布。 */
+  const open_context_item = useCallback(
+    async (row_id: string): Promise<void> => {
+      if (context_navigation_ref.current !== null || dialog_state.pending) return;
+      if (row_id === dialog_state.target_row_id) {
+        close_dialog_context();
+        return;
+      }
+      if (readonly || is_refreshing || is_writing || cache_status !== "ready") return;
+      const request = Symbol();
+      context_navigation_ref.current = request;
+      set_is_navigating(true);
+      list_query_change_scheduler.cancel();
+      try {
+        if (!(await save_dialog_draft()) || context_navigation_ref.current !== request) return;
+        const filter_state = create_empty_proofreading_view_filter_state();
+        filter_state.selection = {
+          ...filter_state.selection,
+          // 默认结果含扩展检查项，公开分组补齐默认隐藏的状态。
+          outcomes: {
+            mode: "selected",
+            values: [
+              ...new Set([
+                ...defaultFiltersRef.current.outcomes,
+                ...PROOFREADING_OUTCOME_GROUPS.flatMap((group) => group.outcome_codes),
+              ]),
+            ],
+          },
+          include_without_glossary_miss: true,
+        };
+        const query = resolve_proofreading_list_query({
+          filter_state,
+          default_filters: defaultFiltersRef.current,
+          sort_state,
+        });
+        const [snapshot, items] = await Promise.all([
+          query_list_view(query, { scroll_to_row_id: row_id }),
+          read_dialog_items([row_id]),
+        ]);
+        if (context_navigation_ref.current !== request || snapshot === null) return;
+        const item = items[0];
+        if (item === undefined || snapshot.scroll_to_row?.row_id !== row_id)
+          throw new Error("The requested entry is absent from the navigation response.");
+        // 保存回灌留下的旧焦点不能在后续刷新时覆盖目标条目。
+        prepare_list_query_change();
+        clear_refresh_scroll_anchor();
+        // 同步批量提交，导航解锁与目标切换使用同一渲染优先级。
+        update_table_filter_state(filter_state);
+        publish_list_snapshot(snapshot);
+        set_table_selection_state({
+          selected_row_ids: [row_id],
+          active_row_id: row_id,
+          anchor_row_id: row_id,
+        });
+        show_dialog_item(item);
+        warm_filter_panel_query(query.query.filters);
+      } catch (error) {
+        if (context_navigation_ref.current === request)
+          handle_api_error(error, t("app.feedback.read_failed"));
+      } finally {
+        if (context_navigation_ref.current === request) cancel_context_navigation();
+      }
+    },
+    [
+      cache_status,
+      cancel_context_navigation,
+      clear_refresh_scroll_anchor,
+      close_dialog_context,
+      dialog_state.pending,
+      dialog_state.target_row_id,
+      handle_api_error,
+      is_refreshing,
+      is_writing,
+      list_query_change_scheduler,
+      prepare_list_query_change,
+      publish_list_snapshot,
+      query_list_view,
+      read_dialog_items,
+      readonly,
+      save_dialog_draft,
+      set_table_selection_state,
+      show_dialog_item,
+      sort_state,
+      t,
+      update_table_filter_state,
+      warm_filter_panel_query,
+    ],
+  );
+
+  /** 关闭编辑时同时撤销正在准备的上下文目标。 */
+  const request_close_dialog = useCallback((): void => {
+    cancel_context_navigation();
+    reset_dialog();
+  }, [cancel_context_navigation, reset_dialog]);
+
   return useMemo<UseProofreadingPageStateResult>(() => {
     return {
       cache_status,
@@ -881,7 +985,7 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
       preserve_scroll_anchor,
       retranslating_row_ids,
       filter_dialog_open,
-      dialog_state,
+      dialog_state: { ...dialog_state, pending: dialog_state.pending || is_navigating },
       dialog_item,
       pending_confirmation,
       refresh_snapshot,
@@ -903,9 +1007,10 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
       update_filter_dialog_filters,
       confirm_filter_dialog_filters,
       open_edit_dialog,
-      request_close_dialog: reset_dialog,
+      request_close_dialog,
       update_dialog_draft,
       open_dialog_context,
+      open_context_item,
       close_dialog_context,
       save_dialog_entry,
       replace_next_visible_match,
@@ -945,6 +1050,8 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
     is_regex,
     open_edit_dialog,
     open_dialog_context,
+    open_context_item,
+    is_navigating,
     open_filter_dialog,
     pending_confirmation,
     preserve_scroll_anchor,
@@ -957,7 +1064,7 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
     replace_all_visible_matches,
     replace_next_visible_match,
     replace_text,
-    reset_dialog,
+    request_close_dialog,
     request_clear_translation_row_ids,
     request_retranslate_row_ids,
     request_set_translation_status_row_ids,

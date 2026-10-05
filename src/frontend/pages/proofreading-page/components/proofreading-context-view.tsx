@@ -1,5 +1,5 @@
-import { LoaderCircle } from "lucide-react";
-import type { JSX, ReactNode } from "react";
+import { LoaderCircle, PencilLine } from "lucide-react";
+import { type JSX, type ReactNode, useLayoutEffect, useRef } from "react";
 
 import { useI18n } from "@frontend/app/locale/locale-context";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@frontend/shadcn/tooltip";
@@ -9,6 +9,7 @@ import type {
 } from "@frontend/pages/proofreading-page/proofreading-page-ui-types";
 import { Badge } from "@frontend/shadcn/badge";
 import { AppContentState } from "@frontend/widgets/app-content-state";
+import { AppButton } from "@frontend/widgets/app-button";
 import { read_optional_item_name_text } from "@shared/item-name";
 
 type ProofreadingContextViewProps = {
@@ -16,6 +17,8 @@ type ProofreadingContextViewProps = {
   target_row_id: string;
   file_path: string;
   draft_item: ProofreadingDialogState["draft_item"];
+  disabled: boolean;
+  on_open_item: (row_id: string) => Promise<void>;
 };
 
 /** 保留原字符以支持复制，同时为三类空白叠加可见标记。 */
@@ -64,9 +67,22 @@ function render_context_text(name: string | null, text: string): JSX.Element {
   );
 }
 
-/** 固定展示当前条目同文件的原译文上下文，不承担编辑和列表操作。 */
+/** 展示同文件上下文，目标导航交给页面处理。 */
 export function ProofreadingContextView(props: ProofreadingContextViewProps): JSX.Element | null {
   const { t } = useI18n();
+  const edit_label = t("proofreading_page.action.edit_item");
+  const items_ref = useRef<HTMLOListElement>(null);
+  const status = props.state.status;
+  const target_row_id = props.target_row_id;
+
+  // 只在进入或目标变化时定位，浏览器限制滚动边界，后续阅读由用户控制。
+  useLayoutEffect(() => {
+    const list = items_ref.current;
+    if (list === null) return;
+    const current = list.querySelector<HTMLElement>("[aria-current='true']");
+    if (current === null) return;
+    list.scrollTop = current.offsetTop + current.offsetHeight / 2 - list.clientHeight / 2;
+  }, [status, target_row_id]);
 
   if (props.state.status === "idle") {
     return null;
@@ -96,7 +112,7 @@ export function ProofreadingContextView(props: ProofreadingContextViewProps): JS
         </Tooltip>
       </header>
 
-      <ol className="proofreading-page__context-items">
+      <ol ref={items_ref} className="proofreading-page__context-items">
         {props.state.items.map((item) => {
           const is_current = item.row_id === props.target_row_id;
           const source_name = read_optional_item_name_text(item.name_src);
@@ -111,6 +127,24 @@ export function ProofreadingContextView(props: ProofreadingContextViewProps): JS
               aria-current={is_current ? "true" : undefined}
             >
               <div className="proofreading-page__context-item-meta">
+                <Tooltip>
+                  <TooltipTrigger
+                    render={
+                      <AppButton
+                        variant="ghost"
+                        size="icon-xs"
+                        disabled={props.disabled}
+                        aria-label={edit_label}
+                        onClick={() => {
+                          void props.on_open_item(item.row_id);
+                        }}
+                      >
+                        <PencilLine aria-hidden="true" />
+                      </AppButton>
+                    }
+                  />
+                  <TooltipContent>{edit_label}</TooltipContent>
+                </Tooltip>
                 <span className="proofreading-page__context-row-number">#{item.row_number}</span>
               </div>
               <dl className="proofreading-page__context-pair">
