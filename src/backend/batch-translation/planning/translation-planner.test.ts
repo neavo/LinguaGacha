@@ -92,6 +92,29 @@ describe("TranslationPlanner", () => {
     expect(contexts.every((context) => context.precedings.length === 0)).toBe(true);
   });
 
+  it("仅姓名任务按姓名容量分批，数组附加槽不参与计数", async () => {
+    const count_items = vi.fn(async (texts: readonly string[]) => texts.map(() => 12));
+    const planner = create_planner(count_items);
+    const plan = await planner.build_translation_plan(
+      [
+        create_item({ id: 1, src: "", name_src: ["虎鉄", "格式元数据"] }),
+        create_item({ id: 2, src: "", name_src: "美咲" }),
+      ],
+      {},
+      { api_format: "SakuraLLM", threshold: { input_token_limit: 16 } },
+      new AbortController().signal,
+    );
+    expect(count_items.mock.calls[0]?.[0]).toEqual([
+      expect.stringContaining("虎鉄"),
+      expect.stringContaining("美咲"),
+    ]);
+    expect(count_items.mock.calls[0]?.[0]?.[0]).not.toContain("格式元数据");
+    expect(plan.contexts.map((context) => context.items.map((item) => item.id))).toEqual([
+      [1],
+      [2],
+    ]);
+  });
+
   it("翻译规划按短引用投影计算 token 指标", async () => {
     const count_items = vi.fn(async (items: readonly string[]) => items.map(() => 1));
     const planner = create_planner(count_items);

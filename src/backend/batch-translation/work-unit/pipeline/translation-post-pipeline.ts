@@ -5,7 +5,7 @@ import {
 } from "../../../../shared/text/text-replacement-rules";
 import type { TextProcessingConfig, TextQualitySnapshot } from "../../../../shared/text/text-types";
 import { split_text_lines } from "../../../../shared/text/text-lines";
-import { type TranslationDecodedItem, type TranslationPromptMode } from "../translation-item";
+import { type TranslationDecodedItem } from "../translation-item";
 import type { TranslationPrePipelineContext } from "./translation-pre-pipeline";
 import { restore_translation_line } from "./translation-output-restoration";
 import {
@@ -37,10 +37,9 @@ export class TranslationPostPipeline {
   public process_item(
     context: TranslationPrePipelineContext,
     decoded_item: TranslationDecodedItem,
-    mode: TranslationPromptMode,
   ): TranslationPostPipelineResult {
     const dst = this.restore_body(context, decoded_item.text_dst);
-    if (mode !== "actor_text" || context.request_item?.actor_src == null) return { dst };
+    if (context.request_item?.actor_src == null) return { dst };
     const actor_dst = decoded_item.actor_dst; // 响应解码器已完成姓名归一。
     return {
       dst,

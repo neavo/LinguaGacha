@@ -22,6 +22,7 @@ import {
 import { TranslationPostPipeline } from "../pipeline/translation-post-pipeline";
 import {
   resolve_translation_prompt_mode,
+  normalize_translation_actor,
   type TranslationActor,
   type TranslationDecodedItem,
   type TranslationPromptMode,
@@ -30,7 +31,7 @@ import {
 import { PromptBuilder, type PromptBuilderConfig } from "../work-unit-prompt-builder";
 import { split_translation_response } from "../response/split-translation-response";
 import { ResponseDecoder } from "../response/response-decoder";
-import type { LLMMessage, LLMRequestResult } from "../../../llm/llm-types";
+import type { LLMRequestResult } from "../../../llm/llm-types";
 import type { TranslationRequestPort } from "../../protocol/translation-request";
 import type { TranslationWorkUnit, WorkUnitLogEntry } from "../../protocol/work-unit";
 import type { WorkUnitExecutionResult } from "../../protocol/work-unit-result";
@@ -45,10 +46,6 @@ interface TranslationWorkUnitRequest {
   quality_snapshot: TextQualitySnapshot; // Frozen text rules shared by prompt and pipelines.
   items: TextTaskItemRecord[]; // Item snapshots owned by this work unit.
   precedings: TextTaskItemRecord[]; // Context-only items; never written back.
-  split_count?: JsonValue; // Diagnostic retry context retained by the BatchTranslationRunner.
-  retry_count?: JsonValue; // Diagnostic retry context retained by the BatchTranslationRunner.
-  token_threshold?: JsonValue; // Planner threshold used for this chunk.
-  is_initial?: JsonValue; // Distinguishes first execution from retries.
 }
 
 /** Runner 结果，尚未包装进跨线程执行信封。 */
@@ -58,7 +55,7 @@ interface TranslationWorkUnitResult {
   reasoning_tokens: number;
   output_tokens: number;
   stopped: boolean;
-  logs?: WorkUnitLogEntry[];
+  logs: WorkUnitLogEntry[];
 }
 
 /** 以 item 为单位的翻译 worker，逐行准备与恢复由 pipeline 负责。 */
@@ -83,10 +80,6 @@ export class TranslationWorkUnitRunner {
         quality_snapshot: unit.quality_snapshot,
         items: unit.payload.items,
         precedings: unit.payload.precedings,
-        split_count: unit.diagnostics.split_count,
-        retry_count: unit.diagnostics.retry_count,
-        token_threshold: unit.diagnostics.token_threshold,
-        is_initial: unit.diagnostics.is_initial,
       },
       signal,
     );
@@ -104,11 +97,11 @@ export class TranslationWorkUnitRunner {
         output_tokens: result.output_tokens,
       },
       output: { kind: "translation", items: result.items },
-      logs: result.logs ?? [],
+      logs: result.logs,
     };
   }
 
-  /** 执行准备、单次 LLM 请求、解码、校验和 item 恢复。 */
+  /** 准备字段候选，执行协议请求，再校验并恢复完整条目。 */
   private async execute_items(
     request: TranslationWorkUnitRequest,
     signal: AbortSignal,
@@ -119,31 +112,100 @@ export class TranslationWorkUnitRunner {
     const precedings = structuredClone(request.precedings);
     const prepared = this.prepare_request_data(request, config, quality, items, precedings);
     if (prepared.done) return prepared.result;
-    const start_time = Date.now();
-    const response = await this.llm_client.request(
-      {
-        run_id: request.run_id,
-        work_unit_id: request.work_unit_id,
-        model: request.model,
-        config_snapshot: request.config_snapshot,
-        messages: prepared.messages,
-      },
-      signal,
-    );
-    if (response.cancelled || signal.aborted) return { ...this.empty_result(), stopped: true };
-    return this.apply_response_data(
-      {
-        ...prepared,
-        config,
-        quality,
-        request,
-        start_time,
-        items,
-        request_error: response.request_error ?? response.response_error,
-        request_timeout: response.timeout,
-      },
-      response,
-    );
+    const is_sakura = String(read_json_record(request.model)["api_format"] ?? "") === "SakuraLLM";
+    const result = this.empty_result(items); // 多次请求共用用量与日志，字段写回在执行完成后进行。
+    /** 单次请求完成解码、字段校验和日志结算，取消以 null 返回。 */
+    const request_once = async (
+      request_items: TranslationRequestItem[],
+    ): Promise<TranslationDecodedItem[] | null> => {
+      if (signal.aborted) return null;
+      const mode = resolve_translation_prompt_mode(request_items);
+      const prompt = is_sakura
+        ? prepared.builder.generate_prompt_sakura(
+            request_items.map((item) => item.text_src).join("\n"),
+          )
+        : prepared.builder.generate_prompt(
+            request_items,
+            mode,
+            prepared.samples,
+            prepared.projected_precedings,
+          );
+      const start_time = Date.now();
+      const response = await this.llm_client.request(
+        {
+          run_id: request.run_id,
+          work_unit_id: request.work_unit_id,
+          model: request.model,
+          config_snapshot: request.config_snapshot,
+          messages: prompt.messages,
+        },
+        signal,
+      );
+      result.input_tokens += response.input_tokens;
+      result.reasoning_tokens += response.reasoning_tokens;
+      result.output_tokens += response.output_tokens;
+      if (response.cancelled || signal.aborted) return null;
+      const request_error = response.request_error ?? response.response_error;
+      const failed = request_error !== undefined || response.timeout;
+      const parts = failed
+        ? { translation_text: "", rule_analysis_text: "" }
+        : is_sakura
+          ? { translation_text: response.response_result, rule_analysis_text: "" }
+          : split_translation_response(response.response_result);
+      const decoder = new ResponseDecoder();
+      const decoded = failed
+        ? []
+        : is_sakura
+          ? decoder.decode_sakura(parts.translation_text, request_items)
+          : await decoder.decode_translation(parts.translation_text, mode);
+      const valid = this.read_valid_results(request_items, prepared.pipeline_contexts, decoded);
+      const by_id = new Map(valid.map((item) => [item.request_id, item]));
+      result.logs.push(
+        ...this.build_logs(
+          {
+            request,
+            start_time,
+            console_log: prompt.console_log,
+            request_items,
+            mode,
+            request_error,
+            request_timeout: response.timeout,
+          },
+          valid.length,
+          request_items.map((item) => by_id.get(item.request_id)?.text_dst ?? ""),
+          request_items.map((item) => by_id.get(item.request_id)?.actor_dst ?? null),
+          response,
+          parts,
+        ),
+      );
+      return valid;
+    };
+    const decoded = is_sakura
+      ? await this.execute_sakura_translation(
+          prepared.request_items,
+          prepared.pipeline_contexts,
+          request_once,
+        )
+      : await request_once(prepared.request_items);
+    if (decoded === null || signal.aborted) return { ...result, items: [], stopped: true };
+    const by_id = new Map(decoded.map((item) => [item.request_id, item]));
+    const post = new TranslationPostPipeline(config, quality);
+    for (const request_item of prepared.request_items) {
+      const item = items[request_item.item_index]!;
+      const decoded_item = by_id.get(request_item.request_id);
+      if (decoded_item !== undefined) {
+        const output = post.process_item(
+          prepared.pipeline_contexts[request_item.item_index]!,
+          decoded_item,
+        );
+        item.dst = output.dst;
+        if (Object.hasOwn(output, "name_dst")) item.name_dst = output.name_dst ?? null;
+        item.status = "PROCESSED";
+      } else if (prepared.request_items.length === 1) {
+        item.retry_count = read_json_integer(item.retry_count, 0) + 1;
+      }
+    }
+    return result;
   }
 
   /** 为每个 item 构建一条请求记录，并将逐行事实保留在 pipeline 内部。 */
@@ -158,14 +220,13 @@ export class TranslationWorkUnitRunner {
     | {
         done: false;
         request_items: TranslationRequestItem[];
-        mode: TranslationPromptMode;
-        messages: LLMMessage[];
-        console_log: string[];
+        builder: PromptBuilder;
+        samples: string[];
+        projected_precedings: TextTaskItemRecord[];
         pipeline_contexts: TranslationPrePipelineContext[];
       } {
     const activated = this.resolve_activated_glossary_entries(quality, items);
-    const api_format = String(read_json_record(request.model)["api_format"] ?? "OpenAI");
-    const pipeline = new TranslationPrePipeline(config, quality, api_format !== "SakuraLLM");
+    const pipeline = new TranslationPrePipeline(config, quality);
     const projected_precedings = pipeline.project_precedings(precedings);
     const pipeline_contexts: TranslationPrePipelineContext[] = [];
     const request_items: TranslationRequestItem[] = [];
@@ -181,7 +242,7 @@ export class TranslationWorkUnitRunner {
     if (request_items.length === 0)
       return {
         done: true,
-        result: { items, input_tokens: 0, reasoning_tokens: 0, output_tokens: 0, stopped: false },
+        result: this.empty_result(items),
       };
     const samples = pipeline_contexts.flatMap((context) => context.samples);
     const builder = new PromptBuilder(
@@ -190,105 +251,78 @@ export class TranslationWorkUnitRunner {
       quality,
       activated,
     );
-    const mode =
-      api_format === "SakuraLLM" ? "text" : resolve_translation_prompt_mode(request_items);
-    const prompt =
-      api_format === "SakuraLLM"
-        ? builder.generate_prompt_sakura(request_items.map((item) => item.text_src).join("\n"))
-        : builder.generate_prompt(request_items, mode, samples, projected_precedings);
     return {
       done: false,
       request_items,
-      mode,
-      messages: prompt.messages,
-      console_log: prompt.console_log,
+      builder,
+      samples,
+      projected_precedings,
       pipeline_contexts,
     };
   }
 
-  /** 按请求 ID 独立校验，避免单个格式错误的 item 影响其它 item。 */
-  private async apply_response_data(
-    context: {
-      config: TextProcessingConfig;
-      quality: TextQualitySnapshot;
-      request: TranslationWorkUnitRequest;
-      start_time: number;
-      console_log: string[];
-      request_items: TranslationRequestItem[];
-      mode: TranslationPromptMode;
-      pipeline_contexts: TranslationPrePipelineContext[];
-      items: TextTaskItemRecord[];
-      request_error?: LogError | undefined;
-      request_timeout: boolean;
-    },
-    response: LLMRequestResult,
-  ): Promise<TranslationWorkUnitResult> {
-    const request_failed = context.request_error !== undefined || context.request_timeout;
-    const is_sakura =
-      String(read_json_record(context.request.model)["api_format"] ?? "") === "SakuraLLM";
-    const response_parts = request_failed
-      ? { translation_text: "", rule_analysis_text: "" }
-      : is_sakura
-        ? { translation_text: response.response_result, rule_analysis_text: "" }
-        : split_translation_response(response.response_result);
-    const decoder = new ResponseDecoder();
-    const decoded = request_failed
-      ? []
-      : is_sakura
-        ? decoder.decode_sakura(response_parts.translation_text, context.request_items)
-        : await decoder.decode_translation(response_parts.translation_text, context.mode);
-    const by_request_id = new Map<number, TranslationDecodedItem>();
-    const duplicates = new Set<number>(); // 同一请求 ID 有多个候选时无法唯一匹配，整组保持待处理。
+  /** 正文合批，姓名独立请求。null 表示取消，字段结果只在条目完整时提交。 */
+  private async execute_sakura_translation(
+    items: readonly TranslationRequestItem[],
+    contexts: readonly TranslationPrePipelineContext[],
+    request: (items: TranslationRequestItem[]) => Promise<TranslationDecodedItem[] | null>,
+  ): Promise<TranslationDecodedItem[] | null> {
+    const body_items = items.filter((item) =>
+      contexts[item.item_index]!.prepared_lines.some((line) => line.state === "translatable"),
+    );
+    const bodies =
+      body_items.length === 0
+        ? []
+        : await request(body_items.map((item) => ({ ...item, actor_src: null })));
+    if (bodies === null) return null;
+    const by_id = new Map(bodies.map((item) => [item.request_id, item])); // 只包含已通过正文校验的结果。
+    const names = new Map<string, string | null>(); // 当前批次相同请求输入复用结果，包括失败。
+    const result: TranslationDecodedItem[] = [];
+    for (const item of items) {
+      const body_required = contexts[item.item_index]!.prepared_lines.some(
+        (line) => line.state === "translatable",
+      );
+      const body = by_id.get(item.request_id);
+      if (body_required && body === undefined) continue;
+      let actor_dst: string | null = null;
+      if (item.actor_src !== null) {
+        if (!names.has(item.actor_src)) {
+          const name = await request([{ ...item, text_src: item.actor_src, actor_src: null }]);
+          if (name === null) return null;
+          names.set(item.actor_src, normalize_translation_actor(name[0]?.text_dst));
+        }
+        actor_dst = names.get(item.actor_src) ?? null;
+      }
+      // 姓名是本次条目的必需字段，失败时交回现有条目重试。
+      if (item.actor_src !== null && actor_dst === null) continue;
+      result.push({ request_id: item.request_id, text_dst: body?.text_dst ?? "", actor_dst });
+    }
+    return result;
+  }
+
+  /** 字段候选决定完成条件，重复 ID 或缺失必需字段只影响对应条目。 */
+  private read_valid_results(
+    request_items: readonly TranslationRequestItem[],
+    contexts: readonly TranslationPrePipelineContext[],
+    decoded: readonly TranslationDecodedItem[],
+  ): TranslationDecodedItem[] {
+    const by_id = new Map<number, TranslationDecodedItem>();
+    const duplicates = new Set<number>(); // 同一请求 ID 出现多个候选时，无法唯一对应译文。
     for (const item of decoded) {
-      if (by_request_id.has(item.request_id)) duplicates.add(item.request_id);
-      else by_request_id.set(item.request_id, item);
+      if (by_id.has(item.request_id)) duplicates.add(item.request_id);
+      else by_id.set(item.request_id, item);
     }
-    const dsts: string[] = [];
-    const actor_dsts: TranslationActor[] = [];
-    let valid_count = 0;
-    const post = new TranslationPostPipeline(context.config, context.quality);
-    for (const request_item of context.request_items) {
-      const item = context.items[request_item.item_index];
-      const pipeline_context = context.pipeline_contexts[request_item.item_index];
-      const decoded_item = by_request_id.get(request_item.request_id);
-      const valid =
-        !request_failed &&
-        decoded_item !== undefined &&
-        !duplicates.has(request_item.request_id) &&
-        item !== undefined &&
-        pipeline_context !== undefined &&
-        // 只要求当前协议实际请求的字段，姓名任务允许空正文。
-        (!pipeline_context.prepared_lines.some((line) => line.state === "translatable") ||
-          decoded_item.text_dst.trim() !== "") &&
-        (context.mode !== "actor_text" ||
-          request_item.actor_src === null ||
-          decoded_item.actor_dst !== null);
-      if (valid) {
-        const result = post.process_item(pipeline_context, decoded_item, context.mode);
-        item.dst = result.dst;
-        if (Object.hasOwn(result, "name_dst")) item.name_dst = result.name_dst ?? null;
-        item.status = "PROCESSED";
-        valid_count += 1;
-        dsts.push(decoded_item.text_dst);
-        actor_dsts.push(decoded_item.actor_dst);
-      } else {
-        // 对照区展示实际接受的译文。原始候选保留在响应区段中。
-        dsts.push("");
-        actor_dsts.push(null);
-      }
-      if (!valid && item) {
-        if (context.request_items.length === 1)
-          item.retry_count = read_json_integer(item.retry_count, 0) + 1;
-      }
-    }
-    return {
-      items: context.items,
-      input_tokens: response.input_tokens,
-      reasoning_tokens: response.reasoning_tokens,
-      output_tokens: response.output_tokens,
-      stopped: false,
-      logs: this.build_logs(context, valid_count, dsts, actor_dsts, response, response_parts),
-    };
+    return request_items.flatMap((request_item) => {
+      const item = by_id.get(request_item.request_id);
+      if (item === undefined || duplicates.has(request_item.request_id)) return [];
+      const body_required = contexts[request_item.item_index]!.prepared_lines.some(
+        (line) => line.state === "translatable",
+      );
+      return (body_required && item.text_dst.trim() === "") ||
+        (request_item.actor_src !== null && item.actor_dst === null)
+        ? []
+        : [item];
+    });
   }
 
   /** 生成结构化 worker 日志，不暴露内部对齐细节。 */
@@ -418,9 +452,16 @@ export class TranslationWorkUnitRunner {
     };
   }
 
-  /** 返回取消分支和空请求分支使用的中性结果。 */
-  private empty_result(): TranslationWorkUnitResult {
-    return { items: [], input_tokens: 0, reasoning_tokens: 0, output_tokens: 0, stopped: false };
+  /** 创建请求执行前的空结果，用量随每次响应累加。 */
+  private empty_result(items: TextTaskItemRecord[]): TranslationWorkUnitResult {
+    return {
+      items,
+      input_tokens: 0,
+      reasoning_tokens: 0,
+      output_tokens: 0,
+      stopped: false,
+      logs: [],
+    };
   }
   /** 使用任务启动时的语言快照本地化 worker 诊断信息。 */
   private t(app_language: unknown, key: LocaleKey, params: Record<string, string> = {}): string {
