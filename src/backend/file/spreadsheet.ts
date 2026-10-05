@@ -19,7 +19,7 @@ export function cell_text(value: CellValue): string {
   return String(value);
 }
 
-/** WOLF 仅改内容，保留原样式；新建双列表和规则表显式指定基础样式。 */
+/** 源工作簿写回只改内容并保留样式；新建规则表可显式指定基础样式。 */
 export function write_cell(
   sheet: Worksheet,
   row: number,

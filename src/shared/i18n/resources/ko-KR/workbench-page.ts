@@ -19,22 +19,12 @@ export const ko_kr_workbench_page = {
   },
   action: {
     add_file: "추가",
-    generate_translation: "번역문 생성",
     close_project: "프로젝트 닫기",
     reset: "번역 상태 초기화",
     translation_task: "번역",
     start_translation: "번역 시작",
     reset_task_all: "모든 데이터 초기화",
     reset_task_failed: "실패 데이터 초기화",
-  },
-  translation_export: {
-    checking: "교정 경고 확인 중 …",
-    check_failed: "교정 경고를 읽지 못했습니다. 현재 번역문 생성은 계속할 수 있습니다 …",
-    warning_description:
-      "교정 경고가 {COUNT}개 있습니다. AGENT로 자동 교정한 후 번역문을 생성하는 것을 권장합니다. 계속할까요 …?",
-    warning_list: "교정 경고",
-    retry_check: "다시 확인",
-    continue_generate: "생성 계속",
   },
   dialog: {
     import_conflict: {

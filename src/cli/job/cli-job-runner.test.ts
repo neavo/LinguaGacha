@@ -54,13 +54,15 @@ describe("run_cli_job", () => {
     });
     await run_cli_job(harness.backend_services, create_command(paths), harness.status_reporter);
     expect(harness.start_task).not.toHaveBeenCalled();
-    expect(harness.export_files_to_directory).toHaveBeenCalledWith(paths.output_dir, ["book.pdf"]);
+    expect(harness.generate_files_to_directory).toHaveBeenCalledWith(paths.output_dir, [
+      "book.pdf",
+    ]);
     expect(harness.status_reporter.emit_finished).toHaveBeenCalledWith("done", undefined, [
       "book.pdf",
     ]);
   });
 
-  it("等待翻译终态后按顺序应用资源、导出并清理", async () => {
+  it("等待翻译终态后按顺序应用资源、译文生成并清理", async () => {
     const paths = create_cli_paths();
     const harness = create_backend_services_harness();
     const command = create_command(paths);
@@ -68,7 +70,7 @@ describe("run_cli_job", () => {
 
     await wait_for_task_start(harness, run_promise);
     await Promise.resolve();
-    expect(harness.export_files_to_directory).not.toHaveBeenCalled();
+    expect(harness.generate_files_to_directory).not.toHaveBeenCalled();
 
     await harness.emit_snapshot("running", {
       total_line: 4,
@@ -76,7 +78,7 @@ describe("run_cli_job", () => {
       processed_line: 2,
       error_line: 1,
     });
-    expect(harness.export_files_to_directory).not.toHaveBeenCalled();
+    expect(harness.generate_files_to_directory).not.toHaveBeenCalled();
 
     await harness.emit_snapshot("done", {
       total_line: 4,
@@ -102,12 +104,12 @@ describe("run_cli_job", () => {
       }),
     );
     expect(harness.apply_task_input).toHaveBeenCalledWith(await build_cli_task_input(command));
-    expect(harness.export_files_to_directory).toHaveBeenCalledWith(paths.output_dir, []);
+    expect(harness.generate_files_to_directory).toHaveBeenCalledWith(paths.output_dir, []);
     expect(
       harness.events.filter((event) =>
-        ["apply", "start", "translation_export", "unload", "finished:done"].includes(event),
+        ["apply", "start", "translation_generation", "unload", "finished:done"].includes(event),
       ),
-    ).toEqual(["apply", "start", "translation_export", "unload", "finished:done"]);
+    ).toEqual(["apply", "start", "translation_generation", "unload", "finished:done"]);
     expect(harness.set_transient_overrides.mock.calls).toEqual([
       [
         {
@@ -138,7 +140,7 @@ describe("run_cli_job", () => {
     expect_temp_project_removed(harness.created_project_paths);
   });
 
-  it("任务失败时跳过导出并清理资源", async () => {
+  it("任务失败时跳过译文生成并清理资源", async () => {
     const paths = create_cli_paths();
     const harness = create_backend_services_harness();
     const run_promise = run_cli_job(
@@ -157,7 +159,7 @@ describe("run_cli_job", () => {
     expect(harness.unload_project).toHaveBeenCalledOnce();
     expect(harness.subscriber_count()).toBe(0);
     expect(harness.status_reporter.emit_finished).toHaveBeenCalledWith("error", error);
-    expect(harness.export_files_to_directory).not.toHaveBeenCalled();
+    expect(harness.generate_files_to_directory).not.toHaveBeenCalled();
     expect_temp_project_removed(harness.created_project_paths);
   });
 
@@ -236,7 +238,7 @@ describe("run_cli_job", () => {
   });
 });
 
-/** 组合可控任务完成链与磁盘临时工程，观察导出及资源清理顺序。 */
+/** 组合可控任务完成链与磁盘临时工程，观察译文生成及资源清理顺序。 */
 function create_backend_services_harness(failures: { unloadFailure?: Error } = {}) {
   const events: string[] = [];
   const created_project_paths: string[] = [];
@@ -290,8 +292,8 @@ function create_backend_services_harness(failures: { unloadFailure?: Error } = {
     resolve_task_started();
     return { run_id: "test", signal: new AbortController().signal, completion };
   });
-  const export_files_to_directory = vi.fn(async (output_dir: string) => {
-    events.push("translation_export");
+  const generate_files_to_directory = vi.fn(async (output_dir: string) => {
+    events.push("translation_generation");
     return {
       output_path: path.join(output_dir, "translated"),
       bilingual_output_path: path.join(output_dir, "bilingual"),
@@ -337,7 +339,7 @@ function create_backend_services_harness(failures: { unloadFailure?: Error } = {
         },
         lifecycle: { apply_task_input, create_project_commit, unload_project },
       },
-      files: { translationExport: { export_files_to_directory } },
+      files: { translationGeneration: { generate_files_to_directory } },
       batchTranslation: {
         start_current_project: start_task,
         subscribe: (
@@ -356,7 +358,7 @@ function create_backend_services_harness(failures: { unloadFailure?: Error } = {
     created_project_paths,
     create_project_commit,
     events,
-    export_files_to_directory,
+    generate_files_to_directory,
     set_transient_overrides,
     start_task,
     status_reporter,

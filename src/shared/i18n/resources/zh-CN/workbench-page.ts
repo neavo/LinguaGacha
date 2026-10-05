@@ -17,22 +17,12 @@ export const zh_cn_workbench_page = {
   },
   action: {
     add_file: "添加",
-    generate_translation: "生成译文",
     close_project: "关闭工程",
     reset: "重置翻译状态",
     translation_task: "翻译",
     start_translation: "开始翻译",
     reset_task_all: "重置所有数据",
     reset_task_failed: "重置失败数据",
-  },
-  translation_export: {
-    checking: "正在检查校对警告 …",
-    check_failed: "读取校对警告失败，仍可继续生成当前译文 …",
-    warning_description:
-      "检查到 {COUNT} 个校对警告，推荐使用 AGENT 自动审校后再生成译文，是否确认继续 …?",
-    warning_list: "校对警告",
-    retry_check: "重新检查",
-    continue_generate: "继续生成",
   },
   dialog: {
     import_conflict: {

@@ -20,22 +20,12 @@ export const ja_jp_workbench_page = {
   },
   action: {
     add_file: "追加",
-    generate_translation: "訳文を出力",
     close_project: "プロジェクトを閉じる",
     reset: "翻訳状態をリセット",
     translation_task: "翻訳",
     start_translation: "翻訳を開始",
     reset_task_all: "すべてのデータをリセット",
     reset_task_failed: "失敗したデータをリセット",
-  },
-  translation_export: {
-    checking: "校正の警告を確認中 …",
-    check_failed: "校正の警告を読み込めませんでした。現在の訳文は引き続き出力できます …",
-    warning_description:
-      "校正の警告が {COUNT} 件あります。AGENT で自動校正してから訳文を出力することをおすすめします。このまま続けますか …?",
-    warning_list: "校正の警告",
-    retry_check: "再確認",
-    continue_generate: "出力を続ける",
   },
   dialog: {
     import_conflict: {

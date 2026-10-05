@@ -81,6 +81,16 @@ describe("LogDetailView", () => {
     expect(view.textContent).not.toContain("不应单独展示的错误消息");
   });
 
+  it("可读正文使用纯文本编辑器，诊断单独展示", () => {
+    const text = "译文生成失败 …\n原始原因";
+    const view = render_detail(
+      { kind: "text", text },
+      { message: "原始原因", stack: "Error: 原始原因\n    at generate" },
+    );
+    expect(read_editor_text(view)).toBe(text);
+    expect(view.querySelector(".log-detail-view__error pre")?.textContent).toContain("at generate");
+  });
+
   it("Agent JSON 区分字段与字符串高亮并保留正文语义", () => {
     const content: LogContent = {
       kind: "agent",

@@ -74,7 +74,6 @@ export const de_de_app = {
     operation_failed: "Vorgang fehlgeschlagen …",
     content_unavailable: "Inhalt nicht verfügbar",
     save_failed: "Speichern fehlgeschlagen …",
-    translation_export_failed: "Übersetzungsexport fehlgeschlagen …",
     model_request_failed: "Modellanfrage fehlgeschlagen …",
     validation_failed: "Ungültige Anfrageparameter",
     initial_load_failed:
@@ -196,10 +195,27 @@ export const de_de_app = {
     builder_input: "Eingabe:",
     builder_preceding_context: "Vorhergehender Kontext:",
   },
-  translation_export: {
+  translation_generation: {
+    action: "Übersetzung erstellen",
+    confirmation: {
+      description: "Derzeit verfügbare Übersetzungsdateien wirklich erstellen …?",
+      checking: "Korrekturwarnungen werden geprüft …",
+      check_failed:
+        "Korrekturwarnungen konnten nicht geladen werden. Die aktuelle Übersetzung kann trotzdem erstellt werden …",
+      warning_description:
+        "Es wurden {COUNT} Korrekturwarnungen gefunden. Wir empfehlen, sie vor dem Erstellen der Übersetzung automatisch mit AGENT zu prüfen und zu beheben. Trotzdem fortfahren …?",
+      retry_check: "Erneut prüfen",
+      continue_generate: "Trotzdem erstellen",
+    },
     directory: {
       translated: "Übersetzung",
       bilingual: "Übersetzung_Zweisprachig",
+    },
+    log: {
+      started: "Übersetzungsdateien werden erstellt …",
+      succeeded: "Übersetzungsdateien erstellt …",
+      failed: "Erstellung der Übersetzungsdateien fehlgeschlagen …",
+      open_output_folder_failed: "Fehler beim Öffnen des Ausgabeordners …",
     },
   },
   native_file_filter: {
@@ -209,7 +225,6 @@ export const de_de_app = {
     excel_files: "Excel-Dateien (*.xlsx)",
     supported_txt_files: "Unterstützte Dateien (*.txt)",
   },
-
   diagnostic: {
     agent: {
       model_round_failed: "Agent-Modellrunde fehlgeschlagen …",
@@ -229,9 +244,6 @@ export const de_de_app = {
       quality_rule_load_failed: "Fehler beim Laden der Standard-Qualitätsregel-Voreinstellung …",
       value_normalize_failed:
         "Fehler beim Normalisieren des Standard-Voreinstellungswerts: {PRESET_DIRECTORY} -> {VALUE} …",
-    },
-    file_export: {
-      open_output_folder_failed: "Fehler beim Öffnen des Ausgabeordners …",
     },
     lifecycle: {
       app_start_failed: "LinguaGacha konnte nicht gestartet werden …",
@@ -274,8 +286,6 @@ export const de_de_app = {
     engine_task_stop: "Aufgabe gestoppt …",
     engine_task_success:
       "Aufgabenzeit {TIME} Sekunden, {LINES} Textzeilen, Eingabe-Token {PT}, Denk-Token {RT}, Ausgabe-Token {CT}",
-    generate_translation_done: "Übersetzungsdateien gespeichert unter {PATH} …",
-    generate_translation_start: "Übersetzungsdateien werden erstellt …",
     model_response_invalid: "Das Modell hat ungültige Daten zurückgegeben …",
     request_failed: "Anfrage fehlgeschlagen: {ERROR} …",
     request_timeout: "Zeitüberschreitung bei der Netzwerkanfrage",

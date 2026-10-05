@@ -204,8 +204,8 @@ vi.mock("@frontend/features/model-selection/use-model-selection", async (import_
     }),
   };
 });
-vi.mock("@frontend/app/session/translation-export/translation-export-context", () => ({
-  useTranslationExport: () => ({ can_request_export: true, request_export: vi.fn() }),
+vi.mock("@frontend/app/session/translation-generation/translation-generation-context", () => ({
+  useTranslationGeneration: () => ({ can_request_generation: true, request_generation: vi.fn() }),
 }));
 vi.mock("@frontend/app/session/project-translation-stats-context", () => ({
   useProjectTranslationStats: () => null,

@@ -1,3 +1,4 @@
+import { read_translation_for_generation } from "../translation-generation-text";
 import path from "node:path";
 
 import { decode_text_content } from "../../../shared/utils/text-tool";
@@ -5,13 +6,14 @@ import {
   group_items,
   split_text_lines_for_items,
   write_text_file,
-  type ExportPaths,
+  type GeneratedFilePaths,
   type FileFormatServiceConfig,
 } from "../file-format-shared";
 import { Item } from "../../../domain/item";
 
 /**
  * SRT 格式以字幕块为单位解析，序号和时间轴放入 row/extra_field
+ * 单值类的正文生效规则见 `read_translation_for_generation()`。
  */
 export class SRTFormat {
   /**
@@ -60,19 +62,24 @@ export class SRTFormat {
   /**
    * 写回时重新生成 SRT 块，保持序号、时间轴和空行分隔
    */
-  public async write_to_path(items: Item[], paths: ExportPaths): Promise<void> {
+  public async write_to_path(items: Item[], paths: GeneratedFilePaths): Promise<void> {
     for (const [rel_path, group] of group_items(items, "SRT")) {
       let translated = "";
       let bilingual = "";
+      let translated_row = 0; // 单语序号只计实际输出的字幕块。
       for (const item of group) {
         const row = String(item.row);
         const time_code = String(item.extra_field ?? "");
-        const item_dst = item.effective_dst();
-        translated += `${row}\n${time_code}\n${item_dst}\n\n`;
+        const item_dst = read_translation_for_generation(item) ?? item.src;
+        // 空正文省略单语字幕块，输出序号连续；双语版仍保留原文和原时间轴。
+        if (item_dst.trim() !== "")
+          translated += `${++translated_row}\n${time_code}\n${item_dst}\n\n`;
         const content =
           this.config.deduplication_in_bilingual && item.src === item_dst
             ? item_dst
-            : `${item.src}\n${item_dst}`;
+            : item_dst.trim() === ""
+              ? item.src
+              : `${item.src}\n${item_dst}`;
         bilingual += `${row}\n${time_code}\n${content}\n\n`;
       }
       await write_text_file(path.join(paths.translated_path, rel_path), translated);

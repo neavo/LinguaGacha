@@ -20,7 +20,7 @@ describe("KVJSONFormat", () => {
     expect(items.map((item) => [item.src, item.dst, item.status])).toEqual([
       ["", "", "RULE_SKIPPED"],
       ["已翻", "已处理", "PROCESSED"],
-      ["待翻", "", "NONE"],
+      ["待翻", "待翻", "NONE"],
     ]);
   });
 
@@ -45,46 +45,53 @@ describe("KVJSONFormat", () => {
 
     expect(items.map((item) => [item.src, item.dst])).toEqual([["café", "élève"]]);
   });
+});
 
-  it("写回 key 到有效译文的 JSON 对象", async () => {
-    using temp_dir = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "linguagacha-kvjson-format-"));
-    const format = new KVJSONFormat();
-    await format.write_to_path(
-      [
-        Item.from_json({
-          src: "k1",
-          dst: "v1",
-          row: 0,
-          file_type: "KVJSON",
-          file_path: "json/data.json",
-        }),
-        Item.from_json({
-          src: "k2",
-          dst: "v2",
-          row: 1,
-          file_type: "KVJSON",
-          file_path: "json/data.json",
-        }),
-        Item.from_json({
-          src: "k3",
-          dst: "",
-          row: 2,
-          file_type: "KVJSON",
-          file_path: "json/data.json",
-        }),
-      ],
-      {
-        translated_path: temp_dir.path,
-        bilingual_path: path.join(temp_dir.path, "bilingual"),
-      },
-    );
-
-    expect(
-      JSON.parse(fs.readFileSync(path.join(temp_dir.path, "json", "data.json"), "utf-8")),
-    ).toEqual({
-      k1: "v1",
-      k2: "v2",
-      k3: "k3",
-    });
+it("带回退 KV 从原对象取基线，完成空正文不回退，并保留非条目字段", async () => {
+  using dir = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-kv-"));
+  const original = Buffer.from(
+    JSON.stringify({ a: "A", b: "", c: "旧译文", d: "旧译文", extra: 42 }),
+  );
+  const items = [
+    Item.from_json({
+      src: "a",
+      dst: "B",
+      status: "ERROR",
+      file_type: "KVJSON",
+      file_path: "x.json",
+    }),
+    Item.from_json({
+      src: "b",
+      dst: "B",
+      status: "NONE",
+      file_type: "KVJSON",
+      file_path: "x.json",
+    }),
+    Item.from_json({
+      src: "c",
+      dst: "",
+      status: "PROCESSED",
+      file_type: "KVJSON",
+      file_path: "x.json",
+    }),
+    Item.from_json({
+      src: "d",
+      dst: "新译文",
+      status: "PROCESSED",
+      file_type: "KVJSON",
+      file_path: "x.json",
+    }),
+  ];
+  await new KVJSONFormat().write_to_path(
+    items,
+    { translated_path: dir.path, bilingual_path: dir.path },
+    () => original,
+  );
+  expect(JSON.parse(fs.readFileSync(path.join(dir.path, "x.json"), "utf8"))).toEqual({
+    a: "A",
+    b: "b",
+    c: "",
+    d: "新译文",
+    extra: 42,
   });
 });

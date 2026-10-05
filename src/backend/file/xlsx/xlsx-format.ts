@@ -1,16 +1,14 @@
 import path from "node:path";
-import ExcelJS from "exceljs";
+import { read_translation_for_generation } from "../translation-generation-text";
 import { Item } from "../../../domain/item";
 import { AppError } from "../../../shared/error";
-import { group_items, write_binary_file, type ExportPaths } from "../file-format-shared";
+import { group_items, write_binary_file, type GeneratedFilePaths } from "../file-format-shared";
 import { read_workbook, cell_text, write_cell } from "../spreadsheet";
 
 const WOLF_HEADER = ["code", "flag", "type", "info"];
 const WOLF_SOURCE_COLUMN = 6;
 const WOLF_TARGET_COLUMN = 7;
 const WOLF_TRANSLATABLE_FILL = 9;
-const TEXT_FONT_SIZE = 9;
-const TEXT_COLUMN_WIDTH = 64;
 
 /** 同一工作簿只打开一次，首表的表头决定普通双列或 WOLF 的读取方式。 */
 export class XLSXFormat {
@@ -57,39 +55,28 @@ export class XLSXFormat {
     return items;
   }
 
-  /** 普通表创建双列输出，WOLF 复用原稿保留其他内容。 */
+  /** 普通表与 WOLF 共用源工作簿写回，仅覆盖已完成条目的译文。 */
   public async write_to_path(
     items: Item[],
-    paths: ExportPaths,
-    read_asset: (path: string) => Buffer | null = () => null,
+    paths: GeneratedFilePaths,
+    asset_reader: (path: string) => Buffer | null,
   ): Promise<void> {
     for (const type of ["XLSX", "WOLFXLSX"] as const)
       for (const [rel_path, group] of group_items(items, type)) {
         const wolf = type === "WOLFXLSX";
-        const original = wolf ? read_asset(rel_path) : undefined;
+        // KV 类：两个格式都从源工作簿写回，未完成条目保留目标单元格及其原始值和格式。
+        const original = asset_reader(rel_path);
         if (original === null)
           throw new AppError("file.not_found", { public_details: { file: rel_path } });
-        const workbook = original ? await read_workbook(original) : new ExcelJS.Workbook();
-        const sheet = workbook.worksheets[0] ?? workbook.addWorksheet("Sheet");
-        if (!wolf) {
-          sheet.getColumn(1).width = TEXT_COLUMN_WIDTH;
-          sheet.getColumn(2).width = TEXT_COLUMN_WIDTH;
-        }
-        for (const item of group.sort((a, b) => a.row - b.row)) {
-          write_cell(
-            sheet,
-            item.row,
-            wolf ? WOLF_SOURCE_COLUMN : 1,
-            item.src,
-            wolf ? undefined : TEXT_FONT_SIZE,
-          );
-          write_cell(
-            sheet,
-            item.row,
-            wolf ? WOLF_TARGET_COLUMN : 2,
-            item.dst,
-            wolf ? undefined : TEXT_FONT_SIZE,
-          );
+        const workbook = await read_workbook(original);
+        const sheet = workbook.worksheets[0];
+        if (!sheet)
+          throw new AppError("file.invalid_structure", { public_details: { file: rel_path } });
+        for (const item of group) {
+          const translation = read_translation_for_generation(item);
+          if (translation !== undefined) {
+            write_cell(sheet, item.row, wolf ? WOLF_TARGET_COLUMN : 2, translation);
+          }
         }
         await write_binary_file(
           path.join(paths.translated_path, rel_path),

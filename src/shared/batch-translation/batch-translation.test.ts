@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { normalize_batch_translation_progress } from "../../domain/batch-translation";
 import {
   create_empty_batch_translation_snapshot,
-  should_open_translation_export_followup,
+  should_open_translation_generation_followup,
   normalize_batch_translation_snapshot,
   clone_translation_task_snapshot,
   resolve_translation_task_display_snapshot,
@@ -159,19 +159,19 @@ describe("批量翻译展示", () => {
   });
 });
 
-describe("全量翻译完成导出", () => {
+describe("全量翻译完成译文生成", () => {
   it.each([
     ["独立完整翻译完成时打开生成译文确认", "running", "done", "all", "standalone", true],
-    ["AGENT 全量翻译完成不请求导出确认", "running", "done", "all", "agent", false],
-    ["来源为空的完成快照不触发导出", "running", "done", "all", null, false],
+    ["AGENT 全量翻译完成不请求译文生成确认", "running", "done", "all", "agent", false],
+    ["来源为空的完成快照不触发译文生成", "running", "done", "all", null, false],
     ["校对页局部重翻完成时不打开生成译文确认", "running", "done", "items", "standalone", false],
     ["用户主动停止翻译后不打开生成译文确认", "stopping", "stopped", "all", "standalone", false],
     ["首屏已有完成态翻译快照不打开生成译文确认", "idle", "done", "all", "standalone", false],
-    ["重复完成快照不再触发导出", "done", "done", "all", "standalone", false],
-    ["执行失败不请求导出确认", "running", "error", "all", "standalone", false],
+    ["重复完成快照不再触发译文生成", "done", "done", "all", "standalone", false],
+    ["执行失败不请求译文生成确认", "running", "error", "all", "standalone", false],
   ] as const)("%s", (_name, previous_status, status, scope_kind, source, expected) => {
     expect(
-      should_open_translation_export_followup(previous_status, {
+      should_open_translation_generation_followup(previous_status, {
         ...create_empty_batch_translation_snapshot(),
         status,
         source,

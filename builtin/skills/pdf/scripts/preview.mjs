@@ -51,6 +51,7 @@ export async function preview(file_path, updates_path) {
       return new Uint8Array(await readFile(printed.path));
     },
   });
+  if (output === null) return { path: null, message: "This document has no output pages." };
   const output_path = `work/${randomUUID()}.pdf`;
   await writeFile(output_path, output);
   return { path: output_path };

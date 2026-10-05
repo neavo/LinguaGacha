@@ -10,7 +10,7 @@ const task_runtime_mock = vi.hoisted(() => {
   return {
     batch_translation_task: null as BatchTranslationTask | null,
 
-    request_export: vi.fn(),
+    request_generation: vi.fn(),
   };
 });
 
@@ -28,7 +28,7 @@ vi.mock("@frontend/app/locale/locale-context", () => {
 
 vi.mock("@frontend/app/session/batch-translation/use-batch-translation-task", () => {
   return {
-    useBatchTranslationTask: (_options: { onRequestExport: () => void }) => {
+    useBatchTranslationTask: (_options: { onRequestGeneration: () => void }) => {
       if (task_runtime_mock.batch_translation_task === null) {
         throw new Error("缺少翻译任务运行态夹具。");
       }
@@ -38,8 +38,8 @@ vi.mock("@frontend/app/session/batch-translation/use-batch-translation-task", ()
   };
 });
 
-vi.mock("@frontend/app/session/translation-export/translation-export-context", () => ({
-  useTranslationExport: () => ({ request_export: task_runtime_mock.request_export }),
+vi.mock("@frontend/app/session/translation-generation/translation-generation-context", () => ({
+  useTranslationGeneration: () => ({ request_generation: task_runtime_mock.request_generation }),
 }));
 
 vi.mock("@frontend/widgets/app-alert-dialog", () => {
@@ -112,7 +112,7 @@ describe("BatchTranslationSessionProvider", () => {
   beforeEach(() => {
     task_runtime_mock.batch_translation_task = create_batch_translation_task_fixture();
 
-    task_runtime_mock.request_export.mockClear();
+    task_runtime_mock.request_generation.mockClear();
   });
 
   afterEach(async () => {

@@ -1,5 +1,5 @@
 import { push_error_toast } from "@frontend/app/feedback/desktop-toast";
-import type { TranslationFileExportResult } from "@shared/translation-export";
+import type { TranslationFileGenerationResult } from "@shared/translation-generation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { format_agent_reference } from "@shared/agent-reference";
@@ -9,23 +9,23 @@ import { useI18n } from "@frontend/app/locale/locale-context";
 import { useAppNavigation } from "@frontend/app/navigation/navigation-context";
 import { useDesktopState } from "@frontend/app/state/use-desktop-state";
 
-type TranslationExportReadyState = {
+type TranslationGenerationReadyState = {
   phase: "ready";
   summary: ProofreadingWarningSummary;
 };
 
-type TranslationExportFailedState = {
+type TranslationGenerationFailedState = {
   phase: "check-failed";
 };
 
-export type TranslationExportState =
+export type TranslationGenerationState =
   | { phase: "closed" }
   | { phase: "checking" }
-  | TranslationExportReadyState
-  | TranslationExportFailedState
+  | TranslationGenerationReadyState
+  | TranslationGenerationFailedState
   | {
-      phase: "exporting";
-      previous: TranslationExportReadyState | TranslationExportFailedState; // 失败后恢复确认前的可操作界面
+      phase: "generating";
+      previous: TranslationGenerationReadyState | TranslationGenerationFailedState; // 失败后恢复确认前的可操作界面
     };
 
 type ProofreadingWarningSummaryResponse = {
@@ -33,24 +33,24 @@ type ProofreadingWarningSummaryResponse = {
   warningSummary: ProofreadingWarningSummary;
 };
 
-export type TranslationExportFlow = {
-  state: TranslationExportState;
-  can_request_export: boolean;
+export type TranslationGenerationFlow = {
+  state: TranslationGenerationState;
+  can_request_generation: boolean;
   can_jump_to_agent: boolean;
-  request_export: () => void;
+  request_generation: () => void;
   retry_check: () => void;
-  confirm_export: () => Promise<void>;
+  confirm_generation: () => Promise<void>;
   jump_to_agent: () => void;
   close: () => void;
 };
 
-/** 统一承接手动与任务完成后的译文导出预检、确认和跳转。 */
-export function useTranslationExportFlow(): TranslationExportFlow {
+/** 统一承接手动与任务完成后的译文生成预检、确认和跳转。 */
+export function useTranslationGenerationFlow(): TranslationGenerationFlow {
   const { t } = useI18n();
 
   const { navigate_to_agent, selected_route } = useAppNavigation();
   const { project_snapshot } = useDesktopState();
-  const [state, set_state] = useState<TranslationExportState>({ phase: "closed" });
+  const [state, set_state] = useState<TranslationGenerationState>({ phase: "closed" });
   const state_ref = useRef(state); // 稳定动作读取即时 phase，阻止同一帧重复提交
   const project_ref = useRef(project_snapshot); // 异步查询完成时核对当前项目身份
   // loaded 状态变化也属于身份变化，关闭工程时必须失效旧流程。
@@ -61,7 +61,7 @@ export function useTranslationExportFlow(): TranslationExportFlow {
   project_ref.current = project_snapshot;
 
   /** 同步 React state 与动作读取的即时镜像。 */
-  const apply_state = useCallback((next_state: TranslationExportState): void => {
+  const apply_state = useCallback((next_state: TranslationGenerationState): void => {
     state_ref.current = next_state;
     set_state(next_state);
   }, []);
@@ -89,7 +89,7 @@ export function useTranslationExportFlow(): TranslationExportFlow {
         apply_state({ phase: "ready", summary: response.warningSummary });
       })
       .catch(() => {
-        // 查询失败由弹窗提供重试与继续导出，不额外叠加 Toast。
+        // 查询失败由弹窗提供重试与继续译文生成，不额外叠加 Toast。
         if (
           generation === request_generation_ref.current &&
           project_ref.current.loaded &&
@@ -100,8 +100,8 @@ export function useTranslationExportFlow(): TranslationExportFlow {
       });
   }, [apply_state]);
 
-  /** 从关闭态发起唯一一次导出预检。 */
-  const request_export = useCallback((): void => {
+  /** 从关闭态发起唯一一次译文生成预检。 */
+  const request_generation = useCallback((): void => {
     if (state_ref.current.phase !== "closed") {
       return;
     }
@@ -116,21 +116,21 @@ export function useTranslationExportFlow(): TranslationExportFlow {
     load_warning_summary();
   }, [load_warning_summary]);
 
-  /** 导出期间锁定流程，失败后恢复用户确认前的状态。 */
-  const confirm_export = useCallback(async (): Promise<void> => {
+  /** 译文生成期间锁定流程，失败后恢复用户确认前的状态。 */
+  const confirm_generation = useCallback(async (): Promise<void> => {
     const current_state = state_ref.current;
     if (current_state.phase !== "ready" && current_state.phase !== "check-failed") {
       return;
     }
     const generation = request_generation_ref.current;
-    apply_state({ phase: "exporting", previous: current_state });
+    apply_state({ phase: "generating", previous: current_state });
     try {
-      await api_fetch<TranslationFileExportResult>("/api/translation/files/export", {});
+      await api_fetch<TranslationFileGenerationResult>("/api/translation/files/generate", {});
       if (generation !== request_generation_ref.current) return;
       apply_state({ phase: "closed" });
     } catch (error) {
       if (generation !== request_generation_ref.current) return;
-      push_error_toast(t("app.feedback.translation_export_failed"), error);
+      push_error_toast(t("app.translation_generation.log.failed"), error);
       apply_state(current_state);
     }
   }, [apply_state, t]);
@@ -149,16 +149,16 @@ export function useTranslationExportFlow(): TranslationExportFlow {
     });
   }, [apply_state, navigate_to_agent, t]);
 
-  /** 非导出态关闭弹窗，并淘汰仍在途的预检结果。 */
+  /** 非译文生成态关闭弹窗，并淘汰仍在途的预检结果。 */
   const close = useCallback((): void => {
-    if (state_ref.current.phase === "exporting") {
+    if (state_ref.current.phase === "generating") {
       return;
     }
     request_generation_ref.current += 1;
     apply_state({ phase: "closed" });
   }, [apply_state]);
 
-  // 项目切换或关闭时，跨路由导出流程不得保留旧工程确认状态。
+  // 项目切换或关闭时，跨路由译文生成流程不得保留旧工程确认状态。
   useEffect(() => {
     if (previous_project_identity_ref.current === project_identity) {
       return;
@@ -171,20 +171,20 @@ export function useTranslationExportFlow(): TranslationExportFlow {
   return useMemo(
     () => ({
       state,
-      can_request_export: project_snapshot.loaded && state.phase === "closed",
+      can_request_generation: project_snapshot.loaded && state.phase === "closed",
       can_jump_to_agent: selected_route !== "agent",
-      request_export,
+      request_generation,
       retry_check,
-      confirm_export,
+      confirm_generation,
       jump_to_agent,
       close,
     }),
     [
       close,
-      confirm_export,
+      confirm_generation,
       jump_to_agent,
       project_snapshot.loaded,
-      request_export,
+      request_generation,
       retry_check,
       state,
       selected_route,

@@ -9,11 +9,11 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { useBatchTranslationTask } from "@frontend/app/session/batch-translation/use-batch-translation-task";
 
-const { api_fetch_mock, push_toast_mock, on_request_export_mock } = vi.hoisted(() => {
+const { api_fetch_mock, push_toast_mock, on_request_generation_mock } = vi.hoisted(() => {
   return {
     api_fetch_mock: vi.fn(),
     push_toast_mock: vi.fn(),
-    on_request_export_mock: vi.fn(),
+    on_request_generation_mock: vi.fn(),
   };
 });
 
@@ -121,7 +121,7 @@ function flush_microtasks(): Promise<void> {
 function Probe(props: {
   on_ready: (state: ReturnType<typeof useBatchTranslationTask>) => void;
 }): JSX.Element | null {
-  const state = useBatchTranslationTask({ onRequestExport: on_request_export_mock });
+  const state = useBatchTranslationTask({ onRequestGeneration: on_request_generation_mock });
 
   useEffect(() => {
     props.on_ready(state);
@@ -149,7 +149,7 @@ describe("useBatchTranslationTask", () => {
     runtime_fixture.current = create_runtime_fixture();
     api_fetch_mock.mockReset();
     push_toast_mock.mockReset();
-    on_request_export_mock.mockReset();
+    on_request_generation_mock.mockReset();
   });
 
   /** 复用挂载点，模拟共享快照更新引起的重渲染。 */
@@ -178,13 +178,13 @@ describe("useBatchTranslationTask", () => {
     ["stopped", 2, "info", "stopped", false, 0],
   ] as const)(
     "%s / %i 的独立与 Agent 终态反馈",
-    async (status, error_line, kind, message, persistent, export_count) => {
+    async (status, error_line, kind, message, persistent, generation_count) => {
       api_fetch_mock.mockImplementation(async () => ({
         batch_translation: runtime_fixture.current.task_snapshot,
       }));
       for (const source of ["standalone", "agent"] as const) {
         push_toast_mock.mockClear();
-        on_request_export_mock.mockClear();
+        on_request_generation_mock.mockClear();
         runtime_fixture.current = create_runtime_fixture(
           create_task_snapshot({ source, status: status === "stopped" ? "stopping" : "running" }),
         );
@@ -206,10 +206,10 @@ describe("useBatchTranslationTask", () => {
             `batch_translation.feedback.${message}`,
             { persistent },
           );
-          expect(on_request_export_mock).toHaveBeenCalledTimes(export_count);
+          expect(on_request_generation_mock).toHaveBeenCalledTimes(generation_count);
         } else {
           expect(push_toast_mock).not.toHaveBeenCalled();
-          expect(on_request_export_mock).not.toHaveBeenCalled();
+          expect(on_request_generation_mock).not.toHaveBeenCalled();
         }
       }
     },
@@ -237,7 +237,7 @@ describe("useBatchTranslationTask", () => {
       }),
     );
     await render_probe();
-    expect(on_request_export_mock).not.toHaveBeenCalled();
+    expect(on_request_generation_mock).not.toHaveBeenCalled();
     expect(push_toast_mock).toHaveBeenCalledWith("success", "batch_translation.feedback.done", {
       persistent: false,
     });
@@ -263,7 +263,7 @@ describe("useBatchTranslationTask", () => {
     await render_probe();
     await flush_microtasks();
 
-    expect(on_request_export_mock).not.toHaveBeenCalled();
+    expect(on_request_generation_mock).not.toHaveBeenCalled();
     expect(push_toast_mock).not.toHaveBeenCalledWith("success", "batch_translation.feedback.done", {
       persistent: false,
     });
@@ -423,7 +423,7 @@ describe("useBatchTranslationTask", () => {
     await flush_microtasks();
 
     expect(latest_state?.task_confirm_state).toBeNull();
-    expect(on_request_export_mock).not.toHaveBeenCalled();
+    expect(on_request_generation_mock).not.toHaveBeenCalled();
   });
 
   it("手动停止请求失败后任务自然完成时仍自动弹生成确认框", async () => {
@@ -484,7 +484,7 @@ describe("useBatchTranslationTask", () => {
     await flush_microtasks();
 
     expect(latest_state?.task_confirm_state).toBeNull();
-    expect(on_request_export_mock).toHaveBeenCalledOnce();
+    expect(on_request_generation_mock).toHaveBeenCalledOnce();
   });
 
   it("重翻任务按翻译任务刷新且结束后不再重复刷新", async () => {

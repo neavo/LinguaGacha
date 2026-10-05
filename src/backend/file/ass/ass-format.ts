@@ -1,3 +1,4 @@
+import { read_translation_for_generation } from "../translation-generation-text";
 import path from "node:path";
 
 import { decode_text_content } from "../../../shared/utils/text-tool";
@@ -5,13 +6,14 @@ import {
   group_items,
   split_text_lines_for_items,
   write_text_file,
-  type ExportPaths,
+  type GeneratedFilePaths,
   type FileFormatServiceConfig,
 } from "../file-format-shared";
 import { Item } from "../../../domain/item";
 
 /**
  * ASS 字幕格式按 Events/Dialogue 文本字段解析，保留整行模板用于写回
+ * 单值类的正文生效规则见 `read_translation_for_generation()`。
  */
 export class ASSFormat {
   /**
@@ -56,31 +58,26 @@ export class ASSFormat {
   /**
    * 写回时用 {{CONTENT}} 模板还原 ASS 行，双语输出用 \N 拼接原文和译文
    */
-  public async write_to_path(items: Item[], paths: ExportPaths): Promise<void> {
+  public async write_to_path(items: Item[], paths: GeneratedFilePaths): Promise<void> {
     for (const [rel_path, group] of group_items(items, "ASS")) {
       const translated = group
         .map((item) =>
-          String(item.extra_field ?? "").replace(
-            "{{CONTENT}}",
-            item.effective_dst().replace(/\n/gu, "\\N"),
+          String(item.extra_field ?? "").replace("{{CONTENT}}", () =>
+            (read_translation_for_generation(item) ?? item.src).replace(/\n/gu, "\\N"),
           ),
         )
         .join("\n");
       await write_text_file(path.join(paths.translated_path, rel_path), translated);
-    }
-
-    for (const [rel_path, group] of group_items(items, "ASS")) {
       const bilingual = group
         .map((item) => {
           const extra_field = String(item.extra_field ?? "");
-          const item_dst = item.effective_dst();
-          if (this.config.deduplication_in_bilingual && item.src === item_dst) {
-            return extra_field.replace("{{CONTENT}}", item_dst.replace(/\n/gu, "\\N"));
-          }
-          return extra_field
-            .replace("{{CONTENT}}", "{{CONTENT}}\\N{{CONTENT}}")
-            .replace("{{CONTENT}}", item.src.replace(/\n/gu, "\\N"))
-            .replace("{{CONTENT}}", item_dst.replace(/\n/gu, "\\N"));
+          const item_dst = read_translation_for_generation(item) ?? item.src;
+          const content =
+            item_dst === "" || (this.config.deduplication_in_bilingual && item.src === item_dst)
+              ? item.src
+              : `${item.src}\n${item_dst}`;
+          // 一次替换模板，正文中的占位符和 `$` 序列均按字面值写出。
+          return extra_field.replace("{{CONTENT}}", () => content.replace(/\n/gu, "\\N"));
         })
         .join("\n");
       await write_text_file(path.join(paths.bilingual_path, rel_path), bilingual);

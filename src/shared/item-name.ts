@@ -1,6 +1,6 @@
 import { Item, type ItemNameField } from "../domain/item";
 
-type ResolveExportItemNameInput = {
+type ResolveOutputItemNameInput = {
   name_src: ItemNameField | undefined;
   name_dst: ItemNameField | undefined;
   write_translated_name_fields_to_file?: boolean | undefined; // 缺省与 undefined 均采用译名，只有 false 明确选择原名。
@@ -32,8 +32,8 @@ export function write_item_name_text(current: unknown, next_name: string): ItemN
   return next_name;
 }
 
-// 导出时按设置选择源姓名或译名，并保持源字段原有标量/数组形状。
-export function resolve_export_item_name(input: ResolveExportItemNameInput): ItemNameField {
+// 生成译文时按设置选择源姓名或译名，并保持源字段原有标量/数组形状。
+export function resolve_output_item_name(input: ResolveOutputItemNameInput): ItemNameField {
   const source_name = Item.normalize_name_field(input.name_src);
   if (input.write_translated_name_fields_to_file === false) {
     return source_name;

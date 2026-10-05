@@ -24,16 +24,16 @@ export interface ProjectSourceFileEntry {
 }
 
 /**
- * 导出目录成对出现：译文目录和双语对照目录必须由同一规则生成
+ * 译文与双语对照目录由同一生成入口确定。
  */
-export interface ExportPaths {
+export interface GeneratedFilePaths {
   translated_path: string; // 单语译文根目录
   bilingual_path: string; // 双语对照根目录
 }
 
-/** 全部格式共享的导出依赖，调用方一次性提供完整写回上下文。 */
+/** 全部格式共享的写回上下文，源资产由工程提供。 */
 export interface FileFormatWriteContext {
-  paths: ExportPaths;
+  paths: GeneratedFilePaths;
   asset_reader: (rel_path: string) => Buffer | null;
 }
 

@@ -73,7 +73,6 @@ export const en_us_app = {
     operation_failed: "Operation failed …",
     content_unavailable: "Content unavailable",
     save_failed: "Save failed …",
-    translation_export_failed: "Translation export failed …",
     model_request_failed: "Model request failed …",
     validation_failed: "Invalid request parameters",
     initial_load_failed: "Could not load app data. Please try again …",
@@ -188,10 +187,27 @@ export const en_us_app = {
     builder_input: "Input:",
     builder_preceding_context: "Preceding Context:",
   },
-  translation_export: {
+  translation_generation: {
+    action: "Generate Translation",
+    confirmation: {
+      description: "Confirm generating currently available translation files …?",
+      checking: "Checking proofreading warnings …",
+      check_failed:
+        "Proofreading warnings could not be loaded. You can still generate the current translation …",
+      warning_description:
+        "Detected {COUNT} proofreading warnings. We recommend using AGENT to review and fix them automatically before generating the translation. Continue anyway …?",
+      retry_check: "Check Again",
+      continue_generate: "Generate Anyway",
+    },
     directory: {
       translated: "Translated",
       bilingual: "Translated_Bilingual",
+    },
+    log: {
+      started: "Generating translation files …",
+      succeeded: "Translation files generated …",
+      failed: "Translation file generation failed …",
+      open_output_folder_failed: "Failed to open the output folder …",
     },
   },
   native_file_filter: {
@@ -201,7 +217,6 @@ export const en_us_app = {
     excel_files: "Excel files (*.xlsx)",
     supported_txt_files: "Supported files (*.txt)",
   },
-
   diagnostic: {
     agent: {
       model_round_failed: "Agent model turn failed …",
@@ -220,9 +235,6 @@ export const en_us_app = {
       quality_rule_load_failed: "Failed to load default quality rule preset …",
       value_normalize_failed:
         "Failed to normalize default preset value: {PRESET_DIRECTORY} -> {VALUE} …",
-    },
-    file_export: {
-      open_output_folder_failed: "Failed to open the output folder …",
     },
     lifecycle: {
       app_start_failed: "LinguaGacha failed to start …",
@@ -263,8 +275,6 @@ export const en_us_app = {
     engine_task_stop: "Task stopped …",
     engine_task_success:
       "Task time {TIME} seconds, {LINES} lines of text, input tokens {PT}, reasoning tokens {RT}, output tokens {CT}",
-    generate_translation_done: "Translation files saved to {PATH} …",
-    generate_translation_start: "Generating translation files …",
     model_response_invalid: "The model returned invalid data …",
     request_failed: "Request failed: {ERROR} …",
     request_timeout: "Network request timed out",

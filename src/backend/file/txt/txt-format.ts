@@ -1,3 +1,4 @@
+import { read_translation_for_generation } from "../translation-generation-text";
 import path from "node:path";
 
 import { decode_text_content } from "../../../shared/utils/text-tool";
@@ -5,13 +6,14 @@ import {
   group_items,
   split_text_lines_for_items,
   write_text_file,
-  type ExportPaths,
+  type GeneratedFilePaths,
   type FileFormatServiceConfig,
 } from "../file-format-shared";
 import { Item } from "../../../domain/item";
 
 /**
  * TXT 格式按行解析与写回，保持旧实现最朴素的一行一条规则
+ * 单值类的正文生效规则见 `read_translation_for_generation()`。
  */
 export class TXTFormat {
   /**
@@ -38,21 +40,20 @@ export class TXTFormat {
   /**
    * 写出译文和双语文件，双语去重口径由共享配置控制
    */
-  public async write_to_path(items: Item[], paths: ExportPaths): Promise<void> {
+  public async write_to_path(items: Item[], paths: GeneratedFilePaths): Promise<void> {
     for (const [rel_path, group] of group_items(items, "TXT")) {
       await write_text_file(
         path.join(paths.translated_path, rel_path),
-        group.map((item) => item.effective_dst()).join("\n"),
+        group.map((item) => read_translation_for_generation(item) ?? item.src).join("\n"),
       );
-    }
-
-    for (const [rel_path, group] of group_items(items, "TXT")) {
       const bilingual = group
         .map((item) => {
-          const item_dst = item.effective_dst();
+          const item_dst = read_translation_for_generation(item) ?? item.src;
           return this.config.deduplication_in_bilingual && item.src === item_dst
             ? item_dst
-            : `${item.src}\n${item_dst}`;
+            : item_dst === ""
+              ? item.src
+              : `${item.src}\n${item_dst}`;
         })
         .join("\n");
       await write_text_file(path.join(paths.bilingual_path, rel_path), bilingual);

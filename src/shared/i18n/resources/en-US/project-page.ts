@@ -30,7 +30,6 @@ export const en_us_project_page = {
     preview_loading_toast: "Reading project preview …",
     loading_toast: "Loading project …",
     preview_unavailable: "Failed to read project preview …",
-
     action: "Open Project",
     remove_unavailable:
       "Unable to remove this recent project entry right now. Please try again later …",

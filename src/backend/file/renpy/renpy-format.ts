@@ -6,7 +6,7 @@ import {
   group_items,
   split_text_lines_for_items,
   write_text_file,
-  type ExportPaths,
+  type GeneratedFilePaths,
   type FileFormatServiceConfig,
 } from "../file-format-shared";
 import { Item } from "../../../domain/item";
@@ -37,7 +37,7 @@ export class RenPyFormat {
    */
   public async write_to_path(
     items: Item[],
-    paths: ExportPaths,
+    paths: GeneratedFilePaths,
     asset_reader: (rel_path: string) => Buffer | null,
   ): Promise<void> {
     for (const [rel_path, group] of group_items(items, "RENPY")) {

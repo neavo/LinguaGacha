@@ -1,9 +1,10 @@
+import { read_translation_for_generation } from "../translation-generation-text";
 import path from "node:path";
 
 import { Item } from "../../../domain/item";
 import { read_json_record } from "../../../domain/json";
 import { decode_text_content } from "../../../shared/utils/text-tool";
-import { group_items, write_text_file, type ExportPaths } from "../file-format-shared";
+import { group_items, write_text_file, type GeneratedFilePaths } from "../file-format-shared";
 import { parse_markdown_v2_document } from "./md-v2-document";
 
 type MarkdownV2ItemMetadata = {
@@ -13,6 +14,7 @@ type MarkdownV2ItemMetadata = {
 
 /**
  * 当前 Markdown 格式以 AST 块为持久和写回单元，块内资源引用保持原始文本。
+ * 单值类的正文生效规则见 `read_translation_for_generation()`。
  */
 export class MDV2Format {
   /** 把 Markdown AST 块转换为通用 Item，并只持久化重建布局需要的 metadata。 */
@@ -43,7 +45,7 @@ export class MDV2Format {
   }
 
   /** 按块起始行恢复原布局并写出当前块文本。 */
-  public async write_to_path(items: Item[], paths: ExportPaths): Promise<void> {
+  public async write_to_path(items: Item[], paths: GeneratedFilePaths): Promise<void> {
     for (const [rel_path, file_items] of group_items(items, "MD_V2")) {
       const content = this.write_text(file_items);
       await write_text_file(path.join(paths.translated_path, rel_path), content);
@@ -56,7 +58,9 @@ export class MDV2Format {
       .sort((left, right) => left.row - right.row || (left.id ?? 0) - (right.id ?? 0))
       .map((item) => {
         const metadata = this.read_metadata(item);
-        return metadata.before + item.effective_dst() + metadata.after;
+        return (
+          metadata.before + (read_translation_for_generation(item) ?? item.src) + metadata.after
+        );
       })
       .join("");
   }

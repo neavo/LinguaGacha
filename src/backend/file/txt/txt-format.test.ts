@@ -30,6 +30,7 @@ describe("TXTFormat", () => {
     await format.write_to_path(
       [
         Item.from_json({
+          status: "PROCESSED",
           src: "同文",
           dst: "同文",
           row: 0,
@@ -37,6 +38,7 @@ describe("TXTFormat", () => {
           file_path: "story/dialog.txt",
         }),
         Item.from_json({
+          status: "PROCESSED",
           src: "原文",
           dst: "译文",
           row: 1,
@@ -58,7 +60,7 @@ describe("TXTFormat", () => {
     ).toBe("同文\n原文\n译文");
   });
 
-  it("空译文写回时使用原文并在双语输出中去重", async () => {
+  it("完成空译文写空行，双语只保留原文", async () => {
     using temp_dir = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "linguagacha-txt-format-"));
     const format = new TXTFormat({
       target_language: "ZH",
@@ -68,6 +70,7 @@ describe("TXTFormat", () => {
     await format.write_to_path(
       [
         Item.from_json({
+          status: "PROCESSED",
           src: "原文",
           dst: "译文",
           row: 0,
@@ -75,6 +78,7 @@ describe("TXTFormat", () => {
           file_path: "script.txt",
         }),
         Item.from_json({
+          status: "PROCESSED",
           src: "同文",
           dst: "",
           row: 1,
@@ -89,7 +93,7 @@ describe("TXTFormat", () => {
     );
 
     expect(fs.readFileSync(path.join(temp_dir.path, "demo_译文", "script.txt"), "utf-8")).toBe(
-      "译文\n同文",
+      "译文\n",
     );
     expect(
       fs.readFileSync(path.join(temp_dir.path, "demo_译文_双语对照", "script.txt"), "utf-8"),

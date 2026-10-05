@@ -24,7 +24,7 @@ import type { LocaleKey } from "@shared/i18n";
 import {
   resolve_batch_translation_generated_tokens,
   clone_translation_task_snapshot,
-  should_open_translation_export_followup,
+  should_open_translation_generation_followup,
   create_empty_batch_translation_snapshot,
   has_translation_task_progress,
   resolve_translation_task_display_snapshot,
@@ -47,7 +47,7 @@ import {
 const WORKBENCH_TRANSLATION_WRITE: ProjectWriteOperation = "workbench.translation_write";
 
 type BatchTranslationTaskOptions = {
-  onRequestExport: () => void; // 独立全量翻译自然完成后交给跨路由导出流程
+  onRequestGeneration: () => void; // 独立全量翻译自然完成后交给跨路由译文生成流程
 };
 
 export type BatchTranslationTask = {
@@ -72,7 +72,7 @@ export type BatchTranslationTask = {
 export function useBatchTranslationTask(
   options: BatchTranslationTaskOptions,
 ): BatchTranslationTask {
-  const { onRequestExport } = options;
+  const { onRequestGeneration } = options;
   const { t } = useI18n();
 
   const { project_snapshot, settings_snapshot, commit_project_write, refresh_batch_translation } =
@@ -397,16 +397,16 @@ export function useBatchTranslationTask(
 
     if (
       !translation_dialog_open &&
-      should_open_translation_export_followup(previous_status, translation_task_snapshot)
+      should_open_translation_generation_followup(previous_status, translation_task_snapshot)
     ) {
-      onRequestExport();
+      onRequestGeneration();
     }
   }, [
     project_snapshot.loaded,
     t,
     translation_dialog_open,
     translation_task_snapshot,
-    onRequestExport,
+    onRequestGeneration,
   ]);
 
   useEffect(() => {

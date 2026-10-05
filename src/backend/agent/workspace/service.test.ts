@@ -1541,10 +1541,16 @@ it("PDF 零条目工程按页保存、隔离旧指纹，语言变化后重建工
         )
       )["status"],
     ).toBe("applied");
-    const output = await services.files.translationExport.export_files();
+    const output = await services.files.translationGeneration.generate_files();
     expect(pdfHost.mock.calls[0]?.[0].html).toContain(draft.translation.markdown);
     expect(output.pdf_files).toEqual([
-      { file_path: "book.pdf", translated_pages: 2, original_pages: 1, omitted_pages: 0 },
+      {
+        file_path: "book.pdf",
+        written: true,
+        translated_pages: 2,
+        original_pages: 1,
+        omitted_pages: 0,
+      },
     ]);
     const exported = read_pdf_document(
       new Uint8Array(fs.readFileSync(path.join(output.output_path, "book.pdf"))),

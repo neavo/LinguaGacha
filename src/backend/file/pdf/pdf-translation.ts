@@ -33,13 +33,10 @@ export function render_pdf_page_translation(
   }
 }
 
-/** 预览和导出共用完整校验；全部省略或空译稿只在输出边界拒绝。 */
+/** 预览和导出共用页级校验，空渲染结果交给构建入口表达无产物。 */
 export function render_pdf_translation(document: PDFDocument): (PDFMarkdown | null)[] {
   read_pdf_document(document);
-  const rendered = document.pages.map((page) => render_pdf_page_translation(page, document));
-  if (!document.pages.some((page, index) => is_pdf_original_page(page) || rendered[index] !== null))
-    throw new Error("PDF output must retain at least one page.");
-  return rendered;
+  return document.pages.map((page) => render_pdf_page_translation(page, document));
 }
 
 /** 正文按原稿可见尺寸打印；宿主提供字体与 KaTeX 样式，文档层只拥有排版。 */

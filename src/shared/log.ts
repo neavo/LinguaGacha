@@ -43,6 +43,7 @@ export type LogTranslationPair = {
 /** 日志正文的跨进程判别联合；文件保存完整结构，控制台和列表消费纯文本投影。 */
 export type LogContent =
   | string
+  | { kind: "text"; text: string } // 已组装的可读正文，异常详情独立保存与展示。
   | (JsonRecord & { kind: "agent" })
   | {
       kind: "translation_result";
@@ -128,6 +129,8 @@ export function read_log_content(value: unknown): LogContent | null {
   }
 
   switch (content["kind"]) {
+    case "text":
+      return typeof content["text"] === "string" ? { kind: "text", text: content["text"] } : null;
     case "agent":
       // Agent 正文只按 JSON 展示；事件字段由后端生产者约束，不在读取端重复定义。
       return structuredClone(content) as JsonRecord & { kind: "agent" };
@@ -163,6 +166,7 @@ export function read_log_content(value: unknown): LogContent | null {
  */
 export function format_log_content_text(content: LogContent): string {
   if (typeof content === "string") return content;
+  if (content.kind === "text") return content.text;
   if (content.kind === "agent") return JSON.stringify(content, null, 2);
 
   const rows = [
@@ -192,6 +196,8 @@ export function format_log_content_text(content: LogContent): string {
 
 // 普通文本附带异常消息，结构化摘要共用堆栈、原因链与上下文。
 export function format_log_readable_text(detail: Pick<LogDetail, "content" | "error">): string {
+  if (typeof detail.content !== "string" && detail.content.kind === "text")
+    return detail.content.text;
   return [
     format_log_content_text(detail.content),
     format_log_error_text(detail.error, typeof detail.content === "string"),

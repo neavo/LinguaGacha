@@ -122,7 +122,8 @@ export class ProofreadingPagePreview {
     if (!latest || !latest_page || this.key(latest, latest_page) !== key) {
       throw new AppError("request.validation_failed");
     }
-    if (!("image" in rendered)) throw new AppError("runtime.internal_invariant");
+    if (rendered === null || !("image" in rendered))
+      throw new AppError("runtime.internal_invariant");
     return { image: rendered.image, count: rendered.count, page: rendered.page };
   }
 }

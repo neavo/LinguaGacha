@@ -2,7 +2,7 @@ import { type JSX, act, useEffect } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { useTranslationExportFlow } from "./use-translation-export-flow";
+import { useTranslationGenerationFlow } from "./use-translation-generation-flow";
 
 const mocks = vi.hoisted(() => ({
   api_fetch: vi.fn(),
@@ -15,7 +15,6 @@ const mocks = vi.hoisted(() => ({
 vi.mock("@frontend/app/desktop/desktop-api", () => ({ api_fetch: mocks.api_fetch }));
 vi.mock("@frontend/app/feedback/desktop-toast", () => ({
   push_error_toast: mocks.push_toast,
-  push_toast: mocks.push_toast,
 }));
 vi.mock("@frontend/app/locale/locale-context", () => ({
   useI18n: () => ({ t: (key: string) => key }),
@@ -30,21 +29,21 @@ vi.mock("@frontend/app/state/use-desktop-state", () => ({
   useDesktopState: () => ({ project_snapshot: mocks.project_snapshot }),
 }));
 
-/** 通过渲染提交后的公开返回值观察导出流程。 */
+/** 通过渲染提交后的公开返回值观察译文生成流程。 */
 function Probe(props: {
-  on_ready: (flow: ReturnType<typeof useTranslationExportFlow>) => void;
+  on_ready: (flow: ReturnType<typeof useTranslationGenerationFlow>) => void;
 }): JSX.Element | null {
-  const flow = useTranslationExportFlow();
+  const flow = useTranslationGenerationFlow();
   useEffect(() => {
     props.on_ready(flow);
   }, [flow, props]);
   return null;
 }
 
-describe("useTranslationExportFlow", () => {
+describe("useTranslationGenerationFlow", () => {
   let container: HTMLDivElement | null = null;
   let root: Root | null = null;
-  let latest_flow: ReturnType<typeof useTranslationExportFlow> | null = null;
+  let latest_flow: ReturnType<typeof useTranslationGenerationFlow> | null = null;
 
   beforeEach(() => {
     mocks.api_fetch.mockReset();
@@ -90,7 +89,7 @@ describe("useTranslationExportFlow", () => {
     });
     await render_probe();
 
-    act(() => latest_flow?.request_export());
+    act(() => latest_flow?.request_generation());
     expect(latest_flow?.state.phase).toBe("checking");
     await flush_microtasks();
     expect(latest_flow?.state).toMatchObject({ phase: "ready", summary: { total_count: 3 } });
@@ -109,8 +108,8 @@ describe("useTranslationExportFlow", () => {
     expect(latest_flow?.can_jump_to_agent).toBe(false);
   });
 
-  it("工程切换后，旧导出失败不会恢复旧确认框", async () => {
-    let reject_export = (_error: Error): void => undefined;
+  it("工程切换后，旧译文生成失败不会恢复旧确认框", async () => {
+    let reject_generation = (_error: Error): void => undefined;
     mocks.api_fetch
       .mockResolvedValueOnce({
         projectPath: mocks.project_snapshot.path,
@@ -119,28 +118,28 @@ describe("useTranslationExportFlow", () => {
       .mockImplementationOnce(
         () =>
           new Promise((_resolve, reject) => {
-            reject_export = reject;
+            reject_generation = reject;
           }),
       );
     await render_probe();
-    act(() => latest_flow?.request_export());
+    act(() => latest_flow?.request_generation());
     await flush_microtasks();
-    let exporting: Promise<void> | undefined;
+    let generating: Promise<void> | undefined;
     act(() => {
-      exporting = latest_flow?.confirm_export();
+      generating = latest_flow?.confirm_generation();
     });
     mocks.project_snapshot.path = "E:/demo/next.lg";
     await render_probe();
     await act(async () => {
-      reject_export(new Error("old export failed"));
-      await exporting;
+      reject_generation(new Error("old generation failed"));
+      await generating;
     });
     expect(latest_flow?.state.phase).toBe("closed");
     expect(mocks.push_toast).not.toHaveBeenCalled();
   });
 
-  it("无警告确认后只调用一次唯一导出接口", async () => {
-    let resolve_export: (() => void) | null = null;
+  it("无警告确认后只调用一次唯一译文生成接口", async () => {
+    let resolve_generation: (() => void) | null = null;
     mocks.api_fetch
       .mockResolvedValueOnce({
         projectPath: "E:/demo/sample.lg",
@@ -149,38 +148,38 @@ describe("useTranslationExportFlow", () => {
       .mockImplementationOnce(
         () =>
           new Promise((resolve) => {
-            resolve_export = () =>
+            resolve_generation = () =>
               resolve({
                 accepted: true,
                 output_path: "output",
-                pdf_files: [{ file_path: "book.pdf", translated_pages: 2, original_pages: 1 }],
+                pdf_files: [],
               });
           }),
       );
     await render_probe();
-    act(() => latest_flow?.request_export());
+    act(() => latest_flow?.request_generation());
     await flush_microtasks();
 
     await act(async () => {
-      void latest_flow?.confirm_export();
-      void latest_flow?.confirm_export();
+      void latest_flow?.confirm_generation();
+      void latest_flow?.confirm_generation();
       await Promise.resolve();
     });
-    expect(latest_flow?.state.phase).toBe("exporting");
-    expect(mocks.api_fetch).toHaveBeenCalledWith("/api/translation/files/export", {});
+    expect(latest_flow?.state.phase).toBe("generating");
+    expect(mocks.api_fetch).toHaveBeenCalledWith("/api/translation/files/generate", {});
     expect(
-      mocks.api_fetch.mock.calls.filter(([path]) => path === "/api/translation/files/export"),
+      mocks.api_fetch.mock.calls.filter(([path]) => path === "/api/translation/files/generate"),
     ).toHaveLength(1);
 
-    await act(async () => resolve_export?.());
+    await act(async () => resolve_generation?.());
     expect(latest_flow?.state.phase).toBe("closed");
     expect(mocks.push_toast).not.toHaveBeenCalled();
   });
 
-  it("导出业务错误与传输失败共用失败提示并允许重试", async () => {
-    const error = Object.assign(new Error("translation.export_failed"), {
+  it("译文生成业务错误与传输失败共用失败提示并允许重试", async () => {
+    const error = Object.assign(new Error("translation.generation_failed"), {
       name: "DesktopApiError",
-      code: "translation.export_failed",
+      code: "translation.generation_failed",
       details: {},
     });
     mocks.api_fetch
@@ -191,21 +190,21 @@ describe("useTranslationExportFlow", () => {
       .mockRejectedValueOnce(error)
       .mockRejectedValueOnce(new Error("transport failed"));
     await render_probe();
-    act(() => latest_flow?.request_export());
+    act(() => latest_flow?.request_generation());
     await flush_microtasks();
     await act(async () => {
-      await latest_flow?.confirm_export();
+      await latest_flow?.confirm_generation();
     });
     expect(mocks.push_toast).toHaveBeenLastCalledWith(
-      "app.feedback.translation_export_failed",
+      "app.translation_generation.log.failed",
       expect.any(Error),
     );
     expect(latest_flow?.state.phase).toBe("ready");
     await act(async () => {
-      await latest_flow?.confirm_export();
+      await latest_flow?.confirm_generation();
     });
     expect(mocks.push_toast).toHaveBeenLastCalledWith(
-      "app.feedback.translation_export_failed",
+      "app.translation_generation.log.failed",
       expect.any(Error),
     );
     expect(latest_flow?.state.phase).toBe("ready");
@@ -218,7 +217,7 @@ describe("useTranslationExportFlow", () => {
     });
     await render_probe();
 
-    act(() => latest_flow?.request_export());
+    act(() => latest_flow?.request_generation());
     await flush_microtasks();
     expect(latest_flow?.state.phase).toBe("check-failed");
 
@@ -236,7 +235,7 @@ describe("useTranslationExportFlow", () => {
         }),
     );
     await render_probe();
-    act(() => latest_flow?.request_export());
+    act(() => latest_flow?.request_generation());
 
     mocks.project_snapshot.path = "E:/demo/next.lg";
     await render_probe();

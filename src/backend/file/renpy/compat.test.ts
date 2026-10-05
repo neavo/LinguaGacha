@@ -46,6 +46,7 @@ describe("RenPy 兼容层", () => {
     const legacy_items = [
       Item.from_json({ row: 1, extra_field: "translate schinese start:" }),
       Item.from_json({
+        status: "PROCESSED",
         row: 3,
         src: "Hello",
         dst: "你好",
@@ -73,6 +74,7 @@ describe("RenPy 兼容层", () => {
       dst: "当前译文",
     });
     const legacy = Item.from_json({
+      status: "PROCESSED",
       row: 3,
       src: "Hello",
       dst: "旧译文",
@@ -95,7 +97,13 @@ describe("RenPy 兼容层", () => {
     transfer_legacy_translations(
       [
         Item.from_json({ row: 1, extra_field: "translate schinese start:" }),
-        Item.from_json({ row: 3, src: "Other", dst: "别的", extra_field: '    # e "Other"' }),
+        Item.from_json({
+          status: "PROCESSED",
+          row: 3,
+          src: "Other",
+          dst: "别的",
+          extra_field: '    # e "Other"',
+        }),
       ],
       [item],
       null,
@@ -107,8 +115,8 @@ describe("RenPy 兼容层", () => {
   it("候选选择优先匹配原文和姓名，其次匹配原文", () => {
     const item = Item.from_json({ src: "Hello", name_src: "Alice" });
     const candidates = [
-      Item.from_json({ src: "Hello", name_src: "Bob", dst: "鲍勃" }),
-      Item.from_json({ src: "Hello", name_src: "Alice", dst: "艾丽丝" }),
+      Item.from_json({ status: "PROCESSED", src: "Hello", name_src: "Bob", dst: "鲍勃" }),
+      Item.from_json({ status: "PROCESSED", src: "Hello", name_src: "Alice", dst: "艾丽丝" }),
     ];
 
     expect(pick_best_candidate(item, candidates).dst).toBe("艾丽丝");
@@ -148,8 +156,24 @@ function make_ast_item(options: {
     renpy["v"] = 1;
   }
   return Item.from_json({
+    status: "PROCESSED",
     src: "Hello",
     dst: options.dst,
     extra_field: { renpy },
   });
 }
+
+it("重建旧 AST 保留空正文、空姓名与人工状态", () => {
+  const source = make_ast_item({
+    digest: sha1_hex('    # e "Hello"'),
+    target_line: 3,
+    with_version: false,
+    dst: "",
+  });
+  const [item] = build_items_for_writeback(
+    "a.rpy",
+    ["translate schinese start:", '    # e "Hello"', '    e ""'],
+    [source],
+  );
+  expect(item).toMatchObject({ dst: "", name_dst: null, status: "PROCESSED" });
+});

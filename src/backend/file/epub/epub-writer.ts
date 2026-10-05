@@ -1,3 +1,4 @@
+import { read_translation_for_generation } from "../translation-generation-text";
 import JSZip from "jszip";
 import render from "dom-serializer";
 import { Element, isTag, Text, type ChildNode } from "domhandler";
@@ -34,6 +35,7 @@ type EpubTextRun = { container: Element; nodes: ChildNode[] };
 
 /**
  * EPUB 写回器，优先使用 AST 定位，缺少正式 metadata 时回退顺序写回
+ * 单值类的正文生效规则见 `read_translation_for_generation()`。
  */
 export class EpubWriter {
   /**
@@ -126,13 +128,23 @@ export class EpubWriter {
 
     const source_zip = await JSZip.loadAsync(original_epub_bytes);
     const output_zip: ZipContents = new Map();
-    const opf_title_sync_pair = await this.resolve_opf_title_sync_pair(
-      source_zip,
-      by_doc,
-      bilingual,
-    );
+    // OPF 先写一次，只有实际写入的标题才用于后续 XHTML 同步。
+    let opf_title_sync_pair: [string, string] | null = null;
+    for (const [name, file] of Object.entries(source_zip.files)) {
+      if (!name.toLowerCase().endsWith(".opf") || file.dir) continue;
+      const pair = await this.write_opf_doc(
+        output_zip,
+        name,
+        await file.async("uint8array"),
+        by_doc.get(name) ?? [],
+        bilingual,
+      );
+      opf_title_sync_pair ??= pair;
+    }
 
     for (const name of Object.keys(source_zip.files)) {
+      // OPF 已在前一轮写出，跳过解压和重复处理。
+      if (name.toLowerCase().endsWith(".opf")) continue;
       const file = (await source_zip.file(name)?.async("uint8array")) ?? null;
       if (file === null) {
         continue;
@@ -141,10 +153,6 @@ export class EpubWriter {
       const lower = name.toLowerCase();
       const is_html_document = this.ast.is_html_document_path(name);
 
-      if (lower.endsWith(".opf")) {
-        await this.write_opf_doc(output_zip, name, raw, by_doc.get(name) ?? [], bilingual);
-        continue;
-      }
       if (lower.endsWith(".css")) {
         output_zip.set(name, this.sanitize_css(this.ast.decode_bytes(raw)));
         continue;
@@ -170,67 +178,6 @@ export class EpubWriter {
   }
 
   /**
-   * OPF 标题成功写回后同步 XHTML title，避免书名与页面标题不一致
-   */
-  private async resolve_opf_title_sync_pair(
-    source_zip: JSZip,
-    by_doc: Map<string, Item[]>,
-    bilingual: boolean,
-  ): Promise<[string, string] | null> {
-    const candidate = this.extract_opf_title_sync_pair(by_doc);
-    if (candidate === null) {
-      return null;
-    }
-    for (const [doc_path, doc_items] of by_doc.entries()) {
-      if (!doc_path.toLowerCase().endsWith(".opf") || doc_items.length === 0) {
-        continue;
-      }
-      const file = (await source_zip.file(doc_path)?.async("uint8array")) ?? null;
-      if (file === null) {
-        continue;
-      }
-      try {
-        const root = this.ast.parse_opf_xml(file);
-        const [applied] = this.apply_items_to_tree(root, doc_path, doc_items, bilingual);
-        if (applied > 0) {
-          return candidate;
-        }
-      } catch {
-        // 预检查失败只表示不触发 XHTML 标题同步，不影响正文写回
-      }
-    }
-    return null;
-  }
-
-  /**
-   * 从 OPF 元数据条目提取单行标题替换对，只有真实译文才参与同步
-   */
-  private extract_opf_title_sync_pair(by_doc: Map<string, Item[]>): [string, string] | null {
-    for (const [doc_path, doc_items] of by_doc.entries()) {
-      if (!doc_path.toLowerCase().endsWith(".opf")) {
-        continue;
-      }
-      for (const item of doc_items) {
-        const epub = read_epub_extra(item);
-        if (
-          epub?.["is_opf_metadata"] !== true ||
-          epub["metadata_tag"] !== "dc:title" ||
-          item.dst === "" ||
-          item.dst === item.src
-        ) {
-          continue;
-        }
-        const src_lines = split_text_lines(item.src);
-        const dst_lines = split_text_lines(item.dst);
-        if (src_lines.length === 1 && dst_lines.length === 1) {
-          return [src_lines[0] as string, dst_lines[0] as string];
-        }
-      }
-    }
-    return null;
-  }
-
-  /**
    * OPF 写回失败时回退原文加清洗，元数据文件不能阻塞正文导出
    */
   private async write_opf_doc(
@@ -239,23 +186,20 @@ export class EpubWriter {
     raw: Uint8Array,
     doc_items: Item[],
     bilingual: boolean,
-  ): Promise<void> {
+  ): Promise<[string, string] | null> {
     if (doc_items.length === 0) {
       output_zip.set(name, this.sanitize_opf(this.ast.decode_bytes(raw)));
-      return;
-    }
-    const has_real_translation = doc_items.some((item) => item.dst !== "" && item.dst !== item.src);
-    if (!has_real_translation) {
-      output_zip.set(name, this.sanitize_opf(this.ast.decode_bytes(raw)));
-      return;
+      return null;
     }
     try {
       const root = this.ast.parse_opf_xml(raw);
-      const [applied] = this.apply_items_to_tree(root, name, doc_items, bilingual);
+      const [applied, title] = this.apply_items_to_tree(root, name, doc_items, bilingual);
       const text = applied > 0 ? this.serialize_doc(name, root) : this.ast.decode_bytes(raw);
       output_zip.set(name, this.sanitize_opf(text));
+      return title;
     } catch {
       output_zip.set(name, this.sanitize_opf(this.ast.decode_bytes(raw)));
+      return null;
     }
   }
 
@@ -299,9 +243,9 @@ export class EpubWriter {
     doc_path: string,
     items: Item[],
     bilingual: boolean,
-  ): [number, number] {
+  ): [number, [string, string] | null] {
+    let title: [string, string] | null = null; // 仅记录实际写入的 OPF 标题，供 XHTML 同步。
     let applied = 0;
-    let skipped = 0;
     const doc_lower = doc_path.toLowerCase();
     const is_ncx = doc_lower.endsWith(".ncx") || this.ast.local_name(root.name) === "ncx";
     const is_opf =
@@ -319,15 +263,12 @@ export class EpubWriter {
       const epub = read_epub_extra(item);
       const mode = String(epub?.["mode"] ?? "");
       if (epub === null) {
-        skipped += 1;
         continue;
       }
-      const item_dst = Item.from_json(item).effective_dst();
+      const item_dst = this.read_output_text(item, is_opf || is_ncx || is_nav_flag);
       if (mode === "text_run") {
         const run = text_runs.get(item);
-        if (run === undefined) {
-          skipped += 1;
-        } else {
+        if (run !== undefined) {
           this.apply_text_run(run, item, item_dst, allow_bilingual_insert);
           applied += 1;
         }
@@ -347,8 +288,6 @@ export class EpubWriter {
           )
         ) {
           applied += 1;
-        } else {
-          skipped += 1;
         }
         continue;
       }
@@ -362,7 +301,6 @@ export class EpubWriter {
         typeof src_digest !== "string" ||
         src_digest === ""
       ) {
-        skipped += 1;
         continue;
       }
 
@@ -393,7 +331,6 @@ export class EpubWriter {
       }
 
       if (!ok || this.ast.sha1_hex_with_null_separator(current_texts) !== src_digest) {
-        skipped += 1;
         continue;
       }
 
@@ -420,6 +357,16 @@ export class EpubWriter {
         }
       });
       applied += 1;
+      if (
+        epub["is_opf_metadata"] === true &&
+        epub["metadata_tag"] === "dc:title" &&
+        item.status === "PROCESSED" &&
+        item_dst !== item.src &&
+        split_text_lines(item.src).length === 1 &&
+        split_text_lines(item_dst).length === 1
+      ) {
+        title ??= [item.src, item_dst];
+      }
     }
 
     if (allow_bilingual_insert) {
@@ -443,7 +390,7 @@ export class EpubWriter {
       }
     }
 
-    return [applied, skipped];
+    return [applied, title];
   }
 
   /** 以原节点范围和摘要核验片段，避免解析变化后把译文写到其它正文。 */
@@ -478,16 +425,17 @@ export class EpubWriter {
     if (bilingual && !(this.config.deduplication_in_bilingual === true && item.src === text)) {
       const original = new Element("span", { style: "opacity:0.50;" }, []);
       this.ast.replace_element_children(original, nodes);
-      replacements.push(original, new Element("br", {}, []));
+      replacements.push(original);
+      if (text !== "") replacements.push(new Element("br", {}, []));
     }
-    replacements.push(new Text(this.ast.sanitize_xml_text(text)));
+    if (text !== "" || !bilingual) replacements.push(new Text(this.ast.sanitize_xml_text(text)));
     const children = [...container.children];
     children.splice(start, nodes.length, ...replacements);
     this.ast.replace_element_children(container, children);
   }
 
   /**
-   * block_text 按整块可见正文校验，译文接管目标块 children
+   * `block_text` 按整块正文校验，译文写回保留原树的结构节点。
    */
   private apply_block_text_item_to_tree(
     root: Element,
@@ -513,6 +461,11 @@ export class EpubWriter {
       return false;
     }
     if (
+      item.src === item_dst &&
+      (!allow_bilingual_insert || this.config.deduplication_in_bilingual === true)
+    )
+      return true;
+    if (
       allow_bilingual_insert &&
       !(this.config.deduplication_in_bilingual === true && item.src === item_dst)
     ) {
@@ -524,7 +477,7 @@ export class EpubWriter {
         inserted_block_paths,
       );
     }
-    this.ast.replace_element_children_with_text(block_elem, this.ast.sanitize_xml_text(item_dst));
+    this.ast.write_block_translation(block_elem, item_dst);
     return true;
   }
 
@@ -627,10 +580,7 @@ export class EpubWriter {
       if (this.ast.read_text_slot(text_elem).trim() === "" || item_index >= target_items.length) {
         continue;
       }
-      this.ast.write_text_slot(
-        text_elem,
-        Item.from_json(target_items[item_index] as Item).effective_dst(),
-      );
+      this.ast.write_text_slot(text_elem, this.read_output_text(target_items[item_index]!, true));
       item_index += 1;
     }
     return this.serialize_doc(name, root);
@@ -663,7 +613,7 @@ export class EpubWriter {
         continue;
       }
       const item = target_items[item_index] as Item;
-      const item_dst = Item.from_json(item).effective_dst();
+      const item_dst = this.read_output_text(item, is_nav_page);
       if (
         bilingual &&
         !is_nav_page &&
@@ -679,23 +629,19 @@ export class EpubWriter {
           parent.children.splice(index, 0, new Text("\n"), clone);
         }
       }
-      const serialized = this.serialize_fragment(dom);
-      if (serialized.includes(item.src)) {
-        const replaced = this.ast.parse_html_document(serialized.replace(item.src, () => item_dst));
-        this.replace_element(dom, replaced);
-      } else if (!is_nav_page) {
-        const text = new Text(item_dst);
-        text.parent = dom;
-        dom.children = [text];
-      }
+      if (item.src !== item_dst) this.ast.write_block_translation(dom, item_dst);
       item_index += 1;
     }
     return this.serialize_doc(name, root);
   }
 
-  /**
-   * 导出统一移除竖排 class/style，避免翻译后横排文本仍受原排版约束
-   */
+  /** 受限位置回源保证 EPUB 可交付，工程中的已确认空值仍原样保存。 */
+  private read_output_text(item: Item, requires_text: boolean): string {
+    const text = read_translation_for_generation(item) ?? item.src;
+    return requires_text && text.trim() === "" ? item.src : text;
+  }
+
+  /** 导出时按目标语言移除竖排样式。 */
   private remove_vertical_style(dom: Element): void {
     const class_attr = dom.attribs["class"];
     if (class_attr !== undefined) {
@@ -740,22 +686,6 @@ export class EpubWriter {
       }
     }
     return parts.join("");
-  }
-
-  /**
-   * 用解析后的替换片段接管原节点位置，保持父级 children 链接关系稳定
-   */
-  private replace_element(target: Element, replacement: Element): void {
-    const parent = target.parent;
-    if (!(parent instanceof Element)) {
-      return;
-    }
-    const index = parent.children.indexOf(target);
-    if (index < 0) {
-      return;
-    }
-    replacement.parent = parent;
-    parent.children.splice(index, 1, replacement);
   }
 
   /**
@@ -904,19 +834,6 @@ export class EpubWriter {
         return "&lt;";
       }
       return "&#xa0;";
-    });
-  }
-
-  /**
-   * 片段序列化固定使用 HTML 模式，供 legacy 字符串替换后的重解析使用
-   */
-  private serialize_fragment(root: Element): string {
-    return render(root, {
-      decodeEntities: true,
-      emptyAttrs: false,
-      encodeEntities: "utf8",
-      selfClosingTags: true,
-      xmlMode: false,
     });
   }
 

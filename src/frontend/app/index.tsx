@@ -1,5 +1,5 @@
 import { push_error_toast } from "@frontend/app/feedback/desktop-toast";
-import { TranslationExportProvider } from "@frontend/app/session/translation-export/translation-export-provider";
+import { TranslationGenerationProvider } from "@frontend/app/session/translation-generation/translation-generation-provider";
 import { PageLeaveProvider } from "@frontend/app/navigation/page-leave-provider";
 import { usePageLeave } from "@frontend/app/navigation/page-leave-context";
 import { AppContentState } from "@frontend/widgets/app-content-state";
@@ -583,7 +583,7 @@ function AppContent(): JSX.Element {
                   <AgentChatProvider>
                     <AgentCompletionAttention />
                     <ProjectSessionUiStateProvider>
-                      <TranslationExportProvider>
+                      <TranslationGenerationProvider>
                         <ProjectTranslationStatsProvider>
                           <BatchTranslationSessionProvider>
                             <QualityRuleStatisticsProvider>
@@ -591,7 +591,7 @@ function AppContent(): JSX.Element {
                             </QualityRuleStatisticsProvider>
                           </BatchTranslationSessionProvider>
                         </ProjectTranslationStatsProvider>
-                      </TranslationExportProvider>
+                      </TranslationGenerationProvider>
                     </ProjectSessionUiStateProvider>
                   </AgentChatProvider>
                 </AppNavigationProvider>

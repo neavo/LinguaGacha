@@ -39,7 +39,6 @@ export const ja_jp_batch_translation = {
   confirm: {
     reset_all_description: "プロジェクト全体の翻訳進捗をリセットしますか …?",
     reset_failed_description: "翻訳に失敗した項目をリセットしますか …?",
-    generate_description: "現在利用できる訳文を出力しますか …?",
     stop_description: "現在の翻訳タスクを停止しますか …?",
   },
   action: { stop: "停止" },

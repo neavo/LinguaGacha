@@ -2,8 +2,8 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { TranslationExportDialog } from "./translation-export-dialog";
-import type { TranslationExportState } from "./use-translation-export-flow";
+import { TranslationGenerationDialog } from "./translation-generation-dialog";
+import type { TranslationGenerationState } from "./use-translation-generation-flow";
 
 vi.mock("@frontend/app/locale/locale-context", () => ({
   useI18n: () => ({
@@ -12,7 +12,7 @@ vi.mock("@frontend/app/locale/locale-context", () => ({
   }),
 }));
 
-describe("TranslationExportDialog", () => {
+describe("TranslationGenerationDialog", () => {
   let container: HTMLDivElement | null = null;
   let root: Root | null = null;
 
@@ -25,7 +25,7 @@ describe("TranslationExportDialog", () => {
 
   it("有警告时显示类型计数并提供前往 AGENT 与继续生成", () => {
     const jump_to_agent = vi.fn();
-    const confirm_export = vi.fn(async () => {});
+    const confirm_generation = vi.fn(async () => {});
     render_dialog(
       {
         phase: "ready",
@@ -37,11 +37,11 @@ describe("TranslationExportDialog", () => {
           ],
         },
       },
-      { jump_to_agent, confirm_export },
+      { jump_to_agent, confirm_generation },
     );
 
     expect(document.body.textContent).toContain(
-      "workbench_page.translation_export.warning_description:3",
+      "app.translation_generation.confirmation.warning_description:3",
     );
     expect(document.body.textContent).toContain("proofreading_page.warning.foreign_char_residue1");
     expect(document.body.textContent).toContain("proofreading_page.warning.glossary2");
@@ -56,12 +56,15 @@ describe("TranslationExportDialog", () => {
         ?.click(),
     );
     expect(jump_to_agent).toHaveBeenCalledOnce();
-    expect(confirm_export).toHaveBeenCalledOnce();
+    expect(confirm_generation).toHaveBeenCalledOnce();
   });
 
   it("无警告时直接提交确认动作", () => {
-    const confirm_export = vi.fn(async () => {});
-    render_dialog({ phase: "ready", summary: { total_count: 0, entries: [] } }, { confirm_export });
+    const confirm_generation = vi.fn(async () => {});
+    render_dialog(
+      { phase: "ready", summary: { total_count: 0, entries: [] } },
+      { confirm_generation },
+    );
 
     expect(document.body.querySelector('[data-slot="alert-dialog-secondary-action"]')).toBeNull();
     act(() =>
@@ -69,15 +72,15 @@ describe("TranslationExportDialog", () => {
         .querySelector<HTMLButtonElement>('[data-slot="alert-dialog-primary-action"]')
         ?.click(),
     );
-    expect(confirm_export).toHaveBeenCalledOnce();
+    expect(confirm_generation).toHaveBeenCalledOnce();
   });
 
   /** 通过公开流程状态驱动确认与警告分流。 */
   function render_dialog(
-    state: TranslationExportState,
+    state: TranslationGenerationState,
     callbacks: {
       jump_to_agent?: () => void;
-      confirm_export?: () => Promise<void>;
+      confirm_generation?: () => Promise<void>;
     } = {},
   ): void {
     container = document.createElement("div");
@@ -85,11 +88,11 @@ describe("TranslationExportDialog", () => {
     root = createRoot(container);
     act(() => {
       root?.render(
-        <TranslationExportDialog
+        <TranslationGenerationDialog
           can_jump_to_agent
           state={state}
           retry_check={vi.fn()}
-          confirm_export={callbacks.confirm_export ?? vi.fn(async () => {})}
+          confirm_generation={callbacks.confirm_generation ?? vi.fn(async () => {})}
           jump_to_agent={callbacks.jump_to_agent ?? vi.fn()}
           close={vi.fn()}
         />,

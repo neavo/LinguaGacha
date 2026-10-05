@@ -1,9 +1,9 @@
 import { type JSX, act } from "react";
 import { createRoot } from "react-dom/client";
 import { expect, it, vi } from "vitest";
-import { TranslationExportProvider } from "@frontend/app/session/translation-export/translation-export-provider";
-import { useTranslationExport } from "@frontend/app/session/translation-export/translation-export-context";
-import type { TranslationExportFlow } from "@frontend/features/translation-export/use-translation-export-flow";
+import { TranslationGenerationProvider } from "@frontend/app/session/translation-generation/translation-generation-provider";
+import { useTranslationGeneration } from "@frontend/app/session/translation-generation/translation-generation-context";
+import type { TranslationGenerationFlow } from "@frontend/features/translation-generation/use-translation-generation-flow";
 
 const api_fetch = vi.hoisted(() =>
   vi.fn(async () => ({ projectPath: "test.lg", warningSummary: { total_count: 0, entries: [] } })),
@@ -22,28 +22,28 @@ vi.mock("@frontend/app/navigation/navigation-context", () => ({
 vi.mock("@frontend/app/state/use-desktop-state", () => ({
   useDesktopState: () => ({ project_snapshot: { loaded: true, path: "test.lg" } }),
 }));
-vi.mock("@frontend/features/translation-export/translation-export-dialog", () => ({
-  TranslationExportDialog: ({ state }: TranslationExportFlow) =>
+vi.mock("@frontend/features/translation-generation/translation-generation-dialog", () => ({
+  TranslationGenerationDialog: ({ state }: TranslationGenerationFlow) =>
     state.phase === "closed" ? null : <div role="dialog" />,
 }));
 
-/** 两个入口模拟工作台与 Agent，共享当前工程的一次导出流程。 */
-function ExportEntry(): JSX.Element {
-  const flow = useTranslationExport();
-  return <button onClick={flow.request_export}>生成译文</button>;
+/** 两个入口模拟工作台与 Agent，共享当前工程的一次译文生成流程。 */
+function GenerationEntry(): JSX.Element {
+  const flow = useTranslationGeneration();
+  return <button onClick={flow.request_generation}>生成译文</button>;
 }
 
-it("多个入口共享预检和确认，页面替换保留同一导出弹窗", async () => {
+it("多个入口共享预检和确认，页面替换保留同一译文生成弹窗", async () => {
   const container = document.createElement("div");
   document.body.append(container);
   const root = createRoot(container);
   try {
     await act(async () =>
       root.render(
-        <TranslationExportProvider>
-          <ExportEntry />
-          <ExportEntry />
-        </TranslationExportProvider>,
+        <TranslationGenerationProvider>
+          <GenerationEntry />
+          <GenerationEntry />
+        </TranslationGenerationProvider>,
       ),
     );
     await act(async () => {
@@ -53,9 +53,9 @@ it("多个入口共享预检和确认，页面替换保留同一导出弹窗", a
     expect(container.querySelectorAll('[role="dialog"]')).toHaveLength(1);
     await act(async () =>
       root.render(
-        <TranslationExportProvider>
-          <ExportEntry />
-        </TranslationExportProvider>,
+        <TranslationGenerationProvider>
+          <GenerationEntry />
+        </TranslationGenerationProvider>,
       ),
     );
     expect(container.querySelectorAll('[role="dialog"]')).toHaveLength(1);

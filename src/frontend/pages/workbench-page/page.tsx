@@ -1,5 +1,5 @@
 import type { JSX } from "react";
-import { useTranslationExport } from "@frontend/app/session/translation-export/translation-export-context";
+import { useTranslationGeneration } from "@frontend/app/session/translation-generation/translation-generation-context";
 import { useProjectTranslationStats } from "@frontend/app/session/project-translation-stats-context";
 import { useI18n } from "@frontend/app/locale/locale-context";
 import { useBatchTranslationSession } from "@frontend/app/session/batch-translation/batch-translation-session-context";
@@ -19,7 +19,7 @@ type WorkbenchPageProps = {
 export function WorkbenchPage(_props: WorkbenchPageProps): JSX.Element {
   const { t } = useI18n();
   const { batch_translation_task } = useBatchTranslationSession();
-  const translation_export = useTranslationExport();
+  const translation_generation = useTranslationGeneration();
   const workbench_state = useWorkbenchPageState();
   const translation_stats = useProjectTranslationStats();
 
@@ -55,13 +55,13 @@ export function WorkbenchPage(_props: WorkbenchPageProps): JSX.Element {
         translation_stats={translation_stats}
         can_edit_files={workbench_state.can_edit_files}
         can_delete_selected_files={workbench_state.can_delete_selected_files}
-        can_generate_translation={translation_export.can_request_export}
+        can_generate_translation={translation_generation.can_request_generation}
         can_close_project={workbench_state.can_close_project}
         on_add_file={() => {
           void workbench_state.request_add_file();
         }}
         on_delete_selected={workbench_state.request_delete_selected_files}
-        on_generate_translation={translation_export.request_export}
+        on_generate_translation={translation_generation.request_generation}
         on_close_project={workbench_state.request_close_project}
       />
       <WorkbenchDialogs

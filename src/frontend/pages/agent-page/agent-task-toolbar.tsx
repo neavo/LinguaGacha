@@ -11,7 +11,7 @@ import type { ModelSelectionInput } from "@shared/model-selection";
 import type { AgentApprovalMode } from "@domain/setting";
 import type { AgentContextSnapshot, AgentUsageSnapshot } from "@shared/agent";
 import { useI18n } from "@frontend/app/locale/locale-context";
-import { useTranslationExport } from "@frontend/app/session/translation-export/translation-export-context";
+import { useTranslationGeneration } from "@frontend/app/session/translation-generation/translation-generation-context";
 import type { ModelSelectionController } from "@frontend/features/model-selection/use-model-selection";
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipTarget } from "@frontend/shadcn/tooltip";
 import { AppButton } from "@frontend/widgets/app-button";
@@ -45,7 +45,7 @@ export function AgentTaskToolbar(props: {
   const [approval_open, set_approval_open] = useState(false); // 当前审批菜单的展开状态
   // 在提交菜单前清除展开状态，交互区恢复时菜单保持关闭。
   if (props.locked && approval_open) set_approval_open(false);
-  const translation_export = useTranslationExport();
+  const translation_generation = useTranslationGeneration();
   const new_task_aria_shortcut = resolve_shortcut_platform() === "mac" ? "Meta+N" : "Control+N";
   useActionShortcut({
     action: "create",
@@ -90,12 +90,12 @@ export function AgentTaskToolbar(props: {
         type="button"
         size="sm"
         variant="ghost"
-        className="agent-composer__export"
-        disabled={!translation_export.can_request_export}
-        onClick={translation_export.request_export}
+        className="agent-composer__generation"
+        disabled={!translation_generation.can_request_generation}
+        onClick={translation_generation.request_generation}
       >
         <FileOutput aria-hidden="true" />
-        <span>{t("workbench_page.action.generate_translation")}</span>
+        <span>{t("app.translation_generation.action")}</span>
       </AppButton>
       {props.disconnected ? (
         <Tooltip>

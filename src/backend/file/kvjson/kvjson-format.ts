@@ -1,6 +1,9 @@
+import type { JsonValue } from "../../../domain/json";
+import { AppError } from "../../../shared/error";
+import { read_translation_for_generation } from "../translation-generation-text";
 import { JsonTool } from "../../../shared/utils/json-tool";
 import { decode_text_content } from "../../../shared/utils/text-tool";
-import { group_items, write_text_file, type ExportPaths } from "../file-format-shared";
+import { group_items, write_text_file, type GeneratedFilePaths } from "../file-format-shared";
 import { Item } from "../../../domain/item";
 
 /**
@@ -20,7 +23,7 @@ export class KVJSONFormat {
       if (typeof value !== "string") {
         continue;
       }
-      const dst = value === key ? "" : value;
+      const dst = value;
       items.push(
         Item.from_json({
           src: key,
@@ -28,7 +31,7 @@ export class KVJSONFormat {
           row: items.length,
           file_type: "KVJSON",
           file_path: rel_path,
-          status: key === "" ? "RULE_SKIPPED" : dst !== "" ? "PROCESSED" : "NONE",
+          status: key === "" ? "RULE_SKIPPED" : dst !== "" && dst !== key ? "PROCESSED" : "NONE",
         }),
       );
     }
@@ -36,14 +39,32 @@ export class KVJSONFormat {
   }
 
   /**
-   * 写回时重新生成 key -> 有效译文 的对象，保持旧四空格缩进
+   * 基于原对象写回，保留其它字段并按带回退 KV 规则选择译文
    */
-  public async write_to_path(items: Item[], paths: ExportPaths): Promise<void> {
+  public async write_to_path(
+    items: Item[],
+    paths: GeneratedFilePaths,
+    asset_reader: (path: string) => Buffer | null,
+  ): Promise<void> {
     for (const [rel_path, group] of group_items(items, "KVJSON")) {
-      const data = Object.fromEntries(group.map((item) => [item.src, item.effective_dst()]));
+      const original = asset_reader(rel_path);
+      if (original === null)
+        throw new AppError("file.not_found", { public_details: { file: rel_path } });
+      const data: unknown = JsonTool.parseStrict(await decode_text_content(original));
+      if (typeof data !== "object" || data === null || Array.isArray(data))
+        throw new AppError("file.invalid_structure", { public_details: { file: rel_path } });
+      const record = data as Record<string, unknown>;
+      // 带回退 KV：读取源资产原值，不能用工程当前 dst 作为未完成条目的回退基线。
+      for (const item of group) {
+        const source = Object.hasOwn(record, item.src) ? record[item.src] : undefined;
+        if (typeof source !== "string")
+          throw new AppError("file.invalid_structure", { public_details: { file: rel_path } });
+        record[item.src] =
+          read_translation_for_generation(item) ?? (source !== "" ? source : item.src);
+      }
       await write_text_file(
         `${paths.translated_path}/${rel_path}`,
-        JsonTool.stringifyStrict(data, { indent: 4 }),
+        JsonTool.stringifyStrict(data as JsonValue, { indent: 4 }),
       );
     }
   }

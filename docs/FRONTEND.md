@@ -38,7 +38,7 @@ renderer 通过 `window.desktopApp` 使用按用途划分的宿主能力。
 |---|---|---|
 |工程身份、设置与事件编排|`DesktopStateProvider`|主窗口会话|
 |批量翻译、运行占用、工程变化信号|独立 Store|跨页面，按订阅者更新|
-|批量翻译详情与导出交互|应用会话 Provider|跨页面继续同一次操作|
+|批量翻译详情与译文生成交互|应用会话 Provider|跨页面继续同一次操作|
 |阅读位置、筛选等轻量状态|`ProjectSessionUiStateProvider`|当前工程，切换或关闭后清空|
 |查询窗口、局部编辑与弹窗|消费页面|随页面或目标内容结束|
 |Agent 会话镜像与普通草稿|`AgentChatStore`|按对话边界保留|

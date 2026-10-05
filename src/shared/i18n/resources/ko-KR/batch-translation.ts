@@ -39,7 +39,6 @@ export const ko_kr_batch_translation = {
   confirm: {
     reset_all_description: "프로젝트 전체의 번역 진행 상황을 초기화할까요 …?",
     reset_failed_description: "번역에 실패한 항목을 초기화할까요 …?",
-    generate_description: "현재 사용 가능한 번역문을 생성할까요 …?",
     stop_description: "현재 번역 작업을 중지할까요 …?",
   },
   action: { stop: "중지" },

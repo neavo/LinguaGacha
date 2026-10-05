@@ -70,7 +70,7 @@ export function WorkbenchCommandBar(props: WorkbenchCommandBarProps): JSX.Elemen
     {
       id: "generate-translation",
       icon: FileInput,
-      label_key: "workbench_page.action.generate_translation",
+      label_key: "app.translation_generation.action",
       disabled: !props.can_generate_translation,
       on_click: props.on_generate_translation,
     },

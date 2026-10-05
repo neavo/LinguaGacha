@@ -72,7 +72,6 @@ export const zh_cn_app = {
     operation_failed: "操作失败 …",
     content_unavailable: "内容暂不可用",
     save_failed: "保存失败 …",
-    translation_export_failed: "译文导出失败 …",
     model_request_failed: "模型请求失败 …",
     validation_failed: "请求参数无效",
     initial_load_failed: "应用数据加载失败 …",
@@ -185,10 +184,26 @@ export const zh_cn_app = {
     builder_input: "输入：",
     builder_preceding_context: "参考上文：",
   },
-  translation_export: {
+  translation_generation: {
+    action: "生成译文",
+    confirmation: {
+      description: "是否确认生成当前可用译文 …?",
+      checking: "正在检查校对警告 …",
+      check_failed: "读取校对警告失败，仍可继续生成当前译文 …",
+      warning_description:
+        "检查到 {COUNT} 个校对警告，推荐使用 AGENT 自动审校后再生成译文，是否确认继续 …?",
+      retry_check: "重新检查",
+      continue_generate: "继续生成",
+    },
     directory: {
       translated: "译文",
       bilingual: "译文_双语对照",
+    },
+    log: {
+      started: "生成译文中 …",
+      succeeded: "译文生成成功 …",
+      failed: "译文生成失败 …",
+      open_output_folder_failed: "打开输出文件夹失败 …",
     },
   },
   native_file_filter: {
@@ -198,7 +213,6 @@ export const zh_cn_app = {
     excel_files: "Excel 文件 (*.xlsx)",
     supported_txt_files: "支持的文件 (*.txt)",
   },
-
   diagnostic: {
     agent: {
       model_round_failed: "Agent 模型回合失败 …",
@@ -216,9 +230,6 @@ export const zh_cn_app = {
       prompt_load_failed: "默认提示词预设加载失败 …",
       quality_rule_load_failed: "默认质量规则预设加载失败 …",
       value_normalize_failed: "归一化默认预设值失败：{PRESET_DIRECTORY} -> {VALUE} …",
-    },
-    file_export: {
-      open_output_folder_failed: "打开输出文件夹失败 …",
     },
     lifecycle: {
       app_start_failed: "LinguaGacha 启动失败 …",
@@ -258,8 +269,6 @@ export const zh_cn_app = {
     engine_task_stop: "任务已停止 …",
     engine_task_success:
       "任务耗时 {TIME} 秒，文本行数 {LINES} 行，输入消耗 {PT} Tokens，思考消耗 {RT} Tokens，输出消耗 {CT} Tokens",
-    generate_translation_done: "译文已保存至 {PATH} …",
-    generate_translation_start: "生成译文中 …",
     model_response_invalid: "模型返回的数据无效 …",
     request_failed: "请求失败：{ERROR} …",
     request_timeout: "网络请求超时",

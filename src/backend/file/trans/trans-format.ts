@@ -4,7 +4,7 @@ import { AppError } from "../../../shared/error";
 import { JsonTool } from "../../../shared/utils/json-tool";
 import { Item } from "../../../domain/item";
 import type { MutableJsonRecord } from "../../../domain/json";
-import { group_items, write_text_file, type ExportPaths } from "../file-format-shared";
+import { group_items, write_text_file, type GeneratedFilePaths } from "../file-format-shared";
 import { RPGMakerTransProcessor } from "./rpgmaker-processor";
 import { WolfTransProcessor } from "./wolf-processor";
 import {
@@ -80,7 +80,7 @@ export class TRANSFormat {
    */
   public async write_to_path(
     items: Item[],
-    paths: ExportPaths,
+    paths: GeneratedFilePaths,
     asset_reader: (rel_path: string) => Buffer | null,
   ): Promise<void> {
     for (const [rel_path, group] of group_items(items, "TRANS")) {

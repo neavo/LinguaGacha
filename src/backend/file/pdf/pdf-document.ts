@@ -121,10 +121,13 @@ export type BuildPDFDocumentArgs = {
 };
 
 /** 以原稿副本为输出，保留原页对象及批注。预览和正式导出共用这个入口。 */
-export async function build_pdf_document(args: BuildPDFDocumentArgs): Promise<Uint8Array> {
+export async function build_pdf_document(args: BuildPDFDocumentArgs): Promise<Uint8Array | null> {
   args.signal?.throwIfAborted();
   const document = args.document;
   const rendered = render_pdf_translation(document); // 原页直出也先校验处置理由和文档结构。
+  // 所有页均无输出时返回空结果，格式层据此省略文件。
+  if (!document.pages.some((page, index) => is_pdf_original_page(page) || rendered[index] !== null))
+    return null;
   if (document.pages.every(is_pdf_original_page)) return args.source_bytes;
   const output = new mupdf.PDFDocument(args.source_bytes);
   try {

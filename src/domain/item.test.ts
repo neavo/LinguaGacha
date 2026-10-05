@@ -33,13 +33,6 @@ describe("Item", () => {
     expect(item.to_public_json()).not.toHaveProperty("retry_count");
   });
 
-  it("译文为空时导出原文，否则导出译文", () => {
-    expect(Item.from_json({ src: "原文", dst: "", file_type: "TXT" }).effective_dst()).toBe("原文");
-    expect(Item.from_json({ src: "原文", dst: "译文", file_type: "TXT" }).effective_dst()).toBe(
-      "译文",
-    );
-  });
-
   it("通用表格和 JSON 条目缺少 text_type 时复用共享引擎类型推断", () => {
     expect(Item.from_json({ src: "{i}Start{/i}", file_type: "KVJSON" }).text_type).toBe("RENPY");
     expect(Item.from_json({ src: "{中文正文}", file_type: "KVJSON" }).text_type).toBe("NONE");

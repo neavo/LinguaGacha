@@ -30,7 +30,6 @@ export const de_de_project_page = {
     preview_loading_toast: "Projektvorschau wird gelesen …",
     loading_toast: "Projekt wird geladen …",
     preview_unavailable: "Fehler beim Lesen der Projektvorschau …",
-
     action: "Projekt öffnen",
     remove_unavailable:
       "Dieser letzte Projekteintrag kann derzeit nicht entfernt werden. Bitte versuchen Sie es später erneut …",

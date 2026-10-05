@@ -115,7 +115,7 @@ const RENPY_CONTROL_TAG_PATTERN = /\{([^{}]*?)\}|\[([^[\]]*?)\]/giu; // RENPY；
 export class Item {
   public id: number | undefined; // 数据库主键（自增）；跨层 JSON 中允许缺失
   public src = ""; // 原文
-  public dst = ""; // 译文；为空时导出逻辑回退原文
+  public dst = ""; // 正文译文；生成时按状态与文件格式解释空值
   public name_src: ItemNameField = null; // 角色姓名原文
   public name_dst: ItemNameField = null; // 角色姓名译文
   public extra_field: JsonValue = ""; // 额外字段原文；兼容格式私有 JSON
@@ -201,13 +201,6 @@ export class Item {
       status: this.status,
       skip_internal_filter: this.skip_internal_filter,
     };
-  }
-
-  /**
-   * 导出只关心最终可写文本，空译文回退原文
-   */
-  public effective_dst(): string {
-    return this.dst !== "" ? this.dst : this.src;
   }
 
   /**
