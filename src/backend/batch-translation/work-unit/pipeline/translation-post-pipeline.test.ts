@@ -58,7 +58,11 @@ describe("TranslationPostPipeline", () => {
     expect(process_text(post, context, ['\\n[7]"1"\\n[8]'])).toBe("  \\n[7]「①」\\n[8]  ");
   });
 
-  it("行数对应时恢复空白行和完全保护行", () => {
+  it.each([
+    ["line\n \n<skip>", "ok\n模型改写空行\n<changed>", "ok\n \n<skip>"],
+    ["\r\n「…………」\r\n", "模型改写\n成其他行数", "\r\n「…………」\r\n"],
+    ["<skip>", "模型改写\n成其他行数", "<skip>"],
+  ])("按译前保留状态恢复正文与原始换行：%j", (src, translation, expected) => {
     const { pre, post } = create_pipeline_pair(
       create_config(),
       create_quality_snapshot({
@@ -67,13 +71,22 @@ describe("TranslationPostPipeline", () => {
       }),
     );
     const context = pre.process_item({
-      src: "line\n \n<skip>",
+      src,
+      name_src: "Alice",
       text_type: "TXT",
     });
 
-    const result = process_text(post, context, ["ok", "模型改写空行", "<changed>"]);
+    const result = post.process_item(
+      context,
+      {
+        request_id: 0,
+        text_dst: translation,
+        actor_dst: "爱丽丝",
+      },
+      "actor_text",
+    );
 
-    expect(result).toBe("ok\n \n<skip>");
+    expect(result.dst).toBe(expected);
   });
 
   it("译后会移除模型额外添加的头尾空白再恢复原始空白", () => {
@@ -157,19 +170,19 @@ describe("TranslationPostPipeline", () => {
     const { pre, post } = create_pipeline_pair(create_config(), create_quality_snapshot());
     const context = pre.process_item({
       src: "查看 https://example.com/guide",
-      name_src: "data:image/png;base64,AAAA",
+      name_src: "Alice data:image/png;base64,AAAA",
       text_type: "TXT",
     });
 
     const result = post.process_item(
       context,
-      { request_id: 0, text_dst: "请看 lg-uri/1", actor_dst: "lg-uri/0" },
+      { request_id: 0, text_dst: "请看 lg-uri/1", actor_dst: "爱丽丝 lg-uri/0" },
       "actor_text",
     );
 
     expect(result).toEqual({
       dst: "请看 https://example.com/guide",
-      name_dst: "data:image/png;base64,AAAA",
+      name_dst: "爱丽丝 data:image/png;base64,AAAA",
     });
   });
 
@@ -212,23 +225,6 @@ describe("TranslationPostPipeline", () => {
     expect(result).toEqual({ dst: "hi" });
   });
 
-  it("带姓名源行但模型返回空 actor 时明确返回空姓名译文", () => {
-    const { pre, post } = create_pipeline_pair(create_config(), create_quality_snapshot());
-    const context = pre.process_item({
-      src: "hello",
-      name_src: "Alice",
-      text_type: "TXT",
-    });
-
-    const result = post.process_item(
-      context,
-      { request_id: 0, text_dst: "hi", actor_dst: null },
-      "actor_text",
-    );
-
-    expect(result).toEqual({ dst: "hi", name_dst: null });
-  });
-
   it("组合应用代码和数字修复后返回最终译文", () => {
     const { pre, post } = create_pipeline_pair(
       create_config(),
@@ -252,14 +248,14 @@ describe("TranslationPostPipeline", () => {
         pre_replacement_entries: [{ src: "①", dst: "<Q>1", regex: false, case_sensitive: true }],
       }),
     );
-    const context = pre.process_item({ src: "①", text_type: "TXT" });
+    const context = pre.process_item({ src: "①", text_type: "TXT", skip_internal_filter: true });
 
     expect(process_text(post, context, ["<Q>1"])).toBe("<Q>①");
   });
 
   it("行数不一致时不执行缺少逐行证据的自动恢复", () => {
     const { pre, post } = create_pipeline_pair(create_config(), create_quality_snapshot());
-    const context = pre.process_item({ src: "①\n②", text_type: "TXT" });
+    const context = pre.process_item({ src: "①\n②", text_type: "TXT", skip_internal_filter: true });
 
     const result = post.process_item(
       context,

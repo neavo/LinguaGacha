@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { ProjectItemPublicRecord } from "../../domain/item";
 import { compute_project_prefilter_write, type ProjectWriteState } from "./project-write-state";
 
+/** 构造完整公开条目，覆盖参数只表达当前场景需要的事实。 */
 function create_item(
   item_id: number,
   overrides: Partial<ProjectItemPublicRecord> = {},
@@ -26,6 +27,7 @@ function create_item(
   };
 }
 
+/** 同一文件的条目快照供预过滤与重复协调共同使用。 */
 function create_state(items: ProjectItemPublicRecord[]): ProjectWriteState {
   return {
     files: {
@@ -39,6 +41,34 @@ function create_state(items: ProjectItemPublicRecord[]): ProjectWriteState {
 }
 
 describe("compute_project_prefilter_write", () => {
+  it("按正文与可见姓名判断翻译候选，正文特殊规则不作用于姓名", () => {
+    const result = compute_project_prefilter_write({
+      state: create_state([
+        create_item(1, { src: "「…………」", name_src: "眼鏡の美少女" }),
+        create_item(2, { src: "", name_src: ["俊輔", "附加信息"] }),
+        create_item(3, { src: "EV12", name_src: "EV12" }),
+        create_item(4, { src: "……", name_src: "Alice" }),
+        create_item(5, { src: "……", name_src: "image.png" }),
+        create_item(6, { src: "……", name_src: ["", "俊輔"] }),
+        create_item(7, { src: "こんにちは", name_src: "Alice" }),
+      ]),
+      source_language: "JA",
+      target_language: "ZH",
+      mtool_optimizer_enable: false,
+      skip_duplicate_source_text_enable: false,
+    });
+
+    expect(Object.values(result.items).map((item) => item.status)).toEqual([
+      "NONE",
+      "NONE",
+      "LANGUAGE_SKIPPED",
+      "LANGUAGE_SKIPPED",
+      "RULE_SKIPPED",
+      "RULE_SKIPPED",
+      "NONE",
+    ]);
+  });
+
   it("按规则和源语言生成跳过状态并返回项目设置镜像", () => {
     const result = compute_project_prefilter_write({
       state: create_state([
@@ -96,6 +126,7 @@ describe("compute_project_prefilter_write", () => {
           src: "格式内部字段",
           file_type: "WOLFXLSX",
           status: "RULE_SKIPPED",
+          name_src: "姓名",
         }),
       ]),
       source_language: "ZH",

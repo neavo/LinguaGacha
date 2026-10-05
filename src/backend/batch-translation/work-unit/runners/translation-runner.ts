@@ -61,7 +61,7 @@ interface TranslationWorkUnitResult {
   logs?: WorkUnitLogEntry[];
 }
 
-/** 以 item 为单位的翻译 worker；逐行准备与恢复均留在 pipeline 内部。 */
+/** 以 item 为单位的翻译 worker，逐行准备与恢复由 pipeline 负责。 */
 export class TranslationWorkUnitRunner {
   /** 显式持有提示词资源和唯一 LLM 边界，便于 worker 测试。 */
   public constructor(
@@ -69,7 +69,7 @@ export class TranslationWorkUnitRunner {
     private readonly llm_client: TranslationRequestPort,
   ) {}
 
-  /** 执行一个翻译单元；提交与重试决策由 BatchTranslationRunner 负责。 */
+  /** 执行一个翻译单元。提交与重试决策由 BatchTranslationRunner 负责。 */
   public async execute_unit(
     unit: TranslationWorkUnit,
     signal: AbortSignal,
@@ -164,7 +164,8 @@ export class TranslationWorkUnitRunner {
         pipeline_contexts: TranslationPrePipelineContext[];
       } {
     const activated = this.resolve_activated_glossary_entries(quality, items);
-    const pipeline = new TranslationPrePipeline(config, quality);
+    const api_format = String(read_json_record(request.model)["api_format"] ?? "OpenAI");
+    const pipeline = new TranslationPrePipeline(config, quality, api_format !== "SakuraLLM");
     const projected_precedings = pipeline.project_precedings(precedings);
     const pipeline_contexts: TranslationPrePipelineContext[] = [];
     const request_items: TranslationRequestItem[] = [];
@@ -189,7 +190,6 @@ export class TranslationWorkUnitRunner {
       quality,
       activated,
     );
-    const api_format = String(read_json_record(request.model)["api_format"] ?? "OpenAI");
     const mode =
       api_format === "SakuraLLM" ? "text" : resolve_translation_prompt_mode(request_items);
     const prompt =
@@ -256,7 +256,13 @@ export class TranslationWorkUnitRunner {
         decoded_item !== undefined &&
         !duplicates.has(request_item.request_id) &&
         item !== undefined &&
-        pipeline_context !== undefined;
+        pipeline_context !== undefined &&
+        // 只要求当前协议实际请求的字段，姓名任务允许空正文。
+        (!pipeline_context.prepared_lines.some((line) => line.state === "translatable") ||
+          decoded_item.text_dst.trim() !== "") &&
+        (context.mode !== "actor_text" ||
+          request_item.actor_src === null ||
+          decoded_item.actor_dst !== null);
       if (valid) {
         const result = post.process_item(pipeline_context, decoded_item, context.mode);
         item.dst = result.dst;
@@ -266,7 +272,7 @@ export class TranslationWorkUnitRunner {
         dsts.push(decoded_item.text_dst);
         actor_dsts.push(decoded_item.actor_dst);
       } else {
-        // 对照区只展示实际接受的译文；原始候选仍保留在响应区段中。
+        // 对照区展示实际接受的译文。原始候选保留在响应区段中。
         dsts.push("");
         actor_dsts.push(null);
       }
@@ -373,7 +379,7 @@ export class TranslationWorkUnitRunner {
     ];
   }
 
-  /** 根据原始 item 字段激活术语，而不是根据转换后的提示词文本匹配。 */
+  /** 根据原始 item 字段激活术语，匹配依据与项目规则保持一致。 */
   private resolve_activated_glossary_entries(
     quality: TextQualitySnapshot,
     items: TextTaskItemRecord[],

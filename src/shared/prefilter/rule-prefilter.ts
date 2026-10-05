@@ -15,9 +15,9 @@ const RULE_PREFILTER_PATTERNS = [
   /^\{#file_time\}/iu,
 ];
 
-// 书写系统正文是可翻译内容的最小稳定证据；附标、数字、标点、符号和控制字符不独立成文。
-function is_non_translatable_content_line(line: string): boolean {
-  return !has_language_body_character(line);
+// 书写系统正文是可翻译内容的最小稳定证据。附标、数字、标点、符号和控制字符不独立成文。
+export function has_translatable_text(text: string): boolean {
+  return has_language_body_character(remove_text_resource_references(text));
 }
 
 /** 单行预过滤在移除资源引用后判断正文，并保留格式元数据规则。 */
@@ -28,10 +28,8 @@ function should_skip_rule_prefilter_line(raw_line: string): boolean {
   }
 
   const normalized_line = line.toLowerCase();
-  const natural_text = remove_text_resource_references(line);
-
   return (
-    is_non_translatable_content_line(natural_text) ||
+    !has_translatable_text(line) ||
     RULE_PREFILTER_PREFIXES.some((prefix) => normalized_line.startsWith(prefix)) ||
     RULE_PREFILTER_PATTERNS.some((pattern) => pattern.test(normalized_line))
   );
