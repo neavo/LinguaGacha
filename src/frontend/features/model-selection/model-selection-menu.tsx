@@ -97,18 +97,6 @@ export function ModelSelectionOptions(props: {
             <AppDropdownMenuSubContent>
               {models.map((model) => {
                 const ModelIcon = model.id === selected_id ? CircleCheck : Circle;
-                // 名称提示挂在文本上，菜单项负责选择与展开。
-                const content = (
-                  <>
-                    <ModelIcon aria-hidden="true" />
-                    <Tooltip>
-                      <TooltipTrigger
-                        render={<span className="max-w-72 truncate">{model.name || model.id}</span>}
-                      />
-                      <TooltipContent>{model.name || model.id}</TooltipContent>
-                    </Tooltip>
-                  </>
-                );
                 return (
                   <AppDropdownMenuSub key={model.id}>
                     <AppDropdownMenuSubTrigger
@@ -120,7 +108,8 @@ export function ModelSelectionOptions(props: {
                         close();
                       }}
                     >
-                      {content}
+                      <ModelIcon aria-hidden="true" />
+                      <span className="max-w-72 truncate">{model.name || model.id}</span>
                     </AppDropdownMenuSubTrigger>
                     <AppDropdownMenuSubContent>
                       <ThinkingLevelOptions
