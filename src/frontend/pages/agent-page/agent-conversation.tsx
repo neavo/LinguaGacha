@@ -285,7 +285,7 @@ export function AgentConversation({ active = true }: { active?: boolean }): JSX.
     [apply_settings_snapshot, settings_snapshot.agent_approval_mode, show_command_error],
   );
 
-  /** Mention 指令直接调用宿主压缩。筛选文本由 Composer 在动作前移除。 */
+  /** 菜单与失败块共用宿主压缩入口及错误反馈，菜单筛选文本由 Composer 移除。 */
   const compact_context = useCallback((): void => {
     void agent_actions.compactContext().catch((error: unknown) => {
       show_command_error(error, "agent_page.error.compact");
@@ -599,6 +599,8 @@ export function AgentConversation({ active = true }: { active?: boolean }): JSX.
             <AgentTimeline
               active={active}
               skills={skills}
+              compact_available={compact_available}
+              on_compact={compact_context}
               follow_reset_revision={follow_reset_revision}
               on_continue={continue_latest_round}
               on_edit={start_edit}

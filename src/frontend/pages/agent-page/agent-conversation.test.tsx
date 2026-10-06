@@ -1003,6 +1003,44 @@ describe("AgentConversation", () => {
     expect(continue_session).toHaveBeenCalledOnce();
   });
 
+  it("压缩失败块复用压缩命令、可用性和错误反馈", async () => {
+    const compactContext = vi.fn(async () => undefined);
+    const entries: AgentEntry[] = [
+      user_entry("user", "检查", "success", 0, 1_000),
+      { kind: "context_compaction", id: "compact", status: "error" },
+    ];
+    const options = {
+      entries,
+      context: { tokens: 64_000, compactable: true, limits: null },
+      compactContext,
+    };
+    const view = await render_page(options);
+    const retry = view.querySelector<HTMLButtonElement>(".agent-process-entry button");
+    expect(retry?.textContent).toBe("app.action.retry");
+    expect(retry?.disabled).toBe(false);
+    await act(async () => retry?.click());
+    expect(compactContext).toHaveBeenCalledOnce();
+
+    await render_page({ ...options, command: "compact" });
+    expect(retry?.disabled).toBe(true);
+    await render_page({ ...options, state: "running" });
+    expect(retry?.disabled).toBe(true);
+    await render_page({ ...options, transport: "disconnected" });
+    expect(retry?.disabled).toBe(true);
+    await render_page({ ...options, context: { tokens: 0, compactable: false, limits: null } });
+    expect(retry?.disabled).toBe(true);
+    runtime_state.current = { revision: 1, owner: "batch_translation" };
+    await render_page(options);
+    expect(retry?.disabled).toBe(true);
+
+    runtime_state.current = { revision: 2, owner: null };
+    await render_page(options);
+    const error = new Error("offline");
+    compactContext.mockRejectedValueOnce(error);
+    await act(async () => retry?.click());
+    expect(push_toast).toHaveBeenCalledWith("agent_page.error.compact", error);
+  });
+
   it("停止命令失败时保留运行态并显示错误 Toast", async () => {
     const stop = vi.fn(() => Promise.reject(new Error("offline")));
     const view = await render_page({ state: "running", stop });

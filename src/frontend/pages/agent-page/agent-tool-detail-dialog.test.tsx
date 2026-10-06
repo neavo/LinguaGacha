@@ -76,7 +76,11 @@ describe("AgentToolDetailDialog", () => {
   });
 
   it("运行工具默认显示输入，同 id 完成后保留当前面板", async () => {
-    await render_dialog(tool_running("read_skill", '{"path":"SKILL.md"}'));
+    const input = '{"name":"sample","path":"aaa/bbb.md"}';
+    await render_dialog(tool_running("read_skill", input));
+    expect(document.body.querySelector(".agent-tool-detail__identity h2")?.textContent).toBe(
+      "read_skill · sample\\aaa\\bbb.md",
+    );
     const input_tab = [...document.body.querySelectorAll<HTMLButtonElement>('[role="tab"]')].find(
       (tab) => tab.textContent === "agent_page.tool.input",
     );
@@ -84,13 +88,13 @@ describe("AgentToolDetailDialog", () => {
     expect(
       document.body.querySelector('[role="dialog"] .cm-content[aria-label="agent_page.tool.input"]')
         ?.textContent,
-    ).toContain("SKILL.md");
-    await render_dialog(tool_success("read_skill", '{"path":"SKILL.md"}', "完整正文。"));
+    ).toContain("aaa/bbb.md");
+    await render_dialog(tool_success("read_skill", input, "完整正文。"));
     expect(input_tab?.hasAttribute("data-active")).toBe(true);
     expect(
       document.body.querySelector('[role="dialog"] .cm-content[aria-label="agent_page.tool.input"]')
         ?.textContent,
-    ).toContain("SKILL.md");
+    ).toContain("aaa/bbb.md");
   });
 
   it("workspace_run 输入直接显示保持原文的 JavaScript 程序", async () => {

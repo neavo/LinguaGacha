@@ -16,6 +16,7 @@ import {
 } from "@frontend/pages/agent-page/agent-entry-status";
 import { AgentStatusMark } from "@frontend/pages/agent-page/agent-status-mark";
 import { format_agent_tool_output } from "./agent-tool-output";
+import { format_agent_tool_label } from "./agent-tool-label";
 
 type AgentToolPayloadChannel = "input" | "output";
 type AgentToolPayloadOptions = {
@@ -40,6 +41,7 @@ type AgentToolDetailDialogProps = {
 export function AgentToolDetailDialog(props: AgentToolDetailDialogProps): JSX.Element {
   const { t } = useI18n();
   const entry = props.entry;
+  const label = format_agent_tool_label(entry.toolName, entry.input);
   const [initial_channel] = useState<AgentToolPayloadChannel>(
     entry.output === null ? "input" : "output",
   );
@@ -66,7 +68,7 @@ export function AgentToolDetailDialog(props: AgentToolDetailDialogProps): JSX.El
   const active = entry.status === "running";
   const duration = useAgentElapsed(entry.createdAt, active);
   const status_label = t(AGENT_STATUS_LABEL_KEYS[entry.status]);
-  const title = t("agent_page.tool.details", { tool: entry.toolName });
+  const title = t("agent_page.tool.details", { tool: label });
   return (
     <AppPageDialog
       open
@@ -77,7 +79,7 @@ export function AgentToolDetailDialog(props: AgentToolDetailDialogProps): JSX.El
     >
       <div className="agent-tool-detail__header">
         <div className="agent-tool-detail__identity">
-          <h2>{entry.toolName}</h2>
+          <h2 title={label}>{label}</h2>
           <span>
             {status_label}
             {active ? ` · ${duration}` : ""}

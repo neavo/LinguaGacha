@@ -67,6 +67,7 @@ describe("AgentTimeline", () => {
   let root: Root | null = null;
   const on_edit = vi.fn();
   const on_continue = vi.fn();
+  const on_compact = vi.fn();
   const on_add_annotation = vi.fn();
   const write_clipboard = vi.fn(async (_text: string) => undefined);
 
@@ -89,6 +90,7 @@ describe("AgentTimeline", () => {
     container = null;
     on_edit.mockReset();
     on_continue.mockReset();
+    on_compact.mockReset();
     on_add_annotation.mockReset();
     write_clipboard.mockReset();
     vi.unstubAllGlobals();
@@ -113,6 +115,8 @@ describe("AgentTimeline", () => {
           <TooltipProvider>
             <AgentTimeline
               skills={skills}
+              compact_available
+              on_compact={on_compact}
 
               follow_reset_revision={follow_reset_revision}
               on_continue={on_continue}
@@ -352,11 +356,21 @@ describe("AgentTimeline", () => {
     ];
     const view = await render_timeline([
       ...round,
+      { kind: "context_compaction", id: "old-compaction", status: "error" },
       { kind: "context_compaction", id: "compaction-1", status: "error" },
     ]);
-    expect(view.querySelector(".agent-context-compaction")?.textContent).toContain(
+    expect(view.querySelector('.agent-process-entry [role="status"]')?.textContent).toContain(
       "agent_page.compaction.error",
     );
+    const retries = view.querySelectorAll<HTMLButtonElement>(".agent-process-entry button");
+    expect(retries).toHaveLength(1);
+    await act(async () => retries[0]?.click());
+    expect(on_compact).toHaveBeenCalledOnce();
+    await act(async () => {
+      timeline_store.update([{ kind: "context_compaction", id: "retry", status: "running" }]);
+      timeline_store.notify();
+    });
+    expect(view.querySelector(".agent-process-entry button")).toBeNull();
     const continue_button = view.querySelector<HTMLButtonElement>(".agent-continue-entry");
     expect(continue_button?.textContent).toContain("app.feedback.model_request_failed");
     await act(async () => continue_button?.click());
@@ -368,38 +382,47 @@ describe("AgentTimeline", () => {
     vi.setSystemTime(8_001);
     const view = await render_timeline(
       round_entries([
-        tool_entry("tool-1", "workspace_run", "running", null, 1, '{"scope":"input"}'),
+        tool_entry(
+          "tool-1",
+          "read_skill",
+          "running",
+          null,
+          1,
+          '{"name":"sample","path":"aaa/bbb.md"}',
+        ),
       ]),
     );
-    const tool = view.querySelector<HTMLButtonElement>(".agent-tool-entry");
-    expect(tool?.textContent).toBe("workspace_run · 8s");
+    const tool = view.querySelector<HTMLButtonElement>(".agent-process-entry--tool");
+    expect(tool?.textContent).toBe("read_skill · sample\\aaa\\bbb.md · 8s");
     await act(async () => vi.advanceTimersByTime(1_000));
-    expect(tool?.textContent).toBe("workspace_run · 9s");
+    expect(tool?.textContent).toBe("read_skill · sample\\aaa\\bbb.md · 9s");
     await act(async () => tool?.click());
-    expect(get_tool_dialog_json()).toEqual({ scope: "input" });
+    expect(get_tool_dialog_json()).toEqual({ name: "sample", path: "aaa/bbb.md" });
 
     await render_timeline(
       round_entries(
         [
           tool_entry(
             "tool-1",
-            "workspace_run",
+            "read_skill",
             "success",
             '{"scope":"output"}',
             1,
-            '{"scope":"input"}',
+            '{"name":"sample","path":"aaa/bbb.md"}',
           ),
         ],
         "success",
       ),
     );
-    expect(get_tool_dialog_json()).toEqual({ scope: "input" });
+    expect(get_tool_dialog_json()).toEqual({ name: "sample", path: "aaa/bbb.md" });
     const output_tab = [
       ...document.body.querySelectorAll<HTMLButtonElement>('button[role="tab"]'),
     ].find((button) => button.textContent === "agent_page.tool.output");
     await act(async () => output_tab?.click());
     expect(get_tool_dialog_json()).toEqual({ scope: "output" });
-    expect(view.querySelector(".agent-tool-entry .agent-status-mark--success")).not.toBeNull();
+    expect(
+      view.querySelector(".agent-process-entry--tool .agent-status-mark--success"),
+    ).not.toBeNull();
   });
 
   it("并行工具用状态灯与可访问名称保留独立状态语义", async () => {
@@ -418,7 +441,7 @@ describe("AgentTimeline", () => {
       ["stopped", "agent_page.status.stopped"],
     ] as const) {
       const mark = view.querySelector<HTMLElement>(
-        `.agent-tool-entry .agent-status-mark--${status}[role="img"]`,
+        `.agent-process-entry--tool .agent-status-mark--${status}[role="img"]`,
       );
       expect(mark?.getAttribute("aria-label")).toBe(label);
     }
@@ -646,7 +669,7 @@ describe("AgentTimeline", () => {
     const visible_text = view.textContent ?? "";
     expect(visible_text.indexOf("准备查询")).toBeLessThan(visible_text.indexOf("workspace_run"));
     expect(visible_text.indexOf("workspace_run")).toBeLessThan(visible_text.indexOf("read_skill"));
-    const tools = view.querySelectorAll<HTMLButtonElement>(".agent-tool-entry");
+    const tools = view.querySelectorAll<HTMLButtonElement>(".agent-process-entry--tool");
     expect(tools[0]?.textContent).not.toContain("Alice");
     expect(tools[1]?.querySelector(".agent-status-mark--error")?.getAttribute("aria-label")).toBe(
       "agent_page.status.error",
