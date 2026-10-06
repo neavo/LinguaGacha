@@ -15,7 +15,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { Check, ChevronsDownUp, CircleAlert, Copy, Pencil, Wrench } from "lucide-react";
+import { Check, CircleAlert, Copy, Pencil } from "lucide-react";
 
 import type {
   AgentEntry,
@@ -23,9 +23,8 @@ import type {
   AgentEntryStatus,
   AgentAssistantMessagePart,
   AgentResponseAnnotationAttachment,
-  AgentToolEntry,
 } from "@shared/agent";
-import { useI18n, type LocaleKey } from "@frontend/app/locale/locale-context";
+import { useI18n } from "@frontend/app/locale/locale-context";
 import { AppButton } from "@frontend/widgets/app-button";
 import { type AgentReferenceRange } from "@shared/agent-reference";
 import { AgentMarkdown } from "./agent-markdown";
@@ -39,24 +38,19 @@ import { useAgentFollowLatest } from "./agent-scroll";
 import { AgentToolDetailDialog } from "./agent-tool-detail-dialog";
 import { AgentResponseAnnotationSelection } from "./agent-response-annotation-selection";
 import { AgentRoundFooter } from "./agent-round-footer";
+import { AgentContextCompactionEntry, AgentToolEntryButton } from "./agent-process-entry";
 
 type Translate = ReturnType<typeof useI18n>["t"];
 type UserEntry = Extract<AgentEntry, { kind: "user_message" }>;
 type AssistantEntry = Extract<AgentEntry, { kind: "assistant_message" }>;
-type ContextCompactionEntry = Extract<AgentEntry, { kind: "context_compaction" }>;
-/** 压缩条目使用独立状态句式，不复用普通轮次结果文案。 */
-const AGENT_COMPACTION_LABEL_KEYS: Readonly<Record<ContextCompactionEntry["status"], LocaleKey>> =
-  Object.freeze({
-    running: "agent_page.compaction.running",
-    success: "agent_page.compaction.success",
-    error: "agent_page.compaction.error",
-  });
 const AGENT_THINKING_AUTO_COLLAPSE_DELAY_MS = 3_000; // 给用户留出确认终态的短暂视觉窗口
 
 /** 页面提供交互与展示设置，时间线事实由各层独立订阅。 */
 type AgentTimelineProps = {
   active?: boolean;
   skills: readonly AgentSkillSnapshot[];
+  compact_available: boolean;
+  on_compact: () => void;
 
   follow_reset_revision: number;
   on_continue: () => void;
@@ -75,7 +69,7 @@ export function AgentTimeline(props: AgentTimelineProps): JSX.Element {
   useEffect(() => {
     if (props.active === false) set_selected_tool_id(null);
   }, [props.active]);
-  const { roundIds } = useAgentTimeline();
+  const { roundIds, latestCompactionId } = useAgentTimeline();
   const selected = useAgentEntry(selected_tool_id);
   const selected_tool = selected?.kind === "tool_call" ? selected : null;
   return (
@@ -89,6 +83,9 @@ export function AgentTimeline(props: AgentTimelineProps): JSX.Element {
             key={roundId}
             roundId={roundId}
             skills={props.skills}
+            compact_available={props.compact_available}
+            on_compact={props.on_compact}
+            latest_compaction_id={latestCompactionId}
 
             follow_reset_revision={props.follow_reset_revision}
             t={t}
@@ -111,6 +108,9 @@ export function AgentTimeline(props: AgentTimelineProps): JSX.Element {
 
 type AgentRoundProps = {
   skills: readonly AgentSkillSnapshot[];
+  compact_available: boolean;
+  on_compact: () => void;
+  latest_compaction_id: string | null;
   roundId: string;
 
   follow_reset_revision: number;
@@ -224,6 +224,9 @@ const AgentRoundItem = memo(function AgentRoundItem(
       t={props.t}
       follow_reset_revision={props.follow_reset_revision}
       on_open_tool={props.on_open_tool}
+      compact_available={props.compact_available}
+      on_compact={props.on_compact}
+      latest_compaction={entry.id === props.latest_compaction_id}
     />
   );
   if (entry.kind !== "assistant_message") return view;
@@ -363,6 +366,9 @@ type AgentEntryViewProps = {
   entry: Exclude<AgentEntry, { kind: "user_message" }>;
   t: Translate;
   on_open_tool: (id: string) => void;
+  compact_available: boolean;
+  on_compact: () => void;
+  latest_compaction: boolean;
   follow_reset_revision: number;
 };
 
@@ -370,34 +376,20 @@ type AgentEntryViewProps = {
 const AgentEntryView = memo(function AgentEntryView(props: AgentEntryViewProps): ReactNode {
   const entry = props.entry;
   if (entry.kind === "context_compaction") {
-    return <AgentContextCompactionEntry entry={entry} t={props.t} />;
-  }
-  if (entry.kind === "tool_call") {
     return (
-      <AgentToolEntryButton
+      <AgentContextCompactionEntry
         entry={entry}
-        status_label={props.t(AGENT_STATUS_LABEL_KEYS[entry.status])}
-        on_open={() => props.on_open_tool(entry.id)}
+        latest={props.latest_compaction}
+        compact_available={props.compact_available}
+        on_compact={props.on_compact}
       />
     );
   }
+  if (entry.kind === "tool_call") {
+    return <AgentToolEntryButton entry={entry} on_open={() => props.on_open_tool(entry.id)} />;
+  }
   return render_assistant_entry(entry, props.t, props.follow_reset_revision);
 });
-
-/** 压缩是由 SDK 拥有的无详情模型历史边界。 */
-function AgentContextCompactionEntry(props: {
-  entry: ContextCompactionEntry;
-  t: Translate;
-}): JSX.Element {
-  const label = props.t(AGENT_COMPACTION_LABEL_KEYS[props.entry.status]);
-  return (
-    <div className="agent-context-compaction" role="status">
-      <ChevronsDownUp aria-hidden="true" />
-      <span>{label}</span>
-      <AgentStatusMark status={props.entry.status} label={label} />
-    </div>
-  );
-}
 
 /** 用已知非重叠范围渲染用户正文。未知 marker 与普通文本保持原样。 */
 function render_agent_mention_text(
@@ -455,37 +447,6 @@ function render_assistant_entry(
         return <AgentMarkdown key={key} text={part.text} streaming={entry.status === "running"} />;
       })}
     </article>
-  );
-}
-
-/** 工具条目只展示可扫描摘要，完整载荷交给页面唯一详情弹窗。 */
-function AgentToolEntryButton(props: {
-  entry: AgentToolEntry;
-  status_label: string;
-  on_open: () => void;
-}): JSX.Element {
-  const active = props.entry.status === "running";
-  const duration = useAgentElapsed(props.entry.createdAt, active);
-  return (
-    <button
-      type="button"
-      className="agent-tool-entry"
-      data-status={props.entry.status}
-      aria-haspopup="dialog"
-      onClick={props.on_open}
-    >
-      <Wrench className="agent-tool-entry__icon" aria-hidden="true" />
-      <span className="agent-tool-entry__label">
-        {props.entry.toolName}
-        {active ? (
-          <>
-            {" · "}
-            <span className="agent-tool-entry__elapsed">{duration}</span>
-          </>
-        ) : null}
-      </span>
-      <AgentStatusMark status={props.entry.status} label={props.status_label} />
-    </button>
   );
 }
 

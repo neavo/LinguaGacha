@@ -71,6 +71,7 @@ it("快照替换清除旧轮次、操作状态和条目，并通知被移除条�
   store.notify();
   expect(store.read()).toMatchObject({
     roundIds: ["round"],
+    latestCompactionId: "compact",
     workspaceApplyRunning: true,
     compacting: true,
   });
@@ -83,8 +84,24 @@ it("快照替换清除旧轮次、操作状态和条目，并通知被移除条�
     entryIds: [],
     roundIds: [],
     latestRoundId: null,
+    latestCompactionId: null,
     workspaceApplyRunning: false,
     compacting: false,
   });
   expect(store.round("round")).toEqual([]);
+});
+
+it("最近压缩身份随追加更新，旧条目的迟到更新不会覆盖最新身份", () => {
+  const store = new AgentTimelineStore();
+  const failed: AgentEntry = { kind: "context_compaction", id: "failed", status: "error" };
+  store.replace([failed]);
+  expect(store.read()).toMatchObject({ latestCompactionId: "failed", compacting: false });
+  store.update([{ kind: "context_compaction", id: "retry", status: "running" }]);
+  expect(store.read()).toMatchObject({ latestCompactionId: "retry", compacting: true });
+  store.update([{ ...failed, status: "success" }]);
+  expect(store.read()).toMatchObject({ latestCompactionId: "retry", compacting: true });
+  store.update([{ kind: "context_compaction", id: "retry", status: "success" }]);
+  expect(store.read()).toMatchObject({ latestCompactionId: "retry", compacting: false });
+  store.replace([failed]);
+  expect(store.read()).toMatchObject({ latestCompactionId: "failed", compacting: false });
 });

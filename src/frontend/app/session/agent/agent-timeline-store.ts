@@ -5,6 +5,7 @@ export type AgentTimelineSlice = Readonly<{
   entryIds: readonly string[];
   roundIds: readonly string[];
   latestRoundId: string | null;
+  latestCompactionId: string | null; // 最近追加的压缩身份，供界面定位恢复入口。
   workspaceApplyRunning: boolean;
   compacting: boolean;
 }>;
@@ -20,11 +21,11 @@ export class AgentTimelineStore {
   private readonly changed = new Set<string>(); // 本批需要通知的条目身份，重复更新只通知一次
   private structureChanged = false;
   private applyCount = 0; // 运行中的工程提交工具数，驱动停止能力
-  private lastCompaction: string | null = null; // 最近压缩条目的身份
   private snapshot: AgentTimelineSlice = {
     entryIds: [],
     roundIds: [],
     latestRoundId: null,
+    latestCompactionId: null,
     workspaceApplyRunning: false,
     compacting: false,
   };
@@ -72,11 +73,11 @@ export class AgentTimelineStore {
     this.rounds.clear();
     this.assistants.clear();
     this.applyCount = 0;
-    this.lastCompaction = null;
     this.snapshot = {
       entryIds: [],
       roundIds: [],
       latestRoundId: null,
+      latestCompactionId: null,
       workspaceApplyRunning: false,
       compacting: false,
     };
@@ -89,6 +90,7 @@ export class AgentTimelineStore {
     const addedIds: string[] = [];
     const addedRounds: string[] = [];
     let latestRoundId = this.snapshot.latestRoundId;
+    let latestCompactionId = this.snapshot.latestCompactionId;
     const roundAdditions = new Map<string, string[]>();
     for (const entry of entries) {
       const previous = this.entries.get(entry.id);
@@ -107,9 +109,10 @@ export class AgentTimelineStore {
         this.applyCount++;
       this.entries.set(entry.id, entry);
       this.changed.add(entry.id);
+      // 迟到终帧只更新内容，只有新条目推进轮次与压缩身份。
       if (previous !== undefined) continue;
       addedIds.push(entry.id);
-      if (entry.kind === "context_compaction") this.lastCompaction = entry.id;
+      if (entry.kind === "context_compaction") latestCompactionId = entry.id;
       if (entry.kind === "user_message" && entry.delivery === "round") {
         latestRoundId = entry.id;
         addedRounds.push(entry.id);
@@ -123,7 +126,7 @@ export class AgentTimelineStore {
     }
     for (const [id, additions] of roundAdditions)
       this.rounds.set(id, [...this.round(id), ...additions]);
-    const compacting = this.entry(this.lastCompaction)?.status === "running";
+    const compacting = this.entry(latestCompactionId)?.status === "running";
     const workspaceApplyRunning = this.applyCount > 0;
     if (
       addedIds.length > 0 ||
@@ -138,6 +141,7 @@ export class AgentTimelineStore {
             ? this.snapshot.roundIds
             : [...this.snapshot.roundIds, ...addedRounds],
         latestRoundId,
+        latestCompactionId,
         compacting,
         workspaceApplyRunning,
       };
