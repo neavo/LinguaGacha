@@ -293,9 +293,11 @@ export class AgentService {
     const chat = this.chat;
     const execution = this.execution;
     const state =
-      execution !== null && execution.roundId !== null && !execution.controller.signal.aborted
-        ? "running"
-        : "idle";
+      execution === null || chat === null
+        ? "idle"
+        : execution.controller.signal.aborted
+          ? "stopping"
+          : "running";
     return {
       chatId: this.chat_id,
       state,
@@ -434,7 +436,11 @@ export class AgentService {
     this.assert_queue_available();
     this.session_state.require_loaded_project_path();
     const message = this.read_message(request);
-    if (this.read_fields().state === "running") {
+    if (
+      this.execution !== null &&
+      this.execution.phase !== "preparing" &&
+      this.read_fields().state === "running"
+    ) {
       await this.require_chat().change_queue(
         (queue) => queue.enqueue(message),
         read_input_command_id(request),
@@ -625,6 +631,8 @@ export class AgentService {
           if (!execution.controller.signal.aborted)
             this.compaction_failure("manual", String(error));
         } finally {
+          await execution.cancellation;
+          await chat.flush();
           this.release(execution);
         }
       });
@@ -632,30 +640,22 @@ export class AgentService {
       await chat.change(() => {});
     });
   }
-  /** 拒绝中断工程提交与压缩，其余执行先公开停止再由收尾释放租约。 */
+  /** 工程提交保持原子边界，其余执行公开停止请求并等待 SDK 结算。 */
   public async stop(): Promise<AgentCommandAck> {
     this.assert_not_disposed();
     const chat = this.chat;
     const execution = this.execution;
-    if (
-      chat?.is_compacting ||
-      chat?.entries.some(
-        (entry) =>
-          entry.kind === "tool_call" &&
-          entry.toolName === "workspace_apply" &&
-          entry.status === "running",
-      )
-    )
-      throw new AppErrors.AppError("runtime.busy");
-    if (execution === null) return this.ack();
-    execution.phase = "stopped";
+    if (chat?.can_stop === false) throw new AppErrors.AppError("runtime.busy");
+    if (execution === null || execution.cancellation !== undefined) return this.ack();
     execution.controller.abort();
     this.decisions.reset();
     chat?.log.request_stop();
     const average = this.token_speed.finish_round(performance.now());
     this.token_speed_snapshot = null;
-    if (chat !== null) await chat.stop(execution, average);
-    this.publish_snapshot();
+    if (chat !== null) {
+      execution.cancellation = chat.stop(execution, average);
+      void execution.cancellation.catch((error) => this.warn_cleanup_failure(error));
+    }
     return this.ack();
   }
   /** 空闲重置也占用 Agent 租约，防止清理与其他运行重叠。 */
@@ -734,6 +734,7 @@ export class AgentService {
           queue.cancel_send();
           queue.pause();
         });
+        await execution.cancellation;
         this.release(execution);
       }
       throw error;
@@ -829,9 +830,15 @@ export class AgentService {
         }
       }
     } finally {
-      // 取消后的任务结算和在途受理都属于原执行。其租约只能由这里最终释放。
+      // 后台执行等待受理和取消收尾，关闭流程等待同一执行的结算 Promise。
       await execution.acceptance?.catch(() => undefined); // 受理失败已回传命令，仍需释放原执行。
-      if (execution.controller.signal.aborted) await chat.abort();
+      if (execution.controller.signal.aborted) {
+        execution.cancellation ??= chat.stop(
+          execution,
+          this.token_speed.finish_round(performance.now()),
+        );
+        await execution.cancellation;
+      }
       await chat.flush();
       this.release(execution);
     }
@@ -924,14 +931,14 @@ export class AgentService {
       create_agent_workspace_run_tool({
         run: (script, signal) => {
           const execution = this.require_execution();
-          return this.workspace.run(script, signal, (text) => {
+          return this.workspace.run(script, signal, async (text) => {
             signal.throwIfAborted();
             this.assert_execution(execution);
-            void this.require_chat()
-              .change((state) => {
-                state.doing = text;
-              })
-              .catch((error) => this.warn_cleanup_failure(error));
+            await this.require_chat().change((state) => {
+              signal.throwIfAborted();
+              this.assert_execution(execution);
+              state.doing = text;
+            });
           });
         },
         refresh_skills: () => this.skills.refresh(),
@@ -1093,7 +1100,6 @@ export class AgentService {
     const execution = this.execution;
     const store = this.store;
     execution?.controller.abort();
-    if (execution !== null) execution.phase = "stopped";
     this.chat = null;
     this.images.clear();
     this.workspace.cancel_uploads();
@@ -1104,7 +1110,10 @@ export class AgentService {
     try {
       try {
         await execution?.acceptance?.catch(() => undefined); // 受理失败由命令报告，关闭继续收尾。
-        if (chat !== null && execution !== null) await chat.stop(execution, null);
+        if (chat !== null && execution !== null) {
+          execution.cancellation ??= chat.stop(execution, null);
+          await execution.cancellation;
+        }
         await execution?.settlement;
       } finally {
         try {

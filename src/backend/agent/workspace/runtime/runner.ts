@@ -25,7 +25,7 @@ export type AgentWorkspaceRunRequest = Readonly<{
   stderrPath: string;
   host?: WorkspaceHostPort; // 父进程内绑定本次工作区执行，不经过 IPC 序列化
   emitImage?: (path: string, signal: AbortSignal, options?: AgentImageOptions) => Promise<void>;
-  doing?: (text: string | null) => void; // 本次执行借用会话写入口，不持有状态副本
+  doing?: (text: string | null) => Promise<void>; // 本次执行借用会话写入口，不持有状态副本
 }>;
 
 export type AgentWorkspaceOutputContent = string | JsonRecord | JsonValue[];

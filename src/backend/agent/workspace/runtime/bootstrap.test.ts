@@ -668,7 +668,7 @@ it("doing 在真实 IPC 回包后已生效，程序仍运行且后续失败保�
   const waiting = new Promise<void>((resolve) => {
     ready = resolve;
   });
-  const write = (value: string | null): void => {
+  const write = async (value: string | null): Promise<void> => {
     text = value;
   };
   let settled = false;

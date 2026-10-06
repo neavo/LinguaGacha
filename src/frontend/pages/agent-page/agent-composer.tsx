@@ -4,6 +4,7 @@ import { ArrowUp, LoaderCircle, Square } from "lucide-react";
 import type { ModelSelectionInput } from "@shared/model-selection";
 import {
   AGENT_INPUT_QUEUE_LIMIT,
+  type AgentChatStatus,
   type AgentContextSnapshot,
   type AgentUsageSnapshot,
   type AgentMessageInput,
@@ -27,7 +28,7 @@ type AgentComposerProps = {
   locked?: boolean;
   skills: readonly AgentSkillSnapshot[];
   instructions?: readonly AgentMentionInstruction[];
-  running: boolean;
+  state: AgentChatStatus; // 同一会话状态决定发送与停止收尾的可用性
   stop_disabled: boolean; // 当前原子阶段只禁用 stop，不锁定草稿编辑
   compacting: boolean;
   unavailable_reason: AgentUnavailableReason | null;
@@ -61,6 +62,9 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
   const { t } = useI18n();
   const locked = props.locked === true;
   const compacting = props.compacting;
+  const running = props.state !== "idle";
+  const stopping = props.state === "stopping";
+  const unavailable_reason = stopping ? "settling" : props.unavailable_reason;
   const editor_read_only =
     locked || ["send", "continue", "revise", "queue_update", "reset"].includes(props.command ?? "");
   const submit_command_active = ["send", "continue", "revise", "queue_update", "stop"].includes(
@@ -76,28 +80,28 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
       input_state={props.input_state}
       on_submit={props.on_send}
       render_actions={({ has_content, uploads_pending }) => {
-        const continuing_queue = props.can_continue_queue && !props.running && !locked;
+        const continuing_queue = props.can_continue_queue && !running && !locked;
         // 主按钮只表达稳定动作：运行中有内容发送、空内容停止，暂停队列统一继续。
-        const stopping = props.running && !has_content && !locked;
+        const stop_action = running && !has_content && !locked;
         // 满队列只阻止会新增输入的动作；停止、保存和编辑不受容量提示影响。
         const queue_full_for_submit =
-          props.queue_full && has_content && ((props.running && !locked) || continuing_queue);
+          props.queue_full && has_content && ((running && !locked) || continuing_queue);
         let submit_label_key: LocaleKey = "agent_page.action.send";
         const can_submit =
           !locked &&
-          props.unavailable_reason === null &&
+          unavailable_reason === null &&
           props.command === null &&
           !uploads_pending &&
           (has_content || continuing_queue) &&
           !queue_full_for_submit;
-        const can_stop = !props.stop_disabled && !compacting && props.command === null;
+        const can_stop = !stopping && !props.stop_disabled && props.command === null;
         if (queue_full_for_submit) submit_label_key = "agent_page.queue.full";
         else if (continuing_queue) submit_label_key = "agent_page.action.continue";
-        else if (props.running && has_content) submit_label_key = "agent_page.action.send";
+        else if (stopping) submit_label_key = "agent_page.unavailable.settling";
+        else if (running && has_content) submit_label_key = "agent_page.action.send";
         else if (compacting) submit_label_key = "agent_page.compaction.running";
-        else if (props.running && props.stop_disabled)
-          submit_label_key = "agent_page.action.applying";
-        else if (stopping) submit_label_key = "agent_page.action.stop";
+        else if (running && props.stop_disabled) submit_label_key = "agent_page.action.applying";
+        else if (stop_action) submit_label_key = "agent_page.action.stop";
         const contextual_submit_label = queue_full_for_submit
           ? t("agent_page.queue.full", {
               count: AGENT_INPUT_QUEUE_LIMIT.toString(),
@@ -113,9 +117,8 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
               can_reset={
                 props.can_reset &&
                 !locked &&
-                !props.running &&
-                !compacting &&
-                props.unavailable_reason === null &&
+                !running &&
+                unavailable_reason === null &&
                 props.command === null
               }
               context={props.context}
@@ -123,7 +126,7 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
               model_selection={props.model_selection}
               approval_mode={props.approval_mode}
               approval_disabled={props.approval_disabled}
-              disconnected={props.unavailable_reason === "disconnected"}
+              disconnected={unavailable_reason === "disconnected"}
               on_reset={props.on_reset}
               on_agent_model_select={props.on_agent_model_select}
               on_approval_mode_change={props.on_approval_mode_change}
@@ -137,17 +140,17 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
                   <span className="agent-composer__submit-shell">
                     <AppButton
                       className="agent-composer__submit"
-                      type={stopping ? "button" : "submit"}
+                      type={stop_action ? "button" : "submit"}
                       size="icon-sm"
-                      onClick={stopping ? () => void props.on_stop() : undefined}
-                      disabled={stopping ? !can_stop : !can_submit}
+                      onClick={stop_action ? () => void props.on_stop() : undefined}
+                      disabled={stop_action ? !can_stop : !can_submit}
                       aria-label={contextual_submit_label}
                       aria-busy={submit_command_active || undefined}
                       aria-keyshortcuts={can_submit ? "Enter" : undefined}
                     >
-                      {(compacting && stopping) || submit_command_active ? (
+                      {stopping || (compacting && stop_action) || submit_command_active ? (
                         <LoaderCircle className="animate-spin" aria-hidden="true" />
-                      ) : stopping ? (
+                      ) : stop_action ? (
                         <Square aria-hidden="true" />
                       ) : (
                         <ArrowUp aria-hidden="true" />
@@ -158,9 +161,9 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
               />
               {submit_command_active ? null : (
                 <TooltipContent className="flex-col items-stretch gap-1 whitespace-nowrap">
-                  {props.unavailable_reason !== null ? (
-                    <p>{t(AGENT_UNAVAILABLE_REASON_KEYS[props.unavailable_reason])}</p>
-                  ) : stopping || queue_full_for_submit ? (
+                  {unavailable_reason !== null ? (
+                    <p>{t(AGENT_UNAVAILABLE_REASON_KEYS[unavailable_reason])}</p>
+                  ) : stop_action || queue_full_for_submit ? (
                     <p>{contextual_submit_label}</p>
                   ) : (
                     <>

@@ -27,7 +27,7 @@ export type AgentAssistantMessageParts = [
 ];
 
 /** 会话只表达当前是否占用运行时。每轮与每个条目的结果由自身 status 持有。 */
-export type AgentChatStatus = "idle" | "running";
+export type AgentChatStatus = "idle" | "running" | "stopping";
 
 /** 当前模型可见历史及其是否存在可压缩的旧段。 */
 export type AgentContextSnapshot = JsonRecord & {
@@ -165,15 +165,16 @@ type AgentToolEntryBase = JsonRecord & {
 /** 工具终帧按顺序保留文本块原文。数组为空表示没有文本输出，块间排版由前端负责。 */
 export type AgentToolEntry = AgentToolEntryBase &
   (
-    | { status: "running" | "stopped"; output: null }
+    | { status: "running"; output: null }
+    | { status: "stopped"; output: string[] | null }
     | { status: "success" | "error"; output: string[] }
   );
 
-/** 上下文压缩沿用时间线条目状态。压缩不可停止，因此不公开 stopped。 */
+/** 上下文压缩沿用 SDK 任务终态，用户取消公开 stopped。 */
 export type AgentContextCompactionEntry = JsonRecord & {
   kind: "context_compaction";
   id: string;
-  status: Extract<AgentEntryStatus, "running" | "success" | "error">;
+  status: AgentEntryStatus;
 };
 
 /** `round` 与 `steer` 共用的不可变用户消息字段。 */

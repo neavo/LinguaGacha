@@ -1,4 +1,3 @@
-vi.mock("./agent-token-speed", () => ({ AgentTokenSpeed: () => null }));
 import { AgentInputDraft } from "@frontend/app/session/agent/agent-input-draft";
 import { act, type ComponentProps } from "react";
 import { createRoot, type Root } from "react-dom/client";
@@ -34,10 +33,10 @@ describe("AgentComposer", () => {
     root = null;
     draft = new AgentInputDraft();
   });
-  it("运行中有内容发送，清空草稿后停止任务", async () => {
+  it("会话状态控制发送、停止和收尾期间的禁用", async () => {
     const on_send = vi.fn();
     const on_stop = vi.fn(async () => undefined);
-    const view = await render_composer({ running: true, on_send, on_stop });
+    const view = await render_composer({ state: "running", on_send, on_stop });
     const editor = get_editor(view);
     await set_document(editor, "继续补充", 4);
     expect(editor.state.readOnly).toBe(false);
@@ -48,11 +47,20 @@ describe("AgentComposer", () => {
     await click_send(view);
     expect(on_stop).toHaveBeenCalledOnce();
     expect(on_send).toHaveBeenCalledOnce();
+    await render_composer({ state: "stopping", on_send, on_stop });
+    const submit = view.querySelector<HTMLButtonElement>(".agent-composer__submit");
+    expect(submit?.disabled).toBe(true);
+    await click_send(view);
+    await set_document(editor, "新的草稿", 4);
+    expect(submit?.disabled).toBe(true);
+    await click_send(view);
+    expect(on_stop).toHaveBeenCalledOnce();
+    expect(on_send).toHaveBeenCalledOnce();
   });
 
   it("消息队列已满时禁用新增发送并显示容量提示", async () => {
     const on_send = vi.fn();
-    const view = await render_composer({ running: true, queue_full: true, on_send });
+    const view = await render_composer({ state: "running", queue_full: true, on_send });
     await set_document(get_editor(view), "继续补充", 4);
     const submit = view.querySelector<HTMLButtonElement>(".agent-composer__submit");
     expect(submit?.disabled).toBe(true);
@@ -83,7 +91,7 @@ describe("AgentComposer", () => {
 
   it("apply 运行期间禁用停止", async () => {
     const on_stop = vi.fn(async () => undefined);
-    const view = await render_composer({ running: true, stop_disabled: true, on_stop });
+    const view = await render_composer({ state: "running", stop_disabled: true, on_stop });
     const submit = view.querySelector<HTMLButtonElement>(".agent-composer__submit");
 
     expect(submit?.disabled).toBe(true);
@@ -94,7 +102,7 @@ describe("AgentComposer", () => {
   it("压缩期间允许有效草稿排队", async () => {
     const on_send = vi.fn();
     const on_stop = vi.fn(async () => undefined);
-    const view = await render_composer({ running: true, compacting: true, on_send, on_stop });
+    const view = await render_composer({ state: "running", compacting: true, on_send, on_stop });
     const editor = get_editor(view);
     await set_document(editor, "继续补充", 4);
     const submit = view.querySelector<HTMLButtonElement>(".agent-composer__submit");
@@ -117,7 +125,7 @@ describe("AgentComposer", () => {
         <TooltipProvider>
           <AgentComposer
             skills={[]}
-            running={false}
+            state="idle"
             stop_disabled={false}
             compacting={false}
             unavailable_reason={null}

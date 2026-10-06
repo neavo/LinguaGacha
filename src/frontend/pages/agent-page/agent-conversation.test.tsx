@@ -626,9 +626,9 @@ describe("AgentConversation", () => {
     expect(get_button_by_label(view, "agent_page.action.send").disabled).toBe(true);
   });
 
-  it("公开回合先结束但 Agent lease 尚未释放时保持结算禁用态", async () => {
+  it("停止收尾状态禁用发送，结算后恢复操作", async () => {
     runtime_state.current = { revision: 1, owner: "agent" };
-    const view = await render_page({ state: "idle" });
+    const view = await render_page({ state: "stopping" });
     const editor = EditorView.findFromDOM(view.querySelector(".cm-content")!)!;
     await act(async () => editor.dispatch({ changes: { from: 0, insert: "继续任务" } }));
     const submit = view.querySelector<HTMLButtonElement>(".agent-composer__submit");
