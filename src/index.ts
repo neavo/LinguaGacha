@@ -1,6 +1,5 @@
 import fs from "node:fs";
 import path from "node:path";
-import { configure_packaged_esbuild } from "./native/esbuild-runtime";
 
 import {
   build_worker_threads_backend_worker_execution_from_desktop_bundle_dir,
@@ -9,7 +8,7 @@ import {
 } from "./backend/worker/worker-execution";
 
 /**
- * 统一产品入口配置原生工具环境，再分发 GUI/CLI。
+ * 统一产品入口配置 worker 执行路径，再分发 GUI/CLI。
  */
 void run_product_entry();
 
@@ -18,13 +17,17 @@ void run_product_entry();
  */
 async function run_product_entry(): Promise<void> {
   const desktop_bundle_dir = resolve_desktop_bundle_dir_from_module_url(import.meta.url); // 产品入口所在的构建根目录。
-  configure_packaged_esbuild(desktop_bundle_dir); // 必须早于 GUI/CLI 动态导入及 worker 创建。
   const worker_execution =
     build_worker_threads_backend_worker_execution_from_desktop_bundle_dir(desktop_bundle_dir); // worker_execution 把 worker_threads 入口契约注入后续启动链路。
-  if (should_run_cli()) {
+  const cli_marker_index = process.argv.indexOf("--cli"); // 分发与参数截取共用同一个 CLI 标记位置。
+  if (cli_marker_index >= 0) {
     const { run_cli_entry } = await import("./cli/cli-entry");
     return exit_cli_process(
-      await run_cli_entry(resolve_cli_argv(), resolve_app_root(), worker_execution),
+      await run_cli_entry(
+        process.argv.slice(cli_marker_index + 1),
+        resolve_app_root(),
+        worker_execution,
+      ),
     );
   }
 
@@ -34,24 +37,6 @@ async function run_product_entry(): Promise<void> {
     backendRuntimeWorkerEntryUrl:
       build_backend_runtime_worker_entry_url_from_desktop_bundle_dir(desktop_bundle_dir),
   });
-}
-
-/**
- * 发布态和开发态统一只用 --cli 触发 CLI，平台启动器不把文件名语义泄漏进产品入口。
- */
-function should_run_cli(): boolean {
-  return process.argv.includes("--cli");
-}
-
-/**
- * 从 --cli 之后开始读取用户参数；Windows 轻量 cli.exe 也会先转发成 app.exe --cli。
- */
-function resolve_cli_argv(): string[] {
-  const cli_marker_index = process.argv.indexOf("--cli");
-  if (cli_marker_index < 0) {
-    throw new Error("Missing CLI entry marker --cli");
-  }
-  return process.argv.slice(cli_marker_index + 1);
 }
 
 /**

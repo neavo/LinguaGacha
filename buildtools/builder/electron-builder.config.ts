@@ -17,7 +17,7 @@ export default {
     output: "build/release/${version}",
   },
   afterPack: "buildtools/builder/after-pack.mjs",
-  files: ["build/dist/**/*", "build/dist-electron/**/*", "builtin/**/*", "!node_modules/**/*.map"],
+  files: ["build/dist/**/*", "build/dist-electron/**/*", "builtin/**/*"],
   win: {
     target: ["zip"],
     artifactName: "${productName}_v${version}_Windows_${arch}.${ext}",

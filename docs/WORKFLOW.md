@@ -203,6 +203,7 @@ Windows 启动器或更新器变化时，在对应的 `win-cli` 或 `win-berserk
 
 按影响范围检查产物：
 
+- 使用 `npm exec -- asar list <app.asar 路径>` 检查应用入口、前端资源及文件范围。用户数据、项目源码和原始应用依赖树应排除。
 - Electron 语言资源与 `LOCALES` 一致。
 - 内置资源随应用部署。
 - 工作区包含实际依赖清单、标准 `node_modules`、内部包和运行资源。
@@ -219,4 +220,5 @@ Windows 启动器或更新器变化时，在对应的 `win-cli` 或 `win-berserk
 |---|---|
 |工作区依赖部署|[workspace-dependencies.test.mjs](../buildtools/workspace-dependencies.test.mjs)|
 |工作区入口定位|[workspace-runtime.test.ts](../src/native/workspace-runtime.test.ts)|
-|部署后的真实执行|仓库外 Electron bootstrap 集成测试|
+|应用入口与合并后的 SDK|[index.test.ts](../src/index.test.ts) 的仓库外 ASAR 集成测试|
+|部署后的工作区执行|仓库外 Electron bootstrap 集成测试|
