@@ -17,10 +17,10 @@
     "typecheck": "tsc -b"
   },
   "dependencies": {
-    "@earendil-works/chord": "1.0.3",
-    "@earendil-works/pi-ai": "1.0.3",
-    "@earendil-works/pi-durable": "1.0.3",
-    "@earendil-works/pi-mcp": "^1.0.3",
+    "@earendil-works/chord": "^1.0.4",
+    "@earendil-works/pi-ai": "^1.0.4",
+    "@earendil-works/pi-durable": "^1.0.4",
+    "@earendil-works/pi-mcp": "^1.0.4",
     "jose": "^6.2.12",
     "proper-lockfile": "^4.1.2"
   },
