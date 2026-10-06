@@ -24,13 +24,14 @@ export type AgentWebSearchPort = (
 export function create_agent_web_search_tool(search: AgentWebSearchPort): ToolRegistration {
   return define_agent_tool({
     name: "web_search",
-    description: "搜索互联网。",
+    description:
+      "搜索互联网，返回搜索结果文本。需要直接获取网页正文时，通过 `workspace_run` 中的 `fetch` 读取目标 URL。",
     executionMode: "sequential",
     parameters: Type.Object(
       {
         query: Type.String({
           minLength: 1,
-          description: "用自然语言描述搜索目标。",
+          description: "自然语言描述的搜索目标。",
         }),
       },
       { additionalProperties: false },
