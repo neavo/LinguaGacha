@@ -29,7 +29,7 @@ async function render_entry(children: ReactNode): Promise<HTMLDivElement> {
   return container;
 }
 
-it("最新失败压缩提供重试，旧记录和运行或成功状态退出恢复入口", async () => {
+it("最新失败压缩提供重试，其它记录和状态退出恢复入口", async () => {
   const old: CompactionEntry = { kind: "context_compaction", id: "old", status: "error" };
   const failed: CompactionEntry = { kind: "context_compaction", id: "failed", status: "error" };
   const on_compact = vi.fn();
@@ -60,7 +60,7 @@ it("最新失败压缩提供重试，旧记录和运行或成功状态退出恢�
   expect(retry?.disabled).toBe(true);
   await act(async () => retry?.click());
   expect(on_compact).toHaveBeenCalledOnce();
-  for (const status of ["running", "success"] as const) {
+  for (const status of ["running", "success", "stopped"] as const) {
     await render_compactions({ ...failed, status }, true);
     expect(view.querySelector("button")).toBeNull();
   }

@@ -1,16 +1,17 @@
 import { defineDocFamily, type EntryId, type ConversationId } from "@earendil-works/pi-durable";
 import type { JsonRecord } from "../../domain/json";
 import type { AgentInputCommandKind, AgentInputCommandStatus } from "../../shared/agent";
-import type { AssistantMessage } from "@earendil-works/pi-ai";
-import type { AgentEntry, AgentEntryStatus, AgentMessageInput } from "../../shared/agent";
+import type { AgentEntryStatus, AgentMessageInput } from "../../shared/agent";
 import type { AgentInputQueueState } from "./agent-input-queue";
 
+/** 产品输入关联 SDK 提交，隐藏继续输入仍属于原轮次。 */
 export type AgentInputRecord = {
   roundId: string;
   message: AgentMessageInput;
   delivery: "round" | "steer" | "hidden";
   queuedId: string | null;
 };
+/** 一轮用户意图可跨多次 SDK 生成，统一保存终态与修订切点。 */
 export type AgentRoundRecord = {
   status: AgentEntryStatus;
   checkpoint: EntryId;
@@ -36,16 +37,9 @@ export type AgentChatData = {
   doing: string | null;
   inputs: Record<string, AgentInputRecord>;
   rounds: Record<string, AgentRoundRecord>;
-  stoppedEntries: Record<
-    string,
-    {
-      roundId: string;
-      entry: AgentEntry;
-      source?: Pick<AssistantMessage, "api" | "provider" | "model">; // 节流窗口内的正文可能没有 SDK 条目，离线修订仍需原始模型身份
-    }
-  >;
 };
 
+/** 产品事实按 `chatId` 保存，SDK 历史分叉共享队列和命令受理记录。 */
 export const AgentChatDoc = defineDocFamily<AgentChatData, null>({
   kind: "linguagacha.chat",
   version: 1,
@@ -59,6 +53,5 @@ export const AgentChatDoc = defineDocFamily<AgentChatData, null>({
     doing: null,
     inputs: {},
     rounds: {},
-    stoppedEntries: {},
   }),
 });

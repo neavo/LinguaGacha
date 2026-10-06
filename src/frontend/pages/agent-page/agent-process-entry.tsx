@@ -16,6 +16,7 @@ const AGENT_COMPACTION_LABEL_KEYS: Readonly<Record<ContextCompactionEntry["statu
     running: "agent_page.compaction.running",
     success: "agent_page.compaction.success",
     error: "agent_page.compaction.error",
+    stopped: "agent_page.round.stopped",
   });
 
 /** 工具行保留原生按钮语义，完整载荷由时间线唯一详情弹窗展示。 */

@@ -1087,7 +1087,7 @@ function normalize_entry(value: unknown): AgentEntry[] {
   if (!is_json_record(value) || typeof value["id"] !== "string") return [];
   if (value["kind"] === "context_compaction") {
     const status = normalize_entry_status(value["status"]);
-    if (status === null || status === "stopped") return [];
+    if (status === null) return [];
     return [
       {
         kind: "context_compaction",
@@ -1156,7 +1156,7 @@ function normalize_entry(value: unknown): AgentEntry[] {
   return [];
 }
 
-/** 工具输出仅在成功或失败终帧存在，运行与停止状态保留空值。 */
+/** 运行工具无终帧，取消、成功和失败保留 SDK 实际回执。 */
 function normalize_tool_entry(value: JsonRecord): AgentToolEntry[] {
   const status = normalize_entry_status(value["status"]);
   if (
@@ -1173,7 +1173,7 @@ function normalize_tool_entry(value: JsonRecord): AgentToolEntry[] {
     input: value["input"],
     createdAt: value["createdAt"] as number,
   };
-  if (status === "running" || status === "stopped") {
+  if (status === "running" || (status === "stopped" && value["output"] === null)) {
     return value["output"] === null ? [{ ...base, status, output: null }] : [];
   }
   const output = value["output"];
@@ -1189,9 +1189,9 @@ function normalize_entry_status(value: unknown): AgentEntryStatus | null {
     : null;
 }
 
-/** 会话只公开空闲或运行状态，非法值触发完整恢复。 */
+/** 会话公开运行、停止收尾与空闲状态，非法值触发完整恢复。 */
 function normalize_state(value: unknown): AgentChatStatus {
-  if (value === "idle" || value === "running") return value;
+  if (value === "idle" || value === "running" || value === "stopping") return value;
   throw new TypeError("Agent snapshot state is invalid.");
 }
 

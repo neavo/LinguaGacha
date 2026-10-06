@@ -387,7 +387,7 @@ it("遗留工具任务只执行 SDK 取消收尾，恢复后保留公开工具�
   expect(restored.chat.state.commands.unsubmitted?.status).toBe("cancelled");
   expect(restored.provider.state.callCount).toBe(0);
   expect(restored.chat.entries).toContainEqual(
-    expect.objectContaining({ kind: "tool_call", status: "stopped" }),
+    expect.objectContaining({ kind: "tool_call", status: "stopped", output: expect.any(Array) }),
   );
   expect(restored.chat.entries).toContainEqual(
     expect.objectContaining({ kind: "user_message", status: "stopped" }),

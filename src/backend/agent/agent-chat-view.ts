@@ -19,10 +19,9 @@ import type { AgentInputRecord, AgentChatData } from "./agent-chat-data";
 export const assistant_entry_id = (task: number | undefined, entry: number): string =>
   `assistant:${task ?? `entry:${entry}`}`;
 const UNCOMMITTED_ENTRY_ORDER = Number.MAX_SAFE_INTEGER; // 尚无 SDK 条目身份的正文暂居轮次末尾
-const STOPPED_ENTRY_ORDER_OFFSET = 0.5; // SDK 的整数身份之间预留停止正文位置
 
 type TaskRecordValue = TaskRecord<JsonValue, JsonValue, JsonValue>;
-type Row = { order: number; entry: AgentEntry; round: string | undefined };
+type Row = { order: number; entry: AgentEntry };
 export type AgentTimelineChange = { replace: boolean; entries: AgentEntry[] };
 
 /** 可重建的公开投影。原始事实和查询索引只在这里保存，正文更新不扫描历史。 */
@@ -132,7 +131,6 @@ export class AgentChatView {
         const input = state.inputs[submission.requestId];
         if (input !== undefined) this.inputs.set(submission.entry, input);
       }
-      const previousRound = this.currentRound;
       for (const id of [...this.pendingRecords].sort((a, b) => a - b)) {
         const record = this.records.get(id)!;
         if (this.visible(record.conversationId, id)) this.read_record(record);
@@ -150,8 +148,6 @@ export class AgentChatView {
       }
       if (this.liveChanged || previous.rounds !== state.rounds)
         this.read_live(this.live.get(conversationId) ?? {});
-      if (previous.stoppedEntries !== state.stoppedEntries || previousRound !== this.currentRound)
-        this.read_stopped();
     }
     for (const [id, state] of this.pendingUsages) {
       const total = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
@@ -212,7 +208,6 @@ export class AgentChatView {
     this.order = [...this.rows.keys()].sort(
       (a, b) => this.rows.get(a)!.order - this.rows.get(b)!.order,
     );
-    this.read_stopped();
   }
 
   /** 发布者消费更新，不需要比较上一份完整快照。 */
@@ -224,12 +219,10 @@ export class AgentChatView {
   }
 
   /** 同一身份原位更新，删除或非尾部顺序变化要求发布完整快照。 */
-  private put(entry: AgentEntry, order: number, round: string | undefined): void {
-    if (entry.kind !== "context_compaction")
-      entry = this.state.stoppedEntries[entry.id]?.entry ?? entry;
+  private put(entry: AgentEntry, order: number): void {
     const previous = this.rows.get(entry.id);
     if (previous?.order === order && isDeepStrictEqual(previous.entry, entry)) return;
-    this.rows.set(entry.id, { entry, order, round });
+    this.rows.set(entry.id, { entry, order });
     if (this.restoring) return;
     if (previous === undefined) {
       const last = this.order.at(-1);
@@ -285,7 +278,6 @@ export class AgentChatView {
             averageTokensPerSecond: round?.averageTokensPerSecond ?? null,
           },
       record.id,
-      input.roundId,
     );
     if (input.delivery === "round") this.userRecords.set(input.roundId, record);
   }
@@ -298,15 +290,11 @@ export class AgentChatView {
       this.read_user(record, input);
     }
     if (this.currentRound === undefined) return;
-    const stopped = this.state.rounds[this.currentRound]?.status === "stopped";
     for (const message of record.model ?? []) {
       if (message.role === "assistant") {
         const id = assistant_entry_id(record.byTaskId, record.id);
         const parts = project_assistant_message_parts(message);
-        if (
-          parts !== null &&
-          (!stopped || record.byTaskId === undefined || this.state.stoppedEntries[id] !== undefined)
-        ) {
+        if (parts !== null) {
           this.put(
             {
               kind: "assistant_message",
@@ -321,14 +309,12 @@ export class AgentChatView {
               createdAt: message.timestamp,
             },
             record.id,
-            this.currentRound,
           );
         }
-        if (parts === null && this.state.stoppedEntries[id] === undefined) this.remove(id);
+        if (parts === null) this.remove(id);
         for (const call of message.content) {
           if (call.type !== "toolCall") continue;
           const id = `tool:${record.id}:${call.id}`;
-          if (stopped && this.state.stoppedEntries[id] === undefined) continue;
           this.calls.set(call.id, id);
           this.put(
             {
@@ -336,30 +322,28 @@ export class AgentChatView {
               id,
               toolName: call.name,
               input: JsonTool.stringifyStrict(call.arguments),
-              status: stopped ? "stopped" : "running",
+              status: "running",
               output: null,
               createdAt: message.timestamp,
             },
             record.id,
-            this.currentRound,
           );
         }
       } else if (message.role === "toolResult") {
         const id = this.calls.get(message.toolCallId);
         const row = id === undefined ? undefined : this.rows.get(id);
-        if (
-          row?.entry.kind !== "tool_call" ||
-          (row.round !== undefined && this.state.rounds[row.round]?.status === "stopped")
-        )
-          continue;
+        if (row?.entry.kind !== "tool_call") continue;
         this.put(
           {
             ...row.entry,
-            status: message.isError ? "error" : "success",
+            status: has_aborted_diagnostic(record)
+              ? "stopped"
+              : message.isError
+                ? "error"
+                : "success",
             output: message.content.flatMap((part) => (part.type === "text" ? [part.text] : [])),
           },
           row.order,
-          row.round,
         );
       }
     }
@@ -367,7 +351,6 @@ export class AgentChatView {
 
   /** 压缩任务的终态直接决定对应诊断条目。 */
   private read_task(task: TaskRecordValue): void {
-    if (task.kind !== "pi.compaction") return;
     this.put(
       {
         kind: "context_compaction",
@@ -376,11 +359,12 @@ export class AgentChatView {
           task.state.status === "terminal"
             ? task.state.outcome.status === "completed"
               ? "success"
-              : "error"
+              : task.state.outcome.status === "aborted"
+                ? "stopped"
+                : "error"
             : "running",
       },
       task.id,
-      undefined,
     );
   }
 
@@ -393,8 +377,7 @@ export class AgentChatView {
     if (
       this.liveId !== undefined &&
       this.liveId !== nextId &&
-      this.rows.get(this.liveId)?.order === UNCOMMITTED_ENTRY_ORDER &&
-      this.state.stoppedEntries[this.liveId] === undefined
+      this.rows.get(this.liveId)?.order === UNCOMMITTED_ENTRY_ORDER
     ) {
       this.remove(this.liveId);
     }
@@ -411,35 +394,27 @@ export class AgentChatView {
         kind: "assistant_message",
         id: nextId,
         parts,
-        status: this.state.rounds[this.currentRound]?.status === "stopped" ? "stopped" : "running",
+        status: "running",
         createdAt: message.timestamp,
       },
       UNCOMMITTED_ENTRY_ORDER,
-      this.currentRound,
     );
   }
+}
 
-  /** 冻结结果覆盖迟到回执，尚无 SDK 条目的正文安置在原轮次末尾。 */
-  private read_stopped(): void {
-    for (const { entry, roundId } of Object.values(this.state.stoppedEntries)) {
-      const previous = this.rows.get(entry.id);
-      if (previous !== undefined && previous.order !== UNCOMMITTED_ENTRY_ORDER) {
-        if (entry.kind !== "context_compaction") this.put(entry, previous.order, roundId);
-      } else if (entry.kind === "assistant_message" && this.rows.has(roundId)) {
-        // 未进入 SDK 节流提交的停止正文归在原轮次末尾。
-        const roundIndex = this.order.indexOf(roundId);
-        const next = this.order.slice(roundIndex + 1).find((id) => {
-          const candidate = this.rows.get(id)!.entry;
-          return candidate.kind === "user_message" && candidate.delivery === "round";
-        });
-        this.put(
-          entry,
-          next === undefined
-            ? UNCOMMITTED_ENTRY_ORDER
-            : this.rows.get(next)!.order - STOPPED_ENTRY_ORDER_OFFSET,
-          roundId,
-        );
-      }
-    }
-  }
+/** SDK 的稳定诊断码区分用户取消与执行失败，保留模型实际收到的工具回执。 */
+function has_aborted_diagnostic(record: EntryRecord): boolean {
+  const data = record.data;
+  if (typeof data !== "object" || data === null || Array.isArray(data)) return false;
+  const diagnostics = data["diagnostics"];
+  return (
+    Array.isArray(diagnostics) &&
+    diagnostics.some(
+      (value) =>
+        typeof value === "object" &&
+        value !== null &&
+        !Array.isArray(value) &&
+        value["code"] === "aborted",
+    )
+  );
 }

@@ -21,7 +21,7 @@ export function describe_doing(): string {
   );
   return [
     "/**",
-    ` * - 设置当前任务的处理阶段，新文本立即覆盖，完成、放弃或结束处理时传入 null 清空，内容跨回合保留。`,
+    " * - 更新当前的任务处理阶段，处理完成或结束时传入 `null` 清空，内容跨回合保留。",
     " */",
     `doing(text: ${text}): Promise<void>;`,
   ].join("\n");
@@ -34,16 +34,16 @@ export function bind_doing(channel: Pick<AgentWorkspaceRequestChannel, "call">) 
   };
 }
 
-/** 父进程校验脚本输入后同步更新会话，成功回包无需等待整个程序退出。 */
-export function execute_doing_request(
+/** 父进程校验脚本输入后等待会话提交，成功回包无需等待整个程序退出。 */
+export async function execute_doing_request(
   request: unknown,
   signal: AbortSignal,
-  write: ((text: string | null) => void) | undefined,
-): null {
+  write: ((text: string | null) => Promise<void>) | undefined,
+): Promise<null> {
   signal.throwIfAborted();
   if (!Check(WORKSPACE_DOING_REQUEST_SCHEMA, request))
     throw new Error("Invalid workspace doing request.");
   if (!write) throw new Error("Workspace doing unavailable.");
-  write(normalize_agent_doing(request.text));
+  await write(normalize_agent_doing(request.text));
   return null;
 }

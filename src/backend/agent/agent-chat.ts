@@ -50,7 +50,6 @@ import { AgentChatView, assistant_entry_id } from "./agent-chat-view";
 import { AGENT_KEEP_RECENT_TOKENS, read_agent_chat_context } from "./agent-chat-context";
 import { append_agent_chat_seed, type AgentChatSeed } from "./agent-chat-seed";
 import { AgentRuntimeLog } from "./agent-runtime-log";
-import { project_assistant_message_parts } from "./agent-message";
 import { AgentToolError, agent_tool_result } from "./tool-definition";
 
 const COMPACTION_SETTINGS = {
@@ -72,9 +71,10 @@ export type AgentExecution = {
   readonly lease: RuntimeLease;
   commandId?: string; // 只关联本次产品命令的首次 SDK 输入，后续自动轮次独立
   roundId: string | null;
-  phase: "preparing" | "running" | "recovering" | "compacting" | "settling" | "stopped";
+  phase: "preparing" | "running" | "recovering" | "compacting" | "settling";
   acceptance: Promise<unknown> | null;
   settlement: Promise<void> | null;
+  cancellation?: Promise<void>; // 重复停止与生命周期关闭等待同一次 SDK 取消
   recoveryUsed: boolean;
   recoveryTask: TaskId | null;
   steer: SubmittedInput | null;
@@ -115,27 +115,21 @@ export class AgentChat {
   public get usage(): AgentUsageSnapshot {
     return this.view.usage;
   }
-  public state: Readonly<AgentChatData> = AgentChatDoc.definition.initial(null);
+  public state: Readonly<AgentChatData> = AgentChatDoc.definition.initial(null); // 只读提交快照，写入由 `Harness` 事务生成
   private harness!: Harness;
   private conversation!: Conversation; // 当前分支唯一入口，只在创建与修订成功后切换
   private readonly compactionFailures: Array<{ reason: string; error: string }> = []; // 提交后刷新时交付宿主诊断
-  private compactionReason: "manual" | "threshold" | "length" = "manual";
+  private compactionReason: "manual" | "length" = "manual"; // 产品主动压缩补充触发原因，SDK 自动压缩沿用原原因
   private contextRevision = 0; // 正文进度和队列变化不能使在途上下文查询失效
   private contextDirty = true; // 模型历史或配置变化使上下文查询失效
   private readonly consumedInputs = new Set<string>(); // 已入历史、等待在提交线外消费的草稿
-  private refreshWork: Promise<void> | null = null;
+  private refreshWork: Promise<void> | null = null; // 合并提交后的刷新，命令回执等待同一次处理
   private refreshFailure: unknown; // 投影失败时命令不能用旧修订号确认成功
   private dirty = false; // 提交后仍有投影工作，与上下文查询独立
   private closed = false;
-  private closing: Promise<void> | null = null;
+  private closing: Promise<void> | null = null; // 关闭只执行一次，所有调用者等待同一收尾
   private unsubscribe = () => {};
-  private latestResponse: {
-    parts: ReturnType<typeof project_assistant_message_parts>;
-    createdAt: number;
-    source: Pick<AssistantMessage, "api" | "provider" | "model">;
-  } | null = null; // 只保存值副本，SDK 对流式消息的后续修改不能改写停止快照
-
-  /** 生成与摘要共用请求派发入口，统一取消信号和流式观察，供应商身份由 SDK 拥有。 */
+  /** 生成与摘要共用诊断和测速观察，取消信号及供应商身份由 SDK 拥有。 */
   private constructor(private readonly options: ChatOptions) {
     this.models = options.models;
     this.log = options.log;
@@ -143,16 +137,7 @@ export class AgentChat {
     this.models.streamSimple = (model, context, request) =>
       lazyStream(model, async () => {
         const execution = this.execution;
-        const signal =
-          execution === null
-            ? request?.signal
-            : request?.signal === undefined
-              ? execution.controller.signal
-              : AbortSignal.any([request.signal, execution.controller.signal]);
-        const source = stream(model, context, {
-          ...request,
-          ...(signal === undefined ? {} : { signal }),
-        });
+        const source = stream(model, context, request);
         const isSummary = this.is_compacting;
         const observe = (event: AssistantMessageEvent): void => {
           if (!isSummary) {
@@ -166,12 +151,7 @@ export class AgentChat {
             else if (event.type === "done" || event.type === "error")
               this.log.handle_event({ type: "message_end", message });
             else this.log.handle_event({ type: "message_update", message });
-            if (execution === this.execution && execution?.phase !== "stopped") {
-              this.latestResponse = {
-                parts: project_assistant_message_parts(message),
-                createdAt: message.timestamp,
-                source: { api: message.api, provider: message.provider, model: message.model },
-              };
+            if (execution === this.execution && !execution?.controller.signal.aborted) {
               this.options.onModelEvent(event);
             }
           }
@@ -195,12 +175,9 @@ export class AgentChat {
         tools: options.tools.map((tool) => ({
           ...tool,
           execute: async (params, api, context) => {
-            const execution = chat.execution;
-            const callContext =
-              execution === null ? context : withAbortSignal(execution.controller.signal, context);
             let result: ToolExecutionResult;
             try {
-              result = await tool.execute(params, api, callContext);
+              result = await tool.execute(params, api, context);
             } catch (error) {
               result = {
                 ...agent_tool_result(
@@ -208,7 +185,7 @@ export class AgentChat {
                 ),
                 isError: true,
               };
-              if (callContext.abortSignal?.aborted) {
+              if (context.abortSignal?.aborted) {
                 chat.log.handle_event({
                   type: "tool_execution_end",
                   toolCallId: api.callId,
@@ -445,7 +422,6 @@ export class AgentChat {
   private async recover(): Promise<void> {
     this.schedule_refresh();
     await this.flush();
-    const entries = this.entries;
     const inspection = await this.harness.inspect(BACKGROUND_CONTEXT);
     for (const submission of inspection.submissions)
       if (submission.status === "queued")
@@ -461,21 +437,10 @@ export class AgentChat {
       );
     }
     await this.change((state) => {
-      let roundId: string | null = null;
-      for (const entry of entries) {
-        if (entry.kind === "user_message" && entry.delivery === "round") roundId = entry.id;
-        if (
-          entry.kind !== "context_compaction" &&
-          roundId !== null &&
-          state.rounds[roundId]?.status === "running"
-        )
-          state.stoppedEntries[entry.id] = { roundId, entry: freeze_entry(entry) };
-      }
-      for (const [id, round] of Object.entries(state.rounds)) {
+      for (const round of Object.values(state.rounds)) {
         if (round.status !== "running") continue;
         round.status = "stopped";
         round.endedAt = Date.now();
-        delete state.stoppedEntries[id];
       }
       state.queue = { items: [], paused: false };
       // 重开只结算历史命令，不自动再次提交。已落库的 SDK 输入即使被停止也算已受理。
@@ -499,6 +464,12 @@ export class AgentChat {
       (this.view.live.get(this.conversation?.id)?.compactions?.length ?? 0) > 0 ||
       this.execution?.phase === "compacting"
     );
+  }
+  /** 工程写入的原子边界取自 SDK 当前工具轮次，避免依赖时间线刷新时机。 */
+  public get can_stop(): boolean {
+    return !this.view.live
+      .get(this.conversation?.id)
+      ?.tools?.some((tool) => tool.name === "workspace_apply" && tool.status !== "done");
   }
   /** 恢复、压缩和停止期间关闭即时输入受理。 */
   public get can_steer(): boolean {
@@ -655,7 +626,7 @@ export class AgentChat {
     }
   }
 
-  /** 等待当前全部原生生成，再决定恢复、收尾压缩和产品终态。 */
+  /** 等待当前全部 SDK 生成，只在异常截断时接管一次恢复。 */
   public async run(accepted: SubmittedInput, execution: AgentExecution): Promise<void> {
     let current = accepted;
     const firstSubmission = accepted.submission.id;
@@ -731,25 +702,10 @@ export class AgentChat {
       }
     }
     execution.phase = "settling";
-    if (
-      (this.context.tokens ?? 0) >
-        this.require_model().contextWindow - AGENT_COMPACTION_RESERVE_TOKENS &&
-      this.context.compactable
-    ) {
-      try {
-        await this.compact("threshold", execution);
-      } catch (error) {
-        if (!execution.controller.signal.aborted)
-          this.options.onCompactionFailure("threshold", String(error));
-      }
-    }
   }
 
   /** 摘要任务结束与摘要写入均完成后，才允许产品轮次继续。 */
-  public async compact(
-    reason: "manual" | "threshold" | "length",
-    execution: AgentExecution,
-  ): Promise<boolean> {
+  public async compact(reason: "manual" | "length", execution: AgentExecution): Promise<boolean> {
     execution.controller.signal.throwIfAborted();
     execution.phase = "compacting";
     this.compactionReason = reason;
@@ -780,7 +736,7 @@ export class AgentChat {
     }
   }
 
-  /** 成功与失败结算保留停止边界已经冻结的轮次终态。 */
+  /** 只结算仍在运行的轮次，出队预检的取消不能改写上一轮结果。 */
   public async finish_round(
     execution: AgentExecution,
     status: Extract<AgentEntryStatus, "success" | "error" | "stopped">,
@@ -790,7 +746,7 @@ export class AgentChat {
     if (roundId === null) return;
     await this.change((state) => {
       const round = state.rounds[roundId];
-      if (round !== undefined && round.status !== "stopped") {
+      if (round !== undefined && round.status === "running") {
         round.status = status;
         round.endedAt = Date.now();
         round.averageTokensPerSecond = average;
@@ -807,65 +763,16 @@ export class AgentChat {
     await this.flush();
     await this.change_queue((queue) => queue.cancel_send());
   }
-  /** 先冻结公开终态，再等待底层退出，迟到工具结果仍进入诊断。 */
+  /** SDK 取消回执决定工具与正文终态，产品结算轮次并暂停草稿。 */
   public async stop(execution: AgentExecution, average: number | null): Promise<void> {
-    const abort = this.conversation.abort(BACKGROUND_CONTEXT);
-    void abort.catch(this.options.onReport);
-    const entries = this.entries;
-    const roundStart = entries.findIndex((entry) => entry.id === execution.roundId);
-    const activeRound =
-      execution.roundId !== null && this.state.rounds[execution.roundId]?.status === "running";
-    const frozen = (activeRound && roundStart >= 0 ? entries.slice(roundStart) : []).map(
-      freeze_entry,
-    );
-    const task = this.view.live.get(this.conversation.id)?.run?.taskId;
-    const latest = this.latestResponse;
-    if (
-      task !== undefined &&
-      execution.roundId !== null &&
-      this.state.rounds[execution.roundId]?.status === "running" &&
-      latest !== null &&
-      latest.parts !== null
-    ) {
-      const entry: AgentEntry = {
-        kind: "assistant_message",
-        id: assistant_entry_id(task, 0),
-        parts: latest.parts,
-        status: "stopped",
-        createdAt: latest.createdAt,
-      };
-      const index = frozen.findIndex((item) => item.id === entry.id);
-      if (index < 0) frozen.push(entry);
-      else frozen[index] = entry;
-    }
-    await this.change((state) => {
-      for (const entry of frozen)
-        state.stoppedEntries[entry.id] = {
-          roundId: execution.roundId!,
-          entry,
-          ...(task !== undefined && entry.id === assistant_entry_id(task, 0) && latest !== null
-            ? { source: latest.source }
-            : {}),
-        };
-      const round = execution.roundId === null ? undefined : state.rounds[execution.roundId];
-      if (round !== undefined && round.status === "running") {
-        round.status = "stopped";
-        round.endedAt = Date.now();
-        round.averageTokensPerSecond = average;
-        delete state.stoppedEntries[execution.roundId!];
-      }
-      const queue = new AgentInputQueue(state.queue);
+    await this.change_queue((queue) => {
       queue.cancel_send();
       queue.pause();
     });
-  }
-  /** 租约释放前等待原生任务退出，关闭过程共用已有的收尾 Promise。 */
-  public async abort(): Promise<void> {
-    if (this.closing !== null) return this.closing;
-    await this.conversation.abort(BACKGROUND_CONTEXT, { background: true });
+    await this.conversation.abort(BACKGROUND_CONTEXT);
     await this.flush();
+    await this.finish_round(execution, "stopped", average);
   }
-
   /** 预检后的修订通过分叉替换活动历史，产品队列和 `doing` 跨分叉保留。 */
   public async revise(entry: AgentEntry, text: string | null, commandId?: string): Promise<void> {
     const records = this.view.branch_records();
@@ -874,15 +781,15 @@ export class AgentChat {
     if (entry.kind === "user_message" && entry.delivery === "round")
       checkpoint = this.state.rounds[entry.id]!.checkpoint;
     else {
-      // 生成任务先提交系统条目，正文可能只存在于停止快照。按最后条目确定分叉切点。
+      // 修订使用 SDK 已提交正文及其来源，分叉切点由实际历史条目确定。
       const index = records.findLastIndex(
         (record) => assistant_entry_id(record.byTaskId, record.id) === entry.id,
       );
       if (index < 1) throw new AppError("request.validation_failed");
       const message = records[index]!.model?.findLast((message) => message.role === "assistant");
-      original = message ?? this.state.stoppedEntries[entry.id]?.source;
+      original = message;
       if (original === undefined) throw new AppError("request.validation_failed");
-      checkpoint = records[message === undefined ? index : index - 1]!.id;
+      checkpoint = records[index - 1]!.id;
     }
     this.conversation = await this.conversation.fork(
       checkpoint,
@@ -892,7 +799,6 @@ export class AgentChat {
           const state = await tx.doc(AgentChatDoc, this.options.chatId, null);
           state.activeConversationId = id;
           if (commandId !== undefined) state.commands[commandId]!.status = "accepted";
-          delete state.stoppedEntries[entry.id]; // 修订替代停止快照，投影不能再补回旧正文
           if (original !== undefined && text !== null)
             await tx.appendEntry(AssistantEntry, id, {
               model: [
@@ -1027,12 +933,4 @@ export class AgentChat {
       if (error !== undefined) this.compactionFailures.push({ reason, error });
     }
   }
-}
-
-/** 正常停止和恢复共用公开终态规则，避免遗留 running 条目。 */
-function freeze_entry(entry: AgentEntry): AgentEntry {
-  if (entry.status !== "running" || entry.kind === "context_compaction") return entry;
-  return entry.kind === "tool_call"
-    ? { ...entry, status: "stopped", output: null }
-    : { ...entry, status: "stopped" };
 }

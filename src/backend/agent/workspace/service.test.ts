@@ -646,7 +646,7 @@ describe("AgentWorkspaceService", () => {
   it("脚本错误和 runtime 故障保留已经写入的工作文件与阶段", async () => {
     const fixture = await create_fixture(temp_dir);
     let doing: string | null = null;
-    const write_doing = (text: string | null): void => {
+    const write_doing = async (text: string | null): Promise<void> => {
       doing = text;
     };
     await run_workspace(fixture);
@@ -654,7 +654,7 @@ describe("AgentWorkspaceService", () => {
     const work_file = path.join(fixture.workspace_root, AGENT_WORKSPACE_WORK_ROOT, "state.json");
     fs.writeFileSync(work_file, "state");
     fixture.run.mockImplementationOnce(async (request) => {
-      request.doing!("检查章节");
+      await request.doing!("检查章节");
       throw new AgentWorkspaceRunError("脚本失败", {
         ...workspace_execution({ completed: 1 }, { message: "脚本失败" }),
         exitCode: 1,

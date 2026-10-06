@@ -1400,6 +1400,7 @@ describe("AgentChatStore", () => {
         id: "compaction-success",
         status: "success",
       },
+      { kind: "context_compaction", id: "compaction-stopped", status: "stopped" },
     ]);
   });
 

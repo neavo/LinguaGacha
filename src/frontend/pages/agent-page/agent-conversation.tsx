@@ -141,7 +141,7 @@ export function AgentConversation({ active = true }: { active?: boolean }): JSX.
     allow_in_text_editing: true,
     on_trigger: toggle_follow_latest,
   });
-  const is_running = controls.state === "running";
+  const is_running = controls.state !== "idle";
   const workspace_apply_running = timeline.workspaceApplyRunning;
   const agent_restoring = controls.transport === "restoring";
   const compacting = timeline.compacting;
@@ -154,18 +154,14 @@ export function AgentConversation({ active = true }: { active?: boolean }): JSX.
   const compact_available = instruction_ready && controls.context.compactable;
   // 暂停队列复用 Composer 的 continue 提交，不建立独立恢复控件。
   const can_continue_queue = !is_running && inputQueue.paused && inputQueue.items.length > 0;
-  // 公开回合先回 idle、共享 lease 后释放。两者之间统一显示为 Agent 自身结算。
-  const agent_settling = !is_running && !compacting && runtime_snapshot.owner === "agent";
   const unavailable_reason =
     controls.transport === "disconnected"
       ? "disconnected"
       : agent_restoring || controls.transport === "restore_failed"
         ? "restoring"
-        : agent_settling
-          ? "settling"
-          : runtime_snapshot.owner !== null && runtime_snapshot.owner !== "agent"
-            ? "runtime_busy"
-            : null;
+        : runtime_snapshot.owner !== null && runtime_snapshot.owner !== "agent"
+          ? "runtime_busy"
+          : null;
 
   const edit_entry = useAgentEntry(
     active_inline_edit?.kind === "entry" ? active_inline_edit.entryId : null,
@@ -697,7 +693,7 @@ export function AgentConversation({ active = true }: { active?: boolean }): JSX.
                 locked={!active || active_inline_edit !== null || input_transition.locked}
                 skills={skills}
                 instructions={instructions}
-                running={is_running}
+                state={controls.state}
                 stop_disabled={workspace_apply_running}
                 compacting={compacting}
                 unavailable_reason={unavailable_reason}
