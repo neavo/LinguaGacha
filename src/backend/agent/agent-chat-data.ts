@@ -3,6 +3,7 @@ import type { JsonRecord } from "../../domain/json";
 import type { AgentInputCommandKind, AgentInputCommandStatus } from "../../shared/agent";
 import type { AgentEntryStatus, AgentMessageInput } from "../../shared/agent";
 import type { AgentInputQueueState } from "./agent-input-queue";
+import { AppError } from "../../shared/error";
 
 /** 产品输入关联 SDK 提交，隐藏继续输入仍属于原轮次。 */
 export type AgentInputRecord = {
@@ -37,12 +38,13 @@ export type AgentChatData = {
   doing: string | null;
   inputs: Record<string, AgentInputRecord>;
   rounds: Record<string, AgentRoundRecord>;
+  compactionStartedAt: Record<string, number>; // SDK 任务缺少起始时间，产品按任务身份保存首次提交的观测时间。
 };
 
 /** 产品事实按 `chatId` 保存，SDK 历史分叉共享队列和命令受理记录。 */
 export const AgentChatDoc = defineDocFamily<AgentChatData, null>({
   kind: "linguagacha.chat",
-  version: 1,
+  version: 2,
   scope: "session",
   family: true,
   initial: () => ({
@@ -53,5 +55,11 @@ export const AgentChatDoc = defineDocFamily<AgentChatData, null>({
     doing: null,
     inputs: {},
     rounds: {},
+    compactionStartedAt: {},
   }),
+  migrate: (value, fromVersion) => {
+    if (fromVersion !== 1) throw new AppError("file.invalid_structure");
+    // 旧任务没有起始时间事实，迁移只建立空索引。
+    return { ...value, compactionStartedAt: {} } as AgentChatData;
+  },
 });

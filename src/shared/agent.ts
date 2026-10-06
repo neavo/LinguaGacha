@@ -175,6 +175,7 @@ export type AgentContextCompactionEntry = JsonRecord & {
   kind: "context_compaction";
   id: string;
   status: AgentEntryStatus;
+  createdAt: number | null; // 旧压缩任务没有可恢复的起始时间。
 };
 
 /** `round` 与 `steer` 共用的不可变用户消息字段。 */

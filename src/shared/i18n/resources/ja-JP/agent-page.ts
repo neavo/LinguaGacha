@@ -104,9 +104,11 @@ export const ja_jp_agent_page = {
     cancel: "この質問をキャンセル",
   },
   compaction: {
-    running: "コンテキストを圧縮中 …",
-    success: "コンテキストを圧縮しました …",
-    error: "コンテキストを圧縮できませんでした …",
+    running: "コンテキストを圧縮中",
+    success: "コンテキストを圧縮しました",
+    error: "コンテキストを圧縮できませんでした",
+    stopped: "コンテキスト圧縮を停止しました",
+    retry: "コンテキストを圧縮できませんでした · クリックして再試行",
   },
   action: {
     send: "送信",

@@ -978,6 +978,7 @@ describe("AgentConversation", () => {
         user_entry("user-1", "初次检查", "success", 0, 1_000),
         {
           kind: "context_compaction",
+          createdAt: null,
           id: "compaction-1",
           status: "error",
         },
@@ -1007,7 +1008,7 @@ describe("AgentConversation", () => {
     const compactContext = vi.fn(async () => undefined);
     const entries: AgentEntry[] = [
       user_entry("user", "检查", "success", 0, 1_000),
-      { kind: "context_compaction", id: "compact", status: "error" },
+      { kind: "context_compaction", createdAt: null, id: "compact", status: "error" },
     ];
     const options = {
       entries,
@@ -1015,8 +1016,9 @@ describe("AgentConversation", () => {
       compactContext,
     };
     const view = await render_page(options);
-    const retry = view.querySelector<HTMLButtonElement>(".agent-process-entry button");
-    expect(retry?.textContent).toBe("app.action.retry");
+    const retry = view.querySelector<HTMLButtonElement>(
+      "button.agent-process-entry:not([aria-haspopup])",
+    );
     expect(retry?.disabled).toBe(false);
     await act(async () => retry?.click());
     expect(compactContext).toHaveBeenCalledOnce();

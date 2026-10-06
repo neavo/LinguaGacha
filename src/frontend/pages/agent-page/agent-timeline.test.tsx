@@ -356,21 +356,25 @@ describe("AgentTimeline", () => {
     ];
     const view = await render_timeline([
       ...round,
-      { kind: "context_compaction", id: "old-compaction", status: "error" },
-      { kind: "context_compaction", id: "compaction-1", status: "error" },
+      { kind: "context_compaction", createdAt: null, id: "old-compaction", status: "error" },
+      { kind: "context_compaction", createdAt: null, id: "compaction-1", status: "error" },
     ]);
     expect(view.querySelector('.agent-process-entry [role="status"]')?.textContent).toContain(
       "agent_page.compaction.error",
     );
-    const retries = view.querySelectorAll<HTMLButtonElement>(".agent-process-entry button");
+    const retries = view.querySelectorAll<HTMLButtonElement>(
+      "button.agent-process-entry:not([aria-haspopup])",
+    );
     expect(retries).toHaveLength(1);
     await act(async () => retries[0]?.click());
     expect(on_compact).toHaveBeenCalledOnce();
     await act(async () => {
-      timeline_store.update([{ kind: "context_compaction", id: "retry", status: "running" }]);
+      timeline_store.update([
+        { kind: "context_compaction", createdAt: null, id: "retry", status: "running" },
+      ]);
       timeline_store.notify();
     });
-    expect(view.querySelector(".agent-process-entry button")).toBeNull();
+    expect(view.querySelector("button.agent-process-entry:not([aria-haspopup])")).toBeNull();
     const continue_button = view.querySelector<HTMLButtonElement>(".agent-continue-entry");
     expect(continue_button?.textContent).toContain("app.feedback.model_request_failed");
     await act(async () => continue_button?.click());
@@ -392,7 +396,7 @@ describe("AgentTimeline", () => {
         ),
       ]),
     );
-    const tool = view.querySelector<HTMLButtonElement>(".agent-process-entry--tool");
+    const tool = view.querySelector<HTMLButtonElement>('button[aria-haspopup="dialog"]');
     expect(tool?.textContent).toBe("read_skill · sample\\aaa\\bbb.md · 8s");
     await act(async () => vi.advanceTimersByTime(1_000));
     expect(tool?.textContent).toBe("read_skill · sample\\aaa\\bbb.md · 9s");
@@ -421,7 +425,7 @@ describe("AgentTimeline", () => {
     await act(async () => output_tab?.click());
     expect(get_tool_dialog_json()).toEqual({ scope: "output" });
     expect(
-      view.querySelector(".agent-process-entry--tool .agent-status-mark--success"),
+      view.querySelector('button[aria-haspopup="dialog"] .agent-status-mark--success'),
     ).not.toBeNull();
   });
 
@@ -441,7 +445,7 @@ describe("AgentTimeline", () => {
       ["stopped", "agent_page.status.stopped"],
     ] as const) {
       const mark = view.querySelector<HTMLElement>(
-        `.agent-process-entry--tool .agent-status-mark--${status}[role="img"]`,
+        `button[aria-haspopup="dialog"] .agent-status-mark--${status}[role="img"]`,
       );
       expect(mark?.getAttribute("aria-label")).toBe(label);
     }
@@ -669,7 +673,7 @@ describe("AgentTimeline", () => {
     const visible_text = view.textContent ?? "";
     expect(visible_text.indexOf("准备查询")).toBeLessThan(visible_text.indexOf("workspace_run"));
     expect(visible_text.indexOf("workspace_run")).toBeLessThan(visible_text.indexOf("read_skill"));
-    const tools = view.querySelectorAll<HTMLButtonElement>(".agent-process-entry--tool");
+    const tools = view.querySelectorAll<HTMLButtonElement>('button[aria-haspopup="dialog"]');
     expect(tools[0]?.textContent).not.toContain("Alice");
     expect(tools[1]?.querySelector(".agent-status-mark--error")?.getAttribute("aria-label")).toBe(
       "agent_page.status.error",

@@ -1087,12 +1087,18 @@ function normalize_entry(value: unknown): AgentEntry[] {
   if (!is_json_record(value) || typeof value["id"] !== "string") return [];
   if (value["kind"] === "context_compaction") {
     const status = normalize_entry_status(value["status"]);
-    if (status === null) return [];
+    const createdAt = value["createdAt"];
+    if (
+      status === null ||
+      (createdAt !== null && (typeof createdAt !== "number" || !Number.isSafeInteger(createdAt)))
+    )
+      return [];
     return [
       {
         kind: "context_compaction",
         id: value["id"],
         status,
+        createdAt,
       },
     ];
   }

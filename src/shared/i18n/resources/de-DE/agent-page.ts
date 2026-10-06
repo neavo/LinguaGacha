@@ -102,9 +102,11 @@ export const de_de_agent_page = {
     cancel: "Frage abbrechen",
   },
   compaction: {
-    running: "Kontext wird komprimiert …",
-    success: "Kontext erfolgreich komprimiert …",
-    error: "Kontextkomprimierung fehlgeschlagen …",
+    running: "Kontext wird komprimiert",
+    success: "Kontext erfolgreich komprimiert",
+    error: "Kontextkomprimierung fehlgeschlagen",
+    stopped: "Kontextkomprimierung gestoppt",
+    retry: "Kontextkomprimierung fehlgeschlagen · Zum Wiederholen klicken",
   },
   action: {
     send: "Senden",
