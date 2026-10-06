@@ -252,7 +252,7 @@ it("供应商身份随 SQLite 重开和模型重新配置保留", async () => {
   }
 });
 
-it("压缩条目只依赖 SDK 任务，重开保留身份顺序和状态，关闭冲刷待写日志", async () => {
+it("压缩状态依赖 SDK 任务，重开保留起始时间、身份顺序和状态，关闭冲刷待写日志", async () => {
   const { database, file } = project();
   const store = database.open_agent_store(file);
   await store.create("compaction-chat");
@@ -269,6 +269,7 @@ it("压缩条目只依赖 SDK 任务，重开保留身份顺序和状态，关�
     const history = "history ".repeat(16_000);
     await talk(first.chat, history);
     const execution = await talk(first.chat, history);
+    const before_compaction = Date.now();
     await first.chat.compact("manual", execution);
     const expected = first.chat.entries.map(({ kind, id, status }) => ({ kind, id, status }));
     const compacted = first.chat.entries.filter((entry) => entry.kind === "context_compaction");
@@ -278,7 +279,10 @@ it("压缩条目只依赖 SDK 任务，重开保留身份顺序和状态，关�
         kind: "context_compaction",
         id: expect.any(String),
         status: "success",
+        createdAt: expect.any(Number),
       });
+    expect(compacted.at(-1)!.createdAt).toBeGreaterThanOrEqual(before_compaction);
+    expect(compacted.at(-1)!.createdAt).toBeLessThanOrEqual(Date.now());
     first.chat.log.begin_run("closing-round", "prompt");
     await first.chat.close();
     expect(first.append).toHaveBeenCalledWith(
@@ -291,6 +295,9 @@ it("压缩条目只依赖 SDK 任务，重开保留身份顺序和状态，关�
       expected,
     );
     expect(restored.provider.state.callCount).toBe(0);
+    expect(restored.chat.entries.filter((entry) => entry.kind === "context_compaction")).toEqual(
+      compacted,
+    );
   } finally {
     await restored?.chat.close();
     await first.chat.close();

@@ -681,6 +681,7 @@ describe("AgentChatStore", () => {
         type: "entry_upsert",
         entry: {
           kind: "context_compaction",
+          createdAt: 1_000,
           id: "manual-compaction",
           status: "running",
         },
@@ -699,6 +700,7 @@ describe("AgentChatStore", () => {
     expect(latest.entries).toEqual([
       {
         kind: "context_compaction",
+        createdAt: 1_000,
         id: "manual-compaction",
         status: "running",
       },
@@ -1302,13 +1304,26 @@ describe("AgentChatStore", () => {
         },
         {
           kind: "context_compaction",
+          createdAt: null,
           id: "compaction-success",
           status: "success",
         },
         {
           kind: "context_compaction",
+          createdAt: null,
           id: "compaction-stopped",
           status: "stopped",
+        },
+        {
+          kind: "context_compaction",
+          id: "compaction-missing-time",
+          status: "running",
+        },
+        {
+          kind: "context_compaction",
+          id: "compaction-invalid-time",
+          status: "running",
+          createdAt: "1000",
         },
       ],
       skills: [],
@@ -1397,10 +1412,11 @@ describe("AgentChatStore", () => {
       },
       {
         kind: "context_compaction",
+        createdAt: null,
         id: "compaction-success",
         status: "success",
       },
-      { kind: "context_compaction", id: "compaction-stopped", status: "stopped" },
+      { kind: "context_compaction", createdAt: null, id: "compaction-stopped", status: "stopped" },
     ]);
   });
 
@@ -1881,6 +1897,7 @@ describe("AgentChatStore", () => {
   it("统一 continue 命令应用后端决定的压缩运行条目", async () => {
     const failed_compaction = {
       kind: "context_compaction" as const,
+      createdAt: null,
       id: "compaction-1",
       status: "error" as const,
     };

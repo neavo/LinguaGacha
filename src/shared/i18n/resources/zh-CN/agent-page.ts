@@ -102,9 +102,11 @@ export const zh_cn_agent_page = {
     cancel: "取消本次提问",
   },
   compaction: {
-    running: "正在压缩上下文 …",
-    success: "上下文压缩成功 …",
-    error: "上下文压缩失败 …",
+    running: "正在压缩上下文",
+    success: "上下文压缩成功",
+    error: "上下文压缩失败",
+    stopped: "上下文压缩停止",
+    retry: "上下文压缩失败 · 点击重试",
   },
   action: {
     send: "发送",

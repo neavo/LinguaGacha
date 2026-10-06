@@ -119,6 +119,7 @@ export class AgentChat {
   private harness!: Harness;
   private conversation!: Conversation; // 当前分支唯一入口，只在创建与修订成功后切换
   private readonly compactionFailures: Array<{ reason: string; error: string }> = []; // 提交后刷新时交付宿主诊断
+  private readonly compactionStarts = new Map<number, number>(); // 提交线外持久化后释放，避免订阅回调重入事务。
   private compactionReason: "manual" | "length" = "manual"; // 产品主动压缩补充触发原因，SDK 自动压缩沿用原原因
   private contextRevision = 0; // 正文进度和队列变化不能使在途上下文查询失效
   private contextDirty = true; // 模型历史或配置变化使上下文查询失效
@@ -859,6 +860,14 @@ export class AgentChat {
           this.dirty = false;
           this.flush_diagnostics();
           if (this.conversation === undefined) continue;
+          if (this.compactionStarts.size > 0) {
+            const starts = [...this.compactionStarts];
+            await this.harness.commit(async (tx) => {
+              const state = await tx.doc(AgentChatDoc, this.options.chatId, null);
+              for (const [id, startedAt] of starts) state.compactionStartedAt[id] = startedAt;
+            }, BACKGROUND_CONTEXT);
+            for (const [id] of starts) this.compactionStarts.delete(id);
+          }
           const conversation = this.conversation;
           if (this.contextDirty) {
             const revision = this.contextRevision;
@@ -919,7 +928,11 @@ export class AgentChat {
         ? String(input.reason)
         : "manual";
     const reason = nativeReason === "manual" ? this.compactionReason : nativeReason;
-    if (previous === undefined) this.log.handle_event({ type: "compaction_start", reason });
+    if (previous === undefined) {
+      // 新任务只捕获一次起始时间，恢复的任务沿用已提交时间。
+      this.compactionStarts.set(task.id, Date.now());
+      this.log.handle_event({ type: "compaction_start", reason });
+    }
     if (task.state.status === "terminal" && previous?.state.status !== "terminal") {
       const outcome = task.state.outcome;
       const error = outcome.status === "failed" ? outcome.error.message : undefined;

@@ -102,9 +102,11 @@ export const en_us_agent_page = {
     cancel: "Cancel question",
   },
   compaction: {
-    running: "Compacting context …",
-    success: "Context compacted successfully …",
-    error: "Context compaction failed …",
+    running: "Compacting context",
+    success: "Context compacted successfully",
+    error: "Context compaction failed",
+    stopped: "Context compaction stopped",
+    retry: "Context compaction failed · Click to retry",
   },
   action: {
     send: "Send",

@@ -142,6 +142,12 @@ export class AgentChatView {
           if (record !== undefined) this.read_user(record, this.inputs.get(record.id)!);
         }
       }
+      // 时间元数据独立提交时也更新对应条目，覆盖刷新期间新任务到达的情况。
+      if (previous.compactionStartedAt !== state.compactionStartedAt) {
+        for (const [id, startedAt] of Object.entries(state.compactionStartedAt)) {
+          if (startedAt !== previous.compactionStartedAt[id]) this.pendingTasks.add(Number(id));
+        }
+      }
       for (const id of this.pendingTasks) {
         const task = this.compactions.get(id)!;
         if (this.visible(task.conversationId, id)) this.read_task(task);
@@ -355,6 +361,7 @@ export class AgentChatView {
       {
         kind: "context_compaction",
         id: `compaction:${task.id}`,
+        createdAt: this.state.compactionStartedAt[task.id] ?? null,
         status:
           task.state.status === "terminal"
             ? task.state.outcome.status === "completed"

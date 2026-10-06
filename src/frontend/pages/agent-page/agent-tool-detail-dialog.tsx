@@ -79,7 +79,7 @@ export function AgentToolDetailDialog(props: AgentToolDetailDialogProps): JSX.El
     >
       <div className="agent-tool-detail__header">
         <div className="agent-tool-detail__identity">
-          <h2 title={label}>{label}</h2>
+          <h2>{label}</h2>
           <span>
             {status_label}
             {active ? ` · ${duration}` : ""}

@@ -104,9 +104,11 @@ export const ko_kr_agent_page = {
     cancel: "이 질문 취소",
   },
   compaction: {
-    running: "컨텍스트 압축 중 …",
-    success: "컨텍스트를 압축했습니다 …",
-    error: "컨텍스트 압축에 실패했습니다 …",
+    running: "컨텍스트 압축 중",
+    success: "컨텍스트를 압축했습니다",
+    error: "컨텍스트 압축에 실패했습니다",
+    stopped: "컨텍스트 압축이 중지되었습니다",
+    retry: "컨텍스트 압축에 실패했습니다 · 클릭하여 다시 시도",
   },
   action: {
     send: "전송",

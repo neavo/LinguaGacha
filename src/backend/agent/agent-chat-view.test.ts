@@ -6,6 +6,7 @@ import type {
   LiveState,
   Seq,
   TaskId,
+  TaskRecord,
   EntryId,
   EntryRecord,
   SubmissionId,
@@ -14,6 +15,40 @@ import type {
 import { expect, it } from "vitest";
 import { AgentChatDoc } from "./agent-chat-data";
 import { AgentChatView } from "./agent-chat-view";
+
+it("压缩起始时间可随独立文档提交补入，任务终态与恢复沿用同一时间", () => {
+  const conversationId = 1 as ConversationId;
+  const state = AgentChatDoc.definition.initial(null);
+  const task = {
+    id: 2 as TaskId<null>,
+    conversationId,
+    kind: "pi.compaction",
+    version: 1,
+    input: null,
+    background: false,
+    abortRequested: false,
+    state: { status: "running", checkpoint: null },
+  } satisfies TaskRecord<null, null, null>;
+  const view = new AgentChatView();
+  view.observe({ seq: 1 as Seq, changes: [{ type: "task", value: task }] });
+  view.refresh(conversationId, state);
+  expect(view.entries).toEqual([
+    { kind: "context_compaction", id: "compaction:2", status: "running", createdAt: null },
+  ]);
+  const timed = { ...state, compactionStartedAt: { 2: 100_000 } };
+  view.refresh(conversationId, timed);
+  expect(view.entries[0]?.createdAt).toBe(100_000);
+  const completed: TaskRecord<null, null, null> = {
+    ...task,
+    state: { status: "terminal", outcome: { status: "completed", result: null } },
+  };
+  view.observe({ seq: 2 as Seq, changes: [{ type: "task", value: completed }] });
+  view.refresh(conversationId, timed);
+  expect(view.entries[0]).toMatchObject({ status: "success", createdAt: 100_000 });
+  const restored = new AgentChatView();
+  restored.reset([], new Map(), [completed], {}, timed);
+  expect(restored.entries).toEqual(view.entries);
+});
 
 it("已提交历史按用户、助手、工具和后续回答投影，隐藏继续输入不新增条目", () => {
   const state = AgentChatDoc.definition.initial(null);

@@ -1,11 +1,11 @@
 import type { JSX } from "react";
-import { ChevronsDownUp, Wrench } from "lucide-react";
+import { ChevronsDownUp, Wrench, type LucideIcon } from "lucide-react";
 import type {
+  AgentEntryStatus,
   AgentToolEntry,
   AgentContextCompactionEntry as ContextCompactionEntry,
 } from "@shared/agent";
 import { useI18n, type LocaleKey } from "@frontend/app/locale/locale-context";
-import { AppButton } from "@frontend/widgets/app-button";
 import { AGENT_STATUS_LABEL_KEYS, useAgentElapsed } from "./agent-entry-status";
 import { AgentStatusMark } from "./agent-status-mark";
 import { format_agent_tool_label } from "./agent-tool-label";
@@ -16,7 +16,7 @@ const AGENT_COMPACTION_LABEL_KEYS: Readonly<Record<ContextCompactionEntry["statu
     running: "agent_page.compaction.running",
     success: "agent_page.compaction.success",
     error: "agent_page.compaction.error",
-    stopped: "agent_page.round.stopped",
+    stopped: "agent_page.compaction.stopped",
   });
 
 /** 工具行保留原生按钮语义，完整载荷由时间线唯一详情弹窗展示。 */
@@ -26,28 +26,15 @@ export function AgentToolEntryButton(props: {
 }): JSX.Element {
   const { t } = useI18n();
   const label = format_agent_tool_label(props.entry.toolName, props.entry.input);
-  const active = props.entry.status === "running";
-  const duration = useAgentElapsed(props.entry.createdAt, active);
   return (
-    <button
-      type="button"
-      className="agent-process-entry agent-process-entry--tool"
-      data-status={props.entry.status}
-      aria-haspopup="dialog"
-      onClick={props.on_open}
-    >
-      <Wrench className="agent-process-entry__icon" aria-hidden="true" />
-      <span className="agent-process-entry__label" title={label}>
-        {label}
-      </span>
-      <span className="agent-process-entry__accessory">
-        {active ? <span className="agent-process-entry__elapsed"> · {duration}</span> : null}
-      </span>
-      <AgentStatusMark
-        status={props.entry.status}
-        label={t(AGENT_STATUS_LABEL_KEYS[props.entry.status])}
-      />
-    </button>
+    <AgentProcessEntry
+      icon={Wrench}
+      label={label}
+      status={props.entry.status}
+      status_label={t(AGENT_STATUS_LABEL_KEYS[props.entry.status])}
+      created_at={props.entry.createdAt}
+      action={{ on_click: props.on_open, has_popup: "dialog" }}
+    />
   );
 }
 
@@ -59,28 +46,75 @@ export function AgentContextCompactionEntry(props: {
   on_compact: () => void;
 }): JSX.Element {
   const { t } = useI18n();
-  const label = t(AGENT_COMPACTION_LABEL_KEYS[props.entry.status]);
-  const show_retry = props.latest && props.entry.status === "error";
+  const status_label = t(AGENT_COMPACTION_LABEL_KEYS[props.entry.status]);
+  const retry = props.latest && props.entry.status === "error";
+  const label = retry && props.compact_available ? t("agent_page.compaction.retry") : status_label;
   return (
-    <div className="agent-process-entry" data-status={props.entry.status}>
-      <ChevronsDownUp className="agent-process-entry__icon" aria-hidden="true" />
-      <span className="agent-process-entry__label" role="status" title={label}>
-        {label}
-      </span>
-      <span className="agent-process-entry__accessory">
-        {show_retry ? (
-          <AppButton
-            type="button"
-            size="xs"
-            variant="ghost"
-            disabled={!props.compact_available}
-            onClick={props.on_compact}
-          >
-            {t("app.action.retry")}
-          </AppButton>
+    <AgentProcessEntry
+      icon={ChevronsDownUp}
+      label={label}
+      status={props.entry.status}
+      status_label={status_label}
+      created_at={props.entry.createdAt}
+      announce_status
+      action={retry ? { on_click: props.on_compact, disabled: !props.compact_available } : null}
+    />
+  );
+}
+
+/** 两类过程共用骨架与耗时，业务入口提供整行动作及其原生按钮语义。 */
+function AgentProcessEntry(props: {
+  icon: LucideIcon;
+  label: string;
+  status: AgentEntryStatus;
+  status_label: string;
+  created_at: number | null;
+  announce_status?: boolean;
+  action: {
+    on_click: () => void;
+    disabled?: boolean;
+    has_popup?: "dialog";
+  } | null;
+}): JSX.Element {
+  const Icon = props.icon;
+  const content = (
+    <>
+      <Icon className="agent-process-entry__icon" aria-hidden="true" />
+      <span className="agent-process-entry__content">
+        <span
+          className="agent-process-entry__label"
+          role={props.announce_status ? "status" : undefined}
+        >
+          {props.label}
+        </span>
+        {props.status === "running" && props.created_at !== null ? (
+          <AgentProcessElapsed created_at={props.created_at} />
         ) : null}
       </span>
-      <AgentStatusMark status={props.entry.status} label={label} />
-    </div>
+      <AgentStatusMark status={props.status} label={props.status_label} />
+    </>
   );
+  return props.action === null ? (
+    <div className="agent-process-entry" data-status={props.status}>
+      {content}
+    </div>
+  ) : (
+    <button
+      type="button"
+      className="agent-process-entry agent-process-entry--interactive"
+      data-status={props.status}
+      aria-label={props.label}
+      aria-haspopup={props.action.has_popup}
+      disabled={props.action.disabled}
+      onClick={props.action.on_click}
+    >
+      {content}
+    </button>
+  );
+}
+
+/** 仅运行且有真实起始时间时挂载时钟，终态自动释放计时器。 */
+function AgentProcessElapsed(props: { created_at: number }): JSX.Element {
+  const duration = useAgentElapsed(props.created_at, true);
+  return <span className="agent-process-entry__elapsed"> · {duration}</span>;
 }
