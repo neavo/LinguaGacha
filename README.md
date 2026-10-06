@@ -85,13 +85,9 @@
 - 具体示例可见 [Wiki - 支持的文件格式](https://github.com/neavo/LinguaGacha/wiki/%E6%94%AF%E6%8C%81%E7%9A%84%E6%96%87%E4%BB%B6%E6%A0%BC%E5%BC%8F)，更多格式将持续添加，你也可以在 [ISSUES](https://github.com/neavo/LinguaGacha/issues) 中提出你的需求
 
 ## 近期更新 📅
-- 20261001 v0.125.0
-  - 新增 `全局字体大小` [#949](../../issues/949)
-  - 新增 `ChatGPT 登录` [#951](../../issues/951)
-    - 可以使用你的 Codex Plan 额度了
-    - 可以激活 `GPT Fast/UltraFast` 模式了
-  - 修复与改进 [#948](../../issues/948) [#950](../../issues/950)
-  - 祖国母亲生日快乐 ( •̀ ω •́ )✧
+- 20261006 v0.126.0
+  - `AGENT` - 对话持久化 [#960](../../issues/960)
+  - 修复与改进 [#954](../../issues/954) [#955](../../issues/955) [#958](../../issues/958) [#959](../../issues/959) [#961](../../issues/961) [#963](../../issues/963) [#964](../../issues/964)
 
 ## 开发指南 🛠️
 - 安装 [ [Go](https://go.dev) ] 和 [ [`Node.js`](https://nodejs.org) ]

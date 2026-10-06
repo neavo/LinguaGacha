@@ -85,13 +85,9 @@
 - 구체적인 예시는 [Wiki - 지원 파일 형식](https://github.com/neavo/LinguaGacha/wiki/%E6%94%AF%E6%8C%81%E7%9A%84%E6%96%87%E4%BB%B6%E6%A0%BC%E5%BC%8F)을 참고하세요. 지원 형식은 계속 추가되며, [ISSUES](https://github.com/neavo/LinguaGacha/issues)에서 원하는 형식을 요청할 수 있습니다
 
 ## 최근 업데이트 📅
-- 20261001 v0.125.0
-  - `전체 글꼴 크기` 추가 [#949](../../issues/949)
-  - `ChatGPT 로그인` 추가 [#951](../../issues/951)
-    - 이제 Codex Plan 사용량 한도를 활용할 수 있습니다
-    - 이제 `GPT Fast/UltraFast` 모드를 활성화할 수 있습니다
-  - 수정 및 개선 [#948](../../issues/948) [#950](../../issues/950)
-  - 조국 중국의 생일을 축하합니다! ( •̀ ω •́ )✧
+- 20261006 v0.126.0
+  - `AGENT` - 대화 영구 저장 [#960](../../issues/960)
+  - 수정 및 개선 [#954](../../issues/954) [#955](../../issues/955) [#958](../../issues/958) [#959](../../issues/959) [#961](../../issues/961) [#963](../../issues/963) [#964](../../issues/964)
 
 ## 개발 안내 🛠️
 - [Go](https://go.dev)와 [`Node.js`](https://nodejs.org)를 설치합니다

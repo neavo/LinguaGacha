@@ -87,13 +87,9 @@
 - 例については [Wiki - 対応フォーマット](https://github.com/neavo/LinguaGacha/wiki/%E6%94%AF%E6%8C%81%E7%9A%84%E6%96%87%E4%BB%B6%E6%A0%BC%E5%BC%8F) を参照。フォーマットのリクエストは [ISSUES](https://github.com/neavo/LinguaGacha/issues) で提出
 
 ## 最近の更新 📅
-- 20261001 v0.125.0
-  - `全体のフォントサイズ` を追加 [#949](../../issues/949)
-  - `ChatGPT ログイン` を追加 [#951](../../issues/951)
-    - Codex Plan の利用枠を使えるようになりました
-    - `GPT Fast/UltraFast` モードを有効にできるようになりました
-  - 修正と改善 [#948](../../issues/948) [#950](../../issues/950)
-  - 祖国・中国、お誕生日おめでとう！ ( •̀ ω •́ )✧
+- 20261006 v0.126.0
+  - `AGENT` - 会話の永続化 [#960](../../issues/960)
+  - 修正と改善 [#954](../../issues/954) [#955](../../issues/955) [#958](../../issues/958) [#959](../../issues/959) [#961](../../issues/961) [#963](../../issues/963) [#964](../../issues/964)
 
 ## 開発ガイド 🛠️
 - [Go](https://go.dev) と [`Node.js`](https://nodejs.org) をインストール
