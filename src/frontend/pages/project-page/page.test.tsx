@@ -269,6 +269,19 @@ describe("ProjectPage", () => {
     });
   }
 
+  it("格式提示复用胶囊名称，多来源格式显示说明", async () => {
+    await mount_page();
+    const tags = [...container!.querySelectorAll(".project-home__format-tag")];
+    const tips = [...container!.querySelectorAll('.project-home__format-tags [role="tooltip"]')];
+    expect(tips).toHaveLength(tags.length);
+    for (const [index, tag] of tags.entries()) {
+      const lines = [...tips[index]!.querySelectorAll("span")].map((line) => line.textContent);
+      const extension = tag.querySelector(".project-home__format-extension")!.textContent;
+      if (extension === ".json" || extension === ".xlsx") expect(lines.length).toBeGreaterThan(1);
+      else expect(lines).toEqual([tag.querySelector(".project-home__format-title")!.textContent]);
+    }
+  });
+
   /** 复用公开交互完成一次源文件选择和工程创建。 */
   async function create_project_from_selected_source(): Promise<void> {
     if (container === null) {

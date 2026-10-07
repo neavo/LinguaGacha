@@ -72,7 +72,7 @@
 - 你可以在 [Wiki](https://github.com/neavo/LinguaGacha/wiki) 找到各项功能的更详细介绍，也欢迎在 [讨论区](https://github.com/neavo/LinguaGacha/discussions) 投稿你的使用心得
 
 ## 文本格式 🏷️
-- 字幕 `.srt .ass`
+- 字幕 `.srt .ass .ssa .vtt .lrc`
 - 电子书 `.txt .pdf .epub`
 - Markdown `.md`
 - [RenPy](https://www.renpy.org) 导出游戏文本 `.rpy`

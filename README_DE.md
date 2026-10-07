@@ -72,7 +72,7 @@
 - Ausführlichere Informationen zu den Funktionen finden Sie im [Wiki](https://github.com/neavo/LinguaGacha/wiki). Teilen Sie Ihre Erfahrungen gerne in den [Diskussionen](https://github.com/neavo/LinguaGacha/discussions)
 
 ## Unterstützte Formate 🏷️
-- Untertitel `.srt .ass`
+- Untertitel `.srt .ass .ssa .vtt .lrc`
 - E-Books `.txt .pdf .epub`
 - Markdown `.md`
 - Mit [RenPy](https://www.renpy.org) exportierte Spieltexte `.rpy`

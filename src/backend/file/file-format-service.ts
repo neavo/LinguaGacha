@@ -2,13 +2,17 @@ import type { PDFExecution } from "./pdf/pdf-worker";
 import { PDFFormat } from "./pdf/pdf-format";
 import path from "node:path";
 
-import { Item } from "../../domain/item";
-import { ASSFormat } from "./ass/ass-format";
+import { Item, type ItemFileType } from "../../domain/item";
+import { ASSFormat } from "./subtitle/ass-ssa-format";
 import { KVJSONFormat } from "./kvjson/kvjson-format";
 import { MDV2Format } from "./markdown/md-v2-format";
 import { MESSAGEJSONFormat } from "./messagejson/messagejson-format";
 import { RenPyFormat } from "./renpy/renpy-format";
-import { SRTFormat } from "./srt/srt-format";
+import { SRTFormat } from "./subtitle/srt-format";
+import { VTTFormat } from "./subtitle/vtt-format";
+import { LRCFormat } from "./subtitle/lrc-format";
+import { AppError } from "../../shared/error";
+import { decode_text_content } from "../../shared/utils/text-tool";
 import { TRANSFormat } from "./trans/trans-format";
 import { TXTFormat } from "./txt/txt-format";
 import { XLSXFormat } from "./xlsx/xlsx-format";
@@ -16,12 +20,13 @@ import { EPUBFormat } from "./epub/epub-format";
 import { NativeFs, default_native_fs } from "../../native/native-fs";
 import {
   type FileFormatReadResult,
-  type FileFormatWriteContext,
+  type FileFormatServiceWriteContext,
   type FileFormatServiceConfig,
   type ProjectSourceFileEntry,
 } from "./file-format-shared";
 import {
   PROJECT_SOURCE_FORMATS,
+  read_subtitle_file_type,
   type ProjectSourceFormatId,
   type ProjectSourceFormatHitCounts,
   type ProjectSourceFileSummary,
@@ -36,12 +41,14 @@ const PROJECT_SOURCE_FORMAT_ID_BY_EXTENSION = new Map<string, ProjectSourceForma
  * Backend 公开文件格式门面；具体格式逻辑按稳定格式处理器拆分
  */
 export class FileFormatService {
-  private readonly native_fs: NativeFs; // 源文件扫描和预览读取的唯一磁盘入口
+  private readonly native_fs: NativeFs; // 文件发现与字幕写入复用的磁盘入口
   // 格式处理器随服务实例固定，解析与写回始终复用同一组配置。
   private readonly txt: TXTFormat;
   private readonly md: MDV2Format;
   private readonly ass: ASSFormat;
   private readonly srt: SRTFormat;
+  private readonly vtt: VTTFormat;
+  private readonly lrc: LRCFormat;
   private readonly kvjson: KVJSONFormat;
   private readonly messagejson: MESSAGEJSONFormat;
   private readonly xlsx: XLSXFormat;
@@ -62,6 +69,8 @@ export class FileFormatService {
     this.md = new MDV2Format();
     this.ass = new ASSFormat(config);
     this.srt = new SRTFormat(config);
+    this.vtt = new VTTFormat(config);
+    this.lrc = new LRCFormat(config);
     this.kvjson = new KVJSONFormat();
     this.messagejson = new MESSAGEJSONFormat(config);
     this.xlsx = new XLSXFormat();
@@ -81,6 +90,13 @@ export class FileFormatService {
    * 按扩展名分发；JSON 先尝试键值对象，再尝试消息数组。
    */
   public async parse_asset(rel_path: string, content: Uint8Array): Promise<FileFormatReadResult> {
+    const subtitle = this.read_subtitle_format(read_subtitle_file_type(rel_path));
+    if (subtitle)
+      return {
+        kind: "items",
+        file_type: subtitle.file_type,
+        items: await subtitle.format.read_from_stream(content, rel_path),
+      };
     const ext = path.extname(rel_path).toLowerCase();
     if (ext === ".pdf")
       return {
@@ -95,18 +111,12 @@ export class FileFormatService {
       case ".txt":
         format = this.txt;
         break;
-      case ".ass":
-        format = this.ass;
-        break;
-      case ".srt":
-        format = this.srt;
-        break;
       case ".xlsx":
         format = this.xlsx;
         break;
       case ".json": {
         const items = await this.kvjson.read_from_stream(content, rel_path);
-        if (items.length > 0) return { items, kind: "items" };
+        if (items.length > 0) return { items, kind: "items", file_type: items[0]!.file_type };
         format = this.messagejson;
         break;
       }
@@ -120,11 +130,13 @@ export class FileFormatService {
         format = this.epub;
         break;
       default:
-        return { items: [], kind: "items" };
+        return { items: [], kind: "items", file_type: "NONE" };
     }
+    const items = await format.read_from_stream(content, rel_path);
     return {
-      items: await format.read_from_stream(content, rel_path),
+      items,
       kind: "items",
+      file_type: items[0]?.file_type ?? "NONE",
     };
   }
 
@@ -201,20 +213,74 @@ export class FileFormatService {
   }
 
   /**
-   * 写回时逐格式处理，同一批 items 由各格式自行筛选自己的 file_type
+   * 字幕按资产文件集合调度，其余格式继续消费各自的条目集合。
    */
-  public async write_items(items: Item[], context: FileFormatWriteContext): Promise<void> {
+  public async write_items(items: Item[], context: FileFormatServiceWriteContext): Promise<void> {
     const { paths, asset_reader } = context;
     await this.txt.write_to_path(items, paths);
     await this.md.write_to_path(items, paths);
-    await this.ass.write_to_path(items, paths);
-    await this.srt.write_to_path(items, paths);
+    await this.write_subtitles(items, context);
     await this.kvjson.write_to_path(items, paths, asset_reader);
     await this.messagejson.write_to_path(items, paths);
     await this.xlsx.write_to_path(items, paths, asset_reader);
     await this.trans.write_to_path(items, paths, asset_reader);
     await this.renpy.write_to_path(items, paths, asset_reader);
     await this.epub.write_to_path(items, paths, asset_reader);
+  }
+
+  /** 文件集合拥有导出调度，格式处理器只组装当前文件的两种正文。 */
+  private async write_subtitles(
+    items: Item[],
+    context: FileFormatServiceWriteContext,
+  ): Promise<void> {
+    const by_file = new Map<string, Item[]>();
+    for (const item of items) {
+      const group = by_file.get(item.file_path) ?? [];
+      group.push(item);
+      by_file.set(item.file_path, group);
+    }
+    const files = new Set([...context.source_files, ...by_file.keys()]);
+    for (const file of files) {
+      const file_items = by_file.get(file) ?? [];
+      // 已有条目提供格式事实，扩展名补齐零条目文件的身份。
+      const file_type =
+        file_items.find((item) => item.file_type !== "NONE")?.file_type ??
+        read_subtitle_file_type(file);
+      const subtitle = this.read_subtitle_format(file_type);
+      if (!subtitle) continue;
+      const asset = context.asset_reader(file);
+      if (asset === null) throw new AppError("file.not_found", { public_details: { file } });
+      const text = await decode_text_content(asset);
+      const output = subtitle.format.render_text(text, file_items, file);
+      // 格式计算和校验完成后才落盘，避免单语写出后才发现双语结构错误。
+      await this.native_fs.write_file(
+        path.join(context.paths.translated_path, file),
+        output.translated,
+      );
+      await this.native_fs.write_file(
+        path.join(context.paths.bilingual_path, file),
+        output.bilingual,
+      );
+    }
+  }
+
+  /** 导入与导出共用处理器选择，来源类型与扩展名别名汇入同一入口。 */
+  private read_subtitle_format(file_type: ItemFileType | null): {
+    file_type: ItemFileType;
+    format: ASSFormat | SRTFormat | VTTFormat | LRCFormat;
+  } | null {
+    switch (file_type) {
+      case "ASS":
+        return { file_type, format: this.ass };
+      case "SRT":
+        return { file_type, format: this.srt };
+      case "VTT":
+        return { file_type, format: this.vtt };
+      case "LRC":
+        return { file_type, format: this.lrc };
+      default:
+        return null;
+    }
   }
 
   /**

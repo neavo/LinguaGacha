@@ -94,6 +94,7 @@ export class TranslationFileGenerationService {
         items.filter((item) => !excluded_files.includes(item.file_path)),
         paths,
         config,
+        excluded_files,
       );
       const pdf_files = await this.write_pdf_files(project_path, paths, documents);
       return {
@@ -152,6 +153,7 @@ export class TranslationFileGenerationService {
     items: Item[],
     paths: GeneratedFilePaths,
     config: SettingSnapshot,
+    excluded_files: readonly string[] = [],
   ): Promise<void> {
     this.fill_duplicated_translations(items);
     const format_service = new FileFormatService(
@@ -166,6 +168,10 @@ export class TranslationFileGenerationService {
     await format_service.write_items(items, {
       paths,
       asset_reader: (rel_path) => this.database.read_asset_content(project_path, rel_path),
+      source_files: this.database
+        .get_all_asset_records(project_path)
+        .map((record) => record.path)
+        .filter((file) => !excluded_files.includes(file)),
     });
   }
 

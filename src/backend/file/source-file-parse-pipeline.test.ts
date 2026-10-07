@@ -8,6 +8,7 @@ import { FileFormatService } from "./file-format-service";
 import { SourceFileParsePipeline } from "./source-file-parse-pipeline";
 import { ProjectDatabase } from "../database/database-operations";
 import { ProjectDataReader } from "../project/project-data-reader";
+import { Item } from "../../domain/item";
 
 /** 固定解析配置，避免读取本机设置。 */
 function create_format_service(): FileFormatService {
@@ -22,7 +23,7 @@ function create_format_service(): FileFormatService {
 }
 
 describe("SourceFileParsePipeline", () => {
-  it("预览、导入草稿与重新打开的文件类型一致，零条目文本为 NONE，PDF 保留身份", async () => {
+  it("字幕工程重开后保持文件身份和正文位置，零条目文件参与导出", async () => {
     using temp_dir = fs.mkdtempDisposableSync(
       path.join(os.tmpdir(), "linguagacha-source-file-pipeline-"),
     );
@@ -32,13 +33,17 @@ describe("SourceFileParsePipeline", () => {
       ["array.json", "[]"],
       ["text.txt", "正文"],
       ["book.pdf", create_pdf_fixture()],
+      ["empty.vtt", "WEBVTT\n\nNOTE structure\n"],
+      ["empty.lrc", "[offset:50]\n[00:01]\n"],
+      ["empty.ssa", "[Events]\n"],
+      ["text.vtt", "WEBVTT\n\n00:00.000 --> 00:01.000\n<b>原文</b>尾文\n"],
     ] as const;
     const source_paths = samples.map(([name, content]) => {
       const source_path = path.join(temp_dir.path, name);
       fs.writeFileSync(source_path, content);
       return source_path;
     });
-    const expected_types = ["NONE", "NONE", "NONE", "TXT", "PDF"];
+    const expected_types = ["NONE", "NONE", "NONE", "TXT", "PDF", "VTT", "LRC", "ASS", "VTT"];
     const pipeline = new SourceFileParsePipeline(create_format_service());
     const preview = await pipeline.parse_project_file_preview({ source_paths });
     const draft = await pipeline.build_project_draft(source_paths);
@@ -46,6 +51,7 @@ describe("SourceFileParsePipeline", () => {
     expect(draft.failed_files).toEqual([]);
     expect(preview.files.map((file) => file["file_type"])).toEqual(expected_types);
     expect(draft.files.map((file) => file.file_type)).toEqual(expected_types);
+    expect(draft.items.every((item) => item["src"] !== "")).toBe(true);
 
     const database = new ProjectDatabase();
     const project_path = path.join(temp_dir.path, "project.lg");
@@ -69,6 +75,23 @@ describe("SourceFileParsePipeline", () => {
           (file) => (file as { file_type: string }).file_type,
         ),
       ).toEqual(expected_types);
+      const saved = database.get_all_items(project_path);
+      const items = (Array.isArray(saved) ? saved : []).map((item) => Item.from_json(item));
+      const target = items.find((item) => item.src === "原文")!;
+      target.status = "PROCESSED";
+      target.dst = "译文";
+      const output = path.join(temp_dir.path, "out");
+      await create_format_service().write_items(items, {
+        paths: { translated_path: output, bilingual_path: path.join(output, "bilingual") },
+        source_files: draft.files.map((file) => file.rel_path),
+        asset_reader: (file) => database.read_asset_content(project_path, file),
+      });
+      expect(fs.readFileSync(path.join(output, "text.vtt"), "utf8")).toBe(
+        "WEBVTT\n\n00:00.000 --> 00:01.000\n<b>译文</b>尾文\n",
+      );
+      expect(fs.readFileSync(path.join(output, "empty.lrc"), "utf8")).toBe(
+        "[offset:50]\n[00:01]\n",
+      );
     } finally {
       database.close();
     }

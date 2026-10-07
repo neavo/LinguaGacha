@@ -74,7 +74,7 @@
 - You can find more details on each feature in the [Wiki](https://github.com/neavo/LinguaGacha/wiki), and you are welcome to share your experience in the [Discussions](https://github.com/neavo/LinguaGacha/discussions)
 
 ## 対応フォーマット 🏷️
-- 字幕 `.srt .ass`
+- 字幕 `.srt .ass .ssa .vtt .lrc`
 - 電子書籍 `.txt .pdf .epub`
 - Markdown `.md`
 - [RenPy](https://www.renpy.org) エクスポート `.rpy`

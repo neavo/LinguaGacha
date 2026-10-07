@@ -75,7 +75,7 @@
 - You can find more details on each feature in the [Wiki](https://github.com/neavo/LinguaGacha/wiki), and you are welcome to share your experience in the [Discussions](https://github.com/neavo/LinguaGacha/discussions)
 
 ## Supported Formats 🏷️
-- Subtitles `.srt .ass`
+- Subtitles `.srt .ass .ssa .vtt .lrc`
 - E-books `.txt .pdf .epub`
 - Markdown `.md`
 - [RenPy](https://www.renpy.org) exports `.rpy`

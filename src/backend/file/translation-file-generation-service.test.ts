@@ -58,11 +58,103 @@ function create_database(
       Object.fromEntries(Object.keys(documents).map((file_path) => [file_path, {}])),
     read_pdf_document: (_project_path: string, file_path: string) => documents[file_path] ?? null,
     get_all_items: () => items,
+    get_all_asset_records: () =>
+      Object.keys(assets).map((path, sort_order) => ({ path, sort_order })),
     read_asset_content: (_project_path: string, rel_path: string) => assets[rel_path] ?? null,
   } as unknown as ProjectDatabase;
 }
 
 describe("TranslationFileGenerationService", () => {
+  it("旧 ASS／SRT 条目通过新字幕入口导出，条目事实无需迁移", async () => {
+    const time = "00:00:01,000 --> 00:00:02,000";
+    const fields =
+      "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text";
+    const prefix = "Dialogue: 0,0:00:01.00,0:00:02.00,Default,,0,0,0,,";
+    const items = [
+      {
+        id: 1,
+        row: 0,
+        src: "",
+        file_type: "ASS",
+        file_path: "old/sub.txt",
+        extra_field: "[Events]",
+      },
+      { id: 2, row: 1, src: "", file_type: "ASS", file_path: "old/sub.txt", extra_field: fields },
+      {
+        id: 3,
+        row: 2,
+        src: "原文",
+        dst: "译文",
+        status: "PROCESSED",
+        file_type: "ASS",
+        file_path: "old/sub.txt",
+        extra_field: "错误{{CONTENT}}模板",
+      },
+      {
+        id: 4,
+        row: 7,
+        src: "原文",
+        dst: "译文",
+        status: "PROCESSED",
+        file_type: "SRT",
+        file_path: "old/sub.srt",
+        extra_field: time,
+      },
+    ];
+    const before = structuredClone(items);
+    const session = new ProjectSessionState();
+    session.mark_loaded(path.join(temp_dir, "legacy.lg"));
+    const service = new TranslationFileGenerationService(
+      create_database(items, {
+        "old/sub.txt": Buffer.from(`[Events]\n${fields}\n${prefix}原文\n`),
+        "old/sub.srt": Buffer.from(`7\n${time}\n原文\n\n`),
+      }),
+      create_setting_service(),
+      session,
+      async () => {},
+      create_pdf_execution(),
+    );
+    const result = await service.generate_files_to_directory(path.join(temp_dir, "legacy"));
+    expect(fs.readFileSync(path.join(result.output_path, "old/sub.txt"), "utf8")).toBe(
+      `[Events]\n${fields}\n${prefix}译文\n`,
+    );
+    expect(fs.readFileSync(path.join(result.output_path, "old/sub.srt"), "utf8")).toBe(
+      `1\n${time}\n译文\n\n`,
+    );
+    expect(items).toEqual(before);
+  });
+
+  it.each(["gui", "directory"] as const)(
+    "%s 导出零条目字幕，目录入口同时排除零条目文件",
+    async (entry) => {
+      const assets = {
+        "empty.vtt": Buffer.from("WEBVTT\n\nNOTE structure\n"),
+        "empty.lrc": Buffer.from("[offset:50]\n[00:01]\n"),
+        "empty.ssa": Buffer.from("[Events]\n"),
+      };
+      const session = new ProjectSessionState();
+      session.mark_loaded(path.join(temp_dir, "empty.lg"));
+      const service = new TranslationFileGenerationService(
+        create_database([], assets),
+        create_setting_service(),
+        session,
+        async () => {},
+        create_pdf_execution(),
+      );
+      const result =
+        entry === "gui"
+          ? await service.generate_files()
+          : await service.generate_files_to_directory(path.join(temp_dir, "out"), ["empty.lrc"]);
+      for (const [file, content] of Object.entries(assets)) {
+        if (entry === "directory" && file === "empty.lrc") {
+          expect(fs.existsSync(path.join(result.output_path, file))).toBe(false);
+        } else {
+          expect(fs.readFileSync(path.join(result.output_path, file))).toEqual(content);
+        }
+      }
+    },
+  );
+
   it.each(["gui", "directory"] as const)(
     "%s 译文生成已存译稿与确认保留的原页，全保留文件原样写出",
     async (entry) => {
