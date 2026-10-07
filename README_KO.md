@@ -72,7 +72,7 @@
 - 각 기능에 대한 더 자세한 설명은 [Wiki](https://github.com/neavo/LinguaGacha/wiki)에서 확인할 수 있습니다. [토론 게시판](https://github.com/neavo/LinguaGacha/discussions)에 사용 경험을 공유해 주세요
 
 ## 지원 파일 형식 🏷️
-- 자막 `.srt .ass`
+- 자막 `.srt .ass .ssa .vtt .lrc`
 - 전자책 `.txt .pdf .epub`
 - Markdown `.md`
 - [RenPy](https://www.renpy.org)로 내보낸 게임 텍스트 `.rpy`

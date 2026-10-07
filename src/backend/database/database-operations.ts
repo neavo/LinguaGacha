@@ -42,6 +42,12 @@ function for_each_sqlite_in_clause_chunk<T>(
 
 export type ProjectDatabaseWrite = (database: ProjectDatabase) => void;
 
+/** 资产路径与顺序由数据库读取入口提供，消费者使用明确字段。 */
+export type ProjectAssetRecord = Readonly<{
+  path: string; // 工程内的资产路径
+  sort_order: number; // 资产表中的排序位
+}>;
+
 /**
  * 单个 .lg 当前打开连接的生命周期记录，记录连接就绪状态和作用域、租约的共同持有计数
  */
@@ -450,7 +456,7 @@ export class ProjectDatabase {
   }
 
   /** 按持久化顺序返回路径与排序位，不读取资产正文。 */
-  public get_all_asset_records(project_path: string): JsonValue {
+  public get_all_asset_records(project_path: string): ProjectAssetRecord[] {
     return this.with_project_connection(project_path, (db) => this.read_all_asset_records(db));
   }
 
@@ -819,7 +825,7 @@ export class ProjectDatabase {
   /**
    * 读取 asset 记录快照，供运行态排序与导出使用
    */
-  private read_all_asset_records(db: DatabaseSync): JsonValue {
+  private read_all_asset_records(db: DatabaseSync): ProjectAssetRecord[] {
     return db
       .prepare("SELECT path, sort_order FROM assets ORDER BY sort_order ASC, id ASC")
       .all()

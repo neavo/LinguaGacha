@@ -2,10 +2,10 @@ import { default_native_fs, normalize_native_file_bytes } from "../../native/nat
 import type { PDFDocument } from "../../shared/pdf";
 import { Item, type ItemFileType } from "../../domain/item";
 
-/** 普通文件类型取自 Item，PDF 通过独立文档参与同一导入流程。 */
+/** 普通文件与条目共用类型值，PDF 通过独立文档参与导入。 */
 export type ProjectFileType = ItemFileType | "PDF";
 export type FileFormatReadResult =
-  | { kind: "items"; items: Item[] }
+  | { kind: "items"; items: Item[]; file_type: ItemFileType }
   | { kind: "pdf"; document: PDFDocument };
 
 /** 文件格式处理器共享配置，来源于应用设置或测试显式注入。 */
@@ -36,6 +36,11 @@ export interface FileFormatWriteContext {
   paths: GeneratedFilePaths;
   asset_reader: (rel_path: string) => Buffer | null;
 }
+
+/** 文件调度拥有源文件集合，单格式写回上下文只携带 IO。 */
+export type FileFormatServiceWriteContext = FileFormatWriteContext & {
+  source_files: readonly string[]; // 原始资产的文件集合，零条目字幕也参与导出
+};
 
 const SPLITLINES_CODE_POINTS = new Set([
   0x000a, 0x000b, 0x000c, 0x000d, 0x001c, 0x001d, 0x001e, 0x0085, 0x2028, 0x2029,

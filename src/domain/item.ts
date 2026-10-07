@@ -23,6 +23,8 @@ export const ITEM_FILE_TYPES = [
   "TXT",
   "SRT",
   "ASS",
+  "VTT",
+  "LRC",
   "EPUB",
   "XLSX",
   "WOLFXLSX",

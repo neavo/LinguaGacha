@@ -1341,13 +1341,14 @@ export function ProjectPage(_props: ProjectPageProps): JSX.Element {
                             </li>
                           }
                         />
-                        {format.description_keys.length > 0 && (
-                          <TooltipContent className="flex-col items-start gap-1">
-                            {format.description_keys.map((description_key) => (
-                              <span key={description_key}>{t(description_key)}</span>
-                            ))}
-                          </TooltipContent>
-                        )}
+                        <TooltipContent className="flex-col items-start gap-1">
+                          {(format.description_keys.length > 0
+                            ? format.description_keys
+                            : [format.title_key]
+                          ).map((description_key) => (
+                            <span key={description_key}>{t(description_key)}</span>
+                          ))}
+                        </TooltipContent>
                       </Tooltip>
                     );
                   })}

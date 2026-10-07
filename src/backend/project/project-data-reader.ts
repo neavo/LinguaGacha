@@ -402,27 +402,21 @@ export class ProjectDataReader {
   }
 
   /**
-   * asset 顺序来自 database workflow，读取层只读取当前 path/sort_order 字段
+   * 资产记录来自数据库，显示路径归一后去重以维持文件列表口径。
    */
   private get_asset_records(project_path: string): Array<{ rel_path: string; sort_index: number }> {
     const value = this.database.get_all_asset_records(project_path);
-    if (!Array.isArray(value)) {
-      return [];
-    }
     const records: Array<{ rel_path: string; sort_index: number }> = [];
     const seen_rel_paths = new Set<string>();
     for (const raw_record of value) {
-      if (!is_json_record(raw_record)) {
-        continue;
-      }
-      const rel_path = String(raw_record["path"] ?? "").trim();
+      const rel_path = raw_record.path.trim();
       if (rel_path === "" || seen_rel_paths.has(rel_path)) {
         continue;
       }
       seen_rel_paths.add(rel_path);
       records.push({
         rel_path,
-        sort_index: Math.max(0, read_json_integer(raw_record["sort_order"], 0)),
+        sort_index: Math.max(0, Math.trunc(raw_record.sort_order)),
       });
     }
     return records;

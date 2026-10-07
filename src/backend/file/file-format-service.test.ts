@@ -65,6 +65,9 @@ describe("FileFormatService", () => {
       "ASS",
     ],
     ["a.srt", "1\n00:00:01,000 --> 00:00:02,000\n字幕\n", "SRT"],
+    ["a.ssa", "[Events]\nDialogue: Marked=0,0:00:01.00,0:00:02.00,Default,,0,0,0,,字幕", "ASS"],
+    ["a.vtt", "WEBVTT\n\n00:00.000 --> 00:01.000\n字幕", "VTT"],
+    ["a.lrc", "[00:01.00]字幕", "LRC"],
   ] as const)("按简单扩展名解析 %s", async (rel_path, content, expected_type) => {
     const service = create_service();
 
@@ -80,6 +83,7 @@ describe("FileFormatService", () => {
     await expect(service.parse_asset("a.bin", new TextEncoder().encode("bytes"))).resolves.toEqual({
       items: [],
       kind: "items",
+      file_type: "NONE",
     });
   });
 
@@ -179,6 +183,7 @@ describe("FileFormatService", () => {
         bilingual_path: path.join(temp_dir.path, "bilingual"),
       },
       asset_reader: () => Buffer.from(text),
+      source_files: ["script.rpy"],
     });
 
     expect(fs.readFileSync(path.join(temp_dir.path, "script.rpy"), "utf-8")).toContain(

@@ -4,7 +4,7 @@ import type { PDFDocument } from "../../shared/pdf";
 import type { PDFExecution } from "../file/pdf/pdf-worker";
 import type { JsonRecord, JsonValue, MutableJsonRecord } from "../../domain/json";
 import type { AppSettingService } from "../app/app-setting-service";
-import { ProjectDatabase } from "../database/database-operations";
+import { ProjectDatabase, type ProjectAssetRecord } from "../database/database-operations";
 import { FileFormatService } from "../file/file-format-service";
 import {
   SourceFileParsePipeline,
@@ -45,8 +45,6 @@ import {
 } from "./project-write-state";
 
 import * as AppErrors from "../../shared/error";
-
-type ProjectAssetRecord = { path: string; sort_order: number };
 
 type ProjectFileSection = Record<
   string,
@@ -366,7 +364,9 @@ export class ProjectContentService {
     const project_path = this.session_state.require_loaded_project_path();
     return this.runtime_gate.run_project_write(async () => {
       const ordered_paths = this.normalize_string_list(request["ordered_rel_paths"]);
-      const current_paths = this.get_asset_records(project_path).map((record) => record.path);
+      const current_paths = this.database
+        .get_all_asset_records(project_path)
+        .map((record) => record.path);
       this.assert_complete_path_order(current_paths, ordered_paths);
       return await this.write_store.reorder_project_files({
         projectPath: project_path,
@@ -656,7 +656,7 @@ export class ProjectContentService {
    * 按本次操作的目标路径读取 asset、item 和 PDF 身份，支持打开前的设置对齐。
    */
   private read_project_write_snapshot(project_path: string): ProjectWriteSnapshot {
-    const asset_records = this.get_asset_records(project_path);
+    const asset_records = this.database.get_all_asset_records(project_path);
     const item_records = this.get_all_items(project_path);
     const pdf_paths = Object.keys(this.database.read_pdf_summaries(project_path));
     const public_items_by_id = this.to_public_items_by_id(item_records);
@@ -874,7 +874,7 @@ export class ProjectContentService {
   private async reparse_all_assets(project_path: string): Promise<Item[]> {
     const format_service = this.create_format_service();
     const items: Item[] = [];
-    for (const record of this.get_asset_records(project_path)) {
+    for (const record of this.database.get_all_asset_records(project_path)) {
       const content = this.database.read_asset_content(project_path, record.path);
       if (content === null) {
         throw new AppErrors.AppError("file.not_found", {
@@ -974,22 +974,6 @@ export class ProjectContentService {
   }
 
   /**
-   * 读取 asset 顺序记录，隐藏数据库返回字段名差异
-   */
-  private get_asset_records(project_path: string): ProjectAssetRecord[] {
-    const value = this.database.get_all_asset_records(project_path);
-    if (!Array.isArray(value)) {
-      return [];
-    }
-    return value
-      .filter((item): item is JsonRecord => is_json_record(item))
-      .map((item) => ({
-        path: String(item["path"] ?? ""),
-        sort_order: this.read_number(item["sort_order"], 0),
-      }));
-  }
-
-  /**
    * 读取完整 meta，用于 revision 判断
    */
   private get_all_meta(project_path: string): MutableJsonRecord {
@@ -1003,13 +987,5 @@ export class ProjectContentService {
     return Array.isArray(value)
       ? value.map((item) => String(item)).filter((item) => item !== "")
       : [];
-  }
-
-  /**
-   * 从 JSON 值读取数字，避免 NaN 泄漏到数据库 payload
-   */
-  private read_number(value: JsonValue | undefined, fallback: number): number {
-    const number_value = Number(value ?? fallback);
-    return Number.isFinite(number_value) ? number_value : fallback;
   }
 }

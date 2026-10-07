@@ -15,7 +15,7 @@ export type SourceFileParseCommand = {
 };
 
 export type SourceFileParsedDraft = SourceFileParseCommand & {
-  file_type: ProjectFileType; // 普通格式取首个 Item，零条目为 NONE；PDF 使用文档身份
+  file_type: ProjectFileType; // 解析器提供文件身份，零条目字幕也保留类型
   pdf_document: PDFDocument | null; // PDF 独立文档，文本格式为空
   parsed_items: Array<JsonRecord>; // 已过 Item JSON 边界的公开草稿
 };
@@ -181,7 +181,7 @@ export class SourceFileParsePipeline {
         file_drafts.push({
           source_path: entry.source_path,
           rel_path: entry.rel_path,
-          file_type: parsed.kind === "pdf" ? "PDF" : (parsed.items[0]?.file_type ?? "NONE"),
+          file_type: parsed.kind === "pdf" ? "PDF" : parsed.file_type,
           pdf_document: parsed.kind === "pdf" ? parsed.document : null,
           parsed_items:
             parsed.kind === "items"
