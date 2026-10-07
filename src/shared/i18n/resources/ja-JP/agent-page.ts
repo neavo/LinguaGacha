@@ -111,6 +111,7 @@ export const ja_jp_agent_page = {
     retry: "コンテキストを圧縮できませんでした · クリックして再試行",
   },
   action: {
+    fork: "分岐",
     send: "送信",
     stop: "停止",
     applying: "プロジェクトの変更を適用中です。完了するまで停止できません",
@@ -137,6 +138,7 @@ export const ja_jp_agent_page = {
     full: "メッセージキューが満杯です · {count}/{limit}",
   },
   confirm: {
+    fork: "この返信から分岐して新しい会話を作成しますか？",
     new_task: "新しい会話タスクを始めますか …?",
     thinking_off:
       "モデルの思考をオフにすると AGENT のタスク遂行能力が大きく低下します。続けますか …?",

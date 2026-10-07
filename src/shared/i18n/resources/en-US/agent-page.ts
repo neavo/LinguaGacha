@@ -109,6 +109,7 @@ export const en_us_agent_page = {
     retry: "Context compaction failed · Click to retry",
   },
   action: {
+    fork: "Fork",
     send: "Send",
     stop: "Stop",
     applying: "Applying project changes; this cannot be stopped until completion",
@@ -135,6 +136,7 @@ export const en_us_agent_page = {
     full: "Message queue full · {count}/{limit}",
   },
   confirm: {
+    fork: "Create a new conversation by forking from this response?",
     new_task: "Confirm starting a new conversation task …?",
     thinking_off:
       "AGENT task intelligence will be significantly reduced when model thinking is disabled. Confirm continuing …?",

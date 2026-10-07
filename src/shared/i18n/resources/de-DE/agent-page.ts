@@ -109,6 +109,7 @@ export const de_de_agent_page = {
     retry: "Kontextkomprimierung fehlgeschlagen · Zum Wiederholen klicken",
   },
   action: {
+    fork: "Abzweigen",
     send: "Senden",
     stop: "Stoppen",
     applying: "Projektänderungen werden angewendet; der Vorgang kann nicht gestoppt werden",
@@ -135,6 +136,7 @@ export const de_de_agent_page = {
     full: "Nachrichtenwarteschlange voll · {count}/{limit}",
   },
   confirm: {
+    fork: "Von dieser Antwort abzweigen und eine neue Unterhaltung erstellen?",
     new_task: "Wirklich eine neue Unterhaltung starten …?",
     thinking_off:
       "Die Intelligenz von AGENT-Aufgaben nimmt deutlich ab, wenn das Modell-Denken deaktiviert ist. Wirklich fortfahren …?",

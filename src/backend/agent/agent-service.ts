@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import type { ProjectDatabase } from "../database/database-operations";
 import type { AgentChatStorage } from "../database/agent-chat-storage";
 import {
@@ -413,6 +414,9 @@ export class AgentService {
         case "queue_send":
           await this.send_queued_message(request);
           break;
+        case "fork":
+          await this.fork_round(request);
+          break;
         case "revise":
           await this.revise_latest_round(request);
           break;
@@ -571,8 +575,31 @@ export class AgentService {
       }
     });
   }
+  /** 完整轮次分叉共用输入命令幂等与运行租约。 */
+  public async fork_round(request: JsonRecord): Promise<AgentCommandAck> {
+    this.assert_available();
+    if (this.execution !== null) throw new AppErrors.AppError("runtime.busy");
+    const chat = this.require_chat();
+    const roundId = request["roundId"];
+    if (typeof roundId !== "string")
+      throw agent_queue_validation_error("agent_revision_unavailable");
+    const execution = this.begin_execution(read_input_command_id(request));
+    return this.accept(execution, async () => {
+      await chat.fork_round(roundId, read_input_command_id(request));
+      this.release(execution);
+    });
+  }
+
   /** 限制最新轮次的可修订目标，完成预检后才切换历史分支。 */
   public async revise_latest_round(request: JsonRecord): Promise<AgentCommandAck> {
+    const commandId = read_input_command_id(request);
+    // 直接调用与 HTTP 入口共用命令登记、失败结算和恢复事实。
+    if (commandId === undefined)
+      return this.input_command("revise", {
+        ...request,
+        chatId: this.chat_id,
+        commandId: randomUUID(),
+      });
     this.assert_available();
     if (this.execution !== null) throw new AppErrors.AppError("runtime.busy");
     const chat = this.require_chat();
@@ -599,15 +626,16 @@ export class AgentService {
     return this.accept(execution, async () => {
       if (target.kind === "assistant_message") {
         chat.log.revise(user!.id, "assistant", revision.message.text);
-        await chat.revise(target, revision.message.text, read_input_command_id(request));
+        await chat.revise_assistant(target, revision.message.text, read_input_command_id(request));
         this.release(execution);
         return;
       }
-      await this.update_model(chat, execution);
+      const resolved = await this.prepare_model(chat, execution);
       const prepared = await this.prepare_message(revision.message);
       this.assert_execution(execution);
       chat.log.revise(user!.id, "user", revision.message.text);
-      await chat.revise(target, null, read_input_command_id(request));
+      execution.commandId = commandId;
+      await chat.revise_user(target, resolved.model, resolved.thinkingLevel, commandId);
       const accepted = await this.submit_round(chat, execution, revision.message, prepared);
       this.launch(chat, execution, () => this.drive(chat, execution, accepted));
     });
@@ -868,6 +896,15 @@ export class AgentService {
   }
   /** 已存在的会话在配置前检查认证，失败保留原有历史。 */
   private async update_model(chat: AgentChat, execution: AgentExecution): Promise<void> {
+    const resolved = await this.prepare_model(chat, execution);
+    await chat.configure(resolved.model, resolved.thinkingLevel);
+  }
+
+  /** 预检只固定请求配置，调用者选择写入当前分支或候选分支。 */
+  private async prepare_model(
+    chat: AgentChat,
+    execution: AgentExecution,
+  ): Promise<ReturnType<typeof register_agent_model>> {
     const resolved = register_agent_model(
       chat.models,
       this.settings.read_setting(),
@@ -882,8 +919,8 @@ export class AgentService {
         throw new AppErrors.AppError("model.auth_required");
     }
     this.assert_execution(execution);
-    await chat.configure(resolved.model, resolved.thinkingLevel);
     this.model_config = resolved.model_config;
+    return resolved;
   }
   /** 会话创建时绑定宿主能力，动态提示在真实请求准备完成后读取。 */
   private async create_chat(store: AgentChatStorage): Promise<AgentChat> {

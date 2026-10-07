@@ -123,7 +123,7 @@ export class AgentChat {
   }
   public state: Readonly<AgentChatData> = AgentChatDoc.definition.initial(null); // 只读提交快照，写入由 `Harness` 事务生成
   private harness!: Harness;
-  private conversation!: Conversation; // 当前分支唯一入口，只在创建与修订成功后切换
+  private conversation!: Conversation; // 执行目标可暂为候选分支，公开历史始终读取 activeConversationId
   private readonly compactionStarts = new Map<number, number>(); // 提交线外持久化后释放，避免订阅回调重入事务。
   private compactionReason: "manual" | "length" = "manual"; // 产品主动压缩补充触发原因，SDK 自动压缩沿用原原因
   private contextRevision = 0; // 正文进度和队列变化不能使在途上下文查询失效
@@ -143,6 +143,9 @@ export class AgentChat {
     this.models.streamSimple = (model, context, request) =>
       lazyStream(model, async () => {
         const execution = this.execution; // 流式终帧沿用原执行的停止来源
+        // 候选输入受理与活动分支发布完成后，才允许模型请求产生回复和工具调用。
+        await execution?.acceptance;
+        execution?.controller.signal.throwIfAborted();
         const source = stream(model, context, request);
         const isSummary = this.is_compacting;
         const observe = (event: AssistantMessageEvent): void => {
@@ -437,6 +440,7 @@ export class AgentChat {
 
   /** 先全部标记取消，再启动 SDK 收尾，防止打开历史时重新运行工具或模型。 */
   private async recover(): Promise<void> {
+    const previousConversationId = this.state.activeConversationId;
     this.schedule_refresh();
     await this.flush();
     const inspection = await this.harness.inspect(BACKGROUND_CONTEXT);
@@ -460,19 +464,14 @@ export class AgentChat {
         round.endedAt = Date.now();
       }
       state.queue = { items: [], paused: false };
-      // 重开只结算历史命令，不自动再次提交。已落库的 SDK 输入即使被停止也算已受理。
-      for (const command of Object.values(state.commands)) {
-        if (command.status !== "pending") continue;
-        command.status = [...this.view.submissions.values()].some(
-          (record) =>
-            command.requestId !== null &&
-            record.requestId === command.requestId &&
-            record.conversationId === command.conversationId,
-        )
-          ? "accepted"
-          : "cancelled";
-      }
     });
+    for (const [id, command] of Object.entries(this.state.commands))
+      if (command.status === "pending") await this.settle_input_command(id);
+    if (this.state.activeConversationId !== previousConversationId) {
+      // 候选分支未在首次读取范围内，切换后补读并重建投影。
+      await this.restore_records();
+      this.view.refresh(this.state.activeConversationId!, this.state, true);
+    }
   }
 
   /** 原生自动压缩与产品主动压缩共用互斥判据。 */
@@ -522,10 +521,20 @@ export class AgentChat {
         saved.requestId === null || saved.conversationId === null
           ? undefined
           : await tx.submissionByRequest(saved.conversationId, saved.requestId);
-      const command = (await tx.doc(AgentChatDoc, this.options.chatId, null)).commands[commandId]!;
-      if (command.status === "pending")
+      const state = await tx.doc(AgentChatDoc, this.options.chatId, null);
+      const command = state.commands[commandId]!;
+      if (command.status === "pending") {
         command.status = submission === undefined ? "cancelled" : "accepted";
+        if (submission !== undefined && command.kind === "revise")
+          state.activeConversationId = submission.conversationId;
+      }
     }, BACKGROUND_CONTEXT);
+    // 未受理的候选分支退出后，后续请求重新使用已提交的活动身份。
+    this.conversation = (await this.harness.conversation(
+      this.state.activeConversationId!,
+      BACKGROUND_CONTEXT,
+    ))!;
+    this.schedule_refresh();
     await this.flush();
   }
   /** 队列规则直接操作事务草稿，失败时由 `Harness` 原子回滚。 */
@@ -575,7 +584,10 @@ export class AgentChat {
     if (delivery === "round") execution.roundId = requestId;
     if (execution.roundId === null) throw new Error("Agent execution has no round");
     const input: AgentInputRecord = { roundId: execution.roundId, message, delivery, queuedId };
-    const checkpoint = this.tail;
+    const checkpoint =
+      this.state.activeConversationId === conversation.id
+        ? this.tail
+        : this.view.conversations.get(conversation.id)!.parent!.at;
     await this.change((state) => {
       state.inputs[requestId] = input;
       if (commandId !== undefined) {
@@ -606,6 +618,7 @@ export class AgentChat {
     if (commandId !== undefined) {
       await this.change((state) => {
         state.commands[commandId]!.status = "accepted";
+        state.activeConversationId = conversation.id;
       });
       delete execution.commandId;
     }
@@ -795,24 +808,92 @@ export class AgentChat {
     await this.flush();
     await this.finish_round(execution, "stopped", average);
   }
+  /** 下一轮的起点界定完整前缀，工具结果与隐藏恢复输入一起继承。 */
+  public async fork_round(roundId: string, commandId?: string): Promise<void> {
+    const entries = this.entries;
+    const index = entries.findIndex(
+      (entry) =>
+        entry.kind === "user_message" && entry.delivery === "round" && entry.id === roundId,
+    );
+    const user = entries[index];
+    const nextIndex = entries.findIndex(
+      (entry, position) =>
+        position > index && entry.kind === "user_message" && entry.delivery === "round",
+    );
+    const end = nextIndex < 0 ? entries.length : nextIndex;
+    if (
+      index < 0 ||
+      user?.status === "running" ||
+      !entries
+        .slice(index + 1, end)
+        .some(
+          (entry) =>
+            entry.kind === "assistant_message" &&
+            entry.parts.some((part) => part.kind === "text" && part.text.trim() !== ""),
+        )
+    )
+      throw new AppError("request.validation_failed");
+    const checkpoint =
+      nextIndex < 0 ? this.tail : this.state.rounds[entries[nextIndex]!.id]!.checkpoint;
+    this.conversation = await this.conversation.fork(
+      checkpoint,
+      {
+        ownership: { kind: "ownerless" },
+        init: async (tx, id) => {
+          const state = await tx.doc(AgentChatDoc, this.options.chatId, null);
+          state.activeConversationId = id;
+          state.queue = { items: [], paused: false };
+          state.doing = null;
+          if (commandId !== undefined) state.commands[commandId]!.status = "accepted";
+        },
+      },
+      BACKGROUND_CONTEXT,
+    );
+    this.schedule_refresh();
+    await this.flush();
+  }
+
+  /** 候选分支固定本轮配置，输入受理后才替换活动历史。 */
+  public async revise_user(
+    entry: AgentEntry,
+    model: Model<Api>,
+    thinkingLevel: ModelThinkingLevel,
+    commandId: string,
+  ): Promise<void> {
+    if (entry.kind !== "user_message" || entry.delivery !== "round")
+      throw new AppError("request.validation_failed");
+    this.model = model;
+    this.conversation = await this.conversation.fork(
+      this.state.rounds[entry.id]!.checkpoint,
+      {
+        ownership: { kind: "ownerless" },
+        agent: { model: { provider: model.provider, modelId: model.id }, thinkingLevel },
+        init: async (tx, id) => {
+          (await tx.doc(AgentChatDoc, this.options.chatId, null)).commands[
+            commandId
+          ]!.conversationId = id;
+        },
+      },
+      BACKGROUND_CONTEXT,
+    );
+  }
+
   /** 预检后的修订通过分叉替换活动历史，产品队列和 `doing` 跨分叉保留。 */
-  public async revise(entry: AgentEntry, text: string | null, commandId?: string): Promise<void> {
+  public async revise_assistant(
+    entry: AgentEntry,
+    text: string,
+    commandId?: string,
+  ): Promise<void> {
     const records = this.view.branch_records();
-    let checkpoint: EntryId;
-    let original: Pick<AssistantMessage, "api" | "provider" | "model"> | undefined;
-    if (entry.kind === "user_message" && entry.delivery === "round")
-      checkpoint = this.state.rounds[entry.id]!.checkpoint;
-    else {
-      // 修订使用 SDK 已提交正文及其来源，分叉切点由实际历史条目确定。
-      const index = records.findLastIndex(
-        (record) => assistant_entry_id(record.byTaskId, record.id) === entry.id,
-      );
-      if (index < 1) throw new AppError("request.validation_failed");
-      const message = records[index]!.model?.findLast((message) => message.role === "assistant");
-      original = message;
-      if (original === undefined) throw new AppError("request.validation_failed");
-      checkpoint = records[index - 1]!.id;
-    }
+    // 人工修订定位不可变 SDK 正文，保留原始供应商元数据。
+    const index = records.findLastIndex(
+      (record) => assistant_entry_id(record.byTaskId, record.id) === entry.id,
+    );
+    if (entry.kind !== "assistant_message" || index < 1)
+      throw new AppError("request.validation_failed");
+    const original = records[index]!.model?.findLast((message) => message.role === "assistant");
+    if (original === undefined) throw new AppError("request.validation_failed");
+    const checkpoint = records[index - 1]!.id;
     this.conversation = await this.conversation.fork(
       checkpoint,
       {
@@ -821,29 +902,28 @@ export class AgentChat {
           const state = await tx.doc(AgentChatDoc, this.options.chatId, null);
           state.activeConversationId = id;
           if (commandId !== undefined) state.commands[commandId]!.status = "accepted";
-          if (original !== undefined && text !== null)
-            await tx.appendEntry(AssistantEntry, id, {
-              model: [
-                {
-                  role: "assistant",
-                  content: [{ type: "text", text }],
-                  // 人工修订沿用历史消息的来源元数据，重开后也无需解析当前模型或认证。
-                  api: original.api,
-                  provider: original.provider,
-                  model: original.model,
-                  stopReason: "stop",
-                  timestamp: Date.now(),
-                  usage: {
-                    input: 0,
-                    output: 0,
-                    cacheRead: 0,
-                    cacheWrite: 0,
-                    totalTokens: 0,
-                    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
-                  },
+          await tx.appendEntry(AssistantEntry, id, {
+            model: [
+              {
+                role: "assistant",
+                content: [{ type: "text", text }],
+                // 人工修订沿用历史消息的来源元数据，重开后也无需解析当前模型或认证。
+                api: original.api,
+                provider: original.provider,
+                model: original.model,
+                stopReason: "stop",
+                timestamp: Date.now(),
+                usage: {
+                  input: 0,
+                  output: 0,
+                  cacheRead: 0,
+                  cacheWrite: 0,
+                  totalTokens: 0,
+                  cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
                 },
-              ],
-            });
+              },
+            ],
+          });
         },
       },
       BACKGROUND_CONTEXT,
@@ -889,11 +969,20 @@ export class AgentChat {
             }, BACKGROUND_CONTEXT);
             for (const [id] of starts) this.compactionStarts.delete(id);
           }
-          const conversation = this.conversation;
+          const conversation =
+            this.state.activeConversationId === this.conversation.id
+              ? this.conversation
+              : (await this.harness.conversation(
+                  this.state.activeConversationId!,
+                  BACKGROUND_CONTEXT,
+                ))!;
           if (this.contextDirty) {
             const revision = this.contextRevision;
             const view = await conversation.context(BACKGROUND_CONTEXT);
-            if (revision !== this.contextRevision || conversation !== this.conversation) {
+            if (
+              revision !== this.contextRevision ||
+              conversation.id !== this.state.activeConversationId
+            ) {
               this.dirty = true;
               continue;
             }

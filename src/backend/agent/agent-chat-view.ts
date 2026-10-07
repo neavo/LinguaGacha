@@ -97,9 +97,9 @@ export class AgentChatView {
     }
   }
 
-  /** 结算已捕获提交，分支切换时重建索引，其余情况更新受影响条目。 */
-  public refresh(conversationId: number, state: Readonly<AgentChatData>): void {
-    if (conversationId !== this.conversationId) {
+  /** 分支切换或补读历史时重建索引，其余提交增量更新。 */
+  public refresh(conversationId: number, state: Readonly<AgentChatData>, restored = false): void {
+    if (restored || conversationId !== this.conversationId) {
       this.conversationId = conversationId;
       this.bounds.clear();
       let record = this.conversations.get(conversationId);

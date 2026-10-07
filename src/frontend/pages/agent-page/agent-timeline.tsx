@@ -15,7 +15,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { Check, CircleAlert, Copy, Pencil } from "lucide-react";
+import { Check, CircleAlert, Copy, GitFork, Pencil } from "lucide-react";
 
 import type {
   AgentEntry,
@@ -57,6 +57,8 @@ type AgentTimelineProps = {
   on_edit: (entry: UserEntry | AssistantEntry) => void;
   render_entry_editor?: ((entry: UserEntry | AssistantEntry) => ReactNode | null) | undefined;
   on_add_annotation: (annotation: AgentResponseAnnotationAttachment) => void;
+  on_fork?: ((roundId: string) => void) | undefined;
+  fork_disabled?: boolean | undefined;
   revision_disabled: boolean;
   continue_disabled: boolean;
   annotation_disabled: boolean;
@@ -91,6 +93,8 @@ export function AgentTimeline(props: AgentTimelineProps): JSX.Element {
             t={t}
             revision_available={index === roundIds.length - 1}
             on_continue={props.on_continue}
+            on_fork={props.on_fork}
+            fork_disabled={props.fork_disabled}
             on_edit={props.on_edit}
             render_entry_editor={props.render_entry_editor}
             revision_disabled={index === roundIds.length - 1 ? props.revision_disabled : false}
@@ -119,6 +123,8 @@ type AgentRoundProps = {
   on_continue: () => void;
   on_edit: (entry: UserEntry | AssistantEntry) => void;
   render_entry_editor?: ((entry: UserEntry | AssistantEntry) => ReactNode | null) | undefined;
+  on_fork?: ((roundId: string) => void) | undefined;
+  fork_disabled?: boolean | undefined;
   revision_disabled: boolean;
   continue_disabled: boolean;
   on_open_tool: (id: string) => void;
@@ -174,6 +180,7 @@ const AgentRound = memo(function AgentRound(props: AgentRoundProps): ReactNode {
           {...props}
           entryId={id}
           latestAssistantId={latestAssistantId}
+          on_fork={user.status === "running" ? undefined : props.on_fork}
           revisionAvailable={revision_available}
         />
       ))}
@@ -234,18 +241,25 @@ const AgentRoundItem = memo(function AgentRoundItem(
     props.revisionAvailable &&
     entry.id === props.latestAssistantId &&
     entry.parts.some((part) => part.kind === "text" && part.text.trim() !== "");
+  const forkable =
+    entry.id === props.latestAssistantId &&
+    entry.status !== "running" &&
+    props.on_fork !== undefined &&
+    entry.parts.some((part) => part.kind === "text" && part.text.trim() !== "");
   const entry_editor = editable ? (props.render_entry_editor?.(entry) ?? null) : null;
   return (
     <AgentMessageFrame
       key={entry.id}
       role="assistant"
       actions={
-        editable && entry_editor === null ? (
+        (editable || forkable) && entry_editor === null ? (
           <AgentMessageActions
             entry={entry}
             t={props.t}
             disabled={props.revision_disabled}
-            on_edit={props.on_edit}
+            on_edit={editable ? props.on_edit : undefined}
+            on_fork={forkable ? () => props.on_fork?.(props.roundId) : undefined}
+            fork_disabled={props.fork_disabled}
           />
         ) : null
       }
@@ -271,10 +285,12 @@ function AgentMessageFrame(props: {
 
 /** 复制与修改共用当前消息操作区。复制不改变会话状态。 */
 function AgentMessageActions(props: {
+  on_fork?: (() => void) | undefined;
+  fork_disabled?: boolean | undefined;
   entry: UserEntry | AssistantEntry;
   t: Translate;
   disabled: boolean;
-  on_edit: (entry: UserEntry | AssistantEntry) => void;
+  on_edit?: ((entry: UserEntry | AssistantEntry) => void) | undefined;
 }): JSX.Element {
   const copy_text = get_agent_copy_text(props.entry);
   const can_copy = copy_text.trim() !== "";
@@ -315,17 +331,32 @@ function AgentMessageActions(props: {
           <span aria-live="polite">{props.t(copy_label_key)}</span>
         </AppButton>
       ) : null}
-      <AppButton
-        type="button"
-        size="xs"
-        variant="ghost"
-        className="text-muted-foreground"
-        disabled={props.disabled}
-        onClick={() => props.on_edit(props.entry)}
-      >
-        <Pencil aria-hidden="true" />
-        <span>{props.t("agent_page.action.edit")}</span>
-      </AppButton>
+      {props.on_edit === undefined ? null : (
+        <AppButton
+          type="button"
+          size="xs"
+          variant="ghost"
+          className="text-muted-foreground"
+          disabled={props.disabled}
+          onClick={() => props.on_edit?.(props.entry)}
+        >
+          <Pencil aria-hidden="true" />
+          <span>{props.t("agent_page.action.edit")}</span>
+        </AppButton>
+      )}
+      {props.on_fork === undefined ? null : (
+        <AppButton
+          type="button"
+          size="xs"
+          variant="ghost"
+          className="text-muted-foreground"
+          disabled={props.fork_disabled}
+          onClick={props.on_fork}
+        >
+          <GitFork aria-hidden="true" />
+          <span>{props.t("agent_page.action.fork")}</span>
+        </AppButton>
+      )}
     </div>
   );
 }
