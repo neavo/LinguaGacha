@@ -1335,7 +1335,9 @@ export function ProjectPage(_props: ProjectPageProps): JSX.Element {
                                 {t(format.title_key)}
                               </span>
                               <span className="project-home__format-extension">
-                                {format.extension}
+                                {"extensions" in format
+                                  ? format.extensions.join(" ")
+                                  : format.extension}
                               </span>
                               {hit_count > 0 ? <Badge tone="brand">{hit_count}</Badge> : null}
                             </li>

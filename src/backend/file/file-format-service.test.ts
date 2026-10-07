@@ -57,6 +57,15 @@ describe("FileFormatService", () => {
     expect(message_items.items.map((item) => item.file_type)).toEqual(["MESSAGEJSON"]);
   });
 
+  it.each(["book.xlf", "book.xliff"])("按扩展名分发 XLIFF：%s", async (rel_path) => {
+    const content = `<?xml version="1.0"?><xliff version="2.0"><file id="f"><unit id="u"><segment><source>原文</source><target>译文</target></segment></unit></file></xliff>`;
+    const result = await create_service().parse_asset(rel_path, new TextEncoder().encode(content));
+    expect(result).toMatchObject({
+      kind: "items",
+      items: [expect.objectContaining({ src: "原文", dst: "译文", file_type: "XLIFF" })],
+    });
+  });
+
   it.each([
     ["a.md", "正文", "MD_V2"],
     [

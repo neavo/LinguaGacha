@@ -18,7 +18,7 @@ const CURRENT_PROCESSED = "PROCESSED";
 const CURRENT_NONE = "NONE";
 const LEGACY_MARKDOWN_FILE_TYPE = "MD";
 // 这些文件类型在旧工程缺失 text_type 时仍可从 src 推导文本语义。
-const TEXT_TYPE_INFERENCE_FILE_TYPES = new Set(["XLSX", "KVJSON", "MESSAGEJSON"]);
+const TEXT_TYPE_INFERENCE_FILE_TYPES = new Set(["XLSX", "KVJSON", "MESSAGEJSON", "XLIFF"]);
 
 /**
  * 迁移背景：

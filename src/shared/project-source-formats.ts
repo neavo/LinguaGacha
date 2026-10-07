@@ -79,9 +79,17 @@ export const PROJECT_SOURCE_FORMATS = [
       "project_page.formats.wolf",
     ],
   },
+  {
+    id: "xliff",
+    extension: ".xlf",
+    extensions: [".xlf", ".xliff"],
+    title_key: "project_page.formats.xliff",
+    description_keys: ["project_page.formats.xliff_description"],
+  },
 ] as const satisfies ReadonlyArray<{
   id: string;
   extension: string;
+  extensions?: readonly string[];
   title_key: LocaleKey;
   description_keys: readonly LocaleKey[];
 }>;
