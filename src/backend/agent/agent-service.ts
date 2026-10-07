@@ -17,7 +17,7 @@ import { create_agent_batch_item_translation_tool } from "./tools/run-batch-item
 import { type AssistantMessageEvent } from "@earendil-works/pi-ai";
 import { createModels } from "@earendil-works/pi-ai/models";
 import { isDeepStrictEqual } from "node:util";
-import { AgentChat, type AgentExecution } from "./agent-chat";
+import { AgentChat, AgentCompactionError, type AgentExecution } from "./agent-chat";
 
 import { resolve_app_locale } from "../../domain/app-language";
 import { is_json_record, type JsonRecord } from "../../domain/json";
@@ -40,7 +40,6 @@ import { format_i18n_message } from "../../shared/i18n";
 import type { AppPathService } from "../app/app-path-service";
 import type { AppSettingService } from "../app/app-setting-service";
 import type { LogManager } from "../log/log-manager";
-import { t_main_log } from "../log/log-text";
 import type { ProjectSessionState } from "../project/project-session-state";
 import type { RuntimeOperationGate } from "../runtime-operation-gate";
 import { AgentDecisionCoordinator } from "./agent-decision";
@@ -60,10 +59,10 @@ import {
   load_agent_personality,
   load_agent_system_prompt,
 } from "./agent-system-prompt";
-import { AgentToolError, prepare_agent_tool } from "./tool-definition";
+import { AgentToolError, is_agent_cancellation } from "./tool-definition";
 
 import { AgentTokenSpeed } from "./agent-token-speed";
-import { AgentRuntimeLog } from "./agent-runtime-log";
+import { AgentRuntimeLog, type AgentStopReason, type AgentLogStatus } from "./agent-runtime-log";
 
 const AGENT_TOKEN_SPEED_PUBLISH_INTERVAL_MS = 250;
 const AGENT_TOKEN_SPEED_DECIMAL_PLACES = 2;
@@ -94,7 +93,7 @@ type AgentServiceOptions = {
   webSearch: AgentWebSearchPort | undefined;
   workspace: AgentWorkspacePort;
   images: Pick<AgentImageService, "prepare" | "clear">;
-  logManager: Pick<LogManager, "append" | "error" | "warning">;
+  logManager: Pick<LogManager, "append">;
   publish: (topic: string, payload: JsonRecord) => void;
 };
 
@@ -145,12 +144,12 @@ export class AgentService {
   private store: AgentChatStorage | null = null; // 工程连接的使用权覆盖 SDK 与上传收尾
   private chat: AgentChat | null = null;
   private model_config: Model | null = null; // 当前主模型配置供批量翻译跟随解析
-  private execution: AgentExecution | null = null;
+  private execution: AgentExecution | null = null; // 唯一活动执行，旧会话收尾依原执行身份释放租约
   private readonly input_commands = new Map<
     string,
     { kind: AgentInputCommandKind; request: JsonRecord; work: Promise<AgentInputCommandAck> }
   >(); // 同一命令的并发回包共用受理过程
-  private chat_reset: Promise<void> | null = null;
+  private chat_reset: Promise<void> | null = null; // 关闭与重置共用串行屏障，资源切换等待旧会话收尾
   private resources: LoadedAgentResources | null = null;
   private revision = 0;
   private disposed = false;
@@ -252,13 +251,13 @@ export class AgentService {
   private readonly resolve_file = (id: string): AgentFileAttachment =>
     this.workspace.uploads.get(id);
 
-  /** 附件转换是异步边界，所有调用者在提交消息前统一复核运行世代。 */
+  /** 附件转换后先复核执行归属，已取消的旧执行沿取消回执收尾。 */
   private async prepare_message(message: AgentMessageInput): Promise<PreparedAgentMessage> {
     const execution = this.execution;
     const prepared = await prepare_agent_message(message, this.workspace.uploads, this.images);
-    this.assert_not_disposed();
     if (execution !== this.execution || execution?.controller.signal.aborted)
       throw new AppErrors.AppError("runtime.cancelled");
+    this.assert_not_disposed();
     return prepared;
   }
 
@@ -422,9 +421,10 @@ export class AgentService {
           break;
       }
     } catch (error) {
-      await chat
-        .settle_input_command(commandId)
-        .catch((failure) => this.warn_cleanup_failure(failure));
+      await chat.settle_input_command(commandId).catch((failure) => {
+        chat.log.report_failure("cleanup", failure);
+        chat.log.flush();
+      });
       throw error;
     }
     await chat.settle_input_command(commandId);
@@ -563,7 +563,7 @@ export class AgentService {
           "hidden",
         );
         chat.log.begin_run(round.id, "continue");
-        this.launch(execution, () => this.drive(chat, execution, accepted));
+        this.launch(chat, execution, () => this.drive(chat, execution, accepted));
       } else {
         const next = chat.queue.read_next();
         if (next === null) throw agent_queue_validation_error("agent_continue_unavailable");
@@ -609,7 +609,7 @@ export class AgentService {
       chat.log.revise(user!.id, "user", revision.message.text);
       await chat.revise(target, null, read_input_command_id(request));
       const accepted = await this.submit_round(chat, execution, revision.message, prepared);
-      this.launch(execution, () => this.drive(chat, execution, accepted));
+      this.launch(chat, execution, () => this.drive(chat, execution, accepted));
     });
   }
   /** 手动压缩先受理并发布运行态，摘要结算由后台持有租约。 */
@@ -624,16 +624,15 @@ export class AgentService {
     return this.accept(execution, async () => {
       await this.update_model(chat, execution);
       this.assert_execution(execution);
-      this.launch(execution, async () => {
+      this.launch(chat, execution, async () => {
         try {
           await chat.compact("manual", execution);
         } catch (error) {
-          if (!execution.controller.signal.aborted)
-            this.compaction_failure("manual", String(error));
-        } finally {
-          await execution.cancellation;
-          await chat.flush();
-          this.release(execution);
+          if (
+            !(error instanceof AgentCompactionError) &&
+            !is_agent_cancellation(error, execution.controller.signal)
+          )
+            chat.log.report_failure("compaction", error);
         }
       });
       // 排在原生压缩受理之后的短提交，使命令回执包含 running 条目，无需等待摘要。
@@ -647,15 +646,9 @@ export class AgentService {
     const execution = this.execution;
     if (chat?.can_stop === false) throw new AppErrors.AppError("runtime.busy");
     if (execution === null || execution.cancellation !== undefined) return this.ack();
-    execution.controller.abort();
-    this.decisions.reset();
-    chat?.log.request_stop();
     const average = this.token_speed.finish_round(performance.now());
     this.token_speed_snapshot = null;
-    if (chat !== null) {
-      execution.cancellation = chat.stop(execution, average);
-      void execution.cancellation.catch((error) => this.warn_cleanup_failure(error));
-    }
+    this.cancel_execution(chat, execution, "user", average);
     return this.ack();
   }
   /** 空闲重置也占用 Agent 租约，防止清理与其他运行重叠。 */
@@ -668,7 +661,7 @@ export class AgentService {
         await this.transition(async () => {
           const id = this.store === null ? null : this.chat_id;
           this.chat?.log.reset("workspace");
-          await this.close_chat();
+          await this.close_chat("reset");
           const store = this.database.open_agent_store(project.projectPath);
           try {
             await store.reset();
@@ -693,7 +686,7 @@ export class AgentService {
     this.unsubscribe_project_session();
     this.unsubscribe_skills();
     if (this.chat_reset !== null) await this.chat_reset;
-    await this.transition(() => this.close_chat());
+    await this.transition(() => this.close_chat("shutdown"));
   }
 
   /** 每次运行只有一个控制器和租约，迟到操作依执行对象身份失效。 */
@@ -702,6 +695,7 @@ export class AgentService {
     const execution: AgentExecution = {
       lease,
       controller: new AbortController(),
+      stop_reason: null,
       ...(commandId === undefined ? {} : { commandId }),
       roundId: null,
       phase: "preparing",
@@ -742,11 +736,37 @@ export class AgentService {
       if (execution.acceptance === acceptance) execution.acceptance = null;
     }
   }
-  /** 登记后台结算 Promise，供停止、重置和销毁等待同一执行。 */
-  private launch(execution: AgentExecution, operation: () => Promise<void>): void {
-    const settlement = operation();
+  /** 后台结算统一等待受理与取消收尾，保存终态后释放原执行的租约。 */
+  private launch(chat: AgentChat, execution: AgentExecution, operation: () => Promise<void>): void {
+    const settlement = (async () => {
+      try {
+        await operation();
+      } finally {
+        try {
+          await execution.acceptance?.catch(() => undefined); // 受理失败由原命令回传，这里只等待退出。
+          await execution.cancellation;
+        } finally {
+          try {
+            await chat.flush();
+          } finally {
+            this.release(execution);
+          }
+        }
+      }
+    })();
     execution.settlement = settlement;
-    void settlement.catch((error) => this.warn_cleanup_failure(error));
+    void settlement.catch(async (error) => {
+      // 取消 Promise 的拥有者已记录其失败，等待者只传播同一错误。
+      if (execution.cancellation !== undefined) {
+        try {
+          await execution.cancellation;
+        } catch (cause) {
+          if (cause === error) return;
+        }
+      }
+      chat.log.report_failure("cleanup", error);
+      chat.log.flush();
+    });
   }
   /** 附件与模型预检成功后才受理轮次，失败时保留待发送草稿。 */
   private async accept_round(
@@ -763,7 +783,7 @@ export class AgentService {
     this.assert_execution(execution);
     await this.update_model(chat, execution);
     const accepted = await this.submit_round(chat, execution, message, prepared, queuedId);
-    this.launch(execution, () => this.drive(chat, execution, accepted));
+    this.launch(chat, execution, () => this.drive(chat, execution, accepted));
   }
 
   /** 显式发送、修订与 FIFO 共用轮次初始化，速度与恢复额度随新轮次重置。 */
@@ -782,65 +802,68 @@ export class AgentService {
     this.token_speed_snapshot = null;
     return chat.submit(message, prepared, execution, "round", queuedId ?? null);
   }
-  /** 串行结算轮次并续取 FIFO，失败暂停队列，最终统一释放租约。 */
+  /** 串行结算轮次并续取 FIFO，失败暂停队列，后台结算统一收尾。 */
   private async drive(
     chat: AgentChat,
     execution: AgentExecution,
     initial: Awaited<ReturnType<AgentChat["submit"]>>,
   ): Promise<void> {
     let accepted = initial;
-    try {
-      for (;;) {
-        let success = false;
-        try {
-          await chat.run(accepted, execution);
-          success = !execution.controller.signal.aborted;
-        } catch (error) {
-          if (!execution.controller.signal.aborted) this.log_request_failure(error);
-        }
-        chat.log.finish_run(success ? "success" : "error");
-        if (execution.controller.signal.aborted) break;
-        await chat.finish_round(
-          execution,
-          success ? "success" : "error",
-          this.token_speed.finish_round(performance.now()),
-        );
-        this.token_speed_snapshot = null;
-        await chat.cancel_inputs(execution);
-        if (!success) {
-          await chat.change_queue((queue) => queue.pause());
-          break;
-        }
-        const next = chat.queue.read_next();
-        if (next === null) break;
-        execution.phase = "preparing";
-        await chat.change_queue((queue) => queue.begin_send(next.id));
-        try {
-          await this.update_model(chat, execution);
-          const prepared = await this.prepare_message(next);
-          this.assert_execution(execution);
-          accepted = await this.submit_round(chat, execution, next, prepared, next.id);
-        } catch (error) {
-          await chat.change_queue((queue) => {
-            queue.cancel_send();
-            queue.pause();
-          });
-          if (!execution.controller.signal.aborted) this.log_request_failure(error);
-          break;
-        }
+    for (;;) {
+      let status: AgentLogStatus = "success";
+      let failure: unknown;
+      try {
+        await chat.run(accepted, execution);
+        if (execution.controller.signal.aborted) status = "stopped";
+      } catch (error) {
+        status = is_agent_cancellation(error, execution.controller.signal) ? "stopped" : "error";
+        if (status === "error") failure = error;
       }
-    } finally {
-      // 后台执行等待受理和取消收尾，关闭流程等待同一执行的结算 Promise。
-      await execution.acceptance?.catch(() => undefined); // 受理失败已回传命令，仍需释放原执行。
+      chat.log.finish_run(status, {
+        ...(status === "stopped" && execution.stop_reason !== null
+          ? { stop_reason: execution.stop_reason }
+          : {}),
+        ...(failure instanceof AgentCompactionError
+          ? { failure: { operation: "compaction" as const, task_id: failure.task_id } }
+          : failure === undefined
+            ? {}
+            : { error: failure }),
+      });
       if (execution.controller.signal.aborted) {
-        execution.cancellation ??= chat.stop(
-          execution,
-          this.token_speed.finish_round(performance.now()),
-        );
-        await execution.cancellation;
+        // 真实故障先封口，取消清理只结算仍在运行的轮次。
+        if (status === "error") await chat.finish_round(execution, status, null);
+        break;
       }
-      await chat.flush();
-      this.release(execution);
+      const success = status === "success";
+      await chat.finish_round(
+        execution,
+        success ? "success" : "error",
+        this.token_speed.finish_round(performance.now()),
+      );
+      this.token_speed_snapshot = null;
+      await chat.cancel_inputs(execution);
+      if (!success) {
+        await chat.change_queue((queue) => queue.pause());
+        break;
+      }
+      const next = chat.queue.read_next();
+      if (next === null) break;
+      execution.phase = "preparing";
+      await chat.change_queue((queue) => queue.begin_send(next.id));
+      try {
+        await this.update_model(chat, execution);
+        const prepared = await this.prepare_message(next);
+        this.assert_execution(execution);
+        accepted = await this.submit_round(chat, execution, next, prepared, next.id);
+      } catch (error) {
+        await chat.change_queue((queue) => {
+          queue.cancel_send();
+          queue.pause();
+        });
+        if (!is_agent_cancellation(error, execution.controller.signal))
+          chat.log.report_failure("input_prepare", error);
+        break;
+      }
     }
   }
   /** 已存在的会话在配置前检查认证，失败保留原有历史。 */
@@ -866,6 +889,7 @@ export class AgentService {
   private async create_chat(store: AgentChatStorage): Promise<AgentChat> {
     const resources = this.require_resources();
     const models = createModels();
+    const log = new AgentRuntimeLog(this.log_manager, this.chat_id);
     const chat = await AgentChat.open({
       chatId: this.chat_id,
       storage: await store.open_storage(),
@@ -882,11 +906,13 @@ export class AgentService {
         );
       },
       skillsPrompt: () => format_agent_skills_for_system_prompt(this.skills.get_current()),
-      log: new AgentRuntimeLog(this.log_manager, this.chat_id),
+      log,
       onChange: () => this.publish_snapshot(),
       onModelEvent: (event) => this.observe_model(event),
-      onReport: (error) => this.warn_cleanup_failure(error),
-      onCompactionFailure: (reason, error) => this.compaction_failure(reason, error),
+      onReport: (error) => {
+        log.report_failure("cleanup", error);
+        log.flush();
+      },
     });
     return chat;
   }
@@ -918,8 +944,7 @@ export class AgentService {
           if (error instanceof BatchTranslationCompletionError) {
             if (this.execution === execution && error.result.stop_source === "user")
               execution.translationPaused = error.result;
-            this.log_request_failure(error);
-            throw new AgentToolError({ code: "tool_failed", ...error.result }, error);
+            throw new AgentToolError({ code: "tool_failed", ...error.result }, error, "fault");
           }
           throw error;
         }
@@ -942,7 +967,6 @@ export class AgentService {
           });
         },
         refresh_skills: () => this.skills.refresh(),
-        log_refresh_error: (error) => this.log_request_failure(error),
       }),
       create_agent_workspace_apply_tool({
         workspace: this.workspace,
@@ -950,7 +974,7 @@ export class AgentService {
       }),
       create_agent_read_skill_tool(() => this.skills.get_current(), this.paths),
       ...(this.web_search === undefined ? [] : [create_agent_web_search_tool(this.web_search)]),
-    ].map((tool) => prepare_agent_tool(tool, this.log_manager));
+    ];
   }
   /** 每个可见增量参与速度统计，公开速度按时间窗口合并。 */
   private observe_model(event: AssistantMessageEvent): void {
@@ -1070,7 +1094,7 @@ export class AgentService {
   private activate_project(project: string | null): Promise<void> {
     return this.transition(async () => {
       this.chat?.log.reset("project");
-      await this.close_chat();
+      await this.close_chat("project_change");
       if (project !== null) await this.open_project(project);
     });
   }
@@ -1089,17 +1113,17 @@ export class AgentService {
       );
       this.chat = await this.create_chat(store);
     } catch (error) {
-      await this.close_chat();
+      await this.close_chat("project_change");
       throw error;
     }
   }
 
   /** 关闭保存事实并释放资源。目录删除只由显式重置和数量清理负责。 */
-  private async close_chat(): Promise<void> {
+  private async close_chat(reason: AgentStopReason): Promise<void> {
     const chat = this.chat;
     const execution = this.execution;
     const store = this.store;
-    execution?.controller.abort();
+    if (execution !== null) this.cancel_execution(chat, execution, reason, null);
     this.chat = null;
     this.images.clear();
     this.workspace.cancel_uploads();
@@ -1110,10 +1134,7 @@ export class AgentService {
     try {
       try {
         await execution?.acceptance?.catch(() => undefined); // 受理失败由命令报告，关闭继续收尾。
-        if (chat !== null && execution !== null) {
-          execution.cancellation ??= chat.stop(execution, null);
-          await execution.cancellation;
-        }
+        await execution?.cancellation;
         await execution?.settlement;
       } finally {
         try {
@@ -1132,11 +1153,11 @@ export class AgentService {
 
   /** 异步准备结束后复核执行身份与取消状态，阻断迟到写入。 */
   private assert_execution(execution: AgentExecution): void {
-    this.assert_not_disposed();
     if (this.execution !== execution || execution.controller.signal.aborted)
       throw new AppErrors.AppError("request.validation_failed", {
         diagnostic_context: { reason: "agent_message_invalidated" },
       });
+    this.assert_not_disposed();
   }
   /** 工具只能使用当前有效执行持有的租约。 */
   private require_execution(): AgentExecution {
@@ -1175,26 +1196,25 @@ export class AgentService {
     this.assert_available();
     if (this.decisions.has_pending) throw new AppErrors.AppError("runtime.busy");
   }
-  /** 模型执行异常进入应用诊断，公开时间线另行结算。 */
-  private log_request_failure(error: unknown): void {
-    this.log_manager.error(t_main_log("app.diagnostic.agent.model_round_failed"), {
-      source: "agent",
-      error,
-    });
-  }
-  /** 后台收尾失败保留原始错误供本地诊断。 */
-  private warn_cleanup_failure(error: unknown): void {
-    this.log_manager.warning(t_main_log("app.diagnostic.agent.chat_cleanup_failed"), {
-      source: "agent",
-      error,
-    });
-  }
-  /** 压缩失败记录触发原因，供区分手动、阈值和恢复路径。 */
-  private compaction_failure(reason: string, error: string): void {
-    this.log_manager.warning(t_main_log("app.diagnostic.agent.context_compaction_failed"), {
-      source: "agent",
-      context: { reason, error },
-    });
+  /** 所有停止入口固定首次来源，并等待同一次 SDK 取消。 */
+  private cancel_execution(
+    chat: AgentChat | null,
+    execution: AgentExecution,
+    reason: AgentStopReason,
+    average: number | null,
+  ): void {
+    if (execution.stop_reason !== null) return;
+    execution.stop_reason = reason;
+    chat?.log.request_stop(reason);
+    execution.controller.abort();
+    this.decisions.reset();
+    if (chat !== null) {
+      execution.cancellation = chat.stop(execution, average);
+      void execution.cancellation.catch((error) => {
+        chat.log.report_failure("cleanup", error);
+        chat.log.flush();
+      });
+    }
   }
   /** 隐藏继续消息采用当前应用语言。 */
   private read_continue_text(): string {

@@ -216,10 +216,6 @@ export const ko_kr_app = {
   },
   diagnostic: {
     agent: {
-      model_round_failed: "Agent 모델 턴이 실패했습니다 …",
-      context_compaction_failed: "Agent 컨텍스트 압축에 실패했습니다 …",
-      chat_cleanup_failed: "Agent 대화 정리에 실패했습니다 …",
-      tool_execution_failed: "Agent 도구 실행 중 오류가 발생했습니다 …",
       web_search_provider_failed: "웹 검색 공급자 요청에 실패했습니다 …",
       skill_load_failed: "Agent 스킬을 불러오지 못했습니다 …",
     },

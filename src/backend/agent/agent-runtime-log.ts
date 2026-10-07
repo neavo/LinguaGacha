@@ -1,29 +1,36 @@
-import type { LogAppendPayload } from "../../shared/log";
+import type { LogAppendPayload, LogLevel } from "../../shared/log";
+import { to_log_error } from "../../shared/error";
 import type { Message, AssistantMessage } from "@earendil-works/pi-ai";
+
+export type AgentStopReason = "user" | "reset" | "project_change" | "shutdown";
+export type AgentLogStatus = "success" | "error" | "stopped";
+type AgentLogEnd = {
+  status: AgentLogStatus;
+  stop_reason?: AgentStopReason;
+  error?: unknown;
+  level?: LogLevel;
+};
 
 /** 日志消费已经观察到的执行事实，独立于 SDK 的公开事件适配与界面终态。 */
 export type AgentLogInput =
-  | { type: "message_start" | "message_end"; message: Message }
+  | { type: "message_start" | "message_end"; message: Message; stop_reason?: AgentStopReason }
   | {
       type: "message_update";
       message: AssistantMessage;
     }
   | { type: "tool_execution_start"; toolCallId: string; toolName: string; args: unknown }
-  | {
+  | ({
       type: "tool_execution_end";
       toolCallId: string;
       toolName: string;
-      result: { content: readonly unknown[]; details?: unknown };
-      isError: boolean;
-    }
-  | { type: "compaction_start"; reason: string }
-  | {
+      result?: { content: readonly unknown[]; details?: unknown };
+    } & AgentLogEnd)
+  | { type: "compaction_start"; reason: string; task_id: number }
+  | ({
       type: "compaction_end";
       reason: string;
-      result?: unknown;
-      aborted: boolean;
-      errorMessage?: string;
-    };
+      task_id: number;
+    } & AgentLogEnd);
 
 import { uuidv7 } from "@earendil-works/pi-ai";
 
@@ -32,8 +39,6 @@ import type { AgentAssistantMessagePart } from "../../shared/agent";
 import { JsonTool } from "../../shared/utils/json-tool";
 import type { LogManager } from "../log/log-manager";
 import { project_assistant_message_parts } from "./agent-message";
-
-type AgentLogStatus = "success" | "error" | "stopped";
 
 type AgentToolLogOutput =
   | { kind: "json"; value: JsonValue }
@@ -49,6 +54,7 @@ type AgentLogEvent =
   | ({
       event: "message";
       role: "user" | "assistant";
+      stop_reason?: AgentStopReason;
       parts: AgentLogPart[];
       status: AgentLogStatus;
     } & AgentLogTiming)
@@ -63,19 +69,32 @@ type AgentLogEvent =
       event: "tool_end";
       tool_call_id: string;
       tool_name: string;
-      output: AgentToolLogOutput;
-      status: "success" | "error";
+      output?: AgentToolLogOutput;
+      status: AgentLogStatus;
+      stop_reason?: AgentStopReason;
     } & AgentLogTiming)
   | { event: "run_start"; mode: "prompt" | "queued" | "continue"; started_at: string }
-  | ({ event: "run_end"; status: AgentLogStatus } & AgentLogTiming)
-  | { event: "compaction_start"; reason: string; started_at: string }
+  | ({
+      event: "run_end";
+      status: AgentLogStatus;
+      stop_reason?: AgentStopReason;
+      failure?: { operation: "compaction"; task_id: number };
+    } & AgentLogTiming)
+  | { event: "compaction_start"; reason: string; task_id: number; started_at: string }
   | ({
       event: "compaction_end";
       status: AgentLogStatus;
       reason: string;
-      error?: string;
+      task_id: number;
+      stop_reason?: AgentStopReason;
     } & AgentLogTiming)
-  | { event: "stop_requested" }
+  | { event: "stop_requested"; stop_reason: AgentStopReason }
+  | {
+      event: "operation_end";
+      operation: "input_prepare" | "compaction" | "cleanup";
+      status: "error";
+      ended_at: string;
+    }
   | { event: "reset"; reason: string }
   | { event: "revise"; round_id: string; role: "user" }
   | { event: "revise"; round_id: string; role: "assistant"; text: string };
@@ -88,16 +107,16 @@ export type AgentLogContent = AgentLogEvent & {
   run_id?: string;
 };
 
-type AgentLogRun = { run_id: string; round_id: string; started_at: string; stopped: boolean };
+type AgentLogRun = { run_id: string; round_id: string; started_at: string };
 type AgentLogMessage = { started_at: string; parts: AgentLogPart[] };
 
 /** 每个 SDK runtime 持有执行归属和待写诊断，随会话刷新及关闭完成落盘。 */
 export class AgentRuntimeLog {
-  private readonly pending: LogAppendPayload[] = []; // 接收时冻结时间与身份，提交线外统一落盘
+  private readonly pending: LogAppendPayload[] = []; // 接收时冻结时间、身份与诊断，提交线外统一落盘
   private readonly runtime_id = uuidv7(); // reset 后的迟到事件仍属于创建它的 runtime
-  private run: AgentLogRun | null = null; // 仅活动尝试拥有 round/run 关联与停止意图
+  private run: AgentLogRun | null = null; // 仅活动尝试拥有 round/run 关联
   private assistant: AgentLogMessage | null = null; // 缓存尚未结束的可见正文，供停止时结算
-  private compaction_started_at: string | null = null; // 手动压缩也可独立于 run 执行
+  private readonly compaction_start_times = new Map<number, string>(); // 原生任务配对起止，手动压缩独立于 run
   private readonly tool_start_times = new Map<string, string>(); // 并行工具分别配对终帧
 
   /** 共用应用日志写入口，记录器只拥有执行关联状态。 */
@@ -108,36 +127,42 @@ export class AgentRuntimeLog {
 
   /** continue 保留轮次身份，每次真正执行分配新的 run，耗时不包含失败后的用户等待。 */
   public begin_run(round_id: string, mode: "prompt" | "queued" | "continue"): void {
-    this.run = { run_id: uuidv7(), round_id, started_at: new Date().toISOString(), stopped: false };
+    this.run = { run_id: uuidv7(), round_id, started_at: new Date().toISOString() };
     this.append({ event: "run_start", mode, started_at: this.run.started_at });
   }
 
   /** SDK Promise 结算后才记录真实结束，UI 提前停止不会改变此处的时钟。 */
-  public finish_run(outcome: AgentLogStatus): void {
+  public finish_run(
+    status: AgentLogStatus,
+    details: Pick<AgentLogEnd, "stop_reason" | "error"> & {
+      failure?: { operation: "compaction"; task_id: number };
+    } = {},
+  ): void {
     if (this.run === null) return;
-    const status = this.run.stopped ? "stopped" : outcome;
-    this.finish_assistant(status);
-    this.append({
-      event: "run_end",
-      status,
-      started_at: this.run.started_at,
-      ended_at: new Date().toISOString(),
-    });
+    this.finish_assistant(status, details.stop_reason);
+    this.append(
+      {
+        event: "run_end",
+        status,
+        ...(details.stop_reason === undefined ? {} : { stop_reason: details.stop_reason }),
+        ...(details.failure === undefined ? {} : { failure: details.failure }),
+        started_at: this.run.started_at,
+        ended_at: new Date().toISOString(),
+      },
+      details,
+    );
     this.run = null;
     // 缺少终帧的工具只保留 start 事实，不能制造输出或完成时间。
     this.tool_start_times.clear();
   }
 
-  /** 保存停止意图，结束时间仍等待 SDK 实际结算。 */
-  public request_stop(): void {
-    if (this.run === null || this.run.stopped) return;
-    this.run.stopped = true;
-    this.append({ event: "stop_requested" });
+  /** 执行拥有者已经受理停止，手动压缩也记录请求。 */
+  public request_stop(stop_reason: AgentStopReason): void {
+    this.append({ event: "stop_requested", stop_reason });
   }
 
   /** 在 runtime 隔离前追加重置原因，保留旧执行的收尾归属。 */
   public reset(reason: string): void {
-    this.request_stop();
     this.append({ event: "reset", reason });
   }
 
@@ -195,6 +220,7 @@ export class AgentRuntimeLog {
               : event.message.stopReason === "error"
                 ? "error"
                 : "success",
+            event.stop_reason,
           );
         }
         break;
@@ -214,48 +240,57 @@ export class AgentRuntimeLog {
         const started_at = this.tool_start_times.get(event.toolCallId);
         if (started_at === undefined) break; // 已结算的终帧不重复写入；未观察到 start 时也不猜开始时间。
         this.tool_start_times.delete(event.toolCallId);
-        this.append({
-          event: "tool_end",
-          tool_call_id: event.toolCallId,
-          tool_name: event.toolName,
-          started_at,
-          output: normalize_agent_tool_log_output(event.result),
-          // 停止意图由 run 独立记录，工具仍保留 SDK 确认的实际结果。
-          status: event.isError ? "error" : "success",
-          ended_at: new Date().toISOString(),
-        });
+        this.append(
+          {
+            event: "tool_end",
+            tool_call_id: event.toolCallId,
+            tool_name: event.toolName,
+            started_at,
+            ...(event.result === undefined
+              ? {}
+              : { output: normalize_agent_tool_log_output(event.result) }),
+            status: event.status,
+            ...(event.stop_reason === undefined ? {} : { stop_reason: event.stop_reason }),
+            ended_at: new Date().toISOString(),
+          },
+          event,
+        );
         break;
       }
-      case "compaction_start":
-        this.compaction_started_at = new Date().toISOString();
+      case "compaction_start": {
+        const started_at = new Date().toISOString();
+        this.compaction_start_times.set(event.task_id, started_at);
         this.append({
           event: "compaction_start",
           reason: event.reason,
-          started_at: this.compaction_started_at,
+          task_id: event.task_id,
+          started_at,
         });
         break;
-      case "compaction_end":
-        if (this.compaction_started_at !== null) {
-          this.append({
+      }
+      case "compaction_end": {
+        const started_at = this.compaction_start_times.get(event.task_id);
+        if (started_at === undefined) break;
+        this.compaction_start_times.delete(event.task_id);
+        this.append(
+          {
             event: "compaction_end",
             reason: event.reason,
-            started_at: this.compaction_started_at,
+            task_id: event.task_id,
+            started_at,
             ended_at: new Date().toISOString(),
-            status: event.aborted
-              ? "stopped"
-              : event.result !== undefined && event.errorMessage === undefined
-                ? "success"
-                : "error",
-            ...(event.errorMessage === undefined ? {} : { error: event.errorMessage }),
-          });
-          this.compaction_started_at = null;
-        }
+            status: event.status,
+            ...(event.stop_reason === undefined ? {} : { stop_reason: event.stop_reason }),
+          },
+          event,
+        );
         break;
+      }
     }
   }
 
   /** 终帧与中断收尾共用出口，工具专用空消息不生成正文记录。 */
-  private finish_assistant(status: AgentLogStatus): void {
+  private finish_assistant(status: AgentLogStatus, stop_reason?: AgentStopReason): void {
     const assistant = this.assistant;
     this.assistant = null;
     if (assistant === null || assistant.parts.length === 0) return;
@@ -264,8 +299,23 @@ export class AgentRuntimeLog {
       role: "assistant",
       ...assistant,
       status,
+      ...(status === "stopped" && stop_reason !== undefined ? { stop_reason } : {}),
       ended_at: new Date().toISOString(),
     });
+  }
+
+  /** 没有原生任务终帧的准备与清理失败仍携带所属会话和执行身份。 */
+  public report_failure(
+    operation: "input_prepare" | "compaction" | "cleanup",
+    error: unknown,
+  ): void {
+    this.append(
+      { event: "operation_end", operation, status: "error", ended_at: new Date().toISOString() },
+      {
+        error,
+        level: operation === "cleanup" ? "warning" : "error",
+      },
+    );
   }
 
   /** 会话在提交回调之外刷新或关闭时，按接收顺序写出日志。 */
@@ -274,7 +324,10 @@ export class AgentRuntimeLog {
   }
 
   /** 在接收时固定会话身份和载荷，待会话刷新时写入日志窗口。 */
-  private append(event: AgentLogEvent): void {
+  private append(
+    event: AgentLogEvent,
+    diagnostic: { error?: unknown; level?: LogLevel } = {},
+  ): void {
     const content: AgentLogContent = {
       kind: "agent",
       ...event,
@@ -283,7 +336,8 @@ export class AgentRuntimeLog {
       ...(this.run === null ? {} : { round_id: this.run.round_id, run_id: this.run.run_id }),
     };
     this.pending.push({
-      level: "status" in event && event.status === "error" ? "error" : "info",
+      level: diagnostic.level ?? ("status" in event && event.status === "error" ? "error" : "info"),
+      ...(diagnostic.error === undefined ? {} : { error: to_log_error(diagnostic.error) }),
       source: "agent",
       content,
       targets: { console: false, window: true },

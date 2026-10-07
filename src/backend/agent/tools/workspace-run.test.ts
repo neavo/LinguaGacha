@@ -2,6 +2,7 @@ import { agent_tool_call } from "../../../test/agent-tool-fixture";
 import { describe, expect, it, vi } from "vitest";
 import { workspace_execution } from "../../../test/agent-workspace-fixture";
 import { create_agent_workspace_run_tool } from "./workspace-run";
+import { AgentToolError } from "../tool-definition";
 import type { AgentWorkspacePort } from "../workspace/service";
 
 describe("workspace_run", () => {
@@ -46,13 +47,10 @@ describe("workspace_run", () => {
     });
     expect(JSON.stringify(result.details)).not.toContain("aW1hZ2U=");
   });
-  it("调用期间取消时拒绝迟到的执行结果", async () => {
-    let release_run = (): void => undefined;
-    const run_released = new Promise<void>((resolve) => {
-      release_run = resolve;
-    });
+  it("调用期间停止仍保留实际成功的执行结果", async () => {
+    const released = Promise.withResolvers<void>();
     const run = vi.fn(async () => {
-      await run_released;
+      await released.promise;
       return { images: [], execution: workspace_execution() };
     });
     const script_tool = create_tool(run);
@@ -65,9 +63,48 @@ describe("workspace_run", () => {
     );
     await vi.waitFor(() => expect(run).toHaveBeenCalledOnce());
     controller.abort(reason);
-    release_run();
+    released.resolve();
 
-    await expect(result).rejects.toBe(reason);
+    await expect(result).resolves.toMatchObject({ details: workspace_execution() });
+  });
+  it("脚本和刷新同时失败保留主回执与两个原始原因", async () => {
+    const script_error = new AgentToolError({ code: "script_failed", scriptPath: "work/run.mjs" });
+    const refresh_error = new Error("刷新失败");
+    const tool = create_agent_workspace_run_tool({
+      run: async () => {
+        throw script_error;
+      },
+      refresh_skills: async () => {
+        throw refresh_error;
+      },
+    });
+    const error = await tool
+      .execute({ script: "throw 1;" }, ...agent_tool_call("failed"))
+      .catch((error: unknown) => error);
+    expect(error).toBeInstanceOf(AgentToolError);
+    expect(error).toMatchObject({
+      details: script_error.details,
+      cause: { errors: [script_error, refresh_error] },
+    });
+  });
+
+  it("脚本取消后刷新失败仍报告真实刷新故障", async () => {
+    const controller = new AbortController();
+    const tool = create_agent_workspace_run_tool({
+      run: async () => {
+        controller.abort();
+        throw controller.signal.reason;
+      },
+      refresh_skills: async () => {
+        throw new Error("刷新失败");
+      },
+    });
+    await expect(
+      tool.execute({ script: "等待" }, ...agent_tool_call("stopped", controller.signal)),
+    ).rejects.toMatchObject({
+      details: { code: "tool_failed" },
+      cause: { name: "AggregateError" },
+    });
   });
 });
 /** 注入工作区执行端口，刷新结果由会话集成测试验证。 */
@@ -75,6 +112,5 @@ function create_tool(run: AgentWorkspacePort["run"]) {
   return create_agent_workspace_run_tool({
     run,
     refresh_skills: async () => {},
-    log_refresh_error: () => {},
   });
 }

@@ -718,6 +718,35 @@ describe("AgentWorkspaceService", () => {
     );
   });
 
+  it.each(["cancel", "script", "host"] as const)(
+    "停止期间的工作区 %s 保留实际取消或失败回执",
+    async (outcome) => {
+      const fixture = await create_fixture(temp_dir);
+      await run_workspace(fixture);
+      const controller = new AbortController();
+      const failure =
+        outcome === "script"
+          ? new AgentWorkspaceRunError("脚本失败", workspace_execution({ completed: 1 }))
+          : new Error("host disconnected");
+      fixture.run.mockImplementationOnce(async () => {
+        controller.abort();
+        throw outcome === "cancel" ? controller.signal.reason : failure;
+      });
+      const result = await fixture.service
+        .run(VALID_WORKSPACE_SCRIPT, controller.signal)
+        .catch((error: unknown) => error);
+      if (outcome === "cancel") expect(result).toBe(controller.signal.reason);
+      else
+        expect(result).toMatchObject({
+          cause: failure,
+          public_details: {
+            action: "workspace_run",
+            ...(outcome === "script" ? { stdout: { content: { completed: 1 } } } : {}),
+          },
+        });
+    },
+  );
+
   it("apply 只提交显式 change，成功后销毁快照并保留 work", async () => {
     const fixture = await create_fixture(temp_dir);
     await run_workspace(fixture);

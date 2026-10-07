@@ -1,14 +1,23 @@
+import { AgentChatStore } from "@frontend/app/session/agent/agent-chat-store";
+import { AGENT_INPUT_HISTORY_STORAGE_KEY } from "@frontend/app/session/agent/agent-input-history";
 import type { AgentFileCandidate } from "@shared/agent-reference";
 import { AgentInputDraft } from "@frontend/app/session/agent/agent-input-draft";
 import { uploaded_file } from "../../../test/agent-upload-fixture";
-import { act, createRef, type ComponentProps, type RefObject } from "react";
+import {
+  act,
+  createRef,
+  useSyncExternalStore,
+  type ComponentProps,
+  type RefObject,
+  type ReactNode,
+} from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
 
 import { deleteCharBackward, undo } from "@codemirror/commands";
 import { EditorSelection } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
-import { type AgentMessageAttachment } from "@shared/agent";
+import { type AgentMessageAttachment, type AgentChatSnapshot } from "@shared/agent";
 import type { AgentInputState } from "@frontend/app/session/agent/agent-chat-context";
 import { TooltipProvider } from "@frontend/shadcn/tooltip";
 
@@ -34,9 +43,15 @@ const mention_files = vi.hoisted(() => ({ files: [] as AgentFileCandidate[] }));
 vi.mock("./use-agent-mention-files", () => ({
   useAgentMentionFiles: () => ({ files: mention_files.files, status: "ready" }),
 }));
+const chat_mocks = vi.hoisted(() => ({
+  api_get: vi.fn(),
+  api_fetch: vi.fn(),
+  open_event_stream: vi.fn(),
+}));
 const image_mocks = vi.hoisted(() => ({ upload: vi.fn() }));
 vi.mock("@frontend/app/desktop/desktop-api", async (original) => ({
   ...(await original<typeof import("@frontend/app/desktop/desktop-api")>()),
+  ...chat_mocks,
   api_blob: async () => new Blob([], { type: "image/png" }),
   api_file_url: (path: string) => `http://localhost${path}`,
   api_upload: image_mocks.upload,
@@ -283,11 +298,48 @@ describe("AgentMessageEditor", () => {
     await set_document(editor, "当前草稿", 4);
     await dispatch_key(editor.contentDOM, "ArrowUp");
     expect(editor.state.doc.toString()).toBe('检查 @skill("glossary-audit") 完成');
+    expect(input_state.draft.read().text).toBe(editor.state.doc.toString());
     await dispatch_key(editor.contentDOM, "ArrowUp");
     expect(editor.state.doc.toString()).toBe("第一条");
     await dispatch_key(editor.contentDOM, "ArrowDown");
     await dispatch_key(editor.contentDOM, "ArrowDown");
     expect(editor.state.doc.toString()).toBe("当前草稿");
+    expect(input_state.draft.read().text).toBe("当前草稿");
+  });
+
+  it("外部草稿替换退出旧浏览，后续恢复采用新正文", async () => {
+    const input_state = create_input_state(["历史正文"]);
+    const view = await render_editor({ input_state });
+    const editor = get_editor(view);
+    await set_document(editor, "原草稿", 3);
+    await dispatch_key(editor.contentDOM, "ArrowUp");
+    await act(async () => input_state.draft.write({ text: "替换正文", attachments: [] }));
+    await dispatch_key(editor.contentDOM, "ArrowDown");
+    expect(editor.state.doc.toString()).toBe("替换正文");
+    await dispatch_key(editor.contentDOM, "ArrowUp");
+    await dispatch_key(editor.contentDOM, "ArrowDown");
+    expect(editor.state.doc.toString()).toBe("替换正文");
+  });
+
+  it("历史浏览与正文恢复保留上传期间的最新附件", async () => {
+    const input_state = create_input_state(["历史正文"]);
+    const pending = Promise.withResolvers<ReturnType<typeof uploaded_file>>();
+    image_mocks.upload.mockReturnValueOnce(pending.promise);
+    const view = await render_editor({ input_state });
+    const editor = get_editor(view);
+    await set_document(editor, "原草稿", 3);
+    await act(async () => input_state.draft.append([new File(["text"], "notes.txt")]));
+    await dispatch_key(editor.contentDOM, "ArrowUp");
+    await act(async () => pending.resolve(uploaded_file("notes", null)));
+    await vi.waitFor(() =>
+      expect(input_state.draft.read().attachments).toEqual([uploaded_file("notes", null)]),
+    );
+    expect(editor.state.doc.toString()).toBe("历史正文");
+    await dispatch_key(editor.contentDOM, "ArrowDown");
+    expect(input_state.draft.read()).toEqual({
+      text: "原草稿",
+      attachments: [uploaded_file("notes", null)],
+    });
   });
 
   it("历史导航只从视觉首行启动，并在用户编辑后退出", async () => {
@@ -645,46 +697,211 @@ describe("AgentMessageEditor", () => {
     }
   });
 
-  /** 同一编辑实例消费测试草稿，业务按钮仅承接发送当前消息。 */
+  it("历史消息受理后清空可见正文和附件", async () => {
+    const view = await create_sending_editor();
+    await act(async () =>
+      view.store
+        .get_input()
+        .draft.write({ text: "原草稿", attachments: [uploaded_file("file", null)] }),
+    );
+    await view.key("ArrowUp");
+    await view.send();
+    await act(async () => {
+      await view.sending();
+    });
+    expect(chat_mocks.api_fetch).toHaveBeenCalledWith(
+      "/api/agent/message",
+      expect.objectContaining({
+        text: "历史消息",
+        attachments: [{ kind: "file", uploadId: "file" }],
+      }),
+    );
+    expect(view.editor().state.doc.toString()).toBe("");
+    expect(view.store.get_input().draft.read()).toEqual({ text: "", attachments: [] });
+    await view.key("ArrowDown");
+    expect(view.editor().state.doc.toString()).toBe("");
+  });
+
+  it("历史消息发送失败保留完整输入，重试受理后清空", async () => {
+    const view = await create_sending_editor();
+    await view.key("ArrowUp");
+    chat_mocks.api_fetch.mockRejectedValueOnce(new Error("offline"));
+    await view.send();
+    await act(async () => {
+      await expect(view.sending()).rejects.toThrow("offline");
+    });
+    expect(view.editor().state.doc.toString()).toBe("历史消息");
+    expect(view.store.get_input().draft.read().text).toBe("历史消息");
+    chat_mocks.api_fetch.mockImplementation(async (path) => ({
+      revision: 0,
+      status: path === "/api/agent/input-status" ? "cancelled" : "accepted",
+    }));
+    await view.send();
+    await act(async () => {
+      await view.sending();
+    });
+    expect(view.editor().state.doc.toString()).toBe("");
+  });
+
+  it.each(["edit", "history"] as const)("迟到回执保留等待期间的 %s 输入", async (change) => {
+    const view = await create_sending_editor();
+    const receipt = Promise.withResolvers<unknown>();
+    chat_mocks.api_fetch.mockReturnValueOnce(receipt.promise);
+    await view.key("ArrowUp");
+    if (change === "history") await view.key("ArrowUp");
+    await view.send();
+    await vi.waitFor(() => expect(chat_mocks.api_fetch).toHaveBeenCalledOnce());
+    const next = change === "edit" ? "新的输入" : "最早消息";
+    if (change === "edit")
+      await act(async () =>
+        view
+          .editor()
+          .dispatch({ changes: { from: 0, to: view.editor().state.doc.length, insert: next } }),
+      );
+    else await view.key("ArrowUp");
+    await act(async () => {
+      receipt.resolve({ revision: 0, status: "accepted" });
+      await view.sending();
+    });
+    expect(view.editor().state.doc.toString()).toBe(next);
+    expect(view.store.get_input().draft.read().text).toBe(next);
+    if (change === "history") {
+      await view.key("ArrowDown");
+      expect(view.editor().state.doc.toString()).toBe("更早消息");
+    }
+  });
+
+  it("重新挂载恢复历史召回的可见输入与附件", async () => {
+    const view = await create_sending_editor();
+    await act(async () =>
+      view.store
+        .get_input()
+        .draft.write({ text: "原草稿", attachments: [uploaded_file("file", null)] }),
+    );
+    await view.key("ArrowUp");
+    await view.remount();
+    expect(view.editor().state.doc.toString()).toBe("历史消息");
+    expect(view.store.get_input().draft.read().attachments).toEqual([uploaded_file("file", null)]);
+  });
+
+  /** 同一挂载点复用真实编辑器，重渲染只替换公开输入与操作。 */
   async function render_editor(options: RenderEditorOptions = {}): Promise<HTMLDivElement> {
+    default_input_state ??= create_input_state();
+    return render_content(
+      <EditorFixture
+        options={{ ...options, input_state: options.input_state ?? default_input_state }}
+      />,
+    );
+  }
+
+  /** 真实 Store 与编辑器共同处理发送回执，传输由确定的回执隔离。 */
+  async function create_sending_editor() {
+    window.localStorage.clear();
+    window.localStorage.setItem(
+      AGENT_INPUT_HISTORY_STORAGE_KEY,
+      JSON.stringify(["最早消息", "更早消息", "历史消息"]),
+    );
+    const snapshot: AgentChatSnapshot = {
+      chatId: "test-chat",
+      revision: 0,
+      state: "idle",
+      pendingDecision: null,
+      entries: [],
+      skills: [],
+      inputQueue: { paused: false, canSendNow: false, items: [] },
+      doing: null,
+      context: { tokens: null, compactable: false, limits: null },
+      usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+      tokenSpeed: null,
+    };
+    chat_mocks.api_get.mockReset().mockResolvedValue(snapshot);
+    chat_mocks.api_fetch.mockReset().mockResolvedValue({ revision: 0, status: "accepted" });
+    chat_mocks.open_event_stream.mockReset().mockReturnValue({ addEventListener() {}, close() {} });
+    const store = new AgentChatStore(window.localStorage, vi.fn());
+    onTestFinished(() => store.disconnect());
+    store.connect();
+    await vi.waitFor(() => expect(store.get_controls().transport).toBe("ready"));
+    let sending: Promise<void> | undefined;
+    /** 实际订阅输入切片，受理后的草稿消费按生产组件的订阅路径刷新。 */
+    function StoreProbe() {
+      const input_state = useSyncExternalStore(store.subscribe_input, store.get_input);
+      return (
+        <EditorFixture
+          options={{
+            input_state,
+            skills: [],
+            on_submit: (message) => {
+              sending = store.actions.send(message);
+              // 用例等待原 Promise 验证结果，先登记观察者避免失败早于断言成为未处理拒绝。
+              void sending.catch(() => undefined);
+            },
+          }}
+        />
+      );
+    }
+    const view = await render_content(<StoreProbe />);
+    return {
+      store,
+      editor: () => get_editor(view),
+      sending: () => {
+        if (sending === undefined) throw new Error("缺少发送请求");
+        return sending;
+      },
+      send: () => click_send(view),
+      key: (key: string) => dispatch_key(get_editor(view).contentDOM, key),
+      remount: async () => {
+        await act(async () => root?.render(null));
+        await render_content(<StoreProbe />);
+      },
+    };
+  }
+
+  /** 两类用例共享挂载与卸载，Store 订阅与纯草稿使用同一组件骨架。 */
+  async function render_content(children: ReactNode): Promise<HTMLDivElement> {
     if (container === null) {
       container = document.createElement("div");
       document.body.append(container);
     }
     root ??= createRoot(container);
-    default_input_state ??= create_input_state();
-    await act(async () =>
-      root?.render(
-        <TooltipProvider>
-          <AgentMessageEditor
-            ref={options.editor_ref}
-            presentation={options.presentation}
-            role={options.role}
-            read_only={options.read_only ?? false}
-            skills={options.skills ?? skills}
-            instructions={options.instructions}
-            input_state={options.input_state ?? default_input_state!}
-            on_submit={options.on_submit ?? vi.fn()}
-            on_cancel={options.on_cancel}
-
-            render_actions={({ has_content, uploads_pending }) => {
-              const can_submit = !options.read_only && has_content && !uploads_pending;
-              return {
-                can_submit,
-                submit: (
-                  <button type="submit" className="agent-composer__submit" disabled={!can_submit}>
-                    发送
-                  </button>
-                ),
-              };
-            }}
-          />
-        </TooltipProvider>,
-      ),
-    );
+    await act(async () => root?.render(children));
     return container;
   }
 });
+
+/** 公共编辑器夹具只提供操作按钮，输入由用例的草稿或真实 Store 提供。 */
+function EditorFixture({
+  options,
+}: {
+  options: RenderEditorOptions & { input_state: AgentInputState };
+}) {
+  return (
+    <TooltipProvider>
+      <AgentMessageEditor
+        ref={options.editor_ref}
+        presentation={options.presentation}
+        role={options.role}
+        read_only={options.read_only ?? false}
+        skills={options.skills ?? skills}
+        instructions={options.instructions}
+        input_state={options.input_state}
+        on_submit={options.on_submit ?? vi.fn()}
+        on_cancel={options.on_cancel}
+
+        render_actions={({ has_content, uploads_pending }) => {
+          const can_submit = !options.read_only && has_content && !uploads_pending;
+          return {
+            can_submit,
+            submit: (
+              <button type="submit" className="agent-composer__submit" disabled={!can_submit}>
+                发送
+              </button>
+            ),
+          };
+        }}
+      />
+    </TooltipProvider>
+  );
+}
 
 /** 通过挂载的 DOM 取得真实编辑器实例。 */
 function get_editor(container: HTMLElement): EditorView {

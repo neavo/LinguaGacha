@@ -47,7 +47,6 @@ async function create_chat() {
     onChange: vi.fn(),
     onModelEvent: vi.fn(),
     onReport: vi.fn(),
-    onCompactionFailure: vi.fn(),
   });
   onTestFinished(() => chat.close());
   await chat.configure(provider.getModel(), "off");
@@ -144,7 +143,6 @@ async function open(store: AgentChatStorage) {
     onReport: (error) => {
       throw error;
     },
-    onCompactionFailure: vi.fn(),
   });
   return { chat, provider, models, append };
 }
@@ -152,6 +150,7 @@ async function open(store: AgentChatStorage) {
 async function talk(chat: AgentChat, text: string) {
   const execution: AgentExecution = {
     controller: new AbortController(),
+    stop_reason: null,
     lease: { owner: "agent" },
     roundId: null,
     phase: "running",

@@ -496,13 +496,12 @@
   cursor: pointer;
 }
 
-.agent-process-entry:not(:disabled):hover,
-.agent-process-entry:not(:disabled):focus-within {
+.agent-process-entry--interactive:not(:disabled):hover {
   background: var(--accent);
   color: var(--foreground);
 }
 
-.agent-process-entry--interactive:focus-visible {
+.agent-process-entry--interactive:not(:disabled):focus-visible {
   outline: 1px solid var(--ring);
   outline-offset: -1px;
 }

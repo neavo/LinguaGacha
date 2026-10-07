@@ -227,10 +227,6 @@ export const de_de_app = {
   },
   diagnostic: {
     agent: {
-      model_round_failed: "Agent-Modellrunde fehlgeschlagen …",
-      context_compaction_failed: "Agent-Kontextkomprimierung fehlgeschlagen …",
-      chat_cleanup_failed: "Agent-Chat-Bereinigung fehlgeschlagen …",
-      tool_execution_failed: "Agent-Werkzeugausführung fehlgeschlagen …",
       web_search_provider_failed: "Anfrage beim Websuchanbieter fehlgeschlagen …",
       skill_load_failed: "Agent-Skill-Laden fehlgeschlagen …",
     },

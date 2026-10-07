@@ -1,3 +1,5 @@
+import type { LogAppendPayload } from "../../shared/log";
+import { scheduler } from "node:timers/promises";
 import type { JsonValue } from "@earendil-works/chord";
 import { BACKGROUND_CONTEXT, withAbortSignal } from "@earendil-works/chord/context";
 import {
@@ -49,8 +51,12 @@ import { AgentChatDoc, type AgentChatData, type AgentInputRecord } from "./agent
 import { AgentChatView, assistant_entry_id } from "./agent-chat-view";
 import { AGENT_KEEP_RECENT_TOKENS, read_agent_chat_context } from "./agent-chat-context";
 import { append_agent_chat_seed, type AgentChatSeed } from "./agent-chat-seed";
-import { AgentRuntimeLog } from "./agent-runtime-log";
-import { AgentToolError, agent_tool_result } from "./tool-definition";
+import { AgentRuntimeLog, type AgentStopReason } from "./agent-runtime-log";
+import {
+  agent_tool_result,
+  normalize_agent_tool_error,
+  is_agent_cancellation,
+} from "./tool-definition";
 
 const COMPACTION_SETTINGS = {
   enabled: true,
@@ -69,10 +75,11 @@ type SubmittedInput = {
 export type AgentExecution = {
   readonly controller: AbortController;
   readonly lease: RuntimeLease;
+  stop_reason: AgentStopReason | null; // 执行拥有者在取消前固定来源，迟到收尾沿用该执行
   commandId?: string; // 只关联本次产品命令的首次 SDK 输入，后续自动轮次独立
   roundId: string | null;
   phase: "preparing" | "running" | "recovering" | "compacting" | "settling";
-  acceptance: Promise<unknown> | null;
+  acceptance: Promise<void> | null;
   settlement: Promise<void> | null;
   cancellation?: Promise<void>; // 重复停止与生命周期关闭等待同一次 SDK 取消
   recoveryUsed: boolean;
@@ -96,7 +103,6 @@ type ChatOptions = {
   onChange: () => void;
   onModelEvent: (event: AssistantMessageEvent) => void;
   onReport: (error: unknown) => void;
-  onCompactionFailure: (reason: string, error: string) => void;
 };
 
 /** 产品会话直接使用 durable 公共接口，拥有输入、历史、恢复与压缩的提交边界。 */
@@ -118,7 +124,6 @@ export class AgentChat {
   public state: Readonly<AgentChatData> = AgentChatDoc.definition.initial(null); // 只读提交快照，写入由 `Harness` 事务生成
   private harness!: Harness;
   private conversation!: Conversation; // 当前分支唯一入口，只在创建与修订成功后切换
-  private readonly compactionFailures: Array<{ reason: string; error: string }> = []; // 提交后刷新时交付宿主诊断
   private readonly compactionStarts = new Map<number, number>(); // 提交线外持久化后释放，避免订阅回调重入事务。
   private compactionReason: "manual" | "length" = "manual"; // 产品主动压缩补充触发原因，SDK 自动压缩沿用原原因
   private contextRevision = 0; // 正文进度和队列变化不能使在途上下文查询失效
@@ -137,7 +142,7 @@ export class AgentChat {
     const stream = this.models.streamSimple.bind(this.models);
     this.models.streamSimple = (model, context, request) =>
       lazyStream(model, async () => {
-        const execution = this.execution;
+        const execution = this.execution; // 流式终帧沿用原执行的停止来源
         const source = stream(model, context, request);
         const isSummary = this.is_compacting;
         const observe = (event: AssistantMessageEvent): void => {
@@ -150,7 +155,11 @@ export class AgentChat {
                   : event.partial;
             if (event.type === "start") this.log.handle_event({ type: "message_start", message });
             else if (event.type === "done" || event.type === "error")
-              this.log.handle_event({ type: "message_end", message });
+              this.log.handle_event({
+                type: "message_end",
+                message,
+                ...(execution?.stop_reason == null ? {} : { stop_reason: execution.stop_reason }),
+              });
             else this.log.handle_event({ type: "message_update", message });
             if (execution === this.execution && !execution?.controller.signal.aborted) {
               this.options.onModelEvent(event);
@@ -176,33 +185,39 @@ export class AgentChat {
         tools: options.tools.map((tool) => ({
           ...tool,
           execute: async (params, api, context) => {
+            // 提交首帧先交给事件循环，工具副作用与终态在同一个边界结算。
+            await scheduler.yield();
+            const execution = chat.execution;
             let result: ToolExecutionResult;
+            let diagnostic: Partial<Pick<LogAppendPayload, "error" | "level">> = {};
             try {
               result = await tool.execute(params, api, context);
             } catch (error) {
-              result = {
-                ...agent_tool_result(
-                  error instanceof AgentToolError ? error.details : { code: "tool_failed" },
-                ),
-                isError: true,
-              };
-              if (context.abortSignal?.aborted) {
+              if (is_agent_cancellation(error, context.abortSignal)) {
                 chat.log.handle_event({
                   type: "tool_execution_end",
                   toolCallId: api.callId,
                   toolName: tool.name,
-                  result: { content: result.content ?? [], details: result.details },
-                  isError: true,
+                  status: "stopped",
+                  ...(execution?.stop_reason == null ? {} : { stop_reason: execution.stop_reason }),
                 });
                 throw error;
               }
+              const failure = normalize_agent_tool_error(error);
+              result = { ...agent_tool_result(failure.details), isError: true };
+              const expected = failure.severity === "expected";
+              diagnostic = {
+                ...(expected ? {} : { error }),
+                level: expected ? "info" : failure.severity === "warning" ? "warning" : "error",
+              };
             }
             chat.log.handle_event({
               type: "tool_execution_end",
               toolCallId: api.callId,
               toolName: tool.name,
               result: { ...result, content: result.content ?? [] },
-              isError: result.isError === true,
+              status: result.isError === true ? "error" : "success",
+              ...diagnostic,
             });
             return result;
           },
@@ -295,7 +310,8 @@ export class AgentChat {
                 toolCallId: message.toolCallId,
                 toolName: message.toolName,
                 result: message,
-                isError: message.isError === true,
+                status: message.isError === true ? "error" : "success",
+                ...(message.isError === true ? { level: "info" as const } : {}),
               });
           }
         } else if (change.type === "submission") {
@@ -354,7 +370,7 @@ export class AgentChat {
       chat.closed = true;
       chat.unsubscribe();
       await chat.harness.close(BACKGROUND_CONTEXT);
-      chat.flush_diagnostics();
+      chat.log.flush();
       throw error;
     }
     return chat;
@@ -719,9 +735,14 @@ export class AgentChat {
       await this.flush();
       const task = await this.harness.waitForTask(id, BACKGROUND_CONTEXT);
       const outcome = task.state.outcome;
+      if (outcome.status === "aborted") {
+        execution.controller.signal.throwIfAborted();
+        throw new Error("Compaction cancelled");
+      }
       if (outcome.status !== "completed")
-        throw new Error(
-          outcome.status === "failed" ? outcome.error.message : "Compaction cancelled",
+        throw new AgentCompactionError(
+          id,
+          outcome.status === "orphaned" ? outcome.reason : outcome.error.message,
         );
       const result = outcome.result;
       if (result.submissionId !== undefined) {
@@ -843,7 +864,7 @@ export class AgentChat {
         try {
           await this.harness.close(BACKGROUND_CONTEXT);
         } finally {
-          this.flush_diagnostics();
+          this.log.flush();
         }
       }
     })();
@@ -858,7 +879,7 @@ export class AgentChat {
       .then(async () => {
         while (this.dirty && !this.closed) {
           this.dirty = false;
-          this.flush_diagnostics();
+          this.log.flush();
           if (this.conversation === undefined) continue;
           if (this.compactionStarts.size > 0) {
             const starts = [...this.compactionStarts];
@@ -909,13 +930,7 @@ export class AgentChat {
   public async flush(): Promise<void> {
     while (this.refreshWork !== null) await this.refreshWork;
     if (this.refreshFailure !== undefined) throw this.refreshFailure;
-    this.flush_diagnostics();
-  }
-  /** 提交线外统一处理诊断，关闭与命令回执等待同一出口。 */
-  private flush_diagnostics(): void {
     this.log.flush();
-    for (const { reason, error } of this.compactionFailures.splice(0))
-      this.options.onCompactionFailure(reason, error);
   }
   /** 每个原生压缩任务只记录一次起止，手动任务附带产品触发原因。 */
   private observe_compaction(
@@ -931,19 +946,45 @@ export class AgentChat {
     if (previous === undefined) {
       // 新任务只捕获一次起始时间，恢复的任务沿用已提交时间。
       this.compactionStarts.set(task.id, Date.now());
-      this.log.handle_event({ type: "compaction_start", reason });
+      this.log.handle_event({ type: "compaction_start", reason, task_id: task.id });
     }
     if (task.state.status === "terminal" && previous?.state.status !== "terminal") {
       const outcome = task.state.outcome;
-      const error = outcome.status === "failed" ? outcome.error.message : undefined;
       this.log.handle_event({
         type: "compaction_end",
         reason,
-        aborted: outcome.status === "aborted",
-        ...(outcome.status === "completed" ? { result: outcome.result } : {}),
-        ...(error === undefined ? {} : { errorMessage: error }),
+        task_id: task.id,
+        status:
+          outcome.status === "aborted"
+            ? "stopped"
+            : outcome.status === "completed"
+              ? "success"
+              : "error",
+        ...(outcome.status === "aborted" && this.execution?.stop_reason != null
+          ? { stop_reason: this.execution.stop_reason }
+          : {}),
+        ...(outcome.status !== "completed" && outcome.status !== "aborted"
+          ? {
+              error:
+                outcome.status === "orphaned"
+                  ? new Error(outcome.reason)
+                  : new Error(outcome.error.message, { cause: outcome.error.detail }),
+              level: outcome.status === "failed" ? ("warning" as const) : ("error" as const),
+            }
+          : {}),
       });
-      if (error !== undefined) this.compactionFailures.push({ reason, error });
     }
+  }
+}
+
+/** 原生压缩终态已保存诊断，回合只记录导致终止的任务身份。 */
+export class AgentCompactionError extends Error {
+  /** 关联已保存诊断的原生任务，回合终止只引用该任务身份。 */
+  public constructor(
+    public readonly task_id: number,
+    message: string,
+  ) {
+    super(message);
+    this.name = "AgentCompactionError";
   }
 }
