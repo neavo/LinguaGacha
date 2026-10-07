@@ -35,7 +35,6 @@ import { LogDetailView } from "@frontend/pages/log-window-page/log-detail-view";
 import { AppButton } from "@frontend/widgets/app-button";
 import { Card, CardContent } from "@frontend/shadcn/card";
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipTarget } from "@frontend/shadcn/tooltip";
-import { AppEditor } from "@frontend/widgets/app-editor/app-editor";
 import { AppTable } from "@frontend/widgets/app-table/app-table";
 import type {
   AppTableColumn,
@@ -258,6 +257,7 @@ export function LogWindowPage(): JSX.Element {
     };
   }, [next_event_id, previous_event_id, select_event_id, selected_event_id]);
 
+  /** 页面统一通知详情读取失败，详情区只表达可用性。 */
   const notify_detail_error = useEffectEvent((error: unknown) => {
     push_error_toast(t("app.feedback.read_failed"), error);
   });
@@ -328,7 +328,6 @@ export function LogWindowPage(): JSX.Element {
     scroll_log_table_to_top();
   }, [latest_event_id, select_event_id, selection_state.active_row_id, logs.following]);
 
-  // 数据更新前捕获表格锚点，裁掉较新页时保持当前阅读位置。
   /** 补读前记录可见行锚点，插入历史记录后恢复阅读位置。 */
   function load_older(): void {
     if (logs.loading || !logs.can_load_older) return;
@@ -408,12 +407,9 @@ export function LogWindowPage(): JSX.Element {
     }
 
     return (
-      <AppEditor
-        variant="viewer"
-        class_name="log-window-page__detail-editor"
-        value={fallback_value}
-        aria_label={t("log_window_page.detail.title")}
-      />
+      <p className="log-window-page__status" role="status">
+        {fallback_value}
+      </p>
     );
   }
 

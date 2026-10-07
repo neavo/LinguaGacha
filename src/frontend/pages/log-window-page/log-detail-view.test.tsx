@@ -118,15 +118,10 @@ describe("LogDetailView", () => {
       context: { operation: "journal_mode", sqlite_code: 5 },
     });
 
-    const result = read_editor_text(view);
-    for (const part of [
-      text,
-      "database.busy",
-      "database is locked",
-      "journal_mode",
-      "sqlite_code",
-    ]) {
-      expect(result).toContain(part);
+    expect(read_editor_text(view)).toBe(text);
+    const diagnostics = view.querySelector(".log-detail-view__error pre")?.textContent;
+    for (const part of ["database.busy", "database is locked", "journal_mode", "sqlite_code"]) {
+      expect(diagnostics).toContain(part);
     }
     expect(
       [...view.querySelectorAll(".cm-content .cm-line span")].some(
@@ -149,5 +144,7 @@ describe("LogDetailView", () => {
     for (const text of ["ProviderError", "at request", "connection closed", "read", "request-1"]) {
       expect(diagnostics).toContain(text);
     }
+    render_detail(content, { message: "没有调用栈的错误" });
+    expect(view.querySelector(".log-detail-view__error pre")?.textContent).toBe("没有调用栈的错误");
   });
 });

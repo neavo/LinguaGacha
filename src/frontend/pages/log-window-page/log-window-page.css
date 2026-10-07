@@ -154,6 +154,7 @@
 
 .log-window-page__detail-head {
   display: flex;
+  flex: 0 0 auto;
   align-items: center;
   justify-content: space-between;
   gap: 10px;
@@ -181,21 +182,6 @@
 
 .log-window-page__detail-action:hover {
   color: var(--foreground);
-}
-
-.log-window-page__detail-editor {
-  --app-editor-content-min-height: 100%;
-  --app-editor-scroller-min-height: 100%;
-  min-height: 0;
-  flex: 1;
-  border: 0;
-  border-radius: 0;
-  box-shadow: none;
-  background: var(--ui-card-default-surface);
-}
-
-.log-window-page__detail-editor .cm-editor {
-  font-size: var(--ui-font-size-12);
 }
 
 .log-window-page__status {

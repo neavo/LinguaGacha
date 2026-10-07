@@ -112,7 +112,7 @@ type AgentLogMessage = { started_at: string; parts: AgentLogPart[] };
 
 /** 每个 SDK runtime 持有执行归属和待写诊断，随会话刷新及关闭完成落盘。 */
 export class AgentRuntimeLog {
-  private readonly pending: LogAppendPayload[] = []; // 接收时冻结时间、身份与诊断，提交线外统一落盘
+  private readonly pending: LogAppendPayload[] = []; // 接收时冻结身份与诊断，提交回调之外统一落盘
   private readonly runtime_id = uuidv7(); // reset 后的迟到事件仍属于创建它的 runtime
   private run: AgentLogRun | null = null; // 仅活动尝试拥有 round/run 关联
   private assistant: AgentLogMessage | null = null; // 缓存尚未结束的可见正文，供停止时结算
@@ -166,7 +166,7 @@ export class AgentRuntimeLog {
     this.append({ event: "reset", reason });
   }
 
-  /** 只修订最新 round；用户新正文由实际发送记录，人工助手正文在此保存。 */
+  /** 只修订最新 `round`。用户新正文由实际发送记录，人工助手正文在此保存。 */
   public revise(round_id: string, role: "user" | "assistant", text: string): void {
     this.append(
       role === "user"
@@ -175,7 +175,7 @@ export class AgentRuntimeLog {
     );
   }
 
-  /** 订阅早于公开状态筛选；重置后的旧 SDK 终帧仍写入旧会话。 */
+  /** 订阅早于公开状态筛选，重置后的旧 SDK 终帧仍写入旧会话。 */
   public handle_event(event: AgentLogInput): void {
     switch (event.type) {
       case "message_start":
@@ -323,7 +323,7 @@ export class AgentRuntimeLog {
     for (const payload of this.pending.splice(0)) this.log_manager.append(payload);
   }
 
-  /** 在接收时固定会话身份和载荷，待会话刷新时写入日志窗口。 */
+  /** 接收时固定会话身份与载荷，`flush()` 时统一写出。 */
   private append(
     event: AgentLogEvent,
     diagnostic: { error?: unknown; level?: LogLevel } = {},
@@ -335,12 +335,18 @@ export class AgentRuntimeLog {
       chat_id: this.chat_id,
       ...(this.run === null ? {} : { round_id: this.run.round_id, run_id: this.run.run_id }),
     };
+    // 预期工具失败可归为 `info`，控制台输出以最终等级为准。
+    const level =
+      diagnostic.level ?? ("status" in event && event.status === "error" ? "error" : "info");
     this.pending.push({
-      level: diagnostic.level ?? ("status" in event && event.status === "error" ? "error" : "info"),
+      level,
       ...(diagnostic.error === undefined ? {} : { error: to_log_error(diagnostic.error) }),
       source: "agent",
       content,
-      targets: { console: false, window: true },
+      targets: {
+        console: level === "warning" || level === "error" || level === "fatal",
+        window: true,
+      },
     });
   }
 }
