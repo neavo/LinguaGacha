@@ -38,7 +38,7 @@ export type AgentChatData = {
   doing: string | null;
   inputs: Record<string, AgentInputRecord>;
   rounds: Record<string, AgentRoundRecord>;
-  compactionStartedAt: Record<string, number>; // SDK 任务缺少起始时间，产品按任务身份保存首次提交的观测时间。
+  compactionStartedAt: Record<string, number>; // SDK 任务创建包含切点选择，产品仅在确认摘要范围后保存公开起点。
 };
 
 /** 产品事实按 `chatId` 保存，SDK 历史分叉共享队列和命令受理记录。 */

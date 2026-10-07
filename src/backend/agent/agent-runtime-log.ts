@@ -30,7 +30,7 @@ export type AgentLogInput =
       type: "compaction_end";
       reason: string;
       task_id: number;
-    } & AgentLogEnd);
+    } & Omit<AgentLogEnd, "status"> & { status: AgentLogStatus | "skipped" });
 
 import { uuidv7 } from "@earendil-works/pi-ai";
 
@@ -83,7 +83,7 @@ type AgentLogEvent =
   | { event: "compaction_start"; reason: string; task_id: number; started_at: string }
   | ({
       event: "compaction_end";
-      status: AgentLogStatus;
+      status: AgentLogStatus | "skipped";
       reason: string;
       task_id: number;
       stop_reason?: AgentStopReason;

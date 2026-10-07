@@ -14,6 +14,7 @@ import type { AgentEntry, AgentUsageSnapshot } from "../../shared/agent";
 import { JsonTool } from "../../shared/utils/json-tool";
 import { project_assistant_message_parts } from "./agent-message";
 import type { AgentInputRecord, AgentChatData } from "./agent-chat-data";
+import { read_agent_compaction_status } from "./agent-compaction";
 
 /** 流式与正式响应使用同一任务身份，人工修订使用条目身份。 */
 export const assistant_entry_id = (task: number | undefined, entry: number): string =>
@@ -78,6 +79,19 @@ export class AgentChatView {
       else if (change.type === "submission") {
         this.submissions.set(change.value.id, change.value);
         this.pendingSubmissions.add(change.value.id);
+        // ponytail: 压缩任务较少，回执扫描任务；长会话出现瓶颈时改为 submissionId 索引。
+        for (const task of this.compactions.values()) {
+          if (task.state.status !== "terminal" || task.state.outcome.status !== "completed")
+            continue;
+          const result = task.state.outcome.result;
+          if (
+            typeof result === "object" &&
+            result !== null &&
+            !Array.isArray(result) &&
+            result["submissionId"] === change.value.id
+          )
+            this.pendingTasks.add(task.id);
+        }
       } else if (change.type === "task" && change.value.kind === "pi.compaction") {
         this.compactions.set(change.value.id, change.value);
         this.pendingTasks.add(change.value.id);
@@ -355,24 +369,20 @@ export class AgentChatView {
     }
   }
 
-  /** 压缩任务的终态直接决定对应诊断条目。 */
+  /** 选择切点时隐藏运行块，确认摘要范围后公开，失败保留诊断条目。 */
   private read_task(task: TaskRecordValue): void {
-    this.put(
-      {
-        kind: "context_compaction",
-        id: `compaction:${task.id}`,
-        createdAt: this.state.compactionStartedAt[task.id] ?? null,
-        status:
-          task.state.status === "terminal"
-            ? task.state.outcome.status === "completed"
-              ? "success"
-              : task.state.outcome.status === "aborted"
-                ? "stopped"
-                : "error"
-            : "running",
-      },
-      task.id,
-    );
+    const status = read_agent_compaction_status(task, this.submissions);
+    const startedAt = this.state.compactionStartedAt[task.id];
+    const id = `compaction:${task.id}`;
+    if (
+      status === "skipped" ||
+      (startedAt === undefined &&
+        (status === "stopped" || (status === "running" && task.state.status !== "terminal")))
+    ) {
+      this.remove(id);
+      return;
+    }
+    this.put({ kind: "context_compaction", id, createdAt: startedAt ?? null, status }, task.id);
   }
 
   /** 流式正文沿用任务身份，正式条目以 SDK 排序身份接替临时位置。 */

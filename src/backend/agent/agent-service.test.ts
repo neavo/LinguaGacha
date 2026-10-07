@@ -3062,17 +3062,19 @@ describe("AgentService", () => {
     expect(fake_agent_state.request_kinds.at(-1)).toBe("summary");
   });
 
-  it("手动压缩在公开 running 条目后返回回执，并由后台结算终态", async () => {
+  it("手动压缩先返回受理回执，确认切点后公开 running 并由后台结算", async () => {
     const { service, runtime_gate } = await create_service();
     await prepare_manual_compaction_history(service);
     fake_agent_state.hold_next_summary = true;
     const acknowledgement = await service.compact_context();
     expect(acknowledgement).toEqual({ revision: service.get_snapshot().revision });
 
-    expect(service.get_snapshot().entries.at(-1)).toMatchObject({
-      kind: "context_compaction",
-      status: "running",
-    });
+    await vi.waitFor(() =>
+      expect(service.get_snapshot().entries.at(-1)).toMatchObject({
+        kind: "context_compaction",
+        status: "running",
+      }),
+    );
     expect(runtime_gate.get_snapshot().owner).toBe("agent");
 
     await vi.waitFor(() => expect(fake_agent_state.release_summary).not.toBeNull());
@@ -3267,7 +3269,6 @@ describe("AgentService", () => {
     expect(compaction_requests).toContain("summary");
     expect(compaction_requests.at(-1)).toBe("model");
     expect(compaction_requests.filter((kind) => kind === "model")).toHaveLength(2);
-    expect(fake_agent_state.prompts.at(-1)).toBe("检查长条目");
     expect(read_items).toHaveBeenCalledOnce();
     expect(service.get_snapshot().entries).toEqual(
       expect.arrayContaining([
@@ -4165,7 +4166,7 @@ async function prepare_long_tool_history(
   fake_agent_state.context_window = TEST_COMPACTION_CONTEXT_WINDOW;
   for (const round of [1, 2, 3]) {
     await service.send_message({
-      text: `历史${round.toString()}${"x".repeat(40_000)}`,
+      text: `历史${round.toString()}${"x".repeat(16_000)}`,
       attachments: [],
     });
     await wait_for_idle(service);

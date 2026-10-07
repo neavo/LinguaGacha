@@ -33,7 +33,7 @@ export type AgentChatStatus = "idle" | "running" | "stopping";
 export type AgentContextSnapshot = JsonRecord & {
   tokens: number | null; // 尚未建立模型历史时为 null
   limits: ModelAgentLimits | null; // 当前会话实际容量，独立于下一轮模型选择
-  compactable: boolean; // 后端按当前 SDK 历史判定手动压缩入口是否可用
+  compactable: boolean; // 后端按动态保留预算预判，实际合法切点由 SDK 决定
 };
 
 /** 每个时间线条目独立持有结果。会话 state 不再复制轮次终态。 */
@@ -170,7 +170,7 @@ export type AgentToolEntry = AgentToolEntryBase &
     | { status: "success" | "error"; output: string[] }
   );
 
-/** 上下文压缩沿用 SDK 任务终态，用户取消公开 stopped。 */
+/** 仅公开已进入摘要流程的任务和失败，用户取消公开 stopped。 */
 export type AgentContextCompactionEntry = JsonRecord & {
   kind: "context_compaction";
   id: string;

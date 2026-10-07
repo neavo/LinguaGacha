@@ -25,7 +25,7 @@ import { AgentChatDoc } from "./agent-chat-data";
 import { AgentRuntimeLog } from "./agent-runtime-log";
 
 /** 隔离远程流，事务、提交订阅与历史投影使用真实 Harness。 */
-async function create_chat() {
+async function create_chat(onChange: () => void = () => {}) {
   // 预留窗口，避免 fake 缓存计量差异提前触发自动压缩。
   const provider = fauxProvider({ models: [{ id: "chat-model", contextWindow: 256_000 }] });
   const models = createModels();
@@ -44,7 +44,7 @@ async function create_chat() {
     skillsPrompt: () => "",
     continueText: () => "继续",
     log: new AgentRuntimeLog({ append: vi.fn() }, "chat-test"),
-    onChange: vi.fn(),
+    onChange,
     onModelEvent: vi.fn(),
     onReport: vi.fn(),
   });
@@ -99,7 +99,7 @@ it("供应商身份在修订后改变，同一分支的生成和压缩共用身�
   await talk(chat, history);
   await chat.revise_assistant(chat.entries.at(-1)!, "修订回答");
   const execution = await talk(chat, history);
-  expect(await chat.compact("manual", execution)).toBe(true);
+  expect(await chat.compact("manual", execution)).toBe("success");
   expect(respond).toHaveBeenCalledTimes(3);
   const ids = respond.mock.calls.map(([, options]) => options?.sessionId);
   expect(ids[0]).toEqual(expect.any(String));
@@ -124,7 +124,7 @@ function project() {
 }
 /** 以无模型配置打开历史，模型只在新指令前注册。 */
 async function open(store: AgentChatStorage) {
-  const provider = fauxProvider();
+  const provider = fauxProvider({ models: [{ id: "chat-model", contextWindow: 256_000 }] });
   const models = createModels();
   const append = vi.fn();
   const chat = await AgentChat.open({
@@ -535,4 +535,34 @@ it.each([false, true])("SQLite 重开按修订输入回执恢复分支：已受�
     await store.close();
     database.close();
   }
+});
+
+it("正常响应立即校准预算，使低字符量历史可以手动压缩", async () => {
+  const { chat, provider } = await create_chat();
+  provider.setResponses([
+    fauxAssistantMessage("第一答"),
+    fauxAssistantMessage("第二答"),
+    fauxAssistantMessage("摘要"),
+  ]);
+  await talk(chat, "x".repeat(20_000));
+  const execution = await talk(chat, "x".repeat(80_000));
+  expect(chat.context.compactable).toBe(true);
+  expect(await chat.compact("manual", execution)).toBe("success");
+  expect(chat.entries.at(-1)).toMatchObject({ kind: "context_compaction", status: "success" });
+});
+
+it("无切点的压缩返回 skipped，公开时间线不产生压缩块", async () => {
+  let observed: AgentChat | undefined;
+  const visible: boolean[] = [];
+  const { chat, provider } = await create_chat(() => {
+    if (observed !== undefined)
+      visible.push(observed.entries.some((entry) => entry.kind === "context_compaction"));
+  });
+  observed = chat;
+  provider.setResponses([fauxAssistantMessage("回答")]);
+  const execution = await talk(chat, "短历史");
+  expect(await chat.compact("manual", execution)).toBe("skipped");
+  expect(chat.entries.some((entry) => entry.kind === "context_compaction")).toBe(false);
+  expect(visible.length).toBeGreaterThan(0);
+  expect(visible).not.toContain(true);
 });
