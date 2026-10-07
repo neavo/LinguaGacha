@@ -35,7 +35,6 @@ export function create_agent_read_skill_tool(
         name: Type.String({
           description: "要读取的 skill 名称。",
           minLength: 1,
-          pattern: "^[a-z0-9-]+$",
         }),
         path: Type.Optional(
           Type.String({

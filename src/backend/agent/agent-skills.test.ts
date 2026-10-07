@@ -44,7 +44,7 @@ describe("Agent skill 模型投影", () => {
 });
 
 describe("Agent skill 加载", () => {
-  it("按名称稳定去重，包内目录不发现新技能，遵循目录忽略规则", () => {
+  it("递归发现主文件并稳定去重，隐藏目录跳过，忽略文件不影响发现", () => {
     using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-skill-discovery-"));
     const paths = create_paths(temp.path);
     const root = paths.get_agent_user_skill_dir();
@@ -70,7 +70,15 @@ describe("Agent skill 加载", () => {
     write_skill(path.join(root, "ordinary", "script.js"), "console.log(1);");
     const warning = vi.fn();
     const result = load_agent_skills(paths, { warning });
-    expect(result.map((skill) => skill.name)).toEqual(["another", "same", "third"]);
+    expect(result.map((skill) => skill.name)).toEqual([
+      "another",
+      "dependency",
+      "excluded",
+      "ignored",
+      "nested",
+      "same",
+      "third",
+    ]);
     expect(warning).toHaveBeenCalledExactlyOnceWith(expect.any(String), {
       source: "agent",
       error: expect.any(String),
@@ -99,6 +107,8 @@ describe("Agent skill 加载", () => {
     const warning = vi.fn();
     const read_error = new Error("read denied");
     const skills = load_agent_skills(paths, { warning }, undefined, {
+      real_path: default_native_fs.real_path.bind(default_native_fs),
+      stat: default_native_fs.stat.bind(default_native_fs),
       /** 单个分支不可遍历时，其它分支仍可发现。 */
       read_dirents(directory) {
         if (directory.endsWith("unscannable")) throw new Error("scan denied");
@@ -111,21 +121,19 @@ describe("Agent skill 加载", () => {
         return default_native_fs.read_text_file(file);
       },
     });
-    expect(skills.map((skill) => skill.name)).toEqual(["good"]);
-    for (const folder of ["bad", "missing"]) {
-      expect(warning).toHaveBeenCalledWith(expect.any(String), {
-        source: "agent",
-        error: expect.objectContaining({
-          code: "file.invalid_structure",
-          diagnostic_context: { field: "name" },
-        }),
-        context: { path: path.join(root, folder, "SKILL.md") },
-      });
-    }
+    expect(skills.map((skill) => skill.name)).toEqual(["good", "missing"]);
+    expect(warning).toHaveBeenCalledWith(expect.any(String), {
+      source: "agent",
+      error: expect.objectContaining({
+        code: "file.invalid_structure",
+        diagnostic_context: { field: "description" },
+      }),
+      context: { path: path.join(root, "bad", "SKILL.md"), phase: "metadata" },
+    });
     expect(warning).toHaveBeenCalledWith(expect.any(String), {
       source: "agent",
       error: read_error,
-      context: { path: path.join(root, "unreadable", "SKILL.md") },
+      context: { path: path.join(root, "unreadable", "SKILL.md"), phase: "metadata" },
     });
     for (const [file, message] of [
       ["unscannable", "scan denied"],
@@ -134,10 +142,39 @@ describe("Agent skill 加载", () => {
       expect(warning).toHaveBeenCalledWith(expect.any(String), {
         source: "agent",
         error: expect.objectContaining({ message }),
-        context: { path: path.join(root, file) },
+        context: {
+          path: path.join(root, file),
+          ...(file === "unscannable" ? { phase: "discovery" } : {}),
+        },
       });
     }
   });
+  it("目录链接只发现授权根内目标一次，循环和外部目标不扩大访问", () => {
+    using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-skill-links-"));
+    const paths = create_paths(temp.path);
+    const root = paths.get_agent_user_skill_dir();
+    write_skill(
+      path.join(root, "target", "SKILL.md"),
+      "---\nname: linked\ndescription: valid\n---\nbody",
+    );
+    write_skill(
+      path.join(temp.path, "outside", "SKILL.md"),
+      "---\nname: outside\ndescription: valid\n---\nbody",
+    );
+    fs.symlinkSync(path.join(root, "target"), path.join(root, "alias"), "junction");
+    fs.symlinkSync(root, path.join(root, "target", "loop"), "junction");
+    fs.symlinkSync(path.join(temp.path, "outside"), path.join(root, "external"), "junction");
+    const warning = vi.fn();
+    expect(load_agent_skills(paths, { warning }).map((skill) => skill.name)).toEqual(["linked"]);
+    expect(warning).toHaveBeenCalledOnce();
+    expect(warning).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({
+        context: { path: path.join(root, "external"), phase: "discovery" },
+      }),
+    );
+  });
+
   it("只扫描用户与当前内置根，不加载安装目录残留的旧版 skill", () => {
     using temp_root = fs.mkdtempDisposableSync(
       path.join(os.tmpdir(), "linguagacha-agent-skills-legacy-resource-"),
@@ -157,7 +194,7 @@ describe("Agent skill 加载", () => {
     expect(skills.map((skill) => skill.name)).toEqual(["current"]);
   });
 
-  it("按元数据加载技能，目录名称不参与合法性判断", () => {
+  it("显式名称决定身份，损坏主文件只记录警告", () => {
     using temp_root = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "linguagacha-agent-skills-"));
     const app_root = temp_root.path;
     const paths = create_paths(app_root);
@@ -167,7 +204,7 @@ describe("Agent skill 加载", () => {
     );
     write_skill(
       path.join(paths.get_agent_user_skill_dir(), "broken", "SKILL.md"),
-      "---\nname: [\n---\n坏内容",
+      "---\nname: valid\ndescription: valid\nextra: \n  - [broken\n---\n坏内容",
     );
     write_skill(
       path.join(paths.get_agent_user_skill_dir(), "folder-name", "SKILL.md"),
@@ -210,7 +247,10 @@ describe("Agent skill 加载", () => {
         code: "file.invalid_structure",
         cause: expect.objectContaining({ name: "YAMLParseError" }),
       }),
-      context: { path: path.join(paths.get_agent_user_skill_dir(), "broken", "SKILL.md") },
+      context: {
+        path: path.join(paths.get_agent_user_skill_dir(), "broken", "SKILL.md"),
+        phase: "metadata",
+      },
     });
   });
 

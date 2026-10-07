@@ -21,6 +21,7 @@ import {
   change_skill_file,
 } from "./agent-skill-files";
 import { write_agent_skill_document } from "./agent-skill-document";
+import { normalize_agent_skill_text } from "../../shared/agent-skills";
 import { AppError } from "../../shared/error";
 import type { AppSettingService } from "../app/app-setting-service";
 import {
@@ -178,8 +179,12 @@ export class AgentSkillsService {
           typeof value.body !== "string"
         )
           throw new AppError("request.validation_failed");
-        document = { name: value.name, description: value.description, body: value.body };
-        text = write_agent_skill_document(current.text, document);
+        document = {
+          name: normalize_agent_skill_text(value.name),
+          description: normalize_agent_skill_text(value.description),
+          body: value.body,
+        };
+        text = write_agent_skill_document(current.text, document, skill.name);
       } else {
         if (typeof request.text !== "string") throw new AppError("request.validation_failed");
         text = request.text;

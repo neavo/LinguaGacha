@@ -6,11 +6,11 @@ describe("技能偏好", () => {
     expect(
       normalize_agent_skill_settings({
         disabled: { builtin: ["shared", "shared", null], user: "shared" },
-        user_order: ["second", false, "first", "second", "../outside"],
+        user_order: ["second", false, "first", "second", " 中文  Upper_case "],
       }),
     ).toEqual({
       disabled: { builtin: ["shared"], user: [] },
-      user_order: ["second", "first"],
+      user_order: ["second", "first", "中文 Upper_case"],
     });
     expect(normalize_agent_skill_settings(null)).toEqual({
       disabled: { builtin: [], user: [] },

@@ -3,7 +3,18 @@ import type { AgentSkillDisplayDescriptions } from "./agent";
 export const AGENT_SKILL_MAIN_FILE = "SKILL.md";
 export const AGENT_SKILL_UI_FILE = "ui.json";
 const MAX_SKILL_NAME_LENGTH = 64;
-const MAX_SKILL_DESCRIPTION_LENGTH = 1024;
+
+/** 模型目录、偏好与编辑共用单行消费值，原文件由后端保留。 */
+export function normalize_agent_skill_text(value: string): string {
+  return value.trim().replace(/\s+/gu, " ");
+}
+
+/** 名称只承担逻辑身份，长度按 Unicode 字符计算，路径权限由资源入口校验。 */
+export function is_agent_skill_name(value: unknown): value is string {
+  if (typeof value !== "string") return false;
+  const name = normalize_agent_skill_text(value);
+  return name.length > 0 && [...name].length <= MAX_SKILL_NAME_LENGTH;
+}
 
 export type AgentSkillSource = "builtin" | "user";
 
@@ -38,18 +49,8 @@ export function validate_agent_skill_document(document: {
   name: unknown;
   description: unknown;
 }): "name" | "description" | null {
-  if (
-    typeof document.name !== "string" ||
-    document.name.length > MAX_SKILL_NAME_LENGTH ||
-    !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(document.name)
-  )
-    return "name";
-  if (
-    typeof document.description !== "string" ||
-    !document.description.trim() ||
-    document.description.length > MAX_SKILL_DESCRIPTION_LENGTH ||
-    /[\r\n]/.test(document.description)
-  )
+  if (!is_agent_skill_name(document.name)) return "name";
+  if (typeof document.description !== "string" || !normalize_agent_skill_text(document.description))
     return "description";
   return null;
 }

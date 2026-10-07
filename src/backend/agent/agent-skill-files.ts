@@ -127,7 +127,7 @@ export function read_skill_file(
     revision: createHash("sha256").update(bytes).digest("hex"),
     text,
     ...(relative === AGENT_SKILL_MAIN_FILE && text !== null
-      ? { document: read_agent_skill_document(text) }
+      ? { document: read_agent_skill_document(text, skill.name) }
       : {}),
   };
 }

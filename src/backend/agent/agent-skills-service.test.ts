@@ -1,3 +1,6 @@
+import { validateToolArguments } from "@earendil-works/pi-ai";
+import { create_agent_read_skill_tool } from "./tools/read-skill";
+import { agent_tool_call } from "../../test/agent-tool-fixture";
 import { RuntimeOperationGate } from "../runtime-operation-gate";
 import fs from "node:fs";
 import os from "node:os";
@@ -49,6 +52,54 @@ function fixture() {
 }
 
 describe("技能管理", () => {
+  it("目录回退名称贯通读取、正文保存、改名和持久化偏好", async () => {
+    using f = fixture();
+    f.write("user", "中文 Skill", "placeholder");
+    const target = path.join(f.paths.get_agent_user_skill_dir(), "中文 Skill", "SKILL.md");
+    const original = "---\ndescription: |\n  很长   描述\n  第二行\nextra: keep\n---\nBody";
+    fs.writeFileSync(target, original);
+    expect((await f.service.snapshot()).skills[0]?.name).toBe("中文 Skill");
+    const tool = create_agent_read_skill_tool(() => f.service.get_current(), f.paths);
+    const args = validateToolArguments(tool, {
+      type: "toolCall",
+      id: "read",
+      name: "read_skill",
+      arguments: { name: "中文 Skill" },
+    });
+    expect(await tool.execute(args, ...agent_tool_call("read"))).toMatchObject({
+      details: { content: original },
+    });
+    const file = await f.service.read_file({
+      source: "user",
+      name: "中文 Skill",
+      path: "SKILL.md",
+    });
+    const saved = await f.service.save_file({
+      ...file.skill,
+      path: file.path,
+      revision: file.revision,
+      document: { ...file.document!, body: "changed" },
+    });
+    expect(saved.text).toBe(original.replace(/Body$/, "changed"));
+    await f.service.reorder({ names: ["中文 Skill"] });
+    await f.service.set_enabled({ ...saved.skill, enabled: false });
+    const renamed = await f.service.save_file({
+      ...saved.skill,
+      path: saved.path,
+      revision: saved.revision,
+      document: { ...saved.document!, name: " Upper_case   技能 " },
+    });
+    expect(renamed.skill.name).toBe("Upper_case 技能");
+    const settings = new AppSettingService(f.paths, { publish: vi.fn() });
+    expect(settings.read_setting().agent_skills).toMatchObject({
+      disabled: { user: ["Upper_case 技能"] },
+      user_order: ["Upper_case 技能"],
+    });
+    expect(f.service.get_current()).toEqual([]);
+    await f.service.set_enabled({ ...renamed.skill, enabled: true });
+    expect(f.service.get_current().map((skill) => skill.name)).toEqual(["Upper_case 技能"]);
+  });
+
   it("异步删除持有运行互斥和查询队列，提交偏好时保留等待期间的其它设置", async () => {
     using f = fixture();
     f.write("user", "folder", "sample");
@@ -303,30 +354,6 @@ describe("技能管理", () => {
       reason: { code: "data.revision_conflict" },
     });
     expect(fs.readFileSync(path.join(root, "note.md"), "utf8")).toBe("first");
-  });
-
-  it("技能改名保留目录并迁移启用状态和顺序", async () => {
-    using f = fixture();
-    f.write("user", "before", "before");
-    const skill = { source: "user", name: "before" };
-    await f.service.set_enabled({ ...skill, enabled: false });
-    await f.service.reorder({ names: ["before"] });
-    const file = await f.service.read_file({ ...skill, path: "SKILL.md" });
-    const saved = await f.service.save_file({
-      ...skill,
-      path: file.path,
-      revision: file.revision,
-      document: { name: "after", description: "A: description", body: "\nbody\n" },
-    });
-    expect(saved.skill.name).toBe("after");
-    expect((await f.service.snapshot()).skills).toMatchObject([{ name: "after", enabled: false }]);
-    expect(f.settings.read_setting().agent_skills).toEqual({
-      disabled: { builtin: [], user: ["after"] },
-      user_order: ["after"],
-    });
-    expect(fs.existsSync(path.join(f.paths.get_agent_user_skill_dir(), "before"))).toBe(true);
-    await f.service.set_enabled({ source: "user", name: "after", enabled: true });
-    expect(f.service.get_current().map((item) => item.name)).toEqual(["after"]);
   });
 
   it("改名配置写入失败恢复原正文和偏好", async () => {
