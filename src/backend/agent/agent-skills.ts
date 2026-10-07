@@ -2,7 +2,6 @@ import { AGENT_SKILL_MAIN_FILE, AGENT_SKILL_UI_FILE } from "../../shared/agent-s
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 
-import ignore, { type Ignore } from "ignore";
 import { read_agent_skill_metadata } from "./agent-skill-document";
 
 import { is_json_record } from "../../domain/json";
@@ -38,7 +37,7 @@ type AgentSkillCatalogDefinition = Pick<
 >;
 
 export type AgentSkillLog = Pick<LogManager, "warning">;
-type AgentSkillNativeFs = Pick<NativeFs, "read_dirents" | "read_text_file">;
+type AgentSkillNativeFs = Pick<NativeFs, "read_dirents" | "read_text_file" | "real_path" | "stat">;
 export type AgentSkillPaths = Pick<
   AppPathService,
   "get_agent_builtin_skill_dir" | "get_agent_user_skill_dir"
@@ -92,9 +91,12 @@ export function scan_agent_skills(
     )) {
       let metadata: ReturnType<typeof read_agent_skill_metadata>;
       try {
-        metadata = read_agent_skill_metadata(native_fs.read_text_file(filePath));
+        metadata = read_agent_skill_metadata(
+          native_fs.read_text_file(filePath),
+          path.basename(path.dirname(filePath)),
+        );
       } catch (error) {
-        log_skill_failure(log_manager, error, { path: filePath });
+        log_skill_failure(log_manager, error, { path: filePath, phase: "metadata" });
         continue;
       }
       const previous = names.get(metadata.name);
@@ -123,69 +125,78 @@ export function scan_agent_skills(
   return skills;
 }
 
-const SKILL_IGNORE_FILES = [".gitignore", ".ignore", ".fdignore"] as const;
+const SKILL_SCAN_MAX_DEPTH = 6;
+const SKILL_SCAN_MAX_DIRECTORIES = 2_000;
+const SKILL_SCAN_MAX_ENTRIES = 20_000;
 
-/** 链接只允许作为来源入口；发现主文件后即到达包边界。忽略规则按所在目录继承。 */
+/** 有界遍历已授权根，真实路径去重同时阻止目录链接循环。 */
 function discover_skill_files(root: string, log: AgentSkillLog, fs: AgentSkillNativeFs): string[] {
   const files: string[] = [];
-  /** 每个目录追加自己的忽略规则，兄弟目录分别继承父级规则。 */
-  const walk = (
-    directory: string,
-    parents: readonly { directory: string; matcher: Ignore }[],
-  ): void => {
-    let entries: ReturnType<AgentSkillNativeFs["read_dirents"]>;
-    try {
-      entries = fs.read_dirents(directory);
-    } catch (error) {
-      // 用户技能根允许尚未创建；已发现的分支访问失败仍需诊断。
-      if (directory !== path.resolve(root) || !is_not_found_error(error))
-        log_skill_failure(log, error, { path: directory });
-      return;
-    }
-    const matcher = ignore();
-    for (const name of SKILL_IGNORE_FILES) {
-      if (!entries.some((entry) => entry.name === name && entry.isFile())) continue;
-      const target = path.join(directory, name);
-      try {
-        matcher.add(fs.read_text_file(target));
-      } catch (error) {
-        log_skill_failure(log, error, { path: target });
-      }
-    }
-    const rules = [...parents, { directory, matcher }];
-    /** 从父到子应用规则，子目录的显式反选覆盖父级匹配。 */
-    const ignored = (target: string, is_directory: boolean): boolean => {
-      let ignored = false;
-      for (const rule of rules) {
-        const relative =
-          path.relative(rule.directory, target).replaceAll("\\", "/") + (is_directory ? "/" : "");
-        const result = rule.matcher.test(relative);
-        if (result.ignored) ignored = true;
-        else if (result.unignored) ignored = false;
-      }
-      return ignored;
-    };
-    const main = path.join(directory, AGENT_SKILL_MAIN_FILE);
+  const visited = new Set<string>(); // 同一真实目录只扫描一次，链接循环在此终止。
+  let entries_read = 0; // 每个资源根共用目录项额度。
+  let limit_reported = false; // 每个根的额度诊断只记录一次。
+  /** 记录一次遍历裁剪原因，已发现的技能仍交付调用方。 */
+  const report_limit = (): void => {
+    if (limit_reported) return;
+    limit_reported = true;
+    log_skill_failure(log, "技能扫描已到达遍历上限", { path: root, phase: "discovery" });
+  };
+  let real_root: string;
+  try {
+    real_root = fs.real_path(root);
+  } catch (error) {
+    if (!is_not_found_error(error))
+      log_skill_failure(log, error, { path: root, phase: "discovery" });
+    return files;
+  }
+  /** 沿链接解析目标，资源授权始终以真实根目录判定。 */
+  const check_inside = (target: string): string => {
+    const real = fs.real_path(target);
+    const relative = path.relative(real_root, real);
+    if (relative === ".." || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative))
+      throw new Error("Skill path resolves outside its resource root.");
+    return real;
+  };
+  /** 按名称遍历所有候选，单个分支失败不阻断其他目录。 */
+  const walk = (directory: string, depth: number): void => {
     if (
-      entries.some((entry) => entry.name === AGENT_SKILL_MAIN_FILE && entry.isFile()) &&
-      !ignored(main, false)
+      depth > SKILL_SCAN_MAX_DEPTH ||
+      visited.size >= SKILL_SCAN_MAX_DIRECTORIES ||
+      entries_read >= SKILL_SCAN_MAX_ENTRIES
     ) {
-      files.push(main);
+      report_limit();
       return;
     }
-    for (const entry of entries) {
-      if (
-        !entry.isDirectory() ||
-        entry.isSymbolicLink() ||
-        entry.name.startsWith(".") ||
-        entry.name === "node_modules"
-      )
-        continue;
-      const target = path.join(directory, entry.name);
-      if (!ignored(target, true)) walk(target, rules);
+    try {
+      const real = check_inside(directory);
+      if (visited.has(real)) return;
+      visited.add(real);
+      for (const entry of fs.read_dirents(directory).sort((a, b) => a.name.localeCompare(b.name))) {
+        if (++entries_read > SKILL_SCAN_MAX_ENTRIES) {
+          report_limit();
+          break;
+        }
+        const target = path.join(directory, entry.name);
+        try {
+          if (entry.name === AGENT_SKILL_MAIN_FILE && fs.stat(target).isFile()) {
+            check_inside(target);
+            files.push(target);
+          } else if (
+            !entry.name.startsWith(".") &&
+            (entry.isDirectory() || entry.isSymbolicLink()) &&
+            fs.stat(target).isDirectory()
+          ) {
+            walk(target, depth + 1);
+          }
+        } catch (error) {
+          log_skill_failure(log, error, { path: target, phase: "discovery" });
+        }
+      }
+    } catch (error) {
+      log_skill_failure(log, error, { path: directory, phase: "discovery" });
     }
   };
-  walk(path.resolve(root), []);
+  walk(root, 0);
   return files;
 }
 

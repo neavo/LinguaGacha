@@ -166,7 +166,6 @@ function create_fixture(source: "user" | "builtin", name: string, body: string) 
     get_agent_user_skill_dir: () => user_root,
     get_agent_builtin_skill_dir: () => builtin_root,
   });
-  if (tool === undefined) throw new Error("缺少 read_skill");
   return {
     [Symbol.dispose]: () => disposable[Symbol.dispose](),
     root: disposable.path,
@@ -195,5 +194,5 @@ async function execute(
   tool: ReturnType<typeof create_agent_read_skill_tool>,
   input: { name: string; path?: string },
 ) {
-  return await tool!.execute(input, ...agent_tool_call("read"));
+  return await tool.execute(input, ...agent_tool_call("read"));
 }

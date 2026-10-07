@@ -66,7 +66,6 @@
     "hono": "^4.13.13",
     "htmlparser2": "^12.0.0",
     "iconv-lite": "^0.7.3",
-    "ignore": "7.0.12",
     "jose": "^6.2.12",
     "jsonrepair": "^3.15.0",
     "jszip": "^3.10.2",

@@ -37,7 +37,29 @@ describe("技能主文件编辑", () => {
   it("损坏的元数据无法进入编辑视图", () => {
     expect(() => read_agent_skill_document("---\nname: [broken\n---\ntext")).toThrow();
   });
-  it("名称必须由元数据声明", () => {
-    expect(() => read_agent_skill_document("---\ndescription: description\n---\nbody")).toThrow();
+  it("缺省名称回退并规范化，正文保存保留原始头部", () => {
+    const original = "---\ndescription: |\n  多行   描述\n  第二行\nextra: keep\n---\nbody";
+    const value = read_agent_skill_document(original, " 中文  Skill ");
+    expect(value).toEqual({ name: "中文 Skill", description: "多行 描述 第二行", body: "body" });
+    expect(write_agent_skill_document(original, { ...value, body: "changed" }, "中文 Skill")).toBe(
+      original.replace(/body$/, "changed"),
+    );
+  });
+  it("有限修复散文标量，保留块字符串、注释和长描述", () => {
+    const original =
+      "---\nname: 中文  Skill\ndescription: Build for AWS: ECS # keep\nargument-hint: <duration: 7d>\nmetadata:\n  note: |\n    keep: this\n---\nbody";
+    const value = read_agent_skill_document(original);
+    expect(value.name).toBe("中文 Skill");
+    expect(value.description).toBe("Build for AWS: ECS");
+    expect(write_agent_skill_document(original, { ...value, body: "changed" })).toBe(
+      original.replace(/body$/, "changed"),
+    );
+    const saved = write_agent_skill_document(original, {
+      ...value,
+      description: "💡".repeat(1025),
+    });
+    expect(read_agent_skill_document(saved).description).toBe("💡".repeat(1025));
+    expect(saved).toContain("# keep");
+    expect(parse(saved.split("---")[1]!).metadata.note).toBe("keep: this\n");
   });
 });
