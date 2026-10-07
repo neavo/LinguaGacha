@@ -48,8 +48,9 @@ import { AppError } from "../../shared/error";
 import type { PreparedAgentMessage } from "./agent-message-input";
 import { AgentInputQueue } from "./agent-input-queue";
 import { AgentChatDoc, type AgentChatData, type AgentInputRecord } from "./agent-chat-data";
+import { read_agent_compaction_status } from "./agent-compaction";
 import { AgentChatView, assistant_entry_id } from "./agent-chat-view";
-import { AGENT_KEEP_RECENT_TOKENS, read_agent_chat_context } from "./agent-chat-context";
+import { AgentContextBudget, read_agent_chat_context } from "./agent-chat-context";
 import { append_agent_chat_seed, type AgentChatSeed } from "./agent-chat-seed";
 import { AgentRuntimeLog, type AgentStopReason } from "./agent-runtime-log";
 import {
@@ -58,12 +59,6 @@ import {
   is_agent_cancellation,
 } from "./tool-definition";
 
-const COMPACTION_SETTINGS = {
-  enabled: true,
-  reserveTokens: AGENT_COMPACTION_RESERVE_TOKENS,
-  keepRecentTokens: AGENT_KEEP_RECENT_TOKENS,
-  backgroundTokens: 0,
-};
 const RETRY_SETTINGS = { enabled: true, maxRetries: 3, baseDelayMs: 2_000 };
 
 type SubmittedInput = {
@@ -122,9 +117,10 @@ export class AgentChat {
     return this.view.usage;
   }
   public state: Readonly<AgentChatData> = AgentChatDoc.definition.initial(null); // 只读提交快照，写入由 `Harness` 事务生成
+  private readonly contextBudget = new AgentContextBudget(); // 每个会话独立校准近期保留预算
+  private readonly pendingCompactionLogs = new Map<number, string>(); // 开始时固定原因，摘要写入后结算日志
   private harness!: Harness;
   private conversation!: Conversation; // 执行目标可暂为候选分支，公开历史始终读取 activeConversationId
-  private readonly compactionStarts = new Map<number, number>(); // 提交线外持久化后释放，避免订阅回调重入事务。
   private compactionReason: "manual" | "length" = "manual"; // 产品主动压缩补充触发原因，SDK 自动压缩沿用原原因
   private contextRevision = 0; // 正文进度和队列变化不能使在途上下文查询失效
   private contextDirty = true; // 模型历史或配置变化使上下文查询失效
@@ -243,11 +239,15 @@ export class AgentChat {
         ],
         hooks: [
           hook(GenerationTask, {
+            beforeRequest: (request, api) => {
+              chat.contextBudget.before_request(api.taskId, request.messages);
+            },
             onYield: async (message, api) => {
               await chat.before_yield(message, api.taskId);
               return undefined;
             },
-            afterResponse: async (message) => {
+            afterResponse: async (message, api) => {
+              chat.contextBudget.after_response(api.taskId, message);
               if (
                 message.stopReason !== "length" &&
                 message.stopReason !== "error" &&
@@ -257,7 +257,12 @@ export class AgentChat {
             },
           }),
           hook(CompactionTask, {
-            beforeCompact: async (compaction) => {
+            beforeCompact: async (compaction, api) => {
+              // `beforeCompact` 已确认摘要范围，此时持久化公开起点，恢复后沿用同一时间。
+              await chat.harness.commit(async (tx) => {
+                const state = await tx.doc(AgentChatDoc, options.chatId, null);
+                state.compactionStartedAt[api.taskId] ??= Date.now();
+              }, BACKGROUND_CONTEXT);
               if (compaction.reason === "overflow" && chat.execution !== null)
                 chat.execution.recoveryUsed = true;
             },
@@ -272,7 +277,14 @@ export class AgentChat {
         registry,
         settings: {
           stream: { cacheRetention: "short" },
-          compaction: COMPACTION_SETTINGS,
+          compaction: {
+            enabled: true,
+            reserveTokens: AGENT_COMPACTION_RESERVE_TOKENS,
+            backgroundTokens: 0,
+            get keepRecentTokens() {
+              return chat.contextBudget.keepRecentTokens;
+            },
+          },
           retry: RETRY_SETTINGS,
           steeringMode: "one-at-a-time",
           followUpMode: "one-at-a-time",
@@ -705,7 +717,7 @@ export class AgentChat {
       if (execution.recoveryUsed)
         throw new Error("Truncated response recovery failed after one compact-and-retry attempt.");
       execution.recoveryUsed = true;
-      if (!(await this.compact("length", execution)))
+      if ((await this.compact("length", execution)) !== "success")
         throw new Error("Truncated response recovery could not compact history.");
       execution.controller.signal.throwIfAborted();
       execution.phase = "running";
@@ -735,7 +747,10 @@ export class AgentChat {
   }
 
   /** 摘要任务结束与摘要写入均完成后，才允许产品轮次继续。 */
-  public async compact(reason: "manual" | "length", execution: AgentExecution): Promise<boolean> {
+  public async compact(
+    reason: "manual" | "length",
+    execution: AgentExecution,
+  ): Promise<"success" | "skipped"> {
     execution.controller.signal.throwIfAborted();
     execution.phase = "compacting";
     this.compactionReason = reason;
@@ -764,7 +779,9 @@ export class AgentChat {
           throw new Error("Compaction summary was not placed");
       }
       await this.flush();
-      return result.entryId !== undefined || result.submissionId !== undefined;
+      return read_agent_compaction_status(task, this.view.submissions) === "success"
+        ? "success"
+        : "skipped";
     } finally {
       if (!execution.controller.signal.aborted) execution.phase = "settling";
       this.options.onChange();
@@ -961,14 +978,6 @@ export class AgentChat {
           this.dirty = false;
           this.log.flush();
           if (this.conversation === undefined) continue;
-          if (this.compactionStarts.size > 0) {
-            const starts = [...this.compactionStarts];
-            await this.harness.commit(async (tx) => {
-              const state = await tx.doc(AgentChatDoc, this.options.chatId, null);
-              for (const [id, startedAt] of starts) state.compactionStartedAt[id] = startedAt;
-            }, BACKGROUND_CONTEXT);
-            for (const [id] of starts) this.compactionStarts.delete(id);
-          }
           const conversation =
             this.state.activeConversationId === this.conversation.id
               ? this.conversation
@@ -986,8 +995,9 @@ export class AgentChat {
               this.dirty = true;
               continue;
             }
+            this.contextBudget.restore(view, this.model, conversation.id);
             this.context = this.state.seeded
-              ? read_agent_chat_context(view, this.model)
+              ? read_agent_chat_context(view, this.model, this.contextBudget.keepRecentTokens)
               : { tokens: null, compactable: false, limits: null };
             this.contextDirty = false;
           }
@@ -1002,6 +1012,8 @@ export class AgentChat {
             for (const id of consumed) this.consumedInputs.delete(id);
           }
           this.view.refresh(conversation.id, this.state);
+          for (const [id, reason] of this.pendingCompactionLogs)
+            this.finish_compaction_log(this.view.compactions.get(id)!, reason);
           this.refreshFailure = undefined;
           this.options.onChange();
         }
@@ -1026,43 +1038,50 @@ export class AgentChat {
     task: TaskRecord<JsonValue, JsonValue, JsonValue>,
     previous: TaskRecord<JsonValue, JsonValue, JsonValue> | undefined,
   ): void {
+    if (previous !== undefined) return;
     const input = task.input;
     const nativeReason =
       typeof input === "object" && input !== null && "reason" in input
         ? String(input.reason)
         : "manual";
     const reason = nativeReason === "manual" ? this.compactionReason : nativeReason;
-    if (previous === undefined) {
-      // 新任务只捕获一次起始时间，恢复的任务沿用已提交时间。
-      this.compactionStarts.set(task.id, Date.now());
-      this.log.handle_event({ type: "compaction_start", reason, task_id: task.id });
-    }
-    if (task.state.status === "terminal" && previous?.state.status !== "terminal") {
-      const outcome = task.state.outcome;
-      this.log.handle_event({
-        type: "compaction_end",
-        reason,
-        task_id: task.id,
-        status:
-          outcome.status === "aborted"
-            ? "stopped"
-            : outcome.status === "completed"
-              ? "success"
-              : "error",
-        ...(outcome.status === "aborted" && this.execution?.stop_reason != null
-          ? { stop_reason: this.execution.stop_reason }
-          : {}),
-        ...(outcome.status !== "completed" && outcome.status !== "aborted"
-          ? {
-              error:
-                outcome.status === "orphaned"
-                  ? new Error(outcome.reason)
-                  : new Error(outcome.error.message, { cause: outcome.error.detail }),
-              level: outcome.status === "failed" ? ("warning" as const) : ("error" as const),
-            }
-          : {}),
-      });
-    }
+    // 日志包含切点选择尝试，公开条目的起点由 `beforeCompact` 单独记录。
+    this.log.handle_event({ type: "compaction_start", reason, task_id: task.id });
+    this.pendingCompactionLogs.set(task.id, reason);
+  }
+
+  /** SDK 任务可先于摘要写入结束，提交回执到达后才发布日志终态。 */
+  private finish_compaction_log(
+    task: TaskRecord<JsonValue, JsonValue, JsonValue>,
+    reason: string,
+  ): void {
+    const status = read_agent_compaction_status(task, this.view.submissions);
+    if (status === "running" || task.state.status !== "terminal") return;
+    this.pendingCompactionLogs.delete(task.id);
+    const outcome = task.state.outcome;
+    const error =
+      outcome.status === "orphaned"
+        ? new Error(outcome.reason)
+        : outcome.status === "failed"
+          ? new Error(outcome.error.message, { cause: outcome.error.detail })
+          : status === "error"
+            ? new Error("Compaction summary was not placed")
+            : undefined;
+    this.log.handle_event({
+      type: "compaction_end",
+      reason,
+      task_id: task.id,
+      status,
+      ...(outcome.status === "aborted" && this.execution?.stop_reason != null
+        ? { stop_reason: this.execution.stop_reason }
+        : {}),
+      ...(error === undefined
+        ? {}
+        : {
+            error,
+            level: outcome.status === "orphaned" ? ("error" as const) : ("warning" as const),
+          }),
+    });
   }
 }
 

@@ -640,7 +640,7 @@ export class AgentService {
       this.launch(chat, execution, () => this.drive(chat, execution, accepted));
     });
   }
-  /** 手动压缩先受理并发布运行态，摘要结算由后台持有租约。 */
+  /** 手动压缩返回受理回执，摘要结算由后台持有租约。 */
   public async compact_context(): Promise<AgentCommandAck> {
     this.assert_queue_available();
     if (this.execution !== null) throw new AppErrors.AppError("runtime.busy");
@@ -663,8 +663,6 @@ export class AgentService {
             chat.log.report_failure("compaction", error);
         }
       });
-      // 排在原生压缩受理之后的短提交，使命令回执包含 running 条目，无需等待摘要。
-      await chat.change(() => {});
     });
   }
   /** 工程提交保持原子边界，其余执行公开停止请求并等待 SDK 结算。 */

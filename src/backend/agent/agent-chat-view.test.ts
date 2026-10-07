@@ -1,3 +1,4 @@
+import type { JsonValue } from "@earendil-works/chord";
 import { fauxAssistantMessage, fauxText, fauxToolCall, type Message } from "@earendil-works/pi-ai";
 import type {
   ConversationId,
@@ -20,28 +21,20 @@ it("压缩起始时间可随独立文档提交补入，任务终态与恢复沿�
   const conversationId = 1 as ConversationId;
   const state = AgentChatDoc.definition.initial(null);
   const task = {
-    id: 2 as TaskId<null>,
-    conversationId,
-    kind: "pi.compaction",
-    version: 1,
-    input: null,
-    background: false,
-    abortRequested: false,
+    ...compaction_task({}),
     state: { status: "running", checkpoint: null },
-  } satisfies TaskRecord<null, null, null>;
+  } satisfies TaskRecord<JsonValue, JsonValue, JsonValue>;
   const view = new AgentChatView();
   view.observe({ seq: 1 as Seq, changes: [{ type: "task", value: task }] });
   view.refresh(conversationId, state);
-  expect(view.entries).toEqual([
-    { kind: "context_compaction", id: "compaction:2", status: "running", createdAt: null },
-  ]);
+  expect(view.entries).toEqual([]);
   const timed = { ...state, compactionStartedAt: { 2: 100_000 } };
   view.refresh(conversationId, timed);
   expect(view.entries[0]?.createdAt).toBe(100_000);
-  const completed: TaskRecord<null, null, null> = {
+  const completed = {
     ...task,
-    state: { status: "terminal", outcome: { status: "completed", result: null } },
-  };
+    state: { status: "terminal", outcome: { status: "completed", result: { entryId: 3 } } },
+  } satisfies TaskRecord<JsonValue, JsonValue, JsonValue>;
   view.observe({ seq: 2 as Seq, changes: [{ type: "task", value: completed }] });
   view.refresh(conversationId, timed);
   expect(view.entries[0]).toMatchObject({ status: "success", createdAt: 100_000 });
@@ -258,4 +251,82 @@ it("流式变化只返回当前条目，终帧与提交变化顺序不影响恢�
   const restored = new AgentChatView();
   restored.reset(view.branch_records(), view.submissions, [], {}, state);
   expect(restored.entries).toEqual(view.entries);
+});
+
+/** 压缩投影使用原生任务身份，状态来自各测试指定的 SDK 事实。 */
+function compaction_task(result: JsonValue) {
+  return {
+    id: 2 as TaskId<JsonValue>,
+    conversationId: 1 as ConversationId,
+    kind: "pi.compaction",
+    version: 1,
+    input: { reason: "manual" },
+    background: false,
+    abortRequested: false,
+    state: { status: "terminal", outcome: { status: "completed", result } },
+  } satisfies TaskRecord<JsonValue, JsonValue, JsonValue>;
+}
+
+it("摘要回执更新已结束任务的时间线，恢复得到相同结果", () => {
+  const task = compaction_task({ submissionId: 3 });
+  const queued: SubmissionRecord = {
+    id: 3 as SubmissionId,
+    conversationId: task.conversationId,
+    type: "write",
+    status: "queued",
+  };
+  const state = { ...AgentChatDoc.definition.initial(null), compactionStartedAt: { 2: 1000 } };
+  const view = new AgentChatView();
+  view.observe({
+    seq: 1 as Seq,
+    changes: [
+      { type: "task", value: task },
+      { type: "submission", value: queued },
+    ],
+  });
+  view.refresh(task.conversationId, state);
+  expect(view.entries[0]?.status).toBe("running");
+  const done: SubmissionRecord = { ...queued, status: "done", entry: 4 as EntryId };
+  view.observe({ seq: 2 as Seq, changes: [{ type: "submission", value: done }] });
+  view.refresh(task.conversationId, state);
+  expect(view.entries[0]?.status).toBe("success");
+  const restored = new AgentChatView();
+  restored.submissions.set(done.id, done);
+  restored.reset([], new Map(), [task], {}, state);
+  expect(restored.entries).toEqual(view.entries);
+});
+
+it("空结果始终隐藏压缩块，恢复也不公开空操作", () => {
+  const task = compaction_task({});
+  const state = { ...AgentChatDoc.definition.initial(null), compactionStartedAt: { 2: 1000 } };
+  const view = new AgentChatView();
+  view.observe({ seq: 1 as Seq, changes: [{ type: "task", value: task }] });
+  view.refresh(task.conversationId, state);
+  expect(view.entries).toEqual([]);
+  expect(view.take_change().entries).toEqual([]);
+  const restored = new AgentChatView();
+  restored.reset([], new Map(), [task], {}, state);
+  expect(restored.entries).toEqual([]);
+});
+
+it("摘要阶段取消保留起点，选择阶段取消隐藏，失败保留诊断条目", () => {
+  const task = {
+    ...compaction_task({}),
+    state: { status: "terminal", outcome: { status: "aborted" } },
+  } satisfies TaskRecord<JsonValue, JsonValue, JsonValue>;
+  const state = AgentChatDoc.definition.initial(null);
+  const view = new AgentChatView();
+  view.reset([], new Map(), [task], {}, state);
+  expect(view.entries).toEqual([]);
+  view.reset([], new Map(), [task], {}, { ...state, compactionStartedAt: { 2: 1000 } });
+  expect(view.entries[0]).toMatchObject({ status: "stopped", createdAt: 1000 });
+  const failed = {
+    ...task,
+    state: {
+      status: "terminal",
+      outcome: { status: "failed", error: { message: "model unavailable" } },
+    },
+  } satisfies TaskRecord<JsonValue, JsonValue, JsonValue>;
+  view.reset([], new Map(), [failed], {}, state);
+  expect(view.entries[0]).toMatchObject({ status: "error", createdAt: null });
 });
