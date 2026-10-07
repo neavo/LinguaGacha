@@ -1,0 +1,138 @@
+import type { JSX, ReactNode } from "react";
+import { FileDown, FileUp, Plus, Trash2 } from "lucide-react";
+import { useI18n, type LocaleKey } from "@frontend/app/locale/locale-context";
+import { PresetMenu } from "@frontend/features/preset-editor/preset-menu";
+import type { PresetItem } from "@frontend/features/preset-editor/preset-types";
+import { AppButton } from "@frontend/widgets/app-button";
+import {
+  CommandBar,
+  CommandBarGroup,
+  CommandBarSeparator,
+} from "@frontend/widgets/command-bar/command-bar";
+import { useActionShortcut } from "@frontend/widgets/interactions/use-action-shortcut";
+import { ShortcutKbd } from "@frontend/widgets/interactions/shortcut-kbd";
+
+export type QualityRuleEntryActions = {
+  create_label: LocaleKey;
+  selected_entry_count: number;
+  on_create: () => void;
+  on_delete_selected: () => Promise<void>;
+};
+
+export type QualityRuleCommandBarProps = {
+  ready: boolean;
+  readonly: boolean;
+  hint: ReactNode;
+  entry_actions?: QualityRuleEntryActions;
+  preset_items: PresetItem[];
+  preset_menu_open: boolean;
+  on_import: () => Promise<void>;
+  on_export: () => Promise<void>;
+  on_open_preset_menu: () => Promise<void>;
+  on_apply_preset: (virtual_id: string) => Promise<void>;
+  on_request_reset: () => void;
+  on_request_save_preset: () => void;
+  on_request_rename_preset: (preset_item: PresetItem) => void;
+  on_request_delete_preset: (preset_item: PresetItem) => void;
+  on_set_default_preset: (virtual_id: string) => Promise<void>;
+  on_cancel_default_preset: () => Promise<void>;
+  on_preset_menu_open_change: (next_open: boolean) => void;
+};
+
+/** 当前内容必须就绪。工程占用只限制写入，导出与预设文件管理仍可使用。 */
+export function QualityRuleCommandBar(props: QualityRuleCommandBarProps): JSX.Element {
+  const { t } = useI18n();
+  const entries = props.entry_actions;
+  const write_disabled = !props.ready || props.readonly; // 写入限制与导出、预设管理的读取限制独立。
+  useActionShortcut({
+    action: "create",
+    enabled: entries !== undefined && !write_disabled,
+    on_trigger: () => entries?.on_create(),
+  });
+  useActionShortcut({
+    action: "delete",
+    enabled: entries !== undefined && !write_disabled && entries.selected_entry_count > 0,
+    on_trigger: () => {
+      void entries?.on_delete_selected();
+    },
+  });
+  return (
+    <CommandBar
+      actions={
+        <>
+          {entries && (
+            <>
+              <CommandBarGroup>
+                <AppButton
+                  variant="ghost"
+                  size="toolbar"
+                  disabled={write_disabled}
+                  onClick={entries.on_create}
+                >
+                  <Plus data-icon="inline-start" />
+                  {t(entries.create_label)}
+                  <ShortcutKbd action="create" />
+                </AppButton>
+                <AppButton
+                  variant="ghost"
+                  size="toolbar"
+                  disabled={write_disabled || entries.selected_entry_count === 0}
+                  onClick={() => {
+                    void entries.on_delete_selected();
+                  }}
+                >
+                  <Trash2 data-icon="inline-start" />
+                  {t("app.action.delete")}
+                  <ShortcutKbd action="delete" />
+                </AppButton>
+              </CommandBarGroup>
+              <CommandBarSeparator />
+            </>
+          )}
+          <CommandBarGroup>
+            <AppButton
+              variant="ghost"
+              size="toolbar"
+              disabled={write_disabled}
+              onClick={() => {
+                void props.on_import();
+              }}
+            >
+              <FileDown data-icon="inline-start" />
+              {t("app.action.import")}
+            </AppButton>
+            <AppButton
+              variant="ghost"
+              size="toolbar"
+              disabled={!props.ready}
+              onClick={() => {
+                void props.on_export();
+              }}
+            >
+              <FileUp data-icon="inline-start" />
+              {t("app.action.export")}
+            </AppButton>
+          </CommandBarGroup>
+          <CommandBarSeparator />
+          <PresetMenu
+            disabled={!props.ready}
+            items={props.preset_items}
+            open={props.preset_menu_open}
+            project_write_disabled={write_disabled}
+            trigger_label={t("app.action.preset")}
+            on_open={props.on_open_preset_menu}
+            on_open_change={props.on_preset_menu_open_change}
+            on_apply={props.on_apply_preset}
+            on_request_reset={props.on_request_reset}
+            on_request_save={props.on_request_save_preset}
+            on_request_rename={props.on_request_rename_preset}
+            on_request_delete={props.on_request_delete_preset}
+            on_set_default={props.on_set_default_preset}
+            on_cancel_default={props.on_cancel_default_preset}
+          />
+        </>
+      }
+      hint={props.ready ? props.hint : null}
+    />
+  );
+}

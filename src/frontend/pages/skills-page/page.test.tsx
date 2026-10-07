@@ -80,6 +80,29 @@ describe("技能页面", () => {
     );
   }
 
+  it("首次读取保留分组与空列表，成功后无需空态提示", async () => {
+    let resolve!: (snapshot: { skills: AgentSkillEntry[] }) => void;
+    mocks.api.mockImplementation(
+      () =>
+        new Promise((finish) => {
+          resolve = finish;
+        }),
+    );
+    await render();
+    expect(container.querySelector('.skills-page[aria-busy="true"]')).not.toBeNull();
+    const personality = container.querySelector<HTMLButtonElement>(
+      '.skills-page__open[aria-label="personality"]',
+    )!;
+    expect(personality.disabled).toBe(true);
+    const empty_text = container.textContent;
+    await act(async () => resolve({ skills: [] }));
+    expect(container.textContent).toBe(empty_text);
+    expect(container.querySelector('.skills-page__open[aria-label="personality"]')).toBe(
+      personality,
+    );
+    expect(personality.disabled).toBe(false);
+  });
+
   it("安装帮助可取消，前往 Agent 时携带完整请求和占位选区", async () => {
     mocks.api.mockResolvedValue({ skills: [] });
     await render();

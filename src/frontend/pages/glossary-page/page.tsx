@@ -54,20 +54,14 @@ export function GlossaryPage(_props: ScreenComponentProps): JSX.Element {
       };
     });
 
-  if (glossary_page_state.quality_status !== "ready") {
-    return (
-      <div className="glossary-page page-shell page-shell--full">
-        {glossary_page_state.quality_status === "error" ? (
-          <AppContentState status="error" />
-        ) : (
-          <AppContentState status="loading" />
-        )}
-      </div>
-    );
-  }
-
   return (
-    <div className="glossary-page page-shell page-shell--full">
+    <div
+      className="glossary-page page-shell page-shell--full"
+      aria-busy={
+        glossary_page_state.quality_status === "idle" ||
+        glossary_page_state.quality_status === "loading"
+      }
+    >
       <SearchBar
         variant="filter"
         keyword={glossary_page_state.table.filter_state.keyword}
@@ -123,8 +117,10 @@ export function GlossaryPage(_props: ScreenComponentProps): JSX.Element {
             on_search_entry_relations={glossary_page_state.search_entry_relations_from_hit}
           />
         </FileDropZone>
+        {glossary_page_state.quality_status === "error" && <AppContentState status="error" />}
       </div>
       <GlossaryCommandBar
+        ready={glossary_page_state.quality_status === "ready"}
         enabled={glossary_page_state.enabled}
         preset_items={glossary_page_state.presets.preset_items}
         preset_menu_open={glossary_page_state.presets.preset_menu_open}

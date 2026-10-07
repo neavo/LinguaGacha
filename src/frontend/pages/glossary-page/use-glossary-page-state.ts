@@ -175,7 +175,7 @@ export function useGlossaryPageState() {
   }, [statistics_cache]);
   const hit_ready = isQualityRuleStatisticsCacheReady(statistics_cache);
   const hit_sort_available = hit_ready || hit_state.entry_ids !== null;
-  const readonly = is_runtime_busy(runtime_snapshot);
+  const readonly = quality_status !== "ready" || is_runtime_busy(runtime_snapshot);
   /** 组合本页筛选、排序和统计，交给公共表格维护结果。 */
   const build_table_result = useCallback(
     (filter_state: GlossaryFilterState, sort_state: AppTableSortState | null) => {
@@ -280,8 +280,13 @@ export function useGlossaryPageState() {
     [t],
   );
 
-  const presets = useQualityRulePresets("glossary", entries.map(normalize_dialog_entry));
+  const presets = useQualityRulePresets(
+    "glossary",
+    entries.map(normalize_dialog_entry),
+    quality_status === "ready",
+  );
   const editing = useQualityRuleEditing({
+    ready: quality_status === "ready",
     rule_type: "glossary",
     project_path:
       project_snapshot.loaded && project_session_status === "ready" ? project_snapshot.path : "",

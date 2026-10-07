@@ -24,10 +24,6 @@
   gap: 8px;
   min-width: 0;
 }
-.skill-editor__state {
-  flex: 1;
-  min-height: 0;
-}
 .skill-editor__path {
   display: flex;
   align-items: center;

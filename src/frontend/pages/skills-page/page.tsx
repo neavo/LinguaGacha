@@ -76,15 +76,8 @@ function SkillsList({
   const by_name = new Map(user.map((skill) => [skill.name, skill]));
   const pending = state.pending || reorder.pending;
 
-  if (state.status !== "ready")
-    return (
-      <div className="skills-page page-shell page-shell--full">
-        <AppContentState status={state.status} />
-      </div>
-    );
-
   return (
-    <div className="skills-page page-shell page-shell--full">
+    <div className="skills-page page-shell page-shell--full" aria-busy={state.status === "loading"}>
       <section className="skills-page__group" aria-label={t("skills_page.builtin")}>
         <h2>{t("skills_page.builtin")}</h2>
         <Card className="skills-page__card">
@@ -92,7 +85,7 @@ function SkillsList({
             type="button"
             className="skills-page__open"
             aria-label="personality"
-            disabled={pending}
+            disabled={pending || state.status !== "ready"}
             onClick={on_personality}
           />
           <SkillHandle disabled />
@@ -144,11 +137,6 @@ function SkillsList({
             />
           ))}
         </DragDropProvider>
-        {user.length === 0 && (
-          <Card render={<p />} className="skills-page__empty">
-            {t("skills_page.empty")}
-          </Card>
-        )}
       </section>
       <AppActionDialog
         open={help_open}
@@ -170,6 +158,7 @@ function SkillsList({
           },
         }}
       />
+      {state.status === "error" && <AppContentState status="error" />}
     </div>
   );
 }

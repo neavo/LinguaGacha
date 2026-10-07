@@ -5,8 +5,6 @@ export const en_us_log_window_page = {
   title: "Logs",
   history: {
     date: "Log date",
-    loading: "Reading logs…",
-    empty: "No logs",
     expired: "Logs for this date have been removed",
   },
   level: {

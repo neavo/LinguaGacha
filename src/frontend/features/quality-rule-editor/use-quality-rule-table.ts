@@ -83,6 +83,7 @@ export function useQualityRuleTable<E extends { entry_id: string }, Scope extend
     set_pending_result_refresh,
     reset_result_snapshot,
   } = useResultSnapshotState({
+    loaded: options.loaded,
     project_path,
     section: "quality",
     section_revision,
@@ -93,6 +94,10 @@ export function useQualityRuleTable<E extends { entry_id: string }, Scope extend
   const debounced = useDebouncedCallback((filter: Filter<Scope>, sort: AppTableSortState | null) =>
     set_result_snapshot(build_result_snapshot(filter, sort)),
   );
+  // 读取期间修改控件后，旧防抖参数不能在新数据到达时重新应用。
+  useEffect(() => {
+    if (!options.loaded) debounced.cancel();
+  }, [debounced, options.loaded]);
   const current_result = useMemo(
     () => build_result(filter_state, sort_state),
     [build_result, filter_state, sort_state],
@@ -169,6 +174,10 @@ export function useQualityRuleTable<E extends { entry_id: string }, Scope extend
   /** 输入立即更新控件，结果成员在防抖完成时更新。 */
   const update_filter = useCallback(
     (filter: F): void => {
+      if (!options.loaded) {
+        set_filter_state(filter);
+        return;
+      }
       set_result_snapshot(
         (previous) => previous ?? build_result_snapshot(filter_state, sort_state),
       );
@@ -176,6 +185,7 @@ export function useQualityRuleTable<E extends { entry_id: string }, Scope extend
       debounced.schedule(filter, sort_state);
     },
     [
+      options.loaded,
       build_result_snapshot,
       debounced,
       filter_state,
@@ -211,6 +221,13 @@ export function useQualityRuleTable<E extends { entry_id: string }, Scope extend
     },
     [build_result_snapshot, debounced, set_filter_state, set_sort_state, set_result_snapshot],
   );
+  /** 空列表尚未就绪时，忽略表格回调以保留待恢复的选区。 */
+  const apply_table_selection = useCallback(
+    (payload: Parameters<typeof session.set_selection_state>[0]) => {
+      if (options.loaded) session.set_selection_state(payload);
+    },
+    [options.loaded, session.set_selection_state],
+  );
   return {
     update_filter_keyword: (keyword: string) => update_filter({ ...filter_state, keyword }),
     update_filter_scope: (scope: Scope) => update_filter({ ...filter_state, scope }),
@@ -230,7 +247,7 @@ export function useQualityRuleTable<E extends { entry_id: string }, Scope extend
     active_entry_id: session.active_row_id,
     selection_anchor_entry_id: session.anchor_row_id,
     restore_scroll_entry_id: session.restore_scroll_row_id,
-    apply_table_selection: session.set_selection_state,
+    apply_table_selection,
     reorder_disabled: !can_reorder_quality_rule_entries({
       readonly: options.readonly,
       has_active_query: has_active_filters || sort_state !== null,

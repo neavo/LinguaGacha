@@ -33,20 +33,11 @@ export function ModelPage(_props: ModelPageProps): JSX.Element {
       (model) => model.id === model_page_state.selector_state.model_id,
     ) ?? null;
 
-  if (model_page_state.load_status !== "ready") {
-    return (
-      <div className="model-page page-shell page-shell--full">
-        {model_page_state.load_status === "error" ? (
-          <AppContentState status="error" />
-        ) : (
-          <AppContentState status="loading" />
-        )}
-      </div>
-    );
-  }
-
   return (
-    <>
+    <div
+      className="model-page page-shell page-shell--full"
+      aria-busy={model_page_state.load_status === "loading"}
+    >
       <ChatGPTLoginDialog login={chatgpt_login} />
       <AppConfirmDialog
         open={model_page_state.confirm_state.kind !== null}
@@ -124,63 +115,63 @@ export function ModelPage(_props: ModelPageProps): JSX.Element {
         onClose={model_page_state.close_selector_dialog}
       />
 
-      <div className="model-page page-shell page-shell--full">
-        <section className="model-page__list" aria-label={t("model_page.title")}>
-          {model_page_state.grouped_categories.map((category) => (
-            <ModelCategoryCard
-              key={category.type}
-              title={category.title}
-              description={category.description}
-              accent_color={category.accent_color}
-              models={category.models}
-              add_action={
-                category.can_add ? (
-                  <AppButton
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => {
-                      void model_page_state.request_add_model(category.type);
+      <section className="model-page__list" aria-label={t("model_page.title")}>
+        {model_page_state.grouped_categories.map((category) => (
+          <ModelCategoryCard
+            key={category.type}
+            title={category.title}
+            description={category.description}
+            accent_color={category.accent_color}
+            models={category.models}
+            add_action={
+              category.can_add ? (
+                <AppButton
+                  disabled={model_page_state.readonly}
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    void model_page_state.request_add_model(category.type);
+                  }}
+                >
+                  <Plus data-icon="inline-start" />
+                  {t("app.action.add")}
+                </AppButton>
+              ) : null
+            }
+            disabled={model_page_state.readonly}
+            on_reorder={(ordered_model_ids) =>
+              model_page_state.request_reorder_models(category.type, ordered_model_ids)
+            }
+            render_model={(model, index, drag_disabled) => (
+              <ModelItemChip
+                model={model}
+                index={index}
+                drag_disabled={drag_disabled}
+                drag_aria_label={t("app.drag.handle")}
+                menu={
+                  <ModelItemMenu
+                    model={model}
+                    readonly={model_page_state.readonly}
+                    auth_disabled={model_page_state.test_disabled || chatgpt_login.busy}
+                    on_login={() => {
+                      void chatgpt_login.start();
                     }}
-                  >
-                    <Plus data-icon="inline-start" />
-                    {t("app.action.add")}
-                  </AppButton>
-                ) : null
-              }
-              disabled={model_page_state.readonly}
-              on_reorder={(ordered_model_ids) =>
-                model_page_state.request_reorder_models(category.type, ordered_model_ids)
-              }
-              render_model={(model, index, drag_disabled) => (
-                <ModelItemChip
-                  model={model}
-                  index={index}
-                  drag_disabled={drag_disabled}
-                  drag_aria_label={t("app.drag.handle")}
-                  menu={
-                    <ModelItemMenu
-                      model={model}
-                      readonly={model_page_state.readonly}
-                      auth_disabled={model_page_state.test_disabled || chatgpt_login.busy}
-                      on_login={() => {
-                        void chatgpt_login.start();
-                      }}
-                      on_open_settings={(kind) => model_page_state.open_dialog(kind, model.id)}
-                      on_copy={() => {
-                        void model_page_state.request_copy_model(model.id);
-                      }}
-                      on_reset={() => model_page_state.request_reset_model(model.id)}
-                      on_logout={model_page_state.request_logout}
-                      on_delete={() => model_page_state.request_delete_model(model.id)}
-                    />
-                  }
-                />
-              )}
-            />
-          ))}
-        </section>
-      </div>
-    </>
+                    on_open_settings={(kind) => model_page_state.open_dialog(kind, model.id)}
+                    on_copy={() => {
+                      void model_page_state.request_copy_model(model.id);
+                    }}
+                    on_reset={() => model_page_state.request_reset_model(model.id)}
+                    on_logout={model_page_state.request_logout}
+                    on_delete={() => model_page_state.request_delete_model(model.id)}
+                  />
+                }
+              />
+            )}
+          />
+        ))}
+      </section>
+      {model_page_state.load_status === "error" && <AppContentState status="error" />}
+    </div>
   );
 }

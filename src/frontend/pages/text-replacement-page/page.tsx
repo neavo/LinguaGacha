@@ -58,20 +58,11 @@ export function TextReplacementPage(props: TextReplacementPageProps): JSX.Elemen
       };
     });
 
-  if (page_state.quality_status !== "ready") {
-    return (
-      <div className="text-replacement-page page-shell page-shell--full">
-        {page_state.quality_status === "error" ? (
-          <AppContentState status="error" />
-        ) : (
-          <AppContentState status="loading" />
-        )}
-      </div>
-    );
-  }
-
   return (
-    <div className="text-replacement-page page-shell page-shell--full">
+    <div
+      className="text-replacement-page page-shell page-shell--full"
+      aria-busy={page_state.quality_status === "idle" || page_state.quality_status === "loading"}
+    >
       <SearchBar
         variant="filter"
         keyword={page_state.table.filter_state.keyword}
@@ -130,8 +121,10 @@ export function TextReplacementPage(props: TextReplacementPageProps): JSX.Elemen
             on_search_entry_relations={page_state.search_entry_relations_from_hit}
           />
         </FileDropZone>
+        {page_state.quality_status === "error" && <AppContentState status="error" />}
       </div>
       <TextReplacementCommandBar
+        ready={page_state.quality_status === "ready"}
         title_key={page_state.title_key}
         enabled={page_state.enabled}
         preset_items={page_state.presets.preset_items}

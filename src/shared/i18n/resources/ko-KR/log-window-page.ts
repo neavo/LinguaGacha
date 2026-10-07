@@ -4,8 +4,6 @@ export const ko_kr_log_window_page = {
   title: "로그",
   history: {
     date: "로그 날짜",
-    loading: "로그 읽는 중…",
-    empty: "로그 없음",
     expired: "이 날짜의 로그가 삭제되었습니다",
   },
   level: {

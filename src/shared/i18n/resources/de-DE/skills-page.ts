@@ -2,7 +2,6 @@ export const de_de_skills_page = {
   title: "Skills",
   builtin: "Integrierte Skills",
   user: "Benutzer-Skills",
-  empty: "Keine Benutzer-Skills",
   readonly: "Schreibgeschützt",
   personality_description: "Persönlichkeitseinstellungen des intelligenten Assistenten",
   install: {

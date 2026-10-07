@@ -267,6 +267,9 @@ describe("useModelPageState", () => {
       "app.feedback.refresh_failed",
       expect.objectContaining({ message: "offline" }),
     );
+    api_fetch_mock.mockClear();
+    await act(async () => latest_state?.request_copy_model("custom"));
+    expect(api_fetch_mock).not.toHaveBeenCalled();
     api_fetch_mock.mockResolvedValue(create_snapshot());
     await act(async () => latest_state?.refresh_snapshot());
     expect(latest_state?.load_status).toBe("ready");

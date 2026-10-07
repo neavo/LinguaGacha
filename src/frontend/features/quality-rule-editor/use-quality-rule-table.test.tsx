@@ -1,4 +1,4 @@
-import { act } from "react";
+import { act, useCallback } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, expect, it, vi } from "vitest";
 import { ProjectSessionUiStateProvider } from "@frontend/app/session/project-session-ui-state-provider";
@@ -9,6 +9,7 @@ vi.mock("@frontend/app/state/use-desktop-state", () => ({
   useDesktopState: () => ({ project_snapshot: { loaded: true, path: "project.lg" } }),
 }));
 const entries = [{ entry_id: "apple" }, { entry_id: "pear" }];
+const EMPTY_ENTRIES: typeof entries = [];
 const sort_columns = new Set(["src"]);
 const create_filter = () => ({ keyword: "apple", scope: "all" as const, is_regex: false });
 
@@ -64,5 +65,72 @@ it("筛选时冻结旧结果，显式排序立即应用当前条件并取消待�
   expect(table.filtered_entries.map((row) => row.entry_id)).toEqual(["pear"]);
   act(() => vi.runAllTimers());
   expect(table.sort_state?.direction).toBe("descending");
+  expect(table.filtered_entries.map((row) => row.entry_id)).toEqual(["pear"]);
+});
+
+it("读取期间修改筛选不会把临时空列表冻结成正式结果", () => {
+  vi.useFakeTimers();
+  let table!: ReturnType<typeof useQualityRuleTable<(typeof entries)[number], "all">>;
+  /** 通过真实会话状态模拟首次读取和同页重读。 */
+  function Probe({ loaded }: { loaded: boolean }) {
+    const current_entries = loaded ? entries : EMPTY_ENTRIES;
+    // 回调只使用当前已到达的条目，避免夹具提前暴露数据。
+    const build = useCallback(
+      (filter: ReturnType<typeof create_filter>) => ({
+        visible_entries: current_entries.flatMap((entry, source_index) =>
+          entry.entry_id.includes(filter.keyword)
+            ? [{ entry, entry_id: entry.entry_id, source_index }]
+            : [],
+        ),
+        invalid_regex_message: null,
+      }),
+      [current_entries],
+    );
+    table = useQualityRuleTable({
+      key: "quality:glossary",
+      project_path: "project.lg",
+      section_revision: loaded ? 1 : 0,
+      loaded,
+      readonly: !loaded,
+      entries: current_entries,
+      create_filter,
+      sort_columns,
+      reset_hit_sort: false,
+      build_result: build,
+    });
+    return null;
+  }
+  root = createRoot(document.createElement("div"));
+  /** 保留页面实例，仅推进读取状态。 */
+  const render = (loaded: boolean) =>
+    root!.render(
+      <ProjectSessionUiStateProvider>
+        <Probe loaded={loaded} />
+      </ProjectSessionUiStateProvider>,
+    );
+  act(() => render(false));
+  act(() =>
+    table.session.set_selection_state({
+      selected_row_ids: ["pear"],
+      active_row_id: "pear",
+      anchor_row_id: "pear",
+    }),
+  );
+  act(() =>
+    table.apply_table_selection({ selected_row_ids: [], active_row_id: null, anchor_row_id: null }),
+  );
+  expect(table.selected_entry_ids).toEqual(["pear"]);
+  act(() => table.update_filter_keyword("pear"));
+  act(() => vi.runAllTimers());
+  act(() => render(true));
+  expect(table.filter_state.keyword).toBe("pear");
+  expect(table.filtered_entries.map((row) => row.entry_id)).toEqual(["pear"]);
+  expect(table.selected_entry_ids).toEqual(["pear"]);
+  // 旧防抖输入不能在重读完成后覆盖读取期间的新筛选。
+  act(() => table.update_filter_keyword("apple"));
+  act(() => render(false));
+  act(() => table.update_filter_keyword("pear"));
+  act(() => render(true));
+  act(() => vi.runAllTimers());
   expect(table.filtered_entries.map((row) => row.entry_id)).toEqual(["pear"]);
 });

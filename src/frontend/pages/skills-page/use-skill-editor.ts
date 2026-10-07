@@ -186,6 +186,7 @@ export function useSkillEditor(identity: AgentSkillIdentity) {
       !invalid &&
       !state.composing &&
       !state.busy &&
+      !state.loading &&
       !state.saving &&
       !state.save_failure
     )
@@ -398,7 +399,7 @@ export function useSkillEditor(identity: AgentSkillIdentity) {
     recover: (overwrite = false) => run_operation(() => recover(overwrite), "load_failed"),
     /** 输入更新草稿后清除上一次保存错误，恢复自动保存。 */
     edit: (draft: string) => {
-      if (!environment.current.locked && !current.current.busy)
+      if (!environment.current.locked && !current.current.busy && !current.current.loading)
         update({ draft, save_failure: null });
     },
     /** 组词开始时取消待保存任务，结束后由草稿监听恢复计时。 */

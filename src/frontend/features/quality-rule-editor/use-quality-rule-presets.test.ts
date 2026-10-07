@@ -42,7 +42,7 @@ it.each([false, true])("保存预设按实际失败阶段反馈，刷新阶段�
   if (refresh_failed) mocks.api.mockResolvedValueOnce({});
   let current!: ReturnType<typeof useQualityRulePresets<"glossary">>;
   function Probe() {
-    current = useQualityRulePresets("glossary", []);
+    current = useQualityRulePresets("glossary", [], true);
     return null;
   }
   root = createRoot(document.createElement("div"));
@@ -69,7 +69,7 @@ it("重命名只提交一个业务命令，以后端回包同时更新预设与�
   let current!: ReturnType<typeof useQualityRulePresets<"glossary">>;
   /** 通过公开 Hook 输出观察页面状态与操作结果。 */
   function Probe() {
-    current = useQualityRulePresets("glossary", []);
+    current = useQualityRulePresets("glossary", [], true);
     return null;
   }
   root = createRoot(document.createElement("div"));
@@ -93,4 +93,23 @@ it("重命名只提交一个业务命令，以后端回包同时更新预设与�
   expect(mocks.apply).toHaveBeenCalledWith(response);
   expect(current.preset_items.map((item) => item.virtual_id)).toEqual(["user:new.json"]);
   expect(current.preset_input_state.open).toBe(false);
+});
+
+it("未就绪时不能保存临时空内容为预设", async () => {
+  let current!: ReturnType<typeof useQualityRulePresets<"glossary">>;
+  /** 模拟内容在打开命名框之后失效，验证持久化入口仍受就绪约束。 */
+  function Probe({ ready }: { ready: boolean }) {
+    current = useQualityRulePresets("glossary", [], ready);
+    return null;
+  }
+  root = createRoot(document.createElement("div"));
+  await act(async () => root!.render(createElement(Probe, { ready: false })));
+  await act(async () => current.request_save_preset());
+  expect(current.preset_input_state.open).toBe(false);
+  await act(async () => root!.render(createElement(Probe, { ready: true })));
+  await act(async () => current.request_save_preset());
+  await act(async () => current.update_preset_input_value("new"));
+  await act(async () => root!.render(createElement(Probe, { ready: false })));
+  await act(async () => current.submit_preset_input());
+  expect(mocks.api).not.toHaveBeenCalled();
 });

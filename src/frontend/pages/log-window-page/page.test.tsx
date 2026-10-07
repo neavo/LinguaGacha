@@ -293,4 +293,19 @@ describe("日志窗口", () => {
     });
     expect(mocks.older).not.toHaveBeenCalled();
   });
+
+  it("日期读取与空结果均保留列表，不显示额外空态提示", async () => {
+    await mount();
+    mocks.entries = [];
+    mocks.loading = true;
+    await act(async () => root!.render(<LogWindowPage />));
+    expect(container!.querySelector(".log-window-page__table")).not.toBeNull();
+    expect(container!.querySelector('[aria-busy="true"]')).not.toBeNull();
+    const table = container!.querySelector(".log-window-page__table");
+    const empty_text = container!.textContent;
+    mocks.loading = false;
+    await act(async () => root!.render(<LogWindowPage />));
+    expect(container!.querySelector(".log-window-page__table")).toBe(table);
+    expect(container!.textContent).toBe(empty_text);
+  });
 });

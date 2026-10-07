@@ -117,6 +117,7 @@ export function useCustomPromptPageState(): UseCustomPromptPageStateResult {
 
   /** 先等待草稿保存，再导出后端已确认的正文。 */
   const export_prompt_from_picker = useCallback(async (): Promise<void> => {
+    if (load_status !== "ready") return;
     try {
       const pick_result = await window.desktopApp.pickPromptExportFilePath();
       const selected_path = pick_result.paths[0] ?? null;
@@ -135,7 +136,7 @@ export function useCustomPromptPageState(): UseCustomPromptPageStateResult {
     } catch (error) {
       push_error_toast(t("app.feedback.export_failed"), error);
     }
-  }, [flush_prompt_change, t]);
+  }, [flush_prompt_change, load_status, t]);
 
   /** 菜单打开时读取当前可用预设。 */
   const open_preset_menu = useCallback(async (): Promise<void> => {
@@ -182,6 +183,7 @@ export function useCustomPromptPageState(): UseCustomPromptPageStateResult {
 
   /** 为当前内容打开预设命名流程。 */
   const request_save_preset = useCallback((): void => {
+    if (load_status !== "ready") return;
     set_preset_input_state({
       open: true,
       mode: "save",
@@ -189,7 +191,7 @@ export function useCustomPromptPageState(): UseCustomPromptPageStateResult {
       submitting: false,
       target_virtual_id: null,
     });
-  }, []);
+  }, [load_status]);
 
   /** 记录预设身份和当前名称供重命名。 */
   const request_rename_preset = useCallback((preset_item: CustomPromptPresetItem): void => {
@@ -214,6 +216,7 @@ export function useCustomPromptPageState(): UseCustomPromptPageStateResult {
   /** 校验名称并写入当前内容，完成后刷新预设列表。 */
   const save_preset = useCallback(
     async (name: string): Promise<boolean> => {
+      if (load_status !== "ready") return false;
       const normalized_name = normalize_preset_name(name);
       if (normalized_name === "") {
         push_toast("warning", t("preset_editor.feedback.name_required"));
@@ -234,7 +237,7 @@ export function useCustomPromptPageState(): UseCustomPromptPageStateResult {
         return false;
       }
     },
-    [prompt_text, refresh_preset_menu, t],
+    [load_status, prompt_text, refresh_preset_menu, t],
   );
 
   /** 重命名后同步默认项引用并刷新列表。 */

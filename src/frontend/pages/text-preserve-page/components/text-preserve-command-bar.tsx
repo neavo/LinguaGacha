@@ -1,44 +1,20 @@
 import type { JSX } from "react";
-import { FileDown, FileUp, Plus, Trash2 } from "lucide-react";
-
 import { useI18n, type LocaleKey } from "@frontend/app/locale/locale-context";
-import { PresetMenu } from "@frontend/features/preset-editor/preset-menu";
-import type { PresetItem } from "@frontend/features/preset-editor/preset-types";
+import {
+  QualityRuleCommandBar,
+  type QualityRuleCommandBarProps,
+  type QualityRuleEntryActions,
+} from "@frontend/features/quality-rule-editor/quality-rule-command-bar";
 import type { TextPreserveMode } from "@frontend/pages/text-preserve-page/types";
 import { SegmentedToggle, type SegmentedToggleOption } from "@frontend/shadcn/segmented-toggle";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@frontend/shadcn/tooltip";
-import { AppButton } from "@frontend/widgets/app-button";
-import {
-  CommandBar,
-  CommandBarGroup,
-  CommandBarSeparator,
-} from "@frontend/widgets/command-bar/command-bar";
-import { useActionShortcut } from "@frontend/widgets/interactions/use-action-shortcut";
-import { ShortcutKbd } from "@frontend/widgets/interactions/shortcut-kbd";
 
-type TextPreserveCommandBarProps = {
-  title_key: LocaleKey;
-  mode: TextPreserveMode;
-  mode_updating: boolean;
-  preset_items: PresetItem[];
-  preset_menu_open: boolean;
-  selected_entry_count: number;
-  readonly: boolean;
-  on_mode_change: (next_mode: TextPreserveMode) => Promise<void>;
-  on_create: () => void;
-  on_delete_selected: () => Promise<void>;
-  on_import: () => Promise<void>;
-  on_export: () => Promise<void>;
-  on_open_preset_menu: () => Promise<void>;
-  on_apply_preset: (virtual_id: string) => Promise<void>;
-  on_request_reset: () => void;
-  on_request_save_preset: () => void;
-  on_request_rename_preset: (preset_item: PresetItem) => void;
-  on_request_delete_preset: (preset_item: PresetItem) => void;
-  on_set_default_preset: (virtual_id: string) => Promise<void>;
-  on_cancel_default_preset: () => Promise<void>;
-  on_preset_menu_open_change: (next_open: boolean) => void;
-};
+type TextPreserveCommandBarProps = Omit<QualityRuleCommandBarProps, "hint" | "entry_actions"> &
+  Omit<QualityRuleEntryActions, "create_label"> & {
+    mode: TextPreserveMode;
+    mode_updating: boolean;
+    on_mode_change: (next_mode: TextPreserveMode) => Promise<void>;
+  };
 
 const MODE_LABEL_KEY_BY_MODE: Record<TextPreserveMode, LocaleKey> = {
   off: "text_preserve_page.mode.options.off",
@@ -46,7 +22,7 @@ const MODE_LABEL_KEY_BY_MODE: Record<TextPreserveMode, LocaleKey> = {
   custom: "text_preserve_page.mode.options.custom",
 };
 
-/** 模式和条目操作消费工程锁，预设管理只传递应用与重置的限制。 */
+/** 页面只提供启用或模式控件，公共操作由质量操作栏拥有。 */
 export function TextPreserveCommandBar(props: TextPreserveCommandBarProps): JSX.Element {
   const { t } = useI18n();
   const mode_options: readonly SegmentedToggleOption<TextPreserveMode>[] = [
@@ -68,89 +44,15 @@ export function TextPreserveCommandBar(props: TextPreserveCommandBarProps): JSX.
     VALUE: t(MODE_LABEL_KEY_BY_MODE[props.mode]),
   });
 
-  useActionShortcut({
-    action: "create",
-    enabled: !props.readonly,
-    on_trigger: props.on_create,
-  });
-  useActionShortcut({
-    action: "delete",
-    enabled: !props.readonly && props.selected_entry_count > 0,
-    on_trigger: () => {
-      void props.on_delete_selected();
-    },
-  });
-
   return (
-    <CommandBar
-      actions={
-        <>
-          <CommandBarGroup>
-            <AppButton
-              variant="ghost"
-              size="toolbar"
-              disabled={props.readonly}
-              onClick={props.on_create}
-            >
-              <Plus data-icon="inline-start" />
-              {t("app.action.create")}
-              <ShortcutKbd action="create" />
-            </AppButton>
-            <AppButton
-              variant="ghost"
-              size="toolbar"
-              disabled={props.readonly || props.selected_entry_count === 0}
-              onClick={() => {
-                void props.on_delete_selected();
-              }}
-            >
-              <Trash2 data-icon="inline-start" />
-              {t("app.action.delete")}
-              <ShortcutKbd action="delete" />
-            </AppButton>
-          </CommandBarGroup>
-          <CommandBarSeparator />
-          <CommandBarGroup>
-            <AppButton
-              variant="ghost"
-              size="toolbar"
-              disabled={props.readonly}
-              onClick={() => {
-                void props.on_import();
-              }}
-            >
-              <FileDown data-icon="inline-start" />
-              {t("app.action.import")}
-            </AppButton>
-            <AppButton
-              variant="ghost"
-              size="toolbar"
-              onClick={() => {
-                void props.on_export();
-              }}
-            >
-              <FileUp data-icon="inline-start" />
-              {t("app.action.export")}
-            </AppButton>
-          </CommandBarGroup>
-          <CommandBarSeparator />
-          <PresetMenu
-            items={props.preset_items}
-            open={props.preset_menu_open}
-            project_write_disabled={props.readonly}
-            trigger_label={t("app.action.preset")}
-            on_open={props.on_open_preset_menu}
-            on_open_change={props.on_preset_menu_open_change}
-            on_apply={props.on_apply_preset}
-            on_request_reset={props.on_request_reset}
-            on_request_save={props.on_request_save_preset}
-            on_request_rename={props.on_request_rename_preset}
-            on_request_delete={props.on_request_delete_preset}
-            on_set_default={props.on_set_default_preset}
-            on_cancel_default={props.on_cancel_default_preset}
-          />
-        </>
-      }
+    <QualityRuleCommandBar
+      {...props}
+      entry_actions={{
+        create_label: "app.action.create",
+        selected_entry_count: props.selected_entry_count,
+        on_create: props.on_create,
+        on_delete_selected: props.on_delete_selected,
+      }}
       hint={
         <Tooltip>
           <TooltipTrigger
