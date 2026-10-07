@@ -4,11 +4,7 @@ import { useI18n } from "@frontend/app/locale/locale-context";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@frontend/shadcn/tooltip";
 import { Badge } from "@frontend/shadcn/badge";
 import { AppEditor } from "@frontend/widgets/app-editor/app-editor";
-import {
-  format_log_content_text,
-  format_log_readable_text,
-  format_log_error_text,
-} from "@shared/log";
+import { format_log_content_text, format_log_error_text } from "@shared/log";
 import "@frontend/pages/log-window-page/log-detail-view.css";
 
 /** 详情视图只接收已由 desktop-api 收窄的完整日志。 */
@@ -21,13 +17,14 @@ export function LogDetailView(props: LogDetailViewProps): JSX.Element {
   const { t } = useI18n();
   const { content } = props.detail;
 
-  // 普通文本通过 format_log_readable_text 展示诊断，结构化正文单独展示诊断。
-  const error_text =
-    typeof content === "string" ? "" : format_log_error_text(props.detail.error, false);
-  // 结构化正文共用诊断区，堆栈独立于 JSON 语法解析。
+  // 普通文本与 Agent JSON 从诊断字段读取错误消息，翻译正文已包含用户错误。
+  const error_text = format_log_error_text(
+    props.detail.error,
+    typeof content === "string" || content.kind === "agent",
+  );
   const error_view =
     error_text === "" ? null : (
-      <section className="log-detail-view__error">
+      <section className="log-detail-view__card log-detail-view__error">
         <h3>{t("log_window_page.detail.content.error")}</h3>
         <pre>{error_text}</pre>
       </section>
@@ -35,28 +32,22 @@ export function LogDetailView(props: LogDetailViewProps): JSX.Element {
 
   if (typeof content === "string" || content.kind === "agent" || content.kind === "text") {
     return (
-      <>
+      <div className="log-detail-view">
         <AppEditor
           variant="viewer"
           syntax={typeof content === "string" || content.kind === "text" ? "plain" : "json"}
-          class_name="log-window-page__detail-editor"
-          value={
-            typeof content === "string"
-              ? format_log_readable_text(props.detail)
-              : format_log_content_text(content)
-          }
+          class_name="log-detail-view__card log-detail-view__card--editor"
+          value={format_log_content_text(content)}
           aria_label={t("log_window_page.detail.title")}
         />
-        {error_view === null ? null : (
-          <div className="log-detail-view log-detail-view--diagnostics">{error_view}</div>
-        )}
-      </>
+        {error_view}
+      </div>
     );
   }
 
   return (
     <div className="log-detail-view">
-      <div className="log-detail-view__summary" data-level={props.detail.level}>
+      <div className="log-detail-view__card log-detail-view__summary">
         {content.summary.map((text, index) => (
           <p key={`${index.toString()}:${text}`}>{text}</p>
         ))}
@@ -64,7 +55,7 @@ export function LogDetailView(props: LogDetailViewProps): JSX.Element {
 
       {error_view}
 
-      <section className="log-detail-view__result">
+      <section className="log-detail-view__card log-detail-view__result">
         <ol className="log-detail-view__items">
           {content.pairs.map((pair, index) => (
             <li key={index} className="log-detail-view__item">
@@ -116,16 +107,15 @@ export function LogDetailView(props: LogDetailViewProps): JSX.Element {
         </ol>
       </section>
 
-      {content.sections.length > 0 ? (
-        <div className="log-detail-view__process">
-          {content.sections.map((section, index) => (
-            <section key={`${index.toString()}:${section.title}`}>
-              <h3>{section.title}</h3>
-              <pre>{section.text}</pre>
-            </section>
-          ))}
-        </div>
-      ) : null}
+      {content.sections.map((section, index) => (
+        <section
+          key={`${index.toString()}:${section.title}`}
+          className="log-detail-view__card log-detail-view__process"
+        >
+          <h3>{section.title}</h3>
+          <pre>{section.text}</pre>
+        </section>
+      ))}
     </div>
   );
 }

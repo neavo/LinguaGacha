@@ -12,10 +12,12 @@ import {
 let editor_view: EditorView | null = null;
 
 afterEach(() => {
+  editor_view?.dom.parentElement?.remove();
   editor_view?.destroy();
   editor_view = null;
 });
 
+/** 挂载真实编辑器，用文档与 DOM 观察扩展行为。 */
 function create_editor(doc: string, extensions: Extension[] = []): HTMLDivElement {
   const parent = document.createElement("div");
   document.body.append(parent);

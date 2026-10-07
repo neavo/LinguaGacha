@@ -1,11 +1,16 @@
 .log-detail-view {
+  display: flex;
+  min-width: 0;
   min-height: 0;
   flex: 1;
+  flex-direction: column;
+  gap: 12px;
   overflow: auto;
   padding: 12px;
   color: var(--foreground);
   font-size: var(--ui-font-size-12);
   line-height: 1.6;
+  user-select: text;
 }
 
 .log-detail-view h3,
@@ -22,19 +27,24 @@
   line-height: 1.4;
 }
 
-.log-detail-view--diagnostics {
-  /* 诊断区限高并独立滚动，为 JSON 正文保留阅读空间。 */
-  max-height: 40%;
-  flex: 0 1 auto;
+.log-detail-view__card {
+  min-width: 0;
+  /* 卡片按内容展开，纵向滚动统一交给详情区。 */
+  flex: 0 0 auto;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--ui-radius-card);
+  background: var(--ui-card-default-surface);
+}
+
+.log-detail-view__card--editor {
+  --app-editor-font-size: var(--ui-font-size-12);
+  padding: 0;
 }
 
 .log-detail-view__summary {
   display: grid;
   gap: 4px;
-  padding: 10px 12px;
-  border: 1px solid var(--border);
-  border-radius: var(--ui-radius-card);
-  background: color-mix(in srgb, var(--muted) 44%, var(--ui-card-default-surface) 56%);
 }
 
 .log-detail-view__summary:empty {
@@ -46,30 +56,11 @@
   overflow-wrap: anywhere;
 }
 
-.log-detail-view__summary[data-level="warning"] {
-  border-color: color-mix(in srgb, var(--ui-warning) 34%, var(--border) 66%);
-}
-
-.log-detail-view__summary[data-level="error"],
-.log-detail-view__summary[data-level="fatal"] {
-  border-color: color-mix(in srgb, var(--ui-failure) 34%, var(--border) 66%);
-}
-
-.log-detail-view__error:not(:first-child),
-.log-detail-view__result,
-.log-detail-view__process {
-  margin-top: 12px;
-}
-
-.log-detail-view__error {
-  padding: 10px 12px;
-  border: 1px solid color-mix(in srgb, var(--ui-failure) 38%, var(--border) 62%);
-  border-radius: var(--ui-radius-card);
-  background: color-mix(in srgb, var(--ui-failure) 6%, var(--ui-card-default-surface) 94%);
+.log-detail-view__card h3 {
+  margin-bottom: 6px;
 }
 
 .log-detail-view__error h3 {
-  margin-bottom: 6px;
   color: var(--ui-failure);
 }
 
@@ -83,12 +74,6 @@
   margin: 0;
   padding: 0;
   list-style: none;
-}
-
-.log-detail-view__items {
-  border: 1px solid var(--border);
-  border-radius: var(--ui-radius-card);
-  overflow: hidden;
 }
 
 .log-detail-view__item {
@@ -119,13 +104,11 @@
 
 .log-detail-view__field {
   min-width: 0;
-  padding: 8px 40px 10px 10px;
-  background: color-mix(in srgb, var(--muted) 24%, var(--ui-card-default-surface) 76%);
+  padding: 8px 40px 10px 0;
 }
 
 .log-detail-view__field--dst {
   border-top: 1px solid var(--border);
-  background: color-mix(in srgb, var(--primary) 5%, var(--ui-card-default-surface) 95%);
 }
 
 .log-detail-view__field dt {
@@ -152,27 +135,12 @@
   text-overflow: ellipsis;
 }
 
-.log-detail-view__process {
-  display: grid;
-  gap: 12px;
-}
-
-.log-detail-view__process section {
-  padding: 10px 12px;
-  border: 1px solid var(--border);
-  border-radius: var(--ui-radius-card);
-  background: color-mix(in srgb, var(--muted) 24%, var(--ui-card-default-surface) 76%);
-}
-
-.log-detail-view__process h3 {
-  margin-bottom: 6px;
-}
-
 .log-window-page__content--detail-expanded .log-detail-view__translation-pair {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .log-window-page__content--detail-expanded .log-detail-view__translation-pair > :nth-child(2) {
+  padding-left: 12px;
   border-top: 0;
   border-left: 1px solid var(--border);
 }

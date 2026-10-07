@@ -29,7 +29,7 @@
 .app-editor .cm-editor {
   height: 100%;
   font-family: var(--ui-font-family-base);
-  font-size: var(--ui-font-size-13);
+  font-size: var(--app-editor-font-size, var(--ui-font-size-13));
 }
 
 .app-editor .cm-editor.cm-focused {

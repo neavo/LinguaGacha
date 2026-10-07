@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { type LogAppendPayload } from "../../shared/log";
 import { LogManager } from "../log/log-manager";
+import { agent_tool_result } from "./tool-definition";
 import {
   AgentRuntimeLog,
   normalize_agent_tool_log_output,
@@ -26,10 +27,55 @@ it("图片工具日志只保留来源摘要和媒体类型", () => {
     content: [{ type: "text" }, { type: "image", mimeType: "image/webp" }],
   });
 });
-import { agent_tool_result } from "./tool-definition";
 
 describe("AgentRuntimeLog", () => {
   afterEach(() => vi.useRealTimers());
+
+  it("按最终等级选择控制台输出，正常停止静默且刷新不重复提交", () => {
+    const append = vi.fn<(payload: LogAppendPayload) => void>();
+    const log = new AgentRuntimeLog({ append }, "chat-test");
+    log.begin_run("round", "prompt");
+    for (const level of ["debug", "info", "warning", "error", "fatal"] as const) {
+      log.handle_event({
+        type: "tool_execution_start",
+        toolCallId: level,
+        toolName: "fixture_tool",
+        args: {},
+      });
+      log.handle_event({
+        type: "tool_execution_end",
+        toolCallId: level,
+        toolName: "fixture_tool",
+        status: "error",
+        level,
+      });
+    }
+    log.handle_event({ type: "compaction_start", reason: "threshold", task_id: 1 });
+    log.handle_event({
+      type: "compaction_end",
+      reason: "threshold",
+      task_id: 1,
+      status: "error",
+      error: "fixture compaction",
+    });
+    log.report_failure("cleanup", new Error("fixture cleanup"));
+    log.finish_run("stopped", { stop_reason: "user" });
+    log.flush();
+
+    expect(
+      append.mock.calls
+        .filter(([payload]) => payload.targets?.console)
+        .map(([payload]) => payload.level),
+    ).toEqual(["warning", "error", "fatal", "error", "warning"]);
+    expect(
+      append.mock.calls.find(([payload]) => payload.error !== undefined)?.[0].error,
+    ).toMatchObject({
+      message: "fixture compaction",
+    });
+    append.mockClear();
+    log.flush();
+    expect(append).not.toHaveBeenCalled();
+  });
 
   it("完整工具结果只存一份，文件详情可见且保留输入快照和实际起止时间", async () => {
     vi.useFakeTimers({ toFake: ["Date"] });

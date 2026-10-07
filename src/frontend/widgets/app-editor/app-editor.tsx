@@ -215,18 +215,6 @@ function resolve_app_editor_keymap_extension(indent_with_tab: boolean): Extensio
   ]);
 }
 
-/** 外部值缩短时把选区端点限制到新文档范围。 */
-function clamp_selection_offset(offset: number, max_offset: number): number {
-  if (offset < 0) {
-    return 0;
-  }
-  if (offset > max_offset) {
-    return max_offset;
-  }
-
-  return offset;
-}
-
 /** 保留多选区结构，只裁剪越过新文档末尾的端点。 */
 function create_clamped_selection(
   selection: EditorSelection,
@@ -235,8 +223,8 @@ function create_clamped_selection(
   return EditorSelection.create(
     selection.ranges.map((range) => {
       return EditorSelection.range(
-        clamp_selection_offset(range.anchor, next_length),
-        clamp_selection_offset(range.head, next_length),
+        Math.min(Math.max(range.anchor, 0), next_length),
+        Math.min(Math.max(range.head, 0), next_length),
       );
     }),
     selection.mainIndex,

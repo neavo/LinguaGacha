@@ -22,6 +22,12 @@ describe("log 基础模型", () => {
     });
     for (const part of ["操作失败", "boom", "at request", "root cause", "open", "request-1"])
       expect(text).toContain(part);
+    expect(
+      format_log_readable_text({
+        content: { kind: "agent", event: "run_end", status: "error" },
+        error: { message: "没有调用栈的错误" },
+      }),
+    ).toContain("没有调用栈的错误");
   });
 
   it("读取普通文本和翻译对照", () => {

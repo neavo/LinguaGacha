@@ -194,13 +194,16 @@ export function format_log_content_text(content: LogContent): string {
   return `${rows.filter((row) => row.trim() !== "").join("\n\n")}\n`;
 }
 
-// 普通文本附带异常消息，结构化摘要共用堆栈、原因链与上下文。
+// 普通文本与 Agent JSON 附带异常消息，翻译摘要已包含用户错误。
 export function format_log_readable_text(detail: Pick<LogDetail, "content" | "error">): string {
   if (typeof detail.content !== "string" && detail.content.kind === "text")
     return detail.content.text;
   return [
     format_log_content_text(detail.content),
-    format_log_error_text(detail.error, typeof detail.content === "string"),
+    format_log_error_text(
+      detail.error,
+      typeof detail.content === "string" || detail.content.kind === "agent",
+    ),
   ]
     .filter((value) => value.trim() !== "")
     .join("\n");
