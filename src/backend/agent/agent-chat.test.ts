@@ -97,7 +97,7 @@ it("供应商身份在修订后改变，同一分支的生成和压缩共用身�
   // 两轮历史超过近期保留预算，使手动压缩实际请求模型。
   const history = "history ".repeat(16_000);
   await talk(chat, history);
-  await chat.revise(chat.entries.at(-1)!, "修订回答");
+  await chat.revise_assistant(chat.entries.at(-1)!, "修订回答");
   const execution = await talk(chat, history);
   expect(await chat.compact("manual", execution)).toBe(true);
   expect(respond).toHaveBeenCalledTimes(3);
@@ -185,7 +185,7 @@ it("既有身份重开恢复历史，无模型时可修订助手，后续请求�
   first.provider.setResponses([fauxAssistantMessage("原回答")]);
   await talk(first.chat, "问题");
   const assistant = first.chat.entries.find((entry) => entry.kind === "assistant_message")!;
-  await first.chat.revise(assistant, "修订回答");
+  await first.chat.revise_assistant(assistant, "修订回答");
   await first.chat.change_queue((queue) => queue.enqueue({ text: "待发送", attachments: [] }));
   const expected = structuredClone(first.chat.entries);
   const usage = structuredClone(first.chat.usage);
@@ -197,7 +197,7 @@ it("既有身份重开恢复历史，无模型时可修订助手，后续请求�
   expect(restored.chat.usage).toEqual(usage);
   expect(restored.chat.queue.read_snapshot(false).items).toEqual([]);
   expect(restored.provider.state.callCount).toBe(0);
-  await restored.chat.revise(restored.chat.entries.at(-1)!, "离线修订");
+  await restored.chat.revise_assistant(restored.chat.entries.at(-1)!, "离线修订");
   expect(restored.chat.usage).toEqual(usage);
   restored.models.setProvider(restored.provider.provider);
   await restored.chat.configure(restored.provider.getModel(), "off");
@@ -401,4 +401,138 @@ it("遗留工具任务只执行 SDK 取消收尾，恢复后保留公开工具�
   await restored.chat.close();
   await store.close();
   database.close();
+});
+
+it("完整轮次分叉保留前缀，清空后续意图并拒绝旧分支目标", async () => {
+  const { chat, provider } = await create_chat();
+  provider.setResponses([fauxAssistantMessage("第一答"), fauxAssistantMessage("第二答")]);
+  await talk(chat, "第一问");
+  const prefix = structuredClone(chat.entries);
+  await talk(chat, "第二问");
+  const later = chat.entries.find(
+    (entry) => entry.kind === "user_message" && entry.text === "第二问",
+  )!;
+  const usage = structuredClone(chat.usage);
+  await chat.change((state) => {
+    state.doing = "旧任务";
+  });
+  await chat.change_queue((queue) => queue.enqueue({ text: "旧队列", attachments: [] }));
+  await chat.fork_round(prefix[0]!.id);
+  expect(chat.entries).toEqual(prefix);
+  expect(chat.state.doing).toBeNull();
+  expect(chat.queue.read_snapshot(false).items).toEqual([]);
+  expect(chat.usage).toEqual(usage);
+  await expect(chat.fork_round(later.id)).rejects.toThrow();
+});
+
+it("用户修订在 SDK 受理后切换历史，采用本次模型与思考等级", async () => {
+  const { chat, provider } = await create_chat();
+  provider.setResponses([fauxAssistantMessage("原答"), fauxAssistantMessage("新答")]);
+  await talk(chat, "原问");
+  const before = structuredClone(chat.entries);
+  const active = chat.state.activeConversationId;
+  await chat.change((state) => {
+    state.commands.revision = {
+      kind: "revise",
+      request: {},
+      status: "pending",
+      conversationId: null,
+      requestId: null,
+    };
+  });
+  const replacement = fauxProvider({
+    models: [{ id: "replacement", reasoning: true, contextWindow: 256_000 }],
+  });
+  chat.models.setProvider(replacement.provider);
+  const respond = vi.fn<FauxResponseFactory>(() => fauxAssistantMessage("新答"));
+  replacement.setResponses([respond]);
+  await chat.revise_user(before[0]!, replacement.getModel(), "high", "revision");
+  expect(chat.state.activeConversationId).toBe(active);
+  expect(chat.entries).toEqual(before);
+  const execution: AgentExecution = {
+    controller: new AbortController(),
+    stop_reason: null,
+    lease: { owner: "agent" },
+    commandId: "revision",
+    roundId: null,
+    phase: "running",
+    acceptance: null,
+    settlement: null,
+    recoveryUsed: false,
+    recoveryTask: null,
+    steer: null,
+    retrySteer: null,
+    translationPaused: null,
+  };
+  chat.execution = execution;
+  const accepted = await chat.submit(
+    { text: "新问", attachments: [] },
+    { text: "新问", images: [] },
+    execution,
+    "round",
+  );
+  expect(chat.state.commands.revision!.status).toBe("accepted");
+  expect(chat.state.activeConversationId).not.toBe(active);
+  await chat.run(accepted, execution);
+  await chat.finish_round(execution, "success", null);
+  chat.execution = null;
+  expect(respond).toHaveBeenCalledOnce();
+  expect(respond.mock.calls[0]![1]?.reasoning).toBe("high");
+  expect(respond.mock.calls[0]![3].id).toBe("replacement");
+  expect(chat.entries).toMatchObject([{ text: "新问" }, { parts: [{ text: "新答" }] }]);
+});
+
+it.each([false, true])("SQLite 重开按修订输入回执恢复分支：已受理=%s", async (admitted) => {
+  const { database, file } = project();
+  let store = database.open_agent_store(file);
+  await store.create("revision-recovery");
+  const first = await open(store);
+  first.models.setProvider(first.provider.provider);
+  await first.chat.configure(first.provider.getModel(), "off");
+  first.provider.setResponses([fauxAssistantMessage("原答"), fauxAssistantMessage("新答")]);
+  const execution = await talk(first.chat, "原问");
+  const original = structuredClone(first.chat.entries);
+  await first.chat.change((state) => {
+    state.commands.revision = {
+      kind: "revise",
+      request: {},
+      status: "pending",
+      conversationId: null,
+      requestId: null,
+    };
+  });
+  await first.chat.revise_user(original[0]!, first.provider.getModel(), "off", "revision");
+  if (admitted) {
+    execution.commandId = "revision";
+    execution.roundId = null;
+    first.chat.execution = execution;
+    const change = first.chat.change.bind(first.chat);
+    let calls = 0;
+    const fault = vi.spyOn(first.chat, "change").mockImplementation(async (callback) => {
+      if (++calls === 2) throw new Error("模拟受理后切换前中断");
+      await change(callback);
+    });
+    await expect(
+      first.chat.submit(
+        { text: "新问", attachments: [] },
+        { text: "新问", images: [] },
+        execution,
+        "round",
+      ),
+    ).rejects.toThrow("模拟受理后切换前中断");
+    fault.mockRestore();
+  }
+  await first.chat.close();
+  await store.close();
+  store = database.open_agent_store(file);
+  const restored = await open(store);
+  try {
+    expect(restored.chat.state.commands.revision!.status).toBe(admitted ? "accepted" : "cancelled");
+    expect(restored.chat.entries[0]).toMatchObject({ text: admitted ? "新问" : "原问" });
+    expect(restored.provider.state.callCount).toBe(0);
+  } finally {
+    await restored.chat.close();
+    await store.close();
+    database.close();
+  }
 });

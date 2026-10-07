@@ -244,7 +244,7 @@ export type AgentCommandAck = Readonly<{
 
 /** 产品输入操作与 SDK 输入尝试分别拥有身份，传输重试只能复用同一操作。 */
 export const AGENT_INPUT_COMMAND_ID_LIMIT = 128;
-export type AgentInputCommandKind = "send" | "queue_send" | "revise" | "continue";
+export type AgentInputCommandKind = "send" | "queue_send" | "revise" | "fork" | "continue";
 export type AgentInputCommandStatus = "pending" | "accepted" | "cancelled";
 export type AgentInputCommandAck = AgentCommandAck & {
   status: AgentInputCommandStatus | "unknown";

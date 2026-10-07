@@ -109,6 +109,7 @@ export const zh_cn_agent_page = {
     retry: "上下文压缩失败 · 点击重试",
   },
   action: {
+    fork: "分叉",
     send: "发送",
     stop: "停止",
     applying: "正在应用工程修改，完成前不可停止",
@@ -131,6 +132,7 @@ export const zh_cn_agent_page = {
     full: "消息队列已满 · {count}/{limit}",
   },
   confirm: {
+    fork: "是否确认从此回复处分叉创建新对话？",
     new_task: "是否确认开始新的对话任务 …?",
     thinking_off: "模型思考关闭时 AGENT 任务智能会显著下降，是否确认继续执行 …?",
   },

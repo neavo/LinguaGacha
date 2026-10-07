@@ -1268,6 +1268,34 @@ describe("AgentConversation", () => {
     });
   });
 
+  it("完整轮次只在最后回复提供分叉，取消不提交，失败保留弹窗", async () => {
+    const forkRound = vi.fn(async () => {
+      throw new Error("offline");
+    });
+    const view = await render_page({
+      forkRound,
+      entries: [
+        user_entry("user-1", "第一问", "success", 0, 1),
+        assistant_entry("middle", "中间回复", "success", 1),
+        assistant_entry("final", "最终回复", "success", 2),
+        user_entry("user-2", "第二问", "success", 3, 4),
+        assistant_entry("final-2", "第二答", "success", 4),
+      ],
+    });
+    const buttons = [
+      ...view.querySelectorAll<HTMLButtonElement>(".agent-message-actions button"),
+    ].filter((button) => button.textContent === "agent_page.action.fork");
+    expect(buttons).toHaveLength(2);
+    await act(async () => buttons[0]!.click());
+    await act(async () => get_portal_cancel_button().click());
+    expect(forkRound).not.toHaveBeenCalled();
+    await act(async () => buttons[0]!.click());
+    await act(async () => get_portal_action_button().click());
+    expect(forkRound).toHaveBeenCalledWith("user-1");
+    expect(document.body.querySelector('[data-slot="alert-dialog-content"]')).not.toBeNull();
+    expect(push_toast).toHaveBeenCalledWith("app.feedback.modify_failed", expect.any(Error));
+  });
+
   it("新任务先确认，取消不调用，确认期间锁定并在成功后关闭", async () => {
     let resolve_reset!: () => void;
     const reset = vi.fn(
@@ -1341,6 +1369,7 @@ function build_state(overrides: Partial<AgentPageState> = {}): AgentPageState {
       replace_history: vi.fn(),
     },
     send: vi.fn(async () => undefined),
+    forkRound: vi.fn(async () => undefined),
     reviseLatestRound: vi.fn(async () => undefined),
     updateQueuedMessage: vi.fn(async () => undefined),
     deleteQueuedMessage: vi.fn(async () => undefined),

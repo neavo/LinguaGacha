@@ -112,6 +112,7 @@ export function AgentConversation({ active = true }: { active?: boolean }): JSX.
     handle_scroll: handle_conversation_scroll,
   } = useAgentFollowLatest(true);
   const [follow_reset_revision, set_follow_reset_revision] = useState(0);
+  const [fork_round_id, set_fork_round_id] = useState<string | null>(null); // 弹窗绑定轮次身份，提交时由后端重新校验
   const [reset_dialog_open, set_reset_dialog_open] = useState(false);
   const [pending_thinking_off_action, set_pending_thinking_off_action] =
     useState<PendingThinkingOffAction | null>(null);
@@ -121,6 +122,7 @@ export function AgentConversation({ active = true }: { active?: boolean }): JSX.
   useEffect(() => {
     if (!active) {
       set_reset_dialog_open(false);
+      set_fork_round_id(null);
       set_pending_thinking_off_action(null);
     }
   }, [active]);
@@ -525,6 +527,13 @@ export function AgentConversation({ active = true }: { active?: boolean }): JSX.
     </Tooltip>
   );
 
+  const history_disabled =
+    controls.command !== null ||
+    is_running ||
+    compacting ||
+    unavailable_reason !== null ||
+    active_inline_edit !== null;
+
   return (
     <div ref={page_ref} className="agent-page">
       <section
@@ -602,13 +611,9 @@ export function AgentConversation({ active = true }: { active?: boolean }): JSX.
               on_edit={start_edit}
               render_entry_editor={render_entry_editor}
               on_add_annotation={add_response_annotation}
-              revision_disabled={
-                controls.command !== null ||
-                active_inline_edit !== null ||
-                is_running ||
-                compacting ||
-                unavailable_reason !== null
-              }
+              on_fork={set_fork_round_id}
+              fork_disabled={history_disabled}
+              revision_disabled={history_disabled}
               continue_disabled={
                 controls.command !== null || is_running || compacting || unavailable_reason !== null
               }
@@ -729,6 +734,22 @@ export function AgentConversation({ active = true }: { active?: boolean }): JSX.
         onClose={close_pending_thinking_off_action}
       />
       <AppConfirmDialog
+        open={fork_round_id !== null}
+        description={t("agent_page.confirm.fork")}
+        submitting={controls.command === "fork"}
+        confirmDisabled={history_disabled}
+        onConfirm={async () => {
+          if (fork_round_id === null) return;
+          try {
+            await agent_actions.forkRound(fork_round_id);
+            set_fork_round_id(null);
+          } catch (error) {
+            show_command_error(error, "app.feedback.modify_failed");
+          }
+        }}
+        onClose={() => set_fork_round_id(null)}
+      />
+      <AppConfirmDialog
         open={reset_dialog_open}
         description={t("agent_page.confirm.new_task")}
         submitting={controls.command === "reset"}
@@ -736,6 +757,7 @@ export function AgentConversation({ active = true }: { active?: boolean }): JSX.
           try {
             await agent_actions.reset();
             set_reset_dialog_open(false);
+            set_fork_round_id(null);
           } catch (error) {
             show_command_error(error, "agent_page.error.reset");
           }

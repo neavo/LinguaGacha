@@ -144,6 +144,7 @@ export function register_api_routes(context: ApiRouteContext): void {
   context.postJson("/api/agent/queue/delete", (body) => agent.delete_queued_message(body));
   context.postJson("/api/agent/queue/reorder", (body) => agent.reorder_queued_messages(body));
   context.postJson("/api/agent/queue/send", (body) => agent.input_command("queue_send", body));
+  context.postJson("/api/agent/round/fork", (body) => agent.input_command("fork", body));
   context.postJson("/api/agent/round/revise", (body) => agent.input_command("revise", body));
   context.postJson("/api/agent/continue", (body) => agent.input_command("continue", body));
   context.postJson("/api/agent/context/compact", () => agent.compact_context());

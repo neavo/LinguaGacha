@@ -57,6 +57,7 @@ import {
 
 export type AgentCommand =
   | "send"
+  | "fork"
   | "revise"
   | "continue"
   | "compact"
@@ -93,6 +94,7 @@ export type AgentInputState = {
 
 export type AgentChatActions = Readonly<{
   send: (message: AgentMessageInput) => Promise<void>;
+  forkRound: (roundId: string) => Promise<void>;
   reviseLatestRound: (entryId: string, message: AgentMessageInput) => Promise<void>;
   updateQueuedMessage: (id: string, message: AgentMessageInput) => Promise<void>;
   deleteQueuedMessage: (id: string) => Promise<void>;
@@ -198,6 +200,7 @@ export class AgentChatStore {
     this.input = this.create_input_state(0);
     this.actions = {
       send: this.send,
+      forkRound: this.fork_round,
       reviseLatestRound: this.revise_latest_round,
       updateQueuedMessage: this.update_queued_message,
       deleteQueuedMessage: this.delete_queued_message,
@@ -714,6 +717,13 @@ export class AgentChatStore {
   private readonly send_queued_message = async (id: string): Promise<void> => {
     await this.execute_command("queue_send", () =>
       this.submit_input("queue_send", "/api/agent/queue/send", { id }),
+    );
+  };
+
+  /** 分叉沿用持久化命令身份，重连查询受理结果。 */
+  private readonly fork_round = async (roundId: string): Promise<void> => {
+    await this.execute_command("fork", () =>
+      this.submit_input("fork", "/api/agent/round/fork", { roundId }),
     );
   };
 
@@ -1342,7 +1352,13 @@ function read_pending_input(storage: Storage): PendingInputCommand | null {
     )
       return null;
     const kind = value["kind"];
-    if (kind !== "send" && kind !== "queue_send" && kind !== "revise" && kind !== "continue")
+    if (
+      kind !== "send" &&
+      kind !== "queue_send" &&
+      kind !== "revise" &&
+      kind !== "fork" &&
+      kind !== "continue"
+    )
       return null;
     return {
       chatId: value["chatId"],

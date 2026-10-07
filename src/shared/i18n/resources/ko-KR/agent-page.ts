@@ -111,6 +111,7 @@ export const ko_kr_agent_page = {
     retry: "컨텍스트 압축에 실패했습니다 · 클릭하여 다시 시도",
   },
   action: {
+    fork: "분기",
     send: "전송",
     stop: "중지",
     applying: "프로젝트 변경 사항을 적용 중입니다. 완료될 때까지 중지할 수 없습니다",
@@ -137,6 +138,7 @@ export const ko_kr_agent_page = {
     full: "메시지 대기열이 가득 찼습니다 · {count}/{limit}",
   },
   confirm: {
+    fork: "이 응답에서 분기하여 새 대화를 만드시겠습니까?",
     new_task: "새 대화 작업을 시작할까요 …?",
     thinking_off: "모델의 생각 기능을 끄면 AGENT의 작업 수행 능력이 크게 저하됩니다. 계속할까요 …?",
   },
