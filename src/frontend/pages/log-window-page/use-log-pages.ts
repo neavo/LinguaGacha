@@ -73,6 +73,8 @@ export function useLogPages(selectedId: string | null) {
     can_load_older: false,
     reset_revision: 0,
   });
+  const current_state = useRef(state); // 同日期重读保留旧摘要，成功响应才替换列表。
+  current_state.current = state;
   const selection = useRef({ following, selectedId }); // 轮询读取最新 UI 意图，避免重建请求任务
   const load_older_ref = useRef<(() => void) | null>(null); // 稳定 UI 回调接入当前日期队列
 
@@ -92,7 +94,8 @@ export function useLogPages(selectedId: string | null) {
     let expired = false;
     let failure_notified = false; // 连续后台轮询失败只通知一次，成功后恢复通知。
     let reset_revision = 0; // 文件失效通知页面清空选择与详情
-    let entries: LogEntry[] = [];
+    let entries: LogEntry[] =
+      current_state.current.date === request_date ? current_state.current.entries : [];
 
     /** 只在页集合变化时更新摘要数组，空轮询保留引用。 */
     function publish(loading: boolean, failed = false, changed = true): void {
@@ -233,7 +236,7 @@ export function useLogPages(selectedId: string | null) {
       if (document.visibilityState !== "hidden") void read();
     }
     document.addEventListener("visibilitychange", visibility);
-    publish(true);
+    publish(true, false, false);
     void read();
     return () => {
       controller.abort();

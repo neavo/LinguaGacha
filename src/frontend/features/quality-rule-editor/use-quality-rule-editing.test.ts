@@ -23,8 +23,9 @@ let editing!: ReturnType<typeof useQualityRuleEditing<"text_preserve">>;
 let root: Root | null = null;
 
 /** 只隔离工程提交边界，重复确认和草稿生命周期使用真实实现。 */
-function Probe() {
+function Probe({ ready = true }: { ready?: boolean }) {
   editing = useQualityRuleEditing({
+    ready,
     rule_type: "text_preserve",
     project_path: "project.lg",
     entries,
@@ -113,3 +114,22 @@ it.each(["import", "export", "save", "preset"] as const)(
     expect(push_toast).toHaveBeenCalledExactlyOnceWith(expect.any(String), error);
   },
 );
+
+it("内容未就绪时阻止新增、写入与导出，成功读取后允许编辑", async () => {
+  const pick = vi.fn();
+  vi.stubGlobal("desktopApp", { pickGlossaryExportPath: pick });
+  root = createRoot(document.createElement("div"));
+  await act(async () => root!.render(createElement(Probe, { ready: false })));
+  await act(async () => {
+    editing.open_create_dialog();
+    await editing.save_entries_snapshot([{ ...entries[0]!, info: "new" }]);
+    await editing.update_meta({ mode: "custom" });
+    await editing.export_entries_from_picker();
+  });
+  expect(editing.dialog_state.open).toBe(false);
+  expect(api).not.toHaveBeenCalled();
+  expect(pick).not.toHaveBeenCalled();
+  await act(async () => root!.render(createElement(Probe, { ready: true })));
+  await act(async () => editing.open_create_dialog());
+  expect(editing.dialog_state.open).toBe(true);
+});

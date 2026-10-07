@@ -4,8 +4,6 @@ export const ja_jp_log_window_page = {
   title: "ログ",
   history: {
     date: "ログの日付",
-    loading: "ログを読み込み中…",
-    empty: "ログはありません",
     expired: "この日付のログは削除されました",
   },
   level: {

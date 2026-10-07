@@ -53,20 +53,11 @@ export function TextPreservePage(_props: ScreenComponentProps): JSX.Element {
       };
     });
 
-  if (page_state.quality_status !== "ready") {
-    return (
-      <div className="text-preserve-page page-shell page-shell--full">
-        {page_state.quality_status === "error" ? (
-          <AppContentState status="error" />
-        ) : (
-          <AppContentState status="loading" />
-        )}
-      </div>
-    );
-  }
-
   return (
-    <div className="text-preserve-page page-shell page-shell--full">
+    <div
+      className="text-preserve-page page-shell page-shell--full"
+      aria-busy={page_state.quality_status === "idle" || page_state.quality_status === "loading"}
+    >
       <SearchBar
         variant="filter"
         keyword={page_state.table.filter_state.keyword}
@@ -122,9 +113,10 @@ export function TextPreservePage(_props: ScreenComponentProps): JSX.Element {
             on_query_entry_source={page_state.query_entry_source}
           />
         </FileDropZone>
+        {page_state.quality_status === "error" && <AppContentState status="error" />}
       </div>
       <TextPreserveCommandBar
-        title_key={page_state.title_key}
+        ready={page_state.quality_status === "ready"}
         mode={page_state.mode}
         mode_updating={page_state.mode_updating}
         preset_items={page_state.presets.preset_items}

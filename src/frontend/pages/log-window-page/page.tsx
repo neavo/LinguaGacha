@@ -514,6 +514,7 @@ export function LogWindowPage(): JSX.Element {
           <Card variant="table" className="log-window-page__table-card">
             <CardContent
               className="log-window-page__table-card-content"
+              aria-busy={logs.loading}
               onScrollCapture={(event) => {
                 const viewport = event.target;
                 if (
@@ -538,11 +539,6 @@ export function LogWindowPage(): JSX.Element {
                     {t("app.action.retry")}
                   </AppButton>
                 </div>
-              ) : null}
-              {logs.loading && events.length === 0 ? (
-                <AppContentState status="loading" message={t("log_window_page.history.loading")} />
-              ) : events.length === 0 && !logs.failed && !logs.expired ? (
-                <p className="log-window-page__status">{t("log_window_page.history.empty")}</p>
               ) : null}
               <AppTable
                 rows={visible_events}

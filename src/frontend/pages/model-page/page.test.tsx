@@ -113,6 +113,27 @@ describe("ModelPage", () => {
     push_toast_mock.mockReset();
   });
 
+  it("已有模型在读取和失败期间保留，分类节点持续挂载", async () => {
+    const { state } = create_model_page_state();
+    state.load_status = "loading";
+    use_model_page_state_mock.mockReturnValue(state);
+    container = document.createElement("div");
+    root = createRoot(container);
+    await act(async () => root!.render(<ModelPage is_sidebar_collapsed={false} />));
+    expect(container.querySelector('.model-page[aria-busy="true"]')).not.toBeNull();
+    expect(container.textContent).not.toContain("app.action.loading");
+    const category = container.querySelector(".model-page__category-card");
+    expect(category).not.toBeNull();
+    expect(container.textContent).toContain(state.snapshot.models[0]!.name);
+    state.load_status = "error";
+    await act(async () => root!.render(<ModelPage is_sidebar_collapsed={false} />));
+    expect(container.textContent).toContain("app.feedback.content_unavailable");
+    expect(container.querySelector(".model-page__category-card")).toBe(category);
+    state.load_status = "ready";
+    await act(async () => root!.render(<ModelPage is_sidebar_collapsed={false} />));
+    expect(container.querySelector(".model-page__category-card")).toBe(category);
+  });
+
   it("菜单动作提交所在条目的模型 ID", async () => {
     const { open_dialog, state } = create_model_page_state();
     const other = create_model_snapshot({ id: "other", name: "另一个模型", can_reset: false });

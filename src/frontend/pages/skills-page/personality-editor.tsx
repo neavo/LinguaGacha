@@ -30,6 +30,7 @@ export function PersonalityEditor({ on_back }: { on_back: () => void }): JSX.Ele
   return (
     <section
       className="skill-editor"
+      aria-busy={!editor.saved && editor.busy}
       onCompositionStart={() => editor.compose(true)}
       onCompositionEnd={() => editor.compose(false)}
       onKeyDown={(event) => {
@@ -60,11 +61,8 @@ export function PersonalityEditor({ on_back }: { on_back: () => void }): JSX.Ele
           });
         }}
       />
-      {!editor.saved ? (
-        <Card className="skill-editor__state">
-          <AppContentState status={editor.busy ? "loading" : "error"} />
-        </Card>
-      ) : (
+
+      {editor.saved && (
         <SkillEditorWorkspace
           entries={PERSONALITY_FILES}
           path={AGENT_SKILL_MAIN_FILE}
@@ -91,6 +89,7 @@ export function PersonalityEditor({ on_back }: { on_back: () => void }): JSX.Ele
           </Card>
         </SkillEditorWorkspace>
       )}
+      {!editor.saved && !editor.busy && <AppContentState status="error" />}
     </section>
   );
 }
@@ -115,7 +114,7 @@ function usePersonalityEditor() {
     saved: null,
     draft: "",
     save_failed: false,
-    busy: false,
+    busy: true,
     saving: false,
     composing: false,
     reset_count: 0,

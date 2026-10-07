@@ -2,7 +2,6 @@ export const en_us_skills_page = {
   title: "Skills",
   builtin: "Built-in skills",
   user: "User skills",
-  empty: "No user skills",
   readonly: "Read-only",
   personality_description: "Personality settings for your intelligent assistant",
   install: {

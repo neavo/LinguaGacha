@@ -18,6 +18,7 @@ import {
 import type { ProjectDataSection } from "@shared/project-event";
 
 type ResultSnapshotStateOptions<Query, Id extends string> = {
+  loaded: boolean;
   project_path: string;
   section: ProjectDataSection;
   section_revision: number;
@@ -37,14 +38,27 @@ type ResultSnapshotState<Query, Id extends string> = {
 export function useResultSnapshotState<Query, Id extends string>(
   options: ResultSnapshotStateOptions<Query, Id>,
 ): ResultSnapshotState<Query, Id> {
-  const { project_path, section, section_revision, has_active_query, valid_ids, build_snapshot } =
-    options;
+  const {
+    loaded,
+    project_path,
+    section,
+    section_revision,
+    has_active_query,
+    valid_ids,
+    build_snapshot,
+  } = options;
   const [result_snapshot, set_result_snapshot] = useState<ResultSnapshot<Query, Id> | null>(null);
   const [pending_result_refresh, set_pending_result_refresh] =
     useState<PendingResultRefresh | null>(null);
   const source_checkpoint_ref = useRef({ projectPath: "", revision: 0 });
 
   useEffect(() => {
+    // 首次事实未到达时，空数据不能成为保留筛选成员的正式快照。
+    if (!loaded) {
+      set_result_snapshot(null);
+      set_pending_result_refresh(null);
+      return;
+    }
     const current_source_checkpoint = {
       projectPath: project_path,
       sections: {
@@ -85,6 +99,7 @@ export function useResultSnapshotState<Query, Id extends string>(
       set_pending_result_refresh(null);
     }
   }, [
+    loaded,
     build_snapshot,
     has_active_query,
     project_path,
@@ -100,7 +115,7 @@ export function useResultSnapshotState<Query, Id extends string>(
   }, []);
 
   return {
-    result_snapshot,
+    result_snapshot: loaded ? result_snapshot : null,
     set_result_snapshot,
     set_pending_result_refresh,
     reset_result_snapshot,

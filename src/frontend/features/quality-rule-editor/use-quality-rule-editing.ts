@@ -58,6 +58,7 @@ type ApplyOptions = { source: "import" | "preset" | "dialog"; refresh: ResultRef
 
 /** 页面编辑只持有草稿和意图，项目事实、事务恢复和结果版本门闩继续使用现有拥有者。 */
 export function useQualityRuleEditing<K extends QualityRuleKind>(options: {
+  ready: boolean;
   rule_type: K;
   project_path: string;
   entries: QualityRuleEntryByKind[K][];
@@ -82,6 +83,7 @@ export function useQualityRuleEditing<K extends QualityRuleKind>(options: {
   export_file_name: string;
 }) {
   type Entry = QualityRuleEntryByKind[K];
+  const readonly = !options.ready || options.readonly; // 未就绪与工程占用均阻止编辑，导出只依赖就绪。
   const { t } = useI18n();
   const { commit_project_write } = useDesktopState();
   const current = useRef(options); // 确认操作读取最近一次已提交的 React 快照及其修订。
@@ -121,7 +123,7 @@ export function useQualityRuleEditing<K extends QualityRuleKind>(options: {
       policy: ResultRefreshPolicy = PRESERVE_RESULT_REFRESH,
     ): Promise<boolean> => {
       const state = current.current;
-      if (state.readonly || busy.current) return false;
+      if (!state.ready || state.readonly || busy.current) return false;
       const normalized_entries = next_entries.map(state.normalize);
       if (
         quality_rule_entries_equal(IMPORT_KIND[state.rule_type], normalized_entries, state.entries)
@@ -165,7 +167,7 @@ export function useQualityRuleEditing<K extends QualityRuleKind>(options: {
   const update_meta = useCallback(
     async (meta: NonNullable<QualityRuleUpdateRequest<K>["meta"]>): Promise<void> => {
       const state = current.current;
-      if (state.readonly || busy.current) return;
+      if (!state.ready || state.readonly || busy.current) return;
       const token = generation.current;
       busy.current = true;
       try {
@@ -229,7 +231,7 @@ export function useQualityRuleEditing<K extends QualityRuleKind>(options: {
 
   /** 记录新增位置并准备独立草稿。 */
   function open_create_dialog(): void {
-    if (options.readonly || busy.current) return;
+    if (readonly || busy.current) return;
     const ids = new Map(options.entries.map((entry, index) => [entry.entry_id, index]));
     const insert_after_entry_id = resolve_quality_rule_insert_after_entry_id(
       options.selection.active_row_id,
@@ -269,7 +271,7 @@ export function useQualityRuleEditing<K extends QualityRuleKind>(options: {
   }
   /** 校验草稿，术语和保护规则经覆盖确认后提交。 */
   async function save_dialog_entry(): Promise<void> {
-    if (options.readonly || busy.current) return;
+    if (readonly || busy.current) return;
     const draft = options.normalize(dialog_state.draft_entry);
     const error = options.validate(draft);
     if (error !== null) {
@@ -331,7 +333,7 @@ export function useQualityRuleEditing<K extends QualityRuleKind>(options: {
     source: "import" | "preset",
     read: () => Promise<Entry[]>,
   ): Promise<void> {
-    if (options.readonly || busy.current) return;
+    if (readonly || busy.current) return;
     const token = generation.current;
     try {
       const incoming_entries = await read();
@@ -363,7 +365,7 @@ export function useQualityRuleEditing<K extends QualityRuleKind>(options: {
   }
   /** 文件选择完成后核对项目身份，再开始导入。 */
   async function import_entries_from_picker(): Promise<void> {
-    if (options.readonly) return;
+    if (readonly) return;
     const token = generation.current;
     try {
       const path = await pick_quality_rule_import_path();
@@ -374,6 +376,7 @@ export function useQualityRuleEditing<K extends QualityRuleKind>(options: {
   }
   /** 导出当前快照，用户完成选择后反馈结果。 */
   async function export_entries_from_picker(): Promise<void> {
+    if (!options.ready) return;
     try {
       if (
         await export_quality_rule_entries({
@@ -389,7 +392,7 @@ export function useQualityRuleEditing<K extends QualityRuleKind>(options: {
   }
   /** 冻结本次待删除身份，供确认后提交。 */
   async function delete_selected_entries(): Promise<void> {
-    if (options.readonly || options.selection.selected_row_ids.length === 0) return;
+    if (readonly || options.selection.selected_row_ids.length === 0) return;
     pending_delete.current = [...options.selection.selected_row_ids];
     set_confirm_state({
       ...create_empty_quality_rule_confirm_state(),
@@ -400,7 +403,7 @@ export function useQualityRuleEditing<K extends QualityRuleKind>(options: {
   }
   /** 记录清空规则意图，等待用户确认。 */
   function request_reset_entries(): void {
-    if (!options.readonly)
+    if (!readonly)
       set_confirm_state({
         ...create_empty_quality_rule_confirm_state(),
         open: true,
@@ -409,7 +412,7 @@ export function useQualityRuleEditing<K extends QualityRuleKind>(options: {
   }
   /** 执行当前确认，失败时恢复可操作状态。 */
   async function confirm_pending_action(): Promise<void> {
-    if (options.readonly || !confirm_state.open || busy.current) return;
+    if (readonly || !confirm_state.open || busy.current) return;
     const token = generation.current;
     set_confirm_state({ ...confirm_state, submitting: true });
     const ids = new Set(pending_delete.current);

@@ -25,81 +25,79 @@ export function CustomPromptPage(): JSX.Element {
     [register_before_leave, page_state.flush_prompt_change],
   );
   const readonly = page_state.readonly || leaving;
-  if (page_state.load_status !== "ready") {
-    return (
-      <div className="custom-prompt-page page-shell page-shell--full">
-        {page_state.load_status === "error" ? (
-          <AppContentState status="error" />
-        ) : (
-          <AppContentState status="loading" />
-        )}
-      </div>
-    );
-  }
 
   return (
-    <div className="custom-prompt-page page-shell page-shell--full">
+    <div
+      className="custom-prompt-page page-shell page-shell--full"
+      aria-busy={page_state.load_status === "loading"}
+    >
       <div className="custom-prompt-page__content">
-        <Tooltip>
-          <TooltipTrigger
-            render={
-              <section
-                className="custom-prompt-page__readonly-strip"
-                aria-label={t("custom_prompt_page.section.prefix_label")}
-                tabIndex={0}
-              >
-                <p className="custom-prompt-page__readonly-strip-label font-medium">
-                  {t("custom_prompt_page.section.prefix_label")}
-                </p>
-                <pre className="custom-prompt-page__readonly-block">
-                  {compress_prompt_preview(page_state.template.prefix_text)}
+        {page_state.load_status === "ready" && (
+          <>
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <section
+                    className="custom-prompt-page__readonly-strip"
+                    aria-label={t("custom_prompt_page.section.prefix_label")}
+                    tabIndex={0}
+                  >
+                    <p className="custom-prompt-page__readonly-strip-label font-medium">
+                      {t("custom_prompt_page.section.prefix_label")}
+                    </p>
+                    <pre className="custom-prompt-page__readonly-block">
+                      {compress_prompt_preview(page_state.template.prefix_text)}
+                    </pre>
+                  </section>
+                }
+              />
+              <TooltipContent align="start" className="custom-prompt-page__readonly-tooltip">
+                <pre className="custom-prompt-page__readonly-tooltip-copy">
+                  {page_state.template.prefix_text}
                 </pre>
-              </section>
-            }
-          />
-          <TooltipContent align="start" className="custom-prompt-page__readonly-tooltip">
-            <pre className="custom-prompt-page__readonly-tooltip-copy">
-              {page_state.template.prefix_text}
-            </pre>
-          </TooltipContent>
-        </Tooltip>
+              </TooltipContent>
+            </Tooltip>
 
-        <AppEditor
-          class_name="custom-prompt-page__editor-host"
-          syntax="markdown"
-          value={page_state.prompt_text}
-          aria_label={t("custom_prompt_page.title")}
-          read_only={readonly}
-          on_change={page_state.update_prompt_text}
-        />
+            <AppEditor
+              class_name="custom-prompt-page__editor-host"
+              syntax="markdown"
+              value={page_state.prompt_text}
+              aria_label={t("custom_prompt_page.title")}
+              read_only={readonly}
+              on_change={page_state.update_prompt_text}
+            />
 
-        <Tooltip>
-          <TooltipTrigger
-            render={
-              <section
-                className="custom-prompt-page__readonly-strip"
-                aria-label={t("custom_prompt_page.section.suffix_label")}
-                tabIndex={0}
-              >
-                <p className="custom-prompt-page__readonly-strip-label font-medium">
-                  {t("custom_prompt_page.section.suffix_label")}
-                </p>
-                <pre className="custom-prompt-page__readonly-block">
-                  {compress_prompt_preview(page_state.template.suffix_text)}
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <section
+                    className="custom-prompt-page__readonly-strip"
+                    aria-label={t("custom_prompt_page.section.suffix_label")}
+                    tabIndex={0}
+                  >
+                    <p className="custom-prompt-page__readonly-strip-label font-medium">
+                      {t("custom_prompt_page.section.suffix_label")}
+                    </p>
+                    <pre className="custom-prompt-page__readonly-block">
+                      {compress_prompt_preview(page_state.template.suffix_text)}
+                    </pre>
+                  </section>
+                }
+              />
+              <TooltipContent align="start" className="custom-prompt-page__readonly-tooltip">
+                <pre className="custom-prompt-page__readonly-tooltip-copy">
+                  {page_state.template.suffix_text}
                 </pre>
-              </section>
-            }
-          />
-          <TooltipContent align="start" className="custom-prompt-page__readonly-tooltip">
-            <pre className="custom-prompt-page__readonly-tooltip-copy">
-              {page_state.template.suffix_text}
-            </pre>
-          </TooltipContent>
-        </Tooltip>
+              </TooltipContent>
+            </Tooltip>
+          </>
+        )}
+        {page_state.load_status === "error" && <AppContentState status="error" />}
       </div>
 
       <div className="custom-prompt-page__command-bar-shell">
         <CustomPromptCommandBar
+          ready={page_state.load_status === "ready"}
           enabled={page_state.enabled}
           preset_items={page_state.preset_items}
           preset_menu_open={page_state.preset_menu_open}

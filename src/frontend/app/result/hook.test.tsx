@@ -20,6 +20,7 @@ function ResultProbe(props: {
 }): null {
   const build_snapshot = useCallback(() => props.snapshot, [props.snapshot]);
   const state = useResultSnapshotState({
+    loaded: true,
     project_path: "E:/demo/sample.lg",
     section: "quality",
     section_revision: props.revision,

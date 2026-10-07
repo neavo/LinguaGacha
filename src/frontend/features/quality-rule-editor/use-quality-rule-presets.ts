@@ -31,6 +31,7 @@ import {
 export function useQualityRulePresets<K extends QualityRuleKind>(
   rule_type: K,
   entries: QualityRuleEntryByKind[K][],
+  ready: boolean,
 ) {
   const { t } = useI18n();
   const { settings_snapshot, apply_settings_snapshot, project_snapshot, refresh_settings } =
@@ -112,6 +113,7 @@ export function useQualityRulePresets<K extends QualityRuleKind>(
   }
   /** 打开当前规则的预设命名流程。 */
   function request_save_preset(): void {
+    if (!ready) return;
     set_preset_input_state({
       open: true,
       mode: "save",
@@ -142,6 +144,7 @@ export function useQualityRulePresets<K extends QualityRuleKind>(
   }
   /** 保存预设并读取目录结果。 */
   async function save_preset(name: string): Promise<boolean> {
+    if (!ready) return false;
     const token = generation.current;
     let error_key: LocaleKey = "app.feedback.save_failed";
     try {

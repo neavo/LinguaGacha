@@ -45,6 +45,26 @@ function page(line: number, date = "20260913"): LogPage {
 }
 
 describe("useLogPages", () => {
+  it("同日期重读保留旧摘要，成功空结果才清空列表", async () => {
+    await mount();
+    const old_entries = current.entries;
+    let resolve!: (value: LogPage) => void;
+    mocks.page.mockImplementationOnce(
+      () =>
+        new Promise<LogPage>((finish) => {
+          resolve = finish;
+        }),
+    );
+    await act(async () => current.refresh());
+    expect(current.loading).toBe(true);
+    expect(current.entries).toBe(old_entries);
+    await act(async () =>
+      resolve({ status: "ready", entries: [], before: null, after: null, has_more: false }),
+    );
+    expect(current.entries).toEqual([]);
+    expect(current.loading).toBe(false);
+  });
+
   it("没有可选文件时不发分页请求，首次发现文件后才选择日期", async () => {
     await mount([]);
     expect(current.date).toBeNull();

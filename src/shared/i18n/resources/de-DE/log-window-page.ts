@@ -5,8 +5,6 @@ export const de_de_log_window_page = {
   title: "Protokolle",
   history: {
     date: "Protokolldatum",
-    loading: "Protokolle werden gelesen…",
-    empty: "Keine Protokolle",
     expired: "Protokolle dieses Datums wurden entfernt",
   },
   level: {

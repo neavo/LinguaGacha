@@ -36,7 +36,7 @@ export function SkillEditor({
   const { leaving, register_before_leave } = usePageLeave();
   useEffect(() => register_before_leave(editor.flush), [editor.flush, register_before_leave]);
   const readonly = skill.source === "builtin" || editor.locked;
-  const locked = readonly || editor.busy || leaving;
+  const locked = readonly || editor.busy || editor.loading || leaving;
   const path_parts = [
     editor.file?.skill.name ?? skill.name,
     ...(editor.file?.path ?? AGENT_SKILL_MAIN_FILE).split("/"),
@@ -44,6 +44,7 @@ export function SkillEditor({
   return (
     <section
       className="skill-editor"
+      aria-busy={editor.loading}
       onCompositionStart={() => editor.compose(true)}
       onCompositionEnd={() => editor.compose(false)}
       onKeyDown={(event) => {
@@ -107,11 +108,8 @@ export function SkillEditor({
           return ok;
         }}
       />
-      {editor.loading || !editor.tree || !editor.file ? (
-        <Card className="skill-editor__state">
-          <AppContentState status={editor.loading ? "loading" : "error"} />
-        </Card>
-      ) : (
+
+      {editor.tree && editor.file && (
         <SkillEditorWorkspace
           entries={editor.tree.entries}
           path={editor.file.path}
@@ -166,6 +164,7 @@ export function SkillEditor({
           </Card>
         </SkillEditorWorkspace>
       )}
+      {!editor.loading && (!editor.tree || !editor.file) && <AppContentState status="error" />}
     </section>
   );
 }

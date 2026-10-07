@@ -29,6 +29,7 @@ import {
 import type { PresetItem } from "./preset-types";
 
 type PresetMenuProps = {
+  disabled: boolean;
   items: readonly PresetItem[];
   open: boolean;
   project_write_disabled: boolean;
@@ -95,7 +96,7 @@ export function PresetMenu(props: PresetMenuProps): JSX.Element {
     >
       <AppDropdownMenuTrigger
         render={
-          <AppButton variant="ghost" size="toolbar">
+          <AppButton variant="ghost" size="toolbar" disabled={props.disabled}>
             <FolderOpen data-icon="inline-start" />
             {props.trigger_label}
           </AppButton>

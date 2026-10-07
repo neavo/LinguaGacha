@@ -134,16 +134,6 @@
   user-select: none;
 }
 
-.skills-page__empty {
-  align-items: center;
-  justify-content: center;
-  min-height: 60px;
-  padding: 16px;
-  font-size: var(--ui-font-size-13);
-  color: var(--muted-foreground);
-  text-align: center;
-}
-
 .skills-page__list {
   height: 100%;
   overflow: auto;

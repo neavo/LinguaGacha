@@ -495,7 +495,7 @@ export function useModelPageState(): UseModelPageStateResult {
     return find_model(snapshot, dialog_state.model_id);
   }, [dialog_state.model_id, snapshot]);
 
-  const readonly = is_action_running;
+  const readonly = load_status !== "ready" || is_action_running; // 首次快照到达前，配置写入口与页面控件共用锁。
   const test_disabled = is_runtime_busy(runtime_snapshot) || is_testing || is_action_running;
 
   /** 提交模型字段修改并同步后端快照。 */

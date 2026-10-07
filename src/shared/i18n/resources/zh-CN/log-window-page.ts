@@ -2,8 +2,6 @@ export const zh_cn_log_window_page = {
   title: "日志",
   history: {
     date: "日志日期",
-    loading: "正在读取日志 …",
-    empty: "暂无日志",
     expired: "该日期的日志已清理",
   },
   level: {

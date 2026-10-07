@@ -86,6 +86,7 @@ describe("PresetMenu", () => {
       await act(async () => {
         root?.render(
           <PresetMenu
+            disabled={false}
             items={[
               { name: "内置", virtual_id: "builtin:default", type: "builtin" },
               { name: "用户", virtual_id: "user:demo.json", type: "user", is_default: true },

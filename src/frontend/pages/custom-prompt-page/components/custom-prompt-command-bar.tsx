@@ -1,38 +1,18 @@
 import type { JSX } from "react";
-import { FileDown, FileUp } from "lucide-react";
-
 import { useI18n } from "@frontend/app/locale/locale-context";
-import { PresetMenu } from "@frontend/features/preset-editor/preset-menu";
-import type { PresetItem } from "@frontend/features/preset-editor/preset-types";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@frontend/shadcn/tooltip";
-import { AppButton } from "@frontend/widgets/app-button";
-import { BooleanSegmentedToggle } from "@frontend/widgets/boolean-segmented-toggle";
 import {
-  CommandBar,
-  CommandBarGroup,
-  CommandBarSeparator,
-} from "@frontend/widgets/command-bar/command-bar";
+  QualityRuleCommandBar,
+  type QualityRuleCommandBarProps,
+} from "@frontend/features/quality-rule-editor/quality-rule-command-bar";
+import { BooleanSegmentedToggle } from "@frontend/widgets/boolean-segmented-toggle";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@frontend/shadcn/tooltip";
 
-type CustomPromptCommandBarProps = {
+type CustomPromptCommandBarProps = Omit<QualityRuleCommandBarProps, "hint" | "entry_actions"> & {
   enabled: boolean;
-  preset_items: PresetItem[];
-  preset_menu_open: boolean;
-  readonly: boolean;
   on_toggle_enabled: (next_value: boolean) => Promise<boolean>;
-  on_import: () => Promise<void>;
-  on_export: () => Promise<void>;
-  on_open_preset_menu: () => Promise<void>;
-  on_apply_preset: (virtual_id: string) => Promise<void>;
-  on_request_reset: () => void;
-  on_request_save_preset: () => void;
-  on_request_rename_preset: (preset_item: PresetItem) => void;
-  on_request_delete_preset: (preset_item: PresetItem) => void;
-  on_set_default_preset: (virtual_id: string) => Promise<void>;
-  on_cancel_default_preset: () => Promise<void>;
-  on_preset_menu_open_change: (next_open: boolean) => void;
 };
 
-/** 组合提示词导入导出、预设与启用操作。 */
+/** 页面只提供启用或模式控件，公共操作由质量操作栏拥有。 */
 export function CustomPromptCommandBar(props: CustomPromptCommandBarProps): JSX.Element {
   const { t } = useI18n();
   const toggle_state_key = props.enabled ? "app.state.enabled" : "app.state.disabled";
@@ -42,50 +22,8 @@ export function CustomPromptCommandBar(props: CustomPromptCommandBarProps): JSX.
   });
 
   return (
-    <CommandBar
-      actions={
-        <>
-          <CommandBarGroup>
-            <AppButton
-              variant="ghost"
-              size="toolbar"
-              disabled={props.readonly}
-              onClick={() => {
-                void props.on_import();
-              }}
-            >
-              <FileDown data-icon="inline-start" />
-              {t("app.action.import")}
-            </AppButton>
-            <AppButton
-              variant="ghost"
-              size="toolbar"
-              onClick={() => {
-                void props.on_export();
-              }}
-            >
-              <FileUp data-icon="inline-start" />
-              {t("app.action.export")}
-            </AppButton>
-          </CommandBarGroup>
-          <CommandBarSeparator />
-          <PresetMenu
-            items={props.preset_items}
-            open={props.preset_menu_open}
-            project_write_disabled={props.readonly}
-            trigger_label={t("app.action.preset")}
-            on_open={props.on_open_preset_menu}
-            on_open_change={props.on_preset_menu_open_change}
-            on_apply={props.on_apply_preset}
-            on_request_reset={props.on_request_reset}
-            on_request_save={props.on_request_save_preset}
-            on_request_rename={props.on_request_rename_preset}
-            on_request_delete={props.on_request_delete_preset}
-            on_set_default={props.on_set_default_preset}
-            on_cancel_default={props.on_cancel_default_preset}
-          />
-        </>
-      }
+    <QualityRuleCommandBar
+      {...props}
       hint={
         <Tooltip>
           <TooltipTrigger
