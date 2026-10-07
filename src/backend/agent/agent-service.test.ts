@@ -4,6 +4,11 @@ import { AgentChatStorage } from "../database/agent-chat-storage";
 import { randomUUID } from "node:crypto";
 import type { AgentApprovalMode } from "../../domain/setting";
 import { AgentTokenSpeed } from "./agent-token-speed";
+import { AgentChat } from "./agent-chat";
+import { once } from "node:events";
+import { AgentToolError } from "./tool-definition";
+import { AppError } from "../../shared/error";
+import type { LogAppendPayload } from "../../shared/log";
 import { uploaded_file } from "../../test/agent-upload-fixture";
 import { workspace_execution } from "../../test/agent-workspace-fixture";
 import { Model as AppModel } from "../../domain/model";
@@ -1738,7 +1743,7 @@ describe("AgentService", () => {
   });
 
   it("真实 Agent 将流终态错误封口到轮次，并让 prompt 正常结束", async () => {
-    const { service, log_error } = await create_service();
+    const { service, log_append } = await create_service();
     fake_agent_state.mode = "error";
 
     await service.send_message({
@@ -1747,13 +1752,22 @@ describe("AgentService", () => {
     });
     await wait_for_idle(service);
 
-    expect(log_error).toHaveBeenCalledWith(
-      expect.any(String),
-      expect.objectContaining({
-        source: "agent",
-        error: expect.objectContaining({ message: "request failed" }),
-      }),
-    );
+    expect(
+      log_append.mock.calls
+        .map(([payload]) => payload)
+        .filter((payload) => payload.error !== undefined),
+    ).toMatchObject([
+      {
+        level: "error",
+        content: {
+          event: "run_end",
+          status: "error",
+          chat_id: expect.any(String),
+          run_id: expect.any(String),
+        },
+        error: { message: "request failed" },
+      },
+    ]);
     expect(service.get_snapshot()).toMatchObject({
       state: "idle",
       entries: [
@@ -2251,7 +2265,7 @@ describe("AgentService", () => {
   it("停止会中断当前回合并回到 idle，主动 abort 不上报请求失败", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(1_000);
-    const { service, log_error } = await create_service();
+    const { service, diagnostics } = await create_service();
     fake_agent_state.mode = "pending";
     await service.send_message({ text: "开始", attachments: [] });
     await vi.advanceTimersByTimeAsync(0);
@@ -2278,12 +2292,12 @@ describe("AgentService", () => {
     expect(stopped_snapshot.context.tokens).toEqual(expect.any(Number));
     expect(fake_agent_state.abort_count).toBe(1);
     await service.dispose();
-    expect(log_error).not.toHaveBeenCalled();
+    expect(diagnostics()).toEqual([]);
   });
 
   it("停止采用 SDK 已提交正文，并支持重开后离线修订", async () => {
     vi.useFakeTimers();
-    const { service, publish, log_error, session_state } = await create_service();
+    const { service, publish, diagnostics, session_state } = await create_service();
     fake_agent_state.mode = "streaming";
     fake_agent_state.stream_token_size = 1;
     fake_agent_state.stream_tokens_per_second = 40;
@@ -2356,11 +2370,148 @@ describe("AgentService", () => {
         status: "success",
       },
     ]);
-    expect(log_error).not.toHaveBeenCalled();
+    expect(diagnostics()).toEqual([]);
+  });
+
+  it.each(["user", "reset", "project_change", "shutdown"] as const)(
+    "取消脚本只记录一条完整终态，停止来源为 %s",
+    async (reason) => {
+      const { service, workspace, session_state, log_append, diagnostics } = await create_service();
+      const run = vi.spyOn(workspace, "run").mockImplementation(async (_script, signal) => {
+        await once(signal, "abort");
+        throw signal.reason;
+      });
+      fake_agent_state.mode = "tool_only";
+      await service.send_message({ text: "等待脚本", attachments: [] });
+      await vi.waitFor(() => expect(run).toHaveBeenCalledOnce());
+      const old_chat = service.get_snapshot().chatId;
+      if (reason === "user") {
+        await service.stop();
+        await service.stop();
+        await wait_for_idle(service);
+      } else if (reason === "reset") await service.reset();
+      else if (reason === "project_change") await session_state.mark_loaded("next.lg");
+      else await service.dispose();
+      const payloads = log_append.mock.calls.map(([payload]) => payload);
+      expect(payloads.filter((payload) => payload.content.event === "tool_end")).toMatchObject([
+        {
+          level: "info",
+          content: {
+            status: "stopped",
+            stop_reason: reason,
+            chat_id: old_chat,
+            tool_name: "workspace_run",
+            tool_call_id: "tool-only",
+            started_at: expect.any(String),
+            ended_at: expect.any(String),
+          },
+        },
+      ]);
+      expect(payloads.filter((payload) => payload.content.event === "run_end")).toMatchObject([
+        { level: "info", content: { status: "stopped", stop_reason: reason, chat_id: old_chat } },
+      ]);
+      expect(payloads.filter((payload) => payload.content.event === "stop_requested")).toHaveLength(
+        1,
+      );
+      expect(payloads.filter((payload) => payload.error !== undefined)).toEqual([]);
+      expect(payloads.some((payload) => payload.content.output !== undefined)).toBe(false);
+      expect(diagnostics()).toEqual([]);
+    },
+  );
+
+  it("取消收尾失败由执行拥有者记录一次并释放运行权", async () => {
+    const { service, runtime_gate, log_append } = await create_service();
+    const original = AgentChat.prototype.stop;
+    const failure = new Error("取消收尾失败");
+    vi.spyOn(AgentChat.prototype, "stop").mockImplementation(async function (
+      this: AgentChat,
+      execution,
+      average,
+    ) {
+      await original.call(this, execution, average);
+      throw failure;
+    });
+    fake_agent_state.mode = "pending";
+    await service.send_message({ text: "执行", attachments: [] });
+    await vi.waitFor(() => expect(fake_agent_state.release_pending).not.toBeNull());
+    await service.stop();
+    await wait_for_idle(service);
+    expect(runtime_gate.get_snapshot().owner).toBeNull();
+    expect(
+      log_append.mock.calls
+        .map(([payload]) => payload)
+        .filter((payload) => payload.content.event === "run_end"),
+    ).toMatchObject([{ content: { status: "stopped", stop_reason: "user" } }]);
+    expect(
+      log_append.mock.calls
+        .map(([payload]) => payload)
+        .filter((payload) => payload.error !== undefined),
+    ).toMatchObject([
+      {
+        level: "warning",
+        content: { event: "operation_end", operation: "cleanup", chat_id: expect.any(String) },
+        error: { message: "取消收尾失败" },
+      },
+    ]);
+  });
+
+  it.each(["expected", "warning"] as const)(
+    "工具结束日志沿用 %s 严重性，受控原因链不重复诊断",
+    async (severity) => {
+      const { service, workspace, log_append } = await create_service();
+      const error =
+        severity === "expected"
+          ? new AgentToolError({ code: "test.controlled" }, new Error("已记录的来源失败"))
+          : new AppError("model.provider_failed");
+      vi.spyOn(workspace, "run").mockRejectedValueOnce(error);
+      fake_agent_state.mode = "tool_only";
+      await service.send_message({ text: "调用工具", attachments: [] });
+      await wait_for_idle(service);
+      const ends = log_append.mock.calls
+        .map(([payload]) => payload)
+        .filter((payload) => payload.content.event === "tool_end");
+      expect(ends).toMatchObject([
+        {
+          level: severity === "expected" ? "info" : "warning",
+          content: {
+            status: "error",
+            output: {
+              value: {
+                code: severity === "expected" ? "test.controlled" : "model.provider_failed",
+              },
+            },
+          },
+        },
+      ]);
+      expect(ends[0].error === undefined).toBe(severity === "expected");
+    },
+  );
+
+  it("停止期间的真实脚本故障仍保存一次安全回执与原始诊断", async () => {
+    const { service, workspace, log_append } = await create_service();
+    const run = vi.spyOn(workspace, "run").mockImplementation(async (_script, signal) => {
+      await once(signal, "abort");
+      throw new Error("真实脚本故障");
+    });
+    fake_agent_state.mode = "tool_only";
+    await service.send_message({ text: "脚本", attachments: [] });
+    await vi.waitFor(() => expect(run).toHaveBeenCalledOnce());
+    await service.stop();
+    await wait_for_idle(service);
+    const failures = log_append.mock.calls
+      .map(([payload]) => payload)
+      .filter((payload) => payload.error !== undefined);
+    expect(failures).toMatchObject([
+      {
+        level: "error",
+        content: { event: "tool_end", status: "error", output: { value: { code: "tool_failed" } } },
+        error: { message: "真实脚本故障" },
+      },
+    ]);
   });
 
   it("停止期间保留占用，迟到工具按 SDK 回执结算", async () => {
-    const { service, runtime_gate } = await create_service();
+    const { service, runtime_gate, log_append } = await create_service();
     fake_agent_state.mode = "tool_only";
     fake_agent_state.hold_tool_execution = true;
     await service.send_message({ text: "查询", attachments: [] });
@@ -2380,6 +2531,13 @@ describe("AgentService", () => {
     );
     const tool = service.get_snapshot().entries.find((entry) => entry.kind === "tool_call");
     expect(tool).toMatchObject({ kind: "tool_call", status: "stopped", output: expect.any(Array) });
+    expect(
+      log_append.mock.calls
+        .map(([payload]) => payload)
+        .filter((payload) => payload.content.event === "tool_end"),
+    ).toMatchObject([
+      { level: "info", content: { status: "success", output: expect.any(Object) } },
+    ]);
   });
 
   it("workspace_apply 运行期间拒绝停止，提交终帧仍成为唯一结果", async () => {
@@ -2425,7 +2583,7 @@ describe("AgentService", () => {
   });
 
   it("SDK preflight 尚未结束时 stop 也不会迟到启动模型请求", async () => {
-    const { service, log_error } = await create_service();
+    const { service, diagnostics } = await create_service();
     fake_agent_state.hold_auth = true;
     await service.send_message({ text: "立即停止", attachments: [] });
     await vi.waitFor(() => expect(fake_agent_state.release_auth).not.toBeNull());
@@ -2437,7 +2595,7 @@ describe("AgentService", () => {
     await Promise.resolve();
 
     expect(fake_agent_state.model_call_count).toBe(0);
-    expect(log_error).not.toHaveBeenCalled();
+    expect(diagnostics()).toEqual([]);
   });
 
   it("reset 会立即隔离并等待 SDK preflight 真正 settle", async () => {
@@ -2710,7 +2868,7 @@ describe("AgentService", () => {
 
   it("首次容量不足后自动重试成功，不公开中间失败", async () => {
     vi.useFakeTimers();
-    const { service, log_error } = await create_service();
+    const { service, diagnostics } = await create_service();
     fake_agent_state.mode = "retry";
 
     await service.send_message({ text: "重试", attachments: [] });
@@ -2723,7 +2881,7 @@ describe("AgentService", () => {
       parts: [{ kind: "text", text: "已完成" }],
       status: "success",
     });
-    expect(log_error).not.toHaveBeenCalled();
+    expect(diagnostics()).toEqual([]);
   });
 
   it("已受理 steer 的后续生成失败时，整个产品轮次失败并暂停草稿", async () => {
@@ -2831,7 +2989,7 @@ describe("AgentService", () => {
   );
 
   it("溢出恢复成功后再次压缩和请求都不恢复废弃响应", async () => {
-    const { service, log_error } = await create_service();
+    const { service, diagnostics } = await create_service();
     await prepare_manual_compaction_history(service);
     fake_agent_state.mode = "overflow";
 
@@ -2856,12 +3014,12 @@ describe("AgentService", () => {
     expect(fake_agent_state.summary_contexts.length).toBeGreaterThanOrEqual(2);
     expect(JSON.stringify(fake_agent_state.summary_contexts)).not.toContain("废弃的恢复尝试");
     expect(JSON.stringify(fake_agent_state.model_contexts)).not.toContain("废弃的恢复尝试");
-    expect(log_error).not.toHaveBeenCalled();
+    expect(diagnostics()).toEqual([]);
   });
 
   it("重试等待期间 stop 会取消后续调用且不报告失败", async () => {
     vi.useFakeTimers();
-    const { service, log_error } = await create_service();
+    const { service, diagnostics } = await create_service();
     fake_agent_state.mode = "retry";
     await service.send_message({ text: "取消重试", attachments: [] });
     await vi.advanceTimersByTimeAsync(0);
@@ -2872,7 +3030,7 @@ describe("AgentService", () => {
     await vi.runAllTimersAsync();
 
     expect(fake_agent_state.model_call_count).toBe(1);
-    expect(log_error).not.toHaveBeenCalled();
+    expect(diagnostics()).toEqual([]);
   });
 
   it("空闲会话手动压缩旧历史，不创建模型轮次并更新上下文可用性", async () => {
@@ -2929,7 +3087,7 @@ describe("AgentService", () => {
   });
 
   it("手动压缩可停止，取消后保留历史和用量并释放占用", async () => {
-    const { service, runtime_gate, log_error } = await create_service();
+    const { service, runtime_gate, diagnostics, log_append } = await create_service();
     await prepare_manual_compaction_history(service);
     const before = service.get_snapshot();
     fake_agent_state.hold_next_summary = true;
@@ -2949,11 +3107,21 @@ describe("AgentService", () => {
       status: "stopped",
     });
     expect(service.get_snapshot().usage.output).toBeGreaterThanOrEqual(before.usage.output);
-    expect(log_error).not.toHaveBeenCalled();
+    expect(diagnostics()).toEqual([]);
+    const ends = log_append.mock.calls
+      .map(([payload]) => payload)
+      .filter(
+        (payload) =>
+          payload.content.event === "compaction_end" && payload.content.status === "stopped",
+      );
+    expect(ends).toMatchObject([
+      { level: "info", content: { stop_reason: "user", reason: "manual" } },
+    ]);
+    expect(ends[0].content.run_id).toBeUndefined();
   });
 
   it("手动压缩失败保留历史与重试能力并释放运行 lease", async () => {
-    const { service, runtime_gate } = await create_service();
+    const { service, runtime_gate, log_append } = await create_service();
     await prepare_manual_compaction_history(service);
     const before = service.get_snapshot();
     fake_agent_state.summary_failures_remaining = 100;
@@ -2966,6 +3134,21 @@ describe("AgentService", () => {
       }),
     );
 
+    const failures = log_append.mock.calls
+      .map(([payload]) => payload)
+      .filter((payload) => payload.error !== undefined);
+    expect(failures).toMatchObject([
+      {
+        level: "warning",
+        content: {
+          event: "compaction_end",
+          status: "error",
+          reason: "manual",
+          task_id: expect.any(Number),
+        },
+        error: { message: expect.any(String) },
+      },
+    ]);
     const failed = service.get_snapshot();
     expect(failed.context).toEqual(before.context);
     expect(runtime_gate.get_snapshot().owner).toBeNull();
@@ -3175,7 +3358,7 @@ describe("AgentService", () => {
   });
 
   it("自动压缩失败只公开诊断，下一请求由 SDK 自动重试", async () => {
-    const { service, read_items, log_error, log_warning } = await create_service();
+    const { service, read_items, log_append } = await create_service();
     await prepare_long_tool_history(service, read_items);
     fake_agent_state.mode = "tool_compaction";
     fake_agent_state.summary_failures_remaining = 100;
@@ -3201,11 +3384,20 @@ describe("AgentService", () => {
         }),
       ]),
     );
-    expect(log_warning).toHaveBeenCalledWith(
-      expect.any(String),
-      expect.objectContaining({ source: "agent" }),
-    );
-    expect(log_error).not.toHaveBeenCalled();
+    expect(
+      log_append.mock.calls
+        .map(([payload]) => payload)
+        .filter(
+          (payload) =>
+            payload.content.event === "compaction_end" && payload.content.status === "error",
+        ),
+    ).toMatchObject([
+      {
+        level: "warning",
+        content: { task_id: expect.any(Number) },
+        error: { message: expect.any(String) },
+      },
+    ]);
 
     fake_agent_state.summary_failures_remaining = 0;
     fake_agent_state.mode = "success";
@@ -3297,42 +3489,53 @@ describe("AgentService", () => {
     expect(service.get_snapshot().entries).toEqual(before);
   });
 
-  it("自动出队图片准备期间停止，保留已完成轮次与待发送附件并释放运行权", async () => {
-    let release!: (image: import("../../shared/agent-image").AgentImage) => void;
-    const prepare = vi.fn(
-      () =>
-        new Promise<import("../../shared/agent-image").AgentImage>((resolve) => {
-          release = resolve;
-        }),
-    );
-    const { service, runtime_gate } = await create_service(true, undefined, undefined, undefined, {
-      clear: vi.fn(),
-      prepare,
-    });
-    fake_agent_state.mode = "pending";
-    await service.send_message({ text: "第一轮", attachments: [] });
-    await service.send_message({ text: "图片", attachments: [uploaded_file("pending")] });
-    await vi.waitFor(() => expect(fake_agent_state.release_pending).not.toBeNull());
-    fake_agent_state.mode = "success";
-    fake_agent_state.release_pending?.();
-    await vi.waitFor(() => expect(prepare).toHaveBeenCalledOnce());
-    await service.stop();
-    release({
-      data: "ready",
-      mimeType: "image/webp",
-      width: 1,
-      height: 1,
-      originalWidth: 1,
-      originalHeight: 1,
-    });
-    await vi.waitFor(() => expect(runtime_gate.get_snapshot().owner).toBeNull());
-    expect(service.get_snapshot().entries[0]).toMatchObject({ text: "第一轮", status: "success" });
-    expect(service.get_snapshot().inputQueue).toMatchObject({
-      paused: true,
-      items: [{ text: "图片", status: "queued" }],
-    });
-    expect(fake_agent_state.model_call_count).toBe(1);
-  });
+  it.each(["stop", "dispose"] as const)(
+    "自动出队图片准备期间 %s 不产生错误诊断并释放运行权",
+    async (action) => {
+      const prepared = Promise.withResolvers<import("../../shared/agent-image").AgentImage>();
+      const prepare = vi.fn(() => prepared.promise);
+      const { service, runtime_gate, diagnostics } = await create_service(
+        true,
+        undefined,
+        undefined,
+        undefined,
+        {
+          clear: vi.fn(),
+          prepare,
+        },
+      );
+      fake_agent_state.mode = "pending";
+      await service.send_message({ text: "第一轮", attachments: [] });
+      await service.send_message({ text: "图片", attachments: [uploaded_file("pending")] });
+      await vi.waitFor(() => expect(fake_agent_state.release_pending).not.toBeNull());
+      fake_agent_state.mode = "success";
+      fake_agent_state.release_pending?.();
+      await vi.waitFor(() => expect(prepare).toHaveBeenCalledOnce());
+      const stopping = action === "stop" ? service.stop() : service.dispose();
+      prepared.resolve({
+        data: "ready",
+        mimeType: "image/webp",
+        width: 1,
+        height: 1,
+        originalWidth: 1,
+        originalHeight: 1,
+      });
+      await stopping;
+      await vi.waitFor(() => expect(runtime_gate.get_snapshot().owner).toBeNull());
+      expect(diagnostics()).toEqual([]);
+      if (action === "stop") {
+        expect(service.get_snapshot().entries[0]).toMatchObject({
+          text: "第一轮",
+          status: "success",
+        });
+        expect(service.get_snapshot().inputQueue).toMatchObject({
+          paused: true,
+          items: [{ text: "图片", status: "queued" }],
+        });
+      }
+      expect(fake_agent_state.model_call_count).toBe(1);
+    },
+  );
 
   it("队列发送预检失败保留原输入并暂停后续执行", async () => {
     const { service } = await create_service();
@@ -3571,7 +3774,7 @@ describe("AgentService", () => {
           throw new BatchTranslationCompletionError(result, new Error("cleanup failed"));
         return result;
       });
-      const { service, log_error } = await create_service(true, undefined, undefined, {
+      const { service, log_append } = await create_service(true, undefined, undefined, {
         run_under_agent: run,
       });
       await service.send_message({ text: "翻译工程", attachments: [] });
@@ -3583,10 +3786,25 @@ describe("AgentService", () => {
         stop_source: "user",
       });
       if (cleanup_failed) {
-        expect(log_error).toHaveBeenCalledWith(
-          expect.any(String),
-          expect.objectContaining({ error: expect.any(BatchTranslationCompletionError) }),
-        );
+        expect(
+          log_append.mock.calls
+            .map(([payload]) => payload)
+            .filter((payload) => payload.error !== undefined),
+        ).toMatchObject([
+          {
+            level: "error",
+            content: {
+              event: "tool_end",
+              tool_name: "run_batch_item_translation",
+              status: "error",
+            },
+            error: {
+              cause_chain: expect.arrayContaining([
+                expect.objectContaining({ name: "BatchTranslationCompletionError" }),
+              ]),
+            },
+          },
+        ]);
       }
       await service.send_message({ text: "继续翻译", attachments: [] });
 
@@ -3731,8 +3949,7 @@ describe("AgentService", () => {
     skills: AgentSkillsService;
     publish: ReturnType<typeof vi.fn>;
     read_items: ReturnType<typeof vi.fn<() => JsonRecord[]>>;
-    log_error: ReturnType<typeof vi.fn>;
-    log_warning: ReturnType<typeof vi.fn>;
+    diagnostics: () => readonly LogAppendPayload[];
     log_append: ReturnType<typeof vi.fn>;
     select_agent_model: (model_id: "active" | "next") => void;
     set_app_language: (app_language: AppLanguage) => void;
@@ -3835,7 +4052,6 @@ describe("AgentService", () => {
       });
     }
     const publish = vi.fn((_topic: string, _payload: JsonRecord) => undefined);
-    const log_error = vi.fn();
     const log_warning = vi.fn();
     const log_append = vi.fn();
     const runtime_gate = new RuntimeOperationGate();
@@ -3888,7 +4104,7 @@ describe("AgentService", () => {
       runtimeGate: runtime_gate,
       webSearch: web_search,
       workspace: effective_workspace,
-      logManager: { append: log_append, error: log_error, warning: log_warning },
+      logManager: { append: log_append },
       publish,
     });
     if (load_resources) await service.load_resources();
@@ -3911,8 +4127,10 @@ describe("AgentService", () => {
       skills,
       publish,
       read_items,
-      log_error,
-      log_warning,
+      diagnostics: () =>
+        log_append.mock.calls
+          .map(([payload]) => payload)
+          .filter((payload) => payload.error !== undefined),
       log_append,
       select_agent_model: (model_id) => {
         agent_model_id = model_id;

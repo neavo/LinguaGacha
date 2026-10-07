@@ -6,6 +6,7 @@ import { create_image_output, summarize_images } from "../tools/emit-image";
 import type { AgentFile } from "../../../shared/agent-workspace-file";
 import type { AgentFileCandidate } from "../../../shared/agent-reference";
 import { create_workspace_host } from "../tools/host";
+import { is_agent_cancellation } from "../tool-definition";
 import { AgentUploadStore } from "./uploads";
 import { AGENT_IMAGE_INPUT_MAX_BYTES, type AgentImageService } from "../agent-image-service";
 import type { AgentImage } from "../../../shared/agent-image";
@@ -681,7 +682,7 @@ export class AgentWorkspaceService {
           images: image_output.read(),
         };
       } catch (error) {
-        if (signal.aborted) throw error;
+        if (is_agent_cancellation(error, signal)) throw error;
         if (error instanceof AgentWorkspaceRunError) {
           throw new AppErrors.AppError("request.validation_failed", {
             cause: error,

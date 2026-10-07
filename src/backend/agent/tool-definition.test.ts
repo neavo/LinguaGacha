@@ -1,18 +1,17 @@
-import { agent_tool_call } from "../../test/agent-tool-fixture";
 import { Type } from "@earendil-works/pi-ai";
-import { defineTool } from "@earendil-works/pi-durable";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { setTimeout } from "node:timers/promises";
+import { describe, expect, it, vi } from "vitest";
 
 import { AppError } from "../../shared/error";
-import { set_main_log_language_reader } from "../log/log-text";
-import { AgentToolError, agent_tool_result, prepare_agent_tool } from "./tool-definition";
+import {
+  AgentToolError,
+  agent_tool_result,
+  define_agent_tool,
+  normalize_agent_tool_error,
+  is_agent_cancellation,
+} from "./tool-definition";
 
 describe("Agent 工具公共边界", () => {
-  afterEach(() => {
-    set_main_log_language_reader(null);
-    vi.restoreAllMocks();
-  });
-
   it("成功正文与 details 共用严格 JSON", () => {
     const details = { status: "applied", values: [1, 2] };
     const result = agent_tool_result(details);
@@ -27,78 +26,71 @@ describe("Agent 工具公共边界", () => {
     expect(JSON.parse(error.message)).toEqual(error.details);
   });
 
-  it("执行包装只为非预期异常记录本地化原始诊断", async () => {
-    set_main_log_language_reader(() => "EN");
-    const error = vi.fn();
-    const execute = vi.fn();
-    const wrapped = prepare_agent_tool(
-      defineTool({
-        name: "test_tool",
-        description: "测试",
-        parameters: Type.Object({}),
-        execute,
-      }),
-      { error },
-    );
-
-    const tool_error = new AgentToolError({ code: "test.invalid" });
-    execute.mockRejectedValueOnce(tool_error);
-    await expect(wrapped.execute({}, ...agent_tool_call("domain"))).rejects.toBe(tool_error);
-
-    const validation_error = new AppError("request.validation_failed");
-    execute.mockRejectedValueOnce(validation_error);
-    await expect(wrapped.execute({}, ...agent_tool_call("validation"))).rejects.toMatchObject({
-      details: { code: validation_error.code },
+  it("业务错误保留安全修复事实，未知异常只公开稳定码", () => {
+    const error = new AgentToolError({ code: "test.invalid" });
+    expect(normalize_agent_tool_error(error)).toBe(error);
+    const conflict = new AppError("data.revision_conflict", {
+      public_details: { section: "quality", expected_revision: 2, current_revision: 3 },
     });
-
-    execute.mockRejectedValueOnce(
-      new AppError("data.revision_conflict", {
-        public_details: { section: "quality", expected_revision: 2, current_revision: 3 },
-      }),
-    );
-    await expect(wrapped.execute({}, ...agent_tool_call("revision"))).rejects.toMatchObject({
+    expect(normalize_agent_tool_error(conflict)).toMatchObject({
       details: {
         code: "data.revision_conflict",
         section: "quality",
         expected_revision: 2,
         current_revision: 3,
       },
+      cause: conflict,
+      severity: "expected",
     });
-    expect(error).not.toHaveBeenCalled();
-
-    const provider_error = new AppError("model.provider_failed");
-    execute.mockRejectedValueOnce(provider_error);
-    await expect(wrapped.execute({}, ...agent_tool_call("warning"))).rejects.toMatchObject({
-      details: { code: "model.provider_failed" },
-    });
-    expect(error).toHaveBeenLastCalledWith(expect.any(String), {
-      source: "agent",
-      error: provider_error,
-      context: { tool_call_id: "warning", tool_name: "test_tool" },
-    });
-
     const unknown = new Error("provider secret");
-    execute.mockRejectedValueOnce(unknown);
-    await expect(wrapped.execute({}, ...agent_tool_call("unknown"))).rejects.toMatchObject({
+    expect(normalize_agent_tool_error(unknown)).toMatchObject({
       details: { code: "tool_failed" },
+      cause: unknown,
+      severity: "fault",
     });
-    expect(error).toHaveBeenLastCalledWith(expect.any(String), {
-      source: "agent",
-      error: unknown,
-      context: { tool_call_id: "unknown", tool_name: "test_tool" },
+    expect(normalize_agent_tool_error(new AppError("model.provider_failed"))).toMatchObject({
+      severity: "warning",
     });
   });
 
-  it("统一注册边界拒绝非普通对象根 Schema", () => {
-    const invalid = defineTool({
-      name: "invalid_tool",
-      description: "测试",
-      parameters: Type.Union([Type.Object({}), Type.Object({ value: Type.String() })], {
-        type: "object",
-      }),
-      execute: vi.fn(),
-    });
+  it("取消要求信号与取消事实，真实故障与复合失败仍保留", async () => {
+    const controller = new AbortController();
+    const reason = new Error("停止");
+    expect(is_agent_cancellation(reason, controller.signal)).toBe(false);
+    controller.abort(reason);
+    expect(is_agent_cancellation(reason, controller.signal)).toBe(true);
+    expect(is_agent_cancellation(new AppError("runtime.cancelled"), controller.signal)).toBe(true);
+    expect(
+      is_agent_cancellation(
+        new AppError("request.validation_failed", {
+          diagnostic_context: { reason: "agent_message_invalidated" },
+        }),
+        controller.signal,
+      ),
+    ).toBe(true);
+    expect(is_agent_cancellation(new Error("真实故障"), controller.signal)).toBe(false);
+    expect(
+      is_agent_cancellation(new DOMException("其它调用被取消", "AbortError"), controller.signal),
+    ).toBe(false);
+    const wrapped = await setTimeout(0, undefined, { signal: controller.signal }).catch(
+      (error: unknown) => error,
+    );
+    expect(is_agent_cancellation(wrapped, controller.signal)).toBe(true);
+    expect(
+      is_agent_cancellation(new AggregateError([reason, new Error("刷新失败")]), controller.signal),
+    ).toBe(false);
+  });
 
-    expect(() => prepare_agent_tool(invalid, { error: vi.fn() })).toThrow();
+  it("统一注册边界拒绝非普通对象根 Schema", () => {
+    expect(() =>
+      define_agent_tool({
+        name: "invalid_tool",
+        description: "测试",
+        parameters: Type.Union([Type.Object({}), Type.Object({ value: Type.String() })], {
+          type: "object",
+        }),
+        execute: vi.fn(),
+      }),
+    ).toThrow();
   });
 });

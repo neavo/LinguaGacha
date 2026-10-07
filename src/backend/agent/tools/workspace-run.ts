@@ -2,7 +2,12 @@ import { summarize_images } from "./emit-image";
 import { Type } from "@earendil-works/pi-ai";
 import type { ToolRegistration } from "@earendil-works/pi-durable";
 
-import { define_agent_tool, agent_tool_result } from "../tool-definition";
+import {
+  define_agent_tool,
+  agent_tool_result,
+  normalize_agent_tool_error,
+  AgentToolError,
+} from "../tool-definition";
 import { AGENT_WORKSPACE_CONTRACT } from "./contract";
 import {
   AGENT_WORKSPACE_RUN_ROOT,
@@ -16,7 +21,6 @@ import app_package from "../../../../package.json";
 export function create_agent_workspace_run_tool(options: {
   run: (script: string, signal: AbortSignal) => ReturnType<AgentWorkspacePort["run"]>;
   refresh_skills: () => Promise<unknown>;
-  log_refresh_error: (error: unknown) => void;
 }): ToolRegistration {
   return define_agent_tool({
     name: "workspace_run",
@@ -105,17 +109,23 @@ export function create_agent_workspace_run_tool(options: {
         (value) => ({ ok: true as const, value }),
         (error: unknown) => ({ ok: false as const, error }),
       );
-      // 程序失败时也刷新已写入的技能。两者都失败时，优先返回程序错误。
+      // 程序失败时仍刷新已写入的技能，两者失败保留主回执与完整原因链。
       try {
         await options.refresh_skills();
       } catch (error) {
-        if (outcome.ok) throw error;
-        options.log_refresh_error(error);
+        if (outcome.ok) throw new Error("Agent skill refresh failed.", { cause: error });
+        const failure = normalize_agent_tool_error(outcome.error);
+        throw new AgentToolError(
+          failure.details,
+          new AggregateError(
+            [outcome.error, error],
+            "Workspace execution and skill refresh failed.",
+          ),
+          "fault",
+        );
       }
       if (!outcome.ok) throw outcome.error;
       const { execution, images } = outcome.value;
-      // 服务返回后再次检查取消状态，拦截迟到的执行结果。
-      effective_signal.throwIfAborted();
       const result = agent_tool_result({
         ...execution,
         ...(images.length === 0

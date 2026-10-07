@@ -56,7 +56,7 @@ describe("AgentRuntimeLog", () => {
         toolCallId: "call",
         toolName: "fixture_tool",
         result: agent_tool_result(details),
-        isError: false,
+        status: "success",
       });
       details.text = "修改后的结果";
       log.finish_run("success");
@@ -122,10 +122,10 @@ describe("AgentRuntimeLog", () => {
       type: "message_update",
       message,
     });
-    log.request_stop();
+    log.request_stop("user");
     log.flush();
     expect(records().filter((record) => record.event === "message")).toHaveLength(1);
-    log.finish_run("success");
+    log.finish_run("stopped", { stop_reason: "user" });
     log.flush();
     const messages = records().filter((record) => record.event === "message");
     expect(messages).toMatchObject([
@@ -149,13 +149,13 @@ describe("AgentRuntimeLog", () => {
     log.begin_run("round", "prompt");
     log.finish_run("error");
     log.begin_run("round", "continue");
-    log.handle_event({ type: "compaction_start", reason: "threshold" });
+    log.handle_event({ type: "compaction_start", reason: "threshold", task_id: 1 });
     log.handle_event({
       type: "compaction_end",
       reason: "threshold",
-      result: undefined,
-      aborted: false,
-      errorMessage: "压缩失败",
+      task_id: 1,
+      status: "error",
+      error: new Error("压缩失败"),
     });
     log.finish_run("success");
     expect(records()).toEqual([]);
@@ -166,7 +166,7 @@ describe("AgentRuntimeLog", () => {
     expect(starts[0]?.run_id).not.toBe(starts[1]?.run_id);
     expect(records().find((record) => record.event === "compaction_end")).toMatchObject({
       status: "error",
-      error: "压缩失败",
+      task_id: 1,
       started_at: expect.any(String),
       ended_at: expect.any(String),
     });

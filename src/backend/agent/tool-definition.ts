@@ -1,19 +1,26 @@
-import { scheduler } from "node:timers/promises";
-
 import { defineTool, type ToolRegistration } from "@earendil-works/pi-durable";
 import type { JsonValue } from "@earendil-works/chord";
 import type { TSchema } from "@earendil-works/pi-ai";
 
 import type { JsonRecord } from "../../domain/json";
-import { is_app_error } from "../../shared/error";
+import { is_app_error, type AppError } from "../../shared/error";
 import { JsonTool } from "../../shared/utils/json-tool";
-import type { LogManager } from "../log/log-manager";
-import { t_main_log } from "../log/log-text";
 
 /** 工具直接采用 durable 的参数与调用上下文；副作用默认不可安全重放。 */
 export function define_agent_tool<TParams extends TSchema, TDetails extends JsonValue = JsonValue>(
   definition: ToolRegistration<TParams, TDetails>,
 ) {
+  const parameters = definition.parameters as unknown as JsonRecord; // 根 Schema 只校验模型可见的 JSON 字段
+  if (
+    parameters["type"] !== "object" ||
+    parameters["anyOf"] !== undefined ||
+    parameters["oneOf"] !== undefined ||
+    parameters["allOf"] !== undefined
+  ) {
+    throw new Error(
+      `Agent tool "${definition.name}" parameters must use a plain object root schema`,
+    );
+  }
   // 产品工具已经拥有输出额度；SDK 再次裁剪会破坏结构化 JSON 和图片说明。
   return defineTool({
     replay: "unsafe",
@@ -29,7 +36,11 @@ export class AgentToolError extends Error {
   public readonly details: AgentToolFailure;
 
   /** Error.message 与 details 共用同一严格 JSON，兼容 SDK 正文与业务测试两种观察面。 */
-  public constructor(details: AgentToolFailure, cause?: unknown) {
+  public constructor(
+    details: AgentToolFailure,
+    cause?: unknown,
+    public readonly severity: AppError["severity"] = "expected", // 诊断等级只供宿主使用，不进入模型回执
+  ) {
     super(JsonTool.stringifyStrict(details), cause === undefined ? undefined : { cause });
     this.name = "AgentToolError";
     this.details = details;
@@ -45,47 +56,23 @@ export function agent_tool_result(details: JsonRecord) {
 }
 
 /** AppError 只公开稳定字段，未知异常不向模型泄露内部诊断。 */
-function normalize_agent_tool_error(cause: unknown): AgentToolError {
+export function normalize_agent_tool_error(cause: unknown): AgentToolError {
   if (cause instanceof AgentToolError) return cause;
   if (is_app_error(cause)) {
-    return new AgentToolError({ code: cause.code, ...cause.public_details }, cause);
+    return new AgentToolError({ code: cause.code, ...cause.public_details }, cause, cause.severity);
   }
-  return new AgentToolError({ code: "tool_failed" }, cause);
+  return new AgentToolError({ code: "tool_failed" }, cause, "fault");
 }
 
-/** 统一校验模型参数根、保证 SSE 首帧时序，并把非预期执行异常留在应用诊断中。 */
-export function prepare_agent_tool(
-  tool: ToolRegistration,
-  log_manager: Pick<LogManager, "error">,
-): ToolRegistration {
-  const parameters = tool.parameters as unknown as JsonRecord; // TypeBox symbol 元数据不参与模型可见根结构判断
-  if (
-    parameters["type"] !== "object" ||
-    parameters["anyOf"] !== undefined ||
-    parameters["oneOf"] !== undefined ||
-    parameters["allOf"] !== undefined
-  ) {
-    throw new Error(`Agent tool "${tool.name}" parameters must use a plain object root schema`);
-  }
-  return {
-    ...tool,
-    execute: async (...args: Parameters<ToolRegistration["execute"]>) => {
-      await scheduler.yield();
-      try {
-        return await tool.execute(...args);
-      } catch (cause) {
-        if (
-          !(cause instanceof AgentToolError) &&
-          (!is_app_error(cause) || cause.severity !== "expected")
-        ) {
-          log_manager.error(t_main_log("app.diagnostic.agent.tool_execution_failed"), {
-            source: "agent",
-            error: cause,
-            context: { tool_call_id: args[1].callId, tool_name: tool.name },
-          });
-        }
-        throw normalize_agent_tool_error(cause);
-      }
-    },
-  };
+/** 取消必须对应调用信号或明确取消码，停止期间的其它故障仍属于失败。 */
+export function is_agent_cancellation(error: unknown, signal: AbortSignal | undefined): boolean {
+  return (
+    signal?.aborted === true &&
+    (error === signal.reason ||
+      (error instanceof Error && error.name === "AbortError" && error.cause === signal.reason) ||
+      (is_app_error(error) &&
+        (error.code === "runtime.cancelled" ||
+          (error.code === "request.validation_failed" &&
+            error.diagnostic_context["reason"] === "agent_message_invalidated"))))
+  );
 }

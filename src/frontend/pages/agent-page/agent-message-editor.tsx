@@ -66,13 +66,7 @@ type MentionQuery = {
   text: string;
 };
 
-/** React 只持有渲染所需投影，正文仍由 EditorState 唯一拥有。 */
-type EditorSnapshot = {
-  text: string;
-  query: MentionQuery | null;
-};
-
-/** 页面只能写入草稿并请求聚焦，正文与光标所有权仍留在 CodeMirror。 */
+/** 页面动作通过编辑器事务同步草稿，选区与焦点由 CodeMirror 管理。 */
 export type AgentMessageEditorHandle = {
   write_draft: (text: string, selection?: Readonly<{ from: number; to: number }>) => boolean;
   add_response_annotation: (annotation: AgentResponseAnnotationAttachment) => void;
@@ -100,17 +94,13 @@ type AgentMessageEditorProps = {
   };
 };
 
-const EMPTY_EDITOR_SNAPSHOT: EditorSnapshot = {
-  text: "",
-  query: null,
-};
-/** 撤销标记只控制 CodeMirror 历史；此标记单独标识 Composer 的历史导航事务。 */
+/** 历史导航保留浏览位置，正文变化始终交给共享草稿。 */
 const input_history_navigation_annotation = Annotation.define<boolean>();
 const input_history_navigation_annotations = [
   Transaction.addToHistory.of(false),
   input_history_navigation_annotation.of(true),
 ];
-/** Chat 受理后的草稿同步不进入撤销栈，也不冒充用户编辑。 */
+/** 草稿回填沿用当前事实，并退出 CodeMirror 的撤销记录。 */
 const input_state_sync_annotations = [Transaction.addToHistory.of(false)];
 
 // 三个 Compartment 只承接运行期配置，不参与草稿事实。
@@ -173,20 +163,24 @@ export function AgentMessageEditor(props: AgentMessageEditorProps): JSX.Element 
   const matching_candidates_ref = useRef<readonly AgentMentionCandidate[]>([]);
   const menu_index_ref = useRef(0);
   const last_query_key_ref = useRef("");
-  // CodeMirror 回调从 ref 读取最新跨路由输入状态；历史索引只属于当前 Composer。
+  // 草稿拥有当前可见正文，历史浏览只缓存列表与原正文，附件继续属于草稿。
   const input_state_ref = useRef(props.input_state);
-  const input_history_index_ref = useRef<number | null>(null);
+  const input_history_navigation_ref = useRef<{
+    texts: readonly string[]; // 本次浏览沿用固定顺序，回执更新历史时继续使用
+    index: number;
+    original_text: string; // 只恢复正文，附件保留当前上传与编辑结果
+  } | null>(null);
   const draft = useSyncExternalStore(
     props.input_state.draft.subscribe,
     props.input_state.draft.read,
   );
   const draft_attachments = draft.attachments;
-  const [snapshot, set_snapshot] = useState<EditorSnapshot>(EMPTY_EDITOR_SNAPSHOT);
+  const [mention_query, set_mention_query] = useState<MentionQuery | null>(null);
   const uploads_pending = draft_attachments.some((attachment) => attachment.kind === "upload");
   const [menu_index_value, set_menu_index] = useState(0);
   const [menu_suppressed, set_menu_suppressed] = useState(false);
 
-  const mention_query_text = snapshot.query?.text;
+  const mention_query_text = mention_query?.text;
   const file_query = useAgentMentionFiles(
     !assistant_editing && mention_query_text !== undefined && !props.read_only && !menu_suppressed,
     draft_attachments
@@ -210,10 +204,10 @@ export function AgentMessageEditor(props: AgentMessageEditorProps): JSX.Element 
   const matching_candidates = [...matching_skills, ...matching_files, ...matching_instructions];
   const editor_read_only = props.read_only;
   const menu_open =
-    !assistant_editing && snapshot.query !== null && !editor_read_only && !menu_suppressed;
+    !assistant_editing && mention_query !== null && !editor_read_only && !menu_suppressed;
   const menu_index = Math.max(0, Math.min(menu_index_value, matching_candidates.length - 1));
   const has_sendable_content =
-    snapshot.text !== "" || (!assistant_editing && draft_attachments.length > 0);
+    draft.text.trim() !== "" || (!assistant_editing && draft_attachments.length > 0);
   const actions = props.render_actions({ has_content: has_sendable_content, uploads_pending });
   const can_append_files = !editor_read_only && !assistant_editing;
   // CodeMirror 扩展只创建一次，文件拖放读取当前上传权限。
@@ -232,19 +226,17 @@ export function AgentMessageEditor(props: AgentMessageEditorProps): JSX.Element 
   useEffect(() => {
     const host = host_ref.current;
     if (host === null) return;
-    // 单次读取编辑器事实，再同步 React 消费的派生状态。
-    const emit_snapshot = (state: EditorState): void => {
-      const next = read_editor_snapshot(state);
+    // 光标查询变化才更新候选菜单，正文与附件直接订阅共享草稿。
+    const update_mention_query = (state: EditorState): void => {
+      const query = find_mention_query(state);
       const query_key =
-        next.query === null
-          ? ""
-          : `${next.query.from.toString()}:${next.query.to.toString()}:${next.query.text}`;
+        query === null ? "" : `${query.from.toString()}:${query.to.toString()}:${query.text}`;
       if (query_key !== last_query_key_ref.current) {
         last_query_key_ref.current = query_key;
         set_menu_index(0);
         set_menu_suppressed(false);
+        set_mention_query(query);
       }
-      set_snapshot(next);
     };
     const editor = new EditorView({
       parent: host,
@@ -326,20 +318,19 @@ export function AgentMessageEditor(props: AgentMessageEditorProps): JSX.Element 
             EditorView.updateListener.of((update) => {
               const { docChanged, selectionSet, state, transactions } = update;
               if (docChanged || selectionSet) {
-                if (
-                  docChanged &&
-                  !transactions.every(
+                if (docChanged) {
+                  const from_history = transactions.every(
                     (transaction) =>
                       transaction.annotation(input_history_navigation_annotation) === true,
-                  )
-                ) {
-                  input_history_index_ref.current = null;
-                  input_state_ref.current.draft.write({
-                    text: state.doc.toString(),
-                    attachments: input_state_ref.current.draft.read().attachments,
-                  });
+                  );
+                  if (!from_history) input_history_navigation_ref.current = null;
+                  const draft = input_state_ref.current.draft;
+                  const current = draft.read();
+                  const text = state.doc.toString();
+                  // 正文相同就沿用共享草稿，回填与相同文本替换不会产生回流。
+                  if (current.text !== text) draft.write({ ...current, text });
                 }
-                emit_snapshot(state);
+                update_mention_query(state);
               }
             }),
           ],
@@ -350,7 +341,7 @@ export function AgentMessageEditor(props: AgentMessageEditorProps): JSX.Element 
     editor.contentDOM.setAttribute("spellcheck", "false");
     view_ref.current = editor;
     if (retained_editor.current?.focused) editor.focus();
-    emit_snapshot(editor.state);
+    update_mention_query(editor.state);
     return () => {
       retained_editor.current = { state: editor.state, focused: editor.hasFocus };
       editor.destroy();
@@ -369,7 +360,6 @@ export function AgentMessageEditor(props: AgentMessageEditorProps): JSX.Element 
     if (view === null) return;
     const current = input_state_ref.current.draft.read();
     if (view.state.doc.toString() === current.text) return;
-    input_history_index_ref.current = null;
     write_agent_message_text(view, current.text, input_state_sync_annotations);
   }, [props.input_state, input_revision, draft.text]);
 
@@ -458,10 +448,8 @@ export function AgentMessageEditor(props: AgentMessageEditorProps): JSX.Element 
 
   /** 同步更新异步判定、可见附件与跨路由草稿，唯一数组同时拥有混排顺序。 */
   const write_draft_attachments = useCallback((attachments: AgentDraftAttachment[]): void => {
-    input_state_ref.current.draft.write({
-      text: view_ref.current?.state.doc.toString() ?? input_state_ref.current.draft.read().text,
-      attachments,
-    });
+    const draft = input_state_ref.current.draft;
+    draft.write({ ...draft.read(), attachments });
   }, []);
 
   /** 输入只交给常驻草稿，上传状态和取消由草稿自身拥有。 */
@@ -497,7 +485,7 @@ export function AgentMessageEditor(props: AgentMessageEditorProps): JSX.Element 
       write_draft(text, selection) {
         const view = view_ref.current;
         if (view === null || editor_read_only) return false;
-        input_history_index_ref.current = null;
+        input_history_navigation_ref.current = null;
         write_agent_message_text(view, text, undefined, selection);
         view.focus();
         return true;
@@ -523,19 +511,12 @@ export function AgentMessageEditor(props: AgentMessageEditorProps): JSX.Element 
   const submit = (): void => {
     const view = view_ref.current;
     if (view === null || !actions.can_submit) return;
-    const text = view.state.doc.toString().trim();
-    if (
-      input_state_ref.current.draft
-        .read()
-        .attachments.some((attachment) => attachment.kind === "upload")
-    )
-      return;
+    const draft = input_state_ref.current.draft.read();
+    if (draft.attachments.some((attachment) => attachment.kind === "upload")) return;
     props.on_submit({
-      text,
+      text: draft.text.trim(),
       attachments: structuredClone(
-        input_state_ref.current.draft
-          .read()
-          .attachments.filter((attachment) => attachment.kind !== "upload"),
+        draft.attachments.filter((attachment) => attachment.kind !== "upload"),
       ),
     });
   };
@@ -717,16 +698,20 @@ export function AgentMessageEditor(props: AgentMessageEditorProps): JSX.Element 
 
   /** 仅从视觉首行进入历史；越过最新消息时恢复原始草稿，两端都消费按键。 */
   function navigate_input_history(view: EditorView, direction: "older" | "newer"): boolean {
-    const input_history = input_state_ref.current.read_history();
     if (view.composing || view.state.readOnly) return false;
-    const current_index = input_history_index_ref.current;
+    const navigation = input_history_navigation_ref.current;
 
-    if (current_index === null) {
+    if (navigation === null) {
+      const input_history = input_state_ref.current.read_history();
       if (direction === "newer" || input_history.length === 0 || !can_start_input_history(view)) {
         return false;
       }
       const next_index = input_history.length - 1;
-      input_history_index_ref.current = next_index;
+      input_history_navigation_ref.current = {
+        texts: input_history,
+        index: next_index,
+        original_text: input_state_ref.current.draft.read().text,
+      };
       write_agent_message_text(
         view,
         input_history[next_index]!,
@@ -735,21 +720,21 @@ export function AgentMessageEditor(props: AgentMessageEditorProps): JSX.Element 
       return true;
     }
 
-    const next_index = current_index + (direction === "older" ? -1 : 1);
+    const next_index = navigation.index + (direction === "older" ? -1 : 1);
     if (next_index < 0) return true;
-    if (next_index >= input_history.length) {
-      input_history_index_ref.current = null;
+    if (next_index >= navigation.texts.length) {
+      input_history_navigation_ref.current = null;
       write_agent_message_text(
         view,
-        input_state_ref.current.draft.read().text,
+        navigation.original_text,
         input_history_navigation_annotations,
       );
       return true;
     }
-    input_history_index_ref.current = next_index;
+    navigation.index = next_index;
     write_agent_message_text(
       view,
-      input_history[next_index]!,
+      navigation.texts[next_index]!,
       input_history_navigation_annotations,
     );
     return true;
@@ -777,14 +762,6 @@ function write_agent_message_text(
       : EditorSelection.cursor(text.length),
     ...(annotations === undefined ? {} : { annotations }),
   });
-}
-
-/** 单次读取编辑器派生视图，避免 React 再维护一份可写草稿事实。 */
-function read_editor_snapshot(state: EditorState): EditorSnapshot {
-  return {
-    text: state.doc.toString().trim(),
-    query: find_mention_query(state),
-  };
 }
 
 /** 只读取当前行光标前的查询，允许路径包含空格。 */
