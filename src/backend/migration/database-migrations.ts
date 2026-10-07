@@ -1,42 +1,37 @@
 import type { DatabaseSync } from "node:sqlite";
-import type { DatabaseSchemaMigration, DatabaseWritebackMigration } from "./migration-types";
+import type { DatabaseWritebackMigration } from "./migration-types";
 import { JsonTool } from "../../shared/utils/json-tool";
 import { row_text } from "./migration-row";
-import { project_schema_migration } from "./migrations/project-schema-migration";
-import { project_item_public_contract_migration } from "./migrations/project-item-public-contract-migration";
-import { project_item_stable_metadata_migration } from "./migrations/project-item-stable-metadata-migration";
-import { project_rule_storage_migration } from "./migrations/project-rule-storage-migration";
-import { quality_rule_entry_identity_migration } from "./migrations/quality-rule-entry-identity-migration";
-import { trans_item_metadata_migration } from "./migrations/trans-item-metadata-migration";
+import { run_project_schema_migration } from "./database/project-schema-migration";
+import { run_project_item_public_contract_migration } from "./database/project-item-public-contract-migration";
+import { run_project_item_stable_metadata_migration } from "./database/project-item-stable-metadata-migration";
+import { run_project_rule_storage_migration } from "./database/project-rule-storage-migration";
+import { run_quality_rule_entry_identity_migration } from "./database/quality-rule-entry-identity-migration";
+import { run_trans_item_metadata_migration } from "./database/trans-item-metadata-migration";
 
-const DATABASE_SCHEMA_MIGRATIONS: readonly DatabaseSchemaMigration[] = [project_schema_migration];
+// 顺序是历史升级契约：规则存储先于身份，基础 Item 先于 TRANS，最后补公开字段。
 const DATABASE_WRITEBACK_MIGRATIONS: readonly DatabaseWritebackMigration[] = [
-  project_item_public_contract_migration,
-  project_item_stable_metadata_migration,
-  project_rule_storage_migration,
-  quality_rule_entry_identity_migration,
-  trans_item_metadata_migration,
+  { id: "project-rule-storage", run: run_project_rule_storage_migration },
+  { id: "quality-rule-entry-identity", run: run_quality_rule_entry_identity_migration },
+  { id: "project-item-stable-metadata", run: run_project_item_stable_metadata_migration },
+  { id: "trans-item-metadata", run: run_trans_item_metadata_migration },
+  { id: "project-item-public-contract", run: run_project_item_public_contract_migration },
 ];
 export const PROJECT_DATABASE_APPLIED_WRITEBACK_MIGRATIONS_META_KEY =
   "applied_writeback_migrations";
 
-/** 首次打开连接先补结构，再执行逐项原子写回；完成标记与数据在同一事务保存。 */
+/** 首次打开连接先补结构，再执行逐项原子写回。完成标记与数据在同一事务保存。 */
 export function run_project_database_migrations(
   db: DatabaseSync,
-  schema_migrations: readonly DatabaseSchemaMigration[] = DATABASE_SCHEMA_MIGRATIONS,
   writeback_migrations: readonly DatabaseWritebackMigration[] = DATABASE_WRITEBACK_MIGRATIONS,
 ): void {
-  const context = { db };
-  for (const migration of schema_migrations.toSorted((left, right) => left.order - right.order)) {
-    run_in_transaction(db, () => migration.run_project_database_schema(context));
-  }
-  const ordered = writeback_migrations.toSorted((left, right) => left.order - right.order);
-  const writeback_ids = ordered.map(({ id }) => id);
+  run_in_transaction(db, () => run_project_schema_migration(db));
+  const writeback_ids = writeback_migrations.map(({ id }) => id);
   const applied_ids = read_applied_writeback_migration_ids(db);
-  for (const migration of ordered) {
+  for (const migration of writeback_migrations) {
     if (applied_ids.has(migration.id)) continue;
     run_in_transaction(db, () => {
-      migration.run_project_database_writeback(context);
+      migration.run(db);
       applied_ids.add(migration.id);
       write_applied_writeback_migration_ids(db, applied_ids, writeback_ids);
     });
@@ -44,7 +39,7 @@ export function run_project_database_migrations(
 }
 
 /**
- * 读取已完成迁移 id；损坏或旧格式值视为未执行，让幂等迁移重新修正项目事实。
+ * 读取已完成迁移 id。损坏或旧格式值视为未执行，让幂等迁移重新修正项目事实。
  */
 function read_applied_writeback_migration_ids(db: DatabaseSync): Set<string> {
   const row = db
