@@ -10,7 +10,7 @@ import { FileFormatService } from "../file/file-format-service";
 import { log_source_file_parse_failures } from "../file/source-file-parse-failure-reporter";
 import { SourceFileParsePipeline } from "../file/source-file-parse-pipeline";
 import type { LogManager } from "../log/log-manager";
-import { build_project_open_writes } from "../migration/project-open-migrations";
+import { build_project_open_writes } from "../migration/project-migrations";
 import {
   build_project_item_persistent_records,
   collect_project_item_missing_public_fields,

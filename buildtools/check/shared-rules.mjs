@@ -77,7 +77,7 @@ export function create_shared_boundary_rules() {
             if (
               relative_target.startsWith("src/backend/file/") ||
               relative_target.startsWith("src/backend/project/") ||
-              /^src\/backend\/migration\/(startup|project-open)-migrations(?:\.ts)?$/u.test(
+              /^src\/backend\/migration\/(startup|project)-migrations(?:\.ts)?$/u.test(
                 relative_target,
               )
             ) {
