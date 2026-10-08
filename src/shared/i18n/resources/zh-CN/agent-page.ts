@@ -144,7 +144,7 @@ export const zh_cn_agent_page = {
     output: "输出",
   },
   round: {
-    running: "处理中 {duration}",
+    running: "处理中 · {duration}",
     success: "已完成 · {duration}",
     error: "失败 · {duration}",
     stopped: "已停止 · {duration}",
