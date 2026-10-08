@@ -9,6 +9,8 @@ import {
   createRegistry,
   defineExtension,
   defineTool,
+  type Storage,
+  type ToolRegistration,
 } from "@earendil-works/pi-durable";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import {
@@ -23,35 +25,89 @@ import type { AgentChatStorage } from "../database/agent-chat-storage";
 import { AgentChat, type AgentExecution } from "./agent-chat";
 import { AgentChatDoc } from "./agent-chat-data";
 import { AgentRuntimeLog } from "./agent-runtime-log";
+import { define_agent_tool } from "./tool-definition";
 
 /** 隔离远程流，事务、提交订阅与历史投影使用真实 Harness。 */
-async function create_chat(onChange: () => void = () => {}) {
+async function create_chat(
+  onChange: () => void = () => {},
+  options: { tools?: ToolRegistration[]; storage?: Storage } = {},
+) {
   // 预留窗口，避免 fake 缓存计量差异提前触发自动压缩。
   const provider = fauxProvider({ models: [{ id: "chat-model", contextWindow: 256_000 }] });
   const models = createModels();
   models.setProvider(provider.provider);
+  const append = vi.fn();
   const chat = await AgentChat.open({
     chatId: "chat-test",
-    storage: new MemoryStorage(),
+    storage: options.storage ?? new MemoryStorage(),
     cwd: process.cwd(),
     models,
     seed: [
       { role: "user", content: "种子输入" },
       { role: "assistant", content: "种子回答" },
     ],
-    tools: [],
+    tools: options.tools ?? [],
     systemPrompt: () => "测试系统指令",
     skillsPrompt: () => "",
     continueText: () => "继续",
-    log: new AgentRuntimeLog({ append: vi.fn() }, "chat-test"),
+    log: new AgentRuntimeLog({ append }, "chat-test"),
     onChange,
     onModelEvent: vi.fn(),
     onReport: vi.fn(),
   });
   onTestFinished(() => chat.close());
   await chat.configure(provider.getModel(), "off");
-  return { chat, provider };
+  return { chat, provider, append };
 }
+
+it("工具执行结束后等待 SDK 提交，日志不能提前结算", async () => {
+  const storage = new MemoryStorage();
+  const committing = Promise.withResolvers<void>(); // SDK 已进入工具回执提交。
+  const release = Promise.withResolvers<void>(); // 观察提交前日志后放行存储。
+  const tool = define_agent_tool({
+    name: "fixture_tool",
+    description: "测试提交边界",
+    parameters: Type.Object({}),
+    execute: async () => {
+      throw new Error("工具原始异常");
+    },
+  });
+  const { chat, provider, append } = await create_chat(() => {}, { tools: [tool], storage });
+  const commit = storage.commit.bind(storage);
+  const waiting = vi.spyOn(storage, "commit").mockImplementation(async (writes, context) => {
+    if (writes.some((write) => write.type === "entry" && write.value.kind === "pi.tool-result")) {
+      committing.resolve();
+      await release.promise;
+    }
+    return commit(writes, context);
+  });
+  provider.setResponses([
+    fauxAssistantMessage([fauxToolCall("fixture_tool", {})], { stopReason: "toolUse" }),
+    fauxAssistantMessage("完成"),
+  ]);
+  chat.log.begin_run("round", "prompt");
+  const running = talk(chat, "调用工具");
+  try {
+    await Promise.race([committing.promise, running]);
+    chat.log.flush();
+    expect(append.mock.calls.some(([payload]) => payload.content.event === "tool_end")).toBe(false);
+    release.resolve();
+    await running;
+    chat.log.finish_run("success");
+    chat.log.flush();
+    expect(
+      append.mock.calls
+        .map(([payload]) => payload)
+        .filter((payload) => payload.content.event === "tool_end"),
+    ).toMatchObject([
+      { level: "error", error: { message: "工具原始异常" }, content: { status: "error" } },
+    ]);
+  } finally {
+    release.resolve();
+    waiting.mockRestore();
+    await running;
+  }
+});
 
 it("种子进入模型历史，公开时间线从真实输入开始", async () => {
   const { chat, provider } = await create_chat();
@@ -389,6 +445,9 @@ it("遗留工具任务只执行 SDK 取消收尾，恢复后保留公开工具�
   await harness.close(BACKGROUND_CONTEXT);
   const restored = await open(store);
   expect(execute).toHaveBeenCalledOnce();
+  expect(restored.append.mock.calls.some(([payload]) => payload.content.event === "tool_end")).toBe(
+    false,
+  );
   expect(restored.chat.state.commands.admitted?.status).toBe("accepted");
   expect(restored.chat.state.commands.unsubmitted?.status).toBe("cancelled");
   expect(restored.provider.state.callCount).toBe(0);

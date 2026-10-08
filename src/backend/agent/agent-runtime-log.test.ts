@@ -1,7 +1,8 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { fauxAssistantMessage } from "@earendil-works/pi-ai";
+import { fauxAssistantMessage, type ToolResultMessage } from "@earendil-works/pi-ai";
+import type { TaskId } from "@earendil-works/pi-durable";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { type LogAppendPayload } from "../../shared/log";
@@ -12,6 +13,8 @@ import {
   normalize_agent_tool_log_output,
   type AgentLogContent,
 } from "./agent-runtime-log";
+
+const TOOL_RESULT_RECORD = { byTaskId: 1 as TaskId }; // 提交回执用任务身份消费宿主诊断。
 
 it("图片工具日志只保留来源摘要和媒体类型", () => {
   const result = normalize_agent_tool_log_output({
@@ -42,13 +45,12 @@ describe("AgentRuntimeLog", () => {
         toolName: "fixture_tool",
         args: {},
       });
-      log.handle_event({
-        type: "tool_execution_end",
+      log.record_tool_diagnostic(TOOL_RESULT_RECORD.byTaskId, {
         toolCallId: level,
         toolName: "fixture_tool",
-        status: "error",
         level,
       });
+      log.record_tool_result(TOOL_RESULT_RECORD, tool_message(level, { isError: true }));
     }
     log.handle_event({ type: "compaction_start", reason: "threshold", task_id: 1 });
     log.handle_event({
@@ -97,13 +99,9 @@ describe("AgentRuntimeLog", () => {
       });
       input.query = "修改后的输入";
       vi.setSystemTime("2026-09-13T00:00:02.000Z");
-      log.handle_event({
-        type: "tool_execution_end",
-        toolCallId: "call",
-        toolName: "fixture_tool",
-        result: agent_tool_result(details),
-        status: "success",
-      });
+      const message = tool_message("call", { ...agent_tool_result(details), durationMs: 125 });
+      log.record_tool_result(TOOL_RESULT_RECORD, message);
+      log.record_tool_result(TOOL_RESULT_RECORD, message);
       details.text = "修改后的结果";
       log.finish_run("success");
 
@@ -120,6 +118,7 @@ describe("AgentRuntimeLog", () => {
         status: "success",
         started_at: "2026-09-13T00:00:00.000Z",
         ended_at: "2026-09-13T00:00:02.000Z",
+        duration_ms: 125,
       });
       expect(records[2].content.output).toEqual({ kind: "json", value: expected });
       const page = await manager.files.read_page({ date, direction: "latest" });
@@ -217,7 +216,105 @@ describe("AgentRuntimeLog", () => {
       ended_at: expect.any(String),
     });
   });
+
+  it("取消使用 SDK 诊断和原执行停止来源，不补造执行耗时", () => {
+    const { log, records } = create_log();
+    log.begin_run("round", "prompt");
+    log.handle_event({
+      type: "tool_execution_start",
+      toolCallId: "call",
+      toolName: "fixture_tool",
+      args: {},
+    });
+    log.record_tool_diagnostic(TOOL_RESULT_RECORD.byTaskId, {
+      toolCallId: "call",
+      toolName: "fixture_tool",
+      stop_reason: "project_change",
+    });
+    log.record_tool_result(
+      { ...TOOL_RESULT_RECORD, data: { diagnostics: [{ code: "aborted" }] } },
+      tool_message("call", { isError: true }),
+      "user",
+    );
+    log.finish_run("stopped");
+    log.flush();
+    const result = records().find((record) => record.event === "tool_end");
+    expect(result).toMatchObject({ status: "stopped", stop_reason: "project_change" });
+    expect(result).not.toHaveProperty("duration_ms");
+    expect(records().filter((record) => record.event === "tool_end")).toHaveLength(1);
+  });
+
+  it("未提交的工具异常在收尾时保留诊断，不生成工具完成事实", () => {
+    const append = vi.fn<(payload: LogAppendPayload) => void>();
+    const log = new AgentRuntimeLog({ append }, "chat-test");
+    log.begin_run("round", "prompt");
+    log.handle_event({
+      type: "tool_execution_start",
+      toolCallId: "call",
+      toolName: "fixture_tool",
+      args: {},
+    });
+    const failure = new Error("工具故障", { cause: new Error("原始原因") });
+    log.record_tool_diagnostic(7, {
+      toolCallId: "call",
+      toolName: "fixture_tool",
+      level: "error",
+      error: failure,
+    });
+    failure.message = "后续改写";
+    failure.cause = new Error("后续原因");
+    log.flush();
+    expect(
+      append.mock.calls.map(([payload]) => (payload.content as AgentLogContent).event),
+    ).toEqual(["run_start", "tool_start"]);
+    log.finish_run("error", { error: new Error("提交失败") });
+    log.finish_tools();
+    log.flush();
+    const diagnostics = append.mock.calls.filter(
+      ([payload]) => (payload.content as AgentLogContent).event === "tool_diagnostic",
+    );
+    expect(diagnostics).toHaveLength(1);
+    expect(diagnostics[0]![0]).toMatchObject({
+      level: "error",
+      error: { message: "工具故障", cause_chain: [{ message: "原始原因" }] },
+      content: { task_id: 7, round_id: "round" },
+    });
+    expect(
+      append.mock.calls.some(
+        ([payload]) => (payload.content as AgentLogContent).event === "tool_end",
+      ),
+    ).toBe(false);
+  });
+
+  it("助手日志透传请求耗时，旧消息保留缺失值", () => {
+    const { log, records } = create_log();
+    for (const durationMs of [321, undefined]) {
+      const message = fauxAssistantMessage("完成");
+      log.handle_event({ type: "message_start", message });
+      if (durationMs !== undefined) message.durationMs = durationMs;
+      log.handle_event({ type: "message_end", message });
+    }
+    log.flush();
+    expect(records()[0]).toMatchObject({ duration_ms: 321 });
+    expect(records()[1]).not.toHaveProperty("duration_ms");
+  });
 });
+
+/** 使用 SDK 消息形状验证回执投影，耗时由各场景显式提供。 */
+function tool_message(
+  toolCallId: string,
+  result: Partial<ToolResultMessage> = {},
+): ToolResultMessage {
+  return {
+    role: "toolResult",
+    toolCallId,
+    toolName: "fixture_tool",
+    content: [],
+    isError: false,
+    timestamp: Date.now(),
+    ...result,
+  };
+}
 
 /** 用公开写入口观察事件顺序与身份，不绑定内部缓存结构。 */
 function create_log(): { log: AgentRuntimeLog; records: () => AgentLogContent[] } {

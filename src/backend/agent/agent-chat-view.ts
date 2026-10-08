@@ -12,7 +12,7 @@ import type {
 import type { JsonValue } from "@earendil-works/chord";
 import type { AgentEntry, AgentUsageSnapshot } from "../../shared/agent";
 import { JsonTool } from "../../shared/utils/json-tool";
-import { project_assistant_message_parts } from "./agent-message";
+import { project_assistant_message_parts, read_agent_tool_result_status } from "./agent-message";
 import type { AgentInputRecord, AgentChatData } from "./agent-chat-data";
 import { read_agent_compaction_status } from "./agent-compaction";
 
@@ -356,11 +356,7 @@ export class AgentChatView {
         this.put(
           {
             ...row.entry,
-            status: has_aborted_diagnostic(record)
-              ? "stopped"
-              : message.isError
-                ? "error"
-                : "success",
+            status: read_agent_tool_result_status(record, message),
             output: message.content.flatMap((part) => (part.type === "text" ? [part.text] : [])),
           },
           row.order,
@@ -417,21 +413,4 @@ export class AgentChatView {
       UNCOMMITTED_ENTRY_ORDER,
     );
   }
-}
-
-/** SDK 的稳定诊断码区分用户取消与执行失败，保留模型实际收到的工具回执。 */
-function has_aborted_diagnostic(record: EntryRecord): boolean {
-  const data = record.data;
-  if (typeof data !== "object" || data === null || Array.isArray(data)) return false;
-  const diagnostics = data["diagnostics"];
-  return (
-    Array.isArray(diagnostics) &&
-    diagnostics.some(
-      (value) =>
-        typeof value === "object" &&
-        value !== null &&
-        !Array.isArray(value) &&
-        value["code"] === "aborted",
-    )
-  );
 }

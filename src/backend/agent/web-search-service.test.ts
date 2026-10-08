@@ -230,7 +230,11 @@ describe("Agent Web 多源搜索服务", () => {
       });
       expect(exa_connections).toBe(2);
       expect(network.tool_calls.map((request) => request.provider)).toEqual(["exa", "tavily"]);
-      expect(create_timeout).toHaveBeenCalledTimes(2);
+      // SDK 关闭会话也使用超时；这里只核对每家搜索共用的外层预算。
+      const provider_timeout_ms = create_timeout.mock.calls[0]![0];
+      expect(create_timeout.mock.calls.filter(([ms]) => ms === provider_timeout_ms)).toHaveLength(
+        2,
+      );
     } finally {
       await service.dispose();
     }
