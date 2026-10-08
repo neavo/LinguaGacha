@@ -53,6 +53,7 @@ const POST_PATHS = new Set([
   "/api/agent/queue/reorder",
   "/api/agent/queue/send",
   "/api/agent/round/revise",
+  "/api/agent/round/fork",
   "/api/agent/continue",
   "/api/agent/context/compact",
   "/api/agent/stop",
@@ -134,8 +135,7 @@ describe("register_api_routes", () => {
 
   it("GET 路由返回 Agent、模型选择和目录快照", () => {
     const fixture = create_route_fixture();
-    /** 保留原始响应对象以验证公开载荷。 */
-    const json = (value: unknown) => value;
+    const json = (value: unknown) => value; // 保留原始响应对象以验证公开载荷。
 
     expect(read_get_handler(fixture.get, "/api/agent/snapshot")({ json })).toEqual({
       ok: true,

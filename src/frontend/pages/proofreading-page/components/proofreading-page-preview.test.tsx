@@ -12,7 +12,7 @@ vi.mock("@frontend/widgets/app-page-dialog", () => ({
   AppPageDialog: (props: { children: ReactNode }) => <>{props.children}</>,
 }));
 
-// happy-dom 通过固定尺寸验证画布挂载、翻页和刷新之间的状态归属。
+// 固定视口与图像尺寸，验证挂载、翻页和刷新时的状态归属。
 beforeEach(() => {
   vi.useFakeTimers();
   vi.spyOn(HTMLImageElement.prototype, "complete", "get").mockReturnValue(true);

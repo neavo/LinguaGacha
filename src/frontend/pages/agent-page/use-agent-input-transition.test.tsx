@@ -66,7 +66,6 @@ describe("useAgentInputTransition", () => {
       new DOMRect(0, 0, 720, 120),
     );
     vi.stubGlobal("matchMedia", () => ({ matches: false }));
-    // happy-dom 的 WAAPI 由显式完成信号替代。
     vi.spyOn(HTMLElement.prototype, "animate").mockImplementation(() => {
       const animation = new TestAnimation();
       animations.push(animation);

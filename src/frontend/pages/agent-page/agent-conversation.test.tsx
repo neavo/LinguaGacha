@@ -76,7 +76,7 @@ const model_selection_commands = vi.hoisted(() => ({
 }));
 const resize_observers = new Set<TestResizeObserver>();
 
-/** happy-dom 不主动分发内容尺寸变化，测试显式推进真实观察回调。 */
+/** 尺寸变化由测试定向通知实际订阅的元素。 */
 class TestResizeObserver implements ResizeObserver {
   private readonly callback: ResizeObserverCallback;
   private readonly targets = new Set<Element>();
@@ -241,7 +241,7 @@ describe("AgentConversation", () => {
   });
 
   afterEach(async () => {
-    if (root !== null) await act(async () => root?.unmount());
+    await act(async () => root?.unmount());
     container?.remove();
     root = null;
     container = null;
@@ -1519,8 +1519,7 @@ function get_portal_cancel_button(): HTMLButtonElement {
   return button;
 }
 
-/** 页面交互夹具通过真实结构索引提供订阅快照。 */
-const test_timeline = new AgentTimelineStore();
+const test_timeline = new AgentTimelineStore(); // 页面交互夹具通过真实结构索引提供订阅快照。
 let test_timeline_entries: readonly AgentEntry[] | undefined;
 /** 只在夹具条目集合替换后更新索引，模拟稳定的结构快照。 */
 function read_test_timeline(): AgentTimelineStore {

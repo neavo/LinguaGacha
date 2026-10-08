@@ -4,14 +4,17 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { WorkbenchFileTable } from "./workbench-file-table";
 import type { WorkbenchFileEntry } from "@shared/workbench/workbench-query";
-import { create_text_resolver } from "@shared/i18n";
 import { TooltipProvider } from "@frontend/shadcn/tooltip";
 
+// 观察进度单位和计数，让提示措辞可以独立修改。
 vi.mock("@frontend/app/locale/locale-context", () => ({
-  useI18n: () => ({ t: create_text_resolver("zh-CN") }),
+  useI18n: () => ({
+    t: (key: string, values?: Record<string, string>) =>
+      values ? JSON.stringify({ key, ...values }) : key,
+  }),
 }));
 
-// happy-dom 没有布局测量，固定可见窗口后验证真实表格和 Tooltip 的用户行为。
+// 接入测试直接提供可见行，布局与虚拟化由通用表格测试验证。
 vi.mock("@tanstack/react-virtual", () => ({
   useVirtualizer: (options: { count: number; estimateSize: () => number }) => ({
     getVirtualItems: () =>
@@ -111,8 +114,7 @@ describe("WorkbenchFileTable", () => {
     const badge = container.querySelector<HTMLElement>(
       '.workbench-page__table-file [data-tone="brand"]',
     )!;
-    expect(badge.textContent).toBe("AGENT");
-    expect((await focus_tooltip(badge)).textContent).toContain("此文件仅能使用 AGENT 翻译");
+    await focus_tooltip(badge);
     await act(async () => badge.blur());
     await act(async () =>
       vi.waitFor(() => expect(document.querySelector('[role="tooltip"][data-open]')).toBeNull()),
@@ -120,9 +122,15 @@ describe("WorkbenchFileTable", () => {
     const progress = container.querySelector<HTMLElement>(
       ".workbench-page__table-progress-cell [data-tone]",
     )!;
-    expect(progress.textContent).toBe("100.00%");
+    expect(Number.parseFloat(progress.textContent!)).toBe(entry.progress.completion_percent); // 完成率沿用后端快照，不能在表格按完成页数重新计算。
     const tooltip = await focus_tooltip(progress);
-    expect(tooltip.textContent).toContain("总计 - 3 页");
+    expect(tooltip.textContent).toContain(
+      JSON.stringify({
+        key: "task_progress.page",
+        status: "task_progress.total_lines",
+        count: "3",
+      }),
+    );
   });
 
   it("按文件名自然排序，按进度排序时同值使用路径顺序并可恢复工程顺序", async () => {

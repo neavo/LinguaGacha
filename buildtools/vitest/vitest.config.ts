@@ -25,14 +25,15 @@ export default defineConfig({
       {
         test: {
           name: "renderer",
-          environment: "happy-dom",
-          pool: "threads",
+          environment: "jsdom",
+          pool: "vmForks", // 逐文件 VM 隔离并复用依赖加载，降低 DOM 测试的启动成本。
           setupFiles: ["./src/test/renderer-setup.ts"],
           include: ["src/frontend/**/*.test.{ts,tsx}", "src/gui/preload/**/*.test.{ts,tsx}"],
           deps: {
             optimizer: {
               client: {
                 enabled: true,
+                // CodeMirror 扩展与状态必须共用模块实例，React 渲染也共用同一入口。
                 include: [
                   "@codemirror/commands",
                   "@codemirror/lang-javascript",
@@ -41,17 +42,10 @@ export default defineConfig({
                   "@codemirror/language",
                   "@codemirror/state",
                   "@codemirror/view",
-                  "@dnd-kit/react",
-                  "@dnd-kit/react/sortable",
-                  "@dnd-kit/dom",
-                  "@dnd-kit/collision",
-                  "@tanstack/react-virtual",
-                  "lucide-react",
-                  "next-themes",
                   "@base-ui/react",
+                  "@streamdown/mermaid", // 图表依赖沿 Vite 的浏览器解析规则加载。
                   "react-dom",
                   "react",
-                  "sonner",
                 ],
               },
             },
