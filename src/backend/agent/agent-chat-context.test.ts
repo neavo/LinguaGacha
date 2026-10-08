@@ -65,11 +65,11 @@ it("上下文编辑使旧用量失效，后续响应提供新的有效用量", a
     model: [{ role: "user", content: "旧输入".repeat(40_000), timestamp: 0 }],
   });
   await chat.append({ kind: AssistantEntry.kind, model: [response(100_000)] });
-  expect(await chat.read()).toMatchObject({ tokens: 100_010, compactable: false });
+  expect((await chat.read()).tokens).toBe(100_010);
   await chat.append({ kind: "test.edit", edits: [{ target: input, action: "omit" }] });
   expect((await chat.read()).tokens).toBeLessThan(1_000);
   await chat.append({ kind: AssistantEntry.kind, model: [response(3_000)] });
-  expect(await chat.read()).toMatchObject({ tokens: 3_010, compactable: false });
+  expect((await chat.read()).tokens).toBe(3_010);
 });
 
 it("摘要与旧响应同时间戳时重新估算，新输入到来后允许再次压缩", async () => {

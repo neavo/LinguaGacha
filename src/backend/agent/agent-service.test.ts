@@ -5,6 +5,7 @@ import { randomUUID } from "node:crypto";
 import type { AgentApprovalMode } from "../../domain/setting";
 import { AgentTokenSpeed } from "./agent-token-speed";
 import { AgentChat } from "./agent-chat";
+import type { AgentLogContent } from "./agent-runtime-log";
 import { once } from "node:events";
 import { AgentToolError } from "./tool-definition";
 import { AppError } from "../../shared/error";
@@ -1582,22 +1583,26 @@ describe("AgentService", () => {
     await service.send_message({ text: "非法查询", attachments: [] });
     await wait_for_idle(service);
 
-    const records = log_append.mock.calls.map(
-      ([payload]) =>
-        payload.content as {
-          event: "tool_start" | "tool_end";
-          tool_call_id: string;
-          status?: string;
-        },
-    );
+    const records = log_append.mock.calls
+      .map(([payload]) => payload.content as AgentLogContent)
+      .filter((record) => record.event === "tool_start" || record.event === "tool_end");
     expect(records.filter((record) => record.tool_call_id === "tool-only")).toEqual([
       expect.objectContaining({ event: "tool_start" }),
-      expect.objectContaining({ event: "tool_end", status: "success" }),
+      expect.objectContaining({
+        event: "tool_end",
+        status: "success",
+        duration_ms: expect.any(Number),
+      }),
     ]);
     expect(records.filter((record) => record.tool_call_id === "schema-invalid")).toEqual([
       expect.objectContaining({ event: "tool_start" }),
       expect.objectContaining({ event: "tool_end", status: "error" }),
     ]);
+    expect(
+      records.find(
+        (record) => record.tool_call_id === "schema-invalid" && record.event === "tool_end",
+      ),
+    ).not.toHaveProperty("duration_ms");
   });
 
   it("工具执行体在 running 事件获得发送轮次后才开始", async () => {
@@ -2414,7 +2419,12 @@ describe("AgentService", () => {
         1,
       );
       expect(payloads.filter((payload) => payload.error !== undefined)).toEqual([]);
-      expect(payloads.some((payload) => payload.content.output !== undefined)).toBe(false);
+      expect(
+        payloads.find((payload) => payload.content.event === "tool_end")?.content.output,
+      ).toMatchObject({
+        kind: "content",
+        content: [{ type: "text", text: expect.any(String) }],
+      });
       expect(diagnostics()).toEqual([]);
     },
   );
@@ -2487,7 +2497,7 @@ describe("AgentService", () => {
     },
   );
 
-  it("停止期间的真实脚本故障仍保存一次安全回执与原始诊断", async () => {
+  it("停止期间的真实脚本故障保留 SDK 回执与原始诊断", async () => {
     const { service, workspace, log_append } = await create_service();
     const run = vi.spyOn(workspace, "run").mockImplementation(async (_script, signal) => {
       await once(signal, "abort");
@@ -2504,10 +2514,15 @@ describe("AgentService", () => {
     expect(failures).toMatchObject([
       {
         level: "error",
-        content: { event: "tool_end", status: "error", output: { value: { code: "tool_failed" } } },
+        content: { event: "tool_end", status: "stopped", output: { kind: "content" } },
         error: { message: "真实脚本故障" },
       },
     ]);
+    const tool = service.get_snapshot().entries.find((entry) => entry.kind === "tool_call");
+    expect(tool).toMatchObject({ status: "stopped" });
+    expect(failures[0].content.output.content.map((part: { text: string }) => part.text)).toEqual(
+      tool?.kind === "tool_call" ? tool.output : undefined,
+    );
   });
 
   it("停止期间保留占用，迟到工具按 SDK 回执结算", async () => {
@@ -2536,7 +2551,7 @@ describe("AgentService", () => {
         .map(([payload]) => payload)
         .filter((payload) => payload.content.event === "tool_end"),
     ).toMatchObject([
-      { level: "info", content: { status: "success", output: expect.any(Object) } },
+      { level: "info", content: { status: "stopped", output: expect.any(Object) } },
     ]);
   });
 

@@ -593,31 +593,40 @@ describe("pi-ai 请求适配", () => {
     expect(payload).not.toHaveProperty("top_p");
   });
 
-  it("让 Pi catalog 为带前后缀的 Anthropic 模型保留原始 ID并启用 adaptive", async () => {
+  it.each([
+    ["claude-opus-4-8", "MAX", "max"],
+    ["claude-haiku-5-5", "XHIGH", "xhigh"],
+    ["claude-haiku-5-5", "MAX", "max"],
+  ] as const)("Anthropic %s 的 %s 保留配置 ID 并启用 adaptive", async (model_id, level, effort) => {
     const request = resolve_request({
       api_format: "Anthropic",
       api_url: "https://anthropic-proxy.example/root",
-      model_id: "vendor/claude-opus-4-8:fast",
-      thinking: { level: "MAX" },
+      model_id: `vendor/${model_id}:fast`,
+      thinking: { level },
       threshold: { output_token_limit: 0 },
     });
     const payload = await capture_payload(request);
 
     expect(request.model).toMatchObject({
-      id: "vendor/claude-opus-4-8:fast",
+      id: `vendor/${model_id}:fast`,
       baseUrl: "https://anthropic-proxy.example/root",
       reasoning: true,
       compat: { forceAdaptiveThinking: true, supportsTemperature: false },
     });
-    expect(request.options).toMatchObject({ reasoning: "max" });
+    expect(request.options).toMatchObject({ reasoning: effort });
     expect(request.options).not.toHaveProperty("maxTokens");
-    expect(request.model.maxTokens).toBe(ANTHROPIC_MODELS["claude-opus-4-8"]?.maxTokens);
+    expect(request.model.maxTokens).toBe(ANTHROPIC_MODELS[model_id]?.maxTokens);
     expect(payload).toMatchObject({
-      model: "vendor/claude-opus-4-8:fast",
+      model: `vendor/${model_id}:fast`,
       max_tokens: request.model.maxTokens,
       thinking: { type: "adaptive", display: "summarized" },
-      output_config: { effort: "max" },
     });
+    if (ANTHROPIC_MODELS[model_id].compat?.supportsMidConvoEffort) {
+      // 支持轮内 effort 的模型用末尾系统消息选择当前等级，请求级配置仅作基线。
+      expect(payload["messages"]).toEqual(
+        expect.arrayContaining([{ role: "system", content: [], output_config: { effort } }]),
+      );
+    } else expect(payload).toHaveProperty("output_config.effort", effort);
   });
 
   it("未知 Anthropic 模型获得必需的正数输出上限", async () => {

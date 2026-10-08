@@ -1,4 +1,3 @@
-import type { LogAppendPayload } from "../../shared/log";
 import { scheduler } from "node:timers/promises";
 import type { JsonValue } from "@earendil-works/chord";
 import { BACKGROUND_CONTEXT, withAbortSignal } from "@earendil-works/chord/context";
@@ -184,20 +183,17 @@ export class AgentChat {
         tools: options.tools.map((tool) => ({
           ...tool,
           execute: async (params, api, context) => {
-            // 提交首帧先交给事件循环，工具副作用与终态在同一个边界结算。
+            // 工具开始帧先获得发布机会，随后执行副作用。
             await scheduler.yield();
             const execution = chat.execution;
             let result: ToolExecutionResult;
-            let diagnostic: Partial<Pick<LogAppendPayload, "error" | "level">> = {};
             try {
               result = await tool.execute(params, api, context);
             } catch (error) {
               if (is_agent_cancellation(error, context.abortSignal)) {
-                chat.log.handle_event({
-                  type: "tool_execution_end",
+                chat.log.record_tool_diagnostic(api.taskId, {
                   toolCallId: api.callId,
                   toolName: tool.name,
-                  status: "stopped",
                   ...(execution?.stop_reason == null ? {} : { stop_reason: execution.stop_reason }),
                 });
                 throw error;
@@ -205,19 +201,13 @@ export class AgentChat {
               const failure = normalize_agent_tool_error(error);
               result = { ...agent_tool_result(failure.details), isError: true };
               const expected = failure.severity === "expected";
-              diagnostic = {
+              chat.log.record_tool_diagnostic(api.taskId, {
+                toolCallId: api.callId,
+                toolName: tool.name,
                 ...(expected ? {} : { error }),
                 level: expected ? "info" : failure.severity === "warning" ? "warning" : "error",
-              };
+              });
             }
-            chat.log.handle_event({
-              type: "tool_execution_end",
-              toolCallId: api.callId,
-              toolName: tool.name,
-              result: { ...result, content: result.content ?? [] },
-              status: result.isError === true ? "error" : "success",
-              ...diagnostic,
-            });
             return result;
           },
         })),
@@ -318,16 +308,13 @@ export class AgentChat {
                     args: call.arguments,
                   });
               }
-            // Schema 失败绕过工具执行体，仍需原生回执封口，日志按调用身份去重。
+            // 工具结果是日志终态的唯一入口，校验失败和取消也由 SDK 回执封口。
             if (message.role === "toolResult")
-              chat.log.handle_event({
-                type: "tool_execution_end",
-                toolCallId: message.toolCallId,
-                toolName: message.toolName,
-                result: message,
-                status: message.isError === true ? "error" : "success",
-                ...(message.isError === true ? { level: "info" as const } : {}),
-              });
+              chat.log.record_tool_result(
+                change.value,
+                message,
+                chat.execution?.stop_reason ?? undefined,
+              );
           }
         } else if (change.type === "submission") {
           const previous = chat.view.submissions.get(change.value.id);
@@ -961,6 +948,7 @@ export class AgentChat {
         try {
           await this.harness.close(BACKGROUND_CONTEXT);
         } finally {
+          this.log.finish_tools();
           this.log.flush();
         }
       }
