@@ -99,7 +99,7 @@ describe("AgentFileDropTarget", () => {
   });
 });
 
-/** happy-dom 文件拖拽载荷由测试显式提供，其余沿真实 DOM 冒泡。 */
+/** 文件载荷由场景提供，事件沿真实 DOM 冒泡。 */
 async function dispatch_drag(
   target: Element,
   type: string,

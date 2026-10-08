@@ -40,8 +40,6 @@ it("画布滚轮取消外层滚动，拖动限制边界，重置恢复居中适�
       bubbles: true,
       cancelable: true,
     });
-    // happy-dom 的 `WheelEvent` 未初始化鼠标坐标，补齐真实浏览器提供的字段。
-    Object.defineProperties(wheel, { clientX: { value: 0 }, clientY: { value: 0 } });
     await act(async () => viewport.dispatchEvent(wheel));
     expect(wheel.defaultPrevented).toBe(true);
     expect(content.style.transform).not.toBe(initial_transform);

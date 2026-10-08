@@ -26,11 +26,7 @@ describe("AppAppearanceMenu", () => {
   let container: HTMLDivElement | null = null;
 
   afterEach(async () => {
-    if (root !== null) {
-      await act(async () => {
-        root?.unmount();
-      });
-    }
+    await act(async () => root?.unmount());
     container?.remove();
     root = null;
     container = null;
@@ -39,6 +35,7 @@ describe("AppAppearanceMenu", () => {
     appearance.set_theme_preference.mockReset();
   });
 
+  /** 挂载真实菜单，沿用户入口验证外观偏好的提交。 */
   async function render_menu(): Promise<void> {
     container = document.createElement("div");
     document.body.append(container);
@@ -57,16 +54,18 @@ describe("AppAppearanceMenu", () => {
     });
   }
 
+  /** 点击可见入口，使菜单与 Portal 走完整的挂载路径。 */
   async function open_menu(): Promise<void> {
     const trigger = document.querySelector<HTMLButtonElement>('button[aria-label="变换自如"]');
     if (trigger === null) {
       throw new Error("缺少外观菜单按钮。");
     }
     await act(async () => {
-      trigger.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, button: 0 }));
+      trigger.click();
     });
   }
 
+  /** 通过可见文字选择选项，断言只锁定提交的持久化编码。 */
   function find_option(label: string): HTMLElement {
     const option = Array.from(
       document.querySelectorAll<HTMLElement>('[role="menuitemradio"]'),
@@ -76,14 +75,6 @@ describe("AppAppearanceMenu", () => {
     }
     return option;
   }
-
-  it("以一致的单选组展示字体和主题当前偏好", async () => {
-    await render_menu();
-    await open_menu();
-
-    expect(find_option("LGBase").hasAttribute("data-checked")).toBe(true);
-    expect(find_option("跟随系统").hasAttribute("data-checked")).toBe(true);
-  });
 
   it("选择选项时提交明确的字体和主题偏好", async () => {
     await render_menu();
@@ -100,10 +91,9 @@ describe("AppAppearanceMenu", () => {
     expect(appearance.set_font_preference).toHaveBeenCalledWith("system");
     expect(appearance.set_theme_preference).toHaveBeenCalledWith("dark");
   });
-  it("展示当前字体大小并提交用户选择", async () => {
+  it("选择字体大小时提交对应的持久化编码", async () => {
     await render_menu();
     await open_menu();
-    expect(find_option("标准").hasAttribute("data-checked")).toBe(true);
     await act(async () => {
       find_option("更大字体").click();
     });

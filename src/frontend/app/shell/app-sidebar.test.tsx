@@ -18,11 +18,7 @@ describe("AppSidebar", () => {
   let container: HTMLDivElement | null = null;
 
   afterEach(async () => {
-    if (root !== null) {
-      await act(async () => {
-        root?.unmount();
-      });
-    }
+    await act(async () => root?.unmount());
 
     container?.remove();
     root = null;
@@ -75,7 +71,7 @@ describe("AppSidebar", () => {
     }
 
     await act(async () => {
-      trigger.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, button: 0 }));
+      trigger.click();
     });
   }
 

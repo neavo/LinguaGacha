@@ -49,21 +49,17 @@ describe("AgentResponseAnnotationSelection", () => {
     );
   }
 
-  /** happy-dom 使用真实 Range，并显式发送浏览器的选区通知。 */
+  /** 使用真实 Range 和异步选区通知，验证它与指针事件的先后顺序。 */
   function select(start: Node, end: Node = start, end_offset = 3): void {
     const range = document.createRange();
     range.setStart(start, 0);
     range.setEnd(end, end_offset);
     window.getSelection()?.removeAllRanges();
     window.getSelection()?.addRange(range);
-    document.dispatchEvent(new Event("selectionchange"));
   }
-  /** 从 Portal 的实际挂载位置读取浮层。 */
-  const toolbar = (): Element | null => document.querySelector('[role="toolbar"]');
-  /** 获取用户进入批注编辑的操作。 */
-  const button = (): HTMLButtonElement => document.querySelector('[role="toolbar"] button')!;
-  /** 默认回复提供稳定的文字节点，供选区与替换场景使用。 */
-  const text = (): Node => container.querySelector("p")!.firstChild!;
+  const toolbar = (): Element | null => document.querySelector('[role="toolbar"]'); // 从 Portal 的实际挂载位置读取浮层。
+  const button = (): HTMLButtonElement => document.querySelector('[role="toolbar"] button')!; // 获取用户进入批注编辑的操作。
+  const text = (): Node => container.querySelector("p")!.firstChild!; // 默认回复提供稳定的文字节点，供选区与替换场景使用。
   /** 指针事件沿真实文档路径传播，覆盖容器外松手。 */
   const pointer = (target: EventTarget, type: string): void => {
     target.dispatchEvent(new PointerEvent(type, { bubbles: true, button: 0 }));

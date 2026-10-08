@@ -9,7 +9,7 @@ vi.mock("@frontend/app/locale/locale-context", () => ({
   useI18n: () => ({ t: (key: string) => key }),
 }));
 
-// happy-dom 不执行布局，提供滚动视口尺寸以运行真实虚拟列表。
+// 无布局环境使用固定视口尺寸，运行真实虚拟列表。
 beforeEach(() => {
   vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockReturnValue(320);
   vi.spyOn(HTMLElement.prototype, "offsetWidth", "get").mockReturnValue(440);

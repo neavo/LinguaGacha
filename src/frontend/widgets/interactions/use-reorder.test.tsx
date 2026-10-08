@@ -91,8 +91,9 @@ describe("useReorder", () => {
         reorder.events.onDragOver(over, manager);
         reorder.events.onDragEnd(end, manager);
       });
-      // happy-dom 忽略禁用按钮的 blur，用 body 焦点模拟 Chromium 的失焦结果。
-      document.body.focus();
+      // 通过可聚焦控件推进失焦，模拟禁用手柄后焦点回到文档。
+      other.focus();
+      other.blur();
       expect(document.activeElement).toBe(document.body);
       if (change_focus) other.focus();
       await act(async () => finish());

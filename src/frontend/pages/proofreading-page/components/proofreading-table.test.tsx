@@ -19,7 +19,7 @@ vi.mock("@frontend/app/locale/locale-context", () => {
   };
 });
 
-// `happy-dom` 不计算布局，尺寸观测使用固定视口以运行真实虚拟列表。
+// 无布局环境使用固定视口尺寸，运行真实虚拟列表。
 vi.mock("@tanstack/react-virtual", async (import_original) => {
   const actual = await import_original<typeof import("@tanstack/react-virtual")>();
   return {
@@ -67,11 +67,7 @@ describe("ProofreadingTable", () => {
   let root: Root | null = null;
 
   afterEach(async () => {
-    if (root !== null) {
-      await act(async () => {
-        root?.unmount();
-      });
-    }
+    await act(async () => root?.unmount());
 
     container?.remove();
     container = null;

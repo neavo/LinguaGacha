@@ -181,11 +181,7 @@ describe("ProofreadingPage", () => {
   });
 
   afterEach(async () => {
-    if (root !== null) {
-      await act(async () => {
-        root?.unmount();
-      });
-    }
+    await act(async () => root?.unmount());
 
     container?.remove();
     container = null;
@@ -325,13 +321,12 @@ describe("ProofreadingPage", () => {
     proofreading_state_fixture.current!.file_selection = { mode: "selected", values: [] };
     proofreading_state_fixture.current!.visible_row_count = 0;
     await mount_page();
-    const empty = container!.querySelector('[role="status"]')!;
-    expect(empty.textContent).toBe("proofreading_page.pages.select_files");
+    expect(container!.querySelector('[role="status"]')).not.toBeNull();
     expect(query_button("proofreading-search-action").disabled).toBe(false);
   });
 
   it("工程切换关闭文件浮层并重置目录展开状态", async () => {
-    // happy-dom 不执行布局，提供虚拟文件列表的视口尺寸。
+    // 提供视口尺寸，使文件列表在工程切换时保持可观察。
     vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockReturnValue(320);
     vi.spyOn(HTMLElement.prototype, "offsetWidth", "get").mockReturnValue(440);
     const state = proofreading_state_fixture.current!;

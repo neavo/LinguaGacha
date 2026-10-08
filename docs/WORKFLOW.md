@@ -122,7 +122,7 @@ Markdown 与 YAML 使用文本或元数据检查，项目格式化脚本不处�
 [vitest.config.ts](../buildtools/vitest/vitest.config.ts) 划分两个项目：
 
 - `node`：后端、CLI、共享逻辑、Electron main 和构建工具。
-- `renderer`：前端与 preload 桥接，使用 `happy-dom` 和 renderer 初始化。
+- `renderer`：前端与 preload 桥接，使用 `jsdom` 和 renderer 初始化。
 
 ```powershell
 npm test -- --project node <测试文件路径...>
