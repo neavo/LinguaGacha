@@ -229,7 +229,14 @@ describe("Agent 模型注册", () => {
       namespace: "linguagacha",
       name: "translate",
     });
-    expect(bodies[0]?.["tools"]).toMatchObject([{ type: "namespace", name: "linguagacha" }]);
+    expect(bodies[0]?.["tools"]).toMatchObject([
+      {
+        type: "namespace",
+        name: "linguagacha",
+        description: expect.stringMatching(/\S/),
+        tools: [{ type: "function", name: "translate" }],
+      },
+    ]);
     token = "refreshed-token";
     const call_id = first.content[0]?.type === "toolCall" ? first.content[0].id : "";
     await runtime

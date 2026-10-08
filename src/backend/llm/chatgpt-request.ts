@@ -1,5 +1,5 @@
 import type { StreamOptions } from "@earendil-works/pi-ai";
-import { is_json_record } from "../../domain/json";
+import { is_json_record, type JsonRecord } from "../../domain/json";
 import { CHATGPT_BASE_URL } from "../../domain/model";
 import { AppError } from "../../shared/error";
 import { create_provider_error, read_provider_response_error } from "../network/provider-error";
@@ -23,9 +23,14 @@ const UNSUPPORTED_FIELDS = [
   "user",
   "previous_response_id",
 ] as const;
-const TOOL_NAMESPACE = "linguagacha";
+// ChatGPT 套餐要求顶层函数与自定义工具放入具有描述的 `namespace`。
+const TOOL_NAMESPACE = Object.freeze({
+  type: "namespace",
+  name: "linguagacha",
+  description: "Tools for LinguaGacha tasks.",
+});
 
-/** 清理 SDK 自动参数后合并用户扩展；显式冲突报错，不能静默吞掉用户设置。 */
+/** 清理 SDK 自动参数后合并用户扩展。显式冲突报错，保留用户设置的诊断。 */
 export function apply_chatgpt_payload(
   record: Record<string, unknown>,
   extensions: Readonly<Record<string, unknown>>,
@@ -41,28 +46,37 @@ export function apply_chatgpt_payload(
   );
   const tools = result["tools"];
   if (Array.isArray(tools)) {
-    const functions = tools.filter(
-      (tool: unknown) =>
-        is_json_record(tool) && ["function", "custom"].includes(String(tool["type"])),
-    );
-    const other = tools.filter((tool: unknown) => !functions.includes(tool));
+    const namespace_tools: JsonRecord[] = [];
+    const result_tools: JsonRecord[] = [];
+    for (const tool of tools) {
+      if (!is_json_record(tool)) throw rejected("Unsupported ChatGPT tool");
+      switch (tool["type"]) {
+        case "function":
+        case "custom":
+          namespace_tools.push(tool);
+          break;
+        case "namespace":
+        case "web_search":
+        case "web_search_preview":
+          result_tools.push(tool);
+          break;
+        default:
+          throw rejected("Unsupported ChatGPT tool");
+      }
+    }
+    if (namespace_tools.length > 0)
+      result_tools.push({ ...TOOL_NAMESPACE, tools: namespace_tools });
+    result["tools"] = result_tools;
+    const choice = result["tool_choice"];
+    // 只补全本次包装工具的引用，显式命名空间由调用方拥有。
     if (
-      other.some(
-        (tool: unknown) =>
-          !is_json_record(tool) ||
-          !["namespace", "web_search", "web_search_preview"].includes(String(tool["type"])),
+      is_json_record(choice) &&
+      choice["namespace"] === undefined &&
+      namespace_tools.some(
+        (tool) => tool["type"] === choice["type"] && tool["name"] === choice["name"],
       )
     )
-      throw rejected("Unsupported ChatGPT tool");
-    result["tools"] = [
-      ...other,
-      ...(functions.length === 0
-        ? []
-        : [{ type: "namespace", name: TOOL_NAMESPACE, tools: functions }]),
-    ];
-    const choice = result["tool_choice"];
-    if (is_json_record(choice) && ["function", "custom"].includes(String(choice["type"])))
-      result["tool_choice"] = { ...choice, namespace: TOOL_NAMESPACE };
+      result["tool_choice"] = { ...choice, namespace: TOOL_NAMESPACE.name };
   }
   return result;
 }
@@ -79,6 +93,7 @@ export function observe_chatgpt_request(base_fetch: typeof fetch = globalThis.fe
 } {
   let failure: { error: AppError; retryable: boolean } | null = null;
   let request_id: string | undefined;
+  // HTTP 与 SSE 共用恢复分类，将临时服务故障标为可重试。
   const record = (error: AppError): void => {
     const code = error.diagnostic_context["provider_code"];
     const status = error.diagnostic_context["status"];
@@ -93,6 +108,7 @@ export function observe_chatgpt_request(base_fetch: typeof fetch = globalThis.fe
   return {
     failure: () => failure,
     options: {
+      // 限制目标和重定向，避免 OAuth 凭据离开 ChatGPT 服务。
       fetch: async (input, init) => {
         const url = new URL(typeof input === "string" || input instanceof URL ? input : input.url);
         if (url.origin !== new URL(CHATGPT_BASE_URL).origin)
