@@ -85,6 +85,9 @@
 - 具体示例可见 [Wiki - 支持的文件格式](https://github.com/neavo/LinguaGacha/wiki/%E6%94%AF%E6%8C%81%E7%9A%84%E6%96%87%E4%BB%B6%E6%A0%BC%E5%BC%8F)，更多格式将持续添加，你也可以在 [ISSUES](https://github.com/neavo/LinguaGacha/issues) 中提出你的需求
 
 ## 近期更新 📅
+- 20261008 v0.127.1
+  - 修复 ChatGPT 登录的兼容性问题 [#973](../../issues/973)
+
 - 20261008 v0.127.0
   - 新增支持格式 [#971](../../issues/971)
     - `.ssa`
