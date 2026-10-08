@@ -85,9 +85,12 @@
 - 구체적인 예시는 [Wiki - 지원 파일 형식](https://github.com/neavo/LinguaGacha/wiki/%E6%94%AF%E6%8C%81%E7%9A%84%E6%96%87%E4%BB%B6%E6%A0%BC%E5%BC%8F)을 참고하세요. 지원 형식은 계속 추가되며, [ISSUES](https://github.com/neavo/LinguaGacha/issues)에서 원하는 형식을 요청할 수 있습니다
 
 ## 최근 업데이트 📅
-- 20261006 v0.126.0
-  - `AGENT` - 대화 영구 저장 [#960](../../issues/960)
-  - 수정 및 개선 [#954](../../issues/954) [#955](../../issues/955) [#958](../../issues/958) [#959](../../issues/959) [#961](../../issues/961) [#963](../../issues/963) [#964](../../issues/964)
+- 20261008 v0.127.0
+  - 새 파일 형식 지원 추가 [#971](../../issues/971)
+    - `.ssa`
+    - `.vtt`
+    - `.lrc`
+  - 수정 및 개선 [#968](../../issues/968) [#969](../../issues/969) [#970](../../issues/970)
 
 ## 개발 안내 🛠️
 - [Go](https://go.dev)와 [`Node.js`](https://nodejs.org)를 설치합니다

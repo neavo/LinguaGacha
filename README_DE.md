@@ -85,9 +85,12 @@
 - Beispiele finden Sie unter [Wiki – Unterstützte Dateiformate](https://github.com/neavo/LinguaGacha/wiki/%E6%94%AF%E6%8C%81%E7%9A%84%E6%96%87%E4%BB%B6%E6%A0%BC%E5%BC%8F). Weitere Formate werden laufend ergänzt. Wünsche können Sie unter [ISSUES](https://github.com/neavo/LinguaGacha/issues) einreichen
 
 ## Neueste Updates 📅
-- 20261006 v0.126.0
-  - `AGENT` - Dauerhafte Speicherung von Gesprächen [#960](../../issues/960)
-  - Fehlerbehebungen und Verbesserungen [#954](../../issues/954) [#955](../../issues/955) [#958](../../issues/958) [#959](../../issues/959) [#961](../../issues/961) [#963](../../issues/963) [#964](../../issues/964)
+- 20261008 v0.127.0
+  - Unterstützung für neue Formate hinzugefügt [#971](../../issues/971)
+    - `.ssa`
+    - `.vtt`
+    - `.lrc`
+  - Fehlerbehebungen und Verbesserungen [#968](../../issues/968) [#969](../../issues/969) [#970](../../issues/970)
 
 ## Entwicklung 🛠️
 - Installieren Sie [Go](https://go.dev) und [`Node.js`](https://nodejs.org)

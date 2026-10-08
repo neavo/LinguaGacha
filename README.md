@@ -85,9 +85,12 @@
 - 具体示例可见 [Wiki - 支持的文件格式](https://github.com/neavo/LinguaGacha/wiki/%E6%94%AF%E6%8C%81%E7%9A%84%E6%96%87%E4%BB%B6%E6%A0%BC%E5%BC%8F)，更多格式将持续添加，你也可以在 [ISSUES](https://github.com/neavo/LinguaGacha/issues) 中提出你的需求
 
 ## 近期更新 📅
-- 20261006 v0.126.0
-  - `AGENT` - 对话持久化 [#960](../../issues/960)
-  - 修复与改进 [#954](../../issues/954) [#955](../../issues/955) [#958](../../issues/958) [#959](../../issues/959) [#961](../../issues/961) [#963](../../issues/963) [#964](../../issues/964)
+- 20261008 v0.127.0
+  - 新增支持格式 [#971](../../issues/971)
+    - `.ssa`
+    - `.vtt`
+    - `.lrc`
+  - 修复与改进 [#968](../../issues/968) [#969](../../issues/969) [#970](../../issues/970)
 
 ## 开发指南 🛠️
 - 安装 [ [Go](https://go.dev) ] 和 [ [`Node.js`](https://nodejs.org) ]

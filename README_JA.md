@@ -87,9 +87,12 @@
 - 例については [Wiki - 対応フォーマット](https://github.com/neavo/LinguaGacha/wiki/%E6%94%AF%E6%8C%81%E7%9A%84%E6%96%87%E4%BB%B6%E6%A0%BC%E5%BC%8F) を参照。フォーマットのリクエストは [ISSUES](https://github.com/neavo/LinguaGacha/issues) で提出
 
 ## 最近の更新 📅
-- 20261006 v0.126.0
-  - `AGENT` - 会話の永続化 [#960](../../issues/960)
-  - 修正と改善 [#954](../../issues/954) [#955](../../issues/955) [#958](../../issues/958) [#959](../../issues/959) [#961](../../issues/961) [#963](../../issues/963) [#964](../../issues/964)
+- 20261008 v0.127.0
+  - 対応フォーマットを追加 [#971](../../issues/971)
+    - `.ssa`
+    - `.vtt`
+    - `.lrc`
+  - 修正と改善 [#968](../../issues/968) [#969](../../issues/969) [#970](../../issues/970)
 
 ## 開発ガイド 🛠️
 - [Go](https://go.dev) と [`Node.js`](https://nodejs.org) をインストール

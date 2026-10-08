@@ -88,9 +88,12 @@
 - See [Wiki - Supported Formats](https://github.com/neavo/LinguaGacha/wiki/%E6%94%AF%E6%8C%81%E7%9A%84%E6%96%87%E4%BB%B6%E6%A0%BC%E5%BC%8F) for examples. Submit format requests via [ISSUES](https://github.com/neavo/LinguaGacha/issues)
 
 ## Recent Updates 📅
-- 20261006 v0.126.0
-  - `AGENT` - Conversation durable [#960](../../issues/960)
-  - Fixes and improvements [#954](../../issues/954) [#955](../../issues/955) [#958](../../issues/958) [#959](../../issues/959) [#961](../../issues/961) [#963](../../issues/963) [#964](../../issues/964)
+- 20261008 v0.127.0
+  - Added support for new formats [#971](../../issues/971)
+    - `.ssa`
+    - `.vtt`
+    - `.lrc`
+  - Fixes and improvements [#968](../../issues/968) [#969](../../issues/969) [#970](../../issues/970)
 
 ## Development Guide 🛠️
 - Install [Go](https://go.dev) and [`Node.js`](https://nodejs.org)
