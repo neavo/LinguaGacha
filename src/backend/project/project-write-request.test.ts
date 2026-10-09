@@ -19,6 +19,15 @@ describe("project write request", () => {
     );
   });
 
+  it.each(["8", "1.8", 1.8, -1, NaN, Infinity, null])(
+    "预期修订 %s 在冲突检查前严格拒绝",
+    (revision) => {
+      expect(() => normalize_project_expected_section_revisions({ items: revision })).toThrow(
+        expect.objectContaining({ code: "request.validation_failed" }),
+      );
+    },
+  );
+
   it("需要 revision guard 的写入拒绝缺失 map", () => {
     expect(() => require_project_expected_section_revisions(undefined)).toThrow(
       expect.objectContaining({ code: "request.validation_failed" }),

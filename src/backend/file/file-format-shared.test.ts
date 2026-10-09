@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { Item } from "../../domain/item";
+import { create_item } from "../../domain/item";
 import { group_items, split_text_lines_for_items } from "./file-format-shared";
 
 describe("file-format-shared", () => {
@@ -16,8 +16,8 @@ describe("file-format-shared", () => {
 
   it("按文件类型和文件路径分组条目", () => {
     const items = [
-      Item.from_json({ src: "甲", file_type: "TXT", file_path: "a.txt" }),
-      Item.from_json({ src: "乙", file_type: "SRT", file_path: "b.srt" }),
+      create_item({ src: "甲", file_type: "TXT", file_path: "a.txt" }),
+      create_item({ src: "乙", file_type: "SRT", file_path: "b.srt" }),
     ];
 
     expect([...group_items(items, "TXT").keys()]).toEqual(["a.txt"]);

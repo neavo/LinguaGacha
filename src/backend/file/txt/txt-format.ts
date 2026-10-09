@@ -9,7 +9,7 @@ import {
   type GeneratedFilePaths,
   type FileFormatServiceConfig,
 } from "../file-format-shared";
-import { Item } from "../../../domain/item";
+import { type Item, create_item } from "../../../domain/item";
 
 /**
  * TXT 格式按行解析与写回，保持旧实现最朴素的一行一条规则
@@ -27,7 +27,7 @@ export class TXTFormat {
   public async read_from_stream(content: Uint8Array, rel_path: string): Promise<Item[]> {
     const text = await decode_text_content(content);
     return split_text_lines_for_items(text).map((line, index) =>
-      Item.from_json({
+      create_item({
         src: line,
         dst: "",
         row: index,

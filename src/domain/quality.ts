@@ -1,5 +1,83 @@
+import { Type, type Static } from "typebox";
+import { Check, Errors } from "typebox/value";
 import { read_json_boolean, type JsonRecord } from "./json";
 import { AppError } from "../shared/error/app-error";
+
+const glossary_fields = {
+  src: Type.String({ pattern: "\\S" }), // 在条目原文中匹配的术语，至少含一个非空白字符。
+  dst: Type.String(), // 在对应译文中检查应用的术语译文。
+  info: Type.String(), // 提示词和页面使用的术语说明。
+  case_sensitive: Type.Boolean(), // 术语原文匹配是否区分大小写。
+};
+const replacement_fields = {
+  src: glossary_fields.src, // 字面量或正则源模式。
+  dst: glossary_fields.dst, // 规则命中后的替换文本。
+  regex: Type.Boolean(), // 是否使用正则匹配与替换语义。
+  case_sensitive: glossary_fields.case_sensitive, // 字面量和正则匹配的大小写策略。
+};
+export const QUALITY_RULE_BUSINESS_SCHEMAS = {
+  glossary: Type.Object(glossary_fields),
+  text_preserve: Type.Object({
+    src: glossary_fields.src, // 自定义文本保护的正则源模式。
+    info: glossary_fields.info, // 用户说明，不参与匹配。
+  }),
+  pre_replacement: Type.Object(replacement_fields),
+  post_replacement: Type.Object(replacement_fields),
+};
+const optional_identity = { entry_id: Type.Optional(Type.String()) }; // 规则输入可省略项目身份。
+const identity = { entry_id: Type.String({ minLength: 1 }) }; // 项目规则必须携带非空的稳定身份。
+const GLOSSARY_ENTRY_SCHEMA = Type.Object({ ...glossary_fields, ...optional_identity });
+const TEXT_PRESERVE_ENTRY_SCHEMA = Type.Object({
+  ...QUALITY_RULE_BUSINESS_SCHEMAS.text_preserve.properties,
+  ...optional_identity,
+});
+const TEXT_REPLACEMENT_ENTRY_SCHEMA = Type.Object({
+  ...replacement_fields,
+  ...optional_identity,
+});
+const QUALITY_RULE_ENTRY_SCHEMAS = {
+  glossary: Type.Object({ ...glossary_fields, ...identity }),
+  text_preserve: Type.Object({
+    ...QUALITY_RULE_BUSINESS_SCHEMAS.text_preserve.properties,
+    ...identity,
+  }),
+  pre_replacement: Type.Object({ ...replacement_fields, ...identity }),
+  post_replacement: Type.Object({ ...replacement_fields, ...identity }),
+};
+const QUALITY_RULE_INPUT_SCHEMAS = {
+  glossary: GLOSSARY_ENTRY_SCHEMA,
+  text_preserve: TEXT_PRESERVE_ENTRY_SCHEMA,
+  pre_replacement: TEXT_REPLACEMENT_ENTRY_SCHEMA,
+  post_replacement: TEXT_REPLACEMENT_ENTRY_SCHEMA,
+};
+export type GlossaryEntry = Static<typeof GLOSSARY_ENTRY_SCHEMA>;
+export type TextPreserveEntry = Static<typeof TEXT_PRESERVE_ENTRY_SCHEMA>;
+export type TextReplacementEntry = Static<typeof TEXT_REPLACEMENT_ENTRY_SCHEMA>;
+export type QualityRuleEntryByKind = {
+  [Kind in keyof typeof QUALITY_RULE_ENTRY_SCHEMAS]: Static<
+    (typeof QUALITY_RULE_ENTRY_SCHEMAS)[Kind]
+  >;
+};
+export type QualityRuleGlossaryEntry = QualityRuleEntryByKind["glossary"];
+export type QualityRuleTextPreserveEntry = QualityRuleEntryByKind["text_preserve"];
+export type QualityRuleTextReplacementEntry = QualityRuleEntryByKind["pre_replacement"];
+export type QualityRuleEntryInput = Static<
+  (typeof QUALITY_RULE_INPUT_SCHEMAS)[keyof typeof QUALITY_RULE_INPUT_SCHEMAS]
+>;
+
+/** src 必填，其余业务字段在预设和历史读取边界补齐。 */
+const replacement_defaults = { dst: "", regex: false, case_sensitive: false };
+const QUALITY_RULE_DEFAULT_FIELDS = {
+  glossary: { dst: "", info: "", case_sensitive: false },
+  text_preserve: { info: "" },
+  pre_replacement: replacement_defaults,
+  post_replacement: replacement_defaults,
+} satisfies {
+  [Kind in keyof typeof QUALITY_RULE_BUSINESS_SCHEMAS]: Omit<
+    Static<(typeof QUALITY_RULE_BUSINESS_SCHEMAS)[Kind]>,
+    "src"
+  >;
+};
 
 export const TEXT_PRESERVE_MODES = ["off", "smart", "custom"] as const; // 文本保护模式是公开 meta、页面状态和规则执行共同使用的稳定值域
 
@@ -14,42 +92,7 @@ export const QUALITY_RULE_KINDS = [
 export type TextPreserveMode = (typeof TEXT_PRESERVE_MODES)[number];
 export type QualityRuleKind = (typeof QUALITY_RULE_KINDS)[number];
 
-export type TextReplacementEntry = {
-  entry_id?: string; // 项目质量规则可携带的稳定身份，纯执行规则不依赖该字段
-  src: string; // 字面量或正则源模式
-  dst: string; // 规则命中后的替换文本
-  regex: boolean; // true 时 src/dst 使用规则型正则语义
-  case_sensitive: boolean; // 字面量和正则共同遵循的大小写策略
-};
-
-export type TextPreserveEntry = {
-  entry_id?: string; // 项目质量规则可携带的稳定身份，纯执行规则不依赖该字段
-  src: string; // 自定义模式下直接编译为正则
-  info: string; // 用户说明，不参与匹配
-};
-
-export type GlossaryEntry = {
-  entry_id?: string; // 项目质量规则可携带的稳定身份，纯字段归一不依赖该字段
-  src: string; // 只在原始源文字段匹配
-  dst: string; // 只在对应译文字段检查应用
-  info: string; // 提示词和页面使用的术语说明
-  case_sensitive: boolean; // 源文字面量的大小写策略
-};
-
-/** 项目内 canonical 条目必须持有身份；基础条目类型仍供不依赖身份的纯执行逻辑使用。 */
-export type QualityRuleGlossaryEntry = GlossaryEntry & { entry_id: string };
-export type QualityRuleTextReplacementEntry = TextReplacementEntry & { entry_id: string };
-export type QualityRuleTextPreserveEntry = TextPreserveEntry & { entry_id: string };
-export type QualityRuleEntryByKind = {
-  glossary: QualityRuleGlossaryEntry;
-  pre_replacement: QualityRuleTextReplacementEntry;
-  post_replacement: QualityRuleTextReplacementEntry;
-  text_preserve: QualityRuleTextPreserveEntry;
-};
 export type QualityRuleEntry = QualityRuleEntryByKind[QualityRuleKind];
-
-/** 尚未进入项目身份边界的规则字段输入。 */
-export type QualityRuleEntryInput = GlossaryEntry | TextReplacementEntry | TextPreserveEntry;
 
 export type QualityRuleDatabaseType =
   | "glossary"
@@ -230,41 +273,36 @@ export class QualityRule<K extends QualityRuleKind = QualityRuleKind> {
   }
 
   /**
-   * 将未识别的规则输入归一为领域字段形状；项目身份由调用边界单独处理
+   * 归一规则业务字段。项目身份由调用边界处理。
    */
   public normalize_entry(entry: unknown): QualityRuleEntryInput {
     const record = require_record(entry, "Quality rule entry must be an object.");
-    const src = read_string_field(record, "src").trim();
-    if (src === "") throw new TypeError("Quality rule src must not be empty.");
-    const entry_id = read_optional_string_field(record, "entry_id")?.trim();
-    const identity = entry_id === undefined || entry_id === "" ? {} : { entry_id };
-
-    if (this.kind === "text_preserve") {
-      return {
-        ...identity,
-        src,
-        info: read_string_field(record, "info", "").trim(),
-      };
+    const normalized: Record<string, unknown> = {};
+    const defaults: JsonRecord = QUALITY_RULE_DEFAULT_FIELDS[this.kind];
+    const schema = QUALITY_RULE_INPUT_SCHEMAS[this.kind];
+    for (const field of Object.keys(schema.properties)) {
+      const value = record[field] === undefined ? defaults[field] : record[field];
+      if (value !== undefined) normalized[field] = typeof value === "string" ? value.trim() : value;
     }
-    if (this.kind === "pre_replacement" || this.kind === "post_replacement") {
-      return {
-        ...identity,
-        src,
-        dst: read_string_field(record, "dst", "").trim(),
-        regex: read_boolean_field(record, "regex", false),
-        case_sensitive: read_boolean_field(record, "case_sensitive", false),
-      };
+    // 预设可省略项目身份，空身份沿用创建边界分配身份的语义。
+    if (normalized["entry_id"] === "") delete normalized["entry_id"];
+    if (!Check(schema, normalized)) {
+      const error = Errors(schema, normalized)[0]!;
+      const field =
+        error.keyword === "required"
+          ? error.params.requiredProperties[0]
+          : error.instancePath.slice(1);
+      const expected = Object.entries(schema.properties).find(([key]) => key === field)?.[1].type;
+      throw new TypeError(
+        error.keyword === "pattern"
+          ? `Quality rule ${field} must not be empty.`
+          : `Quality rule ${field} must be a ${expected}.`,
+      );
     }
-    return {
-      ...identity,
-      src,
-      dst: read_string_field(record, "dst", "").trim(),
-      info: read_string_field(record, "info", "").trim(),
-      case_sensitive: read_boolean_field(record, "case_sensitive", false),
-    };
+    return normalized;
   }
 
-  /** 规则列表逐项归一；任一坏项会令整批失败。 */
+  /** 规则逐项归一。任一条目非法时整批失败。 */
   public normalize_entries(value: unknown): QualityRuleEntryInput[] {
     if (!Array.isArray(value)) throw new TypeError("Quality rule entries must be an array.");
     return value.map((entry) => this.normalize_entry(entry));
@@ -356,28 +394,4 @@ function require_record(value: unknown, message: string): JsonRecord {
     throw new TypeError(message);
   }
   return value as JsonRecord;
-}
-
-/** 字符串字段仅在缺失且声明默认值时使用默认值。 */
-function read_string_field(record: JsonRecord, key: string, fallback?: string): string {
-  const value = record[key];
-  if (value === undefined && fallback !== undefined) return fallback;
-  if (typeof value !== "string") throw new TypeError(`Quality rule ${key} must be a string.`);
-  return value;
-}
-
-/** 保留可选字段缺失语义，类型错误交给调用方处理。 */
-function read_optional_string_field(record: JsonRecord, key: string): string | undefined {
-  const value = record[key];
-  if (value === undefined) return undefined;
-  if (typeof value !== "string") throw new TypeError(`Quality rule ${key} must be a string.`);
-  return value;
-}
-
-/** 布尔字段缺失时使用领域默认值。 */
-function read_boolean_field(record: JsonRecord, key: string, fallback: boolean): boolean {
-  const value = record[key];
-  if (value === undefined) return fallback;
-  if (typeof value !== "boolean") throw new TypeError(`Quality rule ${key} must be a boolean.`);
-  return value;
 }

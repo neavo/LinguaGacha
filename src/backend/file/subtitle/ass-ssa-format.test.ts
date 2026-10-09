@@ -1,5 +1,5 @@
 import { expect, it } from "vitest";
-import { Item } from "../../../domain/item";
+import { create_item } from "../../../domain/item";
 import { ASSFormat } from "./ass-ssa-format";
 
 const FORMAT = "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text";
@@ -56,14 +56,14 @@ it("段落切换重新读取字段，Events 外的 Dialogue 原样保存", async
 it("旧项目的行号和译文直接写回，历史模板不决定正文位置", () => {
   const before = `[Events]\n${FORMAT}\n${PREFIX}首句\u2028尾句\n`;
   const text = `${before}${PREFIX}原文\n`;
-  const item = Item.from_json({
+  const item = create_item({
     row: 4,
     src: "原文",
     dst: "",
     status: "PROCESSED",
     extra_field: "错误{{CONTENT}}模板",
   });
-  const structural = Item.from_json({ row: 3, src: "", extra_field: "尾句" });
+  const structural = create_item({ row: 3, src: "", extra_field: "尾句" });
   expect(format.render_text(text, [structural, item], "old.ass")).toEqual({
     translated: `${before}${PREFIX}\n`,
     bilingual: text,

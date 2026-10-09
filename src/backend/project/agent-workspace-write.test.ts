@@ -2,7 +2,11 @@ import { describe, expect, it } from "vitest";
 
 import type { JsonRecord } from "../../domain/json";
 import type { PromptKind } from "../../domain/prompt";
-import { type QualityRuleKind } from "../../domain/quality";
+import {
+  type QualityRuleKind,
+  type QualityRuleEntry,
+  type QualityRuleGlossaryEntry,
+} from "../../domain/quality";
 import {
   create_empty_agent_workspace_intent_batch,
   derive_agent_workspace_apply_status,
@@ -422,7 +426,7 @@ function create_item(item_id: number): JsonRecord {
   };
 }
 
-function quality_entry(id: string, src: string, extra: JsonRecord = {}): JsonRecord {
+function quality_entry(id: string, src: string, extra: JsonRecord = {}): QualityRuleGlossaryEntry {
   return {
     entry_id: id,
     src,
@@ -464,7 +468,7 @@ function item_fp(item: JsonRecord): string {
   return String(project_agent_workspace_item(item)["fp"]);
 }
 
-function quality_fp(kind: QualityRuleKind, entry: JsonRecord): string {
+function quality_fp(kind: QualityRuleKind, entry: QualityRuleEntry): string {
   return String(project_agent_workspace_quality_entry(kind, entry, 0)["fp"]);
 }
 

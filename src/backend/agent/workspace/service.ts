@@ -27,19 +27,22 @@ import {
   type JsonRecord,
 } from "../../../domain/json";
 import {
-  normalize_translation_prompt_slice,
   TRANSLATION_PROMPT,
   PROMPT_KINDS,
   type PromptKind,
+  type ProjectPrompts,
 } from "../../../domain/prompt";
-import { QualityRule, QUALITY_RULE_KINDS, type QualityRuleKind } from "../../../domain/quality";
+import {
+  QUALITY_RULE_KINDS,
+  type QualityRuleEntry,
+  type QualityRuleKind,
+} from "../../../domain/quality";
 import {
   normalize_project_settings_snapshot,
   normalize_setting_snapshot,
 } from "../../../domain/setting";
 import * as AppErrors from "../../../shared/error";
 import type { AgentPendingWriteSummary, AgentWorkspaceLinkResult } from "../../../shared/agent";
-import { normalize_quality_rule_entries } from "../../../shared/quality/quality-rule-entry";
 import {
   PROJECT_DATA_SECTIONS,
   type ProjectDataSectionRevisions,
@@ -494,8 +497,8 @@ export class AgentWorkspaceService {
     );
     const quality_block = this.options.cache.quality.readBlock();
     const quality_entries = Object.fromEntries(
-      QUALITY_RULE_KINDS.map((kind) => [kind, read_quality_entries(quality_block, kind)]),
-    ) as Record<QualityRuleKind, JsonRecord[]>;
+      QUALITY_RULE_KINDS.map((kind) => [kind, quality_block[kind].entries]),
+    ) as Record<QualityRuleKind, QualityRuleEntry[]>;
     const prompts = project_workspace_prompts(this.options.cache.prompts.readBlock());
     const warning_result = await this.options.proofreading.query_warnings({
       warning_types: [...PROOFREADING_WARNING_CODES],
@@ -737,6 +740,7 @@ export class AgentWorkspaceService {
       let preview: ReturnType<typeof resolve_agent_workspace_writes>;
       let all_rejected: AgentWorkspaceRejectedChange[];
       try {
+        const quality = this.options.cache.quality.readBlock(); // 读取边界已校验规则，预演只借用当前事实。
         const current: AgentWorkspaceCurrentFacts = {
           items: this.options.cache.items.readItems() as unknown as JsonRecord[],
           pdfDocuments: [...new Set(parsed.batch.pages.map((intent) => intent.file_path))].flatMap(
@@ -749,14 +753,9 @@ export class AgentWorkspaceService {
             },
           ),
           quality: Object.fromEntries(
-            QUALITY_RULE_KINDS.map((kind) => [
-              kind,
-              read_quality_entries(this.options.cache.quality.readBlock(), kind),
-            ]),
+            QUALITY_RULE_KINDS.map((kind) => [kind, quality[kind].entries]),
           ),
-          prompts: Object.fromEntries(
-            Object.entries(project_workspace_prompts(this.options.cache.prompts.readBlock())),
-          ),
+          prompts: project_workspace_prompts(this.options.cache.prompts.readBlock()),
           duplicateFilterEnabled: this.read_duplicate_filter_enabled(active.projectPath),
         };
         preview = resolve_agent_workspace_writes({ batch: parsed.batch, current });
@@ -1201,21 +1200,10 @@ function pick_apply_revisions(revisions: ProjectDataSectionRevisions): JsonRecor
   );
 }
 
-/** quality 快照复用生产归一化并要求项目内稳定身份。 */
-function read_quality_entries(quality: JsonRecord, kind: QualityRuleKind): JsonRecord[] {
-  const entries = normalize_quality_rule_entries(
-    QualityRule.from_json(kind),
-    read_json_record(quality[kind])["entries"] ?? [],
-  ) as JsonRecord[];
-  return entries;
-}
-
 /** prompt 快照只保留固定正文，不复制功能开关。 */
-function project_workspace_prompts(block: JsonRecord): JsonRecord {
+function project_workspace_prompts(block: ProjectPrompts): Record<PromptKind, string> {
   return {
-    [TRANSLATION_PROMPT.store_key]: normalize_translation_prompt_slice(
-      block[TRANSLATION_PROMPT.store_key],
-    ).text,
+    [TRANSLATION_PROMPT.store_key]: block[TRANSLATION_PROMPT.store_key].text,
   };
 }
 

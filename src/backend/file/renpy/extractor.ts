@@ -1,4 +1,4 @@
-import { Item } from "../../../domain/item";
+import { type Item, create_item } from "../../../domain/item";
 import type { JsonValue } from "../../../domain/json";
 import { is_translatable_text, looks_like_resource_reference, sha1_hex } from "./lexer";
 import {
@@ -85,7 +85,7 @@ export class RenpyExtractor {
       name_slot === undefined ? "" : this.get_literal_value(target_stmt, name_slot.lit_index);
     const name_dst = target_name === "" || target_name === name_src ? null : target_name;
 
-    return Item.from_json({
+    return create_item({
       src,
       dst,
       name_src,

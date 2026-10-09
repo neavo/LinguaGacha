@@ -2,6 +2,7 @@ import type { DatabaseSync } from "node:sqlite";
 
 import { is_json_record, type JsonValue } from "../../../domain/json";
 import { QualityRule } from "../../../domain/quality";
+import { read_project_revision } from "../../../domain/project-revision";
 import { create_quality_rule_entry_id } from "../../../shared/quality/quality-rule-entry";
 import { JsonTool } from "../../../shared/utils/json-tool";
 import { row_text } from "../migration-row";
@@ -88,11 +89,9 @@ function bump_changed_rule_revisions(db: DatabaseSync, changed_rules: QualityRul
 /** 对齐项目读取边界，把缺失、非有限或负数 revision 收窄为稳定基线。 */
 function read_revision(db: DatabaseSync, key: string): number {
   const row = db.prepare("SELECT value FROM meta WHERE key = ?").get(key);
-  if (row === undefined) {
-    return 0;
-  }
-  const value = Number(JsonTool.parseStrict(row_text(row, "value")) ?? 0);
-  return Number.isFinite(value) && value >= 0 ? Math.trunc(value) : 0;
+  return read_project_revision(
+    row === undefined ? undefined : JsonTool.parseStrict(row_text(row, "value")),
+  );
 }
 
 /** 前置存储迁移保证条目规则为数组，违约时直接阻止错误事实继续写回。 */

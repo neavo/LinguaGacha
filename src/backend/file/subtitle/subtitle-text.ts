@@ -1,4 +1,4 @@
-import { Item, type ItemFileType } from "../../../domain/item";
+import { type ItemFileType, type Item, create_item } from "../../../domain/item";
 import { read_json_record } from "../../../domain/json";
 import { AppError } from "../../../shared/error";
 import { read_translation_for_generation } from "../translation-generation-text";
@@ -46,7 +46,7 @@ export function create_subtitle_items(
     .filter((slot) => slot.text.trim() !== "")
     .map((slot) => {
       while (row + 1 < lines.length && lines[row + 1]!.start <= slot.offset) row++;
-      return Item.from_json({
+      return create_item({
         src: slot.text,
         row,
         file_path: file,

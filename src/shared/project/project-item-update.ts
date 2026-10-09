@@ -1,10 +1,12 @@
 import {
-  Item,
   is_item_status,
-  type ItemManualStatus,
-  type ItemNameField,
+  type Item,
   type ItemStatus,
+  type PROJECT_ITEM_MANUAL_UPDATE_SCHEMA,
+  normalize_item_name_field,
+  normalize_item_status,
 } from "../../domain/item";
+import type { Static } from "typebox";
 import { is_json_record } from "../../domain/json";
 import {
   are_item_name_fields_equal,
@@ -14,18 +16,12 @@ import {
 import type { ProjectChangeItemFieldPatch } from "../project-event";
 
 /** 项目 Item 字段写入共同依赖的完整事实。 */
-export type ProjectItemWriteFields = {
-  dst: string; // 正文译文
-  name_dst: ItemNameField; // 角色姓名译文
+export type ProjectItemWriteFields = Pick<Item, "dst" | "name_dst"> & {
   status: string; // 读取旧项目时可能尚未归一的持久状态
 };
 
 /** GUI 与 Agent 共用的单条人工 Item 更新意图。 */
-export type ProjectItemManualUpdate = Readonly<{
-  dst?: string; // 人工确认的正文译文，允许空字符串
-  name_dst?: string; // 姓名第 0 槽的人工译文
-  status?: ItemManualStatus; // 最终人工状态意图
-}>;
+export type ProjectItemManualUpdate = Readonly<Static<typeof PROJECT_ITEM_MANUAL_UPDATE_SCHEMA>>;
 
 /** 差异构造允许消费尚未完成边界收窄的字段来源。 */
 type ProjectItemFieldPatchSource = {
@@ -47,7 +43,7 @@ export function normalize_project_item_field_patch(
     patch.dst = value.dst;
   }
   if (Object.hasOwn(value, "name_dst")) {
-    patch.name_dst = Item.normalize_name_field(value.name_dst);
+    patch.name_dst = normalize_item_name_field(value.name_dst);
   }
   if (is_item_status(value.status)) {
     patch.status = value.status;
@@ -72,7 +68,7 @@ export function apply_project_item_field_patch<TItem extends ProjectItemWriteFie
     touched = true;
   }
   if (Object.hasOwn(patch, "name_dst")) {
-    const name_dst = Item.normalize_name_field(patch.name_dst);
+    const name_dst = structuredClone(patch.name_dst ?? null);
     if (!are_item_name_fields_equal(name_dst, item.name_dst)) {
       next_item.name_dst = name_dst;
       touched = true;
@@ -119,12 +115,12 @@ export function build_project_item_field_patch(
     patch.dst = next.dst;
   }
   if (Object.hasOwn(next, "name_dst")) {
-    const name_dst = Item.normalize_name_field(next.name_dst);
+    const name_dst = normalize_item_name_field(next.name_dst);
     if (!are_item_name_fields_equal(name_dst, current.name_dst)) {
       patch.name_dst = name_dst;
     }
   }
-  const status: ItemStatus = Item.normalize_status(next.status);
+  const status: ItemStatus = normalize_item_status(next.status);
   if (status !== current.status) {
     patch.status = status;
   }

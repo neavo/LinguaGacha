@@ -1,13 +1,29 @@
-/**
- * JsonValue 是跨 main / renderer / worker 传递结构化载荷时的最小公共形状
- */
+import { Type, type Static } from "typebox";
+
+const json_primitive_schema = Type.Union([
+  Type.Null(),
+  Type.Boolean(),
+  Type.Number(),
+  Type.String(),
+]);
 export type JsonValue =
-  | null
-  | boolean
-  | number
-  | string
+  | Static<typeof json_primitive_schema>
   | JsonValue[]
   | { [key: string]: JsonValue };
+
+// TypeBox 的递归 Static 在深层退化为 any，保留递归 JSON 类型并复用同一基础值域。
+export const JSON_VALUE_SCHEMA = Type.Unsafe<JsonValue>(
+  Type.Cyclic(
+    {
+      JsonValue: Type.Union([
+        json_primitive_schema,
+        Type.Array(Type.Ref("JsonValue")),
+        Type.Record(Type.String(), Type.Ref("JsonValue")),
+      ]),
+    },
+    "JsonValue",
+  ),
+);
 
 /**
  * JsonRecord 用于边界快照，调用方必须按值复制，不能共享可变领域对象

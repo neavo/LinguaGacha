@@ -1,7 +1,13 @@
 import { describe, expect, it } from "vitest";
 
 import type { ProjectItemPublicRecord } from "../../domain/item";
-import { compute_project_prefilter_write, type ProjectWriteState } from "./project-write-state";
+import {
+  build_public_item_map,
+  build_item_view_map,
+  build_translation_extras_from_items,
+  compute_project_prefilter_write,
+  type ProjectWriteState,
+} from "./project-write-state";
 
 /** 构造完整公开条目，覆盖参数只表达当前场景需要的事实。 */
 function create_item(
@@ -40,6 +46,35 @@ function create_state(items: ProjectItemPublicRecord[]): ProjectWriteState {
 }
 
 describe("compute_project_prefilter_write", () => {
+  it("内部预过滤与统计只读取业务字段，保留格式私有数据和上游姓名快照", () => {
+    let private_reads = 0;
+    const extra_field = {
+      get nested() {
+        private_reads += 1;
+        return ["格式数据"];
+      },
+    };
+    const original = create_item(1, { src: "hello", name_src: ["姓名", "格式槽"], extra_field });
+    const state = create_state([original]);
+    const result = compute_project_prefilter_write({
+      state,
+      source_language: "JA",
+      target_language: "ZH",
+      mtool_optimizer_enable: false,
+      skip_duplicate_source_text_enable: false,
+    });
+    const progress = build_translation_extras_from_items({
+      task_snapshot: {},
+      items: build_item_view_map(build_public_item_map(state.items)),
+    });
+    expect(private_reads).toBe(0);
+    expect(result.items["1"]!.extra_field).toBe(extra_field);
+    expect(progress.total_line).toBe(1);
+    const result_name = result.items["1"]!.name_src;
+    if (Array.isArray(result_name)) result_name[0] = "编辑后";
+    expect(original.name_src).toEqual(["姓名", "格式槽"]);
+    expect(original.status).toBe("NONE");
+  });
   it("按正文与可见姓名判断翻译候选，正文特殊规则不作用于姓名", () => {
     const result = compute_project_prefilter_write({
       state: create_state([

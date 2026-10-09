@@ -4,7 +4,7 @@ import path from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { Item } from "../../../domain/item";
+import { create_item } from "../../../domain/item";
 import { MDV2Format } from "./md-v2-format";
 
 describe("MDV2Format", () => {
@@ -12,10 +12,8 @@ describe("MDV2Format", () => {
     const format = new MDV2Format();
     const text = "# 标题\n\n正文\n";
 
-    expect(format.read_text(text, "demo.md").map((item) => item.to_json())).toEqual(
-      (await format.read_from_stream(new TextEncoder().encode(text), "demo.md")).map((item) =>
-        item.to_json(),
-      ),
+    expect(format.read_text(text, "demo.md")).toEqual(
+      await format.read_from_stream(new TextEncoder().encode(text), "demo.md"),
     );
   });
 
@@ -26,7 +24,7 @@ describe("MDV2Format", () => {
       "docs/readme.md",
     );
 
-    expect(items.map((item) => item.to_json())).toEqual([
+    expect(items).toEqual([
       expect.objectContaining({
         src: "# 标题",
         row: 0,
@@ -89,7 +87,7 @@ describe("MDV2Format", () => {
   it("非法 metadata 不阻止写出 Item 文本", async () => {
     using temp_dir = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "linguagacha-md-v2-"));
     const format = new MDV2Format();
-    const item = Item.from_json({
+    const item = create_item({
       status: "PROCESSED",
       src: "原文",
       dst: "译文",
@@ -108,7 +106,7 @@ describe("MDV2Format", () => {
   });
 
   it("文本级 writer 不依赖 file_type", () => {
-    const item = Item.from_json({
+    const item = create_item({
       status: "PROCESSED",
       id: 2,
       src: "[原文](https://example.com)",

@@ -8,6 +8,14 @@ import { run_quality_rule_entry_identity_migration } from "./quality-rule-entry-
 afterEach(() => vi.restoreAllMocks());
 
 describe("run_quality_rule_entry_identity_migration", () => {
+  it("身份迁移从历史小数修订的整数基线推进", () => {
+    using db = new DatabaseSync(":memory:");
+    create_schema(db);
+    write_meta(db, "quality_rule_revision.glossary", "1.8");
+    write_rules(db, "glossary", [{ src: "用語", dst: "term" }]);
+    run_quality_rule_entry_identity_migration(db);
+    expect(read_meta(db, "quality_rule_revision.glossary")).toBe(2);
+  });
   it("预留已有身份、避开碰撞并保持迁移重放稳定", () => {
     using db = new DatabaseSync(":memory:");
     create_schema(db);

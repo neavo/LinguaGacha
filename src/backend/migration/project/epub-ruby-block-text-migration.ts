@@ -1,4 +1,4 @@
-import { Item } from "../../../domain/item";
+import { type Item, create_item } from "../../../domain/item";
 import { read_json_record, type JsonValue } from "../../../domain/json";
 import type { ProjectDatabase, ProjectDatabaseWrite } from "../../database/database-operations";
 import { EpubAst, read_epub_extra } from "../../file/epub/epub-ast";
@@ -36,7 +36,7 @@ export class EpubRubyBlockTextMigration {
     const items_by_path = new Map<string, Item[]>();
     const epub_paths = new Set<string>(); // 按旧候选首次出现顺序读取资产。
     for (const value of raw_items) {
-      const item = Item.from_json(value);
+      const item = create_item(value);
       if (item.file_type !== "EPUB") continue;
       const items = items_by_path.get(item.file_path) ?? [];
       items.push(item);
@@ -63,10 +63,7 @@ export class EpubRubyBlockTextMigration {
         continue;
       }
       if (merged_items !== null) {
-        replacements.set(
-          file_path,
-          merged_items.map((item) => item.to_json()),
-        );
+        replacements.set(file_path, merged_items);
       }
     }
 
@@ -127,13 +124,11 @@ export class EpubRubyBlockTextMigration {
           : candidate["cleaned_digest"] === read_epub_extra(parsed)?.["src_digest"];
       if (!matches) return null;
       parsed_by_block.delete(key); // 同一原块只能迁移一次，避免把重复候选当成独立条目。
-      merged.push(
-        Item.from_json({
-          ...old.to_json(),
-          src: parsed.src,
-          extra_field: parsed.extra_field,
-        }),
-      );
+      merged.push({
+        ...old,
+        src: parsed.src,
+        extra_field: parsed.extra_field,
+      });
     }
     return merged;
   }

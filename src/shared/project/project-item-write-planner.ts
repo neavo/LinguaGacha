@@ -1,4 +1,4 @@
-import type { ItemStatus } from "../../domain/item";
+import type { ProjectItemPublicRecord } from "../../domain/item";
 import type { ProjectChangeItemFieldPatch } from "../project-event";
 import {
   coordinate_project_duplicate_statuses,
@@ -11,11 +11,8 @@ import {
 } from "./project-item-update";
 
 export type ProjectItemWriteRecord = ProjectItemDuplicateIdentity &
-  Omit<ProjectItemWriteFields, "status"> & {
-    item_id: number; // 数据库与公开事件共享的稳定身份
-    row_number: number; // 文件内确定性顺序
-    status: ItemStatus; // 已归一的当前状态
-  };
+  Omit<ProjectItemWriteFields, "status"> &
+  Pick<ProjectItemPublicRecord, "item_id" | "row_number" | "status">;
 
 export type ProjectItemExplicitChange = Readonly<{
   item_id: number; // 显式意图目标

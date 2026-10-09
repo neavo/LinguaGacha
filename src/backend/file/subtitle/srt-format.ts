@@ -2,7 +2,7 @@ import { read_translation_for_generation } from "../translation-generation-text"
 
 import { decode_text_content } from "../../../shared/utils/text-tool";
 import { split_text_lines_for_items, type FileFormatServiceConfig } from "../file-format-shared";
-import { Item } from "../../../domain/item";
+import { type Item, create_item } from "../../../domain/item";
 import { AppError } from "../../../shared/error";
 import { split_text_lines } from "../../../shared/text/text-lines";
 import { needs_bilingual_text, type SubtitleOutput } from "./subtitle-text";
@@ -28,7 +28,7 @@ export class SRTFormat {
         return;
       }
       items.push(
-        Item.from_json({
+        create_item({
           src: chunk.slice(2).join("\n"),
           dst: "",
           extra_field: chunk[1] ?? "",

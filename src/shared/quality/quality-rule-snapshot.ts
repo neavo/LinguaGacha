@@ -7,6 +7,8 @@ import {
 } from "../../domain/quality";
 import { read_json_record, type JsonRecord } from "../../domain/json";
 import { normalize_quality_rule_entries } from "./quality-rule-entry";
+import { normalize_translation_prompt_slice } from "../../domain/prompt";
+import { read_project_revision } from "../../domain/project-revision";
 
 type QualityRuleSnapshot = {
   glossary_enable: boolean;
@@ -48,23 +50,6 @@ export type QualitySnapshot = {
  */
 export class QualityRuleSnapshotTool {
   /**
-   * revision 只接受可确定为整数的标量，并收敛到非负有限值。
-   */
-  public static normalize_revision(value: unknown): number {
-    let revision = 0;
-    if (typeof value === "number") {
-      revision = Number.isFinite(value) ? Math.trunc(value) : 0;
-    } else if (typeof value === "bigint") {
-      revision = Number(value);
-    } else if (typeof value === "boolean") {
-      revision = value ? 1 : 0;
-    } else if (typeof value === "string" && /^[-+]?\d+$/u.test(value.trim())) {
-      revision = Number.parseInt(value.trim(), 10);
-    }
-    return Math.max(0, Number.isFinite(revision) ? revision : 0);
-  }
-
-  /**
    * 从嵌套 quality/prompts payload 恢复任务用快照；缺失字段按质量规则领域默认值归一
    */
   public static from_json(data: unknown): QualityRuleSnapshot {
@@ -75,7 +60,7 @@ export class QualityRuleSnapshotTool {
     const text_preserve = read_json_record(quality["text_preserve"]);
     const pre_replacement = read_json_record(quality["pre_replacement"]);
     const post_replacement = read_json_record(quality["post_replacement"]);
-    const translation = read_json_record(prompts["translation"]);
+    const translation = normalize_translation_prompt_slice(prompts["translation"]);
     const glossary_rule = QualityRule.from_json("glossary");
     const text_preserve_rule = QualityRule.from_json("text_preserve");
     const pre_replacement_rule = QualityRule.from_json("pre_replacement");
@@ -98,13 +83,13 @@ export class QualityRuleSnapshotTool {
         post_replacement_rule,
         post_replacement["entries"] ?? [],
       ),
-      glossary_revision: this.normalize_revision(glossary["revision"] ?? 0),
-      text_preserve_revision: this.normalize_revision(text_preserve["revision"] ?? 0),
-      pre_replacement_revision: this.normalize_revision(pre_replacement["revision"] ?? 0),
-      post_replacement_revision: this.normalize_revision(post_replacement["revision"] ?? 0),
-      translation_prompt_enable: Boolean(translation["enabled"] ?? false),
-      translation_prompt: String(translation["text"] ?? ""),
-      translation_prompt_revision: this.normalize_revision(translation["revision"] ?? 0),
+      glossary_revision: read_project_revision(glossary["revision"]),
+      text_preserve_revision: read_project_revision(text_preserve["revision"]),
+      pre_replacement_revision: read_project_revision(pre_replacement["revision"]),
+      post_replacement_revision: read_project_revision(post_replacement["revision"]),
+      translation_prompt_enable: translation.enabled,
+      translation_prompt: translation.text,
+      translation_prompt_revision: translation.revision,
 
       glossary_entries: normalize_quality_rule_entries(glossary_rule, glossary["entries"] ?? []),
     };

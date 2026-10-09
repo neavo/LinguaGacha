@@ -1,8 +1,25 @@
 import { describe, expect, it } from "vitest";
 
-import { QualityRule, normalize_text_preserve_mode } from "./quality";
+import {
+  QualityRule,
+  QUALITY_RULE_KINDS,
+  QUALITY_RULE_BUSINESS_SCHEMAS,
+  normalize_text_preserve_mode,
+} from "./quality";
+import { Check } from "typebox/value";
 
 describe("QualityRule", () => {
+  it.each(QUALITY_RULE_KINDS)("%s 的 src 约束拒绝空白与错误类型，合法字符串统一裁剪", (kind) => {
+    const rule = QualityRule.from_json(kind);
+    const valid = rule.normalize_entry({ src: " \t合法\u3000 ", entry_id: " " });
+    expect(valid.src).toBe("合法");
+    expect(valid).not.toHaveProperty("entry_id");
+    expect(Check(QUALITY_RULE_BUSINESS_SCHEMAS[kind], valid)).toBe(true);
+    for (const src of ["", " \t\n\u3000", 12, null, false]) {
+      expect(Check(QUALITY_RULE_BUSINESS_SCHEMAS[kind], { ...valid, src })).toBe(false);
+      expect(() => rule.normalize_entries([valid, { ...valid, src }])).toThrow(TypeError);
+    }
+  });
   it("只接受公开质量规则槽位", () => {
     expect(QualityRule.all().map((rule) => rule.kind)).toEqual([
       "glossary",
@@ -48,21 +65,18 @@ describe("QualityRule", () => {
 
   it("错误字段类型和空 src 整批拒绝", () => {
     const rule = QualityRule.from_json("post_replacement");
-    expect(() => rule.normalize_entries([null])).toThrow("Quality rule entry must be an object.");
-    expect(() => rule.normalize_entries([{ src: "", dst: "x" }])).toThrow(
-      "Quality rule src must not be empty.",
-    );
-    expect(() => rule.normalize_entries([{ src: "a", dst: 1 }])).toThrow(
-      "Quality rule dst must be a string.",
-    );
-    expect(() => rule.normalize_entries([{ src: "a", dst: "b", regex: 1 }])).toThrow(
-      "Quality rule regex must be a boolean.",
-    );
+    for (const entry of [
+      null,
+      { src: "", dst: "x" },
+      { src: "a", dst: 1 },
+      { src: "a", dst: "b", regex: 1 },
+    ]) {
+      expect(() => rule.normalize_entries([entry])).toThrow(TypeError);
+    }
   });
 
-  it("不同规则槽位保留各自的缺省启用态和模式", () => {
-    expect(QualityRule.from_json("glossary").normalize_enabled(undefined)).toBe(true);
-    expect(QualityRule.from_json("pre_replacement").normalize_enabled(undefined)).toBe(false);
+  it("只有文本保护槽位采用保护模式", () => {
     expect(QualityRule.from_json("text_preserve").normalize_mode("CUSTOM")).toBe("custom");
+    expect(QualityRule.from_json("glossary").normalize_mode("custom")).toBe("off");
   });
 });

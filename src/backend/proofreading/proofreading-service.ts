@@ -8,7 +8,11 @@ import {
   type ProjectExpectedSectionRevisions,
   type ProjectItemWriteChange,
 } from "../project/project-write-request";
-import { Item, is_item_manual_status, type ItemManualStatus } from "../../domain/item";
+import {
+  is_item_manual_status,
+  type ItemManualStatus,
+  normalize_item_name_field,
+} from "../../domain/item";
 import { is_json_record } from "../../domain/json";
 import type { ProjectChangeItemFieldPatch, ProjectWriteResult } from "../../shared/project-event";
 import { read_item_name_text } from "../../shared/item-name";
@@ -331,7 +335,7 @@ export class ProofreadingService {
         ...item,
         id: item_id,
         dst: String(item["dst"] ?? ""),
-        name_dst: Item.normalize_name_field(item["name_dst"]),
+        name_dst: normalize_item_name_field(item["name_dst"]),
         status: String(item["status"] ?? ""),
       });
     }
@@ -360,7 +364,7 @@ export class ProofreadingService {
       }
       items_by_id.set(item_id, {
         dst: String(item["dst"] ?? ""),
-        name_dst: Item.normalize_name_field(item["name_dst"]),
+        name_dst: normalize_item_name_field(item["name_dst"]),
         status: String(item["status"] ?? ""),
       });
     }

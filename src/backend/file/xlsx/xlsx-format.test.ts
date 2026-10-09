@@ -2,7 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { expect, it } from "vitest";
-import { Item } from "../../../domain/item";
+import { create_item } from "../../../domain/item";
 import { spreadsheet_fixture, spreadsheet_values } from "../../../test/spreadsheet-fixture";
 import { XLSXFormat } from "./xlsx-format";
 
@@ -53,7 +53,7 @@ it("WOLF 只按固定列、源单元格存在性和索引填充色选取", async
 it("WOLF 原稿缺失时拒绝写出", async () => {
   await expect(
     new XLSXFormat().write_to_path(
-      [Item.from_json({ src: "x", row: 2, file_type: "WOLFXLSX", file_path: "x.xlsx" })],
+      [create_item({ src: "x", row: 2, file_type: "WOLFXLSX", file_path: "x.xlsx" })],
       { translated_path: "unused", bilingual_path: "unused" },
       () => null,
     ),
@@ -73,7 +73,7 @@ it.each(["XLSX", "WOLFXLSX"] as const)("%s 未完成保留源译文，完成空�
     H2: "其它内容",
   });
   const items = [
-    Item.from_json({
+    create_item({
       src: "源文",
       dst: "B",
       status: "ERROR",
@@ -81,7 +81,7 @@ it.each(["XLSX", "WOLFXLSX"] as const)("%s 未完成保留源译文，完成空�
       file_type: type,
       file_path: "x.xlsx",
     }),
-    Item.from_json({
+    create_item({
       src: "源文",
       dst: "",
       status: "PROCESSED",

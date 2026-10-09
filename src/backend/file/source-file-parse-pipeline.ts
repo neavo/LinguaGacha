@@ -1,7 +1,7 @@
 import path from "node:path";
 
 import type { JsonRecord } from "../../domain/json";
-import { Item } from "../../domain/item";
+import type { Item, ProjectItemPersistentRecord } from "../../domain/item";
 import { NativeFs, default_native_fs } from "../../native/native-fs";
 import type { SourceFileParseFailureRecord } from "../../shared/source-file-parse-failure";
 import { build_source_file_parse_failure } from "./source-file-parse-failure-reporter";
@@ -17,7 +17,7 @@ export type SourceFileParseCommand = {
 export type SourceFileParsedDraft = SourceFileParseCommand & {
   file_type: ProjectFileType; // 解析器提供文件身份，零条目字幕也保留类型
   pdf_document: PDFDocument | null; // PDF 独立文档，文本格式为空
-  parsed_items: Array<JsonRecord>; // 已过 Item JSON 边界的公开草稿
+  parsed_items: Item[]; // 格式解析器已补齐的条目草稿，身份由工程入口分配
 };
 
 export type SourceFileParseResult = {
@@ -34,7 +34,7 @@ export type SourceFileProjectDraft = {
     sort_index: number;
     pdf_document: PDFDocument | null;
   }>; // files 是项目文件 section 和 asset 写库共同使用的草稿
-  items: Array<JsonRecord>; // 已分配临时 id、file_path 和 file_type
+  items: ProjectItemPersistentRecord[]; // 已分配临时 id、file_path 和 file_type
   file_state: Record<string, JsonRecord>; // 供预过滤算法消费
   failed_files: SourceFileParseFailureRecord[];
 };
@@ -89,8 +89,7 @@ export class SourceFileParsePipeline {
         const item_payload = {
           ...parsed_item,
           id: next_item_id,
-          file_path: String(parsed_item["file_path"] ?? draft.rel_path) || draft.rel_path,
-          file_type: String(parsed_item["file_type"] ?? "NONE") || "NONE",
+          file_path: parsed_item.file_path || draft.rel_path,
         };
         items.push(item_payload);
         next_item_id += 1;
@@ -183,10 +182,7 @@ export class SourceFileParsePipeline {
           rel_path: entry.rel_path,
           file_type: parsed.kind === "pdf" ? "PDF" : parsed.file_type,
           pdf_document: parsed.kind === "pdf" ? parsed.document : null,
-          parsed_items:
-            parsed.kind === "items"
-              ? parsed.items.map((item) => Item.from_json(item).to_json())
-              : [],
+          parsed_items: parsed.kind === "items" ? parsed.items : [],
         });
       } catch (error) {
         failed_files.push(build_source_file_parse_failure({ ...entry, error }));

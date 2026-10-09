@@ -4,7 +4,7 @@ import path from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { Item } from "../../../domain/item";
+import { create_item } from "../../../domain/item";
 import { TRANSFormat } from "./trans-format";
 
 /**
@@ -98,7 +98,7 @@ describe("TRANSFormat", () => {
 
     await new TRANSFormat().write_to_path(
       [
-        Item.from_json({
+        create_item({
           src: "原文",
           dst: "译文",
           tag: "/demo.map",
@@ -125,7 +125,7 @@ describe("TRANSFormat", () => {
     await expect(
       new TRANSFormat().write_to_path(
         [
-          Item.from_json({
+          create_item({
             src: "原文",
             dst: "译文",
             tag: "/demo.map",

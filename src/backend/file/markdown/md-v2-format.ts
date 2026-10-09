@@ -1,7 +1,7 @@
 import { read_translation_for_generation } from "../translation-generation-text";
 import path from "node:path";
 
-import { Item } from "../../../domain/item";
+import { type Item, create_item } from "../../../domain/item";
 import { read_json_record } from "../../../domain/json";
 import { decode_text_content } from "../../../shared/utils/text-tool";
 import { group_items, write_text_file, type GeneratedFilePaths } from "../file-format-shared";
@@ -26,7 +26,7 @@ export class MDV2Format {
   public read_text(text: string, rel_path: string): Item[] {
     const document = parse_markdown_v2_document(text);
     return document.units.map((unit) =>
-      Item.from_json({
+      create_item({
         src: unit.src,
         dst: "",
         row: unit.start_line,

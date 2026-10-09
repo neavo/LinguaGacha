@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { Item } from "../../../domain/item";
+import { type Item, create_item } from "../../../domain/item";
 import { build_skeleton, scan_double_quoted_literals, sha1_hex } from "./lexer";
 import type { RenpyBlockKind, RenpySlot } from "./types";
 import { RenpyWriter } from "./writer";
@@ -8,7 +8,7 @@ import { RenpyWriter } from "./writer";
 describe("RenPy 写回器", () => {
   it("按 NAME 和 DIALOGUE 槽构造替换并按序号写入字面量", () => {
     const writer = new RenpyWriter(true);
-    const item = Item.from_json({ status: "PROCESSED", dst: "新台词", name_dst: "新名字" });
+    const item = create_item({ status: "PROCESSED", dst: "新台词", name_dst: "新名字" });
     const replacements = writer.build_replacements(
       item,
       [
@@ -29,7 +29,7 @@ describe("RenPy 写回器", () => {
 
   it("禁用姓名译名写回时用源姓名替换 NAME 槽", () => {
     const writer = new RenpyWriter(false);
-    const item = Item.from_json({
+    const item = create_item({
       status: "PROCESSED",
       dst: "新台词",
       name_src: "原名",
@@ -113,7 +113,7 @@ describe("RenPy 写回器", () => {
     expect(
       writer.apply_item(
         lines.slice(),
-        Item.from_json({
+        create_item({
           status: "PROCESSED",
           dst: "new",
           extra_field: { renpy: { pair: [], digest: {} } },
@@ -129,7 +129,7 @@ describe("RenPy 写回器", () => {
       dst: "new",
       slots: [{ role: "DIALOGUE", lit_index: 0 }],
     });
-    const bad = Item.from_json({ status: "PROCESSED", dst: "new", extra_field: "" });
+    const bad = create_item({ status: "PROCESSED", dst: "new", extra_field: "" });
 
     writer.apply_items_to_lines(lines, [ok, bad]);
     expect(lines).toEqual(['    # e "old"', '    e "new"']);
@@ -178,7 +178,7 @@ function build_apply_item(
   const kind = options.kind ?? "LABEL";
   const target_rest = lines[1]?.replace(/^[ \t]+/u, "") ?? "";
   const target_literals = scan_double_quoted_literals(target_rest);
-  return Item.from_json({
+  return create_item({
     status: "PROCESSED",
     src: "old",
     dst: options.dst,

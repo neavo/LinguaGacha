@@ -3,7 +3,7 @@ import { ProjectDatabase } from "../../database/database-operations";
 import { ProjectWriteStore } from "../../project/project-write-store";
 import { BatchTranslationProjectStore } from "../batch-translation-project-store";
 import type { ComputeWorkerClient } from "../../worker/compute-worker-client";
-import { Item } from "../../../domain/item";
+import { create_item } from "../../../domain/item";
 import { TASK_PIPELINE_COMMIT_INTERVAL_MS } from "./translation-pipeline";
 import { TranslationWorkerPool } from "../work-unit/translation-worker-pool";
 import { log_error_from_message } from "../../../shared/error";
@@ -108,13 +108,13 @@ describe("BatchTranslationRunner", () => {
       const database = new ProjectDatabase();
       database.create_project(project_path, "test");
       database.set_items(project_path, [
-        Item.from_json({
+        create_item({
           id: 1,
           src: "こんにちは",
           dst: retranslate ? "你好" : "",
           status: retranslate ? "PROCESSED" : "NONE",
           file_path: "demo.txt",
-        }).to_json(),
+        }),
       ]);
       const original_items = database.get_all_items(project_path);
       const session = new ProjectSessionState();

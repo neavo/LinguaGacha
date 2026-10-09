@@ -1,6 +1,6 @@
 import path from "node:path";
 import { read_translation_for_generation } from "../translation-generation-text";
-import { Item } from "../../../domain/item";
+import { type Item, create_item } from "../../../domain/item";
 import { AppError } from "../../../shared/error";
 import { group_items, write_binary_file, type GeneratedFilePaths } from "../file-format-shared";
 import { read_workbook, cell_text, write_cell } from "../spreadsheet";
@@ -36,7 +36,7 @@ export class XLSXFormat {
           "indexed" in fill.fgColor &&
           fill.fgColor.indexed === WOLF_TRANSLATABLE_FILL);
       items.push(
-        Item.from_json({
+        create_item({
           src,
           dst,
           row,

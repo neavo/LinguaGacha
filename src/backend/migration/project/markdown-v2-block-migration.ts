@@ -1,4 +1,9 @@
-import { Item, is_item_status, type ItemStatus } from "../../../domain/item";
+import {
+  is_item_status,
+  type ItemStatus,
+  create_item,
+  build_project_item_public_record,
+} from "../../../domain/item";
 import { read_json_record, type JsonRecord, type JsonValue } from "../../../domain/json";
 import {
   parse_markdown_v2_document,
@@ -182,7 +187,7 @@ export class MarkdownV2BlockMigration {
           item.dst !== "" || (item.status === "DUPLICATED" && item.resolved_dst !== item.src),
       );
       const first_item = covered_items[0];
-      return Item.from_json({
+      return create_item({
         ...(first_item === undefined ? {} : { id: first_item.id }),
         src: unit.src,
         dst: has_translation ? (paired_destination_text ?? fallback_destination) : "",
@@ -198,7 +203,7 @@ export class MarkdownV2BlockMigration {
             after: unit.after,
           },
         },
-      }).to_json() as unknown as JsonValue;
+      });
     });
   }
 
@@ -256,11 +261,14 @@ export class MarkdownV2BlockMigration {
     const result = new Map<number, ProjectItemViewRecord>();
     let generated_id = -1;
     for (const value of items) {
-      const item = Item.from_json(value);
+      const item = create_item(value);
       const item_id = item.id ?? generated_id--;
       result.set(
         item_id,
-        derive_project_item_view_record_from_public({ ...item.to_public_json(), item_id }),
+        derive_project_item_view_record_from_public({
+          ...build_project_item_public_record(item),
+          item_id,
+        }),
       );
     }
     return result;

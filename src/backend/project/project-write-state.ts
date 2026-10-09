@@ -1,8 +1,5 @@
 import { normalize_batch_translation_progress } from "../../domain/batch-translation";
-import {
-  normalize_project_item_public_record,
-  type ProjectItemPublicRecord,
-} from "../../domain/item";
+import type { ProjectItemPublicRecord } from "../../domain/item";
 
 import {
   type BatchTranslationProgress,
@@ -22,7 +19,7 @@ type ProjectWriteFileRecord = {
 
 export type ProjectWriteState = {
   files: Record<string, unknown>; // section 镜像，调用方需提供当前完整文件集合
-  items: Record<string, unknown>; // section 镜像，调用方需提供当前完整公开 DTO 集合
+  items: Record<string, ProjectItemPublicRecord>; // 读取或解析边界已收窄的完整公开条目
 };
 
 export type ProjectItemViewRecord = ProjectItemDuplicateIdentity & {
@@ -68,17 +65,6 @@ export type ProjectPrefilterWriteInput = {
 };
 
 /**
- * 将外部输入先归一为完整公开 DTO，再收窄为局部算法需要的计算视图。
- */
-export function derive_project_item_view_record(value: unknown): ProjectItemViewRecord | null {
-  const item = normalize_project_item_public_record(value);
-  if (item === null) {
-    return null;
-  }
-  return derive_project_item_view_record_from_public(item);
-}
-
-/**
  * 从已校验公开 DTO 构造 reset、预过滤和统计使用的轻量视图。
  */
 export function derive_project_item_view_record_from_public(
@@ -95,15 +81,6 @@ export function derive_project_item_view_record_from_public(
     status: item.status,
     text_type: item.text_type,
     skip_internal_filter: item.skip_internal_filter,
-  };
-}
-
-/**
- * 局部算法会修改视图，先复制以免污染上游缓存。
- */
-export function clone_project_item_view_record(item: ProjectItemViewRecord): ProjectItemViewRecord {
-  return {
-    ...item,
   };
 }
 
@@ -180,18 +157,18 @@ function normalize_file_record(value: unknown): ProjectWriteFileRecord | null {
 }
 
 /**
- * 将 record 形状的 item 集合收窄成公开 DTO Map，边界丢弃非法条目。
+ * 将已收窄的条目集合转成按身份索引的独立姓名快照。
  */
 export function build_public_item_map(
-  items: Record<string, unknown>,
+  items: Record<string, ProjectItemPublicRecord>,
 ): Map<number, ProjectItemPublicRecord> {
   const item_map = new Map<number, ProjectItemPublicRecord>();
-  for (const value of Object.values(items)) {
-    const item = normalize_project_item_public_record(value);
-    if (item === null) {
-      continue;
-    }
-    item_map.set(item.item_id, { ...item });
+  for (const item of Object.values(items)) {
+    item_map.set(item.item_id, {
+      ...item,
+      name_src: structuredClone(item.name_src),
+      name_dst: structuredClone(item.name_dst),
+    });
   }
   return item_map;
 }
@@ -224,17 +201,8 @@ export function compute_project_prefilter_write(
     file_type_by_path.set(file.rel_path, file.file_type);
   }
 
-  const full_item_index = new Map<number, ProjectItemPublicRecord>();
-  const item_index = new Map<number, ProjectItemViewRecord>();
-  for (const value of Object.values(input.state.items)) {
-    const public_item = normalize_project_item_public_record(value);
-    if (public_item === null) {
-      continue;
-    }
-    const item = derive_project_item_view_record_from_public(public_item);
-    full_item_index.set(public_item.item_id, public_item);
-    item_index.set(item.item_id, clone_project_item_view_record(item));
-  }
+  const full_item_index = build_public_item_map(input.state.items);
+  const item_index = build_item_view_map(full_item_index);
 
   let rule_skipped = 0;
   let language_skipped = 0;
@@ -325,18 +293,7 @@ export function compute_project_prefilter_write(
     }
     next_items[String(item.item_id)] = {
       ...full_item,
-      file_path: item.file_path,
-      row_number: item.row_number,
-      src: item.src,
-      dst: item.dst,
-      name_src: full_item.name_src,
-      name_dst: item.name_dst ?? null,
-      extra_field: full_item.extra_field,
-      tag: full_item.tag,
-      file_type: full_item.file_type,
       status: item.status,
-      text_type: item.text_type,
-      skip_internal_filter: item.skip_internal_filter,
     };
   }
 

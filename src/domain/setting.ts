@@ -1,5 +1,7 @@
+import { Type, type Static } from "typebox";
+import { Check } from "typebox/value";
 import { read_json_boolean, type JsonRecord, type JsonValue } from "./json";
-import { normalize_app_language, type AppLanguage } from "./app-language";
+import { normalize_app_language, APP_LANGUAGE_DEFINITIONS } from "./app-language";
 import { normalize_model_selection } from "./model";
 import { normalize_agent_skill_settings } from "./agent-skill-settings";
 
@@ -23,38 +25,42 @@ export const PROJECT_SAVE_MODES = ["MANUAL", "FIXED", "SOURCE"] as const; // Pro
 
 export type ProjectSaveMode = (typeof PROJECT_SAVE_MODES)[number];
 /** 应用级工程写入审批偏好，跨对话、工程和应用重启保留。 */
-export type AgentApprovalMode = "manual" | "auto";
-export type RecentProjectSetting = {
-  path: string; // 最近工程路径
-  name: string; // 最近工程展示名
-  updated_at: string; // 最近工程更新时间
-};
-
-export type SettingSnapshot = {
-  agent_approval_mode: AgentApprovalMode;
-  app_language: AppLanguage; // 渲染进程国际化与日志文案共同消费的应用语言
-  source_language: string; // 源语言允许 ALL，具体过滤器负责进一步收窄
-  target_language: string; // 目标语言进入提示词和项目设置镜像
-  project_save_mode: ProjectSaveMode;
-  project_fixed_path: string;
-  output_folder_open_on_finish: boolean;
-  request_timeout: number;
-  preceding_lines_threshold: number;
-  clean_ruby: boolean;
-  deduplication_in_bilingual: boolean;
-  write_translated_name_fields_to_file: boolean;
-  prompt_enhancement_enable: boolean;
-  agent_batch_translation_thinking_adaptive_enable: boolean; // 应用偏好，控制 Agent 跟随翻译的临时等级。
-  mtool_optimizer_enable: boolean;
-  skip_duplicate_source_text_enable: boolean;
-  glossary_default_preset: string;
-  text_preserve_default_preset: string;
-  pre_translation_replacement_default_preset: string;
-  post_translation_replacement_default_preset: string;
-  translation_custom_prompt_default_preset: string;
-
-  recent_projects: RecentProjectSetting[];
-};
+export const AGENT_APPROVAL_MODES = ["manual", "auto"] as const;
+export type AgentApprovalMode = (typeof AGENT_APPROVAL_MODES)[number];
+export const RECENT_PROJECT_SETTING_SCHEMA = Type.Object({
+  path: Type.String(), // 最近工程路径。
+  name: Type.String(), // 最近工程展示名。
+  updated_at: Type.String(), // 最近工程访问时间文本。
+});
+export type RecentProjectSetting = Static<typeof RECENT_PROJECT_SETTING_SCHEMA>;
+export const SETTING_SNAPSHOT_SCHEMA = Type.Object(
+  {
+    agent_approval_mode: Type.Enum(AGENT_APPROVAL_MODES), // Agent 工程写入的审批方式。
+    app_language: Type.Enum(APP_LANGUAGE_DEFINITIONS.map(({ code }) => code)), // 界面与日志文案的应用语言。
+    source_language: Type.String(), // 源语言允许 `ALL`，由具体过滤器进一步收窄。
+    target_language: Type.String(), // 译文目标语言，参与提示词和工程设置镜像。
+    project_save_mode: Type.Enum(PROJECT_SAVE_MODES), // 新建工程的保存位置策略。
+    project_fixed_path: Type.String(), // 固定保存模式使用的工程目录。
+    output_folder_open_on_finish: Type.Boolean(), // 译文生成成功后是否打开输出目录。
+    request_timeout: Type.Number(), // 等待模型回复的超时时间，单位为秒。
+    preceding_lines_threshold: Type.Number(), // 单个翻译任务最多携带的参考上文行数。
+    clean_ruby: Type.Boolean(), // 翻译文本的注音清理开关。
+    deduplication_in_bilingual: Type.Boolean(), // 双语文件原译文相同时是否只写一份正文。
+    write_translated_name_fields_to_file: Type.Boolean(), // 导出时是否使用角色译名。
+    prompt_enhancement_enable: Type.Boolean(), // 翻译提示词增强开关。
+    agent_batch_translation_thinking_adaptive_enable: Type.Boolean(), // 控制 Agent 跟随翻译的临时思考等级。
+    mtool_optimizer_enable: Type.Boolean(), // MTool 文本预过滤优化开关。
+    skip_duplicate_source_text_enable: Type.Boolean(), // 重复来源条目的过滤开关。
+    glossary_default_preset: Type.String(), // 术语表默认预设标识。
+    text_preserve_default_preset: Type.String(), // 文本保护默认预设标识。
+    pre_translation_replacement_default_preset: Type.String(), // 翻译前替换默认预设标识。
+    post_translation_replacement_default_preset: Type.String(), // 翻译后替换默认预设标识。
+    translation_custom_prompt_default_preset: Type.String(), // 自定义翻译提示词默认预设标识。
+    recent_projects: Type.Array(RECENT_PROJECT_SETTING_SCHEMA), // 最近访问的工程列表。
+  },
+  { additionalProperties: false },
+);
+export type SettingSnapshot = Static<typeof SETTING_SNAPSHOT_SCHEMA>;
 
 export const PROJECT_SETTING_KEYS = [
   "source_language",
@@ -63,49 +69,16 @@ export const PROJECT_SETTING_KEYS = [
   "skip_duplicate_source_text_enable",
 ] as const;
 
-export type ProjectSettingsSnapshot = Pick<SettingSnapshot, (typeof PROJECT_SETTING_KEYS)[number]>;
-
-export const SETTING_KEYS = [
-  "agent_approval_mode",
-  "app_language",
-  "source_language",
-  "target_language",
-  "project_save_mode",
-  "project_fixed_path",
-  "output_folder_open_on_finish",
-  "request_timeout",
-  "preceding_lines_threshold",
-  "clean_ruby",
-  "deduplication_in_bilingual",
-  "write_translated_name_fields_to_file",
-  "prompt_enhancement_enable",
-  "agent_batch_translation_thinking_adaptive_enable",
-  "mtool_optimizer_enable",
-  "skip_duplicate_source_text_enable",
-  "glossary_default_preset",
-  "text_preserve_default_preset",
-  "pre_translation_replacement_default_preset",
-  "post_translation_replacement_default_preset",
-  "translation_custom_prompt_default_preset",
-  "recent_projects",
-] as const;
-
-type SettingKey = (typeof SETTING_KEYS)[number];
-
-const BOOLEAN_SETTING_KEYS = new Set([
-  "output_folder_open_on_finish",
-  "clean_ruby",
-  "deduplication_in_bilingual",
-  "write_translated_name_fields_to_file",
-  "prompt_enhancement_enable",
-  "agent_batch_translation_thinking_adaptive_enable",
-  "mtool_optimizer_enable",
-  "skip_duplicate_source_text_enable",
+export const PROJECT_SETTINGS_SNAPSHOT_SCHEMA = Type.Pick(SETTING_SNAPSHOT_SCHEMA, [
+  ...PROJECT_SETTING_KEYS,
 ]);
+export type ProjectSettingsSnapshot = Static<typeof PROJECT_SETTINGS_SNAPSHOT_SCHEMA>;
+export const SETTING_KEYS = Object.keys(
+  SETTING_SNAPSHOT_SCHEMA.properties,
+) as (keyof SettingSnapshot)[];
+type SettingKey = keyof SettingSnapshot;
 
-const NUMBER_SETTING_KEYS = new Set(["request_timeout", "preceding_lines_threshold"]);
-
-export const DEFAULT_SETTING: JsonRecord = {
+export const DEFAULT_SETTING: SettingSnapshot & JsonRecord = {
   agent_approval_mode: "manual",
   app_language: "ZH",
   source_language: "JA",
@@ -230,20 +203,7 @@ export class Setting {
    * 读取最近项目列表，兼容旧设置中的缺失字段
    */
   public read_recent_projects(): RecentProjectSetting[] {
-    const raw_items = this.data["recent_projects"];
-    if (!Array.isArray(raw_items)) {
-      return [];
-    }
-    return raw_items
-      .filter((item): item is JsonRecord => {
-        return typeof item === "object" && item !== null && !Array.isArray(item);
-      })
-      .map((item) => ({
-        path: typeof item["path"] === "string" ? item["path"] : "",
-        name: typeof item["name"] === "string" ? item["name"] : "",
-        updated_at: typeof item["updated_at"] === "string" ? item["updated_at"] : "",
-      }))
-      .filter((item) => item.path !== "");
+    return normalize_recent_project_settings(this.data["recent_projects"]);
   }
 
   /**
@@ -265,10 +225,11 @@ export class Setting {
     if (key === "model_selection") {
       return normalize_model_selection(value) as unknown as JsonValue;
     }
-    if (BOOLEAN_SETTING_KEYS.has(key)) {
+    const schema = SETTING_SNAPSHOT_SCHEMA.properties[key as SettingKey];
+    if (Type.IsBoolean(schema)) {
       return read_json_boolean(value, Boolean(DEFAULT_SETTING[key]));
     }
-    if (NUMBER_SETTING_KEYS.has(key)) {
+    if (Type.IsNumber(schema)) {
       return normalize_number_setting(value, Number(DEFAULT_SETTING[key] ?? 0));
     }
     if (key in DEFAULT_SETTING && key !== "models") {
@@ -299,7 +260,7 @@ export function is_project_save_mode(value: unknown): value is ProjectSaveMode {
 
 /** 写入命令据此拒绝非法模式；读取配置时由归一化入口补默认值。 */
 export function is_agent_approval_mode(value: unknown): value is AgentApprovalMode {
-  return value === "manual" || value === "auto";
+  return Check(SETTING_SNAPSHOT_SCHEMA.properties.agent_approval_mode, value);
 }
 
 /** 旧配置缺失或存储值无效时使用手动审批。 */
@@ -312,77 +273,19 @@ export function normalize_agent_approval_mode(value: unknown): AgentApprovalMode
  */
 export function normalize_setting_snapshot(value: unknown): SettingSnapshot {
   const record = read_setting_record(value);
-  return {
-    agent_approval_mode: normalize_agent_approval_mode(record["agent_approval_mode"]),
-    app_language: normalize_app_language(record["app_language"]),
-    source_language: read_string_setting(record["source_language"], "source_language"),
-    target_language: read_string_setting(record["target_language"], "target_language"),
-    project_save_mode: Setting.normalize_project_save_mode(record["project_save_mode"]),
-    project_fixed_path: read_string_setting(record["project_fixed_path"], "project_fixed_path", {
-      preserve_case: true,
+  return Object.fromEntries(
+    SETTING_KEYS.map((key) => {
+      const normalized = Setting.normalize_value(key, record[key] ?? DEFAULT_SETTING[key]);
+      // 落盘文本保留用户输入，公开快照裁剪路径与预设名，语言标识使用大写。
+      const text = Type.IsString(SETTING_SNAPSHOT_SCHEMA.properties[key])
+        ? String(normalized).trim()
+        : normalized;
+      return [
+        key,
+        key === "source_language" || key === "target_language" ? String(text).toUpperCase() : text,
+      ];
     }),
-    output_folder_open_on_finish: read_boolean_setting(
-      record["output_folder_open_on_finish"],
-      "output_folder_open_on_finish",
-    ),
-    request_timeout: read_number_setting(record["request_timeout"], "request_timeout"),
-    preceding_lines_threshold: read_number_setting(
-      record["preceding_lines_threshold"],
-      "preceding_lines_threshold",
-    ),
-    clean_ruby: read_boolean_setting(record["clean_ruby"], "clean_ruby"),
-    deduplication_in_bilingual: read_boolean_setting(
-      record["deduplication_in_bilingual"],
-      "deduplication_in_bilingual",
-    ),
-    write_translated_name_fields_to_file: read_boolean_setting(
-      record["write_translated_name_fields_to_file"],
-      "write_translated_name_fields_to_file",
-    ),
-    prompt_enhancement_enable: read_boolean_setting(
-      record["prompt_enhancement_enable"],
-      "prompt_enhancement_enable",
-    ),
-    agent_batch_translation_thinking_adaptive_enable: read_boolean_setting(
-      record["agent_batch_translation_thinking_adaptive_enable"],
-      "agent_batch_translation_thinking_adaptive_enable",
-    ),
-    mtool_optimizer_enable: read_boolean_setting(
-      record["mtool_optimizer_enable"],
-      "mtool_optimizer_enable",
-    ),
-    skip_duplicate_source_text_enable: read_boolean_setting(
-      record["skip_duplicate_source_text_enable"],
-      "skip_duplicate_source_text_enable",
-    ),
-    glossary_default_preset: read_string_setting(
-      record["glossary_default_preset"],
-      "glossary_default_preset",
-      { preserve_case: true },
-    ),
-    text_preserve_default_preset: read_string_setting(
-      record["text_preserve_default_preset"],
-      "text_preserve_default_preset",
-      { preserve_case: true },
-    ),
-    pre_translation_replacement_default_preset: read_string_setting(
-      record["pre_translation_replacement_default_preset"],
-      "pre_translation_replacement_default_preset",
-      { preserve_case: true },
-    ),
-    post_translation_replacement_default_preset: read_string_setting(
-      record["post_translation_replacement_default_preset"],
-      "post_translation_replacement_default_preset",
-      { preserve_case: true },
-    ),
-    translation_custom_prompt_default_preset: read_string_setting(
-      record["translation_custom_prompt_default_preset"],
-      "translation_custom_prompt_default_preset",
-      { preserve_case: true },
-    ),
-
-    recent_projects: normalize_recent_project_settings(record["recent_projects"]),
-  };
+  ) as SettingSnapshot;
 }
 
 /**
@@ -390,34 +293,17 @@ export function normalize_setting_snapshot(value: unknown): SettingSnapshot {
  */
 export function normalize_project_settings_snapshot(
   value: unknown,
-  fallback: ProjectSettingsSnapshot = {
-    source_language: String(DEFAULT_SETTING["source_language"]),
-    target_language: String(DEFAULT_SETTING["target_language"]),
-    mtool_optimizer_enable: Boolean(DEFAULT_SETTING["mtool_optimizer_enable"]),
-    skip_duplicate_source_text_enable: Boolean(
-      DEFAULT_SETTING["skip_duplicate_source_text_enable"],
-    ),
-  },
+  fallback: ProjectSettingsSnapshot = DEFAULT_SETTING,
 ): ProjectSettingsSnapshot {
   const record = read_setting_record(value);
-  return {
-    source_language: read_project_string_setting(
-      record["source_language"],
-      fallback.source_language,
-    ),
-    target_language: read_project_string_setting(
-      record["target_language"],
-      fallback.target_language,
-    ),
-    mtool_optimizer_enable: read_json_boolean(
-      record["mtool_optimizer_enable"],
-      fallback.mtool_optimizer_enable,
-    ),
-    skip_duplicate_source_text_enable: read_json_boolean(
-      record["skip_duplicate_source_text_enable"],
-      fallback.skip_duplicate_source_text_enable,
-    ),
-  };
+  return Object.fromEntries(
+    PROJECT_SETTING_KEYS.map((key) => [
+      key,
+      PROJECT_SETTINGS_SNAPSHOT_SCHEMA.properties[key].type === "string"
+        ? read_project_string_setting(record[key], String(fallback[key]))
+        : read_json_boolean(record[key], Boolean(fallback[key])),
+    ]),
+  ) as ProjectSettingsSnapshot;
 }
 
 /** 设置读取以合法 JSON 对象为起点，其余输入视为空配置。 */
@@ -427,31 +313,10 @@ function read_setting_record(value: unknown): JsonRecord {
     : {};
 }
 
-/** 按设置默认值读取字符串，标识值默认使用大写。 */
-function read_string_setting(
-  value: JsonValue | undefined,
-  key: SettingKey,
-  options: { preserve_case?: boolean } = {},
-): string {
-  const fallback = String(DEFAULT_SETTING[key] ?? "");
-  const raw_value = String(value ?? fallback).trim();
-  return options.preserve_case === true ? raw_value : raw_value.toUpperCase();
-}
-
 /** 空项目设置继承调用方基线，其余值裁剪并使用大写。 */
 function read_project_string_setting(value: JsonValue | undefined, fallback: string): string {
   const text = String(value ?? "").trim();
   return text === "" ? fallback : text.toUpperCase();
-}
-
-/** 布尔设置共用 JSON 归一规则和该键的默认值。 */
-function read_boolean_setting(value: JsonValue | undefined, key: SettingKey): boolean {
-  return read_json_boolean(value, Boolean(DEFAULT_SETTING[key]));
-}
-
-/** 按设置键提供数值归一的默认值。 */
-function read_number_setting(value: JsonValue | undefined, key: SettingKey): number {
-  return normalize_number_setting(value, Number(DEFAULT_SETTING[key] ?? 0));
 }
 
 /** 有限数值才进入设置，缺失和非有限值沿用基线。 */

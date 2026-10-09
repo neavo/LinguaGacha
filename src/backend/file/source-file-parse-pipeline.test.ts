@@ -8,7 +8,7 @@ import { FileFormatService } from "./file-format-service";
 import { SourceFileParsePipeline } from "./source-file-parse-pipeline";
 import { ProjectDatabase } from "../database/database-operations";
 import { ProjectDataReader } from "../project/project-data-reader";
-import { Item } from "../../domain/item";
+import { create_item } from "../../domain/item";
 
 /** 固定解析配置，避免读取本机设置。 */
 function create_format_service(): FileFormatService {
@@ -76,7 +76,7 @@ describe("SourceFileParsePipeline", () => {
         ),
       ).toEqual(expected_types);
       const saved = database.get_all_items(project_path);
-      const items = (Array.isArray(saved) ? saved : []).map((item) => Item.from_json(item));
+      const items = (Array.isArray(saved) ? saved : []).map((item) => create_item(item));
       const target = items.find((item) => item.src === "原文")!;
       target.status = "PROCESSED";
       target.dst = "译文";

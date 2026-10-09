@@ -481,6 +481,13 @@ describe("ProjectDatabase", () => {
     });
   });
 
+  it("数据库从历史小数修订的整数基线推进", () => {
+    const { database, lg_path } = create_database_project("revision-baseline");
+    database.set_meta(lg_path, "project_runtime_revision.items", "1.8");
+    expect(database.bump_section_revisions(lg_path, ["items"])).toEqual({ items: 2 });
+    expect(read_meta(database, lg_path, "project_runtime_revision.items", 0)).toBe(2);
+  });
+
   it("按排序快照维护 asset，并可更新和读取内容", () => {
     const { database, lg_path } = create_database_project("asset-list");
     const alpha_path = project_path("alpha.txt");

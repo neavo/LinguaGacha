@@ -15,7 +15,7 @@ import {
 } from "domhandler";
 import { decodeHTML } from "entities";
 
-import { Item } from "../../../domain/item";
+import { type Item, create_item } from "../../../domain/item";
 import { read_json_record, type JsonRecord, type JsonValue } from "../../../domain/json";
 import { AppError } from "../../../shared/error";
 
@@ -566,7 +566,7 @@ export class EpubAst {
       return null;
     }
     const digest = this.sha1_hex_with_null_separator([pkg.opf_title_text]);
-    return Item.from_json({
+    return create_item({
       src: pkg.opf_title_text,
       dst: "",
       tag: pkg.opf_path,
@@ -846,7 +846,7 @@ export class EpubAst {
         continue;
       }
       items.push(
-        Item.from_json({
+        create_item({
           src: text,
           dst: "",
           tag: ncx_path,
@@ -904,7 +904,7 @@ export class EpubAst {
         epub["parts"] = unit.slots.map(([ref]) => ({ slot: ref.slot, path: ref.path }));
       }
     }
-    return Item.from_json({
+    return create_item({
       src,
       dst: "",
       tag: doc_path,
