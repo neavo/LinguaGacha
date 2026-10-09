@@ -28,7 +28,7 @@ import { PiModelCatalog } from "../llm/pi-model-catalog";
 import { ModelService } from "../model/model-service";
 import { ChatGPTAuthService } from "../auth/chatgpt-auth-service";
 import { ProjectContentService } from "../project/project-content-service";
-import { create_project_change_publisher } from "../project/project-write-event-adapter";
+import { adapt_project_change } from "../project/project-write-event-adapter";
 import { ProjectDataReader } from "../project/project-data-reader";
 import { RuntimeOperationGate } from "../runtime-operation-gate";
 import { ProjectLifecycleService } from "../project/project-lifecycle-service";
@@ -179,11 +179,10 @@ export class BackendServices {
       appSettingService: this.app_setting_service,
       workerClient: this.compute_worker_client,
     });
-    const handle_project_event = this.cache_manager.handleProjectEvent.bind(this.cache_manager);
-    const adapt_project_change = create_project_change_publisher(options.database, session_state);
+    const apply_committed_change = this.cache_manager.applyCommittedChange.bind(this.cache_manager);
     /** 缓存提交后生成公开工程事件，空变更结束本次发布。 */
-    const publish_project_change = (request: Parameters<typeof adapt_project_change>[0]) => {
-      const event = adapt_project_change(request);
+    const publish_project_change = (request: Parameters<typeof adapt_project_change>[1]) => {
+      const event = adapt_project_change(session_state, request);
       if (event !== null) {
         options.publishEvent(PROJECT_CHANGE_EVENT_TOPIC, event as unknown as JsonRecord);
       }
@@ -191,8 +190,9 @@ export class BackendServices {
     };
     const write_store = new ProjectWriteStore(
       options.database,
-      handle_project_event,
+      apply_committed_change,
       publish_project_change,
+      this.cache_manager,
     );
 
     this.task_runtime = new BatchTranslationRuntime(session_state, data_reader, this.runtime_gate);
@@ -203,7 +203,7 @@ export class BackendServices {
       this.app_setting_service,
       paths,
       this.logManager,
-      handle_project_event,
+      this.cache_manager,
       write_store,
       this.pdf_worker.run,
     );
@@ -270,12 +270,7 @@ export class BackendServices {
         sessionState: session_state,
         cache: this.cache_manager.proofreading,
       }),
-      commands: new ProofreadingService(
-        options.database,
-        this.runtime_gate,
-        session_state,
-        write_store,
-      ),
+      commands: new ProofreadingService(this.runtime_gate, session_state, write_store),
     };
     this.quality = {
       rules: new QualityRuleService(

@@ -115,25 +115,17 @@ function create_worker(before_sync?: () => Promise<void>): ComputeWorkerClient &
   };
 }
 
-// 生成 items delta 事件，用例只覆盖需要验证的字段。
+// 生成规范行增量，用例只覆盖需要验证的字段。
 function create_delta_change(overrides: Partial<CacheChange> = {}): CacheChange {
   return {
-    eventType: "project.items.changed",
     projectPath: "E:/Project/demo.lg",
     source: "translation_commit",
-    affectedSections: ["items"],
-    sectionRevisions: { files: 1, items: 2, quality: 1, proofreading: 0 },
 
     items: {
       mode: "delta",
       changedIds: [1],
-      deleteIds: [],
-      fieldPatch: null,
-      sourcePayloadMode: "canonical-delta",
     },
-    files: { mode: "keep" },
     quality: { mode: "keep" },
-    prompts: { mode: "keep" },
     settings: { mode: "keep" },
 
     ...overrides,
@@ -409,7 +401,7 @@ describe("ProofreadingCache", () => {
     expect(old_window.data.rows).toMatchObject([{ item: { item_id: 1, dst: "生命值" } }]);
   });
 
-  it("field-patch 增量会更新旧列表窗口内容且不重建排序", async () => {
+  it("规范行增量更新旧列表窗口内容并保留排序", async () => {
     const worker = create_worker();
     const revisions = { files: 1, items: 1, quality: 1, proofreading: 0 };
     const items = [
@@ -446,15 +438,13 @@ describe("ProofreadingCache", () => {
       window_count: 10,
     });
     revisions.items = 2;
+    items[1] = { ...items[1]!, dst: "A", status: "PROCESSED" };
 
     await cache.applyChange(
       create_delta_change({
         items: {
           mode: "delta",
           changedIds: [2],
-          deleteIds: [],
-          fieldPatch: { dst: "A", status: "PROCESSED" },
-          sourcePayloadMode: "field-patch",
         },
       }),
       revisions,
@@ -474,67 +464,6 @@ describe("ProofreadingCache", () => {
     });
   });
 
-  it("删除增量会剪裁旧列表窗口", async () => {
-    const worker = create_worker();
-    const revisions = { files: 1, items: 1, quality: 1, proofreading: 0 };
-    const items = [
-      create_cache_item({
-        item_id: 1,
-        row_number: 1,
-        src: "A",
-        dst: "A",
-        status: "NONE",
-      }),
-      create_cache_item({
-        item_id: 2,
-        row_number: 2,
-        src: "B",
-        dst: "B",
-        status: "NONE",
-      }),
-    ];
-    const cache = new ProofreadingCache({
-      readPages: () => [],
-      cache: create_cache_read_port({ revisions, items }),
-      appSettingService: create_settings(),
-      workerClient: worker,
-      reader: createProofreadingReader(),
-    });
-    const sync = await cache.sync({});
-    const view = await cache.list({
-      filters: sync.data.defaultFilters,
-      keyword: "",
-      scope: "all",
-      is_regex: false,
-      sort_state: null,
-      window_start: 0,
-      window_count: 10,
-    });
-    revisions.items = 2;
-    items.splice(0, 1);
-
-    await cache.applyChange(
-      create_delta_change({
-        items: {
-          mode: "delta",
-          changedIds: [],
-          deleteIds: [1],
-          fieldPatch: null,
-          sourcePayloadMode: "canonical-delta",
-        },
-      }),
-      revisions,
-    );
-    const window = await cache.window({
-      view_id: view.data.view_id,
-      start: 0,
-      count: 10,
-    });
-
-    expect(window.data.row_count).toBe(1);
-    expect(window.data.rows.map((row) => row.row_id)).toEqual(["2"]);
-  });
-
   it("quality 变化会失效已同步的文本评估", async () => {
     const worker = create_worker();
     const revisions = { files: 1, items: 1, quality: 1, proofreading: 0 };
@@ -550,9 +479,6 @@ describe("ProofreadingCache", () => {
 
     await cache.applyChange(
       create_delta_change({
-        eventType: "project.quality.changed",
-        affectedSections: ["quality"],
-        sectionRevisions: { quality: 2 },
         items: { mode: "keep" },
         quality: { mode: "full" },
       }),
@@ -707,8 +633,6 @@ it.each(["files", "items"] as const)(
         ? create_delta_change()
         : create_delta_change({
             items: { mode: "keep" },
-            files: { mode: "full" },
-            affectedSections: ["files"],
           }),
       revisions,
     );
@@ -745,10 +669,7 @@ it("热同步响应的修订号绑定返回快照，不借用等待期间发生�
   await service.sync({});
   const pending = service.sync({});
   revisions.files = 2;
-  await service.applyChange(
-    create_delta_change({ items: { mode: "keep" }, files: { mode: "full" } }),
-    revisions,
-  );
+  await service.applyChange(create_delta_change({ items: { mode: "keep" } }), revisions);
   const old = await pending;
   expect(old.data.revisions.files).toBe(1);
   expect(old.sectionRevisions.files).toBe(1);

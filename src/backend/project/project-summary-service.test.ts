@@ -146,6 +146,7 @@ describe("ProjectSummaryService", () => {
   }> {
     const database = {
       read_pdf_summaries: () => pdf_summaries,
+      with_project_scope: <T>(_project: string, callback: () => T): T => callback(),
       get_all_meta: () => ({
         "project_runtime_revision.items": 7,
       }),

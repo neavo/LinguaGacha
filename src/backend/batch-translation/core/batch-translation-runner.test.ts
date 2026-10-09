@@ -295,11 +295,10 @@ describe("BatchTranslationRunner", () => {
           lease_release_count += 1;
         },
         get_translation_items: () => [],
-        update_translation_progress: (request: MutableJsonRecord) => {
+        update_translation_progress: async (request: MutableJsonRecord) => {
           translation_extras = {
             ...(request as MutableJsonRecord),
           };
-          return { accepted: true };
         },
       }),
       taskRuntime: task_runtime,
@@ -849,7 +848,7 @@ describe("BatchTranslationRunner", () => {
 
       get_translation_items: () => [],
 
-      update_translation_progress: () => ({ accepted: true }),
+      update_translation_progress: async () => undefined,
       ...overrides,
     };
   }

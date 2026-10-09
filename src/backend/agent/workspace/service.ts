@@ -846,7 +846,7 @@ export class AgentWorkspaceService {
 
   /** Agent 预演读取项目持久镜像，确保审批采用与事务提交相同的重复过滤口径。 */
   private read_duplicate_filter_enabled(project_path: string): boolean {
-    const meta = read_json_record(this.options.database.get_all_meta(project_path));
+    const meta = this.options.database.get_all_meta(project_path);
     return normalize_project_settings_snapshot(
       meta,
       normalize_project_settings_snapshot(read_json_record(meta["prefilter_config"])),

@@ -368,7 +368,7 @@ export class BatchTranslationRunner {
     if (!this.task_runtime.is_current(handle.run_id)) {
       return;
     }
-    this.task_store.update_translation_progress(progress);
+    await this.task_store.update_translation_progress(progress);
   }
 
   /**

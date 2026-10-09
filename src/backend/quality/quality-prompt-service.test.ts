@@ -8,14 +8,14 @@ import { AppPathService } from "../app/app-path-service";
 import { AppSettingService } from "../app/app-setting-service";
 import type { CacheReadPort } from "../cache/cache-types";
 import { ProjectDatabase } from "../database/database-operations";
-import type {
-  ProjectChangePublisher,
-  ProjectWriteChangeRequest,
+import {
+  adapt_project_change,
+  type ProjectChangePublisher,
 } from "../project/project-write-event-adapter";
+import type { ProjectCommittedChange } from "../project/project-committed-change";
 import { RuntimeOperationGate } from "../runtime-operation-gate";
 import { ProjectSessionState } from "../project/project-session-state";
 import { ProjectWriteStore } from "../project/project-write-store";
-import type { ProjectChangeEvent } from "../../shared/project-event";
 import { QualityPromptService } from "./quality-prompt-service";
 import { build_translation_output_format } from "../../shared/text/translation-output-format";
 
@@ -105,7 +105,7 @@ describe("QualityPromptService", () => {
     });
 
     expect(database.get_rule_text(project_path, "translation_prompt")).toBe("新的提示词");
-    expect(published).toHaveBeenCalledWith({
+    expect(published.mock.calls[0]?.[0]).toMatchObject({
       projectPath: project_path,
       source: "quality_prompt_save",
       updatedSections: ["prompts"],
@@ -150,15 +150,9 @@ describe("QualityPromptService", () => {
     const app_setting_service = new AppSettingService(paths);
     const project_database = database ?? (null as unknown as ProjectDatabase);
     const session_state = new ProjectSessionState();
-    const published = vi.fn((payload: ProjectWriteChangeRequest): ProjectChangeEvent => ({
-      type: "project.changed",
-      eventId: "test",
-      source: payload.source,
-      projectPath: payload.projectPath,
-      projectRevision: 1,
-      sectionRevisions: { prompts: 1 },
-      updatedSections: payload.updatedSections,
-    }));
+    const published = vi.fn((payload: ProjectCommittedChange) =>
+      adapt_project_change(session_state, payload),
+    );
     const publisher = published as ProjectChangePublisher;
     const service = new QualityPromptService(
       paths,

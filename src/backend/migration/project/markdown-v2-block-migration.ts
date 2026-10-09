@@ -9,7 +9,7 @@ import {
   parse_markdown_v2_document,
   type MarkdownV2Unit,
 } from "../../file/markdown/md-v2-document";
-import type { ProjectDatabase, ProjectDatabaseWrite } from "../../database/database-operations";
+import type { ProjectDatabaseWrite } from "../../database/database-operations";
 import {
   build_translation_extras_from_items,
   derive_project_item_view_record_from_public,
@@ -53,10 +53,10 @@ export class MarkdownV2BlockMigration {
     }
     return [
       (database) => {
-        const latest_items = this.read_database_items(database, project_path);
+        const latest_items = database.get_all_items(project_path);
         const next_items = replace_project_file_items(latest_items, replacements);
         database.set_items(project_path, next_items);
-        const meta = read_json_record(database.get_all_meta(project_path));
+        const meta = database.get_all_meta(project_path);
         database.upsert_meta_entries(project_path, {
           translation_extras: build_translation_extras_from_items({
             task_snapshot: read_json_record(meta["translation_extras"]),
@@ -66,12 +66,6 @@ export class MarkdownV2BlockMigration {
         database.bump_section_revisions(project_path, ["files", "items"]);
       },
     ];
-  }
-
-  /** 把数据库未知返回值收窄为迁移可遍历的 Item 集合。 */
-  private read_database_items(database: ProjectDatabase, project_path: string): JsonValue[] {
-    const value = database.get_all_items(project_path);
-    return Array.isArray(value) ? value : [];
   }
 
   /** 按文件收集并校验 V1 行，再构造不会携带旧类型的文件级 replacement。 */

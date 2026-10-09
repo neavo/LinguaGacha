@@ -491,7 +491,7 @@ export class ProjectContentService {
         });
       }
       if (mode === "failed") {
-        const items = this.to_public_item_record(this.get_all_items(project_path));
+        const items = this.to_public_item_record(this.database.get_all_items(project_path));
         for (const item of Object.values(items)) {
           if (item.status !== "ERROR") {
             continue;
@@ -641,7 +641,7 @@ export class ProjectContentService {
     value: JsonValue | undefined,
   ): ProjectSettingsSnapshot {
     const request_settings = { ...read_json_record(value) };
-    const meta = this.get_all_meta(project_path);
+    const meta = this.database.get_all_meta(project_path);
     const prefilter_config = { ...read_json_record(meta["prefilter_config"]) };
     return normalize_project_settings_snapshot(
       request_settings,
@@ -657,7 +657,7 @@ export class ProjectContentService {
    */
   private read_project_write_snapshot(project_path: string): ProjectWriteSnapshot {
     const asset_records = this.database.get_all_asset_records(project_path);
-    const item_records = this.get_all_items(project_path);
+    const item_records = this.database.get_all_items(project_path);
     const pdf_paths = Object.keys(this.database.read_pdf_summaries(project_path));
     const public_items_by_id = this.to_public_items_by_id(item_records);
     return {
@@ -775,7 +775,7 @@ export class ProjectContentService {
     return {
       ...create_empty_translation_task_snapshot(),
       progress: {
-        ...read_json_record(this.get_all_meta(project_path)["translation_extras"]),
+        ...read_json_record(this.database.get_all_meta(project_path)["translation_extras"]),
       },
     };
   }
@@ -959,25 +959,6 @@ export class ProjectContentService {
         throw new AppErrors.AppError("request.validation_failed");
       }
     }
-  }
-
-  /**
-   * 读取全部 item dict，供局部 merge 和工作台 append 使用
-   */
-  private get_all_items(project_path: string): MutableJsonRecord[] {
-    const value = this.database.get_all_items(project_path);
-    return Array.isArray(value)
-      ? value
-          .filter((item): item is JsonRecord => is_json_record(item))
-          .map((item) => ({ ...item }))
-      : [];
-  }
-
-  /**
-   * 读取完整 meta，用于 revision 判断
-   */
-  private get_all_meta(project_path: string): MutableJsonRecord {
-    return { ...read_json_record(this.database.get_all_meta(project_path)) };
   }
 
   /**

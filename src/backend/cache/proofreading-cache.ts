@@ -242,16 +242,10 @@ export class ProofreadingCache {
         projectId: change.projectPath,
         revisions: { ...next_revisions, files: this.synced_state.revisions.files },
         total_item_count: this.cache.snapshot().itemCount,
-        upsertItems:
-          item_change.sourcePayloadMode === "field-patch"
-            ? []
-            : this.build_delta_items(item_change.changedIds),
-        patchItemIds:
-          item_change.fieldPatch === null
-            ? []
-            : item_change.changedIds.filter((item_id) => !item_change.deleteIds.includes(item_id)),
-        fieldPatch: item_change.fieldPatch,
-        deleteItemIds: item_change.deleteIds,
+        upsertItems: this.build_delta_items(item_change.changedIds),
+        patchItemIds: [],
+        fieldPatch: null,
+        deleteItemIds: [],
       });
       this.synced_state = sync_state;
       this.synced_key = { ...current_key, revisions: next_revisions };

@@ -17,7 +17,7 @@ export function write_item_migration(
   db: DatabaseSync,
   normalize: (item: ItemMigrationPayload) => { data: ItemMigrationPayload; changed: boolean },
 ): void {
-  const rows = db.prepare("SELECT id, data FROM items ORDER BY id").all();
+  const rows = db.prepare("SELECT id, data FROM items ORDER BY id").iterate();
   const update = db.prepare("UPDATE items SET data = ? WHERE id = ?");
   for (const row of rows) {
     try {

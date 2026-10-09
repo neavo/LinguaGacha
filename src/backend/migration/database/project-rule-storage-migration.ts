@@ -66,7 +66,7 @@ function migrate_rule_types(db: DatabaseSync): void {
  * 同类型规则压成一行：条目规则为数组，文本规则为 `{ text }`。
  */
 function migrate_rule_payloads(db: DatabaseSync): void {
-  const rows = db.prepare("SELECT id, type, data FROM rules ORDER BY id").all();
+  const rows = db.prepare("SELECT id, type, data FROM rules ORDER BY id").iterate();
   const rows_by_type = new Map<string, RuleMigrationRow[]>();
   for (const row of rows) {
     const type = row_text(row, "type");

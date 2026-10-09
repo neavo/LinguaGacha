@@ -74,10 +74,7 @@ export class EpubRubyBlockTextMigration {
     return [
       (database) => {
         const latest_items = database.get_all_items(project_path);
-        database.set_items(
-          project_path,
-          replace_project_file_items(Array.isArray(latest_items) ? latest_items : [], replacements),
-        );
+        database.set_items(project_path, replace_project_file_items(latest_items, replacements));
         database.bump_section_revisions(project_path, ["items"]);
       },
     ];
