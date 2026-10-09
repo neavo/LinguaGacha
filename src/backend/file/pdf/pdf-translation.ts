@@ -46,15 +46,17 @@ export async function render_pdf_html(args: {
   rendered: readonly PDFMarkdown[];
   renderImage: (region: PDFRegion) => Promise<Uint8Array>;
 }): Promise<string> {
-  let html = args.rendered.map((entry) => entry.html).join("\n");
+  const source_html = args.rendered.map((entry) => entry.html).join("\n");
   const images = new Map(args.rendered.flatMap((entry) => [...entry.images]));
-  // 编译器已将引用收窄为摘要与数值坐标，可直接匹配属性值。
+  const image_data = new Map<string, string>();
   for (const [reference, region] of images) {
     const bytes = await args.renderImage(region);
-    html = html.replaceAll(
-      `src="${reference}"`,
-      `src="data:image/png;base64,${Buffer.from(bytes).toString("base64")}"`,
-    );
+    image_data.set(reference, `data:image/png;base64,${Buffer.from(bytes).toString("base64")}`);
   }
+  // 只扫描原始 HTML，避免后续替换反复遍历已内嵌的 Base64 数据。
+  const html = source_html.replace(/src="(pdf-image:[^"]+)"/g, (attribute, reference: string) => {
+    const data = image_data.get(reference);
+    return data === undefined ? attribute : `src="${data}"`;
+  });
   return `<!doctype html><html><head><meta charset="utf-8"><title>${escapeText(args.title)}</title><style>${styles}\n@page { size:${args.size.width}pt ${args.size.height}pt; } body { --pdf-page-height:${args.size.height}pt; }</style></head><body class="pdf-document">${html}</body></html>`;
 }

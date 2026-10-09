@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { QualityRule } from "../../domain/quality";
+import * as identifier from "../utils/identifier";
 import {
   create_quality_rule_entries,
   create_quality_rule_entry_id,
@@ -70,23 +71,20 @@ describe("normalize_quality_rule_entries", () => {
     ]);
 
     expect(entries).toHaveLength(1);
-    expect(entries[0]?.entry_id).toMatch(/^[0-9a-z]{6}$/u);
+    expect(entries[0]?.entry_id).toBeTruthy();
+    expect(entries[0]?.entry_id).not.toBe("external");
   });
 
   it("短身份碰撞时继续生成并保留成功结果", () => {
-    let call_count = 0;
-    const random_spy = vi.spyOn(globalThis.crypto, "getRandomValues").mockImplementation(((
-      value: Uint8Array,
-    ) => {
-      value.fill(call_count === 0 ? 0 : 1);
-      call_count += 1;
-      return value;
-    }) as typeof globalThis.crypto.getRandomValues);
+    const random_spy = vi
+      .spyOn(identifier, "random_id")
+      .mockReturnValueOnce("collision")
+      .mockReturnValue("fresh");
 
     try {
-      const entry_ids = new Set(["000000"]);
-      expect(create_quality_rule_entry_id(entry_ids)).toBe("111111");
-      expect(entry_ids).toEqual(new Set(["000000", "111111"]));
+      const entry_ids = new Set(["collision"]);
+      expect(create_quality_rule_entry_id(entry_ids)).toBe("fresh");
+      expect(entry_ids).toEqual(new Set(["collision", "fresh"]));
     } finally {
       random_spy.mockRestore();
     }

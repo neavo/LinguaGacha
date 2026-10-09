@@ -39,4 +39,4 @@ export type GlossarySortState =
   | null;
 
 export type GlossaryVisibleEntry =
-  import("@frontend/features/quality-rule-editor/use-quality-rule-table").QualityRuleVisibleEntry<GlossaryEntry>;
+  import("@frontend/features/quality-rule-editor/quality-rule-filtering").QualityRuleVisibleEntry<GlossaryEntry>;

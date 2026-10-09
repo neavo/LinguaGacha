@@ -1,4 +1,4 @@
-import type { TextTaskItemRecord } from "../../../shared/text/text-types";
+import type { TextTaskItemRecord } from "../../../shared/text/text-processing";
 
 /** 指标对应本轮固定源文；只用于切块，不进入计费统计或项目存储。 */
 export type TranslationTokenMetric = Readonly<{

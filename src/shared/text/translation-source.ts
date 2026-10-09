@@ -1,5 +1,5 @@
 import { TextRubyCleaner } from "./text-ruby-cleaner";
-import type { TextProcessingConfig } from "./text-types";
+import type { TextProcessingConfig } from "./text-processing";
 import { type TextPreserveAnalysis, type TextPreserveRule } from "./text-preserve-rules";
 import { apply_text_replacements, type CompiledTextReplacements } from "./text-replacement-rules";
 import {

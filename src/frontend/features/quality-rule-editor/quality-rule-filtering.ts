@@ -1,3 +1,4 @@
+import type { AppTableSortState } from "@frontend/widgets/app-table/app-table-types";
 import { create_text_keyword_matcher } from "@shared/text/text-pattern";
 
 // 所有质量规则页共用同一自然排序器，避免页面间大小写和数字片段顺序不一致。
@@ -15,33 +16,6 @@ type QualityRuleStatisticsState = {
   hits_by_entry_id: Record<string, number>;
   subset_parents_by_entry_id: Record<string, string[]>;
 };
-
-/**
- * 复用共享文本匹配器，并让页面仅提供其领域字段到可搜索文本的投影。
- */
-export function create_quality_rule_keyword_matcher<Entry>(
-  filter_state: QualityRuleFilterState,
-  select_text: (entry: Entry) => string,
-): {
-  invalid_regex_message: string | null;
-  matches: (entry: Entry) => boolean;
-} {
-  const keyword_matcher = create_text_keyword_matcher({
-    keyword: filter_state.keyword,
-    is_regex: filter_state.is_regex,
-    unicode: false,
-  });
-
-  return {
-    invalid_regex_message: keyword_matcher.invalid_regex_message,
-    matches: (entry) => {
-      return (
-        keyword_matcher.invalid_regex_message === null &&
-        keyword_matcher.matches(select_text(entry))
-      );
-    },
-  };
-}
 
 /**
  * 空白关键词不触发结果快照的查询态。
@@ -94,4 +68,43 @@ export function resolve_quality_rule_hit_badge_kind(
   return (statistics_state.subset_parents_by_entry_id[entry_id] ?? []).length > 0
     ? "related"
     : "matched";
+}
+
+export type QualityRuleVisibleEntry<E> = { entry: E; entry_id: string; source_index: number };
+
+/** 筛选和排序只生成展示副本，稳定身份与源位置始终来自原始条目。 */
+export function build_quality_rule_filter_result<
+  E extends { entry_id: string },
+  Scope extends string,
+>(options: {
+  entries: E[];
+  filter_state: QualityRuleFilterState & { scope: Scope };
+  sort_state: AppTableSortState | null;
+  hit_sort_available: boolean;
+  hit_state: { hits_by_entry_id: Record<string, number> };
+  select_text: (entry: E, scope: Scope) => string;
+  compare_entries: (left: E, right: E, sort: AppTableSortState) => number;
+}): { visible_entries: QualityRuleVisibleEntry<E>[]; invalid_regex_message: string | null } {
+  const matcher = create_text_keyword_matcher({ ...options.filter_state, unicode: false });
+  if (matcher.invalid_regex_message !== null) {
+    return { visible_entries: [], invalid_regex_message: matcher.invalid_regex_message };
+  }
+  const visible_entries = options.entries.flatMap((entry, source_index) =>
+    matcher.matches(options.select_text(entry, options.filter_state.scope))
+      ? [{ entry, entry_id: entry.entry_id, source_index }]
+      : [],
+  );
+  const sort = options.sort_state;
+  if (sort !== null && (sort.column_id !== "hit" || options.hit_sort_available)) {
+    visible_entries.sort((left, right) => {
+      const comparison =
+        sort.column_id === "hit"
+          ? ((options.hit_state.hits_by_entry_id[left.entry_id] ?? 0) -
+              (options.hit_state.hits_by_entry_id[right.entry_id] ?? 0)) *
+            (sort.direction === "ascending" ? 1 : -1)
+          : options.compare_entries(left.entry, right.entry, sort);
+      return comparison || left.source_index - right.source_index;
+    });
+  }
+  return { visible_entries, invalid_regex_message: null };
 }

@@ -8,11 +8,11 @@ import {
   type ProofreadingListViewQuery,
   type ProofreadingSyncInput,
 } from "./proofreading-reader";
-import type { QualitySnapshot } from "../quality/quality-rule-snapshot";
+import type { QualitySnapshot } from "../quality/quality-rule-state";
 import type { ItemNameField } from "../../domain/item";
 import type { ConfiguredSourceLanguageCode, TargetLanguageCode } from "../../domain/language";
 import { PROOFREADING_WARNING_CODES } from "./proofreading-types";
-import type { TextProcessingConfig } from "../text/text-types";
+import type { TextProcessingConfig } from "../text/text-processing";
 
 /** 提供本轮评估使用的语言与注音清理配置。 */
 function create_processing_config(

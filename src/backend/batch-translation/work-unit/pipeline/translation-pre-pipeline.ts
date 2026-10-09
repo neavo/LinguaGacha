@@ -14,7 +14,7 @@ import type {
   TextProcessingConfig,
   TextQualitySnapshot,
   TextTaskItemRecord,
-} from "../../../../shared/text/text-types";
+} from "../../../../shared/text/text-processing";
 import { read_optional_item_name_text } from "../../../../shared/item-name";
 import {
   project_text_resource_references,
@@ -44,6 +44,7 @@ export class TranslationPrePipeline {
   private readonly config: TextProcessingConfig; // 语言与文本修复策略的任务启动快照
   private readonly quality_snapshot: TextQualitySnapshot; // 保护与译前替换规则的同轮快照
   private readonly pre_replacements: CompiledTextReplacements | null; // 启用时只编译一次，同一 work unit 复用
+  private readonly preserve_rules = new Map<string, TextPreserveRule>(); // 同一 work unit 的规则快照按文本类型复用。
   private next_reference_ordinal = 0; // 单个 work unit 内按模型输入顺序生成扁平 token
 
   /**
@@ -68,11 +69,15 @@ export class TranslationPrePipeline {
     const candidates = read_item_translation_candidates(item);
     const source_text = String(item.src ?? "");
     const text_type = String(item.text_type ?? "TXT").toUpperCase();
-    const preserve_rule = build_text_preserve_rule({
-      mode: this.quality_snapshot.text_preserve_mode,
-      text_type,
-      entries: this.quality_snapshot.text_preserve_entries,
-    });
+    let preserve_rule = this.preserve_rules.get(text_type);
+    if (preserve_rule === undefined) {
+      preserve_rule = build_text_preserve_rule({
+        mode: this.quality_snapshot.text_preserve_mode,
+        text_type,
+        entries: this.quality_snapshot.text_preserve_entries,
+      });
+      this.preserve_rules.set(text_type, preserve_rule);
+    }
     const prepared = prepare_translation_source({
       src: source_text,
       name_src: read_optional_item_name_text(item.name_src),

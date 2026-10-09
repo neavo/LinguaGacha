@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import type { TextProcessingConfig, TextQualitySnapshot } from "../../../../shared/text/text-types";
+import type {
+  TextProcessingConfig,
+  TextQualitySnapshot,
+} from "../../../../shared/text/text-processing";
 import { TranslationPostPipeline } from "./translation-post-pipeline";
 import {
   TranslationPrePipeline,
@@ -15,7 +18,7 @@ describe("TranslationPostPipeline", () => {
     const { pre, post } = create_pipeline_pair(
       create_config(),
       create_quality_snapshot({
-        text_preserve_mode: "CUSTOM",
+        text_preserve_mode: "custom",
         text_preserve_entries: [{ src: "<[^>]+>", info: "" }],
       }),
     );
@@ -28,7 +31,7 @@ describe("TranslationPostPipeline", () => {
     const { pre, post } = create_pipeline_pair(
       create_config(),
       create_quality_snapshot({
-        text_preserve_mode: "CUSTOM",
+        text_preserve_mode: "custom",
         text_preserve_entries: [{ src: "<[^>]+>", info: "" }],
         pre_replacement_enable: true,
         pre_replacement_entries: [{ src: "A", dst: "B", regex: false, case_sensitive: true }],
@@ -46,7 +49,7 @@ describe("TranslationPostPipeline", () => {
     const { pre, post } = create_pipeline_pair(
       create_config(),
       create_quality_snapshot({
-        text_preserve_mode: "CUSTOM",
+        text_preserve_mode: "custom",
         text_preserve_entries: [{ src: "\\\\n\\[\\d+\\]", info: "" }],
       }),
     );
@@ -66,7 +69,7 @@ describe("TranslationPostPipeline", () => {
     const { pre, post } = create_pipeline_pair(
       create_config(),
       create_quality_snapshot({
-        text_preserve_mode: "CUSTOM",
+        text_preserve_mode: "custom",
         text_preserve_entries: [{ src: "<[^>]+>", info: "" }],
       }),
     );
@@ -88,7 +91,7 @@ describe("TranslationPostPipeline", () => {
   it("译后会移除模型额外添加的头尾空白再恢复原始空白", () => {
     const { pre, post } = create_pipeline_pair(
       create_config(),
-      create_quality_snapshot({ text_preserve_mode: "OFF" }),
+      create_quality_snapshot({ text_preserve_mode: "off" }),
     );
     const context = pre.process_item({
       src: "  line  ",
@@ -104,7 +107,7 @@ describe("TranslationPostPipeline", () => {
     const { pre, post } = create_pipeline_pair(
       create_config(),
       create_quality_snapshot({
-        text_preserve_mode: "CUSTOM",
+        text_preserve_mode: "custom",
         text_preserve_entries: [{ src: "<[^>]+>", info: "" }],
       }),
     );
@@ -123,7 +126,7 @@ describe("TranslationPostPipeline", () => {
     const { pre, post } = create_pipeline_pair(
       create_config(),
       create_quality_snapshot({
-        text_preserve_mode: "OFF",
+        text_preserve_mode: "off",
         post_replacement_enable: true,
         post_replacement_entries: [
           {
@@ -204,7 +207,7 @@ describe("TranslationPostPipeline", () => {
     const { pre, post } = create_pipeline_pair(
       create_config(),
       create_quality_snapshot({
-        text_preserve_mode: "CUSTOM",
+        text_preserve_mode: "custom",
         text_preserve_entries: [{ src: "<[^>]+>", info: "" }],
       }),
     );
@@ -217,7 +220,7 @@ describe("TranslationPostPipeline", () => {
     const { pre, post } = create_pipeline_pair(
       create_config(),
       create_quality_snapshot({
-        text_preserve_mode: "CUSTOM",
+        text_preserve_mode: "custom",
         text_preserve_entries: [{ src: "<[^>]+>", info: "" }],
         pre_replacement_enable: true,
         pre_replacement_entries: [{ src: "①", dst: "<Q>1", regex: false, case_sensitive: true }],
@@ -316,7 +319,7 @@ function create_quality_snapshot(
   return {
     glossary_enable: true,
     glossary_entries: [],
-    text_preserve_mode: "OFF",
+    text_preserve_mode: "off",
     text_preserve_entries: [],
     pre_replacement_enable: false,
     pre_replacement_entries: [],

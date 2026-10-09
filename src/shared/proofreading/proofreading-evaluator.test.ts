@@ -1,13 +1,13 @@
 import { describe, expect, it } from "vitest";
 
-import type { QualitySnapshot } from "../quality/quality-rule-snapshot";
+import type { QualitySnapshot } from "../quality/quality-rule-state";
 import {
   buildProofreadingEvaluationContext,
   evaluateProofreadingItem,
 } from "./proofreading-evaluator";
 import type { ItemNameField } from "../../domain/item";
 import type { ConfiguredSourceLanguageCode, TargetLanguageCode } from "../../domain/language";
-import type { TextProcessingConfig } from "../text/text-types";
+import type { TextProcessingConfig } from "../text/text-processing";
 
 /** 默认禁用可选规则，各用例只开启影响当前判断的质量配置。 */
 function create_quality(overrides: Partial<QualitySnapshot> = {}): QualitySnapshot {

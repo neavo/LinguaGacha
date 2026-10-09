@@ -1,22 +1,27 @@
-import type { TextQualitySnapshot } from "../../../shared/text/text-types";
-import type { TextTaskItemRecord } from "../../../shared/text/text-types";
+import type { LLMClientPort } from "../../llm/llm-types";
+import type { ChatGPTAuthService } from "../../auth/chatgpt-auth-service";
+import type { LogManager } from "../../log/log-manager";
+import type { SettingSnapshot } from "../../../domain/setting";
+import type {
+  TranslationModelSnapshot,
+  WorkUnitExecutor,
+  WorkUnitExecutionResult,
+} from "../protocol/work-unit";
+import type { BatchTranslationRuntime } from "../batch-translation-runtime";
+import type { BatchTranslationProjectStore } from "../batch-translation-project-store";
+import type { TranslationPlanner } from "../planning/translation-planner";
+import type { TextQualitySnapshot, TextTaskItemRecord } from "../../../shared/text/text-processing";
 import { AppError } from "../../../shared/error";
 import { prepare_translation_targets } from "../planning/translation-targets";
 
 import type { BatchTranslationRunHandle } from "../batch-translation-runtime";
-import type { WorkUnitExecutor } from "../work-unit/work-unit-executor";
 import type {
   BatchTranslationStartCommand,
   BatchTranslationResult,
 } from "../../../domain/batch-translation";
-import type { WorkUnitExecutionResult } from "../protocol/work-unit-result";
 import { PromptBuilder } from "../work-unit/work-unit-prompt-builder";
 import type { BatchTranslationProgress } from "../../../domain/batch-translation";
-import type {
-  BatchTranslationRunnerOptions,
-  BatchTranslationRunContext,
-  TranslationCommitEntry,
-} from "./batch-translation-runner-options";
+import type { TranslationCommitEntry } from "./translation-pipeline";
 import type {
   TranslationContext,
   TranslationTokenMetric,
@@ -30,6 +35,42 @@ import { is_task_skipped_item_status } from "../../../domain/batch-translation";
 
 import { normalize_setting_snapshot } from "../../../domain/setting";
 import { read_task_item_status, read_task_item_id } from "../translation-item";
+
+/** Service 在运行 lease 内准备的单次执行上下文，Runner 与 worker 共用。 */
+export type BatchTranslationRunContext = Readonly<{
+  config_snapshot: SettingSnapshot;
+  model: TranslationModelSnapshot;
+}>;
+
+/**
+ * BatchTranslationRunner 依赖由 BackendServices 注入，保证后台任务只通过固定端口读写工程事实
+ */
+export interface BatchTranslationRunnerOptions {
+  auth?: Pick<ChatGPTAuthService, "bind">;
+  builtinRoot: string; // 用于任务启动日志读取提示词模板，保持宿主与 worker 内置资产根一致
+  taskStore: Pick<
+    BatchTranslationProjectStore,
+    | "acquire_project_lease"
+    | "build_quality_snapshot"
+    | "commit_translation_batch"
+    | "get_translation_items"
+    | "update_translation_progress"
+  >; // 任务编排器只依赖项目任务事实的公开能力
+  taskRuntime: Pick<
+    BatchTranslationRuntime,
+    | "update_request_state"
+    | "is_current"
+    | "publish_progress"
+    | "read_run_progress"
+    | "publish_status"
+    | "publish_config"
+    | "read_progress"
+  >; // 任务锁、取消、快照和请求压力的最小能力集合
+  llmClient: LLMClientPort; // 每轮请求调度器使用的单次网络请求入口。
+  executorClient: WorkUnitExecutor; // 屏蔽 worker_threads 与直接 runner 的传输差异
+  taskPlanner: Pick<TranslationPlanner, "build_translation_plan" | "build_translation_retry_plan">; // 精确 token 切块、cache 复用和后台规划的最小能力集合
+  logManager: Pick<LogManager, "append">; // 生命周期与批次日志共用结构化追加入口。
+}
 
 const TRANSLATION_TERMINAL_STATUSES = new Set(["PROCESSED", "ERROR"]); // 翻译终态只认已处理和错误，跳过类状态不参与重试终结判断
 

@@ -1,7 +1,7 @@
 import type { TranslationRequestPort } from "../../protocol/translation-request";
 import { Model } from "../../../../domain/model";
 import { normalize_setting_snapshot } from "../../../../domain/setting";
-import { TextQualitySnapshotTool } from "../../../../shared/text/text-types";
+import { read_text_quality_snapshot } from "../../../../shared/text/text-processing";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { tmpdir } from "node:os";
@@ -40,7 +40,7 @@ function create_empty_translation_unit(): TranslationWorkUnit {
     run_id: "run-1",
     model: { ...Model.from_json({}, "test") },
     config_snapshot: normalize_setting_snapshot({}),
-    quality_snapshot: TextQualitySnapshotTool.from_api_value({}),
+    quality_snapshot: read_text_quality_snapshot({}),
     payload: {
       items: [],
       precedings: [],
@@ -905,9 +905,7 @@ function create_translation_unit(args: {
     run_id: "run-1",
     model: { ...Model.from_json(args.model, "test") },
     config_snapshot: normalize_setting_snapshot(create_config_payload(args.config_overrides)),
-    quality_snapshot: TextQualitySnapshotTool.from_api_value(
-      args.quality_snapshot ?? create_quality_payload(),
-    ),
+    quality_snapshot: read_text_quality_snapshot(args.quality_snapshot ?? create_quality_payload()),
     payload: {
       items: args.items ?? [
         {

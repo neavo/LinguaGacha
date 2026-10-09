@@ -12,7 +12,8 @@ import {
   can_reorder_quality_rule_entries,
   are_quality_rule_entry_ids_equal,
 } from "./quality-rule-selection";
-export type QualityRuleVisibleEntry<E> = { entry: E; entry_id: string; source_index: number };
+import type { QualityRuleVisibleEntry } from "./quality-rule-filtering";
+import type { QualityRuleStatisticsCacheSnapshot } from "@frontend/app/session/quality-rule-statistics-store";
 type Filter<Scope extends string = string> = { keyword: string; scope: Scope; is_regex: boolean };
 /** 表格会话以空值表示未排序。 */
 const empty_sort = (): AppTableSortState | null => null;
@@ -31,15 +32,14 @@ export function useQualityRuleTable<E extends { entry_id: string }, Scope extend
   entries: E[];
   create_filter: () => Filter<Scope>;
   sort_columns: ReadonlySet<string>;
-  reset_hit_sort: boolean;
+  statistics: QualityRuleStatisticsCacheSnapshot;
   build_result: (
     filter: Filter<Scope>,
     sort: AppTableSortState | null,
   ) => { visible_entries: QualityRuleVisibleEntry<E>[]; invalid_regex_message: string | null };
 }) {
   type F = Filter<Scope>;
-  const { project_path, section_revision, entries, sort_columns, build_result, reset_hit_sort } =
-    options;
+  const { project_path, section_revision, entries, sort_columns, build_result } = options;
   /** 恢复排序时只接受本页已有列。 */
   const normalize_sort = useCallback(
     (sort: AppTableSortState | null) =>
@@ -159,18 +159,27 @@ export function useQualityRuleTable<E extends { entry_id: string }, Scope extend
     set_selection_state,
   ]);
 
+  // 统计只改变展示顺序，保留筛选成员和用户的排序意图。
+  const previous_statistics = useRef(options.statistics);
   useEffect(() => {
-    if (!reset_hit_sort || sort_state?.column_id !== "hit") return;
-    set_sort_state(null);
-    set_result_snapshot(build_result_snapshot(filter_state, null));
-  }, [
-    build_result_snapshot,
-    filter_state,
-    reset_hit_sort,
-    set_result_snapshot,
-    set_sort_state,
-    sort_state,
-  ]);
+    if (previous_statistics.current === options.statistics) return;
+    previous_statistics.current = options.statistics;
+    if (sort_state?.column_id !== "hit") return;
+    set_result_snapshot((previous) => {
+      if (previous === null) return previous;
+      const members = new Set(previous.ordered_ids);
+      const result = build_result(
+        { ...previous.applied_query.filter_state, keyword: "" },
+        sort_state,
+      );
+      return {
+        ...previous,
+        ordered_ids: result.visible_entries
+          .filter((row) => members.has(row.entry_id))
+          .map((row) => row.entry_id),
+      };
+    });
+  }, [options.statistics, build_result, set_result_snapshot, sort_state]);
   /** 输入立即更新控件，结果成员在防抖完成时更新。 */
   const update_filter = useCallback(
     (filter: F): void => {

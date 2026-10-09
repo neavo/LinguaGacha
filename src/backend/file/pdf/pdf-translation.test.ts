@@ -1,6 +1,6 @@
 import { parseDocument, DomUtils } from "htmlparser2";
 import { read_pdf_document } from "./pdf-document";
-import { expect, it } from "vitest";
+import { expect, it, vi } from "vitest";
 import { create_pdf_fixture } from "./test-support";
 import {
   render_pdf_html,
@@ -8,23 +8,54 @@ import {
   render_pdf_page_translation,
 } from "./pdf-translation";
 
-it("打印模板将已校验的原稿图片内嵌为离线资源", async () => {
+it("多图与跨页重复引用只生成一次，图片顺序保持一致", async () => {
   const document = read_pdf_document(create_pdf_fixture());
-  const image = `pdf-image:${document.digest}/3/40,180,120,80`;
+  const first = `pdf-image:${document.digest}/3/40,180,120,80`;
+  const second = `pdf-image:${document.digest}/3/0,0,20,20`;
   document.pages[0]!.translation = {
     kind: "translate",
-    markdown: "# 译稿\n\n跨页完整句子。\n\n![图例](" + image + ")",
+    markdown: `跨页完整句子。\n\n![一](${first})\n\n![二](${second})`,
   };
-  const rendered = render_pdf_translation(document);
+  document.pages[1]!.translation = { kind: "translate", markdown: `![重复](${first})` };
+  const renderImage = vi.fn(async (region: { x: number }) => new Uint8Array([region.x]));
   const html = await render_pdf_html({
-    title: "译稿",
-    rendered: rendered.filter((entry) => entry !== null),
+    title: "<译稿>",
     size: document.pages[0]!,
-    renderImage: async () => new Uint8Array([1, 2, 3]),
+    rendered: render_pdf_translation(document).filter((entry) => entry !== null),
+    renderImage,
   });
+  expect(renderImage).toHaveBeenCalledTimes(2);
+  const tree = parseDocument(html);
+  expect(
+    DomUtils.getElementsByTagName("img", tree.children).map((node) => node.attribs.src),
+  ).toEqual([
+    "data:image/png;base64,KA==",
+    "data:image/png;base64,AA==",
+    "data:image/png;base64,KA==",
+  ]);
+  expect(html).toContain("&lt;译稿&gt;");
   expect(html).toContain("跨页完整句子。");
-  expect(html).toContain('src="data:image/png;base64,AQID"');
 });
+it.each([new Error("image failed"), new DOMException("cancelled", "AbortError")])(
+  "图片失败或取消沿原路径传播 %s",
+  async (error) => {
+    const document = read_pdf_document(create_pdf_fixture());
+    document.pages[0]!.translation = {
+      kind: "translate",
+      markdown: `![图](pdf-image:${document.digest}/3/0,0,20,20)`,
+    };
+    await expect(
+      render_pdf_html({
+        title: "译稿",
+        size: document.pages[0]!,
+        rendered: render_pdf_translation(document).filter((entry) => entry !== null),
+        renderImage: async () => {
+          throw error;
+        },
+      }),
+    ).rejects.toBe(error);
+  },
+);
 
 it("空译稿和省略页返回空渲染结果", () => {
   const document = read_pdf_document(create_pdf_fixture());

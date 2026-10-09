@@ -19,22 +19,20 @@ export function find_quality_rule_subset_parents(
       case_sensitive: candidate.case_sensitive,
     })),
   );
-  // entry_id 来自持久化事实，null prototype 避免合法 ID 与对象原型成员冲突。
-  const parents_by_entry_id = Object.create(null) as Record<string, string[]>;
+  // `entry_id` 来自持久化事实，`Map` 与无原型返回值避免原型成员冲突。
+  const parents_by_entry_id = new Map<string, Set<string>>();
 
   for (const parent of literals) {
-    const partial_child_ids = new Set<string>();
     matcher.scan(parent.src, (child_id, range) => {
       if (child_id !== parent.entry_id && (range.start > 0 || range.end < parent.src.length)) {
-        partial_child_ids.add(child_id);
+        const parent_sources = parents_by_entry_id.get(child_id) ?? new Set<string>();
+        parent_sources.add(parent.src); // 同一父项重复命中、多个父项同文时都只保留首次结果。
+        parents_by_entry_id.set(child_id, parent_sources);
       }
     });
-    for (const child_id of partial_child_ids) {
-      const parent_sources = parents_by_entry_id[child_id] ?? [];
-      if (!parent_sources.includes(parent.src)) parent_sources.push(parent.src);
-      parents_by_entry_id[child_id] = parent_sources;
-    }
   }
 
-  return parents_by_entry_id;
+  const result = Object.create(null) as Record<string, string[]>;
+  for (const [id, sources] of parents_by_entry_id) result[id] = [...sources];
+  return result;
 }

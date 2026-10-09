@@ -1,6 +1,6 @@
 import { Model } from "../../../domain/model";
 import { normalize_setting_snapshot } from "../../../domain/setting";
-import { TextQualitySnapshotTool } from "../../../shared/text/text-types";
+import { read_text_quality_snapshot } from "../../../shared/text/text-processing";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { tmpdir } from "node:os";
@@ -51,7 +51,7 @@ describe("TranslationWorkerPool", () => {
           source_language: "JA",
           target_language: "ZH",
         }),
-        quality_snapshot: TextQualitySnapshotTool.from_api_value({
+        quality_snapshot: read_text_quality_snapshot({
           quality: {
             glossary: { enabled: false, entries: [] },
             text_preserve: { mode: "OFF", entries: [] },
@@ -300,7 +300,7 @@ function create_translation_unit(unit_id: string) {
       source_language: "JA",
       target_language: "ZH",
     }),
-    quality_snapshot: TextQualitySnapshotTool.from_api_value({
+    quality_snapshot: read_text_quality_snapshot({
       quality: {
         glossary: { enabled: false, entries: [] },
         text_preserve: { mode: "OFF", entries: [] },

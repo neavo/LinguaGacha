@@ -35,4 +35,4 @@ export type TextPreserveHitBadgeState = {
 };
 
 export type TextPreserveVisibleEntry =
-  import("@frontend/features/quality-rule-editor/use-quality-rule-table").QualityRuleVisibleEntry<TextPreserveEntry>;
+  import("@frontend/features/quality-rule-editor/quality-rule-filtering").QualityRuleVisibleEntry<TextPreserveEntry>;

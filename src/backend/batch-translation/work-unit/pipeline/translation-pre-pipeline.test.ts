@@ -1,14 +1,31 @@
 import { describe, expect, it } from "vitest";
 
-import type { TextProcessingConfig, TextQualitySnapshot } from "../../../../shared/text/text-types";
+import type {
+  TextProcessingConfig,
+  TextQualitySnapshot,
+} from "../../../../shared/text/text-processing";
 import { TranslationPrePipeline } from "./translation-pre-pipeline";
+
+it("复用保护规则时逐条匹配，并按任务快照隔离", () => {
+  const quality = create_quality_snapshot({
+    text_preserve_mode: "custom",
+    text_preserve_entries: [{ src: "<[^>]+>", info: "" }],
+  });
+  const pipeline = new TranslationPrePipeline(create_config(), quality);
+  const first = pipeline.process_item({ src: "hello <tag>", text_type: "txt" });
+  const second = pipeline.process_item({ src: "hello <other>", text_type: "TXT" });
+  expect(first.samples).toEqual(["<tag>"]);
+  expect(second.samples).toEqual(["<other>"]);
+  const other = new TranslationPrePipeline(create_config(), create_quality_snapshot());
+  expect(other.process_item({ src: "hello <tag>", text_type: "TXT" }).samples).toEqual([]);
+});
 
 describe("TranslationPrePipeline", () => {
   it("混合保护行和可翻译行时产出完整 item 文本", () => {
     const context = new TranslationPrePipeline(
       create_config(),
       create_quality_snapshot({
-        text_preserve_mode: "CUSTOM",
+        text_preserve_mode: "custom",
         text_preserve_entries: [{ src: "<[^>]+>", info: "" }],
       }),
     ).process_item(
@@ -94,7 +111,7 @@ describe("TranslationPrePipeline", () => {
   it("只读取 item.src，不消费 EPUB 私有候选字段", () => {
     const pipeline = new TranslationPrePipeline(
       create_config({ clean_ruby: true }),
-      create_quality_snapshot({ text_preserve_mode: "OFF" }),
+      create_quality_snapshot({ text_preserve_mode: "off" }),
     );
 
     const context = pipeline.process_item({
@@ -116,7 +133,7 @@ describe("TranslationPrePipeline", () => {
     const pipeline = new TranslationPrePipeline(
       create_config(),
       create_quality_snapshot({
-        text_preserve_mode: "CUSTOM",
+        text_preserve_mode: "custom",
         text_preserve_entries: [{ src: "<[^>]+>", info: "" }],
       }),
     );
@@ -147,7 +164,7 @@ describe("TranslationPrePipeline", () => {
     const pipeline = new TranslationPrePipeline(
       create_config(),
       create_quality_snapshot({
-        text_preserve_mode: "OFF",
+        text_preserve_mode: "off",
         text_preserve_entries: [{ src: "<[^>]+>", info: "" }],
       }),
     );
@@ -183,7 +200,7 @@ function create_quality_snapshot(
   return {
     glossary_enable: true,
     glossary_entries: [],
-    text_preserve_mode: "OFF",
+    text_preserve_mode: "off",
     text_preserve_entries: [],
     pre_replacement_enable: false,
     pre_replacement_entries: [],

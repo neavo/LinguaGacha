@@ -1,8 +1,19 @@
 import type { TranslationContext } from "../planning/translation-plan-types";
-import type {
-  TranslationCommitEntry,
-  TranslationPipelineWorkerResult,
-} from "./batch-translation-runner-options";
+import type { TextTaskItemRecord } from "../../../shared/text/text-processing";
+
+/** 批次提交携带终态条目与本次用量，也支持仅用量提交。 */
+export interface TranslationCommitEntry {
+  items: TextTaskItemRecord[];
+  input_tokens: number;
+  reasoning_tokens: number; // 已报告的思考用量，与输出用量互斥。
+  output_tokens: number; // 已扣除思考用量的模型输出。
+}
+
+/** 流水线分别接收批次提交与内容重试，二者可同时存在。 */
+export interface TranslationPipelineWorkerResult {
+  commit_entries: TranslationCommitEntry[]; // 终态条目或仅用量的批次，提交前核对运行身份。
+  retry_contexts: TranslationContext[]; // 保留失败上下文，调度器优先安排重试
+}
 
 export const TASK_PIPELINE_COMMIT_INTERVAL_MS = 500; // worker 结果提交窗口固定为每秒 2 次，避免高频写库
 

@@ -1,3 +1,8 @@
+import {
+  build_quality_rule_filter_result,
+  compare_quality_rule_text_value,
+  resolve_quality_rule_hit_badge_kind,
+} from "@frontend/features/quality-rule-editor/quality-rule-filtering";
 import { push_error_toast } from "@frontend/app/feedback/desktop-toast";
 import { useQualityRuleTable } from "@frontend/features/quality-rule-editor/use-quality-rule-table";
 import { useQualityRuleEditing } from "@frontend/features/quality-rule-editor/use-quality-rule-editing";
@@ -11,6 +16,7 @@ import type { QualityRuleSlice } from "@shared/quality/quality-rule-state";
 import { useQualityRuleQuery } from "@frontend/features/quality-rule-editor/use-quality-rule-query";
 import {
   isQualityRuleStatisticsCacheReady,
+  canSortQualityRuleStatistics,
   isQualityRuleStatisticsCacheRunning,
   type QualityRuleStatisticsCacheSnapshot,
 } from "@frontend/app/session/quality-rule-statistics-store";
@@ -24,11 +30,6 @@ import {
   TEXT_REPLACEMENT_VARIANT_CONFIG,
   type TextReplacementVariant,
 } from "@frontend/pages/text-replacement-page/config";
-import {
-  build_text_replacement_filter_result,
-  sort_text_replacement_entries,
-} from "@frontend/pages/text-replacement-page/filtering";
-import { resolve_quality_rule_hit_badge_kind } from "@frontend/features/quality-rule-editor/quality-rule-filtering";
 
 import type {
   TextReplacementEntry,
@@ -184,22 +185,39 @@ export function useTextReplacementPageState(variant: TextReplacementVariant) {
     return build_text_replacement_hit_state_from_cache(statistics_cache);
   }, [statistics_cache]);
   const hit_ready = isQualityRuleStatisticsCacheReady(statistics_cache);
+  const hit_sort_available = canSortQualityRuleStatistics(statistics_cache);
   const readonly = quality_status !== "ready" || is_runtime_busy(runtime_snapshot);
   /** 组合本页筛选、排序和统计，交给公共表格维护结果。 */
   const build_table_result = useCallback(
-    (filter_state: TextReplacementFilterState, sort_state: AppTableSortState | null) => {
-      const result = build_text_replacement_filter_result({ entries, filter_state });
-      return {
-        ...result,
-        visible_entries: sort_text_replacement_entries(
-          result.visible_entries,
-          sort_state,
-          hit_ready,
-          hit_state,
-        ),
-      };
-    },
-    [entries, hit_ready, hit_state],
+    (filter_state: TextReplacementFilterState, sort_state: AppTableSortState | null) =>
+      build_quality_rule_filter_result({
+        entries,
+        filter_state,
+        sort_state,
+        hit_sort_available,
+        hit_state,
+        select_text: (entry, scope) =>
+          scope === "all" ? [entry.src, entry.dst].join("\n") : entry[scope],
+        compare_entries: (left, right, sort) => {
+          if (sort.column_id === "src" || sort.column_id === "dst") {
+            return compare_quality_rule_text_value(
+              left[sort.column_id],
+              right[sort.column_id],
+              sort.direction,
+            );
+          }
+          if (sort.column_id === "rule") {
+            const comparison =
+              Number(left.regex) * 2 +
+              Number(left.case_sensitive) -
+              Number(right.regex) * 2 -
+              Number(right.case_sensitive);
+            return sort.direction === "ascending" ? comparison : -comparison;
+          }
+          return 0;
+        },
+      }),
+    [entries, hit_sort_available, hit_state],
   );
   const table = useQualityRuleTable({
     key: `quality:${config.rule_type}`,
@@ -211,8 +229,8 @@ export function useTextReplacementPageState(variant: TextReplacementVariant) {
     entries,
     create_filter: create_empty_filter_state,
     sort_columns: TEXT_REPLACEMENT_SORT_COLUMN_IDS,
-    reset_hit_sort: !hit_ready,
     build_result: build_table_result,
+    statistics: statistics_cache,
   });
   const {
     entry_ids,
@@ -424,6 +442,7 @@ export function useTextReplacementPageState(variant: TextReplacementVariant) {
     readonly,
     hit_state,
     hit_ready,
+    hit_sort_available,
     hit_badge_by_entry_id,
 
     update_enabled: (enabled: boolean) => editing.update_meta_with_feedback({ enabled }),

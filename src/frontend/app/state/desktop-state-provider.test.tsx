@@ -2,7 +2,7 @@ import { type JSX, StrictMode, act, useEffect, useMemo, useRef, type ReactNode }
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import type { QualitySnapshot } from "@shared/quality/quality-rule-snapshot";
+import type { QualitySnapshot } from "@shared/quality/quality-rule-state";
 import { DesktopStateProvider } from "@frontend/app/state/desktop-state-provider";
 import type { ProjectChangeSignal } from "@frontend/app/state/project-change-signal";
 import { DESKTOP_RUNTIME_REFRESH_INTERVAL_MS } from "@frontend/app/state/desktop-refresh-scheduler";
@@ -74,6 +74,7 @@ type ProofreadingSignalSnapshot = {
   field_patch: unknown;
 };
 
+/** 将公开变更信号投影为校对消费者可观察的刷新范围。 */
 function resolve_proofreading_project_change_signal(
   signal: ProjectChangeSignal,
 ): ProofreadingSignalSnapshot | null {
@@ -135,6 +136,7 @@ function resolve_proofreading_project_change_signal(
   };
 }
 
+/** 提取工作台依赖的工程变化和文件全量替换标志。 */
 function resolve_state_workbench_change_signal(signal: {
   seq: number;
   reason: string;
@@ -150,6 +152,7 @@ function resolve_state_workbench_change_signal(signal: {
     : null;
 }
 
+/** 汇总公开订阅结果，验证同一事件向各消费者传播。 */
 function RuntimeProbe(props: {
   onSnapshot: (snapshot: RuntimeSnapshot) => void;
 }): JSX.Element | null {
@@ -213,6 +216,7 @@ function RuntimeProbe(props: {
   return null;
 }
 
+/** 暴露当前状态入口，供测试发起重读和写入。 */
 function StateHandleProbe(props: {
   onState: (runtime: StateHandleRef) => void;
 }): JSX.Element | null {
@@ -278,10 +282,12 @@ function create_event_source_stub(): {
   };
 }
 
+/** 确认事件订阅已安装后再发送测试事件。 */
 function has_event_stream_listener(event_source: EventSourceStub, event_name: string): boolean {
   return event_source.addEventListener.mock.calls.some((call) => call[0] === event_name);
 }
 
+/** 构造完整条目载荷，调用方只覆盖场景相关字段。 */
 function create_project_item(overrides: Record<string, unknown>): Record<string, unknown> {
   return {
     item_id: 1,
@@ -301,6 +307,7 @@ function create_project_item(overrides: Record<string, unknown>): Record<string,
   };
 }
 
+/** 提供同一工程的分区快照，供初始化和事件重读复用。 */
 function create_default_project_sections(
   overrides: Record<string, unknown> = {},
 ): Record<string, unknown> {
@@ -406,6 +413,7 @@ type RuntimeApiMockOptions = {
   };
 };
 
+/** 按读取路由返回工程夹具，未声明的请求立即失败。 */
 function install_runtime_api_mock(options: RuntimeApiMockOptions = {}): void {
   const project_path = options.project_path ?? "E:/demo/demo.lg";
   api_fetch_mock.mockImplementation(async (path: string): Promise<Record<string, unknown>> => {
@@ -454,6 +462,7 @@ describe("DesktopStateProvider", () => {
     vi.useRealTimers();
   });
 
+  /** 挂载真实 Provider，并允许验证严格模式下的订阅生命周期。 */
   async function mount_runtime(
     event_source: EventSourceStub,
     children: ReactNode,
@@ -472,6 +481,7 @@ describe("DesktopStateProvider", () => {
 
   it("初始化失败保留失败状态，重试后应用完整快照", async () => {
     let state: ReturnType<typeof useDesktopState> | null = null;
+    /** 读取初始化状态，验证失败后可从公开入口重试。 */
     function InitialProbe(): null {
       state = useDesktopState();
       return null;

@@ -100,7 +100,7 @@ export function TextPreservePage(_props: ScreenComponentProps): JSX.Element {
             readonly={page_state.readonly}
             reorder_disabled={page_state.table.reorder_disabled}
             hit_running={page_state.hit_state.running}
-            hit_ready={page_state.hit_ready}
+            hit_sort_available={page_state.hit_sort_available}
             selected_entry_ids={page_state.table.selected_entry_ids}
             active_entry_id={page_state.table.active_entry_id}
             anchor_entry_id={page_state.table.selection_anchor_entry_id}

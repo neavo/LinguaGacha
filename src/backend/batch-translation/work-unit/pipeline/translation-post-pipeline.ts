@@ -3,7 +3,10 @@ import {
   compile_text_replacements,
   type CompiledTextReplacements,
 } from "../../../../shared/text/text-replacement-rules";
-import type { TextProcessingConfig, TextQualitySnapshot } from "../../../../shared/text/text-types";
+import type {
+  TextProcessingConfig,
+  TextQualitySnapshot,
+} from "../../../../shared/text/text-processing";
 import { split_text_lines } from "../../../../shared/text/text-lines";
 import { type TranslationDecodedItem } from "../translation-item";
 import type { TranslationPrePipelineContext } from "./translation-pre-pipeline";

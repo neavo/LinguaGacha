@@ -7,10 +7,9 @@ import { create_item } from "../../../domain/item";
 import { TASK_PIPELINE_COMMIT_INTERVAL_MS } from "./translation-pipeline";
 import { TranslationWorkerPool } from "../work-unit/translation-worker-pool";
 import { log_error_from_message } from "../../../shared/error";
-import type { BatchTranslationRunContext } from "./batch-translation-runner-options";
 import { Model } from "../../../domain/model";
 import { normalize_setting_snapshot } from "../../../domain/setting";
-import { TextQualitySnapshotTool } from "../../../shared/text/text-types";
+import { read_text_quality_snapshot } from "../../../shared/text/text-processing";
 import { type BatchTranslationProgress } from "../../../domain/batch-translation";
 import fs from "node:fs";
 import os from "node:os";
@@ -24,11 +23,16 @@ import { RuntimeOperationGate } from "../../runtime-operation-gate";
 import { BatchTranslationRuntime } from "../batch-translation-runtime";
 import type { BatchTranslationStartCommand } from "../../../domain/batch-translation";
 import type { BatchTranslationSnapshot } from "../../../domain/batch-translation";
-import type { TranslationWorkUnit } from "../protocol/work-unit";
-import type { WorkUnitExecutionResult } from "../protocol/work-unit-result";
-import type { WorkUnitExecutor } from "../work-unit/work-unit-executor";
-import { BatchTranslationRunner } from "./batch-translation-runner";
-import type { BatchTranslationRunnerOptions } from "./batch-translation-runner-options";
+import type {
+  TranslationWorkUnit,
+  WorkUnitExecutionResult,
+  WorkUnitExecutor,
+} from "../protocol/work-unit";
+import {
+  BatchTranslationRunner,
+  type BatchTranslationRunContext,
+  type BatchTranslationRunnerOptions,
+} from "./batch-translation-runner";
 import { TranslationPlanner } from "../planning/translation-planner";
 import { AppError } from "../../../shared/error";
 import { format_log_content_text } from "../../../shared/log";
@@ -842,7 +846,7 @@ describe("BatchTranslationRunner", () => {
   ): BatchTranslationRunnerOptions["taskStore"] {
     return {
       acquire_project_lease: () => () => undefined,
-      build_quality_snapshot: () => TextQualitySnapshotTool.from_api_value({}),
+      build_quality_snapshot: () => read_text_quality_snapshot({}),
 
       commit_translation_batch: async () => ({ changed_item_ids: [], section_revisions: {} }),
 

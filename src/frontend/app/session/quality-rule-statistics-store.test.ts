@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
-
 import {
+  canSortQualityRuleStatistics,
+  expireQualityRuleStatisticsCache,
   createEmptyQualityRuleStatisticsCacheSnapshot,
   createQualityRuleStatisticsStore,
   isQualityRuleStatisticsCacheReady,
@@ -11,6 +12,23 @@ import {
   type QualityRuleStatisticsCacheSnapshot,
   type QualityRuleStatisticsProjectChangeSignal,
 } from "@frontend/app/session/quality-rule-statistics-store";
+
+it("排序使用已完成统计，刷新失败保留结果，失效和切换工程清空", () => {
+  const initial = createEmptyQualityRuleStatisticsCacheSnapshot();
+  expect(canSortQualityRuleStatistics(initial)).toBe(false);
+  expect(canSortQualityRuleStatistics({ ...initial, phase: "running" })).toBe(false);
+  expect(canSortQualityRuleStatistics({ ...initial, phase: "failed" })).toBe(false);
+  const completed = create_cache_with_phase("current");
+  expect(canSortQualityRuleStatistics(completed)).toBe(true);
+  expect(canSortQualityRuleStatistics({ ...completed, phase: "failed" })).toBe(true);
+  expect(canSortQualityRuleStatistics({ ...completed, entry_ids: [] })).toBe(true);
+  expect(canSortQualityRuleStatistics(expireQualityRuleStatisticsCache(completed))).toBe(false);
+  const store = createQualityRuleStatisticsStore();
+  store.reset("first.lg");
+  store.updateCache("glossary", () => completed);
+  store.reset("second.lg");
+  expect(canSortQualityRuleStatistics(store.getSnapshot().caches.glossary)).toBe(false);
+});
 
 /**
  * 构造指定 phase 的已完成缓存，用公开 builder 保持结果形状贴近真实运行态。

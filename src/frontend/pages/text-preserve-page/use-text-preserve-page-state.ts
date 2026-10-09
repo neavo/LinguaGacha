@@ -1,4 +1,8 @@
 import {
+  build_quality_rule_filter_result,
+  compare_quality_rule_text_value,
+} from "@frontend/features/quality-rule-editor/quality-rule-filtering";
+import {
   push_error_toast,
   ModalProgressToastTimeoutError,
   push_toast,
@@ -16,6 +20,7 @@ import type { QualityRuleSlice } from "@shared/quality/quality-rule-state";
 import { useQualityRuleQuery } from "@frontend/features/quality-rule-editor/use-quality-rule-query";
 import {
   isQualityRuleStatisticsCacheReady,
+  canSortQualityRuleStatistics,
   isQualityRuleStatisticsCacheRunning,
   type QualityRuleStatisticsCacheSnapshot,
 } from "@frontend/app/session/quality-rule-statistics-store";
@@ -25,11 +30,6 @@ import { useDesktopState, useRuntimeSnapshot } from "@frontend/app/state/use-des
 import { is_runtime_busy } from "@frontend/app/state/runtime-activity-store";
 
 import { useI18n, type LocaleKey } from "@frontend/app/locale/locale-context";
-
-import {
-  build_text_preserve_filter_result,
-  sort_text_preserve_entries,
-} from "@frontend/pages/text-preserve-page/filtering";
 
 import type {
   TextPreserveEntry,
@@ -172,22 +172,32 @@ export function useTextPreservePageState() {
     return build_text_preserve_hit_state_from_cache(statistics_cache);
   }, [statistics_cache]);
   const hit_ready = isQualityRuleStatisticsCacheReady(statistics_cache);
+  const hit_sort_available = canSortQualityRuleStatistics(statistics_cache);
   const readonly = quality_status !== "ready" || is_runtime_busy(runtime_snapshot);
   /** 组合本页筛选、排序和统计，交给公共表格维护结果。 */
   const build_table_result = useCallback(
-    (filter_state: TextPreserveFilterState, sort_state: AppTableSortState | null) => {
-      const result = build_text_preserve_filter_result({ entries, filter_state });
-      return {
-        ...result,
-        visible_entries: sort_text_preserve_entries(
-          result.visible_entries,
-          sort_state,
-          hit_ready,
-          hit_state,
-        ),
-      };
-    },
-    [entries, hit_ready, hit_state],
+    (filter_state: TextPreserveFilterState, sort_state: AppTableSortState | null) =>
+      build_quality_rule_filter_result({
+        entries,
+        filter_state,
+        sort_state,
+        hit_sort_available,
+        hit_state,
+        select_text: (entry, scope) =>
+          scope === "all" ? [entry.src, entry.info].join("\n") : entry[scope],
+        compare_entries: (left, right, sort) => {
+          if (sort.column_id === "src" || sort.column_id === "info") {
+            return compare_quality_rule_text_value(
+              left[sort.column_id],
+              right[sort.column_id],
+              sort.direction,
+            );
+          }
+
+          return 0;
+        },
+      }),
+    [entries, hit_sort_available, hit_state],
   );
   const table = useQualityRuleTable({
     key: `quality:${TEXT_PRESERVE_RULE_TYPE}`,
@@ -199,8 +209,8 @@ export function useTextPreservePageState() {
     entries,
     create_filter: create_empty_filter_state,
     sort_columns: TEXT_PRESERVE_SORT_COLUMN_IDS,
-    reset_hit_sort: !hit_ready,
     build_result: build_table_result,
+    statistics: statistics_cache,
   });
   const { entry_ids, entry_index_by_id, reorder_disabled, set_pending_result_refresh } = table;
 
@@ -365,6 +375,7 @@ export function useTextPreservePageState() {
     readonly,
     hit_state,
     hit_ready,
+    hit_sort_available,
     hit_badge_by_entry_id,
 
     update_mode,

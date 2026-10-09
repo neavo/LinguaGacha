@@ -1,5 +1,6 @@
-import { QualityRuleSnapshotTool } from "../quality/quality-rule-snapshot";
-import type { JsonRecord, JsonValue } from "../../domain/json";
+import { normalize_quality_rule_entries } from "../quality/quality-rule-entry";
+import { read_json_record, type JsonRecord, type JsonValue } from "../../domain/json";
+import { normalize_translation_prompt_slice } from "../../domain/prompt";
 import {
   ALL_LANGUAGE_CODE,
   normalize_source_language_code,
@@ -8,7 +9,13 @@ import {
   type TargetLanguageCode,
 } from "../../domain/language";
 import { normalize_setting_snapshot } from "../../domain/setting";
-import type { TextPreserveEntry, TextReplacementEntry } from "../../domain/quality";
+import {
+  QualityRule,
+  type GlossaryEntry,
+  type TextPreserveMode,
+  type TextPreserveEntry,
+  type TextReplacementEntry,
+} from "../../domain/quality";
 import { AppError } from "../error";
 
 /** 翻译与校对共享的文本处理配置。 */
@@ -51,8 +58,8 @@ export function normalize_text_processing_config(args: {
  */
 export interface TextQualitySnapshot {
   glossary_enable: boolean; // glossary 与 replacement 规则均为运行时快照，worker 不回读数据库
-  glossary_entries: JsonRecord[];
-  text_preserve_mode: string;
+  glossary_entries: GlossaryEntry[];
+  text_preserve_mode: TextPreserveMode;
   text_preserve_entries: TextPreserveEntry[];
   pre_replacement_enable: boolean;
   pre_replacement_entries: TextReplacementEntry[];
@@ -78,39 +85,51 @@ export type TextTaskItemRecord = JsonRecord & {
   extra_field?: JsonValue; // 保留格式处理器回写所需的结构化上下文
 };
 
-/** 从嵌套质量载荷提取翻译任务所需的规则。 */
-export class TextQualitySnapshotTool {
-  /** 复用质量规则归一入口，缺失字段沿用领域默认值。 */
-  public static from_api_value(value: JsonValue | undefined): TextQualitySnapshot {
-    const snapshot = QualityRuleSnapshotTool.from_json(value);
-    return {
-      glossary_enable: snapshot.glossary_enable,
-      glossary_entries: snapshot.glossary_entries,
-      text_preserve_mode: snapshot.text_preserve_mode,
-      text_preserve_entries: snapshot.text_preserve_entries,
-      pre_replacement_enable: snapshot.pre_replacement_enable,
-      pre_replacement_entries: snapshot.pre_replacement_entries,
-      post_replacement_enable: snapshot.post_replacement_enable,
-      post_replacement_entries: snapshot.post_replacement_entries,
-      translation_prompt_enable: snapshot.translation_prompt_enable,
-      translation_prompt: snapshot.translation_prompt,
-    };
-  }
+/** 从嵌套质量载荷直接解析任务规则，缺失字段沿用领域默认值。 */
+export function read_text_quality_snapshot(value: unknown): TextQualitySnapshot {
+  const root = read_json_record(value);
+  const quality = read_json_record(root["quality"]);
+  const prompts = read_json_record(root["prompts"]);
+  const glossary = read_json_record(quality["glossary"]);
+  const text_preserve = read_json_record(quality["text_preserve"]);
+  const pre_replacement = read_json_record(quality["pre_replacement"]);
+  const post_replacement = read_json_record(quality["post_replacement"]);
+  const translation = normalize_translation_prompt_slice(prompts["translation"]);
+  const glossary_rule = QualityRule.from_json("glossary");
+  const text_preserve_rule = QualityRule.from_json("text_preserve");
+  const pre_replacement_rule = QualityRule.from_json("pre_replacement");
+  const post_replacement_rule = QualityRule.from_json("post_replacement");
+
+  return {
+    glossary_enable: glossary_rule.normalize_enabled(glossary["enabled"]),
+    text_preserve_mode: text_preserve_rule.normalize_mode(text_preserve["mode"]),
+    text_preserve_entries: normalize_quality_rule_entries(
+      text_preserve_rule,
+      text_preserve["entries"] ?? [],
+    ),
+    pre_replacement_enable: pre_replacement_rule.normalize_enabled(pre_replacement["enabled"]),
+    pre_replacement_entries: normalize_quality_rule_entries(
+      pre_replacement_rule,
+      pre_replacement["entries"] ?? [],
+    ),
+    post_replacement_enable: post_replacement_rule.normalize_enabled(post_replacement["enabled"]),
+    post_replacement_entries: normalize_quality_rule_entries(
+      post_replacement_rule,
+      post_replacement["entries"] ?? [],
+    ),
+    translation_prompt_enable: translation.enabled,
+    translation_prompt: translation.text,
+
+    glossary_entries: normalize_quality_rule_entries(glossary_rule, glossary["entries"] ?? []),
+  };
 }
 
-/**
- * 配置快照解析工具，只暴露文本处理需要的字段
- */
-export class TextProcessingConfigTool {
-  /**
-   * 从完整 config 快照抽取文本处理配置，并在 worker 入口归一和校验语言
-   */
-  public static from_api_value(value: JsonValue | undefined): TextProcessingConfig {
-    const snapshot = normalize_setting_snapshot(value);
-    return normalize_text_processing_config({
-      source_language: snapshot.source_language,
-      target_language: snapshot.target_language,
-      clean_ruby: snapshot.clean_ruby,
-    });
-  }
+/** 从配置快照提取文本处理字段，并在任务入口校验语言。 */
+export function read_text_processing_config(value: JsonValue | undefined): TextProcessingConfig {
+  const snapshot = normalize_setting_snapshot(value);
+  return normalize_text_processing_config({
+    source_language: snapshot.source_language,
+    target_language: snapshot.target_language,
+    clean_ruby: snapshot.clean_ruby,
+  });
 }

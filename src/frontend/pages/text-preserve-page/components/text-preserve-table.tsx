@@ -28,7 +28,7 @@ type TextPreserveTableProps = {
   readonly: boolean;
   reorder_disabled: boolean;
   hit_running: boolean;
-  hit_ready: boolean;
+  hit_sort_available: boolean;
   selected_entry_ids: TextPreserveEntryId[];
   active_entry_id: TextPreserveEntryId | null;
   anchor_entry_id: TextPreserveEntryId | null;
@@ -87,7 +87,7 @@ export function TextPreserveTable(props: TextPreserveTableProps): JSX.Element {
         width: 120,
         align: "center",
         sortable: {
-          disabled: !props.hit_ready,
+          disabled: !props.hit_sort_available,
         },
         head_class_name: "text-preserve-page__table-hit-head",
         cell_class_name: "text-preserve-page__table-hit-cell",
@@ -110,7 +110,7 @@ export function TextPreserveTable(props: TextPreserveTableProps): JSX.Element {
   }, [
     props.on_query_entry_source,
     props.hit_badge_by_entry_id,
-    props.hit_ready,
+    props.hit_sort_available,
     props.hit_running,
     t,
   ]);

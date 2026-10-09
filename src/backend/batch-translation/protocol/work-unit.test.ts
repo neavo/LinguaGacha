@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { read_translation_worker_result } from "./work-unit-result";
+import { read_translation_worker_result } from "./work-unit";
 
 describe("翻译 worker 结果边界", () => {
   const result = {
