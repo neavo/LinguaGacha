@@ -2,7 +2,7 @@ import path from "node:path";
 import { AppError } from "../../../shared/error";
 
 import { JsonTool } from "../../../shared/utils/json-tool";
-import { Item } from "../../../domain/item";
+import { type Item, create_item } from "../../../domain/item";
 import type { MutableJsonRecord } from "../../../domain/json";
 import { group_items, write_text_file, type GeneratedFilePaths } from "../file-format-shared";
 import { RPGMakerTransProcessor } from "./rpgmaker-processor";
@@ -52,7 +52,7 @@ export class TRANSFormat {
         const parameter = record_array(parameters_list[row_index]);
         const checked = processor.check(file_key, [src, dst], tag, context);
         items.push(
-          Item.from_json({
+          create_item({
             src: checked.src,
             dst: checked.dst,
             extra_field: {

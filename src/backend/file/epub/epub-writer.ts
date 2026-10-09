@@ -4,7 +4,7 @@ import render from "dom-serializer";
 import { Element, isTag, Text, type ChildNode } from "domhandler";
 import { write_zip, type ZipContents } from "./epub-zip";
 
-import { Item } from "../../../domain/item";
+import type { Item } from "../../../domain/item";
 import { read_json_record, type JsonRecord } from "../../../domain/json";
 import { write_binary_file, type FileFormatServiceConfig } from "../file-format-shared";
 import { EpubAst, read_epub_extra, read_epub_text_run } from "./epub-ast";
@@ -90,13 +90,12 @@ export class EpubWriter {
     out_path: string,
     bilingual: boolean,
   ): Promise<void> {
-    const normalized_items = items.map((item) => Item.from_json(item));
-    const use_ast = normalized_items.every((item) => this.has_epub_ast_metadata(item));
+    const use_ast = items.every((item) => this.has_epub_ast_metadata(item));
     if (use_ast) {
-      await this.build_epub_ast(original_epub_bytes, normalized_items, out_path, bilingual);
+      await this.build_epub_ast(original_epub_bytes, items, out_path, bilingual);
       return;
     }
-    await this.build_epub_legacy(original_epub_bytes, normalized_items, out_path, bilingual);
+    await this.build_epub_legacy(original_epub_bytes, items, out_path, bilingual);
   }
 
   /**
@@ -534,7 +533,6 @@ export class EpubWriter {
   ): Promise<void> {
     const sorted_items = items
       .filter((item) => item.file_type === "EPUB")
-      .map((item) => Item.from_json(item))
       .sort((left, right) => left.row - right.row);
     const tag_group = new Map<string, Item[]>();
     for (const item of sorted_items) {

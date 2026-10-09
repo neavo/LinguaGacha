@@ -14,7 +14,7 @@ import type { LogManager } from "../log/log-manager";
 import { AppSettingService } from "../app/app-setting-service";
 import { ProjectSessionState } from "../project/project-session-state";
 import { FileFormatService } from "./file-format-service";
-import { Item, type ItemNameField } from "../../domain/item";
+import { type ItemNameField, type Item, create_item } from "../../domain/item";
 import { is_json_record } from "../../domain/json";
 import { resolve_app_locale, type AppLanguage } from "../../domain/app-language";
 import { normalize_setting_snapshot, type SettingSnapshot } from "../../domain/setting";
@@ -285,7 +285,7 @@ export class TranslationFileGenerationService {
     if (!Array.isArray(raw_items)) {
       return [];
     }
-    return raw_items.filter(is_json_record).map((item) => Item.from_json(item));
+    return raw_items.filter(is_json_record).map((item) => create_item(item));
   }
 
   /**

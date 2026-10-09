@@ -1,6 +1,6 @@
 import { default_native_fs, normalize_native_file_bytes } from "../../native/native-fs";
 import type { PDFDocument } from "../../shared/pdf";
-import { Item, type ItemFileType } from "../../domain/item";
+import { type Item, type ItemFileType } from "../../domain/item";
 
 /** 普通文件与条目共用类型值，PDF 通过独立文档参与导入。 */
 export type ProjectFileType = ItemFileType | "PDF";

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { Item } from "../../../domain/item";
+import { type Item, create_item } from "../../../domain/item";
 import { sha1_hex } from "./lexer";
 import {
   build_ast_keys,
@@ -44,8 +44,8 @@ describe("RenPy 兼容层", () => {
   it("历史字符串 extra 只迁移译文，不直接驱动写回", () => {
     const lines = build_lines();
     const legacy_items = [
-      Item.from_json({ row: 1, extra_field: "translate schinese start:" }),
-      Item.from_json({
+      create_item({ row: 1, extra_field: "translate schinese start:" }),
+      create_item({
         status: "PROCESSED",
         row: 3,
         src: "Hello",
@@ -73,14 +73,14 @@ describe("RenPy 兼容层", () => {
       target_line: 4,
       dst: "当前译文",
     });
-    const legacy = Item.from_json({
+    const legacy = create_item({
       status: "PROCESSED",
       row: 3,
       src: "Hello",
       dst: "旧译文",
       extra_field: '    # e "Hello"',
     });
-    const header = Item.from_json({ row: 1, extra_field: "translate schinese start:" });
+    const header = create_item({ row: 1, extra_field: "translate schinese start:" });
 
     const [rebuilt] = build_items_for_writeback("script.rpy", lines, [header, current, legacy]);
 
@@ -96,8 +96,8 @@ describe("RenPy 兼容层", () => {
 
     transfer_legacy_translations(
       [
-        Item.from_json({ row: 1, extra_field: "translate schinese start:" }),
-        Item.from_json({
+        create_item({ row: 1, extra_field: "translate schinese start:" }),
+        create_item({
           status: "PROCESSED",
           row: 3,
           src: "Other",
@@ -113,10 +113,10 @@ describe("RenPy 兼容层", () => {
   });
 
   it("候选选择优先匹配原文和姓名，其次匹配原文", () => {
-    const item = Item.from_json({ src: "Hello", name_src: "Alice" });
+    const item = create_item({ src: "Hello", name_src: "Alice" });
     const candidates = [
-      Item.from_json({ status: "PROCESSED", src: "Hello", name_src: "Bob", dst: "鲍勃" }),
-      Item.from_json({ status: "PROCESSED", src: "Hello", name_src: "Alice", dst: "艾丽丝" }),
+      create_item({ status: "PROCESSED", src: "Hello", name_src: "Bob", dst: "鲍勃" }),
+      create_item({ status: "PROCESSED", src: "Hello", name_src: "Alice", dst: "艾丽丝" }),
     ];
 
     expect(pick_best_candidate(item, candidates).dst).toBe("艾丽丝");
@@ -155,7 +155,7 @@ function make_ast_item(options: {
   if (options.with_version !== false) {
     renpy["v"] = 1;
   }
-  return Item.from_json({
+  return create_item({
     status: "PROCESSED",
     src: "Hello",
     dst: options.dst,

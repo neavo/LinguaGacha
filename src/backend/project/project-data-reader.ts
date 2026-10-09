@@ -24,6 +24,7 @@ import {
 } from "../../shared/project-event";
 import * as AppErrors from "../../shared/error";
 import { normalize_quality_rule_entries } from "../../shared/quality/quality-rule-entry";
+import { read_project_revision } from "../../domain/project-revision";
 
 export { PROJECT_DATA_SECTIONS };
 export type { ProjectDataSection };
@@ -33,25 +34,27 @@ export type { ProjectDataSection };
  */
 export function get_section_revision(meta: JsonRecord, section: string): number {
   if (section.startsWith("quality:")) {
-    return read_revision_meta(meta[`quality_rule_revision.${section.slice("quality:".length)}`]);
+    return read_project_revision(meta[`quality_rule_revision.${section.slice("quality:".length)}`]);
   }
   if (section.startsWith("prompts:")) {
-    return read_revision_meta(meta[`quality_prompt_revision.${section.slice("prompts:".length)}`]);
+    return read_project_revision(
+      meta[`quality_prompt_revision.${section.slice("prompts:".length)}`],
+    );
   }
   if (section === "quality") {
     return Math.max(
-      ...QualityRule.all().map((rule) => read_revision_meta(meta[rule.revision_meta_key])),
+      ...QualityRule.all().map((rule) => read_project_revision(meta[rule.revision_meta_key])),
       0,
     );
   }
   if (section === "prompts") {
-    return read_revision_meta(meta[TRANSLATION_PROMPT.revision_meta_key]);
+    return read_project_revision(meta[TRANSLATION_PROMPT.revision_meta_key]);
   }
   if (section === "files" || section === "items" || section === "pdf") {
-    return read_revision_meta(meta[`project_runtime_revision.${section}`]);
+    return read_project_revision(meta[`project_runtime_revision.${section}`]);
   }
   if (section === "proofreading") {
-    return read_revision_meta(meta["proofreading_revision.proofreading"]);
+    return read_project_revision(meta["proofreading_revision.proofreading"]);
   }
   return 0;
 }
@@ -66,18 +69,6 @@ export function build_section_revisions_from_meta(
   return Object.fromEntries(
     PROJECT_DATA_SECTIONS.map((section) => [section, get_section_revision(meta, section)]),
   ) as Record<ProjectDataSection, number>;
-}
-
-/**
- * 将旧项目或损坏 meta 归一为稳定的非负整数 revision。
- */
-function read_revision_meta(value: JsonValue | undefined): number {
-  const number_value = Number(value ?? 0);
-  if (!Number.isFinite(number_value) || number_value < 0) {
-    // 旧项目或坏 meta 不能把 revision 读成 NaN / 负数，否则乐观锁会失去稳定基线
-    return 0;
-  }
-  return Math.trunc(number_value);
 }
 
 /**

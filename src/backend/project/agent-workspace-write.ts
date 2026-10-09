@@ -6,10 +6,16 @@ import {
 import { agent_workspace_fingerprint } from "./agent-workspace-fingerprint";
 import { isDeepStrictEqual } from "node:util";
 
-import { Item } from "../../domain/item";
-import { read_json_integer, type JsonRecord, type JsonValue } from "../../domain/json";
+import { create_item, build_project_item_public_record } from "../../domain/item";
+import { type JsonRecord, type JsonValue } from "../../domain/json";
 import { PROMPT_KINDS, type PromptKind } from "../../domain/prompt";
-import { QualityRule, QUALITY_RULE_KINDS, type QualityRuleKind } from "../../domain/quality";
+import {
+  QualityRule,
+  QUALITY_RULE_KINDS,
+  QUALITY_RULE_BUSINESS_SCHEMAS,
+  type QualityRuleKind,
+  type QualityRuleEntry,
+} from "../../domain/quality";
 import { read_optional_item_name_text } from "../../shared/item-name";
 import {
   collect_quality_rule_duplicate_groups,
@@ -27,8 +33,6 @@ import {
   type ProjectItemWriteRecord,
 } from "../../shared/project/project-item-write-planner";
 import type { ProjectItemWriteChange } from "./project-write-request";
-
-import { AGENT_WORKSPACE_QUALITY_BUSINESS_FIELDS } from "../../shared/project/agent-workspace";
 
 export type AgentWorkspaceRejectionReason =
   | "invalid_change"
@@ -155,16 +159,28 @@ export function create_empty_agent_workspace_intent_batch(): AgentWorkspaceInten
 
 /** 把数据库 item 归一为工作区公开字段，并绑定对象事实指纹。 */
 export function project_agent_workspace_item(item: JsonRecord): JsonRecord {
+  return project_workspace_item(read_item_write_record(item));
+}
+
+/** 存储与公开字段在工作区读取边界转换一次，内部意图只消费已收窄事实。 */
+function read_item_write_record(item: JsonRecord): ProjectItemWriteRecord {
+  return build_project_item_public_record(
+    create_item({ ...item, id: item["item_id"] ?? item["id"] }),
+  );
+}
+
+/** 工作区显示姓名第 0 槽，指纹绑定同一字段视图。 */
+function project_workspace_item(item: ProjectItemWriteRecord): JsonRecord {
   const row = {
-    item_id: read_json_integer(item["item_id"] ?? item["id"], 0),
-    src: String(item["src"] ?? ""),
-    dst: String(item["dst"] ?? ""),
-    name_src: read_optional_item_name_text(item["name_src"]) ?? "",
-    name_dst: read_optional_item_name_text(item["name_dst"]) ?? "",
-    file_path: String(item["file_path"] ?? ""),
-    text_type: Item.normalize_text_type(item["text_type"]),
-    row_number: read_json_integer(item["row_number"] ?? item["row"], 0),
-    status: Item.normalize_status(item["status"]),
+    item_id: item.item_id,
+    src: item.src,
+    dst: item.dst,
+    name_src: read_optional_item_name_text(item.name_src) ?? "",
+    name_dst: read_optional_item_name_text(item.name_dst) ?? "",
+    file_path: item.file_path,
+    text_type: item.text_type,
+    row_number: item.row_number,
+    status: item.status,
   };
   return { ...row, fp: workspace_fingerprint(item_fingerprint_tuple(row)) };
 }
@@ -172,17 +188,23 @@ export function project_agent_workspace_item(item: JsonRecord): JsonRecord {
 /** 把 quality entry 的内部身份与业务字段投影为带当前位置的工作区对象。 */
 export function project_agent_workspace_quality_entry(
   kind: QualityRuleKind,
-  entry: JsonRecord,
+  entry: QualityRuleEntry,
   sort: number,
 ): JsonRecord {
-  const row = project_quality_business_entry(kind, entry);
+  const fields: JsonRecord = entry;
+  const row = {
+    id: entry.entry_id,
+    ...Object.fromEntries(
+      Object.keys(QUALITY_RULE_BUSINESS_SCHEMAS[kind].properties).map((field) => [
+        field,
+        fields[field],
+      ]),
+    ),
+  };
   return {
-    id: row["id"],
+    ...row,
     fp: workspace_fingerprint(quality_fingerprint_tuple(kind, row)),
     sort,
-    ...Object.fromEntries(
-      AGENT_WORKSPACE_QUALITY_BUSINESS_FIELDS[kind].map((field) => [field, row[field]]),
-    ),
   };
 }
 
@@ -198,9 +220,12 @@ export function resolve_agent_workspace_writes(args: {
   createQualityEntryId?: (entryIds: Set<string>) => string;
 }): AgentWorkspaceWriteResolution {
   const pages = resolve_agent_workspace_page_updates(args.batch.pages, args.current.pdfDocuments);
-  const item_result = resolve_items(args.batch.items, args.current.items);
+  const current_items = args.current.items
+    .map(read_item_write_record)
+    .filter((item) => item.item_id > 0);
+  const item_result = resolve_items(args.batch.items, current_items);
   const item_changes = plan_project_item_changes({
-    items: args.current.items.flatMap(to_item_write_record),
+    items: current_items,
     explicit_changes: item_result.changes,
     duplicate_filter_enabled: args.current.duplicateFilterEnabled,
   });
@@ -297,40 +322,22 @@ function quality_fingerprint_tuple(kind: QualityRuleKind, row: JsonRecord): Json
     "quality",
     kind,
     row["id"] ?? "",
-    ...AGENT_WORKSPACE_QUALITY_BUSINESS_FIELDS[kind].map((field) => row[field] ?? null),
-  ];
-}
-
-/** 归一规则身份与业务字段，供指纹与实际变化比较。 */
-function project_quality_business_entry(
-  kind: QualityRuleKind,
-  entry: JsonRecord,
-): JsonRecord & { id: string } {
-  const normalized = normalize_quality_rule_entries(QualityRule.from_json(kind), [entry])[0];
-  if (normalized === undefined) throw new TypeError("Quality rule entry is missing.");
-  return {
-    id: normalized.entry_id,
-    ...Object.fromEntries(
-      AGENT_WORKSPACE_QUALITY_BUSINESS_FIELDS[kind].map((field) => [
-        field,
-        (normalized as unknown as JsonRecord)[field] ?? null,
-      ]),
+    ...Object.keys(QUALITY_RULE_BUSINESS_SCHEMAS[kind].properties).map(
+      (field) => row[field] ?? null,
     ),
-  };
+  ];
 }
 
 /** 同一 item 的互补字段可合并，异值字段与对象漂移按 item 整体拒绝。 */
 function resolve_items(
   intents: readonly AgentWorkspaceItemUpdateIntent[],
-  current_items: readonly JsonRecord[],
+  current_items: readonly ProjectItemWriteRecord[],
 ): {
   changes: ProjectItemWriteChange[];
   rejected: AgentWorkspaceRejectedChange[];
   candidates: AgentWorkspaceItemUpdateIntent[];
 } {
-  const current_by_id = new Map(
-    current_items.map((item) => [read_json_integer(item["item_id"] ?? item["id"], 0), item]),
-  );
+  const current_by_id = new Map(current_items.map((item) => [item.item_id, item]));
   const groups = group_by(intents, (intent) => intent.item_id);
   const changes: ProjectItemWriteChange[] = [];
   const rejected: AgentWorkspaceRejectedChange[] = [];
@@ -341,7 +348,7 @@ function resolve_items(
       rejected.push(item_rejection(item_id, "target_missing"));
       continue;
     }
-    const current_fp = String(project_agent_workspace_item(current)["fp"]);
+    const current_fp = String(project_workspace_item(current)["fp"]);
     if (group.some((intent) => intent.fp !== current_fp)) {
       rejected.push(item_rejection(item_id, "fp_mismatch"));
       continue;
@@ -351,7 +358,7 @@ function resolve_items(
       rejected.push(item_rejection(item_id, "merge_conflict"));
       continue;
     }
-    const current_fields = pick_item_write_fields(current);
+    const current_fields = { dst: current.dst, name_dst: current.name_dst, status: current.status };
     const next = apply_project_item_manual_update(current_fields, update);
     if (next === null) continue;
     changes.push({
@@ -367,34 +374,6 @@ function resolve_items(
     });
   }
   return { changes, rejected, candidates };
-}
-
-/** 将公开或数据库 Item 投影成重复协调需要的完整写入事实。 */
-function to_item_write_record(item: JsonRecord): ProjectItemWriteRecord[] {
-  const item_id = read_json_integer(item["item_id"] ?? item["id"], 0);
-  if (item_id <= 0) return [];
-  return [
-    {
-      item_id,
-      file_path: String(item["file_path"] ?? ""),
-      row_number: read_json_integer(item["row_number"] ?? item["row"], 0),
-      src: String(item["src"] ?? ""),
-      name_src: Item.normalize_name_field(item["name_src"]),
-      text_type: Item.normalize_text_type(item["text_type"]),
-      dst: String(item["dst"] ?? ""),
-      name_dst: Item.normalize_name_field(item["name_dst"]),
-      status: Item.normalize_status(item["status"]),
-    },
-  ];
-}
-
-/** 提取条目写入字段，使派生状态变化进入同一提交计划。 */
-function pick_item_write_fields(item: JsonRecord): ProjectItemWriteChange["current"] {
-  return {
-    dst: String(item["dst"] ?? ""),
-    name_dst: Item.normalize_name_field(item["name_dst"]),
-    status: Item.normalize_status(item["status"]),
-  };
 }
 
 /** 同 kind prompt 的同值行去重，异值行按对象冲突处理。 */
@@ -454,10 +433,7 @@ function resolve_quality_kind(args: {
   rejected: AgentWorkspaceRejectedChange[];
   candidates: AgentWorkspaceQualityIntents;
 } {
-  const current = normalize_quality_rule_entries(
-    QualityRule.from_json(args.kind),
-    args.current,
-  ) as JsonRecord[];
+  const current = normalize_quality_rule_entries(QualityRule.from_json(args.kind), args.current);
   const current_by_id = new Map(current.map((entry) => [read_entry_id(entry), entry]));
   const current_fp = new Map(
     current.map((entry, sort) => [
@@ -769,7 +745,7 @@ function existing_target_rejection<T extends { id: string; fp: string }>(
   return group.some((intent) => intent.fp !== fingerprints.get(id)) ? "fp_mismatch" : null;
 }
 
-/** 合并互补字段；同字段出现不同值时返回 null 表示对象级冲突。 */
+/** 合并互补字段。同字段出现不同值时，返回 `null` 表示对象冲突。 */
 function merge_fields<T extends object>(values: readonly T[]): T | null {
   const merged: Record<string, unknown> = {};
   for (const value of values) {

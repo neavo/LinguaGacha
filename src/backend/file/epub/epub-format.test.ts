@@ -5,7 +5,7 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { create_epub_fixture, read_epub_entry_text } from "../../../test/epub-fixture";
-import { Item } from "../../../domain/item";
+import { create_item } from "../../../domain/item";
 import { EPUBFormat } from "./epub-format";
 
 /**
@@ -25,7 +25,7 @@ describe("EPUBFormat", () => {
     await expect(
       create_format().write_to_path(
         [
-          Item.from_json({
+          create_item({
             file_type: "EPUB",
             file_path: "book.epub",
             src: "原文",
@@ -56,8 +56,8 @@ describe("EPUBFormat", () => {
 
     await format.write_to_path(
       [
-        Item.from_json({
-          ...parsed_item.to_json(),
+        create_item({
+          ...parsed_item,
           dst: "译文",
           status: "PROCESSED",
         }),

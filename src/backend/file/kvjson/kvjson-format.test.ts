@@ -5,7 +5,7 @@ import path from "node:path";
 import iconv from "iconv-lite";
 import { describe, expect, it } from "vitest";
 
-import { Item } from "../../../domain/item";
+import { create_item } from "../../../domain/item";
 import { KVJSONFormat } from "./kvjson-format";
 
 describe("KVJSONFormat", () => {
@@ -53,28 +53,28 @@ it("带回退 KV 从原对象取基线，完成空正文不回退，并保留非
     JSON.stringify({ a: "A", b: "", c: "旧译文", d: "旧译文", extra: 42 }),
   );
   const items = [
-    Item.from_json({
+    create_item({
       src: "a",
       dst: "B",
       status: "ERROR",
       file_type: "KVJSON",
       file_path: "x.json",
     }),
-    Item.from_json({
+    create_item({
       src: "b",
       dst: "B",
       status: "NONE",
       file_type: "KVJSON",
       file_path: "x.json",
     }),
-    Item.from_json({
+    create_item({
       src: "c",
       dst: "",
       status: "PROCESSED",
       file_type: "KVJSON",
       file_path: "x.json",
     }),
-    Item.from_json({
+    create_item({
       src: "d",
       dst: "新译文",
       status: "PROCESSED",

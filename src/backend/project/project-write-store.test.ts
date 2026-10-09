@@ -1,4 +1,5 @@
 import { read_pdf_document } from "../file/pdf/pdf-document";
+import { create_item, type Item } from "../../domain/item";
 import { create_pdf_fixture } from "../file/pdf/test-support";
 import { agent_workspace_page_fingerprint } from "./agent-workspace-page-write";
 import fs from "node:fs";
@@ -289,6 +290,33 @@ describe("ProjectWriteStore", () => {
     });
   });
 
+  it("完整替换在删除条目前拒绝缺失字段和非 JSON 私有数据，保留已有事实与修订", async () => {
+    const { database, project_path, store, published_changes } = create_store(
+      "invalid-item-replacement",
+    );
+    seed_items(database, project_path);
+    const before = database.get_all_items(project_path);
+    const meta = database.get_all_meta(project_path);
+    const complete = create_item({ id: 1, src: "新原文" });
+    const { dst, ...incomplete } = complete;
+    expect(dst).toBe("");
+    for (const item of [incomplete, { ...complete, extra_field: { invalid: undefined } }]) {
+      await expect(
+        store.replace_project_items_and_files({
+          projectPath: project_path,
+          requireExpectedSectionRevisions: false,
+          revisionSections: ["items"],
+          source: "test",
+          updatedSections: ["items"],
+          items: [item as Item],
+        }),
+      ).rejects.toMatchObject({ code: "request.validation_failed" });
+      expect(database.get_all_items(project_path)).toEqual(before);
+      expect(database.get_all_meta(project_path)).toEqual(meta);
+      expect(published_changes).toEqual([]);
+    }
+  });
+
   it("文件排序只发布 files 失效信号", async () => {
     const { database, project_path, store, published_changes } = create_store("reorder");
     add_test_asset(database, project_path, "a.txt", "a", 0);
@@ -310,6 +338,36 @@ describe("ProjectWriteStore", () => {
       files: { payloadMode: "section-invalidated" },
     });
     expect(published_changes.at(-1)).not.toHaveProperty("sections");
+  });
+
+  it("历史小数修订使用统一整数基线提交，旧预期修订仍触发冲突", async () => {
+    const { database, project_path, store, published_changes } =
+      create_store("revision-normalization");
+    seed_items(database, project_path);
+    database.set_meta(project_path, "project_runtime_revision.items", "1.8");
+    const request = {
+      projectPath: project_path,
+      expectedSectionRevisions: { items: 1 },
+      revisionSections: ["items"] as const,
+      source: "test",
+      updatedSections: ["items"] as const,
+      items: [create_item({ id: 1, src: "新原文" })],
+    };
+    await store.replace_project_items_and_files({
+      ...request,
+      revisionSections: [...request.revisionSections],
+      updatedSections: [...request.updatedSections],
+    });
+    expect(read_meta(database, project_path)["project_runtime_revision.items"]).toBe(2);
+    await expect(
+      store.replace_project_items_and_files({
+        ...request,
+        revisionSections: [...request.revisionSections],
+        updatedSections: [...request.updatedSections],
+      }),
+    ).rejects.toMatchObject({ code: "data.revision_conflict" });
+    expect(read_items(database, project_path)[0]?.src).toBe("新原文");
+    expect(published_changes).toHaveLength(1);
   });
 
   it("revision guard 与写入共享同一数据库事务", async () => {

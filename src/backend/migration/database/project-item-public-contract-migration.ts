@@ -1,7 +1,7 @@
 import type { ItemMigrationPayload } from "./item-migration";
 import type { DatabaseSync } from "node:sqlite";
 
-import { Item } from "../../../domain/item";
+import { normalize_item_name_field, normalize_item_status } from "../../../domain/item";
 import { JsonTool } from "../../../shared/utils/json-tool";
 import { read_json_integer } from "../../../domain/json";
 import {
@@ -42,13 +42,13 @@ export function normalize_item_public_contract_payload(item_data: ItemMigrationP
     assign_contract_field(
       normalized,
       "name_src",
-      Item.normalize_name_field(normalized["name_src"]),
+      normalize_item_name_field(normalized["name_src"]),
     ) || changed;
   changed =
     assign_contract_field(
       normalized,
       "name_dst",
-      Item.normalize_name_field(normalized["name_dst"]),
+      normalize_item_name_field(normalized["name_dst"]),
     ) || changed;
   changed =
     assign_contract_field(
@@ -80,7 +80,7 @@ export function normalize_item_public_contract_payload(item_data: ItemMigrationP
       normalize_migration_text_type(normalized["text_type"], file_type, src),
     ) || changed;
   changed =
-    assign_contract_field(normalized, "status", Item.normalize_status(normalized["status"])) ||
+    assign_contract_field(normalized, "status", normalize_item_status(normalized["status"])) ||
     changed;
   changed =
     assign_contract_field(

@@ -3,13 +3,19 @@ import {
   PDF_PAGE_SCHEMA,
   PDF_PAGE_UPDATE_SCHEMA,
 } from "../../../shared/pdf-schema";
-import { Type, type Static, type TSchema } from "@earendil-works/pi-ai";
+import { Type, type Static } from "@earendil-works/pi-ai";
 
-import { ITEM_MANUAL_STATUSES, ITEM_STATUSES, ITEM_TEXT_TYPES } from "../../../domain/item";
+import {
+  PROJECT_ITEM_PUBLIC_SCHEMA,
+  PROJECT_ITEM_MANUAL_UPDATE_SCHEMA,
+} from "../../../domain/item";
 
-import { PROMPT_KINDS } from "../../../domain/prompt";
-import { QUALITY_RULE_KINDS, type QualityRuleKind } from "../../../domain/quality";
-import { AGENT_WORKSPACE_QUALITY_BUSINESS_FIELDS } from "../../../shared/project/agent-workspace";
+import { PROMPT_KINDS, TRANSLATION_PROMPT_SLICE_SCHEMA } from "../../../domain/prompt";
+import {
+  QUALITY_RULE_KINDS,
+  QUALITY_RULE_BUSINESS_SCHEMAS,
+  type QualityRuleKind,
+} from "../../../domain/quality";
 
 export const AGENT_WORKSPACE_FP_SCHEMA = Type.String({
   minLength: 1,
@@ -38,16 +44,16 @@ export const AGENT_WORKSPACE_PAGE_UPDATE_SCHEMA = Type.Object(
 
 export const AGENT_WORKSPACE_ITEM_SCHEMA = Type.Object(
   {
-    item_id: Type.Integer({ minimum: 1 }),
+    item_id: PROJECT_ITEM_PUBLIC_SCHEMA.properties.item_id,
     fp: AGENT_WORKSPACE_FP_SCHEMA,
-    src: Type.String(),
-    dst: Type.String(),
+    src: PROJECT_ITEM_PUBLIC_SCHEMA.properties.src,
+    dst: PROJECT_ITEM_PUBLIC_SCHEMA.properties.dst,
     name_src: Type.String(),
     name_dst: Type.String(),
-    file_path: Type.String(),
-    text_type: Type.Enum(ITEM_TEXT_TYPES),
+    file_path: PROJECT_ITEM_PUBLIC_SCHEMA.properties.file_path,
+    text_type: PROJECT_ITEM_PUBLIC_SCHEMA.properties.text_type,
     row_number: Type.Integer({ minimum: 0 }),
-    status: Type.Enum(ITEM_STATUSES),
+    status: PROJECT_ITEM_PUBLIC_SCHEMA.properties.status,
   },
   { additionalProperties: false },
 );
@@ -124,11 +130,9 @@ const UPDATE_MIN_PROPERTIES = 3; // 身份、指纹与至少一个待更新字�
 
 export const AGENT_WORKSPACE_ITEM_UPDATE_SCHEMA = Type.Object(
   {
-    item_id: Type.Integer({ minimum: 1 }),
+    item_id: PROJECT_ITEM_PUBLIC_SCHEMA.properties.item_id,
     fp: AGENT_WORKSPACE_FP_SCHEMA,
-    dst: Type.Optional(Type.String()),
-    name_dst: Type.Optional(Type.String()),
-    status: Type.Optional(Type.Enum(ITEM_MANUAL_STATUSES)),
+    ...PROJECT_ITEM_MANUAL_UPDATE_SCHEMA.properties,
   },
   {
     additionalProperties: false,
@@ -142,7 +146,7 @@ export const AGENT_WORKSPACE_PROMPTS_SCHEMA = Type.Object(
     PROMPT_KINDS.map((kind) => [
       kind,
       Type.Object(
-        { fp: AGENT_WORKSPACE_FP_SCHEMA, text: Type.String() },
+        { fp: AGENT_WORKSPACE_FP_SCHEMA, text: TRANSLATION_PROMPT_SLICE_SCHEMA.properties.text },
         { additionalProperties: false },
       ),
     ]),
@@ -154,7 +158,7 @@ export const AGENT_WORKSPACE_PROMPT_UPDATE_SCHEMA = Type.Object(
   {
     kind: Type.Enum(PROMPT_KINDS),
     fp: AGENT_WORKSPACE_FP_SCHEMA,
-    text: Type.String(),
+    text: TRANSLATION_PROMPT_SLICE_SCHEMA.properties.text,
   },
   { additionalProperties: false },
 );
@@ -191,34 +195,6 @@ export const AGENT_WORKSPACE_PROJECT_META_SCHEMA = Type.Object(
   { additionalProperties: false },
 );
 
-/** quality 字段形状沿用真实领域类型，不建立 Agent 专用别名。 */
-const QUALITY_FIELD_SCHEMAS = {
-  glossary: {
-    src: Type.String(),
-    dst: Type.String(),
-    info: Type.String(),
-    case_sensitive: Type.Boolean(),
-  },
-  text_preserve: { src: Type.String(), info: Type.String() },
-  pre_replacement: {
-    src: Type.String(),
-    dst: Type.String(),
-    regex: Type.Boolean(),
-    case_sensitive: Type.Boolean(),
-  },
-  post_replacement: {
-    src: Type.String(),
-    dst: Type.String(),
-    regex: Type.Boolean(),
-    case_sensitive: Type.Boolean(),
-  },
-} satisfies {
-  [Kind in QualityRuleKind]: Record<
-    (typeof AGENT_WORKSPACE_QUALITY_BUSINESS_FIELDS)[Kind][number],
-    TSchema
-  >;
-};
-
 const QUALITY_SORT_SCHEMA = Type.Integer({
   minimum: -1,
   description:
@@ -227,7 +203,7 @@ const QUALITY_SORT_SCHEMA = Type.Integer({
 
 /** 每类记录的结构在此生成，参考文档与变更解析使用同一对象。 */
 function create_quality_schemas(kind: QualityRuleKind) {
-  const fields = QUALITY_FIELD_SCHEMAS[kind];
+  const fields = QUALITY_RULE_BUSINESS_SCHEMAS[kind].properties;
   return {
     entries: Type.Object(
       {

@@ -10,7 +10,7 @@ import {
   type GeneratedFilePaths,
   type FileFormatServiceConfig,
 } from "../file-format-shared";
-import { Item } from "../../../domain/item";
+import { type Item, create_item } from "../../../domain/item";
 import { read_json_record } from "../../../domain/json";
 import { resolve_output_item_name } from "../../../shared/item-name";
 
@@ -43,7 +43,7 @@ export class MESSAGEJSONFormat {
         : undefined;
       const name = typeof record["name"] === "string" ? record["name"] : names;
       items.push(
-        Item.from_json({
+        create_item({
           src: record["message"],
           dst: "",
           name_src: name,

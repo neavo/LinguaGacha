@@ -1,5 +1,9 @@
 import type { DatabaseSync } from "node:sqlite";
-import { Item } from "../../../domain/item";
+import {
+  normalize_item_file_type,
+  normalize_item_text_type,
+  infer_item_text_type_from_source,
+} from "../../../domain/item";
 import { is_json_record } from "../../../domain/json";
 import { JsonTool } from "../../../shared/utils/json-tool";
 import { row_number, row_text } from "../migration-row";
@@ -31,7 +35,7 @@ export function write_item_migration(
 export function normalize_migration_file_type(value: unknown): string {
   return value === LEGACY_MARKDOWN_FILE_TYPE
     ? LEGACY_MARKDOWN_FILE_TYPE
-    : Item.normalize_file_type(value);
+    : normalize_item_file_type(value);
 }
 
 /** 两个公共字段 Case 使用相同的历史文本语义推断范围。 */
@@ -40,8 +44,8 @@ export function normalize_migration_text_type(
   file_type: string,
   src: string,
 ): string {
-  const text_type = Item.normalize_text_type(value);
+  const text_type = normalize_item_text_type(value);
   return text_type === "NONE" && TEXT_TYPE_INFERENCE_FILE_TYPES.has(file_type)
-    ? Item.infer_text_type_from_source(src)
+    ? infer_item_text_type_from_source(src)
     : text_type;
 }

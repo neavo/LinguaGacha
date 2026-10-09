@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { QualityRuleSnapshotTool } from "./quality-rule-snapshot";
+import { QualityRule } from "../../domain/quality";
 
 describe("quality rule snapshot", () => {
   it("from_json 收集并类型化各类规则", () => {
@@ -14,7 +15,7 @@ describe("quality rule snapshot", () => {
         text_preserve: {
           mode: "SMART",
           entries: [{ entry_id: "italic", src: "<i>", dst: "<i>" }],
-          revision: "2",
+          revision: "2.8",
         },
         pre_replacement: {
           enabled: true,
@@ -31,7 +32,7 @@ describe("quality rule snapshot", () => {
         translation: {
           enabled: true,
           text: "translation-prompt",
-          revision: 4,
+          revision: "4.8",
         },
       },
     });
@@ -43,6 +44,8 @@ describe("quality rule snapshot", () => {
     expect(snapshot.text_preserve_mode).toBe("smart");
     expect(snapshot.text_preserve_entries).toEqual([{ entry_id: "italic", src: "<i>", info: "" }]);
     expect(snapshot.translation_prompt).toBe("translation-prompt");
+    expect(snapshot.text_preserve_revision).toBe(2);
+    expect(snapshot.translation_prompt_revision).toBe(4);
     expect(snapshot.pre_replacement_revision).toBe(0);
     expect(snapshot.post_replacement_revision).toBe(0);
   });
@@ -52,7 +55,7 @@ describe("quality rule snapshot", () => {
       QualityRuleSnapshotTool.from_json({
         quality: { glossary: { entries: [{ entry_id: "invalid", src: "  ", dst: "忽略" }] } },
       }),
-    ).toThrow("Quality rule src must not be empty.");
+    ).toThrow(TypeError);
   });
 
   it("缺少质量规则 meta 时使用统一领域默认值", () => {
@@ -67,10 +70,14 @@ describe("quality rule snapshot", () => {
       },
     });
 
-    expect(snapshot.glossary_enable).toBe(true);
-    expect(snapshot.text_preserve_mode).toBe("smart");
-    expect(snapshot.pre_replacement_enable).toBe(false);
-    expect(snapshot.post_replacement_enable).toBe(false);
+    expect(snapshot.glossary_enable).toBe(QualityRule.from_json("glossary").default_enabled);
+    expect(snapshot.text_preserve_mode).toBe(QualityRule.from_json("text_preserve").default_mode);
+    expect(snapshot.pre_replacement_enable).toBe(
+      QualityRule.from_json("pre_replacement").default_enabled,
+    );
+    expect(snapshot.post_replacement_enable).toBe(
+      QualityRule.from_json("post_replacement").default_enabled,
+    );
   });
 
   it("to_json 输出嵌套质量规则和提示词快照", () => {

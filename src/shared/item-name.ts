@@ -1,4 +1,4 @@
-import { Item, type ItemNameField } from "../domain/item";
+import { type ItemNameField, normalize_item_name_field } from "../domain/item";
 
 type ResolveOutputItemNameInput = {
   name_src: ItemNameField | undefined;
@@ -8,7 +8,7 @@ type ResolveOutputItemNameInput = {
 
 // 姓名数组只有第 0 槽是当前可见姓名，后续槽位作为格式附加信息保留。
 export function read_item_name_text(value: unknown): string {
-  const normalized = Item.normalize_name_field(value);
+  const normalized = normalize_item_name_field(value);
   if (Array.isArray(normalized)) {
     return normalized[0] ?? "";
   }
@@ -23,7 +23,7 @@ export function read_optional_item_name_text(value: unknown): string | null {
 
 // 写姓名时只替换第 0 槽，不能丢失数组中的格式附加信息。
 export function write_item_name_text(current: unknown, next_name: string): ItemNameField {
-  const normalized = Item.normalize_name_field(current);
+  const normalized = normalize_item_name_field(current);
   if (Array.isArray(normalized)) {
     const names = [...normalized];
     names[0] = next_name;
@@ -34,7 +34,7 @@ export function write_item_name_text(current: unknown, next_name: string): ItemN
 
 // 生成译文时按设置选择源姓名或译名，并保持源字段原有标量/数组形状。
 export function resolve_output_item_name(input: ResolveOutputItemNameInput): ItemNameField {
-  const source_name = Item.normalize_name_field(input.name_src);
+  const source_name = normalize_item_name_field(input.name_src);
   if (input.write_translated_name_fields_to_file === false) {
     return source_name;
   }
@@ -55,7 +55,7 @@ export function resolve_output_item_name(input: ResolveOutputItemNameInput): Ite
 // 比较前先走领域归一，避免 null、空值和姓名数组产生并行语义。
 export function are_item_name_fields_equal(left: unknown, right: unknown): boolean {
   return (
-    JSON.stringify(Item.normalize_name_field(left)) ===
-    JSON.stringify(Item.normalize_name_field(right))
+    JSON.stringify(normalize_item_name_field(left)) ===
+    JSON.stringify(normalize_item_name_field(right))
   );
 }

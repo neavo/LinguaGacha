@@ -9,7 +9,7 @@ import {
   type GeneratedFilePaths,
   type FileFormatServiceConfig,
 } from "../file-format-shared";
-import { Item } from "../../../domain/item";
+import { type Item } from "../../../domain/item";
 import { build_items_for_writeback, get_item_target_line } from "./compat";
 import { RenpyExtractor } from "./extractor";
 import { parse_document } from "./parser";

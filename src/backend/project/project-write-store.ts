@@ -1,6 +1,13 @@
 import type { PDFDocument } from "../../shared/pdf";
 import { ProjectDatabase, type ProjectDatabaseWrite } from "../database/database-operations";
-import { Item } from "../../domain/item";
+import {
+  create_item,
+  build_project_item_public_record,
+  PROJECT_ITEM_WRITE_SCHEMA,
+  type Item,
+} from "../../domain/item";
+import { Type } from "typebox";
+import { Compile } from "typebox/compile";
 import {
   is_json_record,
   read_json_record,
@@ -56,6 +63,7 @@ import type { PromptKind } from "../../domain/prompt";
 import { QUALITY_RULE_KINDS, type QualityRuleKind } from "../../domain/quality";
 
 type RevisionBackedSection = "files" | "items" | "proofreading" | "pdf";
+const PROJECT_ITEM_WRITE_VALIDATOR = Compile(Type.Array(PROJECT_ITEM_WRITE_SCHEMA)); // 全量写入复用编译结果，校验完成后再替换事实。
 type ProjectWriteRevisionContext = {
   project_path: string;
   meta: MutableJsonRecord;
@@ -272,7 +280,7 @@ export class ProjectWriteStore {
       updatedSections: ProjectDataSection[];
       assetWrites?: ProjectAssetWrite[];
       resetPDFPaths?: string[];
-      items?: MutableJsonRecord[];
+      items?: Item[];
       meta?: MutableJsonRecord;
 
       itemsPayload?: Pick<ProjectChangeItemsPayload, "payloadMode" | "changedIds" | "deleteIds">;
@@ -336,9 +344,17 @@ export class ProjectWriteStore {
           writes.push(this.build_asset_write(request.projectPath, write));
         }
         if (request.items !== undefined) {
-          writes.push((database) =>
-            database.set_items(request.projectPath, request.items as unknown as JsonValue[]),
-          );
+          const items = request.items;
+          // 全部条目通过完整结构校验后才替换，事务继续保护事实与修订的一致性。
+          if (!PROJECT_ITEM_WRITE_VALIDATOR.Check(items)) {
+            throw new AppErrors.AppError("request.validation_failed", {
+              diagnostic_context: {
+                reason: "invalid_project_items",
+                errors: PROJECT_ITEM_WRITE_VALIDATOR.Errors(items),
+              },
+            });
+          }
+          writes.push((database) => database.set_items(request.projectPath, items));
         }
         if (request.meta !== undefined && Object.keys(request.meta).length > 0) {
           writes.push((database) =>
@@ -419,7 +435,7 @@ export class ProjectWriteStore {
    */
   public async reset_translation_state(request: {
     projectPath: string;
-    items: MutableJsonRecord[];
+    items: Item[];
     translationExtras: MutableJsonRecord;
   }): Promise<ProjectWriteResult> {
     return await this.replace_project_items_and_files({
@@ -1136,21 +1152,9 @@ export class ProjectWriteStore {
     return Array.isArray(raw_items)
       ? raw_items.flatMap((value) => {
           if (!is_json_record(value)) return [];
-          const item = Item.from_json(value);
+          const item = create_item(value);
           if (item.id === undefined || item.id <= 0) return [];
-          return [
-            {
-              item_id: item.id,
-              file_path: item.file_path,
-              row_number: item.row,
-              src: item.src,
-              name_src: item.name_src,
-              text_type: item.text_type,
-              dst: item.dst,
-              name_dst: item.name_dst,
-              status: item.status,
-            },
-          ];
+          return [build_project_item_public_record(item)];
         })
       : [];
   }

@@ -2,7 +2,7 @@ import type { PDFExecution } from "./pdf/pdf-worker";
 import { PDFFormat } from "./pdf/pdf-format";
 import path from "node:path";
 
-import { Item, type ItemFileType } from "../../domain/item";
+import { type Item, type ItemFileType } from "../../domain/item";
 import { ASSFormat } from "./subtitle/ass-ssa-format";
 import { KVJSONFormat } from "./kvjson/kvjson-format";
 import { MDV2Format } from "./markdown/md-v2-format";

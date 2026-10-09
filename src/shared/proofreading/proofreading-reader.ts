@@ -50,7 +50,7 @@ import {
   evaluateProofreadingItem,
   type ProofreadingEvaluationContext,
 } from "./proofreading-evaluator";
-import { Item } from "../../domain/item";
+import { normalize_item_name_field } from "../../domain/item";
 import { read_item_source_text_parts, read_item_translation_text_parts } from "../item-text";
 
 export type { ProofreadingItemRecord } from "./proofreading-types";
@@ -1264,8 +1264,8 @@ export function createProofreadingReader() {
             row_number: item.row_number,
             src: item.src,
             dst: item.dst,
-            name_src: Item.normalize_name_field(item.name_src),
-            name_dst: Item.normalize_name_field(item.name_dst),
+            name_src: normalize_item_name_field(item.name_src),
+            name_dst: normalize_item_name_field(item.name_dst),
           },
         ];
       });

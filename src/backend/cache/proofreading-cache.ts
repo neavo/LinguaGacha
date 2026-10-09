@@ -3,7 +3,7 @@ import type { AppSettingService } from "../app/app-setting-service";
 import type { ComputeWorkerClient } from "../worker/compute-worker-client";
 import type { CacheReadPort } from "./cache-types";
 import * as AppErrors from "../../shared/error";
-import { Item, type ProjectItemPublicRecord } from "../../domain/item";
+import { type ProjectItemPublicRecord, normalize_item_name_field } from "../../domain/item";
 import { read_json_record, type JsonValue } from "../../domain/json";
 import { normalize_setting_snapshot } from "../../domain/setting";
 import type {
@@ -446,8 +446,8 @@ export class ProofreadingCache {
       row_number: item.row_number,
       src: String(item["src"] ?? ""),
       dst: String(item["dst"] ?? ""),
-      name_src: Item.normalize_name_field(item["name_src"]),
-      name_dst: Item.normalize_name_field(item["name_dst"]),
+      name_src: normalize_item_name_field(item["name_src"]),
+      name_dst: normalize_item_name_field(item["name_dst"]),
       status: String(item["status"] ?? "NONE"),
       text_type: String(item["text_type"] ?? "NONE"),
     };

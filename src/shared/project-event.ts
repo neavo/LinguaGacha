@@ -1,4 +1,4 @@
-import type { ItemNameField, ItemStatus } from "../domain/item";
+import type { ProjectItemPublicRecord } from "../domain/item";
 import type { JsonRecord, JsonValue } from "../domain/json";
 import type { SourceFileParseFailureRecord } from "./source-file-parse-failure";
 
@@ -13,7 +13,7 @@ export const PROJECT_DATA_SECTIONS = [
   "proofreading",
 ] as const;
 
-// renderer 可订阅的项目数据 section；任务运行态不属于项目数据
+// renderer 可订阅工程数据分区。任务运行态有独立快照。
 export type ProjectDataSection = (typeof PROJECT_DATA_SECTIONS)[number];
 
 // 变更事件的 payload mode 决定 renderer 是直接合并、字段 patch 还是整段补读
@@ -23,11 +23,9 @@ export type ProjectChangePayloadMode = "canonical-delta" | "field-patch" | "sect
 export type ProjectDataSectionRevisions = Partial<Record<ProjectDataSection, number>>;
 
 // item 字段级 patch 只表达后端已提交事实中的少量校对字段，不能替代完整 DTO。
-export type ProjectChangeItemFieldPatch = {
-  dst?: string;
-  name_dst?: ItemNameField;
-  status?: ItemStatus;
-};
+export type ProjectChangeItemFieldPatch = Partial<
+  Pick<ProjectItemPublicRecord, "dst" | "name_dst" | "status">
+>;
 
 // items 支持 canonical upsert、field-patch 和 tombstone 删除三种行级表达
 export type ProjectChangeItemsPayload = {
@@ -46,7 +44,7 @@ export type ProjectChangeFilesPayload = {
   deletePaths?: string[];
 };
 
-// section canonical-delta 携带后端规范 data；analysis 高频事件可只携带轻量进度块
+// 分区更新携带后端规范数据，失效信号通知消费者重新查询。
 export type ProjectChangeSectionPayload = {
   payloadMode: ProjectChangePayloadMode;
   data?: JsonValue;
@@ -73,7 +71,7 @@ export type ProjectWriteResult = {
   failed_files?: SourceFileParseFailureRecord[];
 };
 
-// 公开 SSE topic；所有项目数据变更必须从这个 topic 进入 renderer
+// 公开的工程数据变更 SSE 主题，renderer 从此入口消费工程变化。
 
 export const PROJECT_CHANGE_EVENT_TOPIC = "project.data_changed";
 

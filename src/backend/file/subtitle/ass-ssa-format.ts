@@ -1,4 +1,4 @@
-import { Item } from "../../../domain/item";
+import { type Item, create_item } from "../../../domain/item";
 import { decode_text_content } from "../../../shared/utils/text-tool";
 import { split_text_lines_for_items, type FileFormatServiceConfig } from "../file-format-shared";
 import { read_translation_for_generation } from "../translation-generation-text";
@@ -28,7 +28,7 @@ export class ASSFormat {
   public async read_from_stream(content: Uint8Array, file: string): Promise<Item[]> {
     const text = await decode_text_content(content);
     return this.parse_text(text, file).map((unit) =>
-      Item.from_json({
+      create_item({
         src: unit.text,
         row: unit.row,
         file_type: "ASS",

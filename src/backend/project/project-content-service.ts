@@ -21,11 +21,11 @@ import {
 import type { RuntimeOperationGate } from "../runtime-operation-gate";
 import { ProjectSessionState } from "./project-session-state";
 import {
-  Item,
   build_project_item_persistent_records,
   collect_project_item_missing_public_fields,
   normalize_project_item_public_record,
   type ProjectItemPublicRecord,
+  type Item,
 } from "../../domain/item";
 import { is_json_record, read_json_record } from "../../domain/json";
 import {
@@ -181,7 +181,7 @@ export class ProjectContentService {
         for (const parsed_item of file.parsed_items) {
           next_item_id += 1;
           const public_item = this.normalize_public_item({
-            ...Item.from_json(parsed_item).to_json(),
+            ...parsed_item,
             id: next_item_id,
             file_path: target_rel_path,
           });
@@ -463,7 +463,7 @@ export class ProjectContentService {
         let next_item_id = this.next_item_id_seed(snapshot.public_items_by_id);
         const reset_items = parsed_items.map((item) =>
           this.normalize_public_item({
-            ...item.to_json(),
+            ...item,
             id: ++next_item_id,
           }),
         );
@@ -811,7 +811,7 @@ export class ProjectContentService {
   }): void {
     const candidate_map = this.build_translation_inheritance_candidates(args.old_items);
     for (const item of args.next_items) {
-      if (Item.normalize_status(item.status) !== "NONE") {
+      if (item.status !== "NONE") {
         continue;
       }
       const candidate = candidate_map.get(this.translation_inheritance_key(item));
@@ -838,7 +838,7 @@ export class ProjectContentService {
     const groups = new Map<string, Map<string, Candidate>>();
     for (const item of old_items) {
       // 人工完成允许空正文；仅姓名的完成结果也能继承。
-      if (Item.normalize_status(item.status) !== "PROCESSED") continue;
+      if (item.status !== "PROCESSED") continue;
       const key = this.translation_inheritance_key(item);
       const candidates = groups.get(key) ?? new Map<string, Candidate>();
       const result_key = JSON.stringify([item.dst, read_item_name_text(item.name_dst)]);

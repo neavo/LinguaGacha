@@ -1,6 +1,8 @@
+import { Type, type Static } from "typebox";
+import { Check } from "typebox/value";
+import { Compile } from "typebox/compile";
 import { has_language_character } from "./language";
-import type { JsonRecord, JsonValue } from "./json";
-import { read_json_record } from "./json";
+import { JSON_VALUE_SCHEMA, read_json_record, read_json_integer } from "./json";
 
 // 条目状态
 export const ITEM_STATUSES = [
@@ -13,7 +15,7 @@ export const ITEM_STATUSES = [
   "DUPLICATED",
 ] as const;
 
-/** GUI 与 Agent 可以表达的人工状态；其余状态由项目写入或任务运行维护。 */
+/** GUI 与 Agent 提交人工状态。其余状态由工程写入或任务维护。 */
 export const ITEM_MANUAL_STATUSES = ["NONE", "PROCESSED", "EXCLUDED"] as const;
 
 // 文件的类型
@@ -36,224 +38,173 @@ export const ITEM_FILE_TYPES = [
 
 export const ITEM_TEXT_TYPES = ["NONE", "MD", "KAG", "WOLF", "RENPY", "RPGMAKER"] as const; // 文本的实际类型
 
-export type ItemStatus = (typeof ITEM_STATUSES)[number];
+const ITEM_NAME_SCHEMA = Type.Union([Type.String(), Type.Array(Type.String()), Type.Null()]); // 数组第 0 槽为可见姓名，其余槽位保留格式信息。
+/** 条目形状共用业务字段，身份和行号由各自边界补充。 */
+const ITEM_BUSINESS_SCHEMA = Type.Object({
+  src: Type.String(), // 正文原文。
+  dst: Type.String(), // 正文译文，空字符串在生成时结合状态和格式处理。
+  name_src: ITEM_NAME_SCHEMA, // 角色姓名原文。
+  name_dst: ITEM_NAME_SCHEMA, // 角色姓名译文。
+  extra_field: JSON_VALUE_SCHEMA, // 随条目持久化的格式私有扩展数据。
+  tag: Type.String(), // 格式标签或资产内部定位信息。
+  file_type: Type.Enum(ITEM_FILE_TYPES), // 解析来源格式，决定导出处理器。
+  file_path: Type.String(), // 工程内相对路径，对应原始资产。
+  text_type: Type.Enum(ITEM_TEXT_TYPES), // 文本规则类型，用于脚本过滤和保护。
+  status: Type.Enum(ITEM_STATUSES), // 条目处理状态，用于统计和译文生成。
+  skip_internal_filter: Type.Boolean(), // 本条目是否跳过规则和语言过滤。
+});
+/** 格式解析尚未分配身份，迁移也可使用临时身份。 */
+const ITEM_SCHEMA = Type.Object({
+  id: Type.Optional(Type.Integer()), // 解析时可缺省，迁移可使用临时身份。
+  ...ITEM_BUSINESS_SCHEMA.properties,
+  row: Type.Integer(), // 格式处理器提供的条目位置，用于排序和写回。
+});
+const PROJECT_ITEM_PERSISTENT_SCHEMA = Type.Object({
+  ...ITEM_BUSINESS_SCHEMA.properties,
+  id: Type.Integer({ minimum: 1 }), // 已持久化条目的数据库主键。
+  row: ITEM_SCHEMA.properties.row, // 持久定位字段，保留格式处理器的位置语义。
+});
+export const PROJECT_ITEM_PUBLIC_SCHEMA = Type.Object({
+  ...ITEM_BUSINESS_SCHEMA.properties,
+  item_id: PROJECT_ITEM_PERSISTENT_SCHEMA.properties.id, // 公开条目主键，对应存储字段 `id`。
+  row_number: ITEM_SCHEMA.properties.row, // 公开定位字段，对应存储字段 `row`。
+});
+/** 完整替换也接受待分配身份的条目，已提供的身份必须是正整数。 */
+export const PROJECT_ITEM_WRITE_SCHEMA = Type.Object({
+  ...PROJECT_ITEM_PERSISTENT_SCHEMA.properties,
+  id: Type.Optional(PROJECT_ITEM_PERSISTENT_SCHEMA.properties.id), // 新条目可由数据库分配主键。
+});
+/** 人工姓名是第 0 槽的字符串视图，提交 patch 仍携带完整姓名字段。 */
+export const PROJECT_ITEM_MANUAL_UPDATE_SCHEMA = Type.Object(
+  {
+    dst: Type.Optional(ITEM_BUSINESS_SCHEMA.properties.dst), // 人工确认的正文译文，允许空字符串。
+    name_dst: Type.Optional(Type.String()), // 姓名第 0 槽的人工译文。
+    status: Type.Optional(Type.Enum(ITEM_MANUAL_STATUSES)), // 显式人工状态，优先于内容修改的默认完成状态。
+  },
+  { additionalProperties: false, minProperties: 1 },
+);
+export type Item = Static<typeof ITEM_SCHEMA>;
+export type ItemNameField = Static<typeof ITEM_NAME_SCHEMA>;
+export type ProjectItemPublicRecord = Static<typeof PROJECT_ITEM_PUBLIC_SCHEMA>;
+export type ProjectItemPersistentRecord = Static<typeof PROJECT_ITEM_PERSISTENT_SCHEMA>;
+
+export type ItemStatus = Item["status"];
 export type ItemManualStatus = (typeof ITEM_MANUAL_STATUSES)[number];
-export type ItemFileType = (typeof ITEM_FILE_TYPES)[number];
-export type ItemTextType = (typeof ITEM_TEXT_TYPES)[number];
-export type ItemNameField = string | string[] | null;
-
-// renderer 与公开 API 共享的完整 item DTO，字段名避开数据库内部 id/row
-export type ProjectItemPublicRecord = {
-  item_id: number; // 公开 item 主键
-  src: string; // 原文
-  dst: string; // 译文
-  name_src: ItemNameField; // 角色姓名原文
-  name_dst: ItemNameField; // 角色姓名译文
-  extra_field: JsonValue; // 格式私有扩展字段
-  tag: string; // 标签
-  row_number: number; // 公开行号
-  file_type: ItemFileType; // 文件格式
-  file_path: string; // 项目内相对路径
-  text_type: ItemTextType; // 文本规则类型
-  status: ItemStatus; // 翻译状态
-  skip_internal_filter: boolean; // 是否绕过内部过滤
-};
-
-// 写回 .lg 前使用的完整持久 item DTO，字段名保持数据库层 id/row 口径
-export type ProjectItemPersistentRecord = JsonRecord & {
-  id: number; // 数据库 item 主键
-  src: string; // 原文
-  dst: string; // 译文
-  name_src: ItemNameField; // 角色姓名原文
-  name_dst: ItemNameField; // 角色姓名译文
-  extra_field: JsonValue; // 格式私有扩展字段
-  tag: string; // 标签
-  row: number; // 数据库行号
-  file_type: ItemFileType; // 文件格式
-  file_path: string; // 项目内相对路径
-  text_type: ItemTextType; // 文本规则类型
-  status: ItemStatus; // 翻译状态
-  skip_internal_filter: boolean; // 是否绕过内部过滤
-};
-
+export type ItemFileType = Item["file_type"];
+export type ItemTextType = Item["text_type"];
 const ITEM_STATUS_SET = new Set<ItemStatus>(ITEM_STATUSES);
 const ITEM_MANUAL_STATUS_SET = new Set<ItemManualStatus>(ITEM_MANUAL_STATUSES);
 const ITEM_FILE_TYPE_SET = new Set<ItemFileType>(ITEM_FILE_TYPES);
-const ITEM_TEXT_TYPE_SET = new Set<ItemTextType>(ITEM_TEXT_TYPES);
+const PROJECT_ITEM_PUBLIC_VALIDATOR = Compile(PROJECT_ITEM_PUBLIC_SCHEMA); // 复用编译结果，避免逐条解释格式私有数据。
 const TEXT_TYPE_INFERENCE_FILE_TYPES = new Set<ItemFileType>(["XLSX", "KVJSON", "MESSAGEJSON"]);
-// 全量公开写回必须携带这些稳定字段，避免页面层用默认值覆盖真实持久事实
-const PROJECT_ITEM_PUBLIC_REQUIRED_FIELDS = [
-  "src",
-  "dst",
-  "name_src",
-  "name_dst",
-  "extra_field",
-  "tag",
-  "file_type",
-  "file_path",
-  "text_type",
-  "status",
-  "skip_internal_filter",
-] as const;
-
-// WOLF
 const WOLF_PATTERNS = [
   /@\d+/iu, // 角色 ID
   /\\[cus]db\[.+?:.+?:.+?\]/iu, // 数据库变量 \cdb[0:1:2]
 ];
-
-// RPGMaker
 const RPGMAKER_PATTERNS = [
   /en\(.{0,8}[vs]\[\d+\].{0,16}\)/iu, // en(!s[982]) en(v[982] >= 1)
   /if\(.{0,8}[vs]\[\d+\].{0,16}\)/iu, // if(!s[982]) if(v[982] >= 1)
   /[/\\][a-z]{1,8}[<[][a-z\d]{0,16}[>\]]/iu, // /c[xy12] \bc[xy12] <\bc[xy12]>
 ];
+const RENPY_CONTROL_TAG_PATTERN = /\{([^{}]*?)\}|\[([^[\]]*?)\]/giu;
 
-const RENPY_CONTROL_TAG_PATTERN = /\{([^{}]*?)\}|\[([^[\]]*?)\]/giu; // RENPY；合并 Py 侧花括号和方括号两组控制标签检测，每次调用必须重置游标
+const DEFAULT_ITEM: Omit<Item, "id"> = {
+  src: "",
+  dst: "",
+  name_src: null,
+  name_dst: null,
+  extra_field: "",
+  tag: "",
+  row: 0,
+  file_type: "NONE",
+  file_path: "",
+  text_type: "NONE",
+  status: "NONE",
+  skip_internal_filter: false,
+};
+/** 格式输入与历史 JSON 在此补齐字段，已收窄的内部条目直接传递。 */
+export function create_item(payload: unknown = {}): Item {
+  const record = read_json_record(payload);
+  const src = String(record["src"] ?? DEFAULT_ITEM.src);
+  const file_type = normalize_item_file_type(record["file_type"]);
+  let text_type = normalize_item_text_type(record["text_type"]);
+  if (text_type === "NONE" && TEXT_TYPE_INFERENCE_FILE_TYPES.has(file_type)) {
+    text_type = infer_item_text_type_from_source(src);
+  }
+  return {
+    ...(record["id"] === undefined ? {} : { id: read_json_integer(record["id"], 0) }),
+    src,
+    dst: String(record["dst"] ?? DEFAULT_ITEM.dst),
+    name_src: normalize_item_name_field(record["name_src"]),
+    name_dst: normalize_item_name_field(record["name_dst"]),
+    extra_field: record["extra_field"] ?? DEFAULT_ITEM.extra_field,
+    tag: String(record["tag"] ?? DEFAULT_ITEM.tag),
+    row: read_json_integer(record["row"] ?? record["row_number"], DEFAULT_ITEM.row),
+    file_type,
+    file_path: String(record["file_path"] ?? DEFAULT_ITEM.file_path),
+    text_type,
+    status: normalize_item_status(record["status"]),
+    skip_internal_filter: record["skip_internal_filter"] === true,
+  };
+}
+/** 字段名转换只发生在公开与存储边界。 */
+export function build_project_item_public_record(item: Item): ProjectItemPublicRecord {
+  const { id, row, ...fields } = item;
+  return {
+    ...fields,
+    name_src: structuredClone(fields.name_src),
+    name_dst: structuredClone(fields.name_dst),
+    item_id: id ?? 0,
+    row_number: row,
+  };
+}
+
+/** 历史条目中的未知状态按未处理条目继续。 */
+export function normalize_item_status(value: unknown): ItemStatus {
+  return is_item_status(value) ? value : DEFAULT_ITEM.status;
+}
 
 /**
- * Item 是跨文件解析、数据库、任务和导出共享的条目实体
+ * 未知文件格式折叠为 NONE，由调用点决定是否继续处理该 item
  */
-export class Item {
-  public id: number | undefined; // 数据库主键（自增）；跨层 JSON 中允许缺失
-  public src = ""; // 原文
-  public dst = ""; // 正文译文；生成时按状态与文件格式解释空值
-  public name_src: ItemNameField = null; // 角色姓名原文
-  public name_dst: ItemNameField = null; // 角色姓名译文
-  public extra_field: JsonValue = ""; // 额外字段原文；兼容格式私有 JSON
-  public tag = ""; // 标签
-  public row = 0; // 行号
-  public file_type: ItemFileType = "NONE"; // 文件的类型
-  public file_path = ""; // 文件的相对路径
-  public text_type: ItemTextType = "NONE"; // 文本的实际类型
-  public status: ItemStatus = "NONE"; // 翻译状态
-  public skip_internal_filter = false; // 强制翻译条目绕过规则/语言类内部过滤
+export function normalize_item_file_type(value: unknown): ItemFileType {
+  return is_item_file_type(value) ? value : DEFAULT_ITEM.file_type;
+}
 
-  /** Item 只能通过 from_json 收窄外部载荷，避免绕过统一值域归一。 */
-  private constructor() {}
+/**
+ * 未知文本规则语义折叠为 NONE，避免误触发某类脚本保护规则
+ */
+export function normalize_item_text_type(value: unknown): ItemTextType {
+  return is_item_text_type(value) ? value : DEFAULT_ITEM.text_type;
+}
 
-  /**
-   * 反序列化数据库行和格式处理器输出，统一补齐 item 值域
-   */
-  public static from_json(payload: unknown): Item {
-    const record = read_json_record(payload);
-    const src = String(record["src"] ?? "");
-    const file_type = Item.normalize_file_type(record["file_type"]);
-    let text_type = Item.normalize_text_type(record["text_type"]);
-    if (text_type === "NONE" && TEXT_TYPE_INFERENCE_FILE_TYPES.has(file_type)) {
-      text_type = Item.infer_text_type_from_source(src);
-    }
-    const item = new Item();
-    item.id = record["id"] === undefined ? undefined : normalize_item_number(record["id"], 0);
-    item.src = src;
-    item.dst = String(record["dst"] ?? "");
-    item.name_src = Item.normalize_name_field(record["name_src"]);
-    item.name_dst = Item.normalize_name_field(record["name_dst"]);
-    item.extra_field = (record["extra_field"] ?? "") as JsonValue;
-    item.tag = String(record["tag"] ?? "");
-    item.row = normalize_item_number(record["row"] ?? record["row_number"], 0);
-    item.file_type = file_type;
-    item.file_path = String(record["file_path"] ?? "");
-    item.text_type = text_type;
-    item.status = Item.normalize_status(record["status"]);
-    item.skip_internal_filter = record["skip_internal_filter"] === true;
-    return item;
+/**
+ * 名称字段兼容字符串和多列名称数组，非法项在边界处剔除
+ */
+export function normalize_item_name_field(value: unknown): ItemNameField {
+  if (value === undefined || value === null) {
+    return null;
   }
-
-  /**
-   * 固定公开字段顺序，让 API、测试 golden 和文件域写回使用同一形状
-   */
-  public to_json(): JsonRecord {
-    const payload: JsonRecord = {
-      src: this.src,
-      dst: this.dst,
-      name_src: Item.normalize_name_field(this.name_src) as JsonValue,
-      name_dst: Item.normalize_name_field(this.name_dst) as JsonValue,
-      extra_field: this.extra_field,
-      tag: this.tag,
-      row: this.row,
-      file_type: this.file_type,
-      file_path: this.file_path,
-      text_type: this.text_type,
-      status: this.status,
-      skip_internal_filter: this.skip_internal_filter,
-    };
-    if (this.id !== undefined) {
-      payload["id"] = this.id;
-    }
-    return payload;
+  if (Array.isArray(value)) {
+    return value.filter((item): item is string => typeof item === "string");
   }
+  return typeof value === "string" ? value : String(value);
+}
 
-  /**
-   * 将持久 item 或公开 item 转成 renderer 可缓存的完整公开 DTO。
-   */
-  public to_public_json(): ProjectItemPublicRecord {
-    return {
-      item_id: this.id ?? 0,
-      src: this.src,
-      dst: this.dst,
-      name_src: Item.normalize_name_field(this.name_src),
-      name_dst: Item.normalize_name_field(this.name_dst),
-      extra_field: this.extra_field,
-      tag: this.tag,
-      row_number: this.row,
-      file_type: this.file_type,
-      file_path: this.file_path,
-      text_type: this.text_type,
-      status: this.status,
-      skip_internal_filter: this.skip_internal_filter,
-    };
+/**
+ * text_type 兜底推断只在缺失时运行，不能覆盖格式处理器的显式结果
+ */
+export function infer_item_text_type_from_source(src: string): ItemTextType {
+  if (WOLF_PATTERNS.some((pattern) => pattern.test(src))) {
+    return "WOLF";
   }
-
-  /**
-   * 将输入收窄为当前条目状态，非法值按未处理状态兜底
-   */
-  public static normalize_status(value: unknown): ItemStatus {
-    return is_item_status(value) ? value : "NONE";
+  if (RPGMAKER_PATTERNS.some((pattern) => pattern.test(src))) {
+    return "RPGMAKER";
   }
-
-  /**
-   * 未知文件格式折叠为 NONE，由调用点决定是否继续处理该 item
-   */
-  public static normalize_file_type(value: unknown): ItemFileType {
-    return is_item_file_type(value) ? value : "NONE";
+  if (has_renpy_control_tag(src)) {
+    return "RENPY";
   }
-
-  /**
-   * 未知文本规则语义折叠为 NONE，避免误触发某类脚本保护规则
-   */
-  public static normalize_text_type(value: unknown): ItemTextType {
-    return is_item_text_type(value) ? value : "NONE";
-  }
-
-  /**
-   * 名称字段兼容字符串和多列名称数组，非法项在边界处剔除
-   */
-  public static normalize_name_field(value: unknown): ItemNameField {
-    if (value === undefined || value === null) {
-      return null;
-    }
-    if (Array.isArray(value)) {
-      return value.filter((item): item is string => typeof item === "string");
-    }
-    return typeof value === "string" ? value : String(value);
-  }
-
-  /**
-   * text_type 兜底推断只在缺失时运行，不能覆盖格式处理器的显式结果
-   */
-  public static infer_text_type_from_source(src: string): ItemTextType {
-    if (WOLF_PATTERNS.some((pattern) => pattern.test(src))) {
-      return "WOLF";
-    }
-    if (RPGMAKER_PATTERNS.some((pattern) => pattern.test(src))) {
-      return "RPGMAKER";
-    }
-    if (has_renpy_control_tag(src)) {
-      return "RENPY";
-    }
-    return "NONE";
-  }
+  return "NONE";
 }
 
 // item 状态从数据库、API 和任务进度多处流入，先判定再统计
@@ -273,25 +224,18 @@ export function is_item_file_type(value: unknown): value is ItemFileType {
 
 // 文本规则语义用于过滤和保护规则，来源于格式处理器或兜底推断
 export function is_item_text_type(value: unknown): value is ItemTextType {
-  return ITEM_TEXT_TYPE_SET.has(value as ItemTextType);
+  return Check(PROJECT_ITEM_PUBLIC_SCHEMA.properties.text_type, value);
 }
 
-// 完整公开 DTO 必须显式携带所有持久字段；字段缺失只能由 migration 处理
+// 完整公开 DTO 必须携带全部持久字段。缺失字段由迁移补齐。
 export function collect_project_item_missing_public_fields(value: unknown): string[] {
   const record = read_json_record(value);
-  const missing_fields: string[] = [];
-  if (record["item_id"] === undefined && record["id"] === undefined) {
-    missing_fields.push("item_id");
-  }
-  if (record["row_number"] === undefined && record["row"] === undefined) {
-    missing_fields.push("row_number");
-  }
-  for (const field of PROJECT_ITEM_PUBLIC_REQUIRED_FIELDS) {
-    if (record[field] === undefined) {
-      missing_fields.push(field);
-    }
-  }
-  return missing_fields;
+  const public_record: Record<string, unknown> = {
+    ...record,
+    item_id: record["item_id"] ?? record["id"],
+    row_number: record["row_number"] ?? record["row"],
+  };
+  return PROJECT_ITEM_PUBLIC_SCHEMA.required!.filter((field) => public_record[field] === undefined);
 }
 
 // API 和项目 query 只使用 item_id/row_number，id/row 只在边界转换时短暂出现
@@ -302,17 +246,17 @@ export function normalize_project_item_public_record(
   if (collect_project_item_missing_public_fields(record).length > 0) {
     return null;
   }
-  const item_id = normalize_item_number(record["item_id"] ?? record["id"], 0);
+  const item_id = read_json_integer(record["item_id"] ?? record["id"], 0);
   if (!Number.isInteger(item_id) || item_id <= 0) {
     return null;
   }
-  const item = Item.from_json({
+  const item = create_item({
     ...record,
     id: item_id,
     row: record["row"] ?? record["row_number"],
   });
-  item.id = item_id;
-  return item.to_public_json();
+  const public_record = build_project_item_public_record(item);
+  return PROJECT_ITEM_PUBLIC_VALIDATOR.Check(public_record) ? public_record : null;
 }
 
 // 全量写库入口统一把公开 DTO 转回持久字段，避免页面层手写 id/row 映射
@@ -333,28 +277,14 @@ export function build_project_item_persistent_records(
 function build_project_item_persistent_record(
   public_record: ProjectItemPublicRecord,
 ): ProjectItemPersistentRecord {
-  const item = Item.from_json({
-    id: public_record.item_id,
-    src: public_record.src,
-    dst: public_record.dst,
-    name_src: public_record.name_src,
-    name_dst: public_record.name_dst,
-    extra_field: public_record.extra_field,
-    tag: public_record.tag,
-    row: public_record.row_number,
-    file_type: public_record.file_type,
-    file_path: public_record.file_path,
-    text_type: public_record.text_type,
-    status: public_record.status,
-    skip_internal_filter: public_record.skip_internal_filter,
-  });
-  return item.to_json() as ProjectItemPersistentRecord;
-}
-
-// 数值字段来自 JSON 和 SQLite，统一截断为整数并保留调用方回退值
-function normalize_item_number(value: unknown, fallback: number): number {
-  const parsed = Number(value ?? fallback);
-  return Number.isFinite(parsed) ? Math.trunc(parsed) : fallback;
+  const { item_id, row_number, ...fields } = public_record;
+  return {
+    ...fields,
+    name_src: structuredClone(fields.name_src),
+    name_dst: structuredClone(fields.name_dst),
+    id: item_id,
+    row: row_number,
+  };
 }
 
 // Ren'Py 控制标签内不含日韩文本时才视为语法标签，避免误判正文括号

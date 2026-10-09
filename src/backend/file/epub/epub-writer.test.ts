@@ -6,7 +6,7 @@ import { describe, expect, it } from "vitest";
 import { write_zip, read_zip_fixture, zip_text } from "../../../test/zip-fixture";
 
 import { create_epub_fixture, read_epub_entry_text } from "../../../test/epub-fixture";
-import { Item } from "../../../domain/item";
+import { type Item, create_item } from "../../../domain/item";
 import { EpubAst, read_epub_extra } from "./epub-ast";
 import { distribute_text_to_slots, EpubWriter } from "./epub-writer";
 
@@ -159,7 +159,7 @@ async function create_translated_epub_item(epub_asset: Buffer, dst: string): Pro
   if (item === undefined) {
     throw new Error("EPUB fixture 未生成正文条目。");
   }
-  return Item.from_json({
+  return create_item({
     ...item,
     dst,
     status: "PROCESSED",
@@ -178,8 +178,8 @@ async function create_translated_epub_item_by_src(
   if (item === undefined) {
     throw new Error(`EPUB fixture 未生成正文条目：${src}`);
   }
-  return Item.from_json({
-    ...item.to_json(),
+  return create_item({
+    ...item,
     dst,
     status: "PROCESSED",
   });
@@ -243,8 +243,8 @@ describe("EpubWriter", () => {
     const epub_asset = await create_nav_epub_fixture();
     const items = (await new EpubAst().read_from_stream(epub_asset, "book.epub")).map(
       (item, index) =>
-        Item.from_json({
-          ...item.to_json(),
+        create_item({
+          ...item,
           dst: `译文-${index}`,
           status: "PROCESSED",
         }),
@@ -290,7 +290,7 @@ describe("EpubWriter", () => {
     const writer = create_writer();
     const epub_asset = await create_epub_fixture("章节");
     const out_path = path.join(temp_dir.path, "legacy", "book.epub");
-    const legacy_item = Item.from_json({
+    const legacy_item = create_item({
       src: "章节",
       dst: "译文",
       row: 0,
@@ -312,7 +312,7 @@ describe("EpubWriter", () => {
     const writer = create_writer();
     const epub_asset = await create_nbsp_xhtml_epub_fixture();
     const out_path = path.join(temp_dir.path, "nbsp-legacy", "book.epub");
-    const legacy_item = Item.from_json({
+    const legacy_item = create_item({
       src: "章节",
       dst: "译文",
       row: 0,
@@ -351,7 +351,7 @@ describe("EpubWriter", () => {
     const writer = create_writer();
     const epub_asset = await create_epub_fixture("章节");
     const out_path = path.join(temp_dir.path, "legacy-special-dollar", "book.epub");
-    const legacy_item = Item.from_json({
+    const legacy_item = create_item({
       src: "章节",
       dst: "译文$& $1 $$",
       row: 0,
@@ -376,7 +376,7 @@ describe("EpubWriter", () => {
       const writer = create_writer(target_language);
       const epub_asset = await create_layout_epub_fixture();
       const out_path = path.join(temp_dir.path, `layout-${target_language}`, "book.epub");
-      const legacy_item = Item.from_json({
+      const legacy_item = create_item({
         src: "章节",
         dst: "译文",
         row: 0,
@@ -427,7 +427,7 @@ describe("EpubWriter", () => {
       const writer = create_writer(target_language);
       const epub_asset = await create_layout_epub_fixture();
       const out_path = path.join(temp_dir.path, "layout-clean", "book.epub");
-      const legacy_item = Item.from_json({
+      const legacy_item = create_item({
         src: "章节",
         dst: "译文",
         row: 0,

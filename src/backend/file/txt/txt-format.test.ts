@@ -4,7 +4,7 @@ import path from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { Item } from "../../../domain/item";
+import { create_item } from "../../../domain/item";
 import { TXTFormat } from "./txt-format";
 
 describe("TXTFormat", () => {
@@ -29,7 +29,7 @@ describe("TXTFormat", () => {
     });
     await format.write_to_path(
       [
-        Item.from_json({
+        create_item({
           status: "PROCESSED",
           src: "同文",
           dst: "同文",
@@ -37,7 +37,7 @@ describe("TXTFormat", () => {
           file_type: "TXT",
           file_path: "story/dialog.txt",
         }),
-        Item.from_json({
+        create_item({
           status: "PROCESSED",
           src: "原文",
           dst: "译文",
@@ -69,7 +69,7 @@ describe("TXTFormat", () => {
 
     await format.write_to_path(
       [
-        Item.from_json({
+        create_item({
           status: "PROCESSED",
           src: "原文",
           dst: "译文",
@@ -77,7 +77,7 @@ describe("TXTFormat", () => {
           file_type: "TXT",
           file_path: "script.txt",
         }),
-        Item.from_json({
+        create_item({
           status: "PROCESSED",
           src: "同文",
           dst: "",

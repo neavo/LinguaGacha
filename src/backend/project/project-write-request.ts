@@ -1,5 +1,7 @@
 import type { JsonValue } from "../../domain/json";
-import { Item } from "../../domain/item";
+import { PROJECT_REVISION_SCHEMA } from "../../domain/project-revision";
+import { Check } from "typebox/value";
+import { normalize_item_name_field, normalize_item_status } from "../../domain/item";
 import { is_json_record } from "../../domain/json";
 
 import * as AppErrors from "../../shared/error";
@@ -31,7 +33,7 @@ export function normalize_project_expected_section_revisions(
   }
   const expected: ProjectExpectedSectionRevisions = {};
   for (const [section, revision] of Object.entries(value)) {
-    if (typeof revision !== "number" || !Number.isInteger(revision) || revision < 0) {
+    if (!Check(PROJECT_REVISION_SCHEMA, revision)) {
       throw new AppErrors.AppError("request.validation_failed", {
         diagnostic_context: {
           reason: "invalid_expected_section_revision",
@@ -96,10 +98,10 @@ export function normalize_translation_item_patches(
       patch.dst = raw_item["dst"];
     }
     if (Object.hasOwn(raw_item, "name_dst")) {
-      patch.name_dst = Item.normalize_name_field(raw_item["name_dst"]);
+      patch.name_dst = normalize_item_name_field(raw_item["name_dst"]);
     }
     if (Object.hasOwn(raw_item, "status")) {
-      patch.status = Item.normalize_status(raw_item["status"]);
+      patch.status = normalize_item_status(raw_item["status"]);
     }
     if (Object.keys(patch).length === 0) {
       throw new AppErrors.AppError("runtime.internal_invariant", {

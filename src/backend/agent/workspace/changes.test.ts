@@ -5,11 +5,45 @@ import { afterEach, describe, expect, it } from "vitest";
 import { NativeFs } from "../../../native/native-fs";
 import { prepare_agent_workspace_changes } from "./changes";
 import { AGENT_WORKSPACE_CHANGE_PATHS, AGENT_WORKSPACE_QUALITY_CHANGE_OPERATIONS } from "./paths";
-import { QUALITY_RULE_KINDS } from "../../../domain/quality";
+import { QUALITY_RULE_KINDS, QualityRule } from "../../../domain/quality";
 
 const workspaces: string[] = [];
 
 describe("Agent workspace change parser", () => {
+  it.each(QUALITY_RULE_KINDS)("%s 创建与更新拒绝非法 src，更新仍允许省略 src", async (kind) => {
+    const workspace = create_workspace();
+    const fields = QualityRule.from_json(kind).normalize_entry({ src: "合法" });
+    const invalid_sources = ["", " \t\n\u3000", 12, null, false];
+    write(
+      workspace,
+      AGENT_WORKSPACE_CHANGE_PATHS[kind].creates,
+      [...invalid_sources.map((src) => ({ ...fields, src, sort: -1 })), { ...fields, sort: -1 }]
+        .map((row) => JSON.stringify(row))
+        .join("\n"),
+    );
+    write(
+      workspace,
+      AGENT_WORKSPACE_CHANGE_PATHS[kind].updates,
+      [
+        ...invalid_sources.map((src) => ({ id: "rule", fp: "abcd", src })),
+        { id: "rule", fp: "abcd", sort: -1 },
+        { id: "rule", fp: "abcd", src: " 合法 " },
+      ]
+        .map((row) => JSON.stringify(row))
+        .join("\n"),
+    );
+    const parsed = await prepare_agent_workspace_changes({
+      nativeFs: new NativeFs(),
+      workspacePath: workspace,
+    });
+    expect(parsed.batch.quality[kind].creates).toHaveLength(1);
+    expect(parsed.batch.quality[kind].updates.map((row) => row.fields)).toEqual([
+      {},
+      { src: " 合法 " },
+    ]);
+    expect(parsed.rejected).toHaveLength(invalid_sources.length * 2);
+    expect(parsed.rejected.every((row) => row.reason === "invalid_change")).toBe(true);
+  });
   afterEach(() => {
     for (const workspace of workspaces) fs.rmSync(workspace, { recursive: true, force: true });
     workspaces.length = 0;

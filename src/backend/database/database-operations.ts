@@ -1,5 +1,6 @@
 import { database_error, database_cleanup_error } from "./database-error";
 import type { ProjectPreview } from "../../shared/project-preview";
+import { read_project_revision } from "../../domain/project-revision";
 import { build_project_translation_stats } from "../../shared/project-translation-stats";
 import { build_project_file_paths } from "../../shared/project/project-file-paths";
 import type { PDFDocument, PDFDocumentRecord, PDFPage, PDFSummary } from "../../shared/pdf";
@@ -726,7 +727,7 @@ export class ProjectDatabase {
         continue;
       }
       const key = `project_runtime_revision.${section}`;
-      const current = this.normalize_revision_value(this.get_meta_from_db(db, key, 0));
+      const current = read_project_revision(this.get_meta_from_db(db, key, 0));
       const next = current + 1;
       this.upsert_meta_entries_with_db(db, { [key]: next });
       next_revisions[section] = next;
@@ -740,14 +741,6 @@ export class ProjectDatabase {
   private get_meta_from_db(db: DatabaseSync, key: string, default_value: JsonValue): JsonValue {
     const row = db.prepare("SELECT value FROM meta WHERE key = ?").get(key);
     return row === undefined ? default_value : json_parse(row["value"]);
-  }
-
-  /**
-   * 将旧 revision meta 归一为非负整数基线。
-   */
-  private normalize_revision_value(value: JsonValue): number {
-    const revision = Number(value ?? 0);
-    return Number.isFinite(revision) && revision > 0 ? Math.trunc(revision) : 0;
   }
 
   /**

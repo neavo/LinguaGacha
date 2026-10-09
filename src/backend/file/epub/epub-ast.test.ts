@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { write_zip } from "../../../test/zip-fixture";
 
 import { create_epub_fixture } from "../../../test/epub-fixture";
-import { Item } from "../../../domain/item";
+import { type Item, create_item } from "../../../domain/item";
 import { EpubAst, read_epub_extra } from "./epub-ast";
 
 describe("EpubAst", () => {
@@ -282,7 +282,7 @@ describe("EpubAst", () => {
   it("缺少 EPUB metadata 时返回空 extra", () => {
     expect(
       read_epub_extra(
-        Item.from_json({
+        create_item({
           src: "原文",
           file_type: "TXT",
           file_path: "script.txt",

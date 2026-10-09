@@ -4,7 +4,7 @@ import { read_translation_for_generation } from "../translation-generation-text"
 import { JsonTool } from "../../../shared/utils/json-tool";
 import { decode_text_content } from "../../../shared/utils/text-tool";
 import { group_items, write_text_file, type GeneratedFilePaths } from "../file-format-shared";
-import { Item } from "../../../domain/item";
+import { type Item, create_item } from "../../../domain/item";
 
 /**
  * 键值 JSON 格式把 key 作为原文，value 作为已有译文
@@ -25,7 +25,7 @@ export class KVJSONFormat {
       }
       const dst = value;
       items.push(
-        Item.from_json({
+        create_item({
           src: key,
           dst,
           row: items.length,

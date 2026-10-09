@@ -1,4 +1,4 @@
-import { Item } from "../../../domain/item";
+import type { Item } from "../../../domain/item";
 import { read_json_record } from "../../../domain/json";
 import { parse_document, parse_translate_header } from "./parser";
 import { RenpyExtractor } from "./extractor";
@@ -14,7 +14,7 @@ export function build_items_for_writeback(
   items: Item[],
   extractor = new RenpyExtractor(),
 ): Item[] {
-  const cloned_items = items.map((item) => Item.from_json(item));
+  const cloned_items = structuredClone(items);
   if (cloned_items.length > 0 && cloned_items.every(has_current_ast_extra_field)) {
     return cloned_items;
   }

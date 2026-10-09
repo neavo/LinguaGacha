@@ -4,7 +4,7 @@ import path from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { Item } from "../../../domain/item";
+import { create_item } from "../../../domain/item";
 import { MESSAGEJSONFormat } from "./messagejson-format";
 
 describe("MESSAGEJSONFormat", () => {
@@ -50,7 +50,7 @@ describe("MESSAGEJSONFormat", () => {
 
     await format.write_to_path(
       [
-        Item.from_json({
+        create_item({
           status: "PROCESSED",
           src: "s1",
           dst: "",
@@ -80,7 +80,7 @@ describe("MESSAGEJSONFormat", () => {
     });
     await format.write_to_path(
       [
-        Item.from_json({
+        create_item({
           status: "PROCESSED",
           dst: "m1",
           name_src: "hero",
@@ -89,7 +89,7 @@ describe("MESSAGEJSONFormat", () => {
           file_type: "MESSAGEJSON",
           file_path: "message/a.json",
         }),
-        Item.from_json({
+        create_item({
           status: "PROCESSED",
           dst: "m2",
           name_src: "hero",
@@ -98,7 +98,7 @@ describe("MESSAGEJSONFormat", () => {
           file_type: "MESSAGEJSON",
           file_path: "message/a.json",
         }),
-        Item.from_json({
+        create_item({
           status: "PROCESSED",
           dst: "m2b",
           name_src: "hero",
@@ -107,14 +107,14 @@ describe("MESSAGEJSONFormat", () => {
           file_type: "MESSAGEJSON",
           file_path: "message/a.json",
         }),
-        Item.from_json({
+        create_item({
           status: "PROCESSED",
           dst: "m3",
           row: 3,
           file_type: "MESSAGEJSON",
           file_path: "message/a.json",
         }),
-        Item.from_json({
+        create_item({
           status: "PROCESSED",
           dst: "m4",
           name_src: ["first", "tail"],
@@ -151,7 +151,7 @@ describe("MESSAGEJSONFormat", () => {
 
     await format.write_to_path(
       [
-        Item.from_json({
+        create_item({
           status: "PROCESSED",
           src: "old1",
           dst: "new1",
@@ -161,7 +161,7 @@ describe("MESSAGEJSONFormat", () => {
           file_type: "MESSAGEJSON",
           file_path: "message/a.json",
         }),
-        Item.from_json({
+        create_item({
           status: "PROCESSED",
           src: "old0",
           dst: "new0",

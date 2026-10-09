@@ -1,5 +1,5 @@
 import { read_translation_for_generation } from "../translation-generation-text";
-import { Item } from "../../../domain/item";
+import type { Item } from "../../../domain/item";
 import { read_json_record } from "../../../domain/json";
 import { read_item_name_text, resolve_output_item_name } from "../../../shared/item-name";
 import {
@@ -46,8 +46,7 @@ export class RenpyWriter {
   /**
    * 单条写回先校验模板摘要、目标骨架和字符串数量，校验失败只跳过不猜测替换。
    */
-  public apply_item(lines: string[], raw_item: Item): boolean {
-    const item = Item.from_json(raw_item);
+  public apply_item(lines: string[], item: Item): boolean {
     const extra = this.read_writer_extra(item);
     if (extra === null || extra.template_line <= 0 || extra.target_line <= 0) {
       return false;
