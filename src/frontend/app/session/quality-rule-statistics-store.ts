@@ -11,11 +11,11 @@ export const QUALITY_RULE_STATISTICS_RULE_TYPES = QUALITY_RULE_KINDS;
 // 页面、调度器和 store 共享的质量统计规则窄化类型。
 export type QualityRuleStatisticsRuleType = (typeof QUALITY_RULE_STATISTICS_RULE_TYPES)[number];
 
-// phase 是质量统计缓存唯一的刷新状态源，避免 loose boolean 组合出现不可达中间态。
+// `phase` 是质量统计缓存唯一的刷新状态源。
 export type QualityRuleStatisticsCachePhase = "empty" | "running" | "current" | "failed";
 
 export type QualityRuleStatisticsCacheSnapshot = {
-  phase: QualityRuleStatisticsCachePhase; // 页面刷新、排序可用性和前台补算的唯一判定入口。
+  phase: QualityRuleStatisticsCachePhase; // 页面刷新与前台补算的状态。
   entry_ids: string[] | null; // null 区分尚无结果和已完成的空规则集合。
   hits_by_entry_id: Record<string, number>; // 徽标 hits 的计算结果表。
   subset_parents_by_entry_id: Record<string, string[]>; // 子集关系徽标的计算结果表。
@@ -73,12 +73,17 @@ export function createEmptyQualityRuleStatisticsCacheSnapshot(): QualityRuleStat
 }
 
 /**
- * 页面排序和徽标只能把 current 当成当前项目事实对应的统计结果。
+ * current 表示最近一次统计成功。
  */
 export function isQualityRuleStatisticsCacheReady(
   cache: QualityRuleStatisticsCacheSnapshot,
 ): boolean {
   return cache.phase === "current";
+}
+
+/** 依赖失效会清空结果，刷新失败仍可使用同一工程中已完成的统计。 */
+export function canSortQualityRuleStatistics(cache: QualityRuleStatisticsCacheSnapshot): boolean {
+  return cache.entry_ids !== null;
 }
 
 /**

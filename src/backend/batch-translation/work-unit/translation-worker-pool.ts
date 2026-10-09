@@ -3,12 +3,14 @@ import os from "node:os";
 import { Worker } from "node:worker_threads";
 
 import type { BackendWorkerExecution } from "../../worker/worker-execution";
-import type { TranslationWorkUnit } from "../protocol/work-unit";
-import type { WorkUnitExecutionResult } from "../protocol/work-unit-result";
-import { read_translation_worker_result } from "../protocol/work-unit-result";
+import {
+  read_translation_worker_result,
+  type WorkUnitExecutionResult,
+  type TranslationWorkUnit,
+  type WorkUnitExecutor,
+} from "../protocol/work-unit";
 import type { TranslationRequestPort } from "../protocol/translation-request";
 import { TranslationWorkUnitRunner } from "./runners/translation-runner";
-import type { WorkUnitExecutor } from "./work-unit-executor";
 import { resolve_default_worker_count } from "../../../shared/utils/worker-capacity-tool";
 import { AppError, normalize_log_error, to_log_error, type LogError } from "../../../shared/error";
 import type { WorkUnitWorkerCommand, WorkUnitWorkerEvent } from "./work-unit-worker-protocol";

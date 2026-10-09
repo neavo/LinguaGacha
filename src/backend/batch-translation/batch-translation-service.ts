@@ -1,12 +1,14 @@
 import type { ProjectSessionState } from "../project/project-session-state";
-import type { BatchTranslationRunner } from "./core/batch-translation-runner";
+import type {
+  BatchTranslationRunner,
+  BatchTranslationRunContext,
+} from "./core/batch-translation-runner";
 import type {
   BatchTranslationRuntime,
   BatchTranslationRunHandle,
 } from "./batch-translation-runtime";
 import type { RuntimeLease } from "../runtime-operation-gate";
 import type { AppSettingService } from "../app/app-setting-service";
-import type { BatchTranslationRunContext } from "./core/batch-translation-runner-options";
 import { Model } from "../../domain/model";
 import { normalize_setting_snapshot } from "../../domain/setting";
 import { resolve_model_for_usage } from "../model/model-config-resolver";

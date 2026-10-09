@@ -34,7 +34,7 @@ import type { CacheChange } from "./cache-change";
 import {
   normalize_text_processing_config,
   type TextProcessingConfig,
-} from "../../shared/text/text-types";
+} from "../../shared/text/text-processing";
 
 type ProofreadingCacheKey = {
   projectPath: string;

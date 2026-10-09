@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import type { TextQualitySnapshot } from "../../../shared/text/text-types";
+import type { TextQualitySnapshot } from "../../../shared/text/text-processing";
 import type { TranslationActor, TranslationRequestItem } from "./translation-item";
 import { format_i18n_message } from "../../../shared/i18n";
 import { PromptBuilder } from "./work-unit-prompt-builder";
@@ -71,7 +71,9 @@ describe("PromptBuilder", () => {
         target_language: "ZH",
       },
       create_quality_snapshot({
-        glossary_entries: [{ src: "Alice", dst: "爱丽丝", info: "女性人名" }],
+        glossary_entries: [
+          { src: "Alice", dst: "爱丽丝", info: "女性人名", case_sensitive: false },
+        ],
       }),
       [
         {
@@ -159,7 +161,7 @@ describe("PromptBuilder", () => {
       { app_language: "EN", target_language: "EN" },
       create_quality_snapshot({
         glossary_entries: [
-          { src: "ABC", dst: "甲", case_sensitive: true },
+          { src: "ABC", dst: "甲", info: "", case_sensitive: true },
           { src: "foo", dst: "乙", info: "备注", case_sensitive: false },
         ],
       }),
@@ -313,7 +315,7 @@ function create_quality_snapshot(
   return {
     glossary_enable: true,
     glossary_entries: [],
-    text_preserve_mode: "OFF",
+    text_preserve_mode: "off",
     text_preserve_entries: [],
     pre_replacement_enable: false,
     pre_replacement_entries: [],

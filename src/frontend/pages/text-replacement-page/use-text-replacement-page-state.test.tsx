@@ -26,7 +26,7 @@ vi.mock("@frontend/app/navigation/navigation-context", () => ({
     push_proofreading_lookup_intent: vi.fn(),
   }),
 }));
-const statistics = createEmptyQualityRuleStatisticsCacheSnapshot();
+let statistics = createEmptyQualityRuleStatisticsCacheSnapshot();
 vi.mock("@frontend/app/session/quality-rule-statistics-context", () => ({
   useQualityRuleStatistics: () => statistics,
 }));
@@ -99,6 +99,7 @@ it.each(["pre", "post"] as const)(
           throw new Error("Unexpected route: " + route);
       }
     });
+
     let state!: ReturnType<typeof useTextReplacementPageState>;
     /** 直接观察页面公开结果，异步查询由 React act 等待。 */
     function Probe() {
@@ -130,3 +131,73 @@ it.each(["pre", "post"] as const)(
     }
   },
 );
+
+it("保留命中排序意图，按替换文本筛选并按规则组合排序", async () => {
+  const variant = "pre";
+  statistics = createEmptyQualityRuleStatisticsCacheSnapshot();
+  const entries: TextReplacementEntry[] = [
+    { entry_id: "regex", src: "A", dst: "keep", regex: true, case_sensitive: false },
+    { entry_id: "case", src: "B", dst: "keep", regex: false, case_sensitive: true },
+    { entry_id: "plain", src: "C", dst: "keep", regex: false, case_sensitive: false },
+    { entry_id: "excluded", src: "keep", dst: "other", regex: false, case_sensitive: false },
+  ];
+  api.mockReset();
+  api.mockResolvedValue({
+    projectPath: project.path,
+    sectionRevisions: { quality: 1 },
+    qualityRule: { enabled: true, mode: "custom", entries, revision: 1 },
+  });
+  let state!: ReturnType<typeof useTextReplacementPageState>;
+  /** 观察替换页对公共筛选与统计排序的接入。 */
+  function Probe() {
+    state = useTextReplacementPageState(variant);
+    return null;
+  }
+  const root = createRoot(document.createElement("div"));
+  const render = () =>
+    act(async () =>
+      root.render(
+        <ProjectSessionUiStateProvider>
+          <Probe />
+        </ProjectSessionUiStateProvider>,
+      ),
+    );
+  try {
+    await render();
+    await act(async () =>
+      state.table.apply_filter(
+        { keyword: "keep", scope: "dst", is_regex: false },
+        { column_id: "rule", direction: "ascending" },
+      ),
+    );
+    expect(state.table.filtered_entries.map((row) => row.entry_id)).toEqual([
+      "plain",
+      "case",
+      "regex",
+    ]);
+    const sort = { column_id: "hit", direction: "descending" } as const;
+    await act(async () => state.table.apply_table_sort_state(sort));
+    expect(state.table.sort_state).toEqual(sort);
+    expect(state.table.filtered_entries.map((row) => row.entry_id)).toEqual([
+      "regex",
+      "case",
+      "plain",
+    ]);
+    statistics = {
+      ...statistics,
+      phase: "failed",
+      entry_ids: entries.map((entry) => entry.entry_id),
+      hits_by_entry_id: { regex: 1, case: 5, plain: 3 },
+    };
+    await render();
+    expect(state.hit_sort_available).toBe(true);
+    expect(state.table.filtered_entries.map((row) => row.entry_id)).toEqual([
+      "case",
+      "plain",
+      "regex",
+    ]);
+  } finally {
+    await act(async () => root.unmount());
+    statistics = createEmptyQualityRuleStatisticsCacheSnapshot();
+  }
+});

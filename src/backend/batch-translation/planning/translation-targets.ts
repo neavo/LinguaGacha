@@ -1,5 +1,5 @@
 import type { BatchTranslationStartCommand } from "../../../domain/batch-translation";
-import type { TextTaskItemRecord } from "../../../shared/text/text-types";
+import type { TextTaskItemRecord } from "../../../shared/text/text-processing";
 import { AppError } from "../../../shared/error";
 import { read_task_item_id, read_task_item_status } from "../translation-item";
 

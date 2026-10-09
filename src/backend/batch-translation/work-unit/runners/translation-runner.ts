@@ -1,11 +1,11 @@
 import type { JsonValue } from "../../../../domain/json";
 import { read_json_record } from "../../../../domain/json";
 import {
-  TextProcessingConfigTool,
+  read_text_processing_config,
   type TextProcessingConfig,
   type TextQualitySnapshot,
   type TextTaskItemRecord,
-} from "../../../../shared/text/text-types";
+} from "../../../../shared/text/text-processing";
 import { read_item_source_text_parts } from "../../../../shared/item-text";
 import {
   compile_glossary,
@@ -29,12 +29,18 @@ import {
   type TranslationRequestItem,
 } from "../translation-item";
 import { PromptBuilder, type PromptBuilderConfig } from "../work-unit-prompt-builder";
-import { split_translation_response } from "../response/split-translation-response";
-import { ResponseDecoder } from "../response/response-decoder";
+import {
+  split_translation_response,
+  decode_sakura,
+  decode_translation,
+} from "../response/response-decoder";
 import type { LLMRequestResult } from "../../../llm/llm-types";
 import type { TranslationRequestPort } from "../../protocol/translation-request";
-import type { TranslationWorkUnit, WorkUnitLogEntry } from "../../protocol/work-unit";
-import type { WorkUnitExecutionResult } from "../../protocol/work-unit-result";
+import type {
+  TranslationWorkUnit,
+  WorkUnitLogEntry,
+  WorkUnitExecutionResult,
+} from "../../protocol/work-unit";
 import type { LogError } from "../../../../shared/error";
 
 /** 根据公开 work-unit 载荷重建的 worker 本地不可变请求信封。 */
@@ -106,7 +112,7 @@ export class TranslationWorkUnitRunner {
     request: TranslationWorkUnitRequest,
     signal: AbortSignal,
   ): Promise<TranslationWorkUnitResult> {
-    const config = TextProcessingConfigTool.from_api_value(request.config_snapshot);
+    const config = read_text_processing_config(request.config_snapshot);
     const quality = request.quality_snapshot;
     const items = structuredClone(request.items);
     const precedings = structuredClone(request.precedings);
@@ -152,12 +158,11 @@ export class TranslationWorkUnitRunner {
         : is_sakura
           ? { translation_text: response.response_result, rule_analysis_text: "" }
           : split_translation_response(response.response_result);
-      const decoder = new ResponseDecoder();
       const decoded = failed
         ? []
         : is_sakura
-          ? decoder.decode_sakura(parts.translation_text, request_items)
-          : await decoder.decode_translation(parts.translation_text, mode);
+          ? decode_sakura(parts.translation_text, request_items)
+          : await decode_translation(parts.translation_text, mode);
       const valid = this.read_valid_results(request_items, prepared.pipeline_contexts, decoded);
       const by_id = new Map(valid.map((item) => [item.request_id, item]));
       result.logs.push(

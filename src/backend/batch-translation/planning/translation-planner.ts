@@ -1,4 +1,4 @@
-import type { TextTaskItemRecord } from "../../../shared/text/text-types";
+import type { TextTaskItemRecord } from "../../../shared/text/text-processing";
 import crypto from "node:crypto";
 import { read_item_source_text_parts } from "../../../shared/item-text";
 

@@ -4,7 +4,7 @@ import {
   type TextPreserveEntry,
   type TextReplacementEntry,
 } from "../../domain/quality";
-import type { QualitySnapshot } from "../quality/quality-rule-snapshot";
+import type { QualitySnapshot } from "../quality/quality-rule-state";
 import type {
   ProofreadingEvaluation,
   ProofreadingItemRecord,
@@ -22,7 +22,7 @@ import {
   type CompiledTextReplacements,
 } from "../text/text-replacement-rules";
 import { prepare_translation_source } from "../text/translation-source";
-import type { TextProcessingConfig } from "../text/text-types";
+import type { TextProcessingConfig } from "../text/text-processing";
 import {
   collect_foreign_residue_fragments,
   has_translation_similarity_issue,

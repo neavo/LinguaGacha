@@ -33,4 +33,4 @@ export type TextReplacementHitBadgeState = {
 };
 
 export type TextReplacementVisibleEntry =
-  import("@frontend/features/quality-rule-editor/use-quality-rule-table").QualityRuleVisibleEntry<TextReplacementEntry>;
+  import("@frontend/features/quality-rule-editor/quality-rule-filtering").QualityRuleVisibleEntry<TextReplacementEntry>;

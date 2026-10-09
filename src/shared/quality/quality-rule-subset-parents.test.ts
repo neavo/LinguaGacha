@@ -7,6 +7,7 @@ describe("find_quality_rule_subset_parents", () => {
     const result = find_quality_rule_subset_parents([
       { entry_id: "erin", src: "艾琳", pattern_kind: "literal", case_sensitive: true },
       { entry_id: "saint", src: "圣女艾琳", pattern_kind: "literal", case_sensitive: true },
+      { entry_id: "duplicate", src: "圣女艾琳", pattern_kind: "literal", case_sensitive: true },
       { entry_id: "captain", src: "舰长艾琳", pattern_kind: "literal", case_sensitive: true },
       { entry_id: "child", src: "JK", pattern_kind: "literal", case_sensitive: true },
       { entry_id: "case-only", src: "Xｊｋ", pattern_kind: "literal", case_sensitive: true },

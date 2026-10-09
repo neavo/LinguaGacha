@@ -25,7 +25,7 @@ type TextReplacementTableProps = {
   sort_state: AppTableSortState | null;
   reorder_disabled: boolean;
   hit_running: boolean;
-  hit_ready: boolean;
+  hit_sort_available: boolean;
   readonly: boolean;
   selected_entry_ids: TextReplacementEntryId[];
   active_entry_id: TextReplacementEntryId | null;
@@ -160,7 +160,7 @@ export function TextReplacementTable(props: TextReplacementTableProps): JSX.Elem
         width: 120,
         align: "center",
         sortable: {
-          disabled: !props.hit_ready,
+          disabled: !props.hit_sort_available,
         },
         head_class_name: "text-replacement-page__table-hit-head",
         cell_class_name: "text-replacement-page__table-hit-cell",
@@ -185,7 +185,7 @@ export function TextReplacementTable(props: TextReplacementTableProps): JSX.Elem
     props.on_query_entry_source,
     props.on_search_entry_relations,
     props.hit_badge_by_entry_id,
-    props.hit_ready,
+    props.hit_sort_available,
     props.hit_running,
     t,
   ]);

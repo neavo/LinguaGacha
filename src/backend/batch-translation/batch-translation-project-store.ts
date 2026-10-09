@@ -1,4 +1,3 @@
-import type { TextTaskItemRecord } from "../../shared/text/text-types";
 import type { BatchTranslationProgress } from "../../domain/batch-translation";
 
 import { normalize_batch_translation_progress } from "../../domain/batch-translation";
@@ -7,7 +6,11 @@ import { ProjectDatabase } from "../database/database-operations";
 import { ProjectWriteStore, type ProjectWriteSectionAck } from "../project/project-write-store";
 import { ProjectSessionState } from "../project/project-session-state";
 import { normalize_translation_item_patches } from "../project/project-write-request";
-import { TextQualitySnapshotTool, type TextQualitySnapshot } from "../../shared/text/text-types";
+import {
+  read_text_quality_snapshot,
+  type TextQualitySnapshot,
+  type TextTaskItemRecord,
+} from "../../shared/text/text-processing";
 
 /**
  * 项目任务存储端口，是 BatchTranslationRunner 读写项目任务事实的唯一内部入口
@@ -35,7 +38,7 @@ export class BatchTranslationProjectStore {
    * 任务启动时读取后端热缓存中的质量规则和提示词快照
    */
   public build_quality_snapshot(): TextQualitySnapshot {
-    return TextQualitySnapshotTool.from_api_value({
+    return read_text_quality_snapshot({
       quality: this.cache.quality.readBlock(),
       prompts: this.cache.prompts.readBlock(),
     });

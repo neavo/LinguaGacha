@@ -7,7 +7,7 @@ import {
   type ProofreadingFileSelection,
   clone_proofreading_file_selection,
 } from "./proofreading-types";
-import type { QualitySnapshot } from "../quality/quality-rule-snapshot";
+import type { QualitySnapshot } from "../quality/quality-rule-state";
 import {
   PROOFREADING_WARNING_CODES,
   PROOFREADING_OUTCOME_GROUPS,
@@ -42,7 +42,7 @@ import { AppError } from "../error";
 import type { ProjectChangeItemFieldPatch } from "../project-event";
 import { apply_project_item_field_patch } from "../project/project-item-update";
 import type { TextPreserveRule } from "../text/text-preserve-rules";
-import type { TextProcessingConfig } from "../text/text-types";
+import type { TextProcessingConfig } from "../text/text-processing";
 import { create_text_keywords_matcher, type TextKeywordsMatcher } from "../text/text-pattern";
 import type { ProofreadingSortState } from "./list";
 import {

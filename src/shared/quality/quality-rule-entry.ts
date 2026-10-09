@@ -3,13 +3,11 @@ import {
   type QualityRuleKind,
   type QualityRuleEntryByKind,
   type QualityRuleEntry,
-  type QualityRuleGlossaryEntry,
   type TextPreserveEntry,
   type TextReplacementEntry,
 } from "../../domain/quality";
 import { compile_text_replacements } from "../text/text-replacement-rules";
 import { build_text_preserve_rule } from "../text/text-preserve-rules";
-import { compile_glossary } from "./glossary";
 import { random_id } from "../utils/identifier";
 
 const QUALITY_RULE_ENTRY_ID_LENGTH = 6;
@@ -73,7 +71,6 @@ function validate_quality_rule_entries(
     entry_ids.add(entry.entry_id);
   }
   if (rule.kind === "glossary") {
-    compile_glossary(entries as QualityRuleGlossaryEntry[]);
     return entries;
   }
   try {

@@ -27,7 +27,7 @@ vi.mock("@frontend/app/navigation/navigation-context", () => ({
     push_proofreading_lookup_intent: vi.fn(),
   }),
 }));
-const statistics = createEmptyQualityRuleStatisticsCacheSnapshot();
+let statistics = createEmptyQualityRuleStatisticsCacheSnapshot();
 vi.mock("@frontend/app/session/quality-rule-statistics-context", () => ({
   useQualityRuleStatistics: () => statistics,
 }));
@@ -60,6 +60,7 @@ function Probe() {
   return null;
 }
 beforeEach(async () => {
+  statistics = createEmptyQualityRuleStatisticsCacheSnapshot();
   let mode = "custom";
   let revision = 1;
   release = Promise.withResolvers<void>();
@@ -146,4 +147,43 @@ it("非法转义阻止保存，修改备注保留错误，修正规则清除错�
   expect(state.editing.dialog_state.invalid).toBe(true);
   await act(async () => state.editing.update_dialog_draft({ src: "valid" }));
   expect(state.editing.dialog_state.invalid).toBe(false);
+});
+
+it("按备注筛选，统计未到达和失败时保留命中排序选择", async () => {
+  api.mockResolvedValueOnce({
+    projectPath: project.path,
+    sectionRevisions: { quality: 2 },
+    qualityRule: {
+      mode: "custom",
+      enabled: true,
+      revision: 2,
+      entries: [
+        { entry_id: "a", src: "A", info: "keep" },
+        { entry_id: "b", src: "B", info: "keep" },
+        { entry_id: "c", src: "keep", info: "other" },
+      ],
+    },
+  });
+  await act(async () => state.reload_quality_rule_snapshot());
+  const sort = { column_id: "hit", direction: "descending" } as const;
+  await act(async () =>
+    state.table.apply_filter({ keyword: "keep", scope: "info", is_regex: false }, sort),
+  );
+  expect(state.table.sort_state).toEqual(sort);
+  expect(state.table.filtered_entries.map((row) => row.entry_id)).toEqual(["a", "b"]);
+  statistics = {
+    ...statistics,
+    phase: "failed",
+    entry_ids: ["a", "b", "c"],
+    hits_by_entry_id: { a: 1, b: 3, c: 10 },
+  };
+  await act(async () =>
+    root.render(
+      <ProjectSessionUiStateProvider>
+        <Probe />
+      </ProjectSessionUiStateProvider>,
+    ),
+  );
+  expect(state.hit_sort_available).toBe(true);
+  expect(state.table.filtered_entries.map((row) => row.entry_id)).toEqual(["b", "a"]);
 });
