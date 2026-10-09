@@ -9,6 +9,7 @@ import {
   evaluateProofreadingSlice,
   type ProofreadingSyncInput,
 } from "../../shared/proofreading/proofreading-reader";
+import { build_project_committed_change } from "../project/project-committed-change";
 import { CacheManager } from "./cache-manager";
 import { build_proofreading_page_row_id } from "../../shared/proofreading/proofreading-types";
 
@@ -65,6 +66,7 @@ function create_database(
   });
   const get_rule_text = vi.fn(() => "");
   return {
+    with_project_scope: <T>(_project: string, callback: () => T): T => callback(),
     read_pdf_summaries: () => ({}),
     read_pdf_documents: vi.fn(() => []),
     get_all_meta: vi.fn(() => options.meta ?? {}),
@@ -226,14 +228,19 @@ describe("CacheManager", () => {
       { path: "a.txt", sort_order: 1 },
       { path: "b.txt", sort_order: 2 },
     ]);
-    await cache.handleProjectEvent({
-      type: "project.items.changed",
-      projectPath: "E:/Project/demo.lg",
-      source: "project_reorder_files",
-      affectedSections: ["files"],
+    await cache.applyCommittedChange({
+      ...build_project_committed_change(
+        database,
+        {
+          projectPath: "E:/Project/demo.lg",
+          source: "project_reorder_files",
+          updatedSections: ["files"],
+        },
+        database.get_all_meta("E:/Project/demo.lg"),
+        undefined,
+        cache.items.readFileMetadata(),
+      ),
       sectionRevisions: { files: 1 },
-      files: { payloadMode: "section-invalidated" },
-      scope: "items-full",
     });
     const updated = await cache.proofreading.sync({});
     expect(updated.data.files.map((file) => file.file_path)).toEqual([
@@ -261,17 +268,11 @@ describe("CacheManager", () => {
     expect(worker.run).toHaveBeenCalledTimes(1);
   });
 
-  it("unload 事件只清理当前工程缓存", async () => {
+  it("卸载清理当前工程缓存", async () => {
     const cache = create_cache({ database: create_database({ items: [create_item()] }) });
     await cache.warmProject("E:/Project/demo.lg");
 
-    await cache.handleProjectEvent({
-      type: "project.unloaded",
-      projectPath: "E:/Project/demo.lg",
-      source: "project_lifecycle",
-      affectedSections: [],
-      sectionRevisions: {},
-    });
+    cache.clearProject("E:/Project/demo.lg");
 
     expect(cache.snapshot()).toMatchObject({
       projectPath: "",
@@ -288,18 +289,34 @@ describe("CacheManager", () => {
     const log_manager = { warning: vi.fn(), error: vi.fn() };
     const cache = create_cache({ database, logManager: log_manager });
     await cache.warmProject("E:/Project/demo.lg");
-    database.get_all_items.mockImplementation(() => {
-      throw new Error("items 读取失败");
+    const meta = {
+      "project_runtime_revision.items": 2,
+      "quality_rule_revision.glossary": 3,
+      "quality_prompt_revision.translation": 4,
+    };
+    vi.spyOn(database, "get_all_meta").mockReturnValue(meta);
+    database.get_rule_text.mockReturnValue("新提示词");
+    vi.spyOn(cache.proofreading, "applyChange").mockImplementationOnce(async () => {
+      expect(cache.readSectionRevisions()).toMatchObject({ items: 2, quality: 3, prompts: 4 });
+      expect(cache.prompts.readBlock().translation.text).toBe("新提示词");
+      expect(cache.quality.readBlock().glossary.revision).toBe(3);
+      throw new Error("view failed");
     });
 
-    await cache.handleProjectEvent({
-      type: "project.items.changed",
-      projectPath: "E:/Project/demo.lg",
-      source: "project_write",
-      affectedSections: ["items"],
-      sectionRevisions: { items: 2 },
-      scope: "items-full",
-    });
+    await expect(
+      cache.applyCommittedChange({
+        ...build_project_committed_change(
+          database,
+          {
+            projectPath: "E:/Project/demo.lg",
+            source: "project_write",
+            updatedSections: ["items", "quality", "prompts"],
+          },
+          meta,
+        ),
+        sectionRevisions: { items: 2, quality: 3, prompts: 4 },
+      }),
+    ).rejects.toThrow("view failed");
 
     expect(cache.snapshot().freshness).toBe("recoverable_error");
     expect(log_manager.warning).toHaveBeenCalled();
@@ -307,10 +324,15 @@ describe("CacheManager", () => {
     database.get_all_items.mockReturnValue([create_item({ id: 2, src: "こんばんは" })]);
 
     expect(cache.items.readItem(2)).toEqual(expect.objectContaining({ src: "こんばんは" }));
-    expect(cache.snapshot()).toMatchObject({ freshness: "fresh", itemCount: 1 });
+    expect(cache.snapshot()).toMatchObject({
+      freshness: "fresh",
+      itemCount: 1,
+      sectionRevisions: { items: 2, quality: 3, prompts: 4 },
+    });
+    expect(cache.prompts.readBlock().translation.text).toBe("新提示词");
   });
 
-  it("items partial 事件只回读变化条目并更新基础缓存", async () => {
+  it("提交快照只读取变化条目并更新基础缓存", async () => {
     const items = [
       create_item({ id: 1, src: "こんにちは", dst: "" }),
       create_item({ id: 2, src: "こんばんは", dst: "" }),
@@ -327,20 +349,23 @@ describe("CacheManager", () => {
     database.get_rule_text.mockClear();
     items[0] = create_item({ id: 1, src: "こんにちは", dst: "你好" });
 
-    await cache.handleProjectEvent({
-      type: "project.items.changed",
-      projectPath: "E:/Project/demo.lg",
-      source: "translation_commit",
-      affectedSections: ["items"],
+    await cache.applyCommittedChange({
+      ...build_project_committed_change(
+        database,
+        {
+          projectPath: "E:/Project/demo.lg",
+          source: "translation_commit",
+          updatedSections: ["items"],
+          changedItemIds: [1],
+        },
+        database.get_all_meta("E:/Project/demo.lg"),
+      ),
       sectionRevisions: { items: 2 },
-      items: { payloadMode: "canonical-delta", changedIds: [1] },
-      scope: "items-partial",
     });
 
     expect(cache.snapshot()).toMatchObject({
       freshness: "fresh",
       itemCount: 2,
-      sectionRevisions: { items: 2 },
     });
     expect(cache.items.readItem(1)).toEqual(expect.objectContaining({ dst: "你好" }));
     expect(cache.items.readItem(2)).toEqual(expect.objectContaining({ src: "こんばんは" }));

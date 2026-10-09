@@ -5,23 +5,15 @@ import {
 import { build_project_file_records } from "./project-file-records";
 import type { JsonRecord, JsonValue } from "../../domain/json";
 import { ProjectDatabase } from "../database/database-operations";
-import {
-  TRANSLATION_PROMPT,
-  create_empty_project_prompts,
-  type ProjectPrompts,
-} from "../../domain/prompt";
+import { TRANSLATION_PROMPT, type ProjectPrompts } from "../../domain/prompt";
 import { QualityRule, type QualityRuleKind } from "../../domain/quality";
 import {
   collect_project_item_missing_public_fields,
   normalize_project_item_public_record,
   type ProjectItemPublicRecord,
 } from "../../domain/item";
-import { is_json_record, read_json_integer, read_json_record } from "../../domain/json";
-import {
-  isProjectDataSection,
-  PROJECT_DATA_SECTIONS,
-  type ProjectDataSection,
-} from "../../shared/project-event";
+import { read_json_integer } from "../../domain/json";
+import { PROJECT_DATA_SECTIONS, type ProjectDataSection } from "../../shared/project-event";
 import * as AppErrors from "../../shared/error";
 import { normalize_quality_rule_entries } from "../../shared/quality/quality-rule-entry";
 import { read_project_revision } from "../../domain/project-revision";
@@ -80,11 +72,6 @@ export type ProjectDataItemsSnapshot = {
 };
 
 /**
- * 懒读取入口把大 section 读取限制在真正需要 items 事实的分支
- */
-type ProjectDataItemsSnapshotReader = () => ProjectDataItemsSnapshot;
-
-/**
  * 项目运行态读取服务统一从 `.lg` 事实生成公开 project data block，不持有长期缓存
  */
 export class ProjectDataReader {
@@ -119,45 +106,6 @@ export class ProjectDataReader {
     };
   }
 
-  /**
-   * 按需读取 section 时直接返回公开变更可消费形状，避免渲染进程另建解码层
-   */
-  public build_section_payloads(args: {
-    projectState: { loaded: boolean; projectPath: string };
-    sections: ProjectDataSection[];
-  }): JsonRecord {
-    const project_path = args.projectState.loaded ? args.projectState.projectPath : "";
-    const meta = project_path === "" ? {} : this.get_all_meta(project_path);
-    let items_snapshot: ProjectDataItemsSnapshot | null = null;
-    const read_items_snapshot = (): ProjectDataItemsSnapshot => {
-      if (items_snapshot === null) {
-        // 同一次 section 组装最多读取一次 items，避免 files/items 同取时重复扫表
-        items_snapshot =
-          project_path === ""
-            ? this.empty_items_snapshot()
-            : this.build_runtime_items_snapshot(project_path);
-      }
-      return items_snapshot;
-    };
-    const sections: JsonRecord = {};
-    for (const section of args.sections.filter(isProjectDataSection)) {
-      sections[section] = this.build_store_section_payload({
-        section,
-        projectState: args.projectState,
-        projectPath: project_path,
-        meta,
-        readItemsSnapshot: read_items_snapshot,
-      }) as unknown as JsonValue;
-    }
-    const section_revisions = this.build_section_revisions(meta);
-    return {
-      projectPath: project_path,
-      sections,
-      projectRevision: Math.max(...Object.values(section_revisions), 0),
-      sectionRevisions: section_revisions as unknown as JsonValue,
-    };
-  }
-
   /** 校对按 pdf revision 补读页面，正文只进入后端查询运行态。 */
   public read_pdf_documents(project_path: string) {
     return this.database.read_pdf_documents(project_path);
@@ -180,23 +128,6 @@ export class ProjectDataReader {
   }
 
   /**
-   * items section 使用 item_id map，保持公开变更可直接消费
-   */
-  public build_items_record_block(
-    project_path: string,
-    snapshot = this.build_runtime_items_snapshot(project_path),
-  ): JsonRecord {
-    const items: JsonRecord = {};
-    for (const record of snapshot.item_records) {
-      const item_id = String(record["item_id"] ?? "").trim();
-      if (item_id !== "") {
-        items[item_id] = record;
-      }
-    }
-    return items;
-  }
-
-  /**
    * 行级规范化增量只回读指定 item，避免小变更退化成完整 items 替换
    */
   public build_item_records_by_ids(
@@ -204,11 +135,7 @@ export class ProjectDataReader {
     item_ids: number[],
   ): ProjectItemPublicRecord[] {
     const value = this.database.get_items_by_ids(project_path, item_ids);
-    return Array.isArray(value)
-      ? value
-          .filter((item): item is JsonRecord => is_json_record(item))
-          .map((item) => this.normalize_item_record(item))
-      : [];
+    return value.map((item) => this.normalize_item_record(item));
   }
 
   /**
@@ -237,15 +164,6 @@ export class ProjectDataReader {
   }
 
   /**
-   * proofreading block 目前只需要 revision，真实条目事实仍由 items block 表达
-   */
-  public build_proofreading_block(meta: JsonRecord): JsonRecord {
-    return {
-      revision: get_section_revision(meta, "proofreading"),
-    };
-  }
-
-  /**
    * 公开 section revisions 统一从 meta 解析，避免读取接口与写入结果口径分叉
    */
   public build_section_revisions(meta: JsonRecord): Record<ProjectDataSection, number> {
@@ -258,7 +176,7 @@ export class ProjectDataReader {
   public build_runtime_items_snapshot(project_path: string): ProjectDataItemsSnapshot {
     const item_records: ProjectItemPublicRecord[] = [];
     const file_paths = new Set<string>();
-    for (const item of this.get_all_items(project_path)) {
+    for (const item of this.database.get_all_items(project_path)) {
       const record = this.normalize_item_record(item);
       item_records.push(record);
       const file_path = String(record["file_path"] ?? "");
@@ -270,17 +188,10 @@ export class ProjectDataReader {
   }
 
   /**
-   * 未加载工程使用空快照，避免读取路径触碰空 projectPath 的数据库
-   */
-  public empty_items_snapshot(): ProjectDataItemsSnapshot {
-    return { item_records: [], file_paths: new Set() };
-  }
-
-  /**
    * meta 是 revision 与运行态 extras 的共同来源，读取后只在本次请求内复用
    */
   public get_all_meta(project_path: string): JsonRecord {
-    return { ...read_json_record(this.database.get_all_meta(project_path)) };
+    return this.database.get_all_meta(project_path);
   }
 
   /**
@@ -316,44 +227,6 @@ export class ProjectDataReader {
   }
 
   /**
-   * section 读取统一在读取层转成渲染进程 store 的公开形状
-   */
-  private build_store_section_payload(args: {
-    section: ProjectDataSection;
-    projectState: { loaded: boolean; projectPath: string };
-    projectPath: string;
-    meta: JsonRecord;
-    readItemsSnapshot: ProjectDataItemsSnapshotReader;
-  }): JsonRecord {
-    if (args.section === "project") {
-      return {
-        path: args.projectState.projectPath,
-        loaded: args.projectState.loaded,
-      };
-    }
-    if (args.section === "files") {
-      return this.build_files_record_block(args.projectPath, args.readItemsSnapshot().item_records);
-    }
-    if (args.section === "items") {
-      return this.build_items_record_block(args.projectPath, args.readItemsSnapshot());
-    }
-    if (args.section === "pdf")
-      return args.projectPath === "" ? {} : this.database.read_pdf_summaries(args.projectPath);
-    if (args.section === "quality") {
-      return args.projectPath === ""
-        ? create_empty_quality_rule_block()
-        : this.build_quality_block(args.projectPath, args.meta);
-    }
-    if (args.section === "prompts") {
-      return args.projectPath === ""
-        ? create_empty_project_prompts()
-        : this.build_prompts_block(args.projectPath, args.meta);
-    }
-
-    return this.build_proofreading_block(args.meta);
-  }
-
-  /**
    * 单个质量规则切片同时收口 entries、meta 与 revision，避免 UI 侧自行拼接
    */
   private build_quality_rule_slice<K extends QualityRuleKind>(
@@ -378,18 +251,6 @@ export class ProjectDataReader {
           : rule.normalize_mode(meta[rule.mode_meta_key]),
       revision: get_section_revision(meta, "quality"),
     };
-  }
-
-  /**
-   * 读取全部 item 仍只通过 ProjectDatabase workflow，保持 SQL 落点集中
-   */
-  private get_all_items(project_path: string): JsonRecord[] {
-    const value = this.database.get_all_items(project_path);
-    return Array.isArray(value)
-      ? value
-          .filter((item): item is JsonRecord => is_json_record(item))
-          .map((item) => ({ ...item }))
-      : [];
   }
 
   /**

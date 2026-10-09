@@ -1,5 +1,4 @@
-import type { JsonRecord, JsonValue, MutableJsonRecord } from "../../domain/json";
-import { ProjectDatabase } from "../database/database-operations";
+import type { JsonRecord, JsonValue } from "../../domain/json";
 import { ProjectWriteStore } from "../project/project-write-store";
 import type { RuntimeOperationGate } from "../runtime-operation-gate";
 import { ProjectSessionState } from "../project/project-session-state";
@@ -8,11 +7,7 @@ import {
   type ProjectExpectedSectionRevisions,
   type ProjectItemWriteChange,
 } from "../project/project-write-request";
-import {
-  is_item_manual_status,
-  type ItemManualStatus,
-  normalize_item_name_field,
-} from "../../domain/item";
+import { is_item_manual_status, type ItemManualStatus } from "../../domain/item";
 import { is_json_record } from "../../domain/json";
 import type { ProjectChangeItemFieldPatch, ProjectWriteResult } from "../../shared/project-event";
 import { read_item_name_text } from "../../shared/item-name";
@@ -20,7 +15,6 @@ import {
   apply_project_item_manual_update,
   apply_project_item_field_patch,
   type ProjectItemManualUpdate,
-  type ProjectItemWriteFields,
 } from "../../shared/project/project-item-update";
 import { compile_text_pattern, replace_text_pattern } from "../../shared/text/text-pattern";
 import * as AppErrors from "../../shared/error";
@@ -35,8 +29,6 @@ const DEFAULT_PROOFREADING_UPDATE_SOURCE = "proofreading_apply_item_changes";
  * 承载校对同步写入口，把客户端命令转换为后端项目事实。
  */
 export class ProofreadingService {
-  private readonly database: ProjectDatabase; // 校对同步保存直接写 .lg，但仍只能通过 ProjectDatabase workflow 触达数据库
-
   private readonly runtime_gate: RuntimeOperationGate; // 用户与 Agent 写入口共享串行门禁
 
   private readonly session_state: ProjectSessionState; // 校对同步写入口只以公开会话状态定位当前工程
@@ -47,12 +39,10 @@ export class ProofreadingService {
    * 注入数据库与运行时桥，保证写库和读侧缓存同步都可被测试替换
    */
   public constructor(
-    database: ProjectDatabase,
     runtime_gate: RuntimeOperationGate,
     session_state: ProjectSessionState,
     write_store: ProjectWriteStore,
   ) {
-    this.database = database;
     this.runtime_gate = runtime_gate;
     this.session_state = session_state;
     this.write_store = write_store;
@@ -76,27 +66,26 @@ export class ProofreadingService {
     const project_path = this.session_state.require_loaded_project_path();
     const expected_section_revisions = this.prepare_write_context(request);
     const updates = this.normalize_item_updates(request["changes"]);
-    const current_by_id = this.get_item_write_facts_by_ids(
-      project_path,
-      updates.map((update) => update.item_id),
-    );
-    const changes: ProjectItemWriteChange[] = [];
-    for (const update of updates) {
-      const current = current_by_id.get(update.item_id);
-      if (current === undefined) {
-        throw new AppErrors.AppError("request.validation_failed", {
-          diagnostic_context: { reason: "item_not_found", item_id: update.item_id },
-        });
-      }
-      const next = apply_project_item_manual_update(current, update);
-      if (next !== null) changes.push({ item_id: update.item_id, current, next });
-    }
-    return await this.persist_changed_items(
-      project_path,
-      expected_section_revisions,
-      changes,
+    return await this.write_store.apply_project_item_changes({
+      projectPath: project_path,
+      expectedSectionRevisions: expected_section_revisions,
       source,
-    );
+      itemIds: updates.map((update) => update.item_id),
+      prepareChanges: (current_by_id) => {
+        const changes: ProjectItemWriteChange[] = [];
+        for (const update of updates) {
+          const current = current_by_id.get(update.item_id);
+          if (current === undefined) {
+            throw new AppErrors.AppError("request.validation_failed", {
+              diagnostic_context: { reason: "item_not_found", item_id: update.item_id },
+            });
+          }
+          const next = apply_project_item_manual_update(current, update);
+          if (next !== null) changes.push({ item_id: update.item_id, current, next });
+        }
+        return changes;
+      },
+    });
   }
 
   /**
@@ -123,34 +112,41 @@ export class ProofreadingService {
     if (pattern === null) {
       return { accepted: true, changes: [] };
     }
-    const current_by_id = this.get_items_by_ids(project_path, item_ids);
-    const changes: ProjectItemWriteChange[] = [];
-    for (const item_id of item_ids) {
-      const item = current_by_id.get(item_id);
-      if (item === undefined) {
-        continue;
-      }
-      const dst_replace_result = replace_text_pattern({
-        text: String(item["dst"] ?? ""),
-        pattern,
-        replacement_text: String(request["replace_text"] ?? ""),
-        replacement_syntax: (request["is_regex"] ?? false) ? "javascript" : "literal",
-      });
-      const current_name_dst = read_item_name_text(item["name_dst"]);
-      const name_replace_result = replace_text_pattern({
-        text: current_name_dst,
-        pattern,
-        replacement_text: String(request["replace_text"] ?? ""),
-        replacement_syntax: (request["is_regex"] ?? false) ? "javascript" : "literal",
-      });
-      const next_item = apply_project_item_manual_update(item, {
-        dst: dst_replace_result.text,
-        name_dst: name_replace_result.text,
-      });
-      if (next_item === null) continue;
-      changes.push({ item_id, current: item, next: next_item });
-    }
-    return await this.persist_changed_items(project_path, expected_section_revisions, changes);
+    return await this.write_store.apply_project_item_changes({
+      projectPath: project_path,
+      expectedSectionRevisions: expected_section_revisions,
+      source: DEFAULT_PROOFREADING_UPDATE_SOURCE,
+      itemIds: item_ids,
+      prepareChanges: (current_by_id) => {
+        const changes: ProjectItemWriteChange[] = [];
+        for (const item_id of item_ids) {
+          const item = current_by_id.get(item_id);
+          if (item === undefined) {
+            continue;
+          }
+          const dst_replace_result = replace_text_pattern({
+            text: String(item["dst"] ?? ""),
+            pattern,
+            replacement_text: String(request["replace_text"] ?? ""),
+            replacement_syntax: (request["is_regex"] ?? false) ? "javascript" : "literal",
+          });
+          const current_name_dst = read_item_name_text(item["name_dst"]);
+          const name_replace_result = replace_text_pattern({
+            text: current_name_dst,
+            pattern,
+            replacement_text: String(request["replace_text"] ?? ""),
+            replacement_syntax: (request["is_regex"] ?? false) ? "javascript" : "literal",
+          });
+          const next_item = apply_project_item_manual_update(item, {
+            dst: dst_replace_result.text,
+            name_dst: name_replace_result.text,
+          });
+          if (next_item === null) continue;
+          changes.push({ item_id, current: item, next: next_item });
+        }
+        return changes;
+      },
+    });
   }
 
   /** 批量清空正文与姓名译文，并按用户意图决定是否恢复未翻译状态。 */
@@ -174,18 +170,25 @@ export class ProofreadingService {
     const field_patch: ProjectChangeItemFieldPatch = reset_status
       ? { dst: "", name_dst: null, status: "NONE" }
       : { dst: "", name_dst: null };
-    const current_by_id = this.get_item_write_facts_by_ids(project_path, item_ids);
-    const changes: ProjectItemWriteChange[] = [];
-    for (const item_id of item_ids) {
-      const item = current_by_id.get(item_id);
-      if (item === undefined) {
-        continue;
-      }
-      const next_item = apply_project_item_field_patch(item, field_patch);
-      if (next_item === null) continue;
-      changes.push({ item_id, current: item, next: next_item });
-    }
-    return await this.persist_changed_items(project_path, expected_section_revisions, changes);
+    return await this.write_store.apply_project_item_changes({
+      projectPath: project_path,
+      expectedSectionRevisions: expected_section_revisions,
+      source: DEFAULT_PROOFREADING_UPDATE_SOURCE,
+      itemIds: item_ids,
+      prepareChanges: (current_by_id) => {
+        const changes: ProjectItemWriteChange[] = [];
+        for (const item_id of item_ids) {
+          const item = current_by_id.get(item_id);
+          if (item === undefined) {
+            continue;
+          }
+          const next_item = apply_project_item_field_patch(item, field_patch);
+          if (next_item === null) continue;
+          changes.push({ item_id, current: item, next: next_item });
+        }
+        return changes;
+      },
+    });
   }
 
   /**
@@ -207,26 +210,6 @@ export class ProofreadingService {
         });
       }
     }
-  }
-
-  /**
-   * 写入变更 item，并按状态增量更新翻译统计，避免校对热路径扫描全量条目。
-   */
-  private async persist_changed_items(
-    project_path: string,
-    expected_section_revisions: ProjectExpectedSectionRevisions,
-    changes: ProjectItemWriteChange[],
-    source = DEFAULT_PROOFREADING_UPDATE_SOURCE,
-  ): Promise<ProjectWriteResult> {
-    if (changes.length === 0) {
-      return { accepted: true, changes: [] };
-    }
-    return await this.write_store.apply_project_item_changes({
-      projectPath: project_path,
-      expectedSectionRevisions: expected_section_revisions,
-      source,
-      changes,
-    });
   }
 
   /**
@@ -309,66 +292,6 @@ export class ProofreadingService {
       });
     }
     return updates;
-  }
-
-  /**
-   * 按目标 id 读取当前 item 事实，校对批量操作不再预热全量 items。
-   */
-  private get_items_by_ids(
-    project_path: string,
-    item_ids: number[],
-  ): Map<number, MutableJsonRecord & ProjectItemWriteFields> {
-    const items_by_id = new Map<number, MutableJsonRecord & ProjectItemWriteFields>();
-    const value = this.database.get_items_by_ids(project_path, item_ids);
-    if (!Array.isArray(value)) {
-      return items_by_id;
-    }
-    for (const item of value) {
-      if (!is_json_record(item)) {
-        continue;
-      }
-      const item_id = this.parse_integer_like(item["id"]);
-      if (item_id === null || item_id <= 0) {
-        continue;
-      }
-      items_by_id.set(item_id, {
-        ...item,
-        id: item_id,
-        dst: String(item["dst"] ?? ""),
-        name_dst: normalize_item_name_field(item["name_dst"]),
-        status: String(item["status"] ?? ""),
-      });
-    }
-    return items_by_id;
-  }
-
-  /**
-   * 读取校对字段 patch 所需的窄行事实，避免批量状态操作解析完整 item JSON。
-   */
-  private get_item_write_facts_by_ids(
-    project_path: string,
-    item_ids: number[],
-  ): Map<number, ProjectItemWriteFields> {
-    const items_by_id = new Map<number, ProjectItemWriteFields>();
-    const value = this.database.get_item_write_facts_by_ids(project_path, item_ids);
-    if (!Array.isArray(value)) {
-      return items_by_id;
-    }
-    for (const item of value) {
-      if (!is_json_record(item)) {
-        continue;
-      }
-      const item_id = this.parse_integer_like(item["id"]);
-      if (item_id === null || item_id <= 0) {
-        continue;
-      }
-      items_by_id.set(item_id, {
-        dst: String(item["dst"] ?? ""),
-        name_dst: normalize_item_name_field(item["name_dst"]),
-        status: String(item["status"] ?? ""),
-      });
-    }
-    return items_by_id;
   }
 
   /**

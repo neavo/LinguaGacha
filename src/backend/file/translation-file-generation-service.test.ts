@@ -57,6 +57,8 @@ function create_database(
     read_pdf_summaries: () =>
       Object.fromEntries(Object.keys(documents).map((file_path) => [file_path, {}])),
     read_pdf_document: (_project_path: string, file_path: string) => documents[file_path] ?? null,
+    with_project_scope_async: async <T>(_project: string, callback: () => Promise<T>): Promise<T> =>
+      await callback(),
     get_all_items: () => items,
     get_all_asset_records: () =>
       Object.keys(assets).map((path, sort_order) => ({ path, sort_order })),

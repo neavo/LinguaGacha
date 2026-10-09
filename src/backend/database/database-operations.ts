@@ -16,7 +16,9 @@ import { ZstdTool } from "./zstd-tool";
 import { JsonTool } from "../../shared/utils/json-tool";
 import * as AppErrors from "../../shared/error";
 import { NativeFs, default_native_fs } from "../../native/native-fs";
+import type { ProjectItemWriteFields } from "../../shared/project/project-item-update";
 import { normalize_project_item_field_patch } from "../../shared/project/project-item-update";
+
 import {
   read_json_record,
   type JsonRecord,
@@ -24,7 +26,15 @@ import {
   type MutableJsonRecord,
 } from "../../domain/json";
 
+/** 事务规划完成后的三个可写字段，格式私有数据仍留在原 JSON 中。 */
+export type ProjectItemTranslationWrite = Readonly<{
+  item_id: number;
+  next: Readonly<ProjectItemWriteFields>;
+}>;
 type DatabaseRow = Record<string, unknown>;
+
+/** 显式记录成功与失败，收尾时可保留任意主异常。 */
+type ProjectScopeResult<T> = { ok: true; value: T } | { ok: false; error: unknown };
 
 // SQLite 的 IN 参数统一在数据库边界分块。业务批量大小不应复用这个存储安全值。
 const SQLITE_IN_CLAUSE_CHUNK_SIZE = 500;
@@ -233,26 +243,24 @@ export class ProjectDatabase {
 
   /** SDK 事务跨异步阶段持有连接，工程事务共用其队列以避免交错。同步事务体复用已有读写方法。 */
   public async transaction<T>(project_path: string, callback: () => T): Promise<T> {
-    const release = this.acquire_project_lease(project_path, "transaction");
-    const record = this.open_project_record(path.resolve(project_path));
-    let result!: T;
-    let failure: AppErrors.AppError | undefined;
+    let committed = false;
     try {
-      result = await record.access.transaction(async () => callback());
+      return await this.with_project_scope_async(project_path, async () => {
+        const record = this.open_project_record(path.resolve(project_path));
+        try {
+          const result = await record.access.transaction(async () => callback());
+          committed = true;
+          return result;
+        } catch (error) {
+          // 回滚失败的连接不能被剩余使用权继续复用，释放时关闭它。
+          if (record.db.isTransaction) record.ready = false;
+          throw database_error(error, project_path, "transaction");
+        }
+      });
     } catch (error) {
-      // 回滚失败的连接不能被剩余使用权继续复用，释放时关闭它。
-      if (record.db.isTransaction) record.ready = false;
-      failure = database_error(error, project_path, "transaction");
+      if (committed) throw this.committed_error(error, project_path);
+      throw error;
     }
-    try {
-      release();
-    } catch (error) {
-      if (failure !== undefined)
-        throw database_cleanup_error(failure, database_error(error, project_path, "close"));
-      throw this.committed_error(error, project_path);
-    }
-    if (failure !== undefined) throw failure;
-    return result;
   }
 
   /** Agent 持有工程连接直到 SDK、上传与会话关闭全部结束。 */
@@ -264,6 +272,7 @@ export class ProjectDatabase {
 
   /** 提交后关闭失败沿用已提交错误协议，调用者只能重载，不能重放写入。 */
   private committed_error(cause: unknown, project_path: string): AppErrors.AppError {
+    if (AppErrors.is_app_error(cause) && cause.code === "data.committed_sync_failed") return cause;
     return new AppErrors.AppError("data.committed_sync_failed", {
       cause,
       public_details: { committed: true, action: "reload_project" },
@@ -289,12 +298,12 @@ export class ProjectDatabase {
   }
 
   /** 读取工程元数据，供上层一次组装设置与 revision。 */
-  public get_all_meta(project_path: string): JsonValue {
+  public get_all_meta(project_path: string): JsonRecord {
     return this.with_project_connection(project_path, (db) => this.read_all_meta(db));
   }
 
   /** 推进 files/items revision，重复 section 在同次调用中只计一次。 */
-  public bump_section_revisions(project_path: string, sections: string[]): JsonValue {
+  public bump_section_revisions(project_path: string, sections: string[]): JsonRecord {
     return this.with_project_connection(project_path, (db) =>
       this.advance_section_revisions(db, sections),
     );
@@ -474,7 +483,7 @@ export class ProjectDatabase {
   }
 
   /** 按数据库 id 顺序返回条目及其持久身份。 */
-  public get_all_items(project_path: string): JsonValue {
+  public get_all_items(project_path: string): JsonRecord[] {
     return this.with_project_connection(project_path, (db) => this.read_all_items(db));
   }
 
@@ -484,20 +493,13 @@ export class ProjectDatabase {
   }
 
   /** 通过 SQL 聚合条目状态，供进度统计读取。 */
-  public get_item_status_summary(project_path: string): JsonValue {
+  public get_item_status_summary(project_path: string): JsonRecord {
     return this.with_project_connection(project_path, (db) => this.read_item_status_summary(db));
   }
 
   /** 按请求 id 顺序回查存在的条目，并去重请求。 */
-  public get_items_by_ids(project_path: string, item_ids: number[]): JsonValue {
+  public get_items_by_ids(project_path: string, item_ids: number[]): JsonRecord[] {
     return this.with_project_connection(project_path, (db) => this.read_items_by_ids(db, item_ids));
-  }
-
-  /** 只读取字段写回所需事实，减少校对提交的回查开销。 */
-  public get_item_write_facts_by_ids(project_path: string, item_ids: number[]): JsonValue {
-    return this.with_project_connection(project_path, (db) =>
-      this.read_item_write_facts_by_ids(db, item_ids),
-    );
   }
 
   /** 替换整个条目集合，调用方事务负责与相关工程事实一起提交。 */
@@ -505,26 +507,18 @@ export class ProjectDatabase {
     return this.with_project_connection(project_path, (db) => this.replace_items(db, items));
   }
 
-  /** 按条目 id 更新允许写入的字段，保留其它持久事实。 */
-  public patch_item_fields_by_ids(
-    project_path: string,
-    item_ids: number[],
-    patch: JsonRecord,
-  ): void {
-    this.with_project_connection(project_path, (db) =>
-      this.write_item_fields_by_ids(db, item_ids, patch),
-    );
-  }
-
   /** 批量更新译文字段，保持条目原文与定位信息。 */
-  public patch_item_translation_fields(project_path: string, patches: JsonValue[]): void {
+  public patch_item_translation_fields(
+    project_path: string,
+    patches: readonly ProjectItemTranslationWrite[],
+  ): void {
     this.with_project_connection(project_path, (db) =>
       this.write_item_translation_fields(db, patches),
     );
   }
 
   /** 读取指定规则类型的持久载荷，由领域层校验内容。 */
-  public get_rules(project_path: string, rule_type: string): JsonValue {
+  public get_rules(project_path: string, rule_type: string): JsonValue[] {
     return this.with_project_connection(project_path, (db) => this.read_rules(db, rule_type));
   }
 
@@ -578,6 +572,45 @@ export class ProjectDatabase {
       record.use_count = Math.max(0, record.use_count - 1);
       this.close_connection_if_idle(record);
     };
+  }
+
+  /** 同步调用内持有连接，主操作与释放失败统一收尾。 */
+  public with_project_scope<T>(project_path: string, callback: () => T): T {
+    const release = this.acquire_project_lease(project_path, "scope");
+    let result: ProjectScopeResult<T>;
+    try {
+      result = { ok: true, value: callback() };
+    } catch (error) {
+      result = { ok: false, error };
+    }
+    return this.finish_project_scope(release, result);
+  }
+
+  /** 等待整个异步操作结束后释放连接，提交状态由业务入口解释。 */
+  public async with_project_scope_async<T>(
+    project_path: string,
+    callback: () => Promise<T>,
+  ): Promise<T> {
+    const release = this.acquire_project_lease(project_path, "async-scope");
+    let result: ProjectScopeResult<T>;
+    try {
+      result = { ok: true, value: await callback() };
+    } catch (error) {
+      result = { ok: false, error };
+    }
+    return this.finish_project_scope(release, result);
+  }
+
+  /** 释放只执行一次，失败时同时保留主异常与关闭异常。 */
+  private finish_project_scope<T>(release: () => void, result: ProjectScopeResult<T>): T {
+    try {
+      release();
+    } catch (cleanup) {
+      if (!result.ok) throw database_cleanup_error(result.error, cleanup);
+      throw cleanup;
+    }
+    if (!result.ok) throw result.error;
+    return result.value;
   }
 
   /**
@@ -649,25 +682,14 @@ export class ProjectDatabase {
    * 数据库操作持有连接作用域，完成后在无租约时关闭
    */
   private with_project_connection<T>(project_path: string, callback: (db: DatabaseSync) => T): T {
-    const record = this.open_project_record(path.resolve(project_path));
-    record.use_count += 1;
-    let failure: AppErrors.AppError | undefined; // 保留主异常，以便合并收尾异常。
-    let result!: T; // 业务执行成功且连接收尾完成后再返回。
-    try {
-      result = callback(record.db);
-    } catch (error) {
-      failure = database_error(error, project_path, "operation");
-    } finally {
-      record.use_count -= 1;
-    }
-    try {
-      this.close_connection_if_idle(record);
-    } catch (cleanup) {
-      if (failure !== undefined) throw database_cleanup_error(failure, cleanup);
-      throw cleanup;
-    }
-    if (failure !== undefined) throw failure;
-    return result;
+    return this.with_project_scope(project_path, () => {
+      const record = this.open_project_record(path.resolve(project_path));
+      try {
+        return callback(record.db);
+      } catch (error) {
+        throw database_error(error, project_path, "operation");
+      }
+    });
   }
 
   /**
@@ -708,7 +730,7 @@ export class ProjectDatabase {
   /**
    * 读取完整 meta 快照，供运行态编码一次性构建事实
    */
-  private read_all_meta(db: DatabaseSync): JsonValue {
+  private read_all_meta(db: DatabaseSync): JsonRecord {
     const result: MutableJsonRecord = {};
     for (const row of db.prepare("SELECT key, value FROM meta").all()) {
       result[row_text(row, "key")] = json_parse(row["value"]);
@@ -719,7 +741,7 @@ export class ProjectDatabase {
   /**
    * 由内部任务数据路由调用的窄 revision 推进入口。公开读取和 ack 仍由 项目域计算
    */
-  private advance_section_revisions(db: DatabaseSync, sections: string[]): JsonValue {
+  private advance_section_revisions(db: DatabaseSync, sections: string[]): JsonRecord {
     const supported_sections = new Set(["files", "items"]);
     const next_revisions: Record<string, number> = {};
     for (const section of sections) {
@@ -846,7 +868,7 @@ export class ProjectDatabase {
   /**
    * 读取全部条目事实，供项目数据读取和任务快照重建
    */
-  private read_all_items(db: DatabaseSync): JsonValue {
+  private read_all_items(db: DatabaseSync): JsonRecord[] {
     return db
       .prepare("SELECT id, data FROM items ORDER BY id")
       .all()
@@ -864,7 +886,7 @@ export class ProjectDatabase {
   /**
    * 翻译统计口径由 status 决定，SQL 聚合为缺失 meta 的校对保存提供低成本基线。
    */
-  private read_item_status_summary(db: DatabaseSync): JsonValue {
+  private read_item_status_summary(db: DatabaseSync): JsonRecord {
     const row = db
       .prepare(
         `SELECT
@@ -893,7 +915,7 @@ export class ProjectDatabase {
   /**
    * 按 id 读取条目，减少校对和任务提交后的回查范围
    */
-  private read_items_by_ids(db: DatabaseSync, item_ids: number[]): JsonValue {
+  private read_items_by_ids(db: DatabaseSync, item_ids: number[]): JsonRecord[] {
     const normalized_ids = [
       ...new Set(
         item_ids.map((item_id) => Number(item_id)).filter((item_id) => Number.isFinite(item_id)),
@@ -902,7 +924,7 @@ export class ProjectDatabase {
     if (normalized_ids.length === 0) {
       return [];
     }
-    const rows_by_id = new Map<number, DatabaseRow>();
+    const rows_by_id = new Map<number, JsonRecord>();
     for_each_sqlite_in_clause_chunk(normalized_ids, (chunk) => {
       const placeholders = chunk.map(() => "?").join(",");
       for (const row of db
@@ -914,65 +936,7 @@ export class ProjectDatabase {
     });
     return normalized_ids
       .map((item_id) => rows_by_id.get(item_id))
-      .filter((item): item is DatabaseRow => item !== undefined) as JsonValue;
-  }
-
-  /**
-   * 校对统一字段写入只需要少量事实，避免为状态设置解析完整 item JSON。
-   */
-  private read_item_write_facts_by_ids(db: DatabaseSync, item_ids: number[]): JsonValue {
-    const normalized_ids = [
-      ...new Set(
-        item_ids
-          .map((item_id) => Number(item_id))
-          .filter((item_id) => Number.isInteger(item_id) && item_id > 0),
-      ),
-    ];
-    if (normalized_ids.length === 0) {
-      return [];
-    }
-    const rows_by_id = new Map<number, DatabaseRow>();
-    for_each_sqlite_in_clause_chunk(normalized_ids, (chunk) => {
-      const placeholders = chunk.map(() => "?").join(",");
-      for (const row of db
-        .prepare(
-          `SELECT
-             id,
-             json_extract(data, '$.dst') AS dst,
-             json_extract(data, '$.name_dst') AS name_dst,
-             json_type(data, '$.name_dst') AS name_dst_type,
-             json_extract(data, '$.status') AS status
-           FROM items
-           WHERE id IN (${placeholders})`,
-        )
-        .all(...chunk)) {
-        const item_id = row_number(row, "id");
-        rows_by_id.set(item_id, {
-          id: item_id,
-          dst: row_text(row, "dst"),
-          name_dst: this.read_item_name_value(row, "name_dst", "name_dst_type"),
-          status: row_text(row, "status"),
-        });
-      }
-    });
-    return normalized_ids
-      .map((item_id) => rows_by_id.get(item_id))
-      .filter((item): item is DatabaseRow => item !== undefined) as JsonValue;
-  }
-
-  /**
-   * 根据 SQLite json_type 恢复 name 字段的 null、string 或 array 形状。
-   */
-  private read_item_name_value(row: DatabaseRow, value_key: string, type_key: string): JsonValue {
-    const value_type = row_text(row, type_key);
-    if (value_type === "" || value_type === "null") {
-      return null;
-    }
-    const value = row[value_key];
-    if (value_type === "array") {
-      return json_parse(value);
-    }
-    return typeof value === "string" ? value : String(value ?? "");
+      .filter((item): item is JsonRecord => item !== undefined);
   }
 
   /**
@@ -998,93 +962,34 @@ export class ProjectDatabase {
     return ids;
   }
 
-  /**
-   * 将公开 item 字段 patch 编译为 SQLite json_set 路径和值。
-   */
-  private build_item_field_patch(patch: DatabaseRow): {
-    sql_args: string;
-    values: string[];
-  } | null {
-    const normalized_patch = normalize_project_item_field_patch(patch);
-    if (normalized_patch === null) {
-      return null;
-    }
-    const patch_entries: Array<{
-      path: string;
-      value: JsonValue;
-      json: boolean;
-    }> = [];
-    if (normalized_patch.dst !== undefined) {
-      patch_entries.push({ path: "$.dst", value: normalized_patch.dst, json: false });
-    }
-    if (Object.hasOwn(normalized_patch, "name_dst")) {
-      patch_entries.push({
-        path: "$.name_dst",
-        value: normalized_patch.name_dst as JsonValue,
-        json: true,
-      });
-    }
-    if (normalized_patch.status !== undefined) {
-      patch_entries.push({ path: "$.status", value: normalized_patch.status, json: false });
-    }
-    return {
-      sql_args: patch_entries.map((entry) => (entry.json ? "?, json(?)" : "?, ?")).join(", "),
-      // 姓名数组与 null 用 JSON 绑定，正文和状态直接绑定文本。
-      values: patch_entries.flatMap((entry) => [
-        entry.path,
-        entry.json ? JsonTool.stringifyStrict(entry.value) : String(entry.value ?? ""),
-      ]),
-    };
-  }
-
-  /**
-   * 用 SQLite JSON patch 写入同一个字段增量，避免校对批量状态修改重写完整 DTO。
-   */
-  private write_item_fields_by_ids(db: DatabaseSync, item_ids: number[], patch: DatabaseRow): void {
-    const normalized_ids = [
-      ...new Set(
-        item_ids
-          .map((item_id) => Number(item_id))
-          .filter((item_id) => Number.isInteger(item_id) && item_id > 0),
-      ),
-    ];
-    if (normalized_ids.length === 0) {
-      return;
-    }
-    const compiled_patch = this.build_item_field_patch(patch);
-    if (compiled_patch === null) {
-      return;
-    }
-    for_each_sqlite_in_clause_chunk(normalized_ids, (chunk) => {
-      const placeholders = chunk.map(() => "?").join(",");
-      db.prepare(
-        `UPDATE items SET data = json_set(data, ${compiled_patch.sql_args}) WHERE id IN (${placeholders})`,
-      ).run(...compiled_patch.values, ...chunk);
-    });
-  }
-
-  /**
-   * 按 item 逐条局部更新翻译字段，任务结果不能覆盖完整持久 item。
-   */
-  private write_item_translation_fields(db: DatabaseSync, patches: JsonValue[]): void {
-    for (const raw_patch of patches) {
-      const entry = this.value_record(raw_patch);
-      const item_id = Number(entry["id"]);
-      if (!Number.isInteger(item_id) || item_id <= 0) {
+  /** 事务提供最终译文字段，固定语句保留格式私有 JSON。 */
+  private write_item_translation_fields(
+    db: DatabaseSync,
+    patches: readonly ProjectItemTranslationWrite[],
+  ): void {
+    const statement = db.prepare(
+      "UPDATE items SET data = json_set(data, '$.dst', ?, '$.name_dst', json(?), '$.status', ?) WHERE id = ?",
+    );
+    for (const { item_id, next } of patches) {
+      const fields = normalize_project_item_field_patch(next);
+      if (
+        !Number.isInteger(item_id) ||
+        item_id <= 0 ||
+        fields === null ||
+        fields.dst === undefined ||
+        !Object.hasOwn(fields, "name_dst") ||
+        fields.status === undefined
+      ) {
         throw new AppErrors.AppError("request.validation_failed", {
-          diagnostic_context: { reason: "invalid_translation_patch_item_id" },
+          diagnostic_context: { reason: "invalid_translation_fields", item_id },
         });
       }
-      const patch = this.value_record(entry["patch"]);
-      const compiled_patch = this.build_item_field_patch(patch);
-      if (compiled_patch === null) {
-        throw new AppErrors.AppError("request.validation_failed", {
-          diagnostic_context: { reason: "empty_translation_patch" },
-        });
-      }
-      const result = db
-        .prepare(`UPDATE items SET data = json_set(data, ${compiled_patch.sql_args}) WHERE id = ?`)
-        .run(...compiled_patch.values, item_id);
+      const result = statement.run(
+        fields.dst,
+        JsonTool.stringifyStrict(fields.name_dst),
+        fields.status,
+        item_id,
+      );
       if (Number(result.changes) !== 1) {
         throw new AppErrors.AppError("request.validation_failed", {
           diagnostic_context: { reason: "translation_patch_item_not_found", item_id },
@@ -1096,7 +1001,7 @@ export class ProjectDatabase {
   /**
    * 读取指定规则集合，保持质量规则运行时只看数据库事实
    */
-  private read_rules(db: DatabaseSync, rule_type: string): JsonValue {
+  private read_rules(db: DatabaseSync, rule_type: string): JsonValue[] {
     const row = db.prepare("SELECT data FROM rules WHERE type = ? ORDER BY id").get(rule_type);
     if (row === undefined) {
       return [];
@@ -1185,10 +1090,10 @@ export class ProjectDatabase {
   /**
    * 把 JSON 值收窄为对象，保留数据库 payload 的类型边界
    */
-  private value_record(value: JsonValue | unknown): DatabaseRow {
+  private value_record(value: unknown): JsonRecord {
     if (typeof value !== "object" || value === null || Array.isArray(value)) {
       return {};
     }
-    return value as DatabaseRow;
+    return value as JsonRecord;
   }
 }

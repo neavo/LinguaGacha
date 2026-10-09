@@ -1,3 +1,7 @@
+import { adapt_project_change } from "./project-write-event-adapter";
+import { ProjectSessionState } from "./project-session-state";
+import { ItemCache } from "../cache/item-cache";
+import { ProjectDataReader } from "./project-data-reader";
 import { read_pdf_document } from "../file/pdf/pdf-document";
 import { create_item, type Item } from "../../domain/item";
 import { create_pdf_fixture } from "../file/pdf/test-support";
@@ -10,14 +14,10 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { MutableJsonRecord } from "../../domain/json";
 import { ProjectDatabase } from "../database/database-operations";
-import type {
-  ProjectChangePublisher,
-  ProjectWriteChangeRequest,
-} from "./project-write-event-adapter";
+import type { ProjectChangePublisher } from "./project-write-event-adapter";
 import { get_section_revision } from "./project-data-reader";
-import type { ProjectEventHandler } from "./project-events";
+import type { ProjectCommittedChangeHandler } from "./project-committed-change";
 import { ProjectWriteStore } from "./project-write-store";
-import type { ProjectChangeEvent } from "../../shared/project-event";
 import {
   create_empty_agent_workspace_intent_batch,
   project_agent_workspace_item,
@@ -34,6 +34,72 @@ describe("ProjectWriteStore", () => {
     }
   });
 
+  it("全量替换复用数据库分配的 ID，并按主键顺序同步缓存", async () => {
+    const committed = vi.fn();
+    const { database, project_path, store } = create_store("replace-order", {
+      projectEventHandler: committed,
+    });
+    const read_all = vi.spyOn(database, "get_all_items");
+    const result = await store.replace_project_items_and_files({
+      projectPath: project_path,
+      requireExpectedSectionRevisions: false,
+      revisionSections: [],
+      updatedSections: [],
+      source: "test",
+      items: [
+        create_item({ id: 10, src: "十" }),
+        create_item({ id: 2, src: "二" }),
+        create_item({ src: "新" }),
+      ],
+    });
+    expect(read_all).not.toHaveBeenCalled();
+    expect(result.changes).toMatchObject([
+      {
+        updatedSections: ["items"],
+        sectionRevisions: { items: 1 },
+        items: { payloadMode: "section-invalidated" },
+      },
+    ]);
+    expect(
+      committed.mock.calls[0]?.[0].itemRecords.map((item: { item_id: number }) => item.item_id),
+    ).toEqual([2, 10, 11]);
+    expect(database.get_all_items(project_path).map((item) => item.id)).toEqual([2, 10, 11]);
+  });
+
+  it("缓存范围在相同修订下局部读取，落后时回退并包含被动重复变化", async () => {
+    const { database, project_path } = create_store("scope");
+    seed_duplicate_items(database, project_path);
+    const items = new ItemCache();
+    items.replace(
+      new ProjectDataReader(database).build_runtime_items_snapshot(project_path).item_records,
+    );
+    const all = vi.spyOn(database, "get_all_items");
+    const partial = vi.spyOn(database, "get_items_by_ids");
+    const store = new ProjectWriteStore(database, () => undefined, null, {
+      readItemWriteScope: (_project, ids) => ({ ids: items.readWriteScope(ids), revision: 0 }),
+      readFileMetadata: () => items.readFileMetadata(),
+    });
+    const first = await store.apply_translation_item_patches({
+      projectPath: project_path,
+      items: [{ item_id: 1, patch: { status: "EXCLUDED" } }],
+      translationExtras: {},
+    });
+    expect(first).toEqual({ changed_item_ids: [1, 2], section_revisions: { items: 1 } });
+    expect(all).not.toHaveBeenCalled();
+    expect(partial).toHaveBeenCalledWith(project_path, [1, 2]);
+    database.set_items(project_path, [
+      ...database.get_all_items(project_path),
+      create_item({ id: 3, src: "同文", status: "DUPLICATED", file_path: "demo.txt", row: 2 }),
+    ]);
+    const second = await store.apply_translation_item_patches({
+      projectPath: project_path,
+      items: [{ item_id: 2, patch: { status: "EXCLUDED" } }],
+      translationExtras: {},
+    });
+    expect(second).toEqual({ changed_item_ids: [2, 3], section_revisions: { items: 2 } });
+    expect(database.get_items_by_ids(project_path, [3])[0]).toMatchObject({ status: "NONE" });
+  });
+
   it("PDF 译稿与 revision 同事务回滚，失败不发布提交事件", async () => {
     const { database, project_path, store, published_changes } = create_store("pdf-rollback");
     const bytes = create_pdf_fixture();
@@ -43,11 +109,14 @@ describe("ProjectWriteStore", () => {
     await database.transaction(project_path, () => {
       database.add_asset_from_source(project_path, "book.pdf", source, document, 0);
     });
-    const original = database.set_meta.bind(database);
-    const failure = vi.spyOn(database, "set_meta").mockImplementation((project, key, value) => {
-      if (key === "project_runtime_revision.pdf") throw new Error("revision write failed");
-      original(project, key, value);
-    });
+    const original = database.upsert_meta_entries.bind(database);
+    const failure = vi
+      .spyOn(database, "upsert_meta_entries")
+      .mockImplementation((project, meta) => {
+        if (Object.hasOwn(meta, "project_runtime_revision.pdf"))
+          throw new Error("revision write failed");
+        original(project, meta);
+      });
     const batch = {
       ...create_empty_agent_workspace_intent_batch(),
       pages: document.pages.slice(0, 2).map((page) => ({
@@ -100,31 +169,33 @@ describe("ProjectWriteStore", () => {
       changed_item_ids: [1],
       section_revisions: { items: 1 },
     });
-    expect(read_items(database, project_path)).toEqual([
-      {
-        id: 1,
-        src: "原文",
-        dst: "译文",
-        name_src: "原名",
-        name_dst: ["译名"],
-        status: "PROCESSED",
-        file_path: "demo.txt",
-        file_type: "TXT",
-        text_type: "TXT",
-        row: 7,
-      },
-    ]);
+    expect(read_items(database, project_path)).toEqual(
+      [
+        {
+          id: 1,
+          src: "原文",
+          dst: "译文",
+          name_src: "原名",
+          name_dst: ["译名"],
+          status: "PROCESSED",
+          file_path: "demo.txt",
+          file_type: "TXT",
+          text_type: "TXT",
+          row: 7,
+        },
+      ].map((item) => create_item(item)),
+    );
     expect(read_meta(database, project_path)).toMatchObject({
       translation_extras: { processed_line: 1, total_line: 1 },
       "project_runtime_revision.items": 1,
     });
-    expect(published_changes).toEqual([
-      expect.objectContaining({
+    expect(published_changes).toMatchObject([
+      {
         projectPath: project_path,
         source: "translation_batch_update",
         updatedSections: ["items"],
         items: { payloadMode: "canonical-delta", changedIds: [1] },
-      }),
+      },
     ]);
   });
 
@@ -151,7 +222,8 @@ describe("ProjectWriteStore", () => {
       projectPath: project_path,
       expectedSectionRevisions: { items: 0, proofreading: 0 },
       source: "proofreading_apply_item_changes",
-      changes: [
+      itemIds: [1],
+      prepareChanges: () => [
         {
           item_id: 1,
           current: { dst: "", name_dst: null, status: "NONE" },
@@ -240,7 +312,8 @@ describe("ProjectWriteStore", () => {
       projectPath: project_path,
       expectedSectionRevisions: { items: 0, proofreading: 0 },
       source: "proofreading_apply_item_changes",
-      changes: [
+      itemIds: [1],
+      prepareChanges: () => [
         {
           item_id: 1,
           current: { dst: "", name_dst: null, status: "NONE" },
@@ -287,6 +360,8 @@ describe("ProjectWriteStore", () => {
       updatedSections: ["files", "items"],
       items: { payloadMode: "section-invalidated" },
       files: { payloadMode: "section-invalidated" },
+      itemRecords: [],
+      fileRecords: {},
     });
   });
 
@@ -337,7 +412,7 @@ describe("ProjectWriteStore", () => {
       updatedSections: ["files"],
       files: { payloadMode: "section-invalidated" },
     });
-    expect(published_changes.at(-1)).not.toHaveProperty("sections");
+    expect(published_changes.at(-1)?.["sections"]).toEqual({});
   });
 
   it("历史小数修订使用统一整数基线提交，旧预期修订仍触发冲突", async () => {
@@ -501,7 +576,7 @@ describe("ProjectWriteStore", () => {
       source: "quality_rule_update",
       rule: {
         databaseType: "glossary",
-        entries: [{ src: "姫", dst: "公主" }],
+        entries: [{ entry_id: "princess", src: "姫", dst: "公主" }],
       },
       revisionKey: "quality_rule_revision.glossary",
     });
@@ -515,7 +590,9 @@ describe("ProjectWriteStore", () => {
       enabled: true,
     });
 
-    expect(database.get_rules(project_path, "glossary")).toEqual([{ src: "姫", dst: "公主" }]);
+    expect(database.get_rules(project_path, "glossary")).toEqual([
+      { entry_id: "princess", src: "姫", dst: "公主" },
+    ]);
     expect(database.get_rule_text(project_path, "translation_prompt")).toBe("请翻译");
     expect(read_meta(database, project_path)).toMatchObject({
       "quality_rule_revision.glossary": 1,
@@ -563,12 +640,10 @@ describe("ProjectWriteStore", () => {
       "quality_prompt_revision.translation": 1,
     });
     expect(project_event_handler).toHaveBeenCalledWith(
-      expect.objectContaining({ type: "project.quality.changed" }),
+      expect.objectContaining({ updatedSections: ["quality", "prompts"] }),
     );
-    expect(project_event_handler).toHaveBeenCalledWith(
-      expect.objectContaining({ type: "project.prompts.changed" }),
-    );
-    expect(published_changes.at(-1)).toEqual({
+    expect(project_event_handler).toHaveBeenCalledTimes(1);
+    expect(published_changes.at(-1)).toMatchObject({
       projectPath: project_path,
       source: "project_task_input_apply",
       updatedSections: ["quality", "prompts"],
@@ -578,7 +653,7 @@ describe("ProjectWriteStore", () => {
   it("Agent 工作区混合差异只开启一个事务并按提交、缓存、公开顺序发布", async () => {
     const calls: string[] = [];
     const project_event_handler = vi.fn((event) => {
-      calls.push(`cache:${event.type}`);
+      calls.push(`cache:${event.updatedSections.join(",")}`);
     });
     const { database, project_path, store } = create_store("agent-workspace", {
       projectEventHandler: project_event_handler,
@@ -663,13 +738,7 @@ describe("ProjectWriteStore", () => {
       "quality_rule_revision.pre_replacement": 1,
       "quality_prompt_revision.translation": 1,
     });
-    expect(calls).toEqual([
-      "commit",
-      "cache:project.items.changed",
-      "cache:project.quality.changed",
-      "cache:project.prompts.changed",
-      "public",
-    ]);
+    expect(calls).toEqual(["commit", "cache:items,proofreading,quality,prompts", "public"]);
     expect(project_event_handler.mock.calls[0]?.[0]).toMatchObject({
       items: { payloadMode: "canonical-delta", changedIds: [1] },
     });
@@ -844,10 +913,11 @@ describe("ProjectWriteStore", () => {
   });
 
   /** 每例持有独立数据库与事件记录，并统一登记资源清理。 */
+  /** 使用真实事务和发布器，按用例注入提交后故障。 */
   function create_store(
     name: string,
     options: {
-      projectEventHandler?: ProjectEventHandler;
+      projectEventHandler?: ProjectCommittedChangeHandler;
       onPublish?: () => void;
     } = {},
   ): {
@@ -870,94 +940,73 @@ describe("ProjectWriteStore", () => {
       store: new ProjectWriteStore(
         database,
         project_event_handler,
-        create_project_change_publisher(
-          database,
-          project_path,
-          published_changes,
-          options.onPublish,
-        ),
+        create_project_change_publisher(project_path, published_changes, options.onPublish),
       ),
       published_changes,
     };
   }
 
-  /** 从提交后的元数据组装事件，供用例观察 revision 与实际写入的一致性。 */
+  /** 用真实事件适配器观察提交快照，避免测试另行回读数据库。 */
   function create_project_change_publisher(
-    database: ProjectDatabase,
     project_path: string,
     published_changes: MutableJsonRecord[],
     on_publish?: () => void,
   ): ProjectChangePublisher {
-    return vi.fn((payload: ProjectWriteChangeRequest): ProjectChangeEvent => {
+    const session = new ProjectSessionState();
+    void session.mark_loaded(project_path);
+    return vi.fn((payload) => {
       on_publish?.();
       published_changes.push(payload);
-      const updated_sections = Array.isArray(payload["updatedSections"])
-        ? payload["updatedSections"].map((section) => String(section))
-        : [];
-      const meta = read_meta(database, project_path);
-      const section_revisions = Object.fromEntries(
-        updated_sections.map((section) => [section, get_section_revision(meta, section)]),
-      );
-      return {
-        type: "project.changed",
-        eventId: `test-${String(payload["source"] ?? "project_change")}`,
-        source: String(payload["source"] ?? "project_change"),
-        projectPath: payload.projectPath,
-        projectRevision: Math.max(...Object.values(section_revisions), 0),
-        sectionRevisions: section_revisions,
-        updatedSections: updated_sections as ProjectChangeEvent["updatedSections"],
-        ...(payload["items"] === undefined
-          ? {}
-          : { items: payload["items"] as NonNullable<ProjectChangeEvent["items"]> }),
-        ...(payload["files"] === undefined
-          ? {}
-          : { files: payload["files"] as NonNullable<ProjectChangeEvent["files"]> }),
-        ...(payload["sections"] === undefined
-          ? {}
-          : { sections: payload["sections"] as NonNullable<ProjectChangeEvent["sections"]> }),
-      };
+      return adapt_project_change(session, payload);
     });
   }
 
+  /** 准备完整条目事实，局部写入须保留其原文与定位字段。 */
   function seed_items(database: ProjectDatabase, project_path: string): void {
-    database.set_items(project_path, [
-      {
-        id: 1,
-        src: "原文",
-        dst: "",
-        name_src: "原名",
-        name_dst: null,
-        status: "NONE",
-        file_path: "demo.txt",
-        file_type: "TXT",
-        text_type: "TXT",
-        row: 7,
-      },
-    ]);
+    database.set_items(
+      project_path,
+      [
+        {
+          id: 1,
+          src: "原文",
+          dst: "",
+          name_src: "原名",
+          name_dst: null,
+          status: "NONE",
+          file_path: "demo.txt",
+          file_type: "TXT",
+          text_type: "TXT",
+          row: 7,
+        },
+      ].map((item) => create_item(item)),
+    );
   }
 
   /** 为各写入入口提供同一组代表与被动重复事实，只让测试覆盖自身差异。 */
   function seed_duplicate_items(database: ProjectDatabase, project_path: string): void {
-    database.set_items(project_path, [
-      {
-        id: 1,
-        src: "同文",
-        dst: "",
-        name_dst: null,
-        status: "NONE",
-        file_path: "demo.txt",
-        row: 0,
-      },
-      {
-        id: 2,
-        src: "同文",
-        dst: "",
-        name_dst: null,
-        status: "DUPLICATED",
-        file_path: "demo.txt",
-        row: 1,
-      },
-    ]);
+    database.set_items(
+      project_path,
+      [
+        {
+          id: 1,
+          src: "同文",
+          dst: "",
+          name_dst: null,
+          status: "NONE",
+          file_path: "demo.txt",
+          row: 0,
+        },
+        {
+          id: 2,
+          src: "同文",
+          dst: "",
+          name_dst: null,
+          status: "DUPLICATED",
+          file_path: "demo.txt",
+          row: 1,
+        },
+      ].map((item) => create_item(item)),
+    );
     database.set_meta(project_path, "skip_duplicate_source_text_enable", true);
   }
 

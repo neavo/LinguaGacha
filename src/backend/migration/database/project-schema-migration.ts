@@ -58,7 +58,7 @@ function ensure_current_schema(db: DatabaseSync): void {
         type TEXT NOT NULL,
         data TEXT NOT NULL
       );
-      CREATE INDEX IF NOT EXISTS idx_assets_path ON assets(path);
+      DROP INDEX IF EXISTS idx_assets_path;
       CREATE INDEX IF NOT EXISTS idx_rules_type ON rules(type);
   `);
 }
@@ -75,9 +75,10 @@ function ensure_asset_sort_order_column(db: DatabaseSync): void {
     return;
   }
   db.exec("ALTER TABLE assets ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0");
-  const rows = db.prepare("SELECT id FROM assets ORDER BY id").all();
+  const rows = db.prepare("SELECT id FROM assets ORDER BY id").iterate();
   const statement = db.prepare("UPDATE assets SET sort_order = ? WHERE id = ?");
-  for (const [index, row] of rows.entries()) {
-    statement.run(index, row_number(row, "id"));
+  let index = 0;
+  for (const row of rows) {
+    statement.run(index++, row_number(row, "id"));
   }
 }

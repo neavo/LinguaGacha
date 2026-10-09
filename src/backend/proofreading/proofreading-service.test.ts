@@ -54,7 +54,7 @@ function create_service(task_busy = false): {
   const runtime_gate = create_runtime_gate(task_busy);
   return {
     database,
-    service: new ProofreadingService(database, runtime_gate, session_state, write_store),
+    service: new ProofreadingService(runtime_gate, session_state, write_store),
     session_state,
     lg_path,
     publisher,
@@ -219,12 +219,10 @@ describe("ProofreadingService", () => {
       }),
     ]);
     expect(publisher.publish_project_change).toHaveBeenCalledTimes(1);
-    expect(publisher.publish_project_change).toHaveBeenCalledWith(
-      expect.objectContaining({
-        source: "proofreading_apply_item_changes",
-        items: { payloadMode: "canonical-delta", changedIds: [1, 2] },
-      }),
-    );
+    expect(publisher.publish_project_change.mock.calls[0]?.[0]).toMatchObject({
+      source: "proofreading_apply_item_changes",
+      items: { payloadMode: "canonical-delta", changedIds: [1, 2] },
+    });
   });
 
   it("超过存储分块大小的状态批量仍在单事务内提交", async () => {
@@ -363,7 +361,7 @@ describe("ProofreadingService", () => {
       processed_line: 1,
       error_line: 0,
     });
-    expect(publisher.publish_project_change).toHaveBeenCalledWith({
+    expect(publisher.publish_project_change.mock.calls[0]?.[0]).toMatchObject({
       projectPath: lg_path,
       source: "proofreading_apply_item_changes",
       updatedSections: ["items", "proofreading"],
@@ -396,11 +394,9 @@ describe("ProofreadingService", () => {
         status: "PROCESSED",
       }),
     ]);
-    expect(publisher.publish_project_change).toHaveBeenCalledWith(
-      expect.objectContaining({
-        items: { payloadMode: "canonical-delta", changedIds: [1] },
-      }),
-    );
+    expect(publisher.publish_project_change.mock.calls[0]?.[0]).toMatchObject({
+      items: { payloadMode: "canonical-delta", changedIds: [1] },
+    });
   });
 
   it("替换全部同时处理正文译文和第 0 槽姓名译文", async () => {
@@ -527,7 +523,7 @@ describe("ProofreadingService", () => {
         status: "PROCESSED",
       }),
     ]);
-    expect(publisher.publish_project_change).toHaveBeenCalledWith({
+    expect(publisher.publish_project_change.mock.calls[0]?.[0]).toMatchObject({
       projectPath: lg_path,
       source: "proofreading_apply_item_changes",
       updatedSections: ["items", "proofreading"],
@@ -598,7 +594,7 @@ describe("ProofreadingService", () => {
       error_line: 0,
       line: 0,
     });
-    expect(publisher.publish_project_change).toHaveBeenCalledWith({
+    expect(publisher.publish_project_change.mock.calls[0]?.[0]).toMatchObject({
       projectPath: lg_path,
       source: "proofreading_apply_item_changes",
       updatedSections: ["items", "proofreading"],
@@ -649,7 +645,7 @@ describe("ProofreadingService", () => {
         status: "PROCESSED",
       }),
     ]);
-    expect(publisher.publish_project_change).toHaveBeenCalledWith({
+    expect(publisher.publish_project_change.mock.calls[0]?.[0]).toMatchObject({
       projectPath: lg_path,
       source: "proofreading_apply_item_changes",
       updatedSections: ["items", "proofreading"],

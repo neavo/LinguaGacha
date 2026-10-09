@@ -147,7 +147,7 @@ function resolve_quality_rule_statistics_clear_scope(
   return resolve_quality_statistics_item_text_change_scope({
     source: change.source,
     fullReplace: false,
-    deleteCount: change.items.deleteIds.length,
-    fieldPatch: change.items.fieldPatch,
+    deleteCount: 0,
+    fieldPatch: null,
   });
 }

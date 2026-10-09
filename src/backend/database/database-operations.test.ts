@@ -10,6 +10,7 @@ import { DatabaseSync } from "node:sqlite";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { AppError } from "../../shared/error";
 import { JsonTool } from "../../shared/utils/json-tool";
 import { ZstdTool } from "./zstd-tool";
 import * as migrations from "../migration/database-migrations";
@@ -89,6 +90,85 @@ afterEach(() => {
 });
 
 describe("ProjectDatabase", () => {
+  it.each(["sync", "async"] as const)("%s 作用域在操作完成后释放真实连接", async (mode) => {
+    const { database, lg_path } = create_database_project("scope-timing");
+    const entered = Promise.withResolvers<void>();
+    const finish = Promise.withResolvers<void>();
+    const close = vi.spyOn(DatabaseSync.prototype, "close");
+    const read = () => {
+      expect(database.get_all_meta(lg_path).name).toBe("scope-timing");
+      expect(close).not.toHaveBeenCalled();
+      return 42;
+    };
+    if (mode === "sync") expect(database.with_project_scope(lg_path, read)).toBe(42);
+    else {
+      const result = database.with_project_scope_async(lg_path, async () => {
+        read();
+        entered.resolve();
+        await finish.promise;
+        return 42;
+      });
+      await entered.promise;
+      expect(close).not.toHaveBeenCalled();
+      finish.resolve();
+      await expect(result).resolves.toBe(42);
+    }
+    expect(close).toHaveBeenCalledTimes(1);
+    expect(has_project_sidecar(lg_path)).toBe(false);
+  });
+
+  it.each(["sync", "async"] as const)(
+    "%s 作用域保留主异常、关闭异常及已提交恢复信息",
+    async (mode) => {
+      const { database, lg_path } = create_database_project("scope-errors");
+      const main = new Error("operation failed");
+      const committed = new AppError("data.committed_sync_failed", {
+        public_details: {
+          committed: true,
+          action: "reload_project",
+          section_revisions: { items: 7 },
+        },
+      });
+      for (const error of [main, committed, undefined])
+        for (const close_fails of [false, true]) {
+          const close = new Error("close failed");
+          if (close_fails)
+            vi.spyOn(DatabaseSync.prototype, "close").mockImplementationOnce(() => {
+              throw close;
+            });
+          const operation = () => {
+            if (error !== undefined) throw error;
+            return 42;
+          };
+          let caught: unknown;
+          try {
+            const result =
+              mode === "sync"
+                ? database.with_project_scope(lg_path, operation)
+                : await database.with_project_scope_async(lg_path, async () => operation());
+            expect(result).toBe(42);
+          } catch (failure) {
+            caught = failure;
+          }
+          if (error !== undefined && close_fails) {
+            expect(caught).toHaveProperty("cause.errors", [
+              error,
+              expect.objectContaining({ cause: close }),
+            ]);
+            if (error === committed)
+              expect(caught).toMatchObject({
+                code: committed.code,
+                public_details: committed.public_details,
+              });
+          } else if (error !== undefined) expect(caught).toBe(error);
+          else if (close_fails) expect(caught).toHaveProperty("cause", close);
+          else expect(caught).toBeUndefined();
+          database.close();
+          vi.restoreAllMocks();
+        }
+    },
+  );
+
   it("新建拒绝已有目标并保留原有内容", () => {
     const database = create_database();
     const target = project_path("existing.lg");
@@ -526,10 +606,19 @@ describe("ProjectDatabase", () => {
       ]),
     ).toEqual([10, 11]);
     expect(database.get_item_count(lg_path)).toBe(2);
-    database.patch_item_fields_by_ids(lg_path, [10], { status: "PROCESSED" });
+    database.patch_item_translation_fields(lg_path, [
+      { item_id: 10, next: { dst: "", name_dst: null, status: "PROCESSED" } },
+    ]);
     expect(database.get_items_by_ids(lg_path, [11, 10, 11, 999])).toEqual([
       { id: 11, file_path: "script-b.txt", src: "こんばんは", status: "PROCESSED" },
-      { id: 10, file_path: "script-a.txt", src: "おはよう", status: "PROCESSED" },
+      {
+        id: 10,
+        file_path: "script-a.txt",
+        src: "おはよう",
+        dst: "",
+        name_dst: null,
+        status: "PROCESSED",
+      },
     ]);
   });
 
@@ -547,7 +636,9 @@ describe("ProjectDatabase", () => {
     ]);
     database.set_rule_text(lg_path, "prompt.translation", "请保持语气");
     await database.transaction(lg_path, () => {
-      database.patch_item_fields_by_ids(lg_path, [2], { status: "PROCESSED" });
+      database.patch_item_translation_fields(lg_path, [
+        { item_id: 2, next: { dst: "", name_dst: null, status: "PROCESSED" } },
+      ]);
       database.set_rules(lg_path, "glossary", [{ src: "姫", dst: "公主" }]);
       database.upsert_meta_entries(lg_path, {
         source_language: "JA",
@@ -609,8 +700,8 @@ describe("ProjectDatabase", () => {
 
     database.patch_item_translation_fields(lg_path, [
       {
-        id: 1,
-        patch: {
+        item_id: 1,
+        next: {
           dst: "译文",
           name_dst: ["译名"],
           status: "PROCESSED",

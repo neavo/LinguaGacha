@@ -103,7 +103,7 @@ function build_trans_item_metadata_asset_index(db: DatabaseSync): TransItemMetad
     .prepare(
       "SELECT path, data FROM assets WHERE lower(substr(path, -6)) = '.trans' ORDER BY sort_order ASC, id ASC",
     )
-    .all();
+    .iterate();
   for (const row of rows) {
     const asset_path = row_text(row, "path");
     try {

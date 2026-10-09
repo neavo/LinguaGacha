@@ -4,7 +4,10 @@ import { ProjectSessionState } from "./project-session-state";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import type { ProjectEventHandler } from "../project/project-events";
+type CacheLifecycleCall = { projectPath: string };
+type CacheLifecycleHandler = (call: CacheLifecycleCall) => void;
+import { DatabaseSync } from "node:sqlite";
+import { AppError } from "../../shared/error";
 import { ProjectDatabase } from "../database/database-operations";
 import type { MutableJsonRecord } from "../../domain/json";
 import type { LogManager } from "../log/log-manager";
@@ -29,6 +32,65 @@ describe("ProjectLifecycleService", () => {
       fs.rmSync(cleanup_paths.pop() ?? "", { force: true, recursive: true });
     }
   });
+
+  it.each(["close", "cache-and-close", "committed-and-close"] as const)(
+    "加载提交后 %s 失败保留事实与恢复信息",
+    async (phase) => {
+      const project_path = path.join(create_temp_dir(), "scope.lg");
+      const database = new ProjectDatabase();
+      database.create_project(project_path, "scope");
+      database.set_meta(project_path, "updated_at", "before");
+      const main =
+        phase === "committed-and-close"
+          ? new AppError("data.committed_sync_failed", {
+              public_details: {
+                committed: true,
+                action: "reload_project",
+                section_revisions: { items: 9 },
+              },
+            })
+          : new Error("cache failed");
+      const close = new Error("close failed");
+      const service = create_service({
+        database,
+        project_event_handler: () => {
+          if (phase !== "close") throw main;
+        },
+      });
+      vi.spyOn(DatabaseSync.prototype, "close").mockImplementationOnce(() => {
+        throw close;
+      });
+      try {
+        let failure: unknown;
+        try {
+          await service.load_project({ path: project_path });
+        } catch (error) {
+          failure = error;
+        }
+        expect(failure).toMatchObject({
+          code: "data.committed_sync_failed",
+          public_details: { committed: true, action: "reload_project" },
+        });
+        if (phase === "committed-and-close") {
+          expect(failure).toHaveProperty("public_details", (main as AppError).public_details);
+          expect(failure).toHaveProperty("cause.errors", [
+            main,
+            expect.objectContaining({ cause: close }),
+          ]);
+        } else if (phase === "cache-and-close") {
+          expect(failure).toHaveProperty("cause.cause.errors", [
+            main,
+            expect.objectContaining({ cause: close }),
+          ]);
+        } else expect(failure).toHaveProperty("cause.cause", close);
+        database.close();
+        expect(database.get_all_meta(project_path).updated_at).not.toBe("before");
+      } finally {
+        vi.restoreAllMocks();
+        database.close();
+      }
+    },
+  );
 
   it("snapshot 只暴露 会话权威的加载态字段", async () => {
     const service = create_service({
@@ -92,7 +154,7 @@ describe("ProjectLifecycleService", () => {
 
   it("load 发布缓存热机事件并标记会话", async () => {
     const project_path = write_file(path.join(create_temp_dir(), "demo.lg"));
-    const project_events: Array<Parameters<ProjectEventHandler>[0]> = [];
+    const project_events: Array<Parameters<CacheLifecycleHandler>[0]> = [];
     const session_state = create_session_state();
     const service = create_service({
       database: create_database(),
@@ -112,7 +174,6 @@ describe("ProjectLifecycleService", () => {
     });
     expect(project_events).toMatchObject([
       {
-        type: "project.opened_for_cache",
         projectPath: project_path,
       },
     ]);
@@ -655,7 +716,7 @@ describe("ProjectLifecycleService", () => {
       info: ReturnType<typeof vi.fn>;
       error: ReturnType<typeof vi.fn>;
     };
-    project_event_handler?: ProjectEventHandler;
+    project_event_handler?: CacheLifecycleHandler;
     task_busy?: boolean;
   }): ProjectLifecycleService {
     const app_root = options.app_root ?? create_temp_dir();
@@ -670,8 +731,11 @@ describe("ProjectLifecycleService", () => {
         builtinRoot: path.join(app_root, "builtin"),
       }),
       options.log_manager ?? create_log_manager(),
-      project_event_handler,
-      new ProjectWriteStore(options.database, project_event_handler, null),
+      {
+        warmProject: async (projectPath) => project_event_handler({ projectPath }),
+        clearProject: (projectPath) => project_event_handler({ projectPath: projectPath ?? "" }),
+      },
+      new ProjectWriteStore(options.database, () => undefined, null),
       create_pdf_execution(),
     );
   }
@@ -698,6 +762,10 @@ describe("ProjectLifecycleService", () => {
     });
     return {
       get_project_summary,
+      with_project_scope_async: async <T>(
+        _project: string,
+        callback: () => Promise<T>,
+      ): Promise<T> => await callback(),
       get_all_meta: vi.fn(() => options.meta ?? {}),
       get_all_items: vi.fn(() => options.items ?? []),
       get_all_asset_records: vi.fn(() => options.asset_records ?? []),

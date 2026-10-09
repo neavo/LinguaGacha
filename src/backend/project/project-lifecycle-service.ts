@@ -39,11 +39,7 @@ import {
   type ProjectPrefilterWriteOutput,
 } from "./project-write-state";
 import { build_section_revisions_from_meta, get_section_revision } from "./project-data-reader";
-import {
-  create_project_opened_for_cache_event,
-  create_project_unloaded_event,
-  type ProjectEventHandler,
-} from "./project-events";
+import type { CacheManager } from "../cache/cache-manager";
 import {
   ProjectDefaultPresetReader,
   type ProjectDefaultPresetInput,
@@ -98,7 +94,7 @@ export class ProjectLifecycleService {
 
   private readonly log_manager: LogManager; // 记录生命周期解析失败和诊断，响应体不扩大公开协议
 
-  private readonly project_event_handler: ProjectEventHandler; // 承担 Backend 内部 committed event 分发，热机失败会阻断 loaded
+  private readonly cache: Pick<CacheManager, "warmProject" | "clearProject">; // 直接热机或清理缓存，热机失败会阻断 loaded
 
   private readonly write_store: ProjectWriteStore; // loaded 工程任务输入统一交给运行期唯一写入口
 
@@ -116,7 +112,7 @@ export class ProjectLifecycleService {
     app_setting_service: AppSettingService,
     paths: AppPathService,
     log_manager: LogManager,
-    project_event_handler: ProjectEventHandler,
+    cache: Pick<CacheManager, "warmProject" | "clearProject">,
     write_store: ProjectWriteStore,
     private readonly pdf_execution: PDFExecution,
     native_fs: NativeFs = default_native_fs,
@@ -126,7 +122,7 @@ export class ProjectLifecycleService {
     this.session_state = session_state;
     this.app_setting_service = app_setting_service;
     this.log_manager = log_manager;
-    this.project_event_handler = project_event_handler;
+    this.cache = cache;
     this.write_store = write_store;
     this.native_fs = native_fs;
     this.default_preset_reader = new ProjectDefaultPresetReader(
@@ -165,28 +161,36 @@ export class ProjectLifecycleService {
   private async load_project_under_lease(body: JsonRecord): Promise<JsonRecord> {
     const project_path = this.require_body_string(body, "path");
     this.assert_project_file_exists(project_path);
-    // 打开期迁移只生成 operation，和 updated_at 一起提交后才暴露 loaded 状态
-    const migration_writes = await build_project_open_writes({
-      project_path,
-      database: this.database,
-      app_setting_service: this.app_setting_service,
-    });
+    let committed = false; // 包含连接释放在内的提交后步骤都只能要求恢复。
+    try {
+      return await this.database.with_project_scope_async(project_path, async () => {
+        // 打开期迁移只生成 operation，和 updated_at 一起提交后才暴露 loaded 状态
+        const migration_writes = await build_project_open_writes({
+          project_path,
+          database: this.database,
+          app_setting_service: this.app_setting_service,
+        });
 
-    await this.database.transaction(project_path, () => {
-      this.database.set_meta(project_path, "updated_at", this.build_timestamp());
-      for (const write of migration_writes) {
-        write(this.database);
-      }
-    });
-    const meta = read_json_record(this.database.get_all_meta(project_path) as JsonValue);
-    await this.project_event_handler(
-      create_project_opened_for_cache_event({
-        projectPath: project_path,
-        sectionRevisions: build_section_revisions_from_meta(meta as MutableJsonRecord),
-      }),
-    );
-    await this.session_state.mark_loaded(project_path);
-    return this.build_loaded_project_response(project_path);
+        await this.database.transaction(project_path, () => {
+          this.database.set_meta(project_path, "updated_at", this.build_timestamp());
+          for (const write of migration_writes) {
+            write(this.database);
+          }
+        });
+        committed = true;
+        await this.cache.warmProject(project_path);
+        await this.session_state.mark_loaded(project_path);
+        return this.build_loaded_project_response(project_path);
+      });
+    } catch (cause) {
+      if (AppErrors.is_app_error(cause) && cause.code === "data.committed_sync_failed") throw cause;
+      if (!committed) throw cause;
+      throw new AppErrors.AppError("data.committed_sync_failed", {
+        cause,
+        public_details: { committed: true, action: "reload_project" },
+        diagnostic_context: { operation: "load_project_after_commit" },
+      });
+    }
   }
 
   /**
@@ -257,7 +261,9 @@ export class ProjectLifecycleService {
   public async apply_task_input(input: ProjectTaskInput): Promise<ProjectWriteResult> {
     return await this.runtime_gate.run_project_write(async () => {
       const project_path = this.session_state.require_loaded_project_path();
-      const section_revisions = build_section_revisions_from_meta(this.get_all_meta(project_path));
+      const section_revisions = build_section_revisions_from_meta(
+        this.database.get_all_meta(project_path),
+      );
       return await this.write_store.apply_task_input({
         projectPath: project_path,
         expectedSectionRevisions: {
@@ -460,7 +466,7 @@ export class ProjectLifecycleService {
     const project_path = this.require_body_string(body, "path");
     this.assert_project_file_exists(project_path);
 
-    const meta = this.get_all_meta(project_path);
+    const meta = this.database.get_all_meta(project_path);
     const prefilter_config = {
       ...read_json_record(meta["prefilter_config"] as JsonValue),
     };
@@ -511,7 +517,7 @@ export class ProjectLifecycleService {
     return await this.runtime_gate.run_project_write(async () => {
       const state = this.session_state.snapshot();
       if (state.loaded && state.projectPath !== "") {
-        await this.project_event_handler(create_project_unloaded_event(state.projectPath));
+        this.cache.clearProject(state.projectPath);
         await this.session_state.clear();
         this.database.close_project(state.projectPath);
       } else {
@@ -774,15 +780,6 @@ export class ProjectLifecycleService {
         public_details: { filename: path.basename(project_path) },
       });
     }
-  }
-
-  /**
-   * 读取全部 meta，用于打开预演、兼容处理和 section revision
-   */
-  private get_all_meta(project_path: string): MutableJsonRecord {
-    return {
-      ...read_json_record(this.database.get_all_meta(project_path) as JsonValue),
-    };
   }
 
   /**

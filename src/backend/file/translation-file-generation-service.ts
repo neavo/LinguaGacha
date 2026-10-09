@@ -15,7 +15,6 @@ import { AppSettingService } from "../app/app-setting-service";
 import { ProjectSessionState } from "../project/project-session-state";
 import { FileFormatService } from "./file-format-service";
 import { type ItemNameField, type Item, create_item } from "../../domain/item";
-import { is_json_record } from "../../domain/json";
 import { resolve_app_locale, type AppLanguage } from "../../domain/app-language";
 import { normalize_setting_snapshot, type SettingSnapshot } from "../../domain/setting";
 import { create_text_resolver, format_i18n_message, type LocaleKey } from "../../shared/i18n";
@@ -121,7 +120,10 @@ export class TranslationFileGenerationService {
     );
     try {
       const project_path = this.session_state.require_loaded_project_path();
-      const result = await write(project_path, config);
+      const result = await this.database.with_project_scope_async(
+        project_path,
+        async () => await write(project_path, config),
+      );
       this.log_manager?.info(
         `${this.generation_log_text(config, "app.translation_generation.log.succeeded")}\n${result.output_path}`,
         { source: FILE_GENERATION_LOG_SOURCE },
@@ -282,10 +284,7 @@ export class TranslationFileGenerationService {
    */
   private read_project_items(project_path: string): Item[] {
     const raw_items = this.database.get_all_items(project_path);
-    if (!Array.isArray(raw_items)) {
-      return [];
-    }
-    return raw_items.filter(is_json_record).map((item) => create_item(item));
+    return raw_items.map((item) => create_item(item));
   }
 
   /**

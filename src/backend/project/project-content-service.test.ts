@@ -1,6 +1,6 @@
 import { create_pdf_execution, create_pdf_fixture } from "../file/pdf/test-support";
 
-import { ProjectDataReader, get_section_revision } from "./project-data-reader";
+import { ProjectDataReader } from "./project-data-reader";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -13,14 +13,10 @@ import { FileFormatService } from "../file/file-format-service";
 import type { LogManager } from "../log/log-manager";
 import { RuntimeOperationGate } from "../runtime-operation-gate";
 import { ProjectContentService } from "./project-content-service";
-import type {
-  ProjectChangePublisher,
-  ProjectWriteChangeRequest,
-} from "./project-write-event-adapter";
+import { adapt_project_change, type ProjectChangePublisher } from "./project-write-event-adapter";
 import { ProjectWriteStore } from "./project-write-store";
 
 import { ProjectSessionState } from "./project-session-state";
-import type { ProjectChangeEvent } from "../../shared/project-event";
 
 let temp_dir = "";
 
@@ -61,7 +57,7 @@ function create_service(
   session_state.mark_loaded(lg_path);
   const publisher =
     project_change_publisher === undefined
-      ? create_test_project_change_publisher(database, lg_path)
+      ? create_test_project_change_publisher().publish_project_change
       : project_change_publisher;
   const runtime_gate = new RuntimeOperationGate();
   const project_event_bus = vi.fn();
@@ -91,60 +87,14 @@ function create_log_manager(): Pick<LogManager, "warning"> {
   };
 }
 
-/** 从真实数据库读取修订号，模拟提交后的项目事件。 */
-function create_test_project_change_publisher(
-  database: ProjectDatabase,
-  lg_path: string,
-): ProjectChangePublisher {
-  return vi.fn((payload: ProjectWriteChangeRequest): ProjectChangeEvent => {
-    const updated_sections = Array.isArray(payload.updatedSections)
-      ? payload.updatedSections.map((section) => String(section))
-      : [];
-    const meta = database.get_all_meta(lg_path) as JsonRecord;
-    const section_revisions = Object.fromEntries(
-      updated_sections.map((section) => [section, get_section_revision(meta, section)]),
-    );
-    return {
-      type: "project.changed",
-      eventId: `test-${String(payload.source ?? "project_change")}`,
-      source: String(payload.source ?? "project_change"),
-      projectPath: payload.projectPath,
-      projectRevision: Math.max(...Object.values(section_revisions), 0),
-      sectionRevisions: section_revisions,
-      updatedSections: updated_sections as ProjectChangeEvent["updatedSections"],
-      ...(payload.items === undefined
-        ? {}
-        : { items: payload.items as NonNullable<ProjectChangeEvent["items"]> }),
-      ...(payload.files === undefined
-        ? {}
-        : { files: payload.files as NonNullable<ProjectChangeEvent["files"]> }),
-      ...(payload.sections === undefined
-        ? {}
-        : { sections: payload.sections as NonNullable<ProjectChangeEvent["sections"]> }),
-    };
-  });
-}
-
-/** 固定修订号，用于只验证写入及事件形状的用例。 */
-function create_static_project_change_publisher(section_revisions: Record<string, number>) {
+/** 使用真实事件适配器，修订与载荷取自本次提交。 */
+function create_test_project_change_publisher() {
+  const session = new ProjectSessionState();
+  void session.mark_loaded(project_path("demo.lg"));
   return {
-    publish_project_change: vi.fn((payload: JsonRecord): ProjectChangeEvent => {
-      const updated_sections = Array.isArray(payload.updatedSections)
-        ? payload.updatedSections.map((section) => String(section))
-        : [];
-      const current_section_revisions = Object.fromEntries(
-        updated_sections.map((section) => [section, section_revisions[section] ?? 0]),
-      );
-      return {
-        type: "project.changed",
-        eventId: `test-${String(payload.source ?? "project_change")}`,
-        source: String(payload.source ?? "project_change"),
-        projectPath: String(payload.projectPath ?? ""),
-        projectRevision: Math.max(...Object.values(current_section_revisions), 0),
-        sectionRevisions: current_section_revisions,
-        updatedSections: updated_sections as ProjectChangeEvent["updatedSections"],
-      };
-    }),
+    publish_project_change: vi.fn((payload: Parameters<typeof adapt_project_change>[1]) =>
+      adapt_project_change(session, payload),
+    ),
   };
 }
 
@@ -362,9 +312,7 @@ describe("ProjectContentService", () => {
   );
 
   it("settings alignment 的 prefiltered_items 在当前工程发布 items 失效信号", async () => {
-    const { publish_project_change } = create_static_project_change_publisher({
-      items: 1,
-    });
+    const { publish_project_change } = create_test_project_change_publisher();
     const { database, service, lg_path } = create_service(publish_project_change);
     database.set_items(lg_path, [
       create_persistent_item({ src: "旧", file_path: "a.txt", row_number: 0 }),
@@ -389,7 +337,7 @@ describe("ProjectContentService", () => {
         },
       ],
     });
-    expect(publish_project_change).toHaveBeenCalledWith({
+    expect(publish_project_change.mock.calls[0]?.[0]).toMatchObject({
       projectPath: lg_path,
       source: "settings_alignment",
       updatedSections: ["items"],
@@ -399,9 +347,7 @@ describe("ProjectContentService", () => {
   });
 
   it("全部重置重建条目并发布全量失效", async () => {
-    const { publish_project_change } = create_static_project_change_publisher({
-      items: 1,
-    });
+    const { publish_project_change } = create_test_project_change_publisher();
     const { database, service, lg_path } = create_service(publish_project_change);
     const source_path = project_path("a.txt");
     fs.writeFileSync(source_path, "新", "utf-8");
@@ -439,7 +385,7 @@ describe("ProjectContentService", () => {
       }),
     ]);
 
-    expect(publish_project_change).toHaveBeenCalledWith({
+    expect(publish_project_change.mock.calls[0]?.[0]).toMatchObject({
       projectPath: lg_path,
       source: "translation_reset",
       updatedSections: ["items"],
@@ -826,10 +772,7 @@ describe("ProjectContentService", () => {
   });
 
   it("导入同名工作台文件选择替换时保留排序并重建条目", async () => {
-    const { publish_project_change } = create_static_project_change_publisher({
-      files: 1,
-      items: 1,
-    });
+    const { publish_project_change } = create_test_project_change_publisher();
     const { database, service, lg_path } = create_service(publish_project_change);
     const old_source = project_path("a.txt");
     const replace_source = project_path("a-new.txt");
@@ -860,7 +803,7 @@ describe("ProjectContentService", () => {
       create_persistent_item({ item_id: 2, src: "新", file_path: "a.txt", row_number: 0 }),
     ]);
 
-    expect(publish_project_change).toHaveBeenCalledWith({
+    expect(publish_project_change.mock.calls[0]?.[0]).toMatchObject({
       projectPath: lg_path,
       source: "project_import_files",
       updatedSections: ["files", "items"],
@@ -970,7 +913,7 @@ describe("ProjectContentService", () => {
   });
 
   it("按完整文件集合重排 assets 并只 bump files section", async () => {
-    const { publish_project_change } = create_static_project_change_publisher({ files: 1 });
+    const { publish_project_change } = create_test_project_change_publisher();
     const { database, service, lg_path } = create_service(publish_project_change);
     const first_source = project_path("a.txt");
     const second_source = project_path("b.txt");
@@ -999,7 +942,7 @@ describe("ProjectContentService", () => {
       { path: "b.txt", sort_order: 0 },
       { path: "a.txt", sort_order: 1 },
     ]);
-    expect(publish_project_change).toHaveBeenCalledWith({
+    expect(publish_project_change.mock.calls[0]?.[0]).toMatchObject({
       projectPath: lg_path,
       source: "project_reorder_files",
       updatedSections: ["files"],
@@ -1009,9 +952,7 @@ describe("ProjectContentService", () => {
   });
 
   it("工作台 reset-file 只写顶层计算 meta 白名单", async () => {
-    const { publish_project_change } = create_static_project_change_publisher({
-      items: 1,
-    });
+    const { publish_project_change } = create_test_project_change_publisher();
     const { database, service, lg_path } = create_service(publish_project_change);
     const source_path = project_path("a.txt");
     fs.writeFileSync(source_path, "a", "utf-8");
@@ -1042,7 +983,7 @@ describe("ProjectContentService", () => {
       mtool_optimizer_enable: true,
       skip_duplicate_source_text_enable: true,
     });
-    expect(publish_project_change).toHaveBeenCalledWith({
+    expect(publish_project_change.mock.calls[0]?.[0]).toMatchObject({
       projectPath: lg_path,
       source: "project_reset_files",
       updatedSections: ["items"],
@@ -1052,10 +993,7 @@ describe("ProjectContentService", () => {
   });
 
   it("删除工作台文件时删除 files 和对应 items", async () => {
-    const { publish_project_change } = create_static_project_change_publisher({
-      files: 1,
-      items: 1,
-    });
+    const { publish_project_change } = create_test_project_change_publisher();
     const { database, service, lg_path } = create_service(publish_project_change);
     const first_source = project_path("a.txt");
     const second_source = project_path("b.txt");
@@ -1091,7 +1029,7 @@ describe("ProjectContentService", () => {
     expect(database.get_all_items(lg_path)).toEqual([
       create_persistent_item({ item_id: 2, src: "保留", file_path: "b.txt", row_number: 0 }),
     ]);
-    expect(publish_project_change).toHaveBeenCalledWith({
+    expect(publish_project_change.mock.calls[0]?.[0]).toMatchObject({
       projectPath: lg_path,
       source: "project_delete_files",
       updatedSections: ["files", "items"],

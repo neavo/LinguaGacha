@@ -20,6 +20,7 @@ type ProjectDataDatabase = Pick<
   | "get_rule_text"
 >;
 
+/** 仅提供本文件读取契约所需的数据库替身。 */
 function create_database_stub(overrides: Partial<ProjectDataDatabase> = {}): ProjectDatabase {
   return {
     read_pdf_summaries: () => ({}),
@@ -31,7 +32,6 @@ function create_database_stub(overrides: Partial<ProjectDataDatabase> = {}): Pro
     get_items_by_ids: () => [],
     get_rules: () => [],
     get_rule_text: () => "",
-    get_analysis_candidate_aggregates: () => [],
     ...overrides,
   } as unknown as ProjectDatabase;
 }
@@ -95,10 +95,9 @@ describe("ProjectDataReader", () => {
       create_database_stub({ get_all_items, get_all_meta, get_rules, get_rule_text }),
     );
 
-    service.build_section_payloads({
-      projectState: { loaded: true, projectPath: "E:/demo/demo.lg" },
-      sections: ["quality", "prompts"],
-    });
+    const meta = service.get_all_meta("E:/demo/demo.lg");
+    service.build_quality_block("E:/demo/demo.lg", meta);
+    service.build_prompts_block("E:/demo/demo.lg", meta);
 
     expect(get_all_meta).toHaveBeenCalled();
     expect(get_rules).toHaveBeenCalled();
@@ -119,45 +118,16 @@ describe("ProjectDataReader", () => {
       }),
     );
 
-    const payload = service.build_section_payloads({
-      projectState: { loaded: true, projectPath: "E:/demo/demo.lg" },
-      sections: ["prompts"],
-    });
-    const sections = payload["sections"] as Record<string, unknown>;
-    const prompts = sections["prompts"] as Record<string, Record<string, unknown>>;
+    const prompts = service.build_prompts_block(
+      "E:/demo/demo.lg",
+      service.get_all_meta("E:/demo/demo.lg"),
+    );
 
     expect(prompts["translation"]).toEqual({
       revision: 4,
       enabled: true,
       text: "翻译提示词",
     });
-
-    expect(prompts["translation"]).not.toHaveProperty("meta");
-    expect(prompts["translation"]).not.toHaveProperty("task_type");
-  });
-
-  it("质量切片缺少 meta 时使用质量规则领域默认值", () => {
-    const service = new ProjectDataReader(
-      create_database_stub({
-        get_rules: (_project_path, rule_type) =>
-          rule_type === "glossary" ? [{ entry_id: "hp", src: "HP", dst: "生命值" }] : [],
-      }),
-    );
-
-    const payload = service.build_section_payloads({
-      projectState: { loaded: true, projectPath: "E:/demo/demo.lg" },
-      sections: ["quality"],
-    });
-    const sections = payload["sections"] as Record<string, unknown>;
-    const quality = sections["quality"] as Record<string, Record<string, unknown>>;
-
-    expect(quality["glossary"]).toMatchObject({
-      enabled: true,
-      entries: [{ entry_id: "hp", src: "HP", dst: "生命值" }],
-    });
-    expect(quality["text_preserve"]).toMatchObject({ enabled: false, mode: "smart" });
-    expect(quality["pre_replacement"]?.enabled).toBe(false);
-    expect(quality["post_replacement"]?.enabled).toBe(false);
   });
 
   it("manifest 计数使用聚合读取，不扫描完整 item payload", () => {

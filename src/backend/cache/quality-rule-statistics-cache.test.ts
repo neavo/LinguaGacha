@@ -101,21 +101,13 @@ function create_worker(): AnalysisWorker & {
 /** 默认提交文本变化，用覆盖字段表达其它失效来源。 */
 function create_cache_change(overrides: Partial<CacheChange> = {}): CacheChange {
   return {
-    eventType: "project.items.changed",
     projectPath: "E:/Project/demo.lg",
     source: "translation_batch_update",
-    affectedSections: ["items"],
-    sectionRevisions: { items: 2 },
     items: {
       mode: "delta",
       changedIds: [1],
-      deleteIds: [],
-      fieldPatch: null,
-      sourcePayloadMode: "canonical-delta",
     },
-    files: { mode: "keep" },
     quality: { mode: "keep" },
-    prompts: { mode: "keep" },
     settings: { mode: "keep" },
     ...overrides,
   };
@@ -193,8 +185,6 @@ describe("QualityRuleStatisticsCache", () => {
     await cache.read("glossary");
     cache.applyChange(
       create_cache_change({
-        eventType: "project.quality.changed",
-        affectedSections: ["quality"],
         items: { mode: "keep" },
         quality: { mode: "full" },
       }),

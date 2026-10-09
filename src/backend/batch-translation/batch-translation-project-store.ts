@@ -62,8 +62,8 @@ export class BatchTranslationProjectStore {
   /**
    * 翻译收尾只持久化进度 extras，避免无变更批次仍触发 item patch
    */
-  public update_translation_progress(progress: BatchTranslationProgress): void {
-    this.write_store.update_task_progress_meta({
+  public async update_translation_progress(progress: BatchTranslationProgress): Promise<void> {
+    await this.write_store.update_task_progress_meta({
       projectPath: this.session_state.require_loaded_project_path(),
       meta: { translation_extras: { ...progress } },
     });

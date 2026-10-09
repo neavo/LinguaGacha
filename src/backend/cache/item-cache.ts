@@ -1,11 +1,13 @@
 import type { ProjectItemPublicRecord } from "../../domain/item";
+import { build_project_item_duplicate_key } from "../../shared/project/project-item-duplicates";
 import type { CacheItemChange } from "./cache-change";
 
 /**
  * ItemCache 维护按数据库顺序插入的 item 主索引。
  */
 export class ItemCache {
-  private items_by_id = new Map<number, ProjectItemPublicRecord>();
+  private items_by_id = new Map<number, ProjectItemPublicRecord>(); // 保留数据库主键顺序，读取时隔离顶层记录。
+  private duplicate_groups: Map<string, number[]> | null = null; // 只保留真实重复组，结构变化后按需重建。
 
   /**
    * before_read 由 CacheManager 注入，用来在读取前恢复缓存。
@@ -21,6 +23,7 @@ export class ItemCache {
       next_items_by_id.set(item.item_id, { ...item });
     }
     this.items_by_id = next_items_by_id;
+    this.duplicate_groups = null;
   }
 
   /**
@@ -28,10 +31,11 @@ export class ItemCache {
    */
   public clear(): void {
     this.items_by_id.clear();
+    this.duplicate_groups = null;
   }
 
   /**
-   * 应用事件中的 item 变化，支持全量替换、字段 patch 和完整行 upsert。
+   * 应用已提交的完整替换或规范行增量。
    */
   public applyChange(change: CacheItemChange, upsert_records: ProjectItemPublicRecord[]): void {
     if (change.mode === "keep") {
@@ -42,29 +46,43 @@ export class ItemCache {
       return;
     }
 
-    const delete_ids = new Set(change.deleteIds);
-    for (const item_id of delete_ids) {
-      this.items_by_id.delete(item_id);
-    }
+    for (const record of upsert_records) this.upsert_item(record);
+  }
 
-    if (change.fieldPatch !== null) {
-      for (const item_id of change.changedIds) {
-        if (delete_ids.has(item_id)) {
-          continue;
-        }
-        const current = this.items_by_id.get(item_id);
-        if (current !== undefined) {
-          this.upsert_item({ ...current, ...change.fieldPatch });
-        }
+  /** 显式目标总是保留，同组只补入会参与重复协调的成员。 */
+  public readWriteScope(item_ids: readonly number[]): number[] {
+    this.before_read();
+    if (this.duplicate_groups === null) {
+      const groups = new Map<string, number[]>();
+      for (const item of this.items_by_id.values()) {
+        const key = build_project_item_duplicate_key(item);
+        const group = groups.get(key);
+        if (group === undefined) groups.set(key, [item.item_id]);
+        else group.push(item.item_id);
+      }
+      for (const [key, members] of groups) if (members.length < 2) groups.delete(key);
+      this.duplicate_groups = groups;
+    }
+    const ids = new Set(item_ids);
+    const visited = new Set<string>();
+    for (const id of item_ids) {
+      const item = this.items_by_id.get(id);
+      if (item === undefined) continue;
+      const key = build_project_item_duplicate_key(item);
+      if (visited.has(key)) continue;
+      visited.add(key);
+      for (const member of this.duplicate_groups.get(key) ?? []) {
+        const status = this.items_by_id.get(member)?.status;
+        if (
+          status === "NONE" ||
+          status === "DUPLICATED" ||
+          status === "PROCESSED" ||
+          status === "ERROR"
+        )
+          ids.add(member);
       }
     }
-
-    for (const record of upsert_records) {
-      if (delete_ids.has(record.item_id)) {
-        continue;
-      }
-      this.upsert_item(record);
-    }
+    return [...ids].sort((a, b) => a - b);
   }
 
   /**
@@ -80,7 +98,10 @@ export class ItemCache {
     this.before_read();
     const files = new Map<string, Pick<ProjectItemPublicRecord, "file_path" | "file_type">>();
     for (const item of this.items_by_id.values()) {
-      if (item.file_path !== "" && !files.has(item.file_path)) {
+      if (
+        item.file_path !== "" &&
+        (!files.has(item.file_path) || files.get(item.file_path)?.file_type === "NONE")
+      ) {
         files.set(item.file_path, { file_path: item.file_path, file_type: item.file_type });
       }
     }
@@ -107,6 +128,12 @@ export class ItemCache {
    * 写入单条 item；Map 更新既有键时保持顺序，新键追加到末尾。
    */
   private upsert_item(item: ProjectItemPublicRecord): void {
+    const previous = this.items_by_id.get(item.item_id);
+    if (
+      previous === undefined ||
+      build_project_item_duplicate_key(previous) !== build_project_item_duplicate_key(item)
+    )
+      this.duplicate_groups = null;
     this.items_by_id.set(item.item_id, { ...item });
   }
 }

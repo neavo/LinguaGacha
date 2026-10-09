@@ -25,8 +25,16 @@ export function database_error(error: unknown, project_path: string, operation: 
   );
 }
 
-/** 收尾失败同时保留两个异常，并按基础设施故障上报。 */
+/** 收尾失败保留两个原因；已提交错误的恢复信息不能被关闭异常覆盖。 */
 export function database_cleanup_error(error: unknown, cleanup: unknown): AppError {
+  if (is_app_error(error) && error.code === "data.committed_sync_failed") {
+    return new AppError(error.code, {
+      message: error.message,
+      cause: new AggregateError([error, cleanup], "Database operation and cleanup failed."),
+      public_details: error.public_details,
+      diagnostic_context: { ...error.diagnostic_context, cleanup_failed: true },
+    });
+  }
   return new AppError("runtime.internal_invariant", {
     cause: new AggregateError([error, cleanup], "Database operation and cleanup failed."),
     diagnostic_context: { operation: "cleanup", cleanup_failed: true },

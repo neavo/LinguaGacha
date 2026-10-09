@@ -1,4 +1,7 @@
-import { afterEach, expect, it } from "vitest";
+import { NodeSqliteDatabase } from "@earendil-works/pi-durable/storage/sqlite/node";
+import type { SqliteExecutor } from "@earendil-works/pi-durable/storage/sqlite";
+import { ProjectWriteStore } from "../project/project-write-store";
+import { afterEach, expect, it, vi } from "vitest";
 import fs from "node:fs";
 import { ACTIVE_AGENT_CHAT_KEY } from "./agent-chat-storage";
 import os from "node:os";
@@ -35,6 +38,34 @@ it("SDK 与工程并发提交、失败回滚，关闭后只复制 lg 即可恢�
   );
   const conversation = await harness.root(BACKGROUND_CONTEXT);
   try {
+    const entered = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
+    const transaction = NodeSqliteDatabase.prototype.transaction;
+    // 在真实 SDK SQL 事务内暂停，确保进度写入与回滚实际交错。
+    vi.spyOn(NodeSqliteDatabase.prototype, "transaction").mockImplementationOnce(function <T>(
+      this: NodeSqliteDatabase,
+      callback: (tx: SqliteExecutor) => Promise<T>,
+    ): Promise<T> {
+      return transaction.call(this, async (tx) => {
+        await callback(tx);
+        entered.resolve();
+        await release.promise;
+        throw new Error("SDK rollback");
+      }) as Promise<T>;
+    });
+    const sdk_write = store.save_upload("-t75szF5", uploaded_file("rolled-back"));
+    const rejected = expect(sdk_write).rejects.toThrow("SDK rollback");
+    await entered.promise;
+    const writes = new ProjectWriteStore(database, () => undefined, null);
+    const progress = writes.update_task_progress_meta({
+      projectPath: file,
+      meta: { translation_extras: { line: 123 } },
+    });
+    release.resolve();
+    await rejected;
+    await progress;
+    expect(database.get_all_meta(file)).toHaveProperty("translation_extras", { line: 123 });
+    expect((await store.read())?.data.uploads).toEqual([]);
     await Promise.all(
       Array.from({ length: 10 }, (_, i) =>
         Promise.all([

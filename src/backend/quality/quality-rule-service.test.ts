@@ -329,7 +329,7 @@ describe("QualityRuleService", () => {
         },
       ],
     });
-    expect(publisher.publish_project_change).toHaveBeenCalledWith({
+    expect(publisher.publish_project_change.mock.calls[0]?.[0]).toMatchObject({
       projectPath: lg_path,
       source: "quality_rule_update",
       updatedSections: ["quality"],

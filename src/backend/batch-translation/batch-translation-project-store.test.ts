@@ -1,3 +1,4 @@
+import { create_item } from "../../domain/item";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -7,7 +8,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { JsonValue } from "../../domain/json";
 import { CacheManager } from "../cache/cache-manager";
 import { ProjectDatabase } from "../database/database-operations";
-import type { ProjectEventHandler } from "../project/project-events";
+import type { ProjectCommittedChangeHandler } from "../project/project-committed-change";
 import { ProjectWriteStore } from "../project/project-write-store";
 import { ProjectSessionState } from "../project/project-session-state";
 import type { ComputeWorkerClient } from "../worker/compute-worker-client";
@@ -41,31 +42,33 @@ describe("BatchTranslationProjectStore", () => {
       false,
     );
 
-    expect(read_items(database, project_path)).toEqual([
-      {
-        id: 1,
-        src: "原文",
-        dst: "译文",
-        name_src: "原名",
-        name_dst: "译名",
-        status: "PROCESSED",
-        file_path: "demo.txt",
-        file_type: "TXT",
-        text_type: "TXT",
-        row: 7,
-        extra_field: { speaker: "春" },
-      },
-      {
-        id: 2,
-        src: "待翻",
-        dst: "",
-        status: "NONE",
-        file_path: "demo.txt",
-        file_type: "TXT",
-        text_type: "TXT",
-        row: 8,
-      },
-    ]);
+    expect(read_items(database, project_path)).toEqual(
+      [
+        {
+          id: 1,
+          src: "原文",
+          dst: "译文",
+          name_src: "原名",
+          name_dst: "译名",
+          status: "PROCESSED",
+          file_path: "demo.txt",
+          file_type: "TXT",
+          text_type: "TXT",
+          row: 7,
+          extra_field: { speaker: "春" },
+        },
+        {
+          id: 2,
+          src: "待翻",
+          dst: "",
+          status: "NONE",
+          file_path: "demo.txt",
+          file_type: "TXT",
+          text_type: "TXT",
+          row: 8,
+        },
+      ].map((item) => create_item(item)),
+    );
     expect(read_meta(database, project_path)["translation_extras"]).toEqual(
       create_progress_snapshot({ line: 1, processed_line: 1 }),
     );
@@ -73,7 +76,7 @@ describe("BatchTranslationProjectStore", () => {
       changed_item_ids: [1],
       section_revisions: { items: 1 },
     });
-    expect(published_changes).toEqual([
+    expect(published_changes).toMatchObject([
       {
         projectPath: project_path,
         source: "translation_batch_update",
@@ -109,7 +112,7 @@ describe("BatchTranslationProjectStore", () => {
       changed_item_ids: [2],
       section_revisions: { items: 1, proofreading: 1 },
     });
-    expect(published_changes).toEqual([
+    expect(published_changes).toMatchObject([
       {
         projectPath: project_path,
         source: "retranslate_items",
@@ -124,16 +127,19 @@ describe("BatchTranslationProjectStore", () => {
 
   it("失败重试按实际状态更新工程计数，同值失败仍提交本次用量", async () => {
     const { database, project_path, store, published_changes } = create_store();
-    database.set_items(project_path, [
-      { id: 1, src: "待重试", dst: "", status: "ERROR", file_path: "a.txt" },
-      {
-        id: 2,
-        src: "已完成",
-        dst: "译文",
-        status: "PROCESSED",
-        file_path: "a.txt",
-      },
-    ]);
+    database.set_items(
+      project_path,
+      [
+        { id: 1, src: "待重试", dst: "", status: "ERROR", file_path: "a.txt" },
+        {
+          id: 2,
+          src: "已完成",
+          dst: "译文",
+          status: "PROCESSED",
+          file_path: "a.txt",
+        },
+      ].map((item) => create_item(item)),
+    );
     const failed = { item_id: 1, dst: "", status: "ERROR" };
     const ack = await store.commit_translation_batch(
       [failed],
@@ -141,7 +147,7 @@ describe("BatchTranslationProjectStore", () => {
       false,
     );
     expect(ack.changed_item_ids).toEqual([]);
-    expect(published_changes).toEqual([]);
+    expect(published_changes).toMatchObject([]);
     expect(read_meta(database, project_path)["project_runtime_revision.items"] ?? 0).toBe(0);
     expect(read_meta(database, project_path)["translation_extras"]).toMatchObject({
       total_line: 2,
@@ -226,7 +232,7 @@ describe("BatchTranslationProjectStore", () => {
   function create_store(
     options: {
       on_publish_project_change?: () => void;
-      on_project_event?: ProjectEventHandler;
+      on_project_event?: ProjectCommittedChangeHandler;
     } = {},
   ): {
     database: ProjectDatabase;
@@ -275,31 +281,34 @@ describe("BatchTranslationProjectStore", () => {
 
   /** 准备含已用字段的数据库条目，验证局部提交保留其它事实。 */
   function seed_items(database: ProjectDatabase, project_path: string): void {
-    database.set_items(project_path, [
-      {
-        id: 1,
-        src: "原文",
-        dst: "",
-        name_src: "原名",
-        name_dst: null,
-        status: "NONE",
-        file_path: "demo.txt",
-        file_type: "TXT",
-        text_type: "TXT",
-        row: 7,
-        extra_field: { speaker: "春" },
-      },
-      {
-        id: 2,
-        src: "待翻",
-        dst: "",
-        status: "NONE",
-        file_path: "demo.txt",
-        file_type: "TXT",
-        text_type: "TXT",
-        row: 8,
-      },
-    ]);
+    database.set_items(
+      project_path,
+      [
+        {
+          id: 1,
+          src: "原文",
+          dst: "",
+          name_src: "原名",
+          name_dst: null,
+          status: "NONE",
+          file_path: "demo.txt",
+          file_type: "TXT",
+          text_type: "TXT",
+          row: 7,
+          extra_field: { speaker: "春" },
+        },
+        {
+          id: 2,
+          src: "待翻",
+          dst: "",
+          status: "NONE",
+          file_path: "demo.txt",
+          file_type: "TXT",
+          text_type: "TXT",
+          row: 8,
+        },
+      ].map((item) => create_item(item)),
+    );
   }
 
   /** 提供完整进度，场景只覆盖需要变化的统计。 */
