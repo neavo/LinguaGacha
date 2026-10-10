@@ -217,4 +217,27 @@ describe("workbench command planner", () => {
       },
     });
   });
+  it("同名比较保留空格，替换路径沿用准确身份", () => {
+    const state = { ...create_state(), files: [{ rel_path: " a.json" }, { rel_path: "a.json" }] };
+    const parsed_files = [
+      { source_path: " source.json ", target_rel_path: " A.json" },
+      { source_path: "other.json", target_rel_path: "A.json" },
+    ];
+    const preview = create_workbench_import_files_preview({ state, parsed_files });
+    expect(preview.conflicting_files.map((file) => file.target_rel_path)).toEqual([
+      " a.json",
+      "a.json",
+    ]);
+    expect(
+      create_workbench_import_files_plan({
+        state,
+        parsed_files,
+        settings: SETTINGS,
+        conflict_action: "replace",
+      }).requestBody.files,
+    ).toEqual([
+      { source_path: " source.json ", target_rel_path: " a.json" },
+      { source_path: "other.json", target_rel_path: "a.json" },
+    ]);
+  });
 });

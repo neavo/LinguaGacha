@@ -5,8 +5,11 @@ import { normalize_item_name_field, normalize_item_status } from "../../domain/i
 import { is_json_record } from "../../domain/json";
 
 import * as AppErrors from "../../shared/error";
-import type { ProjectChangeItemFieldPatch, ProjectDataSection } from "../../shared/project-event";
-import type { ProjectItemWriteFields } from "../../shared/project/project-item-update";
+import type { ProjectDataSection } from "../../shared/project-event";
+import type {
+  ProjectItemFieldPatch,
+  ProjectItemWriteFields,
+} from "../../shared/project/project-item-update";
 
 export type ProjectExpectedSectionRevisions = Partial<Record<ProjectDataSection, number>>;
 
@@ -19,7 +22,7 @@ export type ProjectItemWriteChange = Readonly<{
 
 export type TranslationItemPatch = {
   item_id: number;
-  patch: ProjectChangeItemFieldPatch;
+  patch: ProjectItemFieldPatch;
 };
 
 /**

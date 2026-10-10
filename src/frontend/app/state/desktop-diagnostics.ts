@@ -60,7 +60,7 @@ export function summarize_task_snapshot_for_diagnostics(
 }
 
 /**
- * 项目事件诊断只记录事件头和 operation 数量，不记录可能很大的 items/files payload。
+ * 项目事件诊断只记录事件身份和受影响范围。
  */
 export function summarize_project_change_for_diagnostics(
   event: ProjectChangeEventForState,
@@ -72,7 +72,7 @@ export function summarize_project_change_for_diagnostics(
     projectRevision: event.projectRevision,
     updatedSections: event.updatedSections,
     sectionRevisions: event.sectionRevisions ?? {},
-    operationCount: event.operations.length,
+    qualityStatisticsScope: event.qualityStatisticsScope,
   };
 }
 

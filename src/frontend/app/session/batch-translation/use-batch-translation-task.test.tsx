@@ -560,12 +560,9 @@ describe("useBatchTranslationTask", () => {
               sectionRevisions: {
                 items: 5,
               },
-              items: {
-                payloadMode: "canonical-delta",
-                upsert: {},
-                changedIds: [11],
-              },
-              sections: {},
+              items: { mode: "delta", changedIds: [11] },
+              qualityStatisticsScope: "all",
+              eventId: "test-12",
             },
           ],
         };
@@ -656,11 +653,9 @@ describe("useBatchTranslationTask", () => {
               sectionRevisions: {
                 items: 5,
               },
-              items: {
-                payloadMode: "canonical-delta",
-                upsert: {},
-                changedIds: [1],
-              },
+              items: { mode: "delta", changedIds: [1] },
+              qualityStatisticsScope: "all",
+              eventId: "test-13",
             },
           ],
         };

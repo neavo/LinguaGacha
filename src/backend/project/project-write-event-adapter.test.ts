@@ -10,8 +10,8 @@ it("当前会话发布提交快照，只投影变化分区并保留工程最高�
     source: "test",
     updatedSections: ["items"],
     sectionRevisions: { items: 2, quality: 9 },
-    items: { payloadMode: "section-invalidated" },
-    sections: {},
+    items: { mode: "full", records: [] },
+    qualityStatisticsScope: "all",
   };
   expect(adapt_project_change(session, change)).toBeNull();
   await session.mark_loaded("project.lg");
@@ -19,7 +19,7 @@ it("当前会话发布提交快照，只投影变化分区并保留工程最高�
     type: "project.changed",
     projectRevision: 9,
     sectionRevisions: { items: 2 },
-    items: change.items,
+    items: { mode: "full" },
   });
   expect(adapt_project_change(session, change)).not.toHaveProperty("sections");
   await session.mark_loaded("another.lg");

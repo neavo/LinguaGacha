@@ -47,20 +47,8 @@ function create_project_change(): ProjectChangeEventForState {
     projectRevision: 12,
     updatedSections: ["items"],
     sectionRevisions: { items: 9 },
-    operations: [
-      {
-        items: {
-          payloadMode: "canonical-delta",
-          changedIds: [1, 2],
-          upsert: {
-            "1": {
-              id: 1,
-              src: "原文",
-            },
-          },
-        },
-      },
-    ],
+    items: { mode: "delta", changedIds: [1, 2] },
+    qualityStatisticsScope: "all",
   };
 }
 
@@ -105,7 +93,7 @@ describe("desktop state diagnostics", () => {
       projectRevision: 12,
       updatedSections: ["items"],
       sectionRevisions: { items: 9 },
-      operationCount: 1,
+      qualityStatisticsScope: "all",
     });
   });
 
@@ -134,12 +122,7 @@ describe("desktop state diagnostics", () => {
       }),
     ).toMatchObject({
       phase: "project_change_batch",
-      projectChanges: [
-        {
-          eventId: "evt-1",
-          operationCount: 1,
-        },
-      ],
+      projectChanges: [{ eventId: "evt-1" }],
       taskSnapshot: {
         runRevision: 7,
         progress: {

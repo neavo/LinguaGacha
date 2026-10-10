@@ -16,7 +16,10 @@ import type { MutableJsonRecord } from "../../domain/json";
 import { ProjectDatabase } from "../database/database-operations";
 import type { ProjectChangePublisher } from "./project-write-event-adapter";
 import { get_section_revision } from "./project-data-reader";
-import type { ProjectCommittedChangeHandler } from "./project-committed-change";
+import type {
+  ProjectCommittedChange,
+  ProjectCommittedChangeHandler,
+} from "./project-committed-change";
 import { ProjectWriteStore } from "./project-write-store";
 import {
   create_empty_agent_workspace_intent_batch,
@@ -111,11 +114,11 @@ describe("ProjectWriteStore", () => {
       {
         updatedSections: ["items"],
         sectionRevisions: { items: 1 },
-        items: { payloadMode: "section-invalidated" },
+        items: { mode: "full" },
       },
     ]);
     expect(
-      committed.mock.calls[0]?.[0].itemRecords.map((item: { item_id: number }) => item.item_id),
+      committed.mock.calls[0]?.[0].items.records.map((item: { item_id: number }) => item.item_id),
     ).toEqual([2, 10, 11]);
     expect(database.get_all_items(project_path).map((item) => item.id)).toEqual([2, 10, 11]);
   });
@@ -248,7 +251,7 @@ describe("ProjectWriteStore", () => {
         projectPath: project_path,
         source: "translation_batch_update",
         updatedSections: ["items"],
-        items: { payloadMode: "canonical-delta", changedIds: [1] },
+        items: { mode: "delta", records: [{ item_id: 1 }] },
       },
     ]);
   });
@@ -263,6 +266,28 @@ describe("ProjectWriteStore", () => {
         translationExtras: {},
       }),
     ).rejects.toThrow(expect.objectContaining({ code: "runtime.internal_invariant" }));
+  });
+
+  it.each([
+    { source: "translation_batch_update", fields: { status: "PROCESSED" }, scope: "none" },
+    { source: "unknown_writer", fields: { name_dst: "姓名" }, scope: "none" },
+    { source: "unknown_writer", fields: { dst: "正文" }, scope: "post_replacement" },
+  ] as const)("$source 按实际字段确定 $scope 失效范围", async ({ source, fields, scope }) => {
+    const { database, project_path, store, published_changes } = create_store("statistics-scope");
+    seed_items(database, project_path);
+    const result = await store.apply_project_item_changes({
+      projectPath: project_path,
+      expectedSectionRevisions: { items: 0, proofreading: 0 },
+      source,
+      itemIds: [1],
+      prepareChanges: (items) => {
+        const current = items.get(1)!;
+        return [{ item_id: 1, current, next: { ...current, ...fields } }];
+      },
+    });
+    expect(published_changes.at(-1)?.qualityStatisticsScope).toBe(scope);
+    expect(result.changes[0]?.qualityStatisticsScope).toBe(scope);
+    expect(result.changes[0]?.items).toEqual({ mode: "delta", changedIds: [1] });
   });
 
   it("人工 Item 变化会推进 proofreading revision 并更新翻译统计", async () => {
@@ -306,10 +331,7 @@ describe("ProjectWriteStore", () => {
     expect(published_changes.at(-1)).toMatchObject({
       source: "proofreading_apply_item_changes",
       updatedSections: ["items", "proofreading"],
-      items: {
-        payloadMode: "canonical-delta",
-        changedIds: [1],
-      },
+      items: { mode: "delta", records: [{ item_id: 1 }] },
     });
   });
 
@@ -353,7 +375,7 @@ describe("ProjectWriteStore", () => {
       total_tokens: 10,
     });
     expect(published_changes.at(-1)).toMatchObject({
-      items: { payloadMode: "canonical-delta", changedIds: [1, 2] },
+      items: { mode: "delta", records: [{ item_id: 1 }, { item_id: 2 }] },
     });
   });
 
@@ -382,7 +404,7 @@ describe("ProjectWriteStore", () => {
     ]);
     expect(published_changes.at(-1)).toMatchObject({
       updatedSections: ["items", "proofreading"],
-      items: { payloadMode: "canonical-delta", changedIds: [1, 2] },
+      items: { mode: "delta", records: [{ item_id: 1 }, { item_id: 2 }] },
     });
   });
 
@@ -410,12 +432,11 @@ describe("ProjectWriteStore", () => {
       "project_runtime_revision.items": 1,
     });
     expect(published_changes.at(-1)).toMatchObject({
+      qualityStatisticsScope: "all",
       source: "project_delete_files",
       updatedSections: ["files", "items"],
-      items: { payloadMode: "section-invalidated" },
-      files: { payloadMode: "section-invalidated" },
-      itemRecords: [],
-      fileRecords: {},
+      items: { mode: "full", records: [] },
+      files: {},
     });
   });
 
@@ -464,9 +485,9 @@ describe("ProjectWriteStore", () => {
     expect(published_changes.at(-1)).toMatchObject({
       source: "project_reorder_files",
       updatedSections: ["files"],
-      files: { payloadMode: "section-invalidated" },
+      files: { "b.txt": { sort_index: 0 }, "a.txt": { sort_index: 1 } },
     });
-    expect(published_changes.at(-1)?.["sections"]).toEqual({});
+    expect(published_changes.at(-1)).not.toHaveProperty("sections");
   });
 
   it("历史小数修订使用统一整数基线提交，旧预期修订仍触发冲突", async () => {
@@ -794,7 +815,7 @@ describe("ProjectWriteStore", () => {
     });
     expect(calls).toEqual(["commit", "cache:items,proofreading,quality,prompts", "public"]);
     expect(project_event_handler.mock.calls[0]?.[0]).toMatchObject({
-      items: { payloadMode: "canonical-delta", changedIds: [1] },
+      items: { mode: "delta", records: [{ item_id: 1 }] },
     });
   });
 
@@ -828,7 +849,7 @@ describe("ProjectWriteStore", () => {
       { id: 2, status: "NONE" },
     ]);
     expect(published_changes.at(-1)).toMatchObject({
-      items: { payloadMode: "canonical-delta", changedIds: [1, 2] },
+      items: { mode: "delta", records: [{ item_id: 1 }, { item_id: 2 }] },
     });
   });
 
@@ -978,13 +999,13 @@ describe("ProjectWriteStore", () => {
     database: ProjectDatabase;
     project_path: string;
     store: ProjectWriteStore;
-    published_changes: MutableJsonRecord[];
+    published_changes: ProjectCommittedChange[];
   } {
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), `linguagacha-write-${name}-`));
     const project_path = path.join(directory, `${name}.lg`);
     const database = new ProjectDatabase();
     const project_event_handler = options.projectEventHandler ?? vi.fn();
-    const published_changes: MutableJsonRecord[] = [];
+    const published_changes: ProjectCommittedChange[] = [];
     database.create_project(project_path, name);
     cleanup_callbacks.push(() => database.close());
     cleanup_callbacks.push(() => fs.rmSync(directory, { recursive: true, force: true }));
@@ -1003,12 +1024,12 @@ describe("ProjectWriteStore", () => {
   /** 用真实事件适配器观察提交快照，避免测试另行回读数据库。 */
   function create_project_change_publisher(
     project_path: string,
-    published_changes: MutableJsonRecord[],
+    published_changes: ProjectCommittedChange[],
     on_publish?: () => void,
   ): ProjectChangePublisher {
     const session = new ProjectSessionState();
     void session.mark_loaded(project_path);
-    return vi.fn((payload) => {
+    return vi.fn((payload: ProjectCommittedChange) => {
       on_publish?.();
       published_changes.push(payload);
       return adapt_project_change(session, payload);

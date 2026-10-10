@@ -2,7 +2,6 @@ import { type JSX, StrictMode, act, useEffect, useMemo, useRef, type ReactNode }
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import type { QualitySnapshot } from "@shared/quality/quality-rule-state";
 import { DesktopStateProvider } from "@frontend/app/state/desktop-state-provider";
 import type { ProjectChangeSignal } from "@frontend/app/state/project-change-signal";
 import { DESKTOP_RUNTIME_REFRESH_INTERVAL_MS } from "@frontend/app/state/desktop-refresh-scheduler";
@@ -38,7 +37,6 @@ type RuntimeSnapshot = {
   proofreadingMode: "full" | "delta" | "noop";
   proofreadingUpdatedSections: string[];
   proofreadingItemIds: Array<number | string>;
-  proofreadingFieldPatch: unknown;
   projectPath: string;
   taskStatus: string;
   taskLine: number;
@@ -71,7 +69,6 @@ type ProofreadingSignalSnapshot = {
   mode: "full" | "delta" | "noop";
   updated_sections: string[];
   item_ids: Array<number | string>;
-  field_patch: unknown;
 };
 
 /** 将公开变更信号投影为校对消费者可观察的刷新范围。 */
@@ -88,13 +85,12 @@ function resolve_proofreading_project_change_signal(
       mode: "noop",
       updated_sections: [...signal.updated_sections],
       item_ids: [],
-      field_patch: null,
     };
   }
   if (
     signal.updated_sections.includes("project") ||
     signal.updated_sections.includes("quality") ||
-    signal.results.some((result) => result.itemDelta?.fullReplace === true)
+    signal.results.some((result) => result.items?.mode === "full")
   ) {
     return {
       seq: signal.seq,
@@ -102,16 +98,12 @@ function resolve_proofreading_project_change_signal(
       mode: "full",
       updated_sections: [...signal.updated_sections],
       item_ids: [],
-      field_patch: null,
     };
   }
   const item_ids = [
     ...new Set(
       signal.results
-        .flatMap((result) => [
-          ...(result.itemDelta?.upsertItemIds ?? []),
-          ...(result.itemDelta?.deleteItemIds ?? []),
-        ])
+        .flatMap((result) => (result.items?.mode === "delta" ? result.items.changedIds : []))
         .map((item_id) => Number(item_id))
         .filter((item_id) => Number.isInteger(item_id) && item_id > 0),
     ),
@@ -123,7 +115,6 @@ function resolve_proofreading_project_change_signal(
       mode: "delta",
       updated_sections: [...signal.updated_sections],
       item_ids,
-      field_patch: signal.results[0]?.itemDelta?.fieldPatch ?? null,
     };
   }
   return {
@@ -132,7 +123,6 @@ function resolve_proofreading_project_change_signal(
     mode: "full",
     updated_sections: [...signal.updated_sections],
     item_ids: [],
-    field_patch: null,
   };
 }
 
@@ -147,7 +137,9 @@ function resolve_state_workbench_change_signal(signal: {
     ? {
         seq: signal.seq,
         reason: signal.reason,
-        file_full_replace: signal.results.some((result) => result.fileDelta?.fullReplace === true),
+        file_full_replace: signal.results.some((result) =>
+          result.updatedSections.includes("files"),
+        ),
       }
     : null;
 }
@@ -189,7 +181,6 @@ function RuntimeProbe(props: {
       proofreadingMode: current_proofreading_signal?.mode ?? "full",
       proofreadingUpdatedSections: current_proofreading_signal?.updated_sections ?? [],
       proofreadingItemIds: current_proofreading_signal?.item_ids ?? [],
-      proofreadingFieldPatch: current_proofreading_signal?.field_patch ?? null,
       projectPath: state.project_snapshot.path,
       taskStatus: task_snapshot.status,
       taskLine: task_snapshot.progress.line,
@@ -804,8 +795,6 @@ describe("DesktopStateProvider", () => {
         throw new Error("运行时句柄未准备好。");
       }
 
-      const current_quality = create_default_project_sections().quality as QualitySnapshot;
-
       await state_handle.commit_project_write({
         operation: "glossary.entries_save",
         run: async () => ({
@@ -820,29 +809,7 @@ describe("DesktopStateProvider", () => {
               sectionRevisions: {
                 quality: 2,
               },
-              sections: {
-                quality: {
-                  payloadMode: "canonical-delta",
-                  data: {
-                    glossary: {
-                      ...current_quality.glossary,
-                      enabled: Boolean(current_quality.glossary.enabled),
-                      mode: String(current_quality.glossary.mode),
-                      entries: [
-                        {
-                          id: "1",
-                          src: "原文",
-                          dst: "译文",
-                        },
-                      ],
-                      revision: 2,
-                    },
-                    pre_replacement: current_quality.pre_replacement,
-                    post_replacement: current_quality.post_replacement,
-                    text_preserve: current_quality.text_preserve,
-                  },
-                },
-              },
+              qualityStatisticsScope: "all",
             },
           ],
         }),
@@ -864,7 +831,7 @@ describe("DesktopStateProvider", () => {
     });
   });
 
-  it("items canonical-delta 会合帧刷新校对页 delta 信号并合并 item_ids", async () => {
+  it("items delta 会合帧刷新校对页 delta 信号并合并 item_ids", async () => {
     vi.useFakeTimers();
     const snapshots: RuntimeSnapshot[] = [];
     const event_stream = create_event_source_stub();
@@ -887,28 +854,9 @@ describe("DesktopStateProvider", () => {
         projectRevision: 2,
         updatedSections: ["items", "proofreading"],
         sectionRevisions: { items: 2, proofreading: 2 },
-        items: {
-          payloadMode: "canonical-delta",
-          changedIds: [1],
-          upsert: {
-            "1": create_project_item({
-              item_id: 1,
-              file_path: "chapter01.txt",
-              row_number: 1,
-              src: "foo",
-              dst: "bar",
-              status: "NONE",
-            }),
-          },
-        },
-        sections: {
-          proofreading: {
-            payloadMode: "canonical-delta",
-            data: {
-              revision: 2,
-            },
-          },
-        },
+        items: { mode: "delta", changedIds: [1] },
+        qualityStatisticsScope: "all",
+        eventId: "test-2",
       });
       event_stream.emit("project.data_changed", {
         source: "proofreading_apply_item_changes",
@@ -916,28 +864,9 @@ describe("DesktopStateProvider", () => {
         projectRevision: 3,
         updatedSections: ["items", "proofreading"],
         sectionRevisions: { items: 3, proofreading: 3 },
-        items: {
-          payloadMode: "canonical-delta",
-          changedIds: [2],
-          upsert: {
-            "2": create_project_item({
-              item_id: 2,
-              file_path: "chapter01.txt",
-              row_number: 2,
-              src: "baz",
-              dst: "qux",
-              status: "NONE",
-            }),
-          },
-        },
-        sections: {
-          proofreading: {
-            payloadMode: "canonical-delta",
-            data: {
-              revision: 3,
-            },
-          },
-        },
+        items: { mode: "delta", changedIds: [2] },
+        qualityStatisticsScope: "all",
+        eventId: "test-3",
       });
       await Promise.resolve();
     });
@@ -954,7 +883,6 @@ describe("DesktopStateProvider", () => {
       proofreadingMode: "delta",
       proofreadingUpdatedSections: ["items", "proofreading"],
       proofreadingItemIds: [1, 2],
-      proofreadingFieldPatch: null,
     });
 
     await act(async () => {
@@ -964,21 +892,9 @@ describe("DesktopStateProvider", () => {
         projectRevision: 4,
         updatedSections: ["items", "proofreading"],
         sectionRevisions: { items: 4, proofreading: 4 },
-        items: {
-          payloadMode: "field-patch",
-          changedIds: [1],
-          fieldPatch: {
-            status: "PROCESSED",
-          },
-        },
-        sections: {
-          proofreading: {
-            payloadMode: "canonical-delta",
-            data: {
-              revision: 4,
-            },
-          },
-        },
+        items: { mode: "delta", changedIds: [1] },
+        qualityStatisticsScope: "all",
+        eventId: "test-4",
       });
       await Promise.resolve();
     });
@@ -994,50 +910,10 @@ describe("DesktopStateProvider", () => {
       proofreadingReason: "proofreading_set_status",
       proofreadingMode: "delta",
       proofreadingItemIds: [1],
-      proofreadingFieldPatch: {
-        status: "PROCESSED",
-      },
-    });
-
-    await act(async () => {
-      event_stream.emit("project.data_changed", {
-        source: "proofreading_delete_item",
-        projectPath: "E:/demo/demo.lg",
-        projectRevision: 5,
-        updatedSections: ["items", "proofreading"],
-        sectionRevisions: { items: 5, proofreading: 5 },
-        items: {
-          payloadMode: "canonical-delta",
-          deleteIds: [2],
-        },
-        sections: {
-          proofreading: {
-            payloadMode: "canonical-delta",
-            data: {
-              revision: 5,
-            },
-          },
-        },
-      });
-      await Promise.resolve();
-    });
-
-    await flush_state_refresh_window();
-
-    await wait_for_condition(() => {
-      return snapshots.at(-1)?.proofreadingSeq === 4;
-    });
-
-    expect(snapshots.at(-1)).toMatchObject({
-      proofreadingSeq: 4,
-      proofreadingReason: "proofreading_delete_item",
-      proofreadingMode: "delta",
-      proofreadingItemIds: [2],
-      proofreadingFieldPatch: null,
     });
   });
 
-  it("items canonical-delta 的项目身份不匹配时不会发布项目信号", async () => {
+  it("items delta 的项目身份不匹配时不会发布项目信号", async () => {
     vi.useFakeTimers();
     const snapshots: RuntimeSnapshot[] = [];
     const event_stream = create_event_source_stub();
@@ -1058,17 +934,9 @@ describe("DesktopStateProvider", () => {
         projectRevision: 2,
         updatedSections: ["items"],
         sectionRevisions: { items: 2 },
-        items: {
-          payloadMode: "canonical-delta",
-          changedIds: [9],
-          upsert: {
-            "9": create_project_item({
-              item_id: 9,
-              file_path: "other.txt",
-              status: "PROCESSED",
-            }),
-          },
-        },
+        items: { mode: "delta", changedIds: [9] },
+        qualityStatisticsScope: "all",
+        eventId: "test-2",
       });
       await Promise.resolve();
     });
@@ -1079,7 +947,7 @@ describe("DesktopStateProvider", () => {
     });
   });
 
-  it("items canonical-delta 会在刷新窗口内发布合帧变更信号", async () => {
+  it("items delta 会在刷新窗口内发布合帧变更信号", async () => {
     vi.useFakeTimers();
     const snapshots: RuntimeSnapshot[] = [];
     const event_stream = create_event_source_stub();
@@ -1100,19 +968,9 @@ describe("DesktopStateProvider", () => {
         projectRevision: 4,
         updatedSections: ["items"],
         sectionRevisions: { items: 4 },
-        items: {
-          payloadMode: "canonical-delta",
-          changedIds: [3],
-          upsert: {
-            "3": create_project_item({
-              item_id: 3,
-              file_path: "chapter03.txt",
-              src: "foo",
-              dst: "bar",
-              status: "PROCESSED",
-            }),
-          },
-        },
+        items: { mode: "delta", changedIds: [3] },
+        qualityStatisticsScope: "all",
+        eventId: "test-4",
       });
       event_stream.emit("project.data_changed", {
         source: "translation_commit",
@@ -1120,19 +978,9 @@ describe("DesktopStateProvider", () => {
         projectRevision: 5,
         updatedSections: ["items"],
         sectionRevisions: { items: 5 },
-        items: {
-          payloadMode: "canonical-delta",
-          changedIds: [4],
-          upsert: {
-            "4": create_project_item({
-              item_id: 4,
-              file_path: "chapter04.txt",
-              src: "hello",
-              dst: "world",
-              status: "PROCESSED",
-            }),
-          },
-        },
+        items: { mode: "delta", changedIds: [4] },
+        qualityStatisticsScope: "all",
+        eventId: "test-5",
       });
       await Promise.resolve();
       await Promise.resolve();
@@ -1172,18 +1020,9 @@ describe("DesktopStateProvider", () => {
         projectRevision: 7,
         updatedSections: ["items"],
         sectionRevisions: { items: 7 },
-        items: {
-          payloadMode: "canonical-delta",
-          changedIds: [3],
-          upsert: {
-            "3": create_project_item({
-              item_id: 3,
-              file_path: "chapter03.txt",
-              src: "ok",
-              dst: "ok",
-            }),
-          },
-        },
+        items: { mode: "delta", changedIds: [3] },
+        qualityStatisticsScope: "all",
+        eventId: "test-7",
       });
       event_stream.emit("project.data_changed", {
         source: "translation_commit",
@@ -1191,16 +1030,9 @@ describe("DesktopStateProvider", () => {
         projectRevision: 8,
         updatedSections: ["items"],
         sectionRevisions: { items: 8 },
-        items: {
-          payloadMode: "canonical-delta",
-          changedIds: [4],
-          upsert: {
-            "4": {
-              item_id: 4,
-              file_path: "chapter04.txt",
-            },
-          },
-        },
+        items: { mode: "delta", changedIds: [4] },
+        qualityStatisticsScope: "all",
+        eventId: "test-8",
       });
       await Promise.resolve();
     });
@@ -1216,7 +1048,7 @@ describe("DesktopStateProvider", () => {
     expect(api_fetch_mock).toHaveBeenCalledWith("/api/session/project/manifest", {});
   });
 
-  it("items canonical-delta 旧 revision 不会回退当前项目信号", async () => {
+  it("items delta 旧 revision 不会回退当前项目信号", async () => {
     vi.useFakeTimers();
     const snapshots: RuntimeSnapshot[] = [];
     const event_stream = create_event_source_stub();
@@ -1239,19 +1071,9 @@ describe("DesktopStateProvider", () => {
         projectRevision: 5,
         updatedSections: ["items"],
         sectionRevisions: { items: 5 },
-        items: {
-          payloadMode: "canonical-delta",
-          changedIds: [2],
-          upsert: {
-            "2": create_project_item({
-              item_id: 2,
-              file_path: "chapter02.txt",
-              src: "fresh",
-              dst: "fresh",
-              status: "PROCESSED",
-            }),
-          },
-        },
+        items: { mode: "delta", changedIds: [2] },
+        qualityStatisticsScope: "all",
+        eventId: "test-5",
       });
       await Promise.resolve();
     });
@@ -1266,19 +1088,9 @@ describe("DesktopStateProvider", () => {
         projectRevision: 4,
         updatedSections: ["items"],
         sectionRevisions: { items: 4 },
-        items: {
-          payloadMode: "canonical-delta",
-          changedIds: [3],
-          upsert: {
-            "3": create_project_item({
-              item_id: 3,
-              file_path: "chapter03.txt",
-              src: "old",
-              dst: "old",
-              status: "PROCESSED",
-            }),
-          },
-        },
+        items: { mode: "delta", changedIds: [3] },
+        qualityStatisticsScope: "all",
+        eventId: "test-4",
       });
       await Promise.resolve();
     });
@@ -1290,7 +1102,7 @@ describe("DesktopStateProvider", () => {
     });
   });
 
-  it("items section-invalidated 会直接发布全量刷新信号", async () => {
+  it("items full 会直接发布全量刷新信号", async () => {
     vi.useFakeTimers();
     const snapshots: RuntimeSnapshot[] = [];
     const event_stream = create_event_source_stub();
@@ -1310,10 +1122,10 @@ describe("DesktopStateProvider", () => {
         projectPath: "E:/demo/demo.lg",
         projectRevision: 2,
         updatedSections: ["items"],
-        items: {
-          payloadMode: "section-invalidated",
-        },
+        items: { mode: "full" },
         sectionRevisions: { items: 2 },
+        qualityStatisticsScope: "all",
+        eventId: "test-2",
       });
       await Promise.resolve();
       await Promise.resolve();
@@ -1328,7 +1140,7 @@ describe("DesktopStateProvider", () => {
     });
   });
 
-  it("files section-invalidated 会直接发布文件全量刷新信号", async () => {
+  it("files full 会直接发布文件全量刷新信号", async () => {
     vi.useFakeTimers();
     const snapshots: RuntimeSnapshot[] = [];
     const event_stream = create_event_source_stub();
@@ -1348,10 +1160,9 @@ describe("DesktopStateProvider", () => {
         projectPath: "E:/demo/demo.lg",
         projectRevision: 2,
         updatedSections: ["files"],
-        files: {
-          payloadMode: "section-invalidated",
-        },
         sectionRevisions: { files: 2 },
+        qualityStatisticsScope: "all",
+        eventId: "test-2",
       });
       await Promise.resolve();
       await Promise.resolve();
@@ -1366,7 +1177,7 @@ describe("DesktopStateProvider", () => {
     });
   });
 
-  it("items section-invalidated 的旧项目事件不会回退当前项目信号", async () => {
+  it("items full 的旧项目事件不会回退当前项目信号", async () => {
     vi.useFakeTimers();
     const snapshots: RuntimeSnapshot[] = [];
     const event_stream = create_event_source_stub();
@@ -1388,10 +1199,10 @@ describe("DesktopStateProvider", () => {
         projectPath: "E:/demo/demo.lg",
         projectRevision: 6,
         updatedSections: ["items"],
-        items: {
-          payloadMode: "section-invalidated",
-        },
+        items: { mode: "full" },
         sectionRevisions: { items: 6 },
+        qualityStatisticsScope: "all",
+        eventId: "test-6",
       });
       await Promise.resolve();
       await Promise.resolve();
@@ -1477,10 +1288,10 @@ describe("DesktopStateProvider", () => {
         projectPath: "E:/demo/old.lg",
         projectRevision: 2,
         updatedSections: ["items"],
-        items: {
-          payloadMode: "section-invalidated",
-        },
+        items: { mode: "full" },
         sectionRevisions: { items: 2 },
+        qualityStatisticsScope: "all",
+        eventId: "test-2",
       });
       await Promise.resolve();
     });
@@ -1531,18 +1342,8 @@ describe("DesktopStateProvider", () => {
       projectRevision: 2,
       updatedSections: ["items"],
       sectionRevisions: { items: 2 },
-      items: {
-        payloadMode: "canonical-delta",
-        changedIds: [2],
-        upsert: {
-          "2": create_project_item({
-            item_id: 2,
-            file_path: "chapter02.txt",
-            src: "queued",
-            status: "PROCESSED",
-          }),
-        },
-      },
+      items: { mode: "delta", changedIds: [2] },
+      qualityStatisticsScope: "all",
     };
     const session_initializing_write_payload = {
       accepted: true,
@@ -1588,14 +1389,8 @@ describe("DesktopStateProvider", () => {
         projectRevision: 2,
         updatedSections: ["proofreading"],
         sectionRevisions: { proofreading: 2 },
-        sections: {
-          proofreading: {
-            payloadMode: "canonical-delta",
-            data: {
-              revision: 2,
-            },
-          },
-        },
+        qualityStatisticsScope: "all",
+        eventId: "test-2",
       });
       event_stream.emit("batch_translation.snapshot_changed", {
         batch_translation: {

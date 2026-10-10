@@ -12,6 +12,7 @@ import { createRuntimeActivityStore } from "@frontend/app/state/runtime-activity
 import { createBatchTranslationSnapshotStore } from "@frontend/app/state/batch-translation-snapshot-store";
 import {
   useProjectChangeSignal,
+  useProjectChangeSignalSource,
   useRuntimeSnapshot,
   useSyncBatchTranslationSnapshot,
   useBatchTranslationSnapshot,
@@ -19,10 +20,11 @@ import {
 
 describe("desktop state hooks", () => {
   it("从各自 store 读取快照并通过 task 写入口更新任务", async () => {
+    const change_source = createProjectChangeSignalStore();
     const stores: DesktopStateStores = {
       batch_translation: createBatchTranslationSnapshotStore(),
       runtime: createRuntimeActivityStore(),
-      projectChange: createProjectChangeSignalStore(),
+      projectChange: change_source,
     };
     let observed!: ReturnType<typeof useDesktopStateProbe>;
     const container = document.createElement("div");
@@ -48,7 +50,7 @@ describe("desktop state hooks", () => {
         }),
       );
       stores.runtime.applySnapshot({ revision: 2, owner: "agent" });
-      stores.projectChange.applySnapshot({
+      change_source.applySnapshot({
         seq: 3,
         reason: "items_updated",
         updated_sections: ["items"],
@@ -59,6 +61,7 @@ describe("desktop state hooks", () => {
     expect(observed.batch_translation).toMatchObject({ revision: 1, status: "running" });
     expect(observed.runtime).toEqual({ revision: 2, owner: "agent" });
     expect(observed.projectChange).toMatchObject({ seq: 3, updated_sections: ["items"] });
+    expect(observed.changeSource).toBe(change_source);
 
     await act(async () => root.unmount());
   });
@@ -69,6 +72,7 @@ function useDesktopStateProbe() {
     batch_translation: useBatchTranslationSnapshot(),
     runtime: useRuntimeSnapshot(),
     projectChange: useProjectChangeSignal(),
+    changeSource: useProjectChangeSignalSource(),
     syncTask: useSyncBatchTranslationSnapshot(),
   };
 }

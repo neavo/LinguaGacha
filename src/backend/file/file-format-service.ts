@@ -197,9 +197,8 @@ export class FileFormatService {
   public normalize_source_paths(source_paths: string[]): string[] {
     const normalized_paths: string[] = [];
     const seen_keys = new Set<string>();
-    for (const raw_path of source_paths) {
-      const source_path = String(raw_path ?? "").trim();
-      if (source_path === "") {
+    for (const source_path of source_paths) {
+      if (source_path.trim() === "") {
         continue;
       }
       const path_key = this.build_path_identity_key(source_path);

@@ -54,8 +54,8 @@ describe("useWorkbenchImportFilesFlow", () => {
       .mockResolvedValueOnce({
         files: [
           {
-            source_path: "C:/source/new.txt",
-            target_rel_path: "new.txt",
+            source_path: "C:/source/ new.txt ",
+            target_rel_path: " new.txt",
             file_type: "TXT",
             parsed_items: [{ src: "新文本" }],
           },
@@ -71,13 +71,13 @@ describe("useWorkbenchImportFilesFlow", () => {
     });
 
     await act(async () => {
-      await latest_snapshot(snapshots).flow.request_add_files_from_paths(["C:/source/new.txt"]);
+      await latest_snapshot(snapshots).flow.request_add_files_from_paths(["C:/source/ new.txt "]);
     });
 
     expect(latest_snapshot(snapshots).dialog_state).toMatchObject({
       kind: "inherit-import-files",
-      target_rel_paths: ["new.txt"],
-      pending_path: "C:/source/new.txt",
+      target_rel_paths: [" new.txt"],
+      pending_path: "C:/source/ new.txt ",
       submitting: false,
     });
 
@@ -87,7 +87,7 @@ describe("useWorkbenchImportFilesFlow", () => {
 
     expect(write_payloads).toEqual([
       {
-        files: [{ source_path: "C:/source/new.txt", target_rel_path: "new.txt" }],
+        files: [{ source_path: "C:/source/ new.txt ", target_rel_path: " new.txt" }],
         conflict_action: "skip",
         inheritance_mode: "none",
         project_settings: {

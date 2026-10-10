@@ -1,170 +1,60 @@
+import { type JSX, useCallback, useLayoutEffect, useMemo, useState, type ReactNode } from "react";
 import {
-  type JSX,
-  useCallback,
-  useEffect,
-  useLayoutEffect,
-  useMemo,
-  useRef,
-  type ReactNode,
-} from "react";
-import { api_fetch } from "@frontend/app/desktop/desktop-api";
-import { useDesktopState, useProjectChangeSignal } from "@frontend/app/state/use-desktop-state";
+  useDesktopState,
+  useProjectChangeSignalSource,
+} from "@frontend/app/state/use-desktop-state";
 import {
-  createEmptyQualityRuleStatisticsCacheSnapshot,
   createQualityRuleStatisticsStore,
-  expireQualityRuleStatisticsCache,
-  resolveQualityRuleStatisticsRulesToExpire,
-  type QualityRuleStatisticsCacheSnapshot,
+  resolveQualityRuleStatisticsInvalidationScope,
   type QualityRuleStatisticsRuleType,
-  type QualityRuleStatisticsStore,
-} from "@frontend/app/session/quality-rule-statistics-store";
+} from "./quality-rule-statistics-store";
 import {
   type QualityRuleStatisticsContextValue,
   QualityRuleStatisticsContext,
 } from "./quality-rule-statistics-context";
 
-type QualityStatisticsQueryResponse = {
-  projectPath: string; // 后端确认的项目身份，用于丢弃迟到旧项目结果。
-  statistics: {
-    entry_ids: string[]; // 后端完成统计时的完整规则身份
-    hits_by_entry_id: Record<string, number>; // 每条规则命中的不同 item 数
-    subset_parents_by_entry_id: Record<string, string[]>; // 字面量真实包含父文本
-  };
-};
-
-/**
- * 质量规则统计 Provider 只负责把页面活跃规则映射到后端 query。
- */
+/** Provider 接入工程生命周期与通知，Store 拥有请求和结果。 */
 export function QualityRuleStatisticsProvider(props: { children: ReactNode }): JSX.Element {
   const { project_snapshot, project_session_status } = useDesktopState();
-  const project_change_signal = useProjectChangeSignal();
-  // store_ref 保持项目 session 内共享缓存身份，避免 Provider 重渲染重建订阅源。
-  const store_ref = useRef<QualityRuleStatisticsStore | null>(null);
-  if (store_ref.current === null) {
-    store_ref.current = createQualityRuleStatisticsStore();
-  }
-  // 每个规则独立维护 request token，避免旧请求覆盖新一轮统计结果。
-  const request_tokens_ref = useRef<Map<QualityRuleStatisticsRuleType, number>>(new Map());
+  const change_source = useProjectChangeSignalSource();
+  const [store] = useState(createQualityRuleStatisticsStore); // 请求与结果随 Provider 作用域一起释放。
 
-  const refreshRule = useCallback(
-    (rule_type: QualityRuleStatisticsRuleType): void => {
-      const store = store_ref.current;
-      if (
-        store === null ||
-        !project_snapshot.loaded ||
-        project_snapshot.path === "" ||
-        project_session_status !== "ready"
-      ) {
-        return;
-      }
-      // 前台请求先推进 token，再把缓存标记为运行中，保证失败和迟到结果都能按 token 收口。
-      const request_token = (request_tokens_ref.current.get(rule_type) ?? 0) + 1;
-      request_tokens_ref.current.set(rule_type, request_token);
-      store.updateCache(rule_type, (cache) => ({
-        ...cache,
-        phase: cache.phase === "current" ? "current" : "running",
-        request_token,
-      }));
-      void api_fetch<QualityStatisticsQueryResponse>("/api/quality/statistics/view", {
-        rule_key: rule_type,
-      })
-        .then((response) => {
-          if (
-            request_tokens_ref.current.get(rule_type) !== request_token ||
-            response.projectPath !== project_snapshot.path
-          ) {
-            return;
-          }
-          store.updateCache(rule_type, () =>
-            normalize_quality_statistics_cache(response.statistics, request_token),
-          );
-        })
-        .catch((error: unknown) => {
-          if (request_tokens_ref.current.get(rule_type) !== request_token) {
-            return;
-          }
-          store.updateCache(rule_type, (cache) => ({
-            ...cache,
-            phase: "failed",
-            last_error: error instanceof Error ? error : new Error(String(error)),
-            request_token,
-            updated_at: Date.now(),
-          }));
-        });
-    },
-    [project_session_status, project_snapshot.loaded, project_snapshot.path],
-  );
-
+  const ready = project_snapshot.loaded && project_session_status === "ready";
+  const project_path = project_snapshot.path;
   useLayoutEffect(() => {
-    const store = store_ref.current;
-    if (store === null) {
-      return;
-    }
-    if (!project_snapshot.loaded || project_snapshot.path === "") {
+    if (!ready) {
       store.reset("");
       return;
     }
-    store.reset(project_snapshot.path);
-  }, [project_snapshot.loaded, project_snapshot.path]);
-
-  useEffect(() => {
-    const store = store_ref.current;
-    if (
-      store === null ||
-      !project_snapshot.loaded ||
-      project_snapshot.path === "" ||
-      project_session_status !== "ready" ||
-      project_change_signal.seq === 0
-    ) {
-      return;
-    }
-    const rules_to_expire = resolveQualityRuleStatisticsRulesToExpire(project_change_signal);
-    if (rules_to_expire.length === 0) {
-      return;
-    }
-    // 失效同步推进 token，确保已经发出的旧请求完成后也无法写回缓存。
-    for (const rule_type of rules_to_expire) {
-      request_tokens_ref.current.set(
-        rule_type,
-        (request_tokens_ref.current.get(rule_type) ?? 0) + 1,
-      );
-      store.updateCache(rule_type, expireQualityRuleStatisticsCache);
-    }
-  }, [
-    project_change_signal.seq,
-    project_change_signal.updated_sections,
-    project_session_status,
-    project_snapshot.loaded,
-    project_snapshot.path,
-  ]);
-
-  const context_value = useMemo<QualityRuleStatisticsContextValue>(() => {
-    return {
-      refreshRule,
-      store: store_ref.current!,
+    store.reset(project_path);
+    // 当前通知已包含在工程查询事实中，基线和订阅在页面发起补算前一起建立。
+    let consumed_seq = change_source.getSnapshot().seq;
+    const unsubscribe = change_source.subscribe(() => {
+      const signal = change_source.getSnapshot();
+      if (signal.seq <= consumed_seq) return;
+      consumed_seq = signal.seq;
+      store.applyInvalidation(resolveQualityRuleStatisticsInvalidationScope(signal.results));
+    });
+    return () => {
+      unsubscribe();
+      store.reset("");
     };
-  }, [refreshRule]);
+  }, [store, change_source, ready, project_path]);
 
+  // ready 变化会让页面补算 effect 重新执行，唤醒等待工程热机的空缓存。
+  const refreshRule = useCallback(
+    (rule_type: QualityRuleStatisticsRuleType): void => {
+      if (ready) store.refreshRule(rule_type);
+    },
+    [store, ready],
+  );
+  const context_value = useMemo<QualityRuleStatisticsContextValue>(
+    () => ({ refreshRule, store }),
+    [refreshRule, store],
+  );
   return (
     <QualityRuleStatisticsContext.Provider value={context_value}>
       {props.children}
     </QualityRuleStatisticsContext.Provider>
   );
-}
-
-/**
- * 把后端紧凑统计结果合并进 renderer 自己拥有的请求状态。
- */
-function normalize_quality_statistics_cache(
-  value: QualityStatisticsQueryResponse["statistics"],
-  request_token: number,
-): QualityRuleStatisticsCacheSnapshot {
-  return {
-    ...createEmptyQualityRuleStatisticsCacheSnapshot(),
-    ...value,
-    phase: "current",
-    last_error: null,
-    request_token,
-    updated_at: Date.now(),
-  };
 }

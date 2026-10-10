@@ -2,11 +2,11 @@ import crypto from "node:crypto";
 
 import type { Hono } from "hono";
 
-import { is_json_record, type JsonRecord, type JsonValue } from "../../domain/json";
+import { is_json_record, type JsonRecord, type JsonSnapshot } from "../../domain/json";
 import { AppError } from "../../shared/error";
 import { ok } from "./api-types";
 
-export type ApiJsonHandler = (body: JsonRecord) => JsonValue | Promise<JsonValue>;
+export type ApiJsonHandler = (body: JsonRecord) => JsonSnapshot | Promise<JsonSnapshot>;
 
 export type ApiJsonErrorResponder = (
   error: unknown,

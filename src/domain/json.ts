@@ -11,6 +11,12 @@ export type JsonValue =
   | JsonValue[]
   | { [key: string]: JsonValue };
 
+/** 出站快照只需可序列化，允许不可变数组和记录。 */
+export type JsonSnapshot =
+  | Static<typeof json_primitive_schema>
+  | readonly JsonSnapshot[]
+  | { readonly [key: string]: JsonSnapshot };
+
 // TypeBox 的递归 Static 在深层退化为 any，保留递归 JSON 类型并复用同一基础值域。
 export const JSON_VALUE_SCHEMA = Type.Unsafe<JsonValue>(
   Type.Cyclic(

@@ -2,7 +2,6 @@ import { create_empty_quality_rule_block } from "../project/project-data-reader"
 import { describe, expect, it, vi } from "vitest";
 
 import type { ProjectItemPublicRecord } from "../../domain/item";
-import type { CacheChange } from "./cache-change";
 import { QualityRuleStatisticsCache } from "./quality-rule-statistics-cache";
 
 type AnalysisCacheOptions = ConstructorParameters<typeof QualityRuleStatisticsCache>[0];
@@ -99,16 +98,12 @@ function create_worker(): AnalysisWorker & {
 }
 
 /** 默认提交文本变化，用覆盖字段表达其它失效来源。 */
-function create_cache_change(overrides: Partial<CacheChange> = {}): CacheChange {
+function create_cache_change(
+  overrides: Partial<Parameters<QualityRuleStatisticsCache["applyChange"]>[0]> = {},
+): Parameters<QualityRuleStatisticsCache["applyChange"]>[0] {
   return {
-    projectPath: "E:/Project/demo.lg",
-    source: "translation_batch_update",
-    items: {
-      mode: "delta",
-      changedIds: [1],
-    },
-    quality: { mode: "keep" },
-    settings: { mode: "keep" },
+    qualityStatisticsScope: "post_replacement",
+    updatedSections: ["items"],
     ...overrides,
   };
 }
@@ -176,6 +171,26 @@ describe("QualityRuleStatisticsCache", () => {
     });
   });
 
+  it("无文本变化保留统计，条目全量失效仍复用规则包含关系", async () => {
+    const worker = create_worker();
+    const cache = new QualityRuleStatisticsCache({
+      cache: create_cache_read_port(),
+      workerClient: worker,
+    });
+    await cache.read("glossary");
+    cache.applyChange(create_cache_change({ qualityStatisticsScope: "none" }));
+    await cache.read("glossary");
+    expect(worker.run).toHaveBeenCalledTimes(1);
+    cache.applyChange(
+      create_cache_change({ updatedSections: ["items"], qualityStatisticsScope: "all" }),
+    );
+    await cache.read("glossary");
+    expect(worker.run).toHaveBeenCalledTimes(2);
+    expect(worker.run.mock.calls[1]?.[0]).toMatchObject({
+      input: { include_subset_parents: false },
+    });
+  });
+
   it("质量规则全量变化同时失效统计和父项", async () => {
     const worker = create_worker();
     const cache = new QualityRuleStatisticsCache({
@@ -185,8 +200,7 @@ describe("QualityRuleStatisticsCache", () => {
     await cache.read("glossary");
     cache.applyChange(
       create_cache_change({
-        items: { mode: "keep" },
-        quality: { mode: "full" },
+        updatedSections: ["quality"],
       }),
     );
     await cache.read("glossary");

@@ -1,60 +1,50 @@
-import { describe, expect, it } from "vitest";
+import { expect, it } from "vitest";
+import { normalize_project_change_event } from "./desktop-project-change-normalizer";
 
-import { normalize_project_change_event } from "@frontend/app/state/desktop-project-change-normalizer";
-
-describe("desktop project change normalizer", () => {
-  it("收窄合法 field-patch，并把 status 固定到 item 状态词表", () => {
-    const event = normalize_project_change_event({
-      eventId: "0a1B2c3D4e5F",
-      source: "proofreading_apply_item_changes",
-      projectPath: "E:/demo/demo.lg",
-      projectRevision: 2,
-      updatedSections: ["items"],
-      sectionRevisions: { items: 2 },
-      items: {
-        payloadMode: "field-patch",
-        fieldPatch: {
-          dst: "译文",
-          status: "PROCESSED",
-        },
-        changedIds: [1, "1", 0, "bad"],
-      },
-    });
-
-    expect(event?.eventId).toBe("0a1B2c3D4e5F");
-    expect(event?.operations[0]?.items).toEqual({
-      payloadMode: "field-patch",
-      fieldPatch: {
-        dst: "译文",
-        status: "PROCESSED",
-      },
-      changedIds: [1],
-      deleteIds: [],
-    });
+const base = {
+  eventId: "event",
+  source: "write",
+  projectPath: "project.lg",
+  projectRevision: 2,
+  updatedSections: ["items"],
+  sectionRevisions: { items: 2 },
+  qualityStatisticsScope: "post_replacement",
+};
+it("通知入口接纳规范全量或增量，并隔离 ID 数组", () => {
+  const changedIds = [1, 1, 2];
+  const event = normalize_project_change_event({ ...base, items: { mode: "delta", changedIds } });
+  changedIds.push(3);
+  expect(event?.items).toEqual({ mode: "delta", changedIds: [1, 2] });
+  expect(event?.qualityStatisticsScope).toBe("post_replacement");
+  expect(normalize_project_change_event({ ...base, items: { mode: "full" } })?.items).toEqual({
+    mode: "full",
   });
-
-  it("坏 field-patch 退化为 section-invalidated，交给运行态补读 canonical items", () => {
-    const event = normalize_project_change_event({
-      eventId: "event-2",
-      source: "project_data_changed",
-      projectPath: "E:/demo/demo.lg",
-      projectRevision: 3,
-      updatedSections: ["items"],
-      sectionRevisions: { items: 3 },
-      items: {
-        payloadMode: "field-patch",
-        fieldPatch: {
-          status: "BROKEN",
-        },
-        changedIds: [2],
-      },
-    });
-
-    expect(event?.eventId).toBe("event-2");
-    expect(event?.operations[0]?.items).toEqual({
-      payloadMode: "section-invalidated",
-      changedIds: [2],
-      deleteIds: [],
-    });
-  });
+});
+it.each([
+  { mode: "delta", changedIds: [0] },
+  { mode: "delta", changedIds: ["1"] },
+  { mode: "delta" },
+  { mode: "unknown" },
+  undefined,
+])("拒绝损坏条目通知 %j", (items) => {
+  expect(normalize_project_change_event({ ...base, items })).toBeNull();
+});
+it("拒绝未知统计范围和缺失身份，非条目通知允许省略条目", () => {
+  expect(
+    normalize_project_change_event({
+      ...base,
+      updatedSections: ["files"],
+      qualityStatisticsScope: "unknown",
+    }),
+  ).toBeNull();
+  expect(
+    normalize_project_change_event({ ...base, eventId: "", updatedSections: ["files"] }),
+  ).toBeNull();
+  expect(
+    normalize_project_change_event({
+      ...base,
+      updatedSections: ["files"],
+      qualityStatisticsScope: "none",
+    })?.items,
+  ).toBeUndefined();
 });

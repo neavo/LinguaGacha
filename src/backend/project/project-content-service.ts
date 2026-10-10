@@ -1,5 +1,9 @@
+import {
+  normalize_batch_translation_progress,
+  type BatchTranslationProgress,
+} from "../../domain/batch-translation";
 import { read_optional_item_name_text, read_item_name_text } from "../../shared/item-name";
-import { build_project_file_records } from "./project-file-records";
+import { build_project_file_records, type ProjectFileRecord } from "./project-file-records";
 import type { PDFDocument } from "../../shared/pdf";
 import type { PDFExecution } from "../file/pdf/pdf-worker";
 import type { JsonRecord, JsonValue, MutableJsonRecord } from "../../domain/json";
@@ -36,20 +40,14 @@ import {
 import type { ProjectWriteResult } from "../../shared/project-event";
 import type { SourceFileParseFailureRecord } from "../../shared/source-file-parse-failure";
 import {
-  build_item_view_map,
-  build_public_item_map,
   build_translation_extras_from_items,
   compute_project_prefilter_write,
-  create_empty_translation_task_snapshot,
   type ProjectPrefilterWriteOutput,
 } from "./project-write-state";
 
 import * as AppErrors from "../../shared/error";
 
-type ProjectFileSection = Record<
-  string,
-  { rel_path: string; file_type: string; sort_index: number }
->;
+type ProjectFileSection = Record<string, ProjectFileRecord>;
 
 type ProjectWriteSnapshot = {
   asset_records: ProjectAssetRecord[];
@@ -477,7 +475,7 @@ export class ProjectContentService {
           files,
           items: this.public_item_record(reset_items),
           settings,
-          task_snapshot: create_empty_translation_task_snapshot(),
+          progress: normalize_batch_translation_progress(undefined),
         });
         return await this.write_store.replace_project_items_and_files({
           projectPath: project_path,
@@ -537,11 +535,12 @@ export class ProjectContentService {
       .map((item) => {
         this.assert_no_legacy_fields(item, ["file_record", "parsed_items"]);
         return {
-          source_path: String(item["source_path"] ?? "").trim(),
-          target_rel_path: String(item["target_rel_path"] ?? "").trim(),
+          source_path: typeof item["source_path"] === "string" ? item["source_path"] : "",
+          target_rel_path:
+            typeof item["target_rel_path"] === "string" ? item["target_rel_path"] : "",
         };
       })
-      .filter((item) => item.source_path !== "" && item.target_rel_path !== "");
+      .filter((item) => item.source_path.trim() !== "" && item.target_rel_path.trim() !== "");
   }
 
   /**
@@ -732,20 +731,18 @@ export class ProjectContentService {
    */
   private compute_prefilter_output(args: {
     project_path: string;
-    files: Record<string, unknown>;
+    files: ProjectFileSection;
     items: Record<string, ProjectItemPublicRecord>;
     settings: ProjectSettingsSnapshot;
-    task_snapshot?: Record<string, unknown>;
+    progress?: BatchTranslationProgress;
   }): ProjectPrefilterWriteOutput {
     return compute_project_prefilter_write({
       state: {
         files: args.files,
         items: args.items,
       },
-      task_snapshot:
-        args.task_snapshot ?? this.build_translation_task_snapshot_from_meta(args.project_path),
+      progress: args.progress ?? this.read_translation_progress(args.project_path),
       source_language: args.settings.source_language,
-      target_language: args.settings.target_language,
       mtool_optimizer_enable: args.settings.mtool_optimizer_enable,
       skip_duplicate_source_text_enable: args.settings.skip_duplicate_source_text_enable,
     });
@@ -771,13 +768,10 @@ export class ProjectContentService {
   /**
    * 从数据库 translation_extras 恢复任务进度基底，后续统计会覆盖行数
    */
-  private build_translation_task_snapshot_from_meta(project_path: string): Record<string, unknown> {
-    return {
-      ...create_empty_translation_task_snapshot(),
-      progress: {
-        ...read_json_record(this.database.get_all_meta(project_path)["translation_extras"]),
-      },
-    };
+  private read_translation_progress(project_path: string): BatchTranslationProgress {
+    return normalize_batch_translation_progress(
+      this.database.get_all_meta(project_path)["translation_extras"],
+    );
   }
 
   /**
@@ -863,10 +857,9 @@ export class ProjectContentService {
     project_path: string,
     items: Record<string, ProjectItemPublicRecord>,
   ): Record<string, unknown> {
-    const public_item_map = build_public_item_map(items);
     return build_translation_extras_from_items({
-      task_snapshot: this.build_translation_task_snapshot_from_meta(project_path),
-      items: build_item_view_map(public_item_map),
+      progress: this.read_translation_progress(project_path),
+      items: Object.values(items),
     });
   }
 

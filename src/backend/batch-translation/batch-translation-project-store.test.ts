@@ -1,3 +1,4 @@
+import type { ProjectCommittedChange } from "../project/project-committed-change";
 import { create_item } from "../../domain/item";
 import fs from "node:fs";
 import os from "node:os";
@@ -81,10 +82,7 @@ describe("BatchTranslationProjectStore", () => {
         projectPath: project_path,
         source: "translation_batch_update",
         updatedSections: ["items"],
-        items: {
-          payloadMode: "canonical-delta",
-          changedIds: [1],
-        },
+        items: { mode: "delta", records: [{ item_id: 1 }] },
       },
     ]);
   });
@@ -117,10 +115,7 @@ describe("BatchTranslationProjectStore", () => {
         projectPath: project_path,
         source: "retranslate_items",
         updatedSections: ["items", "proofreading"],
-        items: {
-          payloadMode: "canonical-delta",
-          changedIds: [2],
-        },
+        items: { mode: "delta", records: [{ item_id: 2 }] },
       },
     ]);
   });
@@ -239,7 +234,7 @@ describe("BatchTranslationProjectStore", () => {
     project_path: string;
     cache_manager: CacheManager;
     store: BatchTranslationProjectStore;
-    published_changes: MutableJsonRecord[];
+    published_changes: ProjectCommittedChange[];
   } {
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), "linguagacha-task-project-store-"));
     const project_path = path.join(directory, "task.lg");
@@ -256,7 +251,7 @@ describe("BatchTranslationProjectStore", () => {
         dispose: async () => undefined,
       } as unknown as ComputeWorkerClient,
     });
-    const published_changes: MutableJsonRecord[] = [];
+    const published_changes: ProjectCommittedChange[] = [];
     database.create_project(project_path, "task");
     session_state.mark_loaded(project_path);
     cleanup_callbacks.push(() => fs.rmSync(directory, { recursive: true, force: true }));
@@ -264,7 +259,7 @@ describe("BatchTranslationProjectStore", () => {
     const write_store = new ProjectWriteStore(
       database,
       options.on_project_event ?? vi.fn(),
-      (payload: MutableJsonRecord) => {
+      (payload: ProjectCommittedChange) => {
         options.on_publish_project_change?.();
         published_changes.push(payload);
         return null;

@@ -413,7 +413,7 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
           // 成功数量只消费后端规范化事实，避免候选目标把部分变化或 no-op 计为已变更。
           const changed_item_count = new Set(
             write_result.changes.flatMap((change) =>
-              change.operations.flatMap((operation) => operation.items?.changedIds ?? []),
+              change.items?.mode === "delta" ? change.items.changedIds : [],
             ),
           ).size;
           push_toast("success", args.success_message_builder(changed_item_count));

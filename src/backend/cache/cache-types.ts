@@ -1,3 +1,4 @@
+import type { ProjectFileRecord } from "../project/project-file-records";
 import type { ProjectItemPublicRecord } from "../../domain/item";
 import type { QualityRuleBlock } from "../../shared/quality/quality-rule-state";
 import type { ProjectPrompts } from "../../domain/prompt";
@@ -20,15 +21,6 @@ export type CacheSnapshot = {
 };
 
 /**
- * CacheFileEntry 是前端和校对列表需要的轻量文件事实。
- */
-export type CacheFileEntry = {
-  rel_path: string;
-  file_type: string;
-  sort_index: number;
-};
-
-/**
  * CacheReadPort 限定视图缓存只能读取项目快照，不能写入底层缓存。
  */
 export interface CacheReadPort {
@@ -37,7 +29,7 @@ export interface CacheReadPort {
     readItem(itemId: number): ProjectItemPublicRecord | null;
   };
   readonly files: {
-    readFileEntries(): CacheFileEntry[];
+    readFileEntries(): ProjectFileRecord[];
   };
   readonly quality: {
     readBlock(): QualityRuleBlock;

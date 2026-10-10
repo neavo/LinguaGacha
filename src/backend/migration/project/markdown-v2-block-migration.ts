@@ -1,20 +1,12 @@
-import {
-  is_item_status,
-  type ItemStatus,
-  create_item,
-  build_project_item_public_record,
-} from "../../../domain/item";
+import { is_item_status, type ItemStatus, create_item } from "../../../domain/item";
 import { read_json_record, type JsonRecord, type JsonValue } from "../../../domain/json";
 import {
   parse_markdown_v2_document,
   type MarkdownV2Unit,
 } from "../../file/markdown/md-v2-document";
 import type { ProjectDatabaseWrite } from "../../database/database-operations";
-import {
-  build_translation_extras_from_items,
-  derive_project_item_view_record_from_public,
-  type ProjectItemViewRecord,
-} from "../../project/project-write-state";
+import { build_translation_extras_from_items } from "../../project/project-write-state";
+import { normalize_batch_translation_progress } from "../../../domain/batch-translation";
 import { replace_project_file_items } from "./project-file-item-replacement";
 
 const LEGACY_MARKDOWN_FILE_TYPE = "MD";
@@ -59,8 +51,8 @@ export class MarkdownV2BlockMigration {
         const meta = database.get_all_meta(project_path);
         database.upsert_meta_entries(project_path, {
           translation_extras: build_translation_extras_from_items({
-            task_snapshot: read_json_record(meta["translation_extras"]),
-            items: this.build_item_views(next_items),
+            progress: normalize_batch_translation_progress(meta["translation_extras"]),
+            items: next_items.map((item) => create_item(item)),
           }) as JsonValue,
         });
         database.bump_section_revisions(project_path, ["files", "items"]);
@@ -248,24 +240,6 @@ export class MarkdownV2BlockMigration {
       return "LANGUAGE_SKIPPED";
     }
     return "PROCESSED";
-  }
-
-  /** 重建任务统计所需的最小 Item 视图，并为待分配 ID 的新块使用临时负值。 */
-  private build_item_views(items: JsonValue[]): Map<number, ProjectItemViewRecord> {
-    const result = new Map<number, ProjectItemViewRecord>();
-    let generated_id = -1;
-    for (const value of items) {
-      const item = create_item(value);
-      const item_id = item.id ?? generated_id--;
-      result.set(
-        item_id,
-        derive_project_item_view_record_from_public({
-          ...build_project_item_public_record(item),
-          item_id,
-        }),
-      );
-    }
-    return result;
   }
 
   /** 迁移错误统一携带文件身份，便于项目打开失败时定位损坏来源。 */

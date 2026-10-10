@@ -1,3 +1,4 @@
+import type { ProjectFileRecord } from "./project-file-records";
 import {
   build_project_translation_stats,
   calculate_completion_percent,
@@ -11,7 +12,7 @@ import type {
   WorkbenchQueryResponse,
 } from "../../shared/workbench/workbench-query";
 import type { ProjectTranslationStatsResponse } from "../../shared/project-translation-stats";
-import type { CacheFileEntry, CacheReadPort } from "../cache/cache-types";
+import type { CacheReadPort } from "../cache/cache-types";
 
 import type { ProjectSessionState } from "./project-session-state";
 
@@ -61,7 +62,7 @@ export class ProjectSummaryService {
    */
   private build_file_entries(
     items: ProjectItemPublicRecord[],
-    cached_file_entries: CacheFileEntry[],
+    cached_file_entries: ProjectFileRecord[],
     pdf_summaries: Record<string, PDFSummary>,
   ): WorkbenchFileEntry[] {
     const entries_by_path = new Map<string, ProjectItemPublicRecord[]>();
@@ -84,7 +85,7 @@ export class ProjectSummaryService {
    * PDF 摘要按原页计数，核对标记独立于翻译完成率。
    */
   private build_project_file_entry(
-    file_entry: CacheFileEntry,
+    file_entry: ProjectFileRecord,
     file_items: ProjectItemPublicRecord[],
     pdf_summaries: Record<string, PDFSummary>,
   ): WorkbenchFileEntry {

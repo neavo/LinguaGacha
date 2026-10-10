@@ -5,7 +5,7 @@ import {
   type AppErrorDefinition,
   type AppErrorPublicDetails,
 } from "./app-error";
-import type { JsonValue } from "../../domain/json";
+import type { JsonSnapshot } from "../../domain/json";
 
 export interface ApiErrorPayload {
   code: AppErrorCode;
@@ -20,7 +20,7 @@ export type ApiErrorEnvelope = {
 
 export type ApiSuccessEnvelope = {
   ok: true;
-  data: JsonValue;
+  data: JsonSnapshot;
 };
 
 export type ApiEnvelope = ApiSuccessEnvelope | ApiErrorEnvelope;

@@ -1,9 +1,8 @@
+import { normalize_batch_translation_progress } from "../../domain/batch-translation";
 import { describe, expect, it } from "vitest";
 
 import type { ProjectItemPublicRecord } from "../../domain/item";
 import {
-  build_public_item_map,
-  build_item_view_map,
   build_translation_extras_from_items,
   compute_project_prefilter_write,
   type ProjectWriteState,
@@ -39,6 +38,7 @@ function create_state(items: ProjectItemPublicRecord[]): ProjectWriteState {
       "script.txt": {
         rel_path: "script.txt",
         file_type: "TXT",
+        sort_index: 0,
       },
     },
     items: Object.fromEntries(items.map((item) => [String(item.item_id), item])),
@@ -59,13 +59,12 @@ describe("compute_project_prefilter_write", () => {
     const result = compute_project_prefilter_write({
       state,
       source_language: "JA",
-      target_language: "ZH",
       mtool_optimizer_enable: false,
       skip_duplicate_source_text_enable: false,
     });
     const progress = build_translation_extras_from_items({
-      task_snapshot: {},
-      items: build_item_view_map(build_public_item_map(state.items)),
+      progress: normalize_batch_translation_progress(undefined),
+      items: Object.values(state.items),
     });
     expect(private_reads).toBe(0);
     expect(result.items["1"]!.extra_field).toBe(extra_field);
@@ -87,7 +86,6 @@ describe("compute_project_prefilter_write", () => {
         create_item(7, { src: "こんにちは", name_src: "Alice" }),
       ]),
       source_language: "JA",
-      target_language: "ZH",
       mtool_optimizer_enable: false,
       skip_duplicate_source_text_enable: false,
     });
@@ -103,7 +101,7 @@ describe("compute_project_prefilter_write", () => {
     ]);
   });
 
-  it("按规则和源语言生成跳过状态并返回项目设置镜像", () => {
+  it("按规则和源语言生成跳过状态", () => {
     const result = compute_project_prefilter_write({
       state: create_state([
         create_item(1, { src: "hello" }),
@@ -111,7 +109,6 @@ describe("compute_project_prefilter_write", () => {
         create_item(3, { src: "   " }),
       ]),
       source_language: "JA",
-      target_language: "ZH",
       mtool_optimizer_enable: false,
       skip_duplicate_source_text_enable: false,
     });
@@ -119,13 +116,6 @@ describe("compute_project_prefilter_write", () => {
     expect(result.items["1"]?.status).toBe("LANGUAGE_SKIPPED");
     expect(result.items["2"]?.status).toBe("NONE");
     expect(result.items["3"]?.status).toBe("RULE_SKIPPED");
-    expect(result.project_settings).toEqual({
-      source_language: "JA",
-      target_language: "ZH",
-      mtool_optimizer_enable: false,
-      skip_duplicate_source_text_enable: false,
-    });
-    expect(result.stats).toMatchObject({ rule_skipped: 1, language_skipped: 1 });
   });
 
   it("强制翻译条目绕过规则和语言过滤并保留运行态字段", () => {
@@ -139,7 +129,6 @@ describe("compute_project_prefilter_write", () => {
         }),
       ]),
       source_language: "JA",
-      target_language: "ZH",
       mtool_optimizer_enable: false,
       skip_duplicate_source_text_enable: false,
     });
@@ -162,27 +151,23 @@ describe("compute_project_prefilter_write", () => {
         }),
       ]),
       source_language: "ZH",
-      target_language: "JA",
       mtool_optimizer_enable: false,
       skip_duplicate_source_text_enable: false,
     });
 
     expect(result.items["1"]?.status).toBe("RULE_SKIPPED");
-    expect(result.stats.rule_skipped).toBe(1);
   });
 
   it("启用同文件重复过滤时只保留首个可翻译条目", () => {
     const result = compute_project_prefilter_write({
       state: create_state([create_item(1, { src: "同文" }), create_item(2, { src: "同文" })]),
       source_language: "ZH",
-      target_language: "JA",
       mtool_optimizer_enable: false,
       skip_duplicate_source_text_enable: true,
     });
 
     expect(result.items["1"]?.status).toBe("NONE");
     expect(result.items["2"]?.status).toBe("DUPLICATED");
-    expect(result.stats.duplicated).toBe(1);
   });
 
   it("角色或文本规则不同时分别保留可翻译条目", () => {
@@ -193,7 +178,6 @@ describe("compute_project_prefilter_write", () => {
         create_item(3, { src: "同文", name_src: "甲", text_type: "RENPY" }),
       ]),
       source_language: "ZH",
-      target_language: "JA",
       mtool_optimizer_enable: false,
       skip_duplicate_source_text_enable: true,
     });
@@ -203,7 +187,6 @@ describe("compute_project_prefilter_write", () => {
       "NONE",
       "NONE",
     ]);
-    expect(result.stats.duplicated).toBe(0);
   });
 
   it("关闭重复过滤时旧 DUPLICATED 会回到可处理状态", () => {
@@ -213,7 +196,6 @@ describe("compute_project_prefilter_write", () => {
         create_item(2, { src: "同文", status: "DUPLICATED" }),
       ]),
       source_language: "ZH",
-      target_language: "JA",
       mtool_optimizer_enable: false,
       skip_duplicate_source_text_enable: false,
     });

@@ -296,19 +296,7 @@ describe("normalize_project_write_result", () => {
           sectionRevisions: {
             quality: 2,
           },
-          sections: {
-            quality: {
-              payloadMode: "canonical-delta",
-              data: {
-                glossary: {
-                  entries: [],
-                  enabled: true,
-                  mode: "off",
-                  revision: 2,
-                },
-              },
-            },
-          },
+          qualityStatisticsScope: "all",
         },
       ],
     });
@@ -328,9 +316,7 @@ describe("normalize_project_write_result", () => {
         },
       ],
     });
-    expect(result.changes[0]?.operations[0]?.sections?.quality?.payloadMode).toBe(
-      "canonical-delta",
-    );
+    expect(result.changes[0]?.updatedSections).toEqual(["quality"]);
   });
 
   it.each([
@@ -355,6 +341,8 @@ describe("normalize_project_write_result", () => {
             projectPath: "E:/demo/demo.lg",
             projectRevision: 2,
             updatedSections: [],
+            qualityStatisticsScope: "all",
+            sectionRevisions: {},
           },
         ],
       }),

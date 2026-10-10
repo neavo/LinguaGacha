@@ -264,18 +264,14 @@ describe("proofreading-list-query-utils", () => {
     ).toBe("full");
   });
 
-  it("只有精确行级 items 事件生成 delta，并规范化条目 id", () => {
+  it("规范行通知生成去重的 delta", () => {
     expect(
       resolve_proofreading_refresh_signal({
         seq: 1,
         updated_sections: ["items"],
         results: [
           {
-            itemDelta: {
-              upsertItemIds: ["2", 2, 0, "invalid"],
-              deleteItemIds: [3, "3"],
-              fullReplace: false,
-            },
+            items: { mode: "delta", changedIds: [2, 2] },
           },
         ],
       }),
@@ -283,7 +279,6 @@ describe("proofreading-list-query-utils", () => {
       seq: 1,
       mode: "delta",
       itemIds: [2],
-      deleteItemIds: [3],
     });
     expect(
       resolve_proofreading_refresh_signal({
@@ -295,7 +290,6 @@ describe("proofreading-list-query-utils", () => {
       seq: 2,
       mode: "full",
       itemIds: [],
-      deleteItemIds: [],
     });
   });
 
@@ -306,7 +300,7 @@ describe("proofreading-list-query-utils", () => {
         updated_sections: ["files", "pdf"],
         results: [],
       }),
-    ).toEqual({ seq: 1, mode: "delta", itemIds: [], deleteItemIds: [] });
+    ).toEqual({ seq: 1, mode: "delta", itemIds: [] });
   });
 
   it("仅校对状态变化为 noop，质量变化为 full，无关 section 不刷新", () => {
@@ -320,7 +314,6 @@ describe("proofreading-list-query-utils", () => {
       seq: 1,
       mode: "noop",
       itemIds: [],
-      deleteItemIds: [],
     });
     expect(
       resolve_proofreading_refresh_signal({

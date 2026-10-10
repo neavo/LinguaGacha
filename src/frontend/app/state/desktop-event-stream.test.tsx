@@ -255,9 +255,9 @@ describe("useDesktopEventStream", () => {
         projectPath: raw_project_path,
         projectRevision: 12,
         updatedSections: ["items"],
-        items: {
-          payloadMode: "canonical-delta",
-        },
+        items: { mode: "delta", changedIds: [] },
+        qualityStatisticsScope: "all",
+        sectionRevisions: {},
       });
       await Promise.resolve();
     });
@@ -281,6 +281,7 @@ describe("useDesktopEventStream", () => {
           }),
           projectRevision: 12,
           updatedSections: ["items"],
+          sectionRevisions: {},
         }),
       }),
     );

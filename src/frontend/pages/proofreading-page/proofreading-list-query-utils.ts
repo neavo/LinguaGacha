@@ -1,3 +1,4 @@
+import type { ProjectItemsChange } from "@shared/project-event";
 import { JsonTool } from "@shared/utils/json-tool";
 import type {
   ProofreadingFilterOptions,
@@ -41,7 +42,6 @@ export type ProofreadingRefreshSignal = {
   seq: number;
   mode: "full" | "delta" | "noop";
   itemIds: number[];
-  deleteItemIds: number[];
 };
 
 /**
@@ -200,11 +200,7 @@ export function resolve_proofreading_refresh_signal(signal: {
   seq: number;
   updated_sections: string[];
   results: Array<{
-    itemDelta?: {
-      upsertItemIds: Array<number | string>;
-      deleteItemIds: Array<number | string>;
-      fullReplace: boolean;
-    };
+    items?: ProjectItemsChange;
   }>;
 }): ProofreadingRefreshSignal | null {
   if (signal.updated_sections.length === 0) {
@@ -215,46 +211,43 @@ export function resolve_proofreading_refresh_signal(signal: {
       seq: signal.seq,
       mode: "noop",
       itemIds: [],
-      deleteItemIds: [],
     };
   }
   if (signal.updated_sections.every((section) => ["files", "pdf"].includes(section))) {
-    return { seq: signal.seq, mode: "delta", itemIds: [], deleteItemIds: [] };
+    return { seq: signal.seq, mode: "delta", itemIds: [] };
   }
   if (
     signal.updated_sections.some((section) => ["project", "files", "quality"].includes(section)) ||
-    signal.results.some((result) => result.itemDelta?.fullReplace === true)
+    signal.results.some((result) => result.items?.mode === "full")
   ) {
     return {
       seq: signal.seq,
       mode: "full",
       itemIds: [],
-      deleteItemIds: [],
     };
   }
-  const item_ids = normalize_refresh_item_ids(
-    signal.results.flatMap((result) => result.itemDelta?.upsertItemIds ?? []),
-  );
-  const delete_item_ids = normalize_refresh_item_ids(
-    signal.results.flatMap((result) => result.itemDelta?.deleteItemIds ?? []),
-  );
+  const item_ids = [
+    ...new Set(
+      signal.results.flatMap((result) =>
+        result.items?.mode === "delta" ? result.items.changedIds : [],
+      ),
+    ),
+  ];
   if (signal.updated_sections.includes("pdf") && !signal.updated_sections.includes("items")) {
-    return { seq: signal.seq, mode: "delta", itemIds: [], deleteItemIds: [] };
+    return { seq: signal.seq, mode: "delta", itemIds: [] };
   }
   if (signal.updated_sections.includes("items")) {
-    if (item_ids.length > 0 || delete_item_ids.length > 0) {
+    if (item_ids.length > 0) {
       return {
         seq: signal.seq,
         mode: "delta",
         itemIds: item_ids,
-        deleteItemIds: delete_item_ids,
       };
     }
     return {
       seq: signal.seq,
       mode: "full",
       itemIds: [],
-      deleteItemIds: [],
     };
   }
   if (signal.updated_sections.includes("proofreading")) {
@@ -262,22 +255,7 @@ export function resolve_proofreading_refresh_signal(signal: {
       seq: signal.seq,
       mode: "full",
       itemIds: [],
-      deleteItemIds: [],
     };
   }
   return null;
-}
-
-/**
- * 跨边界 item id 只接受去重后的正整数，避免无效载荷污染 delta 请求。
- */
-function normalize_refresh_item_ids(values: Array<number | string>): number[] {
-  const ids = new Set<number>();
-  for (const value of values) {
-    const parsed = Number(value);
-    if (Number.isInteger(parsed) && parsed > 0) {
-      ids.add(parsed);
-    }
-  }
-  return [...ids];
 }

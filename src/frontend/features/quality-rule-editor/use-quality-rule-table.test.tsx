@@ -8,7 +8,6 @@ import { build_quality_rule_filter_result } from "./quality-rule-filtering";
 import {
   canSortQualityRuleStatistics,
   createEmptyQualityRuleStatisticsCacheSnapshot,
-  expireQualityRuleStatisticsCache,
   type QualityRuleStatisticsCacheSnapshot,
 } from "@frontend/app/session/quality-rule-statistics-store";
 
@@ -205,7 +204,7 @@ it("统计到达与失效自动重排，保留排序意图和已有筛选成员"
   rows[0]!.src = "changed";
   render({ ...completed, phase: "failed" });
   expect(ids()).toEqual(["b", "a"]);
-  render(expireQualityRuleStatisticsCache(completed));
+  render(empty_statistics);
   expect(ids()).toEqual(["a", "b"]);
   expect(table.sort_state).toEqual({ column_id: "hit", direction: "descending" });
   render({ ...completed, hits_by_entry_id: { a: 8, b: 1 } });

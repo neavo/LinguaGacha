@@ -135,14 +135,14 @@ function create_project_change_signal(
               applied: true,
               source: mode === "noop" ? "task_status_refresh" : "translation_commit",
               projectRevision: seq,
+              qualityStatisticsScope: "all",
               updatedSections: updated_sections,
               ...(updated_sections.includes("items")
                 ? {
-                    itemDelta: {
-                      upsertItemIds: item_ids,
-                      deleteItemIds: [],
-                      fullReplace: mode !== "delta",
-                    },
+                    items:
+                      mode === "delta"
+                        ? { mode: "delta" as const, changedIds: item_ids.map(Number) }
+                        : { mode: "full" as const },
                   }
                 : {}),
               sectionRevisions: options.sectionRevisions ?? {},
@@ -2213,11 +2213,8 @@ describe("useProofreadingPageState", () => {
                   projectRevision: 1,
                   sectionRevisions: { items: 8, proofreading: 2 },
                   updatedSections: ["items", "proofreading"],
-                  items: {
-                    payloadMode: "field-patch",
-                    changedIds: changed_item_ids,
-                    fieldPatch: { dst: "", name_dst: null },
-                  },
+                  items: { mode: "delta", changedIds: changed_item_ids },
+                  qualityStatisticsScope: "all",
                 },
               ],
       });
@@ -2254,11 +2251,8 @@ describe("useProofreadingPageState", () => {
           projectRevision: 1,
           sectionRevisions: { items: 8, proofreading: 2 },
           updatedSections: ["items", "proofreading"],
-          items: {
-            payloadMode: "field-patch",
-            changedIds: [1, 2],
-            fieldPatch: { dst: "", name_dst: null, status: "NONE" },
-          },
+          items: { mode: "delta", changedIds: [1, 2] },
+          qualityStatisticsScope: "all",
         },
       ],
     });

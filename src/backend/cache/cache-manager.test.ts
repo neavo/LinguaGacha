@@ -234,6 +234,7 @@ describe("CacheManager", () => {
         {
           projectPath: "E:/Project/demo.lg",
           source: "project_reorder_files",
+          qualityStatisticsScope: "none",
           updatedSections: ["files"],
         },
         database.get_all_meta("E:/Project/demo.lg"),
@@ -296,27 +297,28 @@ describe("CacheManager", () => {
     };
     vi.spyOn(database, "get_all_meta").mockReturnValue(meta);
     database.get_rule_text.mockReturnValue("新提示词");
-    vi.spyOn(cache.proofreading, "applyChange").mockImplementationOnce(async () => {
+    vi.spyOn(cache.proofreading, "applyChange").mockImplementationOnce(() => {
       expect(cache.readSectionRevisions()).toMatchObject({ items: 2, quality: 3, prompts: 4 });
       expect(cache.prompts.readBlock().translation.text).toBe("新提示词");
       expect(cache.quality.readBlock().glossary.revision).toBe(3);
       throw new Error("view failed");
     });
 
-    await expect(
+    expect(() =>
       cache.applyCommittedChange({
         ...build_project_committed_change(
           database,
           {
             projectPath: "E:/Project/demo.lg",
             source: "project_write",
+            qualityStatisticsScope: "all",
             updatedSections: ["items", "quality", "prompts"],
           },
           meta,
         ),
         sectionRevisions: { items: 2, quality: 3, prompts: 4 },
       }),
-    ).rejects.toThrow("view failed");
+    ).toThrow("view failed");
 
     expect(cache.snapshot().freshness).toBe("recoverable_error");
     expect(log_manager.warning).toHaveBeenCalled();
@@ -357,6 +359,7 @@ describe("CacheManager", () => {
           source: "translation_commit",
           updatedSections: ["items"],
           changedItemIds: [1],
+          qualityStatisticsScope: "post_replacement",
         },
         database.get_all_meta("E:/Project/demo.lg"),
       ),

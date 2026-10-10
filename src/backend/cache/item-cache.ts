@@ -1,6 +1,6 @@
 import type { ProjectItemPublicRecord } from "../../domain/item";
 import { build_project_item_duplicate_key } from "../../shared/project/project-item-duplicates";
-import type { CacheItemChange } from "./cache-change";
+import type { ProjectCommittedItems } from "../project/project-committed-change";
 
 /**
  * ItemCache 维护按数据库顺序插入的 item 主索引。
@@ -17,7 +17,7 @@ export class ItemCache {
   /**
    * 用完整 item 快照重建索引。
    */
-  public replace(item_records: ProjectItemPublicRecord[]): void {
+  public replace(item_records: readonly ProjectItemPublicRecord[]): void {
     const next_items_by_id = new Map<number, ProjectItemPublicRecord>();
     for (const item of item_records) {
       next_items_by_id.set(item.item_id, { ...item });
@@ -37,16 +37,13 @@ export class ItemCache {
   /**
    * 应用已提交的完整替换或规范行增量。
    */
-  public applyChange(change: CacheItemChange, upsert_records: ProjectItemPublicRecord[]): void {
-    if (change.mode === "keep") {
-      return;
-    }
+  public applyChange(change: ProjectCommittedItems): void {
     if (change.mode === "full") {
-      this.replace(upsert_records);
+      this.replace(change.records);
       return;
     }
 
-    for (const record of upsert_records) this.upsert_item(record);
+    for (const record of change.records) this.upsert_item(record);
   }
 
   /** 显式目标总是保留，同组只补入会参与重复协调的成员。 */

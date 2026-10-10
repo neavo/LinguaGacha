@@ -1,5 +1,3 @@
-import type { ProjectItemPublicRecord } from "../domain/item";
-import type { JsonRecord, JsonValue } from "../domain/json";
 import type { SourceFileParseFailureRecord } from "./source-file-parse-failure";
 
 // section 顺序同时约束 manifest、项目变更和 renderer 初始化刷新顺序
@@ -16,39 +14,16 @@ export const PROJECT_DATA_SECTIONS = [
 // renderer 可订阅工程数据分区。任务运行态有独立快照。
 export type ProjectDataSection = (typeof PROJECT_DATA_SECTIONS)[number];
 
-// 变更事件的 payload mode 决定 renderer 是直接合并、字段 patch 还是整段补读
-export type ProjectChangePayloadMode = "canonical-delta" | "field-patch" | "section-invalidated";
-
-// section revision 只回填本次更新 section，避免消费者误判未更新 section
+// section revision 只回填本次更新 section。
 export type ProjectDataSectionRevisions = Partial<Record<ProjectDataSection, number>>;
 
-// item 字段级 patch 只表达后端已提交事实中的少量校对字段，不能替代完整 DTO。
-export type ProjectChangeItemFieldPatch = Partial<
-  Pick<ProjectItemPublicRecord, "dst" | "name_dst" | "status">
->;
+/** 事务确定统计文本影响，前后端消费同一失效范围。 */
+export type QualityStatisticsTextChangeScope = "none" | "post_replacement" | "all";
 
-// items 支持 canonical upsert、field-patch 和 tombstone 删除三种行级表达
-export type ProjectChangeItemsPayload = {
-  payloadMode: ProjectChangePayloadMode;
-  upsert?: Record<string, JsonRecord>;
-  fieldPatch?: ProjectChangeItemFieldPatch;
-  changedIds?: number[];
-  deleteIds?: number[];
-};
-
-// files 以相对路径为稳定 key，删除必须显式走 deletePaths tombstone
-export type ProjectChangeFilesPayload = {
-  payloadMode: ProjectChangePayloadMode;
-  upsert?: Record<string, JsonRecord>;
-  changedPaths?: string[];
-  deletePaths?: string[];
-};
-
-// 分区更新携带后端规范数据，失效信号通知消费者重新查询。
-export type ProjectChangeSectionPayload = {
-  payloadMode: ProjectChangePayloadMode;
-  data?: JsonValue;
-};
+/** 前端据此选择重查或刷新已有窗口。 */
+export type ProjectItemsChange =
+  | Readonly<{ mode: "full" }>
+  | Readonly<{ mode: "delta"; changedIds: readonly number[] }>;
 
 // ApiStreamHub 对 renderer 公开的项目数据变更载荷
 export type ProjectChangeEvent = {
@@ -59,12 +34,11 @@ export type ProjectChangeEvent = {
   projectRevision: number;
   sectionRevisions: ProjectDataSectionRevisions;
   updatedSections: ProjectDataSection[];
-  items?: ProjectChangeItemsPayload;
-  files?: ProjectChangeFilesPayload;
-  sections?: Partial<Record<ProjectDataSection, ProjectChangeSectionPayload>>;
+  items?: ProjectItemsChange;
+  qualityStatisticsScope: QualityStatisticsTextChangeScope;
 };
 
-// 同步项目写入返回和 SSE 广播共用同一批后端 canonical change
+// 同步项目写入返回和 SSE 广播共用同一批后端变更通知
 export type ProjectWriteResult = {
   accepted: true;
   changes: ProjectChangeEvent[];
@@ -79,13 +53,4 @@ export const PROJECT_CHANGE_EVENT_TOPIC = "project.data_changed";
 
 export function isProjectDataSection(value: string): value is ProjectDataSection {
   return (PROJECT_DATA_SECTIONS as readonly string[]).includes(value);
-}
-
-// 坏值默认降级为 section-invalidated，让前端走补读而不是误合并
-
-export function normalizeProjectChangePayloadMode(value: unknown): ProjectChangePayloadMode {
-  if (value === "canonical-delta" || value === "field-patch" || value === "section-invalidated") {
-    return value;
-  }
-  return "section-invalidated";
 }

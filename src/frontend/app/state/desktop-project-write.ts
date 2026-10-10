@@ -1,9 +1,7 @@
+import { is_json_record } from "@domain/json";
 import { useCallback } from "react";
 
-import {
-  is_project_change_record,
-  normalize_project_change_event,
-} from "@frontend/app/state/desktop-project-change-normalizer";
+import { normalize_project_change_event } from "@frontend/app/state/desktop-project-change-normalizer";
 import type { ProjectChangeEventForState } from "@frontend/app/state/desktop-project-change-types";
 import { summarize_project_change_for_diagnostics } from "@frontend/app/state/desktop-diagnostics";
 import type { DesktopRecoveryActions } from "@frontend/app/state/desktop-recovery";
@@ -129,7 +127,7 @@ function normalize_project_write_change_event(
   change: unknown,
   index: number,
 ): ProjectChangeEventForState {
-  if (!is_project_change_record(change)) {
+  if (!is_json_record(change)) {
     throw new AppError("runtime.internal_invariant", {
       diagnostic_context: {
         reason: "invalid_project_write_change_record",

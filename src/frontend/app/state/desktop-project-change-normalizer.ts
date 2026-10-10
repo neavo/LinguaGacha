@@ -1,23 +1,9 @@
-import {
-  is_project_stage,
-  type ProjectChangeEventForState,
-  type ProjectStage,
-} from "@frontend/app/state/desktop-project-change-types";
-import {
-  normalize_section_array,
-  normalize_section_revisions,
-} from "@frontend/app/state/desktop-event-payload";
-import {
-  normalizeProjectChangePayloadMode,
-  type ProjectChangeItemsPayload,
-  type ProjectChangePayloadMode,
-} from "@shared/project-event";
-import type { JsonRecord } from "@domain/json";
-import { normalize_project_item_field_patch } from "@shared/project/project-item-update";
+import { is_project_stage, type ProjectChangeEventForState } from "./desktop-project-change-types";
+import { normalize_section_array, normalize_section_revisions } from "./desktop-event-payload";
+import { is_json_record } from "@domain/json";
+import type { ProjectItemsChange } from "@shared/project-event";
 
-/**
- * 后端 SSE 与同步写入共享的项目变更载荷，入口处必须立即转成运行态事件。
- */
+/** HTTP 与 SSE 的未校验字段，进入运行态前集中收窄。 */
 export type ProjectChangeEventPayload = {
   eventId?: unknown;
   source?: unknown;
@@ -25,151 +11,55 @@ export type ProjectChangeEventPayload = {
   projectRevision?: unknown;
   updatedSections?: unknown;
   items?: unknown;
-  files?: unknown;
-  sections?: unknown;
   sectionRevisions?: unknown;
+  qualityStatisticsScope?: unknown;
 };
 
-/**
- * 将后端 project.data_changed / 写入 change 载荷收窄为前端运行态刷新事件。
- */
+/** 通知在传输入口校验一次，之后沿用同一契约。 */
 export function normalize_project_change_event(
   payload: ProjectChangeEventPayload,
 ): ProjectChangeEventForState | null {
-  const project_path = String(payload.projectPath ?? "").trim();
+  const project_path = typeof payload.projectPath === "string" ? payload.projectPath.trim() : "";
   const updated_sections = normalize_section_array(payload.updatedSections).filter(
     is_project_stage,
   );
-  if (project_path === "" || updated_sections.length === 0) {
+  const scope = payload.qualityStatisticsScope;
+  if (
+    project_path === "" ||
+    updated_sections.length === 0 ||
+    typeof payload.eventId !== "string" ||
+    payload.eventId === "" ||
+    typeof payload.source !== "string" ||
+    typeof payload.projectRevision !== "number" ||
+    !Number.isFinite(payload.projectRevision) ||
+    (scope !== "none" && scope !== "post_replacement" && scope !== "all")
+  )
     return null;
-  }
-
   const items = normalize_project_change_items(payload.items);
-  const files = is_record(payload.files)
-    ? {
-        payloadMode: normalizeProjectChangePayloadMode(payload.files.payloadMode),
-        upsert: normalize_record_map(payload.files.upsert),
-        changedPaths: normalize_string_array(payload.files.changedPaths),
-        deletePaths: normalize_string_array(payload.files.deletePaths),
-      }
-    : undefined;
-  const sections = normalize_project_change_sections(payload.sections);
-  const section_revisions = normalize_section_revisions(payload.sectionRevisions);
-
+  if (updated_sections.includes("items") && items === null) return null;
   return {
-    eventId: String(payload.eventId ?? ""),
-    source: String(payload.source ?? "project_change"),
+    eventId: payload.eventId,
+    source: payload.source,
     projectPath: project_path,
-    projectRevision: Number(payload.projectRevision ?? 0),
+    projectRevision: payload.projectRevision,
     updatedSections: updated_sections,
-    operations: [
-      {
-        ...(items === undefined ? {} : { items }),
-        ...(files === undefined ? {} : { files }),
-        sections,
-      },
-    ],
-    ...(section_revisions === undefined ? {} : { sectionRevisions: section_revisions }),
+    sectionRevisions: normalize_section_revisions(payload.sectionRevisions) ?? {},
+    qualityStatisticsScope: scope,
+    ...(items === null ? {} : { items }),
   };
 }
 
-/**
- * 写入结果需要先证明单个 change 是对象，再进入共享项目变更 normalizer。
- */
-export function is_project_change_record(value: unknown): value is Record<string, unknown> {
-  return is_record(value);
-}
-
-/** 只接纳已知分段及对象载荷，供后续按载荷模式恢复状态。 */
-function normalize_project_change_sections(
-  value: unknown,
-): Partial<Record<ProjectStage, { payloadMode: ProjectChangePayloadMode; data: unknown }>> {
-  if (!is_record(value)) {
-    return {};
-  }
-
-  return Object.fromEntries(
-    Object.entries(value).flatMap(([section, raw_payload]) => {
-      if (!is_project_stage(section) || !is_record(raw_payload)) {
-        return [];
-      }
-      const payload_mode: ProjectChangePayloadMode = normalizeProjectChangePayloadMode(
-        raw_payload.payloadMode,
-      );
-      return [[section, { payloadMode: payload_mode, data: raw_payload.data }]];
-    }),
-  );
-}
-
-/**
- * items payload 在运行态入口完成 field-patch 校验；坏 patch 只能触发补读，不能下发半可信字段。
- */
-function normalize_project_change_items(value: unknown): ProjectChangeItemsPayload | undefined {
-  if (!is_record(value)) {
-    return undefined;
-  }
-
-  const payload_mode = normalizeProjectChangePayloadMode(value.payloadMode);
-  const changed_ids = normalize_number_array(value.changedIds);
-  const delete_ids = normalize_number_array(value.deleteIds);
-
-  if (payload_mode === "field-patch") {
-    const field_patch = normalize_project_item_field_patch(value.fieldPatch);
-    if (field_patch === null) {
-      return {
-        payloadMode: "section-invalidated",
-        changedIds: changed_ids,
-        deleteIds: delete_ids,
-      };
-    }
-    return {
-      payloadMode: "field-patch",
-      fieldPatch: field_patch,
-      changedIds: changed_ids,
-      deleteIds: delete_ids,
-    };
-  }
-
-  return {
-    payloadMode: payload_mode,
-    ...(payload_mode === "canonical-delta" ? { upsert: normalize_record_map(value.upsert) } : {}),
-    changedIds: changed_ids,
-    deleteIds: delete_ids,
-  };
-}
-
-function normalize_record_map(value: unknown): Record<string, JsonRecord> {
-  if (!is_record(value)) {
-    return {};
-  }
-  return Object.fromEntries(
-    Object.entries(value)
-      .filter((entry): entry is [string, Record<string, unknown>] => is_record(entry[1]))
-      .map(([key, record]) => [key, { ...record } as JsonRecord]),
-  );
-}
-
-/** 条目身份只接纳正整数并去重，避免重复应用同一变化。 */
-function normalize_number_array(value: unknown): number[] {
-  if (!Array.isArray(value)) {
-    return [];
-  }
-  return [
-    ...new Set(
-      value
-        .map((item) => Number(item))
-        .filter((item): item is number => Number.isInteger(item) && item > 0),
-    ),
-  ];
-}
-
-function normalize_string_array(value: unknown): string[] {
-  if (!Array.isArray(value)) {
-    return [];
-  }
-  return [...new Set(value.map((item) => String(item ?? "").trim()).filter((item) => item !== ""))];
-}
-
-function is_record(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
+/** 条目通知只接纳全量模式或正整数 ID，输入数组在入口隔离。 */
+function normalize_project_change_items(value: unknown): ProjectItemsChange | null {
+  if (!is_json_record(value)) return null;
+  if (value.mode === "full") return { mode: "full" };
+  if (
+    value.mode !== "delta" ||
+    !Array.isArray(value.changedIds) ||
+    !value.changedIds.every(
+      (id): id is number => typeof id === "number" && Number.isInteger(id) && id > 0,
+    )
+  )
+    return null;
+  return { mode: "delta", changedIds: [...new Set<number>(value.changedIds)] };
 }

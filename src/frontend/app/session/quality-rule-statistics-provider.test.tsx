@@ -1,4 +1,5 @@
-import { type JSX, act, useEffect } from "react";
+import { createProjectChangeSignalStore } from "@frontend/app/state/project-change-signal-store";
+import { type JSX, act, useEffect, useContext } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -11,9 +12,13 @@ import type { ProjectChangeSignal } from "@frontend/app/state/project-change-sig
 import type {
   QualityRuleStatisticsCacheSnapshot,
   QualityRuleStatisticsRuleType,
+  QualityRuleStatisticsStore,
 } from "@frontend/app/session/quality-rule-statistics-store";
 import { QualityRuleStatisticsProvider } from "@frontend/app/session/quality-rule-statistics-provider";
-import { useQualityRuleStatistics } from "@frontend/app/session/quality-rule-statistics-context";
+import {
+  QualityRuleStatisticsContext,
+  useQualityRuleStatistics,
+} from "@frontend/app/session/quality-rule-statistics-context";
 
 const { api_fetch_mock } = vi.hoisted(() => {
   return {
@@ -23,7 +28,7 @@ const { api_fetch_mock } = vi.hoisted(() => {
 
 let current_project_snapshot: ProjectSnapshot;
 let current_project_session_status: "idle" | "warming" | "ready";
-let current_project_change_signal: ProjectChangeSignal;
+let change_source: ReturnType<typeof createProjectChangeSignalStore>;
 
 vi.mock("@frontend/app/desktop/desktop-api", () => {
   return {
@@ -36,9 +41,8 @@ vi.mock("@frontend/app/state/use-desktop-state", () => {
     useDesktopState: () => ({
       project_snapshot: current_project_snapshot,
       project_session_status: current_project_session_status,
-      project_change_signal: current_project_change_signal,
     }),
-    useProjectChangeSignal: () => current_project_change_signal,
+    useProjectChangeSignalSource: () => change_source,
   };
 });
 
@@ -69,12 +73,11 @@ function create_project_change_signal(
 }
 
 /**
- * 构造带 itemDelta 的公开项目变更结果，供失效规则判断真实 item 写入来源。
+ * 构造携带统计失效范围的项目通知。
  */
 function create_project_change_result(args: {
   source: string;
   updatedSections: ProjectStage[];
-  fieldPatch?: NonNullable<ProjectChangeApplyResult["itemDelta"]>["fieldPatch"];
 }): ProjectChangeApplyResult {
   return {
     applied: true,
@@ -82,12 +85,8 @@ function create_project_change_result(args: {
     projectRevision: 2,
     updatedSections: args.updatedSections,
     sectionRevisions: { items: 2 },
-    itemDelta: {
-      upsertItemIds: [1],
-      deleteItemIds: [],
-      fullReplace: false,
-      ...(args.fieldPatch === undefined ? {} : { fieldPatch: args.fieldPatch }),
-    },
+    qualityStatisticsScope: "post_replacement",
+    items: { mode: "delta", changedIds: [1] },
   };
 }
 
@@ -105,8 +104,6 @@ function create_statistics_snapshot(
     },
     subset_parents_by_entry_id: {},
     last_error: null,
-    request_token: 0,
-    updated_at: null,
     ...overrides,
   };
 }
@@ -154,17 +151,19 @@ describe("QualityRuleStatisticsProvider", () => {
   let container: HTMLDivElement | null = null;
   let root: Root | null = null;
   let snapshots: QualityRuleStatisticsCacheSnapshot[] = [];
+  let current_store: QualityRuleStatisticsStore | null = null;
 
   beforeEach(() => {
     current_project_snapshot = create_project_snapshot();
     current_project_session_status = "ready";
-    current_project_change_signal = create_project_change_signal();
+    change_source = createProjectChangeSignalStore();
     api_fetch_mock.mockReset();
     api_fetch_mock.mockResolvedValue({
       projectPath: "E:/demo/sample.lg",
       statistics: create_statistics_snapshot(),
     });
     snapshots = [];
+    current_store = null;
 
     container = document.createElement("div");
     document.body.append(container);
@@ -189,6 +188,7 @@ describe("QualityRuleStatisticsProvider", () => {
   function StatisticsProbe(props: {
     rule_type: QualityRuleStatisticsRuleType;
   }): JSX.Element | null {
+    current_store = useContext(QualityRuleStatisticsContext)?.store ?? null;
     const snapshot = useQualityRuleStatistics(props.rule_type);
 
     useEffect(() => {
@@ -210,83 +210,6 @@ describe("QualityRuleStatisticsProvider", () => {
       );
     });
   }
-
-  it("页面消费规则时向 Backend query 请求统计并写入当前快照", async () => {
-    await render_provider("glossary");
-
-    await wait_for_condition(() => snapshots.at(-1)?.phase === "current");
-
-    expect(api_fetch_mock).toHaveBeenCalledWith("/api/quality/statistics/view", {
-      rule_key: "glossary",
-    });
-    expect(snapshots.at(-1)).toMatchObject({
-      phase: "current",
-      entry_ids: ["苹果::0"],
-      hits_by_entry_id: {
-        "苹果::0": 1,
-      },
-      last_error: null,
-    });
-    expect(snapshots.at(-1)?.request_token).toBeGreaterThan(0);
-    expect(snapshots.at(-1)?.updated_at).toEqual(expect.any(Number));
-  });
-
-  it("项目会话未 ready 时消费规则不会请求后端", async () => {
-    current_project_session_status = "warming";
-
-    await render_provider("glossary");
-    await act(async () => {
-      await Promise.resolve();
-    });
-
-    expect(api_fetch_mock).not.toHaveBeenCalled();
-    expect(snapshots.at(-1)).toMatchObject({
-      phase: "empty",
-    });
-  });
-
-  it("后端返回旧项目结果时保留当前请求的运行态", async () => {
-    const deferred = create_deferred<{
-      projectPath: string;
-      statistics: QualityRuleStatisticsCacheSnapshot;
-    }>();
-    api_fetch_mock.mockReturnValueOnce(deferred.promise);
-
-    await render_provider("glossary");
-    await wait_for_condition(() => snapshots.at(-1)?.phase === "running");
-    await act(async () => {
-      deferred.resolve({
-        projectPath: "E:/demo/old.lg",
-        statistics: create_statistics_snapshot({
-          entry_ids: ["过期::0"],
-        }),
-      });
-      await deferred.promise;
-    });
-
-    await act(async () => {
-      await Promise.resolve();
-    });
-
-    expect(api_fetch_mock).toHaveBeenCalledWith("/api/quality/statistics/view", {
-      rule_key: "glossary",
-    });
-    expect(snapshots.at(-1)).toMatchObject({
-      phase: "running",
-      entry_ids: null,
-    });
-  });
-
-  it("后端 query 失败时把规则缓存标记为 failed", async () => {
-    api_fetch_mock.mockRejectedValueOnce(new Error("统计读取失败"));
-
-    await render_provider("glossary");
-
-    await wait_for_condition(() => snapshots.at(-1)?.phase === "failed");
-
-    expect(snapshots.at(-1)?.last_error).toBeInstanceOf(Error);
-    expect(snapshots.at(-1)?.last_error?.message).toBe("统计读取失败");
-  });
 
   it("项目从 warming 进入 ready 后刷新已激活规则", async () => {
     current_project_session_status = "warming";
@@ -322,10 +245,24 @@ describe("QualityRuleStatisticsProvider", () => {
     await render_provider("glossary");
     await wait_for_condition(() => snapshots.at(-1)?.hits_by_entry_id["苹果::0"] === 1);
 
-    current_project_change_signal = create_project_change_signal({
-      seq: 1,
-      reason: "quality_rule_update",
-      updated_sections: ["quality"],
+    await act(async () => {
+      change_source.applySnapshot(
+        create_project_change_signal({
+          seq: 1,
+          reason: "quality_rule_update",
+          updated_sections: ["quality"],
+          results: [
+            {
+              applied: true,
+              source: "quality",
+              projectRevision: 2,
+              updatedSections: ["quality"],
+              sectionRevisions: {},
+              qualityStatisticsScope: "all",
+            },
+          ],
+        }),
+      );
     });
     await render_provider("glossary");
 
@@ -341,16 +278,20 @@ describe("QualityRuleStatisticsProvider", () => {
     await render_provider("glossary");
     await wait_for_condition(() => snapshots.at(-1)?.phase === "current");
 
-    current_project_change_signal = create_project_change_signal({
-      seq: 1,
-      reason: "translation_batch_update",
-      updated_sections: ["items"],
-      results: [
-        create_project_change_result({
-          source: "translation_batch_update",
-          updatedSections: ["items"],
+    await act(async () => {
+      change_source.applySnapshot(
+        create_project_change_signal({
+          seq: 1,
+          reason: "translation_batch_update",
+          updated_sections: ["items"],
+          results: [
+            create_project_change_result({
+              source: "translation_batch_update",
+              updatedSections: ["items"],
+            }),
+          ],
         }),
-      ],
+      );
     });
     await render_provider("glossary");
     await act(async () => {
@@ -382,16 +323,20 @@ describe("QualityRuleStatisticsProvider", () => {
     await render_provider("post_replacement");
     await wait_for_condition(() => snapshots.at(-1)?.hits_by_entry_id["苹果::0"] === 1);
 
-    current_project_change_signal = create_project_change_signal({
-      seq: 1,
-      reason: "translation_batch_update",
-      updated_sections: ["items"],
-      results: [
-        create_project_change_result({
-          source: "translation_batch_update",
-          updatedSections: ["items"],
+    await act(async () => {
+      change_source.applySnapshot(
+        create_project_change_signal({
+          seq: 1,
+          reason: "translation_batch_update",
+          updated_sections: ["items"],
+          results: [
+            create_project_change_result({
+              source: "translation_batch_update",
+              updatedSections: ["items"],
+            }),
+          ],
         }),
-      ],
+      );
     });
     await render_provider("post_replacement");
 
@@ -401,5 +346,150 @@ describe("QualityRuleStatisticsProvider", () => {
     expect(api_fetch_mock).toHaveBeenLastCalledWith("/api/quality/statistics/view", {
       rule_key: "post_replacement",
     });
+  });
+  it.each(["warming", "unload", "switch"] as const)(
+    "%s 撤销旧请求，同路径重新进入后只发布新结果",
+    async (transition) => {
+      const old = create_deferred<{
+        projectPath: string;
+        statistics: QualityRuleStatisticsCacheSnapshot;
+      }>();
+      const next = create_deferred<{
+        projectPath: string;
+        statistics: QualityRuleStatisticsCacheSnapshot;
+      }>();
+      api_fetch_mock.mockReturnValueOnce(old.promise).mockReturnValueOnce(next.promise);
+      await render_provider("glossary");
+      expect(snapshots.at(-1)?.phase).toBe("running");
+      if (transition === "warming") current_project_session_status = "warming";
+      if (transition === "unload")
+        current_project_snapshot = create_project_snapshot({ loaded: false, path: "" });
+      if (transition === "switch") {
+        current_project_session_status = "warming";
+        current_project_snapshot = create_project_snapshot({ path: "other.lg" });
+      }
+      await render_provider("glossary");
+      current_project_snapshot = create_project_snapshot();
+      current_project_session_status = "ready";
+      await render_provider("glossary");
+      expect(api_fetch_mock).toHaveBeenCalledTimes(2);
+      await act(async () => {
+        old.resolve({
+          projectPath: current_project_snapshot.path,
+          statistics: create_statistics_snapshot({ entry_ids: ["old"] }),
+        });
+        await old.promise;
+      });
+      expect(snapshots.at(-1)).toMatchObject({ phase: "running", entry_ids: null });
+      await act(async () => {
+        next.resolve({
+          projectPath: current_project_snapshot.path,
+          statistics: create_statistics_snapshot({ entry_ids: ["new"] }),
+        });
+        await next.promise;
+      });
+      expect(snapshots.at(-1)?.entry_ids).toEqual(["new"]);
+    },
+  );
+  it("挂载已有加载通知时只发出首次查询，并接纳完成结果", async () => {
+    change_source.applySnapshot(
+      create_project_change_signal({
+        seq: 1,
+        updated_sections: ["quality"],
+        results: [
+          {
+            applied: true,
+            source: "project_loaded",
+            projectRevision: 1,
+            sectionRevisions: {},
+            updatedSections: ["quality"],
+            qualityStatisticsScope: "all",
+          },
+        ],
+      }),
+    );
+    const pending = create_deferred<{
+      projectPath: string;
+      statistics: QualityRuleStatisticsCacheSnapshot;
+    }>();
+    api_fetch_mock.mockReturnValueOnce(pending.promise);
+    await render_provider("glossary");
+    expect(api_fetch_mock).toHaveBeenCalledTimes(1);
+    await act(async () => {
+      pending.resolve({
+        projectPath: current_project_snapshot.path,
+        statistics: create_statistics_snapshot(),
+      });
+      await pending.promise;
+    });
+    expect(snapshots.at(-1)?.phase).toBe("current");
+  });
+
+  it("连续发布 all 和 none 时同步消费前一次失效", async () => {
+    await render_provider("glossary");
+    expect(snapshots.at(-1)?.phase).toBe("current");
+    api_fetch_mock.mockResolvedValueOnce({
+      projectPath: current_project_snapshot.path,
+      statistics: create_statistics_snapshot({ entry_ids: ["new"] }),
+    });
+    await act(async () => {
+      for (const [index, scope] of (["all", "none"] as const).entries()) {
+        change_source.applySnapshot(
+          create_project_change_signal({
+            seq: index + 1,
+            updated_sections: ["items"],
+            results: [
+              {
+                applied: true,
+                source: "write",
+                projectRevision: index + 2,
+                sectionRevisions: {},
+                updatedSections: ["items"],
+                qualityStatisticsScope: scope,
+              },
+            ],
+          }),
+        );
+      }
+    });
+    expect(api_fetch_mock).toHaveBeenCalledTimes(2);
+    expect(snapshots.at(-1)?.entry_ids).toEqual(["new"]);
+  });
+  it("作用域结束后取消订阅并撤销请求，迟到回包无法发布", async () => {
+    const pending = create_deferred<{
+      projectPath: string;
+      statistics: QualityRuleStatisticsCacheSnapshot;
+    }>();
+    api_fetch_mock.mockReturnValueOnce(pending.promise);
+    await render_provider("glossary");
+    const store = current_store!;
+    await act(async () => {
+      root?.unmount();
+      root = null;
+    });
+    expect(store.getSnapshot().project_path).toBe("");
+    change_source.applySnapshot(
+      create_project_change_signal({
+        seq: 1,
+        results: [
+          {
+            applied: true,
+            source: "write",
+            projectRevision: 1,
+            sectionRevisions: {},
+            updatedSections: ["quality"],
+            qualityStatisticsScope: "all",
+          },
+        ],
+      }),
+    );
+    pending.resolve({
+      projectPath: current_project_snapshot.path,
+      statistics: create_statistics_snapshot({ entry_ids: ["old"] }),
+    });
+    await pending.promise;
+    await Promise.resolve();
+    expect(store.getSnapshot().caches.glossary).toMatchObject({ phase: "empty", entry_ids: null });
+    expect(api_fetch_mock).toHaveBeenCalledTimes(1);
   });
 });

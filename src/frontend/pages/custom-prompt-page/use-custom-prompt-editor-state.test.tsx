@@ -80,10 +80,11 @@ function create_prompt_change(prompts_revision: number): Record<string, unknown>
     projectPath: runtime_fixture.project_snapshot.path,
     projectRevision: prompts_revision,
     updatedSections: ["prompts"],
-    operations: [],
+    qualityStatisticsScope: "all",
     sectionRevisions: {
       prompts: prompts_revision,
     },
+    eventId: "test-" + String(prompts_revision),
   };
 }
 

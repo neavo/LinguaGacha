@@ -1,3 +1,4 @@
+import type { ProjectFileRecord } from "./project-file-records";
 import type { ProjectPreviewResponse } from "../../shared/project-preview";
 import type { PDFExecution } from "../file/pdf/pdf-worker";
 import type { PDFDocument } from "../../shared/pdf";
@@ -35,7 +36,6 @@ import type { SourceFileParseFailureRecord } from "../../shared/source-file-pars
 import type { ProjectWriteResult } from "../../shared/project-event";
 import {
   compute_project_prefilter_write,
-  create_empty_translation_task_snapshot,
   type ProjectPrefilterWriteOutput,
 } from "./project-write-state";
 import { build_section_revisions_from_meta, get_section_revision } from "./project-data-reader";
@@ -71,7 +71,7 @@ interface CreateCommitFileRecord {
 interface CreateCommitParsedDraft {
   files: CreateCommitFileRecord[]; // 后端从 source_paths 解析出的可信 asset 写入清单
   failed_files: SourceFileParseFailureRecord[]; // 只记录支持格式但解析失败的源文件
-  file_state: Record<string, unknown>; // 只供后端预过滤算法识别文件类型和相对路径
+  file_state: Record<string, ProjectFileRecord>; // 只供后端预过滤算法识别文件类型和相对路径
   items: Record<string, ProjectItemPublicRecord>; // 后端生成的完整公开 DTO 镜像
 }
 
@@ -419,9 +419,7 @@ export class ProjectLifecycleService {
         files: args.draft.file_state,
         items: args.draft.items,
       },
-      task_snapshot: create_empty_translation_task_snapshot(),
       source_language: args.settings.source_language,
-      target_language: args.settings.target_language,
       mtool_optimizer_enable: args.settings.mtool_optimizer_enable,
       skip_duplicate_source_text_enable: args.settings.skip_duplicate_source_text_enable,
     });
@@ -749,8 +747,7 @@ export class ProjectLifecycleService {
     }
     return value
       .filter((item): item is string => typeof item === "string")
-      .map((item) => item.trim())
-      .filter((item) => item !== "");
+      .filter((item) => item.trim() !== "");
   }
 
   /**

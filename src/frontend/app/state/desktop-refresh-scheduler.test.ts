@@ -161,22 +161,9 @@ function create_project_change(
     projectPath: "E:/demo/demo.lg",
     projectRevision,
     updatedSections: ["items"],
-    operations: [
-      {
-        items: {
-          payloadMode: "canonical-delta",
-          changedIds: itemIds,
-          upsert: Object.fromEntries(
-            itemIds.map((item_id) => [
-              String(item_id),
-              {
-                item_id,
-                status: "PROCESSED",
-              },
-            ]),
-          ),
-        },
-      },
-    ],
+    items: { mode: "delta", changedIds: itemIds },
+    qualityStatisticsScope: "all",
+    eventId: "test-" + String(projectRevision),
+    sectionRevisions: {},
   };
 }

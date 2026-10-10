@@ -1,10 +1,10 @@
-import type { JsonRecord } from "../../domain/json";
+import type { JsonSnapshot } from "../../domain/json";
 import { JsonTool } from "../../shared/utils/json-tool";
 
 const KEEPALIVE_INTERVAL_MS = 500; // 公开 API stream keepalive 仍由服务端发出，renderer 不需要感知上游是否短暂重连
 
 // 公开 SSE data 的 JSON 对象形状，所有 topic 共享同一窄边界
-export type ApiStreamPayload = JsonRecord;
+export type ApiStreamPayload = Readonly<Record<string, JsonSnapshot>>;
 
 interface HubSubscriber {
   enqueue: (text: string) => void; // 单个 SSE 连接的写入口

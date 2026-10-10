@@ -102,58 +102,19 @@ const project_store = {
 
 const project_store_listeners = new Set<() => void>();
 
-/**
- * 模拟后端 change 回流，把权威 quality 切片合并进测试项目仓库。
- */
+// 统计通知与查询事实分开保存，测试写入只推进后端快照与刷新信号。
+const committed_quality = new WeakMap<object, typeof run_state.quality>();
 function apply_quality_write_result(result: {
-  changes?: Array<{
-    projectPath?: string;
-    sectionRevisions?: {
-      quality?: number;
-    };
-    sections?: {
-      quality?: {
-        data?: typeof run_state.quality;
-      };
-    };
-    operations?: Array<{
-      sections?: {
-        quality?: {
-          data?: typeof run_state.quality;
-        };
-      };
-    }>;
-  }>;
+  changes?: Array<{ projectPath?: string; sectionRevisions?: { quality?: number } }>;
 }): void {
   for (const change of result.changes ?? []) {
-    if (change.projectPath !== undefined && change.projectPath !== run_state.project.path) {
-      continue;
-    }
-
-    const canonical_quality = change.sections?.quality?.data;
-    if (canonical_quality !== undefined) {
-      run_state.quality = canonical_quality;
-      if (change.sectionRevisions?.quality !== undefined) {
-        run_state.revisions.sections.quality = change.sectionRevisions.quality;
-      }
-      for (const listener of project_store_listeners) {
-        listener();
-      }
-      continue;
-    }
-
-    for (const operation of change.operations ?? []) {
-      const next_quality = operation.sections?.quality?.data;
-      if (next_quality !== undefined) {
-        run_state.quality = next_quality;
-        if (change.sectionRevisions?.quality !== undefined) {
-          run_state.revisions.sections.quality = change.sectionRevisions.quality;
-        }
-        for (const listener of project_store_listeners) {
-          listener();
-        }
-      }
-    }
+    if (change.projectPath !== run_state.project.path) continue;
+    const quality = committed_quality.get(change);
+    if (quality === undefined) continue;
+    run_state.quality = quality;
+    run_state.revisions.sections.quality =
+      change.sectionRevisions?.quality ?? run_state.revisions.sections.quality;
+    notify_project_store_listeners();
   }
 }
 
@@ -167,7 +128,7 @@ function create_quality_write_result(
   } = {},
 ) {
   const project_revision = args.project_revision ?? 2;
-  return {
+  const result = {
     accepted: true,
     changes: [
       {
@@ -178,15 +139,13 @@ function create_quality_write_result(
         sectionRevisions: {
           quality: args.quality_revision ?? project_revision,
         },
-        sections: {
-          quality: {
-            payloadMode: "canonical-delta",
-            data: args.quality ?? run_state.quality,
-          },
-        },
+        qualityStatisticsScope: "all",
+        eventId: "test-" + String(project_revision),
       },
     ],
   };
+  committed_quality.set(result.changes[0]!, args.quality ?? structuredClone(run_state.quality));
+  return result;
 }
 
 // 质量区块快照由后端整体回灌，测试只替换 glossary 切片以表达该次写入的最终事实。
@@ -231,8 +190,6 @@ function create_statistics_cache(
       "苹果::0": [],
     },
     last_error: null,
-    request_token: 1,
-    updated_at: 1,
     ...args,
   };
 }

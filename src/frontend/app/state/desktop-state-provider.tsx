@@ -100,83 +100,20 @@ function resolve_project_apply_result_reason(results: readonly ProjectChangeAppl
   return reasons.length === 1 ? (reasons[0] ?? "project_change") : "project_change_batch";
 }
 
-/** 将同一事件的多条 operation 合并成 renderer 增量；任一失效标记优先于局部 id。 */
+/** 页面沿用已校验的轻量通知，避免重新解释条目变化。 */
 function create_project_change_apply_result(
   event: ProjectChangeEventForState,
 ): ProjectChangeApplyResult {
-  const upsert_item_ids = new Set<number | string>();
-  const delete_item_ids = new Set<number | string>();
-  const upsert_file_paths = new Set<string>();
-  const delete_file_paths = new Set<string>();
-  let item_full_replace = false;
-  let file_full_replace = false;
-  let field_patch: ProjectChangeApplyResult["itemDelta"] extends infer T
-    ? T extends { fieldPatch?: infer P }
-      ? P | undefined
-      : never
-    : never;
-
-  for (const operation of event.operations) {
-    if (operation.items !== undefined) {
-      if (operation.items.payloadMode === "section-invalidated") {
-        item_full_replace = true;
-      }
-      for (const item_id of Object.keys(operation.items.upsert ?? {})) {
-        upsert_item_ids.add(Number(item_id));
-      }
-      for (const item_id of operation.items.changedIds ?? []) {
-        upsert_item_ids.add(item_id);
-      }
-      for (const item_id of operation.items.deleteIds ?? []) {
-        delete_item_ids.add(item_id);
-      }
-      if (operation.items.fieldPatch !== undefined) {
-        field_patch = { ...operation.items.fieldPatch };
-      }
-    }
-    if (operation.files !== undefined) {
-      if (operation.files.payloadMode === "section-invalidated") {
-        file_full_replace = true;
-      }
-      for (const file_path of Object.keys(operation.files.upsert ?? {})) {
-        upsert_file_paths.add(file_path);
-      }
-      for (const file_path of operation.files.changedPaths ?? []) {
-        upsert_file_paths.add(file_path);
-      }
-      for (const file_path of operation.files.deletePaths ?? []) {
-        delete_file_paths.add(file_path);
-      }
-    }
-  }
-
-  const result: ProjectChangeApplyResult = {
+  return {
     applied: true,
-    ...(event.eventId === undefined ? {} : { eventId: event.eventId }),
+    eventId: event.eventId,
     source: event.source,
     projectRevision: event.projectRevision,
     updatedSections: [...event.updatedSections],
     sectionRevisions: { ...event.sectionRevisions },
+    qualityStatisticsScope: event.qualityStatisticsScope,
+    ...(event.items === undefined ? {} : { items: event.items }),
   };
-  if (upsert_item_ids.size > 0 || delete_item_ids.size > 0 || item_full_replace) {
-    const item_delta: NonNullable<ProjectChangeApplyResult["itemDelta"]> = {
-      upsertItemIds: [...upsert_item_ids],
-      deleteItemIds: [...delete_item_ids],
-      fullReplace: item_full_replace,
-    };
-    if (field_patch !== undefined) {
-      item_delta.fieldPatch = field_patch;
-    }
-    result.itemDelta = item_delta;
-  }
-  if (upsert_file_paths.size > 0 || delete_file_paths.size > 0 || file_full_replace) {
-    result.fileDelta = {
-      upsertFilePaths: [...upsert_file_paths],
-      deleteFilePaths: [...delete_file_paths],
-      fullReplace: file_full_replace,
-    };
-  }
-  return result;
 }
 
 /** 拥有主窗口初始化、权威快照同步和项目写入回流。 */
@@ -440,26 +377,16 @@ export function DesktopStateProvider(props: { children: ReactNode }): JSX.Elemen
           ...result,
           updatedSections: [...result.updatedSections],
           sectionRevisions: { ...result.sectionRevisions },
-          ...(result.itemDelta === undefined
+          ...(result.items === undefined
             ? {}
             : {
-                itemDelta: {
-                  ...result.itemDelta,
-                  upsertItemIds: [...result.itemDelta.upsertItemIds],
-                  deleteItemIds: [...result.itemDelta.deleteItemIds],
-                  ...(result.itemDelta.fieldPatch === undefined
-                    ? {}
-                    : { fieldPatch: { ...result.itemDelta.fieldPatch } }),
-                },
-              }),
-          ...(result.fileDelta === undefined
-            ? {}
-            : {
-                fileDelta: {
-                  ...result.fileDelta,
-                  upsertFilePaths: [...result.fileDelta.upsertFilePaths],
-                  deleteFilePaths: [...result.fileDelta.deleteFilePaths],
-                },
+                items:
+                  result.items.mode === "full"
+                    ? { mode: "full" as const }
+                    : {
+                        mode: "delta" as const,
+                        changedIds: [...result.items.changedIds],
+                      },
               }),
         })),
       });
@@ -576,6 +503,7 @@ export function DesktopStateProvider(props: { children: ReactNode }): JSX.Elemen
       {
         applied: true,
         source: "project_loaded",
+        qualityStatisticsScope: "all",
         projectRevision: Number(manifest.projectRevision ?? 0),
         updatedSections: [...PROJECT_DATA_SECTIONS],
         sectionRevisions:
