@@ -27,27 +27,13 @@ export type WorkbenchCommandPlan = {
   requestBody: Record<string, unknown>; // 只包含命令体，不包含渲染进程计算的最终 items/meta
 };
 
-// 从工作台 query 文件视图收窄出路径校验需要的字段。
-function normalize_file_record(value: unknown): WorkbenchPlannerFileRecord | null {
-  if (typeof value !== "object" || value === null) {
-    return null;
-  }
-
-  const { rel_path, file_type } = value as WorkbenchPlannerFileRecord;
-  return {
-    rel_path: String(rel_path ?? "").trim(),
-    ...(file_type === undefined ? {} : { file_type }),
-  };
-}
-
 // 建立当前文件路径索引，planner 只做路径存在与冲突判断。
 function build_file_map(
   state: WorkbenchCommandPlanningState,
 ): Map<string, WorkbenchPlannerFileRecord> {
   const file_map = new Map<string, WorkbenchPlannerFileRecord>();
-  for (const value of state.files) {
-    const file = normalize_file_record(value);
-    if (file === null || file.rel_path === "") {
+  for (const file of state.files) {
+    if (file.rel_path === "") {
       continue;
     }
     file_map.set(file.rel_path, file);
@@ -55,6 +41,7 @@ function build_file_map(
   return file_map;
 }
 
+/** 只改变冲突比较键，提交仍保留查询返回的准确路径。 */
 function build_casefold_file_map(
   state: WorkbenchCommandPlanningState,
 ): Map<string, WorkbenchPlannerFileRecord> {
@@ -68,9 +55,7 @@ function build_casefold_file_map(
 
 // 用户选择的目标路径去空去重，保证命令体路径集合稳定。
 function normalize_target_rel_paths(rel_paths: string[]): string[] {
-  const normalized_rel_paths = [
-    ...new Set(rel_paths.map((rel_path) => String(rel_path).trim()).filter(Boolean)),
-  ];
+  const normalized_rel_paths = [...new Set(rel_paths.filter((rel_path) => rel_path.trim() !== ""))];
   if (normalized_rel_paths.length === 0) {
     throw new Error("At least one target file path is required.");
   }
@@ -103,7 +88,7 @@ export function create_workbench_planner_settings(
 
 // 工作台文件路径冲突按大小写不敏感口径预判，最终写入仍由后端校验。
 function normalize_casefold_path(value: string): string {
-  return value.trim().toLocaleLowerCase("en-US");
+  return value.toLocaleLowerCase("en-US");
 }
 
 // 重排命令必须完整覆盖当前文件集合，不能提交局部排序片段。
@@ -136,8 +121,8 @@ export function create_workbench_reset_file_plan(args: {
   settings: WorkbenchPlannerSettings;
 }): WorkbenchCommandPlan {
   const file_map = build_file_map(args.state);
-  const target_rel_path = String(args.rel_path).trim();
-  if (target_rel_path === "") {
+  const target_rel_path = args.rel_path;
+  if (target_rel_path.trim() === "") {
     throw new Error("A target file path is required.");
   }
   if (!file_map.has(target_rel_path)) {
@@ -190,20 +175,12 @@ export type WorkbenchImportFilesPreview = {
   conflict_signature: string;
 };
 
-function normalize_import_file(parsed_file: WorkbenchFileParsePreview): WorkbenchFileParsePreview {
-  // 预演阶段只修剪路径字段，parsed_items 仍然只是 UI 预览数据。
-  return {
-    ...parsed_file,
-    source_path: parsed_file.source_path.trim(),
-    target_rel_path: parsed_file.target_rel_path.trim(),
-  };
-}
-
 function is_import_file_usable(parsed_file: WorkbenchFileParsePreview): boolean {
   // 空源路径或空目标路径无法表达用户导入意图，直接排除在计划外。
   return parsed_file.source_path.trim() !== "" && parsed_file.target_rel_path.trim() !== "";
 }
 
+/** 同批目标冲突整体排除，避免用发现顺序决定覆盖。 */
 function collect_batch_duplicate_target_keys(
   parsed_files: WorkbenchFileParsePreview[],
 ): Set<string> {
@@ -223,6 +200,7 @@ function collect_batch_duplicate_target_keys(
   );
 }
 
+/** 捕捉确认期间的冲突集合变化，提交前需要重新校对。 */
 function build_import_conflict_signature(files: WorkbenchFileParsePreview[]): string {
   // 对话确认期间用签名捕捉当前同名集合，提交前变更则重新让用户选择策略。
   return files
@@ -247,7 +225,7 @@ export function create_workbench_import_files_preview(args: {
     if (!is_import_file_usable(raw_file)) {
       continue;
     }
-    const parsed_file = normalize_import_file(raw_file);
+    const parsed_file = { ...raw_file };
     const target_key = normalize_casefold_path(parsed_file.target_rel_path);
     if (batch_duplicate_target_keys.has(target_key)) {
       continue;
@@ -276,6 +254,7 @@ export function create_workbench_import_files_preview(args: {
   };
 }
 
+/** 用户的覆盖策略决定新增与替换候选是否提交。 */
 function select_import_files(
   preview: WorkbenchImportFilesPreview,
   conflict_action: WorkbenchFileConflictAction,

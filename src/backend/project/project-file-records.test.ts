@@ -25,3 +25,27 @@ it("asset 提供工程顺序，历史条目补在末尾，PDF 身份优先且允
     "orphan.txt": { rel_path: "orphan.txt", file_type: "TXT", sort_index: 10 },
   });
 });
+
+it("生成入口保留准确路径，按原值去重并补齐稳定顺序与类型", () => {
+  expect(
+    build_project_file_records(
+      [
+        { path: " a.txt ", sort_order: 2.8 },
+        { path: "a.txt", sort_order: 9 },
+        { path: " a.txt ", sort_order: 8 },
+        { path: "", sort_order: 0 },
+        { path: "b.txt", sort_order: Number.NaN },
+      ],
+      [
+        { file_path: " orphan.srt", file_type: "NONE" },
+        { file_path: "", file_type: "TXT" },
+      ],
+      [],
+    ),
+  ).toEqual({
+    " a.txt ": { rel_path: " a.txt ", file_type: "NONE", sort_index: 2 },
+    "a.txt": { rel_path: "a.txt", file_type: "NONE", sort_index: 9 },
+    "b.txt": { rel_path: "b.txt", file_type: "NONE", sort_index: 4 },
+    " orphan.srt": { rel_path: " orphan.srt", file_type: "SRT", sort_index: 10 },
+  });
+});

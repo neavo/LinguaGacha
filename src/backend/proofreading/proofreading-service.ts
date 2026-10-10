@@ -9,12 +9,13 @@ import {
 } from "../project/project-write-request";
 import { is_item_manual_status, type ItemManualStatus } from "../../domain/item";
 import { is_json_record } from "../../domain/json";
-import type { ProjectChangeItemFieldPatch, ProjectWriteResult } from "../../shared/project-event";
+import type { ProjectWriteResult } from "../../shared/project-event";
 import { read_item_name_text } from "../../shared/item-name";
 import {
   apply_project_item_manual_update,
   apply_project_item_field_patch,
   type ProjectItemManualUpdate,
+  type ProjectItemFieldPatch,
 } from "../../shared/project/project-item-update";
 import { compile_text_pattern, replace_text_pattern } from "../../shared/text/text-pattern";
 import * as AppErrors from "../../shared/error";
@@ -167,7 +168,7 @@ export class ProofreadingService {
         diagnostic_context: { reason: "invalid_clear_translation_reset_status" },
       });
     }
-    const field_patch: ProjectChangeItemFieldPatch = reset_status
+    const field_patch: ProjectItemFieldPatch = reset_status
       ? { dst: "", name_dst: null, status: "NONE" }
       : { dst: "", name_dst: null };
     return await this.write_store.apply_project_item_changes({

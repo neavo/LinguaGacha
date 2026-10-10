@@ -26,9 +26,9 @@ describe("source file parse failure", () => {
       ]),
     ).toEqual([
       {
-        source_path: "E:/source/demo.json",
-        rel_path: "data/demo.json",
-        filename: "demo.json",
+        source_path: " E:/source/demo.json ",
+        rel_path: " data/demo.json ",
+        filename: " demo.json ",
         code: "file.parse_failed",
         message: "Parser rejected the file",
       },

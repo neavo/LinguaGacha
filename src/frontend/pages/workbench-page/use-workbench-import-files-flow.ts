@@ -284,11 +284,7 @@ export function useWorkbenchImportFilesFlow(
             ) {
               continue;
             }
-            parsed_files.push({
-              ...parsed_file,
-              source_path: parsed_file.source_path.trim(),
-              target_rel_path: parsed_file.target_rel_path.trim(),
-            });
+            parsed_files.push(parsed_file);
           }
 
           const failure_toast = format_source_file_parse_failure_toast(raw_failed_files);

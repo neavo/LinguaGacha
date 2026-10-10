@@ -14,7 +14,7 @@ const BASE_ITEM = {
 };
 
 describe("project item field patch", () => {
-  it("收窄项目事件可传播字段并丢弃非法字段", () => {
+  it("收窄数据库可写字段并丢弃非法字段", () => {
     expect(
       normalize_project_item_field_patch({
         dst: "新译文",

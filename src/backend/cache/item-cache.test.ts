@@ -48,13 +48,7 @@ describe("ItemCache", () => {
     cache.replace([first, create_item(2, { src: "同文", status: "RULE_SKIPPED" })]);
     expect(cache.readWriteScope([1])).toEqual([1]);
     const delta = (records: ProjectItemPublicRecord[]) =>
-      cache.applyChange(
-        {
-          mode: "delta",
-          changedIds: records.map((item) => item.item_id),
-        },
-        records,
-      );
+      cache.applyChange({ mode: "delta", records: records });
     delta([create_item(2, { src: "同文", status: "PROCESSED" })]);
     expect(cache.readWriteScope([1])).toEqual([1, 2]);
     delta([create_item(3, { src: "同文" })]);
@@ -94,23 +88,19 @@ describe("ItemCache", () => {
       create_item(3, { file_path: "b.txt", src: "C" }),
     ]);
 
-    cache.applyChange(
-      {
-        mode: "delta",
-        changedIds: [1],
-      },
-      [create_item(1, { file_path: "a.txt", src: "A", dst: "译文 A", status: "PROCESSED" })],
-    );
-    cache.applyChange(
-      {
-        mode: "delta",
-        changedIds: [3, 4],
-      },
-      [
+    cache.applyChange({
+      mode: "delta",
+      records: [
+        create_item(1, { file_path: "a.txt", src: "A", dst: "译文 A", status: "PROCESSED" }),
+      ],
+    });
+    cache.applyChange({
+      mode: "delta",
+      records: [
         create_item(3, { file_path: "c.txt", src: "C", dst: "译文 C" }),
         create_item(4, { file_path: "c.txt", src: "D", dst: "译文 D" }),
       ],
-    );
+    });
 
     expect(cache.readItems().map((item) => item["item_id"])).toEqual([1, 2, 3, 4]);
     const files = cache.readFileMetadata();

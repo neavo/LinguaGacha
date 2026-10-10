@@ -1,7 +1,6 @@
-import {
-  create_empty_quality_rule_block,
-  get_section_revision,
-} from "../project/project-data-reader";
+import { adapt_project_change } from "../project/project-write-event-adapter";
+import type { ProjectCommittedChange } from "../project/project-committed-change";
+import { create_empty_quality_rule_block } from "../project/project-data-reader";
 import { NativeFs } from "../../native/native-fs";
 import { AppSettingService } from "../app/app-setting-service";
 import fs from "node:fs";
@@ -477,7 +476,7 @@ describe("QualityRuleService", () => {
     const session_state = new ProjectSessionState();
     const project_event_bus = vi.fn();
     const lg_path = path.join(app_root, "quality.lg");
-    const publisher = create_test_project_change_publisher(database, lg_path);
+    const publisher = create_test_project_change_publisher(lg_path);
     database.create_project(lg_path, "quality");
     session_state.mark_loaded(lg_path);
     const runtime_gate = create_runtime_gate(runtime_owner);
@@ -497,30 +496,14 @@ describe("QualityRuleService", () => {
   }
 
   /**
-   * 用数据库 meta 生成测试用 project change，保持 revision 断言接近运行态。
+   * 公开通知沿用提交事实，测试复用生产事件适配器。
    */
-  function create_test_project_change_publisher(database: ProjectDatabase, lg_path: string) {
+  function create_test_project_change_publisher(lg_path: string) {
     return {
-      publish_project_change: vi.fn((payload: JsonRecord): ProjectChangeEvent => {
-        const updated_sections = Array.isArray(payload.updatedSections)
-          ? payload.updatedSections.map((section) => String(section))
-          : [];
-        const meta = database.get_all_meta(lg_path) as JsonRecord;
-        const section_revisions = Object.fromEntries(
-          updated_sections.map((section) => [section, get_section_revision(meta, section)]),
-        );
-        return {
-          type: "project.changed",
-          eventId: `test-${String(payload.source ?? "project_change")}`,
-          source: String(payload.source ?? "project_change"),
-          projectPath: String(payload.projectPath ?? ""),
-          projectRevision: Math.max(...Object.values(section_revisions), 0),
-          sectionRevisions: section_revisions,
-          updatedSections: updated_sections as ProjectChangeEvent["updatedSections"],
-          ...(payload.sections === undefined
-            ? {}
-            : { sections: payload.sections as NonNullable<ProjectChangeEvent["sections"]> }),
-        };
+      publish_project_change: vi.fn((payload: ProjectCommittedChange): ProjectChangeEvent => {
+        const session = new ProjectSessionState();
+        session.mark_loaded(lg_path);
+        return adapt_project_change(session, payload)!;
       }),
     };
   }

@@ -2,7 +2,7 @@ import {
   type QualityRuleBlock,
   type QualityRuleSlice,
 } from "../../shared/quality/quality-rule-state";
-import { build_project_file_records } from "./project-file-records";
+import { build_project_file_records, type ProjectFileRecord } from "./project-file-records";
 import type { JsonRecord, JsonValue } from "../../domain/json";
 import { ProjectDatabase } from "../database/database-operations";
 import { TRANSLATION_PROMPT, type ProjectPrompts } from "../../domain/prompt";
@@ -118,10 +118,11 @@ export class ProjectDataReader {
       ProjectItemPublicRecord,
       "file_path" | "file_type"
     >[] = this.build_runtime_items_snapshot(project_path).item_records,
-  ): JsonRecord {
-    const asset_records = project_path === "" ? [] : this.get_asset_records(project_path);
+  ): Record<string, ProjectFileRecord> {
+    const asset_records =
+      project_path === "" ? [] : this.database.get_all_asset_records(project_path);
     return build_project_file_records(
-      asset_records.map((asset) => ({ path: asset.rel_path, sort_order: asset.sort_index })),
+      asset_records,
       items,
       asset_records.length > 0 ? Object.keys(this.database.read_pdf_summaries(project_path)) : [],
     );
@@ -251,27 +252,6 @@ export class ProjectDataReader {
           : rule.normalize_mode(meta[rule.mode_meta_key]),
       revision: get_section_revision(meta, "quality"),
     };
-  }
-
-  /**
-   * 资产记录来自数据库，显示路径归一后去重以维持文件列表口径。
-   */
-  private get_asset_records(project_path: string): Array<{ rel_path: string; sort_index: number }> {
-    const value = this.database.get_all_asset_records(project_path);
-    const records: Array<{ rel_path: string; sort_index: number }> = [];
-    const seen_rel_paths = new Set<string>();
-    for (const raw_record of value) {
-      const rel_path = raw_record.path.trim();
-      if (rel_path === "" || seen_rel_paths.has(rel_path)) {
-        continue;
-      }
-      seen_rel_paths.add(rel_path);
-      records.push({
-        rel_path,
-        sort_index: Math.max(0, Math.trunc(raw_record.sort_order)),
-      });
-    }
-    return records;
   }
 }
 

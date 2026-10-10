@@ -8,7 +8,6 @@ import { type QualityRuleBlock } from "../../shared/quality/quality-rule-state";
 import { create_empty_project_prompts, type ProjectPrompts } from "../../domain/prompt";
 import { createProofreadingReader } from "../../shared/proofreading/proofreading-reader";
 import type { ProjectDataSectionRevisions } from "../../shared/project-event";
-import { create_cache_change, type CacheChange } from "./cache-change";
 import type { CacheFreshness, CacheReadPort, CacheSnapshot } from "./cache-types";
 import { FileCache } from "./file-cache";
 import { ItemCache } from "./item-cache";
@@ -130,18 +129,17 @@ export class CacheManager implements CacheReadPort {
   /**
    * 将提交结果应用到缓存，失败后进入下一次读取前恢复状态。
    */
-  public async applyCommittedChange(committed: ProjectCommittedChange): Promise<void> {
+  public applyCommittedChange(committed: ProjectCommittedChange): void {
     if (committed.projectPath !== this.project_path) return;
-    const change = create_cache_change(committed);
     try {
-      if (committed.itemRecords !== undefined)
-        this.items.applyChange(change.items, committed.itemRecords);
-      if (committed.fileRecords !== undefined) this.files.replace(committed.fileRecords);
+      if (committed.items !== undefined) this.items.applyChange(committed.items);
+      if (committed.files !== undefined) this.files.replace(committed.files);
       if (committed.quality !== undefined) this.quality.replace(committed.quality);
       if (committed.prompts !== undefined) this.prompts.replace(committed.prompts);
-      // 基础事实与修订在任何异步视图同步之前一起切换。
+      // 基础事实、修订与视图失效同步切换，读取不会跨越两次提交。
       this.section_revisions = { ...committed.sectionRevisions };
-      await this.apply_view_change(change, this.section_revisions);
+      this.proofreading.applyChange(committed);
+      this.qualityStatistics.applyChange(committed);
     } catch (cause) {
       this.mark_recoverable_error(committed);
       throw cause;
@@ -239,19 +237,9 @@ export class CacheManager implements CacheReadPort {
       source: "cache-manager",
       context: {
         sections: event.updatedSections,
+        change_source: event.source,
         project_path: event.projectPath,
       },
     });
-  }
-
-  /**
-   * 更新依赖基础缓存的视图缓存。
-   */
-  private async apply_view_change(
-    change: CacheChange,
-    next_section_revisions: ProjectDataSectionRevisions,
-  ): Promise<void> {
-    await this.proofreading.applyChange(change, next_section_revisions);
-    this.qualityStatistics.applyChange(change);
   }
 }

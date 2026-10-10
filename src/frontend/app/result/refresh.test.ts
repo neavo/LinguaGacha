@@ -18,7 +18,7 @@ describe("project section result refresh", () => {
           projectPath: "E:/demo/sample.lg",
           projectRevision: 7,
           updatedSections: ["quality"],
-          operations: [],
+          qualityStatisticsScope: "all",
           sectionRevisions: {
             quality: 7,
           },

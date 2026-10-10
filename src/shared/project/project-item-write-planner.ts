@@ -1,5 +1,5 @@
 import type { ProjectItemPublicRecord } from "../../domain/item";
-import type { ProjectChangeItemFieldPatch } from "../project-event";
+import type { ProjectItemFieldPatch } from "./project-item-update";
 import {
   coordinate_project_duplicate_statuses,
   type ProjectItemDuplicateIdentity,
@@ -24,7 +24,7 @@ export type ProjectItemPlannedChange = Readonly<{
   item_id: number; // 实际变化条目，包含同组被动变化
   current: Readonly<ProjectItemWriteRecord>; // 事务开始时事实
   next: Readonly<ProjectItemWriteRecord>; // 协调完成后的事实
-  patch: ProjectChangeItemFieldPatch; // 数据库最小字段补丁
+  patch: ProjectItemFieldPatch; // 数据库最小字段补丁
 }>;
 
 /**

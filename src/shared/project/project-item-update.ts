@@ -2,6 +2,7 @@ import {
   is_item_status,
   type Item,
   type ItemStatus,
+  type ProjectItemPublicRecord,
   type PROJECT_ITEM_MANUAL_UPDATE_SCHEMA,
   normalize_item_name_field,
   normalize_item_status,
@@ -13,7 +14,11 @@ import {
   read_item_name_text,
   write_item_name_text,
 } from "../item-name";
-import type { ProjectChangeItemFieldPatch } from "../project-event";
+
+/** 数据库写入规划使用的翻译字段补丁。 */
+export type ProjectItemFieldPatch = Partial<
+  Pick<ProjectItemPublicRecord, "dst" | "name_dst" | "status">
+>;
 
 /** 项目 Item 字段写入共同依赖的完整事实。 */
 export type ProjectItemWriteFields = Pick<Item, "dst" | "name_dst"> & {
@@ -31,14 +36,12 @@ type ProjectItemFieldPatchSource = {
 };
 
 // 外部 patch 只允许公开字段，坏值和空 patch 都收敛为 null。
-export function normalize_project_item_field_patch(
-  value: unknown,
-): ProjectChangeItemFieldPatch | null {
+export function normalize_project_item_field_patch(value: unknown): ProjectItemFieldPatch | null {
   if (!is_json_record(value)) {
     return null;
   }
 
-  const patch: ProjectChangeItemFieldPatch = {};
+  const patch: ProjectItemFieldPatch = {};
   if (typeof value.dst === "string") {
     patch.dst = value.dst;
   }
@@ -55,7 +58,7 @@ export function normalize_project_item_field_patch(
 // 返回新条目或 null，调用方可用 null 区分幂等 patch 与真实状态变化。
 export function apply_project_item_field_patch<TItem extends ProjectItemWriteFields>(
   item: TItem,
-  patch: ProjectChangeItemFieldPatch | null | undefined,
+  patch: ProjectItemFieldPatch | null | undefined,
 ): TItem | null {
   if (patch === null || patch === undefined) {
     return null;
@@ -109,8 +112,8 @@ export function apply_project_item_manual_update<TItem extends ProjectItemWriteF
 export function build_project_item_field_patch(
   current: ProjectItemFieldPatchSource,
   next: ProjectItemFieldPatchSource,
-): ProjectChangeItemFieldPatch | null {
-  const patch: ProjectChangeItemFieldPatch = {};
+): ProjectItemFieldPatch | null {
+  const patch: ProjectItemFieldPatch = {};
   if (typeof next.dst === "string" && next.dst !== current.dst) {
     patch.dst = next.dst;
   }

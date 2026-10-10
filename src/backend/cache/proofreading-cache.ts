@@ -30,7 +30,7 @@ import type {
 } from "../../shared/proofreading/proofreading-types";
 import type { ProofreadingListWindow } from "../../shared/proofreading/proofreading-reader";
 import type { ProjectDataSectionRevisions } from "../../shared/project-event";
-import type { CacheChange } from "./cache-change";
+import type { ProjectCommittedChange } from "../project/project-committed-change";
 import {
   normalize_text_processing_config,
   type TextProcessingConfig,
@@ -218,18 +218,20 @@ export class ProofreadingCache {
   }
 
   /**
-   * 根据基础缓存变化维护校对运行态，字段 patch 优先走增量应用。
+   * 消费提交事实，规范行更新评估，结构或规则变化撤销评估身份。
    */
-  public async applyChange(
-    change: CacheChange,
-    nextSectionRevisions: ProjectDataSectionRevisions,
-  ): Promise<void> {
-    if (change.items.mode !== "delta") {
-      if (change.items.mode === "full") this.files_revision = null;
+  public applyChange(
+    change: Pick<
+      ProjectCommittedChange,
+      "projectPath" | "items" | "updatedSections" | "sectionRevisions"
+    >,
+  ): void {
+    if (change.items?.mode !== "delta") {
+      if (change.items?.mode === "full") this.files_revision = null;
       if (
-        change.items.mode === "full" ||
-        change.quality.mode === "full" ||
-        change.settings.mode === "full"
+        change.items?.mode === "full" ||
+        change.updatedSections.includes("quality") ||
+        change.updatedSections.includes("project")
       ) {
         this.invalidate_evaluation();
       }
@@ -245,7 +247,7 @@ export class ProofreadingCache {
     if (current_key.projectPath !== change.projectPath) {
       return;
     }
-    const next_revisions = this.to_proofreading_revisions(nextSectionRevisions, current_key);
+    const next_revisions = this.to_proofreading_revisions(change.sectionRevisions, current_key);
     if (this.should_clear_delta_identity(current_key, next_revisions)) {
       this.invalidate_evaluation();
       return;
@@ -255,11 +257,7 @@ export class ProofreadingCache {
       const sync_state = this.reader.apply_item_delta({
         projectId: change.projectPath,
         revisions: { ...next_revisions, files: this.synced_state.revisions.files },
-        total_item_count: this.cache.snapshot().itemCount,
-        upsertItems: this.build_delta_items(item_change.changedIds),
-        patchItemIds: [],
-        fieldPatch: null,
-        deleteItemIds: [],
+        upsertItems: item_change.records.map((item) => this.to_runtime_item(item)),
       });
       this.synced_state = sync_state;
       this.synced_key = { ...current_key, revisions: next_revisions };
@@ -433,31 +431,20 @@ export class ProofreadingCache {
   }
 
   /**
-   * 只为增量变更读取受影响 item，减少大项目重复复制。
-   */
-  private build_delta_items(item_ids: number[]): ProofreadingItemRecord[] {
-    return item_ids.flatMap((item_id) => {
-      const item = this.cache.items.readItem(item_id);
-      return item === null ? [] : [this.to_runtime_item(item)];
-    });
-  }
-
-  /**
    * 将基础 item 缓存收窄为校对列表需要的稳定字段。
    */
   private to_runtime_item(item: ProjectItemPublicRecord): ProofreadingItemRecord {
-    const file_path = String(item["file_path"] ?? "");
     return {
       item_id: item.item_id,
-      file_path,
+      file_path: item.file_path,
       internal_file_path: this.read_internal_file_path(item),
       row_number: item.row_number,
-      src: String(item["src"] ?? ""),
-      dst: String(item["dst"] ?? ""),
+      src: item.src,
+      dst: item.dst,
       name_src: normalize_item_name_field(item["name_src"]),
       name_dst: normalize_item_name_field(item["name_dst"]),
-      status: String(item["status"] ?? "NONE"),
-      text_type: String(item["text_type"] ?? "NONE"),
+      status: item.status,
+      text_type: item.text_type,
     };
   }
 

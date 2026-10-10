@@ -11,7 +11,7 @@ import {
   type ProofreadingSyncInput,
 } from "../../shared/proofreading/proofreading-reader";
 import type { CacheReadPort } from "./cache-types";
-import type { CacheChange } from "./cache-change";
+
 import { ProofreadingCache } from "./proofreading-cache";
 import { ItemCache } from "./item-cache";
 import { PROOFREADING_WARNING_CODES } from "../../shared/proofreading/proofreading-types";
@@ -117,18 +117,17 @@ function create_worker(before_sync?: () => Promise<void>): ComputeWorkerClient &
 }
 
 // 生成规范行增量，用例只覆盖需要验证的字段。
-function create_delta_change(overrides: Partial<CacheChange> = {}): CacheChange {
+function create_delta_change(
+  overrides: Partial<Parameters<ProofreadingCache["applyChange"]>[0]> = {},
+): Parameters<ProofreadingCache["applyChange"]>[0] {
+  const updatedSections = overrides.updatedSections ?? ["items"];
   return {
     projectPath: "E:/Project/demo.lg",
-    source: "translation_commit",
-
-    items: {
-      mode: "delta",
-      changedIds: [1],
-    },
-    quality: { mode: "keep" },
-    settings: { mode: "keep" },
-
+    updatedSections,
+    sectionRevisions: { files: 1, items: 1, quality: 1, proofreading: 0 },
+    ...(updatedSections.includes("items")
+      ? { items: { mode: "delta" as const, records: [create_cache_item()] } }
+      : {}),
     ...overrides,
   };
 }
@@ -434,7 +433,10 @@ describe("ProofreadingCache", () => {
     revisions.items = 2;
     items[0] = { ...items[0]!, dst: "生命值" };
 
-    await cache.applyChange(create_delta_change(), revisions);
+    await cache.applyChange({
+      ...create_delta_change({ items: { mode: "delta", records: items } }),
+      sectionRevisions: revisions,
+    });
     const next_sync = await cache.sync({});
     const rows = await cache.itemsByRowIds({ row_ids: ["1"] });
     const warnings = await cache.warnings({
@@ -492,15 +494,15 @@ describe("ProofreadingCache", () => {
     revisions.items = 2;
     items[1] = { ...items[1]!, dst: "A", status: "PROCESSED" };
 
-    await cache.applyChange(
-      create_delta_change({
+    await cache.applyChange({
+      ...create_delta_change({
         items: {
           mode: "delta",
-          changedIds: [2],
+          records: [items[1]!],
         },
       }),
-      revisions,
-    );
+      sectionRevisions: revisions,
+    });
     const window = await cache.window({
       view_id: view.data.view_id,
       start: 0,
@@ -529,13 +531,12 @@ describe("ProofreadingCache", () => {
     await cache.sync({});
     revisions.quality = 2;
 
-    await cache.applyChange(
-      create_delta_change({
-        items: { mode: "keep" },
-        quality: { mode: "full" },
+    await cache.applyChange({
+      ...create_delta_change({
+        updatedSections: ["quality"],
       }),
-      revisions,
-    );
+      sectionRevisions: revisions,
+    });
     await cache.sync({});
 
     expect(worker.run).toHaveBeenCalledTimes(2);
@@ -594,15 +595,15 @@ it("页面修订号单独触发补读，滚动和文本增量复用页面与评�
   expect(worker.run).toHaveBeenCalledTimes(1);
   expect(readPages).toHaveBeenCalledTimes(2);
   revisions.items++;
-  await service.applyChange(create_delta_change(), revisions);
+  await service.applyChange({ ...create_delta_change(), sectionRevisions: revisions });
   await service.sync({});
   expect(readPages).toHaveBeenCalledTimes(2);
   expect(worker.run).toHaveBeenCalledTimes(1);
   revisions.quality++;
-  await service.applyChange(
-    create_delta_change({ items: { mode: "keep" }, quality: { mode: "full" } }),
-    revisions,
-  );
+  await service.applyChange({
+    ...create_delta_change({ updatedSections: ["quality"] }),
+    sectionRevisions: revisions,
+  });
   await service.sync({});
   expect(readPages).toHaveBeenCalledTimes(2);
   expect(worker.run).toHaveBeenCalledTimes(2);
@@ -680,14 +681,14 @@ it.each(["files", "items"] as const)(
       { rel_path: "b.txt", file_type: "TXT", sort_index: 0 },
       { rel_path: "a.txt", file_type: "TXT", sort_index: 1 },
     ]);
-    await service.applyChange(
-      section === "items"
+    await service.applyChange({
+      ...(section === "items"
         ? create_delta_change()
         : create_delta_change({
-            items: { mode: "keep" },
-          }),
-      revisions,
-    );
+            updatedSections: ["files"],
+          })),
+      sectionRevisions: revisions,
+    });
     release();
     if (rejected !== null) {
       await rejected;
@@ -721,7 +722,10 @@ it("热同步响应的修订号绑定返回快照，不借用等待期间发生�
   await service.sync({});
   const pending = service.sync({});
   revisions.files = 2;
-  await service.applyChange(create_delta_change({ items: { mode: "keep" } }), revisions);
+  await service.applyChange({
+    ...create_delta_change({ updatedSections: ["files"] }),
+    sectionRevisions: revisions,
+  });
   const old = await pending;
   expect(old.data.revisions.files).toBe(1);
   expect(old.sectionRevisions.files).toBe(1);

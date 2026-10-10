@@ -27,8 +27,17 @@ export function adapt_project_change(
       change.updatedSections.map((section) => [section, change.sectionRevisions[section]]),
     ),
     updatedSections: change.updatedSections,
-    ...(change.items === undefined ? {} : { items: change.items }),
-    ...(change.files === undefined ? {} : { files: change.files }),
-    ...(Object.keys(change.sections).length === 0 ? {} : { sections: change.sections }),
+    qualityStatisticsScope: change.qualityStatisticsScope,
+    ...(change.items === undefined
+      ? {}
+      : {
+          items:
+            change.items.mode === "full"
+              ? { mode: "full" as const }
+              : {
+                  mode: "delta" as const,
+                  changedIds: change.items.records.map((item) => item.item_id),
+                },
+        }),
   };
 }

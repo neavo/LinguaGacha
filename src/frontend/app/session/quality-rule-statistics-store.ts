@@ -1,9 +1,19 @@
 import { QUALITY_RULE_KINDS } from "@domain/quality";
-import {
-  resolve_quality_statistics_item_text_change_scope,
-  type QualityStatisticsTextChangeScope,
-} from "@shared/quality/quality-statistics-invalidation";
-import type { ProjectChangeItemFieldPatch, ProjectDataSection } from "@shared/project-event";
+import type { QualityStatisticsTextChangeScope } from "@shared/project-event";
+import { api_fetch } from "@frontend/app/desktop/desktop-api";
+
+export type QualityStatisticsQueryResponse = {
+  projectPath: string;
+  statistics: {
+    entry_ids: string[];
+    hits_by_entry_id: Record<string, number>;
+    subset_parents_by_entry_id: Record<string, string[]>;
+  };
+};
+
+type QualityStatisticsQuery = (
+  rule_type: QualityRuleStatisticsRuleType,
+) => Promise<QualityStatisticsQueryResponse>;
 
 // 渲染进程统计调度消费的共享规则词表别名。
 export const QUALITY_RULE_STATISTICS_RULE_TYPES = QUALITY_RULE_KINDS;
@@ -20,28 +30,11 @@ export type QualityRuleStatisticsCacheSnapshot = {
   hits_by_entry_id: Record<string, number>; // 徽标 hits 的计算结果表。
   subset_parents_by_entry_id: Record<string, string[]>; // 子集关系徽标的计算结果表。
   last_error: Error | null; // 只描述最近一次统计执行失败，不参与项目事实判断。
-  request_token: number; // 废弃迟到刷新结果，保证旧 in-flight 不能覆盖新缓存。
-  updated_at: number | null; // 仅用于调试观察，不作为缓存新旧依据。
 };
 
 export type QualityRuleStatisticsStoreSnapshot = {
   project_path: string; // 缓存会话身份，切换项目必须整体 reset
   caches: Record<QualityRuleStatisticsRuleType, QualityRuleStatisticsCacheSnapshot>; // 按规则类型隔离统计结果
-};
-
-export type QualityRuleStatisticsProjectChangeSignal = {
-  seq: number; // 初始空信号不触发统计失效。
-  updated_sections: readonly ProjectDataSection[]; // 顶层 section 决定是否需要进入质量统计判定。
-  results: readonly {
-    source: string; // 后端写入来源用于识别翻译批次和重翻批次。
-    updatedSections: readonly ProjectDataSection[]; // 单个写入结果的真实影响范围。
-    itemDelta?: {
-      upsertItemIds: ReadonlyArray<number | string>; // 只用于判断是否存在 item 变化，不进入统计身份。
-      deleteItemIds: ReadonlyArray<number | string>; // 删除会改变原文类统计覆盖范围。
-      fullReplace: boolean; // 全量替换无法证明文本源范围。
-      fieldPatch?: ProjectChangeItemFieldPatch; // 字段补丁是精确区分原文/译文影响的唯一证据。
-    };
-  }[];
 };
 
 // 渲染进程内存 store 的轻量订阅回调。
@@ -51,10 +44,8 @@ export type QualityRuleStatisticsStore = {
   getSnapshot: () => QualityRuleStatisticsStoreSnapshot; // 暴露渲染进程计算缓存快照。
   subscribe: (listener: QualityRuleStatisticsStoreListener) => () => void; // 通知页面重读缓存。
   reset: (project_path: string) => void; // 切换项目并清空旧项目统计缓存。
-  updateCache: (
-    rule_type: QualityRuleStatisticsRuleType,
-    updater: (cache: QualityRuleStatisticsCacheSnapshot) => QualityRuleStatisticsCacheSnapshot,
-  ) => void; // updateCache 是单个规则缓存的唯一写入口。
+  refreshRule: (rule_type: QualityRuleStatisticsRuleType) => void; // 当前规则请求替换旧请求身份。
+  applyInvalidation: (scope: QualityStatisticsTextChangeScope) => void; // 撤销受影响请求并清空结果。
 };
 
 /**
@@ -67,8 +58,6 @@ export function createEmptyQualityRuleStatisticsCacheSnapshot(): QualityRuleStat
     hits_by_entry_id: {},
     subset_parents_by_entry_id: {},
     last_error: null,
-    request_token: 0,
-    updated_at: null,
   };
 }
 
@@ -105,60 +94,15 @@ export function shouldRequestQualityRuleStatisticsForeground(
 }
 
 /**
- * 把项目变更信号折叠成需要失效的规则集合，Provider 只消费这个单一判定入口。
+ * 合并项目变更携带的统计失效范围，Provider 只消费这个单一判定入口。
  */
-export function resolveQualityRuleStatisticsRulesToExpire(
-  signal: QualityRuleStatisticsProjectChangeSignal,
-): QualityRuleStatisticsRuleType[] {
-  if (signal.seq === 0) {
-    return [];
-  }
-  if (signal.updated_sections.includes("quality")) {
-    return [...QUALITY_RULE_STATISTICS_RULE_TYPES];
-  }
-  if (!signal.updated_sections.includes("items")) {
-    return [];
-  }
-
-  // 合并窗口里可能混入其它 section，只让真实 item 结果参与文本源判定。
-  const item_results = signal.results.filter((result) => {
-    return result.updatedSections.includes("items") || result.itemDelta !== undefined;
-  });
-  if (item_results.length === 0) {
-    return [...QUALITY_RULE_STATISTICS_RULE_TYPES];
-  }
-
-  // 多个 item result 混合时，任一全量风险立即扩大到全部规则。
-  let should_expire_post_replacement = false;
-  for (const result of item_results) {
-    const scope = resolve_quality_statistics_item_result_expire_scope(result);
-    if (scope === "all") {
-      return [...QUALITY_RULE_STATISTICS_RULE_TYPES];
-    }
-    if (scope === "post_replacement") {
-      should_expire_post_replacement = true;
-    }
-  }
-
-  return should_expire_post_replacement ? ["post_replacement"] : [];
-}
-
-/**
- * 单个写入结果只负责判定文本源影响范围，最终规则集合由外层合并。
- */
-function resolve_quality_statistics_item_result_expire_scope(
-  result: QualityRuleStatisticsProjectChangeSignal["results"][number],
+export function resolveQualityRuleStatisticsInvalidationScope(
+  results: readonly { qualityStatisticsScope: QualityStatisticsTextChangeScope }[],
 ): QualityStatisticsTextChangeScope {
-  const item_delta = result.itemDelta;
-  if (item_delta === undefined) {
-    return "all";
-  }
-  return resolve_quality_statistics_item_text_change_scope({
-    source: result.source,
-    fullReplace: item_delta.fullReplace,
-    deleteCount: item_delta.deleteItemIds.length,
-    ...(item_delta.fieldPatch === undefined ? {} : { fieldPatch: item_delta.fieldPatch }),
-  });
+  if (results.some((result) => result.qualityStatisticsScope === "all")) return "all";
+  return results.some((result) => result.qualityStatisticsScope === "post_replacement")
+    ? "post_replacement"
+    : "none";
 }
 
 /**
@@ -181,68 +125,109 @@ function createEmptyQualityRuleStatisticsStoreSnapshot(
 /**
  * 未挂载页面对应的统计缓存失效时只清空结果，不安排后台计算。
  */
-export function expireQualityRuleStatisticsCache(
+function expireQualityRuleStatisticsCache(
   cache: QualityRuleStatisticsCacheSnapshot,
 ): QualityRuleStatisticsCacheSnapshot {
   if (cache.phase === "empty") {
     return cache;
   }
 
-  return {
-    ...createEmptyQualityRuleStatisticsCacheSnapshot(),
-    request_token: cache.request_token + 1,
-    updated_at: Date.now(),
-  };
+  return createEmptyQualityRuleStatisticsCacheSnapshot();
 }
 
 /**
  * 创建渲染进程内存 store；同引用更新不广播，避免无语义刷新触发页面 effect。
  */
-export function createQualityRuleStatisticsStore(): QualityRuleStatisticsStore {
-  // snapshot 是渲染进程内存事实，所有页面订阅都从这里读取同一份缓存。
-  let snapshot = createEmptyQualityRuleStatisticsStoreSnapshot("");
-  // listeners 只保存轻量回调，避免页面状态进入共享 store。
+export function createQualityRuleStatisticsStore(
+  query: QualityStatisticsQuery = (rule_type) =>
+    api_fetch<QualityStatisticsQueryResponse>("/api/quality/statistics/view", {
+      rule_key: rule_type,
+    }),
+): QualityRuleStatisticsStore {
+  let snapshot = createEmptyQualityRuleStatisticsStoreSnapshot(""); // 唯一展示快照，订阅者按引用判断更新。
   const listeners = new Set<QualityRuleStatisticsStoreListener>();
+  // Promise 身份同时保护工程重载和同规则刷新，旧请求不能发布或清理新请求。
+  const requests = new Map<
+    QualityRuleStatisticsRuleType,
+    Promise<QualityStatisticsQueryResponse>
+  >();
 
-  // 统一广播入口，保证所有写路径都经过同一批订阅者。
+  /** 同步发布结果，页面从同一快照读取刷新状态。 */
   function emit_change(): void {
-    listeners.forEach((listener) => {
-      listener();
-    });
+    for (const listener of listeners) listener();
+  }
+
+  /** 内部更新单个规则，结果未变时保持订阅快照身份。 */
+  function updateCache(
+    rule_type: QualityRuleStatisticsRuleType,
+    updater: (cache: QualityRuleStatisticsCacheSnapshot) => QualityRuleStatisticsCacheSnapshot,
+  ): void {
+    const previous = snapshot.caches[rule_type];
+    const next = updater(previous);
+    if (next === previous) return;
+    snapshot = { ...snapshot, caches: { ...snapshot.caches, [rule_type]: next } };
+    emit_change();
   }
 
   return {
-    getSnapshot(): QualityRuleStatisticsStoreSnapshot {
-      return snapshot;
-    },
-    subscribe(listener: QualityRuleStatisticsStoreListener): () => void {
+    getSnapshot: () => snapshot, // 读取期间保持引用稳定。
+    /** 订阅者负责在自身作用域结束时取消订阅。 */
+    subscribe(listener): () => void {
       listeners.add(listener);
       return () => {
         listeners.delete(listener);
       };
     },
-    reset(project_path: string): void {
+    /** 新工程包括同路径重载，必须撤销全部在途请求。 */
+    reset(project_path): void {
+      requests.clear();
       snapshot = createEmptyQualityRuleStatisticsStoreSnapshot(project_path);
       emit_change();
     },
-    updateCache(
-      rule_type: QualityRuleStatisticsRuleType,
-      updater: (cache: QualityRuleStatisticsCacheSnapshot) => QualityRuleStatisticsCacheSnapshot,
-    ): void {
-      const previous_cache = snapshot.caches[rule_type];
-      const next_cache = updater(previous_cache);
-      if (next_cache === previous_cache) {
-        return;
+    /** 只有仍被记录的 Promise 可以发布或清理请求结果。 */
+    refreshRule(rule_type): void {
+      const project_path = snapshot.project_path;
+      if (project_path === "") return;
+      const request = query(rule_type);
+      requests.set(rule_type, request);
+      updateCache(rule_type, (cache) => ({
+        ...cache,
+        phase: cache.phase === "current" ? "current" : "running",
+        last_error: null,
+      }));
+      void request
+        .then((response) => {
+          if (requests.get(rule_type) !== request || response.projectPath !== project_path) return;
+          updateCache(rule_type, () => ({
+            ...createEmptyQualityRuleStatisticsCacheSnapshot(),
+            ...response.statistics,
+            phase: "current",
+          }));
+        })
+        .catch((error: unknown) => {
+          if (requests.get(rule_type) !== request) return;
+          updateCache(rule_type, (cache) => ({
+            ...cache,
+            phase: "failed",
+            last_error: error instanceof Error ? error : new Error(String(error)),
+          }));
+        })
+        .finally(() => {
+          if (requests.get(rule_type) === request) requests.delete(rule_type);
+        });
+    },
+    /** 未挂载规则清空即可，活跃页面依据空缓存发起补算。 */
+    applyInvalidation(scope): void {
+      const rules =
+        scope === "all"
+          ? QUALITY_RULE_STATISTICS_RULE_TYPES
+          : scope === "post_replacement"
+            ? (["post_replacement"] as const)
+            : [];
+      for (const rule_type of rules) {
+        requests.delete(rule_type);
+        updateCache(rule_type, expireQualityRuleStatisticsCache);
       }
-
-      snapshot = {
-        ...snapshot,
-        caches: {
-          ...snapshot.caches,
-          [rule_type]: next_cache,
-        },
-      };
-      emit_change();
     },
   };
 }

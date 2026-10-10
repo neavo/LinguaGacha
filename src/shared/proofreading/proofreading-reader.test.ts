@@ -122,14 +122,11 @@ describe("proofreading-reader", () => {
       dst: "かな",
     };
     const revisions = { ...input.revisions, items: 2 };
-    reader.apply_item_delta({
-      projectId: input.projectId,
+    sync_full(reader, {
+      ...input,
       revisions,
       total_item_count: 2,
-      upsertItems: [changed],
-      patchItemIds: [],
-      fieldPatch: null,
-      deleteItemIds: [2],
+      upsertItems: [input.upsertItems[0]!, changed],
     });
     expect(
       reader
@@ -197,11 +194,10 @@ describe("proofreading-reader", () => {
     service.apply_item_delta({
       projectId: "E:/demo/sample.lg",
       revisions: { files: 1, items: 2, quality: 1, proofreading: 0 },
-      total_item_count: 2,
-      upsertItems: [],
-      patchItemIds: [1],
-      fieldPatch: { dst: "“你好”" },
-      deleteItemIds: [],
+
+      upsertItems: [
+        create_item({ item_id: 1, src: "「こんにちは」", dst: "“你好”", status: "PROCESSED" }),
+      ],
     });
     expect(
       service
@@ -252,11 +248,17 @@ describe("proofreading-reader", () => {
     service.apply_item_delta({
       projectId: "E:/demo/names.lg",
       revisions: { files: 1, items: 2, quality: 1, proofreading: 0 },
-      total_item_count: 1,
-      upsertItems: [],
-      patchItemIds: [1],
-      fieldPatch: { name_dst: "艾丽丝" },
-      deleteItemIds: [],
+
+      upsertItems: [
+        create_item({
+          item_id: 1,
+          src: "原文",
+          dst: "かな",
+          name_src: "Alice",
+          name_dst: "艾丽丝",
+          status: "PROCESSED",
+        }),
+      ],
     });
     const row = service.read_list_window({ view_id: view.view_id, start: 0, count: 1 }).rows[0];
     expect(row?.kind === "item" ? row.item.warnings : null).toEqual([
@@ -793,7 +795,7 @@ describe("proofreading-reader", () => {
     ]);
   });
 
-  it("字段 patch 更新旧视图内容但保持当前排序快照", () => {
+  it("规范行更新旧视图内容但保持当前排序快照", () => {
     const service = createProofreadingReader();
     const sync_state = sync_full(service, {
       projectId: "E:/demo/sample.lg",
@@ -816,11 +818,8 @@ describe("proofreading-reader", () => {
     service.apply_item_delta({
       projectId: "E:/demo/sample.lg",
       revisions: { files: 1, items: 2, quality: 1, proofreading: 0 },
-      total_item_count: 2,
-      upsertItems: [],
-      patchItemIds: [2],
-      fieldPatch: { dst: "A", status: "PROCESSED" },
-      deleteItemIds: [],
+
+      upsertItems: [create_item({ item_id: 2, dst: "A", status: "PROCESSED" })],
     });
     const window = service.read_list_window({
       view_id: view.view_id,
@@ -837,7 +836,7 @@ describe("proofreading-reader", () => {
     expect(service.resolve_row_index({ view_id: view.view_id, row_id: "2" })).toBe(1);
   });
 
-  it("字段 patch 更新姓名译文并保留数组后续项", () => {
+  it("规范行更新姓名译文并保留数组后续项", () => {
     const service = createProofreadingReader();
     const sync_state = sync_full(service, {
       projectId: "E:/demo/sample.lg",
@@ -866,11 +865,15 @@ describe("proofreading-reader", () => {
     service.apply_item_delta({
       projectId: "E:/demo/sample.lg",
       revisions: { files: 1, items: 2, quality: 1, proofreading: 0 },
-      total_item_count: 1,
-      upsertItems: [],
-      patchItemIds: [1],
-      fieldPatch: { name_dst: ["新译名", "保留译名"] },
-      deleteItemIds: [],
+
+      upsertItems: [
+        create_item({
+          item_id: 1,
+          dst: "正文",
+          name_src: ["Alice", "Bob"],
+          name_dst: ["新译名", "保留译名"],
+        }),
+      ],
     });
     const window = service.read_list_window({
       view_id: view.view_id,
@@ -918,95 +921,15 @@ describe("proofreading-reader", () => {
     service.apply_item_delta({
       projectId: "E:/demo/sample.lg",
       revisions: { files: 1, items: 2, quality: 1, proofreading: 0 },
-      total_item_count: 1,
-      upsertItems: [],
-      patchItemIds: [1],
-      fieldPatch: { dst: "<X>您好" },
-      deleteItemIds: [],
+
+      upsertItems: [
+        create_item({ item_id: 1, src: "<A>hello", dst: "<X>您好", status: "PROCESSED" }),
+      ],
     });
 
     expect(
       service.read_items_by_row_ids({ row_ids: ["1"] })[0]?.warnings.map((warning) => warning.code),
     ).not.toContain("TEXT_PRESERVE");
-  });
-
-  it("删除 delta 会从旧视图移除对应行并保持剩余索引", () => {
-    const service = createProofreadingReader();
-    const sync_state = sync_full(service, {
-      projectId: "E:/demo/sample.lg",
-      revisions: { files: 1, items: 1, quality: 1, proofreading: 0 },
-      total_item_count: 2,
-      processingConfig: create_processing_config(),
-      quality: create_quality(),
-      upsertItems: [create_item({ item_id: 1, dst: "A" }), create_item({ item_id: 2, dst: "B" })],
-    });
-    const view = service.read_list_view({
-      filters: sync_state.defaultFilters,
-      keyword: "",
-      scope: "all",
-      is_regex: false,
-      sort_state: null,
-      window_start: 0,
-      window_count: 10,
-    });
-
-    service.apply_item_delta({
-      projectId: "E:/demo/sample.lg",
-      revisions: { files: 1, items: 2, quality: 1, proofreading: 0 },
-      total_item_count: 1,
-      upsertItems: [],
-      patchItemIds: [],
-      fieldPatch: null,
-      deleteItemIds: [1],
-    });
-    const window = service.read_list_window({
-      view_id: view.view_id,
-      start: 0,
-      count: 10,
-    });
-
-    expect(window.row_count).toBe(1);
-    expect(window.rows.map((row) => row.row_id)).toEqual(["2"]);
-    expect(service.resolve_row_index({ view_id: view.view_id, row_id: "2" })).toBe(0);
-  });
-
-  it("新增 item 不会自动插入旧视图", () => {
-    const service = createProofreadingReader();
-    const sync_state = sync_full(service, {
-      projectId: "E:/demo/sample.lg",
-      revisions: { files: 1, items: 1, quality: 1, proofreading: 0 },
-      total_item_count: 2,
-      processingConfig: create_processing_config(),
-      quality: create_quality(),
-      upsertItems: [create_item({ item_id: 1, dst: "A" }), create_item({ item_id: 2, dst: "B" })],
-    });
-    const view = service.read_list_view({
-      filters: sync_state.defaultFilters,
-      keyword: "",
-      scope: "all",
-      is_regex: false,
-      sort_state: null,
-      window_start: 0,
-      window_count: 10,
-    });
-
-    service.apply_item_delta({
-      projectId: "E:/demo/sample.lg",
-      revisions: { files: 1, items: 2, quality: 1, proofreading: 0 },
-      total_item_count: 3,
-      upsertItems: [create_item({ item_id: 3, dst: "C" })],
-      patchItemIds: [],
-      fieldPatch: null,
-      deleteItemIds: [],
-    });
-    const window = service.read_list_window({
-      view_id: view.view_id,
-      start: 0,
-      count: 10,
-    });
-
-    expect(window.row_count).toBe(2);
-    expect(window.rows.map((row) => row.row_id)).toEqual(["1", "2"]);
   });
 
   it("全量同步后旧 view_id 失效", () => {
@@ -1353,9 +1276,6 @@ it("内部文件增删与迁移更新候选并撤销旧视图，正文更新保�
     revisions: { ...input.revisions, items: 2 },
     total_item_count: 2,
     upsertItems: [text_changed],
-    deleteItemIds: [] as number[],
-    patchItemIds: [],
-    fieldPatch: null,
   };
   expect(reader.apply_item_delta(delta).files).toEqual(sync.files);
   expect(reader.read_list_window({ view_id: view.view_id, start: 0, count: 10 })).toMatchObject({
@@ -1376,19 +1296,18 @@ it("内部文件增删与迁移更新候选并撤销旧视图，正文更新保�
   const empty_view = reader.read_list_view(future_query);
   expect(empty_view.row_count).toBe(0);
   const moved = { ...text_changed, internal_file_path: "Text/03.xhtml" };
-  reader.apply_item_delta({
-    ...delta,
+  sync_full(reader, {
+    ...input,
     revisions: { ...delta.revisions, items: 3 },
-    upsertItems: [moved],
+    upsertItems: [moved, input.upsertItems[1]!],
   });
   expect(
     reader.read_list_window({ view_id: empty_view.view_id, start: 0, count: 10 }).view_id,
   ).toBe("");
-  const updated = reader.apply_item_delta({
-    ...delta,
+  const updated = sync_full(reader, {
+    ...input,
     revisions: { ...delta.revisions, items: 4 },
-    upsertItems: [],
-    deleteItemIds: [2],
+    upsertItems: [moved],
     total_item_count: 1,
   });
   expect(updated.files).toEqual([
@@ -1410,10 +1329,10 @@ it("内部文件增删与迁移更新候选并撤销旧视图，正文更新保�
     internal_file_path: "Text/04.xhtml",
     dst: "",
   });
-  const appended = reader.apply_item_delta({
-    ...delta,
+  const appended = sync_full(reader, {
+    ...input,
     revisions: { ...delta.revisions, items: 5 },
-    upsertItems: [added],
+    upsertItems: [moved, added],
     total_item_count: 2,
   });
   expect(appended.files.map((file) => file.internal_file_path)).toEqual([

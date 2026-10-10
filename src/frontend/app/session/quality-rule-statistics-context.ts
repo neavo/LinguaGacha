@@ -8,7 +8,7 @@ import {
 
 export type QualityRuleStatisticsContextValue = {
   refreshRule: (rule_type: QualityRuleStatisticsRuleType) => void; // 从 Backend query 读取 ProjectDataCache 统计结果
-  store: QualityRuleStatisticsStore; // 只保存后端 query 结果，不再执行 renderer 统计
+  store: QualityRuleStatisticsStore; // 拥有统计请求和后端 query 结果
 };
 
 export const QualityRuleStatisticsContext = createContext<QualityRuleStatisticsContextValue | null>(

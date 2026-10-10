@@ -1,3 +1,5 @@
+import { adapt_project_change } from "../project/project-write-event-adapter";
+import type { ProjectCommittedChange } from "../project/project-committed-change";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -8,7 +10,6 @@ import { ProjectDatabase } from "../database/database-operations";
 import type { JsonRecord, JsonValue } from "../../domain/json";
 import { ProjectWriteStore } from "../project/project-write-store";
 import { RuntimeOperationGate } from "../runtime-operation-gate";
-import { get_section_revision } from "../project/project-data-reader";
 import { ProjectSessionState } from "../project/project-session-state";
 import { ProofreadingService } from "./proofreading-service";
 import type { ProjectChangeEvent } from "../../shared/project-event";
@@ -44,7 +45,7 @@ function create_service(task_busy = false): {
   const lg_path = project_path("proofreading.lg");
   database.create_project(lg_path, "proofreading");
   session_state.mark_loaded(lg_path);
-  const publisher = create_test_project_change_publisher(database, lg_path);
+  const publisher = create_test_project_change_publisher(lg_path);
   const project_event_bus = vi.fn();
   const write_store = new ProjectWriteStore(
     database,
@@ -68,32 +69,13 @@ function create_runtime_gate(busy: boolean): RuntimeOperationGate {
   return gate;
 }
 
-/** 从提交后的数据库读取修订，验证事件与持久事实一致。 */
-function create_test_project_change_publisher(database: ProjectDatabase, lg_path: string) {
+/** 公开通知沿用提交事实，测试复用生产事件适配器。 */
+function create_test_project_change_publisher(lg_path: string) {
   return {
-    publish_project_change: vi.fn((payload: JsonRecord): ProjectChangeEvent => {
-      const updated_sections = Array.isArray(payload.updatedSections)
-        ? payload.updatedSections.map((section) => String(section))
-        : [];
-      const meta = database.get_all_meta(lg_path) as JsonRecord;
-      const section_revisions = Object.fromEntries(
-        updated_sections.map((section) => [section, get_section_revision(meta, section)]),
-      );
-      return {
-        type: "project.changed",
-        eventId: `test-${String(payload.source ?? "project_change")}`,
-        source: String(payload.source ?? "project_change"),
-        projectPath: String(payload.projectPath ?? ""),
-        projectRevision: Math.max(...Object.values(section_revisions), 0),
-        sectionRevisions: section_revisions,
-        updatedSections: updated_sections as ProjectChangeEvent["updatedSections"],
-        ...(payload.items === undefined
-          ? {}
-          : { items: payload.items as NonNullable<ProjectChangeEvent["items"]> }),
-        ...(payload.sections === undefined
-          ? {}
-          : { sections: payload.sections as NonNullable<ProjectChangeEvent["sections"]> }),
-      };
+    publish_project_change: vi.fn((payload: ProjectCommittedChange): ProjectChangeEvent => {
+      const session = new ProjectSessionState();
+      session.mark_loaded(lg_path);
+      return adapt_project_change(session, payload)!;
     }),
   };
 }
@@ -179,7 +161,7 @@ describe("ProofreadingService", () => {
     });
   });
 
-  it("多行不同译文字段原子提交并只发布一次 canonical delta", async () => {
+  it("多行不同译文字段原子提交并只发布一次规范行增量", async () => {
     const { database, service, lg_path, publisher } = create_service();
     database.set_items(lg_path, [
       create_project_item({ id: 1, dst: "", status: "NONE" }),
@@ -221,7 +203,7 @@ describe("ProofreadingService", () => {
     expect(publisher.publish_project_change).toHaveBeenCalledTimes(1);
     expect(publisher.publish_project_change.mock.calls[0]?.[0]).toMatchObject({
       source: "proofreading_apply_item_changes",
-      items: { payloadMode: "canonical-delta", changedIds: [1, 2] },
+      items: { mode: "delta", records: [{ item_id: 1 }, { item_id: 2 }] },
     });
   });
 
@@ -249,7 +231,7 @@ describe("ProofreadingService", () => {
         {
           source: "proofreading_apply_item_changes",
           sectionRevisions: { items: 1, proofreading: 1 },
-          items: { payloadMode: "canonical-delta" },
+          items: { mode: "delta" },
         },
       ],
     });
@@ -365,14 +347,11 @@ describe("ProofreadingService", () => {
       projectPath: lg_path,
       source: "proofreading_apply_item_changes",
       updatedSections: ["items", "proofreading"],
-      items: {
-        payloadMode: "canonical-delta",
-        changedIds: [1],
-      },
+      items: { mode: "delta", records: [{ item_id: 1 }] },
     });
   });
 
-  it("正文和姓名译文同次保存时发布同一个字段 patch", async () => {
+  it("正文和姓名译文同次保存时发布同一次规范行变更", async () => {
     const { database, service, lg_path, publisher } = create_service();
     database.set_items(lg_path, [
       create_project_item({
@@ -395,7 +374,7 @@ describe("ProofreadingService", () => {
       }),
     ]);
     expect(publisher.publish_project_change.mock.calls[0]?.[0]).toMatchObject({
-      items: { payloadMode: "canonical-delta", changedIds: [1] },
+      items: { mode: "delta", records: [{ item_id: 1 }] },
     });
   });
 
@@ -527,10 +506,7 @@ describe("ProofreadingService", () => {
       projectPath: lg_path,
       source: "proofreading_apply_item_changes",
       updatedSections: ["items", "proofreading"],
-      items: {
-        payloadMode: "canonical-delta",
-        changedIds: [1],
-      },
+      items: { mode: "delta", records: [{ item_id: 1 }] },
     });
   });
 
@@ -548,10 +524,7 @@ describe("ProofreadingService", () => {
       accepted: true,
       changes: [
         {
-          items: {
-            payloadMode: "canonical-delta",
-            changedIds: [1],
-          },
+          items: { mode: "delta", changedIds: [1] },
         },
       ],
     });
@@ -598,10 +571,7 @@ describe("ProofreadingService", () => {
       projectPath: lg_path,
       source: "proofreading_apply_item_changes",
       updatedSections: ["items", "proofreading"],
-      items: {
-        payloadMode: "canonical-delta",
-        changedIds: [1, 2],
-      },
+      items: { mode: "delta", records: [{ item_id: 1 }, { item_id: 2 }] },
     });
   });
 
@@ -649,10 +619,7 @@ describe("ProofreadingService", () => {
       projectPath: lg_path,
       source: "proofreading_apply_item_changes",
       updatedSections: ["items", "proofreading"],
-      items: {
-        payloadMode: "canonical-delta",
-        changedIds: [1],
-      },
+      items: { mode: "delta", records: [{ item_id: 1 }] },
     });
   });
 

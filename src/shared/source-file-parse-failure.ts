@@ -40,12 +40,12 @@ function normalize_source_file_parse_failure(value: unknown): SourceFileParseFai
     return null;
   }
   const record = value as Record<string, unknown>;
-  const filename = String(record["filename"] ?? "").trim();
+  const filename = String(record["filename"] ?? "");
   const code = String(record["code"] ?? "").trim();
-  const source_path = String(record["source_path"] ?? "").trim();
-  const rel_path = String(record["rel_path"] ?? "").trim();
+  const source_path = String(record["source_path"] ?? "");
+  const rel_path = String(record["rel_path"] ?? "");
   const message = typeof record["message"] === "string" ? record["message"].trim() : "";
-  if (filename === "" || !is_app_error_code(code) || message === "") {
+  if (filename.trim() === "" || !is_app_error_code(code) || message === "") {
     return null;
   }
   return {

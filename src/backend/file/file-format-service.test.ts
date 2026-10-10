@@ -24,6 +24,18 @@ function create_service(): FileFormatService {
 }
 
 describe("FileFormatService", () => {
+  it("源路径过滤空值时保留身份中的空格，按原路径去重", () => {
+    expect(
+      create_service().normalize_source_paths([
+        " source.json ",
+        "source.json",
+        " source.json ",
+        "",
+        "  ",
+      ]),
+    ).toEqual([" source.json ", "source.json"]);
+  });
+
   it.each(["XLSX", "WOLFXLSX"] as const)("XLSX 分发保留 %s 的解析身份", async (file_type) => {
     const bytes = await spreadsheet_fixture(
       file_type === "WOLFXLSX"

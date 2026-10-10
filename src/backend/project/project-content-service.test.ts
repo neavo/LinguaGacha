@@ -1,3 +1,15 @@
+import { CacheManager } from "../cache/cache-manager";
+import type { AppSettingService } from "../app/app-setting-service";
+import type { ComputeWorkerClient } from "../worker/compute-worker-client";
+import { ProjectSummaryService } from "./project-summary-service";
+import { FilePreviewService } from "../file/file-preview-service";
+import {
+  create_workbench_import_files_plan,
+  create_workbench_reset_file_plan,
+  create_workbench_reorder_plan,
+  create_workbench_delete_files_plan,
+  type WorkbenchFileParsePreview,
+} from "../../shared/workbench/workbench-command-planner";
 import { create_pdf_execution, create_pdf_fixture } from "../file/pdf/test-support";
 
 import { ProjectDataReader } from "./project-data-reader";
@@ -302,7 +314,7 @@ describe("ProjectContentService", () => {
             projectPath: other_lg_path,
             source: "settings_alignment",
             updatedSections: ["items"],
-            items: { payloadMode: "section-invalidated" },
+            items: { mode: "full", records: expect.any(Array) },
           }),
         );
       } finally {
@@ -341,7 +353,7 @@ describe("ProjectContentService", () => {
       projectPath: lg_path,
       source: "settings_alignment",
       updatedSections: ["items"],
-      items: { payloadMode: "section-invalidated" },
+      items: { mode: "full", records: expect.any(Array) },
     });
     database.close();
   });
@@ -389,7 +401,7 @@ describe("ProjectContentService", () => {
       projectPath: lg_path,
       source: "translation_reset",
       updatedSections: ["items"],
-      items: { payloadMode: "section-invalidated" },
+      items: { mode: "full", records: expect.any(Array) },
     });
     database.close();
   });
@@ -807,8 +819,7 @@ describe("ProjectContentService", () => {
       projectPath: lg_path,
       source: "project_import_files",
       updatedSections: ["files", "items"],
-      items: { payloadMode: "section-invalidated" },
-      files: { payloadMode: "section-invalidated" },
+      items: { mode: "full", records: expect.any(Array) },
     });
     database.close();
   });
@@ -912,6 +923,109 @@ describe("ProjectContentService", () => {
     }
   });
 
+  it("预览、导入、缓存查询和工作台命令按准确路径区分空格文件，并关联 KVJSON 与 PDF 事实", async () => {
+    const { database, service, session_state, lg_path } = create_service();
+    const settings = {
+      source_language: "ALL",
+      mtool_optimizer_enable: true,
+      skip_duplicate_source_text_enable: false,
+    };
+    const app_settings = {
+      read_setting: () => ({ ...settings, target_language: "ZH" }),
+    } as unknown as AppSettingService;
+    const cache = new CacheManager({
+      database,
+      logManager: null,
+      appSettingService: app_settings,
+      workerClient: { run: vi.fn(), dispose: vi.fn() } as unknown as ComputeWorkerClient,
+    });
+    const summary = new ProjectSummaryService(session_state, cache, database);
+    const source_paths = [" a.json", "a.json", " book.pdf"].map(project_path);
+    fs.writeFileSync(source_paths[0]!, JSON.stringify({ "line\nother": "", line: "" }));
+    fs.writeFileSync(source_paths[1]!, JSON.stringify({ plain: "" }));
+    fs.writeFileSync(source_paths[2]!, create_pdf_fixture());
+    try {
+      const preview = await new FilePreviewService(
+        app_settings,
+        create_pdf_execution(),
+      ).parse_project_file({ source_paths });
+      const parsed_files = preview.files as unknown as WorkbenchFileParsePreview[];
+      expect(parsed_files.map((file) => file.target_rel_path)).toEqual([
+        " a.json",
+        "a.json",
+        " book.pdf",
+      ]);
+      expect(parsed_files.map((file) => file.source_path)).toEqual(source_paths);
+      const import_plan = create_workbench_import_files_plan({
+        state: { files: [], section_revisions: { files: 0, items: 0 } },
+        parsed_files,
+        settings,
+        conflict_action: "skip",
+      });
+      await service.import_files(import_plan.requestBody as JsonRecord);
+      const imported = database.get_all_items(lg_path);
+      expect(
+        imported.filter((item) => item.file_path === " a.json").map((item) => item.status),
+      ).toEqual(["NONE", "RULE_SKIPPED"]);
+      expect(
+        imported.filter((item) => item.file_path === "a.json").map((item) => item.src),
+      ).toEqual(["plain"]);
+      database.set_items(
+        lg_path,
+        imported.map((item) => ({ ...item, dst: "keep", status: "PROCESSED" })),
+      );
+      /** 从真实缓存查询获取命令路径与修订，覆盖持久化后的消费链。 */
+      async function read_planning_state() {
+        await cache.warmProject(lg_path);
+        const result = summary.read();
+        return { files: result.snapshot.entries, section_revisions: result.sectionRevisions };
+      }
+      let state = await read_planning_state();
+      expect(state.files.map((file) => file.rel_path)).toEqual([" a.json", "a.json", " book.pdf"]);
+      expect(state.files.find((file) => file.rel_path === " book.pdf")).toMatchObject({
+        file_type: "PDF",
+        progress: { unit: "page", total_count: 3 },
+      });
+      const reset = create_workbench_reset_file_plan({ state, rel_path: " a.json", settings });
+      await service.reset_files(reset.requestBody as JsonRecord);
+      expect(
+        database
+          .get_all_items(lg_path)
+          .filter((item) => item.file_path === " a.json")
+          .map((item) => [item.dst, item.status]),
+      ).toEqual([
+        ["", "NONE"],
+        ["", "RULE_SKIPPED"],
+      ]);
+      expect(database.get_all_items(lg_path).find((item) => item.file_path === "a.json")?.dst).toBe(
+        "keep",
+      );
+      state = await read_planning_state();
+      const order = [" book.pdf", "a.json", " a.json"];
+      await service.reorder_files(
+        create_workbench_reorder_plan({ state, ordered_rel_paths: order })
+          .requestBody as JsonRecord,
+      );
+      state = await read_planning_state();
+      expect(state.files.map((file) => file.rel_path)).toEqual(order);
+      await service.delete_files(
+        create_workbench_delete_files_plan({ state, rel_paths: [" a.json"], settings })
+          .requestBody as JsonRecord,
+      );
+      expect(database.get_all_asset_records(lg_path).map((file) => file.path)).toEqual([
+        " book.pdf",
+        "a.json",
+      ]);
+      expect(database.get_all_items(lg_path).map((item) => item.file_path)).toEqual(["a.json"]);
+      expect((await read_planning_state()).files.map((file) => file.rel_path)).toEqual([
+        " book.pdf",
+        "a.json",
+      ]);
+    } finally {
+      database.close();
+    }
+  });
+
   it("按完整文件集合重排 assets 并只 bump files section", async () => {
     const { publish_project_change } = create_test_project_change_publisher();
     const { database, service, lg_path } = create_service(publish_project_change);
@@ -946,7 +1060,6 @@ describe("ProjectContentService", () => {
       projectPath: lg_path,
       source: "project_reorder_files",
       updatedSections: ["files"],
-      files: { payloadMode: "section-invalidated" },
     });
     database.close();
   });
@@ -987,7 +1100,7 @@ describe("ProjectContentService", () => {
       projectPath: lg_path,
       source: "project_reset_files",
       updatedSections: ["items"],
-      items: { payloadMode: "section-invalidated" },
+      items: { mode: "full", records: expect.any(Array) },
     });
     database.close();
   });
@@ -1033,8 +1146,7 @@ describe("ProjectContentService", () => {
       projectPath: lg_path,
       source: "project_delete_files",
       updatedSections: ["files", "items"],
-      items: { payloadMode: "section-invalidated" },
-      files: { payloadMode: "section-invalidated" },
+      items: { mode: "full", records: expect.any(Array) },
     });
     database.close();
   });

@@ -8,7 +8,7 @@ import type { ProjectWriteCommitter } from "@frontend/app/state/desktop-project-
 import type { RecentProjectSetting, SettingSnapshot } from "@domain/setting";
 import type { AppLanguage } from "@domain/app-language";
 import type { RuntimeActivitySnapshot } from "@shared/runtime-activity";
-import type { createProjectChangeSignalStore } from "@frontend/app/state/project-change-signal-store";
+import type { ProjectChangeSignalSource } from "@frontend/app/state/project-change-signal-store";
 
 type RecentProjectEntry = RecentProjectSetting;
 
@@ -53,6 +53,6 @@ export const DesktopStateContext = createContext<DesktopStateContextValue | null
 export type DesktopStateStores = {
   batch_translation: ReturnType<typeof createBatchTranslationSnapshotStore>;
   runtime: ReturnType<typeof createRuntimeActivityStore>;
-  projectChange: ReturnType<typeof createProjectChangeSignalStore>;
+  projectChange: ProjectChangeSignalSource;
 };
 export const DesktopStateStoresContext = createContext<DesktopStateStores | null>(null);

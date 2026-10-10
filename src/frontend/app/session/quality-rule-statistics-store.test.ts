@@ -1,223 +1,165 @@
-import { describe, expect, it, vi } from "vitest";
+import { expect, it, vi } from "vitest";
 import {
   canSortQualityRuleStatistics,
-  expireQualityRuleStatisticsCache,
   createEmptyQualityRuleStatisticsCacheSnapshot,
   createQualityRuleStatisticsStore,
   isQualityRuleStatisticsCacheReady,
   isQualityRuleStatisticsCacheRunning,
-  resolveQualityRuleStatisticsRulesToExpire,
+  resolveQualityRuleStatisticsInvalidationScope,
   shouldRequestQualityRuleStatisticsForeground,
-  type QualityRuleStatisticsCachePhase,
-  type QualityRuleStatisticsCacheSnapshot,
-  type QualityRuleStatisticsProjectChangeSignal,
-} from "@frontend/app/session/quality-rule-statistics-store";
+  type QualityStatisticsQueryResponse,
+} from "./quality-rule-statistics-store";
 
-it("排序使用已完成统计，刷新失败保留结果，失效和切换工程清空", () => {
-  const initial = createEmptyQualityRuleStatisticsCacheSnapshot();
-  expect(canSortQualityRuleStatistics(initial)).toBe(false);
-  expect(canSortQualityRuleStatistics({ ...initial, phase: "running" })).toBe(false);
-  expect(canSortQualityRuleStatistics({ ...initial, phase: "failed" })).toBe(false);
-  const completed = create_cache_with_phase("current");
-  expect(canSortQualityRuleStatistics(completed)).toBe(true);
-  expect(canSortQualityRuleStatistics({ ...completed, phase: "failed" })).toBe(true);
-  expect(canSortQualityRuleStatistics({ ...completed, entry_ids: [] })).toBe(true);
-  expect(canSortQualityRuleStatistics(expireQualityRuleStatisticsCache(completed))).toBe(false);
-  const store = createQualityRuleStatisticsStore();
-  store.reset("first.lg");
-  store.updateCache("glossary", () => completed);
-  store.reset("second.lg");
-  expect(canSortQualityRuleStatistics(store.getSnapshot().caches.glossary)).toBe(false);
+/** 完成结果只表达规则身份与命中事实。 */
+function response(id = "new"): QualityStatisticsQueryResponse {
+  return {
+    projectPath: "project.lg",
+    statistics: { entry_ids: [id], hits_by_entry_id: { [id]: 1 }, subset_parents_by_entry_id: {} },
+  };
+}
+/** 手动控制响应顺序，覆盖迟到结果与失败。 */
+function deferred() {
+  let resolve!: (value: QualityStatisticsQueryResponse) => void;
+  let reject!: (error: Error) => void;
+  const promise = new Promise<QualityStatisticsQueryResponse>((done, fail) => {
+    resolve = done;
+    reject = fail;
+  });
+  return { promise, resolve, reject };
+}
+/** 排空回包、错误处理与请求清理的 Promise 链。 */
+async function settle(): Promise<void> {
+  await Promise.resolve();
+  await Promise.resolve();
+  await Promise.resolve();
+}
+
+it("页面仅补算空缓存，失败保留同一工程的有效结果", async () => {
+  const query = vi.fn().mockResolvedValue(response());
+  const store = createQualityRuleStatisticsStore(query);
+  const empty = store.getSnapshot().caches.glossary;
+  expect(shouldRequestQualityRuleStatisticsForeground(empty)).toBe(true);
+  expect(canSortQualityRuleStatistics(empty)).toBe(false);
+  store.reset("project.lg");
+  store.refreshRule("glossary");
+  expect(isQualityRuleStatisticsCacheRunning(store.getSnapshot().caches.glossary)).toBe(true);
+  await settle();
+  expect(isQualityRuleStatisticsCacheReady(store.getSnapshot().caches.glossary)).toBe(true);
+  query.mockRejectedValueOnce(new Error("failed"));
+  store.refreshRule("glossary");
+  await settle();
+  const failed = store.getSnapshot().caches.glossary;
+  expect(failed.phase).toBe("failed");
+  expect(failed.last_error?.message).toBe("failed");
+  expect(canSortQualityRuleStatistics(failed)).toBe(true);
+  expect(shouldRequestQualityRuleStatisticsForeground(failed)).toBe(false);
+  store.applyInvalidation("all");
+  expect(store.getSnapshot().caches.glossary).toEqual(
+    createEmptyQualityRuleStatisticsCacheSnapshot(),
+  );
 });
 
-/**
- * 构造指定 phase 的已完成缓存，用公开 builder 保持结果形状贴近真实运行态。
- */
-function create_cache_with_phase(
-  phase: QualityRuleStatisticsCachePhase,
-): QualityRuleStatisticsCacheSnapshot {
-  return {
-    ...createEmptyQualityRuleStatisticsCacheSnapshot(),
-    phase,
-    entry_ids: ["apple::0"],
-    hits_by_entry_id: { "apple::0": 1 },
-    subset_parents_by_entry_id: { "apple::0": [] },
-    updated_at: Date.now(),
-  };
-}
+it("合并事务提供的统计失效范围", () => {
+  expect(resolveQualityRuleStatisticsInvalidationScope([])).toBe("none");
+  expect(
+    resolveQualityRuleStatisticsInvalidationScope([
+      { qualityStatisticsScope: "none" },
+      { qualityStatisticsScope: "post_replacement" },
+    ]),
+  ).toBe("post_replacement");
+  expect(
+    resolveQualityRuleStatisticsInvalidationScope([
+      { qualityStatisticsScope: "post_replacement" },
+      { qualityStatisticsScope: "all" },
+    ]),
+  ).toBe("all");
+});
 
-/**
- * 默认信号模拟翻译批次，单测通过 overrides 表达其它项目变更来源。
- */
-function create_project_change_signal(
-  overrides: Partial<QualityRuleStatisticsProjectChangeSignal> = {},
-): QualityRuleStatisticsProjectChangeSignal {
-  return {
-    seq: 1,
-    updated_sections: ["items"],
-    results: [
-      {
-        source: "translation_batch_update",
-        updatedSections: ["items"],
-        itemDelta: {
-          upsertItemIds: [1],
-          deleteItemIds: [],
-          fullReplace: false,
-        },
-      },
-    ],
-    ...overrides,
-  };
-}
+it("仅译后失效保留原文统计，无变化不发布更新", async () => {
+  const store = createQualityRuleStatisticsStore(async () => response());
+  store.reset("project.lg");
+  store.refreshRule("glossary");
+  store.refreshRule("post_replacement");
+  await settle();
+  const listener = vi.fn();
+  store.subscribe(listener);
+  store.applyInvalidation("none");
+  expect(listener).not.toHaveBeenCalled();
+  store.applyInvalidation("post_replacement");
+  expect(store.getSnapshot().caches.glossary.phase).toBe("current");
+  expect(store.getSnapshot().caches.post_replacement.phase).toBe("empty");
+});
 
-describe("quality rule statistics cache helpers", () => {
-  it("页面前台刷新只补算空缓存", () => {
-    expect(
-      shouldRequestQualityRuleStatisticsForeground(createEmptyQualityRuleStatisticsCacheSnapshot()),
-    ).toBe(true);
-
-    (["running", "current", "failed"] satisfies QualityRuleStatisticsCachePhase[]).forEach(
-      (phase) => {
-        expect(shouldRequestQualityRuleStatisticsForeground(create_cache_with_phase(phase))).toBe(
-          false,
-        );
-      },
-    );
-  });
-
-  it("用 phase 计算页面可见状态", () => {
-    expect(isQualityRuleStatisticsCacheReady(create_cache_with_phase("current"))).toBe(true);
-    expect(isQualityRuleStatisticsCacheReady(create_cache_with_phase("running"))).toBe(false);
-    expect(isQualityRuleStatisticsCacheRunning(create_cache_with_phase("running"))).toBe(true);
-    expect(isQualityRuleStatisticsCacheRunning(create_cache_with_phase("current"))).toBe(false);
-  });
-
-  it("updateCache 返回原对象时不通知订阅者", () => {
-    const store = createQualityRuleStatisticsStore();
-    const listener = vi.fn();
-    store.subscribe(listener);
-
-    store.updateCache("glossary", (cache) => {
-      return cache;
+it.each(["resolve", "reject"] as const)(
+  "同路径重载后旧请求 %s 无法覆盖或清理新请求",
+  async (outcome) => {
+    const old = deferred(),
+      next = deferred();
+    const query = vi.fn().mockReturnValueOnce(old.promise).mockReturnValueOnce(next.promise);
+    const store = createQualityRuleStatisticsStore(query);
+    store.reset("project.lg");
+    store.refreshRule("glossary");
+    store.reset("");
+    store.reset("project.lg");
+    store.refreshRule("glossary");
+    if (outcome === "resolve") old.resolve(response("old"));
+    else old.reject(new Error("old failed"));
+    await settle();
+    expect(store.getSnapshot().caches.glossary).toMatchObject({
+      phase: "running",
+      entry_ids: null,
+      last_error: null,
     });
+    next.resolve(response());
+    await settle();
+    expect(store.getSnapshot().caches.glossary.entry_ids).toEqual(["new"]);
+  },
+);
 
-    expect(listener).not.toHaveBeenCalled();
-  });
-
-  it("quality 变化会让四类统计全部过期", () => {
-    expect(
-      new Set(
-        resolveQualityRuleStatisticsRulesToExpire(
-          create_project_change_signal({
-            updated_sections: ["quality"],
-            results: [],
-          }),
-        ),
-      ),
-    ).toEqual(new Set(["glossary", "text_preserve", "pre_replacement", "post_replacement"]));
-  });
-
-  it.each([["translation_batch_update"], ["retranslate_items"]] as const)(
-    "翻译写入来源 %s 只让后置替换统计过期",
-    (source) => {
-      expect(
-        resolveQualityRuleStatisticsRulesToExpire(
-          create_project_change_signal({
-            results: [
-              {
-                source,
-                updatedSections: ["items"],
-                itemDelta: {
-                  upsertItemIds: [1],
-                  deleteItemIds: [],
-                  fullReplace: false,
-                },
-              },
-            ],
-          }),
-        ),
-      ).toEqual(["post_replacement"]);
-    },
+it("失效或退出工程后进行中的请求不可发布", async () => {
+  const first = deferred(),
+    second = deferred();
+  const store = createQualityRuleStatisticsStore(
+    vi.fn().mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise),
   );
+  store.reset("project.lg");
+  store.refreshRule("post_replacement");
+  store.applyInvalidation("post_replacement");
+  first.resolve(response("old"));
+  await settle();
+  expect(store.getSnapshot().caches.post_replacement.phase).toBe("empty");
+  store.refreshRule("glossary");
+  store.reset("");
+  second.reject(new Error("old failed"));
+  await settle();
+  expect(store.getSnapshot().project_path).toBe("");
+  expect(store.getSnapshot().caches.glossary.phase).toBe("empty");
+});
 
-  it("只修改状态字段时保留所有统计缓存", () => {
-    expect(
-      resolveQualityRuleStatisticsRulesToExpire(
-        create_project_change_signal({
-          results: [
-            {
-              source: "proofreading_item_patch",
-              updatedSections: ["items"],
-              itemDelta: {
-                upsertItemIds: [1],
-                deleteItemIds: [],
-                fullReplace: false,
-                fieldPatch: { status: "PROCESSED" },
-              },
-            },
-          ],
-        }),
-      ),
-    ).toEqual([]);
-  });
+it("新刷新替换旧请求，旧完成不会删除新请求身份", async () => {
+  const first = deferred(),
+    second = deferred();
+  const store = createQualityRuleStatisticsStore(
+    vi.fn().mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise),
+  );
+  store.reset("project.lg");
+  store.refreshRule("glossary");
+  store.refreshRule("glossary");
+  first.resolve(response("old"));
+  await settle();
+  expect(store.getSnapshot().caches.glossary).toMatchObject({ phase: "running", entry_ids: null });
+  second.resolve(response());
+  await settle();
+  expect(store.getSnapshot().caches.glossary.entry_ids).toEqual(["new"]);
+});
 
-  it("修改译文字段时只让后置替换统计过期", () => {
-    expect(
-      resolveQualityRuleStatisticsRulesToExpire(
-        create_project_change_signal({
-          results: [
-            {
-              source: "proofreading_item_patch",
-              updatedSections: ["items"],
-              itemDelta: {
-                upsertItemIds: [1],
-                deleteItemIds: [],
-                fullReplace: false,
-                fieldPatch: { dst: "新译文" },
-              },
-            },
-          ],
-        }),
-      ),
-    ).toEqual(["post_replacement"]);
-  });
-
-  it("items 全量替换会让四类统计全部过期", () => {
-    expect(
-      new Set(
-        resolveQualityRuleStatisticsRulesToExpire(
-          create_project_change_signal({
-            results: [
-              {
-                source: "translation_reset",
-                updatedSections: ["items"],
-                itemDelta: {
-                  upsertItemIds: [1],
-                  deleteItemIds: [],
-                  fullReplace: true,
-                },
-              },
-            ],
-          }),
-        ),
-      ),
-    ).toEqual(new Set(["glossary", "text_preserve", "pre_replacement", "post_replacement"]));
-  });
-
-  it("items 变化缺少行级载荷时让四类统计全部过期", () => {
-    expect(
-      new Set(
-        resolveQualityRuleStatisticsRulesToExpire(
-          create_project_change_signal({
-            results: [
-              {
-                source: "unknown_items_change",
-                updatedSections: ["items"],
-              },
-            ],
-          }),
-        ),
-      ),
-    ).toEqual(new Set(["glossary", "text_preserve", "pre_replacement", "post_replacement"]));
-  });
+it("后端回包属于其它工程时不发布结果", async () => {
+  const store = createQualityRuleStatisticsStore(async () => ({
+    ...response("old"),
+    projectPath: "other.lg",
+  }));
+  store.reset("project.lg");
+  store.refreshRule("glossary");
+  await settle();
+  expect(store.getSnapshot().caches.glossary).toMatchObject({ phase: "running", entry_ids: null });
 });

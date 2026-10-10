@@ -1,3 +1,4 @@
+import type { QualityStatisticsTextChangeScope } from "../../shared/project-event";
 import type { CacheManager } from "../cache/cache-manager";
 import type { PDFDocument } from "../../shared/pdf";
 import { ProjectDatabase, type ProjectDatabaseWrite } from "../database/database-operations";
@@ -16,7 +17,10 @@ import {
   type JsonValue,
   type MutableJsonRecord,
 } from "../../domain/json";
-import { is_task_progress_status } from "../../domain/batch-translation";
+import {
+  is_task_progress_status,
+  normalize_batch_translation_progress,
+} from "../../domain/batch-translation";
 import { normalize_project_settings_snapshot } from "../../domain/setting";
 
 import type {
@@ -33,7 +37,6 @@ import {
 } from "../../shared/project/project-item-write-planner";
 import { create_quality_rule_entry_id } from "../../shared/quality/quality-rule-entry";
 import { get_section_revision } from "./project-data-reader";
-import { create_empty_translation_task_snapshot } from "./project-write-state";
 import type { ProjectChangePublisher } from "./project-write-event-adapter";
 import type { ProjectExpectedSectionRevisions } from "./project-write-request";
 import type { ProjectItemWriteChange, TranslationItemPatch } from "./project-write-request";
@@ -103,7 +106,7 @@ type RuntimePreparedChange = {
   itemRecords?: ProjectItemPublicRecord[]; // 全量替换复用已校验输入及数据库分配的主键。
   writes: ProjectDatabaseWrite[]; // 事务内按序执行的数据库操作
   updatedSections?: ProjectDataSection[]; // 事务内确定的实际变化 section
-  changedItemIds?: number[]; // 事务内确定的实际行增量，省略表示完整替换。
+  itemChanges?: readonly ProjectItemWriteChange[]; // 保留前后事实，事务提交时统一确定行 ID 与统计影响。
 };
 
 /** 控制公开通知，并把同一提交快照交给任务回执。 */
@@ -252,7 +255,7 @@ export class ProjectWriteStore {
         return {
           writes,
           updatedSections: ["items", "proofreading"],
-          changedItemIds: actual_changes.map((change) => change.item_id),
+          itemChanges: actual_changes,
         };
       },
     });
@@ -604,7 +607,7 @@ export class ProjectWriteStore {
             ...(outcome.itemChanges.length === 0
               ? {}
               : {
-                  changedItemIds: outcome.itemChanges.map((change) => change.item_id),
+                  itemChanges: outcome.itemChanges,
                 }),
           };
         },
@@ -806,7 +809,7 @@ export class ProjectWriteStore {
               (database) =>
                 database.patch_item_translation_fields(request.projectPath, actual_changes),
             ],
-            changedItemIds: changed_item_ids,
+            itemChanges: actual_changes,
           };
         },
       },
@@ -855,9 +858,14 @@ export class ProjectWriteStore {
           projectPath: request.projectPath,
           source: request.source,
           updatedSections: updated_sections,
-          ...(prepared_change.changedItemIds === undefined
+          qualityStatisticsScope: this.resolve_quality_statistics_scope(
+            prepared_change.itemChanges ?? [],
+          ),
+          ...(prepared_change.itemChanges === undefined
             ? {}
-            : { changedItemIds: prepared_change.changedItemIds }),
+            : {
+                changedItemIds: prepared_change.itemChanges.map((change) => change.item_id),
+              }),
         },
         { ...revision_context.meta, ...revision_context.pendingMeta },
         prepared_change.itemRecords,
@@ -1065,6 +1073,15 @@ export class ProjectWriteStore {
     ).skip_duplicate_source_text_enable;
   }
 
+  /** 状态和译名不参与质量文本统计，正文实际变化只影响译后规则。 */
+  private resolve_quality_statistics_scope(
+    changes: readonly ProjectItemWriteChange[],
+  ): QualityStatisticsTextChangeScope {
+    return changes.some(({ current, next }) => current.dst !== next.dst)
+      ? "post_replacement"
+      : "none";
+  }
+
   /** 翻译统计只由状态变化驱动，调用方不再传递派生布尔值。 */
   private has_translation_status_change(changes: readonly ProjectItemWriteChange[]): boolean {
     return changes.some(({ current, next }) => current.status !== next.status);
@@ -1096,9 +1113,8 @@ export class ProjectWriteStore {
    * 用空闲任务默认值补齐项目内 translation_extras。
    */
   private read_translation_progress(meta: JsonRecord): Record<string, unknown> {
-    const empty_snapshot = create_empty_translation_task_snapshot();
     return {
-      ...read_json_record(empty_snapshot["progress"] as JsonValue),
+      ...normalize_batch_translation_progress(undefined),
       ...read_json_record(meta["translation_extras"]),
     };
   }

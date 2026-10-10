@@ -1,52 +1,47 @@
-import type { JsonRecord, JsonValue } from "../../domain/json";
+import type { JsonRecord } from "../../domain/json";
 import type { ProjectItemPublicRecord } from "../../domain/item";
 import type { ProjectPrompts } from "../../domain/prompt";
 import type { QualityRuleBlock } from "../../shared/quality/quality-rule-state";
-import type {
-  ProjectChangeItemsPayload,
-  ProjectChangeSectionPayload,
-  ProjectDataSection,
-  ProjectDataSectionRevisions,
-} from "../../shared/project-event";
+import type { QualityStatisticsTextChangeScope } from "../../shared/project-event";
+import type { ProjectDataSection, ProjectDataSectionRevisions } from "../../shared/project-event";
 import type { ProjectDatabase } from "../database/database-operations";
+import type { ProjectFileRecord } from "./project-file-records";
 import { ProjectDataReader } from "./project-data-reader";
-/** 事务准备阶段只提供实际变化范围，公开载荷由已提交事实生成。 */
+
+/** 事务准备阶段提供实际变化范围。 */
 export type ProjectWriteChangeRequest = {
   projectPath: string;
-  source: string;
+  source: string; // 诊断来源，不参与缓存失效判断。
   updatedSections: ProjectDataSection[];
-  changedItemIds?: number[]; // 省略表示受影响的条目分区需要全量替换。
+  changedItemIds?: number[]; // 省略表示完整替换。
+  qualityStatisticsScope: QualityStatisticsTextChangeScope; // 事务内的实际文本影响，来源只用于诊断。
 };
 
-/** 当前写入口只产生完整替换或规范行增量。 */
-export type ProjectCommittedItems =
-  | { payloadMode: "section-invalidated" }
-  | {
-      payloadMode: "canonical-delta";
-      changedIds: number[];
-      upsert: NonNullable<ProjectChangeItemsPayload["upsert"]>;
-    };
+/** 缓存消费的唯一规范条目事实。 */
+export type ProjectCommittedItems = Readonly<{
+  mode: "full" | "delta";
+  records: readonly ProjectItemPublicRecord[]; // 单次事务后的规范行，后端消费者共享同一事实。
+}>;
 
-/** 单次事务形成的事实快照，提交后供缓存、公开通知与回执共同消费。 */
+/** 单次事务形成的事实快照，提交后供缓存、通知与回执共同消费。 */
 export type ProjectCommittedChange = Readonly<{
   projectPath: string;
-  source: string;
+  source: string; // 诊断来源，不参与缓存失效判断。
   updatedSections: ProjectDataSection[];
   sectionRevisions: ProjectDataSectionRevisions;
+  qualityStatisticsScope: QualityStatisticsTextChangeScope;
   items?: ProjectCommittedItems;
-  files?: { payloadMode: "section-invalidated" };
-  sections: Partial<Record<ProjectDataSection, ProjectChangeSectionPayload>>;
-  itemRecords?: ProjectItemPublicRecord[];
-  fileRecords?: JsonRecord;
+  files?: Record<string, ProjectFileRecord>;
   quality?: QualityRuleBlock;
   prompts?: ProjectPrompts;
 }>;
-/** 提交成功后同步后端缓存，失败由业务写入口报告。 */
+
+/** 提交后同步缓存，异常由写入口报告已提交状态。 */
 export type ProjectCommittedChangeHandler = (
   change: ProjectCommittedChange,
 ) => void | Promise<void>;
 
-/** 在写入事务内读取变化后的规范事实，异常仍可回滚。 */
+/** 在写入事务内读取规范事实，异常仍可回滚。 */
 export function build_project_committed_change(
   database: ProjectDatabase,
   request: ProjectWriteChangeRequest,
@@ -57,54 +52,34 @@ export function build_project_committed_change(
   const reader = new ProjectDataReader(database);
   const project = request.projectPath;
   const affected = new Set(request.updatedSections);
-  const sectionRevisions = reader.build_section_revisions(meta); // 同一快照供分区数据与提交回执共用。
-  const itemRecords = !affected.has("items")
+  const items: ProjectCommittedItems | undefined = !affected.has("items")
     ? undefined
     : request.changedItemIds === undefined
-      ? (replacementItems ?? reader.build_runtime_items_snapshot(project).item_records)
-      : reader.build_item_records_by_ids(project, request.changedItemIds);
-  const items: ProjectCommittedItems | undefined =
-    itemRecords === undefined
-      ? undefined
-      : request.changedItemIds === undefined
-        ? { payloadMode: "section-invalidated" }
-        : {
-            payloadMode: "canonical-delta",
-            changedIds: request.changedItemIds,
-            upsert: Object.fromEntries(itemRecords.map((item) => [item.item_id, item])),
-          };
-  const fileRecords =
-    affected.has("files") || items?.payloadMode === "section-invalidated"
-      ? reader.build_files_record_block(
-          project,
-          items?.payloadMode === "section-invalidated" ? itemRecords : fileMetadata,
-        )
-      : undefined;
-  const quality = affected.has("quality") ? reader.build_quality_block(project, meta) : undefined;
-  const prompts = affected.has("prompts") ? reader.build_prompts_block(project, meta) : undefined;
-  const data: Partial<Record<ProjectDataSection, JsonValue | undefined>> = {
-    project: { path: project, loaded: true },
-    quality,
-    prompts,
-    proofreading: { revision: sectionRevisions.proofreading },
-    ...(affected.has("pdf") ? { pdf: database.read_pdf_summaries(project) } : {}),
-  };
-  const sections: ProjectCommittedChange["sections"] = {};
-  for (const section of request.updatedSections) {
-    if (section === "items" || section === "files") continue;
-    sections[section] = { payloadMode: "canonical-delta", data: data[section] ?? {} };
-  }
+      ? {
+          mode: "full",
+          records: replacementItems ?? reader.build_runtime_items_snapshot(project).item_records,
+        }
+      : {
+          mode: "delta",
+          records: reader.build_item_records_by_ids(project, request.changedItemIds),
+        };
   return {
     projectPath: project,
     source: request.source,
     updatedSections: request.updatedSections,
-    sectionRevisions,
-    sections,
+    sectionRevisions: reader.build_section_revisions(meta),
+    qualityStatisticsScope:
+      affected.has("quality") || items?.mode === "full" ? "all" : request.qualityStatisticsScope,
     ...(items === undefined ? {} : { items }),
-    ...(affected.has("files") ? { files: { payloadMode: "section-invalidated" as const } } : {}),
-    ...(itemRecords === undefined ? {} : { itemRecords }),
-    ...(fileRecords === undefined ? {} : { fileRecords }),
-    ...(quality === undefined ? {} : { quality }),
-    ...(prompts === undefined ? {} : { prompts }),
+    ...(affected.has("files") || items?.mode === "full"
+      ? {
+          files: reader.build_files_record_block(
+            project,
+            items?.mode === "full" ? items.records : fileMetadata,
+          ),
+        }
+      : {}),
+    ...(affected.has("quality") ? { quality: reader.build_quality_block(project, meta) } : {}),
+    ...(affected.has("prompts") ? { prompts: reader.build_prompts_block(project, meta) } : {}),
   };
 }

@@ -19,7 +19,8 @@ const project_change_event: ProjectChangeEventForState = {
   projectPath: "E:/demo/demo.lg",
   projectRevision: 2,
   updatedSections: ["items"],
-  operations: [],
+  qualityStatisticsScope: "all",
+  sectionRevisions: {},
 };
 
 function create_scheduler_stub(): DesktopRefreshScheduler {

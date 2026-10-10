@@ -39,8 +39,6 @@ import {
   type ProofreadingRowRecord,
 } from "./list";
 import { AppError } from "../error";
-import type { ProjectChangeItemFieldPatch } from "../project-event";
-import { apply_project_item_field_patch } from "../project/project-item-update";
 import type { TextPreserveRule } from "../text/text-preserve-rules";
 import type { TextProcessingConfig } from "../text/text-processing";
 import { create_text_keywords_matcher, type TextKeywordsMatcher } from "../text/text-pattern";
@@ -86,11 +84,7 @@ type ProofreadingEvaluatedSyncInput = ProofreadingSyncInput & {
 type ProofreadingDeltaInput = {
   projectId: string;
   revisions: ProofreadingRevisions;
-  total_item_count: number;
   upsertItems: ProofreadingItemRecord[];
-  patchItemIds: number[];
-  fieldPatch: ProjectChangeItemFieldPatch | null;
-  deleteItemIds: number[];
 };
 
 // 列表视图查询把筛选、搜索、排序和虚拟窗口边界集中传入运行态。
@@ -197,13 +191,6 @@ type ProofreadingReaderState = {
   file_entries: { file_path: string; kind: "item" | "page" }[]; // 外层身份与顺序仅由文件同步拥有。
   glossary_term_count_map: Map<string, ProofreadingFilterPanelTermEntry>;
   defaultFilters: ProofreadingFilterOptions;
-};
-
-type ProofreadingItemChange = {
-  item_id: string; // 变更记录统一使用 row id 字符串，直接对接列表缓存
-  removed_from_runtime: boolean; // 后端 tombstone 从稳定视图剪除成员
-  file_changed: boolean; // 既有条目迁移文件归属时，旧视图必须失效。
-  natural_order_changed: boolean; // 文件、行号或 item_id 变化会影响所有排序的兜底顺序
 };
 
 // 列表视图缓存只保存显式查询生成的稳定行 ID 序列，让用户在筛选校对后能先确认重翻结果
@@ -490,22 +477,14 @@ function apply_counter_delta(args: {
 }
 
 /**
- * 单条 raw item 更新会同步重评估警告和所有筛选计数，并输出自然顺序和删除剪裁需要的变更记录。
+ * 规范行更新同步重评估警告和筛选计数，查询窗口保留原成员与顺序。
  */
 function upsert_runtime_item_in_state(
   state: ProofreadingReaderState,
   item: ProofreadingItemRecord,
-): ProofreadingItemChange {
+): void {
   const item_key = String(item.item_id);
   const previous = state.item_by_id.get(item_key);
-  const file_changed =
-    previous !== undefined &&
-    (previous.file_path !== item.file_path ||
-      previous.internal_file_path !== item.internal_file_path);
-  const natural_order_changed =
-    previous === undefined ||
-    previous.file_path !== item.file_path ||
-    previous.row_number !== item.row_number;
   if (previous !== undefined) apply_counter_delta({ state, item: previous, delta: -1 });
   const next: ProofreadingEvaluatedItem = {
     ...item,
@@ -519,27 +498,6 @@ function upsert_runtime_item_in_state(
   };
   state.item_by_id.set(item_key, next);
   apply_counter_delta({ state, item: next, delta: 1 });
-  return { item_id: item_key, removed_from_runtime: false, natural_order_changed, file_changed };
-}
-
-/**
- * 删除也产出同形变更记录，列表缓存不需要关心增量来源是 tombstone 还是 upsert。
- */
-function delete_runtime_item_from_state(
-  state: ProofreadingReaderState,
-  item_id: string,
-): ProofreadingItemChange {
-  const previous = state.item_by_id.get(item_id);
-  if (previous !== undefined) {
-    apply_counter_delta({ state, item: previous, delta: -1 });
-  }
-  state.item_by_id.delete(item_id);
-  return {
-    item_id,
-    removed_from_runtime: previous !== undefined,
-    file_changed: false,
-    natural_order_changed: previous !== undefined,
-  };
 }
 
 /**
@@ -800,37 +758,6 @@ function resolve_proofreading_rows(
 }
 
 /**
- * 文件归属变化撤销当前视图，普通字段变化保留成员与顺序，tombstone 剪除成员。
- * 这保证重翻修复术语命中后，行仍停留在当前筛选结果里供用户检查其它问题。
- */
-function apply_item_changes_to_list_view_cache(args: {
-  cache: ProofreadingListViewCache | null;
-  changes: ProofreadingItemChange[];
-}): ProofreadingListViewCache | null {
-  if (args.cache === null || args.changes.length === 0) {
-    return args.cache;
-  }
-
-  if (args.changes.some((change) => change.file_changed)) return null;
-
-  const deleted_item_ids = new Set(
-    args.changes.filter((change) => change.removed_from_runtime).map((change) => change.item_id),
-  );
-  if (deleted_item_ids.size === 0) {
-    return args.cache;
-  }
-
-  const next_ordered_row_ids = args.cache.ordered_row_ids.filter((item_id) => {
-    return !deleted_item_ids.has(item_id);
-  });
-  return create_list_view_cache({
-    view_id: args.cache.view_id,
-    projectId: args.cache.projectId,
-    ordered_row_ids: next_ordered_row_ids,
-  });
-}
-
-/**
  * 创建校对运行态实例，集中管理评估事实、GUI 列表缓存和筛选面板数据。
  */
 export function createProofreadingReader() {
@@ -916,7 +843,7 @@ export function createProofreadingReader() {
       return build_sync_state(state);
     },
     /**
-     * 应用项目事件流中的条目增量，同时维护计数、自然顺序和默认筛选
+     * 应用规范行变化，更新评估和计数并保留查询窗口
      */
     apply_item_delta(input: ProofreadingDeltaInput): ProofreadingSyncState {
       if (state === null || state.projectId !== input.projectId) {
@@ -927,7 +854,6 @@ export function createProofreadingReader() {
 
       const current_state = state;
       const revisions = input.revisions;
-      let should_rebuild_natural_order = input.total_item_count !== current_state.total_item_count;
 
       if (
         revisions.quality !== current_state.revisions.quality ||
@@ -949,68 +875,10 @@ export function createProofreadingReader() {
         files: current_state.revisions.files,
         ...(current_state.revisions.pdf === undefined ? {} : { pdf: current_state.revisions.pdf }),
       };
-      current_state.total_item_count = input.total_item_count;
 
-      const item_changes: ProofreadingItemChange[] = [];
-      const delete_item_ids = new Set(input.deleteItemIds.map((item_id) => String(item_id)));
-      for (const item_id of delete_item_ids) {
-        const change = delete_runtime_item_from_state(current_state, item_id);
-        item_changes.push(change);
-        if (change.natural_order_changed) {
-          should_rebuild_natural_order = true;
-        }
-      }
-
-      input.patchItemIds.forEach((item_id) => {
-        const item_key = String(item_id);
-        const previous_item = current_state.item_by_id.get(item_key);
-        if (previous_item === undefined) {
-          return;
-        }
-        const patched_item = apply_project_item_field_patch(previous_item, input.fieldPatch);
-        if (patched_item === null) {
-          return;
-        }
-        const change = upsert_runtime_item_in_state(current_state, patched_item);
-        item_changes.push(change);
-        if (change.natural_order_changed) {
-          should_rebuild_natural_order = true;
-        }
-      });
-
-      input.upsertItems.forEach((raw_item) => {
-        const change = upsert_runtime_item_in_state(current_state, raw_item);
-        item_changes.push(change);
-        if (change.natural_order_changed) {
-          should_rebuild_natural_order = true;
-        }
-      });
-
-      if (should_rebuild_natural_order) {
-        current_state.natural_row_ids = null;
-      }
-
-      if (should_rebuild_natural_order || item_changes.some((change) => change.file_changed)) {
-        const previous_files = current_state.files;
-        refresh_files(current_state);
-        // 内部候选增删也改变默认范围，需让空结果视图重新查询。
-        if (
-          previous_files.length !== current_state.files.length ||
-          previous_files.some((file, index) => {
-            const next = current_state.files[index]!;
-            return (
-              file.file_path !== next.file_path ||
-              file.internal_file_path !== next.internal_file_path
-            );
-          })
-        )
-          list_view_cache = null;
-      }
+      for (const item of input.upsertItems) upsert_runtime_item_in_state(current_state, item);
       current_state.defaultFilters = buildDefaultFiltersFromState(current_state);
-      list_view_cache = apply_item_changes_to_list_view_cache({
-        cache: list_view_cache,
-        changes: item_changes,
-      });
+      // 文本结构由全量同步切换，普通编辑保留当前窗口以便继续阅读。
       return build_sync_state(current_state);
     },
     /**

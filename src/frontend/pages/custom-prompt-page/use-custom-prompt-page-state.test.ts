@@ -98,10 +98,11 @@ function create_runtime_fixture(): RuntimeFixture {
               projectPath: "E:/demo/project.lg",
               projectRevision: prompts_revision,
               updatedSections: ["prompts"],
-              operations: [],
+              qualityStatisticsScope: "all",
               sectionRevisions: {
                 prompts: prompts_revision,
               },
+              eventId: "test-" + String(prompts_revision),
             },
           ],
         },

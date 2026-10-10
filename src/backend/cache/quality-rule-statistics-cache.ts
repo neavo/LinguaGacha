@@ -1,12 +1,11 @@
 import type { QualityRuleKind } from "../../domain/quality";
 import { prepare_quality_statistics_task_input } from "../../shared/quality/quality-statistics-input";
-import { resolve_quality_statistics_item_text_change_scope } from "../../shared/quality/quality-statistics-invalidation";
 import type { ProjectDataSectionRevisions } from "../../shared/project-event";
 import type {
   QualityRuleStatisticsWorkerTaskInput,
   QualityRuleStatisticsWorkerTaskResult,
 } from "../worker/tasks/quality-rule-statistics-worker-task";
-import type { CacheChange } from "./cache-change";
+import type { ProjectCommittedChange } from "../project/project-committed-change";
 import type { CacheReadPort } from "./cache-types";
 import * as AppErrors from "../../shared/error";
 
@@ -77,12 +76,14 @@ export class QualityRuleStatisticsCache {
   }
 
   /** 规则变化同时失效统计与父项；item 变化只失效受影响规则的统计。 */
-  public applyChange(change: CacheChange): void {
-    if (change.quality.mode === "full") {
+  public applyChange(
+    change: Pick<ProjectCommittedChange, "updatedSections" | "qualityStatisticsScope">,
+  ): void {
+    if (change.updatedSections.includes("quality")) {
       this.clear();
       return;
     }
-    const scope = resolve_quality_rule_statistics_clear_scope(change);
+    const scope = change.qualityStatisticsScope;
     if (scope === "none") return;
     if (scope === "all") {
       for (const entry of this.values.values()) entry.statistics = null;
@@ -136,18 +137,4 @@ export class QualityRuleStatisticsCache {
     this.values.set(rule_key, entry);
     return entry;
   }
-}
-
-/** 把项目变化折叠为无需失效、仅译后规则或全部统计三种范围。 */
-function resolve_quality_rule_statistics_clear_scope(
-  change: CacheChange,
-): "none" | "post_replacement" | "all" {
-  if (change.items.mode === "keep") return "none";
-  if (change.items.mode === "full") return "all";
-  return resolve_quality_statistics_item_text_change_scope({
-    source: change.source,
-    fullReplace: false,
-    deleteCount: 0,
-    fieldPatch: null,
-  });
 }

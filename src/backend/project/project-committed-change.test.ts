@@ -28,6 +28,7 @@ it("规范行增量与修订使用提交快照，不受后续数据库变化影�
         source: "test",
         updatedSections: ["items"],
         changedItemIds: [1],
+        qualityStatisticsScope: "post_replacement",
       },
       database.get_all_meta(project),
     );
@@ -35,11 +36,9 @@ it("规范行增量与修订使用提交快照，不受后续数据库变化影�
     database.set_meta(project, "project_runtime_revision.items", 99);
     expect(committed.sectionRevisions.items).toBe(0);
     expect(committed.items).toMatchObject({
-      payloadMode: "canonical-delta",
-      changedIds: [1],
-      upsert: { "1": { item_id: 1, src: "原文", dst: "译文" } },
+      mode: "delta",
+      records: [{ item_id: 1, src: "原文", dst: "译文" }],
     });
-    expect(committed.itemRecords).toMatchObject([{ item_id: 1, src: "原文", dst: "译文" }]);
   } finally {
     database.close();
     fs.rmSync(directory, { recursive: true, force: true });

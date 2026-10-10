@@ -1,3 +1,4 @@
+import type { ProjectFileRecord } from "../project/project-file-records";
 import path from "node:path";
 
 import type { JsonRecord } from "../../domain/json";
@@ -35,7 +36,7 @@ export type SourceFileProjectDraft = {
     pdf_document: PDFDocument | null;
   }>; // files 是项目文件 section 和 asset 写库共同使用的草稿
   items: ProjectItemPersistentRecord[]; // 已分配临时 id、file_path 和 file_type
-  file_state: Record<string, JsonRecord>; // 供预过滤算法消费
+  file_state: Record<string, ProjectFileRecord>; // 供预过滤算法消费
   failed_files: SourceFileParseFailureRecord[];
 };
 
