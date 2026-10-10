@@ -32,25 +32,6 @@ export class FilePreviewService {
   }
 
   /**
-   * 项目文件预解析返回成功与失败清单，避免批量输入失败被静默吞掉
-   */
-  public async parse_project_file(request: JsonRecord): Promise<JsonRecord> {
-    const source_paths = this.normalize_string_list(request["source_paths"]);
-    const current_rel_path =
-      typeof request["current_rel_path"] === "string" ? request["current_rel_path"] : undefined;
-    const pipeline = this.create_parse_pipeline();
-    const result = await pipeline.parse_project_file_preview({
-      source_paths,
-      ...(current_rel_path === undefined ? {} : { current_rel_path }),
-    });
-    this.log_parse_failures(result.failed_files);
-    return {
-      files: result.files as unknown as JsonValue,
-      failed_files: result.failed_files as unknown as JsonValue,
-    };
-  }
-
-  /**
    * 新建工程预览统一分配临时 item id，所有公开文件格式都走 文件域
    */
   public async build_create_preview(request: JsonRecord): Promise<JsonRecord> {
@@ -60,7 +41,7 @@ export class FilePreviewService {
     return {
       draft: {
         source_paths: draft.source_paths,
-        files: draft.files,
+        files: draft.files.map(({ content: _content, ...file }) => file),
         items: draft.items,
         section_revisions: { files: 0, items: 0 },
       },

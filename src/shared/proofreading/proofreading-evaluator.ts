@@ -1,3 +1,4 @@
+import { resolve_text_rule_type } from "../text/text-rule-type";
 import {
   QualityRule,
   type QualityRuleGlossaryEntry,
@@ -180,12 +181,16 @@ export function evaluateProofreadingItem(args: {
   if (PROOFREADING_SKIPPED_WARNING_STATUSES.has(item.status) || !has_item_translation_text(item)) {
     return { warnings, glossary_applications: [] };
   }
-  const sample_rule_cache_key = `${item.text_type}:${args.quality.text_preserve.mode}:${args.quality.text_preserve.revision}`;
+  const text_type = resolve_text_rule_type(
+    item,
+    args.processingConfig.file_contexts?.[item.file_path],
+  );
+  const sample_rule_cache_key = `${text_type}:${args.quality.text_preserve.mode}:${args.quality.text_preserve.revision}`;
   let sample_rule = args.sample_rule_cache.get(sample_rule_cache_key);
   if (sample_rule === undefined) {
     sample_rule = build_text_preserve_rule({
       mode: args.quality.text_preserve.mode,
-      text_type: item.text_type,
+      text_type: text_type,
       entries: args.quality_context.text_preserve_entries,
     });
     args.sample_rule_cache.set(sample_rule_cache_key, sample_rule);
@@ -193,7 +198,7 @@ export function evaluateProofreadingItem(args: {
   const prepared = prepare_translation_source({
     src: item.src,
     name_src: read_optional_item_name_text(item.name_src),
-    text_type: item.text_type,
+    text_type: text_type,
     config: args.processingConfig,
     preserve_rule: sample_rule,
     pre_replacements: args.quality_context.pre_replacements,

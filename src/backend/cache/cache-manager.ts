@@ -157,18 +157,6 @@ export class CacheManager implements CacheReadPort {
     }
   }
 
-  /** 同一条目修订下复用文件元数据，文件排序无需解析正文。 */
-  public readFileMetadata(
-    project: string,
-    revision: number,
-  ): ReturnType<ItemCache["readFileMetadata"]> | undefined {
-    return project === this.project_path &&
-      this.freshness === "fresh" &&
-      (this.section_revisions.items ?? 0) === revision
-      ? this.items.readFileMetadata()
-      : undefined;
-  }
-
   /** 缓存范围携带修订，事务只在相同版本下采用候选 ID。 */
   public readItemWriteScope(
     project_path: string,
@@ -203,21 +191,23 @@ export class CacheManager implements CacheReadPort {
   /**
    * 从数据库重建所有基础 block 缓存。
    */
-  private async rebuild_full_project_cache(project_path: string): Promise<void> {
-    const snapshot = await this.database.read(project_path, (reader) => {
-      const data_reader = new ProjectDataReader(reader);
-      const meta = data_reader.get_all_meta(project_path);
-      const items_snapshot = data_reader.build_runtime_items_snapshot(project_path);
-      const pdf = reader.read_pdf_summaries(project_path);
-      const files_block = data_reader.build_files_record_block(
-        project_path,
-        items_snapshot.item_records,
-        Object.keys(pdf),
-      );
-      const quality_block = data_reader.build_quality_block(project_path, meta);
-      const prompts_block = data_reader.build_prompts_block(project_path, meta);
-      const section_revisions = data_reader.build_section_revisions(meta);
-      return { items_snapshot, files_block, pdf, quality_block, prompts_block, section_revisions };
+  private rebuild_full_project_cache(project_path: string): void {
+    this.database.with_project_scope(project_path, () => {
+      const meta = this.data_reader.get_all_meta(project_path);
+      const items = this.data_reader.read_items(project_path);
+      const files_block = this.data_reader.build_files_record_block(project_path);
+      const quality_block = this.data_reader.build_quality_block(project_path, meta);
+      const prompts_block = this.data_reader.build_prompts_block(project_path, meta);
+      const section_revisions = this.data_reader.build_section_revisions(meta);
+      this.project_path = project_path;
+      this.epoch += 1;
+      this.items.replace(items);
+      this.files.replace(files_block);
+      this.quality.replace(quality_block);
+      this.prompts.replace(prompts_block);
+      this.qualityStatistics.clear();
+      this.section_revisions = section_revisions;
+      this.freshness = "fresh";
     });
     const { items_snapshot, files_block, pdf, quality_block, prompts_block, section_revisions } =
       snapshot;

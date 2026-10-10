@@ -195,7 +195,7 @@ describe("FileFormatService", () => {
         bilingual_path: path.join(temp_dir.path, "bilingual"),
       },
       asset_reader: () => Buffer.from(text),
-      source_files: ["script.rpy"],
+      source_files: [{ path: "script.rpy", file_type: "RENPY" }],
     });
 
     expect(fs.readFileSync(path.join(temp_dir.path, "script.rpy"), "utf-8")).toContain(

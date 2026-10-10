@@ -1,3 +1,8 @@
+import path from "node:path";
+import type { ProjectSourceFileEntry } from "../file/file-format-shared";
+import { rpgmaker_default_status } from "../file/rpgmaker-mv-mz/json";
+import { ProjectDataReader } from "./project-data-reader";
+import { resolve_text_rule_type, type TextFileContext } from "../../shared/text/text-rule-type";
 import {
   normalize_batch_translation_progress,
   type BatchTranslationProgress,
@@ -13,6 +18,7 @@ import { FileFormatService } from "../file/file-format-service";
 import {
   SourceFileParsePipeline,
   type SourceFileParseResult,
+  type SourceFileParseCommand,
 } from "../file/source-file-parse-pipeline";
 import { log_source_file_parse_failures } from "../file/source-file-parse-failure-reporter";
 import type { LogManager } from "../log/log-manager";
@@ -103,6 +109,47 @@ export class ProjectContentService {
     this.log_manager = log_manager;
   }
 
+  /** 工程预览与正式导入共用身份准备，前端只提供路径。 */
+  public async parse_project_file(request: JsonRecord): Promise<JsonRecord> {
+    const project_path = this.session_state.require_loaded_project_path();
+    const format_service = this.create_format_service();
+    const source_paths = this.normalize_string_list(request["source_paths"]);
+    const current_rel_path =
+      typeof request["current_rel_path"] === "string" ? request["current_rel_path"] : undefined;
+    const entries =
+      current_rel_path === undefined
+        ? format_service.collect_source_file_entries(source_paths)
+        : format_service.normalize_source_paths(source_paths).map((source_path) => ({
+            source_path,
+            rel_path: path.join(path.dirname(current_rel_path || "."), path.basename(source_path)),
+          }));
+    const commands = this.prepare_import_file_commands(project_path, entries, format_service);
+    const result = await new SourceFileParsePipeline(
+      format_service,
+      this.native_fs,
+    ).parse_import_commands(
+      commands.filter(
+        (command) =>
+          command.file_type !== undefined || format_service.is_supported_file(command.source_path),
+      ),
+    );
+    this.log_project_import_parse_failures(result.failed_files);
+    return {
+      files: result.file_drafts.map((draft) => ({
+        source_path: draft.source_path,
+        target_rel_path: draft.rel_path,
+        file_type: draft.file_type,
+        parsed_items: draft.parsed_items,
+      })) as unknown as JsonValue,
+      failed_files: (current_rel_path === undefined
+        ? result.failed_files
+        : result.failed_files.map((failure) => ({
+            ...failure,
+            rel_path: path.basename(failure.source_path),
+          }))) as unknown as JsonValue,
+    };
+  }
+
   /**
    * 导入工作台文件，并按同名策略同步新增或替换文件事实
    */
@@ -115,7 +162,7 @@ export class ProjectContentService {
       if (file_commands.length === 0) {
         throw new AppErrors.AppError("request.validation_failed");
       }
-      const parse_result = await this.parse_import_file_commands(file_commands);
+      const parse_result = await this.parse_import_file_commands(project_path, file_commands);
       this.assert_project_import_has_parseable_files(parse_result);
 
       const snapshot = await this.read_project_write_snapshot(project_path);
@@ -131,7 +178,7 @@ export class ProjectContentService {
       const imported_files: Array<{
         mode: "add" | "replace";
         pdf_document: PDFDocument | null;
-        source_path: string;
+        content: Uint8Array;
         target_rel_path: string;
         file_record: {
           rel_path: string;
@@ -170,6 +217,7 @@ export class ProjectContentService {
         const file_record = {
           rel_path: target_rel_path,
           file_type: file.file_type,
+          ...(file.game_engine === undefined ? {} : { game_engine: file.game_engine }),
           sort_index: existing_record?.sort_order ?? next_sort_order,
         };
         if (existing_record === undefined) {
@@ -189,7 +237,7 @@ export class ProjectContentService {
         imported_files.push({
           mode: existing_record === undefined ? "add" : "replace",
           pdf_document: file.pdf_document,
-          source_path: file.source_path,
+          content: file.content,
           target_rel_path,
           file_record,
         });
@@ -214,6 +262,8 @@ export class ProjectContentService {
         const inherited_items = this.clone_public_item_record(write_output.items);
         this.inherit_completed_translations({
           old_items,
+          files: current_files,
+          old_files: snapshot.files,
           next_items: imported_item_ids.flatMap((item_id) => {
             const item = inherited_items[String(item_id)];
             return item === undefined ? [] : [item];
@@ -230,16 +280,18 @@ export class ProjectContentService {
       const asset_writes: ProjectAssetWrite[] = imported_files.map((file) =>
         file.mode === "add"
           ? {
-              kind: "add_from_source",
+              kind: "add",
               path: file.target_rel_path,
-              sourcePath: file.source_path,
+              content: file.content,
+              fileType: file.file_record.file_type,
               pdfDocument: file.pdf_document,
               sortOrder: file.file_record.sort_index,
             }
           : {
-              kind: "update_from_source",
+              kind: "update",
               path: file.target_rel_path,
-              sourcePath: file.source_path,
+              content: file.content,
+              fileType: file.file_record.file_type,
               pdfDocument: file.pdf_document,
             },
       );
@@ -281,7 +333,7 @@ export class ProjectContentService {
         }
         item.dst = "";
         item.name_dst = null;
-        item.status = "NONE";
+        item.status = item.file_type === "RPGMAKER_MV_MZ" ? rpgmaker_default_status(item) : "NONE";
       }
       const settings = await this.read_project_write_settings(
         project_path,
@@ -479,12 +531,8 @@ export class ProjectContentService {
             id: ++next_item_id,
           }),
         );
-        const files = build_project_file_records(
-          snapshot.asset_records,
-          reset_items,
-          snapshot.pdf_paths,
-        );
-        const write_output = await this.compute_prefilter_output({
+        const files = build_project_file_records(snapshot.asset_records);
+        const write_output = this.compute_prefilter_output({
           project_path,
           files,
           items: this.public_item_record(reset_items),
@@ -510,7 +558,8 @@ export class ProjectContentService {
           }
           item.dst = "";
           item.name_dst = null;
-          item.status = "NONE";
+          item.status =
+            item.file_type === "RPGMAKER_MV_MZ" ? rpgmaker_default_status(item) : "NONE";
         }
         const translation_extras = await this.build_translation_extras_for_items(
           project_path,
@@ -560,20 +609,44 @@ export class ProjectContentService {
       .filter((item) => item.source_path.trim() !== "" && item.target_rel_path.trim() !== "");
   }
 
-  /**
-   * 慢准备阶段只读取用户源文件并解析格式，不读取当前项目 meta、items 或 asset 集合
-   */
+  /** 预览与提交各自读取资产事实，替换身份由目标资产确定。 */
+  private prepare_import_file_commands(
+    project_path: string,
+    entries: readonly ProjectSourceFileEntry[],
+    format_service: FileFormatService,
+  ): SourceFileParseCommand[] {
+    const assets = new Map(
+      this.database
+        .get_all_asset_records(project_path)
+        .map((asset) => [asset.path.toLowerCase(), asset]),
+    );
+    return entries.map((entry) => {
+      const asset = assets.get(entry.rel_path.toLowerCase());
+      return {
+        source_path: entry.source_path,
+        rel_path: asset?.path ?? entry.rel_path,
+        file_type:
+          asset?.file_type ?? entry.file_type ?? format_service.source_file_type(entry.source_path),
+      };
+    });
+  }
+
+  /** 写入门闩内固定目标资产身份，并使用同一份字节形成提交草稿。 */
   private async parse_import_file_commands(
+    project_path: string,
     file_commands: ImportProjectFileCommand[],
   ): Promise<SourceFileParseResult> {
-    return new SourceFileParsePipeline(
-      this.create_format_service(),
-      this.native_fs,
-    ).parse_import_commands(
+    const format_service = this.create_format_service();
+    const commands = this.prepare_import_file_commands(
+      project_path,
       file_commands.map((file) => ({
         source_path: file.source_path,
         rel_path: file.target_rel_path,
       })),
+      format_service,
+    );
+    return new SourceFileParsePipeline(format_service, this.native_fs).parse_import_commands(
+      commands,
     );
   }
 
@@ -671,26 +744,17 @@ export class ProjectContentService {
   /**
    * 按本次操作的目标路径读取 asset、item 和 PDF 身份，支持打开前的设置对齐。
    */
-  private async read_project_write_snapshot(project_path: string): Promise<ProjectWriteSnapshot> {
-    return this.database.read(project_path, (reader) => {
-      const asset_records = reader.get_all_asset_records(project_path);
-      const item_records = reader.get_all_items(project_path);
-      const pdf_paths = Object.keys(reader.read_pdf_summaries(project_path));
-      const public_items_by_id = this.to_public_items_by_id(item_records);
-      return {
-        asset_records,
-        pdf_paths,
-        public_items_by_id,
-        files: build_project_file_records(
-          asset_records,
-          item_records.map((item) => ({
-            file_path: String(item["file_path"] ?? ""),
-            file_type: String(item["file_type"] ?? "NONE"),
-          })),
-          pdf_paths,
-        ),
-      };
-    });
+  private read_project_write_snapshot(project_path: string): ProjectWriteSnapshot {
+    const asset_records = this.database.get_all_asset_records(project_path);
+    const item_records = this.database.get_all_items(project_path);
+    const pdf_paths = Object.keys(this.database.read_pdf_summaries(project_path));
+    const public_items_by_id = this.to_public_items_by_id(item_records);
+    return {
+      asset_records,
+      pdf_paths,
+      public_items_by_id,
+      files: new ProjectDataReader(this.database).build_files_record_block(project_path),
+    };
   }
 
   /**
@@ -821,13 +885,20 @@ export class ProjectContentService {
   private inherit_completed_translations(args: {
     old_items: ProjectItemPublicRecord[];
     next_items: ProjectItemPublicRecord[];
+    files: Record<string, TextFileContext>;
+    old_files: Record<string, TextFileContext>;
   }): void {
-    const candidate_map = this.build_translation_inheritance_candidates(args.old_items);
+    const candidate_map = this.build_translation_inheritance_candidates(
+      args.old_items,
+      args.old_files,
+    );
     for (const item of args.next_items) {
       if (item.status !== "NONE") {
         continue;
       }
-      const candidate = candidate_map.get(this.translation_inheritance_key(item));
+      const candidate = candidate_map.get(
+        this.translation_inheritance_key(item, args.files[item.file_path]),
+      );
       if (candidate === undefined) continue;
       item.dst = candidate.dst;
       item.name_dst = candidate.name_dst;
@@ -836,13 +907,21 @@ export class ProjectContentService {
   }
 
   /** 源身份包含可见姓名和文本类型，整条继承不能把不同角色的译名与完成状态混用。 */
-  private translation_inheritance_key(item: ProjectItemPublicRecord): string {
-    return JSON.stringify([item.src, read_optional_item_name_text(item.name_src), item.text_type]);
+  private translation_inheritance_key(
+    item: ProjectItemPublicRecord,
+    file?: TextFileContext,
+  ): string {
+    return JSON.stringify([
+      item.src,
+      read_optional_item_name_text(item.name_src),
+      resolve_text_rule_type(item, file),
+    ]);
   }
 
   /** 同一源身份按完整译文结果计数，优先选择最多且最早出现的已完成结果。 */
   private build_translation_inheritance_candidates(
     old_items: ProjectItemPublicRecord[],
+    files: Record<string, TextFileContext>,
   ): Map<string, ProjectItemPublicRecord> {
     type Candidate = {
       item: ProjectItemPublicRecord; // 首次出现的完整结果，包含姓名形状。
@@ -852,7 +931,7 @@ export class ProjectContentService {
     for (const item of old_items) {
       // 人工完成允许空正文；仅姓名的完成结果也能继承。
       if (item.status !== "PROCESSED") continue;
-      const key = this.translation_inheritance_key(item);
+      const key = this.translation_inheritance_key(item, files[item.file_path]);
       const candidates = groups.get(key) ?? new Map<string, Candidate>();
       const result_key = JSON.stringify([item.dst, read_item_name_text(item.name_dst)]);
       const candidate = candidates.get(result_key);
@@ -893,13 +972,13 @@ export class ProjectContentService {
           diagnostic_context: { asset_path: record.path },
         });
       }
-      if (!format_service.is_supported_file(record.path)) {
+      if (record.file_type === "NONE") {
         throw new AppErrors.AppError("file.parse_failed", {
           diagnostic_context: { asset_path: record.path, reason: "unsupported_format" },
         });
       }
-      if ((await this.database.read_pdf_document(project_path, record.path)) !== null) continue;
-      const parsed = await format_service.parse_asset(record.path, content);
+      if (this.database.read_pdf_document(project_path, record.path) !== null) continue;
+      const parsed = await format_service.parse_asset(record.path, content, record.file_type);
       if (parsed.kind === "items") items.push(...parsed.items);
     }
     return items;

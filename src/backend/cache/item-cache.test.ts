@@ -103,12 +103,6 @@ describe("ItemCache", () => {
     });
 
     expect(cache.readItems().map((item) => item["item_id"])).toEqual([1, 2, 3, 4]);
-    const files = cache.readFileMetadata();
-    expect(files).toEqual([
-      { file_path: "a.txt", file_type: "TXT" },
-      { file_path: "c.txt", file_type: "TXT" },
-    ]);
-    files[0]!.file_path = "changed";
     expect(cache.readItem(1)?.file_path).toBe("a.txt");
     expect(cache.readItem(1)).toMatchObject({
       item_id: 1,
@@ -136,7 +130,6 @@ function create_item(
     row_number: item_id,
     file_type: "TXT",
     file_path: "",
-    text_type: "NONE",
     status: "NONE",
     skip_internal_filter: false,
     ...overrides,

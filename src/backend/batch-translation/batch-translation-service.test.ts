@@ -1,4 +1,4 @@
-import { ProjectDataReader } from "../project/project-data-reader";
+import { add_test_asset_from_source } from "../../test/asset-fixture";
 import { Model } from "../../domain/model";
 import fs from "node:fs";
 import os from "node:os";
@@ -147,43 +147,32 @@ it("历史工程批量翻译保留旧分析物理数据、正式术语与资产�
   using directory = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "linguagacha-batch-history-"));
   const project_path = path.join(directory.path, "history.lg");
   const database = new ProjectDatabase();
-  await database.create_project(project_path, "history");
-  await database.transaction(project_path, (writer) =>
-    writer.set_items(project_path, [
-      {
-        id: 1,
-        src: "Hello",
-        dst: "",
-        name_src: null,
-        name_dst: null,
-        extra_field: "",
-        tag: "",
-        skip_internal_filter: false,
-        status: "NONE",
-        file_path: "text.txt",
-        file_type: "TXT",
-        text_type: "NONE",
-        row: 0,
-      },
-    ]),
-  );
-  await database.transaction(project_path, (writer) =>
-    writer.set_rules(project_path, "glossary", [
-      { entry_id: "HELLO", src: "Hello", dst: "你好", info: "", case_sensitive: false },
-    ]),
-  );
-  await database.transaction(project_path, (writer) =>
-    writer.set_rule_text(project_path, "translation_prompt", "Translate to {target_language}"),
-  );
-  await database.transaction(project_path, (writer) =>
-    writer.set_meta(project_path, "translation_prompt_enable", true),
-  );
+  database.create_project(project_path, "history");
+  database.set_items(project_path, [
+    {
+      id: 1,
+      src: "Hello",
+      dst: "",
+      name_src: null,
+      name_dst: null,
+      extra_field: "",
+      tag: "",
+      skip_internal_filter: false,
+      status: "NONE",
+      file_path: "text.txt",
+      file_type: "TXT",
+      row: 0,
+    },
+  ]);
+  database.set_rules(project_path, "glossary", [
+    { entry_id: "HELLO", src: "Hello", dst: "你好", info: "", case_sensitive: false },
+  ]);
+  database.set_rule_text(project_path, "translation_prompt", "Translate to {target_language}");
+  database.set_meta(project_path, "translation_prompt_enable", true);
   const source = path.join(directory.path, "text.txt");
   fs.writeFileSync(source, "Hello");
-  await database.transaction(project_path, (writer) =>
-    writer.add_asset_from_source(project_path, "text.txt", source, null),
-  );
-  await database.close();
+  add_test_asset_from_source(database, project_path, "text.txt", source, null);
+  database.close();
   {
     using raw = new DatabaseSync(project_path);
     raw.exec(

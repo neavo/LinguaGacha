@@ -29,9 +29,7 @@ describe("MESSAGEJSONFormat", () => {
     expect(items.map((item) => item.name_dst)).toEqual([null, null, null]);
     expect(items.map((item) => item.src)).toEqual(["msg1", "msg2", "msg3"]);
     expect(items.map((item) => item.dst)).toEqual(["", "", ""]);
-    expect(
-      items.every((item) => item.file_type === "MESSAGEJSON" && item.text_type === "KAG"),
-    ).toBe(true);
+    expect(items.every((item) => item.file_type === "MESSAGEJSON")).toBe(true);
   });
 
   it("非数组 JSON 不按 MESSAGEJSON 解析", async () => {

@@ -30,7 +30,6 @@ describe("MDV2Format", () => {
         row: 0,
         file_type: "MD_V2",
         file_path: "docs/readme.md",
-        text_type: "MD",
         status: "NONE",
         extra_field: { markdown: { before: "", after: "" } },
       }),
@@ -114,7 +113,6 @@ describe("MDV2Format", () => {
       row: 0,
       file_type: "NONE",
       file_path: "demo.md",
-      text_type: "MD",
       extra_field: { markdown: { before: "", after: "\n" } },
     });
 

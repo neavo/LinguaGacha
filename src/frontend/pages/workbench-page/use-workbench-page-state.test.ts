@@ -315,7 +315,6 @@ function create_project_item(args: {
     tag: "",
     file_type: "TXT",
     status: args.status ?? "PROCESSED",
-    text_type: "NONE",
     skip_internal_filter: false,
   };
 }

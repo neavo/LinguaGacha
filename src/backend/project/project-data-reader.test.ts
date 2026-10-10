@@ -161,7 +161,6 @@ describe("ProjectDataReader", () => {
         extra_field: { note: "keep" },
         tag: "line",
         file_type: "TXT",
-        text_type: "NONE",
         status: "NONE",
         skip_internal_filter: false,
       },

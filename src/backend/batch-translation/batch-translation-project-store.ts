@@ -26,10 +26,20 @@ export class BatchTranslationProjectStore {
    * 任务启动时读取后端热缓存中的质量规则和提示词快照
    */
   public build_quality_snapshot(): TextQualitySnapshot {
-    return read_text_quality_snapshot({
-      quality: this.cache.quality.readBlock(),
-      prompts: this.cache.prompts.readBlock(),
-    });
+    return {
+      ...read_text_quality_snapshot({
+        quality: this.cache.quality.readBlock(),
+        prompts: this.cache.prompts.readBlock(),
+      }),
+      file_contexts: Object.fromEntries(
+        this.cache.files
+          .readFileEntries()
+          .map((file) => [
+            file.rel_path,
+            { file_type: file.file_type, game_engine: file.game_engine },
+          ]),
+      ),
+    };
   }
 
   /**

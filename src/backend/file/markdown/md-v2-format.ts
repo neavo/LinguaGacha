@@ -32,7 +32,6 @@ export class MDV2Format {
         row: unit.start_line,
         file_type: "MD_V2",
         file_path: rel_path,
-        text_type: "MD",
         status: unit.rule_skipped ? "RULE_SKIPPED" : "NONE",
         extra_field: {
           markdown: {

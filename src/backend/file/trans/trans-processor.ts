@@ -1,4 +1,4 @@
-import type { ItemStatus, ItemTextType } from "../../../domain/item";
+import type { ItemStatus } from "../../../domain/item";
 import { is_json_record, read_json_record, type MutableJsonRecord } from "../../../domain/json";
 
 /**
@@ -159,12 +159,9 @@ function has_trans_span_parameter(parameter_list: unknown[]): boolean {
  */
 export class NoneTransProcessor {
   /**
-   * project 保存完整 .trans 工程对象；仅复用默认过滤规则时可直接指定文本类型。
+   * `project` 保存完整 `.trans` 工程，供子类读取默认过滤上下文。
    */
-  public constructor(
-    protected readonly project: MutableJsonRecord,
-    public readonly text_type: ItemTextType = "NONE",
-  ) {}
+  public constructor(protected readonly project: MutableJsonRecord) {}
 
   /**
    * 默认处理器无需预处理；子类可构建缓存

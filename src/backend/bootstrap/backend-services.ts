@@ -1,3 +1,4 @@
+import { configure_rpgmaker_parser } from "../file/rpgmaker-mv-mz/javascript";
 import type { SettingsUpdateResponse } from "../../shared/settings";
 import { ProofreadingPagePreview } from "../proofreading/proofreading-page-preview";
 import { resolve_workspace_runtime_entry } from "../../native/workspace-runtime";
@@ -147,6 +148,8 @@ export class BackendServices {
    * 只在这里装配状态拥有者与服务依赖，调用方不得二次 new 同类服务。
    */
   public constructor(options: BackendServicesOptions) {
+    if (options.workspaceRuntimeDirectory)
+      configure_rpgmaker_parser(options.workspaceRuntimeDirectory);
     this.publish_event = options.publishEvent;
     const paths = options.paths;
     const metadata = options.metadata;

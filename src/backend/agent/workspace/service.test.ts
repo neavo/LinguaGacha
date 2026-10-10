@@ -423,9 +423,14 @@ describe("AgentWorkspaceService", () => {
       expect(fs.readFileSync(path.join(active_path, relative_path), "utf8")).toBe(content);
     }
     expect(read_jsonl(path.join(active_path, AGENT_WORKSPACE_PATHS.items))).toEqual([
-      expect.objectContaining({ item_id: 1, text_type: expect.any(String) }),
-      expect.objectContaining({ item_id: 2, text_type: expect.any(String) }),
+      expect.objectContaining({ item_id: 1, file_path: "script.txt" }),
+      expect.objectContaining({ item_id: 2, file_path: "script.txt" }),
     ]);
+    expect(
+      read_jsonl(path.join(active_path, AGENT_WORKSPACE_PATHS.items)).every(
+        (item) => !("text_type" in item),
+      ),
+    ).toBe(true);
     expect(read_jsonl(path.join(active_path, AGENT_WORKSPACE_PATHS.warnings))).toEqual([
       {
         item_id: 1,
@@ -1243,7 +1248,6 @@ function create_item(item_id: number): ProjectItemPublicRecord {
     row_number: item_id - 1,
     file_type: "TXT",
     file_path: "script.txt",
-    text_type: "NONE",
     status: "NONE",
     skip_internal_filter: false,
   };

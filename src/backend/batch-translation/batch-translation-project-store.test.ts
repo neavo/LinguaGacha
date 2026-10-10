@@ -54,7 +54,6 @@ describe("BatchTranslationProjectStore", () => {
           status: "PROCESSED",
           file_path: "demo.txt",
           file_type: "TXT",
-          text_type: "TXT",
           row: 7,
           extra_field: { speaker: "春" },
         },
@@ -65,7 +64,6 @@ describe("BatchTranslationProjectStore", () => {
           status: "NONE",
           file_path: "demo.txt",
           file_type: "TXT",
-          text_type: "TXT",
           row: 8,
         },
       ].map((item) => create_item(item)),
@@ -285,36 +283,33 @@ describe("BatchTranslationProjectStore", () => {
   }
 
   /** 准备含已用字段的数据库条目，验证局部提交保留其它事实。 */
-  async function seed_items(database: ProjectDatabase, project_path: string): Promise<void> {
-    await database.transaction(project_path, (writer) =>
-      writer.set_items(
-        project_path,
-        [
-          {
-            id: 1,
-            src: "原文",
-            dst: "",
-            name_src: "原名",
-            name_dst: null,
-            status: "NONE",
-            file_path: "demo.txt",
-            file_type: "TXT",
-            text_type: "TXT",
-            row: 7,
-            extra_field: { speaker: "春" },
-          },
-          {
-            id: 2,
-            src: "待翻",
-            dst: "",
-            status: "NONE",
-            file_path: "demo.txt",
-            file_type: "TXT",
-            text_type: "TXT",
-            row: 8,
-          },
-        ].map((item) => create_item(item)),
-      ),
+  function seed_items(database: ProjectDatabase, project_path: string): void {
+    database.add_asset(project_path, "demo.txt", Buffer.from("原文"), "TXT", null);
+    database.set_items(
+      project_path,
+      [
+        {
+          id: 1,
+          src: "原文",
+          dst: "",
+          name_src: "原名",
+          name_dst: null,
+          status: "NONE",
+          file_path: "demo.txt",
+          file_type: "TXT",
+          row: 7,
+          extra_field: { speaker: "春" },
+        },
+        {
+          id: 2,
+          src: "待翻",
+          dst: "",
+          status: "NONE",
+          file_path: "demo.txt",
+          file_type: "TXT",
+          row: 8,
+        },
+      ].map((item) => create_item(item)),
     );
   }
 

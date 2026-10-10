@@ -74,17 +74,16 @@ describe("条目数据契约", () => {
       row: 1,
       file_type: "NONE",
       file_path: "script.json",
-      text_type: "NONE",
       status: "NONE",
       skip_internal_filter: false,
     });
     expect(build_project_item_public_record(item)).not.toHaveProperty("retry_count");
   });
 
-  it("通用表格和 JSON 条目缺少 text_type 时复用共享引擎类型推断", () => {
-    expect(create_item({ src: "{i}Start{/i}", file_type: "KVJSON" }).text_type).toBe("RENPY");
-    expect(create_item({ src: "{中文正文}", file_type: "KVJSON" }).text_type).toBe("NONE");
-    expect(create_item({ src: "@12 你好", file_type: "XLSX" }).text_type).toBe("WOLF");
+  it("公开条目丢弃旧 text_type 字段", () => {
+    const item = create_item({ id: 1, src: "原文", text_type: "RPGMAKER" });
+    expect(item).not.toHaveProperty("text_type");
+    expect(build_project_item_public_record(item)).not.toHaveProperty("text_type");
   });
 
   it("把公开条目集合按主键排序并转换成数据库字段", () => {

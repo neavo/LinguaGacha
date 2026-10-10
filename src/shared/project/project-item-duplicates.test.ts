@@ -52,18 +52,21 @@ describe("project item duplicate coordination", () => {
     ).toEqual([]);
   });
 
-  it("按可见角色名和文本规则区分重复组", () => {
+  it("同文件按可见角色名区分重复组", () => {
     expect(
       coordinate_project_duplicate_statuses(
         [
-          item(1, "NONE", 0, "script.txt", { name_src: "甲", text_type: "KAG" }),
-          item(2, "NONE", 1, "script.txt", { name_src: ["甲", "附加列"], text_type: "KAG" }),
-          item(3, "NONE", 2, "script.txt", { name_src: "乙", text_type: "KAG" }),
-          item(4, "NONE", 3, "script.txt", { name_src: "甲", text_type: "RENPY" }),
+          item(1, "NONE", 0, "script.txt", { name_src: "甲" }),
+          item(2, "NONE", 1, "script.txt", { name_src: ["甲", "附加列"] }),
+          item(3, "NONE", 2, "script.txt", { name_src: "乙" }),
+          item(4, "NONE", 3, "script.txt", { name_src: "甲" }),
         ],
         true,
       ),
-    ).toEqual([{ item_id: 2, status: "DUPLICATED" }]);
+    ).toEqual([
+      { item_id: 2, status: "DUPLICATED" },
+      { item_id: 4, status: "DUPLICATED" },
+    ]);
   });
 });
 
@@ -81,7 +84,7 @@ function item(
     row_number,
     src: "同文",
     name_src: null,
-    text_type: "NONE",
+
     status,
     ...overrides,
   };

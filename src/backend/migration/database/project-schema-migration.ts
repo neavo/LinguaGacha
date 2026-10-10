@@ -16,6 +16,9 @@ import { row_number, row_text } from "../migration-row";
 export function run_project_schema_migration(db: DatabaseSync): void {
   ensure_current_schema(db);
   ensure_asset_sort_order_column(db);
+  const columns = db.prepare("PRAGMA table_info(assets)").all();
+  if (!columns.some((row) => row["name"] === "file_type"))
+    db.exec("ALTER TABLE assets ADD COLUMN file_type TEXT NOT NULL DEFAULT 'NONE'");
 }
 
 /**

@@ -1,4 +1,4 @@
-import type { ProjectDatabaseAccess } from "../database/database-operations";
+import { fixture_file_type } from "../../test/asset-fixture";
 import { read_pdf_document } from "./pdf/pdf-document";
 import { create_pdf_execution, create_pdf_fixture } from "./pdf/test-support";
 import type { PDFDocument } from "../../shared/pdf";
@@ -106,7 +106,13 @@ function create_database(
     },
     get_all_items: () => items,
     get_all_asset_records: () =>
-      Object.keys(assets).map((path, sort_order) => ({ path, sort_order })),
+      Object.keys(assets).map((path, sort_order) => ({
+        path,
+        sort_order,
+        file_type: String(
+          items.find((item) => item.file_path === path)?.file_type ?? fixture_file_type(path),
+        ),
+      })),
     read_asset_content: (_project_path: string, rel_path: string) => assets[rel_path] ?? null,
   } as unknown as ProjectDatabase;
 }
@@ -364,7 +370,6 @@ describe("TranslationFileGenerationService", () => {
         status: "PROCESSED",
         file_type: "MESSAGEJSON",
         file_path: "actors.json",
-        text_type: "KAG",
         row: 0,
       },
       {
@@ -376,7 +381,6 @@ describe("TranslationFileGenerationService", () => {
         status: "DUPLICATED",
         file_type: "MESSAGEJSON",
         file_path: "actors.json",
-        text_type: "KAG",
         row: 1,
       },
       {
@@ -388,7 +392,6 @@ describe("TranslationFileGenerationService", () => {
         status: "DUPLICATED",
         file_type: "MESSAGEJSON",
         file_path: "actors.json",
-        text_type: "KAG",
         row: 2,
       },
     ]);

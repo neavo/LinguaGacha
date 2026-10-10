@@ -1,3 +1,4 @@
+import { resolve_text_rule_type } from "../../../../shared/text/text-rule-type";
 import {
   build_text_preserve_rule,
   type TextPreserveRule,
@@ -68,7 +69,10 @@ export class TranslationPrePipeline {
   ): TranslationPrePipelineContext {
     const candidates = read_item_translation_candidates(item);
     const source_text = String(item.src ?? "");
-    const text_type = String(item.text_type ?? "TXT").toUpperCase();
+    const text_type = resolve_text_rule_type(
+      item,
+      this.quality_snapshot.file_contexts?.[item.file_path ?? ""],
+    );
     let preserve_rule = this.preserve_rules.get(text_type);
     if (preserve_rule === undefined) {
       preserve_rule = build_text_preserve_rule({

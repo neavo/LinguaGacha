@@ -43,7 +43,8 @@ async function create_service(task_busy = false): Promise<{
   cleanup_databases.push(database);
   const session_state = new ProjectSessionState();
   const lg_path = project_path("proofreading.lg");
-  await database.create_project(lg_path, "proofreading");
+  database.create_project(lg_path, "proofreading");
+  database.add_asset(lg_path, "a.txt", Buffer.from("原文"), "TXT", null);
   session_state.mark_loaded(lg_path);
   const publisher = create_test_project_change_publisher(lg_path);
   const project_event_bus = vi.fn();
@@ -92,7 +93,6 @@ function create_project_item(overrides: JsonRecord = {}): JsonRecord {
     extra_field: "",
     tag: "",
     file_type: "TXT",
-    text_type: "NONE",
     status: "NONE",
     skip_internal_filter: false,
     ...overrides,

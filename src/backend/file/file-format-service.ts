@@ -1,3 +1,5 @@
+import { RPGMakerMvMzFormat } from "./rpgmaker-mv-mz/rpgmaker-format";
+import { discover_rpgmaker_source, identify_rpgmaker_file } from "./rpgmaker-mv-mz/source";
 import type { PDFExecution } from "./pdf/pdf-worker";
 import { PDFFormat } from "./pdf/pdf-format";
 import path from "node:path";
@@ -26,7 +28,6 @@ import {
 } from "./file-format-shared";
 import {
   PROJECT_SOURCE_FORMATS,
-  read_subtitle_file_type,
   type ProjectSourceFormatId,
   type ProjectSourceFormatHitCounts,
   type ProjectSourceFileSummary,
@@ -34,7 +35,10 @@ import {
 
 // 文件发现与摘要统计共用同一扩展名映射，避免支持范围产生第二份白名单。
 const PROJECT_SOURCE_FORMAT_ID_BY_EXTENSION = new Map<string, ProjectSourceFormatId>(
-  PROJECT_SOURCE_FORMATS.map((format) => [format.extension, format.id]),
+  PROJECT_SOURCE_FORMATS.filter((format) => format.id !== "rpgmaker_mv_mz").map((format) => [
+    format.extension,
+    format.id,
+  ]),
 );
 
 /**
@@ -55,6 +59,7 @@ export class FileFormatService {
   private readonly trans: TRANSFormat;
   private readonly renpy: RenPyFormat;
   private readonly epub: EPUBFormat;
+  private readonly rpgmaker: RPGMakerMvMzFormat;
 
   /**
    * 构造时固定各格式处理器，保证一次服务实例内配置一致
@@ -65,6 +70,7 @@ export class FileFormatService {
     native_fs: NativeFs = default_native_fs,
   ) {
     this.native_fs = native_fs;
+    this.rpgmaker = new RPGMakerMvMzFormat(config);
     this.txt = new TXTFormat(config);
     this.md = new MDV2Format();
     this.ass = new ASSFormat(config);
@@ -83,61 +89,92 @@ export class FileFormatService {
    * 判断公开文件域可接收的源文件格式
    */
   public is_supported_file(file_path: string): boolean {
-    return PROJECT_SOURCE_FORMAT_ID_BY_EXTENSION.has(path.extname(file_path).toLowerCase());
+    return (
+      PROJECT_SOURCE_FORMAT_ID_BY_EXTENSION.has(path.extname(file_path).toLowerCase()) ||
+      identify_rpgmaker_file(file_path, this.native_fs)
+    );
   }
 
   /**
-   * 按扩展名分发；JSON 先尝试键值对象，再尝试消息数组。
+   * 保存身份优先分发，新来源的 JSON 和 XLSX 按内容识别。
    */
-  public async parse_asset(rel_path: string, content: Uint8Array): Promise<FileFormatReadResult> {
-    const subtitle = this.read_subtitle_format(read_subtitle_file_type(rel_path));
-    if (subtitle)
+  public async parse_asset(
+    rel_path: string,
+    content: Uint8Array,
+    file_type?: string,
+  ): Promise<FileFormatReadResult> {
+    if (file_type === "RPGMAKER_MV_MZ")
       return {
         kind: "items",
-        file_type: subtitle.file_type,
-        items: await subtitle.format.read_from_stream(content, rel_path),
+        file_type,
+        items: await this.rpgmaker.read_from_stream(content, rel_path),
       };
-    const ext = path.extname(rel_path).toLowerCase();
-    if (ext === ".pdf")
+    const by_extension: Record<string, string> = {
+      ".txt": "TXT",
+      ".md": "MD_V2",
+      ".ass": "ASS",
+      ".ssa": "ASS",
+      ".srt": "SRT",
+      ".vtt": "VTT",
+      ".lrc": "LRC",
+      ".epub": "EPUB",
+      ".rpy": "RENPY",
+      ".trans": "TRANS",
+      ".pdf": "PDF",
+    };
+    let type = file_type ?? by_extension[path.extname(rel_path).toLowerCase()];
+    if (type === undefined && path.extname(rel_path).toLowerCase() === ".json") {
+      const data: unknown = JSON.parse(await decode_text_content(content));
+      type = Array.isArray(data)
+        ? "MESSAGEJSON"
+        : data !== null && typeof data === "object"
+          ? "KVJSON"
+          : "NONE";
+    }
+    if (type === "PDF")
       return {
         kind: "pdf",
         document: await new PDFFormat(this.pdf_execution).read_from_stream(content),
       };
-    let format;
-    switch (ext) {
-      case ".md":
-        format = this.md;
-        break;
-      case ".txt":
-        format = this.txt;
-        break;
-      case ".xlsx":
-        format = this.xlsx;
-        break;
-      case ".json": {
-        const items = await this.kvjson.read_from_stream(content, rel_path);
-        if (items.length > 0) return { items, kind: "items", file_type: items[0]!.file_type };
-        format = this.messagejson;
-        break;
-      }
-      case ".trans":
-        format = this.trans;
-        break;
-      case ".rpy":
-        format = this.renpy;
-        break;
-      case ".epub":
-        format = this.epub;
-        break;
-      default:
-        return { items: [], kind: "items", file_type: "NONE" };
-    }
-    const items = await format.read_from_stream(content, rel_path);
-    return {
-      items,
-      kind: "items",
-      file_type: items[0]?.file_type ?? "NONE",
+    if (
+      type === "XLSX" ||
+      type === "WOLFXLSX" ||
+      (type === undefined && path.extname(rel_path).toLowerCase() === ".xlsx")
+    )
+      return {
+        kind: "items",
+        ...(await this.xlsx.read_asset(
+          content,
+          rel_path,
+          file_type === "XLSX" || file_type === "WOLFXLSX" ? file_type : undefined,
+        )),
+      };
+    const formats = {
+      TXT: this.txt,
+      MD_V2: this.md,
+      ASS: this.ass,
+      SRT: this.srt,
+      VTT: this.vtt,
+      LRC: this.lrc,
+      EPUB: this.epub,
+      RENPY: this.renpy,
+      TRANS: this.trans,
+      KVJSON: this.kvjson,
+      MESSAGEJSON: this.messagejson,
     };
+    if (!type || !Object.hasOwn(formats, type))
+      return { kind: "items", file_type: "NONE", items: [] };
+    const format = formats[type as keyof typeof formats];
+    return {
+      kind: "items",
+      file_type: type as ItemFileType,
+      items: await format.read_from_stream(content, rel_path),
+    };
+  }
+
+  /** 来源目录只决定新文件的原生游戏身份。 */
+  public source_file_type(source_path: string): string | undefined {
+    return identify_rpgmaker_file(source_path, this.native_fs) ? "RPGMAKER_MV_MZ" : undefined;
   }
 
   /**
@@ -147,24 +184,50 @@ export class FileFormatService {
     const normalized_source_paths = this.normalize_source_paths(source_paths);
     const candidates: ProjectSourceFileEntry[] = [];
     const seen_file_keys = new Set<string>();
+    const game_roots = new Set<string>();
     for (const source_path of normalized_source_paths) {
-      for (const source_file of this.collect_source_files(source_path)) {
+      const game = discover_rpgmaker_source(source_path, this.native_fs);
+      if (game !== null) {
+        const root = this.native_fs.stat(source_path).isDirectory()
+          ? source_path
+          : path.dirname(source_path);
+        game_roots.add(this.build_path_identity_key(root));
+        if (game_roots.size > 1)
+          throw new AppError("request.validation_failed", {
+            diagnostic_context: { reason: "multiple_rpgmaker_games" },
+          });
+      }
+      const entries =
+        game ??
+        this.collect_source_files(source_path).map((file) => ({
+          source_path: file,
+          rel_path: this.build_source_relative_path(source_path, file),
+        }));
+      for (const entry of entries) {
+        const source_file = entry.source_path;
         const file_key = this.build_path_identity_key(source_file);
         if (seen_file_keys.has(file_key)) {
           continue;
         }
         seen_file_keys.add(file_key);
-        candidates.push({
-          source_path: source_file,
-          rel_path: this.build_source_relative_path(source_path, source_file),
-        });
+        const file_type = game ? "RPGMAKER_MV_MZ" : this.source_file_type(source_file);
+        candidates.push({ ...entry, ...(file_type === undefined ? {} : { file_type }) });
       }
     }
     const used_rel_paths = new Set<string>();
-    return candidates.map((entry, index) => ({
-      source_path: entry.source_path,
-      rel_path: this.build_unique_relative_path(entry.rel_path, used_rel_paths, index),
-    }));
+    return candidates.map((entry, index) => {
+      if (
+        entry.file_type === "RPGMAKER_MV_MZ" &&
+        used_rel_paths.has(this.relative_path_key(entry.rel_path))
+      )
+        throw new AppError("request.validation_failed", {
+          diagnostic_context: { reason: "rpgmaker_path_collision", path: entry.rel_path },
+        });
+      return {
+        ...entry,
+        rel_path: this.build_unique_relative_path(entry.rel_path, used_rel_paths, index),
+      };
+    });
   }
 
   /**
@@ -177,9 +240,12 @@ export class FileFormatService {
     ) as ProjectSourceFormatHitCounts;
 
     for (const source_file of source_files) {
-      const format_id = PROJECT_SOURCE_FORMAT_ID_BY_EXTENSION.get(
-        path.extname(source_file.source_path).toLowerCase(),
-      );
+      const format_id =
+        source_file.file_type === "RPGMAKER_MV_MZ"
+          ? "rpgmaker_mv_mz"
+          : PROJECT_SOURCE_FORMAT_ID_BY_EXTENSION.get(
+              path.extname(source_file.source_path).toLowerCase(),
+            );
       if (format_id !== undefined) {
         format_hit_counts[format_id] += 1;
       }
@@ -225,6 +291,18 @@ export class FileFormatService {
     await this.trans.write_to_path(items, paths, asset_reader);
     await this.renpy.write_to_path(items, paths, asset_reader);
     await this.epub.write_to_path(items, paths, asset_reader);
+    for (const file of context.source_files) {
+      if (file.file_type !== "RPGMAKER_MV_MZ") continue;
+      const bytes = asset_reader(file.path);
+      if (bytes === null)
+        throw new AppError("file.not_found", { public_details: { file: file.path } });
+      const output = await this.rpgmaker.render(
+        bytes,
+        file.path,
+        items.filter((item) => item.file_path === file.path),
+      );
+      await this.native_fs.write_file(path.join(paths.translated_path, file.path), output);
+    }
   }
 
   /** 文件集合拥有导出调度，格式处理器只组装当前文件的两种正文。 */
@@ -238,13 +316,10 @@ export class FileFormatService {
       group.push(item);
       by_file.set(item.file_path, group);
     }
-    const files = new Set([...context.source_files, ...by_file.keys()]);
-    for (const file of files) {
+    for (const record of context.source_files) {
+      const file = record.path;
       const file_items = by_file.get(file) ?? [];
-      // 已有条目提供格式事实，扩展名补齐零条目文件的身份。
-      const file_type =
-        file_items.find((item) => item.file_type !== "NONE")?.file_type ??
-        read_subtitle_file_type(file);
+      const file_type = record.file_type as ItemFileType;
       const subtitle = this.read_subtitle_format(file_type);
       if (!subtitle) continue;
       const asset = await context.asset_reader(file);

@@ -163,6 +163,12 @@ GUI、preload、native 或 Backend Runtime worker 变化时，先运行相关目
 |`LINGUAGACHA_TEST_ELECTRON`|发行包可执行文件|
 |`LINGUAGACHA_TEST_WORKSPACE_RUNTIME`|发行包工作区运行目录|
 
+### 原生 RPG Maker MV / MZ
+
+格式、来源发现或默认排除变化时，运行 `src/backend/file/rpgmaker-mv-mz/` 与 `project-content-service.test.ts`。文件身份与迁移变化同时运行数据库迁移、工程打开迁移、解析流水线和译文生成测试。
+
+文本规则计算变化覆盖 `text-rule-type.test.ts`、翻译译前流程和校对评估。部署变化执行 `npm run build`，核对发行工作区中的 `oxc-parser` 及平台绑定，并用发行 Electron 的 Node 模式加载解析器。
+
 ### PDF
 
 PDF 来源、页面写入、排版或导出变化时，按影响选择：

@@ -28,7 +28,6 @@ function create_item(overrides: MutableRecord = {}): MutableRecord {
     row: 0,
     file_type: "TXT",
     file_path: "script.txt",
-    text_type: "NONE",
     status: "NONE",
     skip_internal_filter: false,
     ...overrides,
@@ -71,7 +70,7 @@ function create_database(
     get_all_meta: vi.fn(() => options.meta ?? {}),
     get_all_items,
     get_items_by_ids,
-    get_all_asset_records: vi.fn(() => [{ path: "script.txt", sort_order: 0 }]),
+    get_all_asset_records: vi.fn(() => [{ path: "script.txt", sort_order: 0, file_type: "TXT" }]),
     get_rules,
     get_rule_text,
   } as unknown as ProjectDatabaseAccess & {
@@ -177,9 +176,9 @@ describe("CacheManager", () => {
       ],
     });
     const assets = vi.spyOn(database, "get_all_asset_records").mockReturnValue([
-      { path: "b.txt", sort_order: 0 },
-      { path: "a.txt", sort_order: 1 },
-      { path: "book.pdf", sort_order: 2 },
+      { path: "b.txt", sort_order: 0, file_type: "TXT" },
+      { path: "a.txt", sort_order: 1, file_type: "TXT" },
+      { path: "book.pdf", sort_order: 2, file_type: "PDF" },
     ]);
     vi.spyOn(database, "read_pdf_summaries").mockReturnValue({
       "book.pdf": { pages: 1, translated_pages: 0, kept_pages: 0, omitted_pages: 0 },
@@ -227,9 +226,9 @@ describe("CacheManager", () => {
     database.get_rules.mockClear();
     database.get_rule_text.mockClear();
     assets.mockReturnValue([
-      { path: "book.pdf", sort_order: 0 },
-      { path: "a.txt", sort_order: 1 },
-      { path: "b.txt", sort_order: 2 },
+      { path: "book.pdf", sort_order: 0, file_type: "PDF" },
+      { path: "a.txt", sort_order: 1, file_type: "TXT" },
+      { path: "b.txt", sort_order: 2, file_type: "TXT" },
     ]);
     await cache.applyCommittedChange({
       ...build_project_committed_change(
@@ -240,9 +239,7 @@ describe("CacheManager", () => {
           qualityStatisticsScope: "none",
           updatedSections: ["files"],
         },
-        await database.get_all_meta("E:/Project/demo.lg"),
-        undefined,
-        cache.items.readFileMetadata(),
+        database.get_all_meta("E:/Project/demo.lg"),
       ),
       sectionRevisions: { files: 1 },
     });

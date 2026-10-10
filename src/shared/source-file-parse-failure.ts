@@ -1,6 +1,7 @@
 import { is_app_error_code, type AppErrorCode } from "./error/app-error";
 
 export type SourceFileParseFailureRecord = {
+  silent?: boolean; // 原生游戏按文件隔离失败，诊断保留在后端日志。
   source_path: string; // 保留真实源路径，日志和调试需要定位原文件
   rel_path: string; // 工程或工作台内的目标相对路径，无法确定时为空串
   filename: string; // Toast 可见定位，不把完整路径塞进页面提示
@@ -40,6 +41,7 @@ function normalize_source_file_parse_failure(value: unknown): SourceFileParseFai
     return null;
   }
   const record = value as Record<string, unknown>;
+  if (record["silent"] === true) return null;
   const filename = String(record["filename"] ?? "");
   const code = String(record["code"] ?? "").trim();
   const source_path = String(record["source_path"] ?? "");

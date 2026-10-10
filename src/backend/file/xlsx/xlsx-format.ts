@@ -1,6 +1,6 @@
 import path from "node:path";
 import { read_translation_for_generation } from "../translation-generation-text";
-import { type Item, create_item } from "../../../domain/item";
+import { type Item, type ItemFileType, create_item } from "../../../domain/item";
 import { AppError } from "../../../shared/error";
 import { group_items, write_binary_file, type GeneratedFilePaths } from "../file-format-shared";
 import { read_workbook, cell_text, write_cell } from "../spreadsheet";
@@ -12,16 +12,23 @@ const WOLF_TRANSLATABLE_FILL = 9;
 
 /** 同一工作簿只打开一次，首表的表头决定普通双列或 WOLF 的读取方式。 */
 export class XLSXFormat {
-  /** 按首表列语义提取条目，并保留原行号与翻译状态。 */
-  public async read_from_stream(content: Uint8Array, rel_path: string): Promise<Item[]> {
+  /** 按保存身份或首表列语义读取，零条目也保留格式身份。 */
+  public async read_asset(
+    content: Uint8Array,
+    rel_path: string,
+    file_type?: "XLSX" | "WOLFXLSX",
+  ): Promise<{ items: Item[]; file_type: ItemFileType }> {
     const workbook = await read_workbook(content);
     const sheet = workbook.worksheets[0];
-    if (!sheet) return [];
-    const wolf = WOLF_HEADER.every((label, index) =>
-      cell_text(sheet.getCell(1, index + 1).value)
-        .toLowerCase()
-        .includes(label),
-    );
+    if (!sheet) return { items: [], file_type: file_type ?? "XLSX" };
+    const wolf =
+      file_type === "WOLFXLSX" ||
+      (file_type === undefined &&
+        WOLF_HEADER.every((label, index) =>
+          cell_text(sheet.getCell(1, index + 1).value)
+            .toLowerCase()
+            .includes(label),
+        ));
     const items: Item[] = [];
     for (let row = wolf ? 2 : 1; row <= sheet.rowCount; row++) {
       const source = sheet.getCell(row, wolf ? WOLF_SOURCE_COLUMN : 1);
@@ -42,7 +49,6 @@ export class XLSXFormat {
           row,
           file_path: rel_path,
           file_type: wolf ? "WOLFXLSX" : "XLSX",
-          ...(wolf ? { text_type: "WOLF" } : {}),
           status:
             src === "" || !allowed
               ? "RULE_SKIPPED"
@@ -52,7 +58,7 @@ export class XLSXFormat {
         }),
       );
     }
-    return items;
+    return { items, file_type: wolf ? "WOLFXLSX" : "XLSX" };
   }
 
   /** 普通表与 WOLF 共用源工作簿写回，仅覆盖已完成条目的译文。 */

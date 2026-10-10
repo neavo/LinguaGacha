@@ -31,7 +31,6 @@ function create_cache_item(
     row_number: 1,
     file_type: "TXT",
     file_path: "script.txt",
-    text_type: "NONE",
     status: "PROCESSED",
     skip_internal_filter: false,
     ...overrides,
@@ -372,7 +371,7 @@ describe("ProofreadingCache", () => {
     settings.clean_ruby = true;
     await cache.sync({});
 
-    expect(worker.sync_inputs.map((input) => input.processingConfig)).toEqual([
+    expect(worker.sync_inputs.map((input) => input.processingConfig)).toMatchObject([
       {
         source_language: "JA",
         target_language: "ZH",

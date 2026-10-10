@@ -1,8 +1,10 @@
+import { add_test_asset_from_source } from "../../test/asset-fixture";
 import { CacheManager } from "../cache/cache-manager";
 import type { AppSettingService } from "../app/app-setting-service";
 import type { ComputeWorkerClient } from "../worker/compute-worker-client";
 import { ProjectSummaryService } from "./project-summary-service";
-import { FilePreviewService } from "../file/file-preview-service";
+import { write_zip } from "../../test/zip-fixture";
+import { write_epub_fixture } from "../../test/epub-fixture";
 import {
   create_workbench_import_files_plan,
   create_workbench_reset_file_plan,
@@ -123,7 +125,6 @@ function create_public_item(overrides: JsonRecord = {}): JsonRecord {
     row_number: 1,
     file_type: "TXT",
     file_path: "a.txt",
-    text_type: "NONE",
     status: "NONE",
     skip_internal_filter: false,
     ...overrides,
@@ -179,6 +180,247 @@ afterEach(() => {
 });
 
 describe("ProjectContentService", () => {
+  it("项目文件预解析忽略不支持后缀并返回支持格式的失败文件", async () => {
+    using temp_dir = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "linguagacha-file-preview-"));
+    const source_file = path.join(temp_dir.path, "script.txt");
+    const broken_json = path.join(temp_dir.path, "broken.json");
+    const ignored_file = path.join(temp_dir.path, "ignore.bin");
+    fs.writeFileSync(source_file, "原文", "utf-8");
+    fs.writeFileSync(broken_json, "{", "utf-8");
+    fs.writeFileSync(ignored_file, "noise", "utf-8");
+    const log_manager = create_log_manager();
+    const { database, service } = create_service(undefined, log_manager);
+    try {
+      await expect(
+        service.parse_project_file({
+          source_paths: [source_file, broken_json, ignored_file],
+        }),
+      ).resolves.toEqual({
+        files: [
+          expect.objectContaining({
+            source_path: source_file,
+            file_type: "TXT",
+            target_rel_path: "script.txt",
+          }),
+        ],
+        failed_files: [
+          {
+            source_path: broken_json,
+            rel_path: "broken.json",
+            filename: "broken.json",
+            code: "file.parse_failed",
+            message: expect.any(String),
+          },
+        ],
+      });
+      expect(log_manager.warning).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({ source: "project-import" }),
+      );
+    } finally {
+      database.close();
+    }
+  });
+
+  it("项目文件预解析 EPUB 时直接返回解析结果", async () => {
+    using temp_dir = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "linguagacha-file-preview-"));
+    const epub_file = path.join(temp_dir.path, "book.epub");
+    await write_epub_fixture(epub_file, "章节");
+    const { database, service } = create_service();
+    try {
+      await expect(
+        service.parse_project_file({
+          source_paths: [epub_file],
+          current_rel_path: "old/original.epub",
+        }),
+      ).resolves.toEqual({
+        files: [
+          {
+            source_path: epub_file,
+            target_rel_path: path.join("old", "book.epub"),
+            file_type: "EPUB",
+            parsed_items: [
+              expect.objectContaining({
+                src: "章节",
+                file_type: "EPUB",
+                file_path: path.join("old", "book.epub"),
+              }),
+            ],
+          },
+        ],
+        failed_files: [],
+      });
+    } finally {
+      database.close();
+    }
+  });
+
+  it("项目文件预解析 EPUB 坏内容时返回文件解析错误码", async () => {
+    using temp_dir = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "linguagacha-file-preview-"));
+    const epub_file = path.join(temp_dir.path, "broken.epub");
+    const zip = new Map<string, string | Uint8Array>();
+    zip.set(
+      "META-INF/container.xml",
+      `<container><rootfiles><rootfile full-path="OPS/package.opf"/></rootfiles></container>`,
+    );
+    zip.set(
+      "OPS/package.opf",
+      `<package version="3.0">
+        <manifest><item id="chapter" href="chapter.xhtml" media-type="application/xhtml+xml"/></manifest>
+        <spine><itemref idref="chapter"/></spine>
+      </package>`,
+    );
+    zip.set("OPS/chapter.xhtml", "");
+    fs.writeFileSync(epub_file, await write_zip(zip));
+    const { database, service } = create_service();
+    try {
+      await expect(service.parse_project_file({ source_paths: [epub_file] })).resolves.toEqual({
+        files: [],
+        failed_files: [
+          {
+            source_path: epub_file,
+            rel_path: "broken.epub",
+            filename: "broken.epub",
+            code: "file.parse_failed",
+            message: expect.any(String),
+          },
+        ],
+      });
+    } finally {
+      database.close();
+    }
+  });
+
+  it("游戏目录外的替换文件沿用资产身份并保存对话块", async () => {
+    const { database, service, lg_path } = create_service();
+    try {
+      const file = path.join("data", "Map001.json");
+      const bytes = Buffer.from(
+        JSON.stringify({
+          events: [
+            null,
+            {
+              pages: [
+                {
+                  list: [
+                    { code: 101, indent: 0, parameters: ["", 0, 0, 2, "勇者"] },
+                    { code: 401, indent: 0, parameters: ["第一行"] },
+                    { code: 401, indent: 0, parameters: ["第二行"] },
+                    { code: 0, indent: 0, parameters: [] },
+                  ],
+                },
+              ],
+            },
+          ],
+        }),
+      );
+      database.add_asset(lg_path, file, Buffer.from("{}"), "RPGMAKER_MV_MZ", null);
+      const source = project_path("Map001.json");
+      fs.writeFileSync(source, bytes);
+      const preview = await service.parse_project_file({
+        source_paths: [source],
+        current_rel_path: file,
+      });
+      expect(preview["files"]).toMatchObject([
+        {
+          file_type: "RPGMAKER_MV_MZ",
+          target_rel_path: file,
+          parsed_items: [{ src: "第一行\n第二行", file_type: "RPGMAKER_MV_MZ" }],
+        },
+      ]);
+      await service.import_files({
+        files: [{ source_path: source, target_rel_path: file, file_type: "KVJSON" }],
+        conflict_action: "replace",
+        expected_section_revisions: { files: 0, items: 0 },
+        project_settings: { source_language: "ALL", target_language: "ZH" },
+      });
+      expect(database.get_all_asset_records(lg_path)).toMatchObject([
+        { path: file, file_type: "RPGMAKER_MV_MZ" },
+      ]);
+      expect(database.get_all_items(lg_path)).toMatchObject([
+        { src: "第一行\n第二行", file_type: "RPGMAKER_MV_MZ" },
+      ]);
+      expect(database.read_asset_content(lg_path, file)).toEqual(bytes);
+      const saved_items = database.get_all_items(lg_path);
+      fs.writeFileSync(source, "{");
+      const failed_preview = await service.parse_project_file({
+        source_paths: [source],
+        current_rel_path: file,
+      });
+      expect(failed_preview["files"]).toEqual([]);
+      expect(failed_preview["failed_files"]).toMatchObject([{ code: "file.parse_failed" }]);
+      await expect(
+        service.import_files({
+          files: [{ source_path: source, target_rel_path: file }],
+          conflict_action: "replace",
+          expected_section_revisions: { files: 1, items: 1 },
+        }),
+      ).rejects.toMatchObject({ code: "file.parse_failed" });
+      expect(database.read_asset_content(lg_path, file)).toEqual(bytes);
+      expect(database.get_all_items(lg_path)).toEqual(saved_items);
+    } finally {
+      database.close();
+    }
+  });
+  it("正式提交重新读取预览之后的目标资产身份", async () => {
+    const { database, service, lg_path } = create_service();
+    try {
+      const file = "Actors.json";
+      const source = project_path(file);
+      fs.writeFileSync(source, '[null,{"name":"勇者"}]');
+      database.add_asset(lg_path, file, Buffer.from("{}"), "RPGMAKER_MV_MZ", null);
+      const preview = await service.parse_project_file({ source_paths: [source] });
+      expect(preview["files"]).toMatchObject([{ file_type: "RPGMAKER_MV_MZ" }]);
+      database.set_asset_file_type(lg_path, file, "KVJSON");
+      fs.writeFileSync(source, '{"key":"追加"}');
+      await service.import_files({
+        files: [{ source_path: source, target_rel_path: file, file_type: "RPGMAKER_MV_MZ" }],
+        conflict_action: "replace",
+        expected_section_revisions: { files: 0, items: 0 },
+      });
+      expect(database.get_all_asset_records(lg_path)).toMatchObject([{ file_type: "KVJSON" }]);
+      expect(database.get_all_items(lg_path)).toMatchObject([
+        { src: "key", dst: "追加", file_type: "KVJSON" },
+      ]);
+    } finally {
+      database.close();
+    }
+  });
+  it("原生 RM 人工启用后保留当前状态，文件重置恢复用途默认排除", async () => {
+    const { database, service, lg_path } = create_service();
+    try {
+      const bytes = Buffer.from('[null,{"name":"勇者","note":"插件备注"}]');
+      const file = "data/Actors.json";
+      const parsed = await new FileFormatService(
+        { target_language: "ZH" },
+        create_pdf_execution(),
+      ).parse_asset(file, bytes, "RPGMAKER_MV_MZ");
+      if (parsed.kind !== "items") throw new Error("Expected text items");
+      database.add_asset(lg_path, file, bytes, "RPGMAKER_MV_MZ", null);
+      database.set_items(
+        lg_path,
+        parsed.items.map((item, index) => ({
+          ...item,
+          id: index + 1,
+          status: "PROCESSED",
+          dst: "已翻译",
+        })),
+      );
+      await service.reset_files({
+        rel_paths: [file],
+        expected_section_revisions: { files: 0, items: 0 },
+        project_settings: { source_language: "ALL", target_language: "ZH" },
+      });
+      expect(
+        database.get_all_items(lg_path).map((item) => [item["src"], item["status"], item["dst"]]),
+      ).toEqual([
+        ["勇者", "NONE", ""],
+        ["插件备注", "RULE_SKIPPED", ""],
+      ]);
+    } finally {
+      database.close();
+    }
+  });
   it("混合导入仅文本生成 Item，PDF 替换和全部重置清空独立译稿", async () => {
     const { database, service, lg_path } = await create_service();
     try {
@@ -292,18 +534,19 @@ describe("ProjectContentService", () => {
         const other_lg_path = project_path("other.lg");
         const other_source_path = project_path("other.txt");
         fs.writeFileSync(other_source_path, "原文", "utf-8");
-        await database.create_project(other_lg_path, "other");
-        await database.transaction(other_lg_path, (writer) =>
-          writer.add_asset_from_source(other_lg_path, "other.txt", other_source_path, null, 0),
+        database.create_project(other_lg_path, "other");
+        add_test_asset_from_source(
+          database,
+          other_lg_path,
+          "other.txt",
+          other_source_path,
+          null,
+          0,
         );
-        await database.transaction(other_lg_path, (writer) =>
-          writer.set_meta(other_lg_path, "source_language", "JA"),
-        );
-        await database.transaction(other_lg_path, (writer) =>
-          writer.set_items(other_lg_path, [
-            create_persistent_item({ file_path: "other.txt", status: "LANGUAGE_SKIPPED" }),
-          ]),
-        );
+        database.set_meta(other_lg_path, "source_language", "JA");
+        database.set_items(other_lg_path, [
+          create_persistent_item({ file_path: "other.txt", status: "LANGUAGE_SKIPPED" }),
+        ]);
         // 工程路径是读取契约的一部分，必须与本次对齐目标一致。
         const read_pdf_summaries = vi.spyOn(ProjectDatabaseAccess.prototype, "read_pdf_summaries");
         const ack = await service.align_settings({
@@ -341,12 +584,11 @@ describe("ProjectContentService", () => {
 
   it("settings alignment 的 prefiltered_items 在当前工程发布 items 失效信号", async () => {
     const { publish_project_change } = create_test_project_change_publisher();
-    const { database, service, lg_path } = await create_service(publish_project_change);
-    await database.transaction(lg_path, (writer) =>
-      writer.set_items(lg_path, [
-        create_persistent_item({ src: "旧", file_path: "a.txt", row_number: 0 }),
-      ]),
-    );
+    const { database, service, lg_path } = create_service(publish_project_change);
+    database.add_asset(lg_path, "a.txt", Buffer.from("原文"), "TXT", null);
+    database.set_items(lg_path, [
+      create_persistent_item({ src: "旧", file_path: "a.txt", row_number: 0 }),
+    ]);
     const ack = await service.align_settings({
       mode: "prefiltered_items",
       expected_section_revisions: { items: 0 },
@@ -381,19 +623,15 @@ describe("ProjectContentService", () => {
     const { database, service, lg_path } = await create_service(publish_project_change);
     const source_path = project_path("a.txt");
     fs.writeFileSync(source_path, "新", "utf-8");
-    await database.transaction(lg_path, (writer) =>
-      writer.add_asset_from_source(lg_path, "a.txt", source_path, null, 0),
-    );
-    await database.transaction(lg_path, (writer) =>
-      writer.set_items(lg_path, [
-        create_persistent_item({
-          src: "旧",
-          dst: "old",
-          status: "PROCESSED",
-          row_number: 0,
-        }),
-      ]),
-    );
+    add_test_asset_from_source(database, lg_path, "a.txt", source_path, null, 0);
+    database.set_items(lg_path, [
+      create_persistent_item({
+        src: "旧",
+        dst: "old",
+        status: "PROCESSED",
+        row_number: 0,
+      }),
+    ]);
 
     const ack = await service.reset_translation({
       mode: "all",
@@ -455,9 +693,7 @@ describe("ProjectContentService", () => {
     try {
       const source = project_path(file);
       fs.writeFileSync(source, content, "utf-8");
-      await database.transaction(lg_path, (writer) =>
-        writer.add_asset_from_source(lg_path, file, source, null, 0),
-      );
+      add_test_asset_from_source(database, lg_path, file, source, null, 0);
       // 重置读取工程内的源文件快照，外部文件后续变化不参与恢复。
       fs.writeFileSync(source, "外部文件已变更", "utf-8");
       await database.transaction(lg_path, (writer) =>
@@ -521,15 +757,11 @@ describe("ProjectContentService", () => {
     const { database, service, lg_path } = await create_service();
     const source = project_path("a.txt");
     fs.writeFileSync(source, content, "utf-8");
-    await database.transaction(lg_path, (writer) =>
-      writer.add_asset_from_source(lg_path, "a.txt", source, null, 0),
-    );
-    await database.transaction(lg_path, (writer) =>
-      writer.set_items(lg_path, [
-        create_persistent_item({ item_id: 20, row_number: 0, dst: "旧译文", status: "PROCESSED" }),
-        create_persistent_item({ item_id: 21, row_number: 1 }),
-      ]),
-    );
+    add_test_asset_from_source(database, lg_path, "a.txt", source, null, 0);
+    database.set_items(lg_path, [
+      create_persistent_item({ item_id: 20, row_number: 0, dst: "旧译文", status: "PROCESSED" }),
+      create_persistent_item({ item_id: 21, row_number: 1 }),
+    ]);
     await service.reset_translation({ mode: "all" });
     const items = (await database.get_all_items(lg_path)) as JsonRecord[];
     const expected = content === "" ? [] : content.split("\n");
@@ -548,18 +780,13 @@ describe("ProjectContentService", () => {
       const file = failure === "parse" ? "a.json" : "a.txt";
       const source = project_path(file);
       fs.writeFileSync(source, "新正文", "utf-8");
-      await database.transaction(lg_path, (writer) =>
-        writer.add_asset_from_source(lg_path, file, source, null, 0),
-      );
-      await database.transaction(lg_path, (writer) =>
-        writer.set_items(lg_path, [
-          create_persistent_item({ file_path: file, dst: "已有译文", status: "PROCESSED" }),
-        ]),
-      );
-      const before_items = await database.get_all_items(lg_path);
-      const before_meta = await database.get_all_meta(lg_path);
-      if (failure === "missing")
-        vi.spyOn(database, "read_asset_content").mockResolvedValueOnce(null);
+      add_test_asset_from_source(database, lg_path, file, source, null, 0);
+      database.set_items(lg_path, [
+        create_persistent_item({ file_path: file, dst: "已有译文", status: "PROCESSED" }),
+      ]);
+      const before_items = database.get_all_items(lg_path);
+      const before_meta = database.get_all_meta(lg_path);
+      if (failure === "missing") vi.spyOn(database, "read_asset_content").mockReturnValueOnce(null);
       if (failure === "commit") {
         const set_items = ProjectDatabaseAccess.prototype.set_items;
         vi.spyOn(ProjectDatabaseAccess.prototype, "set_items").mockImplementationOnce(function (
@@ -578,10 +805,9 @@ describe("ProjectContentService", () => {
   );
 
   it("translation reset 拒绝旧最终事实载荷且不清空既有 items", async () => {
-    const { database, service, lg_path } = await create_service();
-    await database.transaction(lg_path, (writer) =>
-      writer.set_items(lg_path, [create_persistent_item({ dst: "old", status: "PROCESSED" })]),
-    );
+    const { database, service, lg_path } = create_service();
+    database.add_asset(lg_path, "a.txt", Buffer.from("原文"), "TXT", null);
+    database.set_items(lg_path, [create_persistent_item({ dst: "old", status: "PROCESSED" })]);
 
     await expect(
       service.reset_translation({
@@ -602,19 +828,15 @@ describe("ProjectContentService", () => {
     const { database, service, lg_path } = await create_service();
     const source_path = project_path("a.txt");
     fs.writeFileSync(source_path, "新", "utf-8");
-    await database.transaction(lg_path, (writer) =>
-      writer.add_asset_from_source(lg_path, "a.txt", source_path, null, 0),
-    );
-    await database.transaction(lg_path, (writer) =>
-      writer.set_items(lg_path, [
-        create_persistent_item({
-          src: "新",
-          dst: "old",
-          status: "ERROR",
-          row_number: 0,
-        }),
-      ]),
-    );
+    add_test_asset_from_source(database, lg_path, "a.txt", source_path, null, 0);
+    database.set_items(lg_path, [
+      create_persistent_item({
+        src: "新",
+        dst: "old",
+        status: "ERROR",
+        row_number: 0,
+      }),
+    ]);
     const { parse_started, release_parse } = pause_next_parse_asset();
 
     const reset_all_promise = service.reset_translation({
@@ -646,10 +868,9 @@ describe("ProjectContentService", () => {
   });
 
   it("settings alignment 的 prefiltered_items 拒绝旧最终事实载荷", async () => {
-    const { database, service, lg_path } = await create_service();
-    await database.transaction(lg_path, (writer) =>
-      writer.set_items(lg_path, [create_persistent_item()]),
-    );
+    const { database, service, lg_path } = create_service();
+    database.add_asset(lg_path, "a.txt", Buffer.from("原文"), "TXT", null);
+    database.set_items(lg_path, [create_persistent_item()]);
 
     await expect(
       service.align_settings({
@@ -672,19 +893,15 @@ describe("ProjectContentService", () => {
     const second_source = project_path("b.txt");
     fs.writeFileSync(first_source, "旧", "utf-8");
     fs.writeFileSync(second_source, "新", "utf-8");
-    await database.transaction(lg_path, (writer) =>
-      writer.add_asset_from_source(lg_path, "a.txt", first_source, null, 0),
-    );
-    await database.transaction(lg_path, (writer) =>
-      writer.set_items(lg_path, [
-        create_persistent_item({
-          src: "旧",
-          dst: "old",
-          status: "ERROR",
-          row_number: 0,
-        }),
-      ]),
-    );
+    add_test_asset_from_source(database, lg_path, "a.txt", first_source, null, 0);
+    database.set_items(lg_path, [
+      create_persistent_item({
+        src: "旧",
+        dst: "old",
+        status: "ERROR",
+        row_number: 0,
+      }),
+    ]);
     const { parse_started, release_parse } = pause_next_parse_asset();
 
     const import_files_promise = service.import_files({
@@ -705,9 +922,9 @@ describe("ProjectContentService", () => {
     }
 
     await expect(import_files_promise).resolves.toMatchObject({ accepted: true });
-    expect(await database.get_all_asset_records(lg_path)).toEqual([
-      { path: "a.txt", sort_order: 0 },
-      { path: "b.txt", sort_order: 1 },
+    expect(database.get_all_asset_records(lg_path)).toEqual([
+      { path: "a.txt", sort_order: 0, file_type: "TXT" },
+      { path: "b.txt", sort_order: 1, file_type: "TXT" },
     ]);
     expect(await database.get_all_items(lg_path)).toEqual([
       create_persistent_item({
@@ -734,12 +951,8 @@ describe("ProjectContentService", () => {
     fs.writeFileSync(old_source, "旧", "utf-8");
     fs.writeFileSync(conflict_source, "替换候选", "utf-8");
     fs.writeFileSync(new_source, "新", "utf-8");
-    await database.transaction(lg_path, (writer) =>
-      writer.add_asset_from_source(lg_path, "a.txt", old_source, null, 0),
-    );
-    await database.transaction(lg_path, (writer) =>
-      writer.set_items(lg_path, [create_persistent_item({ src: "旧", dst: "old", row_number: 0 })]),
-    );
+    add_test_asset_from_source(database, lg_path, "a.txt", old_source, null, 0);
+    database.set_items(lg_path, [create_persistent_item({ src: "旧", dst: "old", row_number: 0 })]);
 
     await service.import_files({
       files: [
@@ -751,9 +964,9 @@ describe("ProjectContentService", () => {
       expected_section_revisions: { files: 0, items: 0 },
     });
 
-    expect(await database.get_all_asset_records(lg_path)).toEqual([
-      { path: "a.txt", sort_order: 0 },
-      { path: "b.txt", sort_order: 1 },
+    expect(database.get_all_asset_records(lg_path)).toEqual([
+      { path: "a.txt", sort_order: 0, file_type: "TXT" },
+      { path: "b.txt", sort_order: 1, file_type: "TXT" },
     ]);
     expect(await database.get_all_items(lg_path)).toEqual([
       create_persistent_item({ src: "旧", dst: "old", row_number: 0 }),
@@ -792,10 +1005,10 @@ describe("ProjectContentService", () => {
         },
       ],
     });
-    expect(await database.get_all_asset_records(lg_path)).toEqual([
-      { path: "valid.txt", sort_order: 0 },
+    expect(database.get_all_asset_records(lg_path)).toEqual([
+      { path: "valid.txt", sort_order: 0, file_type: "TXT" },
     ]);
-    expect(await database.get_all_items(lg_path)).toEqual([
+    expect(database.get_all_items(lg_path)).toEqual([
       create_persistent_item({ src: "新", file_path: "valid.txt", row_number: 0 }),
     ]);
     expect(log_manager.warning).toHaveBeenCalledWith(
@@ -848,12 +1061,8 @@ describe("ProjectContentService", () => {
     const replace_source = project_path("a-new.txt");
     fs.writeFileSync(old_source, "旧", "utf-8");
     fs.writeFileSync(replace_source, "新", "utf-8");
-    await database.transaction(lg_path, (writer) =>
-      writer.add_asset_from_source(lg_path, "a.txt", old_source, null, 3),
-    );
-    await database.transaction(lg_path, (writer) =>
-      writer.set_items(lg_path, [create_persistent_item({ src: "旧", dst: "old", row_number: 0 })]),
-    );
+    add_test_asset_from_source(database, lg_path, "a.txt", old_source, null, 3);
+    database.set_items(lg_path, [create_persistent_item({ src: "旧", dst: "old", row_number: 0 })]);
 
     const ack = await service.import_files({
       files: [{ source_path: replace_source, target_rel_path: "a.txt" }],
@@ -871,11 +1080,11 @@ describe("ProjectContentService", () => {
         },
       ],
     });
-    expect(await database.get_all_asset_records(lg_path)).toEqual([
-      { path: "a.txt", sort_order: 3 },
+    expect(database.get_all_asset_records(lg_path)).toEqual([
+      { path: "a.txt", sort_order: 3, file_type: "TXT" },
     ]);
-    expect((await database.read_asset_content(lg_path, "a.txt"))?.toString("utf-8")).toBe("新");
-    expect(await database.get_all_items(lg_path)).toEqual([
+    expect(database.read_asset_content(lg_path, "a.txt")?.toString("utf-8")).toBe("新");
+    expect(database.get_all_items(lg_path)).toEqual([
       create_persistent_item({ item_id: 2, src: "新", file_path: "a.txt", row_number: 0 }),
     ]);
 
@@ -894,19 +1103,15 @@ describe("ProjectContentService", () => {
     const replace_source = project_path("a-new.txt");
     fs.writeFileSync(old_source, "同文", "utf-8");
     fs.writeFileSync(replace_source, "同文", "utf-8");
-    await database.transaction(lg_path, (writer) =>
-      writer.add_asset_from_source(lg_path, "a.txt", old_source, null, 2),
-    );
-    await database.transaction(lg_path, (writer) =>
-      writer.set_items(lg_path, [
-        create_persistent_item({
-          src: "同文",
-          dst: "译文",
-          status: "PROCESSED",
-          row_number: 0,
-        }),
-      ]),
-    );
+    add_test_asset_from_source(database, lg_path, "a.txt", old_source, null, 2);
+    database.set_items(lg_path, [
+      create_persistent_item({
+        src: "同文",
+        dst: "译文",
+        status: "PROCESSED",
+        row_number: 0,
+      }),
+    ]);
     await service.import_files({
       files: [{ source_path: replace_source, target_rel_path: "a.txt" }],
       conflict_action: "replace",
@@ -940,30 +1145,31 @@ describe("ProjectContentService", () => {
           { name: "俊輔", message: "" },
         ]),
       );
-      await database.transaction(lg_path, (writer) =>
-        writer.set_items(
-          lg_path,
-          (
-            [
-              // 相同正文的译名分开投票，同票时保留最早的完整结果。
-              ["こんにちは", "你好", "太郎", "少数译名", "KAG"],
-              ["こんにちは", "你好", "太郎", "太郎译名", "KAG"],
-              ["こんにちは", "你好", "太郎", "太郎译名", "KAG"],
-              ["こんにちは", "错误类型译文", "花子", "错误类型译名", "RENPY"],
-              ["", "", "俊輔", "俊辅", "KAG"],
-              ["", "", "俊輔", "另一个译名", "KAG"],
-            ] as const
-          ).map(([src, dst, name_src, name_dst, text_type], index) =>
-            create_persistent_item({
-              item_id: index + 1,
-              src,
-              dst,
-              name_src,
-              name_dst,
-              text_type,
-              status: "PROCESSED",
-            }),
-          ),
+      database.add_asset(lg_path, "old.json", Buffer.from("[]"), "MESSAGEJSON", null);
+      database.add_asset(lg_path, "old.rpy", Buffer.from(""), "RENPY", null);
+      database.set_items(
+        lg_path,
+        (
+          [
+            // 相同正文的译名分开投票，同票时保留最早的完整结果。
+            ["こんにちは", "你好", "太郎", "少数译名", "KAG"],
+            ["こんにちは", "你好", "太郎", "太郎译名", "KAG"],
+            ["こんにちは", "你好", "太郎", "太郎译名", "KAG"],
+            ["こんにちは", "错误类型译文", "花子", "错误类型译名", "RENPY"],
+            ["", "", "俊輔", "俊辅", "KAG"],
+            ["", "", "俊輔", "另一个译名", "KAG"],
+          ] as const
+        ).map(([src, dst, name_src, name_dst, text_type], index) =>
+          create_persistent_item({
+            item_id: index + 1,
+            src,
+            dst,
+            name_src,
+            name_dst,
+            file_type: text_type === "KAG" ? "MESSAGEJSON" : "RENPY",
+            file_path: text_type === "KAG" ? "old.json" : "old.rpy",
+            status: "PROCESSED",
+          }),
         ),
       );
       await service.import_files({
@@ -1015,10 +1221,7 @@ describe("ProjectContentService", () => {
     fs.writeFileSync(source_paths[1]!, JSON.stringify({ plain: "" }));
     fs.writeFileSync(source_paths[2]!, create_pdf_fixture());
     try {
-      const preview = await new FilePreviewService(
-        app_settings,
-        create_pdf_execution(),
-      ).parse_project_file({ source_paths });
+      const preview = await service.parse_project_file({ source_paths });
       const parsed_files = preview.files as unknown as WorkbenchFileParsePreview[];
       expect(parsed_files.map((file) => file.target_rel_path)).toEqual([
         " a.json",
@@ -1106,12 +1309,8 @@ describe("ProjectContentService", () => {
     const second_source = project_path("b.txt");
     fs.writeFileSync(first_source, "a", "utf-8");
     fs.writeFileSync(second_source, "b", "utf-8");
-    await database.transaction(lg_path, (writer) =>
-      writer.add_asset_from_source(lg_path, "a.txt", first_source, null, 0),
-    );
-    await database.transaction(lg_path, (writer) =>
-      writer.add_asset_from_source(lg_path, "b.txt", second_source, null, 1),
-    );
+    add_test_asset_from_source(database, lg_path, "a.txt", first_source, null, 0);
+    add_test_asset_from_source(database, lg_path, "b.txt", second_source, null, 1);
 
     const ack = await service.reorder_files({
       ordered_rel_paths: ["b.txt", "a.txt"],
@@ -1129,9 +1328,9 @@ describe("ProjectContentService", () => {
         },
       ],
     });
-    expect(await database.get_all_asset_records(lg_path)).toEqual([
-      { path: "b.txt", sort_order: 0 },
-      { path: "a.txt", sort_order: 1 },
+    expect(database.get_all_asset_records(lg_path)).toEqual([
+      { path: "b.txt", sort_order: 0, file_type: "TXT" },
+      { path: "a.txt", sort_order: 1, file_type: "TXT" },
     ]);
     expect(publish_project_change.mock.calls[0]?.[0]).toMatchObject({
       projectPath: lg_path,
@@ -1146,20 +1345,16 @@ describe("ProjectContentService", () => {
     const { database, service, lg_path } = await create_service(publish_project_change);
     const source_path = project_path("a.txt");
     fs.writeFileSync(source_path, "a", "utf-8");
-    await database.transaction(lg_path, (writer) =>
-      writer.add_asset_from_source(lg_path, "a.txt", source_path, null, 0),
-    );
-    await database.transaction(lg_path, (writer) =>
-      writer.set_items(lg_path, [
-        create_persistent_item({
-          src: "旧",
-          dst: "old",
-          file_path: "a.txt",
-          status: "PROCESSED",
-          row_number: 0,
-        }),
-      ]),
-    );
+    add_test_asset_from_source(database, lg_path, "a.txt", source_path, null, 0);
+    database.set_items(lg_path, [
+      create_persistent_item({
+        src: "旧",
+        dst: "old",
+        file_path: "a.txt",
+        status: "PROCESSED",
+        row_number: 0,
+      }),
+    ]);
     await service.reset_files({
       rel_paths: ["a.txt"],
       project_settings: { source_language: "JA" },
@@ -1193,23 +1388,17 @@ describe("ProjectContentService", () => {
     const second_source = project_path("b.txt");
     fs.writeFileSync(first_source, "a", "utf-8");
     fs.writeFileSync(second_source, "b", "utf-8");
-    await database.transaction(lg_path, (writer) =>
-      writer.add_asset_from_source(lg_path, "a.txt", first_source, null, 0),
-    );
-    await database.transaction(lg_path, (writer) =>
-      writer.add_asset_from_source(lg_path, "b.txt", second_source, null, 1),
-    );
-    await database.transaction(lg_path, (writer) =>
-      writer.set_items(lg_path, [
-        create_persistent_item({ src: "删除", file_path: "a.txt", row_number: 0 }),
-        create_persistent_item({
-          item_id: 2,
-          src: "保留",
-          file_path: "b.txt",
-          row_number: 0,
-        }),
-      ]),
-    );
+    add_test_asset_from_source(database, lg_path, "a.txt", first_source, null, 0);
+    add_test_asset_from_source(database, lg_path, "b.txt", second_source, null, 1);
+    database.set_items(lg_path, [
+      create_persistent_item({ src: "删除", file_path: "a.txt", row_number: 0 }),
+      create_persistent_item({
+        item_id: 2,
+        src: "保留",
+        file_path: "b.txt",
+        row_number: 0,
+      }),
+    ]);
     const ack = await service.delete_files({
       rel_paths: ["a.txt"],
       project_settings: { source_language: "JA", target_language: "ZH" },
@@ -1225,10 +1414,10 @@ describe("ProjectContentService", () => {
         },
       ],
     });
-    expect(await database.get_all_asset_records(lg_path)).toEqual([
-      { path: "b.txt", sort_order: 1 },
+    expect(database.get_all_asset_records(lg_path)).toEqual([
+      { path: "b.txt", sort_order: 1, file_type: "TXT" },
     ]);
-    expect(await database.get_all_items(lg_path)).toEqual([
+    expect(database.get_all_items(lg_path)).toEqual([
       create_persistent_item({ item_id: 2, src: "保留", file_path: "b.txt", row_number: 0 }),
     ]);
     expect(publish_project_change.mock.calls[0]?.[0]).toMatchObject({
@@ -1243,9 +1432,9 @@ describe("ProjectContentService", () => {
   it("任务忙碌时拒绝 translation reset 且不写库", async () => {
     const { database, service, runtime_gate, lg_path } = await create_service();
     runtime_gate.begin_runtime("batch_translation");
-    await database.transaction(lg_path, (writer) =>
-      writer.set_items(lg_path, [{ id: 1, src: "旧", dst: "old", status: "PROCESSED" }]),
-    );
+    database.set_items(lg_path, [
+      { id: 1, src: "旧", dst: "old", status: "PROCESSED", file_type: "NONE" },
+    ]);
 
     await expect(
       service.reset_translation({
@@ -1254,8 +1443,8 @@ describe("ProjectContentService", () => {
       }),
     ).rejects.toThrow(expect.objectContaining({ code: "runtime.busy" }));
 
-    expect(await database.get_all_items(lg_path)).toEqual([
-      { id: 1, src: "旧", dst: "old", status: "PROCESSED" },
+    expect(database.get_all_items(lg_path)).toEqual([
+      { id: 1, src: "旧", dst: "old", status: "PROCESSED", file_type: "NONE" },
     ]);
     await database.close();
   });
@@ -1281,12 +1470,8 @@ describe("ProjectContentService", () => {
     const second_source = project_path("b.txt");
     fs.writeFileSync(first_source, "a", "utf-8");
     fs.writeFileSync(second_source, "b", "utf-8");
-    await database.transaction(lg_path, (writer) =>
-      writer.add_asset_from_source(lg_path, "a.txt", first_source, null, 0),
-    );
-    await database.transaction(lg_path, (writer) =>
-      writer.add_asset_from_source(lg_path, "b.txt", second_source, null, 1),
-    );
+    add_test_asset_from_source(database, lg_path, "a.txt", first_source, null, 0);
+    add_test_asset_from_source(database, lg_path, "b.txt", second_source, null, 1);
     runtime_gate.begin_runtime("batch_translation");
 
     await expect(
@@ -1296,9 +1481,9 @@ describe("ProjectContentService", () => {
       }),
     ).rejects.toThrow(expect.objectContaining({ code: "runtime.busy" }));
 
-    expect(await database.get_all_asset_records(lg_path)).toEqual([
-      { path: "a.txt", sort_order: 0 },
-      { path: "b.txt", sort_order: 1 },
+    expect(database.get_all_asset_records(lg_path)).toEqual([
+      { path: "a.txt", sort_order: 0, file_type: "TXT" },
+      { path: "b.txt", sort_order: 1, file_type: "TXT" },
     ]);
     await database.close();
   });
@@ -1307,9 +1492,7 @@ describe("ProjectContentService", () => {
     const { database, service, lg_path } = await create_service();
     const source_path = project_path("a.txt");
     fs.writeFileSync(source_path, "a", "utf-8");
-    await database.transaction(lg_path, (writer) =>
-      writer.add_asset_from_source(lg_path, "a.txt", source_path, null, 0),
-    );
+    add_test_asset_from_source(database, lg_path, "a.txt", source_path, null, 0);
     const transaction_spy = vi.spyOn(database, "transaction").mockImplementation(async () => {
       throw new Error("事务失败");
     });

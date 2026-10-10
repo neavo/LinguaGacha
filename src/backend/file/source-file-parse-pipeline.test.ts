@@ -43,13 +43,20 @@ describe("SourceFileParsePipeline", () => {
       fs.writeFileSync(source_path, content);
       return source_path;
     });
-    const expected_types = ["NONE", "NONE", "NONE", "TXT", "PDF", "VTT", "LRC", "ASS", "VTT"];
+    const expected_types = [
+      "TXT",
+      "KVJSON",
+      "MESSAGEJSON",
+      "TXT",
+      "PDF",
+      "VTT",
+      "LRC",
+      "ASS",
+      "VTT",
+    ];
     const pipeline = new SourceFileParsePipeline(create_format_service());
-    const preview = await pipeline.parse_project_file_preview({ source_paths });
     const draft = await pipeline.build_project_draft(source_paths);
-    expect(preview.failed_files).toEqual([]);
     expect(draft.failed_files).toEqual([]);
-    expect(preview.files.map((file) => file["file_type"])).toEqual(expected_types);
     expect(draft.files.map((file) => file.file_type)).toEqual(expected_types);
     expect(draft.items.every((item) => item["src"] !== "")).toBe(true);
 
@@ -58,10 +65,11 @@ describe("SourceFileParsePipeline", () => {
     try {
       await database.create_project(project_path, "文件类型", (database) => {
         for (const file of draft.files) {
-          database.add_asset_from_source(
+          database.add_asset(
             project_path,
             file.rel_path,
-            file.source_path,
+            file.content,
+            file.file_type,
             file.pdf_document,
             file.sort_index,
           );
@@ -83,8 +91,11 @@ describe("SourceFileParsePipeline", () => {
       const output = path.join(temp_dir.path, "out");
       await create_format_service().write_items(items, {
         paths: { translated_path: output, bilingual_path: path.join(output, "bilingual") },
-        source_files: draft.files.map((file) => file.rel_path),
-        asset_reader: async (file) => await database.read_asset_content(project_path, file),
+        source_files: draft.files.map((file) => ({
+          path: file.rel_path,
+          file_type: file.file_type,
+        })),
+        asset_reader: (file) => database.read_asset_content(project_path, file),
       });
       expect(fs.readFileSync(path.join(output, "text.vtt"), "utf8")).toBe(
         "WEBVTT\n\n00:00.000 --> 00:01.000\n<b>译文</b>尾文\n",
@@ -111,7 +122,7 @@ describe("SourceFileParsePipeline", () => {
 
     const draft = await pipeline.build_project_draft([source_file, broken_json, ignored_file]);
 
-    expect(draft.files).toEqual([
+    expect(draft.files.map(({ content: _content, ...file }) => file)).toEqual([
       {
         rel_path: "script.txt",
         source_path: source_file,
@@ -155,7 +166,7 @@ describe("SourceFileParsePipeline", () => {
     const pipeline = new SourceFileParsePipeline(create_format_service());
 
     const result = await pipeline.parse_import_commands([
-      { source_path: source_file, rel_path: "nested/target.txt" },
+      { source_path: source_file, rel_path: "nested/target.txt", file_type: "TXT" },
     ]);
 
     expect(result.failed_files).toEqual([]);
@@ -173,30 +184,5 @@ describe("SourceFileParsePipeline", () => {
         ],
       }),
     ]);
-  });
-
-  it("项目文件替换预览沿用旧相对目录", async () => {
-    using temp_dir = fs.mkdtempDisposableSync(
-      path.join(os.tmpdir(), "linguagacha-source-file-pipeline-"),
-    );
-    const source_file = path.join(temp_dir.path, "new.txt");
-    fs.writeFileSync(source_file, "新文本", "utf-8");
-    const pipeline = new SourceFileParsePipeline(create_format_service());
-
-    await expect(
-      pipeline.parse_project_file_preview({
-        source_paths: [source_file],
-        current_rel_path: "old/path/original.txt",
-      }),
-    ).resolves.toEqual({
-      files: [
-        expect.objectContaining({
-          source_path: source_file,
-          target_rel_path: path.join("old/path", "new.txt"),
-          file_type: "TXT",
-        }),
-      ],
-      failed_files: [],
-    });
   });
 });

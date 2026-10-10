@@ -65,7 +65,6 @@ export class TRANSFormat {
             row: items.length,
             file_type: "TRANS",
             file_path: rel_path,
-            text_type: processor.text_type,
             status: checked.status,
             skip_internal_filter: checked.skip_internal_filter,
           }),
@@ -129,14 +128,8 @@ export class TRANSFormat {
    */
   private get_processor(project: MutableJsonRecord): NoneTransProcessor {
     const engine = String(project["gameEngine"] ?? "").toLowerCase();
-    if (engine === "kag" || engine === "vntrans") {
-      return new NoneTransProcessor(project, "KAG");
-    }
     if (engine === "wolf" || engine === "wolfrpg") {
       return new WolfTransProcessor(project);
-    }
-    if (engine === "renpy") {
-      return new NoneTransProcessor(project, "RENPY");
     }
     if (["2k", "2k3", "rmjdb", "rmxp", "rmvx", "rmvxace", "rmmv", "rmmz"].includes(engine)) {
       return new RPGMakerTransProcessor(project);

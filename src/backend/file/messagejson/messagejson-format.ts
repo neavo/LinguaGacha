@@ -51,7 +51,6 @@ export class MESSAGEJSONFormat {
           row: items.length,
           file_type: "MESSAGEJSON",
           file_path: rel_path,
-          text_type: "KAG",
         }),
       );
     }

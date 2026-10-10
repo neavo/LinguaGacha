@@ -24,7 +24,6 @@ function create_item(
     row_number: item_id - 1,
     file_type: "TXT",
     file_path: "script.txt",
-    text_type: "NONE",
     status: "NONE",
     skip_internal_filter: false,
     ...overrides,
@@ -170,12 +169,12 @@ describe("compute_project_prefilter_write", () => {
     expect(result.items["2"]?.status).toBe("DUPLICATED");
   });
 
-  it("角色或文本规则不同时分别保留可翻译条目", () => {
+  it("不同角色分别保留可翻译条目", () => {
     const result = compute_project_prefilter_write({
       state: create_state([
-        create_item(1, { src: "同文", name_src: "甲", text_type: "KAG" }),
-        create_item(2, { src: "同文", name_src: "乙", text_type: "KAG" }),
-        create_item(3, { src: "同文", name_src: "甲", text_type: "RENPY" }),
+        create_item(1, { src: "同文", name_src: "甲" }),
+        create_item(2, { src: "同文", name_src: "乙" }),
+        create_item(3, { src: "同文", name_src: "甲" }),
       ]),
       source_language: "ZH",
       mtool_optimizer_enable: false,
@@ -185,7 +184,7 @@ describe("compute_project_prefilter_write", () => {
     expect(Object.values(result.items).map((item) => item.status)).toEqual([
       "NONE",
       "NONE",
-      "NONE",
+      "DUPLICATED",
     ]);
   });
 

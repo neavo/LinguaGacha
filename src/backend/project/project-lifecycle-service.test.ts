@@ -234,7 +234,7 @@ describe("ProjectLifecycleService", () => {
           "project_runtime_revision.files": 2,
           "project_runtime_revision.items": 3,
         },
-        asset_records: [{ path: "script.txt", sort_order: 0 }],
+        asset_records: [{ path: "script.txt", sort_order: 0, file_type: "TXT" }],
         items: [
           {
             id: 1,
@@ -293,8 +293,8 @@ describe("ProjectLifecycleService", () => {
         }),
       ).resolves.toEqual({ project: { path: project_path, loaded: true } });
 
-      expect(await database.get_all_asset_records(project_path)).toEqual([
-        { path: path.join("source", "script.txt"), sort_order: 0 },
+      expect(database.get_all_asset_records(project_path)).toEqual([
+        { path: path.join("source", "script.txt"), sort_order: 0, file_type: "TXT" },
       ]);
       expect(await database.get_all_items(project_path)).toMatchObject([
         {
@@ -546,8 +546,8 @@ describe("ProjectLifecycleService", () => {
         ],
       });
 
-      expect(await database.get_all_asset_records(project_path)).toEqual([
-        { path: path.join("source", "script.txt"), sort_order: 0 },
+      expect(database.get_all_asset_records(project_path)).toEqual([
+        { path: path.join("source", "script.txt"), sort_order: 0, file_type: "TXT" },
       ]);
       expect(log_manager.warning).toHaveBeenCalledWith(
         expect.any(String),
@@ -732,7 +732,7 @@ describe("ProjectLifecycleService", () => {
     options: {
       meta?: MutableJsonRecord;
       items?: MutableJsonRecord[];
-      asset_records?: Array<{ path: string; sort_order: number }>;
+      asset_records?: Array<{ path: string; sort_order: number; file_type?: string }>;
       rule_text_by_type?: Record<string, string>;
       calls?: string[];
     } = {},

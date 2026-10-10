@@ -78,16 +78,18 @@ type ProjectWriteRevisionContext = {
  */
 export type ProjectAssetWrite =
   | {
-      kind: "add_from_source";
+      kind: "add";
       path: string;
-      sourcePath: string;
+      content: Uint8Array;
+      fileType: string;
       pdfDocument: PDFDocument | null;
       sortOrder: number;
     }
   | {
-      kind: "update_from_source";
+      kind: "update";
       path: string;
-      sourcePath: string;
+      content: Uint8Array;
+      fileType: string;
       pdfDocument: PDFDocument | null;
     }
   | {
@@ -156,7 +158,7 @@ export class ProjectWriteStore {
     database: ProjectDatabase,
     apply_committed_change: ProjectCommittedChangeHandler,
     project_change_publisher: ProjectChangePublisher | null,
-    private readonly cache?: Pick<CacheManager, "readItemWriteScope" | "readFileMetadata">,
+    private readonly cache?: Pick<CacheManager, "readItemWriteScope">,
   ) {
     this.database = database;
     this.apply_committed_change = apply_committed_change;
@@ -888,12 +890,6 @@ export class ProjectWriteStore {
         },
         { ...revision_context.meta, ...revision_context.pendingMeta },
         prepared_change.itemRecords,
-        prepared_change.itemRecords === undefined && updated_sections.includes("files")
-          ? this.cache?.readFileMetadata(
-              request.projectPath,
-              get_section_revision(revision_context.meta, "items"),
-            )
-          : undefined,
       );
     });
     // 事务已经提交。后续任一步失败都必须携带能够读取到的最新 revision，禁止调用方重试。
@@ -1005,22 +1001,24 @@ export class ProjectWriteStore {
    * 将项目 asset 操作转换为数据库 workflow 操作。
    */
   private build_asset_write(project_path: string, write: ProjectAssetWrite): ProjectDatabaseWrite {
-    if (write.kind === "add_from_source") {
+    if (write.kind === "add") {
       return (database) =>
-        database.add_asset_from_source(
+        database.add_asset(
           project_path,
           write.path,
-          write.sourcePath,
+          write.content,
+          write.fileType,
           write.pdfDocument,
           write.sortOrder,
         );
     }
-    if (write.kind === "update_from_source") {
+    if (write.kind === "update") {
       return (database) =>
-        database.update_asset_from_source(
+        database.update_asset(
           project_path,
           write.path,
-          write.sourcePath,
+          write.content,
+          write.fileType,
           write.pdfDocument,
         );
     }

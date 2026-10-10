@@ -414,7 +414,17 @@ export class ProofreadingCache {
       total_item_count: items.length,
       upsertItems: items,
       quality: structuredClone(this.cache.quality.readBlock()),
-      processingConfig: identity.key.processingConfig,
+      processingConfig: {
+        ...identity.key.processingConfig,
+        file_contexts: Object.fromEntries(
+          this.cache.files
+            .readFileEntries()
+            .map((file) => [
+              file.rel_path,
+              { file_type: file.file_type, game_engine: file.game_engine },
+            ]),
+        ),
+      },
     };
   }
 
@@ -457,7 +467,7 @@ export class ProofreadingCache {
       name_src: normalize_item_name_field(item["name_src"]),
       name_dst: normalize_item_name_field(item["name_dst"]),
       status: item.status,
-      text_type: item.text_type,
+      file_type: item.file_type,
     };
   }
 

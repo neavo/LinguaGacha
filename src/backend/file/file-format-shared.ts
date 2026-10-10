@@ -19,6 +19,7 @@ export interface FileFormatServiceConfig {
  * 新建工程预演阶段保存源文件绝对路径与工程内相对路径的映射
  */
 export interface ProjectSourceFileEntry {
+  file_type?: string;
   source_path: string; // 用户选择或目录扫描得到的真实文件路径
   rel_path: string; // 导入工程后的稳定资产路径
 }
@@ -39,7 +40,7 @@ export interface FileFormatWriteContext {
 
 /** 文件调度拥有源文件集合，单格式写回上下文只携带 IO。 */
 export type FileFormatServiceWriteContext = FileFormatWriteContext & {
-  source_files: readonly string[]; // 原始资产的文件集合，零条目字幕也参与导出
+  source_files: readonly { path: string; file_type: string }[]; // 原始资产的文件集合，零条目字幕也参与导出
 };
 
 const SPLITLINES_CODE_POINTS = new Set([

@@ -112,6 +112,7 @@
     "iconv-lite",
     "jszip",
     "mupdf",
+    "oxc-parser",
     "remark-gfm",
     "remark-parse",
     "unified"

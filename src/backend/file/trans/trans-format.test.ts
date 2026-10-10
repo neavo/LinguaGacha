@@ -15,33 +15,6 @@ function encode_trans(project: Record<string, unknown>): Uint8Array {
 }
 
 describe("TRANSFormat", () => {
-  it.each([
-    ["kag", "KAG"],
-    ["vntrans", "KAG"],
-    ["renpy", "RENPY"],
-    ["wolf", "WOLF"],
-    ["wolfrpg", "WOLF"],
-    ["rmmz", "RPGMAKER"],
-    ["unknown", "NONE"],
-  ] as const)("按 gameEngine=%s 选择文本类型 %s", (gameEngine, expected_type) => {
-    const [item] = new TRANSFormat().read_from_stream(
-      encode_trans({
-        gameEngine,
-        files: {
-          "file.json": {
-            data: [["原文", ""]],
-            tags: [[]],
-            context: [[]],
-            parameters: [[]],
-          },
-        },
-      }),
-      "demo.trans",
-    );
-
-    expect(item?.text_type).toBe(expected_type);
-  });
-
   it("按索引、行号和同位扩展字段读取 TRANS 条目", () => {
     const items = new TRANSFormat().read_from_stream(
       encode_trans({
@@ -67,7 +40,6 @@ describe("TRANSFormat", () => {
       row: 0,
       file_type: "TRANS",
       file_path: "demo.trans",
-      text_type: "NONE",
       status: "PROCESSED",
       extra_field: {
         tag: ["keep"],

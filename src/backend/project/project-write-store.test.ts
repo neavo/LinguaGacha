@@ -1,3 +1,4 @@
+import { add_test_asset_from_source } from "../../test/asset-fixture";
 import { adapt_project_change } from "./project-write-event-adapter";
 import { ProjectSessionState } from "./project-session-state";
 import { ItemCache } from "../cache/item-cache";
@@ -135,18 +136,11 @@ describe("ProjectWriteStore", () => {
     const { database, project_path } = await create_store("scope");
     await seed_duplicate_items(database, project_path);
     const items = new ItemCache();
-    items.replace(
-      (
-        await database.read(project_path, (access) =>
-          new ProjectDataReader(access).build_runtime_items_snapshot(project_path),
-        )
-      ).item_records,
-    );
+    items.replace(new ProjectDataReader(database).read_items(project_path));
     const all = vi.spyOn(database, "get_all_items");
     const partial = vi.spyOn(ProjectDatabaseAccess.prototype, "get_items_by_ids");
     const store = new ProjectWriteStore(database, () => undefined, null, {
       readItemWriteScope: (_project, ids) => ({ ids: items.readWriteScope(ids), revision: 0 }),
-      readFileMetadata: () => items.readFileMetadata(),
     });
     const first = await store.apply_translation_item_patches({
       projectPath: project_path,
@@ -179,8 +173,8 @@ describe("ProjectWriteStore", () => {
     const source = path.join(path.dirname(project_path), "source.pdf");
     fs.writeFileSync(source, bytes);
     const document = read_pdf_document(bytes);
-    await database.transaction(project_path, (database) => {
-      database.add_asset_from_source(project_path, "book.pdf", source, document, 0);
+    await database.transaction(project_path, () => {
+      add_test_asset_from_source(database, project_path, "book.pdf", source, document, 0);
     });
     const original = ProjectDatabaseAccess.prototype.upsert_meta_entries;
     const failure = vi
@@ -253,7 +247,6 @@ describe("ProjectWriteStore", () => {
           status: "PROCESSED",
           file_path: "demo.txt",
           file_type: "TXT",
-          text_type: "TXT",
           row: 7,
         },
       ].map((item) => create_item(item)),
@@ -430,10 +423,8 @@ describe("ProjectWriteStore", () => {
   });
 
   it("提交工作台结构写入时替换事实并发布轻量失效信号", async () => {
-    const { database, project_path, store, published_changes } =
-      await create_store("project-content");
-    await seed_items(database, project_path);
-    await add_test_asset(database, project_path, "demo.txt", "demo", 0);
+    const { database, project_path, store, published_changes } = create_store("project-content");
+    seed_items(database, project_path);
 
     await store.replace_project_items_and_files({
       projectPath: project_path,
@@ -500,9 +491,9 @@ describe("ProjectWriteStore", () => {
       orderedPaths: ["b.txt", "a.txt"],
     });
 
-    expect(await database.get_all_asset_records(project_path)).toEqual([
-      { path: "b.txt", sort_order: 0 },
-      { path: "a.txt", sort_order: 1 },
+    expect(database.get_all_asset_records(project_path)).toEqual([
+      { path: "b.txt", sort_order: 0, file_type: "TXT" },
+      { path: "a.txt", sort_order: 1, file_type: "TXT" },
     ]);
     expect(published_changes.at(-1)).toMatchObject({
       source: "project_reorder_files",
@@ -1089,25 +1080,23 @@ describe("ProjectWriteStore", () => {
   }
 
   /** 准备完整条目事实，局部写入须保留其原文与定位字段。 */
-  async function seed_items(database: ProjectDatabase, project_path: string): Promise<void> {
-    await database.transaction(project_path, (writer) =>
-      writer.set_items(
-        project_path,
-        [
-          {
-            id: 1,
-            src: "原文",
-            dst: "",
-            name_src: "原名",
-            name_dst: null,
-            status: "NONE",
-            file_path: "demo.txt",
-            file_type: "TXT",
-            text_type: "TXT",
-            row: 7,
-          },
-        ].map((item) => create_item(item)),
-      ),
+  function seed_items(database: ProjectDatabase, project_path: string): void {
+    database.add_asset(project_path, "demo.txt", Buffer.from("原文"), "TXT", null);
+    database.set_items(
+      project_path,
+      [
+        {
+          id: 1,
+          src: "原文",
+          dst: "",
+          name_src: "原名",
+          name_dst: null,
+          status: "NONE",
+          file_path: "demo.txt",
+          file_type: "TXT",
+          row: 7,
+        },
+      ].map((item) => create_item(item)),
     );
   }
 
@@ -1170,9 +1159,7 @@ describe("ProjectWriteStore", () => {
   ): Promise<void> {
     const source_path = path.join(path.dirname(project_path), `source-${asset_path}`);
     fs.writeFileSync(source_path, content);
-    await database.transaction(project_path, (writer) =>
-      writer.add_asset_from_source(project_path, asset_path, source_path, null, sort_order),
-    );
+    add_test_asset_from_source(database, project_path, asset_path, source_path, null, sort_order);
   }
 
   /** 为 Store 集成场景补齐未受影响 kind 的空意图。 */

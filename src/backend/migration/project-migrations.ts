@@ -1,3 +1,5 @@
+import { empty_asset_file_type_migration } from "./project/empty-asset-file-type-migration";
+import type { JsonValue } from "../../domain/json";
 import type { ProjectDatabaseWrite } from "../database/database-operations";
 import type { ProjectOpenMigration, ProjectOpenMigrationInput } from "./migration-types";
 import { EpubRubyBlockTextMigration } from "./project/epub-ruby-block-text-migration";
@@ -14,6 +16,7 @@ const PROJECT_OPEN_MIGRATIONS: readonly ProjectOpenMigration[] = [
       context.items,
     ),
   (context) => new MarkdownV2BlockMigration().build_writes(context.project_path, context.items),
+  empty_asset_file_type_migration,
 ];
 
 /** 准备阶段共享打开瞬间事实，所有写入仍由项目生命周期在同一事务提交。 */

@@ -1,14 +1,5 @@
-import type { JsonRecord } from "../../domain/json";
-import type { ProjectDatabaseAccess } from "../database/database-operations";
-import { describe, expect, it, vi } from "vitest";
-import fs from "node:fs";
-import os from "node:os";
-import path from "node:path";
-import { ProjectDatabaseAccess as DatabaseAccess } from "../database/database-operations";
-import { build_project_committed_change } from "./project-committed-change";
-import type { ProjectDataSection } from "../../shared/project-event";
-import { create_pdf_fixture } from "../file/pdf/test-support";
-import { read_pdf_document } from "../file/pdf/pdf-document";
+import { fixture_file_type } from "../../test/asset-fixture";
+import { describe, expect, it } from "vitest";
 
 import { CacheManager } from "../cache/cache-manager";
 import { ProjectDatabase } from "../database/database-operations";
@@ -125,7 +116,6 @@ function create_item(overrides: JsonRecord): JsonRecord {
     row: 0,
     file_type: "TXT",
     file_path: "script.txt",
-    text_type: "NONE",
     status: "NONE",
     skip_internal_filter: false,
     ...overrides,
@@ -179,7 +169,10 @@ describe("ProjectSummaryService", () => {
         create_item({ id: 3, file_path: "waiting.txt", status: "NONE" }),
         create_item({ id: 4, src: "翻译失败", status: "ERROR" }),
       ],
-      [{ path: "script.txt", sort_order: 0 }],
+      [
+        { path: "script.txt", sort_order: 0 },
+        { path: "waiting.txt", sort_order: 1 },
+      ],
     );
 
     const result = service.read_translation_stats();
@@ -258,7 +251,8 @@ describe("ProjectSummaryService", () => {
         "project_runtime_revision.items": 7,
       }),
       get_all_items: () => items,
-      get_all_asset_records: () => asset_records,
+      get_all_asset_records: () =>
+        asset_records.map((asset) => ({ ...asset, file_type: fixture_file_type(asset.path) })),
       get_rules: () => [],
       get_rule_text: () => "",
     } as unknown as ProjectDatabase;

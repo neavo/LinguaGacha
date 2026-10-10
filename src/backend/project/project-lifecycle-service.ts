@@ -2,7 +2,6 @@ import type { ProjectDatabaseAccess } from "../database/database-operations";
 import type { ProjectFileRecord } from "./project-file-records";
 import type { ProjectPreviewResponse } from "../../shared/project-preview";
 import type { PDFExecution } from "../file/pdf/pdf-worker";
-import type { PDFDocument } from "../../shared/pdf";
 import path from "node:path";
 
 import type { AppPathService } from "../app/app-path-service";
@@ -10,7 +9,10 @@ import type { AppSettingService } from "../app/app-setting-service";
 import type { ProjectDatabase, ProjectDatabaseWrite } from "../database/database-operations";
 import { FileFormatService } from "../file/file-format-service";
 import { log_source_file_parse_failures } from "../file/source-file-parse-failure-reporter";
-import { SourceFileParsePipeline } from "../file/source-file-parse-pipeline";
+import {
+  SourceFileParsePipeline,
+  type SourceFileProjectDraft,
+} from "../file/source-file-parse-pipeline";
 import type { LogManager } from "../log/log-manager";
 import { build_project_open_writes } from "../migration/project-migrations";
 import {
@@ -57,20 +59,10 @@ import {
 const INITIAL_PRESET_REVISION = 1;
 
 /**
- * 新建工程提交阶段的 asset 写入清单。
- */
-interface CreateCommitFileRecord {
-  pdf_document: PDFDocument | null;
-  rel_path: string; // .lg 内 asset 的唯一业务路径，不能用源文件绝对路径替代
-  source_path: string; // 只传给 database workflow 读取 bytes，项目域不理解压缩格式
-  sort_index: number; // 决定工作台文件顺序，必须随 asset 一起落库
-}
-
-/**
  * 源文件解析后的可信新建工程草稿。
  */
 interface CreateCommitParsedDraft {
-  files: CreateCommitFileRecord[]; // 后端从 source_paths 解析出的可信 asset 写入清单
+  files: SourceFileProjectDraft["files"]; // 后端从 source_paths 解析出的可信 asset 写入清单
   failed_files: SourceFileParseFailureRecord[]; // 只记录支持格式但解析失败的源文件
   file_state: Record<string, ProjectFileRecord>; // 只供后端预过滤算法识别文件类型和相对路径
   items: Record<string, ProjectItemPublicRecord>; // 后端生成的完整公开 DTO 镜像
@@ -347,12 +339,7 @@ export class ProjectLifecycleService {
       this.create_format_service(project_settings),
       this.native_fs,
     ).build_project_draft(source_paths);
-    const files: CreateCommitFileRecord[] = parsed_draft.files.map((file) => ({
-      rel_path: file.rel_path,
-      source_path: file.source_path,
-      pdf_document: file.pdf_document,
-      sort_index: file.sort_index,
-    }));
+    const files = parsed_draft.files;
     const items: Record<string, ProjectItemPublicRecord> = {};
     for (const parsed_item of parsed_draft.items) {
       const public_item = this.normalize_public_item(parsed_item);
@@ -555,25 +542,23 @@ export class ProjectLifecycleService {
   }
 
   /**
-   * 构建 asset 写入操作，跳过缺少源文件路径的草稿记录
+   * 解析草稿已固定文件顺序和原稿字节，提交只构建资产写操作
    */
   private build_asset_writes(
     project_path: string,
-    files: CreateCommitFileRecord[],
+    files: SourceFileProjectDraft["files"],
   ): ProjectDatabaseWrite[] {
-    return [...files]
-      .sort((left, right) => left.sort_index - right.sort_index)
-      .filter((file) => file.rel_path !== "" && file.source_path !== "")
-      .map(
-        (file) => (database) =>
-          database.add_asset_from_source(
-            project_path,
-            file.rel_path,
-            file.source_path,
-            file.pdf_document,
-            file.sort_index,
-          ),
-      );
+    return files.map(
+      (file) => (database) =>
+        database.add_asset(
+          project_path,
+          file.rel_path,
+          file.content,
+          file.file_type,
+          file.pdf_document,
+          file.sort_index,
+        ),
+    );
   }
 
   /**

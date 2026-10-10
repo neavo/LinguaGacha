@@ -1,3 +1,4 @@
+import { run_asset_file_type_migration } from "./database/asset-file-type-migration";
 import type { DatabaseSync } from "node:sqlite";
 import type { DatabaseWritebackMigration } from "./migration-types";
 import { JsonTool } from "../../shared/utils/json-tool";
@@ -16,6 +17,7 @@ const DATABASE_WRITEBACK_MIGRATIONS: readonly DatabaseWritebackMigration[] = [
   { id: "project-item-stable-metadata", run: run_project_item_stable_metadata_migration },
   { id: "trans-item-metadata", run: run_trans_item_metadata_migration },
   { id: "project-item-public-contract", run: run_project_item_public_contract_migration },
+  { id: "asset-file-type", run: run_asset_file_type_migration },
 ];
 export const PROJECT_DATABASE_APPLIED_WRITEBACK_MIGRATIONS_META_KEY =
   "applied_writeback_migrations";
