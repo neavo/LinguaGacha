@@ -39,10 +39,14 @@ describe("自定义角色配置", () => {
     using f = fixture();
     const initial = f.service.read();
     expect(initial.body).toBe("Default role");
-    const saved = await f.service.save({ revision: initial.revision, body: "Custom role" });
-    expect(new AppSettingService(f.paths).read_setting().agent_personality).toBe("Custom role");
+    expect(f.settings.read_setting().agent_personality).toBeNull();
+    fs.writeFileSync(f.default_path, "Updated role");
+    const updated = f.service.read();
+    expect(updated.body).toBe("Updated role");
+    const saved = await f.service.save({ revision: updated.revision, body: updated.body });
+    expect(new AppSettingService(f.paths).read_setting().agent_personality).toBe(updated.body);
     fs.writeFileSync(f.default_path, "Updated default role");
-    expect(f.service.read().body).toBe("Custom role");
+    expect(f.service.read().body).toBe(updated.body);
     const empty = await f.service.save({ revision: saved.revision, body: "" });
     expect(empty.body).toBe("");
     expect(new AppSettingService(f.paths).read_setting().agent_personality).toBe("");

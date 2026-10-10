@@ -35,7 +35,7 @@ type SaveHandler = (body: Record<string, unknown>, save_index: number) => Promis
 
 let runtime_fixture: RuntimeFixture;
 let latest_state: ReturnType<typeof useCustomPromptEditorState> | null = null;
-let query_text = "项目提示词";
+let query_text: string | null = "项目提示词";
 let query_enabled = false;
 let query_revision = 3;
 let query_handler: (() => Promise<Record<string, unknown>>) | null = null;
@@ -233,8 +233,8 @@ describe("useCustomPromptEditorState", () => {
       .map(([, body]) => body as Record<string, unknown>);
   }
 
-  it("默认模板保持已保存状态，连续编辑防抖后保存修剪值", async () => {
-    query_text = "";
+  it("默认模板保持已保存状态，连续编辑防抖后保存原正文", async () => {
+    query_text = null;
     await render_probe();
 
     expect(latest_state?.prompt_text).toBe("默认提示词");
@@ -260,11 +260,82 @@ describe("useCustomPromptEditorState", () => {
         expected_section_revisions: {
           prompts: 3,
         },
-        text: "最终提示词",
+        text: "  最终提示词  ",
         enabled: false,
       }),
     ]);
     expect(push_toast_mock).not.toHaveBeenCalledWith("success", expect.anything());
+  });
+
+  it.each([null, "", "  旧正文  "])("首尾空白编辑和切换开关保留覆盖值 %s", async (text) => {
+    query_text = text;
+    await render_probe();
+    expect(latest_state?.prompt_text).toBe(text ?? "默认提示词");
+    const draft = ` \n${text ?? "默认提示词"}\t `;
+    await act(async () => {
+      latest_state?.update_prompt_text(draft);
+      vi.advanceTimersByTime(CUSTOM_PROMPT_AUTOSAVE_DELAY_MS);
+    });
+    expect(latest_state?.prompt_text).toBe(draft);
+    await act(async () => {
+      await latest_state?.flush_prompt_change();
+    });
+    expect(get_save_payloads()).toEqual([]);
+    await act(async () => {
+      await latest_state?.update_enabled(true);
+    });
+    expect(get_save_payloads()).toEqual([expect.objectContaining({ text, enabled: true })]);
+  });
+
+  it.each([null, "  旧正文  "])("修改后回到保存正文 %s 无需提交", async (text) => {
+    query_text = text;
+    await render_probe();
+    await act(async () => {
+      latest_state?.update_prompt_text("新正文");
+      latest_state?.update_prompt_text(`${text ?? "默认提示词"}\n`);
+      await latest_state?.flush_prompt_change();
+    });
+    expect(get_save_payloads()).toEqual([]);
+    await act(async () => {
+      await latest_state?.update_enabled(true);
+    });
+    expect(get_save_payloads()).toEqual([
+      expect.objectContaining({ text: query_text, enabled: true }),
+    ]);
+  });
+
+  it.each([null, "", "旧正文"])("语言切换刷新模板而保留覆盖值 %s", async (text) => {
+    query_text = text;
+    await render_probe();
+    if (text === null) {
+      await act(async () => latest_state?.update_prompt_text(" 默认提示词\n"));
+    }
+    api_fetch_mock.mockResolvedValueOnce({ template: { default_text: "新语言默认正文" } });
+    runtime_fixture.settings_snapshot.app_language = "EN";
+    await render_probe();
+    expect(latest_state?.prompt_text).toBe(text ?? "新语言默认正文");
+    await act(async () => {
+      await latest_state?.update_enabled(true);
+    });
+    expect(get_save_payloads()).toEqual([expect.objectContaining({ text })]);
+  });
+
+  it.each(["", "默认提示词"])("明确选择正文 %s 形成覆盖，恢复默认保留启用态", async (text) => {
+    query_text = null;
+    query_enabled = true;
+    await render_probe();
+    await act(async () => {
+      await latest_state?.replace_prompt_text(text);
+    });
+    expect(latest_state?.prompt_text).toBe(text);
+    await act(async () => {
+      await latest_state?.replace_prompt_text(null);
+    });
+    expect(latest_state?.prompt_text).toBe("默认提示词");
+    expect(get_save_payloads()).toEqual([
+      expect.objectContaining({ text, enabled: true }),
+      expect.objectContaining({ text: null, enabled: true }),
+    ]);
   });
 
   it("保存期间继续编辑时保持单飞并在旧请求后提交最新草稿", async () => {

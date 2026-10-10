@@ -64,7 +64,7 @@ function create_database(
   const get_rules = vi.fn((_project_path: string, rule_type: string) => {
     return options.rules?.[rule_type] ?? [];
   });
-  const get_rule_text = vi.fn(() => "");
+  const get_rule_text = vi.fn(() => null);
   return {
     with_project_scope: <T>(_project: string, callback: () => T): T => callback(),
     read_pdf_summaries: () => ({}),
@@ -149,7 +149,7 @@ describe("CacheManager", () => {
         file_path: "script.txt",
       }),
     ]);
-    expect(cache.prompts.readBlock()).toHaveProperty("translation");
+    expect(cache.prompts.readBlock().translation.text).toBeNull();
     expect(cache.quality.readBlock()).toHaveProperty("glossary");
     const quality_snapshot = cache.quality.readBlock();
     quality_snapshot.glossary = {

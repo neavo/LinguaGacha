@@ -380,6 +380,17 @@ describe("AgentWorkspaceService", () => {
     expect(fs.existsSync(path.join(fixture.workspace_root, "copy.md"))).toBe(false);
   });
 
+  it.each([null, ""])("工作区快照原样保留覆盖值 %s", async (text) => {
+    const fixture = await create_fixture(temp_dir);
+    vi.spyOn(fixture.cache.prompts, "readBlock").mockReturnValue({
+      translation: { text, enabled: true, revision: 1 },
+    });
+    await run_workspace(fixture);
+    expect(
+      read_json(path.join(fixture.active_path(), AGENT_WORKSPACE_PATHS.prompts)),
+    ).toMatchObject({ translation: { text } });
+  });
+
   it("首次 workspace_run 生成只读快照和空 change 文件", async () => {
     const fixture = await create_fixture(temp_dir);
     fs.mkdirSync(path.join(fixture.workspace_root, "stale"), { recursive: true });
@@ -1199,6 +1210,7 @@ async function create_fixture(temp_dir: string, native_fs?: NativeFs) {
   await service.activate_chat("test0001", [], async () => {});
   return {
     service,
+    cache,
     prepare_image,
     open_directory,
     pick_save_path,

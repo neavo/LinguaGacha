@@ -580,7 +580,7 @@ export class AgentWorkspaceService {
           Object.fromEntries(
             Object.entries(prompts).map(([kind, text]) => [
               kind,
-              project_agent_workspace_prompt(kind as "translation", String(text)),
+              project_agent_workspace_prompt(kind as "translation", text),
             ]),
           ),
         ),
@@ -1200,8 +1200,8 @@ function pick_apply_revisions(revisions: ProjectDataSectionRevisions): JsonRecor
   );
 }
 
-/** prompt 快照只保留固定正文，不复制功能开关。 */
-function project_workspace_prompts(block: ProjectPrompts): Record<PromptKind, string> {
+/** 工作区保留正文覆盖事实，null 表示继承当前内置模板。 */
+function project_workspace_prompts(block: ProjectPrompts): Record<PromptKind, string | null> {
   return {
     [TRANSLATION_PROMPT.store_key]: block[TRANSLATION_PROMPT.store_key].text,
   };

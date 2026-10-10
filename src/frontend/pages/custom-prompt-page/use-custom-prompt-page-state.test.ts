@@ -314,7 +314,7 @@ describe("useCustomPromptPageState", () => {
       prefix_text: "前缀",
       suffix_text: "后缀",
     });
-    expect(latest_state?.prompt_text).toBe("项目提示词");
+    expect(latest_state?.prompt_text).toBe("  项目提示词  ");
     expect(latest_state?.enabled).toBe(true);
   });
 
@@ -328,12 +328,12 @@ describe("useCustomPromptPageState", () => {
 
       expect(get_save_payloads()).toEqual([
         expect.objectContaining({
-          text: "导入提示词",
+          text: "  导入提示词  ",
           enabled: true,
         }),
       ]);
       expect(latest_state?.confirm_state).toEqual({ kind: null });
-      expect(latest_state?.prompt_text).toBe("导入提示词");
+      expect(latest_state?.prompt_text).toBe("  导入提示词  ");
       expect(latest_state?.enabled).toBe(true);
       if (source === "file") {
         expect(toast_fixture.current.push_toast).toHaveBeenCalledWith(
@@ -357,12 +357,12 @@ describe("useCustomPromptPageState", () => {
 
     expect(get_save_payloads()).toEqual([
       expect.objectContaining({
-        text: "导入提示词",
+        text: "  导入提示词  ",
         enabled: false,
       }),
     ]);
     expect(latest_state?.confirm_state).toEqual({ kind: null });
-    expect(latest_state?.prompt_text).toBe("导入提示词");
+    expect(latest_state?.prompt_text).toBe("  导入提示词  ");
     expect(latest_state?.enabled).toBe(false);
     if (source === "preset") {
       expect(latest_state?.preset_menu_open).toBe(false);
@@ -377,7 +377,7 @@ describe("useCustomPromptPageState", () => {
 
     expect(get_save_payloads()).toHaveLength(0);
     expect(latest_state?.confirm_state).toEqual({ kind: null });
-    expect(latest_state?.prompt_text).toBe("项目提示词");
+    expect(latest_state?.prompt_text).toBe("  项目提示词  ");
     expect(latest_state?.enabled).toBe(false);
     expect(toast_fixture.current.push_toast).toHaveBeenCalledExactlyOnceWith(
       source === "file" ? "app.feedback.import_failed" : "app.feedback.load_failed",
@@ -401,7 +401,7 @@ describe("useCustomPromptPageState", () => {
     expect(toast_fixture.current.push_toast).toHaveBeenCalledTimes(1);
     expect(get_save_payloads()).toHaveLength(1);
     expect(latest_state?.confirm_state).toEqual({ kind: null });
-    expect(latest_state?.prompt_text).toBe("项目提示词");
+    expect(latest_state?.prompt_text).toBe("  项目提示词  ");
     expect(latest_state?.enabled).toBe(false);
     if (source === "preset") {
       expect(latest_state?.preset_menu_open).toBe(true);
@@ -457,7 +457,7 @@ describe("useCustomPromptPageState", () => {
 
     expect(get_save_payloads()).toEqual([
       expect.objectContaining({
-        text: "默认提示词",
+        text: null,
         enabled: true,
       }),
     ]);

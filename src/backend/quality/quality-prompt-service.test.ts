@@ -20,6 +20,37 @@ import { QualityPromptService } from "./quality-prompt-service";
 import { build_translation_output_format } from "../../shared/text/translation-output-format";
 
 describe("QualityPromptService", () => {
+  it("覆盖正文经真实持久化往返，重置删除记录并导出当前默认正文", async () => {
+    const database = new ProjectDatabase();
+    cleanup_databases.push(database);
+    const { service, session_state, app_root } = create_service(database);
+    const project_path = path.join(create_temp_dir(), "overrides.lg");
+    database.create_project(project_path, "overrides");
+    session_state.mark_loaded(project_path);
+    const template_dir = path.join(app_root, "builtin", "translation_prompt", "template", "zh");
+    fs.mkdirSync(template_dir, { recursive: true });
+    for (const file of ["base.txt", "prefix.txt", "suffix.txt"])
+      fs.writeFileSync(path.join(template_dir, file), "默认第一版");
+    expect(database.get_rule_text(project_path, "translation_prompt")).toBeNull();
+    let revision = 0;
+    const output = path.join(app_root, "export.txt");
+    for (const text of ["默认第一版", "", null]) {
+      await service.save({
+        text,
+        enabled: true,
+        expected_section_revisions: { prompts: revision++ },
+      });
+      database.close();
+      expect(database.get_rule_text(project_path, "translation_prompt")).toBe(text);
+      fs.writeFileSync(path.join(template_dir, "base.txt"), "默认第二版");
+      await service.export({ path: output });
+      expect(fs.readFileSync(output, "utf-8")).toBe(text ?? "默认第二版");
+      expect(database.get_all_meta(project_path)).toMatchObject({
+        translation_prompt_enable: true,
+        "quality_prompt_revision.translation": revision,
+      });
+    }
+  });
   it("用户提示词预设删除完成后才返回，内置资源受保护", async () => {
     const { service } = create_service();
     service.save_preset({ name: "delete-fixture", text: "fixture" });

@@ -14,7 +14,7 @@ const TRANSLATION_PROMPT_RULE_TYPE = "translation_prompt";
  * 当前工程只暴露单一 `translation_prompt` 物理槽位。
  *
  * 生效场景：
- * `load_project` 打开旧工程且迁移标记缺失时，若当前槽位为空，则按当前应用语言优先读取旧槽位写回。
+ * `load_project` 打开旧工程且迁移标记缺失时，若当前槽位不存在，则按当前应用语言优先读取旧槽位写回。
  * 无论旧槽位是否有内容，都会写入完成标记，避免用户清空当前提示词后被旧残留反复覆盖。
  *
  * 不处理范围：
@@ -29,11 +29,12 @@ export function translation_prompt_legacy_slot_migration(
   }
 
   const writes: ProjectDatabaseWrite[] = [];
-  const current_prompt = context.database
-    .get_rule_text(context.project_path, TRANSLATION_PROMPT_RULE_TYPE)
-    .trim();
-  const legacy_prompt = current_prompt === "" ? get_legacy_translation_prompt(context) : "";
-  if (legacy_prompt !== "") {
+  const current_prompt = context.database.get_rule_text(
+    context.project_path,
+    TRANSLATION_PROMPT_RULE_TYPE,
+  );
+  const legacy_prompt = current_prompt === null ? get_legacy_translation_prompt(context) : null;
+  if (legacy_prompt !== null) {
     writes.push((database) =>
       database.set_rule_text(context.project_path, TRANSLATION_PROMPT_RULE_TYPE, legacy_prompt),
     );
@@ -47,17 +48,17 @@ export function translation_prompt_legacy_slot_migration(
 /**
  * 按当前应用语言决定旧 ZH/EN 槽位优先级，保持旧版本用户界面选择语义。
  */
-function get_legacy_translation_prompt(context: ProjectOpenMigrationContext): string {
+function get_legacy_translation_prompt(context: ProjectOpenMigrationContext): string | null {
   const config = context.app_setting_service.read_setting();
   const preferred_rule_types =
     resolve_prompt_template_language(config["app_language"]) === "en"
       ? [LEGACY_TRANSLATION_PROMPT_EN_RULE_TYPE, LEGACY_TRANSLATION_PROMPT_ZH_RULE_TYPE]
       : [LEGACY_TRANSLATION_PROMPT_ZH_RULE_TYPE, LEGACY_TRANSLATION_PROMPT_EN_RULE_TYPE];
   for (const rule_type of preferred_rule_types) {
-    const candidate = context.database.get_rule_text(context.project_path, rule_type).trim();
-    if (candidate !== "") {
+    const candidate = context.database.get_rule_text(context.project_path, rule_type);
+    if (candidate !== null) {
       return candidate;
     }
   }
-  return "";
+  return null;
 }

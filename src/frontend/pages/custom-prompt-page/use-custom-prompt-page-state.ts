@@ -434,7 +434,7 @@ export function useCustomPromptPageState(): UseCustomPromptPageStateResult {
 
     switch (confirm_state.kind) {
       case "reset": {
-        succeeded = await replace_prompt_text(template.default_text);
+        succeeded = await replace_prompt_text(null);
         if (succeeded) {
           set_preset_menu_open(false);
         }
@@ -466,14 +466,7 @@ export function useCustomPromptPageState(): UseCustomPromptPageStateResult {
         };
       });
     }
-  }, [
-    replace_prompt_text,
-    confirm_state,
-    delete_preset,
-    readonly,
-    save_preset,
-    template.default_text,
-  ]);
+  }, [replace_prompt_text, confirm_state, delete_preset, readonly, save_preset]);
 
   return {
     template,

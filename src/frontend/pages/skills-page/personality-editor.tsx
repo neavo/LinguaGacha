@@ -185,7 +185,7 @@ function usePersonalityEditor() {
       try {
         while (mounted.current && !resetting.current) {
           const { saved, draft, composing } = current.current;
-          if (!saved || draft === saved.body) return true;
+          if (!saved || draft.trim() === saved.body.trim()) return true;
           if (environment.current.locked || composing) return false;
           update({ saving: true });
           const next = await api_fetch<AgentPersonality>("/api/agent/personality/save", {
@@ -210,7 +210,7 @@ function usePersonalityEditor() {
       writing.current = null;
     }
   }, [cancel, report, update]);
-  const dirty = state.saved !== null && state.draft !== state.saved.body;
+  const dirty = state.saved !== null && state.draft.trim() !== state.saved.body.trim();
   useEffect(() => {
     if (dirty && !locked && !state.busy && !state.saving && !state.composing && !state.save_failed)
       timer.current = setTimeout(() => {

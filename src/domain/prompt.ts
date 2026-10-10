@@ -3,13 +3,15 @@ import { Type, type Static } from "typebox";
 import { PROJECT_REVISION_SCHEMA, read_project_revision } from "./project-revision";
 
 export const TRANSLATION_PROMPT_SLICE_SCHEMA = Type.Object({
-  text: Type.String(), // 自定义翻译提示词正文。
+  text: Type.Union([Type.String(), Type.Null()], {
+    description: "用户覆盖正文。null 使用当前内置模板，空字符串表示显式空正文。",
+  }),
   enabled: Type.Boolean(), // 是否采用自定义翻译提示词。
   revision: PROJECT_REVISION_SCHEMA, // 工程提示词内容与启用态的修订号。
 });
 export type TranslationPromptSlice = Static<typeof TRANSLATION_PROMPT_SLICE_SCHEMA>;
 const EMPTY_TRANSLATION_PROMPT_SLICE: Readonly<TranslationPromptSlice> = Object.freeze({
-  text: "",
+  text: null,
   enabled: false,
   revision: 0,
 });
@@ -30,7 +32,7 @@ export const PROMPT_KINDS = [TRANSLATION_PROMPT.store_key] as const;
 export function normalize_translation_prompt_slice(value: unknown): TranslationPromptSlice {
   const record = read_json_record(value);
   return {
-    text: String(record["text"] ?? EMPTY_TRANSLATION_PROMPT_SLICE.text),
+    text: record["text"] == null ? null : String(record["text"]),
     enabled: Boolean(record["enabled"] ?? EMPTY_TRANSLATION_PROMPT_SLICE.enabled),
     revision: read_project_revision(record["revision"]),
   };

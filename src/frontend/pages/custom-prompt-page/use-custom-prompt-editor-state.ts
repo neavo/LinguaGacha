@@ -15,7 +15,7 @@ import { useDebouncedCallback } from "@frontend/widgets/interactions/use-debounc
 import { AppError } from "@shared/error";
 
 type PromptSlice = {
-  text: string;
+  text: string | null;
   enabled: boolean;
 };
 
@@ -40,7 +40,7 @@ type UseCustomPromptEditorStateResult = {
   readonly: boolean;
   update_prompt_text: (next_text: string) => void;
   update_enabled: (next_enabled: boolean) => Promise<boolean>;
-  replace_prompt_text: (next_text: string) => Promise<boolean>;
+  replace_prompt_text: (next_text: string | null) => Promise<boolean>;
   flush_prompt_change: () => Promise<boolean>;
 };
 
@@ -52,7 +52,7 @@ const EMPTY_PROMPT_TEMPLATE: CustomPromptTemplate = {
   prefix_text: "",
   suffix_text: "",
 };
-const EMPTY_PROMPT_SLICE: PromptSlice = { text: "", enabled: false };
+const EMPTY_PROMPT_SLICE: PromptSlice = { text: null, enabled: false };
 
 /** 收窄模板回包中的可选文本字段。 */
 function normalize_prompt_template(
@@ -65,9 +65,14 @@ function normalize_prompt_template(
   };
 }
 
-/** 正文和启用状态共同决定草稿是否已保存。 */
+/** 忽略正文首尾空白，但 null 与空字符串仍代表不同覆盖身份。 */
+function are_prompt_texts_equal(left: string | null, right: string | null): boolean {
+  return left?.trim() === right?.trim();
+}
+
+/** 正文覆盖与启用态共同决定是否需要提交。 */
 function are_prompt_slices_equal(left: PromptSlice, right: PromptSlice): boolean {
-  return left.text === right.text && left.enabled === right.enabled;
+  return are_prompt_texts_equal(left.text, right.text) && left.enabled === right.enabled;
 }
 
 /** 查询与写入回包必须提供可用于下一次提交的 revision。 */
@@ -92,7 +97,7 @@ export function useCustomPromptEditorState(): UseCustomPromptEditorStateResult {
   const readonly = is_runtime_busy(runtime_snapshot) || load_status !== "ready";
 
   const [template, set_template] = useState<CustomPromptTemplate>(EMPTY_PROMPT_TEMPLATE);
-  const [prompt_text, set_prompt_text] = useState("");
+  const [prompt_text, set_prompt_text] = useState<string | null>(null); // 编辑缓冲保留空白，保存意图由 desired_ref 持有。
   const [enabled, set_enabled] = useState(false);
   const desired_ref = useRef<PromptSlice>(EMPTY_PROMPT_SLICE); // 当前编辑意图，每次编辑替换整个值。
   const persisted_ref = useRef<PromptSlice>(EMPTY_PROMPT_SLICE); // 仅成功查询或写入推进保存基线。
@@ -128,7 +133,7 @@ export function useCustomPromptEditorState(): UseCustomPromptEditorStateResult {
     const payload = await api_fetch<PromptQueryPayload>("/api/quality/prompts/view", {});
     return {
       slice: {
-        text: String(payload.prompt?.text ?? ""),
+        text: payload.prompt?.text ?? null,
         enabled: Boolean(payload.prompt?.enabled),
       },
       prompts_revision: read_prompts_revision(payload.sectionRevisions?.prompts),
@@ -242,7 +247,15 @@ export function useCustomPromptEditorState(): UseCustomPromptEditorStateResult {
         !readonly_ref.current &&
         !are_prompt_slices_equal(desired_ref.current, persisted_ref.current)
       ) {
-        const captured_slice = { ...desired_ref.current };
+        const desired = desired_ref.current;
+        const persisted = persisted_ref.current;
+        const captured_slice = {
+          ...desired,
+          // 只提交开关变化时保留持久化原文，避免顺带改写首尾空白。
+          text: are_prompt_texts_equal(desired.text, persisted.text)
+            ? persisted.text
+            : desired.text,
+        };
         if (!(await commit_captured_slice(captured_slice, generation, true))) {
           return false;
         }
@@ -278,6 +291,7 @@ export function useCustomPromptEditorState(): UseCustomPromptEditorStateResult {
       const next_template = await fetch_prompt_template();
       if (identity_generation_ref.current === generation) {
         set_template(next_template);
+        if (desired_ref.current.text === null) set_prompt_text(null);
       }
     } catch (error) {
       if (identity_generation_ref.current === generation) {
@@ -294,7 +308,7 @@ export function useCustomPromptEditorState(): UseCustomPromptEditorStateResult {
 
     if (!project_snapshot.loaded) {
       set_template(EMPTY_PROMPT_TEMPLATE);
-      set_prompt_text("");
+      set_prompt_text(null);
       set_enabled(false);
       desired_ref.current = EMPTY_PROMPT_SLICE;
       persisted_ref.current = EMPTY_PROMPT_SLICE;
@@ -307,10 +321,9 @@ export function useCustomPromptEditorState(): UseCustomPromptEditorStateResult {
       const next_template = await fetch_prompt_template();
       const prompt_snapshot = await fetch_prompt_snapshot();
       if (identity_generation_ref.current !== generation) return;
-      const editor_text = prompt_snapshot.slice.text.trim() || next_template.default_text;
-      const slice = { text: editor_text.trim(), enabled: prompt_snapshot.slice.enabled };
+      const slice = prompt_snapshot.slice;
       set_template(next_template);
-      set_prompt_text(editor_text);
+      set_prompt_text(slice.text);
       set_enabled(slice.enabled);
       desired_ref.current = slice;
       persisted_ref.current = slice;
@@ -371,19 +384,25 @@ export function useCustomPromptEditorState(): UseCustomPromptEditorStateResult {
         return;
       }
       set_prompt_text(next_text);
+      if (next_text.trim() === (desired_ref.current.text ?? template.default_text).trim()) return;
       desired_ref.current = {
         ...desired_ref.current,
-        text: next_text.trim(),
+        // 尚未保存覆盖时撤销回默认正文，继续保留继承状态。
+        text:
+          persisted_ref.current.text === null &&
+          are_prompt_texts_equal(next_text, template.default_text)
+            ? null
+            : next_text,
       };
 
       debounced_prompt_save.schedule();
     },
-    [debounced_prompt_save, readonly],
+    [debounced_prompt_save, readonly, template.default_text],
   );
 
   /** 导入或预设替换立即保存，失败恢复原草稿。 */
   const replace_prompt_text = useCallback(
-    async (next_text: string): Promise<boolean> => {
+    async (next_text: string | null): Promise<boolean> => {
       if (readonly) {
         return false;
       }
@@ -392,12 +411,12 @@ export function useCustomPromptEditorState(): UseCustomPromptEditorStateResult {
       const previous_prompt_text = prompt_text;
       const next_slice = {
         ...previous_slice,
-        text: next_text.trim(),
+        text: next_text,
       };
       set_prompt_text(next_slice.text);
       desired_ref.current = next_slice;
       const succeeded = await drain_prompt_change();
-      if (!succeeded && are_prompt_slices_equal(desired_ref.current, next_slice)) {
+      if (!succeeded && desired_ref.current === next_slice) {
         desired_ref.current = previous_slice;
         set_prompt_text(previous_prompt_text);
 
@@ -426,7 +445,7 @@ export function useCustomPromptEditorState(): UseCustomPromptEditorStateResult {
       const succeeded = await drain_prompt_change();
       if (succeeded) {
         set_enabled(next_enabled);
-      } else if (are_prompt_slices_equal(desired_ref.current, next_slice)) {
+      } else if (desired_ref.current === next_slice) {
         desired_ref.current = previous_slice;
 
         if (!are_prompt_slices_equal(previous_slice, persisted_ref.current)) {
@@ -442,7 +461,7 @@ export function useCustomPromptEditorState(): UseCustomPromptEditorStateResult {
     load_status,
     reload_prompt,
     template,
-    prompt_text,
+    prompt_text: prompt_text ?? template.default_text,
     enabled,
     readonly,
     update_prompt_text,

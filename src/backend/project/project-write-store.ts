@@ -477,7 +477,7 @@ export class ProjectWriteStore {
     projectPath: string;
     expectedSectionRevisions: ProjectExpectedSectionRevisions;
     promptRuleType: string;
-    text: string;
+    text: string | null;
     revisionKey: string;
     enabledMetaKey?: string;
     enabled?: boolean;
@@ -666,7 +666,7 @@ export class ProjectWriteStore {
         const storage = resolve_project_prompt_storage();
         return [kind, this.database.get_rule_text(request.projectPath, storage.database_type)];
       }),
-    ) as Partial<Record<PromptKind, string>>;
+    ) as Partial<Record<PromptKind, string | null>>;
     return resolve_agent_workspace_writes({
       batch: request.batch,
       current: {

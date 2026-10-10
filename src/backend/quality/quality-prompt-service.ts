@@ -10,7 +10,6 @@ import type { ProjectWriteStore } from "../project/project-write-store";
 import { require_project_expected_section_revisions } from "../project/project-write-request";
 import type { RuntimeOperationGate } from "../runtime-operation-gate";
 import { resolve_prompt_template_language } from "../../domain/app-language";
-import { is_json_record } from "../../domain/json";
 import { TRANSLATION_PROMPT } from "../../domain/prompt";
 import { normalize_setting_snapshot } from "../../domain/setting";
 import { NativeFs, default_native_fs } from "../../native/native-fs";
@@ -45,16 +44,16 @@ export class QualityPromptService {
     return {
       projectPath: project_path,
       sectionRevisions: this.cache.readSectionRevisions() as unknown as JsonValue,
-      prompt: this.normalize_record(
-        prompts_block[TRANSLATION_PROMPT.store_key],
-      ) as unknown as JsonValue,
+      prompt: prompts_block[TRANSLATION_PROMPT.store_key],
     };
   }
 
   /**
    * 读取随应用语言变化的提示词模板。
    */
-  public get_template(_request: JsonRecord): JsonRecord {
+  public get_template(_request: JsonRecord): {
+    template: { default_text: string; prefix_text: string; suffix_text: string };
+  } {
     const config = normalize_setting_snapshot(this.app_setting_service.read_setting());
     const prompt_language = resolve_prompt_template_language(config.app_language);
     const template_dir = this.paths.get_prompt_template_dir(prompt_language);
@@ -82,6 +81,9 @@ export class QualityPromptService {
   public async save(request: JsonRecord): Promise<ProjectWriteResult> {
     return await this.runtime_gate.run_project_write(async () => {
       this.assert_no_legacy_fields(request, ["expected_revision"]);
+      if (request["text"] !== null && typeof request["text"] !== "string") {
+        throw new AppErrors.AppError("request.validation_failed");
+      }
       const prompt = TRANSLATION_PROMPT;
       const project_path = this.session_state.require_loaded_project_path();
       return await this.write_store.save_prompt({
@@ -90,7 +92,7 @@ export class QualityPromptService {
           request["expected_section_revisions"],
         ),
         promptRuleType: prompt.database_type,
-        text: String(request["text"] ?? ""),
+        text: request["text"],
         revisionKey: prompt.revision_meta_key,
         ...(request["enabled"] === undefined || request["enabled"] === null
           ? {}
@@ -116,8 +118,10 @@ export class QualityPromptService {
     const prompt = TRANSLATION_PROMPT;
     const project_path = this.session_state.require_loaded_project_path();
     const output_path = this.ensure_txt_suffix(String(request["path"] ?? ""));
-    const text = this.database.get_rule_text(project_path, prompt.database_type);
-    this.native_fs.write_file_sync(output_path, text.trim());
+    const text =
+      this.database.get_rule_text(project_path, prompt.database_type) ??
+      this.get_template({}).template.default_text;
+    this.native_fs.write_file_sync(output_path, text);
     return { path: output_path.replace(/\\/g, "/") };
   }
 
@@ -194,11 +198,6 @@ export class QualityPromptService {
     }
     await this.native_fs.remove_async(preset_file.file_path);
     return { path: preset_file.file_path.replace(/\\/g, "/") };
-  }
-
-  /** cache block 缺失时回空对象，避免页面拿到 null。 */
-  private normalize_record(value: unknown): JsonRecord {
-    return is_json_record(value) ? (value as JsonRecord) : {};
   }
 
   /** 拒绝旧 revision 字段，强制走 section revision。 */

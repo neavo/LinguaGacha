@@ -26,6 +26,60 @@ import {
 } from "./agent-workspace-write";
 
 describe("ProjectWriteStore", () => {
+  it("Agent 提示词覆盖区分无记录、空正文和重置，提交快照保留 null", async () => {
+    const committed = vi.fn();
+    const { database, project_path, store } = create_store("prompt-null", {
+      projectEventHandler: committed,
+    });
+    let previous: string | null = null;
+    for (const text of ["", "旧覆盖", null]) {
+      const result = await store.apply_agent_workspace_changes({
+        projectPath: project_path,
+        source: "agent_workspace_apply",
+        batch: agent_batch({
+          items: [],
+          quality: {},
+          prompts: [
+            {
+              kind: "translation",
+              line: 1,
+              fp: String(project_agent_workspace_prompt("translation", previous)["fp"]),
+              text,
+            },
+          ],
+        }),
+      });
+      expect(result.rejected).toEqual([]);
+      expect(database.get_rule_text(project_path, "translation_prompt")).toBe(text);
+      expect(committed.mock.calls.at(-1)?.[0].prompts).toMatchObject({ translation: { text } });
+      previous = text;
+    }
+  });
+
+  it("提示词重置后的事务失败会恢复覆盖、启用态和修订号", async () => {
+    const { database, project_path, store } = create_store("prompt-reset-rollback");
+    database.set_rule_text(project_path, "translation_prompt", "覆盖");
+    database.set_meta(project_path, "translation_prompt_enable", true);
+    vi.spyOn(database, "upsert_meta_entries").mockImplementation(() => {
+      throw new Error("meta write failed");
+    });
+    await expect(
+      store.save_prompt({
+        projectPath: project_path,
+        expectedSectionRevisions: { prompts: 0 },
+        promptRuleType: "translation_prompt",
+        text: null,
+        revisionKey: "quality_prompt_revision.translation",
+        enabledMetaKey: "translation_prompt_enable",
+        enabled: false,
+      }),
+    ).rejects.toThrow();
+    expect(database.get_rule_text(project_path, "translation_prompt")).toBe("覆盖");
+    expect(read_meta(database, project_path)).toMatchObject({ translation_prompt_enable: true });
+    expect(read_meta(database, project_path)).not.toHaveProperty(
+      "quality_prompt_revision.translation",
+    );
+  });
   const cleanup_callbacks: Array<() => void> = [];
 
   afterEach(() => {
@@ -712,7 +766,7 @@ describe("ProjectWriteStore", () => {
           {
             kind: "translation",
             line: 4,
-            fp: String(project_agent_workspace_prompt("translation", "")["fp"]),
+            fp: String(project_agent_workspace_prompt("translation", null)["fp"]),
             text: "翻译正文",
           },
         ],
@@ -855,7 +909,7 @@ describe("ProjectWriteStore", () => {
             {
               kind: "translation",
               line: 3,
-              fp: String(project_agent_workspace_prompt("translation", "")["fp"]),
+              fp: String(project_agent_workspace_prompt("translation", null)["fp"]),
               text: "翻译正文",
             },
           ],
@@ -872,7 +926,7 @@ describe("ProjectWriteStore", () => {
       status: "NONE",
     });
     expect(database.get_rules(project_path, "glossary")).toEqual([]);
-    expect(database.get_rule_text(project_path, "translation_prompt")).toBe("");
+    expect(database.get_rule_text(project_path, "translation_prompt")).toBeNull();
     expect(read_meta(database, project_path)).not.toHaveProperty("project_runtime_revision.items");
     expect(project_event_handler).not.toHaveBeenCalled();
     expect(published_changes).toEqual([]);
@@ -895,7 +949,7 @@ describe("ProjectWriteStore", () => {
           {
             kind: "translation",
             line: 2,
-            fp: String(project_agent_workspace_prompt("translation", "")["fp"]),
+            fp: String(project_agent_workspace_prompt("translation", null)["fp"]),
             text: "翻译正文",
           },
         ],

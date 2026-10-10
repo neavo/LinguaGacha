@@ -127,6 +127,25 @@ describe("角色设定编辑", () => {
       (button) => button.textContent === "确认",
     )!;
   }
+  it("角色仅首尾空白变化时，自动保存、显式保存与返回均不提交正文", async () => {
+    await edit(" \nCustom role\t ");
+    expect(status()).toBe(t("skills_page.editor.saved"));
+    await act(async () => vi.advanceTimersByTime(SKILL_AUTOSAVE_DELAY_MS));
+    expect(status()).toBe(t("skills_page.editor.saved"));
+    await act(async () =>
+      container
+        .querySelector(".skill-editor")!
+        .dispatchEvent(new KeyboardEvent("keydown", { key: "s", ctrlKey: true, bubbles: true })),
+    );
+    const button = [...container.querySelectorAll<HTMLButtonElement>("button")].find(
+      (button) => button.getAttribute("aria-label") === t("skills_page.editor.back"),
+    );
+    expect(button).toBeDefined();
+    await act(async () => button!.click());
+    expect(back).toHaveBeenCalledOnce();
+    expect(mocks.api.mock.calls.filter(([url]) => String(url).endsWith("/save"))).toEqual([]);
+  });
+
   it("人格呈现固定技能文档，元数据可选择复制但不能修改", async () => {
     const document = read_skill_editor_document(view().state.doc.toString());
     const fields = skill_editor_layout(view().state.doc).fields;
@@ -143,9 +162,9 @@ describe("角色设定编辑", () => {
       );
     }
     expect(read_skill_editor_document(view().state.doc.toString())).toEqual(document);
-    await edit("Changed body");
+    await edit("  Changed body\n");
     await act(async () => vi.advanceTimersByTime(SKILL_AUTOSAVE_DELAY_MS));
-    expect(disk.body).toBe("Changed body");
+    expect(disk.body).toBe("  Changed body\n");
   });
   it("空正文可自动保存，运行占用期间暂停写入并在空闲后恢复", async () => {
     await edit("");
