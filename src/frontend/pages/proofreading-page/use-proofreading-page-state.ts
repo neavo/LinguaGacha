@@ -450,7 +450,7 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
     },
     [],
   );
-  // 弹窗需要格式私有详情，不能复用只含列表字段的可见窗口。
+  // 打开与保存前回读当前条目，避免使用窗口中的过期快照。
   const read_dialog_items = useCallback((row_ids: string[]): Promise<ProofreadingClientItem[]> => {
     return proofreading_runtime_client_ref.current.read_proofreading_items_by_row_ids({
       row_ids,
@@ -466,8 +466,8 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
     reset_dialog,
     open_edit_dialog,
     update_dialog_draft,
-    open_dialog_context,
-    close_dialog_context,
+    open_dialog_view,
+    return_to_edit,
     save_dialog_entry,
     save_dialog_draft,
     show_dialog_item,
@@ -476,6 +476,11 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
     visible_item_by_id,
     read_items_by_row_ids: read_dialog_items,
     read_context: read_dialog_context,
+    read_raw_item: (row_id) =>
+      proofreading_runtime_client_ref.current.read_proofreading_raw_item({
+        row_id,
+        project_path: project_snapshot.path,
+      }),
     run_project_write,
     t,
   });
@@ -865,7 +870,7 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
     async (row_id: string): Promise<void> => {
       if (context_navigation_ref.current !== null || dialog_state.pending) return;
       if (row_id === dialog_state.target_row_id) {
-        close_dialog_context();
+        return_to_edit();
         return;
       }
       if (readonly || is_refreshing || is_writing || cache_status !== "ready") return;
@@ -927,7 +932,7 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
       cache_status,
       cancel_context_navigation,
       clear_refresh_scroll_anchor,
-      close_dialog_context,
+      return_to_edit,
       dialog_state.pending,
       dialog_state.target_row_id,
       handle_api_error,
@@ -1009,9 +1014,9 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
       open_edit_dialog,
       request_close_dialog,
       update_dialog_draft,
-      open_dialog_context,
+      open_dialog_view,
       open_context_item,
-      close_dialog_context,
+      return_to_edit,
       save_dialog_entry,
       replace_next_visible_match,
       replace_all_visible_matches,
@@ -1031,7 +1036,7 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
     cache_status,
     list_revisions,
     close_filter_dialog,
-    close_dialog_context,
+    return_to_edit,
     close_pending_confirmation,
     confirm_filter_dialog_filters,
     confirm_pending_confirmation,
@@ -1049,7 +1054,7 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
     is_refreshing,
     is_regex,
     open_edit_dialog,
-    open_dialog_context,
+    open_dialog_view,
     open_context_item,
     is_navigating,
     open_filter_dialog,

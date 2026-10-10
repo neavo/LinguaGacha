@@ -20,7 +20,8 @@ export const ja_jp_proofreading_page = {
     clear_translation_keep_status: "消去して状態を維持",
     clear_and_reset_status: "消去して状態をリセット",
     set_translation_status: "翻訳状態を設定",
-    view_context: "前後の文脈を表示",
+    view_context: "前後の文脈",
+    raw_data: "元データ",
     edit_item: "この項目を編集",
     back: "戻る",
   },
@@ -82,6 +83,9 @@ export const ja_jp_proofreading_page = {
   },
   context: {
     loading: "前後の文脈を読み込み中 …",
+  },
+  raw_data: {
+    loading: "元データを読み込み中 …",
   },
   confirm: {
     retranslate_description: "{COUNT} 件の項目を再翻訳しますか …?",

@@ -20,7 +20,8 @@ export const ko_kr_proofreading_page = {
     clear_translation_keep_status: "비우고 상태 유지",
     clear_and_reset_status: "비우고 상태 초기화",
     set_translation_status: "번역 상태 설정",
-    view_context: "문맥 보기",
+    view_context: "앞뒤 문맥",
+    raw_data: "원시 데이터",
     edit_item: "이 항목 편집",
     back: "돌아가기",
   },
@@ -81,7 +82,10 @@ export const ko_kr_proofreading_page = {
     no_glossary_error: "유효한 데이터가 없습니다 …",
   },
   context: {
-    loading: "문맥 읽는 중 …",
+    loading: "앞뒤 문맥을 읽는 중 …",
+  },
+  raw_data: {
+    loading: "원시 데이터를 읽는 중 …",
   },
   confirm: {
     retranslate_description: "항목 {COUNT}개를 다시 번역할까요 …?",

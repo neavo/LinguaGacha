@@ -63,6 +63,7 @@ type ProofreadingClientFixture = {
   resolve_proofreading_row_index: ReturnType<typeof vi.fn>;
   read_proofreading_items_by_row_ids: ReturnType<typeof vi.fn>;
   read_proofreading_context: ReturnType<typeof vi.fn>;
+  read_proofreading_raw_item: ReturnType<typeof vi.fn>;
   build_proofreading_filter_panel: ReturnType<typeof vi.fn>;
 };
 
@@ -493,6 +494,7 @@ function create_proofreading_client_fixture(): ProofreadingClientFixture {
       ),
     ),
     read_proofreading_context: vi.fn(async () => []),
+    read_proofreading_raw_item: vi.fn(async () => create_project_item({})),
     build_proofreading_filter_panel: vi.fn(async () => create_filter_panel()),
   };
 }
@@ -711,7 +713,7 @@ describe("useProofreadingPageState", () => {
       open: true,
       target_row_id: "2",
       pending: false,
-      context: { status: "idle" },
+      view: { kind: "edit" },
       draft_item: { dst: "bar-2" },
     });
   });
@@ -2712,6 +2714,39 @@ describe("useProofreadingPageState", () => {
     expect(latest_state?.cache_status).toBe("idle");
     expect(latest_state?.settled_project_path).toBe("");
     expect(proofreading_client_fixture.current.build_proofreading_list_view).not.toHaveBeenCalled();
+  });
+
+  it("切换工程废弃原始数据请求并清空旧弹窗", async () => {
+    await render_hook();
+    await act(async () => {
+      await latest_state?.open_edit_dialog("1");
+    });
+    const response = create_deferred<ProjectItemPublicRecord>();
+    proofreading_client_fixture.current.read_proofreading_raw_item.mockReturnValueOnce(
+      response.promise,
+    );
+    let reading: Promise<void> | undefined;
+    act(() => {
+      reading = latest_state?.open_dialog_view("raw-data");
+    });
+    expect(proofreading_client_fixture.current.read_proofreading_raw_item).toHaveBeenCalledWith({
+      row_id: "1",
+      project_path: "E:/demo/sample.lg",
+    });
+    runtime_fixture.current = {
+      ...runtime_fixture.current,
+      project_snapshot: { loaded: true, path: "E:/demo/another.lg" },
+    };
+    await render_hook();
+    await act(async () => {
+      response.resolve(create_project_item({ dst: "旧工程译文" }));
+      await reading;
+    });
+    expect(latest_state?.dialog_state).toMatchObject({
+      open: false,
+      target_row_id: null,
+      view: { kind: "edit" },
+    });
   });
 
   it("空替换文本会按当前列表 revision 清除全部可见匹配", async () => {

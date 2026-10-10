@@ -1,16 +1,23 @@
 import { describe, expect, it, vi } from "vitest";
 
+import { build_project_item_public_record, create_item } from "../../domain/item";
 import type { JsonRecord } from "../../domain/json";
 import type { ProofreadingCache } from "../cache/proofreading-cache";
 import { ProjectSessionState } from "../project/project-session-state";
 import { ProofreadingQueryService } from "./proofreading-query-service";
 
+/** 固定校对计算结果，让查询测试只观察协议适配。 */
 function create_cache(): ProofreadingCache {
   const base_result = {
     projectPath: "E:/Project/demo.lg",
     sectionRevisions: { items: 3, quality: 2, proofreading: 1 },
   };
   return {
+    rawItem: vi.fn(() => ({
+      ...base_result,
+      sectionRevisions: { items: 9 },
+      data: build_project_item_public_record(create_item({ id: 1, row: 1 })),
+    })),
     sync: vi.fn(async () => ({
       ...base_result,
       data: {
@@ -78,11 +85,54 @@ function create_cache(): ProofreadingCache {
 }
 
 describe("ProofreadingQueryService", () => {
+  it("完整条目查询交给缓存并保留对应工程修订", async () => {
+    const session = new ProjectSessionState();
+    await session.mark_loaded("E:/Project/demo.lg");
+    const cache = create_cache();
+    const service = new ProofreadingQueryService({ sessionState: session, cache });
+    const result = await service.query({
+      action: "raw_item",
+      row_id: "1",
+      project_path: "E:/Project/demo.lg",
+    });
+    expect(cache.rawItem).toHaveBeenCalledWith(1);
+    expect(result).toEqual({
+      projectPath: "E:/Project/demo.lg",
+      sectionRevisions: { items: 9 },
+      item: build_project_item_public_record(create_item({ id: 1, row: 1 })),
+    });
+  });
+
+  it("拒绝无效身份、旧工程和未加载工程", async () => {
+    const session = new ProjectSessionState();
+    const cache = create_cache();
+    const service = new ProofreadingQueryService({ sessionState: session, cache });
+    const request = { action: "raw_item", row_id: "1", project_path: "E:/Project/demo.lg" };
+    await expect(service.query(request)).rejects.toMatchObject({ code: "project.not_loaded" });
+    await session.mark_loaded(request.project_path);
+    for (const row_id of ["", "0", "-1", "1.5", "01", "NaN", "9007199254740992", 1, null]) {
+      await expect(service.query({ ...request, row_id })).rejects.toMatchObject({
+        diagnostic_context: { field: "row_id" },
+      });
+    }
+    await expect(service.query({ ...request, project_path: "old.lg" })).rejects.toMatchObject({
+      diagnostic_context: { reason: "stale_proofreading_project" },
+    });
+    expect(cache.rawItem).not.toHaveBeenCalled();
+    const result = cache.rawItem(1);
+    vi.mocked(cache.rawItem).mockReturnValue({ ...result, projectPath: "old.lg" });
+    await expect(service.query(request)).rejects.toMatchObject({
+      diagnostic_context: { reason: "stale_proofreading_project" },
+    });
+  });
   it("把 sync 请求收窄后交给 ProofreadingCache 并保留公开响应形状", async () => {
     const session_state = new ProjectSessionState();
     session_state.mark_loaded("E:/Project/demo.lg");
     const cache = create_cache();
-    const service = new ProofreadingQueryService({ sessionState: session_state, cache });
+    const service = new ProofreadingQueryService({
+      sessionState: session_state,
+      cache,
+    });
 
     const result = await service.query({
       action: "sync",
@@ -107,7 +157,10 @@ describe("ProofreadingQueryService", () => {
     const session_state = new ProjectSessionState();
     session_state.mark_loaded("E:/Project/demo.lg");
     const cache = create_cache();
-    const service = new ProofreadingQueryService({ sessionState: session_state, cache });
+    const service = new ProofreadingQueryService({
+      sessionState: session_state,
+      cache,
+    });
 
     const view = await service.query({
       action: "list",
@@ -149,7 +202,10 @@ describe("ProofreadingQueryService", () => {
     const session_state = new ProjectSessionState();
     session_state.mark_loaded("E:/Project/demo.lg");
     const cache = create_cache();
-    const service = new ProofreadingQueryService({ sessionState: session_state, cache });
+    const service = new ProofreadingQueryService({
+      sessionState: session_state,
+      cache,
+    });
 
     await expect(service.query({ action: "warning_summary" })).resolves.toMatchObject({
       projectPath: "E:/Project/demo.lg",
@@ -166,7 +222,10 @@ describe("ProofreadingQueryService", () => {
   it("类型化 warning 查询保留 loaded-project 守卫且不扩张公开 action", async () => {
     const session_state = new ProjectSessionState();
     const cache = create_cache();
-    const service = new ProofreadingQueryService({ sessionState: session_state, cache });
+    const service = new ProofreadingQueryService({
+      sessionState: session_state,
+      cache,
+    });
     const query = {
       warning_types: ["GLOSSARY" as const],
       keywords: ["HP"],
@@ -194,7 +253,10 @@ it("文件选择通过 JSON 边界保留内部身份、默认意图与显式空�
   const session = new ProjectSessionState();
   session.mark_loaded("E:/Project/demo.lg");
   const cache = create_cache();
-  const service = new ProofreadingQueryService({ sessionState: session, cache });
+  const service = new ProofreadingQueryService({
+    sessionState: session,
+    cache,
+  });
   const selections: JsonRecord[] = [
     { mode: "default" },
     { mode: "selected", values: [] },

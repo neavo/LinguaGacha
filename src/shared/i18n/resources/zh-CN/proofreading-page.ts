@@ -18,7 +18,8 @@ export const zh_cn_proofreading_page = {
     clear_translation_keep_status: "清空并保留状态",
     clear_and_reset_status: "清空并重置状态",
     set_translation_status: "设置翻译状态",
-    view_context: "查看上下文",
+    view_context: "前后文",
+    raw_data: "原始数据",
     edit_item: "编辑此条目",
     back: "返回",
   },
@@ -79,7 +80,10 @@ export const zh_cn_proofreading_page = {
     no_glossary_error: "没有有效数据 …",
   },
   context: {
-    loading: "正在读取上下文 …",
+    loading: "正在读取前后文 …",
+  },
+  raw_data: {
+    loading: "正在读取原始数据 …",
   },
   confirm: {
     retranslate_description: "是否确认重新翻译 {COUNT} 个条目 …?",

@@ -1,11 +1,12 @@
 import type { ProofreadingContextItem } from "@shared/proofreading/proofreading-types";
 
-// idle 同时表示编辑视图；只有 ready 携带数据，避免无数据状态混入过期条目。
-export type ProofreadingDialogContextState =
-  | { status: "idle" }
-  | { status: "loading" }
-  | { status: "error" }
-  | { status: "ready"; items: ProofreadingContextItem[] };
+// 查看状态属于当前弹窗请求，`ready` 数据保留至返回或重新进入。
+export type ProofreadingDialogView =
+  | { kind: "edit" }
+  | { kind: "context"; status: "loading" | "error" }
+  | { kind: "context"; status: "ready"; items: ProofreadingContextItem[] }
+  | { kind: "raw-data"; status: "loading" | "error" }
+  | { kind: "raw-data"; status: "ready"; text: string };
 
 export type ProofreadingDialogState = {
   open: boolean;
@@ -15,7 +16,7 @@ export type ProofreadingDialogState = {
     name_dst: string;
   };
   pending: boolean; // 保存或上下文跳转期间阻止重复操作和关闭
-  context: ProofreadingDialogContextState; // 与编辑草稿同属当前弹窗，关闭弹窗时一并清空
+  view: ProofreadingDialogView;
 };
 
 export type ProofreadingConfirmationKind = "retranslate" | "clear-translations";
