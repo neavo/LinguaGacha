@@ -21,7 +21,8 @@ export const de_de_proofreading_page = {
     clear_translation_keep_status: "Leeren und Status beibehalten",
     clear_and_reset_status: "Löschen und Status zurücksetzen",
     set_translation_status: "Übersetzungsstatus setzen",
-    view_context: "Kontext anzeigen",
+    view_context: "Kontext",
+    raw_data: "Rohdaten",
     edit_item: "Diesen Eintrag bearbeiten",
     back: "Zurück",
   },
@@ -84,6 +85,9 @@ export const de_de_proofreading_page = {
   },
   context: {
     loading: "Kontext wird geladen …",
+  },
+  raw_data: {
+    loading: "Rohdaten werden geladen …",
   },
   confirm: {
     retranslate_description: "{COUNT} Einträge wirklich neu übersetzen …?",

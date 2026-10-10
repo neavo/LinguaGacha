@@ -12,12 +12,14 @@ import type {
 } from "@shared/proofreading/proofreading-types";
 import type { ProjectDataSectionRevisions } from "@shared/project-event";
 import type { ProofreadingDialogState } from "@frontend/pages/proofreading-page/proofreading-page-ui-types";
+import type { ProjectItemPublicRecord } from "@domain/item";
 
 type UseProofreadingDialogActionsOptions = {
   list_revisions: ProjectDataSectionRevisions; // 弹窗保存使用列表 query 已消费的 revision 锁
   visible_item_by_id: Map<string, ProofreadingClientItem>;
   read_items_by_row_ids: (row_ids: string[]) => Promise<ProofreadingClientItem[]>;
   read_context: (row_id: string) => Promise<ProofreadingContextItem[]>;
+  read_raw_item: (row_id: string) => Promise<ProjectItemPublicRecord>;
   run_project_write: ProofreadingProjectWriteRunner;
   t: TextResolver;
 };
@@ -29,14 +31,14 @@ type UseProofreadingDialogActionsResult = {
   open_edit_dialog: (row_id: string) => Promise<void>;
   show_dialog_item: (item: ProofreadingClientItem) => void;
   update_dialog_draft: (patch: Partial<ProofreadingDialogState["draft_item"]>) => void;
-  open_dialog_context: () => Promise<void>;
-  close_dialog_context: () => void;
+  open_dialog_view: (kind: "context" | "raw-data") => Promise<void>;
+  return_to_edit: () => void;
   save_dialog_entry: () => Promise<void>;
   save_dialog_draft: () => Promise<boolean>;
 };
 
-/** 创建未打开且没有异步上下文残留的弹窗状态。 */
-export function create_empty_dialog_state(): ProofreadingDialogState {
+/** 创建关闭弹窗时的初始状态。 */
+function create_empty_dialog_state(): ProofreadingDialogState {
   return {
     open: false,
     target_row_id: null,
@@ -45,21 +47,19 @@ export function create_empty_dialog_state(): ProofreadingDialogState {
       name_dst: "",
     },
     pending: false,
-    context: {
-      status: "idle",
-    },
+    view: { kind: "edit" },
   };
 }
 
-/** 管理校对编辑弹窗的打开、草稿、上下文读取和保存提交。 */
+/** 管理校对条目弹窗的打开、草稿、查看请求和保存提交。 */
 export function useProofreadingDialogActions(
   options: UseProofreadingDialogActionsOptions,
 ): UseProofreadingDialogActionsResult {
   const [dialog_state, set_dialog_state] = useState<ProofreadingDialogState>(() => {
     return create_empty_dialog_state();
   });
-  const [dialog_item_snapshot, set_dialog_item_snapshot] = useState<ProofreadingItem | null>(null);
-  const dialog_request_id_ref = useRef(0); // 弹窗关闭或重开时，旧的条目与上下文响应都不得回写
+  const [dialog_item_snapshot, set_dialog_item_snapshot] = useState<ProofreadingItem | null>(null); // 目标离开列表窗口时仍保留编辑基线。
+  const dialog_request_id_ref = useRef(0); // 返回、关闭或重开时，旧的条目与查看响应都不得回写
   const save_pending_ref = useRef(false); // 同一草稿保存只允许一个在途提交
 
   // 离页撤销详情与保存前读取的身份，迟到结果不能继续写入或通知。
@@ -92,15 +92,14 @@ export function useProofreadingDialogActions(
       target_row_id: item.row_id,
       draft_item: { dst: item.dst, name_dst: read_item_name_text(item.name_dst) },
       pending: false,
-      context: { status: "idle" },
+      view: { kind: "edit" },
     });
   }, []);
 
   /** 按目标身份准备可编辑草稿。 */
   const open_edit_dialog = useCallback(
     async (row_id: string): Promise<void> => {
-      const request_id = dialog_request_id_ref.current + 1;
-      dialog_request_id_ref.current = request_id;
+      const request_id = ++dialog_request_id_ref.current;
       let target_item: ProofreadingClientItem | undefined;
       try {
         target_item = (await options.read_items_by_row_ids([row_id]))[0];
@@ -135,63 +134,62 @@ export function useProofreadingDialogActions(
     [],
   );
 
-  /** 关闭上下文并使在途读取失效。 */
-  const close_dialog_context = useCallback((): void => {
+  /** 返回编辑并使在途查看请求失效，草稿由弹窗继续持有。 */
+  const return_to_edit = useCallback((): void => {
     dialog_request_id_ref.current += 1;
     set_dialog_state((previous_state) => {
       return {
         ...previous_state,
-        context: {
-          status: "idle",
-        },
+        view: { kind: "edit" },
       };
     });
   }, []);
 
-  /** 按当前行读取上下文，过期响应由请求身份隔离。 */
-  const open_dialog_context = useCallback(async (): Promise<void> => {
-    const target_row_id = dialog_state.target_row_id;
-    if (target_row_id === null || dialog_state.pending) {
-      return;
-    }
-    const request_id = dialog_request_id_ref.current + 1;
-    dialog_request_id_ref.current = request_id;
-
-    set_dialog_state((previous_state) => {
-      return {
-        ...previous_state,
-        context: {
-          status: "loading",
-        },
-      };
-    });
-
-    // 通知与状态只接纳当前条目的请求，关闭重开上下文即可重新读取。
-    let failure: unknown;
-    const items = await options.read_context(target_row_id).catch((error: unknown) => {
-      failure = error;
-      return [];
-    });
-    const has_target = items.some((item) => item.row_id === target_row_id);
-    if (dialog_request_id_ref.current === request_id && !has_target)
-      push_error_toast(
-        options.t("app.feedback.read_failed"),
-        failure ?? "The requested entry is absent from the context response.",
-      );
-    set_dialog_state((previous_state) => {
-      if (
-        dialog_request_id_ref.current !== request_id ||
-        previous_state.target_row_id !== target_row_id ||
-        previous_state.context.status !== "loading"
-      ) {
-        return previous_state;
+  /** 每次进入查看视图读取当前数据，过期响应由请求身份隔离。 */
+  const open_dialog_view = useCallback(
+    async (kind: "context" | "raw-data"): Promise<void> => {
+      const target_row_id = dialog_state.target_row_id;
+      if (target_row_id === null || dialog_state.pending) {
+        return;
       }
-      return {
-        ...previous_state,
-        context: has_target ? { status: "ready", items } : { status: "error" },
-      };
-    });
-  }, [dialog_state.pending, dialog_state.target_row_id, options]);
+      const request_id = ++dialog_request_id_ref.current;
+
+      set_dialog_state((previous_state) => {
+        return {
+          ...previous_state,
+          view: { kind, status: "loading" },
+        };
+      });
+
+      let view: ProofreadingDialogState["view"];
+      try {
+        if (kind === "context") {
+          const items = await options.read_context(target_row_id);
+          if (!items.some((item) => item.row_id === target_row_id)) {
+            throw new Error("The requested entry is absent from the context response.");
+          }
+          view = { kind, status: "ready", items };
+        } else {
+          const item = await options.read_raw_item(target_row_id);
+          view = { kind, status: "ready", text: JSON.stringify(item, null, 2) };
+        }
+      } catch (error) {
+        if (dialog_request_id_ref.current !== request_id) return;
+        push_error_toast(options.t("app.feedback.read_failed"), error);
+        view = { kind, status: "error" };
+      }
+      set_dialog_state((previous_state) => {
+        if (dialog_request_id_ref.current !== request_id) {
+          return previous_state;
+        }
+        return {
+          ...previous_state,
+          view,
+        };
+      });
+    },
+    [dialog_state.pending, dialog_state.target_row_id, options],
+  );
 
   /** 保存实际内容差异，显式保存与导航共用读取、互斥和提交过程。 */
   const save_dialog_draft = useCallback(async (): Promise<boolean> => {
@@ -247,8 +245,8 @@ export function useProofreadingDialogActions(
     open_edit_dialog,
     show_dialog_item,
     update_dialog_draft,
-    open_dialog_context,
-    close_dialog_context,
+    open_dialog_view,
+    return_to_edit,
     save_dialog_entry,
     save_dialog_draft,
   };

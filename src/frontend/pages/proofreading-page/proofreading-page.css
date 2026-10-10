@@ -415,28 +415,52 @@
   padding: 0;
 }
 
-.proofreading-page__dialog-file-path,
-.proofreading-page__context-file-path {
+.proofreading-page__dialog-file-path {
   min-width: 0;
   flex: 1;
   overflow: hidden;
   color: var(--muted-foreground);
   text-overflow: ellipsis;
   white-space: nowrap;
+  padding: 10px 12px;
   font-size: var(--ui-font-size-13);
   line-height: 1.35;
 }
 
-.proofreading-page__dialog-file-path {
-  padding: 10px 12px;
+.proofreading-page__dialog-file-actions {
+  display: flex;
+  align-self: stretch;
+  flex-shrink: 0;
 }
 
-.proofreading-page__dialog-file-card .proofreading-page__dialog-context-trigger {
+.proofreading-page__dialog-file-actions > button {
+  position: relative;
   height: auto;
-  align-self: stretch;
+  padding-inline: 10px;
   border: 0;
-  border-left: 1px solid var(--border);
+  border-radius: 0;
+}
+
+.proofreading-page__dialog-file-actions > button::before {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  width: 1px;
+  height: 16px;
+  background: var(--border);
+  content: "";
+  pointer-events: none;
+  transform: translateY(-50%);
+}
+
+.proofreading-page__dialog-file-actions > button:last-child {
   border-radius: 0 var(--ui-radius-card) var(--ui-radius-card) 0;
+}
+
+/* 文件栏的无边框按钮用内描边保留键盘焦点。 */
+.proofreading-page__dialog-file-actions > button:focus-visible {
+  outline: 1px solid var(--ring);
+  outline-offset: -2px;
 }
 
 .proofreading-page__context-view {
@@ -445,17 +469,6 @@
   min-height: 0;
   flex: 1;
   flex-direction: column;
-  gap: 12px;
-}
-
-.proofreading-page__context-header {
-  display: flex;
-  min-width: 0;
-  align-items: center;
-  padding: 10px 12px;
-  border: 1px solid var(--border);
-  border-radius: var(--ui-radius-card);
-  background: color-mix(in srgb, var(--muted) 58%, var(--popover));
 }
 
 .proofreading-page__context-items {
@@ -608,15 +621,12 @@
   text-overflow: ellipsis;
 }
 
-.proofreading-page__context-state {
+.proofreading-page__dialog-view-state {
   display: flex;
   min-height: 0;
   flex: 1;
-  flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 12px;
-  color: var(--muted-foreground);
 }
 
 .proofreading-page__dialog-status-section {

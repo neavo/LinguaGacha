@@ -21,7 +21,8 @@ export const en_us_proofreading_page = {
     clear_translation_keep_status: "Clear and Keep Status",
     clear_and_reset_status: "Clear and Reset Status",
     set_translation_status: "Set Translation Status",
-    view_context: "View Context",
+    view_context: "Context",
+    raw_data: "Raw Data",
     edit_item: "Edit this item",
     back: "Back",
   },
@@ -83,6 +84,9 @@ export const en_us_proofreading_page = {
   },
   context: {
     loading: "Loading context …",
+  },
+  raw_data: {
+    loading: "Loading raw data …",
   },
   confirm: {
     retranslate_description: "Confirm retranslating {COUNT} entries …?",

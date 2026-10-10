@@ -60,11 +60,9 @@ export type ProofreadingCacheResult<TData> = {
   data: TData;
 };
 
-/**
- * 按工程、会话 epoch、依赖修订和完整文本处理配置缓存校对评估运行态。
- */
+/** 校对查询共用当前工程缓存，质量评估按会话、依赖修订和文本处理配置同步。 */
 export class ProofreadingCache {
-  private readonly cache: CacheReadPort; // 完整同步输入只来自当前会话缓存快照
+  private readonly cache: CacheReadPort; // 完整条目与质量同步输入共用当前工程事实。
   private readonly app_setting_service: AppSettingService; // 语言缺省值来自当前应用设置
   private readonly worker_client: ComputeWorkerClient; // 质量评估在 worker 中执行
   private readonly reader: ReturnType<typeof createProofreadingReader>; // 持有校对索引与 GUI 列表视图运行态
@@ -158,6 +156,22 @@ export class ProofreadingCache {
     query: ProofreadingItemsByRowIdsQuery,
   ): Promise<ProofreadingCacheResult<ProofreadingClientItem[]>> {
     return this.query_current(() => this.reader.read_items_by_row_ids(query));
+  }
+
+  /** 完整条目直接读取缓存事实，查看数据无需同步质量评估。 */
+  public rawItem(item_id: number): ProofreadingCacheResult<ProjectItemPublicRecord> {
+    const item = this.cache.items.readItem(item_id);
+    const snapshot = this.cache.snapshot(); // 条目读取可能恢复热缓存，修订在恢复后采集。
+    if (item === null) {
+      throw new AppErrors.AppError("request.validation_failed", {
+        diagnostic_context: { reason: "proofreading_item_not_found", item_id },
+      });
+    }
+    return {
+      projectPath: snapshot.projectPath,
+      sectionRevisions: snapshot.sectionRevisions,
+      data: structuredClone(item), // 姓名数组和格式私有数据不能与缓存共享嵌套引用。
+    };
   }
 
   /**

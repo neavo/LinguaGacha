@@ -30,19 +30,15 @@ describe("ProofreadingContextView", () => {
         disabled={disabled}
         on_open_item={on_open_item}
         target_row_id="1"
-        file_path="chapter.txt"
         draft_item={{ dst: "草稿", name_dst: "" }}
-        state={{
-          status: "ready",
-          items: [1, 2].map((id) => ({
-            row_id: String(id),
-            row_number: id,
-            src: "原文",
-            dst: "译文",
-            name_src: null,
-            name_dst: null,
-          })),
-        }}
+        items={[1, 2].map((id) => ({
+          row_id: String(id),
+          row_number: id,
+          src: "原文",
+          dst: "译文",
+          name_src: null,
+          name_dst: null,
+        }))}
       />
     );
     const rendered = render_view(view(false));
@@ -58,7 +54,7 @@ describe("ProofreadingContextView", () => {
     ).toBe(true);
   });
 
-  // 复用同一 React root，便于在加载、错误与完成状态之间重渲染。
+  // 复用同一 React root，验证条目与忙碌状态变化。
   function render_view(element: JSX.Element): HTMLDivElement {
     container ??= document.createElement("div");
     if (!container.isConnected) {
@@ -74,37 +70,33 @@ describe("ProofreadingContextView", () => {
       <ProofreadingContextView
         disabled={false}
         on_open_item={async () => {}}
-        state={{
-          status: "ready",
-          items: [
-            {
-              row_id: "19",
-              row_number: 19,
-              src: "前文",
-              dst: "前译",
-              name_src: "甲",
-              name_dst: "A",
-            },
-            {
-              row_id: "20",
-              row_number: 20,
-              src: "目标 原文　含\t缩进",
-              dst: "旧译文",
-              name_src: "乙",
-              name_dst: "旧姓名",
-            },
-            {
-              row_id: "21",
-              row_number: 21,
-              src: "后文",
-              dst: "后译",
-              name_src: null,
-              name_dst: null,
-            },
-          ],
-        }}
+        items={[
+          {
+            row_id: "19",
+            row_number: 19,
+            src: "前文",
+            dst: "前译",
+            name_src: "甲",
+            name_dst: "A",
+          },
+          {
+            row_id: "20",
+            row_number: 20,
+            src: "目标 原文　含\t缩进",
+            dst: "旧译文",
+            name_src: "乙",
+            name_dst: "旧姓名",
+          },
+          {
+            row_id: "21",
+            row_number: 21,
+            src: "后文",
+            dst: "后译",
+            name_src: null,
+            name_dst: null,
+          },
+        ]}
         target_row_id="20"
-        file_path="chapter.txt"
         draft_item={{ dst: "草稿译文", name_dst: "新姓名" }}
       />,
     );
@@ -125,36 +117,5 @@ describe("ProofreadingContextView", () => {
     expect(current?.querySelector(".proofreading-page__context-whitespace--tab")?.textContent).toBe(
       "\t",
     );
-  });
-
-  it("显示加载和紧凑不可用状态", () => {
-    const rendered = render_view(
-      <ProofreadingContextView
-        disabled={false}
-        on_open_item={async () => {}}
-        state={{ status: "loading" }}
-        target_row_id="20"
-        file_path="chapter.txt"
-        draft_item={{ dst: "", name_dst: "" }}
-      />,
-    );
-    expect(rendered.querySelector("[role='status']")?.textContent).toContain(
-      "proofreading_page.context.loading",
-    );
-
-    render_view(
-      <ProofreadingContextView
-        disabled={false}
-        on_open_item={async () => {}}
-        state={{ status: "error" }}
-        target_row_id="20"
-        file_path="chapter.txt"
-        draft_item={{ dst: "", name_dst: "" }}
-      />,
-    );
-    expect(rendered.querySelector("[role='status']")?.textContent).toContain(
-      "app.feedback.content_unavailable",
-    );
-    expect(rendered.querySelector("button")).toBeNull();
   });
 });

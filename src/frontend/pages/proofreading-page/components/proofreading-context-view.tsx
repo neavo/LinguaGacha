@@ -1,21 +1,17 @@
-import { LoaderCircle, PencilLine } from "lucide-react";
+import { PencilLine } from "lucide-react";
 import { type JSX, type ReactNode, useLayoutEffect, useRef } from "react";
 
 import { useI18n } from "@frontend/app/locale/locale-context";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@frontend/shadcn/tooltip";
-import type {
-  ProofreadingDialogContextState,
-  ProofreadingDialogState,
-} from "@frontend/pages/proofreading-page/proofreading-page-ui-types";
+import type { ProofreadingDialogState } from "@frontend/pages/proofreading-page/proofreading-page-ui-types";
+import type { ProofreadingContextItem } from "@shared/proofreading/proofreading-types";
 import { Badge } from "@frontend/shadcn/badge";
-import { AppContentState } from "@frontend/widgets/app-content-state";
 import { AppButton } from "@frontend/widgets/app-button";
 import { read_optional_item_name_text } from "@shared/item-name";
 
 type ProofreadingContextViewProps = {
-  state: ProofreadingDialogContextState;
+  items: ProofreadingContextItem[];
   target_row_id: string;
-  file_path: string;
   draft_item: ProofreadingDialogState["draft_item"];
   disabled: boolean;
   on_open_item: (row_id: string) => Promise<void>;
@@ -68,12 +64,10 @@ function render_context_text(name: string | null, text: string): JSX.Element {
 }
 
 /** 展示同文件上下文，目标导航交给页面处理。 */
-export function ProofreadingContextView(props: ProofreadingContextViewProps): JSX.Element | null {
+export function ProofreadingContextView(props: ProofreadingContextViewProps): JSX.Element {
   const { t } = useI18n();
   const edit_label = t("proofreading_page.action.edit_item");
-  const items_ref = useRef<HTMLOListElement>(null);
-  const status = props.state.status;
-  const target_row_id = props.target_row_id;
+  const items_ref = useRef<HTMLOListElement>(null); // 列表拥有滚动位置，进入时只定位一次。
 
   // 只在进入或目标变化时定位，浏览器限制滚动边界，后续阅读由用户控制。
   useLayoutEffect(() => {
@@ -82,38 +76,15 @@ export function ProofreadingContextView(props: ProofreadingContextViewProps): JS
     const current = list.querySelector<HTMLElement>("[aria-current='true']");
     if (current === null) return;
     list.scrollTop = current.offsetTop + current.offsetHeight / 2 - list.clientHeight / 2;
-  }, [status, target_row_id]);
-
-  if (props.state.status === "idle") {
-    return null;
-  }
-
-  if (props.state.status === "loading") {
-    return (
-      <div className="proofreading-page__context-state" role="status">
-        <LoaderCircle className="size-5 animate-spin text-muted-foreground" />
-        <span>{t("proofreading_page.context.loading")}</span>
-      </div>
-    );
-  }
-
-  if (props.state.status === "error") {
-    return <AppContentState status="error" />;
-  }
+  }, [props.target_row_id]);
 
   return (
-    <section className="proofreading-page__context-view" aria-label={t("proofreading_page.title")}>
-      <header className="proofreading-page__context-header">
-        <Tooltip>
-          <TooltipTrigger
-            render={<span className="proofreading-page__context-file-path">{props.file_path}</span>}
-          />
-          <TooltipContent>{props.file_path}</TooltipContent>
-        </Tooltip>
-      </header>
-
+    <section
+      className="proofreading-page__context-view"
+      aria-label={t("proofreading_page.action.view_context")}
+    >
       <ol ref={items_ref} className="proofreading-page__context-items">
-        {props.state.items.map((item) => {
+        {props.items.map((item) => {
           const is_current = item.row_id === props.target_row_id;
           const source_name = read_optional_item_name_text(item.name_src);
           const translation_name = is_current

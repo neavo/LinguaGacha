@@ -15,16 +15,17 @@ import type {
   ProofreadingWarningQuery,
 } from "../../shared/proofreading/proofreading-reader";
 import type { ProofreadingSortState } from "../../shared/proofreading/list";
+import type { ProjectDataSectionRevisions } from "../../shared/project-event";
 
 /**
  * 提供校对页 JSON 查询适配与后端内部类型化只读查询。
  */
 export class ProofreadingQueryService {
   private readonly session_state: ProjectSessionState; // 查询必须绑定当前 loaded 工程
-  private readonly cache: ProofreadingCache; // 大列表计算和窗口身份由后端缓存拥有
+  private readonly cache: ProofreadingCache; // 完整条目读取、列表计算和窗口身份由校对缓存拥有。
 
   /**
-   * 注入会话守卫和校对缓存，不为查询开放数据库写入口。
+   * 注入会话守卫和校对缓存。
    */
   public constructor(options: { sessionState: ProjectSessionState; cache: ProofreadingCache }) {
     this.session_state = options.sessionState;
@@ -43,8 +44,29 @@ export class ProofreadingQueryService {
    * 分发校对页唯一查询入口，未知 action 在协议边界直接拒绝。
    */
   public async query(request: JsonRecord): Promise<MutableJsonRecord> {
-    this.session_state.require_loaded_project_path();
+    const project_path = this.session_state.require_loaded_project_path();
     const action = String(request["action"] ?? "sync");
+    if (action === "raw_item") {
+      const row_id = request["row_id"];
+      const item_id = typeof row_id === "string" ? Number(row_id) : NaN;
+      if (!Number.isSafeInteger(item_id) || item_id < 1 || String(item_id) !== row_id) {
+        throw new AppErrors.AppError("request.validation_failed", {
+          diagnostic_context: { field: "row_id" },
+        });
+      }
+      if (request["project_path"] !== project_path) {
+        throw new AppErrors.AppError("request.validation_failed", {
+          diagnostic_context: { reason: "stale_proofreading_project" },
+        });
+      }
+      const result = this.cache.rawItem(item_id);
+      if (result.projectPath !== project_path) {
+        throw new AppErrors.AppError("request.validation_failed", {
+          diagnostic_context: { reason: "stale_proofreading_project" },
+        });
+      }
+      return this.with_revision(result, { item: result.data as unknown as JsonValue });
+    }
     if (action === "sync") {
       const result = await this.cache.sync({
         ...(request["source_language"] === undefined
@@ -119,14 +141,13 @@ export class ProofreadingQueryService {
   private with_revision(
     result: {
       projectPath: string;
-      sectionRevisions: Record<string, unknown>;
-      data: unknown;
+      sectionRevisions: ProjectDataSectionRevisions;
     },
     data: MutableJsonRecord,
   ): MutableJsonRecord {
     return {
       projectPath: result.projectPath,
-      sectionRevisions: result.sectionRevisions as unknown as JsonValue,
+      sectionRevisions: result.sectionRevisions,
       ...data,
     };
   }

@@ -27,8 +27,8 @@ vi.mock("@frontend/widgets/app-editor/app-editor", () => {
     AppEditor: (props: {
       value: string;
       aria_label: string;
-      variant?: "editor" | "field";
-      read_only: boolean;
+      variant?: "document" | "field" | "viewer";
+      read_only?: boolean;
       aria_invalid?: boolean;
       marks?: Array<{ start: number; end: number; tone: "success" | "warning"; tooltip?: string }>;
       on_change?: (next_value: string) => void;
@@ -39,14 +39,11 @@ vi.mock("@frontend/widgets/app-editor/app-editor", () => {
           className={["app-editor", props.variant === "field" ? "app-editor--field" : undefined]
             .filter(Boolean)
             .join(" ")}
-          data-variant={props.variant ?? "editor"}
-          data-readonly={props.read_only ? "true" : "false"}
         >
           <textarea
             aria-label={props.aria_label}
             aria-invalid={props.aria_invalid === true ? true : undefined}
-            readOnly={props.read_only}
-            data-readonly={props.read_only ? "true" : "false"}
+            readOnly={props.variant === "viewer" || props.read_only}
             value={props.value}
             onChange={(event) => {
               props.on_change?.(event.currentTarget.value);
@@ -165,7 +162,7 @@ function create_dialog_state(
     target_row_id: "1",
     draft_item: { dst: "Magic 和美1优", name_dst: "" },
     pending: false,
-    context: { status: "idle" },
+    view: { kind: "edit" },
     ...overrides,
   };
 }
@@ -219,8 +216,8 @@ describe("ProofreadingEditDialog", () => {
           on_change={() => {}}
           on_save={async () => {}}
           on_close={() => {}}
-          on_open_context={async () => {}}
-          on_close_context={() => {}}
+          on_open_view={async () => {}}
+          on_return_to_edit={() => {}}
           on_open_context_item={async () => {}}
           on_request_retranslate={() => {}}
           on_request_clear_translation={() => {}}
@@ -444,7 +441,6 @@ describe("ProofreadingEditDialog", () => {
     expect(source_input.readOnly).toBe(true);
     expect(translation_input.readOnly).toBe(false);
     expect(translation_input.disabled).toBe(false);
-    expect(rendered.querySelector("label.proofreading-page__dialog-content-section")).toBeNull();
 
     await act(async () => {
       const value_setter = Object.getOwnPropertyDescriptor(
@@ -548,26 +544,6 @@ describe("ProofreadingEditDialog", () => {
     expect(rendered.textContent).toContain("proofreading_page.glossary.applied");
   });
 
-  it("只读时仍可查看上下文且保存中禁用入口", async () => {
-    const on_open_context = vi.fn(async () => {});
-    const rendered = await render_dialog({ readonly: true, on_open_context });
-    const trigger = [...rendered.querySelectorAll("button")].find((button) =>
-      button.textContent?.includes("proofreading_page.action.view_context"),
-    );
-    expect(trigger?.disabled).toBe(false);
-    await act(async () => trigger?.click());
-    expect(on_open_context).toHaveBeenCalledOnce();
-
-    await render_dialog({
-      state: create_dialog_state({ pending: true }),
-      on_open_context,
-    });
-    const pending_trigger = [...rendered.querySelectorAll("button")].find((button) =>
-      button.textContent?.includes("proofreading_page.action.view_context"),
-    );
-    expect(pending_trigger?.disabled).toBe(true);
-  });
-
   it("编辑态按关闭策略处理，保存中阻止关闭", async () => {
     const rendered = await render_dialog();
 
@@ -577,40 +553,83 @@ describe("ProofreadingEditDialog", () => {
     expect(rendered.querySelector("[data-dismiss-behavior='blocked']")).not.toBeNull();
   });
 
-  it("上下文状态复用当前模态关闭语义并保留隐藏的编辑器", async () => {
-    const on_close = vi.fn();
-    const on_close_context = vi.fn();
+  it.each(["context", "raw-data"] as const)(
+    "%s 查看入口、加载与返回复用弹窗，返回恢复焦点和草稿编辑器",
+    async (kind) => {
+      const on_open_view = vi.fn(async () => {});
+      const on_return_to_edit = vi.fn();
+      const on_close = vi.fn();
+      const draft_item = { dst: "未保存草稿", name_dst: "" };
+      const state = create_dialog_state({ draft_item });
+      const rendered = await render_dialog({
+        state,
+        readonly: true,
+        on_open_view,
+        on_close,
+        on_return_to_edit,
+      });
+      const label =
+        kind === "context"
+          ? "proofreading_page.action.view_context"
+          : "proofreading_page.action.raw_data";
+      const trigger = [...rendered.querySelectorAll<HTMLButtonElement>("button")].find((button) =>
+        button.textContent?.includes(label),
+      )!;
+      const editor = rendered.querySelector<HTMLTextAreaElement>(
+        "textarea[aria-label='proofreading_page.fields.translation']",
+      )!;
+      expect(trigger.disabled).toBe(false);
+      editor.setSelectionRange(1, 3);
+      act(() => {
+        trigger.focus();
+        trigger.click();
+      });
+      expect(on_open_view).toHaveBeenCalledWith(kind);
+      await render_dialog({
+        state: { ...state, view: { kind, status: "loading" } },
+        on_return_to_edit,
+      });
+      expect(rendered.querySelector("[role='status']")).not.toBeNull();
+      expect(
+        rendered.querySelector(".proofreading-page__dialog-form")?.hasAttribute("hidden"),
+      ).toBe(true);
+      const back = [...rendered.querySelectorAll<HTMLButtonElement>("footer button")].find(
+        (button) => button.textContent?.includes("proofreading_page.action.back"),
+      )!;
+      act(() => back.click());
+      expect(on_return_to_edit).toHaveBeenCalledOnce();
+      await render_dialog({ state, on_return_to_edit });
+      expect(document.activeElement).toBe(trigger);
+      expect(
+        rendered.querySelector("textarea[aria-label='proofreading_page.fields.translation']"),
+      ).toBe(editor);
+      expect(editor.value).toBe(draft_item.dst);
+      expect([editor.selectionStart, editor.selectionEnd]).toEqual([1, 3]);
+      await render_dialog({
+        state: { ...state, view: { kind, status: "error" } },
+        on_return_to_edit,
+        on_close,
+      });
+      expect(rendered.querySelector("[role='status']")).not.toBeNull();
+      act(() => rendered.querySelector<HTMLButtonElement>("[data-dialog-close-probe]")?.click());
+      expect(on_return_to_edit).toHaveBeenCalledTimes(2);
+      expect(on_close).not.toHaveBeenCalled();
+      await render_dialog({ state: { ...state, pending: true } });
+      expect(trigger.disabled).toBe(true);
+    },
+  );
+
+  it("原始数据使用只读查看器展示 Hook 提供的 JSON 文本", async () => {
+    const json_text = '{\n  "item_id": 1,\n  "extra_field": "{\\"nested\\":true}"\n}';
     const rendered = await render_dialog({
       state: create_dialog_state({
-        context: {
-          status: "ready",
-          items: [
-            {
-              row_id: "1",
-              row_number: 1,
-              src: "魔法と美優",
-              dst: "旧译文",
-              name_src: null,
-              name_dst: null,
-            },
-          ],
-        },
+        view: { kind: "raw-data", status: "ready", text: json_text },
       }),
-      on_close,
-      on_close_context,
     });
-
-    expect(rendered.querySelector("[data-dismiss-behavior='default']")).not.toBeNull();
-    expect(rendered.querySelector(".proofreading-page__dialog-form")?.hasAttribute("hidden")).toBe(
-      true,
-    );
-    expect(
-      rendered.querySelector("textarea[aria-label='proofreading_page.fields.translation']"),
-    ).not.toBeNull();
-    act(() => {
-      rendered.querySelector<HTMLButtonElement>("[data-dialog-close-probe]")?.click();
-    });
-    expect(on_close_context).toHaveBeenCalledOnce();
-    expect(on_close).not.toHaveBeenCalled();
+    const text = rendered.querySelector<HTMLTextAreaElement>(
+      "textarea[aria-label='proofreading_page.action.raw_data']",
+    )!;
+    expect(text.value).toBe(json_text);
+    expect(text.readOnly).toBe(true);
   });
 });

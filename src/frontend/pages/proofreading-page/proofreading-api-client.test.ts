@@ -10,10 +10,31 @@ vi.mock("@frontend/app/desktop/desktop-api", () => {
 
 import { createProofreadingApiClient } from "./proofreading-api-client";
 import type { ProofreadingContextItem } from "@shared/proofreading/proofreading-types";
+import { build_project_item_public_record, create_item } from "@domain/item";
 
 describe("proofreading-api-client", () => {
   beforeEach(() => {
     api_fetch_mock.mockReset();
+  });
+
+  it("原始数据请求绑定工程并返回完整条目，缺失条目视为失败", async () => {
+    const client = createProofreadingApiClient();
+    const item = {
+      ...build_project_item_public_record(create_item({ id: 1, row: 2 })),
+      extra_field: null,
+    };
+    api_fetch_mock
+      .mockResolvedValueOnce({ item })
+      .mockResolvedValueOnce({})
+      .mockResolvedValueOnce({ item: null });
+    const input = { row_id: "1", project_path: "demo.lg" };
+    await expect(client.read_proofreading_raw_item(input)).resolves.toEqual(item);
+    expect(api_fetch_mock).toHaveBeenCalledWith("/api/proofreading/query", {
+      action: "raw_item",
+      ...input,
+    });
+    await expect(client.read_proofreading_raw_item(input)).rejects.toThrow();
+    await expect(client.read_proofreading_raw_item(input)).rejects.toThrow();
   });
 
   it("创建 API 列表 client 并把 sync、列表与窗口读取委托给 Backend query reader/state", async () => {

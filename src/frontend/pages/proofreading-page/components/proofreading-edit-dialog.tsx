@@ -1,6 +1,6 @@
 import { ProofreadingDetailLayout } from "./proofreading-detail-layout";
 import { type JSX, useEffect, useRef } from "react";
-import { BookOpenText, Eraser, ListChecks, RefreshCcw } from "lucide-react";
+import { BookOpenText, Braces, Eraser, ListChecks, RefreshCcw } from "lucide-react";
 
 import { ITEM_MANUAL_STATUSES, type ItemManualStatus } from "@domain/item";
 import { useI18n } from "@frontend/app/locale/locale-context";
@@ -23,6 +23,7 @@ import { Badge } from "@frontend/shadcn/badge";
 import { AppButton } from "@frontend/widgets/app-button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@frontend/shadcn/tooltip";
 import { AppPageDialog } from "@frontend/widgets/app-page-dialog";
+import { AppContentState } from "@frontend/widgets/app-content-state";
 import { ShortcutKbd } from "@frontend/widgets/interactions/shortcut-kbd";
 import { read_optional_item_name_text, read_item_name_text } from "@shared/item-name";
 import {
@@ -49,8 +50,8 @@ type ProofreadingEditDialogProps = {
   on_change: (patch: Partial<ProofreadingDialogState["draft_item"]>) => void;
   on_save: () => Promise<void>;
   on_close: () => void;
-  on_open_context: () => Promise<void>;
-  on_close_context: () => void;
+  on_open_view: (kind: "context" | "raw-data") => Promise<void>;
+  on_return_to_edit: () => void;
   on_open_context_item: (row_id: string) => Promise<void>;
   on_request_retranslate: (row_ids: string[]) => void;
   on_request_clear_translation: (row_ids: string[]) => void;
@@ -245,42 +246,6 @@ function build_glossary_field_marks(args: {
   });
 }
 
-/** 命中术语标亮双语文本，缺失译文的术语只警示原文。 */
-function build_glossary_highlights(
-  item: ProofreadingItem,
-  draft_item: ProofreadingDialogState["draft_item"],
-  applications: GlossaryApplication[],
-  t: ReturnType<typeof useI18n>["t"],
-): {
-  source_marks: AppTextMark[];
-  translation_marks: AppTextMark[];
-} {
-  return {
-    source_marks: build_glossary_field_marks({ text: item.src, applications, field: "src", t }),
-    translation_marks: build_glossary_field_marks({
-      text: draft_item.dst,
-      applications,
-      field: "dst",
-      t,
-    }),
-  };
-}
-
-/** 按姓名字段所在语言选择术语侧，生成与正文一致的标亮语义。 */
-function build_name_glossary_marks(args: {
-  text: string;
-  source_field: boolean;
-  state: ProofreadingNameGlossaryState;
-  t: ReturnType<typeof useI18n>["t"];
-}): AppTextMark[] {
-  return build_glossary_field_marks({
-    text: args.text,
-    applications: args.state.applications,
-    field: args.source_field ? "name_src" : "name_dst",
-    t: args.t,
-  });
-}
-
 /** 将当前草稿术语命中情况归纳为成功、部分或失败胶囊。 */
 function resolve_glossary_badge_state(
   applications: GlossaryApplication[],
@@ -358,14 +323,15 @@ function render_name_input_with_glossary_state(args: {
   );
 }
 
-/** 校对编辑弹窗组合文件详情、双栏编辑、状态操作与同文件上下文。 */
+/** 校对条目弹窗组合编辑、前后文和原始数据查看，共用返回行为。 */
 export function ProofreadingEditDialog(props: ProofreadingEditDialogProps): JSX.Element | null {
   const { t } = useI18n();
   const item = props.item;
-  const { context, draft_item, open, pending } = props.state;
-  const context_open = context.status !== "idle";
+  const { view, draft_item, open, pending } = props.state;
+  const viewer_open = view.kind !== "edit";
   const context_trigger_ref = useRef<HTMLButtonElement>(null);
-  const previous_context_open_ref = useRef(false);
+  const raw_data_trigger_ref = useRef<HTMLButtonElement>(null);
+  const previous_view_ref = useRef(view.kind); // 返回编辑时用原视图恢复对应入口的焦点。
   const save_label = t("app.action.save");
   const has_content_change =
     item !== null &&
@@ -373,15 +339,17 @@ export function ProofreadingEditDialog(props: ProofreadingEditDialogProps): JSX.
   const save_disabled = props.readonly || pending || !has_content_change;
 
   useEffect(() => {
-    if (previous_context_open_ref.current && !context_open && open) {
-      context_trigger_ref.current?.focus();
+    if (previous_view_ref.current !== "edit" && !viewer_open && open) {
+      const trigger =
+        previous_view_ref.current === "context" ? context_trigger_ref : raw_data_trigger_ref;
+      trigger.current?.focus();
     }
-    previous_context_open_ref.current = context_open;
-  }, [context_open, open]);
+    previous_view_ref.current = view.kind;
+  }, [view.kind, viewer_open, open]);
 
   useActionShortcut({
     action: "save",
-    enabled: open && !context_open && !save_disabled,
+    enabled: open && !viewer_open && !save_disabled,
     on_trigger: () => {
       void props.on_save();
     },
@@ -400,12 +368,18 @@ export function ProofreadingEditDialog(props: ProofreadingEditDialogProps): JSX.
   const glossary_applications = evaluate_draft_glossary_applications(item, draft_item);
   const glossary_badge_state = resolve_glossary_badge_state(glossary_applications, t);
   const glossary_tooltip_content = render_glossary_tooltip_content(glossary_applications, t);
-  const { source_marks, translation_marks } = build_glossary_highlights(
-    item,
-    draft_item,
-    glossary_applications,
+  const source_marks = build_glossary_field_marks({
+    text: item.src,
+    applications: glossary_applications,
+    field: "src",
     t,
-  );
+  });
+  const translation_marks = build_glossary_field_marks({
+    text: draft_item.dst,
+    applications: glossary_applications,
+    field: "dst",
+    t,
+  });
   const visible_warning_codes = read_proofreading_warning_codes(item.warnings).filter(
     (code) => glossary_badge_state === null || code !== "GLOSSARY",
   );
@@ -415,44 +389,49 @@ export function ProofreadingEditDialog(props: ProofreadingEditDialogProps): JSX.
     item.internal_file_path === null
       ? item.file_path
       : `${item.file_path} | ${item.internal_file_path}`;
-  const source_name_glossary_state = resolve_name_glossary_state(glossary_applications);
-  const translation_name_glossary_state = source_name_glossary_state;
+  const name_glossary_state = resolve_name_glossary_state(glossary_applications); // 双方姓名共享当前草稿的落实结果。
   const show_name_fields =
     read_optional_item_name_text(item.name_src) !== null ||
     read_optional_item_name_text(item.name_dst) !== null ||
     translation_name !== "";
   const translation_readonly = props.readonly || pending;
-  const source_name_marks = build_name_glossary_marks({
+  const source_name_marks = build_glossary_field_marks({
     text: source_name,
-    source_field: true,
-    state: source_name_glossary_state,
+    applications: name_glossary_state.applications,
+    field: "name_src",
     t,
   });
-  const translation_name_marks = build_name_glossary_marks({
+  const translation_name_marks = build_glossary_field_marks({
     text: translation_name,
-    source_field: false,
-    state: translation_name_glossary_state,
+    applications: name_glossary_state.applications,
+    field: "name_dst",
     t,
   });
 
   return (
     <AppPageDialog
       open={open}
-      title={t(context_open ? "proofreading_page.action.view_context" : "app.action.edit")}
+      title={t(
+        view.kind === "context"
+          ? "proofreading_page.action.view_context"
+          : view.kind === "raw-data"
+            ? "proofreading_page.action.raw_data"
+            : "app.action.edit",
+      )}
       size="viewport"
-      dismissBehavior={pending ? "blocked" : context_open ? "default" : "escape-only"}
-      onClose={context_open ? props.on_close_context : props.on_close}
+      dismissBehavior={pending ? "blocked" : viewer_open ? "default" : "escape-only"}
+      onClose={viewer_open ? props.on_return_to_edit : props.on_close}
       bodyClassName="overflow-hidden p-0"
-      footerClassName={context_open ? undefined : "sm:justify-between"}
+      footerClassName={viewer_open ? undefined : "sm:justify-between"}
       footer={
-        context_open ? (
+        viewer_open ? (
           <AppButton
             type="button"
             variant="outline"
             size="sm"
             autoFocus
             disabled={pending}
-            onClick={props.on_close_context}
+            onClick={props.on_return_to_edit}
           >
             {t("proofreading_page.action.back")}
             <ShortcutKbd action="cancel" />
@@ -554,34 +533,67 @@ export function ProofreadingEditDialog(props: ProofreadingEditDialogProps): JSX.
       }
     >
       <div className="proofreading-page__dialog-scroll">
-        {context_open ? (
+        {view.kind !== "edit" && view.status !== "ready" ? (
+          <div className="proofreading-page__dialog-view-state">
+            <AppContentState
+              status={view.status}
+              message={t(
+                view.kind === "context"
+                  ? "proofreading_page.context.loading"
+                  : "proofreading_page.raw_data.loading",
+              )}
+            />
+          </div>
+        ) : view.kind === "context" && view.status === "ready" ? (
           <ProofreadingContextView
-            state={context}
+            items={view.items}
             target_row_id={String(item.item_id)}
-            file_path={item.file_path}
             draft_item={draft_item}
             disabled={pending || props.readonly}
             on_open_item={props.on_open_context_item}
           />
+        ) : view.kind === "raw-data" && view.status === "ready" ? (
+          <AppEditor
+            variant="viewer"
+            syntax="json"
+            value={view.text}
+            aria_label={t("proofreading_page.action.raw_data")}
+            class_name="proofreading-page__dialog-editor-host"
+          />
         ) : null}
+        {/* 编辑区持续挂载，查看时只隐藏，保留选区和阅读位置。 */}
         <ProofreadingDetailLayout
-          hidden={context_open}
+          hidden={viewer_open}
           file_label={file_path_label}
           file_actions={
-            <AppButton
-              ref={context_trigger_ref}
-              type="button"
-              variant="ghost"
-              size="sm"
-              className="proofreading-page__dialog-context-trigger"
-              disabled={pending}
-              onClick={() => {
-                void props.on_open_context();
-              }}
-            >
-              <BookOpenText data-icon="inline-start" />
-              {t("proofreading_page.action.view_context")}
-            </AppButton>
+            <div className="proofreading-page__dialog-file-actions">
+              <AppButton
+                ref={context_trigger_ref}
+                type="button"
+                variant="ghost"
+                size="sm"
+                disabled={pending}
+                onClick={() => {
+                  void props.on_open_view("context");
+                }}
+              >
+                <BookOpenText data-icon="inline-start" />
+                {t("proofreading_page.action.view_context")}
+              </AppButton>
+              <AppButton
+                ref={raw_data_trigger_ref}
+                type="button"
+                variant="ghost"
+                size="sm"
+                disabled={pending}
+                onClick={() => {
+                  void props.on_open_view("raw-data");
+                }}
+              >
+                <Braces data-icon="inline-start" />
+                {t("proofreading_page.action.raw_data")}
+              </AppButton>
+            </div>
           }
           source={
             <>
@@ -593,12 +605,12 @@ export function ProofreadingEditDialog(props: ProofreadingEditDialogProps): JSX.
                         class_name="proofreading-page__dialog-name-input"
                         value={source_name}
                         aria_label={t("proofreading_page.fields.source")}
-                        aria_invalid={source_name_glossary_state.tone === "warning"}
+                        aria_invalid={name_glossary_state.tone === "warning"}
                         marks={source_name_marks}
                         read_only
                       />
                     ),
-                    state: source_name_glossary_state,
+                    state: name_glossary_state,
                     t,
                   })
                 : null}
@@ -621,7 +633,7 @@ export function ProofreadingEditDialog(props: ProofreadingEditDialogProps): JSX.
                         class_name="proofreading-page__dialog-name-input"
                         value={translation_name}
                         aria_label={t("proofreading_page.fields.translation")}
-                        aria_invalid={translation_name_glossary_state.tone === "warning"}
+                        aria_invalid={name_glossary_state.tone === "warning"}
                         marks={translation_name_marks}
                         read_only={translation_readonly}
                         on_change={(next_value) => {
@@ -629,7 +641,7 @@ export function ProofreadingEditDialog(props: ProofreadingEditDialogProps): JSX.
                         }}
                       />
                     ),
-                    state: translation_name_glossary_state,
+                    state: name_glossary_state,
                     t,
                   })
                 : null}

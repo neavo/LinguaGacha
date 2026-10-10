@@ -13,6 +13,7 @@ import {
 import type { CacheReadPort } from "./cache-types";
 import type { CacheChange } from "./cache-change";
 import { ProofreadingCache } from "./proofreading-cache";
+import { ItemCache } from "./item-cache";
 import { PROOFREADING_WARNING_CODES } from "../../shared/proofreading/proofreading-types";
 
 /** 提供缓存读取器所需的完整条目，各用例覆盖关注字段。 */
@@ -133,6 +134,57 @@ function create_delta_change(overrides: Partial<CacheChange> = {}): CacheChange 
 }
 
 describe("ProofreadingCache", () => {
+  it("完整条目保留所有字段，隔离嵌套引用且不启动质量评估", () => {
+    const extra_field = { nested: { values: [1, false, null, "", '{"nested":true}'] } };
+    const item = create_cache_item({
+      dst: "",
+      name_src: ["角色", "旁白"],
+      name_dst: null,
+      extra_field,
+    });
+    const expected_item = structuredClone(item); // 查看结果被修改后，预期仍保留原始缓存事实。
+    const worker = create_worker();
+    const cache = new ProofreadingCache({
+      readPages: () => [],
+      cache: create_cache_read_port({ items: [item] }),
+      appSettingService: create_settings(),
+      workerClient: worker,
+      reader: createProofreadingReader(),
+    });
+    const result = cache.rawItem(1);
+    expect(result).toEqual({
+      projectPath: "E:/Project/demo.lg",
+      sectionRevisions: { files: 1, items: 1, quality: 1, proofreading: 0 },
+      data: expected_item,
+    });
+    (result.data.name_src as string[])[0] = "查看修改";
+    (result.data.extra_field as typeof extra_field).nested.values.push("查看修改");
+    expect(cache.rawItem(1).data).toEqual(expected_item);
+    expect(() => cache.rawItem(2)).toThrow(
+      expect.objectContaining({
+        diagnostic_context: { reason: "proofreading_item_not_found", item_id: 2 },
+      }),
+    );
+    expect(worker.run).not.toHaveBeenCalled();
+  });
+
+  it("完整条目读取后采集恢复后的工程修订", () => {
+    const revisions = { items: 1 };
+    const items = new ItemCache(() => {
+      revisions.items = 9;
+    });
+    items.replace([create_cache_item()]);
+    const cache_port = create_cache_read_port({ revisions });
+    const cache = new ProofreadingCache({
+      readPages: () => [],
+      cache: { ...cache_port, items, snapshot: () => structuredClone(cache_port.snapshot()) },
+      appSettingService: create_settings(),
+      workerClient: create_worker(),
+      reader: createProofreadingReader(),
+    });
+    expect(cache.rawItem(1).sectionRevisions).toEqual({ items: 9 });
+  });
+
   it("同一工程身份下只执行一次 sync task 并用本地 reader 查询", async () => {
     const worker = create_worker();
     const cache = new ProofreadingCache({

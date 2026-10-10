@@ -8,6 +8,8 @@ import type {
   ProofreadingClientItem,
   ProofreadingContextItem,
 } from "@shared/proofreading/proofreading-types";
+import { build_project_item_public_record, create_item } from "@domain/item";
+import type { ProjectItemPublicRecord } from "@domain/item";
 
 const push_toast = vi.hoisted(() => vi.fn());
 vi.mock("@frontend/app/feedback/desktop-toast", () => ({ push_error_toast: push_toast }));
@@ -29,6 +31,16 @@ const item: ProofreadingClientItem = {
   compressed_dst: "译文",
 };
 
+const saved_item = build_project_item_public_record(
+  create_item({
+    id: 1,
+    row: 1,
+    src: "原文",
+    dst: "已保存译文",
+    name_src: ["角色", "旁白"],
+  }),
+);
+
 describe("useProofreadingDialogActions", () => {
   let root: Root;
   let container: HTMLDivElement;
@@ -40,6 +52,7 @@ describe("useProofreadingDialogActions", () => {
     visible_item_by_id: new Map([["1", item]]),
     read_items_by_row_ids: read_items,
     read_context,
+    read_raw_item: vi.fn<() => Promise<ProjectItemPublicRecord>>(async () => saved_item),
     run_project_write: vi.fn<ProofreadingProjectWriteRunner>(async () => true),
     t: (key: string) => key,
   };
@@ -54,6 +67,7 @@ describe("useProofreadingDialogActions", () => {
     state = null;
     read_items.mockReset().mockResolvedValue([item]);
     read_context.mockReset().mockResolvedValue([]);
+    options.read_raw_item.mockReset().mockResolvedValue(saved_item);
     options.run_project_write.mockReset().mockResolvedValue(true);
     push_toast.mockReset();
     container = document.createElement("div");
@@ -194,14 +208,18 @@ describe("useProofreadingDialogActions", () => {
       await state?.open_edit_dialog("1");
     });
     await act(async () => {
-      await state?.open_dialog_context();
+      await state?.open_dialog_view("context");
     });
-    expect(state?.dialog_state.context.status).toBe("error");
+    expect(state?.dialog_state.view).toMatchObject({ kind: "context", status: "error" });
 
     await act(async () => {
-      await state?.open_dialog_context();
+      await state?.open_dialog_view("context");
     });
-    expect(state?.dialog_state.context).toEqual({ status: "ready", items: [context_item] });
+    expect(state?.dialog_state.view).toEqual({
+      kind: "context",
+      status: "ready",
+      items: [context_item],
+    });
   });
 
   it("重新打开上下文后忽略旧请求结果", async () => {
@@ -218,15 +236,15 @@ describe("useProofreadingDialogActions", () => {
     let first: Promise<void> | undefined;
     let second: Promise<void> | undefined;
     act(() => {
-      first = state?.open_dialog_context();
-      state?.close_dialog_context();
-      second = state?.open_dialog_context();
+      first = state?.open_dialog_view("context");
+      state?.return_to_edit();
+      second = state?.open_dialog_view("context");
     });
     await act(async () => {
       stale_request.resolve([]);
       await first;
     });
-    expect(state?.dialog_state.context.status).toBe("loading");
+    expect(state?.dialog_state.view).toMatchObject({ kind: "context", status: "loading" });
 
     const current_item: ProofreadingContextItem = {
       row_id: "1",
@@ -240,6 +258,92 @@ describe("useProofreadingDialogActions", () => {
       current_request.resolve([current_item]);
       await second;
     });
-    expect(state?.dialog_state.context).toEqual({ status: "ready", items: [current_item] });
+    expect(state?.dialog_state.view).toEqual({
+      kind: "context",
+      status: "ready",
+      items: [current_item],
+    });
   });
+
+  it("原始数据失败只通知一次，展示已保存快照，返回保留草稿，重进读取当前值", async () => {
+    const current_item = { ...saved_item, extra_field: { nested: [null, "", false] } };
+    const updated_item = { ...saved_item, dst: "新保存译文", extra_field: '{"updated":true}' };
+    options.read_raw_item
+      .mockRejectedValueOnce(new Error("读取失败"))
+      .mockResolvedValueOnce(current_item)
+      .mockResolvedValueOnce(updated_item);
+    await render_hook();
+    await act(async () => {
+      await state?.open_edit_dialog("1");
+    });
+    act(() => state?.update_dialog_draft({ dst: "草稿", name_dst: "草稿姓名" }));
+    await act(async () => {
+      await state?.open_dialog_view("raw-data");
+    });
+    expect(state?.dialog_state.view).toEqual({ kind: "raw-data", status: "error" });
+    expect(push_toast).toHaveBeenCalledTimes(1);
+    act(() => state?.return_to_edit());
+    expect(state?.dialog_state).toMatchObject({
+      view: { kind: "edit" },
+      draft_item: { dst: "草稿", name_dst: "草稿姓名" },
+    });
+    await act(async () => {
+      await state?.open_dialog_view("raw-data");
+    });
+    expect(state?.dialog_state.view).toEqual({
+      kind: "raw-data",
+      status: "ready",
+      text: JSON.stringify(current_item, null, 2),
+    });
+    current_item.dst = "后台已更新";
+    act(() => state?.update_dialog_draft({ dst: "继续编辑草稿" }));
+    expect(state?.dialog_state.view).toMatchObject({
+      text: expect.stringContaining('"dst": "已保存译文"'),
+    });
+    act(() => state?.return_to_edit());
+    await act(async () => {
+      await state?.open_dialog_view("raw-data");
+    });
+    const view = state?.dialog_state.view;
+    if (view?.kind !== "raw-data" || view.status !== "ready") throw new Error("原始数据未就绪");
+    expect(JSON.parse(view.text)).toEqual(updated_item);
+    expect(view.text).toContain('\n  "item_id": 1');
+    act(() => state?.return_to_edit());
+    expect(state?.dialog_state.draft_item).toEqual({ dst: "继续编辑草稿", name_dst: "草稿姓名" });
+  });
+
+  it.each(["return", "close", "target", "view"] as const)(
+    "%s 后迟到的原始数据无法覆盖视图或通知",
+    async (action) => {
+      await render_hook();
+      await act(async () => {
+        await state?.open_edit_dialog("1");
+      });
+      const request = Promise.withResolvers<ProjectItemPublicRecord>();
+      options.read_raw_item.mockReturnValueOnce(request.promise);
+      let reading: Promise<void> | undefined;
+      act(() => {
+        reading = state?.open_dialog_view("raw-data");
+      });
+      if (action === "return") act(() => state?.return_to_edit());
+      if (action === "close") act(() => state?.reset_dialog());
+      if (action === "target")
+        act(() => state?.show_dialog_item({ ...item, item_id: 2, row_id: "2" }));
+      if (action === "view") {
+        read_context.mockResolvedValue([
+          { row_id: "1", row_number: 1, src: "原文", dst: "译文", name_src: null, name_dst: null },
+        ]);
+        await act(async () => {
+          await state?.open_dialog_view("context");
+        });
+      }
+      const current = state?.dialog_state;
+      await act(async () => {
+        request.reject(new Error("旧请求失败"));
+        await reading;
+      });
+      expect(state?.dialog_state).toEqual(current);
+      expect(push_toast).not.toHaveBeenCalled();
+    },
+  );
 });
