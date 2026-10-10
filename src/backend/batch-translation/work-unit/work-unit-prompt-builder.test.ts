@@ -20,6 +20,26 @@ afterEach(async () => {
 });
 
 describe("PromptBuilder", () => {
+  it.each([null, "", "旧覆盖正文"])("资源版本更新后按覆盖值 %s 选择正文", async (text) => {
+    for (const version of ["第一版内置", "第二版内置"]) {
+      const builtin_root = await create_template_root();
+      await writeFile(
+        path.join(builtin_root, "translation_prompt", "template", "zh", "base.txt"),
+        version,
+      );
+      for (const enabled of [false, true]) {
+        const builder = new PromptBuilder(
+          builtin_root,
+          { app_language: "ZH", target_language: "ZH" },
+          create_quality_snapshot({ translation_prompt_enable: enabled, translation_prompt: text }),
+          [],
+        );
+        const main = builder.build_main();
+        expect(main).toContain(`翻译前缀\n${enabled && text !== null ? text : version}\n\n`);
+        if (enabled && text !== null) expect(main).not.toContain(version);
+      }
+    }
+  });
   it("未限定源语言使用模板语言的泛称，非法目标语言返回领域错误", async () => {
     const builtin_root = await create_template_root();
     // 共用模板夹具，只改变待验证的源／目标语言边界。

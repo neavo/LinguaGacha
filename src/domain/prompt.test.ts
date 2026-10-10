@@ -3,6 +3,9 @@ import { describe, expect, it } from "vitest";
 import { normalize_translation_prompt_slice, create_empty_project_prompts } from "./prompt";
 
 describe("Prompt", () => {
+  it.each([null, "", "旧正文"])("切片保留覆盖值 %s", (text) => {
+    expect(normalize_translation_prompt_slice({ text }).text).toBe(text);
+  });
   it("编辑空快照时保留其它快照的正文", () => {
     const first = create_empty_project_prompts();
     const second = create_empty_project_prompts();

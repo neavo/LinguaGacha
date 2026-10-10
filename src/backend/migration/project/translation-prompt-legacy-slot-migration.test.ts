@@ -7,7 +7,7 @@ import type { ProjectOpenMigrationContext } from "../migration-types";
 import { translation_prompt_legacy_slot_migration } from "./translation-prompt-legacy-slot-migration";
 
 describe("translation_prompt_legacy_slot_migration", () => {
-  it("当前提示词为空时按界面语言迁移旧提示词槽位并写入完成标记", async () => {
+  it("当前提示词缺失时按界面语言迁移旧提示词槽位并写入完成标记", async () => {
     const context = create_context({
       config: { app_language: "EN" },
       rule_text: {
@@ -48,10 +48,10 @@ describe("translation_prompt_legacy_slot_migration", () => {
     );
   });
 
-  it("当前提示词已存在时只写入完成标记", async () => {
+  it.each(["", "当前提示词"])("当前提示词已存在时保留正文 %s 并写入完成标记", async (text) => {
     const context = create_context({
       rule_text: {
-        translation_prompt: "当前提示词",
+        translation_prompt: text,
         CUSTOM_PROMPT_ZH: "旧中文提示词",
       },
     });
@@ -87,7 +87,7 @@ function create_context(options: {
   const database = {
     get_all_meta: vi.fn(() => options.meta ?? {}),
     get_rule_text: vi.fn(
-      (_project_path: string, rule_type: string) => options.rule_text?.[rule_type] ?? "",
+      (_project_path: string, rule_type: string) => options.rule_text?.[rule_type] ?? null,
     ),
     set_rule_text: vi.fn(),
     set_meta: vi.fn(),

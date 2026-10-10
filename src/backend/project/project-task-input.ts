@@ -31,7 +31,7 @@ export type ProjectQualityRuleInput =
     };
 
 export type ProjectPromptInput = {
-  text: string; // 提示词正文
+  text: string | null; // 用户覆盖正文，null 恢复内置模板
   enabled: boolean; // 是否启用该提示词
 };
 

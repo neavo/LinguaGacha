@@ -10,6 +10,22 @@ import { QUALITY_RULE_KINDS, QualityRule } from "../../../domain/quality";
 const workspaces: string[] = [];
 
 describe("Agent workspace change parser", () => {
+  it("提示词更新接受 null 和空字符串，拒绝其它类型", async () => {
+    const workspace = create_workspace();
+    write(
+      workspace,
+      AGENT_WORKSPACE_CHANGE_PATHS.prompts.updates,
+      [null, "", 42]
+        .map((text) => JSON.stringify({ kind: "translation", fp: "abcd", text }))
+        .join("\n"),
+    );
+    const parsed = await prepare_agent_workspace_changes({
+      nativeFs: new NativeFs(),
+      workspacePath: workspace,
+    });
+    expect(parsed.batch.prompts.map((intent) => intent.text)).toEqual([null, ""]);
+    expect(parsed.rejected).toHaveLength(1);
+  });
   it.each(QUALITY_RULE_KINDS)("%s 创建与更新拒绝非法 src，更新仍允许省略 src", async (kind) => {
     const workspace = create_workspace();
     const fields = QualityRule.from_json(kind).normalize_entry({ src: "合法" });

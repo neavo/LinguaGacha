@@ -128,9 +128,11 @@ export class PromptBuilder {
   public build_main(mode: TranslationPromptMode = "text"): string {
     const context = this.resolve_prompt_context();
     const prefix = this.read_prompt_text(context.prompt_language, "prefix.txt");
-    const base = this.quality_snapshot.translation_prompt_enable
-      ? this.quality_snapshot.translation_prompt
-      : this.read_prompt_text(context.prompt_language, "base.txt");
+    const base =
+      this.quality_snapshot.translation_prompt_enable &&
+      this.quality_snapshot.translation_prompt !== null
+        ? this.quality_snapshot.translation_prompt
+        : this.read_prompt_text(context.prompt_language, "base.txt");
     const enhancement = this.config.prompt_enhancement_enable
       ? this.read_prompt_text(context.prompt_language, "thinking.txt")
       : "";

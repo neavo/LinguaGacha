@@ -529,13 +529,13 @@ export class ProjectDatabase {
     );
   }
 
-  /** 将提示词等文本规则的持久载荷收窄为字符串。 */
-  public get_rule_text(project_path: string, rule_type: string): string {
+  /** 无记录返回 null，已存空字符串保留为显式覆盖。 */
+  public get_rule_text(project_path: string, rule_type: string): string | null {
     return this.with_project_connection(project_path, (db) => this.read_rule_text(db, rule_type));
   }
 
-  /** 以统一文本规则形状保存提示词内容。 */
-  public set_rule_text(project_path: string, rule_type: string, text: string): void {
+  /** null 删除覆盖，字符串以现有文本规则形状保存。 */
+  public set_rule_text(project_path: string, rule_type: string, text: string | null): void {
     this.with_project_connection(project_path, (db) => this.write_rule_text(db, rule_type, text));
   }
 
@@ -1028,10 +1028,10 @@ export class ProjectDatabase {
   /**
    * 读取提示词或规则文本，统一文本规则落点
    */
-  private read_rule_text(db: DatabaseSync, rule_type: string): string {
+  private read_rule_text(db: DatabaseSync, rule_type: string): string | null {
     const row = db.prepare("SELECT data FROM rules WHERE type = ? LIMIT 1").get(rule_type);
     if (row === undefined) {
-      return "";
+      return null;
     }
     return this.deserialize_rule_text_payload(row_text(row, "data"));
   }
@@ -1039,8 +1039,9 @@ export class ProjectDatabase {
   /**
    * 保存文本规则内容，保持 prompt 与规则文本写入一致
    */
-  private write_rule_text(db: DatabaseSync, rule_type: string, text: string): void {
+  private write_rule_text(db: DatabaseSync, rule_type: string, text: string | null): void {
     db.prepare("DELETE FROM rules WHERE type = ?").run(rule_type);
+    if (text === null) return;
     db.prepare("INSERT INTO rules (type, data) VALUES (?, ?)").run(
       rule_type,
       JsonTool.stringifyStrict({ text }),

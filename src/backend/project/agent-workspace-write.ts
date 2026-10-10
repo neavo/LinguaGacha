@@ -58,7 +58,7 @@ export type AgentWorkspacePromptUpdateIntent = Readonly<{
   line: number;
   kind: PromptKind;
   fp: string;
-  text: string;
+  text: string | null;
 }>;
 
 export type AgentWorkspaceQualityCreateIntent = Readonly<{
@@ -101,7 +101,7 @@ export type AgentWorkspaceCurrentFacts = Readonly<{
   pdfDocuments: readonly PDFDocumentRecord[];
   items: readonly JsonRecord[]; // 当前完整 Item 集合，供指纹校验与重复组协调
   quality: Partial<Record<QualityRuleKind, readonly JsonRecord[]>>; // 本批涉及的质量规则
-  prompts: Partial<Record<PromptKind, string>>; // 本批涉及的提示词
+  prompts: Partial<Record<PromptKind, string | null>>; // 本批涉及的提示词覆盖
   duplicateFilterEnabled: boolean; // 项目持久设置中的重复过滤口径
 }>;
 
@@ -125,7 +125,7 @@ export type AgentWorkspaceQualityWrite = Readonly<{
 
 export type AgentWorkspacePromptWrite = Readonly<{
   kind: PromptKind;
-  text: string;
+  text: string | null;
 }>;
 
 export type AgentWorkspaceWriteResolution = Readonly<{
@@ -209,7 +209,7 @@ export function project_agent_workspace_quality_entry(
 }
 
 /** prompt 指纹同时绑定 kind 与正文，避免不同提示词共享同一事实身份。 */
-export function project_agent_workspace_prompt(kind: PromptKind, text: string): JsonRecord {
+export function project_agent_workspace_prompt(kind: PromptKind, text: string | null): JsonRecord {
   return { fp: workspace_fingerprint(["prompt", kind, text]), text };
 }
 
@@ -379,7 +379,7 @@ function resolve_items(
 /** 同 kind prompt 的同值行去重，异值行按对象冲突处理。 */
 function resolve_prompts(
   intents: readonly AgentWorkspacePromptUpdateIntent[],
-  current: Partial<Record<PromptKind, string>>,
+  current: Partial<Record<PromptKind, string | null>>,
 ): {
   changes: AgentWorkspacePromptWrite[];
   rejected: AgentWorkspaceRejectedChange[];
