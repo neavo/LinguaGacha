@@ -88,6 +88,9 @@ describe("MV/MZ 原稿写回", () => {
       JSON.stringify({ displayName: "地图", events: [null, { name: "EV001", pages: [{ list }] }] }),
     );
     const items = await format.read_from_stream(bytes, "data/Map001.json");
+    expect(items.find((item) => item.src === "脚本")?.extra_field).toMatchObject({
+      rpgmaker: { usage: "script", source_context: 'x = "脚本"' },
+    });
     for (const item of items) {
       if (item.src === "一行")
         Object.assign(item, {
@@ -120,6 +123,9 @@ describe("MV/MZ 原稿写回", () => {
     const bytes = Buffer.from(source);
     const items = await format.read_from_stream(bytes, "js/plugins/test.js");
     expect(items.map((item) => item.src)).toEqual(["中文😀", "你好", "世界"]);
+    expect(items[0]?.extra_field).toMatchObject({
+      rpgmaker: { usage: "script", source_context: 'x = "中文😀"' },
+    });
     const translations = ['引号"\\\n😀', "`前${字}", "后"];
     items.forEach((item, index) => {
       item.status = "PROCESSED";

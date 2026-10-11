@@ -43,14 +43,9 @@ export function read_rpgmaker_json(root: JsonValue, rel_path: string): Item[] {
   const items: Item[] = [];
   const file = path.basename(rel_path, ".json");
   // 空正文仍可携带说话人，必须保留可翻译姓名。
-  function add(
-    src: string,
-    location: RPGMakerLocation,
-    usage: RPGMakerMetadata["usage"],
-    name_src: string | null = null,
-  ): void {
+  function add(src: string, metadata: RPGMakerMetadata, name_src: string | null = null): void {
     if (src === "" && !name_src) return;
-    const extra_field = { rpgmaker: { usage, location } };
+    const extra_field = { rpgmaker: metadata };
     items.push(
       create_item({
         src,
@@ -66,16 +61,25 @@ export function read_rpgmaker_json(root: JsonValue, rel_path: string): Item[] {
   // 脚本偏移相对于完整容器，事件行重新连接后再交给解析器。
   function script(src: string, container: Exclude<RPGMakerLocation, { kind: "script" }>): void {
     for (const span of read_javascript_strings(src))
-      add(
-        span.src,
-        { kind: "script", container, start: span.start, end: span.end, template: span.template },
-        "script",
-      );
+      add(span.src, {
+        usage: "script",
+        source_context: span.source_context,
+        location: {
+          kind: "script",
+          container,
+          start: span.start,
+          end: span.end,
+          template: span.template,
+        },
+      });
   }
   // 显示字段向下传播用途，插件扩展字段保留为默认排除条目。
   function walk(value: JsonValue, target: JsonPath, display = false): void {
     if (typeof value === "string") {
-      add(value, { kind: "field", path: target }, display ? "display" : "metadata");
+      add(value, {
+        location: { kind: "field", path: target },
+        usage: display ? "display" : "metadata",
+      });
     } else if (Array.isArray(value)) {
       if (target.at(-1) === "list" && value.length > 0 && value.every(is_command)) {
         events(value, target);
@@ -133,8 +137,7 @@ export function read_rpgmaker_json(root: JsonValue, rel_path: string): Item[] {
         else
           add(
             text,
-            location,
-            command.code === RPGMAKER_EVENT.COMMENT ? "metadata" : "display",
+            { location, usage: command.code === RPGMAKER_EVENT.COMMENT ? "metadata" : "display" },
             name,
           );
         // 头指令的资源字段也保留为默认排除条目。
@@ -163,11 +166,10 @@ export function read_rpgmaker_json(root: JsonValue, rel_path: string): Item[] {
             )
               mirrors.push([...list_path, next, "parameters", 1]);
           }
-          add(
-            choice,
-            { kind: "field", path: [...parameters_path, 0, choice_index], mirrors },
-            "display",
-          );
+          add(choice, {
+            location: { kind: "field", path: [...parameters_path, 0, choice_index], mirrors },
+            usage: "display",
+          });
         });
         continue;
       }

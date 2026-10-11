@@ -6,6 +6,7 @@ import type { FileFormatServiceConfig } from "../file-format-shared";
 import { read_javascript_strings } from "./javascript";
 import { read_rpgmaker_json } from "./json";
 import { write_rpgmaker_items } from "./writer";
+import type { RPGMakerMetadata } from "./types";
 
 /** 格式门面固定配置并把定位错误归一为文件解析错误。 */
 export class RPGMakerMvMzFormat {
@@ -27,6 +28,7 @@ export class RPGMakerMvMzFormat {
         extra_field: {
           rpgmaker: {
             usage: "script",
+            source_context: span.source_context,
             location: {
               kind: "script",
               container: { kind: "field", path: [] },
@@ -34,7 +36,7 @@ export class RPGMakerMvMzFormat {
               end: span.end,
               template: span.template,
             },
-          },
+          } satisfies RPGMakerMetadata,
         },
       }),
     );

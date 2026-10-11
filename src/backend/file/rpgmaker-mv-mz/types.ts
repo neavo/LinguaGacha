@@ -37,7 +37,6 @@ export type RPGMakerLocation =
       end: number;
       template: boolean;
     };
-export type RPGMakerMetadata = {
-  usage: "display" | "metadata" | "script";
-  location: RPGMakerLocation;
-};
+export type RPGMakerMetadata =
+  | { usage: "display" | "metadata"; location: RPGMakerLocation }
+  | { usage: "script"; location: RPGMakerLocation; source_context: string }; // 上下文摘录固定为导入原稿，译文编辑后仍保留。
