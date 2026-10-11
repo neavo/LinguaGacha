@@ -26,6 +26,7 @@ it("零条目旧 JSON 和 WOLF 工作簿从原稿识别一次，身份与完成�
       database,
       app_setting_service: {} as AppSettingService,
       items: [],
+      assets: database.get_all_asset_records(project),
       meta: {},
     };
     const writes = await empty_asset_file_type_migration(context);

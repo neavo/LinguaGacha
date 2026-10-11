@@ -1,4 +1,4 @@
-import { create_empty_quality_rule_block } from "../project/project-data-reader";
+import { ProjectDataReader, create_empty_quality_rule_block } from "../project/project-data-reader";
 import { describe, expect, it, vi } from "vitest";
 
 import type { AppSettingService } from "../app/app-setting-service";
@@ -120,6 +120,24 @@ function create_cache(options: {
 }
 
 describe("CacheManager", () => {
+  it("已提交快照安装失败后，下次读取从数据库完整恢复", () => {
+    const project = "E:/Project/demo.lg";
+    const database = create_database({ items: [create_item()] });
+    const cache = create_cache({ database });
+    const snapshot = new ProjectDataReader(database).read_snapshot(project);
+    vi.spyOn(cache.files, "replace").mockImplementationOnce(() => {
+      throw new Error("install failed");
+    });
+    expect(() => cache.installProject(project, snapshot)).toThrow("install failed");
+    expect(cache.snapshot().freshness).toBe("recoverable_error");
+    expect(cache.items.readItems()).toEqual(snapshot.items);
+    expect(cache.files.readFileEntries()).toEqual(Object.values(snapshot.files));
+    expect(cache.snapshot()).toMatchObject({
+      freshness: "fresh",
+      sectionRevisions: snapshot.section_revisions,
+    });
+  });
+
   it("热机后缓存当前工程 items、质量块、提示词块和 section revision", async () => {
     const cache = create_cache({
       database: create_database({

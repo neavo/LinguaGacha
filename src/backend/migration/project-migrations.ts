@@ -11,11 +11,16 @@ const PROJECT_OPEN_MIGRATIONS: readonly ProjectOpenMigration[] = [
   quality_settings_migration,
   translation_prompt_legacy_slot_migration,
   (context) =>
-    new EpubRubyBlockTextMigration(context.database).build_writes(
-      context.project_path,
-      context.items,
-    ),
-  (context) => new MarkdownV2BlockMigration().build_writes(context.project_path, context.items),
+    context.assets.some((asset) => asset.file_type === "EPUB")
+      ? new EpubRubyBlockTextMigration(context.database).build_writes(
+          context.project_path,
+          context.items,
+        )
+      : [],
+  (context) =>
+    context.assets.some((asset) => asset.file_type === "MD")
+      ? new MarkdownV2BlockMigration().build_writes(context.project_path, context.items)
+      : [],
   empty_asset_file_type_migration,
 ];
 
@@ -23,8 +28,21 @@ const PROJECT_OPEN_MIGRATIONS: readonly ProjectOpenMigration[] = [
 export async function build_project_open_writes(
   input: ProjectOpenMigrationInput,
 ): Promise<ProjectDatabaseWrite[]> {
-  const meta = await input.database.get_all_meta(input.project_path);
-  const context = { ...input, meta, items: await input.database.get_all_items(input.project_path) };
+  const meta = input.database.get_all_meta(input.project_path);
+  // 按原有首读时机延迟读取 Item。meta Case 失败时不会提前扫描条目。
+  let items: readonly JsonValue[] | undefined;
+  const context = {
+    ...input,
+    meta,
+    assets: input.database.get_all_asset_records(input.project_path),
+    get items() {
+      if (items === undefined) {
+        const value = input.database.get_all_items(input.project_path);
+        items = value;
+      }
+      return items;
+    },
+  };
   const writes: ProjectDatabaseWrite[] = [];
   for (const migration of PROJECT_OPEN_MIGRATIONS) writes.push(...(await migration(context)));
   return writes;

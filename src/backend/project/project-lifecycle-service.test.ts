@@ -6,7 +6,8 @@ import { ProjectSessionState } from "./project-session-state";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-type CacheLifecycleCall = { projectPath: string };
+import type { ProjectDataSnapshot } from "./project-data-reader";
+type CacheLifecycleCall = { projectPath: string; snapshot?: ProjectDataSnapshot };
 type CacheLifecycleHandler = (call: CacheLifecycleCall) => void;
 import { DatabaseSync } from "node:sqlite";
 import { ProjectDatabase } from "../database/database-operations";
@@ -28,6 +29,99 @@ type TestProjectDatabase = ProjectDatabase & {
 
 describe("ProjectLifecycleService", () => {
   const cleanup_paths: string[] = []; // 生命周期测试会创建真实临时文件，统一登记清理避免污染用户工作区
+
+  it("新建与重开安装一致快照，普通工程每次只读取一次完整条目", async () => {
+    const root = create_temp_dir();
+    const project_path = path.join(root, "current.lg");
+    const source = write_file(path.join(root, "source.txt"), "こんにちは\nこんにちは");
+    const trans = write_file(
+      path.join(root, "game.trans"),
+      JSON.stringify({
+        project: { gameEngine: "kag", files: { chapter: { data: [["こんにちは", ""]] } } },
+      }),
+    );
+    const database = new ProjectDatabase();
+    const snapshots: ProjectDataSnapshot[] = [];
+    const service = create_service({
+      database,
+      project_event_handler: ({ snapshot }) => {
+        if (snapshot) snapshots.push(snapshot);
+      },
+    });
+    try {
+      const reads = vi.spyOn(database, "get_all_items");
+      await service.create_project_commit({ path: project_path, source_paths: [source, trans] });
+      expect(reads).toHaveBeenCalledTimes(1);
+      expect(snapshots[0]?.meta).toMatchObject({
+        glossary_enable: true,
+        translation_prompt_legacy_migrated: true,
+        "migration.asset_file_type_complete": true,
+      });
+      expect(snapshots[0]?.files["game.trans"]).toMatchObject({ game_engine: "kag" });
+      reads.mockClear();
+      await service.load_project({ path: project_path });
+      expect(reads).toHaveBeenCalledTimes(1);
+      expect(snapshots).toHaveLength(2);
+      const { meta: first_meta, ...created } = snapshots[0]!;
+      const { meta: second_meta, ...loaded } = snapshots[1]!;
+      expect(loaded).toEqual(created);
+      expect(second_meta.translation_extras).toEqual(first_meta.translation_extras);
+    } finally {
+      database.close();
+    }
+  });
+
+  it.each(["create", "load"] as const)("%s 快照准备失败回滚且不发布", async (operation) => {
+    const project_path = path.join(create_temp_dir(), "rollback.lg");
+    const database = new ProjectDatabase();
+    const session_state = create_session_state();
+    const publish = vi.fn();
+    try {
+      if (operation === "load") {
+        database.create_project(project_path, "old");
+        database.set_meta(project_path, "updated_at", "before");
+      }
+      vi.spyOn(database, "get_rules").mockImplementationOnce(() => {
+        throw new Error("snapshot failed");
+      });
+      const service = create_service({ database, session_state, project_event_handler: publish });
+      await expect(
+        operation === "create"
+          ? service.create_project_commit({ path: project_path, source_paths: [] })
+          : service.load_project({ path: project_path }),
+      ).rejects.toThrow("snapshot failed");
+      expect(publish).not.toHaveBeenCalled();
+      expect(session_state.snapshot().loaded).toBe(false);
+      if (operation === "create") expect(fs.existsSync(project_path)).toBe(false);
+      else expect(database.get_all_meta(project_path)).toMatchObject({ updated_at: "before" });
+    } finally {
+      database.close();
+    }
+  });
+
+  it("新建提交后缓存失败保留工程，重开能恢复当前事实", async () => {
+    const project_path = path.join(create_temp_dir(), "committed.lg");
+    const database = new ProjectDatabase();
+    const session_state = create_session_state();
+    const publish = vi.fn().mockImplementationOnce(() => {
+      throw new Error("install failed");
+    });
+    const service = create_service({ database, session_state, project_event_handler: publish });
+    try {
+      await expect(
+        service.create_project_commit({ path: project_path, source_paths: [] }),
+      ).rejects.toMatchObject({
+        code: "data.committed_sync_failed",
+        public_details: { committed: true, action: "reload_project" },
+      });
+      expect(fs.existsSync(project_path)).toBe(true);
+      expect(session_state.snapshot().loaded).toBe(false);
+      await service.load_project({ path: project_path });
+      expect(session_state.snapshot()).toEqual({ loaded: true, projectPath: project_path });
+    } finally {
+      database.close();
+    }
+  });
 
   afterEach(() => {
     while (cleanup_paths.length > 0) {
@@ -65,13 +159,40 @@ describe("ProjectLifecycleService", () => {
         code: "data.committed_sync_failed",
         public_details: { committed: true, action: "reload_project" },
       });
-      await database.close_project(project_path);
-      expect((await database.get_all_meta(project_path)).updated_at).not.toBe("before");
-    } finally {
-      vi.restoreAllMocks();
-      await database.close();
-    }
-  });
+      vi.spyOn(DatabaseSync.prototype, "close").mockImplementationOnce(() => {
+        throw close;
+      });
+      try {
+        let failure: unknown;
+        try {
+          await service.load_project({ path: project_path });
+        } catch (error) {
+          failure = error;
+        }
+        expect(failure).toMatchObject({
+          code: "data.committed_sync_failed",
+          public_details: { committed: true, action: "reload_project" },
+        });
+        if (phase === "committed-and-close") {
+          expect(failure).toHaveProperty("public_details", (main as AppError).public_details);
+          expect(failure).toHaveProperty("cause.errors", [
+            main,
+            expect.objectContaining({ cause: close }),
+          ]);
+        } else if (phase === "cache-and-close") {
+          expect(failure).toHaveProperty("cause.errors", [
+            expect.objectContaining({ code: "data.committed_sync_failed", cause: main }),
+            expect.objectContaining({ cause: close }),
+          ]);
+        } else expect(failure).toHaveProperty("cause.cause", close);
+        database.close();
+        expect(database.get_all_meta(project_path).updated_at).not.toBe("before");
+      } finally {
+        vi.restoreAllMocks();
+        database.close();
+      }
+    },
+  );
 
   it("snapshot 只暴露 会话权威的加载态字段", async () => {
     const service = create_service({
@@ -813,7 +934,7 @@ describe("ProjectLifecycleService", () => {
       }),
       options.log_manager ?? create_log_manager(),
       {
-        warmProject: async (projectPath) => project_event_handler({ projectPath }),
+        installProject: (projectPath, snapshot) => project_event_handler({ projectPath, snapshot }),
         clearProject: (projectPath) => project_event_handler({ projectPath: projectPath ?? "" }),
       },
       new ProjectWriteStore(options.database, () => undefined, null),
@@ -849,6 +970,7 @@ describe("ProjectLifecycleService", () => {
       },
       get_all_meta: vi.fn(() => options.meta ?? {}),
       get_all_items: vi.fn(() => options.items ?? []),
+      get_rules: vi.fn(() => []),
       get_all_asset_records: vi.fn(() => options.asset_records ?? []),
       get_rule_text: vi.fn(
         (_project_path: string, rule_type: string) => options.rule_text_by_type?.[rule_type] ?? "",

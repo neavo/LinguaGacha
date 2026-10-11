@@ -1,7 +1,3 @@
-import { JsonTool } from "../../shared/utils/json-tool";
-import { read_json_record } from "../../domain/json";
-import type { ProjectFileRecord } from "../project/project-file-records";
-
 import type { Item, ProjectItemPersistentRecord } from "../../domain/item";
 import type { SourceFileParseFailureRecord } from "../../shared/source-file-parse-failure";
 import { build_source_file_parse_failure } from "./source-file-parse-failure-reporter";
@@ -17,7 +13,7 @@ export type SourceFileParseCommand = {
 
 export type SourceFileParsedDraft = SourceFileParseCommand & {
   file_type: ProjectFileType; // 解析器提供文件身份，零条目字幕也保留类型
-  game_engine?: string;
+  game_engine?: string; // 导入继承按引擎区分相同正文的文本规则身份。
   content: Uint8Array;
   pdf_document: PDFDocument | null; // PDF 独立文档，文本格式为空
   parsed_items: Item[]; // 格式解析器已补齐的条目草稿，身份由工程入口分配
@@ -31,17 +27,14 @@ export type SourceFileParseResult = {
 
 export type SourceFileProjectDraft = {
   warnings: SourceFileParseWarning[]; // 本次解析的局部遗漏，仅供后端操作日志使用。
-  source_paths: string[]; // 格式服务归一后的用户输入路径
   files: Array<{
     rel_path: string;
-    source_path: string;
     file_type: ProjectFileType;
     sort_index: number;
     content: Uint8Array;
     pdf_document: PDFDocument | null;
-  }>; // files 是项目文件 section 和 asset 写库共同使用的草稿
+  }>; // 资产写入清单，文件类型同时用于新建预过滤。
   items: ProjectItemPersistentRecord[]; // 已分配临时 id、file_path 和 file_type
-  file_state: Record<string, ProjectFileRecord>; // 供预过滤算法消费
   failed_files: SourceFileParseFailureRecord[];
 };
 
@@ -59,36 +52,26 @@ export class SourceFileParsePipeline {
   }
 
   /**
-   * 新建工程和新建预览共用同一份源路径归一与解析草稿。
+   * 新建工程按来源顺序分配条目身份并准备资产写入。
    */
   public async build_project_draft(source_paths: string[]): Promise<SourceFileProjectDraft> {
-    const normalized_source_paths = this.format_service.normalize_source_paths(source_paths);
     const parse_result = await this.parse_source_entries(
       this.format_service
-        .assign_source_file_paths(
-          this.format_service.collect_source_file_entries(normalized_source_paths),
-        )
+        .assign_source_file_paths(this.format_service.collect_source_file_entries(source_paths))
         .map((entry) => ({ ...entry, file_type: entry.file_type })),
     );
     const files: SourceFileProjectDraft["files"] = [];
     const items: SourceFileProjectDraft["items"] = [];
-    const file_state: SourceFileProjectDraft["file_state"] = {};
     let next_item_id = 1; // 由后端顺序分配，避免 renderer 伪造数据库主键
 
     for (const [sort_index, draft] of parse_result.file_drafts.entries()) {
       files.push({
         rel_path: draft.rel_path,
-        source_path: draft.source_path,
         file_type: draft.file_type,
         sort_index,
         pdf_document: draft.pdf_document,
         content: draft.content,
       });
-      file_state[draft.rel_path] = {
-        rel_path: draft.rel_path,
-        file_type: draft.file_type,
-        sort_index,
-      };
       for (const parsed_item of draft.parsed_items) {
         const item_payload = {
           ...parsed_item,
@@ -101,10 +84,8 @@ export class SourceFileParsePipeline {
     }
 
     return {
-      source_paths: normalized_source_paths,
       files,
       items,
-      file_state,
       failed_files: parse_result.failed_files,
       warnings: parse_result.warnings,
     };
@@ -148,14 +129,8 @@ export class SourceFileParsePipeline {
         const parsed = await this.format_service.parse_asset(entry.rel_path, content, file_type);
         if (parsed.kind === "items") warnings.push(...(parsed.warnings ?? []));
         file_drafts.push({
-          ...(parsed.kind === "items" && parsed.file_type === "TRANS"
-            ? {
-                game_engine: String(
-                  read_json_record(read_json_record(JsonTool.parseStrict(content))["project"])[
-                    "gameEngine"
-                  ] ?? "",
-                ),
-              }
+          ...(parsed.kind === "items" && parsed.game_engine !== undefined
+            ? { game_engine: parsed.game_engine }
             : {}),
           content,
           source_path: entry.source_path,

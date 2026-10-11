@@ -3,7 +3,11 @@ import { AppError } from "../../shared/error";
 import type { AppSettingService } from "../app/app-setting-service";
 import type { ProjectDatabase } from "../database/database-operations";
 import type { LogManager } from "../log/log-manager";
-import { ProjectDataReader, create_empty_quality_rule_block } from "../project/project-data-reader";
+import {
+  ProjectDataReader,
+  create_empty_quality_rule_block,
+  type ProjectDataSnapshot,
+} from "../project/project-data-reader";
 import type { ProjectCommittedChange } from "../project/project-committed-change";
 import type { ComputeWorkerClient } from "../worker/compute-worker-client";
 import { type QualityRuleBlock } from "../../shared/quality/quality-rule-state";
@@ -102,9 +106,25 @@ export class CacheManager implements CacheReadPort {
   /**
    * 为当前项目执行完整热机，后续 query 可走内存读取。
    */
-  public async warmProject(project_path: string): Promise<void> {
-    await this.rebuild_full_project_cache(project_path);
+  public warmProject(project_path: string): void {
+    this.database.with_project_scope(project_path, () => {
+      this.installProject(project_path, this.data_reader.read_snapshot(project_path));
+    });
+  }
+
+  /** 仅安装已提交快照，生命周期准备失败时不得调用。 */
+  public installProject(project_path: string, snapshot: ProjectDataSnapshot): void {
+    this.project_path = project_path;
+    this.epoch += 1;
+    this.freshness = "recoverable_error"; // 安装中断后，下次读取必须重建全部基础事实。
+    this.items.replace(snapshot.items);
+    this.files.replace(snapshot.files);
+    this.quality.replace(snapshot.quality);
+    this.prompts.replace(snapshot.prompts);
+    this.qualityStatistics.clear();
     this.proofreading.clearProject();
+    this.section_revisions = { ...snapshot.section_revisions };
+    this.freshness = "fresh";
   }
 
   /**
@@ -189,42 +209,7 @@ export class CacheManager implements CacheReadPort {
   }
 
   /**
-   * 从数据库重建所有基础 block 缓存。
-   */
-  private rebuild_full_project_cache(project_path: string): void {
-    this.database.with_project_scope(project_path, () => {
-      const meta = this.data_reader.get_all_meta(project_path);
-      const items = this.data_reader.read_items(project_path);
-      const files_block = this.data_reader.build_files_record_block(project_path);
-      const quality_block = this.data_reader.build_quality_block(project_path, meta);
-      const prompts_block = this.data_reader.build_prompts_block(project_path, meta);
-      const section_revisions = this.data_reader.build_section_revisions(meta);
-      this.project_path = project_path;
-      this.epoch += 1;
-      this.items.replace(items);
-      this.files.replace(files_block);
-      this.quality.replace(quality_block);
-      this.prompts.replace(prompts_block);
-      this.qualityStatistics.clear();
-      this.section_revisions = section_revisions;
-      this.freshness = "fresh";
-    });
-    const { items_snapshot, files_block, pdf, quality_block, prompts_block, section_revisions } =
-      snapshot;
-    this.project_path = project_path;
-    this.epoch += 1;
-    this.items.replace(items_snapshot.item_records);
-    this.files.replace(files_block);
-    this.pdf.replace(pdf);
-    this.quality.replace(quality_block);
-    this.prompts.replace(prompts_block);
-    this.qualityStatistics.clear();
-    this.section_revisions = section_revisions;
-    this.freshness = "fresh";
-  }
-
-  /**
-   * 重建失败时阻止同步读取旧事实，调用方按已提交语义重载。
+   * 若上一轮维护失败，则在下一次读取前用数据库事实重建缓存。
    */
   private recover_if_needed(): void {
     if (this.freshness !== "recoverable_error") {
@@ -233,9 +218,7 @@ export class CacheManager implements CacheReadPort {
     if (this.project_path === "") {
       return;
     }
-    throw new AppError("data.committed_sync_failed", {
-      public_details: { committed: true, action: "reload_project" },
-    });
+    this.warmProject(this.project_path);
   }
 
   /**

@@ -7,8 +7,7 @@ import type { AgentService } from "../agent/agent-service";
 import type { ApiJsonHandler } from "./api-request";
 import { register_api_routes } from "./api-routes";
 
-/** 路由集合是公开面契约，注册顺序不是。 */
-// 公开 HTTP 路径属于客户端契约，独立清单用于发现误删、改名与重复注册。
+// 公开 HTTP 路径是客户端契约，独立清单用于发现误删、改名与重复注册。
 const GET_PATHS = new Set([
   "/api/agent/files",
   "/api/agent/workspace/image",
@@ -63,7 +62,6 @@ const POST_PATHS = new Set([
   "/api/session/project/close",
   "/api/session/project/preview",
   "/api/session/source-files/summary",
-  "/api/session/project/create-preview",
   "/api/session/project/open",
   "/api/session/project/create",
   "/api/session/project/open-preview",

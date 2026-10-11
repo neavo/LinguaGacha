@@ -9,7 +9,7 @@ const MIGRATION_KEY = "migration.asset_file_type_complete";
 export const empty_asset_file_type_migration: ProjectOpenMigration = async (context) => {
   if (context.meta[MIGRATION_KEY] === true) return [];
   const types = new Map<string, string>();
-  for (const asset of context.database.get_all_asset_records(context.project_path)) {
+  for (const asset of context.assets) {
     if (asset.file_type !== "NONE") continue;
     const content = context.database.read_asset_content(context.project_path, asset.path);
     if (content === null) continue;

@@ -21,12 +21,15 @@ import { collect_patch_targets, patch_trans_row } from "./trans-patch-writer";
  */
 export class TRANSFormat {
   /**
-   * 读取 .trans project.files，以 data 行为权威并按同索引读取 tags/context/parameters
+   * 读取 `.trans` 条目与引擎身份，按 `data` 行索引关联扩展字段。
    */
-  public read_from_stream(content: Uint8Array, rel_path: string): Item[] {
+  public read_from_stream(
+    content: Uint8Array,
+    rel_path: string,
+  ): { items: Item[]; game_engine: string } {
     const root = JsonTool.parseStrict<MutableJsonRecord>(content);
     if (typeof root !== "object" || root === null || Array.isArray(root)) {
-      return [];
+      return { items: [], game_engine: "" };
     }
     const project = to_mutable_record(root["project"]);
     const files = to_mutable_record(project["files"]);
@@ -71,7 +74,7 @@ export class TRANSFormat {
         );
       }
     }
-    return items;
+    return { items, game_engine: String(project["gameEngine"] ?? "") };
   }
 
   /**

@@ -23,6 +23,16 @@ import { read_project_revision } from "../../domain/project-revision";
 export { PROJECT_DATA_SECTIONS };
 export type { ProjectDataSection };
 
+/** 单次准备的基础事实在事务提交后交给缓存，不持有额外长期状态。 */
+export interface ProjectDataSnapshot {
+  readonly meta: JsonRecord;
+  readonly items: readonly ProjectItemPublicRecord[];
+  readonly files: Readonly<Record<string, ProjectFileRecord>>;
+  readonly quality: QualityRuleBlock;
+  readonly prompts: ProjectPrompts;
+  readonly section_revisions: Readonly<Record<ProjectDataSection, number>>;
+}
+
 /**
  * 统一读取项目 section revision，供读取接口和同步写入事件共享口径
  */
@@ -76,6 +86,19 @@ export class ProjectDataReader {
    */
   public constructor(database: ProjectDatabaseAccess) {
     this.database = database;
+  }
+
+  /** 调用者持有事务或读取作用域，所有消费者共享同一次条目读取。 */
+  public read_snapshot(project_path: string): ProjectDataSnapshot {
+    const meta = this.get_all_meta(project_path);
+    return {
+      meta,
+      items: this.read_items(project_path),
+      files: this.build_files_record_block(project_path),
+      quality: this.build_quality_block(project_path, meta),
+      prompts: this.build_prompts_block(project_path, meta),
+      section_revisions: this.build_section_revisions(meta),
+    };
   }
 
   /**

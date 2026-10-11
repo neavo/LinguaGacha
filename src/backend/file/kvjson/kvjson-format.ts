@@ -13,8 +13,7 @@ export class KVJSONFormat {
   /**
    * 读取对象型 JSON，非字符串键值对不进入翻译条目
    */
-  public async read_from_stream(content: Uint8Array, rel_path: string): Promise<Item[]> {
-    const data = JsonTool.parseStrict(await decode_text_content(content));
+  public read_items(data: JsonValue, rel_path: string): Item[] {
     if (typeof data !== "object" || data === null || Array.isArray(data)) {
       return [];
     }

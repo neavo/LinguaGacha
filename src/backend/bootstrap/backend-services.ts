@@ -18,7 +18,6 @@ import { BatchTranslationProjectStore } from "../batch-translation/batch-transla
 import { BatchTranslationRuntime } from "../batch-translation/batch-translation-runtime";
 import { BatchTranslationService } from "../batch-translation/batch-translation-service";
 import { TranslationWorkerPool } from "../batch-translation/work-unit/translation-worker-pool";
-import { FilePreviewService } from "../file/file-preview-service";
 import {
   TranslationFileGenerationService,
   type OutputFolderOpener,
@@ -110,7 +109,6 @@ export interface BackendQualityServices {
 }
 
 export interface BackendFileServices {
-  preview: FilePreviewService;
   translationGeneration: TranslationFileGenerationService;
 }
 
@@ -310,11 +308,6 @@ export class BackendServices {
       }),
     };
     this.files = {
-      preview: new FilePreviewService(
-        this.app_setting_service,
-        this.pdf_worker.run,
-        this.logManager,
-      ),
       translationGeneration: new TranslationFileGenerationService(
         options.database,
         this.app_setting_service,

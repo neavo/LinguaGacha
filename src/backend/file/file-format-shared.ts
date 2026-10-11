@@ -22,7 +22,13 @@ export type SourceFileParseWarning = Readonly<{
 export type ProjectFileType = ItemFileType | "PDF";
 /** 文件级成功可以附带局部提取警告，由操作拥有者记录日志。 */
 export type FileFormatReadResult =
-  | { kind: "items"; items: Item[]; file_type: ItemFileType; warnings?: SourceFileParseWarning[] }
+  | {
+      kind: "items";
+      items: Item[];
+      file_type: ItemFileType;
+      game_engine?: string; // TRANS 导入继承使用的文本规则上下文。
+      warnings?: SourceFileParseWarning[];
+    }
   | { kind: "pdf"; document: PDFDocument };
 
 /** 文件格式处理器共享配置，来源于应用设置或测试显式注入。 */
@@ -33,7 +39,7 @@ export interface FileFormatServiceConfig {
 }
 
 /**
- * 新建工程预演阶段保存源文件绝对路径与工程内相对路径的映射
+ * 来源发现阶段保存源文件绝对路径与工程内相对路径的映射
  */
 export interface ProjectSourceFileEntry {
   file_type?: string;

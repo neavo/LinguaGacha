@@ -2,6 +2,7 @@ import { create_pdf_execution } from "./pdf/test-support";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import iconv from "iconv-lite";
 import { spreadsheet_fixture } from "../../test/spreadsheet-fixture";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -26,6 +27,30 @@ function create_service(): FileFormatService {
 }
 
 describe("FileFormatService", () => {
+  it("JSON 分发保留编码、标准语法和已保存格式身份的接受范围", async () => {
+    const service = create_service();
+    const encoded = iconv.encode(JSON.stringify({ café: "élève" }), "windows-1252");
+    expect(await service.parse_asset("legacy.json", encoded)).toMatchObject({
+      file_type: "KVJSON",
+      items: [{ src: "café", dst: "élève" }],
+    });
+    expect(
+      await service.parse_asset("bom.json", Buffer.from('\uFEFF[{"message":"正文"}]')),
+    ).toMatchObject({ file_type: "MESSAGEJSON", items: [{ src: "正文" }] });
+    const historical = Buffer.from('{"extra": NaN, "原文":"译文"}');
+    await expect(service.parse_asset("new.json", historical)).rejects.toThrow(SyntaxError);
+    expect(await service.parse_asset("saved.json", historical, "KVJSON")).toMatchObject({
+      file_type: "KVJSON",
+      items: [{ src: "原文", dst: "译文" }],
+    });
+    expect(
+      await service.parse_asset("saved.json", Buffer.from('[{"message":"正文"}]'), "KVJSON"),
+    ).toMatchObject({ file_type: "KVJSON", items: [] });
+    await expect(
+      service.parse_asset("broken.json", Buffer.from("{"), "MESSAGEJSON"),
+    ).rejects.toThrow(SyntaxError);
+  });
+
   it("游戏独占输出目录，整批导出在首次写入前拒绝目录内的普通资产", async () => {
     const native = new NativeFs();
     const write = vi.spyOn(native, "write_file").mockResolvedValue();

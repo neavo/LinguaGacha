@@ -2,20 +2,16 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-import iconv from "iconv-lite";
 import { describe, expect, it } from "vitest";
 
 import { create_item } from "../../../domain/item";
 import { KVJSONFormat } from "./kvjson-format";
 
 describe("KVJSONFormat", () => {
-  it("按 key/value 关系设置 KVJSON 状态", async () => {
+  it("按 key/value 关系设置 KVJSON 状态", () => {
     const format = new KVJSONFormat();
 
-    const items = await format.read_from_stream(
-      new TextEncoder().encode(JSON.stringify({ "": "", 已翻: "已处理", 待翻: "待翻", 忽略: 1 })),
-      "a.json",
-    );
+    const items = format.read_items({ "": "", 已翻: "已处理", 待翻: "待翻", 忽略: 1 }, "a.json");
 
     expect(items.map((item) => [item.src, item.dst, item.status])).toEqual([
       ["", "", "RULE_SKIPPED"],
@@ -24,26 +20,10 @@ describe("KVJSONFormat", () => {
     ]);
   });
 
-  it("非对象 JSON 不按 KVJSON 解析", async () => {
+  it("非对象 JSON 不按 KVJSON 解析", () => {
     const format = new KVJSONFormat();
 
-    await expect(
-      format.read_from_stream(
-        new TextEncoder().encode(JSON.stringify([{ message: "台词" }])),
-        "message.json",
-      ),
-    ).resolves.toEqual([]);
-  });
-
-  it("通过共享文本解码入口解析传统编码 JSON", async () => {
-    const format = new KVJSONFormat();
-
-    const items = await format.read_from_stream(
-      iconv.encode(JSON.stringify({ café: "élève" }), "windows-1252"),
-      "legacy.json",
-    );
-
-    expect(items.map((item) => [item.src, item.dst])).toEqual([["café", "élève"]]);
+    expect(format.read_items([{ message: "台词" }], "message.json")).toEqual([]);
   });
 });
 

@@ -15,12 +15,12 @@ function encode_trans(project: Record<string, unknown>): Uint8Array {
 }
 
 describe("TRANSFormat", () => {
-  it("按索引、行号和同位扩展字段读取 TRANS 条目", () => {
-    const items = new TRANSFormat().read_from_stream(
+  it("读取引擎身份，并按索引、行号和同位扩展字段读取 TRANS 条目", () => {
+    const { items, game_engine } = new TRANSFormat().read_from_stream(
       encode_trans({
         indexOriginal: 1,
         indexTranslation: 2,
-        gameEngine: "",
+        gameEngine: "kag",
         files: {
           "file.json": {
             data: [["id-1", "原文", "译文"]],
@@ -33,6 +33,7 @@ describe("TRANSFormat", () => {
       "demo.trans",
     );
 
+    expect(game_engine).toBe("kag");
     expect(items[0]).toMatchObject({
       src: "原文",
       dst: "译文",

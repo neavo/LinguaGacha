@@ -180,6 +180,54 @@ afterEach(() => {
 });
 
 describe("ProjectContentService", () => {
+  it("TRANS 替换按引擎身份继承译文，变更或移除引擎后重新匹配", async () => {
+    const { database, service, lg_path } = create_service();
+    const source = project_path("game.trans");
+    try {
+      const reader = new ProjectDataReader(database);
+      for (const [engine, expected_translation] of [
+        ["kag", ""],
+        ["kag", "译文"],
+        ["wolf", ""],
+        [undefined, ""],
+      ] as const) {
+        fs.writeFileSync(
+          source,
+          JSON.stringify({
+            project: {
+              gameEngine: engine,
+              files: { chapter: { data: [["こんにちは", ""]] } },
+            },
+          }),
+        );
+        await service.import_files({
+          files: [{ source_path: source, target_rel_path: "game.trans" }],
+          conflict_action: "replace",
+          inheritance_mode: "inherit",
+          project_settings: { source_language: "JA", target_language: "ZH" },
+          expected_section_revisions: reader.build_section_revisions(
+            database.get_all_meta(lg_path),
+          ),
+        });
+        expect(reader.build_files_record_block(lg_path)["game.trans"]).toMatchObject({
+          file_type: "TRANS",
+          game_engine: engine ?? "",
+        });
+        const items = database.get_all_items(lg_path);
+        expect(items).toMatchObject([
+          { dst: expected_translation, status: expected_translation === "" ? "NONE" : "PROCESSED" },
+        ]);
+        // 下一次替换仍有已完成候选，确保引擎变化真正参与继承匹配。
+        database.set_items(
+          lg_path,
+          items.map((item) => ({ ...item, dst: "译文", status: "PROCESSED" })),
+        );
+      }
+    } finally {
+      database.close();
+    }
+  });
+
   it("同批同名游戏只分配一次，已有 game_2 保持不变且提交沿用预览名称", async () => {
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(new Date(2026, 9, 11, 12, 34, 56));

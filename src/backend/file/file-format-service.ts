@@ -18,6 +18,8 @@ import { VTTFormat } from "./subtitle/vtt-format";
 import { LRCFormat } from "./subtitle/lrc-format";
 import { AppError } from "../../shared/error";
 import { decode_text_content } from "../../shared/utils/text-tool";
+import { JsonTool } from "../../shared/utils/json-tool";
+import type { JsonValue } from "../../domain/json";
 import { TRANSFormat } from "./trans/trans-format";
 import { TXTFormat } from "./txt/txt-format";
 import { XLSXFormat } from "./xlsx/xlsx-format";
@@ -126,14 +128,35 @@ export class FileFormatService {
       ".pdf": "PDF",
     };
     let type = file_type ?? by_extension[path.extname(rel_path).toLowerCase()];
-    if (type === undefined && path.extname(rel_path).toLowerCase() === ".json") {
-      const data: unknown = JSON.parse(await decode_text_content(content));
-      type = Array.isArray(data)
+    if (
+      type === "KVJSON" ||
+      type === "MESSAGEJSON" ||
+      (type === undefined && path.extname(rel_path).toLowerCase() === ".json")
+    ) {
+      const text = await decode_text_content(content);
+      // 新来源保持标准 JSON 接受范围，已保存身份沿用历史非有限数值兼容。
+      const data =
+        type === undefined
+          ? (JSON.parse(text) as JsonValue)
+          : JsonTool.parseStrict<JsonValue>(text);
+      type ??= Array.isArray(data)
         ? "MESSAGEJSON"
         : data !== null && typeof data === "object"
           ? "KVJSON"
           : "NONE";
+      return {
+        kind: "items",
+        file_type: type as ItemFileType,
+        items:
+          type === "KVJSON"
+            ? this.kvjson.read_items(data, rel_path)
+            : type === "MESSAGEJSON"
+              ? this.messagejson.read_items(data, rel_path)
+              : [],
+      };
     }
+    if (type === "TRANS")
+      return { kind: "items", file_type: type, ...this.trans.read_from_stream(content, rel_path) };
     if (type === "PDF")
       return {
         kind: "pdf",
@@ -161,9 +184,6 @@ export class FileFormatService {
       LRC: this.lrc,
       EPUB: this.epub,
       RENPY: this.renpy,
-      TRANS: this.trans,
-      KVJSON: this.kvjson,
-      MESSAGEJSON: this.messagejson,
     };
     if (!type || !Object.hasOwn(formats, type))
       return { kind: "items", file_type: "NONE", items: [] };

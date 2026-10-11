@@ -125,7 +125,6 @@ describe("SourceFileParsePipeline", () => {
     expect(draft.files.map(({ content: _content, ...file }) => file)).toEqual([
       {
         rel_path: "script.txt",
-        source_path: source_file,
         pdf_document: null,
         file_type: "TXT",
         sort_index: 0,
@@ -139,13 +138,6 @@ describe("SourceFileParsePipeline", () => {
         file_type: "TXT",
       }),
     ]);
-    expect(draft.file_state).toEqual({
-      "script.txt": {
-        rel_path: "script.txt",
-        file_type: "TXT",
-        sort_index: 0,
-      },
-    });
     expect(draft.failed_files).toEqual([
       {
         source_path: broken_json,
