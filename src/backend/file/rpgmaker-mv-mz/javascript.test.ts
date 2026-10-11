@@ -1,3 +1,4 @@
+import { SOURCE_CONTEXT_MAX_LENGTH } from "./types";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
@@ -8,7 +9,11 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { build } from "vite";
 import { expect, it } from "vitest";
-import { configure_rpgmaker_parser, read_javascript_strings } from "./javascript";
+import {
+  configure_rpgmaker_parser,
+  decode_javascript_string,
+  read_javascript_strings,
+} from "./javascript";
 /** 成功用例统一解包，语法诊断仍使测试失败。 */
 function read_strings(source: string) {
   const result = read_javascript_strings(source);
@@ -89,13 +94,13 @@ it("长语句围绕目标摘录，长字符串优先保留开头，截断不拆�
   expect(context).toContain('"目标"');
   expect(context.startsWith("…")).toBe(true);
   expect(context.endsWith("…")).toBe(true);
-  expect(context.length).toBeLessThanOrEqual(1200);
+  expect(context.length).toBeLessThanOrEqual(SOURCE_CONTEXT_MAX_LENGTH);
   expect(context.isWellFormed()).toBe(true);
   const long = read_strings(`f("开始${"😀".repeat(1000)}");`)[0]!;
   expect(long.src).toBe(`开始${"😀".repeat(1000)}`);
-  expect(long.source_context.startsWith('…"开始')).toBe(true);
+  expect(long.source_context.startsWith('f("开始')).toBe(true);
   expect(long.source_context.endsWith("…")).toBe(true);
-  expect(long.source_context.length).toBeLessThanOrEqual(1200);
+  expect(long.source_context.length).toBeLessThanOrEqual(SOURCE_CONTEXT_MAX_LENGTH);
   expect(long.source_context.isWellFormed()).toBe(true);
 });
 
@@ -127,6 +132,13 @@ it("仓库外 Electron 从部署目录加载原生绑定并生成可解析译文
     const parsed = read_javascript_strings(fs.readFileSync("translated.js", "utf8"));
     assert.equal(parsed.ok, true);
     assert.equal(parsed.strings[0].src, items[0].dst);
+    const numericSource = '{"text":"source","n":9007199254740993,"overflow":1e400,"zero":-0}';
+    const jsonBytes = Buffer.from(numericSource);
+    const numericItems = (await format.read_from_stream(jsonBytes, "data/Plugins.json")).items;
+    numericItems[0].status = "PROCESSED";
+    numericItems[0].dst = "translated";
+    const numericOutput = await format.render(jsonBytes, "data/Plugins.json", numericItems);
+    assert.equal(Buffer.from(numericOutput).toString(), numericSource.replace("source", "translated"));
     console.log("rpgmaker-deployment-ok");
   `,
   );
@@ -153,3 +165,10 @@ it("仓库外 Electron 从部署目录加载原生绑定并生成可解析译文
   );
   assert.match(result.stdout, /rpgmaker-deployment-ok/u);
 }, 60000);
+
+it.each(['"原文"; call(); "另一段"', "`原文`"])(
+  "普通字面量解码拒绝多语句或错误模板类型：%s",
+  (source) => {
+    expect(() => decode_javascript_string(source, false)).toThrow();
+  },
+);

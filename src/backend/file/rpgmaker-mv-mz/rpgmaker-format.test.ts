@@ -10,6 +10,93 @@ const format = new RPGMakerMvMzFormat({
 const command = (code: number, parameters: unknown[], indent = 0) => ({ code, parameters, indent }); // 保留原稿指令结构与写回索引。
 
 describe("MV/MZ 原稿写回", () => {
+  it.each(["data/Plugins.json", "js/plugins.js"])(
+    "文字修改后外层和嵌套 JSON 的数值字面量保持原样：%s",
+    async (file) => {
+      const numbers =
+        '"large":9007199254740993,"overflow":1e400,"negative":-0,"decimal":1.2300,"array":[1E+03,1e-999,-0,9007199254740995]';
+      const nested = `{"text":"内部",${numbers}}`;
+      const source = `{"text":"外部",${numbers},"nested":${JSON.stringify(nested)}}`;
+      const json = file.endsWith(".json");
+      const bytes = Buffer.from(json ? source : `const settings = ${JSON.stringify(source)};`);
+      const { items } = await format.read_from_stream(bytes, file);
+      for (const item of items) Object.assign(item, { status: "PROCESSED", dst: `${item.src}译` });
+      const expected = `{"text":"外部译",${numbers},"nested":${JSON.stringify(nested.replace("内部", "内部译"))}}`;
+      const output = Buffer.from(await format.render(bytes, file, items)).toString();
+      expect(output).toBe(json ? expected : `const settings = ${JSON.stringify(expected)};`);
+    },
+  );
+
+  it.each(["data/Plugins.json", "js/plugins.js", "js/plugins/template.js"])(
+    "多层 JSON 的多个译文按容器合并，顺序独立，保留类型与未修改容器：%s",
+    async (file) => {
+      const untouched = '{ "text" : "保留", "escape": "\\u65e5" }';
+      const inner = {
+        Text: "はい",
+        Other: "いいえ",
+        count: 7,
+        enabled: true,
+        empty: null,
+        digit: "0",
+        choices: JSON.stringify(["いいえ", 0, true, null]),
+      };
+      let nested = JSON.stringify(inner);
+      for (const key of ["Command", "CommandList", "Window", "WindowList", "Scene"])
+        nested = JSON.stringify({ [key]: nested });
+      const payload = JSON.stringify({ nested, untouched });
+      const json = file.endsWith(".json");
+      const template = file.endsWith("template.js");
+      const bytes = Buffer.from(
+        json
+          ? JSON.stringify({ settings: payload })
+          : template
+            ? `const settings = \`${JSON.stringify(payload).slice(1, -1)}\`;`
+            : `const settings = ${JSON.stringify(payload)};`,
+      );
+      const { items } = await format.read_from_stream(bytes, file);
+      const translations = new Map([
+        ["はい", '引号"\\\n😀${x}`'],
+        ["いいえ", "否"],
+      ]);
+      for (const item of items) {
+        if (translations.has(item.src))
+          Object.assign(item, { status: "PROCESSED", dst: translations.get(item.src) });
+      }
+      const output = await format.render(bytes, file, items);
+      expect(await format.render(bytes, file, [...items].reverse())).toEqual(output);
+      const text = Buffer.from(output).toString();
+      const script = json ? null : read_javascript_strings(text);
+      if (script && !script.ok) throw new Error("Output script is invalid");
+      const settings = JSON.parse(
+        json ? JSON.parse(text).settings : script && script.strings[0]!.src,
+      );
+      expect(settings.untouched).toBe(untouched);
+      let value = JSON.parse(settings.nested);
+      for (const key of ["Scene", "WindowList", "Window", "CommandList", "Command"])
+        value = JSON.parse(value[key]);
+      expect(value).toEqual({
+        ...inner,
+        Text: translations.get("はい"),
+        Other: "否",
+        choices: JSON.stringify(["否", 0, true, null]),
+      });
+    },
+  );
+
+  it("原文译文相同的 JSON 容器保留空白与转义，邻近普通译文正常写回", async () => {
+    const container = '{ "text" : "\\u65e5" }';
+    const bytes = Buffer.from(JSON.stringify({ settings: container, label: "标题" }));
+    const { items } = await format.read_from_stream(bytes, "data/Plugins.json");
+    for (const item of items)
+      Object.assign(item, {
+        status: "PROCESSED",
+        dst: item.src === "标题" ? "标题译文" : item.src,
+      });
+    expect(
+      JSON.parse(Buffer.from(await format.render(bytes, "data/Plugins.json", items)).toString()),
+    ).toEqual({ settings: container, label: "标题译文" });
+  });
+
   it.each(["js/plugins/test.js", "data/CommonEvents.json"])(
     "脚本键默认排除并保留上下文，人工翻译按保存定位写回：%s",
     async (file) => {
@@ -148,15 +235,17 @@ describe("MV/MZ 原稿写回", () => {
     });
   });
 
-  it("对话变长、姓名、选项分支与后续脚本各按原始位置写回", async () => {
+  it("对话变长后，姓名、JSON 选项镜像与脚本按原始位置写回", async () => {
+    const choice = JSON.stringify({ text: "はい" });
+    const script = `const x = ${JSON.stringify(JSON.stringify({ text: "脚本" }))};`;
     const list = [
       command(101, ["Face", 0, 0, 2, "勇者"]),
       command(401, ["一行"]),
-      command(102, [["はい", "いいえ"], -1, 0, 2, 0]),
-      command(402, [0, "はい"]),
+      command(102, [[choice, "いいえ"], -1, 0, 2, 0]),
+      command(402, [0, choice]),
       command(402, [1, "いいえ"]),
       command(404, []),
-      command(355, ['const x = "脚本";']),
+      command(355, [script]),
       command(655, ["console.log(x);"]),
       command(108, ["注释"]),
       command(408, ["续行"]),
@@ -166,9 +255,6 @@ describe("MV/MZ 原稿写回", () => {
       JSON.stringify({ displayName: "地图", events: [null, { name: "EV001", pages: [{ list }] }] }),
     );
     const { items } = await format.read_from_stream(bytes, "data/Map001.json");
-    expect(items.find((item) => item.src === "脚本")?.extra_field).toMatchObject({
-      rpgmaker: { usage: "text", source_context: 'x = "脚本"' },
-    });
     for (const item of items) {
       if (item.src === "一行")
         Object.assign(item, {
@@ -190,11 +276,11 @@ describe("MV/MZ 原稿写回", () => {
       command(401, ["第二行"]),
       command(401, ["第三行"]),
     ]);
-    expect(written[4].parameters[0]).toEqual(["是", "いいえ"]);
-    expect(written[5].parameters).toEqual([0, "是"]);
+    expect(written[4].parameters[0]).toEqual([JSON.stringify({ text: "是" }), "いいえ"]);
+    expect(written[5].parameters).toEqual([0, written[4].parameters[0][0]]);
     expect(read_javascript_strings(written[8].parameters[0])).toMatchObject({
       ok: true,
-      strings: [{ src: '引号"和\\换行\n😀' }],
+      strings: [{ src: JSON.stringify({ text: '引号"和\\换行\n😀' }) }],
     });
     expect(written.slice(-3)).toEqual(list.slice(-3));
   });

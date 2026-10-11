@@ -7,7 +7,7 @@ const command = (code: number, parameters: JsonValue[], indent = 0) => ({
   indent,
 }); // 保留原稿的事件指令结构。
 
-it("条件、变量和移动路线的脚本只提取字符串，插件参数保持嵌套 JSON 整段", () => {
+it("条件、变量和移动路线的脚本只提取字符串，插件参数展开 JSON 并继承用途", () => {
   const source = [
     {
       list: [
@@ -26,6 +26,6 @@ it("条件、变量和移动路线的脚本只提取字符串，插件参数保�
     ["plugin", "RULE_SKIPPED"],
     ["command", "RULE_SKIPPED"],
     ["label", "RULE_SKIPPED"],
-    ['{"text":"嵌套"}', "RULE_SKIPPED"],
+    ["嵌套", "RULE_SKIPPED"],
   ]);
 });

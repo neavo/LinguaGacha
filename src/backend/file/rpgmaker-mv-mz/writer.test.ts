@@ -6,6 +6,7 @@ import { write_rpgmaker_items } from "./writer";
 
 const config = { target_language: "ZH" };
 const command = (code: number, text: string, indent = 0) => ({ code, indent, parameters: [text] });
+/** 使用保存定位构造译文，验证写回独立于用途分类。 */
 function translated(location: RPGMakerLocation, dst = "译文") {
   return create_item({
     src: "原文",
@@ -16,6 +17,42 @@ function translated(location: RPGMakerLocation, dst = "译文") {
 }
 
 describe("持久 RPG Maker 定位写回", () => {
+  it.each(["missing", "count", "__proto__"])(
+    "拒绝 JSON 内部非法目标 %s，失败时原稿保持完整",
+    (key) => {
+      const root = { before: "原文", settings: '{"text":"原文","count":1}' };
+      const original = structuredClone(root);
+      expect(() =>
+        write_rpgmaker_items(
+          root,
+          [
+            translated({ kind: "field", path: ["before"] }),
+            translated({
+              kind: "json",
+              container: { kind: "field", path: ["settings"] },
+              path: [key],
+            }),
+          ],
+          config,
+        ),
+      ).toThrow();
+      expect(root).toEqual(original);
+    },
+  );
+
+  it.each([false, true])("拒绝重复叶子及容器整体与内部修改，输入反序：%s", (reverse) => {
+    const container: RPGMakerLocation = { kind: "field", path: ["settings"] };
+    const nested: RPGMakerLocation = { kind: "json", container, path: ["inner"] };
+    const leaf = translated({ kind: "json", container: nested, path: ["text"] });
+    for (const conflict of [translated(container), translated(nested), leaf]) {
+      const root = { settings: JSON.stringify({ inner: JSON.stringify({ text: "原文" }) }) };
+      const original = structuredClone(root);
+      const items = [leaf, conflict];
+      expect(() => write_rpgmaker_items(root, reverse ? items.reverse() : items, config)).toThrow();
+      expect(root).toEqual(original);
+    }
+  });
+
   it("字段与关联字段按保存路径写回", () => {
     const root = { choices: ["原文", "保留"], branch: "原文" };
     expect(

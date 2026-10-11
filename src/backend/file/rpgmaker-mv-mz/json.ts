@@ -1,10 +1,9 @@
 import { RPGMAKER_EVENT } from "./types";
 import path from "node:path";
-import { create_item, type Item } from "../../../domain/item";
+import type { Item } from "../../../domain/item";
 import type { JsonValue } from "../../../domain/json";
-import { rpgmaker_default_status } from "./item";
-import { read_javascript_strings } from "./javascript";
-import type { JsonPath, RPGMakerLocation, RPGMakerMetadata } from "./types";
+import { create_rpgmaker_extractor } from "./extractor";
+import type { JsonPath, RPGMakerLocation } from "./types";
 import type { SourceFileParseWarning } from "../file-format-shared";
 
 type Command = { code: number; indent: number; parameters: JsonValue[] };
@@ -45,53 +44,8 @@ export function read_rpgmaker_json(
   root: JsonValue,
   rel_path: string,
 ): { items: Item[]; warnings: SourceFileParseWarning[] } {
-  const items: Item[] = [];
-  const warnings: SourceFileParseWarning[] = [];
+  const { items, warnings, add, script } = create_rpgmaker_extractor(rel_path);
   const file = path.basename(rel_path, ".json");
-  // 空正文仍可携带说话人，必须保留可翻译姓名。
-  function add(src: string, metadata: RPGMakerMetadata, name_src: string | null = null): void {
-    if (src === "" && !name_src) return;
-    const extra_field = { rpgmaker: metadata };
-    items.push(
-      create_item({
-        src,
-        name_src,
-        file_path: rel_path,
-        file_type: "RPGMAKER_MV_MZ",
-        row: items.length,
-        status: rpgmaker_default_status(extra_field),
-        extra_field,
-      }),
-    );
-  }
-  // 脚本偏移相对于完整容器，事件行重新连接后再交给解析器。
-  function script(src: string, container: Exclude<RPGMakerLocation, { kind: "script" }>): void {
-    const result = read_javascript_strings(src);
-    if (!result.ok) {
-      warnings.push({
-        code: "script_syntax_error",
-        rel_path,
-        json_path:
-          container.kind === "block"
-            ? [...container.path, container.start, "parameters", 0]
-            : container.path,
-        diagnostics: result.diagnostics,
-      });
-      return;
-    }
-    for (const span of result.strings)
-      add(span.src, {
-        usage: span.usage,
-        source_context: span.source_context,
-        location: {
-          kind: "script",
-          container,
-          start: span.start,
-          end: span.end,
-          template: span.template,
-        },
-      });
-  }
   // 显示字段向下传播用途，插件扩展字段保留为默认排除条目。
   function walk(value: JsonValue, target: JsonPath, display = false): void {
     if (typeof value === "string") {
@@ -158,6 +112,7 @@ export function read_rpgmaker_json(
             text,
             { location, usage: command.code === RPGMAKER_EVENT.COMMENT ? "metadata" : "text" },
             name,
+            false, // 事件正文以行和姓名为语义单位。
           );
         // 头指令的资源字段也保留为默认排除条目。
         if (command.code === RPGMAKER_EVENT.MESSAGE)

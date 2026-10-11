@@ -2,12 +2,22 @@ import type { Item } from "../../../domain/item";
 import { read_json_record, type JsonValue } from "../../../domain/json";
 import { read_item_name_text, resolve_output_item_name } from "../../../shared/item-name";
 import type { FileFormatServiceConfig } from "../file-format-shared";
-import { encode_javascript_string } from "./javascript";
-import { RPGMAKER_EVENT, type RPGMakerLocation, type JsonPath } from "./types";
+import { decode_javascript_string, encode_javascript_string } from "./javascript";
+import { RPGMakerJsonCodec } from "./json-codec";
+import {
+  RPGMAKER_EVENT,
+  type RPGMakerLocation,
+  type RPGMakerRootLocation,
+  type JsonPath,
+} from "./types";
 
-type Container = Exclude<RPGMakerLocation, { kind: "script" }>;
-type Block = Extract<Container, { kind: "block" }>;
-type Replacement = { location: Container; value: string };
+type Block = Extract<RPGMakerRootLocation, { kind: "block" }>;
+type Replacement = { location: RPGMakerRootLocation; value: string };
+type Change = {
+  location: RPGMakerLocation;
+  value?: string;
+  children: Map<string, Change>;
+};
 const BLOCK_CONTINUATIONS = new Map<number, number>([
   [RPGMAKER_EVENT.MESSAGE_LINE, RPGMAKER_EVENT.MESSAGE_LINE],
   [RPGMAKER_EVENT.SCROLLING_LINE, RPGMAKER_EVENT.SCROLLING_LINE],
@@ -20,73 +30,66 @@ export function write_rpgmaker_items(
   root: JsonValue,
   items: readonly Item[],
   config: FileFormatServiceConfig,
+  codec = new RPGMakerJsonCodec(),
 ): JsonValue {
   const replacements: Replacement[] = [];
-  const scripts = new Map<
-    string,
-    {
-      container: Container;
-      source: string;
-      spans: { start: number; end: number; value: string }[];
-    }
-  >();
+  const roots = new Map<string, Change>();
+  // 容器身份只取实际坐标，附加的镜像与姓名路径不产生另一份容器。
+  function locate(location: RPGMakerLocation): Change {
+    const nested = location.kind === "script" || location.kind === "json";
+    const group = nested ? locate(location.container).children : roots;
+    const key = JSON.stringify(
+      location.kind === "script"
+        ? [location.kind, location.start, location.end]
+        : location.kind === "block"
+          ? [location.kind, location.path, location.start, location.end]
+          : [location.kind, location.path],
+    );
+    let change = group.get(key);
+    if (!change) {
+      change = { location, children: new Map() };
+      group.set(key, change);
+    } else if (
+      (location.kind === "script" &&
+        change.location.kind === "script" &&
+        location.template !== change.location.template) ||
+      (location.kind === "block" &&
+        change.location.kind === "block" &&
+        location.code !== change.location.code)
+    )
+      throw new Error("Conflicting RPG Maker container");
+    return change;
+  }
+  /** 同一坐标只接收一份译文，防止条目顺序决定最终结果。 */
+  function replace(location: RPGMakerLocation, value: string): void {
+    const change = locate(location);
+    if (change.value !== undefined) throw new Error("Duplicate RPG Maker location");
+    change.value = value;
+  }
   for (const item of items) {
     const location = read_json_record(read_json_record(item.extra_field)["rpgmaker"])[
       "location"
     ] as unknown as RPGMakerLocation;
-    if (location.kind === "script") {
-      const container = location.container;
-      const key = JSON.stringify([
-        container.kind,
-        container.path,
-        container.kind === "block" ? [container.start, container.end, container.code] : null,
-      ]);
-      const group = scripts.get(key) ?? {
-        container,
-        source: read_container(root, container),
-        spans: [],
-      };
-      validate_range(location.start, location.end, group.source.length);
-      if (typeof location.template !== "boolean" || location.start === location.end)
-        throw new Error("Invalid JavaScript literal location");
-      if (!location.template) {
-        const quote = group.source[location.start];
-        if ((quote !== '"' && quote !== "'") || group.source[location.end - 1] !== quote)
-          throw new Error("Invalid JavaScript string delimiters");
-      }
-      group.spans.push({
-        start: location.start,
-        end: location.end,
-        value: encode_javascript_string(item.dst, location.template),
+    replace(location, item.dst);
+    if (location.kind === "block" && location.name_path) {
+      const name = resolve_output_item_name({
+        ...item,
+        write_translated_name_fields_to_file: config.write_translated_name_fields_to_file ?? true,
       });
-      scripts.set(key, group);
-    } else {
-      replacements.push({ location, value: item.dst });
-      if (location.kind === "field") {
-        for (const mirror of location.mirrors ?? [])
-          replacements.push({ location: { kind: "field", path: mirror }, value: item.dst });
-      } else if (location.name_path) {
-        const name = resolve_output_item_name({
-          ...item,
-          write_translated_name_fields_to_file: config.write_translated_name_fields_to_file ?? true,
-        });
-        if (name !== null)
-          replacements.push({
-            location: { kind: "field", path: location.name_path },
-            value: read_item_name_text(name),
-          });
-      }
+      if (name !== null)
+        replace({ kind: "field", path: location.name_path }, read_item_name_text(name));
     }
   }
-  for (const { container, source, spans } of scripts.values()) {
-    let text = source;
-    let boundary = text.length;
-    for (const span of spans.sort((a, b) => b.start - a.start)) {
-      if (span.end > boundary) throw new Error("Overlapping JavaScript spans");
-      text = text.slice(0, span.start) + span.value + text.slice(span.end);
-      boundary = span.start;
+  for (const change of roots.values()) {
+    const location = change.location;
+    if (location.kind !== "field" && location.kind !== "block")
+      throw new Error("Invalid RPG Maker location kind");
+    const value = rebuild_string(read_container(root, location), change, codec);
+    replacements.push({ location, value });
+    if (location.kind === "field") {
+      for (const mirror of location.mirrors ?? [])
+        replacements.push({ location: { kind: "field", path: mirror }, value });
     }
-    replacements.push({ location: container, value: text });
   }
   const fields = new Set<string>();
   const blocks = new Map<string, { location: Block; value: string; indent: number }[]>();
@@ -105,14 +108,10 @@ export function write_rpgmaker_items(
   }
   for (const group of blocks.values()) {
     let boundary = Infinity;
-    const ranges = new Set<string>();
     for (const { location } of group.sort(
       (a, b) => b.location.start - a.location.start || b.location.end - a.location.end,
     )) {
-      const range = JSON.stringify([location.start, location.end]);
-      if (location.end > boundary || ranges.has(range))
-        throw new Error("Overlapping RPG Maker blocks");
-      ranges.add(range);
+      if (location.end > boundary) throw new Error("Overlapping RPG Maker blocks");
       boundary = location.start;
       for (const other of replacements) {
         const target = other.location.path;
@@ -147,6 +146,57 @@ export function write_rpgmaker_items(
   return root;
 }
 
+/** 每层先合并内部修改，再编码一次；没有值变化的容器保留原始空白和转义。 */
+function rebuild_string(source: string, change: Change, codec: RPGMakerJsonCodec): string {
+  if (change.value !== undefined) {
+    if (change.children.size > 0) throw new Error("Overlapping RPG Maker container replacements");
+    return change.value;
+  }
+  const children = [...change.children.values()];
+  const kind = children[0]?.location.kind;
+  if (kind === "json") {
+    const root = codec.parse(source);
+    if (root === null || typeof root !== "object") throw new Error("Invalid JSON string container");
+    let changed = false;
+    for (const child of children) {
+      if (child.location.kind !== "json") throw new Error("Conflicting RPG Maker container kinds");
+      const target = child.location.path;
+      const original = read_json_path(root, target);
+      if (typeof original !== "string") throw new Error("Invalid JSON string field");
+      const value = rebuild_string(original, child, codec);
+      if (value !== original) {
+        write_json_path(root, target, value);
+        changed = true;
+      }
+    }
+    return changed ? codec.stringify(root) : source;
+  }
+  if (kind !== "script") throw new Error("Invalid RPG Maker container kind");
+  const spans = children.map((child) => {
+    const location = child.location;
+    if (location.kind !== "script") throw new Error("Conflicting RPG Maker container kinds");
+    validate_range(location.start, location.end, source.length);
+    if (typeof location.template !== "boolean" || location.start === location.end)
+      throw new Error("Invalid JavaScript literal location");
+    const literal = source.slice(location.start, location.end);
+    const original = decode_javascript_string(literal, location.template);
+    const value = rebuild_string(original, child, codec);
+    return {
+      start: location.start,
+      end: location.end,
+      value: value === original ? literal : encode_javascript_string(value, location.template),
+    };
+  });
+  let text = source;
+  let boundary = source.length;
+  for (const span of spans.sort((a, b) => b.start - a.start)) {
+    if (span.end > boundary) throw new Error("Overlapping JavaScript spans");
+    text = text.slice(0, span.start) + span.value + text.slice(span.end);
+    boundary = span.start;
+  }
+  return text;
+}
+
 /** 持久偏移必须是原稿内的整数半开范围，空事件块允许插入。 */
 function validate_range(start: number, end: number, length: number): void {
   if (
@@ -160,7 +210,7 @@ function validate_range(start: number, end: number, length: number): void {
 }
 
 /** 脚本文本按保存的字段或事件块还原，偏移始终相对该容器。 */
-function read_container(root: JsonValue, container: Container): string {
+function read_container(root: JsonValue, container: RPGMakerRootLocation): string {
   if (container.kind === "block") return read_block(root, container).text;
   if (container.kind !== "field") throw new Error("Invalid RPG Maker location kind");
   const value = read_json_path(root, container.path);

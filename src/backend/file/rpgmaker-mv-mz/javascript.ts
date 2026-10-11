@@ -1,7 +1,7 @@
 import { createRequire } from "node:module";
 import path from "node:path";
 import { read_javascript_usage } from "./javascript-usage";
-import type { RPGMakerUsage } from "./types";
+import { SOURCE_CONTEXT_MAX_LENGTH, type RPGMakerUsage } from "./types";
 import type * as Oxc from "oxc-parser";
 import type { JavascriptDiagnostic } from "../file-format-shared";
 
@@ -10,6 +10,7 @@ export type JavascriptString = {
   start: number;
   end: number;
   template: boolean;
+  complete: boolean; // 含插值的模板片段不能作为完整 JSON 容器展开。
   src: string;
   usage: RPGMakerUsage;
   source_context: string;
@@ -18,7 +19,6 @@ export type JavascriptString = {
 export type JavascriptReadResult =
   | { ok: true; strings: JavascriptString[] }
   | { ok: false; diagnostics: JavascriptDiagnostic[] };
-const SOURCE_CONTEXT_MAX_LENGTH = 1200; // 限制每个条目重复保存的原稿量，包含省略标记。
 const CONTEXT_NODE_TYPES = new Set([
   "CallExpression",
   "NewExpression",
@@ -67,10 +67,14 @@ export function read_javascript_strings(source: string): JavascriptReadResult {
           : null;
     if (src) {
       const context = select_source_context(node, ancestors);
+      const parent = ancestors.at(-1);
       strings.push({
         start: node.start,
         end: node.end,
         template: node.type === "TemplateElement",
+        complete:
+          node.type !== "TemplateElement" ||
+          (parent?.type === "TemplateLiteral" && parent.expressions.length === 0),
         src,
         usage: read_javascript_usage(node, ancestors),
         source_context: read_source_context(source, context, node),
@@ -120,7 +124,10 @@ function read_source_context(source: string, context: Oxc.Node, target: Oxc.Node
   if (context.end - context.start <= SOURCE_CONTEXT_MAX_LENGTH)
     return source.slice(context.start, context.end);
   const budget = SOURCE_CONTEXT_MAX_LENGTH - 2;
-  const padding = Math.max(0, Math.floor((budget - (target.end - target.start)) / 2)); // 长字符串从起始处展示。
+  const target_length = target.end - target.start;
+  // 长 JSON 字符串前保留用途节点信息，避免深层叶子失去外层参数名。
+  const padding =
+    target_length >= budget ? Math.floor(budget / 4) : Math.floor((budget - target_length) / 2);
   let start = Math.max(context.start, Math.min(target.start - padding, context.end - budget));
   let end = start + budget;
   // 切点位于低代理项时向摘录内部收缩，保持长度上限。
@@ -140,4 +147,22 @@ export function encode_javascript_string(value: string, template: boolean): stri
     .replace(/\u2028/gu, "\\u2028")
     .replace(/\u2029/gu, "\\u2029");
   return template ? encoded.replace(/`/gu, "\\`").replace(/\$\{/gu, "\\${") : `"${encoded}"`;
+}
+
+/** 仅解码保存范围内的完整字面量，不执行脚本，也不重新提取定位。 */
+export function decode_javascript_string(source: string, template: boolean): string {
+  const { parseSync } = parser_require("oxc-parser") as typeof Oxc;
+  const literal = template ? `\`${source}\`` : source;
+  const result = parseSync("literal.js", literal, { sourceType: "commonjs" });
+  const statement = result.program.body[0];
+  const expression = statement?.type === "ExpressionStatement" ? statement.expression : null;
+  if (result.errors.length === 0 && expression?.start === 0 && expression.end === literal.length) {
+    if (!template && expression?.type === "Literal" && typeof expression.value === "string")
+      return expression.value;
+    if (template && expression?.type === "TemplateLiteral" && expression.expressions.length === 0) {
+      const value = expression.quasis[0]?.value.cooked;
+      if (typeof value === "string") return value;
+    }
+  }
+  throw new Error("Invalid JavaScript string container");
 }
