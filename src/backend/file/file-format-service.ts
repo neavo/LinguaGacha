@@ -1,3 +1,8 @@
+import { rpgmaker_default_status } from "./rpgmaker-mv-mz/item";
+import { rgss_default_status } from "./rpgmaker-rgss/item";
+import { RPGMakerRGSSFormat } from "./rpgmaker-rgss/rpgmaker-format";
+import { discover_rgss_source } from "./rpgmaker-rgss/source";
+import { is_rpgmaker_file_type } from "../../shared/project-source-formats";
 import { format_local_timestamp } from "../../shared/utils/format-local-timestamp";
 import { normalize_project_asset_path } from "../../shared/project/project-asset-paths";
 import { SourceFilePathIndex } from "./source-file-paths";
@@ -7,7 +12,7 @@ import type { PDFExecution } from "./pdf/pdf-worker";
 import { PDFFormat } from "./pdf/pdf-format";
 import path from "node:path";
 
-import { type Item, type ItemFileType } from "../../domain/item";
+import { type Item, type ItemFileType, type ItemStatus } from "../../domain/item";
 import { ASSFormat } from "./subtitle/ass-ssa-format";
 import { KVJSONFormat } from "./kvjson/kvjson-format";
 import { MDV2Format } from "./markdown/md-v2-format";
@@ -40,7 +45,7 @@ import {
 
 // 文件发现与摘要统计共用同一扩展名映射，避免支持范围产生第二份白名单。
 const PROJECT_SOURCE_FORMAT_ID_BY_EXTENSION = new Map<string, ProjectSourceFormatId>(
-  PROJECT_SOURCE_FORMATS.filter((format) => format.id !== "rpgmaker_mv_mz").map((format) => [
+  PROJECT_SOURCE_FORMATS.filter((format) => format.source_kind === "file").map((format) => [
     format.extension,
     format.id,
   ]),
@@ -50,6 +55,13 @@ const PROJECT_SOURCE_FORMAT_ID_BY_EXTENSION = new Map<string, ProjectSourceForma
  * Backend 公开文件格式门面；具体格式逻辑按稳定格式处理器拆分
  */
 export class FileFormatService {
+  /** 文件重置由格式决定翻译资格，工程服务不解释私有定位。 */
+  public static default_status(item: Pick<Item, "file_type" | "extra_field">): ItemStatus {
+    if (item.file_type === "RPGMAKER_MV_MZ") return rpgmaker_default_status(item);
+    if (item.file_type === "RPGMAKER_RGSS") return rgss_default_status(item);
+    return "NONE";
+  }
+
   private readonly native_fs: NativeFs; // 文件发现与字幕写入复用的磁盘入口
   // 格式处理器随服务实例固定，解析与写回始终复用同一组配置。
   private readonly txt: TXTFormat;
@@ -64,6 +76,7 @@ export class FileFormatService {
   private readonly trans: TRANSFormat;
   private readonly renpy: RenPyFormat;
   private readonly epub: EPUBFormat;
+  private readonly rgss: RPGMakerRGSSFormat;
   private readonly rpgmaker: RPGMakerMvMzFormat;
 
   /**
@@ -75,6 +88,7 @@ export class FileFormatService {
     native_fs: NativeFs = default_native_fs,
   ) {
     this.native_fs = native_fs;
+    this.rgss = new RPGMakerRGSSFormat(native_fs);
     this.rpgmaker = new RPGMakerMvMzFormat(config, native_fs);
     this.txt = new TXTFormat(config);
     this.md = new MDV2Format();
@@ -96,7 +110,7 @@ export class FileFormatService {
   public is_supported_file(file_path: string): boolean {
     return (
       PROJECT_SOURCE_FORMAT_ID_BY_EXTENSION.has(path.extname(file_path).toLowerCase()) ||
-      discover_rpgmaker_source(file_path, this.native_fs) !== null
+      this.source_file_type(file_path) !== undefined
     );
   }
 
@@ -108,11 +122,14 @@ export class FileFormatService {
     content: Uint8Array,
     file_type?: string,
   ): Promise<FileFormatReadResult> {
-    if (file_type === "RPGMAKER_MV_MZ")
+    if (is_rpgmaker_file_type(file_type))
       return {
         kind: "items",
         file_type,
-        ...(await this.rpgmaker.read_from_stream(content, rel_path)),
+        ...(await (file_type === "RPGMAKER_RGSS" ? this.rgss : this.rpgmaker).read_from_stream(
+          content,
+          rel_path,
+        )),
       };
     const by_extension: Record<string, string> = {
       ".txt": "TXT",
@@ -199,7 +216,9 @@ export class FileFormatService {
   public source_file_type(source_path: string): string | undefined {
     return discover_rpgmaker_source(source_path, this.native_fs) !== null
       ? "RPGMAKER_MV_MZ"
-      : undefined;
+      : discover_rgss_source(source_path, this.native_fs) !== null
+        ? "RPGMAKER_RGSS"
+        : undefined;
   }
 
   /**
@@ -211,7 +230,8 @@ export class FileFormatService {
     const seen_file_keys = new Set<string>();
     const visit = (source_path: string, source_root: string): void => {
       if (!this.native_fs.exists(source_path)) return;
-      const game = discover_rpgmaker_source(source_path, this.native_fs);
+      const mv = discover_rpgmaker_source(source_path, this.native_fs);
+      const game = mv ?? discover_rgss_source(source_path, this.native_fs);
       if (game !== null) {
         const key = this.build_path_identity_key(game.root);
         if (!seen_file_keys.has(key)) {
@@ -219,7 +239,7 @@ export class FileFormatService {
           candidates.push({
             source_path: game.root,
             rel_path: path.basename(game.root) + ".zip",
-            file_type: "RPGMAKER_MV_MZ",
+            file_type: mv ? "RPGMAKER_MV_MZ" : "RPGMAKER_RGSS",
           });
         }
         return; // 游戏收集器拥有内部文件，通用扫描到此结束。
@@ -244,7 +264,7 @@ export class FileFormatService {
     };
     for (const source_path of normalized_source_paths) visit(source_path, source_path);
     const game_roots = candidates
-      .filter((entry) => entry.file_type === "RPGMAKER_MV_MZ")
+      .filter((entry) => is_rpgmaker_file_type(entry.file_type))
       .map((entry) => this.build_path_identity_key(entry.source_path));
     const sources = candidates.filter((entry) => {
       const key = this.build_path_identity_key(entry.source_path);
@@ -274,8 +294,8 @@ export class FileFormatService {
       .map((entry, index) => ({ entry, index }))
       .sort(
         (left, right) =>
-          Number(left.entry.file_type === "RPGMAKER_MV_MZ") -
-          Number(right.entry.file_type === "RPGMAKER_MV_MZ"),
+          Number(is_rpgmaker_file_type(left.entry.file_type)) -
+          Number(is_rpgmaker_file_type(right.entry.file_type)),
       );
     for (const { entry, index } of order) {
       const parts = normalize_project_asset_path(entry.rel_path).split("/");
@@ -330,6 +350,7 @@ export class FileFormatService {
 
   /** 游戏先固化容器，后续解析不再依赖磁盘来源。 */
   public async prepare_source(source_path: string, rel_path: string, file_type?: string) {
+    if (file_type === "RPGMAKER_RGSS") return this.rgss.prepare_source(source_path, rel_path);
     if (file_type === "RPGMAKER_MV_MZ") return this.rpgmaker.prepare_source(source_path, rel_path);
     return { content: this.native_fs.read_file(source_path), warnings: [] };
   }
@@ -347,9 +368,11 @@ export class FileFormatService {
       const format_id =
         source_file.file_type === "RPGMAKER_MV_MZ"
           ? "rpgmaker_mv_mz"
-          : PROJECT_SOURCE_FORMAT_ID_BY_EXTENSION.get(
-              path.extname(source_file.source_path).toLowerCase(),
-            );
+          : source_file.file_type === "RPGMAKER_RGSS"
+            ? "rpgmaker_rgss"
+            : PROJECT_SOURCE_FORMAT_ID_BY_EXTENSION.get(
+                path.extname(source_file.source_path).toLowerCase(),
+              );
       if (format_id !== undefined) {
         format_hit_counts[format_id] += 1;
       }
@@ -387,6 +410,7 @@ export class FileFormatService {
   public async write_items(items: Item[], context: FileFormatServiceWriteContext): Promise<void> {
     const { paths, asset_reader } = context;
     await this.rpgmaker.write_to_path(items, context);
+    await this.rgss.write_to_path(items, context);
     await this.txt.write_to_path(items, paths);
     await this.md.write_to_path(items, paths);
     await this.write_subtitles(items, context);

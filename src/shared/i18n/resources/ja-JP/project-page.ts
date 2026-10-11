@@ -64,6 +64,7 @@ export const ja_jp_project_page = {
     rpy: "RenPy ゲームテキスト",
     json: "JSON ゲームテキスト",
     rpgmaker_mv_mz: "RPG Maker MV/MZ ゲームファイル",
+    rpgmaker_rgss: "RPG Maker XP/VX/VXAce ゲームファイル",
     trans: "Translator++ プロジェクトファイル",
     xlsx: "XLSX ゲームテキスト",
     mtool: "MTool から出力したゲームテキスト",

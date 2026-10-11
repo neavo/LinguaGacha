@@ -1,9 +1,10 @@
+import { is_rpgmaker_file_type } from "../../../shared/project-source-formats";
 import {
   normalize_project_asset_path,
   ProjectAssetPathIndex,
 } from "../../../shared/project/project-asset-paths";
 import path from "node:path";
-import { read_rpgmaker_container } from "../../file/rpgmaker-mv-mz/container";
+import { read_rpgmaker_container } from "../../file/rpgmaker-shared";
 import { read_zip_members } from "../../file/zip-members";
 import type { NativeFs } from "../../../native/native-fs";
 
@@ -22,9 +23,9 @@ export async function write_agent_workspace_sources(args: {
     const content = args.readAsset(file.file_path);
     if (content === null) throw new Error(`Project source asset is missing: ${file.file_path}`);
     const target = path.join(args.sourceRoot, relative_path);
-    if (file.file_type === "RPGMAKER_MV_MZ" || file.file_type === "EPUB") {
+    if (is_rpgmaker_file_type(file.file_type) || file.file_type === "EPUB") {
       const files = await (
-        file.file_type === "RPGMAKER_MV_MZ" ? read_rpgmaker_container : read_zip_members
+        is_rpgmaker_file_type(file.file_type) ? read_rpgmaker_container : read_zip_members
       )(content, file.file_path);
       await args.nativeFs.make_dir_async(target);
       for (const [name, member] of files)

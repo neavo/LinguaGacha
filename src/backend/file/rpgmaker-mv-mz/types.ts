@@ -1,24 +1,3 @@
-// 引擎指令码是原稿协议，提取与写回共同引用。
-export const RPGMAKER_EVENT = {
-  MESSAGE: 101,
-  MESSAGE_LINE: 401,
-  CHOICES: 102,
-  CHOICE_BRANCH: 402,
-  CHOICES_END: 404,
-  SCROLLING: 105,
-  SCROLLING_LINE: 405,
-  COMMENT: 108,
-  COMMENT_LINE: 408,
-  SCRIPT: 355,
-  SCRIPT_LINE: 655,
-  CONDITIONAL: 111,
-  VARIABLES: 122,
-  MOVE_SCRIPT: 45,
-  ACTOR_NAME: 320,
-  ACTOR_NICKNAME: 324,
-  ACTOR_PROFILE: 325,
-} as const;
-
 export type JsonPath = (string | number)[]; // 字符串为对象键，数字为数组索引。
 /** 根定位直接引用固化原稿中的字段或事件范围。 */
 export type RPGMakerRootLocation =

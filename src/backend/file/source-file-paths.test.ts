@@ -10,6 +10,7 @@ it.each([
   ["game.zip.zip", "RPGMAKER_MV_MZ", "game.zip"],
   ["folder\\game.zip.zip", "RPGMAKER_MV_MZ", "folder/game.zip"],
   ["game.zip", "TXT", "game.zip"],
+  ["game.zip", "RPGMAKER_RGSS", "game"],
 ])("译文输出路径只由资产身份和类型决定：%s", (file, type, expected) => {
   expect(source_file_output_path(file, type)).toBe(expected);
 });
@@ -26,7 +27,7 @@ it.each(["game/readme.txt", "GAME", "game.zip/child.txt"])(
   (path) => {
     for (const reverse of [false, true]) {
       const files = [
-        { path: "game.zip", file_type: "RPGMAKER_MV_MZ" },
+        { path: "game.zip", file_type: "RPGMAKER_RGSS" },
         { path, file_type: "TXT" },
       ];
       expect(() => assert_source_file_paths(reverse ? files.reverse() : files)).toThrow();

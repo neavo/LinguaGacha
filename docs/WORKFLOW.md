@@ -163,11 +163,13 @@ GUI、preload、native 或 Backend Runtime worker 变化时，先运行相关目
 |`LINGUAGACHA_TEST_ELECTRON`|发行包可执行文件|
 |`LINGUAGACHA_TEST_WORKSPACE_RUNTIME`|发行包工作区运行目录|
 
-### 原生 RPG Maker MV / MZ
+### 原生 RPG Maker
 
-格式、来源发现或默认排除变化时，运行 `src/backend/file/rpgmaker-mv-mz/` 与 `project-content-service.test.ts`。文件身份与迁移变化同时运行数据库迁移、工程打开迁移、解析流水线和译文生成测试。
+格式、来源发现或默认排除变化时，运行对应的 `src/backend/file/rpgmaker-mv-mz/` 或 `src/backend/file/rpgmaker-rgss/` 与 `project-content-service.test.ts`。共享容器变化同时覆盖两种格式及 `src/backend/file/rpgmaker-shared.test.ts`。文件身份与迁移变化同时运行数据库迁移、工程打开迁移、解析流水线和译文生成测试。
 
-文本规则计算变化覆盖 `text-rule-type.test.ts`、翻译译前流程和校对评估。部署变化执行 `npm run build`，核对发行工作区中的 `oxc-parser` 及平台绑定，并用发行 Electron 的 Node 模式加载解析器。
+文本规则计算变化覆盖 `text-rule-type.test.ts`、翻译译前流程和校对评估。部署变化执行 `npm run build`，核对发行工作区中的 `oxc-parser` 平台绑定与 `@ruby/prism` WASM。设置 `LINGUAGACHA_TEST_ELECTRON`、`LINGUAGACHA_TEST_WORKSPACE_RUNTIME` 后运行 `javascript.test.ts` 和 `ruby.test.ts`，使用发行 Electron 验证加载与写回。
+
+RGSS 自动化测试使用自建协议资源。定位结构变化后，从保存的原稿重建开发工程条目再验证导出。真实游戏往返使用独立输出目录，协议验证与实机验收分别记录。
 
 ### PDF
 

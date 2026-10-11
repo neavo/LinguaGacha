@@ -86,10 +86,12 @@ export function log_source_file_parse_warnings(args: {
     .flatMap((warning) =>
       warning.diagnostics.map((diagnostic) => {
         const location =
+          warning.location ??
           warning.json_path?.reduce<string>(
             (result, part) => result + "[" + JSON.stringify(part) + "]",
             "$",
-          ) ?? "";
+          ) ??
+          "";
         const position =
           diagnostic.line === null ? "" : ":" + diagnostic.line + ":" + diagnostic.column;
         const file = [warning.rel_path, warning.internal_file_path].filter(Boolean).join("/");

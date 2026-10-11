@@ -1,6 +1,5 @@
 import { normalize_project_asset_path } from "../../shared/project/project-asset-paths";
 import type { ProjectSourceFileEntry, SourceFileParseWarning } from "../file/file-format-shared";
-import { rpgmaker_default_status } from "../file/rpgmaker-mv-mz/item";
 import { ProjectDataReader } from "./project-data-reader";
 import { resolve_text_rule_type, type TextFileContext } from "../../shared/text/text-rule-type";
 import {
@@ -327,7 +326,7 @@ export class ProjectContentService {
         }
         item.dst = "";
         item.name_dst = null;
-        item.status = item.file_type === "RPGMAKER_MV_MZ" ? rpgmaker_default_status(item) : "NONE";
+        item.status = FileFormatService.default_status(item);
       }
       const settings = await this.read_project_write_settings(
         project_path,

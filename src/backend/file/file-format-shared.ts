@@ -3,7 +3,7 @@ import type { PDFDocument } from "../../shared/pdf";
 import { type Item, type ItemFileType } from "../../domain/item";
 
 /** 解析器语法诊断供后端日志定位，位置按脚本内 UTF-16 列计数。 */
-export type JavascriptDiagnostic = Readonly<{
+export type ScriptDiagnostic = Readonly<{
   message: string;
   line: number | null; // 脚本内从 1 开始的位置，解析器未提供定位时为空。
   column: number | null;
@@ -14,8 +14,9 @@ export type SourceFileParseWarning = Readonly<{
   code: "script_syntax_error" | "internal_file_read_failed" | "internal_file_parse_failed";
   rel_path: string;
   internal_file_path?: string;
+  location?: string; // 格式私有定位在日志边界转成可读位置。
   json_path?: readonly (string | number)[];
-  diagnostics: readonly JavascriptDiagnostic[];
+  diagnostics: readonly ScriptDiagnostic[];
 }>;
 
 /** 普通文件与条目共用类型值，PDF 通过独立文档参与导入。 */

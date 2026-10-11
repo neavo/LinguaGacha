@@ -25,6 +25,7 @@ it("普通原稿按资产相对路径保留原始字节", async () => {
 
 it.each([
   ["RPGMAKER_MV_MZ", "game.zip.zip"],
+  ["RPGMAKER_RGSS", "rgss.zip"],
   ["EPUB", "小说/书.epub"],
 ])("%s 按资产相对路径展开并保留所有成员字节", async (file_type, file_path) => {
   using root = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-sources-rm-"));
@@ -46,20 +47,23 @@ it.each([
     expect(fs.readFileSync(path.join(root.path, "sources", file_path, name))).toEqual(bytes);
 });
 
-it.each(["RPGMAKER_MV_MZ", "EPUB"])("%s 拒绝越界容器成员，外部路径没有写入", async (file_type) => {
-  using root = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-sources-rm-"));
-  const zip = new JSZip().file("../../outside.json", "{}", { createFolders: false });
-  const content = await zip.generateAsync({ type: "nodebuffer" });
-  await expect(
-    write_agent_workspace_sources({
-      nativeFs: new NativeFs(),
-      sourceRoot: path.join(root.path, "sources"),
-      files: [{ file_path: "game.zip", file_type }],
-      readAsset: () => content,
-    }),
-  ).rejects.toMatchObject({ code: "file.invalid_structure" });
-  expect(fs.existsSync(path.join(root.path, "outside.json"))).toBe(false);
-});
+it.each(["RPGMAKER_MV_MZ", "RPGMAKER_RGSS", "EPUB"])(
+  "%s 拒绝越界容器成员，外部路径没有写入",
+  async (file_type) => {
+    using root = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-sources-rm-"));
+    const zip = new JSZip().file("../../outside.json", "{}", { createFolders: false });
+    const content = await zip.generateAsync({ type: "nodebuffer" });
+    await expect(
+      write_agent_workspace_sources({
+        nativeFs: new NativeFs(),
+        sourceRoot: path.join(root.path, "sources"),
+        files: [{ file_path: "game.zip", file_type }],
+        readAsset: () => content,
+      }),
+    ).rejects.toMatchObject({ code: "file.invalid_structure" });
+    expect(fs.existsSync(path.join(root.path, "outside.json"))).toBe(false);
+  },
+);
 it("拒绝源文件路径逃逸", async () => {
   using root = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-sources-"));
   await expect(

@@ -264,7 +264,7 @@ describe("ProofreadingCache", () => {
   });
 
   it.each<{
-    file_type: "TRANS" | "EPUB" | "RPGMAKER_MV_MZ";
+    file_type: "TRANS" | "EPUB" | "RPGMAKER_MV_MZ" | "RPGMAKER_RGSS";
     extra_field: ProjectItemPublicRecord["extra_field"];
     internal_file_path: string;
   }>([
@@ -283,6 +283,17 @@ describe("ProofreadingCache", () => {
         },
       },
       internal_file_path: "data/Actors.json",
+    },
+    {
+      file_type: "RPGMAKER_RGSS",
+      extra_field: {
+        rpgmaker_rgss: {
+          internal_file_path: "Data/Actors.rvdata2",
+          usage: "text",
+          location: { kind: "field", path: [1, { field: "@name" }] },
+        },
+      },
+      internal_file_path: "Data/Actors.rvdata2",
     },
     {
       file_type: "EPUB",

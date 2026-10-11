@@ -66,6 +66,7 @@ export const en_us_project_page = {
     rpy: "RenPy Game Text",
     json: "JSON Game Text",
     rpgmaker_mv_mz: "RPG Maker MV/MZ Game File",
+    rpgmaker_rgss: "RPG Maker XP/VX/VXAce Game File",
     trans: "Translator++ Project File",
     xlsx: "XLSX Game Text",
     mtool: "MTool Game Text",

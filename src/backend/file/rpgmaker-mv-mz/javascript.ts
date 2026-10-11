@@ -3,7 +3,7 @@ import path from "node:path";
 import { read_javascript_usage } from "./javascript-usage";
 import { SOURCE_CONTEXT_MAX_LENGTH, type RPGMakerUsage } from "./types";
 import type * as Oxc from "oxc-parser";
-import type { JavascriptDiagnostic } from "../file-format-shared";
+import type { ScriptDiagnostic } from "../file-format-shared";
 
 /** 字符串范围相对于完整脚本，供译文写回和上下文展示共用。 */
 export type JavascriptString = {
@@ -18,7 +18,7 @@ export type JavascriptString = {
 /** 语法错误只返回诊断，阻止调用者使用不可靠的 AST 偏移。 */
 export type JavascriptReadResult =
   | { ok: true; strings: JavascriptString[] }
-  | { ok: false; diagnostics: JavascriptDiagnostic[] };
+  | { ok: false; diagnostics: ScriptDiagnostic[] };
 const CONTEXT_NODE_TYPES = new Set([
   "CallExpression",
   "NewExpression",

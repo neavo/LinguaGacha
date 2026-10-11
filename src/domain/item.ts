@@ -31,6 +31,7 @@ export const ITEM_FILE_TYPES = [
   "RENPY",
   "TRANS",
   "RPGMAKER_MV_MZ",
+  "RPGMAKER_RGSS",
   "KVJSON",
   "MESSAGEJSON",
 ] as const;

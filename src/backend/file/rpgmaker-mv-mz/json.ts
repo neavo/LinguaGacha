@@ -1,4 +1,4 @@
-import { RPGMAKER_EVENT } from "./types";
+import { RPGMAKER_EVENT } from "../rpgmaker-shared";
 import path from "node:path";
 import type { Item } from "../../../domain/item";
 import type { JsonValue } from "../../../domain/json";

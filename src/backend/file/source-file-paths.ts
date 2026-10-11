@@ -1,3 +1,4 @@
+import { is_rpgmaker_file_type } from "../../shared/project-source-formats";
 import { AppError } from "../../shared/error";
 import { validate_zip_member_path } from "./zip-members";
 import {
@@ -8,7 +9,7 @@ import {
 /** 译文输出位置：RM 移除最后一个 `.zip` 作为独占目录，其余格式保留资产路径。 */
 export function source_file_output_path(file: string, file_type?: string): string {
   const normalized = normalize_project_asset_path(file);
-  if (file_type !== "RPGMAKER_MV_MZ") return normalized;
+  if (!is_rpgmaker_file_type(file_type)) return normalized;
   if (!normalized.endsWith(".zip") || normalized.endsWith("/.zip") || normalized === ".zip")
     throw new AppError("request.validation_failed", {
       diagnostic_context: { reason: "invalid_rpgmaker_asset_path", path: file },

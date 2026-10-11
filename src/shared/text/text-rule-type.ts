@@ -10,6 +10,7 @@ export function resolve_text_rule_type(
 ): TextRuleType {
   switch (file?.file_type ?? item.file_type) {
     case "RPGMAKER_MV_MZ":
+    case "RPGMAKER_RGSS":
       return "RPGMAKER";
     case "WOLFXLSX":
       return "WOLF";
