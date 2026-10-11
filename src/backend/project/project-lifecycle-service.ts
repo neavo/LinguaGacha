@@ -1,4 +1,6 @@
 import type { SourceFileParseWarning } from "../file/file-format-shared";
+import { normalize_batch_translation_progress } from "../../domain/batch-translation";
+import { coordinate_project_duplicate_statuses } from "../../shared/project/project-item-duplicates";
 import type { ProjectFileRecord } from "./project-file-records";
 import type { ProjectPreviewResponse } from "../../shared/project-preview";
 import type { PDFExecution } from "../file/pdf/pdf-worker";
@@ -42,6 +44,7 @@ import type { SourceFileParseFailureRecord } from "../../shared/source-file-pars
 import type { ProjectWriteResult } from "../../shared/project-event";
 import {
   compute_project_prefilter_write,
+  build_translation_extras_from_items,
   type ProjectPrefilterWriteOutput,
 } from "./project-write-state";
 import { build_section_revisions_from_meta, get_section_revision } from "./project-data-reader";
@@ -160,12 +163,25 @@ export class ProjectLifecycleService {
     this.assert_project_file_exists(project_path);
     let committed = false; // 包含连接释放在内的提交后步骤都只能要求恢复。
     try {
-      if (!prepared) await this.database.prepare(project_path);
-      // 打开期迁移只生成 operation，和 updated_at 一起提交后才暴露 loaded 状态
-      const migration_writes = await build_project_open_writes({
-        project_path,
-        database: this.database,
-        app_setting_service: this.app_setting_service,
+      return await this.database.with_project_scope_async(project_path, async () => {
+        // 打开期迁移只生成 operation，和 updated_at 一起提交后才暴露 loaded 状态
+        const migration_writes = await build_project_open_writes({
+          project_path,
+          database: this.database,
+          app_setting_service: this.app_setting_service,
+        });
+
+        await this.database.transaction(project_path, () => {
+          this.database.set_meta(project_path, "updated_at", this.build_timestamp());
+          for (const write of migration_writes) {
+            write(this.database);
+          }
+          this.coordinate_open_project_duplicates(project_path);
+        });
+        committed = true;
+        await this.cache.warmProject(project_path);
+        await this.session_state.mark_loaded(project_path);
+        return this.build_loaded_project_response(project_path);
       });
 
       await this.database.transaction(project_path, (writer) => {
@@ -187,6 +203,39 @@ export class ProjectLifecycleService {
         diagnostic_context: { operation: "load_project_after_commit" },
       });
     }
+  }
+
+  /** 格式迁移可能改写原文。在同一打开事务内协调最终条目，再让缓存和会话消费。 */
+  private coordinate_open_project_duplicates(project_path: string): void {
+    const meta = this.database.get_all_meta(project_path);
+    const settings = this.build_stored_project_settings(meta, {
+      ...read_json_record(meta["prefilter_config"]),
+    });
+    const items = this.database
+      .get_all_items(project_path)
+      .map((item) => this.normalize_public_item(item));
+    const changes = coordinate_project_duplicate_statuses(
+      items,
+      settings.skip_duplicate_source_text_enable,
+    );
+    if (changes.length === 0) return;
+    const statuses = new Map(changes.map(({ item_id, status }) => [item_id, status]));
+    // 条目是本次读取的独立快照，直接更新后供持久化和统计共同使用。
+    const writes = items.flatMap((item) => {
+      const status = statuses.get(item.item_id);
+      if (status === undefined) return [];
+      item.status = status;
+      return [{ item_id: item.item_id, next: item }];
+    });
+    this.database.patch_item_translation_fields(project_path, writes);
+    this.database.set_meta(
+      project_path,
+      "translation_extras",
+      build_translation_extras_from_items({
+        progress: normalize_batch_translation_progress(meta["translation_extras"]),
+        items,
+      }) as unknown as JsonValue,
+    );
   }
 
   /**
@@ -428,7 +477,7 @@ export class ProjectLifecycleService {
   }
 
   /**
-   * 后端解析条目必须先过公开 DTO 边界，再交给后端预过滤算法
+   * 解析和持久化条目先通过公开 DTO 校验，再参与状态计算。
    */
   private normalize_public_item(value: unknown): ProjectItemPublicRecord {
     const public_item = normalize_project_item_public_record(value);

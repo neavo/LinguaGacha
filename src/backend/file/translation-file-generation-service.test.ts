@@ -356,6 +356,72 @@ describe("TranslationFileGenerationService", () => {
     expect(output_folder_opener).not.toHaveBeenCalled();
   });
 
+  it.each(["gui", "directory"] as const)(
+    "%s 跨文件导出复用最小 ID 的成果，包括未输出的代表文件",
+    async (entry) => {
+      const items = [
+        {
+          id: 9,
+          src: "同文",
+          name_src: "甲",
+          dst: "另一译文",
+          name_dst: "另一译名",
+          status: "PROCESSED",
+          file_path: "old.json",
+          file_type: "MESSAGEJSON",
+          row: 0,
+        },
+        {
+          id: 2,
+          src: "同文",
+          name_src: ["甲", "附加列"],
+          dst: "选中译文",
+          name_dst: "选中译名",
+          status: "PROCESSED",
+          file_path: "first.json",
+          file_type: "MESSAGEJSON",
+          row: 99,
+        },
+        {
+          id: 3,
+          src: "同文",
+          name_src: "甲",
+          dst: "",
+          status: "DUPLICATED",
+          file_path: "copy.json",
+          file_type: "MESSAGEJSON",
+          row: 0,
+        },
+      ];
+      const before = structuredClone(items);
+      const session = new ProjectSessionState();
+      await session.mark_loaded(path.join(temp_dir, "duplicates.lg"));
+      const service = new TranslationFileGenerationService(
+        create_database(items),
+        create_setting_service(),
+        session,
+        async () => {},
+        create_pdf_execution(),
+      );
+      const result =
+        entry === "gui"
+          ? await service.generate_files()
+          : await service.generate_files_to_directory(path.join(temp_dir, "out"), ["first.json"]);
+      const read = (file: string) =>
+        JSON.parse(fs.readFileSync(path.join(result.output_path, file), "utf8"));
+      expect(read("copy.json")).toEqual([{ name: "选中译名", message: "选中译文" }]);
+      if (entry === "gui") {
+        expect(read("first.json")).toEqual([
+          { names: ["选中译名", "附加列"], message: "选中译文" },
+        ]);
+      } else {
+        expect(fs.existsSync(path.join(result.output_path, "first.json"))).toBe(false);
+      }
+      expect(read("old.json")).toEqual([{ name: "另一译名", message: "另一译文" }]);
+      expect(items).toEqual(before);
+    },
+  );
+
   it("MESSAGEJSON 译文生成只在相同可见角色间复用译文", async () => {
     const project_path = path.join(temp_dir, "actors.lg");
     const session_state = new ProjectSessionState();

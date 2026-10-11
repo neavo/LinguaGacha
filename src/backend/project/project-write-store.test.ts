@@ -1101,37 +1101,29 @@ describe("ProjectWriteStore", () => {
   }
 
   /** 为各写入入口提供同一组代表与被动重复事实，只让测试覆盖自身差异。 */
-  async function seed_duplicate_items(
-    database: ProjectDatabase,
-    project_path: string,
-  ): Promise<void> {
-    await database.transaction(project_path, (writer) =>
-      writer.set_items(
-        project_path,
-        [
-          {
-            id: 1,
-            src: "同文",
-            dst: "",
-            name_dst: null,
-            status: "NONE",
-            file_path: "demo.txt",
-            row: 0,
-          },
-          {
-            id: 2,
-            src: "同文",
-            dst: "",
-            name_dst: null,
-            status: "DUPLICATED",
-            file_path: "demo.txt",
-            row: 1,
-          },
-        ].map((item) => create_item(item)),
-      ),
-    );
-    await database.transaction(project_path, (writer) =>
-      writer.set_meta(project_path, "skip_duplicate_source_text_enable", true),
+  function seed_duplicate_items(database: ProjectDatabase, project_path: string): void {
+    database.set_items(
+      project_path,
+      [
+        {
+          id: 1,
+          src: "同文",
+          dst: "",
+          name_dst: null,
+          status: "NONE",
+          file_path: "demo.txt",
+          row: 0,
+        },
+        {
+          id: 2,
+          src: "同文",
+          dst: "",
+          name_dst: null,
+          status: "DUPLICATED",
+          file_path: "other.txt",
+          row: 1,
+        },
+      ].map((item) => create_item(item)),
     );
   }
 

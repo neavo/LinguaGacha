@@ -262,20 +262,19 @@ export class ProjectContentService {
         settings,
       });
       if (String(request["inheritance_mode"] ?? "none") === "inherit") {
-        const inherited_items = this.clone_public_item_record(write_output.items);
         this.inherit_completed_translations({
           old_items,
           files: current_files,
           old_files: snapshot.files,
           next_items: imported_item_ids.flatMap((item_id) => {
-            const item = inherited_items[String(item_id)];
+            const item = write_output.items[String(item_id)];
             return item === undefined ? [] : [item];
           }),
         });
         write_output = await this.compute_prefilter_output({
           project_path,
           files: current_files,
-          items: inherited_items,
+          items: write_output.items,
           settings,
         });
       }
@@ -872,17 +871,6 @@ export class ProjectContentService {
   }
 
   /**
-   * 复制公开 item record，继承写入不能污染第一次预过滤结果
-   */
-  private clone_public_item_record(
-    items: Record<string, ProjectItemPublicRecord>,
-  ): Record<string, ProjectItemPublicRecord> {
-    return Object.fromEntries(
-      Object.entries(items).map(([item_id, item]) => [item_id, { ...item }]),
-    );
-  }
-
-  /**
    * 将新解析条目按完整源身份继承旧已完成译文，候选选择只在后端执行
    */
   private inherit_completed_translations(args: {
@@ -896,7 +884,8 @@ export class ProjectContentService {
       args.old_files,
     );
     for (const item of args.next_items) {
-      if (item.status !== "NONE") {
+      // 重复状态只减少翻译请求，用户要求继承时仍接收已有成果。
+      if (item.status !== "NONE" && item.status !== "DUPLICATED") {
         continue;
       }
       const candidate = candidate_map.get(

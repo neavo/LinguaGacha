@@ -9,7 +9,12 @@ describe("ItemCache", () => {
     const cache = new ItemCache();
     const items = [
       create_item(1, { src: "同文", status: "NONE", name_src: ["甲", "乙"] }),
-      create_item(2, { src: "同文", status: "DUPLICATED", name_src: ["甲", "乙"] }),
+      create_item(2, {
+        file_path: "other.txt",
+        src: "同文",
+        status: "DUPLICATED",
+        name_src: ["甲", "乙"],
+      }),
       create_item(3, { src: "同文", status: "ERROR", name_src: ["甲", "乙"] }),
       create_item(4, { src: "同文", status: "RULE_SKIPPED", name_src: ["甲", "乙"] }),
       create_item(5, { src: "同文", status: "NONE", name_src: ["丙"] }),

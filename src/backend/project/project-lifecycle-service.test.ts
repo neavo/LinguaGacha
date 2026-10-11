@@ -16,6 +16,7 @@ import { AppPathService } from "../app/app-path-service";
 import { ProjectLifecycleService } from "./project-lifecycle-service";
 import { RuntimeOperationGate } from "../runtime-operation-gate";
 import { ProjectWriteStore } from "./project-write-store";
+import { create_item } from "../../domain/item";
 
 type TestProjectDatabase = ProjectDatabase & {
   get_project_summary: ReturnType<typeof vi.fn>;
@@ -156,6 +157,60 @@ describe("ProjectLifecycleService", () => {
         projectPath: project_path,
       },
     ]);
+  });
+
+  it.each([true, false])("打开旧项目在缓存热机前协调跨文件重复状态，开关为 %s", async (enabled) => {
+    const project_path = path.join(create_temp_dir(), "duplicates.lg");
+    const database = new ProjectDatabase();
+    try {
+      database.create_project(project_path, "duplicates", () => {
+        database.set_meta(project_path, "skip_duplicate_source_text_enable", enabled);
+        database.set_items(project_path, [
+          create_item({ id: 1, src: "同文", file_path: "a.txt", row: 99, status: "DUPLICATED" }),
+          create_item({ id: 2, src: "同文", file_path: "b.txt", row: 0, status: "NONE" }),
+          create_item({
+            id: 3,
+            src: "已译",
+            file_path: "a.txt",
+            dst: "保留甲",
+            status: "PROCESSED",
+          }),
+          create_item({
+            id: 4,
+            src: "已译",
+            file_path: "b.txt",
+            dst: "保留乙",
+            status: "PROCESSED",
+          }),
+          create_item({ id: 5, src: "同文", file_path: "c.txt", status: "EXCLUDED" }),
+        ]);
+      });
+      const service = create_service({
+        database,
+        project_event_handler: () => {
+          expect(database.get_all_items(project_path).map((item) => item.status)).toEqual([
+            "NONE",
+            enabled ? "DUPLICATED" : "NONE",
+            "PROCESSED",
+            "PROCESSED",
+            "EXCLUDED",
+          ]);
+          expect(database.get_all_meta(project_path).translation_extras).toMatchObject({
+            total_line: enabled ? 3 : 4,
+            processed_line: 2,
+            error_line: 0,
+            line: 2,
+          });
+        },
+      });
+      await service.load_project({ path: project_path });
+      const items = database.get_all_items(project_path);
+      expect(items.slice(2, 4).map((item) => item.dst)).toEqual(["保留甲", "保留乙"]);
+      await service.load_project({ path: project_path });
+      expect(database.get_all_items(project_path)).toEqual(items);
+    } finally {
+      database.close();
+    }
   });
 
   it("load 在内部缓存热机失败时阻断 loaded", async () => {

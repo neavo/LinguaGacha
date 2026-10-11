@@ -28,7 +28,7 @@ export const en_us_laboratory_page = {
     skip_duplicate_source_text_enable: {
       title: "Skip Duplicate Source Text",
       description:
-        "Entries with identical source text in the same file share <emphasis>one translation</emphasis>, enabled by default",
+        "Entries with identical text across the project share <emphasis>one translation</emphasis>, enabled by default",
     },
   },
 } satisfies LocaleMessageSchema<typeof zh_cn_laboratory_page>;
