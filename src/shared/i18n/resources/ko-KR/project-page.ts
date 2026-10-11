@@ -63,7 +63,7 @@ export const ko_kr_project_page = {
     epub: "EPUB 전자책",
     rpy: "RenPy 게임 텍스트",
     json: "JSON 게임 텍스트",
-    rpgmaker_mv_mz: "RPG Maker MV / MZ",
+    rpgmaker_mv_mz: "RPG Maker MV/MZ 게임 파일",
     trans: "Translator++ 프로젝트 파일",
     xlsx: "XLSX 게임 텍스트",
     mtool: "MTool에서 내보낸 게임 텍스트",

@@ -61,7 +61,7 @@ export const zh_cn_project_page = {
     epub: "EPUB 电子书",
     rpy: "RenPy 游戏文本",
     json: "JSON 游戏文本",
-    rpgmaker_mv_mz: "RPG Maker MV / MZ",
+    rpgmaker_mv_mz: "RPG Maker MV/MZ 游戏文件",
     trans: "Translator++ 项目文件",
     xlsx: "XLSX 游戏文本",
     mtool: "MTool 导出游戏文本",

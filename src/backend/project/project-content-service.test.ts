@@ -411,82 +411,88 @@ describe("ProjectContentService", () => {
       database.close();
     }
   });
-  it("原生 RM 导入、文件重置和全部重置共用规则筛选脚本", async () => {
-    const { database, service, lg_path } = create_service();
-    try {
-      const file = "data/CommonEvents.json";
-      const bytes = Buffer.from(
-        JSON.stringify([
-          null,
-          {
-            name: "插件事件",
-            list: [
-              {
-                code: 355,
-                indent: 0,
-                parameters: [
-                  'actor["管理キー"]; say("こんにちは", "EV001", "Hello", "こんにちは");',
-                ],
-              },
-            ],
-          },
-        ]),
-      );
-      const expected = [
-        ["插件事件", "RULE_SKIPPED", ""],
-        ["管理キー", "RULE_SKIPPED", ""],
-        ["こんにちは", "NONE", ""],
-        ["EV001", "RULE_SKIPPED", ""],
-        ["Hello", "LANGUAGE_SKIPPED", ""],
-        ["こんにちは", "DUPLICATED", ""],
-      ];
-      const source = project_path(path.basename(file));
-      fs.writeFileSync(source, bytes);
-      // 已保存的资产身份保证替换来自临时路径的文件仍按原生 RM 解析。
-      database.add_asset(lg_path, file, bytes, "RPGMAKER_MV_MZ", null);
-      const project_settings = {
-        source_language: "JA",
-        target_language: "ZH",
-        skip_duplicate_source_text_enable: true,
-      };
-      await service.import_files({
-        files: [{ source_path: source, target_rel_path: file }],
-        conflict_action: "replace",
-        expected_section_revisions: { files: 0, items: 0 },
-        project_settings,
-      });
-      expect(
-        database.get_all_items(lg_path).map((item) => [item["src"], item["status"], item["dst"]]),
-      ).toEqual(expected);
-      database.set_items(
-        lg_path,
-        database.get_all_items(lg_path).map((item) => {
-          const extra_field = read_json_record(item["extra_field"]);
-          // 文件重置消费保存用途，全部重建才重新分类原稿。
-          if (item["src"] === "管理キー")
-            extra_field["rpgmaker"] = {
-              ...read_json_record(extra_field["rpgmaker"]),
-              usage: "text",
-            };
-          return { ...item, extra_field, status: "PROCESSED", dst: "已翻译" };
-        }),
-      );
-      await service.reset_files({
-        rel_paths: [file],
-        expected_section_revisions: { files: 1, items: 1 },
-        project_settings,
-      });
-      expect(
-        database.get_all_items(lg_path).map((item) => [item["src"], item["status"], item["dst"]]),
-      ).toEqual(expected.map((row) => (row[0] === "管理キー" ? ["管理キー", "NONE", ""] : row)));
-      await service.reset_translation({ mode: "all", project_settings });
-      expect(
-        database.get_all_items(lg_path).map((item) => [item["src"], item["status"], item["dst"]]),
-      ).toEqual(expected);
-    } finally {
-      database.close();
-    }
-  });
+  it.each(["data/CommonEvents.json", "js/plugins.js", "www/js/plugins/nested/menu.js"])(
+    "原生 RM 导入、文件重置和全部重置共用来源与用途规则：%s",
+    async (file) => {
+      const { database, service, lg_path } = create_service();
+      try {
+        const json = file.endsWith(".json");
+        const script = 'actor["管理キー"]; say("こんにちは", "EV001", "Hello", "こんにちは");';
+        const bytes = Buffer.from(
+          json
+            ? JSON.stringify([
+                null,
+                {
+                  name: "插件事件",
+                  list: [
+                    {
+                      code: 355,
+                      indent: 0,
+                      parameters: [script],
+                    },
+                  ],
+                },
+              ])
+            : script,
+        );
+        const expected = [
+          ...(json ? [["插件事件", "RULE_SKIPPED", ""]] : []),
+          ["管理キー", "RULE_SKIPPED", ""],
+          ["こんにちは", json ? "NONE" : "RULE_SKIPPED", ""],
+          ["EV001", "RULE_SKIPPED", ""],
+          ["Hello", json ? "LANGUAGE_SKIPPED" : "RULE_SKIPPED", ""],
+          ["こんにちは", json ? "DUPLICATED" : "RULE_SKIPPED", ""],
+        ];
+        const source = project_path(path.basename(file));
+        fs.writeFileSync(source, bytes);
+        // 已保存的资产身份保证替换来自临时路径的文件仍按原生 RM 解析。
+        database.add_asset(lg_path, file, bytes, "RPGMAKER_MV_MZ", null);
+        const project_settings = {
+          source_language: "JA",
+          target_language: "ZH",
+          skip_duplicate_source_text_enable: true,
+        };
+        await service.import_files({
+          files: [{ source_path: source, target_rel_path: file }],
+          conflict_action: "replace",
+          expected_section_revisions: { files: 0, items: 0 },
+          project_settings,
+        });
+        expect(
+          database.get_all_items(lg_path).map((item) => [item["src"], item["status"], item["dst"]]),
+        ).toEqual(expected);
+        database.set_items(
+          lg_path,
+          database.get_all_items(lg_path).map((item) => {
+            const extra_field = read_json_record(item["extra_field"]);
+            // 文件重置消费保存用途，全部重建才重新分类原稿。
+            if (item["src"] === "管理キー")
+              extra_field["rpgmaker"] = {
+                ...read_json_record(extra_field["rpgmaker"]),
+                usage: "text",
+              };
+            return { ...item, extra_field, status: "PROCESSED", dst: "已翻译" };
+          }),
+        );
+        await service.reset_files({
+          rel_paths: [file],
+          expected_section_revisions: { files: 1, items: 1 },
+          project_settings,
+        });
+        expect(
+          database.get_all_items(lg_path).map((item) => [item["src"], item["status"], item["dst"]]),
+        ).toEqual(
+          expected.map((row) => (json && row[0] === "管理キー" ? ["管理キー", "NONE", ""] : row)),
+        );
+        await service.reset_translation({ mode: "all", project_settings });
+        expect(
+          database.get_all_items(lg_path).map((item) => [item["src"], item["status"], item["dst"]]),
+        ).toEqual(expected);
+      } finally {
+        database.close();
+      }
+    },
+  );
 
   it("失败重置保留 RM 脚本与人工启用元数据的翻译资格", async () => {
     const { database, service, lg_path } = create_service();

@@ -6,12 +6,6 @@ import type { ItemFileType } from "../domain/item";
  */
 export const PROJECT_SOURCE_FORMATS = [
   {
-    id: "rpgmaker_mv_mz",
-    extension: ".exe",
-    title_key: "project_page.formats.rpgmaker_mv_mz",
-    description_keys: [],
-  },
-  {
     id: "txt",
     extension: ".txt",
     title_key: "project_page.formats.txt",
@@ -100,6 +94,12 @@ export const PROJECT_SOURCE_FORMATS = [
     id: "trans",
     extension: ".trans",
     title_key: "project_page.formats.trans",
+    description_keys: [],
+  },
+  {
+    id: "rpgmaker_mv_mz",
+    extension: ".exe",
+    title_key: "project_page.formats.rpgmaker_mv_mz",
     description_keys: [],
   },
 ] as const satisfies ReadonlyArray<{

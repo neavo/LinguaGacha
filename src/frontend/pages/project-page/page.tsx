@@ -1335,7 +1335,7 @@ export function ProjectPage(_props: ProjectPageProps): JSX.Element {
                                 {t(format.title_key)}
                               </span>
                               <span className="project-home__format-extension">
-                                {format.extension}
+                                {format.id === "rpgmaker_mv_mz" ? "Game.exe" : format.extension}
                               </span>
                               {hit_count > 0 ? <Badge tone="brand">{hit_count}</Badge> : null}
                             </li>

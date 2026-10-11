@@ -54,6 +54,9 @@ describe("MV/MZ 原稿写回", () => {
             : `const settings = ${JSON.stringify(payload)};`,
       );
       const { items } = await format.read_from_stream(bytes, file);
+      if (!json) {
+        expect(items.every((item) => item.status === "RULE_SKIPPED")).toBe(true);
+      }
       const translations = new Map([
         ["はい", '引号"\\\n😀${x}`'],
         ["いいえ", "否"],
@@ -98,7 +101,7 @@ describe("MV/MZ 原稿写回", () => {
   });
 
   it.each(["js/plugins/test.js", "data/CommonEvents.json"])(
-    "脚本键默认排除并保留上下文，人工翻译按保存定位写回：%s",
+    "插件脚本默认排除，事件脚本按用途分类，人工翻译按保存定位写回：%s",
     async (file) => {
       const script = 'const x = {"管理😀": "显示"}; show(`你好${x}世界`);';
       const json = file.endsWith(".json");
@@ -108,9 +111,9 @@ describe("MV/MZ 原稿写回", () => {
       const { items } = await format.read_from_stream(bytes, file);
       expect(items.map(({ src, status }) => [src, status])).toEqual([
         ["管理😀", "RULE_SKIPPED"],
-        ["显示", "NONE"],
-        ["你好", "NONE"],
-        ["世界", "NONE"],
+        ["显示", json ? "NONE" : "RULE_SKIPPED"],
+        ["你好", json ? "NONE" : "RULE_SKIPPED"],
+        ["世界", json ? "NONE" : "RULE_SKIPPED"],
       ]);
       expect(items[0]?.extra_field).toMatchObject({
         rpgmaker: {
@@ -290,7 +293,6 @@ describe("MV/MZ 原稿写回", () => {
     const bytes = Buffer.from(source);
     const { items } = await format.read_from_stream(bytes, "js/plugins/test.js");
     expect(items.map((item) => item.src)).toEqual(["中文😀", "你好", "世界"]);
-    expect(items.map((item) => item.status)).toEqual(["NONE", "NONE", "NONE"]);
     expect(items[0]?.extra_field).toMatchObject({
       rpgmaker: { usage: "text", source_context: 'x = "中文😀"' },
     });

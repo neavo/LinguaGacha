@@ -39,7 +39,7 @@ it("六层解码保留每层路径与外层用途，上下文有界且保留邻�
     source = JSON.stringify({ [key]: source });
   extractor.script(`const parameters = ${JSON.stringify(source)};`, { kind: "field", path: [] });
   const item = extractor.items.find(({ src }) => src === "はい")!;
-  expect(item.status).toBe("NONE");
+  expect(item.extra_field).toMatchObject({ rpgmaker: { usage: "text" } });
   const metadata = read_json_record(read_json_record(item.extra_field)["rpgmaker"]) as {
     source_context: string;
   };

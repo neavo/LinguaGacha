@@ -176,6 +176,7 @@
 .project-home__format-tag {
   max-width: 100%;
   height: 30px;
+  gap: 8px;
   padding-block: 4px;
 }
 

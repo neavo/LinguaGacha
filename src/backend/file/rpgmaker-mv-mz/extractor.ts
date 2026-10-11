@@ -68,7 +68,7 @@ export function create_rpgmaker_extractor(rel_path: string) {
           file_path: rel_path,
           file_type: "RPGMAKER_MV_MZ",
           row: items.length,
-          status: rpgmaker_default_status(extra_field),
+          status: rpgmaker_default_status({ file_path: rel_path, extra_field }),
           extra_field,
         }),
       );

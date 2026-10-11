@@ -338,8 +338,7 @@ export class ProjectContentService {
         }
         item.dst = "";
         item.name_dst = null;
-        item.status =
-          item.file_type === "RPGMAKER_MV_MZ" ? rpgmaker_default_status(item.extra_field) : "NONE";
+        item.status = item.file_type === "RPGMAKER_MV_MZ" ? rpgmaker_default_status(item) : "NONE";
       }
       const settings = await this.read_project_write_settings(
         project_path,
