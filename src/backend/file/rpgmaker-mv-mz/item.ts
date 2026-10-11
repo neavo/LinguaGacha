@@ -2,28 +2,7 @@ import path from "node:path";
 import type { Item, ItemStatus } from "../../../domain/item";
 import { read_json_record } from "../../../domain/json";
 import type { RPGMakerMetadata } from "./types";
-import { AppError } from "../../../shared/error";
-
-/** 内部路径跨平台保存，拒绝越界和 Windows 路径别名。 */
-export function validate_rpgmaker_path(value: string): string {
-  const normalized = value.replace(/\\/gu, "/");
-  if (
-    !normalized ||
-    normalized
-      .split("/")
-      .some(
-        (part) =>
-          !part ||
-          part === "." ||
-          part === ".." ||
-          /[:<>"|?*\p{Cc}]/u.test(part) ||
-          /[. ]$/u.test(part) ||
-          /^(?:con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\.|$)/iu.test(part),
-      )
-  )
-    throw new AppError("file.invalid_structure", { public_details: { file: value } });
-  return normalized;
-}
+import { validate_zip_member_path } from "../zip-members";
 
 /** 共享读取验证来源与定位种类，精确坐标由写回器对照原稿验证。 */
 export function read_rpgmaker_metadata(
@@ -38,7 +17,7 @@ export function read_rpgmaker_metadata(
     )
   )
     throw new Error("Invalid RPG Maker metadata");
-  if (validate_rpgmaker_path(value["internal_file_path"]) !== value["internal_file_path"])
+  if (validate_zip_member_path(value["internal_file_path"]) !== value["internal_file_path"])
     throw new Error("Noncanonical RPG Maker internal path");
   return value as unknown as RPGMakerMetadata;
 }

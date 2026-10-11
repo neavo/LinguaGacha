@@ -53,9 +53,3 @@ export class ProjectAssetPathIndex {
       this.directories.add(parts.slice(0, index).join("/"));
   }
 }
-
-/** 在写入任何原稿前验证最终文件集合。 */
-export function assert_project_asset_paths(paths: Iterable<string>): void {
-  const index = new ProjectAssetPathIndex();
-  for (const path of paths) index.add(path);
-}

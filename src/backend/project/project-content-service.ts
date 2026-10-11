@@ -119,7 +119,7 @@ export class ProjectContentService {
     const source_paths = this.normalize_string_list(request["source_paths"]);
     const entries = format_service.assign_source_file_paths(
       format_service.collect_source_file_entries(source_paths),
-      this.database.get_all_asset_records(project_path).map((asset) => asset.path),
+      this.database.get_all_asset_records(project_path),
     );
     const commands = this.prepare_import_file_commands(project_path, entries, format_service);
     const result = await new SourceFileParsePipeline(format_service).parse_import_commands(

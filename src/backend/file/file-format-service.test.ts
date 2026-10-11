@@ -6,6 +6,8 @@ import { spreadsheet_fixture } from "../../test/spreadsheet-fixture";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { NativeFs } from "../../native/native-fs";
+import { write_zip } from "../../test/zip-fixture";
 import { FileFormatService } from "./file-format-service";
 import { PROJECT_SOURCE_FORMATS } from "../../shared/project-source-formats";
 
@@ -24,29 +26,54 @@ function create_service(): FileFormatService {
 }
 
 describe("FileFormatService", () => {
+  it("游戏独占输出目录，整批导出在首次写入前拒绝目录内的普通资产", async () => {
+    const native = new NativeFs();
+    const write = vi.spyOn(native, "write_file").mockResolvedValue();
+    const service = new FileFormatService(
+      { target_language: "ZH" },
+      create_pdf_execution(),
+      native,
+    );
+    const bytes = await write_zip(new Map([["data/Actors.json", "[]"]]));
+    await expect(
+      service.write_items([], {
+        paths: { translated_path: "out", bilingual_path: "bilingual" },
+        source_files: [
+          { path: "game.zip", file_type: "RPGMAKER_MV_MZ" },
+          { path: "game/readme.txt", file_type: "TXT" },
+        ],
+        asset_reader: () => bytes,
+      }),
+    ).rejects.toMatchObject({ code: "request.validation_failed" });
+    expect(write).not.toHaveBeenCalled();
+  });
+
   it("同批同名游戏使用同一本地时间，避让已有与候选的时间戳名称", () => {
     const paths = create_service()
       .assign_source_file_paths(
         [
-          { source_path: "a", rel_path: "game", file_type: "RPGMAKER_MV_MZ" },
-          { source_path: "b", rel_path: "game", file_type: "RPGMAKER_MV_MZ" },
-          { source_path: "c", rel_path: "game", file_type: "RPGMAKER_MV_MZ" },
-          { source_path: "d", rel_path: "game_20261011_123456_2", file_type: "RPGMAKER_MV_MZ" },
+          { source_path: "a", rel_path: "game.zip", file_type: "RPGMAKER_MV_MZ" },
+          { source_path: "b", rel_path: "game.zip", file_type: "RPGMAKER_MV_MZ" },
+          { source_path: "c", rel_path: "game.zip", file_type: "RPGMAKER_MV_MZ" },
+          { source_path: "d", rel_path: "game_20261011_123456_2.zip", file_type: "RPGMAKER_MV_MZ" },
         ],
-        ["game_20261011_123456", "game_2"],
+        [
+          { path: "game_20261011_123456.zip", file_type: "RPGMAKER_MV_MZ" },
+          { path: "game_2.zip", file_type: "RPGMAKER_MV_MZ" },
+        ],
       )
       .map((entry) => entry.rel_path);
     expect(paths).toEqual([
-      "game",
-      "game_20261011_123456_3",
-      "game_20261011_123456_4",
-      "game_20261011_123456_2",
+      "game.zip",
+      "game_20261011_123456_3.zip",
+      "game_20261011_123456_4.zip",
+      "game_20261011_123456_2.zip",
     ]);
   });
 
   it.each([false, true])("普通目录结构优先于同批游戏名称，倒序：%s", (reverse) => {
     const entries = [
-      { source_path: "a", rel_path: "game", file_type: "RPGMAKER_MV_MZ" },
+      { source_path: "a", rel_path: "game.zip", file_type: "RPGMAKER_MV_MZ" },
       { source_path: "b", rel_path: "game/readme.txt" },
       { source_path: "c", rel_path: "game/sub/note.txt" },
     ];
@@ -57,7 +84,7 @@ describe("FileFormatService", () => {
     );
     expect(paths).toEqual(
       new Map([
-        ["a", "game_20261011_123456"],
+        ["a", "game_20261011_123456.zip"],
         ["b", "game/readme.txt"],
         ["c", "game/sub/note.txt"],
       ]),
@@ -70,15 +97,18 @@ describe("FileFormatService", () => {
         [
           { source_path: "a", rel_path: "game/readme.txt" },
           { source_path: "b", rel_path: "game/sub/note.txt" },
-          { source_path: "c", rel_path: "game", file_type: "RPGMAKER_MV_MZ" },
+          { source_path: "c", rel_path: "game.zip", file_type: "RPGMAKER_MV_MZ" },
         ],
-        ["game", "game_20261011_123456/other.txt"],
+        [
+          { path: "game.zip", file_type: "RPGMAKER_MV_MZ" },
+          { path: "game_20261011_123456/other.txt", file_type: "TXT" },
+        ],
       )
       .map((entry) => entry.rel_path.replaceAll("\\", "/"));
     expect(paths).toEqual([
       "game_20261011_123456_2/readme.txt",
       "game_20261011_123456_2/sub/note.txt",
-      "game",
+      "game.zip",
     ]);
   });
   beforeEach(() => {

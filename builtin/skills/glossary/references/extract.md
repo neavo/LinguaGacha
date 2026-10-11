@@ -86,7 +86,7 @@
 ### 取证与对象判断
 
 - **条目原文与姓名**：主要读取 `items`，使用本包 `matchLiterals` 在 `src`、`name_src` 上取得连续字面命中，按判断目的选择计数或完整位置并核对完整性，调用方法见 `references/scripts.md`。
-- **条目语境**：使用 `@lg/workspace/item-contexts` 的 `queryItemContexts` 合批查询必要语境，缺少结构信息时从 `sources/` 补证。
+- **条目语境**：使用 `@lg/workspace/item-contexts` 的 `queryItemContexts` 合批查询必要语境，缺少结构信息时按 `sources/<file_path>` 读取原稿补证。
 - **页面文本**：按实际提取结果匹配，扫描顺序、连字和断词含糊时对照图像核验，记录文件、原页码和必要的区域位置。
 
 ### 关系图与规则方案

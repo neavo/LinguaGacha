@@ -1,6 +1,4 @@
 import { add_test_asset_from_source } from "../../test/asset-fixture";
-import { write_agent_workspace_sources } from "../agent/workspace/sources";
-import { NativeFs } from "../../native/native-fs";
 import { CacheManager } from "../cache/cache-manager";
 import type { AppSettingService } from "../app/app-setting-service";
 import type { ComputeWorkerClient } from "../worker/compute-worker-client";
@@ -188,7 +186,7 @@ describe("ProjectContentService", () => {
     const { database, service, lg_path } = create_service();
     try {
       const old = await write_zip(new Map([["data/System.json", "{}"]]));
-      database.add_asset(lg_path, "game_2", old, "RPGMAKER_MV_MZ", null);
+      database.add_asset(lg_path, "game_2.zip", old, "RPGMAKER_MV_MZ", null);
       const roots = [project_path("a/game"), project_path("b/game")];
       for (const root of roots) {
         fs.mkdirSync(path.join(root, "data"), { recursive: true });
@@ -199,8 +197,8 @@ describe("ProjectContentService", () => {
       const preview = await service.parse_project_file({ source_paths: roots });
       const files = preview["files"] as JsonRecord[];
       expect(files.map((file) => file["target_rel_path"])).toEqual([
-        "game",
-        "game_20261011_123456",
+        "game.zip",
+        "game_20261011_123456.zip",
       ]);
       vi.setSystemTime(new Date(2026, 9, 11, 12, 35, 0));
       await service.import_files({
@@ -212,20 +210,20 @@ describe("ProjectContentService", () => {
         expected_section_revisions: { files: 0, items: 0 },
       });
       expect(database.get_all_asset_records(lg_path).map((asset) => asset.path)).toEqual([
-        "game_2",
-        "game",
-        "game_20261011_123456",
+        "game_2.zip",
+        "game.zip",
+        "game_20261011_123456.zip",
       ]);
-      expect(database.read_asset_content(lg_path, "game_2")).toEqual(old);
+      expect(database.read_asset_content(lg_path, "game_2.zip")).toEqual(old);
       const replacement = await service.parse_project_file({ source_paths: [roots[0]!] });
-      expect(replacement["files"]).toMatchObject([{ target_rel_path: "game" }]);
+      expect(replacement["files"]).toMatchObject([{ target_rel_path: "game.zip" }]);
     } finally {
       database.close();
       vi.useRealTimers();
     }
   });
   it.each(["game-first", "file-first", "mixed"])(
-    "追加预览与提交共享可投影的资产身份：%s",
+    "追加预览名称与提交身份一致：%s",
     async (order) => {
       const { database, service, lg_path } = create_service();
       const game = project_path("a/game");
@@ -242,10 +240,12 @@ describe("ProjectContentService", () => {
           : order === "game-first"
             ? [[game], [ordinary]]
             : [[ordinary], [game]];
+      const prepared_paths: string[] = [];
       try {
         for (const source_paths of batches) {
           const preview = await service.parse_project_file({ source_paths });
           const files = preview["files"] as JsonRecord[];
+          prepared_paths.push(...files.map((file) => String(file["target_rel_path"])));
           await service.import_files({
             files: files.map(({ source_path, target_rel_path }) => ({
               source_path: source_path!,
@@ -259,16 +259,7 @@ describe("ProjectContentService", () => {
           });
         }
         const assets = database.get_all_asset_records(lg_path);
-        expect(assets).toHaveLength(2);
-        const sourceRoot = project_path("projection");
-        const projected = await write_agent_workspace_sources({
-          nativeFs: new NativeFs(),
-          sourceRoot,
-          files: assets.map((asset) => ({ file_path: asset.path, file_type: asset.file_type })),
-          readAsset: (file) => database.read_asset_content(lg_path, file),
-        });
-        for (const file of projected)
-          expect(fs.statSync(path.join(sourceRoot, file.file_path)).isFile()).toBe(true);
+        expect(assets.map((asset) => asset.path)).toEqual(prepared_paths);
         const regular = assets.find((asset) => asset.file_type === "TXT")!;
         expect(database.read_asset_content(lg_path, regular.path)?.toString()).toBe("说明");
       } finally {
@@ -277,28 +268,34 @@ describe("ProjectContentService", () => {
     },
   );
 
-  it("正式导入拒绝绕过预览的祖先冲突，保留资产、条目与修订", async () => {
-    const { database, service, lg_path } = create_service();
-    try {
-      database.add_asset(lg_path, "game", Buffer.from("原稿"), "TXT", null);
-      const source = project_path("readme.txt");
-      fs.writeFileSync(source, "新文");
-      const meta = database.get_all_meta(lg_path);
-      await expect(
-        service.import_files({
-          files: [{ source_path: source, target_rel_path: "game/readme.txt" }],
-          conflict_action: "replace",
-          expected_section_revisions: { files: 0, items: 0 },
-        }),
-      ).rejects.toMatchObject({ code: "request.validation_failed" });
-      expect(database.get_all_asset_records(lg_path).map((asset) => asset.path)).toEqual(["game"]);
-      expect(database.read_asset_content(lg_path, "game")?.toString()).toBe("原稿");
-      expect(database.get_all_items(lg_path)).toEqual([]);
-      expect(database.get_all_meta(lg_path)).toEqual(meta);
-    } finally {
-      database.close();
-    }
-  });
+  it.each(["TXT", "RPGMAKER_MV_MZ"])(
+    "正式导入拒绝绕过预览的祖先冲突，保留资产、条目与修订：%s",
+    async (type) => {
+      const { database, service, lg_path } = create_service();
+      try {
+        const identity = type === "RPGMAKER_MV_MZ" ? "game.zip" : "game";
+        database.add_asset(lg_path, identity, Buffer.from("原稿"), type, null);
+        const source = project_path("readme.txt");
+        fs.writeFileSync(source, "新文");
+        const meta = database.get_all_meta(lg_path);
+        await expect(
+          service.import_files({
+            files: [{ source_path: source, target_rel_path: "game/readme.txt" }],
+            conflict_action: "replace",
+            expected_section_revisions: { files: 0, items: 0 },
+          }),
+        ).rejects.toMatchObject({ code: "request.validation_failed" });
+        expect(database.get_all_asset_records(lg_path).map((asset) => asset.path)).toEqual([
+          identity,
+        ]);
+        expect(database.read_asset_content(lg_path, identity)?.toString()).toBe("原稿");
+        expect(database.get_all_items(lg_path)).toEqual([]);
+        expect(database.get_all_meta(lg_path)).toEqual(meta);
+      } finally {
+        database.close();
+      }
+    },
+  );
   it("项目文件预解析忽略不支持后缀并返回支持格式的失败文件", async () => {
     using temp_dir = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "linguagacha-file-preview-"));
     const source_file = path.join(temp_dir.path, "script.txt");
@@ -422,7 +419,7 @@ describe("ProjectContentService", () => {
       new ProjectDataReader(database).build_manifest({ loaded: true, projectPath: lg_path })
         .sectionRevisions!;
     const request = () => ({
-      files: [{ source_path: source, target_rel_path: "game" }],
+      files: [{ source_path: source, target_rel_path: "game.zip" }],
       conflict_action: "replace",
       expected_section_revisions: revisions(),
       project_settings: { source_language: "ALL", target_language: "ZH" },
@@ -433,7 +430,7 @@ describe("ProjectContentService", () => {
       write("data/Old.json", '{"text":"旧文"}');
       database.add_asset(lg_path, "other.txt", Buffer.from("保留"), "TXT", null);
       await service.import_files(request());
-      const old = database.read_asset_content(lg_path, "game");
+      const old = database.read_asset_content(lg_path, "game.zip");
       const old_items = database.get_all_items(lg_path);
       fs.rmSync(path.join(source, "data/Old.json"));
       write("data/New.json", '{"text":"新文"}');
@@ -444,24 +441,26 @@ describe("ProjectContentService", () => {
       });
       await expect(service.import_files(request())).rejects.toThrow();
       fail.mockRestore();
-      expect(database.read_asset_content(lg_path, "game")).toEqual(old);
+      expect(database.read_asset_content(lg_path, "game.zip")).toEqual(old);
       expect(database.get_all_items(lg_path)).toEqual(old_items);
       await service.import_files(request());
-      const saved = database.read_asset_content(lg_path, "game")!;
+      const saved = database.read_asset_content(lg_path, "game.zip")!;
       expect([...(await read_zip_fixture(saved)).keys()]).not.toContain("data/Old.json");
-      expect(database.get_all_items(lg_path)).toMatchObject([{ src: "新文", file_path: "game" }]);
+      expect(database.get_all_items(lg_path)).toMatchObject([
+        { src: "新文", file_path: "game.zip" },
+      ]);
       expect(log_manager.warning).toHaveBeenCalledWith(
         expect.any(String),
         expect.objectContaining({
           context: {
             warnings: expect.arrayContaining([
               expect.objectContaining({
-                rel_path: "game",
+                rel_path: "game.zip",
                 internal_file_path: "data/Broken.json",
                 code: "internal_file_parse_failed",
               }),
               expect.objectContaining({
-                rel_path: "game",
+                rel_path: "game.zip",
                 internal_file_path: "js/plugins.js",
                 code: "script_syntax_error",
               }),
@@ -472,17 +471,23 @@ describe("ProjectContentService", () => {
       fs.renameSync(source, source + "-moved");
       await service.reset_translation({ mode: "all" });
       expect(database.get_all_items(lg_path).some((item) => item.src === "新文")).toBe(true);
-      expect(database.read_asset_content(lg_path, "game")).toEqual(saved);
+      expect(database.read_asset_content(lg_path, "game.zip")).toEqual(saved);
       await expect(
         service.import_files({
           ...request(),
           files: [
-            { source_path: path.join(source + "-moved", "data/New.json"), target_rel_path: "game" },
+            {
+              source_path: path.join(source + "-moved", "data/New.json"),
+              target_rel_path: "game.zip",
+            },
           ],
         }),
       ).rejects.toMatchObject({ code: "file.parse_failed" });
-      expect(database.read_asset_content(lg_path, "game")).toEqual(saved);
-      await service.delete_files({ rel_paths: ["game"], expected_section_revisions: revisions() });
+      expect(database.read_asset_content(lg_path, "game.zip")).toEqual(saved);
+      await service.delete_files({
+        rel_paths: ["game.zip"],
+        expected_section_revisions: revisions(),
+      });
       expect(database.get_all_asset_records(lg_path).map((file) => file.path)).toEqual([
         "other.txt",
       ]);
@@ -563,7 +568,7 @@ describe("ProjectContentService", () => {
           skip_duplicate_source_text_enable: true,
         };
         await service.import_files({
-          files: [{ source_path: source, target_rel_path: "game" }],
+          files: [{ source_path: source, target_rel_path: "game.zip" }],
           conflict_action: "replace",
           expected_section_revisions: { files: 0, items: 0 },
           project_settings,
@@ -585,7 +590,7 @@ describe("ProjectContentService", () => {
           }),
         );
         await service.reset_files({
-          rel_paths: ["game"],
+          rel_paths: ["game.zip"],
           expected_section_revisions: { files: 1, items: 1 },
           project_settings,
         });

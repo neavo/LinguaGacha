@@ -631,10 +631,12 @@ describe("ProjectLifecycleService", () => {
         project_settings: {},
       });
       expect(result["failed_files"]).toBeUndefined();
-      const archive = await read_zip_fixture(database.read_asset_content(project_path, "game")!);
+      const archive = await read_zip_fixture(
+        database.read_asset_content(project_path, "game.zip")!,
+      );
       expect(zip_text(archive, "js/plugins/bad.js")).toEqual(fs.readFileSync(source, "utf8"));
       expect(database.get_all_asset_records(project_path)).toMatchObject([
-        { path: "game", file_type: "RPGMAKER_MV_MZ" },
+        { path: "game.zip", file_type: "RPGMAKER_MV_MZ" },
       ]);
       expect(database.get_all_items(project_path)).toEqual([]);
       expect(log_manager.warning).toHaveBeenCalledWith(
@@ -644,7 +646,7 @@ describe("ProjectLifecycleService", () => {
             warnings: [
               expect.objectContaining({
                 code: "script_syntax_error",
-                rel_path: "game",
+                rel_path: "game.zip",
                 internal_file_path: "js/plugins/bad.js",
               }),
             ],

@@ -1,4 +1,5 @@
-import { ProjectAssetPathIndex } from "../../../shared/project/project-asset-paths";
+import { assert_source_file_paths, source_file_output_path } from "../source-file-paths";
+import { read_rpgmaker_container } from "./container";
 import path from "node:path";
 import JSZip from "jszip";
 import { default_native_fs, type NativeFs } from "../../../native/native-fs";
@@ -11,10 +12,11 @@ import type {
   SourceFileParseWarning,
 } from "../file-format-shared";
 import { collect_rpgmaker_files, discover_rpgmaker_source } from "./source";
-import { read_rpgmaker_metadata, validate_rpgmaker_path } from "./item";
+import { read_rpgmaker_metadata } from "./item";
 import { create_rpgmaker_extractor } from "./extractor";
 import { read_rpgmaker_json } from "./json";
 import { write_rpgmaker_items } from "./writer";
+import { validate_zip_member_path } from "../zip-members";
 import { RPGMakerJsonCodec } from "./json-codec";
 
 /** 格式门面固定配置并把定位错误归一为文件解析错误。 */
@@ -37,7 +39,7 @@ export class RPGMakerMvMzFormat {
     const warnings: SourceFileParseWarning[] = [];
     const paths = new Set<string>();
     for (const entry of collect_rpgmaker_files(game, this.fs)) {
-      const internal = validate_rpgmaker_path(entry.rel_path);
+      const internal = validate_zip_member_path(entry.rel_path);
       const key = internal.toLowerCase();
       if (paths.has(key))
         throw new AppError("file.invalid_structure", { public_details: { file } });
@@ -61,24 +63,23 @@ export class RPGMakerMvMzFormat {
     content: Uint8Array,
     file: string,
   ): Promise<{ items: Item[]; warnings: SourceFileParseWarning[] }> {
-    const zip = await this.read_container(content, file);
+    const files = await read_rpgmaker_container(content, file);
     const items: Item[] = [];
     const warnings: SourceFileParseWarning[] = [];
-    for (const entry of Object.values(zip.files)) {
-      if (entry.dir) continue;
+    for (const [name, member] of files) {
       try {
-        const parsed = await this.read_file(await entry.async("uint8array"), entry.name);
+        const parsed = await this.read_file(await member.async("uint8array"), name);
         warnings.push(
           ...parsed.warnings.map((warning) => ({
             ...warning,
             rel_path: file,
-            internal_file_path: entry.name,
+            internal_file_path: name,
           })),
         );
         for (const item of parsed.items)
           items.push({ ...item, file_path: file, row: items.length });
       } catch (error) {
-        warnings.push(this.file_warning("internal_file_parse_failed", file, entry.name, error));
+        warnings.push(this.file_warning("internal_file_parse_failed", file, name, error));
       }
     }
     return { items, warnings };
@@ -97,59 +98,32 @@ export class RPGMakerMvMzFormat {
       files.set(internal, group);
       groups.set(item.file_path, files);
     }
-    const outputs: Array<{ file: string; entry: JSZip.JSZipObject; items: Item[] }> = [];
-    const output_paths = new ProjectAssetPathIndex(); // 展开后的路径仍按统一的文件与目录规则比较。
-    for (const file of context.source_files)
-      if (file.file_type !== "RPGMAKER_MV_MZ") output_paths.reserve(file.path);
+    assert_source_file_paths(context.source_files);
+    // 全部容器路径检查完成后再落盘，防止非法清单留下部分导出。
+    const outputs: Array<{ file: string; member: JSZip.JSZipObject; items: Item[] }> = [];
     for (const file of context.source_files) {
       if (file.file_type !== "RPGMAKER_MV_MZ") continue;
       const content = context.asset_reader(file.path);
       if (content === null)
         throw new AppError("file.not_found", { public_details: { file: file.path } });
-      const zip = await this.read_container(content, file.path);
+      const files = await read_rpgmaker_container(content, file.path);
       const group = groups.get(file.path);
       for (const internal of group?.keys() ?? []) {
-        if (!zip.file(internal))
+        if (!files.has(internal))
           throw new AppError("file.invalid_structure", { public_details: { file: file.path } });
       }
-      for (const entry of Object.values(zip.files)) {
-        if (entry.dir) continue;
-        const output = validate_rpgmaker_path(file.path) + "/" + entry.name;
-        outputs.push({ file: output, entry, items: group?.get(entry.name) ?? [] });
+      const directory = source_file_output_path(file.path, file.file_type);
+      for (const [name, member] of files) {
+        outputs.push({ file: directory + "/" + name, member, items: group?.get(name) ?? [] });
       }
-    }
-    for (const output of outputs) {
-      if (output_paths.find_conflict(output.file) !== null)
-        throw new AppError("file.invalid_structure", { public_details: { file: output.file } });
-      output_paths.reserve(output.file);
     }
     for (const output of outputs) {
       const content = await this.render(
-        await output.entry.async("uint8array"),
-        output.entry.name,
+        await output.member.async("uint8array"),
+        output.member.name,
         output.items,
       );
       await this.fs.write_file(path.join(context.paths.translated_path, output.file), content);
-    }
-  }
-
-  /** JSZip 会清理越界路径，必须同时核对清理前的名字。 */
-  private async read_container(content: Uint8Array, file: string): Promise<JSZip> {
-    try {
-      const zip = await JSZip.loadAsync(content);
-      const paths = new Set<string>();
-      for (const entry of Object.values(zip.files)) {
-        if (entry.dir) continue;
-        const name = validate_rpgmaker_path(entry.unsafeOriginalName ?? entry.name);
-        const key = name.toLowerCase();
-        if (name !== entry.name || paths.has(key))
-          throw new Error("Duplicate or noncanonical RPG Maker path");
-        paths.add(key);
-      }
-      if (paths.size === 0) throw new Error("Empty RPG Maker container");
-      return zip;
-    } catch (cause) {
-      throw new AppError("file.invalid_structure", { cause, public_details: { file } });
     }
   }
 

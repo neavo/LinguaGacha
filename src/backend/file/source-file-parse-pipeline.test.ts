@@ -187,9 +187,10 @@ describe("SourceFileParsePipeline", () => {
   });
 });
 
-it("多个游戏与普通文件混合导入，重复入口与内部文件不重复消费，同名游戏独立分配身份", async () => {
+it("多个带后缀同名游戏混合导入，入口去重并按原目录名导出", async () => {
+  const name = "game.zip";
   using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-rm-mixed-"));
-  const roots = [path.join(temp.path, "a", "game"), path.join(temp.path, "b", "game")];
+  const roots = [path.join(temp.path, "a", name), path.join(temp.path, "b", name)];
   for (const [index, root] of roots.entries()) {
     const prefix = index === 0 ? "" : "www";
     fs.mkdirSync(path.join(root, prefix, "data"), { recursive: true });
@@ -216,11 +217,11 @@ it("多个游戏与普通文件混合导入，重复入口与内部文件不重�
       .collect_source_file_entries(inputs)
       .filter((entry) => entry.file_type === "RPGMAKER_MV_MZ")
       .map((entry) => entry.rel_path),
-  ).toEqual(["game", "game"]);
+  ).toEqual([`${name}.zip`, `${name}.zip`]);
   const second_game = draft.files[1]!.rel_path;
-  expect(second_game).toMatch(/^game_\d{8}_\d{6}$/u);
+  expect(second_game.slice(name.length)).toMatch(/^_\d{8}_\d{6}\.zip$/u);
   expect(draft.files.map((file) => [file.rel_path, file.file_type])).toEqual([
-    ["game", "RPGMAKER_MV_MZ"],
+    [`${name}.zip`, "RPGMAKER_MV_MZ"],
     [second_game, "RPGMAKER_MV_MZ"],
     [path.join(path.basename(temp.path), "readme.txt"), "TXT"],
   ]);
@@ -229,7 +230,7 @@ it("多个游戏与普通文件混合导入，重复入口与内部文件不重�
       .filter((item) => item.file_type === "RPGMAKER_MV_MZ")
       .map((item) => [item.file_path, item.row]),
   ).toEqual([
-    ["game", 0],
+    [`${name}.zip`, 0],
     [second_game, 0],
   ]);
   for (const item of draft.items)
@@ -241,10 +242,12 @@ it("多个游戏与普通文件混合导入，重复入口与内部文件不重�
     asset_reader: (file) =>
       Buffer.from(draft.files.find((entry) => entry.rel_path === file)!.content),
   });
-  expect(JSON.parse(fs.readFileSync(path.join(output, "game/data/System.json"), "utf8"))).toEqual({
+  expect(JSON.parse(fs.readFileSync(path.join(output, name, "data/System.json"), "utf8"))).toEqual({
     currencyUnit: "游戏0译",
   });
   expect(
-    JSON.parse(fs.readFileSync(path.join(output, second_game, "www/data/System.json"), "utf8")),
+    JSON.parse(
+      fs.readFileSync(path.join(output, second_game.slice(0, -4), "www/data/System.json"), "utf8"),
+    ),
   ).toEqual({ currencyUnit: "游戏1译" });
 });

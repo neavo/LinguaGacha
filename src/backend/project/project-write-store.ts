@@ -1,5 +1,5 @@
 import type { QualityStatisticsTextChangeScope } from "../../shared/project-event";
-import { assert_project_asset_paths } from "../../shared/project/project-asset-paths";
+import { assert_source_file_paths } from "../file/source-file-paths";
 import type { CacheManager } from "../cache/cache-manager";
 import type { PDFDocument } from "../../shared/pdf";
 import {
@@ -306,14 +306,16 @@ export class ProjectWriteStore {
       prepare: (revision_context) => {
         const item_records: ProjectItemPublicRecord[] = [];
         if (request.assetWrites?.length) {
-          const paths = new Set(
-            this.database.get_all_asset_records(request.projectPath).map((asset) => asset.path),
+          const files = new Map<string, { path: string; file_type: string }>(
+            this.database
+              .get_all_asset_records(request.projectPath)
+              .map((asset) => [asset.path, asset]),
           );
           for (const write of request.assetWrites) {
-            if (write.kind === "delete") paths.delete(write.path);
-            else paths.add(write.path);
+            if (write.kind === "delete") files.delete(write.path);
+            else files.set(write.path, { path: write.path, file_type: write.fileType });
           }
-          assert_project_asset_paths(paths); // 事务内核对最终集合，陈旧预览和直接请求都不能绕过。
+          assert_source_file_paths(files.values()); // 事务内核对最终集合，陈旧预览和直接请求都不能绕过。
         }
         const pdf_changed =
           (request.resetPDFPaths?.length ?? 0) > 0 ||

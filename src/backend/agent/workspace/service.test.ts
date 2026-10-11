@@ -1,9 +1,10 @@
 import { project_agent_workspace_warning } from "./service";
 import { Check } from "typebox/value";
-import { AGENT_WORKSPACE_WARNING_SCHEMA } from "./schema";
+import { AGENT_WORKSPACE_PROJECT_META_SCHEMA, AGENT_WORKSPACE_WARNING_SCHEMA } from "./schema";
 import type { ProofreadingWarning } from "../../../shared/proofreading/proofreading-types";
 import { read_pdf_document } from "../../file/pdf/pdf-document";
 import { BackendResources } from "../../bootstrap/backend-resources";
+import JSZip from "jszip";
 import { BackendServices } from "../../bootstrap/backend-services";
 import { create_pdf_fixture } from "../../file/pdf/test-support";
 import { agent_workspace_page_fingerprint } from "../../project/agent-workspace-page-write";
@@ -407,6 +408,12 @@ describe("AgentWorkspaceService", () => {
     );
 
     const active_path = fixture.active_path();
+    expect(
+      Check(
+        AGENT_WORKSPACE_PROJECT_META_SCHEMA,
+        read_json(path.join(active_path, AGENT_WORKSPACE_PATHS.projectMeta)),
+      ),
+    ).toBe(true);
     expect(read_json(path.join(active_path, AGENT_WORKSPACE_PATHS.projectMeta))).toMatchObject({
       files: [
         {
@@ -527,20 +534,36 @@ describe("AgentWorkspaceService", () => {
     expect(fixture.read_asset_content).toHaveBeenCalledTimes(3);
   });
 
-  it("目录 rename 不可用时仍能按需生成 sources", async () => {
-    const native_fs = new NativeFs();
-    vi.spyOn(native_fs, "rename").mockImplementation(() => {
-      throw Object.assign(new Error("operation not permitted"), { code: "EPERM" });
-    });
-    const fixture = await create_fixture(temp_dir, native_fs);
-
-    await expect(
-      fixture.service.activate_chat("test0001", [], async () => {}),
-    ).resolves.toBeUndefined();
+  it("容器修订刷新删除旧成员，落盘失败清理后允许重试", async () => {
+    const file_path = "book.epub";
+    const native = new NativeFs();
+    const fixture = await create_fixture(temp_dir, native);
+    vi.spyOn(fixture.cache.files, "readFileEntries").mockReturnValue([
+      { rel_path: file_path, file_type: "EPUB", sort_index: 0 },
+    ]);
+    const archive = async (name: string) =>
+      new JSZip().file(name, "{}").generateAsync({ type: "nodebuffer" });
+    fixture.read_asset_content.mockReturnValue(Buffer.from(await archive("data/Old.json")));
     await run_workspace(fixture);
-    expect(
-      fs.readFileSync(path.join(fixture.workspace_root, "sources", "script.txt"), "utf-8"),
-    ).toBe("源文件正文");
+
+    fixture.snapshot.sectionRevisions.files = 2;
+    fixture.read_asset_content.mockReturnValue(Buffer.from(await archive("data/New.json")));
+    await run_workspace(fixture);
+    const game = path.join(fixture.workspace_root, "sources", file_path);
+    expect(fs.existsSync(path.join(game, "data/Old.json"))).toBe(false);
+    expect(fs.readFileSync(path.join(game, "data/New.json"), "utf8")).toBe("{}");
+
+    fixture.snapshot.sectionRevisions.files += 1;
+    const write = native.write_file.bind(native);
+    const fail = vi.spyOn(native, "write_file").mockImplementation(async (file, ...args) => {
+      await write(file, ...args);
+      if (file.endsWith("New.json")) throw new Error("source write failed");
+    });
+    await expect(run_workspace(fixture)).rejects.toThrow();
+    expect(fs.existsSync(path.join(fixture.workspace_root, "sources"))).toBe(false);
+    fail.mockRestore();
+    await run_workspace(fixture);
+    expect(fs.readFileSync(path.join(game, "data/New.json"), "utf8")).toBe("{}");
   });
 
   it("work 跨快照、apply 与普通 revision 变化保留，显式 reset 时清理", async () => {
@@ -571,22 +594,6 @@ describe("AgentWorkspaceService", () => {
     expect(fs.readdirSync(path.join(fixture.workspace_root, AGENT_WORKSPACE_WORK_ROOT))).toEqual(
       [],
     );
-  });
-
-  it("sources 生成失败不阻断工程加载，并由 workspace_run 触发重试", async () => {
-    const fixture = await create_fixture(temp_dir);
-    fixture.read_asset_content.mockImplementation(() => {
-      throw new Error("asset read failed");
-    });
-
-    await expect(
-      fixture.service.activate_chat("test0001", [], async () => {}),
-    ).resolves.toBeUndefined();
-    expect(fs.existsSync(path.join(fixture.workspace_root, "sources"))).toBe(false);
-
-    fixture.read_asset_content.mockResolvedValue(Buffer.from("源文件正文", "utf-8"));
-    await run_workspace(fixture);
-    expect(fs.existsSync(path.join(fixture.workspace_root, "sources", "script.txt"))).toBe(true);
   });
 
   it("stale 快照的数据读取失败时保留此前完整快照与兼容 work", async () => {
@@ -1434,7 +1441,7 @@ it("PDF 零条目工程按页保存、隔离旧指纹，语言变化后重建工
     expect(
       JSON.parse(fs.readFileSync(path.join(root, "project_meta.json"), "utf8")).counts,
     ).toMatchObject({ items: 0, pages: page_rows.length });
-    const source_path = path.join(root, "sources/book.pdf");
+    const source_path = path.join(root, "sources", "book.pdf");
     const source_mtime = fs.statSync(source_path).mtimeMs;
     const draft = {
       translation: { kind: "translate" as const, markdown: "跨页段落\n\n图中是蓝色矩形。" },

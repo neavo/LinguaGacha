@@ -1,8 +1,6 @@
 import { format_local_timestamp } from "../../shared/utils/format-local-timestamp";
-import {
-  ProjectAssetPathIndex,
-  normalize_project_asset_path,
-} from "../../shared/project/project-asset-paths";
+import { normalize_project_asset_path } from "../../shared/project/project-asset-paths";
+import { SourceFilePathIndex } from "./source-file-paths";
 import { RPGMakerMvMzFormat } from "./rpgmaker-mv-mz/rpgmaker-format";
 import { discover_rpgmaker_source } from "./rpgmaker-mv-mz/source";
 import type { PDFExecution } from "./pdf/pdf-worker";
@@ -200,7 +198,7 @@ export class FileFormatService {
           seen_file_keys.add(key);
           candidates.push({
             source_path: game.root,
-            rel_path: path.basename(game.root),
+            rel_path: path.basename(game.root) + ".zip",
             file_type: "RPGMAKER_MV_MZ",
           });
         }
@@ -238,17 +236,17 @@ export class FileFormatService {
   /** 预览保留已有同名资产供用户确认替换，祖先路径冲突改名到可共同投影的位置。 */
   public assign_source_file_paths(
     entries: readonly ProjectSourceFileEntry[],
-    existing_paths: readonly string[] = [],
+    existing_files: readonly { path: string; file_type: string }[] = [],
   ): ProjectSourceFileEntry[] {
     const timestamp = format_local_timestamp(new Date().toISOString())!
       .replaceAll("-", "")
       .replaceAll(":", "")
       .replace(" ", "_");
-    const existing = new ProjectAssetPathIndex();
-    for (const file of existing_paths) existing.add(file);
-    const original = new ProjectAssetPathIndex(); // 自动名称不能抢占尚未分配的原始候选。
-    for (const entry of entries) original.reserve(entry.rel_path);
-    const assigned = new ProjectAssetPathIndex();
+    const existing = new SourceFilePathIndex();
+    for (const file of existing_files) existing.add(file.path, file.file_type);
+    const original = new SourceFilePathIndex(); // 自动名称不能抢占尚未分配的原始候选。
+    for (const entry of entries) original.reserve(entry.rel_path, entry.file_type);
+    const assigned = new SourceFilePathIndex();
     const result: ProjectSourceFileEntry[] = [...entries];
     const directories = new Map<string, string>(); // 同一准备操作中的目录前缀只改名一次，子文件共同迁移。
     // 普通目录先占位，游戏避让；结果仍按用户输入顺序返回。
@@ -272,15 +270,15 @@ export class FileFormatService {
       const unchanged =
         normalize_project_asset_path(candidate) === normalize_project_asset_path(entry.rel_path);
       const conflict =
-        existing.find_conflict(candidate, unchanged) ?? assigned.find_conflict(candidate);
+        existing.find_conflict(candidate, entry.file_type, unchanged) ??
+        assigned.find_conflict(candidate, entry.file_type);
       if (conflict !== null) {
         const component = conflict.split("/").length - 1;
         const prefix = parts.slice(0, component + 1);
         const is_directory = component < parts.length - 1;
-        const parsed =
-          !is_directory && entry.file_type !== "RPGMAKER_MV_MZ"
-            ? path.parse(prefix[component]!)
-            : { name: prefix[component]!, ext: "" };
+        const parsed = !is_directory
+          ? path.parse(prefix[component]!)
+          : { name: prefix[component]!, ext: "" };
         const name = parsed.name + "_" + timestamp;
         let suffix = 1;
         let renamed: string;
@@ -289,9 +287,9 @@ export class FileFormatService {
           renamed = prefix.join("/");
           suffix += 1;
         } while (
-          existing.find_conflict(renamed) !== null ||
-          assigned.find_conflict(renamed) !== null ||
-          original.find_conflict(renamed) !== null
+          existing.find_conflict(renamed, is_directory ? undefined : entry.file_type) !== null ||
+          assigned.find_conflict(renamed, is_directory ? undefined : entry.file_type) !== null ||
+          original.find_conflict(renamed, is_directory ? undefined : entry.file_type) !== null
         );
         if (is_directory)
           directories.set(
@@ -304,7 +302,7 @@ export class FileFormatService {
         parts.splice(0, component + 1, ...prefix);
         candidate = path.join(...parts);
       }
-      assigned.add(candidate);
+      assigned.add(candidate, entry.file_type);
       result[index] = { ...entry, rel_path: candidate };
     }
     return result;

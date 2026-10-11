@@ -183,7 +183,7 @@ export const AGENT_WORKSPACE_PROJECT_META_SCHEMA = Type.Object(
     files: Type.Array(
       Type.Object(
         {
-          file_path: Type.String(),
+          file_path: Type.String({ description: "资产身份，用于关联条目和页面" }),
           file_type: Type.String(),
         },
         { additionalProperties: false },
