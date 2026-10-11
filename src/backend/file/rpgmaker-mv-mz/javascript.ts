@@ -1,5 +1,7 @@
 import { createRequire } from "node:module";
 import path from "node:path";
+import { read_javascript_usage } from "./javascript-usage";
+import type { RPGMakerUsage } from "./types";
 import type * as Oxc from "oxc-parser";
 import type { JavascriptDiagnostic } from "../file-format-shared";
 
@@ -9,6 +11,7 @@ export type JavascriptString = {
   end: number;
   template: boolean;
   src: string;
+  usage: RPGMakerUsage;
   source_context: string;
 };
 /** 语法错误只返回诊断，阻止调用者使用不可靠的 AST 偏移。 */
@@ -69,6 +72,7 @@ export function read_javascript_strings(source: string): JavascriptReadResult {
         end: node.end,
         template: node.type === "TemplateElement",
         src,
+        usage: read_javascript_usage(node, ancestors),
         source_context: read_source_context(source, context, node),
       });
     }

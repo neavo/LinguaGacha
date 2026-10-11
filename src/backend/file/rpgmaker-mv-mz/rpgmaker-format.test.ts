@@ -10,6 +10,36 @@ const format = new RPGMakerMvMzFormat({
 const command = (code: number, parameters: unknown[], indent = 0) => ({ code, parameters, indent }); // 保留原稿指令结构与写回索引。
 
 describe("MV/MZ 原稿写回", () => {
+  it.each(["js/plugins/test.js", "data/CommonEvents.json"])(
+    "脚本键默认排除并保留上下文，人工翻译按保存定位写回：%s",
+    async (file) => {
+      const script = 'const x = {"管理😀": "显示"}; show(`你好${x}世界`);';
+      const json = file.endsWith(".json");
+      const bytes = Buffer.from(
+        json ? JSON.stringify([null, { list: [command(355, [script])] }]) : script,
+      );
+      const { items } = await format.read_from_stream(bytes, file);
+      expect(items.map(({ src, status }) => [src, status])).toEqual([
+        ["管理😀", "RULE_SKIPPED"],
+        ["显示", "NONE"],
+        ["你好", "NONE"],
+        ["世界", "NONE"],
+      ]);
+      expect(items[0]?.extra_field).toMatchObject({
+        rpgmaker: {
+          usage: "metadata",
+          source_context: '"管理😀": "显示"',
+          location: { kind: "script" },
+        },
+      });
+      items[0]!.status = "PROCESSED";
+      items[0]!.dst = "人工😀";
+      const output = Buffer.from(await format.render(bytes, file, items)).toString();
+      expect(json ? JSON.parse(output)[1].list[0].parameters[0] : output).toBe(
+        script.replace("管理😀", "人工😀"),
+      );
+    },
+  );
   it("错误脚本前后的对白可翻译，行数变化后仍完整保留失败脚本", async () => {
     const broken = [command(355, ['say("保留原文");']), command(655, ["if()array.push;"])];
     const list = [
@@ -67,7 +97,7 @@ describe("MV/MZ 原稿写回", () => {
         status: "PROCESSED",
         row: 99,
         extra_field: {
-          rpgmaker: { usage: "display", location: { kind: "field", path: [1, "legacy"] } },
+          rpgmaker: { usage: "text", location: { kind: "field", path: [1, "legacy"] } },
           old: true,
         },
       }),
@@ -137,7 +167,7 @@ describe("MV/MZ 原稿写回", () => {
     );
     const { items } = await format.read_from_stream(bytes, "data/Map001.json");
     expect(items.find((item) => item.src === "脚本")?.extra_field).toMatchObject({
-      rpgmaker: { usage: "script", source_context: 'x = "脚本"' },
+      rpgmaker: { usage: "text", source_context: 'x = "脚本"' },
     });
     for (const item of items) {
       if (item.src === "一行")
@@ -176,7 +206,7 @@ describe("MV/MZ 原稿写回", () => {
     expect(items.map((item) => item.src)).toEqual(["中文😀", "你好", "世界"]);
     expect(items.map((item) => item.status)).toEqual(["NONE", "NONE", "NONE"]);
     expect(items[0]?.extra_field).toMatchObject({
-      rpgmaker: { usage: "script", source_context: 'x = "中文😀"' },
+      rpgmaker: { usage: "text", source_context: 'x = "中文😀"' },
     });
     const translations = ['引号"\\\n😀', "`前${字}", "后"];
     items.forEach((item, index) => {

@@ -81,7 +81,7 @@ export function read_rpgmaker_json(
     }
     for (const span of result.strings)
       add(span.src, {
-        usage: "script",
+        usage: span.usage,
         source_context: span.source_context,
         location: {
           kind: "script",
@@ -97,7 +97,7 @@ export function read_rpgmaker_json(
     if (typeof value === "string") {
       add(value, {
         location: { kind: "field", path: target },
-        usage: display ? "display" : "metadata",
+        usage: display ? "text" : "metadata",
       });
     } else if (Array.isArray(value)) {
       if (target.at(-1) === "list" && value.length > 0 && value.every(is_command)) {
@@ -156,7 +156,7 @@ export function read_rpgmaker_json(
         else
           add(
             text,
-            { location, usage: command.code === RPGMAKER_EVENT.COMMENT ? "metadata" : "display" },
+            { location, usage: command.code === RPGMAKER_EVENT.COMMENT ? "metadata" : "text" },
             name,
           );
         // 头指令的资源字段也保留为默认排除条目。
@@ -187,7 +187,7 @@ export function read_rpgmaker_json(
           }
           add(choice, {
             location: { kind: "field", path: [...parameters_path, 0, choice_index], mirrors },
-            usage: "display",
+            usage: "text",
           });
         });
         continue;

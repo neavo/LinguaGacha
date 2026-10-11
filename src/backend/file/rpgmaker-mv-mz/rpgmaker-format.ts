@@ -35,7 +35,7 @@ export class RPGMakerMvMzFormat {
       items: result.strings.map((span, row) => {
         const extra_field = {
           rpgmaker: {
-            usage: "script",
+            usage: span.usage,
             source_context: span.source_context,
             location: {
               kind: "script",

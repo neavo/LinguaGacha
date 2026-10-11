@@ -21,8 +21,8 @@ import path from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { ProjectDatabase, ProjectDatabaseAccess } from "../database/database-operations";
-import type { JsonRecord, JsonValue } from "../../domain/json";
+import { ProjectDatabase } from "../database/database-operations";
+import { read_json_record, type JsonRecord, type JsonValue } from "../../domain/json";
 import { FileFormatService } from "../file/file-format-service";
 import type { LogManager } from "../log/log-manager";
 import { RuntimeOperationGate } from "../runtime-operation-gate";
@@ -424,7 +424,9 @@ describe("ProjectContentService", () => {
               {
                 code: 355,
                 indent: 0,
-                parameters: ['say("こんにちは", "EV001", "Hello", "こんにちは");'],
+                parameters: [
+                  'actor["管理キー"]; say("こんにちは", "EV001", "Hello", "こんにちは");',
+                ],
               },
             ],
           },
@@ -432,6 +434,7 @@ describe("ProjectContentService", () => {
       );
       const expected = [
         ["插件事件", "RULE_SKIPPED", ""],
+        ["管理キー", "RULE_SKIPPED", ""],
         ["こんにちは", "NONE", ""],
         ["EV001", "RULE_SKIPPED", ""],
         ["Hello", "LANGUAGE_SKIPPED", ""],
@@ -457,11 +460,16 @@ describe("ProjectContentService", () => {
       ).toEqual(expected);
       database.set_items(
         lg_path,
-        database.get_all_items(lg_path).map((item) => ({
-          ...item,
-          status: "PROCESSED",
-          dst: "已翻译",
-        })),
+        database.get_all_items(lg_path).map((item) => {
+          const extra_field = read_json_record(item["extra_field"]);
+          // 文件重置消费保存用途，全部重建才重新分类原稿。
+          if (item["src"] === "管理キー")
+            extra_field["rpgmaker"] = {
+              ...read_json_record(extra_field["rpgmaker"]),
+              usage: "text",
+            };
+          return { ...item, extra_field, status: "PROCESSED", dst: "已翻译" };
+        }),
       );
       await service.reset_files({
         rel_paths: [file],
@@ -470,7 +478,7 @@ describe("ProjectContentService", () => {
       });
       expect(
         database.get_all_items(lg_path).map((item) => [item["src"], item["status"], item["dst"]]),
-      ).toEqual(expected);
+      ).toEqual(expected.map((row) => (row[0] === "管理キー" ? ["管理キー", "NONE", ""] : row)));
       await service.reset_translation({ mode: "all", project_settings });
       expect(
         database.get_all_items(lg_path).map((item) => [item["src"], item["status"], item["dst"]]),
@@ -485,7 +493,7 @@ describe("ProjectContentService", () => {
     try {
       database.add_asset(lg_path, "data/Actors.json", Buffer.from("[]"), "RPGMAKER_MV_MZ", null);
       const items = [
-        { usage: "script", status: "ERROR" },
+        { usage: "text", status: "ERROR" },
         { usage: "metadata", status: "ERROR" },
         { usage: "metadata", status: "PROCESSED" },
         { usage: "metadata", status: "EXCLUDED" },
