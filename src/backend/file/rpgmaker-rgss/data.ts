@@ -35,8 +35,8 @@ const DISPLAY_FIELDS: Record<string, readonly string[]> = {
   Enemies: ["@name"],
   States: ["@name", "@message1", "@message2", "@message3", "@message4"],
 };
+// `@game_title` 可能被脚本用作窗口标识并转为 Shift_JIS，默认按元数据保留原文。
 const SYSTEM_FIELDS = new Set([
-  "@game_title",
   "@currency_unit",
   "@elements",
   "@skill_types",
