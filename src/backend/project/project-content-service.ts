@@ -1,6 +1,6 @@
 import path from "node:path";
 import type { ProjectSourceFileEntry, SourceFileParseWarning } from "../file/file-format-shared";
-import { rpgmaker_default_status } from "../file/rpgmaker-mv-mz/json";
+import { rpgmaker_default_status } from "../file/rpgmaker-mv-mz/item";
 import { ProjectDataReader } from "./project-data-reader";
 import { resolve_text_rule_type, type TextFileContext } from "../../shared/text/text-rule-type";
 import {
@@ -338,7 +338,8 @@ export class ProjectContentService {
         }
         item.dst = "";
         item.name_dst = null;
-        item.status = item.file_type === "RPGMAKER_MV_MZ" ? rpgmaker_default_status(item) : "NONE";
+        item.status =
+          item.file_type === "RPGMAKER_MV_MZ" ? rpgmaker_default_status(item.extra_field) : "NONE";
       }
       const settings = await this.read_project_write_settings(
         project_path,
@@ -562,15 +563,15 @@ export class ProjectContentService {
         return result;
       }
       if (mode === "failed") {
-        const items = this.to_public_item_record(await this.database.get_all_items(project_path));
+        // 失败条目已获准翻译，重试保留该资格。
+        const items = this.to_public_item_record(this.database.get_all_items(project_path));
         for (const item of Object.values(items)) {
           if (item.status !== "ERROR") {
             continue;
           }
           item.dst = "";
           item.name_dst = null;
-          item.status =
-            item.file_type === "RPGMAKER_MV_MZ" ? rpgmaker_default_status(item) : "NONE";
+          item.status = "NONE";
         }
         const translation_extras = await this.build_translation_extras_for_items(
           project_path,

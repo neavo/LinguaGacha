@@ -1,7 +1,8 @@
 import { RPGMAKER_EVENT } from "./types";
 import path from "node:path";
-import { create_item, type Item, type ItemStatus } from "../../../domain/item";
-import { read_json_record, type JsonValue } from "../../../domain/json";
+import { create_item, type Item } from "../../../domain/item";
+import type { JsonValue } from "../../../domain/json";
+import { rpgmaker_default_status } from "./item";
 import { read_javascript_strings } from "./javascript";
 import type { JsonPath, RPGMakerLocation, RPGMakerMetadata } from "./types";
 import type { SourceFileParseWarning } from "../file-format-shared";
@@ -16,7 +17,7 @@ const DISPLAY_FIELDS: Record<string, readonly string[]> = {
   Armors: ["name", "description"],
   Enemies: ["name"],
   States: ["name", "message1", "message2", "message3", "message4"],
-};
+}; // 引擎标准显示字段决定用途，插件扩展字段保留为元数据。
 const SYSTEM_DISPLAY_FIELDS = new Set([
   "gameTitle",
   "currencyUnit",
@@ -26,20 +27,20 @@ const SYSTEM_DISPLAY_FIELDS = new Set([
   "armorTypes",
   "equipTypes",
   "terms",
-]);
+]); // `System` 的显示词典与分类名称向子项传播显示用途。
 const BLOCK_CODES = new Map<number, number>([
   [RPGMAKER_EVENT.MESSAGE, RPGMAKER_EVENT.MESSAGE_LINE],
   [RPGMAKER_EVENT.SCROLLING, RPGMAKER_EVENT.SCROLLING_LINE],
   [RPGMAKER_EVENT.COMMENT, RPGMAKER_EVENT.COMMENT_LINE],
   [RPGMAKER_EVENT.SCRIPT, RPGMAKER_EVENT.SCRIPT_LINE],
-]);
+]); // 头指令与续行配对，组成保留原稿索引的文本块。
 const ACTOR_TEXT_CODES = new Set<number>([
   RPGMAKER_EVENT.ACTOR_NAME,
   RPGMAKER_EVENT.ACTOR_NICKNAME,
   RPGMAKER_EVENT.ACTOR_PROFILE,
-]);
+]); // 角色名、昵称与介绍的 `parameters[1]` 用于显示。
 
-/** 按事件结构提取定位，显示用途只决定首次导入和重置的默认状态。 */
+/** 按事件结构提取定位，用途只决定首次导入和文件重置的默认状态。 */
 export function read_rpgmaker_json(
   root: JsonValue,
   rel_path: string,
@@ -58,7 +59,7 @@ export function read_rpgmaker_json(
         file_path: rel_path,
         file_type: "RPGMAKER_MV_MZ",
         row: items.length,
-        status: rpgmaker_default_status({ extra_field }),
+        status: rpgmaker_default_status(extra_field),
         extra_field,
       }),
     );
@@ -221,11 +222,4 @@ function is_command(value: JsonValue): value is Command {
     typeof value["code"] === "number" &&
     Array.isArray(value["parameters"])
   );
-}
-
-/** 仅提取与明确重置调用，普通编辑和生成尊重当前状态。 */
-export function rpgmaker_default_status(item: Pick<Item, "extra_field">): ItemStatus {
-  return read_json_record(read_json_record(item.extra_field)["rpgmaker"])["usage"] === "display"
-    ? "NONE"
-    : "RULE_SKIPPED";
 }

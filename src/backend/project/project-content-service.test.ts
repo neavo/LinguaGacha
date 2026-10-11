@@ -411,37 +411,111 @@ describe("ProjectContentService", () => {
       database.close();
     }
   });
-  it("原生 RM 人工启用后保留当前状态，文件重置恢复用途默认排除", async () => {
+  it("原生 RM 导入、文件重置和全部重置共用规则筛选脚本", async () => {
     const { database, service, lg_path } = create_service();
     try {
-      const bytes = Buffer.from('[null,{"name":"勇者","note":"插件备注"}]');
-      const file = "data/Actors.json";
-      const parsed = await new FileFormatService(
-        { target_language: "ZH" },
-        create_pdf_execution(),
-      ).parse_asset(file, bytes, "RPGMAKER_MV_MZ");
-      if (parsed.kind !== "items") throw new Error("Expected text items");
+      const file = "data/CommonEvents.json";
+      const bytes = Buffer.from(
+        JSON.stringify([
+          null,
+          {
+            name: "插件事件",
+            list: [
+              {
+                code: 355,
+                indent: 0,
+                parameters: ['say("こんにちは", "EV001", "Hello", "こんにちは");'],
+              },
+            ],
+          },
+        ]),
+      );
+      const expected = [
+        ["插件事件", "RULE_SKIPPED", ""],
+        ["こんにちは", "NONE", ""],
+        ["EV001", "RULE_SKIPPED", ""],
+        ["Hello", "LANGUAGE_SKIPPED", ""],
+        ["こんにちは", "DUPLICATED", ""],
+      ];
+      const source = project_path(path.basename(file));
+      fs.writeFileSync(source, bytes);
+      // 已保存的资产身份保证替换来自临时路径的文件仍按原生 RM 解析。
       database.add_asset(lg_path, file, bytes, "RPGMAKER_MV_MZ", null);
+      const project_settings = {
+        source_language: "JA",
+        target_language: "ZH",
+        skip_duplicate_source_text_enable: true,
+      };
+      await service.import_files({
+        files: [{ source_path: source, target_rel_path: file }],
+        conflict_action: "replace",
+        expected_section_revisions: { files: 0, items: 0 },
+        project_settings,
+      });
+      expect(
+        database.get_all_items(lg_path).map((item) => [item["src"], item["status"], item["dst"]]),
+      ).toEqual(expected);
       database.set_items(
         lg_path,
-        parsed.items.map((item, index) => ({
+        database.get_all_items(lg_path).map((item) => ({
           ...item,
-          id: index + 1,
           status: "PROCESSED",
           dst: "已翻译",
         })),
       );
       await service.reset_files({
         rel_paths: [file],
-        expected_section_revisions: { files: 0, items: 0 },
-        project_settings: { source_language: "ALL", target_language: "ZH" },
+        expected_section_revisions: { files: 1, items: 1 },
+        project_settings,
       });
       expect(
         database.get_all_items(lg_path).map((item) => [item["src"], item["status"], item["dst"]]),
-      ).toEqual([
-        ["勇者", "NONE", ""],
-        ["插件备注", "RULE_SKIPPED", ""],
+      ).toEqual(expected);
+      await service.reset_translation({ mode: "all", project_settings });
+      expect(
+        database.get_all_items(lg_path).map((item) => [item["src"], item["status"], item["dst"]]),
+      ).toEqual(expected);
+    } finally {
+      database.close();
+    }
+  });
+
+  it("失败重置保留 RM 脚本与人工启用元数据的翻译资格", async () => {
+    const { database, service, lg_path } = create_service();
+    try {
+      database.add_asset(lg_path, "data/Actors.json", Buffer.from("[]"), "RPGMAKER_MV_MZ", null);
+      const items = [
+        { usage: "script", status: "ERROR" },
+        { usage: "metadata", status: "ERROR" },
+        { usage: "metadata", status: "PROCESSED" },
+        { usage: "metadata", status: "EXCLUDED" },
+        { usage: "metadata", status: "RULE_SKIPPED" },
+      ].map(({ usage, status }, index) =>
+        create_persistent_item({
+          item_id: index + 1,
+          src: "EV001",
+          dst: "已有译文",
+          name_dst: "已有姓名",
+          file_type: "RPGMAKER_MV_MZ",
+          file_path: "data/Actors.json",
+          status,
+          extra_field: {
+            rpgmaker: { usage },
+          },
+        }),
+      );
+      database.set_items(lg_path, items);
+      await service.reset_translation({ mode: "failed" });
+      expect(database.get_all_items(lg_path)).toEqual([
+        { ...items[0], status: "NONE", dst: "", name_dst: null },
+        { ...items[1], status: "NONE", dst: "", name_dst: null },
+        ...items.slice(2),
       ]);
+      expect(read_meta(database, lg_path, "translation_extras", {})).toMatchObject({
+        total_line: 3,
+        processed_line: 1,
+        error_line: 0,
+      });
     } finally {
       database.close();
     }

@@ -5,6 +5,7 @@ import { decode_text_content } from "../../../shared/utils/text-tool";
 import type { FileFormatServiceConfig, SourceFileParseWarning } from "../file-format-shared";
 import { read_javascript_strings } from "./javascript";
 import { read_rpgmaker_json } from "./json";
+import { rpgmaker_default_status } from "./item";
 import { write_rpgmaker_items } from "./writer";
 import type { RPGMakerMetadata } from "./types";
 
@@ -31,28 +32,29 @@ export class RPGMakerMvMzFormat {
       };
     return {
       warnings: [],
-      items: result.strings.map((span, row) =>
-        create_item({
+      items: result.strings.map((span, row) => {
+        const extra_field = {
+          rpgmaker: {
+            usage: "script",
+            source_context: span.source_context,
+            location: {
+              kind: "script",
+              container: { kind: "field", path: [] }, // 空路径指向整个 JS 原稿。
+              start: span.start,
+              end: span.end,
+              template: span.template,
+            },
+          } satisfies RPGMakerMetadata,
+        };
+        return create_item({
           src: span.src,
           row,
           file_path: file,
           file_type: "RPGMAKER_MV_MZ",
-          status: "RULE_SKIPPED",
-          extra_field: {
-            rpgmaker: {
-              usage: "script",
-              source_context: span.source_context,
-              location: {
-                kind: "script",
-                container: { kind: "field", path: [] },
-                start: span.start,
-                end: span.end,
-                template: span.template,
-              },
-            } satisfies RPGMakerMetadata,
-          },
-        }),
-      ),
+          status: rpgmaker_default_status(extra_field),
+          extra_field,
+        });
+      }),
     };
   }
 

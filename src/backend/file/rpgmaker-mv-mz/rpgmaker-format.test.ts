@@ -1,15 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { RPGMakerMvMzFormat } from "./rpgmaker-format";
 import { read_javascript_strings } from "./javascript";
-import { rpgmaker_default_status } from "./json";
 import { create_item } from "../../../domain/item";
 
 const format = new RPGMakerMvMzFormat({
   target_language: "ZH",
   write_translated_name_fields_to_file: true,
 });
-// 事件索引参与写回定位，夹具沿用游戏原始指令结构。
-const command = (code: number, parameters: unknown[], indent = 0) => ({ code, parameters, indent });
+const command = (code: number, parameters: unknown[], indent = 0) => ({ code, parameters, indent }); // 保留原稿指令结构与写回索引。
 
 describe("MV/MZ 原稿写回", () => {
   it("错误脚本前后的对白可翻译，行数变化后仍完整保留失败脚本", async () => {
@@ -86,7 +84,7 @@ describe("MV/MZ 原稿写回", () => {
       JSON.parse(Buffer.from(await format.render(bytes, "data/Actors.json", items)).toString()),
     ).toEqual([null, { name: "英雄", legacy: "历史译文" }]);
   });
-  it("标准显示字段与默认排除按位置独立，人工启用后可写回并能恢复默认状态", async () => {
+  it("标准显示字段与默认排除按位置独立，人工启用后可写回", async () => {
     const bytes = Buffer.from(
       JSON.stringify([
         null,
@@ -102,7 +100,6 @@ describe("MV/MZ 原稿写回", () => {
     const note = items.find((item) => item.src === "同文" && item.status === "RULE_SKIPPED")!;
     note.status = "PROCESSED";
     note.dst = "启用备注";
-    expect(rpgmaker_default_status(note)).toBe("RULE_SKIPPED");
     const output = JSON.parse(
       Buffer.from(await format.render(bytes, "data/Actors.json", items)).toString(),
     );
@@ -177,6 +174,7 @@ describe("MV/MZ 原稿写回", () => {
     const bytes = Buffer.from(source);
     const { items } = await format.read_from_stream(bytes, "js/plugins/test.js");
     expect(items.map((item) => item.src)).toEqual(["中文😀", "你好", "世界"]);
+    expect(items.map((item) => item.status)).toEqual(["NONE", "NONE", "NONE"]);
     expect(items[0]?.extra_field).toMatchObject({
       rpgmaker: { usage: "script", source_context: 'x = "中文😀"' },
     });
