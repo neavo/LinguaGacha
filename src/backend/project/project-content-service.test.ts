@@ -291,8 +291,9 @@ describe("ProjectContentService", () => {
     }
   });
 
-  it("游戏目录外的替换文件沿用资产身份并保存对话块", async () => {
-    const { database, service, lg_path } = create_service();
+  it("游戏目录外的替换文件沿用资产身份，错误脚本只记日志并保留原稿", async () => {
+    const log_manager = create_log_manager();
+    const { database, service, lg_path } = create_service(undefined, log_manager);
     try {
       const file = path.join("data", "Map001.json");
       const bytes = Buffer.from(
@@ -306,6 +307,7 @@ describe("ProjectContentService", () => {
                     { code: 101, indent: 0, parameters: ["", 0, 0, 2, "勇者"] },
                     { code: 401, indent: 0, parameters: ["第一行"] },
                     { code: 401, indent: 0, parameters: ["第二行"] },
+                    { code: 355, indent: 0, parameters: ["<test>"] },
                     { code: 0, indent: 0, parameters: [] },
                   ],
                 },
@@ -334,6 +336,15 @@ describe("ProjectContentService", () => {
         expected_section_revisions: { files: 0, items: 0 },
         project_settings: { source_language: "ALL", target_language: "ZH" },
       });
+      expect(log_manager.warning).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({
+          source: "project-import",
+          context: {
+            warnings: [expect.objectContaining({ rel_path: file, code: "script_syntax_error" })],
+          },
+        }),
+      );
       expect(database.get_all_asset_records(lg_path)).toMatchObject([
         { path: file, file_type: "RPGMAKER_MV_MZ" },
       ]);
@@ -358,6 +369,20 @@ describe("ProjectContentService", () => {
       ).rejects.toMatchObject({ code: "file.parse_failed" });
       expect(database.read_asset_content(lg_path, file)).toEqual(bytes);
       expect(database.get_all_items(lg_path)).toEqual(saved_items);
+      await service.reset_translation({ mode: "all" });
+      expect(log_manager.warning).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({
+          source: "translation-reset",
+          context: {
+            warnings: [expect.objectContaining({ rel_path: file, code: "script_syntax_error" })],
+          },
+        }),
+      );
+      expect(database.read_asset_content(lg_path, file)).toEqual(bytes);
+      expect(database.get_all_items(lg_path)).toMatchObject([
+        { src: "第一行\n第二行", file_type: "RPGMAKER_MV_MZ" },
+      ]);
     } finally {
       database.close();
     }

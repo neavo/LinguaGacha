@@ -1,4 +1,5 @@
 import path from "node:path";
+import type { SourceFileParseWarning } from "./file-format-shared";
 
 import type { LogManager } from "../log/log-manager";
 import * as AppErrors from "../../shared/error";
@@ -72,4 +73,28 @@ function read_node_error_code(error: unknown): string {
     typeof error.code === "string"
     ? error.code
     : "";
+}
+
+/** 一条警告对应一个未提取脚本，逐诊断记录原始路径和脚本内位置。 */
+export function log_source_file_parse_warnings(args: {
+  warnings: readonly SourceFileParseWarning[];
+  log_manager: Pick<LogManager, "warning"> | null;
+  source: string;
+}): void {
+  if (args.warnings.length === 0 || args.log_manager === null) return;
+  const message = args.warnings
+    .flatMap((warning) =>
+      warning.diagnostics.map((diagnostic) => {
+        const location =
+          warning.json_path?.reduce<string>(
+            (result, part) => result + "[" + JSON.stringify(part) + "]",
+            "$",
+          ) ?? "";
+        const position =
+          diagnostic.line === null ? "" : ":" + diagnostic.line + ":" + diagnostic.column;
+        return warning.rel_path + " " + location + position + " - " + diagnostic.message;
+      }),
+    )
+    .join("\n");
+  args.log_manager.warning(message, { source: args.source, context: { warnings: args.warnings } });
 }

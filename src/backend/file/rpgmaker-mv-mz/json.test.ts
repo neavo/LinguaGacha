@@ -18,7 +18,7 @@ it("条件、变量和移动路线的脚本只提取字符串，插件参数保�
       ],
     },
   ];
-  const items = read_rpgmaker_json(source, "data/CommonEvents.json");
+  const { items } = read_rpgmaker_json(source, "data/CommonEvents.json");
   expect(items.map((item) => item.src)).toEqual([
     "条件",
     "变量",

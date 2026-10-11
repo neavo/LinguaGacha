@@ -107,7 +107,7 @@ export class FileFormatService {
       return {
         kind: "items",
         file_type,
-        items: await this.rpgmaker.read_from_stream(content, rel_path),
+        ...(await this.rpgmaker.read_from_stream(content, rel_path)),
       };
     const by_extension: Record<string, string> = {
       ".txt": "TXT",

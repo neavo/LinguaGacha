@@ -558,6 +558,45 @@ describe("ProjectLifecycleService", () => {
     }
   });
 
+  it("create-commit 保存零条目错误脚本并记录诊断日志", async () => {
+    const app_root = create_temp_dir();
+    const project_path = path.join(app_root, "scripts.lg");
+    const game = path.join(app_root, "game");
+    write_file(path.join(game, "data/System.json"), "{}");
+    write_file(path.join(game, "js/rmmz_core.js"), "");
+    const source = write_file(path.join(game, "js/plugins/bad.js"), "<test>");
+    const database = new ProjectDatabase();
+    const log_manager = create_log_manager();
+    const service = create_service({ app_root, database, log_manager });
+    try {
+      const result = await service.create_project_commit({
+        source_paths: [game],
+        path: project_path,
+        project_settings: {},
+      });
+      expect(result["failed_files"]).toBeUndefined();
+      expect(
+        database.read_asset_content(project_path, path.join("js", "plugins", "bad.js")),
+      ).toEqual(fs.readFileSync(source));
+      expect(database.get_all_items(project_path)).toEqual([]);
+      expect(log_manager.warning).toHaveBeenCalledWith(
+        expect.stringContaining("bad.js"),
+        expect.objectContaining({
+          context: {
+            warnings: [
+              expect.objectContaining({
+                code: "script_syntax_error",
+                rel_path: path.join("js", "plugins", "bad.js"),
+              }),
+            ],
+          },
+        }),
+      );
+    } finally {
+      database.close();
+    }
+  });
+
   it("create-commit 全部源文件解析失败时不创建工程并返回失败明细", async () => {
     const app_root = create_temp_dir();
     const project_path = path.join(app_root, "all-failed.lg");

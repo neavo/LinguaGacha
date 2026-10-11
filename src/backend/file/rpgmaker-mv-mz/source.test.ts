@@ -37,8 +37,11 @@ it.each(["", "www"])(
         .format_hit_counts.rpgmaker_mv_mz,
     ).toBe(1);
     const draft = await new SourceFileParsePipeline(service).build_project_draft([root]);
-    expect(draft.failed_files).toMatchObject([{ silent: true, filename: "bad.js" }]);
-    expect(draft.files).toHaveLength(5);
+    expect(draft.failed_files).toEqual([]);
+    expect(draft.warnings).toMatchObject([
+      { code: "script_syntax_error", rel_path: path.join(prefix, "js/plugins/bad.js") },
+    ]);
+    expect(draft.files).toHaveLength(6);
     fs.writeFileSync(path.join(root, prefix, "data/Actors.json"), "[]"); // 入库必须使用准备阶段的字节。
     const project = path.join(temp.path, "game.lg");
     const database = new ProjectDatabase();
@@ -73,6 +76,9 @@ it.each(["", "www"])(
       expect(fs.readFileSync(path.join(output, prefix, "data/Empty.json"), "utf8")).toBe("[]");
       expect(fs.readFileSync(path.join(output, prefix, "data/Actors.json"), "utf8")).toBe(
         files["data/Actors.json"],
+      );
+      expect(fs.readFileSync(path.join(output, prefix, "js/plugins/bad.js"), "utf8")).toBe(
+        files["js/plugins/bad.js"],
       );
       expect(fs.existsSync(path.join(temp.path, "bilingual"))).toBe(false);
     } finally {

@@ -197,9 +197,7 @@ export function useWorkbenchImportFilesFlow(
       const import_payload = await options.run_project_file_write(import_plan, async (body) => {
         return await api_fetch<ProjectWriteResultPayload>("/api/workbench/files/import", body);
       });
-      const failure_toast = format_source_file_parse_failure_toast(
-        (import_payload as { failed_files?: unknown }).failed_files,
-      );
+      const failure_toast = format_source_file_parse_failure_toast(import_payload.failed_files);
       if (failure_toast !== null) {
         options.push_toast("warning", failure_toast);
       }

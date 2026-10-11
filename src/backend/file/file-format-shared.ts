@@ -2,10 +2,26 @@ import { default_native_fs, normalize_native_file_bytes } from "../../native/nat
 import type { PDFDocument } from "../../shared/pdf";
 import { type Item, type ItemFileType } from "../../domain/item";
 
+/** 解析器语法诊断供后端日志定位，位置按脚本内 UTF-16 列计数。 */
+export type JavascriptDiagnostic = Readonly<{
+  message: string;
+  line: number | null; // 脚本内从 1 开始的位置，解析器未提供定位时为空。
+  column: number | null;
+}>;
+
+/** 每条记录对应一段完整跳过的脚本，原始资产仍参与保存和导出。 */
+export type SourceFileParseWarning = Readonly<{
+  code: "script_syntax_error";
+  rel_path: string;
+  json_path?: readonly (string | number)[];
+  diagnostics: readonly JavascriptDiagnostic[];
+}>;
+
 /** 普通文件与条目共用类型值，PDF 通过独立文档参与导入。 */
 export type ProjectFileType = ItemFileType | "PDF";
+/** 文件级成功可以附带局部提取警告，由操作拥有者记录日志。 */
 export type FileFormatReadResult =
-  | { kind: "items"; items: Item[]; file_type: ItemFileType }
+  | { kind: "items"; items: Item[]; file_type: ItemFileType; warnings?: SourceFileParseWarning[] }
   | { kind: "pdf"; document: PDFDocument };
 
 /** 文件格式处理器共享配置，来源于应用设置或测试显式注入。 */

@@ -4,9 +4,29 @@ import { AppError } from "../../shared/error";
 import {
   build_source_file_parse_failure,
   log_source_file_parse_failures,
+  log_source_file_parse_warnings,
 } from "./source-file-parse-failure-reporter";
 
 describe("source-file-parse-failure-reporter", () => {
+  it("脚本警告日志包含文件、JSON 路径和每个诊断的位置与原因", () => {
+    const warning = vi.fn();
+    log_source_file_parse_warnings({
+      source: "project-import",
+      log_manager: { warning },
+      warnings: [
+        {
+          code: "script_syntax_error",
+          rel_path: "data/CommonEvents.json",
+          json_path: [1, "list", 0, "parameters", 0],
+          diagnostics: [{ message: "Unexpected token", line: 2, column: 4 }],
+        },
+      ],
+    });
+    expect(warning).toHaveBeenCalledWith(
+      'data/CommonEvents.json $[1]["list"][0]["parameters"][0]:2:4 - Unexpected token',
+      expect.objectContaining({ source: "project-import" }),
+    );
+  });
   it("把解析、缺失和其它 IO 异常归一为稳定失败记录", () => {
     const parse_failure = build_source_file_parse_failure({
       source_path: "E:/input/broken.json",

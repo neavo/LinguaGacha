@@ -1,3 +1,4 @@
+import type { SourceFileParseWarning } from "./file-format-shared";
 import type { JsonRecord, JsonValue } from "../../domain/json";
 import type { PDFExecution } from "./pdf/pdf-worker";
 import { AppSettingService } from "../app/app-setting-service";
@@ -6,7 +7,10 @@ import { normalize_setting_snapshot } from "../../domain/setting";
 import { NativeFs, default_native_fs } from "../../native/native-fs";
 import type { LogManager } from "../log/log-manager";
 import { SourceFileParsePipeline } from "./source-file-parse-pipeline";
-import { log_source_file_parse_failures } from "./source-file-parse-failure-reporter";
+import {
+  log_source_file_parse_failures,
+  log_source_file_parse_warnings,
+} from "./source-file-parse-failure-reporter";
 import type { SourceFileParseFailureRecord } from "../../shared/source-file-parse-failure";
 
 /**
@@ -37,7 +41,7 @@ export class FilePreviewService {
   public async build_create_preview(request: JsonRecord): Promise<JsonRecord> {
     const source_paths = this.normalize_string_list(request["source_paths"]);
     const draft = await this.create_parse_pipeline().build_project_draft(source_paths);
-    this.log_parse_failures(draft.failed_files);
+    this.log_parse_diagnostics(draft.failed_files, draft.warnings);
     return {
       draft: {
         source_paths: draft.source_paths,
@@ -57,9 +61,17 @@ export class FilePreviewService {
   }
 
   /**
-   * 批量解析失败统一写日志；日志内容只保留逐文件原因。
+   * 批量解析诊断统一写日志，包含文件失败和脚本提取警告。
    */
-  private log_parse_failures(failed_files: SourceFileParseFailureRecord[]): void {
+  private log_parse_diagnostics(
+    failed_files: SourceFileParseFailureRecord[],
+    warnings: SourceFileParseWarning[],
+  ): void {
+    log_source_file_parse_warnings({
+      warnings,
+      log_manager: this.log_manager,
+      source: "file-preview",
+    });
     log_source_file_parse_failures({
       failures: failed_files,
       log_manager: this.log_manager,

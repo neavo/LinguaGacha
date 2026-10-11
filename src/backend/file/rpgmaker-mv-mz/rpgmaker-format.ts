@@ -2,7 +2,7 @@ import path from "node:path";
 import { create_item, type Item } from "../../../domain/item";
 import { AppError } from "../../../shared/error";
 import { decode_text_content } from "../../../shared/utils/text-tool";
-import type { FileFormatServiceConfig } from "../file-format-shared";
+import type { FileFormatServiceConfig, SourceFileParseWarning } from "../file-format-shared";
 import { read_javascript_strings } from "./javascript";
 import { read_rpgmaker_json } from "./json";
 import { write_rpgmaker_items } from "./writer";
@@ -14,32 +14,46 @@ export class RPGMakerMvMzFormat {
   public constructor(private readonly config: FileFormatServiceConfig) {}
 
   /** 仅导入和明确重建生成定位，导出消费保存的定位。 */
-  public async read_from_stream(content: Uint8Array, file: string): Promise<Item[]> {
+  public async read_from_stream(
+    content: Uint8Array,
+    file: string,
+  ): Promise<{ items: Item[]; warnings: SourceFileParseWarning[] }> {
     const source = await decode_text_content(content);
     if (path.extname(file).toLowerCase() === ".json")
       return read_rpgmaker_json(JSON.parse(source), file);
-    return read_javascript_strings(source).map((span, row) =>
-      create_item({
-        src: span.src,
-        row,
-        file_path: file,
-        file_type: "RPGMAKER_MV_MZ",
-        status: "RULE_SKIPPED",
-        extra_field: {
-          rpgmaker: {
-            usage: "script",
-            source_context: span.source_context,
-            location: {
-              kind: "script",
-              container: { kind: "field", path: [] },
-              start: span.start,
-              end: span.end,
-              template: span.template,
-            },
-          } satisfies RPGMakerMetadata,
-        },
-      }),
-    );
+    const result = read_javascript_strings(source);
+    if (!result.ok)
+      return {
+        items: [],
+        warnings: [
+          { code: "script_syntax_error", rel_path: file, diagnostics: result.diagnostics },
+        ],
+      };
+    return {
+      warnings: [],
+      items: result.strings.map((span, row) =>
+        create_item({
+          src: span.src,
+          row,
+          file_path: file,
+          file_type: "RPGMAKER_MV_MZ",
+          status: "RULE_SKIPPED",
+          extra_field: {
+            rpgmaker: {
+              usage: "script",
+              source_context: span.source_context,
+              location: {
+                kind: "script",
+                container: { kind: "field", path: [] },
+                start: span.start,
+                end: span.end,
+                template: span.template,
+              },
+            } satisfies RPGMakerMetadata,
+          },
+        }),
+      ),
+    };
   }
 
   /** 持久定位始终指向固化原稿，写回不依赖当前提取规则。 */

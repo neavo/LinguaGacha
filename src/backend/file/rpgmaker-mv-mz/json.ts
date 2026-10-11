@@ -4,6 +4,7 @@ import { create_item, type Item, type ItemStatus } from "../../../domain/item";
 import { read_json_record, type JsonValue } from "../../../domain/json";
 import { read_javascript_strings } from "./javascript";
 import type { JsonPath, RPGMakerLocation, RPGMakerMetadata } from "./types";
+import type { SourceFileParseWarning } from "../file-format-shared";
 
 type Command = { code: number; indent: number; parameters: JsonValue[] };
 const DISPLAY_FIELDS: Record<string, readonly string[]> = {
@@ -39,8 +40,12 @@ const ACTOR_TEXT_CODES = new Set<number>([
 ]);
 
 /** 按事件结构提取定位，显示用途只决定首次导入和重置的默认状态。 */
-export function read_rpgmaker_json(root: JsonValue, rel_path: string): Item[] {
+export function read_rpgmaker_json(
+  root: JsonValue,
+  rel_path: string,
+): { items: Item[]; warnings: SourceFileParseWarning[] } {
   const items: Item[] = [];
+  const warnings: SourceFileParseWarning[] = [];
   const file = path.basename(rel_path, ".json");
   // 空正文仍可携带说话人，必须保留可翻译姓名。
   function add(src: string, metadata: RPGMakerMetadata, name_src: string | null = null): void {
@@ -60,7 +65,20 @@ export function read_rpgmaker_json(root: JsonValue, rel_path: string): Item[] {
   }
   // 脚本偏移相对于完整容器，事件行重新连接后再交给解析器。
   function script(src: string, container: Exclude<RPGMakerLocation, { kind: "script" }>): void {
-    for (const span of read_javascript_strings(src))
+    const result = read_javascript_strings(src);
+    if (!result.ok) {
+      warnings.push({
+        code: "script_syntax_error",
+        rel_path,
+        json_path:
+          container.kind === "block"
+            ? [...container.path, container.start, "parameters", 0]
+            : container.path,
+        diagnostics: result.diagnostics,
+      });
+      return;
+    }
+    for (const span of result.strings)
       add(span.src, {
         usage: "script",
         source_context: span.source_context,
@@ -191,7 +209,7 @@ export function read_rpgmaker_json(root: JsonValue, rel_path: string): Item[] {
     }
   }
   walk(root, []);
-  return items;
+  return { items, warnings };
 }
 
 /** 事件列表需与普通对象数组区分，嵌套移动路线也沿用指令结构。 */

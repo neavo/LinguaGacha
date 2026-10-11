@@ -1,5 +1,5 @@
 import path from "node:path";
-import type { ProjectSourceFileEntry } from "../file/file-format-shared";
+import type { ProjectSourceFileEntry, SourceFileParseWarning } from "../file/file-format-shared";
 import { rpgmaker_default_status } from "../file/rpgmaker-mv-mz/json";
 import { ProjectDataReader } from "./project-data-reader";
 import { resolve_text_rule_type, type TextFileContext } from "../../shared/text/text-rule-type";
@@ -20,7 +20,10 @@ import {
   type SourceFileParseResult,
   type SourceFileParseCommand,
 } from "../file/source-file-parse-pipeline";
-import { log_source_file_parse_failures } from "../file/source-file-parse-failure-reporter";
+import {
+  log_source_file_parse_failures,
+  log_source_file_parse_warnings,
+} from "../file/source-file-parse-failure-reporter";
 import type { LogManager } from "../log/log-manager";
 import { NativeFs, default_native_fs } from "../../native/native-fs";
 import { ProjectWriteStore, type ProjectAssetWrite } from "./project-write-store";
@@ -133,7 +136,7 @@ export class ProjectContentService {
           command.file_type !== undefined || format_service.is_supported_file(command.source_path),
       ),
     );
-    this.log_project_import_parse_failures(result.failed_files);
+    this.log_project_import_parse_diagnostics(result.failed_files, result.warnings);
     return {
       files: result.file_drafts.map((draft) => ({
         source_path: draft.source_path,
@@ -307,8 +310,10 @@ export class ProjectContentService {
         items: build_project_item_persistent_records(write_output.items),
         meta: this.build_prefilter_reset_meta(settings, write_output),
       });
-      this.log_project_import_parse_failures(parse_result.failed_files);
-      return this.with_parse_failures(write_result, parse_result.failed_files);
+      this.log_project_import_parse_diagnostics(parse_result.failed_files, parse_result.warnings);
+      return parse_result.failed_files.length === 0
+        ? write_result
+        : { ...write_result, failed_files: parse_result.failed_files };
     });
   }
 
@@ -517,8 +522,8 @@ export class ProjectContentService {
     ]);
     return this.runtime_gate.run_project_write(async () => {
       if (mode === "all") {
-        const parsed_items = await this.reparse_all_assets(project_path);
-        const settings = await this.read_project_write_settings(
+        const { items: parsed_items, warnings } = await this.reparse_all_assets(project_path);
+        const settings = this.read_project_write_settings(
           project_path,
           request["project_settings"],
         );
@@ -539,7 +544,7 @@ export class ProjectContentService {
           settings,
           progress: normalize_batch_translation_progress(undefined),
         });
-        return await this.write_store.replace_project_items_and_files({
+        const result = await this.write_store.replace_project_items_and_files({
           projectPath: project_path,
           requireExpectedSectionRevisions: false,
           revisionSections: ["items"],
@@ -549,6 +554,12 @@ export class ProjectContentService {
           items: build_project_item_persistent_records(write_output.items),
           meta: this.build_prefilter_reset_meta(settings, write_output),
         });
+        log_source_file_parse_warnings({
+          warnings,
+          log_manager: this.log_manager,
+          source: "translation-reset",
+        });
+        return result;
       }
       if (mode === "failed") {
         const items = this.to_public_item_record(await this.database.get_all_items(project_path));
@@ -657,7 +668,7 @@ export class ProjectContentService {
     if (result.file_drafts.length > 0 || result.failed_files.length === 0) {
       return;
     }
-    this.log_project_import_parse_failures(result.failed_files);
+    this.log_project_import_parse_diagnostics(result.failed_files, result.warnings);
     throw new AppErrors.AppError("file.parse_failed", {
       public_details: {
         failed_files: result.failed_files as unknown as JsonValue,
@@ -667,25 +678,17 @@ export class ProjectContentService {
   }
 
   /**
-   * 项目写入成功时只在确实跳过文件后附带失败明细，保持普通写入 payload 简洁。
+   * 工作台导入诊断写入日志，保留文件原因和脚本位置。
    */
-  private with_parse_failures(
-    result: ProjectWriteResult,
+  private log_project_import_parse_diagnostics(
     failed_files: SourceFileParseFailureRecord[],
-  ): ProjectWriteResult {
-    if (failed_files.length === 0) {
-      return result;
-    }
-    return {
-      ...result,
-      failed_files,
-    };
-  }
-
-  /**
-   * 工作台导入解析失败写入日志，日志内容与页面 Toast 使用同一格式。
-   */
-  private log_project_import_parse_failures(failed_files: SourceFileParseFailureRecord[]): void {
+    warnings: SourceFileParseWarning[],
+  ): void {
+    log_source_file_parse_warnings({
+      warnings,
+      log_manager: this.log_manager,
+      source: "project-import",
+    });
     log_source_file_parse_failures({
       failures: failed_files,
       log_manager: this.log_manager,
@@ -962,11 +965,14 @@ export class ProjectContentService {
   }
 
   /** 全部重置从工程资产完整重建；任何资产不可读或无法解析时均不提交部分结果。 */
-  private async reparse_all_assets(project_path: string): Promise<Item[]> {
+  private async reparse_all_assets(
+    project_path: string,
+  ): Promise<{ items: Item[]; warnings: SourceFileParseWarning[] }> {
     const format_service = this.create_format_service();
     const items: Item[] = [];
-    for (const record of await this.database.get_all_asset_records(project_path)) {
-      const content = await this.database.read_asset_content(project_path, record.path);
+    const warnings: SourceFileParseWarning[] = [];
+    for (const record of this.database.get_all_asset_records(project_path)) {
+      const content = this.database.read_asset_content(project_path, record.path);
       if (content === null) {
         throw new AppErrors.AppError("file.not_found", {
           diagnostic_context: { asset_path: record.path },
@@ -979,9 +985,12 @@ export class ProjectContentService {
       }
       if (this.database.read_pdf_document(project_path, record.path) !== null) continue;
       const parsed = await format_service.parse_asset(record.path, content, record.file_type);
-      if (parsed.kind === "items") items.push(...parsed.items);
+      if (parsed.kind === "items") {
+        items.push(...parsed.items);
+        warnings.push(...(parsed.warnings ?? []));
+      }
     }
-    return items;
+    return { items, warnings };
   }
 
   /**

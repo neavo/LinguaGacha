@@ -8,7 +8,7 @@ import type { SourceFileParseFailureRecord } from "../../shared/source-file-pars
 import { build_source_file_parse_failure } from "./source-file-parse-failure-reporter";
 import { FileFormatService } from "./file-format-service";
 import type { PDFDocument } from "../../shared/pdf";
-import type { ProjectFileType } from "./file-format-shared";
+import type { ProjectFileType, SourceFileParseWarning } from "./file-format-shared";
 
 export type SourceFileParseCommand = {
   file_type: string | undefined; // 新来源可由内容细分类型，已有资产必须传入保存的身份
@@ -25,11 +25,13 @@ export type SourceFileParsedDraft = SourceFileParseCommand & {
 };
 
 export type SourceFileParseResult = {
+  warnings: SourceFileParseWarning[]; // 本次解析的局部遗漏，仅供后端操作日志使用。
   file_drafts: SourceFileParsedDraft[]; // 只包含解析成功且可继续提交的文件
   failed_files: SourceFileParseFailureRecord[]; // 只包含支持格式候选的读取或解析失败
 };
 
 export type SourceFileProjectDraft = {
+  warnings: SourceFileParseWarning[]; // 本次解析的局部遗漏，仅供后端操作日志使用。
   source_paths: string[]; // 格式服务归一后的用户输入路径
   files: Array<{
     rel_path: string;
@@ -105,6 +107,7 @@ export class SourceFileParsePipeline {
       items,
       file_state,
       failed_files: parse_result.failed_files,
+      warnings: parse_result.warnings,
     };
   }
 
@@ -132,11 +135,13 @@ export class SourceFileParsePipeline {
   ): Promise<SourceFileParseResult> {
     const file_drafts: SourceFileParsedDraft[] = [];
     const failed_files: SourceFileParseFailureRecord[] = [];
+    const warnings: SourceFileParseWarning[] = [];
     for (const entry of entries) {
       const file_type = entry.file_type;
       try {
         const content = this.native_fs.read_file(entry.source_path);
         const parsed = await this.format_service.parse_asset(entry.rel_path, content, file_type);
+        if (parsed.kind === "items") warnings.push(...(parsed.warnings ?? []));
         file_drafts.push({
           ...(parsed.kind === "items" && parsed.file_type === "TRANS"
             ? {
@@ -155,12 +160,9 @@ export class SourceFileParsePipeline {
           parsed_items: parsed.kind === "items" ? parsed.items : [],
         });
       } catch (error) {
-        failed_files.push({
-          ...build_source_file_parse_failure({ ...entry, error }),
-          ...(file_type === "RPGMAKER_MV_MZ" ? { silent: true } : {}),
-        });
+        failed_files.push(build_source_file_parse_failure({ ...entry, error }));
       }
     }
-    return { file_drafts, failed_files };
+    return { file_drafts, failed_files, warnings };
   }
 }

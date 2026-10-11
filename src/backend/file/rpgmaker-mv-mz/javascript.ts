@@ -1,7 +1,9 @@
 import { createRequire } from "node:module";
 import path from "node:path";
 import type * as Oxc from "oxc-parser";
+import type { JavascriptDiagnostic } from "../file-format-shared";
 
+/** 字符串范围相对于完整脚本，供译文写回和上下文展示共用。 */
 export type JavascriptString = {
   start: number;
   end: number;
@@ -9,6 +11,10 @@ export type JavascriptString = {
   src: string;
   source_context: string;
 };
+/** 语法错误只返回诊断，阻止调用者使用不可靠的 AST 偏移。 */
+export type JavascriptReadResult =
+  | { ok: true; strings: JavascriptString[] }
+  | { ok: false; diagnostics: JavascriptDiagnostic[] };
 const SOURCE_CONTEXT_MAX_LENGTH = 1200; // 限制每个条目重复保存的原稿量，包含省略标记。
 const CONTEXT_NODE_TYPES = new Set([
   "CallExpression",
@@ -27,11 +33,25 @@ export function configure_rpgmaker_parser(directory: string): void {
 }
 
 /** 解析器给出 UTF-16 偏移，模板片段保留表达式边界。 */
-export function read_javascript_strings(source: string): JavascriptString[] {
+export function read_javascript_strings(source: string): JavascriptReadResult {
   const { parseSync, Visitor, visitorKeys } = parser_require("oxc-parser") as typeof Oxc;
   const result = parseSync("source.js", source, { sourceType: "commonjs" });
-  if (result.errors.length > 0)
-    throw new SyntaxError(result.errors.map((error) => error.message).join("\n"));
+  if (result.errors.length > 0) {
+    // 错误 AST 的偏移不用于写回，整段脚本交给调用方保留原稿。
+    return {
+      ok: false,
+      diagnostics: result.errors.map((error) => {
+        const offset = error.labels[0]?.start; // 首个标记给出主要错误位置，无标记时不猜测位置。
+        const lines =
+          offset === undefined ? null : source.slice(0, offset).split(/\r\n|[\n\r\u2028\u2029]/u);
+        return {
+          message: error.message,
+          line: lines?.length ?? null,
+          column: lines === null ? null : lines.at(-1)!.length + 1,
+        };
+      }),
+    };
+  }
   const strings: JavascriptString[] = [];
   const ancestors: Oxc.Node[] = []; // 收集字符串时只含父节点，进入后压栈、退出时弹栈。
   /** 同一次遍历收集写回定位与原稿上下文。 */
@@ -62,7 +82,7 @@ export function read_javascript_strings(source: string): JavascriptString[] {
       ]),
     ),
   ).visit(result.program);
-  return strings.sort((a, b) => a.start - b.start);
+  return { ok: true, strings: strings.sort((a, b) => a.start - b.start) };
 }
 
 /** 用途节点优先，函数边界阻止外层包装改变局部语境。 */

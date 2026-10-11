@@ -1,4 +1,4 @@
-import type { ProjectDatabaseAccess } from "../database/database-operations";
+import type { SourceFileParseWarning } from "../file/file-format-shared";
 import type { ProjectFileRecord } from "./project-file-records";
 import type { ProjectPreviewResponse } from "../../shared/project-preview";
 import type { PDFExecution } from "../file/pdf/pdf-worker";
@@ -8,7 +8,10 @@ import type { AppPathService } from "../app/app-path-service";
 import type { AppSettingService } from "../app/app-setting-service";
 import type { ProjectDatabase, ProjectDatabaseWrite } from "../database/database-operations";
 import { FileFormatService } from "../file/file-format-service";
-import { log_source_file_parse_failures } from "../file/source-file-parse-failure-reporter";
+import {
+  log_source_file_parse_failures,
+  log_source_file_parse_warnings,
+} from "../file/source-file-parse-failure-reporter";
 import {
   SourceFileParsePipeline,
   type SourceFileProjectDraft,
@@ -62,6 +65,7 @@ const INITIAL_PRESET_REVISION = 1;
  * 源文件解析后的可信新建工程草稿。
  */
 interface CreateCommitParsedDraft {
+  warnings: SourceFileParseWarning[];
   files: SourceFileProjectDraft["files"]; // 后端从 source_paths 解析出的可信 asset 写入清单
   failed_files: SourceFileParseFailureRecord[]; // 只记录支持格式但解析失败的源文件
   file_state: Record<string, ProjectFileRecord>; // 只供后端预过滤算法识别文件类型和相对路径
@@ -239,15 +243,14 @@ export class ProjectLifecycleService {
       },
     );
 
-    const response = await this.load_project_under_lease(
-      {
-        path: project_path,
-      },
-      true,
-    );
-    this.log_create_commit_parse_failures(parsed_draft.failed_files);
+    const response = await this.load_project_under_lease({
+      path: project_path,
+    });
+    this.log_create_commit_parse_diagnostics(parsed_draft.failed_files, parsed_draft.warnings);
     this.default_preset_reader.log_loaded_names(default_preset_input.loaded_names);
-    return this.build_create_project_response(response, parsed_draft.failed_files);
+    return parsed_draft.failed_files.length === 0
+      ? response
+      : { ...response, failed_files: parsed_draft.failed_files as unknown as JsonValue };
   }
 
   /**
@@ -349,6 +352,7 @@ export class ProjectLifecycleService {
     return {
       files,
       failed_files: parsed_draft.failed_files,
+      warnings: parsed_draft.warnings,
       file_state: parsed_draft.file_state,
       items,
     };
@@ -361,7 +365,7 @@ export class ProjectLifecycleService {
     if (draft.files.length > 0 || draft.failed_files.length === 0) {
       return;
     }
-    this.log_create_commit_parse_failures(draft.failed_files);
+    this.log_create_commit_parse_diagnostics(draft.failed_files, draft.warnings);
     throw new AppErrors.AppError("file.parse_failed", {
       public_details: {
         failed_files: draft.failed_files as unknown as JsonValue,
@@ -371,25 +375,17 @@ export class ProjectLifecycleService {
   }
 
   /**
-   * 新建工程成功响应只在确实跳过文件时附带失败明细，避免成功空列表污染旧调用点。
+   * 新建工程诊断统一记录文件失败与未提取脚本的位置。
    */
-  private build_create_project_response(
-    response: JsonRecord,
+  private log_create_commit_parse_diagnostics(
     failed_files: SourceFileParseFailureRecord[],
-  ): JsonRecord {
-    if (failed_files.length === 0) {
-      return response;
-    }
-    return {
-      ...response,
-      failed_files: failed_files as unknown as JsonValue,
-    };
-  }
-
-  /**
-   * 新建工程解析失败日志和 Toast 使用同一套逐文件原因，便于用户按日志复核。
-   */
-  private log_create_commit_parse_failures(failed_files: SourceFileParseFailureRecord[]): void {
+    warnings: SourceFileParseWarning[],
+  ): void {
+    log_source_file_parse_warnings({
+      warnings,
+      log_manager: this.log_manager,
+      source: "project-lifecycle",
+    });
     log_source_file_parse_failures({
       failures: failed_files,
       log_manager: this.log_manager,
