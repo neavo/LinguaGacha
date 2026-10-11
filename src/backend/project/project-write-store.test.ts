@@ -30,6 +30,58 @@ import {
 } from "./agent-workspace-write";
 
 describe("ProjectWriteStore", () => {
+  it.each([
+    ["game", "game/readme.txt"],
+    ["game/readme.txt", "game"],
+  ])("结构写入在事务中拒绝冲突集合且不发布事件 %j", async (...paths) => {
+    const { database, project_path, store, published_changes } =
+      create_store("asset-path-conflict");
+    await expect(
+      store.replace_project_items_and_files({
+        projectPath: project_path,
+        expectedSectionRevisions: { files: 0 },
+        revisionSections: ["files"],
+        updatedSections: ["files"],
+        source: "project_import_files",
+        assetWrites: paths.map((path, sortOrder) => ({
+          kind: "add" as const,
+          path,
+          sortOrder,
+          content: Buffer.from("原稿"),
+          fileType: "TXT",
+          pdfDocument: null,
+        })),
+      }),
+    ).rejects.toMatchObject({ code: "request.validation_failed" });
+    expect(database.get_all_asset_records(project_path)).toEqual([]);
+    expect(published_changes).toEqual([]);
+  });
+
+  it("路径校验消费删除和新增后的最终集合", async () => {
+    const { database, project_path, store } = create_store("asset-path-final-set");
+    database.add_asset(project_path, "game", Buffer.from("旧文"), "TXT", null);
+    await store.replace_project_items_and_files({
+      projectPath: project_path,
+      expectedSectionRevisions: { files: 0 },
+      revisionSections: ["files"],
+      updatedSections: ["files"],
+      source: "project_import_files",
+      assetWrites: [
+        {
+          kind: "add",
+          path: "game/readme.txt",
+          sortOrder: 0,
+          content: Buffer.from("新文"),
+          fileType: "TXT",
+          pdfDocument: null,
+        },
+        { kind: "delete", path: "game" },
+      ],
+    });
+    expect(database.get_all_asset_records(project_path).map((asset) => asset.path)).toEqual([
+      "game/readme.txt",
+    ]);
+  });
   it("Agent 提示词覆盖区分无记录、空正文和重置，提交快照保留 null", async () => {
     const committed = vi.fn();
     const { database, project_path, store } = await create_store("prompt-null", {

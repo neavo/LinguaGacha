@@ -123,7 +123,7 @@ it("仓库外 Electron 从部署目录加载原生绑定并生成可解析译文
     configure_rpgmaker_parser(process.argv[2]);
     const format = new RPGMakerMvMzFormat({target_language:"ZH"});
     const bytes = Buffer.from('const s = "中文😀";');
-    const { items } = await format.read_from_stream(bytes, "js/plugins/test.js");
+    const { items } = await format.read_file(bytes, "js/plugins/test.js");
     assert.equal(items.length, 1);
     items[0].status = "PROCESSED";
     items[0].dst = '译文"\\\\😀';
@@ -134,7 +134,7 @@ it("仓库外 Electron 从部署目录加载原生绑定并生成可解析译文
     assert.equal(parsed.strings[0].src, items[0].dst);
     const numericSource = '{"text":"source","n":9007199254740993,"overflow":1e400,"zero":-0}';
     const jsonBytes = Buffer.from(numericSource);
-    const numericItems = (await format.read_from_stream(jsonBytes, "data/Plugins.json")).items;
+    const numericItems = (await format.read_file(jsonBytes, "data/Plugins.json")).items;
     numericItems[0].status = "PROCESSED";
     numericItems[0].dst = "translated";
     const numericOutput = await format.render(jsonBytes, "data/Plugins.json", numericItems);

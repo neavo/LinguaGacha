@@ -2,20 +2,27 @@ import path from "node:path";
 import type { NativeFs } from "../../../native/native-fs";
 import type { ProjectSourceFileEntry } from "../file-format-shared";
 
+type RPGMakerSource = { root: string; data_root: string }; // 游戏身份与可能位于 `www` 的运行数据分开定位。
+
 /** 游戏标志文件约束发现范围，普通 JSON 仍走通用格式入口。 */
-export function discover_rpgmaker_source(
-  source: string,
-  fs: NativeFs,
-): ProjectSourceFileEntry[] | null {
+export function discover_rpgmaker_source(source: string, fs: NativeFs): RPGMakerSource | null {
   if (!fs.exists(source)) return null;
   const root = fs.stat(source).isDirectory()
-    ? source
+    ? path.resolve(source)
     : path.extname(source).toLowerCase() === ".exe"
-      ? path.dirname(source)
+      ? path.dirname(path.resolve(source))
       : null;
   if (root === null) return null;
   const data_root = find_data_root(root, fs);
   if (data_root === undefined) return null;
+  return { root, data_root };
+}
+
+/** 仅原稿准备展开内部文件，摘要和来源识别无需遍历整个游戏。 */
+export function collect_rpgmaker_files(
+  { root, data_root }: RPGMakerSource,
+  fs: NativeFs,
+): Pick<ProjectSourceFileEntry, "source_path" | "rel_path">[] {
   const files: string[] = [];
   // 只收集游戏数据和插件，路径保持相对游戏根目录。
   function collect(directory: string, extension: string): void {
@@ -32,23 +39,8 @@ export function discover_rpgmaker_source(
   collect(path.join(data_root, "js", "plugins"), ".js");
   return files.map((file) => ({
     source_path: file,
-    rel_path: path.relative(root, file),
-    file_type: "RPGMAKER_MV_MZ",
+    rel_path: path.relative(root, file).replace(/\\/gu, "/"),
   }));
-}
-
-/** 新来源的单文件识别须属于可验证的游戏目录。 */
-export function identify_rpgmaker_file(file: string, fs: NativeFs): boolean {
-  let directory = path.dirname(file);
-  while (path.dirname(directory) !== directory) {
-    const data_root = find_data_root(directory, fs);
-    if (data_root !== undefined) {
-      const relative = path.relative(data_root, file).replace(/\\/gu, "/");
-      return /^(?:data\/.+\.json|js\/plugins(?:\.js|\/.+\.js))$/iu.test(relative);
-    }
-    directory = path.dirname(directory);
-  }
-  return false;
 }
 
 /** MV 打包可能把运行数据放在 `www`，标志文件共同确认游戏根目录。 */

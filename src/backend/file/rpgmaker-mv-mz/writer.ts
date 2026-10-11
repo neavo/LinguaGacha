@@ -1,3 +1,4 @@
+import { read_rpgmaker_metadata } from "./item";
 import type { Item } from "../../../domain/item";
 import { read_json_record, type JsonValue } from "../../../domain/json";
 import { read_item_name_text, resolve_output_item_name } from "../../../shared/item-name";
@@ -67,9 +68,7 @@ export function write_rpgmaker_items(
     change.value = value;
   }
   for (const item of items) {
-    const location = read_json_record(read_json_record(item.extra_field)["rpgmaker"])[
-      "location"
-    ] as unknown as RPGMakerLocation;
+    const location = read_rpgmaker_metadata(item.extra_field).location;
     replace(location, item.dst);
     if (location.kind === "block" && location.name_path) {
       const name = resolve_output_item_name({

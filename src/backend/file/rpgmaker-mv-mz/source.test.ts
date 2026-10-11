@@ -2,87 +2,33 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { expect, it } from "vitest";
-import { FileFormatService } from "../file-format-service";
-import { SourceFileParsePipeline } from "../source-file-parse-pipeline";
-import { ProjectDatabase } from "../../database/database-operations";
-import { ProjectDataReader } from "../../project/project-data-reader";
+import { NativeFs } from "../../../native/native-fs";
+import { collect_rpgmaker_files, discover_rpgmaker_source } from "./source";
 
-it.each(["", "www"])(
-  "游戏 %s 的发现、失败隔离、固化字节与零条目身份贯通重开和导出",
-  async (prefix) => {
-    using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-rm-source-"));
-    const root = path.join(temp.path, "game");
-    const files: Record<string, string> = {
-      "data/System.json": '{"currencyUnit":"金"}',
-      "data/Actors.json": '[null,{"name":"勇者","note":"备注"}]',
-      "data/Empty.json": "[]",
-      "js/rmmz_core.js": "",
-      "js/plugins.js": "var $plugins = [];",
-      "js/plugins/bad.js": 'const s = "',
-      "js/plugins/good.js": 'const s = "插件";',
-    };
-    for (const [file, text] of Object.entries(files)) {
-      const target = path.join(root, prefix, file);
-      fs.mkdirSync(path.dirname(target), { recursive: true });
-      fs.writeFileSync(target, text);
-    }
-    fs.writeFileSync(path.join(root, "Game.exe"), "");
-    const service = new FileFormatService({ target_language: "ZH" }, async () => null);
-    expect(service.collect_source_file_entries([path.join(root, "Game.exe")])).toEqual(
-      service.collect_source_file_entries([root]),
-    );
-    expect(service.summarize_source_files([root]).format_hit_counts.rpgmaker_mv_mz).toBe(6);
-    expect(
-      service.summarize_source_files([path.join(root, prefix, "data/Actors.json")])
-        .format_hit_counts.rpgmaker_mv_mz,
-    ).toBe(1);
-    const draft = await new SourceFileParsePipeline(service).build_project_draft([root]);
-    expect(draft.failed_files).toEqual([]);
-    expect(draft.warnings).toMatchObject([
-      { code: "script_syntax_error", rel_path: path.join(prefix, "js/plugins/bad.js") },
-    ]);
-    expect(draft.files).toHaveLength(6);
-    fs.writeFileSync(path.join(root, prefix, "data/Actors.json"), "[]"); // 入库必须使用准备阶段的字节。
-    const project = path.join(temp.path, "game.lg");
-    const database = new ProjectDatabase();
-    try {
-      database.create_project(project, "game", () => {
-        for (const file of draft.files)
-          database.add_asset(
-            project,
-            file.rel_path,
-            file.content,
-            file.file_type,
-            null,
-            file.sort_index,
-          );
-        database.set_items(project, draft.items);
-      });
-      const reader = new ProjectDataReader(database);
-      expect(
-        Object.values(reader.build_files_record_block(project)).every(
-          (file) => file.file_type === "RPGMAKER_MV_MZ",
-        ),
-      ).toBe(true);
-      const items = reader.read_items(project);
-      expect(items.some((item) => item.src === "勇者")).toBe(true);
-      expect(items.every((item) => !("text_type" in item))).toBe(true);
-      const output = path.join(temp.path, "out");
-      await service.write_items(draft.items, {
-        paths: { translated_path: output, bilingual_path: path.join(temp.path, "bilingual") },
-        source_files: database.get_all_asset_records(project),
-        asset_reader: (file) => database.read_asset_content(project, file),
-      });
-      expect(fs.readFileSync(path.join(output, prefix, "data/Empty.json"), "utf8")).toBe("[]");
-      expect(fs.readFileSync(path.join(output, prefix, "data/Actors.json"), "utf8")).toBe(
-        files["data/Actors.json"],
-      );
-      expect(fs.readFileSync(path.join(output, prefix, "js/plugins/bad.js"), "utf8")).toBe(
-        files["js/plugins/bad.js"],
-      );
-      expect(fs.existsSync(path.join(temp.path, "bilingual"))).toBe(false);
-    } finally {
-      database.close();
-    }
-  },
-);
+it.each(["", "www"])("目录和可执行文件识别同一游戏，仅收集数据与插件：%s", (prefix) => {
+  using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-rm-source-"));
+  const files = [
+    "data/System.json",
+    "data/nested/Map.json",
+    "js/rmmz_core.js",
+    "js/plugins.js",
+    "js/plugins/menu.js",
+    "img/title.png",
+  ];
+  for (const file of [...files.map((file) => path.join(prefix, file)), "Game.exe"]) {
+    const target = path.join(temp.path, file);
+    fs.mkdirSync(path.dirname(target), { recursive: true });
+    fs.writeFileSync(target, "");
+  }
+  const native = new NativeFs();
+  const game = discover_rpgmaker_source(temp.path, native)!;
+  expect(discover_rpgmaker_source(path.join(temp.path, "Game.exe"), native)).toEqual(game);
+  expect(collect_rpgmaker_files(game, native).map((file) => file.rel_path)).toEqual(
+    ["data/nested/Map.json", "data/System.json", "js/plugins.js", "js/plugins/menu.js"].map(
+      (file) => [prefix, file].filter(Boolean).join("/"),
+    ),
+  );
+  expect(
+    discover_rpgmaker_source(path.join(temp.path, prefix, "data/System.json"), native),
+  ).toBeNull();
+});

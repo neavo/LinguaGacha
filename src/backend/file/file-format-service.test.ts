@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { spreadsheet_fixture } from "../../test/spreadsheet-fixture";
 
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { FileFormatService } from "./file-format-service";
 import { PROJECT_SOURCE_FORMATS } from "../../shared/project-source-formats";
@@ -24,6 +24,68 @@ function create_service(): FileFormatService {
 }
 
 describe("FileFormatService", () => {
+  it("同批同名游戏使用同一本地时间，避让已有与候选的时间戳名称", () => {
+    const paths = create_service()
+      .assign_source_file_paths(
+        [
+          { source_path: "a", rel_path: "game", file_type: "RPGMAKER_MV_MZ" },
+          { source_path: "b", rel_path: "game", file_type: "RPGMAKER_MV_MZ" },
+          { source_path: "c", rel_path: "game", file_type: "RPGMAKER_MV_MZ" },
+          { source_path: "d", rel_path: "game_20261011_123456_2", file_type: "RPGMAKER_MV_MZ" },
+        ],
+        ["game_20261011_123456", "game_2"],
+      )
+      .map((entry) => entry.rel_path);
+    expect(paths).toEqual([
+      "game",
+      "game_20261011_123456_3",
+      "game_20261011_123456_4",
+      "game_20261011_123456_2",
+    ]);
+  });
+
+  it.each([false, true])("普通目录结构优先于同批游戏名称，倒序：%s", (reverse) => {
+    const entries = [
+      { source_path: "a", rel_path: "game", file_type: "RPGMAKER_MV_MZ" },
+      { source_path: "b", rel_path: "game/readme.txt" },
+      { source_path: "c", rel_path: "game/sub/note.txt" },
+    ];
+    const paths = new Map(
+      create_service()
+        .assign_source_file_paths(reverse ? entries.reverse() : entries)
+        .map((entry) => [entry.source_path, entry.rel_path.replaceAll("\\", "/")]),
+    );
+    expect(paths).toEqual(
+      new Map([
+        ["a", "game_20261011_123456"],
+        ["b", "game/readme.txt"],
+        ["c", "game/sub/note.txt"],
+      ]),
+    );
+  });
+
+  it("已有游戏保持原名，新普通目录共享一次时间戳前缀且不会并入其他目录", () => {
+    const paths = create_service()
+      .assign_source_file_paths(
+        [
+          { source_path: "a", rel_path: "game/readme.txt" },
+          { source_path: "b", rel_path: "game/sub/note.txt" },
+          { source_path: "c", rel_path: "game", file_type: "RPGMAKER_MV_MZ" },
+        ],
+        ["game", "game_20261011_123456/other.txt"],
+      )
+      .map((entry) => entry.rel_path.replaceAll("\\", "/"));
+    expect(paths).toEqual([
+      "game_20261011_123456_2/readme.txt",
+      "game_20261011_123456_2/sub/note.txt",
+      "game",
+    ]);
+  });
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date(2026, 9, 11, 12, 34, 56));
+  });
+  afterEach(() => vi.useRealTimers());
   it("源路径过滤空值时保留身份中的空格，按原路径去重", () => {
     expect(
       create_service().normalize_source_paths([

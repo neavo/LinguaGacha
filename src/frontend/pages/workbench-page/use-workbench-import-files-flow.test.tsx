@@ -4,6 +4,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { api_fetch } from "@frontend/app/desktop/desktop-api";
+import { AppError } from "@shared/error";
 import type { ProjectWriteResultPayload } from "@frontend/app/state/desktop-project-write";
 import type {
   WorkbenchCommandPlanningState,
@@ -33,6 +34,149 @@ vi.mock("@frontend/app/desktop/desktop-api", () => {
 });
 
 describe("useWorkbenchImportFilesFlow", () => {
+  it.each(["empty", "error"])("重新准备失败退出旧确认，恢复后只提交新请求：%s", async (failure) => {
+    const state = create_project_store_state();
+    api_fetch_mock.mockResolvedValueOnce({
+      files: [{ source_path: "C:/source/old.txt", target_rel_path: "old.txt" }],
+    });
+    const snapshots = await mount_hook({ state });
+    await act(async () => {
+      await latest_snapshot(snapshots).flow.request_add_files_from_paths(["C:/source/old.txt"]);
+    });
+    await act(async () => {
+      await latest_snapshot(snapshots).flow.confirm_dialog();
+    });
+    expect(latest_snapshot(snapshots).dialog_state.kind).toBe("inherit-import-files");
+
+    state.section_revisions.files = 2;
+    const pending = Promise.withResolvers<{ files: [] }>();
+    api_fetch_mock.mockReturnValueOnce(pending.promise);
+    let preparation!: Promise<boolean>;
+    await act(async () => {
+      preparation = latest_snapshot(snapshots).flow.confirm_dialog();
+    });
+    expect(latest_snapshot(snapshots).dialog_state).toEqual(close_dialog_state());
+    const error = new Error("prepare failed");
+    await act(async () => {
+      if (failure === "empty") pending.resolve({ files: [] });
+      else pending.reject(error);
+      await preparation;
+    });
+    expect(latest_snapshot(snapshots).dialog_state).toEqual(close_dialog_state());
+    expect(error_toast).toHaveBeenCalledExactlyOnceWith(
+      "app.feedback.operation_failed",
+      failure === "empty" ? "workbench_page.feedback.no_valid_file" : error,
+    );
+    expect(await latest_snapshot(snapshots).flow.confirm_dialog()).toBe(false);
+
+    api_fetch_mock
+      .mockResolvedValueOnce({
+        files: [{ source_path: "C:/source/new.txt", target_rel_path: "new.txt" }],
+      })
+      .mockResolvedValueOnce({ accepted: true, changes: [] });
+    await act(async () => {
+      await latest_snapshot(snapshots).flow.request_add_files_from_paths(["C:/source/new.txt"]);
+    });
+    await act(async () => {
+      await latest_snapshot(snapshots).flow.secondary_dialog();
+    });
+    const imports = api_fetch_mock.mock.calls.filter(
+      ([url]) => url === "/api/workbench/files/import",
+    );
+    expect(imports).toEqual([
+      [
+        "/api/workbench/files/import",
+        expect.objectContaining({
+          files: [{ source_path: "C:/source/new.txt", target_rel_path: "new.txt" }],
+          conflict_action: "skip",
+          inheritance_mode: "none",
+          expected_section_revisions: { files: 2, items: 2 },
+        }),
+      ],
+    ]);
+    expect(latest_snapshot(snapshots).dialog_state).toEqual(close_dialog_state());
+  });
+
+  it("普通提交失败保留当前确认和名称，可直接重试", async () => {
+    const file = { source_path: "C:/source/new.txt", target_rel_path: "new.txt" };
+    const error = new Error("write failed");
+    api_fetch_mock
+      .mockResolvedValueOnce({ files: [file] })
+      .mockRejectedValueOnce(error)
+      .mockResolvedValueOnce({ accepted: true, changes: [] });
+    const snapshots = await mount_hook();
+    await act(async () => {
+      await latest_snapshot(snapshots).flow.request_add_files_from_paths([file.source_path]);
+    });
+    await act(async () => {
+      await latest_snapshot(snapshots).flow.confirm_dialog();
+    });
+    expect(latest_snapshot(snapshots).dialog_state).toMatchObject({
+      kind: "inherit-import-files",
+      target_rel_paths: [file.target_rel_path],
+      submitting: false,
+    });
+    expect(error_toast).toHaveBeenCalledExactlyOnceWith("app.feedback.operation_failed", error);
+    await act(async () => {
+      await latest_snapshot(snapshots).flow.confirm_dialog();
+    });
+    expect(api_fetch_mock.mock.calls[2]).toEqual(api_fetch_mock.mock.calls[1]);
+    expect(latest_snapshot(snapshots).dialog_state).toEqual(close_dialog_state());
+  });
+  it.each(["before-submit", "during-submit"])("文件修订变化后重新准备名称：%s", async (phase) => {
+    const state = create_project_store_state();
+    const original = "game_20261011_123456";
+    const renamed = original + "_2";
+    const files = (name: string) => ({
+      files: [{ source_path: "C:/source/game", target_rel_path: name }],
+    });
+    api_fetch_mock.mockResolvedValueOnce(files(original));
+    const write = vi.fn(
+      async (
+        plan: WorkbenchCommandPlan,
+        request: (body: Record<string, unknown>) => Promise<ProjectWriteResultPayload>,
+      ) => {
+        if (phase === "during-submit" && state.section_revisions.files === 1) {
+          state.section_revisions.files = 2;
+          state.files.push({ rel_path: original });
+          throw new AppError("data.revision_conflict");
+        }
+        return request(plan.requestBody);
+      },
+    );
+    const snapshots = await mount_hook({ state, run_project_file_write: write });
+    await act(async () => {
+      await latest_snapshot(snapshots).flow.request_add_files_from_paths(["C:/source/game"]);
+    });
+    if (phase === "before-submit") {
+      state.section_revisions.files = 2;
+      state.files.push({ rel_path: original });
+    }
+    api_fetch_mock.mockResolvedValueOnce(files(renamed));
+    await act(async () => {
+      await latest_snapshot(snapshots).flow.secondary_dialog();
+    });
+    expect(latest_snapshot(snapshots).dialog_state).toMatchObject({
+      kind: "inherit-import-files",
+      target_rel_paths: [renamed],
+      submitting: false,
+    });
+    expect(api_fetch_mock.mock.calls.map(([url]) => url)).toEqual([
+      "/api/workbench/file/parse",
+      "/api/workbench/file/parse",
+    ]);
+    api_fetch_mock.mockResolvedValueOnce({ accepted: true, changes: [] });
+    await act(async () => {
+      await latest_snapshot(snapshots).flow.secondary_dialog();
+    });
+    expect(api_fetch_mock).toHaveBeenLastCalledWith(
+      "/api/workbench/files/import",
+      expect.objectContaining({
+        files: [{ source_path: "C:/source/game", target_rel_path: renamed }],
+        expected_section_revisions: { files: 2, items: 2 },
+      }),
+    );
+  });
   let container: HTMLDivElement | null = null;
   let root: Root | null = null;
 

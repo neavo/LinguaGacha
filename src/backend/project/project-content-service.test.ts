@@ -1,9 +1,11 @@
 import { add_test_asset_from_source } from "../../test/asset-fixture";
+import { write_agent_workspace_sources } from "../agent/workspace/sources";
+import { NativeFs } from "../../native/native-fs";
 import { CacheManager } from "../cache/cache-manager";
 import type { AppSettingService } from "../app/app-setting-service";
 import type { ComputeWorkerClient } from "../worker/compute-worker-client";
 import { ProjectSummaryService } from "./project-summary-service";
-import { write_zip } from "../../test/zip-fixture";
+import { read_zip_fixture, write_zip } from "../../test/zip-fixture";
 import { write_epub_fixture } from "../../test/epub-fixture";
 import {
   create_workbench_import_files_plan,
@@ -180,6 +182,123 @@ afterEach(() => {
 });
 
 describe("ProjectContentService", () => {
+  it("同批同名游戏只分配一次，已有 game_2 保持不变且提交沿用预览名称", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date(2026, 9, 11, 12, 34, 56));
+    const { database, service, lg_path } = create_service();
+    try {
+      const old = await write_zip(new Map([["data/System.json", "{}"]]));
+      database.add_asset(lg_path, "game_2", old, "RPGMAKER_MV_MZ", null);
+      const roots = [project_path("a/game"), project_path("b/game")];
+      for (const root of roots) {
+        fs.mkdirSync(path.join(root, "data"), { recursive: true });
+        fs.mkdirSync(path.join(root, "js"), { recursive: true });
+        fs.writeFileSync(path.join(root, "data/System.json"), "{}");
+        fs.writeFileSync(path.join(root, "js/rmmz_core.js"), "");
+      }
+      const preview = await service.parse_project_file({ source_paths: roots });
+      const files = preview["files"] as JsonRecord[];
+      expect(files.map((file) => file["target_rel_path"])).toEqual([
+        "game",
+        "game_20261011_123456",
+      ]);
+      vi.setSystemTime(new Date(2026, 9, 11, 12, 35, 0));
+      await service.import_files({
+        files: files.map((file) => ({
+          source_path: file["source_path"]!,
+          target_rel_path: file["target_rel_path"]!,
+        })),
+        conflict_action: "replace",
+        expected_section_revisions: { files: 0, items: 0 },
+      });
+      expect(database.get_all_asset_records(lg_path).map((asset) => asset.path)).toEqual([
+        "game_2",
+        "game",
+        "game_20261011_123456",
+      ]);
+      expect(database.read_asset_content(lg_path, "game_2")).toEqual(old);
+      const replacement = await service.parse_project_file({ source_paths: [roots[0]!] });
+      expect(replacement["files"]).toMatchObject([{ target_rel_path: "game" }]);
+    } finally {
+      database.close();
+      vi.useRealTimers();
+    }
+  });
+  it.each(["game-first", "file-first", "mixed"])(
+    "追加预览与提交共享可投影的资产身份：%s",
+    async (order) => {
+      const { database, service, lg_path } = create_service();
+      const game = project_path("a/game");
+      const ordinary = project_path("b/game");
+      fs.mkdirSync(path.join(game, "data"), { recursive: true });
+      fs.mkdirSync(path.join(game, "js"), { recursive: true });
+      fs.mkdirSync(ordinary, { recursive: true });
+      fs.writeFileSync(path.join(game, "data/System.json"), "{}");
+      fs.writeFileSync(path.join(game, "js/rmmz_core.js"), "");
+      fs.writeFileSync(path.join(ordinary, "readme.txt"), "说明");
+      const batches =
+        order === "mixed"
+          ? [[game, ordinary]]
+          : order === "game-first"
+            ? [[game], [ordinary]]
+            : [[ordinary], [game]];
+      try {
+        for (const source_paths of batches) {
+          const preview = await service.parse_project_file({ source_paths });
+          const files = preview["files"] as JsonRecord[];
+          await service.import_files({
+            files: files.map(({ source_path, target_rel_path }) => ({
+              source_path: source_path!,
+              target_rel_path: target_rel_path!,
+            })),
+            conflict_action: "replace",
+            expected_section_revisions: new ProjectDataReader(database).build_manifest({
+              loaded: true,
+              projectPath: lg_path,
+            })["sectionRevisions"]!,
+          });
+        }
+        const assets = database.get_all_asset_records(lg_path);
+        expect(assets).toHaveLength(2);
+        const sourceRoot = project_path("projection");
+        const projected = await write_agent_workspace_sources({
+          nativeFs: new NativeFs(),
+          sourceRoot,
+          files: assets.map((asset) => ({ file_path: asset.path, file_type: asset.file_type })),
+          readAsset: (file) => database.read_asset_content(lg_path, file),
+        });
+        for (const file of projected)
+          expect(fs.statSync(path.join(sourceRoot, file.file_path)).isFile()).toBe(true);
+        const regular = assets.find((asset) => asset.file_type === "TXT")!;
+        expect(database.read_asset_content(lg_path, regular.path)?.toString()).toBe("说明");
+      } finally {
+        database.close();
+      }
+    },
+  );
+
+  it("正式导入拒绝绕过预览的祖先冲突，保留资产、条目与修订", async () => {
+    const { database, service, lg_path } = create_service();
+    try {
+      database.add_asset(lg_path, "game", Buffer.from("原稿"), "TXT", null);
+      const source = project_path("readme.txt");
+      fs.writeFileSync(source, "新文");
+      const meta = database.get_all_meta(lg_path);
+      await expect(
+        service.import_files({
+          files: [{ source_path: source, target_rel_path: "game/readme.txt" }],
+          conflict_action: "replace",
+          expected_section_revisions: { files: 0, items: 0 },
+        }),
+      ).rejects.toMatchObject({ code: "request.validation_failed" });
+      expect(database.get_all_asset_records(lg_path).map((asset) => asset.path)).toEqual(["game"]);
+      expect(database.read_asset_content(lg_path, "game")?.toString()).toBe("原稿");
+      expect(database.get_all_items(lg_path)).toEqual([]);
+      expect(database.get_all_meta(lg_path)).toEqual(meta);
+    } finally {
+      database.close();
+    }
+  });
   it("项目文件预解析忽略不支持后缀并返回支持格式的失败文件", async () => {
     using temp_dir = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "linguagacha-file-preview-"));
     const source_file = path.join(temp_dir.path, "script.txt");
@@ -231,19 +350,18 @@ describe("ProjectContentService", () => {
       await expect(
         service.parse_project_file({
           source_paths: [epub_file],
-          current_rel_path: "old/original.epub",
         }),
       ).resolves.toEqual({
         files: [
           {
             source_path: epub_file,
-            target_rel_path: path.join("old", "book.epub"),
+            target_rel_path: "book.epub",
             file_type: "EPUB",
             parsed_items: [
               expect.objectContaining({
                 src: "章节",
                 file_type: "EPUB",
-                file_path: path.join("old", "book.epub"),
+                file_path: "book.epub",
               }),
             ],
           },
@@ -291,97 +409,82 @@ describe("ProjectContentService", () => {
     }
   });
 
-  it("游戏目录外的替换文件沿用资产身份，错误脚本只记日志并保留原稿", async () => {
+  it("游戏整体替换移除旧内部文件，失败回滚并支持离线重建和独立删除", async () => {
     const log_manager = create_log_manager();
     const { database, service, lg_path } = create_service(undefined, log_manager);
+    const source = project_path("game");
+    const write = (file: string, content: string): void => {
+      const target = path.join(source, file);
+      fs.mkdirSync(path.dirname(target), { recursive: true });
+      fs.writeFileSync(target, content);
+    };
+    const revisions = () =>
+      new ProjectDataReader(database).build_manifest({ loaded: true, projectPath: lg_path })
+        .sectionRevisions!;
+    const request = () => ({
+      files: [{ source_path: source, target_rel_path: "game" }],
+      conflict_action: "replace",
+      expected_section_revisions: revisions(),
+      project_settings: { source_language: "ALL", target_language: "ZH" },
+    });
     try {
-      const file = path.join("data", "Map001.json");
-      const bytes = Buffer.from(
-        JSON.stringify({
-          events: [
-            null,
-            {
-              pages: [
-                {
-                  list: [
-                    { code: 101, indent: 0, parameters: ["", 0, 0, 2, "勇者"] },
-                    { code: 401, indent: 0, parameters: ["第一行"] },
-                    { code: 401, indent: 0, parameters: ["第二行"] },
-                    { code: 355, indent: 0, parameters: ["<test>"] },
-                    { code: 0, indent: 0, parameters: [] },
-                  ],
-                },
-              ],
-            },
-          ],
-        }),
-      );
-      database.add_asset(lg_path, file, Buffer.from("{}"), "RPGMAKER_MV_MZ", null);
-      const source = project_path("Map001.json");
-      fs.writeFileSync(source, bytes);
-      const preview = await service.parse_project_file({
-        source_paths: [source],
-        current_rel_path: file,
+      write("data/System.json", "{}");
+      write("js/rmmz_core.js", "");
+      write("data/Old.json", '{"text":"旧文"}');
+      database.add_asset(lg_path, "other.txt", Buffer.from("保留"), "TXT", null);
+      await service.import_files(request());
+      const old = database.read_asset_content(lg_path, "game");
+      const old_items = database.get_all_items(lg_path);
+      fs.rmSync(path.join(source, "data/Old.json"));
+      write("data/New.json", '{"text":"新文"}');
+      write("data/Broken.json", "{");
+      write("js/plugins.js", 'const broken = "');
+      const fail = vi.spyOn(database, "set_items").mockImplementationOnce(() => {
+        throw new Error("write failure");
       });
-      expect(preview["files"]).toMatchObject([
-        {
-          file_type: "RPGMAKER_MV_MZ",
-          target_rel_path: file,
-          parsed_items: [{ src: "第一行\n第二行", file_type: "RPGMAKER_MV_MZ" }],
-        },
-      ]);
-      await service.import_files({
-        files: [{ source_path: source, target_rel_path: file, file_type: "KVJSON" }],
-        conflict_action: "replace",
-        expected_section_revisions: { files: 0, items: 0 },
-        project_settings: { source_language: "ALL", target_language: "ZH" },
-      });
+      await expect(service.import_files(request())).rejects.toThrow();
+      fail.mockRestore();
+      expect(database.read_asset_content(lg_path, "game")).toEqual(old);
+      expect(database.get_all_items(lg_path)).toEqual(old_items);
+      await service.import_files(request());
+      const saved = database.read_asset_content(lg_path, "game")!;
+      expect([...(await read_zip_fixture(saved)).keys()]).not.toContain("data/Old.json");
+      expect(database.get_all_items(lg_path)).toMatchObject([{ src: "新文", file_path: "game" }]);
       expect(log_manager.warning).toHaveBeenCalledWith(
         expect.any(String),
         expect.objectContaining({
-          source: "project-import",
           context: {
-            warnings: [expect.objectContaining({ rel_path: file, code: "script_syntax_error" })],
+            warnings: expect.arrayContaining([
+              expect.objectContaining({
+                rel_path: "game",
+                internal_file_path: "data/Broken.json",
+                code: "internal_file_parse_failed",
+              }),
+              expect.objectContaining({
+                rel_path: "game",
+                internal_file_path: "js/plugins.js",
+                code: "script_syntax_error",
+              }),
+            ]),
           },
         }),
       );
-      expect(database.get_all_asset_records(lg_path)).toMatchObject([
-        { path: file, file_type: "RPGMAKER_MV_MZ" },
-      ]);
-      expect(database.get_all_items(lg_path)).toMatchObject([
-        { src: "第一行\n第二行", file_type: "RPGMAKER_MV_MZ" },
-      ]);
-      expect(database.read_asset_content(lg_path, file)).toEqual(bytes);
-      const saved_items = database.get_all_items(lg_path);
-      fs.writeFileSync(source, "{");
-      const failed_preview = await service.parse_project_file({
-        source_paths: [source],
-        current_rel_path: file,
-      });
-      expect(failed_preview["files"]).toEqual([]);
-      expect(failed_preview["failed_files"]).toMatchObject([{ code: "file.parse_failed" }]);
+      fs.renameSync(source, source + "-moved");
+      await service.reset_translation({ mode: "all" });
+      expect(database.get_all_items(lg_path).some((item) => item.src === "新文")).toBe(true);
+      expect(database.read_asset_content(lg_path, "game")).toEqual(saved);
       await expect(
         service.import_files({
-          files: [{ source_path: source, target_rel_path: file }],
-          conflict_action: "replace",
-          expected_section_revisions: { files: 1, items: 1 },
+          ...request(),
+          files: [
+            { source_path: path.join(source + "-moved", "data/New.json"), target_rel_path: "game" },
+          ],
         }),
       ).rejects.toMatchObject({ code: "file.parse_failed" });
-      expect(database.read_asset_content(lg_path, file)).toEqual(bytes);
-      expect(database.get_all_items(lg_path)).toEqual(saved_items);
-      await service.reset_translation({ mode: "all" });
-      expect(log_manager.warning).toHaveBeenCalledWith(
-        expect.any(String),
-        expect.objectContaining({
-          source: "translation-reset",
-          context: {
-            warnings: [expect.objectContaining({ rel_path: file, code: "script_syntax_error" })],
-          },
-        }),
-      );
-      expect(database.read_asset_content(lg_path, file)).toEqual(bytes);
-      expect(database.get_all_items(lg_path)).toMatchObject([
-        { src: "第一行\n第二行", file_type: "RPGMAKER_MV_MZ" },
+      expect(database.read_asset_content(lg_path, "game")).toEqual(saved);
+      await service.delete_files({ rel_paths: ["game"], expected_section_revisions: revisions() });
+      expect(database.get_all_asset_records(lg_path).map((file) => file.path)).toEqual([
+        "other.txt",
       ]);
     } finally {
       database.close();
@@ -393,13 +496,13 @@ describe("ProjectContentService", () => {
       const file = "Actors.json";
       const source = project_path(file);
       fs.writeFileSync(source, '[null,{"name":"勇者"}]');
-      database.add_asset(lg_path, file, Buffer.from("{}"), "RPGMAKER_MV_MZ", null);
+      database.add_asset(lg_path, file, Buffer.from("{}"), "MESSAGEJSON", null);
       const preview = await service.parse_project_file({ source_paths: [source] });
-      expect(preview["files"]).toMatchObject([{ file_type: "RPGMAKER_MV_MZ" }]);
+      expect(preview["files"]).toMatchObject([{ file_type: "MESSAGEJSON" }]);
       database.set_asset_file_type(lg_path, file, "KVJSON");
       fs.writeFileSync(source, '{"key":"追加"}');
       await service.import_files({
-        files: [{ source_path: source, target_rel_path: file, file_type: "RPGMAKER_MV_MZ" }],
+        files: [{ source_path: source, target_rel_path: file, file_type: "MESSAGEJSON" }],
         conflict_action: "replace",
         expected_section_revisions: { files: 0, items: 0 },
       });
@@ -443,17 +546,24 @@ describe("ProjectContentService", () => {
           ["Hello", json ? "LANGUAGE_SKIPPED" : "RULE_SKIPPED", ""],
           ["こんにちは", json ? "DUPLICATED" : "RULE_SKIPPED", ""],
         ];
-        const source = project_path(path.basename(file));
-        fs.writeFileSync(source, bytes);
-        // 已保存的资产身份保证替换来自临时路径的文件仍按原生 RM 解析。
-        database.add_asset(lg_path, file, bytes, "RPGMAKER_MV_MZ", null);
+        const source = project_path("game");
+        const prefix = file.startsWith("www/") ? "www/" : "";
+        for (const [internal, content] of [
+          [prefix + "data/System.json", "{}"],
+          [prefix + "js/rmmz_core.js", ""],
+          [file, bytes],
+        ] as const) {
+          const target = path.join(source, internal);
+          fs.mkdirSync(path.dirname(target), { recursive: true });
+          fs.writeFileSync(target, content);
+        }
         const project_settings = {
           source_language: "JA",
           target_language: "ZH",
           skip_duplicate_source_text_enable: true,
         };
         await service.import_files({
-          files: [{ source_path: source, target_rel_path: file }],
+          files: [{ source_path: source, target_rel_path: "game" }],
           conflict_action: "replace",
           expected_section_revisions: { files: 0, items: 0 },
           project_settings,
@@ -467,15 +577,15 @@ describe("ProjectContentService", () => {
             const extra_field = read_json_record(item["extra_field"]);
             // 文件重置消费保存用途，全部重建才重新分类原稿。
             if (item["src"] === "管理キー")
-              extra_field["rpgmaker"] = {
-                ...read_json_record(extra_field["rpgmaker"]),
+              extra_field["rpgmaker_mv_mz"] = {
+                ...read_json_record(extra_field["rpgmaker_mv_mz"]),
                 usage: "text",
               };
             return { ...item, extra_field, status: "PROCESSED", dst: "已翻译" };
           }),
         );
         await service.reset_files({
-          rel_paths: [file],
+          rel_paths: ["game"],
           expected_section_revisions: { files: 1, items: 1 },
           project_settings,
         });
@@ -514,7 +624,7 @@ describe("ProjectContentService", () => {
           file_path: "data/Actors.json",
           status,
           extra_field: {
-            rpgmaker: { usage },
+            rpgmaker_mv_mz: { usage },
           },
         }),
       );

@@ -16,14 +16,15 @@ describe("source-file-parse-failure-reporter", () => {
       warnings: [
         {
           code: "script_syntax_error",
-          rel_path: "data/CommonEvents.json",
+          rel_path: "game",
+          internal_file_path: "data/CommonEvents.json",
           json_path: [1, "list", 0, "parameters", 0],
           diagnostics: [{ message: "Unexpected token", line: 2, column: 4 }],
         },
       ],
     });
     expect(warning).toHaveBeenCalledWith(
-      'data/CommonEvents.json $[1]["list"][0]["parameters"][0]:2:4 - Unexpected token',
+      'game/data/CommonEvents.json $[1]["list"][0]["parameters"][0]:2:4 - Unexpected token',
       expect.objectContaining({ source: "project-import" }),
     );
   });

@@ -23,7 +23,7 @@ export function create_rpgmaker_extractor(rel_path: string) {
   /** 事件正文和模板片段由调用者关闭展开，保持各自的写回边界。 */
   function add(
     src: string,
-    metadata: RPGMakerMetadata,
+    metadata: Omit<RPGMakerMetadata, "internal_file_path">,
     name_src: string | null = null,
     expand = true,
   ): void {
@@ -51,7 +51,8 @@ export function create_rpgmaker_extractor(rel_path: string) {
       }
       if (text === "" && !name_src) return; // 空对白仍可携带姓名。
       const extra_field = {
-        rpgmaker: {
+        rpgmaker_mv_mz: {
+          internal_file_path: rel_path,
           ...metadata,
           location,
           ...(nearby === undefined
@@ -68,7 +69,7 @@ export function create_rpgmaker_extractor(rel_path: string) {
           file_path: rel_path,
           file_type: "RPGMAKER_MV_MZ",
           row: items.length,
-          status: rpgmaker_default_status({ file_path: rel_path, extra_field }),
+          status: rpgmaker_default_status({ extra_field }),
           extra_field,
         }),
       );

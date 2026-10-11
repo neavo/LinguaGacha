@@ -186,3 +186,65 @@ describe("SourceFileParsePipeline", () => {
     ]);
   });
 });
+
+it("多个游戏与普通文件混合导入，重复入口与内部文件不重复消费，同名游戏独立分配身份", async () => {
+  using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-rm-mixed-"));
+  const roots = [path.join(temp.path, "a", "game"), path.join(temp.path, "b", "game")];
+  for (const [index, root] of roots.entries()) {
+    const prefix = index === 0 ? "" : "www";
+    fs.mkdirSync(path.join(root, prefix, "data"), { recursive: true });
+    fs.mkdirSync(path.join(root, prefix, "js"), { recursive: true });
+    fs.writeFileSync(
+      path.join(root, prefix, "data/System.json"),
+      JSON.stringify({ currencyUnit: "游戏" + index }),
+    );
+    fs.writeFileSync(path.join(root, prefix, "js/rmmz_core.js"), "");
+    fs.writeFileSync(path.join(root, "Game.exe"), "");
+  }
+  fs.writeFileSync(path.join(temp.path, "readme.txt"), "说明");
+  const service = new FileFormatService({ target_language: "ZH" }, async () => null);
+  const inputs = [
+    path.join(roots[0]!, "data/System.json"),
+    temp.path,
+    ...roots,
+    path.join(roots[0]!, "Game.exe"),
+  ];
+  const draft = await new SourceFileParsePipeline(service).build_project_draft(inputs);
+  expect(draft.failed_files).toEqual([]);
+  expect(
+    service
+      .collect_source_file_entries(inputs)
+      .filter((entry) => entry.file_type === "RPGMAKER_MV_MZ")
+      .map((entry) => entry.rel_path),
+  ).toEqual(["game", "game"]);
+  const second_game = draft.files[1]!.rel_path;
+  expect(second_game).toMatch(/^game_\d{8}_\d{6}$/u);
+  expect(draft.files.map((file) => [file.rel_path, file.file_type])).toEqual([
+    ["game", "RPGMAKER_MV_MZ"],
+    [second_game, "RPGMAKER_MV_MZ"],
+    [path.join(path.basename(temp.path), "readme.txt"), "TXT"],
+  ]);
+  expect(
+    draft.items
+      .filter((item) => item.file_type === "RPGMAKER_MV_MZ")
+      .map((item) => [item.file_path, item.row]),
+  ).toEqual([
+    ["game", 0],
+    [second_game, 0],
+  ]);
+  for (const item of draft.items)
+    Object.assign(item, { status: "PROCESSED", dst: item.src + "译" });
+  const output = path.join(temp.path, "out");
+  await service.write_items(draft.items, {
+    paths: { translated_path: output, bilingual_path: path.join(temp.path, "bilingual") },
+    source_files: draft.files.map((file) => ({ path: file.rel_path, file_type: file.file_type })),
+    asset_reader: (file) =>
+      Buffer.from(draft.files.find((entry) => entry.rel_path === file)!.content),
+  });
+  expect(JSON.parse(fs.readFileSync(path.join(output, "game/data/System.json"), "utf8"))).toEqual({
+    currencyUnit: "游戏0译",
+  });
+  expect(
+    JSON.parse(fs.readFileSync(path.join(output, second_game, "www/data/System.json"), "utf8")),
+  ).toEqual({ currencyUnit: "游戏1译" });
+});

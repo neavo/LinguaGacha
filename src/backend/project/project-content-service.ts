@@ -1,4 +1,4 @@
-import path from "node:path";
+import { normalize_project_asset_path } from "../../shared/project/project-asset-paths";
 import type { ProjectSourceFileEntry, SourceFileParseWarning } from "../file/file-format-shared";
 import { rpgmaker_default_status } from "../file/rpgmaker-mv-mz/item";
 import { ProjectDataReader } from "./project-data-reader";
@@ -117,20 +117,12 @@ export class ProjectContentService {
     const project_path = this.session_state.require_loaded_project_path();
     const format_service = this.create_format_service();
     const source_paths = this.normalize_string_list(request["source_paths"]);
-    const current_rel_path =
-      typeof request["current_rel_path"] === "string" ? request["current_rel_path"] : undefined;
-    const entries =
-      current_rel_path === undefined
-        ? format_service.collect_source_file_entries(source_paths)
-        : format_service.normalize_source_paths(source_paths).map((source_path) => ({
-            source_path,
-            rel_path: path.join(path.dirname(current_rel_path || "."), path.basename(source_path)),
-          }));
+    const entries = format_service.assign_source_file_paths(
+      format_service.collect_source_file_entries(source_paths),
+      this.database.get_all_asset_records(project_path).map((asset) => asset.path),
+    );
     const commands = this.prepare_import_file_commands(project_path, entries, format_service);
-    const result = await new SourceFileParsePipeline(
-      format_service,
-      this.native_fs,
-    ).parse_import_commands(
+    const result = await new SourceFileParsePipeline(format_service).parse_import_commands(
       commands.filter(
         (command) =>
           command.file_type !== undefined || format_service.is_supported_file(command.source_path),
@@ -144,12 +136,7 @@ export class ProjectContentService {
         file_type: draft.file_type,
         parsed_items: draft.parsed_items,
       })) as unknown as JsonValue,
-      failed_files: (current_rel_path === undefined
-        ? result.failed_files
-        : result.failed_files.map((failure) => ({
-            ...failure,
-            rel_path: path.basename(failure.source_path),
-          }))) as unknown as JsonValue,
+      failed_files: result.failed_files as unknown as JsonValue,
     };
   }
 
@@ -170,7 +157,10 @@ export class ProjectContentService {
 
       const snapshot = await this.read_project_write_snapshot(project_path);
       const existing_record_by_key = new Map(
-        snapshot.asset_records.map((record) => [record.path.toLowerCase(), record]),
+        snapshot.asset_records.map((record) => [
+          normalize_project_asset_path(record.path).toLowerCase(),
+          record,
+        ]),
       );
       const incoming_paths = new Set<string>();
       const current_items = snapshot.public_items_by_id;
@@ -195,7 +185,7 @@ export class ProjectContentService {
           return Math.max(max_sort_order, record.sort_order);
         }, -1) + 1;
       for (const file of parse_result.file_drafts) {
-        const target_key = file.rel_path.toLowerCase();
+        const target_key = normalize_project_asset_path(file.rel_path).toLowerCase();
         if (incoming_paths.has(target_key)) {
           throw new AppErrors.AppError("request.validation_failed", {
             diagnostic_context: {
@@ -628,10 +618,10 @@ export class ProjectContentService {
     const assets = new Map(
       this.database
         .get_all_asset_records(project_path)
-        .map((asset) => [asset.path.toLowerCase(), asset]),
+        .map((asset) => [normalize_project_asset_path(asset.path).toLowerCase(), asset]),
     );
     return entries.map((entry) => {
-      const asset = assets.get(entry.rel_path.toLowerCase());
+      const asset = assets.get(normalize_project_asset_path(entry.rel_path).toLowerCase());
       return {
         source_path: entry.source_path,
         rel_path: asset?.path ?? entry.rel_path,
@@ -655,9 +645,7 @@ export class ProjectContentService {
       })),
       format_service,
     );
-    return new SourceFileParsePipeline(format_service, this.native_fs).parse_import_commands(
-      commands,
-    );
+    return new SourceFileParsePipeline(format_service).parse_import_commands(commands);
   }
 
   /**

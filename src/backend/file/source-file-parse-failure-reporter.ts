@@ -92,7 +92,8 @@ export function log_source_file_parse_warnings(args: {
           ) ?? "";
         const position =
           diagnostic.line === null ? "" : ":" + diagnostic.line + ":" + diagnostic.column;
-        return warning.rel_path + " " + location + position + " - " + diagnostic.message;
+        const file = [warning.rel_path, warning.internal_file_path].filter(Boolean).join("/");
+        return file + " " + location + position + " - " + diagnostic.message;
       }),
     )
     .join("\n");

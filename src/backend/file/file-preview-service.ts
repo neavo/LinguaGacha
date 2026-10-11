@@ -57,7 +57,7 @@ export class FilePreviewService {
    * 解析流水线固定当前设置快照，避免同一批预览中语言配置前后漂移。
    */
   private create_parse_pipeline(): SourceFileParsePipeline {
-    return new SourceFileParsePipeline(this.create_format_service(), this.native_fs);
+    return new SourceFileParsePipeline(this.create_format_service());
   }
 
   /**

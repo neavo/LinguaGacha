@@ -389,7 +389,6 @@ export class ProjectLifecycleService {
   ): Promise<CreateCommitParsedDraft> {
     const parsed_draft = await new SourceFileParsePipeline(
       this.create_format_service(project_settings),
-      this.native_fs,
     ).build_project_draft(source_paths);
     const files = parsed_draft.files;
     const items: Record<string, ProjectItemPublicRecord> = {};

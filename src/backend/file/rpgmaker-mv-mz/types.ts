@@ -44,6 +44,7 @@ export type RPGMakerLocation =
   | { kind: "json"; container: RPGMakerLocation; path: JsonPath };
 export type RPGMakerUsage = "text" | "metadata";
 export type RPGMakerMetadata = {
+  internal_file_path: string;
   usage: RPGMakerUsage;
   location: RPGMakerLocation;
   source_context?: string; // 上下文固定为导入原稿，与翻译用途独立。

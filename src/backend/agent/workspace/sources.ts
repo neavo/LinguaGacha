@@ -1,3 +1,7 @@
+import {
+  assert_project_asset_paths,
+  normalize_project_asset_path,
+} from "../../../shared/project/project-asset-paths";
 import path from "node:path";
 
 import type { NativeFs } from "../../../native/native-fs";
@@ -15,31 +19,15 @@ export async function write_agent_workspace_sources(args: {
   files: ReadonlyArray<{ file_path: string; file_type: string }>;
   readAsset: (file_path: string) => Buffer | null | Promise<Buffer | null>;
 }): Promise<AgentWorkspaceSourceFile[]> {
+  assert_project_asset_paths(args.files.map((file) => file.file_path));
   await args.nativeFs.make_dir_async(args.sourceRoot);
   const projected: AgentWorkspaceSourceFile[] = [];
   for (const file of args.files) {
-    const relative_path = normalize_source_relative_path(file.file_path);
-    const content = await args.readAsset(file.file_path);
+    const relative_path = normalize_project_asset_path(file.file_path);
+    const content = args.readAsset(file.file_path);
     if (content === null) throw new Error(`Project source asset is missing: ${file.file_path}`);
     await args.nativeFs.write_file(path.join(args.sourceRoot, relative_path), content);
     projected.push({ ...file, file_path: relative_path });
   }
   return projected;
-}
-
-/** 工程相对路径统一映射为正斜线，并拒绝逃逸 sources 根目录。 */
-function normalize_source_relative_path(relative_path: string): string {
-  const normalized = relative_path.replaceAll("\\", "/");
-  if (
-    normalized.includes("\0") ||
-    path.posix.isAbsolute(normalized) ||
-    path.win32.isAbsolute(normalized)
-  ) {
-    throw new Error(`Invalid project source path: ${relative_path}`);
-  }
-  const parts = normalized.split("/").filter(Boolean);
-  if (parts.length === 0 || parts.includes(".") || parts.includes("..")) {
-    throw new Error(`Invalid project source path: ${relative_path}`);
-  }
-  return parts.join("/");
 }

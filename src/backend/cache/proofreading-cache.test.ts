@@ -264,13 +264,24 @@ describe("ProofreadingCache", () => {
   });
 
   it.each<{
-    file_type: "TRANS" | "EPUB";
+    file_type: "TRANS" | "EPUB" | "RPGMAKER_MV_MZ";
     extra_field: ProjectItemPublicRecord["extra_field"];
     internal_file_path: string;
   }>([
     {
       file_type: "TRANS",
       extra_field: { trans_ref: { file_key: "data/Actors.json", row_index: 0 } },
+      internal_file_path: "data/Actors.json",
+    },
+    {
+      file_type: "RPGMAKER_MV_MZ",
+      extra_field: {
+        rpgmaker_mv_mz: {
+          internal_file_path: "data/Actors.json",
+          usage: "text",
+          location: { kind: "field", path: [1, "name"] },
+        },
+      },
       internal_file_path: "data/Actors.json",
     },
     {

@@ -3,7 +3,6 @@ import { read_json_record } from "../../domain/json";
 import type { ProjectFileRecord } from "../project/project-file-records";
 
 import type { Item, ProjectItemPersistentRecord } from "../../domain/item";
-import { NativeFs, default_native_fs } from "../../native/native-fs";
 import type { SourceFileParseFailureRecord } from "../../shared/source-file-parse-failure";
 import { build_source_file_parse_failure } from "./source-file-parse-failure-reporter";
 import { FileFormatService } from "./file-format-service";
@@ -12,7 +11,7 @@ import type { ProjectFileType, SourceFileParseWarning } from "./file-format-shar
 
 export type SourceFileParseCommand = {
   file_type: string | undefined; // 新来源可由内容细分类型，已有资产必须传入保存的身份
-  source_path: string; // 用户选择的真实文件路径，只允许解析流水线读取
+  source_path: string; // 用户选择的真实来源路径，由格式服务准备固化原稿
   rel_path: string; // 项目内的目标相对路径
 };
 
@@ -51,14 +50,12 @@ export type SourceFileProjectDraft = {
  */
 export class SourceFileParsePipeline {
   private readonly format_service: FileFormatService; // 格式分发和相对路径分配的唯一入口
-  private readonly native_fs: NativeFs; // 读取用户源文件 bytes 的唯一文件系统门面
 
   /**
-   * 构造时固定格式服务与文件系统，保证一次解析使用同一设置快照。
+   * 构造时固定格式服务，保证一次解析使用同一设置快照。
    */
-  public constructor(format_service: FileFormatService, native_fs: NativeFs = default_native_fs) {
+  public constructor(format_service: FileFormatService) {
     this.format_service = format_service;
-    this.native_fs = native_fs;
   }
 
   /**
@@ -68,7 +65,9 @@ export class SourceFileParsePipeline {
     const normalized_source_paths = this.format_service.normalize_source_paths(source_paths);
     const parse_result = await this.parse_source_entries(
       this.format_service
-        .collect_source_file_entries(normalized_source_paths)
+        .assign_source_file_paths(
+          this.format_service.collect_source_file_entries(normalized_source_paths),
+        )
         .map((entry) => ({ ...entry, file_type: entry.file_type })),
     );
     const files: SourceFileProjectDraft["files"] = [];
@@ -139,7 +138,13 @@ export class SourceFileParsePipeline {
     for (const entry of entries) {
       const file_type = entry.file_type;
       try {
-        const content = this.native_fs.read_file(entry.source_path);
+        const prepared = await this.format_service.prepare_source(
+          entry.source_path,
+          entry.rel_path,
+          file_type,
+        );
+        const { content } = prepared;
+        warnings.push(...prepared.warnings);
         const parsed = await this.format_service.parse_asset(entry.rel_path, content, file_type);
         if (parsed.kind === "items") warnings.push(...(parsed.warnings ?? []));
         file_drafts.push({

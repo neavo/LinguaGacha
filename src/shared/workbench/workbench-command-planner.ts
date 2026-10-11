@@ -172,9 +172,9 @@ export type WorkbenchImportFilesPreview = {
   importable_files: WorkbenchFileParsePreview[];
   new_files: WorkbenchFileParsePreview[];
   conflicting_files: WorkbenchFileParsePreview[];
-  conflict_signature: string;
 };
 
+/** 只接收同时携带源路径与目标身份的准备结果。 */
 function is_import_file_usable(parsed_file: WorkbenchFileParsePreview): boolean {
   // 空源路径或空目标路径无法表达用户导入意图，直接排除在计划外。
   return parsed_file.source_path.trim() !== "" && parsed_file.target_rel_path.trim() !== "";
@@ -198,16 +198,6 @@ function collect_batch_duplicate_target_keys(
       return count > 1 ? [target_key] : [];
     }),
   );
-}
-
-/** 捕捉确认期间的冲突集合变化，提交前需要重新校对。 */
-function build_import_conflict_signature(files: WorkbenchFileParsePreview[]): string {
-  // 对话确认期间用签名捕捉当前同名集合，提交前变更则重新让用户选择策略。
-  return files
-    .map((file, index) => {
-      return [index, normalize_casefold_path(file.target_rel_path), file.target_rel_path].join(":");
-    })
-    .join("|");
 }
 
 // 工作台导入预演只判断新增与同名替换候选，不把解析出的 item 当作最终事实。
@@ -250,7 +240,6 @@ export function create_workbench_import_files_preview(args: {
     importable_files,
     new_files,
     conflicting_files,
-    conflict_signature: build_import_conflict_signature(conflicting_files),
   };
 }
 

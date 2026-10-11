@@ -32,6 +32,23 @@ it("拒绝源文件路径逃逸", async () => {
       files: [{ file_path: "../outside.txt", file_type: "TXT" }],
       readAsset: () => Buffer.from("x"),
     }),
-  ).rejects.toThrow("Invalid project source path");
+  ).rejects.toMatchObject({ code: "request.validation_failed" });
   expect(fs.existsSync(path.join(root.path, "outside.txt"))).toBe(false);
+});
+
+it.each([
+  ["game", "game/readme.txt"],
+  ["game/readme.txt", "game"],
+])("路径冲突在任何原稿投影前失败 %j", async (...paths) => {
+  using root = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-sources-conflict-"));
+  const sourceRoot = path.join(root.path, "sources");
+  await expect(
+    write_agent_workspace_sources({
+      nativeFs: new NativeFs(),
+      sourceRoot,
+      files: paths.map((file_path) => ({ file_path, file_type: "TXT" })),
+      readAsset: () => Buffer.from("原稿"),
+    }),
+  ).rejects.toMatchObject({ code: "request.validation_failed" });
+  expect(fs.existsSync(sourceRoot)).toBe(false);
 });

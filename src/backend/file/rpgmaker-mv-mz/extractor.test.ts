@@ -21,7 +21,7 @@ it("JSON 只展开字符串值，标量与无效 JSON 保持原文，内部事�
     ]),
   );
   expect(extractor.items[1]?.extra_field).toMatchObject({
-    rpgmaker: {
+    rpgmaker_mv_mz: {
       location: {
         kind: "json",
         path: ["list", 0, "parameters", 0],
@@ -39,8 +39,8 @@ it("六层解码保留每层路径与外层用途，上下文有界且保留邻�
     source = JSON.stringify({ [key]: source });
   extractor.script(`const parameters = ${JSON.stringify(source)};`, { kind: "field", path: [] });
   const item = extractor.items.find(({ src }) => src === "はい")!;
-  expect(item.extra_field).toMatchObject({ rpgmaker: { usage: "text" } });
-  const metadata = read_json_record(read_json_record(item.extra_field)["rpgmaker"]) as {
+  expect(item.extra_field).toMatchObject({ rpgmaker_mv_mz: { usage: "text" } });
+  const metadata = read_json_record(read_json_record(item.extra_field)["rpgmaker_mv_mz"]) as {
     source_context: string;
   };
   for (const key of [
@@ -77,7 +77,7 @@ it.each([
     location: { kind: "field", path: ["settings"] },
   });
   const item = extractor.items.find(({ src }) => src === "目标😀")!;
-  const context = read_json_record(read_json_record(item.extra_field)["rpgmaker"])[
+  const context = read_json_record(read_json_record(item.extra_field)["rpgmaker_mv_mz"])[
     "source_context"
   ] as string;
   for (const text of ["settings", "目标😀", "前邻", "后邻"]) expect(context).toContain(text);
@@ -102,7 +102,7 @@ it("长目标优先保留定位和正文，相邻对象与数组只展示成员�
     },
   );
   const item = extractor.items.find(({ src }) => src === target)!;
-  const context = read_json_record(read_json_record(item.extra_field)["rpgmaker"])[
+  const context = read_json_record(read_json_record(item.extra_field)["rpgmaker_mv_mz"])[
     "source_context"
   ] as string;
   for (const text of ["settings", "target", "目标😀", "before", "Object(2)", "after", "Array(3)"])

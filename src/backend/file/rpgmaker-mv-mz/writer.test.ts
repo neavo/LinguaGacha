@@ -12,7 +12,9 @@ function translated(location: RPGMakerLocation, dst = "译文") {
     src: "原文",
     dst,
     status: "PROCESSED",
-    extra_field: { rpgmaker: { usage: "historical", location } },
+    extra_field: {
+      rpgmaker_mv_mz: { usage: "historical", internal_file_path: "data/Test.json", location },
+    },
   });
 }
 

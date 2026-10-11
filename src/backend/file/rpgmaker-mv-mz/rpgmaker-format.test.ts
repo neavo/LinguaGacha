@@ -1,4 +1,10 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { read_zip_fixture, zip_text, write_zip } from "../../../test/zip-fixture";
+import { NativeFs } from "../../../native/native-fs";
+import { FileFormatService } from "../file-format-service";
 import { RPGMakerMvMzFormat } from "./rpgmaker-format";
 import { read_javascript_strings } from "./javascript";
 import { create_item } from "../../../domain/item";
@@ -8,6 +14,52 @@ const format = new RPGMakerMvMzFormat({
   write_translated_name_fields_to_file: true,
 });
 const command = (code: number, parameters: unknown[], indent = 0) => ({ code, parameters, indent }); // 保留原稿指令结构与写回索引。
+
+it.each([
+  "../outside.json",
+  "/absolute.json",
+  "C:/absolute.json",
+  "data/../escape.json",
+  "data/Actors.json.",
+])("容器拒绝非法内部路径 %s", async (file) => {
+  const bytes = await write_zip(new Map([[file, "{}"]]));
+  await expect(format.read_from_stream(bytes, "game")).rejects.toMatchObject({
+    code: "file.invalid_structure",
+  });
+});
+
+it("容器拒绝大小写归一后重名", async () => {
+  const bytes = await write_zip(
+    new Map([
+      ["data/Actors.json", "{}"],
+      ["data/actors.json", "{}"],
+    ]),
+  );
+  await expect(format.read_from_stream(bytes, "game")).rejects.toMatchObject({
+    code: "file.invalid_structure",
+  });
+});
+
+it.each(["game/data/Actors.json", "game/data", "game/data/Actors.json/child.txt"])(
+  "游戏与其他来源的输出路径冲突 %s 在落盘前拒绝",
+  async (file) => {
+    const native = new NativeFs();
+    const write = vi.spyOn(native, "write_file").mockResolvedValue();
+    const service = new FileFormatService({ target_language: "ZH" }, async () => null, native);
+    const bytes = await write_zip(new Map([["data/Actors.json", "[]"]]));
+    await expect(
+      service.write_items([], {
+        paths: { translated_path: "out", bilingual_path: "bilingual" },
+        source_files: [
+          { path: "game", file_type: "RPGMAKER_MV_MZ" },
+          { path: file, file_type: "TXT" },
+        ],
+        asset_reader: () => bytes,
+      }),
+    ).rejects.toMatchObject({ code: "file.invalid_structure" });
+    expect(write).not.toHaveBeenCalled();
+  },
+);
 
 describe("MV/MZ 原稿写回", () => {
   it.each(["data/Plugins.json", "js/plugins.js"])(
@@ -19,7 +71,7 @@ describe("MV/MZ 原稿写回", () => {
       const source = `{"text":"外部",${numbers},"nested":${JSON.stringify(nested)}}`;
       const json = file.endsWith(".json");
       const bytes = Buffer.from(json ? source : `const settings = ${JSON.stringify(source)};`);
-      const { items } = await format.read_from_stream(bytes, file);
+      const { items } = await format.read_file(bytes, file);
       for (const item of items) Object.assign(item, { status: "PROCESSED", dst: `${item.src}译` });
       const expected = `{"text":"外部译",${numbers},"nested":${JSON.stringify(nested.replace("内部", "内部译"))}}`;
       const output = Buffer.from(await format.render(bytes, file, items)).toString();
@@ -53,7 +105,7 @@ describe("MV/MZ 原稿写回", () => {
             ? `const settings = \`${JSON.stringify(payload).slice(1, -1)}\`;`
             : `const settings = ${JSON.stringify(payload)};`,
       );
-      const { items } = await format.read_from_stream(bytes, file);
+      const { items } = await format.read_file(bytes, file);
       if (!json) {
         expect(items.every((item) => item.status === "RULE_SKIPPED")).toBe(true);
       }
@@ -89,7 +141,7 @@ describe("MV/MZ 原稿写回", () => {
   it("原文译文相同的 JSON 容器保留空白与转义，邻近普通译文正常写回", async () => {
     const container = '{ "text" : "\\u65e5" }';
     const bytes = Buffer.from(JSON.stringify({ settings: container, label: "标题" }));
-    const { items } = await format.read_from_stream(bytes, "data/Plugins.json");
+    const { items } = await format.read_file(bytes, "data/Plugins.json");
     for (const item of items)
       Object.assign(item, {
         status: "PROCESSED",
@@ -108,7 +160,7 @@ describe("MV/MZ 原稿写回", () => {
       const bytes = Buffer.from(
         json ? JSON.stringify([null, { list: [command(355, [script])] }]) : script,
       );
-      const { items } = await format.read_from_stream(bytes, file);
+      const { items } = await format.read_file(bytes, file);
       expect(items.map(({ src, status }) => [src, status])).toEqual([
         ["管理😀", "RULE_SKIPPED"],
         ["显示", json ? "NONE" : "RULE_SKIPPED"],
@@ -116,7 +168,7 @@ describe("MV/MZ 原稿写回", () => {
         ["世界", json ? "NONE" : "RULE_SKIPPED"],
       ]);
       expect(items[0]?.extra_field).toMatchObject({
-        rpgmaker: {
+        rpgmaker_mv_mz: {
           usage: "metadata",
           source_context: '"管理😀": "显示"',
           location: { kind: "script" },
@@ -143,7 +195,7 @@ describe("MV/MZ 原稿写回", () => {
       command(0, []),
     ];
     const bytes = Buffer.from(JSON.stringify([null, { list, id: 1 }]));
-    const result = await format.read_from_stream(bytes, "data/CommonEvents.json");
+    const result = await format.read_file(bytes, "data/CommonEvents.json");
     expect(result.warnings).toMatchObject([
       {
         rel_path: "data/CommonEvents.json",
@@ -187,7 +239,11 @@ describe("MV/MZ 原稿写回", () => {
         status: "PROCESSED",
         row: 99,
         extra_field: {
-          rpgmaker: { usage: "text", location: { kind: "field", path: [1, "legacy"] } },
+          rpgmaker_mv_mz: {
+            internal_file_path: "data/Actors.json",
+            usage: "text",
+            location: { kind: "field", path: [1, "legacy"] },
+          },
           old: true,
         },
       }),
@@ -196,7 +252,11 @@ describe("MV/MZ 原稿写回", () => {
         dst: "英雄",
         status: "PROCESSED",
         extra_field: {
-          rpgmaker: { usage: "metadata", location: { kind: "field", path: [1, "name"] } },
+          rpgmaker_mv_mz: {
+            internal_file_path: "data/Actors.json",
+            usage: "metadata",
+            location: { kind: "field", path: [1, "name"] },
+          },
         },
       }),
     ];
@@ -211,7 +271,7 @@ describe("MV/MZ 原稿写回", () => {
         { id: 1, name: "同文", nickname: "別名", profile: "紹介", note: "同文", faceName: "顔" },
       ]),
     );
-    const { items } = await format.read_from_stream(bytes, "data/Actors.json");
+    const { items } = await format.read_file(bytes, "data/Actors.json");
     expect(items.filter((item) => item.src === "同文").map((item) => item.status)).toEqual([
       "NONE",
       "RULE_SKIPPED",
@@ -225,7 +285,7 @@ describe("MV/MZ 原稿写回", () => {
     );
     expect(output[1]).toMatchObject({ name: "同文", note: "启用备注", faceName: "顔" });
     expect(
-      await format.read_from_stream(
+      await format.read_file(
         Buffer.from('{"currencyUnit":"金","terms":{"basic":["等级"]},"switches":["开关"]}'),
         "data/System.json",
       ),
@@ -257,7 +317,7 @@ describe("MV/MZ 原稿写回", () => {
     const bytes = Buffer.from(
       JSON.stringify({ displayName: "地图", events: [null, { name: "EV001", pages: [{ list }] }] }),
     );
-    const { items } = await format.read_from_stream(bytes, "data/Map001.json");
+    const { items } = await format.read_file(bytes, "data/Map001.json");
     for (const item of items) {
       if (item.src === "一行")
         Object.assign(item, {
@@ -291,10 +351,14 @@ describe("MV/MZ 原稿写回", () => {
   it("JS 的 Unicode 范围与模板片段转义保留表达式，非法定位拒绝写回", async () => {
     const source = 'const x = "中文😀"; const y = `你好${x}世界`;';
     const bytes = Buffer.from(source);
-    const { items } = await format.read_from_stream(bytes, "js/plugins/test.js");
+    const { items } = await format.read_file(bytes, "js/plugins/test.js");
     expect(items.map((item) => item.src)).toEqual(["中文😀", "你好", "世界"]);
     expect(items[0]?.extra_field).toMatchObject({
-      rpgmaker: { usage: "text", source_context: 'x = "中文😀"' },
+      rpgmaker_mv_mz: {
+        internal_file_path: "js/plugins/test.js",
+        usage: "text",
+        source_context: 'x = "中文😀"',
+      },
     });
     const translations = ['引号"\\\n😀', "`前${字}", "后"];
     items.forEach((item, index) => {
@@ -310,5 +374,47 @@ describe("MV/MZ 原稿写回", () => {
     await expect(
       format.render(bytes, "js/plugins/test.js", [...items, items[0]!]),
     ).rejects.toMatchObject({ code: "file.invalid_structure" });
+  });
+});
+
+it("读取失败跳过文件，解析失败保留字节，无可保存文件时来源失败", async () => {
+  using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-rm-errors-"));
+  fs.mkdirSync(path.join(temp.path, "data"));
+  fs.mkdirSync(path.join(temp.path, "js"));
+  fs.writeFileSync(path.join(temp.path, "data/System.json"), "{}");
+  fs.writeFileSync(path.join(temp.path, "data/Broken.json"), "{");
+  fs.writeFileSync(path.join(temp.path, "data/Unreadable.json"), "{}");
+  fs.writeFileSync(path.join(temp.path, "js/rmmz_core.js"), "");
+  const native = new NativeFs();
+  const read = native.read_file.bind(native);
+  const mock = vi.spyOn(native, "read_file").mockImplementation((file) => {
+    if (file.endsWith("Unreadable.json")) throw new Error("unreadable");
+    return read(file);
+  });
+  const service = new RPGMakerMvMzFormat({ target_language: "ZH" }, native);
+  const prepared = await service.prepare_source(temp.path, "game");
+  const parsed = await service.read_from_stream(prepared.content, "game");
+  expect(parsed.items).toEqual([]);
+  expect([...prepared.warnings, ...parsed.warnings]).toMatchObject([
+    { code: "internal_file_read_failed", internal_file_path: "data/Unreadable.json" },
+    { code: "internal_file_parse_failed", internal_file_path: "data/Broken.json" },
+  ]);
+  expect(Buffer.from(prepared.content).readUInt16LE(8)).toBe(0); // ZIP STORE 是原稿存储协议。
+  const archive = await read_zip_fixture(prepared.content);
+  expect([...archive.keys()]).toEqual(["data/Broken.json", "data/System.json"]);
+  expect(zip_text(archive, "data/Broken.json")).toBe("{");
+  const output = path.join(temp.path, "out");
+  await service.write_to_path([], {
+    paths: { translated_path: output, bilingual_path: output },
+    source_files: [{ path: "game", file_type: "RPGMAKER_MV_MZ" }],
+    asset_reader: () => Buffer.from(prepared.content),
+  });
+  expect(fs.readFileSync(path.join(output, "game/data/Broken.json"), "utf8")).toBe("{");
+  expect(fs.readFileSync(path.join(output, "game/data/System.json"), "utf8")).toBe("{}");
+  mock.mockImplementation(() => {
+    throw new Error("unreadable");
+  });
+  await expect(service.prepare_source(temp.path, "game")).rejects.toMatchObject({
+    code: "file.parse_failed",
   });
 });

@@ -9,10 +9,11 @@ export type JavascriptDiagnostic = Readonly<{
   column: number | null;
 }>;
 
-/** 每条记录对应一段完整跳过的脚本，原始资产仍参与保存和导出。 */
+/** 跳过的内部文件或脚本统一记录诊断，已取得的原稿仍参与保存和导出。 */
 export type SourceFileParseWarning = Readonly<{
-  code: "script_syntax_error";
+  code: "script_syntax_error" | "internal_file_read_failed" | "internal_file_parse_failed";
   rel_path: string;
+  internal_file_path?: string;
   json_path?: readonly (string | number)[];
   diagnostics: readonly JavascriptDiagnostic[];
 }>;
