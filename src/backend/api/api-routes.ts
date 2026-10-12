@@ -83,7 +83,9 @@ export function register_api_routes(context: ApiRouteContext): void {
   context.app.get("/api/models/catalog/snapshot", (hono_context) =>
     hono_context.json(ok(services.modelCatalog.get_snapshot())),
   );
-  context.app.get("/api/agent/files", (context) => context.json(ok(agent.list_files())));
+  context.app.get("/api/agent/files", async (context) =>
+    context.json(ok(await agent.list_files())),
+  );
   context.app.get("/api/agent/snapshot", (hono_context) =>
     hono_context.json(ok(agent.get_snapshot())),
   );

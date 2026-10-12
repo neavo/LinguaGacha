@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import type { MutableJsonRecord } from "../../../domain/json";
-import type { ProjectDatabase } from "../../database/database-operations";
+import type { ProjectDatabaseAccess } from "../../database/database-operations";
 import { MarkdownV2BlockMigration } from "./markdown-v2-block-migration";
 
 describe("MarkdownV2BlockMigration", () => {
@@ -40,7 +40,7 @@ describe("MarkdownV2BlockMigration", () => {
     const migration = new MarkdownV2BlockMigration();
 
     const writes = migration.build_writes("demo.lg", fixture.items());
-    for (const write of writes) write(fixture.database);
+    for (const write of writes) write(fixture.database as unknown as ProjectDatabaseAccess);
 
     const markdown_items = fixture.items().filter((item) => item["file_path"] === "demo.md");
     expect(markdown_items).toHaveLength(4);
@@ -116,7 +116,7 @@ describe("MarkdownV2BlockMigration", () => {
     ]);
 
     for (const write of new MarkdownV2BlockMigration().build_writes("demo.lg", fixture.items())) {
-      write(fixture.database);
+      write(fixture.database as unknown as ProjectDatabaseAccess);
     }
 
     const items = fixture.items();
@@ -141,7 +141,7 @@ describe("MarkdownV2BlockMigration", () => {
     ]);
 
     for (const write of new MarkdownV2BlockMigration().build_writes("demo.lg", fixture.items())) {
-      write(fixture.database);
+      write(fixture.database as unknown as ProjectDatabaseAccess);
     }
 
     expect(fixture.items()[0]).toEqual(
@@ -200,15 +200,7 @@ function legacy_item(
 }
 
 /** 按值隔离读写快照，并模拟数据库为重建条目分配 ID。 */
-function create_database(
-  initial_items: MutableJsonRecord[],
-  initial_meta: MutableJsonRecord = {},
-): {
-  database: ProjectDatabase;
-  items: () => MutableJsonRecord[];
-  meta: () => MutableJsonRecord;
-  bumped_sections: string[][];
-} {
+function create_database(initial_items: MutableJsonRecord[], initial_meta: MutableJsonRecord = {}) {
   let items = structuredClone(initial_items);
   const meta = structuredClone(initial_meta);
   const bumped_sections: string[][] = [];
@@ -229,7 +221,7 @@ function create_database(
     bump_section_revisions: vi.fn((_project_path: string, sections: string[]) => {
       bumped_sections.push([...sections]);
     }),
-  } as unknown as ProjectDatabase;
+  };
   return {
     database,
     items: () => structuredClone(items),

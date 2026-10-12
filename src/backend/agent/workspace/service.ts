@@ -163,12 +163,12 @@ export class AgentWorkspaceService {
   }
 
   /** 查询现有文件事实，不触发工作区生成或解析原稿。 */
-  public list_files(): AgentFileCandidate[] {
+  public async list_files(): Promise<AgentFileCandidate[]> {
     const snapshot = this.options.cache.snapshot();
     const counts =
       snapshot.projectPath === ""
         ? new Map<string, number>()
-        : this.options.database.read_file_counts(snapshot.projectPath);
+        : await this.options.database.read_file_counts(snapshot.projectPath);
     return [
       ...this.options.cache.files.readFileEntries().map((file): AgentFileCandidate => ({
         kind: "workspace",
@@ -525,7 +525,7 @@ export class AgentWorkspaceService {
     });
 
     const pdf_documents = snapshot_files.some((file) => file.file_type === "PDF")
-      ? this.options.database.read_pdf_documents(project_path)
+      ? await this.options.database.read_pdf_documents(project_path)
       : [];
     const project_meta: JsonRecord = {
       ...language,
@@ -743,20 +743,24 @@ export class AgentWorkspaceService {
         const quality = this.options.cache.quality.readBlock(); // 读取边界已校验规则，预演只借用当前事实。
         const current: AgentWorkspaceCurrentFacts = {
           items: this.options.cache.items.readItems() as unknown as JsonRecord[],
-          pdfDocuments: [...new Set(parsed.batch.pages.map((intent) => intent.file_path))].flatMap(
-            (file_path) => {
-              const document = this.options.database.read_pdf_document(
-                active.projectPath,
-                file_path,
-              );
-              return document ? [{ file_path, document }] : [];
-            },
-          ),
+          pdfDocuments: (
+            await Promise.all(
+              [...new Set(parsed.batch.pages.map((intent) => intent.file_path))].map(
+                async (file_path) => {
+                  const document = await this.options.database.read_pdf_document(
+                    active.projectPath,
+                    file_path,
+                  );
+                  return document ? [{ file_path, document }] : [];
+                },
+              ),
+            )
+          ).flat(),
           quality: Object.fromEntries(
             QUALITY_RULE_KINDS.map((kind) => [kind, quality[kind].entries]),
           ),
           prompts: project_workspace_prompts(this.options.cache.prompts.readBlock()),
-          duplicateFilterEnabled: this.read_duplicate_filter_enabled(active.projectPath),
+          duplicateFilterEnabled: await this.read_duplicate_filter_enabled(active.projectPath),
         };
         preview = resolve_agent_workspace_writes({ batch: parsed.batch, current });
         all_rejected = normalize_workspace_rejections(
@@ -845,8 +849,8 @@ export class AgentWorkspaceService {
   }
 
   /** Agent 预演读取项目持久镜像，确保审批采用与事务提交相同的重复过滤口径。 */
-  private read_duplicate_filter_enabled(project_path: string): boolean {
-    const meta = this.options.database.get_all_meta(project_path);
+  private async read_duplicate_filter_enabled(project_path: string): Promise<boolean> {
+    const meta = await this.options.database.get_all_meta(project_path);
     return normalize_project_settings_snapshot(
       meta,
       normalize_project_settings_snapshot(read_json_record(meta["prefilter_config"])),

@@ -247,7 +247,7 @@ export class FileFormatService {
         read_subtitle_file_type(file);
       const subtitle = this.read_subtitle_format(file_type);
       if (!subtitle) continue;
-      const asset = context.asset_reader(file);
+      const asset = await context.asset_reader(file);
       if (asset === null) throw new AppError("file.not_found", { public_details: { file } });
       const text = await decode_text_content(asset);
       const output = subtitle.format.render_text(text, file_items, file);

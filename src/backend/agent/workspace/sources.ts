@@ -13,13 +13,13 @@ export async function write_agent_workspace_sources(args: {
   nativeFs: NativeFs;
   sourceRoot: string;
   files: ReadonlyArray<{ file_path: string; file_type: string }>;
-  readAsset: (file_path: string) => Buffer | null;
+  readAsset: (file_path: string) => Buffer | null | Promise<Buffer | null>;
 }): Promise<AgentWorkspaceSourceFile[]> {
   await args.nativeFs.make_dir_async(args.sourceRoot);
   const projected: AgentWorkspaceSourceFile[] = [];
   for (const file of args.files) {
     const relative_path = normalize_source_relative_path(file.file_path);
-    const content = args.readAsset(file.file_path);
+    const content = await args.readAsset(file.file_path);
     if (content === null) throw new Error(`Project source asset is missing: ${file.file_path}`);
     await args.nativeFs.write_file(path.join(args.sourceRoot, relative_path), content);
     projected.push({ ...file, file_path: relative_path });

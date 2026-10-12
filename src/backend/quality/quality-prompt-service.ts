@@ -119,7 +119,7 @@ export class QualityPromptService {
     const project_path = this.session_state.require_loaded_project_path();
     const output_path = this.ensure_txt_suffix(String(request["path"] ?? ""));
     const text =
-      this.database.get_rule_text(project_path, prompt.database_type) ??
+      (await this.database.get_rule_text(project_path, prompt.database_type)) ??
       this.get_template({}).template.default_text;
     this.native_fs.write_file_sync(output_path, text);
     return { path: output_path.replace(/\\/g, "/") };

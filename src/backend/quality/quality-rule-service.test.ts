@@ -278,7 +278,7 @@ describe("QualityRuleService", () => {
   it("任务 busy 时拒绝全部质量项目写但不阻塞预设文件 IO", async () => {
     const database = new ProjectDatabase();
     cleanup_databases.push(database);
-    const { service } = create_workbench_service(database, "batch_translation");
+    const { service } = await create_workbench_service(database, "batch_translation");
     const project_writes = [
       () =>
         service.update({
@@ -309,7 +309,7 @@ describe("QualityRuleService", () => {
   it("规则条目与 meta 同一事务提交且只发布一次 project.data_changed", async () => {
     const database = new ProjectDatabase();
     cleanup_databases.push(database);
-    const { service, lg_path, publisher } = create_workbench_service(database);
+    const { service, lg_path, publisher } = await create_workbench_service(database);
 
     await expect(
       service.update({
@@ -334,7 +334,7 @@ describe("QualityRuleService", () => {
       updatedSections: ["quality"],
     });
     expect(publisher.publish_project_change).toHaveBeenCalledTimes(1);
-    expect(database.get_all_meta(lg_path)).toMatchObject({
+    expect(await database.get_all_meta(lg_path)).toMatchObject({
       glossary_enable: false,
       "quality_rule_revision.glossary": 1,
     });
@@ -348,7 +348,7 @@ describe("QualityRuleService", () => {
       }),
     ).rejects.toThrow(expect.objectContaining({ code: "data.revision_conflict" }));
     expect(publisher.publish_project_change).not.toHaveBeenCalled();
-    expect(database.get_rules(lg_path, "glossary")).toEqual([
+    expect(await database.get_rules(lg_path, "glossary")).toEqual([
       { entry_id: "hp", src: "HP", dst: "生命值", info: "", case_sensitive: false },
     ]);
   });
@@ -356,7 +356,7 @@ describe("QualityRuleService", () => {
   it("保存质量规则时保留稳定 entry_id", async () => {
     const database = new ProjectDatabase();
     cleanup_databases.push(database);
-    const { service, lg_path } = create_workbench_service(database);
+    const { service, lg_path } = await create_workbench_service(database);
 
     await service.update({
       rule_type: "glossary",
@@ -364,7 +364,7 @@ describe("QualityRuleService", () => {
       entries: [{ entry_id: "rule-1", src: "HP", dst: "生命值" }],
     });
 
-    expect(database.get_rules(lg_path, "glossary")).toEqual([
+    expect(await database.get_rules(lg_path, "glossary")).toEqual([
       {
         entry_id: "rule-1",
         src: "HP",
@@ -378,7 +378,7 @@ describe("QualityRuleService", () => {
   it("保存质量规则时拒绝缺失 entry_id", async () => {
     const database = new ProjectDatabase();
     cleanup_databases.push(database);
-    const { service } = create_workbench_service(database);
+    const { service } = await create_workbench_service(database);
 
     await expect(
       service.update({
@@ -392,7 +392,7 @@ describe("QualityRuleService", () => {
   it("保存质量规则时拒绝旧 expected_revision 字段", async () => {
     const database = new ProjectDatabase();
     cleanup_databases.push(database);
-    const { service, publisher } = create_workbench_service(database);
+    const { service, publisher } = await create_workbench_service(database);
 
     await expect(
       service.update({
@@ -405,10 +405,10 @@ describe("QualityRuleService", () => {
     expect(publisher.publish_project_change).not.toHaveBeenCalled();
   });
 
-  it("读取当前质量规则切片与 revision", () => {
+  it("读取当前质量规则切片与 revision", async () => {
     const database = new ProjectDatabase();
     cleanup_databases.push(database);
-    const { service } = create_workbench_service(database);
+    const { service } = await create_workbench_service(database);
 
     expect(service.query({ rule_type: "glossary" })).toMatchObject({
       qualityRule: {
@@ -457,15 +457,15 @@ describe("QualityRuleService", () => {
   /**
    * 构造带真实 ProjectWriteStore 的质量服务，验证写入和项目变更事件。
    */
-  function create_workbench_service(
+  async function create_workbench_service(
     database: ProjectDatabase,
     runtime_owner: "batch_translation" | "agent" | null = null,
-  ): {
+  ): Promise<{
     service: QualityRuleService;
     lg_path: string;
     publisher: ReturnType<typeof create_test_project_change_publisher>;
     runtime_gate: RuntimeOperationGate;
-  } {
+  }> {
     const { app_root } = create_service();
     const paths = new AppPathService({
       appRoot: app_root,
@@ -477,7 +477,7 @@ describe("QualityRuleService", () => {
     const project_event_bus = vi.fn();
     const lg_path = path.join(app_root, "quality.lg");
     const publisher = create_test_project_change_publisher(lg_path);
-    database.create_project(lg_path, "quality");
+    await database.create_project(lg_path, "quality");
     session_state.mark_loaded(lg_path);
     const runtime_gate = create_runtime_gate(runtime_owner);
     return {

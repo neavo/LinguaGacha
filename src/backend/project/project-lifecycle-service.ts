@@ -1,3 +1,4 @@
+import type { ProjectDatabaseAccess } from "../database/database-operations";
 import type { ProjectFileRecord } from "./project-file-records";
 import type { ProjectPreviewResponse } from "../../shared/project-preview";
 import type { PDFExecution } from "../file/pdf/pdf-worker";
@@ -158,30 +159,29 @@ export class ProjectLifecycleService {
   /**
    * 在生命周期租约内完成迁移、缓存热机和会话切换。create 复用此入口避免嵌套租约。
    */
-  private async load_project_under_lease(body: JsonRecord): Promise<JsonRecord> {
+  private async load_project_under_lease(body: JsonRecord, prepared = false): Promise<JsonRecord> {
     const project_path = this.require_body_string(body, "path");
     this.assert_project_file_exists(project_path);
     let committed = false; // 包含连接释放在内的提交后步骤都只能要求恢复。
     try {
-      return await this.database.with_project_scope_async(project_path, async () => {
-        // 打开期迁移只生成 operation，和 updated_at 一起提交后才暴露 loaded 状态
-        const migration_writes = await build_project_open_writes({
-          project_path,
-          database: this.database,
-          app_setting_service: this.app_setting_service,
-        });
-
-        await this.database.transaction(project_path, () => {
-          this.database.set_meta(project_path, "updated_at", this.build_timestamp());
-          for (const write of migration_writes) {
-            write(this.database);
-          }
-        });
-        committed = true;
-        await this.cache.warmProject(project_path);
-        await this.session_state.mark_loaded(project_path);
-        return this.build_loaded_project_response(project_path);
+      if (!prepared) await this.database.prepare(project_path);
+      // 打开期迁移只生成 operation，和 updated_at 一起提交后才暴露 loaded 状态
+      const migration_writes = await build_project_open_writes({
+        project_path,
+        database: this.database,
+        app_setting_service: this.app_setting_service,
       });
+
+      await this.database.transaction(project_path, (writer) => {
+        writer.set_meta(project_path, "updated_at", this.build_timestamp());
+        for (const write of migration_writes) {
+          write(writer);
+        }
+      });
+      committed = true;
+      await this.cache.warmProject(project_path);
+      await this.session_state.mark_loaded(project_path);
+      return this.build_loaded_project_response(project_path);
     } catch (cause) {
       if (AppErrors.is_app_error(cause) && cause.code === "data.committed_sync_failed") throw cause;
       if (!committed) throw cause;
@@ -225,19 +225,19 @@ export class ProjectLifecycleService {
     const default_preset_input = this.default_preset_reader.read();
     const asset_writes = this.build_asset_writes(project_path, parsed_draft.files);
 
-    this.database.create_project(
+    await this.database.create_project(
       project_path,
       this.build_project_name(source_paths, project_path),
-      () => {
-        this.write_default_presets(project_path, default_preset_input);
+      (writer) => {
+        this.write_default_presets(writer, project_path, default_preset_input);
         for (const write of asset_writes) {
-          write(this.database);
+          write(writer);
         }
-        this.database.set_items(
+        writer.set_items(
           project_path,
           build_project_item_persistent_records(prefilter_output.items) as unknown as JsonValue[],
         );
-        this.database.upsert_meta_entries(
+        writer.upsert_meta_entries(
           project_path,
           this.build_project_settings_meta({
             project_settings,
@@ -247,9 +247,12 @@ export class ProjectLifecycleService {
       },
     );
 
-    const response = await this.load_project_under_lease({
-      path: project_path,
-    });
+    const response = await this.load_project_under_lease(
+      {
+        path: project_path,
+      },
+      true,
+    );
     this.log_create_commit_parse_failures(parsed_draft.failed_files);
     this.default_preset_reader.log_loaded_names(default_preset_input.loaded_names);
     return this.build_create_project_response(response, parsed_draft.failed_files);
@@ -262,7 +265,7 @@ export class ProjectLifecycleService {
     return await this.runtime_gate.run_project_write(async () => {
       const project_path = this.session_state.require_loaded_project_path();
       const section_revisions = build_section_revisions_from_meta(
-        this.database.get_all_meta(project_path),
+        await this.database.get_all_meta(project_path),
       );
       return await this.write_store.apply_task_input({
         projectPath: project_path,
@@ -278,29 +281,29 @@ export class ProjectLifecycleService {
   /**
    * 默认预设显式输入在新建事务内落库，不把数据库写闭包泄漏给读取器。
    */
-  private write_default_presets(project_path: string, input: ProjectDefaultPresetInput): void {
-    this.database.set_meta(project_path, "text_preserve_mode", input.text_preserve_mode);
+  private write_default_presets(
+    writer: ProjectDatabaseAccess,
+    project_path: string,
+    input: ProjectDefaultPresetInput,
+  ): void {
+    writer.set_meta(project_path, "text_preserve_mode", input.text_preserve_mode);
     for (const rule of input.quality_rules) {
       const storage = resolve_project_quality_rule_storage(rule.kind);
-      this.database.set_rules(
-        project_path,
-        storage.database_type,
-        rule.entries as unknown as JsonValue[],
-      );
+      writer.set_rules(project_path, storage.database_type, rule.entries as unknown as JsonValue[]);
       if (storage.enabled_meta_key !== null && rule.enabled !== null) {
-        this.database.set_meta(project_path, storage.enabled_meta_key, rule.enabled);
+        writer.set_meta(project_path, storage.enabled_meta_key, rule.enabled);
       }
       if (storage.mode_meta_key !== null && rule.mode !== null) {
-        this.database.set_meta(project_path, storage.mode_meta_key, rule.mode);
+        writer.set_meta(project_path, storage.mode_meta_key, rule.mode);
       }
-      this.database.set_meta(project_path, storage.revision_meta_key, INITIAL_PRESET_REVISION);
+      writer.set_meta(project_path, storage.revision_meta_key, INITIAL_PRESET_REVISION);
     }
     if (input.translation_prompt !== null) {
       const prompt = input.translation_prompt;
       const storage = resolve_project_prompt_storage();
-      this.database.set_rule_text(project_path, storage.database_type, prompt.text);
-      this.database.set_meta(project_path, storage.enabled_meta_key, prompt.enabled);
-      this.database.set_meta(project_path, storage.revision_meta_key, INITIAL_PRESET_REVISION);
+      writer.set_rule_text(project_path, storage.database_type, prompt.text);
+      writer.set_meta(project_path, storage.enabled_meta_key, prompt.enabled);
+      writer.set_meta(project_path, storage.revision_meta_key, INITIAL_PRESET_REVISION);
     }
   }
 
@@ -460,11 +463,12 @@ export class ProjectLifecycleService {
   /**
    * 读取打开工程前的设置对齐预演，不进入 loaded 状态，也不写运行态事实
    */
-  public get_open_alignment_preview(body: JsonRecord): JsonRecord {
+  public async get_open_alignment_preview(body: JsonRecord): Promise<JsonRecord> {
     const project_path = this.require_body_string(body, "path");
     this.assert_project_file_exists(project_path);
+    await this.database.prepare(project_path);
 
-    const meta = this.database.get_all_meta(project_path);
+    const meta = await this.database.get_all_meta(project_path);
     const prefilter_config = {
       ...read_json_record(meta["prefilter_config"] as JsonValue),
     };
@@ -517,7 +521,7 @@ export class ProjectLifecycleService {
       if (state.loaded && state.projectPath !== "") {
         this.cache.clearProject(state.projectPath);
         await this.session_state.clear();
-        this.database.close_project(state.projectPath);
+        await this.database.close_project(state.projectPath);
       } else {
         await this.session_state.clear();
       }
@@ -533,10 +537,11 @@ export class ProjectLifecycleService {
   /**
    * 读取 .lg 摘要预览，不加载工程会话
    */
-  public get_project_preview(body: JsonRecord): ProjectPreviewResponse {
+  public async get_project_preview(body: JsonRecord): Promise<ProjectPreviewResponse> {
     const project_path = this.require_body_string(body, "path");
     this.assert_project_file_exists(project_path);
-    return { preview: this.database.get_project_summary(project_path) };
+    await this.database.prepare(project_path);
+    return { preview: await this.database.get_project_summary(project_path) };
   }
 
   /**

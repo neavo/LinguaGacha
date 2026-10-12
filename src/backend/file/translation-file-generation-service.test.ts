@@ -1,3 +1,4 @@
+import type { ProjectDatabaseAccess } from "../database/database-operations";
 import { read_pdf_document } from "./pdf/pdf-document";
 import { create_pdf_execution, create_pdf_fixture } from "./pdf/test-support";
 import type { PDFDocument } from "../../shared/pdf";
@@ -7,7 +8,8 @@ import path from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { ProjectDatabase } from "../database/database-operations";
+import { ProjectDatabase } from "../database/database-operations";
+import * as pdf_translation from "./pdf/pdf-translation";
 import { default_native_fs } from "../../native/native-fs";
 import { create_text_resolver } from "../../shared/i18n";
 import { AppError } from "../../shared/error";
@@ -26,6 +28,48 @@ beforeEach(() => {
 afterEach(() => {
   vi.restoreAllMocks();
   fs.rmSync(temp_dir, { recursive: true, force: true });
+});
+
+it("渲染校验开始前已关闭真实工程连接，校验失败保留文件名和原因且没有输出", async () => {
+  const project = path.join(temp_dir, "source.lg");
+  const source = path.join(temp_dir, "source.pdf");
+  const output = path.join(temp_dir, "output");
+  const bytes = create_pdf_fixture();
+  fs.writeFileSync(source, bytes);
+  const document = read_pdf_document(bytes);
+  const database = new ProjectDatabase();
+  const session = new ProjectSessionState();
+  const failure = new Error("invalid markdown");
+  try {
+    await database.create_project(project, "test", (writer) =>
+      writer.add_asset_from_source(project, "book.pdf", source, document),
+    );
+    await session.mark_loaded(project);
+    const sidecars: boolean[] = [];
+    const render = vi.spyOn(pdf_translation, "render_pdf_translation").mockImplementation(() => {
+      sidecars.push(fs.existsSync(project + "-wal"), fs.existsSync(project + "-shm"));
+      throw failure;
+    });
+    const execute = vi.fn();
+    const service = new TranslationFileGenerationService(
+      database,
+      create_setting_service(),
+      session,
+      async () => {},
+      execute,
+    );
+    await expect(service.generate_files_to_directory(output)).rejects.toMatchObject({
+      code: "file.invalid_structure",
+      public_details: { file: "book.pdf" },
+      cause: failure,
+    });
+    expect(render).toHaveBeenCalledTimes(1);
+    expect(sidecars).toEqual([false, false]);
+    expect(execute).not.toHaveBeenCalled();
+    expect(fs.existsSync(output)).toBe(false);
+  } finally {
+    await database.close();
+  }
 });
 
 /** 只提供译文生成消费的设置，避免启动应用配置存储。 */
@@ -57,8 +101,9 @@ function create_database(
     read_pdf_summaries: () =>
       Object.fromEntries(Object.keys(documents).map((file_path) => [file_path, {}])),
     read_pdf_document: (_project_path: string, file_path: string) => documents[file_path] ?? null,
-    with_project_scope_async: async <T>(_project: string, callback: () => Promise<T>): Promise<T> =>
-      await callback(),
+    async read<T>(_path: string, callback: (reader: ProjectDatabaseAccess) => T): Promise<T> {
+      return callback(this as unknown as ProjectDatabaseAccess);
+    },
     get_all_items: () => items,
     get_all_asset_records: () =>
       Object.keys(assets).map((path, sort_order) => ({ path, sort_order })),

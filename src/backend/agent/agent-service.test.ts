@@ -1,3 +1,4 @@
+import { AgentDatabaseAccess } from "../database/agent-database-access";
 import { DatabaseSync } from "node:sqlite";
 import { NodeSqliteDatabase } from "@earendil-works/pi-durable/storage/sqlite/node";
 import { AgentChatStorage } from "../database/agent-chat-storage";
@@ -4026,7 +4027,7 @@ describe("AgentService", () => {
       workspace ??
       ({
         uploads: fake_uploads(),
-        list_files: () => [],
+        list_files: async () => [],
         activate_path: vi.fn(async () => ({ status: "cancelled" as const })),
         read_document: vi.fn(async () => ({ path: "work/report.md", content: "报告" })),
         describe_file: vi.fn(),
@@ -4093,7 +4094,7 @@ describe("AgentService", () => {
           connection = new NodeSqliteDatabase(sqlite);
           connections.set(project, connection);
         }
-        return new AgentChatStorage(connection, () => {});
+        return new AgentChatStorage(new AgentDatabaseAccess((callback) => callback(connection!)));
       },
     };
     const service = new AgentService({

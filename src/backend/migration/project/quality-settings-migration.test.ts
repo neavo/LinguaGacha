@@ -1,3 +1,4 @@
+import type { ProjectDatabaseAccess } from "../../database/database-operations";
 import { expect, it, vi } from "vitest";
 import type { JsonRecord, JsonValue } from "../../../domain/json";
 import type { ProjectOpenMigrationContext } from "../migration-types";
@@ -35,7 +36,8 @@ it.each([
       meta,
       items: [],
     } as unknown as ProjectOpenMigrationContext;
-    for (const write of quality_settings_migration(context)) write(context.database);
+    for (const write of quality_settings_migration(context))
+      write(context.database as unknown as ProjectDatabaseAccess);
     expect(database.set_meta.mock.calls.map(([, key, value]) => [key, value])).toEqual(expected);
     expect(quality_settings_migration(context)).toEqual([]);
   },

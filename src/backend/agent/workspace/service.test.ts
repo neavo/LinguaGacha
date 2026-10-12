@@ -579,7 +579,7 @@ describe("AgentWorkspaceService", () => {
     ).resolves.toBeUndefined();
     expect(fs.existsSync(path.join(fixture.workspace_root, "sources"))).toBe(false);
 
-    fixture.read_asset_content.mockReturnValue(Buffer.from("源文件正文", "utf-8"));
+    fixture.read_asset_content.mockResolvedValue(Buffer.from("源文件正文", "utf-8"));
     await run_workspace(fixture);
     expect(fs.existsSync(path.join(fixture.workspace_root, "sources", "script.txt"))).toBe(true);
   });
@@ -1097,6 +1097,7 @@ async function create_fixture(temp_dir: string, native_fs?: NativeFs) {
     files: {
       readFileEntries: () => [{ rel_path: "script.txt", file_type: "TXT", sort_index: 0 }],
     },
+    pdf: { readBlock: () => ({}) },
     quality: { readBlock: () => quality },
     prompts: {
       readBlock: () => ({
@@ -1146,7 +1147,7 @@ async function create_fixture(temp_dir: string, native_fs?: NativeFs) {
   );
   const warning_item = items[0] as JsonRecord;
   const setting = { ...DEFAULT_SETTING };
-  const read_asset_content = vi.fn(() => Buffer.from("源文件正文", "utf-8"));
+  const read_asset_content = vi.fn(async () => Buffer.from("源文件正文", "utf-8"));
   const query_warnings = vi.fn(async () => ({
     projectPath: snapshot.projectPath,
     sectionRevisions: { ...snapshot.sectionRevisions },
@@ -1193,11 +1194,11 @@ async function create_fixture(temp_dir: string, native_fs?: NativeFs) {
     cache,
     proofreading: { query_warnings },
     database: {
-      get_all_meta: () => ({}),
+      get_all_meta: async () => ({}),
       read_asset_content,
-      read_pdf_document: () => null,
-      read_pdf_documents: () => [],
-      read_file_counts: () => new Map(),
+      read_pdf_document: async () => null,
+      read_pdf_documents: async () => [],
+      read_file_counts: async () => new Map(),
     },
     runtimeGate: { run_agent_project_write: runtime_gate },
     writeStore: { apply_agent_workspace_changes: write_store },
@@ -1388,7 +1389,7 @@ it("PDF 零条目工程按页保存、隔离旧指纹，语言变化后重建工
       openDirectory: async () => {},
       pickSavePath: async () => null,
     });
-    expect(workspace.list_files()).toEqual([
+    expect(await workspace.list_files()).toEqual([
       { kind: "workspace", path: "book.pdf", count: 3, unit: "pages" },
     ]);
     await workspace.activate_chat("test0001", [], async () => {});
@@ -1402,13 +1403,18 @@ it("PDF 零条目工程按页保存、隔离旧指纹，语言变化后重建工
       }),
       new AbortController().signal,
     );
-    expect(workspace.list_files()).toContainEqual({ kind: "upload", path: upload.path, size: 6 });
+    expect(await workspace.list_files()).toContainEqual({
+      kind: "upload",
+      path: upload.path,
+      size: 6,
+    });
     await workspace.run("", new AbortController().signal);
     const root = path.join(resources.paths.get_agent_workspace_root_dir(), "test0001");
     const project_path = services.state.session.require_loaded_project_path();
     // 每次从数据库重读，验证保存与重开后的事实而非缓存引用。
-    const read_document = () => resources.database.read_pdf_document(project_path, "book.pdf")!;
-    expect(resources.database.get_item_count(project_path)).toBe(0);
+    const read_document = async () =>
+      (await resources.database.read_pdf_document(project_path, "book.pdf"))!;
+    expect(await resources.database.get_item_count(project_path)).toBe(0);
     expect(services.state.cache.files.readFileEntries()).toEqual([
       { rel_path: "book.pdf", file_type: "PDF", sort_index: 0 },
     ]);
@@ -1431,7 +1437,7 @@ it("PDF 零条目工程按页保存、隔离旧指纹，语言变化后重建工
       reviewed: true,
       notes: "等待版式核对",
     };
-    const original = read_document();
+    const original = await read_document();
     const original_fp = agent_workspace_page_fingerprint(
       "book.pdf",
       original.digest,
@@ -1462,7 +1468,7 @@ it("PDF 零条目工程按页保存、隔离旧指纹，语言变化后重建工
       postReplacement: 0,
       prompts: 0,
     });
-    expect(services.project.summary.read()["snapshot"]).toMatchObject({
+    expect((await services.project.summary.read())["snapshot"]).toMatchObject({
       entries: [
         {
           file_type: "PDF",
@@ -1486,9 +1492,9 @@ it("PDF 零条目工程按页保存、隔离旧指纹，语言变化后重建工
     await workspace.run("", new AbortController().signal);
     expect(fs.statSync(source_path).mtimeMs).toBe(source_mtime);
     expect((await save(original_fp, { ...draft, notes: "stale" }))["status"]).toBe("rejected");
-    expect(read_document().pages[0]!.notes).toBe("等待版式核对");
+    expect((await read_document()).pages[0]!.notes).toBe("等待版式核对");
     await workspace.run("", new AbortController().signal);
-    const baseline = read_document();
+    const baseline = await read_document();
     const baseline_fp = agent_workspace_page_fingerprint(
       "book.pdf",
       baseline.digest,
@@ -1526,8 +1532,8 @@ it("PDF 零条目工程按页保存、隔离旧指纹，语言变化后重建工
     expect(partial["rejected"]).toMatchObject([
       { scope: "pages", file_path: "book.pdf", page: 1, reason: "fp_mismatch" },
     ]);
-    expect(read_document().pages[0]!.notes).toBe("等待版式核对");
-    expect(read_document().pages[2]).toEqual(original.pages[2]);
+    expect((await read_document()).pages[0]!.notes).toBe("等待版式核对");
+    expect((await read_document()).pages[2]).toEqual(original.pages[2]);
     await workspace.run("", new AbortController().signal);
     expect(
       (
@@ -1543,11 +1549,13 @@ it("PDF 零条目工程按页保存、隔离旧指纹，语言变化后重建工
       )["status"],
     ).toBe("applied");
     resources.settings.set_transient_overrides({ source_language: "ALL", target_language: "DE" });
-    resources.database.upsert_meta_entries(project_path, {
-      source_language: "ALL",
-      target_language: "DE",
-    });
-    resources.database.close_project(project_path);
+    await resources.database.transaction(project_path, (writer) =>
+      writer.upsert_meta_entries(project_path, {
+        source_language: "ALL",
+        target_language: "DE",
+      }),
+    );
+    await resources.database.close_project(project_path);
     await workspace.run("", new AbortController().signal);
     const rows = fs
       .readFileSync(path.join(root, "pages/entries.jsonl"), "utf8")
@@ -1562,7 +1570,7 @@ it("PDF 零条目工程按页保存、隔离旧指纹，语言变化后重建工
       notes: "正文归入第 1 页",
     });
     expect(rows[2].translation).toEqual({ kind: "keep", reason: "已查看纯图页，无需翻译" });
-    expect(services.project.summary.read().snapshot.entries[0]!.progress).toMatchObject({
+    expect((await services.project.summary.read()).snapshot.entries[0]!.progress).toMatchObject({
       completed_count: 2,
       skipped_count: 1,
       pending_count: 0,
@@ -1575,8 +1583,8 @@ it("PDF 零条目工程按页保存、隔离旧指纹，语言变化后重建工
         await save(
           agent_workspace_page_fingerprint(
             "book.pdf",
-            read_document().digest,
-            read_document().pages[0]!,
+            (await read_document()).digest,
+            (await read_document()).pages[0]!,
           ),
           draft,
         )
@@ -1597,29 +1605,38 @@ it("PDF 零条目工程按页保存、隔离旧指纹，语言变化后重建工
       new Uint8Array(fs.readFileSync(path.join(output.output_path, "book.pdf"))),
     );
     expect(exported.pages).toHaveLength(2);
-    expect(read_document().pages[0]).toMatchObject(draft);
+    expect((await read_document()).pages[0]).toMatchObject(draft);
     // 重置和删除使用当前 revision，避免沿用先前提交的快照。
-    const revision = () =>
-      new ProjectDataReader(resources.database).build_manifest({
-        loaded: true,
-        projectPath: project_path,
-      })["sectionRevisions"];
+    const revision = async () =>
+      (
+        await resources.database.read(
+          {
+            loaded: true,
+            projectPath: project_path,
+          }.projectPath,
+          (access) =>
+            new ProjectDataReader(access).build_manifest({
+              loaded: true,
+              projectPath: project_path,
+            }),
+        )
+      )["sectionRevisions"];
     await services.project.content.reset_files({
       rel_paths: ["book.pdf"],
-      expected_section_revisions: revision()!,
+      expected_section_revisions: (await revision())!,
     });
     expect(
-      read_document().pages.every(
+      (await read_document()).pages.every(
         (page) => page.translation === null && !page.reviewed && page.notes === "",
       ),
     ).toBe(true);
-    expect(read_document().pages).toHaveLength(3);
+    expect((await read_document()).pages).toHaveLength(3);
     await services.project.content.delete_files({
       rel_paths: ["book.pdf"],
-      expected_section_revisions: revision()!,
+      expected_section_revisions: (await revision())!,
     });
-    expect(resources.database.read_pdf_document(project_path, "book.pdf")).toBeNull();
-    expect(resources.database.read_asset_content(project_path, "book.pdf")).toBeNull();
+    expect(await resources.database.read_pdf_document(project_path, "book.pdf")).toBeNull();
+    expect(await resources.database.read_asset_content(project_path, "book.pdf")).toBeNull();
   } finally {
     await services.dispose();
     await resources.dispose();

@@ -53,7 +53,7 @@ export class AppSettingsCommandService {
       if (changed_project_keys.length === 0)
         return { ...this.settings.update_app_settings(request), accepted: true, changes: [] };
 
-      const commit = this.content.prepare_settings_alignment(
+      const commit = await this.content.prepare_settings_alignment(
         this.session.require_loaded_project_path(),
         normalize_project_settings_snapshot(next_snapshot),
         changed_project_keys.some((key) => key !== "target_language"),

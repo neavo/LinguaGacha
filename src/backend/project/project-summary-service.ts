@@ -3,7 +3,6 @@ import {
   build_project_translation_stats,
   calculate_completion_percent,
 } from "../../shared/project-translation-stats";
-import type { ProjectDatabase } from "../database/database-operations";
 import type { ProjectItemPublicRecord } from "../../domain/item";
 import type { PDFSummary } from "../../shared/pdf";
 import type {
@@ -26,7 +25,6 @@ export class ProjectSummaryService {
   public constructor(
     private readonly session_state: ProjectSessionState,
     private readonly cache: CacheReadPort,
-    private readonly database: Pick<ProjectDatabase, "read_pdf_summaries">,
   ) {}
 
   /**
@@ -36,9 +34,7 @@ export class ProjectSummaryService {
     const project_path = this.session_state.require_loaded_project_path();
     const items = this.cache.items.readItems();
     const cached_file_entries = this.cache.files.readFileEntries();
-    const pdf = cached_file_entries.some((entry) => entry.file_type === "PDF")
-      ? this.database.read_pdf_summaries(project_path)
-      : {};
+    const pdf = this.cache.pdf.readBlock();
     return {
       projectPath: project_path,
       sectionRevisions: this.cache.readSectionRevisions(),

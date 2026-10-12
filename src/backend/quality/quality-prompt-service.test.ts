@@ -25,13 +25,13 @@ describe("QualityPromptService", () => {
     cleanup_databases.push(database);
     const { service, session_state, app_root } = create_service(database);
     const project_path = path.join(create_temp_dir(), "overrides.lg");
-    database.create_project(project_path, "overrides");
+    await database.create_project(project_path, "overrides");
     session_state.mark_loaded(project_path);
     const template_dir = path.join(app_root, "builtin", "translation_prompt", "template", "zh");
     fs.mkdirSync(template_dir, { recursive: true });
     for (const file of ["base.txt", "prefix.txt", "suffix.txt"])
       fs.writeFileSync(path.join(template_dir, file), "默认第一版");
-    expect(database.get_rule_text(project_path, "translation_prompt")).toBeNull();
+    expect(await database.get_rule_text(project_path, "translation_prompt")).toBeNull();
     let revision = 0;
     const output = path.join(app_root, "export.txt");
     for (const text of ["默认第一版", "", null]) {
@@ -40,12 +40,12 @@ describe("QualityPromptService", () => {
         enabled: true,
         expected_section_revisions: { prompts: revision++ },
       });
-      database.close();
-      expect(database.get_rule_text(project_path, "translation_prompt")).toBe(text);
+      await database.close();
+      expect(await database.get_rule_text(project_path, "translation_prompt")).toBe(text);
       fs.writeFileSync(path.join(template_dir, "base.txt"), "默认第二版");
       await service.export({ path: output });
       expect(fs.readFileSync(output, "utf-8")).toBe(text ?? "默认第二版");
-      expect(database.get_all_meta(project_path)).toMatchObject({
+      expect(await database.get_all_meta(project_path)).toMatchObject({
         translation_prompt_enable: true,
         "quality_prompt_revision.translation": revision,
       });
@@ -126,7 +126,7 @@ describe("QualityPromptService", () => {
     cleanup_databases.push(database);
     const { service, session_state, published } = create_service(database);
     const project_path = path.join(create_temp_dir(), "prompt.lg");
-    database.create_project(project_path, "prompt");
+    await database.create_project(project_path, "prompt");
     session_state.mark_loaded(project_path);
 
     await service.save({
@@ -135,7 +135,7 @@ describe("QualityPromptService", () => {
       expected_section_revisions: { prompts: 0 },
     });
 
-    expect(database.get_rule_text(project_path, "translation_prompt")).toBe("新的提示词");
+    expect(await database.get_rule_text(project_path, "translation_prompt")).toBe("新的提示词");
     expect(published.mock.calls[0]?.[0]).toMatchObject({
       projectPath: project_path,
       source: "quality_prompt_save",

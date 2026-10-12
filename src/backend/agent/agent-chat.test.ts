@@ -170,12 +170,12 @@ afterEach(() => {
 });
 
 /** 用真实工程文件验证关闭后重开，避免内存存储掩盖持久化问题。 */
-function project() {
+async function project() {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "lg-chat-"));
   roots.push(root);
   const file = path.join(root, "project.lg");
   const database = new ProjectDatabase();
-  database.create_project(file, "持久化");
+  await database.create_project(file, "持久化");
   return { database, file };
 }
 /** 以无模型配置打开历史，模型只在新指令前注册。 */
@@ -186,6 +186,7 @@ async function open(store: AgentChatStorage) {
   const chat = await AgentChat.open({
     chatId: (await store.read())!.id,
     storage: await store.open_storage(),
+    readBatch: (callback) => store.read_batch(callback),
     cwd: process.cwd(),
     models,
     seed: [],
@@ -232,7 +233,7 @@ async function talk(chat: AgentChat, text: string) {
 }
 
 it("既有身份重开恢复历史，无模型时可修订助手，后续请求采用修订内容", async () => {
-  const { database, file } = project();
+  const { database, file } = await project();
   let store = database.open_agent_store(file);
   await store.create("-t75szF5");
   const first = await open(store);
@@ -275,11 +276,11 @@ it("既有身份重开恢复历史，无模型时可修订助手，后续请求�
   );
   await restored.chat.close();
   await store.close();
-  database.close();
+  await database.close();
 });
 
 it("供应商身份随 SQLite 重开和模型重新配置保留", async () => {
-  const { database, file } = project();
+  const { database, file } = await project();
   const store = database.open_agent_store(file);
   await store.create("identity-chat");
   const first = await open(store);
@@ -303,12 +304,12 @@ it("供应商身份随 SQLite 重开和模型重新配置保留", async () => {
   } finally {
     await restored.chat.close();
     await reopenedStore.close();
-    database.close();
+    await database.close();
   }
 });
 
 it("压缩状态依赖 SDK 任务，重开保留起始时间、身份顺序和状态，关闭冲刷待写日志", async () => {
-  const { database, file } = project();
+  const { database, file } = await project();
   const store = database.open_agent_store(file);
   await store.create("compaction-chat");
   const first = await open(store);
@@ -357,12 +358,12 @@ it("压缩状态依赖 SDK 任务，重开保留起始时间、身份顺序和�
     await restored?.chat.close();
     await first.chat.close();
     await store.close();
-    database.close();
+    await database.close();
   }
 });
 
 it("遗留工具任务只执行 SDK 取消收尾，恢复后保留公开工具条目且不重跑", async () => {
-  const { database, file } = project();
+  const { database, file } = await project();
   const store = database.open_agent_store(file);
   await store.create("session1");
   const models = createModels();
@@ -459,7 +460,7 @@ it("遗留工具任务只执行 SDK 取消收尾，恢复后保留公开工具�
   );
   await restored.chat.close();
   await store.close();
-  database.close();
+  await database.close();
 });
 
 it("完整轮次分叉保留前缀，清空后续意图并拒绝旧分支目标", async () => {
@@ -542,7 +543,7 @@ it("用户修订在 SDK 受理后切换历史，采用本次模型与思考等�
 });
 
 it.each([false, true])("SQLite 重开按修订输入回执恢复分支：已受理=%s", async (admitted) => {
-  const { database, file } = project();
+  const { database, file } = await project();
   let store = database.open_agent_store(file);
   await store.create("revision-recovery");
   const first = await open(store);
@@ -592,7 +593,7 @@ it.each([false, true])("SQLite 重开按修订输入回执恢复分支：已受�
   } finally {
     await restored.chat.close();
     await store.close();
-    database.close();
+    await database.close();
   }
 });
 

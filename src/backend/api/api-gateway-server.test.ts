@@ -389,7 +389,7 @@ describe("ApiGatewayServer", () => {
       eventStream: new ApiStreamHub(),
     });
     cleanup_callbacks.push(
-      () => database.close(),
+      async () => await database.close(),
       () => backend_services.dispose(),
       () => gateway.stop(),
     );

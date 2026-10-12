@@ -1,275 +1,280 @@
-import { database_error, database_cleanup_error } from "./database-error";
-import type { ProjectPreview } from "../../shared/project-preview";
-import { read_project_revision } from "../../domain/project-revision";
-import { build_project_translation_stats } from "../../shared/project-translation-stats";
-import { build_project_file_paths } from "../../shared/project/project-file-paths";
-import type { PDFDocument, PDFDocumentRecord, PDFPage, PDFSummary } from "../../shared/pdf";
-import { read_pdf_document } from "../../shared/pdf-schema";
 import path from "node:path";
-import { createHash } from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
 import { NodeSqliteDatabase } from "@earendil-works/pi-durable/storage/sqlite/node";
-import { AgentChatStorage } from "./agent-chat-storage";
-
+import { NativeFs, default_native_fs } from "../../native/native-fs";
+import * as AppErrors from "../../shared/error";
+import { database_error, database_cleanup_error } from "./database-error";
 import { run_project_database_migrations } from "../migration/database-migrations";
 import { ZstdTool } from "./zstd-tool";
-import { JsonTool } from "../../shared/utils/json-tool";
-import * as AppErrors from "../../shared/error";
-import { NativeFs, default_native_fs } from "../../native/native-fs";
-import type { ProjectItemWriteFields } from "../../shared/project/project-item-update";
-import { normalize_project_item_field_patch } from "../../shared/project/project-item-update";
-
-import {
-  read_json_record,
-  type JsonRecord,
-  type JsonValue,
-  type MutableJsonRecord,
-} from "../../domain/json";
-
-/** 事务规划完成后的三个可写字段，格式私有数据仍留在原 JSON 中。 */
-export type ProjectItemTranslationWrite = Readonly<{
-  item_id: number;
-  next: Readonly<ProjectItemWriteFields>;
-}>;
-type DatabaseRow = Record<string, unknown>;
-
-/** 显式记录成功与失败，收尾时可保留任意主异常。 */
-type ProjectScopeResult<T> = { ok: true; value: T } | { ok: false; error: unknown };
-
-// SQLite 的 IN 参数统一在数据库边界分块。业务批量大小不应复用这个存储安全值。
-const SQLITE_IN_CLAUSE_CHUNK_SIZE = 500;
-const SQLITE_AUTO_VACUUM_FULL = 1; // SQLite 的 FULL 自动回收模式。
-const SQLITE_BUSY_TIMEOUT_MS = 5000; // 连接建立后即生效，覆盖首次 WAL 初始化。
-
-/** 让所有 IN 查询共享同一存储分块边界，避免调用方各自猜测 SQLite 参数容量。 */
-function for_each_sqlite_in_clause_chunk<T>(
-  values: readonly T[],
-  callback: (chunk: readonly T[]) => void,
-): void {
-  for (let index = 0; index < values.length; index += SQLITE_IN_CLAUSE_CHUNK_SIZE) {
-    callback(values.slice(index, index + SQLITE_IN_CLAUSE_CHUNK_SIZE));
-  }
-}
-
-export type ProjectDatabaseWrite = (database: ProjectDatabase) => void;
-
-/** 资产路径与顺序由数据库读取入口提供，消费者使用明确字段。 */
-export type ProjectAssetRecord = Readonly<{
-  path: string; // 工程内的资产路径
-  sort_order: number; // 资产表中的排序位
-}>;
-
-/**
- * 单个 .lg 当前打开连接的生命周期记录，记录连接就绪状态和作用域、租约的共同持有计数
- */
+import { AgentChatStorage } from "./agent-chat-storage";
+import { ProjectDatabaseAccess } from "./project-database-access";
+import { AgentDatabaseAccess } from "./agent-database-access";
+export { ProjectDatabaseAccess } from "./project-database-access";
+export type {
+  ProjectDatabaseWrite,
+  ProjectAssetRecord,
+  ProjectItemTranslationWrite,
+} from "./project-database-access";
+const SQLITE_AUTO_VACUUM_FULL = 1; // SQLite 的 FULL 物理回收模式。
+const SQLITE_BUSY_TIMEOUT_MS = 5000; // 首次 WAL 配置也受等待上限约束。
+/** 关闭失败的连接仍由数据库层持有，以便再次回收。 */
 interface ProjectDatabaseConnectionRecord {
-  readonly normalized_path: string; // 连接表的唯一键，避免同一 .lg 因相对路径重复打开
+  readonly normalized_path: string;
   readonly db: DatabaseSync;
-  readonly access: NodeSqliteDatabase; // SDK 访问与工程事务共用同一串行调度
-  use_count: number; // 同步作用域与长任务租约共同持有连接，全部释放后关闭。
-  ready: boolean; // 初始化或关闭失败的连接留待回收，不能交给业务使用。
+  readonly access: NodeSqliteDatabase;
 }
-
-/**
- * 将 SQLite 文本列按严格 JSON 协议解析，非文本空值统一为 null。
- */
-function json_parse(raw_value: unknown): JsonValue {
-  if (typeof raw_value !== "string") {
-    return null;
-  }
-  return JsonTool.parseStrict<JsonValue>(raw_value);
-}
-
-/**
- * 将 SQLite 行字段收窄为稳定文本。
- */
-function row_text(row: DatabaseRow, key: string): string {
-  const value = row[key];
-  return typeof value === "string" ? value : String(value ?? "");
-}
-
-/**
- * 将 SQLite number、bigint 或文本数字统一为 JavaScript number。
- */
-function row_number(row: DatabaseRow, key: string): number {
-  const value = row[key];
-  if (typeof value === "number") {
-    return value;
-  }
-  if (typeof value === "bigint") {
-    return Number(value);
-  }
-  return Number(value ?? 0);
-}
-
-/**
- * 将 SQLite blob 复制为 Buffer，异常值返回空字节。
- */
-function bytes_from_blob(value: unknown): Buffer {
-  if (Buffer.isBuffer(value)) {
-    return value;
-  }
-  if (value instanceof Uint8Array) {
-    return Buffer.from(value);
-  }
-  return Buffer.alloc(0);
-}
-
-/**
- * 在创建数据库门面时提前确认 asset 压缩运行时可用。
- */
-function ensure_database_runtime_available(): void {
-  if (!ZstdTool.isRuntimeAvailable()) {
-    throw new AppErrors.AppError("runtime.capability_missing");
-  }
-}
-
-/**
- * Backend 内部 .lg 物理读写入口，集中持有 SQLite、事务和 asset 压缩格式
- */
+/** 工程队列独立于物理连接，等待中的工作不会提前打开 SQLite。 */
 export class ProjectDatabase {
-  private readonly connection_records = new Map<string, ProjectDatabaseConnectionRecord>(); // 只保存当前活跃连接，不再表达永久缓存
-  private readonly storage_maintenance_deferred_paths = new Set<string>(); // 当前实例内暂缓物理整理的工程路径
-  private readonly native_fs: NativeFs; // 统一 .lg 文件、源 asset 和 SQLite 路径的原生 IO 策略
-
-  /**
-   * 初始化 ProjectDatabase 依赖，保持外部写入口清晰
-   */
-  public constructor(native_fs: NativeFs = default_native_fs) {
-    this.native_fs = native_fs;
-    ensure_database_runtime_available();
+  private readonly connection_records = new Map<string, ProjectDatabaseConnectionRecord>(); // 保存在途及关闭失败的连接。
+  private readonly queues = new Map<string, Promise<void>>(); // 完成屏障独立于连接寿命。
+  private readonly storage_maintenance_deferred_paths = new Set<string>(); // 整理失败在当前实例内暂缓。
+  /** 提前核对资产压缩能力，使工程入口及时报告运行环境缺失。 */
+  public constructor(private readonly native_fs: NativeFs = default_native_fs) {
+    if (!ZstdTool.isRuntimeAvailable()) throw new AppErrors.AppError("runtime.capability_missing");
   }
-
-  /**
-   * 关闭底层资源，确保数据库句柄不会跨工程泄漏
-   */
-  public close(): void {
-    const records = [...this.connection_records.values()];
-    this.storage_maintenance_deferred_paths.clear();
+  /** 失败交给调用者，队列保留完成屏障，让后续批次仍可执行。 */
+  private async schedule<T>(project_path: string, operation: () => Promise<T>): Promise<T> {
+    const normalized = path.resolve(project_path);
+    const previous = this.queues.get(normalized) ?? Promise.resolve();
+    const result = previous.then(operation);
+    const tail = result.then(
+      () => {},
+      () => {},
+    );
+    this.queues.set(normalized, tail);
+    try {
+      return await result;
+    } finally {
+      if (this.queues.get(normalized) === tail) this.queues.delete(normalized);
+    }
+  }
+  /** 等待已受理批次后，重试回收关闭失败留下的连接。 */
+  public async close(): Promise<void> {
+    await Promise.all(this.queues.values());
     const errors: unknown[] = [];
-    for (const record of records) {
+    for (const record of this.connection_records.values()) {
       try {
         this.close_connection_record(record);
       } catch (error) {
         errors.push(error);
       }
     }
-    if (errors.length > 0) {
+    this.storage_maintenance_deferred_paths.clear();
+    if (errors.length)
       throw new AggregateError(errors, "Failed to close project database connections.");
-    }
   }
-
-  /** 排他创建工程，按事务提交结果决定失败时是否清理新文件。 */
-  public create_project(project_path: string, name: string, initialize?: () => void): void {
-    const normalized_path = path.resolve(project_path);
-    try {
-      this.native_fs.create_file_exclusive(normalized_path);
-    } catch (error) {
-      if (error instanceof Error && "code" in error && error.code === "EEXIST") {
-        throw new AppErrors.AppError("project.already_exists", { cause: error });
-      }
-      throw database_error(error, normalized_path, "create_file");
-    }
-    this.storage_maintenance_deferred_paths.delete(normalized_path);
-    try {
-      this.initialize_transaction(normalized_path, () => {
-        const now = new Date().toISOString();
-        this.upsert_meta_entries(normalized_path, { name, created_at: now, updated_at: now });
-        initialize?.();
-      });
-    } catch (error) {
-      // 事务入口拥有提交状态，新建入口按同一错误协议保留已提交文件。
-      if (AppErrors.is_app_error(error) && error.code === "data.committed_sync_failed") throw error;
+  /** 排在工程在途操作之后关闭，避免卸载截断事务。 */
+  public async close_project(project_path: string): Promise<void> {
+    await this.schedule(project_path, async () => {
+      const record = this.connection_records.get(path.resolve(project_path));
+      if (record) this.close_connection_record(record);
+    });
+  }
+  /** 迁移与物理整理属于工程准备阶段，避免每次短连接重复执行。 */
+  public async prepare(project_path: string): Promise<void> {
+    await this.use_connection(project_path, async (record) => {
+      this.apply_project_storage_mode(record.normalized_path, record.db);
       try {
-        // 关闭失败时保留文件和连接记录，防止删除仍被持有的数据库。
-        this.close_project(normalized_path);
-        this.native_fs.unlink(normalized_path, { force: true });
-      } catch (cleanup) {
-        throw database_cleanup_error(
-          error,
-          database_error(cleanup, normalized_path, "remove_created_file"),
-        );
+        run_project_database_migrations(record.db);
+      } catch (error) {
+        throw database_error(error, project_path, "migration");
       }
-      throw error;
-    }
+    });
   }
-
-  /**
-   * 工程卸载时强制释放该路径的连接与租约。
-   */
-  public close_project(project_path: string): void {
-    const normalized_path = path.resolve(project_path);
-    const record = this.connection_records.get(normalized_path);
-    if (record === undefined) {
-      return;
-    }
-    record.use_count = 0;
-    this.close_connection_record(record);
-  }
-
-  /**
-   * 新建文件尚无共享使用者，同步初始化结束后才交付工程。
-   */
-  private initialize_transaction<T>(project_path: string, callback: () => T): T {
-    let committed = false; // COMMIT 成功后，收尾失败只能要求重载。
-    try {
-      return this.with_project_connection(project_path, (db) => {
-        db.exec("BEGIN IMMEDIATE");
-        try {
-          const result = callback();
-          db.exec("COMMIT");
-          committed = true;
-          return result;
-        } catch (error) {
-          try {
-            db.exec("ROLLBACK");
-          } catch (cleanup) {
-            // 回滚失败的连接不能被长任务租约继续复用，退出作用域时立即关闭。
-            const record = this.connection_records.get(path.resolve(project_path));
-            if (record !== undefined) record.ready = false;
-            throw database_cleanup_error(
-              database_error(error, project_path, "transaction"),
-              database_error(cleanup, project_path, "rollback"),
-            );
-          }
+  /** 排他创建文件，失败时按提交状态决定是否删除本次新文件。 */
+  public async create_project(
+    project_path: string,
+    name: string,
+    initialize?: (writer: ProjectDatabaseAccess) => void,
+  ): Promise<void> {
+    await this.schedule(project_path, async () => {
+      const normalized = path.resolve(project_path);
+      try {
+        this.native_fs.create_file_exclusive(normalized);
+      } catch (error) {
+        if (error instanceof Error && "code" in error && error.code === "EEXIST")
+          throw new AppErrors.AppError("project.already_exists", { cause: error });
+        throw database_error(error, normalized, "create_file");
+      }
+      this.storage_maintenance_deferred_paths.delete(normalized);
+      try {
+        await this.execute_connection(
+          normalized,
+          async (record) => {
+            this.apply_project_storage_mode(normalized, record.db);
+            run_project_database_migrations(record.db);
+            return this.execute_transaction(record, (writer) => {
+              const now = new Date().toISOString();
+              writer.upsert_meta_entries(normalized, { name, created_at: now, updated_at: now });
+              initialize?.(writer);
+            });
+          },
+          true,
+        );
+      } catch (error) {
+        if (AppErrors.is_app_error(error) && error.code === "data.committed_sync_failed")
           throw error;
-        }
-      });
-    } catch (error) {
-      if (committed) throw this.committed_error(error, project_path);
-      throw error;
-    }
-  }
-
-  /** SDK 事务跨异步阶段持有连接，工程事务共用其队列以避免交错。同步事务体复用已有读写方法。 */
-  public async transaction<T>(project_path: string, callback: () => T): Promise<T> {
-    let committed = false;
-    try {
-      return await this.with_project_scope_async(project_path, async () => {
-        const record = this.open_project_record(path.resolve(project_path));
         try {
-          const result = await record.access.transaction(async () => callback());
-          committed = true;
-          return result;
-        } catch (error) {
-          // 回滚失败的连接不能被剩余使用权继续复用，释放时关闭它。
-          if (record.db.isTransaction) record.ready = false;
-          throw database_error(error, project_path, "transaction");
+          const record = this.connection_records.get(normalized);
+          if (record) this.close_connection_record(record);
+          this.native_fs.unlink(normalized, { force: true });
+        } catch (cleanup) {
+          throw database_cleanup_error(
+            error,
+            database_error(cleanup, normalized, "remove_created_file"),
+          );
         }
-      });
+        throw error;
+      }
+    });
+  }
+  /** 批次结束撤销句柄，阻止异步延续跨批次访问。 */
+  public read<T>(project_path: string, callback: (reader: ProjectDatabaseAccess) => T): Promise<T> {
+    return this.use_connection(project_path, async (record) => {
+      const reader = new ProjectDatabaseAccess(record.normalized_path, record.db, this.native_fs);
+      try {
+        return await callback(reader);
+      } finally {
+        reader.active = false;
+      }
+    });
+  }
+  /** 工程写入与 SDK 共用调度，事务内显式传递写入句柄。 */
+  public transaction<T>(
+    project_path: string,
+    callback: (writer: ProjectDatabaseAccess) => T,
+  ): Promise<T> {
+    return this.use_connection(
+      project_path,
+      (record) => this.execute_transaction(record, callback),
+      true,
+    );
+  }
+  /** 复用 SDK 的提交与回滚协议，领域 SQL 保持同步。 */
+  private async execute_transaction<T>(
+    record: ProjectDatabaseConnectionRecord,
+    callback: (writer: ProjectDatabaseAccess) => T,
+  ): Promise<T> {
+    const writer = new ProjectDatabaseAccess(record.normalized_path, record.db, this.native_fs);
+    try {
+      return await record.access.transaction(async () => callback(writer));
     } catch (error) {
-      if (committed) throw this.committed_error(error, project_path);
-      throw error;
+      throw database_error(error, record.normalized_path, "transaction");
+    } finally {
+      writer.active = false;
     }
   }
-
-  /** Agent 持有工程连接直到 SDK、上传与会话关闭全部结束。 */
-  public open_agent_store(project_path: string): AgentChatStorage {
-    const release = this.acquire_project_lease(project_path, "agent");
-    const record = this.open_project_record(path.resolve(project_path));
-    return new AgentChatStorage(record.access, release);
+  public get_all_meta(
+    ...args: Parameters<ProjectDatabaseAccess["get_all_meta"]>
+  ): Promise<ReturnType<ProjectDatabaseAccess["get_all_meta"]>> {
+    return this.read(args[0], (reader) => reader.get_all_meta(...args));
   }
-
+  public read_pdf_document(
+    ...args: Parameters<ProjectDatabaseAccess["read_pdf_document"]>
+  ): Promise<ReturnType<ProjectDatabaseAccess["read_pdf_document"]>> {
+    return this.read(args[0], (reader) => reader.read_pdf_document(...args));
+  }
+  public read_pdf_documents(
+    ...args: Parameters<ProjectDatabaseAccess["read_pdf_documents"]>
+  ): Promise<ReturnType<ProjectDatabaseAccess["read_pdf_documents"]>> {
+    return this.read(args[0], (reader) => reader.read_pdf_documents(...args));
+  }
+  public read_file_counts(
+    ...args: Parameters<ProjectDatabaseAccess["read_file_counts"]>
+  ): Promise<ReturnType<ProjectDatabaseAccess["read_file_counts"]>> {
+    return this.read(args[0], (reader) => reader.read_file_counts(...args));
+  }
+  public read_pdf_summaries(
+    ...args: Parameters<ProjectDatabaseAccess["read_pdf_summaries"]>
+  ): Promise<ReturnType<ProjectDatabaseAccess["read_pdf_summaries"]>> {
+    return this.read(args[0], (reader) => reader.read_pdf_summaries(...args));
+  }
+  public get_all_asset_records(
+    ...args: Parameters<ProjectDatabaseAccess["get_all_asset_records"]>
+  ): Promise<ReturnType<ProjectDatabaseAccess["get_all_asset_records"]>> {
+    return this.read(args[0], (reader) => reader.get_all_asset_records(...args));
+  }
+  public get_asset_count(
+    ...args: Parameters<ProjectDatabaseAccess["get_asset_count"]>
+  ): Promise<ReturnType<ProjectDatabaseAccess["get_asset_count"]>> {
+    return this.read(args[0], (reader) => reader.get_asset_count(...args));
+  }
+  public get_all_items(
+    ...args: Parameters<ProjectDatabaseAccess["get_all_items"]>
+  ): Promise<ReturnType<ProjectDatabaseAccess["get_all_items"]>> {
+    return this.read(args[0], (reader) => reader.get_all_items(...args));
+  }
+  public get_item_count(
+    ...args: Parameters<ProjectDatabaseAccess["get_item_count"]>
+  ): Promise<ReturnType<ProjectDatabaseAccess["get_item_count"]>> {
+    return this.read(args[0], (reader) => reader.get_item_count(...args));
+  }
+  public get_items_by_ids(
+    ...args: Parameters<ProjectDatabaseAccess["get_items_by_ids"]>
+  ): Promise<ReturnType<ProjectDatabaseAccess["get_items_by_ids"]>> {
+    return this.read(args[0], (reader) => reader.get_items_by_ids(...args));
+  }
+  public get_rules(
+    ...args: Parameters<ProjectDatabaseAccess["get_rules"]>
+  ): Promise<ReturnType<ProjectDatabaseAccess["get_rules"]>> {
+    return this.read(args[0], (reader) => reader.get_rules(...args));
+  }
+  public get_rule_text(
+    ...args: Parameters<ProjectDatabaseAccess["get_rule_text"]>
+  ): Promise<ReturnType<ProjectDatabaseAccess["get_rule_text"]>> {
+    return this.read(args[0], (reader) => reader.get_rule_text(...args));
+  }
+  public get_project_summary(
+    ...args: Parameters<ProjectDatabaseAccess["get_project_summary"]>
+  ): Promise<ReturnType<ProjectDatabaseAccess["get_project_summary"]>> {
+    return this.read(args[0], (reader) => reader.get_project_summary(...args));
+  }
+  public read_asset_content(
+    ...args: Parameters<ProjectDatabaseAccess["read_asset_content"]>
+  ): Promise<ReturnType<ProjectDatabaseAccess["read_asset_content"]>> {
+    return this.read(args[0], (reader) => reader.read_asset_content(...args));
+  }
+  /** 会话只持有访问入口，实际连接由工程队列按批次取得。 */
+  public open_agent_store(project_path: string): AgentChatStorage {
+    const access = new AgentDatabaseAccess((callback, write) =>
+      this.use_connection(project_path, (record) => callback(record.access), write),
+    );
+    return new AgentChatStorage(access);
+  }
+  /** 调度到当前批次时才打开连接，等待本身不持有文件。 */
+  private use_connection<T>(
+    project_path: string,
+    callback: (record: ProjectDatabaseConnectionRecord) => Promise<T>,
+    write: boolean | (() => boolean) = false,
+  ): Promise<T> {
+    return this.schedule(project_path, () =>
+      this.execute_connection(project_path, callback, write),
+    );
+  }
+  /** 先完成操作，再关闭连接。已提交的收尾失败不能被当作可重试写入。 */
+  private async execute_connection<T>(
+    project_path: string,
+    callback: (record: ProjectDatabaseConnectionRecord) => Promise<T>,
+    write: boolean | (() => boolean) = false,
+  ): Promise<T> {
+    const record = this.open_project_record(path.resolve(project_path));
+    let result: { ok: true; value: T } | { ok: false; error: unknown };
+    try {
+      result = { ok: true, value: await callback(record) };
+    } catch (error) {
+      result = { ok: false, error };
+    }
+    try {
+      this.close_connection_record(record);
+    } catch (cleanup) {
+      if (!result.ok) throw database_cleanup_error(result.error, cleanup);
+      if (typeof write === "function" ? write() : write)
+        throw this.committed_error(cleanup, project_path);
+      throw cleanup;
+    }
+    if (!result.ok) throw result.error;
+    return result.value;
+  }
   /** 提交后关闭失败沿用已提交错误协议，调用者只能重载，不能重放写入。 */
   private committed_error(cause: unknown, project_path: string): AppErrors.AppError {
     if (AppErrors.is_app_error(cause) && cause.code === "data.committed_sync_failed") return cause;
@@ -284,341 +289,10 @@ export class ProjectDatabase {
   }
 
   /**
-   * 在连接作用域内写入单个元数据字段。
-   */
-  public set_meta(project_path: string, key: string, value: JsonValue): void {
-    this.with_project_connection(project_path, (db) =>
-      this.upsert_meta_entries_with_db(db, { [key]: value }),
-    );
-  }
-
-  /** 合并提交的 meta 键，保留其它工程元数据。 */
-  public upsert_meta_entries(project_path: string, meta: JsonRecord): void {
-    this.with_project_connection(project_path, (db) => this.upsert_meta_entries_with_db(db, meta));
-  }
-
-  /** 读取工程元数据，供上层一次组装设置与 revision。 */
-  public get_all_meta(project_path: string): JsonRecord {
-    return this.with_project_connection(project_path, (db) => this.read_all_meta(db));
-  }
-
-  /** 推进 files/items revision，重复 section 在同次调用中只计一次。 */
-  public bump_section_revisions(project_path: string, sections: string[]): JsonRecord {
-    return this.with_project_connection(project_path, (db) =>
-      this.advance_section_revisions(db, sections),
-    );
-  }
-
-  /** 资产和 PDF 元数据同属一次导入，由调用方事务保证一起提交。 */
-  public add_asset_from_source(
-    project_path: string,
-    asset_path: string,
-    source_path: string,
-    document: PDFDocument | null,
-    sort_order: number | null = null,
-  ): void {
-    this.with_project_connection(project_path, (db) => {
-      this.insert_asset_from_source(db, asset_path, source_path, sort_order);
-      this.replace_pdf_source(db, asset_path, document);
-    });
-  }
-
-  /** 替换资产同时更新 PDF 来源。摘要不符时由外层事务回滚两者。 */
-  public update_asset_from_source(
-    project_path: string,
-    asset_path: string,
-    source_path: string,
-    document: PDFDocument | null,
-  ): void {
-    this.with_project_connection(project_path, (db) => {
-      this.replace_asset_from_source(db, asset_path, source_path);
-      this.replace_pdf_source(db, asset_path, document);
-    });
-  }
-
-  /** 导入准备与资产写入之间源文件可能变化。摘要校验与文档替换共用外层事务。 */
-  private replace_pdf_source(
-    db: DatabaseSync,
-    file_path: string,
-    document: PDFDocument | null,
-  ): void {
-    db.prepare("DELETE FROM pdf_pages WHERE file_path = ?").run(file_path);
-    if (document === null) {
-      db.prepare("DELETE FROM pdf_documents WHERE file_path = ?").run(file_path);
-      return;
-    }
-    read_pdf_document(document);
-    const row = db.prepare("SELECT data FROM assets WHERE path = ?").get(file_path);
-    const bytes = row === undefined ? null : ZstdTool.decompress(bytes_from_blob(row["data"]));
-    if (bytes === null || createHash("sha256").update(bytes).digest("hex") !== document.digest)
-      throw new AppErrors.AppError("file.parse_failed", {
-        diagnostic_context: { reason: "source_changed_after_parse", file_path },
-      });
-    db.prepare(
-      "INSERT INTO pdf_documents(file_path, data) VALUES (?, ?) ON CONFLICT(file_path) DO UPDATE SET data = excluded.data",
-    ).run(file_path, JSON.stringify({ digest: document.digest }));
-    const insert = db.prepare("INSERT INTO pdf_pages(file_path, page, data) VALUES (?, ?, ?)");
-    for (const page of document.pages) insert.run(file_path, page.page, JSON.stringify(page));
-  }
-
-  /** 按工程相对路径读取并校验文档，缺失用 null 表达。 */
-  public read_pdf_document(project_path: string, file_path: string): PDFDocument | null {
-    return this.with_project_connection(project_path, (db) => {
-      const row = db.prepare("SELECT data FROM pdf_documents WHERE file_path = ?").get(file_path);
-      return row
-        ? read_pdf_document({
-            ...(json_parse(row["data"]) as JsonRecord),
-            pages: db
-              .prepare("SELECT data FROM pdf_pages WHERE file_path = ? ORDER BY page")
-              .all(file_path)
-              .map((page) => json_parse(page["data"])),
-          })
-        : null;
-    });
-  }
-
-  /** 快照按 asset 顺序组合文档，页面正文按原页顺序读取。 */
-  public read_pdf_documents(project_path: string): PDFDocumentRecord[] {
-    return this.with_project_connection(project_path, (db) =>
-      db
-        .prepare(
-          "SELECT p.file_path FROM pdf_documents p JOIN assets a ON a.path = p.file_path ORDER BY a.sort_order, a.id",
-        )
-        .all()
-        .map((row) => {
-          const file_path = row_text(row, "file_path");
-          return { file_path, document: this.read_pdf_document(project_path, file_path)! };
-        }),
-    );
-  }
-
-  /** 文件菜单只读取分组计数，避免加载正文和原始资产。 */
-  public read_file_counts(project_path: string): Map<string, number> {
-    return this.with_project_connection(
-      project_path,
-      (db) =>
-        new Map(
-          db
-            .prepare(
-              `SELECT json_extract(data, '$.file_path') AS path, COUNT(*) AS count FROM items GROUP BY path UNION ALL SELECT file_path AS path, COUNT(*) AS count FROM pdf_pages GROUP BY file_path`,
-            )
-            .all()
-            .map((row) => [String(row["path"]), Number(row["count"])]),
-        ),
-    );
-  }
-
-  /** 列表按页面处置统计，正文按单文档读取。 */
-  public read_pdf_summaries(project_path: string): Record<string, PDFSummary> {
-    return this.with_project_connection(project_path, (db) =>
-      Object.fromEntries(
-        db
-          .prepare(
-            `SELECT p.file_path, COUNT(*) AS pages,
-             SUM(CASE WHEN json_extract(p.data, '$.translation.kind') = 'translate' THEN 1 ELSE 0 END) AS translated_pages,
-             SUM(CASE WHEN json_extract(p.data, '$.translation.kind') = 'keep' THEN 1 ELSE 0 END) AS kept_pages,
-             SUM(CASE WHEN json_extract(p.data, '$.translation.kind') = 'omit' THEN 1 ELSE 0 END) AS omitted_pages
-           FROM pdf_pages p JOIN assets a ON a.path = p.file_path
-           GROUP BY p.file_path ORDER BY a.sort_order, a.id`,
-          )
-          .all()
-          .map((row) => [
-            row_text(row, "file_path"),
-            {
-              pages: Number(row["pages"]),
-              translated_pages: Number(row["translated_pages"]),
-              kept_pages: Number(row["kept_pages"]),
-              omitted_pages: Number(row["omitted_pages"]),
-            },
-          ]),
-      ),
-    );
-  }
-
-  /** 页级正式写入仅由 ProjectWriteStore 在复验后调用，事务负责整体回滚。 */
-  public write_pdf_page(project_path: string, file_path: string, page: PDFPage): void {
-    this.with_project_connection(project_path, (db) => {
-      db.prepare("UPDATE pdf_pages SET data = ? WHERE file_path = ? AND page = ?").run(
-        JSON.stringify(page),
-        file_path,
-        page.page,
-      );
-    });
-  }
-
-  /** 重置清空各页译稿、核对与续做记录，保留原稿身份与页面信息。 */
-  public reset_pdf_translations(project_path: string, file_paths: readonly string[]): void {
-    this.with_project_connection(project_path, (db) => {
-      const statement = db.prepare(
-        "UPDATE pdf_pages SET data = json_set(data, '$.translation', NULL, '$.reviewed', json('false'), '$.notes', '') WHERE file_path = ?",
-      );
-      for (const file_path of file_paths) statement.run(file_path);
-    });
-  }
-
-  /** PDF 文档与源资产一起删除，调用方负责整个项目写入的事务。 */
-  public delete_asset(project_path: string, asset_path: string): void {
-    this.with_project_connection(project_path, (db) => {
-      db.prepare("DELETE FROM pdf_pages WHERE file_path = ?").run(asset_path);
-      db.prepare("DELETE FROM pdf_documents WHERE file_path = ?").run(asset_path);
-      this.remove_asset(db, asset_path);
-    });
-  }
-
-  /** 按持久化顺序返回路径与排序位，不读取资产正文。 */
-  public get_all_asset_records(project_path: string): ProjectAssetRecord[] {
-    return this.with_project_connection(project_path, (db) => this.read_all_asset_records(db));
-  }
-
-  /** 直接统计资产数量，避免文件列表全量读取。 */
-  public get_asset_count(project_path: string): number {
-    return this.with_project_connection(project_path, (db) => this.read_asset_count(db));
-  }
-
-  /** 按调用方顺序重排资产，多步写入由调用方事务包裹。 */
-  public update_asset_sort_orders(project_path: string, ordered_paths: string[]): void {
-    this.with_project_connection(project_path, (db) =>
-      this.write_asset_sort_orders(db, ordered_paths),
-    );
-  }
-
-  /** 按数据库 id 顺序返回条目及其持久身份。 */
-  public get_all_items(project_path: string): JsonRecord[] {
-    return this.with_project_connection(project_path, (db) => this.read_all_items(db));
-  }
-
-  /** 直接统计条目数量，避免解析 JSON 正文。 */
-  public get_item_count(project_path: string): number {
-    return this.with_project_connection(project_path, (db) => this.read_item_count(db));
-  }
-
-  /** 通过 SQL 聚合条目状态，供进度统计读取。 */
-  public get_item_status_summary(project_path: string): JsonRecord {
-    return this.with_project_connection(project_path, (db) => this.read_item_status_summary(db));
-  }
-
-  /** 按请求 id 顺序回查存在的条目，并去重请求。 */
-  public get_items_by_ids(project_path: string, item_ids: number[]): JsonRecord[] {
-    return this.with_project_connection(project_path, (db) => this.read_items_by_ids(db, item_ids));
-  }
-
-  /** 替换整个条目集合，调用方事务负责与相关工程事实一起提交。 */
-  public set_items(project_path: string, items: JsonValue[]): number[] {
-    return this.with_project_connection(project_path, (db) => this.replace_items(db, items));
-  }
-
-  /** 批量更新译文字段，保持条目原文与定位信息。 */
-  public patch_item_translation_fields(
-    project_path: string,
-    patches: readonly ProjectItemTranslationWrite[],
-  ): void {
-    this.with_project_connection(project_path, (db) =>
-      this.write_item_translation_fields(db, patches),
-    );
-  }
-
-  /** 读取指定规则类型的持久载荷，由领域层校验内容。 */
-  public get_rules(project_path: string, rule_type: string): JsonValue[] {
-    return this.with_project_connection(project_path, (db) => this.read_rules(db, rule_type));
-  }
-
-  /** 替换指定类型的规则载荷，其它规则类型继续保留。 */
-  public set_rules(project_path: string, rule_type: string, rules: JsonValue[]): void {
-    this.with_project_connection(project_path, (db) =>
-      this.set_rules_with_db(db, rule_type, rules),
-    );
-  }
-
-  /** 无记录返回 null，已存空字符串保留为显式覆盖。 */
-  public get_rule_text(project_path: string, rule_type: string): string | null {
-    return this.with_project_connection(project_path, (db) => this.read_rule_text(db, rule_type));
-  }
-
-  /** null 删除覆盖，字符串以现有文本规则形状保存。 */
-  public set_rule_text(project_path: string, rule_type: string, text: string | null): void {
-    this.with_project_connection(project_path, (db) => this.write_rule_text(db, rule_type, text));
-  }
-
-  /** 聚合工程元数据和条目进度，供列表与状态读取。 */
-  public get_project_summary(project_path: string): ProjectPreview {
-    return this.with_project_connection(project_path, (db) => this.read_project_summary(db));
-  }
-
-  /**
-   * 按 asset 路径读取解压后的内容，隐藏 .lg 内部压缩格式
-   */
-  public read_asset_content(project_path: string, asset_path: string): Buffer | null {
-    return this.with_project_connection(project_path, (db) => {
-      const row = db.prepare("SELECT data FROM assets WHERE path = ?").get(asset_path); // 调用方只消费解压后的原始 bytes，Zstd 格式细节留在 Backend 内部
-      if (row === undefined) {
-        return null;
-      }
-      return ZstdTool.decompress(bytes_from_blob(row["data"]));
-    });
-  }
-
-  /**
-   * 为任务等可预见长流程保留 SQLite 连接，释放函数幂等且不暴露 SQL 句柄
-   */
-  public acquire_project_lease(project_path: string, _owner: string): () => void {
-    const record = this.open_project_record(path.resolve(project_path));
-    record.use_count += 1;
-    let released = false; // 迟到或重复释放只减少一次持有计数。
-    return () => {
-      if (released) {
-        return;
-      }
-      released = true;
-      record.use_count = Math.max(0, record.use_count - 1);
-      this.close_connection_if_idle(record);
-    };
-  }
-
-  /** 同步调用内持有连接，主操作与释放失败统一收尾。 */
-  public with_project_scope<T>(project_path: string, callback: () => T): T {
-    const release = this.acquire_project_lease(project_path, "scope");
-    let result: ProjectScopeResult<T>;
-    try {
-      result = { ok: true, value: callback() };
-    } catch (error) {
-      result = { ok: false, error };
-    }
-    return this.finish_project_scope(release, result);
-  }
-
-  /** 等待整个异步操作结束后释放连接，提交状态由业务入口解释。 */
-  public async with_project_scope_async<T>(
-    project_path: string,
-    callback: () => Promise<T>,
-  ): Promise<T> {
-    const release = this.acquire_project_lease(project_path, "async-scope");
-    let result: ProjectScopeResult<T>;
-    try {
-      result = { ok: true, value: await callback() };
-    } catch (error) {
-      result = { ok: false, error };
-    }
-    return this.finish_project_scope(release, result);
-  }
-
-  /** 释放只执行一次，失败时同时保留主异常与关闭异常。 */
-  private finish_project_scope<T>(release: () => void, result: ProjectScopeResult<T>): T {
-    try {
-      release();
-    } catch (cleanup) {
-      if (!result.ok) throw database_cleanup_error(result.error, cleanup);
-      throw cleanup;
-    }
-    if (!result.ok) throw result.error;
-    return result.value;
-  }
-
-  /**
    * 取得可用连接，失败连接先关闭再重新初始化
    */
   private open_project_record(normalized_path: string): ProjectDatabaseConnectionRecord {
     const cached = this.connection_records.get(normalized_path);
-    if (cached?.ready) return cached;
     if (cached !== undefined) this.close_connection_record(cached);
     let record: ProjectDatabaseConnectionRecord | undefined;
     let operation = "open"; // 记录首个失败的连接初始化阶段。
@@ -631,8 +305,6 @@ export class ProjectDatabase {
         normalized_path,
         db,
         access: new NodeSqliteDatabase(db),
-        use_count: 0,
-        ready: false,
       };
       // 登记后再初始化，关闭失败仍由本实例持有并回收。
       this.connection_records.set(normalized_path, record);
@@ -640,10 +312,6 @@ export class ProjectDatabase {
       db.exec("PRAGMA journal_mode=WAL");
       operation = "synchronous";
       db.exec("PRAGMA synchronous=NORMAL");
-      this.apply_project_storage_mode(normalized_path, db);
-      operation = "migration";
-      run_project_database_migrations(db);
-      record.ready = true;
       return record;
     } catch (error) {
       const failure = database_error(error, normalized_path, operation);
@@ -666,8 +334,8 @@ export class ProjectDatabase {
       return;
     }
     try {
-      const row = this.value_record(db.prepare("PRAGMA auto_vacuum").get());
-      if (row_number(row, "auto_vacuum") === SQLITE_AUTO_VACUUM_FULL) {
+      const row = db.prepare("PRAGMA auto_vacuum").get();
+      if (Number(row?.["auto_vacuum"]) === SQLITE_AUTO_VACUUM_FULL) {
         return;
       }
       db.exec("PRAGMA auto_vacuum=FULL");
@@ -678,34 +346,9 @@ export class ProjectDatabase {
     }
   }
 
-  /**
-   * 数据库操作持有连接作用域，完成后在无租约时关闭
-   */
-  private with_project_connection<T>(project_path: string, callback: (db: DatabaseSync) => T): T {
-    return this.with_project_scope(project_path, () => {
-      const record = this.open_project_record(path.resolve(project_path));
-      try {
-        return callback(record.db);
-      } catch (error) {
-        throw database_error(error, project_path, "operation");
-      }
-    });
-  }
-
-  /**
-   * 无长租约且无 scoped workflow 时收尾连接，让稳定态回到单个 .lg 文件
-   */
-  private close_connection_if_idle(record: ProjectDatabaseConnectionRecord): void {
-    if (record.ready && record.use_count > 0) {
-      return;
-    }
-    this.close_connection_record(record);
-  }
-
   /** 最后一个连接的 checkpoint 与副文件清理由 SQLite 正常关闭完成。 */
   private close_connection_record(record: ProjectDatabaseConnectionRecord): void {
     if (!record.db.isOpen) return;
-    record.ready = false;
     try {
       record.db.close();
     } catch (error) {
@@ -715,386 +358,5 @@ export class ProjectDatabase {
         this.connection_records.delete(record.normalized_path);
       }
     }
-  }
-
-  /**
-   * 在既有事务连接内写入 meta，避免事务中重新取句柄
-   */
-  private upsert_meta_entries_with_db(db: DatabaseSync, meta: DatabaseRow): void {
-    const statement = db.prepare("INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)");
-    for (const [key, value] of Object.entries(meta)) {
-      statement.run(key, JsonTool.stringifyStrict(value));
-    }
-  }
-
-  /**
-   * 读取完整 meta 快照，供运行态编码一次性构建事实
-   */
-  private read_all_meta(db: DatabaseSync): JsonRecord {
-    const result: MutableJsonRecord = {};
-    for (const row of db.prepare("SELECT key, value FROM meta").all()) {
-      result[row_text(row, "key")] = json_parse(row["value"]);
-    }
-    return result;
-  }
-
-  /**
-   * 由内部任务数据路由调用的窄 revision 推进入口。公开读取和 ack 仍由 项目域计算
-   */
-  private advance_section_revisions(db: DatabaseSync, sections: string[]): JsonRecord {
-    const supported_sections = new Set(["files", "items"]);
-    const next_revisions: Record<string, number> = {};
-    for (const section of sections) {
-      if (!supported_sections.has(section) || section in next_revisions) {
-        continue;
-      }
-      const key = `project_runtime_revision.${section}`;
-      const current = read_project_revision(this.get_meta_from_db(db, key, 0));
-      const next = current + 1;
-      this.upsert_meta_entries_with_db(db, { [key]: next });
-      next_revisions[section] = next;
-    }
-    return next_revisions;
-  }
-
-  /**
-   * 在调用方已持有的事务连接内读取单个 meta，避免重新取得 scoped 连接。
-   */
-  private get_meta_from_db(db: DatabaseSync, key: string, default_value: JsonValue): JsonValue {
-    const row = db.prepare("SELECT value FROM meta WHERE key = ?").get(key);
-    return row === undefined ? default_value : json_parse(row["value"]);
-  }
-
-  /**
-   * 计算下一个 asset 排序位，保持文件列表顺序稳定
-   */
-  private get_next_asset_sort_order(db: DatabaseSync): number {
-    const row = db
-      .prepare("SELECT COALESCE(MAX(sort_order), -1) + 1 AS next_sort_order FROM assets")
-      .get();
-    return row === undefined ? 0 : row_number(row, "next_sort_order");
-  }
-
-  /**
-   * 从源文件导入 asset，统一压缩和排序字段写入
-   */
-  private insert_asset_from_source(
-    db: DatabaseSync,
-    asset_path: string,
-    source_path: string,
-    sort_order: number | null,
-  ): void {
-    const original_data = this.native_fs.read_file(source_path);
-    const compressed = ZstdTool.compress(original_data);
-    this.add_asset_buffer(db, asset_path, compressed, original_data.byteLength, sort_order);
-  }
-
-  /**
-   * 写入 asset buffer，集中处理压缩和记录插入
-   */
-  private add_asset_buffer(
-    db: DatabaseSync,
-    asset_path: string,
-    compressed: Buffer,
-    original_size: number,
-    sort_order: number | null,
-  ): void {
-    const effective_sort_order = sort_order ?? this.get_next_asset_sort_order(db);
-    db.prepare(
-      `INSERT INTO assets (path, sort_order, data, original_size, compressed_size)
-       VALUES (?, ?, ?, ?, ?)`,
-    ).run(asset_path, effective_sort_order, compressed, original_size, compressed.byteLength);
-  }
-
-  /**
-   * 用源文件更新 asset 内容，保持路径记录不被调用方重建
-   */
-  private replace_asset_from_source(
-    db: DatabaseSync,
-    asset_path: string,
-    source_path: string,
-  ): void {
-    const original_data = this.native_fs.read_file(source_path);
-    const compressed = ZstdTool.compress(original_data);
-    const result = db
-      .prepare(
-        `UPDATE assets
-         SET data = ?, original_size = ?, compressed_size = ?
-         WHERE path = ?`,
-      )
-      .run(compressed, original_data.byteLength, compressed.byteLength, asset_path);
-    if (Number(result.changes) === 0) {
-      throw new AppErrors.AppError("database.conflict", {
-        diagnostic_context: { reason: "Asset does not exist and cannot be updated." },
-      });
-    }
-  }
-
-  /**
-   * 删除 asset 记录，保持文件移除只走存储入口
-   */
-  private remove_asset(db: DatabaseSync, asset_path: string): void {
-    db.prepare("DELETE FROM assets WHERE path = ?").run(asset_path);
-  }
-
-  /**
-   * 读取 asset 记录快照，供运行态排序与导出使用
-   */
-  private read_all_asset_records(db: DatabaseSync): ProjectAssetRecord[] {
-    return db
-      .prepare("SELECT path, sort_order FROM assets ORDER BY sort_order ASC, id ASC")
-      .all()
-      .map((row) => ({ path: row_text(row, "path"), sort_order: row_number(row, "sort_order") }));
-  }
-
-  /**
-   * 文件数量直接由 SQL 聚合读取，manifest 不为计数预热 files section
-   */
-  private read_asset_count(db: DatabaseSync): number {
-    const row = db.prepare("SELECT COUNT(*) AS count FROM assets").get();
-    return row === undefined ? 0 : row_number(row, "count");
-  }
-
-  /**
-   * 批量更新 asset 顺序，保证文件重排一次事务完成
-   */
-  private write_asset_sort_orders(db: DatabaseSync, ordered_paths: string[]): void {
-    const statement = db.prepare("UPDATE assets SET sort_order = ? WHERE path = ?");
-    for (const [sort_order, asset_path] of ordered_paths.entries()) {
-      statement.run(sort_order, asset_path);
-    }
-  }
-
-  /**
-   * 读取全部条目事实，供项目数据读取和任务快照重建
-   */
-  private read_all_items(db: DatabaseSync): JsonRecord[] {
-    return db
-      .prepare("SELECT id, data FROM items ORDER BY id")
-      .all()
-      .map((row) => ({ ...this.value_record(json_parse(row["data"])), id: row_number(row, "id") }));
-  }
-
-  /**
-   * 条目数量直接由 SQL 聚合读取，manifest 不为计数扫描完整 item payload
-   */
-  private read_item_count(db: DatabaseSync): number {
-    const row = db.prepare("SELECT COUNT(*) AS count FROM items").get();
-    return row === undefined ? 0 : row_number(row, "count");
-  }
-
-  /**
-   * 翻译统计口径由 status 决定，SQL 聚合为缺失 meta 的校对保存提供低成本基线。
-   */
-  private read_item_status_summary(db: DatabaseSync): JsonRecord {
-    const row = db
-      .prepare(
-        `SELECT
-           COALESCE(SUM(CASE WHEN status IN ('NONE', 'PROCESSED', 'ERROR') THEN 1 ELSE 0 END), 0)
-             AS total_line,
-           COALESCE(SUM(CASE WHEN status = 'PROCESSED' THEN 1 ELSE 0 END), 0)
-             AS processed_line,
-           COALESCE(SUM(CASE WHEN status = 'ERROR' THEN 1 ELSE 0 END), 0)
-             AS error_line
-         FROM (
-           SELECT json_extract(data, '$.status') AS status
-           FROM items
-         )`,
-      )
-      .get();
-    const processed_line = row === undefined ? 0 : row_number(row, "processed_line");
-    const error_line = row === undefined ? 0 : row_number(row, "error_line");
-    return {
-      total_line: row === undefined ? 0 : row_number(row, "total_line"),
-      processed_line,
-      error_line,
-      line: processed_line + error_line,
-    };
-  }
-
-  /**
-   * 按 id 读取条目，减少校对和任务提交后的回查范围
-   */
-  private read_items_by_ids(db: DatabaseSync, item_ids: number[]): JsonRecord[] {
-    const normalized_ids = [
-      ...new Set(
-        item_ids.map((item_id) => Number(item_id)).filter((item_id) => Number.isFinite(item_id)),
-      ),
-    ];
-    if (normalized_ids.length === 0) {
-      return [];
-    }
-    const rows_by_id = new Map<number, JsonRecord>();
-    for_each_sqlite_in_clause_chunk(normalized_ids, (chunk) => {
-      const placeholders = chunk.map(() => "?").join(",");
-      for (const row of db
-        .prepare(`SELECT id, data FROM items WHERE id IN (${placeholders})`)
-        .all(...chunk)) {
-        const item_id = row_number(row, "id");
-        rows_by_id.set(item_id, { ...this.value_record(json_parse(row["data"])), id: item_id });
-      }
-    });
-    return normalized_ids
-      .map((item_id) => rows_by_id.get(item_id))
-      .filter((item): item is JsonRecord => item !== undefined);
-  }
-
-  /**
-   * 批量写入条目事实，确保导入和重置链路高效落盘
-   */
-  private replace_items(db: DatabaseSync, items: JsonValue[]): number[] {
-    db.prepare("DELETE FROM items").run();
-    const insert_with_id = db.prepare("INSERT INTO items (id, data) VALUES (?, ?)");
-    const insert = db.prepare("INSERT INTO items (data) VALUES (?)");
-    const ids: number[] = [];
-    for (const raw_item of items) {
-      const item = this.value_record(raw_item);
-      const item_id = item["id"];
-      const data = { ...item };
-      delete data["id"];
-      if (item_id !== undefined && item_id !== null && item_id !== "") {
-        insert_with_id.run(Number(item_id), JsonTool.stringifyStrict(data));
-        ids.push(Number(item_id));
-      } else {
-        ids.push(Number(insert.run(JsonTool.stringifyStrict(data)).lastInsertRowid));
-      }
-    }
-    return ids;
-  }
-
-  /** 事务提供最终译文字段，固定语句保留格式私有 JSON。 */
-  private write_item_translation_fields(
-    db: DatabaseSync,
-    patches: readonly ProjectItemTranslationWrite[],
-  ): void {
-    const statement = db.prepare(
-      "UPDATE items SET data = json_set(data, '$.dst', ?, '$.name_dst', json(?), '$.status', ?) WHERE id = ?",
-    );
-    for (const { item_id, next } of patches) {
-      const fields = normalize_project_item_field_patch(next);
-      if (
-        !Number.isInteger(item_id) ||
-        item_id <= 0 ||
-        fields === null ||
-        fields.dst === undefined ||
-        !Object.hasOwn(fields, "name_dst") ||
-        fields.status === undefined
-      ) {
-        throw new AppErrors.AppError("request.validation_failed", {
-          diagnostic_context: { reason: "invalid_translation_fields", item_id },
-        });
-      }
-      const result = statement.run(
-        fields.dst,
-        JsonTool.stringifyStrict(fields.name_dst),
-        fields.status,
-        item_id,
-      );
-      if (Number(result.changes) !== 1) {
-        throw new AppErrors.AppError("request.validation_failed", {
-          diagnostic_context: { reason: "translation_patch_item_not_found", item_id },
-        });
-      }
-    }
-  }
-
-  /**
-   * 读取指定规则集合，保持质量规则运行时只看数据库事实
-   */
-  private read_rules(db: DatabaseSync, rule_type: string): JsonValue[] {
-    const row = db.prepare("SELECT data FROM rules WHERE type = ? ORDER BY id").get(rule_type);
-    if (row === undefined) {
-      return [];
-    }
-    try {
-      const data = json_parse(row["data"]);
-      return Array.isArray(data) ? data : [];
-    } catch {
-      return [];
-    }
-  }
-
-  /**
-   * 在既有事务连接内写入规则，避免规则和 meta 分离提交
-   */
-  private set_rules_with_db(db: DatabaseSync, rule_type: string, rules: JsonValue[]): void {
-    db.prepare("DELETE FROM rules WHERE type = ?").run(rule_type);
-    db.prepare("INSERT INTO rules (type, data) VALUES (?, ?)").run(
-      rule_type,
-      JsonTool.stringifyStrict(rules),
-    );
-  }
-
-  /**
-   * 读取提示词或规则文本，统一文本规则落点
-   */
-  private read_rule_text(db: DatabaseSync, rule_type: string): string | null {
-    const row = db.prepare("SELECT data FROM rules WHERE type = ? LIMIT 1").get(rule_type);
-    if (row === undefined) {
-      return null;
-    }
-    return this.deserialize_rule_text_payload(row_text(row, "data"));
-  }
-
-  /**
-   * 保存文本规则内容，保持 prompt 与规则文本写入一致
-   */
-  private write_rule_text(db: DatabaseSync, rule_type: string, text: string | null): void {
-    db.prepare("DELETE FROM rules WHERE type = ?").run(rule_type);
-    if (text === null) return;
-    db.prepare("INSERT INTO rules (type, data) VALUES (?, ?)").run(
-      rule_type,
-      JsonTool.stringifyStrict({ text }),
-    );
-  }
-
-  /**
-   * 解析当前文本规则对象载荷
-   */
-  private deserialize_rule_text_payload(raw_data: string): string {
-    try {
-      const text = read_json_record(JsonTool.parseStrict(raw_data))["text"];
-      return typeof text === "string" ? text : String(text ?? "");
-    } catch {
-      return "";
-    }
-  }
-
-  /**
-   * 读取工程摘要，供打开预览和运行态快速判断使用
-   */
-  private read_project_summary(db: DatabaseSync): ProjectPreview {
-    const meta = this.value_record(this.read_all_meta(db));
-    const assets = db.prepare("SELECT path FROM assets ORDER BY sort_order ASC, id ASC").all();
-    const items = db
-      .prepare("SELECT data FROM items ORDER BY id ASC")
-      .all()
-      .map((row) => {
-        const item = this.value_record(json_parse(row["data"]));
-        return {
-          file_path: String(item["file_path"] ?? ""),
-          status: String(item["status"] ?? "NONE"),
-        };
-      });
-    const file_paths = build_project_file_paths(
-      assets.map((asset) => row_text(asset, "path")),
-      items.map((item) => item.file_path),
-    );
-    return {
-      file_paths,
-      created_at: String(meta["created_at"] ?? ""),
-      updated_at: String(meta["updated_at"] ?? ""),
-      translation_stats: build_project_translation_stats(items),
-    };
-  }
-
-  /**
-   * 把 JSON 值收窄为对象，保留数据库 payload 的类型边界
-   */
-  private value_record(value: unknown): JsonRecord {
-    if (typeof value !== "object" || value === null || Array.isArray(value)) {
-      return {};
-    }
-    return value as JsonRecord;
   }
 }

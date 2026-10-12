@@ -1,10 +1,11 @@
+import type { PDFSummary } from "../../shared/pdf";
 import type { JsonRecord } from "../../domain/json";
 import type { ProjectItemPublicRecord } from "../../domain/item";
 import type { ProjectPrompts } from "../../domain/prompt";
 import type { QualityRuleBlock } from "../../shared/quality/quality-rule-state";
 import type { QualityStatisticsTextChangeScope } from "../../shared/project-event";
 import type { ProjectDataSection, ProjectDataSectionRevisions } from "../../shared/project-event";
-import type { ProjectDatabase } from "../database/database-operations";
+import type { ProjectDatabaseAccess } from "../database/database-operations";
 import type { ProjectFileRecord } from "./project-file-records";
 import { ProjectDataReader } from "./project-data-reader";
 
@@ -32,6 +33,7 @@ export type ProjectCommittedChange = Readonly<{
   qualityStatisticsScope: QualityStatisticsTextChangeScope;
   items?: ProjectCommittedItems;
   files?: Record<string, ProjectFileRecord>;
+  pdf?: Record<string, PDFSummary>;
   quality?: QualityRuleBlock;
   prompts?: ProjectPrompts;
 }>;
@@ -43,7 +45,7 @@ export type ProjectCommittedChangeHandler = (
 
 /** 在写入事务内读取规范事实，异常仍可回滚。 */
 export function build_project_committed_change(
-  database: ProjectDatabase,
+  database: ProjectDatabaseAccess,
   request: ProjectWriteChangeRequest,
   meta: JsonRecord,
   replacementItems?: ProjectItemPublicRecord[],
@@ -63,6 +65,9 @@ export function build_project_committed_change(
           mode: "delta",
           records: reader.build_item_records_by_ids(project, request.changedItemIds),
         };
+  const rebuild_files = affected.has("files") || items?.mode === "full";
+  const pdf =
+    affected.has("pdf") || rebuild_files ? database.read_pdf_summaries(project) : undefined;
   return {
     projectPath: project,
     source: request.source,
@@ -71,11 +76,13 @@ export function build_project_committed_change(
     qualityStatisticsScope:
       affected.has("quality") || items?.mode === "full" ? "all" : request.qualityStatisticsScope,
     ...(items === undefined ? {} : { items }),
-    ...(affected.has("files") || items?.mode === "full"
+    ...(pdf === undefined ? {} : { pdf }),
+    ...(rebuild_files
       ? {
           files: reader.build_files_record_block(
             project,
             items?.mode === "full" ? items.records : fileMetadata,
+            Object.keys(pdf!),
           ),
         }
       : {}),

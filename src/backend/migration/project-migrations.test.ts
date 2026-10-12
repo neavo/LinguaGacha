@@ -14,7 +14,7 @@ it("打开旧工程按顺序迁移设置、提示词和文件，并保留前序�
   fs.writeFileSync(epub_path, await create_epub_fixture("<ruby>漢<rt>かん</rt></ruby>"));
   const database = new ProjectDatabase();
   try {
-    database.create_project(project_path, "fixture", () => {
+    await database.create_project(project_path, "fixture", (database) => {
       database.add_asset_from_source(project_path, "book.epub", epub_path, null);
       database.set_rule_text(project_path, "CUSTOM_PROMPT_EN", "旧提示词");
       database.set_items(project_path, [
@@ -55,10 +55,10 @@ it("打开旧工程按顺序迁移设置、提示词和文件，并保留前序�
       } as unknown as AppSettingService,
     };
     const writes = await build_project_open_writes(context);
-    await database.transaction(project_path, () => {
+    await database.transaction(project_path, (database) => {
       for (const write of writes) write(database);
     });
-    const items = database.get_all_items(project_path);
+    const items = await database.get_all_items(project_path);
     expect(items).toEqual([
       expect.objectContaining({ id: 1, file_type: "MD_V2", dst: "Text" }),
       expect.objectContaining({
@@ -67,15 +67,15 @@ it("打开旧工程按顺序迁移设置、提示词和文件，并保留前序�
         extra_field: { epub: expect.objectContaining({ mode: "block_text" }) },
       }),
     ]);
-    expect(database.get_all_meta(project_path)).toMatchObject({
+    expect(await database.get_all_meta(project_path)).toMatchObject({
       text_preserve_mode: "smart",
       glossary_enable: true,
       translation_prompt_legacy_migrated: true,
     });
-    expect(database.get_rule_text(project_path, "translation_prompt")).toBe("旧提示词");
+    expect(await database.get_rule_text(project_path, "translation_prompt")).toBe("旧提示词");
     expect(await build_project_open_writes(context)).toEqual([]);
-    expect(database.get_all_items(project_path)).toEqual(items);
+    expect(await database.get_all_items(project_path)).toEqual(items);
   } finally {
-    database.close();
+    await database.close();
   }
 });

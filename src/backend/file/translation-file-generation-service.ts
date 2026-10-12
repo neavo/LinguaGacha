@@ -56,10 +56,10 @@ export class TranslationFileGenerationService {
    */
   public async generate_files(): Promise<TranslationFileGenerationResult> {
     return this.run_generation(async (project_path, config) => {
-      const items = this.read_project_items(project_path);
-      const documents = this.read_generation_pdf_files(
+      const items = await this.read_project_items(project_path);
+      const documents = await this.read_generation_pdf_files(
         project_path,
-        Object.keys(this.database.read_pdf_summaries(project_path)),
+        Object.keys(await this.database.read_pdf_summaries(project_path)),
       );
       const paths = this.build_generation_paths(project_path, config.app_language);
       await this.generate_to_paths(project_path, items, paths, config);
@@ -80,10 +80,10 @@ export class TranslationFileGenerationService {
     excluded_files: readonly string[] = [],
   ): Promise<TranslationFileGenerationResult> {
     return this.run_generation(async (project_path, config) => {
-      const items = this.read_project_items(project_path);
-      const documents = this.read_generation_pdf_files(
+      const items = await this.read_project_items(project_path);
+      const documents = await this.read_generation_pdf_files(
         project_path,
-        Object.keys(this.database.read_pdf_summaries(project_path)).filter(
+        Object.keys(await this.database.read_pdf_summaries(project_path)).filter(
           (file_path) => !excluded_files.includes(file_path),
         ),
       );
@@ -120,10 +120,7 @@ export class TranslationFileGenerationService {
     );
     try {
       const project_path = this.session_state.require_loaded_project_path();
-      const result = await this.database.with_project_scope_async(
-        project_path,
-        async () => await write(project_path, config),
-      );
+      const result = await write(project_path, config);
       this.log_manager?.info(
         `${this.generation_log_text(config, "app.translation_generation.log.succeeded")}\n${result.output_path}`,
         { source: FILE_GENERATION_LOG_SOURCE },
@@ -170,21 +167,26 @@ export class TranslationFileGenerationService {
     await format_service.write_items(items, {
       paths,
       asset_reader: (rel_path) => this.database.read_asset_content(project_path, rel_path),
-      source_files: this.database
-        .get_all_asset_records(project_path)
+      source_files: (await this.database.get_all_asset_records(project_path))
         .map((record) => record.path)
         .filter((file) => !excluded_files.includes(file)),
     });
   }
 
   /** 在任何输出落盘前固定译稿并验证可确定条件，避免不同入口各自解释 PDF 规则。 */
-  private read_generation_pdf_files(
+  private async read_generation_pdf_files(
     project_path: string,
     file_paths: readonly string[],
-  ): PDFDocumentRecord[] {
-    return file_paths.map((file_path) => {
-      const document = this.database.read_pdf_document(project_path, file_path);
-      if (!document) throw new AppError("file.not_found", { public_details: { file: file_path } });
+  ): Promise<PDFDocumentRecord[]> {
+    const documents = await this.database.read(project_path, (reader) =>
+      file_paths.map((file_path) => {
+        const document = reader.read_pdf_document(project_path, file_path);
+        if (!document)
+          throw new AppError("file.not_found", { public_details: { file: file_path } });
+        return { file_path, document };
+      }),
+    );
+    for (const { file_path, document } of documents) {
       try {
         render_pdf_translation(document);
       } catch (error) {
@@ -193,8 +195,8 @@ export class TranslationFileGenerationService {
           cause: error,
         });
       }
-      return { file_path, document };
-    });
+    }
+    return documents;
   }
 
   /** 落盘成功后按原页覆盖生成回执，输出页数由打印排版决定。 */
@@ -282,8 +284,8 @@ export class TranslationFileGenerationService {
   /**
    * 从数据库读取条目后立即规范化，后续译文生成逻辑只处理稳定结构
    */
-  private read_project_items(project_path: string): Item[] {
-    const raw_items = this.database.get_all_items(project_path);
+  private async read_project_items(project_path: string): Promise<Item[]> {
+    const raw_items = await this.database.get_all_items(project_path);
     return raw_items.map((item) => create_item(item));
   }
 

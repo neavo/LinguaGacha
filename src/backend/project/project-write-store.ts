@@ -1,7 +1,11 @@
 import type { QualityStatisticsTextChangeScope } from "../../shared/project-event";
 import type { CacheManager } from "../cache/cache-manager";
 import type { PDFDocument } from "../../shared/pdf";
-import { ProjectDatabase, type ProjectDatabaseWrite } from "../database/database-operations";
+import {
+  ProjectDatabase,
+  type ProjectDatabaseWrite,
+  type ProjectDatabaseAccess,
+} from "../database/database-operations";
 import {
   create_item,
   build_project_item_public_record,
@@ -63,6 +67,7 @@ import { QUALITY_RULE_KINDS, type QualityRuleKind } from "../../domain/quality";
 type RevisionBackedSection = "files" | "items" | "proofreading" | "pdf";
 const PROJECT_ITEM_WRITE_VALIDATOR = Compile(Type.Array(PROJECT_ITEM_WRITE_SCHEMA)); // 全量写入复用编译结果，校验完成后再替换事实。
 type ProjectWriteRevisionContext = {
+  database: ProjectDatabaseAccess;
   meta: JsonRecord;
   pendingMeta: MutableJsonRecord;
   sections: ProjectDataSection[];
@@ -199,8 +204,8 @@ export class ProjectWriteStore {
     projectPath: string;
     meta: MutableJsonRecord;
   }): Promise<void> {
-    await this.database.transaction(request.projectPath, () => {
-      this.database.upsert_meta_entries(request.projectPath, request.meta);
+    await this.database.transaction(request.projectPath, (writer) => {
+      writer.upsert_meta_entries(request.projectPath, request.meta);
     });
   }
 
@@ -226,6 +231,7 @@ export class ProjectWriteStore {
       updatedSections: ["items", "proofreading"],
       prepare: (revision_context) => {
         const items = this.read_item_write_records(
+          revision_context.database,
           request.projectPath,
           revision_context.meta,
           request.itemIds,
@@ -301,7 +307,7 @@ export class ProjectWriteStore {
           (request.assetWrites ?? []).some(
             (write) =>
               (write.kind !== "delete" && write.pdfDocument != null) ||
-              this.database.read_pdf_document(request.projectPath, write.path) !== null,
+              revision_context.database.read_pdf_document(request.projectPath, write.path) !== null,
           );
         const sections = new Set(request.updatedSections);
         for (const [section, changed] of [
@@ -592,7 +598,11 @@ export class ProjectWriteStore {
         source: request.source,
         updatedSections: [],
         prepare: (revision_context) => {
-          const outcome = this.resolve_agent_workspace_changes(request, revision_context.meta);
+          const outcome = this.resolve_agent_workspace_changes(
+            revision_context.database,
+            request,
+            revision_context.meta,
+          );
           actual = outcome;
           const updated_sections = this.build_agent_updated_sections(outcome);
           if (updated_sections.length === 0) return { writes: [], updatedSections: [] };
@@ -639,6 +649,7 @@ export class ProjectWriteStore {
 
   /** Agent resolver 在项目事务内读取目标对象，确保指纹、派生状态与写入共享同一事实。 */
   private resolve_agent_workspace_changes(
+    database: ProjectDatabaseAccess,
     request: {
       projectPath: string;
       batch: AgentWorkspaceIntentBatch;
@@ -649,6 +660,7 @@ export class ProjectWriteStore {
       request.batch.items.length === 0
         ? []
         : this.read_item_scope_records(
+            database,
             request.projectPath,
             meta,
             request.batch.items.map((item) => item.item_id),
@@ -660,14 +672,14 @@ export class ProjectWriteStore {
     const quality = Object.fromEntries(
       quality_kinds.map((kind) => {
         const storage = resolve_project_quality_rule_storage(kind);
-        return [kind, this.database.get_rules(request.projectPath, storage.database_type)];
+        return [kind, database.get_rules(request.projectPath, storage.database_type)];
       }),
     ) as Record<QualityRuleKind, JsonValue>;
     const prompt_kinds = [...new Set(request.batch.prompts.map((intent) => intent.kind))];
     const prompts = Object.fromEntries(
       prompt_kinds.map((kind) => {
         const storage = resolve_project_prompt_storage();
-        return [kind, this.database.get_rule_text(request.projectPath, storage.database_type)];
+        return [kind, database.get_rule_text(request.projectPath, storage.database_type)];
       }),
     ) as Partial<Record<PromptKind, string | null>>;
     return resolve_agent_workspace_writes({
@@ -676,7 +688,7 @@ export class ProjectWriteStore {
         items,
         pdfDocuments: [...new Set(request.batch.pages.map((intent) => intent.file_path))].flatMap(
           (file_path) => {
-            const document = this.database.read_pdf_document(request.projectPath, file_path);
+            const document = database.read_pdf_document(request.projectPath, file_path);
             return document ? [{ file_path, document }] : [];
           },
         ),
@@ -786,7 +798,12 @@ export class ProjectWriteStore {
           const actual_changes =
             patches.length === 0
               ? []
-              : this.plan_item_patch_changes(request.projectPath, revision_context.meta, patches);
+              : this.plan_item_patch_changes(
+                  revision_context.database,
+                  request.projectPath,
+                  revision_context.meta,
+                  patches,
+                );
           changed_item_ids = actual_changes.map((change) => change.item_id);
           // 工程计数来自事务内的真实状态变化，本次运行用量由任务入口提供。
           const counters = this.build_translation_extras_after_status_changes(
@@ -834,26 +851,28 @@ export class ProjectWriteStore {
     request: RuntimeCommitRequest,
     options: RuntimeCommitOptions = {},
   ): Promise<ProjectWriteResult> {
-    const committed = await this.database.transaction(request.projectPath, () => {
+    const committed = await this.database.transaction(request.projectPath, (writer) => {
       // guard、快照和写入必须共享同一个 BEGIN IMMEDIATE，不能给并发提交留下检查后窗口。
       const revision_context = request.requireExpectedSectionRevisions
         ? this.assert_expected_section_revisions(
+            writer,
             request.projectPath,
             request.expectedSectionRevisions,
             request.revisionSections,
           )
         : {
-            meta: this.database.get_all_meta(request.projectPath),
+            database: writer,
+            meta: writer.get_all_meta(request.projectPath),
             pendingMeta: {},
             sections: request.revisionSections,
           };
       const prepared_change = request.prepare(revision_context);
       const updated_sections = prepared_change.updatedSections ?? request.updatedSections;
-      for (const write of prepared_change.writes) write(this.database);
+      for (const write of prepared_change.writes) write(writer);
       if (Object.keys(revision_context.pendingMeta).length > 0)
-        this.database.upsert_meta_entries(request.projectPath, revision_context.pendingMeta);
+        writer.upsert_meta_entries(request.projectPath, revision_context.pendingMeta);
       return build_project_committed_change(
-        this.database,
+        writer,
         {
           projectPath: request.projectPath,
           source: request.source,
@@ -913,6 +932,7 @@ export class ProjectWriteStore {
    * 在当前事务中校验 section revision，并返回后续写入复用的 meta 快照。
    */
   private assert_expected_section_revisions(
+    database: ProjectDatabaseAccess,
     project_path: string,
     expected_section_revisions: ProjectExpectedSectionRevisions | undefined,
     sections: ProjectDataSection[],
@@ -920,7 +940,7 @@ export class ProjectWriteStore {
     if (expected_section_revisions === undefined) {
       throw new AppErrors.AppError("request.validation_failed");
     }
-    const meta = this.database.get_all_meta(project_path);
+    const meta = database.get_all_meta(project_path);
     for (const section of sections) {
       if (!Object.hasOwn(expected_section_revisions, section)) {
         throw new AppErrors.AppError("request.validation_failed", {
@@ -935,7 +955,7 @@ export class ProjectWriteStore {
         });
       }
     }
-    return { meta, pendingMeta: {}, sections: [...sections] };
+    return { database, meta, pendingMeta: {}, sections: [...sections] };
   }
 
   /**
@@ -1009,23 +1029,25 @@ export class ProjectWriteStore {
 
   /** 缓存缺失或落后时回读全表，事务内事实始终拥有最终解释权。 */
   private read_item_scope_records(
+    database: ProjectDatabaseAccess,
     project: string,
     meta: JsonRecord,
     ids: readonly number[],
   ): JsonRecord[] {
     const scope = this.cache?.readItemWriteScope(project, ids);
     return scope != null && scope.revision === get_section_revision(meta, "items")
-      ? this.database.get_items_by_ids(project, scope.ids)
-      : this.database.get_all_items(project);
+      ? database.get_items_by_ids(project, scope.ids)
+      : database.get_all_items(project);
   }
 
   /** 事务内读取并归一候选 Item，供局部意图和重复组协调共同使用。 */
   private read_item_write_records(
+    database: ProjectDatabaseAccess,
     project_path: string,
     meta: JsonRecord,
     ids: readonly number[],
   ): ProjectItemWriteRecord[] {
-    const raw_items = this.read_item_scope_records(project_path, meta, ids);
+    const raw_items = this.read_item_scope_records(database, project_path, meta, ids);
     return raw_items.flatMap((value) => {
       const item = create_item(value);
       if (item.id === undefined || item.id <= 0) return [];
@@ -1035,11 +1057,13 @@ export class ProjectWriteStore {
 
   /** 在事务快照上校验批次目标并计算前后事实，再进入统一重复组写入规划。 */
   private plan_item_patch_changes(
+    database: ProjectDatabaseAccess,
     project_path: string,
     meta: JsonRecord,
     patches: readonly TranslationItemPatch[],
   ): ProjectItemPlannedChange[] {
     const items = this.read_item_write_records(
+      database,
       project_path,
       meta,
       patches.map((patch) => patch.item_id),
@@ -1101,7 +1125,7 @@ export class ProjectWriteStore {
     const progress = this.read_translation_progress(revision_context.meta);
     const counters = this.has_translation_progress_counters(stored_progress)
       ? this.read_translation_progress_counters(progress)
-      : this.get_translation_status_summary(project_path);
+      : this.get_translation_status_summary(revision_context.database, project_path);
     const next_counters = this.apply_translation_status_deltas(counters, changes);
     return {
       ...progress,
@@ -1149,9 +1173,12 @@ export class ProjectWriteStore {
   /**
    * 旧项目缺少持久计数时从 item 状态聚合一次完整基线。
    */
-  private get_translation_status_summary(project_path: string): TranslationProgressCounters {
+  private get_translation_status_summary(
+    database: ProjectDatabaseAccess,
+    project_path: string,
+  ): TranslationProgressCounters {
     const summary = {
-      ...read_json_record(this.database.get_item_status_summary(project_path)),
+      ...read_json_record(database.get_item_status_summary(project_path)),
     };
     const processed_line = this.read_non_negative_integer(summary["processed_line"]);
     const error_line = this.read_non_negative_integer(summary["error_line"]);

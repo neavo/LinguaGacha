@@ -17,7 +17,7 @@ import path from "node:path";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { get_section_revision, ProjectDataReader } from "../../project/project-data-reader";
+import { get_section_revision } from "../../project/project-data-reader";
 import { ProjectSessionState } from "../../project/project-session-state";
 import { RuntimeOperationGate } from "../../runtime-operation-gate";
 import { BatchTranslationRuntime } from "../batch-translation-runtime";
@@ -110,20 +110,22 @@ describe("BatchTranslationRunner", () => {
       const builtin_root = create_template_root();
       const project_path = path.join(builtin_root, "task.lg");
       const database = new ProjectDatabase();
-      database.create_project(project_path, "test");
-      database.set_items(project_path, [
-        create_item({
-          id: 1,
-          src: "こんにちは",
-          dst: retranslate ? "你好" : "",
-          status: retranslate ? "PROCESSED" : "NONE",
-          file_path: "demo.txt",
-        }),
-      ]);
-      const original_items = database.get_all_items(project_path);
+      await database.create_project(project_path, "test");
+      await database.transaction(project_path, (writer) =>
+        writer.set_items(project_path, [
+          create_item({
+            id: 1,
+            src: "こんにちは",
+            dst: retranslate ? "你好" : "",
+            status: retranslate ? "PROCESSED" : "NONE",
+            file_path: "demo.txt",
+          }),
+        ]),
+      );
+      const original_items = await database.get_all_items(project_path);
       const session = new ProjectSessionState();
       session.mark_loaded(project_path);
-      const reader = new ProjectDataReader(database);
+      const reader = database;
       const runtime = new BatchTranslationRuntime(session, reader, new RuntimeOperationGate());
       const completed_scopes: number[][] = [];
       runtime.subscribe((snapshot) => {
@@ -144,7 +146,7 @@ describe("BatchTranslationRunner", () => {
       });
       const publish_change = vi.fn(() => null);
       const writes = new ProjectWriteStore(database, vi.fn(), publish_change);
-      const store = new BatchTranslationProjectStore(database, session, cache, writes);
+      const store = new BatchTranslationProjectStore(session, cache, writes);
       const pool = new TranslationWorkerPool({
         builtinRoot: builtin_root,
         execution: { kind: "in_process" },
@@ -200,10 +202,14 @@ describe("BatchTranslationRunner", () => {
           run_progress: { line: 0, total_tokens: 15 },
           progress: { processed_line: retranslate ? 1 : 0, error_line: 0, total_tokens: 15 },
         });
-        expect(database.get_all_items(project_path)).toEqual(original_items);
+        expect(await database.get_all_items(project_path)).toEqual(original_items);
+        expect(fs.existsSync(project_path + "-wal")).toBe(false);
+        expect(fs.existsSync(project_path + "-shm")).toBe(false);
         expect(publish_change).not.toHaveBeenCalled();
-        expect(get_section_revision(reader.get_all_meta(project_path), "items")).toBe(0);
-        expect(get_section_revision(reader.get_all_meta(project_path), "proofreading")).toBe(0);
+        expect(get_section_revision(await reader.get_all_meta(project_path), "items")).toBe(0);
+        expect(get_section_revision(await reader.get_all_meta(project_path), "proofreading")).toBe(
+          0,
+        );
         if (retranslate)
           expect((await runtime.build_snapshot()).scope).toEqual({ kind: "items", item_ids: [1] });
         release_retry();
@@ -213,7 +219,7 @@ describe("BatchTranslationRunner", () => {
           run_progress: { processed_line: 1, error_line: 0, total_tokens: 42 },
         });
         expect(attempts).toBe(2);
-        expect(database.get_all_items(project_path)).toEqual([
+        expect(await database.get_all_items(project_path)).toEqual([
           expect.objectContaining({ dst: "你好", status: "PROCESSED" }),
         ]);
         if (retranslate) {
@@ -224,7 +230,7 @@ describe("BatchTranslationRunner", () => {
         release_retry();
         await runtime.dispose();
         await pool.dispose();
-        database.close();
+        await database.close();
       }
     },
   );
@@ -278,7 +284,6 @@ describe("BatchTranslationRunner", () => {
       processed_line: 8,
       total_tokens: 40,
     };
-    let lease_release_count = 0;
     const progress_snapshots: MutableJsonRecord[] = [];
     const done = create_status_waiter("done");
     const task_runtime = create_task_runtime(done.listener, () => ({
@@ -295,9 +300,6 @@ describe("BatchTranslationRunner", () => {
       llmClient: create_unused_llm_client(),
       builtinRoot: path.join(process.cwd(), "builtin"),
       taskStore: create_task_store({
-        acquire_project_lease: () => () => {
-          lease_release_count += 1;
-        },
         get_translation_items: () => [],
         update_translation_progress: async (request: MutableJsonRecord) => {
           translation_extras = {
@@ -318,7 +320,6 @@ describe("BatchTranslationRunner", () => {
     });
     await done.promise;
 
-    expect(lease_release_count).toBe(1);
     expect(progress_snapshots).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -331,12 +332,7 @@ describe("BatchTranslationRunner", () => {
     );
   });
 
-  it("终态 listener 失败时仍释放任务锁和工程连接租约", async () => {
-    let lease_release_count = 0;
-    let resolve_lease_release = (): void => undefined;
-    const lease_released = new Promise<void>((resolve) => {
-      resolve_lease_release = resolve;
-    });
+  it("终态 listener 失败时仍释放任务锁", async () => {
     const task_runtime = create_task_runtime();
     task_runtime.subscribe((snapshot) => {
       if (snapshot.status === "done") {
@@ -347,10 +343,6 @@ describe("BatchTranslationRunner", () => {
       llmClient: create_unused_llm_client(),
       builtinRoot: path.join(process.cwd(), "builtin"),
       taskStore: create_task_store({
-        acquire_project_lease: () => () => {
-          lease_release_count += 1;
-          resolve_lease_release();
-        },
         get_translation_items: () => [],
       }),
       taskRuntime: task_runtime,
@@ -364,7 +356,6 @@ describe("BatchTranslationRunner", () => {
       mode: "new",
       scope: { kind: "all" },
     });
-    await lease_released;
     await wait_until(
       async () =>
         !["requested", "running", "stopping"].includes(
@@ -372,7 +363,6 @@ describe("BatchTranslationRunner", () => {
         ),
     );
 
-    expect(lease_release_count).toBe(1);
     await expect(task_runtime.build_snapshot()).resolves.toMatchObject({
       status: "done",
     });
@@ -697,15 +687,11 @@ describe("BatchTranslationRunner", () => {
     const execution = new Promise<WorkUnitExecutionResult>((resolve) => {
       release_execution = resolve;
     });
-    let lease_release_count = 0;
     const task_runtime = create_task_runtime();
     const task_engine = new BatchTranslationRunner({
       llmClient: create_unused_llm_client(),
       builtinRoot: path.join(process.cwd(), "builtin"),
       taskStore: create_task_store({
-        acquire_project_lease: () => () => {
-          lease_release_count += 1;
-        },
         get_translation_items: () => [create_pending_item()],
       }),
       taskRuntime: task_runtime,
@@ -735,13 +721,11 @@ describe("BatchTranslationRunner", () => {
 
     expect(read_execution_aborted()).toBe(true);
     expect(dispose_completed).toBe(false);
-    expect(lease_release_count).toBe(0);
 
     release_execution(create_translation_worker_result([create_pending_item()], 1, 1));
     await disposing;
 
     expect(dispose_completed).toBe(true);
-    expect(lease_release_count).toBe(1);
   });
 
   /**
@@ -809,7 +793,7 @@ describe("BatchTranslationRunner", () => {
       {
         get_all_meta: () => read_meta?.() ?? {},
         get_section_revision: () => 0,
-      } as unknown as ProjectDataReader,
+      } as unknown as ProjectDatabase,
       new RuntimeOperationGate(),
     );
     runtime.subscribe(listener);
@@ -845,7 +829,6 @@ describe("BatchTranslationRunner", () => {
     overrides: Partial<BatchTranslationRunnerOptions["taskStore"]> = {},
   ): BatchTranslationRunnerOptions["taskStore"] {
     return {
-      acquire_project_lease: () => () => undefined,
       build_quality_snapshot: () => read_text_quality_snapshot({}),
 
       commit_translation_batch: async () => ({ changed_item_ids: [], section_revisions: {} }),

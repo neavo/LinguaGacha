@@ -29,7 +29,10 @@ import { ModelService } from "../model/model-service";
 import { ChatGPTAuthService } from "../auth/chatgpt-auth-service";
 import { ProjectContentService } from "../project/project-content-service";
 import { adapt_project_change } from "../project/project-write-event-adapter";
-import { ProjectDataReader } from "../project/project-data-reader";
+import {
+  ProjectDataReader,
+  build_section_revisions_from_meta,
+} from "../project/project-data-reader";
 import { RuntimeOperationGate } from "../runtime-operation-gate";
 import { ProjectLifecycleService } from "../project/project-lifecycle-service";
 import { ProjectSessionState } from "../project/project-session-state";
@@ -87,7 +90,7 @@ export interface BackendRuntimeServices {
 
 export interface BackendProjectServices {
   lifecycle: ProjectLifecycleService;
-  readManifest: () => JsonRecord;
+  readManifest: () => Promise<JsonRecord>;
 
   summary: ProjectSummaryService;
   content: ProjectContentService;
@@ -149,7 +152,7 @@ export class BackendServices {
     const metadata = options.metadata;
     const user_agent = metadata.build_linguagacha_user_agent();
     const session_state = new ProjectSessionState();
-    const data_reader = new ProjectDataReader(options.database);
+    const database = options.database;
 
     this.app_setting_service = options.appSettingService;
     this.logManager = options.logManager;
@@ -195,7 +198,7 @@ export class BackendServices {
       this.cache_manager,
     );
 
-    this.task_runtime = new BatchTranslationRuntime(session_state, data_reader, this.runtime_gate);
+    this.task_runtime = new BatchTranslationRuntime(session_state, database, this.runtime_gate);
     const lifecycle = new ProjectLifecycleService(
       options.database,
       this.runtime_gate,
@@ -218,12 +221,7 @@ export class BackendServices {
       auth: this.modelAuth,
       llmClient: llm_client,
       builtinRoot: paths.get_builtin_root(),
-      taskStore: new BatchTranslationProjectStore(
-        options.database,
-        session_state,
-        this.cache_manager,
-        write_store,
-      ),
+      taskStore: new BatchTranslationProjectStore(session_state, this.cache_manager, write_store),
       taskRuntime: this.task_runtime,
       executorClient: this.work_unit_worker_pool,
       taskPlanner: new TranslationPlanner({
@@ -238,9 +236,22 @@ export class BackendServices {
     };
     this.project = {
       lifecycle,
-      readManifest: () => data_reader.build_manifest(session_state.snapshot()),
+      readManifest: () => {
+        const state = session_state.snapshot();
+        return state.loaded
+          ? database.read(state.projectPath, (reader) =>
+              new ProjectDataReader(reader).build_manifest(state),
+            )
+          : Promise.resolve({
+              projectPath: "",
+              project: { path: state.projectPath, loaded: state.loaded },
+              projectRevision: 0,
+              sectionRevisions: build_section_revisions_from_meta({}),
+              counts: { files: 0, items: 0 },
+            });
+      },
 
-      summary: new ProjectSummaryService(session_state, this.cache_manager, options.database),
+      summary: new ProjectSummaryService(session_state, this.cache_manager),
       content: new ProjectContentService(
         options.database,
         this.runtime_gate,

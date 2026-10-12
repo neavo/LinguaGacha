@@ -59,13 +59,13 @@ export class XLSXFormat {
   public async write_to_path(
     items: Item[],
     paths: GeneratedFilePaths,
-    asset_reader: (path: string) => Buffer | null,
+    asset_reader: (path: string) => Buffer | null | Promise<Buffer | null>,
   ): Promise<void> {
     for (const type of ["XLSX", "WOLFXLSX"] as const)
       for (const [rel_path, group] of group_items(items, type)) {
         const wolf = type === "WOLFXLSX";
         // KV 类：两个格式都从源工作簿写回，未完成条目保留目标单元格及其原始值和格式。
-        const original = asset_reader(rel_path);
+        const original = await asset_reader(rel_path);
         if (original === null)
           throw new AppError("file.not_found", { public_details: { file: rel_path } });
         const workbook = await read_workbook(original);

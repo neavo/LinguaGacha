@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import type { ProjectDatabase } from "../database/database-operations";
+import type { ProjectDatabaseAccess } from "../database/database-operations";
 
 import {
   build_section_revisions_from_meta,
@@ -9,7 +9,7 @@ import {
 } from "./project-data-reader";
 
 type ProjectDataDatabase = Pick<
-  ProjectDatabase,
+  ProjectDatabaseAccess,
   | "get_all_meta"
   | "get_all_items"
   | "get_all_asset_records"
@@ -21,7 +21,7 @@ type ProjectDataDatabase = Pick<
 >;
 
 /** 仅提供本文件读取契约所需的数据库替身。 */
-function create_database_stub(overrides: Partial<ProjectDataDatabase> = {}): ProjectDatabase {
+function create_database_stub(overrides: Partial<ProjectDataDatabase> = {}): ProjectDatabaseAccess {
   return {
     read_pdf_summaries: () => ({}),
     get_all_meta: () => ({}),
@@ -33,7 +33,7 @@ function create_database_stub(overrides: Partial<ProjectDataDatabase> = {}): Pro
     get_rules: () => [],
     get_rule_text: () => "",
     ...overrides,
-  } as unknown as ProjectDatabase;
+  } as unknown as ProjectDatabaseAccess;
 }
 
 describe("project section revision", () => {

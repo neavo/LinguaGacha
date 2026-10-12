@@ -1,4 +1,14 @@
-import { describe, expect, it } from "vitest";
+import type { JsonRecord } from "../../domain/json";
+import type { ProjectDatabaseAccess } from "../database/database-operations";
+import { describe, expect, it, vi } from "vitest";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { ProjectDatabaseAccess as DatabaseAccess } from "../database/database-operations";
+import { build_project_committed_change } from "./project-committed-change";
+import type { ProjectDataSection } from "../../shared/project-event";
+import { create_pdf_fixture } from "../file/pdf/test-support";
+import { read_pdf_document } from "../file/pdf/pdf-document";
 
 import { CacheManager } from "../cache/cache-manager";
 import { ProjectDatabase } from "../database/database-operations";
@@ -7,8 +17,103 @@ import type { ComputeWorkerClient } from "../worker/compute-worker-client";
 import { ProjectSummaryService } from "./project-summary-service";
 import type { PDFSummary } from "../../shared/pdf";
 
+it("工作台同步读取提交缓存，PDF 修改、文本提交及文件删除与修订一致", async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "lg-summary-cache-"));
+  const project = path.join(root, "test.lg");
+  const source = path.join(root, "book.pdf");
+  const bytes = create_pdf_fixture();
+  fs.writeFileSync(source, bytes);
+  const document = read_pdf_document(bytes);
+  const database = new ProjectDatabase();
+  const session = new ProjectSessionState();
+  const cache = new CacheManager({
+    database,
+    logManager: null,
+    appSettingService: { read_setting: () => ({}) } as never,
+    workerClient: {} as ComputeWorkerClient,
+  });
+  const summaries = vi.spyOn(DatabaseAccess.prototype, "read_pdf_summaries");
+  try {
+    await database.create_project(project, "test", (writer) => {
+      writer.add_asset_from_source(project, "book.pdf", source, document);
+      writer.set_items(project, [create_item({})]);
+    });
+    await cache.warmProject(project);
+    expect(summaries).toHaveBeenCalledTimes(1);
+    await session.mark_loaded(project);
+    const service = new ProjectSummaryService(session, cache);
+    summaries.mockClear();
+    expect(service.read().snapshot.entries[0]?.progress.completed_count).toBe(0);
+    expect(summaries).not.toHaveBeenCalled();
+    const commit = async (
+      sections: ProjectDataSection[],
+      write: (writer: ProjectDatabaseAccess) => void,
+    ) => {
+      const change = await database.transaction(project, (writer) => {
+        write(writer);
+        const meta = writer.get_all_meta(project);
+        return build_project_committed_change(
+          writer,
+          {
+            projectPath: project,
+            source: "test",
+            updatedSections: sections,
+            qualityStatisticsScope: "none",
+            changedItemIds: [1],
+          },
+          meta,
+        );
+      });
+      await cache.applyCommittedChange(change);
+    };
+    await commit(["pdf"], (writer) => {
+      writer.write_pdf_page(project, "book.pdf", {
+        ...document.pages[0]!,
+        translation: { kind: "keep", reason: "封面" },
+      });
+      writer.set_meta(project, "project_runtime_revision.pdf", 1);
+    });
+    expect(service.read()).toMatchObject({
+      sectionRevisions: { pdf: 1 },
+      snapshot: {
+        entries: expect.arrayContaining([
+          expect.objectContaining({ progress: expect.objectContaining({ skipped_count: 1 }) }),
+        ]),
+      },
+    });
+    expect(summaries).toHaveBeenCalledTimes(1);
+    summaries.mockClear();
+    await commit(["items"], (writer) => {
+      writer.patch_item_translation_fields(project, [
+        { item_id: 1, next: { dst: "译文", name_dst: null, status: "PROCESSED" } },
+      ]);
+      writer.set_meta(project, "project_runtime_revision.items", 2);
+    });
+    expect(service.read().sectionRevisions.items).toBe(2);
+    expect(service.read_translation_stats().stats.completed_count).toBe(1);
+    expect(summaries).not.toHaveBeenCalled();
+    await commit(["files", "pdf"], (writer) => {
+      writer.delete_asset(project, "book.pdf");
+      writer.set_meta(project, "project_runtime_revision.files", 1);
+      writer.set_meta(project, "project_runtime_revision.pdf", 2);
+    });
+    expect(service.read()).toMatchObject({
+      sectionRevisions: { files: 1, pdf: 2, items: 2 },
+      snapshot: { entries: [{ rel_path: "script.txt", progress: { completed_count: 1 } }] },
+    });
+    expect(cache.pdf.readBlock()).toEqual({});
+    expect(summaries).toHaveBeenCalledTimes(1);
+    cache.clearProject();
+    expect(cache.pdf.readBlock()).toEqual({});
+  } finally {
+    summaries.mockRestore();
+    await database.close();
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
 // query service 测试只关心公开读取结果，item helper 提供稳定的最小项目行。
-function create_item(overrides: Record<string, unknown>): Record<string, unknown> {
+function create_item(overrides: JsonRecord): JsonRecord {
   return {
     id: 1,
     src: "こんにちは",
@@ -34,7 +139,7 @@ describe("ProjectSummaryService", () => {
       create_item({ id: 2, src: "失敗", status: "ERROR" }),
     ]);
 
-    const result = service.read();
+    const result = await service.read();
 
     expect(result).toMatchObject({
       projectPath: "E:/Project/demo.lg",
@@ -54,7 +159,7 @@ describe("ProjectSummaryService", () => {
       ],
     );
 
-    const result = service.read();
+    const result = await service.read();
 
     expect(result).toMatchObject({
       snapshot: {
@@ -89,7 +194,7 @@ describe("ProjectSummaryService", () => {
         completion_percent: 50,
       },
     });
-    expect(service.read().snapshot.entries.map((entry) => entry.progress)).toEqual([
+    expect((await service.read()).snapshot.entries.map((entry) => entry.progress)).toEqual([
       {
         unit: "line",
         total_count: 3,
@@ -115,7 +220,7 @@ describe("ProjectSummaryService", () => {
     const { service } = await create_service([], [{ path: "book.pdf", sort_order: 0 }], {
       "book.pdf": { pages: 4, translated_pages: 1, omitted_pages: 1, kept_pages: 1 },
     });
-    expect(service.read().snapshot.entries).toEqual([
+    expect((await service.read()).snapshot.entries).toEqual([
       {
         rel_path: "book.pdf",
         file_type: "PDF",
@@ -146,7 +251,9 @@ describe("ProjectSummaryService", () => {
   }> {
     const database = {
       read_pdf_summaries: () => pdf_summaries,
-      with_project_scope: <T>(_project: string, callback: () => T): T => callback(),
+      async read<T>(_path: string, callback: (reader: ProjectDatabaseAccess) => T): Promise<T> {
+        return callback(this as unknown as ProjectDatabaseAccess);
+      },
       get_all_meta: () => ({
         "project_runtime_revision.items": 7,
       }),
@@ -170,7 +277,7 @@ describe("ProjectSummaryService", () => {
     const session_state = new ProjectSessionState();
     session_state.mark_loaded("E:/Project/demo.lg");
     return {
-      service: new ProjectSummaryService(session_state, cache, database),
+      service: new ProjectSummaryService(session_state, cache),
     };
   }
 });

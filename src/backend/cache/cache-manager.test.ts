@@ -2,7 +2,7 @@ import { create_empty_quality_rule_block } from "../project/project-data-reader"
 import { describe, expect, it, vi } from "vitest";
 
 import type { AppSettingService } from "../app/app-setting-service";
-import type { ProjectDatabase } from "../database/database-operations";
+import type { ProjectDatabase, ProjectDatabaseAccess } from "../database/database-operations";
 import type { LogManager } from "../log/log-manager";
 import type { ComputeWorkerClient } from "../worker/compute-worker-client";
 import {
@@ -43,7 +43,7 @@ function create_database(
     rules?: Record<string, MutableRecord[]>;
     throw_on_get_all_items?: boolean;
   } = {},
-): ProjectDatabase & {
+): ProjectDatabaseAccess & {
   get_all_items: ReturnType<typeof vi.fn>;
   get_items_by_ids: ReturnType<typeof vi.fn>;
   get_rules: ReturnType<typeof vi.fn>;
@@ -65,8 +65,7 @@ function create_database(
     return options.rules?.[rule_type] ?? [];
   });
   const get_rule_text = vi.fn(() => null);
-  return {
-    with_project_scope: <T>(_project: string, callback: () => T): T => callback(),
+  const access = {
     read_pdf_summaries: () => ({}),
     read_pdf_documents: vi.fn(() => []),
     get_all_meta: vi.fn(() => options.meta ?? {}),
@@ -75,12 +74,16 @@ function create_database(
     get_all_asset_records: vi.fn(() => [{ path: "script.txt", sort_order: 0 }]),
     get_rules,
     get_rule_text,
-  } as unknown as ProjectDatabase & {
+  } as unknown as ProjectDatabaseAccess & {
     get_all_items: ReturnType<typeof vi.fn>;
     get_items_by_ids: ReturnType<typeof vi.fn>;
     get_rules: ReturnType<typeof vi.fn>;
     get_rule_text: ReturnType<typeof vi.fn>;
   };
+  return Object.assign(access, {
+    read: async <T>(_path: string, callback: (reader: ProjectDatabaseAccess) => T) =>
+      callback(access),
+  });
 }
 
 /** 固定语言，避免依赖本机设置。 */
@@ -105,12 +108,12 @@ function create_worker(): ComputeWorkerClient & { run: ReturnType<typeof vi.fn> 
 
 /** 用真实缓存组合根串联数据库替身与评估器。 */
 function create_cache(options: {
-  database: ProjectDatabase;
+  database: ProjectDatabaseAccess;
   logManager?: Pick<LogManager, "warning" | "error"> | null;
   worker?: ComputeWorkerClient;
 }): CacheManager {
   return new CacheManager({
-    database: options.database,
+    database: options.database as unknown as ProjectDatabase,
     logManager: options.logManager ?? null,
     appSettingService: create_settings(),
     workerClient: options.worker ?? create_worker(),
@@ -237,7 +240,7 @@ describe("CacheManager", () => {
           qualityStatisticsScope: "none",
           updatedSections: ["files"],
         },
-        database.get_all_meta("E:/Project/demo.lg"),
+        await database.get_all_meta("E:/Project/demo.lg"),
         undefined,
         cache.items.readFileMetadata(),
       ),
@@ -283,7 +286,7 @@ describe("CacheManager", () => {
     expect(cache.quality.readBlock()).toEqual(create_empty_quality_rule_block());
   });
 
-  it("已提交 write 后缓存维护失败会进入可恢复状态，后续读取重新热机", async () => {
+  it("已提交 write 后缓存维护失败会等待重新热机再报告原始错误", async () => {
     const database = create_database({
       items: [create_item()],
     });
@@ -304,7 +307,8 @@ describe("CacheManager", () => {
       throw new Error("view failed");
     });
 
-    expect(() =>
+    database.get_all_items.mockReturnValue([create_item({ id: 2, src: "こんばんは" })]);
+    await expect(
       cache.applyCommittedChange({
         ...build_project_committed_change(
           database,
@@ -318,9 +322,9 @@ describe("CacheManager", () => {
         ),
         sectionRevisions: { items: 2, quality: 3, prompts: 4 },
       }),
-    ).toThrow("view failed");
+    ).rejects.toThrow("view failed");
 
-    expect(cache.snapshot().freshness).toBe("recoverable_error");
+    expect(cache.snapshot().freshness).toBe("fresh");
     expect(log_manager.warning).toHaveBeenCalled();
 
     database.get_all_items.mockReturnValue([create_item({ id: 2, src: "こんばんは" })]);
@@ -361,7 +365,7 @@ describe("CacheManager", () => {
           changedItemIds: [1],
           qualityStatisticsScope: "post_replacement",
         },
-        database.get_all_meta("E:/Project/demo.lg"),
+        await database.get_all_meta("E:/Project/demo.lg"),
       ),
       sectionRevisions: { items: 2 },
     });
