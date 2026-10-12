@@ -5,10 +5,11 @@ import {
 } from "../../../shared/project/project-asset-paths";
 import path from "node:path";
 import { read_rpgmaker_container } from "../../file/rpgmaker-shared";
+import { read_rgss_sources } from "../../file/rpgmaker-rgss/readable";
 import { read_zip_members } from "../../file/zip-members";
 import type { NativeFs } from "../../../native/native-fs";
 
-/** 按资产身份写出原稿，RM 与 EPUB 在同名位置完整展开。 */
+/** 按资产身份写出原稿，RGSS 提供只读明文，其他容器保留成员字节。 */
 export async function write_agent_workspace_sources(args: {
   nativeFs: NativeFs;
   sourceRoot: string;
@@ -28,8 +29,16 @@ export async function write_agent_workspace_sources(args: {
         is_rpgmaker_file_type(file.file_type) ? read_rpgmaker_container : read_zip_members
       )(content, file.file_path);
       await args.nativeFs.make_dir_async(target);
-      for (const [name, member] of files)
-        await args.nativeFs.write_file(path.join(target, name), await member.async("uint8array"));
+      if (file.file_type === "RPGMAKER_RGSS") {
+        const members = new ProjectAssetPathIndex();
+        for await (const [name, content] of read_rgss_sources(files)) {
+          members.add(name); // 生成文件与原始成员冲突时中止，交由工作区清理整个投影。
+          await args.nativeFs.write_file(path.join(target, name), content);
+        }
+      } else {
+        for (const [name, member] of files)
+          await args.nativeFs.write_file(path.join(target, name), await member.async("uint8array"));
+      }
     } else {
       await args.nativeFs.write_file(target, content);
     }

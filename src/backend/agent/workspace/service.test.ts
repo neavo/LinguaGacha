@@ -5,6 +5,8 @@ import type { ProofreadingWarning } from "../../../shared/proofreading/proofread
 import { read_pdf_document } from "../../file/pdf/pdf-document";
 import { BackendResources } from "../../bootstrap/backend-resources";
 import JSZip from "jszip";
+import { encode } from "../../file/rpgmaker-rgss/marshal";
+import { ruby_array } from "../../../test/rgss-fixture";
 import { BackendServices } from "../../bootstrap/backend-services";
 import { create_pdf_fixture } from "../../file/pdf/test-support";
 import { agent_workspace_page_fingerprint } from "../../project/agent-workspace-page-write";
@@ -534,36 +536,44 @@ describe("AgentWorkspaceService", () => {
     expect(fixture.read_asset_content).toHaveBeenCalledTimes(3);
   });
 
-  it("容器修订刷新删除旧成员，落盘失败清理后允许重试", async () => {
-    const file_path = "book.epub";
+  it("RGSS 明文随修订重建，落盘失败清理后允许重试", async () => {
+    const file_path = "game.zip";
     const native = new NativeFs();
     const fixture = await create_fixture(temp_dir, native);
     vi.spyOn(fixture.cache.files, "readFileEntries").mockReturnValue([
-      { rel_path: file_path, file_type: "EPUB", sort_index: 0 },
+      { rel_path: file_path, file_type: "RPGMAKER_RGSS", sort_index: 0 },
     ]);
+    const empty = encode(ruby_array([]));
+    // 两份原稿仅改变成员名，用于观察旧明文清理和新明文发布。
     const archive = async (name: string) =>
-      new JSZip().file(name, "{}").generateAsync({ type: "nodebuffer" });
-    fixture.read_asset_content.mockResolvedValue(Buffer.from(await archive("data/Old.json")));
+      new JSZip()
+        .file("Game.ini", "[Game]\n")
+        .file("Data/System.rvdata2", empty)
+        .file("Data/Scripts.rvdata2", empty)
+        .file(`Data/${name}.rvdata2`, empty)
+        .generateAsync({ type: "nodebuffer" });
+    fixture.read_asset_content.mockResolvedValue(await archive("Old"));
     await run_workspace(fixture);
 
     fixture.snapshot.sectionRevisions.files = 2;
-    fixture.read_asset_content.mockResolvedValue(Buffer.from(await archive("data/New.json")));
+    fixture.read_asset_content.mockResolvedValue(await archive("New"));
     await run_workspace(fixture);
     const game = path.join(fixture.workspace_root, "sources", file_path);
-    expect(fs.existsSync(path.join(game, "data/Old.json"))).toBe(false);
-    expect(fs.readFileSync(path.join(game, "data/New.json"), "utf8")).toBe("{}");
+    const new_file = path.join(game, "Data/New.rvdata2.json");
+    expect(fs.existsSync(path.join(game, "Data/Old.rvdata2.json"))).toBe(false);
+    expect(JSON.parse(fs.readFileSync(new_file, "utf8"))).toEqual([]);
 
     fixture.snapshot.sectionRevisions.files += 1;
     const write = native.write_file.bind(native);
     const fail = vi.spyOn(native, "write_file").mockImplementation(async (file, ...args) => {
       await write(file, ...args);
-      if (file.endsWith("New.json")) throw new Error("source write failed");
+      if (file === new_file) throw new Error("source write failed");
     });
     await expect(run_workspace(fixture)).rejects.toThrow();
     expect(fs.existsSync(path.join(fixture.workspace_root, "sources"))).toBe(false);
     fail.mockRestore();
     await run_workspace(fixture);
-    expect(fs.readFileSync(path.join(game, "data/New.json"), "utf8")).toBe("{}");
+    expect(JSON.parse(fs.readFileSync(new_file, "utf8"))).toEqual([]);
   });
 
   it("work 跨快照、apply 与普通 revision 变化保留，显式 reset 时清理", async () => {
@@ -1175,7 +1185,7 @@ async function create_fixture(temp_dir: string, native_fs?: NativeFs) {
   );
   const warning_item = items[0] as JsonRecord;
   const setting = { ...DEFAULT_SETTING };
-  const read_asset_content = vi.fn(async () => Buffer.from("源文件正文", "utf-8"));
+  const read_asset_content = vi.fn(async (): Promise<Buffer> => Buffer.from("源文件正文", "utf-8"));
   const query_warnings = vi.fn(async () => ({
     projectPath: snapshot.projectPath,
     sectionRevisions: { ...snapshot.sectionRevisions },

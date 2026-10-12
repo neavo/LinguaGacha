@@ -71,7 +71,7 @@
 
 文件通过 `workspace_run` 编写脚本读取，图片通过脚本中的 `ws.emitImage` 传递给模型查看
 
-原稿入口统一为 `sources/<file_path>`。`RPGMAKER_MV_MZ` 和 `EPUB` 在同名位置展开为目录，保留扩展名及包内路径。其余格式保留文件。RM 成员路径为 `sources/<file_path>/<extra_field.rpgmaker_mv_mz.internal_file_path>`
+原稿入口统一为 `sources/<file_path>`。`RPGMAKER_MV_MZ`、`RPGMAKER_RGSS` 和 `EPUB` 在同名位置展开为目录，保留资产扩展名及包内路径，其余格式为原始资产文件。
 
 上传文件默认仅作为参考资料用途，用户明确要求翻译时，向其说明 `工作台添加文件后任务进度才能随工程保存` 这一限制，并要求其确认
 

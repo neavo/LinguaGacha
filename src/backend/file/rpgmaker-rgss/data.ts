@@ -1,7 +1,7 @@
 import { RPGMAKER_EVENT as EVENT } from "../rpgmaker-shared";
 import assert from "node:assert/strict";
 import path from "node:path";
-import { inflateSync, deflateSync } from "node:zlib";
+import { deflateSync } from "node:zlib";
 import { create_item, type Item } from "../../../domain/item";
 import type { JsonValue } from "../../../domain/json";
 import type { SourceFileParseWarning } from "../file-format-shared";
@@ -11,7 +11,6 @@ import {
   integer,
   bytes,
   text,
-  read_text,
   write_text,
   replace_bytes,
   replace_text,
@@ -29,6 +28,7 @@ import {
   type RGSSContainer,
 } from "./item";
 import type { RGSSVersion } from "./source";
+import { read_rgss_script } from "./scripts";
 
 const DISPLAY_FIELDS: Record<string, readonly string[]> = {
   Actors: ["@name", "@nickname", "@description"],
@@ -62,7 +62,6 @@ const ACTOR_TEXT_CODES = new Set<number>([
   EVENT.ACTOR_PROFILE,
 ]);
 const MESSAGE_LINES = 4;
-const MAX_SCRIPT_BYTES = 32 * 1024 * 1024;
 const member = (name: string) => ({ field: name }); // 字段段与数组索引、Hash 项使用不同形状。
 const COMMAND_CLASSES = { event: "RPG::EventCommand", move: "RPG::MoveCommand" } as const;
 /** 类型身份决定是否进入事件解释，普通数据中的同名字段不代表指令。 */
@@ -86,25 +85,10 @@ function command(node: MarshalNode) {
     parameters: array(parameters),
   };
 }
-/** 脚本编码注释作用于压缩包内的原字节，解析前统一转为 UTF-8 文本。 */
-function script_text(data: Buffer): { source: string; encoding: string } {
-  const header = data
-    .subarray(0, Math.min(data.length, 256))
-    .toString("latin1")
-    .split(/\r?\n/u)
-    .slice(0, 2)
-    .join("\n");
-  const encoding =
-    /^[ \t]*#[^\n]*(?:coding|encoding)[ \t]*[:=][ \t]*([\w-]+)/imu.exec(header)?.[1] ?? "utf8";
-  return { source: read_text(data, encoding), encoding };
-}
 /** 保存的位置始终对照固化原稿读取，事件续行须属于同一指令块。 */
 function read_container(slots: RubySlots, location: RGSSContainer, version: RGSSVersion): string {
   if (location.kind === "field") return text(slots.read(location.path));
-  if (location.kind === "archive")
-    return script_text(
-      inflateSync(bytes(slots.read(location.path)), { maxOutputLength: MAX_SCRIPT_BYTES }),
-    ).source;
+  if (location.kind === "archive") return read_rgss_script(slots.read(location.path)).source;
   const list = array(slots.read(location.path));
   assert(
     Number.isInteger(location.start) &&
@@ -490,7 +474,7 @@ export async function write_rgss_data(
       assert("parent" in target);
       const node = read_slot(target);
       if (group.container.kind === "archive") {
-        const script = script_text(inflateSync(bytes(node), { maxOutputLength: MAX_SCRIPT_BYTES }));
+        const script = read_rgss_script(node);
         if (script.source !== value)
           plan(target, replace_bytes(node, deflateSync(write_text(value, script.encoding))));
       } else {

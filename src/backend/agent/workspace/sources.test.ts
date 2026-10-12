@@ -5,6 +5,8 @@ import { expect, it } from "vitest";
 import { NativeFs } from "../../../native/native-fs";
 import { write_agent_workspace_sources } from "./sources";
 import JSZip from "jszip";
+import { encode } from "../../file/rpgmaker-rgss/marshal";
+import { ruby_array } from "../../../test/rgss-fixture";
 
 it("普通原稿按资产相对路径保留原始字节", async () => {
   using root = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-sources-"));
@@ -25,7 +27,6 @@ it("普通原稿按资产相对路径保留原始字节", async () => {
 
 it.each([
   ["RPGMAKER_MV_MZ", "game.zip.zip"],
-  ["RPGMAKER_RGSS", "rgss.zip"],
   ["EPUB", "小说/书.epub"],
 ])("%s 按资产相对路径展开并保留所有成员字节", async (file_type, file_path) => {
   using root = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-sources-rm-"));
@@ -45,6 +46,22 @@ it.each([
   });
   for (const [name, bytes] of members)
     expect(fs.readFileSync(path.join(root.path, "sources", file_path, name))).toEqual(bytes);
+});
+
+it("RGSS 生成路径与原始成员冲突时失败，避免覆盖原稿证据", async () => {
+  using root = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-sources-rgss-"));
+  const zip = new JSZip()
+    .file("Game.ini", "[Game]\n")
+    .file("Data/System.rvdata2", encode(ruby_array([])))
+    .file("Data/System.rvdata2.json", "original");
+  await expect(
+    write_agent_workspace_sources({
+      nativeFs: new NativeFs(),
+      sourceRoot: root.path,
+      files: [{ file_path: "game.zip", file_type: "RPGMAKER_RGSS" }],
+      readAsset: () => zip.generateAsync({ type: "nodebuffer" }),
+    }),
+  ).rejects.toMatchObject({ code: "request.validation_failed" });
 });
 
 it.each(["RPGMAKER_MV_MZ", "RPGMAKER_RGSS", "EPUB"])(
