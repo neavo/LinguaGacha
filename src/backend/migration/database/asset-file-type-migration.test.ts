@@ -15,7 +15,7 @@ it("迁移优先保留 PDF 和首个有效条目身份，未知空资产等待�
     { file_path: "game.json", file_type: "NONE" },
     {
       file_path: "game.json",
-      file_type: "RPGMAKER_MV_MZ",
+      file_type: "MESSAGEJSON",
       text_type: "RPGMAKER",
       extra_field: { keep: true },
     },
@@ -30,7 +30,7 @@ it("迁移优先保留 PDF 和首个有效条目身份，未知空资产等待�
     { path: "book.pdf", file_type: "PDF" },
     { path: "empty.json", file_type: "NONE" },
     { path: "empty.txt", file_type: "TXT" },
-    { path: "game.json", file_type: "RPGMAKER_MV_MZ" },
+    { path: "game.json", file_type: "MESSAGEJSON" },
   ]);
   const migrated = db.prepare("SELECT data FROM items ORDER BY id").all();
   expect(migrated.slice(0, -1).map((row) => JSON.parse(String(row["data"])))).toEqual([

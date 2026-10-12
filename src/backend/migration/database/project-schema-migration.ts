@@ -37,6 +37,7 @@ function ensure_current_schema(db: DatabaseSync): void {
       CREATE TABLE IF NOT EXISTS assets (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         path TEXT NOT NULL UNIQUE,
+        file_type TEXT NOT NULL DEFAULT 'NONE',
         sort_order INTEGER NOT NULL DEFAULT 0,
         data BLOB NOT NULL,
         original_size INTEGER NOT NULL,
