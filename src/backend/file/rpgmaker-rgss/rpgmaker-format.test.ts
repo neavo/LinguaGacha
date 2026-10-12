@@ -2,11 +2,17 @@ import { expect, it } from "vitest";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { ruby_array as a, ruby_object as o, ruby_string as s } from "../../../test/rgss-fixture";
+import { deflateSync, inflateSync } from "node:zlib";
+import {
+  ruby_array as a,
+  ruby_object as o,
+  ruby_string as s,
+  ruby_integer as n,
+} from "../../../test/rgss-fixture";
 import { create_pdf_execution } from "../pdf/test-support";
 import { FileFormatService } from "../file-format-service";
 import { decode, encode, field } from "./marshal";
-import { array, text } from "./value";
+import { array, text, bytes } from "./value";
 import { RPGMakerRGSSFormat } from "./rpgmaker-format";
 
 it.each([
@@ -28,7 +34,12 @@ it.each([
   );
   fs.writeFileSync(path.join(source, "Game.ini"), ini);
   fs.writeFileSync(path.join(source, "Game.exe"), "");
-  fs.writeFileSync(path.join(source, "Custom/Main" + extension), encode(a([])));
+  fs.writeFileSync(
+    path.join(source, "Custom/Main" + extension),
+    encode(
+      a([a([n(1), s("Vocab"), { t: '"', data: deflateSync(Buffer.from('puts "menu", "keep"')) }])]),
+    ),
+  );
   fs.writeFileSync(
     path.join(data, "System" + extension),
     encode(o("RPG::System", { "@game_title": s(title), "@currency_unit": s("ゴールド") })),
@@ -52,11 +63,16 @@ it.each([
   expect(result.warnings).toMatchObject([
     { code: "internal_file_parse_failed", internal_file_path: "Data/Broken" + extension },
   ]);
+  expect(result.items.map((item) => item.status)).toEqual(
+    result.items.map(FileFormatService.default_status),
+  );
   expect(result.items.map((item) => [item.src, FileFormatService.default_status(item)])).toEqual([
     ["hero", "NONE"],
     ["resource", "RULE_SKIPPED"],
     [title, "RULE_SKIPPED"],
     ["ゴールド", "NONE"],
+    ["menu", "RULE_SKIPPED"],
+    ["keep", "RULE_SKIPPED"],
   ]);
   const title_item = result.items.find((item) => item.src === title)!;
   expect(title_item.status).toBe("RULE_SKIPPED");
@@ -65,7 +81,12 @@ it.each([
   const currency = result.items.find((item) => item.src === "ゴールド")!;
   currency.dst = "金币";
   currency.status = "PROCESSED";
-  const item = result.items[0]!;
+  const menu = result.items.find((item) => item.src === "menu")!;
+  menu.dst = "菜单";
+  menu.status = "PROCESSED";
+  const keep = result.items.find((item) => item.src === "keep")!;
+  keep.dst = "不应写入";
+  const item = result.items.find((item) => item.src === "hero")!;
   item.dst = "英雄";
   item.status = "PROCESSED";
   const output = path.join(temp.path, "output");
@@ -81,7 +102,8 @@ it.each([
   expect(text(field(system, "@currency_unit")!)).toBe("金币");
   expect(fs.readFileSync(path.join(output, "game/Game.ini"))).toEqual(ini);
   expect(fs.readFileSync(path.join(output, "game/Data/Broken" + extension), "utf8")).toBe("broken");
-  expect(fs.existsSync(path.join(output, "game/Custom/Main" + extension))).toBe(true);
+  const archive = decode(fs.readFileSync(path.join(output, "game/Custom/Main" + extension)));
+  expect(inflateSync(bytes(array(array(archive)[0]!)[2]!)).toString()).toBe('puts "菜单", "keep"');
   const unchanged = path.join(temp.path, "unchanged");
   await new RPGMakerRGSSFormat().write_to_path([], {
     source_files: [{ path: "game.zip", file_type: "RPGMAKER_RGSS" }],

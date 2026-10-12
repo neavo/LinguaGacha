@@ -36,17 +36,13 @@ it.each([
   if (!parsed.ok) return;
   expect(parsed.strings.map((span) => span.src)).toEqual(result.strings.map(() => dst));
 });
-it("标识与资源用途默认排除，符号正则命令和字符不作为显示文本", async () => {
+it("普通字符串保留定位，符号正则命令和字符不作为字符串提取", async () => {
   const result = await read_ruby_strings(
     'require "module"; Cache.picture("face"); puts "display"; :symbol; /regexp/; `command`; ?a',
   );
   expect(result.ok).toBe(true);
   if (!result.ok) return;
-  expect(result.strings.map((span) => [span.src, span.usage])).toEqual([
-    ["module", "metadata"],
-    ["face", "metadata"],
-    ["display", "text"],
-  ]);
+  expect(result.strings.map((span) => span.src)).toEqual(["module", "face", "display"]);
   expect((await read_ruby_strings('puts "unfinished')).ok).toBe(false);
 });
 it("相同编辑合并，拒绝失效坐标和冲突译文", async () => {

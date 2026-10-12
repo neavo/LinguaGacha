@@ -100,7 +100,7 @@ export function create_rpgmaker_extractor(rel_path: string) {
       add(
         span.src,
         {
-          usage: span.usage,
+          usage: "metadata",
           source_context: span.source_context,
           location: {
             kind: "script",

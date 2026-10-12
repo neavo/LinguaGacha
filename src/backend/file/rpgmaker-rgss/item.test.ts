@@ -1,12 +1,17 @@
 import { expect, it } from "vitest";
 import type { JsonValue } from "../../../domain/json";
-import { read_rgss_metadata } from "./item";
+import { read_rgss_metadata, rgss_default_status } from "./item";
 const metadata = (span: JsonValue) => ({
   rpgmaker_rgss: {
     internal_file_path: "Data/Scripts.rvdata2",
     usage: "text",
     location: { kind: "ruby", container: { kind: "archive", path: [0, 2] }, span },
   },
+});
+it("脚本来源优先于保存的文本用途", () => {
+  expect(rgss_default_status({ extra_field: metadata({ start: 5, end: 12 }) })).toBe(
+    "RULE_SKIPPED",
+  );
 });
 it("Ruby 元数据只接受原稿字节范围", () => {
   expect(read_rgss_metadata(metadata({ start: 5, end: 12 }))).toMatchObject({

@@ -625,10 +625,10 @@ describe("ProjectContentService", () => {
         const expected = [
           ...(json ? [["插件事件", "RULE_SKIPPED", ""]] : []),
           ["管理キー", "RULE_SKIPPED", ""],
-          ["こんにちは", json ? "NONE" : "RULE_SKIPPED", ""],
+          ["こんにちは", "RULE_SKIPPED", ""],
           ["EV001", "RULE_SKIPPED", ""],
-          ["Hello", json ? "LANGUAGE_SKIPPED" : "RULE_SKIPPED", ""],
-          ["こんにちは", json ? "DUPLICATED" : "RULE_SKIPPED", ""],
+          ["Hello", "RULE_SKIPPED", ""],
+          ["こんにちは", "RULE_SKIPPED", ""],
         ];
         const source = project_path("game");
         const prefix = file.startsWith("www/") ? "www/" : "";
@@ -664,7 +664,7 @@ describe("ProjectContentService", () => {
             lg_path,
             writer.get_all_items(lg_path).map((item) => {
               const extra_field = read_json_record(item["extra_field"]);
-              // 文件重置消费保存用途，全部重建才重新分类原稿。
+              // 代码来源优先于保存用途，文件重置与全部重建应恢复相同资格。
               if (item["src"] === "管理キー")
                 extra_field["rpgmaker_mv_mz"] = {
                   ...read_json_record(extra_field["rpgmaker_mv_mz"]),
@@ -685,9 +685,7 @@ describe("ProjectContentService", () => {
             item["status"],
             item["dst"],
           ]),
-        ).toEqual(
-          expected.map((row) => (json && row[0] === "管理キー" ? ["管理キー", "NONE", ""] : row)),
-        );
+        ).toEqual(expected);
         await service.reset_translation({ mode: "all", project_settings });
         expect(
           (await database.get_all_items(lg_path)).map((item) => [

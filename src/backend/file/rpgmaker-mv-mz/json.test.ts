@@ -20,9 +20,9 @@ it("条件、变量和移动路线的脚本只提取字符串，插件参数展�
   ];
   const { items } = read_rpgmaker_json(source, "data/CommonEvents.json");
   expect(items.map((item) => [item.src, item.status])).toEqual([
-    ["条件", "NONE"],
-    ["变量", "NONE"],
-    ["路线", "NONE"],
+    ["条件", "RULE_SKIPPED"],
+    ["变量", "RULE_SKIPPED"],
+    ["路线", "RULE_SKIPPED"],
     ["plugin", "RULE_SKIPPED"],
     ["command", "RULE_SKIPPED"],
     ["label", "RULE_SKIPPED"],

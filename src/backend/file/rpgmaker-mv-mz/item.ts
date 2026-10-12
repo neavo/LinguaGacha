@@ -1,4 +1,3 @@
-import path from "node:path";
 import type { Item, ItemStatus } from "../../../domain/item";
 import { read_json_record } from "../../../domain/json";
 import type { RPGMakerMetadata } from "./types";
@@ -24,8 +23,10 @@ export function read_rpgmaker_metadata(
 
 /** 提取与文件重置共用来源和用途默认状态，普通编辑和失败重试尊重当前翻译资格。 */
 export function rpgmaker_default_status(item: Pick<Item, "extra_field">): ItemStatus {
-  // 原生 RM 来源发现只收集插件 JavaScript，扩大来源范围时须同步调整此规则。
-  const { internal_file_path, usage } = read_rpgmaker_metadata(item.extra_field);
-  if (path.extname(internal_file_path).toLowerCase() === ".js") return "RULE_SKIPPED";
+  const { usage, location } = read_rpgmaker_metadata(item.extra_field);
+  // JSON 叶子继承外层代码来源，展开字符串不能改变默认翻译资格。
+  let container = location;
+  while (container.kind === "json") container = container.container;
+  if (container.kind === "script") return "RULE_SKIPPED";
   return usage === "text" ? "NONE" : "RULE_SKIPPED";
 }

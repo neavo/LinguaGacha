@@ -22,7 +22,12 @@ import {
   type RubyPath,
 } from "./value";
 import { read_ruby_strings, write_ruby_strings } from "./ruby";
-import { read_rgss_metadata, type RGSSLocation, type RGSSContainer } from "./item";
+import {
+  read_rgss_metadata,
+  rgss_default_status,
+  type RGSSLocation,
+  type RGSSContainer,
+} from "./item";
 import type { RGSSVersion } from "./source";
 
 const DISPLAY_FIELDS: Record<string, readonly string[]> = {
@@ -58,7 +63,7 @@ const ACTOR_TEXT_CODES = new Set<number>([
 ]);
 const MESSAGE_LINES = 4;
 const MAX_SCRIPT_BYTES = 32 * 1024 * 1024;
-const member = (name: string) => ({ field: name });
+const member = (name: string) => ({ field: name }); // 字段段与数组索引、Hash 项使用不同形状。
 const COMMAND_CLASSES = { event: "RPG::EventCommand", move: "RPG::MoveCommand" } as const;
 /** 类型身份决定是否进入事件解释，普通数据中的同名字段不代表指令。 */
 function command_kind(node: MarshalNode): "event" | "move" | null {
@@ -253,8 +258,8 @@ export async function read_rgss_data(
         });
         return;
       }
-      for (const { src, usage, ...span } of parsed.strings)
-        add(src, { kind: "ruby", container, span }, usage === "text");
+      for (const { src, ...span } of parsed.strings)
+        add(src, { kind: "ruby", container, span }, false);
     } catch (error) {
       warnings.push({
         code: "internal_file_parse_failed",
@@ -370,6 +375,7 @@ export async function read_rgss_data(
           ? 1
           : entry.kind === "event" &&
               entry.code === EVENT.VARIABLES &&
+              version === "ace" && // XP/VX 的操作数类型 4 是角色数据。
               integer(entry.parameters[3]!) === 4
             ? 4
             : entry.kind === "move" && entry.code === EVENT.MOVE_SCRIPT
@@ -392,22 +398,23 @@ export async function read_rgss_data(
     }
   } else await walk(root, []);
   // 所有入口完成归并后统一生成用途和默认状态，首次发现的路径只负责稳定定位。
-  const items = candidates.map(({ src, location, display }, row) =>
-    create_item({
+  const items = candidates.map(({ src, location, display }, row) => {
+    const extra_field = {
+      rpgmaker_rgss: {
+        internal_file_path: file,
+        usage: display ? "text" : "metadata",
+        location: location as unknown as JsonValue,
+      },
+    };
+    return create_item({
       src,
       file_path: file,
       file_type: "RPGMAKER_RGSS",
       row,
-      status: display ? "NONE" : "RULE_SKIPPED",
-      extra_field: {
-        rpgmaker_rgss: {
-          internal_file_path: file,
-          usage: display ? "text" : "metadata",
-          location: location as unknown as JsonValue,
-        },
-      },
-    }),
-  );
+      status: rgss_default_status({ extra_field }),
+      extra_field,
+    });
+  });
   return { items, warnings };
 }
 
@@ -530,6 +537,7 @@ export async function write_rgss_data(
         return clone;
       };
       const template = command(list[first]!).parameters[0]!;
+      // 沿用原字符串编码，将文本行写入新指令。
       const make = (code: number, line: string) => {
         const clone = clone_header(),
           slots = new RubySlots(clone);

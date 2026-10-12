@@ -71,6 +71,36 @@ it("脚本归档修改合并，失败脚本和未修改压缩载荷保持原样"
   expect(bytes(array(array(root)[2]!)[2]!)).toBe(original);
   expect(text(array(array(root)[0]!)[1]!)).toBe("name");
 });
+it.each<RGSSVersion>(["xp", "vx", "ace"])(
+  "%s 脚本来源默认排除，变量操作数按版本解释，正文仍可翻译",
+  async (version) => {
+    const root = o("Fixture", {
+      "@list": a([
+        c(355, [s('table = {"key" => "value"}; puts table["key"]')]),
+        c(111, [n(12), s('name == "condition"')]),
+        c(122, [n(1), n(1), n(0), n(4), version === "ace" ? s('"variable"') : n(1), n(0)]),
+        c(101, version === "xp" ? [s("dialogue")] : [s(""), n(0), n(0), n(2)]),
+        ...(version === "xp" ? [] : [c(401, [s("dialogue")])]),
+        c(102, [a([s("choice")])]),
+      ]),
+      "@route": a([
+        o("RPG::MoveCommand", { "@code": n(45), "@parameters": a([s('puts "move"')]) }),
+      ]),
+    });
+    const result = await read_rgss_data(root, "Data/Map001.rvdata2", version, false);
+    expect(result.warnings).toEqual([]);
+    expect(result.items.map((item) => [item.src, item.status])).toEqual([
+      ["key", "RULE_SKIPPED"],
+      ["value", "RULE_SKIPPED"],
+      ["key", "RULE_SKIPPED"],
+      ["condition", "RULE_SKIPPED"],
+      ...(version === "ace" ? [["variable", "RULE_SKIPPED"]] : []),
+      ["dialogue", "NONE"],
+      ["choice", "NONE"],
+      ["move", "RULE_SKIPPED"],
+    ]);
+  },
+);
 it("数据库显示用途与元数据分开，ASCII 标记随中文写回更新", async () => {
   const ascii = s("name");
   ascii.pairs![0]![1] = { t: "F" };

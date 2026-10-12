@@ -89,7 +89,9 @@ export function read_rgss_metadata(extra: Item["extra_field"]): RGSSMetadata {
   } else validate_container(location);
   return value as unknown as RGSSMetadata;
 }
-/** 重置沿用原稿提取用途，保留资源和接口字段的默认排除。 */
+/** 导入与重置共用来源规则，代码字符串保留人工放行能力。 */
 export function rgss_default_status(item: Pick<Item, "extra_field">): ItemStatus {
-  return read_rgss_metadata(item.extra_field).usage === "text" ? "NONE" : "RULE_SKIPPED";
+  const { location, usage } = read_rgss_metadata(item.extra_field);
+  if (location.kind === "ruby" || location.kind === "archive") return "RULE_SKIPPED";
+  return usage === "text" ? "NONE" : "RULE_SKIPPED";
 }

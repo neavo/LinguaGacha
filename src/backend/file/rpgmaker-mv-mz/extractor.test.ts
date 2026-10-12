@@ -32,14 +32,14 @@ it("JSON 只展开字符串值，标量与无效 JSON 保持原文，内部事�
   });
 });
 
-it("六层解码保留每层路径与外层用途，上下文有界且保留邻近值", () => {
-  const extractor = create_rpgmaker_extractor("js/plugins.js");
+it("六层解码继承代码来源，上下文有界且保留邻近值", () => {
+  const extractor = create_rpgmaker_extractor("data/CommonEvents.json");
   let source = JSON.stringify({ Text: "はい", Hint: "选择提示", padding: "😀".repeat(2000) });
   for (const key of ["Command", "CommandList", "Window", "WindowList", "SceneCustomMenu"])
     source = JSON.stringify({ [key]: source });
   extractor.script(`const parameters = ${JSON.stringify(source)};`, { kind: "field", path: [] });
   const item = extractor.items.find(({ src }) => src === "はい")!;
-  expect(item.extra_field).toMatchObject({ rpgmaker_mv_mz: { usage: "text" } });
+  expect(extractor.items.every((entry) => entry.status === "RULE_SKIPPED")).toBe(true);
   const metadata = read_json_record(read_json_record(item.extra_field)["rpgmaker_mv_mz"]) as {
     source_context: string;
   };

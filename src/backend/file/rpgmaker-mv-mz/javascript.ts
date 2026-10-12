@@ -1,7 +1,6 @@
 import { createRequire } from "node:module";
 import path from "node:path";
-import { read_javascript_usage } from "./javascript-usage";
-import { SOURCE_CONTEXT_MAX_LENGTH, type RPGMakerUsage } from "./types";
+import { SOURCE_CONTEXT_MAX_LENGTH } from "./types";
 import type * as Oxc from "oxc-parser";
 import type { ScriptDiagnostic } from "../file-format-shared";
 
@@ -12,7 +11,6 @@ export type JavascriptString = {
   template: boolean;
   complete: boolean; // 含插值的模板片段不能作为完整 JSON 容器展开。
   src: string;
-  usage: RPGMakerUsage;
   source_context: string;
 };
 /** 语法错误只返回诊断，阻止调用者使用不可靠的 AST 偏移。 */
@@ -76,7 +74,6 @@ export function read_javascript_strings(source: string): JavascriptReadResult {
           node.type !== "TemplateElement" ||
           (parent?.type === "TemplateLiteral" && parent.expressions.length === 0),
         src,
-        usage: read_javascript_usage(node, ancestors),
         source_context: read_source_context(source, context, node),
       });
     }

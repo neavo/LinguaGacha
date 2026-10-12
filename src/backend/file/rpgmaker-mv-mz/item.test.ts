@@ -1,5 +1,6 @@
 import { expect, it } from "vitest";
 import { rpgmaker_default_status } from "./item";
+import type { RPGMakerLocation } from "./types";
 
 it("文本候选进入预过滤，元数据默认跳过，缺失定位明确失败", () => {
   expect(
@@ -17,17 +18,30 @@ it("文本候选进入预过滤，元数据默认跳过，缺失定位明确失�
   ).toEqual(["NONE", "RULE_SKIPPED"]);
   expect(() => rpgmaker_default_status({ extra_field: {} })).toThrow();
 });
-
-it("插件来源优先于文本用途，扩展名不区分大小写", () => {
+it("嵌套 JSON 沿父容器识别脚本来源，普通显示字段保留资格", () => {
+  const field: RPGMakerLocation = { kind: "field", path: ["text"] };
+  const script: RPGMakerLocation = {
+    kind: "script",
+    container: field,
+    start: 0,
+    end: 8,
+    template: false,
+  };
   expect(
-    rpgmaker_default_status({
-      extra_field: {
-        rpgmaker_mv_mz: {
-          usage: "text",
-          internal_file_path: "www/js/plugins/nested/Menu.JS",
-          location: { kind: "field", path: [] },
+    [field, script].map((container) =>
+      rpgmaker_default_status({
+        extra_field: {
+          rpgmaker_mv_mz: {
+            internal_file_path: "data/CommonEvents.json",
+            usage: "text",
+            location: {
+              kind: "json",
+              path: ["text"],
+              container: { kind: "json", path: ["inner"], container },
+            },
+          },
         },
-      },
-    }),
-  ).toBe("RULE_SKIPPED");
+      }),
+    ),
+  ).toEqual(["NONE", "RULE_SKIPPED"]);
 });

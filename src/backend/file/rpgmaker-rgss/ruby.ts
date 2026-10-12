@@ -8,7 +8,7 @@ import type { ScriptDiagnostic } from "../file-format-shared";
 type Parser = Awaited<ReturnType<typeof Prism.loadPrism>>;
 /** 持久定位只保存归一化 UTF-8 原稿中的语法字节范围。 */
 export type RubyLocation = { start: number; end: number };
-export type RubyString = RubyLocation & { src: string; usage: "text" | "metadata" };
+export type RubyString = RubyLocation & { src: string };
 type SyntaxString = {
   node: Prism.StringNode;
   location: RubyLocation;
@@ -22,14 +22,16 @@ export type RubySyntax = {
   strings: ReadonlyMap<string, SyntaxString>;
 };
 type RubyEdit = RubyLocation & { text: string };
-const location_key = (location: RubyLocation) => location.start + ":" + location.end;
+const location_key = (location: RubyLocation) => location.start + ":" + location.end; // 相同字节范围共用索引键。
+/** 将解析器的起点和长度转为写回使用的半开区间。 */
 const range = (location: Prism.Location): RubyLocation => ({
   start: location.startOffset,
   end: location.startOffset + location.length,
 });
+/** 容器只能消费完整落在自身范围内的编辑。 */
 const contains = (outer: RubyLocation, inner: RubyLocation) =>
   inner.start >= outer.start && inner.end <= outer.end;
-let parser_require = createRequire(import.meta.url);
+let parser_require = createRequire(import.meta.url); // 由运行目录配置入口切换解析器来源。
 let parser: Promise<{ parse: Parser; prism: typeof Prism }> | undefined;
 /** WASM 与解析器 JS 必须从同一发行运行目录加载。 */
 export function configure_rgss_parser(directory: string): void {
@@ -87,13 +89,8 @@ export async function parse_ruby(
   visit(result.value, []);
   return { ok: true, syntax: { source: buffer, root: result.value, prism, strings } };
 }
-/** 用途判断只决定导入条目，写回不调用该筛选器。 */
+/** 提取普通字符串，翻译资格由容器来源统一决定。 */
 export function select_ruby_strings(syntax: RubySyntax): RubyString[] {
-  const { prism, source } = syntax;
-  const slice = (node: Prism.Node) =>
-    source
-      .subarray(node.location.startOffset, node.location.startOffset + node.location.length)
-      .toString();
   const strings: RubyString[] = [];
   for (const { node, location, ancestors } of syntax.strings.values()) {
     if (
@@ -103,25 +100,11 @@ export function select_ruby_strings(syntax: RubySyntax): RubyString[] {
       )
     )
       continue;
-    const chain = [...ancestors, node];
-    const metadata = ancestors.some((parent, index) => {
-      if (parent instanceof prism.AssocNode && parent.key === chain[index + 1]) return true;
-      if (!(parent instanceof prism.CallNode)) return false;
-      const receiver = parent.receiver ? slice(parent.receiver) : "";
-      return (
-        /^(?:require|require_relative|load|load_data|save_data|eval|send|const_get|const_set)$/u.test(
-          parent.name,
-        ) ||
-        /^(?:(?:RPG::)?Cache|Audio|Win32API)$/u.test(receiver) ||
-        (parent.name === "new" && receiver === "Bitmap") ||
-        ((parent.name === "[]" || parent.name === "[]=") && receiver === "$imported")
-      );
-    });
-    strings.push({ ...location, src: node.unescaped.value, usage: metadata ? "metadata" : "text" });
+    strings.push({ ...location, src: node.unescaped.value });
   }
   return strings;
 }
-/** 导入顺序固定为语法解析后用途筛选，诊断交给文件读取入口。 */
+/** 语法解析后筛选普通字符串节点，诊断交给文件读取入口。 */
 export async function read_ruby_strings(
   source: string,
 ): Promise<{ ok: true; strings: RubyString[] } | { ok: false; diagnostics: ScriptDiagnostic[] }> {
@@ -176,6 +159,7 @@ export async function write_ruby_strings(
     assert(previous === undefined || previous === change.dst, "Conflicting Ruby string changes");
     values.set(actual.node, change.dst);
   }
+  // 缺失分隔符按空串处理，供隐式拼接和 heredoc 共用。
   const slice = (location: Prism.Location | null) =>
     location
       ? syntax.source
@@ -207,7 +191,7 @@ export async function write_ruby_strings(
     assert(node.unescaped.validEncoding, "Invalid Ruby string encoding");
     return values.get(node) ?? node.unescaped.value;
   }
-  // 插值只读取直接文本子节点；表达式里的字符串走独立的 render，词数组状态不会向下传播。
+  // 插值读取直接文本子节点。表达式里的字符串由 `render` 处理，词数组状态不会向下传播。
   function expression(
     node: Prism.StringNode | Prism.InterpolatedStringNode,
     nested: readonly RubyEdit[],

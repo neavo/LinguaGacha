@@ -113,9 +113,9 @@ describe("MV/MZ 原稿写回", () => {
   });
 
   it.each(["js/plugins/test.js", "data/CommonEvents.json"])(
-    "插件脚本默认排除，事件脚本按用途分类，人工翻译按保存定位写回：%s",
+    "插件和事件脚本默认排除，人工翻译按保存定位写回：%s",
     async (file) => {
-      const script = 'const x = {"管理😀": "显示"}; show(`你好${x}世界`);';
+      const script = 'const x = {"管理😀": "显示"}; show(`你好${x}世界`); x[`選択_${id}`];';
       const json = file.endsWith(".json");
       const bytes = Buffer.from(
         json ? JSON.stringify([null, { list: [command(355, [script])] }]) : script,
@@ -123,13 +123,13 @@ describe("MV/MZ 原稿写回", () => {
       const { items } = await format.read_file(bytes, file);
       expect(items.map(({ src, status }) => [src, status])).toEqual([
         ["管理😀", "RULE_SKIPPED"],
-        ["显示", json ? "NONE" : "RULE_SKIPPED"],
-        ["你好", json ? "NONE" : "RULE_SKIPPED"],
-        ["世界", json ? "NONE" : "RULE_SKIPPED"],
+        ["显示", "RULE_SKIPPED"],
+        ["你好", "RULE_SKIPPED"],
+        ["世界", "RULE_SKIPPED"],
+        ["選択_", "RULE_SKIPPED"],
       ]);
       expect(items[0]?.extra_field).toMatchObject({
         rpgmaker_mv_mz: {
-          usage: "metadata",
           source_context: '"管理😀": "显示"',
           location: { kind: "script" },
         },
@@ -278,6 +278,7 @@ describe("MV/MZ 原稿写回", () => {
       JSON.stringify({ displayName: "地图", events: [null, { name: "EV001", pages: [{ list }] }] }),
     );
     const { items } = await format.read_file(bytes, "data/Map001.json");
+    expect(items.find((item) => item.src === "脚本")?.status).toBe("RULE_SKIPPED");
     for (const item of items) {
       if (item.src === "一行")
         Object.assign(item, {
@@ -316,7 +317,6 @@ describe("MV/MZ 原稿写回", () => {
     expect(items[0]?.extra_field).toMatchObject({
       rpgmaker_mv_mz: {
         internal_file_path: "js/plugins/test.js",
-        usage: "text",
         source_context: 'x = "中文😀"',
       },
     });
