@@ -163,31 +163,29 @@ export function create_workbench_delete_files_plan(args: {
   };
 }
 
-export type WorkbenchFileParsePreview = {
+export type WorkbenchImportFileCandidate = {
   source_path: string; // 用户选择的源文件路径，提交时作为 import-files 命令输入
   target_rel_path: string; // UI 预览得到的项目内目标路径
 };
 
 export type WorkbenchImportFilesPreview = {
-  importable_files: WorkbenchFileParsePreview[];
-  new_files: WorkbenchFileParsePreview[];
-  conflicting_files: WorkbenchFileParsePreview[];
+  importable_files: WorkbenchImportFileCandidate[];
+  new_files: WorkbenchImportFileCandidate[];
+  conflicting_files: WorkbenchImportFileCandidate[];
 };
 
 /** 只接收同时携带源路径与目标身份的准备结果。 */
-function is_import_file_usable(parsed_file: WorkbenchFileParsePreview): boolean {
-  // 空源路径或空目标路径无法表达用户导入意图，直接排除在计划外。
-  return parsed_file.source_path.trim() !== "" && parsed_file.target_rel_path.trim() !== "";
+function is_import_file_usable(candidate: WorkbenchImportFileCandidate): boolean {
+  return candidate.source_path.trim() !== "" && candidate.target_rel_path.trim() !== "";
 }
 
 /** 同批目标冲突整体排除，避免用发现顺序决定覆盖。 */
 function collect_batch_duplicate_target_keys(
-  parsed_files: WorkbenchFileParsePreview[],
+  candidates: WorkbenchImportFileCandidate[],
 ): Set<string> {
-  // 同一批内部重名没有可靠的用户意图顺序，必须整体排除，避免隐式覆盖。
   const count_by_key = new Map<string, number>();
-  for (const parsed_file of parsed_files) {
-    const target_key = normalize_casefold_path(parsed_file.target_rel_path);
+  for (const candidate of candidates) {
+    const target_key = normalize_casefold_path(candidate.target_rel_path);
     if (target_key === "") {
       continue;
     }
@@ -200,32 +198,32 @@ function collect_batch_duplicate_target_keys(
   );
 }
 
-// 工作台导入预演只判断新增与同名替换候选，不把解析出的 item 当作最终事实。
+// 工作台导入预览只判断新增与同名替换候选，文件内容由正式导入解析。
 export function create_workbench_import_files_preview(args: {
   state: WorkbenchCommandPlanningState;
-  parsed_files: WorkbenchFileParsePreview[];
+  candidates: WorkbenchImportFileCandidate[];
 }): WorkbenchImportFilesPreview {
   const existing_file_map = build_casefold_file_map(args.state);
-  const batch_duplicate_target_keys = collect_batch_duplicate_target_keys(args.parsed_files);
-  const importable_files: WorkbenchFileParsePreview[] = [];
-  const new_files: WorkbenchFileParsePreview[] = [];
-  const conflicting_files: WorkbenchFileParsePreview[] = [];
+  const batch_duplicate_target_keys = collect_batch_duplicate_target_keys(args.candidates);
+  const importable_files: WorkbenchImportFileCandidate[] = [];
+  const new_files: WorkbenchImportFileCandidate[] = [];
+  const conflicting_files: WorkbenchImportFileCandidate[] = [];
 
-  for (const raw_file of args.parsed_files) {
+  for (const raw_file of args.candidates) {
     if (!is_import_file_usable(raw_file)) {
       continue;
     }
-    const parsed_file = { ...raw_file };
-    const target_key = normalize_casefold_path(parsed_file.target_rel_path);
+    const candidate = { ...raw_file };
+    const target_key = normalize_casefold_path(candidate.target_rel_path);
     if (batch_duplicate_target_keys.has(target_key)) {
       continue;
     }
     const existing_file = existing_file_map.get(target_key);
     const import_file =
       existing_file === undefined
-        ? parsed_file
+        ? candidate
         : {
-            ...parsed_file,
+            ...candidate,
             target_rel_path: existing_file.rel_path,
           };
     importable_files.push(import_file);
@@ -247,7 +245,7 @@ export function create_workbench_import_files_preview(args: {
 function select_import_files(
   preview: WorkbenchImportFilesPreview,
   conflict_action: WorkbenchFileConflictAction,
-): WorkbenchFileParsePreview[] {
+): WorkbenchImportFileCandidate[] {
   // 跳过只提交新文件；替换提交新文件和同名候选，具体写入仍以后端事务为准。
   return conflict_action === "replace" ? preview.importable_files : preview.new_files;
 }
@@ -255,24 +253,24 @@ function select_import_files(
 // 文件导入提交源路径、目标路径、同名策略和继承模式；id 分配、解析、继承和预过滤都在后端。
 export function create_workbench_import_files_plan(args: {
   state: WorkbenchCommandPlanningState;
-  parsed_files: WorkbenchFileParsePreview[];
+  candidates: WorkbenchImportFileCandidate[];
   conflict_action: WorkbenchFileConflictAction;
   settings: WorkbenchPlannerSettings;
   inheritance_mode?: WorkbenchTranslationInheritanceMode;
 }): WorkbenchCommandPlan {
   const preview = create_workbench_import_files_preview({
     state: args.state,
-    parsed_files: args.parsed_files,
+    candidates: args.candidates,
   });
   const files_to_import = select_import_files(preview, args.conflict_action);
   if (files_to_import.length === 0) {
     throw new Error("No importable workbench files were selected.");
   }
 
-  const files = files_to_import.map((parsed_file) => {
+  const files = files_to_import.map((candidate) => {
     return {
-      source_path: parsed_file.source_path,
-      target_rel_path: parsed_file.target_rel_path,
+      source_path: candidate.source_path,
+      target_rel_path: candidate.target_rel_path,
     };
   });
 

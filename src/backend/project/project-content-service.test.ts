@@ -1,16 +1,16 @@
 import { add_test_asset_from_source } from "../../test/asset-fixture";
+import { rgss_archive_fixture } from "../../test/rgss-archive-fixture";
 import { CacheManager } from "../cache/cache-manager";
 import type { AppSettingService } from "../app/app-setting-service";
 import type { ComputeWorkerClient } from "../worker/compute-worker-client";
 import { ProjectSummaryService } from "./project-summary-service";
 import { read_zip_fixture, write_zip } from "../../test/zip-fixture";
-import { write_epub_fixture } from "../../test/epub-fixture";
 import {
   create_workbench_import_files_plan,
   create_workbench_reset_file_plan,
   create_workbench_reorder_plan,
   create_workbench_delete_files_plan,
-  type WorkbenchFileParsePreview,
+  type WorkbenchImportFileCandidate,
 } from "../../shared/workbench/workbench-command-planner";
 import { create_pdf_execution, create_pdf_fixture } from "../file/pdf/test-support";
 
@@ -180,6 +180,101 @@ afterEach(() => {
 });
 
 describe("ProjectContentService", () => {
+  it("预览保留配置损坏的 RGSS 候选，正式导入继续正常来源并汇总原因", async () => {
+    const { database, service, lg_path } = await create_service();
+    const root = project_path("broken-game");
+    fs.mkdirSync(root);
+    fs.writeFileSync(path.join(root, "Game.ini"), Buffer.from([0x81]));
+    fs.writeFileSync(path.join(root, "Game.rgss3a"), rgss_archive_fixture(3, new Map()));
+    const ordinary = project_path("normal.txt");
+    fs.writeFileSync(ordinary, "normal");
+    try {
+      const preview = await service.preview_import_files({ source_paths: [root, ordinary] });
+      expect(preview.files).toEqual([
+        { source_path: root, target_rel_path: "broken-game.zip" },
+        { source_path: ordinary, target_rel_path: "normal.txt" },
+      ]);
+      const result = await service.import_files({
+        files: preview.files!,
+        conflict_action: "replace",
+        expected_section_revisions: { files: 0, items: 0 },
+      });
+      expect(result.failed_files).toMatchObject([
+        { source_path: root, message: "Invalid cp932 text" },
+      ]);
+      expect((await database.get_all_asset_records(lg_path)).map((file) => file.path)).toEqual([
+        "normal.txt",
+      ]);
+      expect(fs.readdirSync(root).sort()).toEqual(["Game.ini", "Game.rgss3a"]);
+    } finally {
+      await database.close();
+    }
+  });
+  it("RGSS 预览与跳过保持源目录，陈旧确认不备份，正式提交准备后可离线重建", async () => {
+    const { database, service, lg_path } = await create_service();
+    const root = project_path("packed");
+    fs.mkdirSync(root);
+    fs.writeFileSync(path.join(root, "Game.ini"), "[Game]\nScripts=Data/Scripts.rvdata2");
+    const archive = path.join(root, "Game.rgss3a");
+    // Marshal nil 是有效的零条目原稿，用于证明归档准备与工程写入的完整调用链。
+    const content = Buffer.from([4, 8, 48]);
+    fs.writeFileSync(
+      archive,
+      rgss_archive_fixture(
+        3,
+        new Map([
+          ["Data/System.rvdata2", content],
+          ["Data/Scripts.rvdata2", content],
+        ]),
+      ),
+    );
+    try {
+      const preview = await service.preview_import_files({
+        source_paths: [root, archive, path.join(root, "Game.ini")],
+      });
+      expect(preview).toEqual({ files: [{ source_path: root, target_rel_path: "packed.zip" }] });
+      expect(fs.readdirSync(root).sort()).toEqual(["Game.ini", "Game.rgss3a"]);
+      await database.transaction(lg_path, (writer) =>
+        writer.add_asset(lg_path, "packed.zip", Buffer.from("old"), "RPGMAKER_RGSS", null),
+      );
+      await expect(
+        service.import_files({
+          files: preview.files!,
+          conflict_action: "skip",
+          expected_section_revisions: { files: 0, items: 0 },
+        }),
+      ).rejects.toMatchObject({ code: "request.validation_failed" });
+      expect(fs.readdirSync(root).sort()).toEqual(["Game.ini", "Game.rgss3a"]);
+      await expect(
+        service.import_files({
+          files: preview.files!,
+          conflict_action: "replace",
+          expected_section_revisions: { files: 99, items: 0 },
+        }),
+      ).rejects.toMatchObject({ code: "data.revision_conflict" });
+      expect(fs.readdirSync(root).sort()).toEqual(["Game.ini", "Game.rgss3a"]);
+      await service.import_files({
+        files: preview.files!,
+        conflict_action: "replace",
+        expected_section_revisions: { files: 0, items: 0 },
+      });
+      expect(fs.existsSync(archive)).toBe(false);
+      expect(fs.existsSync(path.join(root, "backup/Game.rgss3a"))).toBe(true);
+      expect((await service.preview_import_files({ source_paths: [root] })).files).toEqual(
+        preview.files,
+      );
+      fs.renameSync(root, root + "-moved");
+      await service.reset_files({
+        rel_paths: ["packed.zip"],
+        expected_section_revisions: { items: 1 },
+      });
+      expect(await database.read_asset_content(lg_path, "packed.zip")).not.toEqual(
+        Buffer.from("old"),
+      );
+    } finally {
+      await database.close();
+    }
+  });
   it("TRANS 替换按引擎身份继承译文，变更或移除引擎后重新匹配", async () => {
     const { database, service, lg_path } = await create_service();
     const source = project_path("game.trans");
@@ -251,7 +346,7 @@ describe("ProjectContentService", () => {
         fs.writeFileSync(path.join(root, "data/System.json"), "{}");
         fs.writeFileSync(path.join(root, "js/rmmz_core.js"), "");
       }
-      const preview = await service.parse_project_file({ source_paths: roots });
+      const preview = await service.preview_import_files({ source_paths: roots });
       const files = preview["files"] as JsonRecord[];
       expect(files.map((file) => file["target_rel_path"])).toEqual([
         "game.zip",
@@ -272,7 +367,7 @@ describe("ProjectContentService", () => {
         "game_20261011_123456.zip",
       ]);
       expect(await database.read_asset_content(lg_path, "game_2.zip")).toEqual(old);
-      const replacement = await service.parse_project_file({ source_paths: [roots[0]!] });
+      const replacement = await service.preview_import_files({ source_paths: [roots[0]!] });
       expect(replacement["files"]).toMatchObject([{ target_rel_path: "game.zip" }]);
     } finally {
       await database.close();
@@ -300,7 +395,7 @@ describe("ProjectContentService", () => {
       const prepared_paths: string[] = [];
       try {
         for (const source_paths of batches) {
-          const preview = await service.parse_project_file({ source_paths });
+          const preview = await service.preview_import_files({ source_paths });
           const files = preview["files"] as JsonRecord[];
           prepared_paths.push(...files.map((file) => String(file["target_rel_path"])));
           await service.import_files({
@@ -359,111 +454,33 @@ describe("ProjectContentService", () => {
       }
     },
   );
-  it("项目文件预解析忽略不支持后缀并返回支持格式的失败文件", async () => {
-    using temp_dir = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "linguagacha-file-preview-"));
-    const source_file = path.join(temp_dir.path, "script.txt");
-    const broken_json = path.join(temp_dir.path, "broken.json");
-    const ignored_file = path.join(temp_dir.path, "ignore.bin");
-    fs.writeFileSync(source_file, "原文", "utf-8");
-    fs.writeFileSync(broken_json, "{", "utf-8");
-    fs.writeFileSync(ignored_file, "noise", "utf-8");
-    const log_manager = create_log_manager();
-    const { database, service } = await create_service(undefined, log_manager);
-    try {
-      await expect(
-        service.parse_project_file({
-          source_paths: [source_file, broken_json, ignored_file],
-        }),
-      ).resolves.toEqual({
-        files: [
-          expect.objectContaining({
-            source_path: source_file,
-            file_type: "TXT",
-            target_rel_path: "script.txt",
-          }),
-        ],
-        failed_files: [
-          {
-            source_path: broken_json,
-            rel_path: "broken.json",
-            filename: "broken.json",
-            code: "file.parse_failed",
-            message: expect.any(String),
-          },
-        ],
-      });
-      expect(log_manager.warning).toHaveBeenCalledWith(
-        expect.any(String),
-        expect.objectContaining({ source: "project-import" }),
-      );
-    } finally {
-      await database.close();
-    }
-  });
-
-  it("项目文件预解析 EPUB 时直接返回解析结果", async () => {
-    using temp_dir = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "linguagacha-file-preview-"));
-    const epub_file = path.join(temp_dir.path, "book.epub");
-    await write_epub_fixture(epub_file, "章节");
+  it("导入预览只发现候选，损坏内容留到正式提交时报告", async () => {
+    using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-import-preview-"));
+    const source = path.join(temp.path, "script.txt");
+    const broken = path.join(temp.path, "broken.json");
+    const ignored = path.join(temp.path, "ignored.bin");
+    fs.writeFileSync(source, "原文");
+    fs.writeFileSync(broken, "{");
+    fs.writeFileSync(ignored, "ignored");
     const { database, service } = await create_service();
     try {
-      await expect(
-        service.parse_project_file({
-          source_paths: [epub_file],
-        }),
-      ).resolves.toEqual({
+      const preview = await service.preview_import_files({
+        source_paths: [source, broken, ignored],
+      });
+      expect(preview).toEqual({
         files: [
-          {
-            source_path: epub_file,
-            target_rel_path: "book.epub",
-            file_type: "EPUB",
-            parsed_items: [
-              expect.objectContaining({
-                src: "章节",
-                file_type: "EPUB",
-                file_path: "book.epub",
-              }),
-            ],
-          },
-        ],
-        failed_files: [],
-      });
-    } finally {
-      await database.close();
-    }
-  });
-
-  it("项目文件预解析 EPUB 坏内容时返回文件解析错误码", async () => {
-    using temp_dir = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "linguagacha-file-preview-"));
-    const epub_file = path.join(temp_dir.path, "broken.epub");
-    const zip = new Map<string, string | Uint8Array>();
-    zip.set(
-      "META-INF/container.xml",
-      `<container><rootfiles><rootfile full-path="OPS/package.opf"/></rootfiles></container>`,
-    );
-    zip.set(
-      "OPS/package.opf",
-      `<package version="3.0">
-        <manifest><item id="chapter" href="chapter.xhtml" media-type="application/xhtml+xml"/></manifest>
-        <spine><itemref idref="chapter"/></spine>
-      </package>`,
-    );
-    zip.set("OPS/chapter.xhtml", "");
-    fs.writeFileSync(epub_file, await write_zip(zip));
-    const { database, service } = await create_service();
-    try {
-      await expect(service.parse_project_file({ source_paths: [epub_file] })).resolves.toEqual({
-        files: [],
-        failed_files: [
-          {
-            source_path: epub_file,
-            rel_path: "broken.epub",
-            filename: "broken.epub",
-            code: "file.parse_failed",
-            message: expect.any(String),
-          },
+          { source_path: source, target_rel_path: "script.txt" },
+          { source_path: broken, target_rel_path: "broken.json" },
         ],
       });
+      const result = await service.import_files({
+        files: preview.files!,
+        conflict_action: "replace",
+        expected_section_revisions: { files: 0, items: 0 },
+      });
+      expect(result.failed_files).toMatchObject([
+        { source_path: broken, code: "file.parse_failed" },
+      ]);
     } finally {
       await database.close();
     }
@@ -577,8 +594,8 @@ describe("ProjectContentService", () => {
       await database.transaction(lg_path, (writer) =>
         writer.add_asset(lg_path, file, Buffer.from("{}"), "MESSAGEJSON", null),
       );
-      const preview = await service.parse_project_file({ source_paths: [source] });
-      expect(preview["files"]).toMatchObject([{ file_type: "MESSAGEJSON" }]);
+      const preview = await service.preview_import_files({ source_paths: [source] });
+      expect(preview["files"]).toEqual([{ source_path: source, target_rel_path: file }]);
       await database.transaction(lg_path, (writer) =>
         writer.set_asset_file_type(lg_path, file, "KVJSON"),
       );
@@ -1665,17 +1682,17 @@ describe("ProjectContentService", () => {
     fs.writeFileSync(source_paths[1]!, JSON.stringify({ plain: "" }));
     fs.writeFileSync(source_paths[2]!, create_pdf_fixture());
     try {
-      const preview = await service.parse_project_file({ source_paths });
-      const parsed_files = preview.files as unknown as WorkbenchFileParsePreview[];
-      expect(parsed_files.map((file) => file.target_rel_path)).toEqual([
+      const preview = await service.preview_import_files({ source_paths });
+      const candidates = preview.files as unknown as WorkbenchImportFileCandidate[];
+      expect(candidates.map((file) => file.target_rel_path)).toEqual([
         " a.json",
         "a.json",
         " book.pdf",
       ]);
-      expect(parsed_files.map((file) => file.source_path)).toEqual(source_paths);
+      expect(candidates.map((file) => file.source_path)).toEqual(source_paths);
       const import_plan = create_workbench_import_files_plan({
         state: { files: [], section_revisions: { files: 0, items: 0 } },
-        parsed_files,
+        candidates,
         settings,
         conflict_action: "skip",
       });

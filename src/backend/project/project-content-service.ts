@@ -1,5 +1,6 @@
+import { assert_source_file_paths } from "../file/source-file-paths";
 import { normalize_project_asset_path } from "../../shared/project/project-asset-paths";
-import type { ProjectSourceFileEntry, SourceFileParseWarning } from "../file/file-format-shared";
+import type { SourceFileParseWarning } from "../file/file-format-shared";
 import { ProjectDataReader } from "./project-data-reader";
 import { resolve_text_rule_type, type TextFileContext } from "../../shared/text/text-rule-type";
 import {
@@ -111,8 +112,8 @@ export class ProjectContentService {
     this.log_manager = log_manager;
   }
 
-  /** 工程预览与正式导入共用身份准备，前端只提供路径。 */
-  public async parse_project_file(request: JsonRecord): Promise<JsonRecord> {
+  /** 预览只发现来源并分配目标名称，内容准备由正式导入持有。 */
+  public async preview_import_files(request: JsonRecord): Promise<JsonRecord> {
     const project_path = this.session_state.require_loaded_project_path();
     const format_service = this.create_format_service();
     const source_paths = this.normalize_string_list(request["source_paths"]);
@@ -120,22 +121,11 @@ export class ProjectContentService {
       format_service.collect_source_file_entries(source_paths),
       await this.database.get_all_asset_records(project_path),
     );
-    const commands = await this.prepare_import_file_commands(project_path, entries, format_service);
-    const result = await new SourceFileParsePipeline(format_service).parse_import_commands(
-      commands.filter(
-        (command) =>
-          command.file_type !== undefined || format_service.is_supported_file(command.source_path),
-      ),
-    );
-    this.log_project_import_parse_diagnostics(result.failed_files, result.warnings);
     return {
-      files: result.file_drafts.map((draft) => ({
-        source_path: draft.source_path,
-        target_rel_path: draft.rel_path,
-        file_type: draft.file_type,
-        parsed_items: draft.parsed_items,
+      files: entries.map((entry) => ({
+        source_path: entry.source_path,
+        target_rel_path: entry.rel_path,
       })) as unknown as JsonValue,
-      failed_files: result.failed_files as unknown as JsonValue,
     };
   }
 
@@ -151,9 +141,14 @@ export class ProjectContentService {
       if (file_commands.length === 0) {
         throw new AppErrors.AppError("request.validation_failed");
       }
-      const parse_result = await this.parse_import_file_commands(project_path, file_commands);
-      this.assert_project_import_has_parseable_files(parse_result);
-
+      const expected_revisions = require_project_expected_section_revisions(
+        request["expected_section_revisions"],
+      );
+      // 陈旧确认必须在修改游戏目录之前退出，提交仍复核同一修订契约。
+      await this.write_store.check_section_revisions(project_path, expected_revisions, [
+        "files",
+        "items",
+      ]);
       const snapshot = await this.read_project_write_snapshot(project_path);
       const existing_record_by_key = new Map(
         snapshot.asset_records.map((record) => [
@@ -162,6 +157,28 @@ export class ProjectContentService {
         ]),
       );
       const incoming_paths = new Set<string>();
+      for (const file of file_commands) {
+        const key = normalize_project_asset_path(file.target_rel_path).toLowerCase();
+        if (incoming_paths.has(key))
+          throw new AppErrors.AppError("request.validation_failed", {
+            diagnostic_context: {
+              reason: "duplicate_import_target",
+              rel_path: file.target_rel_path,
+            },
+          });
+        incoming_paths.add(key);
+      }
+      const parse_result = await this.parse_import_file_commands(
+        snapshot.asset_records,
+        file_commands.filter(
+          (file) =>
+            conflict_action === "replace" ||
+            !existing_record_by_key.has(
+              normalize_project_asset_path(file.target_rel_path).toLowerCase(),
+            ),
+        ),
+      );
+      this.assert_project_import_has_parseable_files(parse_result);
       const current_items = snapshot.public_items_by_id;
       const current_files = { ...snapshot.files };
       const next_items = new Map(current_items);
@@ -185,19 +202,7 @@ export class ProjectContentService {
         }, -1) + 1;
       for (const file of parse_result.file_drafts) {
         const target_key = normalize_project_asset_path(file.rel_path).toLowerCase();
-        if (incoming_paths.has(target_key)) {
-          throw new AppErrors.AppError("request.validation_failed", {
-            diagnostic_context: {
-              reason: "duplicate_import_target",
-              rel_path: file.rel_path,
-            },
-          });
-        }
-        incoming_paths.add(target_key);
         const existing_record = existing_record_by_key.get(target_key);
-        if (existing_record !== undefined && conflict_action === "skip") {
-          continue;
-        }
         const target_rel_path = existing_record?.path ?? file.rel_path;
         if (existing_record !== undefined) {
           for (const [item_id, item] of next_items.entries()) {
@@ -288,9 +293,7 @@ export class ProjectContentService {
       );
       const write_result = await this.write_store.replace_project_items_and_files({
         projectPath: project_path,
-        expectedSectionRevisions: require_project_expected_section_revisions(
-          request["expected_section_revisions"],
-        ),
+        expectedSectionRevisions: expected_revisions,
         revisionSections: ["files", "items"],
         source: "project_import_files",
         updatedSections: ["files", "items"],
@@ -608,43 +611,30 @@ export class ProjectContentService {
       .filter((item) => item.source_path.trim() !== "" && item.target_rel_path.trim() !== "");
   }
 
-  /** 预览与提交各自读取资产事实，替换身份由目标资产确定。 */
-  private async prepare_import_file_commands(
-    project_path: string,
-    entries: readonly ProjectSourceFileEntry[],
-    format_service: FileFormatService,
-  ): Promise<SourceFileParseCommand[]> {
-    const assets = new Map(
-      (await this.database.get_all_asset_records(project_path)).map((asset) => [
-        normalize_project_asset_path(asset.path).toLowerCase(),
-        asset,
-      ]),
-    );
-    return entries.map((entry) => {
-      const asset = assets.get(normalize_project_asset_path(entry.rel_path).toLowerCase());
-      return {
-        source_path: entry.source_path,
-        rel_path: asset?.path ?? entry.rel_path,
-        file_type:
-          asset?.file_type ?? entry.file_type ?? format_service.source_file_type(entry.source_path),
-      };
-    });
-  }
-
-  /** 写入门闩内固定目标资产身份，并使用同一份字节形成提交草稿。 */
+  /** 在来源准备前固定身份并检查完整目标集合，避免无效目标修改游戏。 */
   private async parse_import_file_commands(
-    project_path: string,
-    file_commands: ImportProjectFileCommand[],
+    assets: readonly ProjectAssetRecord[],
+    files: readonly ImportProjectFileCommand[],
   ): Promise<SourceFileParseResult> {
     const format_service = this.create_format_service();
-    const commands = await this.prepare_import_file_commands(
-      project_path,
-      file_commands.map((file) => ({
-        source_path: file.source_path,
-        rel_path: file.target_rel_path,
-      })),
-      format_service,
+    const by_path = new Map(
+      assets.map((asset) => [normalize_project_asset_path(asset.path).toLowerCase(), asset]),
     );
+    const commands: SourceFileParseCommand[] = files.map((file) => {
+      const asset = by_path.get(normalize_project_asset_path(file.target_rel_path).toLowerCase());
+      return {
+        source_path: file.source_path,
+        rel_path: asset?.path ?? file.target_rel_path,
+        file_type: asset?.file_type ?? format_service.source_file_type(file.source_path),
+      };
+    });
+    const final_files = new Map<string, { path: string; file_type: string }>(by_path);
+    for (const command of commands)
+      final_files.set(normalize_project_asset_path(command.rel_path).toLowerCase(), {
+        path: command.rel_path,
+        file_type: command.file_type ?? "",
+      });
+    assert_source_file_paths(final_files.values());
     return new SourceFileParsePipeline(format_service).parse_import_commands(commands);
   }
 

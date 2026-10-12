@@ -2,6 +2,7 @@ import { rpgmaker_default_status } from "./rpgmaker-mv-mz/item";
 import { rgss_default_status } from "./rpgmaker-rgss/item";
 import { RPGMakerRGSSFormat } from "./rpgmaker-rgss/rpgmaker-format";
 import { discover_rgss_source } from "./rpgmaker-rgss/source";
+import { prepare_rgss_source } from "./rpgmaker-rgss/prepare";
 import { is_rpgmaker_file_type } from "../../shared/project-source-formats";
 import { format_local_timestamp } from "../../shared/utils/format-local-timestamp";
 import { normalize_project_asset_path } from "../../shared/project/project-asset-paths";
@@ -348,9 +349,12 @@ export class FileFormatService {
     return result;
   }
 
-  /** 游戏先固化容器，后续解析不再依赖磁盘来源。 */
+  /** 正式导入先准备游戏目录，再固化容器，后续解析使用保存的原稿。 */
   public async prepare_source(source_path: string, rel_path: string, file_type?: string) {
-    if (file_type === "RPGMAKER_RGSS") return this.rgss.prepare_source(source_path, rel_path);
+    if (file_type === "RPGMAKER_RGSS") {
+      await prepare_rgss_source(source_path, this.native_fs);
+      return this.rgss.prepare_source(source_path, rel_path);
+    }
     if (file_type === "RPGMAKER_MV_MZ") return this.rpgmaker.prepare_source(source_path, rel_path);
     return { content: this.native_fs.read_file(source_path), warnings: [] };
   }

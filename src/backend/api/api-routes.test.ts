@@ -71,7 +71,7 @@ const POST_PATHS = new Set([
   "/api/workbench/file/reset",
   "/api/workbench/file/delete",
   "/api/workbench/files/reorder",
-  "/api/workbench/file/parse",
+  "/api/workbench/files/preview",
   "/api/workbench/settings-alignment/apply",
   "/api/workbench/translation/reset",
   "/api/proofreading/query",

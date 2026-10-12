@@ -938,8 +938,19 @@ export class ProjectWriteStore {
   }
 
   /**
-   * 在当前事务中校验 section revision，并返回后续写入复用的 meta 快照。
+   * 修改外部来源前先检查确认是否陈旧，复用正式提交的修订规则。
    */
+  public async check_section_revisions(
+    project_path: string,
+    expected: ProjectExpectedSectionRevisions,
+    sections: ProjectDataSection[],
+  ): Promise<void> {
+    await this.database.read(project_path, (reader) => {
+      this.assert_expected_section_revisions(reader, project_path, expected, sections);
+    });
+  }
+
+  /** 正式提交仍在事务内复核，外部来源准备不能替代提交校验。 */
   private assert_expected_section_revisions(
     database: ProjectDatabaseAccess,
     project_path: string,

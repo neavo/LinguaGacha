@@ -1,8 +1,7 @@
-import { is_app_error } from "@shared/error";
 import { push_error_toast } from "@frontend/app/feedback/desktop-toast";
 import { useCallback, useEffect, useState, type Dispatch, type SetStateAction } from "react";
 
-import { api_fetch } from "@frontend/app/desktop/desktop-api";
+import { api_fetch, DesktopApiError } from "@frontend/app/desktop/desktop-api";
 import type { ProjectWriteResultPayload } from "@frontend/app/state/desktop-project-write";
 import type { LocaleKey } from "@frontend/app/locale/locale-context";
 import { normalize_source_paths } from "@frontend/app/desktop/source-paths";
@@ -14,7 +13,7 @@ import {
   create_workbench_import_files_plan,
   create_workbench_import_files_preview,
   type WorkbenchFileConflictAction,
-  type WorkbenchFileParsePreview,
+  type WorkbenchImportFileCandidate,
   type WorkbenchImportFilesPreview,
   type WorkbenchCommandPlanningState,
   type WorkbenchPlannerSettings,
@@ -23,7 +22,7 @@ import {
 import type { WorkbenchDialogState } from "@frontend/pages/workbench-page/types";
 
 type PendingImportFilesRequest = {
-  parsed_files: WorkbenchFileParsePreview[]; // Backend 预解析后的文件草稿，不作为最终项目事实
+  candidates: WorkbenchImportFileCandidate[]; // Backend 只读发现的导入候选
   conflict_action: WorkbenchFileConflictAction | null;
   source_paths: string[];
   files_revision: number; // 名称分配绑定准备前的文件修订，变化后重新准备。
@@ -73,20 +72,25 @@ export function close_dialog_state(): WorkbenchDialogState {
 }
 
 /**
- * 收窄 Backend 预解析响应中的单个文件草稿，避免脏 payload 进入导入状态机。
+ * 收窄 Backend 导入预览响应中的单个导入候选，避免脏 payload 进入导入状态机。
  */
-function normalize_workbench_file_parse_preview(payload: {
-  source_path?: unknown;
-  target_rel_path?: unknown;
-}): WorkbenchFileParsePreview {
-  return {
-    source_path: String(payload.source_path ?? ""),
-    target_rel_path: String(payload.target_rel_path ?? ""),
-  };
+function normalize_workbench_import_candidate(
+  payload: unknown,
+): WorkbenchImportFileCandidate | null {
+  if (
+    typeof payload !== "object" ||
+    payload === null ||
+    !("source_path" in payload) ||
+    typeof payload.source_path !== "string" ||
+    !("target_rel_path" in payload) ||
+    typeof payload.target_rel_path !== "string"
+  )
+    return null;
+  return { source_path: payload.source_path, target_rel_path: payload.target_rel_path };
 }
 
 /**
- * 工作台导入文件流程集中管理预解析、冲突确认、继承确认和最终提交。
+ * 工作台导入文件流程集中管理导入预览、冲突确认、继承确认和最终提交。
  */
 export function useWorkbenchImportFilesFlow(
   options: WorkbenchImportFilesFlowOptions,
@@ -151,7 +155,7 @@ export function useWorkbenchImportFilesFlow(
   );
 
   /**
-   * 解析用户选择的源路径，按冲突情况进入策略确认或继承确认。
+   * 发现用户选择的源路径，按冲突情况进入策略确认或继承确认。
    */
   const request_add_files_from_paths = useCallback(
     async (source_paths: string[]): Promise<void> => {
@@ -172,52 +176,28 @@ export function useWorkbenchImportFilesFlow(
       }
 
       const files_revision = options.get_planning_state().section_revisions.files ?? 0;
-      const parsed_files: WorkbenchFileParsePreview[] = [];
-      let parse_failure_toast_shown = false; // 防止全失败时再叠加泛错误
+      const candidates: WorkbenchImportFileCandidate[] = [];
 
       await options.run_modal_progress_toast({
         message: options.t("workbench_page.feedback.add_file_loading_toast"),
         task: async () => {
-          const payload = await api_fetch<{ files?: unknown }>("/api/workbench/file/parse", {
+          const payload = await api_fetch<{ files?: unknown }>("/api/workbench/files/preview", {
             source_paths: normalized_source_paths,
           });
           const preview_files = Array.isArray(payload.files) ? payload.files : [];
-          const raw_failed_files = (payload as { failed_files?: unknown }).failed_files;
 
           for (const preview_file of preview_files) {
-            if (typeof preview_file !== "object" || preview_file === null) {
-              continue;
-            }
-
-            const parsed_file = normalize_workbench_file_parse_preview(
-              preview_file as Record<string, unknown>,
-            );
-            if (
-              parsed_file.source_path.trim() === "" ||
-              parsed_file.target_rel_path.trim() === ""
-            ) {
-              continue;
-            }
-            parsed_files.push(parsed_file);
-          }
-
-          const failure_toast = format_source_file_parse_failure_toast(raw_failed_files);
-          if (failure_toast !== null) {
-            if (parsed_files.length > 0) options.push_toast("warning", failure_toast);
-            else push_error_toast(options.t("app.feedback.operation_failed"), failure_toast);
-            parse_failure_toast_shown = true;
+            const candidate = normalize_workbench_import_candidate(preview_file);
+            if (candidate !== null) candidates.push(candidate);
           }
         },
       });
 
       const import_preview = create_workbench_import_files_preview({
         state: options.get_planning_state(),
-        parsed_files,
+        candidates,
       });
       if (import_preview.importable_files.length === 0) {
-        if (parsed_files.length === 0 && parse_failure_toast_shown) {
-          return;
-        }
         push_error_toast(
           options.t("app.feedback.operation_failed"),
           options.t("workbench_page.feedback.no_valid_file"),
@@ -226,7 +206,7 @@ export function useWorkbenchImportFilesFlow(
       }
 
       const pending_request: PendingImportFilesRequest = {
-        parsed_files,
+        candidates,
         conflict_action: null,
         source_paths: normalized_source_paths,
         files_revision,
@@ -254,7 +234,7 @@ export function useWorkbenchImportFilesFlow(
       const state = options.get_planning_state();
       const preview = create_workbench_import_files_preview({
         state,
-        parsed_files: pending_request.parsed_files,
+        candidates: pending_request.candidates,
       });
       if ((state.section_revisions.files ?? 0) !== pending_request.files_revision) {
         await request_add_files_from_paths(pending_request.source_paths);
@@ -278,18 +258,23 @@ export function useWorkbenchImportFilesFlow(
 
       const import_plan = create_workbench_import_files_plan({
         state,
-        parsed_files: pending_request.parsed_files,
+        candidates: pending_request.candidates,
         conflict_action,
         settings: options.planner_settings,
         inheritance_mode,
       });
       let import_payload: ProjectWriteResultPayload;
       try {
-        import_payload = await options.run_project_file_write(import_plan, async (body) => {
-          return await api_fetch<ProjectWriteResultPayload>("/api/workbench/files/import", body);
+        import_payload = await options.run_modal_progress_toast({
+          message: options.t("workbench_page.feedback.add_file_loading_toast"),
+          task: () =>
+            options.run_project_file_write(import_plan, (body) =>
+              api_fetch<ProjectWriteResultPayload>("/api/workbench/files/import", body),
+            ),
         });
       } catch (error) {
-        if (!is_app_error(error) || error.code !== "data.revision_conflict") throw error;
+        if (!(error instanceof DesktopApiError) || error.code !== "data.revision_conflict")
+          throw error;
         await request_add_files_from_paths(pending_request.source_paths);
         return;
       }
@@ -317,7 +302,7 @@ export function useWorkbenchImportFilesFlow(
 
       const preview = create_workbench_import_files_preview({
         state: options.get_planning_state(),
-        parsed_files: pending_request.parsed_files,
+        candidates: pending_request.candidates,
       });
       if (
         (options.get_planning_state().section_revisions.files ?? 0) !==

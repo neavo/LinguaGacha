@@ -3,32 +3,90 @@ import type { NativeFs } from "../../../native/native-fs";
 import { validate_zip_member_path } from "../zip-members";
 import { read_text } from "./value";
 import type { GameFiles } from "../rpgmaker-shared";
+import { read_rgss_archive_version } from "./archive";
 
 export const RGSS_VERSIONS = { xp: ".rxdata", vx: ".rvdata", ace: ".rvdata2" } as const;
 export type RGSSVersion = keyof typeof RGSS_VERSIONS;
-type RGSSSource = { root: string; version: RGSSVersion };
-/** 数据扩展名与 Game.ini 共同确定已解包游戏身份。 */
+export const RGSS_ARCHIVES = { xp: ".rgssad", vx: ".rgss2a", ace: ".rgss3a" } as const;
+type RGSSSource = {
+  root: string;
+  version: RGSSVersion;
+  archive: string | null;
+  problem: string | null; // 已识别候选的错误留到正式准备时汇总。
+};
+/** 发现只读取配置和归档头，错误留到正式准备时按来源汇总。 */
 export function discover_rgss_source(source: string, fs: NativeFs): RGSSSource | null {
   if (!fs.exists(source)) return null;
   const root = fs.stat(source).isDirectory()
     ? path.resolve(source)
-    : [".exe", ".ini"].includes(path.extname(source).toLowerCase())
+    : [".exe", ".ini", ...Object.values(RGSS_ARCHIVES)].includes(path.extname(source).toLowerCase())
       ? path.dirname(path.resolve(source))
       : null;
-  if (root === null || !fs.exists(path.join(root, "Game.ini"))) return null;
-  const versions = (Object.keys(RGSS_VERSIONS) as RGSSVersion[]).filter((version) =>
-    fs.exists(path.join(root, "Data", "System" + RGSS_VERSIONS[version])),
+  if (root === null) return null;
+  const versions = new Set(
+    (Object.keys(RGSS_VERSIONS) as RGSSVersion[]).filter((version) =>
+      fs.exists(path.join(root, "Data", "System" + RGSS_VERSIONS[version])),
+    ),
   );
-  return versions.length === 1 ? { root, version: versions[0]! } : null;
+  const archives = fs
+    .read_dirents(root)
+    .filter(
+      (entry) =>
+        entry.isFile() &&
+        Object.values(RGSS_ARCHIVES).some(
+          (extension) => path.extname(entry.name).toLowerCase() === extension,
+        ),
+    );
+  for (const entry of archives) {
+    const version = (Object.keys(RGSS_ARCHIVES) as RGSSVersion[]).find(
+      (value) => RGSS_ARCHIVES[value] === path.extname(entry.name).toLowerCase(),
+    )!;
+    versions.add(version);
+  }
+  const archive = archives[0]?.name ?? null;
+  let problem: string | null = null;
+  try {
+    const content = fs.read_file(path.join(root, "Game.ini"));
+    const ini = decode_ini(content);
+    const scripts = read_ini_value(ini, "Scripts");
+    const library = read_ini_value(ini, "Library");
+    for (const version of Object.keys(RGSS_VERSIONS) as RGSSVersion[]) {
+      if (
+        scripts &&
+        path.extname(scripts.replaceAll("\\", "/")).toLowerCase() === RGSS_VERSIONS[version]
+      )
+        versions.add(version);
+    }
+    const generation = /(?:^|[\\/])RGSS([123])\d*[^\\/]*\.dll$/iu.exec(library ?? "")?.[1];
+    if (generation) versions.add(generation === "1" ? "xp" : generation === "2" ? "vx" : "ace");
+    const version = [...versions][0];
+    if (!version) return null;
+    if (versions.size !== 1 || archives.length > 1)
+      throw new Error("Conflicting RGSS engine or archive versions");
+    script_path(content, version);
+    if (archive) {
+      const protocol = read_rgss_archive_version(fs.read_prefix(path.join(root, archive), 8));
+      if (protocol !== (version === "ace" ? 3 : 1))
+        throw new Error("RGSS archive protocol does not match the engine");
+    }
+  } catch (error) {
+    // 已有归档或数据证据的坏游戏仍是候选，正式准备按来源报告具体原因。
+    if (versions.size === 0) return null;
+    problem = error instanceof Error ? error.message : String(error);
+  }
+  const version = [...versions][0]!;
+  return { root, version, archive, problem };
 }
 /** Game.ini 常见 ANSI 编码只用于读取配置，原始字节始终保留。 */
-export function script_path(content: Uint8Array, version: RGSSVersion): string {
-  let ini: string;
+function decode_ini(content: Uint8Array): string {
   try {
-    ini = read_text(content);
+    return read_text(content);
   } catch {
-    ini = read_text(content, "cp932");
+    return read_text(content, "cp932");
   }
+}
+/** 仅消费 [Game] 配置，忽略其他节的同名字段。 */
+function read_ini_value(ini: string, key: string): string | null {
   let game = false;
   for (const line of ini.split(/\r?\n/u)) {
     const section = /^\s*\[([^\]]+)\]/u.exec(line);
@@ -36,13 +94,19 @@ export function script_path(content: Uint8Array, version: RGSSVersion): string {
       game = section[1]!.toLowerCase() === "game";
       continue;
     }
-    const entry = game ? /^\s*Scripts\s*=\s*(.*?)\s*$/iu.exec(line) : null;
-    if (entry) {
-      const name = validate_zip_member_path(entry[1]!.replace(/^"|"$/gu, "").replaceAll("\\", "/"));
-      if (path.extname(name).toLowerCase() !== RGSS_VERSIONS[version])
-        throw new Error("Inconsistent RGSS script version");
-      return name;
-    }
+    const entry = game ? /^\s*([^=]+?)\s*=\s*(.*?)\s*$/u.exec(line) : null;
+    if (entry?.[1]?.toLowerCase() === key.toLowerCase()) return entry[2]!.replace(/^"|"$/gu, "");
+  }
+  return null;
+}
+/** 配置脚本路径必须留在游戏目录内，并匹配引擎的数据版本。 */
+export function script_path(content: Uint8Array, version: RGSSVersion): string {
+  const configured = read_ini_value(decode_ini(content), "Scripts");
+  if (configured) {
+    const name = validate_zip_member_path(configured.replaceAll("\\", "/"));
+    if (path.extname(name).toLowerCase() !== RGSS_VERSIONS[version])
+      throw new Error("Inconsistent RGSS script version");
+    return name;
   }
   return "Data/Scripts" + RGSS_VERSIONS[version];
 }

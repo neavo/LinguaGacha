@@ -13,7 +13,7 @@ export const ja_jp_workbench_page = {
     actions: "操作",
   },
   feedback: {
-    add_file_loading_toast: "ファイルを追加し、キャッシュを更新中 …",
+    add_file_loading_toast: "ファイルを追加中 …",
     no_valid_file: "追加できる有効なファイルがありません",
     close_project_failed:
       "プロジェクトを閉じられませんでした。しばらくしてから再試行してください …",
