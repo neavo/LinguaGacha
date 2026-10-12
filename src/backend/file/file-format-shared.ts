@@ -34,7 +34,7 @@ export interface GeneratedFilePaths {
 /** 全部格式共享的写回上下文，源资产由工程提供。 */
 export interface FileFormatWriteContext {
   paths: GeneratedFilePaths;
-  asset_reader: (rel_path: string) => Buffer | null;
+  asset_reader: (rel_path: string) => Buffer | null | Promise<Buffer | null>;
 }
 
 /** 文件调度拥有源文件集合，单格式写回上下文只携带 IO。 */

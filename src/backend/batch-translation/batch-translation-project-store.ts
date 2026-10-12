@@ -2,7 +2,6 @@ import type { BatchTranslationProgress } from "../../domain/batch-translation";
 
 import { normalize_batch_translation_progress } from "../../domain/batch-translation";
 import type { CacheReadPort } from "../cache/cache-types";
-import { ProjectDatabase } from "../database/database-operations";
 import { ProjectWriteStore, type ProjectWriteSectionAck } from "../project/project-write-store";
 import { ProjectSessionState } from "../project/project-session-state";
 import { normalize_translation_item_patches } from "../project/project-write-request";
@@ -16,23 +15,12 @@ import {
  * 项目任务存储端口，是 BatchTranslationRunner 读写项目任务事实的唯一内部入口
  */
 export class BatchTranslationProjectStore {
-  /** 组合工程连接、事实缓存与统一写入口。 */
+  /** 组合工程身份、事实缓存与统一写入口。 */
   public constructor(
-    private readonly database: ProjectDatabase, // 数据库连接租约由任务持有。
     private readonly session_state: ProjectSessionState, // 当前 loaded 工程是唯一读写目标。
     private readonly cache: CacheReadPort, // 热读 items、quality 与 prompts。
     private readonly write_store: ProjectWriteStore, // 统一提交事务与项目变更事件。
   ) {}
-
-  /**
-   * 后台任务长流程显式保留当前工程连接，结束后释放让 .lg 回到单文件稳定态
-   */
-  public acquire_project_lease(owner: string): () => void {
-    return this.database.acquire_project_lease(
-      this.session_state.require_loaded_project_path(),
-      owner,
-    );
-  }
 
   /**
    * 任务启动时读取后端热缓存中的质量规则和提示词快照

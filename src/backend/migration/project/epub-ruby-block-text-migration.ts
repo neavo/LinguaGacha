@@ -24,7 +24,7 @@ export class EpubRubyBlockTextMigration {
   /**
    * database 是 `.lg` 唯一读写入口。本类只读取快照并生成类型化写入。
    */
-  public constructor(private readonly database: ProjectDatabase) {}
+  public constructor(private readonly database: Pick<ProjectDatabase, "read_asset_content">) {}
 
   /**
    * 发现旧 ruby_clean_candidate 后，按原始 EPUB asset 核验正文并更新对应条目。
@@ -50,7 +50,7 @@ export class EpubRubyBlockTextMigration {
     const replacements = new Map<string, JsonValue[]>();
     for (const file_path of epub_paths) {
       const old_file_items = items_by_path.get(file_path)!;
-      const asset_content = this.database.read_asset_content(project_path, file_path);
+      const asset_content = await this.database.read_asset_content(project_path, file_path);
       if (asset_content === null) {
         continue;
       }

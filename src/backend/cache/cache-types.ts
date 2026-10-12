@@ -1,3 +1,4 @@
+import type { PDFSummary } from "../../shared/pdf";
 import type { ProjectFileRecord } from "../project/project-file-records";
 import type { ProjectItemPublicRecord } from "../../domain/item";
 import type { QualityRuleBlock } from "../../shared/quality/quality-rule-state";
@@ -30,6 +31,9 @@ export interface CacheReadPort {
   };
   readonly files: {
     readFileEntries(): ProjectFileRecord[];
+  };
+  readonly pdf: {
+    readBlock(): Record<string, PDFSummary>;
   };
   readonly quality: {
     readBlock(): QualityRuleBlock;

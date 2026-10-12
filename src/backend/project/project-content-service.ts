@@ -118,7 +118,7 @@ export class ProjectContentService {
       const parse_result = await this.parse_import_file_commands(file_commands);
       this.assert_project_import_has_parseable_files(parse_result);
 
-      const snapshot = this.read_project_write_snapshot(project_path);
+      const snapshot = await this.read_project_write_snapshot(project_path);
       const existing_record_by_key = new Map(
         snapshot.asset_records.map((record) => [record.path.toLowerCase(), record]),
       );
@@ -200,8 +200,11 @@ export class ProjectContentService {
         });
       }
 
-      const settings = this.read_project_write_settings(project_path, request["project_settings"]);
-      let write_output = this.compute_prefilter_output({
+      const settings = await this.read_project_write_settings(
+        project_path,
+        request["project_settings"],
+      );
+      let write_output = await this.compute_prefilter_output({
         project_path,
         files: current_files,
         items: this.public_item_record(next_items.values()),
@@ -216,7 +219,7 @@ export class ProjectContentService {
             return item === undefined ? [] : [item];
           }),
         });
-        write_output = this.compute_prefilter_output({
+        write_output = await this.compute_prefilter_output({
           project_path,
           files: current_files,
           items: inherited_items,
@@ -268,7 +271,7 @@ export class ProjectContentService {
       if (rel_paths.length === 0) {
         throw new AppErrors.AppError("request.validation_failed");
       }
-      const snapshot = this.read_project_write_snapshot(project_path);
+      const snapshot = await this.read_project_write_snapshot(project_path);
       this.assert_rel_paths_exist(snapshot.asset_records, rel_paths);
       const rel_path_set = new Set(rel_paths);
       const items = this.public_item_record(snapshot.public_items_by_id.values());
@@ -280,8 +283,11 @@ export class ProjectContentService {
         item.name_dst = null;
         item.status = "NONE";
       }
-      const settings = this.read_project_write_settings(project_path, request["project_settings"]);
-      const write_output = this.compute_prefilter_output({
+      const settings = await this.read_project_write_settings(
+        project_path,
+        request["project_settings"],
+      );
+      const write_output = await this.compute_prefilter_output({
         project_path,
         files: snapshot.files,
         items,
@@ -316,7 +322,7 @@ export class ProjectContentService {
       if (rel_paths.length === 0) {
         throw new AppErrors.AppError("request.validation_failed");
       }
-      const snapshot = this.read_project_write_snapshot(project_path);
+      const snapshot = await this.read_project_write_snapshot(project_path);
       this.assert_rel_paths_exist(snapshot.asset_records, rel_paths);
       const rel_path_set = new Set(rel_paths);
       const files = { ...snapshot.files };
@@ -330,8 +336,11 @@ export class ProjectContentService {
           delete items[item_id];
         }
       }
-      const settings = this.read_project_write_settings(project_path, request["project_settings"]);
-      const write_output = this.compute_prefilter_output({
+      const settings = await this.read_project_write_settings(
+        project_path,
+        request["project_settings"],
+      );
+      const write_output = await this.compute_prefilter_output({
         project_path,
         files,
         items,
@@ -362,9 +371,9 @@ export class ProjectContentService {
     const project_path = this.session_state.require_loaded_project_path();
     return this.runtime_gate.run_project_write(async () => {
       const ordered_paths = this.normalize_string_list(request["ordered_rel_paths"]);
-      const current_paths = this.database
-        .get_all_asset_records(project_path)
-        .map((record) => record.path);
+      const current_paths = (await this.database.get_all_asset_records(project_path)).map(
+        (record) => record.path,
+      );
       this.assert_complete_path_order(current_paths, ordered_paths);
       return await this.write_store.reorder_project_files({
         projectPath: project_path,
@@ -388,25 +397,30 @@ export class ProjectContentService {
       if (mode === "prefiltered_items")
         this.assert_no_legacy_fields(request, ["items", "translation_extras", "prefilter_config"]);
       const project_path = this.resolve_project_path(request);
-      const settings = this.read_project_write_settings(project_path, request["project_settings"]);
-      return await this.prepare_settings_alignment(
+      const settings = await this.read_project_write_settings(
         project_path,
-        settings,
-        mode === "prefiltered_items",
-        mode === "prefiltered_items"
-          ? require_project_expected_section_revisions(request["expected_section_revisions"])
-          : undefined,
+        request["project_settings"],
+      );
+      return await (
+        await this.prepare_settings_alignment(
+          project_path,
+          settings,
+          mode === "prefiltered_items",
+          mode === "prefiltered_items"
+            ? require_project_expected_section_revisions(request["expected_section_revisions"])
+            : undefined,
+        )
       )();
     });
   }
 
-  /** 调用方持有工程写 lease；同步完成准备，使配置保存前就能发现预过滤错误。 */
-  public prepare_settings_alignment(
+  /** 调用方持有工程写 lease；完成准备后才允许保存配置，使预过滤错误先于外部写入暴露。 */
+  public async prepare_settings_alignment(
     project_path: string,
     settings: ProjectSettingsSnapshot,
     prefilter: boolean,
     expected_section_revisions?: ProjectExpectedSectionRevisions,
-  ): () => Promise<ProjectWriteResult> {
+  ): Promise<() => Promise<ProjectWriteResult>> {
     const settings_meta = this.build_project_settings_only_meta(settings);
     if (!prefilter) {
       return () =>
@@ -415,8 +429,8 @@ export class ProjectContentService {
           meta: settings_meta,
         });
     }
-    const snapshot = this.read_project_write_snapshot(project_path);
-    const write_output = this.compute_prefilter_output({
+    const snapshot = await this.read_project_write_snapshot(project_path);
+    const write_output = await this.compute_prefilter_output({
       project_path,
       files: snapshot.files,
       items: this.public_item_record(snapshot.public_items_by_id.values()),
@@ -452,11 +466,11 @@ export class ProjectContentService {
     return this.runtime_gate.run_project_write(async () => {
       if (mode === "all") {
         const parsed_items = await this.reparse_all_assets(project_path);
-        const settings = this.read_project_write_settings(
+        const settings = await this.read_project_write_settings(
           project_path,
           request["project_settings"],
         );
-        const snapshot = this.read_project_write_snapshot(project_path);
+        const snapshot = await this.read_project_write_snapshot(project_path);
         // 重建条目分配全新身份；旧行号不承担跨解析版本的内容匹配责任。
         let next_item_id = this.next_item_id_seed(snapshot.public_items_by_id);
         const reset_items = parsed_items.map((item) =>
@@ -470,7 +484,7 @@ export class ProjectContentService {
           reset_items,
           snapshot.pdf_paths,
         );
-        const write_output = this.compute_prefilter_output({
+        const write_output = await this.compute_prefilter_output({
           project_path,
           files,
           items: this.public_item_record(reset_items),
@@ -489,7 +503,7 @@ export class ProjectContentService {
         });
       }
       if (mode === "failed") {
-        const items = this.to_public_item_record(this.database.get_all_items(project_path));
+        const items = this.to_public_item_record(await this.database.get_all_items(project_path));
         for (const item of Object.values(items)) {
           if (item.status !== "ERROR") {
             continue;
@@ -498,7 +512,10 @@ export class ProjectContentService {
           item.name_dst = null;
           item.status = "NONE";
         }
-        const translation_extras = this.build_translation_extras_for_items(project_path, items);
+        const translation_extras = await this.build_translation_extras_for_items(
+          project_path,
+          items,
+        );
         return await this.write_store.reset_translation_state({
           projectPath: project_path,
           items: build_project_item_persistent_records(items),
@@ -635,12 +652,12 @@ export class ProjectContentService {
   /**
    * 写入计算优先读取请求中的用户设置；缺失时回到项目 meta 镜像
    */
-  private read_project_write_settings(
+  private async read_project_write_settings(
     project_path: string,
     value: JsonValue | undefined,
-  ): ProjectSettingsSnapshot {
+  ): Promise<ProjectSettingsSnapshot> {
     const request_settings = { ...read_json_record(value) };
-    const meta = this.database.get_all_meta(project_path);
+    const meta = await this.database.get_all_meta(project_path);
     const prefilter_config = { ...read_json_record(meta["prefilter_config"]) };
     return normalize_project_settings_snapshot(
       request_settings,
@@ -654,24 +671,26 @@ export class ProjectContentService {
   /**
    * 按本次操作的目标路径读取 asset、item 和 PDF 身份，支持打开前的设置对齐。
    */
-  private read_project_write_snapshot(project_path: string): ProjectWriteSnapshot {
-    const asset_records = this.database.get_all_asset_records(project_path);
-    const item_records = this.database.get_all_items(project_path);
-    const pdf_paths = Object.keys(this.database.read_pdf_summaries(project_path));
-    const public_items_by_id = this.to_public_items_by_id(item_records);
-    return {
-      asset_records,
-      pdf_paths,
-      public_items_by_id,
-      files: build_project_file_records(
+  private async read_project_write_snapshot(project_path: string): Promise<ProjectWriteSnapshot> {
+    return this.database.read(project_path, (reader) => {
+      const asset_records = reader.get_all_asset_records(project_path);
+      const item_records = reader.get_all_items(project_path);
+      const pdf_paths = Object.keys(reader.read_pdf_summaries(project_path));
+      const public_items_by_id = this.to_public_items_by_id(item_records);
+      return {
         asset_records,
-        item_records.map((item) => ({
-          file_path: String(item["file_path"] ?? ""),
-          file_type: String(item["file_type"] ?? "NONE"),
-        })),
         pdf_paths,
-      ),
-    };
+        public_items_by_id,
+        files: build_project_file_records(
+          asset_records,
+          item_records.map((item) => ({
+            file_path: String(item["file_path"] ?? ""),
+            file_type: String(item["file_type"] ?? "NONE"),
+          })),
+          pdf_paths,
+        ),
+      };
+    });
   }
 
   /**
@@ -729,19 +748,19 @@ export class ProjectContentService {
   /**
    * 预过滤输出由后端基于当前数据库事实计算，渲染进程不再提交最终 items 或 meta
    */
-  private compute_prefilter_output(args: {
+  private async compute_prefilter_output(args: {
     project_path: string;
     files: ProjectFileSection;
     items: Record<string, ProjectItemPublicRecord>;
     settings: ProjectSettingsSnapshot;
     progress?: BatchTranslationProgress;
-  }): ProjectPrefilterWriteOutput {
+  }): Promise<ProjectPrefilterWriteOutput> {
     return compute_project_prefilter_write({
       state: {
         files: args.files,
         items: args.items,
       },
-      progress: args.progress ?? this.read_translation_progress(args.project_path),
+      progress: args.progress ?? (await this.read_translation_progress(args.project_path)),
       source_language: args.settings.source_language,
       mtool_optimizer_enable: args.settings.mtool_optimizer_enable,
       skip_duplicate_source_text_enable: args.settings.skip_duplicate_source_text_enable,
@@ -768,9 +787,9 @@ export class ProjectContentService {
   /**
    * 从数据库 translation_extras 恢复任务进度基底，后续统计会覆盖行数
    */
-  private read_translation_progress(project_path: string): BatchTranslationProgress {
+  private async read_translation_progress(project_path: string): Promise<BatchTranslationProgress> {
     return normalize_batch_translation_progress(
-      this.database.get_all_meta(project_path)["translation_extras"],
+      (await this.database.get_all_meta(project_path))["translation_extras"],
     );
   }
 
@@ -853,12 +872,12 @@ export class ProjectContentService {
   /**
    * 按完整 item 集合重建翻译进度 meta，保留数据库现有累计统计
    */
-  private build_translation_extras_for_items(
+  private async build_translation_extras_for_items(
     project_path: string,
     items: Record<string, ProjectItemPublicRecord>,
-  ): Record<string, unknown> {
+  ): Promise<Record<string, unknown>> {
     return build_translation_extras_from_items({
-      progress: this.read_translation_progress(project_path),
+      progress: await this.read_translation_progress(project_path),
       items: Object.values(items),
     });
   }
@@ -867,8 +886,8 @@ export class ProjectContentService {
   private async reparse_all_assets(project_path: string): Promise<Item[]> {
     const format_service = this.create_format_service();
     const items: Item[] = [];
-    for (const record of this.database.get_all_asset_records(project_path)) {
-      const content = this.database.read_asset_content(project_path, record.path);
+    for (const record of await this.database.get_all_asset_records(project_path)) {
+      const content = await this.database.read_asset_content(project_path, record.path);
       if (content === null) {
         throw new AppErrors.AppError("file.not_found", {
           diagnostic_context: { asset_path: record.path },
@@ -879,7 +898,7 @@ export class ProjectContentService {
           diagnostic_context: { asset_path: record.path, reason: "unsupported_format" },
         });
       }
-      if (this.database.read_pdf_document(project_path, record.path) !== null) continue;
+      if ((await this.database.read_pdf_document(project_path, record.path)) !== null) continue;
       const parsed = await format_service.parse_asset(record.path, content);
       if (parsed.kind === "items") items.push(...parsed.items);
     }

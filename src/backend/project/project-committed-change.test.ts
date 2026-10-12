@@ -6,41 +6,47 @@ import { create_item } from "../../domain/item";
 import { ProjectDatabase } from "../database/database-operations";
 import { build_project_committed_change } from "./project-committed-change";
 
-it("规范行增量与修订使用提交快照，不受后续数据库变化影响", () => {
+it("规范行增量与修订使用提交快照，不受后续数据库变化影响", async () => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), "lg-committed-change-"));
   const project = path.join(directory, "project.lg");
   const database = new ProjectDatabase();
   try {
-    database.create_project(project, "test");
-    database.set_items(project, [
-      create_item({
-        id: 1,
-        src: "原文",
-        dst: "译文",
-        status: "PROCESSED",
-        file_path: "script.txt",
-      }),
-    ]);
-    const committed = build_project_committed_change(
-      database,
-      {
-        projectPath: project,
-        source: "test",
-        updatedSections: ["items"],
-        changedItemIds: [1],
-        qualityStatisticsScope: "post_replacement",
-      },
-      database.get_all_meta(project),
+    await database.create_project(project, "test");
+    await database.transaction(project, (writer) =>
+      writer.set_items(project, [
+        create_item({
+          id: 1,
+          src: "原文",
+          dst: "译文",
+          status: "PROCESSED",
+          file_path: "script.txt",
+        }),
+      ]),
     );
-    database.set_items(project, []);
-    database.set_meta(project, "project_runtime_revision.items", 99);
+    const committed = await database.read(project, (database) =>
+      build_project_committed_change(
+        database,
+        {
+          projectPath: project,
+          source: "test",
+          updatedSections: ["items"],
+          changedItemIds: [1],
+          qualityStatisticsScope: "post_replacement",
+        },
+        database.get_all_meta(project),
+      ),
+    );
+    await database.transaction(project, (writer) => writer.set_items(project, []));
+    await database.transaction(project, (writer) =>
+      writer.set_meta(project, "project_runtime_revision.items", 99),
+    );
     expect(committed.sectionRevisions.items).toBe(0);
     expect(committed.items).toMatchObject({
       mode: "delta",
       records: [{ item_id: 1, src: "原文", dst: "译文" }],
     });
   } finally {
-    database.close();
+    await database.close();
     fs.rmSync(directory, { recursive: true, force: true });
   }
 });

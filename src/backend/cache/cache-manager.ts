@@ -1,3 +1,5 @@
+import type { PDFSummary } from "../../shared/pdf";
+import { AppError } from "../../shared/error";
 import type { AppSettingService } from "../app/app-setting-service";
 import type { ProjectDatabase } from "../database/database-operations";
 import type { LogManager } from "../log/log-manager";
@@ -50,7 +52,6 @@ class ProjectDataBlockCache<T extends object> {
  */
 export class CacheManager implements CacheReadPort {
   private readonly database: ProjectDatabase;
-  private readonly data_reader: ProjectDataReader; // 数据库事实只经由 ProjectDataReader 读取。
   private readonly log_manager: Pick<LogManager, "warning" | "error"> | null; // 恢复失败只记录诊断。
   private project_path = ""; // 空字符串表示当前无 loaded project 缓存。
   private epoch = 0; // 每次完整热机递增，视图缓存用它隔离旧身份。
@@ -58,6 +59,10 @@ export class CacheManager implements CacheReadPort {
   private section_revisions: ProjectDataSectionRevisions = {}; // 对外暴露的 section revision 快照。
   public readonly items = new ItemCache(() => this.recover_if_needed());
   public readonly files = new FileCache(() => this.recover_if_needed());
+  public readonly pdf = new ProjectDataBlockCache<Record<string, PDFSummary>>(
+    () => this.recover_if_needed(),
+    () => ({}),
+  );
   public readonly quality = new ProjectDataBlockCache<QualityRuleBlock>(
     () => this.recover_if_needed(),
     create_empty_quality_rule_block,
@@ -80,14 +85,13 @@ export class CacheManager implements CacheReadPort {
     workerClient: ComputeWorkerClient;
   }) {
     this.database = options.database;
-    this.data_reader = new ProjectDataReader(options.database);
     this.log_manager = options.logManager;
     this.proofreading = new ProofreadingCache({
       cache: this,
       appSettingService: options.appSettingService,
       workerClient: options.workerClient,
       reader: createProofreadingReader(),
-      readPages: (projectPath) => this.data_reader.read_pdf_documents(projectPath),
+      readPages: (projectPath) => this.database.read_pdf_documents(projectPath),
     });
     this.qualityStatistics = new QualityRuleStatisticsCache({
       cache: this,
@@ -99,7 +103,7 @@ export class CacheManager implements CacheReadPort {
    * 为当前项目执行完整热机，后续 query 可走内存读取。
    */
   public async warmProject(project_path: string): Promise<void> {
-    this.rebuild_full_project_cache(project_path);
+    await this.rebuild_full_project_cache(project_path);
     this.proofreading.clearProject();
   }
 
@@ -119,6 +123,7 @@ export class CacheManager implements CacheReadPort {
     this.freshness = "empty";
     this.items.clear();
     this.files.clear();
+    this.pdf.clear();
     this.quality.clear();
     this.prompts.clear();
     this.qualityStatistics.clear();
@@ -127,13 +132,14 @@ export class CacheManager implements CacheReadPort {
   }
 
   /**
-   * 将提交结果应用到缓存，失败后进入下一次读取前恢复状态。
+   * 将提交结果应用到缓存，失败时等待数据库重建后报告原始错误。
    */
-  public applyCommittedChange(committed: ProjectCommittedChange): void {
+  public async applyCommittedChange(committed: ProjectCommittedChange): Promise<void> {
     if (committed.projectPath !== this.project_path) return;
     try {
       if (committed.items !== undefined) this.items.applyChange(committed.items);
       if (committed.files !== undefined) this.files.replace(committed.files);
+      if (committed.pdf !== undefined) this.pdf.replace(committed.pdf);
       if (committed.quality !== undefined) this.quality.replace(committed.quality);
       if (committed.prompts !== undefined) this.prompts.replace(committed.prompts);
       // 基础事实、修订与视图失效同步切换，读取不会跨越两次提交。
@@ -142,6 +148,11 @@ export class CacheManager implements CacheReadPort {
       this.qualityStatistics.applyChange(committed);
     } catch (cause) {
       this.mark_recoverable_error(committed);
+      try {
+        await this.rebuild_full_project_cache(committed.projectPath);
+      } catch (recovery) {
+        throw new AggregateError([cause, recovery], "Cache recovery failed.");
+      }
       throw cause;
     }
   }
@@ -192,31 +203,38 @@ export class CacheManager implements CacheReadPort {
   /**
    * 从数据库重建所有基础 block 缓存。
    */
-  private rebuild_full_project_cache(project_path: string): void {
-    this.database.with_project_scope(project_path, () => {
-      const meta = this.data_reader.get_all_meta(project_path);
-      const items_snapshot = this.data_reader.build_runtime_items_snapshot(project_path);
-      const files_block = this.data_reader.build_files_record_block(
+  private async rebuild_full_project_cache(project_path: string): Promise<void> {
+    const snapshot = await this.database.read(project_path, (reader) => {
+      const data_reader = new ProjectDataReader(reader);
+      const meta = data_reader.get_all_meta(project_path);
+      const items_snapshot = data_reader.build_runtime_items_snapshot(project_path);
+      const pdf = reader.read_pdf_summaries(project_path);
+      const files_block = data_reader.build_files_record_block(
         project_path,
         items_snapshot.item_records,
+        Object.keys(pdf),
       );
-      const quality_block = this.data_reader.build_quality_block(project_path, meta);
-      const prompts_block = this.data_reader.build_prompts_block(project_path, meta);
-      const section_revisions = this.data_reader.build_section_revisions(meta);
-      this.project_path = project_path;
-      this.epoch += 1;
-      this.items.replace(items_snapshot.item_records);
-      this.files.replace(files_block);
-      this.quality.replace(quality_block);
-      this.prompts.replace(prompts_block);
-      this.qualityStatistics.clear();
-      this.section_revisions = section_revisions;
-      this.freshness = "fresh";
+      const quality_block = data_reader.build_quality_block(project_path, meta);
+      const prompts_block = data_reader.build_prompts_block(project_path, meta);
+      const section_revisions = data_reader.build_section_revisions(meta);
+      return { items_snapshot, files_block, pdf, quality_block, prompts_block, section_revisions };
     });
+    const { items_snapshot, files_block, pdf, quality_block, prompts_block, section_revisions } =
+      snapshot;
+    this.project_path = project_path;
+    this.epoch += 1;
+    this.items.replace(items_snapshot.item_records);
+    this.files.replace(files_block);
+    this.pdf.replace(pdf);
+    this.quality.replace(quality_block);
+    this.prompts.replace(prompts_block);
+    this.qualityStatistics.clear();
+    this.section_revisions = section_revisions;
+    this.freshness = "fresh";
   }
 
   /**
-   * 若上一轮维护失败，则在下一次读取前用数据库事实重建缓存。
+   * 重建失败时阻止同步读取旧事实，调用方按已提交语义重载。
    */
   private recover_if_needed(): void {
     if (this.freshness !== "recoverable_error") {
@@ -225,7 +243,9 @@ export class CacheManager implements CacheReadPort {
     if (this.project_path === "") {
       return;
     }
-    this.rebuild_full_project_cache(this.project_path);
+    throw new AppError("data.committed_sync_failed", {
+      public_details: { committed: true, action: "reload_project" },
+    });
   }
 
   /**
@@ -233,7 +253,7 @@ export class CacheManager implements CacheReadPort {
    */
   private mark_recoverable_error(event: ProjectCommittedChange): void {
     this.freshness = "recoverable_error";
-    this.log_manager?.warning("CacheManager 缓存维护失败，后续读取将尝试恢复。", {
+    this.log_manager?.warning("CacheManager 缓存维护失败，正在从数据库重建。", {
       source: "cache-manager",
       context: {
         sections: event.updatedSections,

@@ -7,6 +7,33 @@ describe("TranslationPipeline", () => {
     vi.useRealTimers();
   });
 
+  it("千级并发集中完成时不漏调度或重复提交", async () => {
+    const limit = 1000;
+    const count = 2000;
+    let active = 0;
+    let peak = 0;
+    const committed: number[] = [];
+    const pipeline = new TranslationPipeline({
+      read_concurrency_limit: () => limit,
+      signal: new AbortController().signal,
+      execute: async (unit) => {
+        peak = Math.max(peak, ++active);
+        await new Promise<void>((resolve) => setImmediate(resolve));
+        active--;
+        return { commit_entries: [commit(Number(unit.work_unit_id))], retry_contexts: [] };
+      },
+      commit: async (entries) => {
+        committed.push(...entries.map((entry) => entry.input_tokens));
+      },
+    });
+    await pipeline.run(Array.from({ length: count }, (_, index) => context(index)));
+    expect(peak).toBe(limit);
+    expect(active).toBe(0);
+    expect(committed.sort((a, b) => a - b)).toEqual(
+      Array.from({ length: count }, (_, index) => index),
+    );
+  });
+
   it("升档补充活动任务，降档等待自然收束后再补发", async () => {
     vi.useFakeTimers();
     let limit = 4;

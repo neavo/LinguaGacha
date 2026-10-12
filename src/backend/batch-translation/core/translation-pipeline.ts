@@ -76,18 +76,23 @@ export class TranslationPipeline {
   public async run(initial_contexts: TranslationContext[]): Promise<void> {
     this.queue.push(...initial_contexts);
     const active = new Set<Promise<void>>();
+    let completion = Promise.withResolvers<void>();
     try {
       for (;;) {
         while (!this.signal.aborted) {
           if (active.size >= this.read_concurrency_limit()) break;
           const context = this.retry_queue.shift() ?? this.queue.shift(); // 内容重试优先。
           if (context === undefined) break;
-          const task = this.run_context(context).finally(() => active.delete(task));
+          const task = this.run_context(context).finally(() => {
+            active.delete(task);
+            completion.resolve();
+          });
           active.add(task);
         }
         if (active.size === 0) break;
-        // 请求成功先更新额度，再返回 work unit；完成后读取即可，无需另建通知链。
-        await Promise.race(active);
+        // 检查活动集合到等待之间没有异步让出，已完成通知也会保留至本轮消费。
+        await completion.promise;
+        completion = Promise.withResolvers<void>();
       }
       if (this.commit_timer !== null) clearTimeout(this.commit_timer);
       this.commit_timer = null;

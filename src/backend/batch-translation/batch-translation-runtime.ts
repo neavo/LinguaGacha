@@ -13,7 +13,7 @@ import {
   type BatchTranslationSnapshot,
   type BatchTranslationSnapshotListener,
 } from "../../domain/batch-translation";
-import type { ProjectDataReader } from "../project/project-data-reader";
+import type { ProjectDatabase } from "../database/database-operations";
 import type { ProjectSessionState } from "../project/project-session-state";
 import type { RuntimeLease, RuntimeOperationGate } from "../runtime-operation-gate";
 import type { BatchTranslationConfig } from "../../domain/batch-translation";
@@ -73,7 +73,7 @@ export class BatchTranslationRuntime {
   /** 绑定工程世代切换，清空上一工程的运行展示。 */
   public constructor(
     private readonly session_state: ProjectSessionState,
-    private readonly data_reader: ProjectDataReader,
+    private readonly database: ProjectDatabase,
     private readonly runtime_gate: RuntimeOperationGate,
   ) {
     this.unsubscribe_session = session_state.subscribe_change(async () => {
@@ -102,11 +102,11 @@ export class BatchTranslationRuntime {
     };
   }
   /** 累计进度始终读取当前工程已提交的 meta。 */
-  public read_progress(): BatchTranslationProgress {
+  public async read_progress(): Promise<BatchTranslationProgress> {
     const state = this.session_state.snapshot();
     return normalize_batch_translation_progress(
       state.loaded && state.projectPath !== ""
-        ? this.data_reader.get_all_meta(state.projectPath)["translation_extras"]
+        ? (await this.database.get_all_meta(state.projectPath))["translation_extras"]
         : {},
     );
   }
@@ -118,7 +118,7 @@ export class BatchTranslationRuntime {
   public async build_snapshot(): Promise<BatchTranslationSnapshot> {
     return {
       ...this.snapshot,
-      progress: this.read_progress(),
+      progress: await this.read_progress(),
       run_progress: this.read_run_progress(),
       ...(this.snapshot.config === undefined ? {} : { config: { ...this.snapshot.config } }),
       scope: clone_translation_scope(this.snapshot.scope),
@@ -276,7 +276,7 @@ export class BatchTranslationRuntime {
         const run_progress = result?.run_progress ?? this.read_run_progress();
         result ??= Object.freeze({
           status: "error",
-          progress: Object.freeze(this.read_progress()),
+          progress: Object.freeze(await this.read_progress()),
           ...(run_progress === undefined ? {} : { run_progress }),
         });
         // 最后一次异步收尾后冻结结果；此刻之前受理的停止都属于本轮。
@@ -473,7 +473,7 @@ export class BatchTranslationRuntime {
       run.attached = true;
       void this.complete_run(run, async () => ({
         status: "stopped",
-        progress: this.read_progress(),
+        progress: await this.read_progress(),
       }));
     }
     await Promise.allSettled(this.completions);

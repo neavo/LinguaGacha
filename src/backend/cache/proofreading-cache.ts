@@ -66,7 +66,7 @@ export class ProofreadingCache {
   private readonly app_setting_service: AppSettingService; // 语言缺省值来自当前应用设置
   private readonly worker_client: ComputeWorkerClient; // 质量评估在 worker 中执行
   private readonly reader: ReturnType<typeof createProofreadingReader>; // 持有校对索引与 GUI 列表视图运行态
-  private readonly read_pages: (projectPath: string) => PDFDocumentRecord[]; // 只在页面身份未命中时补读数据库事实。
+  private readonly read_pages: (projectPath: string) => Promise<PDFDocumentRecord[]>; // 只在页面身份未命中时补读数据库事实。
   private session_key: string | null = null; // 工程或缓存世代变化同时撤销三个同步范围。
   private files_revision: number | null = null; // null 表示文件索引需要同步。
   private pages_revision: number | null = null; // 页面正文只随独立修订补读。
@@ -82,7 +82,7 @@ export class ProofreadingCache {
     appSettingService: AppSettingService;
     workerClient: ComputeWorkerClient;
     reader: ReturnType<typeof createProofreadingReader>;
-    readPages: (projectPath: string) => PDFDocumentRecord[];
+    readPages: (projectPath: string) => Promise<PDFDocumentRecord[]>;
   }) {
     this.cache = options.cache;
     this.app_setting_service = options.appSettingService;
@@ -337,7 +337,7 @@ export class ProofreadingCache {
   }
 
   /** 文件与页面独立同步，文本评估完成后读取最新排列，避免迟到结果恢复旧顺序。 */
-  private sync_content(): ProofreadingSyncState {
+  private async sync_content(): Promise<ProofreadingSyncState> {
     const revisions = this.cache.readSectionRevisions();
     const files_revision = Number(revisions.files ?? 0);
     const pages_revision = Number(revisions.pdf ?? 0);
@@ -349,10 +349,23 @@ export class ProofreadingCache {
       this.files_revision = files_revision;
     }
     if (this.pages_revision !== pages_revision) {
-      this.synced_state = this.reader.sync_pages(
-        this.read_pages(this.synced_state!.projectId),
-        pages_revision,
-      );
+      const before = this.cache.snapshot();
+      const key = this.synced_key;
+      const pages = await this.read_pages(before.projectPath);
+      const after = this.cache.snapshot();
+      // 数据库排队期间工程或修订可能变化，迟到页面不能写回旧索引。
+      if (
+        key !== this.synced_key ||
+        before.epoch !== after.epoch ||
+        before.projectPath !== after.projectPath ||
+        Number(after.sectionRevisions.pdf ?? 0) !== pages_revision ||
+        Number(after.sectionRevisions.files ?? 0) !== files_revision
+      ) {
+        throw new AppErrors.AppError("request.validation_failed", {
+          diagnostic_context: { reason: "stale_proofreading_sync" },
+        });
+      }
+      this.synced_state = this.reader.sync_pages(pages, pages_revision);
       this.pages_revision = pages_revision;
     }
     return this.synced_state!;

@@ -18,7 +18,7 @@ export class PDFFormat {
   ): Promise<string[]> {
     const written: string[] = []; // 只记录本轮实际落盘的文件。
     for (const { file_path, document } of documents) {
-      const bytes = context.asset_reader(file_path);
+      const bytes = await context.asset_reader(file_path);
       if (bytes === null) throw new AppError("file.not_found");
       const output = document.pages.every(is_pdf_original_page)
         ? bytes

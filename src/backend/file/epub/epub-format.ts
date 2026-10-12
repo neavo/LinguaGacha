@@ -44,10 +44,10 @@ export class EPUBFormat {
   public async write_to_path(
     items: Item[],
     paths: GeneratedFilePaths,
-    asset_reader: (rel_path: string) => Buffer | null,
+    asset_reader: (rel_path: string) => Buffer | null | Promise<Buffer | null>,
   ): Promise<void> {
     for (const [rel_path, file_items] of group_file_items(items, "EPUB")) {
-      const original_content = asset_reader(rel_path);
+      const original_content = await asset_reader(rel_path);
       if (original_content === null) {
         throw new AppError("file.not_found", { public_details: { file: rel_path } });
       }

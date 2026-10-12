@@ -27,8 +27,8 @@ describe("BatchTranslationProjectStore", () => {
   });
 
   it("提交翻译结果时写入 items、进度 meta 并发布行级 items 变更", async () => {
-    const { database, project_path, store, published_changes } = create_store();
-    seed_items(database, project_path);
+    const { database, project_path, store, published_changes } = await create_store();
+    await seed_items(database, project_path);
 
     const ack = await store.commit_translation_batch(
       [
@@ -43,7 +43,7 @@ describe("BatchTranslationProjectStore", () => {
       false,
     );
 
-    expect(read_items(database, project_path)).toEqual(
+    expect(await read_items(database, project_path)).toEqual(
       [
         {
           id: 1,
@@ -70,7 +70,7 @@ describe("BatchTranslationProjectStore", () => {
         },
       ].map((item) => create_item(item)),
     );
-    expect(read_meta(database, project_path)["translation_extras"]).toEqual(
+    expect((await read_meta(database, project_path))["translation_extras"]).toEqual(
       create_progress_snapshot({ line: 1, processed_line: 1 }),
     );
     expect(ack).toEqual({
@@ -88,8 +88,8 @@ describe("BatchTranslationProjectStore", () => {
   });
 
   it("重翻结果推进 proofreading revision 并返回已提交条目 id", async () => {
-    const { database, project_path, store, published_changes } = create_store();
-    seed_items(database, project_path);
+    const { database, project_path, store, published_changes } = await create_store();
+    await seed_items(database, project_path);
 
     const ack = await store.commit_translation_batch(
       [
@@ -103,7 +103,7 @@ describe("BatchTranslationProjectStore", () => {
       true,
     );
 
-    const meta = read_meta(database, project_path);
+    const meta = await read_meta(database, project_path);
     expect(meta["proofreading_revision.proofreading"]).toBe(1);
     expect(meta["project_runtime_revision.items"]).toBe(1);
     expect(ack).toEqual({
@@ -121,19 +121,21 @@ describe("BatchTranslationProjectStore", () => {
   });
 
   it("失败重试按实际状态更新工程计数，同值失败仍提交本次用量", async () => {
-    const { database, project_path, store, published_changes } = create_store();
-    database.set_items(
-      project_path,
-      [
-        { id: 1, src: "待重试", dst: "", status: "ERROR", file_path: "a.txt" },
-        {
-          id: 2,
-          src: "已完成",
-          dst: "译文",
-          status: "PROCESSED",
-          file_path: "a.txt",
-        },
-      ].map((item) => create_item(item)),
+    const { database, project_path, store, published_changes } = await create_store();
+    await database.transaction(project_path, (writer) =>
+      writer.set_items(
+        project_path,
+        [
+          { id: 1, src: "待重试", dst: "", status: "ERROR", file_path: "a.txt" },
+          {
+            id: 2,
+            src: "已完成",
+            dst: "译文",
+            status: "PROCESSED",
+            file_path: "a.txt",
+          },
+        ].map((item) => create_item(item)),
+      ),
     );
     const failed = { item_id: 1, dst: "", status: "ERROR" };
     const ack = await store.commit_translation_batch(
@@ -143,8 +145,10 @@ describe("BatchTranslationProjectStore", () => {
     );
     expect(ack.changed_item_ids).toEqual([]);
     expect(published_changes).toMatchObject([]);
-    expect(read_meta(database, project_path)["project_runtime_revision.items"] ?? 0).toBe(0);
-    expect(read_meta(database, project_path)["translation_extras"]).toMatchObject({
+    expect((await read_meta(database, project_path))["project_runtime_revision.items"] ?? 0).toBe(
+      0,
+    );
+    expect((await read_meta(database, project_path))["translation_extras"]).toMatchObject({
       total_line: 2,
       line: 2,
       processed_line: 1,
@@ -156,7 +160,7 @@ describe("BatchTranslationProjectStore", () => {
       create_progress_snapshot({ total_tokens: 10 }),
       false,
     );
-    expect(read_meta(database, project_path)["translation_extras"]).toMatchObject({
+    expect((await read_meta(database, project_path))["translation_extras"]).toMatchObject({
       total_line: 2,
       line: 2,
       processed_line: 2,
@@ -166,13 +170,17 @@ describe("BatchTranslationProjectStore", () => {
   });
 
   it("构建任务质量快照时保留工程自定义提示词启用态", async () => {
-    const { cache_manager, database, project_path, store } = create_store();
-    database.set_rule_text(project_path, "translation_prompt", "自定义翻译提示词");
-    database.upsert_meta_entries(project_path, {
-      translation_prompt_enable: true,
+    const { cache_manager, database, project_path, store } = await create_store();
+    await database.transaction(project_path, (writer) =>
+      writer.set_rule_text(project_path, "translation_prompt", "自定义翻译提示词"),
+    );
+    await database.transaction(project_path, (writer) =>
+      writer.upsert_meta_entries(project_path, {
+        translation_prompt_enable: true,
 
-      "quality_prompt_revision.translation": 2,
-    });
+        "quality_prompt_revision.translation": 2,
+      }),
+    );
     await cache_manager.warmProject(project_path);
 
     const snapshot = store.build_quality_snapshot();
@@ -184,8 +192,10 @@ describe("BatchTranslationProjectStore", () => {
   });
 
   it("构建任务质量快照时术语表缺启用 meta 仍按领域默认值启用", async () => {
-    const { cache_manager, database, project_path, store } = create_store();
-    database.set_rules(project_path, "glossary", [{ entry_id: "hp", src: "HP", dst: "生命值" }]);
+    const { cache_manager, database, project_path, store } = await create_store();
+    await database.transaction(project_path, (writer) =>
+      writer.set_rules(project_path, "glossary", [{ entry_id: "hp", src: "HP", dst: "生命值" }]),
+    );
     await cache_manager.warmProject(project_path);
 
     const snapshot = store.build_quality_snapshot();
@@ -198,7 +208,7 @@ describe("BatchTranslationProjectStore", () => {
 
   it("任务提交等待内部事件完成后再发布公开项目变更", async () => {
     const calls: string[] = [];
-    const { database, project_path, store } = create_store({
+    const { database, project_path, store } = await create_store({
       on_publish_project_change: () => calls.push("public"),
       on_project_event: async () => {
         calls.push("internal:start");
@@ -206,7 +216,7 @@ describe("BatchTranslationProjectStore", () => {
         calls.push("internal:end");
       },
     });
-    seed_items(database, project_path);
+    await seed_items(database, project_path);
 
     await store.commit_translation_batch(
       [
@@ -224,18 +234,18 @@ describe("BatchTranslationProjectStore", () => {
   });
 
   /** 组合临时数据库和真实写入口，收集项目事件。 */
-  function create_store(
+  async function create_store(
     options: {
       on_publish_project_change?: () => void;
       on_project_event?: ProjectCommittedChangeHandler;
     } = {},
-  ): {
+  ): Promise<{
     database: ProjectDatabase;
     project_path: string;
     cache_manager: CacheManager;
     store: BatchTranslationProjectStore;
     published_changes: ProjectCommittedChange[];
-  } {
+  }> {
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), "linguagacha-task-project-store-"));
     const project_path = path.join(directory, "task.lg");
     const database = new ProjectDatabase();
@@ -252,10 +262,10 @@ describe("BatchTranslationProjectStore", () => {
       } as unknown as ComputeWorkerClient,
     });
     const published_changes: ProjectCommittedChange[] = [];
-    database.create_project(project_path, "task");
+    await database.create_project(project_path, "task");
     session_state.mark_loaded(project_path);
     cleanup_callbacks.push(() => fs.rmSync(directory, { recursive: true, force: true }));
-    cleanup_callbacks.push(() => database.close());
+    cleanup_callbacks.push(async () => await database.close());
     const write_store = new ProjectWriteStore(
       database,
       options.on_project_event ?? vi.fn(),
@@ -269,40 +279,42 @@ describe("BatchTranslationProjectStore", () => {
       database,
       project_path,
       cache_manager,
-      store: new BatchTranslationProjectStore(database, session_state, cache_manager, write_store),
+      store: new BatchTranslationProjectStore(session_state, cache_manager, write_store),
       published_changes,
     };
   }
 
   /** 准备含已用字段的数据库条目，验证局部提交保留其它事实。 */
-  function seed_items(database: ProjectDatabase, project_path: string): void {
-    database.set_items(
-      project_path,
-      [
-        {
-          id: 1,
-          src: "原文",
-          dst: "",
-          name_src: "原名",
-          name_dst: null,
-          status: "NONE",
-          file_path: "demo.txt",
-          file_type: "TXT",
-          text_type: "TXT",
-          row: 7,
-          extra_field: { speaker: "春" },
-        },
-        {
-          id: 2,
-          src: "待翻",
-          dst: "",
-          status: "NONE",
-          file_path: "demo.txt",
-          file_type: "TXT",
-          text_type: "TXT",
-          row: 8,
-        },
-      ].map((item) => create_item(item)),
+  async function seed_items(database: ProjectDatabase, project_path: string): Promise<void> {
+    await database.transaction(project_path, (writer) =>
+      writer.set_items(
+        project_path,
+        [
+          {
+            id: 1,
+            src: "原文",
+            dst: "",
+            name_src: "原名",
+            name_dst: null,
+            status: "NONE",
+            file_path: "demo.txt",
+            file_type: "TXT",
+            text_type: "TXT",
+            row: 7,
+            extra_field: { speaker: "春" },
+          },
+          {
+            id: 2,
+            src: "待翻",
+            dst: "",
+            status: "NONE",
+            file_path: "demo.txt",
+            file_type: "TXT",
+            text_type: "TXT",
+            row: 8,
+          },
+        ].map((item) => create_item(item)),
+      ),
     );
   }
 
@@ -326,12 +338,15 @@ describe("BatchTranslationProjectStore", () => {
   }
 
   /** 读取持久条目，核对提交结果。 */
-  function read_items(database: ProjectDatabase, project_path: string): JsonValue {
-    return database.get_all_items(project_path);
+  async function read_items(database: ProjectDatabase, project_path: string): Promise<JsonValue> {
+    return await database.get_all_items(project_path);
   }
 
   /** 读取持久进度与修订，核对写入副作用。 */
-  function read_meta(database: ProjectDatabase, project_path: string): MutableJsonRecord {
-    return database.get_all_meta(project_path) as unknown as MutableJsonRecord;
+  async function read_meta(
+    database: ProjectDatabase,
+    project_path: string,
+  ): Promise<MutableJsonRecord> {
+    return (await database.get_all_meta(project_path)) as unknown as MutableJsonRecord;
   }
 });

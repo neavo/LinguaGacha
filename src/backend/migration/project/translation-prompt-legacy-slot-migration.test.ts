@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import type { JsonRecord } from "../../../domain/json";
-import type { ProjectDatabase } from "../../database/database-operations";
+import type { ProjectDatabase, ProjectDatabaseAccess } from "../../database/database-operations";
 import type { AppSettingService } from "../../app/app-setting-service";
 import type { ProjectOpenMigrationContext } from "../migration-types";
 import { translation_prompt_legacy_slot_migration } from "./translation-prompt-legacy-slot-migration";
@@ -87,11 +87,11 @@ function create_context(options: {
   const database = {
     get_all_meta: vi.fn(() => options.meta ?? {}),
     get_rule_text: vi.fn(
-      (_project_path: string, rule_type: string) => options.rule_text?.[rule_type] ?? null,
+      async (_project_path: string, rule_type: string) => options.rule_text?.[rule_type] ?? null,
     ),
     set_rule_text: vi.fn(),
     set_meta: vi.fn(),
-  } as unknown as ProjectDatabase;
+  } as unknown as ProjectDatabase & Pick<ProjectDatabaseAccess, "set_meta" | "set_rule_text">;
   return {
     project_path: "demo.lg",
     meta: options.meta ?? {},
@@ -107,6 +107,6 @@ function create_context(options: {
 async function apply_writes(context: ProjectOpenMigrationContext): Promise<void> {
   const writes = (await translation_prompt_legacy_slot_migration(context)) ?? [];
   for (const write of writes) {
-    write(context.database);
+    write(context.database as unknown as ProjectDatabaseAccess);
   }
 }

@@ -50,7 +50,6 @@ export interface BatchTranslationRunnerOptions {
   builtinRoot: string; // 用于任务启动日志读取提示词模板，保持宿主与 worker 内置资产根一致
   taskStore: Pick<
     BatchTranslationProjectStore,
-    | "acquire_project_lease"
     | "build_quality_snapshot"
     | "commit_translation_batch"
     | "get_translation_items"
@@ -113,10 +112,9 @@ export class BatchTranslationRunner {
   ): Promise<BatchTranslationResult> {
     let final_status: "done" | "stopped" | "error" = "done";
     let app_language: unknown = "ZH";
-    let progress = this.task_runtime.read_progress(); // 工程累计事实，由项目写入口维护。
+    let progress = await this.task_runtime.read_progress(); // 工程累计事实，由项目写入口维护。
     let run_progress = TranslationProgressAccumulator.empty(); // 本轮计数随已提交结果推进。
     const infrastructure_errors: unknown[] = [];
-    let release_database_lease: (() => void) | null = null; // 只负责释放本轮任务连接租约，不承载任务状态
     const retranslate = command.operation === "retranslate";
     const mode = command.operation === "translate" ? command.mode : "continue";
     try {
@@ -124,9 +122,6 @@ export class BatchTranslationRunner {
       if (run_context.model.auth_type === "oauth" && auth_session === undefined)
         throw new Error("ChatGPT authentication is not configured");
       await this.task_runtime.publish_status(handle, "running");
-      release_database_lease = this.task_store.acquire_project_lease(
-        `task:${handle.run_id}:translation`,
-      );
       await this.task_runtime.publish_config(handle, {
         model_name: run_context.model.name,
         model_id: run_context.model.model_id,
@@ -201,19 +196,15 @@ export class BatchTranslationRunner {
     } finally {
       try {
         // 提交后事件失败也可能已写入数据库，最终统计读取真实已提交事实。
-        progress = TranslationProgressAccumulator.with_elapsed(this.task_runtime.read_progress());
+        progress = TranslationProgressAccumulator.with_elapsed(
+          await this.task_runtime.read_progress(),
+        );
         await this.update_translation_progress_if_current(handle, progress);
         run_progress = TranslationProgressAccumulator.with_elapsed(
           this.task_runtime.read_run_progress() ?? run_progress,
         );
         await this.task_runtime.publish_progress(handle, [], run_progress);
       } catch (error) {
-        infrastructure_errors.push(error);
-      }
-      try {
-        release_database_lease?.();
-      } catch (error) {
-        final_status = "error";
         infrastructure_errors.push(error);
       }
       try {
@@ -329,7 +320,7 @@ export class BatchTranslationRunner {
       (item) => read_task_item_status(item) === "PROCESSED",
     ).length;
     const error_delta = items.filter((item) => read_task_item_status(item) === "ERROR").length;
-    let next_progress = this.task_runtime.read_progress(); // 每次提交从权威累计事实继续。
+    let next_progress = await this.task_runtime.read_progress(); // 每次提交从权威累计事实继续。
     let next_run = TranslationProgressAccumulator.with_counts(run_progress, {
       processed_line: run_progress.processed_line + processed_delta,
       error_line: run_progress.error_line + error_delta,

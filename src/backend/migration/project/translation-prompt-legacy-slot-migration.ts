@@ -20,20 +20,21 @@ const TRANSLATION_PROMPT_RULE_TYPE = "translation_prompt";
  * 不处理范围：
  * rules 表旧大写类型和文本 payload 形状已在数据库写回迁移中归一。本文件只处理跨槽位业务语义。
  */
-export function translation_prompt_legacy_slot_migration(
+export async function translation_prompt_legacy_slot_migration(
   context: ProjectOpenMigrationContext,
-): ProjectDatabaseWrite[] {
+): Promise<ProjectDatabaseWrite[]> {
   const meta = context.meta;
   if (meta[LEGACY_TRANSLATION_PROMPT_MIGRATED_META_KEY] === true) {
     return [];
   }
 
   const writes: ProjectDatabaseWrite[] = [];
-  const current_prompt = context.database.get_rule_text(
+  const current_prompt = await context.database.get_rule_text(
     context.project_path,
     TRANSLATION_PROMPT_RULE_TYPE,
   );
-  const legacy_prompt = current_prompt === null ? get_legacy_translation_prompt(context) : null;
+  const legacy_prompt =
+    current_prompt === null ? await get_legacy_translation_prompt(context) : null;
   if (legacy_prompt !== null) {
     writes.push((database) =>
       database.set_rule_text(context.project_path, TRANSLATION_PROMPT_RULE_TYPE, legacy_prompt),
@@ -48,14 +49,16 @@ export function translation_prompt_legacy_slot_migration(
 /**
  * 按当前应用语言决定旧 ZH/EN 槽位优先级，保持旧版本用户界面选择语义。
  */
-function get_legacy_translation_prompt(context: ProjectOpenMigrationContext): string | null {
+async function get_legacy_translation_prompt(
+  context: ProjectOpenMigrationContext,
+): Promise<string | null> {
   const config = context.app_setting_service.read_setting();
   const preferred_rule_types =
     resolve_prompt_template_language(config["app_language"]) === "en"
       ? [LEGACY_TRANSLATION_PROMPT_EN_RULE_TYPE, LEGACY_TRANSLATION_PROMPT_ZH_RULE_TYPE]
       : [LEGACY_TRANSLATION_PROMPT_ZH_RULE_TYPE, LEGACY_TRANSLATION_PROMPT_EN_RULE_TYPE];
   for (const rule_type of preferred_rule_types) {
-    const candidate = context.database.get_rule_text(context.project_path, rule_type);
+    const candidate = await context.database.get_rule_text(context.project_path, rule_type);
     if (candidate !== null) {
       return candidate;
     }

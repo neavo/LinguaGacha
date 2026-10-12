@@ -1,3 +1,4 @@
+import { ProjectDataReader } from "../project/project-data-reader";
 import { Model } from "../../domain/model";
 import fs from "node:fs";
 import os from "node:os";
@@ -14,7 +15,6 @@ import { BatchTranslationService } from "./batch-translation-service";
 import { BatchTranslationRuntime } from "./batch-translation-runtime";
 import { RuntimeOperationGate } from "../runtime-operation-gate";
 import { ProjectSessionState } from "../project/project-session-state";
-import { ProjectDataReader } from "../project/project-data-reader";
 import { BatchTranslationRunner } from "./core/batch-translation-runner";
 import { normalize_batch_translation_progress } from "../../domain/batch-translation";
 
@@ -25,7 +25,7 @@ function setup(loaded = true, line = 0) {
   const gate = new RuntimeOperationGate();
   const runtime = new BatchTranslationRuntime(
     session,
-    { get_all_meta: () => ({ translation_extras: { line } }) } as unknown as ProjectDataReader,
+    { get_all_meta: () => ({ translation_extras: { line } }) } as unknown as ProjectDatabase,
     gate,
   );
   const run = vi.fn<BatchTranslationRunner["run"]>(async () => ({
@@ -147,33 +147,43 @@ it("历史工程批量翻译保留旧分析物理数据、正式术语与资产�
   using directory = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "linguagacha-batch-history-"));
   const project_path = path.join(directory.path, "history.lg");
   const database = new ProjectDatabase();
-  database.create_project(project_path, "history");
-  database.set_items(project_path, [
-    {
-      id: 1,
-      src: "Hello",
-      dst: "",
-      name_src: null,
-      name_dst: null,
-      extra_field: "",
-      tag: "",
-      skip_internal_filter: false,
-      status: "NONE",
-      file_path: "text.txt",
-      file_type: "TXT",
-      text_type: "NONE",
-      row: 0,
-    },
-  ]);
-  database.set_rules(project_path, "glossary", [
-    { entry_id: "HELLO", src: "Hello", dst: "你好", info: "", case_sensitive: false },
-  ]);
-  database.set_rule_text(project_path, "translation_prompt", "Translate to {target_language}");
-  database.set_meta(project_path, "translation_prompt_enable", true);
+  await database.create_project(project_path, "history");
+  await database.transaction(project_path, (writer) =>
+    writer.set_items(project_path, [
+      {
+        id: 1,
+        src: "Hello",
+        dst: "",
+        name_src: null,
+        name_dst: null,
+        extra_field: "",
+        tag: "",
+        skip_internal_filter: false,
+        status: "NONE",
+        file_path: "text.txt",
+        file_type: "TXT",
+        text_type: "NONE",
+        row: 0,
+      },
+    ]),
+  );
+  await database.transaction(project_path, (writer) =>
+    writer.set_rules(project_path, "glossary", [
+      { entry_id: "HELLO", src: "Hello", dst: "你好", info: "", case_sensitive: false },
+    ]),
+  );
+  await database.transaction(project_path, (writer) =>
+    writer.set_rule_text(project_path, "translation_prompt", "Translate to {target_language}"),
+  );
+  await database.transaction(project_path, (writer) =>
+    writer.set_meta(project_path, "translation_prompt_enable", true),
+  );
   const source = path.join(directory.path, "text.txt");
   fs.writeFileSync(source, "Hello");
-  database.add_asset_from_source(project_path, "text.txt", source, null);
-  database.close();
+  await database.transaction(project_path, (writer) =>
+    writer.add_asset_from_source(project_path, "text.txt", source, null),
+  );
+  await database.close();
   {
     using raw = new DatabaseSync(project_path);
     raw.exec(
@@ -210,18 +220,16 @@ it("历史工程批量翻译保留旧分析物理数据、正式术语与资产�
     workerClient: { run: async () => ({}) } as never,
   });
   const writes = new ProjectWriteStore(database, vi.fn(), () => null);
-  const runtime = new BatchTranslationRuntime(
-    session,
-    new ProjectDataReader(database),
-    new RuntimeOperationGate(),
-  );
+  const runtime = new BatchTranslationRuntime(session, database, new RuntimeOperationGate());
   const planning = new PlanningWorkerPool({ execution: { kind: "in_process" } });
   try {
     await cache.warmProject(project_path);
-    const reader = new ProjectDataReader(database);
-    expect(reader.build_manifest(session.snapshot())).not.toHaveProperty(
-      "sectionRevisions.analysis",
-    );
+
+    expect(
+      await database.read(project_path, (access) =>
+        new ProjectDataReader(access).build_manifest(session.snapshot()),
+      ),
+    ).not.toHaveProperty("sectionRevisions.analysis");
     expect(cache.prompts.readBlock()).toHaveProperty(
       "translation.text",
       "Translate to {target_language}",
@@ -234,7 +242,7 @@ it("历史工程批量翻译保留旧分析物理数据、正式术语与资产�
         },
       },
       builtinRoot: path.join(process.cwd(), "builtin"),
-      taskStore: new BatchTranslationProjectStore(database, session, cache, writes),
+      taskStore: new BatchTranslationProjectStore(session, cache, writes),
       taskRuntime: runtime,
       taskPlanner: new TranslationPlanner({ planningWorkerPool: planning }),
       executorClient: {
@@ -273,17 +281,17 @@ it("历史工程批量翻译保留旧分析物理数据、正式术语与资产�
       status: "done",
       progress: { line: 1, processed_line: 1, total_tokens: 7 },
     });
-    expect(database.get_all_items(project_path)).toEqual([
+    expect(await database.get_all_items(project_path)).toEqual([
       expect.objectContaining({ dst: "你好", status: "PROCESSED" }),
     ]);
-    expect(database.get_rules(project_path, "glossary")).toEqual([
+    expect(await database.get_rules(project_path, "glossary")).toEqual([
       expect.objectContaining({ entry_id: "HELLO", dst: "你好" }),
     ]);
-    expect(database.read_asset_content(project_path, "text.txt")?.toString()).toBe("Hello");
+    expect((await database.read_asset_content(project_path, "text.txt"))?.toString()).toBe("Hello");
   } finally {
     await runtime.dispose();
     await planning.dispose();
-    database.close();
+    await database.close();
   }
   expect(read_history(project_path)).toEqual(before);
 });

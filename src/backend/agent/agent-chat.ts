@@ -86,6 +86,7 @@ export type AgentExecution = {
 type ChatOptions = {
   chatId: string;
   storage: Storage;
+  readBatch?: <T>(callback: () => Promise<T>) => Promise<T>;
   cwd: string;
   models: MutableModels;
   seed: AgentChatSeed;
@@ -384,21 +385,27 @@ export class AgentChat {
     return this.model;
   }
 
+  /** 存储适配器提供批次边界，内存存储可直接读取。 */
+  private read_batch<T>(callback: () => Promise<T>): Promise<T> {
+    return this.options.readBatch ? this.options.readBatch(callback) : callback();
+  }
+
   /** 历史读取和实时提交使用同一缓存及投影。订阅本身不会回放旧记录。 */
   private async restore_records(): Promise<void> {
     const storage = this.options.storage;
     const scan = async <T>(
       read: (cursor: Cursor | undefined) => Promise<Page<T, Cursor>>,
-    ): Promise<T[]> => {
-      const result: T[] = [];
-      let cursor: Cursor | undefined;
-      do {
-        const page = await read(cursor);
-        result.push(...page.items);
-        cursor = page.next;
-      } while (cursor !== undefined);
-      return result;
-    };
+    ): Promise<T[]> =>
+      this.read_batch(async () => {
+        const result: T[] = [];
+        let cursor: Cursor | undefined;
+        do {
+          const page = await read(cursor);
+          result.push(...page.items);
+          cursor = page.next;
+        } while (cursor !== undefined);
+        return result;
+      });
     this.state =
       (await this.harness.snapshot(AgentChatDoc, this.options.chatId, BACKGROUND_CONTEXT)) ??
       AgentChatDoc.definition.initial(null);
@@ -423,7 +430,7 @@ export class AgentChat {
       const conversation = await this.harness.conversation(active, BACKGROUND_CONTEXT);
       if (conversation === undefined) throw new AppError("file.invalid_structure");
       for (const entry of await scan((cursor) =>
-        conversation.entries({}, 100, cursor, BACKGROUND_CONTEXT),
+        storage.scanEntries({ conversationId: conversation.id }, 100, cursor, BACKGROUND_CONTEXT),
       ))
         this.view.records.set(entry.id, entry);
     }

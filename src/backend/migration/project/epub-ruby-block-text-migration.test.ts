@@ -3,7 +3,7 @@ import { write_zip, read_zip_fixture } from "../../../test/zip-fixture";
 import { describe, expect, it, vi } from "vitest";
 
 import type { MutableJsonRecord } from "../../../domain/json";
-import type { ProjectDatabase } from "../../database/database-operations";
+import type { ProjectDatabaseAccess } from "../../database/database-operations";
 import { create_epub_fixture } from "../../../test/epub-fixture";
 import { EpubRubyBlockTextMigration } from "./epub-ruby-block-text-migration";
 
@@ -53,7 +53,7 @@ describe("EpubRubyBlockTextMigration", () => {
 
     const writes = await migration.build_writes("demo.lg", items);
     for (const write of writes) {
-      write(database);
+      write(database as unknown as ProjectDatabaseAccess);
     }
     const migrated_items = vi.mocked(database.set_items).mock.calls[0]?.[1];
     const [migrated_item] = migrated_items as MutableJsonRecord[];
@@ -121,7 +121,8 @@ describe("EpubRubyBlockTextMigration", () => {
       items: [plain, ruby],
       asset_content_by_path: { "book.epub": await write_zip(zip) },
     });
-    for (const write of await migration.build_writes("demo.lg", items)) write(database);
+    for (const write of await migration.build_writes("demo.lg", items))
+      write(database as unknown as ProjectDatabaseAccess);
     const migrated = vi.mocked(database.set_items).mock.calls[0]?.[1];
     expect(migrated).toEqual([
       expect.objectContaining(plain),
@@ -173,19 +174,15 @@ describe("EpubRubyBlockTextMigration", () => {
 function create_migration(options: {
   items?: MutableJsonRecord[];
   asset_content_by_path?: Record<string, Buffer>;
-}): {
-  database: ProjectDatabase;
-  migration: EpubRubyBlockTextMigration;
-  items: MutableJsonRecord[];
-} {
+}) {
   const database = {
     get_all_items: vi.fn(() => options.items ?? []),
-    read_asset_content: vi.fn((_project_path: string, asset_path: string) => {
+    read_asset_content: vi.fn(async (_project_path: string, asset_path: string) => {
       return options.asset_content_by_path?.[asset_path] ?? null;
     }),
     set_items: vi.fn(),
     bump_section_revisions: vi.fn(),
-  } as unknown as ProjectDatabase;
+  };
   return {
     database,
     migration: new EpubRubyBlockTextMigration(database),

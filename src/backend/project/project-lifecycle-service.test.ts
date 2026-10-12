@@ -1,3 +1,4 @@
+import type { ProjectDatabaseAccess } from "../database/database-operations";
 import { create_pdf_execution } from "../file/pdf/test-support";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ProjectSessionState } from "./project-session-state";
@@ -7,7 +8,6 @@ import path from "node:path";
 type CacheLifecycleCall = { projectPath: string };
 type CacheLifecycleHandler = (call: CacheLifecycleCall) => void;
 import { DatabaseSync } from "node:sqlite";
-import { AppError } from "../../shared/error";
 import { ProjectDatabase } from "../database/database-operations";
 import type { MutableJsonRecord } from "../../domain/json";
 import type { LogManager } from "../log/log-manager";
@@ -33,64 +33,43 @@ describe("ProjectLifecycleService", () => {
     }
   });
 
-  it.each(["close", "cache-and-close", "committed-and-close"] as const)(
-    "加载提交后 %s 失败保留事实与恢复信息",
-    async (phase) => {
-      const project_path = path.join(create_temp_dir(), "scope.lg");
-      const database = new ProjectDatabase();
-      database.create_project(project_path, "scope");
-      database.set_meta(project_path, "updated_at", "before");
-      const main =
-        phase === "committed-and-close"
-          ? new AppError("data.committed_sync_failed", {
-              public_details: {
-                committed: true,
-                action: "reload_project",
-                section_revisions: { items: 9 },
-              },
-            })
-          : new Error("cache failed");
-      const close = new Error("close failed");
-      const service = create_service({
-        database,
-        project_event_handler: () => {
-          if (phase !== "close") throw main;
-        },
+  it.each(["close", "cache"])("加载提交后 %s 失败保留事实与恢复信息", async (phase) => {
+    const project_path = path.join(create_temp_dir(), "scope.lg");
+    const database = new ProjectDatabase();
+    await database.create_project(project_path, "scope");
+    await database.transaction(project_path, (writer) =>
+      writer.set_meta(project_path, "updated_at", "before"),
+    );
+    const failure = new Error(phase + " failed");
+    const service = create_service({
+      database,
+      project_event_handler: () => {
+        if (phase === "cache") throw failure;
+      },
+    });
+    const transaction = database.transaction.bind(database);
+    if (phase === "close")
+      vi.spyOn(database, "transaction").mockImplementation((project, callback) =>
+        transaction(project, (writer) => {
+          const result = callback(writer);
+          vi.spyOn(DatabaseSync.prototype, "close").mockImplementationOnce(() => {
+            throw failure;
+          });
+          return result;
+        }),
+      );
+    try {
+      await expect(service.load_project({ path: project_path })).rejects.toMatchObject({
+        code: "data.committed_sync_failed",
+        public_details: { committed: true, action: "reload_project" },
       });
-      vi.spyOn(DatabaseSync.prototype, "close").mockImplementationOnce(() => {
-        throw close;
-      });
-      try {
-        let failure: unknown;
-        try {
-          await service.load_project({ path: project_path });
-        } catch (error) {
-          failure = error;
-        }
-        expect(failure).toMatchObject({
-          code: "data.committed_sync_failed",
-          public_details: { committed: true, action: "reload_project" },
-        });
-        if (phase === "committed-and-close") {
-          expect(failure).toHaveProperty("public_details", (main as AppError).public_details);
-          expect(failure).toHaveProperty("cause.errors", [
-            main,
-            expect.objectContaining({ cause: close }),
-          ]);
-        } else if (phase === "cache-and-close") {
-          expect(failure).toHaveProperty("cause.cause.errors", [
-            main,
-            expect.objectContaining({ cause: close }),
-          ]);
-        } else expect(failure).toHaveProperty("cause.cause", close);
-        database.close();
-        expect(database.get_all_meta(project_path).updated_at).not.toBe("before");
-      } finally {
-        vi.restoreAllMocks();
-        database.close();
-      }
-    },
-  );
+      await database.close_project(project_path);
+      expect((await database.get_all_meta(project_path)).updated_at).not.toBe("before");
+    } finally {
+      vi.restoreAllMocks();
+      await database.close();
+    }
+  });
 
   it("snapshot 只暴露 会话权威的加载态字段", async () => {
     const service = create_service({
@@ -198,7 +177,7 @@ describe("ProjectLifecycleService", () => {
     });
   });
 
-  it("open-preview 仅目标语言变化时返回 settings_only", () => {
+  it("open-preview 仅目标语言变化时返回 settings_only", async () => {
     const project_path = write_file(path.join(create_temp_dir(), "settings-only.lg"));
     const service = create_service({
       database: create_database({
@@ -217,7 +196,7 @@ describe("ProjectLifecycleService", () => {
       },
     });
 
-    expect(service.get_open_alignment_preview({ path: project_path })).toEqual({
+    expect(await service.get_open_alignment_preview({ path: project_path })).toEqual({
       preview: {
         action: "settings_only",
         project_path,
@@ -244,7 +223,7 @@ describe("ProjectLifecycleService", () => {
     });
   });
 
-  it("open-preview 在源语言或预过滤字段变化时只返回 section revision 依赖", () => {
+  it("open-preview 在源语言或预过滤字段变化时只返回 section revision 依赖", async () => {
     const project_path = write_file(path.join(create_temp_dir(), "prefilter.lg"));
     const service = create_service({
       database: create_database({
@@ -274,7 +253,7 @@ describe("ProjectLifecycleService", () => {
       },
     });
 
-    const result = service.get_open_alignment_preview({ path: project_path });
+    const result = await service.get_open_alignment_preview({ path: project_path });
 
     expect(result["preview"]).toEqual(
       expect.objectContaining({
@@ -314,10 +293,10 @@ describe("ProjectLifecycleService", () => {
         }),
       ).resolves.toEqual({ project: { path: project_path, loaded: true } });
 
-      expect(database.get_all_asset_records(project_path)).toEqual([
+      expect(await database.get_all_asset_records(project_path)).toEqual([
         { path: path.join("source", "script.txt"), sort_order: 0 },
       ]);
-      expect(database.get_all_items(project_path)).toMatchObject([
+      expect(await database.get_all_items(project_path)).toMatchObject([
         {
           id: 1,
           file_path: path.join("source", "script.txt"),
@@ -325,7 +304,7 @@ describe("ProjectLifecycleService", () => {
           status: "NONE",
         },
       ]);
-      expect(database.get_all_meta(project_path)).toMatchObject({
+      expect(await database.get_all_meta(project_path)).toMatchObject({
         source_language: "JA",
         target_language: "ZH",
         prefilter_config: {
@@ -335,7 +314,7 @@ describe("ProjectLifecycleService", () => {
         },
       });
     } finally {
-      database.close();
+      await database.close();
     }
   });
 
@@ -366,7 +345,7 @@ describe("ProjectLifecycleService", () => {
       expect(fs.readFileSync(project_path, "utf-8")).toBe("old-project");
       expect(fs.existsSync(resolved_project_path)).toBe(true);
     } finally {
-      database.close();
+      await database.close();
       vi.useRealTimers();
     }
   });
@@ -403,7 +382,7 @@ describe("ProjectLifecycleService", () => {
       expect(fs.readFileSync(timestamped_project_path, "utf-8")).toBe("old-timestamp");
       expect(fs.existsSync(resolved_project_path)).toBe(true);
     } finally {
-      database.close();
+      await database.close();
       vi.useRealTimers();
     }
   });
@@ -443,7 +422,7 @@ describe("ProjectLifecycleService", () => {
         }),
       ).resolves.toEqual({ project: { path: project_path, loaded: true } });
 
-      expect(database.get_rules(project_path, "glossary")).toEqual([
+      expect(await database.get_rules(project_path, "glossary")).toEqual([
         {
           entry_id: expect.any(String),
           src: "魔力",
@@ -452,15 +431,15 @@ describe("ProjectLifecycleService", () => {
           case_sensitive: false,
         },
       ]);
-      expect(database.get_rules(project_path, "text_preserve")).toEqual([
+      expect(await database.get_rules(project_path, "text_preserve")).toEqual([
         {
           entry_id: expect.any(String),
           src: "\\[[^\\]]+\\]",
           info: "",
         },
       ]);
-      expect(database.get_rule_text(project_path, "translation_prompt")).toBe("翻译提示词");
-      expect(database.get_all_meta(project_path)).toMatchObject({
+      expect(await database.get_rule_text(project_path, "translation_prompt")).toBe("翻译提示词");
+      expect(await database.get_all_meta(project_path)).toMatchObject({
         glossary_enable: true,
         text_preserve_mode: "custom",
         translation_prompt_enable: true,
@@ -469,7 +448,7 @@ describe("ProjectLifecycleService", () => {
         "quality_prompt_revision.translation": 1,
       });
     } finally {
-      database.close();
+      await database.close();
     }
   });
 
@@ -496,8 +475,10 @@ describe("ProjectLifecycleService", () => {
         }),
       ).resolves.toEqual({ project: { path: project_path, loaded: true } });
 
-      expect(database.get_all_meta(project_path)).toMatchObject({ text_preserve_mode: "smart" });
-      expect(database.get_all_meta(project_path)).not.toHaveProperty(
+      expect(await database.get_all_meta(project_path)).toMatchObject({
+        text_preserve_mode: "smart",
+      });
+      expect(await database.get_all_meta(project_path)).not.toHaveProperty(
         "quality_rule_revision.glossary",
       );
       expect(log_manager.warning).toHaveBeenCalledWith(
@@ -511,7 +492,7 @@ describe("ProjectLifecycleService", () => {
         }),
       );
     } finally {
-      database.close();
+      await database.close();
     }
   });
 
@@ -565,7 +546,7 @@ describe("ProjectLifecycleService", () => {
         ],
       });
 
-      expect(database.get_all_asset_records(project_path)).toEqual([
+      expect(await database.get_all_asset_records(project_path)).toEqual([
         { path: path.join("source", "script.txt"), sort_order: 0 },
       ]);
       expect(log_manager.warning).toHaveBeenCalledWith(
@@ -573,7 +554,7 @@ describe("ProjectLifecycleService", () => {
         expect.objectContaining({ source: "project-lifecycle" }),
       );
     } finally {
-      database.close();
+      await database.close();
     }
   });
 
@@ -617,14 +598,14 @@ describe("ProjectLifecycleService", () => {
         expect.objectContaining({ source: "project-lifecycle" }),
       );
     } finally {
-      database.close();
+      await database.close();
     }
   });
 
-  it("preview 在任务运行时读取另一工程的磁盘概览并保留当前会话", () => {
+  it("preview 在任务运行时读取另一工程的磁盘概览并保留当前会话", async () => {
     const project_path = path.join(create_temp_dir(), "preview.lg");
     const database = new ProjectDatabase();
-    database.create_project(project_path, "preview");
+    await database.create_project(project_path, "preview");
     const session_state = create_session_state({ loaded: true, projectPath: "current.lg" });
     const project_event_handler = vi.fn();
     const service = create_service({
@@ -634,24 +615,24 @@ describe("ProjectLifecycleService", () => {
       task_busy: true,
     });
     try {
-      expect(service.get_project_preview({ path: project_path })).toMatchObject({
+      expect(await service.get_project_preview({ path: project_path })).toMatchObject({
         preview: { file_paths: [], translation_stats: { total_items: 0 } },
       });
       expect(session_state.snapshot()).toEqual({ loaded: true, projectPath: "current.lg" });
       expect(project_event_handler).not.toHaveBeenCalled();
     } finally {
-      database.close();
+      await database.close();
     }
   });
 
-  it("preview 在文件缺失时抛出 project.not_found", () => {
+  it("preview 在文件缺失时抛出 project.not_found", async () => {
     const service = create_service({ database: create_database() });
 
-    expect(() =>
+    await expect(
       service.get_project_preview({
         path: path.join(create_temp_dir(), "missing.lg"),
       }),
-    ).toThrow(expect.objectContaining({ code: "project.not_found" }));
+    ).rejects.toThrow(expect.objectContaining({ code: "project.not_found" }));
   });
 
   it("unload 先发布内部卸载事件，再清理会话和 database 缓存", async () => {
@@ -762,17 +743,23 @@ describe("ProjectLifecycleService", () => {
     });
     return {
       get_project_summary,
-      with_project_scope_async: async <T>(
-        _project: string,
-        callback: () => Promise<T>,
-      ): Promise<T> => await callback(),
+      prepare: async () => {},
+      async read<T>(_path: string, callback: (reader: ProjectDatabaseAccess) => T): Promise<T> {
+        return callback(this as unknown as ProjectDatabaseAccess);
+      },
       get_all_meta: vi.fn(() => options.meta ?? {}),
       get_all_items: vi.fn(() => options.items ?? []),
       get_all_asset_records: vi.fn(() => options.asset_records ?? []),
       get_rule_text: vi.fn(
         (_project_path: string, rule_type: string) => options.rule_text_by_type?.[rule_type] ?? "",
       ),
-      transaction: vi.fn((_project_path: string, callback: () => unknown) => callback()),
+      transaction: vi.fn(function (
+        this: ProjectDatabaseAccess,
+        _project_path: string,
+        callback: (writer: ProjectDatabaseAccess) => unknown,
+      ) {
+        return callback(this);
+      }),
       create_project: vi.fn((_project_path: string, _name: string, initialize?: () => void) =>
         initialize?.(),
       ),

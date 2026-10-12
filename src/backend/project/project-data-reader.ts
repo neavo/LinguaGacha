@@ -4,7 +4,7 @@ import {
 } from "../../shared/quality/quality-rule-state";
 import { build_project_file_records, type ProjectFileRecord } from "./project-file-records";
 import type { JsonRecord, JsonValue } from "../../domain/json";
-import { ProjectDatabase } from "../database/database-operations";
+import { ProjectDatabaseAccess } from "../database/database-operations";
 import { TRANSLATION_PROMPT, type ProjectPrompts } from "../../domain/prompt";
 import { QualityRule, type QualityRuleKind } from "../../domain/quality";
 import {
@@ -75,12 +75,12 @@ export type ProjectDataItemsSnapshot = {
  * 项目运行态读取服务统一从 `.lg` 事实生成公开 project data block，不持有长期缓存
  */
 export class ProjectDataReader {
-  private readonly database: ProjectDatabase; // workflow 是 `.lg` 事实唯一读取入口
+  private readonly database: ProjectDatabaseAccess; // workflow 是 `.lg` 事实唯一读取入口
 
   /**
    * 只注入 database workflow，调用方决定读取时机和 project path
    */
-  public constructor(database: ProjectDatabase) {
+  public constructor(database: ProjectDatabaseAccess) {
     this.database = database;
   }
 
@@ -106,11 +106,6 @@ export class ProjectDataReader {
     };
   }
 
-  /** 校对按 pdf revision 补读页面，正文只进入后端查询运行态。 */
-  public read_pdf_documents(project_path: string) {
-    return this.database.read_pdf_documents(project_path);
-  }
-
   /** files section 以 rel_path map 暴露，asset 表顺序优先，缺 asset 时沿 item 顺序。 */
   public build_files_record_block(
     project_path: string,
@@ -118,13 +113,17 @@ export class ProjectDataReader {
       ProjectItemPublicRecord,
       "file_path" | "file_type"
     >[] = this.build_runtime_items_snapshot(project_path).item_records,
+    pdf_paths?: readonly string[],
   ): Record<string, ProjectFileRecord> {
     const asset_records =
       project_path === "" ? [] : this.database.get_all_asset_records(project_path);
     return build_project_file_records(
       asset_records,
       items,
-      asset_records.length > 0 ? Object.keys(this.database.read_pdf_summaries(project_path)) : [],
+      pdf_paths ??
+        (asset_records.length > 0
+          ? Object.keys(this.database.read_pdf_summaries(project_path))
+          : []),
     );
   }
 

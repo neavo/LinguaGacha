@@ -56,7 +56,7 @@ describe("SourceFileParsePipeline", () => {
     const database = new ProjectDatabase();
     const project_path = path.join(temp_dir.path, "project.lg");
     try {
-      database.create_project(project_path, "文件类型", () => {
+      await database.create_project(project_path, "文件类型", (database) => {
         for (const file of draft.files) {
           database.add_asset_from_source(
             project_path,
@@ -68,14 +68,14 @@ describe("SourceFileParsePipeline", () => {
         }
         database.set_items(project_path, draft.items);
       });
-      const reader = new ProjectDataReader(database);
+      const files = await database.read(project_path, (access) =>
+        new ProjectDataReader(access).build_files_record_block(project_path),
+      );
       // create_project 已结束 scoped 连接，此次读取会重新打开真实 .lg。
-      expect(
-        Object.values(reader.build_files_record_block(project_path)).map(
-          (file) => (file as { file_type: string }).file_type,
-        ),
-      ).toEqual(expected_types);
-      const saved = database.get_all_items(project_path);
+      expect(Object.values(files).map((file) => (file as { file_type: string }).file_type)).toEqual(
+        expected_types,
+      );
+      const saved = await database.get_all_items(project_path);
       const items = (Array.isArray(saved) ? saved : []).map((item) => create_item(item));
       const target = items.find((item) => item.src === "原文")!;
       target.status = "PROCESSED";
@@ -84,7 +84,7 @@ describe("SourceFileParsePipeline", () => {
       await create_format_service().write_items(items, {
         paths: { translated_path: output, bilingual_path: path.join(output, "bilingual") },
         source_files: draft.files.map((file) => file.rel_path),
-        asset_reader: (file) => database.read_asset_content(project_path, file),
+        asset_reader: async (file) => await database.read_asset_content(project_path, file),
       });
       expect(fs.readFileSync(path.join(output, "text.vtt"), "utf8")).toBe(
         "WEBVTT\n\n00:00.000 --> 00:01.000\n<b>译文</b>尾文\n",
@@ -93,7 +93,7 @@ describe("SourceFileParsePipeline", () => {
         "[offset:50]\n[00:01]\n",
       );
     } finally {
-      database.close();
+      await database.close();
     }
   });
 

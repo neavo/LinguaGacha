@@ -13,7 +13,7 @@ import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { MutableJsonRecord } from "../../domain/json";
-import { ProjectDatabase } from "../database/database-operations";
+import { ProjectDatabase, ProjectDatabaseAccess } from "../database/database-operations";
 import type { ProjectChangePublisher } from "./project-write-event-adapter";
 import { get_section_revision } from "./project-data-reader";
 import type {
@@ -31,7 +31,7 @@ import {
 describe("ProjectWriteStore", () => {
   it("Agent 提示词覆盖区分无记录、空正文和重置，提交快照保留 null", async () => {
     const committed = vi.fn();
-    const { database, project_path, store } = create_store("prompt-null", {
+    const { database, project_path, store } = await create_store("prompt-null", {
       projectEventHandler: committed,
     });
     let previous: string | null = null;
@@ -53,17 +53,21 @@ describe("ProjectWriteStore", () => {
         }),
       });
       expect(result.rejected).toEqual([]);
-      expect(database.get_rule_text(project_path, "translation_prompt")).toBe(text);
+      expect(await database.get_rule_text(project_path, "translation_prompt")).toBe(text);
       expect(committed.mock.calls.at(-1)?.[0].prompts).toMatchObject({ translation: { text } });
       previous = text;
     }
   });
 
   it("提示词重置后的事务失败会恢复覆盖、启用态和修订号", async () => {
-    const { database, project_path, store } = create_store("prompt-reset-rollback");
-    database.set_rule_text(project_path, "translation_prompt", "覆盖");
-    database.set_meta(project_path, "translation_prompt_enable", true);
-    vi.spyOn(database, "upsert_meta_entries").mockImplementation(() => {
+    const { database, project_path, store } = await create_store("prompt-reset-rollback");
+    await database.transaction(project_path, (writer) =>
+      writer.set_rule_text(project_path, "translation_prompt", "覆盖"),
+    );
+    await database.transaction(project_path, (writer) =>
+      writer.set_meta(project_path, "translation_prompt_enable", true),
+    );
+    vi.spyOn(ProjectDatabaseAccess.prototype, "upsert_meta_entries").mockImplementation(() => {
       throw new Error("meta write failed");
     });
     await expect(
@@ -77,9 +81,11 @@ describe("ProjectWriteStore", () => {
         enabled: false,
       }),
     ).rejects.toThrow();
-    expect(database.get_rule_text(project_path, "translation_prompt")).toBe("覆盖");
-    expect(read_meta(database, project_path)).toMatchObject({ translation_prompt_enable: true });
-    expect(read_meta(database, project_path)).not.toHaveProperty(
+    expect(await database.get_rule_text(project_path, "translation_prompt")).toBe("覆盖");
+    expect(await read_meta(database, project_path)).toMatchObject({
+      translation_prompt_enable: true,
+    });
+    expect(await read_meta(database, project_path)).not.toHaveProperty(
       "quality_prompt_revision.translation",
     );
   });
@@ -93,10 +99,10 @@ describe("ProjectWriteStore", () => {
 
   it("全量替换复用数据库分配的 ID，并按主键顺序同步缓存", async () => {
     const committed = vi.fn();
-    const { database, project_path, store } = create_store("replace-order", {
+    const { database, project_path, store } = await create_store("replace-order", {
       projectEventHandler: committed,
     });
-    const read_all = vi.spyOn(database, "get_all_items");
+    const read_all = vi.spyOn(ProjectDatabaseAccess.prototype, "get_all_items");
     const result = await store.replace_project_items_and_files({
       projectPath: project_path,
       requireExpectedSectionRevisions: false,
@@ -120,18 +126,24 @@ describe("ProjectWriteStore", () => {
     expect(
       committed.mock.calls[0]?.[0].items.records.map((item: { item_id: number }) => item.item_id),
     ).toEqual([2, 10, 11]);
-    expect(database.get_all_items(project_path).map((item) => item.id)).toEqual([2, 10, 11]);
+    expect((await database.get_all_items(project_path)).map((item) => item.id)).toEqual([
+      2, 10, 11,
+    ]);
   });
 
   it("缓存范围在相同修订下局部读取，落后时回退并包含被动重复变化", async () => {
-    const { database, project_path } = create_store("scope");
-    seed_duplicate_items(database, project_path);
+    const { database, project_path } = await create_store("scope");
+    await seed_duplicate_items(database, project_path);
     const items = new ItemCache();
     items.replace(
-      new ProjectDataReader(database).build_runtime_items_snapshot(project_path).item_records,
+      (
+        await database.read(project_path, (access) =>
+          new ProjectDataReader(access).build_runtime_items_snapshot(project_path),
+        )
+      ).item_records,
     );
     const all = vi.spyOn(database, "get_all_items");
-    const partial = vi.spyOn(database, "get_items_by_ids");
+    const partial = vi.spyOn(ProjectDatabaseAccess.prototype, "get_items_by_ids");
     const store = new ProjectWriteStore(database, () => undefined, null, {
       readItemWriteScope: (_project, ids) => ({ ids: items.readWriteScope(ids), revision: 0 }),
       readFileMetadata: () => items.readFileMetadata(),
@@ -144,35 +156,39 @@ describe("ProjectWriteStore", () => {
     expect(first).toEqual({ changed_item_ids: [1, 2], section_revisions: { items: 1 } });
     expect(all).not.toHaveBeenCalled();
     expect(partial).toHaveBeenCalledWith(project_path, [1, 2]);
-    database.set_items(project_path, [
-      ...database.get_all_items(project_path),
-      create_item({ id: 3, src: "同文", status: "DUPLICATED", file_path: "demo.txt", row: 2 }),
-    ]);
+    await database.transaction(project_path, async (writer) =>
+      writer.set_items(project_path, [
+        ...(await writer.get_all_items(project_path)),
+        create_item({ id: 3, src: "同文", status: "DUPLICATED", file_path: "demo.txt", row: 2 }),
+      ]),
+    );
     const second = await store.apply_translation_item_patches({
       projectPath: project_path,
       items: [{ item_id: 2, patch: { status: "EXCLUDED" } }],
       translationExtras: {},
     });
     expect(second).toEqual({ changed_item_ids: [2, 3], section_revisions: { items: 2 } });
-    expect(database.get_items_by_ids(project_path, [3])[0]).toMatchObject({ status: "NONE" });
+    expect((await database.get_items_by_ids(project_path, [3]))[0]).toMatchObject({
+      status: "NONE",
+    });
   });
 
   it("PDF 译稿与 revision 同事务回滚，失败不发布提交事件", async () => {
-    const { database, project_path, store, published_changes } = create_store("pdf-rollback");
+    const { database, project_path, store, published_changes } = await create_store("pdf-rollback");
     const bytes = create_pdf_fixture();
     const source = path.join(path.dirname(project_path), "source.pdf");
     fs.writeFileSync(source, bytes);
     const document = read_pdf_document(bytes);
-    await database.transaction(project_path, () => {
+    await database.transaction(project_path, (database) => {
       database.add_asset_from_source(project_path, "book.pdf", source, document, 0);
     });
-    const original = database.upsert_meta_entries.bind(database);
+    const original = ProjectDatabaseAccess.prototype.upsert_meta_entries;
     const failure = vi
-      .spyOn(database, "upsert_meta_entries")
-      .mockImplementation((project, meta) => {
+      .spyOn(ProjectDatabaseAccess.prototype, "upsert_meta_entries")
+      .mockImplementation(function (this: ProjectDatabaseAccess, project, meta) {
         if (Object.hasOwn(meta, "project_runtime_revision.pdf"))
           throw new Error("revision write failed");
-        original(project, meta);
+        original.call(this, project, meta);
       });
     const batch = {
       ...create_empty_agent_workspace_intent_batch(),
@@ -198,14 +214,14 @@ describe("ProjectWriteStore", () => {
       }),
     );
     failure.mockRestore();
-    expect(database.read_pdf_document(project_path, "book.pdf")).toEqual(document);
-    expect(get_section_revision(read_meta(database, project_path), "pdf")).toBe(0);
+    expect(await database.read_pdf_document(project_path, "book.pdf")).toEqual(document);
+    expect(get_section_revision(await read_meta(database, project_path), "pdf")).toBe(0);
     expect(published_changes).toEqual([]);
   });
 
   it("按 item_id 局部提交翻译 patch 并保留持久 item 事实", async () => {
-    const { database, project_path, store, published_changes } = create_store("translation");
-    seed_items(database, project_path);
+    const { database, project_path, store, published_changes } = await create_store("translation");
+    await seed_items(database, project_path);
 
     const ack = await store.apply_translation_item_patches({
       projectPath: project_path,
@@ -226,7 +242,7 @@ describe("ProjectWriteStore", () => {
       changed_item_ids: [1],
       section_revisions: { items: 1 },
     });
-    expect(read_items(database, project_path)).toEqual(
+    expect(await read_items(database, project_path)).toEqual(
       [
         {
           id: 1,
@@ -242,7 +258,7 @@ describe("ProjectWriteStore", () => {
         },
       ].map((item) => create_item(item)),
     );
-    expect(read_meta(database, project_path)).toMatchObject({
+    expect(await read_meta(database, project_path)).toMatchObject({
       translation_extras: { processed_line: 1, total_line: 1 },
       "project_runtime_revision.items": 1,
     });
@@ -257,7 +273,7 @@ describe("ProjectWriteStore", () => {
   });
 
   it("拒绝指向不存在 item 的 typed patch", async () => {
-    const { project_path, store } = create_store("invalid-patch");
+    const { project_path, store } = await create_store("invalid-patch");
 
     await expect(
       store.apply_translation_item_patches({
@@ -273,8 +289,9 @@ describe("ProjectWriteStore", () => {
     { source: "unknown_writer", fields: { name_dst: "姓名" }, scope: "none" },
     { source: "unknown_writer", fields: { dst: "正文" }, scope: "post_replacement" },
   ] as const)("$source 按实际字段确定 $scope 失效范围", async ({ source, fields, scope }) => {
-    const { database, project_path, store, published_changes } = create_store("statistics-scope");
-    seed_items(database, project_path);
+    const { database, project_path, store, published_changes } =
+      await create_store("statistics-scope");
+    await seed_items(database, project_path);
     const result = await store.apply_project_item_changes({
       projectPath: project_path,
       expectedSectionRevisions: { items: 0, proofreading: 0 },
@@ -291,11 +308,13 @@ describe("ProjectWriteStore", () => {
   });
 
   it("人工 Item 变化会推进 proofreading revision 并更新翻译统计", async () => {
-    const { database, project_path, store, published_changes } = create_store("proofreading");
-    seed_items(database, project_path);
-    database.upsert_meta_entries(project_path, {
-      translation_extras: { total_line: 1, processed_line: 0, error_line: 0, line: 0 },
-    });
+    const { database, project_path, store, published_changes } = await create_store("proofreading");
+    await seed_items(database, project_path);
+    await database.transaction(project_path, (writer) =>
+      writer.upsert_meta_entries(project_path, {
+        translation_extras: { total_line: 1, processed_line: 0, error_line: 0, line: 0 },
+      }),
+    );
 
     await store.apply_project_item_changes({
       projectPath: project_path,
@@ -311,14 +330,14 @@ describe("ProjectWriteStore", () => {
       ],
     });
 
-    expect(read_items(database, project_path)[0]).toMatchObject({
+    expect((await read_items(database, project_path))[0]).toMatchObject({
       id: 1,
       dst: "校对译文",
       status: "PROCESSED",
       src: "原文",
       file_path: "demo.txt",
     });
-    expect(read_meta(database, project_path)).toMatchObject({
+    expect(await read_meta(database, project_path)).toMatchObject({
       "project_runtime_revision.items": 1,
       "proofreading_revision.proofreading": 1,
       translation_extras: expect.objectContaining({
@@ -337,8 +356,8 @@ describe("ProjectWriteStore", () => {
 
   it("重翻重复项后同步收敛同文组并提交任务结果", async () => {
     const { database, project_path, store, published_changes } =
-      create_store("retranslation-duplicate");
-    seed_duplicate_items(database, project_path);
+      await create_store("retranslation-duplicate");
+    await seed_duplicate_items(database, project_path);
 
     const ack = await store.apply_retranslation_item_patches({
       projectPath: project_path,
@@ -359,7 +378,7 @@ describe("ProjectWriteStore", () => {
 
     expect(ack.changed_item_ids).toEqual([1, 2]);
     expect(
-      read_items(database, project_path).map(({ id, status }) => ({
+      (await read_items(database, project_path)).map(({ id, status }) => ({
         id,
         status,
       })),
@@ -367,7 +386,7 @@ describe("ProjectWriteStore", () => {
       { id: 1, status: "DUPLICATED" },
       { id: 2, status: "PROCESSED" },
     ]);
-    expect(read_meta(database, project_path).translation_extras).toMatchObject({
+    expect((await read_meta(database, project_path)).translation_extras).toMatchObject({
       total_line: 1,
       processed_line: 1,
       error_line: 0,
@@ -381,8 +400,8 @@ describe("ProjectWriteStore", () => {
 
   it("人工状态变化与同文组晋升使用同一事务和事件", async () => {
     const { database, project_path, store, published_changes } =
-      create_store("duplicate-coordination");
-    seed_duplicate_items(database, project_path);
+      await create_store("duplicate-coordination");
+    await seed_duplicate_items(database, project_path);
 
     await store.apply_project_item_changes({
       projectPath: project_path,
@@ -398,7 +417,9 @@ describe("ProjectWriteStore", () => {
       ],
     });
 
-    expect(read_items(database, project_path).map(({ id, status }) => ({ id, status }))).toEqual([
+    expect(
+      (await read_items(database, project_path)).map(({ id, status }) => ({ id, status })),
+    ).toEqual([
       { id: 1, status: "EXCLUDED" },
       { id: 2, status: "NONE" },
     ]);
@@ -409,9 +430,10 @@ describe("ProjectWriteStore", () => {
   });
 
   it("提交工作台结构写入时替换事实并发布轻量失效信号", async () => {
-    const { database, project_path, store, published_changes } = create_store("project-content");
-    seed_items(database, project_path);
-    add_test_asset(database, project_path, "demo.txt", "demo", 0);
+    const { database, project_path, store, published_changes } =
+      await create_store("project-content");
+    await seed_items(database, project_path);
+    await add_test_asset(database, project_path, "demo.txt", "demo", 0);
 
     await store.replace_project_items_and_files({
       projectPath: project_path,
@@ -424,10 +446,10 @@ describe("ProjectWriteStore", () => {
       meta: { translation_extras: {} },
     });
 
-    expect(database.get_asset_count(project_path)).toBe(0);
-    expect(read_items(database, project_path)).toEqual([]);
+    expect(await database.get_asset_count(project_path)).toBe(0);
+    expect(await read_items(database, project_path)).toEqual([]);
 
-    expect(read_meta(database, project_path)).toMatchObject({
+    expect(await read_meta(database, project_path)).toMatchObject({
       "project_runtime_revision.files": 1,
       "project_runtime_revision.items": 1,
     });
@@ -441,12 +463,12 @@ describe("ProjectWriteStore", () => {
   });
 
   it("完整替换在删除条目前拒绝缺失字段和非 JSON 私有数据，保留已有事实与修订", async () => {
-    const { database, project_path, store, published_changes } = create_store(
+    const { database, project_path, store, published_changes } = await create_store(
       "invalid-item-replacement",
     );
-    seed_items(database, project_path);
-    const before = database.get_all_items(project_path);
-    const meta = database.get_all_meta(project_path);
+    await seed_items(database, project_path);
+    const before = await database.get_all_items(project_path);
+    const meta = await database.get_all_meta(project_path);
     const complete = create_item({ id: 1, src: "新原文" });
     const { dst, ...incomplete } = complete;
     expect(dst).toBe("");
@@ -461,16 +483,16 @@ describe("ProjectWriteStore", () => {
           items: [item as Item],
         }),
       ).rejects.toMatchObject({ code: "request.validation_failed" });
-      expect(database.get_all_items(project_path)).toEqual(before);
-      expect(database.get_all_meta(project_path)).toEqual(meta);
+      expect(await database.get_all_items(project_path)).toEqual(before);
+      expect(await database.get_all_meta(project_path)).toEqual(meta);
       expect(published_changes).toEqual([]);
     }
   });
 
   it("文件排序只发布 files 失效信号", async () => {
-    const { database, project_path, store, published_changes } = create_store("reorder");
-    add_test_asset(database, project_path, "a.txt", "a", 0);
-    add_test_asset(database, project_path, "b.txt", "b", 1);
+    const { database, project_path, store, published_changes } = await create_store("reorder");
+    await add_test_asset(database, project_path, "a.txt", "a", 0);
+    await add_test_asset(database, project_path, "b.txt", "b", 1);
 
     await store.reorder_project_files({
       projectPath: project_path,
@@ -478,7 +500,7 @@ describe("ProjectWriteStore", () => {
       orderedPaths: ["b.txt", "a.txt"],
     });
 
-    expect(database.get_all_asset_records(project_path)).toEqual([
+    expect(await database.get_all_asset_records(project_path)).toEqual([
       { path: "b.txt", sort_order: 0 },
       { path: "a.txt", sort_order: 1 },
     ]);
@@ -492,9 +514,11 @@ describe("ProjectWriteStore", () => {
 
   it("历史小数修订使用统一整数基线提交，旧预期修订仍触发冲突", async () => {
     const { database, project_path, store, published_changes } =
-      create_store("revision-normalization");
-    seed_items(database, project_path);
-    database.set_meta(project_path, "project_runtime_revision.items", "1.8");
+      await create_store("revision-normalization");
+    await seed_items(database, project_path);
+    await database.transaction(project_path, (writer) =>
+      writer.set_meta(project_path, "project_runtime_revision.items", "1.8"),
+    );
     const request = {
       projectPath: project_path,
       expectedSectionRevisions: { items: 1 },
@@ -508,7 +532,7 @@ describe("ProjectWriteStore", () => {
       revisionSections: [...request.revisionSections],
       updatedSections: [...request.updatedSections],
     });
-    expect(read_meta(database, project_path)["project_runtime_revision.items"]).toBe(2);
+    expect((await read_meta(database, project_path))["project_runtime_revision.items"]).toBe(2);
     await expect(
       store.replace_project_items_and_files({
         ...request,
@@ -516,39 +540,43 @@ describe("ProjectWriteStore", () => {
         updatedSections: [...request.updatedSections],
       }),
     ).rejects.toMatchObject({ code: "data.revision_conflict" });
-    expect(read_items(database, project_path)[0]?.src).toBe("新原文");
+    expect((await read_items(database, project_path))[0]?.src).toBe("新原文");
     expect(published_changes).toHaveLength(1);
   });
 
   it("revision guard 与写入共享同一数据库事务", async () => {
-    const { database, project_path, store } = create_store("transaction-boundary");
-    add_test_asset(database, project_path, "a.txt", "a", 0);
-    add_test_asset(database, project_path, "b.txt", "b", 1);
+    const { database, project_path, store } = await create_store("transaction-boundary");
+    await add_test_asset(database, project_path, "a.txt", "a", 0);
+    await add_test_asset(database, project_path, "b.txt", "b", 1);
     const original_transaction = database.transaction.bind(database);
-    const original_get_all_meta = database.get_all_meta.bind(database);
-    const original_update_asset_sort_orders = database.update_asset_sort_orders.bind(database);
+    const original_get_all_meta = ProjectDatabaseAccess.prototype.get_all_meta;
+    const original_update_asset_sort_orders =
+      ProjectDatabaseAccess.prototype.update_asset_sort_orders;
     const meta_read_transaction_states: boolean[] = [];
     const write_transaction_states: boolean[] = [];
     let transaction_active = false;
     vi.spyOn(database, "transaction").mockImplementation(
-      <T>(target_path: string, callback: () => T): Promise<T> =>
-        original_transaction(target_path, () => {
+      <T>(target_path: string, callback: (writer: ProjectDatabaseAccess) => T): Promise<T> =>
+        original_transaction(target_path, (writer) => {
           transaction_active = true;
           try {
-            return callback();
+            return callback(writer);
           } finally {
             transaction_active = false;
           }
         }),
     );
-    vi.spyOn(database, "get_all_meta").mockImplementation((target_path) => {
+    vi.spyOn(ProjectDatabaseAccess.prototype, "get_all_meta").mockImplementation(function (
+      this: ProjectDatabaseAccess,
+      target_path,
+    ) {
       meta_read_transaction_states.push(transaction_active);
-      return original_get_all_meta(target_path);
+      return original_get_all_meta.call(this, target_path);
     });
-    vi.spyOn(database, "update_asset_sort_orders").mockImplementation(
-      (target_path, ordered_paths) => {
+    vi.spyOn(ProjectDatabaseAccess.prototype, "update_asset_sort_orders").mockImplementation(
+      function (this: ProjectDatabaseAccess, target_path, ordered_paths) {
         write_transaction_states.push(transaction_active);
-        return original_update_asset_sort_orders(target_path, ordered_paths);
+        return original_update_asset_sort_orders.call(this, target_path, ordered_paths);
       },
     );
 
@@ -560,18 +588,18 @@ describe("ProjectWriteStore", () => {
 
     expect(meta_read_transaction_states[0]).toBe(true);
     expect(write_transaction_states).toEqual([true]);
-    expect(read_meta(database, project_path)["project_runtime_revision.files"]).toBe(1);
+    expect((await read_meta(database, project_path))["project_runtime_revision.files"]).toBe(1);
   });
 
   it("数据库提交后先维护内部缓存，再发布公开项目变更", async () => {
     const calls: string[] = [];
-    const { database, project_path, store } = create_store("event-order", {
+    const { database, project_path, store } = await create_store("event-order", {
       projectEventHandler: (event) => {
         calls.push(`internal:${event.sectionRevisions.files ?? 0}`);
       },
       onPublish: () => calls.push("public"),
     });
-    add_test_asset(database, project_path, "a.txt", "a", 0);
+    await add_test_asset(database, project_path, "a.txt", "a", 0);
 
     await store.reorder_project_files({
       projectPath: project_path,
@@ -584,12 +612,15 @@ describe("ProjectWriteStore", () => {
 
   it("内部缓存事件失败时阻断公开发布，但保留已提交事实", async () => {
     const dispatch_error = new Error("cache update failed");
-    const { database, project_path, store, published_changes } = create_store("event-failure", {
-      projectEventHandler: () => {
-        throw dispatch_error;
+    const { database, project_path, store, published_changes } = await create_store(
+      "event-failure",
+      {
+        projectEventHandler: () => {
+          throw dispatch_error;
+        },
       },
-    });
-    add_test_asset(database, project_path, "a.txt", "a", 0);
+    );
+    await add_test_asset(database, project_path, "a.txt", "a", 0);
 
     await expect(
       store.reorder_project_files({
@@ -607,13 +638,13 @@ describe("ProjectWriteStore", () => {
       cause: dispatch_error,
     });
 
-    expect(read_meta(database, project_path)["project_runtime_revision.files"]).toBe(1);
+    expect((await read_meta(database, project_path))["project_runtime_revision.files"]).toBe(1);
     expect(published_changes).toEqual([]);
   });
 
   it("公开变更发布失败时同样返回已提交 revision 并禁止重试", async () => {
     const publish_error = new Error("public publish failed");
-    const { database, project_path, store, published_changes } = create_store(
+    const { database, project_path, store, published_changes } = await create_store(
       "public-event-failure",
       {
         onPublish: () => {
@@ -621,7 +652,7 @@ describe("ProjectWriteStore", () => {
         },
       },
     );
-    add_test_asset(database, project_path, "a.txt", "a", 0);
+    await add_test_asset(database, project_path, "a.txt", "a", 0);
 
     await expect(
       store.reorder_project_files({
@@ -638,12 +669,12 @@ describe("ProjectWriteStore", () => {
       },
       cause: publish_error,
     });
-    expect(read_meta(database, project_path)["project_runtime_revision.files"]).toBe(1);
+    expect((await read_meta(database, project_path))["project_runtime_revision.files"]).toBe(1);
     expect(published_changes).toEqual([]);
   });
 
   it("提交质量规则和提示词时写入各自 revision", async () => {
-    const { database, project_path, store } = create_store("quality");
+    const { database, project_path, store } = await create_store("quality");
 
     await store.save_quality_rules({
       projectPath: project_path,
@@ -665,11 +696,11 @@ describe("ProjectWriteStore", () => {
       enabled: true,
     });
 
-    expect(database.get_rules(project_path, "glossary")).toEqual([
+    expect(await database.get_rules(project_path, "glossary")).toEqual([
       { entry_id: "princess", src: "姫", dst: "公主" },
     ]);
-    expect(database.get_rule_text(project_path, "translation_prompt")).toBe("请翻译");
-    expect(read_meta(database, project_path)).toMatchObject({
+    expect(await database.get_rule_text(project_path, "translation_prompt")).toBe("请翻译");
+    expect(await read_meta(database, project_path)).toMatchObject({
       "quality_rule_revision.glossary": 1,
       "quality_prompt_revision.translation": 1,
       translation_prompt_enable: true,
@@ -678,7 +709,7 @@ describe("ProjectWriteStore", () => {
 
   it("一次性应用领域任务输入并发布 quality / prompts 提交事件", async () => {
     const project_event_handler = vi.fn();
-    const { database, project_path, store, published_changes } = create_store("task-input", {
+    const { database, project_path, store, published_changes } = await create_store("task-input", {
       projectEventHandler: project_event_handler,
     });
 
@@ -704,11 +735,11 @@ describe("ProjectWriteStore", () => {
       accepted: true,
       changes: [{ updatedSections: ["quality", "prompts"] }],
     });
-    expect(database.get_rules(project_path, "glossary")).toEqual([
+    expect(await database.get_rules(project_path, "glossary")).toEqual([
       { entry_id: "hp", src: "HP", dst: "生命值", info: "", case_sensitive: false },
     ]);
-    expect(database.get_rule_text(project_path, "translation_prompt")).toBe("翻译提示词");
-    expect(read_meta(database, project_path)).toMatchObject({
+    expect(await database.get_rule_text(project_path, "translation_prompt")).toBe("翻译提示词");
+    expect(await read_meta(database, project_path)).toMatchObject({
       glossary_enable: true,
       translation_prompt_enable: true,
       "quality_rule_revision.glossary": 1,
@@ -730,21 +761,26 @@ describe("ProjectWriteStore", () => {
     const project_event_handler = vi.fn((event) => {
       calls.push(`cache:${event.updatedSections.join(",")}`);
     });
-    const { database, project_path, store } = create_store("agent-workspace", {
+    const { database, project_path, store } = await create_store("agent-workspace", {
       projectEventHandler: project_event_handler,
       onPublish: () => calls.push("public"),
     });
-    seed_items(database, project_path);
+    await seed_items(database, project_path);
     const original_transaction = database.transaction.bind(database);
     const transaction = vi
       .spyOn(database, "transaction")
-      .mockImplementation(async <T>(target_path: string, callback: () => T): Promise<T> => {
-        const result = await original_transaction(target_path, callback);
-        calls.push("commit");
-        return result;
-      });
+      .mockImplementation(
+        async <T>(
+          target_path: string,
+          callback: (writer: ProjectDatabaseAccess) => T,
+        ): Promise<T> => {
+          const result = await original_transaction(target_path, callback);
+          calls.push("commit");
+          return result;
+        },
+      );
 
-    const item = read_items(database, project_path)[0]!;
+    const item = (await read_items(database, project_path))[0]!;
     const ack = await store.apply_agent_workspace_changes({
       projectPath: project_path,
       source: "agent_workspace_apply",
@@ -798,15 +834,15 @@ describe("ProjectWriteStore", () => {
       sectionRevisions: { items: 1, proofreading: 1, quality: 1, prompts: 1 },
     });
     expect(transaction).toHaveBeenCalledOnce();
-    expect(read_items(database, project_path)[0]).toMatchObject({
+    expect((await read_items(database, project_path))[0]).toMatchObject({
       dst: "译文",
       name_dst: "译名",
       status: "PROCESSED",
     });
-    expect(database.get_rules(project_path, "glossary")).toHaveLength(1);
-    expect(database.get_rules(project_path, "pre_translation_replacement")).toHaveLength(1);
-    expect(database.get_rule_text(project_path, "translation_prompt")).toBe("翻译正文");
-    expect(read_meta(database, project_path)).toMatchObject({
+    expect(await database.get_rules(project_path, "glossary")).toHaveLength(1);
+    expect(await database.get_rules(project_path, "pre_translation_replacement")).toHaveLength(1);
+    expect(await database.get_rule_text(project_path, "translation_prompt")).toBe("翻译正文");
+    expect(await read_meta(database, project_path)).toMatchObject({
       "project_runtime_revision.items": 1,
       "proofreading_revision.proofreading": 1,
       "quality_rule_revision.glossary": 1,
@@ -820,11 +856,11 @@ describe("ProjectWriteStore", () => {
   });
 
   it("Agent 提交按事务内同文组事实返回全部实际 Item 变化", async () => {
-    const { database, project_path, store, published_changes } = create_store(
+    const { database, project_path, store, published_changes } = await create_store(
       "agent-duplicate-coordination",
     );
-    seed_duplicate_items(database, project_path);
-    const representative = read_items(database, project_path)[0]!;
+    await seed_duplicate_items(database, project_path);
+    const representative = (await read_items(database, project_path))[0]!;
 
     const ack = await store.apply_agent_workspace_changes({
       projectPath: project_path,
@@ -844,7 +880,9 @@ describe("ProjectWriteStore", () => {
     });
 
     expect(ack.applied.items).toEqual({ updated: 2 });
-    expect(read_items(database, project_path).map(({ id, status }) => ({ id, status }))).toEqual([
+    expect(
+      (await read_items(database, project_path)).map(({ id, status }) => ({ id, status })),
+    ).toEqual([
       { id: 1, status: "EXCLUDED" },
       { id: 2, status: "NONE" },
     ]);
@@ -855,11 +893,14 @@ describe("ProjectWriteStore", () => {
 
   it("Agent 无实际变化时不推进 revision 或发布事件", async () => {
     const project_event_handler = vi.fn();
-    const { database, project_path, store, published_changes } = create_store("agent-unchanged", {
-      projectEventHandler: project_event_handler,
-    });
-    seed_items(database, project_path);
-    const item = read_items(database, project_path)[0]!;
+    const { database, project_path, store, published_changes } = await create_store(
+      "agent-unchanged",
+      {
+        projectEventHandler: project_event_handler,
+      },
+    );
+    await seed_items(database, project_path);
+    const item = (await read_items(database, project_path))[0]!;
 
     const ack = await store.apply_agent_workspace_changes({
       projectPath: project_path,
@@ -879,22 +920,29 @@ describe("ProjectWriteStore", () => {
     });
 
     expect(ack).toMatchObject({ applied: {}, rejected: [], destroyed: false });
-    expect(read_meta(database, project_path)).not.toHaveProperty("project_runtime_revision.items");
+    expect(await read_meta(database, project_path)).not.toHaveProperty(
+      "project_runtime_revision.items",
+    );
     expect(project_event_handler).not.toHaveBeenCalled();
     expect(published_changes).toEqual([]);
   });
 
   it("Agent 工作区任一中间写入失败会回滚全部事实与 revision 且不发布事件", async () => {
     const project_event_handler = vi.fn();
-    const { database, project_path, store, published_changes } = create_store(
+    const { database, project_path, store, published_changes } = await create_store(
       "agent-workspace-rollback",
       { projectEventHandler: project_event_handler },
     );
-    seed_items(database, project_path);
-    const original_set_rule_text = database.set_rule_text.bind(database);
-    vi.spyOn(database, "set_rule_text").mockImplementation((target_path, rule_type, text) => {
+    await seed_items(database, project_path);
+    const original_set_rule_text = ProjectDatabaseAccess.prototype.set_rule_text;
+    vi.spyOn(ProjectDatabaseAccess.prototype, "set_rule_text").mockImplementation(function (
+      this: ProjectDatabaseAccess,
+      target_path,
+      rule_type,
+      text,
+    ) {
       if (rule_type === "translation_prompt") throw new Error("prompt write failed");
-      return original_set_rule_text(target_path, rule_type, text);
+      return original_set_rule_text.call(this, target_path, rule_type, text);
     });
 
     await expect(
@@ -907,7 +955,7 @@ describe("ProjectWriteStore", () => {
               line: 1,
               item_id: 1,
               fp: String(
-                project_agent_workspace_item(read_items(database, project_path)[0]!)["fp"],
+                project_agent_workspace_item((await read_items(database, project_path))[0]!)["fp"],
               ),
               update: { dst: "译文", status: "PROCESSED" },
             },
@@ -942,23 +990,27 @@ describe("ProjectWriteStore", () => {
       }),
     );
 
-    expect(read_items(database, project_path)[0]).toMatchObject({
+    expect((await read_items(database, project_path))[0]).toMatchObject({
       dst: "",
       status: "NONE",
     });
-    expect(database.get_rules(project_path, "glossary")).toEqual([]);
-    expect(database.get_rule_text(project_path, "translation_prompt")).toBeNull();
-    expect(read_meta(database, project_path)).not.toHaveProperty("project_runtime_revision.items");
+    expect(await database.get_rules(project_path, "glossary")).toEqual([]);
+    expect(await database.get_rule_text(project_path, "translation_prompt")).toBeNull();
+    expect(await read_meta(database, project_path)).not.toHaveProperty(
+      "project_runtime_revision.items",
+    );
     expect(project_event_handler).not.toHaveBeenCalled();
     expect(published_changes).toEqual([]);
   });
 
   it("事务内对象漂移只拒绝目标并提交无关 prompt", async () => {
-    const { database, project_path, store } = create_store("agent-workspace-partial");
-    seed_items(database, project_path);
-    const baseline_item = read_items(database, project_path)[0]!;
+    const { database, project_path, store } = await create_store("agent-workspace-partial");
+    await seed_items(database, project_path);
+    const baseline_item = (await read_items(database, project_path))[0]!;
     const baseline_fp = String(project_agent_workspace_item(baseline_item)["fp"]);
-    database.set_items(project_path, [{ ...baseline_item, dst: "外部译文" }]);
+    await database.transaction(project_path, (writer) =>
+      writer.set_items(project_path, [{ ...baseline_item, dst: "外部译文" }]),
+    );
 
     const ack = await store.apply_agent_workspace_changes({
       projectPath: project_path,
@@ -983,31 +1035,31 @@ describe("ProjectWriteStore", () => {
       destroyed: true,
       sectionRevisions: { items: 0, prompts: 1 },
     });
-    expect(read_items(database, project_path)[0]?.dst).toBe("外部译文");
-    expect(database.get_rule_text(project_path, "translation_prompt")).toBe("翻译正文");
+    expect((await read_items(database, project_path))[0]?.dst).toBe("外部译文");
+    expect(await database.get_rule_text(project_path, "translation_prompt")).toBe("翻译正文");
   });
 
   /** 每例持有独立数据库与事件记录，并统一登记资源清理。 */
   /** 使用真实事务和发布器，按用例注入提交后故障。 */
-  function create_store(
+  async function create_store(
     name: string,
     options: {
       projectEventHandler?: ProjectCommittedChangeHandler;
       onPublish?: () => void;
     } = {},
-  ): {
+  ): Promise<{
     database: ProjectDatabase;
     project_path: string;
     store: ProjectWriteStore;
     published_changes: ProjectCommittedChange[];
-  } {
+  }> {
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), `linguagacha-write-${name}-`));
     const project_path = path.join(directory, `${name}.lg`);
     const database = new ProjectDatabase();
     const project_event_handler = options.projectEventHandler ?? vi.fn();
     const published_changes: ProjectCommittedChange[] = [];
-    database.create_project(project_path, name);
-    cleanup_callbacks.push(() => database.close());
+    await database.create_project(project_path, name);
+    cleanup_callbacks.push(async () => await database.close());
     cleanup_callbacks.push(() => fs.rmSync(directory, { recursive: true, force: true }));
     return {
       database,
@@ -1037,73 +1089,90 @@ describe("ProjectWriteStore", () => {
   }
 
   /** 准备完整条目事实，局部写入须保留其原文与定位字段。 */
-  function seed_items(database: ProjectDatabase, project_path: string): void {
-    database.set_items(
-      project_path,
-      [
-        {
-          id: 1,
-          src: "原文",
-          dst: "",
-          name_src: "原名",
-          name_dst: null,
-          status: "NONE",
-          file_path: "demo.txt",
-          file_type: "TXT",
-          text_type: "TXT",
-          row: 7,
-        },
-      ].map((item) => create_item(item)),
+  async function seed_items(database: ProjectDatabase, project_path: string): Promise<void> {
+    await database.transaction(project_path, (writer) =>
+      writer.set_items(
+        project_path,
+        [
+          {
+            id: 1,
+            src: "原文",
+            dst: "",
+            name_src: "原名",
+            name_dst: null,
+            status: "NONE",
+            file_path: "demo.txt",
+            file_type: "TXT",
+            text_type: "TXT",
+            row: 7,
+          },
+        ].map((item) => create_item(item)),
+      ),
     );
   }
 
   /** 为各写入入口提供同一组代表与被动重复事实，只让测试覆盖自身差异。 */
-  function seed_duplicate_items(database: ProjectDatabase, project_path: string): void {
-    database.set_items(
-      project_path,
-      [
-        {
-          id: 1,
-          src: "同文",
-          dst: "",
-          name_dst: null,
-          status: "NONE",
-          file_path: "demo.txt",
-          row: 0,
-        },
-        {
-          id: 2,
-          src: "同文",
-          dst: "",
-          name_dst: null,
-          status: "DUPLICATED",
-          file_path: "demo.txt",
-          row: 1,
-        },
-      ].map((item) => create_item(item)),
+  async function seed_duplicate_items(
+    database: ProjectDatabase,
+    project_path: string,
+  ): Promise<void> {
+    await database.transaction(project_path, (writer) =>
+      writer.set_items(
+        project_path,
+        [
+          {
+            id: 1,
+            src: "同文",
+            dst: "",
+            name_dst: null,
+            status: "NONE",
+            file_path: "demo.txt",
+            row: 0,
+          },
+          {
+            id: 2,
+            src: "同文",
+            dst: "",
+            name_dst: null,
+            status: "DUPLICATED",
+            file_path: "demo.txt",
+            row: 1,
+          },
+        ].map((item) => create_item(item)),
+      ),
     );
-    database.set_meta(project_path, "skip_duplicate_source_text_enable", true);
+    await database.transaction(project_path, (writer) =>
+      writer.set_meta(project_path, "skip_duplicate_source_text_enable", true),
+    );
   }
 
-  function read_items(database: ProjectDatabase, project_path: string): MutableJsonRecord[] {
-    return database.get_all_items(project_path) as unknown as MutableJsonRecord[];
+  async function read_items(
+    database: ProjectDatabase,
+    project_path: string,
+  ): Promise<MutableJsonRecord[]> {
+    return (await database.get_all_items(project_path)) as unknown as MutableJsonRecord[];
   }
 
-  function read_meta(database: ProjectDatabase, project_path: string): MutableJsonRecord {
-    return database.get_all_meta(project_path) as unknown as MutableJsonRecord;
+  async function read_meta(
+    database: ProjectDatabase,
+    project_path: string,
+  ): Promise<MutableJsonRecord> {
+    return (await database.get_all_meta(project_path)) as unknown as MutableJsonRecord;
   }
 
   /** 通过正式资产导入入口落盘，保持文件集合与来源读取一致。 */
-  function add_test_asset(
+  async function add_test_asset(
     database: ProjectDatabase,
     project_path: string,
     asset_path: string,
     content: string,
     sort_order: number,
-  ): void {
+  ): Promise<void> {
     const source_path = path.join(path.dirname(project_path), `source-${asset_path}`);
     fs.writeFileSync(source_path, content);
-    database.add_asset_from_source(project_path, asset_path, source_path, null, sort_order);
+    await database.transaction(project_path, (writer) =>
+      writer.add_asset_from_source(project_path, asset_path, source_path, null, sort_order),
+    );
   }
 
   /** 为 Store 集成场景补齐未受影响 kind 的空意图。 */

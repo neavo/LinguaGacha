@@ -30,7 +30,7 @@ describe("run_cli_job", () => {
   it("纯 PDF 输入报告排除文件并跳过模型与批量运行", async () => {
     const harness = create_backend_services_harness();
     const paths = create_cli_paths();
-    vi.spyOn(harness.backend_services.project.summary, "read").mockReturnValue({
+    vi.spyOn(harness.backend_services.project.summary, "read").mockResolvedValue({
       projectPath: "test.lg",
       sectionRevisions: {},
       snapshot: {

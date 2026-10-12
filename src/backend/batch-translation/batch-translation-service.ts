@@ -76,7 +76,7 @@ export class BatchTranslationService {
       operation: "translate",
       scope: request.scope,
       include_errors: request.include_errors,
-      mode: resolve_batch_translation_start_mode(this.runtime.read_progress()),
+      mode: resolve_batch_translation_start_mode(await this.runtime.read_progress()),
     });
     const handle = this.runtime.begin_under_agent(command.scope, lease, signal, command.operation);
     await this.runtime.execute(handle, () =>

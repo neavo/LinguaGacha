@@ -1,4 +1,5 @@
-import { SqliteStorage, type SqliteDatabase } from "@earendil-works/pi-durable/storage/sqlite";
+import { AgentDatabaseAccess } from "./agent-database-access";
+import { SqliteStorage } from "@earendil-works/pi-durable/storage/sqlite";
 import type { AgentFileAttachment } from "../../shared/agent";
 import { normalize_agent_message_input } from "../../shared/agent";
 import { AppError } from "../../shared/error";
@@ -20,16 +21,21 @@ const SDK_TABLES = [
   "durable_schema",
 ] as const;
 
-/** 同一工程连接上的产品登记与 SDK 存储。使用权由服务关闭，不由 Harness 关闭。 */
+/** 工程上的产品登记与 SDK 存储。访问入口由服务关闭，不由 Harness 关闭。 */
 export class AgentChatStorage {
-  /** 借用工程连接，保存其使用权释放入口。 */
-  constructor(
-    private readonly database: SqliteDatabase,
-    private readonly release: () => void,
-  ) {}
+  constructor(private readonly database: AgentDatabaseAccess) {}
+
+  /** 批次只包含直接存储访问，防止持有连接等待 SDK 会话队列。 */
+  public read_batch<T>(callback: () => Promise<T>): Promise<T> {
+    return this.database.read_batch(callback);
+  }
 
   /** 从激活指针恢复登记，并校验工程文件携带的上传路径。 */
-  public async read(): Promise<AgentChatRecord | null> {
+  public read(): Promise<AgentChatRecord | null> {
+    return this.read_batch(() => this.read_record());
+  }
+
+  private async read_record(): Promise<AgentChatRecord | null> {
     const active = await this.database.get<{ value: string }>(
       "SELECT value FROM meta WHERE key = ?",
       ACTIVE_AGENT_CHAT_KEY,
@@ -86,17 +92,29 @@ export class AgentChatStorage {
     });
   }
 
-  /** SDK 借用同一事务队列，由产品 Store 统一释放连接。 */
-  public open_storage(): Promise<SqliteStorage> {
-    // SDK 负责自己的任务收尾。数据库连接仍被本 Store 持有，供重置和上传登记使用。
-    return SqliteStorage.open({
-      exec: (sql) => this.database.exec(sql),
-      run: (sql, ...params) => this.database.run(sql, ...params),
-      get: (sql, ...params) => this.database.get(sql, ...params),
-      all: (sql, ...params) => this.database.all(sql, ...params),
-      transaction: (callback) => this.database.transaction(callback),
-      close: async () => {},
-    });
+  /** SDK 借用同一工程队列，由产品 Store 统一收尾。 */
+  public async open_storage(): Promise<SqliteStorage> {
+    // SDK 关闭后仍允许产品层重置和上传收尾。
+    const storage = await this.read_batch(() =>
+      SqliteStorage.open({
+        exec: (sql) => this.database.exec(sql),
+        run: (sql, ...params) => this.database.run(sql, ...params),
+        get: (sql, ...params) => this.database.get(sql, ...params),
+        all: (sql, ...params) => this.database.all(sql, ...params),
+        transaction: (callback) => this.database.transaction(callback),
+        close: async () => {},
+      }),
+    );
+    // 先进入 SDK 的串行队列，再批量读取数据库，避免两条队列反向等待。
+    const batch =
+      <Args extends unknown[], Result>(read: (...args: Args) => Promise<Result>) =>
+      (...args: Args): Promise<Result> =>
+        this.read_batch(() => read(...args));
+    storage.scanEntries = batch(storage.scanEntries.bind(storage));
+    storage.findLatestHeadMarker = batch(storage.findLatestHeadMarker.bind(storage));
+    storage.findDocument = batch(storage.findDocument.bind(storage));
+    storage.document = batch(storage.document.bind(storage));
+    return storage;
   }
 
   /** 只能在 Harness 关闭后执行。原稿和其它工程事实不参与会话重置。 */
@@ -108,12 +126,8 @@ export class AgentChatStorage {
     });
   }
 
-  /** 等待排队访问结束后释放工程使用权。 */
-  public async close(): Promise<void> {
-    try {
-      await this.database.get("SELECT 1");
-    } finally {
-      this.release();
-    }
+  /** 拒绝新访问并等待已经接受的操作完成。 */
+  public close(): Promise<void> {
+    return this.database.close();
   }
 }

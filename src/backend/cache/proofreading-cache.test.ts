@@ -65,6 +65,7 @@ function create_cache_read_port(options: {
     files: {
       readFileEntries: () => [{ rel_path: "script.txt", file_type: "TXT", sort_index: 0 }],
     },
+    pdf: { readBlock: () => ({}) },
     quality: {
       readBlock: () => ({
         ...create_empty_quality_rule_block(),
@@ -144,7 +145,7 @@ describe("ProofreadingCache", () => {
     const expected_item = structuredClone(item); // 查看结果被修改后，预期仍保留原始缓存事实。
     const worker = create_worker();
     const cache = new ProofreadingCache({
-      readPages: () => [],
+      readPages: async () => [],
       cache: create_cache_read_port({ items: [item] }),
       appSettingService: create_settings(),
       workerClient: worker,
@@ -175,7 +176,7 @@ describe("ProofreadingCache", () => {
     items.replace([create_cache_item()]);
     const cache_port = create_cache_read_port({ revisions });
     const cache = new ProofreadingCache({
-      readPages: () => [],
+      readPages: async () => [],
       cache: { ...cache_port, items, snapshot: () => structuredClone(cache_port.snapshot()) },
       appSettingService: create_settings(),
       workerClient: create_worker(),
@@ -187,7 +188,7 @@ describe("ProofreadingCache", () => {
   it("同一工程身份下只执行一次 sync task 并用本地 reader 查询", async () => {
     const worker = create_worker();
     const cache = new ProofreadingCache({
-      readPages: () => [],
+      readPages: async () => [],
       cache: create_cache_read_port({}),
       appSettingService: create_settings(),
       workerClient: worker,
@@ -242,7 +243,7 @@ describe("ProofreadingCache", () => {
     const cache_port = create_cache_read_port({});
     const read_items = vi.spyOn(cache_port.items, "readItems");
     const cache = new ProofreadingCache({
-      readPages: () => [],
+      readPages: async () => [],
       cache: cache_port,
       appSettingService: create_settings(),
       workerClient: worker,
@@ -296,7 +297,7 @@ describe("ProofreadingCache", () => {
         { rel_path: "game.trans", file_type, sort_index: 0 },
       ];
       const cache = new ProofreadingCache({
-        readPages: () => [],
+        readPages: async () => [],
         cache: cache_port,
         appSettingService: create_settings(),
         workerClient: worker,
@@ -328,7 +329,7 @@ describe("ProofreadingCache", () => {
     const worker = create_worker();
     const revisions = { files: 1, items: 1, quality: 1, proofreading: 0 };
     const cache = new ProofreadingCache({
-      readPages: () => [],
+      readPages: async () => [],
       cache: create_cache_read_port({ revisions }),
       appSettingService: create_settings(),
       workerClient: worker,
@@ -360,7 +361,7 @@ describe("ProofreadingCache", () => {
       clean_ruby: false,
     };
     const cache = new ProofreadingCache({
-      readPages: () => [],
+      readPages: async () => [],
       cache: create_cache_read_port({}),
       appSettingService: create_settings(settings),
       workerClient: worker,
@@ -388,7 +389,7 @@ describe("ProofreadingCache", () => {
   it("只清理匹配工程或当前校对缓存", async () => {
     const worker = create_worker();
     const cache = new ProofreadingCache({
-      readPages: () => [],
+      readPages: async () => [],
       cache: create_cache_read_port({}),
       appSettingService: create_settings(),
       workerClient: worker,
@@ -416,7 +417,7 @@ describe("ProofreadingCache", () => {
       }),
     ];
     const cache = new ProofreadingCache({
-      readPages: () => [],
+      readPages: async () => [],
       cache: create_cache_read_port({ revisions, items }),
       appSettingService: create_settings(),
       workerClient: worker,
@@ -475,7 +476,7 @@ describe("ProofreadingCache", () => {
       }),
     ];
     const cache = new ProofreadingCache({
-      readPages: () => [],
+      readPages: async () => [],
       cache: create_cache_read_port({ revisions, items }),
       appSettingService: create_settings(),
       workerClient: worker,
@@ -522,7 +523,7 @@ describe("ProofreadingCache", () => {
     const worker = create_worker();
     const revisions = { files: 1, items: 1, quality: 1, proofreading: 0 };
     const cache = new ProofreadingCache({
-      readPages: () => [],
+      readPages: async () => [],
       cache: create_cache_read_port({ revisions }),
       appSettingService: create_settings(),
       workerClient: worker,
@@ -550,7 +551,7 @@ it("页面修订号单独触发补读，滚动和文本增量复用页面与评�
     { rel_path: "book.pdf", file_type: "PDF", sort_index: 0 },
     { rel_path: "script.txt", file_type: "TXT", sort_index: 1 },
   ];
-  const readPages = vi.fn(() => [
+  const readPages = vi.fn(async () => [
     {
       file_path: "book.pdf",
       document: {
@@ -620,6 +621,30 @@ it("页面修订号单独触发补读，滚动和文本增量复用页面与评�
   ).toMatchObject([{ kind: "page" }]);
 });
 
+it("页面读取排队期间撤销同步，迟到页面不能恢复旧工程索引", async () => {
+  const entered = Promise.withResolvers<void>();
+  const release = Promise.withResolvers<void>();
+  const reader = createProofreadingReader();
+  const service = new ProofreadingCache({
+    cache: create_cache_read_port({}),
+    readPages: async () => {
+      entered.resolve();
+      await release.promise;
+      return [];
+    },
+    appSettingService: create_settings(),
+    workerClient: create_worker(),
+    reader,
+  });
+  const sync = service.sync({});
+  const rejected = expect(sync).rejects.toMatchObject({ code: "request.validation_failed" });
+  await entered.promise;
+  service.clearProject();
+  release.resolve();
+  await rejected;
+  expect(reader.read_items_by_row_ids({ row_ids: ["1"] })).toEqual([]);
+});
+
 it("撤销同步后，迟到计算结果不能恢复旧工程索引", async () => {
   let release!: () => void;
   const pending = new Promise<void>((resolve) => {
@@ -628,7 +653,7 @@ it("撤销同步后，迟到计算结果不能恢复旧工程索引", async () =
   const cache = create_cache_read_port({});
   const worker = create_worker(() => pending);
   const reader = createProofreadingReader();
-  const readPages = vi.fn(() => []);
+  const readPages = vi.fn(async () => []);
   const service = new ProofreadingCache({
     cache,
     readPages,
@@ -671,7 +696,7 @@ it.each(["files", "items"] as const)(
       cache,
       workerClient: worker,
       reader,
-      readPages: () => [],
+      readPages: async () => [],
       appSettingService: create_settings(),
     });
     const sync = service.sync({});
@@ -716,7 +741,7 @@ it("热同步响应的修订号绑定返回快照，不借用等待期间发生�
     cache: create_cache_read_port({ revisions }),
     reader: createProofreadingReader(),
     workerClient: create_worker(),
-    readPages: () => [],
+    readPages: async () => [],
     appSettingService: create_settings(),
   });
   await service.sync({});

@@ -263,10 +263,10 @@ export class AgentService {
   }
 
   /** 菜单读取当前会话可用的轻量文件事实。 */
-  public list_files(): AgentFilesResponse {
+  public async list_files(): Promise<AgentFilesResponse> {
     this.assert_not_disposed();
     if (this.chat_reset !== null) throw new AppErrors.AppError("runtime.busy");
-    return { chatId: this.chat_id, files: this.workspace.list_files() };
+    return { chatId: this.chat_id, files: await this.workspace.list_files() };
   }
 
   /** 完整快照和技能事件共用公开投影，隐藏技能仍可供模型读取。 */
@@ -928,6 +928,7 @@ export class AgentService {
     const chat = await AgentChat.open({
       chatId: this.chat_id,
       storage: await store.open_storage(),
+      readBatch: (callback) => store.read_batch(callback),
       cwd: this.paths.get_app_root(),
       models,
       seed: resources.chatSeed,

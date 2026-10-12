@@ -44,10 +44,10 @@ export class KVJSONFormat {
   public async write_to_path(
     items: Item[],
     paths: GeneratedFilePaths,
-    asset_reader: (path: string) => Buffer | null,
+    asset_reader: (path: string) => Buffer | null | Promise<Buffer | null>,
   ): Promise<void> {
     for (const [rel_path, group] of group_items(items, "KVJSON")) {
-      const original = asset_reader(rel_path);
+      const original = await asset_reader(rel_path);
       if (original === null)
         throw new AppError("file.not_found", { public_details: { file: rel_path } });
       const data: unknown = JsonTool.parseStrict(await decode_text_content(original));

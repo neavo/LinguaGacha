@@ -69,7 +69,7 @@ export async function run_cli_job(
     });
     await backend_services.project.lifecycle.apply_task_input(await build_cli_task_input(command));
 
-    const { entries } = backend_services.project.summary.read().snapshot;
+    const { entries } = (await backend_services.project.summary.read()).snapshot;
     excluded_files = entries
       .filter((entry) => entry.file_type === "PDF")
       .map((entry) => entry.rel_path);
