@@ -307,7 +307,7 @@ export class ProjectWriteStore {
         const item_records: ProjectItemPublicRecord[] = [];
         if (request.assetWrites?.length) {
           const files = new Map<string, { path: string; file_type: string }>(
-            this.database
+            revision_context.database
               .get_all_asset_records(request.projectPath)
               .map((asset) => [asset.path, asset]),
           );

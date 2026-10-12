@@ -1,5 +1,16 @@
+import { add_test_asset_from_source } from "../../test/asset-fixture";
 import { fixture_file_type } from "../../test/asset-fixture";
-import { describe, expect, it } from "vitest";
+import type { JsonRecord } from "../../domain/json";
+import type { ProjectDatabaseAccess } from "../database/database-operations";
+import { describe, expect, it, vi } from "vitest";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { ProjectDatabaseAccess as DatabaseAccess } from "../database/database-operations";
+import { build_project_committed_change } from "./project-committed-change";
+import type { ProjectDataSection } from "../../shared/project-event";
+import { create_pdf_fixture } from "../file/pdf/test-support";
+import { read_pdf_document } from "../file/pdf/pdf-document";
 
 import { CacheManager } from "../cache/cache-manager";
 import { ProjectDatabase } from "../database/database-operations";
@@ -26,7 +37,8 @@ it("工作台同步读取提交缓存，PDF 修改、文本提交及文件删除
   const summaries = vi.spyOn(DatabaseAccess.prototype, "read_pdf_summaries");
   try {
     await database.create_project(project, "test", (writer) => {
-      writer.add_asset_from_source(project, "book.pdf", source, document);
+      add_test_asset_from_source(writer, project, "book.pdf", source, document);
+      writer.add_asset(project, "script.txt", Buffer.from("こんにちは"), "TXT", null);
       writer.set_items(project, [create_item({})]);
     });
     await cache.warmProject(project);

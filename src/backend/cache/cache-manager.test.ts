@@ -120,7 +120,7 @@ function create_cache(options: {
 }
 
 describe("CacheManager", () => {
-  it("已提交快照安装失败后，下次读取从数据库完整恢复", () => {
+  it("已提交快照安装失败后阻止读取，重新热机恢复完整事实", async () => {
     const project = "E:/Project/demo.lg";
     const database = create_database({ items: [create_item()] });
     const cache = create_cache({ database });
@@ -130,6 +130,10 @@ describe("CacheManager", () => {
     });
     expect(() => cache.installProject(project, snapshot)).toThrow("install failed");
     expect(cache.snapshot().freshness).toBe("recoverable_error");
+    expect(() => cache.items.readItems()).toThrow(
+      expect.objectContaining({ code: "data.committed_sync_failed" }),
+    );
+    await cache.warmProject(project);
     expect(cache.items.readItems()).toEqual(snapshot.items);
     expect(cache.files.readFileEntries()).toEqual(Object.values(snapshot.files));
     expect(cache.snapshot()).toMatchObject({
@@ -257,7 +261,7 @@ describe("CacheManager", () => {
           qualityStatisticsScope: "none",
           updatedSections: ["files"],
         },
-        database.get_all_meta("E:/Project/demo.lg"),
+        await database.get_all_meta("E:/Project/demo.lg"),
       ),
       sectionRevisions: { files: 1 },
     });

@@ -543,11 +543,11 @@ describe("AgentWorkspaceService", () => {
     ]);
     const archive = async (name: string) =>
       new JSZip().file(name, "{}").generateAsync({ type: "nodebuffer" });
-    fixture.read_asset_content.mockReturnValue(Buffer.from(await archive("data/Old.json")));
+    fixture.read_asset_content.mockResolvedValue(Buffer.from(await archive("data/Old.json")));
     await run_workspace(fixture);
 
     fixture.snapshot.sectionRevisions.files = 2;
-    fixture.read_asset_content.mockReturnValue(Buffer.from(await archive("data/New.json")));
+    fixture.read_asset_content.mockResolvedValue(Buffer.from(await archive("data/New.json")));
     await run_workspace(fixture);
     const game = path.join(fixture.workspace_root, "sources", file_path);
     expect(fs.existsSync(path.join(game, "data/Old.json"))).toBe(false);
@@ -594,6 +594,22 @@ describe("AgentWorkspaceService", () => {
     expect(fs.readdirSync(path.join(fixture.workspace_root, AGENT_WORKSPACE_WORK_ROOT))).toEqual(
       [],
     );
+  });
+
+  it("sources 生成失败不阻断工程加载，并由 workspace_run 触发重试", async () => {
+    const fixture = await create_fixture(temp_dir);
+    fixture.read_asset_content.mockImplementation(() => {
+      throw new Error("asset read failed");
+    });
+
+    await expect(
+      fixture.service.activate_chat("test0001", [], async () => {}),
+    ).resolves.toBeUndefined();
+    expect(fs.existsSync(path.join(fixture.workspace_root, "sources"))).toBe(false);
+
+    fixture.read_asset_content.mockResolvedValue(Buffer.from("源文件正文", "utf-8"));
+    await run_workspace(fixture);
+    expect(fs.existsSync(path.join(fixture.workspace_root, "sources", "script.txt"))).toBe(true);
   });
 
   it("stale 快照的数据读取失败时保留此前完整快照与兼容 work", async () => {

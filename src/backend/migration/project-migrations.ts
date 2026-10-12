@@ -1,5 +1,4 @@
 import { empty_asset_file_type_migration } from "./project/empty-asset-file-type-migration";
-import type { JsonValue } from "../../domain/json";
 import type { ProjectDatabaseWrite } from "../database/database-operations";
 import type { ProjectOpenMigration, ProjectOpenMigrationInput } from "./migration-types";
 import { EpubRubyBlockTextMigration } from "./project/epub-ruby-block-text-migration";
@@ -28,21 +27,16 @@ const PROJECT_OPEN_MIGRATIONS: readonly ProjectOpenMigration[] = [
 export async function build_project_open_writes(
   input: ProjectOpenMigrationInput,
 ): Promise<ProjectDatabaseWrite[]> {
-  const meta = input.database.get_all_meta(input.project_path);
-  // 按原有首读时机延迟读取 Item。meta Case 失败时不会提前扫描条目。
-  let items: readonly JsonValue[] | undefined;
-  const context = {
-    ...input,
-    meta,
-    assets: input.database.get_all_asset_records(input.project_path),
-    get items() {
-      if (items === undefined) {
-        const value = input.database.get_all_items(input.project_path);
-        items = value;
-      }
-      return items;
-    },
-  };
+  const snapshot = await input.database.read(input.project_path, (reader) => {
+    const meta = reader.get_all_meta(input.project_path);
+    const assets = reader.get_all_asset_records(input.project_path);
+    // 只有文本格式迁移需要扫描条目，普通工程留到打开事务内读取。
+    const items = assets.some((asset) => asset.file_type === "EPUB" || asset.file_type === "MD")
+      ? reader.get_all_items(input.project_path)
+      : [];
+    return { meta, assets, items };
+  });
+  const context = { ...input, ...snapshot };
   const writes: ProjectDatabaseWrite[] = [];
   for (const migration of PROJECT_OPEN_MIGRATIONS) writes.push(...(await migration(context)));
   return writes;

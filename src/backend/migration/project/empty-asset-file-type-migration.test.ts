@@ -15,7 +15,7 @@ it("零条目旧 JSON 和 WOLF 工作簿从原稿识别一次，身份与完成�
   const xlsx = new Uint8Array(await workbook.xlsx.writeBuffer());
   const database = new ProjectDatabase();
   try {
-    database.create_project(project, "old", () => {
+    await database.create_project(project, "old", (database) => {
       database.add_asset(project, "object.json", Buffer.from("{}"), "NONE", null);
       database.add_asset(project, "array.json", Buffer.from("[]"), "NONE", null);
       database.add_asset(project, "broken.json", Buffer.from("{"), "NONE", null);
@@ -26,33 +26,36 @@ it("零条目旧 JSON 和 WOLF 工作簿从原稿识别一次，身份与完成�
       database,
       app_setting_service: {} as AppSettingService,
       items: [],
-      assets: database.get_all_asset_records(project),
+      assets: await database.get_all_asset_records(project),
       meta: {},
     };
     const writes = await empty_asset_file_type_migration(context);
     await expect(
-      database.transaction(project, () => {
+      database.transaction(project, (database) => {
         for (const write of writes) write(database);
         throw new Error("rollback");
       }),
     ).rejects.toThrow();
-    expect(database.get_all_asset_records(project).every((file) => file.file_type === "NONE")).toBe(
-      true,
-    );
-    await database.transaction(project, () => {
+    expect(
+      (await database.get_all_asset_records(project)).every((file) => file.file_type === "NONE"),
+    ).toBe(true);
+    await database.transaction(project, (database) => {
       for (const write of writes) write(database);
     });
-    expect(database.get_all_asset_records(project).map((file) => file.file_type)).toEqual([
+    expect((await database.get_all_asset_records(project)).map((file) => file.file_type)).toEqual([
       "KVJSON",
       "MESSAGEJSON",
       "NONE",
       "WOLFXLSX",
     ]);
-    expect(database.read_asset_content(project, "wolf.xlsx")).toEqual(Buffer.from(xlsx));
+    expect(await database.read_asset_content(project, "wolf.xlsx")).toEqual(Buffer.from(xlsx));
     expect(
-      await empty_asset_file_type_migration({ ...context, meta: database.get_all_meta(project) }),
+      await empty_asset_file_type_migration({
+        ...context,
+        meta: await database.get_all_meta(project),
+      }),
     ).toEqual([]);
   } finally {
-    database.close();
+    await database.close();
   }
 });

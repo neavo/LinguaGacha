@@ -1,4 +1,6 @@
+import { add_test_asset_from_source } from "../../test/asset-fixture";
 import { fixture_file_type } from "../../test/asset-fixture";
+import type { ProjectDatabaseAccess } from "../database/database-operations";
 import { read_pdf_document } from "./pdf/pdf-document";
 import { create_pdf_execution, create_pdf_fixture } from "./pdf/test-support";
 import type { PDFDocument } from "../../shared/pdf";
@@ -42,7 +44,7 @@ it("渲染校验开始前已关闭真实工程连接，校验失败保留文件�
   const failure = new Error("invalid markdown");
   try {
     await database.create_project(project, "test", (writer) =>
-      writer.add_asset_from_source(project, "book.pdf", source, document),
+      add_test_asset_from_source(writer, project, "book.pdf", source, document),
     );
     await session.mark_loaded(project);
     const sidecars: boolean[] = [];

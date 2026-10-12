@@ -35,7 +35,7 @@ describe("ProjectWriteStore", () => {
     ["game/readme.txt", "game"],
   ])("结构写入在事务中拒绝冲突集合且不发布事件 %j", async (...paths) => {
     const { database, project_path, store, published_changes } =
-      create_store("asset-path-conflict");
+      await create_store("asset-path-conflict");
     await expect(
       store.replace_project_items_and_files({
         projectPath: project_path,
@@ -53,13 +53,15 @@ describe("ProjectWriteStore", () => {
         })),
       }),
     ).rejects.toMatchObject({ code: "request.validation_failed" });
-    expect(database.get_all_asset_records(project_path)).toEqual([]);
+    expect(await database.get_all_asset_records(project_path)).toEqual([]);
     expect(published_changes).toEqual([]);
   });
 
   it("路径校验消费删除和新增后的最终集合", async () => {
-    const { database, project_path, store } = create_store("asset-path-final-set");
-    database.add_asset(project_path, "game", Buffer.from("旧文"), "TXT", null);
+    const { database, project_path, store } = await create_store("asset-path-final-set");
+    await database.transaction(project_path, (writer) =>
+      writer.add_asset(project_path, "game", Buffer.from("旧文"), "TXT", null),
+    );
     await store.replace_project_items_and_files({
       projectPath: project_path,
       expectedSectionRevisions: { files: 0 },
@@ -78,9 +80,9 @@ describe("ProjectWriteStore", () => {
         { kind: "delete", path: "game" },
       ],
     });
-    expect(database.get_all_asset_records(project_path).map((asset) => asset.path)).toEqual([
-      "game/readme.txt",
-    ]);
+    expect((await database.get_all_asset_records(project_path)).map((asset) => asset.path)).toEqual(
+      ["game/readme.txt"],
+    );
   });
   it("Agent 提示词覆盖区分无记录、空正文和重置，提交快照保留 null", async () => {
     const committed = vi.fn();
@@ -188,7 +190,13 @@ describe("ProjectWriteStore", () => {
     const { database, project_path } = await create_store("scope");
     await seed_duplicate_items(database, project_path);
     const items = new ItemCache();
-    items.replace(new ProjectDataReader(database).read_items(project_path));
+    items.replace(
+      (
+        await database.read(project_path, (access) => ({
+          item_records: new ProjectDataReader(access).read_items(project_path),
+        }))
+      ).item_records,
+    );
     const all = vi.spyOn(database, "get_all_items");
     const partial = vi.spyOn(ProjectDatabaseAccess.prototype, "get_items_by_ids");
     const store = new ProjectWriteStore(database, () => undefined, null, {
@@ -225,7 +233,7 @@ describe("ProjectWriteStore", () => {
     const source = path.join(path.dirname(project_path), "source.pdf");
     fs.writeFileSync(source, bytes);
     const document = read_pdf_document(bytes);
-    await database.transaction(project_path, () => {
+    await database.transaction(project_path, (database) => {
       add_test_asset_from_source(database, project_path, "book.pdf", source, document, 0);
     });
     const original = ProjectDatabaseAccess.prototype.upsert_meta_entries;
@@ -475,8 +483,9 @@ describe("ProjectWriteStore", () => {
   });
 
   it("提交工作台结构写入时替换事实并发布轻量失效信号", async () => {
-    const { database, project_path, store, published_changes } = create_store("project-content");
-    seed_items(database, project_path);
+    const { database, project_path, store, published_changes } =
+      await create_store("project-content");
+    await seed_items(database, project_path);
 
     await store.replace_project_items_and_files({
       projectPath: project_path,
@@ -543,7 +552,7 @@ describe("ProjectWriteStore", () => {
       orderedPaths: ["b.txt", "a.txt"],
     });
 
-    expect(database.get_all_asset_records(project_path)).toEqual([
+    expect(await database.get_all_asset_records(project_path)).toEqual([
       { path: "b.txt", sort_order: 0, file_type: "TXT" },
       { path: "a.txt", sort_order: 1, file_type: "TXT" },
     ]);
@@ -1132,50 +1141,62 @@ describe("ProjectWriteStore", () => {
   }
 
   /** 准备完整条目事实，局部写入须保留其原文与定位字段。 */
-  function seed_items(database: ProjectDatabase, project_path: string): void {
-    database.add_asset(project_path, "demo.txt", Buffer.from("原文"), "TXT", null);
-    database.set_items(
-      project_path,
-      [
-        {
-          id: 1,
-          src: "原文",
-          dst: "",
-          name_src: "原名",
-          name_dst: null,
-          status: "NONE",
-          file_path: "demo.txt",
-          file_type: "TXT",
-          row: 7,
-        },
-      ].map((item) => create_item(item)),
+  async function seed_items(database: ProjectDatabase, project_path: string): Promise<void> {
+    await database.transaction(project_path, (writer) =>
+      writer.add_asset(project_path, "demo.txt", Buffer.from("原文"), "TXT", null),
+    );
+    await database.transaction(project_path, (writer) =>
+      writer.set_items(
+        project_path,
+        [
+          {
+            id: 1,
+            src: "原文",
+            dst: "",
+            name_src: "原名",
+            name_dst: null,
+            status: "NONE",
+            file_path: "demo.txt",
+            file_type: "TXT",
+            row: 7,
+          },
+        ].map((item) => create_item(item)),
+      ),
     );
   }
 
   /** 为各写入入口提供同一组代表与被动重复事实，只让测试覆盖自身差异。 */
-  function seed_duplicate_items(database: ProjectDatabase, project_path: string): void {
-    database.set_items(
-      project_path,
-      [
-        {
-          id: 1,
-          src: "同文",
-          dst: "",
-          name_dst: null,
-          status: "NONE",
-          file_path: "demo.txt",
-          row: 0,
-        },
-        {
-          id: 2,
-          src: "同文",
-          dst: "",
-          name_dst: null,
-          status: "DUPLICATED",
-          file_path: "other.txt",
-          row: 1,
-        },
-      ].map((item) => create_item(item)),
+  async function seed_duplicate_items(
+    database: ProjectDatabase,
+    project_path: string,
+  ): Promise<void> {
+    await database.transaction(project_path, (writer) =>
+      writer.set_items(
+        project_path,
+        [
+          {
+            id: 1,
+            src: "同文",
+            dst: "",
+            name_dst: null,
+            status: "NONE",
+            file_path: "demo.txt",
+            row: 0,
+          },
+          {
+            id: 2,
+            src: "同文",
+            dst: "",
+            name_dst: null,
+            status: "DUPLICATED",
+            file_path: "other.txt",
+            row: 1,
+          },
+        ].map((item) => create_item(item)),
+      ),
+    );
+    await database.transaction(project_path, (writer) =>
+      writer.set_meta(project_path, "skip_duplicate_source_text_enable", true),
     );
   }
 
@@ -1203,7 +1224,9 @@ describe("ProjectWriteStore", () => {
   ): Promise<void> {
     const source_path = path.join(path.dirname(project_path), `source-${asset_path}`);
     fs.writeFileSync(source_path, content);
-    add_test_asset_from_source(database, project_path, asset_path, source_path, null, sort_order);
+    await database.transaction(project_path, (writer) =>
+      add_test_asset_from_source(writer, project_path, asset_path, source_path, null, sort_order),
+    );
   }
 
   /** 为 Store 集成场景补齐未受影响 kind 的空意图。 */

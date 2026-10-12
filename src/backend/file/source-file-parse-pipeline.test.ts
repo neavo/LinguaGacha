@@ -95,7 +95,7 @@ describe("SourceFileParsePipeline", () => {
           path: file.rel_path,
           file_type: file.file_type,
         })),
-        asset_reader: (file) => database.read_asset_content(project_path, file),
+        asset_reader: async (file) => await database.read_asset_content(project_path, file),
       });
       expect(fs.readFileSync(path.join(output, "text.vtt"), "utf8")).toBe(
         "WEBVTT\n\n00:00.000 --> 00:01.000\n<b>译文</b>尾文\n",

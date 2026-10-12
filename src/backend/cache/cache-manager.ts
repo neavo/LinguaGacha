@@ -106,10 +106,8 @@ export class CacheManager implements CacheReadPort {
   /**
    * 为当前项目执行完整热机，后续 query 可走内存读取。
    */
-  public warmProject(project_path: string): void {
-    this.database.with_project_scope(project_path, () => {
-      this.installProject(project_path, this.data_reader.read_snapshot(project_path));
-    });
+  public async warmProject(project_path: string): Promise<void> {
+    await this.rebuild_full_project_cache(project_path);
   }
 
   /** 仅安装已提交快照，生命周期准备失败时不得调用。 */
@@ -119,6 +117,7 @@ export class CacheManager implements CacheReadPort {
     this.freshness = "recoverable_error"; // 安装中断后，下次读取必须重建全部基础事实。
     this.items.replace(snapshot.items);
     this.files.replace(snapshot.files);
+    this.pdf.replace(snapshot.pdf);
     this.quality.replace(snapshot.quality);
     this.prompts.replace(snapshot.prompts);
     this.qualityStatistics.clear();
@@ -209,7 +208,17 @@ export class CacheManager implements CacheReadPort {
   }
 
   /**
-   * 若上一轮维护失败，则在下一次读取前用数据库事实重建缓存。
+   * 从数据库重建所有基础缓存，读取完成后一次安装。
+   */
+  private async rebuild_full_project_cache(project_path: string): Promise<void> {
+    const snapshot = await this.database.read(project_path, (reader) =>
+      new ProjectDataReader(reader).read_snapshot(project_path),
+    );
+    this.installProject(project_path, snapshot);
+  }
+
+  /**
+   * 重建失败时阻止同步读取旧事实，调用方按已提交语义重载。
    */
   private recover_if_needed(): void {
     if (this.freshness !== "recoverable_error") {
@@ -218,7 +227,9 @@ export class CacheManager implements CacheReadPort {
     if (this.project_path === "") {
       return;
     }
-    this.warmProject(this.project_path);
+    throw new AppError("data.committed_sync_failed", {
+      public_details: { committed: true, action: "reload_project" },
+    });
   }
 
   /**

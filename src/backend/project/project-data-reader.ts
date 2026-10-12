@@ -1,3 +1,4 @@
+import type { PDFSummary } from "../../shared/pdf";
 import { JsonTool } from "../../shared/utils/json-tool";
 import { read_json_record } from "../../domain/json";
 import {
@@ -26,6 +27,7 @@ export type { ProjectDataSection };
 /** 单次准备的基础事实在事务提交后交给缓存，不持有额外长期状态。 */
 export interface ProjectDataSnapshot {
   readonly meta: JsonRecord;
+  readonly pdf: Record<string, PDFSummary>;
   readonly items: readonly ProjectItemPublicRecord[];
   readonly files: Readonly<Record<string, ProjectFileRecord>>;
   readonly quality: QualityRuleBlock;
@@ -93,6 +95,7 @@ export class ProjectDataReader {
     const meta = this.get_all_meta(project_path);
     return {
       meta,
+      pdf: this.database.read_pdf_summaries(project_path),
       items: this.read_items(project_path),
       files: this.build_files_record_block(project_path),
       quality: this.build_quality_block(project_path, meta),

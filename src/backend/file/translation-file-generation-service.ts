@@ -164,9 +164,9 @@ export class TranslationFileGenerationService {
       {
         paths,
         asset_reader: (rel_path) => this.database.read_asset_content(project_path, rel_path),
-        source_files: this.database
-          .get_all_asset_records(project_path)
-          .filter((file) => !excluded_files.includes(file.path)),
+        source_files: (await this.database.get_all_asset_records(project_path)).filter(
+          (file) => !excluded_files.includes(file.path),
+        ),
       },
     );
   }

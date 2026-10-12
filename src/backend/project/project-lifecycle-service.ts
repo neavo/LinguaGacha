@@ -1,6 +1,7 @@
 import type { SourceFileParseWarning } from "../file/file-format-shared";
 import { normalize_batch_translation_progress } from "../../domain/batch-translation";
 import { coordinate_project_duplicate_statuses } from "../../shared/project/project-item-duplicates";
+import type { ProjectDatabaseAccess } from "../database/database-operations";
 import type { ProjectPreviewResponse } from "../../shared/project-preview";
 import type { PDFExecution } from "../file/pdf/pdf-worker";
 import path from "node:path";
@@ -146,43 +147,32 @@ export class ProjectLifecycleService {
   /**
    * 在生命周期租约内准备旧工程事实，事务成功后激活会话。
    */
-  private async load_project_under_lease(body: JsonRecord, prepared = false): Promise<JsonRecord> {
+  private async load_project_under_lease(body: JsonRecord): Promise<JsonRecord> {
     const project_path = this.require_body_string(body, "path");
     this.assert_project_file_exists(project_path);
     let committed = false; // 包含连接释放在内的提交后步骤都只能要求恢复。
     try {
-      return await this.database.with_project_scope_async(project_path, async () => {
-        // 打开期迁移只生成 operation，和 updated_at 一起提交后才暴露 loaded 状态
-        const migration_writes = await build_project_open_writes({
-          project_path,
-          database: this.database,
-          app_setting_service: this.app_setting_service,
-        });
-
-        const snapshot = await this.database.transaction(project_path, () => {
-          this.database.set_meta(project_path, "updated_at", this.build_timestamp());
-          for (const write of migration_writes) {
-            write(this.database);
-          }
-          return this.coordinate_open_project_duplicates(
-            project_path,
-            new ProjectDataReader(this.database).read_snapshot(project_path),
-          );
-        });
-        committed = true;
-        return await this.activate_project(project_path, snapshot);
+      await this.database.prepare(project_path);
+      // 打开期迁移只生成 operation，和 updated_at 一起提交后才暴露 loaded 状态
+      const migration_writes = await build_project_open_writes({
+        project_path,
+        database: this.database,
+        app_setting_service: this.app_setting_service,
       });
 
-      await this.database.transaction(project_path, (writer) => {
+      const snapshot = await this.database.transaction(project_path, (writer) => {
         writer.set_meta(project_path, "updated_at", this.build_timestamp());
         for (const write of migration_writes) {
           write(writer);
         }
+        return this.coordinate_open_project_duplicates(
+          writer,
+          project_path,
+          new ProjectDataReader(writer).read_snapshot(project_path),
+        );
       });
       committed = true;
-      await this.cache.warmProject(project_path);
-      await this.session_state.mark_loaded(project_path);
-      return this.build_loaded_project_response(project_path);
+      return await this.activate_project(project_path, snapshot);
     } catch (cause) {
       if (AppErrors.is_app_error(cause) && cause.code === "data.committed_sync_failed") throw cause;
       if (!committed) throw cause;
@@ -196,6 +186,7 @@ export class ProjectLifecycleService {
 
   /** 格式迁移可能改写原文。在同一打开事务内协调最终条目，再让缓存和会话消费。 */
   private coordinate_open_project_duplicates(
+    writer: ProjectDatabaseAccess,
     project_path: string,
     snapshot: ProjectDataSnapshot,
   ): ProjectDataSnapshot {
@@ -216,12 +207,12 @@ export class ProjectLifecycleService {
     const writes = next_items
       .filter((item) => statuses.has(item.item_id))
       .map((item) => ({ item_id: item.item_id, next: item }));
-    this.database.patch_item_translation_fields(project_path, writes);
+    writer.patch_item_translation_fields(project_path, writes);
     const translation_extras = build_translation_extras_from_items({
       progress: normalize_batch_translation_progress(meta["translation_extras"]),
       items: next_items,
     }) as unknown as JsonValue;
-    this.database.set_meta(project_path, "translation_extras", translation_extras);
+    writer.set_meta(project_path, "translation_extras", translation_extras);
     return { ...snapshot, items: next_items, meta: { ...meta, translation_extras } };
   }
 
@@ -278,10 +269,10 @@ export class ProjectLifecycleService {
     await this.database.create_project(
       project_path,
       this.build_project_name(source_paths, project_path),
-      () => {
-        this.write_default_presets(project_path, default_preset_input);
+      (writer) => {
+        this.write_default_presets(writer, project_path, default_preset_input);
         for (const file of parsed_draft.files) {
-          this.database.add_asset(
+          writer.add_asset(
             project_path,
             file.rel_path,
             file.content,
@@ -301,11 +292,11 @@ export class ProjectLifecycleService {
             prefilter_output,
           }) as unknown as JsonRecord,
         );
-        this.database.upsert_meta_entries(project_path, {
+        writer.upsert_meta_entries(project_path, {
           translation_prompt_legacy_migrated: true,
           "migration.asset_file_type_complete": true,
         });
-        snapshot = new ProjectDataReader(this.database).read_snapshot(project_path);
+        snapshot = new ProjectDataReader(writer).read_snapshot(project_path);
       },
     );
 
@@ -340,9 +331,13 @@ export class ProjectLifecycleService {
   /**
    * 默认预设显式输入在新建事务内落库，不把数据库写闭包泄漏给读取器。
    */
-  private write_default_presets(project_path: string, input: ProjectDefaultPresetInput): void {
-    this.database.set_meta(project_path, "glossary_enable", true);
-    this.database.set_meta(project_path, "text_preserve_mode", input.text_preserve_mode);
+  private write_default_presets(
+    writer: ProjectDatabaseAccess,
+    project_path: string,
+    input: ProjectDefaultPresetInput,
+  ): void {
+    writer.set_meta(project_path, "glossary_enable", true);
+    writer.set_meta(project_path, "text_preserve_mode", input.text_preserve_mode);
     for (const rule of input.quality_rules) {
       const storage = resolve_project_quality_rule_storage(rule.kind);
       writer.set_rules(project_path, storage.database_type, rule.entries as unknown as JsonValue[]);

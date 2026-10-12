@@ -11,7 +11,7 @@ export const empty_asset_file_type_migration: ProjectOpenMigration = async (cont
   const types = new Map<string, string>();
   for (const asset of context.assets) {
     if (asset.file_type !== "NONE") continue;
-    const content = context.database.read_asset_content(context.project_path, asset.path);
+    const content = await context.database.read_asset_content(context.project_path, asset.path);
     if (content === null) continue;
     try {
       const extension = path.extname(asset.path).toLowerCase();

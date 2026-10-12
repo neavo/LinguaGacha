@@ -118,9 +118,9 @@ export class ProjectContentService {
     const source_paths = this.normalize_string_list(request["source_paths"]);
     const entries = format_service.assign_source_file_paths(
       format_service.collect_source_file_entries(source_paths),
-      this.database.get_all_asset_records(project_path),
+      await this.database.get_all_asset_records(project_path),
     );
-    const commands = this.prepare_import_file_commands(project_path, entries, format_service);
+    const commands = await this.prepare_import_file_commands(project_path, entries, format_service);
     const result = await new SourceFileParsePipeline(format_service).parse_import_commands(
       commands.filter(
         (command) =>
@@ -511,7 +511,7 @@ export class ProjectContentService {
     return this.runtime_gate.run_project_write(async () => {
       if (mode === "all") {
         const { items: parsed_items, warnings } = await this.reparse_all_assets(project_path);
-        const settings = this.read_project_write_settings(
+        const settings = await this.read_project_write_settings(
           project_path,
           request["project_settings"],
         );
@@ -525,7 +525,7 @@ export class ProjectContentService {
           }),
         );
         const files = build_project_file_records(snapshot.asset_records);
-        const write_output = this.compute_prefilter_output({
+        const write_output = await this.compute_prefilter_output({
           project_path,
           files,
           items: this.public_item_record(reset_items),
@@ -551,7 +551,7 @@ export class ProjectContentService {
       }
       if (mode === "failed") {
         // 失败条目已获准翻译，重试保留该资格。
-        const items = this.to_public_item_record(this.database.get_all_items(project_path));
+        const items = this.to_public_item_record(await this.database.get_all_items(project_path));
         for (const item of Object.values(items)) {
           if (item.status !== "ERROR") {
             continue;
@@ -609,15 +609,16 @@ export class ProjectContentService {
   }
 
   /** 预览与提交各自读取资产事实，替换身份由目标资产确定。 */
-  private prepare_import_file_commands(
+  private async prepare_import_file_commands(
     project_path: string,
     entries: readonly ProjectSourceFileEntry[],
     format_service: FileFormatService,
-  ): SourceFileParseCommand[] {
+  ): Promise<SourceFileParseCommand[]> {
     const assets = new Map(
-      this.database
-        .get_all_asset_records(project_path)
-        .map((asset) => [normalize_project_asset_path(asset.path).toLowerCase(), asset]),
+      (await this.database.get_all_asset_records(project_path)).map((asset) => [
+        normalize_project_asset_path(asset.path).toLowerCase(),
+        asset,
+      ]),
     );
     return entries.map((entry) => {
       const asset = assets.get(normalize_project_asset_path(entry.rel_path).toLowerCase());
@@ -636,7 +637,7 @@ export class ProjectContentService {
     file_commands: ImportProjectFileCommand[],
   ): Promise<SourceFileParseResult> {
     const format_service = this.create_format_service();
-    const commands = this.prepare_import_file_commands(
+    const commands = await this.prepare_import_file_commands(
       project_path,
       file_commands.map((file) => ({
         source_path: file.source_path,
@@ -733,17 +734,19 @@ export class ProjectContentService {
   /**
    * 按本次操作的目标路径读取 asset、item 和 PDF 身份，支持打开前的设置对齐。
    */
-  private read_project_write_snapshot(project_path: string): ProjectWriteSnapshot {
-    const asset_records = this.database.get_all_asset_records(project_path);
-    const item_records = this.database.get_all_items(project_path);
-    const pdf_paths = Object.keys(this.database.read_pdf_summaries(project_path));
-    const public_items_by_id = this.to_public_items_by_id(item_records);
-    return {
-      asset_records,
-      pdf_paths,
-      public_items_by_id,
-      files: new ProjectDataReader(this.database).build_files_record_block(project_path),
-    };
+  private async read_project_write_snapshot(project_path: string): Promise<ProjectWriteSnapshot> {
+    return this.database.read(project_path, (reader) => {
+      const asset_records = reader.get_all_asset_records(project_path);
+      const item_records = reader.get_all_items(project_path);
+      const pdf_paths = Object.keys(reader.read_pdf_summaries(project_path));
+      const public_items_by_id = this.to_public_items_by_id(item_records);
+      return {
+        asset_records,
+        pdf_paths,
+        public_items_by_id,
+        files: new ProjectDataReader(reader).build_files_record_block(project_path),
+      };
+    });
   }
 
   /**
@@ -947,8 +950,8 @@ export class ProjectContentService {
     const format_service = this.create_format_service();
     const items: Item[] = [];
     const warnings: SourceFileParseWarning[] = [];
-    for (const record of this.database.get_all_asset_records(project_path)) {
-      const content = this.database.read_asset_content(project_path, record.path);
+    for (const record of await this.database.get_all_asset_records(project_path)) {
+      const content = await this.database.read_asset_content(project_path, record.path);
       if (content === null) {
         throw new AppErrors.AppError("file.not_found", {
           diagnostic_context: { asset_path: record.path },
@@ -959,7 +962,7 @@ export class ProjectContentService {
           diagnostic_context: { asset_path: record.path, reason: "unsupported_format" },
         });
       }
-      if (this.database.read_pdf_document(project_path, record.path) !== null) continue;
+      if ((await this.database.read_pdf_document(project_path, record.path)) !== null) continue;
       const parsed = await format_service.parse_asset(record.path, content, record.file_type);
       if (parsed.kind === "items") {
         items.push(...parsed.items);

@@ -151,7 +151,7 @@ export class RPGMakerGameFormat {
     }> = [];
     for (const file of context.source_files) {
       if (file.file_type !== this.adapter.file_type) continue;
-      const content = context.asset_reader(file.path);
+      const content = await context.asset_reader(file.path);
       if (content === null)
         throw new AppError("file.not_found", { public_details: { file: file.path } });
       const files = await read_rpgmaker_container(content, file.path);

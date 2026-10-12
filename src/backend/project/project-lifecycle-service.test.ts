@@ -1,4 +1,4 @@
-import type { ProjectDatabaseAccess } from "../database/database-operations";
+import { ProjectDatabaseAccess } from "../database/database-operations";
 import { create_pdf_execution } from "../file/pdf/test-support";
 import { read_zip_fixture, zip_text } from "../../test/zip-fixture";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -49,7 +49,7 @@ describe("ProjectLifecycleService", () => {
       },
     });
     try {
-      const reads = vi.spyOn(database, "get_all_items");
+      const reads = vi.spyOn(ProjectDatabaseAccess.prototype, "get_all_items");
       await service.create_project_commit({ path: project_path, source_paths: [source, trans] });
       expect(reads).toHaveBeenCalledTimes(1);
       expect(snapshots[0]?.meta).toMatchObject({
@@ -67,7 +67,7 @@ describe("ProjectLifecycleService", () => {
       expect(loaded).toEqual(created);
       expect(second_meta.translation_extras).toEqual(first_meta.translation_extras);
     } finally {
-      database.close();
+      await database.close();
     }
   });
 
@@ -78,10 +78,12 @@ describe("ProjectLifecycleService", () => {
     const publish = vi.fn();
     try {
       if (operation === "load") {
-        database.create_project(project_path, "old");
-        database.set_meta(project_path, "updated_at", "before");
+        await database.create_project(project_path, "old");
+        await database.transaction(project_path, (writer) =>
+          writer.set_meta(project_path, "updated_at", "before"),
+        );
       }
-      vi.spyOn(database, "get_rules").mockImplementationOnce(() => {
+      vi.spyOn(ProjectDatabaseAccess.prototype, "get_rules").mockImplementationOnce(() => {
         throw new Error("snapshot failed");
       });
       const service = create_service({ database, session_state, project_event_handler: publish });
@@ -93,9 +95,10 @@ describe("ProjectLifecycleService", () => {
       expect(publish).not.toHaveBeenCalled();
       expect(session_state.snapshot().loaded).toBe(false);
       if (operation === "create") expect(fs.existsSync(project_path)).toBe(false);
-      else expect(database.get_all_meta(project_path)).toMatchObject({ updated_at: "before" });
+      else
+        expect(await database.get_all_meta(project_path)).toMatchObject({ updated_at: "before" });
     } finally {
-      database.close();
+      await database.close();
     }
   });
 
@@ -119,7 +122,7 @@ describe("ProjectLifecycleService", () => {
       await service.load_project({ path: project_path });
       expect(session_state.snapshot()).toEqual({ loaded: true, projectPath: project_path });
     } finally {
-      database.close();
+      await database.close();
     }
   });
 
@@ -159,40 +162,13 @@ describe("ProjectLifecycleService", () => {
         code: "data.committed_sync_failed",
         public_details: { committed: true, action: "reload_project" },
       });
-      vi.spyOn(DatabaseSync.prototype, "close").mockImplementationOnce(() => {
-        throw close;
-      });
-      try {
-        let failure: unknown;
-        try {
-          await service.load_project({ path: project_path });
-        } catch (error) {
-          failure = error;
-        }
-        expect(failure).toMatchObject({
-          code: "data.committed_sync_failed",
-          public_details: { committed: true, action: "reload_project" },
-        });
-        if (phase === "committed-and-close") {
-          expect(failure).toHaveProperty("public_details", (main as AppError).public_details);
-          expect(failure).toHaveProperty("cause.errors", [
-            main,
-            expect.objectContaining({ cause: close }),
-          ]);
-        } else if (phase === "cache-and-close") {
-          expect(failure).toHaveProperty("cause.errors", [
-            expect.objectContaining({ code: "data.committed_sync_failed", cause: main }),
-            expect.objectContaining({ cause: close }),
-          ]);
-        } else expect(failure).toHaveProperty("cause.cause", close);
-        database.close();
-        expect(database.get_all_meta(project_path).updated_at).not.toBe("before");
-      } finally {
-        vi.restoreAllMocks();
-        database.close();
-      }
-    },
-  );
+      await database.close_project(project_path);
+      expect((await database.get_all_meta(project_path)).updated_at).not.toBe("before");
+    } finally {
+      vi.restoreAllMocks();
+      await database.close();
+    }
+  });
 
   it("snapshot 只暴露 会话权威的加载态字段", async () => {
     const service = create_service({
@@ -285,7 +261,7 @@ describe("ProjectLifecycleService", () => {
     const project_path = path.join(create_temp_dir(), "duplicates.lg");
     const database = new ProjectDatabase();
     try {
-      database.create_project(project_path, "duplicates", () => {
+      await database.create_project(project_path, "duplicates", (database) => {
         database.set_meta(project_path, "skip_duplicate_source_text_enable", enabled);
         database.set_items(project_path, [
           create_item({ id: 1, src: "同文", file_path: "a.txt", row: 99, status: "DUPLICATED" }),
@@ -309,15 +285,15 @@ describe("ProjectLifecycleService", () => {
       });
       const service = create_service({
         database,
-        project_event_handler: () => {
-          expect(database.get_all_items(project_path).map((item) => item.status)).toEqual([
+        project_event_handler: async () => {
+          expect((await database.get_all_items(project_path)).map((item) => item.status)).toEqual([
             "NONE",
             enabled ? "DUPLICATED" : "NONE",
             "PROCESSED",
             "PROCESSED",
             "EXCLUDED",
           ]);
-          expect(database.get_all_meta(project_path).translation_extras).toMatchObject({
+          expect((await database.get_all_meta(project_path)).translation_extras).toMatchObject({
             total_line: enabled ? 3 : 4,
             processed_line: 2,
             error_line: 0,
@@ -326,12 +302,12 @@ describe("ProjectLifecycleService", () => {
         },
       });
       await service.load_project({ path: project_path });
-      const items = database.get_all_items(project_path);
+      const items = await database.get_all_items(project_path);
       expect(items.slice(2, 4).map((item) => item.dst)).toEqual(["保留甲", "保留乙"]);
       await service.load_project({ path: project_path });
-      expect(database.get_all_items(project_path)).toEqual(items);
+      expect(await database.get_all_items(project_path)).toEqual(items);
     } finally {
-      database.close();
+      await database.close();
     }
   });
 
@@ -470,7 +446,7 @@ describe("ProjectLifecycleService", () => {
         }),
       ).resolves.toEqual({ project: { path: project_path, loaded: true } });
 
-      expect(database.get_all_asset_records(project_path)).toEqual([
+      expect(await database.get_all_asset_records(project_path)).toEqual([
         { path: path.join("source", "script.txt"), sort_order: 0, file_type: "TXT" },
       ]);
       expect(await database.get_all_items(project_path)).toMatchObject([
@@ -723,7 +699,7 @@ describe("ProjectLifecycleService", () => {
         ],
       });
 
-      expect(database.get_all_asset_records(project_path)).toEqual([
+      expect(await database.get_all_asset_records(project_path)).toEqual([
         { path: path.join("source", "script.txt"), sort_order: 0, file_type: "TXT" },
       ]);
       expect(log_manager.warning).toHaveBeenCalledWith(
@@ -753,13 +729,13 @@ describe("ProjectLifecycleService", () => {
       });
       expect(result["failed_files"]).toBeUndefined();
       const archive = await read_zip_fixture(
-        database.read_asset_content(project_path, "game.zip")!,
+        (await database.read_asset_content(project_path, "game.zip"))!,
       );
       expect(zip_text(archive, "js/plugins/bad.js")).toEqual(fs.readFileSync(source, "utf8"));
-      expect(database.get_all_asset_records(project_path)).toMatchObject([
+      expect(await database.get_all_asset_records(project_path)).toMatchObject([
         { path: "game.zip", file_type: "RPGMAKER_MV_MZ" },
       ]);
-      expect(database.get_all_items(project_path)).toEqual([]);
+      expect(await database.get_all_items(project_path)).toEqual([]);
       expect(log_manager.warning).toHaveBeenCalledWith(
         expect.stringContaining("bad.js"),
         expect.objectContaining({
@@ -775,7 +751,7 @@ describe("ProjectLifecycleService", () => {
         }),
       );
     } finally {
-      database.close();
+      await database.close();
     }
   });
 
@@ -971,6 +947,7 @@ describe("ProjectLifecycleService", () => {
       get_all_meta: vi.fn(() => options.meta ?? {}),
       get_all_items: vi.fn(() => options.items ?? []),
       get_rules: vi.fn(() => []),
+      read_pdf_summaries: vi.fn(() => ({})),
       get_all_asset_records: vi.fn(() => options.asset_records ?? []),
       get_rule_text: vi.fn(
         (_project_path: string, rule_type: string) => options.rule_text_by_type?.[rule_type] ?? "",
@@ -988,7 +965,7 @@ describe("ProjectLifecycleService", () => {
       set_meta: vi.fn(),
       set_rules: vi.fn(),
       set_rule_text: vi.fn(),
-      add_asset_from_source: vi.fn(),
+      add_asset: vi.fn(),
       set_items: vi.fn(() => []),
       upsert_meta_entries: vi.fn(),
       close_project,
