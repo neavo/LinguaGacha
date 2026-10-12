@@ -1,4 +1,4 @@
-import { read_translation_for_generation } from "../translation-generation-text";
+import { read_translation_for_generation } from "../shared/translation-generation-text";
 import type { JsonValue, MutableJsonRecord } from "../../../domain/json";
 import { AppError } from "../../../shared/error";
 import {

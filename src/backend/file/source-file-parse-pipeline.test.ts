@@ -158,7 +158,12 @@ describe("SourceFileParsePipeline", () => {
     const pipeline = new SourceFileParsePipeline(create_format_service());
 
     const result = await pipeline.parse_import_commands([
-      { source_path: source_file, rel_path: "nested/target.txt", file_type: "TXT" },
+      {
+        source_path: source_file,
+        rel_path: "nested/target.txt",
+        file_type: "TXT",
+        source: { kind: "file", format: "txt" },
+      },
     ]);
 
     expect(result.failed_files).toEqual([]);
@@ -205,8 +210,7 @@ it("多个带后缀同名游戏混合导入，入口去重并按原目录名导�
   const draft = await new SourceFileParsePipeline(service).build_project_draft(inputs);
   expect(draft.failed_files).toEqual([]);
   expect(
-    service
-      .collect_source_file_entries(inputs)
+    (await service.collect_source_file_entries(inputs))
       .filter((entry) => entry.file_type === "RPGMAKER_MV_MZ")
       .map((entry) => entry.rel_path),
   ).toEqual([`${name}.zip`, `${name}.zip`]);

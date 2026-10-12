@@ -5,7 +5,7 @@ import path from "node:path";
 import { NativeFs } from "../../../native/native-fs";
 import { rgss_archive_fixture } from "../../../test/rgss-archive-fixture";
 import { script_path, read_rgss_game, discover_rgss_source } from "./source";
-import { read_rpgmaker_container } from "../rpgmaker-shared";
+import { read_rpgmaker_container } from "../shared/rpgmaker-format";
 import { write_zip } from "../../../test/zip-fixture";
 
 it.each(["read", "decode", "header", "missing"])("RGSS %s 失败保留候选与具体原因", (failure) => {
@@ -33,8 +33,7 @@ it.each(["read", "decode", "header", "missing"])("RGSS %s 失败保留候选与�
       return read(file);
     });
   }
-  const problem = discover_rgss_source(root, native)?.problem;
-  expect(problem).toMatch(
+  expect(() => discover_rgss_source(root, native)).toThrow(
     failure === "read"
       ? /configuration access denied/u
       : failure === "decode"

@@ -1,3 +1,4 @@
+import { evb_fixture } from "../../test/evb-fixture";
 import { ProjectDatabaseAccess } from "../database/database-operations";
 import { create_pdf_execution } from "../file/pdf/test-support";
 import { read_zip_fixture, zip_text } from "../../test/zip-fixture";
@@ -665,12 +666,16 @@ describe("ProjectLifecycleService", () => {
     ).rejects.toThrow(expect.objectContaining({ code: "request.validation_failed" }));
   });
 
-  it("create-commit 跳过解析失败源文件并继续创建可用文件", async () => {
+  it.each(["json", "evb"])("create-commit 跳过 %s 失败来源并继续创建可用文件", async (kind) => {
     const app_root = create_temp_dir();
     const project_path = path.join(app_root, "partial-created.lg");
     const source_dir = path.join(app_root, "source");
     write_file(path.join(source_dir, "script.txt"), "こんにちは");
-    const broken_json = write_file(path.join(source_dir, "broken.json"), "{");
+    const broken_json = write_file(
+      path.join(source_dir, kind === "json" ? "broken.json" : "broken.exe"),
+      "{",
+    );
+    if (kind === "evb") fs.writeFileSync(broken_json, evb_fixture(new Map()).subarray(0, -1));
     const database = new ProjectDatabase();
     const log_manager = create_log_manager();
     const service = create_service({
@@ -691,9 +696,9 @@ describe("ProjectLifecycleService", () => {
         failed_files: [
           {
             source_path: broken_json,
-            rel_path: path.join("source", "broken.json"),
-            filename: "broken.json",
-            code: "file.parse_failed",
+            rel_path: kind === "json" ? path.join("source", "broken.json") : "broken.exe",
+            filename: path.basename(broken_json),
+            code: kind === "json" ? "file.parse_failed" : "file.io_failed",
             message: expect.any(String),
           },
         ],

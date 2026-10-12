@@ -1,5 +1,5 @@
 import path from "node:path";
-import type { SourceFileParseWarning } from "./file-format-shared";
+import type { SourceFileParseWarning } from "./file-format-types";
 
 import type { LogManager } from "../log/log-manager";
 import * as AppErrors from "../../shared/error";

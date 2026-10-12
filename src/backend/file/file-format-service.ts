@@ -1,14 +1,23 @@
+import { build_source_file_parse_failure } from "./source-file-parse-failure-reporter";
+import {
+  discover_source,
+  discover_sources,
+  assert_source_identities,
+  type DiscoveredSource,
+} from "./source-discovery";
+import { prepare_rpgmaker_source } from "./rpgmaker-mv-mz/prepare";
+import type { RPGMakerMvMzPrepareExecution } from "./rpgmaker-mv-mz/prepare-worker";
 import { rpgmaker_default_status } from "./rpgmaker-mv-mz/item";
 import { rgss_default_status } from "./rpgmaker-rgss/item";
 import { RPGMakerRGSSFormat } from "./rpgmaker-rgss/rpgmaker-format";
-import { discover_rgss_source } from "./rpgmaker-rgss/source";
+import { collect_rgss_files } from "./rpgmaker-rgss/source";
 import { prepare_rgss_source } from "./rpgmaker-rgss/prepare";
 import { is_rpgmaker_file_type } from "../../shared/project-source-formats";
 import { format_local_timestamp } from "../../shared/utils/format-local-timestamp";
 import { normalize_project_asset_path } from "../../shared/project/project-asset-paths";
 import { SourceFilePathIndex } from "./source-file-paths";
 import { RPGMakerMvMzFormat } from "./rpgmaker-mv-mz/rpgmaker-format";
-import { discover_rpgmaker_source } from "./rpgmaker-mv-mz/source";
+import { collect_rpgmaker_files } from "./rpgmaker-mv-mz/source";
 import type { PDFExecution } from "./pdf/pdf-worker";
 import { PDFFormat } from "./pdf/pdf-format";
 import path from "node:path";
@@ -36,21 +45,12 @@ import {
   type FileFormatServiceWriteContext,
   type FileFormatServiceConfig,
   type ProjectSourceFileEntry,
-} from "./file-format-shared";
+} from "./file-format-types";
 import {
   PROJECT_SOURCE_FORMATS,
-  type ProjectSourceFormatId,
   type ProjectSourceFormatHitCounts,
   type ProjectSourceFileSummary,
 } from "../../shared/project-source-formats";
-
-// 文件发现与摘要统计共用同一扩展名映射，避免支持范围产生第二份白名单。
-const PROJECT_SOURCE_FORMAT_ID_BY_EXTENSION = new Map<string, ProjectSourceFormatId>(
-  PROJECT_SOURCE_FORMATS.filter((format) => format.source_kind === "file").map((format) => [
-    format.extension,
-    format.id,
-  ]),
-);
 
 /**
  * Backend 公开文件格式门面；具体格式逻辑按稳定格式处理器拆分
@@ -87,6 +87,7 @@ export class FileFormatService {
     config: FileFormatServiceConfig,
     private readonly pdf_execution: PDFExecution,
     native_fs: NativeFs = default_native_fs,
+    private readonly rpgmaker_mv_mz_prepare_execution?: RPGMakerMvMzPrepareExecution,
   ) {
     this.native_fs = native_fs;
     this.rgss = new RPGMakerRGSSFormat(native_fs);
@@ -103,16 +104,6 @@ export class FileFormatService {
     this.trans = new TRANSFormat();
     this.renpy = new RenPyFormat(config);
     this.epub = new EPUBFormat(config);
-  }
-
-  /**
-   * 判断公开文件域可接收的源文件格式
-   */
-  public is_supported_file(file_path: string): boolean {
-    return (
-      PROJECT_SOURCE_FORMAT_ID_BY_EXTENSION.has(path.extname(file_path).toLowerCase()) ||
-      this.source_file_type(file_path) !== undefined
-    );
   }
 
   /**
@@ -213,72 +204,37 @@ export class FileFormatService {
     };
   }
 
-  /** 来源目录只决定新文件的原生游戏身份。 */
-  public source_file_type(source_path: string): string | undefined {
-    return discover_rpgmaker_source(source_path, this.native_fs) !== null
-      ? "RPGMAKER_MV_MZ"
-      : discover_rgss_source(source_path, this.native_fs) !== null
-        ? "RPGMAKER_RGSS"
-        : undefined;
+  /** 新建、摘要和预览共用发现结果，正式导入重新识别本次选定来源。 */
+  public async collect_source_file_entries(
+    source_paths: string[],
+    signal?: AbortSignal,
+  ): Promise<DiscoveredSource[]> {
+    return discover_sources(source_paths, this.native_fs, signal);
   }
 
-  /**
-   * 发现独立来源并按物理路径去重，保留原始候选名称
-   */
-  public collect_source_file_entries(source_paths: string[]): ProjectSourceFileEntry[] {
-    const normalized_source_paths = this.normalize_source_paths(source_paths);
-    const candidates: ProjectSourceFileEntry[] = [];
-    const seen_file_keys = new Set<string>();
-    const visit = (source_path: string, source_root: string): void => {
-      if (!this.native_fs.exists(source_path)) return;
-      const mv = discover_rpgmaker_source(source_path, this.native_fs);
-      const game = mv ?? discover_rgss_source(source_path, this.native_fs);
-      if (game !== null) {
-        const key = this.build_path_identity_key(game.root);
-        if (!seen_file_keys.has(key)) {
-          seen_file_keys.add(key);
-          candidates.push({
-            source_path: game.root,
-            rel_path: path.basename(game.root) + ".zip",
-            file_type: mv ? "RPGMAKER_MV_MZ" : "RPGMAKER_RGSS",
-          });
-        }
-        return; // 游戏收集器拥有内部文件，通用扫描到此结束。
-      }
-      const stat = this.native_fs.stat(source_path);
-      if (stat.isDirectory()) {
-        for (const entry of this.native_fs
-          .read_dirents(source_path)
-          .sort((a, b) => a.name.localeCompare(b.name))) {
-          if (entry.isDirectory() || entry.isFile())
-            visit(path.join(source_path, entry.name), source_root);
-        }
-      } else if (stat.isFile() && this.is_supported_file(source_path)) {
-        const key = this.build_path_identity_key(source_path);
-        if (seen_file_keys.has(key)) return;
-        seen_file_keys.add(key);
-        candidates.push({
-          source_path,
-          rel_path: this.build_source_relative_path(source_root, source_path),
-        });
-      }
-    };
-    for (const source_path of normalized_source_paths) visit(source_path, source_path);
-    const game_roots = candidates
-      .filter((entry) => is_rpgmaker_file_type(entry.file_type))
-      .map((entry) => this.build_path_identity_key(entry.source_path));
-    const sources = candidates.filter((entry) => {
-      const key = this.build_path_identity_key(entry.source_path);
-      return !game_roots.some((root) => key !== root && key.startsWith(root + path.sep));
-    });
-    return sources;
+  /** 导入确认后的目标路径固定；识别错误也保留在同一批次中。 */
+  public async discover_import_sources(
+    entries: readonly ProjectSourceFileEntry[],
+    signal?: AbortSignal,
+  ): Promise<DiscoveredSource[]> {
+    const result: DiscoveredSource[] = [];
+    for (const entry of entries) {
+      const resolved = await discover_source(entry.source_path, this.native_fs, signal);
+      result.push({
+        ...resolved,
+        rel_path: entry.rel_path,
+        file_type: entry.file_type ?? resolved.file_type,
+      });
+    }
+    assert_source_identities(result, this.native_fs);
+    return result;
   }
 
   /** 预览保留已有同名资产供用户确认替换，祖先路径冲突改名到可共同投影的位置。 */
-  public assign_source_file_paths(
-    entries: readonly ProjectSourceFileEntry[],
+  public assign_source_file_paths<T extends ProjectSourceFileEntry>(
+    entries: readonly T[],
     existing_files: readonly { path: string; file_type: string }[] = [],
-  ): ProjectSourceFileEntry[] {
+  ): T[] {
     const timestamp = format_local_timestamp(new Date().toISOString())!
       .replaceAll("-", "")
       .replaceAll(":", "")
@@ -288,7 +244,7 @@ export class FileFormatService {
     const original = new SourceFilePathIndex(); // 自动名称不能抢占尚未分配的原始候选。
     for (const entry of entries) original.reserve(entry.rel_path, entry.file_type);
     const assigned = new SourceFilePathIndex();
-    const result: ProjectSourceFileEntry[] = [...entries];
+    const result: T[] = [...entries];
     const directories = new Map<string, string>(); // 同一准备操作中的目录前缀只改名一次，子文件共同迁移。
     // 普通目录先占位，游戏避让；结果仍按用户输入顺序返回。
     const order = entries
@@ -350,62 +306,68 @@ export class FileFormatService {
   }
 
   /** 正式导入先准备游戏目录，再固化容器，后续解析使用保存的原稿。 */
-  public async prepare_source(source_path: string, rel_path: string, file_type?: string) {
-    if (file_type === "RPGMAKER_RGSS") {
-      await prepare_rgss_source(source_path, this.native_fs);
-      return this.rgss.prepare_source(source_path, rel_path);
+  public async prepare_source(entry: DiscoveredSource, signal?: AbortSignal) {
+    signal?.throwIfAborted();
+    const { source, rel_path } = entry;
+    if (source.kind === "failure") throw source.error;
+    if (source.kind === "rgss") {
+      await prepare_rgss_source(source.game, this.native_fs, signal);
+      return this.rgss.prepare_source(
+        collect_rgss_files(source.game, this.native_fs),
+        rel_path,
+        signal,
+      );
     }
-    if (file_type === "RPGMAKER_MV_MZ") return this.rpgmaker.prepare_source(source_path, rel_path);
-    return { content: this.native_fs.read_file(source_path), warnings: [] };
+    if (source.kind === "mv_mz") {
+      await prepare_rpgmaker_source(
+        source.game,
+        this.native_fs,
+        this.rpgmaker_mv_mz_prepare_execution,
+        signal,
+      );
+      return this.rpgmaker.prepare_source(
+        collect_rpgmaker_files(source.game, this.native_fs),
+        rel_path,
+        signal,
+      );
+    }
+    return { content: this.native_fs.read_file(entry.source_path), warnings: [] };
   }
 
   /**
    * 按文件发现的同一去重口径汇总总数和互斥扩展名命中数，不提前解析文件内容。
    */
-  public summarize_source_files(source_paths: string[]): ProjectSourceFileSummary {
-    const source_files = this.collect_source_file_entries(source_paths);
+  public async summarize_source_files(source_paths: string[]): Promise<ProjectSourceFileSummary> {
+    const entries = await this.collect_source_file_entries(source_paths);
+    const source_files = entries.filter((entry) => entry.source.kind !== "failure");
+    const failed_files = entries.flatMap((entry) =>
+      entry.source.kind === "failure"
+        ? [build_source_file_parse_failure({ ...entry, error: entry.source.error })]
+        : [],
+    );
     const format_hit_counts = Object.fromEntries(
       PROJECT_SOURCE_FORMATS.map((format) => [format.id, 0]),
     ) as ProjectSourceFormatHitCounts;
 
     for (const source_file of source_files) {
       const format_id =
-        source_file.file_type === "RPGMAKER_MV_MZ"
+        source_file.source.kind === "mv_mz"
           ? "rpgmaker_mv_mz"
-          : source_file.file_type === "RPGMAKER_RGSS"
+          : source_file.source.kind === "rgss"
             ? "rpgmaker_rgss"
-            : PROJECT_SOURCE_FORMAT_ID_BY_EXTENSION.get(
-                path.extname(source_file.source_path).toLowerCase(),
-              );
+            : source_file.source.kind === "file"
+              ? source_file.source.format
+              : undefined;
       if (format_id !== undefined) {
         format_hit_counts[format_id] += 1;
       }
     }
 
     return {
+      ...(failed_files.length ? { failed_files } : {}),
       source_file_count: source_files.length,
       format_hit_counts,
     };
-  }
-
-  /**
-   * 对用户传入的文件/目录路径去空和去重，保持后续排序来源稳定
-   */
-  public normalize_source_paths(source_paths: string[]): string[] {
-    const normalized_paths: string[] = [];
-    const seen_keys = new Set<string>();
-    for (const source_path of source_paths) {
-      if (source_path.trim() === "") {
-        continue;
-      }
-      const path_key = this.build_path_identity_key(source_path);
-      if (seen_keys.has(path_key)) {
-        continue;
-      }
-      seen_keys.add(path_key);
-      normalized_paths.push(source_path);
-    }
-    return normalized_paths;
   }
 
   /**
@@ -476,22 +438,5 @@ export class FileFormatService {
       default:
         return null;
     }
-  }
-
-  /**
-   * Windows 路径比较大小写不敏感，去重 key 必须按平台归一化
-   */
-  private build_path_identity_key(source_path: string): string {
-    return this.native_fs.to_identity_path(source_path);
-  }
-
-  /**
-   * 目录输入保留入口目录名和内部结构，单文件输入只使用文件名
-   */
-  private build_source_relative_path(source_root: string, source_file: string): string {
-    if (this.native_fs.exists(source_root) && this.native_fs.stat(source_root).isFile()) {
-      return path.basename(source_file);
-    }
-    return path.relative(path.dirname(source_root), source_file) || path.basename(source_file);
   }
 }

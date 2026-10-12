@@ -4,7 +4,8 @@ import { AppError } from "../../../shared/error";
 import { JsonTool } from "../../../shared/utils/json-tool";
 import { type Item, create_item } from "../../../domain/item";
 import type { MutableJsonRecord } from "../../../domain/json";
-import { group_items, write_text_file, type GeneratedFilePaths } from "../file-format-shared";
+import { group_items, write_text_file } from "../shared/file-format-helpers";
+import { type GeneratedFilePaths } from "../file-format-types";
 import { RPGMakerTransProcessor } from "./rpgmaker-processor";
 import { WolfTransProcessor } from "./wolf-processor";
 import {

@@ -39,6 +39,7 @@ const execution: BackendWorkerExecution = {
   kind: "worker_threads",
   planningWorkerEntryUrl: new URL("file:///planning-worker-entry.js"),
   workUnitWorkerEntryUrl: new URL("file:///work-unit-worker-entry.js"),
+  rpgmakerMvMzPrepareWorkerEntryUrl: new URL("file:///rpgmaker-mv-mz-prepare-worker-entry.js"),
   computeWorkerEntryUrl: new URL("file:///compute-worker-entry.js"),
 };
 
@@ -82,24 +83,25 @@ describe("PlanningWorkerPool", () => {
     const pool = create_pool();
     expect(FakeWorker.instances).toHaveLength(0);
     const texts = Array.from({ length: 20 }, (_, index) => "文".repeat(1000 + index * 100));
-    const dispatch = vi
-      .spyOn(FakeWorker.prototype, "postMessage")
-      .mockImplementation(function (this: InstanceType<typeof FakeWorker>, message) {
-        this.messages.push(message);
-        if (message.type === "count_tokens") {
-          const reply = () =>
-            this.reply({
-              id: message.id,
-              status: "done",
-              counts: message.texts.map((text) => text.length),
-            });
-          // 奇数批次晚一轮回包，覆盖跨线程完成顺序与输入顺序不同的情况。
-          setImmediate(() => {
-            if (message.id % 2 === 0) reply();
-            else setImmediate(reply);
+    const dispatch = vi.spyOn(FakeWorker.prototype, "postMessage").mockImplementation(function (
+      this: InstanceType<typeof FakeWorker>,
+      message,
+    ) {
+      this.messages.push(message);
+      if (message.type === "count_tokens") {
+        const reply = () =>
+          this.reply({
+            id: message.id,
+            status: "done",
+            counts: message.texts.map((text) => text.length),
           });
-        }
-      });
+        // 奇数批次晚一轮回包，覆盖跨线程完成顺序与输入顺序不同的情况。
+        setImmediate(() => {
+          if (message.id % 2 === 0) reply();
+          else setImmediate(reply);
+        });
+      }
+    });
     const result = pool.count_items(texts, new AbortController().signal);
     await flush();
     expect(FakeWorker.instances).toHaveLength(2);

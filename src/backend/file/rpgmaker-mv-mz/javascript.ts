@@ -2,7 +2,7 @@ import { createRequire } from "node:module";
 import path from "node:path";
 import { SOURCE_CONTEXT_MAX_LENGTH } from "./types";
 import type * as Oxc from "oxc-parser";
-import type { ScriptDiagnostic } from "../file-format-shared";
+import type { ScriptDiagnostic } from "../file-format-types";
 
 /** 字符串范围相对于完整脚本，供译文写回和上下文展示共用。 */
 export type JavascriptString = {

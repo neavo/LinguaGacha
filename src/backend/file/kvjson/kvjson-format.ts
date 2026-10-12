@@ -1,9 +1,10 @@
 import type { JsonValue } from "../../../domain/json";
 import { AppError } from "../../../shared/error";
-import { read_translation_for_generation } from "../translation-generation-text";
+import { read_translation_for_generation } from "../shared/translation-generation-text";
 import { JsonTool } from "../../../shared/utils/json-tool";
 import { decode_text_content } from "../../../shared/utils/text-tool";
-import { group_items, write_text_file, type GeneratedFilePaths } from "../file-format-shared";
+import { group_items, write_text_file } from "../shared/file-format-helpers";
+import { type GeneratedFilePaths } from "../file-format-types";
 import { type Item, create_item } from "../../../domain/item";
 
 /**

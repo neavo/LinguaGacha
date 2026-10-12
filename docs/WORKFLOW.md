@@ -165,13 +165,15 @@ GUI、preload、native 或 Backend Runtime worker 变化时，先运行相关目
 
 ### 原生 RPG Maker
 
-格式、来源发现或默认排除变化时，运行对应的 `src/backend/file/rpgmaker-mv-mz/` 或 `src/backend/file/rpgmaker-rgss/` 与 `project-content-service.test.ts`。共享容器变化同时覆盖两种格式及 `src/backend/file/rpgmaker-shared.test.ts`。文件身份与迁移变化同时运行数据库迁移、工程打开迁移、解析流水线和译文生成测试。
+格式、来源发现或默认排除变化时，运行对应的 `src/backend/file/rpgmaker-mv-mz/` 或 `src/backend/file/rpgmaker-rgss/` 与 `project-content-service.test.ts`。共享容器变化同时覆盖两种格式及 `src/backend/file/shared/rpgmaker-format.test.ts`。文件身份与迁移变化同时运行数据库迁移、工程打开迁移、解析流水线和译文生成测试。
 
 文本规则计算变化覆盖 `text-rule-type.test.ts`、翻译译前流程和校对评估。部署变化执行 `npm run build`，核对发行工作区中的 `oxc-parser` 平台绑定与 `@ruby/prism` WASM。设置 `LINGUAGACHA_TEST_ELECTRON`、`LINGUAGACHA_TEST_WORKSPACE_RUNTIME` 后运行 `javascript.test.ts` 和 `ruby.test.ts`，使用发行 Electron 验证加载与写回。
 
-RGSS 自动化测试使用自建协议资源。定位结构变化后，从保存的原稿重建开发工程条目再验证导出。真实游戏往返使用独立输出目录，协议验证与实机验收分别记录。
+来源或失败边界变化时，覆盖 `source-discovery.test.ts`、解析流水线、新建与追加导入测试。准备与归档变化时，覆盖对应引擎的准备测试及 `src/backend/file/shared/` 下受影响的协议、IO 和目录提交测试。
 
-RGSS 归档样本验证只使用独立副本，分别保留和移除散装数据，核对备份、覆盖、归档外文件保留及失败恢复。游戏启动另行验收。
+线程变化运行 `rpgmaker-mv-mz/prepare-worker.test.ts`，它使用正式构建入口验证退出与句柄释放。取消或关闭顺序变化同时覆盖 `runtime-operation-gate.test.ts` 与 `gui-backend-bootstrap.test.ts`。部署变化执行 `npm run build`，使用发行 Electron 验证准备 worker 的加载。
+
+真实样本使用独立副本与输出目录，对照原稿哈希检查提取、解密、备份、重复导入和失败恢复。RGSS 同时覆盖保留与移除散装数据的情况，定位变化后从原稿重建条目再验证导出。协议测试与游戏启动分别验收，Windows 启动须确认所选入口读取外部数据和明文素材。交付时注明未验证的布局、游戏流程和宿主平台。
 
 ### PDF
 

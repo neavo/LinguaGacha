@@ -1,14 +1,10 @@
-import { read_translation_for_generation } from "../translation-generation-text";
+import { read_translation_for_generation } from "../shared/translation-generation-text";
 import path from "node:path";
 
 import { JsonTool } from "../../../shared/utils/json-tool";
 import type { JsonValue } from "../../../domain/json";
-import {
-  group_items,
-  write_text_file,
-  type GeneratedFilePaths,
-  type FileFormatServiceConfig,
-} from "../file-format-shared";
+import { group_items, write_text_file } from "../shared/file-format-helpers";
+import { type GeneratedFilePaths, type FileFormatServiceConfig } from "../file-format-types";
 import { type Item, create_item } from "../../../domain/item";
 import { read_json_record } from "../../../domain/json";
 import { resolve_output_item_name } from "../../../shared/item-name";

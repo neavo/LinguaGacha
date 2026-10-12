@@ -2,8 +2,8 @@ import path from "node:path";
 import type { Item } from "../../../domain/item";
 import { default_native_fs, type NativeFs } from "../../../native/native-fs";
 import { AppError } from "../../../shared/error";
-import { RPGMakerGameFormat, type GameFiles } from "../rpgmaker-shared";
-import { collect_rgss_files, read_rgss_game } from "./source";
+import { RPGMakerGameFormat, type GameFiles } from "../shared/rpgmaker-format";
+import { read_rgss_game } from "./source";
 import { read_rgss_metadata } from "./item";
 import { decode, encode } from "./marshal";
 import { read_rgss_data, write_rgss_data } from "./data";
@@ -15,7 +15,6 @@ export class RPGMakerRGSSFormat extends RPGMakerGameFormat {
     super(
       {
         file_type: "RPGMAKER_RGSS",
-        collect: collect_rgss_files,
         internal_path: (item) => read_rgss_metadata(item.extra_field).internal_file_path,
         read_file: async (content, file, files) => {
           if (path.extname(file).toLowerCase() === ".ini") return { items: [], warnings: [] };

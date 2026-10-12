@@ -40,7 +40,7 @@ it.each(["xp", "vx", "ace"] as const)(
     fs.writeFileSync(path.join(temp.path, "Graphics/picture.png"), "old picture");
     const native = new NativeFs();
     expect(discover_rgss_source(archive, native)?.version).toBe(version);
-    await prepare_rgss_source(archive, native);
+    await prepare_rgss_source(discover_rgss_source(archive, native)!, native);
     expect(fs.existsSync(archive)).toBe(false);
     for (const [name, bytes] of files)
       expect(fs.readFileSync(path.join(temp.path, name))).toEqual(bytes);
@@ -56,7 +56,7 @@ it.each(["xp", "vx", "ace"] as const)(
     expect(fs.readFileSync(path.join(temp.path, "backup/Game.ini"))).toEqual(
       fs.readFileSync(path.join(temp.path, "Game.ini")),
     );
-    await prepare_rgss_source(temp.path, native);
+    await prepare_rgss_source(discover_rgss_source(temp.path, native)!, native);
     expect(fs.existsSync(path.join(temp.path, "backup_2"))).toBe(false);
   },
 );
@@ -68,7 +68,7 @@ it("已有 System 仍完整解包，备份退让并保留归档外的独立文�
   fs.writeFileSync(path.join(temp.path, "backup_2"), "occupied");
   fs.writeFileSync(path.join(temp.path, "Data/extra.txt"), "extra");
   const original = fs.readFileSync(archive);
-  await prepare_rgss_source(temp.path, new NativeFs());
+  await prepare_rgss_source(discover_rgss_source(temp.path, new NativeFs())!, new NativeFs());
   expect(fs.readFileSync(path.join(temp.path, "backup_3/Game.rgss3a"))).toEqual(original);
   expect(fs.readFileSync(path.join(temp.path, "Data/System.rvdata2"), "utf8")).toBe("system");
   expect(fs.readFileSync(path.join(temp.path, "backup_3/Data/System.rvdata2"), "utf8")).toBe(
@@ -82,48 +82,26 @@ it("已有 System 仍完整解包，备份退让并保留归档外的独立文�
   expect(fs.readFileSync(path.join(temp.path, "Graphics/picture.png"), "utf8")).toBe("picture");
 });
 
-it.each(["backup", "extract", "commit", "remove", "cleanup"])(
-  "%s 失败保留归档并恢复覆盖与新增文件",
-  async (phase) => {
-    using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-rgss-rollback-"));
-    const { archive } = game(temp.path, "ace");
-    const native = new NativeFs();
-    if (phase === "backup")
-      vi.spyOn(native, "copy_file").mockImplementationOnce(() => {
-        throw new Error("backup failure");
-      });
-    if (phase === "extract") {
-      const open = native.open_file.bind(native);
-      vi.spyOn(native, "open_file").mockImplementation(async (file, flags) => {
-        if (flags === "wx") throw new Error("extract failure");
-        return open(file, flags);
-      });
-    }
-    if (phase === "commit") {
-      const copy = native.copy_file_atomic.bind(native);
-      vi.spyOn(native, "copy_file_atomic").mockImplementation((from, to) => {
-        if (to.endsWith("picture.png") && from.includes(".linguagacha-rgss-"))
-          throw new Error("commit failure");
-        copy(from, to);
-      });
-    }
-    if (phase === "cleanup")
-      vi.spyOn(native, "remove_async").mockRejectedValueOnce(new Error("cleanup failure"));
-    if (phase === "remove")
-      vi.spyOn(native, "unlink").mockImplementationOnce(() => {
-        throw new Error("remove failure");
-      });
-    await expect(prepare_rgss_source(temp.path, native)).rejects.toThrow(phase + " failure");
-    expect(fs.existsSync(archive)).toBe(true);
-    expect(fs.readFileSync(path.join(temp.path, "Data/Actors.rvdata2"), "utf8")).toBe("old actors");
-    expect(fs.readFileSync(path.join(temp.path, "Custom/Main.rvdata2"), "utf8")).toBe("old script");
-    expect(fs.existsSync(path.join(temp.path, "Data/System.rvdata2"))).toBe(false);
-    expect(fs.existsSync(path.join(temp.path, "Graphics"))).toBe(false);
-    expect(fs.readdirSync(temp.path).some((name) => name.startsWith(".linguagacha-rgss-"))).toBe(
-      false,
-    );
-  },
-);
+it("归档提取失败保留独立数据与归档", async () => {
+  using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-rgss-extract-"));
+  const { archive } = game(temp.path, "ace");
+  const native = new NativeFs();
+  const open = native.open_file.bind(native);
+  vi.spyOn(native, "open_file").mockImplementation(async (file, flags) => {
+    if (flags === "wx") throw new Error("extract failure");
+    return open(file, flags);
+  });
+  await expect(
+    prepare_rgss_source(discover_rgss_source(temp.path, native)!, native),
+  ).rejects.toThrow("extract failure");
+  expect(fs.existsSync(archive)).toBe(true);
+  expect(fs.readFileSync(path.join(temp.path, "Data/Actors.rvdata2"), "utf8")).toBe("old actors");
+  expect(fs.readFileSync(path.join(temp.path, "Custom/Main.rvdata2"), "utf8")).toBe("old script");
+  expect(fs.existsSync(path.join(temp.path, "Data/System.rvdata2"))).toBe(false);
+  expect(fs.readdirSync(temp.path).some((name) => name.startsWith(".linguagacha-game-"))).toBe(
+    false,
+  );
+});
 
 it("拒绝经过目录链接的成员，外部文件保持原状", async () => {
   using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-rgss-link-"));
@@ -133,33 +111,11 @@ it("拒绝经过目录链接的成员，外部文件保持原状", async () => {
   fs.mkdirSync(outside);
   fs.writeFileSync(path.join(outside, "picture.png"), "outside");
   new NativeFs().create_directory_link(outside, path.join(root, "Graphics"));
-  await expect(prepare_rgss_source(root, new NativeFs())).rejects.toThrow(
-    "Unsafe RGSS filesystem path",
-  );
+  await expect(
+    prepare_rgss_source(discover_rgss_source(root, new NativeFs())!, new NativeFs()),
+  ).rejects.toThrow("Unsafe game filesystem path");
   expect(fs.existsSync(archive)).toBe(true);
   expect(fs.readFileSync(path.join(outside, "picture.png"), "utf8")).toBe("outside");
-});
-
-it("恢复失败保留备份与暂存材料，错误提供两者位置", async () => {
-  using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-rgss-recovery-"));
-  const { archive } = game(temp.path, "ace");
-  const native = new NativeFs();
-  const copy = native.copy_file_atomic.bind(native);
-  vi.spyOn(native, "copy_file_atomic").mockImplementation((from, to) => {
-    if (to.endsWith("picture.png")) throw new Error("commit failed");
-    if (from.includes("backup")) throw new Error("restore failed");
-    copy(from, to);
-  });
-  await expect(prepare_rgss_source(temp.path, native)).rejects.toThrow(
-    /Backup:.*backup[\s\S]*Recovery or cleanup failed:.*restore failed[\s\S]*Staging:/u,
-  );
-  expect(fs.existsSync(archive)).toBe(true);
-  expect(fs.readFileSync(path.join(temp.path, "backup/Data/Actors.rvdata2"), "utf8")).toBe(
-    "old actors",
-  );
-  expect(fs.readdirSync(temp.path).some((name) => name.startsWith(".linguagacha-rgss-"))).toBe(
-    true,
-  );
 });
 
 it.each(["engine", "protocol", "directory-system"])("%s 冲突在备份与改写之前失败", async (kind) => {
@@ -173,7 +129,10 @@ it.each(["engine", "protocol", "directory-system"])("%s 冲突在备份与改写
       rgss_archive_fixture(1, new Map([["Data/System.rvdata2", Buffer.from("x")]])),
     );
   if (kind === "directory-system") fs.mkdirSync(path.join(temp.path, "Data/System.rvdata2"));
-  await expect(prepare_rgss_source(temp.path, new NativeFs())).rejects.toThrow();
+  await expect(
+    (async () =>
+      prepare_rgss_source(discover_rgss_source(temp.path, new NativeFs())!, new NativeFs()))(),
+  ).rejects.toThrow();
   expect(fs.existsSync(archive)).toBe(true);
   expect(fs.existsSync(path.join(temp.path, "backup"))).toBe(false);
 });
@@ -185,7 +144,7 @@ it("归档不含 System 也完成合并，数据完整性由原稿解析负责",
     archive,
     rgss_archive_fixture(3, new Map([["Data/Actors.rvdata2", Buffer.from("new actors")]])),
   );
-  await prepare_rgss_source(temp.path, new NativeFs());
+  await prepare_rgss_source(discover_rgss_source(temp.path, new NativeFs())!, new NativeFs());
   expect(fs.existsSync(archive)).toBe(false);
   expect(fs.existsSync(path.join(temp.path, "Data/System.rvdata2"))).toBe(false);
   expect(fs.readFileSync(path.join(temp.path, "Data/Actors.rvdata2"), "utf8")).toBe("new actors");

@@ -19,7 +19,7 @@ import { resolve_app_locale, type AppLanguage } from "../../domain/app-language"
 import { normalize_setting_snapshot, type SettingSnapshot } from "../../domain/setting";
 import { create_text_resolver, format_i18n_message, type LocaleKey } from "../../shared/i18n";
 import { NativeFs, default_native_fs } from "../../native/native-fs";
-import type { GeneratedFilePaths } from "./file-format-shared";
+import type { GeneratedFilePaths } from "./file-format-types";
 import { build_project_item_duplicate_key } from "../../shared/project/project-item-duplicates";
 
 /**

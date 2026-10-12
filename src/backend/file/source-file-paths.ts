@@ -1,6 +1,6 @@
 import { is_rpgmaker_file_type } from "../../shared/project-source-formats";
 import { AppError } from "../../shared/error";
-import { validate_zip_member_path } from "./zip-members";
+import { validate_zip_member_path } from "./shared/zip-members";
 import {
   normalize_project_asset_path,
   ProjectAssetPathIndex,
@@ -62,3 +62,6 @@ export function assert_source_file_paths(
   const index = new SourceFilePathIndex();
   for (const file of files) index.add(file.path, file.file_type);
 }
+
+/** 同根入口互相冲突属于整批输入错误，不能降级为逐文件失败。 */
+export class GameSourceConflictError extends Error {}

@@ -1,6 +1,8 @@
+import { build_source_file_parse_failure } from "../file/source-file-parse-failure-reporter";
+import type { RPGMakerMvMzPrepareExecution } from "../file/rpgmaker-mv-mz/prepare-worker";
 import { assert_source_file_paths } from "../file/source-file-paths";
 import { normalize_project_asset_path } from "../../shared/project/project-asset-paths";
-import type { SourceFileParseWarning } from "../file/file-format-shared";
+import type { SourceFileParseWarning } from "../file/file-format-types";
 import { ProjectDataReader } from "./project-data-reader";
 import { resolve_text_rule_type, type TextFileContext } from "../../shared/text/text-rule-type";
 import {
@@ -18,7 +20,6 @@ import { FileFormatService } from "../file/file-format-service";
 import {
   SourceFileParsePipeline,
   type SourceFileParseResult,
-  type SourceFileParseCommand,
 } from "../file/source-file-parse-pipeline";
 import {
   log_source_file_parse_failures,
@@ -102,6 +103,7 @@ export class ProjectContentService {
     app_setting_service: AppSettingService | null = null,
     native_fs: NativeFs = default_native_fs,
     log_manager: Pick<LogManager, "warning"> | null = null,
+    private readonly rpgmaker_mv_mz_prepare_execution?: RPGMakerMvMzPrepareExecution,
   ) {
     this.database = database;
     this.runtime_gate = runtime_gate;
@@ -118,10 +120,16 @@ export class ProjectContentService {
     const format_service = this.create_format_service();
     const source_paths = this.normalize_string_list(request["source_paths"]);
     const entries = format_service.assign_source_file_paths(
-      format_service.collect_source_file_entries(source_paths),
+      await format_service.collect_source_file_entries(source_paths),
       await this.database.get_all_asset_records(project_path),
     );
+    const failed_files = entries.flatMap((entry) =>
+      entry.source.kind === "failure"
+        ? [build_source_file_parse_failure({ ...entry, error: entry.source.error })]
+        : [],
+    );
     return {
+      ...(failed_files.length ? { failed_files: failed_files as unknown as JsonValue } : {}),
       files: entries.map((entry) => ({
         source_path: entry.source_path,
         target_rel_path: entry.rel_path,
@@ -134,7 +142,7 @@ export class ProjectContentService {
    */
   public async import_files(request: JsonRecord): Promise<ProjectWriteResult> {
     const project_path = this.session_state.require_loaded_project_path();
-    return this.runtime_gate.run_project_write(async () => {
+    return this.runtime_gate.run_project_write(async (signal) => {
       this.assert_no_legacy_fields(request, ["items", "translation_extras", "prefilter_config"]);
       const conflict_action = this.normalize_import_conflict_action(request["conflict_action"]);
       const file_commands = this.normalize_import_file_commands(request["files"]);
@@ -177,7 +185,9 @@ export class ProjectContentService {
               normalize_project_asset_path(file.target_rel_path).toLowerCase(),
             ),
         ),
+        signal,
       );
+      signal.throwIfAborted();
       this.assert_project_import_has_parseable_files(parse_result);
       const current_items = snapshot.public_items_by_id;
       const current_files = { ...snapshot.files };
@@ -615,19 +625,23 @@ export class ProjectContentService {
   private async parse_import_file_commands(
     assets: readonly ProjectAssetRecord[],
     files: readonly ImportProjectFileCommand[],
+    signal: AbortSignal,
   ): Promise<SourceFileParseResult> {
     const format_service = this.create_format_service();
     const by_path = new Map(
       assets.map((asset) => [normalize_project_asset_path(asset.path).toLowerCase(), asset]),
     );
-    const commands: SourceFileParseCommand[] = files.map((file) => {
-      const asset = by_path.get(normalize_project_asset_path(file.target_rel_path).toLowerCase());
-      return {
-        source_path: file.source_path,
-        rel_path: asset?.path ?? file.target_rel_path,
-        file_type: asset?.file_type ?? format_service.source_file_type(file.source_path),
-      };
-    });
+    const commands = await format_service.discover_import_sources(
+      files.map((file) => {
+        const asset = by_path.get(normalize_project_asset_path(file.target_rel_path).toLowerCase());
+        return {
+          source_path: file.source_path,
+          rel_path: asset?.path ?? file.target_rel_path,
+          file_type: asset?.file_type,
+        };
+      }),
+      signal,
+    );
     const final_files = new Map<string, { path: string; file_type: string }>(by_path);
     for (const command of commands)
       final_files.set(normalize_project_asset_path(command.rel_path).toLowerCase(), {
@@ -635,7 +649,7 @@ export class ProjectContentService {
         file_type: command.file_type ?? "",
       });
     assert_source_file_paths(final_files.values());
-    return new SourceFileParsePipeline(format_service).parse_import_commands(commands);
+    return new SourceFileParsePipeline(format_service).parse_import_commands(commands, signal);
   }
 
   /**
@@ -699,6 +713,7 @@ export class ProjectContentService {
       },
       this.pdf_execution,
       this.native_fs,
+      this.rpgmaker_mv_mz_prepare_execution,
     );
   }
 

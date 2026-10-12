@@ -1,3 +1,4 @@
+import { evb_fixture } from "../../test/evb-fixture";
 import { add_test_asset_from_source } from "../../test/asset-fixture";
 import { rgss_archive_fixture } from "../../test/rgss-archive-fixture";
 import { CacheManager } from "../cache/cache-manager";
@@ -1359,13 +1360,13 @@ describe("ProjectContentService", () => {
     await database.close();
   });
 
-  it("导入工作台文件时跳过最终解析失败文件并继续写入成功文件", async () => {
+  it.each(["json", "evb"])("导入工作台文件时跳过 %s 失败来源并继续写入成功文件", async (kind) => {
     const log_manager = create_log_manager();
     const { database, service, lg_path } = await create_service(undefined, log_manager);
     const valid_source = project_path("valid.txt");
-    const broken_json = project_path("broken.json");
+    const broken_json = project_path(kind === "json" ? "broken.json" : "broken.exe");
     fs.writeFileSync(valid_source, "新", "utf-8");
-    fs.writeFileSync(broken_json, "{", "utf-8");
+    fs.writeFileSync(broken_json, kind === "json" ? "{" : evb_fixture(new Map()).subarray(0, -1));
     const ack = await service.import_files({
       files: [
         { source_path: valid_source, target_rel_path: "valid.txt" },
@@ -1382,8 +1383,8 @@ describe("ProjectContentService", () => {
         {
           source_path: broken_json,
           rel_path: "broken.json",
-          filename: "broken.json",
-          code: "file.parse_failed",
+          filename: path.basename(broken_json),
+          code: kind === "json" ? "file.parse_failed" : "file.io_failed",
           message: expect.any(String),
         },
       ],
@@ -1395,7 +1396,7 @@ describe("ProjectContentService", () => {
       create_persistent_item({ src: "新", file_path: "valid.txt", row_number: 0 }),
     ]);
     expect(log_manager.warning).toHaveBeenCalledWith(
-      expect.stringContaining("broken.json"),
+      expect.stringContaining(path.basename(broken_json)),
       expect.objectContaining({ source: "project-import" }),
     );
     await database.close();

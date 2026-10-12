@@ -47,15 +47,17 @@ it.each([
   fs.writeFileSync(path.join(data, "Actors" + extension), actors);
   fs.writeFileSync(path.join(data, "Broken" + extension), "broken");
   const service = new FileFormatService({ target_language: "ZH" }, create_pdf_execution());
-  const entries = service.collect_source_file_entries([
+  const entries = await service.collect_source_file_entries([
     source,
     path.join(source, "Game.exe"),
     path.join(source, "Game.ini"),
   ]);
   expect(entries).toHaveLength(1);
   expect(entries[0]!.file_type).toBe("RPGMAKER_RGSS");
-  expect(service.summarize_source_files([source]).format_hit_counts.rpgmaker_rgss).toBe(1);
-  const prepared = await service.prepare_source(source, "game.zip", "RPGMAKER_RGSS");
+  expect((await service.summarize_source_files([source])).format_hit_counts.rpgmaker_rgss).toBe(1);
+  const prepared = await service.prepare_source(
+    (await service.discover_import_sources([{ source_path: source, rel_path: "game.zip" }]))[0]!,
+  );
   expect(prepared.warnings).toEqual([]);
   fs.rmSync(source, { recursive: true });
   const result = await service.parse_asset("game.zip", prepared.content, "RPGMAKER_RGSS");

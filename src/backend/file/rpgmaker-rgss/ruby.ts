@@ -3,7 +3,7 @@ import { createRequire } from "node:module";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import type * as Prism from "@ruby/prism";
-import type { ScriptDiagnostic } from "../file-format-shared";
+import type { ScriptDiagnostic } from "../file-format-types";
 
 type Parser = Awaited<ReturnType<typeof Prism.loadPrism>>;
 /** 持久定位只保存归一化 UTF-8 原稿中的语法字节范围。 */

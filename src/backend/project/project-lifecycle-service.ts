@@ -1,4 +1,5 @@
-import type { SourceFileParseWarning } from "../file/file-format-shared";
+import type { RPGMakerMvMzPrepareExecution } from "../file/rpgmaker-mv-mz/prepare-worker";
+import type { SourceFileParseWarning } from "../file/file-format-types";
 import { normalize_batch_translation_progress } from "../../domain/batch-translation";
 import { coordinate_project_duplicate_statuses } from "../../shared/project/project-item-duplicates";
 import type { ProjectDatabaseAccess } from "../database/database-operations";
@@ -105,6 +106,7 @@ export class ProjectLifecycleService {
     write_store: ProjectWriteStore,
     private readonly pdf_execution: PDFExecution,
     native_fs: NativeFs = default_native_fs,
+    private readonly rpgmaker_mv_mz_prepare_execution?: RPGMakerMvMzPrepareExecution,
   ) {
     this.database = database;
     this.runtime_gate = runtime_gate;
@@ -240,14 +242,17 @@ export class ProjectLifecycleService {
    */
   public async create_project_commit(body: JsonRecord): Promise<JsonRecord> {
     return await this.runtime_gate.run_project_write(
-      async () => await this.create_project_commit_under_lease(body),
+      async (signal) => await this.create_project_commit_under_lease(body, signal),
     );
   }
 
   /**
    * 新建工程的慢解析、数据库提交与 loaded 切换必须处于同一生命周期租约。
    */
-  private async create_project_commit_under_lease(body: JsonRecord): Promise<JsonRecord> {
+  private async create_project_commit_under_lease(
+    body: JsonRecord,
+    signal: AbortSignal,
+  ): Promise<JsonRecord> {
     const requested_project_path = this.require_body_string(body, "path");
     const project_path = this.resolve_create_project_path(requested_project_path);
     this.assert_no_legacy_create_commit_fields(body);
@@ -256,7 +261,8 @@ export class ProjectLifecycleService {
     // 后端重新解析源文件得到的唯一可信新建草稿。
     const parsed_draft = await new SourceFileParsePipeline(
       this.create_format_service(project_settings),
-    ).build_project_draft(source_paths);
+    ).build_project_draft(source_paths, signal);
+    signal.throwIfAborted();
     this.assert_create_commit_has_importable_files(parsed_draft);
     // 将可信草稿转成持久项目事实的唯一计算结果。
     const prefilter_output = this.compute_create_project_prefilter_output({
@@ -458,6 +464,7 @@ export class ProjectLifecycleService {
       },
       this.pdf_execution,
       this.native_fs,
+      this.rpgmaker_mv_mz_prepare_execution,
     );
   }
 
@@ -564,7 +571,7 @@ export class ProjectLifecycleService {
   /**
    * 汇总可导入源文件总数和互斥格式命中数，不向 renderer 暴露本地文件路径
    */
-  public summarize_source_files(body: JsonRecord): ProjectSourceFileSummary {
+  public async summarize_source_files(body: JsonRecord): Promise<ProjectSourceFileSummary> {
     const source_paths = this.normalize_source_paths(body["source_paths"]);
     return this.create_format_service(this.build_current_project_settings()).summarize_source_files(
       source_paths,

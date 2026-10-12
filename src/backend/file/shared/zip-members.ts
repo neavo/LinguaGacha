@@ -1,6 +1,6 @@
 import JSZip from "jszip";
-import { AppError } from "../../shared/error";
-import { ProjectAssetPathIndex } from "../../shared/project/project-asset-paths";
+import { AppError } from "../../../shared/error";
+import { ProjectAssetPathIndex } from "../../../shared/project/project-asset-paths";
 
 /** 落盘前校验完整清单，成员字节按需读取，避免同时解压整包。 */
 export async function read_zip_members(

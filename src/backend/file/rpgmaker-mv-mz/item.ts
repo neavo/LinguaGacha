@@ -1,7 +1,7 @@
 import type { Item, ItemStatus } from "../../../domain/item";
 import { read_json_record } from "../../../domain/json";
 import type { RPGMakerMetadata } from "./types";
-import { validate_zip_member_path } from "../zip-members";
+import { validate_zip_member_path } from "../shared/zip-members";
 
 /** 共享读取验证来源与定位种类，精确坐标由写回器对照原稿验证。 */
 export function read_rpgmaker_metadata(

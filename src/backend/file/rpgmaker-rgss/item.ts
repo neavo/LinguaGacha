@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import type { Item, ItemStatus } from "../../../domain/item";
 import { read_json_record } from "../../../domain/json";
-import { validate_zip_member_path } from "../zip-members";
+import { validate_zip_member_path } from "../shared/zip-members";
 import type { RubyPath } from "./value";
 import type { RubyLocation } from "./ruby";
 

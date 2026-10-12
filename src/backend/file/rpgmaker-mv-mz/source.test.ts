@@ -5,7 +5,7 @@ import { expect, it } from "vitest";
 import { NativeFs } from "../../../native/native-fs";
 import { collect_rpgmaker_files, discover_rpgmaker_source } from "./source";
 
-it.each(["", "www"])("目录和可执行文件识别同一游戏，仅收集数据与插件：%s", (prefix) => {
+it.each(["", "www"])("目录和可执行文件识别同一游戏，仅收集数据与插件：%s", async (prefix) => {
   using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-rm-source-"));
   const files = [
     "data/System.json",
@@ -21,14 +21,14 @@ it.each(["", "www"])("目录和可执行文件识别同一游戏，仅收集数�
     fs.writeFileSync(target, "");
   }
   const native = new NativeFs();
-  const game = discover_rpgmaker_source(temp.path, native)!;
-  expect(discover_rpgmaker_source(path.join(temp.path, "Game.exe"), native)).toEqual(game);
+  const game = (await discover_rpgmaker_source(temp.path, native))!;
+  expect(await discover_rpgmaker_source(path.join(temp.path, "Game.exe"), native)).toEqual(game);
   expect(collect_rpgmaker_files(game, native).map((file) => file.rel_path)).toEqual(
     ["data/nested/Map.json", "data/System.json", "js/plugins.js", "js/plugins/menu.js"].map(
       (file) => [prefix, file].filter(Boolean).join("/"),
     ),
   );
   expect(
-    discover_rpgmaker_source(path.join(temp.path, prefix, "data/System.json"), native),
+    await discover_rpgmaker_source(path.join(temp.path, prefix, "data/System.json"), native),
   ).toBeNull();
 });

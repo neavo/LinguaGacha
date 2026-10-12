@@ -1,3 +1,4 @@
+import { evb_fixture } from "../../test/evb-fixture";
 import { create_pdf_execution } from "./pdf/test-support";
 import fs from "node:fs";
 import os from "node:os";
@@ -141,18 +142,6 @@ describe("FileFormatService", () => {
     vi.setSystemTime(new Date(2026, 9, 11, 12, 34, 56));
   });
   afterEach(() => vi.useRealTimers());
-  it("源路径过滤空值时保留身份中的空格，按原路径去重", () => {
-    expect(
-      create_service().normalize_source_paths([
-        " source.json ",
-        "source.json",
-        " source.json ",
-        "",
-        "  ",
-      ]),
-    ).toEqual([" source.json ", "source.json"]);
-  });
-
   it.each(["XLSX", "WOLFXLSX"] as const)("XLSX 分发保留 %s 的解析身份", async (file_type) => {
     const bytes = await spreadsheet_fixture(
       file_type === "WOLFXLSX"
@@ -216,31 +205,7 @@ describe("FileFormatService", () => {
     });
   });
 
-  it("收集目录源文件时保留入口目录名并去重输入路径", () => {
-    using temp_dir = fs.mkdtempDisposableSync(
-      path.join(os.tmpdir(), "linguagacha-file-format-service-"),
-    );
-    const service = create_service();
-    const left_dir = path.join(temp_dir.path, "left");
-    const right_dir = path.join(temp_dir.path, "right");
-    fs.mkdirSync(left_dir, { recursive: true });
-    fs.mkdirSync(right_dir, { recursive: true });
-    fs.writeFileSync(path.join(left_dir, "script.txt"), "左", "utf-8");
-    fs.writeFileSync(path.join(right_dir, "script.txt"), "右", "utf-8");
-    fs.writeFileSync(path.join(right_dir, "ignored.bin"), "x", "utf-8");
-
-    expect(service.normalize_source_paths([left_dir, left_dir, "", right_dir])).toEqual([
-      left_dir,
-      right_dir,
-    ]);
-    expect(
-      service
-        .collect_source_file_entries([left_dir, right_dir])
-        .map((entry) => entry.rel_path.replace(/\\/gu, "/")),
-    ).toEqual(["left/script.txt", "right/script.txt"]);
-  });
-
-  it("源文件摘要按去重后的互斥扩展名统计", () => {
+  it("源文件摘要按去重后的互斥扩展名统计", async () => {
     using temp_dir = fs.mkdtempDisposableSync(
       path.join(os.tmpdir(), "linguagacha-file-format-service-"),
     );
@@ -261,14 +226,14 @@ describe("FileFormatService", () => {
     Object.assign(expected_format_hit_counts, { txt: 1, md: 1, json: 1 });
 
     expect(
-      service.summarize_source_files(["", source_a, first_txt, ignored, source_b, source_a]),
+      await service.summarize_source_files(["", source_a, first_txt, ignored, source_b, source_a]),
     ).toEqual({
       source_file_count: 3,
       format_hit_counts: expected_format_hit_counts,
     });
   });
 
-  it("收集单文件路径时使用文件名作为工程相对路径", () => {
+  it("收集单文件路径时使用文件名作为工程相对路径", async () => {
     using temp_dir = fs.mkdtempDisposableSync(
       path.join(os.tmpdir(), "linguagacha-file-format-service-"),
     );
@@ -277,8 +242,8 @@ describe("FileFormatService", () => {
     fs.mkdirSync(path.dirname(source_file), { recursive: true });
     fs.writeFileSync(source_file, "dummy", "utf-8");
 
-    expect(service.collect_source_file_entries([source_file])).toEqual([
-      { source_path: source_file, rel_path: "a.MD" },
+    expect(await service.collect_source_file_entries([source_file])).toEqual([
+      { source_path: source_file, rel_path: "a.MD", source: { kind: "file", format: "md" } },
     ]);
   });
 
@@ -318,5 +283,39 @@ describe("FileFormatService", () => {
     expect(fs.readFileSync(path.join(temp_dir.path, "script.rpy"), "utf-8")).toContain(
       '"Alice" "你好"',
     );
+  });
+});
+
+it("识别失败与正常来源共同进入只读摘要，正式导入重新识别", async () => {
+  using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-discover-"));
+  const source = path.join(temp.path, "bad.exe"),
+    text = path.join(temp.path, "ok.txt");
+  fs.writeFileSync(source, evb_fixture(new Map()).subarray(0, -1));
+  fs.writeFileSync(text, "text");
+  const service = new FileFormatService({ target_language: "ZH" }, async () => null);
+  const summary = await service.summarize_source_files([temp.path]);
+  expect(summary.source_file_count).toBe(1);
+  expect(summary.failed_files).toMatchObject([{ source_path: source }]);
+  expect(fs.readdirSync(temp.path).sort()).toEqual(["bad.exe", "ok.txt"]);
+  fs.writeFileSync(
+    source,
+    evb_fixture(
+      new Map([
+        ["data/System.json", Buffer.from("{}")],
+        ["js/rmmz_core.js", Buffer.from("// engine")],
+      ]),
+    ),
+  );
+  const resolved = await service.discover_import_sources([
+    { source_path: source, rel_path: "game.zip" },
+  ]);
+  expect(resolved[0]!.source).toMatchObject({
+    kind: "mv_mz",
+    game: {
+      root: temp.path,
+      data_root: temp.path,
+      executable: source,
+      engine: "mz",
+    },
   });
 });

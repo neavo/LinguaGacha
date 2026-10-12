@@ -735,7 +735,10 @@ export function ProjectPage(_props: ProjectPageProps): JSX.Element {
 
       if (source_file_count === 0) {
         set_selected_source(null);
-        push_toast("warning", t("project_page.create.unavailable"));
+        const failure_toast = format_source_file_parse_failure_toast(payload.failed_files);
+        if (failure_toast !== null)
+          push_error_toast(t("project_page.create.unavailable"), failure_toast);
+        else push_toast("warning", t("project_page.create.unavailable"));
       } else {
         const output_name_seed_path = normalized_source_paths[0] ?? "";
         set_selected_source({

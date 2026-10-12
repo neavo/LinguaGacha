@@ -1,7 +1,8 @@
 import { type Item, create_item } from "../../../domain/item";
 import { decode_text_content } from "../../../shared/utils/text-tool";
-import { split_text_lines_for_items, type FileFormatServiceConfig } from "../file-format-shared";
-import { read_translation_for_generation } from "../translation-generation-text";
+import { split_text_lines_for_items } from "../shared/file-format-helpers";
+import { type FileFormatServiceConfig } from "../file-format-types";
+import { read_translation_for_generation } from "../shared/translation-generation-text";
 import {
   needs_bilingual_text,
   read_subtitle_lines,

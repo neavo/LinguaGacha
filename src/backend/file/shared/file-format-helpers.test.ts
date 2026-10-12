@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import { create_item } from "../../domain/item";
-import { group_items, split_text_lines_for_items } from "./file-format-shared";
+import { create_item } from "../../../domain/item";
+import { group_items, split_text_lines_for_items } from "./file-format-helpers";
 
-describe("file-format-shared", () => {
+describe("file-format-helpers", () => {
   it("按历史 splitlines 口径处理尾随换行", () => {
     expect(split_text_lines_for_items("甲\n乙\n")).toEqual(["甲", "乙"]);
     expect(

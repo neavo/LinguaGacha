@@ -1,12 +1,16 @@
 import type { NativeFs } from "../../../native/native-fs";
 import { ProjectAssetPathIndex } from "../../../shared/project/project-asset-paths";
-import { validate_zip_member_path } from "../zip-members";
+import { validate_zip_member_path } from "../shared/zip-members";
+import {
+  read_bytes,
+  write_bytes,
+  BINARY_CHUNK_BYTES,
+  type BinaryFileHandle,
+} from "../shared/binary";
 
 const HEADER = Buffer.from("RGSSAD\0", "ascii");
 const INITIAL_KEY = 0xdeadcafe; // v1 目录密钥的协议初值。
-const CHUNK_BYTES = 64 * 1024; // 必须是四字节整数倍，分块之间保持密钥对齐。
 const MAX_NAME_BYTES = 32 * 1024;
-type ArchiveHandle = Awaited<ReturnType<NativeFs["open_file"]>>;
 export type RGSSArchiveMember = Readonly<{
   name: string;
   offset: number;
@@ -24,14 +28,17 @@ export function read_rgss_archive_version(header: Uint8Array): 1 | 3 {
 }
 
 /** 文件句柄由准备操作持有，清单和成员读取共享同一归档。 */
-export async function read_rgss_archive(handle: ArchiveHandle): Promise<RGSSArchiveMember[]> {
+export async function read_rgss_archive(
+  handle: BinaryFileHandle,
+  signal?: AbortSignal,
+): Promise<RGSSArchiveMember[]> {
   const length = (await handle.stat()).size;
   let cursor = 0; // 目录读取位置，v1 还需跨过交错存放的成员内容。
   /** 目录字段先验证范围，再分配并读满字节。 */
   async function read(size: number): Promise<Buffer> {
+    signal?.throwIfAborted();
     if (cursor + size > length) throw new Error("Truncated RGSS archive");
-    const result = Buffer.alloc(size);
-    await read_exact(handle, result, cursor);
+    const result = await read_bytes(handle, cursor, size);
     cursor += size;
     return result;
   }
@@ -89,28 +96,29 @@ export async function read_rgss_archive(handle: ArchiveHandle): Promise<RGSSArch
 
 /** 分块解密写入独占暂存文件，内存占用不随归档大小增长。 */
 export async function extract_rgss_member(
-  handle: ArchiveHandle,
+  handle: BinaryFileHandle,
   member: RGSSArchiveMember,
   destination: string,
   fs: NativeFs,
+  signal?: AbortSignal,
 ): Promise<void> {
   fs.ensure_parent_dir(destination);
   const output = await fs.open_file(destination, "wx");
   try {
     let key = member.key;
-    for (let position = 0; position < member.size; position += CHUNK_BYTES) {
-      const bytes = Buffer.alloc(Math.min(CHUNK_BYTES, member.size - position));
-      await read_exact(handle, bytes, member.offset + position);
+    // 共用块大小是四字节整数倍，跨块读取仍与 RGSS 密钥对齐。
+    for (let position = 0; position < member.size; position += BINARY_CHUNK_BYTES) {
+      signal?.throwIfAborted();
+      const bytes = await read_bytes(
+        handle,
+        member.offset + position,
+        Math.min(BINARY_CHUNK_BYTES, member.size - position),
+      );
       for (let i = 0; i < bytes.length; i++) {
         bytes[i] = bytes[i]! ^ ((key >>> ((i % 4) * 8)) & 255);
         if (i % 4 === 3) key = next_key(key);
       }
-      let written = 0;
-      while (written < bytes.length) {
-        const result = await output.write(bytes, written, bytes.length - written);
-        if (!result.bytesWritten) throw new Error("Failed to write RGSS member: " + member.name);
-        written += result.bytesWritten;
-      }
+      await write_bytes(output, bytes, position);
     }
   } finally {
     await output.close();
@@ -120,13 +128,4 @@ export async function extract_rgss_member(
 /** RGSS 按无符号 32 位整数推进密钥，溢出属于协议。 */
 function next_key(key: number): number {
   return (Math.imul(key, 7) + 3) >>> 0;
-}
-/** 文件读取可能短读，只有读满或遇到文件末尾才结束。 */
-async function read_exact(handle: ArchiveHandle, bytes: Buffer, offset: number): Promise<void> {
-  let read = 0;
-  while (read < bytes.length) {
-    const result = await handle.read(bytes, read, bytes.length - read, offset + read);
-    if (!result.bytesRead) throw new Error("Truncated RGSS archive");
-    read += result.bytesRead;
-  }
 }

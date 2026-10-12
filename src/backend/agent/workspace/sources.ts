@@ -4,9 +4,9 @@ import {
   ProjectAssetPathIndex,
 } from "../../../shared/project/project-asset-paths";
 import path from "node:path";
-import { read_rpgmaker_container } from "../../file/rpgmaker-shared";
+import { read_rpgmaker_container } from "../../file/shared/rpgmaker-format";
 import { read_rgss_sources } from "../../file/rpgmaker-rgss/readable";
-import { read_zip_members } from "../../file/zip-members";
+import { read_zip_members } from "../../file/shared/zip-members";
 import type { NativeFs } from "../../../native/native-fs";
 
 /** 按资产身份写出原稿，RGSS 提供只读明文，其他容器保留成员字节。 */

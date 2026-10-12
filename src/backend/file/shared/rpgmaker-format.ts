@@ -1,14 +1,14 @@
 import path from "node:path";
 import JSZip from "jszip";
-import type { NativeFs } from "../../native/native-fs";
-import type { Item } from "../../domain/item";
-import { AppError } from "../../shared/error";
+import type { NativeFs } from "../../../native/native-fs";
+import type { Item } from "../../../domain/item";
+import { AppError } from "../../../shared/error";
 import type {
   FileFormatServiceWriteContext,
   SourceFileParseWarning,
   ProjectSourceFileEntry,
-} from "./file-format-shared";
-import { assert_source_file_paths, source_file_output_path } from "./source-file-paths";
+} from "../file-format-types";
+import { assert_source_file_paths, source_file_output_path } from "../source-file-paths";
 import { read_zip_members, validate_zip_member_path } from "./zip-members";
 
 // 引擎指令码是原稿协议，提取与写回共同引用。
@@ -46,10 +46,6 @@ export type GameFiles = ReadonlyMap<string, JSZip.JSZipObject>;
 /** 格式提供成员解析与写回，公共流程持有原稿清单和目录 IO。 */
 export interface GameFormatAdapter {
   file_type: "RPGMAKER_MV_MZ" | "RPGMAKER_RGSS";
-  collect(
-    source: string,
-    fs: NativeFs,
-  ): Pick<ProjectSourceFileEntry, "source_path" | "rel_path">[] | null;
   internal_path(item: Item): string;
   read_file(
     content: Uint8Array,
@@ -72,16 +68,16 @@ export class RPGMakerGameFormat {
   ) {}
   /** 读取失败仅跳过当前文件，成功取得的字节始终保存在容器内。 */
   public async prepare_source(
-    source: string,
+    entries: readonly Pick<ProjectSourceFileEntry, "source_path" | "rel_path">[],
     file: string,
+    signal?: AbortSignal,
   ): Promise<{ content: Uint8Array; warnings: SourceFileParseWarning[] }> {
-    const entries = this.adapter.collect(source, this.fs);
-    if (entries === null)
-      throw new AppError("file.invalid_structure", { public_details: { file: source } });
+    signal?.throwIfAborted();
     const zip = new JSZip();
     const warnings: SourceFileParseWarning[] = [];
     const paths = new Set<string>();
     for (const entry of entries) {
+      signal?.throwIfAborted();
       const internal = validate_zip_member_path(entry.rel_path);
       const key = internal.toLowerCase();
       if (paths.has(key))

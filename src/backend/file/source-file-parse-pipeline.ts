@@ -3,13 +3,9 @@ import type { SourceFileParseFailureRecord } from "../../shared/source-file-pars
 import { build_source_file_parse_failure } from "./source-file-parse-failure-reporter";
 import { FileFormatService } from "./file-format-service";
 import type { PDFDocument } from "../../shared/pdf";
-import type { ProjectFileType, SourceFileParseWarning } from "./file-format-shared";
+import type { ProjectFileType, SourceFileParseWarning } from "./file-format-types";
 
-export type SourceFileParseCommand = {
-  file_type: string | undefined; // 新来源可由内容细分类型，已有资产必须传入保存的身份
-  source_path: string; // 用户选择的真实来源路径，由格式服务准备固化原稿
-  rel_path: string; // 项目内的目标相对路径
-};
+export type SourceFileParseCommand = import("./source-discovery").DiscoveredSource;
 
 export type SourceFileParsedDraft = SourceFileParseCommand & {
   file_type: ProjectFileType; // 解析器提供文件身份，零条目字幕也保留类型
@@ -54,11 +50,17 @@ export class SourceFileParsePipeline {
   /**
    * 新建工程按来源顺序分配条目身份并准备资产写入。
    */
-  public async build_project_draft(source_paths: string[]): Promise<SourceFileProjectDraft> {
+  public async build_project_draft(
+    source_paths: string[],
+    signal?: AbortSignal,
+  ): Promise<SourceFileProjectDraft> {
     const parse_result = await this.parse_source_entries(
       this.format_service
-        .assign_source_file_paths(this.format_service.collect_source_file_entries(source_paths))
+        .assign_source_file_paths(
+          await this.format_service.collect_source_file_entries(source_paths, signal),
+        )
         .map((entry) => ({ ...entry, file_type: entry.file_type })),
+      signal,
     );
     const files: SourceFileProjectDraft["files"] = [];
     const items: SourceFileProjectDraft["items"] = [];
@@ -96,14 +98,17 @@ export class SourceFileParsePipeline {
    */
   public async parse_import_commands(
     commands: SourceFileParseCommand[],
+    signal?: AbortSignal,
   ): Promise<SourceFileParseResult> {
     // 异步解析前固定目标路径，避免调用方修改命令影响本次导入。
     return this.parse_source_entries(
       commands.map((command) => ({
+        source: command.source,
         source_path: command.source_path,
         file_type: command.file_type,
         rel_path: command.rel_path,
       })),
+      signal,
     );
   }
 
@@ -112,18 +117,17 @@ export class SourceFileParsePipeline {
    */
   private async parse_source_entries(
     entries: readonly SourceFileParseCommand[],
+    signal?: AbortSignal,
   ): Promise<SourceFileParseResult> {
     const file_drafts: SourceFileParsedDraft[] = [];
     const failed_files: SourceFileParseFailureRecord[] = [];
     const warnings: SourceFileParseWarning[] = [];
     for (const entry of entries) {
+      signal?.throwIfAborted();
       const file_type = entry.file_type;
       try {
-        const prepared = await this.format_service.prepare_source(
-          entry.source_path,
-          entry.rel_path,
-          file_type,
-        );
+        const prepared = await this.format_service.prepare_source(entry, signal);
+        signal?.throwIfAborted();
         const { content } = prepared;
         warnings.push(...prepared.warnings);
         const parsed = await this.format_service.parse_asset(entry.rel_path, content, file_type);
@@ -133,6 +137,7 @@ export class SourceFileParsePipeline {
             ? { game_engine: parsed.game_engine }
             : {}),
           content,
+          source: entry.source,
           source_path: entry.source_path,
           rel_path: entry.rel_path,
           file_type: parsed.kind === "pdf" ? "PDF" : parsed.file_type,
@@ -140,6 +145,7 @@ export class SourceFileParsePipeline {
           parsed_items: parsed.kind === "items" ? parsed.items : [],
         });
       } catch (error) {
+        if (signal?.aborted) throw error; // 保留取消收尾中的恢复失败及备份位置。
         failed_files.push(build_source_file_parse_failure({ ...entry, error }));
       }
     }

@@ -11,7 +11,7 @@ import {
 } from "../../../test/rgss-fixture";
 import { decode, encode, type MarshalNode } from "./marshal";
 import { read_rgss_json, read_rgss_sources } from "./readable";
-import { read_rpgmaker_container } from "../rpgmaker-shared";
+import { read_rpgmaker_container } from "../shared/rpgmaker-format";
 import { write_text } from "./value";
 import { RGSS_VERSIONS } from "./source";
 

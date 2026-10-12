@@ -1,11 +1,10 @@
-import { RPGMakerGameFormat } from "../rpgmaker-shared";
+import { RPGMakerGameFormat } from "../shared/rpgmaker-format";
 import path from "node:path";
 import { default_native_fs, type NativeFs } from "../../../native/native-fs";
 import type { Item } from "../../../domain/item";
 import { AppError } from "../../../shared/error";
 import { decode_text_content } from "../../../shared/utils/text-tool";
-import type { FileFormatServiceConfig, SourceFileParseWarning } from "../file-format-shared";
-import { collect_rpgmaker_files, discover_rpgmaker_source } from "./source";
+import type { FileFormatServiceConfig, SourceFileParseWarning } from "../file-format-types";
 import { read_rpgmaker_metadata } from "./item";
 import { create_rpgmaker_extractor } from "./extractor";
 import { read_rpgmaker_json } from "./json";
@@ -22,10 +21,6 @@ export class RPGMakerMvMzFormat extends RPGMakerGameFormat {
     super(
       {
         file_type: "RPGMAKER_MV_MZ",
-        collect: (source, fs) => {
-          const game = discover_rpgmaker_source(source, fs);
-          return game === null ? null : collect_rpgmaker_files(game, fs);
-        },
         internal_path: (item) => read_rpgmaker_metadata(item.extra_field).internal_file_path,
         read_file: (content, file) => this.read_file(content, file),
         render: (content, file, items) => this.render(content, file, items),

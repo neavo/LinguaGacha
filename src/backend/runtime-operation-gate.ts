@@ -8,6 +8,8 @@ export type RuntimeActivityListener = (snapshot: Readonly<RuntimeActivitySnapsho
  * 翻译、Agent、接口测试与工程写入的唯一互斥所有者。
  */
 export class RuntimeOperationGate {
+  private readonly project_write_lifetime = new AbortController();
+  private project_write_finished: Promise<void> | null = null; // 关闭须等到目录恢复与调用方收尾完成。
   private active_runtime: RuntimeLease | null = null; // 对象身份同时承担迟到释放校验
   private project_write_running = false; // 项目写不公开为模型 owner，只阻止并发运行与写入
   private model_auth_write_running = false; // 账户提交与任务启动互斥，浏览器授权等待期间不占用。
@@ -15,6 +17,12 @@ export class RuntimeOperationGate {
   private revision = 0; // 仅在公开 owner 变化时推进
   private readonly listeners = new Set<RuntimeActivityListener>(); // 组合根用它桥接 SSE
   private readonly idle_waiters = new Set<() => void>(); // 目录应用等待运行与工程写入都释放
+
+  /** 停止接收新写入，取消活动操作并等待不可取消的恢复与清理。 */
+  public async stop_project_writes(): Promise<void> {
+    this.project_write_lifetime.abort(new AppErrors.AppError("runtime.disposed"));
+    await this.project_write_finished;
+  }
 
   /** 返回不可变值形状，调用方不能取得内部 lease。 */
   public get_snapshot(): RuntimeActivitySnapshot {
@@ -99,11 +107,14 @@ export class RuntimeOperationGate {
   }
 
   /** 用户写入和工程生命周期操作要求整个模型运行时空闲。 */
-  public async run_project_write<T>(operation: () => Promise<T> | T): Promise<T> {
+  public async run_project_write<T>(
+    operation: (signal: AbortSignal) => Promise<T> | T,
+    signal?: AbortSignal,
+  ): Promise<T> {
     if (this.active_runtime !== null || this.project_write_running) {
       throw new AppErrors.AppError("runtime.busy");
     }
-    return await this.run_project_write_under_lease(operation);
+    return await this.run_project_write_under_lease(operation, signal);
   }
 
   /** 技能修改只与 Agent 执行互斥；技能命令之间由技能服务串行处理。 */
@@ -127,12 +138,25 @@ export class RuntimeOperationGate {
   }
 
   /** 普通写与 Agent 写最终都在这里持有同一串行标记。 */
-  private async run_project_write_under_lease<T>(operation: () => Promise<T> | T): Promise<T> {
+  private async run_project_write_under_lease<T>(
+    operation: (signal: AbortSignal) => Promise<T> | T,
+    signal?: AbortSignal,
+  ): Promise<T> {
+    const combined = signal
+      ? AbortSignal.any([signal, this.project_write_lifetime.signal])
+      : this.project_write_lifetime.signal;
+    combined.throwIfAborted();
+    let finish!: () => void;
+    this.project_write_finished = new Promise<void>((resolve) => {
+      finish = resolve;
+    });
     this.project_write_running = true;
     try {
-      return await operation();
+      return await operation(combined);
     } finally {
       this.project_write_running = false;
+      this.project_write_finished = null;
+      finish();
       this.notify_idle();
     }
   }

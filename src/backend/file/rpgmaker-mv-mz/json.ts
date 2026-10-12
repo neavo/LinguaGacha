@@ -1,10 +1,10 @@
-import { RPGMAKER_EVENT } from "../rpgmaker-shared";
+import { RPGMAKER_EVENT } from "../shared/rpgmaker-format";
 import path from "node:path";
 import type { Item } from "../../../domain/item";
 import type { JsonValue } from "../../../domain/json";
 import { create_rpgmaker_extractor } from "./extractor";
 import type { JsonPath, RPGMakerLocation } from "./types";
-import type { SourceFileParseWarning } from "../file-format-shared";
+import type { SourceFileParseWarning } from "../file-format-types";
 
 type Command = { code: number; indent: number; parameters: JsonValue[] };
 const DISPLAY_FIELDS: Record<string, readonly string[]> = {

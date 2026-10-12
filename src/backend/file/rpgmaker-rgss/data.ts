@@ -1,10 +1,10 @@
-import { RPGMAKER_EVENT as EVENT } from "../rpgmaker-shared";
+import { RPGMAKER_EVENT as EVENT } from "../shared/rpgmaker-format";
 import assert from "node:assert/strict";
 import path from "node:path";
 import { deflateSync } from "node:zlib";
 import { create_item, type Item } from "../../../domain/item";
 import type { JsonValue } from "../../../domain/json";
-import type { SourceFileParseWarning } from "../file-format-shared";
+import type { SourceFileParseWarning } from "../file-format-types";
 import { base, field, symbol, decode, encode, type MarshalNode } from "./marshal";
 import {
   array,

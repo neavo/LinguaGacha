@@ -352,7 +352,10 @@ it("读取失败跳过文件，解析失败保留字节，无可保存文件时�
     return read(file);
   });
   const service = new RPGMakerMvMzFormat({ target_language: "ZH" }, native);
-  const prepared = await service.prepare_source(temp.path, "game.zip");
+  const entries = ["data/Broken.json", "data/System.json", "data/Unreadable.json"].map(
+    (rel_path) => ({ rel_path, source_path: path.join(temp.path, rel_path) }),
+  );
+  const prepared = await service.prepare_source(entries, "game.zip");
   const parsed = await service.read_from_stream(prepared.content, "game.zip");
   expect(parsed.items).toEqual([]);
   expect([...prepared.warnings, ...parsed.warnings]).toMatchObject([
@@ -374,7 +377,7 @@ it("读取失败跳过文件，解析失败保留字节，无可保存文件时�
   mock.mockImplementation(() => {
     throw new Error("unreadable");
   });
-  await expect(service.prepare_source(temp.path, "game.zip")).rejects.toMatchObject({
+  await expect(service.prepare_source(entries, "game.zip")).rejects.toMatchObject({
     code: "file.parse_failed",
   });
 });

@@ -1,9 +1,10 @@
 import path from "node:path";
-import { read_translation_for_generation } from "../translation-generation-text";
+import { read_translation_for_generation } from "../shared/translation-generation-text";
 import { type Item, type ItemFileType, create_item } from "../../../domain/item";
 import { AppError } from "../../../shared/error";
-import { group_items, write_binary_file, type GeneratedFilePaths } from "../file-format-shared";
-import { read_workbook, cell_text, write_cell } from "../spreadsheet";
+import { group_items, write_binary_file } from "../shared/file-format-helpers";
+import { type GeneratedFilePaths } from "../file-format-types";
+import { read_workbook, cell_text, write_cell } from "../shared/spreadsheet";
 
 const WOLF_HEADER = ["code", "flag", "type", "info"];
 const WOLF_SOURCE_COLUMN = 6;
