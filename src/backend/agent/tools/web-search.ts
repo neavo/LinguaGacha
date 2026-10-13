@@ -42,7 +42,7 @@ export function create_agent_web_search_tool(search: AgentWebSearchPort): ToolRe
       const result = await search(params.query, signal ?? new AbortController().signal);
       const truncated = result.text.length > WEB_SEARCH_MAX_TEXT_CHARS;
       return {
-        content: [
+        output: [
           {
             type: "text" as const,
             text: truncated

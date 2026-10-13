@@ -99,7 +99,12 @@ describe("AgentRuntimeLog", () => {
       });
       input.query = "修改后的输入";
       vi.setSystemTime("2026-09-13T00:00:02.000Z");
-      const message = tool_message("call", { ...agent_tool_result(details), durationMs: 125 });
+      const result = agent_tool_result(details);
+      const message = tool_message("call", {
+        content: result.output,
+        details,
+        durationMs: 125,
+      });
       log.record_tool_result(TOOL_RESULT_RECORD, message);
       log.record_tool_result(TOOL_RESULT_RECORD, message);
       details.text = "修改后的结果";

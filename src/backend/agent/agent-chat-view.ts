@@ -13,8 +13,8 @@ import type { JsonValue } from "@earendil-works/chord";
 import type { AgentEntry, AgentUsageSnapshot } from "../../shared/agent";
 import { JsonTool } from "../../shared/utils/json-tool";
 import { project_assistant_message_parts, read_agent_tool_result_status } from "./agent-message";
-import type { AgentInputRecord, AgentChatData } from "./agent-chat-data";
-import { read_agent_compaction_status } from "./agent-compaction";
+import { read_agent_input, type AgentInputRecord, type AgentChatData } from "./agent-chat-data";
+import { read_agent_compaction_result } from "./agent-compaction";
 
 /** 流式与正式响应使用同一任务身份，人工修订使用条目身份。 */
 export const assistant_entry_id = (task: number | undefined, entry: number): string =>
@@ -38,7 +38,7 @@ export class AgentChatView {
   private state!: Readonly<AgentChatData>; // 本次投影采用的已提交产品状态
   private readonly bounds = new Map<number, number>(); // 各祖先分支可见条目的最大身份
   private readonly rows = new Map<string, Row>();
-  private readonly inputs = new Map<number, AgentInputRecord>(); // 历史条目到产品输入的查询索引
+  private readonly inputSubmissions = new Map<number, SubmissionRecord>(); // 旧历史通过条目身份定位原提交回执
   private readonly calls = new Map<string, string>(); // 工具调用身份到公开条目的查询索引
   private readonly userRecords = new Map<string, EntryRecord>(); // 轮次状态变化时定位原用户消息
   private readonly changed = new Map<string, AgentEntry>(); // 尚未发布的条目，同一身份只保留最新值
@@ -56,6 +56,12 @@ export class AgentChatView {
   /** 仅快照、修订和停止等低频读者需要物化完整数组。 */
   public get entries(): AgentEntry[] {
     return this.order.map((id) => this.rows.get(id)!.entry);
+  }
+  /** 实例故障只覆盖当前公开轮次，重开投影仍由持久化回执决定。 */
+  public fail_round(id: string | null, endedAt: number): void {
+    const row = id === null ? undefined : this.rows.get(id);
+    if (row?.entry.kind === "user_message" && row.entry.delivery === "round")
+      this.put({ ...row.entry, status: "error", endedAt }, row.order);
   }
   /** 祖先分支只公开切点以前的事实。 */
   private visible(conversation: number, id: number): boolean {
@@ -142,8 +148,7 @@ export class AgentChatView {
           submission.requestId === undefined
         )
           continue;
-        const input = state.inputs[submission.requestId];
-        if (input !== undefined) this.inputs.set(submission.entry, input);
+        this.inputSubmissions.set(submission.entry, submission);
       }
       for (const id of [...this.pendingRecords].sort((a, b) => a - b)) {
         const record = this.records.get(id)!;
@@ -153,7 +158,7 @@ export class AgentChatView {
         for (const [id, round] of Object.entries(state.rounds)) {
           if (round === previous.rounds[id]) continue;
           const record = this.userRecords.get(id);
-          if (record !== undefined) this.read_user(record, this.inputs.get(record.id)!);
+          if (record !== undefined) this.read_user(record, this.read_input(record)!);
         }
       }
       // 时间元数据独立提交时也更新对应条目，覆盖刷新期间新任务到达的情况。
@@ -198,7 +203,7 @@ export class AgentChatView {
   ): void {
     this.state = state;
     this.rows.clear();
-    this.inputs.clear();
+    this.inputSubmissions.clear();
     this.calls.clear();
     this.userRecords.clear();
     this.changed.clear();
@@ -213,8 +218,7 @@ export class AgentChatView {
         submission.requestId === undefined
       )
         continue;
-      const input = state.inputs[submission.requestId];
-      if (input !== undefined) this.inputs.set(submission.entry, input);
+      this.inputSubmissions.set(submission.entry, submission);
     }
     // 恢复时统一排序一次，避免每个历史压缩条目都触发插入和重排。
     this.restoring = true;
@@ -275,6 +279,11 @@ export class AgentChatView {
     this.replace = true;
   }
 
+  /** 所有投影使用同一新旧输入读取边界。 */
+  private read_input(record: EntryRecord): AgentInputRecord | undefined {
+    return read_agent_input(record, this.inputSubmissions.get(record.id), this.state);
+  }
+
   /** `hidden` 输入留在模型历史，普通输入与 `steer` 按产品身份展示。 */
   private read_user(record: EntryRecord, input: AgentInputRecord): void {
     if (input.delivery === "hidden") return;
@@ -304,7 +313,7 @@ export class AgentChatView {
 
   /** 按历史顺序转换消息，工具结果归回原调用及其所属轮次。 */
   private read_record(record: EntryRecord): void {
-    const input = this.inputs.get(record.id);
+    const input = this.read_input(record);
     if (input !== undefined && input.delivery !== "hidden") {
       this.currentRound = input.roundId;
       this.read_user(record, input);
@@ -367,7 +376,7 @@ export class AgentChatView {
 
   /** 选择切点时隐藏运行块，确认摘要范围后公开，失败保留诊断条目。 */
   private read_task(task: TaskRecordValue): void {
-    const status = read_agent_compaction_status(task, this.submissions);
+    const { status } = read_agent_compaction_result(task, this.submissions);
     const startedAt = this.state.compactionStartedAt[task.id];
     const id = `compaction:${task.id}`;
     if (

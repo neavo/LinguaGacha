@@ -16,8 +16,8 @@ describe("Agent 工具公共边界", () => {
     const details = { status: "applied", values: [1, 2] };
     const result = agent_tool_result(details);
 
-    expect(result.details).toBe(details);
-    expect(JSON.parse(result.content[0]!.text)).toEqual(details);
+    expect(result.details).toEqual(details);
+    expect(JSON.parse(result.output[0]!.text)).toEqual(details);
   });
 
   it("业务错误的 message 可还原稳定 details", () => {

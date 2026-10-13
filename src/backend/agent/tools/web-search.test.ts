@@ -9,7 +9,7 @@ import {
 } from "./web-search";
 
 type WebSearchToolResult = {
-  content: Array<{ type: "text"; text: string }>;
+  output: Array<{ type: "text"; text: string }>;
   details: { provider: AgentWebSearchProvider; truncated: boolean };
 };
 
@@ -43,7 +43,7 @@ describe("Agent web_search 工具", () => {
     )) as WebSearchToolResult;
 
     expect(search).toHaveBeenCalledWith("当前示例", signal);
-    expect(result.content[0]?.text).toBe("Title: 示例\nURL: https://example.com");
+    expect(result.output[0]?.text).toBe("Title: 示例\nURL: https://example.com");
     expect(result.details).toEqual({ provider: "tavily", truncated: false });
   });
 
@@ -59,7 +59,7 @@ describe("Agent web_search 工具", () => {
       ...agent_tool_call("search"),
     )) as WebSearchToolResult;
 
-    const result_text = result.content[0]?.text ?? "";
+    const result_text = result.output[0]?.text ?? "";
     expect(result_text.match(/a+/u)?.[0]?.length).toBeLessThan(upstream_text.length);
     expect(result.details).toEqual({ provider: "firecrawl", truncated: true });
   });

@@ -63,6 +63,49 @@ function response(provider: "alpha" | "beta", changes: Record<string, unknown> =
 }
 
 describe("PiModelCatalog", () => {
+  it("公开 Schema 校验保留缺省语义和未知字段，缓存重开仍保留原值", async () => {
+    const { catalog, paths, warning } = await create_catalog();
+    const compat = {
+      supportsStore: false,
+      futureOption: { mode: "new" },
+      supportsFuture: "future",
+    };
+    const thinkingLevelMap = { off: null, high: "vendor-high" };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) =>
+        url.endsWith("/alpha")
+          ? response("alpha", { compat, thinkingLevelMap })
+          : new Response(null, { status: 304 }),
+      ),
+    );
+    await catalog.check(async (_models, commit) => commit());
+    const model = catalog.read_models().find((model) => model.provider === "alpha")!;
+    expect(model.compat).toEqual(compat);
+    expect(model.thinkingLevelMap).toEqual(thinkingLevelMap);
+    expect(warning).not.toHaveBeenCalled();
+    expect(new PiModelCatalog(paths, { warning }).read_models()).toEqual(catalog.read_models());
+  });
+
+  it.each([
+    { api: "openai-completions", compat: { thinkingFormat: "invalid" } },
+    { api: "anthropic-messages", compat: { forceAdaptiveThinking: "yes" } },
+    { api: "openai-responses", compat: { supportsStrictMode: "yes" } },
+    { api: "openai-completions", thinkingLevelMap: { high: 3 } },
+  ])("按协议拒绝损坏的 SDK 配置：%j", async (changes) => {
+    const { catalog, warning } = await create_catalog();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) =>
+        url.endsWith("/alpha") ? response("alpha", changes) : new Response(null, { status: 304 }),
+      ),
+    );
+    const apply = vi.fn();
+    await catalog.check(apply);
+    expect(apply).not.toHaveBeenCalled();
+    expect(catalog.read_models()).toContainEqual(builtin.alpha);
+    expect(warning).toHaveBeenCalledOnce();
+  });
   it("已知供应商的空目录正常缓存，后续较新目录纳入新增聊天模型", async () => {
     const { catalog, paths, file_path, warning } = await create_catalog();
     vi.stubGlobal(

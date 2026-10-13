@@ -1,4 +1,8 @@
-import { defineTool, type ToolRegistration } from "@earendil-works/pi-durable";
+import {
+  defineTool,
+  type ToolRegistration,
+  type ToolExecutionResult,
+} from "@earendil-works/pi-durable";
 import type { JsonValue } from "@earendil-works/chord";
 import type { TSchema } from "@earendil-works/pi-ai";
 
@@ -48,9 +52,11 @@ export class AgentToolError extends Error {
 }
 
 /** 产品 JSON 工具的模型正文和 details 共用同一严格事实。 */
-export function agent_tool_result(details: JsonRecord) {
+export function agent_tool_result(
+  details: JsonRecord,
+): ToolExecutionResult<JsonRecord> & { output: { type: "text"; text: string }[] } {
   return {
-    content: [{ type: "text" as const, text: JsonTool.stringifyStrict(details) }],
+    output: [{ type: "text", text: JsonTool.stringifyStrict(details) }],
     details,
   };
 }
