@@ -1,6 +1,7 @@
 import { AgentDatabaseAccess } from "../database/agent-database-access";
 import { DatabaseSync } from "node:sqlite";
 import { NodeSqliteDatabase } from "@earendil-works/pi-durable/storage/sqlite/node";
+import { SqliteStorage } from "@earendil-works/pi-durable/storage/sqlite";
 import { AgentChatStorage } from "../database/agent-chat-storage";
 import { randomUUID } from "node:crypto";
 import type { AgentApprovalMode } from "../../domain/setting";
@@ -597,12 +598,13 @@ describe("AgentService", () => {
     });
     const first = service.input_command("send", request);
     const duplicate = service.input_command("send", request);
-    expect(() => service.input_command("send", { ...request, text: "冲突内容" })).toThrow(
+    await expect(service.input_command("send", { ...request, text: "冲突内容" })).rejects.toThrow(
       expect.objectContaining({ code: "request.validation_failed" }),
     );
     await expect(first).rejects.toThrow("reply lost");
     await expect(duplicate).rejects.toThrow("reply lost");
     await wait_for_idle(service);
+    expect(await service.input_command_status(request)).toMatchObject({ status: "accepted" });
     await expect(service.input_command("send", request)).resolves.toMatchObject({
       status: "accepted",
     });
@@ -610,6 +612,196 @@ describe("AgentService", () => {
     await service.input_command("send", { ...request, commandId: "send-2" });
     await wait_for_idle(service);
     expect(fake_agent_state.prompts).toEqual(["一次输入", "一次输入"]);
+  });
+
+  it("受理故障后先查询结算旧命令，修改草稿再发送只执行一次", async () => {
+    const { service, runtime_gate } = await create_service();
+    const request = {
+      chatId: service.get_snapshot().chatId,
+      commandId: "fault",
+      text: "输入",
+      attachments: [],
+    };
+    const commit = SqliteStorage.prototype.commit;
+    let writes = 0;
+    const fault = new Error("storage admission failed");
+    const spy = vi.spyOn(SqliteStorage.prototype, "commit").mockImplementation(function (
+      this: SqliteStorage,
+      ...args
+    ) {
+      if (++writes === 2) return Promise.reject(fault);
+      return commit.apply(this, args);
+    });
+    await expect(service.input_command("send", request)).rejects.toThrow();
+    spy.mockRestore();
+    expect(runtime_gate.get_snapshot().owner).toBeNull();
+    expect(fake_agent_state.prompts).toEqual([]);
+    const unavailable = vi
+      .spyOn(SqliteStorage.prototype, "scanConversations")
+      .mockRejectedValueOnce(new Error("still unavailable"));
+    await expect(service.input_command_status(request)).rejects.toThrow();
+    unavailable.mockRestore();
+    expect(await service.input_command_status(request)).toMatchObject({ status: "cancelled" });
+    await expect(service.input_command("send", request)).resolves.toMatchObject({
+      status: "cancelled",
+    });
+    expect(fake_agent_state.prompts).toEqual([]);
+    await service.input_command("send", { ...request, commandId: "retry", text: "修改后的输入" });
+    await wait_for_idle(service);
+    expect(fake_agent_state.prompts).toEqual(["修改后的输入"]);
+  });
+
+  it.each([false, true])(
+    "并发查询与提交等待同一故障执行退出，切换工程=%s",
+    async (switchProject) => {
+      const { service, session_state, runtime_gate } = await create_service();
+      fake_agent_state.mode = "tool_only";
+      fake_agent_state.hold_tool_execution = true;
+      await service.send_message({ text: "旧工程工具", attachments: [] });
+      await vi.waitFor(() => expect(fake_agent_state.release_tool_execution).not.toBeNull());
+      const request = {
+        chatId: service.get_snapshot().chatId,
+        commandId: "pending",
+        text: "故障输入",
+        attachments: [],
+      };
+      const commit = SqliteStorage.prototype.commit;
+      let writes = 0;
+      const failure = vi.spyOn(SqliteStorage.prototype, "commit").mockImplementation(function (
+        this: SqliteStorage,
+        ...args
+      ) {
+        if (++writes === 2) return Promise.reject(new Error("queue commit failed"));
+        return commit.apply(this, args);
+      });
+      await expect(service.input_command("send", request)).rejects.toThrow();
+      failure.mockRestore();
+      const next = { ...request, commandId: "new", text: "修改后重试" };
+      const results = Promise.allSettled([
+        service.input_command_status(request),
+        service.input_command_status(request),
+        service.input_command("send", next),
+        service.input_command("send", next),
+      ]);
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      expect(runtime_gate.get_snapshot().owner).toBe("agent");
+      const switched = switchProject ? session_state.mark_loaded("next.lg") : Promise.resolve();
+      fake_agent_state.mode = "success";
+      fake_agent_state.release_tool_execution?.();
+      const settled = await results;
+      await switched;
+      await wait_for_idle(service);
+      if (switchProject) {
+        expect(settled.every((result) => result.status === "rejected")).toBe(true);
+        expect(service.get_snapshot().chatId).not.toBe(request.chatId);
+        expect(service.get_snapshot().entries).toEqual([]);
+        expect(fake_agent_state.prompts).toEqual(["旧工程工具"]);
+      } else {
+        expect(settled).toMatchObject([
+          { status: "fulfilled", value: { status: "cancelled" } },
+          { status: "fulfilled", value: { status: "cancelled" } },
+          { status: "fulfilled", value: { status: "accepted" } },
+          { status: "fulfilled", value: { status: "accepted" } },
+        ]);
+        expect(fake_agent_state.prompts).toEqual(["旧工程工具", "修改后重试"]);
+      }
+      expect(runtime_gate.get_snapshot().owner).toBeNull();
+    },
+  );
+
+  it("正常受理中的状态查询保持 pending，没有记录时返回 unknown", async () => {
+    const { service, skills } = await create_service();
+    const entered = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
+    const refresh = skills.refresh.bind(skills);
+    vi.spyOn(skills, "refresh").mockImplementationOnce(async () => {
+      entered.resolve();
+      await release.promise;
+      return refresh();
+    });
+    const request = {
+      chatId: service.get_snapshot().chatId,
+      commandId: "accepting",
+      text: "正常输入",
+      attachments: [],
+    };
+    const sending = service.input_command("send", request);
+    try {
+      await entered.promise;
+      expect(await service.input_command_status(request)).toMatchObject({ status: "pending" });
+      expect(
+        await service.input_command_status({ ...request, commandId: "missing" }),
+      ).toMatchObject({ status: "unknown" });
+      expect(fake_agent_state.prompts).toEqual([]);
+    } finally {
+      release.resolve();
+      await sending;
+    }
+    await wait_for_idle(service);
+    expect(fake_agent_state.prompts).toEqual(["正常输入"]);
+  });
+
+  it("登记后失效的在途命令不能在状态查询恢复后自行重发", async () => {
+    const { service } = await create_service();
+    const entered = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
+    const change = AgentChat.prototype.change;
+    let held = false;
+    vi.spyOn(AgentChat.prototype, "change").mockImplementation(async function (
+      this: AgentChat,
+      update,
+    ) {
+      await change.call(this, update);
+      if (!held && this.state.commands["registered"]?.status === "pending") {
+        held = true;
+        entered.resolve();
+        await release.promise;
+      }
+    });
+    const request = {
+      chatId: service.get_snapshot().chatId,
+      commandId: "registered",
+      text: "禁止重发",
+      attachments: [],
+    };
+    const rejected = expect(service.input_command("send", request)).rejects.toThrow();
+    try {
+      await entered.promise;
+      const failure = vi
+        .spyOn(SqliteStorage.prototype, "commit")
+        .mockRejectedValueOnce(new Error("session failed after registration"));
+      await expect(service.send_message({ text: "故障触发", attachments: [] })).rejects.toThrow();
+      failure.mockRestore();
+      expect(await service.input_command_status(request)).toMatchObject({ status: "cancelled" });
+      expect(fake_agent_state.prompts).toEqual([]);
+    } finally {
+      release.resolve();
+      await rejected;
+    }
+    expect(fake_agent_state.prompts).toEqual([]);
+  });
+
+  it("后台存储故障等待真实工具退出后释放租约，保留历史并允许显式重开", async () => {
+    const { service, runtime_gate } = await create_service();
+    fake_agent_state.mode = "tool_only";
+    fake_agent_state.hold_tool_execution = true;
+    await service.send_message({ text: "执行工具", attachments: [] });
+    await vi.waitFor(() => expect(fake_agent_state.release_tool_execution).not.toBeNull());
+    const spy = vi
+      .spyOn(SqliteStorage.prototype, "commit")
+      .mockRejectedValueOnce(new Error("background storage failed"));
+    await expect(service.send_message({ text: "未提交", attachments: [] })).rejects.toThrow();
+    spy.mockRestore();
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    expect(runtime_gate.get_snapshot().owner).toBe("agent");
+    fake_agent_state.release_tool_execution?.();
+    await wait_for_idle(service);
+    expect(runtime_gate.get_snapshot().owner).toBeNull();
+    expect(service.get_snapshot().entries[0]).toMatchObject({ text: "执行工具", status: "error" });
+    fake_agent_state.mode = "success";
+    await service.send_message({ text: "重开", attachments: [] });
+    await wait_for_idle(service);
+    expect(fake_agent_state.prompts).toEqual(["执行工具", "重开"]);
   });
 
   it("重复入队与重复修订按产品命令去重，旧 chat 命令被拒绝", async () => {
@@ -639,7 +831,7 @@ describe("AgentService", () => {
     await service.input_command("revise", revision);
     expect(service.get_snapshot().entries).toEqual(revised);
     await service.reset();
-    expect(() => service.input_command("send", request)).toThrow(
+    await expect(service.input_command("send", request)).rejects.toThrow(
       expect.objectContaining({ code: "request.validation_failed" }),
     );
   });
@@ -1650,7 +1842,7 @@ describe("AgentService", () => {
       .spyOn(workspace_tools, "create_agent_workspace_run_tool")
       .mockImplementation((options) => ({
         ...create_tools(options),
-        execute: async () => ({ content, details: {} }),
+        execute: async () => ({ output: content, details: {} }),
       }));
     try {
       const { service, publish } = await create_service();
@@ -2664,20 +2856,17 @@ describe("AgentService", () => {
     expect(settled).toBe(false);
     await vi.waitFor(() => expect(fake_agent_state.abort_count).toBe(1));
 
-    let resetting_error: unknown;
-    try {
-      await service.send_message({ text: "过早的新任务", attachments: [] });
-    } catch (error) {
-      resetting_error = error;
-    }
-    expect(resetting_error).toMatchObject({
-      code: "runtime.busy",
+    const old_request = expect(
+      service.send_message({ text: "过早的新任务", attachments: [] }),
+    ).rejects.toMatchObject({
+      code: "request.validation_failed",
     });
     expect(service.get_snapshot().entries).toEqual([]);
 
     fake_agent_state.hold_idle = false;
     fake_agent_state.release_pending?.();
     await expect(resetting).resolves.toEqual({ revision: expect.any(Number) });
+    await old_request;
     expect(service.get_snapshot()).toMatchObject({ state: "idle", entries: [] });
     expect(publish).toHaveBeenLastCalledWith(
       "agent.chat_event",
@@ -2848,15 +3037,23 @@ describe("AgentService", () => {
   });
 
   it("创建运行时期间 stop 会令候选失效且不产生公开受理事实", async () => {
-    const { service } = await create_service();
+    const { service, skills } = await create_service();
+    const entered = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
+    vi.spyOn(skills, "refresh").mockImplementationOnce(async () => {
+      entered.resolve();
+      await release.promise;
+    });
 
     const sending = service.send_message({ text: "不会启动", attachments: [] });
-    expect(await service.stop()).toEqual({ revision: expect.any(Number) });
-    expect(service.get_snapshot()).toMatchObject({ state: "stopping", entries: [] });
-
-    await expect(sending).rejects.toMatchObject({
+    const rejected = expect(sending).rejects.toMatchObject({
       code: "runtime.cancelled",
     });
+    await entered.promise;
+    expect(await service.stop()).toEqual({ revision: expect.any(Number) });
+    expect(service.get_snapshot()).toMatchObject({ state: "stopping", entries: [] });
+    release.resolve();
+    await rejected;
     expect(service.get_snapshot()).toMatchObject({ state: "idle", entries: [] });
     expect(fake_agent_state.model_call_count).toBe(0);
   });
@@ -2918,32 +3115,63 @@ describe("AgentService", () => {
     });
   });
 
-  it("截断恢复保留未消费 steer，只生成一次新的发送尝试", async () => {
-    const { service, runtime_gate } = await create_service();
-    await prepare_manual_compaction_history(service);
-    const before = fake_agent_state.model_call_count;
-    fake_agent_state.mode = "length_pending";
-    await service.send_message({ text: "需要恢复", attachments: [] });
-    await vi.waitFor(() => expect(fake_agent_state.release_pending).not.toBeNull());
-    await service.send_message({ text: "恢复后优先处理", attachments: [] });
-    const id = service.get_snapshot().inputQueue.items[0]!.id;
-    await service.send_queued_message({ id });
-    expect(service.get_snapshot().inputQueue.items[0]?.status).toBe("sending");
-    fake_agent_state.release_pending?.();
-    await wait_for_idle(service);
-    expect(fake_agent_state.model_call_count - before).toBe(2);
-    expect(
-      service
-        .get_snapshot()
-        .entries.filter(
-          (entry) => entry.kind === "user_message" && entry.text === "恢复后优先处理",
-        ),
-    ).toMatchObject([{ delivery: "steer" }]);
-    expect(service.get_snapshot().inputQueue.items).toEqual([]);
-    expect(JSON.stringify(fake_agent_state.summary_contexts)).not.toContain("废弃的恢复尝试");
-    expect(JSON.stringify(fake_agent_state.model_contexts.at(-1))).not.toContain("废弃的恢复尝试");
-    expect(runtime_gate.get_snapshot().owner).toBeNull();
-  });
+  it.each(["success", "stop", "failure"] as const)(
+    "截断恢复持续占用未消费 steer，%s 后按回执消费或归还",
+    async (outcome) => {
+      const { service, runtime_gate } = await create_service();
+      await prepare_manual_compaction_history(service);
+      const before = fake_agent_state.model_call_count;
+      fake_agent_state.mode = "length_pending";
+      await service.send_message({ text: "需要恢复", attachments: [] });
+      await vi.waitFor(() => expect(fake_agent_state.release_pending).not.toBeNull());
+      await service.send_message({ text: "恢复后优先处理", attachments: [] });
+      const id = service.get_snapshot().inputQueue.items[0]!.id;
+      await service.send_queued_message({ id });
+      expect(service.get_snapshot().inputQueue.items[0]?.status).toBe("sending");
+      fake_agent_state.hold_next_summary = true;
+      fake_agent_state.release_pending?.();
+      await vi.waitFor(() => expect(fake_agent_state.release_summary).not.toBeNull());
+      expect(service.get_snapshot().inputQueue.items[0]?.status).toBe("sending");
+      await expect(service.delete_queued_message({ id })).rejects.toThrow();
+      await expect(
+        service.update_queued_message({ id, message: { text: "不能改写", attachments: [] } }),
+      ).rejects.toThrow();
+      if (outcome === "stop") await service.stop();
+      if (outcome === "failure") fake_agent_state.summary_failures_remaining = 100;
+      fake_agent_state.release_summary?.();
+      await wait_for_idle(service);
+      if (outcome !== "success") {
+        expect(service.get_snapshot().inputQueue).toMatchObject({
+          paused: true,
+          items: [{ id, text: "恢复后优先处理", status: "queued" }],
+        });
+        expect(
+          service
+            .get_snapshot()
+            .entries.some(
+              (entry) => entry.kind === "user_message" && entry.text === "恢复后优先处理",
+            ),
+        ).toBe(false);
+        await service.update_queued_message({ id, message: { text: "可编辑", attachments: [] } });
+        expect(runtime_gate.get_snapshot().owner).toBeNull();
+        return;
+      }
+      expect(fake_agent_state.model_call_count - before).toBe(2);
+      expect(
+        service
+          .get_snapshot()
+          .entries.filter(
+            (entry) => entry.kind === "user_message" && entry.text === "恢复后优先处理",
+          ),
+      ).toMatchObject([{ delivery: "steer" }]);
+      expect(service.get_snapshot().inputQueue.items).toEqual([]);
+      expect(JSON.stringify(fake_agent_state.summary_contexts)).not.toContain("废弃的恢复尝试");
+      expect(JSON.stringify(fake_agent_state.model_contexts.at(-1))).not.toContain(
+        "废弃的恢复尝试",
+      );
+      expect(runtime_gate.get_snapshot().owner).toBeNull();
+    },
+  );
   it("连续截断只补救一次，保留用量并以失败结束", async () => {
     const { service } = await create_service();
     await prepare_manual_compaction_history(service);
@@ -3374,14 +3602,18 @@ describe("AgentService", () => {
     ).toBe(true);
   });
 
-  it("自动压缩失败只公开诊断，下一请求由 SDK 自动重试", async () => {
+  it("阻塞自动压缩失败结束本轮并暂停队列，下一轮可以重试", async () => {
     const { service, read_items, log_append } = await create_service();
     await prepare_long_tool_history(service, read_items);
     fake_agent_state.mode = "tool_compaction";
     fake_agent_state.summary_failures_remaining = 100;
+    fake_agent_state.hold_next_summary = true;
     const calls_before_compaction = fake_agent_state.model_call_count;
 
     await service.send_message({ text: "检查长条目", attachments: [] });
+    await vi.waitFor(() => expect(fake_agent_state.release_summary).not.toBeNull());
+    await service.send_message({ text: "待继续", attachments: [] });
+    fake_agent_state.release_summary?.();
     await wait_for_idle(service);
 
     const failed_compaction = service
@@ -3389,18 +3621,10 @@ describe("AgentService", () => {
       .entries.findLast((entry) => entry.kind === "context_compaction");
     expect(
       service.get_snapshot().entries.findLast((entry) => entry.kind === "user_message"),
-    ).toMatchObject({ text: "检查长条目", status: "success" });
+    ).toMatchObject({ text: "检查长条目", status: "error" });
     expect(failed_compaction).toMatchObject({ status: "error" });
-    expect(fake_agent_state.model_call_count - calls_before_compaction).toBe(2);
-    expect(service.get_snapshot().entries).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          kind: "assistant_message",
-          parts: [{ kind: "text", text: "未压缩继续" }],
-          status: "success",
-        }),
-      ]),
-    );
+    expect(fake_agent_state.model_call_count - calls_before_compaction).toBe(1);
+    expect(service.get_snapshot().inputQueue.paused).toBe(true);
     expect(
       log_append.mock.calls
         .map(([payload]) => payload)
@@ -3418,6 +3642,7 @@ describe("AgentService", () => {
 
     fake_agent_state.summary_failures_remaining = 0;
     fake_agent_state.mode = "success";
+    await service.delete_queued_message({ id: service.get_snapshot().inputQueue.items[0]!.id });
     await service.send_message({ text: "下一轮", attachments: [] });
     await wait_for_idle(service);
     expect(

@@ -136,8 +136,8 @@ export function create_agent_workspace_run_tool(options: {
       });
       return {
         ...result,
-        content: [
-          ...result.content,
+        output: [
+          ...result.output,
           ...images.map(({ image }) => ({
             type: "image" as const,
             mimeType: image.mimeType,

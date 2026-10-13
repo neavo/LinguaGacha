@@ -1,3 +1,4 @@
+import { AgentCompactionError } from "./agent-compaction";
 import { randomUUID } from "node:crypto";
 import type { ProjectDatabase } from "../database/database-operations";
 import type { AgentChatStorage } from "../database/agent-chat-storage";
@@ -18,7 +19,7 @@ import { create_agent_batch_item_translation_tool } from "./tools/run-batch-item
 import { type AssistantMessageEvent } from "@earendil-works/pi-ai";
 import { createModels } from "@earendil-works/pi-ai/models";
 import { isDeepStrictEqual } from "node:util";
-import { AgentChat, AgentCompactionError, type AgentExecution } from "./agent-chat";
+import { AgentChat, type AgentExecution } from "./agent-chat";
 
 import { resolve_app_locale } from "../../domain/app-language";
 import { is_json_record, type JsonRecord } from "../../domain/json";
@@ -340,12 +341,12 @@ export class AgentService {
   }
 
   /** 所有公开输入命令先按产品身份去重，再进入原有租约与队列规则。 */
-  public input_command(
+  public async input_command(
     kind: AgentInputCommandKind,
     request: JsonRecord,
   ): Promise<AgentInputCommandAck> {
-    this.assert_not_disposed();
-    const chat = this.require_chat();
+    const chat = await this.command_chat(request["chatId"]);
+    this.assert_available();
     const { chatId, commandId, ...body } = request;
     if (
       chatId !== this.chat_id ||
@@ -378,13 +379,22 @@ export class AgentService {
   }
 
   /** 重连只查询受理结果，不产生新的输入或模型请求。 */
-  public input_command_status(request: JsonRecord): AgentInputCommandAck {
-    this.assert_not_disposed();
+  public async input_command_status(request: JsonRecord): Promise<AgentInputCommandAck> {
+    const chat = await this.command_chat(request["chatId"]);
+    this.assert_available();
     if (request["chatId"] !== this.chat_id || typeof request["commandId"] !== "string")
       throw agent_queue_validation_error("agent_input_command_invalid");
+    const commandId = request["commandId"];
+    const running = this.input_commands.has(this.chat_id + ":" + commandId);
+    if (!running && chat.state.commands[commandId]?.status === "pending")
+      await chat.settle_input_command(commandId);
+    await chat.flush();
+    chat.assert_usable();
+    this.assert_available();
+    if (this.chat !== chat) throw agent_queue_validation_error("agent_input_command_invalid");
     return {
       ...this.ack(),
-      status: this.require_chat().state.commands[request["commandId"]]?.status ?? "unknown",
+      status: chat.state.commands[commandId]?.status ?? (running ? "pending" : "unknown"),
     };
   }
 
@@ -406,7 +416,8 @@ export class AgentService {
     });
     try {
       if (this.chat !== chat) throw new AppErrors.AppError("runtime.cancelled");
-      const request = { ...body, commandId };
+      chat.assert_usable(); // 登记后实例失效时由状态核对结算，旧命令不能借公开入口重开并重发。
+      const request = { ...body, commandId, chatId: this.chat_id };
       switch (kind) {
         case "send":
           await this.send_message(request);
@@ -425,10 +436,11 @@ export class AgentService {
           break;
       }
     } catch (error) {
-      await chat.settle_input_command(commandId).catch((failure) => {
-        chat.log.report_failure("cleanup", failure);
-        chat.log.flush();
-      });
+      if (!chat.sealed)
+        await chat.settle_input_command(commandId).catch((failure) => {
+          chat.log.report_failure("cleanup", failure);
+          chat.log.flush();
+        });
       throw error;
     }
     await chat.settle_input_command(commandId);
@@ -437,6 +449,7 @@ export class AgentService {
 
   /** 运行中入队，空闲时占用租约并完成模型与附件预检。 */
   public async send_message(request: JsonRecord): Promise<AgentCommandAck> {
+    const chat = await this.command_chat(request["chatId"] ?? this.chat_id);
     this.assert_queue_available();
     this.session_state.require_loaded_project_path();
     const message = this.read_message(request);
@@ -445,44 +458,44 @@ export class AgentService {
       this.execution.phase !== "preparing" &&
       this.read_fields().state === "running"
     ) {
-      await this.require_chat().change_queue(
-        (queue) => queue.enqueue(message),
-        read_input_command_id(request),
-      );
+      await chat.change_queue((queue) => queue.enqueue(message), read_input_command_id(request));
       return this.ack();
     }
-    if (this.chat?.queue.is_paused) throw agent_queue_validation_error("agent_continue_required");
+    if (chat.queue.is_paused) throw agent_queue_validation_error("agent_continue_required");
     this.require_resources();
     const execution = this.begin_execution(read_input_command_id(request));
     return this.accept(execution, () => this.accept_round(execution, message));
   }
   /** 编辑只作用于尚未发送的草稿，附件身份在服务边界解析。 */
   public async update_queued_message(request: JsonRecord): Promise<AgentCommandAck> {
+    const chat = await this.command_chat(request["chatId"] ?? this.chat_id);
     this.assert_queue_available();
     const { id, message } = read_queue_message_request(request, this.resolve_file);
-    await this.require_chat().change_queue((queue) => queue.update(id, message));
+    await chat.change_queue((queue) => queue.update(id, message));
     return this.ack();
   }
   /** 删除草稿经队列事务校验发送状态并同步暂停态。 */
   public async delete_queued_message(request: JsonRecord): Promise<AgentCommandAck> {
+    const chat = await this.command_chat(request["chatId"] ?? this.chat_id);
     this.assert_queue_available();
-    await this.require_chat().change_queue((queue) => queue.delete(read_queue_id(request)));
+    await chat.change_queue((queue) => queue.delete(read_queue_id(request)));
     return this.ack();
   }
   /** 重排校验完整身份排列，`sending` 项仍属于队列。 */
   public async reorder_queued_messages(request: JsonRecord): Promise<AgentCommandAck> {
+    const chat = await this.command_chat(request["chatId"] ?? this.chat_id);
     this.assert_queue_available();
     const ids = request["ids"];
     if (!Array.isArray(ids) || ids.some((id) => typeof id !== "string"))
       throw agent_queue_validation_error("agent_input_queue_invalid_order");
-    await this.require_chat().change_queue((queue) => queue.reorder(ids as string[]));
+    await chat.change_queue((queue) => queue.reorder(ids as string[]));
     return this.ack();
   }
   /** 运行中按 `steer` 受理选中草稿，准备失败时恢复发送占用。 */
   public async send_queued_message(request: JsonRecord): Promise<AgentCommandAck> {
+    const chat = await this.command_chat(request["chatId"] ?? this.chat_id);
     this.assert_queue_available();
     this.session_state.require_loaded_project_path();
-    const chat = this.require_chat();
     const id = read_queue_id(request);
     const item = chat.queue.read(id);
     if (this.execution !== null) {
@@ -521,9 +534,9 @@ export class AgentService {
   }
   /** 失败轮次以隐藏输入续跑，暂停草稿在同一租约内恢复 FIFO。 */
   public async continue_chat(request: JsonRecord): Promise<AgentCommandAck> {
+    const chat = await this.command_chat(request["chatId"] ?? this.chat_id);
     this.assert_queue_available();
     this.session_state.require_loaded_project_path();
-    const chat = this.require_chat();
     const round = chat.entries.findLast(
       (entry) => entry.kind === "user_message" && entry.delivery === "round",
     );
@@ -577,9 +590,9 @@ export class AgentService {
   }
   /** 完整轮次分叉共用输入命令幂等与运行租约。 */
   public async fork_round(request: JsonRecord): Promise<AgentCommandAck> {
+    const chat = await this.command_chat(request["chatId"] ?? this.chat_id);
     this.assert_available();
     if (this.execution !== null) throw new AppErrors.AppError("runtime.busy");
-    const chat = this.require_chat();
     const roundId = request["roundId"];
     if (typeof roundId !== "string")
       throw agent_queue_validation_error("agent_revision_unavailable");
@@ -592,17 +605,17 @@ export class AgentService {
 
   /** 限制最新轮次的可修订目标，完成预检后才切换历史分支。 */
   public async revise_latest_round(request: JsonRecord): Promise<AgentCommandAck> {
+    const chat = await this.command_chat(request["chatId"] ?? this.chat_id);
     const commandId = read_input_command_id(request);
     // 直接调用与 HTTP 入口共用命令登记、失败结算和恢复事实。
     if (commandId === undefined)
       return this.input_command("revise", {
         ...request,
-        chatId: this.chat_id,
+        chatId: request["chatId"] ?? this.chat_id,
         commandId: randomUUID(),
       });
     this.assert_available();
     if (this.execution !== null) throw new AppErrors.AppError("runtime.busy");
-    const chat = this.require_chat();
     const revision = normalize_agent_revision_request(request, this.resolve_file);
     if (revision === null) throw agent_queue_validation_error("agent_revision_unavailable");
     const userIndex = chat.entries.findLastIndex(
@@ -642,9 +655,9 @@ export class AgentService {
   }
   /** 手动压缩返回受理回执，摘要结算由后台持有租约。 */
   public async compact_context(): Promise<AgentCommandAck> {
+    const chat = await this.command_chat();
     this.assert_queue_available();
     if (this.execution !== null) throw new AppErrors.AppError("runtime.busy");
-    const chat = this.require_chat();
     if (!chat.context.compactable)
       throw agent_queue_validation_error("agent_context_not_compactable");
     this.session_state.require_loaded_project_path();
@@ -654,7 +667,10 @@ export class AgentService {
       this.assert_execution(execution);
       this.launch(chat, execution, async () => {
         try {
-          await chat.compact("manual", execution);
+          execution.phase = "compacting";
+          const result = await chat.compact("manual", execution);
+          if (result.status === "error") throw result.error;
+          if (result.status === "running") throw new Error("Compaction summary did not settle");
         } catch (error) {
           if (
             !(error instanceof AgentCompactionError) &&
@@ -717,24 +733,11 @@ export class AgentService {
 
   /** 每次运行只有一个控制器和租约，迟到操作依执行对象身份失效。 */
   private begin_execution(commandId?: string): AgentExecution {
+    const chat = this.require_chat();
+    chat.assert_usable();
     const lease = this.runtime_gate.begin_runtime("agent");
-    const execution: AgentExecution = {
-      lease,
-      controller: new AbortController(),
-      stop_reason: null,
-      ...(commandId === undefined ? {} : { commandId }),
-      roundId: null,
-      phase: "preparing",
-      acceptance: null,
-      settlement: null,
-      recoveryUsed: false,
-      recoveryTask: null,
-      steer: null,
-      retrySteer: null,
-      translationPaused: null,
-    };
+    const execution = chat.begin_execution(lease, commandId);
     this.execution = execution;
-    if (this.chat !== null) this.chat.execution = execution;
     return execution;
   }
   /** 区分命令受理与后台结算，受理失败只释放尚未转交的租约。 */
@@ -743,19 +746,26 @@ export class AgentService {
     operation: () => Promise<void>,
     releaseOnFailure = true,
   ): Promise<AgentCommandAck> {
+    const chat = this.require_chat();
     const acceptance = operation();
     execution.acceptance = acceptance;
     try {
       await acceptance;
+      await chat.flush();
+      chat.assert_usable();
       return this.ack();
     } catch (error) {
       if (releaseOnFailure && execution.settlement === null) {
-        await this.chat?.change_queue((queue) => {
-          queue.cancel_send();
-          queue.pause();
-        });
-        await execution.cancellation;
-        this.release(execution);
+        const errors: unknown[] = [error];
+        try {
+          if (!chat.sealed) {
+            await chat.cancel_inputs(execution);
+            await chat.change_queue((queue) => queue.pause());
+          }
+        } catch (cleanup) {
+          errors.push(cleanup);
+        }
+        await this.finish_execution(chat, execution, errors);
       }
       throw error;
     } finally {
@@ -765,20 +775,13 @@ export class AgentService {
   /** 后台结算统一等待受理与取消收尾，保存终态后释放原执行的租约。 */
   private launch(chat: AgentChat, execution: AgentExecution, operation: () => Promise<void>): void {
     const settlement = (async () => {
+      const errors: unknown[] = [];
       try {
         await operation();
-      } finally {
-        try {
-          await execution.acceptance?.catch(() => undefined); // 受理失败由原命令回传，这里只等待退出。
-          await execution.cancellation;
-        } finally {
-          try {
-            await chat.flush();
-          } finally {
-            this.release(execution);
-          }
-        }
+      } catch (error) {
+        errors.push(error);
       }
+      await this.finish_execution(chat, execution, errors);
     })();
     execution.settlement = settlement;
     void settlement.catch(async (error) => {
@@ -794,6 +797,39 @@ export class AgentService {
       chat.log.flush();
     });
   }
+  /** 受理和后台执行共用退出边界，清理错误附加到首个故障，副作用退出后才释放租约。 */
+  private async finish_execution(
+    chat: AgentChat,
+    execution: AgentExecution,
+    errors: unknown[],
+  ): Promise<void> {
+    try {
+      await execution.acceptance?.catch(() => undefined); // 受理错误由原命令负责报告。
+      try {
+        await execution.cancellation;
+        if (!chat.sealed) await chat.flush();
+      } catch (error) {
+        errors.push(error);
+      } finally {
+        if (chat.sealed) {
+          try {
+            await chat.close();
+          } catch (error) {
+            errors.push(error);
+          }
+        }
+      }
+    } finally {
+      this.release(execution);
+    }
+    const failures = [...new Set(errors)];
+    if (failures.length === 1) throw failures[0];
+    if (failures.length > 1)
+      throw new AggregateError(failures, "Agent execution and cleanup failed", {
+        cause: failures[0],
+      });
+  }
+
   /** 附件与模型预检成功后才受理轮次，失败时保留待发送草稿。 */
   private async accept_round(
     execution: AgentExecution,
@@ -822,7 +858,6 @@ export class AgentService {
   ): ReturnType<AgentChat["submit"]> {
     execution.phase = "running";
     execution.translationPaused = null;
-    execution.recoveryUsed = false;
     this.token_speed.reset();
     this.token_speed_updated_at = null;
     this.token_speed_snapshot = null;
@@ -855,6 +890,10 @@ export class AgentService {
             ? {}
             : { error: failure }),
       });
+      if (chat.sealed) {
+        await chat.close();
+        break;
+      }
       if (execution.controller.signal.aborted) {
         // 真实故障先封口，取消清理只结算仍在运行的轮次。
         if (status === "error") await chat.finish_round(execution, status, null);
@@ -882,10 +921,12 @@ export class AgentService {
         this.assert_execution(execution);
         accepted = await this.submit_round(chat, execution, next, prepared, next.id);
       } catch (error) {
-        await chat.change_queue((queue) => {
-          queue.cancel_send();
-          queue.pause();
-        });
+        if (chat.sealed) await chat.close();
+        else
+          await chat.change_queue((queue) => {
+            queue.cancel_send();
+            queue.pause();
+          });
         if (!is_agent_cancellation(error, execution.controller.signal))
           chat.log.report_failure("input_prepare", error);
         break;
@@ -945,6 +986,9 @@ export class AgentService {
       log,
       onChange: () => this.publish_snapshot(),
       onModelEvent: (event) => this.observe_model(event),
+      onClosing: (closing) => {
+        if (this.chat === closing) this.decisions.reset();
+      },
       onReport: (error) => {
         log.report_failure("cleanup", error);
         log.flush();
@@ -1100,6 +1144,7 @@ export class AgentService {
   /** 即时发送同时受用户决定、产品阶段与全局运行占用约束。 */
   private can_send_now(): boolean {
     return (
+      this.chat?.sealed !== true &&
       !this.decisions.has_pending &&
       (this.execution === null
         ? this.runtime_gate.get_snapshot().owner === null
@@ -1117,13 +1162,55 @@ export class AgentService {
   }
   /** 命令和工程生命周期共用关闭屏障。所有权切换只在旧使用者收尾后发生。 */
   private transition(operation: () => Promise<void>): Promise<void> {
-    if (this.chat_reset !== null) return this.chat_reset.then(() => this.transition(operation));
+    if (this.chat_reset !== null)
+      return this.chat_reset.then(
+        () => this.transition(operation),
+        () => this.transition(operation),
+      ); // 前一次失败由原调用方接收，后续生命周期仍须执行。
     const pending = operation();
     this.chat_reset = pending;
     return pending.finally(() => {
       if (this.chat_reset === pending) this.chat_reset = null;
       this.publish_snapshot(true);
     });
+  }
+
+  /** 查询与提交共用恢复屏障，等待期间仍绑定原请求的工程和产品会话。 */
+  private async command_chat(chatId: unknown = this.chat_id): Promise<AgentChat> {
+    this.assert_not_disposed();
+    this.require_resources();
+    const project = this.session_state.snapshot();
+    const current = (): AgentChat => {
+      this.assert_not_disposed();
+      const active = this.session_state.snapshot();
+      if (
+        !project.loaded ||
+        !active.loaded ||
+        active.projectPath !== project.projectPath ||
+        chatId !== this.chat_id
+      )
+        throw agent_queue_validation_error("agent_input_command_invalid");
+      return this.require_chat();
+    };
+    while (this.chat_reset !== null) await this.chat_reset;
+    let chat = current();
+    if (chat.sealed) {
+      await this.transition(async () => {
+        const previous = current();
+        if (!previous.sealed) return; // 并发命令排入屏障后可能已由前一个命令完成恢复。
+        await this.execution?.acceptance?.catch(() => undefined); // 原命令负责报告受理错误。
+        await this.execution?.settlement?.catch(() => undefined); // 后台结算已记录诊断。
+        current();
+        await previous.close();
+        current();
+        if (this.store === null) throw new AppErrors.AppError("runtime.internal_invariant");
+        this.chat = await this.create_chat(this.store);
+      });
+      while (this.chat_reset !== null) await this.chat_reset;
+      chat = current();
+    }
+    chat.assert_usable();
+    return chat;
   }
 
   /** 串行关闭旧工程执行，再恢复目标工程的持久化对话。 */
@@ -1170,13 +1257,17 @@ export class AgentService {
     try {
       try {
         await execution?.acceptance?.catch(() => undefined); // 受理失败由命令报告，关闭继续收尾。
-        await execution?.cancellation;
-        await execution?.settlement;
+        const results = await Promise.allSettled([execution?.cancellation, execution?.settlement]);
+        const errors = results.flatMap((result) =>
+          result.status === "rejected" ? [result.reason] : [],
+        );
+        if (errors.length > 0)
+          throw new AggregateError(errors, "Agent execution cleanup failed", { cause: errors[0] });
       } finally {
         try {
-          await this.workspace.close();
-        } finally {
           await chat?.close();
+        } finally {
+          await this.workspace.close();
         }
       }
     } finally {

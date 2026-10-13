@@ -1,9 +1,41 @@
-import { defineDocFamily, type EntryId, type ConversationId } from "@earendil-works/pi-durable";
+import {
+  defineDocFamily,
+  type EntryId,
+  type ConversationId,
+  type EntryRecord,
+  type SubmissionRecord,
+} from "@earendil-works/pi-durable";
 import type { JsonRecord } from "../../domain/json";
 import type { AgentInputCommandKind, AgentInputCommandStatus } from "../../shared/agent";
 import type { AgentEntryStatus, AgentMessageInput } from "../../shared/agent";
 import type { AgentInputQueueState } from "./agent-input-queue";
 import { AppError } from "../../shared/error";
+import { normalize_agent_message_input } from "../../shared/agent";
+
+export const AGENT_INPUT_ENTRY_KIND = "linguagacha.input";
+
+/** 新条目拥有输入事实，旧历史只通过原提交回执关联兼容资料。 */
+export function read_agent_input(
+  entry: EntryRecord | undefined,
+  submission: SubmissionRecord | undefined,
+  state: Readonly<AgentChatData>,
+): AgentInputRecord | undefined {
+  if (entry?.kind !== AGENT_INPUT_ENTRY_KIND)
+    return submission?.requestId === undefined ? undefined : state.inputs[submission.requestId];
+  const data = entry.data;
+  if (typeof data !== "object" || data === null || Array.isArray(data))
+    throw new AppError("file.invalid_structure");
+  const { roundId, message, delivery, queuedId } = data;
+  if (
+    typeof roundId !== "string" ||
+    roundId === "" ||
+    (delivery !== "round" && delivery !== "steer" && delivery !== "hidden") ||
+    (queuedId !== null && (typeof queuedId !== "string" || queuedId === "")) ||
+    normalize_agent_message_input(message) === null
+  )
+    throw new AppError("file.invalid_structure");
+  return data as AgentInputRecord;
+}
 
 /** 产品输入关联 SDK 提交，隐藏继续输入仍属于原轮次。 */
 export type AgentInputRecord = {

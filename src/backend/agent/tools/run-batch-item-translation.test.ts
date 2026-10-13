@@ -43,7 +43,7 @@ describe("Agent 条目批量翻译工具", () => {
     complete();
     expect(await result).toMatchObject({
       details: summary,
-      content: [{ type: "text", text: JSON.stringify(summary) }],
+      output: [{ type: "text", text: JSON.stringify(summary) }],
     });
   });
 });

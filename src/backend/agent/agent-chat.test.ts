@@ -25,7 +25,8 @@ import type { AgentChatStorage } from "../database/agent-chat-storage";
 import { AgentChat, type AgentExecution } from "./agent-chat";
 import { AgentChatDoc } from "./agent-chat-data";
 import { AgentRuntimeLog } from "./agent-runtime-log";
-import { define_agent_tool } from "./tool-definition";
+import { define_agent_tool, agent_tool_result, AgentToolError } from "./tool-definition";
+import { AgentChatView } from "./agent-chat-view";
 
 /** 隔离远程流，事务、提交订阅与历史投影使用真实 Harness。 */
 async function create_chat(
@@ -59,6 +60,69 @@ async function create_chat(
   await chat.configure(provider.getModel(), "off");
   return { chat, provider, append };
 }
+
+it.each(["text", "error", "image"] as const)(
+  "真实 Harness 把工具 %s 输出交给下一次模型请求",
+  async (kind) => {
+    const picture = { type: "image" as const, mimeType: "image/png", data: "aW1hZ2U=" };
+    const tool = define_agent_tool({
+      name: "result_fixture",
+      description: "输出契约",
+      parameters: Type.Object({}),
+      execute: async () => {
+        if (kind === "error") throw new AgentToolError({ code: "fixture_failure" });
+        const result = agent_tool_result({ value: "模型可见" });
+        return {
+          ...result,
+          output: [...result.output, ...(kind === "image" ? [picture] : [])],
+          details: { privateFact: "宿主事实" },
+        };
+      },
+    });
+    const { chat, provider } = await create_chat(() => {}, { tools: [tool] });
+    const respond = vi.fn<FauxResponseFactory>(() => fauxAssistantMessage("完成"));
+    provider.setResponses([
+      fauxAssistantMessage([fauxToolCall(tool.name, {})], { stopReason: "toolUse" }),
+      respond,
+    ]);
+    await talk(chat, "调用");
+    const result = respond.mock.calls[0]![0].messages.findLast(
+      (message) => message.role === "toolResult",
+    );
+    expect(result).toMatchObject({
+      isError: kind === "error",
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify(
+            kind === "error" ? { code: "fixture_failure" } : { value: "模型可见" },
+          ),
+        },
+        ...(kind === "image" ? [picture] : []),
+      ],
+    });
+    expect(JSON.stringify(result?.content)).not.toContain("宿主事实");
+  },
+);
+
+it("异步投影失败保留错误并拒绝陈旧成功回执", async () => {
+  const { chat } = await create_chat();
+  const before = structuredClone(chat.entries);
+  const fault = new Error("projection failed");
+  const refresh = vi.spyOn(AgentChatView.prototype, "refresh").mockImplementationOnce(() => {
+    throw fault;
+  });
+  await expect(
+    chat.change((state) => {
+      state.doing = "新状态";
+    }),
+  ).rejects.toThrow("projection failed");
+  refresh.mockRestore();
+  await chat.close();
+  expect(chat.failure).toBe(fault);
+  expect(chat.entries).toEqual(before);
+  await expect(chat.flush()).rejects.toBe(fault);
+});
 
 it("工具执行结束后等待 SDK 提交，日志不能提前结算", async () => {
   const storage = new MemoryStorage();
@@ -155,13 +219,63 @@ it("供应商身份在修订后改变，同一分支的生成和压缩共用身�
   await talk(chat, history);
   await chat.revise_assistant(chat.entries.at(-1)!, "修订回答");
   const execution = await talk(chat, history);
-  expect(await chat.compact("manual", execution)).toBe("success");
+  expect(await chat.compact("manual", execution)).toEqual({ status: "success" });
   expect(respond).toHaveBeenCalledTimes(3);
   const ids = respond.mock.calls.map(([, options]) => options?.sessionId);
   expect(ids[0]).toEqual(expect.any(String));
   expect(ids[0]).not.toBe("chat-test");
   expect(ids[1]).not.toBe(ids[0]);
   expect(ids[2]).toBe(ids[1]);
+});
+
+it("同一执行取得正常工具进展后可以再次截断恢复，结束时释放恢复引用", async () => {
+  const tool = define_agent_tool({
+    name: "progress_fixture",
+    description: "提供正常进展",
+    parameters: Type.Object({}),
+    execute: async () => agent_tool_result({ text: "新的工具资料 ".repeat(16_000) }),
+  });
+  const { chat, provider } = await create_chat(() => {}, { tools: [tool] });
+  const history = "history ".repeat(16_000);
+  provider.setResponses([fauxAssistantMessage("历史一"), fauxAssistantMessage("历史二")]);
+  await talk(chat, history);
+  await talk(chat, history);
+  provider.setResponses([
+    fauxAssistantMessage("截断一", { stopReason: "length" }),
+    fauxAssistantMessage("摘要一"),
+    fauxAssistantMessage([fauxToolCall(tool.name, {})], { stopReason: "toolUse" }),
+    fauxAssistantMessage("截断二", { stopReason: "length" }),
+    fauxAssistantMessage("摘要二"),
+    fauxAssistantMessage("恢复完成"),
+  ]);
+  const execution = await talk(chat, "恢复任务");
+  expect(chat.entries.filter((entry) => entry.kind === "context_compaction")).toMatchObject([
+    { status: "success" },
+    { status: "success" },
+  ]);
+  expect(chat.entries.at(-1)).toMatchObject({
+    kind: "assistant_message",
+    parts: [{ text: "恢复完成" }],
+  });
+  expect(execution).toMatchObject({ recoveryTask: null, retrySteer: null });
+});
+
+it("SDK 溢出压缩消耗恢复额度，摘要成功后连续截断仍结束本轮", async () => {
+  const { chat, provider } = await create_chat();
+  const history = "history ".repeat(16_000);
+  provider.setResponses([fauxAssistantMessage("历史一"), fauxAssistantMessage("历史二")]);
+  await talk(chat, history);
+  await talk(chat, history);
+  provider.setResponses([
+    fauxAssistantMessage([], { stopReason: "error", errorMessage: "context_length_exceeded" }),
+    fauxAssistantMessage("摘要"),
+    fauxAssistantMessage("再次截断", { stopReason: "length" }),
+  ]);
+  await expect(talk(chat, "连续失败")).rejects.toThrow("one compact-and-retry attempt");
+  expect(chat.entries.filter((entry) => entry.kind === "context_compaction")).toMatchObject([
+    { status: "success" },
+  ]);
+  expect(chat.execution).toMatchObject({ recoveryTask: null, retrySteer: null });
 });
 
 const roots: string[] = [];
@@ -252,7 +366,10 @@ it("既有身份重开恢复历史，无模型时可修订助手，后续请求�
   const restored = await open(store);
   expect(restored.chat.entries).toEqual(expected);
   expect(restored.chat.usage).toEqual(usage);
-  expect(restored.chat.queue.read_snapshot(false).items).toEqual([]);
+  expect(restored.chat.queue.read_snapshot(false)).toMatchObject({
+    paused: true,
+    items: [{ text: "待发送", status: "queued" }],
+  });
   expect(restored.provider.state.callCount).toBe(0);
   await restored.chat.revise_assistant(restored.chat.entries.at(-1)!, "离线修订");
   expect(restored.chat.usage).toEqual(usage);
@@ -380,7 +497,7 @@ it("遗留工具任务只执行 SDK 取消收尾，恢复后保留公开工具�
         once: true,
       }),
     );
-    return { content: [] };
+    return { output: [] };
   });
   const registry = createRegistry();
   registry.install(
@@ -458,7 +575,23 @@ it("遗留工具任务只执行 SDK 取消收尾，恢复后保留公开工具�
   expect(restored.chat.entries).toContainEqual(
     expect.objectContaining({ kind: "user_message", status: "stopped" }),
   );
+  const old = structuredClone(restored.chat.entries);
+  restored.models.setProvider(restored.provider.provider);
+  await restored.chat.configure(restored.provider.getModel(), "off");
+  restored.provider.setResponses([fauxAssistantMessage("新格式回答")]);
+  await talk(restored.chat, "新格式问题");
+  expect(Object.keys(restored.chat.state.inputs)).toEqual(["request"]);
+  const newRound = restored.chat.entries.findLast((entry) => entry.kind === "user_message")!;
+  await restored.chat.fork_round(newRound.id);
+  await restored.chat.revise_assistant(restored.chat.entries.at(-1)!, "混合历史修订");
+  const mixed = structuredClone(restored.chat.entries);
+  expect(mixed.slice(0, old.length)).toEqual(old);
   await restored.chat.close();
+  const reopened = await open(store);
+  expect(reopened.chat.entries).toEqual(mixed);
+  expect(Object.keys(reopened.chat.state.inputs)).toEqual(["request"]);
+  expect(reopened.provider.state.callCount).toBe(0);
+  await reopened.chat.close();
   await store.close();
   await database.close();
 });
@@ -607,7 +740,7 @@ it("正常响应立即校准预算，使低字符量历史可以手动压缩", a
   await talk(chat, "x".repeat(20_000));
   const execution = await talk(chat, "x".repeat(80_000));
   expect(chat.context.compactable).toBe(true);
-  expect(await chat.compact("manual", execution)).toBe("success");
+  expect(await chat.compact("manual", execution)).toEqual({ status: "success" });
   expect(chat.entries.at(-1)).toMatchObject({ kind: "context_compaction", status: "success" });
 });
 
@@ -621,7 +754,7 @@ it("无切点的压缩返回 skipped，公开时间线不产生压缩块", async
   observed = chat;
   provider.setResponses([fauxAssistantMessage("回答")]);
   const execution = await talk(chat, "短历史");
-  expect(await chat.compact("manual", execution)).toBe("skipped");
+  expect(await chat.compact("manual", execution)).toEqual({ status: "skipped" });
   expect(chat.entries.some((entry) => entry.kind === "context_compaction")).toBe(false);
   expect(visible.length).toBeGreaterThan(0);
   expect(visible).not.toContain(true);

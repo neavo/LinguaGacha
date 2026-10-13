@@ -1,5 +1,15 @@
 import crypto from "node:crypto";
-import type { ThinkingLevelMap } from "@earendil-works/pi-ai";
+import { Value } from "typebox/value";
+import { ThinkingLevelMapSchema } from "@earendil-works/pi-ai/providers/model-schema";
+import {
+  OpenAICompletionsCompatSchema,
+  OpenAIResponsesCompatSchema,
+  AnthropicMessagesCompatSchema,
+  BedrockCompatSchema,
+  MistralConversationsCompatSchema,
+} from "@earendil-works/pi-ai/providers/compat-schema";
+import type { TSchema } from "typebox";
+
 import type { PiCatalogModel } from "./model-capability";
 import {
   getBuiltinModelDataGeneratedAt,
@@ -11,6 +21,17 @@ import type { AppPathService } from "../app/app-path-service";
 import type { LogManager } from "../log/log-manager";
 import { NativeFs, default_native_fs } from "../../native/native-fs";
 import type { ModelCatalogSnapshot } from "../../shared/model-catalog";
+
+// 按协议校验，避免可选字段在其他协议的 Schema 中绕过检查。
+const COMPAT_SCHEMAS: Readonly<Record<string, TSchema>> = {
+  "openai-completions": OpenAICompletionsCompatSchema,
+  "openai-responses": OpenAIResponsesCompatSchema,
+  "azure-openai-responses": OpenAIResponsesCompatSchema,
+  "openai-codex-responses": OpenAIResponsesCompatSchema,
+  "anthropic-messages": AnthropicMessagesCompatSchema,
+  "bedrock-converse-stream": BedrockCompatSchema,
+  "mistral-conversations": MistralConversationsCompatSchema,
+};
 
 /** 消费方只能读取当前目录，更新由组合根编排。 */
 export type PiModelCatalogReader = Pick<PiModelCatalog, "read_models">;
@@ -260,8 +281,9 @@ function read_catalog_model(provider: string, id: string, value: unknown): PiCat
     typeof model.maxTokens !== "number" ||
     !Number.isSafeInteger(model.maxTokens) ||
     model.maxTokens <= 0 ||
-    (model.thinkingLevelMap !== undefined && !valid_thinking_map(model.thinkingLevelMap)) ||
-    (model.compat !== undefined && !valid_compat(model.compat))
+    (model.thinkingLevelMap !== undefined &&
+      !Value.Check(ThinkingLevelMapSchema, model.thinkingLevelMap)) ||
+    (model.compat !== undefined && !valid_compat(model.api, model.compat))
   )
     throw new Error(`Invalid Pi model ${provider}/${id}`);
   return {
@@ -272,8 +294,16 @@ function read_catalog_model(provider: string, id: string, value: unknown): PiCat
     reasoning: model.reasoning,
     contextWindow: model.contextWindow,
     maxTokens: model.maxTokens,
-    ...(model.thinkingLevelMap === undefined ? {} : { thinkingLevelMap: model.thinkingLevelMap }),
-    ...(model.compat === undefined ? {} : { compat: model.compat }),
+    ...(model.thinkingLevelMap === undefined
+      ? {}
+      : {
+          thinkingLevelMap: model.thinkingLevelMap as NonNullable<
+            PiCatalogModel["thinkingLevelMap"]
+          >,
+        }),
+    ...(model.compat === undefined
+      ? {}
+      : { compat: model.compat as NonNullable<PiCatalogModel["compat"]> }),
   };
 }
 
@@ -309,42 +339,9 @@ function stable(value: unknown): unknown {
   );
 }
 
-/** 等级映射会参与请求参数生成，值必须符合 Pi 的公开契约。 */
-function valid_thinking_map(value: unknown): value is ThinkingLevelMap {
+/** 只校验当前协议已知字段，保留未知字段和缺省值供新版 SDK 消费。 */
+function valid_compat(api: string, value: unknown): boolean {
   if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
-  const levels = new Set(["off", "minimal", "low", "medium", "high", "xhigh", "max"]);
-  return Object.entries(value).every(
-    ([key, entry]) => levels.has(key) && (entry === null || typeof entry === "string"),
-  );
-}
-
-/** 约束当前协议消费的开关和枚举，额外字段继续交给 Pi 处理。 */
-function valid_compat(value: unknown): value is NonNullable<PiCatalogModel["compat"]> {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
-  return Object.entries(value).every(([key, entry]) => {
-    if (/^(supports|requires|send|zaiToolStream|forceAdaptiveThinking)/u.test(key))
-      return typeof entry === "boolean";
-    if (key === "cacheControlFormat") return entry === "anthropic";
-    if (key === "thinkingFormat")
-      return (
-        typeof entry === "string" &&
-        [
-          "openai",
-          "openrouter",
-          "deepseek",
-          "together",
-          "baseten",
-          "zai",
-          "qwen",
-          "chat-template",
-          "qwen-chat-template",
-          "string-thinking",
-          "ant-ling",
-        ].includes(entry)
-      );
-    if (key === "maxTokensField")
-      return entry === "max_tokens" || entry === "max_completion_tokens";
-    if (key === "vllmPriority") return typeof entry === "number" && Number.isFinite(entry);
-    return true; // 新 SDK 字段只由 Pi 消费，未知字段由 Pi 自身决定。
-  });
+  const schema = COMPAT_SCHEMAS[api];
+  return schema === undefined || Value.Check(schema, value);
 }

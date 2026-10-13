@@ -46,8 +46,14 @@ import { AGENT_COMPACTION_RESERVE_TOKENS } from "../../domain/model-agent";
 import { AppError } from "../../shared/error";
 import type { PreparedAgentMessage } from "./agent-message-input";
 import { AgentInputQueue } from "./agent-input-queue";
-import { AgentChatDoc, type AgentChatData, type AgentInputRecord } from "./agent-chat-data";
-import { read_agent_compaction_status } from "./agent-compaction";
+import {
+  AgentChatDoc,
+  AGENT_INPUT_ENTRY_KIND,
+  read_agent_input,
+  type AgentChatData,
+  type AgentInputRecord,
+} from "./agent-chat-data";
+import { read_agent_compaction_result, type AgentCompactionResult } from "./agent-compaction";
 import { AgentChatView, assistant_entry_id } from "./agent-chat-view";
 import { AgentContextBudget, read_agent_chat_context } from "./agent-chat-context";
 import { append_agent_chat_seed, type AgentChatSeed } from "./agent-chat-seed";
@@ -98,6 +104,7 @@ type ChatOptions = {
   onChange: () => void;
   onModelEvent: (event: AssistantMessageEvent) => void;
   onReport: (error: unknown) => void;
+  onClosing?: (chat: AgentChat) => void;
 };
 
 /** 产品会话直接使用 durable 公共接口，拥有输入、历史、恢复与压缩的提交边界。 */
@@ -118,6 +125,7 @@ export class AgentChat {
   }
   public state: Readonly<AgentChatData> = AgentChatDoc.definition.initial(null); // 只读提交快照，写入由 `Harness` 事务生成
   private readonly contextBudget = new AgentContextBudget(); // 每个会话独立校准近期保留预算
+  private readonly taskExecutions = new Map<TaskId, AgentExecution>(); // 仅跟踪在途任务，Hook 沿用创建任务时的执行身份
   private readonly pendingCompactionLogs = new Map<number, string>(); // 开始时固定原因，摘要写入后结算日志
   private harness!: Harness;
   private conversation!: Conversation; // 执行目标可暂为候选分支，公开历史始终读取 activeConversationId
@@ -129,6 +137,10 @@ export class AgentChat {
   private refreshFailure: unknown; // 投影失败时命令不能用旧修订号确认成功
   private dirty = false; // 提交后仍有投影工作，与上下文查询独立
   private closed = false;
+  public sealed = false; // SDK 开始关闭即封闭受理，终止回执到达后才确认故障原因
+  public failure: unknown;
+  private failedRound: string | null = null;
+  private failedAt = 0;
   private closing: Promise<void> | null = null; // 关闭只执行一次，所有调用者等待同一收尾
   private unsubscribe = () => {};
   /** 生成与摘要共用诊断和测速观察，取消信号及供应商身份由 SDK 拥有。 */
@@ -234,7 +246,11 @@ export class AgentChat {
               chat.contextBudget.before_request(api.taskId, request.messages);
             },
             onYield: async (message, api) => {
-              await chat.before_yield(message, api.taskId);
+              await chat.register_recovery(
+                chat.taskExecutions.get(api.taskId),
+                message,
+                api.taskId,
+              );
               return undefined;
             },
             afterResponse: async (message, api) => {
@@ -242,20 +258,20 @@ export class AgentChat {
               if (
                 message.stopReason !== "length" &&
                 message.stopReason !== "error" &&
-                chat.execution !== null
+                message.stopReason !== "aborted"
               )
-                chat.execution.recoveryUsed = false;
+                chat.reset_recovery(chat.taskExecutions.get(api.taskId));
             },
           }),
           hook(CompactionTask, {
             beforeCompact: async (compaction, api) => {
+              const execution = chat.taskExecutions.get(api.taskId);
               // `beforeCompact` 已确认摘要范围，此时持久化公开起点，恢复后沿用同一时间。
               await chat.harness.commit(async (tx) => {
                 const state = await tx.doc(AgentChatDoc, options.chatId, null);
                 state.compactionStartedAt[api.taskId] ??= Date.now();
               }, BACKGROUND_CONTEXT);
-              if (compaction.reason === "overflow" && chat.execution !== null)
-                chat.execution.recoveryUsed = true;
+              if (compaction.reason === "overflow") chat.consume_recovery(execution, "overflow");
             },
           }),
         ],
@@ -284,73 +300,110 @@ export class AgentChat {
       },
       BACKGROUND_CONTEXT,
     );
+    chat.harness.subscribeClose(() => {
+      chat.sealed = true;
+      chat.failedRound = chat.execution?.roundId ?? null;
+      chat.failedAt = Date.now();
+      chat.execution?.controller.abort();
+      options.onClosing?.(chat); // 只通知外层取消交互，不在 SDK 回调内等待关闭。
+    });
+    void chat.harness.closed.then((end) => {
+      if (end.reason === "failed") chat.failure ??= end.error;
+      if (chat.failure !== undefined) {
+        chat.view.fail_round(chat.failedRound, chat.failedAt);
+      }
+      options.onChange();
+    });
     chat.unsubscribe = chat.harness.subscribeCommits((publication) => {
-      // 整批文档先接收，后续状态判断不依赖提交内各类 change 的排列顺序。
-      for (const change of publication.changes) {
-        if (change.type === "document" && change.value !== null) {
-          // kind 对应固定 token 的 JSON 契约，值为 SDK 提供的不可变提交快照。
-          if (
-            change.record.kind === AgentChatDoc.definition.kind &&
-            change.record.key === options.chatId
-          )
-            chat.state = change.value as AgentChatData;
+      try {
+        // 整批文档先接收，后续状态判断不依赖提交内各类 change 的排列顺序。
+        for (const change of publication.changes) {
+          if (change.type === "document" && change.value !== null) {
+            // kind 对应固定 token 的 JSON 契约，值为 SDK 提供的不可变提交快照。
+            if (
+              change.record.kind === AgentChatDoc.definition.kind &&
+              change.record.key === options.chatId
+            )
+              chat.state = change.value as AgentChatData;
+          }
         }
-      }
-      for (const change of publication.changes) {
-        if (change.type === "entry") {
-          for (const message of change.value.model ?? []) {
-            if (message.role === "assistant")
-              for (const call of message.content) {
-                if (call.type === "toolCall")
-                  chat.log.handle_event({
-                    type: "tool_execution_start",
-                    toolCallId: call.id,
-                    toolName: call.name,
-                    args: call.arguments,
-                  });
-              }
-            // 工具结果是日志终态的唯一入口，校验失败和取消也由 SDK 回执封口。
-            if (message.role === "toolResult")
-              chat.log.record_tool_result(
-                change.value,
-                message,
-                chat.execution?.stop_reason ?? undefined,
+        const placed = new Set(
+          publication.changes.flatMap((change) =>
+            change.type === "submission" &&
+            chat.view.submissions.get(change.value.id)?.entry !== undefined
+              ? [change.value.id]
+              : [],
+          ),
+        );
+        for (const change of publication.changes) {
+          if (
+            change.type !== "task" ||
+            (change.value.kind !== GenerationTask.definition.name &&
+              change.value.kind !== CompactionTask.definition.name)
+          )
+            continue;
+          if (change.value.state.status === "terminal") chat.taskExecutions.delete(change.value.id);
+          else if (chat.execution !== null && !chat.taskExecutions.has(change.value.id))
+            chat.taskExecutions.set(change.value.id, chat.execution);
+          // 投影接收本批任务前识别首次出现的压缩，无需复制全部历史任务身份。
+          if (
+            change.value.kind === CompactionTask.definition.name &&
+            !chat.view.compactions.has(change.value.id)
+          )
+            chat.observe_compaction(change.value);
+        }
+        chat.view.observe(publication);
+        for (const change of publication.changes) {
+          if (change.type === "entry") {
+            for (const message of change.value.model ?? []) {
+              if (message.role === "assistant")
+                for (const call of message.content) {
+                  if (call.type === "toolCall")
+                    chat.log.handle_event({
+                      type: "tool_execution_start",
+                      toolCallId: call.id,
+                      toolName: call.name,
+                      args: call.arguments,
+                    });
+                }
+              // 工具结果是日志终态的唯一入口，校验失败和取消也由 SDK 回执封口。
+              if (message.role === "toolResult")
+                chat.log.record_tool_result(
+                  change.value,
+                  message,
+                  chat.execution?.stop_reason ?? undefined,
+                );
+            }
+          } else if (change.type === "submission") {
+            const record = change.value;
+            if (
+              !placed.has(record.id) &&
+              record.entry !== undefined &&
+              record.requestId !== undefined
+            ) {
+              const input = read_agent_input(
+                chat.view.records.get(record.entry),
+                record,
+                chat.state,
               );
+              if (input?.queuedId != null) chat.consumedInputs.add(input.queuedId);
+              if (input?.delivery === "steer" && input.roundId === chat.execution?.roundId)
+                chat.reset_recovery(chat.execution);
+            }
           }
-        } else if (change.type === "submission") {
-          const previous = chat.view.submissions.get(change.value.id);
-          const record = change.value;
-          if (
-            previous?.entry === undefined &&
-            record.entry !== undefined &&
-            record.requestId !== undefined
-          ) {
-            const queuedId = chat.state.inputs[record.requestId]?.queuedId;
-            if (queuedId != null) chat.consumedInputs.add(queuedId);
-          }
-          if (
-            previous?.entry === undefined &&
-            record.entry !== undefined &&
-            record.requestId !== undefined &&
-            chat.state.inputs[record.requestId]?.delivery === "steer" &&
-            chat.execution !== null
-          )
-            chat.execution.recoveryUsed = false;
-        } else if (change.type === "task" && change.value.kind === CompactionTask.definition.name) {
-          const previous = chat.view.compactions.get(change.value.id);
-          chat.observe_compaction(change.value, previous);
         }
+        if (
+          publication.changes.some(
+            (change) => change.type === "entry" || change.type === "conversation",
+          )
+        ) {
+          chat.contextRevision++;
+          chat.contextDirty = true;
+        }
+        chat.schedule_refresh();
+      } catch (error) {
+        chat.fail_projection(error);
       }
-      chat.view.observe(publication);
-      if (
-        publication.changes.some(
-          (change) => change.type === "entry" || change.type === "conversation",
-        )
-      ) {
-        chat.contextRevision++;
-        chat.contextDirty = true;
-      }
-      chat.schedule_refresh();
     });
     try {
       await chat.restore_records();
@@ -372,11 +425,39 @@ export class AgentChat {
     } catch (error) {
       chat.closed = true;
       chat.unsubscribe();
-      await chat.harness.close(BACKGROUND_CONTEXT);
-      chat.log.flush();
+      try {
+        await chat.harness.close(BACKGROUND_CONTEXT);
+      } catch (cleanup) {
+        throw new AggregateError([error, cleanup], "Agent open and cleanup failed", {
+          cause: error,
+        });
+      } finally {
+        chat.log.flush();
+      }
       throw error;
     }
     return chat;
+  }
+
+  /** 服务取得租约后交付执行身份，恢复状态只由当前会话初始化和修改。 */
+  public begin_execution(lease: RuntimeLease, commandId?: string): AgentExecution {
+    const execution: AgentExecution = {
+      lease,
+      controller: new AbortController(),
+      stop_reason: null,
+      ...(commandId === undefined ? {} : { commandId }),
+      roundId: null,
+      phase: "preparing",
+      acceptance: null,
+      settlement: null,
+      recoveryUsed: false,
+      recoveryTask: null,
+      steer: null,
+      retrySteer: null,
+      translationPaused: null,
+    };
+    this.execution = execution;
+    return execution;
   }
 
   /** 模型仅在用户发起请求前配置，打开历史不要求凭据或供应商仍存在。 */
@@ -436,8 +517,13 @@ export class AgentChat {
     }
     for (const record of await scan((cursor) =>
       storage.scanSubmissions({}, 100, cursor, BACKGROUND_CONTEXT),
-    ))
+    )) {
       this.view.submissions.set(record.id, record);
+      if (record.entry !== undefined) {
+        const input = read_agent_input(this.view.records.get(record.entry), record, this.state);
+        if (input?.queuedId != null) this.consumedInputs.add(input.queuedId);
+      }
+    }
     for (const record of await scan((cursor) =>
       storage.scanTasks({ kind: CompactionTask.definition.name }, 100, cursor, BACKGROUND_CONTEXT),
     ))
@@ -469,7 +555,9 @@ export class AgentChat {
         round.status = "stopped";
         round.endedAt = Date.now();
       }
-      state.queue = { items: [], paused: false };
+      const queue = new AgentInputQueue(state.queue);
+      queue.cancel_send();
+      if (state.queue.items.length > 0) queue.pause();
     });
     for (const [id, command] of Object.entries(this.state.commands))
       if (command.status === "pending") await this.settle_input_command(id);
@@ -477,6 +565,8 @@ export class AgentChat {
       // 候选分支未在首次读取范围内，切换后补读并重建投影。
       await this.restore_records();
       this.view.refresh(this.state.activeConversationId!, this.state, true);
+      this.schedule_refresh();
+      await this.flush();
     }
   }
 
@@ -513,6 +603,7 @@ export class AgentChat {
 
   /** 产品事实只经 `Harness` 事务写入，返回前同步公开投影。 */
   public async change(change: (state: AgentChatData) => void): Promise<void> {
+    this.assert_usable();
     await this.harness.commit(async (tx) => {
       change(await tx.doc(AgentChatDoc, this.options.chatId, null));
     }, BACKGROUND_CONTEXT);
@@ -520,6 +611,7 @@ export class AgentChat {
   }
   /** 受理异常时查询 SDK 的持久化回执，避免把已接收的输入误判为未发送。 */
   public async settle_input_command(commandId: string): Promise<void> {
+    this.assert_usable();
     if (this.state.commands[commandId]!.status !== "pending") return;
     await this.harness.commit(async (tx) => {
       const saved = this.state.commands[commandId]!;
@@ -548,6 +640,7 @@ export class AgentChat {
     change: (queue: AgentInputQueue) => T,
     commandId?: string,
   ): Promise<T> {
+    this.assert_usable();
     const result = await this.harness.commit(async (tx) => {
       const state = await tx.doc(AgentChatDoc, this.options.chatId, null);
       const value = change(new AgentInputQueue(state.queue));
@@ -559,6 +652,7 @@ export class AgentChat {
   }
   /** 后续请求采用新模型，当前历史和累计用量继续属于同一会话。 */
   public async configure(model: Model<Api>, thinkingLevel: ModelThinkingLevel): Promise<void> {
+    this.assert_usable();
     await this.conversation.configure(
       { model: { provider: model.provider, modelId: model.id }, thinkingLevel },
       BACKGROUND_CONTEXT,
@@ -584,10 +678,14 @@ export class AgentChat {
     queuedId: string | null = null,
     commandId: string | undefined = execution.commandId,
   ): Promise<SubmittedInput> {
+    this.assert_usable();
     execution.controller.signal.throwIfAborted();
     const requestId = uuidv7();
     const conversation = this.conversation; // 提交意图与 SDK 调用使用同一分支
-    if (delivery === "round") execution.roundId = requestId;
+    if (delivery === "round") {
+      execution.roundId = requestId;
+      this.reset_recovery(execution);
+    }
     if (execution.roundId === null) throw new Error("Agent execution has no round");
     const input: AgentInputRecord = { roundId: execution.roundId, message, delivery, queuedId };
     const checkpoint =
@@ -595,7 +693,6 @@ export class AgentChat {
         ? this.tail
         : this.view.conversations.get(conversation.id)!.parent!.at;
     await this.change((state) => {
-      state.inputs[requestId] = input;
       if (commandId !== undefined) {
         const command = state.commands[commandId]!;
         command.requestId = requestId;
@@ -617,6 +714,7 @@ export class AgentChat {
         type: "input",
         content: [{ type: "text", text: prepared.text }, ...prepared.images],
         requestId,
+        entry: { kind: AGENT_INPUT_ENTRY_KIND, data: input },
         whenBusy: delivery === "steer" ? "steer" : "reject",
       },
       withAbortSignal(execution.controller.signal, BACKGROUND_CONTEXT),
@@ -642,111 +740,168 @@ export class AgentChat {
     return accepted;
   }
 
-  /** Hook 只收束受理和未消费输入。生成退出后的恢复由同一产品执行串行接管。 */
-  private async before_yield(message: AssistantMessage, task: TaskId): Promise<void> {
-    const execution = this.execution;
+  /** 迟到 Hook 只携带原任务身份，恢复事件不能跨执行或在取消后生效。 */
+  private owns_execution(execution: AgentExecution | undefined): execution is AgentExecution {
+    return (
+      execution !== undefined &&
+      execution === this.execution &&
+      !execution.controller.signal.aborted &&
+      !this.sealed
+    );
+  }
+
+  /** 有效模型进展、新轮次和首次入历史的即时输入重置连续失败额度。 */
+  private reset_recovery(execution: AgentExecution | undefined): void {
+    if (this.owns_execution(execution)) execution.recoveryUsed = false;
+  }
+
+  /** SDK 溢出压缩记入同一额度，产品截断恢复在已有消耗时终止。 */
+  private consume_recovery(
+    execution: AgentExecution | undefined,
+    reason: "length" | "overflow",
+  ): void {
+    if (!this.owns_execution(execution)) return;
+    if (reason === "length" && execution.recoveryUsed)
+      throw new Error("Truncated response recovery failed after one compact-and-retry attempt.");
+    execution.recoveryUsed = true;
+  }
+
+  /** Hook 只登记恢复并接管未消费输入，草稿持续由原执行占用。 */
+  private async register_recovery(
+    execution: AgentExecution | undefined,
+    message: AssistantMessage,
+    task: TaskId,
+  ): Promise<void> {
     if (
-      execution === null ||
-      execution.controller.signal.aborted ||
+      !this.owns_execution(execution) ||
       !isRecoverableLength(message, this.require_model().maxTokens)
     )
       return;
     execution.phase = "recovering";
     execution.recoveryTask = task;
     await execution.acceptance?.catch(() => undefined); // 受理错误由原命令回传，这里只等待其退出。
+    if (!this.owns_execution(execution)) return;
     const steer = execution.steer;
-    if (steer !== null && (await steer.submission.abort(BACKGROUND_CONTEXT)) === "aborted") {
+    if (
+      steer !== null &&
+      (await steer.submission.abort(BACKGROUND_CONTEXT)) === "aborted" &&
+      this.owns_execution(execution)
+    ) {
       execution.retrySteer = steer;
       execution.steer = null;
-      await this.change_queue((queue) => queue.cancel_send());
     }
+  }
+
+  /** 交接冻结输入或结束恢复时释放临时引用，摘要成功本身不重置额度。 */
+  private finish_recovery(execution: AgentExecution): SubmittedInput | null {
+    const steer = execution.retrySteer;
+    execution.retrySteer = null;
+    execution.recoveryTask = null;
+    return steer;
   }
 
   /** 等待当前全部 SDK 生成，只在异常截断时接管一次恢复。 */
   public async run(accepted: SubmittedInput, execution: AgentExecution): Promise<void> {
     let current = accepted;
     const firstSubmission = accepted.submission.id;
-    for (;;) {
-      const settled = await current.submission.wait(BACKGROUND_CONTEXT);
-      await this.conversation.waitForIdle(BACKGROUND_CONTEXT);
-      await execution.acceptance?.catch(() => undefined); // 受理错误由原命令回传，这里只等待其退出。
-      await this.conversation.waitForIdle(BACKGROUND_CONTEXT);
-      await this.flush();
-      if (execution.controller.signal.aborted) return;
-      const failed = [...this.view.submissions.values()].find(
-        (record) =>
-          record.id >= firstSubmission &&
-          record.type === "input" &&
-          record.entry !== undefined &&
-          record.status === "unanswered" &&
-          record.requestId !== undefined &&
-          this.state.inputs[record.requestId]?.roundId === execution.roundId,
-      );
-      if (failed?.status === "unanswered")
-        throw new Error(typeof failed.detail === "string" ? failed.detail : failed.reason);
-      if (settled.status === "unanswered")
-        throw new Error(typeof settled.detail === "string" ? settled.detail : settled.reason);
-      const recovery = execution.recoveryTask;
-      if (recovery === null) break;
-      execution.recoveryTask = null;
-      const task = await this.harness.waitForTask(recovery, BACKGROUND_CONTEXT);
-      const result = task.state.outcome;
-      if (
-        result.status !== "completed" ||
-        typeof result.result !== "object" ||
-        result.result === null ||
-        !("entryId" in result.result) ||
-        typeof result.result.entryId !== "number"
-      )
-        throw new Error("Truncated response has no committed entry");
-      const entryId = result.result.entryId as EntryId;
-      await this.harness.commit(
-        (tx) =>
-          tx.appendEntry(this.conversation.id, {
-            kind: "linguagacha.context-edit",
-            edits: [{ target: entryId, action: "omit" }],
-          }),
-        BACKGROUND_CONTEXT,
-      );
-      if (execution.recoveryUsed)
-        throw new Error("Truncated response recovery failed after one compact-and-retry attempt.");
-      execution.recoveryUsed = true;
-      if ((await this.compact("length", execution)) !== "success")
-        throw new Error("Truncated response recovery could not compact history.");
-      execution.controller.signal.throwIfAborted();
-      execution.phase = "running";
-      const steer = execution.retrySteer;
-      execution.retrySteer = null;
-      if (steer !== null) {
-        if (steer.input.queuedId !== null)
-          await this.change_queue((queue) => queue.begin_send(steer.input.queuedId!));
-        current = await this.submit(
-          steer.input.message,
-          steer.prepared,
-          execution,
-          "steer",
-          steer.input.queuedId,
+    try {
+      for (;;) {
+        const settled = await current.submission.wait(BACKGROUND_CONTEXT);
+        await this.conversation.waitForIdle(BACKGROUND_CONTEXT);
+        await execution.acceptance?.catch(() => undefined); // 受理错误由原命令回传，这里只等待其退出。
+        await this.conversation.waitForIdle(BACKGROUND_CONTEXT);
+        await this.flush();
+        this.assert_usable();
+        if (execution.controller.signal.aborted) return;
+        const failed = [...this.view.submissions.values()].find(
+          (record) =>
+            record.id >= firstSubmission &&
+            record.type === "input" &&
+            record.entry !== undefined &&
+            record.status === "unanswered" &&
+            record.requestId !== undefined &&
+            read_agent_input(this.view.records.get(record.entry), record, this.state)?.roundId ===
+              execution.roundId,
         );
-      } else {
-        const text = this.options.continueText();
-        current = await this.submit(
-          { text, attachments: [] },
-          { text, images: [] },
-          execution,
-          "hidden",
-        );
+        const unanswered = failed ?? settled;
+        if (unanswered.status === "unanswered") {
+          const failure = this.view.live.get(this.conversation.id)?.compactionFailure;
+          if (failure !== undefined && failure.taskId >= firstSubmission) {
+            const task = this.view.compactions.get(failure.taskId);
+            if (task !== undefined) {
+              const result = read_agent_compaction_result(task, this.view.submissions);
+              if (result.status === "error") throw result.error;
+            }
+          }
+          throw new Error(
+            typeof unanswered.detail === "string" ? unanswered.detail : unanswered.reason,
+          );
+        }
+        const recovery = execution.recoveryTask;
+        if (recovery === null) break;
+        current = await this.recover_length(recovery, execution);
       }
+      execution.phase = "settling";
+    } finally {
+      this.finish_recovery(execution);
     }
-    execution.phase = "settling";
+  }
+
+  /** SDK 结算后串行排除截断贡献、消耗额度，并用冻结输入创建新的尝试。 */
+  private async recover_length(
+    recovery: TaskId,
+    execution: AgentExecution,
+  ): Promise<SubmittedInput> {
+    const task = await this.harness.waitForTask(recovery, BACKGROUND_CONTEXT);
+    const result = task.state.outcome;
+    if (
+      result.status !== "completed" ||
+      typeof result.result !== "object" ||
+      result.result === null ||
+      !("entryId" in result.result) ||
+      typeof result.result.entryId !== "number"
+    )
+      throw new Error("Truncated response has no committed entry");
+    const entryId = result.result.entryId as EntryId;
+    await this.harness.commit(
+      (tx) =>
+        tx.appendEntry(this.conversation.id, {
+          kind: "linguagacha.context-edit",
+          edits: [{ target: entryId, action: "omit" }],
+        }),
+      BACKGROUND_CONTEXT,
+    );
+    this.consume_recovery(execution, "length");
+    execution.phase = "compacting";
+    const compacted = await this.compact("length", execution);
+    if (compacted.status === "error") throw compacted.error;
+    if (compacted.status === "stopped") execution.controller.signal.throwIfAborted();
+    if (compacted.status !== "success")
+      throw new Error("Truncated response recovery could not compact history.");
+    execution.controller.signal.throwIfAborted();
+    execution.phase = "running";
+    const steer = this.finish_recovery(execution);
+    if (steer !== null) {
+      return this.submit(
+        steer.input.message,
+        steer.prepared,
+        execution,
+        "steer",
+        steer.input.queuedId,
+      );
+    } else {
+      const text = this.options.continueText();
+      return this.submit({ text, attachments: [] }, { text, images: [] }, execution, "hidden");
+    }
   }
 
   /** 摘要任务结束与摘要写入均完成后，才允许产品轮次继续。 */
   public async compact(
     reason: "manual" | "length",
     execution: AgentExecution,
-  ): Promise<"success" | "skipped"> {
+  ): Promise<AgentCompactionResult> {
+    this.assert_usable();
     execution.controller.signal.throwIfAborted();
-    execution.phase = "compacting";
     this.compactionReason = reason;
     this.options.onChange();
     try {
@@ -757,27 +912,16 @@ export class AgentChat {
       await this.flush();
       const task = await this.harness.waitForTask(id, BACKGROUND_CONTEXT);
       const outcome = task.state.outcome;
-      if (outcome.status === "aborted") {
-        execution.controller.signal.throwIfAborted();
-        throw new Error("Compaction cancelled");
-      }
-      if (outcome.status !== "completed")
-        throw new AgentCompactionError(
-          id,
-          outcome.status === "orphaned" ? outcome.reason : outcome.error.message,
+      if (outcome.status === "completed" && outcome.result.submissionId !== undefined) {
+        const submitted = await this.harness.submission(
+          outcome.result.submissionId,
+          BACKGROUND_CONTEXT,
         );
-      const result = outcome.result;
-      if (result.submissionId !== undefined) {
-        const submitted = await this.harness.submission(result.submissionId, BACKGROUND_CONTEXT);
-        if ((await submitted?.wait(BACKGROUND_CONTEXT))?.status !== "done")
-          throw new Error("Compaction summary was not placed");
+        await submitted?.wait(BACKGROUND_CONTEXT);
       }
       await this.flush();
-      return read_agent_compaction_status(task, this.view.submissions) === "success"
-        ? "success"
-        : "skipped";
+      return read_agent_compaction_result(task, this.view.submissions);
     } finally {
-      if (!execution.controller.signal.aborted) execution.phase = "settling";
       this.options.onChange();
     }
   }
@@ -811,13 +955,16 @@ export class AgentChat {
   }
   /** SDK 取消回执决定工具与正文终态，产品结算轮次并暂停草稿。 */
   public async stop(execution: AgentExecution, average: number | null): Promise<void> {
+    if (this.sealed) return this.close();
+    await this.conversation.abort(BACKGROUND_CONTEXT);
+    await this.flush();
     await this.change_queue((queue) => {
       queue.cancel_send();
       queue.pause();
     });
-    await this.conversation.abort(BACKGROUND_CONTEXT);
-    await this.flush();
     await this.finish_round(execution, "stopped", average);
+    this.finish_recovery(execution);
+    execution.steer = null;
   }
   /** 下一轮的起点界定完整前缀，工具结果与隐藏恢复输入一起继承。 */
   public async fork_round(roundId: string, commandId?: string): Promise<void> {
@@ -946,18 +1093,35 @@ export class AgentChat {
   public close(): Promise<void> {
     if (this.closing !== null) return this.closing;
     this.closing = (async () => {
+      const errors: unknown[] = [];
       try {
-        await this.conversation.abort(BACKGROUND_CONTEXT, { background: true });
-        await this.flush();
+        if (!this.sealed) {
+          await this.conversation.abort(BACKGROUND_CONTEXT, { background: true });
+          await this.flush();
+        }
+      } catch (error) {
+        errors.push(error);
       } finally {
         this.closed = true;
         this.unsubscribe();
         try {
           await this.harness.close(BACKGROUND_CONTEXT);
+        } catch (error) {
+          errors.push(error);
         } finally {
+          if (this.execution !== null) {
+            this.finish_recovery(this.execution);
+            this.execution.steer = null;
+          }
+          this.taskExecutions.clear();
           this.log.finish_tools();
           this.log.flush();
         }
+      }
+      if (errors.length > 0) {
+        if (this.failure !== undefined && !errors.includes(this.failure))
+          errors.unshift(this.failure);
+        throw new AggregateError(errors, "Agent session cleanup failed", { cause: errors[0] });
       }
     })();
     return this.closing;
@@ -966,10 +1130,16 @@ export class AgentChat {
   /** 合并提交后的工作，仅历史或模型配置变化触发上下文查询。 */
   private schedule_refresh(): void {
     this.dirty = true;
-    if (this.refreshWork !== null || this.closed) return;
+    if (
+      this.refreshWork !== null ||
+      this.closed ||
+      this.sealed ||
+      this.refreshFailure !== undefined
+    )
+      return;
     this.refreshWork = Promise.resolve()
       .then(async () => {
-        while (this.dirty && !this.closed) {
+        while (this.dirty && !this.closed && !this.sealed) {
           this.dirty = false;
           this.log.flush();
           if (this.conversation === undefined) continue;
@@ -1009,17 +1179,17 @@ export class AgentChat {
           this.view.refresh(conversation.id, this.state);
           for (const [id, reason] of this.pendingCompactionLogs)
             this.finish_compaction_log(this.view.compactions.get(id)!, reason);
-          this.refreshFailure = undefined;
           this.options.onChange();
         }
       })
       .catch((error) => {
-        this.refreshFailure = error;
-        if (!this.closed) this.options.onReport(error);
+        if (!this.sealed) this.fail_projection(error);
+        else this.refreshFailure ??= error;
       })
       .finally(() => {
         this.refreshWork = null;
-        if (this.dirty && !this.closed) this.schedule_refresh();
+        if (this.dirty && !this.closed && !this.sealed && this.refreshFailure === undefined)
+          this.schedule_refresh();
       });
   }
   /** 命令回执等待公开投影追上全部已观察提交。 */
@@ -1028,12 +1198,30 @@ export class AgentChat {
     if (this.refreshFailure !== undefined) throw this.refreshFailure;
     this.log.flush();
   }
+  /** 故障实例只允许等待退出，已有提交由重开后的回执核对。 */
+  public assert_usable(): void {
+    if (this.sealed || this.closing !== null)
+      throw new Error("Agent session closed", { cause: this.failure });
+    if (this.refreshFailure !== undefined) throw this.refreshFailure;
+  }
+  /** 投影失去可信修订时停止实例，异步关闭避开 SDK 的同步提交回调。 */
+  private fail_projection(error: unknown): void {
+    this.refreshFailure ??= error;
+    this.failure ??= error;
+    this.sealed = true;
+    this.options.onReport(error);
+    void Promise.resolve()
+      .then(() => this.close())
+      .catch((cleanup) =>
+        this.options.onReport(
+          new AggregateError([error, cleanup], "Agent projection and cleanup failed", {
+            cause: error,
+          }),
+        ),
+      );
+  }
   /** 每个原生压缩任务只记录一次起止，手动任务附带产品触发原因。 */
-  private observe_compaction(
-    task: TaskRecord<JsonValue, JsonValue, JsonValue>,
-    previous: TaskRecord<JsonValue, JsonValue, JsonValue> | undefined,
-  ): void {
-    if (previous !== undefined) return;
+  private observe_compaction(task: TaskRecord<JsonValue, JsonValue, JsonValue>): void {
     const input = task.input;
     const nativeReason =
       typeof input === "object" && input !== null && "reason" in input
@@ -1050,18 +1238,12 @@ export class AgentChat {
     task: TaskRecord<JsonValue, JsonValue, JsonValue>,
     reason: string,
   ): void {
-    const status = read_agent_compaction_status(task, this.view.submissions);
+    const result = read_agent_compaction_result(task, this.view.submissions);
+    const { status } = result;
     if (status === "running" || task.state.status !== "terminal") return;
     this.pendingCompactionLogs.delete(task.id);
     const outcome = task.state.outcome;
-    const error =
-      outcome.status === "orphaned"
-        ? new Error(outcome.reason)
-        : outcome.status === "failed"
-          ? new Error(outcome.error.message, { cause: outcome.error.detail })
-          : status === "error"
-            ? new Error("Compaction summary was not placed")
-            : undefined;
+    const error = result.status === "error" ? result.error : undefined;
     this.log.handle_event({
       type: "compaction_end",
       reason,
@@ -1077,17 +1259,5 @@ export class AgentChat {
             level: outcome.status === "orphaned" ? ("error" as const) : ("warning" as const),
           }),
     });
-  }
-}
-
-/** 原生压缩终态已保存诊断，回合只记录导致终止的任务身份。 */
-export class AgentCompactionError extends Error {
-  /** 关联已保存诊断的原生任务，回合终止只引用该任务身份。 */
-  public constructor(
-    public readonly task_id: number,
-    message: string,
-  ) {
-    super(message);
-    this.name = "AgentCompactionError";
   }
 }

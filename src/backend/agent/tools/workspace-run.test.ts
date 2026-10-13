@@ -28,7 +28,7 @@ describe("workspace_run", () => {
       { script: "await ws.emitImage('work/image.webp');" },
       ...agent_tool_call("image"),
     );
-    expect(result.content).toContainEqual({
+    expect(result.output).toContainEqual({
       type: "image",
       mimeType: "image/webp",
       data: "aW1hZ2U=",
