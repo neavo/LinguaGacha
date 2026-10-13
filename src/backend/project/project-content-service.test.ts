@@ -906,6 +906,90 @@ describe("ProjectContentService", () => {
     database.close();
   });
 
+  it("替换同名文件时非目标语言与规则跳过条目仍继承人工译文", async () => {
+    const { database, service, lg_path } = create_service();
+    const source = project_path("level0_en.json");
+    // Interact 命中源语言预过滤，EV12 命中规则预过滤，预过滤状态不能否决人工译文继承。
+    fs.writeFileSync(
+      source,
+      JSON.stringify([{ message: "Interact" }, { message: "EV12" }, { message: "こんにちは" }]),
+      "utf-8",
+    );
+    database.add_asset_from_source(lg_path, "level0_en.json", source, null, 0);
+    database.set_items(
+      lg_path,
+      ["Interact", "EV12", "こんにちは"].map((src, index) =>
+        create_persistent_item({
+          item_id: index + 1,
+          src,
+          dst: `译文${String(index)}`,
+          status: "PROCESSED",
+          file_type: "MESSAGEJSON",
+          text_type: "KAG",
+          file_path: "level0_en.json",
+          row_number: index,
+        }),
+      ),
+    );
+
+    await service.import_files({
+      files: [{ source_path: source, target_rel_path: "level0_en.json" }],
+      conflict_action: "replace",
+      inheritance_mode: "inherit",
+      project_settings: { source_language: "JA", target_language: "ZH" },
+      expected_section_revisions: { files: 0, items: 0 },
+    });
+
+    expect(database.get_all_items(lg_path)).toMatchObject([
+      { src: "Interact", dst: "译文0", status: "PROCESSED" },
+      { src: "EV12", dst: "译文1", status: "PROCESSED" },
+      { src: "こんにちは", dst: "译文2", status: "PROCESSED" },
+    ]);
+    database.close();
+  });
+
+  it("替换同名文件时保留新文件自带译文，仅填充未翻译条目", async () => {
+    const { database, service, lg_path } = create_service();
+    const source = project_path("texts.json");
+    fs.writeFileSync(source, JSON.stringify({ Hello: "你好", Bye: "Bye" }), "utf-8");
+    database.add_asset_from_source(lg_path, "texts.json", source, null, 0);
+    database.set_items(lg_path, [
+      create_persistent_item({
+        item_id: 1,
+        src: "Hello",
+        dst: "您好",
+        status: "PROCESSED",
+        file_type: "KVJSON",
+        file_path: "texts.json",
+        row_number: 0,
+      }),
+      create_persistent_item({
+        item_id: 2,
+        src: "Bye",
+        dst: "再见",
+        status: "PROCESSED",
+        file_type: "KVJSON",
+        file_path: "texts.json",
+        row_number: 1,
+      }),
+    ]);
+
+    await service.import_files({
+      files: [{ source_path: source, target_rel_path: "texts.json" }],
+      conflict_action: "replace",
+      inheritance_mode: "inherit",
+      project_settings: { source_language: "JA", target_language: "ZH" },
+      expected_section_revisions: { files: 0, items: 0 },
+    });
+
+    // 新文件已完成的明文保留文件结果；与原文相同的占位值不算自带译文，仍接受继承。
+    expect(database.get_all_items(lg_path)).toMatchObject([
+      { src: "Hello", dst: "你好", status: "PROCESSED" },
+      { src: "Bye", dst: "再见", status: "PROCESSED" },
+    ]);
+    database.close();
+  });
+
   it("整条继承匹配源身份，按完整结果投票并支持空正文", async () => {
     const { database, service, lg_path } = create_service();
     try {

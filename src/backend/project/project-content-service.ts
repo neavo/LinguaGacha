@@ -811,9 +811,9 @@ export class ProjectContentService {
   }): void {
     const candidate_map = this.build_translation_inheritance_candidates(args.old_items);
     for (const item of args.next_items) {
-      if (Item.normalize_status(item.status) !== "NONE") {
-        continue;
-      }
+      // 预过滤按当前设置把无译文条目改成 LANGUAGE_SKIPPED、RULE_SKIPPED 或 DUPLICATED，
+      // 因此只有格式解析产出的 PROCESSED 才能证明新文件自带译文，其余状态都要继承人工译文。
+      if (Item.normalize_status(item.status) === "PROCESSED") continue;
       const candidate = candidate_map.get(this.translation_inheritance_key(item));
       if (candidate === undefined) continue;
       item.dst = candidate.dst;
