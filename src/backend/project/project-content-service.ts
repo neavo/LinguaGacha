@@ -3,7 +3,8 @@ import type { RPGMakerMvMzPrepareExecution } from "../file/rpgmaker-mv-mz/prepar
 import { assert_source_file_paths } from "../file/source-file-paths";
 import { normalize_project_asset_path } from "../../shared/project/project-asset-paths";
 import type { SourceFileParseWarning } from "../file/file-format-types";
-import { ProjectDataReader } from "./project-data-reader";
+import type { WorkbenchImportFilesPreview } from "../../shared/workbench/workbench-command-planner";
+import { get_section_revision, ProjectDataReader } from "./project-data-reader";
 import { resolve_text_rule_type, type TextFileContext } from "../../shared/text/text-rule-type";
 import {
   normalize_batch_translation_progress,
@@ -115,13 +116,21 @@ export class ProjectContentService {
   }
 
   /** 预览只发现来源并分配目标名称，内容准备由正式导入持有。 */
-  public async preview_import_files(request: JsonRecord): Promise<JsonRecord> {
+  public async preview_import_files(request: JsonRecord): Promise<WorkbenchImportFilesPreview> {
     const project_path = this.session_state.require_loaded_project_path();
     const format_service = this.create_format_service();
     const source_paths = this.normalize_string_list(request["source_paths"]);
-    const entries = format_service.assign_source_file_paths(
-      await format_service.collect_source_file_entries(source_paths),
-      await this.database.get_all_asset_records(project_path),
+    const sources = await format_service.collect_source_file_entries(source_paths);
+    const snapshot = await this.database.read(project_path, (reader) => ({
+      assets: reader.get_all_asset_records(project_path),
+      files_revision: get_section_revision(reader.get_all_meta(project_path), "files"),
+    }));
+    const entries = format_service.assign_source_file_paths(sources, snapshot.assets);
+    const existing = new Map(
+      snapshot.assets.map((asset) => [
+        normalize_project_asset_path(asset.path).toLowerCase(),
+        asset.path,
+      ]),
     );
     const failed_files = entries.flatMap((entry) =>
       entry.source.kind === "failure"
@@ -129,11 +138,17 @@ export class ProjectContentService {
         : [],
     );
     return {
-      ...(failed_files.length ? { failed_files: failed_files as unknown as JsonValue } : {}),
-      files: entries.map((entry) => ({
-        source_path: entry.source_path,
-        target_rel_path: entry.rel_path,
-      })) as unknown as JsonValue,
+      files_revision: snapshot.files_revision,
+      ...(failed_files.length ? { failed_files } : {}),
+      files: entries.map((entry) => {
+        const target = normalize_project_asset_path(entry.rel_path);
+        const previous = existing.get(target.toLowerCase());
+        return {
+          source_path: entry.source_path,
+          target_rel_path: previous ?? target,
+          conflict: previous !== undefined,
+        };
+      }),
     };
   }
 

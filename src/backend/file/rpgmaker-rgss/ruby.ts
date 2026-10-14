@@ -129,18 +129,15 @@ function quote(text: string): string {
 /** 每个容器按原稿字节坐标倒序应用修改，越界和交叠在输出前拒绝。 */
 function apply_edits(source: Buffer, location: RubyLocation, edits: readonly RubyEdit[]): string {
   const ordered = [...edits].sort((a, b) => b.start - a.start);
-  let previous = location.end,
-    output = source.subarray(location.start, location.end);
+  let previous = location.end;
+  const parts: Buffer[] = []; // 原稿切片按倒序收集，最后一次拼接避免反复复制整个容器。
   for (const edit of ordered) {
     assert(contains(location, edit) && edit.end <= previous, "Conflicting Ruby edits");
-    output = Buffer.concat([
-      output.subarray(0, edit.start - location.start),
-      Buffer.from(edit.text),
-      output.subarray(edit.end - location.start),
-    ]);
+    parts.push(source.subarray(edit.end, previous), Buffer.from(edit.text));
     previous = edit.start;
   }
-  return output.toString();
+  parts.push(source.subarray(location.start, previous));
+  return Buffer.concat(parts.reverse()).toString();
 }
 /** 原稿 AST 拥有转义、插值和 heredoc 范围，保存的位置仅用于选择文本节点。 */
 export async function write_ruby_strings(

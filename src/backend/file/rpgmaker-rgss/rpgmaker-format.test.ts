@@ -1,4 +1,8 @@
-import { expect, it } from "vitest";
+import { RPGMakerGameFormat } from "../shared/rpgmaker-format";
+import { NativeFs } from "../../../native/native-fs";
+import JSZip from "jszip";
+import { create_item } from "../../../domain/item";
+import { expect, it, vi } from "vitest";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -13,7 +17,8 @@ import { create_pdf_execution } from "../pdf/test-support";
 import { FileFormatService } from "../file-format-service";
 import { decode, encode, field } from "./marshal";
 import { array, text, bytes } from "./value";
-import { RPGMakerRGSSFormat } from "./rpgmaker-format";
+import * as source from "./source";
+import { create_rpgmaker_rgss_adapter } from "./rpgmaker-format";
 
 it.each([
   ["xp", ".rxdata"],
@@ -77,7 +82,6 @@ it.each([
     ["keep", "RULE_SKIPPED"],
   ]);
   const title_item = result.items.find((item) => item.src === title)!;
-  expect(title_item.status).toBe("RULE_SKIPPED");
   expect(title_item.extra_field).toMatchObject({ rpgmaker_rgss: { usage: "metadata" } });
   title_item.dst = "吸血鬼笔记";
   const currency = result.items.find((item) => item.src === "ゴールド")!;
@@ -107,10 +111,76 @@ it.each([
   const archive = decode(fs.readFileSync(path.join(output, "game/Custom/Main" + extension)));
   expect(inflateSync(bytes(array(array(archive)[0]!)[2]!)).toString()).toBe('puts "菜单", "keep"');
   const unchanged = path.join(temp.path, "unchanged");
-  await new RPGMakerRGSSFormat().write_to_path([], {
+  await new RPGMakerGameFormat(create_rpgmaker_rgss_adapter(), new NativeFs()).write_to_path([], {
     source_files: [{ path: "game.zip", file_type: "RPGMAKER_RGSS" }],
     asset_reader: () => Buffer.from(prepared.content),
     paths: { translated_path: unchanged, bilingual_path: unchanged },
   });
   expect(fs.readFileSync(path.join(unchanged, "game/Data/Actors" + extension))).toEqual(actors);
 });
+
+it.each([false, true])(
+  "容器身份只解析一次，失败=%s 时保留成员诊断与未修改原稿",
+  async (invalid) => {
+    using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-rgss-context-"));
+    const zip = new JSZip();
+    zip.file(
+      "Game.ini",
+      invalid ? "[Game]\nScripts=wrong.rxdata" : "[Game]\nScripts=Data/Scripts.rvdata2",
+    );
+    const original = encode(o("RPG::System", { "@currency_unit": s("gold") }));
+    for (const name of ["System", "Map001", "Scripts"]) zip.file(`Data/${name}.rvdata2`, original);
+    const content = await zip.generateAsync({ type: "uint8array" });
+    const read = vi.spyOn(source, "read_rgss_game");
+    try {
+      const format = new RPGMakerGameFormat(create_rpgmaker_rgss_adapter(), new NativeFs());
+      const parsed = await format.read_from_stream(content, "game.zip");
+      expect(read).toHaveBeenCalledTimes(1);
+      if (invalid) {
+        expect(parsed.items).toEqual([]);
+        expect(parsed.warnings.map((warning) => warning.internal_file_path)).toEqual([
+          "Data/System.rvdata2",
+          "Data/Map001.rvdata2",
+          "Data/Scripts.rvdata2",
+        ]);
+      }
+      const context = {
+        source_files: [{ path: "game.zip", file_type: "RPGMAKER_RGSS" }],
+        asset_reader: () => Buffer.from(content),
+        paths: { translated_path: temp.path, bilingual_path: temp.path },
+      };
+      read.mockClear();
+      await format.write_to_path([], context);
+      expect(read).not.toHaveBeenCalled();
+      expect(fs.readFileSync(path.join(temp.path, "game/Data/System.rvdata2"))).toEqual(original);
+      if (invalid) {
+        const valid = new JSZip();
+        valid.file("Game.ini", "[Game]\nScripts=Data/Scripts.rvdata2");
+        valid.file("Data/System.rvdata2", original);
+        const result = await format.read_from_stream(
+          await valid.generateAsync({ type: "uint8array" }),
+          "game.zip",
+        );
+        read.mockClear();
+        await expect(
+          format.write_to_path(
+            result.items.map((item) => create_item({ ...item, dst: "金币", status: "PROCESSED" })),
+            context,
+          ),
+        ).rejects.toMatchObject({ code: "file.invalid_structure" });
+        expect(read).toHaveBeenCalledTimes(1);
+      } else {
+        await format.write_to_path(
+          parsed.items.map((item) => create_item({ ...item, dst: "金币", status: "PROCESSED" })),
+          context,
+        );
+        expect(read).toHaveBeenCalledTimes(1);
+        // 同一格式实例下一次操作须重新识别容器。
+        await format.read_from_stream(content, "another.zip");
+        expect(read).toHaveBeenCalledTimes(2);
+      }
+    } finally {
+      read.mockRestore();
+    }
+  },
+);

@@ -1,3 +1,5 @@
+import type { SourceFileParseFailureRecord } from "../source-file-parse-failure";
+
 export type WorkbenchPlannerSettings = {
   source_language: string; // 后端预过滤使用的源语言设置
   mtool_optimizer_enable: boolean; // 后端 KVJSON 优化预过滤开关
@@ -41,18 +43,6 @@ function build_file_map(
   return file_map;
 }
 
-/** 只改变冲突比较键，提交仍保留查询返回的准确路径。 */
-function build_casefold_file_map(
-  state: WorkbenchCommandPlanningState,
-): Map<string, WorkbenchPlannerFileRecord> {
-  // 同名判断采用工作台文件口径的大小写不敏感 key，保留原始 rel_path 作为提交规范路径。
-  const file_map = new Map<string, WorkbenchPlannerFileRecord>();
-  for (const file of build_file_map(state).values()) {
-    file_map.set(normalize_casefold_path(file.rel_path), file);
-  }
-  return file_map;
-}
-
 // 用户选择的目标路径去空去重，保证命令体路径集合稳定。
 function normalize_target_rel_paths(rel_paths: string[]): string[] {
   const normalized_rel_paths = [...new Set(rel_paths.filter((rel_path) => rel_path.trim() !== ""))];
@@ -84,11 +74,6 @@ export function create_workbench_planner_settings(
     mtool_optimizer_enable: settings.mtool_optimizer_enable,
     skip_duplicate_source_text_enable: settings.skip_duplicate_source_text_enable,
   };
-}
-
-// 工作台文件路径冲突按大小写不敏感口径预判，最终写入仍由后端校验。
-function normalize_casefold_path(value: string): string {
-  return value.toLocaleLowerCase("en-US");
 }
 
 // 重排命令必须完整覆盖当前文件集合，不能提交局部排序片段。
@@ -164,116 +149,29 @@ export function create_workbench_delete_files_plan(args: {
 }
 
 export type WorkbenchImportFileCandidate = {
-  source_path: string; // 用户选择的源文件路径，提交时作为 import-files 命令输入
-  target_rel_path: string; // UI 预览得到的项目内目标路径
+  source_path: string;
+  target_rel_path: string; // 后端预览分配的规范资产路径。
+  conflict: boolean;
 };
 
 export type WorkbenchImportFilesPreview = {
-  importable_files: WorkbenchImportFileCandidate[];
-  new_files: WorkbenchImportFileCandidate[];
-  conflicting_files: WorkbenchImportFileCandidate[];
+  files_revision: number; // 与命名和冲突分类来自同一次数据库读取。
+  files: WorkbenchImportFileCandidate[];
+  failed_files?: SourceFileParseFailureRecord[];
 };
 
-/** 只接收同时携带源路径与目标身份的准备结果。 */
-function is_import_file_usable(candidate: WorkbenchImportFileCandidate): boolean {
-  return candidate.source_path.trim() !== "" && candidate.target_rel_path.trim() !== "";
-}
-
-/** 同批目标冲突整体排除，避免用发现顺序决定覆盖。 */
-function collect_batch_duplicate_target_keys(
-  candidates: WorkbenchImportFileCandidate[],
-): Set<string> {
-  const count_by_key = new Map<string, number>();
-  for (const candidate of candidates) {
-    const target_key = normalize_casefold_path(candidate.target_rel_path);
-    if (target_key === "") {
-      continue;
-    }
-    count_by_key.set(target_key, (count_by_key.get(target_key) ?? 0) + 1);
-  }
-  return new Set(
-    [...count_by_key.entries()].flatMap(([target_key, count]) => {
-      return count > 1 ? [target_key] : [];
-    }),
-  );
-}
-
-// 工作台导入预览只判断新增与同名替换候选，文件内容由正式导入解析。
-export function create_workbench_import_files_preview(args: {
-  state: WorkbenchCommandPlanningState;
-  candidates: WorkbenchImportFileCandidate[];
-}): WorkbenchImportFilesPreview {
-  const existing_file_map = build_casefold_file_map(args.state);
-  const batch_duplicate_target_keys = collect_batch_duplicate_target_keys(args.candidates);
-  const importable_files: WorkbenchImportFileCandidate[] = [];
-  const new_files: WorkbenchImportFileCandidate[] = [];
-  const conflicting_files: WorkbenchImportFileCandidate[] = [];
-
-  for (const raw_file of args.candidates) {
-    if (!is_import_file_usable(raw_file)) {
-      continue;
-    }
-    const candidate = { ...raw_file };
-    const target_key = normalize_casefold_path(candidate.target_rel_path);
-    if (batch_duplicate_target_keys.has(target_key)) {
-      continue;
-    }
-    const existing_file = existing_file_map.get(target_key);
-    const import_file =
-      existing_file === undefined
-        ? candidate
-        : {
-            ...candidate,
-            target_rel_path: existing_file.rel_path,
-          };
-    importable_files.push(import_file);
-    if (existing_file === undefined) {
-      new_files.push(import_file);
-    } else {
-      conflicting_files.push(import_file);
-    }
-  }
-
-  return {
-    importable_files,
-    new_files,
-    conflicting_files,
-  };
-}
-
-/** 用户的覆盖策略决定新增与替换候选是否提交。 */
-function select_import_files(
-  preview: WorkbenchImportFilesPreview,
-  conflict_action: WorkbenchFileConflictAction,
-): WorkbenchImportFileCandidate[] {
-  // 跳过只提交新文件；替换提交新文件和同名候选，具体写入仍以后端事务为准。
-  return conflict_action === "replace" ? preview.importable_files : preview.new_files;
-}
-
-// 文件导入提交源路径、目标路径、同名策略和继承模式；id 分配、解析、继承和预过滤都在后端。
+// 前端只提交预览候选和用户选择，名称与冲突分类由后端拥有。
 export function create_workbench_import_files_plan(args: {
   state: WorkbenchCommandPlanningState;
-  candidates: WorkbenchImportFileCandidate[];
+  preview: WorkbenchImportFilesPreview;
   conflict_action: WorkbenchFileConflictAction;
   settings: WorkbenchPlannerSettings;
   inheritance_mode?: WorkbenchTranslationInheritanceMode;
 }): WorkbenchCommandPlan {
-  const preview = create_workbench_import_files_preview({
-    state: args.state,
-    candidates: args.candidates,
-  });
-  const files_to_import = select_import_files(preview, args.conflict_action);
-  if (files_to_import.length === 0) {
-    throw new Error("No importable workbench files were selected.");
-  }
-
-  const files = files_to_import.map((candidate) => {
-    return {
-      source_path: candidate.source_path,
-      target_rel_path: candidate.target_rel_path,
-    };
-  });
-
+  const files = args.preview.files
+    .filter((file) => args.conflict_action === "replace" || !file.conflict)
+    .map(({ source_path, target_rel_path }) => ({ source_path, target_rel_path }));
+  if (files.length === 0) throw new Error("No importable workbench files were selected.");
   return {
     updatedSections: ["files", "items"],
     requestBody: {
@@ -281,7 +179,10 @@ export function create_workbench_import_files_plan(args: {
       conflict_action: args.conflict_action,
       inheritance_mode: args.inheritance_mode ?? "none",
       project_settings: create_workbench_planner_settings(args.settings),
-      expected_section_revisions: build_expected_revisions(args.state, ["files", "items"]),
+      expected_section_revisions: {
+        files: args.preview.files_revision,
+        items: args.state.section_revisions.items ?? 0,
+      },
     },
   };
 }

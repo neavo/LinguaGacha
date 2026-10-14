@@ -45,7 +45,7 @@ export async function prepare_game_directory(
     assert_game_path_spellings(targets);
     const paths = new ProjectAssetPathIndex();
     const rollback_files = new Set<string>();
-    const directory_entries = new Map<string, readonly string[]>();
+    const directory_entries = new Map<string, Map<string, string | null>>();
     for (const name of targets) {
       await checkpoint();
       validate_game_path(name);
@@ -55,10 +55,15 @@ export async function prepare_game_directory(
         if (fs.exists(parent)) {
           let entries = directory_entries.get(parent);
           if (!entries) {
-            entries = fs.read_dirents(parent).map((entry) => entry.name);
+            entries = new Map();
+            for (const entry of fs.read_dirents(parent)) {
+              const key = entry.name.toLowerCase();
+              entries.set(key, entries.has(key) ? null : entry.name); // 保留磁盘上多种拼写的冲突。
+            }
             directory_entries.set(parent, entries);
           }
-          if (entries.some((entry) => entry !== part && entry.toLowerCase() === part.toLowerCase()))
+          const actual = entries.get(part.toLowerCase());
+          if (actual !== undefined && actual !== part)
             throw new Error("Game path differs only by case: " + name);
         }
         parent = path.join(parent, part);

@@ -118,10 +118,10 @@ it("仓库外 Electron 从部署目录加载原生绑定并生成可解析译文
     `
     import assert from "node:assert/strict";
     import fs from "node:fs";
-    import { RPGMakerMvMzFormat } from ${JSON.stringify(pathToFileURL(path.join(module, "rpgmaker-format.ts")).href)};
+    import { create_rpgmaker_mv_mz_adapter } from ${JSON.stringify(pathToFileURL(path.join(module, "rpgmaker-format.ts")).href)};
     import { configure_rpgmaker_parser, read_javascript_strings } from ${JSON.stringify(pathToFileURL(path.join(module, "javascript.ts")).href)};
     configure_rpgmaker_parser(process.argv[2]);
-    const format = new RPGMakerMvMzFormat({target_language:"ZH"});
+    const format = create_rpgmaker_mv_mz_adapter({target_language:"ZH"}).create_members(new Map());
     const bytes = Buffer.from('const s = "中文😀";');
     const { items } = await format.read_file(bytes, "js/plugins/test.js");
     assert.equal(items.length, 1);

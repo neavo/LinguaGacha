@@ -46,7 +46,8 @@ describe("useWorkbenchImportFilesFlow", () => {
     async (failure) => {
       const state = create_project_store_state();
       api_fetch_mock.mockResolvedValueOnce({
-        files: [{ source_path: "C:/source/old.txt", target_rel_path: "old.txt" }],
+        files_revision: 1,
+        files: [{ source_path: "C:/source/old.txt", target_rel_path: "old.txt", conflict: true }],
       });
       const snapshots = await mount_hook({ state });
       await act(async () => {
@@ -88,7 +89,10 @@ describe("useWorkbenchImportFilesFlow", () => {
 
       api_fetch_mock
         .mockResolvedValueOnce({
-          files: [{ source_path: "C:/source/new.txt", target_rel_path: "new.txt" }],
+          files_revision: 2,
+          files: [
+            { source_path: "C:/source/new.txt", target_rel_path: "new.txt", conflict: false },
+          ],
         })
         .mockResolvedValueOnce({ accepted: true, changes: [] });
       await act(async () => {
@@ -115,11 +119,54 @@ describe("useWorkbenchImportFilesFlow", () => {
     },
   );
 
+  it("预览期间修订变化时采用后端快照，冲突分类不依赖前端文件窗口", async () => {
+    const state = create_project_store_state();
+    state.files = [];
+    const pending = Promise.withResolvers<{
+      files_revision: number;
+      files: { source_path: string; target_rel_path: string; conflict: boolean }[];
+    }>();
+    api_fetch_mock.mockReturnValueOnce(pending.promise);
+    const snapshots = await mount_hook({ state });
+    let preview!: Promise<void>;
+    await act(async () => {
+      preview = latest_snapshot(snapshots).flow.request_add_files_from_paths(["C:/source/OLD.txt"]);
+    });
+    state.section_revisions.files = 2;
+    await act(async () => {
+      pending.resolve({
+        files_revision: 2,
+        files: [{ source_path: "C:/source/OLD.txt", target_rel_path: "old.txt", conflict: true }],
+      });
+      await preview;
+    });
+    expect(latest_snapshot(snapshots).dialog_state.kind).toBe("confirm-import-files");
+    await act(async () => {
+      await latest_snapshot(snapshots).flow.confirm_dialog();
+    });
+    api_fetch_mock.mockResolvedValueOnce({ accepted: true, changes: [] });
+    await act(async () => {
+      await latest_snapshot(snapshots).flow.secondary_dialog();
+    });
+    expect(api_fetch_mock.mock.calls.map(([url]) => url)).toEqual([
+      "/api/workbench/files/preview",
+      "/api/workbench/files/import",
+    ]);
+    expect(api_fetch_mock).toHaveBeenLastCalledWith(
+      "/api/workbench/files/import",
+      expect.objectContaining({
+        files: [{ source_path: "C:/source/OLD.txt", target_rel_path: "old.txt" }],
+        conflict_action: "replace",
+        expected_section_revisions: { files: 2, items: 2 },
+      }),
+    );
+  });
+
   it("普通提交失败保留当前确认和名称，可直接重试", async () => {
-    const file = { source_path: "C:/source/new.txt", target_rel_path: "new.txt" };
+    const file = { source_path: "C:/source/new.txt", target_rel_path: "new.txt", conflict: false };
     const error = new Error("write failed");
     api_fetch_mock
-      .mockResolvedValueOnce({ files: [file] })
+      .mockResolvedValueOnce({ files_revision: 1, files: [file] })
       .mockRejectedValueOnce(error)
       .mockResolvedValueOnce({ accepted: true, changes: [] });
     const snapshots = await mount_hook();
@@ -146,7 +193,8 @@ describe("useWorkbenchImportFilesFlow", () => {
     const original = "game_20261011_123456";
     const renamed = original + "_2";
     const files = (name: string) => ({
-      files: [{ source_path: "C:/source/game", target_rel_path: name }],
+      files_revision: name === original ? 1 : 2,
+      files: [{ source_path: "C:/source/game", target_rel_path: name, conflict: false }],
     });
     api_fetch_mock.mockResolvedValueOnce(files(original));
     const write = vi.fn(
@@ -214,10 +262,12 @@ describe("useWorkbenchImportFilesFlow", () => {
   it("新增文件先进入继承确认，取消继承后提交后端导入命令", async () => {
     api_fetch_mock
       .mockResolvedValueOnce({
+        files_revision: 1,
         files: [
           {
             source_path: "C:/source/ new.txt ",
             target_rel_path: " new.txt",
+            conflict: false,
           },
         ],
       })
@@ -271,14 +321,17 @@ describe("useWorkbenchImportFilesFlow", () => {
   it("新增与同名文件混合导入时，确认替换后两者一起提交", async () => {
     api_fetch_mock
       .mockResolvedValueOnce({
+        files_revision: 1,
         files: [
           {
             source_path: "C:/source/new.txt",
             target_rel_path: "new.txt",
+            conflict: false,
           },
           {
             source_path: "C:/source/old.txt",
             target_rel_path: "old.txt",
+            conflict: true,
           },
         ],
       })
@@ -332,9 +385,10 @@ describe("useWorkbenchImportFilesFlow", () => {
   it("跳过同名文件时只导入新增文件", async () => {
     api_fetch_mock
       .mockResolvedValueOnce({
+        files_revision: 1,
         files: [
-          { source_path: "C:/source/new.txt", target_rel_path: "new.txt" },
-          { source_path: "C:/source/old-copy.txt", target_rel_path: "old.txt" },
+          { source_path: "C:/source/new.txt", target_rel_path: "new.txt", conflict: false },
+          { source_path: "C:/source/old-copy.txt", target_rel_path: "old.txt", conflict: true },
         ],
       })
       .mockResolvedValueOnce({ accepted: true, changes: [] });
@@ -373,7 +427,10 @@ describe("useWorkbenchImportFilesFlow", () => {
 
   it("取消同名确认时不提交导入", async () => {
     api_fetch_mock.mockResolvedValueOnce({
-      files: [{ source_path: "C:/source/old-copy.txt", target_rel_path: "old.txt" }],
+      files_revision: 1,
+      files: [
+        { source_path: "C:/source/old-copy.txt", target_rel_path: "old.txt", conflict: true },
+      ],
     });
     const snapshots = await mount_hook();
 
@@ -397,9 +454,10 @@ describe("useWorkbenchImportFilesFlow", () => {
         message: "Parser rejected the file",
       };
       api_fetch_mock.mockResolvedValueOnce({
+        files_revision: 1,
         files: [
-          { source_path: "C:/source/new.txt", target_rel_path: "new.txt" },
-          { source_path: "C:/source/broken.json", target_rel_path: "broken.json" },
+          { source_path: "C:/source/new.txt", target_rel_path: "new.txt", conflict: false },
+          { source_path: "C:/source/broken.json", target_rel_path: "broken.json", conflict: false },
         ],
       });
       const pending = Promise.withResolvers<ProjectWriteResultPayload>();

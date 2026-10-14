@@ -49,17 +49,15 @@ export type GameFiles = ReadonlyMap<string, JSZip.JSZipObject>;
 export interface GameFormatAdapter {
   file_type: "RPGMAKER_MV_MZ" | "RPGMAKER_RGSS";
   internal_path(item: Item): string;
+  create_members(files: GameFiles): GameMemberHandler;
+}
+/** 本次容器操作独享解析上下文，成员只接收自身内容。 */
+export interface GameMemberHandler {
   read_file(
     content: Uint8Array,
     file: string,
-    files: GameFiles,
   ): Promise<{ items: Item[]; warnings: SourceFileParseWarning[] }>;
-  render(
-    content: Uint8Array,
-    file: string,
-    items: readonly Item[],
-    files: GameFiles,
-  ): Promise<Uint8Array>;
+  render(content: Uint8Array, file: string, items: readonly Item[]): Promise<Uint8Array>;
 }
 /** 游戏原稿清单拥有导入、离线重建与目录导出，格式仅解释成员内容。 */
 export class RPGMakerGameFormat {
@@ -107,11 +105,12 @@ export class RPGMakerGameFormat {
     file: string,
   ): Promise<{ items: Item[]; warnings: SourceFileParseWarning[] }> {
     const files = await read_rpgmaker_container(content, file);
+    const handler = this.adapter.create_members(files);
     const items: Item[] = [];
     const warnings: SourceFileParseWarning[] = [];
     for (const [name, member] of files) {
       try {
-        const parsed = await this.adapter.read_file(await member.async("uint8array"), name, files);
+        const parsed = await handler.read_file(await member.async("uint8array"), name);
         warnings.push(
           ...parsed.warnings.map((warning) => ({
             ...warning,
@@ -147,7 +146,7 @@ export class RPGMakerGameFormat {
       file: string;
       member: JSZip.JSZipObject;
       items: Item[];
-      files: GameFiles;
+      handler: GameMemberHandler;
     }> = [];
     for (const file of context.source_files) {
       if (file.file_type !== this.adapter.file_type) continue;
@@ -155,6 +154,7 @@ export class RPGMakerGameFormat {
       if (content === null)
         throw new AppError("file.not_found", { public_details: { file: file.path } });
       const files = await read_rpgmaker_container(content, file.path);
+      const handler = this.adapter.create_members(files);
       const group = groups.get(file.path);
       for (const internal of group?.keys() ?? []) {
         if (!files.has(internal))
@@ -166,16 +166,15 @@ export class RPGMakerGameFormat {
           file: directory + "/" + name,
           member,
           items: group?.get(name) ?? [],
-          files,
+          handler,
         });
       }
     }
     for (const output of outputs) {
-      const content = await this.adapter.render(
+      const content = await output.handler.render(
         await output.member.async("uint8array"),
         output.member.name,
         output.items,
-        output.files,
       );
       await this.fs.write_file(path.join(context.paths.translated_path, output.file), content);
     }

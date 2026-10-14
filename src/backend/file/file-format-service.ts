@@ -1,3 +1,4 @@
+import { RPGMakerGameFormat } from "./shared/rpgmaker-format";
 import { build_source_file_parse_failure } from "./source-file-parse-failure-reporter";
 import {
   discover_source,
@@ -9,14 +10,14 @@ import { prepare_rpgmaker_source } from "./rpgmaker-mv-mz/prepare";
 import type { RPGMakerMvMzPrepareExecution } from "./rpgmaker-mv-mz/prepare-worker";
 import { rpgmaker_default_status } from "./rpgmaker-mv-mz/item";
 import { rgss_default_status } from "./rpgmaker-rgss/item";
-import { RPGMakerRGSSFormat } from "./rpgmaker-rgss/rpgmaker-format";
+import { create_rpgmaker_rgss_adapter } from "./rpgmaker-rgss/rpgmaker-format";
 import { collect_rgss_files } from "./rpgmaker-rgss/source";
 import { prepare_rgss_source } from "./rpgmaker-rgss/prepare";
 import { is_rpgmaker_file_type } from "../../shared/project-source-formats";
 import { format_local_timestamp } from "../../shared/utils/format-local-timestamp";
 import { normalize_project_asset_path } from "../../shared/project/project-asset-paths";
 import { SourceFilePathIndex } from "./source-file-paths";
-import { RPGMakerMvMzFormat } from "./rpgmaker-mv-mz/rpgmaker-format";
+import { create_rpgmaker_mv_mz_adapter } from "./rpgmaker-mv-mz/rpgmaker-format";
 import { collect_rpgmaker_files } from "./rpgmaker-mv-mz/source";
 import type { PDFExecution } from "./pdf/pdf-worker";
 import { PDFFormat } from "./pdf/pdf-format";
@@ -77,8 +78,8 @@ export class FileFormatService {
   private readonly trans: TRANSFormat;
   private readonly renpy: RenPyFormat;
   private readonly epub: EPUBFormat;
-  private readonly rgss: RPGMakerRGSSFormat;
-  private readonly rpgmaker: RPGMakerMvMzFormat;
+  private readonly rgss: RPGMakerGameFormat;
+  private readonly rpgmaker: RPGMakerGameFormat;
 
   /**
    * 构造时固定各格式处理器，保证一次服务实例内配置一致
@@ -90,8 +91,8 @@ export class FileFormatService {
     private readonly rpgmaker_mv_mz_prepare_execution?: RPGMakerMvMzPrepareExecution,
   ) {
     this.native_fs = native_fs;
-    this.rgss = new RPGMakerRGSSFormat(native_fs);
-    this.rpgmaker = new RPGMakerMvMzFormat(config, native_fs);
+    this.rgss = new RPGMakerGameFormat(create_rpgmaker_rgss_adapter(), native_fs);
+    this.rpgmaker = new RPGMakerGameFormat(create_rpgmaker_mv_mz_adapter(config), native_fs);
     this.txt = new TXTFormat(config);
     this.md = new MDV2Format();
     this.ass = new ASSFormat(config);

@@ -181,6 +181,32 @@ afterEach(() => {
 });
 
 describe("ProjectContentService", () => {
+  it("预览使用资产快照修订和准确拼写，同批同名来源分配独立名称", async () => {
+    const { database, service, lg_path } = await create_service();
+    const sources = ["left/ A.json", "right/A.json", "other/A.json"].map(project_path);
+    for (const source of sources) {
+      fs.mkdirSync(path.dirname(source), { recursive: true });
+      fs.writeFileSync(source, "{}");
+    }
+    try {
+      await database.transaction(lg_path, (writer) => {
+        writer.add_asset(lg_path, " a.json", Buffer.from("{}"), "KVJSON", null);
+        writer.add_asset(lg_path, "a.json", Buffer.from("{}"), "KVJSON", null);
+        writer.set_meta(lg_path, "project_runtime_revision.files", 7);
+      });
+      const preview = await service.preview_import_files({ source_paths: sources });
+      expect(preview.files_revision).toBe(7);
+      expect(preview.files.slice(0, 2)).toEqual([
+        { source_path: sources[0], target_rel_path: " a.json", conflict: true },
+        { source_path: sources[1], target_rel_path: "a.json", conflict: true },
+      ]);
+      expect(preview.files[2]).toMatchObject({ source_path: sources[2], conflict: false });
+      expect(new Set(preview.files.map((file) => file.target_rel_path.toLowerCase())).size).toBe(3);
+    } finally {
+      await database.close();
+    }
+  });
+
   it("预览保留配置损坏的 RGSS 候选，正式导入继续正常来源并汇总原因", async () => {
     const { database, service, lg_path } = await create_service();
     const root = project_path("broken-game");
@@ -192,8 +218,8 @@ describe("ProjectContentService", () => {
     try {
       const preview = await service.preview_import_files({ source_paths: [root, ordinary] });
       expect(preview.files).toEqual([
-        { source_path: root, target_rel_path: "broken-game.zip" },
-        { source_path: ordinary, target_rel_path: "normal.txt" },
+        { source_path: root, target_rel_path: "broken-game.zip", conflict: false },
+        { source_path: ordinary, target_rel_path: "normal.txt", conflict: false },
       ]);
       const result = await service.import_files({
         files: preview.files!,
@@ -233,7 +259,10 @@ describe("ProjectContentService", () => {
       const preview = await service.preview_import_files({
         source_paths: [root, archive, path.join(root, "Game.ini")],
       });
-      expect(preview).toEqual({ files: [{ source_path: root, target_rel_path: "packed.zip" }] });
+      expect(preview).toEqual({
+        files_revision: 0,
+        files: [{ source_path: root, target_rel_path: "packed.zip", conflict: false }],
+      });
       expect(fs.readdirSync(root).sort()).toEqual(["Game.ini", "Game.rgss3a"]);
       await database.transaction(lg_path, (writer) =>
         writer.add_asset(lg_path, "packed.zip", Buffer.from("old"), "RPGMAKER_RGSS", null),
@@ -265,7 +294,7 @@ describe("ProjectContentService", () => {
         content,
       );
       expect((await service.preview_import_files({ source_paths: [root] })).files).toEqual(
-        preview.files,
+        preview.files.map((file) => ({ ...file, conflict: true })),
       );
       fs.renameSync(root, root + "-moved");
       await service.reset_files({
@@ -472,9 +501,10 @@ describe("ProjectContentService", () => {
         source_paths: [source, broken, ignored],
       });
       expect(preview).toEqual({
+        files_revision: 0,
         files: [
-          { source_path: source, target_rel_path: "script.txt" },
-          { source_path: broken, target_rel_path: "broken.json" },
+          { source_path: source, target_rel_path: "script.txt", conflict: false },
+          { source_path: broken, target_rel_path: "broken.json", conflict: false },
         ],
       });
       const result = await service.import_files({
@@ -602,7 +632,9 @@ describe("ProjectContentService", () => {
         writer.add_asset(lg_path, file, Buffer.from("{}"), "MESSAGEJSON", null),
       );
       const preview = await service.preview_import_files({ source_paths: [source] });
-      expect(preview["files"]).toEqual([{ source_path: source, target_rel_path: file }]);
+      expect(preview.files).toEqual([
+        { source_path: source, target_rel_path: file, conflict: true },
+      ]);
       await database.transaction(lg_path, (writer) =>
         writer.set_asset_file_type(lg_path, file, "KVJSON"),
       );
@@ -1699,7 +1731,7 @@ describe("ProjectContentService", () => {
       expect(candidates.map((file) => file.source_path)).toEqual(source_paths);
       const import_plan = create_workbench_import_files_plan({
         state: { files: [], section_revisions: { files: 0, items: 0 } },
-        candidates,
+        preview,
         settings,
         conflict_action: "skip",
       });

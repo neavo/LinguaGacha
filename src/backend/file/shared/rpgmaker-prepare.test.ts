@@ -199,3 +199,29 @@ it.each(["case", "directory", "reserved", "original", "original-staging", "paren
     expect(fs.readdirSync(temp.path)).toEqual(["Data"]);
   },
 );
+
+it.each([{ names: ["Keep.txt", "keep.txt"] }, { names: ["keep.txt", "Keep.txt"] }])(
+  "磁盘同名多种拼写不能被索引覆盖：%j",
+  async ({ names }) => {
+    using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-case-index-"));
+    const native = new NativeFs();
+    fs.writeFileSync(path.join(temp.path, "keep.txt"), "original");
+    const read = native.read_dirents.bind(native);
+    vi.spyOn(native, "read_dirents").mockImplementation((directory) => {
+      const entries = read(directory);
+      if (directory !== temp.path) return entries;
+      const original = entries.find((entry) => entry.name === "keep.txt")!;
+      // Windows 通常不允许同目录多种拼写，仅替换目录枚举以覆盖跨平台冲突。
+      return names.map((name) =>
+        Object.assign(Object.create(Object.getPrototypeOf(original)), original, { name }),
+      );
+    });
+    await expect(
+      prepare_game_directory(temp.path, native, async (staging) => {
+        fs.writeFileSync(path.join(staging, "keep.txt"), "translated");
+        return { writes: ["keep.txt"] };
+      }),
+    ).rejects.toThrow("Game path differs only by case");
+    expect(fs.readFileSync(path.join(temp.path, "keep.txt"), "utf8")).toBe("original");
+  },
+);

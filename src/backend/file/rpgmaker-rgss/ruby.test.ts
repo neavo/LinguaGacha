@@ -161,3 +161,22 @@ it("部署目录的 Prism WASM 在仓库外 Electron 主线程和 worker 中解�
   );
   expect(result.stdout).toContain("rgss-runtime-ok");
 }, 60000);
+
+it("多处长短译文使用原稿字节坐标并保留未修改片段", async () => {
+  const source = Array.from(
+    { length: 80 },
+    (_, index) => `puts "原文😀${index}", "保留" # ${index}`,
+  ).join("\n");
+  const parsed = await read_ruby_strings(source);
+  if (!parsed.ok) throw Error("Invalid fixture");
+  const changes = parsed.strings
+    .filter((span) => span.src.startsWith("原文"))
+    .map((span, index) => ({ span, src: span.src, dst: index % 2 ? "" : "较长的译文😀" }));
+  const output = await write_ruby_strings(source, changes);
+  expect(output).toBe(
+    Array.from(
+      { length: 80 },
+      (_, index) => `puts "${index % 2 ? "" : "较长的译文😀"}", "保留" # ${index}`,
+    ).join("\n"),
+  );
+});

@@ -64,9 +64,7 @@ export function build_project_committed_change(
           mode: "delta",
           records: reader.build_item_records_by_ids(project, request.changedItemIds),
         };
-  const rebuild_files = affected.has("files") || items?.mode === "full";
-  const pdf =
-    affected.has("pdf") || rebuild_files ? database.read_pdf_summaries(project) : undefined;
+  const pdf = affected.has("pdf") ? database.read_pdf_summaries(project) : undefined;
   return {
     projectPath: project,
     source: request.source,
@@ -76,7 +74,7 @@ export function build_project_committed_change(
       affected.has("quality") || items?.mode === "full" ? "all" : request.qualityStatisticsScope,
     ...(items === undefined ? {} : { items }),
     ...(pdf === undefined ? {} : { pdf }),
-    ...(rebuild_files
+    ...(affected.has("files")
       ? {
           files: reader.build_files_record_block(project),
         }
