@@ -1,6 +1,6 @@
 import path from "node:path";
 import type { NativeFs } from "../../../native/native-fs";
-import { type RGSSSource, RGSS_VERSIONS, script_path } from "./source";
+import { type RGSSSource, RGSS_VERSIONS } from "./source";
 import { extract_rgss_member, read_rgss_archive } from "./archive";
 import {
   assert_regular_path,
@@ -8,7 +8,7 @@ import {
   validate_game_path,
 } from "../shared/rpgmaker-prepare";
 
-/** RGSS 提供展开清单与额外备份范围，目录提交由共享入口持有。 */
+/** RGSS 提供展开清单与原封装入口，目录提交由共享入口持有。 */
 export async function prepare_rgss_source(
   game: RGSSSource,
   fs: NativeFs,
@@ -41,11 +41,7 @@ export async function prepare_rgss_source(
         return {
           writes: members.map((member) => member.name),
           removes: [archive],
-          backup: [
-            "Game.ini",
-            "Data",
-            script_path(fs.read_file(path.join(root, "Game.ini")), version),
-          ],
+          originals: [archive],
         };
       } finally {
         await handle.close();

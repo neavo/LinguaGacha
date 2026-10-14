@@ -315,6 +315,7 @@ export class FileFormatService {
       return this.rgss.prepare_source(
         collect_rgss_files(source.game, this.native_fs),
         rel_path,
+        { root: source.game.root, engine: source.game.version },
         signal,
       );
     }
@@ -328,6 +329,7 @@ export class FileFormatService {
       return this.rpgmaker.prepare_source(
         collect_rpgmaker_files(source.game, this.native_fs),
         rel_path,
+        { root: source.game.root, engine: source.game.engine },
         signal,
       );
     }

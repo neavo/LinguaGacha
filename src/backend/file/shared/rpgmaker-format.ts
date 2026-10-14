@@ -1,3 +1,5 @@
+import { check_game_backup, write_game_backup } from "./rpgmaker-backup";
+import { validate_game_path, assert_game_path_spellings } from "./rpgmaker-prepare";
 import path from "node:path";
 import JSZip from "jszip";
 import type { NativeFs } from "../../../native/native-fs";
@@ -9,7 +11,7 @@ import type {
   ProjectSourceFileEntry,
 } from "../file-format-types";
 import { assert_source_file_paths, source_file_output_path } from "../source-file-paths";
-import { read_zip_members, validate_zip_member_path } from "./zip-members";
+import { read_zip_members } from "./zip-members";
 
 // 引擎指令码是原稿协议，提取与写回共同引用。
 export const RPGMAKER_EVENT = {
@@ -66,35 +68,37 @@ export class RPGMakerGameFormat {
     private readonly adapter: GameFormatAdapter,
     private readonly fs: NativeFs,
   ) {}
-  /** 读取失败仅跳过当前文件，成功取得的字节始终保存在容器内。 */
+  /** 完整读取全部原稿并确认备份覆盖后，才允许发布容器。 */
   public async prepare_source(
     entries: readonly Pick<ProjectSourceFileEntry, "source_path" | "rel_path">[],
     file: string,
+    game: Readonly<{ root: string; engine: string }>,
     signal?: AbortSignal,
   ): Promise<{ content: Uint8Array; warnings: SourceFileParseWarning[] }> {
     signal?.throwIfAborted();
+    const files = new Map<string, Uint8Array>(); // 同一次读取供容器和首次备份使用。
+    assert_game_path_spellings(entries.map((entry) => entry.rel_path));
     const zip = new JSZip();
-    const warnings: SourceFileParseWarning[] = [];
     const paths = new Set<string>();
     for (const entry of entries) {
       signal?.throwIfAborted();
-      const internal = validate_zip_member_path(entry.rel_path);
+      const internal = entry.rel_path;
+      validate_game_path(internal);
       const key = internal.toLowerCase();
       if (paths.has(key))
         throw new AppError("file.invalid_structure", { public_details: { file } });
       paths.add(key);
-      try {
-        zip.file(internal, this.fs.read_file(entry.source_path), { createFolders: false });
-      } catch (error) {
-        warnings.push(this.file_warning("internal_file_read_failed", file, internal, error));
-      }
+      const bytes = this.fs.read_file(entry.source_path);
+      zip.file(internal, bytes, { createFolders: false });
+      files.set(internal, bytes);
     }
     if (Object.keys(zip.files).length === 0)
       throw new AppError("file.parse_failed", { public_details: { file } });
-    return {
-      content: await zip.generateAsync({ type: "uint8array", compression: "STORE" }),
-      warnings,
-    };
+    const existing_backup = check_game_backup(game.root, game.engine, [...files.keys()], this.fs);
+    const content = await zip.generateAsync({ type: "uint8array", compression: "STORE" });
+    signal?.throwIfAborted();
+    if (!existing_backup) await write_game_backup(game.root, game.engine, files, this.fs, signal);
+    return { content, warnings: [] };
   }
 
   /** 首次导入与离线重建共用容器解析，行号在外层资产内连续。 */

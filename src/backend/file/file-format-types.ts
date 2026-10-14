@@ -10,7 +10,7 @@ export type ScriptDiagnostic = Readonly<{
 
 /** 跳过的内部文件或脚本统一记录诊断，已取得的原稿仍参与保存和导出。 */
 export type SourceFileParseWarning = Readonly<{
-  code: "script_syntax_error" | "internal_file_read_failed" | "internal_file_parse_failed";
+  code: "script_syntax_error" | "internal_file_parse_failed";
   rel_path: string;
   internal_file_path?: string;
   location?: string; // 格式私有定位在日志边界转成可读位置。

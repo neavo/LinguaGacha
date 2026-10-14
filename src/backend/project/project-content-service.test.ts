@@ -260,7 +260,10 @@ describe("ProjectContentService", () => {
         expected_section_revisions: { files: 0, items: 0 },
       });
       expect(fs.existsSync(archive)).toBe(false);
-      expect(fs.existsSync(path.join(root, "backup/Game.rgss3a"))).toBe(true);
+      expect(fs.existsSync(path.join(root, ".lg-original/Game.rgss3a"))).toBe(true);
+      expect(fs.readFileSync(path.join(root, ".linguagacha-backup/Data/System.rvdata2"))).toEqual(
+        content,
+      );
       expect((await service.preview_import_files({ source_paths: [root] })).files).toEqual(
         preview.files,
       );
@@ -487,10 +490,10 @@ describe("ProjectContentService", () => {
     }
   });
 
-  it("游戏整体替换移除旧内部文件，失败回滚并支持离线重建和独立删除", async () => {
+  it("独立新版游戏目录整体替换旧原稿，失败回滚并支持离线重建和独立删除", async () => {
     const log_manager = create_log_manager();
     const { database, service, lg_path } = await create_service(undefined, log_manager);
-    const source = project_path("game");
+    let source = project_path("game");
     const write = (file: string, content: string): void => {
       const target = path.join(source, file);
       fs.mkdirSync(path.dirname(target), { recursive: true });
@@ -519,7 +522,9 @@ describe("ProjectContentService", () => {
       await service.import_files(await request());
       const old = await database.read_asset_content(lg_path, "game.zip");
       const old_items = await database.get_all_items(lg_path);
-      fs.rmSync(path.join(source, "data/Old.json"));
+      source = project_path("game-updated");
+      write("data/System.json", "{}");
+      write("js/rmmz_core.js", "");
       write("data/New.json", '{"text":"新文"}');
       write("data/Broken.json", "{");
       write("js/plugins.js", 'const broken = "');
@@ -529,6 +534,7 @@ describe("ProjectContentService", () => {
           throw new Error("write failure");
         });
       await expect(service.import_files(await request())).rejects.toThrow();
+      expect(fail).toHaveBeenCalledOnce();
       fail.mockRestore();
       expect(await database.read_asset_content(lg_path, "game.zip")).toEqual(old);
       expect(await database.get_all_items(lg_path)).toEqual(old_items);

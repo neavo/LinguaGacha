@@ -92,7 +92,7 @@ export async function stage_rpgmaker_source(
     )
   )
     throw new Error("Prepared game is missing MV/MZ engine files");
-  return { writes: [...writes] };
+  return { writes: [...writes], originals: executable ? [path.basename(executable)] : [] };
 }
 
 /** 包内资源覆盖散装资源，原生媒体按整类成功结果关闭配置。 */

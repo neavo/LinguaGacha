@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -337,35 +337,34 @@ describe("MV/MZ 原稿写回", () => {
   });
 });
 
-it("读取失败跳过文件，解析失败保留字节，无可保存文件时来源失败", async () => {
+it("解析失败保留原始字节，备份与零条目导出仍包含该文件", async () => {
   using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-rm-errors-"));
   fs.mkdirSync(path.join(temp.path, "data"));
   fs.mkdirSync(path.join(temp.path, "js"));
   fs.writeFileSync(path.join(temp.path, "data/System.json"), "{}");
   fs.writeFileSync(path.join(temp.path, "data/Broken.json"), "{");
-  fs.writeFileSync(path.join(temp.path, "data/Unreadable.json"), "{}");
-  fs.writeFileSync(path.join(temp.path, "js/rmmz_core.js"), "");
   const native = new NativeFs();
-  const read = native.read_file.bind(native);
-  const mock = vi.spyOn(native, "read_file").mockImplementation((file) => {
-    if (file.endsWith("Unreadable.json")) throw new Error("unreadable");
-    return read(file);
-  });
   const service = new RPGMakerMvMzFormat({ target_language: "ZH" }, native);
-  const entries = ["data/Broken.json", "data/System.json", "data/Unreadable.json"].map(
-    (rel_path) => ({ rel_path, source_path: path.join(temp.path, rel_path) }),
-  );
-  const prepared = await service.prepare_source(entries, "game.zip");
+  const entries = ["data/Broken.json", "data/System.json"].map((rel_path) => ({
+    rel_path,
+    source_path: path.join(temp.path, rel_path),
+  }));
+  const prepared = await service.prepare_source(entries, "game.zip", {
+    root: temp.path,
+    engine: "mz",
+  });
   const parsed = await service.read_from_stream(prepared.content, "game.zip");
   expect(parsed.items).toEqual([]);
   expect([...prepared.warnings, ...parsed.warnings]).toMatchObject([
-    { code: "internal_file_read_failed", internal_file_path: "data/Unreadable.json" },
     { code: "internal_file_parse_failed", internal_file_path: "data/Broken.json" },
   ]);
   expect(Buffer.from(prepared.content).readUInt16LE(8)).toBe(0); // ZIP STORE 是原稿存储协议。
   const archive = await read_zip_fixture(prepared.content);
   expect([...archive.keys()]).toEqual(["data/Broken.json", "data/System.json"]);
   expect(zip_text(archive, "data/Broken.json")).toBe("{");
+  expect(
+    fs.readFileSync(path.join(temp.path, ".linguagacha-backup/data/Broken.json"), "utf8"),
+  ).toBe("{");
   const output = path.join(temp.path, "out");
   await service.write_to_path([], {
     paths: { translated_path: output, bilingual_path: output },
@@ -374,10 +373,4 @@ it("读取失败跳过文件，解析失败保留字节，无可保存文件时�
   });
   expect(fs.readFileSync(path.join(output, "game/data/Broken.json"), "utf8")).toBe("{");
   expect(fs.readFileSync(path.join(output, "game/data/System.json"), "utf8")).toBe("{}");
-  mock.mockImplementation(() => {
-    throw new Error("unreadable");
-  });
-  await expect(service.prepare_source(entries, "game.zip")).rejects.toMatchObject({
-    code: "file.parse_failed",
-  });
 });
