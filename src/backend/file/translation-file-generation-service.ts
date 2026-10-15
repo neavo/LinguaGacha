@@ -148,7 +148,8 @@ export class TranslationFileGenerationService {
     config: SettingSnapshot,
     excluded_files: readonly string[] = [],
   ): Promise<void> {
-    this.fill_duplicated_translations(items);
+    const output_items = items.filter((item) => !excluded_files.includes(item.file_path));
+    this.fill_duplicated_translations(output_items);
     const format_service = new FileFormatService(
       {
         target_language: config.target_language,
@@ -158,17 +159,13 @@ export class TranslationFileGenerationService {
       this.pdf_execution,
       this.native_fs,
     );
-    // 先在整个项目中补齐译文，排除输出的文件也可能持有重复组代表。
-    await format_service.write_items(
-      items.filter((item) => !excluded_files.includes(item.file_path)),
-      {
-        paths,
-        asset_reader: (rel_path) => this.database.read_asset_content(project_path, rel_path),
-        source_files: (await this.database.get_all_asset_records(project_path)).filter(
-          (file) => !excluded_files.includes(file.path),
-        ),
-      },
-    );
+    await format_service.write_items(output_items, {
+      paths,
+      asset_reader: (rel_path) => this.database.read_asset_content(project_path, rel_path),
+      source_files: (await this.database.get_all_asset_records(project_path)).filter(
+        (file) => !excluded_files.includes(file.path),
+      ),
+    });
   }
 
   /** 在任何输出落盘前固定译稿并验证可确定条件，避免不同入口各自解释 PDF 规则。 */
@@ -288,19 +285,16 @@ export class TranslationFileGenerationService {
   }
 
   /**
-   * `DUPLICATED` 条目复用组内最小 ID 的已完成译文，只修改导出副本。
+   * `DUPLICATED` 条目复用组内首个已完成译文，只修改导出副本。
    */
   private fill_duplicated_translations(items: Item[]): void {
-    const translations = new Map<string, Item>(); // 多条已完成结果各自保留，重复项共用稳定代表。
+    const translations = new Map<string, Item>(); // 条目按数据库 ID 顺序读取，首个成果即组内最小 ID。
     for (const item of items) {
       if (item.status !== "PROCESSED") {
         continue;
       }
       const key = build_project_item_duplicate_key(item);
-      const current = translations.get(key);
-      if (current === undefined || (item.id ?? Infinity) < (current.id ?? Infinity)) {
-        translations.set(key, item);
-      }
+      if (!translations.has(key)) translations.set(key, item);
     }
     for (const item of items) {
       if (item.status !== "DUPLICATED") {

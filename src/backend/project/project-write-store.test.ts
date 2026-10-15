@@ -1189,7 +1189,7 @@ describe("ProjectWriteStore", () => {
             dst: "",
             name_dst: null,
             status: "DUPLICATED",
-            file_path: "other.txt",
+            file_path: "demo.txt",
             row: 1,
           },
         ].map((item) => create_item(item)),
