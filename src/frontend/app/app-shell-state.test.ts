@@ -129,7 +129,7 @@ describe("App 项目导航状态", () => {
     ).toEqual({ selected_route: "model", pending_target_route: null });
   });
 
-  it("项目就绪时恢复兼容路由，否则进入工作台", () => {
+  it("项目就绪时恢复兼容路由，否则进入 AGENT 页", () => {
     const base = {
       previous_project_loaded: false,
       previous_project_path: "",
@@ -153,7 +153,7 @@ describe("App 项目导航状态", () => {
         ...base,
         pending_target_route: null,
       }),
-    ).toEqual({ selected_route: "workbench", pending_target_route: null });
+    ).toEqual({ selected_route: "agent", pending_target_route: null });
   });
 
   it("项目卸载时回到项目首页", () => {

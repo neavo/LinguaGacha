@@ -148,7 +148,7 @@ export function resolve_project_route_after_snapshot(args: {
   return {
     selected_route:
       args.pending_target_route === null
-        ? "workbench"
+        ? "agent"
         : resolve_selectable_route(args.pending_target_route),
     pending_target_route: null,
   };
