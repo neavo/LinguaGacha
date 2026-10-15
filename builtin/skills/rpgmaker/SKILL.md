@@ -1,6 +1,6 @@
 ---
 name: rpgmaker
-description: 翻译、审校或对 RPG Maker 系列游戏时进行其他处理时使用，适用范围包括 XP、VX、VX Ace、MV、MZ、RGSS 等不同引擎版本
+description: 对 RPG Maker 系列游戏进行分析或处理前必须首先加载，适用范围包括 XP、VX、VX Ace、MV、MZ、RGSS 等不同引擎版本
 ---
 
 # 文本参与的运行逻辑
