@@ -1,7 +1,7 @@
 import type { Item } from "../../../domain/item";
 import { decode_text_content } from "../../../shared/utils/text-tool";
 import { split_text_lines } from "../../../shared/text/text-lines";
-import type { FileFormatServiceConfig } from "../file-format-shared";
+import type { FileFormatServiceConfig } from "../file-format-types";
 import {
   bind_subtitle_items,
   create_subtitle_items,

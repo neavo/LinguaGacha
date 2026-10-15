@@ -117,7 +117,7 @@ export type ProofreadingItemRecord = ProofreadingFileRef & {
   name_src: ItemNameField;
   name_dst: ItemNameField;
   status: string;
-  text_type: string;
+  file_type: string;
 };
 
 /** worker 只返回计算事实，原始字段由发起计算时的不可变快照提供。 */

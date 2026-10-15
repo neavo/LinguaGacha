@@ -189,7 +189,7 @@ function setup_api_fetch_mock(): void {
     if (path === "/api/workbench/snapshot") {
       return create_workbench_query_response();
     }
-    if (path === "/api/workbench/file/parse") {
+    if (path === "/api/workbench/files/preview") {
       return { files: [] };
     }
     return create_project_write_result();
@@ -315,7 +315,6 @@ function create_project_item(args: {
     tag: "",
     file_type: "TXT",
     status: args.status ?? "PROCESSED",
-    text_type: "NONE",
     skip_internal_filter: false,
   };
 }
@@ -457,13 +456,11 @@ describe("useWorkbenchPageState", () => {
       canceled: false,
       paths: ["E:/demo/new.txt"],
     });
-    enqueue_api_response("/api/workbench/file/parse", {
+    enqueue_api_response("/api/workbench/files/preview", {
       files: [
         {
           source_path: "E:/demo/new.txt",
           target_rel_path: "new.txt",
-          file_type: "TXT",
-          parsed_items: [{ src: "hello", dst: "", row: 1 }],
         },
       ],
     });
@@ -474,7 +471,7 @@ describe("useWorkbenchPageState", () => {
     });
 
     expect(latest_state?.dialog_state.kind).toBe("inherit-import-files");
-    expect(api_fetch).toHaveBeenCalledWith("/api/workbench/file/parse", {
+    expect(api_fetch).toHaveBeenCalledWith("/api/workbench/files/preview", {
       source_paths: ["E:/demo/new.txt"],
     });
   });
@@ -504,13 +501,11 @@ describe("useWorkbenchPageState", () => {
       canceled: false,
       paths: ["E:/demo/new.txt"],
     });
-    enqueue_api_response("/api/workbench/file/parse", {
+    enqueue_api_response("/api/workbench/files/preview", {
       files: [
         {
           source_path: "E:/demo/new.txt",
           target_rel_path: "new.txt",
-          file_type: "TXT",
-          parsed_items: [{ src: "こんにちは", dst: "", row: 1 }],
         },
       ],
     });

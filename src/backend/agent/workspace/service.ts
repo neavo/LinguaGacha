@@ -85,7 +85,7 @@ import {
 } from "./runtime/runner";
 import { prepare_agent_workspace_changes } from "./changes";
 import { AGENT_WORKSPACE_RUN_ROOT, AGENT_WORKSPACE_WORK_ROOT } from "./runtime/policy";
-import { write_agent_workspace_sources, type AgentWorkspaceSourceFile } from "./sources";
+import { write_agent_workspace_sources } from "./sources";
 
 /** 预览采用有界读取，完整文件通过另存为交付。 */
 export const AGENT_DOCUMENT_MAX_BYTES = 2 * 1024 * 1024;
@@ -130,12 +130,11 @@ type ActiveAgentWorkspace = {
   languageKey: string; // 只包含解释工作区数据所需的语言
 };
 
-/** 当前工作区文件世代共享的 `sources` 身份与 `project_meta` 映射。 */
+/** `sources` 成功生成时的工程身份和文件修订。 */
 type AgentWorkspaceSourceCache = {
   projectPath: string; // 关联的当前工程身份
   projectEpoch: number; // 隔离同路径重新加载后的旧投影
   filesRevision: number; // 只在源资产集合变化时重新生成
-  files: AgentWorkspaceSourceFile[]; // project_meta 复用的不可变文件映射
 };
 
 type WorkspacePath = Readonly<{
@@ -517,7 +516,7 @@ export class AgentWorkspaceService {
         read_workspace_language(this.options.settings.read_setting()),
       ),
     });
-    const files = await this.ensure_sources({
+    await this.ensure_sources({
       projectPath: project_path,
       projectEpoch: start_snapshot.epoch,
       filesRevision: read_json_integer(start_snapshot.sectionRevisions.files, 0),
@@ -530,7 +529,7 @@ export class AgentWorkspaceService {
     const project_meta: JsonRecord = {
       ...language,
       counts: {
-        files: files.length,
+        files: snapshot_files.length,
         items: current_items.length,
         pages: pdf_documents.reduce((count, { document }) => count + document.pages.length, 0),
         items_with_warnings: warning_result.data.items.length,
@@ -538,7 +537,7 @@ export class AgentWorkspaceService {
           QUALITY_RULE_KINDS.map((kind) => [kind, quality_entries[kind].length]),
         ),
       },
-      files,
+      files: snapshot_files,
     };
     await this.clear_snapshot();
     try {
@@ -871,14 +870,14 @@ export class AgentWorkspaceService {
     projectEpoch: number;
     filesRevision: number;
     files: ReadonlyArray<{ file_path: string; file_type: string }>;
-  }): Promise<AgentWorkspaceSourceFile[]> {
+  }): Promise<void> {
     const current = this.source_cache;
     if (
       current?.projectPath === args.projectPath &&
       current.projectEpoch === args.projectEpoch &&
       current.filesRevision === args.filesRevision
     ) {
-      return current.files.map((file) => ({ ...file }));
+      return;
     }
     const source_path = path.join(this.root_path, "sources");
     this.link_versions.sources += 1;
@@ -886,15 +885,18 @@ export class AgentWorkspaceService {
     // 激活已隔离旧工作区，snapshot、run 与 apply 由 exclusive 串行。完整生成前应用内没有 sources 读者。
     await this.native_fs.remove_async(source_path, { recursive: true, force: true });
     try {
-      const files = await write_agent_workspace_sources({
+      await write_agent_workspace_sources({
         nativeFs: this.native_fs,
         sourceRoot: source_path,
         files: args.files,
         readAsset: (file_path) =>
           this.options.database.read_asset_content(args.projectPath, file_path),
       });
-      this.source_cache = { ...args, files: files.map((file) => ({ ...file })) };
-      return files;
+      this.source_cache = {
+        projectPath: args.projectPath,
+        projectEpoch: args.projectEpoch,
+        filesRevision: args.filesRevision,
+      };
     } catch (error) {
       await this.remove_workspace_directory(source_path);
       throw error;

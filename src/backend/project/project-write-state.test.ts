@@ -24,14 +24,13 @@ function create_item(
     row_number: item_id - 1,
     file_type: "TXT",
     file_path: "script.txt",
-    text_type: "NONE",
     status: "NONE",
     skip_internal_filter: false,
     ...overrides,
   };
 }
 
-/** 同一文件的条目快照供预过滤与重复协调共同使用。 */
+/** 项目条目快照供预过滤与重复协调共同使用。 */
 function create_state(items: ProjectItemPublicRecord[]): ProjectWriteState {
   return {
     files: {
@@ -40,6 +39,7 @@ function create_state(items: ProjectItemPublicRecord[]): ProjectWriteState {
         file_type: "TXT",
         sort_index: 0,
       },
+      "other.txt": { rel_path: "other.txt", file_type: "TXT", sort_index: 1 },
     },
     items: Object.fromEntries(items.map((item) => [String(item.item_id), item])),
   };
@@ -158,9 +158,12 @@ describe("compute_project_prefilter_write", () => {
     expect(result.items["1"]?.status).toBe("RULE_SKIPPED");
   });
 
-  it("启用同文件重复过滤时只保留首个可翻译条目", () => {
+  it("启用项目重复过滤时只保留首个可翻译条目", () => {
     const result = compute_project_prefilter_write({
-      state: create_state([create_item(1, { src: "同文" }), create_item(2, { src: "同文" })]),
+      state: create_state([
+        create_item(1, { src: "同文" }),
+        create_item(2, { src: "同文", file_path: "other.txt" }),
+      ]),
       source_language: "ZH",
       mtool_optimizer_enable: false,
       skip_duplicate_source_text_enable: true,
@@ -170,12 +173,12 @@ describe("compute_project_prefilter_write", () => {
     expect(result.items["2"]?.status).toBe("DUPLICATED");
   });
 
-  it("角色或文本规则不同时分别保留可翻译条目", () => {
+  it("不同角色分别保留可翻译条目", () => {
     const result = compute_project_prefilter_write({
       state: create_state([
-        create_item(1, { src: "同文", name_src: "甲", text_type: "KAG" }),
-        create_item(2, { src: "同文", name_src: "乙", text_type: "KAG" }),
-        create_item(3, { src: "同文", name_src: "甲", text_type: "RENPY" }),
+        create_item(1, { src: "同文", name_src: "甲" }),
+        create_item(2, { src: "同文", name_src: "乙" }),
+        create_item(3, { src: "同文", name_src: "甲" }),
       ]),
       source_language: "ZH",
       mtool_optimizer_enable: false,
@@ -185,7 +188,7 @@ describe("compute_project_prefilter_write", () => {
     expect(Object.values(result.items).map((item) => item.status)).toEqual([
       "NONE",
       "NONE",
-      "NONE",
+      "DUPLICATED",
     ]);
   });
 

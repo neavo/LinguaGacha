@@ -1,4 +1,4 @@
-import { read_translation_for_generation } from "../translation-generation-text";
+import { read_translation_for_generation } from "../shared/translation-generation-text";
 import type { Item } from "../../../domain/item";
 import { read_json_record } from "../../../domain/json";
 import { read_item_name_text, resolve_output_item_name } from "../../../shared/item-name";

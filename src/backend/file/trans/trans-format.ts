@@ -4,7 +4,8 @@ import { AppError } from "../../../shared/error";
 import { JsonTool } from "../../../shared/utils/json-tool";
 import { type Item, create_item } from "../../../domain/item";
 import type { MutableJsonRecord } from "../../../domain/json";
-import { group_items, write_text_file, type GeneratedFilePaths } from "../file-format-shared";
+import { group_items, write_text_file } from "../shared/file-format-helpers";
+import { type GeneratedFilePaths } from "../file-format-types";
 import { RPGMakerTransProcessor } from "./rpgmaker-processor";
 import { WolfTransProcessor } from "./wolf-processor";
 import {
@@ -21,12 +22,15 @@ import { collect_patch_targets, patch_trans_row } from "./trans-patch-writer";
  */
 export class TRANSFormat {
   /**
-   * 读取 .trans project.files，以 data 行为权威并按同索引读取 tags/context/parameters
+   * 读取 `.trans` 条目与引擎身份，按 `data` 行索引关联扩展字段。
    */
-  public read_from_stream(content: Uint8Array, rel_path: string): Item[] {
+  public read_from_stream(
+    content: Uint8Array,
+    rel_path: string,
+  ): { items: Item[]; game_engine: string } {
     const root = JsonTool.parseStrict<MutableJsonRecord>(content);
     if (typeof root !== "object" || root === null || Array.isArray(root)) {
-      return [];
+      return { items: [], game_engine: "" };
     }
     const project = to_mutable_record(root["project"]);
     const files = to_mutable_record(project["files"]);
@@ -65,14 +69,13 @@ export class TRANSFormat {
             row: items.length,
             file_type: "TRANS",
             file_path: rel_path,
-            text_type: processor.text_type,
             status: checked.status,
             skip_internal_filter: checked.skip_internal_filter,
           }),
         );
       }
     }
-    return items;
+    return { items, game_engine: String(project["gameEngine"] ?? "") };
   }
 
   /**
@@ -129,14 +132,8 @@ export class TRANSFormat {
    */
   private get_processor(project: MutableJsonRecord): NoneTransProcessor {
     const engine = String(project["gameEngine"] ?? "").toLowerCase();
-    if (engine === "kag" || engine === "vntrans") {
-      return new NoneTransProcessor(project, "KAG");
-    }
     if (engine === "wolf" || engine === "wolfrpg") {
       return new WolfTransProcessor(project);
-    }
-    if (engine === "renpy") {
-      return new NoneTransProcessor(project, "RENPY");
     }
     if (["2k", "2k3", "rmjdb", "rmxp", "rmvx", "rmvxace", "rmmv", "rmmz"].includes(engine)) {
       return new RPGMakerTransProcessor(project);

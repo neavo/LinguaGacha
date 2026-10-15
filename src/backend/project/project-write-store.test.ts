@@ -1,3 +1,4 @@
+import { add_test_asset_from_source } from "../../test/asset-fixture";
 import { adapt_project_change } from "./project-write-event-adapter";
 import { ProjectSessionState } from "./project-session-state";
 import { ItemCache } from "../cache/item-cache";
@@ -29,6 +30,60 @@ import {
 } from "./agent-workspace-write";
 
 describe("ProjectWriteStore", () => {
+  it.each([
+    ["game", "game/readme.txt"],
+    ["game/readme.txt", "game"],
+  ])("结构写入在事务中拒绝冲突集合且不发布事件 %j", async (...paths) => {
+    const { database, project_path, store, published_changes } =
+      await create_store("asset-path-conflict");
+    await expect(
+      store.replace_project_items_and_files({
+        projectPath: project_path,
+        expectedSectionRevisions: { files: 0 },
+        revisionSections: ["files"],
+        updatedSections: ["files"],
+        source: "project_import_files",
+        assetWrites: paths.map((path, sortOrder) => ({
+          kind: "add" as const,
+          path,
+          sortOrder,
+          content: Buffer.from("原稿"),
+          fileType: "TXT",
+          pdfDocument: null,
+        })),
+      }),
+    ).rejects.toMatchObject({ code: "request.validation_failed" });
+    expect(await database.get_all_asset_records(project_path)).toEqual([]);
+    expect(published_changes).toEqual([]);
+  });
+
+  it("路径校验消费删除和新增后的最终集合", async () => {
+    const { database, project_path, store } = await create_store("asset-path-final-set");
+    await database.transaction(project_path, (writer) =>
+      writer.add_asset(project_path, "game", Buffer.from("旧文"), "TXT", null),
+    );
+    await store.replace_project_items_and_files({
+      projectPath: project_path,
+      expectedSectionRevisions: { files: 0 },
+      revisionSections: ["files"],
+      updatedSections: ["files"],
+      source: "project_import_files",
+      assetWrites: [
+        {
+          kind: "add",
+          path: "game/readme.txt",
+          sortOrder: 0,
+          content: Buffer.from("新文"),
+          fileType: "TXT",
+          pdfDocument: null,
+        },
+        { kind: "delete", path: "game" },
+      ],
+    });
+    expect((await database.get_all_asset_records(project_path)).map((asset) => asset.path)).toEqual(
+      ["game/readme.txt"],
+    );
+  });
   it("Agent 提示词覆盖区分无记录、空正文和重置，提交快照保留 null", async () => {
     const committed = vi.fn();
     const { database, project_path, store } = await create_store("prompt-null", {
@@ -137,16 +192,15 @@ describe("ProjectWriteStore", () => {
     const items = new ItemCache();
     items.replace(
       (
-        await database.read(project_path, (access) =>
-          new ProjectDataReader(access).build_runtime_items_snapshot(project_path),
-        )
+        await database.read(project_path, (access) => ({
+          item_records: new ProjectDataReader(access).read_items(project_path),
+        }))
       ).item_records,
     );
     const all = vi.spyOn(database, "get_all_items");
     const partial = vi.spyOn(ProjectDatabaseAccess.prototype, "get_items_by_ids");
     const store = new ProjectWriteStore(database, () => undefined, null, {
       readItemWriteScope: (_project, ids) => ({ ids: items.readWriteScope(ids), revision: 0 }),
-      readFileMetadata: () => items.readFileMetadata(),
     });
     const first = await store.apply_translation_item_patches({
       projectPath: project_path,
@@ -180,7 +234,7 @@ describe("ProjectWriteStore", () => {
     fs.writeFileSync(source, bytes);
     const document = read_pdf_document(bytes);
     await database.transaction(project_path, (database) => {
-      database.add_asset_from_source(project_path, "book.pdf", source, document, 0);
+      add_test_asset_from_source(database, project_path, "book.pdf", source, document, 0);
     });
     const original = ProjectDatabaseAccess.prototype.upsert_meta_entries;
     const failure = vi
@@ -253,7 +307,6 @@ describe("ProjectWriteStore", () => {
           status: "PROCESSED",
           file_path: "demo.txt",
           file_type: "TXT",
-          text_type: "TXT",
           row: 7,
         },
       ].map((item) => create_item(item)),
@@ -433,7 +486,6 @@ describe("ProjectWriteStore", () => {
     const { database, project_path, store, published_changes } =
       await create_store("project-content");
     await seed_items(database, project_path);
-    await add_test_asset(database, project_path, "demo.txt", "demo", 0);
 
     await store.replace_project_items_and_files({
       projectPath: project_path,
@@ -501,8 +553,8 @@ describe("ProjectWriteStore", () => {
     });
 
     expect(await database.get_all_asset_records(project_path)).toEqual([
-      { path: "b.txt", sort_order: 0 },
-      { path: "a.txt", sort_order: 1 },
+      { path: "b.txt", sort_order: 0, file_type: "TXT" },
+      { path: "a.txt", sort_order: 1, file_type: "TXT" },
     ]);
     expect(published_changes.at(-1)).toMatchObject({
       source: "project_reorder_files",
@@ -1091,6 +1143,9 @@ describe("ProjectWriteStore", () => {
   /** 准备完整条目事实，局部写入须保留其原文与定位字段。 */
   async function seed_items(database: ProjectDatabase, project_path: string): Promise<void> {
     await database.transaction(project_path, (writer) =>
+      writer.add_asset(project_path, "demo.txt", Buffer.from("原文"), "TXT", null),
+    );
+    await database.transaction(project_path, (writer) =>
       writer.set_items(
         project_path,
         [
@@ -1103,7 +1158,6 @@ describe("ProjectWriteStore", () => {
             status: "NONE",
             file_path: "demo.txt",
             file_type: "TXT",
-            text_type: "TXT",
             row: 7,
           },
         ].map((item) => create_item(item)),
@@ -1135,7 +1189,7 @@ describe("ProjectWriteStore", () => {
             dst: "",
             name_dst: null,
             status: "DUPLICATED",
-            file_path: "demo.txt",
+            file_path: "other.txt",
             row: 1,
           },
         ].map((item) => create_item(item)),
@@ -1171,7 +1225,7 @@ describe("ProjectWriteStore", () => {
     const source_path = path.join(path.dirname(project_path), `source-${asset_path}`);
     fs.writeFileSync(source_path, content);
     await database.transaction(project_path, (writer) =>
-      writer.add_asset_from_source(project_path, asset_path, source_path, null, sort_order),
+      add_test_asset_from_source(writer, project_path, asset_path, source_path, null, sort_order),
     );
   }
 

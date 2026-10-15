@@ -36,8 +36,8 @@ export class EpubRubyBlockTextMigration {
     const items_by_path = new Map<string, Item[]>();
     const epub_paths = new Set<string>(); // 按旧候选首次出现顺序读取资产。
     for (const value of raw_items) {
+      if (read_json_record(value)["file_type"] !== "EPUB") continue;
       const item = create_item(value);
-      if (item.file_type !== "EPUB") continue;
       const items = items_by_path.get(item.file_path) ?? [];
       items.push(item);
       items_by_path.set(item.file_path, items);

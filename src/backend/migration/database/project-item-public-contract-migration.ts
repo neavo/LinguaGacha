@@ -4,11 +4,7 @@ import type { DatabaseSync } from "node:sqlite";
 import { normalize_item_name_field, normalize_item_status } from "../../../domain/item";
 import { JsonTool } from "../../../shared/utils/json-tool";
 import { read_json_integer } from "../../../domain/json";
-import {
-  write_item_migration,
-  normalize_migration_file_type,
-  normalize_migration_text_type,
-} from "./item-migration";
+import { write_item_migration, normalize_migration_file_type } from "./item-migration";
 
 /**
  * 迁移背景：
@@ -73,12 +69,6 @@ export function normalize_item_public_contract_payload(item_data: ItemMigrationP
   changed =
     assign_contract_field(normalized, "file_path", String(normalized["file_path"] ?? "")) ||
     changed;
-  changed =
-    assign_contract_field(
-      normalized,
-      "text_type",
-      normalize_migration_text_type(normalized["text_type"], file_type, src),
-    ) || changed;
   changed =
     assign_contract_field(normalized, "status", normalize_item_status(normalized["status"])) ||
     changed;

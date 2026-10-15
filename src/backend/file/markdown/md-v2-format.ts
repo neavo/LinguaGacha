@@ -1,10 +1,11 @@
-import { read_translation_for_generation } from "../translation-generation-text";
+import { read_translation_for_generation } from "../shared/translation-generation-text";
 import path from "node:path";
 
 import { type Item, create_item } from "../../../domain/item";
 import { read_json_record } from "../../../domain/json";
 import { decode_text_content } from "../../../shared/utils/text-tool";
-import { group_items, write_text_file, type GeneratedFilePaths } from "../file-format-shared";
+import { group_items, write_text_file } from "../shared/file-format-helpers";
+import { type GeneratedFilePaths } from "../file-format-types";
 import { parse_markdown_v2_document } from "./md-v2-document";
 
 type MarkdownV2ItemMetadata = {
@@ -32,7 +33,6 @@ export class MDV2Format {
         row: unit.start_line,
         file_type: "MD_V2",
         file_path: rel_path,
-        text_type: "MD",
         status: unit.rule_skipped ? "RULE_SKIPPED" : "NONE",
         extra_field: {
           markdown: {

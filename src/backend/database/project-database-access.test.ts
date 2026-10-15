@@ -1,3 +1,5 @@
+import { update_test_asset_from_source } from "../../test/asset-fixture";
+import { add_test_asset_from_source } from "../../test/asset-fixture";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -74,26 +76,26 @@ it("按排序快照维护 asset，并可更新和读取内容", async () => {
   fs.writeFileSync(updated_beta_path, Buffer.from("updated-beta"));
 
   await database.transaction(lg_path, (writer) =>
-    writer.add_asset_from_source(lg_path, "chapter-b.txt", beta_path, null, 10),
+    add_test_asset_from_source(writer, lg_path, "chapter-b.txt", beta_path, null, 10),
   );
   await database.transaction(lg_path, (writer) =>
-    writer.add_asset_from_source(lg_path, "chapter-a.txt", alpha_path, null),
+    add_test_asset_from_source(writer, lg_path, "chapter-a.txt", alpha_path, null),
   );
   await database.transaction(lg_path, (writer) =>
-    writer.add_asset_from_source(lg_path, "cover.bin", cover_path, null, 0),
+    add_test_asset_from_source(writer, lg_path, "cover.bin", cover_path, null, 0),
   );
   await database.transaction(lg_path, (writer) =>
     writer.update_asset_sort_orders(lg_path, ["chapter-a.txt", "cover.bin", "chapter-b.txt"]),
   );
   await database.transaction(lg_path, (writer) =>
-    writer.update_asset_from_source(lg_path, "chapter-b.txt", updated_beta_path, null),
+    update_test_asset_from_source(writer, lg_path, "chapter-b.txt", updated_beta_path, null),
   );
 
   expect(await database.get_asset_count(lg_path)).toBe(3);
   expect(await database.get_all_asset_records(lg_path)).toEqual([
-    { path: "chapter-a.txt", sort_order: 0 },
-    { path: "cover.bin", sort_order: 1 },
-    { path: "chapter-b.txt", sort_order: 2 },
+    { path: "chapter-a.txt", sort_order: 0, file_type: "TXT" },
+    { path: "cover.bin", sort_order: 1, file_type: "NONE" },
+    { path: "chapter-b.txt", sort_order: 2, file_type: "TXT" },
   ]);
   expect(await database.read_asset_content(lg_path, "chapter-b.txt")).toEqual(
     Buffer.from("updated-beta"),
@@ -102,12 +104,16 @@ it("按排序快照维护 asset，并可更新和读取内容", async () => {
 
 it("批量替换 item 后保持回查顺序并支持字段补丁", async () => {
   const { database, lg_path } = await create_database_project("items");
+  await database.transaction(lg_path, (writer) => {
+    writer.add_asset(lg_path, "script-a.txt", Buffer.from("おはよう"), "TXT", null);
+    writer.add_asset(lg_path, "script-b.txt", Buffer.from("こんばんは"), "TXT", null);
+  });
 
   expect(
     await database.transaction(lg_path, (writer) =>
       writer.set_items(lg_path, [
-        { id: 10, file_path: "script-a.txt", src: "おはよう", status: "NONE" },
-        { file_path: "script-b.txt", src: "こんばんは", status: "PROCESSED" },
+        { id: 10, file_path: "script-a.txt", file_type: "TXT", src: "おはよう", status: "NONE" },
+        { file_path: "script-b.txt", file_type: "TXT", src: "こんばんは", status: "PROCESSED" },
       ]),
     ),
   ).toEqual([10, 11]);
@@ -118,10 +124,11 @@ it("批量替换 item 后保持回查顺序并支持字段补丁", async () => {
     ]),
   );
   expect(await database.get_items_by_ids(lg_path, [11, 10, 11, 999])).toEqual([
-    { id: 11, file_path: "script-b.txt", src: "こんばんは", status: "PROCESSED" },
+    { id: 11, file_path: "script-b.txt", file_type: "TXT", src: "こんばんは", status: "PROCESSED" },
     {
       id: 10,
       file_path: "script-a.txt",
+      file_type: "TXT",
       src: "おはよう",
       dst: "",
       name_dst: null,
@@ -136,7 +143,7 @@ it("事务同步写入 item、规则和 meta，并让工程摘要反映当前事
   fs.writeFileSync(source_path, "chapter");
 
   await database.transaction(lg_path, (writer) =>
-    writer.add_asset_from_source(lg_path, "chapter.txt", source_path, null, 0),
+    add_test_asset_from_source(writer, lg_path, "chapter.txt", source_path, null, 0),
   );
   await database.transaction(lg_path, (writer) =>
     writer.set_items(lg_path, [
@@ -185,7 +192,7 @@ it("工程预览在重排并重新打开后返回完整文件顺序", async () =
   fs.writeFileSync(source_path, "source");
   for (const file_path of ["a.txt", "b.txt", "c.txt", "d.txt", "e.txt"]) {
     await database.transaction(lg_path, (writer) =>
-      writer.add_asset_from_source(lg_path, file_path, source_path, null),
+      add_test_asset_from_source(writer, lg_path, file_path, source_path, null),
     );
   }
   await database.transaction(lg_path, (writer) =>
@@ -199,6 +206,9 @@ it("工程预览在重排并重新打开后返回完整文件顺序", async () =
 
 it("patchItemTranslationFields 只更新译文字段并保留条目持久事实", async () => {
   const { database, lg_path } = await create_database_project("translation-patch");
+  await database.transaction(lg_path, (writer) =>
+    writer.add_asset(lg_path, "demo.txt", Buffer.from("原文"), "TXT", null),
+  );
 
   await database.transaction(lg_path, (writer) =>
     writer.set_items(lg_path, [
@@ -211,7 +221,6 @@ it("patchItemTranslationFields 只更新译文字段并保留条目持久事实"
         status: "NONE",
         file_path: "demo.txt",
         file_type: "TXT",
-        text_type: "TXT",
         row: 7,
         extra_field: { speaker: "春" },
       },
@@ -241,7 +250,6 @@ it("patchItemTranslationFields 只更新译文字段并保留条目持久事实"
       status: "PROCESSED",
       file_path: "demo.txt",
       file_type: "TXT",
-      text_type: "TXT",
       row: 7,
       extra_field: { speaker: "春" },
     },
@@ -277,12 +285,12 @@ it("PDF 源文件在解析后变化时导入事务保留旧资产和译稿", asy
   fs.writeFileSync(source, bytes);
   const document = read_pdf_document(bytes);
   await database.transaction(lg_path, (database) =>
-    database.add_asset_from_source(lg_path, "book.pdf", source, document, 0),
+    add_test_asset_from_source(database, lg_path, "book.pdf", source, document, 0),
   );
   fs.writeFileSync(source, create_pdf_fixture(["changed after parse"]));
   await expect(
     database.transaction(lg_path, (database) =>
-      database.update_asset_from_source(lg_path, "book.pdf", source, document),
+      update_test_asset_from_source(database, lg_path, "book.pdf", source, document),
     ),
   ).rejects.toThrow(expect.objectContaining({ code: "file.parse_failed" }));
   expect(await database.read_asset_content(lg_path, "book.pdf")).toEqual(Buffer.from(bytes));
@@ -301,7 +309,7 @@ it("PDF 摘要区分译稿覆盖、确认保留和省略，核对标记独立于
   document.pages[3]!.translation = { kind: "translate", markdown: "" };
   for (const page of document.pages) page.reviewed = true;
   await database.transaction(lg_path, (database) =>
-    database.add_asset_from_source(lg_path, "summary.pdf", source, document, 0),
+    add_test_asset_from_source(database, lg_path, "summary.pdf", source, document, 0),
   );
   expect((await database.read_pdf_summaries(lg_path))["summary.pdf"]).toEqual({
     pages: 5,

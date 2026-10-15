@@ -1,7 +1,7 @@
 import { type ItemFileType, type Item, create_item } from "../../../domain/item";
 import { read_json_record } from "../../../domain/json";
 import { AppError } from "../../../shared/error";
-import { read_translation_for_generation } from "../translation-generation-text";
+import { read_translation_for_generation } from "../shared/translation-generation-text";
 
 export type SubtitleLine = {
   text: string;

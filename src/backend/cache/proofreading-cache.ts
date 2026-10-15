@@ -1,3 +1,5 @@
+import { read_rgss_metadata } from "../file/rpgmaker-rgss/item";
+import { read_rpgmaker_metadata } from "../file/rpgmaker-mv-mz/item";
 import type { PDFDocumentRecord } from "../../shared/pdf";
 import type { AppSettingService } from "../app/app-setting-service";
 import type { ComputeWorkerClient } from "../worker/compute-worker-client";
@@ -414,7 +416,17 @@ export class ProofreadingCache {
       total_item_count: items.length,
       upsertItems: items,
       quality: structuredClone(this.cache.quality.readBlock()),
-      processingConfig: identity.key.processingConfig,
+      processingConfig: {
+        ...identity.key.processingConfig,
+        file_contexts: Object.fromEntries(
+          this.cache.files
+            .readFileEntries()
+            .map((file) => [
+              file.rel_path,
+              { file_type: file.file_type, game_engine: file.game_engine },
+            ]),
+        ),
+      },
     };
   }
 
@@ -457,12 +469,16 @@ export class ProofreadingCache {
       name_src: normalize_item_name_field(item["name_src"]),
       name_dst: normalize_item_name_field(item["name_dst"]),
       status: item.status,
-      text_type: item.text_type,
+      file_type: item.file_type,
     };
   }
 
   /** 格式定位信息只在校对入口解释，普通格式与缺少定位的内容归入无内部路径分组。 */
   private read_internal_file_path(item: ProjectItemPublicRecord): string | null {
+    if (item.file_type === "RPGMAKER_RGSS")
+      return read_rgss_metadata(item.extra_field).internal_file_path;
+    if (item.file_type === "RPGMAKER_MV_MZ")
+      return read_rpgmaker_metadata(item.extra_field).internal_file_path;
     const extra = read_json_record(item["extra_field"]);
     const value =
       item["file_type"] === "TRANS"

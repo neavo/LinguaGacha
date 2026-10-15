@@ -16,6 +16,9 @@ import { row_number, row_text } from "../migration-row";
 export function run_project_schema_migration(db: DatabaseSync): void {
   ensure_current_schema(db);
   ensure_asset_sort_order_column(db);
+  const columns = db.prepare("PRAGMA table_info(assets)").all();
+  if (!columns.some((row) => row["name"] === "file_type"))
+    db.exec("ALTER TABLE assets ADD COLUMN file_type TEXT NOT NULL DEFAULT 'NONE'");
 }
 
 /**
@@ -34,6 +37,7 @@ function ensure_current_schema(db: DatabaseSync): void {
       CREATE TABLE IF NOT EXISTS assets (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         path TEXT NOT NULL UNIQUE,
+        file_type TEXT NOT NULL DEFAULT 'NONE',
         sort_order INTEGER NOT NULL DEFAULT 0,
         data BLOB NOT NULL,
         original_size INTEGER NOT NULL,

@@ -22,7 +22,7 @@ function create_row(
       name_src: null,
       name_dst: null,
       status: "NONE",
-      text_type: "NONE",
+      file_type: "TXT",
       warnings: [],
       glossary_applications: [],
     },

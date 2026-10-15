@@ -1,11 +1,14 @@
-import type { ProjectDatabaseAccess } from "../database/database-operations";
+import { evb_fixture } from "../../test/evb-fixture";
+import { ProjectDatabaseAccess } from "../database/database-operations";
 import { create_pdf_execution } from "../file/pdf/test-support";
+import { read_zip_fixture, zip_text } from "../../test/zip-fixture";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ProjectSessionState } from "./project-session-state";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-type CacheLifecycleCall = { projectPath: string };
+import type { ProjectDataSnapshot } from "./project-data-reader";
+type CacheLifecycleCall = { projectPath: string; snapshot?: ProjectDataSnapshot };
 type CacheLifecycleHandler = (call: CacheLifecycleCall) => void;
 import { DatabaseSync } from "node:sqlite";
 import { ProjectDatabase } from "../database/database-operations";
@@ -16,6 +19,7 @@ import { AppPathService } from "../app/app-path-service";
 import { ProjectLifecycleService } from "./project-lifecycle-service";
 import { RuntimeOperationGate } from "../runtime-operation-gate";
 import { ProjectWriteStore } from "./project-write-store";
+import { create_item } from "../../domain/item";
 
 type TestProjectDatabase = ProjectDatabase & {
   get_project_summary: ReturnType<typeof vi.fn>;
@@ -26,6 +30,102 @@ type TestProjectDatabase = ProjectDatabase & {
 
 describe("ProjectLifecycleService", () => {
   const cleanup_paths: string[] = []; // 生命周期测试会创建真实临时文件，统一登记清理避免污染用户工作区
+
+  it("新建与重开安装一致快照，普通工程每次只读取一次完整条目", async () => {
+    const root = create_temp_dir();
+    const project_path = path.join(root, "current.lg");
+    const source = write_file(path.join(root, "source.txt"), "こんにちは\nこんにちは");
+    const trans = write_file(
+      path.join(root, "game.trans"),
+      JSON.stringify({
+        project: { gameEngine: "kag", files: { chapter: { data: [["こんにちは", ""]] } } },
+      }),
+    );
+    const database = new ProjectDatabase();
+    const snapshots: ProjectDataSnapshot[] = [];
+    const service = create_service({
+      database,
+      project_event_handler: ({ snapshot }) => {
+        if (snapshot) snapshots.push(snapshot);
+      },
+    });
+    try {
+      const reads = vi.spyOn(ProjectDatabaseAccess.prototype, "get_all_items");
+      await service.create_project_commit({ path: project_path, source_paths: [source, trans] });
+      expect(reads).toHaveBeenCalledTimes(1);
+      expect(snapshots[0]?.meta).toMatchObject({
+        glossary_enable: true,
+        translation_prompt_legacy_migrated: true,
+        "migration.asset_file_type_complete": true,
+      });
+      expect(snapshots[0]?.files["game.trans"]).toMatchObject({ game_engine: "kag" });
+      reads.mockClear();
+      await service.load_project({ path: project_path });
+      expect(reads).toHaveBeenCalledTimes(1);
+      expect(snapshots).toHaveLength(2);
+      const { meta: first_meta, ...created } = snapshots[0]!;
+      const { meta: second_meta, ...loaded } = snapshots[1]!;
+      expect(loaded).toEqual(created);
+      expect(second_meta.translation_extras).toEqual(first_meta.translation_extras);
+    } finally {
+      await database.close();
+    }
+  });
+
+  it.each(["create", "load"] as const)("%s 快照准备失败回滚且不发布", async (operation) => {
+    const project_path = path.join(create_temp_dir(), "rollback.lg");
+    const database = new ProjectDatabase();
+    const session_state = create_session_state();
+    const publish = vi.fn();
+    try {
+      if (operation === "load") {
+        await database.create_project(project_path, "old");
+        await database.transaction(project_path, (writer) =>
+          writer.set_meta(project_path, "updated_at", "before"),
+        );
+      }
+      vi.spyOn(ProjectDatabaseAccess.prototype, "get_rules").mockImplementationOnce(() => {
+        throw new Error("snapshot failed");
+      });
+      const service = create_service({ database, session_state, project_event_handler: publish });
+      await expect(
+        operation === "create"
+          ? service.create_project_commit({ path: project_path, source_paths: [] })
+          : service.load_project({ path: project_path }),
+      ).rejects.toThrow("snapshot failed");
+      expect(publish).not.toHaveBeenCalled();
+      expect(session_state.snapshot().loaded).toBe(false);
+      if (operation === "create") expect(fs.existsSync(project_path)).toBe(false);
+      else
+        expect(await database.get_all_meta(project_path)).toMatchObject({ updated_at: "before" });
+    } finally {
+      await database.close();
+    }
+  });
+
+  it("新建提交后缓存失败保留工程，重开能恢复当前事实", async () => {
+    const project_path = path.join(create_temp_dir(), "committed.lg");
+    const database = new ProjectDatabase();
+    const session_state = create_session_state();
+    const publish = vi.fn().mockImplementationOnce(() => {
+      throw new Error("install failed");
+    });
+    const service = create_service({ database, session_state, project_event_handler: publish });
+    try {
+      await expect(
+        service.create_project_commit({ path: project_path, source_paths: [] }),
+      ).rejects.toMatchObject({
+        code: "data.committed_sync_failed",
+        public_details: { committed: true, action: "reload_project" },
+      });
+      expect(fs.existsSync(project_path)).toBe(true);
+      expect(session_state.snapshot().loaded).toBe(false);
+      await service.load_project({ path: project_path });
+      expect(session_state.snapshot()).toEqual({ loaded: true, projectPath: project_path });
+    } finally {
+      await database.close();
+    }
+  });
 
   afterEach(() => {
     while (cleanup_paths.length > 0) {
@@ -158,6 +258,60 @@ describe("ProjectLifecycleService", () => {
     ]);
   });
 
+  it.each([true, false])("打开旧项目在缓存热机前协调跨文件重复状态，开关为 %s", async (enabled) => {
+    const project_path = path.join(create_temp_dir(), "duplicates.lg");
+    const database = new ProjectDatabase();
+    try {
+      await database.create_project(project_path, "duplicates", (database) => {
+        database.set_meta(project_path, "skip_duplicate_source_text_enable", enabled);
+        database.set_items(project_path, [
+          create_item({ id: 1, src: "同文", file_path: "a.txt", row: 99, status: "DUPLICATED" }),
+          create_item({ id: 2, src: "同文", file_path: "b.txt", row: 0, status: "NONE" }),
+          create_item({
+            id: 3,
+            src: "已译",
+            file_path: "a.txt",
+            dst: "保留甲",
+            status: "PROCESSED",
+          }),
+          create_item({
+            id: 4,
+            src: "已译",
+            file_path: "b.txt",
+            dst: "保留乙",
+            status: "PROCESSED",
+          }),
+          create_item({ id: 5, src: "同文", file_path: "c.txt", status: "EXCLUDED" }),
+        ]);
+      });
+      const service = create_service({
+        database,
+        project_event_handler: async () => {
+          expect((await database.get_all_items(project_path)).map((item) => item.status)).toEqual([
+            "NONE",
+            enabled ? "DUPLICATED" : "NONE",
+            "PROCESSED",
+            "PROCESSED",
+            "EXCLUDED",
+          ]);
+          expect((await database.get_all_meta(project_path)).translation_extras).toMatchObject({
+            total_line: enabled ? 3 : 4,
+            processed_line: 2,
+            error_line: 0,
+            line: 2,
+          });
+        },
+      });
+      await service.load_project({ path: project_path });
+      const items = await database.get_all_items(project_path);
+      expect(items.slice(2, 4).map((item) => item.dst)).toEqual(["保留甲", "保留乙"]);
+      await service.load_project({ path: project_path });
+      expect(await database.get_all_items(project_path)).toEqual(items);
+    } finally {
+      await database.close();
+    }
+  });
+
   it("load 在内部缓存热机失败时阻断 loaded", async () => {
     const project_path = write_file(path.join(create_temp_dir(), "broken-cache.lg"));
     const session_state = create_session_state();
@@ -234,7 +388,7 @@ describe("ProjectLifecycleService", () => {
           "project_runtime_revision.files": 2,
           "project_runtime_revision.items": 3,
         },
-        asset_records: [{ path: "script.txt", sort_order: 0 }],
+        asset_records: [{ path: "script.txt", sort_order: 0, file_type: "TXT" }],
         items: [
           {
             id: 1,
@@ -294,7 +448,7 @@ describe("ProjectLifecycleService", () => {
       ).resolves.toEqual({ project: { path: project_path, loaded: true } });
 
       expect(await database.get_all_asset_records(project_path)).toEqual([
-        { path: path.join("source", "script.txt"), sort_order: 0 },
+        { path: path.join("source", "script.txt"), sort_order: 0, file_type: "TXT" },
       ]);
       expect(await database.get_all_items(project_path)).toMatchObject([
         {
@@ -512,12 +666,16 @@ describe("ProjectLifecycleService", () => {
     ).rejects.toThrow(expect.objectContaining({ code: "request.validation_failed" }));
   });
 
-  it("create-commit 跳过解析失败源文件并继续创建可用文件", async () => {
+  it.each(["json", "evb"])("create-commit 跳过 %s 失败来源并继续创建可用文件", async (kind) => {
     const app_root = create_temp_dir();
     const project_path = path.join(app_root, "partial-created.lg");
     const source_dir = path.join(app_root, "source");
     write_file(path.join(source_dir, "script.txt"), "こんにちは");
-    const broken_json = write_file(path.join(source_dir, "broken.json"), "{");
+    const broken_json = write_file(
+      path.join(source_dir, kind === "json" ? "broken.json" : "broken.exe"),
+      "{",
+    );
+    if (kind === "evb") fs.writeFileSync(broken_json, evb_fixture(new Map()).subarray(0, -1));
     const database = new ProjectDatabase();
     const log_manager = create_log_manager();
     const service = create_service({
@@ -538,20 +696,64 @@ describe("ProjectLifecycleService", () => {
         failed_files: [
           {
             source_path: broken_json,
-            rel_path: path.join("source", "broken.json"),
-            filename: "broken.json",
-            code: "file.parse_failed",
+            rel_path: kind === "json" ? path.join("source", "broken.json") : "broken.exe",
+            filename: path.basename(broken_json),
+            code: kind === "json" ? "file.parse_failed" : "file.io_failed",
             message: expect.any(String),
           },
         ],
       });
 
       expect(await database.get_all_asset_records(project_path)).toEqual([
-        { path: path.join("source", "script.txt"), sort_order: 0 },
+        { path: path.join("source", "script.txt"), sort_order: 0, file_type: "TXT" },
       ]);
       expect(log_manager.warning).toHaveBeenCalledWith(
         expect.any(String),
         expect.objectContaining({ source: "project-lifecycle" }),
+      );
+    } finally {
+      await database.close();
+    }
+  });
+
+  it("create-commit 保存零条目错误脚本并记录诊断日志", async () => {
+    const app_root = create_temp_dir();
+    const project_path = path.join(app_root, "scripts.lg");
+    const game = path.join(app_root, "game");
+    write_file(path.join(game, "data/System.json"), "{}");
+    write_file(path.join(game, "js/rmmz_core.js"), "");
+    const source = write_file(path.join(game, "js/plugins/bad.js"), "<test>");
+    const database = new ProjectDatabase();
+    const log_manager = create_log_manager();
+    const service = create_service({ app_root, database, log_manager });
+    try {
+      const result = await service.create_project_commit({
+        source_paths: [game],
+        path: project_path,
+        project_settings: {},
+      });
+      expect(result["failed_files"]).toBeUndefined();
+      const archive = await read_zip_fixture(
+        (await database.read_asset_content(project_path, "game.zip"))!,
+      );
+      expect(zip_text(archive, "js/plugins/bad.js")).toEqual(fs.readFileSync(source, "utf8"));
+      expect(await database.get_all_asset_records(project_path)).toMatchObject([
+        { path: "game.zip", file_type: "RPGMAKER_MV_MZ" },
+      ]);
+      expect(await database.get_all_items(project_path)).toEqual([]);
+      expect(log_manager.warning).toHaveBeenCalledWith(
+        expect.stringContaining("bad.js"),
+        expect.objectContaining({
+          context: {
+            warnings: [
+              expect.objectContaining({
+                code: "script_syntax_error",
+                rel_path: "game.zip",
+                internal_file_path: "js/plugins/bad.js",
+              }),
+            ],
+          },
+        }),
       );
     } finally {
       await database.close();
@@ -713,7 +915,7 @@ describe("ProjectLifecycleService", () => {
       }),
       options.log_manager ?? create_log_manager(),
       {
-        warmProject: async (projectPath) => project_event_handler({ projectPath }),
+        installProject: (projectPath, snapshot) => project_event_handler({ projectPath, snapshot }),
         clearProject: (projectPath) => project_event_handler({ projectPath: projectPath ?? "" }),
       },
       new ProjectWriteStore(options.database, () => undefined, null),
@@ -732,7 +934,7 @@ describe("ProjectLifecycleService", () => {
     options: {
       meta?: MutableJsonRecord;
       items?: MutableJsonRecord[];
-      asset_records?: Array<{ path: string; sort_order: number }>;
+      asset_records?: Array<{ path: string; sort_order: number; file_type?: string }>;
       rule_text_by_type?: Record<string, string>;
       calls?: string[];
     } = {},
@@ -749,6 +951,8 @@ describe("ProjectLifecycleService", () => {
       },
       get_all_meta: vi.fn(() => options.meta ?? {}),
       get_all_items: vi.fn(() => options.items ?? []),
+      get_rules: vi.fn(() => []),
+      read_pdf_summaries: vi.fn(() => ({})),
       get_all_asset_records: vi.fn(() => options.asset_records ?? []),
       get_rule_text: vi.fn(
         (_project_path: string, rule_type: string) => options.rule_text_by_type?.[rule_type] ?? "",
@@ -766,7 +970,7 @@ describe("ProjectLifecycleService", () => {
       set_meta: vi.fn(),
       set_rules: vi.fn(),
       set_rule_text: vi.fn(),
-      add_asset_from_source: vi.fn(),
+      add_asset: vi.fn(),
       set_items: vi.fn(() => []),
       upsert_meta_entries: vi.fn(),
       close_project,

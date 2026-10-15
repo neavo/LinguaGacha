@@ -1,3 +1,6 @@
+import { RPGMakerMvMzPrepareWorker } from "../file/rpgmaker-mv-mz/prepare-worker";
+import { configure_rgss_parser } from "../file/rpgmaker-rgss/ruby";
+import { configure_rpgmaker_parser } from "../file/rpgmaker-mv-mz/javascript";
 import type { SettingsUpdateResponse } from "../../shared/settings";
 import { ProofreadingPagePreview } from "../proofreading/proofreading-page-preview";
 import { resolve_workspace_runtime_entry } from "../../native/workspace-runtime";
@@ -17,7 +20,6 @@ import { BatchTranslationProjectStore } from "../batch-translation/batch-transla
 import { BatchTranslationRuntime } from "../batch-translation/batch-translation-runtime";
 import { BatchTranslationService } from "../batch-translation/batch-translation-service";
 import { TranslationWorkerPool } from "../batch-translation/work-unit/translation-worker-pool";
-import { FilePreviewService } from "../file/file-preview-service";
 import {
   TranslationFileGenerationService,
   type OutputFolderOpener,
@@ -109,7 +111,6 @@ export interface BackendQualityServices {
 }
 
 export interface BackendFileServices {
-  preview: FilePreviewService;
   translationGeneration: TranslationFileGenerationService;
 }
 
@@ -123,6 +124,7 @@ export class BackendServices {
   private readonly publish_event: BackendServicesOptions["publishEvent"]; // 目录应用完成后才通知消费方。
   private readonly app_setting_service: AppSettingService; // 引用 Bootstrap 提供的唯一设置服务
   private readonly cache_manager: CacheManager; // 所有领域服务共用的项目热读缓存
+  private readonly rpgmaker_mv_mz_prepare_worker: RPGMakerMvMzPrepareWorker;
   private readonly pdf_worker: PDFWorker; // 独立文档计算与取消，随业务根释放
   private readonly compute_worker_client: ComputeWorkerClient; // 缓存的校对与质量统计共享，随业务根释放
   private readonly task_runtime: BatchTranslationRuntime; // 关闭时先等待任务收束，再释放执行池
@@ -147,6 +149,10 @@ export class BackendServices {
    * 只在这里装配状态拥有者与服务依赖，调用方不得二次 new 同类服务。
    */
   public constructor(options: BackendServicesOptions) {
+    if (options.workspaceRuntimeDirectory) {
+      configure_rpgmaker_parser(options.workspaceRuntimeDirectory);
+      configure_rgss_parser(options.workspaceRuntimeDirectory);
+    }
     this.publish_event = options.publishEvent;
     const paths = options.paths;
     const metadata = options.metadata;
@@ -172,6 +178,11 @@ export class BackendServices {
             resolve_workspace_runtime_entry(options.workspaceRuntimeDirectory!, "@lg/pdf/worker"),
           ),
       options.pdfHost,
+    );
+    this.rpgmaker_mv_mz_prepare_worker = new RPGMakerMvMzPrepareWorker(
+      options.workerExecution.kind === "in_process"
+        ? null
+        : options.workerExecution.rpgmakerMvMzPrepareWorkerEntryUrl,
     );
     this.compute_worker_client = new ComputeWorkerClient({
       execution: options.workerExecution,
@@ -209,6 +220,8 @@ export class BackendServices {
       this.cache_manager,
       write_store,
       this.pdf_worker.run,
+      undefined,
+      this.rpgmaker_mv_mz_prepare_worker.run,
     );
     this.work_unit_worker_pool = new TranslationWorkerPool({
       builtinRoot: paths.get_builtin_root(),
@@ -261,6 +274,7 @@ export class BackendServices {
         this.app_setting_service,
         undefined,
         this.logManager,
+        this.rpgmaker_mv_mz_prepare_worker.run,
       ),
     };
     const settings_commands = new AppSettingsCommandService(
@@ -307,11 +321,6 @@ export class BackendServices {
       }),
     };
     this.files = {
-      preview: new FilePreviewService(
-        this.app_setting_service,
-        this.pdf_worker.run,
-        this.logManager,
-      ),
       translationGeneration: new TranslationFileGenerationService(
         options.database,
         this.app_setting_service,
@@ -364,11 +373,17 @@ export class BackendServices {
     );
   }
 
+  /** Gateway 排空在途导入前，先取消并等待完整工程写操作收尾。 */
+  public async stop_project_writes(): Promise<void> {
+    await this.runtime_gate.stop_project_writes();
+  }
+
   /**
    * 释放组合根拥有的运行态资源；数据库和日志由 Bootstrap 关闭。
    */
   public async dispose(): Promise<void> {
     const errors: unknown[] = [];
+    const project_writes = this.stop_project_writes();
     this.modelCatalog.dispose();
     try {
       await this.catalog_check;
@@ -385,12 +400,14 @@ export class BackendServices {
     } catch (error) {
       errors.push(error);
     }
+    await project_writes; // 写占用释放前，准备线程、目录恢复和工程操作必须全部收尾。
     const worker_results = await Promise.allSettled([
       this.model.dispose(),
       this.work_unit_worker_pool.dispose(),
       this.planning_worker_pool.dispose(),
       this.compute_worker_client.dispose(),
       this.pdf_worker.dispose(),
+      this.rpgmaker_mv_mz_prepare_worker.dispose(),
     ]);
     for (const result of worker_results) {
       if (result.status === "rejected") {

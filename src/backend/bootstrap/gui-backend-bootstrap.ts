@@ -242,10 +242,11 @@ export class GuiBackendBootstrap {
     this.images = null;
     const gateway = this.gateway;
     this.gateway = null;
-    // Gateway 先停止受理。接口测试属于在途 HTTP，必须同时取消才能完成请求排空。
+    // Gateway 停止受理时同步取消在途接口测试与工程写入，排空须等到目录恢复结束。
     await Promise.all([
       collect_failure(failures, async () => await gateway?.stop()),
       collect_failure(failures, async () => await this.services?.model.dispose()),
+      collect_failure(failures, async () => await this.services?.stop_project_writes()),
     ]);
 
     this.resources?.settings.set_stream_publisher(null);

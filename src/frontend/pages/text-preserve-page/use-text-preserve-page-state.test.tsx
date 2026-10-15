@@ -6,6 +6,7 @@ import { ProjectSessionUiStateProvider } from "@frontend/app/session/project-ses
 import { createEmptyQualityRuleStatisticsCacheSnapshot } from "@frontend/app/session/quality-rule-statistics-store";
 import { useProjectWriteCommitter } from "@frontend/app/state/desktop-project-write";
 import { useTextPreservePageState } from "./use-text-preserve-page-state";
+import type { ProjectWriteResult } from "@shared/project-event";
 
 const api = vi.hoisted(() => vi.fn());
 const toast = vi.hoisted(() => vi.fn());
@@ -84,13 +85,17 @@ beforeEach(async () => {
         accepted: true,
         changes: [
           {
+            eventId: `quality-${revision}`,
+            type: "project.changed",
+            source: "quality_rule_update",
             projectPath: project.path,
             projectRevision: revision,
             updatedSections: ["quality"],
             sectionRevisions: { quality: revision },
+            qualityStatisticsScope: "all",
           },
         ],
-      };
+      } satisfies ProjectWriteResult;
     }
     throw new Error("Unexpected route: " + route);
   });

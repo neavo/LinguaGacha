@@ -1,12 +1,9 @@
-import type { ItemTextType } from "../../../domain/item";
 import { has_color_block_tag, NoneTransProcessor } from "./trans-processor";
 
 /**
  * RPG Maker .trans 在默认过滤上叠加路径和地址黑名单
  */
 export class RPGMakerTransProcessor extends NoneTransProcessor {
-  public override readonly text_type: ItemTextType = "RPGMAKER";
-
   private static readonly BLACKLIST_PATH = [/\.js$/iu]; // JS 插件脚本文件整体不进入翻译
 
   private static readonly BLACKLIST_ADDRESS = [

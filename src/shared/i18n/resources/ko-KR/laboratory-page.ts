@@ -25,7 +25,7 @@ export const ko_kr_laboratory_page = {
     skip_duplicate_source_text_enable: {
       title: "중복 원문 건너뛰기",
       description:
-        "같은 파일 내의 원문이 같은 항목은 한 번만 번역하고 <emphasis>번역문을 재사용</emphasis>합니다. 기본값은 사용입니다.",
+        "프로젝트 전체에서 텍스트가 같은 항목은 한 번만 번역하고 <emphasis>번역문을 재사용</emphasis>합니다. 기본값은 사용입니다.",
     },
   },
 } satisfies LocaleMessageSchema<typeof zh_cn_laboratory_page>;

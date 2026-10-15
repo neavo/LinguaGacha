@@ -137,6 +137,9 @@ parentPort?.on("message", (message) => {
         kind: "worker_threads",
         workUnitWorkerEntryUrl: pathToFileURL(worker_path),
         planningWorkerEntryUrl: pathToFileURL(worker_path),
+        rpgmakerMvMzPrepareWorkerEntryUrl: new URL(
+          "file:///rpgmaker-mv-mz-prepare-worker-entry.js",
+        ),
         computeWorkerEntryUrl: pathToFileURL(worker_path),
       },
       workerCount: 1,
@@ -203,6 +206,9 @@ parentPort.on("message", (message) => {
         kind: "worker_threads",
         workUnitWorkerEntryUrl: entry,
         planningWorkerEntryUrl: entry,
+        rpgmakerMvMzPrepareWorkerEntryUrl: new URL(
+          "file:///rpgmaker-mv-mz-prepare-worker-entry.js",
+        ),
         computeWorkerEntryUrl: entry,
       },
     });

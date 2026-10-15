@@ -1,15 +1,10 @@
-import { read_translation_for_generation } from "../translation-generation-text";
+import { read_translation_for_generation } from "../shared/translation-generation-text";
 import path from "node:path";
 
 import { JsonTool } from "../../../shared/utils/json-tool";
-import { decode_text_content } from "../../../shared/utils/text-tool";
 import type { JsonValue } from "../../../domain/json";
-import {
-  group_items,
-  write_text_file,
-  type GeneratedFilePaths,
-  type FileFormatServiceConfig,
-} from "../file-format-shared";
+import { group_items, write_text_file } from "../shared/file-format-helpers";
+import { type GeneratedFilePaths, type FileFormatServiceConfig } from "../file-format-types";
 import { type Item, create_item } from "../../../domain/item";
 import { read_json_record } from "../../../domain/json";
 import { resolve_output_item_name } from "../../../shared/item-name";
@@ -27,8 +22,7 @@ export class MESSAGEJSONFormat {
   /**
    * 只解析数组内含 message 字符串的对象，name/names 作为角色名字段保存
    */
-  public async read_from_stream(content: Uint8Array, rel_path: string): Promise<Item[]> {
-    const data = JsonTool.parseStrict(await decode_text_content(content));
+  public read_items(data: JsonValue, rel_path: string): Item[] {
     if (!Array.isArray(data)) {
       return [];
     }
@@ -51,7 +45,6 @@ export class MESSAGEJSONFormat {
           row: items.length,
           file_type: "MESSAGEJSON",
           file_path: rel_path,
-          text_type: "KAG",
         }),
       );
     }

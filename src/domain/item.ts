@@ -1,7 +1,5 @@
 import { Type, type Static } from "typebox";
-import { Check } from "typebox/value";
 import { Compile } from "typebox/compile";
-import { has_language_character } from "./language";
 import { JSON_VALUE_SCHEMA, read_json_record, read_json_integer } from "./json";
 
 // 条目状态
@@ -32,11 +30,11 @@ export const ITEM_FILE_TYPES = [
   "WOLFXLSX",
   "RENPY",
   "TRANS",
+  "RPGMAKER_MV_MZ",
+  "RPGMAKER_RGSS",
   "KVJSON",
   "MESSAGEJSON",
 ] as const;
-
-export const ITEM_TEXT_TYPES = ["NONE", "MD", "KAG", "WOLF", "RENPY", "RPGMAKER"] as const; // 文本的实际类型
 
 const ITEM_NAME_SCHEMA = Type.Union([Type.String(), Type.Array(Type.String()), Type.Null()]); // 数组第 0 槽为可见姓名，其余槽位保留格式信息。
 /** 条目形状共用业务字段，身份和行号由各自边界补充。 */
@@ -49,7 +47,6 @@ const ITEM_BUSINESS_SCHEMA = Type.Object({
   tag: Type.String(), // 格式标签或资产内部定位信息。
   file_type: Type.Enum(ITEM_FILE_TYPES), // 解析来源格式，决定导出处理器。
   file_path: Type.String(), // 工程内相对路径，对应原始资产。
-  text_type: Type.Enum(ITEM_TEXT_TYPES), // 文本规则类型，用于脚本过滤和保护。
   status: Type.Enum(ITEM_STATUSES), // 条目处理状态，用于统计和译文生成。
   skip_internal_filter: Type.Boolean(), // 本条目是否跳过规则和语言过滤。
 });
@@ -91,23 +88,10 @@ export type ProjectItemPersistentRecord = Static<typeof PROJECT_ITEM_PERSISTENT_
 export type ItemStatus = Item["status"];
 export type ItemManualStatus = (typeof ITEM_MANUAL_STATUSES)[number];
 export type ItemFileType = Item["file_type"];
-export type ItemTextType = Item["text_type"];
 const ITEM_STATUS_SET = new Set<ItemStatus>(ITEM_STATUSES);
 const ITEM_MANUAL_STATUS_SET = new Set<ItemManualStatus>(ITEM_MANUAL_STATUSES);
 const ITEM_FILE_TYPE_SET = new Set<ItemFileType>(ITEM_FILE_TYPES);
 const PROJECT_ITEM_PUBLIC_VALIDATOR = Compile(PROJECT_ITEM_PUBLIC_SCHEMA); // 复用编译结果，避免逐条解释格式私有数据。
-const TEXT_TYPE_INFERENCE_FILE_TYPES = new Set<ItemFileType>(["XLSX", "KVJSON", "MESSAGEJSON"]);
-const WOLF_PATTERNS = [
-  /@\d+/iu, // 角色 ID
-  /\\[cus]db\[.+?:.+?:.+?\]/iu, // 数据库变量 \cdb[0:1:2]
-];
-const RPGMAKER_PATTERNS = [
-  /en\(.{0,8}[vs]\[\d+\].{0,16}\)/iu, // en(!s[982]) en(v[982] >= 1)
-  /if\(.{0,8}[vs]\[\d+\].{0,16}\)/iu, // if(!s[982]) if(v[982] >= 1)
-  /[/\\][a-z]{1,8}[<[][a-z\d]{0,16}[>\]]/iu, // /c[xy12] \bc[xy12] <\bc[xy12]>
-];
-const RENPY_CONTROL_TAG_PATTERN = /\{([^{}]*?)\}|\[([^[\]]*?)\]/giu;
-
 const DEFAULT_ITEM: Omit<Item, "id"> = {
   src: "",
   dst: "",
@@ -118,7 +102,6 @@ const DEFAULT_ITEM: Omit<Item, "id"> = {
   row: 0,
   file_type: "NONE",
   file_path: "",
-  text_type: "NONE",
   status: "NONE",
   skip_internal_filter: false,
 };
@@ -127,10 +110,6 @@ export function create_item(payload: unknown = {}): Item {
   const record = read_json_record(payload);
   const src = String(record["src"] ?? DEFAULT_ITEM.src);
   const file_type = normalize_item_file_type(record["file_type"]);
-  let text_type = normalize_item_text_type(record["text_type"]);
-  if (text_type === "NONE" && TEXT_TYPE_INFERENCE_FILE_TYPES.has(file_type)) {
-    text_type = infer_item_text_type_from_source(src);
-  }
   return {
     ...(record["id"] === undefined ? {} : { id: read_json_integer(record["id"], 0) }),
     src,
@@ -142,7 +121,6 @@ export function create_item(payload: unknown = {}): Item {
     row: read_json_integer(record["row"] ?? record["row_number"], DEFAULT_ITEM.row),
     file_type,
     file_path: String(record["file_path"] ?? DEFAULT_ITEM.file_path),
-    text_type,
     status: normalize_item_status(record["status"]),
     skip_internal_filter: record["skip_internal_filter"] === true,
   };
@@ -172,13 +150,6 @@ export function normalize_item_file_type(value: unknown): ItemFileType {
 }
 
 /**
- * 未知文本规则语义折叠为 NONE，避免误触发某类脚本保护规则
- */
-export function normalize_item_text_type(value: unknown): ItemTextType {
-  return is_item_text_type(value) ? value : DEFAULT_ITEM.text_type;
-}
-
-/**
  * 名称字段兼容字符串和多列名称数组，非法项在边界处剔除
  */
 export function normalize_item_name_field(value: unknown): ItemNameField {
@@ -189,22 +160,6 @@ export function normalize_item_name_field(value: unknown): ItemNameField {
     return value.filter((item): item is string => typeof item === "string");
   }
   return typeof value === "string" ? value : String(value);
-}
-
-/**
- * text_type 兜底推断只在缺失时运行，不能覆盖格式处理器的显式结果
- */
-export function infer_item_text_type_from_source(src: string): ItemTextType {
-  if (WOLF_PATTERNS.some((pattern) => pattern.test(src))) {
-    return "WOLF";
-  }
-  if (RPGMAKER_PATTERNS.some((pattern) => pattern.test(src))) {
-    return "RPGMAKER";
-  }
-  if (has_renpy_control_tag(src)) {
-    return "RENPY";
-  }
-  return "NONE";
 }
 
 // item 状态从数据库、API 和任务进度多处流入，先判定再统计
@@ -220,11 +175,6 @@ export function is_item_manual_status(value: unknown): value is ItemManualStatus
 // 文件格式只表示解析来源，不能用它替代文本规则语义
 export function is_item_file_type(value: unknown): value is ItemFileType {
   return ITEM_FILE_TYPE_SET.has(value as ItemFileType);
-}
-
-// 文本规则语义用于过滤和保护规则，来源于格式处理器或兜底推断
-export function is_item_text_type(value: unknown): value is ItemTextType {
-  return Check(PROJECT_ITEM_PUBLIC_SCHEMA.properties.text_type, value);
 }
 
 // 完整公开 DTO 必须携带全部持久字段。缺失字段由迁移补齐。
@@ -285,18 +235,4 @@ function build_project_item_persistent_record(
     id: item_id,
     row: row_number,
   };
-}
-
-// Ren'Py 控制标签内不含日韩文本时才视为语法标签，避免误判正文括号
-function has_renpy_control_tag(src: string): boolean {
-  RENPY_CONTROL_TAG_PATTERN.lastIndex = 0;
-  for (const match of src.matchAll(RENPY_CONTROL_TAG_PATTERN)) {
-    const body = String(match[1] ?? match[2] ?? "");
-    if (!has_language_character(body, "JA") && !has_language_character(body, "KO")) {
-      RENPY_CONTROL_TAG_PATTERN.lastIndex = 0;
-      return true;
-    }
-  }
-  RENPY_CONTROL_TAG_PATTERN.lastIndex = 0;
-  return false;
 }

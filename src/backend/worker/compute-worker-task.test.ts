@@ -21,7 +21,7 @@ describe("run_compute_worker_task", () => {
             name_src: "Alice",
             name_dst: "艾丽丝",
             status: "PROCESSED",
-            text_type: "NONE",
+            file_type: "TXT",
           },
         ],
         quality: {

@@ -1,3 +1,6 @@
+import type { PDFSummary } from "../../shared/pdf";
+import { JsonTool } from "../../shared/utils/json-tool";
+import { read_json_record } from "../../domain/json";
 import {
   type QualityRuleBlock,
   type QualityRuleSlice,
@@ -20,6 +23,17 @@ import { read_project_revision } from "../../domain/project-revision";
 
 export { PROJECT_DATA_SECTIONS };
 export type { ProjectDataSection };
+
+/** 单次准备的基础事实在事务提交后交给缓存，不持有额外长期状态。 */
+export interface ProjectDataSnapshot {
+  readonly meta: JsonRecord;
+  readonly pdf: Record<string, PDFSummary>;
+  readonly items: readonly ProjectItemPublicRecord[];
+  readonly files: Readonly<Record<string, ProjectFileRecord>>;
+  readonly quality: QualityRuleBlock;
+  readonly prompts: ProjectPrompts;
+  readonly section_revisions: Readonly<Record<ProjectDataSection, number>>;
+}
 
 /**
  * 统一读取项目 section revision，供读取接口和同步写入事件共享口径
@@ -64,14 +78,6 @@ export function build_section_revisions_from_meta(
 }
 
 /**
- * items 快照同时服务 files 回退索引和 items section，调用方负责按需触发读取
- */
-export type ProjectDataItemsSnapshot = {
-  item_records: ProjectItemPublicRecord[]; // files/items 共用同次读取，类型由文件组装入口确定
-  file_paths: Set<string>; // 缺少 asset 时按 Item 首次出现顺序回退文件集合与计数
-};
-
-/**
  * 项目运行态读取服务统一从 `.lg` 事实生成公开 project data block，不持有长期缓存
  */
 export class ProjectDataReader {
@@ -82,6 +88,20 @@ export class ProjectDataReader {
    */
   public constructor(database: ProjectDatabaseAccess) {
     this.database = database;
+  }
+
+  /** 调用者持有事务或读取作用域，所有消费者共享同一次条目读取。 */
+  public read_snapshot(project_path: string): ProjectDataSnapshot {
+    const meta = this.get_all_meta(project_path);
+    return {
+      meta,
+      pdf: this.database.read_pdf_summaries(project_path),
+      items: this.read_items(project_path),
+      files: this.build_files_record_block(project_path),
+      quality: this.build_quality_block(project_path, meta),
+      prompts: this.build_prompts_block(project_path, meta),
+      section_revisions: this.build_section_revisions(meta),
+    };
   }
 
   /**
@@ -106,25 +126,25 @@ export class ProjectDataReader {
     };
   }
 
-  /** files section 以 rel_path map 暴露，asset 表顺序优先，缺 asset 时沿 item 顺序。 */
-  public build_files_record_block(
-    project_path: string,
-    items: readonly Pick<
-      ProjectItemPublicRecord,
-      "file_path" | "file_type"
-    >[] = this.build_runtime_items_snapshot(project_path).item_records,
-    pdf_paths?: readonly string[],
-  ): Record<string, ProjectFileRecord> {
+  /** 校对按 pdf revision 补读页面，正文只进入后端查询运行态。 */
+  public read_pdf_documents(project_path: string) {
+    return this.database.read_pdf_documents(project_path);
+  }
+
+  /** files section 以资产路径和顺序构建。 */
+  public build_files_record_block(project_path: string): Record<string, ProjectFileRecord> {
     const asset_records =
       project_path === "" ? [] : this.database.get_all_asset_records(project_path);
-    return build_project_file_records(
-      asset_records,
-      items,
-      pdf_paths ??
-        (asset_records.length > 0
-          ? Object.keys(this.database.read_pdf_summaries(project_path))
-          : []),
-    );
+    const files = build_project_file_records(asset_records);
+    for (const file of Object.values(files)) {
+      if (file.file_type !== "TRANS") continue;
+      const bytes = this.database.read_asset_content(project_path, file.rel_path);
+      if (bytes !== null) {
+        const root = read_json_record(JsonTool.parseStrict(bytes));
+        file.game_engine = String(read_json_record(root["project"])["gameEngine"] ?? "");
+      }
+    }
+    return files;
   }
 
   /**
@@ -171,20 +191,12 @@ export class ProjectDataReader {
   }
 
   /**
-   * 一次读取 item 表并计算文件索引，让 files/items 在同一次组装中自洽
+   * 一次读取条目及其资产身份，供工程运行快照消费
    */
-  public build_runtime_items_snapshot(project_path: string): ProjectDataItemsSnapshot {
-    const item_records: ProjectItemPublicRecord[] = [];
-    const file_paths = new Set<string>();
-    for (const item of this.database.get_all_items(project_path)) {
-      const record = this.normalize_item_record(item);
-      item_records.push(record);
-      const file_path = String(record["file_path"] ?? "");
-      if (file_path !== "") {
-        file_paths.add(file_path);
-      }
-    }
-    return { item_records, file_paths };
+  public read_items(project_path: string): ProjectItemPublicRecord[] {
+    return this.database
+      .get_all_items(project_path)
+      .map((item) => this.normalize_item_record(item));
   }
 
   /**
@@ -218,10 +230,7 @@ export class ProjectDataReader {
     const asset_count = this.database.get_asset_count(project_path);
     const item_count = this.database.get_item_count(project_path);
     return {
-      files:
-        asset_count > 0
-          ? asset_count
-          : this.build_runtime_items_snapshot(project_path).file_paths.size,
+      files: asset_count,
       items: item_count,
     };
   }

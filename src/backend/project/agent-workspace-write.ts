@@ -178,7 +178,6 @@ function project_workspace_item(item: ProjectItemWriteRecord): JsonRecord {
     name_src: read_optional_item_name_text(item.name_src) ?? "",
     name_dst: read_optional_item_name_text(item.name_dst) ?? "",
     file_path: item.file_path,
-    text_type: item.text_type,
     row_number: item.row_number,
     status: item.status,
   };
@@ -310,7 +309,6 @@ function item_fingerprint_tuple(row: JsonRecord): JsonValue[] {
     row["name_src"] ?? "",
     row["name_dst"] ?? "",
     row["file_path"] ?? "",
-    row["text_type"] ?? "NONE",
     row["row_number"] ?? 0,
     row["status"] ?? "NONE",
   ];

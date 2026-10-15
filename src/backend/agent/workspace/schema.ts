@@ -51,7 +51,6 @@ export const AGENT_WORKSPACE_ITEM_SCHEMA = Type.Object(
     name_src: Type.String(),
     name_dst: Type.String(),
     file_path: PROJECT_ITEM_PUBLIC_SCHEMA.properties.file_path,
-    text_type: PROJECT_ITEM_PUBLIC_SCHEMA.properties.text_type,
     row_number: Type.Integer({ minimum: 0 }),
     status: PROJECT_ITEM_PUBLIC_SCHEMA.properties.status,
   },
@@ -184,7 +183,7 @@ export const AGENT_WORKSPACE_PROJECT_META_SCHEMA = Type.Object(
     files: Type.Array(
       Type.Object(
         {
-          file_path: Type.String(),
+          file_path: Type.String({ description: "资产身份，用于关联条目和页面" }),
           file_type: Type.String(),
         },
         { additionalProperties: false },

@@ -28,13 +28,11 @@ describe("run_project_item_stable_metadata_migration", () => {
         status: "PROCESSED",
         file_type: "XLSX",
         row: 7,
-        text_type: "WOLF",
       },
       {
         src: "B",
         status: "NONE",
         file_type: "NONE",
-        text_type: "NONE",
         row: 0,
         retry_count: "legacy",
       },
@@ -42,7 +40,6 @@ describe("run_project_item_stable_metadata_migration", () => {
         src: "legacy",
         status: "NONE",
         file_type: "MD",
-        text_type: "NONE",
         row: 0,
       },
     ]);

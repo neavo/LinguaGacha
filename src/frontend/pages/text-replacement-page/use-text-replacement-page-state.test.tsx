@@ -7,6 +7,7 @@ import { createEmptyQualityRuleStatisticsCacheSnapshot } from "@frontend/app/ses
 import { useProjectWriteCommitter } from "@frontend/app/state/desktop-project-write";
 import { useTextReplacementPageState } from "./use-text-replacement-page-state";
 import type { TextReplacementEntry } from "./types";
+import type { ProjectWriteResult } from "@shared/project-event";
 
 const api = vi.hoisted(() => vi.fn());
 const toast = vi.hoisted(() => vi.fn());
@@ -88,13 +89,17 @@ it.each(["pre", "post"] as const)(
             accepted: true,
             changes: [
               {
+                eventId: `quality-${revision}`,
+                type: "project.changed",
+                source: "quality_rule_update",
                 projectPath: project.path,
                 projectRevision: revision,
                 updatedSections: ["quality"],
                 sectionRevisions: { quality: revision },
+                qualityStatisticsScope: variant === "pre" ? "all" : "post_replacement",
               },
             ],
-          };
+          } satisfies ProjectWriteResult;
         default:
           throw new Error("Unexpected route: " + route);
       }

@@ -14,7 +14,7 @@ export const en_us_workbench_page = {
     actions: "Actions",
   },
   feedback: {
-    add_file_loading_toast: "Adding file and refreshing cache …",
+    add_file_loading_toast: "Adding files …",
     no_valid_file: "No valid files can be added",
     close_project_failed: "Failed to close the project. Please try again later …",
   },

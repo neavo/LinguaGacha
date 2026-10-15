@@ -43,7 +43,7 @@ function evaluate(args: {
       name_src: args.name_src ?? null,
       name_dst: args.name_dst ?? null,
       status: "PROCESSED",
-      text_type: "NONE",
+      file_type: "TXT",
     },
     quality,
     quality_context: buildProofreadingEvaluationContext(quality),

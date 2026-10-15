@@ -2,7 +2,6 @@ import { database_error } from "./database-error";
 import type { ProjectPreview } from "../../shared/project-preview";
 import { read_project_revision } from "../../domain/project-revision";
 import { build_project_translation_stats } from "../../shared/project-translation-stats";
-import { build_project_file_paths } from "../../shared/project/project-file-paths";
 import type { PDFDocument, PDFDocumentRecord, PDFPage, PDFSummary } from "../../shared/pdf";
 import { read_pdf_document } from "../../shared/pdf-schema";
 import path from "node:path";
@@ -12,7 +11,6 @@ import { DatabaseSync } from "node:sqlite";
 import { ZstdTool } from "./zstd-tool";
 import { JsonTool } from "../../shared/utils/json-tool";
 import * as AppErrors from "../../shared/error";
-import { NativeFs } from "../../native/native-fs";
 import type { ProjectItemWriteFields } from "../../shared/project/project-item-update";
 import { normalize_project_item_field_patch } from "../../shared/project/project-item-update";
 
@@ -49,6 +47,7 @@ export type ProjectDatabaseWrite = (database: ProjectDatabaseAccess) => void;
 export type ProjectAssetRecord = Readonly<{
   path: string; // 工程内的资产路径
   sort_order: number; // 资产表中的排序位
+  file_type: string; // 资产拥有格式身份，零条目文件也保留。
 }>;
 
 /**
@@ -99,11 +98,10 @@ function bytes_from_blob(value: unknown): Buffer {
 /** 单次数据库批次的同步读写对象，结束后失效。 */
 export class ProjectDatabaseAccess {
   public active = true; // 由拥有连接的批次撤销，不能跨事务复用。
-  /** 绑定本批工程路径与连接，资产 IO 沿用宿主路径策略。 */
+  /** 绑定本批工程路径与连接。 */
   public constructor(
     private readonly project_path: string,
     private readonly db: DatabaseSync,
-    private readonly native_fs: NativeFs,
   ) {}
   /** 同步读写只接受仍有效且属于本工程的作用域。 */
   private with_project_connection<T>(project_path: string, callback: (db: DatabaseSync) => T): T {
@@ -142,28 +140,30 @@ export class ProjectDatabaseAccess {
   }
 
   /** 资产和 PDF 元数据同属一次导入，由调用方事务保证一起提交。 */
-  public add_asset_from_source(
+  public add_asset(
     project_path: string,
     asset_path: string,
-    source_path: string,
+    source: Uint8Array,
+    file_type: string,
     document: PDFDocument | null,
     sort_order: number | null = null,
   ): void {
     this.with_project_connection(project_path, (db) => {
-      this.insert_asset_from_source(db, asset_path, source_path, sort_order);
+      this.insert_asset(db, asset_path, source, file_type, sort_order);
       this.replace_pdf_source(db, asset_path, document);
     });
   }
 
   /** 替换资产同时更新 PDF 来源。摘要不符时由外层事务回滚两者。 */
-  public update_asset_from_source(
+  public update_asset(
     project_path: string,
     asset_path: string,
-    source_path: string,
+    source: Uint8Array,
+    file_type: string,
     document: PDFDocument | null,
   ): void {
     this.with_project_connection(project_path, (db) => {
-      this.replace_asset_from_source(db, asset_path, source_path);
+      this.replace_asset(db, asset_path, source, file_type);
       this.replace_pdf_source(db, asset_path, document);
     });
   }
@@ -448,53 +448,49 @@ export class ProjectDatabaseAccess {
   }
 
   /**
-   * 从源文件导入 asset，统一压缩和排序字段写入
+   * 将解析时固定的原始字节压缩后写入资产，保持定位与原稿一致
    */
-  private insert_asset_from_source(
+  private insert_asset(
     db: DatabaseSync,
     asset_path: string,
-    source_path: string,
+    source: Uint8Array,
+    file_type: string,
     sort_order: number | null,
   ): void {
-    const original_data = this.native_fs.read_file(source_path);
+    const original_data = Buffer.from(source);
     const compressed = ZstdTool.compress(original_data);
-    this.add_asset_buffer(db, asset_path, compressed, original_data.byteLength, sort_order);
-  }
-
-  /**
-   * 写入 asset buffer，集中处理压缩和记录插入
-   */
-  private add_asset_buffer(
-    db: DatabaseSync,
-    asset_path: string,
-    compressed: Buffer,
-    original_size: number,
-    sort_order: number | null,
-  ): void {
     const effective_sort_order = sort_order ?? this.get_next_asset_sort_order(db);
     db.prepare(
-      `INSERT INTO assets (path, sort_order, data, original_size, compressed_size)
-       VALUES (?, ?, ?, ?, ?)`,
-    ).run(asset_path, effective_sort_order, compressed, original_size, compressed.byteLength);
+      `INSERT INTO assets (path, sort_order, data, original_size, compressed_size, file_type)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+    ).run(
+      asset_path,
+      effective_sort_order,
+      compressed,
+      original_data.byteLength,
+      compressed.byteLength,
+      file_type,
+    );
   }
 
   /**
-   * 用源文件更新 asset 内容，保持路径记录不被调用方重建
+   * 更新资产内容与格式身份，保持已有路径和顺序
    */
-  private replace_asset_from_source(
+  private replace_asset(
     db: DatabaseSync,
     asset_path: string,
-    source_path: string,
+    source: Uint8Array,
+    file_type: string,
   ): void {
-    const original_data = this.native_fs.read_file(source_path);
+    const original_data = Buffer.from(source);
     const compressed = ZstdTool.compress(original_data);
     const result = db
       .prepare(
         `UPDATE assets
-         SET data = ?, original_size = ?, compressed_size = ?
+         SET data = ?, original_size = ?, compressed_size = ?, file_type = ?
          WHERE path = ?`,
       )
-      .run(compressed, original_data.byteLength, compressed.byteLength, asset_path);
+      .run(compressed, original_data.byteLength, compressed.byteLength, file_type, asset_path);
     if (Number(result.changes) === 0) {
       throw new AppErrors.AppError("database.conflict", {
         diagnostic_context: { reason: "Asset does not exist and cannot be updated." },
@@ -514,9 +510,13 @@ export class ProjectDatabaseAccess {
    */
   private read_all_asset_records(db: DatabaseSync): ProjectAssetRecord[] {
     return db
-      .prepare("SELECT path, sort_order FROM assets ORDER BY sort_order ASC, id ASC")
+      .prepare("SELECT path, sort_order, file_type FROM assets ORDER BY sort_order ASC, id ASC")
       .all()
-      .map((row) => ({ path: row_text(row, "path"), sort_order: row_number(row, "sort_order") }));
+      .map((row) => ({
+        path: row_text(row, "path"),
+        sort_order: row_number(row, "sort_order"),
+        file_type: row_text(row, "file_type"),
+      }));
   }
 
   /**
@@ -541,10 +541,13 @@ export class ProjectDatabaseAccess {
    * 读取全部条目事实，供项目数据读取和任务快照重建
    */
   private read_all_items(db: DatabaseSync): JsonRecord[] {
+    const file_types = new Map(
+      this.read_all_asset_records(db).map((asset) => [asset.path, asset.file_type]),
+    );
     return db
       .prepare("SELECT id, data FROM items ORDER BY id")
       .all()
-      .map((row) => ({ ...this.value_record(json_parse(row["data"])), id: row_number(row, "id") }));
+      .map((row) => this.read_item_record(row, file_types));
   }
 
   /**
@@ -596,6 +599,9 @@ export class ProjectDatabaseAccess {
     if (normalized_ids.length === 0) {
       return [];
     }
+    const file_types = new Map(
+      this.read_all_asset_records(db).map((asset) => [asset.path, asset.file_type]),
+    );
     const rows_by_id = new Map<number, JsonRecord>();
     for_each_sqlite_in_clause_chunk(normalized_ids, (chunk) => {
       const placeholders = chunk.map(() => "?").join(",");
@@ -603,7 +609,7 @@ export class ProjectDatabaseAccess {
         .prepare(`SELECT id, data FROM items WHERE id IN (${placeholders})`)
         .all(...chunk)) {
         const item_id = row_number(row, "id");
-        rows_by_id.set(item_id, { ...this.value_record(json_parse(row["data"])), id: item_id });
+        rows_by_id.set(item_id, this.read_item_record(row, file_types));
       }
     });
     return normalized_ids
@@ -624,6 +630,8 @@ export class ProjectDatabaseAccess {
       const item_id = item["id"];
       const data = { ...item };
       delete data["id"];
+      delete data["file_type"];
+      delete data["text_type"];
       if (item_id !== undefined && item_id !== null && item_id !== "") {
         insert_with_id.run(Number(item_id), JsonTool.stringifyStrict(data));
         ids.push(Number(item_id));
@@ -748,10 +756,7 @@ export class ProjectDatabaseAccess {
           status: String(item["status"] ?? "NONE"),
         };
       });
-    const file_paths = build_project_file_paths(
-      assets.map((asset) => row_text(asset, "path")),
-      items.map((item) => item.file_path),
-    );
+    const file_paths = assets.map((asset) => row_text(asset, "path"));
     return {
       file_paths,
       created_at: String(meta["created_at"] ?? ""),
@@ -768,5 +773,22 @@ export class ProjectDatabaseAccess {
       return {};
     }
     return value as JsonRecord;
+  }
+
+  /** 迁移在项目打开事务中更新资产身份。 */
+  public set_asset_file_type(project_path: string, file_path: string, file_type: string): void {
+    this.with_project_connection(project_path, (db) => {
+      db.prepare("UPDATE assets SET file_type = ? WHERE path = ?").run(file_type, file_path);
+    });
+  }
+
+  /** 解析正文一次后补齐资产身份，避免大工程逐行重复解析 JSON 做关联。 */
+  private read_item_record(row: DatabaseRow, file_types: ReadonlyMap<string, string>): JsonRecord {
+    const item = this.value_record(json_parse(row["data"]));
+    return {
+      ...item,
+      id: row_number(row, "id"),
+      file_type: file_types.get(String(item["file_path"] ?? "")) ?? "NONE",
+    };
   }
 }

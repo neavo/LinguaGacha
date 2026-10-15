@@ -1,4 +1,5 @@
 import type { QualityStatisticsTextChangeScope } from "../../shared/project-event";
+import { assert_source_file_paths } from "../file/source-file-paths";
 import type { CacheManager } from "../cache/cache-manager";
 import type { PDFDocument } from "../../shared/pdf";
 import {
@@ -78,16 +79,18 @@ type ProjectWriteRevisionContext = {
  */
 export type ProjectAssetWrite =
   | {
-      kind: "add_from_source";
+      kind: "add";
       path: string;
-      sourcePath: string;
+      content: Uint8Array;
+      fileType: string;
       pdfDocument: PDFDocument | null;
       sortOrder: number;
     }
   | {
-      kind: "update_from_source";
+      kind: "update";
       path: string;
-      sourcePath: string;
+      content: Uint8Array;
+      fileType: string;
       pdfDocument: PDFDocument | null;
     }
   | {
@@ -156,7 +159,7 @@ export class ProjectWriteStore {
     database: ProjectDatabase,
     apply_committed_change: ProjectCommittedChangeHandler,
     project_change_publisher: ProjectChangePublisher | null,
-    private readonly cache?: Pick<CacheManager, "readItemWriteScope" | "readFileMetadata">,
+    private readonly cache?: Pick<CacheManager, "readItemWriteScope">,
   ) {
     this.database = database;
     this.apply_committed_change = apply_committed_change;
@@ -302,6 +305,18 @@ export class ProjectWriteStore {
       updatedSections: request.updatedSections,
       prepare: (revision_context) => {
         const item_records: ProjectItemPublicRecord[] = [];
+        if (request.assetWrites?.length) {
+          const files = new Map<string, { path: string; file_type: string }>(
+            revision_context.database
+              .get_all_asset_records(request.projectPath)
+              .map((asset) => [asset.path, asset]),
+          );
+          for (const write of request.assetWrites) {
+            if (write.kind === "delete") files.delete(write.path);
+            else files.set(write.path, { path: write.path, file_type: write.fileType });
+          }
+          assert_source_file_paths(files.values()); // 事务内核对最终集合，陈旧预览和直接请求都不能绕过。
+        }
         const pdf_changed =
           (request.resetPDFPaths?.length ?? 0) > 0 ||
           (request.assetWrites ?? []).some(
@@ -888,12 +903,6 @@ export class ProjectWriteStore {
         },
         { ...revision_context.meta, ...revision_context.pendingMeta },
         prepared_change.itemRecords,
-        prepared_change.itemRecords === undefined && updated_sections.includes("files")
-          ? this.cache?.readFileMetadata(
-              request.projectPath,
-              get_section_revision(revision_context.meta, "items"),
-            )
-          : undefined,
       );
     });
     // 事务已经提交。后续任一步失败都必须携带能够读取到的最新 revision，禁止调用方重试。
@@ -929,8 +938,19 @@ export class ProjectWriteStore {
   }
 
   /**
-   * 在当前事务中校验 section revision，并返回后续写入复用的 meta 快照。
+   * 修改外部来源前先检查确认是否陈旧，复用正式提交的修订规则。
    */
+  public async check_section_revisions(
+    project_path: string,
+    expected: ProjectExpectedSectionRevisions,
+    sections: ProjectDataSection[],
+  ): Promise<void> {
+    await this.database.read(project_path, (reader) => {
+      this.assert_expected_section_revisions(reader, project_path, expected, sections);
+    });
+  }
+
+  /** 正式提交仍在事务内复核，外部来源准备不能替代提交校验。 */
   private assert_expected_section_revisions(
     database: ProjectDatabaseAccess,
     project_path: string,
@@ -1005,22 +1025,24 @@ export class ProjectWriteStore {
    * 将项目 asset 操作转换为数据库 workflow 操作。
    */
   private build_asset_write(project_path: string, write: ProjectAssetWrite): ProjectDatabaseWrite {
-    if (write.kind === "add_from_source") {
+    if (write.kind === "add") {
       return (database) =>
-        database.add_asset_from_source(
+        database.add_asset(
           project_path,
           write.path,
-          write.sourcePath,
+          write.content,
+          write.fileType,
           write.pdfDocument,
           write.sortOrder,
         );
     }
-    if (write.kind === "update_from_source") {
+    if (write.kind === "update") {
       return (database) =>
-        database.update_asset_from_source(
+        database.update_asset(
           project_path,
           write.path,
-          write.sourcePath,
+          write.content,
+          write.fileType,
           write.pdfDocument,
         );
     }

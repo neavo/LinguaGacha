@@ -1,4 +1,4 @@
-import { read_translation_for_generation } from "../translation-generation-text";
+import { read_translation_for_generation } from "../shared/translation-generation-text";
 import JSZip from "jszip";
 import render from "dom-serializer";
 import { Element, isTag, Text, type ChildNode } from "domhandler";
@@ -6,7 +6,8 @@ import { write_zip, type ZipContents } from "./epub-zip";
 
 import type { Item } from "../../../domain/item";
 import { read_json_record, type JsonRecord } from "../../../domain/json";
-import { write_binary_file, type FileFormatServiceConfig } from "../file-format-shared";
+import { write_binary_file } from "../shared/file-format-helpers";
+import { type FileFormatServiceConfig } from "../file-format-types";
 import { EpubAst, read_epub_extra, read_epub_text_run } from "./epub-ast";
 import { split_text_lines } from "../../../shared/text/text-lines";
 

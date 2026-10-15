@@ -9,7 +9,12 @@ describe("ItemCache", () => {
     const cache = new ItemCache();
     const items = [
       create_item(1, { src: "同文", status: "NONE", name_src: ["甲", "乙"] }),
-      create_item(2, { src: "同文", status: "DUPLICATED", name_src: ["甲", "乙"] }),
+      create_item(2, {
+        file_path: "other.txt",
+        src: "同文",
+        status: "DUPLICATED",
+        name_src: ["甲", "乙"],
+      }),
       create_item(3, { src: "同文", status: "ERROR", name_src: ["甲", "乙"] }),
       create_item(4, { src: "同文", status: "RULE_SKIPPED", name_src: ["甲", "乙"] }),
       create_item(5, { src: "同文", status: "NONE", name_src: ["丙"] }),
@@ -103,12 +108,6 @@ describe("ItemCache", () => {
     });
 
     expect(cache.readItems().map((item) => item["item_id"])).toEqual([1, 2, 3, 4]);
-    const files = cache.readFileMetadata();
-    expect(files).toEqual([
-      { file_path: "a.txt", file_type: "TXT" },
-      { file_path: "c.txt", file_type: "TXT" },
-    ]);
-    files[0]!.file_path = "changed";
     expect(cache.readItem(1)?.file_path).toBe("a.txt");
     expect(cache.readItem(1)).toMatchObject({
       item_id: 1,
@@ -136,7 +135,6 @@ function create_item(
     row_number: item_id,
     file_type: "TXT",
     file_path: "",
-    text_type: "NONE",
     status: "NONE",
     skip_internal_filter: false,
     ...overrides,

@@ -1,4 +1,4 @@
-import { create_empty_quality_rule_block } from "../project/project-data-reader";
+import { ProjectDataReader, create_empty_quality_rule_block } from "../project/project-data-reader";
 import { describe, expect, it, vi } from "vitest";
 
 import type { AppSettingService } from "../app/app-setting-service";
@@ -28,7 +28,6 @@ function create_item(overrides: MutableRecord = {}): MutableRecord {
     row: 0,
     file_type: "TXT",
     file_path: "script.txt",
-    text_type: "NONE",
     status: "NONE",
     skip_internal_filter: false,
     ...overrides,
@@ -71,7 +70,7 @@ function create_database(
     get_all_meta: vi.fn(() => options.meta ?? {}),
     get_all_items,
     get_items_by_ids,
-    get_all_asset_records: vi.fn(() => [{ path: "script.txt", sort_order: 0 }]),
+    get_all_asset_records: vi.fn(() => [{ path: "script.txt", sort_order: 0, file_type: "TXT" }]),
     get_rules,
     get_rule_text,
   } as unknown as ProjectDatabaseAccess & {
@@ -121,6 +120,28 @@ function create_cache(options: {
 }
 
 describe("CacheManager", () => {
+  it("已提交快照安装失败后阻止读取，重新热机恢复完整事实", async () => {
+    const project = "E:/Project/demo.lg";
+    const database = create_database({ items: [create_item()] });
+    const cache = create_cache({ database });
+    const snapshot = new ProjectDataReader(database).read_snapshot(project);
+    vi.spyOn(cache.files, "replace").mockImplementationOnce(() => {
+      throw new Error("install failed");
+    });
+    expect(() => cache.installProject(project, snapshot)).toThrow("install failed");
+    expect(cache.snapshot().freshness).toBe("recoverable_error");
+    expect(() => cache.items.readItems()).toThrow(
+      expect.objectContaining({ code: "data.committed_sync_failed" }),
+    );
+    await cache.warmProject(project);
+    expect(cache.items.readItems()).toEqual(snapshot.items);
+    expect(cache.files.readFileEntries()).toEqual(Object.values(snapshot.files));
+    expect(cache.snapshot()).toMatchObject({
+      freshness: "fresh",
+      sectionRevisions: snapshot.section_revisions,
+    });
+  });
+
   it("热机后缓存当前工程 items、质量块、提示词块和 section revision", async () => {
     const cache = create_cache({
       database: create_database({
@@ -177,9 +198,9 @@ describe("CacheManager", () => {
       ],
     });
     const assets = vi.spyOn(database, "get_all_asset_records").mockReturnValue([
-      { path: "b.txt", sort_order: 0 },
-      { path: "a.txt", sort_order: 1 },
-      { path: "book.pdf", sort_order: 2 },
+      { path: "b.txt", sort_order: 0, file_type: "TXT" },
+      { path: "a.txt", sort_order: 1, file_type: "TXT" },
+      { path: "book.pdf", sort_order: 2, file_type: "PDF" },
     ]);
     vi.spyOn(database, "read_pdf_summaries").mockReturnValue({
       "book.pdf": { pages: 1, translated_pages: 0, kept_pages: 0, omitted_pages: 0 },
@@ -227,9 +248,9 @@ describe("CacheManager", () => {
     database.get_rules.mockClear();
     database.get_rule_text.mockClear();
     assets.mockReturnValue([
-      { path: "book.pdf", sort_order: 0 },
-      { path: "a.txt", sort_order: 1 },
-      { path: "b.txt", sort_order: 2 },
+      { path: "book.pdf", sort_order: 0, file_type: "PDF" },
+      { path: "a.txt", sort_order: 1, file_type: "TXT" },
+      { path: "b.txt", sort_order: 2, file_type: "TXT" },
     ]);
     await cache.applyCommittedChange({
       ...build_project_committed_change(
@@ -241,8 +262,6 @@ describe("CacheManager", () => {
           updatedSections: ["files"],
         },
         await database.get_all_meta("E:/Project/demo.lg"),
-        undefined,
-        cache.items.readFileMetadata(),
       ),
       sectionRevisions: { files: 1 },
     });

@@ -14,12 +14,12 @@ import type { LogManager } from "../log/log-manager";
 import { AppSettingService } from "../app/app-setting-service";
 import { ProjectSessionState } from "../project/project-session-state";
 import { FileFormatService } from "./file-format-service";
-import { type ItemNameField, type Item, create_item } from "../../domain/item";
+import { type Item, create_item } from "../../domain/item";
 import { resolve_app_locale, type AppLanguage } from "../../domain/app-language";
 import { normalize_setting_snapshot, type SettingSnapshot } from "../../domain/setting";
 import { create_text_resolver, format_i18n_message, type LocaleKey } from "../../shared/i18n";
 import { NativeFs, default_native_fs } from "../../native/native-fs";
-import type { GeneratedFilePaths } from "./file-format-shared";
+import type { GeneratedFilePaths } from "./file-format-types";
 import { build_project_item_duplicate_key } from "../../shared/project/project-item-duplicates";
 
 /**
@@ -88,13 +88,7 @@ export class TranslationFileGenerationService {
         ),
       );
       const paths = this.build_cli_generation_paths(output_dir);
-      await this.generate_to_paths(
-        project_path,
-        items.filter((item) => !excluded_files.includes(item.file_path)),
-        paths,
-        config,
-        excluded_files,
-      );
+      await this.generate_to_paths(project_path, items, paths, config, excluded_files);
       const pdf_files = await this.write_pdf_files(project_path, paths, documents);
       return {
         accepted: true as const,
@@ -164,13 +158,17 @@ export class TranslationFileGenerationService {
       this.pdf_execution,
       this.native_fs,
     );
-    await format_service.write_items(items, {
-      paths,
-      asset_reader: (rel_path) => this.database.read_asset_content(project_path, rel_path),
-      source_files: (await this.database.get_all_asset_records(project_path))
-        .map((record) => record.path)
-        .filter((file) => !excluded_files.includes(file)),
-    });
+    // 先在整个项目中补齐译文，排除输出的文件也可能持有重复组代表。
+    await format_service.write_items(
+      items.filter((item) => !excluded_files.includes(item.file_path)),
+      {
+        paths,
+        asset_reader: (rel_path) => this.database.read_asset_content(project_path, rel_path),
+        source_files: (await this.database.get_all_asset_records(project_path)).filter(
+          (file) => !excluded_files.includes(file.path),
+        ),
+      },
+    );
   }
 
   /** 在任何输出落盘前固定译稿并验证可确定条件，避免不同入口各自解释 PDF 规则。 */
@@ -290,20 +288,18 @@ export class TranslationFileGenerationService {
   }
 
   /**
-   * DUPLICATED 条目按项目统一重复身份复用已处理译文。
+   * `DUPLICATED` 条目复用组内最小 ID 的已完成译文，只修改导出副本。
    */
   private fill_duplicated_translations(items: Item[]): void {
-    const translations = new Map<string, { dst: string; name_dst: ItemNameField }>();
+    const translations = new Map<string, Item>(); // 多条已完成结果各自保留，重复项共用稳定代表。
     for (const item of items) {
       if (item.status !== "PROCESSED") {
         continue;
       }
       const key = build_project_item_duplicate_key(item);
-      if (!translations.has(key)) {
-        translations.set(key, {
-          dst: item.dst,
-          name_dst: item.name_dst,
-        });
+      const current = translations.get(key);
+      if (current === undefined || (item.id ?? Infinity) < (current.id ?? Infinity)) {
+        translations.set(key, item);
       }
     }
     for (const item of items) {
