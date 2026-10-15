@@ -1474,70 +1474,6 @@ describe("ProjectContentService", () => {
     await database.close();
   });
 
-  it.each(["delete", "replace"] as const)(
-    "代表文件 %s 后由其它文件的重复项接任",
-    async (action) => {
-      const { publish_project_change } = create_test_project_change_publisher();
-      const { database, service, lg_path } = await create_service(publish_project_change);
-      try {
-        await database.transaction(lg_path, (writer) =>
-          writer.add_asset(lg_path, "a.txt", Buffer.from("同文"), "TXT", null),
-        );
-        await database.transaction(lg_path, (writer) =>
-          writer.add_asset(lg_path, "b.txt", Buffer.from("同文"), "TXT", null),
-        );
-        await database.transaction(lg_path, (writer) =>
-          writer.set_meta(lg_path, "skip_duplicate_source_text_enable", true),
-        );
-        await database.transaction(lg_path, (writer) =>
-          writer.set_items(lg_path, [
-            create_persistent_item({ item_id: 1, src: "同文", file_path: "a.txt", status: "NONE" }),
-            create_persistent_item({
-              item_id: 2,
-              src: "同文",
-              file_path: "b.txt",
-              status: "DUPLICATED",
-            }),
-          ]),
-        );
-        const request = {
-          project_settings: { source_language: "ZH", skip_duplicate_source_text_enable: true },
-          expected_section_revisions: { files: 0, items: 0 },
-        };
-        if (action === "delete") {
-          await service.delete_files({ ...request, rel_paths: ["a.txt"] });
-        } else {
-          const source = project_path("replacement.txt");
-          fs.writeFileSync(source, "新文", "utf8");
-          await service.import_files({
-            ...request,
-            files: [{ source_path: source, target_rel_path: "a.txt" }],
-            conflict_action: "replace",
-          });
-        }
-        expect((await database.get_all_items(lg_path)).find((item) => item.id === 2)).toMatchObject(
-          {
-            status: "NONE",
-            file_path: "b.txt",
-          },
-        );
-        expect(await read_meta(database, lg_path, "translation_extras", {})).toMatchObject({
-          total_line: action === "delete" ? 1 : 2,
-        });
-        expect(publish_project_change.mock.calls[0]?.[0]).toMatchObject({
-          items: {
-            mode: "full",
-            records: expect.arrayContaining([
-              expect.objectContaining({ item_id: 2, status: "NONE" }),
-            ]),
-          },
-        });
-      } finally {
-        await database.close();
-      }
-    },
-  );
-
   it("导入同名工作台文件选择替换时保留排序并重建条目", async () => {
     const { publish_project_change } = create_test_project_change_publisher();
     const { database, service, lg_path } = await create_service(publish_project_change);
@@ -1689,7 +1625,7 @@ describe("ProjectContentService", () => {
           name_dst: "太郎译名",
           status: "PROCESSED",
         },
-        { src: "こんにちは", name_src: "花子", dst: "", name_dst: null, status: "DUPLICATED" },
+        { src: "こんにちは", name_src: "花子", dst: "", name_dst: null, status: "NONE" },
         { src: "", name_src: "俊輔", dst: "", name_dst: "俊辅", status: "PROCESSED" },
       ]);
     } finally {

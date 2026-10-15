@@ -43,7 +43,7 @@ describe("project item duplicate coordination", () => {
     ]);
   });
 
-  it("按可见角色名区分重复组", () => {
+  it("按文件和可见角色名区分重复组", () => {
     expect(
       coordinate_project_duplicate_statuses(
         [
@@ -51,6 +51,7 @@ describe("project item duplicate coordination", () => {
           item(2, "NONE", { name_src: ["甲", "附加列"] }),
           item(3, "NONE", { name_src: "乙" }),
           item(4, "NONE", { name_src: "甲" }),
+          item(5, "NONE", { name_src: "甲", file_path: "b.txt" }),
         ],
         true,
       ),
@@ -69,6 +70,7 @@ function item(
 ): ProjectDuplicateItem {
   return {
     item_id,
+    file_path: "a.txt",
     src: "同文",
     name_src: null,
     status,

@@ -1,8 +1,9 @@
 import type { ItemNameField, ItemStatus } from "../../domain/item";
 import { read_optional_item_name_text } from "../item-name";
 
-/** 项目内的重复关系由正文和翻译实际使用的角色名共同决定。 */
+/** 文件内的重复关系由正文和翻译实际使用的角色名共同决定。 */
 export type ProjectItemDuplicateIdentity = Readonly<{
+  file_path: string; // 重复关系不跨文件
   src: string; // 完全相同的正文
   name_src: ItemNameField; // 翻译管线只消费可见姓名槽位
 }>;
@@ -10,7 +11,7 @@ export type ProjectItemDuplicateIdentity = Readonly<{
 /** 重复协调只依赖稳定身份、重复组键和当前状态。 */
 export type ProjectDuplicateItem = ProjectItemDuplicateIdentity &
   Readonly<{
-    item_id: number; // 稳定条目身份，同时决定项目内代表项顺序
+    item_id: number; // 稳定条目身份，同时决定文件内代表项顺序
     status: ItemStatus; // 当前权威状态
   }>;
 
@@ -75,5 +76,5 @@ export function coordinate_project_duplicate_statuses(
  * 构造预过滤、项目写入和导出共用的重复身份；姓名使用翻译管线实际消费的可见槽位。
  */
 export function build_project_item_duplicate_key(item: ProjectItemDuplicateIdentity): string {
-  return JSON.stringify([item.src, read_optional_item_name_text(item.name_src)]);
+  return JSON.stringify([item.file_path, item.src, read_optional_item_name_text(item.name_src)]);
 }

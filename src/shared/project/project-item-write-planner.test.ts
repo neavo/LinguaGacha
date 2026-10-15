@@ -43,7 +43,7 @@ describe("project item write planner", () => {
 function item(item_id: number, status: ItemStatus): ProjectItemWriteRecord {
   return {
     item_id,
-    file_path: `${item_id}.txt`,
+    file_path: "demo.txt",
     row_number: item_id - 1,
     src: "同文",
     name_src: null,

@@ -258,7 +258,7 @@ describe("ProjectLifecycleService", () => {
     ]);
   });
 
-  it.each([true, false])("打开旧项目在缓存热机前协调跨文件重复状态，开关为 %s", async (enabled) => {
+  it.each([true, false])("打开项目在缓存热机前协调同文件重复状态，开关为 %s", async (enabled) => {
     const project_path = path.join(create_temp_dir(), "duplicates.lg");
     const database = new ProjectDatabase();
     try {
@@ -266,7 +266,7 @@ describe("ProjectLifecycleService", () => {
         database.set_meta(project_path, "skip_duplicate_source_text_enable", enabled);
         database.set_items(project_path, [
           create_item({ id: 1, src: "同文", file_path: "a.txt", row: 99, status: "DUPLICATED" }),
-          create_item({ id: 2, src: "同文", file_path: "b.txt", row: 0, status: "NONE" }),
+          create_item({ id: 2, src: "同文", file_path: "a.txt", row: 0, status: "NONE" }),
           create_item({
             id: 3,
             src: "已译",
@@ -277,11 +277,11 @@ describe("ProjectLifecycleService", () => {
           create_item({
             id: 4,
             src: "已译",
-            file_path: "b.txt",
+            file_path: "a.txt",
             dst: "保留乙",
             status: "PROCESSED",
           }),
-          create_item({ id: 5, src: "同文", file_path: "c.txt", status: "EXCLUDED" }),
+          create_item({ id: 5, src: "同文", file_path: "a.txt", status: "EXCLUDED" }),
         ]);
       });
       const service = create_service({

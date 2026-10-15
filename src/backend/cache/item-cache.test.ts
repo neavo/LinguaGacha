@@ -10,7 +10,6 @@ describe("ItemCache", () => {
     const items = [
       create_item(1, { src: "同文", status: "NONE", name_src: ["甲", "乙"] }),
       create_item(2, {
-        file_path: "other.txt",
         src: "同文",
         status: "DUPLICATED",
         name_src: ["甲", "乙"],
@@ -18,7 +17,12 @@ describe("ItemCache", () => {
       create_item(3, { src: "同文", status: "ERROR", name_src: ["甲", "乙"] }),
       create_item(4, { src: "同文", status: "RULE_SKIPPED", name_src: ["甲", "乙"] }),
       create_item(5, { src: "同文", status: "NONE", name_src: ["丙"] }),
-      create_item(6, { src: "同文", status: "NONE", file_path: "other.txt" }),
+      create_item(6, {
+        src: "同文",
+        status: "NONE",
+        name_src: ["甲", "乙"],
+        file_path: "other.txt",
+      }),
     ];
     cache.replace(items);
     expect(cache.readWriteScope([1])).toEqual([1, 2, 3]);
