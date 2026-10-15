@@ -30,11 +30,13 @@ describe("Agent 工具公共边界", () => {
     const error = new AgentToolError({ code: "test.invalid" });
     expect(normalize_agent_tool_error(error)).toBe(error);
     const conflict = new AppError("data.revision_conflict", {
+      message: "quality revision changed",
       public_details: { section: "quality", expected_revision: 2, current_revision: 3 },
     });
     expect(normalize_agent_tool_error(conflict)).toMatchObject({
       details: {
         code: "data.revision_conflict",
+        message: "quality revision changed",
         section: "quality",
         expected_revision: 2,
         current_revision: 3,
@@ -50,6 +52,24 @@ describe("Agent 工具公共边界", () => {
     });
     expect(normalize_agent_tool_error(new AppError("model.provider_failed"))).toMatchObject({
       severity: "warning",
+    });
+  });
+
+  it("聚合异常沿用 cause 主因事实并保留完整诊断", () => {
+    const primary = new AppError("model.provider_failed", {
+      message: "rejected",
+      public_details: { status: 400 },
+    });
+    const aggregate = new AggregateError([primary, new Error("log failed")], "failed", {
+      cause: primary,
+    });
+    expect(normalize_agent_tool_error(aggregate)).toMatchObject({
+      details: { code: "model.provider_failed", message: "rejected", status: 400 },
+      cause: aggregate,
+      severity: "fault",
+    });
+    expect(normalize_agent_tool_error(new AggregateError([primary], "failed"))).toMatchObject({
+      details: { code: "tool_failed" },
     });
   });
 

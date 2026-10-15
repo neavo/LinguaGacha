@@ -7,7 +7,12 @@ import type {
   BatchTranslationStopSource,
 } from "../../../domain/batch-translation";
 import { BatchTranslationCompletionError } from "../../batch-translation/batch-translation-runtime";
-import { define_agent_tool, agent_tool_result, AgentToolError } from "../tool-definition";
+import {
+  define_agent_tool,
+  agent_tool_result,
+  AgentToolError,
+  normalize_agent_tool_error,
+} from "../tool-definition";
 
 type AgentBatchTranslationResult = Readonly<{
   status: BatchTranslationResult["status"];
@@ -22,7 +27,7 @@ type AgentBatchTranslationResult = Readonly<{
   }> | null;
 }>;
 
-/** 模型回执只表达本次调用，正常与收尾异常共用统计口径。 */
+/** 模型回执只表达本次调用，正常与失败回执共用统计口径。 */
 function format_batch_translation_result(
   result: BatchTranslationResult,
 ): AgentBatchTranslationResult {
@@ -56,6 +61,7 @@ function format_batch_translation_result(
 export function create_agent_batch_item_translation_tool(
   run: (
     request: AgentBatchTranslationRequest,
+    thinking_downgrade: boolean,
     signal: AbortSignal,
   ) => Promise<BatchTranslationResult>,
 ): ToolRegistration {
@@ -70,6 +76,8 @@ export function create_agent_batch_item_translation_tool(
       "- 同一筛选条件内部取并集，多个筛选条件之间取交集",
       "- 省略状态条件会纳入指定 ID 的已译、排除、跳过和重复条目，已有译文可能被覆盖。",
       "- 已有的译文会被覆盖，工具完成刷新工作区读取最新快照",
+      "- 当前上下文首次调用前，先用一条目标 `item` 测试，通过后再处理其余目标",
+      "- 调用失败时结合错误判断原因，由思考等级导致时传入 `thinking_downgrade: false`，当前上下文的后续调用沿用",
       "",
       "### 结果",
       "",
@@ -95,24 +103,31 @@ export function create_agent_batch_item_translation_tool(
             description: "目标对象的翻译状态 `status`",
           }),
         ),
+        thinking_downgrade: Type.Optional(
+          Type.Boolean({ description: "降低本次翻译的思考等级，默认开启" }),
+        ),
       },
-      { additionalProperties: false, minProperties: 1 },
+      { additionalProperties: false },
     ),
     executionMode: "sequential",
-    execute: async (params, _api, context) => {
+    execute: async ({ thinking_downgrade = true, ...request }, _api, context) => {
       try {
         return agent_tool_result(
           format_batch_translation_result(
-            await run(params, context.abortSignal ?? new AbortController().signal),
+            await run(
+              request,
+              thinking_downgrade,
+              context.abortSignal ?? new AbortController().signal,
+            ),
           ),
         );
       } catch (error) {
-        if (error instanceof BatchTranslationCompletionError)
-          throw new AgentToolError(
-            { code: "tool_failed", ...format_batch_translation_result(error.result) },
-            error,
-            "fault",
-          );
+        if (error instanceof BatchTranslationCompletionError) {
+          const failure = normalize_agent_tool_error(error.cause);
+          // 错误回执本身表达失败，`status` 留给原因的公开详情，例如供应商 HTTP 状态。
+          const { status: _status, ...summary } = format_batch_translation_result(error.result);
+          throw new AgentToolError({ ...failure.details, ...summary }, error, failure.severity);
+        }
         throw error;
       }
     },

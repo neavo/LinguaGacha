@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 import { create_agent_batch_item_translation_tool } from "./batch-item-translation";
 import { normalize_batch_translation_progress } from "../../../domain/batch-translation";
 import { BatchTranslationCompletionError } from "../../batch-translation/batch-translation-runtime";
+import { AppError } from "../../../shared/error";
 
 describe("Agent 条目批量翻译工具", () => {
   it("顺序工具传递筛选条件并等待完整结果", async () => {
@@ -32,7 +33,6 @@ describe("Agent 条目批量翻译工具", () => {
     expect(call(request)).toEqual(request);
     expect(() => call({ scope: { kind: "pages" }, include_errors: false })).toThrow();
     for (const invalid of [
-      {},
       { item_ids: [] },
       { item_statuses: [] },
       { item_ids: [0] },
@@ -55,8 +55,13 @@ describe("Agent 条目批量翻译工具", () => {
     });
     await Promise.resolve();
     expect(settled).not.toHaveBeenCalled();
-    expect(run).toHaveBeenCalledWith(request, signal);
+    expect(run).toHaveBeenCalledWith(request, true, signal);
     complete();
+    await tool.execute(
+      { ...request, thinking_downgrade: false },
+      ...agent_tool_call("batch", signal),
+    );
+    expect(run).toHaveBeenLastCalledWith(request, false, signal);
     const expected = { status: "done", items: null, usage: null };
     expect(await result).toEqual({
       details: expected,
@@ -64,7 +69,7 @@ describe("Agent 条目批量翻译工具", () => {
     });
   });
 
-  it.each(["done", "stopped", "error"] as const)("%s 回执只包含本次条目和用量", async (status) => {
+  it.each(["done", "stopped", "error"] as const)("%s 回执包含本次条目和用量", async (status) => {
     const summary = {
       status,
       ...(status === "done" ? {} : { stop_source: "user" as const }),
@@ -98,17 +103,29 @@ describe("Agent 条目批量翻译工具", () => {
         total_tokens: 1500,
       },
     };
-    const failure = new BatchTranslationCompletionError(summary, new Error("cleanup failed"));
+    const cause = new AppError("model.provider_failed", {
+      message: "reasoning effort is not supported",
+      public_details: { status: 400 },
+    });
+    const failure = new BatchTranslationCompletionError(summary, cause);
     const tool = create_agent_batch_item_translation_tool(async () => {
       if (status === "error") throw failure;
       return summary;
     });
     const result = tool.execute({ item_ids: [1] }, ...agent_tool_call("batch"));
     if (status === "error") {
+      const { status: _status, ...summary_details } = expected;
+      // 错误回执的 `status` 属于失败原因，不被运行状态覆盖。
+      const details = {
+        code: "model.provider_failed",
+        message: "reasoning effort is not supported",
+        status: 400,
+        ...summary_details,
+      };
       await expect(result).rejects.toMatchObject({
-        details: { code: "tool_failed", ...expected },
-        message: JSON.stringify({ code: "tool_failed", ...expected }),
-        severity: "fault",
+        details,
+        message: JSON.stringify(details),
+        severity: "warning",
         cause: failure,
       });
     } else {

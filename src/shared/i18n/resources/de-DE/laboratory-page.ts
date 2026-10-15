@@ -4,15 +4,6 @@ import type { LocaleMessageSchema } from "../../types";
 export const de_de_laboratory_page = {
   title: "Labor",
   fields: {
-    agent_batch_translation_thinking_adaptive_enable: {
-      title: "Adaptives Denkniveau",
-      description:
-        "Bei Übersetzungsaufgaben verbraucht tiefes Nachdenken <emphasis>3- bis 5-mal so viele Tokens</emphasis>" +
-        "\n" +
-        "Passt das Denkniveau bei Übersetzungsaufgaben intelligent an" +
-        "\n" +
-        "Um die Token-Effizienz zu steigern sowie Zeit und Kosten zu sparen, standardmäßig aktiviert",
-    },
     prompt_enhancement_enable: {
       title: "Prompt-Verbesserung",
       description:

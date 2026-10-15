@@ -2,7 +2,7 @@ import type { TranslationRequestPort } from "../protocol/translation-request";
 import crypto from "node:crypto";
 import { parentPort, workerData, type MessagePort } from "node:worker_threads";
 
-import { AppError, normalize_log_error, to_log_error } from "../../../shared/error";
+import { restore_app_error, to_log_error } from "../../../shared/error";
 import type { LLMRequestBody, LLMRequestResult } from "../../llm/llm-types";
 import { TranslationWorkUnitRunner } from "./runners/translation-runner";
 import type { WorkUnitWorkerCommand, WorkUnitWorkerEvent } from "./work-unit-worker-protocol";
@@ -42,15 +42,7 @@ class WorkerLLMClient implements TranslationRequestPort {
     if (request === undefined) return;
     this.pending.delete(message.requestId);
     if (message.result.ok) request.resolve(message.result.data);
-    else {
-      const failure = normalize_log_error(message.result.error, "LLM request failed.");
-      request.reject(
-        new AppError("worker.failed", {
-          message: failure.message,
-          diagnostic_context: { failure },
-        }),
-      );
-    }
+    else request.reject(restore_app_error(message.result.error, "LLM request failed."));
   }
 }
 

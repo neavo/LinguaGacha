@@ -112,7 +112,6 @@ describe("AppSettingService", () => {
       request_timeout: "45",
       project_save_mode: "FIXED",
       prompt_enhancement_enable: false,
-      agent_batch_translation_thinking_adaptive_enable: false,
       check_kana_residue: true,
       check_hangeul_residue: true,
       check_similarity: true,
@@ -125,14 +124,12 @@ describe("AppSettingService", () => {
       request_timeout: 45,
       project_save_mode: "FIXED",
       prompt_enhancement_enable: false,
-      agent_batch_translation_thinking_adaptive_enable: false,
     });
     expect(saved).toMatchObject({
       app_language: "EN",
       request_timeout: 45,
       project_save_mode: "FIXED",
       prompt_enhancement_enable: false,
-      agent_batch_translation_thinking_adaptive_enable: false,
       model_selection: { translation: "model-1", agent: "model-3" },
       models: [{ id: "model-1" }],
     });
@@ -149,14 +146,12 @@ describe("AppSettingService", () => {
             "request_timeout",
             "project_save_mode",
             "prompt_enhancement_enable",
-            "agent_batch_translation_thinking_adaptive_enable",
           ],
           settings: expect.objectContaining({
             app_language: "EN",
             request_timeout: 45,
             project_save_mode: "FIXED",
             prompt_enhancement_enable: false,
-            agent_batch_translation_thinking_adaptive_enable: false,
           }),
         },
       },

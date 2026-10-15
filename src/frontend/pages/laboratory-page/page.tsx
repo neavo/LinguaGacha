@@ -55,7 +55,6 @@ export function LaboratoryPage(_props: ScreenComponentProps): JSX.Element {
         )}
         {render_setting("skip_duplicate_source_text_enable")}
         {render_setting("prompt_enhancement_enable")}
-        {render_setting("agent_batch_translation_thinking_adaptive_enable")}
       </section>
     </div>
   );

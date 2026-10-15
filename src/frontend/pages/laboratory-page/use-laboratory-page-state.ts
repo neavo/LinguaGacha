@@ -11,7 +11,6 @@ import type { SettingsSnapshot } from "@frontend/app/state/desktop-state-context
 
 const LABORATORY_PENDING_FIELDS = [
   "prompt_enhancement_enable",
-  "agent_batch_translation_thinking_adaptive_enable",
   "mtool_optimizer_enable",
   "skip_duplicate_source_text_enable",
 ] as const;
@@ -30,8 +29,6 @@ type UseLaboratoryPageStateResult = {
 function build_laboratory_snapshot(settings: SettingsSnapshot): LaboratorySnapshot {
   return {
     prompt_enhancement_enable: settings.prompt_enhancement_enable,
-    agent_batch_translation_thinking_adaptive_enable:
-      settings.agent_batch_translation_thinking_adaptive_enable,
     mtool_optimizer_enable: settings.mtool_optimizer_enable,
     skip_duplicate_source_text_enable: settings.skip_duplicate_source_text_enable,
   };

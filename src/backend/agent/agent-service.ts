@@ -857,7 +857,7 @@ export class AgentService {
     queuedId?: string,
   ): ReturnType<AgentChat["submit"]> {
     execution.phase = "running";
-    execution.translationPaused = null;
+    execution.translationStopped = false;
     this.token_speed.reset();
     this.token_speed_updated_at = null;
     this.token_speed_snapshot = null;
@@ -999,9 +999,11 @@ export class AgentService {
   /** 产品工具复用后端服务与当前租约，统一经过错误和参数边界。 */
   private create_tools() {
     return [
-      create_agent_batch_item_translation_tool(async (request, signal) => {
+      create_agent_batch_item_translation_tool(async (request, thinking_downgrade, signal) => {
         const execution = this.require_execution();
-        if (execution.translationPaused !== null) return execution.translationPaused;
+        // 用户停止后本轮不再启动翻译，明确拒绝以免把上次运行的事实当作本次结果。
+        if (execution.translationStopped)
+          throw new AgentToolError({ code: "batch_translation.stopped", stop_source: "user" });
         this.session_state.require_loaded_project_path();
         signal.throwIfAborted();
         this.runtime_gate.assert_current_runtime(execution.lease, "agent");
@@ -1009,6 +1011,7 @@ export class AgentService {
           this.settings.read_setting(),
           this.model_config!,
           this.catalog.read_models(),
+          thinking_downgrade,
         );
         try {
           const result = await this.batch_translation.run_under_agent(
@@ -1018,13 +1021,15 @@ export class AgentService {
             request,
           );
           if (this.execution === execution && result.stop_source === "user")
-            execution.translationPaused = result;
+            execution.translationStopped = true;
           return result;
         } catch (error) {
-          if (error instanceof BatchTranslationCompletionError) {
-            if (this.execution === execution && error.result.stop_source === "user")
-              execution.translationPaused = error.result;
-          }
+          if (
+            error instanceof BatchTranslationCompletionError &&
+            this.execution === execution &&
+            error.result.stop_source === "user"
+          )
+            execution.translationStopped = true;
           throw error;
         }
       }),

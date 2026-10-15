@@ -17,14 +17,14 @@ import type { RuntimeLease, RuntimeOperationGate } from "../runtime-operation-ga
 import type { BatchTranslationConfig } from "../../domain/batch-translation";
 import { AppError } from "../../shared/error";
 
-/** 停止后的收尾失败同时携带取消事实与原始异常，供调用方落实用户意图。 */
+/** 已开始或已停止的运行失败同时携带终态统计与原始异常，供调用方落实用户意图并判断下一次请求。 */
 export class BatchTranslationCompletionError extends Error {
-  /** 将终态与原始收尾失败绑定到同一完成链。 */
+  /** 将终态与原始失败绑定到同一完成链。 */
   public constructor(
     public readonly result: BatchTranslationResult,
     cause: unknown,
   ) {
-    super("Batch translation completion failed after cancellation.", { cause });
+    super("Batch translation failed.", { cause });
     this.name = "BatchTranslationCompletionError";
   }
 }
@@ -321,13 +321,16 @@ export class BatchTranslationRuntime {
       const cause =
         errors.length === 1
           ? errors[0]
-          : new AggregateError(errors, "Batch translation completion failed.");
+          : new AggregateError(errors, "Batch translation completion failed.", {
+              cause: errors[0],
+            });
+      // 预约失败且无人停止时没有本轮事实，原始异常直接交给启动方。
       run.reject(
-        run.stop_source !== undefined
+        started || run.stop_source !== undefined
           ? new BatchTranslationCompletionError(
               Object.freeze({
                 status: "error",
-                stop_source: run.stop_source,
+                ...(run.stop_source === undefined ? {} : { stop_source: run.stop_source }),
                 // 预约尚未执行时沿用前置进度，停止事实仍随完成链返回。
                 progress: result?.progress ?? Object.freeze({ ...run.previous.progress }),
                 ...(run_progress === undefined ? {} : { run_progress }),

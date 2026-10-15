@@ -21,7 +21,10 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { get_section_revision } from "../../project/project-data-reader";
 import { ProjectSessionState } from "../../project/project-session-state";
 import { RuntimeOperationGate } from "../../runtime-operation-gate";
-import { BatchTranslationRuntime } from "../batch-translation-runtime";
+import {
+  BatchTranslationCompletionError,
+  BatchTranslationRuntime,
+} from "../batch-translation-runtime";
 import type { BatchTranslationSnapshot } from "../../../domain/batch-translation";
 import type {
   TranslationWorkUnit,
@@ -79,10 +82,15 @@ describe("BatchTranslationRunner", () => {
           create_run_context(),
         ),
       );
-      const result = await handle.completion;
+      const settled = await handle.completion.then(
+        (result) => ({ result, error: undefined }),
+        (error: BatchTranslationCompletionError) => ({ result: error.result, error }),
+      );
+      const result = settled.result;
       const snapshot = await runtime.build_snapshot();
       expect(snapshot.status).toBe(preparation_failed ? "error" : "done");
       if (preparation_failed) {
+        expect(settled.error?.cause).toMatchObject({ message: "preparation failed" });
         expect(snapshot.run_progress).toBeUndefined();
         expect(result.run_progress).toBeUndefined();
       } else {

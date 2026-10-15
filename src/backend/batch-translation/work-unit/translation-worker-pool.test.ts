@@ -9,6 +9,7 @@ import { pathToFileURL } from "node:url";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { TranslationWorkerPool } from "./translation-worker-pool";
+import { AppError } from "../../../shared/error";
 
 const cleanup_roots: string[] = []; // 记录测试创建的临时内置资产根和 worker 文件目录
 
@@ -256,6 +257,33 @@ parentPort.on("message", (message) => {
         request: vi.fn(),
       }),
     ).rejects.toMatchObject({ code: "runtime.disposed" });
+  });
+
+  it("执行失败经快照还原原始 AppError", async () => {
+    const pool = new TranslationWorkerPool({
+      builtinRoot: await create_template_root(),
+      execution: { kind: "in_process" },
+    });
+    const failure = new AppError("model.provider_failed", {
+      message: "reasoning effort is not supported",
+      public_details: { status: 400 },
+    });
+    await expect(
+      pool.execute_unit(
+        create_translation_unit("unit-provider-failed"),
+        new AbortController().signal,
+        {
+          request: vi.fn(async () => {
+            throw failure;
+          }),
+        },
+      ),
+    ).rejects.toMatchObject({
+      code: "model.provider_failed",
+      message: "reasoning effort is not supported",
+      public_details: { status: 400 },
+    });
+    await pool.dispose();
   });
 
   it("释放池会中止父线程中的在途 LLM 请求", async () => {

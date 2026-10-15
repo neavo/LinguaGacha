@@ -48,7 +48,6 @@ export const SETTING_SNAPSHOT_SCHEMA = Type.Object(
     deduplication_in_bilingual: Type.Boolean(), // 双语文件原译文相同时是否只写一份正文。
     write_translated_name_fields_to_file: Type.Boolean(), // 导出时是否使用角色译名。
     prompt_enhancement_enable: Type.Boolean(), // 翻译提示词增强开关。
-    agent_batch_translation_thinking_adaptive_enable: Type.Boolean(), // 控制 Agent 跟随翻译的临时思考等级。
     mtool_optimizer_enable: Type.Boolean(), // MTool 文本预过滤优化开关。
     skip_duplicate_source_text_enable: Type.Boolean(), // 重复来源条目的过滤开关。
     glossary_default_preset: Type.String(), // 术语表默认预设标识。
@@ -92,7 +91,6 @@ export const DEFAULT_SETTING: SettingSnapshot & JsonRecord = {
   deduplication_in_bilingual: true,
   write_translated_name_fields_to_file: true,
   prompt_enhancement_enable: true,
-  agent_batch_translation_thinking_adaptive_enable: true,
   mtool_optimizer_enable: true,
   skip_duplicate_source_text_enable: true,
   glossary_default_preset: "",

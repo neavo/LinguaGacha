@@ -250,9 +250,10 @@ function create_workbench_query_response() {
 function create_toast_fixture(): ToastFixture {
   return {
     push_toast: vi.fn(),
-    run_modal_progress_toast: vi.fn(async (options: { task: () => Promise<void> }) => {
-      await options.task();
-    }),
+    // 与真实实现一致地返回任务结果，导入流程依赖预览返回值。
+    run_modal_progress_toast: vi.fn(
+      async (options: { task: () => Promise<unknown> }) => await options.task(),
+    ),
   };
 }
 
@@ -457,10 +458,12 @@ describe("useWorkbenchPageState", () => {
       paths: ["E:/demo/new.txt"],
     });
     enqueue_api_response("/api/workbench/files/preview", {
+      files_revision: 1,
       files: [
         {
           source_path: "E:/demo/new.txt",
           target_rel_path: "new.txt",
+          conflict: false,
         },
       ],
     });
@@ -502,10 +505,12 @@ describe("useWorkbenchPageState", () => {
       paths: ["E:/demo/new.txt"],
     });
     enqueue_api_response("/api/workbench/files/preview", {
+      files_revision: 1,
       files: [
         {
           source_path: "E:/demo/new.txt",
           target_rel_path: "new.txt",
+          conflict: false,
         },
       ],
     });

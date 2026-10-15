@@ -2,12 +2,7 @@ import { summarize_images } from "./emit-image";
 import { Type } from "@earendil-works/pi-ai";
 import type { ToolRegistration } from "@earendil-works/pi-durable";
 
-import {
-  define_agent_tool,
-  agent_tool_result,
-  normalize_agent_tool_error,
-  AgentToolError,
-} from "../tool-definition";
+import { define_agent_tool, agent_tool_result } from "../tool-definition";
 import { AGENT_WORKSPACE_CONTRACT } from "./contract";
 import {
   AGENT_WORKSPACE_RUN_ROOT,
@@ -114,14 +109,11 @@ export function create_agent_workspace_run_tool(options: {
         await options.refresh_skills();
       } catch (error) {
         if (outcome.ok) throw new Error("Agent skill refresh failed.", { cause: error });
-        const failure = normalize_agent_tool_error(outcome.error);
-        throw new AgentToolError(
-          failure.details,
-          new AggregateError(
-            [outcome.error, error],
-            "Workspace execution and skill refresh failed.",
-          ),
-          "fault",
+        // 宿主边界按 `cause` 采用脚本失败作为模型回执。
+        throw new AggregateError(
+          [outcome.error, error],
+          "Workspace execution and skill refresh failed.",
+          { cause: outcome.error },
         );
       }
       if (!outcome.ok) throw outcome.error;
