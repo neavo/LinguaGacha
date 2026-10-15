@@ -1,8 +1,6 @@
 import {
   normalize_batch_translation_progress,
   normalize_batch_translation_config,
-  normalize_translation_scope,
-  clone_translation_scope,
   is_active_batch_translation_status,
   BATCH_TRANSLATION_RUN_STATUSES,
   BATCH_TRANSLATION_STOP_SOURCES,
@@ -142,7 +140,7 @@ export function create_empty_batch_translation_snapshot(): BatchTranslationSnaps
     request_in_flight_count: 0,
     request_recovery: null,
     progress: normalize_batch_translation_progress({}),
-    scope: { kind: "all" },
+    pending_item_ids: [],
   };
 }
 /** 归一 HTTP 与 SSE 的翻译快照载荷。 */
@@ -172,7 +170,7 @@ export function normalize_batch_translation_snapshot(
     request_recovery:
       status === "running" ? normalize_request_recovery(raw.request_recovery) : null,
     progress: normalize_batch_translation_progress(raw.progress),
-    scope: normalize_translation_scope(raw.scope),
+    pending_item_ids: normalize_pending_item_ids(raw.pending_item_ids),
   };
 }
 /** HTTP 与 SSE 共用校验入口，并冻结恢复事实供历史快照共享。 */
@@ -188,7 +186,7 @@ function normalize_request_recovery(raw: unknown): BatchTranslationRequestRecove
     return null;
   return Object.freeze({ retry_count, retry_at });
 }
-/** 隔离历史展示中的进度和定点范围引用。 */
+/** 隔离历史展示中的进度和待处理 ID 引用。 */
 export function clone_translation_task_snapshot(
   snapshot: BatchTranslationSnapshot,
 ): BatchTranslationSnapshot {
@@ -197,11 +195,11 @@ export function clone_translation_task_snapshot(
     progress: { ...snapshot.progress },
     ...(snapshot.run_progress === undefined ? {} : { run_progress: { ...snapshot.run_progress } }),
     ...(snapshot.config === undefined ? {} : { config: { ...snapshot.config } }),
-    scope: clone_translation_scope(snapshot.scope),
+    pending_item_ids: [...snapshot.pending_item_ids],
   };
 }
 
-/** 独立全量任务从活跃态自然完成后承接译文生成流程。 */
+/** 独立翻译任务从活跃态自然完成后承接译文生成流程。 */
 export function should_open_translation_generation_followup(
   previous_status: BatchTranslationRunStatus,
   snapshot: BatchTranslationSnapshot,
@@ -210,7 +208,18 @@ export function should_open_translation_generation_followup(
     is_active_batch_translation_status(previous_status) &&
     snapshot.status === "done" &&
     snapshot.source === "standalone" &&
-    snapshot.operation === "translate" &&
-    snapshot.scope.kind === "all"
+    snapshot.operation === "translate"
   );
+}
+
+/** 传输边界只保留有效目标 ID，并隔离输入数组。 */
+function normalize_pending_item_ids(value: unknown): number[] {
+  if (!Array.isArray(value)) return [];
+  return [
+    ...new Set(
+      value.filter(
+        (id): id is number => typeof id === "number" && Number.isSafeInteger(id) && id > 0,
+      ),
+    ),
+  ];
 }

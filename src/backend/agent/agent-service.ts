@@ -15,7 +15,7 @@ import type { AgentFileAttachment } from "../../shared/agent";
 import { prepare_agent_message, type PreparedAgentMessage } from "./agent-message-input";
 import { BatchTranslationCompletionError } from "../batch-translation/batch-translation-runtime";
 import type { Model } from "../../domain/model";
-import { create_agent_batch_item_translation_tool } from "./tools/run-batch-item-translation";
+import { create_agent_batch_item_translation_tool } from "./tools/batch-item-translation";
 import { type AssistantMessageEvent } from "@earendil-works/pi-ai";
 import { createModels } from "@earendil-works/pi-ai/models";
 import { isDeepStrictEqual } from "node:util";
@@ -1024,7 +1024,6 @@ export class AgentService {
           if (error instanceof BatchTranslationCompletionError) {
             if (this.execution === execution && error.result.stop_source === "user")
               execution.translationPaused = error.result;
-            throw new AgentToolError({ code: "tool_failed", ...error.result }, error, "fault");
           }
           throw error;
         }

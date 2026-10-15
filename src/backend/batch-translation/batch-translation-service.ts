@@ -2,6 +2,7 @@ import type { ProjectSessionState } from "../project/project-session-state";
 import type {
   BatchTranslationRunner,
   BatchTranslationRunContext,
+  BatchTranslationRunCommand,
 } from "./core/batch-translation-runner";
 import type {
   BatchTranslationRuntime,
@@ -10,6 +11,7 @@ import type {
 import type { RuntimeLease } from "../runtime-operation-gate";
 import type { AppSettingService } from "../app/app-setting-service";
 import { Model } from "../../domain/model";
+import { is_item_status } from "../../domain/item";
 import { normalize_setting_snapshot } from "../../domain/setting";
 import { resolve_model_for_usage } from "../model/model-config-resolver";
 import { AppError } from "../../shared/error";
@@ -57,8 +59,15 @@ export class BatchTranslationService {
   ): Promise<BatchTranslationRunHandle> {
     this.session.require_loaded_project_path();
     // Runner 在异步生命周期内使用独立命令，调用方后续修改不改变已预约范围。
-    const run_command = structuredClone(command);
-    const handle = this.runtime.begin_standalone(run_command.scope, run_command.operation);
+    const run_command: BatchTranslationRunCommand = {
+      operation: command.operation,
+      mode: command.operation === "translate" ? command.mode : "continue",
+      ...(command.scope.kind === "items" ? { item_ids: [...command.scope.item_ids] } : {}),
+      ...(command.operation === "translate" && command.mode !== "reset"
+        ? { item_statuses: command.include_errors ? ["NONE", "ERROR"] : ["NONE"] }
+        : {}),
+    };
+    const handle = this.runtime.begin_standalone(run_command.operation);
     await this.runtime.execute(handle, () =>
       this.runner.run(handle, run_command, this.read_run_context()),
     );
@@ -72,13 +81,32 @@ export class BatchTranslationService {
     request: AgentBatchTranslationRequest,
   ): Promise<BatchTranslationResult> {
     this.session.require_loaded_project_path();
-    const command: BatchTranslationStartCommand = this.normalize_command({
-      operation: "translate",
-      scope: request.scope,
-      include_errors: request.include_errors,
+    const { item_ids: ids, item_statuses: statuses } = request;
+    if (
+      Object.keys(request).some((key) => key !== "item_ids" && key !== "item_statuses") ||
+      (ids === undefined && statuses === undefined) ||
+      (ids !== undefined &&
+        (!Array.isArray(ids) ||
+          ids.length === 0 ||
+          ids.some((id) => typeof id !== "number" || !Number.isSafeInteger(id) || id <= 0))) ||
+      (statuses !== undefined &&
+        (!Array.isArray(statuses) ||
+          statuses.length === 0 ||
+          statuses.some((status) => !is_item_status(status))))
+    )
+      throw new AppError("request.validation_failed");
+    // 在首次 await 前复制筛选条件，调用方修改数组不能改变本轮目标。
+    const item_ids = ids === undefined ? undefined : [...new Set(ids)];
+    const item_statuses = statuses === undefined ? undefined : [...new Set(statuses)];
+    const command: BatchTranslationRunCommand = {
+      operation: item_statuses?.every((status) => status === "NONE" || status === "ERROR")
+        ? "translate"
+        : "retranslate", // 重翻提交同时推进校对修订。
+      ...(item_ids === undefined ? {} : { item_ids }),
+      ...(item_statuses === undefined ? {} : { item_statuses }),
       mode: resolve_batch_translation_start_mode(await this.runtime.read_progress()),
-    });
-    const handle = this.runtime.begin_under_agent(command.scope, lease, signal, command.operation);
+    };
+    const handle = this.runtime.begin_under_agent(lease, signal, command.operation);
     await this.runtime.execute(handle, () =>
       this.runner.run(handle, command, this.read_run_context(model)),
     );

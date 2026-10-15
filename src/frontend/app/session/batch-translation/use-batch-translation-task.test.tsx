@@ -223,7 +223,8 @@ describe("useBatchTranslationTask", () => {
       runtime_fixture.current = create_runtime_fixture(
         create_task_snapshot({
           status: "running",
-          scope: { kind: "items", item_ids: [...item_ids] },
+          operation: "retranslate",
+          pending_item_ids: [...item_ids],
           progress: { total_line: 1 },
         }),
       );
@@ -232,7 +233,8 @@ describe("useBatchTranslationTask", () => {
     runtime_fixture.current = create_runtime_fixture(
       create_task_snapshot({
         status: "done",
-        scope: { kind: "items", item_ids: [] },
+        operation: "retranslate",
+        pending_item_ids: [],
         progress: { line: 1, total_line: 1 },
       }),
     );
@@ -491,7 +493,8 @@ describe("useBatchTranslationTask", () => {
     runtime_fixture.current = create_runtime_fixture(
       create_task_snapshot({
         status: "running",
-        scope: { kind: "items", item_ids: [1] },
+        operation: "retranslate",
+        pending_item_ids: [1],
       }),
     );
     api_fetch_mock.mockImplementation(async (path: string) => {
@@ -516,7 +519,7 @@ describe("useBatchTranslationTask", () => {
     runtime_fixture.current = create_runtime_fixture(
       create_task_snapshot({
         status: "done",
-        scope: { kind: "all" },
+        pending_item_ids: [],
       }),
     );
 
@@ -755,7 +758,7 @@ function create_task_snapshot(
     request_in_flight_count: 0,
     request_recovery: null,
     operation: "translate",
-    scope: { kind: "all" },
+    pending_item_ids: [],
     ...overrides,
     progress: normalize_batch_translation_progress(overrides.progress),
   };

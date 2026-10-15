@@ -286,7 +286,7 @@ function create_runtime_fixture(): RuntimeFixture {
       request_recovery: null,
       progress: normalize_batch_translation_progress({}),
 
-      scope: { kind: "all" },
+      pending_item_ids: [],
     },
     runtime_snapshot: { revision: 0, owner: null },
     sync_task_snapshot: vi.fn((snapshot) => {
@@ -2840,7 +2840,7 @@ describe("useProofreadingPageState", () => {
           status: "requested",
           source: "standalone",
           operation: "retranslate",
-          scope: { kind: "items", item_ids: [2, 1] },
+          pending_item_ids: [],
         },
       });
       await confirm_promise;
@@ -2854,15 +2854,22 @@ describe("useProofreadingPageState", () => {
       expect.objectContaining({
         status: "requested",
         operation: "retranslate",
-        scope: { kind: "items", item_ids: [2, 1] },
+        pending_item_ids: [],
       }),
     );
-    expect(latest_state?.retranslating_row_ids).toEqual(["2", "1"]);
+    expect(latest_state?.retranslating_row_ids).toEqual([]);
+    runtime_fixture.current.task_snapshot = {
+      ...runtime_fixture.current.task_snapshot,
+      status: "running",
+      pending_item_ids: [1],
+    };
+    await render_hook();
+    expect(latest_state?.retranslating_row_ids).toEqual(["1"]);
     runtime_fixture.current.task_snapshot = {
       ...runtime_fixture.current.task_snapshot,
       status: "done",
       operation: "retranslate",
-      scope: { kind: "items", item_ids: [] },
+      pending_item_ids: [],
     };
     await render_hook();
     expect(latest_state?.retranslating_row_ids).toEqual([]);

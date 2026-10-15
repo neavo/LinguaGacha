@@ -16,7 +16,8 @@ import { prepare_translation_targets } from "../planning/translation-targets";
 
 import type { BatchTranslationRunHandle } from "../batch-translation-runtime";
 import type {
-  BatchTranslationStartCommand,
+  BatchTranslationOperation,
+  BatchTranslationStartMode,
   BatchTranslationResult,
 } from "../../../domain/batch-translation";
 import { PromptBuilder } from "../work-unit/work-unit-prompt-builder";
@@ -35,6 +36,15 @@ import { is_task_skipped_item_status } from "../../../domain/batch-translation";
 
 import { normalize_setting_snapshot } from "../../../domain/setting";
 import { read_task_item_status, read_task_item_id } from "../translation-item";
+import type { ItemStatus } from "../../../domain/item";
+
+/** 入口已解析状态条件；执行目的仅控制提交副作用。 */
+export type BatchTranslationRunCommand = Readonly<{
+  operation: BatchTranslationOperation;
+  mode: BatchTranslationStartMode;
+  item_ids?: readonly number[];
+  item_statuses?: readonly ItemStatus[];
+}>;
 
 /** Service 在运行 lease 内准备的单次执行上下文，Runner 与 worker 共用。 */
 export type BatchTranslationRunContext = Readonly<{
@@ -59,6 +69,7 @@ export interface BatchTranslationRunnerOptions {
     BatchTranslationRuntime,
     | "update_request_state"
     | "is_current"
+    | "publish_targets"
     | "publish_progress"
     | "read_run_progress"
     | "publish_status"
@@ -103,20 +114,19 @@ export class BatchTranslationRunner {
   }
 
   /**
-   * 翻译主流程：普通翻译与重翻共享执行链，目的决定目标资格与提交副作用，范围限制实际写入集合
+   * 翻译主流程：冻结筛选目标后共享执行链，执行目的决定提交副作用。
    */
   public async run(
     handle: BatchTranslationRunHandle,
-    command: BatchTranslationStartCommand,
+    command: BatchTranslationRunCommand,
     run_context: BatchTranslationRunContext,
   ): Promise<BatchTranslationResult> {
     let final_status: "done" | "stopped" | "error" = "done";
     let app_language: unknown = "ZH";
     let progress = await this.task_runtime.read_progress(); // 工程累计事实，由项目写入口维护。
-    let run_progress = TranslationProgressAccumulator.empty(); // 本轮计数随已提交结果推进。
     const infrastructure_errors: unknown[] = [];
     const retranslate = command.operation === "retranslate";
-    const mode = command.operation === "translate" ? command.mode : "continue";
+    const mode = command.mode;
     try {
       const auth_session = run_context.model.auth_type === "oauth" ? this.auth?.bind() : undefined;
       if (run_context.model.auth_type === "oauth" && auth_session === undefined)
@@ -133,11 +143,15 @@ export class BatchTranslationRunner {
       const quality_snapshot = this.task_store.build_quality_snapshot();
       this.log_task_run_start(run_context, quality_snapshot, app_language);
       const items = this.task_store.get_translation_items();
-      const prepared = prepare_translation_targets(items, command);
+      const prepared = prepare_translation_targets(
+        items,
+        command.item_ids,
+        command.item_statuses,
+        mode === "reset",
+      );
       progress = this.build_translation_progress(mode, items, progress);
-      run_progress = TranslationProgressAccumulator.empty(prepared.target_ids.size);
       await this.update_translation_progress_if_current(handle, progress);
-      await this.task_runtime.publish_progress(handle, [], run_progress);
+      let run_progress = await this.task_runtime.publish_targets(handle, prepared.target_ids);
       const plan = await this.task_planner.build_translation_plan(
         prepared.items,
         run_context.config_snapshot,
@@ -200,10 +214,14 @@ export class BatchTranslationRunner {
           await this.task_runtime.read_progress(),
         );
         await this.update_translation_progress_if_current(handle, progress);
-        run_progress = TranslationProgressAccumulator.with_elapsed(
-          this.task_runtime.read_run_progress() ?? run_progress,
-        );
-        await this.task_runtime.publish_progress(handle, [], run_progress);
+        const run_progress = this.task_runtime.read_run_progress();
+        // 目标发布前没有本次统计，准备失败不能生成虚假的零目标。
+        if (run_progress !== undefined)
+          await this.task_runtime.publish_progress(
+            handle,
+            [],
+            TranslationProgressAccumulator.with_elapsed(run_progress),
+          );
       } catch (error) {
         infrastructure_errors.push(error);
       }
@@ -217,10 +235,11 @@ export class BatchTranslationRunner {
       throw infrastructure_errors.length === 1
         ? infrastructure_errors[0]
         : new AggregateError(infrastructure_errors, "Batch translation cleanup failed.");
+    const run_progress = this.task_runtime.read_run_progress();
     return {
       status: final_status,
       progress: { ...progress },
-      run_progress: { ...run_progress },
+      ...(run_progress === undefined ? {} : { run_progress }),
     };
   }
 

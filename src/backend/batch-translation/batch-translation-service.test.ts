@@ -1,3 +1,4 @@
+import { create_item } from "../../domain/item";
 import { add_test_asset_from_source } from "../../test/asset-fixture";
 import { ProjectDataReader } from "../project/project-data-reader";
 import { Model } from "../../domain/model";
@@ -59,7 +60,8 @@ describe("批量翻译服务", () => {
     await runtime.dispose();
     expect(run.mock.calls[0]?.[1]).toEqual({
       operation: "retranslate",
-      scope: { kind: "items", item_ids: [2, 1] },
+      mode: "continue",
+      item_ids: [2, 1],
     });
     expect(run.mock.calls[0]?.[2].model.id).toBe("translation");
   });
@@ -103,8 +105,8 @@ describe("批量翻译服务", () => {
     );
     const result = service
       .run_under_agent(lease, new AbortController().signal, inherited, {
-        scope: { kind: "items", item_ids: [2] },
-        include_errors: true,
+        item_ids: [2],
+        item_statuses: ["NONE", "ERROR"],
       })
       .then((value) => {
         completed();
@@ -120,9 +122,9 @@ describe("批量翻译服务", () => {
     expect(run.mock.calls[0]?.[2].model.thinking).not.toBe(inherited.thinking);
     expect(run.mock.calls[0]?.[1]).toEqual({
       operation: "translate",
-      include_errors: true,
+      item_statuses: ["NONE", "ERROR"],
       mode: line > 0 ? "continue" : "new",
-      scope: { kind: "items", item_ids: [2] },
+      item_ids: [2],
     });
     await expect(
       service.start({ operation: "translate", mode: "new", scope: { kind: "all" } }),
@@ -131,6 +133,54 @@ describe("批量翻译服务", () => {
     expect((await result).progress.line).toBe(line);
     expect(gate.get_snapshot().owner).toBe("agent");
     gate.finish_runtime(lease);
+    await runtime.dispose();
+  });
+  it.each([
+    {},
+    { item_ids: [] },
+    { item_statuses: [] },
+    { item_ids: [0] },
+    { item_ids: [false] },
+    { item_ids: [1.5] },
+    { item_ids: [Number.MAX_SAFE_INTEGER + 1] },
+    { item_statuses: ["ALL"] },
+    { item_statuses: null },
+    { item_ids: null },
+    { scope: { kind: "all" }, include_errors: false },
+  ])("Agent 在预约前拒绝非法条件 %j", async (request) => {
+    const { service, runtime, gate, run } = setup();
+    const lease = gate.begin_runtime("agent");
+    await expect(
+      service.run_under_agent(
+        lease,
+        new AbortController().signal,
+        Model.from_json({ id: "agent" }, "agent"),
+        request as unknown as import("../../domain/batch-translation").AgentBatchTranslationRequest,
+      ),
+    ).rejects.toMatchObject({ code: "request.validation_failed" });
+    expect(run).not.toHaveBeenCalled();
+    expect((await runtime.build_snapshot()).status).toBe("idle");
+    gate.finish_runtime(lease);
+    await runtime.dispose();
+  });
+  it.each([
+    { mode: "new" as const, include_errors: false, statuses: ["NONE"] },
+    { mode: "continue" as const, include_errors: true, statuses: ["NONE", "ERROR"] },
+    { mode: "reset" as const, include_errors: false, statuses: undefined },
+  ])("工作台入口显式转换状态条件 $mode", async ({ mode, include_errors, statuses }) => {
+    const { service, runtime, run } = setup();
+    const handle = await service.start_current_project({
+      operation: "translate",
+      mode,
+      scope: { kind: "all" },
+      include_errors,
+    });
+    await handle.completion;
+    expect(run.mock.calls[0]?.[1]).toEqual({
+      operation: "translate",
+      mode,
+      ...(statuses === undefined ? {} : { item_statuses: statuses }),
+    });
     await runtime.dispose();
   });
   it("普通项目写持有互斥时不能启动", async () => {
@@ -142,6 +192,150 @@ describe("批量翻译服务", () => {
     });
     await runtime.dispose();
   });
+});
+
+it.each([
+  { request: { item_ids: [2, 1, 2] }, targets: [1, 2] },
+  {
+    request: { item_ids: [1, 2], item_statuses: ["PROCESSED"] as const },
+    targets: [1],
+  },
+  { request: { item_statuses: ["EXCLUDED"] as const }, targets: [2] },
+])("Agent 发布实际目标与总量，提交后清空目标 $request", async ({ request, targets }) => {
+  using directory = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "linguagacha-agent-targets-"));
+  const project_path = path.join(directory.path, "targets.lg");
+  const database = new ProjectDatabase();
+  await database.create_project(project_path, "targets");
+  const original = ["PROCESSED", "EXCLUDED", "NONE"].map((status, index) =>
+    create_item({
+      id: index + 1,
+      src: `Source ${index}`,
+      dst: "原有译文",
+      status,
+      file_path: "text.txt",
+      row: index,
+    }),
+  );
+  await database.transaction(project_path, (writer) => writer.set_items(project_path, original));
+  const session = new ProjectSessionState();
+  session.mark_loaded(project_path);
+  const gate = new RuntimeOperationGate();
+  const runtime = new BatchTranslationRuntime(session, database, gate);
+  const settings = { read_setting: () => ({ source_language: "EN", target_language: "ZH" }) };
+  const cache = new CacheManager({
+    database,
+    logManager: null,
+    appSettingService: settings as never,
+    workerClient: { run: vi.fn() } as never,
+  });
+  const writes = new ProjectWriteStore(database, vi.fn(), () => null);
+  const planning = new PlanningWorkerPool({ execution: { kind: "in_process" } });
+  const execute_unit = vi.fn<import("./protocol/work-unit").WorkUnitExecutor["execute_unit"]>(
+    async (unit) => ({
+      unit_id: unit.unit_id,
+      kind: "translation",
+      outcome: "success",
+      metrics: { input_tokens: 4, reasoning_tokens: 1, output_tokens: 2 },
+      output: {
+        kind: "translation",
+        items: unit.payload.items.map((item) => ({ ...item, dst: "新译文", status: "PROCESSED" })),
+      },
+      logs: [],
+    }),
+  );
+  const runner = new BatchTranslationRunner({
+    builtinRoot: path.join(process.cwd(), "builtin"),
+    taskStore: new BatchTranslationProjectStore(session, cache, writes),
+    taskRuntime: runtime,
+    taskPlanner: new TranslationPlanner({ planningWorkerPool: planning }),
+    executorClient: { execute_unit },
+    logManager: { append: vi.fn() },
+    llmClient: {
+      request: async () => {
+        throw new Error("Unexpected LLM request");
+      },
+    },
+  });
+  const service = new BatchTranslationService(runner, runtime, session, settings);
+  const lease = gate.begin_runtime("agent");
+  const model = Model.from_json({ id: "fake", threshold: { concurrency_limit: 1 } }, "fake");
+  try {
+    await cache.warmProject(project_path);
+    const frames: import("../../domain/batch-translation").BatchTranslationSnapshot[] = [];
+    runtime.subscribe((snapshot) => {
+      frames.push(snapshot);
+    });
+    const result = await service.run_under_agent(
+      lease,
+      new AbortController().signal,
+      model,
+      request,
+    );
+    expect(frames[0]).toMatchObject({
+      status: "requested",
+      pending_item_ids: [],
+      run_progress: undefined,
+    });
+    const prepared = frames.find((frame) => frame.run_progress !== undefined);
+    expect(prepared).toMatchObject({
+      pending_item_ids: targets,
+      run_progress: { total_line: targets.length, line: 0 },
+    });
+    expect(frames.at(-1)).toMatchObject({
+      status: "done",
+      pending_item_ids: [],
+      run_progress: { total_line: targets.length, processed_line: targets.length },
+    });
+    expect(result).toMatchObject({
+      status: "done",
+      run_progress: { total_line: targets.length, processed_line: targets.length },
+      progress: {
+        total_line: targets.includes(2) ? 3 : 2,
+        processed_line: targets.includes(2) ? 2 : 1,
+      },
+    });
+    expect(result.progress.total_tokens).toBeGreaterThan(0);
+    expect(await database.get_all_items(project_path)).toEqual([
+      targets.includes(1) ? { ...original[0], dst: "新译文" } : original[0],
+      targets.includes(2) ? { ...original[1], dst: "新译文", status: "PROCESSED" } : original[1],
+      original[2],
+    ]);
+    const meta = await database.get_all_meta(project_path);
+    expect(meta["proofreading_revision.proofreading"]).toBeGreaterThan(0);
+    expect(meta["translation_extras"]).toMatchObject({
+      total_tokens: result.progress.total_tokens,
+    });
+    await cache.warmProject(project_path);
+    execute_unit.mockClear();
+    frames.length = 0;
+    expect(
+      await service.run_under_agent(lease, new AbortController().signal, model, {
+        item_ids: [1, 2],
+        item_statuses: ["NONE"],
+      }),
+    ).toMatchObject({
+      status: "done",
+      run_progress: { total_line: 0, line: 0 },
+      progress: { total_tokens: result.progress.total_tokens },
+    });
+    expect(
+      await service.run_under_agent(lease, new AbortController().signal, model, {
+        item_ids: [3, 99],
+        item_statuses: ["NONE"],
+      }),
+    ).toMatchObject({ status: "error" });
+    expect(execute_unit).not.toHaveBeenCalled();
+    expect(frames.every((frame) => frame.pending_item_ids.length === 0)).toBe(true);
+    expect((await database.get_all_meta(project_path))["proofreading_revision.proofreading"]).toBe(
+      meta["proofreading_revision.proofreading"],
+    );
+    expect((await database.get_all_items(project_path))[2]).toEqual(original[2]);
+  } finally {
+    gate.finish_runtime(lease);
+    await runtime.dispose();
+    await planning.dispose();
+    await database.close();
+  }
 });
 
 it("历史工程批量翻译保留旧分析物理数据、正式术语与资产，并只投影当前能力", async () => {

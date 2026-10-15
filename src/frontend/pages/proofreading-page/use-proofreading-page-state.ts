@@ -242,15 +242,13 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
     );
   }, [visible_items]);
   const readonly = is_runtime_busy(runtime_snapshot);
-  const retranslating_row_ids = useMemo(() => {
-    if (task_snapshot.operation !== "retranslate" || task_snapshot.scope.kind !== "items") {
-      return [];
-    }
-
-    return task_snapshot.scope.item_ids.map((item_id) => {
-      return build_proofreading_row_id(item_id);
-    });
-  }, [task_snapshot.operation, task_snapshot.scope]);
+  const retranslating_row_ids = useMemo(
+    () =>
+      task_snapshot.operation === "retranslate"
+        ? task_snapshot.pending_item_ids.map(build_proofreading_row_id)
+        : [],
+    [task_snapshot.operation, task_snapshot.pending_item_ids],
+  );
   const invalid_regex_message =
     list_view.invalid_regex_message === null
       ? null

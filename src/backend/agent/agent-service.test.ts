@@ -351,8 +351,8 @@ function create_fake_response(context: TranscriptContext): FauxResponseStep {
       ? fauxAssistantMessage("翻译完成")
       : fauxAssistantMessage(
           fauxToolCall(
-            "run_batch_item_translation",
-            { scope: { kind: "all" }, include_errors: false },
+            "batch_item_translation",
+            { item_statuses: ["NONE"] },
             { id: "batch-translation" },
           ),
           { stopReason: "toolUse" },
@@ -3940,7 +3940,7 @@ describe("AgentService", () => {
               thinking: { level: "HIGH" },
             },
       ),
-      { scope: { kind: "all" }, include_errors: false },
+      { item_statuses: ["NONE"] },
     );
     expect(service.get_snapshot().pendingDecision).toBeNull();
     select_agent_model("next");
@@ -4011,6 +4011,7 @@ describe("AgentService", () => {
           status: cleanup_failed ? ("error" as const) : ("stopped" as const),
           stop_source: "user" as const,
           progress,
+          run_progress: progress,
         };
         if (cleanup_failed)
           throw new BatchTranslationCompletionError(result, new Error("cleanup failed"));
@@ -4026,6 +4027,7 @@ describe("AgentService", () => {
       expect(read_tool_output(service, "batch-translation")).toMatchObject({
         status: cleanup_failed ? "error" : "stopped",
         stop_source: "user",
+        items: { total: 2, succeeded: 1, failed: 0, unfinished: 1 },
       });
       if (cleanup_failed) {
         expect(
@@ -4037,7 +4039,7 @@ describe("AgentService", () => {
             level: "error",
             content: {
               event: "tool_end",
-              tool_name: "run_batch_item_translation",
+              tool_name: "batch_item_translation",
               status: "error",
             },
             error: {
@@ -4112,7 +4114,8 @@ describe("AgentService", () => {
         expect(fake_agent_state.model_call_count).toBe(2);
         expect(read_tool_output(service, "batch-translation")).toMatchObject({
           status: "done",
-          progress: { line: 2 },
+          items: null,
+          usage: null,
         });
       }
     },
