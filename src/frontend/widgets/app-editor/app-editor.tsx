@@ -223,8 +223,8 @@ function create_clamped_selection(
   return EditorSelection.create(
     selection.ranges.map((range) => {
       return EditorSelection.range(
-        Math.min(Math.max(range.anchor, 0), next_length),
-        Math.min(Math.max(range.head, 0), next_length),
+        Math.min(range.anchor, next_length),
+        Math.min(range.head, next_length),
       );
     }),
     selection.mainIndex,
@@ -503,19 +503,23 @@ export function AppEditor(props: AppEditorProps): JSX.Element {
       variant === "viewer" && previous.variant === "viewer"
         ? previous.value
         : editor_view.state.doc.toString();
-    if (current_value === value && previous.ranges === ranges) {
+    // CodeMirror 把 CRLF 等换行折算为单个换行，比较、插入与选区裁剪都以转换后的文档为准。
+    const next_doc =
+      current_value === value ? editor_view.state.doc : editor_view.state.toText(value);
+    const doc_changed = !next_doc.eq(editor_view.state.doc);
+    if (!doc_changed && previous.ranges === ranges) {
       applied_document_ref.current = { value, ranges, variant };
       return;
     }
 
-    const next_selection = create_clamped_selection(editor_view.state.selection, value.length);
+    const next_selection = create_clamped_selection(editor_view.state.selection, next_doc.length);
 
     suppress_change_ref.current = true;
     try {
       editor_view.dispatch({
-        ...(current_value === value
-          ? {}
-          : { changes: { from: 0, to: editor_view.state.doc.length, insert: value } }),
+        ...(doc_changed
+          ? { changes: { from: 0, to: editor_view.state.doc.length, insert: next_doc } }
+          : {}),
         effects: editor_viewer_ranges_compartment.reconfigure(create_app_viewer_ranges(ranges)),
         selection: next_selection,
         // 外部载入可以替换固定结构，替换过程不进入用户撤销历史。
