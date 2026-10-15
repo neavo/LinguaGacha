@@ -67,12 +67,6 @@ describe("TranslationWorkerPool", () => {
           items: [{ id: 1, src: "こんにちは", dst: "", status: "NONE", text_type: "TXT" }],
           precedings: [],
         },
-        diagnostics: {
-          token_threshold: 512,
-          split_count: 0,
-          retry_count: 0,
-          is_initial: true,
-        },
       },
       new AbortController().signal,
       llm_client,
@@ -348,12 +342,6 @@ function create_translation_unit(unit_id: string) {
     payload: {
       items: [{ id: 1, src: "こんにちは", dst: "", status: "NONE", text_type: "TXT" }],
       precedings: [],
-    },
-    diagnostics: {
-      token_threshold: 512,
-      split_count: 0,
-      retry_count: 0,
-      is_initial: true,
     },
   };
 }

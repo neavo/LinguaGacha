@@ -23,10 +23,8 @@ import type {
 import { PromptBuilder } from "../work-unit/work-unit-prompt-builder";
 import type { BatchTranslationProgress } from "../../../domain/batch-translation";
 import type { TranslationCommitEntry } from "./translation-pipeline";
-import type {
-  TranslationContext,
-  TranslationTokenMetric,
-} from "../planning/translation-plan-types";
+import type { TranslationContext } from "../planning/translation-plan-types";
+import { plan_translation_retry } from "../planning/translation-retry";
 import { RequestRatePool } from "./request-rate";
 import { TranslationRequestScheduler } from "./translation-request-scheduler";
 import { TranslationPipeline } from "./translation-pipeline";
@@ -78,13 +76,11 @@ export interface BatchTranslationRunnerOptions {
   >; // 任务锁、取消、快照和请求压力的最小能力集合
   llmClient: LLMClientPort; // 每轮请求调度器使用的单次网络请求入口。
   executorClient: WorkUnitExecutor; // 屏蔽 worker_threads 与直接 runner 的传输差异
-  taskPlanner: Pick<TranslationPlanner, "build_translation_plan" | "build_translation_retry_plan">; // 精确 token 切块、cache 复用和后台规划的最小能力集合
+  taskPlanner: Pick<TranslationPlanner, "build_translation_plan">; // 精确 token 切块、cache 复用和后台规划的最小能力集合
   logManager: Pick<LogManager, "append">; // 生命周期与批次日志共用结构化追加入口。
 }
 
 const TRANSLATION_TERMINAL_STATUSES = new Set(["PROCESSED", "ERROR"]); // 翻译终态只认已处理和错误，跳过类状态不参与重试终结判断
-
-const TRANSLATION_RETRY_LIMIT = 3; // 单条翻译在拆分后最多重试三次。
 
 /**
  * Backend Runtime 与 CLI 共用的翻译调度、限流、重试和提交循环
@@ -95,7 +91,7 @@ export class BatchTranslationRunner {
   private readonly task_store: BatchTranslationRunnerOptions["taskStore"]; // 后台任务唯一项目数据写入口，BatchTranslationRunner 不直接碰 database
   private readonly task_runtime: BatchTranslationRunnerOptions["taskRuntime"]; // 任务锁、取消、快照与请求压力的最小运行态能力
   private readonly executor_client: WorkUnitExecutor; // 屏蔽 worker_threads / in_process runner 差异，主流程只关心 work-unit 结果
-  private readonly task_planner: BatchTranslationRunnerOptions["taskPlanner"]; // 切块与 token cache 复用的唯一规划入口
+  private readonly task_planner: BatchTranslationRunnerOptions["taskPlanner"]; // 初始切块与 token 缓存复用入口。
   private readonly log_replay: TranslationLogReplay; // 统一处理任务生命周期日志和 worker 日志回放
   private readonly rate_pool = new RequestRatePool(); // 同一模型资源跨任务复用速率时钟。
   private readonly llm_client: BatchTranslationRunnerOptions["llmClient"]; // 父线程真实请求入口，由本轮调度器统一派发。
@@ -152,7 +148,7 @@ export class BatchTranslationRunner {
       progress = this.build_translation_progress(mode, items, progress);
       await this.update_translation_progress_if_current(handle, progress);
       let run_progress = await this.task_runtime.publish_targets(handle, prepared.target_ids);
-      const plan = await this.task_planner.build_translation_plan(
+      const contexts = await this.task_planner.build_translation_plan(
         prepared.items,
         run_context.config_snapshot,
         run_context.model,
@@ -176,7 +172,6 @@ export class BatchTranslationRunner {
           this.execute_translation_context(
             handle,
             context,
-            plan.metrics,
             run_context,
             quality_snapshot,
             request_scheduler,
@@ -191,7 +186,7 @@ export class BatchTranslationRunner {
           );
         },
       });
-      await pipeline.run(plan.contexts);
+      await pipeline.run(contexts);
       if (handle.signal.aborted) {
         final_status = "stopped";
       }
@@ -251,7 +246,6 @@ export class BatchTranslationRunner {
   private async execute_translation_context(
     handle: BatchTranslationRunHandle,
     context: TranslationContext,
-    metrics: ReadonlyMap<number, TranslationTokenMetric>,
     run_context: BatchTranslationRunContext,
     quality_snapshot: TextQualitySnapshot,
     request_scheduler: TranslationRequestScheduler,
@@ -269,18 +263,12 @@ export class BatchTranslationRunner {
           items: context.items,
           precedings: context.precedings,
         },
-        diagnostics: {
-          split_count: context.split_count,
-          retry_count: context.retry_count,
-          token_threshold: context.token_threshold,
-          is_initial: context.is_initial,
-        },
       },
       signal,
       request_scheduler,
     );
     this.log_replay.work_unit_logs(result.logs);
-    return this.build_translation_worker_result(context, result, metrics, signal);
+    return this.build_translation_worker_result(context, result);
   }
 
   /**
@@ -289,8 +277,6 @@ export class BatchTranslationRunner {
   private build_translation_worker_result(
     context: TranslationContext,
     result: WorkUnitExecutionResult,
-    metrics: ReadonlyMap<number, TranslationTokenMetric>,
-    signal: AbortSignal,
   ) {
     if (result.outcome === "stopped") {
       return { commit_entries: [], retry_contexts: [] };
@@ -299,15 +285,8 @@ export class BatchTranslationRunner {
     const terminal_items = returned_items.filter((item) =>
       TRANSLATION_TERMINAL_STATUSES.has(read_task_item_status(item)),
     );
-    const retry_plan = this.task_planner.build_translation_retry_plan(
-      context,
-      returned_items,
-      metrics,
-      TRANSLATION_RETRY_LIMIT,
-      (item) => this.mark_translation_item_error(item),
-      signal,
-    );
-    const commit_items = [...terminal_items, ...retry_plan.forced_error_items];
+    const retry_plan = plan_translation_retry(context, returned_items);
+    const commit_items = [...terminal_items, ...retry_plan.error_items];
     // 用量与条目终态独立提交，内容重试也保留已经报告的消耗。
     const has_usage = Object.values(result.metrics).some((tokens) => tokens > 0);
     return {
@@ -443,12 +422,5 @@ export class BatchTranslationRunner {
       ).build_main();
     }
     this.log_replay.task_run_start(run_context.model, app_language, prompt_text);
-  }
-
-  /**
-   * 重试超限后只标记 ERROR，译文字段继续只承载真实译文
-   */
-  private mark_translation_item_error(item: TextTaskItemRecord): void {
-    item["status"] = "ERROR";
   }
 }

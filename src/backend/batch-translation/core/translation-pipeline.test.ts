@@ -270,10 +270,7 @@ function context(id: number) {
     work_unit_id: String(id),
     items: [],
     precedings: [],
-    token_threshold: 10,
-    split_count: 0,
     retry_count: 0,
-    is_initial: true,
   };
 }
 /** 通过提交载荷区分已完成任务，无需建立项目存储。 */

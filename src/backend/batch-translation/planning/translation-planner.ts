@@ -7,14 +7,15 @@ import { read_json_integer, read_json_record, type MutableJsonRecord } from "../
 import { project_text_resource_references } from "../../../shared/text/text-resource-reference";
 import type { PlanningWorkerPool } from "./planning-worker-pool";
 import { build_token_count_cache_key, TokenCountCache } from "./token-count-cache";
-import type {
-  TranslationContext,
-  TranslationRetryPlan,
-  TranslationPlan,
-  TranslationTokenMetric,
-} from "./translation-plan-types";
+import type { TranslationContext } from "./translation-plan-types";
 import { AppError } from "../../../shared/error";
 import { read_task_item_id, read_task_item_status } from "../translation-item";
+
+/** 指标只服务初始切块，不进入计费统计或项目存储。 */
+type TranslationTokenMetric = Readonly<{
+  token_count: number;
+  line_count: number;
+}>;
 
 const DEFAULT_INPUT_TOKEN_LIMIT = 512; // 模型未配置 token 限制时使用保守默认值，避免一次塞入过长 prompt。
 const HASH_YIELD_EVERY_ITEMS = 1024; // 主线程计算 hash 时分批让出事件循环，避免大项目启动阶段长时间无响应。
@@ -22,7 +23,7 @@ const HASH_YIELD_EVERY_ITEMS = 1024; // 主线程计算 hash 时分批让出事�
 const END_LINE_PUNCTUATION = new Set([".", "。", "?", "？", "!", "！", "…", "'", '"', "」", "』"]); // 向前选取上文时，仅接纳以这些标点结尾的条目。
 
 /**
- * TranslationPlanner 是后台任务唯一规划器：它复用进程内 token 缓存，并把精确计数交给 planning worker。
+ * TranslationPlanner 是后台任务初始规划器：它复用进程内 token 缓存，并把精确计数交给 planning worker。
  */
 export class TranslationPlanner {
   private readonly planning_worker_pool: Pick<PlanningWorkerPool, "count_items">; // 只做纯计算，不接触数据库和事件。
@@ -44,7 +45,7 @@ export class TranslationPlanner {
     model: MutableJsonRecord,
     signal: AbortSignal,
     target_ids?: ReadonlySet<number>,
-  ): Promise<TranslationPlan> {
+  ): Promise<TranslationContext[]> {
     const threshold = this.get_input_token_limit(model, DEFAULT_INPUT_TOKEN_LIMIT);
     const is_sakura = String(model["api_format"] ?? "") === "SakuraLLM"; // Sakura 专用提示词仅消费本批正文，不使用额外前文。
     const metrics = await this.resolve_item_metrics(
@@ -60,87 +61,16 @@ export class TranslationPlanner {
       is_sakura ? 0 : read_json_integer(config["preceding_lines_threshold"], 0),
       signal,
     );
-    return {
-      metrics,
-      contexts: chunks.map(({ chunk_items, precedings }) => ({
-        work_unit_id: crypto.randomUUID(),
-        items: chunk_items,
-        precedings,
-        token_threshold: threshold,
-        split_count: 0,
-        retry_count: 0,
-        is_initial: true,
-      })),
-    };
+    return chunks.map(({ chunk_items, precedings }) => ({
+      work_unit_id: crypto.randomUUID(),
+      items: chunk_items,
+      precedings,
+      retry_count: 0,
+    }));
   }
 
   /**
-   * 重试复用本轮源文指标；单条按调用方给定上限重试，超限写回由 Runner 决定。
-   */
-  public build_translation_retry_plan(
-    context: TranslationContext,
-    returned_items: TextTaskItemRecord[],
-    metrics: ReadonlyMap<number, TranslationTokenMetric>,
-    retry_limit: number,
-    mark_error: (item: TextTaskItemRecord) => void,
-    signal: AbortSignal,
-  ): TranslationRetryPlan {
-    this.throw_if_aborted(signal);
-    const pending_by_id = new Map(
-      returned_items
-        .filter((item) => read_task_item_status(item) === "NONE")
-        .map((item) => [read_task_item_id(item), item]),
-    );
-    // worker 仅决定待重试集合；拆块始终使用本轮原始源文与文件顺序。
-    const pending_items = context.items.filter((item) =>
-      pending_by_id.has(read_task_item_id(item)),
-    );
-    if (pending_items.length === 0) {
-      return { retry_contexts: [], forced_error_items: [] };
-    }
-    if (pending_items.length === 1) {
-      const item = pending_items[0] as MutableJsonRecord;
-      if (context.retry_count < retry_limit) {
-        return {
-          retry_contexts: [
-            {
-              ...context,
-              work_unit_id: crypto.randomUUID(),
-              items: [item],
-              precedings: [],
-              retry_count: context.retry_count + 1,
-              is_initial: false,
-            },
-          ],
-          forced_error_items: [],
-        };
-      }
-      // 终态提交消费 worker 的写回快照；本轮源文快照仅用于再次规划。
-      const failed_item = pending_by_id.get(read_task_item_id(item))!;
-      mark_error(failed_item);
-      return { retry_contexts: [], forced_error_items: [failed_item] };
-    }
-    const next_threshold = Math.max(
-      1,
-      Math.floor(context.token_threshold * this.get_split_factor(context.token_threshold)),
-    );
-    const sub_chunks = this.generate_item_chunks(pending_items, metrics, next_threshold, 0, signal);
-    return {
-      retry_contexts: sub_chunks.map(({ chunk_items }) => ({
-        work_unit_id: crypto.randomUUID(),
-        items: chunk_items,
-        precedings: [],
-        token_threshold: next_threshold,
-        split_count: context.split_count + 1,
-        retry_count: 0,
-        is_initial: false,
-      })),
-      forced_error_items: [],
-    };
-  }
-
-  /**
-   * 共享切块实现，只依赖 item 快照和已解析 token 指标，不在主线程执行 tokenizer。
+   * 初始切块实现，只依赖 item 快照和已解析 token 指标，不在主线程执行 tokenizer。
    */
   private generate_item_chunks(
     items: TextTaskItemRecord[],
@@ -295,13 +225,6 @@ export class TranslationPlanner {
       }
     }
     return result.reverse();
-  }
-
-  /**
-   * 失败拆分比例使用 `pow(16 / t0, 0.25)` 的收敛速度。
-   */
-  private get_split_factor(token_threshold: number): number {
-    return Math.pow(16 / Math.max(17, token_threshold), 0.25);
   }
 
   /**
