@@ -401,19 +401,25 @@ describe("批量翻译完成链", () => {
     });
     const handle = runtime.begin_standalone();
     await runtime.execute(handle, async () => result());
-    await expect(handle.completion).rejects.toBe(error);
+    await expect(handle.completion).rejects.toMatchObject({
+      cause: error,
+      result: { status: "error" },
+    });
     expect(gate.get_snapshot().owner).toBeNull();
     await runtime.dispose();
     await database.close();
   });
-  it("执行异常发布 error 并保留原始 rejection", async () => {
+  it("执行异常发布 error，rejection 携带终态统计与原始异常", async () => {
     const { runtime, gate, database } = setup();
     const error = new Error("worker infrastructure failed");
     const handle = runtime.begin_standalone();
     await runtime.execute(handle, async () => {
       throw error;
     });
-    await expect(handle.completion).rejects.toBe(error);
+    await expect(handle.completion).rejects.toMatchObject({
+      cause: error,
+      result: { status: "error" },
+    });
     expect((await runtime.build_snapshot()).status).toBe("error");
     expect(gate.get_snapshot().owner).toBeNull();
     await runtime.dispose();

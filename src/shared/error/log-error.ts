@@ -1,7 +1,7 @@
 import type { LogLevel } from "../log";
-import type { JsonRecord, JsonValue } from "../../domain/json";
-import type { AppError, AppErrorDiagnosticContext } from "./app-error";
-import { is_app_error } from "./app-error";
+import { is_json_record, type JsonRecord, type JsonValue } from "../../domain/json";
+import type { AppErrorDiagnosticContext } from "./app-error";
+import { AppError, is_app_error, is_app_error_code } from "./app-error";
 
 // 日志快照限制嵌套、集合规模与文本长度，供跨线程传输和持久化共用。
 const MAX_LOG_ERROR_DEPTH = 4;
@@ -61,7 +61,13 @@ interface AppErrorLogSnapshotOptions {
  */
 export function to_log_error(error: unknown, context: LogErrorContextInput = {}): LogError {
   if (error instanceof Error) {
-    return build_log_error_from_error(error, context);
+    // AppError 身份随快照传递，跨线程接收端据此还原稳定错误码与公开详情。
+    return build_log_error_from_error(
+      error,
+      is_app_error(error)
+        ? { code: error.code, public_details: error.public_details, ...context }
+        : context,
+    );
   }
 
   if (is_log_error_like(error)) {
@@ -121,6 +127,21 @@ export function normalize_log_error(value: unknown, fallback_message: string): L
 }
 
 /**
+ * 还原跨线程传回的 AppError 身份，缺少有效错误码时视为执行通道故障。
+ */
+export function restore_app_error(value: unknown, fallback_message: string): AppError {
+  const failure = normalize_log_error(value, fallback_message);
+  const code = failure.context?.["code"];
+  const public_details = failure.context?.["public_details"];
+  const restored = is_app_error_code(code);
+  return new AppError(restored ? code : "worker.failed", {
+    message: failure.message,
+    ...(restored && is_json_record(public_details) ? { public_details } : {}),
+    diagnostic_context: { failure },
+  });
+}
+
+/**
  * 日志错误 context 只负责 JSON 化和裁剪；路径等敏感字段必须由调用边界先转成显式摘要值对象。
  */
 export function sanitize_log_error_context(context: LogErrorContextInput): LogErrorContext {
@@ -169,9 +190,7 @@ export function to_app_error_log_snapshot(
   return {
     level: options.fatal === true ? "fatal" : resolve_app_error_log_level(error),
     error: to_log_error(error, {
-      code: error.code,
       severity: error.severity,
-      public_details: error.public_details,
       diagnostic_context: error.diagnostic_context,
       ...options.context,
     }),

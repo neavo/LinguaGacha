@@ -5,6 +5,7 @@ import {
   install_worker_threads_mock,
 } from "../../../test/worker-port-harness";
 import type { TranslationRequestPort } from "../protocol/translation-request";
+import { AppError, to_log_error } from "../../../shared/error";
 import type { WorkUnitWorkerCommand } from "./work-unit-worker-protocol";
 
 type RunnerMock = { run: ReturnType<typeof vi.fn> };
@@ -66,7 +67,7 @@ describe("work-unit-worker-entry", () => {
     });
   });
 
-  it("worker 请求端口按请求 ID 保留父线程响应与用量", async () => {
+  it("worker 请求端口按请求 ID 保留父线程响应、用量与错误身份", async () => {
     const harness = install_worker_threads_mock<WorkUnitWorkerCommand>({
       builtinRoot: TEST_BUILTIN_ROOT,
     });
@@ -115,6 +116,23 @@ describe("work-unit-worker-entry", () => {
       reasoning_tokens: 0,
       output_tokens: 2,
       response_result: "译文",
+    });
+
+    const failed = llm_client.request(body, new AbortController().signal);
+    const failed_request = harness.postMessage.mock.calls[1]?.[0] as { requestId: string };
+    harness.emit({
+      type: "llm_result",
+      requestId: failed_request.requestId,
+      result: {
+        ok: false,
+        error: to_log_error(
+          new AppError("model.provider_failed", { public_details: { status: 400 } }),
+        ),
+      },
+    });
+    await expect(failed).rejects.toMatchObject({
+      code: "model.provider_failed",
+      public_details: { status: 400 },
     });
   });
 

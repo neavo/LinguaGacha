@@ -162,8 +162,8 @@ describe("useLaboratoryPageState", () => {
     });
   }
 
-  it("Agent 运行中可保存思考自适应，预过滤受运行锁约束", async () => {
-    const field = "agent_batch_translation_thinking_adaptive_enable";
+  it("Agent 运行中可保存提示词增强，预过滤受运行锁约束", async () => {
+    const field = "prompt_enhancement_enable";
     runtime_fixture.current.runtime_snapshot = { revision: 1, owner: "agent" };
     vi.mocked(api_fetch).mockResolvedValue({
       settings: create_settings_snapshot({ [field]: false }),

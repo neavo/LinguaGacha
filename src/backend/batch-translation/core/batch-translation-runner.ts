@@ -124,7 +124,7 @@ export class BatchTranslationRunner {
     let final_status: "done" | "stopped" | "error" = "done";
     let app_language: unknown = "ZH";
     let progress = await this.task_runtime.read_progress(); // 工程累计事实，由项目写入口维护。
-    const infrastructure_errors: unknown[] = [];
+    const errors: unknown[] = []; // 按发生顺序收集，首项作为聚合异常的主因。
     const retranslate = command.operation === "retranslate";
     const mode = command.mode;
     try {
@@ -198,13 +198,15 @@ export class BatchTranslationRunner {
     } catch (error) {
       final_status = handle.signal.aborted ? "stopped" : "error";
       if (!handle.signal.aborted) {
+        // 原始失败经完成链交给调用方，日志只做诊断。
+        errors.push(error);
         try {
           this.log_replay.task_error(
             retranslate ? "重翻任务执行失败。" : "翻译任务执行失败。",
             error,
           );
         } catch (log_error) {
-          infrastructure_errors.push(error, log_error);
+          errors.push(log_error);
         }
       }
     } finally {
@@ -223,18 +225,18 @@ export class BatchTranslationRunner {
             TranslationProgressAccumulator.with_elapsed(run_progress),
           );
       } catch (error) {
-        infrastructure_errors.push(error);
+        errors.push(error);
       }
       try {
         this.log_replay.task_run_finish(final_status, app_language);
       } catch (error) {
-        infrastructure_errors.push(error);
+        errors.push(error);
       }
     }
-    if (infrastructure_errors.length > 0)
-      throw infrastructure_errors.length === 1
-        ? infrastructure_errors[0]
-        : new AggregateError(infrastructure_errors, "Batch translation cleanup failed.");
+    if (errors.length > 0)
+      throw errors.length === 1
+        ? errors[0]
+        : new AggregateError(errors, "Batch translation failed.", { cause: errors[0] });
     const run_progress = this.task_runtime.read_run_progress();
     return {
       status: final_status,
@@ -371,6 +373,7 @@ export class BatchTranslationRunner {
           throw new AggregateError(
             [error, publish_error],
             "Committed translation publication failed.",
+            { cause: error },
           );
         }
       }

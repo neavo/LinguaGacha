@@ -12,7 +12,7 @@ import {
 import type { TranslationRequestPort } from "../protocol/translation-request";
 import { TranslationWorkUnitRunner } from "./runners/translation-runner";
 import { resolve_default_worker_count } from "../../../shared/utils/worker-capacity-tool";
-import { AppError, normalize_log_error, to_log_error, type LogError } from "../../../shared/error";
+import { AppError, restore_app_error, to_log_error, type LogError } from "../../../shared/error";
 import type { WorkUnitWorkerCommand, WorkUnitWorkerEvent } from "./work-unit-worker-protocol";
 
 /**
@@ -373,13 +373,7 @@ export class TranslationWorkerPool implements WorkUnitExecutor {
       task.resolve(message.data);
       return;
     }
-    const failure = normalize_log_error(message.error, "Work unit execution failed.");
-    task.reject(
-      new AppError("worker.failed", {
-        message: failure.message,
-        diagnostic_context: { failure },
-      }),
-    );
+    task.reject(restore_app_error(message.error, "Work unit execution failed."));
   }
 
   /**

@@ -8,7 +8,6 @@ import { lazyStream } from "@earendil-works/pi-ai/api/lazy";
 
 import type { JsonRecord } from "../../domain/json";
 import { Model, normalize_model_selection } from "../../domain/model";
-import { normalize_setting_snapshot } from "../../domain/setting";
 import * as AppErrors from "../../shared/error";
 import {
   build_request_headers,
@@ -23,27 +22,27 @@ import type { ChatGPTAuthService } from "../auth/chatgpt-auth-service";
 import { observe_chatgpt_request } from "../llm/chatgpt-request";
 import { read_config_model_records, resolve_model_for_usage } from "../model/model-config-resolver";
 
-/** 每次批量调用解析偏好；固定选择使用保存配置，跟随可按模型能力临时降低思考等级。 */
+/** 每次调用解析偏好；固定选择使用保存配置，跟随使用 Agent 生效配置，降级只调整本次副本。 */
 export function resolve_agent_batch_translation_model(
   config: JsonRecord,
   agent_model: Model,
   catalog: readonly PiCatalogModel[],
+  thinking_downgrade: boolean,
 ): Model {
   const model_id = normalize_model_selection(config["model_selection"]).agent_batch_translation;
+  let model = agent_model;
   if (model_id !== null) {
-    const model = read_config_model_records(config).find((item) => item["id"] === model_id);
-    if (model === undefined) throw new AppErrors.AppError("model.not_found");
-    return Model.from_json(model, model_id);
+    const raw = read_config_model_records(config).find((item) => item["id"] === model_id);
+    if (raw === undefined) throw new AppErrors.AppError("model.not_found");
+    model = Model.from_json(raw, model_id);
   }
-  if (!normalize_setting_snapshot(config).agent_batch_translation_thinking_adaptive_enable)
-    return agent_model;
+  if (!thinking_downgrade) return model;
   // 能力集合按等级升序排列；`DEFAULT` 表示平台默认，不参与最低等级选择。
-  const level = resolve_model_capability(agent_model, catalog).available_thinking_levels.find(
+  const level = resolve_model_capability(model, catalog).available_thinking_levels.find(
     (candidate) => candidate !== "DEFAULT",
   );
-  if (level === undefined) return agent_model;
-  // 副本隔离本次翻译等级与 Agent 会话配置。
-  return Model.from_json({ ...agent_model.to_json(), thinking: { level } }, agent_model.id);
+  if (level === undefined) return model;
+  return Model.from_json({ ...model.to_json(), thinking: { level } }, model.id);
 }
 
 /** 把当前统一请求快照注册到 Pi 模型集合。 */

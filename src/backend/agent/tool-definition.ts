@@ -61,11 +61,18 @@ export function agent_tool_result(
   };
 }
 
-/** AppError 只公开稳定字段，未知异常不向模型泄露内部诊断。 */
+/** AppError 与 API 边界公开同一组字段，未知异常不向模型泄露内部诊断。 */
 export function normalize_agent_tool_error(cause: unknown): AgentToolError {
   if (cause instanceof AgentToolError) return cause;
+  // 聚合异常以 `cause` 标记主因：回执沿用主因事实，完整聚合留作诊断。
+  if (cause instanceof AggregateError && cause.cause !== undefined)
+    return new AgentToolError(normalize_agent_tool_error(cause.cause).details, cause, "fault");
   if (is_app_error(cause)) {
-    return new AgentToolError({ code: cause.code, ...cause.public_details }, cause, cause.severity);
+    return new AgentToolError(
+      { code: cause.code, message: cause.message, ...cause.public_details },
+      cause,
+      cause.severity,
+    );
   }
   return new AgentToolError({ code: "tool_failed" }, cause, "fault");
 }

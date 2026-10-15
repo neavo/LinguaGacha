@@ -3950,15 +3950,11 @@ describe("AgentService", () => {
     expect(run.mock.calls.at(-1)?.[2]).toMatchObject({ id: "next" });
   });
 
-  it("跟随批量调用临时降低等级，轮内关闭开关只影响后续调用并保留 Agent 配置", async () => {
+  it("跟随批量调用默认降到最低可用等级", async () => {
     fake_agent_state.batch_mode = true;
-    fake_agent_state.batch_retries = 1;
     const run = vi.fn<
       import("../batch-translation/batch-translation-service").BatchTranslationService["run_under_agent"]
-    >(async () => {
-      fixture.set_translation_thinking_adaptive(false);
-      return { status: "done", progress: normalize_batch_translation_progress({}) };
-    });
+    >(async () => ({ status: "done", progress: normalize_batch_translation_progress({}) }));
     const fixture = await create_service(
       true,
       undefined,
@@ -3984,9 +3980,8 @@ describe("AgentService", () => {
     await fixture.service.send_message({ text: "执行翻译", attachments: [] });
     await wait_for_idle(fixture.service);
 
-    expect(run).toHaveBeenCalledTimes(2);
-    // 同轮第二次调用恢复高等级，同时证明首次降低等级隔离了 Agent 生效配置。
-    expect(run.mock.calls.map((call) => call[2].thinking.level)).toEqual(["OFF", "HIGH"]);
+    expect(run).toHaveBeenCalledTimes(1);
+    expect(run.mock.calls[0]?.[2].thinking.level).toBe("OFF");
   });
 
   it.each([{ cleanup_failed: false }, { cleanup_failed: true }])(
@@ -4025,10 +4020,22 @@ describe("AgentService", () => {
       await wait_for_idle(service);
       expect(run).toHaveBeenCalledTimes(1);
       expect(read_tool_output(service, "batch-translation")).toMatchObject({
-        status: cleanup_failed ? "error" : "stopped",
+        ...(cleanup_failed ? { code: "tool_failed" } : { status: "stopped" }),
         stop_source: "user",
         items: { total: 2, succeeded: 1, failed: 0, unfinished: 1 },
       });
+      // 同轮再次调用被明确拒绝，不重放上次运行的统计。
+      const outputs = service
+        .get_snapshot()
+        .entries.flatMap((entry) =>
+          entry.kind === "tool_call" && entry.id.endsWith(":batch-translation") && entry.output
+            ? [JSON.parse(entry.output[0]!) as JsonRecord]
+            : [],
+        );
+      expect(outputs.slice(1)).toEqual([
+        { code: "batch_translation.stopped", stop_source: "user" },
+        { code: "batch_translation.stopped", stop_source: "user" },
+      ]);
       if (cleanup_failed) {
         expect(
           log_append.mock.calls
@@ -4202,7 +4209,6 @@ describe("AgentService", () => {
     select_batch_translation_model: (model_id: string | null) => void;
     set_personality: (value: string | null) => void;
     set_approval_mode: (value: AgentApprovalMode) => void;
-    set_translation_thinking_adaptive: (value: boolean) => void;
     session_state: ProjectSessionState;
   }> {
     const session_state = new ProjectSessionState();
@@ -4213,14 +4219,12 @@ describe("AgentService", () => {
     let app_language: AppLanguage = "ZH";
     let personality: string | null = null;
     let approval_mode: AgentApprovalMode = "manual";
-    let translation_thinking_adaptive = true;
     const settings = {
       read_setting: () => {
         return {
           app_language,
           agent_personality: personality,
           agent_approval_mode: approval_mode,
-          agent_batch_translation_thinking_adaptive_enable: translation_thinking_adaptive,
           model_selection: {
             translation: "active",
             agent: agent_model_id,
@@ -4360,9 +4364,6 @@ describe("AgentService", () => {
     return {
       set_approval_mode: (value) => {
         approval_mode = value;
-      },
-      set_translation_thinking_adaptive: (value) => {
-        translation_thinking_adaptive = value;
       },
       set_personality: (value: string | null) => {
         personality = value;

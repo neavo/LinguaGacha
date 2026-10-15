@@ -4,6 +4,7 @@ import { AppError } from "./app-error";
 import {
   log_error_from_message,
   normalize_log_error,
+  restore_app_error,
   sanitize_log_error_context,
   summarize_log_error_path,
   summarize_log_error_url,
@@ -127,6 +128,25 @@ describe("log error", () => {
     });
     expect(normalize_log_error("boom", "worker 执行失败")).toEqual({
       message: "worker 执行失败",
+    });
+  });
+
+  it("跨线程快照还原 AppError 身份，缺少有效错误码时视为通道故障", () => {
+    const provider = new AppError("model.provider_failed", {
+      message: "reasoning effort is not supported",
+      public_details: { status: 400 },
+    });
+    // 结构化克隆与 worker 消息传输一致，只保留可序列化字段。
+    expect(restore_app_error(structuredClone(to_log_error(provider)), "fallback")).toMatchObject({
+      code: "model.provider_failed",
+      message: "reasoning effort is not supported",
+      public_details: { status: 400 },
+      severity: "warning",
+    });
+    expect(restore_app_error(to_log_error(new Error("boom")), "fallback")).toMatchObject({
+      code: "worker.failed",
+      message: "boom",
+      public_details: {},
     });
   });
 

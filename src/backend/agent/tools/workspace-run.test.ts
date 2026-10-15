@@ -78,33 +78,9 @@ describe("workspace_run", () => {
         throw refresh_error;
       },
     });
-    const error = await tool
-      .execute({ script: "throw 1;" }, ...agent_tool_call("failed"))
-      .catch((error: unknown) => error);
-    expect(error).toBeInstanceOf(AgentToolError);
-    expect(error).toMatchObject({
-      details: script_error.details,
-      cause: { errors: [script_error, refresh_error] },
-    });
-  });
-
-  it("脚本取消后刷新失败仍报告真实刷新故障", async () => {
-    const controller = new AbortController();
-    const tool = create_agent_workspace_run_tool({
-      run: async () => {
-        controller.abort();
-        throw controller.signal.reason;
-      },
-      refresh_skills: async () => {
-        throw new Error("刷新失败");
-      },
-    });
     await expect(
-      tool.execute({ script: "等待" }, ...agent_tool_call("stopped", controller.signal)),
-    ).rejects.toMatchObject({
-      details: { code: "tool_failed" },
-      cause: { name: "AggregateError" },
-    });
+      tool.execute({ script: "throw 1;" }, ...agent_tool_call("failed")),
+    ).rejects.toMatchObject({ cause: script_error, errors: [script_error, refresh_error] });
   });
 });
 /** 注入工作区执行端口，刷新结果由会话集成测试验证。 */

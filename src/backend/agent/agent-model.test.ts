@@ -27,58 +27,61 @@ const TEST_USER_AGENT = "LinguaGacha/Test";
 const TEST_REQUEST_IDENTITY = { user_agent: TEST_USER_AGENT };
 
 describe("Agent 批量翻译模型", () => {
+  const catalog_model = (off: boolean): PiCatalogModel => ({
+    id: "fixture-model",
+    api: "openai-responses",
+    provider: "openai",
+    baseUrl: "https://example.test/v1",
+    reasoning: true,
+    contextWindow: 128_000,
+    maxTokens: 16_000,
+    thinkingLevelMap: {
+      off: off ? "none" : null,
+      minimal: null,
+      low: "low",
+      medium: null,
+      high: "high",
+      xhigh: null,
+      max: null,
+    },
+  });
+  const create_agent_model = (level: string) =>
+    Model.from_json(
+      { api_format: "OpenAIResponses", model_id: "fixture-model", thinking: { level } },
+      "active",
+    );
+
   it.each([
-    { enabled: true, current: "HIGH", off: true, expected: "OFF" },
-    { enabled: true, current: "HIGH", off: false, expected: "LOW" },
-    { enabled: true, current: "DEFAULT", off: false, expected: "LOW" },
-    { enabled: false, current: "HIGH", off: true, expected: "HIGH" },
+    { current: "HIGH", off: true, downgrade: true, expected: "OFF" },
+    { current: "HIGH", off: false, downgrade: true, expected: "LOW" },
+    { current: "HIGH", off: true, downgrade: false, expected: "HIGH" },
   ])(
-    "跟随：$current → $expected（自适应 $enabled，支持关闭 $off）",
-    ({ enabled, current, off, expected }) => {
-      const agent_model = Model.from_json(
-        {
-          api_format: "OpenAIResponses",
-          model_id: "fixture-model",
-          thinking: { level: current },
-        },
-        "active",
-      );
+    "降级 $downgrade：$current → $expected（支持关闭 $off）",
+    ({ current, off, downgrade, expected }) => {
+      const agent_model = create_agent_model(current);
       const config = {
-        agent_batch_translation_thinking_adaptive_enable: enabled,
         model_selection: { agent_batch_translation: null },
         models: [agent_model.to_json()],
       };
       const original = structuredClone(config);
-      const models: PiCatalogModel[] = [
-        {
-          id: "fixture-model",
-          api: "openai-responses",
-          provider: "openai",
-          baseUrl: "https://example.test/v1",
-          reasoning: true,
-          contextWindow: 128_000,
-          maxTokens: 16_000,
-          thinkingLevelMap: {
-            off: off ? "none" : null,
-            minimal: null,
-            low: "low",
-            medium: null,
-            high: "high",
-            xhigh: null,
-            max: null,
-          },
-        },
-      ];
 
-      const result = resolve_agent_batch_translation_model(config, agent_model, models);
+      const result = resolve_agent_batch_translation_model(
+        config,
+        agent_model,
+        [catalog_model(off)],
+        downgrade,
+      );
 
-      expect(result.to_json()).toEqual({ ...agent_model.to_json(), thinking: { level: expected } });
+      expect(result.to_json()).toEqual({
+        ...agent_model.to_json(),
+        thinking: { level: expected },
+      });
       expect(agent_model.thinking.level).toBe(current);
       expect(config).toEqual(original);
     },
   );
 
-  it("缺少能力时保留生效配置，固定选择同一 ID 时仍使用保存配置", () => {
+  it("缺少能力时沿用配置，固定选择使用保存配置并同样从最低等级开始", () => {
     const agent_model = Model.from_json(
       { model_id: "fixture-model", thinking: { level: "LOW" } },
       "a",
@@ -98,19 +101,17 @@ describe("Agent 批量翻译模型", () => {
         maxTokens: 16_000,
       },
     ];
-    expect(resolve_agent_batch_translation_model(config, agent_model, []).thinking.level).toBe(
-      "LOW",
-    );
-    // 缺失开关沿用默认开启；相同模型的跟随和固定选择具有不同语义。
-    expect(resolve_agent_batch_translation_model(config, agent_model, models).thinking.level).toBe(
-      "OFF",
+    expect(resolve_agent_batch_translation_model(config, agent_model, [], true)).toEqual(
+      agent_model,
     );
     config.model_selection.agent_batch_translation = "a";
-    expect(resolve_agent_batch_translation_model(config, agent_model, models).thinking.level).toBe(
-      "HIGH",
-    );
+    const fixed = resolve_agent_batch_translation_model(config, agent_model, models, true);
+    expect(fixed.thinking.level).toBe("OFF");
+    expect(
+      resolve_agent_batch_translation_model(config, agent_model, models, false).thinking.level,
+    ).toBe("HIGH");
     config.model_selection.agent_batch_translation = "missing";
-    expect(() => resolve_agent_batch_translation_model(config, agent_model, [])).toThrow(
+    expect(() => resolve_agent_batch_translation_model(config, agent_model, [], true)).toThrow(
       expect.objectContaining({ code: "model.not_found" }),
     );
   });

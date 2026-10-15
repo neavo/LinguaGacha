@@ -318,12 +318,16 @@ it.each([
       run_progress: { total_line: 0, line: 0 },
       progress: { total_tokens: result.progress.total_tokens },
     });
-    expect(
-      await service.run_under_agent(lease, new AbortController().signal, model, {
+    // 运行失败连同终态统计和原始原因交给 Agent。
+    await expect(
+      service.run_under_agent(lease, new AbortController().signal, model, {
         item_ids: [3, 99],
         item_statuses: ["NONE"],
       }),
-    ).toMatchObject({ status: "error" });
+    ).rejects.toMatchObject({
+      cause: expect.objectContaining({ code: "request.validation_failed" }),
+      result: { status: "error" },
+    });
     expect(execute_unit).not.toHaveBeenCalled();
     expect(frames.every((frame) => frame.pending_item_ids.length === 0)).toBe(true);
     expect((await database.get_all_meta(project_path))["proofreading_revision.proofreading"]).toBe(

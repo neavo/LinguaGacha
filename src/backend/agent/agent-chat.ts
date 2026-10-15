@@ -41,7 +41,6 @@ import type {
   AgentEntryStatus,
 } from "../../shared/agent";
 import type { RuntimeLease } from "../runtime-operation-gate";
-import type { BatchTranslationResult } from "../../domain/batch-translation";
 import { AGENT_COMPACTION_RESERVE_TOKENS } from "../../domain/model-agent";
 import { AppError } from "../../shared/error";
 import type { PreparedAgentMessage } from "./agent-message-input";
@@ -86,7 +85,7 @@ export type AgentExecution = {
   recoveryTask: TaskId | null;
   steer: SubmittedInput | null;
   retrySteer: SubmittedInput | null;
-  translationPaused: BatchTranslationResult | null;
+  translationStopped: boolean; // 用户停止批量翻译后，本轮拒绝再次启动。
 };
 
 type ChatOptions = {
@@ -454,7 +453,7 @@ export class AgentChat {
       recoveryTask: null,
       steer: null,
       retrySteer: null,
-      translationPaused: null,
+      translationStopped: false,
     };
     this.execution = execution;
     return execution;

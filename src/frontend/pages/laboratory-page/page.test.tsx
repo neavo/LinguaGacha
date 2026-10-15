@@ -46,13 +46,11 @@ function create_laboratory_state_fixture() {
   return {
     snapshot: {
       prompt_enhancement_enable: true,
-      agent_batch_translation_thinking_adaptive_enable: true,
       mtool_optimizer_enable: true,
       skip_duplicate_source_text_enable: true,
     },
     pending_state: {
       prompt_enhancement_enable: false,
-      agent_batch_translation_thinking_adaptive_enable: false,
       mtool_optimizer_enable: false,
       skip_duplicate_source_text_enable: false,
     },
@@ -89,8 +87,8 @@ describe("LaboratoryPage", () => {
     });
   }
 
-  it("点击思考自适应开关提交新值", async () => {
-    const field = "agent_batch_translation_thinking_adaptive_enable";
+  it("点击提示词增强开关提交新值", async () => {
+    const field = "prompt_enhancement_enable";
     await mount_page();
     const toggle = container?.querySelector<HTMLButtonElement>(
       `button[aria-label="laboratory_page.fields.${field}.title"]`,
@@ -108,15 +106,11 @@ describe("LaboratoryPage", () => {
     };
     await mount_page();
 
-    for (const field of [
-      "prompt_enhancement_enable",
-      "agent_batch_translation_thinking_adaptive_enable",
-    ]) {
-      const toggle = container?.querySelector<HTMLButtonElement>(
-        `button[aria-label="laboratory_page.fields.${field}.title"]`,
-      );
-      expect(toggle?.disabled).toBe(false);
-    }
+    expect(
+      container?.querySelector<HTMLButtonElement>(
+        'button[aria-label="laboratory_page.fields.prompt_enhancement_enable.title"]',
+      )?.disabled,
+    ).toBe(false);
     expect(
       container?.querySelector<HTMLButtonElement>(
         'button[aria-label="laboratory_page.fields.mtool_optimizer_enable.title"]',

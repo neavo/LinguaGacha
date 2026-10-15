@@ -331,7 +331,7 @@ async function talk(chat: AgentChat, text: string) {
     recoveryTask: null,
     steer: null,
     retrySteer: null,
-    translationPaused: null,
+    translationStopped: false,
   };
   chat.execution = execution;
   const input = await chat.submit(
@@ -655,7 +655,7 @@ it("用户修订在 SDK 受理后切换历史，采用本次模型与思考等�
     recoveryTask: null,
     steer: null,
     retrySteer: null,
-    translationPaused: null,
+    translationStopped: false,
   };
   chat.execution = execution;
   const accepted = await chat.submit(

@@ -1,11 +1,6 @@
 export const zh_cn_laboratory_page = {
   title: "实验室",
   fields: {
-    agent_batch_translation_thinking_adaptive_enable: {
-      title: "思考等级自适应",
-      description:
-        "在翻译任务中，深度思考会 <emphasis>产生 3-5 倍</emphasis> 的 Token 消耗\n启用此功能时，翻译任务的思考等级会智能调整以提升 Token 效率、节约时间与费用，默认启用",
-    },
     prompt_enhancement_enable: {
       title: "提示词增强",
       description:
