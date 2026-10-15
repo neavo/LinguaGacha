@@ -1,14 +1,12 @@
+import { TranslationProgressAccumulator } from "./core/progress-accumulator";
 import crypto from "node:crypto";
 import {
-  clone_translation_scope,
-  normalize_translation_scope,
   normalize_batch_translation_progress,
   type BatchTranslationProgress,
   type BatchTranslationRequestState,
   type BatchTranslationStopSource,
   type BatchTranslationSource,
   type BatchTranslationResult,
-  type BatchTranslationScope,
   type BatchTranslationOperation,
   type BatchTranslationSnapshot,
   type BatchTranslationSnapshotListener,
@@ -59,7 +57,7 @@ export class BatchTranslationRuntime {
     request_in_flight_count: 0,
     request_recovery: null,
     progress: normalize_batch_translation_progress({}),
-    scope: { kind: "all" },
+    pending_item_ids: [],
   };
   private active_run: ActiveRun | null = null;
   private disposed = false;
@@ -87,7 +85,7 @@ export class BatchTranslationRuntime {
         operation: undefined,
         run_progress: undefined,
         stop_source: undefined,
-        scope: { kind: "all" },
+        pending_item_ids: [],
         request_in_flight_count: 0,
         request_recovery: null,
       };
@@ -114,24 +112,23 @@ export class BatchTranslationRuntime {
   public read_run_progress(): BatchTranslationProgress | undefined {
     return this.snapshot.run_progress === undefined ? undefined : { ...this.snapshot.run_progress };
   }
-  /** 组合运行态与持久进度，并隔离可变 scope。 */
+  /** 在异步读取累计进度前固定运行快照，目标与本轮计数来自同一版本。 */
   public async build_snapshot(): Promise<BatchTranslationSnapshot> {
+    const snapshot = this.snapshot;
     return {
-      ...this.snapshot,
+      ...snapshot,
       progress: await this.read_progress(),
-      run_progress: this.read_run_progress(),
-      ...(this.snapshot.config === undefined ? {} : { config: { ...this.snapshot.config } }),
-      scope: clone_translation_scope(this.snapshot.scope),
+      run_progress: snapshot.run_progress === undefined ? undefined : { ...snapshot.run_progress },
+      ...(snapshot.config === undefined ? {} : { config: { ...snapshot.config } }),
+      pending_item_ids: [...snapshot.pending_item_ids],
     };
   }
   /** 独立运行原子取得全局 lease 后预约翻译。 */
   public begin_standalone(
-    scope: BatchTranslationScope,
     operation: BatchTranslationOperation = "translate",
   ): BatchTranslationRunHandle {
     this.assert_available();
     return this.reserve(
-      scope,
       "standalone",
       this.runtime_gate.begin_runtime("batch_translation"),
       operation,
@@ -139,14 +136,13 @@ export class BatchTranslationRuntime {
   }
   /** 复用当前 Agent lease，并连接工具的父取消信号。 */
   public begin_under_agent(
-    scope: BatchTranslationScope,
     lease: RuntimeLease,
     signal: AbortSignal,
     operation: BatchTranslationOperation = "translate",
   ): BatchTranslationRunHandle {
     this.assert_available();
     this.runtime_gate.assert_current_runtime(lease, "agent");
-    return this.reserve(scope, "agent", null, operation, signal);
+    return this.reserve("agent", null, operation, signal);
   }
   /** 预约前检查关闭状态与单 run 互斥。 */
   private assert_available(): void {
@@ -155,7 +151,6 @@ export class BatchTranslationRuntime {
   }
   /** 同步登记运行句柄和完成链，随后发布受理快照。 */
   private reserve(
-    scope: BatchTranslationScope,
     source: BatchTranslationSource,
     lease: RuntimeLease | null,
     operation: BatchTranslationOperation,
@@ -203,7 +198,7 @@ export class BatchTranslationRuntime {
       operation,
       run_progress: undefined,
       stop_source: run.stop_source,
-      scope: normalize_translation_scope(scope),
+      pending_item_ids: [],
       request_in_flight_count: 0,
       request_recovery: null,
     };
@@ -274,11 +269,18 @@ export class BatchTranslationRuntime {
         await this.publish_snapshot();
       } else {
         const run_progress = result?.run_progress ?? this.read_run_progress();
-        result ??= Object.freeze({
-          status: "error",
-          progress: Object.freeze(await this.read_progress()),
-          ...(run_progress === undefined ? {} : { run_progress }),
-        });
+        if (result === undefined) {
+          // 进度读取失败仍走统一终态收尾，原始错误保留在完成链。
+          const progress = await this.read_progress().catch((error: unknown) => {
+            errors.push(error);
+            return this.snapshot.progress;
+          });
+          result = Object.freeze({
+            status: "error",
+            progress: Object.freeze({ ...progress }),
+            ...(run_progress === undefined ? {} : { run_progress }),
+          });
+        }
         // 最后一次异步收尾后冻结结果；此刻之前受理的停止都属于本轮。
         result = Object.freeze({
           ...result,
@@ -297,11 +299,7 @@ export class BatchTranslationRuntime {
           stop_source: run.stop_source,
           request_in_flight_count: 0,
           request_recovery: null,
-          // 终态保留任务范围类型，同时清除校对页的正在重翻标记。
-          scope:
-            this.snapshot.scope.kind === "items"
-              ? { kind: "items", item_ids: [] }
-              : { kind: "all" },
+          pending_item_ids: [],
           progress: { ...result.progress },
           run_progress: result.run_progress === undefined ? undefined : { ...result.run_progress },
         };
@@ -380,6 +378,22 @@ export class BatchTranslationRuntime {
     this.snapshot = { ...this.snapshot, request_recovery: null };
     run.controller.abort();
   }
+  /** 实际目标与本轮总量一次发布，预约条件不进入运行快照。 */
+  public async publish_targets(
+    handle: BatchTranslationRunHandle,
+    target_ids: ReadonlySet<number>,
+  ): Promise<BatchTranslationProgress> {
+    const run_progress = TranslationProgressAccumulator.empty(target_ids.size);
+    if (!this.is_current(handle.run_id)) return run_progress;
+    this.snapshot = { ...this.snapshot, pending_item_ids: [...target_ids], run_progress };
+    try {
+      await this.publish_snapshot();
+    } catch (error) {
+      this.publication_errors.push(error);
+      throw error;
+    }
+    return { ...run_progress };
+  }
   /** 已提交结果退出待处理范围，同值结果也完成本轮尝试。 */
   public async publish_progress(
     handle: BatchTranslationRunHandle,
@@ -388,18 +402,12 @@ export class BatchTranslationRuntime {
   ): Promise<void> {
     if (!this.is_current(handle.run_id)) return;
     this.clear_request_state_timer();
-    if (run_progress !== undefined)
-      this.snapshot = { ...this.snapshot, run_progress: { ...run_progress } };
-    if (this.snapshot.scope.kind === "items") {
-      const done = new Set(committed_ids);
-      this.snapshot = {
-        ...this.snapshot,
-        scope: {
-          kind: "items",
-          item_ids: this.snapshot.scope.item_ids.filter((id) => !done.has(id)),
-        },
-      };
-    }
+    const done = new Set(committed_ids);
+    this.snapshot = {
+      ...this.snapshot,
+      ...(run_progress === undefined ? {} : { run_progress: { ...run_progress } }),
+      pending_item_ids: this.snapshot.pending_item_ids.filter((id) => !done.has(id)),
+    };
     try {
       await this.publish_snapshot();
     } catch (error) {
@@ -448,7 +456,7 @@ export class BatchTranslationRuntime {
             ...this.snapshot,
             progress: { ...progress },
             run_progress: this.read_run_progress(),
-            scope: clone_translation_scope(this.snapshot.scope),
+            pending_item_ids: [...this.snapshot.pending_item_ids],
           };
     const results = await Promise.allSettled(
       [...this.listeners].map(async (listener) => {

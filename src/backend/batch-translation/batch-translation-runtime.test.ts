@@ -42,8 +42,8 @@ describe("批量翻译完成链", () => {
       });
       const handle =
         lease === null
-          ? runtime.begin_standalone({ kind: "all" })
-          : runtime.begin_under_agent({ kind: "all" }, lease, new AbortController().signal);
+          ? runtime.begin_standalone()
+          : runtime.begin_under_agent(lease, new AbortController().signal);
       await runtime.execute(handle, async () => {
         await runtime.publish_status(handle, "running");
         return { ...result(), status: "error" };
@@ -56,7 +56,7 @@ describe("批量翻译完成链", () => {
       ]);
       expect(await runtime.build_snapshot()).toMatchObject({ source, request_recovery: null });
       if (lease !== null) gate.finish_runtime(lease);
-      const next = runtime.begin_standalone({ kind: "all" });
+      const next = runtime.begin_standalone();
       expect(await runtime.build_snapshot()).toMatchObject({
         source: "standalone",
         request_recovery: null,
@@ -73,9 +73,29 @@ describe("批量翻译完成链", () => {
       await database.close();
     },
   );
+  it("异步读取期间目标与本轮进度保持同一版本", async () => {
+    const { runtime, database } = setup();
+    const handle = runtime.begin_standalone();
+    await runtime.execute(handle, async () => {
+      const pending = deferred<ReturnType<typeof normalize_batch_translation_progress>>();
+      vi.spyOn(runtime, "read_progress").mockReturnValueOnce(pending.promise);
+      const before = runtime.build_snapshot();
+      await runtime.publish_targets(handle, new Set([2]));
+      pending.resolve(normalize_batch_translation_progress({}));
+      expect(await before).toMatchObject({ pending_item_ids: [], run_progress: undefined });
+      expect(await runtime.build_snapshot()).toMatchObject({
+        pending_item_ids: [2],
+        run_progress: { total_line: 1 },
+      });
+      return result();
+    });
+    await handle.completion;
+    await runtime.dispose();
+    await database.close();
+  });
   it("本轮配置隔离引用并保留终态，新运行从空配置开始", async () => {
     const { runtime, database } = setup();
-    const handle = runtime.begin_standalone({ kind: "all" });
+    const handle = runtime.begin_standalone();
     const config = {
       model_name: "翻译模型",
       model_id: "test-model",
@@ -92,7 +112,7 @@ describe("批量翻译完成链", () => {
     const snapshot = await runtime.build_snapshot();
     expect(snapshot.config?.model_name).toBe("翻译模型");
     expect(snapshot.config?.thinking_level).toBe("HIGH");
-    const next = runtime.begin_standalone({ kind: "all" });
+    const next = runtime.begin_standalone();
     await runtime.publish_config(handle, config);
     expect((await runtime.build_snapshot()).config).toBeUndefined();
     await runtime.execute(next, async () => result());
@@ -105,7 +125,7 @@ describe("批量翻译完成链", () => {
     vi.useFakeTimers();
     const { runtime, database } = setup();
     const work = deferred<ReturnType<typeof result>>();
-    const handle = runtime.begin_standalone({ kind: "all" });
+    const handle = runtime.begin_standalone();
     try {
       await runtime.execute(handle, () => work.promise);
       await runtime.publish_status(handle, "running");
@@ -124,7 +144,7 @@ describe("批量翻译完成链", () => {
       expect((await runtime.build_snapshot()).request_recovery).toBeNull();
       work.resolve(result());
       await handle.completion;
-      const next = runtime.begin_standalone({ kind: "all" });
+      const next = runtime.begin_standalone();
       runtime.update_request_state(handle, {
         request_in_flight_count: 1,
         request_recovery: recovery,
@@ -150,7 +170,7 @@ describe("批量翻译完成链", () => {
       frames.push({ status: snapshot.status, count: snapshot.request_in_flight_count });
     });
     const work = deferred<ReturnType<typeof result>>();
-    const handle = runtime.begin_standalone({ kind: "all" });
+    const handle = runtime.begin_standalone();
     await runtime.execute(handle, () => work.promise);
     frames.length = 0;
     runtime.update_request_state(handle, { request_in_flight_count: 1, request_recovery: null });
@@ -167,9 +187,11 @@ describe("批量翻译完成链", () => {
       { status: "done", count: 0 },
     ]);
     expect(gate.get_snapshot().owner).toBeNull();
-    const next = runtime.begin_standalone({ kind: "items", item_ids: [4] });
+    const next = runtime.begin_standalone();
+    await runtime.publish_targets(next, new Set([4]));
+    await runtime.publish_targets(handle, new Set([99]));
     await runtime.publish_progress(handle, [4]);
-    expect((await runtime.build_snapshot()).scope).toEqual({ kind: "items", item_ids: [4] });
+    expect((await runtime.build_snapshot()).pending_item_ids).toEqual([4]);
     await runtime.dispose();
     await next.completion;
     await database.close();
@@ -179,7 +201,7 @@ describe("批量翻译完成链", () => {
     const parent = new AbortController();
     const lease = gate.begin_runtime("agent");
     const work = deferred<ReturnType<typeof result>>();
-    const handle = runtime.begin_under_agent({ kind: "all" }, lease, parent.signal);
+    const handle = runtime.begin_under_agent(lease, parent.signal);
     await runtime.execute(handle, () => work.promise);
     expect(await runtime.request_stop()).toBe(true);
     expect(await runtime.build_snapshot()).toMatchObject({
@@ -196,7 +218,7 @@ describe("批量翻译完成链", () => {
     });
     expect(await runtime.request_stop()).toBe(false);
     gate.finish_runtime(lease);
-    const next = runtime.begin_standalone({ kind: "all" });
+    const next = runtime.begin_standalone();
     expect((await runtime.build_snapshot()).stop_source).toBeUndefined();
     await runtime.execute(next, async () => result());
     expect((await next.completion).stop_source).toBeUndefined();
@@ -214,7 +236,7 @@ describe("批量翻译完成链", () => {
         return release.promise;
       }
     });
-    const handle = runtime.begin_standalone({ kind: "all" });
+    const handle = runtime.begin_standalone();
     await runtime.execute(handle, () => work.promise);
     runtime.update_request_state(handle, { request_in_flight_count: 1, request_recovery: null });
     work.resolve(result());
@@ -229,7 +251,7 @@ describe("批量翻译完成链", () => {
     const { runtime, database } = setup();
     const work = deferred<ReturnType<typeof result>>();
     const failure = new Error("cleanup failed");
-    const handle = runtime.begin_standalone({ kind: "all" });
+    const handle = runtime.begin_standalone();
     await runtime.execute(handle, async () => {
       await work.promise;
       throw failure;
@@ -254,7 +276,7 @@ describe("批量翻译完成链", () => {
         throw failure;
       }
     });
-    const handle = runtime.begin_standalone({ kind: "all" });
+    const handle = runtime.begin_standalone();
     const runner = vi.fn(async () => result());
     const execution = runtime.execute(handle, runner);
     await runtime.request_stop();
@@ -273,7 +295,7 @@ describe("批量翻译完成链", () => {
     const unsubscribe = runtime.subscribe((snapshot) => {
       if (snapshot.status === "requested") throw error;
     });
-    const handle = runtime.begin_standalone({ kind: "all" });
+    const handle = runtime.begin_standalone();
     const run = vi.fn(async () => result());
     await expect(runtime.execute(handle, run)).rejects.toBe(error);
     await expect(handle.completion).rejects.toBe(error);
@@ -281,21 +303,34 @@ describe("批量翻译完成链", () => {
     expect(gate.get_snapshot().owner).toBeNull();
     expect(await runtime.build_snapshot()).toMatchObject({ status: "idle", source: null });
     unsubscribe();
-    const next = runtime.begin_standalone({ kind: "all" });
+    const next = runtime.begin_standalone();
     await runtime.execute(next, async () => result());
     await next.completion;
     await runtime.dispose();
     await database.close();
   });
   it.each(["done", "stopped", "error"] as const)(
-    "定点重翻移除提交 id，%s 终态清空 id 并保留范围类型",
+    "实际目标和总量一起发布，提交移除 ID，%s 终态清空 ID",
     async (status) => {
       const { runtime, database } = setup();
-      const item_ids = [1, 2, 3];
-      const handle = runtime.begin_standalone({ kind: "items", item_ids });
-      item_ids.push(4);
+      const item_ids = new Set([1, 2, 3]);
+      const frames: import("../../domain/batch-translation").BatchTranslationSnapshot[] = [];
+      runtime.subscribe((snapshot) => {
+        frames.push(snapshot);
+      });
+      const handle = runtime.begin_standalone("retranslate");
+      expect(await runtime.build_snapshot()).toMatchObject({
+        pending_item_ids: [],
+        run_progress: undefined,
+      });
+      await runtime.publish_targets(handle, item_ids);
+      item_ids.add(4);
+      expect(frames.at(-1)).toMatchObject({
+        pending_item_ids: [1, 2, 3],
+        run_progress: { total_line: 3, line: 0 },
+      });
       await runtime.publish_progress(handle, [2]);
-      expect((await runtime.build_snapshot()).scope).toEqual({ kind: "items", item_ids: [1, 3] });
+      expect((await runtime.build_snapshot()).pending_item_ids).toEqual([1, 3]);
       if (status === "stopped") {
         await runtime.request_stop();
         expect(handle.signal.aborted).toBe(true);
@@ -306,7 +341,7 @@ describe("批量翻译完成链", () => {
       expect(await runtime.build_snapshot()).toMatchObject({
         status,
         source: "standalone",
-        scope: { kind: "items", item_ids: [] },
+        pending_item_ids: [],
       });
       await runtime.dispose();
       await database.close();
@@ -319,7 +354,7 @@ describe("批量翻译完成链", () => {
     const unsubscribe = runtime.subscribe((snapshot) =>
       snapshot.status === "done" ? terminal.promise : undefined,
     );
-    const handle = runtime.begin_standalone({ kind: "all" });
+    const handle = runtime.begin_standalone();
     await runtime.execute(handle, () => work.promise);
     const settled = vi.fn();
     void handle.completion.then(settled);
@@ -343,16 +378,14 @@ describe("批量翻译完成链", () => {
     const { runtime, gate, database } = setup();
     const lease = gate.begin_runtime("agent");
     const parent = new AbortController();
-    expect(() =>
-      runtime.begin_under_agent({ kind: "all" }, { owner: "agent" }, parent.signal),
-    ).toThrow();
-    const handle = runtime.begin_under_agent({ kind: "all" }, lease, parent.signal);
+    expect(() => runtime.begin_under_agent({ owner: "agent" }, parent.signal)).toThrow();
+    const handle = runtime.begin_under_agent(lease, parent.signal);
     const work = deferred<ReturnType<typeof result>>();
     await runtime.execute(handle, () => work.promise);
     parent.abort();
     expect(await runtime.request_stop()).toBe(false);
     expect(handle.signal.aborted).toBe(true);
-    expect(() => runtime.begin_standalone({ kind: "all" })).toThrow();
+    expect(() => runtime.begin_standalone()).toThrow();
     work.resolve(result());
     expect(await handle.completion).toMatchObject({ status: "stopped", stop_source: "parent" });
     expect(gate.get_snapshot().owner).toBe("agent");
@@ -366,7 +399,7 @@ describe("批量翻译完成链", () => {
     runtime.subscribe((snapshot) => {
       if (snapshot.status === "done") throw error;
     });
-    const handle = runtime.begin_standalone({ kind: "all" });
+    const handle = runtime.begin_standalone();
     await runtime.execute(handle, async () => result());
     await expect(handle.completion).rejects.toBe(error);
     expect(gate.get_snapshot().owner).toBeNull();
@@ -376,7 +409,7 @@ describe("批量翻译完成链", () => {
   it("执行异常发布 error 并保留原始 rejection", async () => {
     const { runtime, gate, database } = setup();
     const error = new Error("worker infrastructure failed");
-    const handle = runtime.begin_standalone({ kind: "all" });
+    const handle = runtime.begin_standalone();
     await runtime.execute(handle, async () => {
       throw error;
     });
@@ -386,9 +419,33 @@ describe("批量翻译完成链", () => {
     await runtime.dispose();
     await database.close();
   });
+  it("异常收尾读取失败仍发布错误终态并清空目标", async () => {
+    const { runtime, database } = setup();
+    const pending_frames: Array<readonly number[]> = [];
+    runtime.subscribe((snapshot) => {
+      pending_frames.push(snapshot.pending_item_ids);
+    });
+    const handle = runtime.begin_standalone("retranslate");
+    await runtime.execute(handle, async () => {
+      await runtime.publish_targets(handle, new Set([1]));
+      vi.spyOn(runtime, "read_progress").mockRejectedValueOnce(new Error("progress read failed"));
+      throw new Error("execution failed");
+    });
+    await expect(handle.completion).rejects.toThrow();
+    expect(pending_frames).toContainEqual([1]);
+    expect(pending_frames.at(-1)).toEqual([]);
+    expect(await runtime.build_snapshot()).toMatchObject({
+      status: "error",
+      pending_item_ids: [],
+      request_in_flight_count: 0,
+      request_recovery: null,
+    });
+    await runtime.dispose();
+    await database.close();
+  });
   it("预约后立即 dispose 也等待同一个 completion", async () => {
     const { runtime, gate, database } = setup();
-    const handle = runtime.begin_standalone({ kind: "all" });
+    const handle = runtime.begin_standalone();
     await runtime.dispose();
     expect(handle.signal.aborted).toBe(true);
     expect(await handle.completion).toMatchObject({ status: "stopped", stop_source: "shutdown" });

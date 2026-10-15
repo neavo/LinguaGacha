@@ -1,4 +1,4 @@
-import type { BatchTranslationStartCommand } from "../../../domain/batch-translation";
+import type { ItemStatus } from "../../../domain/item";
 import type { TextTaskItemRecord } from "../../../shared/text/text-processing";
 import { AppError } from "../../../shared/error";
 import { read_task_item_id, read_task_item_status } from "../translation-item";
@@ -6,9 +6,12 @@ import { read_task_item_id, read_task_item_status } from "../translation-item";
 /** 保留完整语境和工程顺序，只在执行副本中重置已选目标。 */
 export function prepare_translation_targets(
   items: readonly TextTaskItemRecord[],
-  command: BatchTranslationStartCommand,
+  item_ids?: readonly number[],
+  item_statuses?: readonly ItemStatus[],
+  reset = false,
 ): { items: TextTaskItemRecord[]; target_ids: ReadonlySet<number> } {
-  const selected = command.scope.kind === "items" ? new Set(command.scope.item_ids) : null;
+  const selected = item_ids === undefined ? null : new Set(item_ids);
+  const statuses = item_statuses === undefined ? null : new Set<string>(item_statuses);
   if (selected !== null) {
     const existing = new Set(items.map(read_task_item_id));
     if ([...selected].some((id) => !existing.has(id)))
@@ -18,16 +21,12 @@ export function prepare_translation_targets(
   const prepared = items.map((item) => {
     const id = read_task_item_id(item);
     const status = read_task_item_status(item);
-    const eligible =
-      command.operation === "retranslate" ||
-      command.mode === "reset" ||
-      status === "NONE" ||
-      (command.include_errors === true && status === "ERROR");
+    const eligible = statuses === null || statuses.has(status);
     if ((selected !== null && !selected.has(id)) || !eligible) return item;
     target_ids.add(id);
     return {
       ...item,
-      ...(command.operation === "translate" && command.mode === "reset" ? { dst: "" } : {}),
+      ...(reset ? { dst: "" } : {}),
       status: "NONE",
     };
   });

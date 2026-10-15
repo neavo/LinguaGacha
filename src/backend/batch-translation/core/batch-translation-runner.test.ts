@@ -1,3 +1,4 @@
+import type { BatchTranslationRunCommand } from "./batch-translation-runner";
 import { CacheManager } from "../../cache/cache-manager";
 import { ProjectDatabase } from "../../database/database-operations";
 import { ProjectWriteStore } from "../../project/project-write-store";
@@ -21,7 +22,6 @@ import { get_section_revision } from "../../project/project-data-reader";
 import { ProjectSessionState } from "../../project/project-session-state";
 import { RuntimeOperationGate } from "../../runtime-operation-gate";
 import { BatchTranslationRuntime } from "../batch-translation-runtime";
-import type { BatchTranslationStartCommand } from "../../../domain/batch-translation";
 import type { BatchTranslationSnapshot } from "../../../domain/batch-translation";
 import type {
   TranslationWorkUnit,
@@ -48,6 +48,54 @@ describe("BatchTranslationRunner", () => {
       fs.rmSync(cleanup_path, { force: true, recursive: true });
     }
   });
+
+  it.each([true, false])(
+    "准备失败与已确定零目标分别保留未知和零统计：%s",
+    async (preparation_failed) => {
+      const runtime = create_task_runtime();
+      const runner = new BatchTranslationRunner({
+        llmClient: create_unused_llm_client(),
+        builtinRoot: create_template_root(),
+        taskStore: create_task_store({
+          get_translation_items: () => {
+            if (preparation_failed) throw new Error("preparation failed");
+            return [];
+          },
+        }),
+        taskRuntime: runtime,
+        executorClient: create_unused_executor(),
+        taskPlanner: create_test_task_planner(),
+        logManager: create_log_manager(),
+      });
+      const handle = runtime.begin_standalone("translate");
+      await runtime.execute(handle, () =>
+        runner.run(
+          handle,
+          {
+            operation: "translate",
+            mode: "new",
+            item_statuses: ["NONE"],
+          },
+          create_run_context(),
+        ),
+      );
+      const result = await handle.completion;
+      const snapshot = await runtime.build_snapshot();
+      expect(snapshot.status).toBe(preparation_failed ? "error" : "done");
+      if (preparation_failed) {
+        expect(snapshot.run_progress).toBeUndefined();
+        expect(result.run_progress).toBeUndefined();
+      } else {
+        expect(snapshot.run_progress).toMatchObject({
+          total_line: 0,
+          line: 0,
+          processed_line: 0,
+          error_line: 0,
+        });
+        expect(result.run_progress).toEqual(snapshot.run_progress);
+      }
+    },
+  );
 
   it("翻译单条重试超限后提交 ERROR 且不回填原文", async () => {
     const committed_batches: MutableJsonRecord[] = [];
@@ -76,8 +124,8 @@ describe("BatchTranslationRunner", () => {
 
     await start_task(task_engine, task_runtime, {
       operation: "translate",
+      item_statuses: ["NONE"],
       mode: "new",
-      scope: { kind: "all" },
     });
     await done.promise;
 
@@ -127,14 +175,10 @@ describe("BatchTranslationRunner", () => {
       session.mark_loaded(project_path);
       const reader = database;
       const runtime = new BatchTranslationRuntime(session, reader, new RuntimeOperationGate());
-      const completed_scopes: number[][] = [];
+      const pending_snapshots: number[][] = [];
       runtime.subscribe((snapshot) => {
-        if (
-          snapshot.status === "running" &&
-          snapshot.scope.kind === "items" &&
-          snapshot.run_progress?.line === 1
-        )
-          completed_scopes.push([...snapshot.scope.item_ids]);
+        if (snapshot.status === "running" && snapshot.run_progress?.line === 1)
+          pending_snapshots.push([...snapshot.pending_item_ids]);
       });
       const cache = new CacheManager({
         database,
@@ -190,10 +234,14 @@ describe("BatchTranslationRunner", () => {
             },
           },
         });
-        const command: BatchTranslationStartCommand = retranslate
-          ? { operation: "retranslate", scope: { kind: "items", item_ids: [1] } }
-          : { operation: "translate", mode: "new", scope: { kind: "all" } };
-        const handle = runtime.begin_standalone(command.scope, command.operation);
+        const command: BatchTranslationRunCommand = retranslate
+          ? { operation: "retranslate", mode: "continue", item_ids: [1] }
+          : {
+              operation: "translate",
+              item_statuses: ["NONE"],
+              mode: "new",
+            };
+        const handle = runtime.begin_standalone(command.operation);
         await runtime.execute(handle, () => runner.run(handle, command, create_run_context(4)));
         await retry_started;
         await vi.advanceTimersByTimeAsync(TASK_PIPELINE_COMMIT_INTERVAL_MS);
@@ -210,8 +258,7 @@ describe("BatchTranslationRunner", () => {
         expect(get_section_revision(await reader.get_all_meta(project_path), "proofreading")).toBe(
           0,
         );
-        if (retranslate)
-          expect((await runtime.build_snapshot()).scope).toEqual({ kind: "items", item_ids: [1] });
+        if (retranslate) expect((await runtime.build_snapshot()).pending_item_ids).toEqual([1]);
         release_retry();
         expect(await handle.completion).toMatchObject({
           status: "done",
@@ -223,7 +270,7 @@ describe("BatchTranslationRunner", () => {
           expect.objectContaining({ dst: "你好", status: "PROCESSED" }),
         ]);
         if (retranslate) {
-          expect(completed_scopes).toContainEqual([]);
+          expect(pending_snapshots).toContainEqual([]);
           expect(publish_change).not.toHaveBeenCalled();
         } else expect(publish_change).toHaveBeenCalledTimes(1);
       } finally {
@@ -266,7 +313,11 @@ describe("BatchTranslationRunner", () => {
     await start_task(
       task_engine,
       task_runtime,
-      { operation: "translate", mode: "new", scope: { kind: "all" } },
+      {
+        operation: "translate",
+        item_statuses: ["NONE"],
+        mode: "new",
+      },
       run_context,
     );
     await done.promise;
@@ -315,8 +366,8 @@ describe("BatchTranslationRunner", () => {
 
     await start_task(task_engine, task_runtime, {
       operation: "translate",
+      item_statuses: ["NONE"],
       mode: "new",
-      scope: { kind: "all" },
     });
     await done.promise;
 
@@ -353,8 +404,8 @@ describe("BatchTranslationRunner", () => {
 
     await start_task(task_engine, task_runtime, {
       operation: "translate",
+      item_statuses: ["NONE"],
       mode: "new",
-      scope: { kind: "all" },
     });
     await wait_until(
       async () =>
@@ -386,8 +437,8 @@ describe("BatchTranslationRunner", () => {
     });
     await start_task(runner, runtime, {
       operation: "translate",
+      item_statuses: ["NONE"],
       mode: "new",
-      scope: { kind: "all" },
     });
     await finished.promise;
     expect(execute).toHaveBeenCalledTimes(1);
@@ -454,11 +505,12 @@ describe("BatchTranslationRunner", () => {
       const base_context = create_run_context(1);
       const context = { ...base_context, model: { ...base_context.model, api_key: "A\nB" } };
       try {
-        const command: BatchTranslationStartCommand = {
+        const command: BatchTranslationRunCommand = {
           operation: "retranslate",
-          scope: { kind: "items", item_ids: [1, 2, 3, 4] },
+          mode: "continue",
+          item_ids: [1, 2, 3, 4],
         };
-        const handle = runtime.begin_standalone(command.scope, command.operation);
+        const handle = runtime.begin_standalone(command.operation);
         await runtime.execute(handle, () => runner.run(handle, command, context));
         await first_request;
         await vi.advanceTimersByTimeAsync(100_000);
@@ -562,7 +614,11 @@ describe("BatchTranslationRunner", () => {
       await start_task(
         runner,
         runtime,
-        { operation: "translate", mode: "new", scope: { kind: "all" } },
+        {
+          operation: "translate",
+          item_statuses: ["NONE"],
+          mode: "new",
+        },
         { ...run_context, model: { ...run_context.model, api_format: "SakuraLLM" } },
       );
       await done.promise;
@@ -631,8 +687,8 @@ describe("BatchTranslationRunner", () => {
       task_runtime,
       {
         operation: "translate",
+        item_statuses: ["NONE"],
         mode: "new",
-        scope: { kind: "all" },
       },
       run_context,
     );
@@ -666,8 +722,8 @@ describe("BatchTranslationRunner", () => {
       task_runtime,
       {
         operation: "translate",
+        item_statuses: ["NONE"],
         mode: "new",
-        scope: { kind: "all" },
       },
       run_context,
     );
@@ -708,8 +764,8 @@ describe("BatchTranslationRunner", () => {
 
     await start_task(task_engine, task_runtime, {
       operation: "translate",
+      item_statuses: ["NONE"],
       mode: "new",
-      scope: { kind: "all" },
     });
     await execution_started;
 
@@ -804,10 +860,10 @@ describe("BatchTranslationRunner", () => {
   async function start_task(
     task_engine: BatchTranslationRunner,
     task_runtime: BatchTranslationRuntime,
-    command: BatchTranslationStartCommand,
+    command: BatchTranslationRunCommand,
     run_context: BatchTranslationRunContext = create_run_context(),
   ): Promise<void> {
-    const handle = task_runtime.begin_standalone(command.scope, command.operation);
+    const handle = task_runtime.begin_standalone(command.operation);
     await task_runtime.execute(handle, () => task_engine.run(handle, command, run_context));
   }
 

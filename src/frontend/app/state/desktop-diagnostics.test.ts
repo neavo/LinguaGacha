@@ -32,7 +32,7 @@ function create_task_snapshot(): BatchTranslationSnapshot {
       time: 12,
       start_time: 3,
     },
-    scope: { kind: "all" },
+    pending_item_ids: [],
   };
 }
 

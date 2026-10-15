@@ -96,21 +96,21 @@ describe("批量翻译展示", () => {
       stop_source: "user",
     });
   });
-  it("进度与 scope 在读取边界归一化，克隆隔离引用", () => {
+  it("进度与待处理 ID 在读取边界归一化，克隆隔离引用", () => {
     const snapshot = normalize_batch_translation_snapshot({
       batch_translation: {
         revision: 7,
         status: "running",
         progress: normalize_batch_translation_progress({ line: 3, total_line: 4 }),
-        scope: { kind: "items", item_ids: [2, 3, 2, -1] },
+        pending_item_ids: [2, 3, 2, -1],
       },
     });
-    expect(snapshot.scope).toEqual({ kind: "items", item_ids: [2, 3] });
+    expect(snapshot.pending_item_ids).toEqual([2, 3]);
     const cloned = clone_translation_task_snapshot(snapshot);
     cloned.progress.line = 9;
-    if (cloned.scope.kind === "items") cloned.scope.item_ids.push(9);
+    expect(cloned.pending_item_ids).not.toBe(snapshot.pending_item_ids);
     expect(snapshot.progress.line).toBe(3);
-    expect(snapshot.scope).toEqual({ kind: "items", item_ids: [2, 3] });
+    expect(snapshot.pending_item_ids).toEqual([2, 3]);
   });
   it("已知总量的当前快照优先于历史停止态", () => {
     const snapshot = create_empty_batch_translation_snapshot();
@@ -161,22 +161,35 @@ describe("批量翻译展示", () => {
 
 describe("全量翻译完成译文生成", () => {
   it.each([
-    ["独立完整翻译完成时打开生成译文确认", "running", "done", "all", "standalone", true],
-    ["AGENT 全量翻译完成不请求译文生成确认", "running", "done", "all", "agent", false],
-    ["来源为空的完成快照不触发译文生成", "running", "done", "all", null, false],
-    ["校对页局部重翻完成时不打开生成译文确认", "running", "done", "items", "standalone", false],
-    ["用户主动停止翻译后不打开生成译文确认", "stopping", "stopped", "all", "standalone", false],
-    ["首屏已有完成态翻译快照不打开生成译文确认", "idle", "done", "all", "standalone", false],
-    ["重复完成快照不再触发译文生成", "done", "done", "all", "standalone", false],
-    ["执行失败不请求译文生成确认", "running", "error", "all", "standalone", false],
-  ] as const)("%s", (_name, previous_status, status, scope_kind, source, expected) => {
+    ["独立完整翻译完成时打开生成译文确认", "running", "done", "translate", "standalone", true],
+    ["AGENT 全量翻译完成不请求译文生成确认", "running", "done", "translate", "agent", false],
+    ["来源为空的完成快照不触发译文生成", "running", "done", "translate", null, false],
+    [
+      "校对页局部重翻完成时不打开生成译文确认",
+      "running",
+      "done",
+      "retranslate",
+      "standalone",
+      false,
+    ],
+    [
+      "用户主动停止翻译后不打开生成译文确认",
+      "stopping",
+      "stopped",
+      "translate",
+      "standalone",
+      false,
+    ],
+    ["首屏已有完成态翻译快照不打开生成译文确认", "idle", "done", "translate", "standalone", false],
+    ["重复完成快照不再触发译文生成", "done", "done", "translate", "standalone", false],
+    ["执行失败不请求译文生成确认", "running", "error", "translate", "standalone", false],
+  ] as const)("%s", (_name, previous_status, status, operation, source, expected) => {
     expect(
       should_open_translation_generation_followup(previous_status, {
         ...create_empty_batch_translation_snapshot(),
         status,
         source,
-        operation: scope_kind === "all" ? "translate" : "retranslate",
-        scope: scope_kind === "items" ? { kind: "items", item_ids: [] } : { kind: "all" },
+        operation,
       }),
     ).toBe(expected);
   });

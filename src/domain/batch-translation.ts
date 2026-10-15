@@ -1,4 +1,5 @@
 import { is_model_thinking_level, type ModelThinkingLevel } from "./model";
+import type { ItemStatus } from "./item";
 
 /** 从本次执行配置投影的非敏感摘要，跨续跑保留各自实际采用的值。 */
 export type BatchTranslationConfig = Readonly<{
@@ -78,8 +79,8 @@ export type BatchTranslationScope =
   | { kind: "items"; item_ids: number[] }; // 指定目标范围，执行目的由 operation 决定
 
 export type AgentBatchTranslationRequest = Readonly<{
-  scope: BatchTranslationScope;
-  include_errors: boolean; // 用户已确认是否处理范围内的失败条目
+  item_ids?: readonly number[];
+  item_statuses?: readonly ItemStatus[];
 }>;
 
 const TASK_START_MODE_SET = new Set<string>(BATCH_TRANSLATION_START_MODES);
@@ -140,55 +141,6 @@ function read_non_negative_integer(value: unknown): number {
   return Math.trunc(read_non_negative_number(value));
 }
 
-/** 保留合法条目 ID 的首次出现顺序。 */
-function normalize_translation_item_ids(value: unknown): number[] {
-  if (!Array.isArray(value)) {
-    return [];
-  }
-
-  const item_ids: number[] = [];
-  const seen_ids = new Set<number>();
-  value.forEach((raw_item_id) => {
-    const item_id = Number(raw_item_id);
-    if (!Number.isInteger(item_id) || item_id <= 0 || seen_ids.has(item_id)) {
-      return;
-    }
-
-    seen_ids.add(item_id);
-    item_ids.push(item_id);
-  });
-  return item_ids;
-}
-
-/** translation scope 读取侧归一化；空 items 表示指定范围已经没有剩余行，命令边界仍负责拒绝空请求 */
-export function normalize_translation_scope(value: unknown): BatchTranslationScope {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    return { kind: "all" };
-  }
-
-  const scope = value as Record<string, unknown>;
-  if (scope["kind"] !== "items") {
-    return { kind: "all" };
-  }
-
-  const raw_item_ids = scope["item_ids"];
-  const item_ids = normalize_translation_item_ids(raw_item_ids);
-  if (item_ids.length > 0) {
-    return { kind: "items", item_ids };
-  }
-
-  return Array.isArray(raw_item_ids) && raw_item_ids.length === 0
-    ? { kind: "items", item_ids: [] }
-    : { kind: "all" };
-}
-
-/** 克隆 translation scope，避免跨运行态共享 item_ids 数组引用 */
-export function clone_translation_scope(scope: BatchTranslationScope): BatchTranslationScope {
-  return scope.kind === "items"
-    ? { kind: "items", item_ids: [...scope.item_ids] }
-    : { kind: "all" };
-}
-
 /** 本次连续不可用期间的恢复事实，供任务快照和页面共同消费。 */
 export type BatchTranslationRequestRecovery = Readonly<{
   retry_count: number; // 实际派发的恢复请求总数，任一密钥恢复正常后清零。
@@ -210,7 +162,7 @@ export type BatchTranslationSnapshot = BatchTranslationRequestState & {
   source: BatchTranslationSource | null; // 预约入口决定本轮来源，终态保留，工程切换清空
   stop_source?: BatchTranslationStopSource | undefined; // 本轮首次受理的取消来源，收尾失败也保留
   progress: BatchTranslationProgress;
-  scope: BatchTranslationScope; // kind 保留本轮范围类型；items 中待处理 ID 随提交移除，终态清空
+  pending_item_ids: readonly number[]; // 已确定且尚未提交终态结果的目标，准备前和收尾后为空
 };
 
 export type BatchTranslationResult = Readonly<{
