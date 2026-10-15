@@ -42,29 +42,27 @@ it.each(["xp", "vx", "ace"] as const)(
     fs.writeFileSync(path.join(temp.path, "Graphics/picture.png"), "old picture");
     const native = new NativeFs();
     expect(discover_rgss_source(archive, native)?.version).toBe(version);
-    const original = fs.readFileSync(archive);
     const service = new FileFormatService({ target_language: "ZH" }, async () => null);
     const prepared = await service.prepare_source(
       (await service.collect_source_file_entries([archive]))[0]!,
     );
     const zip = await JSZip.loadAsync(prepared.content);
     for (const [name, member] of Object.entries(zip.files))
-      expect(fs.readFileSync(path.join(temp.path, ".linguagacha-backup", name))).toEqual(
+      expect(fs.readFileSync(path.join(temp.path, "backup_lg", name))).toEqual(
         await member.async("nodebuffer"),
       );
-    expect(fs.readFileSync(path.join(temp.path, ".lg-original", path.basename(archive)))).toEqual(
-      original,
-    );
+    expect(fs.existsSync(path.join(temp.path, ".lg-original"))).toBe(false);
+    expect(fs.existsSync(path.join(temp.path, "backup_lg/.tmp"))).toBe(false);
     expect(fs.existsSync(archive)).toBe(false);
     for (const [name, bytes] of files)
       expect(fs.readFileSync(path.join(temp.path, name))).toEqual(bytes);
     expect(
       fs.readFileSync(
-        path.join(temp.path, ".linguagacha-backup/Custom/Main" + RGSS_VERSIONS[version]),
+        path.join(temp.path, "backup_lg/Custom/Main" + RGSS_VERSIONS[version]),
         "utf8",
       ),
     ).toBe("scripts");
-    expect(fs.existsSync(path.join(temp.path, ".linguagacha-backup/Graphics"))).toBe(false);
+    expect(fs.existsSync(path.join(temp.path, "backup_lg/Graphics"))).toBe(false);
     const prepared_entries = fs.readdirSync(temp.path);
     await prepare_rgss_source(discover_rgss_source(temp.path, native)!, native);
     expect(fs.readdirSync(temp.path)).toEqual(prepared_entries);
@@ -77,9 +75,8 @@ it("已有 System 仍完整解包，保留旧备份和归档外的独立文件",
   fs.mkdirSync(path.join(temp.path, "backup"));
   fs.writeFileSync(path.join(temp.path, "backup_2"), "occupied");
   fs.writeFileSync(path.join(temp.path, "Data/extra.txt"), "extra");
-  const original = fs.readFileSync(archive);
   await prepare_rgss_source(discover_rgss_source(temp.path, new NativeFs())!, new NativeFs());
-  expect(fs.readFileSync(path.join(temp.path, ".lg-original/Game.rgss3a"))).toEqual(original);
+  expect(fs.existsSync(archive)).toBe(false);
   expect(fs.readFileSync(path.join(temp.path, "Data/System.rvdata2"), "utf8")).toBe("system");
   expect(fs.readFileSync(path.join(temp.path, "Data/extra.txt"), "utf8")).toBe("extra");
   expect(fs.readdirSync(path.join(temp.path, "backup"))).toEqual([]);
@@ -103,9 +100,7 @@ it("归档提取失败保留独立数据与归档", async () => {
   expect(fs.readFileSync(path.join(temp.path, "Data/Actors.rvdata2"), "utf8")).toBe("old actors");
   expect(fs.readFileSync(path.join(temp.path, "Custom/Main.rvdata2"), "utf8")).toBe("old script");
   expect(fs.existsSync(path.join(temp.path, "Data/System.rvdata2"))).toBe(false);
-  expect(fs.readdirSync(temp.path).some((name) => name.startsWith(".linguagacha-game-"))).toBe(
-    false,
-  );
+  expect(fs.existsSync(path.join(temp.path, "backup_lg/.tmp"))).toBe(false);
 });
 
 it("拒绝经过目录链接的成员，外部文件保持原状", async () => {

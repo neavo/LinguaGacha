@@ -38,7 +38,7 @@ function fixture(root: string, packed: boolean): string {
   return root;
 }
 
-it.each([false, true])("准备 %s 固化明文配置，备份原入口并保持重复导入无副作用", async (packed) => {
+it.each([false, true])("准备 %s 固化明文配置，清理原封装并保持重复导入无副作用", async (packed) => {
   using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-mv-prepare-"));
   const source = fixture(temp.path, packed);
   if (!packed) fs.writeFileSync(path.join(temp.path, "www/data/System.json"), "\uFEFF" + SYSTEM);
@@ -46,20 +46,20 @@ it.each([false, true])("准备 %s 固化明文配置，备份原入口并保持�
   const service = new FileFormatService({ target_language: "ZH" }, async () => null);
   const entries = await service.collect_source_file_entries([source]);
   expect(entries[0]!.source_path).toBe(source);
-  expect(fs.existsSync(path.join(temp.path, ".linguagacha-backup"))).toBe(false);
+  expect(fs.existsSync(path.join(temp.path, "backup_lg"))).toBe(false);
   const prepared = await service.prepare_source(
     (await service.discover_import_sources([{ source_path: source, rel_path: "game.zip" }]))[0]!,
   );
   expect(fs.readFileSync(path.join(temp.path, "www/img/a.png"))).toEqual(PLAIN);
   expect(fs.readFileSync(path.join(temp.path, "www/img/a.rpgmvp"))).toEqual(encrypted_media(PLAIN));
-  if (packed)
-    expect(fs.readFileSync(path.join(temp.path, ".lg-original/Selected.exe"))).toEqual(original);
+  if (packed) expect(fs.readFileSync(source)).not.toEqual(original);
+  expect(fs.existsSync(path.join(temp.path, ".lg-original"))).toBe(false);
   const zip = await JSZip.loadAsync(prepared.content);
   for (const [name, member] of Object.entries(zip.files))
-    expect(fs.readFileSync(path.join(temp.path, ".linguagacha-backup", name))).toEqual(
+    expect(fs.readFileSync(path.join(temp.path, "backup_lg", name))).toEqual(
       await member.async("nodebuffer"),
     );
-  expect(fs.existsSync(path.join(temp.path, ".linguagacha-backup/Selected.exe"))).toBe(false);
+  expect(fs.existsSync(path.join(temp.path, "backup_lg/Selected.exe"))).toBe(false);
   const system = await zip.file("www/data/System.json")!.async("string");
   expect(system).toContain('"hasEncryptedImages":false');
   expect(system).toContain('"large":9007199254740993');
@@ -77,10 +77,10 @@ it.each(["media", "commit"])("准备失败 %s 保留原配置和明文", async (
     native = new NativeFs();
   if (phase === "media") fs.writeFileSync(path.join(temp.path, "www/img/b.rpgmvp"), "broken");
   if (phase === "commit") {
-    const copy = native.copy_file_atomic.bind(native);
-    vi.spyOn(native, "copy_file_atomic").mockImplementation((from, to) => {
-      copy(from, to);
-      if (from.includes(".linguagacha-game-") && to.endsWith("a.png")) {
+    const rename = native.rename.bind(native);
+    vi.spyOn(native, "rename").mockImplementation((from, to) => {
+      rename(from, to);
+      if (from.includes(path.join("backup_lg", ".tmp", "stage")) && to.endsWith("a.png")) {
         throw new Error("commit failure");
       }
     });
@@ -103,7 +103,7 @@ it("原稿备份失败保留已解包游戏，重试保存准备后的配置", a
     file,
     bytes,
   ) {
-    if (file.includes(".linguagacha-backup-")) throw new Error("backup failure");
+    if (file.endsWith(".linguagacha-backup.json")) throw new Error("backup failure");
     return write.call(this, file, bytes);
   });
   try {
@@ -114,11 +114,11 @@ it("原稿备份失败保留已解包游戏，重试保存准备后的配置", a
     mock.mockRestore();
   }
   expect(fs.readFileSync(path.join(temp.path, "www/img/a.png"))).toEqual(PLAIN);
-  expect(fs.existsSync(path.join(temp.path, ".linguagacha-backup"))).toBe(false);
+  expect(fs.readdirSync(path.join(temp.path, "backup_lg"))).toEqual([]);
   await service.prepare_source((await service.collect_source_file_entries([source]))[0]!);
-  expect(
-    fs.readFileSync(path.join(temp.path, ".linguagacha-backup/www/data/System.json"), "utf8"),
-  ).toContain('"hasEncryptedImages":false');
+  expect(fs.readFileSync(path.join(temp.path, "backup_lg/www/data/System.json"), "utf8")).toContain(
+    '"hasEncryptedImages":false',
+  );
 });
 
 it("多个 EVB 入口要求明确选择，同根冲突输入明确失败", async () => {

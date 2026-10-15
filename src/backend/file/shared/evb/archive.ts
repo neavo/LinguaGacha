@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import type { NativeFs } from "../../../../native/native-fs";
 import { ProjectAssetPathIndex } from "../../../../shared/project/project-asset-paths";
-import { assert_game_path_spellings, validate_game_path } from "../rpgmaker-prepare";
+import { assert_game_path_spellings, validate_game_path } from "../../source-file-paths";
 import {
   read_pe,
   validate_evb_layout,

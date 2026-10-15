@@ -3,7 +3,25 @@ import {
   assert_source_file_paths,
   source_file_output_path,
   SourceFilePathIndex,
+  validate_game_path,
+  assert_game_path_spellings,
 } from "./source-file-paths";
+
+it.each([
+  "backup_lg/a.json",
+  ".tmp/a.json",
+  ".linguagacha-backup.json",
+  ".lg-original/a",
+  ".lg-original-temp/a",
+  "backup/a",
+])("游戏成员不得占用管理路径：%s", (name) =>
+  expect(() => validate_game_path(name)).toThrow("Member conflicts with preparation files"),
+);
+
+it("游戏成员的父目录拼写必须一致", () => {
+  expect(() => assert_game_path_spellings(["New/a.txt", "new/b.txt"])).toThrow();
+  expect(() => assert_game_path_spellings(["New/a.txt", "New/b.txt"])).not.toThrow();
+});
 
 it.each([
   ["我的游戏.zip", "RPGMAKER_MV_MZ", "我的游戏"],

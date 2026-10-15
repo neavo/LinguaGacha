@@ -289,10 +289,8 @@ describe("ProjectContentService", () => {
         expected_section_revisions: { files: 0, items: 0 },
       });
       expect(fs.existsSync(archive)).toBe(false);
-      expect(fs.existsSync(path.join(root, ".lg-original/Game.rgss3a"))).toBe(true);
-      expect(fs.readFileSync(path.join(root, ".linguagacha-backup/Data/System.rvdata2"))).toEqual(
-        content,
-      );
+      expect(fs.existsSync(path.join(root, ".lg-original"))).toBe(false);
+      expect(fs.readFileSync(path.join(root, "backup_lg/Data/System.rvdata2"))).toEqual(content);
       expect((await service.preview_import_files({ source_paths: [root] })).files).toEqual(
         preview.files.map((file) => ({ ...file, conflict: true })),
       );

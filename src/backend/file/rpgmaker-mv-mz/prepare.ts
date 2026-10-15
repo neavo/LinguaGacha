@@ -2,13 +2,12 @@ import { restore_evb_launcher } from "../shared/evb/pe";
 import path from "node:path";
 import type { NativeFs } from "../../../native/native-fs";
 import { is_json_record } from "../../../domain/json";
+import { prepare_game_directory, type GamePreparation } from "../shared/rpgmaker-prepare";
 import {
   assert_regular_path,
   collect_existing_files,
-  prepare_game_directory,
   validate_game_path,
-  type GamePreparation,
-} from "../shared/rpgmaker-prepare";
+} from "../source-file-paths";
 import { read_evb, extract_evb_member } from "../shared/evb/archive";
 import type { RPGMakerMvMzPrepareExecution, RPGMakerMvMzPrepareTask } from "./prepare-worker";
 import { read_evb_game, type RPGMakerSource } from "./source";
@@ -92,7 +91,7 @@ export async function stage_rpgmaker_source(
     )
   )
     throw new Error("Prepared game is missing MV/MZ engine files");
-  return { writes: [...writes], originals: executable ? [path.basename(executable)] : [] };
+  return { writes: [...writes] };
 }
 
 /** 包内资源覆盖散装资源，原生媒体按整类成功结果关闭配置。 */

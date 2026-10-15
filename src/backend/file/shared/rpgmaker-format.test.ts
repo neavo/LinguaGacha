@@ -35,7 +35,7 @@ it("首次备份与容器共用读取字节，重复导入保留可覆盖恢复�
   const zip = await read_rpgmaker_container(prepared.content, "game.zip");
   for (const entry of entries) {
     expect(read.mock.calls.filter(([file]) => file === entry.source_path)).toHaveLength(1);
-    expect(fs.readFileSync(path.join(temp.path, ".linguagacha-backup", entry.rel_path))).toEqual(
+    expect(fs.readFileSync(path.join(temp.path, "backup_lg", entry.rel_path))).toEqual(
       await zip.get(entry.rel_path)!.async("nodebuffer"),
     );
     native.write_file_sync(entry.source_path, "translated");
@@ -49,7 +49,7 @@ it("首次备份与容器共用读取字节，重复导入保留可覆盖恢复�
   await expect(format.prepare_source([...entries, added], "game.zip", game)).rejects.toThrow(
     "Game backup coverage conflict",
   );
-  fs.cpSync(path.join(temp.path, ".linguagacha-backup"), temp.path, { recursive: true });
+  fs.cpSync(path.join(temp.path, "backup_lg"), temp.path, { recursive: true });
   for (const entry of entries)
     expect(fs.readFileSync(entry.source_path, "utf8")).toBe("original " + entry.rel_path);
 });
@@ -74,13 +74,13 @@ it.each([false, true])("已有备份 %s 时读取失败均中止导入，恢复�
     return read(file);
   });
   await expect(format.prepare_source(entries, "game.zip", game)).rejects.toThrow("read failure");
-  expect(fs.existsSync(path.join(temp.path, ".linguagacha-backup"))).toBe(existing);
+  expect(fs.existsSync(path.join(temp.path, "backup_lg"))).toBe(existing);
   mock.mockRestore();
   await format.prepare_source(entries, "game.zip", game);
   for (const entry of entries)
-    expect(
-      fs.readFileSync(path.join(temp.path, ".linguagacha-backup", entry.rel_path), "utf8"),
-    ).toBe("original");
+    expect(fs.readFileSync(path.join(temp.path, "backup_lg", entry.rel_path), "utf8")).toBe(
+      "original",
+    );
 });
 it("RM 解析通过共享容器入口拒绝越界成员", async () => {
   const format = new RPGMakerGameFormat(
@@ -121,9 +121,7 @@ it("解析失败保留原始字节，备份与零条目导出仍包含该文件"
   const archive = await read_zip_fixture(prepared.content);
   expect([...archive.keys()]).toEqual(["data/Broken.json", "data/System.json"]);
   expect(zip_text(archive, "data/Broken.json")).toBe("{");
-  expect(
-    fs.readFileSync(path.join(temp.path, ".linguagacha-backup/data/Broken.json"), "utf8"),
-  ).toBe("{");
+  expect(fs.readFileSync(path.join(temp.path, "backup_lg/data/Broken.json"), "utf8")).toBe("{");
   const output = path.join(temp.path, "out");
   await service.write_to_path([], {
     paths: { translated_path: output, bilingual_path: output },

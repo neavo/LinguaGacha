@@ -41,22 +41,19 @@ describe("GuiBackendBootstrap 集成", () => {
     const committed = Promise.withResolvers<void>(),
       cleanup = Promise.withResolvers<void>(),
       release = Promise.withResolvers<void>();
-    const copy = NativeFs.prototype.copy_file_atomic,
+    const rename = NativeFs.prototype.rename,
       remove = NativeFs.prototype.remove_async;
-    vi.spyOn(NativeFs.prototype, "copy_file_atomic").mockImplementation(function (
-      this: NativeFs,
-      from,
-      to,
-    ) {
-      copy.call(this, from, to);
-      if (from.includes(".linguagacha-game-") && to.endsWith("a.png")) committed.resolve();
+    vi.spyOn(NativeFs.prototype, "rename").mockImplementation(function (this: NativeFs, from, to) {
+      rename.call(this, from, to);
+      if (from.includes(path.join("backup_lg", ".tmp", "stage")) && to.endsWith("a.png"))
+        committed.resolve();
     });
     vi.spyOn(NativeFs.prototype, "remove_async").mockImplementation(async function (
       this: NativeFs,
       target,
       options,
     ) {
-      if (target.includes(".linguagacha-game-")) {
+      if (target === path.join(game, "backup_lg/.tmp")) {
         cleanup.resolve();
         await release.promise;
       }
@@ -85,9 +82,7 @@ describe("GuiBackendBootstrap 集成", () => {
       await settled;
       expect(bootstrap.isStopped()).toBe(true);
       expect(fs.existsSync(path.join(temp.path, "cancelled.lg"))).toBe(false);
-      expect(fs.readdirSync(game).some((name) => name.startsWith(".linguagacha-game-"))).toBe(
-        false,
-      );
+      expect(fs.existsSync(path.join(game, "backup_lg/.tmp"))).toBe(false);
     } finally {
       release.resolve();
       await bootstrap.stop();

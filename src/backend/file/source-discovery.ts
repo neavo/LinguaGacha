@@ -1,4 +1,5 @@
-import { GameSourceConflictError } from "./source-file-paths";
+import { read_game_backup_engine } from "./shared/rpgmaker-backup";
+import { GAME_BACKUP_DIRECTORY, GameSourceConflictError } from "./source-file-paths";
 import path from "node:path";
 import type { NativeFs } from "../../native/native-fs";
 import {
@@ -26,8 +27,57 @@ const FORMATS = new Map<string, ProjectSourceFormatId>(
   ]),
 );
 
-/** 仅来源编排边界归集失败；取消和相互冲突的游戏入口终止整批。 */
+/** 显式选择检查候选祖先，递归扫描只检查当前目录，确认备份后停止下探。 */
+async function find_game_backup(
+  source: string,
+  fs: NativeFs,
+  signal: AbortSignal | undefined,
+  ancestors: boolean,
+): Promise<string | null> {
+  for (let candidate = path.resolve(source); ; candidate = path.dirname(candidate)) {
+    signal?.throwIfAborted();
+    if (path.basename(candidate).toLowerCase() === GAME_BACKUP_DIRECTORY) {
+      let directory = false;
+      try {
+        directory = fs.stat(candidate).isDirectory();
+      } catch (error) {
+        if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
+        // 不存在的候选交给正常来源检查报告。
+      }
+      if (
+        directory &&
+        (read_game_backup_engine(candidate, fs) !== null ||
+          (await discover_rpgmaker_source(path.dirname(candidate), fs, signal)) ||
+          discover_rgss_source(path.dirname(candidate), fs))
+      )
+        return candidate;
+    }
+    if (!ancestors || path.dirname(candidate) === candidate) return null;
+  }
+}
+
+/** 显式入口的备份识别失败直接归集，不能降级为普通目录继续展开。 */
 export async function discover_source(
+  source_path: string,
+  fs: NativeFs,
+  signal?: AbortSignal,
+): Promise<DiscoveredSource> {
+  try {
+    const backup = await find_game_backup(source_path, fs, signal, true);
+    if (backup) throw new Error("Game backup cannot be used as an import source: " + backup);
+  } catch (error) {
+    signal?.throwIfAborted();
+    return {
+      source_path,
+      rel_path: path.basename(source_path),
+      source: { kind: "failure", error },
+    };
+  }
+  return read_source(source_path, fs, signal);
+}
+
+/** 仅来源编排边界归集失败；取消和相互冲突的游戏入口终止整批。 */
+async function read_source(
   source_path: string,
   fs: NativeFs,
   signal?: AbortSignal,
@@ -100,10 +150,26 @@ export async function discover_sources(
   /** 每个物理来源只探测一次，普通目录按稳定顺序展开。 */
   async function visit(source_path: string, source_root: string): Promise<void> {
     signal?.throwIfAborted();
+    const explicit = source_path === source_root; // 显式输入须报告失败，递归遇到备份则跳过。
+    try {
+      const backup = await find_game_backup(source_path, fs, signal, explicit);
+      if (backup) {
+        if (!explicit) return;
+        throw new Error("Game backup cannot be used as an import source: " + backup);
+      }
+    } catch (error) {
+      signal?.throwIfAborted();
+      entries.push({
+        source_path,
+        rel_path: path.basename(source_path),
+        source: { kind: "failure", error },
+      });
+      return;
+    }
     const key = fs.to_identity_path(source_path);
     if (visited.has(key)) return;
     visited.add(key);
-    const entry = await discover_source(source_path, fs, signal);
+    const entry = await read_source(source_path, fs, signal);
     try {
       const directory = fs.exists(source_path) && fs.stat(source_path).isDirectory();
       // 坏 EXE 所在的普通容器目录仍展开兄弟来源；有游戏标志的坏目录整体报告失败。

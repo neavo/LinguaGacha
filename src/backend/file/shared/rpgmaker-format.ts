@@ -1,5 +1,5 @@
 import { check_game_backup, write_game_backup } from "./rpgmaker-backup";
-import { validate_game_path, assert_game_path_spellings } from "./rpgmaker-prepare";
+import { validate_game_path, assert_game_path_spellings } from "../source-file-paths";
 import path from "node:path";
 import JSZip from "jszip";
 import type { NativeFs } from "../../../native/native-fs";
