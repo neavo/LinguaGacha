@@ -47,6 +47,8 @@ export class MarkdownV2BlockMigration {
       (database) => {
         const latest_items = database.get_all_items(project_path);
         const next_items = replace_project_file_items(latest_items, replacements);
+        for (const file_path of replacements.keys())
+          database.set_asset_file_type(project_path, file_path, "MD_V2");
         database.set_items(project_path, next_items);
         const meta = database.get_all_meta(project_path);
         database.upsert_meta_entries(project_path, {
@@ -180,7 +182,6 @@ export class MarkdownV2BlockMigration {
         row: unit.start_line,
         file_type: "MD_V2",
         file_path: items[0]!.file_path,
-        text_type: "MD",
         status: this.aggregate_status(unit, covered_items),
         skip_internal_filter: covered_items.some((item) => item.skip_internal_filter),
         extra_field: {

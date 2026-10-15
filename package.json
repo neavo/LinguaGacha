@@ -36,6 +36,7 @@
     "@floating-ui/react-dom": "^2.1.9",
     "@hono/node-server": "^2.1.4",
     "@lezer/highlight": "^1.2.5",
+    "@ruby/prism": "^1.9.0",
     "@streamdown/cjk": "^1.0.4",
     "@streamdown/code": "^2.0.0",
     "@streamdown/math": "^1.0.3",
@@ -112,8 +113,10 @@
     "iconv-lite",
     "jszip",
     "mupdf",
+    "oxc-parser",
     "remark-gfm",
     "remark-parse",
-    "unified"
+    "unified",
+    "@ruby/prism"
   ]
 }

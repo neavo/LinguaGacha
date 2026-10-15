@@ -2,11 +2,8 @@ import path from "node:path";
 import { AppError } from "../../../shared/error";
 
 import type { Item } from "../../../domain/item";
-import {
-  group_items as group_file_items,
-  type GeneratedFilePaths,
-  type FileFormatServiceConfig,
-} from "../file-format-shared";
+import { group_items as group_file_items } from "../shared/file-format-helpers";
+import { type GeneratedFilePaths, type FileFormatServiceConfig } from "../file-format-types";
 import { EpubAst } from "./epub-ast";
 import { EpubWriter } from "./epub-writer";
 

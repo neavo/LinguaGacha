@@ -1,45 +1,46 @@
+import { is_rpgmaker_file_type } from "../../../shared/project-source-formats";
+import {
+  normalize_project_asset_path,
+  ProjectAssetPathIndex,
+} from "../../../shared/project/project-asset-paths";
 import path from "node:path";
-
+import { read_rpgmaker_container } from "../../file/shared/rpgmaker-format";
+import { read_rgss_sources } from "../../file/rpgmaker-rgss/readable";
+import { read_zip_members } from "../../file/shared/zip-members";
 import type { NativeFs } from "../../../native/native-fs";
 
-/** `project_meta` 中单个工作区文件与 `sources` 投影的对应关系。 */
-export type AgentWorkspaceSourceFile = {
-  file_path: string; // 工程内原始文件身份
-  file_type: string; // items 使用的既有格式类型
-};
-
-/** 把 .lg 中保存的源资产投影为工作区可程序化探查的原始文件树。 */
+/** 按资产身份写出原稿，RGSS 提供只读明文，其他容器保留成员字节。 */
 export async function write_agent_workspace_sources(args: {
   nativeFs: NativeFs;
   sourceRoot: string;
   files: ReadonlyArray<{ file_path: string; file_type: string }>;
   readAsset: (file_path: string) => Buffer | null | Promise<Buffer | null>;
-}): Promise<AgentWorkspaceSourceFile[]> {
+}): Promise<void> {
+  const paths = new ProjectAssetPathIndex();
+  for (const file of args.files) paths.add(file.file_path);
   await args.nativeFs.make_dir_async(args.sourceRoot);
-  const projected: AgentWorkspaceSourceFile[] = [];
   for (const file of args.files) {
-    const relative_path = normalize_source_relative_path(file.file_path);
+    const relative_path = normalize_project_asset_path(file.file_path);
     const content = await args.readAsset(file.file_path);
     if (content === null) throw new Error(`Project source asset is missing: ${file.file_path}`);
-    await args.nativeFs.write_file(path.join(args.sourceRoot, relative_path), content);
-    projected.push({ ...file, file_path: relative_path });
+    const target = path.join(args.sourceRoot, relative_path);
+    if (is_rpgmaker_file_type(file.file_type) || file.file_type === "EPUB") {
+      const files = await (
+        is_rpgmaker_file_type(file.file_type) ? read_rpgmaker_container : read_zip_members
+      )(content, file.file_path);
+      await args.nativeFs.make_dir_async(target);
+      if (file.file_type === "RPGMAKER_RGSS") {
+        const members = new ProjectAssetPathIndex();
+        for await (const [name, content] of read_rgss_sources(files)) {
+          members.add(name); // 生成文件与原始成员冲突时中止，交由工作区清理整个投影。
+          await args.nativeFs.write_file(path.join(target, name), content);
+        }
+      } else {
+        for (const [name, member] of files)
+          await args.nativeFs.write_file(path.join(target, name), await member.async("uint8array"));
+      }
+    } else {
+      await args.nativeFs.write_file(target, content);
+    }
   }
-  return projected;
-}
-
-/** 工程相对路径统一映射为正斜线，并拒绝逃逸 sources 根目录。 */
-function normalize_source_relative_path(relative_path: string): string {
-  const normalized = relative_path.replaceAll("\\", "/");
-  if (
-    normalized.includes("\0") ||
-    path.posix.isAbsolute(normalized) ||
-    path.win32.isAbsolute(normalized)
-  ) {
-    throw new Error(`Invalid project source path: ${relative_path}`);
-  }
-  const parts = normalized.split("/").filter(Boolean);
-  if (parts.length === 0 || parts.includes(".") || parts.includes("..")) {
-    throw new Error(`Invalid project source path: ${relative_path}`);
-  }
-  return parts.join("/");
 }

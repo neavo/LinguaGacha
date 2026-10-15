@@ -39,7 +39,6 @@ describe("run_project_item_public_contract_migration", () => {
         tag: "",
         row: 7,
         file_path: "",
-        text_type: "WOLF",
       },
       {
         src: "legacy",
@@ -51,7 +50,6 @@ describe("run_project_item_public_contract_migration", () => {
         tag: "",
         row: 0,
         file_path: "",
-        text_type: "NONE",
         status: "NONE",
         skip_internal_filter: false,
       },
@@ -69,7 +67,6 @@ describe("run_project_item_public_contract_migration", () => {
       row: 1,
       file_type: "TXT",
       file_path: "a.txt",
-      text_type: "NONE",
       status: "PROCESSED",
       skip_internal_filter: true,
     };

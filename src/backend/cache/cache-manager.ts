@@ -3,7 +3,11 @@ import { AppError } from "../../shared/error";
 import type { AppSettingService } from "../app/app-setting-service";
 import type { ProjectDatabase } from "../database/database-operations";
 import type { LogManager } from "../log/log-manager";
-import { ProjectDataReader, create_empty_quality_rule_block } from "../project/project-data-reader";
+import {
+  ProjectDataReader,
+  create_empty_quality_rule_block,
+  type ProjectDataSnapshot,
+} from "../project/project-data-reader";
 import type { ProjectCommittedChange } from "../project/project-committed-change";
 import type { ComputeWorkerClient } from "../worker/compute-worker-client";
 import { type QualityRuleBlock } from "../../shared/quality/quality-rule-state";
@@ -104,7 +108,22 @@ export class CacheManager implements CacheReadPort {
    */
   public async warmProject(project_path: string): Promise<void> {
     await this.rebuild_full_project_cache(project_path);
+  }
+
+  /** 仅安装已提交快照，生命周期准备失败时不得调用。 */
+  public installProject(project_path: string, snapshot: ProjectDataSnapshot): void {
+    this.project_path = project_path;
+    this.epoch += 1;
+    this.freshness = "recoverable_error"; // 安装中断后，下次读取必须重建全部基础事实。
+    this.items.replace(snapshot.items);
+    this.files.replace(snapshot.files);
+    this.pdf.replace(snapshot.pdf);
+    this.quality.replace(snapshot.quality);
+    this.prompts.replace(snapshot.prompts);
+    this.qualityStatistics.clear();
     this.proofreading.clearProject();
+    this.section_revisions = { ...snapshot.section_revisions };
+    this.freshness = "fresh";
   }
 
   /**
@@ -157,18 +176,6 @@ export class CacheManager implements CacheReadPort {
     }
   }
 
-  /** 同一条目修订下复用文件元数据，文件排序无需解析正文。 */
-  public readFileMetadata(
-    project: string,
-    revision: number,
-  ): ReturnType<ItemCache["readFileMetadata"]> | undefined {
-    return project === this.project_path &&
-      this.freshness === "fresh" &&
-      (this.section_revisions.items ?? 0) === revision
-      ? this.items.readFileMetadata()
-      : undefined;
-  }
-
   /** 缓存范围携带修订，事务只在相同版本下采用候选 ID。 */
   public readItemWriteScope(
     project_path: string,
@@ -201,36 +208,13 @@ export class CacheManager implements CacheReadPort {
   }
 
   /**
-   * 从数据库重建所有基础 block 缓存。
+   * 从数据库重建所有基础缓存，读取完成后一次安装。
    */
   private async rebuild_full_project_cache(project_path: string): Promise<void> {
-    const snapshot = await this.database.read(project_path, (reader) => {
-      const data_reader = new ProjectDataReader(reader);
-      const meta = data_reader.get_all_meta(project_path);
-      const items_snapshot = data_reader.build_runtime_items_snapshot(project_path);
-      const pdf = reader.read_pdf_summaries(project_path);
-      const files_block = data_reader.build_files_record_block(
-        project_path,
-        items_snapshot.item_records,
-        Object.keys(pdf),
-      );
-      const quality_block = data_reader.build_quality_block(project_path, meta);
-      const prompts_block = data_reader.build_prompts_block(project_path, meta);
-      const section_revisions = data_reader.build_section_revisions(meta);
-      return { items_snapshot, files_block, pdf, quality_block, prompts_block, section_revisions };
-    });
-    const { items_snapshot, files_block, pdf, quality_block, prompts_block, section_revisions } =
-      snapshot;
-    this.project_path = project_path;
-    this.epoch += 1;
-    this.items.replace(items_snapshot.item_records);
-    this.files.replace(files_block);
-    this.pdf.replace(pdf);
-    this.quality.replace(quality_block);
-    this.prompts.replace(prompts_block);
-    this.qualityStatistics.clear();
-    this.section_revisions = section_revisions;
-    this.freshness = "fresh";
+    const snapshot = await this.database.read(project_path, (reader) =>
+      new ProjectDataReader(reader).read_snapshot(project_path),
+    );
+    this.installProject(project_path, snapshot);
   }
 
   /**

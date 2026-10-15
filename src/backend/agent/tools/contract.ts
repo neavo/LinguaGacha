@@ -86,7 +86,7 @@ const reference_notes: Readonly<Record<string, readonly string[]>> = {
     "`warnings` 按 `item_id` 关联条目，保存快照加载时的校对证据。正文与姓名属于同一个条目。",
     "`dst` 或 `name_dst` 实际变化时默认同步更新状态为 `PROCESSED`，同值提交不改变状态，省略的内容字段保持当前值。",
     '显式 `status` 覆盖内容修改的默认状态，接受现有结果时可提交 `status: "PROCESSED"`，最终内容和状态均相同时，回执为无变化。',
-    "同文组按 `file_path`、`src`、可见 `name_src` 与 `text_type` 关联，`NONE` 与 `DUPLICATED` 状态由宿主按重复过滤规则自动处理。",
+    "同文组按 `file_path`、`src` 与可见 `name_src` 关联，`NONE` 与 `DUPLICATED` 状态由宿主按重复过滤规则自动处理。",
     `建议每批条目更新不超过 ${AGENT_WORKSPACE_PREFERRED_ITEM_UPDATE_ROWS} 行，以控制上下文与失败恢复成本，这是建议，没有强制行数上限。`,
   ],
   pages: [

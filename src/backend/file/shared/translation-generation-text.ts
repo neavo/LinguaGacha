@@ -1,4 +1,4 @@
-import type { Item } from "../../domain/item";
+import type { Item } from "../../../domain/item";
 
 /**
  * `PROCESSED` 接受整条当前结果，`dst` 的空值、空格和换行均原样生效。

@@ -18,6 +18,9 @@ export default defineConfig({
           "backend-runtime-worker-entry": project_path(
             "src/backend/bootstrap/backend-runtime-worker-entry.ts",
           ),
+          "rpgmaker-mv-mz-prepare-worker-entry": project_path(
+            "src/backend/file/rpgmaker-mv-mz/prepare-worker-entry.ts",
+          ),
           "compute-worker-entry": project_path("src/backend/worker/compute-worker-entry.ts"),
           "planning-worker-entry": project_path(
             "src/backend/batch-translation/planning/planning-worker-entry.ts",

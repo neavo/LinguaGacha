@@ -1,4 +1,3 @@
-import type { ItemTextType } from "../../../domain/item";
 import type { MutableJsonRecord } from "../../../domain/json";
 import {
   has_color_block_tag,
@@ -11,8 +10,6 @@ import {
  * WOLF .trans 使用地址白名单/黑名单和数据库屏蔽文本集合
  */
 export class WolfTransProcessor extends NoneTransProcessor {
-  public override readonly text_type: ItemTextType = "WOLF";
-
   private static readonly WHITELIST_ADDRESS = [
     /\/Database\/stringArgs\/0$/iu, // 数据库第 0 字符串参数通常是显示文本
     /\/CommonEvent\/stringArgs\/\d*[1-9]\d*$/iu, // 公共事件非 0 字符串参数通常是显示文本

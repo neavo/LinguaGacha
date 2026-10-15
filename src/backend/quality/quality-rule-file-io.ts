@@ -1,5 +1,5 @@
 import ExcelJS from "exceljs";
-import { read_workbook, cell_text, write_cell } from "../file/spreadsheet";
+import { read_workbook, cell_text, write_cell } from "../file/shared/spreadsheet";
 
 import type { JsonRecord } from "../../domain/json";
 import { NativeFs, default_native_fs, normalize_native_file_bytes } from "../../native/native-fs";

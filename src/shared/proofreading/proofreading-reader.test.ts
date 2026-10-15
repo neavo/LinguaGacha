@@ -63,7 +63,7 @@ function create_item(input: {
     name_src: input.name_src ?? null,
     name_dst: input.name_dst ?? null,
     status: input.status ?? "NONE",
-    text_type: "NONE",
+    file_type: "TXT",
   };
 }
 
@@ -117,7 +117,6 @@ describe("proofreading-reader", () => {
     const changed = {
       ...input.upsertItems[2]!,
       file_path: "c.txt",
-
       status: "PROCESSED",
       dst: "かな",
     };
@@ -491,7 +490,7 @@ describe("proofreading-reader", () => {
           name_src: "Alice",
           name_dst: "艾丽丝",
           status: "PROCESSED",
-          text_type: "NONE",
+          file_type: "TXT",
         },
         {
           item_id: 2,
@@ -503,7 +502,7 @@ describe("proofreading-reader", () => {
           name_src: null,
           name_dst: null,
           status: "PROCESSED",
-          text_type: "NONE",
+          file_type: "TXT",
         },
       ],
     });
@@ -669,7 +668,7 @@ describe("proofreading-reader", () => {
           name_src: null,
           name_dst: null,
           status: "PROCESSED",
-          text_type: "NONE",
+          file_type: "TXT",
         },
       ],
     });

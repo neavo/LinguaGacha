@@ -580,7 +580,7 @@ describe("AgentService", () => {
     fake_agent_state.release_pending?.();
     fake_agent_state.release_summary?.();
     await Promise.all(services.splice(0).map(async (service) => await service.dispose()));
-    for (const database of databases.splice(0)) database.close();
+    for (const database of databases.splice(0)) await database.close();
   });
 
   it("输入命令并发及回包丢失重试只受理一次，同文新命令仍执行", async () => {

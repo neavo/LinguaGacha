@@ -31,9 +31,9 @@ console.log(evidence.patterns.map(({ key, error, match_count, zero_length_match_
 
 - `patterns` 为 `{ key, source }` 数组，`key` 唯一，`source` 是 JavaScript 正则表达式源码。每条表达式独立以 `giu` 编译，扫描范围为原始 `item.src` 按 `\n` 拆出的各行。
 - `max_matches_per_pattern` 省略时保存全部命中证据，`0` 只统计，正整数限制每条表达式保存的命中数。计数和分布始终覆盖完整输入。
-- 返回 `scanned_item_count` 和按输入顺序排列的 `patterns`。每个结果包含 `key`、`source`、`error`、`match_count`、`matched_item_count`、`zero_length_match_count`、`matches_complete`、`matches`、`file_counts` 和 `text_type_counts`。
+- 返回 `scanned_item_count` 和按输入顺序排列的 `patterns`。每个结果包含 `key`、`source`、`error`、`match_count`、`matched_item_count`、`zero_length_match_count`、`matches_complete`、`matches` 和 `file_counts`。
 - `error` 为编译错误文字或 `null`。非法表达式的 `matches_complete` 为 `false`。合法表达式仅在所有命中均已收集时为 `true`。
-- 每条证据包含 `item_id`、`file_path`、`text_type`、从 1 开始的 `line`、行内 UTF-16 半开范围 `start/end` 和 `text`。文件与文本类型分布统计命中次数，`matched_item_count` 按条目计数。零长度命中同时纳入命中总数与零长度计数。
+- 每条证据包含 `item_id`、`file_path`、从 1 开始的 `line`、行内 UTF-16 半开范围 `start/end` 和 `text`。文件分布统计命中次数，`matched_item_count` 按条目计数。零长度命中同时纳入命中总数与零长度计数。
 
 扫描会独立核验每条规则，保留重叠与零长度命中的证据。实际保护执行会处理重叠并忽略空片段，因此调查单条表达式时应使用独立扫描结果。
 

@@ -25,7 +25,6 @@ export async function scanPatterns(items, { patterns, max_matches_per_pattern })
     return {
       regex,
       files: new Map(),
-      textTypes: new Map(),
       result: {
         key,
         source,
@@ -41,7 +40,7 @@ export async function scanPatterns(items, { patterns, max_matches_per_pattern })
   for await (const item of items) {
     scanned_item_count += 1;
     const lines = item.src.split("\n");
-    for (const { regex, result, files, textTypes } of compiled) {
+    for (const { regex, result, files } of compiled) {
       if (!regex) continue;
       let matched = false;
       for (const [index, line] of lines.entries()) {
@@ -51,12 +50,10 @@ export async function scanPatterns(items, { patterns, max_matches_per_pattern })
           result.match_count += 1;
           if (match[0].length === 0) result.zero_length_match_count += 1;
           files.set(item.file_path, (files.get(item.file_path) ?? 0) + 1);
-          textTypes.set(item.text_type, (textTypes.get(item.text_type) ?? 0) + 1);
           if (result.matches.length < limit)
             result.matches.push({
               item_id: item.item_id,
               file_path: item.file_path,
-              text_type: item.text_type,
               line: index + 1,
               start: match.index,
               end: match.index + match[0].length,
@@ -69,11 +66,10 @@ export async function scanPatterns(items, { patterns, max_matches_per_pattern })
   }
   return {
     scanned_item_count,
-    patterns: compiled.map(({ result, files, textTypes }) => ({
+    patterns: compiled.map(({ result, files }) => ({
       ...result,
       matches_complete: result.error === null && result.matches.length === result.match_count,
       file_counts: Object.fromEntries(files),
-      text_type_counts: Object.fromEntries(textTypes),
     })),
   };
 }

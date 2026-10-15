@@ -1,4 +1,4 @@
-import { read_translation_for_generation } from "../translation-generation-text";
+import { read_translation_for_generation } from "../shared/translation-generation-text";
 import path from "node:path";
 
 import { decode_text_content } from "../../../shared/utils/text-tool";
@@ -6,9 +6,8 @@ import {
   group_items,
   split_text_lines_for_items,
   write_text_file,
-  type GeneratedFilePaths,
-  type FileFormatServiceConfig,
-} from "../file-format-shared";
+} from "../shared/file-format-helpers";
+import { type GeneratedFilePaths, type FileFormatServiceConfig } from "../file-format-types";
 import { type Item, create_item } from "../../../domain/item";
 
 /**

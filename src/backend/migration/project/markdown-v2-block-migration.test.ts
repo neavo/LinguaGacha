@@ -51,7 +51,6 @@ describe("MarkdownV2BlockMigration", () => {
         dst: "# Title",
         row: 0,
         file_type: "MD_V2",
-        text_type: "MD",
         status: "PROCESSED",
       }),
       expect.objectContaining({
@@ -205,6 +204,7 @@ function create_database(initial_items: MutableJsonRecord[], initial_meta: Mutab
   const meta = structuredClone(initial_meta);
   const bumped_sections: string[][] = [];
   const database = {
+    set_asset_file_type: vi.fn(),
     get_all_items: vi.fn(() => structuredClone(items)),
     get_all_meta: vi.fn(() => structuredClone(meta)),
     set_items: vi.fn((_project_path: string, next_items: MutableJsonRecord[]) => {

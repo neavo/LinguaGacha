@@ -1,3 +1,4 @@
+import { add_test_asset_from_source } from "../../test/asset-fixture";
 import { ProjectDataReader } from "../project/project-data-reader";
 import { Model } from "../../domain/model";
 import fs from "node:fs";
@@ -162,7 +163,6 @@ it("历史工程批量翻译保留旧分析物理数据、正式术语与资产�
         status: "NONE",
         file_path: "text.txt",
         file_type: "TXT",
-        text_type: "NONE",
         row: 0,
       },
     ]),
@@ -181,7 +181,7 @@ it("历史工程批量翻译保留旧分析物理数据、正式术语与资产�
   const source = path.join(directory.path, "text.txt");
   fs.writeFileSync(source, "Hello");
   await database.transaction(project_path, (writer) =>
-    writer.add_asset_from_source(project_path, "text.txt", source, null),
+    add_test_asset_from_source(writer, project_path, "text.txt", source, null),
   );
   await database.close();
   {

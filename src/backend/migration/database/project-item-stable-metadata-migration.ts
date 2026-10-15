@@ -3,11 +3,7 @@ import type { DatabaseSync } from "node:sqlite";
 
 import { is_item_status } from "../../../domain/item";
 import { read_json_integer } from "../../../domain/json";
-import {
-  write_item_migration,
-  normalize_migration_file_type,
-  normalize_migration_text_type,
-} from "./item-migration";
+import { write_item_migration, normalize_migration_file_type } from "./item-migration";
 
 // item 持久状态的旧值与当前稳定值映射，迁移后业务层不再过滤旧运行态。
 const LEGACY_PROCESSED_IN_PAST = "PROCESSED_IN_PAST";
@@ -61,17 +57,6 @@ function normalize_item_payload(item_data: ItemMigrationPayload): {
   const normalized_file_type = normalize_migration_file_type(raw_file_type);
   if (raw_file_type !== normalized_file_type) {
     normalized["file_type"] = normalized_file_type;
-    changed = true;
-  }
-
-  const raw_text_type = normalized["text_type"];
-  const normalized_text_type = normalize_migration_text_type(
-    raw_text_type,
-    normalized_file_type,
-    String(normalized["src"] ?? ""),
-  );
-  if (raw_text_type !== normalized_text_type) {
-    normalized["text_type"] = normalized_text_type;
     changed = true;
   }
 

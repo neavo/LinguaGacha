@@ -3,15 +3,15 @@ import { describe, expect, it } from "vitest";
 import {
   create_workbench_delete_files_plan,
   create_workbench_import_files_plan,
-  create_workbench_import_files_preview,
   create_workbench_planner_settings,
   create_workbench_reorder_plan,
   create_workbench_reset_file_plan,
-  type WorkbenchFileParsePreview,
+  type WorkbenchImportFileCandidate,
   type WorkbenchCommandPlanningState,
   type WorkbenchPlannerSettings,
 } from "./workbench-command-planner";
 
+/** 当前文件与修订用于校验命令目标和提交范围。 */
 function create_state(): WorkbenchCommandPlanningState {
   return {
     files: [
@@ -26,10 +26,12 @@ function create_state(): WorkbenchCommandPlanningState {
   };
 }
 
-function create_parsed_file(): WorkbenchFileParsePreview {
+/** 提供有效来源，具体场景只覆盖影响当前行为的字段。 */
+function create_candidate(): WorkbenchImportFileCandidate {
   return {
     source_path: "E:/demo/new.txt",
     target_rel_path: "new.txt",
+    conflict: false,
   };
 }
 
@@ -82,7 +84,7 @@ describe("workbench command planner", () => {
   it("导入新文件只提交源路径、目标路径、同名策略、继承模式和 revision 锁", () => {
     const plan = create_workbench_import_files_plan({
       state: create_state(),
-      parsed_files: [create_parsed_file()],
+      preview: { files: [create_candidate()], files_revision: 7 },
       conflict_action: "skip",
       settings: SETTINGS,
       inheritance_mode: "inherit",
@@ -99,90 +101,31 @@ describe("workbench command planner", () => {
       inheritance_mode: "inherit",
       project_settings: SETTINGS,
       expected_section_revisions: {
-        files: 1,
+        files: 7,
         items: 2,
       },
     });
   });
 
-  it("同名文件预演会分组为替换候选，跳过时只提交非同名文件", () => {
-    const parsed_files = [
-      create_parsed_file(),
+  it.each(["skip", "replace"] as const)("按后端冲突标记执行 %s 策略", (conflict_action) => {
+    const files = [
+      create_candidate(),
       {
-        ...create_parsed_file(),
         source_path: "E:/demo/old-copy.txt",
-        target_rel_path: "OLD.txt",
+        target_rel_path: "old.txt",
+        conflict: true,
       },
     ];
-    const preview = create_workbench_import_files_preview({
-      state: create_state(),
-      parsed_files,
-    });
-
-    expect(preview.new_files.map((file) => file.target_rel_path)).toEqual(["new.txt"]);
-    expect(preview.conflicting_files.map((file) => file.target_rel_path)).toEqual(["old.txt"]);
-
     const plan = create_workbench_import_files_plan({
       state: create_state(),
-      parsed_files,
-      conflict_action: "skip",
+      preview: { files, files_revision: 1 },
+      conflict_action,
       settings: SETTINGS,
     });
-
-    expect(plan.requestBody).toMatchObject({
-      files: [
-        {
-          source_path: "E:/demo/new.txt",
-          target_rel_path: "new.txt",
-        },
-      ],
-      conflict_action: "skip",
-    });
-  });
-
-  it("同名文件选择替换时会提交新增和替换文件", () => {
-    const plan = create_workbench_import_files_plan({
-      state: create_state(),
-      parsed_files: [
-        create_parsed_file(),
-        {
-          ...create_parsed_file(),
-          source_path: "E:/demo/old-copy.txt",
-          target_rel_path: "old.txt",
-        },
-      ],
-      conflict_action: "replace",
-      settings: SETTINGS,
-    });
-
-    expect(plan.requestBody).toMatchObject({
-      files: [
-        {
-          source_path: "E:/demo/new.txt",
-          target_rel_path: "new.txt",
-        },
-        {
-          source_path: "E:/demo/old-copy.txt",
-          target_rel_path: "old.txt",
-        },
-      ],
-      conflict_action: "replace",
-    });
-  });
-
-  it("同一批内部重名文件不进入导入计划", () => {
-    const preview = create_workbench_import_files_preview({
-      state: create_state(),
-      parsed_files: [
-        create_parsed_file(),
-        {
-          ...create_parsed_file(),
-          source_path: "E:/demo/new-copy.txt",
-        },
-      ],
-    });
-
-    expect(preview.importable_files).toEqual([]);
+    const expected = [{ source_path: "E:/demo/new.txt", target_rel_path: "new.txt" }];
+    if (conflict_action === "replace")
+      expected.push({ source_path: "E:/demo/old-copy.txt", target_rel_path: "old.txt" });
+    expect(plan.requestBody).toMatchObject({ files: expected, conflict_action });
   });
 
   it("重置单文件只提交 rel_paths、设置快照和受影响 section revision", () => {
@@ -216,28 +159,5 @@ describe("workbench command planner", () => {
         items: 2,
       },
     });
-  });
-  it("同名比较保留空格，替换路径沿用准确身份", () => {
-    const state = { ...create_state(), files: [{ rel_path: " a.json" }, { rel_path: "a.json" }] };
-    const parsed_files = [
-      { source_path: " source.json ", target_rel_path: " A.json" },
-      { source_path: "other.json", target_rel_path: "A.json" },
-    ];
-    const preview = create_workbench_import_files_preview({ state, parsed_files });
-    expect(preview.conflicting_files.map((file) => file.target_rel_path)).toEqual([
-      " a.json",
-      "a.json",
-    ]);
-    expect(
-      create_workbench_import_files_plan({
-        state,
-        parsed_files,
-        settings: SETTINGS,
-        conflict_action: "replace",
-      }).requestBody.files,
-    ).toEqual([
-      { source_path: " source.json ", target_rel_path: " a.json" },
-      { source_path: "other.json", target_rel_path: "a.json" },
-    ]);
   });
 });

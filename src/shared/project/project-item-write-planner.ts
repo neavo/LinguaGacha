@@ -12,7 +12,7 @@ import {
 
 export type ProjectItemWriteRecord = ProjectItemDuplicateIdentity &
   Omit<ProjectItemWriteFields, "status"> &
-  Pick<ProjectItemPublicRecord, "item_id" | "row_number" | "status">;
+  Pick<ProjectItemPublicRecord, "item_id" | "file_path" | "row_number" | "status">;
 
 export type ProjectItemExplicitChange = Readonly<{
   item_id: number; // 显式意图目标

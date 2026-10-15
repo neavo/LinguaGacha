@@ -17,6 +17,7 @@ describe("source file parse failure", () => {
           message: "Parser rejected the file",
         },
         { filename: "missing-code.json" },
+        { filename: "plugin.js", code: "file.parse_failed" },
         {
           filename: "unknown-code.json",
           code: "file.unknown",

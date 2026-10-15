@@ -25,7 +25,7 @@ export const ja_jp_laboratory_page = {
     skip_duplicate_source_text_enable: {
       title: "重複する原文をスキップ",
       description:
-        "同一ファイル内の原文が同じ項目は一度だけ翻訳し、<emphasis>訳文を再利用</emphasis>します。既定で有効です。",
+        "プロジェクト全体でテキストが同じ項目は一度だけ翻訳し、<emphasis>訳文を再利用</emphasis>します。既定で有効です。",
     },
   },
 } satisfies LocaleMessageSchema<typeof zh_cn_laboratory_page>;

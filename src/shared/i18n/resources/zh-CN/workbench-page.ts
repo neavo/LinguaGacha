@@ -11,7 +11,7 @@ export const zh_cn_workbench_page = {
     actions: "操作",
   },
   feedback: {
-    add_file_loading_toast: "正在添加文件并刷新缓存 …",
+    add_file_loading_toast: "正在添加文件 …",
     no_valid_file: "没有可添加的有效文件",
     close_project_failed: "关闭工程失败 …",
   },

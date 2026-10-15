@@ -96,6 +96,7 @@ function create_context(options: {
     project_path: "demo.lg",
     meta: options.meta ?? {},
     items: [],
+    assets: [],
     database,
     app_setting_service: {
       read_setting: vi.fn(() => ({ app_language: "ZH", ...options.config })),

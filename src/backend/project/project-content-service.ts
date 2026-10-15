@@ -1,3 +1,11 @@
+import { build_source_file_parse_failure } from "../file/source-file-parse-failure-reporter";
+import type { RPGMakerMvMzPrepareExecution } from "../file/rpgmaker-mv-mz/prepare-worker";
+import { assert_source_file_paths } from "../file/source-file-paths";
+import { normalize_project_asset_path } from "../../shared/project/project-asset-paths";
+import type { SourceFileParseWarning } from "../file/file-format-types";
+import type { WorkbenchImportFilesPreview } from "../../shared/workbench/workbench-command-planner";
+import { get_section_revision, ProjectDataReader } from "./project-data-reader";
+import { resolve_text_rule_type, type TextFileContext } from "../../shared/text/text-rule-type";
 import {
   normalize_batch_translation_progress,
   type BatchTranslationProgress,
@@ -14,7 +22,10 @@ import {
   SourceFileParsePipeline,
   type SourceFileParseResult,
 } from "../file/source-file-parse-pipeline";
-import { log_source_file_parse_failures } from "../file/source-file-parse-failure-reporter";
+import {
+  log_source_file_parse_failures,
+  log_source_file_parse_warnings,
+} from "../file/source-file-parse-failure-reporter";
 import type { LogManager } from "../log/log-manager";
 import { NativeFs, default_native_fs } from "../../native/native-fs";
 import { ProjectWriteStore, type ProjectAssetWrite } from "./project-write-store";
@@ -93,6 +104,7 @@ export class ProjectContentService {
     app_setting_service: AppSettingService | null = null,
     native_fs: NativeFs = default_native_fs,
     log_manager: Pick<LogManager, "warning"> | null = null,
+    private readonly rpgmaker_mv_mz_prepare_execution?: RPGMakerMvMzPrepareExecution,
   ) {
     this.database = database;
     this.runtime_gate = runtime_gate;
@@ -103,26 +115,95 @@ export class ProjectContentService {
     this.log_manager = log_manager;
   }
 
+  /** 预览只发现来源并分配目标名称，内容准备由正式导入持有。 */
+  public async preview_import_files(request: JsonRecord): Promise<WorkbenchImportFilesPreview> {
+    const project_path = this.session_state.require_loaded_project_path();
+    const format_service = this.create_format_service();
+    const source_paths = this.normalize_string_list(request["source_paths"]);
+    const sources = await format_service.collect_source_file_entries(source_paths);
+    const snapshot = await this.database.read(project_path, (reader) => ({
+      assets: reader.get_all_asset_records(project_path),
+      files_revision: get_section_revision(reader.get_all_meta(project_path), "files"),
+    }));
+    const entries = format_service.assign_source_file_paths(sources, snapshot.assets);
+    const existing = new Map(
+      snapshot.assets.map((asset) => [
+        normalize_project_asset_path(asset.path).toLowerCase(),
+        asset.path,
+      ]),
+    );
+    const failed_files = entries.flatMap((entry) =>
+      entry.source.kind === "failure"
+        ? [build_source_file_parse_failure({ ...entry, error: entry.source.error })]
+        : [],
+    );
+    return {
+      files_revision: snapshot.files_revision,
+      ...(failed_files.length ? { failed_files } : {}),
+      files: entries.map((entry) => {
+        const target = normalize_project_asset_path(entry.rel_path);
+        const previous = existing.get(target.toLowerCase());
+        return {
+          source_path: entry.source_path,
+          target_rel_path: previous ?? target,
+          conflict: previous !== undefined,
+        };
+      }),
+    };
+  }
+
   /**
    * 导入工作台文件，并按同名策略同步新增或替换文件事实
    */
   public async import_files(request: JsonRecord): Promise<ProjectWriteResult> {
     const project_path = this.session_state.require_loaded_project_path();
-    return this.runtime_gate.run_project_write(async () => {
+    return this.runtime_gate.run_project_write(async (signal) => {
       this.assert_no_legacy_fields(request, ["items", "translation_extras", "prefilter_config"]);
       const conflict_action = this.normalize_import_conflict_action(request["conflict_action"]);
       const file_commands = this.normalize_import_file_commands(request["files"]);
       if (file_commands.length === 0) {
         throw new AppErrors.AppError("request.validation_failed");
       }
-      const parse_result = await this.parse_import_file_commands(file_commands);
-      this.assert_project_import_has_parseable_files(parse_result);
-
+      const expected_revisions = require_project_expected_section_revisions(
+        request["expected_section_revisions"],
+      );
+      // 陈旧确认必须在修改游戏目录之前退出，提交仍复核同一修订契约。
+      await this.write_store.check_section_revisions(project_path, expected_revisions, [
+        "files",
+        "items",
+      ]);
       const snapshot = await this.read_project_write_snapshot(project_path);
       const existing_record_by_key = new Map(
-        snapshot.asset_records.map((record) => [record.path.toLowerCase(), record]),
+        snapshot.asset_records.map((record) => [
+          normalize_project_asset_path(record.path).toLowerCase(),
+          record,
+        ]),
       );
       const incoming_paths = new Set<string>();
+      for (const file of file_commands) {
+        const key = normalize_project_asset_path(file.target_rel_path).toLowerCase();
+        if (incoming_paths.has(key))
+          throw new AppErrors.AppError("request.validation_failed", {
+            diagnostic_context: {
+              reason: "duplicate_import_target",
+              rel_path: file.target_rel_path,
+            },
+          });
+        incoming_paths.add(key);
+      }
+      const parse_result = await this.parse_import_file_commands(
+        snapshot.asset_records,
+        file_commands.filter(
+          (file) =>
+            conflict_action === "replace" ||
+            !existing_record_by_key.has(
+              normalize_project_asset_path(file.target_rel_path).toLowerCase(),
+            ),
+        ),
+        signal,
+      );
+      signal.throwIfAborted();
+      this.assert_project_import_has_parseable_files(parse_result);
       const current_items = snapshot.public_items_by_id;
       const current_files = { ...snapshot.files };
       const next_items = new Map(current_items);
@@ -131,7 +212,7 @@ export class ProjectContentService {
       const imported_files: Array<{
         mode: "add" | "replace";
         pdf_document: PDFDocument | null;
-        source_path: string;
+        content: Uint8Array;
         target_rel_path: string;
         file_record: {
           rel_path: string;
@@ -145,20 +226,8 @@ export class ProjectContentService {
           return Math.max(max_sort_order, record.sort_order);
         }, -1) + 1;
       for (const file of parse_result.file_drafts) {
-        const target_key = file.rel_path.toLowerCase();
-        if (incoming_paths.has(target_key)) {
-          throw new AppErrors.AppError("request.validation_failed", {
-            diagnostic_context: {
-              reason: "duplicate_import_target",
-              rel_path: file.rel_path,
-            },
-          });
-        }
-        incoming_paths.add(target_key);
+        const target_key = normalize_project_asset_path(file.rel_path).toLowerCase();
         const existing_record = existing_record_by_key.get(target_key);
-        if (existing_record !== undefined && conflict_action === "skip") {
-          continue;
-        }
         const target_rel_path = existing_record?.path ?? file.rel_path;
         if (existing_record !== undefined) {
           for (const [item_id, item] of next_items.entries()) {
@@ -170,6 +239,7 @@ export class ProjectContentService {
         const file_record = {
           rel_path: target_rel_path,
           file_type: file.file_type,
+          ...(file.game_engine === undefined ? {} : { game_engine: file.game_engine }),
           sort_index: existing_record?.sort_order ?? next_sort_order,
         };
         if (existing_record === undefined) {
@@ -189,7 +259,7 @@ export class ProjectContentService {
         imported_files.push({
           mode: existing_record === undefined ? "add" : "replace",
           pdf_document: file.pdf_document,
-          source_path: file.source_path,
+          content: file.content,
           target_rel_path,
           file_record,
         });
@@ -211,18 +281,19 @@ export class ProjectContentService {
         settings,
       });
       if (String(request["inheritance_mode"] ?? "none") === "inherit") {
-        const inherited_items = this.clone_public_item_record(write_output.items);
         this.inherit_completed_translations({
           old_items,
+          files: current_files,
+          old_files: snapshot.files,
           next_items: imported_item_ids.flatMap((item_id) => {
-            const item = inherited_items[String(item_id)];
+            const item = write_output.items[String(item_id)];
             return item === undefined ? [] : [item];
           }),
         });
         write_output = await this.compute_prefilter_output({
           project_path,
           files: current_files,
-          items: inherited_items,
+          items: write_output.items,
           settings,
         });
       }
@@ -230,24 +301,24 @@ export class ProjectContentService {
       const asset_writes: ProjectAssetWrite[] = imported_files.map((file) =>
         file.mode === "add"
           ? {
-              kind: "add_from_source",
+              kind: "add",
               path: file.target_rel_path,
-              sourcePath: file.source_path,
+              content: file.content,
+              fileType: file.file_record.file_type,
               pdfDocument: file.pdf_document,
               sortOrder: file.file_record.sort_index,
             }
           : {
-              kind: "update_from_source",
+              kind: "update",
               path: file.target_rel_path,
-              sourcePath: file.source_path,
+              content: file.content,
+              fileType: file.file_record.file_type,
               pdfDocument: file.pdf_document,
             },
       );
       const write_result = await this.write_store.replace_project_items_and_files({
         projectPath: project_path,
-        expectedSectionRevisions: require_project_expected_section_revisions(
-          request["expected_section_revisions"],
-        ),
+        expectedSectionRevisions: expected_revisions,
         revisionSections: ["files", "items"],
         source: "project_import_files",
         updatedSections: ["files", "items"],
@@ -255,8 +326,10 @@ export class ProjectContentService {
         items: build_project_item_persistent_records(write_output.items),
         meta: this.build_prefilter_reset_meta(settings, write_output),
       });
-      this.log_project_import_parse_failures(parse_result.failed_files);
-      return this.with_parse_failures(write_result, parse_result.failed_files);
+      this.log_project_import_parse_diagnostics(parse_result.failed_files, parse_result.warnings);
+      return parse_result.failed_files.length === 0
+        ? write_result
+        : { ...write_result, failed_files: parse_result.failed_files };
     });
   }
 
@@ -281,7 +354,7 @@ export class ProjectContentService {
         }
         item.dst = "";
         item.name_dst = null;
-        item.status = "NONE";
+        item.status = FileFormatService.default_status(item);
       }
       const settings = await this.read_project_write_settings(
         project_path,
@@ -465,7 +538,7 @@ export class ProjectContentService {
     ]);
     return this.runtime_gate.run_project_write(async () => {
       if (mode === "all") {
-        const parsed_items = await this.reparse_all_assets(project_path);
+        const { items: parsed_items, warnings } = await this.reparse_all_assets(project_path);
         const settings = await this.read_project_write_settings(
           project_path,
           request["project_settings"],
@@ -479,11 +552,7 @@ export class ProjectContentService {
             id: ++next_item_id,
           }),
         );
-        const files = build_project_file_records(
-          snapshot.asset_records,
-          reset_items,
-          snapshot.pdf_paths,
-        );
+        const files = build_project_file_records(snapshot.asset_records);
         const write_output = await this.compute_prefilter_output({
           project_path,
           files,
@@ -491,7 +560,7 @@ export class ProjectContentService {
           settings,
           progress: normalize_batch_translation_progress(undefined),
         });
-        return await this.write_store.replace_project_items_and_files({
+        const result = await this.write_store.replace_project_items_and_files({
           projectPath: project_path,
           requireExpectedSectionRevisions: false,
           revisionSections: ["items"],
@@ -501,8 +570,15 @@ export class ProjectContentService {
           items: build_project_item_persistent_records(write_output.items),
           meta: this.build_prefilter_reset_meta(settings, write_output),
         });
+        log_source_file_parse_warnings({
+          warnings,
+          log_manager: this.log_manager,
+          source: "translation-reset",
+        });
+        return result;
       }
       if (mode === "failed") {
+        // 失败条目已获准翻译，重试保留该资格。
         const items = this.to_public_item_record(await this.database.get_all_items(project_path));
         for (const item of Object.values(items)) {
           if (item.status !== "ERROR") {
@@ -560,21 +636,35 @@ export class ProjectContentService {
       .filter((item) => item.source_path.trim() !== "" && item.target_rel_path.trim() !== "");
   }
 
-  /**
-   * 慢准备阶段只读取用户源文件并解析格式，不读取当前项目 meta、items 或 asset 集合
-   */
+  /** 在来源准备前固定身份并检查完整目标集合，避免无效目标修改游戏。 */
   private async parse_import_file_commands(
-    file_commands: ImportProjectFileCommand[],
+    assets: readonly ProjectAssetRecord[],
+    files: readonly ImportProjectFileCommand[],
+    signal: AbortSignal,
   ): Promise<SourceFileParseResult> {
-    return new SourceFileParsePipeline(
-      this.create_format_service(),
-      this.native_fs,
-    ).parse_import_commands(
-      file_commands.map((file) => ({
-        source_path: file.source_path,
-        rel_path: file.target_rel_path,
-      })),
+    const format_service = this.create_format_service();
+    const by_path = new Map(
+      assets.map((asset) => [normalize_project_asset_path(asset.path).toLowerCase(), asset]),
     );
+    const commands = await format_service.discover_import_sources(
+      files.map((file) => {
+        const asset = by_path.get(normalize_project_asset_path(file.target_rel_path).toLowerCase());
+        return {
+          source_path: file.source_path,
+          rel_path: asset?.path ?? file.target_rel_path,
+          file_type: asset?.file_type,
+        };
+      }),
+      signal,
+    );
+    const final_files = new Map<string, { path: string; file_type: string }>(by_path);
+    for (const command of commands)
+      final_files.set(normalize_project_asset_path(command.rel_path).toLowerCase(), {
+        path: command.rel_path,
+        file_type: command.file_type ?? "",
+      });
+    assert_source_file_paths(final_files.values());
+    return new SourceFileParsePipeline(format_service).parse_import_commands(commands, signal);
   }
 
   /**
@@ -584,7 +674,7 @@ export class ProjectContentService {
     if (result.file_drafts.length > 0 || result.failed_files.length === 0) {
       return;
     }
-    this.log_project_import_parse_failures(result.failed_files);
+    this.log_project_import_parse_diagnostics(result.failed_files, result.warnings);
     throw new AppErrors.AppError("file.parse_failed", {
       public_details: {
         failed_files: result.failed_files as unknown as JsonValue,
@@ -594,25 +684,17 @@ export class ProjectContentService {
   }
 
   /**
-   * 项目写入成功时只在确实跳过文件后附带失败明细，保持普通写入 payload 简洁。
+   * 工作台导入诊断写入日志，保留文件原因和脚本位置。
    */
-  private with_parse_failures(
-    result: ProjectWriteResult,
+  private log_project_import_parse_diagnostics(
     failed_files: SourceFileParseFailureRecord[],
-  ): ProjectWriteResult {
-    if (failed_files.length === 0) {
-      return result;
-    }
-    return {
-      ...result,
-      failed_files,
-    };
-  }
-
-  /**
-   * 工作台导入解析失败写入日志，日志内容与页面 Toast 使用同一格式。
-   */
-  private log_project_import_parse_failures(failed_files: SourceFileParseFailureRecord[]): void {
+    warnings: SourceFileParseWarning[],
+  ): void {
+    log_source_file_parse_warnings({
+      warnings,
+      log_manager: this.log_manager,
+      source: "project-import",
+    });
     log_source_file_parse_failures({
       failures: failed_files,
       log_manager: this.log_manager,
@@ -646,6 +728,7 @@ export class ProjectContentService {
       },
       this.pdf_execution,
       this.native_fs,
+      this.rpgmaker_mv_mz_prepare_execution,
     );
   }
 
@@ -681,14 +764,7 @@ export class ProjectContentService {
         asset_records,
         pdf_paths,
         public_items_by_id,
-        files: build_project_file_records(
-          asset_records,
-          item_records.map((item) => ({
-            file_path: String(item["file_path"] ?? ""),
-            file_type: String(item["file_type"] ?? "NONE"),
-          })),
-          pdf_paths,
-        ),
+        files: new ProjectDataReader(reader).build_files_record_block(project_path),
       };
     });
   }
@@ -805,29 +881,26 @@ export class ProjectContentService {
   }
 
   /**
-   * 复制公开 item record，继承写入不能污染第一次预过滤结果
-   */
-  private clone_public_item_record(
-    items: Record<string, ProjectItemPublicRecord>,
-  ): Record<string, ProjectItemPublicRecord> {
-    return Object.fromEntries(
-      Object.entries(items).map(([item_id, item]) => [item_id, { ...item }]),
-    );
-  }
-
-  /**
    * 将新解析条目按完整源身份继承旧已完成译文，候选选择只在后端执行
    */
   private inherit_completed_translations(args: {
     old_items: ProjectItemPublicRecord[];
     next_items: ProjectItemPublicRecord[];
+    files: Record<string, TextFileContext>;
+    old_files: Record<string, TextFileContext>;
   }): void {
-    const candidate_map = this.build_translation_inheritance_candidates(args.old_items);
+    const candidate_map = this.build_translation_inheritance_candidates(
+      args.old_items,
+      args.old_files,
+    );
     for (const item of args.next_items) {
-      if (item.status !== "NONE") {
+      // 重复状态只减少翻译请求，用户要求继承时仍接收已有成果。
+      if (item.status !== "NONE" && item.status !== "DUPLICATED") {
         continue;
       }
-      const candidate = candidate_map.get(this.translation_inheritance_key(item));
+      const candidate = candidate_map.get(
+        this.translation_inheritance_key(item, args.files[item.file_path]),
+      );
       if (candidate === undefined) continue;
       item.dst = candidate.dst;
       item.name_dst = candidate.name_dst;
@@ -836,13 +909,21 @@ export class ProjectContentService {
   }
 
   /** 源身份包含可见姓名和文本类型，整条继承不能把不同角色的译名与完成状态混用。 */
-  private translation_inheritance_key(item: ProjectItemPublicRecord): string {
-    return JSON.stringify([item.src, read_optional_item_name_text(item.name_src), item.text_type]);
+  private translation_inheritance_key(
+    item: ProjectItemPublicRecord,
+    file?: TextFileContext,
+  ): string {
+    return JSON.stringify([
+      item.src,
+      read_optional_item_name_text(item.name_src),
+      resolve_text_rule_type(item, file),
+    ]);
   }
 
   /** 同一源身份按完整译文结果计数，优先选择最多且最早出现的已完成结果。 */
   private build_translation_inheritance_candidates(
     old_items: ProjectItemPublicRecord[],
+    files: Record<string, TextFileContext>,
   ): Map<string, ProjectItemPublicRecord> {
     type Candidate = {
       item: ProjectItemPublicRecord; // 首次出现的完整结果，包含姓名形状。
@@ -852,7 +933,7 @@ export class ProjectContentService {
     for (const item of old_items) {
       // 人工完成允许空正文；仅姓名的完成结果也能继承。
       if (item.status !== "PROCESSED") continue;
-      const key = this.translation_inheritance_key(item);
+      const key = this.translation_inheritance_key(item, files[item.file_path]);
       const candidates = groups.get(key) ?? new Map<string, Candidate>();
       const result_key = JSON.stringify([item.dst, read_item_name_text(item.name_dst)]);
       const candidate = candidates.get(result_key);
@@ -883,9 +964,12 @@ export class ProjectContentService {
   }
 
   /** 全部重置从工程资产完整重建；任何资产不可读或无法解析时均不提交部分结果。 */
-  private async reparse_all_assets(project_path: string): Promise<Item[]> {
+  private async reparse_all_assets(
+    project_path: string,
+  ): Promise<{ items: Item[]; warnings: SourceFileParseWarning[] }> {
     const format_service = this.create_format_service();
     const items: Item[] = [];
+    const warnings: SourceFileParseWarning[] = [];
     for (const record of await this.database.get_all_asset_records(project_path)) {
       const content = await this.database.read_asset_content(project_path, record.path);
       if (content === null) {
@@ -893,16 +977,19 @@ export class ProjectContentService {
           diagnostic_context: { asset_path: record.path },
         });
       }
-      if (!format_service.is_supported_file(record.path)) {
+      if (record.file_type === "NONE") {
         throw new AppErrors.AppError("file.parse_failed", {
           diagnostic_context: { asset_path: record.path, reason: "unsupported_format" },
         });
       }
       if ((await this.database.read_pdf_document(project_path, record.path)) !== null) continue;
-      const parsed = await format_service.parse_asset(record.path, content);
-      if (parsed.kind === "items") items.push(...parsed.items);
+      const parsed = await format_service.parse_asset(record.path, content, record.file_type);
+      if (parsed.kind === "items") {
+        items.push(...parsed.items);
+        warnings.push(...(parsed.warnings ?? []));
+      }
     }
-    return items;
+    return { items, warnings };
   }
 
   /**

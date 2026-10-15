@@ -1,6 +1,10 @@
 import type { DatabaseSync } from "node:sqlite";
 import type { JsonRecord, JsonValue } from "../../domain/json";
-import type { ProjectDatabase, ProjectDatabaseWrite } from "../database/database-operations";
+import type {
+  ProjectAssetRecord,
+  ProjectDatabase,
+  ProjectDatabaseWrite,
+} from "../database/database-operations";
 import type { LogManager } from "../log/log-manager";
 import type { AppPathService } from "../app/app-path-service";
 import type { AppSettingService } from "../app/app-setting-service";
@@ -26,6 +30,7 @@ export interface ProjectOpenMigrationInput {
 }
 /** 准备阶段共享只读快照。提交时按需要重新读取事务内事实。 */
 export interface ProjectOpenMigrationContext extends ProjectOpenMigrationInput {
+  readonly assets: readonly ProjectAssetRecord[];
   readonly meta: Readonly<JsonRecord>;
   readonly items: readonly JsonValue[];
 }

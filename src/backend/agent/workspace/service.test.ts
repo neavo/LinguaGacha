@@ -1,9 +1,12 @@
 import { project_agent_workspace_warning } from "./service";
 import { Check } from "typebox/value";
-import { AGENT_WORKSPACE_WARNING_SCHEMA } from "./schema";
+import { AGENT_WORKSPACE_PROJECT_META_SCHEMA, AGENT_WORKSPACE_WARNING_SCHEMA } from "./schema";
 import type { ProofreadingWarning } from "../../../shared/proofreading/proofreading-types";
 import { read_pdf_document } from "../../file/pdf/pdf-document";
 import { BackendResources } from "../../bootstrap/backend-resources";
+import JSZip from "jszip";
+import { encode } from "../../file/rpgmaker-rgss/marshal";
+import { ruby_array } from "../../../test/rgss-fixture";
 import { BackendServices } from "../../bootstrap/backend-services";
 import { create_pdf_fixture } from "../../file/pdf/test-support";
 import { agent_workspace_page_fingerprint } from "../../project/agent-workspace-page-write";
@@ -407,6 +410,12 @@ describe("AgentWorkspaceService", () => {
     );
 
     const active_path = fixture.active_path();
+    expect(
+      Check(
+        AGENT_WORKSPACE_PROJECT_META_SCHEMA,
+        read_json(path.join(active_path, AGENT_WORKSPACE_PATHS.projectMeta)),
+      ),
+    ).toBe(true);
     expect(read_json(path.join(active_path, AGENT_WORKSPACE_PATHS.projectMeta))).toMatchObject({
       files: [
         {
@@ -423,9 +432,14 @@ describe("AgentWorkspaceService", () => {
       expect(fs.readFileSync(path.join(active_path, relative_path), "utf8")).toBe(content);
     }
     expect(read_jsonl(path.join(active_path, AGENT_WORKSPACE_PATHS.items))).toEqual([
-      expect.objectContaining({ item_id: 1, text_type: expect.any(String) }),
-      expect.objectContaining({ item_id: 2, text_type: expect.any(String) }),
+      expect.objectContaining({ item_id: 1, file_path: "script.txt" }),
+      expect.objectContaining({ item_id: 2, file_path: "script.txt" }),
     ]);
+    expect(
+      read_jsonl(path.join(active_path, AGENT_WORKSPACE_PATHS.items)).every(
+        (item) => !("text_type" in item),
+      ),
+    ).toBe(true);
     expect(read_jsonl(path.join(active_path, AGENT_WORKSPACE_PATHS.warnings))).toEqual([
       {
         item_id: 1,
@@ -522,20 +536,44 @@ describe("AgentWorkspaceService", () => {
     expect(fixture.read_asset_content).toHaveBeenCalledTimes(3);
   });
 
-  it("目录 rename 不可用时仍能按需生成 sources", async () => {
-    const native_fs = new NativeFs();
-    vi.spyOn(native_fs, "rename").mockImplementation(() => {
-      throw Object.assign(new Error("operation not permitted"), { code: "EPERM" });
-    });
-    const fixture = await create_fixture(temp_dir, native_fs);
-
-    await expect(
-      fixture.service.activate_chat("test0001", [], async () => {}),
-    ).resolves.toBeUndefined();
+  it("RGSS 明文随修订重建，落盘失败清理后允许重试", async () => {
+    const file_path = "game.zip";
+    const native = new NativeFs();
+    const fixture = await create_fixture(temp_dir, native);
+    vi.spyOn(fixture.cache.files, "readFileEntries").mockReturnValue([
+      { rel_path: file_path, file_type: "RPGMAKER_RGSS", sort_index: 0 },
+    ]);
+    const empty = encode(ruby_array([]));
+    // 两份原稿仅改变成员名，用于观察旧明文清理和新明文发布。
+    const archive = async (name: string) =>
+      new JSZip()
+        .file("Game.ini", "[Game]\n")
+        .file("Data/System.rvdata2", empty)
+        .file("Data/Scripts.rvdata2", empty)
+        .file(`Data/${name}.rvdata2`, empty)
+        .generateAsync({ type: "nodebuffer" });
+    fixture.read_asset_content.mockResolvedValue(await archive("Old"));
     await run_workspace(fixture);
-    expect(
-      fs.readFileSync(path.join(fixture.workspace_root, "sources", "script.txt"), "utf-8"),
-    ).toBe("源文件正文");
+
+    fixture.snapshot.sectionRevisions.files = 2;
+    fixture.read_asset_content.mockResolvedValue(await archive("New"));
+    await run_workspace(fixture);
+    const game = path.join(fixture.workspace_root, "sources", file_path);
+    const new_file = path.join(game, "Data/New.rvdata2.json");
+    expect(fs.existsSync(path.join(game, "Data/Old.rvdata2.json"))).toBe(false);
+    expect(JSON.parse(fs.readFileSync(new_file, "utf8"))).toEqual([]);
+
+    fixture.snapshot.sectionRevisions.files += 1;
+    const write = native.write_file.bind(native);
+    const fail = vi.spyOn(native, "write_file").mockImplementation(async (file, ...args) => {
+      await write(file, ...args);
+      if (file === new_file) throw new Error("source write failed");
+    });
+    await expect(run_workspace(fixture)).rejects.toThrow();
+    expect(fs.existsSync(path.join(fixture.workspace_root, "sources"))).toBe(false);
+    fail.mockRestore();
+    await run_workspace(fixture);
+    expect(JSON.parse(fs.readFileSync(new_file, "utf8"))).toEqual([]);
   });
 
   it("work 跨快照、apply 与普通 revision 变化保留，显式 reset 时清理", async () => {
@@ -1147,7 +1185,7 @@ async function create_fixture(temp_dir: string, native_fs?: NativeFs) {
   );
   const warning_item = items[0] as JsonRecord;
   const setting = { ...DEFAULT_SETTING };
-  const read_asset_content = vi.fn(async () => Buffer.from("源文件正文", "utf-8"));
+  const read_asset_content = vi.fn(async (): Promise<Buffer> => Buffer.from("源文件正文", "utf-8"));
   const query_warnings = vi.fn(async () => ({
     projectPath: snapshot.projectPath,
     sectionRevisions: { ...snapshot.sectionRevisions },
@@ -1243,7 +1281,6 @@ function create_item(item_id: number): ProjectItemPublicRecord {
     row_number: item_id - 1,
     file_type: "TXT",
     file_path: "script.txt",
-    text_type: "NONE",
     status: "NONE",
     skip_internal_filter: false,
   };
@@ -1430,7 +1467,7 @@ it("PDF 零条目工程按页保存、隔离旧指纹，语言变化后重建工
     expect(
       JSON.parse(fs.readFileSync(path.join(root, "project_meta.json"), "utf8")).counts,
     ).toMatchObject({ items: 0, pages: page_rows.length });
-    const source_path = path.join(root, "sources/book.pdf");
+    const source_path = path.join(root, "sources", "book.pdf");
     const source_mtime = fs.statSync(source_path).mtimeMs;
     const draft = {
       translation: { kind: "translate" as const, markdown: "跨页段落\n\n图中是蓝色矩形。" },

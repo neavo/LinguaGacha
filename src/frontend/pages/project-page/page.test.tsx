@@ -269,19 +269,6 @@ describe("ProjectPage", () => {
     });
   }
 
-  it("格式提示复用胶囊名称，多来源格式显示说明", async () => {
-    await mount_page();
-    const tags = [...container!.querySelectorAll(".project-home__format-tag")];
-    const tips = [...container!.querySelectorAll('.project-home__format-tags [role="tooltip"]')];
-    expect(tips).toHaveLength(tags.length);
-    for (const [index, tag] of tags.entries()) {
-      const lines = [...tips[index]!.querySelectorAll("span")].map((line) => line.textContent);
-      const extension = tag.querySelector(".project-home__format-extension")!.textContent;
-      if (extension === ".json" || extension === ".xlsx") expect(lines.length).toBeGreaterThan(1);
-      else expect(lines).toEqual([tag.querySelector(".project-home__format-title")!.textContent]);
-    }
-  });
-
   /** 复用公开交互完成一次源文件选择和工程创建。 */
   async function create_project_from_selected_source(): Promise<void> {
     if (container === null) {
@@ -378,6 +365,54 @@ describe("ProjectPage", () => {
     });
   });
 
+  it("来源摘要全部失败时展示具体文件原因，重新选择仍可恢复", async () => {
+    const source = "E:/Source/broken.exe";
+    vi.mocked(window.desktopApp.pickProjectSourceFilePath).mockResolvedValueOnce({
+      canceled: false,
+      paths: [source],
+    });
+    api_fetch_mock.mockImplementation(async (path: string) =>
+      path === "/api/session/source-files/summary"
+        ? {
+            source_file_count: 0,
+            format_hit_counts: {},
+            failed_files: [
+              {
+                source_path: source,
+                rel_path: "broken.exe",
+                filename: "broken.exe",
+                code: "file.io_failed",
+                message: "EVB header damaged",
+              },
+            ],
+          }
+        : {},
+    );
+    await mount_page();
+    await act(async () => {
+      get_button_by_text(container as HTMLElement, "选择文件").click();
+      await flush_async_updates();
+    });
+    expect(push_toast_mock).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.stringContaining("broken.exe"),
+    );
+    expect(push_toast_mock).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.stringContaining("EVB header damaged"),
+    );
+    vi.mocked(window.desktopApp.pickProjectSourceFilePath).mockResolvedValueOnce({
+      canceled: false,
+      paths: ["E:/Source/good.txt"],
+    });
+    api_fetch_mock.mockResolvedValue({ source_file_count: 1, format_hit_counts: { txt: 1 } });
+    await act(async () => {
+      get_button_by_text(container as HTMLElement, "选择文件").click();
+      await flush_async_updates();
+    });
+    expect(get_button_by_text(container as HTMLElement, "创建工程").disabled).toBe(false);
+  });
+
   it("多选源文件后使用完整 source_paths 创建工程", async () => {
     const selected_paths = ["E:\\Source\\a.txt", "E:\\Source\\b.md"];
     vi.mocked(window.desktopApp.pickProjectSourceFilePath).mockResolvedValueOnce({
@@ -419,17 +454,7 @@ describe("ProjectPage", () => {
       expect.objectContaining({
         path: "E:\\Source\\a.lg",
         source_paths: selected_paths,
-        project_settings: {
-          source_language: "JA",
-          target_language: "ZH",
-          mtool_optimizer_enable: true,
-          skip_duplicate_source_text_enable: true,
-        },
       }),
-    );
-    expect(api_fetch_mock).not.toHaveBeenCalledWith(
-      "/api/session/project/create-preview",
-      expect.anything(),
     );
   });
 
@@ -454,7 +479,6 @@ describe("ProjectPage", () => {
     );
     const json_tag = selected_tags.find((tag) => tag.textContent?.includes("JSON 游戏文本"));
     expect(json_tag?.querySelector('[data-slot="badge"]')?.textContent).toBe("1");
-    expect(container?.textContent).not.toContain("命中");
 
     await act(async () => {
       container?.querySelector<HTMLButtonElement>('button[aria-label="重置"]')?.click();

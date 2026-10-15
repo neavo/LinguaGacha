@@ -7,10 +7,10 @@ import {
 } from "./project-item-duplicates";
 
 describe("project item duplicate coordination", () => {
-  it("按行号和身份稳定选择唯一待翻译代表", () => {
+  it("按稳定身份选择唯一待翻译代表", () => {
     expect(
       coordinate_project_duplicate_statuses(
-        [item(3, "NONE", 2), item(2, "DUPLICATED", 0), item(1, "NONE", 0)],
+        [item(3, "NONE"), item(2, "DUPLICATED"), item(1, "NONE")],
         true,
       ),
     ).toEqual([{ item_id: 3, status: "DUPLICATED" }]);
@@ -43,27 +43,21 @@ describe("project item duplicate coordination", () => {
     ]);
   });
 
-  it("相同原文不会跨文件形成重复组", () => {
-    expect(
-      coordinate_project_duplicate_statuses(
-        [item(1, "NONE"), item(2, "NONE", 1, "other.txt")],
-        true,
-      ),
-    ).toEqual([]);
-  });
-
-  it("按可见角色名和文本规则区分重复组", () => {
+  it("按可见角色名区分重复组", () => {
     expect(
       coordinate_project_duplicate_statuses(
         [
-          item(1, "NONE", 0, "script.txt", { name_src: "甲", text_type: "KAG" }),
-          item(2, "NONE", 1, "script.txt", { name_src: ["甲", "附加列"], text_type: "KAG" }),
-          item(3, "NONE", 2, "script.txt", { name_src: "乙", text_type: "KAG" }),
-          item(4, "NONE", 3, "script.txt", { name_src: "甲", text_type: "RENPY" }),
+          item(1, "NONE", { name_src: "甲" }),
+          item(2, "NONE", { name_src: ["甲", "附加列"] }),
+          item(3, "NONE", { name_src: "乙" }),
+          item(4, "NONE", { name_src: "甲" }),
         ],
         true,
       ),
-    ).toEqual([{ item_id: 2, status: "DUPLICATED" }]);
+    ).toEqual([
+      { item_id: 2, status: "DUPLICATED" },
+      { item_id: 4, status: "DUPLICATED" },
+    ]);
   });
 });
 
@@ -71,17 +65,12 @@ describe("project item duplicate coordination", () => {
 function item(
   item_id: number,
   status: ItemStatus,
-  row_number = item_id,
-  file_path = "script.txt",
   overrides: Partial<ProjectDuplicateItem> = {},
 ): ProjectDuplicateItem {
   return {
     item_id,
-    file_path,
-    row_number,
     src: "同文",
     name_src: null,
-    text_type: "NONE",
     status,
     ...overrides,
   };

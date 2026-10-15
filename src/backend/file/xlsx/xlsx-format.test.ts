@@ -19,7 +19,7 @@ it("双列读取保留稀疏行号、空文本、数值、富文本及公式缓�
     A6: { rich: ["原", "文"] },
     B6: { formula: "A6", result: "译文" },
   });
-  const items = await new XLSXFormat().read_from_stream(bytes, "sheet.xlsx");
+  const { items } = await new XLSXFormat().read_asset(bytes, "sheet.xlsx");
   expect(items.map((item) => [item.row, item.src, item.dst, item.status])).toEqual([
     [1, "src", "dst", "PROCESSED"],
     [3, "same", "same", "NONE"],
@@ -42,7 +42,7 @@ it("WOLF 只按固定列、源单元格存在性和索引填充色选取", async
     F5: "无填充",
     G6: "缺原文",
   });
-  const items = await new XLSXFormat().read_from_stream(bytes, "wolf.xlsx");
+  const { items } = await new XLSXFormat().read_asset(bytes, "wolf.xlsx");
   expect(items.map((item) => [item.row, item.src, item.dst, item.status, item.file_type])).toEqual([
     [2, "原文1", "", "NONE", "WOLFXLSX"],
     [3, "原文2", "已译", "PROCESSED", "WOLFXLSX"],

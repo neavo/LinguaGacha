@@ -7,7 +7,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { JsonRecord } from "../../domain/json";
 import { JsonTool } from "../../shared/utils/json-tool";
 import { AppPathService } from "./app-path-service";
-import { AppSettingService } from "../app/app-setting-service";
+import { AppSettingService } from "./app-setting-service";
 
 type SettingsStreamMessage = {
   topic: string;

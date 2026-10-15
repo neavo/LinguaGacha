@@ -1,4 +1,4 @@
-import { spreadsheet_fixture } from "../../test/spreadsheet-fixture";
+import { spreadsheet_fixture } from "../../../test/spreadsheet-fixture";
 import { expect, it } from "vitest";
 import { cell_text, read_workbook, write_cell } from "./spreadsheet";
 

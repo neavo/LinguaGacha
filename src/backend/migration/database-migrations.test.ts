@@ -74,6 +74,12 @@ it.each([false, true])("真实旧工程完整升级及早期步骤已完成：%s
     original.length,
     compressed.length,
   );
+  db.prepare("INSERT INTO assets VALUES (2, ?, ?, ?, ?)").run(
+    "old.md",
+    compressed,
+    original.length,
+    compressed.length,
+  );
   const item = {
     src: "原文",
     dst: "译文",
@@ -91,7 +97,7 @@ it.each([false, true])("真实旧工程完整升级及早期步骤已完成：%s
   };
   db.prepare("INSERT INTO items VALUES (1, ?)").run(JSON.stringify(item));
   db.prepare("INSERT INTO items VALUES (2, ?)").run(
-    JSON.stringify({ src: "# 旧正文", file_type: "MD", row: 0 }),
+    JSON.stringify({ src: "# 旧正文", file_path: "old.md", file_type: "MD", row: 0 }),
   );
   db.prepare("INSERT INTO items VALUES (3, ?)").run("broken-json");
   const early_ids = [
@@ -121,11 +127,16 @@ it.each([false, true])("真实旧工程完整升级及早期步骤已完成：%s
     legacy_private: { keep: true },
   });
   expect(JSON.parse(String(rows[0]!["data"]))).not.toHaveProperty("row_number");
-  expect(JSON.parse(String(rows[1]!["data"]))["file_type"]).toBe("MD");
+  expect(JSON.parse(String(rows[1]!["data"]))).not.toHaveProperty("file_type");
+  expect(JSON.parse(String(rows[0]!["data"]))).not.toHaveProperty("text_type");
+  expect(
+    db.prepare("SELECT file_type FROM assets WHERE path = ?").get("old.md")?.["file_type"],
+  ).toBe("MD");
   expect(rows[2]!["data"]).toBe("broken-json");
   expect(read_meta(db, PROJECT_DATABASE_APPLIED_WRITEBACK_MIGRATIONS_META_KEY)).toEqual([
     ...early_ids,
     "project-item-public-contract",
+    "asset-file-type",
   ]);
   expect(db.prepare("SELECT sort_order FROM assets").get()?.["sort_order"]).toBe(0);
   const meta = db.prepare("SELECT * FROM meta ORDER BY key").all();

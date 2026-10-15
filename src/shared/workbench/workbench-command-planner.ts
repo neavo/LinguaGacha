@@ -1,3 +1,5 @@
+import type { SourceFileParseFailureRecord } from "../source-file-parse-failure";
+
 export type WorkbenchPlannerSettings = {
   source_language: string; // 后端预过滤使用的源语言设置
   mtool_optimizer_enable: boolean; // 后端 KVJSON 优化预过滤开关
@@ -41,18 +43,6 @@ function build_file_map(
   return file_map;
 }
 
-/** 只改变冲突比较键，提交仍保留查询返回的准确路径。 */
-function build_casefold_file_map(
-  state: WorkbenchCommandPlanningState,
-): Map<string, WorkbenchPlannerFileRecord> {
-  // 同名判断采用工作台文件口径的大小写不敏感 key，保留原始 rel_path 作为提交规范路径。
-  const file_map = new Map<string, WorkbenchPlannerFileRecord>();
-  for (const file of build_file_map(state).values()) {
-    file_map.set(normalize_casefold_path(file.rel_path), file);
-  }
-  return file_map;
-}
-
 // 用户选择的目标路径去空去重，保证命令体路径集合稳定。
 function normalize_target_rel_paths(rel_paths: string[]): string[] {
   const normalized_rel_paths = [...new Set(rel_paths.filter((rel_path) => rel_path.trim() !== ""))];
@@ -84,11 +74,6 @@ export function create_workbench_planner_settings(
     mtool_optimizer_enable: settings.mtool_optimizer_enable,
     skip_duplicate_source_text_enable: settings.skip_duplicate_source_text_enable,
   };
-}
-
-// 工作台文件路径冲突按大小写不敏感口径预判，最终写入仍由后端校验。
-function normalize_casefold_path(value: string): string {
-  return value.toLocaleLowerCase("en-US");
 }
 
 // 重排命令必须完整覆盖当前文件集合，不能提交局部排序片段。
@@ -163,130 +148,30 @@ export function create_workbench_delete_files_plan(args: {
   };
 }
 
-export type WorkbenchFileParsePreview = {
-  source_path: string; // 用户选择的源文件路径，提交时作为 import-files 命令输入
-  target_rel_path: string; // UI 预览得到的项目内目标路径
+export type WorkbenchImportFileCandidate = {
+  source_path: string;
+  target_rel_path: string; // 后端预览分配的规范资产路径。
+  conflict: boolean;
 };
 
 export type WorkbenchImportFilesPreview = {
-  importable_files: WorkbenchFileParsePreview[];
-  new_files: WorkbenchFileParsePreview[];
-  conflicting_files: WorkbenchFileParsePreview[];
-  conflict_signature: string;
+  files_revision: number; // 与命名和冲突分类来自同一次数据库读取。
+  files: WorkbenchImportFileCandidate[];
+  failed_files?: SourceFileParseFailureRecord[];
 };
 
-function is_import_file_usable(parsed_file: WorkbenchFileParsePreview): boolean {
-  // 空源路径或空目标路径无法表达用户导入意图，直接排除在计划外。
-  return parsed_file.source_path.trim() !== "" && parsed_file.target_rel_path.trim() !== "";
-}
-
-/** 同批目标冲突整体排除，避免用发现顺序决定覆盖。 */
-function collect_batch_duplicate_target_keys(
-  parsed_files: WorkbenchFileParsePreview[],
-): Set<string> {
-  // 同一批内部重名没有可靠的用户意图顺序，必须整体排除，避免隐式覆盖。
-  const count_by_key = new Map<string, number>();
-  for (const parsed_file of parsed_files) {
-    const target_key = normalize_casefold_path(parsed_file.target_rel_path);
-    if (target_key === "") {
-      continue;
-    }
-    count_by_key.set(target_key, (count_by_key.get(target_key) ?? 0) + 1);
-  }
-  return new Set(
-    [...count_by_key.entries()].flatMap(([target_key, count]) => {
-      return count > 1 ? [target_key] : [];
-    }),
-  );
-}
-
-/** 捕捉确认期间的冲突集合变化，提交前需要重新校对。 */
-function build_import_conflict_signature(files: WorkbenchFileParsePreview[]): string {
-  // 对话确认期间用签名捕捉当前同名集合，提交前变更则重新让用户选择策略。
-  return files
-    .map((file, index) => {
-      return [index, normalize_casefold_path(file.target_rel_path), file.target_rel_path].join(":");
-    })
-    .join("|");
-}
-
-// 工作台导入预演只判断新增与同名替换候选，不把解析出的 item 当作最终事实。
-export function create_workbench_import_files_preview(args: {
-  state: WorkbenchCommandPlanningState;
-  parsed_files: WorkbenchFileParsePreview[];
-}): WorkbenchImportFilesPreview {
-  const existing_file_map = build_casefold_file_map(args.state);
-  const batch_duplicate_target_keys = collect_batch_duplicate_target_keys(args.parsed_files);
-  const importable_files: WorkbenchFileParsePreview[] = [];
-  const new_files: WorkbenchFileParsePreview[] = [];
-  const conflicting_files: WorkbenchFileParsePreview[] = [];
-
-  for (const raw_file of args.parsed_files) {
-    if (!is_import_file_usable(raw_file)) {
-      continue;
-    }
-    const parsed_file = { ...raw_file };
-    const target_key = normalize_casefold_path(parsed_file.target_rel_path);
-    if (batch_duplicate_target_keys.has(target_key)) {
-      continue;
-    }
-    const existing_file = existing_file_map.get(target_key);
-    const import_file =
-      existing_file === undefined
-        ? parsed_file
-        : {
-            ...parsed_file,
-            target_rel_path: existing_file.rel_path,
-          };
-    importable_files.push(import_file);
-    if (existing_file === undefined) {
-      new_files.push(import_file);
-    } else {
-      conflicting_files.push(import_file);
-    }
-  }
-
-  return {
-    importable_files,
-    new_files,
-    conflicting_files,
-    conflict_signature: build_import_conflict_signature(conflicting_files),
-  };
-}
-
-/** 用户的覆盖策略决定新增与替换候选是否提交。 */
-function select_import_files(
-  preview: WorkbenchImportFilesPreview,
-  conflict_action: WorkbenchFileConflictAction,
-): WorkbenchFileParsePreview[] {
-  // 跳过只提交新文件；替换提交新文件和同名候选，具体写入仍以后端事务为准。
-  return conflict_action === "replace" ? preview.importable_files : preview.new_files;
-}
-
-// 文件导入提交源路径、目标路径、同名策略和继承模式；id 分配、解析、继承和预过滤都在后端。
+// 前端只提交预览候选和用户选择，名称与冲突分类由后端拥有。
 export function create_workbench_import_files_plan(args: {
   state: WorkbenchCommandPlanningState;
-  parsed_files: WorkbenchFileParsePreview[];
+  preview: WorkbenchImportFilesPreview;
   conflict_action: WorkbenchFileConflictAction;
   settings: WorkbenchPlannerSettings;
   inheritance_mode?: WorkbenchTranslationInheritanceMode;
 }): WorkbenchCommandPlan {
-  const preview = create_workbench_import_files_preview({
-    state: args.state,
-    parsed_files: args.parsed_files,
-  });
-  const files_to_import = select_import_files(preview, args.conflict_action);
-  if (files_to_import.length === 0) {
-    throw new Error("No importable workbench files were selected.");
-  }
-
-  const files = files_to_import.map((parsed_file) => {
-    return {
-      source_path: parsed_file.source_path,
-      target_rel_path: parsed_file.target_rel_path,
-    };
-  });
-
+  const files = args.preview.files
+    .filter((file) => args.conflict_action === "replace" || !file.conflict)
+    .map(({ source_path, target_rel_path }) => ({ source_path, target_rel_path }));
+  if (files.length === 0) throw new Error("No importable workbench files were selected.");
   return {
     updatedSections: ["files", "items"],
     requestBody: {
@@ -294,7 +179,10 @@ export function create_workbench_import_files_plan(args: {
       conflict_action: args.conflict_action,
       inheritance_mode: args.inheritance_mode ?? "none",
       project_settings: create_workbench_planner_settings(args.settings),
-      expected_section_revisions: build_expected_revisions(args.state, ["files", "items"]),
+      expected_section_revisions: {
+        files: args.preview.files_revision,
+        items: args.state.section_revisions.items ?? 0,
+      },
     },
   };
 }

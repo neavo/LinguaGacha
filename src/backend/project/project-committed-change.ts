@@ -49,7 +49,6 @@ export function build_project_committed_change(
   request: ProjectWriteChangeRequest,
   meta: JsonRecord,
   replacementItems?: ProjectItemPublicRecord[],
-  fileMetadata?: Pick<ProjectItemPublicRecord, "file_path" | "file_type">[],
 ): ProjectCommittedChange {
   const reader = new ProjectDataReader(database);
   const project = request.projectPath;
@@ -59,15 +58,13 @@ export function build_project_committed_change(
     : request.changedItemIds === undefined
       ? {
           mode: "full",
-          records: replacementItems ?? reader.build_runtime_items_snapshot(project).item_records,
+          records: replacementItems ?? reader.read_items(project),
         }
       : {
           mode: "delta",
           records: reader.build_item_records_by_ids(project, request.changedItemIds),
         };
-  const rebuild_files = affected.has("files") || items?.mode === "full";
-  const pdf =
-    affected.has("pdf") || rebuild_files ? database.read_pdf_summaries(project) : undefined;
+  const pdf = affected.has("pdf") ? database.read_pdf_summaries(project) : undefined;
   return {
     projectPath: project,
     source: request.source,
@@ -77,13 +74,9 @@ export function build_project_committed_change(
       affected.has("quality") || items?.mode === "full" ? "all" : request.qualityStatisticsScope,
     ...(items === undefined ? {} : { items }),
     ...(pdf === undefined ? {} : { pdf }),
-    ...(rebuild_files
+    ...(affected.has("files")
       ? {
-          files: reader.build_files_record_block(
-            project,
-            items?.mode === "full" ? items.records : fileMetadata,
-            Object.keys(pdf!),
-          ),
+          files: reader.build_files_record_block(project),
         }
       : {}),
     ...(affected.has("quality") ? { quality: reader.build_quality_block(project, meta) } : {}),

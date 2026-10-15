@@ -1,3 +1,4 @@
+import { add_test_asset_from_source } from "../../test/asset-fixture";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -15,7 +16,8 @@ it("打开旧工程按顺序迁移设置、提示词和文件，并保留前序�
   const database = new ProjectDatabase();
   try {
     await database.create_project(project_path, "fixture", (database) => {
-      database.add_asset_from_source(project_path, "book.epub", epub_path, null);
+      add_test_asset_from_source(database, project_path, "book.epub", epub_path, null);
+      database.add_asset(project_path, "demo.md", Buffer.from("正文"), "MD", null);
       database.set_rule_text(project_path, "CUSTOM_PROMPT_EN", "旧提示词");
       database.set_items(project_path, [
         {

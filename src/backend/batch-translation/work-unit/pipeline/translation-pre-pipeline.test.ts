@@ -12,15 +12,30 @@ it("复用保护规则时逐条匹配，并按任务快照隔离", () => {
     text_preserve_entries: [{ src: "<[^>]+>", info: "" }],
   });
   const pipeline = new TranslationPrePipeline(create_config(), quality);
-  const first = pipeline.process_item({ src: "hello <tag>", text_type: "txt" });
-  const second = pipeline.process_item({ src: "hello <other>", text_type: "TXT" });
+  const first = pipeline.process_item({ src: "hello <tag>", file_type: "TXT" });
+  const second = pipeline.process_item({ src: "hello <other>", file_type: "TXT" });
   expect(first.samples).toEqual(["<tag>"]);
   expect(second.samples).toEqual(["<other>"]);
   const other = new TranslationPrePipeline(create_config(), create_quality_snapshot());
-  expect(other.process_item({ src: "hello <tag>", text_type: "TXT" }).samples).toEqual([]);
+  expect(other.process_item({ src: "hello <tag>", file_type: "TXT" }).samples).toEqual([]);
 });
 
 describe("TranslationPrePipeline", () => {
+  it("TRANS 文件上下文在任务快照中选择注音处理规则", () => {
+    const pipeline = new TranslationPrePipeline(
+      { ...create_config(), clean_ruby: true },
+      create_quality_snapshot({
+        file_contexts: { "game.trans": { file_type: "TRANS", game_engine: "rmmz" } },
+      }),
+    );
+    expect(
+      pipeline.process_item({ src: "(漢字/かんじ)", file_path: "game.trans", file_type: "TRANS" })
+        .request_item?.text_src,
+    ).toBe("(漢字/かんじ)");
+    expect(
+      pipeline.process_item({ src: "(漢字/かんじ)", file_type: "TXT" }).request_item?.text_src,
+    ).toBe("漢字");
+  });
   it("混合保护行和可翻译行时产出完整 item 文本", () => {
     const context = new TranslationPrePipeline(
       create_config(),
@@ -31,7 +46,7 @@ describe("TranslationPrePipeline", () => {
     ).process_item(
       {
         src: "<skip>\nhello\n\nworld",
-        text_type: "TXT",
+        file_type: "TXT",
       },
       4,
       9,
@@ -50,7 +65,7 @@ describe("TranslationPrePipeline", () => {
 
     const context = pipeline.process_item({
       src: source_text,
-      text_type: "TXT",
+      file_type: "TXT",
     });
 
     expect(context.request_item?.text_src).toBe(source_text);
@@ -67,7 +82,7 @@ describe("TranslationPrePipeline", () => {
       }),
     );
 
-    expect(pipeline.process_item({ src: "hello", text_type: "TXT" }).request_item?.text_src).toBe(
+    expect(pipeline.process_item({ src: "hello", file_type: "TXT" }).request_item?.text_src).toBe(
       "你好",
     );
   });
@@ -78,7 +93,7 @@ describe("TranslationPrePipeline", () => {
     const context = pipeline.process_item({
       src: "こんにちは",
       name_src: ["Alice"],
-      text_type: "TXT",
+      file_type: "TXT",
     });
 
     expect(context.request_item?.text_src).toBe("こんにちは");
@@ -88,12 +103,12 @@ describe("TranslationPrePipeline", () => {
   it("在 work unit 内按上文、姓名和正文顺序投影文本引用", () => {
     const pipeline = new TranslationPrePipeline(create_config(), create_quality_snapshot());
     const precedings = pipeline.project_precedings([
-      { src: "上文 https://example.com", text_type: "TXT" },
+      { src: "上文 https://example.com", file_type: "TXT" },
     ]);
     const context = pipeline.process_item({
       src: "查看 image.png",
       name_src: "Alice data:image/png;base64,AAAA",
-      text_type: "TXT",
+      file_type: "TXT",
     });
 
     expect(precedings[0]?.src).toBe("上文 lg-uri/0");
@@ -116,7 +131,7 @@ describe("TranslationPrePipeline", () => {
 
     const context = pipeline.process_item({
       src: "宝條直希",
-      text_type: "TXT",
+      file_type: "TXT",
       extra_field: {
         epub: {
           mode: "block_text",
@@ -140,11 +155,11 @@ describe("TranslationPrePipeline", () => {
 
     const fully_preserved = pipeline.process_item({
       src: "<b></b>",
-      text_type: "TXT",
+      file_type: "TXT",
     });
     const partially_preserved = pipeline.process_item({
       src: "<b>hello</b>",
-      text_type: "TXT",
+      file_type: "TXT",
     });
 
     expect(fully_preserved.request_item).toBeNull();
@@ -154,7 +169,7 @@ describe("TranslationPrePipeline", () => {
       pipeline.process_item({
         src: "<b></b>",
         name_src: "Alice",
-        text_type: "TXT",
+        file_type: "TXT",
       }).request_item,
     ).toMatchObject({ text_src: "<b></b>", actor_src: "Alice" });
     expect(partially_preserved.request_item?.text_src).toBe("<b>hello</b>");
@@ -171,7 +186,7 @@ describe("TranslationPrePipeline", () => {
 
     const context = pipeline.process_item({
       src: "<b></b>",
-      text_type: "TXT",
+      file_type: "TXT",
     });
 
     expect(context.request_item?.text_src).toBe("<b></b>");

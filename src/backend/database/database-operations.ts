@@ -131,7 +131,7 @@ export class ProjectDatabase {
   /** 批次结束撤销句柄，阻止异步延续跨批次访问。 */
   public read<T>(project_path: string, callback: (reader: ProjectDatabaseAccess) => T): Promise<T> {
     return this.use_connection(project_path, async (record) => {
-      const reader = new ProjectDatabaseAccess(record.normalized_path, record.db, this.native_fs);
+      const reader = new ProjectDatabaseAccess(record.normalized_path, record.db);
       try {
         return await callback(reader);
       } finally {
@@ -155,7 +155,7 @@ export class ProjectDatabase {
     record: ProjectDatabaseConnectionRecord,
     callback: (writer: ProjectDatabaseAccess) => T,
   ): Promise<T> {
-    const writer = new ProjectDatabaseAccess(record.normalized_path, record.db, this.native_fs);
+    const writer = new ProjectDatabaseAccess(record.normalized_path, record.db);
     try {
       return await record.access.transaction(async () => callback(writer));
     } catch (error) {

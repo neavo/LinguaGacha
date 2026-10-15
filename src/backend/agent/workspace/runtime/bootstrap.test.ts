@@ -66,22 +66,25 @@ afterAll(async () => {
   if (root) await rm(root, { recursive: true, force: true });
 });
 
-it("上传原文件在真实工作区只读，可复制到 work 后修改", async () => {
-  await mkdir(path.join(workspace, "uploads"), { recursive: true });
-  await writeFile(path.join(workspace, "uploads/input.bin"), "original");
-  const result = await run(`
+it.each(["uploads/input.bin", "sources/game.zip/Data/System.rvdata2.json"])(
+  "%s 在真实工作区只读，可复制到 work 后修改",
+  async (source) => {
+    await mkdir(path.dirname(path.join(workspace, source)), { recursive: true });
+    await writeFile(path.join(workspace, source), "original");
+    const result = await run(`
     import { readFile, writeFile, copyFile } from 'node:fs/promises';
-    const original = await readFile('uploads/input.bin', 'utf8');
-    try { await writeFile('uploads/input.bin', 'changed'); throw new Error('write allowed'); }
+    const original = await readFile(${JSON.stringify(source)}, 'utf8');
+    try { await writeFile(${JSON.stringify(source)}, 'changed'); throw new Error('write allowed'); }
     catch(error) { if(error.code !== 'ERR_ACCESS_DENIED') throw error; }
-    await copyFile('uploads/input.bin', 'work/copy.bin');
+    await copyFile(${JSON.stringify(source)}, 'work/copy.bin');
     await writeFile('work/copy.bin', 'changed');
     console.log(JSON.stringify({original, copy: await readFile('work/copy.bin', 'utf8')}));
   `);
-  expect(result.exitCode).toBe(0);
-  expect(await readFile(path.join(workspace, "uploads/input.bin"), "utf8")).toBe("original");
-  expect(await readFile(path.join(workspace, "work/copy.bin"), "utf8")).toBe("changed");
-});
+    expect(result.exitCode).toBe(0);
+    expect(await readFile(path.join(workspace, source), "utf8")).toBe("original");
+    expect(await readFile(path.join(workspace, "work/copy.bin"), "utf8")).toBe("changed");
+  },
+);
 
 it("独立部署目录支持原生模块、主程序身份、自然退出和异步输出", async () => {
   await mkdir(path.join(workspace, "work/scripts"));

@@ -1,18 +1,29 @@
 import type { DatabaseSync } from "node:sqlite";
-import {
-  normalize_item_file_type,
-  normalize_item_text_type,
-  infer_item_text_type_from_source,
-} from "../../../domain/item";
 import { is_json_record } from "../../../domain/json";
 import { JsonTool } from "../../../shared/utils/json-tool";
 import { row_number, row_text } from "../migration-row";
 
-const LEGACY_MARKDOWN_FILE_TYPE = "MD";
-const TEXT_TYPE_INFERENCE_FILE_TYPES = new Set(["XLSX", "KVJSON", "MESSAGEJSON"]);
+// 固定已发布 `.lg` 的条目类型，新增解析器不应扩大历史迁移值域；`MD` 留给打开期重建。
+const LEGACY_ITEM_FILE_TYPES = new Set<string>([
+  "NONE",
+  "MD",
+  "MD_V2",
+  "TXT",
+  "SRT",
+  "ASS",
+  "VTT",
+  "LRC",
+  "EPUB",
+  "XLSX",
+  "WOLFXLSX",
+  "RENPY",
+  "TRANS",
+  "KVJSON",
+  "MESSAGEJSON",
+]);
 export type ItemMigrationPayload = Record<string, unknown>;
 
-/** 三个历史步骤共用逐行写回机制，具体字段和先后语义由各 Case 拥有。 */
+/** 历史条目迁移共用逐行写回机制，各迁移步骤拥有字段和顺序语义。 */
 export function write_item_migration(
   db: DatabaseSync,
   normalize: (item: ItemMigrationPayload) => { data: ItemMigrationPayload; changed: boolean },
@@ -31,21 +42,7 @@ export function write_item_migration(
   }
 }
 
-/** 历史 MD 必须留给打开期重建，不能提前按当前领域值域折叠为 NONE。 */
+/** 历史条目只接纳已发布的文件类型，未知值统一归为 `NONE`。 */
 export function normalize_migration_file_type(value: unknown): string {
-  return value === LEGACY_MARKDOWN_FILE_TYPE
-    ? LEGACY_MARKDOWN_FILE_TYPE
-    : normalize_item_file_type(value);
-}
-
-/** 两个公共字段 Case 使用相同的历史文本语义推断范围。 */
-export function normalize_migration_text_type(
-  value: unknown,
-  file_type: string,
-  src: string,
-): string {
-  const text_type = normalize_item_text_type(value);
-  return text_type === "NONE" && TEXT_TYPE_INFERENCE_FILE_TYPES.has(file_type)
-    ? infer_item_text_type_from_source(src)
-    : text_type;
+  return typeof value === "string" && LEGACY_ITEM_FILE_TYPES.has(value) ? value : "NONE";
 }

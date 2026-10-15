@@ -65,6 +65,8 @@ export const de_de_project_page = {
     epub: "EPUB-E-Book",
     rpy: "RenPy-Spieltext",
     json: "JSON-Spieltext",
+    rpgmaker_mv_mz: "RPG Maker MV/MZ Spieldatei",
+    rpgmaker_rgss: "RPG Maker XP/VX/VXAce Spieldatei",
     trans: "Translator++ Projektdatei",
     xlsx: "XLSX-Spieltext",
     mtool: "MTool-Spieltext",

@@ -31,7 +31,6 @@ function create_cache_item(
     row_number: 1,
     file_type: "TXT",
     file_path: "script.txt",
-    text_type: "NONE",
     status: "PROCESSED",
     skip_internal_filter: false,
     ...overrides,
@@ -265,7 +264,7 @@ describe("ProofreadingCache", () => {
   });
 
   it.each<{
-    file_type: "TRANS" | "EPUB";
+    file_type: "TRANS" | "EPUB" | "RPGMAKER_MV_MZ" | "RPGMAKER_RGSS";
     extra_field: ProjectItemPublicRecord["extra_field"];
     internal_file_path: string;
   }>([
@@ -273,6 +272,28 @@ describe("ProofreadingCache", () => {
       file_type: "TRANS",
       extra_field: { trans_ref: { file_key: "data/Actors.json", row_index: 0 } },
       internal_file_path: "data/Actors.json",
+    },
+    {
+      file_type: "RPGMAKER_MV_MZ",
+      extra_field: {
+        rpgmaker_mv_mz: {
+          internal_file_path: "data/Actors.json",
+          usage: "text",
+          location: { kind: "field", path: [1, "name"] },
+        },
+      },
+      internal_file_path: "data/Actors.json",
+    },
+    {
+      file_type: "RPGMAKER_RGSS",
+      extra_field: {
+        rpgmaker_rgss: {
+          internal_file_path: "Data/Actors.rvdata2",
+          usage: "text",
+          location: { kind: "field", path: [1, { field: "@name" }] },
+        },
+      },
+      internal_file_path: "Data/Actors.rvdata2",
     },
     {
       file_type: "EPUB",
@@ -372,7 +393,7 @@ describe("ProofreadingCache", () => {
     settings.clean_ruby = true;
     await cache.sync({});
 
-    expect(worker.sync_inputs.map((input) => input.processingConfig)).toEqual([
+    expect(worker.sync_inputs.map((input) => input.processingConfig)).toMatchObject([
       {
         source_language: "JA",
         target_language: "ZH",

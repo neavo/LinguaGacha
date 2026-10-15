@@ -1,7 +1,8 @@
-import { read_translation_for_generation } from "../translation-generation-text";
+import { read_translation_for_generation } from "../shared/translation-generation-text";
 
 import { decode_text_content } from "../../../shared/utils/text-tool";
-import { split_text_lines_for_items, type FileFormatServiceConfig } from "../file-format-shared";
+import { split_text_lines_for_items } from "../shared/file-format-helpers";
+import { type FileFormatServiceConfig } from "../file-format-types";
 import { type Item, create_item } from "../../../domain/item";
 import { AppError } from "../../../shared/error";
 import { split_text_lines } from "../../../shared/text/text-lines";

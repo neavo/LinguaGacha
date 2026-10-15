@@ -2,7 +2,8 @@ import path from "node:path";
 import { default_native_fs } from "../../../native/native-fs";
 import type { PDFDocument, PDFDocumentRecord } from "../../../shared/pdf";
 import { is_pdf_original_page } from "./pdf-translation";
-import { write_binary_file, type FileFormatWriteContext } from "../file-format-shared";
+import { write_binary_file } from "../shared/file-format-helpers";
+import { type FileFormatWriteContext } from "../file-format-types";
 import type { PDFExecution } from "./pdf-worker";
 import { AppError } from "../../../shared/error";
 

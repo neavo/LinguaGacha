@@ -6,9 +6,8 @@ import {
   group_items,
   split_text_lines_for_items,
   write_text_file,
-  type GeneratedFilePaths,
-  type FileFormatServiceConfig,
-} from "../file-format-shared";
+} from "../shared/file-format-helpers";
+import { type GeneratedFilePaths, type FileFormatServiceConfig } from "../file-format-types";
 import { type Item } from "../../../domain/item";
 import { build_items_for_writeback, get_item_target_line } from "./compat";
 import { RenpyExtractor } from "./extractor";

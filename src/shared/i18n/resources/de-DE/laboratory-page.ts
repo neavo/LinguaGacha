@@ -28,7 +28,7 @@ export const de_de_laboratory_page = {
     skip_duplicate_source_text_enable: {
       title: "Doppelten Quelltext überspringen",
       description:
-        "Einträge mit gleichem Quelltext in derselben Datei teilen <emphasis>eine Übersetzung</emphasis>, standardmäßig aktiviert",
+        "Einträge mit identischem Text im gesamten Projekt teilen <emphasis>eine Übersetzung</emphasis>, standardmäßig aktiviert",
     },
   },
 } satisfies LocaleMessageSchema<typeof zh_cn_laboratory_page>;

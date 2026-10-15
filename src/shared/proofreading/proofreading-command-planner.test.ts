@@ -20,7 +20,6 @@ function create_test_item(overrides: Partial<ProjectItemPublicRecord>): ProjectI
     row_number: 0,
     file_type: "TXT",
     file_path: "",
-    text_type: "NONE",
     status: "NONE",
     skip_internal_filter: false,
     ...overrides,

@@ -1,3 +1,6 @@
+import { png_fixture } from "../../test/media-fixture";
+import { NativeFs } from "../../native/native-fs";
+import { encrypted_media, MEDIA_KEY } from "../../test/evb-fixture";
 import { Model } from "../../domain/model";
 import http from "node:http";
 import { create_workspace_runtime_fixture } from "../../test/agent-workspace-fixture";
@@ -24,6 +27,67 @@ describe("GuiBackendBootstrap 集成", () => {
     check_catalog = vi.spyOn(PiModelCatalog.prototype, "check").mockResolvedValue(undefined);
   });
   afterEach(() => vi.restoreAllMocks());
+
+  it("关闭在途导入时等待目录回滚与清理，随后才关闭数据库和 Gateway", async () => {
+    using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-import-shutdown-"));
+    const game = path.join(temp.path, "game");
+    fs.mkdirSync(path.join(game, "data"), { recursive: true });
+    fs.mkdirSync(path.join(game, "js"));
+    fs.mkdirSync(path.join(game, "img"));
+    const original = JSON.stringify({ hasEncryptedImages: true, encryptionKey: MEDIA_KEY });
+    fs.writeFileSync(path.join(game, "data/System.json"), original);
+    fs.writeFileSync(path.join(game, "js/rmmz_core.js"), "// fixture");
+    fs.writeFileSync(path.join(game, "img/a.png_"), encrypted_media(png_fixture()));
+    const committed = Promise.withResolvers<void>(),
+      cleanup = Promise.withResolvers<void>(),
+      release = Promise.withResolvers<void>();
+    const rename = NativeFs.prototype.rename,
+      remove = NativeFs.prototype.remove_async;
+    vi.spyOn(NativeFs.prototype, "rename").mockImplementation(function (this: NativeFs, from, to) {
+      rename.call(this, from, to);
+      if (from.includes(path.join("backup_lg", ".tmp", "stage")) && to.endsWith("a.png"))
+        committed.resolve();
+    });
+    vi.spyOn(NativeFs.prototype, "remove_async").mockImplementation(async function (
+      this: NativeFs,
+      target,
+      options,
+    ) {
+      if (target === path.join(game, "backup_lg/.tmp")) {
+        cleanup.resolve();
+        await release.promise;
+      }
+      await remove.call(this, target, options);
+    });
+    const bootstrap = new GuiBackendBootstrap(create_options(temp.path));
+    try {
+      const started = await bootstrap.start();
+      const request = fetch(started.apiBaseUrl + "/api/session/project/create", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ path: path.join(temp.path, "cancelled.lg"), source_paths: [game] }),
+      });
+      const settled = Promise.allSettled([request]);
+      await committed.promise;
+      let stopped = false;
+      const closing = bootstrap.stop().then(() => {
+        stopped = true;
+      });
+      await cleanup.promise;
+      expect(stopped).toBe(false);
+      expect(fs.readFileSync(path.join(game, "data/System.json"), "utf8")).toBe(original);
+      expect(fs.existsSync(path.join(game, "img/a.png"))).toBe(false);
+      release.resolve();
+      await closing;
+      await settled;
+      expect(bootstrap.isStopped()).toBe(true);
+      expect(fs.existsSync(path.join(temp.path, "cancelled.lg"))).toBe(false);
+      expect(fs.existsSync(path.join(game, "backup_lg/.tmp"))).toBe(false);
+    } finally {
+      release.resolve();
+      await bootstrap.stop();
+    }
+  }, 15000);
 
   it("技能管理在无工程时可用，空白对话立即采用开关和排序", async () => {
     using temporary = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-skills-gateway-"));

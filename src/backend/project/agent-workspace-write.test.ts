@@ -420,7 +420,7 @@ function create_item(item_id: number): JsonRecord {
     name_src: "",
     name_dst: "",
     file_path: "chapter.txt",
-    text_type: "RENPY",
+
     row_number: 18,
     status: "PROCESSED",
   };

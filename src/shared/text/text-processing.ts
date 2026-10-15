@@ -1,3 +1,4 @@
+import type { TextFileContext } from "./text-rule-type";
 import { normalize_quality_rule_entries } from "../quality/quality-rule-entry";
 import { read_json_record, type JsonRecord, type JsonValue } from "../../domain/json";
 import { normalize_translation_prompt_slice } from "../../domain/prompt";
@@ -20,6 +21,7 @@ import { AppError } from "../error";
 
 /** 翻译与校对共享的文本处理配置。 */
 export interface TextProcessingConfig {
+  file_contexts?: Readonly<Record<string, TextFileContext>>;
   source_language: ConfiguredSourceLanguageCode; // 源/目标语言在快照恢复时完成归一与校验
   target_language: TargetLanguageCode;
   clean_ruby: boolean; // 只控制字面文本注音标记，结构化格式组装留在导入器
@@ -57,6 +59,7 @@ export function normalize_text_processing_config(args: {
  * 质量规则快照归一后只保留 worker 必须知道的稳定事实
  */
 export interface TextQualitySnapshot {
+  file_contexts?: Readonly<Record<string, TextFileContext>>;
   glossary_enable: boolean; // glossary 与 replacement 规则均为运行时快照，worker 不回读数据库
   glossary_entries: GlossaryEntry[];
   text_preserve_mode: TextPreserveMode;
@@ -80,7 +83,8 @@ export type TextTaskItemRecord = JsonRecord & {
   name_src?: string | string[] | null;
   name_dst?: string | string[] | null;
   status?: string;
-  text_type?: string; // 决定保护规则分支
+  file_type?: string;
+  file_path?: string;
   skip_internal_filter?: boolean; // 强制翻译在译前准备中同样绕过内容过滤。
   extra_field?: JsonValue; // 保留格式处理器回写所需的结构化上下文
 };

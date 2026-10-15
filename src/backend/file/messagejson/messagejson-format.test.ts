@@ -8,19 +8,17 @@ import { create_item } from "../../../domain/item";
 import { MESSAGEJSONFormat } from "./messagejson-format";
 
 describe("MESSAGEJSONFormat", () => {
-  it("解析 name、names 和纯 message 条目且不预填译文", async () => {
+  it("解析 name、names 和纯 message 条目且不预填译文", () => {
     const format = new MESSAGEJSONFormat({ target_language: "ZH" });
 
-    const items = await format.read_from_stream(
-      new TextEncoder().encode(
-        JSON.stringify([
-          { name: "Alice", message: "msg1" },
-          { names: ["Bob", 123, "Carol"], message: "msg2" },
-          { message: "msg3" },
-          { name: "skip" },
-          "invalid",
-        ]),
-      ),
+    const items = format.read_items(
+      [
+        { name: "Alice", message: "msg1" },
+        { names: ["Bob", 123, "Carol"], message: "msg2" },
+        { message: "msg3" },
+        { name: "skip" },
+        "invalid",
+      ],
       "m.json",
     );
 
@@ -29,17 +27,13 @@ describe("MESSAGEJSONFormat", () => {
     expect(items.map((item) => item.name_dst)).toEqual([null, null, null]);
     expect(items.map((item) => item.src)).toEqual(["msg1", "msg2", "msg3"]);
     expect(items.map((item) => item.dst)).toEqual(["", "", ""]);
-    expect(
-      items.every((item) => item.file_type === "MESSAGEJSON" && item.text_type === "KAG"),
-    ).toBe(true);
+    expect(items.every((item) => item.file_type === "MESSAGEJSON")).toBe(true);
   });
 
-  it("非数组 JSON 不按 MESSAGEJSON 解析", async () => {
+  it("非数组 JSON 不按 MESSAGEJSON 解析", () => {
     const format = new MESSAGEJSONFormat({ target_language: "ZH" });
 
-    await expect(
-      format.read_from_stream(new TextEncoder().encode(JSON.stringify({ a: 1 })), "m.json"),
-    ).resolves.toEqual([]);
+    expect(format.read_items({ a: 1 }, "m.json")).toEqual([]);
   });
 
   it("完成空译文保留对象并清空正文", async () => {
