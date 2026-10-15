@@ -107,6 +107,28 @@ describe("AppEditor", () => {
     expect(on_change).not.toHaveBeenCalled();
   });
 
+  it("外部 CRLF 文本按实际文档长度裁剪选区，仅换行表示不同时不替换文档", async () => {
+    container = document.createElement("div");
+    document.body.append(container);
+    root = createRoot(container);
+    /** 同一实例替换外部文本，模拟光标靠后时载入较短预设。 */
+    const render = async (value: string) => {
+      await act(async () =>
+        root?.render(<AppEditor value={value} aria_label="提示词编辑器" read_only={false} />),
+      );
+    };
+    await render("x".repeat(10));
+    const view = EditorView.findFromDOM(get_editor_content(container))!;
+    await act(async () => view.dispatch({ selection: { anchor: 10 } }));
+
+    await render("a\r\nb\r\nc");
+    expect(view.state.selection.main.head).toBe(5);
+
+    const doc = view.state.doc;
+    await render("a\nb\nc");
+    expect(view.state.doc).toBe(doc);
+  });
+
   it("后台查看器首次显示才恢复阅读位置，滚动回调只在激活时发布", async () => {
     container = document.createElement("div");
     document.body.append(container);
