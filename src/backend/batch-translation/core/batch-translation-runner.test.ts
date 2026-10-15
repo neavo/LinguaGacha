@@ -153,9 +153,9 @@ describe("BatchTranslationRunner", () => {
       error_line: 1,
     });
     expect(committed_batches[0]?.["translation_extras"]).toMatchObject({
-      total_input_tokens: 4,
-      total_output_tokens: 8,
-      total_tokens: 12,
+      total_input_tokens: 2,
+      total_output_tokens: 4,
+      total_tokens: 6,
     });
   });
 
@@ -304,9 +304,8 @@ describe("BatchTranslationRunner", () => {
       taskPlanner: {
         build_translation_plan: async (_items, _config, model) => {
           model_ids.push(String(model.id));
-          return { contexts: [], metrics: new Map() };
+          return [];
         },
-        build_translation_retry_plan: () => ({ retry_contexts: [], forced_error_items: [] }),
       },
     });
     const run_context = {

@@ -45,7 +45,6 @@ function create_empty_translation_unit(): TranslationWorkUnit {
       items: [],
       precedings: [],
     },
-    diagnostics: { retry_count: 0, token_threshold: 0, split_count: 1, is_initial: true },
   };
 }
 
@@ -909,12 +908,6 @@ function create_translation_unit(args: {
         },
       ],
       precedings: [],
-    },
-    diagnostics: {
-      token_threshold: 512,
-      split_count: 0,
-      retry_count: 0,
-      is_initial: true,
     },
   };
 }

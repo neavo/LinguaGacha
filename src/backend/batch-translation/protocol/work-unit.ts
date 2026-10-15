@@ -30,12 +30,6 @@ export type TranslationWorkUnit = {
     items: TextTaskItemRecord[];
     precedings: TextTaskItemRecord[];
   };
-  diagnostics: {
-    token_threshold: number;
-    split_count: number;
-    retry_count: number;
-    is_initial: boolean;
-  };
 };
 
 export type TranslationModelSnapshot = Pick<
