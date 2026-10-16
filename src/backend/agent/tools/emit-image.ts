@@ -18,7 +18,7 @@ export const WORKSPACE_IMAGE_OPTIONS_SCHEMA = Type.Object(
   },
   { additionalProperties: false },
 );
-/** 父进程在读取工作区文件前校验完整图片请求。 */
+/** 父进程在读取图片文件前校验完整图片请求。 */
 export const WORKSPACE_IMAGE_REQUEST_SCHEMA = Type.Object(
   {
     kind: Type.Literal("emit_image"),
@@ -31,7 +31,7 @@ export const WORKSPACE_IMAGE_REQUEST_SCHEMA = Type.Object(
 /** 模型声明与校验复用图片选项。 */
 export function describe_emit_image(): string {
   return (
-    "/** 输出工作区图片，按调用顺序返回。await 完成后内容已固定，模型在程序成功返回后看到图片。 */\n" +
+    "/** 输出本机图片文件，`path` 可为绝对路径或以工作区根为基准的相对路径。按调用顺序返回，await 完成后内容已固定，模型在程序成功返回后看到图片。 */\n" +
     `emitImage(path: string, options?: ${create_schema_renderer(new Map()).render(WORKSPACE_IMAGE_OPTIONS_SCHEMA)}): Promise<void>;`
   );
 }
@@ -42,7 +42,7 @@ export function bind_emit_image(channel: Pick<AgentWorkspaceRequestChannel, "cal
   };
 }
 
-/** 每次程序独立持有输出状态，工作区端口负责受控文件读取和图片转换。 */
+/** 每次程序独立持有输出状态，工作区端口负责文件读取和图片转换。 */
 export function create_image_output(
   prepare: (path: string, signal: AbortSignal, options?: AgentImageOptions) => Promise<AgentImage>,
 ) {
@@ -51,23 +51,23 @@ export function create_image_output(
   let image_bytes = 0; // 仅累计已接收图片的 base64 字节，本次程序结束后释放额度。
   /** 预留调用顺序和额度，失败时释放槽位供本次程序重试。 */
   const emitImage = async (
-    relative: string,
+    image_path: string,
     image_signal: AbortSignal,
     options?: AgentImageOptions,
   ) => {
     image_signal.throwIfAborted();
     if (output_images.size >= AGENT_WORKSPACE_RUNTIME_POLICY.imageCount)
       throw new Error(
-        `Cannot emit ${JSON.stringify(relative)}: this program accepts at most ${AGENT_WORKSPACE_RUNTIME_POLICY.imageCount} images. Emit remaining images in subsequent workspace_run calls.`,
+        `Cannot emit ${JSON.stringify(image_path)}: this program accepts at most ${AGENT_WORKSPACE_RUNTIME_POLICY.imageCount} images. Emit remaining images in subsequent workspace_run calls.`,
       );
-    const entry = { path: relative, image: null as AgentImage | null };
+    const entry = { path: image_path, image: null as AgentImage | null };
     output_images.add(entry);
     try {
-      const image = await prepare(relative, image_signal, options);
+      const image = await prepare(image_path, image_signal, options);
       image_signal.throwIfAborted();
       if (image_bytes + image.data.length > AGENT_WORKSPACE_RUNTIME_POLICY.imageOutputBytes)
         throw new Error(
-          `Cannot emit ${JSON.stringify(relative)}: total encoded image data would exceed ${AGENT_WORKSPACE_RUNTIME_POLICY.imageOutputBytes / 1024 / 1024} MiB for this program. Split images across subsequent workspace_run calls, or crop relevant regions or lower maxEdge before retrying.`,
+          `Cannot emit ${JSON.stringify(image_path)}: total encoded image data would exceed ${AGENT_WORKSPACE_RUNTIME_POLICY.imageOutputBytes / 1024 / 1024} MiB for this program. Split images across subsequent workspace_run calls, or crop relevant regions or lower maxEdge before retrying.`,
         );
       image_bytes += image.data.length;
       entry.image = image;
@@ -86,7 +86,7 @@ export function create_image_output(
   };
 }
 
-/** 父进程在图片工具入口校验完整请求，再读取工作区文件。 */
+/** 父进程在图片工具入口校验完整请求，再读取图片文件。 */
 export async function execute_image_request(
   request: unknown,
   signal: AbortSignal,

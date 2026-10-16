@@ -263,7 +263,7 @@ it("用户技能目录链接可创建、替换和删除包，失败前的写入�
   }
 });
 
-it("发布态 ASAR 技能在原目录授权下导入脚本、资源和预装依赖", async () => {
+it("发布态 ASAR 技能导入脚本、资源和预装依赖", async () => {
   const directory = await mkdtemp(path.join(root, "asar-"));
   const source = path.join(directory, "source");
   const skill = path.join(source, "builtin/skills/fixture");
@@ -301,9 +301,7 @@ it("发布态 ASAR 技能在原目录授权下导入脚本、资源和预装依�
     electron_path,
     [
       "--permission",
-      `--allow-fs-read=${skill_root}`,
-      `--allow-fs-read=${workspace}`,
-      `--allow-fs-read=${runtime}`,
+      "--allow-fs-read=*",
       "--preserve-symlinks",
       "--preserve-symlinks-main",
       "--input-type=module",
@@ -519,20 +517,26 @@ it("网页流、重定向与代理等待在真实子进程中工作", async () =
   }
 });
 
-it("权限保护部署与快照，失败保留输出、位置和已写文件", async () => {
+it("工作区外可读不可写，权限保护部署与快照，失败保留输出、位置和已写文件", async () => {
+  const outside = path.join(root, "outside.txt");
   const result = await run(`
     import fs from 'node:fs/promises';
+    const outside = ${JSON.stringify(outside)};
     const failures = [];
     for (const operation of [
-      () => fs.readFile('../outside.txt'),
+      () => fs.writeFile(outside, 'changed'),
+      () => fs.symlink(${JSON.stringify(root)}, 'work/escape', 'junction'),
       () => fs.writeFile('contract.json', '{}'),
       () => fs.writeFile(ws.contract.datasets.items.reference, 'changed'),
       () => fs.writeFile('package.json', '{}'),
       () => fs.writeFile('node_modules/unified/package.json', '{}'),
     ]) { try { await operation(); } catch (error) { failures.push(error.code); } }
-    console.log(JSON.stringify(failures));
+    console.log(JSON.stringify({ text: await fs.readFile(outside, 'utf8'), failures }));
   `);
-  expect(output_content(result.stdout)).toEqual(Array(5).fill("ERR_ACCESS_DENIED"));
+  expect(output_content(result.stdout)).toEqual({
+    text: "outside",
+    failures: Array(6).fill("ERR_ACCESS_DENIED"),
+  });
   await expect(
     run(
       `import fs from 'node:fs/promises'; await fs.writeFile('work/kept.txt','kept'); console.log('before error'); throw new Error('program failed');`,

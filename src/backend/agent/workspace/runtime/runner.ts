@@ -92,7 +92,7 @@ export class AgentWorkspaceRunner {
     signal: AbortSignal,
   ): Promise<AgentWorkspaceExecution> {
     signal.throwIfAborted();
-    // 宿主先解析祖先链接，cwd、预加载与授权使用同一真实位置，子进程无需读取上层链接。
+    // 宿主先解析祖先链接，cwd、预加载与写入授权使用同一真实位置。
     const workspace_path = default_native_fs.real_path(request.workspacePath);
     const runtime_directory = default_native_fs.real_path(this.runtime_directory);
     const bootstrap_path = resolve_workspace_runtime_entry(
@@ -109,20 +109,19 @@ export class AgentWorkspaceRunner {
     default_native_fs.make_dir(user_skill_directory);
     write_paths.add(user_skill_directory);
     write_paths.add(default_native_fs.real_path(user_skill_directory));
-    // 根目录授权独立于 catalog 同名选择，每次 run 都重新解析真实位置。
-    const skill_paths = [user_skill_directory, this.paths.get_agent_builtin_skill_dir()].flatMap(
-      (entry) => {
-        try {
-          return [entry, default_native_fs.real_path(entry)];
-        } catch (error) {
-          // 缺失的内置技能根不影响工作区执行，后续 run 会重新解析其真实位置。
-          if (error instanceof Error && "code" in error && error.code === "ENOENT") return [entry];
-          throw error;
-        }
-      },
-    );
-    // 包入口和共享资源处在不同层级，读取权限由整套运行目录拥有。
-    const read_paths = new Set([workspace_path, runtime_directory, ...write_paths, ...skill_paths]);
+    // 技能模块可能经逻辑入口或真实位置加载，npm 依赖解析按两者匹配，每次 run 都重新解析。
+    const skill_module_roots = [
+      user_skill_directory,
+      this.paths.get_agent_builtin_skill_dir(),
+    ].flatMap((entry) => {
+      try {
+        return [entry, default_native_fs.real_path(entry)];
+      } catch (error) {
+        // 缺失的内置技能根不影响工作区执行，后续 run 会重新解析其真实位置。
+        if (error instanceof Error && "code" in error && error.code === "ENOENT") return [entry];
+        throw error;
+      }
+    });
     // 标准异步资源释放在返回或抛错前关闭句柄，第二路打开失败也会释放第一路。
     await using stdout = await default_native_fs.open_file(
       path.join(workspace_path, request.stdoutPath),
@@ -136,7 +135,8 @@ export class AgentWorkspaceRunner {
       execPath: this.executable_path,
       execArgv: [
         "--permission",
-        ...[...read_paths].map((directory) => `--allow-fs-read=${directory}`),
+        // 读取范围是当前系统账户可访问的本机文件，写入限定在授权目录。
+        "--allow-fs-read=*",
         ...[...write_paths].map((directory) => `--allow-fs-write=${directory}`),
         // 包括主程序在内都按工作区入口解析模块；work 本身是链接时仍能发现工作区 node_modules。
         "--preserve-symlinks",
@@ -154,7 +154,7 @@ export class AgentWorkspaceRunner {
     const process_result = await this.run_process(
       path.resolve(workspace_path, request.scriptPath),
       user_skill_directory,
-      [...new Set(skill_paths.map((entry) => pathToFileURL(entry + path.sep).href))],
+      [...new Set(skill_module_roots.map((entry) => pathToFileURL(entry + path.sep).href))],
       launch_options,
       signal,
       request,
