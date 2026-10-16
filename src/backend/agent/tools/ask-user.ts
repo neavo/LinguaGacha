@@ -49,7 +49,7 @@ const ASK_USER_PARAMETERS = Type.Object(
         { additionalProperties: false },
       ),
       {
-        description: "身份唯一、按推荐顺序排列的固定答案。",
+        description: "按推荐顺序排列的固定答案。",
         minItems: AGENT_QUESTION_OPTION_MIN,
         maxItems: AGENT_QUESTION_OPTION_MAX,
       },
@@ -58,45 +58,30 @@ const ASK_USER_PARAMETERS = Type.Object(
   { additionalProperties: false },
 );
 
-/** 规范模型生成的可见文本，并保证选项身份在单次问题内唯一。 */
+/** SDK 已按 Schema 校验长度与数量，这里只拒绝去除空白后为空的文本和重复的选项标识。 */
 function normalize_question(params: Static<typeof ASK_USER_PARAMETERS>): AgentQuestion {
   const prompt = params.prompt.trim();
   const description = params.description?.trim();
-  const option_ids = new Set<string>();
-  const options: AgentQuestionOption[] = params.options.map((option) => {
-    const id = option.id.trim();
-    const label = option.label.trim();
-    if (
-      id === "" ||
-      label === "" ||
-      label.length > AGENT_QUESTION_LABEL_LIMIT ||
-      option_ids.has(id)
-    ) {
-      throw new AgentToolError({ code: "invalid_question" });
-    }
-    option_ids.add(id);
-    return { id, label };
-  });
-  const [first, second, third] = options;
+  const options: AgentQuestionOption[] = params.options.map((option) => ({
+    id: option.id.trim(),
+    label: option.label.trim(),
+  }));
+  const [first, second, third] = options; // 解构供元组类型收窄，数量由 Schema 保证
   if (
     prompt === "" ||
-    prompt.length > AGENT_QUESTION_PROMPT_LIMIT ||
+    description === "" ||
     first === undefined ||
     second === undefined ||
-    (params.description !== undefined &&
-      (description === undefined ||
-        description === "" ||
-        description.length > AGENT_QUESTION_DESCRIPTION_LIMIT))
+    options.some(({ id, label }) => id === "" || label === "") ||
+    new Set(options.map(({ id }) => id)).size !== options.length
   ) {
     throw new AgentToolError({ code: "invalid_question" });
   }
-  return description === undefined
-    ? { prompt, options: third === undefined ? [first, second] : [first, second, third] }
-    : {
-        prompt,
-        description,
-        options: third === undefined ? [first, second] : [first, second, third],
-      };
+  return {
+    prompt,
+    ...(description === undefined ? {} : { description }),
+    options: third === undefined ? [first, second] : [first, second, third],
+  };
 }
 
 /** ask_user 把阻塞性决定交给宿主 UI，并将一次性结果返回当前工具轮次。 */
@@ -113,9 +98,11 @@ export function create_agent_ask_user_tool(question: AgentQuestionPort): ToolReg
       "",
       "### 结果处理",
       "",
-      "- 选择预设选项后，按返回的选项标识执行。",
-      "- 自定义回答作为新的用户要求处理。",
-      "- 用户取消时暂停依赖该决定的动作。等待后续输入。",
+      "|`outcome`|处理|",
+      "|---|---|",
+      "|`selected`|按 `optionId` 对应的选项执行|",
+      "|`custom`|把 `text` 作为新的用户要求处理|",
+      "|`cancelled`|暂停依赖该决定的动作，等待用户后续输入|",
     ].join("\n"),
     executionMode: "sequential",
     parameters: ASK_USER_PARAMETERS,
