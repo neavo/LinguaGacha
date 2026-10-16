@@ -85,15 +85,11 @@
 - 구체적인 예시는 [Wiki - 지원 파일 형식](https://github.com/neavo/LinguaGacha/wiki/%E6%94%AF%E6%8C%81%E7%9A%84%E6%96%87%E4%BB%B6%E6%A0%BC%E5%BC%8F)을 참고하세요. 지원 형식은 계속 추가되며, [ISSUES](https://github.com/neavo/LinguaGacha/issues)에서 원하는 형식을 요청할 수 있습니다
 
 ## 최근 업데이트 📅
-- 20261008 v0.127.1
-  - ChatGPT 로그인 호환성 문제 수정 [#973](../../issues/973)
-
-- 20261008 v0.127.0
-  - 새 파일 형식 지원 추가 [#971](../../issues/971)
-    - `.ssa`
-    - `.vtt`
-    - `.lrc`
-  - 수정 및 개선 [#968](../../issues/968) [#969](../../issues/969) [#970](../../issues/970)
+- 20261016 v0.128.0
+  - `RPGMaker` 게임 파일 네이티브 지원 [#983](../../issues/983)
+    - `RPGMaker MV/MZ`
+    - `RPGMaker XP/VX/VXAce`
+  - 수정 및 개선 [#975](../../issues/975) [#976](../../issues/976) [#978](../../issues/978) [#985](../../issues/985) [#986](../../issues/986) [#987](../../issues/987)
 
 ## 개발 안내 🛠️
 - [Go](https://go.dev)와 [`Node.js`](https://nodejs.org)를 설치합니다

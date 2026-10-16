@@ -87,15 +87,11 @@
 - 例については [Wiki - 対応フォーマット](https://github.com/neavo/LinguaGacha/wiki/%E6%94%AF%E6%8C%81%E7%9A%84%E6%96%87%E4%BB%B6%E6%A0%BC%E5%BC%8F) を参照。フォーマットのリクエストは [ISSUES](https://github.com/neavo/LinguaGacha/issues) で提出
 
 ## 最近の更新 📅
-- 20261008 v0.127.1
-  - ChatGPT ログインの互換性の問題を修正 [#973](../../issues/973)
-
-- 20261008 v0.127.0
-  - 対応フォーマットを追加 [#971](../../issues/971)
-    - `.ssa`
-    - `.vtt`
-    - `.lrc`
-  - 修正と改善 [#968](../../issues/968) [#969](../../issues/969) [#970](../../issues/970)
+- 20261016 v0.128.0
+  - `RPGMaker` ゲームファイルのネイティブ対応 [#983](../../issues/983)
+    - `RPGMaker MV/MZ`
+    - `RPGMaker XP/VX/VXAce`
+  - 修正と改善 [#975](../../issues/975) [#976](../../issues/976) [#978](../../issues/978) [#985](../../issues/985) [#986](../../issues/986) [#987](../../issues/987)
 
 ## 開発ガイド 🛠️
 - [Go](https://go.dev) と [`Node.js`](https://nodejs.org) をインストール

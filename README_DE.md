@@ -85,15 +85,11 @@
 - Beispiele finden Sie unter [Wiki – Unterstützte Dateiformate](https://github.com/neavo/LinguaGacha/wiki/%E6%94%AF%E6%8C%81%E7%9A%84%E6%96%87%E4%BB%B6%E6%A0%BC%E5%BC%8F). Weitere Formate werden laufend ergänzt. Wünsche können Sie unter [ISSUES](https://github.com/neavo/LinguaGacha/issues) einreichen
 
 ## Neueste Updates 📅
-- 20261008 v0.127.1
-  - Kompatibilitätsproblem bei der ChatGPT-Anmeldung behoben [#973](../../issues/973)
-
-- 20261008 v0.127.0
-  - Unterstützung für neue Formate hinzugefügt [#971](../../issues/971)
-    - `.ssa`
-    - `.vtt`
-    - `.lrc`
-  - Fehlerbehebungen und Verbesserungen [#968](../../issues/968) [#969](../../issues/969) [#970](../../issues/970)
+- 20261016 v0.128.0
+  - Native Unterstützung für `RPGMaker`-Spieldateien [#983](../../issues/983)
+    - `RPGMaker MV/MZ`
+    - `RPGMaker XP/VX/VXAce`
+  - Fehlerbehebungen und Verbesserungen [#975](../../issues/975) [#976](../../issues/976) [#978](../../issues/978) [#985](../../issues/985) [#986](../../issues/986) [#987](../../issues/987)
 
 ## Entwicklung 🛠️
 - Installieren Sie [Go](https://go.dev) und [`Node.js`](https://nodejs.org)

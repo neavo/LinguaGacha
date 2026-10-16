@@ -85,15 +85,11 @@
 - 具体示例可见 [Wiki - 支持的文件格式](https://github.com/neavo/LinguaGacha/wiki/%E6%94%AF%E6%8C%81%E7%9A%84%E6%96%87%E4%BB%B6%E6%A0%BC%E5%BC%8F)，更多格式将持续添加，你也可以在 [ISSUES](https://github.com/neavo/LinguaGacha/issues) 中提出你的需求
 
 ## 近期更新 📅
-- 20261008 v0.127.1
-  - 修复 ChatGPT 登录的兼容性问题 [#973](../../issues/973)
-
-- 20261008 v0.127.0
-  - 新增支持格式 [#971](../../issues/971)
-    - `.ssa`
-    - `.vtt`
-    - `.lrc`
-  - 修复与改进 [#968](../../issues/968) [#969](../../issues/969) [#970](../../issues/970)
+- 20261016 v0.128.0
+  - 原生 `RPGMaker` 游戏文件支持 [#983](../../issues/983)
+    - `RPGMaker MV/MZ`
+    - `RPGMaker XP/VX/VXAce`
+  - 修复与改进 [#975](../../issues/975) [#976](../../issues/976) [#978](../../issues/978) [#985](../../issues/985) [#986](../../issues/986) [#987](../../issues/987)
 
 ## 开发指南 🛠️
 - 安装 [ [Go](https://go.dev) ] 和 [ [`Node.js`](https://nodejs.org) ]
