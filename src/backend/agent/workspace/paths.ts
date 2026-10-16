@@ -6,6 +6,7 @@ export const AGENT_WORKSPACE_PATHS = Object.freeze({
   contract: "contract.json",
   reference: "reference",
   items: "items/entries.jsonl",
+  itemExtra: "items/extra.jsonl",
   pages: "pages/entries.jsonl",
   warnings: "items/warnings.jsonl",
   prompts: "prompts.json",

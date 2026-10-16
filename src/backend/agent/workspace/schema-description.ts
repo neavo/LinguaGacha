@@ -2,17 +2,37 @@ import type { TSchema } from "@earendil-works/pi-ai";
 
 /** 工具说明和工作区参考共用声明生成器，约束只从原 Schema 读取。 */
 export function create_schema_renderer(named_schemas: ReadonlyMap<TSchema, string>) {
+  // 递归 Schema 的本地定义各生成一个命名类型，`$ref` 只输出类型名，自引用由此停止展开。
+  const local_definitions = new Map<string, TSchema>();
+  for (const schema of named_schemas.keys()) register_local_definitions(schema);
+  const declared = [
+    ...named_schemas,
+    ...[...local_definitions].map(([name, schema]) => [schema, name] as const),
+  ];
   return {
     render: render_schema,
     declarations: () =>
       [
         "/** 对象仅接受声明字段。带索引签名的对象允许额外字段，字段值须符合索引签名类型。 */",
-        ...[...named_schemas].map(
+        ...declared.map(
           ([schema, name]) =>
             `${schema_comment(schema)}type ${name} = ${render_schema(schema, schema, false)};`,
         ),
       ].join("\n\n"),
   };
+
+  /** 递归登记 `$defs` 提供的定义，同名定义内容不一致时显式失败。 */
+  function register_local_definitions(schema: unknown): void {
+    if (typeof schema !== "object" || schema === null) return;
+    const defs = (schema as { $defs?: Record<string, TSchema> }).$defs ?? {};
+    for (const [name, definition] of Object.entries(defs)) {
+      const known = local_definitions.get(name);
+      if (known !== undefined && JSON.stringify(known) !== JSON.stringify(definition))
+        throw new Error(`Conflicting Workspace schema local definition: ${name}`);
+      local_definitions.set(name, definition);
+    }
+    for (const child of Object.values(schema)) register_local_definitions(child);
+  }
 
   /** 仅展开当前命名类型的定义，其余命名类型使用引用；新增 Schema 结构须同步支持。 */
   function render_schema(schema: TSchema, definition?: TSchema, annotate = true): string {
@@ -23,6 +43,12 @@ export function create_schema_renderer(named_schemas: ReadonlyMap<TSchema, strin
     if (named !== undefined && definition !== schema) return named;
     const comment = annotate ? schema_comment(schema) : "";
     const value = schema as unknown as Record<string, unknown>;
+    if (value.$ref !== undefined) {
+      // 未经命名 Schema 登记的引用没有对应声明，必须失败而不是输出悬空类型名。
+      if (!local_definitions.has(value.$ref as string))
+        throw new Error(`Unresolved Workspace schema reference: ${String(value.$ref)}`);
+      return `${comment}${value.$ref}`;
+    }
     if (Array.isArray(value.enum))
       return `${comment}(${value.enum.map((entry) => JSON.stringify(entry)).join(" | ")})`;
     if ("const" in value) return `${comment}${JSON.stringify(value.const)}`;
@@ -94,6 +120,9 @@ const SUPPORTED_SCHEMA_KEYS = new Set([
   "additionalProperties",
   "patternProperties",
   "description",
+  "$ref", // 输出本地定义的类型名
+  "$defs", // 提供本地定义，不输出为记录字段
+  "$id", // 本地定义自带的标识，类型名取自 `$defs` 键
   ...Object.keys(SCHEMA_CONSTRAINTS),
 ]);
 

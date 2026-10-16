@@ -479,6 +479,24 @@ describe("AgentWorkspaceService", () => {
     expect(fixture.active_path()).toBe(active_path);
   });
 
+  it("item_extra 按条目原样输出扩展数据，零条目时生成空文件", async () => {
+    const fixture = await create_fixture(temp_dir);
+    const extra = { format: { location: [1, "a", true, null], unknown: { nested: {} } } };
+    fixture.items[0]!.extra_field = extra;
+    fixture.items[1]!.extra_field = null;
+    await run_workspace(fixture);
+    const extra_path = path.join(fixture.active_path(), AGENT_WORKSPACE_PATHS.itemExtra);
+    expect(read_jsonl(extra_path)).toEqual([
+      { item_id: 1, extra_field: extra },
+      { item_id: 2, extra_field: null },
+    ]);
+
+    fixture.items.splice(0);
+    fixture.snapshot.sectionRevisions.items = 2;
+    await run_workspace(fixture);
+    expect(fs.readFileSync(extra_path, "utf-8")).toBe("");
+  });
+
   it("补齐缺失变更子目录时保留提交意图、工作材料和快照", async () => {
     const fixture = await create_fixture(temp_dir);
     await run_workspace(fixture);
