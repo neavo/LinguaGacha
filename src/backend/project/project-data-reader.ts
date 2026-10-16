@@ -90,13 +90,16 @@ export class ProjectDataReader {
     this.database = database;
   }
 
-  /** 调用者持有事务或读取作用域，所有消费者共享同一次条目读取。 */
-  public read_snapshot(project_path: string): ProjectDataSnapshot {
+  /** 调用者持有事务或读取作用域，传入已验证条目可跳过重复读取。 */
+  public read_snapshot(
+    project_path: string,
+    items: readonly ProjectItemPublicRecord[] = this.read_items(project_path),
+  ): ProjectDataSnapshot {
     const meta = this.get_all_meta(project_path);
     return {
       meta,
       pdf: this.database.read_pdf_summaries(project_path),
-      items: this.read_items(project_path),
+      items,
       files: this.build_files_record_block(project_path),
       quality: this.build_quality_block(project_path, meta),
       prompts: this.build_prompts_block(project_path, meta),

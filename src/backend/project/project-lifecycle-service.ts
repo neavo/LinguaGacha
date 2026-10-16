@@ -302,7 +302,11 @@ export class ProjectLifecycleService {
           translation_prompt_legacy_migrated: true,
           "migration.asset_file_type_complete": true,
         });
-        snapshot = new ProjectDataReader(writer).read_snapshot(project_path);
+        // 预过滤条目已分配身份并通过校验，写库只转换持久字段，提交后缓存可复用同一事实。
+        snapshot = new ProjectDataReader(writer).read_snapshot(
+          project_path,
+          Object.values(prefilter_output.items).sort((left, right) => left.item_id - right.item_id),
+        );
       },
     );
 

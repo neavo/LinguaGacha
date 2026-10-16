@@ -35,7 +35,7 @@ export function configure_rpgmaker_parser(directory: string): void {
 
 /** 解析器给出 UTF-16 偏移，模板片段保留表达式边界。 */
 export function read_javascript_strings(source: string): JavascriptReadResult {
-  const { parseSync, Visitor, visitorKeys } = parser_require("oxc-parser") as typeof Oxc;
+  const { parseSync, visitorKeys } = parser_require("oxc-parser") as typeof Oxc;
   const result = parseSync("source.js", source, { sourceType: "commonjs" });
   if (result.errors.length > 0) {
     // 错误 AST 的偏移不用于写回，整段脚本交给调用方保留原稿。
@@ -55,8 +55,8 @@ export function read_javascript_strings(source: string): JavascriptReadResult {
   }
   const strings: JavascriptString[] = [];
   const ancestors: Oxc.Node[] = []; // 收集字符串时只含父节点，进入后压栈、退出时弹栈。
-  /** 同一次遍历收集写回定位与原稿上下文。 */
-  function enter(node: Oxc.Node): void {
+  /** 同一次遍历收集写回定位与原稿上下文，按 `visitorKeys` 手动递归，免去每次为全部节点类型编译 `Visitor`。 */
+  function visit(node: Oxc.Node): void {
     const src =
       node.type === "Literal" && typeof node.value === "string"
         ? node.value
@@ -78,15 +78,19 @@ export function read_javascript_strings(source: string): JavascriptReadResult {
       });
     }
     ancestors.push(node);
+    for (const key of visitorKeys[node.type]!) {
+      const child = (node as unknown as Record<string, Oxc.Node | (Oxc.Node | null)[] | null>)[key];
+      if (Array.isArray(child)) {
+        for (const entry of child) {
+          if (entry) visit(entry);
+        }
+      } else if (child) {
+        visit(child);
+      }
+    }
+    ancestors.pop();
   }
-  new Visitor(
-    Object.fromEntries(
-      Object.keys(visitorKeys).flatMap((type) => [
-        [type, enter],
-        [`${type}:exit`, () => ancestors.pop()],
-      ]),
-    ),
-  ).visit(result.program);
+  visit(result.program);
   return { ok: true, strings: strings.sort((a, b) => a.start - b.start) };
 }
 
