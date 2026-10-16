@@ -136,13 +136,13 @@ describe("统一模型能力", () => {
     expect(adjust_model_thinking_level("HIGH", ["DEFAULT"])).toBe("DEFAULT");
   });
 
-  it("地址、协议与模型共同命中优先于供应商排序，未知地址沿用回退", () => {
+  it("地址、协议与模型共同授权端点扩展，名称回退只保留模型适配", () => {
     const router: PiCatalogModel = {
       ...create_catalog_model("shared-model"),
       api: "openai-completions",
       provider: "openrouter",
       baseUrl: "https://router.example/v1",
-      compat: { thinkingFormat: "openrouter" },
+      compat: { thinkingFormat: "openrouter", supportsMidConvoSystemMessages: true },
     };
     const hosted: PiCatalogModel = {
       ...router,
@@ -163,15 +163,20 @@ describe("统一模型能力", () => {
       { ...model.to_json(), api_url: "https://relay.example/v1" },
       "test",
     );
-    expect(resolve_model_capability(relay, [hosted, router]).compat).toEqual(router.compat);
+    expect(resolve_model_capability(relay, [hosted, router]).compat).toEqual({
+      thinkingFormat: "openrouter",
+    });
     const other_path = Model.from_json(
       { ...model.to_json(), api_url: "https://hosted.example/other/v1" },
       "test",
     );
-    expect(resolve_model_capability(other_path, [hosted, router]).compat).toEqual(router.compat);
+    expect(resolve_model_capability(other_path, [hosted, router]).compat).toEqual({
+      thinkingFormat: "openrouter",
+    });
     expect(
       resolve_model_capability(model, [router, { ...hosted, api: "openai-responses" }]).compat,
-    ).toEqual(router.compat);
+    ).toEqual({ thinkingFormat: "openrouter" });
+    expect(router.compat).toHaveProperty("supportsMidConvoSystemMessages", true);
   });
 
   it("精确匹配优先，否则选择最长且唯一的分隔变种", () => {
