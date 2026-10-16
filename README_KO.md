@@ -82,7 +82,7 @@
 - [Translator++](https://dreamsavior.net/translator-plusplus) 프로젝트 파일 `.trans`
 - [Translator++](https://dreamsavior.net/translator-plusplus)로 내보낸 게임 텍스트 `.xlsx`
 - [WOLF 공식 번역 도구](https://silversecond.booth.pm/items/5151747)로 내보낸 게임 텍스트 `.xlsx`
-- 구체적인 예시는 [Wiki - 지원 파일 형식](https://github.com/neavo/LinguaGacha/wiki/%E6%94%AF%E6%8C%81%E7%9A%84%E6%96%87%E4%BB%B6%E6%A0%BC%E5%BC%8F)을 참고하세요. 지원 형식은 계속 추가되며, [ISSUES](https://github.com/neavo/LinguaGacha/issues)에서 원하는 형식을 요청할 수 있습니다
+- 구체적인 예시는 [Wiki - 지원 파일 형식](https://github.com/neavo/LinguaGacha/wiki/SupportedFileFormat)을 참고하세요. 지원 형식은 계속 추가되며, [ISSUES](https://github.com/neavo/LinguaGacha/issues)에서 원하는 형식을 요청할 수 있습니다
 
 ## 최근 업데이트 📅
 - 20261016 v0.128.0

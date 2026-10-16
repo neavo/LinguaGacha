@@ -47,7 +47,7 @@
     - `chmod +x LinguaGacha*.AppImage` で実行権限を付与
     - `./LinguaGacha*.AppImage` を実行
 - 信頼できるAIモデルインターフェースを取得。おすすめ：
-  - [ [DeepSeek API](https://github.com/neavo/LinguaGacha/wiki/DeepSeek) ] (GPU不要)
+  - [ [DeepSeek API](https://github.com/neavo/LinguaGacha/wiki/DeepSeekEN) ] (GPU不要)
 - ソーステキストを準備：
   - `字幕`/`電子書籍`は通常、前処理が不要
   - `ゲームテキスト`は特定のゲームエンジンに適したツールを使用して抽出が必要
@@ -62,7 +62,7 @@
 
 ## 使い方チュートリアル - English 📝
 - Overall
-  - [Basic Tutorial](https://github.com/neavo/LinguaGacha/wiki/BasicTutorial)　`👈👈 Step-by-step tutorial, easy to follow, a must-read for beginners`
+  - [Basic Tutorial](https://github.com/neavo/LinguaGacha/wiki/BasicTutorialEN)　`👈👈 Step-by-step tutorial, easy to follow, a must-read for beginners`
   - [Best Practices for High-Quality Translation of WOLF Engine Games](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForWOLFEN)
   - [Best Practices for High-Quality Translation of RPGMaker Series Engine Games](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForRPGMakerEN)
 - Video Tutorial
@@ -84,7 +84,7 @@
 - [Translator++](https://dreamsavior.net/translator-plusplus) プロジェクト `.trans`
 - [Translator++](https://dreamsavior.net/translator-plusplus) エクスポート `.xlsx`
 - [WOLF 公式翻訳ツール](https://silversecond.booth.pm/items/5151747) エクスポート `.xlsx`
-- 例については [Wiki - 対応フォーマット](https://github.com/neavo/LinguaGacha/wiki/%E6%94%AF%E6%8C%81%E7%9A%84%E6%96%87%E4%BB%B6%E6%A0%BC%E5%BC%8F) を参照。フォーマットのリクエストは [ISSUES](https://github.com/neavo/LinguaGacha/issues) で提出
+- 例については [Wiki - 対応フォーマット](https://github.com/neavo/LinguaGacha/wiki/SupportedFileFormatEN) を参照。フォーマットのリクエストは [ISSUES](https://github.com/neavo/LinguaGacha/issues) で提出
 
 ## 最近の更新 📅
 - 20261016 v0.128.0

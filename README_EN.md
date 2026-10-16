@@ -48,7 +48,7 @@
     - Add executable permission with `chmod +x LinguaGacha*.AppImage`
     - Run `./LinguaGacha*.AppImage`
 - Obtain a reliable AI model interface. Recommended:
-  - [ [DeepSeek API](https://github.com/neavo/LinguaGacha/wiki/DeepSeek) ] (No GPU required)
+  - [ [DeepSeek API](https://github.com/neavo/LinguaGacha/wiki/DeepSeekEN) ] (No GPU required)
 - Prepare source text:
   - `Subtitles`/`E-books` typically require no preprocessing
   - `Game texts` need extraction using appropriate tools for specific game engines
@@ -63,7 +63,7 @@
 
 ## User Guide 📝
 - Overall
-  - [Basic Tutorial](https://github.com/neavo/LinguaGacha/wiki/BasicTutorial)　`👈👈 Step-by-step tutorial, easy to follow, a must-read for beginners`
+  - [Basic Tutorial](https://github.com/neavo/LinguaGacha/wiki/BasicTutorialEN)　`👈👈 Step-by-step tutorial, easy to follow, a must-read for beginners`
   - [Best Practices for High-Quality Translation of WOLF Engine Games](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForWOLFEN)
   - [Best Practices for High-Quality Translation of RPGMaker Series Engine Games](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForRPGMakerEN)
 - Video Tutorial
@@ -85,7 +85,7 @@
 - [Translator++](https://dreamsavior.net/translator-plusplus) project `.trans`
 - [Translator++](https://dreamsavior.net/translator-plusplus) exports `.xlsx`
 - [WOLF Official Translation Tool](https://silversecond.booth.pm/items/5151747) exports `.xlsx`
-- See [Wiki - Supported Formats](https://github.com/neavo/LinguaGacha/wiki/%E6%94%AF%E6%8C%81%E7%9A%84%E6%96%87%E4%BB%B6%E6%A0%BC%E5%BC%8F) for examples. Submit format requests via [ISSUES](https://github.com/neavo/LinguaGacha/issues)
+- See [Wiki - Supported Formats](https://github.com/neavo/LinguaGacha/wiki/SupportedFileFormatEN) for examples. Submit format requests via [ISSUES](https://github.com/neavo/LinguaGacha/issues)
 
 ## Recent Updates 📅
 - 20261016 v0.128.0
