@@ -12,6 +12,8 @@ import {
 import { define_agent_tool, AgentToolError, agent_tool_result } from "../tool-definition";
 
 const DEFAULT_SKILL_RESOURCE_PATH = "SKILL.md";
+const SKILL_RESOURCE_NOT_ALLOWED = "skill.resource_not_allowed";
+const SKILL_RESOURCE_NOT_FOUND = "skill.resource_not_found";
 
 type AgentSkillNativeFs = Pick<NativeFs, "read_text_file" | "real_path" | "stat">;
 
@@ -26,14 +28,14 @@ export function create_agent_read_skill_tool(
     executionMode: "sequential",
     description: [
       "读取指定技能的正文或包内参考文件：",
-      "- `content` 是正文。",
-      "- `base_url` 是以 `/` 结尾的技能原包根目录 `file:` URL。",
+      "- `content` 是所读文件的内容。",
+      "- `base_url` 是以 `/` 结尾的技能包根目录 `file:` URL。",
       "在后续 `workspace_run` 脚本中，将返回的 `base_url` 值赋给同名变量，再用 `await import(new URL('scripts/example.mjs', base_url).href)` 加载技能脚本。",
     ].join("\n\n"),
     parameters: Type.Object(
       {
         name: Type.String({
-          description: "要读取的 skill 名称。",
+          description: "要读取的技能名称。",
           minLength: 1,
         }),
         path: Type.Optional(
@@ -47,48 +49,22 @@ export function create_agent_read_skill_tool(
     execute: async (params, _api, context) => {
       const signal = context.abortSignal;
       signal?.throwIfAborted();
-      const resource_path = normalize_skill_resource_path(params.path);
-      if (resource_path === null) {
-        throw new AgentToolError({
-          code: "skill.resource_not_allowed",
-          name: params.name,
-          path: params.path ?? DEFAULT_SKILL_RESOURCE_PATH,
-        });
-      }
+      const resource_path = params.path ?? DEFAULT_SKILL_RESOURCE_PATH;
+      const failure = (code: string, cause?: unknown) =>
+        new AgentToolError({ code, name: params.name, path: resource_path }, cause);
+      if (!is_skill_resource_path(resource_path)) throw failure(SKILL_RESOURCE_NOT_ALLOWED);
       const skill = get_skills().find((candidate) => candidate.name === params.name);
-      if (skill === undefined) {
-        throw new AgentToolError({
-          code: "skill.resource_not_found",
-          name: params.name,
-          path: resource_path,
-        });
-      }
+      if (skill === undefined) throw failure(SKILL_RESOURCE_NOT_FOUND);
       try {
         const source_root = find_skill_source_root(skill.filePath, paths);
-        if (source_root === null) {
-          throw new AgentToolError({
-            code: "skill.resource_not_allowed",
-            name: params.name,
-            path: resource_path,
-          });
-        }
-        const real_source_root = native_fs.real_path(source_root);
+        if (source_root === null) throw failure(SKILL_RESOURCE_NOT_ALLOWED);
+        // 先确认技能目录未经链接逃出受信根，再解析包内目标，避免越界目标被报告为缺失。
         const skill_root = native_fs.real_path(path.dirname(skill.filePath));
-        if (!is_path_at_or_inside(skill_root, real_source_root)) {
-          throw new AgentToolError({
-            code: "skill.resource_not_allowed",
-            name: params.name,
-            path: resource_path,
-          });
-        }
+        if (!is_path_at_or_inside(skill_root, native_fs.real_path(source_root)))
+          throw failure(SKILL_RESOURCE_NOT_ALLOWED);
         const target = native_fs.real_path(path.resolve(skill_root, ...resource_path.split("/")));
-        if (!is_path_at_or_inside(target, skill_root) || !native_fs.stat(target).isFile()) {
-          throw new AgentToolError({
-            code: "skill.resource_not_allowed",
-            name: params.name,
-            path: resource_path,
-          });
-        }
+        if (!is_path_at_or_inside(target, skill_root) || !native_fs.stat(target).isFile())
+          throw failure(SKILL_RESOURCE_NOT_ALLOWED);
         return agent_tool_result({
           name: params.name,
           path: resource_path,
@@ -97,19 +73,15 @@ export function create_agent_read_skill_tool(
         });
       } catch (error) {
         if (error instanceof AgentToolError) throw error;
-        throw new AgentToolError(
-          { code: "skill.resource_not_found", name: params.name, path: resource_path },
-          error,
-        );
+        throw failure(SKILL_RESOURCE_NOT_FOUND, error); // 文件系统错误统一视为资源缺失
       }
     },
   });
 }
 
 /** 只接受已规范化的 POSIX 包内相对路径，拒绝平台差异制造的绕过形式。 */
-function normalize_skill_resource_path(value: string | undefined): string | null {
-  const resource_path = value ?? DEFAULT_SKILL_RESOURCE_PATH;
-  if (
+function is_skill_resource_path(resource_path: string): boolean {
+  return !(
     resource_path === "" ||
     resource_path.includes("\\") ||
     path.posix.isAbsolute(resource_path) ||
@@ -117,10 +89,7 @@ function normalize_skill_resource_path(value: string | undefined): string | null
     resource_path === ".." ||
     resource_path.startsWith("../") ||
     path.posix.normalize(resource_path) !== resource_path
-  ) {
-    return null;
-  }
-  return resource_path;
+  );
 }
 
 /** 识别技能定义所属的受信根目录。读取阶段验证真实路径。 */

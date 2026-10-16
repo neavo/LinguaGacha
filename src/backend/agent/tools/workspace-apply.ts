@@ -4,7 +4,6 @@ import type { ToolRegistration } from "@earendil-works/pi-durable";
 import type { AgentApprovalMode } from "../../../domain/setting";
 import type { AgentPendingWriteSummary } from "../../../shared/agent";
 import { define_agent_tool, agent_tool_result } from "../tool-definition";
-import { AGENT_WORKSPACE_CONTRACT } from "./contract";
 import type { AgentWorkspacePort } from "../workspace/service";
 
 /** `AgentService` 通过审批端口提供当前模式和用户决定。 */
@@ -25,25 +24,27 @@ export function create_agent_workspace_apply_tool(options: {
   return define_agent_tool({
     name: "workspace_apply",
     description: [
-      "将当前工作区的变更清单提交到工程。",
+      "把工作区 `changes/` 中的变更清单提交到工程。被拒绝的记录列入 `rejected`，其余修改在同一事务中提交，事务失败时全部回滚。",
       "",
-      "### 提交前",
+      "### 回执",
       "",
-      "- 清除旧批次遗留内容，使变更清单只包含本批次要提交的修改。",
-      "- 工具按当前审批模式处理写入请求。需要用户授权时，工具会等待决定。",
+      "|`status`|含义|",
+      "|---|---|",
+      "|`applied`|有实际变化，无拒绝|",
+      "|`partial`|有实际变化，有拒绝|",
+      "|`rejected`|无实际变化，有拒绝|",
+      "|`unchanged`|无实际变化，无拒绝|",
       "",
-      "### 提交与回执",
+      "|拒绝原因|含义|",
+      "|---|---|",
+      "|`invalid_change`|记录不符合对应 `reference` 中的变更格式|",
+      "|`fp_mismatch`|对象在快照后已变化|",
+      "|`target_missing`|目标对象不存在|",
+      "|`merge_conflict`|同批已接受对该对象的删除|",
+      "|`dependency_conflict`|依赖的删除未被接受|",
       "",
-      `- ${AGENT_WORKSPACE_CONTRACT.apply.transaction}。`,
-      `- ${AGENT_WORKSPACE_CONTRACT.apply.partial_success}。`,
-      "- 根据回执确认哪些对象已提交、哪些被拒绝。",
-      `- destroyed：${AGENT_WORKSPACE_CONTRACT.apply.result.destroyed}。`,
-      "- 详细状态和拒绝原因见 `ws.contract.apply`。",
-      "",
-      "### 后续操作",
-      "",
-      "- `destroyed` 为 `true` 时，先调用 `workspace_run` 建立新快照。",
-      "- 核实拒绝原因后，只重新准备尚未成功的修改。",
+      "- `destroyed` 为 `true` 时，数据快照和变更清单已清空，`work/**` 保留，下次 `workspace_run` 会重建快照。",
+      "- `destroyed` 为 `false` 时变更清单保留，重试前只保留尚未成功的修改。",
     ].join("\n"),
     executionMode: "sequential",
     parameters: Type.Object({}, { additionalProperties: false }),

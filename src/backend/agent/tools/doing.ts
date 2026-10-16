@@ -20,9 +20,7 @@ export function describe_doing(): string {
     WORKSPACE_DOING_REQUEST_SCHEMA.properties.text,
   );
   return [
-    "/**",
-    " * - 更新当前的任务处理阶段，处理完成或结束时传入 `null` 清空，内容跨回合保留。",
-    " */",
+    "/** 在界面上显示当前处理阶段，内容跨回合保留，处理结束时传入 `null` 清除。 */",
     `doing(text: ${text}): Promise<void>;`,
   ].join("\n");
 }

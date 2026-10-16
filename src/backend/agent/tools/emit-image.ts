@@ -1,10 +1,14 @@
 import { Check } from "typebox/value";
-import type { AgentImage, AgentImageOptions } from "../../../shared/agent-image";
+import {
+  AGENT_IMAGE_DEFAULT_MAX_EDGE,
+  AGENT_IMAGE_MAX_EDGE,
+  type AgentImage,
+  type AgentImageOptions,
+} from "../../../shared/agent-image";
 import { AGENT_WORKSPACE_RUNTIME_POLICY } from "../workspace/runtime/policy";
 import { create_schema_renderer } from "../workspace/schema-description";
 import type { AgentWorkspaceRequestChannel } from "../workspace/runtime/request-channel";
 import { Type } from "@earendil-works/pi-ai";
-import { AGENT_IMAGE_DEFAULT_MAX_EDGE, AGENT_IMAGE_MAX_EDGE } from "../../../shared/agent-image";
 /** 图片选项的运行时校验和模型声明共用此 Schema。 */
 export const WORKSPACE_IMAGE_OPTIONS_SCHEMA = Type.Object(
   {
@@ -31,7 +35,7 @@ export const WORKSPACE_IMAGE_REQUEST_SCHEMA = Type.Object(
 /** 模型声明与校验复用图片选项。 */
 export function describe_emit_image(): string {
   return (
-    "/** 输出本机图片文件，`path` 可为绝对路径或以工作区根为基准的相对路径。按调用顺序返回，await 完成后内容已固定，模型在程序成功返回后看到图片。 */\n" +
+    `/** 输出本机图片文件，\`path\` 为绝对路径或工作区相对路径。图片按调用顺序附在本次结果中，程序失败时不返回图片。每次程序最多 ${AGENT_WORKSPACE_RUNTIME_POLICY.imageCount} 张、合计 ${AGENT_WORKSPACE_RUNTIME_POLICY.imageOutputBytes / 1024 / 1024} MiB，更多图片分到后续 \`workspace_run\` 调用。 */\n` +
     `emitImage(path: string, options?: ${create_schema_renderer(new Map()).render(WORKSPACE_IMAGE_OPTIONS_SCHEMA)}): Promise<void>;`
   );
 }
