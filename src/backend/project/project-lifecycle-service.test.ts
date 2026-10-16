@@ -31,7 +31,7 @@ type TestProjectDatabase = ProjectDatabase & {
 describe("ProjectLifecycleService", () => {
   const cleanup_paths: string[] = []; // 生命周期测试会创建真实临时文件，统一登记清理避免污染用户工作区
 
-  it("新建与重开安装一致快照，普通工程每次只读取一次完整条目", async () => {
+  it("新建复用预过滤条目，重开读取数据库且安装一致快照", async () => {
     const root = create_temp_dir();
     const project_path = path.join(root, "current.lg");
     const source = write_file(path.join(root, "source.txt"), "こんにちは\nこんにちは");
@@ -52,7 +52,7 @@ describe("ProjectLifecycleService", () => {
     try {
       const reads = vi.spyOn(ProjectDatabaseAccess.prototype, "get_all_items");
       await service.create_project_commit({ path: project_path, source_paths: [source, trans] });
-      expect(reads).toHaveBeenCalledTimes(1);
+      expect(reads).not.toHaveBeenCalled();
       expect(snapshots[0]?.meta).toMatchObject({
         glossary_enable: true,
         translation_prompt_legacy_migrated: true,
