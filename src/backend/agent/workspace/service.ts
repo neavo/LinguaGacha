@@ -626,16 +626,14 @@ export class AgentWorkspaceService {
     doing?: AgentWorkspaceRunRequest["doing"],
   ): Promise<{ execution: AgentWorkspaceExecution; images: AgentWorkspaceImage[] }> {
     return await this.exclusive(async () => {
-      const image_output = create_image_output(async (relative, image_signal, options) => {
-        // CodeAct 使用文件路径，链接解码只用于现有 resolve_path 入口。
-        const target = this.resolve_path(relative.split("/").map(encodeURIComponent).join("/"));
-        if (
-          target.kind !== "file" ||
-          this.native_fs.stat(target.path).size > AGENT_IMAGE_INPUT_MAX_BYTES
-        )
+      const image_output = create_image_output(async (image_path, image_signal, options) => {
+        // 图片按本机文件路径读取，与脚本读取范围一致。聊天链接由 resolve_path 约束。
+        const file_path = path.resolve(this.root_path, image_path);
+        const stat = this.native_fs.stat(file_path);
+        if (!stat.isFile() || stat.size > AGENT_IMAGE_INPUT_MAX_BYTES)
           throw new Error("Image input is not a supported size file.");
         const image = await this.options.images.prepare(
-          this.native_fs.read_file(target.path),
+          this.native_fs.read_file(file_path),
           image_signal,
           options,
         );
