@@ -28,6 +28,23 @@ describe("restore_translation_line", () => {
     ).toBe("A<1><x>B<3>C");
   });
 
+  it("RPG Maker 格式占位符与末尾控制符作为完整保护段参与恢复，正文保持译文", () => {
+    const preserve_rule = build_text_preserve_rule({
+      mode: "smart",
+      text_type: "RPGMAKER",
+      entries: [],
+    });
+    const source = String.raw`%sHPを%02d回復：\G`;
+    expect(
+      restore({
+        restoration_text: source,
+        prepared_text: source,
+        translation: String.raw`%sHP恢复了%02d%s点：\G\G`,
+        preserve_rule,
+      }),
+    ).toBe(String.raw`%sHP恢复了%02d点：\G`);
+  });
+
   it("按后继字符恢复反斜杠段长度", () => {
     const source = String.raw`\\n[1] \\E`;
     expect(

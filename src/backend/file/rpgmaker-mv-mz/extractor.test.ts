@@ -13,7 +13,7 @@ it("JSON 只展开字符串值，标量与无效 JSON 保持原文，内部事�
     list: [{ code: 401, parameters: ["事件形状"] }],
     values: ["0", "true", "null", '"引号文本"', "{坏文本", "[]", "{}", ""],
   });
-  extractor.add(source, { usage: "metadata", location: { kind: "field", path: ["settings"] } });
+  extractor.expand(source, { usage: "metadata", location: { kind: "field", path: ["settings"] } });
   expect(extractor.items.map(({ src, status }) => [src, status])).toEqual(
     ["开始", "事件形状", "0", "true", "null", '"引号文本"', "{坏文本"].map((src) => [
       src,
@@ -72,7 +72,7 @@ it.each([
   ["无关".repeat(2000), "前邻", "目标😀", "后邻", "遥远成员"],
 ])("上下文选取目标及前后成员，不受父容器开头长文本影响", (value) => {
   const extractor = create_rpgmaker_extractor("data/Plugins.json");
-  extractor.add(JSON.stringify(value), {
+  extractor.expand(JSON.stringify(value), {
     usage: "metadata",
     location: { kind: "field", path: ["settings"] },
   });
@@ -90,7 +90,7 @@ it.each([
 it("长目标优先保留定位和正文，相邻对象与数组只展示成员数", () => {
   const extractor = create_rpgmaker_extractor("data/Plugins.json");
   const target = "目标😀".repeat(2000);
-  extractor.add(
+  extractor.expand(
     JSON.stringify({
       before: { hidden: "对象正文", extra: true },
       target,

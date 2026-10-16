@@ -62,6 +62,7 @@ export function create_agent_workspace_run_tool(options: {
       "",
       "### 工作区目录",
       "",
+      "- `sources/<file_path>`：工程原稿的只读参考，翻译与审校结果通过 `changes` 提交到工程。",
       ...Object.entries(AGENT_WORKSPACE_CONTRACT.datasets).map(([name, dataset]) => {
         const operations = Object.keys(AGENT_WORKSPACE_CONTRACT.changes[name] ?? {});
         return `- datasets.${name}：${dataset.purpose}。${operations.length === 0 ? "只读" : `变更入口 changes.${name}，操作 ${operations.join("、")}`}。参考 ${dataset.reference}。`;

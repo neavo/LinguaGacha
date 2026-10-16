@@ -1,9 +1,11 @@
 ---
 name: epub
-description: 读取、分析、编辑或生成 EPUB 电子书时使用，处理章节顺序、XHTML、目录、资源关系与打包。
+description: 读取或分析 EPUB 电子书结构时使用，处理章节顺序、XHTML、目录与资源关系。用户明确要求工程外的独立 EPUB 文件时，也提供编辑与打包方法。
 ---
 
 # EPUB 文件处理
+
+工程内的翻译与审校按 `translation` 执行。本技能用于阅读结构、补充语境，以及用户明确要求的工程外独立文件。
 
 ## 阅读原稿
 
@@ -30,11 +32,11 @@ const chapterPath = path.join(root, path.dirname(opfPath), 'Text/chapter01.xhtml
 console.log(await readFile(chapterPath, 'utf8'));
 ```
 
-图片和其他资源同样按成员路径读取原始字节。修改 XHTML 时保留文档结构、注音、图片、脚注及链接关系。目录可能位于导航 XHTML 或 NCX 中，应与正文顺序一致。结果以包内路径和章节位置定位，草稿写入 `work/`。
+图片和其他资源同样按成员路径读取原始字节。目录可能位于导航 XHTML 或 NCX 中，与正文顺序共同确定阅读结构。结果以包内路径和章节位置定位。
 
 ## 生成独立 EPUB
 
-需要独立文件时，使用预装 `jszip` 从展开目录创建新包。首先添加无压缩的 `mimetype`，内容严格为 `application/epub+zip`，再按原相对路径复制其他文件，并覆盖已修改的成员：
+仅在用户明确要求工程外的独立文件时执行，独立文件不会写入工程。修改稿写入 `work/`，修改 XHTML 时保留文档结构、注音、图片、脚注及链接关系，目录与正文顺序保持一致。使用预装 `jszip` 从展开目录创建新包。首先添加无压缩的 `mimetype`，内容严格为 `application/epub+zip`，再按原相对路径复制其他文件，并覆盖已修改的成员：
 
 ```js
 import JSZip from 'jszip';
@@ -56,4 +58,4 @@ await copyMembers(root);
 await writeFile('work/修改稿.epub', await output.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' }));
 ```
 
-写出后重新打开，核对 `mimetype`、入口、章节顺序、目标正文和资源引用，确认未修改的二进制资源保持一致。排版相关任务还需要结合实际阅读效果核验。工程内翻译与审校继续使用对应工程流程。
+写出后重新打开，核对 `mimetype`、入口、章节顺序、目标正文和资源引用，确认未修改的二进制资源保持一致。排版相关任务还需要结合实际阅读效果核验。

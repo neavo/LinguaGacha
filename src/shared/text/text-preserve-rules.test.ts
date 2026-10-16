@@ -88,6 +88,23 @@ describe("text-preserve-rules", () => {
     expect(rule.collect("@12こんにちは")).toContain("@12");
   });
 
+  it.each([
+    { text: "%sHP、%02dDamage", segments: ["%s", "%02d"] }, // 格式后紧邻正文
+    { text: "%.*f と %1$*2$s", segments: ["%.*f", "%1$*2$s"] }, // 动态宽度与精度
+    {
+      text: "%s %02d %1$s %<name>s %{count} %1が%2 %%",
+      segments: ["%s", "%02d", "%1$s", "%<name>s", "%{count}", "%1", "%2", "%%"],
+    }, // 既有格式与 MV/MZ 占位符
+    {
+      text: String.raw`\C[2]所持金\.\G`,
+      segments: [String.raw`\C[2]`, String.raw`\.`, String.raw`\G`],
+    }, // 相邻控制符与末尾单字母控制符
+    { text: String.raw`100%です、50% off、C:\\`, segments: [] }, // 普通百分号与字面反斜杠
+  ])("RPG Maker 智能规则完整保护控制符与格式占位符：$text", ({ text, segments }) => {
+    const rule = build_text_preserve_rule({ mode: "smart", text_type: "RPGMAKER", entries: [] });
+    expect(collect_non_blank_text_preserve_segments(text, rule)).toEqual(segments);
+  });
+
   it("RenPy 智能规则只保护不含 CJK 正文的控制段", () => {
     const rule = build_text_preserve_rule({
       mode: "smart",

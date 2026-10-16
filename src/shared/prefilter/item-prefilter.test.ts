@@ -23,6 +23,16 @@ describe("read_item_translation_candidates", () => {
       { field: "name_src", text: "…" },
     ]);
   });
+
+  it("原生 RPG Maker 格式跳过元数据外观规则，保留资源引用检查", () => {
+    for (const file_type of ["RPGMAKER_MV_MZ", "RPGMAKER_RGSS"]) {
+      expect(read_item_translation_candidates({ src: "EV001", file_type })).toEqual([
+        { field: "src", text: "EV001" },
+      ]);
+      expect(read_item_translation_candidates({ src: "voice.ogg", file_type })).toEqual([]);
+    }
+    expect(read_item_translation_candidates({ src: "EV001", file_type: "TRANS" })).toEqual([]);
+  });
 });
 
 describe("正文候选规则", () => {
