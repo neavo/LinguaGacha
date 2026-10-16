@@ -36,8 +36,8 @@ __pycache__
 /input
 /output
 /userdata
-/.zcode/skills/
-/.agents/skills/
+/.claude
+/.agents
 
 *.lg
 /*.log

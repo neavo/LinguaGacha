@@ -14,9 +14,10 @@ description: 翻译、审校或分析 RPG Maker 游戏（XP、VX、VX Ace、MV�
 |MV、MZ|`data/*.json`，MV 可能带 `www/` 前缀。事件指令为 `list[]` 中的 `code` 与 `parameters`|`js/plugins.js` 保存插件参数，`js/plugins/*.js` 为插件源码|
 |XP、VX、VX Ace|`Data/` 下每个数据文件对应一份 JSON 明文 `<原文件名>.json`。对象写作 `$class` 与 `$fields`，字段名带 `@`，`$ref` 指向首次出现的位置|`Data/<脚本档案>/NNNN.rb`，脚本名称见同目录 `scripts.json`|
 
-条目不带原稿坐标，按以下方法定位来源：
+按以下方法定位条目来源：
 
-- 用 `src` 搜索 `sources/<file_path>/`。
+- 读取 `ws.contract.datasets.item_extra.path` 中的扩展数据，按 `item_id` 关联目标条目，优先利用其中可理解的来源信息。
+- 来源信息不足或无法理解时，用 `src` 搜索 `sources/<file_path>/`。
 - 原文含反斜杠、换行或引号时，原稿中可能是转义形式，改用其中一段纯文字搜索。
 - `row_number` 按成员和出现顺序递增，相邻条目通常属于同一文件或同一事件。
 - 插件参数、`note` 和脚本字符串中的嵌套 JSON 按叶子拆成多个条目。默认翻译字段即使形似 JSON 也整段保存为一个条目。

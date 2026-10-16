@@ -52,6 +52,24 @@ describe("工作区 Schema 说明", () => {
     check_typescript([declaration]);
   });
 
+  it("递归本地定义只生成一次命名类型，未登记或同名冲突的定义显式失败", () => {
+    const tree = Type.Cyclic(
+      { Tree: Type.Object({ children: Type.Array(Type.Ref("Tree")) }) },
+      "Tree",
+    );
+    const record = Type.Object({ root: tree, list: Type.Array(tree) });
+    const declaration = create_schema_renderer(new Map([[record, "Record"]])).declarations();
+    expect(declaration.match(/type Tree =/gu)).toHaveLength(1);
+    expect(declaration).toContain("root: Tree");
+    expect(declaration).toContain("children: Array<Tree>");
+    check_typescript([declaration]);
+    expect(() => create_schema_renderer(new Map()).render(tree)).toThrow(/Unresolved/u);
+    const other = Type.Cyclic({ Tree: Type.Array(Type.Ref("Tree")) }, "Tree");
+    expect(() => create_schema_renderer(new Map([[Type.Object({ tree, other }), "Pair"]]))).toThrow(
+      /Conflicting/u,
+    );
+  });
+
   it("引用命名结构并保留开放对象的字段约束，正文不能终止生成注释", () => {
     const entry = Type.Object(
       { id: Type.String({ description: "文本 */ 后续" }) },
