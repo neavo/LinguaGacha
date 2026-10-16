@@ -12,11 +12,52 @@ import { AppPathService } from "../app/app-path-service";
 import { AppSettingService } from "../app/app-setting-service";
 import type { LLMClientPort } from "../llm/llm-types";
 import { read_builtin_pi_models } from "../llm/pi-model-catalog";
+import type { PiCatalogModel } from "../llm/model-capability";
 import { RuntimeOperationGate } from "../runtime-operation-gate";
 import { read_config_model_records } from "./model-config-resolver";
 import { ModelService } from "./model-service";
 
 const catalog = { read_models: read_builtin_pi_models };
+
+/** 配置校验与旧值修正使用自有能力，避免供应商目录更新改变测试前提。 */
+const LEVEL_CATALOG: PiCatalogModel[] = [
+  {
+    id: "low-only",
+    provider: "openai",
+    api: "openai-completions",
+    baseUrl: "https://api.example/v1",
+    reasoning: true,
+    contextWindow: 128_000,
+    maxTokens: 8_000,
+    thinkingLevelMap: {
+      off: "off",
+      minimal: null,
+      low: "low",
+      medium: null,
+      high: null,
+      xhigh: null,
+      max: null,
+    },
+  },
+  {
+    id: "high-only",
+    provider: "openai",
+    api: "openai-responses",
+    baseUrl: "https://api.example/v1",
+    reasoning: true,
+    contextWindow: 128_000,
+    maxTokens: 8_000,
+    thinkingLevelMap: {
+      off: null,
+      minimal: null,
+      low: null,
+      medium: null,
+      high: "high",
+      xhigh: null,
+      max: null,
+    },
+  },
+];
 
 type ModelPresetFiles = {
   builtin_models?: Array<JsonRecord>;
@@ -304,8 +345,9 @@ describe("ModelService 配置管理", () => {
     { target: "translation", model_id: "a", thinking_level: "UNKNOWN" },
     { target: "translation", model_id: "a", thinking_level: "MAX" },
   ])("非法组合在保存前拒绝：%j", async (request) => {
+    vi.spyOn(catalog, "read_models").mockReturnValue(LEVEL_CATALOG);
     const { service, app_setting_service } = await create_model_service([
-      create_model({ id: "a", type: "CUSTOM_OPENAI", model_id: "mimo-v2.5-pro" }),
+      create_model({ id: "a", type: "CUSTOM_OPENAI", model_id: "low-only" }),
     ]);
     service.get_selection_snapshot();
     const before = app_setting_service.read_setting();
@@ -375,9 +417,9 @@ describe("ModelService 配置管理", () => {
   });
 
   it.each([
-    { model_id: "mimo-v2.5-pro", api_format: "OpenAI", level: "HIGH", expected_level: "LOW" },
+    { model_id: "low-only", api_format: "OpenAI", level: "HIGH", expected_level: "LOW" },
     {
-      model_id: "deepseek-v4-pro",
+      model_id: "high-only",
       api_format: "OpenAIResponses",
       level: "LOW",
       expected_level: "HIGH",
@@ -385,6 +427,7 @@ describe("ModelService 配置管理", () => {
   ])(
     "$api_format $model_id 首次读取旧配置时持久化失效思考等级的修正",
     async ({ model_id, api_format, level, expected_level }) => {
+      vi.spyOn(catalog, "read_models").mockReturnValue(LEVEL_CATALOG);
       const { service, app_setting_service } = await create_model_service([
         create_model({
           api_format,

@@ -70,6 +70,12 @@ export function resolve_pi_model(
     // 产品 Chat Completions 指令使用 `system`；Responses 角色由最终载荷策略拥有。
     ...(api.api === "openai-completions" ? { supportsDeveloperRole: false } : {}),
   };
+  // `DEFAULT` 与 Responses 自定义 `reasoning` 由最终载荷决定思考，载荷阶段无法撤销历史中的 effort 标记。
+  if (
+    snapshot.thinking_level === "DEFAULT" ||
+    (snapshot.api_format === "OpenAIResponses" && Object.hasOwn(snapshot.extra_body, "reasoning"))
+  )
+    Reflect.deleteProperty(compat, "supportsMidConvoEffort"); // SDK 缺省即关闭
   const model: PiModel<PiApi> = {
     id: snapshot.model_id,
     name: settings.name,

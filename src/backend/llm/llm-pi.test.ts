@@ -12,7 +12,7 @@ import { is_json_record, type JsonRecord } from "../../domain/json";
 import { Model as ConfiguredModel } from "../../domain/model";
 import { read_model_request_snapshot } from "./llm-request";
 import { resolve_one_shot_pi_request, resolve_pi_model } from "./llm-pi";
-import { resolve_model_capability } from "./model-capability";
+import { resolve_model_capability, type PiCatalogModel } from "./model-capability";
 import { read_builtin_pi_models } from "./pi-model-catalog";
 import { DEFAULT_MODEL_AGENT_CONFIG } from "../../domain/model-agent";
 
@@ -510,7 +510,7 @@ describe("pi-ai 请求适配", () => {
     const completions_request = resolve_request({
       api_format: "OpenAI",
       model_id: "mimo-v2.5-pro",
-      thinking: { level: "LOW" },
+      thinking: { level: "HIGH" },
     });
     const disabled_request = resolve_request({
       api_format: "OpenAI",
@@ -526,8 +526,8 @@ describe("pi-ai 请求适配", () => {
     const completions_payload = await capture_payload(completions_request);
     expect(completions_payload).toMatchObject({
       thinking: { type: "enabled" },
-      reasoning_effort: "low",
     });
+    expect(completions_payload).not.toHaveProperty("reasoning_effort");
     await expect(capture_payload(disabled_request)).resolves.toHaveProperty(
       "thinking.type",
       "disabled",
@@ -621,12 +621,8 @@ describe("pi-ai 请求适配", () => {
       max_tokens: request.model.maxTokens,
       thinking: { type: "adaptive", display: "summarized" },
     });
-    if (ANTHROPIC_MODELS[model_id].compat?.supportsMidConvoEffort) {
-      // 支持轮内 effort 的模型用末尾系统消息选择当前等级，请求级配置仅作基线。
-      expect(payload["messages"]).toEqual(
-        expect.arrayContaining([{ role: "system", content: [], output_config: { effort } }]),
-      );
-    } else expect(payload).toHaveProperty("output_config.effort", effort);
+    expect(payload).toHaveProperty("output_config.effort", effort);
+    expect(payload["messages"]).toEqual([{ role: "user", content: "こんにちは" }]);
   });
 
   it("未知 Anthropic 模型获得必需的正数输出上限", async () => {
@@ -814,6 +810,77 @@ describe("真实适配器的产品参数", () => {
 
 type ResolvedRequest = ReturnType<typeof resolve_one_shot_pi_request>;
 
+describe.each(["OpenAIResponses", "Anthropic"] as const)("%s 会话内 effort", (api_format) => {
+  it.each([
+    ["显式等级", "HIGH", {}, true],
+    ["默认等级", "DEFAULT", {}, false],
+    ["自定义 reasoning", "HIGH", { reasoning: { effort: "low" } }, api_format === "Anthropic"],
+  ] as const)("%s 决定历史标记与顶层思考字段", async (_name, level, extra_body, markers) => {
+    const api = api_format === "Anthropic" ? "anthropic-messages" : "openai-responses";
+    const record: PiCatalogModel = {
+      id: "fixture-model",
+      api,
+      provider: api_format === "Anthropic" ? "anthropic" : "openai",
+      baseUrl: "https://native.example/v1",
+      reasoning: true,
+      contextWindow: 128_000,
+      maxTokens: 8_000,
+      ...(api_format === "Anthropic" ? { thinkingLevelMap: { off: null } } : {}),
+      compat: {
+        supportsMidConvoEffort: true,
+        ...(api_format === "Anthropic" ? { forceAdaptiveThinking: true } : {}),
+      },
+    };
+    const configured = create_model({
+      api_format,
+      model_id: record.id,
+      api_url: record.baseUrl,
+      thinking: { level },
+      request: { extra_body_custom_enable: true, extra_body },
+    });
+    const request = resolve_one_shot_pi_request(
+      read_model_request_snapshot(configured, TEST_REQUEST_IDENTITY),
+      [{ role: "user", content: "继续" }],
+      new AbortController().signal,
+      resolve_model_capability(ConfiguredModel.from_json(configured, "test"), [record]),
+    );
+    const payload = await capture_payload(
+      request,
+      normalizeContext({
+        messages: [
+          { role: "user", content: "上一轮", timestamp: 0 },
+          {
+            ...fauxAssistantMessage("上一轮回答"),
+            api,
+            provider: request.model.provider,
+            model: record.id,
+            thinkingLevel: "low",
+            providerThinkingLevel: "low",
+          },
+          { role: "user", content: "继续", timestamp: 1 },
+        ],
+      }),
+    );
+    const messages = payload[api_format === "Anthropic" ? "messages" : "input"];
+    if (!Array.isArray(messages)) throw new Error("未捕获最终历史");
+    const efforts = messages.filter(is_json_record).flatMap((message) => {
+      const config =
+        api_format === "Anthropic"
+          ? message["output_config"]
+          : message["type"] === "configuration_update"
+            ? message["reasoning"]
+            : undefined;
+      return is_json_record(config) ? [config["effort"]] : [];
+    });
+    expect(efforts).toEqual(markers ? ["low", "high"] : []);
+    if (level === "DEFAULT") {
+      expect(payload).not.toHaveProperty("reasoning");
+      expect(payload).not.toHaveProperty("thinking");
+      expect(payload).not.toHaveProperty("output_config.effort");
+    } else if (!markers) expect(payload).toHaveProperty("reasoning.effort", "low");
+  });
+});
+
 /** 使用统一模型夹具生成可直接交给 Pi adapter 的 OneShot 请求。 */
 function resolve_request(overrides: JsonRecord): ResolvedRequest {
   const snapshot = read_model_request_snapshot(create_model(overrides), TEST_REQUEST_IDENTITY);
@@ -828,7 +895,10 @@ function resolve_request(overrides: JsonRecord): ResolvedRequest {
 }
 
 /** 在真实 adapter 的 onPayload 边界截获最终 payload，避免发起网络请求。 */
-async function capture_payload(request: ResolvedRequest): Promise<Record<string, unknown>> {
+async function capture_payload(
+  request: ResolvedRequest,
+  context = request.context,
+): Promise<Record<string, unknown>> {
   let captured: unknown;
   const production_on_payload = request.options.onPayload;
   const options: ProviderStreamOptions = {
@@ -838,7 +908,7 @@ async function capture_payload(request: ResolvedRequest): Promise<Record<string,
       throw new Error("capture-payload");
     },
   };
-  await request.stream(request.model, request.context, options).result();
+  await request.stream(request.model, context, options).result();
   if (!is_json_record(captured)) throw new Error("未捕获 Pi payload");
   return captured;
 }

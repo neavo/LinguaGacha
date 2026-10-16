@@ -4,6 +4,9 @@ import {
   type Model as PiModel,
   type ModelThinkingLevel as PiModelThinkingLevel,
   type ThinkingLevelMap,
+  type OpenAICompletionsCompat,
+  type OpenAIResponsesCompat,
+  type AnthropicMessagesCompat,
 } from "@earendil-works/pi-ai";
 
 import {
@@ -93,6 +96,29 @@ export type ResolvedModelCapability = Readonly<{
 
 type ModelCapabilityInput = Pick<Model, "api_format" | "api_url" | "model_id" | "agent">;
 
+type TemplateSelection = Readonly<{
+  model: PiCatalogModel;
+  exact: boolean; // 地址、协议与模型均命中目录记录
+}>;
+
+/** 端点扩展、缓存协议和路由字段只能由精确端点记录授权，名称回退的记录可能属于其他端点。 */
+const ENDPOINT_COMPAT_FIELDS = [
+  "supportsMidConvoEffort",
+  "supportsMidConvoSystemMessages",
+  "supportsMidConvoToolAdditions",
+  "supportsMidConvoToolChanges",
+  "supportsAdditionalTools", // Responses 的会话内工具定义。
+  "supportsToolSearch", // Responses 的会话内工具搜索回执。
+  "cacheControlFormat",
+  "supportsLongCacheRetention",
+  "supportsExplicitPromptCacheMode",
+  "supportsCacheControlOnTools",
+  "sessionAffinityFormat",
+  "sendSessionAffinityHeaders",
+] as const satisfies readonly (keyof (OpenAICompletionsCompat &
+  OpenAIResponsesCompat &
+  AnthropicMessagesCompat))[];
+
 /**
  * 解析唯一运行能力；容量来自目录，协议能力合并必要修正，再应用用户 Agent 配置。
  */
@@ -101,7 +127,8 @@ export function resolve_model_capability(
   catalog: readonly PiCatalogModel[],
 ): ResolvedModelCapability {
   const matches = match_pi_catalog_models(model.model_id, catalog);
-  const pi_template = select_pi_thinking_template(model, matches);
+  const selection = select_pi_thinking_template(model, matches);
+  const pi_template = selection?.model;
   const app_override = match_model_capability_override(model.model_id);
   const protocol_override = app_override?.protocols[model.api_format];
   const reasoning = protocol_override?.reasoning ?? pi_template?.reasoning === true;
@@ -109,7 +136,7 @@ export function resolve_model_capability(
     protocol_override?.thinking_level_map === undefined
       ? pi_template?.thinkingLevelMap
       : { ...pi_template?.thinkingLevelMap, ...protocol_override.thinking_level_map };
-  const template_compat = read_template_compat(model.api_format, pi_template);
+  const template_compat = read_template_compat(model.api_format, selection);
   const compat =
     protocol_override?.compat === undefined
       ? template_compat
@@ -228,7 +255,7 @@ function is_model_id_word_character(value: string | undefined): boolean {
 function select_pi_thinking_template(
   model: ModelCapabilityInput,
   matches: readonly PiCatalogModel[],
-): PiCatalogModel | null {
+): TemplateSelection | null {
   const endpoint = normalize_catalog_endpoint(model.api_url, model.api_format);
   const configured_id = model.model_id.trim().toLowerCase();
   const api_order = resolve_pi_api_order(model.api_format);
@@ -247,27 +274,31 @@ function select_pi_thinking_template(
     if (candidates.length === 0) continue;
     for (const provider of MODEL_PROVIDER_ORDER) {
       const candidate = candidates.find((model) => model.provider === provider);
-      if (candidate !== undefined) return candidate;
+      if (candidate !== undefined) return { model: candidate, exact: exact.length > 0 };
     }
     // 唯一未知来源仍可使用；多个未知来源没有可信优先级，按能力缺失处理。
-    return candidates.length === 1 ? candidates[0]! : null;
+    return candidates.length === 1 ? { model: candidates[0]!, exact: exact.length > 0 } : null;
   }
   return null;
 }
 
-/** 兼容字段属于具体协议；OpenAI 两种格式回退只借用思考等级，不携带供应商传输规则。 */
+/** 兼容字段属于具体协议；OpenAI 两种格式回退只借用思考等级，名称回退去除端点扩展。 */
 function read_template_compat(
   api_format: ModelApiFormat,
-  template: PiCatalogModel | null,
+  selection: TemplateSelection | null,
 ): PiCatalogModel["compat"] | undefined {
-  if (template === null) return undefined;
+  if (selection === null) return undefined;
+  const template = selection.model;
   const target_api = resolve_pi_api_order(api_format)[0];
-  if (template.api === target_api) return template.compat;
   // Azure Responses 与 Responses 共用同一组选项及序列化契约。
-  if (target_api === "openai-responses" && template.api === "azure-openai-responses") {
-    return template.compat;
-  }
-  return undefined;
+  const same_api =
+    template.api === target_api ||
+    (target_api === "openai-responses" && template.api === "azure-openai-responses");
+  if (!same_api) return undefined;
+  if (selection.exact || template.compat === undefined) return template.compat;
+  const compat = { ...template.compat };
+  for (const field of ENDPOINT_COMPAT_FIELDS) Reflect.deleteProperty(compat, field);
+  return compat;
 }
 
 /** 按产品协议选择 Pi API 形态；同形态再交给供应商优先级决胜。 */
