@@ -14,6 +14,7 @@ import {
   normalize_agent_tool_error,
 } from "../tool-definition";
 
+/** 模型可见的单次调用回执，字段名使用模型易读的业务词。 */
 type AgentBatchTranslationResult = Readonly<{
   status: BatchTranslationResult["status"];
   stop_source?: BatchTranslationStopSource;
@@ -74,14 +75,14 @@ export function create_agent_batch_item_translation_tool(
       "",
       "- 至少提供一个筛选条件，筛选条件不能是空数组，省略的某条件表示不限制该条件",
       "- 同一筛选条件内部取并集，多个筛选条件之间取交集",
-      "- 省略状态条件会纳入指定 ID 的已译、排除、跳过和重复条目，已有译文可能被覆盖。",
-      "- 已有的译文会被覆盖，工具完成刷新工作区读取最新快照",
-      "- 当前上下文首次调用前，先用一条目标 `item` 测试，通过后再处理其余目标",
+      "- 省略状态条件会纳入指定 ID 的已译、排除、跳过和重复条目",
+      "- 目标的已有译文会被覆盖，工具完成后刷新工作区，需要时读取最新快照",
+      "- 工具在内部分批翻译并逐批提交。当前上下文首次调用前，先用一条目标 `item` 测试，通过后用一次调用处理其余全部目标",
       "- 调用失败时结合错误判断原因，由思考等级导致时传入 `thinking_downgrade: false`，当前上下文的后续调用沿用",
       "",
       "### 结果",
       "",
-      "|返回字段|含义与动作|",
+      "|返回字段|含义|",
       "|---|---|",
       "|items|条目统计|",
       "|usage|用量统计|",
@@ -117,7 +118,7 @@ export function create_agent_batch_item_translation_tool(
             await run(
               request,
               thinking_downgrade,
-              context.abortSignal ?? new AbortController().signal,
+              context.abortSignal ?? new AbortController().signal, // 宿主未提供取消信号时使用不会触发的信号
             ),
           ),
         );
