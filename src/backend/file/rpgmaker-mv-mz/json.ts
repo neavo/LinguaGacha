@@ -1,5 +1,4 @@
 import { RPGMAKER_EVENT } from "../shared/rpgmaker-format";
-import path from "node:path";
 import type { Item } from "../../../domain/item";
 import type { JsonValue } from "../../../domain/json";
 import { create_rpgmaker_extractor } from "./extractor";
@@ -7,7 +6,7 @@ import type { JsonPath, RPGMakerLocation } from "./types";
 import type { SourceFileParseWarning } from "../file-format-types";
 
 type Command = { code: number; indent: number; parameters: JsonValue[] };
-const DISPLAY_FIELDS: Record<string, readonly string[]> = {
+const DEFAULT_TEXT_FIELDS: Record<string, readonly string[]> = {
   Actors: ["name", "nickname", "profile"],
   Classes: ["name"],
   Skills: ["name", "description", "message1", "message2"],
@@ -16,8 +15,8 @@ const DISPLAY_FIELDS: Record<string, readonly string[]> = {
   Armors: ["name", "description"],
   Enemies: ["name"],
   States: ["name", "message1", "message2", "message3", "message4"],
-}; // 引擎标准显示字段决定用途，插件扩展字段保留为元数据。
-const SYSTEM_DISPLAY_FIELDS = new Set([
+}; // 引擎标准字段默认参与翻译，插件扩展字段保留为元数据。
+const SYSTEM_DEFAULT_TEXT_FIELDS = new Set([
   "gameTitle",
   "currencyUnit",
   "elements",
@@ -26,7 +25,8 @@ const SYSTEM_DISPLAY_FIELDS = new Set([
   "armorTypes",
   "equipTypes",
   "terms",
-]); // `System` 的显示词典与分类名称向子项传播显示用途。
+]); // `System` 的词典与分类名称向子项传播默认翻译资格，是否被按名称引用由领域审校判断。
+const DATABASE_FILE_PATTERN = /^(?:www\/)?data\/([^/]+)\.json$/iu; // 标准数据库只位于数据根的直接成员，扩展名与采集规则一致。
 const BLOCK_CODES = new Map<number, number>([
   [RPGMAKER_EVENT.MESSAGE, RPGMAKER_EVENT.MESSAGE_LINE],
   [RPGMAKER_EVENT.SCROLLING, RPGMAKER_EVENT.SCROLLING_LINE],
@@ -37,37 +37,37 @@ const ACTOR_TEXT_CODES = new Set<number>([
   RPGMAKER_EVENT.ACTOR_NAME,
   RPGMAKER_EVENT.ACTOR_NICKNAME,
   RPGMAKER_EVENT.ACTOR_PROFILE,
-]); // 角色名、昵称与介绍的 `parameters[1]` 用于显示。
+]); // 角色名、昵称与介绍的 `parameters[1]` 默认参与翻译。
 
-/** 按事件结构提取定位，用途只决定首次导入和文件重置的默认状态。 */
+/** 数据库文件决定默认翻译字段，事件结构决定文本块与脚本，用途只决定首次导入和文件重置的默认状态。 */
 export function read_rpgmaker_json(
   root: JsonValue,
   rel_path: string,
 ): { items: Item[]; warnings: SourceFileParseWarning[] } {
-  const { items, warnings, add, script } = create_rpgmaker_extractor(rel_path);
-  const file = path.basename(rel_path, ".json");
-  // 显示字段向下传播用途，插件扩展字段保留为默认排除条目。
-  function walk(value: JsonValue, target: JsonPath, display = false): void {
+  const { items, warnings, add, expand, script } = create_rpgmaker_extractor(rel_path);
+  const file = DATABASE_FILE_PATTERN.exec(rel_path)?.[1] ?? ""; // 子目录同名文件不触发数据库字段规则。
+  // 默认翻译字段整段保存并向下传播资格，其余字符串可能是插件 JSON，展开后保留为默认排除条目。
+  function walk(value: JsonValue, target: JsonPath, default_text = false): void {
     if (typeof value === "string") {
-      add(value, {
+      (default_text ? add : expand)(value, {
         location: { kind: "field", path: target },
-        usage: display ? "text" : "metadata",
+        usage: default_text ? "text" : "metadata",
       });
     } else if (Array.isArray(value)) {
       if (target.at(-1) === "list" && value.length > 0 && value.every(is_command)) {
         events(value, target);
-      } else value.forEach((entry, index) => walk(entry, [...target, index], display));
+      } else value.forEach((entry, index) => walk(entry, [...target, index], default_text));
     } else if (value !== null && typeof value === "object") {
       for (const [key, entry] of Object.entries(value)) {
-        const visible =
-          display ||
+        const field_text =
+          default_text ||
           (target.length === 1 &&
             typeof target[0] === "number" &&
-            (DISPLAY_FIELDS[file]?.includes(key) ?? false)) ||
+            (DEFAULT_TEXT_FIELDS[file]?.includes(key) ?? false)) ||
           (target.length === 0 &&
-            ((file === "System" && SYSTEM_DISPLAY_FIELDS.has(key)) ||
+            ((file === "System" && SYSTEM_DEFAULT_TEXT_FIELDS.has(key)) ||
               (/^Map\d+$/u.test(file) && key === "displayName")));
-        walk(entry, [...target, key], visible);
+        walk(entry, [...target, key], field_text);
       }
     }
   }
@@ -112,7 +112,6 @@ export function read_rpgmaker_json(
             text,
             { location, usage: command.code === RPGMAKER_EVENT.COMMENT ? "metadata" : "text" },
             name,
-            false, // 事件正文以行和姓名为语义单位。
           );
         // 头指令的资源字段也保留为默认排除条目。
         if (command.code === RPGMAKER_EVENT.MESSAGE)

@@ -15,64 +15,62 @@ type JsonMember = readonly [string | number, JsonValue];
 type NearbyMembers = { members: readonly JsonMember[]; index: number };
 const NEIGHBOR_CONTEXT_MIN_LENGTH = 64; // 为相邻成员预留短摘要，长目标优先使用其余预算。
 
-/** 字段与脚本共用字符串展开入口，事件语义由调用者提供。 */
+/** 普通入口完整保存字符串，结构化入口解码 JSON 容器后逐个叶子调用普通入口。 */
 export function create_rpgmaker_extractor(rel_path: string) {
   const items: Item[] = [];
   const warnings: SourceFileParseWarning[] = [];
 
-  /** 事件正文和模板片段由调用者关闭展开，保持各自的写回边界。 */
+  /** 事件正文、选项、默认翻译字段和模板片段按原文保存，空对白仍可携带姓名。 */
   function add(
     src: string,
     metadata: Omit<RPGMakerMetadata, "internal_file_path">,
     name_src: string | null = null,
-    expand = true,
   ): void {
+    if (src === "" && !name_src) return;
+    const extra_field = { rpgmaker_mv_mz: { internal_file_path: rel_path, ...metadata } };
+    items.push(
+      create_item({
+        src,
+        name_src,
+        file_path: rel_path,
+        file_type: "RPGMAKER_MV_MZ",
+        row: items.length,
+        status: rpgmaker_default_status({ extra_field }),
+        extra_field,
+      }),
+    );
+  }
+
+  /** 元数据与完整脚本字符串可能嵌套 JSON，每次解码增加一级定位，叶子沿用外层用途。 */
+  function expand(src: string, metadata: Omit<RPGMakerMetadata, "internal_file_path">): void {
     const context = metadata.source_context ?? JSON.stringify(metadata.location);
-    /** 每次解码增加一级保存定位，原文叶子沿用外层用途。 */
     function visit(text: string, location: RPGMakerLocation, nearby?: NearbyMembers): void {
-      const decoded = expand ? parse_json_container(text) : null;
-      if (decoded !== null) {
-        /** 插件 JSON 按普通结构遍历，避免将事件形状的对象当作引擎指令。 */
-        function walk(value: JsonValue, target: JsonPath, nearby?: NearbyMembers): void {
-          if (typeof value === "string") {
-            visit(value, { kind: "json", container: location, path: target }, nearby);
-          } else if (value !== null && typeof value === "object") {
-            // 每个容器只枚举一次，叶子直接引用相邻成员，避免反复扫描父对象。
-            const members: JsonMember[] = Array.isArray(value)
-              ? value.map((entry, index) => [index, entry])
-              : Object.entries(value);
-            members.forEach(([key, entry], index) =>
-              walk(entry, [...target, key], { members, index }),
-            );
-          }
-        }
-        walk(decoded, []);
-        return;
-      }
-      if (text === "" && !name_src) return; // 空对白仍可携带姓名。
-      const extra_field = {
-        rpgmaker_mv_mz: {
-          internal_file_path: rel_path,
+      const decoded = parse_json_container(text);
+      if (decoded === null) {
+        add(text, {
           ...metadata,
           location,
           ...(nearby === undefined
             ? {}
-            : {
-                source_context: read_json_context(context, location, nearby),
-              }),
-        },
-      };
-      items.push(
-        create_item({
-          src: text,
-          name_src,
-          file_path: rel_path,
-          file_type: "RPGMAKER_MV_MZ",
-          row: items.length,
-          status: rpgmaker_default_status({ extra_field }),
-          extra_field,
-        }),
-      );
+            : { source_context: read_json_context(context, location, nearby) }),
+        });
+        return;
+      }
+      /** 插件 JSON 按普通结构遍历，避免将事件形状的对象当作引擎指令。 */
+      function walk(value: JsonValue, target: JsonPath, nearby?: NearbyMembers): void {
+        if (typeof value === "string") {
+          visit(value, { kind: "json", container: location, path: target }, nearby);
+        } else if (value !== null && typeof value === "object") {
+          // 每个容器只枚举一次，叶子直接引用相邻成员，避免反复扫描父对象。
+          const members: JsonMember[] = Array.isArray(value)
+            ? value.map((entry, index) => [index, entry])
+            : Object.entries(value);
+          members.forEach(([key, entry], index) =>
+            walk(entry, [...target, key], { members, index }),
+          );
+        }
+      }
+      walk(decoded, []);
     }
     visit(src, metadata.location);
   }
@@ -97,24 +95,19 @@ export function create_rpgmaker_extractor(rel_path: string) {
       return;
     }
     for (const span of result.strings)
-      add(
-        span.src,
-        {
-          usage: "metadata",
-          source_context: span.source_context,
-          location: {
-            kind: "script",
-            container,
-            start: span.start,
-            end: span.end,
-            template: span.template,
-          },
+      (span.complete ? expand : add)(span.src, {
+        usage: "metadata",
+        source_context: span.source_context,
+        location: {
+          kind: "script",
+          container,
+          start: span.start,
+          end: span.end,
+          template: span.template,
         },
-        null,
-        span.complete,
-      );
+      });
   }
-  return { items, warnings, add, script };
+  return { items, warnings, add, expand, script };
 }
 
 /** 标量和解析失败均是普通文本，只有对象与数组形成解码边界。 */

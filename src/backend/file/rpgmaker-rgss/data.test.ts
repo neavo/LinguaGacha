@@ -101,13 +101,15 @@ it.each<RGSSVersion>(["xp", "vx", "ace"])(
     ]);
   },
 );
-it("数据库显示用途与元数据分开，ASCII 标记随中文写回更新", async () => {
+it("数据库默认翻译资格与元数据分开，子目录同名文件不套用数据库字段，ASCII 标记随中文写回更新", async () => {
   const ascii = s("name");
   ascii.pairs![0]![1] = { t: "F" };
   const root = a([
     { t: "0" },
     o("RPG::Actor", { "@name": ascii, "@character_name": s("asset"), "@note": s("note") }),
   ]);
+  const nested = await read_rgss_data(root, "Data/plugin/Actors.rvdata2", "ace", false);
+  expect(nested.items.map((item) => item.status)).toEqual(Array(3).fill("RULE_SKIPPED"));
   const parsed = await read_rgss_data(root, "Data/Actors.rvdata2", "ace", false);
   expect(parsed.items.map((item) => item.status)).toEqual(["NONE", "RULE_SKIPPED", "RULE_SKIPPED"]);
   const item = parsed.items[0]!;
@@ -120,7 +122,7 @@ it("数据库显示用途与元数据分开，ASCII 标记随中文写回更新"
   expect(read_rgss_metadata(item.extra_field).usage).toBe("text");
 });
 
-it("普通 Hash 数组与标准显示字段共同提取", async () => {
+it("普通 Hash 数组与默认翻译字段共同提取", async () => {
   const hash = {
     t: "{",
     pairs: [
@@ -237,7 +239,7 @@ it("共享选项槽位去重后仍同步所有关联分支", async () => {
 });
 
 it.each([false, true])(
-  "共享词典的显示用途不受成员顺序影响：显示入口在前=%s",
+  "共享词典的默认翻译资格不受成员顺序影响：标准字段入口在前=%s",
   async (display_first) => {
     const label = s("term"),
       dictionary = o("RPG::System::Terms", { "@basic": a([label]) });
@@ -260,7 +262,7 @@ it.each([false, true])(
   },
 );
 it.each([false, true])(
-  "普通字段与事件共享槽位时显示用途优先：事件入口在前=%s",
+  "普通字段与事件共享槽位时默认翻译资格优先：事件入口在前=%s",
   async (event_first) => {
     const event = c(320, [n(1), s("actor")]),
       parameters = field(event, "@parameters")!,

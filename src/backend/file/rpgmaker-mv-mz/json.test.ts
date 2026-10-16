@@ -29,3 +29,25 @@ it("条件、变量和移动路线的脚本只提取字符串，插件参数展�
     ["嵌套", "RULE_SKIPPED"],
   ]);
 });
+
+it("默认翻译字段完整保存 JSON 形状文本，元数据展开为默认排除叶子，子目录同名文件不套用数据库字段", () => {
+  const visible = JSON.stringify({ 開始: 1, 終了: 2 });
+  const plugin = JSON.stringify({ message: "こんにちは", image: "Actor1" });
+  const source = [null, { name: visible, note: plugin }];
+  expect(
+    read_rpgmaker_json(source, "www/data/Items.JSON").items.map((item) => [item.src, item.status]),
+  ).toEqual([
+    [visible, "NONE"],
+    ["こんにちは", "RULE_SKIPPED"],
+    ["Actor1", "RULE_SKIPPED"],
+  ]);
+  expect(
+    read_rpgmaker_json(source, "data/plugin/Items.json").items.map((item) => [
+      item.src,
+      item.status,
+    ]),
+  ).toEqual([
+    ["こんにちは", "RULE_SKIPPED"],
+    ["Actor1", "RULE_SKIPPED"],
+  ]);
+});

@@ -212,7 +212,7 @@ describe("MV/MZ 原稿写回", () => {
       JSON.parse(Buffer.from(await members.render(bytes, "data/Actors.json", items)).toString()),
     ).toEqual([null, { name: "英雄", legacy: "历史译文" }]);
   });
-  it("标准显示字段与默认排除按位置独立，人工启用后可写回", async () => {
+  it("默认翻译字段与默认排除按位置独立，人工启用后可写回", async () => {
     const bytes = Buffer.from(
       JSON.stringify([
         null,
@@ -274,7 +274,8 @@ describe("MV/MZ 原稿写回", () => {
           dst: "第一行\n第二行\n第三行",
           name_dst: "英雄",
         });
-      if (item.src === "はい") Object.assign(item, { status: "PROCESSED", dst: "是" });
+      if (item.src === choice)
+        Object.assign(item, { status: "PROCESSED", dst: JSON.stringify({ text: "是" }) });
       if (item.src === "脚本")
         Object.assign(item, { status: "PROCESSED", dst: '引号"和\\换行\n😀' });
     }

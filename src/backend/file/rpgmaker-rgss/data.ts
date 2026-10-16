@@ -1,6 +1,5 @@
 import { RPGMAKER_EVENT as EVENT } from "../shared/rpgmaker-format";
 import assert from "node:assert/strict";
-import path from "node:path";
 import { deflateSync } from "node:zlib";
 import { create_item, type Item } from "../../../domain/item";
 import type { JsonValue } from "../../../domain/json";
@@ -30,7 +29,7 @@ import {
 import type { RGSSVersion } from "./source";
 import { read_rgss_script } from "./scripts";
 
-const DISPLAY_FIELDS: Record<string, readonly string[]> = {
+const DEFAULT_TEXT_FIELDS: Record<string, readonly string[]> = {
   Actors: ["@name", "@nickname", "@description"],
   Classes: ["@name"],
   Skills: ["@name", "@description", "@message1", "@message2"],
@@ -39,9 +38,9 @@ const DISPLAY_FIELDS: Record<string, readonly string[]> = {
   Armors: ["@name", "@description"],
   Enemies: ["@name"],
   States: ["@name", "@message1", "@message2", "@message3", "@message4"],
-};
+}; // 引擎标准字段默认参与翻译，是否被脚本按名称引用由领域审校判断。
 // `@game_title` 可能被脚本用作窗口标识并转为 Shift_JIS，默认按元数据保留原文。
-const SYSTEM_FIELDS = new Set([
+const SYSTEM_DEFAULT_TEXT_FIELDS = new Set([
   "@currency_unit",
   "@elements",
   "@skill_types",
@@ -62,6 +61,7 @@ const ACTOR_TEXT_CODES = new Set<number>([
   EVENT.ACTOR_PROFILE,
 ]);
 const MESSAGE_LINES = 4;
+const DATABASE_FILE_PATTERN = /^data\/([^/]+)\.[^./]+$/iu; // 标准数据库只位于数据目录的直接成员。
 const member = (name: string) => ({ field: name }); // 字段段与数组索引、Hash 项使用不同形状。
 const COMMAND_CLASSES = { event: "RPG::EventCommand", move: "RPG::MoveCommand" } as const;
 /** 类型身份决定是否进入事件解释，普通数据中的同名字段不代表指令。 */
@@ -154,11 +154,11 @@ class RGSSLocations {
     return target;
   }
 }
-/** 标准显示入口独立传播用途，槽位集合不受原稿成员顺序影响。 */
-function read_display_slots(root: MarshalNode, file: string, slots: RubySlots): Set<RubySlot> {
+/** 标准字段入口独立传播默认翻译资格，槽位集合不受原稿成员顺序影响。 */
+function read_default_text_slots(root: MarshalNode, file: string, slots: RubySlots): Set<RubySlot> {
   const result = new Set<RubySlot>(),
     visited = new Set<MarshalNode>();
-  // 显示入口只传播显示用途，共享对象无需按每条路径重复展开。
+  // 标准字段只传播默认翻译资格，共享对象无需按每条路径重复展开。
   function visit(node: MarshalNode, target: RubyPath): void {
     const value = base(node);
     if (value.t === '"') {
@@ -173,17 +173,17 @@ function read_display_slots(root: MarshalNode, file: string, slots: RubySlots): 
     else if (value.t === "{" || value.t === "}")
       value.pairs!.forEach(([, entry], index) => visit(entry, [...target, { entry: index }]));
   }
-  // 从标准字段进入显示区域，资源字段不因共享字符串而继承用途。
+  // 从标准字段进入默认翻译区域，资源字段不因共享字符串而继承用途。
   function fields(node: MarshalNode, keys: Iterable<string>, target: RubyPath): void {
     for (const key of keys) {
       const entry = field(node, key);
       if (entry) visit(entry, [...target, member(key)]);
     }
   }
-  const database_fields = DISPLAY_FIELDS[file];
+  const database_fields = DEFAULT_TEXT_FIELDS[file];
   if (database_fields && base(root).t === "[")
     array(root).forEach((record, index) => fields(record, database_fields, [index]));
-  if (file === "System") fields(root, SYSTEM_FIELDS, []);
+  if (file === "System") fields(root, SYSTEM_DEFAULT_TEXT_FIELDS, []);
   else if (/^Map\d+$/u.test(file)) fields(root, ["@display_name"], []);
   return result;
 }
@@ -196,14 +196,14 @@ export async function read_rgss_data(
   scripts: boolean,
 ) {
   const warnings: SourceFileParseWarning[] = [];
-  type Candidate = { src: string; location: RGSSLocation; display: boolean };
+  type Candidate = { src: string; location: RGSSLocation; default_text: boolean };
   const candidates: Candidate[] = [];
-  const name = path.basename(file, path.extname(file));
+  const name = DATABASE_FILE_PATTERN.exec(file)?.[1] ?? ""; // 子目录同名文件不触发数据库字段规则。
   const locations = new RGSSLocations(root);
-  const display_slots = read_display_slots(root, name, locations.slots);
+  const default_text_slots = read_default_text_slots(root, name, locations.slots);
   const seen = new Map<WriteTarget, Map<string, Candidate>>();
   // 同一写入目标合并用途与关联位置，首次路径保持稳定。
-  function add(src: string, location: RGSSLocation, display: boolean) {
+  function add(src: string, location: RGSSLocation, default_text: boolean) {
     if (!src) return;
     const container = location.kind === "ruby" ? location.container : location;
     const target = locations.resolve(container);
@@ -211,7 +211,7 @@ export async function read_rgss_data(
     const entries = seen.get(target) ?? new Map<string, Candidate>();
     const previous = entries.get(key);
     if (previous) {
-      previous.display ||= display;
+      previous.default_text ||= default_text;
       const previous_location = previous.location;
       // 同一选项数组可能被多个指令引用，合并条目时仍保留各处关联分支。
       if (previous_location.kind === "field" && location.kind === "field" && location.mirrors) {
@@ -223,7 +223,7 @@ export async function read_rgss_data(
       }
       return;
     }
-    const candidate = { src, location, display };
+    const candidate = { src, location, default_text };
     entries.set(key, candidate);
     seen.set(target, entries);
     candidates.push(candidate);
@@ -267,7 +267,7 @@ export async function read_rgss_data(
       add(
         text(node),
         { kind: "field", path: target },
-        display_slots.has(locations.slots.resolve(target)),
+        default_text_slots.has(locations.slots.resolve(target)),
       );
       return;
     }
@@ -382,11 +382,11 @@ export async function read_rgss_data(
     }
   } else await walk(root, []);
   // 所有入口完成归并后统一生成用途和默认状态，首次发现的路径只负责稳定定位。
-  const items = candidates.map(({ src, location, display }, row) => {
+  const items = candidates.map(({ src, location, default_text }, row) => {
     const extra_field = {
       rpgmaker_rgss: {
         internal_file_path: file,
-        usage: display ? "text" : "metadata",
+        usage: default_text ? "text" : "metadata",
         location: location as unknown as JsonValue,
       },
     };

@@ -2,17 +2,23 @@ import { has_language_body_character } from "../../domain/language";
 import { remove_text_resource_references } from "../text/text-resource-reference";
 import type { ItemNameField } from "../../domain/item";
 import { read_item_source_text_parts, type ItemTextGroup } from "../item-text";
+import { is_rpgmaker_file_type } from "../project-source-formats";
 
-/** 正文与可见姓名独立参与候选判断。格式元数据规则只作用于正文。 */
+/**
+ * 正文与可见姓名独立参与候选判断。历史元数据猜测只作用于其他格式的正文，
+ * 原生 RPG Maker 格式的用途已由提取器的默认资格决定，放行后不再按外观否决。
+ */
 export function read_item_translation_candidates(item: {
   src?: string;
   name_src?: ItemNameField;
+  file_type?: string;
   skip_internal_filter?: boolean;
 }): ItemTextGroup {
+  const guess_metadata = !is_rpgmaker_file_type(item.file_type);
   return read_item_source_text_parts(item).filter(
     (part) =>
       item.skip_internal_filter === true ||
-      (part.field === "src"
+      (part.field === "src" && guess_metadata
         ? !should_skip_by_rule_prefilter(part.text)
         : has_translatable_text(part.text)),
   );
@@ -20,7 +26,7 @@ export function read_item_translation_candidates(item: {
 
 const LINE_BREAK_PATTERN = /\r\n|\r|\n/gu; // 统一兼容 Windows、Unix 和旧 Mac 换行，确保多行过滤判断稳定
 
-const RULE_PREFILTER_PREFIXES = ["mapdata/", "se/", "bgs", "0=", "bgm/", "ficon/"]; // 历史元数据前缀与正则清单集中描述可翻译候选预过滤口径
+const RULE_PREFILTER_PREFIXES = ["mapdata/", "se/", "bgs/", "0=", "bgm/", "ficon/"]; // 历史元数据前缀与正则清单集中描述可翻译候选预过滤口径
 
 // 正则规则覆盖事件编号、RenPy 默认字体和 RenPy 存档时间占位。
 const RULE_PREFILTER_PATTERNS = [
