@@ -71,7 +71,7 @@
 
 文件通过 `workspace_run` 编写脚本读取，图片通过脚本中的 `ws.emitImage` 传递给模型查看
 
-原稿入口统一为 `sources/<file_path>`。`RPGMAKER_MV_MZ`、`RPGMAKER_RGSS` 和 `EPUB` 在同名位置展开为目录，保留资产扩展名及包内路径，其余格式为原始资产文件。
+原稿入口统一为 `sources/<file_path>`，游戏、EPUB 等容器类资产在同名位置展开为目录，保留资产扩展名及包内路径，其余为原始资产文件。
 
 `sources/` 是工程原稿的只读参考，随工程快照重建：
 

@@ -1,4 +1,4 @@
-import { RPGMakerGameFormat } from "../shared/rpgmaker-format";
+import { GameFormat } from "../shared/game/format";
 import { NativeFs } from "../../../native/native-fs";
 import JSZip from "jszip";
 import { create_item } from "../../../domain/item";
@@ -111,7 +111,7 @@ it.each([
   const archive = decode(fs.readFileSync(path.join(output, "game/Custom/Main" + extension)));
   expect(inflateSync(bytes(array(array(archive)[0]!)[2]!)).toString()).toBe('puts "菜单", "keep"');
   const unchanged = path.join(temp.path, "unchanged");
-  await new RPGMakerGameFormat(create_rpgmaker_rgss_adapter(), new NativeFs()).write_to_path([], {
+  await new GameFormat(create_rpgmaker_rgss_adapter(), new NativeFs()).write_to_path([], {
     source_files: [{ path: "game.zip", file_type: "RPGMAKER_RGSS" }],
     asset_reader: () => Buffer.from(prepared.content),
     paths: { translated_path: unchanged, bilingual_path: unchanged },
@@ -133,7 +133,7 @@ it.each([false, true])(
     const content = await zip.generateAsync({ type: "uint8array" });
     const read = vi.spyOn(source, "read_rgss_game");
     try {
-      const format = new RPGMakerGameFormat(create_rpgmaker_rgss_adapter(), new NativeFs());
+      const format = new GameFormat(create_rpgmaker_rgss_adapter(), new NativeFs());
       const parsed = await format.read_from_stream(content, "game.zip");
       expect(read).toHaveBeenCalledTimes(1);
       if (invalid) {

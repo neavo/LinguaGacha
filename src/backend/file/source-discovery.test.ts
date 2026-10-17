@@ -6,113 +6,55 @@ import { NativeFs } from "../../native/native-fs";
 import { evb_fixture } from "../../test/evb-fixture";
 import { discover_source, discover_sources } from "./source-discovery";
 
-it("普通同名目录正常扫描，非有效标记和临时目录不决定归属", async () => {
-  using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-source-ordinary-backup-"));
-  const native = new NativeFs();
-  const backup = path.join(temp.path, "backup_lg");
-  const saved = path.join(backup, "story.txt");
-  native.write_file_sync(saved, "original");
-  native.make_dir(path.join(backup, ".tmp"));
-  native.write_file_sync(path.join(backup, ".linguagacha-backup.json"), "invalid json");
-  for (const selected of [temp.path, backup, saved]) {
-    const entries = await discover_sources([selected], native);
-    expect(
-      entries.some((entry) => entry.source_path === saved && entry.source.kind === "file"),
-    ).toBe(true);
-    expect(entries.some((entry) => entry.source.kind === "failure")).toBe(false);
-  }
-});
-
-it.each(["mv", "rgss", "packed", "moved"])(
-  "%s 备份扫描时跳过，显式选择目录及内部路径时保留失败和正常兄弟来源",
-  async (kind) => {
-    using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-source-backup-"));
+it.each(["backup_lg", ".tmp"])(
+  "管理目录 %s 扫描时排除，显式选择内部路径报告错误且保留兄弟来源",
+  async (name) => {
+    using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-source-managed-"));
     const native = new NativeFs();
-    const root = path.join(temp.path, "game");
-    const backup = path.join(root, "backup_lg");
-    const saved = path.join(backup, "nested/story.txt");
-    native.write_file_sync(saved, "original");
-    if (kind === "moved") {
-      // 只有身份标记也足够识别，不在扫描阶段校验原稿覆盖。
-      native.write_file_sync(
-        path.join(backup, ".linguagacha-backup.json"),
-        '{ "engine": "mz", "version": 1 }',
-      );
-    } else if (kind === "mv") {
-      native.write_file_sync(path.join(root, "data/System.json"), "{}");
-      native.write_file_sync(path.join(root, "js/rmmz_core.js"), "// engine");
-    } else if (kind === "rgss") {
-      native.write_file_sync(path.join(root, "Game.ini"), "[Game]\nScripts=Data/Scripts.rvdata2");
-    } else {
-      native.write_file_sync(
-        path.join(root, "Game.exe"),
-        evb_fixture(
-          new Map([
-            ["data/System.json", Buffer.from("{}")],
-            ["js/rmmz_core.js", Buffer.from("// engine")],
-          ]),
-        ),
-      );
-    }
-    const source = path.join(temp.path, "normal.txt");
-    native.write_file_sync(source, "normal");
-    const scanned = await discover_sources([temp.path], native);
-    expect(scanned.some((entry) => entry.source_path === source)).toBe(true);
-    expect(scanned.some((entry) => entry.source_path.startsWith(backup))).toBe(false);
-    const selections = [backup, path.dirname(saved), saved];
-    // 同批先扫描再显式选择，仍须报告备份输入，不能被扫描去重吞掉。
+    const directory = path.join(temp.path, name);
+    const saved = path.join(directory, "nested/story.txt");
+    const normal = path.join(temp.path, "normal.txt");
+    native.write_file_sync(saved, "old");
+    native.write_file_sync(normal, "normal");
+    expect((await discover_sources([temp.path], native)).map((entry) => entry.source_path)).toEqual(
+      [normal],
+    );
+    const selections = [directory, path.dirname(saved), saved];
     const entries = await discover_sources([temp.path, ...selections], native);
     for (const selected of selections) {
       const entry = entries.find((value) => value.source_path === selected)!;
       expect(entry.source).toMatchObject({
         kind: "failure",
-        error: new Error("Game backup cannot be used as an import source: " + backup),
+        error: new Error(
+          "Game management directory cannot be used as an import source: " + directory,
+        ),
       });
       expect((await discover_source(selected, native)).source.kind).toBe("failure");
     }
-    expect(
-      entries.some((entry) => entry.source_path === source && entry.source.kind === "file"),
-    ).toBe(true);
+    expect(entries.find((entry) => entry.source_path === normal)!.source.kind).toBe("file");
   },
 );
 
-it.each(["marker", "parent"])("%s 读取失败报告来源错误并保留正常兄弟来源", async (kind) => {
-  using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-source-backup-io-"));
-  const native = new NativeFs();
-  const root = path.join(temp.path, "game");
-  const backup = path.join(root, "backup_lg");
-  const saved = path.join(backup, "story.txt");
-  const normal = path.join(temp.path, "normal.txt");
-  native.write_file_sync(saved, "backup");
+it("管理目录识别读取失败归集来源错误，保留正常兄弟来源", async () => {
+  using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-source-managed-io-"));
+  const native = new NativeFs(),
+    directory = path.join(temp.path, "backup_lg"),
+    saved = path.join(directory, "story.txt"),
+    normal = path.join(temp.path, "normal.txt");
+  native.write_file_sync(saved, "old");
   native.write_file_sync(normal, "normal");
   const failure = Object.assign(new Error("access denied"), { code: "EACCES" });
-  if (kind === "marker") {
-    native.write_file_sync(
-      path.join(backup, ".linguagacha-backup.json"),
-      '{"version":1,"engine":"mz"}',
-    );
-    vi.spyOn(native, "read_text_file").mockImplementation(() => {
-      throw failure;
-    });
-  } else {
-    const read = native.read_dirents.bind(native);
-    vi.spyOn(native, "read_dirents").mockImplementation((directory) => {
-      if (directory === root) throw failure;
-      return read(directory);
-    });
-  }
-  for (const selections of [[temp.path], [backup, saved, normal]]) {
-    const entries = await discover_sources(selections, native);
-    expect(
-      entries.some((entry) => entry.source.kind === "failure" && entry.source.error === failure),
-    ).toBe(true);
-    expect(
-      entries.some((entry) => entry.source_path === normal && entry.source.kind === "file"),
-    ).toBe(true);
-    expect(
-      entries.some((entry) => entry.source_path === saved && entry.source.kind !== "failure"),
-    ).toBe(false);
-  }
+  const stat = native.stat.bind(native);
+  vi.spyOn(native, "stat").mockImplementation((target) => {
+    if (target === directory) throw failure;
+    return stat(target);
+  });
+  const entries = await discover_sources([temp.path, saved], native);
+  expect(entries.find((entry) => entry.source_path === normal)!.source.kind).toBe("file");
+  expect(entries.find((entry) => entry.source_path === saved)!.source).toEqual({
+    kind: "failure",
+    error: failure,
+  });
   expect((await discover_source(saved, native)).source).toEqual({
     kind: "failure",
     error: failure,

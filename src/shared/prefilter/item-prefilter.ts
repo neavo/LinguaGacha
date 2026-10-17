@@ -2,11 +2,11 @@ import { has_language_body_character } from "../../domain/language";
 import { remove_text_resource_references } from "../text/text-resource-reference";
 import type { ItemNameField } from "../../domain/item";
 import { read_item_source_text_parts, type ItemTextGroup } from "../item-text";
-import { is_rpgmaker_file_type } from "../project-source-formats";
+import { is_game_file_type } from "../project-source-formats";
 
 /**
  * 正文与可见姓名独立参与候选判断。历史元数据猜测只作用于其他格式的正文，
- * 原生 RPG Maker 格式的用途已由提取器的默认资格决定，放行后不再按外观否决。
+ * 原生游戏格式的用途已由提取器的默认资格决定，放行后不再按外观否决。
  */
 export function read_item_translation_candidates(item: {
   src?: string;
@@ -14,7 +14,7 @@ export function read_item_translation_candidates(item: {
   file_type?: string;
   skip_internal_filter?: boolean;
 }): ItemTextGroup {
-  const guess_metadata = !is_rpgmaker_file_type(item.file_type);
+  const guess_metadata = !is_game_file_type(item.file_type);
   return read_item_source_text_parts(item).filter(
     (part) =>
       item.skip_internal_filter === true ||

@@ -12,6 +12,7 @@ export function resolve_text_rule_type(
     case "RPGMAKER_MV_MZ":
     case "RPGMAKER_RGSS":
       return "RPGMAKER";
+    case "WOLFRPG":
     case "WOLFXLSX":
       return "WOLF";
     case "RENPY":

@@ -19,7 +19,7 @@ export type TextResourceReferenceProjection = {
 };
 
 // 无 scheme 路径没有结构化边界，只对明确的资源扩展名建立候选。
-const RESOURCE_EXTENSIONS = [
+export const RESOURCE_EXTENSIONS = [
   // 音频
   "mp3", // MP3 音频
   "wav", // 波形音频

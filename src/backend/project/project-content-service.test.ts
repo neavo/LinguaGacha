@@ -1,3 +1,5 @@
+import { wolf_files } from "../../test/wolf-fixture";
+import { wolf_archive_fixture } from "../../test/wolf-archive-fixture";
 import { evb_fixture } from "../../test/evb-fixture";
 import { add_test_asset_from_source } from "../../test/asset-fixture";
 import { rgss_archive_fixture } from "../../test/rgss-archive-fixture";
@@ -233,6 +235,53 @@ describe("ProjectContentService", () => {
         "normal.txt",
       ]);
       expect(fs.readdirSync(root).sort()).toEqual(["Game.ini", "Game.rgss3a"]);
+    } finally {
+      await database.close();
+    }
+  });
+  it("WOLF 单资产导入、追加替换和离线重置保存格式身份与默认资格", async () => {
+    const { database, service, lg_path } = await create_service();
+    const root = project_path("wolf");
+    fs.mkdirSync(root);
+    const archive = path.join(root, "Data.wolf");
+    fs.writeFileSync(
+      archive,
+      await wolf_archive_fixture(
+        new Map([...wolf_files()].map(([name, bytes]) => [name.slice(5), bytes])),
+        350,
+      ),
+    );
+    try {
+      const preview = await service.preview_import_files({ source_paths: [root] });
+      expect(preview.files).toHaveLength(1);
+      expect(fs.existsSync(archive)).toBe(true);
+      expect(fs.existsSync(path.join(root, "backup_lg"))).toBe(false);
+      await service.import_files({
+        files: preview.files!,
+        conflict_action: "replace",
+        expected_section_revisions: { files: 0, items: 0 },
+      });
+      expect(await database.get_all_asset_records(lg_path)).toMatchObject([
+        { path: "wolf.zip", file_type: "WOLFRPG" },
+      ]);
+      const baseline = await database.get_all_items(lg_path);
+      expect(baseline.find((item) => item.src === "主标题")?.status).toBe("RULE_SKIPPED");
+      expect(baseline.find((item) => item.src === "原文")?.status).toBe("NONE");
+      const next = await service.preview_import_files({ source_paths: [root] });
+      expect(next.files![0]!.conflict).toBe(true);
+      await service.import_files({
+        files: next.files!,
+        conflict_action: "replace",
+        expected_section_revisions: { files: 1, items: 1 },
+      });
+      fs.renameSync(root, root + "-moved");
+      await service.reset_files({
+        rel_paths: ["wolf.zip"],
+        expected_section_revisions: { items: 2 },
+      });
+      expect(
+        (await database.get_all_items(lg_path)).map(({ src, status }) => ({ src, status })),
+      ).toEqual(baseline.map(({ src, status }) => ({ src, status })));
     } finally {
       await database.close();
     }
@@ -518,10 +567,10 @@ describe("ProjectContentService", () => {
     }
   });
 
-  it("独立新版游戏目录整体替换旧原稿，失败回滚并支持离线重建和独立删除", async () => {
+  it("同一游戏目录新增原稿后整体替换，提交失败保留备份并支持离线重建和独立删除", async () => {
     const log_manager = create_log_manager();
     const { database, service, lg_path } = await create_service(undefined, log_manager);
-    let source = project_path("game");
+    const source = project_path("game");
     const write = (file: string, content: string): void => {
       const target = path.join(source, file);
       fs.mkdirSync(path.dirname(target), { recursive: true });
@@ -550,7 +599,7 @@ describe("ProjectContentService", () => {
       await service.import_files(await request());
       const old = await database.read_asset_content(lg_path, "game.zip");
       const old_items = await database.get_all_items(lg_path);
-      source = project_path("game-updated");
+      fs.unlinkSync(path.join(source, "data/Old.json"));
       write("data/System.json", "{}");
       write("js/rmmz_core.js", "");
       write("data/New.json", '{"text":"新文"}');
@@ -566,6 +615,9 @@ describe("ProjectContentService", () => {
       fail.mockRestore();
       expect(await database.read_asset_content(lg_path, "game.zip")).toEqual(old);
       expect(await database.get_all_items(lg_path)).toEqual(old_items);
+      expect(fs.readFileSync(path.join(source, "backup_lg/data/New.json"), "utf8")).toBe(
+        '{"text":"新文"}',
+      ); // 备份不随工程提交失败回滚。
       await service.import_files(await request());
       const saved = (await database.read_asset_content(lg_path, "game.zip"))!;
       expect([...(await read_zip_fixture(saved)).keys()]).not.toContain("data/Old.json");

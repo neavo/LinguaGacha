@@ -34,8 +34,8 @@ describe("worker-execution", () => {
       kind: "worker_threads",
       workUnitWorkerEntryUrl: pathToFileURL(path.join(bundle_root, "work-unit-worker-entry.js")),
       planningWorkerEntryUrl: pathToFileURL(path.join(bundle_root, "planning-worker-entry.js")),
-      rpgmakerMvMzPrepareWorkerEntryUrl: pathToFileURL(
-        path.join(bundle_root, "rpgmaker-mv-mz-prepare-worker-entry.js"),
+      gamePrepareWorkerEntryUrl: pathToFileURL(
+        path.join(bundle_root, "game-prepare-worker-entry.js"),
       ),
       computeWorkerEntryUrl: pathToFileURL(path.join(bundle_root, "compute-worker-entry.js")),
     });

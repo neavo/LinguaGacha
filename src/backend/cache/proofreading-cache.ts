@@ -1,3 +1,4 @@
+import { read_wolf_metadata } from "../file/wolfrpg/item";
 import { read_rgss_metadata } from "../file/rpgmaker-rgss/item";
 import { read_rpgmaker_metadata } from "../file/rpgmaker-mv-mz/item";
 import type { PDFDocumentRecord } from "../../shared/pdf";
@@ -475,6 +476,8 @@ export class ProofreadingCache {
 
   /** 格式定位信息只在校对入口解释，普通格式与缺少定位的内容归入无内部路径分组。 */
   private read_internal_file_path(item: ProjectItemPublicRecord): string | null {
+    if (item.file_type === "WOLFRPG")
+      return read_wolf_metadata(item.extra_field).internal_file_path;
     if (item.file_type === "RPGMAKER_RGSS")
       return read_rgss_metadata(item.extra_field).internal_file_path;
     if (item.file_type === "RPGMAKER_MV_MZ")

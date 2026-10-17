@@ -319,3 +319,20 @@ it("识别失败与正常来源共同进入只读摘要，正式导入重新识�
     },
   });
 });
+it("正式导入先拒绝根目录恢复材料，来源摘要只读", async () => {
+  using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-game-recovery-"));
+  const native = new NativeFs();
+  native.write_file_sync(path.join(temp.path, "data/System.json"), "{}");
+  native.write_file_sync(path.join(temp.path, "js/rmmz_core.js"), "");
+  const workspace = path.join(temp.path, ".tmp");
+  native.write_file_sync(path.join(workspace, "rollback/keep"), "recovery");
+  native.write_file_sync(path.join(temp.path, "backup_lg/keep"), "old backup");
+  const service = new FileFormatService({ target_language: "ZH" }, async () => null, native);
+  expect((await service.summarize_source_files([temp.path])).source_file_count).toBe(1);
+  const entry = (await service.collect_source_file_entries([temp.path]))[0]!;
+  await expect(service.prepare_source(entry)).rejects.toThrow(
+    "Unfinished game operation; recovery files: " + workspace,
+  );
+  expect(fs.readFileSync(path.join(workspace, "rollback/keep"), "utf8")).toBe("recovery");
+  expect(fs.readdirSync(path.join(temp.path, "backup_lg"))).toEqual(["keep"]);
+});

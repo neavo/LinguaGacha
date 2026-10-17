@@ -3,7 +3,7 @@ import path from "node:path";
 import type { NativeFs } from "../../../native/native-fs";
 import { validate_zip_member_path } from "../shared/zip-members";
 import { read_text } from "./value";
-import type { GameFiles } from "../shared/rpgmaker-format";
+import type { GameFiles } from "../shared/game/format";
 import { read_rgss_archive_version } from "./archive";
 
 export const RGSS_VERSIONS = { xp: ".rxdata", vx: ".rvdata", ace: ".rvdata2" } as const;

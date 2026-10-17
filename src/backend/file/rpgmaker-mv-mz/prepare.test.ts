@@ -9,7 +9,7 @@ import { NativeFs } from "../../../native/native-fs";
 import { encrypted_media, evb_fixture, MEDIA_KEY } from "../../../test/evb-fixture";
 import { prepare_rpgmaker_source, stage_rpgmaker_source } from "./prepare";
 import { FileFormatService } from "../file-format-service";
-import JSZip from "jszip";
+import { read_game_container } from "../shared/game/format";
 
 const PLAIN = png_fixture();
 const SYSTEM =
@@ -38,7 +38,7 @@ function fixture(root: string, packed: boolean): string {
   return root;
 }
 
-it.each([false, true])("准备 %s 固化明文配置，清理原封装并保持重复导入无副作用", async (packed) => {
+it.each([false, true])("准备 %s 固化明文配置，清理原封装且重复导入不重复准备", async (packed) => {
   using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-mv-prepare-"));
   const source = fixture(temp.path, packed);
   if (!packed) fs.writeFileSync(path.join(temp.path, "www/data/System.json"), "\uFEFF" + SYSTEM);
@@ -54,13 +54,13 @@ it.each([false, true])("准备 %s 固化明文配置，清理原封装并保持�
   expect(fs.readFileSync(path.join(temp.path, "www/img/a.rpgmvp"))).toEqual(encrypted_media(PLAIN));
   if (packed) expect(fs.readFileSync(source)).not.toEqual(original);
   expect(fs.existsSync(path.join(temp.path, ".lg-original"))).toBe(false);
-  const zip = await JSZip.loadAsync(prepared.content);
-  for (const [name, member] of Object.entries(zip.files))
+  const { members } = await read_game_container(prepared.content, "game.zip");
+  for (const [name, member] of members)
     expect(fs.readFileSync(path.join(temp.path, "backup_lg", name))).toEqual(
       await member.async("nodebuffer"),
     );
   expect(fs.existsSync(path.join(temp.path, "backup_lg/Selected.exe"))).toBe(false);
-  const system = await zip.file("www/data/System.json")!.async("string");
+  const system = await members.get("www/data/System.json")!.async("string");
   expect(system).toContain('"hasEncryptedImages":false');
   expect(system).toContain('"large":9007199254740993');
   expect(system).toContain('"negative":-0');
@@ -80,7 +80,7 @@ it.each(["media", "commit"])("准备失败 %s 保留原配置和明文", async (
     const rename = native.rename.bind(native);
     vi.spyOn(native, "rename").mockImplementation((from, to) => {
       rename(from, to);
-      if (from.includes(path.join("backup_lg", ".tmp", "stage")) && to.endsWith("a.png")) {
+      if (from.includes(path.join(".tmp", "stage")) && to.endsWith("a.png")) {
         throw new Error("commit failure");
       }
     });
@@ -103,7 +103,8 @@ it("原稿备份失败保留已解包游戏，重试保存准备后的配置", a
     file,
     bytes,
   ) {
-    if (file.endsWith(".linguagacha-backup.json")) throw new Error("backup failure");
+    if (file === path.join(temp.path, "backup_lg/www/data/System.json"))
+      throw new Error("backup failure");
     return write.call(this, file, bytes);
   });
   try {
