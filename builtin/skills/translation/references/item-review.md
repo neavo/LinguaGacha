@@ -3,7 +3,7 @@
 本流程用于检查、审校和修正条目的已有或拟议译文。
 
 - 术语见 `SKILL.md`。
-- 译文质量按 `writing-guide` 的 `references/translation-guide.md` 判断。
+- 译文质量按 `writing-guide` 的 `references/translation.md` 判断。
 - 格式专属的检查点按已加载的格式技能执行。
 
 ## 任务范围
@@ -91,7 +91,7 @@
 ### 取证与判断
 
 - **参与者与上下文**：参与者、身份、指代或上下文衔接不清时，用 `@lg/workspace/item-contexts` 的 `queryItemContexts` 查询邻近语境。
-- **判断标准**：姓名、称谓、固定译名和原文歧义按 `translation-guide` 判断。依据见其中的「命题、身份与语境」和「术语与译名」。术语表的命中与缺失警告按 `SKILL.md` 的「术语表」核对。
+- **判断标准**：姓名、称谓、固定译名和原文歧义按 `writing-guide` 的 `references/translation.md` 判断。依据见其中的「命题、身份与语境」和「术语与译名」。术语表的命中与缺失警告按 `SKILL.md` 的「术语表」核对。
 - **证据不足**：无法确定修正时，将条目记为未决。
 
 ### 警告速查
@@ -111,7 +111,7 @@
 
 - **调查完整**：实际调查范围与证据相符。每个目标都有修正、保留或未决结论。
 - **记录完整**：业务工作材料按 `item_id` 保存发现、结论、证据和变更清单，并标明轮次。
-- **译文成立**：译文符合 `translation-guide` 的「检查质量」。保护结构、标点、换行和 `name_dst` 符合 `references/item-translate.md` 的「条目约束」。
+- **译文成立**：译文符合 `writing-guide` 的 `references/translation.md` 的「检查质量」。保护结构、标点、换行和 `name_dst` 符合 `references/item-translate.md` 的「条目约束」。
 - **修正有据**：每项修改都有对应的问题和证据。保留原状的结论有判断依据。警告的处理符合具体语境。
 - **结果一致**：读取回执后，用最新快照核对实际结果。
 - **关联复查**：修改或新证据影响其他条目时，检查关联条目并提炼后续种子。

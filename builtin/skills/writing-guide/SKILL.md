@@ -29,7 +29,7 @@ description: 创作、续写、改写、润色文本，进行角色扮演，翻�
 
 |请求类别|读取资源|
 |---|---|
-|创作、续写、改写、润色、角色扮演叙事或创作质量诊断|`references/creative-guide.md`|
-|翻译、译名选择或译文审校|`references/translation-guide.md`|
+|创作、续写、改写、润色、角色扮演叙事或创作质量诊断|`references/creative.md`|
+|翻译、译名选择或译文审校|`references/translation.md`|
 
 请求同时涉及两类时，读取两份资源。

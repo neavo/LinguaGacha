@@ -3,7 +3,7 @@
 本流程为页面形成完整译稿，适用于翻译、补译、续做和重译。页面全部由 Agent 处理。流程到报告现状为止，不审校译稿。
 
 - 术语见 `SKILL.md`。
-- 译文按 `writing-guide` 的 `references/translation-guide.md` 形成。
+- 译文按 `writing-guide` 的 `references/translation.md` 形成。
 - 原稿读取、译稿写法和预览方法按已加载的格式技能执行。
 
 ## 页面模型
