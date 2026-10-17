@@ -3,8 +3,8 @@ import os from "node:os";
 import path from "node:path";
 import { expect, it, vi } from "vitest";
 import { NativeFs } from "../../../native/native-fs";
-import { check_game_backup, read_game_backup_engine, write_game_backup } from "./rpgmaker-backup";
-import { prepare_game_directory } from "./rpgmaker-prepare";
+import { check_game_backup, read_game_backup_engine, write_game_backup } from "./backup";
+import { prepare_game_directory } from "./prepare";
 
 /** 数据与插件共同验证备份按游戏相对路径保存。 */
 const files = new Map([

@@ -14,7 +14,7 @@ import { is_json_record } from "../../../domain/json";
 const LEGACY_DIRECTORIES = [".linguagacha-backup", ".lg-original"] as const;
 const BACKUP_MARKER = ".linguagacha-backup.json";
 const BACKUP_VERSION = 1;
-const BACKUP_ENGINES = new Set(["mv", "mz", "xp", "vx", "ace"]);
+const BACKUP_ENGINES = new Set(["mv", "mz", "xp", "vx", "ace", "wolf3"]);
 
 /** 来源识别只读取标记身份，原稿覆盖仍由正式备份校验负责。 */
 export function read_game_backup_engine(directory: string, fs: NativeFs): string | null {

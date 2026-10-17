@@ -1,5 +1,6 @@
-import { check_game_backup, write_game_backup } from "./rpgmaker-backup";
+import { check_game_backup, write_game_backup } from "./backup";
 import { validate_game_path, assert_game_path_spellings } from "../source-file-paths";
+import type { GameFileType } from "../../../shared/project-source-formats";
 import path from "node:path";
 import JSZip from "jszip";
 import type { NativeFs } from "../../../native/native-fs";
@@ -11,31 +12,10 @@ import type {
   ProjectSourceFileEntry,
 } from "../file-format-types";
 import { assert_source_file_paths, source_file_output_path } from "../source-file-paths";
-import { read_zip_members } from "./zip-members";
+import { read_zip_members } from "../shared/zip-members";
 
-// 引擎指令码是原稿协议，提取与写回共同引用。
-export const RPGMAKER_EVENT = {
-  MESSAGE: 101,
-  MESSAGE_LINE: 401,
-  CHOICES: 102,
-  CHOICE_BRANCH: 402,
-  CHOICES_END: 404,
-  SCROLLING: 105,
-  SCROLLING_LINE: 405,
-  COMMENT: 108,
-  COMMENT_LINE: 408,
-  SCRIPT: 355,
-  SCRIPT_LINE: 655,
-  CONDITIONAL: 111,
-  VARIABLES: 122,
-  MOVE_SCRIPT: 45,
-  ACTOR_NAME: 320,
-  ACTOR_NICKNAME: 324,
-  ACTOR_PROFILE: 325,
-} as const;
-
-/** RM 固化容器必须包含文件，空容器不能作为游戏原稿。 */
-export async function read_rpgmaker_container(
+/** 游戏 固化容器必须包含文件，空容器不能作为游戏原稿。 */
+export async function read_game_container(
   content: Uint8Array,
   file: string,
 ): Promise<ReadonlyMap<string, JSZip.JSZipObject>> {
@@ -47,9 +27,9 @@ export async function read_rpgmaker_container(
 export type GameFiles = ReadonlyMap<string, JSZip.JSZipObject>;
 /** 格式提供成员解析与写回，公共流程持有原稿清单和目录 IO。 */
 export interface GameFormatAdapter {
-  file_type: "RPGMAKER_MV_MZ" | "RPGMAKER_RGSS";
+  file_type: GameFileType;
   internal_path(item: Item): string;
-  create_members(files: GameFiles): GameMemberHandler;
+  create_members(files: GameFiles): Promise<GameMemberHandler>;
 }
 /** 本次容器操作独享解析上下文，成员只接收自身内容。 */
 export interface GameMemberHandler {
@@ -60,7 +40,7 @@ export interface GameMemberHandler {
   render(content: Uint8Array, file: string, items: readonly Item[]): Promise<Uint8Array>;
 }
 /** 游戏原稿清单拥有导入、离线重建与目录导出，格式仅解释成员内容。 */
-export class RPGMakerGameFormat {
+export class GameFormat {
   /** 每个处理器固定其格式适配器和文件入口。 */
   public constructor(
     private readonly adapter: GameFormatAdapter,
@@ -104,8 +84,8 @@ export class RPGMakerGameFormat {
     content: Uint8Array,
     file: string,
   ): Promise<{ items: Item[]; warnings: SourceFileParseWarning[] }> {
-    const files = await read_rpgmaker_container(content, file);
-    const handler = this.adapter.create_members(files);
+    const files = await read_game_container(content, file);
+    const handler = await this.adapter.create_members(files);
     const items: Item[] = [];
     const warnings: SourceFileParseWarning[] = [];
     for (const [name, member] of files) {
@@ -153,8 +133,8 @@ export class RPGMakerGameFormat {
       const content = await context.asset_reader(file.path);
       if (content === null)
         throw new AppError("file.not_found", { public_details: { file: file.path } });
-      const files = await read_rpgmaker_container(content, file.path);
-      const handler = this.adapter.create_members(files);
+      const files = await read_game_container(content, file.path);
+      const handler = await this.adapter.create_members(files);
       const group = groups.get(file.path);
       for (const internal of group?.keys() ?? []) {
         if (!files.has(internal))

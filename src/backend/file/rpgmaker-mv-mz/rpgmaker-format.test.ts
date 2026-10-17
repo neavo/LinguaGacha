@@ -3,7 +3,7 @@ import { create_rpgmaker_mv_mz_adapter } from "./rpgmaker-format";
 import { read_javascript_strings } from "./javascript";
 import { create_item } from "../../../domain/item";
 
-const members = create_rpgmaker_mv_mz_adapter({
+const members = await create_rpgmaker_mv_mz_adapter({
   target_language: "ZH",
   write_translated_name_fields_to_file: true,
 }).create_members(new Map());

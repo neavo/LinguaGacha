@@ -1,6 +1,6 @@
 import path from "node:path";
 import type { NativeFs } from "../../native/native-fs";
-import { is_rpgmaker_file_type } from "../../shared/project-source-formats";
+import { is_game_file_type } from "../../shared/project-source-formats";
 import { AppError } from "../../shared/error";
 import { validate_zip_member_path } from "./shared/zip-members";
 import {
@@ -11,13 +11,13 @@ import {
 export const GAME_BACKUP_DIRECTORY = "backup_lg";
 export const GAME_WORKSPACE_DIRECTORY = ".tmp";
 
-/** 译文输出位置：RM 移除最后一个 `.zip` 作为独占目录，其余格式保留资产路径。 */
+/** 译文输出位置：游戏 移除最后一个 `.zip` 作为独占目录，其余格式保留资产路径。 */
 export function source_file_output_path(file: string, file_type?: string): string {
   const normalized = normalize_project_asset_path(file);
-  if (!is_rpgmaker_file_type(file_type)) return normalized;
+  if (!is_game_file_type(file_type)) return normalized;
   if (!normalized.endsWith(".zip") || normalized.endsWith("/.zip") || normalized === ".zip")
     throw new AppError("request.validation_failed", {
-      diagnostic_context: { reason: "invalid_rpgmaker_asset_path", path: file },
+      diagnostic_context: { reason: "invalid_game_asset_path", path: file },
     });
   return validate_zip_member_path(normalized.slice(0, -4));
 }
@@ -25,7 +25,7 @@ export function source_file_output_path(file: string, file_type?: string): strin
 /** 资产身份与译文输出位置分别占位，游戏输出目录由该资产独占。 */
 export class SourceFilePathIndex {
   private readonly assets = new ProjectAssetPathIndex(); // 数据库身份也决定工作区原稿入口。
-  private readonly outputs = new ProjectAssetPathIndex(); // RM 输出目录与普通文件按同一规则避让。
+  private readonly outputs = new ProjectAssetPathIndex(); // 游戏 输出目录与普通文件按同一规则避让。
   private readonly output_by_asset = new Map<string, string>(); // 同名替换必须仍占用原来的输出位置。
 
   /** 替换仅豁免同一资产，防止把另一资产的输出目录当作同名文件。 */

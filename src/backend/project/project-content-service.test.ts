@@ -1,3 +1,5 @@
+import { wolf_files } from "../../test/wolf-fixture";
+import { wolf_archive_fixture } from "../../test/wolf-archive-fixture";
 import { evb_fixture } from "../../test/evb-fixture";
 import { add_test_asset_from_source } from "../../test/asset-fixture";
 import { rgss_archive_fixture } from "../../test/rgss-archive-fixture";
@@ -233,6 +235,52 @@ describe("ProjectContentService", () => {
         "normal.txt",
       ]);
       expect(fs.readdirSync(root).sort()).toEqual(["Game.ini", "Game.rgss3a"]);
+    } finally {
+      await database.close();
+    }
+  });
+  it("WOLF 单资产导入、追加替换和离线重置保存格式身份与默认资格", async () => {
+    const { database, service, lg_path } = await create_service();
+    const root = project_path("wolf");
+    fs.mkdirSync(root);
+    const archive = path.join(root, "Data.wolf");
+    fs.writeFileSync(
+      archive,
+      await wolf_archive_fixture(
+        new Map([...wolf_files()].map(([name, bytes]) => [name.slice(5), bytes])),
+        350,
+      ),
+    );
+    try {
+      const preview = await service.preview_import_files({ source_paths: [root] });
+      expect(preview.files).toHaveLength(1);
+      expect(fs.existsSync(archive)).toBe(true);
+      await service.import_files({
+        files: preview.files!,
+        conflict_action: "replace",
+        expected_section_revisions: { files: 0, items: 0 },
+      });
+      expect(await database.get_all_asset_records(lg_path)).toMatchObject([
+        { path: "wolf.zip", file_type: "WOLF3" },
+      ]);
+      const baseline = await database.get_all_items(lg_path);
+      expect(baseline.find((item) => item.src === "主标题")?.status).toBe("RULE_SKIPPED");
+      expect(baseline.find((item) => item.src === "原文")?.status).toBe("NONE");
+      const next = await service.preview_import_files({ source_paths: [root] });
+      expect(next.files![0]!.conflict).toBe(true);
+      await service.import_files({
+        files: next.files!,
+        conflict_action: "replace",
+        expected_section_revisions: { files: 1, items: 1 },
+      });
+      fs.renameSync(root, root + "-moved");
+      await service.reset_files({
+        rel_paths: ["wolf.zip"],
+        expected_section_revisions: { items: 2 },
+      });
+      expect(
+        (await database.get_all_items(lg_path)).map(({ src, status }) => ({ src, status })),
+      ).toEqual(baseline.map(({ src, status }) => ({ src, status })));
     } finally {
       await database.close();
     }

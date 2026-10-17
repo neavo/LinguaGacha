@@ -1,4 +1,4 @@
-import { RPGMAKER_EVENT as EVENT } from "../shared/rpgmaker-format";
+import { RPGMAKER_EVENT as EVENT } from "../shared/rpgmaker-event";
 import assert from "node:assert/strict";
 import { deflateSync } from "node:zlib";
 import { create_item, type Item } from "../../../domain/item";

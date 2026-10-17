@@ -1,4 +1,4 @@
-import { RPGMakerMvMzPrepareWorker } from "../file/rpgmaker-mv-mz/prepare-worker";
+import { GamePrepareWorker } from "../file/game/prepare-worker";
 import { configure_rgss_parser } from "../file/rpgmaker-rgss/ruby";
 import { configure_rpgmaker_parser } from "../file/rpgmaker-mv-mz/javascript";
 import type { SettingsUpdateResponse } from "../../shared/settings";
@@ -124,7 +124,7 @@ export class BackendServices {
   private readonly publish_event: BackendServicesOptions["publishEvent"]; // 目录应用完成后才通知消费方。
   private readonly app_setting_service: AppSettingService; // 引用 Bootstrap 提供的唯一设置服务
   private readonly cache_manager: CacheManager; // 所有领域服务共用的项目热读缓存
-  private readonly rpgmaker_mv_mz_prepare_worker: RPGMakerMvMzPrepareWorker;
+  private readonly game_prepare_worker: GamePrepareWorker;
   private readonly pdf_worker: PDFWorker; // 独立文档计算与取消，随业务根释放
   private readonly compute_worker_client: ComputeWorkerClient; // 缓存的校对与质量统计共享，随业务根释放
   private readonly task_runtime: BatchTranslationRuntime; // 关闭时先等待任务收束，再释放执行池
@@ -179,10 +179,10 @@ export class BackendServices {
           ),
       options.pdfHost,
     );
-    this.rpgmaker_mv_mz_prepare_worker = new RPGMakerMvMzPrepareWorker(
+    this.game_prepare_worker = new GamePrepareWorker(
       options.workerExecution.kind === "in_process"
         ? null
-        : options.workerExecution.rpgmakerMvMzPrepareWorkerEntryUrl,
+        : options.workerExecution.gamePrepareWorkerEntryUrl,
     );
     this.compute_worker_client = new ComputeWorkerClient({
       execution: options.workerExecution,
@@ -221,7 +221,7 @@ export class BackendServices {
       write_store,
       this.pdf_worker.run,
       undefined,
-      this.rpgmaker_mv_mz_prepare_worker.run,
+      this.game_prepare_worker.run,
     );
     this.work_unit_worker_pool = new TranslationWorkerPool({
       builtinRoot: paths.get_builtin_root(),
@@ -274,7 +274,7 @@ export class BackendServices {
         this.app_setting_service,
         undefined,
         this.logManager,
-        this.rpgmaker_mv_mz_prepare_worker.run,
+        this.game_prepare_worker.run,
       ),
     };
     const settings_commands = new AppSettingsCommandService(
@@ -407,7 +407,7 @@ export class BackendServices {
       this.planning_worker_pool.dispose(),
       this.compute_worker_client.dispose(),
       this.pdf_worker.dispose(),
-      this.rpgmaker_mv_mz_prepare_worker.dispose(),
+      this.game_prepare_worker.dispose(),
     ]);
     for (const result of worker_results) {
       if (result.status === "rejected") {

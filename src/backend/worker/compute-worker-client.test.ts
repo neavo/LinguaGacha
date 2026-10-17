@@ -136,9 +136,7 @@ describe("ComputeWorkerClient", () => {
     const client = new ComputeWorkerClient({
       execution: {
         kind: "worker_threads",
-        rpgmakerMvMzPrepareWorkerEntryUrl: new URL(
-          "file:///rpgmaker-mv-mz-prepare-worker-entry.js",
-        ),
+        gamePrepareWorkerEntryUrl: new URL("file:///game-prepare-worker-entry.js"),
         computeWorkerEntryUrl: new URL("file:///compute-worker-entry.js"),
         planningWorkerEntryUrl: new URL("file:///planning-worker-entry.js"),
         workUnitWorkerEntryUrl: new URL("file:///work-unit-worker-entry.js"),

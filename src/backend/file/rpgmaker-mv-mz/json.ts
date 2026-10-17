@@ -1,4 +1,4 @@
-import { RPGMAKER_EVENT } from "../shared/rpgmaker-format";
+import { RPGMAKER_EVENT } from "../shared/rpgmaker-event";
 import type { Item } from "../../../domain/item";
 import type { JsonValue } from "../../../domain/json";
 import { create_rpgmaker_extractor } from "./extractor";

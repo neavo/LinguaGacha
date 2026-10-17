@@ -11,7 +11,7 @@ import {
 } from "../../../test/rgss-fixture";
 import { decode, encode, type MarshalNode } from "./marshal";
 import { read_rgss_json, read_rgss_sources } from "./readable";
-import { read_rpgmaker_container } from "../shared/rpgmaker-format";
+import { read_game_container } from "../game/format";
 import { write_text } from "./value";
 import { RGSS_VERSIONS } from "./source";
 
@@ -120,7 +120,7 @@ it.each(Object.values(RGSS_VERSIONS))(
       .file(`Data/System${extension}`, encode(o("RPG::System", { "@game_title": s("标题") })))
       .file(`Custom/Scripts${extension}`, encode(scripts))
       .file(`Data/Broken${extension}`, Buffer.from("broken"));
-    const files = await read_rpgmaker_container(
+    const files = await read_game_container(
       await zip.generateAsync({ type: "uint8array" }),
       "fixture",
     );
@@ -152,7 +152,7 @@ it.each([false, true])("配置存在=%s 时，报告缺失的配置或脚本位�
   const content = encode(a([]));
   const zip = new JSZip().file("Data/System.rvdata2", content);
   if (has_ini) zip.file("Game.ini", "[Game]\n");
-  const files = await read_rpgmaker_container(
+  const files = await read_game_container(
     await zip.generateAsync({ type: "uint8array" }),
     "fixture",
   );

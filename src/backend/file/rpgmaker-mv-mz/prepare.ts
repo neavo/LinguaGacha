@@ -2,14 +2,14 @@ import { restore_evb_launcher } from "../shared/evb/pe";
 import path from "node:path";
 import type { NativeFs } from "../../../native/native-fs";
 import { is_json_record } from "../../../domain/json";
-import { prepare_game_directory, type GamePreparation } from "../shared/rpgmaker-prepare";
+import { prepare_game_directory, type GamePreparation } from "../game/prepare";
 import {
   assert_regular_path,
   collect_existing_files,
   validate_game_path,
 } from "../source-file-paths";
 import { read_evb, extract_evb_member } from "../shared/evb/archive";
-import type { RPGMakerMvMzPrepareExecution, RPGMakerMvMzPrepareTask } from "./prepare-worker";
+import type { GamePrepareExecution, GamePrepareTask } from "../game/prepare-worker";
 import { read_evb_game, type RPGMakerSource } from "./source";
 import { RPGMakerJsonCodec } from "./json-codec";
 import { decrypt_media, MEDIA_EXTENSIONS } from "./media";
@@ -18,7 +18,7 @@ import { decrypt_media, MEDIA_EXTENSIONS } from "./media";
 export async function prepare_rpgmaker_source(
   game: RPGMakerSource,
   fs: NativeFs,
-  execute?: RPGMakerMvMzPrepareExecution,
+  execute?: GamePrepareExecution,
   signal?: AbortSignal,
 ): Promise<string> {
   signal?.throwIfAborted();
@@ -33,7 +33,7 @@ export async function prepare_rpgmaker_source(
     game.root,
     fs,
     (staging) => {
-      const task: RPGMakerMvMzPrepareTask = { game, staging };
+      const task: GamePrepareTask = { kind: "mv_mz", game, staging };
       return execute ? execute(task, signal) : stage_rpgmaker_source(task, fs, signal);
     },
     signal,
@@ -43,7 +43,7 @@ export async function prepare_rpgmaker_source(
 
 /** worker 只拥有暂存目录，来源目录中的文件始终只读。 */
 export async function stage_rpgmaker_source(
-  { game, staging }: RPGMakerMvMzPrepareTask,
+  { game, staging }: Readonly<{ game: RPGMakerSource; staging: string }>,
   fs: NativeFs,
   signal?: AbortSignal,
 ): Promise<GamePreparation> {

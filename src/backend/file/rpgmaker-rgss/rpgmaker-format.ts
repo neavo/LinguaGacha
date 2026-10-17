@@ -1,6 +1,6 @@
 import path from "node:path";
 import { AppError } from "../../../shared/error";
-import type { GameFormatAdapter } from "../shared/rpgmaker-format";
+import type { GameFormatAdapter } from "../game/format";
 import { read_rgss_game } from "./source";
 import { read_rgss_metadata } from "./item";
 import { decode, encode } from "./marshal";
@@ -11,7 +11,7 @@ export function create_rpgmaker_rgss_adapter(): GameFormatAdapter {
   return {
     file_type: "RPGMAKER_RGSS",
     internal_path: (item) => read_rgss_metadata(item.extra_field).internal_file_path,
-    create_members: (files) => {
+    create_members: async (files) => {
       // 按需共享成功或失败，身份错误仍由成员读取和译文生成各自处理。
       let game: ReturnType<typeof read_rgss_game> | undefined;
       const read_game = () => (game ??= read_rgss_game(files));

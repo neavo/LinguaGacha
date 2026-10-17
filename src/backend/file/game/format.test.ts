@@ -6,22 +6,19 @@ import path from "node:path";
 import { expect, it, vi } from "vitest";
 import { NativeFs } from "../../../native/native-fs";
 import { create_rpgmaker_mv_mz_adapter } from "../rpgmaker-mv-mz/rpgmaker-format";
-import { RPGMakerGameFormat, read_rpgmaker_container } from "./rpgmaker-format";
+import { GameFormat, read_game_container } from "./format";
 
-it("RM 拒绝没有原稿文件的容器", async () => {
+it("游戏 拒绝没有原稿文件的容器", async () => {
   const zip = new JSZip().folder("data")!;
   await expect(
-    read_rpgmaker_container(await zip.generateAsync({ type: "uint8array" }), "game.zip"),
+    read_game_container(await zip.generateAsync({ type: "uint8array" }), "game.zip"),
   ).rejects.toMatchObject({ code: "file.invalid_structure" });
 });
 
 it("首次备份与容器共用读取字节，重复导入保留可覆盖恢复的原文", async () => {
   using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-game-backup-"));
   const native = new NativeFs();
-  const format = new RPGMakerGameFormat(
-    create_rpgmaker_mv_mz_adapter({ target_language: "ZH" }),
-    native,
-  );
+  const format = new GameFormat(create_rpgmaker_mv_mz_adapter({ target_language: "ZH" }), native);
   const names = ["www/data/System.json", "www/js/plugins.js", "www/js/plugins/Menu.js"];
   const entries = names.map((rel_path) => ({
     rel_path,
@@ -32,7 +29,7 @@ it("首次备份与容器共用读取字节，重复导入保留可覆盖恢复�
   const read = vi.spyOn(native, "read_file");
   const game = { root: temp.path, engine: "mv" };
   const prepared = await format.prepare_source(entries, "game.zip", game);
-  const zip = await read_rpgmaker_container(prepared.content, "game.zip");
+  const zip = await read_game_container(prepared.content, "game.zip");
   for (const entry of entries) {
     expect(read.mock.calls.filter(([file]) => file === entry.source_path)).toHaveLength(1);
     expect(fs.readFileSync(path.join(temp.path, "backup_lg", entry.rel_path))).toEqual(
@@ -57,10 +54,7 @@ it("首次备份与容器共用读取字节，重复导入保留可覆盖恢复�
 it.each([false, true])("已有备份 %s 时读取失败均中止导入，恢复读取后可重试", async (existing) => {
   using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-source-read-"));
   const native = new NativeFs();
-  const format = new RPGMakerGameFormat(
-    create_rpgmaker_mv_mz_adapter({ target_language: "ZH" }),
-    native,
-  );
+  const format = new GameFormat(create_rpgmaker_mv_mz_adapter({ target_language: "ZH" }), native);
   const game = { root: temp.path, engine: "mz" };
   const entries = ["data/System.json", "js/plugins/Menu.js"].map((rel_path) => ({
     rel_path,
@@ -82,8 +76,8 @@ it.each([false, true])("已有备份 %s 时读取失败均中止导入，恢复�
       "original",
     );
 });
-it("RM 解析通过共享容器入口拒绝越界成员", async () => {
-  const format = new RPGMakerGameFormat(
+it("游戏 解析通过共享容器入口拒绝越界成员", async () => {
+  const format = new GameFormat(
     create_rpgmaker_mv_mz_adapter({ target_language: "ZH" }),
     new NativeFs(),
   );
@@ -100,10 +94,7 @@ it("解析失败保留原始字节，备份与零条目导出仍包含该文件"
   fs.writeFileSync(path.join(temp.path, "data/System.json"), "{}");
   fs.writeFileSync(path.join(temp.path, "data/Broken.json"), "{");
   const native = new NativeFs();
-  const service = new RPGMakerGameFormat(
-    create_rpgmaker_mv_mz_adapter({ target_language: "ZH" }),
-    native,
-  );
+  const service = new GameFormat(create_rpgmaker_mv_mz_adapter({ target_language: "ZH" }), native);
   const entries = ["data/Broken.json", "data/System.json"].map((rel_path) => ({
     rel_path,
     source_path: path.join(temp.path, rel_path),

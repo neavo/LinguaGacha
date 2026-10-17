@@ -8,11 +8,12 @@ import {
   validate_game_path,
   assert_game_path_spellings,
 } from "../source-file-paths";
-import { create_game_workspace } from "./rpgmaker-backup";
+import { create_game_workspace } from "./backup";
 
 /** 暂存完成后的变更清单，由主线程提交到游戏目录。 */
 export type GamePreparation = Readonly<{
   writes: readonly string[];
+  directories?: readonly string[];
   removes?: readonly string[];
 }>;
 
@@ -43,14 +44,30 @@ export async function prepare_game_directory(
     const plan = await stage(staging);
     signal?.throwIfAborted();
     const targets = [...plan.writes, ...(plan.removes ?? [])];
-    assert_game_path_spellings(targets);
+    const directories = new Set(plan.directories ?? []);
+    for (const name of [...targets, ...directories]) validate_game_path(name);
+    // 显式目录和文件父目录共同声明正式目录需求，不能按文件占位加入资产索引。
+    for (const name of [...directories, ...plan.writes]) {
+      const parts = name.split("/");
+      for (let length = 1; length < parts.length; length++)
+        directories.add(parts.slice(0, length).join("/"));
+    }
+    assert_game_path_spellings([...targets, ...directories]);
     const paths = new ProjectAssetPathIndex();
+    const file_paths = new Set(targets.map((name) => name.toLowerCase()));
+    for (const name of targets) paths.add(name);
+    for (const name of directories)
+      if (file_paths.has(name.toLowerCase()))
+        throw new Error("Game file conflicts with required directory: " + name);
+    const ordered_directories = [...directories].sort(
+      (left, right) => left.split("/").length - right.split("/").length || (left < right ? -1 : 1),
+    );
     const rollback_files = new Set<string>();
     const directory_entries = new Map<string, Map<string, string | null>>();
-    for (const name of targets) {
+    for (const name of [...ordered_directories, ...targets]) {
       await checkpoint();
-      validate_game_path(name);
-      paths.add(name);
+      const target = path.join(root, name);
+      assert_regular_path(target, fs);
       let parent = root;
       for (const part of name.split("/")) {
         if (fs.exists(parent)) {
@@ -69,15 +86,19 @@ export async function prepare_game_directory(
         }
         parent = path.join(parent, part);
       }
-      const target = path.join(root, name);
-      assert_regular_path(target, fs);
       if (fs.exists(target)) {
-        if (!fs.stat(target).isFile())
-          throw new Error("Game file conflicts with directory: " + name);
-        rollback_files.add(name);
+        if (directories.has(name)) {
+          if (!fs.stat(target).isDirectory())
+            throw new Error("Game directory conflicts with file: " + name);
+        } else {
+          if (!fs.stat(target).isFile())
+            throw new Error("Game file conflicts with directory: " + name);
+          rollback_files.add(name);
+        }
       }
     }
     for (const name of plan.writes) {
+      await checkpoint();
       assert_regular_path(path.join(staging, name), fs);
       if (!fs.stat(path.join(staging, name)).isFile())
         throw new Error("Missing staged file: " + name);
@@ -90,21 +111,22 @@ export async function prepare_game_directory(
       fs.copy_file(path.join(root, name), destination);
       recovery_files.set(name, destination);
     }
+    for (const name of ordered_directories) {
+      await checkpoint();
+      const directory = path.join(root, name);
+      assert_regular_path(directory, fs);
+      if (fs.exists(directory)) {
+        if (!fs.stat(directory).isDirectory())
+          throw new Error("Game directory conflicts with file: " + name);
+      } else {
+        await fs.make_dir_exclusive(directory);
+        created_directories.push(directory);
+      }
+    }
     for (const name of plan.writes) {
       await checkpoint();
       const destination = path.join(root, name);
       assert_regular_path(destination, fs);
-      const missing: string[] = [];
-      for (
-        let directory = path.dirname(destination);
-        !fs.exists(directory);
-        directory = path.dirname(directory)
-      )
-        missing.push(directory);
-      for (const directory of missing.reverse()) {
-        await fs.make_dir_exclusive(directory);
-        created_directories.push(directory);
-      }
       changed.push(name);
       fs.rename(path.join(staging, name), destination); // 暂存位于游戏目录所在卷，直接替换避免在目标旁生成临时文件。
     }

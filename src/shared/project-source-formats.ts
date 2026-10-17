@@ -111,6 +111,13 @@ export const PROJECT_SOURCE_FORMATS = [
   },
   {
     source_kind: "game",
+    id: "wolf3",
+    extension: ".exe",
+    title_key: "project_page.formats.wolf3",
+    description_keys: [],
+  },
+  {
+    source_kind: "game",
     id: "rpgmaker_mv_mz",
     extension: ".exe",
     title_key: "project_page.formats.rpgmaker_mv_mz",
@@ -152,9 +159,9 @@ export type ProjectSourceFileSummary = {
   format_hit_counts: ProjectSourceFormatHitCounts; // 包含目录内全部格式，未命中项固定为零
 };
 
-/** 两个原生游戏格式都拥有独立导出目录。 */
-export function is_rpgmaker_file_type(
-  type: string | undefined,
-): type is "RPGMAKER_MV_MZ" | "RPGMAKER_RGSS" {
-  return type === "RPGMAKER_MV_MZ" || type === "RPGMAKER_RGSS";
+export type GameFileType = "RPGMAKER_MV_MZ" | "RPGMAKER_RGSS" | "WOLF3";
+
+/** 原生游戏格式拥有独立导出目录。 */
+export function is_game_file_type(type: string | undefined): type is GameFileType {
+  return type === "RPGMAKER_MV_MZ" || type === "RPGMAKER_RGSS" || type === "WOLF3";
 }
