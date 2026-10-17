@@ -111,9 +111,9 @@ export const PROJECT_SOURCE_FORMATS = [
   },
   {
     source_kind: "game",
-    id: "wolf3",
+    id: "wolfrpg",
     extension: ".exe",
-    title_key: "project_page.formats.wolf3",
+    title_key: "project_page.formats.wolfrpg",
     description_keys: [],
   },
   {
@@ -159,9 +159,9 @@ export type ProjectSourceFileSummary = {
   format_hit_counts: ProjectSourceFormatHitCounts; // 包含目录内全部格式，未命中项固定为零
 };
 
-export type GameFileType = "RPGMAKER_MV_MZ" | "RPGMAKER_RGSS" | "WOLF3";
+export type GameFileType = "RPGMAKER_MV_MZ" | "RPGMAKER_RGSS" | "WOLFRPG";
 
 /** 原生游戏格式拥有独立导出目录。 */
 export function is_game_file_type(type: string | undefined): type is GameFileType {
-  return type === "RPGMAKER_MV_MZ" || type === "RPGMAKER_RGSS" || type === "WOLF3";
+  return type === "RPGMAKER_MV_MZ" || type === "RPGMAKER_RGSS" || type === "WOLFRPG";
 }

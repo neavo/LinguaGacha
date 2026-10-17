@@ -65,7 +65,7 @@ it("RGSS 生成路径与原始成员冲突时失败，避免覆盖原稿证据",
   ).rejects.toMatchObject({ code: "request.validation_failed" });
 });
 
-it.each(["RPGMAKER_MV_MZ", "RPGMAKER_RGSS", "WOLF3", "EPUB"])(
+it.each(["RPGMAKER_MV_MZ", "RPGMAKER_RGSS", "WOLFRPG", "EPUB"])(
   "%s 拒绝越界容器成员，外部路径没有写入",
   async (file_type) => {
     using root = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-sources-rm-"));
@@ -89,7 +89,7 @@ it("WOLF 原字节和只读 JSON 投影共同保留，名称冲突时失败", as
   const args = {
     nativeFs: new NativeFs(),
     sourceRoot: root.path,
-    files: [{ file_path: "game.zip", file_type: "WOLF3" }],
+    files: [{ file_path: "game.zip", file_type: "WOLFRPG" }],
     readAsset: () => zip.generateAsync({ type: "nodebuffer" }),
   };
   await write_agent_workspace_sources(args);

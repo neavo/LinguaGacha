@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import path from "node:path";
-import type { GameFiles, GameFormatAdapter } from "../game/format";
+import type { GameFiles, GameFormatAdapter } from "../shared/game/format";
 import type { WolfDocument } from "./binary";
 import { read_wolf_common } from "./common-events";
 import { read_wolf_database, read_wolf_map_registry, type WolfDatabase } from "./database";
@@ -89,7 +89,7 @@ export async function create_wolf_context(
 /** 原生游戏适配器共用原稿容器、状态和导出生命周期。 */
 export function create_wolf_adapter(): GameFormatAdapter {
   return {
-    file_type: "WOLF3",
+    file_type: "WOLFRPG",
     internal_path: (item) => read_wolf_metadata(item.extra_field).internal_file_path,
     create_members: async (files: GameFiles) => {
       const context = await create_wolf_context(files);

@@ -51,7 +51,7 @@ const LOCATION_FIELDS = {
 
 /** 持久化输入按种类和完整字段集合验证，不接受行号或字节偏移定位。 */
 export function read_wolf_metadata(extra: Item["extra_field"]): WolfMetadata {
-  const value = read_json_record(read_json_record(extra)["wolf3"]);
+  const value = read_json_record(read_json_record(extra)["wolfrpg"]);
   assert(typeof value["internal_file_path"] === "string", "Invalid WOLF internal path");
   validate_game_path(value["internal_file_path"]);
   assert(value["usage"] === "text" || value["usage"] === "metadata", "Invalid WOLF usage");
@@ -92,12 +92,12 @@ export function extract_wolf_items(document: WolfDocument, file: string): Item[]
     .map((slot, row) => {
       const usage = slot.usage;
       return create_item({
-        file_type: "WOLF3",
+        file_type: "WOLFRPG",
         file_path: file,
         row,
         src: slot.text,
         status: usage === "text" ? "NONE" : "RULE_SKIPPED",
-        extra_field: { wolf3: { internal_file_path: file, usage, location: slot.location } },
+        extra_field: { wolfrpg: { internal_file_path: file, usage, location: slot.location } },
       });
     });
 }

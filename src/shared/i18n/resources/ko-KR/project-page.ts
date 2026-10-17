@@ -70,7 +70,7 @@ export const ko_kr_project_page = {
     trans_export: "Translator++에서 내보낸 게임 텍스트",
     wolf: "WOLF 공식 번역 도구에서 내보낸 게임 텍스트",
     trans: "Translator++ 프로젝트 파일",
-    wolf3: "WOLF RPG 3 게임 파일",
+    wolfrpg: "WOLF RPG 3 게임 파일",
     rpgmaker_mv_mz: "RPG Maker MV/MZ 게임 파일",
     rpgmaker_rgss: "RPG Maker XP/VX/VXAce 게임 파일",
   },

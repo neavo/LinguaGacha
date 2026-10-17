@@ -68,7 +68,7 @@ export const zh_cn_project_page = {
     trans_export: "Translator++ 导出游戏文本",
     wolf: "WOLF 官方翻译工具导出游戏文本",
     trans: "Translator++ 项目文件",
-    wolf3: "WOLF RPG 3 游戏文件",
+    wolfrpg: "WOLF RPG 3 游戏文件",
     rpgmaker_mv_mz: "RPG Maker MV/MZ 游戏文件",
     rpgmaker_rgss: "RPG Maker XP/VX/VXAce 游戏文件",
   },

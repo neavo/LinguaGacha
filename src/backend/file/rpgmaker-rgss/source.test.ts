@@ -5,7 +5,7 @@ import path from "node:path";
 import { NativeFs } from "../../../native/native-fs";
 import { rgss_archive_fixture } from "../../../test/rgss-archive-fixture";
 import { script_path, read_rgss_game, discover_rgss_source } from "./source";
-import { read_game_container } from "../game/format";
+import { read_game_container } from "../shared/game/format";
 import { write_zip } from "../../../test/zip-fixture";
 
 it.each(["read", "decode", "header", "missing"])("RGSS %s 失败保留候选与具体原因", (failure) => {

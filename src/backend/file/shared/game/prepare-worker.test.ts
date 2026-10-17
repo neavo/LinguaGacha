@@ -9,12 +9,12 @@ import os from "node:os";
 import { setTimeout } from "node:timers/promises";
 import { beforeAll, afterAll, expect, it, vi } from "vitest";
 import { GamePrepareWorker } from "./prepare-worker";
-import { build_worker_threads_backend_worker_execution_from_desktop_bundle_dir } from "../../worker/worker-execution";
-import { evb_fixture } from "../../../test/evb-fixture";
-import { wolf_files } from "../../../test/wolf-fixture";
-import { wolf_archive_fixture } from "../../../test/wolf-archive-fixture";
-import { rgss_archive_fixture } from "../../../test/rgss-archive-fixture";
-import { NativeFs } from "../../../native/native-fs";
+import { build_worker_threads_backend_worker_execution_from_desktop_bundle_dir } from "../../../worker/worker-execution";
+import { evb_fixture } from "../../../../test/evb-fixture";
+import { wolf_files } from "../../../../test/wolf-fixture";
+import { wolf_archive_fixture } from "../../../../test/wolf-archive-fixture";
+import { rgss_archive_fixture } from "../../../../test/rgss-archive-fixture";
+import { NativeFs } from "../../../../native/native-fs";
 
 let runtime: string;
 beforeAll(() => {
@@ -94,7 +94,7 @@ it("发行线程完成暂存后退出，取消也等到句柄释放，随后仍�
   await expect(worker.run(task)).rejects.toThrow();
 }, 30000);
 
-it.each(["rgss", "wolf3"] as const)(
+it.each(["rgss", "wolfrpg"] as const)(
   "%s 使用共用线程暂存，关闭等待取消完成且来源保持原样",
   async (kind) => {
     using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-game-worker-"));
@@ -104,14 +104,14 @@ it.each(["rgss", "wolf3"] as const)(
       ["large.bin", Buffer.alloc(8 * 1024 * 1024, 42)],
       ...[...wolf_files()].map(([name, bytes]): [string, Buffer] => [name.slice(5), bytes]),
     ]);
-    const archive = kind === "wolf3" ? "Data.wolf" : "Game.rgss3a";
+    const archive = kind === "wolfrpg" ? "Data.wolf" : "Game.rgss3a";
     const bytes =
-      kind === "wolf3"
+      kind === "wolfrpg"
         ? await wolf_archive_fixture(wolf, 350, { empty_directory: true })
         : rgss_archive_fixture(3, new Map([["large.bin", Buffer.alloc(8 * 1024 * 1024, 42)]]));
     fs.writeFileSync(path.join(temp.path, archive), bytes);
     const task =
-      kind === "wolf3"
+      kind === "wolfrpg"
         ? {
             kind,
             staging,
@@ -127,7 +127,7 @@ it.each(["rgss", "wolf3"] as const)(
     );
     const pending = worker.run(task);
     const rejected = expect(pending).rejects.toThrow();
-    const active_file = path.join(staging, kind === "wolf3" ? "Data/large.bin" : "large.bin");
+    const active_file = path.join(staging, kind === "wolfrpg" ? "Data/large.bin" : "large.bin");
     const deadline = Date.now() + 10000;
     while (!fs.existsSync(active_file)) {
       if (Date.now() > deadline) throw new Error("Worker did not begin extraction");
@@ -143,7 +143,7 @@ it.each(["rgss", "wolf3"] as const)(
     try {
       const result = await next.run(task);
       expect(result.removes).toEqual([archive]);
-      if (kind === "wolf3") {
+      if (kind === "wolfrpg") {
         expect(result.directories).toEqual(
           expect.arrayContaining(["Data", "Data/Empty", "Data/BasicData", "Data/MapData"]),
         );
@@ -203,10 +203,10 @@ it("仓库外真实 Electron 加载部署准备线程并等待退出", async () 
     import path from 'node:path';
     import { pathToFileURL } from 'node:url';
     import { setTimeout } from 'node:timers/promises';
-    import { GamePrepareWorker } from ${JSON.stringify(pathToFileURL(path.resolve("src/backend/file/game/prepare-worker.ts")).href)};
+    import { GamePrepareWorker } from ${JSON.stringify(pathToFileURL(path.resolve("src/backend/file/shared/game/prepare-worker.ts")).href)};
     const root=process.cwd();
     const worker=new GamePrepareWorker(pathToFileURL(process.argv[2]));
-    const task={kind:'wolf3',staging:path.join(root,'stage'),game:{root,data_root:path.join(root,'Data'),archives:[{source_path:path.join(root,'Data.wolf'),output_prefix:'Data'}]}};
+    const task={kind:'wolfrpg',staging:path.join(root,'stage'),game:{root,data_root:path.join(root,'Data'),archives:[{source_path:path.join(root,'Data.wolf'),output_prefix:'Data'}]}};
     const pending=worker.run(task); const rejected=assert.rejects(pending);
     const deadline=Date.now()+10000;
     while(!fs.existsSync(path.join(task.staging,'Data/large.bin'))) { if(Date.now()>deadline) throw new Error('Worker did not begin extraction'); await setTimeout(1); }

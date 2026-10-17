@@ -72,7 +72,7 @@ export const en_us_project_page = {
     trans_export: "Translator++ Game Text",
     wolf: "Game Text Exported by the Official WOLF Translation Tool",
     trans: "Translator++ Project File",
-    wolf3: "WOLF RPG 3 game files",
+    wolfrpg: "WOLF RPG 3 game files",
     rpgmaker_mv_mz: "RPG Maker MV/MZ Game File",
     rpgmaker_rgss: "RPG Maker XP/VX/VXAce Game File",
   },

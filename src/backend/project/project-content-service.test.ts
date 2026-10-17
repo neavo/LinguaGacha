@@ -261,7 +261,7 @@ describe("ProjectContentService", () => {
         expected_section_revisions: { files: 0, items: 0 },
       });
       expect(await database.get_all_asset_records(lg_path)).toMatchObject([
-        { path: "wolf.zip", file_type: "WOLF3" },
+        { path: "wolf.zip", file_type: "WOLFRPG" },
       ]);
       const baseline = await database.get_all_items(lg_path);
       expect(baseline.find((item) => item.src === "主标题")?.status).toBe("RULE_SKIPPED");

@@ -1,5 +1,5 @@
-import { discover_wolf_source, wolf_source_root, type WolfSource } from "./wolf3/source";
-import { read_game_backup_engine } from "./game/backup";
+import { discover_wolf_source, wolf_source_root, type WolfSource } from "./wolfrpg/source";
+import { read_game_backup_engine } from "./shared/game/backup";
 import { GAME_BACKUP_DIRECTORY, GameSourceConflictError } from "./source-file-paths";
 import path from "node:path";
 import type { NativeFs } from "../../native/native-fs";
@@ -19,7 +19,7 @@ export type SourceIdentity =
   | Readonly<{ kind: "file"; format: ProjectSourceFormatId | undefined }>
   | Readonly<{ kind: "mv_mz"; game: RPGMakerSource }>
   | Readonly<{ kind: "rgss"; game: RGSSSource }>
-  | Readonly<{ kind: "wolf3"; game: WolfSource }>
+  | Readonly<{ kind: "wolfrpg"; game: WolfSource }>
   | Readonly<{ kind: "failure"; error: unknown }>;
 export type DiscoveredSource = ProjectSourceFileEntry & Readonly<{ source: SourceIdentity }>;
 const FORMATS = new Map<string, ProjectSourceFormatId>(
@@ -96,8 +96,8 @@ async function read_source(
       return {
         source_path: wolf.root,
         rel_path: path.basename(wolf.root) + ".zip",
-        file_type: "WOLF3",
-        source: { kind: "wolf3", game: wolf },
+        file_type: "WOLFRPG",
+        source: { kind: "wolfrpg", game: wolf },
       };
     const mv = await discover_rpgmaker_source(source_path, fs, signal);
     if (mv)
@@ -133,7 +133,7 @@ async function read_source(
 export function assert_source_identities(entries: readonly DiscoveredSource[], fs: NativeFs): void {
   const roots = new Map<string, string>();
   for (const { source } of entries) {
-    if (source.kind !== "mv_mz" && source.kind !== "rgss" && source.kind !== "wolf3") continue;
+    if (source.kind !== "mv_mz" && source.kind !== "rgss" && source.kind !== "wolfrpg") continue;
     const root = fs.to_identity_path(source.game.root);
     const identity =
       source.kind +
@@ -220,7 +220,7 @@ export async function discover_sources(
   for (const source of source_paths) if (source.trim()) await visit(source, source);
   assert_source_identities(entries, fs);
   const roots = entries.flatMap(({ source }) =>
-    source.kind === "mv_mz" || source.kind === "rgss" || source.kind === "wolf3"
+    source.kind === "mv_mz" || source.kind === "rgss" || source.kind === "wolfrpg"
       ? [fs.to_identity_path(source.game.root)]
       : [],
   );
@@ -228,7 +228,7 @@ export async function discover_sources(
   return entries.filter((entry) => {
     const source = entry.source;
     const key = fs.to_identity_path(
-      source.kind === "mv_mz" || source.kind === "rgss" || source.kind === "wolf3"
+      source.kind === "mv_mz" || source.kind === "rgss" || source.kind === "wolfrpg"
         ? source.game.root
         : entry.source_path,
     );

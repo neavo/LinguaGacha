@@ -7,7 +7,7 @@ import {
   OLD_PASSWORDS,
   rng,
   xor,
-} from "../backend/file/wolf3/crypt";
+} from "../backend/file/wolfrpg/crypt";
 
 /** Huffman 使用固定等权树，数据按反转位序编码，独立于生产解码器。 */
 export function wolf_huffman_fixture(input: Buffer): Buffer {

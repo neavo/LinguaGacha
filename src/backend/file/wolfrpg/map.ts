@@ -3,8 +3,8 @@ import { open_wolf_document, WolfReader, WolfProtocolError, type WolfDocument } 
 import { read_wolf_command, read_wolf_route, type WolfCommand } from "./commands";
 
 const MAGIC = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x57, 0x4f, 0x4c, 0x46, 0x4d, 0, 0, 0, 0, 0];
-const VERSIONS = [0x64, 0x65, 0x66, 0x67];
-const COMPRESSED = [0x65, 0x66, 0x67];
+const VERSIONS = [0x64, 0x65, 0x66, 0x67]; // 支持的布局版本。
+const COMPRESSED = [0x65, 0x66, 0x67]; // 其中使用 LZ4 封装的版本。
 
 /** 地图层数和指令附加区由布局标记决定。 */
 export function read_wolf_map(input: Uint8Array): WolfDocument {

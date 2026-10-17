@@ -24,11 +24,11 @@ import { decompress_huffman, decompress_dx_lz } from "./archive-codec";
 import { WOLF_MAX_DATA_BYTES } from "./lz4";
 
 const HEADER_BYTES = 64;
-const MAX_DIRECTORY_BYTES = 32 * 1024 * 1024;
+const MAX_DIRECTORY_BYTES = 32 * 1024 * 1024; // 目录区读取上限，拒绝损坏偏移造成的超大分配。
 const FILE_RECORD_BYTES = 72;
 const DIRECTORY_RECORD_BYTES = 32;
-const MAX_MEMBERS = 1000000;
-export const WOLF_CRYPT_VERSIONS: readonly number[] = [300, 314, 331, 350];
+const MAX_MEMBERS = 1000000; // 成员数量上限，与目录区上限共同约束解析规模。
+export const WOLF_CRYPT_VERSIONS: readonly number[] = [300, 314, 331, 350]; // 支持的归档加密标记。
 export type WolfArchiveMember = Readonly<{
   name: string;
   offset: number;

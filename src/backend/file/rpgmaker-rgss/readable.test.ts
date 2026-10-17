@@ -11,7 +11,7 @@ import {
 } from "../../../test/rgss-fixture";
 import { decode, encode, type MarshalNode } from "./marshal";
 import { read_rgss_json, read_rgss_sources } from "./readable";
-import { read_game_container } from "../game/format";
+import { read_game_container } from "../shared/game/format";
 import { write_text } from "./value";
 import { RGSS_VERSIONS } from "./source";
 

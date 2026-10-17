@@ -2,8 +2,8 @@ import path from "node:path";
 import type { NativeFs } from "../../../native/native-fs";
 import { AppError, read_error_message } from "../../../shared/error";
 import { ProjectAssetPathIndex } from "../../../shared/project/project-asset-paths";
-import { prepare_game_directory, type GamePreparation } from "../game/prepare";
-import type { GamePrepareExecution } from "../game/prepare-worker";
+import { prepare_game_directory, type GamePreparation } from "../shared/game/prepare";
+import type { GamePrepareExecution } from "../shared/game/prepare-worker";
 import {
   assert_game_path_spellings,
   assert_regular_path,
@@ -36,7 +36,7 @@ export async function prepare_wolf_source(
     game.root,
     fs,
     (staging) => {
-      const task = { kind: "wolf3" as const, game, staging };
+      const task = { kind: "wolfrpg" as const, game, staging };
       return execute ? execute(task, signal) : stage_wolf_source(task, fs, signal);
     },
     signal,

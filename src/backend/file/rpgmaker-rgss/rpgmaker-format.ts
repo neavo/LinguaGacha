@@ -1,6 +1,6 @@
 import path from "node:path";
 import { AppError } from "../../../shared/error";
-import type { GameFormatAdapter } from "../game/format";
+import type { GameFormatAdapter } from "../shared/game/format";
 import { read_rgss_game } from "./source";
 import { read_rgss_metadata } from "./item";
 import { decode, encode } from "./marshal";

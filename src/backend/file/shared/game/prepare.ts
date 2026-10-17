@@ -1,13 +1,13 @@
 import { setImmediate } from "node:timers/promises";
 import path from "node:path";
-import type { NativeFs } from "../../../native/native-fs";
-import { AppError, read_error_message } from "../../../shared/error";
-import { ProjectAssetPathIndex } from "../../../shared/project/project-asset-paths";
+import type { NativeFs } from "../../../../native/native-fs";
+import { AppError, read_error_message } from "../../../../shared/error";
+import { ProjectAssetPathIndex } from "../../../../shared/project/project-asset-paths";
 import {
   assert_regular_path,
   validate_game_path,
   assert_game_path_spellings,
-} from "../source-file-paths";
+} from "../../source-file-paths";
 import { create_game_workspace } from "./backup";
 
 /** 暂存完成后的变更清单，由主线程提交到游戏目录。 */

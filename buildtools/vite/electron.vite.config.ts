@@ -19,7 +19,7 @@ export default defineConfig({
             "src/backend/bootstrap/backend-runtime-worker-entry.ts",
           ),
           "game-prepare-worker-entry": project_path(
-            "src/backend/file/game/prepare-worker-entry.ts",
+            "src/backend/file/shared/game/prepare-worker-entry.ts",
           ),
           "compute-worker-entry": project_path("src/backend/worker/compute-worker-entry.ts"),
           "planning-worker-entry": project_path(

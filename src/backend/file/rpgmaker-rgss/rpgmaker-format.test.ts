@@ -1,4 +1,4 @@
-import { GameFormat } from "../game/format";
+import { GameFormat } from "../shared/game/format";
 import { NativeFs } from "../../../native/native-fs";
 import JSZip from "jszip";
 import { create_item } from "../../../domain/item";

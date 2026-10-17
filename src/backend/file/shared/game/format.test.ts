@@ -1,11 +1,11 @@
-import { read_zip_fixture, zip_text, write_zip } from "../../../test/zip-fixture";
+import { read_zip_fixture, zip_text, write_zip } from "../../../../test/zip-fixture";
 import JSZip from "jszip";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { expect, it, vi } from "vitest";
-import { NativeFs } from "../../../native/native-fs";
-import { create_rpgmaker_mv_mz_adapter } from "../rpgmaker-mv-mz/rpgmaker-format";
+import { NativeFs } from "../../../../native/native-fs";
+import { create_rpgmaker_mv_mz_adapter } from "../../rpgmaker-mv-mz/rpgmaker-format";
 import { GameFormat, read_game_container } from "./format";
 
 it("游戏 拒绝没有原稿文件的容器", async () => {

@@ -1,4 +1,4 @@
-import type { GameFiles } from "../game/format";
+import type { GameFiles } from "../shared/game/format";
 import { create_wolf_context } from "./wolf-format";
 
 /** JSON 只读投影使用相同结构解析器，失败成员保留原字节及诊断。 */

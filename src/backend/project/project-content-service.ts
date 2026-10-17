@@ -1,5 +1,5 @@
 import { build_source_file_parse_failure } from "../file/source-file-parse-failure-reporter";
-import type { GamePrepareExecution } from "../file/game/prepare-worker";
+import type { GamePrepareExecution } from "../file/shared/game/prepare-worker";
 import { assert_source_file_paths } from "../file/source-file-paths";
 import { normalize_project_asset_path } from "../../shared/project/project-asset-paths";
 import type { SourceFileParseWarning } from "../file/file-format-types";

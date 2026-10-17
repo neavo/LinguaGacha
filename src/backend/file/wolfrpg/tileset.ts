@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { open_wolf_document, WolfReader, type WolfDocument } from "./binary";
 
 const MAGIC = [0, 0x57, 0, 0, 0x4f, 0x4c, 0, 0x46, 0x4d, 0];
-const TILESET_STRINGS = 33;
+const TILESET_STRINGS = 33; // 每条图块记录固定的字符串数量。
 
 /** 图块名称与资源字段均保留人工编辑资格，通行和属性区原字节保留。 */
 export function read_wolf_tileset(input: Uint8Array): WolfDocument {

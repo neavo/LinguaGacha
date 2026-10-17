@@ -2,8 +2,8 @@ import assert from "node:assert/strict";
 import { open_wolf_document, WolfReader, type WolfDocument } from "./binary";
 
 const MAGIC = [0, 0x57, 0, 0, 0x4f, 0x4c, 0, 0x46, 0x4d, 0];
-const STRING_INDEX_BASE = 2000;
-const INTEGER_INDEX_BASE = 1000;
+const STRING_INDEX_BASE = 2000; // 字段索引从此值起指向字符串列。
+const INTEGER_INDEX_BASE = 1000; // 字段索引从此值起指向整数列。
 export type WolfDatabaseType = {
   name: string;
   fields: Array<{ name: string; type: number }>;

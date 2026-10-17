@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import path from "node:path";
 import type { JsonRecord, JsonValue } from "../../../domain/json";
-import type { GameFiles } from "../game/format";
+import type { GameFiles } from "../shared/game/format";
 import { base, decode, symbol, type MarshalNode } from "./marshal";
 import { array, integer, text, read_text } from "./value";
 import { read_rgss_script } from "./scripts";

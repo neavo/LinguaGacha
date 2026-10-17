@@ -1,11 +1,11 @@
-import { read_wolf_sources } from "../../file/wolf3/readable";
+import { read_wolf_sources } from "../../file/wolfrpg/readable";
 import { is_game_file_type } from "../../../shared/project-source-formats";
 import {
   normalize_project_asset_path,
   ProjectAssetPathIndex,
 } from "../../../shared/project/project-asset-paths";
 import path from "node:path";
-import { read_game_container } from "../../file/game/format";
+import { read_game_container } from "../../file/shared/game/format";
 import { read_rgss_sources } from "../../file/rpgmaker-rgss/readable";
 import { read_zip_members } from "../../file/shared/zip-members";
 import type { NativeFs } from "../../../native/native-fs";
@@ -30,9 +30,9 @@ export async function write_agent_workspace_sources(args: {
         is_game_file_type(file.file_type) ? read_game_container : read_zip_members
       )(content, file.file_path);
       await args.nativeFs.make_dir_async(target);
-      if (file.file_type === "RPGMAKER_RGSS" || file.file_type === "WOLF3") {
+      if (file.file_type === "RPGMAKER_RGSS" || file.file_type === "WOLFRPG") {
         const members = new ProjectAssetPathIndex();
-        for await (const [name, content] of file.file_type === "WOLF3"
+        for await (const [name, content] of file.file_type === "WOLFRPG"
           ? read_wolf_sources(files)
           : read_rgss_sources(files)) {
           members.add(name); // 生成文件与原始成员冲突时中止，交由工作区清理整个投影。

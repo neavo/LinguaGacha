@@ -3,8 +3,8 @@ import { open_wolf_document, WolfReader, type WolfDocument } from "./binary";
 import { read_wolf_command, type WolfCommand } from "./commands";
 
 const MAGIC = [0, 0x57, 0, 0, 0x4f, 0x4c, 0, 0x46, 0x43, 0];
-const VERSIONS = [0x90, 0x91, 0x93, 0xcc];
-const COMPRESSED = [0x93, 0xcc];
+const VERSIONS = [0x90, 0x91, 0x93, 0xcc]; // 支持的布局版本。
+const COMPRESSED = [0x93, 0xcc]; // 其中使用 LZ4 封装的版本。
 
 /** 事件 ID 用作上下文，写回使用原稿数组中的物理位置。 */
 export function read_wolf_common(input: Uint8Array): WolfDocument {

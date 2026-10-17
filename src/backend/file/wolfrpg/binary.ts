@@ -12,7 +12,7 @@ export type WolfSlot = Readonly<{
   usage: "text" | "metadata";
   context: string;
 }>;
-const MAX_COUNT = 1000000;
+const MAX_COUNT = 1000000; // 计数字段上限，拒绝损坏长度造成的超大分配。
 /** 未识别协议必须在目录提交前拒绝，与可保留原稿的成员解析失败分开。 */
 export class WolfProtocolError extends Error {}
 export type WolfDocument = {

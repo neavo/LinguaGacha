@@ -1,4 +1,4 @@
-import type { GameFormatAdapter } from "../game/format";
+import type { GameFormatAdapter } from "../shared/game/format";
 import path from "node:path";
 import { AppError } from "../../../shared/error";
 import { decode_text_content } from "../../../shared/utils/text-tool";

@@ -1,18 +1,18 @@
-import { stage_wolf_source } from "../wolf3/prepare";
-import type { WolfSource } from "../wolf3/source";
+import { stage_wolf_source } from "../../wolfrpg/prepare";
+import type { WolfSource } from "../../wolfrpg/source";
 import { Worker } from "node:worker_threads";
-import { stage_rpgmaker_source } from "../rpgmaker-mv-mz/prepare";
-import type { RPGMakerSource } from "../rpgmaker-mv-mz/source";
-import { stage_rgss_source } from "../rpgmaker-rgss/prepare";
-import type { RGSSSource } from "../rpgmaker-rgss/source";
+import { stage_rpgmaker_source } from "../../rpgmaker-mv-mz/prepare";
+import type { RPGMakerSource } from "../../rpgmaker-mv-mz/source";
+import { stage_rgss_source } from "../../rpgmaker-rgss/prepare";
+import type { RGSSSource } from "../../rpgmaker-rgss/source";
 import type { GamePreparation } from "./prepare";
-import { default_native_fs, type NativeFs } from "../../../native/native-fs";
-import type { LogError } from "../../../shared/error";
+import { default_native_fs, type NativeFs } from "../../../../native/native-fs";
+import type { LogError } from "../../../../shared/error";
 
 export type GamePrepareTask =
   | Readonly<{ kind: "mv_mz"; game: RPGMakerSource; staging: string }>
   | Readonly<{ kind: "rgss"; game: RGSSSource; staging: string }>
-  | Readonly<{ kind: "wolf3"; game: WolfSource; staging: string }>;
+  | Readonly<{ kind: "wolfrpg"; game: WolfSource; staging: string }>;
 export type GamePrepareResponse = { result: GamePreparation } | { error: LogError };
 export type GamePrepareExecution = (
   task: GamePrepareTask,
@@ -26,7 +26,7 @@ export function stage_game_source(
   signal?: AbortSignal,
 ): Promise<GamePreparation> {
   switch (task.kind) {
-    case "wolf3":
+    case "wolfrpg":
       return stage_wolf_source(task, fs, signal);
     case "mv_mz":
       return stage_rpgmaker_source(task, fs, signal);

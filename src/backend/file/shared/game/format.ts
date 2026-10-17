@@ -1,18 +1,18 @@
 import { check_game_backup, write_game_backup } from "./backup";
-import { validate_game_path, assert_game_path_spellings } from "../source-file-paths";
-import type { GameFileType } from "../../../shared/project-source-formats";
+import { validate_game_path, assert_game_path_spellings } from "../../source-file-paths";
+import type { GameFileType } from "../../../../shared/project-source-formats";
 import path from "node:path";
 import JSZip from "jszip";
-import type { NativeFs } from "../../../native/native-fs";
-import type { Item } from "../../../domain/item";
-import { AppError } from "../../../shared/error";
+import type { NativeFs } from "../../../../native/native-fs";
+import type { Item } from "../../../../domain/item";
+import { AppError } from "../../../../shared/error";
 import type {
   FileFormatServiceWriteContext,
   SourceFileParseWarning,
   ProjectSourceFileEntry,
-} from "../file-format-types";
-import { assert_source_file_paths, source_file_output_path } from "../source-file-paths";
-import { read_zip_members } from "../shared/zip-members";
+} from "../../file-format-types";
+import { assert_source_file_paths, source_file_output_path } from "../../source-file-paths";
+import { read_zip_members } from "../zip-members";
 
 /** 游戏 固化容器必须包含文件，空容器不能作为游戏原稿。 */
 export async function read_game_container(

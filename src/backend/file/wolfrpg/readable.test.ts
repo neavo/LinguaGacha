@@ -2,7 +2,7 @@ import { expect, it } from "vitest";
 import JSZip from "jszip";
 import { wolf_files, wolf_common, wolf_command } from "../../../test/wolf-fixture";
 import { FileFormatService } from "../file-format-service";
-import { read_game_container } from "../game/format";
+import { read_game_container } from "../shared/game/format";
 import { read_wolf_sources } from "./readable";
 import { read_wolf_common } from "./common-events";
 import { read_wolf_map } from "./map";
@@ -19,7 +19,7 @@ it("地图登记资格在条目和 Agent 投影中一致", async () => {
   for (const [name, content] of files) zip.file(name, content);
   const content = await zip.generateAsync({ type: "uint8array" });
   const service = new FileFormatService({ target_language: "ZH" }, async () => null);
-  const parsed = await service.parse_asset("game.zip", content, "WOLF3");
+  const parsed = await service.parse_asset("game.zip", content, "WOLFRPG");
   if (parsed.kind !== "items") throw new Error("Expected items");
   const projections = new Map<
     string,

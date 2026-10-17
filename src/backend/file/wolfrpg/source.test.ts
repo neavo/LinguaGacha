@@ -19,7 +19,7 @@ it("名为 Data 的游戏根目录仍可识别，单独归档不能成为工程�
   const service = new FileFormatService({ target_language: "ZH" }, async () => null, native);
   const entries = await service.collect_source_file_entries([root, path.join(root, "Data")]);
   expect(entries).toHaveLength(1);
-  expect(entries[0]!.file_type).toBe("WOLF3");
+  expect(entries[0]!.file_type).toBe("WOLFRPG");
   expect(await service.collect_source_file_entries([path.join(root, "Data/Picture.wolf")])).toEqual(
     [],
   );

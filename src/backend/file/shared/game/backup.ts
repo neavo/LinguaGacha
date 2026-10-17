@@ -1,20 +1,20 @@
 import path from "node:path";
-import type { NativeFs } from "../../../native/native-fs";
-import { AppError, read_error_message } from "../../../shared/error";
+import type { NativeFs } from "../../../../native/native-fs";
+import { AppError, read_error_message } from "../../../../shared/error";
 import {
   assert_regular_path,
   assert_game_path_spellings,
   validate_game_path,
   GAME_BACKUP_DIRECTORY,
   GAME_WORKSPACE_DIRECTORY,
-} from "../source-file-paths";
-import { ProjectAssetPathIndex } from "../../../shared/project/project-asset-paths";
-import { is_json_record } from "../../../domain/json";
+} from "../../source-file-paths";
+import { ProjectAssetPathIndex } from "../../../../shared/project/project-asset-paths";
+import { is_json_record } from "../../../../domain/json";
 
-const LEGACY_DIRECTORIES = [".linguagacha-backup", ".lg-original"] as const;
+const LEGACY_DIRECTORIES = [".linguagacha-backup", ".lg-original"] as const; // 旧版备份目录，存在时要求用户先处理。
 const BACKUP_MARKER = ".linguagacha-backup.json";
 const BACKUP_VERSION = 1;
-const BACKUP_ENGINES = new Set(["mv", "mz", "xp", "vx", "ace", "wolf3"]);
+const BACKUP_ENGINES = new Set(["mv", "mz", "xp", "vx", "ace", "wolfrpg"]); // 标记中可识别的引擎身份。
 
 /** 来源识别只读取标记身份，原稿覆盖仍由正式备份校验负责。 */
 export function read_game_backup_engine(directory: string, fs: NativeFs): string | null {

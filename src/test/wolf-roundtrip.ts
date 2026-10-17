@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { replace_wolf_slots, type WolfDocument } from "../backend/file/wolf3/binary";
+import { replace_wolf_slots, type WolfDocument } from "../backend/file/wolfrpg/binary";
 
 /** 各布局共用字节守恒契约，调用者仍负责自己的结构预期。 */
 export function assert_wolf_roundtrip(

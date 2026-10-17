@@ -2,7 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { expect, it, vi } from "vitest";
-import { NativeFs } from "../../../native/native-fs";
+import { NativeFs } from "../../../../native/native-fs";
 import { prepare_game_directory, type GamePreparation } from "./prepare";
 
 /** 混合覆盖、新增和移除，直接观察目录事务的恢复结果。 */

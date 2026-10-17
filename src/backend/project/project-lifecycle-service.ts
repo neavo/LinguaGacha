@@ -1,4 +1,4 @@
-import type { GamePrepareExecution } from "../file/game/prepare-worker";
+import type { GamePrepareExecution } from "../file/shared/game/prepare-worker";
 import type { SourceFileParseWarning } from "../file/file-format-types";
 import { normalize_batch_translation_progress } from "../../domain/batch-translation";
 import { coordinate_project_duplicate_statuses } from "../../shared/project/project-item-duplicates";

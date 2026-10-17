@@ -28,7 +28,7 @@ export const ITEM_FILE_TYPES = [
   "EPUB",
   "XLSX",
   "WOLFXLSX",
-  "WOLF3",
+  "WOLFRPG",
   "RENPY",
   "TRANS",
   "RPGMAKER_MV_MZ",

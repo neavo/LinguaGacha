@@ -1,4 +1,4 @@
-import { GamePrepareWorker } from "../file/game/prepare-worker";
+import { GamePrepareWorker } from "../file/shared/game/prepare-worker";
 import { configure_rgss_parser } from "../file/rpgmaker-rgss/ruby";
 import { configure_rpgmaker_parser } from "../file/rpgmaker-mv-mz/javascript";
 import type { SettingsUpdateResponse } from "../../shared/settings";

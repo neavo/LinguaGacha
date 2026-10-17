@@ -2,8 +2,8 @@ import path from "node:path";
 import type { NativeFs } from "../../../native/native-fs";
 import { type RGSSSource, RGSS_VERSIONS } from "./source";
 import { extract_rgss_member, read_rgss_archive } from "./archive";
-import type { GamePrepareExecution } from "../game/prepare-worker";
-import { prepare_game_directory, type GamePreparation } from "../game/prepare";
+import type { GamePrepareExecution } from "../shared/game/prepare-worker";
+import { prepare_game_directory, type GamePreparation } from "../shared/game/prepare";
 import { assert_regular_path, validate_game_path } from "../source-file-paths";
 
 /** RGSS 提供解包写入与原封装删除清单，共享入口负责提交和回滚。 */

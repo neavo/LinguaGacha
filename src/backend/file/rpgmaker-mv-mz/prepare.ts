@@ -2,14 +2,14 @@ import { restore_evb_launcher } from "../shared/evb/pe";
 import path from "node:path";
 import type { NativeFs } from "../../../native/native-fs";
 import { is_json_record } from "../../../domain/json";
-import { prepare_game_directory, type GamePreparation } from "../game/prepare";
+import { prepare_game_directory, type GamePreparation } from "../shared/game/prepare";
 import {
   assert_regular_path,
   collect_existing_files,
   validate_game_path,
 } from "../source-file-paths";
 import { read_evb, extract_evb_member } from "../shared/evb/archive";
-import type { GamePrepareExecution, GamePrepareTask } from "../game/prepare-worker";
+import type { GamePrepareExecution, GamePrepareTask } from "../shared/game/prepare-worker";
 import { read_evb_game, type RPGMakerSource } from "./source";
 import { RPGMakerJsonCodec } from "./json-codec";
 import { decrypt_media, MEDIA_EXTENSIONS } from "./media";

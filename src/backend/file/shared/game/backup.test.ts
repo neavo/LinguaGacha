@@ -2,7 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { expect, it, vi } from "vitest";
-import { NativeFs } from "../../../native/native-fs";
+import { NativeFs } from "../../../../native/native-fs";
 import { check_game_backup, read_game_backup_engine, write_game_backup } from "./backup";
 import { prepare_game_directory } from "./prepare";
 

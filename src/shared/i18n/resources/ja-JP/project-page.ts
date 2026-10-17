@@ -70,7 +70,7 @@ export const ja_jp_project_page = {
     trans_export: "Translator++ から出力したゲームテキスト",
     wolf: "WOLF 公式翻訳ツールから出力したゲームテキスト",
     trans: "Translator++ プロジェクトファイル",
-    wolf3: "WOLF RPG 3 ゲームファイル",
+    wolfrpg: "WOLF RPG 3 ゲームファイル",
     rpgmaker_mv_mz: "RPG Maker MV/MZ ゲームファイル",
     rpgmaker_rgss: "RPG Maker XP/VX/VXAce ゲームファイル",
   },

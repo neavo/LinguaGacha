@@ -2,8 +2,8 @@ import assert from "node:assert/strict";
 import { open_wolf_document, WolfReader, type WolfDocument } from "./binary";
 
 const MAGIC = [0, 0x57, 0, 0, 0x4f, 0x4c, 0, 0x46, 0x4d, 0];
-const COUNTS = [8, 9, 13, 14];
-const TEXT_FIELDS = new Set([8, 11, 12]);
+const COUNTS = [8, 9, 13, 14]; // 已知版本的字符串槽位数量。
+const TEXT_FIELDS = new Set([8, 11, 12]); // 默认参与翻译的槽位，其余槽位作为元数据。
 
 /** 主标题参与存档身份，魔数与密钥不是可编辑字符串。 */
 export function read_wolf_game(input: Uint8Array): WolfDocument {

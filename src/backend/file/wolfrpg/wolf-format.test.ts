@@ -29,8 +29,8 @@ it("游戏根目录、EXE 和 Data 去重为一个资产，解包覆盖散装文
   const sources = [root, path.join(root, "GamePro.exe"), path.join(root, "Data")];
   const entries = await service.collect_source_file_entries(sources);
   expect(entries).toHaveLength(1);
-  expect(entries[0]!.file_type).toBe("WOLF3");
-  expect((await service.summarize_source_files(sources)).format_hit_counts.wolf3).toBe(1);
+  expect(entries[0]!.file_type).toBe("WOLFRPG");
+  expect((await service.summarize_source_files(sources)).format_hit_counts.wolfrpg).toBe(1);
   const asset = await service.prepare_source(entries[0]!);
   expect(fs.existsSync(path.join(root, "Data.wolf"))).toBe(false);
   for (const [name, bytes] of files) {
@@ -42,7 +42,7 @@ it("游戏根目录、EXE 和 Data 去重为一个资产，解包覆盖散装文
   expect(
     (await service.collect_source_file_entries([path.join(root, "backup_lg")]))[0]!.source.kind,
   ).toBe("failure");
-  const parsed = await service.parse_asset("game.zip", asset.content, "WOLF3");
+  const parsed = await service.parse_asset("game.zip", asset.content, "WOLFRPG");
   if (parsed.kind !== "items") throw new Error("Expected items");
   expect(parsed.warnings).toEqual([]);
   const common = parsed.items.find(
@@ -66,7 +66,7 @@ it("游戏根目录、EXE 和 Data 去重为一个资产，解包覆盖散装文
       bilingual_path: path.join(temp.path, "bilingual"),
     },
     asset_reader: async () => Buffer.from(asset.content),
-    source_files: [{ path: "game.zip", file_type: "WOLF3" }],
+    source_files: [{ path: "game.zip", file_type: "WOLFRPG" }],
   };
   await service.write_items(parsed.items.toReversed(), context);
   for (const [name, bytes] of files) {
@@ -87,12 +87,12 @@ it("缺少核心配对整项失败，损坏的独立地图保留警告和零条�
   const parsed = await service.parse_asset(
     "game.zip",
     await zip.generateAsync({ type: "uint8array" }),
-    "WOLF3",
+    "WOLFRPG",
   );
   if (parsed.kind !== "items") throw new Error("Expected items");
   expect(parsed.warnings).toMatchObject([{ internal_file_path: "Data/MapData/Broken.mps" }]);
   zip.remove("Data/BasicData/SysDatabase.project");
   await expect(
-    service.parse_asset("game.zip", await zip.generateAsync({ type: "uint8array" }), "WOLF3"),
+    service.parse_asset("game.zip", await zip.generateAsync({ type: "uint8array" }), "WOLFRPG"),
   ).rejects.toThrow("Missing WOLF companion");
 });

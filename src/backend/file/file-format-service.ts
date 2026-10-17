@@ -1,8 +1,8 @@
-import { create_wolf_adapter } from "./wolf3/wolf-format";
-import { wolf_default_status } from "./wolf3/item";
-import { prepare_wolf_source } from "./wolf3/prepare";
-import { collect_wolf_files } from "./wolf3/source";
-import { GameFormat } from "./game/format";
+import { create_wolf_adapter } from "./wolfrpg/wolf-format";
+import { wolf_default_status } from "./wolfrpg/item";
+import { prepare_wolf_source } from "./wolfrpg/prepare";
+import { collect_wolf_files } from "./wolfrpg/source";
+import { GameFormat } from "./shared/game/format";
 import { build_source_file_parse_failure } from "./source-file-parse-failure-reporter";
 import {
   discover_source,
@@ -11,7 +11,7 @@ import {
   type DiscoveredSource,
 } from "./source-discovery";
 import { prepare_rpgmaker_source } from "./rpgmaker-mv-mz/prepare";
-import type { GamePrepareExecution } from "./game/prepare-worker";
+import type { GamePrepareExecution } from "./shared/game/prepare-worker";
 import { rpgmaker_default_status } from "./rpgmaker-mv-mz/item";
 import { rgss_default_status } from "./rpgmaker-rgss/item";
 import { create_rpgmaker_rgss_adapter } from "./rpgmaker-rgss/rpgmaker-format";
@@ -65,7 +65,7 @@ export class FileFormatService {
   public static default_status(item: Pick<Item, "file_type" | "extra_field">): ItemStatus {
     if (item.file_type === "RPGMAKER_MV_MZ") return rpgmaker_default_status(item);
     if (item.file_type === "RPGMAKER_RGSS") return rgss_default_status(item);
-    if (item.file_type === "WOLF3") return wolf_default_status(item);
+    if (item.file_type === "WOLFRPG") return wolf_default_status(item);
     return "NONE";
   }
 
@@ -98,7 +98,7 @@ export class FileFormatService {
     this.games = {
       RPGMAKER_MV_MZ: new GameFormat(create_rpgmaker_mv_mz_adapter(config), native_fs),
       RPGMAKER_RGSS: new GameFormat(create_rpgmaker_rgss_adapter(), native_fs),
-      WOLF3: new GameFormat(create_wolf_adapter(), native_fs),
+      WOLFRPG: new GameFormat(create_wolf_adapter(), native_fs),
     };
     this.txt = new TXTFormat(config);
     this.md = new MDV2Format();
@@ -315,12 +315,12 @@ export class FileFormatService {
     signal?.throwIfAborted();
     const { source, rel_path } = entry;
     if (source.kind === "failure") throw source.error;
-    if (source.kind === "wolf3") {
+    if (source.kind === "wolfrpg") {
       await prepare_wolf_source(source.game, this.native_fs, this.game_prepare_execution, signal);
-      return this.games.WOLF3.prepare_source(
+      return this.games.WOLFRPG.prepare_source(
         collect_wolf_files(source.game, this.native_fs),
         rel_path,
-        { root: source.game.root, engine: "wolf3" },
+        { root: source.game.root, engine: "wolfrpg" },
         signal,
       );
     }
@@ -367,8 +367,8 @@ export class FileFormatService {
 
     for (const source_file of source_files) {
       const format_id =
-        source_file.source.kind === "wolf3"
-          ? "wolf3"
+        source_file.source.kind === "wolfrpg"
+          ? "wolfrpg"
           : source_file.source.kind === "mv_mz"
             ? "rpgmaker_mv_mz"
             : source_file.source.kind === "rgss"
