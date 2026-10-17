@@ -8,6 +8,8 @@ import {
   WorkbenchTableContextMenuItems,
 } from "@frontend/pages/workbench-page/components/workbench-table-action-menu";
 import type { WorkbenchFileEntry } from "@shared/workbench/workbench-query";
+import type { LocaleKey } from "@shared/i18n";
+import { is_game_file_type } from "@shared/project-source-formats";
 import { Badge } from "@frontend/shadcn/badge";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@frontend/shadcn/tooltip";
 import { AppButton } from "@frontend/widgets/app-button";
@@ -71,7 +73,7 @@ function sort_workbench_entries(
   return sorted_entries;
 }
 
-/** 页面内排序只改变展示；手动重排通过回调保存工程顺序。 */
+/** 页面内排序用于展示，手动重排通过回调保存工程顺序。 */
 export function WorkbenchFileTable(props: WorkbenchFileTableProps): JSX.Element {
   const { t } = useI18n();
   const [sort_state, set_sort_state] = useState<AppTableSortState | null>(null);
@@ -90,6 +92,13 @@ export function WorkbenchFileTable(props: WorkbenchFileTableProps): JSX.Element 
         head_class_name: "workbench-page__table-file-head",
         cell_class_name: "workbench-page__table-file-cell",
         render_cell: (payload) => {
+          // PDF 需要 Agent，原生游戏仅推荐 Agent，两种提示共用同一入口。
+          const agent_hint_key: LocaleKey | null =
+            payload.row.file_type === "PDF"
+              ? "workbench_page.table.agent_only"
+              : is_game_file_type(payload.row.file_type)
+                ? "workbench_page.table.agent_recommended"
+                : null;
           return (
             <div className="workbench-page__table-file">
               <Tooltip>
@@ -105,7 +114,7 @@ export function WorkbenchFileTable(props: WorkbenchFileTableProps): JSX.Element 
                 </TooltipTrigger>
                 <TooltipContent>{payload.row.rel_path}</TooltipContent>
               </Tooltip>
-              {payload.row.file_type === "PDF" ? (
+              {agent_hint_key !== null ? (
                 <Tooltip>
                   <TooltipTrigger
                     render={
@@ -114,7 +123,7 @@ export function WorkbenchFileTable(props: WorkbenchFileTableProps): JSX.Element 
                   >
                     {t("workbench_page.table.agent")}
                   </TooltipTrigger>
-                  <TooltipContent>{t("workbench_page.table.agent_only")}</TooltipContent>
+                  <TooltipContent>{t(agent_hint_key)}</TooltipContent>
                 </Tooltip>
               ) : null}
             </div>

@@ -51,7 +51,6 @@ type WorkbenchImportFilesFlowOptions = {
 
 export type WorkbenchImportFilesFlow = {
   request_add_files_from_paths: (source_paths: string[]) => Promise<void>;
-  request_add_file_from_path: (source_path: string) => Promise<void>;
   confirm_dialog: () => Promise<boolean>;
   secondary_dialog: () => Promise<boolean>;
   close_dialog: () => boolean;
@@ -258,16 +257,6 @@ export function useWorkbenchImportFilesFlow(
     [options, request_add_files_from_paths],
   );
 
-  /**
-   * 单文件入口复用批量导入流程，保持拖放和文件选择行为一致。
-   */
-  const request_add_file_from_path = useCallback(
-    async (source_path: string): Promise<void> => {
-      await request_add_files_from_paths([source_path]);
-    },
-    [request_add_files_from_paths],
-  );
-
   /** 两类按钮共享提交与错误处理，阶段只决定用户选择。 */
   const handle_dialog = useCallback(
     async (primary: boolean): Promise<boolean> => {
@@ -332,7 +321,6 @@ export function useWorkbenchImportFilesFlow(
 
   return {
     request_add_files_from_paths,
-    request_add_file_from_path,
     confirm_dialog,
     secondary_dialog,
     close_dialog,

@@ -9,7 +9,8 @@ export const ja_jp_workbench_page = {
     file_name: "ファイル名",
     progress: "進捗",
     agent: "AGENT",
-    agent_only: "このファイルは AGENT でのみ翻訳できます",
+    agent_only: "AGENT でのみ翻訳できます",
+    agent_recommended: "翻訳には AGENT の使用をおすすめします",
     actions: "操作",
   },
   feedback: {

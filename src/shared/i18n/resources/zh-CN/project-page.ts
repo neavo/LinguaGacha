@@ -6,7 +6,7 @@ export const zh_cn_project_page = {
     drop_title: "点击或拖拽源文件",
     ready_status: "已选择 {COUNT} 个源文件",
     loading_toast: "正在创建工程 …",
-    unavailable: "该目录下没有支持的源文件",
+    unavailable: "所选内容中没有支持的源文件",
     default_preset_loaded: "已自动加载默认预设：{NAMES} …",
     default_presets: {
       glossary: "术语表",

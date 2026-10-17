@@ -9,16 +9,17 @@ import "@frontend/widgets/file-drop-zone/file-drop-zone.css";
 
 type FileDropIssue = "multiple" | "unavailable";
 
+// 回调形状决定单选或批量，避免多选配置把路径静默截成首项。
 type FileDropZoneProps = {
   label: string;
   children: ReactNode;
   className?: string;
   disabled?: boolean;
-  allow_multiple_paths?: boolean;
-  on_path_drop: (path: string) => void | Promise<void>;
-  on_paths_drop?: (paths: string[]) => void | Promise<void>;
   on_drop_issue?: (issue: FileDropIssue) => void;
-};
+} & (
+  | { on_path_drop: (path: string) => void | Promise<void>; on_paths_drop?: never }
+  | { on_paths_drop: (paths: string[]) => void | Promise<void>; on_path_drop?: never }
+);
 
 /** 组件拥有拖放反馈与路径选择，文件读写由调用者接管。 */
 export function FileDropZone(props: FileDropZoneProps): JSX.Element {
@@ -78,28 +79,23 @@ export function FileDropZone(props: FileDropZoneProps): JSX.Element {
       return;
     }
 
-    const dropped_path = resolve_dropped_paths(event.dataTransfer);
-    if (dropped_path.has_multiple_paths && !props.allow_multiple_paths) {
+    const paths = resolve_dropped_paths(event.dataTransfer);
+    if (paths.length > 1 && props.on_paths_drop === undefined) {
       props.on_drop_issue?.("multiple");
       return;
     }
 
-    if (dropped_path.paths.length === 0) {
+    if (paths.length === 0) {
       props.on_drop_issue?.("unavailable");
       return;
     }
 
-    if (props.allow_multiple_paths && props.on_paths_drop !== undefined) {
-      await props.on_paths_drop(dropped_path.paths);
+    if (props.on_paths_drop !== undefined) {
+      await props.on_paths_drop(paths);
       return;
     }
 
-    const first_path = dropped_path.paths[0] ?? "";
-    if (first_path === "") {
-      props.on_drop_issue?.("unavailable");
-      return;
-    }
-    await props.on_path_drop(first_path);
+    await props.on_path_drop(paths[0]!);
   }
 
   return (

@@ -9,7 +9,7 @@ export const de_de_project_page = {
     drop_title: "Klicken oder Quelldatei hierher ziehen",
     ready_status: "{COUNT} Quelldateien ausgewählt",
     loading_toast: "Projekt wird erstellt …",
-    unavailable: "Keine unterstützten Quelldateien in diesem Verzeichnis gefunden",
+    unavailable: "Die Auswahl enthält keine unterstützten Quelldateien",
     default_preset_loaded: "Standard-Voreinstellungen geladen: {NAMES} …",
     default_presets: {
       glossary: "Glossar",

@@ -9,7 +9,7 @@ export const en_us_project_page = {
     drop_title: "Click or Drag Source File",
     ready_status: "{COUNT} source files selected",
     loading_toast: "Creating project …",
-    unavailable: "No supported source files found in this directory",
+    unavailable: "The selection contains no supported source files",
     default_preset_loaded: "Default presets loaded: {NAMES} …",
     default_presets: {
       glossary: "Glossary",

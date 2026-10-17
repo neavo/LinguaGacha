@@ -29,10 +29,6 @@ export function WorkbenchPage(_props: WorkbenchPageProps): JSX.Element {
       <FileDropZone
         label={t("app.drop.import_here")}
         disabled={!workbench_state.can_edit_files}
-        allow_multiple_paths={true}
-        on_path_drop={(path) => {
-          void workbench_state.request_add_file_from_path(path);
-        }}
         on_paths_drop={(paths) => {
           void workbench_state.request_add_files_from_paths(paths);
         }}

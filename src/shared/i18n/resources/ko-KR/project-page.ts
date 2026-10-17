@@ -8,7 +8,7 @@ export const ko_kr_project_page = {
     drop_title: "클릭하거나 원본 파일 놓기",
     ready_status: "원본 파일 {COUNT}개 선택됨",
     loading_toast: "프로젝트 생성 중 …",
-    unavailable: "이 폴더에 지원하는 원본 파일이 없습니다",
+    unavailable: "선택한 항목에 지원되는 원본 파일이 없습니다",
     default_preset_loaded: "기본 프리셋을 자동으로 불러왔습니다: {NAMES} …",
     default_presets: {
       glossary: "용어집",

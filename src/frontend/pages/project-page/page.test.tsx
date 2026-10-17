@@ -55,9 +55,14 @@ vi.mock("@frontend/widgets/app-context-menu", () => {
   return {
     AppContextMenu: (props: { children: ReactNode }) => <div>{props.children}</div>,
     AppContextMenuContent: (props: { children: ReactNode }) => <div>{props.children}</div>,
-    AppContextMenuItem: (props: { children: ReactNode; onClick?: (event: Event) => void }) => (
+    AppContextMenuItem: (props: {
+      children: ReactNode;
+      disabled?: boolean;
+      onClick?: (event: Event) => void;
+    }) => (
       <button
         type="button"
+        disabled={props.disabled}
         onClick={() => {
           props.onClick?.(new Event("select"));
         }}
@@ -191,13 +196,6 @@ function install_desktop_app_fixture(): void {
   });
 }
 
-/** 等待当前交互链上的 Promise 更新进入 React 状态。 */
-async function flush_async_updates(): Promise<void> {
-  for (let index = 0; index < 6; index += 1) {
-    await Promise.resolve();
-  }
-}
-
 /** 按用户可见文案读取按钮，缺失时给出可定位错误。 */
 function get_button_by_text(container: HTMLElement, text: string): HTMLButtonElement {
   const button = Array.from(container.querySelectorAll("button")).find((element) => {
@@ -209,6 +207,19 @@ function get_button_by_text(container: HTMLElement, text: string): HTMLButtonEle
   }
 
   return button;
+}
+
+/** 通过真实拖放入口提交宿主路径，让页面自行完成摘要与选择。 */
+async function drop_paths(target: HTMLElement, paths: string[]): Promise<void> {
+  const files = paths.map((path) => new File([], path));
+  vi.mocked(window.desktopApp.getPathForFile).mockImplementation((file) => file.name);
+  const event = new Event("drop", { bubbles: true, cancelable: true });
+  Object.defineProperty(event, "dataTransfer", {
+    value: { files, types: ["Files"], getData: () => "" },
+  });
+  await act(async () => {
+    target.dispatchEvent(event);
+  });
 }
 
 describe("ProjectPage", () => {
@@ -278,12 +289,10 @@ describe("ProjectPage", () => {
 
     await act(async () => {
       get_button_by_text(page_container, "选择文件").click();
-      await flush_async_updates();
     });
 
     await act(async () => {
       get_button_by_text(page_container, "创建工程").click();
-      await flush_async_updates();
     });
   }
 
@@ -321,7 +330,6 @@ describe("ProjectPage", () => {
     await mount_page();
     await act(async () => {
       get_button_by_text(container!, "旧来源名称").click();
-      await flush_async_updates();
     });
     expect(container!.textContent).toContain("2020-12-12 12:12:12");
     expect(container!.textContent).toContain("2026-09-17 14:05:54");
@@ -337,7 +345,6 @@ describe("ProjectPage", () => {
     expect(progress?.textContent).toBe("33.00%");
     await act(async () => {
       get_button_by_text(container!, "打开工程").click();
-      await flush_async_updates();
     });
     expect(api_fetch_mock).toHaveBeenCalledWith("/api/session/project/open", {
       path: project_path,
@@ -391,7 +398,6 @@ describe("ProjectPage", () => {
     await mount_page();
     await act(async () => {
       get_button_by_text(container as HTMLElement, "选择文件").click();
-      await flush_async_updates();
     });
     expect(push_toast_mock).toHaveBeenCalledWith(
       expect.any(String),
@@ -408,7 +414,6 @@ describe("ProjectPage", () => {
     api_fetch_mock.mockResolvedValue({ source_file_count: 1, format_hit_counts: { txt: 1 } });
     await act(async () => {
       get_button_by_text(container as HTMLElement, "选择文件").click();
-      await flush_async_updates();
     });
     expect(get_button_by_text(container as HTMLElement, "创建工程").disabled).toBe(false);
   });
@@ -436,14 +441,12 @@ describe("ProjectPage", () => {
 
     await act(async () => {
       get_button_by_text(container as HTMLElement, "选择文件").click();
-      await flush_async_updates();
     });
 
     expect(container?.textContent).toContain("已选择 2 个源文件");
 
     await act(async () => {
       get_button_by_text(container as HTMLElement, "创建工程").click();
-      await flush_async_updates();
     });
 
     expect(api_fetch_mock).toHaveBeenCalledWith("/api/session/source-files/summary", {
@@ -458,32 +461,163 @@ describe("ProjectPage", () => {
     );
   });
 
-  it("选择源文件后显示数字徽标，重置后清除计数", async () => {
-    vi.mocked(window.desktopApp.pickProjectSourceFilePath).mockResolvedValueOnce({
-      canceled: false,
-      paths: ["E:\\Source\\game.json"],
-    });
-    api_fetch_mock.mockResolvedValueOnce({
-      source_file_count: 1,
-      format_hit_counts: { json: 1 },
-    });
+  it("新批次替换已有来源，按完整集合摘要并按首项创建工程", async () => {
+    const source_paths = ["E:/Source/a.txt", "E:/Other/b.md", "E:/Source/folder"];
     await mount_page();
-
-    await act(async () => {
-      get_button_by_text(container as HTMLElement, "选择文件").click();
-      await flush_async_updates();
+    await drop_paths(get_button_by_text(container!, "点击或拖拽源文件"), ["E:/old.txt"]);
+    api_fetch_mock.mockResolvedValueOnce({
+      source_file_count: 5,
+      format_hit_counts: { txt: 4, md: 1 },
     });
+    await drop_paths(get_button_by_text(container!, "已选择 1 个源文件"), [
+      ...source_paths,
+      source_paths[0]!,
+    ]);
 
-    const selected_tags = Array.from(
-      container?.querySelectorAll<HTMLElement>(".project-home__format-tag") ?? [],
+    expect(api_fetch_mock).toHaveBeenCalledWith("/api/session/source-files/summary", {
+      source_paths,
+    });
+    expect(container!.textContent).toContain("已选择 5 个源文件");
+    const txt_tag = [...container!.querySelectorAll(".project-home__format-tag")].find((tag) =>
+      tag.textContent?.includes("纯文本"),
     );
-    const json_tag = selected_tags.find((tag) => tag.textContent?.includes("JSON 游戏文本"));
-    expect(json_tag?.querySelector('[data-slot="badge"]')?.textContent).toBe("1");
-
+    expect(txt_tag?.querySelector('[data-slot="badge"]')?.textContent).toBe("4");
     await act(async () => {
-      container?.querySelector<HTMLButtonElement>('button[aria-label="重置"]')?.click();
+      get_button_by_text(container!, "创建工程").click();
     });
+    expect(api_fetch_mock).toHaveBeenCalledWith(
+      "/api/session/project/create",
+      expect.objectContaining({ source_paths, path: "E:/Source/a.lg" }),
+    );
+  });
 
-    expect(container?.querySelector('[data-slot="badge"]')).toBeNull();
+  it("拖入无本地路径时提示并保留已有来源", async () => {
+    await mount_page();
+    const source_paths = ["E:/keep.txt"];
+    await drop_paths(get_button_by_text(container!, "点击或拖拽源文件"), source_paths);
+    api_fetch_mock.mockClear();
+    await drop_paths(get_button_by_text(container!, "已选择 1 个源文件"), []);
+    expect(push_toast_mock).toHaveBeenCalledWith("warning", expect.any(String));
+    expect(api_fetch_mock).not.toHaveBeenCalled();
+    await act(async () => {
+      get_button_by_text(container!, "创建工程").click();
+    });
+    expect(api_fetch_mock).toHaveBeenCalledWith(
+      "/api/session/project/create",
+      expect.objectContaining({ source_paths }),
+    );
+  });
+
+  it("有效路径没有支持的来源时清空旧选择", async () => {
+    await mount_page();
+    await drop_paths(get_button_by_text(container!, "点击或拖拽源文件"), ["E:/old.txt"]);
+    api_fetch_mock.mockResolvedValueOnce({ source_file_count: 0, format_hit_counts: {} });
+    await drop_paths(get_button_by_text(container!, "已选择 1 个源文件"), ["E:/empty"]);
+    expect(get_button_by_text(container!, "创建工程").disabled).toBe(true);
+    expect(get_button_by_text(container!, "点击或拖拽源文件").disabled).toBe(false);
+    expect(push_toast_mock).toHaveBeenCalledWith("warning", expect.any(String));
+  });
+
+  it("打开区域拒绝多路径并保留已有工程", async () => {
+    await mount_page();
+    api_fetch_mock.mockResolvedValueOnce({
+      preview: {
+        file_paths: [],
+        created_at: "2026-10-18T00:00:00",
+        updated_at: "2026-10-18T00:00:00",
+        translation_stats: {
+          total_items: 0,
+          completed_count: 0,
+          skipped_count: 0,
+          failed_count: 0,
+          pending_count: 0,
+          completion_percent: 0,
+        },
+      },
+    });
+    await drop_paths(get_button_by_text(container!, "点击或拖拽 .lg 文件"), ["E:/keep.lg"]);
+    api_fetch_mock.mockClear();
+    await drop_paths(get_button_by_text(container!, "keep.lg"), ["E:/a.lg", "E:/b.lg"]);
+    expect(push_toast_mock).toHaveBeenCalledWith("warning", expect.any(String));
+    expect(api_fetch_mock).not.toHaveBeenCalled();
+    expect(get_button_by_text(container!, "keep.lg")).toBeDefined();
+    expect(get_button_by_text(container!, "打开工程").disabled).toBe(false);
+  });
+
+  it.each([false, true])(
+    "摘要期间禁用选择、拖入、创建和重置，完成后恢复（已有选择：%s）",
+    async (has_selection) => {
+      await mount_page();
+      if (has_selection) {
+        await drop_paths(get_button_by_text(container!, "点击或拖拽源文件"), ["E:/old.txt"]);
+      }
+      const pending = Promise.withResolvers<{
+        source_file_count: number;
+        format_hit_counts: { md: number };
+      }>();
+      api_fetch_mock.mockClear();
+      api_fetch_mock.mockReturnValueOnce(pending.promise);
+      const source_paths = ["E:/new/a.md", "E:/new/b.md"];
+      const dropzone_text = has_selection ? "已选择 1 个源文件" : "点击或拖拽源文件";
+      await drop_paths(get_button_by_text(container!, dropzone_text), source_paths);
+      const dropzone = get_button_by_text(container!, dropzone_text);
+      expect(dropzone.disabled).toBe(true);
+      expect(get_button_by_text(container!, "创建工程").disabled).toBe(true);
+      for (const text of ["选择文件", "选择文件夹"]) {
+        const button = get_button_by_text(container!, text);
+        expect(button.disabled).toBe(true);
+        await act(async () => button.click());
+      }
+      if (has_selection) {
+        const reset = container!.querySelector<HTMLButtonElement>('button[aria-label="重置"]')!;
+        expect(reset.disabled).toBe(true);
+        await act(async () => reset.click());
+      }
+      await drop_paths(dropzone, ["E:/ignored.txt"]);
+      expect(window.desktopApp.pickProjectSourceFilePath).not.toHaveBeenCalled();
+      expect(window.desktopApp.pickProjectSourceDirectoryPath).not.toHaveBeenCalled();
+      expect(api_fetch_mock).toHaveBeenCalledExactlyOnceWith("/api/session/source-files/summary", {
+        source_paths,
+      });
+      await act(async () => {
+        pending.resolve({ source_file_count: 2, format_hit_counts: { md: 2 } });
+      });
+      expect(get_button_by_text(container!, "已选择 2 个源文件").disabled).toBe(false);
+      expect(get_button_by_text(container!, "创建工程").disabled).toBe(false);
+      expect(get_button_by_text(container!, "选择文件").disabled).toBe(false);
+      expect(get_button_by_text(container!, "选择文件夹").disabled).toBe(false);
+      const reset = container!.querySelector<HTMLButtonElement>('button[aria-label="重置"]')!;
+      expect(reset.disabled).toBe(false);
+      await act(async () => reset.click());
+      expect(get_button_by_text(container!, "创建工程").disabled).toBe(true);
+      expect(container!.querySelector('[data-slot="badge"]')).toBeNull();
+    },
+  );
+
+  it("创建期间禁止修改来源，结束后恢复选择", async () => {
+    await mount_page();
+    await drop_paths(get_button_by_text(container!, "点击或拖拽源文件"), ["E:/keep.txt"]);
+    const pending = Promise.withResolvers<object>();
+    api_fetch_mock.mockClear();
+    api_fetch_mock.mockReturnValueOnce(pending.promise);
+    await act(async () => {
+      get_button_by_text(container!, "创建工程").click();
+    });
+    const dropzone = get_button_by_text(container!, "已选择 1 个源文件");
+    expect(dropzone.disabled).toBe(true);
+    expect(get_button_by_text(container!, "选择文件").disabled).toBe(true);
+    expect(get_button_by_text(container!, "选择文件夹").disabled).toBe(true);
+    expect(container!.querySelector<HTMLButtonElement>('button[aria-label="重置"]')!.disabled).toBe(
+      true,
+    );
+    await drop_paths(dropzone, ["E:/ignored.txt"]);
+    expect(api_fetch_mock).toHaveBeenCalledExactlyOnceWith(
+      "/api/session/project/create",
+      expect.objectContaining({ source_paths: ["E:/keep.txt"] }),
+    );
+    await act(async () => {
+      pending.resolve({});
+    });
+    expect(get_button_by_text(container!, "点击或拖拽源文件").disabled).toBe(false);
   });
 });

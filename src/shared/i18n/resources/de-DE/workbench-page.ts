@@ -10,7 +10,8 @@ export const de_de_workbench_page = {
     file_name: "Dateiname",
     progress: "Fortschritt",
     agent: "AGENT",
-    agent_only: "Diese Datei kann nur mit AGENT übersetzt werden",
+    agent_only: "Übersetzung nur mit AGENT möglich",
+    agent_recommended: "Wir empfehlen AGENT für die Übersetzung",
     actions: "Aktionen",
   },
   feedback: {

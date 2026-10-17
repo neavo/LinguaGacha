@@ -8,7 +8,7 @@ export const ja_jp_project_page = {
     drop_title: "クリックまたは元ファイルをドロップ",
     ready_status: "元ファイルを {COUNT} 個選択しました",
     loading_toast: "プロジェクトを作成中 …",
-    unavailable: "このフォルダーに対応する元ファイルはありません",
+    unavailable: "選択した内容に対応するソースファイルがありません",
     default_preset_loaded: "既定のプリセットを自動で読み込みました：{NAMES} …",
     default_presets: {
       glossary: "用語集",
