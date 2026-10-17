@@ -3,7 +3,7 @@
 本流程为条目写入译文，适用于翻译、补译、续做和重译。流程到报告现状为止，不审校译文。
 
 - 术语见 `SKILL.md`。
-- 译文按 `writing-guide` 的 `references/translation-guide.md` 形成。
+- 译文按 `writing-guide` 的 `references/translation.md` 形成。
 - 格式专属要求按已加载的格式技能执行。
 
 ## 1. 确定目标
