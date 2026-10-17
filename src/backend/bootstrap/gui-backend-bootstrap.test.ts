@@ -1,6 +1,5 @@
-import { png_fixture } from "../../test/media-fixture";
+import { png_fixture, encrypted_media, MEDIA_KEY } from "../../test/media-fixture";
 import { NativeFs } from "../../native/native-fs";
-import { encrypted_media, MEDIA_KEY } from "../../test/evb-fixture";
 import { Model } from "../../domain/model";
 import http from "node:http";
 import { create_workspace_runtime_fixture } from "../../test/agent-workspace-fixture";

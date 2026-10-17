@@ -31,9 +31,3 @@ export function install_worker_threads_mock<TMessage>(
     emit: (message) => listener?.(message),
   };
 }
-
-/** 等待 worker 入口异步分发与回包完成。 */
-export async function flush_worker_microtasks(): Promise<void> {
-  await Promise.resolve();
-  await Promise.resolve();
-}

@@ -1,12 +1,12 @@
 import { discover_sources } from "../source-discovery";
-import { png_fixture } from "../../../test/media-fixture";
+import { png_fixture, encrypted_media, MEDIA_KEY } from "../../../test/media-fixture";
 import { discover_rpgmaker_source } from "./source";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { expect, it, vi } from "vitest";
 import { NativeFs } from "../../../native/native-fs";
-import { encrypted_media, evb_fixture, MEDIA_KEY } from "../../../test/evb-fixture";
+import { evb_fixture } from "../../../test/evb-fixture";
 import { prepare_rpgmaker_source, stage_rpgmaker_source } from "./prepare";
 import { FileFormatService } from "../file-format-service";
 import { read_game_container } from "../shared/game/format";

@@ -13,30 +13,31 @@ const native = new NativeFs();
 
 /** 游戏以启动程序定位，字体放在游戏目录旁。 */
 function write_game(root: string): { font_path: string; game_path: string } {
+  const game_root = path.join(root, "game");
   for (const [name, bytes] of [...wolf_files(), ["Game.exe", "launcher"] as const])
-    native.write_file_sync(path.join(root, name), bytes);
-  const font_path = path.join(root, "..", path.basename(root) + "-custom.ttf");
+    native.write_file_sync(path.join(game_root, name), bytes);
+  const font_path = path.join(root, "custom.ttf");
   fs.writeFileSync(font_path, font_fixture([{ text: "Custom Gothic" }]));
-  return { font_path, game_path: path.join(root, "Game.exe") };
+  return { font_path, game_path: path.join(game_root, "Game.exe") };
 }
 
 it("拒绝无效请求、非字体文件和不支持的游戏", async () => {
   using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-font-reject-"));
-  const { font_path } = write_game(temp.path);
+  const { font_path, game_path } = write_game(temp.path);
   const service = new GameFontService(
     new RuntimeOperationGate(),
     new GamePrepareWorker(null, native).run,
     native,
   );
-  const bad_font = path.join(temp.path, "Data/BasicData/Game.dat");
+  const bad_font = path.join(path.dirname(game_path), "Data/BasicData/Game.dat");
   await expect(service.inspect({ font_path, game_path: "" })).rejects.toThrow(
     "The request parameters are invalid.",
   );
-  await expect(service.inspect({ font_path: bad_font, game_path: temp.path })).rejects.toThrow(
+  await expect(service.inspect({ font_path: bad_font, game_path })).rejects.toThrow(
     "Unsupported font file",
   );
   await expect(
-    service.inspect({ font_path, game_path: path.join(temp.path, "Data/MapData") }),
+    service.inspect({ font_path, game_path: path.join(path.dirname(game_path), "Data/MapData") }),
   ).rejects.toThrow("Unsupported game for font replacement");
 });
 
@@ -62,5 +63,7 @@ it("写入占用持续到解包与替换结束，期间拒绝重复提交", asyn
   );
   release();
   await first;
-  expect(fs.existsSync(path.join(temp.path, path.basename(request.font_path)))).toBe(true);
+  expect(
+    fs.existsSync(path.join(path.dirname(request.game_path), path.basename(request.font_path))),
+  ).toBe(true);
 });

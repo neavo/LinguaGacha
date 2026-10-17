@@ -6,7 +6,8 @@ import { NativeFs } from "../../../native/native-fs";
 import { wolf_common, wolf_command, wolf_files } from "../../../test/wolf-fixture";
 import { wolf_archive_fixture } from "../../../test/wolf-archive-fixture";
 import { FileFormatService } from "../file-format-service";
-import { wolf_crypt_vectors, wolf_vector } from "../../../test/wolf-crypt-fixture";
+import { wolf_crypt_vectors } from "../../../test/wolf-crypt-vectors";
+import { wolf_vector } from "../../../test/wolf-crypt-fixture";
 import { discover_wolf_source } from "./source";
 import { prepare_wolf_source, stage_wolf_source } from "./prepare";
 

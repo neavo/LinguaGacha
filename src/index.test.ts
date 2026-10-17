@@ -200,7 +200,7 @@ it("仓库外 ASAR 独立启动 CLI，并通过合并后的 SDK 读取成功响�
             ...main?.build?.rolldownOptions,
             input: {
               ...(main?.build?.rolldownOptions?.input as Record<string, string>), // 产品配置使用具名入口，Vite 类型也允许数组。
-              "release-probe": path.resolve("src/test/entry-build-probe.mjs"),
+              "release-probe": path.resolve("src/test/entry-build-probe.ts"),
             },
           },
         },

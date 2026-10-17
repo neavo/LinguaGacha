@@ -1,13 +1,13 @@
 import iconv from "iconv-lite";
 
 /** 测试自有协议夹具；压缩块刻意只含 literal，独立于生产压缩器。 */
-export function wolf_uint(value: number): Buffer {
+function wolf_uint(value: number): Buffer {
   const bytes = Buffer.alloc(4);
   bytes.writeUInt32LE(value >>> 0);
   return bytes;
 }
 /** 生成带长度和零终止符的测试字符串。 */
-export function wolf_string(text: string, utf8 = true): Buffer {
+function wolf_string(text: string, utf8 = true): Buffer {
   const bytes = iconv.encode(text, utf8 ? "utf8" : "cp932");
   return Buffer.concat([wolf_uint(bytes.length + 1), bytes, Buffer.from([0])]);
 }

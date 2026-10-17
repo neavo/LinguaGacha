@@ -1,5 +1,3 @@
-import { add_test_asset_from_source } from "../../test/asset-fixture";
-import { fixture_file_type } from "../../test/asset-fixture";
 import type { ProjectDatabaseAccess } from "../database/database-operations";
 import { read_pdf_document } from "./pdf/pdf-document";
 import { create_pdf_execution, create_pdf_fixture } from "./pdf/test-support";
@@ -34,17 +32,15 @@ afterEach(() => {
 
 it("渲染校验开始前已关闭真实工程连接，校验失败保留文件名和原因且没有输出", async () => {
   const project = path.join(temp_dir, "source.lg");
-  const source = path.join(temp_dir, "source.pdf");
   const output = path.join(temp_dir, "output");
   const bytes = create_pdf_fixture();
-  fs.writeFileSync(source, bytes);
   const document = read_pdf_document(bytes);
   const database = new ProjectDatabase();
   const session = new ProjectSessionState();
   const failure = new Error("invalid markdown");
   try {
     await database.create_project(project, "test", (writer) =>
-      add_test_asset_from_source(writer, project, "book.pdf", source, document),
+      writer.add_asset(project, "book.pdf", bytes, "PDF", document),
     );
     await session.mark_loaded(project);
     const sidecars: boolean[] = [];
@@ -96,7 +92,7 @@ function create_setting_service(
 /** 隔离数据库读取，文件写出仍使用真实格式处理器和临时目录。 */
 function create_database(
   items: Array<Record<string, unknown>>,
-  assets: Record<string, Buffer> = {},
+  assets: Record<string, { content: Buffer; file_type: string }> = {},
   documents: Record<string, PDFDocument> = {},
 ): ProjectDatabase {
   return {
@@ -108,14 +104,13 @@ function create_database(
     },
     get_all_items: () => items,
     get_all_asset_records: () =>
-      Object.keys(assets).map((path, sort_order) => ({
+      Object.entries(assets).map(([path, asset], sort_order) => ({
         path,
         sort_order,
-        file_type: String(
-          items.find((item) => item.file_path === path)?.file_type ?? fixture_file_type(path),
-        ),
+        file_type: asset.file_type,
       })),
-    read_asset_content: (_project_path: string, rel_path: string) => assets[rel_path] ?? null,
+    read_asset_content: (_project_path: string, rel_path: string) =>
+      assets[rel_path]?.content ?? null,
   } as unknown as ProjectDatabase;
 }
 
@@ -161,8 +156,11 @@ describe("TranslationFileGenerationService", () => {
     session.mark_loaded(path.join(temp_dir, "legacy.lg"));
     const service = new TranslationFileGenerationService(
       create_database(items, {
-        "old/sub.txt": Buffer.from(`[Events]\n${fields}\n${prefix}原文\n`),
-        "old/sub.srt": Buffer.from(`7\n${time}\n原文\n\n`),
+        "old/sub.txt": {
+          content: Buffer.from(`[Events]\n${fields}\n${prefix}原文\n`),
+          file_type: "ASS",
+        },
+        "old/sub.srt": { content: Buffer.from(`7\n${time}\n原文\n\n`), file_type: "SRT" },
       }),
       create_setting_service(),
       session,
@@ -183,9 +181,9 @@ describe("TranslationFileGenerationService", () => {
     "%s 导出零条目字幕，目录入口同时排除零条目文件",
     async (entry) => {
       const assets = {
-        "empty.vtt": Buffer.from("WEBVTT\n\nNOTE structure\n"),
-        "empty.lrc": Buffer.from("[offset:50]\n[00:01]\n"),
-        "empty.ssa": Buffer.from("[Events]\n"),
+        "empty.vtt": { content: Buffer.from("WEBVTT\n\nNOTE structure\n"), file_type: "VTT" },
+        "empty.lrc": { content: Buffer.from("[offset:50]\n[00:01]\n"), file_type: "LRC" },
+        "empty.ssa": { content: Buffer.from("[Events]\n"), file_type: "ASS" },
       };
       const session = new ProjectSessionState();
       session.mark_loaded(path.join(temp_dir, "empty.lg"));
@@ -200,7 +198,7 @@ describe("TranslationFileGenerationService", () => {
         entry === "gui"
           ? await service.generate_files()
           : await service.generate_files_to_directory(path.join(temp_dir, "out"), ["empty.lrc"]);
-      for (const [file, content] of Object.entries(assets)) {
+      for (const [file, { content }] of Object.entries(assets)) {
         if (entry === "directory" && file === "empty.lrc") {
           expect(fs.existsSync(path.join(result.output_path, file))).toBe(false);
         } else {
@@ -226,9 +224,9 @@ describe("TranslationFileGenerationService", () => {
       const database = create_database(
         [],
         {
-          "book.pdf": Buffer.from(source),
-          "original.pdf": Buffer.from(source),
-          "empty.pdf": Buffer.from(source),
+          "book.pdf": { content: Buffer.from(source), file_type: "PDF" },
+          "original.pdf": { content: Buffer.from(source), file_type: "PDF" },
+          "empty.pdf": { content: Buffer.from(source), file_type: "PDF" },
         },
         { "book.pdf": partial, "original.pdf": document, "empty.pdf": empty },
       );
@@ -295,7 +293,7 @@ describe("TranslationFileGenerationService", () => {
           row: 0,
         },
       ],
-      { "book.pdf": Buffer.from(source) },
+      { "book.pdf": { content: Buffer.from(source), file_type: "PDF" } },
       { "book.pdf": document },
     );
     const session = new ProjectSessionState();
@@ -444,7 +442,7 @@ describe("TranslationFileGenerationService", () => {
           extra_field: { markdown: { before: "\n\n", after: "\n" } },
         },
       ],
-      { "readme.md": Buffer.from(source) },
+      { "readme.md": { content: Buffer.from(source), file_type: "MD_V2" } },
     );
     const service = new TranslationFileGenerationService(
       database,
@@ -631,7 +629,7 @@ describe("TranslationFileGenerationService", () => {
             row: 0,
           },
         ],
-        { "book.pdf": Buffer.from(source) },
+        { "book.pdf": { content: Buffer.from(source), file_type: "PDF" } },
         { "book.pdf": document },
       );
       const log_collector = { info: vi.fn(), error: vi.fn() };

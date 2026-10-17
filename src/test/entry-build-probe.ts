@@ -1,11 +1,16 @@
 import assert from "node:assert/strict";
-import { Model } from "../domain/model.ts";
-import { read_model_request_snapshot } from "../backend/llm/llm-request.ts";
-import { resolve_one_shot_pi_request } from "../backend/llm/llm-pi.ts";
-import { resolve_model_capability } from "../backend/llm/model-capability.ts";
+import { Model } from "../domain/model";
+import { read_model_request_snapshot } from "../backend/llm/llm-request";
+import { resolve_one_shot_pi_request } from "../backend/llm/llm-pi";
+import { resolve_model_capability } from "../backend/llm/model-capability";
+
+type ResponseFixture = {
+  format: string;
+  events: Array<{ type?: string; [key: string]: unknown }>;
+};
 
 // 自有模型名与成功响应覆盖 SDK 加载和流读取，协议细节由对应业务测试负责。
-const responses = [
+const responses: ResponseFixture[] = [
   {
     format: "OpenAI",
     events: [

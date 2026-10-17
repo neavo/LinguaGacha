@@ -1,5 +1,3 @@
-import { update_test_asset_from_source } from "../../test/asset-fixture";
-import { add_test_asset_from_source } from "../../test/asset-fixture";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -66,29 +64,21 @@ it("数据库从历史小数修订的整数基线推进", async () => {
 
 it("按排序快照维护 asset，并可更新和读取内容", async () => {
   const { database, lg_path } = await create_database_project("asset-list");
-  const alpha_path = project_path("alpha.txt");
-  const beta_path = project_path("beta.txt");
-  const cover_path = project_path("cover.bin");
-  const updated_beta_path = project_path("updated-beta.txt");
-  fs.writeFileSync(alpha_path, Buffer.from("alpha"));
-  fs.writeFileSync(beta_path, Buffer.from("beta"));
-  fs.writeFileSync(cover_path, Buffer.from("cover"));
-  fs.writeFileSync(updated_beta_path, Buffer.from("updated-beta"));
 
   await database.transaction(lg_path, (writer) =>
-    add_test_asset_from_source(writer, lg_path, "chapter-b.txt", beta_path, null, 10),
+    writer.add_asset(lg_path, "chapter-b.txt", Buffer.from("beta"), "TXT", null, 10),
   );
   await database.transaction(lg_path, (writer) =>
-    add_test_asset_from_source(writer, lg_path, "chapter-a.txt", alpha_path, null),
+    writer.add_asset(lg_path, "chapter-a.txt", Buffer.from("alpha"), "TXT", null),
   );
   await database.transaction(lg_path, (writer) =>
-    add_test_asset_from_source(writer, lg_path, "cover.bin", cover_path, null, 0),
+    writer.add_asset(lg_path, "cover.bin", Buffer.from("cover"), "NONE", null, 0),
   );
   await database.transaction(lg_path, (writer) =>
     writer.update_asset_sort_orders(lg_path, ["chapter-a.txt", "cover.bin", "chapter-b.txt"]),
   );
   await database.transaction(lg_path, (writer) =>
-    update_test_asset_from_source(writer, lg_path, "chapter-b.txt", updated_beta_path, null),
+    writer.update_asset(lg_path, "chapter-b.txt", Buffer.from("updated-beta"), "TXT", null),
   );
 
   expect(await database.get_asset_count(lg_path)).toBe(3);
@@ -139,11 +129,9 @@ it("批量替换 item 后保持回查顺序并支持字段补丁", async () => {
 
 it("事务同步写入 item、规则和 meta，并让工程摘要反映当前事实", async () => {
   const { database, lg_path } = await create_database_project("summary");
-  const source_path = project_path("chapter.txt");
-  fs.writeFileSync(source_path, "chapter");
 
   await database.transaction(lg_path, (writer) =>
-    add_test_asset_from_source(writer, lg_path, "chapter.txt", source_path, null, 0),
+    writer.add_asset(lg_path, "chapter.txt", Buffer.from("chapter"), "TXT", null, 0),
   );
   await database.transaction(lg_path, (writer) =>
     writer.set_items(lg_path, [
@@ -188,11 +176,9 @@ it("事务同步写入 item、规则和 meta，并让工程摘要反映当前事
 
 it("工程预览在重排并重新打开后返回完整文件顺序", async () => {
   const { database, lg_path } = await create_database_project("preview-order");
-  const source_path = project_path("source.txt");
-  fs.writeFileSync(source_path, "source");
   for (const file_path of ["a.txt", "b.txt", "c.txt", "d.txt", "e.txt"]) {
     await database.transaction(lg_path, (writer) =>
-      add_test_asset_from_source(writer, lg_path, file_path, source_path, null),
+      writer.add_asset(lg_path, file_path, Buffer.from("source"), "TXT", null),
     );
   }
   await database.transaction(lg_path, (writer) =>
@@ -280,17 +266,20 @@ it("兼容读取旧压缩 asset bytes", async () => {
 
 it("PDF 源文件在解析后变化时导入事务保留旧资产和译稿", async () => {
   const { database, lg_path } = await create_database_project("pdf-source-conflict");
-  const source = project_path("book.pdf");
   const bytes = create_pdf_fixture();
-  fs.writeFileSync(source, bytes);
   const document = read_pdf_document(bytes);
   await database.transaction(lg_path, (database) =>
-    add_test_asset_from_source(database, lg_path, "book.pdf", source, document, 0),
+    database.add_asset(lg_path, "book.pdf", bytes, "PDF", document, 0),
   );
-  fs.writeFileSync(source, create_pdf_fixture(["changed after parse"]));
   await expect(
     database.transaction(lg_path, (database) =>
-      update_test_asset_from_source(database, lg_path, "book.pdf", source, document),
+      database.update_asset(
+        lg_path,
+        "book.pdf",
+        create_pdf_fixture(["changed after parse"]),
+        "PDF",
+        document,
+      ),
     ),
   ).rejects.toThrow(expect.objectContaining({ code: "file.parse_failed" }));
   expect(await database.read_asset_content(lg_path, "book.pdf")).toEqual(Buffer.from(bytes));
@@ -299,9 +288,7 @@ it("PDF 源文件在解析后变化时导入事务保留旧资产和译稿", asy
 
 it("PDF 摘要区分译稿覆盖、确认保留和省略，核对标记独立于处置", async () => {
   const { database, lg_path } = await create_database_project("pdf-summary");
-  const source = project_path("summary.pdf");
   const bytes = create_pdf_fixture(["Text", null, null, null, "Pending"]);
-  fs.writeFileSync(source, bytes);
   const document = read_pdf_document(bytes);
   document.pages[0]!.translation = { kind: "translate", markdown: "正文" };
   document.pages[1]!.translation = { kind: "omit", reason: "装饰页" };
@@ -309,7 +296,7 @@ it("PDF 摘要区分译稿覆盖、确认保留和省略，核对标记独立于
   document.pages[3]!.translation = { kind: "translate", markdown: "" };
   for (const page of document.pages) page.reviewed = true;
   await database.transaction(lg_path, (database) =>
-    add_test_asset_from_source(database, lg_path, "summary.pdf", source, document, 0),
+    database.add_asset(lg_path, "summary.pdf", bytes, "PDF", document, 0),
   );
   expect((await database.read_pdf_summaries(lg_path))["summary.pdf"]).toEqual({
     pages: 5,

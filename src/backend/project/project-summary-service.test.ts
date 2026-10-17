@@ -1,5 +1,3 @@
-import { add_test_asset_from_source } from "../../test/asset-fixture";
-import { fixture_file_type } from "../../test/asset-fixture";
 import type { JsonRecord } from "../../domain/json";
 import type { ProjectDatabaseAccess } from "../database/database-operations";
 import { describe, expect, it, vi } from "vitest";
@@ -22,9 +20,7 @@ import type { PDFSummary } from "../../shared/pdf";
 it("工作台同步读取提交缓存，PDF 修改、文本提交及文件删除与修订一致", async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "lg-summary-cache-"));
   const project = path.join(root, "test.lg");
-  const source = path.join(root, "book.pdf");
   const bytes = create_pdf_fixture();
-  fs.writeFileSync(source, bytes);
   const document = read_pdf_document(bytes);
   const database = new ProjectDatabase();
   const session = new ProjectSessionState();
@@ -37,7 +33,7 @@ it("工作台同步读取提交缓存，PDF 修改、文本提交及文件删除
   const summaries = vi.spyOn(DatabaseAccess.prototype, "read_pdf_summaries");
   try {
     await database.create_project(project, "test", (writer) => {
-      add_test_asset_from_source(writer, project, "book.pdf", source, document);
+      writer.add_asset(project, "book.pdf", bytes, "PDF", document);
       writer.add_asset(project, "script.txt", Buffer.from("こんにちは"), "TXT", null);
       writer.set_items(project, [create_item({})]);
     });
@@ -156,8 +152,8 @@ describe("ProjectSummaryService", () => {
         create_item({ id: 2, file_path: "b.txt", src: "B" }),
       ],
       [
-        { path: "b.txt", sort_order: 0 },
-        { path: "a.txt", sort_order: 1 },
+        { path: "b.txt", sort_order: 0, file_type: "TXT" },
+        { path: "a.txt", sort_order: 1, file_type: "TXT" },
       ],
     );
 
@@ -182,8 +178,8 @@ describe("ProjectSummaryService", () => {
         create_item({ id: 4, src: "翻译失败", status: "ERROR" }),
       ],
       [
-        { path: "script.txt", sort_order: 0 },
-        { path: "waiting.txt", sort_order: 1 },
+        { path: "script.txt", sort_order: 0, file_type: "TXT" },
+        { path: "waiting.txt", sort_order: 1, file_type: "TXT" },
       ],
     );
 
@@ -222,9 +218,13 @@ describe("ProjectSummaryService", () => {
   });
 
   it("PDF 按原页汇总译稿、确认保留和省略，失败状态不适用", async () => {
-    const { service } = await create_service([], [{ path: "book.pdf", sort_order: 0 }], {
-      "book.pdf": { pages: 4, translated_pages: 1, omitted_pages: 1, kept_pages: 1 },
-    });
+    const { service } = await create_service(
+      [],
+      [{ path: "book.pdf", sort_order: 0, file_type: "PDF" }],
+      {
+        "book.pdf": { pages: 4, translated_pages: 1, omitted_pages: 1, kept_pages: 1 },
+      },
+    );
     expect((await service.read()).snapshot.entries).toEqual([
       {
         rel_path: "book.pdf",
@@ -247,8 +247,8 @@ describe("ProjectSummaryService", () => {
   // 通过 CacheManager 热机后再构造 query service，覆盖首次页面 query 依赖的真实缓存路径。
   async function create_service(
     items: Record<string, unknown>[],
-    asset_records: Array<{ path: string; sort_order: number }> = [
-      { path: "script.txt", sort_order: 0 },
+    asset_records: Array<{ path: string; sort_order: number; file_type: string }> = [
+      { path: "script.txt", sort_order: 0, file_type: "TXT" },
     ],
     pdf_summaries: Record<string, PDFSummary> = {},
   ): Promise<{
@@ -263,8 +263,7 @@ describe("ProjectSummaryService", () => {
         "project_runtime_revision.items": 7,
       }),
       get_all_items: () => items,
-      get_all_asset_records: () =>
-        asset_records.map((asset) => ({ ...asset, file_type: fixture_file_type(asset.path) })),
+      get_all_asset_records: () => asset_records,
       get_rules: () => [],
       get_rule_text: () => "",
     } as unknown as ProjectDatabase;
