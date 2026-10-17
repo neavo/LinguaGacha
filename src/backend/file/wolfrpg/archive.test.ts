@@ -4,6 +4,49 @@ import path from "node:path";
 import { expect, it } from "vitest";
 import { read_wolf_archive } from "./archive";
 import { wolf_archive_fixture } from "../../../test/wolf-archive-fixture";
+import { wolf_crypt_vectors } from "../../../test/wolf-crypt-fixture";
+
+/** 需要配套密钥的 marker 使用独立参考向量中的派生结果。 */
+function companion_of(version: number): Buffer | undefined {
+  const type = ({ 200: "F1", 1000: "A0", 1010: "A1", 1020: "A2" } as Record<number, string>)[
+    version
+  ];
+  const vector = wolf_crypt_vectors.keys.find((key) => key.type === type);
+  return vector ? Buffer.from(vector.key, "hex") : undefined;
+}
+
+it.each([100, 200, 1000, 1010, 1020])(
+  "新增 marker %i 的目录、成员及分块流可读取",
+  async (version) => {
+    using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-wolf-new-archive-"));
+    const companion = companion_of(version);
+    const files = new Map([
+      ["nested/file.bin", Buffer.alloc(65551, 123)],
+      ["empty.bin", Buffer.alloc(0)],
+    ]);
+    const filename = path.join(temp.path, "archive");
+    fs.writeFileSync(
+      filename,
+      await wolf_archive_fixture(files, version, companion ? { companion } : {}),
+    );
+    const handle = await fs.promises.open(filename, "r");
+    try {
+      const archive = await read_wolf_archive(handle, undefined, async () => companion!);
+      expect(archive.version).toBe(version);
+      for (const member of archive.members) {
+        const chunks = [];
+        for await (const chunk of archive.chunks(member)) chunks.push(chunk);
+        expect(Buffer.concat(chunks)).toEqual(files.get(member.name));
+      }
+      if (companion)
+        await expect(
+          read_wolf_archive(handle, undefined, async () => Buffer.alloc(companion.length, 23)),
+        ).rejects.toThrow();
+    } finally {
+      await handle.close();
+    }
+  },
+);
 
 it.each([300, 314, 331, 350])(
   "归档 %i 支持嵌套日文、零字节、空目录和不同压缩组合",
@@ -40,14 +83,24 @@ it.each([300, 314, 331, 350])(
     }
   },
 );
-it.each([331, 350])("小归档 %i 的前缀与目录重叠及空归档", async (version) => {
+it.each([331, 350, 1010, 1020])("小归档 %i 的前缀与目录重叠及空归档", async (version) => {
   using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-wolf-small-"));
+  const companion = companion_of(version);
   for (const files of [new Map<string, Buffer>(), new Map([["a", Buffer.from("x")]])]) {
     const filename = path.join(temp.path, "Data.wolf");
-    fs.writeFileSync(filename, await wolf_archive_fixture(files, version));
+    fs.writeFileSync(
+      filename,
+      await wolf_archive_fixture(files, version, companion ? { companion } : {}),
+    );
     const handle = await fs.promises.open(filename, "r");
     try {
-      expect((await read_wolf_archive(handle)).members).toHaveLength(files.size);
+      const archive = await read_wolf_archive(handle, undefined, async () => companion!);
+      expect(archive.members).toHaveLength(files.size);
+      for (const member of archive.members) {
+        const chunks = [];
+        for await (const chunk of archive.chunks(member)) chunks.push(chunk);
+        expect(Buffer.concat(chunks)).toEqual(files.get(member.name));
+      }
     } finally {
       await handle.close();
     }

@@ -1,13 +1,15 @@
+import { aes_ctr, rng } from "../backend/file/wolfrpg/crypt";
 import iconv from "iconv-lite";
 import {
-  aes_ctr,
   aes_keys,
+  FREE_CHACHA_KEY,
   generate_key,
   old_key,
   OLD_PASSWORDS,
-  rng,
   xor,
-} from "../backend/file/wolfrpg/crypt";
+  is_wolf35,
+  type WolfKey,
+} from "../backend/file/wolfrpg/archive-crypt";
 
 /** Huffman 使用固定等权树，数据按反转位序编码，独立于生产解码器。 */
 export function wolf_huffman_fixture(input: Buffer): Buffer {
@@ -64,6 +66,7 @@ export async function wolf_archive_fixture(
   version = 331,
   options: {
     clear?: boolean;
+    companion?: Buffer;
     compression?: "lz" | "huffman" | "both" | "partial";
     empty_directory?: boolean;
   } = {},
@@ -129,13 +132,22 @@ export async function wolf_archive_fixture(
   const table = Buffer.alloc(record_count * 72),
     dir_table = Buffer.alloc(directories.length * 32),
     data: Buffer[] = [];
-  const pw = Uint8Array.from({ length: 15 }, (_, i) => i + 1),
-    inner =
-      version >= 331
-        ? generate_key(pw, false, version)
-        : options.clear
-          ? null
-          : old_key(OLD_PASSWORDS[version]!);
+  const pw = Uint8Array.from({ length: 15 }, (_, i) => i + 1);
+  const modern = [331, 350, 1010, 1020].includes(version);
+  const companion = options.companion;
+  const password =
+    version === 1000 || version >= 1010
+      ? companion!.subarray(0, companion!.indexOf(0))
+      : OLD_PASSWORDS[version];
+  const tail = version >= 1010 ? companion!.subarray(companion!.indexOf(0) + 1) : undefined;
+  const stream: WolfKey | null =
+    version === 100 || version === 200 ? Uint8Array.from(companion ?? FREE_CHACHA_KEY) : null;
+  if (stream) stream.chacha = true;
+  const inner = modern
+    ? generate_key(pw, false, version, undefined, tail)
+    : options.clear
+      ? null
+      : (stream ?? old_key(password!));
   let data_size = 0;
   for (const dir of directories) {
     dir_table.writeBigUInt64LE(BigInt(dir.children.length), dir.dir_offset + 16);
@@ -165,8 +177,8 @@ export async function wolf_archive_fixture(
         packed = partial ? Buffer.concat([huffman, packed.subarray(1024, -1024)]) : huffman;
       }
       const key =
-        version < 331 && !options.clear
-          ? old_key(Buffer.concat([OLD_PASSWORDS[version]!, entry.upper, ...entry.parents]))
+        !modern && !options.clear
+          ? (stream ?? old_key(Buffer.concat([password!, entry.upper, ...entry.parents])))
           : inner;
       data.push(xor(Buffer.from(packed), key, bytes.length));
       for (const [offset, value] of [
@@ -198,10 +210,11 @@ export async function wolf_archive_fixture(
   head[48] = options.compression === "partial" ? 1 : 255;
   head.set(pw, 49);
   const output = Buffer.concat([head, ...data, packed_dir]);
-  if (version >= 331) {
+  if (modern) {
     let prefix = Math.min(1024, output.length - 64);
-    if (version >= 350) {
-      let state = pw[2]! * pw[4]! + pw[12]! || 1;
+    if (is_wolf35(version)) {
+      let state =
+        (tail ? tail[0]! * tail[1]! + pw[2]! * pw[4]! + pw[11]! : pw[2]! * pw[4]! + pw[12]!) || 1;
       const next = () => {
         state ^= state << 11;
         state ^= state >>> 19;
@@ -213,18 +226,20 @@ export async function wolf_archive_fixture(
       prefix = output.length - 64;
       if (prefix >= (next() % 500) + 800) prefix = (next() % 500) + 800;
     }
-    const keys = aes_keys(pw, version);
+    const keys = aes_keys(pw, version, tail);
     await aes_ctr(output.subarray(64 + data_size), keys, Math.ceil(prefix / 16));
     await aes_ctr(output.subarray(64, 64 + prefix), keys);
     if (output.length > 128)
-      xor(output.subarray(64, output.length - 64), generate_key(pw, true, version), 64);
-    const random = rng(version >= 350 ? 12 + pw[9]! * pw[10]! + pw[3]! : pw[0]! + pw[7]! * pw[12]!);
-    for (let i = 0; i < (version >= 350 ? 2 : 4); i++)
+      xor(output.subarray(64, output.length - 64), generate_key(pw, true, version, password), 64);
+    const random = rng(
+      is_wolf35(version) ? 12 + pw[9]! * pw[10]! + pw[3]! : pw[0]! + pw[7]! * pw[12]!,
+    );
+    for (let i = 0; i < (is_wolf35(version) ? 2 : 4); i++)
       for (let j = 3; j >= 0; j--) {
         const at = 8 + i * 8 + j * 2;
         output.writeUInt16LE(output.readUInt16LE(at) ^ random(), at);
       }
-    if (version >= 350) {
+    if (is_wolf35(version)) {
       const r0 = BigInt(random()) << 17n,
         r1 = BigInt(random()) << 31n;
       output.writeBigUInt64LE(output.readBigUInt64LE(24) ^ (r0 | r1 | BigInt(random())), 24);
