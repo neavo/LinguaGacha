@@ -169,6 +169,12 @@ const DESKTOP_BRIDGE_API: DesktopBridgeApi = {
   async pickPromptExportFilePath(): Promise<DesktopPathPickResult> {
     return invoke_path_picker({ kind: "prompt-export" });
   },
+  async pickGameFontFilePath(): Promise<DesktopPathPickResult> {
+    return invoke_path_picker({ kind: "game-font-file" });
+  },
+  async pickGameExecutablePath(): Promise<DesktopPathPickResult> {
+    return invoke_path_picker({ kind: "game-executable" });
+  },
 };
 
 /**

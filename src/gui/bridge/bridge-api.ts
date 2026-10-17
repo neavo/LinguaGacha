@@ -40,4 +40,6 @@ export interface DesktopBridgeApi {
   pickGlossaryExportPath: (default_name: string) => Promise<DesktopPathPickResult>; // 术语导出路径由 main 保存对话框确认，序列化格式由业务流程按后缀决定
   pickPromptImportFilePath: () => Promise<DesktopPathPickResult>; // Prompt 导入导出只暴露纯文本路径选择，不让 renderer 触碰 Node 文件 API
   pickPromptExportFilePath: () => Promise<DesktopPathPickResult>; // Prompt 导出路径由 main 保存对话框确认，renderer 不直接访问文件系统
+  pickGameFontFilePath: () => Promise<DesktopPathPickResult>; // 游戏字体替换只开放后端可读取内部名称的字体格式
+  pickGameExecutablePath: () => Promise<DesktopPathPickResult>; // 游戏以启动程序定位，后端据此识别引擎与封装
 }

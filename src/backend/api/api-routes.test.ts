@@ -100,6 +100,8 @@ const POST_PATHS = new Set([
   "/api/quality/prompts/presets/rename",
   "/api/quality/prompts/presets/delete",
   "/api/translation/files/generate",
+  "/api/toolbox/game-font/inspect",
+  "/api/toolbox/game-font/apply",
   "/api/settings/app",
   "/api/settings/update",
   "/api/settings/recent-projects/add",

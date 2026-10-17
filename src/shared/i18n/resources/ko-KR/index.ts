@@ -1,3 +1,5 @@
+import { ko_kr_game_font_page } from "./game-font-page";
+import { ko_kr_toolbox_page } from "./toolbox-page";
 import { ko_kr_skills_page } from "./skills-page";
 import { ko_kr_agent_page } from "./agent-page";
 import { ko_kr_agent_runtime } from "./agent-runtime";
@@ -34,6 +36,8 @@ export const ko_kr_messages = {
   expert_settings_page: ko_kr_expert_settings_page,
   glossary_page: ko_kr_glossary_page,
   laboratory_page: ko_kr_laboratory_page,
+  toolbox_page: ko_kr_toolbox_page,
+  game_font_page: ko_kr_game_font_page,
   log_window_page: ko_kr_log_window_page,
   model_page: ko_kr_model_page,
   post_translation_replacement_page: ko_kr_post_translation_replacement_page,

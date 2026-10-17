@@ -213,6 +213,8 @@ export const ko_kr_app = {
     json_files: "JSON 파일 (*.json)",
     excel_files: "Excel 파일 (*.xlsx)",
     supported_txt_files: "지원 파일 (*.txt)",
+    font_files: "글꼴 파일 (*.ttf *.otf)",
+    executable_files: "실행 파일 (*.exe)",
   },
   diagnostic: {
     agent: {
