@@ -10,13 +10,24 @@ import {
 it.each([
   "backup_lg/a.json",
   ".tmp/a.json",
+  "backup_lg_20261015_093000/a",
+  "BACKUP_LG_20261015_093000_1/a",
+])("游戏成员不得占用管理路径：%s", (name) =>
+  expect(() => validate_game_path(name)).toThrow("Member conflicts with preparation files"),
+);
+
+it.each([
   ".linguagacha-backup.json",
   ".lg-original/a",
   ".lg-original-temp/a",
   "backup/a",
-])("游戏成员不得占用管理路径：%s", (name) =>
-  expect(() => validate_game_path(name)).toThrow("Member conflicts with preparation files"),
-);
+  "backup_2/a",
+  "backup_lg_20261015_093000_0/a",
+  "backup_lg_20261015_093000_01/a",
+  "backup_lg_invalid/a",
+])("旧名称及不符合归档格式的名称可用：%s", (name) => {
+  expect(() => validate_game_path(name)).not.toThrow();
+});
 
 it("游戏成员的父目录拼写必须一致", () => {
   expect(() => assert_game_path_spellings(["New/a.txt", "new/b.txt"])).toThrow();

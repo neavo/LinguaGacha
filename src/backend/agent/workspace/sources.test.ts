@@ -36,6 +36,7 @@ it.each([
     ["data/Broken.json", Buffer.from("{")],
     ["data/Empty.json", Buffer.from("[]")],
     ["js/plugins/Test.js", Buffer.from([0, 128, 255, 254, 65, 0])],
+    ["game_files.txt", Buffer.from("data/Broken.json\nimg/pictures/Actor1.png")], // 游戏容器的文件清单单独写出。
   ]);
   for (const [name, bytes] of members) zip.file(name, bytes);
   const content = await zip.generateAsync({ type: "nodebuffer" });

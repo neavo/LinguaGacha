@@ -53,7 +53,7 @@ it.each(["../Scripts.rvdata2", "C:\\Scripts.rvdata2", "Data/Scripts.rxdata"])(
   },
 );
 it("容器版本由原稿核对，混合版本不能继续解析", async () => {
-  const files = await read_game_container(
+  const { members: files } = await read_game_container(
     await write_zip(
       new Map([
         ["Game.ini", "[Game]"],

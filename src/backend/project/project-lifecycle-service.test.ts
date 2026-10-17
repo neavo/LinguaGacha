@@ -716,13 +716,14 @@ describe("ProjectLifecycleService", () => {
     }
   });
 
-  it("create-commit 保存零条目错误脚本并记录诊断日志", async () => {
+  it("create-commit 归档旧备份，保存零条目错误脚本并记录诊断日志", async () => {
     const app_root = create_temp_dir();
     const project_path = path.join(app_root, "scripts.lg");
     const game = path.join(app_root, "game");
     write_file(path.join(game, "data/System.json"), "{}");
     write_file(path.join(game, "js/rmmz_core.js"), "");
     const source = write_file(path.join(game, "js/plugins/bad.js"), "<test>");
+    write_file(path.join(game, "backup_lg/keep"), "previous import");
     const database = new ProjectDatabase();
     const log_manager = create_log_manager();
     const service = create_service({ app_root, database, log_manager });
@@ -737,6 +738,12 @@ describe("ProjectLifecycleService", () => {
         (await database.read_asset_content(project_path, "game.zip"))!,
       );
       expect(zip_text(archive, "js/plugins/bad.js")).toEqual(fs.readFileSync(source, "utf8"));
+      const backup = path.join(game, "backup_lg");
+      const history = fs.readdirSync(backup).find((name) => name.startsWith("backup_lg_"))!;
+      expect(fs.readFileSync(path.join(backup, history, "keep"), "utf8")).toBe("previous import");
+      expect(fs.readFileSync(path.join(backup, "js/plugins/bad.js"), "utf8")).toBe(
+        zip_text(archive, "js/plugins/bad.js"),
+      );
       expect(await database.get_all_asset_records(project_path)).toMatchObject([
         { path: "game.zip", file_type: "RPGMAKER_MV_MZ" },
       ]);

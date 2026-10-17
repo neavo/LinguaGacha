@@ -1,5 +1,9 @@
-import { check_game_backup, write_game_backup } from "./backup";
-import { validate_game_path, assert_game_path_spellings } from "../../source-file-paths";
+import { write_game_backup } from "./backup";
+import {
+  validate_game_path,
+  assert_game_path_spellings,
+  is_preparation_path,
+} from "../../source-file-paths";
 import type { GameFileType } from "../../../../shared/project-source-formats";
 import path from "node:path";
 import JSZip from "jszip";
@@ -14,17 +18,29 @@ import type {
 import { assert_source_file_paths, source_file_output_path } from "../../source-file-paths";
 import { read_zip_members } from "../zip-members";
 
-/** 游戏 固化容器必须包含文件，空容器不能作为游戏原稿。 */
+/** 容器根目录的游戏文件清单，供 Agent 核对资源引用，不是游戏原稿成员。 */
+export const GAME_FILES_MEMBER = "game_files.txt";
+
+export type GameFiles = ReadonlyMap<string, JSZip.JSZipObject>;
+/** 原稿成员与游戏文件清单分开返回，解析和导出只接触原稿成员。 */
+export type GameContainer = Readonly<{
+  members: GameFiles;
+  game_files: JSZip.JSZipObject | null; // 早于清单的容器没有该成员。
+}>;
+
+/** 游戏 固化容器必须包含原稿文件，空容器不能作为游戏原稿。 */
 export async function read_game_container(
   content: Uint8Array,
   file: string,
-): Promise<ReadonlyMap<string, JSZip.JSZipObject>> {
-  const files = await read_zip_members(content, file);
-  if (files.size === 0) throw new AppError("file.invalid_structure", { public_details: { file } });
-  return files;
+): Promise<GameContainer> {
+  const members = new Map(await read_zip_members(content, file));
+  const game_files = members.get(GAME_FILES_MEMBER) ?? null;
+  members.delete(GAME_FILES_MEMBER);
+  if (members.size === 0)
+    throw new AppError("file.invalid_structure", { public_details: { file } });
+  return { members, game_files };
 }
 
-export type GameFiles = ReadonlyMap<string, JSZip.JSZipObject>;
 /** 格式提供成员解析与写回，公共流程持有原稿清单和目录 IO。 */
 export interface GameFormatAdapter {
   file_type: GameFileType;
@@ -46,15 +62,15 @@ export class GameFormat {
     private readonly adapter: GameFormatAdapter,
     private readonly fs: NativeFs,
   ) {}
-  /** 完整读取全部原稿并确认备份覆盖后，才允许发布容器。 */
+  /** 完整读取并生成容器后备份同一批字节，备份成功才返回。 */
   public async prepare_source(
     entries: readonly Pick<ProjectSourceFileEntry, "source_path" | "rel_path">[],
     file: string,
-    game: Readonly<{ root: string; engine: string }>,
+    root: string,
     signal?: AbortSignal,
   ): Promise<{ content: Uint8Array; warnings: SourceFileParseWarning[] }> {
     signal?.throwIfAborted();
-    const files = new Map<string, Uint8Array>(); // 同一次读取供容器和首次备份使用。
+    const files = new Map<string, Uint8Array>(); // 同一次读取供容器和本次备份使用。
     assert_game_path_spellings(entries.map((entry) => entry.rel_path));
     const zip = new JSZip();
     const paths = new Set<string>();
@@ -63,7 +79,7 @@ export class GameFormat {
       const internal = entry.rel_path;
       validate_game_path(internal);
       const key = internal.toLowerCase();
-      if (paths.has(key))
+      if (paths.has(key) || key === GAME_FILES_MEMBER)
         throw new AppError("file.invalid_structure", { public_details: { file } });
       paths.add(key);
       const bytes = this.fs.read_file(entry.source_path);
@@ -72,10 +88,13 @@ export class GameFormat {
     }
     if (Object.keys(zip.files).length === 0)
       throw new AppError("file.parse_failed", { public_details: { file } });
-    const existing_backup = check_game_backup(game.root, game.engine, [...files.keys()], this.fs);
+    // 准备流程已解包归档并解密媒体，此时的目录即游戏运行时可见的文件集合。
+    zip.file(GAME_FILES_MEMBER, list_game_files(root, this.fs, signal), {
+      createFolders: false,
+    });
     const content = await zip.generateAsync({ type: "uint8array", compression: "STORE" });
     signal?.throwIfAborted();
-    if (!existing_backup) await write_game_backup(game.root, game.engine, files, this.fs, signal);
+    await write_game_backup(root, files, this.fs, signal);
     return { content, warnings: [] };
   }
 
@@ -84,7 +103,7 @@ export class GameFormat {
     content: Uint8Array,
     file: string,
   ): Promise<{ items: Item[]; warnings: SourceFileParseWarning[] }> {
-    const files = await read_game_container(content, file);
+    const { members: files } = await read_game_container(content, file);
     const handler = await this.adapter.create_members(files);
     const items: Item[] = [];
     const warnings: SourceFileParseWarning[] = [];
@@ -133,7 +152,7 @@ export class GameFormat {
       const content = await context.asset_reader(file.path);
       if (content === null)
         throw new AppError("file.not_found", { public_details: { file: file.path } });
-      const files = await read_game_container(content, file.path);
+      const { members: files } = await read_game_container(content, file.path);
       const handler = await this.adapter.create_members(files);
       const group = groups.get(file.path);
       for (const internal of group?.keys() ?? []) {
@@ -180,4 +199,20 @@ export class GameFormat {
       ],
     };
   }
+}
+
+/** 列出游戏目录中的全部文件；清单只作参考，链接不跟随也不收录。 */
+function list_game_files(root: string, fs: NativeFs, signal?: AbortSignal): string {
+  const names: string[] = [];
+  const visit = (relative: string): void => {
+    signal?.throwIfAborted();
+    for (const entry of fs.read_dirents(path.join(root, relative))) {
+      const name = relative === "" ? entry.name : relative + "/" + entry.name;
+      if (relative === "" && is_preparation_path(name)) continue;
+      if (entry.isDirectory()) visit(name);
+      else if (entry.isFile() && !/[\r\n]/u.test(name)) names.push(name); // 行格式无法表示含换行的名称。
+    }
+  };
+  visit("");
+  return names.sort().join("\n");
 }

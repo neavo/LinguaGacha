@@ -26,7 +26,7 @@ it("地图登记资格在条目和 Agent 投影中一致", async () => {
     Pick<WolfSlot, "text" | "location" | "usage" | "context">[]
   >();
   for await (const [name, bytes] of read_wolf_sources(
-    await read_game_container(content, "game.zip"),
+    (await read_game_container(content, "game.zip")).members,
   )) {
     if ([registered, unregistered, common_path].some((file) => name === file + ".json"))
       projections.set(
@@ -76,6 +76,6 @@ it("地图登记资格在条目和 Agent 投影中一致", async () => {
     projections.get(registered)!.find((slot) => slot.location.kind === "map_graphic")!.usage,
   ).toBe("metadata");
   expect(projections.get(common_path)!.some((slot) => slot.text === "")).toBe(true);
-  for (const [name, member] of await read_game_container(content, "game.zip"))
+  for (const [name, member] of (await read_game_container(content, "game.zip")).members)
     expect(await member.async("nodebuffer")).toEqual(files.get(name));
 });

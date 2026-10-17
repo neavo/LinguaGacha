@@ -1,119 +1,61 @@
 import path from "node:path";
+import { setImmediate } from "node:timers/promises";
 import type { NativeFs } from "../../../../native/native-fs";
 import { AppError, read_error_message } from "../../../../shared/error";
+import { format_local_timestamp } from "../../../../shared/utils/format-local-timestamp";
 import {
   assert_regular_path,
   assert_game_path_spellings,
   validate_game_path,
+  is_game_backup_history_name,
   GAME_BACKUP_DIRECTORY,
-  GAME_WORKSPACE_DIRECTORY,
 } from "../../source-file-paths";
 import { ProjectAssetPathIndex } from "../../../../shared/project/project-asset-paths";
-import { is_json_record } from "../../../../domain/json";
 
-const LEGACY_DIRECTORIES = [".linguagacha-backup", ".lg-original"] as const; // 旧版备份目录，存在时要求用户先处理。
-const BACKUP_MARKER = ".linguagacha-backup.json";
-const BACKUP_VERSION = 1;
-const BACKUP_ENGINES = new Set(["mv", "mz", "xp", "vx", "ace", "wolfrpg"]); // 标记中可识别的引擎身份。
-
-/** 来源识别只读取标记身份，原稿覆盖仍由正式备份校验负责。 */
-export function read_game_backup_engine(directory: string, fs: NativeFs): string | null {
-  const marker = path.join(directory, BACKUP_MARKER);
-  let text: string;
-  try {
-    if (!fs.stat(marker).isFile()) return null;
-    text = fs.read_text_file(marker);
-  } catch (error) {
-    if (error instanceof Error && "code" in error && error.code === "ENOENT") return null; // 未完成备份尚无标记。
-    throw error;
-  }
-  let value: unknown;
-  try {
-    value = JSON.parse(text);
-  } catch (error) {
-    if (error instanceof SyntaxError) return null; // 非 JSON 内容不符合标记格式。
-    throw error;
-  }
-  return is_json_record(value) &&
-    value["version"] === BACKUP_VERSION &&
-    typeof value["engine"] === "string" &&
-    BACKUP_ENGINES.has(value["engine"])
-    ? value["engine"]
-    : null;
-}
-
-/** 临时目录标记未完成操作，后续写入须保留恢复材料。 */
-function check_backup_directory(root: string, fs: NativeFs): string {
-  assert_regular_path(root, fs);
-  for (const name of LEGACY_DIRECTORIES) {
-    const legacy = path.join(root, name);
-    assert_regular_path(legacy, fs);
-    if (fs.exists(legacy))
-      throw new Error("Handle legacy game backup before continuing: " + legacy);
-  }
-  const directory = path.join(root, GAME_BACKUP_DIRECTORY);
-  assert_regular_path(directory, fs);
-  if (fs.exists(directory)) {
-    if (!fs.stat(directory).isDirectory()) throw new Error("Invalid game backup: " + directory);
-    const temporary = path.join(directory, GAME_WORKSPACE_DIRECTORY);
-    assert_regular_path(temporary, fs);
-    if (fs.exists(temporary))
-      throw new Error("Unfinished game operation; recovery files: " + temporary);
-    if (fs.read_dirents(directory).length && !fs.exists(path.join(directory, BACKUP_MARKER)))
-      throw new Error("Invalid game backup: " + directory);
-  }
-  return directory;
-}
-
-/** 调用方持有工程写入占用，独占创建防止并发调用共用恢复材料。 */
-export async function create_game_workspace(root: string, fs: NativeFs): Promise<string> {
-  const directory = check_backup_directory(root, fs);
-  if (fs.exists(directory) && fs.read_dirents(directory).length)
-    throw new Error("Game conversion conflicts with existing backup: " + directory);
-  await fs.make_dir_async(directory);
-  const workspace = path.join(directory, GAME_WORKSPACE_DIRECTORY);
-  await fs.make_dir_exclusive(workspace);
-  return workspace;
-}
-
-/** 首次备份不可补写，每次导入都确认当前原稿路径有安全的普通文件覆盖。 */
-export function check_game_backup(
-  root: string,
-  engine: string,
-  names: readonly string[],
-  fs: NativeFs,
-): boolean {
-  const directory = check_backup_directory(root, fs);
-  if (!fs.exists(directory) || !fs.read_dirents(directory).length) return false;
-  const marker = path.join(directory, BACKUP_MARKER);
-  assert_regular_path(marker, fs);
-  if (read_game_backup_engine(directory, fs) !== engine)
-    throw new Error("Invalid game backup: " + directory);
-  for (const name of names) {
-    validate_game_path(name);
-    const target = path.join(directory, name);
-    try {
-      assert_regular_path(target, fs);
-      if (!fs.exists(target)) throw new Error("Missing backup file");
-      if (!fs.stat(target).isFile()) throw new Error("Backup path is not a regular file");
-    } catch (cause) {
-      throw new Error(
-        "Game backup coverage conflict: " +
-          target +
-          "\n" +
-          read_error_message(cause) +
-          "\nUse a separate game directory to establish a new original baseline.",
-        { cause },
-      );
+/** 普通文件优先，只有整批没有文件时才使用目录时间。 */
+function backup_timestamp(entries: readonly string[], fs: NativeFs): string {
+  let earliest_file = Infinity;
+  let earliest_directory = Infinity;
+  function visit(target: string): void {
+    assert_regular_path(target, fs);
+    const stat = fs.stat(target);
+    const time =
+      Number.isFinite(stat.birthtimeMs) && stat.birthtimeMs > 0 ? stat.birthtimeMs : stat.mtimeMs;
+    if (stat.isFile()) earliest_file = Math.min(earliest_file, time);
+    else {
+      earliest_directory = Math.min(earliest_directory, time);
+      for (const entry of fs.read_dirents(target)) visit(path.join(target, entry.name));
     }
   }
-  return true;
+  for (const target of entries) visit(target);
+  return format_local_timestamp(
+    new Date(Number.isFinite(earliest_file) ? earliest_file : earliest_directory).toISOString(),
+  )!
+    .replaceAll("-", "")
+    .replace(" ", "_")
+    .replaceAll(":", "");
 }
 
-/** 使用与容器相同的字节，最后发布标记以确认备份完整。 */
+/** 名称按大小写共同占位，只有排他创建的重名错误允许重试。 */
+async function create_history(directory: string, timestamp: string, fs: NativeFs): Promise<string> {
+  const occupied = new Set(fs.read_dirents(directory).map((entry) => entry.name.toLowerCase()));
+  for (let suffix = 0; ; suffix++) {
+    const name = GAME_BACKUP_DIRECTORY + "_" + timestamp + (suffix ? "_" + suffix : "");
+    if (occupied.has(name.toLowerCase())) continue;
+    const target = path.join(directory, name);
+    try {
+      await fs.make_dir_exclusive(target);
+      return target;
+    } catch (error) {
+      if (error instanceof Error && "code" in error && error.code === "EEXIST") continue; // 并发占用同名目录时换名。
+      throw error;
+    }
+  }
+}
+
+/** 调用方持有工程写入占用；失败保留归档和部分新文件，供人工恢复及下次轮换。 */
 export async function write_game_backup(
   root: string,
-  engine: string,
   files: ReadonlyMap<string, Uint8Array>,
   fs: NativeFs,
   signal?: AbortSignal,
@@ -126,56 +68,43 @@ export async function write_game_backup(
     paths.add(name);
   }
   signal?.throwIfAborted();
-  const workspace = await create_game_workspace(root, fs); // 只接收空备份目录，已有原稿统一由入口保护。
-  const staging = path.join(workspace, "stage");
   const directory = path.join(root, GAME_BACKUP_DIRECTORY);
-  const published: string[] = []; // 发布顶层条目便于失败时连同新建目录一起撤销。
+  let history: string | null = null;
   try {
-    await fs.make_dir_exclusive(staging);
+    assert_regular_path(directory, fs);
+    await fs.make_dir_async(directory);
+    // 先固定旧内容，再创建本轮归档，历史目录始终留在同一层。
+    const current: string[] = [];
+    for (const entry of fs.read_dirents(directory)) {
+      const target = path.join(directory, entry.name);
+      assert_regular_path(target, fs);
+      if (entry.isDirectory() && is_game_backup_history_name(entry.name)) continue;
+      current.push(target);
+    }
+    if (current.length) {
+      const timestamp = backup_timestamp(current, fs);
+      signal?.throwIfAborted();
+      history = await create_history(directory, timestamp, fs);
+      for (const target of current) {
+        await setImmediate(); // 让取消请求能在同步移动之间进入。
+        signal?.throwIfAborted();
+        fs.rename(target, path.join(history, path.basename(target)));
+      }
+    }
+    // 全部旧内容移走后才能写入，移动失败不能混入本次字节。
     for (const [name, bytes] of files) {
       signal?.throwIfAborted();
-      await fs.write_file(path.join(staging, name), bytes);
-    }
-    await fs.write_file(
-      path.join(staging, BACKUP_MARKER),
-      JSON.stringify({ version: BACKUP_VERSION, engine }),
-    );
-    for (const entry of fs.read_dirents(staging)) {
-      if (entry.name === BACKUP_MARKER) continue;
-      signal?.throwIfAborted();
-      const destination = path.join(directory, entry.name);
-      assert_regular_path(destination, fs);
-      if (fs.exists(destination)) throw new Error("Game backup already exists: " + destination);
-      fs.rename(path.join(staging, entry.name), destination);
-      published.push(destination);
+      await fs.write_file(path.join(directory, name), bytes);
     }
     signal?.throwIfAborted();
-    fs.rename(path.join(staging, BACKUP_MARKER), path.join(directory, BACKUP_MARKER));
-  } catch (cause) {
-    try {
-      for (const target of published.reverse()) await fs.remove_async(target, { recursive: true });
-      await fs.remove_async(workspace, { recursive: true });
-    } catch (error) {
-      throw new AppError("file.io_failed", {
-        cause,
-        message:
-          read_error_message(cause) +
-          "\nCleanup failed; recovery files: " +
-          workspace +
-          "\n" +
-          read_error_message(error),
-      });
-    }
-    throw cause;
-  }
-  // 标记发布后备份已提交，清理失败只保留现场并报告，不能删除完整原稿。
-  try {
-    await fs.remove_async(workspace, { recursive: true });
   } catch (cause) {
     throw new AppError("file.io_failed", {
       cause,
       message:
-        "Game backup committed. Cleanup failed: " + workspace + "\n" + read_error_message(cause),
+        read_error_message(cause) +
+        "\nGame backup: " +
+        directory +
+        (history ? "\nHistory: " + history : ""),
     });
   }
 }

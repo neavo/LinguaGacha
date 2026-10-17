@@ -20,7 +20,7 @@ import { prepare_rgss_source } from "./rpgmaker-rgss/prepare";
 import { is_game_file_type, type GameFileType } from "../../shared/project-source-formats";
 import { format_local_timestamp } from "../../shared/utils/format-local-timestamp";
 import { normalize_project_asset_path } from "../../shared/project/project-asset-paths";
-import { SourceFilePathIndex } from "./source-file-paths";
+import { SourceFilePathIndex, GAME_WORKSPACE_DIRECTORY } from "./source-file-paths";
 import { create_rpgmaker_mv_mz_adapter } from "./rpgmaker-mv-mz/rpgmaker-format";
 import { collect_rpgmaker_files } from "./rpgmaker-mv-mz/source";
 import type { PDFExecution } from "./pdf/pdf-worker";
@@ -315,12 +315,25 @@ export class FileFormatService {
     signal?.throwIfAborted();
     const { source, rel_path } = entry;
     if (source.kind === "failure") throw source.error;
+    if (source.kind !== "file") {
+      const workspace = path.join(source.game.root, GAME_WORKSPACE_DIRECTORY);
+      let workspace_exists = false;
+      try {
+        this.native_fs.lstat(workspace);
+        workspace_exists = true;
+      } catch (error) {
+        if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
+        // 缺失工作区表示没有上次遗留的恢复材料。
+      }
+      if (workspace_exists)
+        throw new Error("Unfinished game operation; recovery files: " + workspace);
+    }
     if (source.kind === "wolfrpg") {
       await prepare_wolf_source(source.game, this.native_fs, this.game_prepare_execution, signal);
       return this.games.WOLFRPG.prepare_source(
         collect_wolf_files(source.game, this.native_fs),
         rel_path,
-        { root: source.game.root, engine: "wolfrpg" },
+        source.game.root,
         signal,
       );
     }
@@ -329,7 +342,7 @@ export class FileFormatService {
       return this.games.RPGMAKER_RGSS.prepare_source(
         collect_rgss_files(source.game, this.native_fs),
         rel_path,
-        { root: source.game.root, engine: source.game.version },
+        source.game.root,
         signal,
       );
     }
@@ -343,7 +356,7 @@ export class FileFormatService {
       return this.games.RPGMAKER_MV_MZ.prepare_source(
         collect_rpgmaker_files(source.game, this.native_fs),
         rel_path,
-        { root: source.game.root, engine: source.game.engine },
+        source.game.root,
         signal,
       );
     }

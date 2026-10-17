@@ -20,7 +20,7 @@ const WOLF_DATA_MARKER = Buffer.from(
   "Extracting data from encrypted files violates the guidelines.\0",
 );
 
-/** 无归档时仍检查核心身份，已有原文基线不重新触发准备事务。 */
+/** 无归档时仍检查核心身份，散装数据无需解包事务。 */
 export async function prepare_wolf_source(
   game: WolfSource,
   fs: NativeFs,
@@ -95,7 +95,7 @@ export async function stage_wolf_source(
           )
         ) {
           const content = fs.read_file(target);
-          // 归档附带的提示不是散装数据头，准备后基线应与正常外部数据一致。
+          // 归档附带的提示不是散装数据头，准备结果应与正常外部数据一致。
           if (content.subarray(0, WOLF_DATA_MARKER.length).equals(WOLF_DATA_MARKER))
             await fs.write_file(target, content.subarray(WOLF_DATA_MARKER.length));
         }

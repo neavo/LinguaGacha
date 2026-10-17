@@ -1,6 +1,5 @@
 import { discover_wolf_source, wolf_source_root, type WolfSource } from "./wolfrpg/source";
-import { read_game_backup_engine } from "./shared/game/backup";
-import { GAME_BACKUP_DIRECTORY, GameSourceConflictError } from "./source-file-paths";
+import { is_preparation_path, GameSourceConflictError } from "./source-file-paths";
 import path from "node:path";
 import type { NativeFs } from "../../native/native-fs";
 import {
@@ -29,16 +28,16 @@ const FORMATS = new Map<string, ProjectSourceFormatId>(
   ]),
 );
 
-/** 显式选择检查候选祖先，递归扫描只检查当前目录，确认备份后停止下探。 */
-async function find_game_backup(
+/** 显式选择检查候选祖先，递归扫描只检查当前目录，按保留名称停止下探。 */
+function find_managed_directory(
   source: string,
   fs: NativeFs,
   signal: AbortSignal | undefined,
   ancestors: boolean,
-): Promise<string | null> {
+): string | null {
   for (let candidate = path.resolve(source); ; candidate = path.dirname(candidate)) {
     signal?.throwIfAborted();
-    if (path.basename(candidate).toLowerCase() === GAME_BACKUP_DIRECTORY) {
+    if (is_preparation_path(path.basename(candidate))) {
       let directory = false;
       try {
         directory = fs.stat(candidate).isDirectory();
@@ -46,28 +45,22 @@ async function find_game_backup(
         if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
         // 不存在的候选交给正常来源检查报告。
       }
-      if (
-        directory &&
-        (read_game_backup_engine(candidate, fs) !== null ||
-          (await discover_rpgmaker_source(path.dirname(candidate), fs, signal)) ||
-          discover_rgss_source(path.dirname(candidate), fs) ||
-          wolf_source_root(path.dirname(candidate), fs))
-      )
-        return candidate;
+      if (directory) return candidate;
     }
     if (!ancestors || path.dirname(candidate) === candidate) return null;
   }
 }
 
-/** 显式入口的备份识别失败直接归集，不能降级为普通目录继续展开。 */
+/** 显式入口的管理目录识别失败直接归集，不能降级为普通目录继续展开。 */
 export async function discover_source(
   source_path: string,
   fs: NativeFs,
   signal?: AbortSignal,
 ): Promise<DiscoveredSource> {
   try {
-    const backup = await find_game_backup(source_path, fs, signal, true);
-    if (backup) throw new Error("Game backup cannot be used as an import source: " + backup);
+    const managed = find_managed_directory(source_path, fs, signal, true);
+    if (managed)
+      throw new Error("Game management directory cannot be used as an import source: " + managed);
   } catch (error) {
     signal?.throwIfAborted();
     return {
@@ -163,12 +156,12 @@ export async function discover_sources(
   /** 每个物理来源只探测一次，普通目录按稳定顺序展开。 */
   async function visit(source_path: string, source_root: string): Promise<void> {
     signal?.throwIfAborted();
-    const explicit = source_path === source_root; // 显式输入须报告失败，递归遇到备份则跳过。
+    const explicit = source_path === source_root; // 显式输入须报告失败，递归遇到管理目录则跳过。
     try {
-      const backup = await find_game_backup(source_path, fs, signal, explicit);
-      if (backup) {
+      const managed = find_managed_directory(source_path, fs, signal, explicit);
+      if (managed) {
         if (!explicit) return;
-        throw new Error("Game backup cannot be used as an import source: " + backup);
+        throw new Error("Game management directory cannot be used as an import source: " + managed);
       }
     } catch (error) {
       signal?.throwIfAborted();

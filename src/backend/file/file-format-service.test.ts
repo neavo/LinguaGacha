@@ -1,3 +1,4 @@
+import { wolf_files } from "../../test/wolf-fixture";
 import { evb_fixture } from "../../test/evb-fixture";
 import { create_pdf_execution } from "./pdf/test-support";
 import fs from "node:fs";
@@ -319,3 +320,34 @@ it("识别失败与正常来源共同进入只读摘要，正式导入重新识�
     },
   });
 });
+it.each(["mv_mz", "rgss", "wolfrpg"])(
+  "%s 正式导入先拒绝根目录恢复材料，来源摘要只读",
+  async (kind) => {
+    using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-game-recovery-"));
+    const native = new NativeFs();
+    if (kind === "mv_mz") {
+      native.write_file_sync(path.join(temp.path, "data/System.json"), "{}");
+      native.write_file_sync(path.join(temp.path, "js/rmmz_core.js"), "");
+    } else if (kind === "rgss") {
+      native.write_file_sync(
+        path.join(temp.path, "Game.ini"),
+        "[Game]\nScripts=Data/Scripts.rvdata2",
+      );
+      native.write_file_sync(path.join(temp.path, "Data/System.rvdata2"), Buffer.from([4, 8, 48]));
+    } else {
+      for (const [name, bytes] of wolf_files())
+        native.write_file_sync(path.join(temp.path, name), bytes);
+    }
+    const workspace = path.join(temp.path, ".tmp");
+    native.write_file_sync(path.join(workspace, "rollback/keep"), "recovery");
+    native.write_file_sync(path.join(temp.path, "backup_lg/keep"), "old backup");
+    const service = new FileFormatService({ target_language: "ZH" }, async () => null, native);
+    expect((await service.summarize_source_files([temp.path])).source_file_count).toBe(1);
+    const entry = (await service.collect_source_file_entries([temp.path]))[0]!;
+    await expect(service.prepare_source(entry)).rejects.toThrow(
+      "Unfinished game operation; recovery files: " + workspace,
+    );
+    expect(fs.readFileSync(path.join(workspace, "rollback/keep"), "utf8")).toBe("recovery");
+    expect(fs.readdirSync(path.join(temp.path, "backup_lg"))).toEqual(["keep"]);
+  },
+);

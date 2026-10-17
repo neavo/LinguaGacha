@@ -71,18 +71,25 @@ export function assert_source_file_paths(
 /** 同根入口互相冲突属于整批输入错误，不能降级为逐文件失败。 */
 export class GameSourceConflictError extends Error {}
 
+/** 历史目录仅按名称识别，内容不承担原稿身份。 */
+export function is_game_backup_history_name(name: string): boolean {
+  return /^backup_lg_\d{8}_\d{6}(?:_[1-9]\d*)?$/iu.test(name);
+}
+
+/** 准备工作区、备份与历史归档占用的顶层名称，不属于游戏文件。 */
+export function is_preparation_path(name: string): boolean {
+  const first = name.split("/")[0]!.toLowerCase();
+  return (
+    first === GAME_BACKUP_DIRECTORY ||
+    first === GAME_WORKSPACE_DIRECTORY ||
+    is_game_backup_history_name(first)
+  );
+}
+
 /** 准备目录和备份名称保留给提交层，归档不能占用它们。 */
 export function validate_game_path(name: string): void {
   if (validate_zip_member_path(name) !== name) throw new Error("Noncanonical game path: " + name);
-  const first = name.split("/")[0]!.toLowerCase();
-  if (
-    first === GAME_BACKUP_DIRECTORY ||
-    first === GAME_WORKSPACE_DIRECTORY ||
-    /^backup(?:_\d+)?$/u.test(first) ||
-    first.startsWith(".linguagacha-") ||
-    first === ".lg-original" ||
-    first.startsWith(".lg-original-")
-  )
+  if (is_preparation_path(name))
     throw new Error("Member conflicts with preparation files: " + name);
 }
 

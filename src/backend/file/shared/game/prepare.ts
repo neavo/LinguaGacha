@@ -7,8 +7,8 @@ import {
   assert_regular_path,
   validate_game_path,
   assert_game_path_spellings,
+  GAME_WORKSPACE_DIRECTORY,
 } from "../../source-file-paths";
-import { create_game_workspace } from "./backup";
 
 /** 暂存完成后的变更清单，由主线程提交到游戏目录。 */
 export type GamePreparation = Readonly<{
@@ -38,7 +38,9 @@ export async function prepare_game_directory(
   try {
     signal?.throwIfAborted();
     assert_regular_path(root, fs);
-    workspace = await create_game_workspace(root, fs);
+    const candidate = path.join(root, GAME_WORKSPACE_DIRECTORY);
+    await fs.make_dir_exclusive(candidate);
+    workspace = candidate; // 创建成功后才取得清理所有权，不能接管已有恢复材料。
     staging = path.join(workspace, "stage");
     await fs.make_dir_exclusive(staging);
     const plan = await stage(staging);
