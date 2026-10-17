@@ -9,6 +9,7 @@ export const WOLF_COMMAND = {
   DEBUG: 106,
   SET_STRING: 122,
   PICTURE: 150,
+  DATABASE: 250,
 } as const;
 export type WolfCommand = Readonly<{
   code: number;

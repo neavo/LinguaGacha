@@ -4,12 +4,13 @@ import os from "node:os";
 import path from "node:path";
 import JSZip from "jszip";
 import { NativeFs } from "../../../native/native-fs";
-import { wolf_files } from "../../../test/wolf-fixture";
+import { wolf_command, wolf_common, wolf_files } from "../../../test/wolf-fixture";
 import { wolf_archive_fixture } from "../../../test/wolf-archive-fixture";
 import { FileFormatService } from "../file-format-service";
 import { read_wolf_common } from "./common-events";
 import { read_wolf_map } from "./map";
 import { read_wolf_metadata } from "./item";
+import { create_wolf_context } from "./wolf-format";
 
 it("游戏根目录、EXE 和 Data 去重为一个资产，解包覆盖散装文件并可离线重建和导出", async () => {
   using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-wolf-format-"));
@@ -77,6 +78,30 @@ it("游戏根目录、EXE 和 Data 去重为一个资产，解包覆盖散装文
       expect(read_wolf_map(actual).slots.some((slot) => slot.text === released.dst)).toBe(true);
     else expect(actual).toEqual(bytes);
   }
+});
+
+it.each([
+  ["按名称读取", ["", "地图登记", "", "显示名称"], [9, 0, 9, 0x11100, 1600005], "metadata"],
+  ["按编号读取", [], [0, 0, 1, 0x11100, 1600005], "metadata"],
+  ["写回数据库", ["", "地图登记", "", "显示名称"], [9, 0, 9, 0x10100, 1600005], "text"],
+  ["读入其他变量", ["", "地图登记", "", "显示名称"], [9, 0, 9, 0x11100, 1600006], "text"],
+])("公共事件%s拼入资源路径的字段时决定该字段的默认用途", async (_, strings, integers, usage) => {
+  const files = wolf_files();
+  files.set(
+    "Data/BasicData/CommonEvent.dat",
+    wolf_common(0x91, [
+      wolf_command(250, strings, integers),
+      wolf_command(122, ["BGM/\\cself[05].ogg"], [1600007, 0, 0]),
+    ]),
+  );
+  const context = await create_wolf_context(
+    new Map([...files].map(([name, bytes]) => [name, { async: async () => bytes }])),
+  );
+  const system = await context.read("Data/BasicData/SysDatabase.dat", new Uint8Array());
+  expect(system!.slots.map((slot) => [slot.text, slot.usage])).toEqual([
+    ["MapData/Map001.mps", "metadata"],
+    ["城镇", usage],
+  ]);
 });
 
 it("缺少核心配对整项失败，损坏的独立地图保留警告和零条目原稿", async () => {

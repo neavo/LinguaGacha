@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { open_wolf_document, WolfReader, type WolfDocument } from "./binary";
+import type { WolfFieldReference } from "./common-events";
 
 const MAGIC = [0, 0x57, 0, 0, 0x4f, 0x4c, 0, 0x46, 0x4d, 0];
 const STRING_INDEX_BASE = 2000; // 字段索引从此值起指向字符串列。
@@ -18,7 +19,11 @@ export type WolfDatabase = Readonly<{
 }>;
 
 /** 描述文件映射到物理字符串槽位，字段别名共用一个写入目标。 */
-export function read_wolf_database(project: Uint8Array, input: Uint8Array): WolfDatabase {
+export function read_wolf_database(
+  project: Uint8Array,
+  input: Uint8Array,
+  path_fields: readonly Pick<WolfFieldReference, "type" | "field">[] = [],
+): WolfDatabase {
   const doc = open_wolf_document(input, MAGIC, 6, 10, [0xc2, 0xc3, 0xc4], [0xc4], 11);
   const p = new WolfReader(Buffer.from(project), 0, doc.utf8),
     reader = new WolfReader(doc.bytes, 11, doc.utf8);
@@ -70,6 +75,21 @@ export function read_wolf_database(project: Uint8Array, input: Uint8Array): Wolf
       if (index >= STRING_INDEX_BASE)
         string_fields[index - STRING_INDEX_BASE]!.push(entry.fields[field]!);
     });
+    // 拼入资源路径的字段按名称或编号映射到物理字符串槽位，整列默认保护。
+    const path_strings = new Set(
+      path_fields
+        .filter((reference) => reference.type === type || reference.type === entry.name)
+        .map(
+          ({ field }) =>
+            entry.indexes[
+              typeof field === "number"
+                ? field
+                : entry.fields.findIndex((value) => value.name === field)
+            ],
+        )
+        .filter((index): index is number => index !== undefined && index >= STRING_INDEX_BASE)
+        .map((index) => index - STRING_INDEX_BASE),
+    );
     for (let record = 0; record < records; record++) {
       reader.take(integers * 4);
       const values: string[] = [];
@@ -77,7 +97,9 @@ export function read_wolf_database(project: Uint8Array, input: Uint8Array): Wolf
         const fields = string_fields[string]!;
         // 任一别名是资源或未知类型时，该物理槽位默认保护。
         const usage =
-          fields.length && fields.every((field) => field.type === 0) ? "text" : "metadata";
+          fields.length && fields.every((field) => field.type === 0) && !path_strings.has(string)
+            ? "text"
+            : "metadata";
         values.push(
           reader.string(
             { kind: "database_string", type, record, string },
