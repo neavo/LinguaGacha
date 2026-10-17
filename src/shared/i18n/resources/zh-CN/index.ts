@@ -1,3 +1,5 @@
+import { zh_cn_game_font_page } from "./game-font-page";
+import { zh_cn_toolbox_page } from "./toolbox-page";
 import { zh_cn_skills_page } from "./skills-page";
 import { zh_cn_batch_translation } from "./batch-translation";
 import { zh_cn_agent_page } from "./agent-page";
@@ -31,6 +33,8 @@ export const zh_cn_messages = {
   expert_settings_page: zh_cn_expert_settings_page,
   glossary_page: zh_cn_glossary_page,
   laboratory_page: zh_cn_laboratory_page,
+  toolbox_page: zh_cn_toolbox_page,
+  game_font_page: zh_cn_game_font_page,
   log_window_page: zh_cn_log_window_page,
   model_page: zh_cn_model_page,
   post_translation_replacement_page: zh_cn_post_translation_replacement_page,

@@ -1,4 +1,5 @@
 import { GamePrepareWorker } from "../file/shared/game/prepare-worker";
+import { GameFontService } from "../file/game-font-service";
 import { configure_rgss_parser } from "../file/rpgmaker-rgss/ruby";
 import { configure_rpgmaker_parser } from "../file/rpgmaker-mv-mz/javascript";
 import type { SettingsUpdateResponse } from "../../shared/settings";
@@ -112,6 +113,7 @@ export interface BackendQualityServices {
 
 export interface BackendFileServices {
   translationGeneration: TranslationFileGenerationService;
+  gameFont: GameFontService;
 }
 
 /**
@@ -329,6 +331,7 @@ export class BackendServices {
         this.pdf_worker.run,
         this.logManager,
       ),
+      gameFont: new GameFontService(this.runtime_gate, this.game_prepare_worker.run),
     };
     this.model = new ModelService(
       paths,

@@ -4,6 +4,7 @@ import { BasicSettingsPage } from "@frontend/pages/basic-settings-page/page";
 import { AgentPage } from "@frontend/pages/agent-page/page";
 import { CustomPromptPage } from "@frontend/pages/custom-prompt-page/page";
 import { ExpertSettingsPage } from "@frontend/pages/expert-settings-page/page";
+import { GameFontPage } from "@frontend/pages/game-font-page/page";
 import { GlossaryPage } from "@frontend/pages/glossary-page/page";
 import { LaboratoryPage } from "@frontend/pages/laboratory-page/page";
 import { ModelPage } from "@frontend/pages/model-page/page";
@@ -12,6 +13,7 @@ import { ProofreadingPage } from "@frontend/pages/proofreading-page/page";
 import { ProjectPage } from "@frontend/pages/project-page/page";
 import { TextPreservePage } from "@frontend/pages/text-preserve-page/page";
 import { TextReplacementPage } from "@frontend/pages/text-replacement-page/page";
+import { ToolboxPage } from "@frontend/pages/toolbox-page/page";
 import { WorkbenchPage } from "@frontend/pages/workbench-page/page";
 import type { ScreenComponentProps, ScreenRegistry } from "@frontend/app/navigation/types";
 
@@ -85,5 +87,13 @@ export const SCREEN_REGISTRY: ScreenRegistry = {
   laboratory: {
     component: LaboratoryPage,
     title_key: "laboratory_page.title",
+  },
+  toolbox: {
+    component: ToolboxPage,
+    title_key: "toolbox_page.title",
+  },
+  "game-font": {
+    component: GameFontPage,
+    title_key: "game_font_page.title",
   },
 };

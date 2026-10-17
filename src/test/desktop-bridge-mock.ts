@@ -54,6 +54,8 @@ export function create_desktop_bridge_api_mock(
     pickGlossaryExportPath: async () => ({ canceled: true, paths: [] }),
     pickPromptImportFilePath: async () => ({ canceled: true, paths: [] }),
     pickPromptExportFilePath: async () => ({ canceled: true, paths: [] }),
+    pickGameFontFilePath: async () => ({ canceled: true, paths: [] }),
+    pickGameExecutablePath: async () => ({ canceled: true, paths: [] }),
     ...overrides.methods,
   };
 }

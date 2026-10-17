@@ -216,6 +216,11 @@ export function register_api_routes(context: ApiRouteContext): void {
     services.files.translationGeneration.generate_files(),
   );
 
+  context.postJson("/api/toolbox/game-font/inspect", (body) =>
+    services.files.gameFont.inspect(body),
+  );
+  context.postJson("/api/toolbox/game-font/apply", (body) => services.files.gameFont.apply(body));
+
   const settings = services.app.settings;
   context.postJson("/api/settings/app", () => settings.get_app_settings());
   context.postJson("/api/settings/update", (body) => services.app.updateSettings(body));

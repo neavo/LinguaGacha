@@ -212,6 +212,8 @@ export const zh_cn_app = {
     json_files: "JSON 文件 (*.json)",
     excel_files: "Excel 文件 (*.xlsx)",
     supported_txt_files: "支持的文件 (*.txt)",
+    font_files: "字体文件 (*.ttf *.otf)",
+    executable_files: "可执行文件 (*.exe)",
   },
   diagnostic: {
     agent: {

@@ -1,3 +1,5 @@
+import { en_us_game_font_page } from "./game-font-page";
+import { en_us_toolbox_page } from "./toolbox-page";
 import { en_us_skills_page } from "./skills-page";
 import { en_us_batch_translation } from "./batch-translation";
 import { en_us_agent_page } from "./agent-page";
@@ -33,6 +35,8 @@ export const en_us_messages = {
   expert_settings_page: en_us_expert_settings_page,
   glossary_page: en_us_glossary_page,
   laboratory_page: en_us_laboratory_page,
+  toolbox_page: en_us_toolbox_page,
+  game_font_page: en_us_game_font_page,
   log_window_page: en_us_log_window_page,
   model_page: en_us_model_page,
   post_translation_replacement_page: en_us_post_translation_replacement_page,

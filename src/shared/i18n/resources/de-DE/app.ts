@@ -224,6 +224,8 @@ export const de_de_app = {
     json_files: "JSON-Dateien (*.json)",
     excel_files: "Excel-Dateien (*.xlsx)",
     supported_txt_files: "Unterstützte Dateien (*.txt)",
+    font_files: "Schriftdateien (*.ttf *.otf)",
+    executable_files: "Ausführbare Dateien (*.exe)",
   },
   diagnostic: {
     agent: {

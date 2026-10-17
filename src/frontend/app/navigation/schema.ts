@@ -13,6 +13,7 @@ import {
   ShieldCheck,
   SlidersHorizontal,
   Sparkles,
+  ToolCase,
 } from "lucide-react";
 
 import type { NavigationGroup, RouteId } from "@frontend/app/navigation/types";
@@ -110,6 +111,11 @@ export const NAVIGATION_GROUPS: NavigationGroup[] = [
         id: "laboratory",
         icon: FlaskConical,
         title_key: "laboratory_page.title",
+      },
+      {
+        id: "toolbox",
+        icon: ToolCase,
+        title_key: "toolbox_page.title",
       },
     ],
   },

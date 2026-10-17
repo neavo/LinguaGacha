@@ -1,3 +1,5 @@
+import { ja_jp_game_font_page } from "./game-font-page";
+import { ja_jp_toolbox_page } from "./toolbox-page";
 import { ja_jp_skills_page } from "./skills-page";
 import { ja_jp_agent_page } from "./agent-page";
 import { ja_jp_agent_runtime } from "./agent-runtime";
@@ -34,6 +36,8 @@ export const ja_jp_messages = {
   expert_settings_page: ja_jp_expert_settings_page,
   glossary_page: ja_jp_glossary_page,
   laboratory_page: ja_jp_laboratory_page,
+  toolbox_page: ja_jp_toolbox_page,
+  game_font_page: ja_jp_game_font_page,
   log_window_page: ja_jp_log_window_page,
   model_page: ja_jp_model_page,
   post_translation_replacement_page: ja_jp_post_translation_replacement_page,
