@@ -264,7 +264,7 @@ describe("ProofreadingCache", () => {
   });
 
   it.each<{
-    file_type: "TRANS" | "EPUB" | "RPGMAKER_MV_MZ" | "RPGMAKER_RGSS";
+    file_type: "TRANS" | "EPUB" | "RPGMAKER_MV_MZ" | "RPGMAKER_RGSS" | "WOLFRPG";
     extra_field: ProjectItemPublicRecord["extra_field"];
     internal_file_path: string;
   }>([
@@ -283,6 +283,17 @@ describe("ProofreadingCache", () => {
         },
       },
       internal_file_path: "data/Actors.json",
+    },
+    {
+      file_type: "WOLFRPG",
+      extra_field: {
+        wolfrpg: {
+          internal_file_path: "Data/MapData/Map001.mps",
+          usage: "text",
+          location: { kind: "map_command", event: 0, page: 0, command: 0, code: 101, string: 0 },
+        },
+      },
+      internal_file_path: "Data/MapData/Map001.mps",
     },
     {
       file_type: "RPGMAKER_RGSS",

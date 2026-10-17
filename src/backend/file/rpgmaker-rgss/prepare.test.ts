@@ -5,7 +5,7 @@ import { expect, it, vi } from "vitest";
 import { NativeFs } from "../../../native/native-fs";
 import { rgss_archive_fixture } from "../../../test/rgss-archive-fixture";
 import { FileFormatService } from "../file-format-service";
-import JSZip from "jszip";
+import { read_game_container } from "../shared/game/format";
 import { prepare_rgss_source } from "./prepare";
 import { discover_rgss_source, RGSS_ARCHIVES, RGSS_VERSIONS, type RGSSVersion } from "./source";
 
@@ -46,13 +46,13 @@ it.each(["xp", "vx", "ace"] as const)(
     const prepared = await service.prepare_source(
       (await service.collect_source_file_entries([archive]))[0]!,
     );
-    const zip = await JSZip.loadAsync(prepared.content);
-    for (const [name, member] of Object.entries(zip.files))
+    const { members } = await read_game_container(prepared.content, "game.zip");
+    for (const [name, member] of members)
       expect(fs.readFileSync(path.join(temp.path, "backup_lg", name))).toEqual(
         await member.async("nodebuffer"),
       );
     expect(fs.existsSync(path.join(temp.path, ".lg-original"))).toBe(false);
-    expect(fs.existsSync(path.join(temp.path, "backup_lg/.tmp"))).toBe(false);
+    expect(fs.existsSync(path.join(temp.path, ".tmp"))).toBe(false);
     expect(fs.existsSync(archive)).toBe(false);
     for (const [name, bytes] of files)
       expect(fs.readFileSync(path.join(temp.path, name))).toEqual(bytes);
@@ -100,7 +100,7 @@ it("归档提取失败保留独立数据与归档", async () => {
   expect(fs.readFileSync(path.join(temp.path, "Data/Actors.rvdata2"), "utf8")).toBe("old actors");
   expect(fs.readFileSync(path.join(temp.path, "Custom/Main.rvdata2"), "utf8")).toBe("old script");
   expect(fs.existsSync(path.join(temp.path, "Data/System.rvdata2"))).toBe(false);
-  expect(fs.existsSync(path.join(temp.path, "backup_lg/.tmp"))).toBe(false);
+  expect(fs.existsSync(path.join(temp.path, ".tmp"))).toBe(false);
 });
 
 it("拒绝经过目录链接的成员，外部文件保持原状", async () => {

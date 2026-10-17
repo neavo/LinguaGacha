@@ -1,5 +1,5 @@
-import { read_game_backup_engine } from "./shared/rpgmaker-backup";
-import { GAME_BACKUP_DIRECTORY, GameSourceConflictError } from "./source-file-paths";
+import { discover_wolf_source, wolf_source_root, type WolfSource } from "./wolfrpg/source";
+import { is_preparation_path, GameSourceConflictError } from "./source-file-paths";
 import path from "node:path";
 import type { NativeFs } from "../../native/native-fs";
 import {
@@ -18,6 +18,7 @@ export type SourceIdentity =
   | Readonly<{ kind: "file"; format: ProjectSourceFormatId | undefined }>
   | Readonly<{ kind: "mv_mz"; game: RPGMakerSource }>
   | Readonly<{ kind: "rgss"; game: RGSSSource }>
+  | Readonly<{ kind: "wolfrpg"; game: WolfSource }>
   | Readonly<{ kind: "failure"; error: unknown }>;
 export type DiscoveredSource = ProjectSourceFileEntry & Readonly<{ source: SourceIdentity }>;
 const FORMATS = new Map<string, ProjectSourceFormatId>(
@@ -27,16 +28,16 @@ const FORMATS = new Map<string, ProjectSourceFormatId>(
   ]),
 );
 
-/** 显式选择检查候选祖先，递归扫描只检查当前目录，确认备份后停止下探。 */
-async function find_game_backup(
+/** 显式选择检查候选祖先，递归扫描只检查当前目录，按保留名称停止下探。 */
+function find_managed_directory(
   source: string,
   fs: NativeFs,
   signal: AbortSignal | undefined,
   ancestors: boolean,
-): Promise<string | null> {
+): string | null {
   for (let candidate = path.resolve(source); ; candidate = path.dirname(candidate)) {
     signal?.throwIfAborted();
-    if (path.basename(candidate).toLowerCase() === GAME_BACKUP_DIRECTORY) {
+    if (is_preparation_path(path.basename(candidate))) {
       let directory = false;
       try {
         directory = fs.stat(candidate).isDirectory();
@@ -44,27 +45,22 @@ async function find_game_backup(
         if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
         // 不存在的候选交给正常来源检查报告。
       }
-      if (
-        directory &&
-        (read_game_backup_engine(candidate, fs) !== null ||
-          (await discover_rpgmaker_source(path.dirname(candidate), fs, signal)) ||
-          discover_rgss_source(path.dirname(candidate), fs))
-      )
-        return candidate;
+      if (directory) return candidate;
     }
     if (!ancestors || path.dirname(candidate) === candidate) return null;
   }
 }
 
-/** 显式入口的备份识别失败直接归集，不能降级为普通目录继续展开。 */
+/** 显式入口的管理目录识别失败直接归集，不能降级为普通目录继续展开。 */
 export async function discover_source(
   source_path: string,
   fs: NativeFs,
   signal?: AbortSignal,
 ): Promise<DiscoveredSource> {
   try {
-    const backup = await find_game_backup(source_path, fs, signal, true);
-    if (backup) throw new Error("Game backup cannot be used as an import source: " + backup);
+    const managed = find_managed_directory(source_path, fs, signal, true);
+    if (managed)
+      throw new Error("Game management directory cannot be used as an import source: " + managed);
   } catch (error) {
     signal?.throwIfAborted();
     return {
@@ -88,6 +84,14 @@ async function read_source(
     if (!fs.exists(source_path))
       throw Object.assign(new Error("Source not found: " + source_path), { code: "ENOENT" });
     if (fs.stat(source_path).isDirectory()) rel_path += ".zip";
+    const wolf = await discover_wolf_source(source_path, fs, signal);
+    if (wolf)
+      return {
+        source_path: wolf.root,
+        rel_path: path.basename(wolf.root) + ".zip",
+        file_type: "WOLFRPG",
+        source: { kind: "wolfrpg", game: wolf },
+      };
     const mv = await discover_rpgmaker_source(source_path, fs, signal);
     if (mv)
       return {
@@ -122,7 +126,7 @@ async function read_source(
 export function assert_source_identities(entries: readonly DiscoveredSource[], fs: NativeFs): void {
   const roots = new Map<string, string>();
   for (const { source } of entries) {
-    if (source.kind !== "mv_mz" && source.kind !== "rgss") continue;
+    if (source.kind !== "mv_mz" && source.kind !== "rgss" && source.kind !== "wolfrpg") continue;
     const root = fs.to_identity_path(source.game.root);
     const identity =
       source.kind +
@@ -130,7 +134,9 @@ export function assert_source_identities(entries: readonly DiscoveredSource[], f
       fs.to_identity_path(
         source.kind === "mv_mz"
           ? (source.game.executable ?? source.game.root)
-          : path.join(source.game.root, source.game.archive ?? ""),
+          : source.kind === "rgss"
+            ? path.join(source.game.root, source.game.archive ?? "")
+            : source.game.root,
       );
     const previous = roots.get(root);
     if (previous && previous !== identity)
@@ -150,12 +156,12 @@ export async function discover_sources(
   /** 每个物理来源只探测一次，普通目录按稳定顺序展开。 */
   async function visit(source_path: string, source_root: string): Promise<void> {
     signal?.throwIfAborted();
-    const explicit = source_path === source_root; // 显式输入须报告失败，递归遇到备份则跳过。
+    const explicit = source_path === source_root; // 显式输入须报告失败，递归遇到管理目录则跳过。
     try {
-      const backup = await find_game_backup(source_path, fs, signal, explicit);
-      if (backup) {
+      const managed = find_managed_directory(source_path, fs, signal, explicit);
+      if (managed) {
         if (!explicit) return;
-        throw new Error("Game backup cannot be used as an import source: " + backup);
+        throw new Error("Game management directory cannot be used as an import source: " + managed);
       }
     } catch (error) {
       signal?.throwIfAborted();
@@ -178,7 +184,8 @@ export async function discover_sources(
         (entry.source.kind === "file" ||
           (entry.source.kind === "failure" &&
             !discover_unpacked_rpgmaker_source(source_path, fs) &&
-            !discover_rgss_source(source_path, fs)));
+            !discover_rgss_source(source_path, fs) &&
+            !wolf_source_root(source_path, fs)));
       if (container) {
         for (const child of fs
           .read_dirents(source_path)
@@ -206,7 +213,7 @@ export async function discover_sources(
   for (const source of source_paths) if (source.trim()) await visit(source, source);
   assert_source_identities(entries, fs);
   const roots = entries.flatMap(({ source }) =>
-    source.kind === "mv_mz" || source.kind === "rgss"
+    source.kind === "mv_mz" || source.kind === "rgss" || source.kind === "wolfrpg"
       ? [fs.to_identity_path(source.game.root)]
       : [],
   );
@@ -214,7 +221,9 @@ export async function discover_sources(
   return entries.filter((entry) => {
     const source = entry.source;
     const key = fs.to_identity_path(
-      source.kind === "mv_mz" || source.kind === "rgss" ? source.game.root : entry.source_path,
+      source.kind === "mv_mz" || source.kind === "rgss" || source.kind === "wolfrpg"
+        ? source.game.root
+        : entry.source_path,
     );
     const identity = (source.kind === "failure" ? "failure:" : "source:") + key;
     if (seen.has(identity)) return false;

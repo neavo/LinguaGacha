@@ -1,4 +1,4 @@
-import type { GameFormatAdapter } from "../shared/rpgmaker-format";
+import type { GameFormatAdapter } from "../shared/game/format";
 import path from "node:path";
 import { AppError } from "../../../shared/error";
 import { decode_text_content } from "../../../shared/utils/text-tool";
@@ -14,7 +14,7 @@ export function create_rpgmaker_mv_mz_adapter(config: FileFormatServiceConfig): 
   return {
     file_type: "RPGMAKER_MV_MZ",
     internal_path: (item) => read_rpgmaker_metadata(item.extra_field).internal_file_path,
-    create_members: () => ({
+    create_members: async () => ({
       /** JSON 成员按事件提取，其余成员按 JavaScript 提取持久定位。 */
       read_file: async (content, file) => {
         const source = await decode_text_content(content);

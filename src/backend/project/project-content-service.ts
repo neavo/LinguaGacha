@@ -1,5 +1,5 @@
 import { build_source_file_parse_failure } from "../file/source-file-parse-failure-reporter";
-import type { RPGMakerMvMzPrepareExecution } from "../file/rpgmaker-mv-mz/prepare-worker";
+import type { GamePrepareExecution } from "../file/shared/game/prepare-worker";
 import { assert_source_file_paths } from "../file/source-file-paths";
 import { normalize_project_asset_path } from "../../shared/project/project-asset-paths";
 import type { SourceFileParseWarning } from "../file/file-format-types";
@@ -104,7 +104,7 @@ export class ProjectContentService {
     app_setting_service: AppSettingService | null = null,
     native_fs: NativeFs = default_native_fs,
     log_manager: Pick<LogManager, "warning"> | null = null,
-    private readonly rpgmaker_mv_mz_prepare_execution?: RPGMakerMvMzPrepareExecution,
+    private readonly game_prepare_execution?: GamePrepareExecution,
   ) {
     this.database = database;
     this.runtime_gate = runtime_gate;
@@ -728,7 +728,7 @@ export class ProjectContentService {
       },
       this.pdf_execution,
       this.native_fs,
-      this.rpgmaker_mv_mz_prepare_execution,
+      this.game_prepare_execution,
     );
   }
 

@@ -4,7 +4,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 const BUNDLED_CHUNK_DIRECTORY_NAME = "chunks"; // electron-vite 会把动态入口拆到 chunks，运行时契约需要回到 dist-electron 根目录
 const WORK_UNIT_WORKER_ENTRY_FILE_NAME = "work-unit-worker-entry.js"; // work unit worker 入口产物名必须与 Vite main input 保持一致
 const PLANNING_WORKER_ENTRY_FILE_NAME = "planning-worker-entry.js"; // planning worker 入口产物名必须与 Vite main input 保持一致
-const RPGMAKER_MV_MZ_PREPARE_WORKER_ENTRY_FILE_NAME = "rpgmaker-mv-mz-prepare-worker-entry.js"; // 与 main 构建入口一致。
+const GAME_PREPARE_WORKER_ENTRY_FILE_NAME = "game-prepare-worker-entry.js"; // 与 main 构建入口一致。
 const COMPUTE_WORKER_ENTRY_FILE_NAME = "compute-worker-entry.js"; // 非 engine Compute worker 入口产物名必须与 Vite main input 保持一致
 const BACKEND_RUNTIME_WORKER_ENTRY_FILE_NAME = "backend-runtime-worker-entry.js"; // GUI Backend Runtime 入口产物名必须与 Vite main input 保持一致
 
@@ -14,7 +14,7 @@ export type BackendWorkerExecution =
       kind: "worker_threads"; // worker_threads 是 GUI / CLI 正式 worker 执行路径
       workUnitWorkerEntryUrl: URL; // 指向构建产物中的 work unit worker 入口文件
       planningWorkerEntryUrl: URL; // 指向构建产物中的 planning worker 入口文件
-      rpgmakerMvMzPrepareWorkerEntryUrl: URL; // MV/MZ 准备线程只写暂存目录。
+      gamePrepareWorkerEntryUrl: URL; // 游戏准备线程只写暂存目录。
       computeWorkerEntryUrl: URL; // 指向非 engine 通用 worker 入口文件
     }
   | {
@@ -48,8 +48,8 @@ export function build_worker_threads_backend_worker_execution_from_desktop_bundl
     planningWorkerEntryUrl: pathToFileURL(
       path.join(desktop_bundle_dir, PLANNING_WORKER_ENTRY_FILE_NAME),
     ),
-    rpgmakerMvMzPrepareWorkerEntryUrl: pathToFileURL(
-      path.join(desktop_bundle_dir, RPGMAKER_MV_MZ_PREPARE_WORKER_ENTRY_FILE_NAME),
+    gamePrepareWorkerEntryUrl: pathToFileURL(
+      path.join(desktop_bundle_dir, GAME_PREPARE_WORKER_ENTRY_FILE_NAME),
     ),
     computeWorkerEntryUrl: pathToFileURL(
       path.join(desktop_bundle_dir, COMPUTE_WORKER_ENTRY_FILE_NAME),

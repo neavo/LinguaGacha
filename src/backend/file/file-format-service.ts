@@ -1,4 +1,8 @@
-import { RPGMakerGameFormat } from "./shared/rpgmaker-format";
+import { create_wolf_adapter } from "./wolfrpg/wolf-format";
+import { wolf_default_status } from "./wolfrpg/item";
+import { prepare_wolf_source } from "./wolfrpg/prepare";
+import { collect_wolf_files } from "./wolfrpg/source";
+import { GameFormat } from "./shared/game/format";
 import { build_source_file_parse_failure } from "./source-file-parse-failure-reporter";
 import {
   discover_source,
@@ -7,16 +11,20 @@ import {
   type DiscoveredSource,
 } from "./source-discovery";
 import { prepare_rpgmaker_source } from "./rpgmaker-mv-mz/prepare";
-import type { RPGMakerMvMzPrepareExecution } from "./rpgmaker-mv-mz/prepare-worker";
+import type { GamePrepareExecution } from "./shared/game/prepare-worker";
 import { rpgmaker_default_status } from "./rpgmaker-mv-mz/item";
 import { rgss_default_status } from "./rpgmaker-rgss/item";
 import { create_rpgmaker_rgss_adapter } from "./rpgmaker-rgss/rpgmaker-format";
 import { collect_rgss_files } from "./rpgmaker-rgss/source";
 import { prepare_rgss_source } from "./rpgmaker-rgss/prepare";
-import { is_rpgmaker_file_type } from "../../shared/project-source-formats";
+import { is_game_file_type, type GameFileType } from "../../shared/project-source-formats";
 import { format_local_timestamp } from "../../shared/utils/format-local-timestamp";
 import { normalize_project_asset_path } from "../../shared/project/project-asset-paths";
-import { SourceFilePathIndex } from "./source-file-paths";
+import {
+  SourceFilePathIndex,
+  GAME_WORKSPACE_DIRECTORY,
+  assert_regular_path,
+} from "./source-file-paths";
 import { create_rpgmaker_mv_mz_adapter } from "./rpgmaker-mv-mz/rpgmaker-format";
 import { collect_rpgmaker_files } from "./rpgmaker-mv-mz/source";
 import type { PDFExecution } from "./pdf/pdf-worker";
@@ -61,6 +69,7 @@ export class FileFormatService {
   public static default_status(item: Pick<Item, "file_type" | "extra_field">): ItemStatus {
     if (item.file_type === "RPGMAKER_MV_MZ") return rpgmaker_default_status(item);
     if (item.file_type === "RPGMAKER_RGSS") return rgss_default_status(item);
+    if (item.file_type === "WOLFRPG") return wolf_default_status(item);
     return "NONE";
   }
 
@@ -78,8 +87,7 @@ export class FileFormatService {
   private readonly trans: TRANSFormat;
   private readonly renpy: RenPyFormat;
   private readonly epub: EPUBFormat;
-  private readonly rgss: RPGMakerGameFormat;
-  private readonly rpgmaker: RPGMakerGameFormat;
+  private readonly games: Record<GameFileType, GameFormat>;
 
   /**
    * 构造时固定各格式处理器，保证一次服务实例内配置一致
@@ -88,11 +96,14 @@ export class FileFormatService {
     config: FileFormatServiceConfig,
     private readonly pdf_execution: PDFExecution,
     native_fs: NativeFs = default_native_fs,
-    private readonly rpgmaker_mv_mz_prepare_execution?: RPGMakerMvMzPrepareExecution,
+    private readonly game_prepare_execution?: GamePrepareExecution,
   ) {
     this.native_fs = native_fs;
-    this.rgss = new RPGMakerGameFormat(create_rpgmaker_rgss_adapter(), native_fs);
-    this.rpgmaker = new RPGMakerGameFormat(create_rpgmaker_mv_mz_adapter(config), native_fs);
+    this.games = {
+      RPGMAKER_MV_MZ: new GameFormat(create_rpgmaker_mv_mz_adapter(config), native_fs),
+      RPGMAKER_RGSS: new GameFormat(create_rpgmaker_rgss_adapter(), native_fs),
+      WOLFRPG: new GameFormat(create_wolf_adapter(), native_fs),
+    };
     this.txt = new TXTFormat(config);
     this.md = new MDV2Format();
     this.ass = new ASSFormat(config);
@@ -115,14 +126,11 @@ export class FileFormatService {
     content: Uint8Array,
     file_type?: string,
   ): Promise<FileFormatReadResult> {
-    if (is_rpgmaker_file_type(file_type))
+    if (is_game_file_type(file_type))
       return {
         kind: "items",
         file_type,
-        ...(await (file_type === "RPGMAKER_RGSS" ? this.rgss : this.rpgmaker).read_from_stream(
-          content,
-          rel_path,
-        )),
+        ...(await this.games[file_type].read_from_stream(content, rel_path)),
       };
     const by_extension: Record<string, string> = {
       ".txt": "TXT",
@@ -252,8 +260,8 @@ export class FileFormatService {
       .map((entry, index) => ({ entry, index }))
       .sort(
         (left, right) =>
-          Number(is_rpgmaker_file_type(left.entry.file_type)) -
-          Number(is_rpgmaker_file_type(right.entry.file_type)),
+          Number(is_game_file_type(left.entry.file_type)) -
+          Number(is_game_file_type(right.entry.file_type)),
       );
     for (const { entry, index } of order) {
       const parts = normalize_project_asset_path(entry.rel_path).split("/");
@@ -311,12 +319,28 @@ export class FileFormatService {
     signal?.throwIfAborted();
     const { source, rel_path } = entry;
     if (source.kind === "failure") throw source.error;
+    if (source.kind !== "file") {
+      // 散装游戏不经过解包事务，须在此拦截上次遗留的恢复材料。
+      const workspace = path.join(source.game.root, GAME_WORKSPACE_DIRECTORY);
+      assert_regular_path(workspace, this.native_fs);
+      if (this.native_fs.exists(workspace))
+        throw new Error("Unfinished game operation; recovery files: " + workspace);
+    }
+    if (source.kind === "wolfrpg") {
+      await prepare_wolf_source(source.game, this.native_fs, this.game_prepare_execution, signal);
+      return this.games.WOLFRPG.prepare_source(
+        collect_wolf_files(source.game, this.native_fs),
+        rel_path,
+        source.game.root,
+        signal,
+      );
+    }
     if (source.kind === "rgss") {
-      await prepare_rgss_source(source.game, this.native_fs, signal);
-      return this.rgss.prepare_source(
+      await prepare_rgss_source(source.game, this.native_fs, this.game_prepare_execution, signal);
+      return this.games.RPGMAKER_RGSS.prepare_source(
         collect_rgss_files(source.game, this.native_fs),
         rel_path,
-        { root: source.game.root, engine: source.game.version },
+        source.game.root,
         signal,
       );
     }
@@ -324,13 +348,13 @@ export class FileFormatService {
       await prepare_rpgmaker_source(
         source.game,
         this.native_fs,
-        this.rpgmaker_mv_mz_prepare_execution,
+        this.game_prepare_execution,
         signal,
       );
-      return this.rpgmaker.prepare_source(
+      return this.games.RPGMAKER_MV_MZ.prepare_source(
         collect_rpgmaker_files(source.game, this.native_fs),
         rel_path,
-        { root: source.game.root, engine: source.game.engine },
+        source.game.root,
         signal,
       );
     }
@@ -354,13 +378,15 @@ export class FileFormatService {
 
     for (const source_file of source_files) {
       const format_id =
-        source_file.source.kind === "mv_mz"
-          ? "rpgmaker_mv_mz"
-          : source_file.source.kind === "rgss"
-            ? "rpgmaker_rgss"
-            : source_file.source.kind === "file"
-              ? source_file.source.format
-              : undefined;
+        source_file.source.kind === "wolfrpg"
+          ? "wolfrpg"
+          : source_file.source.kind === "mv_mz"
+            ? "rpgmaker_mv_mz"
+            : source_file.source.kind === "rgss"
+              ? "rpgmaker_rgss"
+              : source_file.source.kind === "file"
+                ? source_file.source.format
+                : undefined;
       if (format_id !== undefined) {
         format_hit_counts[format_id] += 1;
       }
@@ -378,8 +404,7 @@ export class FileFormatService {
    */
   public async write_items(items: Item[], context: FileFormatServiceWriteContext): Promise<void> {
     const { paths, asset_reader } = context;
-    await this.rpgmaker.write_to_path(items, context);
-    await this.rgss.write_to_path(items, context);
+    for (const game of Object.values(this.games)) await game.write_to_path(items, context);
     await this.txt.write_to_path(items, paths);
     await this.md.write_to_path(items, paths);
     await this.write_subtitles(items, context);
