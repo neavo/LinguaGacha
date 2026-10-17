@@ -1,7 +1,8 @@
 import { createHash } from "node:crypto";
 import { aes_ctr } from "./crypt";
 import { expect, it } from "vitest";
-import { wolf_crypt_vectors, wolf_vector } from "../../../test/wolf-crypt-fixture";
+import { wolf_crypt_vectors } from "../../../test/wolf-crypt-vectors";
+import { wolf_vector } from "../../../test/wolf-crypt-fixture";
 import { aes_keys, derive_archive_key, generate_key, type WolfKeyType } from "./archive-crypt";
 
 it.each(wolf_crypt_vectors.keys)("$type 密钥派生匹配独立参考字节", async ({ type, input, key }) => {

@@ -1,5 +1,6 @@
 import { expect, it } from "vitest";
-import { wolf_crypt_vectors, wolf_vector } from "../../../test/wolf-crypt-fixture";
+import { wolf_crypt_vectors } from "../../../test/wolf-crypt-vectors";
+import { wolf_vector } from "../../../test/wolf-crypt-fixture";
 import { restore_wolf_core, restore_wolf_project } from "./protection";
 import { read_wolf_game } from "./game-data";
 

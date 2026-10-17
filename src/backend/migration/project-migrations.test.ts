@@ -1,4 +1,3 @@
-import { add_test_asset_from_source } from "../../test/asset-fixture";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -11,12 +10,11 @@ import { build_project_open_writes } from "./project-migrations";
 it("打开旧工程按顺序迁移设置、提示词和文件，并保留前序写入", async () => {
   using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-project-migrations-"));
   const project_path = path.join(temp.path, "fixture.lg");
-  const epub_path = path.join(temp.path, "book.epub");
-  fs.writeFileSync(epub_path, await create_epub_fixture("<ruby>漢<rt>かん</rt></ruby>"));
+  const epub_content = await create_epub_fixture("<ruby>漢<rt>かん</rt></ruby>");
   const database = new ProjectDatabase();
   try {
     await database.create_project(project_path, "fixture", (database) => {
-      add_test_asset_from_source(database, project_path, "book.epub", epub_path, null);
+      database.add_asset(project_path, "book.epub", epub_content, "EPUB", null);
       database.add_asset(project_path, "demo.md", Buffer.from("正文"), "MD", null);
       database.set_rule_text(project_path, "CUSTOM_PROMPT_EN", "旧提示词");
       database.set_items(project_path, [

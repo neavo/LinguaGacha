@@ -2,7 +2,8 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { expect, it } from "vitest";
-import { wolf_crypt_vectors, wolf_vector } from "../../../test/wolf-crypt-fixture";
+import { wolf_crypt_vectors } from "../../../test/wolf-crypt-vectors";
+import { wolf_vector } from "../../../test/wolf-crypt-fixture";
 import { create_wolfx_candidates, type WolfXCandidates } from "./key-collector";
 import { encode_wolfx_key, match_wolfx, write_wolfx_plaintext } from "./wolfx";
 

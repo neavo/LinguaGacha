@@ -1,5 +1,3 @@
-import fs from "node:fs";
-
 import { write_zip, read_zip_fixture, zip_text } from "./zip-fixture";
 
 /**
@@ -40,13 +38,6 @@ export async function create_epub_fixture(chapter_text: string): Promise<Buffer>
 }
 
 /**
- * 写出最小 EPUB 文件，服务层测试通过真实磁盘入口覆盖公开预演行为
- */
-export async function write_epub_fixture(file_path: string, chapter_text: string): Promise<void> {
-  fs.writeFileSync(file_path, await create_epub_fixture(chapter_text));
-}
-
-/**
  * 读取 EPUB 内指定文档文本，断言写回结果时不暴露 ZIP 实现到各测试文件
  */
 export async function read_epub_entry_text(
@@ -54,5 +45,5 @@ export async function read_epub_entry_text(
   entry_path = "OPS/chapter.xhtml",
 ): Promise<string> {
   const zip = await read_zip_fixture(epub_content);
-  return zip_text(zip, entry_path) ?? "";
+  return zip_text(zip, entry_path);
 }

@@ -1,10 +1,9 @@
-import { media_fixture } from "../../../test/media-fixture";
+import { media_fixture, encrypted_media, MEDIA_KEY } from "../../../test/media-fixture";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { expect, it } from "vitest";
 import { NativeFs } from "../../../native/native-fs";
-import { encrypted_media, MEDIA_KEY } from "../../../test/evb-fixture";
 import { decrypt_media } from "./media";
 
 it.each([

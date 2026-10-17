@@ -1,4 +1,3 @@
-import { add_test_asset_from_source } from "../../test/asset-fixture";
 import { adapt_project_change } from "./project-write-event-adapter";
 import { ProjectSessionState } from "./project-session-state";
 import { ItemCache } from "../cache/item-cache";
@@ -230,11 +229,9 @@ describe("ProjectWriteStore", () => {
   it("PDF 译稿与 revision 同事务回滚，失败不发布提交事件", async () => {
     const { database, project_path, store, published_changes } = await create_store("pdf-rollback");
     const bytes = create_pdf_fixture();
-    const source = path.join(path.dirname(project_path), "source.pdf");
-    fs.writeFileSync(source, bytes);
     const document = read_pdf_document(bytes);
     await database.transaction(project_path, (database) => {
-      add_test_asset_from_source(database, project_path, "book.pdf", source, document, 0);
+      database.add_asset(project_path, "book.pdf", bytes, "PDF", document, 0);
     });
     const original = ProjectDatabaseAccess.prototype.upsert_meta_entries;
     const failure = vi
@@ -1214,7 +1211,7 @@ describe("ProjectWriteStore", () => {
     return (await database.get_all_meta(project_path)) as unknown as MutableJsonRecord;
   }
 
-  /** 通过正式资产导入入口落盘，保持文件集合与来源读取一致。 */
+  /** 在事务中准备文本资产，保持文件集合与来源读取一致。 */
   async function add_test_asset(
     database: ProjectDatabase,
     project_path: string,
@@ -1222,10 +1219,8 @@ describe("ProjectWriteStore", () => {
     content: string,
     sort_order: number,
   ): Promise<void> {
-    const source_path = path.join(path.dirname(project_path), `source-${asset_path}`);
-    fs.writeFileSync(source_path, content);
     await database.transaction(project_path, (writer) =>
-      add_test_asset_from_source(writer, project_path, asset_path, source_path, null, sort_order),
+      writer.add_asset(project_path, asset_path, Buffer.from(content), "TXT", null, sort_order),
     );
   }
 

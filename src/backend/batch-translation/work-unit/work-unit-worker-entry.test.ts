@@ -1,9 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import {
-  flush_worker_microtasks,
-  install_worker_threads_mock,
-} from "../../../test/worker-port-harness";
+import { install_worker_threads_mock } from "../../../test/worker-port-harness";
 import type { TranslationRequestPort } from "../protocol/translation-request";
 import { AppError, to_log_error } from "../../../shared/error";
 import type { WorkUnitWorkerCommand } from "./work-unit-worker-protocol";
@@ -57,14 +54,14 @@ describe("work-unit-worker-entry", () => {
       type: "execute",
       unit: { kind: "translation" } as never,
     });
-    await flush_worker_microtasks();
-
-    expect(runner.run).toHaveBeenCalledWith({ kind: "translation" }, expect.any(AbortSignal));
-    expect(harness.postMessage).toHaveBeenCalledWith({
-      type: "result",
-      id: "work-1",
-      result: { ok: true, data: { outcome: "completed" } },
+    await vi.waitFor(() => {
+      expect(harness.postMessage).toHaveBeenCalledWith({
+        type: "result",
+        id: "work-1",
+        result: { ok: true, data: { outcome: "completed" } },
+      });
     });
+    expect(runner.run).toHaveBeenCalledWith({ kind: "translation" }, expect.any(AbortSignal));
   });
 
   it("worker 请求端口按请求 ID 保留父线程响应、用量与错误身份", async () => {
@@ -140,33 +137,27 @@ describe("work-unit-worker-entry", () => {
     const harness = install_worker_threads_mock<WorkUnitWorkerCommand>({
       builtinRoot: TEST_BUILTIN_ROOT,
     });
-    const run_state: {
-      signal: AbortSignal | null;
-      resolve: ((value: unknown) => void) | null;
-    } = { signal: null, resolve: null };
-    install_runner_mock({
-      run: vi.fn(
-        (_unit: unknown, signal: AbortSignal) =>
-          new Promise((resolve) => {
-            run_state.signal = signal;
-            run_state.resolve = resolve;
-          }),
-      ),
-    });
+    const completion = Promise.withResolvers<unknown>();
+    const runner = {
+      run: vi.fn((_unit: unknown, _signal: AbortSignal) => completion.promise),
+    };
+    install_runner_mock(runner);
 
     await import_worker_entry();
     harness.emit({ id: "work-2", type: "execute", unit: { kind: "analysis" } as never });
-    await flush_worker_microtasks();
+    await vi.waitFor(() => {
+      expect(runner.run).toHaveBeenCalledWith({ kind: "analysis" }, expect.any(AbortSignal));
+    });
     harness.emit({ id: "work-2", type: "cancel" });
 
-    expect(run_state.signal?.aborted).toBe(true);
-    run_state.resolve?.({ outcome: "cancelled-after-test" });
-    await flush_worker_microtasks();
-
-    expect(harness.postMessage).toHaveBeenCalledWith({
-      type: "result",
-      id: "work-2",
-      result: { ok: true, data: { outcome: "cancelled-after-test" } },
+    expect(runner.run.mock.calls[0]![1].aborted).toBe(true);
+    completion.resolve({ outcome: "cancelled-after-test" });
+    await vi.waitFor(() => {
+      expect(harness.postMessage).toHaveBeenCalledWith({
+        type: "result",
+        id: "work-2",
+        result: { ok: true, data: { outcome: "cancelled-after-test" } },
+      });
     });
   });
 });

@@ -1,7 +1,6 @@
 import { wolf_files } from "../../test/wolf-fixture";
 import { wolf_archive_fixture } from "../../test/wolf-archive-fixture";
 import { evb_fixture } from "../../test/evb-fixture";
-import { add_test_asset_from_source } from "../../test/asset-fixture";
 import { rgss_archive_fixture } from "../../test/rgss-archive-fixture";
 import { CacheManager } from "../cache/cache-manager";
 import type { AppSettingService } from "../app/app-setting-service";
@@ -959,18 +958,9 @@ describe("ProjectContentService", () => {
         if (session_kind === "空会话") await session_state.clear();
         const initial_session = session_state.snapshot();
         const other_lg_path = project_path("other.lg");
-        const other_source_path = project_path("other.txt");
-        fs.writeFileSync(other_source_path, "原文", "utf-8");
         await database.create_project(other_lg_path, "other");
         await database.transaction(other_lg_path, (writer) =>
-          add_test_asset_from_source(
-            writer,
-            other_lg_path,
-            "other.txt",
-            other_source_path,
-            null,
-            0,
-          ),
+          writer.add_asset(other_lg_path, "other.txt", Buffer.from("原文"), "TXT", null, 0),
         );
         await database.transaction(other_lg_path, (writer) =>
           writer.set_meta(other_lg_path, "source_language", "JA"),
@@ -1058,10 +1048,8 @@ describe("ProjectContentService", () => {
   it("全部重置重建条目并发布全量失效", async () => {
     const { publish_project_change } = create_test_project_change_publisher();
     const { database, service, lg_path } = await create_service(publish_project_change);
-    const source_path = project_path("a.txt");
-    fs.writeFileSync(source_path, "新", "utf-8");
     await database.transaction(lg_path, (writer) =>
-      add_test_asset_from_source(writer, lg_path, "a.txt", source_path, null, 0),
+      writer.add_asset(lg_path, "a.txt", Buffer.from("新"), "TXT", null, 0),
     );
     await database.transaction(lg_path, (writer) =>
       writer.set_items(lg_path, [
@@ -1135,7 +1123,7 @@ describe("ProjectContentService", () => {
       const source = project_path(file);
       fs.writeFileSync(source, content, "utf-8");
       await database.transaction(lg_path, (writer) =>
-        add_test_asset_from_source(writer, lg_path, file, source, null, 0),
+        writer.add_asset(lg_path, file, Buffer.from(content), file_type, null, 0),
       );
       // 重置读取工程内的源文件快照，外部文件后续变化不参与恢复。
       fs.writeFileSync(source, "外部文件已变更", "utf-8");
@@ -1198,10 +1186,8 @@ describe("ProjectContentService", () => {
 
   it.each(["第一行\n第二行\n第三行", "一行", ""])("全部重置允许条目数变化：%s", async (content) => {
     const { database, service, lg_path } = await create_service();
-    const source = project_path("a.txt");
-    fs.writeFileSync(source, content, "utf-8");
     await database.transaction(lg_path, (writer) =>
-      add_test_asset_from_source(writer, lg_path, "a.txt", source, null, 0),
+      writer.add_asset(lg_path, "a.txt", Buffer.from(content), "TXT", null, 0),
     );
     await database.transaction(lg_path, (writer) =>
       writer.set_items(lg_path, [
@@ -1225,10 +1211,15 @@ describe("ProjectContentService", () => {
     async (failure) => {
       const { database, service, lg_path } = await create_service();
       const file = failure === "parse" ? "a.json" : "a.txt";
-      const source = project_path(file);
-      fs.writeFileSync(source, "新正文", "utf-8");
       await database.transaction(lg_path, (writer) =>
-        add_test_asset_from_source(writer, lg_path, file, source, null, 0),
+        writer.add_asset(
+          lg_path,
+          file,
+          Buffer.from("新正文"),
+          failure === "parse" ? "KVJSON" : "TXT",
+          null,
+          0,
+        ),
       );
       await database.transaction(lg_path, (writer) =>
         writer.set_items(lg_path, [
@@ -1282,10 +1273,8 @@ describe("ProjectContentService", () => {
 
   it("translation reset all 解析窗口内拒绝另一段结构性 write", async () => {
     const { database, service, lg_path } = await create_service();
-    const source_path = project_path("a.txt");
-    fs.writeFileSync(source_path, "新", "utf-8");
     await database.transaction(lg_path, (writer) =>
-      add_test_asset_from_source(writer, lg_path, "a.txt", source_path, null, 0),
+      writer.add_asset(lg_path, "a.txt", Buffer.from("新"), "TXT", null, 0),
     );
     await database.transaction(lg_path, (writer) =>
       writer.set_items(lg_path, [
@@ -1353,12 +1342,10 @@ describe("ProjectContentService", () => {
 
   it("导入工作台文件解析窗口内拒绝另一段结构性 write", async () => {
     const { database, service, lg_path } = await create_service();
-    const first_source = project_path("a.txt");
     const second_source = project_path("b.txt");
-    fs.writeFileSync(first_source, "旧", "utf-8");
     fs.writeFileSync(second_source, "新", "utf-8");
     await database.transaction(lg_path, (writer) =>
-      add_test_asset_from_source(writer, lg_path, "a.txt", first_source, null, 0),
+      writer.add_asset(lg_path, "a.txt", Buffer.from("旧"), "TXT", null, 0),
     );
     await database.transaction(lg_path, (writer) =>
       writer.set_items(lg_path, [
@@ -1413,14 +1400,12 @@ describe("ProjectContentService", () => {
 
   it("导入同名工作台文件选择跳过时只新增非同名文件", async () => {
     const { database, service, lg_path } = await create_service();
-    const old_source = project_path("a.txt");
     const conflict_source = project_path("a-new.txt");
     const new_source = project_path("b.txt");
-    fs.writeFileSync(old_source, "旧", "utf-8");
     fs.writeFileSync(conflict_source, "替换候选", "utf-8");
     fs.writeFileSync(new_source, "新", "utf-8");
     await database.transaction(lg_path, (writer) =>
-      add_test_asset_from_source(writer, lg_path, "a.txt", old_source, null, 0),
+      writer.add_asset(lg_path, "a.txt", Buffer.from("旧"), "TXT", null, 0),
     );
     await database.transaction(lg_path, (writer) =>
       writer.set_items(lg_path, [create_persistent_item({ src: "旧", dst: "old", row_number: 0 })]),
@@ -1529,12 +1514,10 @@ describe("ProjectContentService", () => {
   it("导入同名工作台文件选择替换时保留排序并重建条目", async () => {
     const { publish_project_change } = create_test_project_change_publisher();
     const { database, service, lg_path } = await create_service(publish_project_change);
-    const old_source = project_path("a.txt");
     const replace_source = project_path("a-new.txt");
-    fs.writeFileSync(old_source, "旧", "utf-8");
     fs.writeFileSync(replace_source, "新", "utf-8");
     await database.transaction(lg_path, (writer) =>
-      add_test_asset_from_source(writer, lg_path, "a.txt", old_source, null, 3),
+      writer.add_asset(lg_path, "a.txt", Buffer.from("旧"), "TXT", null, 3),
     );
     await database.transaction(lg_path, (writer) =>
       writer.set_items(lg_path, [create_persistent_item({ src: "旧", dst: "old", row_number: 0 })]),
@@ -1575,12 +1558,10 @@ describe("ProjectContentService", () => {
 
   it("导入同名工作台文件选择替换并继承译文", async () => {
     const { database, service, lg_path } = await create_service();
-    const old_source = project_path("a.txt");
     const replace_source = project_path("a-new.txt");
-    fs.writeFileSync(old_source, "同文", "utf-8");
     fs.writeFileSync(replace_source, "同文", "utf-8");
     await database.transaction(lg_path, (writer) =>
-      add_test_asset_from_source(writer, lg_path, "a.txt", old_source, null, 2),
+      writer.add_asset(lg_path, "a.txt", Buffer.from("同文"), "TXT", null, 2),
     );
     await database.transaction(lg_path, (writer) =>
       writer.set_items(lg_path, [
@@ -1791,15 +1772,11 @@ describe("ProjectContentService", () => {
   it("按完整文件集合重排 assets 并只 bump files section", async () => {
     const { publish_project_change } = create_test_project_change_publisher();
     const { database, service, lg_path } = await create_service(publish_project_change);
-    const first_source = project_path("a.txt");
-    const second_source = project_path("b.txt");
-    fs.writeFileSync(first_source, "a", "utf-8");
-    fs.writeFileSync(second_source, "b", "utf-8");
     await database.transaction(lg_path, (writer) =>
-      add_test_asset_from_source(writer, lg_path, "a.txt", first_source, null, 0),
+      writer.add_asset(lg_path, "a.txt", Buffer.from("a"), "TXT", null, 0),
     );
     await database.transaction(lg_path, (writer) =>
-      add_test_asset_from_source(writer, lg_path, "b.txt", second_source, null, 1),
+      writer.add_asset(lg_path, "b.txt", Buffer.from("b"), "TXT", null, 1),
     );
 
     const ack = await service.reorder_files({
@@ -1833,10 +1810,8 @@ describe("ProjectContentService", () => {
   it("工作台 reset-file 只写顶层计算 meta 白名单", async () => {
     const { publish_project_change } = create_test_project_change_publisher();
     const { database, service, lg_path } = await create_service(publish_project_change);
-    const source_path = project_path("a.txt");
-    fs.writeFileSync(source_path, "a", "utf-8");
     await database.transaction(lg_path, (writer) =>
-      add_test_asset_from_source(writer, lg_path, "a.txt", source_path, null, 0),
+      writer.add_asset(lg_path, "a.txt", Buffer.from("a"), "TXT", null, 0),
     );
     await database.transaction(lg_path, (writer) =>
       writer.set_items(lg_path, [
@@ -1878,15 +1853,11 @@ describe("ProjectContentService", () => {
   it("删除工作台文件时删除 files 和对应 items", async () => {
     const { publish_project_change } = create_test_project_change_publisher();
     const { database, service, lg_path } = await create_service(publish_project_change);
-    const first_source = project_path("a.txt");
-    const second_source = project_path("b.txt");
-    fs.writeFileSync(first_source, "a", "utf-8");
-    fs.writeFileSync(second_source, "b", "utf-8");
     await database.transaction(lg_path, (writer) =>
-      add_test_asset_from_source(writer, lg_path, "a.txt", first_source, null, 0),
+      writer.add_asset(lg_path, "a.txt", Buffer.from("a"), "TXT", null, 0),
     );
     await database.transaction(lg_path, (writer) =>
-      add_test_asset_from_source(writer, lg_path, "b.txt", second_source, null, 1),
+      writer.add_asset(lg_path, "b.txt", Buffer.from("b"), "TXT", null, 1),
     );
     await database.transaction(lg_path, (writer) =>
       writer.set_items(lg_path, [
@@ -1968,15 +1939,11 @@ describe("ProjectContentService", () => {
 
   it("任务忙碌时拒绝工作台文件 write 且不写库", async () => {
     const { database, service, runtime_gate, lg_path } = await create_service();
-    const first_source = project_path("a.txt");
-    const second_source = project_path("b.txt");
-    fs.writeFileSync(first_source, "a", "utf-8");
-    fs.writeFileSync(second_source, "b", "utf-8");
     await database.transaction(lg_path, (writer) =>
-      add_test_asset_from_source(writer, lg_path, "a.txt", first_source, null, 0),
+      writer.add_asset(lg_path, "a.txt", Buffer.from("a"), "TXT", null, 0),
     );
     await database.transaction(lg_path, (writer) =>
-      add_test_asset_from_source(writer, lg_path, "b.txt", second_source, null, 1),
+      writer.add_asset(lg_path, "b.txt", Buffer.from("b"), "TXT", null, 1),
     );
     runtime_gate.begin_runtime("batch_translation");
 
@@ -1996,10 +1963,8 @@ describe("ProjectContentService", () => {
 
   it("工作台 write 中途失败时仍释放文件 guard", async () => {
     const { database, service, lg_path } = await create_service();
-    const source_path = project_path("a.txt");
-    fs.writeFileSync(source_path, "a", "utf-8");
     await database.transaction(lg_path, (writer) =>
-      add_test_asset_from_source(writer, lg_path, "a.txt", source_path, null, 0),
+      writer.add_asset(lg_path, "a.txt", Buffer.from("a"), "TXT", null, 0),
     );
     const transaction_spy = vi.spyOn(database, "transaction").mockImplementation(async () => {
       throw new Error("事务失败");

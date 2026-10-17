@@ -4,7 +4,7 @@ import path from "node:path";
 import { expect, it } from "vitest";
 import { read_wolf_archive } from "./archive";
 import { wolf_archive_fixture } from "../../../test/wolf-archive-fixture";
-import { wolf_crypt_vectors } from "../../../test/wolf-crypt-fixture";
+import { wolf_crypt_vectors } from "../../../test/wolf-crypt-vectors";
 
 /** 需要配套密钥的 marker 使用独立参考向量中的派生结果。 */
 function companion_of(version: number): Buffer | undefined {

@@ -7,7 +7,8 @@ import { wolf_files } from "../../../test/wolf-fixture";
 import { wolf_archive_fixture } from "../../../test/wolf-archive-fixture";
 import { FileFormatService } from "../file-format-service";
 import { discover_wolf_source, wolf_source_root } from "./source";
-import { wolf_crypt_vectors, wolf_vector } from "../../../test/wolf-crypt-fixture";
+import { wolf_crypt_vectors } from "../../../test/wolf-crypt-vectors";
+import { wolf_vector } from "../../../test/wolf-crypt-fixture";
 
 it("替代扩展名按头区分密钥、归档与普通素材，布局按主名映射", async () => {
   using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-wolf-source-types-"));

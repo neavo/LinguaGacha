@@ -73,3 +73,12 @@ function m4a_fixture(): Buffer {
 export function media_fixture(extension: "png" | "ogg" | "m4a"): Buffer {
   return extension === "png" ? png_fixture() : extension === "ogg" ? ogg_fixture() : m4a_fixture();
 }
+
+export const MEDIA_KEY = "00112233445566778899aabbccddeeff";
+/** 已知明文生成原生媒体，仅用于断言生产解密结果。 */
+export function encrypted_media(plain: Buffer): Buffer {
+  const bytes = Buffer.from(plain),
+    key = Buffer.from(MEDIA_KEY, "hex");
+  for (let i = 0; i < 16; i++) bytes[i] = bytes[i]! ^ key[i]!;
+  return Buffer.concat([Buffer.from("5250474d560000000003010000000000", "hex"), bytes]);
+}
