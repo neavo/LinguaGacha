@@ -6,8 +6,28 @@ const MAGIC = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x57, 0x4f, 0x4c, 0x46, 0x4d, 0, 0,
 const VERSIONS = [0x64, 0x65, 0x66, 0x67]; // 支持的布局版本。
 const COMPRESSED = [0x65, 0x66, 0x67]; // 其中使用 LZ4 封装的版本。
 
+/** 地图元数据与各页面指令，供可读导出和密钥收集使用。 */
+type WolfMapDetails = Readonly<{
+  version: number;
+  name: string;
+  tileset: number;
+  width: number;
+  height: number;
+  layers: number;
+  events: readonly Readonly<{
+    event: number;
+    id: number;
+    name: string;
+    pages: readonly Readonly<{
+      page: number;
+      graphic: string;
+      commands: readonly WolfCommand[];
+    }>[];
+  }>[];
+}>;
+
 /** 地图层数和指令附加区由布局标记决定。 */
-export function read_wolf_map(input: Uint8Array): WolfDocument {
+export function read_wolf_map(input: Uint8Array): WolfDocument & { details: WolfMapDetails } {
   const doc = open_wolf_document(input, MAGIC, 16, 20, VERSIONS, COMPRESSED, 25);
   const version = doc.bytes.readUInt32LE(20);
   if (!VERSIONS.includes(version))
@@ -65,6 +85,7 @@ export function read_wolf_map(input: Uint8Array): WolfDocument {
   reader.expect(0x66);
   reader.done();
   doc.slots = reader.slots;
-  doc.details = { version, name, tileset, width, height, layers, events };
-  return doc;
+  return Object.assign(doc, {
+    details: { version, name, tileset, width, height, layers, events },
+  });
 }

@@ -6,7 +6,11 @@ const COUNTS = [8, 9, 13, 14]; // 已知版本的字符串槽位数量。
 const TEXT_FIELDS = new Set([8, 11, 12]); // 默认参与翻译的槽位，其余槽位作为元数据。
 
 /** 主标题参与存档身份，魔数与密钥不是可编辑字符串。 */
-export function read_wolf_game(input: Uint8Array): WolfDocument {
+export function read_wolf_game_prefix(input: Uint8Array): {
+  doc: WolfDocument;
+  reader: WolfReader;
+  fields: Record<number, string>;
+} {
   const doc = open_wolf_document(input, MAGIC, 9, null, [], [], 10);
   const reader = new WolfReader(doc.bytes, 10, doc.utf8);
   reader.take(reader.count());
@@ -25,6 +29,12 @@ export function read_wolf_game(input: Uint8Array): WolfDocument {
     if (string === 1) assert(text === "0000-0000", "Unsupported WOLF game identity: " + text);
     else fields[string] = text;
   }
+  return { doc, reader, fields };
+}
+
+/** 普通读取与保护还原共用长度字段之前的布局。 */
+export function read_wolf_game(input: Uint8Array): WolfDocument {
+  const { doc, reader, fields } = read_wolf_game_prefix(input);
   const size_at = reader.at,
     size = reader.uint();
   assert(size === doc.bytes.length - 1, "Invalid WOLF Game.dat file size");

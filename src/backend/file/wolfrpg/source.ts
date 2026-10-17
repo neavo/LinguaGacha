@@ -7,13 +7,33 @@ import {
   validate_game_path,
 } from "../source-file-paths";
 import { read_bytes } from "../shared/binary";
-import { WOLF_CRYPT_VERSIONS } from "./archive";
+import { classify_wolf_archive, classify_wolf_key, type WolfKeyType } from "./archive-crypt";
 
 export type WolfSource = Readonly<{
   root: string;
   data_root: string;
+  key_files: readonly Readonly<{ source_path: string; type: WolfKeyType }>[];
   archives: readonly Readonly<{ source_path: string; output_prefix: string }>[];
 }>;
+
+// 加密工具可改写归档扩展名，候选仍需通过文件头确认。
+const ARCHIVE_EXTENSIONS = [
+  ".wolf",
+  ".data",
+  ".pak",
+  ".bin",
+  ".assets",
+  ".content",
+  ".res",
+  ".resource",
+];
+const KEY_NAMES = new Set(["game", "list", "data2", "gamefile", "basicdata2"]); // 可能保存配套密钥的主名。
+// 任一标志存在即确定游戏根目录。
+const LAYOUT_MARKERS = [
+  ...ARCHIVE_EXTENSIONS.flatMap((ext) => ["Data" + ext, "Data/BasicData" + ext]),
+  "Data/BasicData/Game.dat",
+  "Data/BasicData/Game.dat.wolfx",
+];
 
 /** 只使用布局标志确定游戏边界，坏游戏不能降级为普通目录。 */
 export function wolf_source_root(source: string, fs: NativeFs): string | null {
@@ -26,11 +46,7 @@ export function wolf_source_root(source: string, fs: NativeFs): string | null {
       ? [candidate, path.dirname(candidate)]
       : [candidate];
   return (
-    roots.find((root) =>
-      ["Data.wolf", "Data/BasicData.wolf", "Data/BasicData/Game.dat"].some((name) =>
-        fs.exists(path.join(root, name)),
-      ),
-    ) ?? null
+    roots.find((root) => LAYOUT_MARKERS.some((name) => fs.exists(path.join(root, name)))) ?? null
   );
 }
 
@@ -44,52 +60,61 @@ export async function discover_wolf_source(
   if (!root) return null;
   assert_regular_path(root, fs);
   const data_root = path.join(root, "Data"),
-    archives: Array<{ source_path: string; output_prefix: string }> = [];
-  if (fs.exists(path.join(root, "Data.wolf")))
-    archives.push({ source_path: path.join(root, "Data.wolf"), output_prefix: "Data" });
-  if (fs.exists(data_root)) {
-    assert_regular_path(data_root, fs);
-    for (const entry of fs.read_dirents(data_root))
-      if (entry.name.toLowerCase().endsWith(".wolf")) {
-        if (!entry.isFile()) throw new Error("Invalid WOLF archive: " + entry.name);
-        archives.push({
-          source_path: path.join(data_root, entry.name),
-          output_prefix: "Data/" + entry.name.slice(0, -5),
-        });
+    archives: Array<{ source_path: string; output_prefix: string }> = [],
+    key_files: Array<{ source_path: string; type: WolfKeyType }> = [],
+    headers = new Map<string, Buffer>();
+  for (const directory of [root, data_root]) {
+    if (!fs.exists(directory)) continue;
+    assert_regular_path(directory, fs);
+    for (const entry of fs.read_dirents(directory)) {
+      signal?.throwIfAborted();
+      const parsed = path.parse(entry.name),
+        stem = parsed.name.toLowerCase(),
+        ext = parsed.ext.toLowerCase();
+      if (!ARCHIVE_EXTENSIONS.includes(ext)) continue;
+      const key_candidate = KEY_NAMES.has(stem);
+      const archive_candidate = directory === data_root || stem === "data";
+      if (!key_candidate && !archive_candidate) continue;
+      const source_path = path.join(directory, entry.name);
+      assert_regular_path(source_path, fs);
+      if (!entry.isFile()) throw new Error("Invalid WOLF archive: " + source_path);
+      const handle = await fs.open_file(source_path, "r");
+      let header: Buffer;
+      try {
+        header = await read_bytes(handle, 0, Math.min(64, (await handle.stat()).size));
+      } finally {
+        await handle.close();
       }
+      const type = key_candidate ? classify_wolf_key(header) : null;
+      if (type) {
+        key_files.push({ source_path, type });
+        continue;
+      }
+      if (!archive_candidate) continue;
+      const dx = header.length >= 2 && header.readUInt16LE() === 0x5844;
+      if (!dx && ext !== ".wolf" && stem !== "data" && stem !== "basicdata") continue;
+      archives.push({
+        source_path,
+        output_prefix: directory === root ? "Data" : "Data/" + parsed.name,
+      });
+      headers.set(source_path, header);
+    }
   }
-  // 两种封装的相互优先级未确定，拒绝猜测同一数据根的有效来源。
+  // 根包与分包的优先级未定义，沿用来源冲突边界。
   if (archives.some((archive) => archive.output_prefix === "Data") && archives.length > 1)
     throw new GameSourceConflictError("Conflicting WOLF data archives: " + root);
   for (const archive of archives) {
-    signal?.throwIfAborted();
-    assert_regular_path(archive.source_path, fs);
-    const handle = await fs.open_file(archive.source_path, "r");
     try {
-      const header = await read_bytes(handle, 0, 64),
-        marker = header.readUInt32LE(44) >>> 16;
-      if (
-        header.readUInt16LE() !== 0x5844 ||
-        header.readUInt16LE(2) !== 8 ||
-        !WOLF_CRYPT_VERSIONS.includes(marker)
-      )
-        throw new Error(
-          "Unsupported WOLF archive: " +
-            archive.source_path +
-            " header=" +
-            header.subarray(0, 4).toString("hex") +
-            " crypt=" +
-            marker,
-        );
-    } finally {
-      await handle.close();
+      if (classify_wolf_archive(headers.get(archive.source_path)!) === null)
+        throw new Error("Unsupported WOLF archive header");
+    } catch (cause) {
+      throw new Error(
+        archive.source_path + ": " + (cause instanceof Error ? cause.message : String(cause)),
+        { cause },
+      );
     }
   }
-  return {
-    root,
-    data_root,
-    archives,
-  };
+  return { root, data_root, archives, key_files };
 }
 
 /** 固化数据和配套描述，素材留在准备后的游戏目录。 */

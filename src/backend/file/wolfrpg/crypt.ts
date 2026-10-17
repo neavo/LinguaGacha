@@ -1,10 +1,86 @@
+/*!
+ *  Copyright (c) 2024-2026 Sinflower
+ *
+ *  MIT License
+ *
+ *  Permission is hereby granted, free of charge, to any person obtaining a copy
+ *  of this software and associated documentation files (the "Software"), to deal
+ *  in the Software without restriction, including without limitation the rights
+ *  to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ *  copies of the Software, and to permit persons to whom the Software is
+ *  furnished to do so, subject to the following conditions:
+ *
+ *  The above copyright notice and this permission notice shall be included in all
+ *  copies or substantial portions of the Software.
+ *
+ *  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ *  IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ *  FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ *  AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ *  LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ *  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ *  SOFTWARE.
+ *
+ */
 // Port of UberWolf f4191375d289171b1f29dbc5ca320133b2b4b96a.
-import { crc32 } from "node:zlib";
 import { BINARY_CHUNK_BYTES } from "../shared/binary";
 import { setImmediate } from "node:timers/promises";
-/** 模式标志随当前归档的密钥保存，分块处理共用同一上下文。 */
-export type WolfKey = Uint8Array & { v35?: boolean };
+/** 已扩展的轮密钥与初始计数器。 */
 export type WolfAesKeys = { key: Uint8Array; iv: Uint8Array };
+
+const CHACHA_CONSTANTS = [0x61707865, 0x3320646e, 0x79622d32, 0x6b206574]; // RFC 8439 常量。
+const CHACHA_BLOCK_BYTES = 64;
+
+/** Electron 的 BoringSSL 不提供 `chacha20`，两种宿主共用同一协议实现。 */
+export function chacha20_xor(
+  bytes: Buffer,
+  key: Uint8Array,
+  nonce: Uint8Array,
+  start: number,
+): Buffer {
+  const state = new Uint32Array(16),
+    block = new Uint32Array(16),
+    stream = Buffer.alloc(CHACHA_BLOCK_BYTES);
+  state.set(CHACHA_CONSTANTS);
+  const key_bytes = Buffer.from(key),
+    nonce_bytes = Buffer.from(nonce);
+  for (let i = 0; i < 8; i++) state[i + 4] = key_bytes.readUInt32LE(i * 4);
+  for (let i = 0; i < 3; i++) state[i + 13] = nonce_bytes.readUInt32LE(i * 4);
+  state[12] = 1 + Math.floor(start / CHACHA_BLOCK_BYTES);
+  const rotate = (value: number, bits: number) => (value << bits) | (value >>> (32 - bits));
+  const quarter = (a: number, b: number, c: number, d: number) => {
+    block[a]! += block[b]!;
+    block[d] = rotate(block[d]! ^ block[a]!, 16);
+    block[c]! += block[d]!;
+    block[b] = rotate(block[b]! ^ block[c]!, 12);
+    block[a]! += block[b]!;
+    block[d] = rotate(block[d]! ^ block[a]!, 8);
+    block[c]! += block[d]!;
+    block[b] = rotate(block[b]! ^ block[c]!, 7);
+  };
+  let skip = start % CHACHA_BLOCK_BYTES;
+  for (let at = 0; at < bytes.length;) {
+    block.set(state);
+    for (let round = 0; round < 10; round++) {
+      quarter(0, 4, 8, 12);
+      quarter(1, 5, 9, 13);
+      quarter(2, 6, 10, 14);
+      quarter(3, 7, 11, 15);
+      quarter(0, 5, 10, 15);
+      quarter(1, 6, 11, 12);
+      quarter(2, 7, 8, 13);
+      quarter(3, 4, 9, 14);
+    }
+    for (let i = 0; i < 16; i++) stream.writeUInt32LE((block[i]! + state[i]!) >>> 0, i * 4);
+    const size = Math.min(CHACHA_BLOCK_BYTES - skip, bytes.length - at);
+    for (let i = 0; i < size; i++) bytes[at + i]! ^= stream[skip + i]!;
+    at += size;
+    skip = 0;
+    state[12]!++;
+    if (!state[12]) state[13]!++;
+  }
+  return bytes;
+}
 const AES_SBOX = Uint8Array.from([
   0x63, 0x7c, 0x77, 0x7b, 0xf2, 0x6b, 0x6f, 0xc5, 0x30, 0x01, 0x67, 0x2b, 0xfe, 0xd7, 0xab, 0x76,
   0xca, 0x82, 0xc9, 0x7d, 0xfa, 0x59, 0x47, 0xf0, 0xad, 0xd4, 0xa2, 0xaf, 0x9c, 0xa4, 0x72, 0xc0,
@@ -23,34 +99,6 @@ const AES_SBOX = Uint8Array.from([
   0xe1, 0xf8, 0x98, 0x11, 0x69, 0xd9, 0x8e, 0x94, 0x9b, 0x1e, 0x87, 0xe9, 0xce, 0x55, 0x28, 0xdf,
   0x8c, 0xa1, 0x89, 0x0d, 0xbf, 0xe6, 0x42, 0x68, 0x41, 0x99, 0x2d, 0x0f, 0xb0, 0x54, 0xbb, 0x16,
 ]);
-const SALT_PASSWORD_331 = Uint8Array.from([
-  0xca, 0x08, 0x4c, 0x5d, 0x17, 0x0d, 0xda, 0xa1, 0xd7, 0x27, 0xc8, 0x41, 0x54, 0x38, 0x82, 0x32,
-  0x54, 0xb7, 0xf9, 0x46, 0x8e, 0x13, 0x6b, 0xca, 0xd0, 0x5c, 0x95, 0x95, 0xe2, 0xdc, 0x03, 0x53,
-  0x60, 0x9b, 0x4a, 0x38, 0x17, 0xf3, 0x69, 0x59, 0xa4, 0xc7, 0x9a, 0x43, 0x63, 0xe6, 0x54, 0xaf,
-  0xdb, 0xbb, 0x43, 0x58,
-]);
-export const OLD_PASSWORDS: Readonly<Record<number, Buffer>> = {
-  300: Buffer.from([
-    0x0f, 0x53, 0xe1, 0x3e, 0x8e, 0xb5, 0x41, 0x91, 0x52, 0x16, 0x55, 0xae, 0x34, 0xc9, 0x8f, 0x79,
-    0x59, 0x2f, 0x59, 0x6b, 0x95, 0x19, 0x9b, 0x1b, 0x35, 0x9a, 0x2f, 0xde, 0xc9, 0x7c, 0x12, 0x96,
-    0xc3, 0x14, 0xb5, 0x0f, 0x53, 0xe1, 0x3e, 0x8e,
-  ]),
-  314: Buffer.from([
-    0x31, 0xf9, 0x01, 0x36, 0xa3, 0xe3, 0x8d, 0x3c, 0x7b, 0xc3, 0x7d, 0x25, 0xad, 0x63, 0x28, 0x19,
-    0x1b, 0xf7, 0x8e, 0x6c, 0xc4, 0xe5, 0xe2, 0x76, 0x82, 0xea, 0x4f, 0xed, 0x61, 0xda, 0xe0, 0x44,
-    0x5b, 0xb6, 0x46, 0x3b, 0x06, 0xd5, 0xce, 0xb6, 0x78, 0x58, 0xd0, 0x7c, 0x82,
-  ]),
-};
-/** 旧版密钥由交错字节的两个 CRC32 拼成七字节。 */
-export function old_key(source: Uint8Array): Buffer {
-  const a: number[] = [],
-    b: number[] = [];
-  for (let i = 0; i < source.length; i++) (i % 2 ? b : a).push(source[i]!);
-  const key = Buffer.alloc(7);
-  key.writeUInt32LE(crc32(Uint8Array.from(a)), 0);
-  key.writeUIntLE(crc32(Uint8Array.from(b)) & 0xffffff, 4, 3);
-  return key;
-}
 /** 复现引擎的 32 位整数溢出，密钥派生依赖该随机序列。 */
 export function rng(seed: number): () => number {
   return () => {
@@ -58,125 +106,10 @@ export function rng(seed: number): () => number {
     return (seed >>> 16) & 32767;
   };
 }
-/** 按单字节循环右移并截断高位。 */
-function rotr(x: number, n: number): number {
-  return ((x >>> n) | (x << (8 - n))) & 255;
-}
-/** 分别派生外层归档流与内层成员流的 XOR 密钥。 */
-export function generate_key(seed_bytes: Uint8Array, outer: boolean, version: number): WolfKey {
-  let s = 0;
-  for (let i = 0; i < Math.floor(seed_bytes[outer ? 8 : 11]! / (outer ? 4 : 3)); i++)
-    s = i ^ rotr(s ^ seed_bytes[i % 15]!, outer ? 2 : 3);
-  const next = rng(seed_bytes[2]! * seed_bytes[5]! + seed_bytes[12]! + s);
-  const f = [0, 0, 0];
-  f[s % 3] = next() % 256;
-  if (!outer && version >= 350) f[1] = next() % 251;
-  const k: WolfKey = new Uint8Array(768);
-  for (let i = 0; i < 256; i++) {
-    const rn = next();
-    k[i] = f[0]! ^ next();
-    k[i + 256] = f[1]! ^ (rn >> 8);
-    k[i + 512] = f[2]! ^ rn;
-  }
-  if (outer) {
-    const saltKey = version >= 350 ? Buffer.from("958") : SALT_PASSWORD_331;
-    const salt = Uint8Array.from(
-      { length: 128 },
-      (_, i) => Math.floor(i / saltKey.length) + saltKey[i % saltKey.length]!,
-    );
-    if (version >= 350) s = (s + 34) & 255;
-    for (let i = 0; i < 3; i++) {
-      let t = s;
-      for (let j = 0; j < 256; j++) {
-        const a = salt[j & 127]!,
-          b = salt[(j + i) % 128]!,
-          c = k[i * 256 + j]!,
-          x = a ^ c,
-          round = (b | (a << 8)) % (version >= 350 ? 16 : 7);
-        let n = x,
-          skip = false;
-        switch (round) {
-          case 1:
-            if (b % 11 === 0) n = c;
-            break;
-          case 2:
-            if (a % 29 === 0) n = ~x;
-            break;
-          case 3:
-            if ((round + j) % 37 === 0) n = b ^ x;
-            break;
-          case 4:
-            if ((a + b) % 97 === 0) n = a + x;
-            break;
-          case 5:
-            if ((j * round) % 123 === 0) n = x ^ t;
-            break;
-          case 6:
-            if (a === 255 && b === 0) {
-              n = 0;
-              skip = true;
-            }
-            break;
-          case 7:
-            if ((round + j) % 51 === 0) n ^= a;
-            break;
-          case 8:
-            if (a % 29 === 0) n ^= a;
-            break;
-        }
-        if ((j + i) % ((a % 5) + 1) === 0) n ^= t;
-        else if (skip) n = ~x;
-        k[i * 256 + j] = n;
-        t += i;
-      }
-    }
-  }
-  k.v35 = version >= 350;
-  return k;
-}
-/** 按流中的绝对位置异或，分块边界不重置密钥位置。 */
-export function xor(data: Buffer, key: WolfKey | null, start: number): Buffer {
-  if (key === null) return data;
-  if (key.length === 7) {
-    for (let i = 0; i < data.length; i++) data[i]! ^= key[(start + i) % 7]!;
-    return data;
-  }
-  if (key.v35) {
-    const modified = Uint8Array.from({ length: 512 }, (_, i) => key[i % 256]! ^ (7 * i));
-    for (let i = 0; i < data.length; i++) {
-      const p = start + i;
-      data[i]! ^= modified[p & 255]! ^ modified[(Math.floor(p / 256) & 255) + 256]!;
-    }
-    return data;
-  }
-  for (let i = 0; i < data.length; i++) {
-    const p = start + i;
-    data[i]! ^=
-      key[p & 255]! ^ key[((p >>> 8) & 255) + 256]! ^ key[(Math.floor(p / 65536) & 255) + 512]!;
-  }
-  return data;
-}
-/** 派生计数器初值与修改版 AES 轮密钥，不能替换为标准密钥扩展。 */
-export function aes_keys(seed_bytes: Uint8Array, version: number): WolfAesKeys {
-  const key = new Uint8Array(176),
-    iv = new Uint8Array(16);
-  for (let i = 0; i < 15; i++) {
-    key[i] = (seed_bytes[(i * 7) % 15]! + i * i) & 255;
-    iv[i] = (seed_bytes[(i * 11) % 15]! - i * i) & 255;
-    key[15]! ^= (seed_bytes[i]! + i * 3) & 255;
-    iv[15]! ^= (seed_bytes[i]! + i * 5) & 255;
-  }
-  if (version >= 350) {
-    key.fill(0);
-    iv.fill(0);
-    for (let i = 0; i < 15; i++) {
-      key[i] = ((i + (seed_bytes[((i * 7) ^ (3 * seed_bytes[i]!)) % 15]! << (i % 3))) % 251) & 255;
-      iv[i] =
-        ((seed_bytes[((i * 11) ^ (5 * seed_bytes[(i + 3) % 15]!)) % 15]! >> (i % 2)) + i * i) % 246;
-      key[15]! ^= (7 * (seed_bytes[i]! + (i + 1))) % 253;
-      iv[15]! ^= (11 * ((seed_bytes[i]! - i * 2) & 65535)) % 256;
-    }
-  }
+/** 修改版 AES 密钥扩展供归档和核心保护共用。 */
+export function expand_aes_key(raw: Uint8Array): Uint8Array {
+  const key = new Uint8Array(176);
+  key.set(raw.subarray(0, 16));
   const rc = [0, 1, 2, 4, 8, 16, 32, 64, 128, 27, 54];
   for (let i = 4; i < 44; i++) {
     let a = Array.from(key.subarray((i - 1) * 4, i * 4));
@@ -186,11 +119,11 @@ export function aes_keys(seed_bytes: Uint8Array, version: number): WolfAesKeys {
         AES_SBOX[a[1]!]! ^ rc[i / 4]!,
         AES_SBOX[a[2]!]! >>> 4,
         ~AES_SBOX[a[3]!]! & 255,
-        rotr(AES_SBOX[a[0]!]!, 7),
+        ((AES_SBOX[a[0]!]! >>> 7) | (AES_SBOX[a[0]!]! << 1)) & 255,
       ];
     for (let j = 0; j < 4; j++) key[i * 4 + j] = key[(i - 4) * 4 + j]! ^ a[j]!;
   }
-  return { key, iv };
+  return key;
 }
 /** CTR 使用 AES 正向轮，轮密钥由修改版扩展提供。 */
 function cipher(block: Uint8Array, key: Uint8Array): Uint8Array {
@@ -249,4 +182,151 @@ export async function aes_ctr(
     increment();
   }
   return data;
+}
+
+// WOLF 改写后的 SHA512 初值。
+const WOLF_SHA_INITIAL = [
+  0x123456789abcdef0n,
+  0xfedcba9876543210n,
+  0x0f1e2d3c4b5a6978n,
+  0x89abcdef01234567n,
+  0x13579bdf02468acen,
+  0xf0e1d2c3b4a59687n,
+  0x5a6b7c8d9e0f1a2bn,
+  0x1a2b3c4d5e6f7890n,
+];
+
+// WOLF 改写后的 SHA512 轮常量。
+const WOLF_SHA_ROUNDS = [
+  0x428a2f98d728ae22n,
+  0x7137449123ef65cdn,
+  0xb5c0fbcfec4d3b2fn,
+  0xe9b5dba58189dbbcn,
+  0x3956c25bf348b538n,
+  0x59f111f1b605d019n,
+  0x923f82a4af194f9bn,
+  0xab1c5ed5da6d8118n,
+  0xd807aa98a3030242n,
+  0x12835b0145706fben,
+  0x243185be4ee4b28cn,
+  0x550c7dc3d5ffb4e2n,
+  0x72be5d74f27b896fn,
+  0x80deb1fe3b1696b1n,
+  0x9bdc06a725c71235n,
+  0xc19bf174cf692694n,
+  0xe49b69c19ef14ad2n,
+  0xefbe4786384f25e3n,
+  0x0fc19dc68b8cd5b5n,
+  0x240ca1cc77ac9c65n,
+  0x2de92c6f592b0275n,
+  0x4a7484aa6ea6e483n,
+  0x5cb0a9dcbd41fbd4n,
+  0x76f988da831153b5n,
+  0x983e5152ee66dfabn,
+  0xa831c66d2db43210n,
+  0xb00327c898fb213fn,
+  0xbf597fc7beef0ee4n,
+  0xc6e00bf33da88fc2n,
+  0xd5a79147930aa725n,
+  0x06ca6351e003826fn,
+  0x142929670a0e6e70n,
+  0x27b70a8546d22ffcn,
+  0x2e1b21385c26c926n,
+  0x4d2c6dfc5ac42aedn,
+  0x53380d139d95b3dfn,
+  0x650a73548baf63den,
+  0x766a0abb3c77b2a8n,
+  0x81c2c92e47edaee6n,
+  0x92722c851482353bn,
+  0xa2bfe8a14cf10364n,
+  0xa81a664bbc423001n,
+  0xc24b8b70d0f89791n,
+  0xc76c51a30654be30n,
+  0xd192e819d6ef5218n,
+  0xd69906245565a910n,
+  0xf40e35855771202an,
+  0x106aa07032bbd1b8n,
+  0x19a4c116b8d2d0c8n,
+  0x1e376c085141ab53n,
+  0x2748774cdf8eeb99n,
+  0x34b0bcb5e19b48a8n,
+  0x391c0cb3c5c95a63n,
+  0x4ed8aa4ae3418acbn,
+  0x5b9cca4f7763e373n,
+  0x682e6ff3d6b2b8a3n,
+  0x748f82ee5defb2fcn,
+  0x78a5636f43172f60n,
+  0x84c87814a1f0ab72n,
+  0x8cc702081a6439ecn,
+  0x90befffa23631e28n,
+  0xa4506cebde82bde9n,
+  0xbef9a3f7b2c67915n,
+  0xc67178f2e372532bn,
+  0xca273eceea26619cn,
+  0xd186b8c721c0c207n,
+  0xeada7dd6cde0eb1en,
+  0xf57d4f7fee6ed178n,
+  0x06f067aa72176fban,
+  0x0a637dc5a2c898a6n,
+  0x113f9804bef90daen,
+  0x1b710b35131c471bn,
+  0x28db77f523047d84n,
+  0x32caab7b40c72493n,
+  0x3c9ebe0a15c9bebcn,
+  0x431d67c49c100d4cn,
+  0x4cc5d4becb3e42b6n,
+  0x597f299cfc657e2an,
+  0x5fcb6fab3ad6faecn,
+  0x6c44198c4a475817n,
+];
+
+/** WOLF 改写了 SHA512 的初值、轮常量、选择函数和最终累加。 */
+export function wolf_sha512(input: Buffer): string {
+  const mask = (1n << 64n) - 1n;
+  const rotate = (x: bigint, n: bigint) => ((x >> n) | (x << (64n - n))) & mask;
+  const hash = [...WOLF_SHA_INITIAL];
+  const size = Math.ceil((input.length + 17) / 128) * 128,
+    bytes = Buffer.alloc(size);
+  input.copy(bytes);
+  bytes[input.length] = 128;
+  bytes.writeBigUInt64BE(BigInt(input.length) * 8n, size - 8);
+  for (let at = 0; at < size; at += 128) {
+    const words = Array<bigint>(80).fill(0n);
+    for (let i = 0; i < 16; i++) words[i] = bytes.readBigUInt64BE(at + i * 8);
+    for (let i = 16; i < 80; i++) {
+      const x = words[i - 15]!,
+        y = words[i - 2]!;
+      words[i] =
+        (words[i - 16]! +
+          (rotate(x, 1n) ^ rotate(x, 8n) ^ (x >> 7n)) +
+          words[i - 7]! +
+          (rotate(y, 19n) ^ rotate(y, 61n) ^ (y >> 6n))) &
+        mask;
+    }
+    let [a, b, c, d, e, f, g, h] = hash as [
+      bigint,
+      bigint,
+      bigint,
+      bigint,
+      bigint,
+      bigint,
+      bigint,
+      bigint,
+    ];
+    for (let i = 0; i < 80; i++) {
+      const t1 =
+        (h +
+          (rotate(e, 14n) ^ rotate(e, 18n) ^ rotate(e, 41n)) +
+          ((e >> 3n) ^ ((e & f) ^ (~e & g))) +
+          WOLF_SHA_ROUNDS[i]! +
+          words[i]!) &
+        mask;
+      const t2 =
+        ((rotate(a, 28n) ^ rotate(a, 34n) ^ rotate(a, 39n)) + ((a & b) ^ (a & c) ^ (b & c))) & mask;
+      [a, b, c, d, e, f, g, h] = [(t1 + t2) & mask, a, b, c, (d + t1) & mask, e, f, g];
+    }
+    const result = [a, b, c, d, e, f, g, h];
+    for (let i = 0; i < 8; i++) hash[i] = (hash[i]! + (result[i]! ^ 0x123456789abcdef0n)) & mask;
+  }
+  return hash.map((x) => x.toString(16).padStart(16, "0")).join("");
 }

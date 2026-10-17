@@ -4,31 +4,15 @@ import { setImmediate } from "node:timers/promises";
 import type { NativeFs } from "../../../native/native-fs";
 import { ProjectAssetPathIndex } from "../../../shared/project/project-asset-paths";
 import { assert_game_path_spellings, validate_game_path } from "../source-file-paths";
-import {
-  BINARY_CHUNK_BYTES,
-  read_bytes,
-  write_bytes,
-  type BinaryFileHandle,
-} from "../shared/binary";
-import {
-  aes_keys,
-  aes_ctr,
-  generate_key,
-  old_key,
-  OLD_PASSWORDS,
-  rng,
-  xor,
-  type WolfKey,
-} from "./crypt";
+import { BINARY_CHUNK_BYTES, write_bytes, type BinaryFileHandle } from "../shared/binary";
+import { open_wolf_archive_crypt, xor, type WolfKey, type WolfKeyType } from "./archive-crypt";
 import { decompress_huffman, decompress_dx_lz } from "./archive-codec";
 import { WOLF_MAX_DATA_BYTES } from "./lz4";
 
 const HEADER_BYTES = 64;
-const MAX_DIRECTORY_BYTES = 32 * 1024 * 1024; // 目录区读取上限，拒绝损坏偏移造成的超大分配。
 const FILE_RECORD_BYTES = 72;
 const DIRECTORY_RECORD_BYTES = 32;
 const MAX_MEMBERS = 1000000; // 成员数量上限，与目录区上限共同约束解析规模。
-export const WOLF_CRYPT_VERSIONS: readonly number[] = [300, 314, 331, 350]; // 支持的归档加密标记。
 export type WolfArchiveMember = Readonly<{
   name: string;
   offset: number;
@@ -48,124 +32,21 @@ export type WolfArchive = Readonly<{
 export async function read_wolf_archive(
   handle: BinaryFileHandle,
   signal?: AbortSignal,
+  resolve_key?: (type: WolfKeyType) => Promise<Buffer>,
 ): Promise<WolfArchive> {
-  const file_size = (await handle.stat()).size;
-  /** 读取当前归档的有界区间，IO 按块检查取消。 */
-  const raw = async (offset: number, size: number): Promise<Buffer> => {
-    assert(
-      Number.isSafeInteger(offset) &&
-        Number.isSafeInteger(size) &&
-        offset >= 0 &&
-        size >= 0 &&
-        offset + size <= file_size,
-      "WOLF archive range exceeds file",
-    );
-    assert(size <= WOLF_MAX_DATA_BYTES, "WOLF member exceeds data limit");
-    const result = Buffer.alloc(size);
-    for (let at = 0; at < size; at += BINARY_CHUNK_BYTES) {
-      await setImmediate();
-      signal?.throwIfAborted();
-      const bytes = await read_bytes(handle, offset + at, Math.min(BINARY_CHUNK_BYTES, size - at));
-      result.set(bytes, at);
-    }
-    return result;
-  };
-  const head = await raw(0, HEADER_BYTES);
-  assert(
-    head.readUInt16LE(0) === 0x5844 && head.readUInt16LE(2) === 8,
-    "Unsupported WOLF archive header: " + head.subarray(0, 4).toString("hex"),
-  );
-  const version = head.readUInt32LE(44) >>> 16;
-  assert(WOLF_CRYPT_VERSIONS.includes(version), "Unsupported WOLF crypt marker: " + version);
-  const pw = Uint8Array.from(head.subarray(49, 64));
-  if (version >= 331) {
-    const random = rng(version >= 350 ? 12 + pw[9]! * pw[10]! + pw[3]! : pw[0]! + pw[7]! * pw[12]!);
-    for (let i = 0; i < (version >= 350 ? 2 : 4); i++)
-      for (let j = 3; j >= 0; j--) {
-        const p = 8 + i * 8 + j * 2;
-        head.writeUInt16LE(head.readUInt16LE(p) ^ random(), p);
-      }
-    if (version >= 350) {
-      const r0 = BigInt(random()) << 17n,
-        r1 = BigInt(random()) << 31n;
-      head.writeBigUInt64LE(head.readBigUInt64LE(24) ^ (r0 | r1 | BigInt(random())), 24);
-      for (let i = 3; i >= 0; i--)
-        head.writeUInt16LE(head.readUInt16LE(32 + i * 2) ^ random(), 32 + i * 2);
-    }
-  }
-  /** 归档偏移先按无符号 64 位读取，再检查 JavaScript 的精确整数范围。 */
-  const number = (at: number): number => {
-    const value = head.readBigUInt64LE(at);
-    assert(value <= BigInt(Number.MAX_SAFE_INTEGER), "Unsafe WOLF archive offset");
-    return Number(value);
-  };
-  const data_offset = number(8),
-    directory_offset = number(16),
-    file_table = number(24),
-    dir_table = number(32);
-  const directory_size = head.readUInt32LE(4),
-    flags = head.readUInt32LE(44) & 65535,
-    huffman_kb = head[48]!;
-  assert(
-    data_offset === HEADER_BYTES &&
-      directory_offset >= HEADER_BYTES &&
-      directory_offset < file_size,
-    "Invalid WOLF directory offset",
-  );
-  assert(
-    directory_size <= MAX_DIRECTORY_BYTES && file_size - directory_offset <= MAX_DIRECTORY_BYTES,
-    "WOLF directory exceeds limit",
-  );
-  assert((flags & ~3) === 0, "Unsupported WOLF archive flags: " + flags);
-  const outer = version >= 331 ? generate_key(pw, true, version) : null;
-  const inner =
-    version >= 331
-      ? generate_key(pw, false, version)
-      : flags & 1
-        ? null
-        : old_key(OLD_PASSWORDS[version]!);
-  const aes = aes_keys(pw, version);
-  let prefix_size = Math.min(1024, file_size - HEADER_BYTES);
-  if (version >= 350) {
-    let state = pw[2]! * pw[4]! + pw[12]! || 1;
-    const next = () => {
-      state ^= state << 11;
-      state ^= state >>> 19;
-      state ^= state << 7;
-      return state >>> 0;
-    };
-    next();
-    if (file_size >= (next() % 500) + 800) next();
-    prefix_size = file_size - HEADER_BYTES;
-    if (prefix_size >= (next() % 500) + 800) prefix_size = (next() % 500) + 800;
-  }
-  /** 外层 XOR 排除头部与末尾保留区，偏移相对于整个归档。 */
-  const outer_read = async (offset: number, size: number): Promise<Buffer> => {
-    const bytes = await raw(offset, size);
-    if (outer)
-      for (let at = 0; at < size; at += BINARY_CHUNK_BYTES) {
-        await setImmediate();
-        signal?.throwIfAborted();
-        const start = Math.max(offset + at, HEADER_BYTES),
-          end = Math.min(offset + at + BINARY_CHUNK_BYTES, offset + size, file_size - HEADER_BYTES);
-        if (start < end) xor(bytes.subarray(start - offset, end - offset), outer, start);
-      }
-    return bytes;
-  };
-  const prefix =
-    version >= 331
-      ? await aes_ctr(await outer_read(HEADER_BYTES, prefix_size), aes, 0, signal)
-      : Buffer.alloc(0);
-  const directory = await outer_read(directory_offset, file_size - directory_offset);
-  // 小归档的目录与前缀可以重叠，第二段 CTR 使用实际前缀消耗的块数。
-  if (version >= 331 && directory_offset < HEADER_BYTES + prefix_size)
-    prefix.copy(directory, 0, directory_offset - HEADER_BYTES);
-  if (version >= 331) await aes_ctr(directory, aes, Math.ceil(prefix.length / 16), signal);
-  for (let at = 0; at < directory.length; at += BINARY_CHUNK_BYTES) {
-    await setImmediate();
-    signal?.throwIfAborted();
-    xor(directory.subarray(at, at + BINARY_CHUNK_BYTES), inner, at);
-  }
+  const {
+    version,
+    data_offset,
+    directory_offset,
+    file_table,
+    dir_table,
+    directory_size,
+    flags,
+    huffman_kb,
+    directory,
+    read,
+    member_key,
+  } = await open_wolf_archive_crypt(handle, resolve_key, signal);
   const bytes =
     flags & 2
       ? directory
@@ -258,10 +139,7 @@ export async function read_wolf_archive(
           size: u64(at + 48),
           lz_size: u64(at + 56),
           huffman_size: u64(at + 64),
-          key:
-            version < 331 && !(flags & 1)
-              ? old_key(Buffer.concat([OLD_PASSWORDS[version]!, entry.upper, ...keys]))
-              : inner,
+          key: member_key([entry.upper, ...keys]),
         };
         const compressed = member.lz_size < 0 ? member.size : member.lz_size;
         const stored =
@@ -286,15 +164,6 @@ export async function read_wolf_archive(
   assert_game_path_spellings([...directories, ...members.map((member) => member.name)]);
   const index = new ProjectAssetPathIndex();
   for (const member of members) index.add(member.name);
-  /** 成员读取复用已解密前缀，避免重叠区域重复解密。 */
-  const read = async (offset: number, size: number): Promise<Buffer> => {
-    assert(offset + size <= directory_offset, "WOLF read exceeds data region");
-    const content = await outer_read(offset, size);
-    const start = Math.max(offset, HEADER_BYTES),
-      end = Math.min(offset + size, HEADER_BYTES + prefix.length);
-    if (start < end) prefix.copy(content, start - offset, start - HEADER_BYTES, end - HEADER_BYTES);
-    return content;
-  };
   /** 首尾 Huffman 区域合并还原，中间原始区域直接分块传输。 */
   async function* packed_chunks(member: WolfArchiveMember): AsyncGenerator<Buffer> {
     const target = member.lz_size < 0 ? member.size : member.lz_size;

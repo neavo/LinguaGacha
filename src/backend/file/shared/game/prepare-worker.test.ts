@@ -107,7 +107,7 @@ it.each(["rgss", "wolfrpg"] as const)(
     const archive = kind === "wolfrpg" ? "Data.wolf" : "Game.rgss3a";
     const bytes =
       kind === "wolfrpg"
-        ? await wolf_archive_fixture(wolf, 350, { empty_directory: true })
+        ? await wolf_archive_fixture(wolf, 100, { empty_directory: true })
         : rgss_archive_fixture(3, new Map([["large.bin", Buffer.alloc(8 * 1024 * 1024, 42)]]));
     fs.writeFileSync(path.join(temp.path, archive), bytes);
     const task =
@@ -118,6 +118,7 @@ it.each(["rgss", "wolfrpg"] as const)(
             game: {
               root: temp.path,
               data_root: path.join(temp.path, "Data"),
+              key_files: [],
               archives: [{ source_path: path.join(temp.path, archive), output_prefix: "Data" }],
             },
           }
@@ -191,7 +192,7 @@ it("仓库外真实 Electron 加载部署准备线程并等待退出", async () 
       ["large.bin", Buffer.alloc(8 * 1024 * 1024, 42)],
       ...[...wolf_files()].map(([name, bytes]): [string, Buffer] => [name.slice(5), bytes]),
     ]),
-    350,
+    100,
     { empty_directory: true },
   );
   fs.writeFileSync(path.join(temp.path, "Data.wolf"), archive);
@@ -206,7 +207,7 @@ it("仓库外真实 Electron 加载部署准备线程并等待退出", async () 
     import { GamePrepareWorker } from ${JSON.stringify(pathToFileURL(path.resolve("src/backend/file/shared/game/prepare-worker.ts")).href)};
     const root=process.cwd();
     const worker=new GamePrepareWorker(pathToFileURL(process.argv[2]));
-    const task={kind:'wolfrpg',staging:path.join(root,'stage'),game:{root,data_root:path.join(root,'Data'),archives:[{source_path:path.join(root,'Data.wolf'),output_prefix:'Data'}]}};
+    const task={kind:'wolfrpg',staging:path.join(root,'stage'),game:{root,data_root:path.join(root,'Data'),key_files:[],archives:[{source_path:path.join(root,'Data.wolf'),output_prefix:'Data'}]}};
     const pending=worker.run(task); const rejected=assert.rejects(pending);
     const deadline=Date.now()+10000;
     while(!fs.existsSync(path.join(task.staging,'Data/large.bin'))) { if(Date.now()>deadline) throw new Error('Worker did not begin extraction'); await setTimeout(1); }

@@ -1,34 +1,23 @@
-import { createHash } from "node:crypto";
 import { expect, it } from "vitest";
-import { aes_ctr, aes_keys, generate_key } from "./crypt";
+import { createCipheriv } from "node:crypto";
+import { chacha20_xor, wolf_sha512 } from "./crypt";
 
-// 固定输入向量由仓库外 UberWolf 对照探针生成，不依赖本测试的归档编码器。
-it.each([
-  [
-    331,
-    [
-      "634ac6a20d7604bfe4ab7fa6129fc2568cdf45b838af69869e3c7a048a13d73d",
-      "656c36fb48196674ccbdd752b98f801f16205fc9f85255b66f64f5397f11802f",
-      "9a2ca7c31fe4b4023615b6f824306f054635161da5ebf41851f44c546fbfd335",
-      "5b1e370e2a9b92ac3a57aa94a86984d8321c001cda00f1125252ef19bac98a06",
-    ],
-  ],
-  [
-    350,
-    [
-      "a63e50f4ef530766a59570ddf6da1b4fb6a57510afaca18945d5109029dca267",
-      "a74b59b32f423d785ae75f251b375352bc2f7e41749b2c0dccc5f120670b0b76",
-      "008e674fbbe517738fb0e2e618db14c82e8c45d9bb590d33477c0c09c3cd5c96",
-      "33e20de2cff6238dfedc4e77df8525cf2900234bb8b1b7e88d3c6ed35623e73f",
-    ],
-  ],
-] as const)("加密 %i 的密钥派生、修改版 AES 扩展与 CTR 匹配独立向量", async (version, expected) => {
-  const pw = Uint8Array.from({ length: 15 }, (_, i) => i + 1);
-  const values = [
-    generate_key(pw, false, version),
-    generate_key(pw, true, version),
-    aes_keys(pw, version).key,
-    await aes_ctr(Buffer.alloc(128, 42), aes_keys(pw, version), 2),
-  ];
-  expect(values.map((bytes) => createHash("sha256").update(bytes).digest("hex"))).toEqual(expected);
+it.each([0, 63, 65531, 131077])("ChaCha20 在偏移 %i 与 Node 原生算法一致", (start) => {
+  const key = Buffer.from(Array.from({ length: 32 }, (_, i) => i)),
+    nonce = Buffer.from("000000090000004a00000000", "hex"),
+    iv = Buffer.alloc(16);
+  iv.writeUInt32LE(1 + Math.floor(start / 64));
+  nonce.copy(iv, 4);
+  const cipher = createCipheriv("chacha20", key, iv);
+  cipher.update(Buffer.alloc(start % 64));
+  const input = Buffer.alloc(65541, 42);
+  expect(chacha20_xor(Buffer.from(input), key, nonce, start)).toEqual(cipher.update(input));
+});
+
+it("修改版 SHA512 匹配固定 C++ 参考摘要", () => {
+  expect(
+    wolf_sha512(Buffer.concat([Buffer.from([0x45, 1, 0x32, 0x23]), Buffer.from("basicD1")])),
+  ).toBe(
+    "75f210aa1a0b5e24d9c71e72f0d32be60197e1736ba536ba70f7295b0502e77909d9d862cbb6344894951c9c7154eb51baf6a1dfa4c55dad0fc3bfcd62587fa2",
+  );
 });
