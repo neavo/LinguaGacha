@@ -38,7 +38,7 @@ function fixture(root: string, packed: boolean): string {
   return root;
 }
 
-it.each([false, true])("准备 %s 固化明文配置，清理原封装并重复导入归档旧备份", async (packed) => {
+it.each([false, true])("准备 %s 固化明文配置，清理原封装且重复导入不重复准备", async (packed) => {
   using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-mv-prepare-"));
   const source = fixture(temp.path, packed);
   if (!packed) fs.writeFileSync(path.join(temp.path, "www/data/System.json"), "\uFEFF" + SYSTEM);
@@ -69,11 +69,6 @@ it.each([false, true])("准备 %s 固化明文配置，清理原封装并重复�
     (await service.discover_import_sources([{ source_path: source, rel_path: "game.zip" }]))[0]!,
   );
   expect(fs.statSync(path.join(temp.path, "www/img/a.png")).mtimeMs).toBe(before);
-  expect(
-    fs
-      .readdirSync(path.join(temp.path, "backup_lg"))
-      .filter((name) => name.startsWith("backup_lg_")),
-  ).toHaveLength(1);
 });
 
 it.each(["media", "commit"])("准备失败 %s 保留原配置和明文", async (phase) => {

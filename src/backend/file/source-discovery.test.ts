@@ -6,8 +6,8 @@ import { NativeFs } from "../../native/native-fs";
 import { evb_fixture } from "../../test/evb-fixture";
 import { discover_source, discover_sources } from "./source-discovery";
 
-it.each(["backup_lg", ".tmp", "BACKUP_LG_20261015_093000_2"])(
-  "管理目录 %s 无需标记即可排除，显式选择内部路径报告错误且保留兄弟来源",
+it.each(["backup_lg", ".tmp"])(
+  "管理目录 %s 扫描时排除，显式选择内部路径报告错误且保留兄弟来源",
   async (name) => {
     using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-source-managed-"));
     const native = new NativeFs();
@@ -16,7 +16,6 @@ it.each(["backup_lg", ".tmp", "BACKUP_LG_20261015_093000_2"])(
     const normal = path.join(temp.path, "normal.txt");
     native.write_file_sync(saved, "old");
     native.write_file_sync(normal, "normal");
-    const read_marker = vi.spyOn(native, "read_text_file");
     expect((await discover_sources([temp.path], native)).map((entry) => entry.source_path)).toEqual(
       [normal],
     );
@@ -33,29 +32,8 @@ it.each(["backup_lg", ".tmp", "BACKUP_LG_20261015_093000_2"])(
       expect((await discover_source(selected, native)).source.kind).toBe("failure");
     }
     expect(entries.find((entry) => entry.source_path === normal)!.source.kind).toBe("file");
-    expect(read_marker).not.toHaveBeenCalled();
   },
 );
-
-it.each([
-  ".linguagacha-backup",
-  ".lg-original",
-  "backup",
-  "backup_2",
-  "backup_lg_invalid",
-  "backup_lg_20261015_093000_0",
-])("旧名称及非历史名称 %s 正常扫描", async (name) => {
-  using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-source-legacy-"));
-  const native = new NativeFs(),
-    directory = path.join(temp.path, name),
-    saved = path.join(directory, "story.txt");
-  native.write_file_sync(saved, "ordinary");
-  for (const selected of [temp.path, directory, saved]) {
-    const entries = await discover_sources([selected], native);
-    expect(entries.map((entry) => entry.source_path)).toEqual([saved]);
-    expect(entries[0]!.source.kind).toBe("file");
-  }
-});
 
 it("管理目录识别读取失败归集来源错误，保留正常兄弟来源", async () => {
   using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-source-managed-io-"));

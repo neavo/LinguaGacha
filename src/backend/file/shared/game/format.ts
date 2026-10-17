@@ -89,9 +89,7 @@ export class GameFormat {
     if (Object.keys(zip.files).length === 0)
       throw new AppError("file.parse_failed", { public_details: { file } });
     // 准备流程已解包归档并解密媒体，此时的目录即游戏运行时可见的文件集合。
-    zip.file(GAME_FILES_MEMBER, list_game_files(root, this.fs, signal), {
-      createFolders: false,
-    });
+    zip.file(GAME_FILES_MEMBER, list_game_files(root, this.fs, signal));
     const content = await zip.generateAsync({ type: "uint8array", compression: "STORE" });
     signal?.throwIfAborted();
     await write_game_backup(root, files, this.fs, signal);
@@ -201,7 +199,7 @@ export class GameFormat {
   }
 }
 
-/** 列出游戏目录中的全部文件；清单只作参考，链接不跟随也不收录。 */
+/** 列出游戏目录中的全部文件，链接不跟随也不收录。 */
 function list_game_files(root: string, fs: NativeFs, signal?: AbortSignal): string {
   const names: string[] = [];
   const visit = (relative: string): void => {

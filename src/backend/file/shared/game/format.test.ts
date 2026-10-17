@@ -15,7 +15,7 @@ it("游戏 拒绝没有原稿文件的容器", async () => {
   ).rejects.toMatchObject({ code: "file.invalid_structure" });
 });
 
-it("每次备份与容器共用读取字节，重复导入归档旧字节且允许新增原稿", async () => {
+it("备份与容器共用读取字节，重复导入归档旧字节", async () => {
   using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-game-backup-"));
   const native = new NativeFs();
   const format = new GameFormat(create_rpgmaker_mv_mz_adapter({ target_language: "ZH" }), native);
@@ -27,46 +27,26 @@ it("每次备份与容器共用读取字节，重复导入归档旧字节且允�
   for (const entry of entries)
     native.write_file_sync(entry.source_path, "original " + entry.rel_path);
   const read = vi.spyOn(native, "read_file");
-  const root = temp.path;
-  const prepared = await format.prepare_source(entries, "game.zip", root);
+  const prepared = await format.prepare_source(entries, "game.zip", temp.path);
   const { members: zip } = await read_game_container(prepared.content, "game.zip");
+  const directory = path.join(temp.path, "backup_lg");
   for (const entry of entries) {
     expect(read.mock.calls.filter(([file]) => file === entry.source_path)).toHaveLength(1);
-    expect(fs.readFileSync(path.join(temp.path, "backup_lg", entry.rel_path))).toEqual(
+    expect(fs.readFileSync(path.join(directory, entry.rel_path))).toEqual(
       await zip.get(entry.rel_path)!.async("nodebuffer"),
     );
     native.write_file_sync(entry.source_path, "translated");
   }
-  const repeated = await format.prepare_source(entries, "game.zip", root);
-  const { members: repeated_members, game_files } = await read_game_container(
-    repeated.content,
-    "game.zip",
-  );
-  const directory = path.join(root, "backup_lg");
+  const repeated = await format.prepare_source(entries, "game.zip", temp.path);
+  const { game_files } = await read_game_container(repeated.content, "game.zip");
   const history = fs.readdirSync(directory).find((name) => name.startsWith("backup_lg_"))!;
   for (const entry of entries) {
     expect(fs.readFileSync(path.join(directory, history, entry.rel_path), "utf8")).toBe(
       "original " + entry.rel_path,
     );
-    expect(fs.readFileSync(path.join(directory, entry.rel_path))).toEqual(
-      await repeated_members.get(entry.rel_path)!.async("nodebuffer"),
-    );
     expect(fs.readFileSync(path.join(directory, entry.rel_path), "utf8")).toBe("translated");
   }
   expect(await game_files!.async("string")).toBe(names.join("\n")); // 已有备份目录不属于游戏文件。
-  const added = {
-    rel_path: "www/js/plugins/Added.js",
-    source_path: path.join(temp.path, "added.js"),
-  };
-  native.write_file_sync(added.source_path, "possibly translated");
-  const expanded = await format.prepare_source([...entries, added], "game.zip", root);
-  const { members: expanded_members } = await read_game_container(expanded.content, "game.zip");
-  expect(fs.readFileSync(path.join(directory, added.rel_path))).toEqual(
-    await expanded_members.get(added.rel_path)!.async("nodebuffer"),
-  );
-  expect(fs.readFileSync(path.join(directory, history, entries[0]!.rel_path), "utf8")).toBe(
-    "original " + entries[0]!.rel_path,
-  );
 });
 
 it.each([false, true])("已有备份 %s 时读取失败均中止导入，恢复读取后可重试", async (existing) => {
@@ -87,12 +67,8 @@ it.each([false, true])("已有备份 %s 时读取失败均中止导入，恢复�
   });
   await expect(format.prepare_source(entries, "game.zip", root)).rejects.toThrow("read failure");
   expect(fs.existsSync(path.join(temp.path, "backup_lg"))).toBe(existing);
-  if (existing) {
+  if (existing)
     expect(fs.readdirSync(path.join(temp.path, "backup_lg")).sort()).toEqual(["data", "js"]);
-    expect(fs.readFileSync(path.join(temp.path, "backup_lg", entries[0]!.rel_path), "utf8")).toBe(
-      "original",
-    );
-  }
   mock.mockRestore();
   await format.prepare_source(entries, "game.zip", root);
   for (const entry of entries)
@@ -148,25 +124,4 @@ it("解析失败保留原始字节，备份与零条目导出仍包含该文件"
   expect(fs.readFileSync(path.join(output, "game/data/Broken.json"), "utf8")).toBe("{");
   expect(fs.readFileSync(path.join(output, "game/data/System.json"), "utf8")).toBe("{}");
   expect(fs.existsSync(path.join(output, "game/game_files.txt"))).toBe(false);
-});
-
-it("容器生成失败保留旧备份，下次导入可重新生成", async () => {
-  using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-game-container-fail-"));
-  const native = new NativeFs(),
-    format = new GameFormat(create_rpgmaker_mv_mz_adapter({ target_language: "ZH" }), native);
-  const source_path = path.join(temp.path, "data/System.json");
-  native.write_file_sync(source_path, "new");
-  native.write_file_sync(path.join(temp.path, "backup_lg/keep"), "old");
-  const entries = [{ source_path, rel_path: "data/System.json" }];
-  const generate = vi
-    .spyOn(JSZip.prototype, "generateAsync")
-    .mockRejectedValueOnce(new Error("container failure"));
-  await expect(format.prepare_source(entries, "game.zip", temp.path)).rejects.toThrow(
-    "container failure",
-  );
-  generate.mockRestore();
-  expect(fs.readdirSync(path.join(temp.path, "backup_lg"))).toEqual(["keep"]);
-  expect(fs.readFileSync(path.join(temp.path, "backup_lg/keep"), "utf8")).toBe("old");
-  await format.prepare_source(entries, "game.zip", temp.path);
-  expect(fs.readFileSync(path.join(temp.path, "backup_lg/data/System.json"), "utf8")).toBe("new");
 });

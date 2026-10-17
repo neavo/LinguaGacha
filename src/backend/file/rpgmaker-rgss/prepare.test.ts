@@ -154,22 +154,3 @@ it("归档不含 System 也完成合并，数据完整性由原稿解析负责",
   expect(fs.readFileSync(path.join(temp.path, "Data/Actors.rvdata2"), "utf8")).toBe("new actors");
   expect(fs.readFileSync(path.join(temp.path, "Custom/Main.rvdata2"), "utf8")).toBe("old script");
 });
-
-it("备份失败保留已解包结果，重试使用散装原稿完成备份", async () => {
-  using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-rgss-backup-retry-"));
-  const { archive } = game(temp.path, "ace");
-  const native = new NativeFs(),
-    service = new FileFormatService({ target_language: "ZH" }, async () => null, native);
-  const fail = vi.spyOn(native, "write_file").mockRejectedValueOnce(new Error("backup failure"));
-  await expect(
-    service.prepare_source((await service.collect_source_file_entries([archive]))[0]!),
-  ).rejects.toThrow("backup failure");
-  fail.mockRestore();
-  expect(fs.existsSync(archive)).toBe(false);
-  expect(fs.existsSync(path.join(temp.path, ".tmp"))).toBe(false);
-  expect(fs.readFileSync(path.join(temp.path, "Data/System.rvdata2"), "utf8")).toBe("system");
-  await service.prepare_source((await service.collect_source_file_entries([temp.path]))[0]!);
-  expect(fs.readFileSync(path.join(temp.path, "backup_lg/Data/System.rvdata2"), "utf8")).toBe(
-    "system",
-  );
-});

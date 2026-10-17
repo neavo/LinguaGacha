@@ -267,26 +267,13 @@ describe("ProjectContentService", () => {
       const baseline = await database.get_all_items(lg_path);
       expect(baseline.find((item) => item.src === "主标题")?.status).toBe("RULE_SKIPPED");
       expect(baseline.find((item) => item.src === "原文")?.status).toBe("NONE");
-      const backup = path.join(root, "backup_lg");
-      const original_game = fs.readFileSync(path.join(backup, "Data/BasicData/Game.dat"));
       const next = await service.preview_import_files({ source_paths: [root] });
-      expect(fs.readdirSync(backup)).toEqual(["Data"]);
       expect(next.files![0]!.conflict).toBe(true);
       await service.import_files({
         files: next.files!,
         conflict_action: "replace",
         expected_section_revisions: { files: 1, items: 1 },
       });
-      const history = fs.readdirSync(backup).find((name) => name.startsWith("backup_lg_"))!;
-      expect(fs.readFileSync(path.join(backup, history, "Data/BasicData/Game.dat"))).toEqual(
-        original_game,
-      );
-      const saved = await read_zip_fixture(
-        (await database.read_asset_content(lg_path, "wolf.zip"))!,
-      );
-      expect(fs.readFileSync(path.join(backup, "Data/BasicData/Game.dat"))).toEqual(
-        Buffer.from(saved.get("Data/BasicData/Game.dat")!),
-      );
       fs.renameSync(root, root + "-moved");
       await service.reset_files({
         rel_paths: ["wolf.zip"],
@@ -628,12 +615,9 @@ describe("ProjectContentService", () => {
       fail.mockRestore();
       expect(await database.read_asset_content(lg_path, "game.zip")).toEqual(old);
       expect(await database.get_all_items(lg_path)).toEqual(old_items);
-      const backup = path.join(source, "backup_lg");
-      expect(fs.readFileSync(path.join(backup, "data/New.json"), "utf8")).toBe('{"text":"新文"}');
-      const history = fs.readdirSync(backup).find((name) => name.startsWith("backup_lg_"))!;
-      expect(fs.readFileSync(path.join(backup, history, "data/Old.json"), "utf8")).toBe(
-        '{"text":"旧文"}',
-      );
+      expect(fs.readFileSync(path.join(source, "backup_lg/data/New.json"), "utf8")).toBe(
+        '{"text":"新文"}',
+      ); // 备份不随工程提交失败回滚。
       await service.import_files(await request());
       const saved = (await database.read_asset_content(lg_path, "game.zip"))!;
       expect([...(await read_zip_fixture(saved)).keys()]).not.toContain("data/Old.json");

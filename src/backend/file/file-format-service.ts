@@ -20,7 +20,11 @@ import { prepare_rgss_source } from "./rpgmaker-rgss/prepare";
 import { is_game_file_type, type GameFileType } from "../../shared/project-source-formats";
 import { format_local_timestamp } from "../../shared/utils/format-local-timestamp";
 import { normalize_project_asset_path } from "../../shared/project/project-asset-paths";
-import { SourceFilePathIndex, GAME_WORKSPACE_DIRECTORY } from "./source-file-paths";
+import {
+  SourceFilePathIndex,
+  GAME_WORKSPACE_DIRECTORY,
+  assert_regular_path,
+} from "./source-file-paths";
 import { create_rpgmaker_mv_mz_adapter } from "./rpgmaker-mv-mz/rpgmaker-format";
 import { collect_rpgmaker_files } from "./rpgmaker-mv-mz/source";
 import type { PDFExecution } from "./pdf/pdf-worker";
@@ -316,16 +320,10 @@ export class FileFormatService {
     const { source, rel_path } = entry;
     if (source.kind === "failure") throw source.error;
     if (source.kind !== "file") {
+      // 散装游戏不经过解包事务，须在此拦截上次遗留的恢复材料。
       const workspace = path.join(source.game.root, GAME_WORKSPACE_DIRECTORY);
-      let workspace_exists = false;
-      try {
-        this.native_fs.lstat(workspace);
-        workspace_exists = true;
-      } catch (error) {
-        if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
-        // 缺失工作区表示没有上次遗留的恢复材料。
-      }
-      if (workspace_exists)
+      assert_regular_path(workspace, this.native_fs);
+      if (this.native_fs.exists(workspace))
         throw new Error("Unfinished game operation; recovery files: " + workspace);
     }
     if (source.kind === "wolfrpg") {

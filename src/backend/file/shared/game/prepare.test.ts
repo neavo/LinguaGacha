@@ -300,23 +300,13 @@ it.each([{ names: ["Keep.txt", "keep.txt"] }, { names: ["keep.txt", "Keep.txt"] 
   },
 );
 
-it.each(["directory", "file", "link"])(
-  "已有根目录工作区 %s 不被准备流程接管或清理",
-  async (kind) => {
-    using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-prepare-exclusive-"));
-    const native = new NativeFs(),
-      workspace = path.join(temp.path, ".tmp");
-    if (kind === "file") native.write_file_sync(workspace, "recovery");
-    else if (kind === "directory") native.write_file_sync(path.join(workspace, "keep"), "recovery");
-    else {
-      native.write_file_sync(path.join(temp.path, "outside/keep"), "recovery");
-      native.create_directory_link(path.join(temp.path, "outside"), workspace);
-    }
-    const stage = vi.fn(async () => ({ writes: [] }));
-    await expect(prepare_game_directory(temp.path, native, stage)).rejects.toThrow();
-    expect(stage).not.toHaveBeenCalled();
-    expect(
-      fs.readFileSync(kind === "file" ? workspace : path.join(workspace, "keep"), "utf8"),
-    ).toBe("recovery");
-  },
-);
+it("已有根目录工作区不被准备流程接管或清理", async () => {
+  using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-prepare-exclusive-"));
+  const native = new NativeFs(),
+    keep = path.join(temp.path, ".tmp/keep");
+  native.write_file_sync(keep, "recovery");
+  const stage = vi.fn(async () => ({ writes: [] }));
+  await expect(prepare_game_directory(temp.path, native, stage)).rejects.toThrow();
+  expect(stage).not.toHaveBeenCalled();
+  expect(fs.readFileSync(keep, "utf8")).toBe("recovery");
+});

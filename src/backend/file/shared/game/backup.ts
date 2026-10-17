@@ -19,8 +19,7 @@ function backup_timestamp(entries: readonly string[], fs: NativeFs): string {
   function visit(target: string): void {
     assert_regular_path(target, fs);
     const stat = fs.stat(target);
-    const time =
-      Number.isFinite(stat.birthtimeMs) && stat.birthtimeMs > 0 ? stat.birthtimeMs : stat.mtimeMs;
+    const time = stat.birthtimeMs > 0 ? stat.birthtimeMs : stat.mtimeMs; // 不支持创建时间的文件系统返回 0。
     if (stat.isFile()) earliest_file = Math.min(earliest_file, time);
     else {
       earliest_directory = Math.min(earliest_directory, time);
@@ -53,7 +52,7 @@ async function create_history(directory: string, timestamp: string, fs: NativeFs
   }
 }
 
-/** 调用方持有工程写入占用；失败保留归档和部分新文件，供人工恢复及下次轮换。 */
+/** 调用方持有工程写入占用，失败时保留归档和部分新文件，供人工恢复及下次轮换。 */
 export async function write_game_backup(
   root: string,
   files: ReadonlyMap<string, Uint8Array>,

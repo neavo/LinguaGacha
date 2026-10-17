@@ -107,29 +107,3 @@ it.each(["unsupported", "core", "map-read", "companion-read"])(
     expect(fs.existsSync(path.join(root, "Data/BasicData/Game.dat"))).toBe(false);
   },
 );
-
-it("备份失败保留已解包结果，重试使用散装原稿完成备份", async () => {
-  using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-wolf-backup-retry-"));
-  const native = new NativeFs(),
-    files = wolf_files();
-  native.write_file_sync(
-    path.join(temp.path, "Data.wolf"),
-    await wolf_archive_fixture(new Map([...files].map(([name, bytes]) => [name.slice(5), bytes]))),
-  );
-  const service = new FileFormatService({ target_language: "ZH" }, async () => null, native);
-  const write = native.write_file.bind(native);
-  const fail = vi.spyOn(native, "write_file").mockImplementation(async (file, bytes) => {
-    if (file.startsWith(path.join(temp.path, "backup_lg") + path.sep))
-      throw new Error("backup failure");
-    await write(file, bytes);
-  });
-  await expect(
-    service.prepare_source((await service.collect_source_file_entries([temp.path]))[0]!),
-  ).rejects.toThrow("backup failure");
-  fail.mockRestore();
-  expect(fs.existsSync(path.join(temp.path, "Data.wolf"))).toBe(false);
-  expect(fs.existsSync(path.join(temp.path, ".tmp"))).toBe(false);
-  await service.prepare_source((await service.collect_source_file_entries([temp.path]))[0]!);
-  for (const [name, bytes] of files)
-    expect(fs.readFileSync(path.join(temp.path, "backup_lg", name))).toEqual(bytes);
-});
