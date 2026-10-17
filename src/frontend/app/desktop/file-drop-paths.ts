@@ -1,9 +1,4 @@
-type DroppedPathResult = {
-  path: string | null;
-  paths: string[];
-  has_multiple_paths: boolean;
-};
-
+/** URI 回退只接收本地文件，并还原 Windows 盘符与路径分隔符。 */
 function normalize_dropped_file_uri_path(file_uri: string): string | null {
   try {
     const normalized_url = new URL(file_uri);
@@ -22,45 +17,30 @@ function normalize_dropped_file_uri_path(file_uri: string): string | null {
 
     return normalized_path;
   } catch {
-    return null;
+    return null; // 无效 URL 或转义不代表本地文件，忽略后继续解析其余条目。
   }
 }
 
+/** 拖入阶段只能依据载荷类型决定是否接收，路径在 drop 时读取。 */
 export function has_path_drop_payload(data_transfer: DataTransfer): boolean {
-  const payload_type_set = new Set(data_transfer.types);
-  return payload_type_set.has("Files") || payload_type_set.has("text/uri-list");
+  return data_transfer.types.includes("Files") || data_transfer.types.includes("text/uri-list");
 }
 
-export function resolve_dropped_path(data_transfer: DataTransfer): DroppedPathResult {
-  const dropped_paths = resolve_dropped_paths(data_transfer);
-  return {
-    path: dropped_paths.paths[0] ?? null,
-    paths: dropped_paths.paths,
-    has_multiple_paths: dropped_paths.has_multiple_paths,
-  };
-}
-
-export function resolve_dropped_paths(data_transfer: DataTransfer): DroppedPathResult {
-  const dropped_files = Array.from(data_transfer.files);
-  if (dropped_files.length > 0) {
-    const normalized_file_paths: string[] = [];
-    for (const dropped_file of dropped_files) {
-      try {
-        const normalized_file_path = window.desktopApp.getPathForFile(dropped_file);
-        if (normalized_file_path !== "") {
-          normalized_file_paths.push(normalized_file_path);
-        }
-      } catch {
-        // 某些拖拽源不会暴露本地路径，这里继续回退到 text/uri-list
+/** 优先采用宿主文件路径，全部不可用时回退到 URI 列表。 */
+export function resolve_dropped_paths(data_transfer: DataTransfer): string[] {
+  const normalized_file_paths: string[] = [];
+  for (const dropped_file of Array.from(data_transfer.files)) {
+    try {
+      const normalized_file_path = window.desktopApp.getPathForFile(dropped_file);
+      if (normalized_file_path !== "") {
+        normalized_file_paths.push(normalized_file_path);
       }
+    } catch {
+      // 某些拖拽源不会暴露本地路径，继续检查其余文件和 URI 列表。
     }
-    if (normalized_file_paths.length > 0) {
-      return {
-        path: normalized_file_paths[0] ?? null,
-        paths: normalized_file_paths,
-        has_multiple_paths: normalized_file_paths.length > 1,
-      };
-    }
+  }
+  if (normalized_file_paths.length > 0) {
+    return normalized_file_paths;
   }
 
   const raw_uri_list = data_transfer.getData("text/uri-list");
@@ -69,14 +49,8 @@ export function resolve_dropped_paths(data_transfer: DataTransfer): DroppedPathR
     .map((line) => line.trim())
     .filter((line) => line !== "" && !line.startsWith("#"));
 
-  const normalized_paths = normalized_uri_list.flatMap((uri) => {
+  return normalized_uri_list.flatMap((uri) => {
     const normalized_path = normalize_dropped_file_uri_path(uri);
     return normalized_path === null ? [] : [normalized_path];
   });
-
-  return {
-    path: normalized_paths[0] ?? null,
-    paths: normalized_paths,
-    has_multiple_paths: normalized_paths.length > 1,
-  };
 }

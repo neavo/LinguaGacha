@@ -435,7 +435,9 @@ describe("useWorkbenchImportFilesFlow", () => {
     const snapshots = await mount_hook();
 
     await act(async () => {
-      await latest_snapshot(snapshots).flow.request_add_file_from_path("C:/source/old-copy.txt");
+      await latest_snapshot(snapshots).flow.request_add_files_from_paths([
+        "C:/source/old-copy.txt",
+      ]);
     });
     await act(async () => {
       latest_snapshot(snapshots).flow.close_dialog();

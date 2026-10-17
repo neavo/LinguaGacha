@@ -96,7 +96,28 @@ describe("WorkbenchFileTable", () => {
     return document.querySelector('[role="tooltip"][data-open]')!;
   }
 
-  it("PDF 文件显示可聚焦的 AGENT 限制提示并传递页进度", async () => {
+  it.each([
+    ["PDF", "workbench_page.table.agent_only"],
+    ["RPGMAKER_MV_MZ", "workbench_page.table.agent_recommended"],
+  ] as const)("%s 文件显示一个可聚焦的 AGENT 胶囊及对应提示", async (file_type, hint_key) => {
+    await render([{ ...create_entry("source.txt"), file_type }]);
+    const badges = container.querySelectorAll<HTMLElement>(
+      '.workbench-page__table-file [data-tone="brand"]',
+    );
+    expect(badges).toHaveLength(1);
+    const badge = badges[0]!;
+    expect(badge.textContent).toBe("workbench_page.table.agent");
+    const tooltip = await focus_tooltip(badge);
+    expect(document.activeElement).toBe(badge);
+    expect(tooltip.textContent).toBe(hint_key);
+  });
+
+  it("普通文件无 AGENT 胶囊，文件扩展名不参与类型判断", async () => {
+    await render([create_entry("text.pdf"), { ...create_entry("script.rpy"), file_type: "RENPY" }]);
+    expect(container.textContent).not.toContain("workbench_page.table.agent");
+  });
+
+  it("PDF 文件传递后端完成率及页进度", async () => {
     const entry: WorkbenchFileEntry = {
       ...create_entry("books/book.pdf"),
       file_type: "PDF",
@@ -111,14 +132,6 @@ describe("WorkbenchFileTable", () => {
       },
     };
     await render([entry]);
-    const badge = container.querySelector<HTMLElement>(
-      '.workbench-page__table-file [data-tone="brand"]',
-    )!;
-    await focus_tooltip(badge);
-    await act(async () => badge.blur());
-    await act(async () =>
-      vi.waitFor(() => expect(document.querySelector('[role="tooltip"][data-open]')).toBeNull()),
-    );
     const progress = container.querySelector<HTMLElement>(
       ".workbench-page__table-progress-cell [data-tone]",
     )!;

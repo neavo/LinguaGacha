@@ -53,7 +53,10 @@ import {
 import { Spinner } from "@frontend/shadcn/spinner";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@frontend/shadcn/tooltip";
 import { type LocaleKey, useI18n } from "@frontend/app/locale/locale-context";
-import { has_path_drop_payload, resolve_dropped_path } from "@frontend/app/desktop/file-drop-paths";
+import {
+  has_path_drop_payload,
+  resolve_dropped_paths,
+} from "@frontend/app/desktop/file-drop-paths";
 import { normalize_source_paths } from "@frontend/app/desktop/source-paths";
 import {
   format_source_file_parse_failure_error_toast,
@@ -615,6 +618,7 @@ export function ProjectPage(_props: ProjectPageProps): JSX.Element {
   const project_loading_toast_id_ref = useRef<string | number | null>(null);
   const recent_projects = settings_snapshot.recent_projects.slice(0, 5);
   const has_recent_projects = recent_projects.length > 0;
+  const source_selection_disabled = is_source_checking || is_creating_project; // 摘要与创建共用来源快照，期间冻结所有编辑入口。
 
   /**
    * 清空打开工程选择，保留源文件选择。
@@ -740,12 +744,11 @@ export function ProjectPage(_props: ProjectPageProps): JSX.Element {
           push_error_toast(t("project_page.create.unavailable"), failure_toast);
         else push_toast("warning", t("project_page.create.unavailable"));
       } else {
-        const output_name_seed_path = normalized_source_paths[0] ?? "";
         set_selected_source({
           source_paths: normalized_source_paths,
           source_file_count,
           format_hit_counts: normalize_project_source_format_hit_counts(payload.format_hit_counts),
-          output_name_seed_path,
+          output_name_seed_path: normalized_source_paths[0]!, // 批量来源以首项确定工程的默认名称和目录。
         });
       }
     } catch {
@@ -754,13 +757,6 @@ export function ProjectPage(_props: ProjectPageProps): JSX.Element {
     } finally {
       set_is_source_checking(false);
     }
-  }
-
-  /**
-   * 单路径入口复用多路径选择流程。
-   */
-  async function handle_select_source_path(source_path: string): Promise<void> {
-    await handle_select_source_paths([source_path]);
   }
 
   /**
@@ -786,7 +782,7 @@ export function ProjectPage(_props: ProjectPageProps): JSX.Element {
       return;
     }
 
-    await handle_select_source_path(selected_path);
+    await handle_select_source_paths([selected_path]);
   }
 
   /**
@@ -811,7 +807,10 @@ export function ProjectPage(_props: ProjectPageProps): JSX.Element {
   ): void {
     event.preventDefault();
 
-    if (has_path_drop_payload(event.dataTransfer)) {
+    if (
+      !(dropzone === "source" && source_selection_disabled) &&
+      has_path_drop_payload(event.dataTransfer)
+    ) {
       set_active_dropzone(dropzone);
       event.dataTransfer.dropEffect = "copy";
     } else {
@@ -840,40 +839,47 @@ export function ProjectPage(_props: ProjectPageProps): JSX.Element {
   }
 
   /**
-   * 解析 drop 事件中的宿主路径，并把多路径与空路径转成可见提示。
+   * 源文件拖放进入批量选择流程。
    */
-  async function handle_path_drop(
-    event: DragEvent<HTMLButtonElement>,
-    on_resolved_path: (path: string) => Promise<void>,
-  ): Promise<void> {
+  async function handle_source_drop(event: DragEvent<HTMLButtonElement>): Promise<void> {
     event.preventDefault();
     set_active_dropzone(null);
 
-    const dropped_path = resolve_dropped_path(event.dataTransfer);
-    if (dropped_path.has_multiple_paths) {
-      push_toast("warning", t("project_page.drop_multiple_unavailable"));
+    if (source_selection_disabled) {
       return;
     }
-    if (dropped_path.path === null || dropped_path.path === "") {
+
+    const paths = resolve_dropped_paths(event.dataTransfer);
+    if (paths.length === 0) {
       push_toast("warning", t("project_page.drop_unavailable"));
       return;
     }
 
-    await on_resolved_path(dropped_path.path);
-  }
-
-  /**
-   * 源文件拖放进入新建工程选择流程。
-   */
-  async function handle_source_drop(event: DragEvent<HTMLButtonElement>): Promise<void> {
-    await handle_path_drop(event, handle_select_source_path);
+    await handle_select_source_paths(paths);
   }
 
   /**
    * 工程文件拖放进入打开工程预览流程。
    */
   async function handle_project_drop(event: DragEvent<HTMLButtonElement>): Promise<void> {
-    await handle_path_drop(event, select_project_path);
+    event.preventDefault();
+    set_active_dropzone(null);
+
+    if (is_preview_loading || is_opening_project) {
+      return;
+    }
+
+    const paths = resolve_dropped_paths(event.dataTransfer);
+    if (paths.length === 0) {
+      push_toast("warning", t("project_page.drop_unavailable"));
+      return;
+    }
+    if (paths.length > 1) {
+      push_toast("warning", t("project_page.drop_multiple_unavailable"));
+      return;
+    }
+
+    await select_project_path(paths[0]!);
   }
 
   /**
@@ -915,7 +921,7 @@ export function ProjectPage(_props: ProjectPageProps): JSX.Element {
    * 提交新建工程请求，成功后刷新会话、任务和最近工程。
    */
   async function handle_create_project(): Promise<void> {
-    if (selected_source === null || is_creating_project) {
+    if (selected_source === null || source_selection_disabled) {
       return;
     }
 
@@ -1080,17 +1086,17 @@ export function ProjectPage(_props: ProjectPageProps): JSX.Element {
     }
   }
 
-  const source_dropzone =
-    selected_source === null ? (
-      <AppContextMenu>
+  const source_dropzone = (
+    <AppContextMenu disabled={source_selection_disabled}>
+      {selected_source === null ? (
         <AppContextMenuTrigger
           render={
             <DropZoneCard
               icon="source"
               tone="source"
               title={t("project_page.create.drop_title")}
-              is_active={active_dropzone === "source"}
-              disabled={is_source_checking || is_creating_project}
+              is_active={active_dropzone === "source" && !source_selection_disabled}
+              disabled={source_selection_disabled}
               on_click={open_context_menu_at_click_position}
               on_drag_over={(event) => {
                 handle_drop_over("source", event);
@@ -1104,46 +1110,29 @@ export function ProjectPage(_props: ProjectPageProps): JSX.Element {
             />
           }
         />
-        <AppContextMenuContent>
-          <AppContextMenuItem
-            onClick={() => {
-              void handle_select_source_file();
-            }}
-          >
-            <File className="size-4" />
-            {t("app.action.select_file")}
-          </AppContextMenuItem>
-          <AppContextMenuItem
-            onClick={() => {
-              void handle_select_source_folder();
-            }}
-          >
-            <FolderOpen className="size-4" />
-            {t("app.action.select_folder")}
-          </AppContextMenuItem>
-        </AppContextMenuContent>
-      </AppContextMenu>
-    ) : (
-      <div
-        className="project-home__selected-card project-home__selected-card--source relative"
-        data-drag-active={active_dropzone === "source" ? "true" : undefined}
-      >
-        <AppButton
-          variant="ghost"
-          size="icon-sm"
-          className="project-home__selected-close h-[30px] w-[30px] p-0"
-          onClick={clear_selected_source}
-          aria-label={t("app.action.reset")}
+      ) : (
+        <div
+          className="project-home__selected-card project-home__selected-card--source relative"
+          data-drag-active={
+            active_dropzone === "source" && !source_selection_disabled ? "true" : undefined
+          }
         >
-          <X className="size-4" />
-        </AppButton>
-
-        <AppContextMenu>
+          <AppButton
+            variant="ghost"
+            size="icon-sm"
+            className="project-home__selected-close h-[30px] w-[30px] p-0"
+            onClick={clear_selected_source}
+            disabled={source_selection_disabled}
+            aria-label={t("app.action.reset")}
+          >
+            <X className="size-4" />
+          </AppButton>
           <AppContextMenuTrigger
             render={
               <button
                 className="project-home__selected-content w-full"
                 type="button"
+                disabled={source_selection_disabled}
                 onClick={open_context_menu_at_click_position}
                 onDragOver={(event) => {
                   handle_drop_over("source", event);
@@ -1168,27 +1157,30 @@ export function ProjectPage(_props: ProjectPageProps): JSX.Element {
               </button>
             }
           />
-          <AppContextMenuContent>
-            <AppContextMenuItem
-              onClick={() => {
-                void handle_select_source_file();
-              }}
-            >
-              <File className="size-4" />
-              {t("app.action.select_file")}
-            </AppContextMenuItem>
-            <AppContextMenuItem
-              onClick={() => {
-                void handle_select_source_folder();
-              }}
-            >
-              <FolderOpen className="size-4" />
-              {t("app.action.select_folder")}
-            </AppContextMenuItem>
-          </AppContextMenuContent>
-        </AppContextMenu>
-      </div>
-    );
+        </div>
+      )}
+      <AppContextMenuContent>
+        <AppContextMenuItem
+          disabled={source_selection_disabled}
+          onClick={() => {
+            void handle_select_source_file();
+          }}
+        >
+          <File className="size-4" />
+          {t("app.action.select_file")}
+        </AppContextMenuItem>
+        <AppContextMenuItem
+          disabled={source_selection_disabled}
+          onClick={() => {
+            void handle_select_source_folder();
+          }}
+        >
+          <FolderOpen className="size-4" />
+          {t("app.action.select_folder")}
+        </AppContextMenuItem>
+      </AppContextMenuContent>
+    </AppContextMenu>
+  );
 
   const open_dropzone =
     selected_project === null ? (
@@ -1365,7 +1357,7 @@ export function ProjectPage(_props: ProjectPageProps): JSX.Element {
                 label={t("project_page.create.action")}
                 loading_label={t("app.action.loading")}
                 is_loading={is_creating_project}
-                disabled={selected_source === null || is_source_checking || is_creating_project}
+                disabled={selected_source === null || source_selection_disabled}
                 on_click={() => {
                   void handle_create_project();
                 }}

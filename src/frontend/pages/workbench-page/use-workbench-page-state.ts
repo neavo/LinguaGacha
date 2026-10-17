@@ -233,7 +233,6 @@ export type UseWorkbenchPageStateResult = {
   apply_table_selection: (payload: AppTableSelectionChange) => void;
   prepare_entry_action: (entry_id: string) => void;
   request_add_file: () => Promise<void>;
-  request_add_file_from_path: (source_path: string) => Promise<void>;
   request_add_files_from_paths: (source_paths: string[]) => Promise<void>;
   notify_add_file_drop_issue: (issue: WorkbenchAddFileDropIssue) => void;
   request_close_project: () => void;
@@ -625,7 +624,6 @@ export function useWorkbenchPageState(): UseWorkbenchPageStateResult {
   );
 
   const request_add_files_from_paths = import_files_flow.request_add_files_from_paths;
-  const request_add_file_from_path = import_files_flow.request_add_file_from_path;
 
   /** 文件选择与拖入共用导入流程。 */
   async function request_add_file(): Promise<void> {
@@ -821,7 +819,6 @@ export function useWorkbenchPageState(): UseWorkbenchPageStateResult {
     apply_table_selection,
     prepare_entry_action,
     request_add_file,
-    request_add_file_from_path,
     request_add_files_from_paths,
     notify_add_file_drop_issue,
     request_close_project,
