@@ -79,7 +79,7 @@
 - 原生 `WOLF RPG 3` 游戏文件，支持导入游戏目录或 `.exe`
 - 原生 `RPG Maker MV/MZ` 游戏文件，支持导入游戏目录或 `.exe`
 - 原生 `RPG Maker XP/VX/VXAce` 游戏文件，支持导入游戏目录或 `.exe`
-- 即将停止支持的文件格式：
+- 即将停止支持：
   - [Translator++](https://dreamsavior.net/translator-plusplus) 项目文件 `.trans`
   - [SExtractor](https://github.com/satan53x/SExtractor)、[Translator++](https://dreamsavior.net/translator-plusplus)、[WOLF 官方翻译工具](https://silversecond.booth.pm/items/5151747) 导出游戏文本 `.xlsx`
 - 具体示例可见 [Wiki - 支持的文件格式](https://github.com/neavo/LinguaGacha/wiki/SupportedFileFormat)，更多格式将持续添加，你也可以在 [ISSUES](https://github.com/neavo/LinguaGacha/issues) 中提出你的需求

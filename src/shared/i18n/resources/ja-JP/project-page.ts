@@ -52,7 +52,7 @@ export const ja_jp_project_page = {
   },
   formats: {
     title: "対応ファイル形式",
-    deprecated_title: "サポート終了予定のファイル形式",
+    deprecated_title: "サポート終了予定",
     txt: "プレーンテキスト",
     md: "Markdown",
     ass: "ASS 字幕",

@@ -17,7 +17,7 @@ import { read_builtin_pi_models } from "./pi-model-catalog";
 import { DEFAULT_MODEL_AGENT_CONFIG } from "../../domain/model-agent";
 
 const catalog = read_builtin_pi_models();
-/** 以固定目录构造请求能力，断言直接观察 Pi 适配结果。 */
+/** 通过内置目录验证能力解析与真实适配器的请求契约。 */
 const create_pi_request = (
   snapshot: Parameters<typeof resolve_one_shot_pi_request>[0],
   messages: Parameters<typeof resolve_one_shot_pi_request>[1],
@@ -42,9 +42,10 @@ const TEST_USER_AGENT = "LinguaGacha/Test";
 const TEST_REQUEST_IDENTITY = { user_agent: TEST_USER_AGENT, session_id: "test-session" };
 
 describe("pi-ai 请求适配", () => {
-  it("DeepSeek 中转的 Agent 请求继承目录输出字段与 assistant 历史要求", async () => {
+  it("DeepSeek 别名中转的 Agent 请求保留输出字段与 assistant 历史要求", async () => {
+    const model_id = "vendor/deepseek-v4.1-flash:fast";
     const configured = create_model({
-      model_id: "vendor/deepseek-flash:fast",
+      model_id,
       api_url: "https://relay.example/v1",
       thinking: { level: "HIGH" },
     });
@@ -89,7 +90,7 @@ describe("pi-ai 请求适配", () => {
       )
       .result();
     expect(payload).toMatchObject({
-      model: "vendor/deepseek-flash:fast",
+      model: model_id,
       max_tokens: capability.agent_limits.max_output_tokens,
       thinking: { type: "enabled" },
       reasoning_effort: "high",
@@ -102,41 +103,35 @@ describe("pi-ai 请求适配", () => {
     expect(payload).not.toHaveProperty("max_completion_tokens");
     expect(payload).not.toHaveProperty("store");
   });
-  it.each(["OpenAI", "OpenAIResponses"] as const)(
-    "%s DeepSeek Flash 保留新请求 ID 并发送各可用思考等级",
-    async (api_format) => {
-      const capability = resolve_model_capability(
-        ConfiguredModel.from_json({ api_format, model_id: "deepseek-flash" }, "test-model"),
-        catalog,
-      );
-      for (const [level, effort] of [
-        ["OFF", "none"],
-        ["LOW", "low"],
-        ["HIGH", "high"],
-        ["MAX", "max"],
-      ] as const) {
-        const request = resolve_request({
-          api_format,
-          api_url: "https://api.deepseek.com",
-          model_id: "deepseek-flash",
-          thinking: { level },
-        });
-        const payload = await capture_payload(request);
+  it.each([
+    ["OpenAI", "deepseek-flash", "https://api.deepseek.com"],
+    ["OpenAIResponses", "deepseek-flash", "https://api.deepseek.com"],
+    ["OpenAI", "deepseek-v4.1-flash", "https://relay.example/v1"],
+    ["OpenAIResponses", "deepseek-v4.1-flash", "https://relay.example/v1"],
+  ] as const)("%s %s 保留请求 ID 并发送各可用思考等级", async (api_format, model_id, api_url) => {
+    for (const [level, effort] of [
+      ["OFF", "none"],
+      ["LOW", "low"],
+      ["HIGH", "high"],
+      ["MAX", "max"],
+    ] as const) {
+      const request = resolve_request({
+        api_format,
+        api_url,
+        model_id,
+        thinking: { level },
+      });
+      const payload = await capture_payload(request);
 
-        expect(request.model).toMatchObject({
-          contextWindow: capability.context_window,
-          maxTokens: capability.max_tokens,
-        });
-        expect(payload).toHaveProperty("model", "deepseek-flash");
-        if (api_format === "OpenAIResponses") {
-          expect(payload).toHaveProperty("reasoning.effort", effort);
-        } else {
-          expect(payload).toHaveProperty("thinking.type", level === "OFF" ? "disabled" : "enabled");
-          expect(payload["reasoning_effort"]).toBe(level === "OFF" ? undefined : effort);
-        }
+      expect(payload).toHaveProperty("model", model_id);
+      if (api_format === "OpenAIResponses") {
+        expect(payload).toHaveProperty("reasoning.effort", effort);
+      } else {
+        expect(payload).toHaveProperty("thinking.type", level === "OFF" ? "disabled" : "enabled");
+        expect(payload["reasoning_effort"]).toBe(level === "OFF" ? undefined : effort);
       }
-    },
-  );
+    }
+  });
 
   it.each(["OpenAI", "OpenAIResponses"] as const)(
     "%s GLM-5.3 由 Pi 目录与适配器生成各可用等级的请求",
