@@ -22,9 +22,8 @@
 
 ## 功能优势 📌
 - 内置 `AGENT` 模式，通过对话自动完成各种任务　`👈👈 独家绝技`
-- 极快的翻译速度，十秒钟一份字幕，一分钟一本小说，五分钟一部游戏
 - 一键生成术语表，保证角色姓名等专有名词在整部作品中的译名统一
-- 最优的翻译质量，无论是 旗舰模型 `诸如 DeepSeek-R1` 还是 本地小模型　`诸如 Qwen2.5-7B`
+- 最优的翻译质量，最快的翻译速度，十秒钟一份字幕，一分钟一本小说，五分钟一部游戏
 - 同类应用中最强的样式与代码保留能力，显著减少后期工作量，是制作内嵌汉化的最佳选择
   - `.md` `.ass` `.epub` 格式几乎可以保留所有原有样式
   - 大部分的 `WOLF`、`RenPy`、`RPGMaker`、`Kirikiri` 引擎游戏无需人工处理，即翻即玩
@@ -60,11 +59,9 @@
 ## 使用教程 📝
 - 综合
   - [基础教程](https://github.com/neavo/LinguaGacha/wiki/BasicTutorial)　`👈👈 手把手教学，有手就行，新手必看`
-  - [高质量翻译 WOLF 引擎游戏的最佳实践](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForWOLF)
   - [高质量翻译 RenPy 引擎游戏的最佳实践](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForRenPy)
-  - [高质量翻译 RPGMaker 系列引擎游戏的最佳实践](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForRPGMaker)
-- 视频教程
-  - [How to Translate RPGMV with LinguaGacha and Translator++ (English)](https://www.youtube.com/watch?v=wtV_IODzi8I)
+  - [高质量翻译 RPGMaker 引擎游戏的最佳实践](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForRPGMaker)
+  - [高质量翻译 WOLF RPG 引擎游戏的最佳实践](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForWOLFRPG)
 - 功能说明
   - [命令行模式](https://github.com/neavo/LinguaGacha/wiki/CLIMode)
   - [术语表](https://github.com/neavo/LinguaGacha/wiki/Glossary)　　[文本保护](https://github.com/neavo/LinguaGacha/wiki/TextPreserve)　　[文本替换](https://github.com/neavo/LinguaGacha/wiki/Replacement)　　
@@ -77,19 +74,22 @@
 - Markdown `.md`
 - [RenPy](https://www.renpy.org) 导出游戏文本 `.rpy`
 - [MTool](https://mtool.app) 导出游戏文本 `.json`
-- [SExtractor](https://github.com/satan53x/SExtractor) 导出游戏文本 `.txt .json .xlsx`
+- [SExtractor](https://github.com/satan53x/SExtractor) 导出游戏文本 `.txt .json`
 - [VNTextPatch](https://github.com/arcusmaximus/VNTranslationTools) 导出游戏文本 `.json`
-- [Translator++](https://dreamsavior.net/translator-plusplus) 项目文件 `.trans`
-- [Translator++](https://dreamsavior.net/translator-plusplus) 导出游戏文本 `.xlsx`
-- [WOLF 官方翻译工具](https://silversecond.booth.pm/items/5151747) 导出游戏文本 `.xlsx`
+- 原生 `WOLF RPG 3` 游戏文件，支持导入游戏目录或 `.exe`
+- 原生 `RPG Maker MV/MZ` 游戏文件，支持导入游戏目录或 `.exe`
+- 原生 `RPG Maker XP/VX/VXAce` 游戏文件，支持导入游戏目录或 `.exe`
+- 即将停止支持的文件格式：
+  - [Translator++](https://dreamsavior.net/translator-plusplus) 项目文件 `.trans`
+  - [SExtractor](https://github.com/satan53x/SExtractor)、[Translator++](https://dreamsavior.net/translator-plusplus)、[WOLF 官方翻译工具](https://silversecond.booth.pm/items/5151747) 导出游戏文本 `.xlsx`
 - 具体示例可见 [Wiki - 支持的文件格式](https://github.com/neavo/LinguaGacha/wiki/SupportedFileFormat)，更多格式将持续添加，你也可以在 [ISSUES](https://github.com/neavo/LinguaGacha/issues) 中提出你的需求
 
 ## 近期更新 📅
-- 20261016 v0.128.0
-  - 原生 `RPGMaker` 游戏文件支持 [#983](../../issues/983)
-    - `RPGMaker MV/MZ`
-    - `RPGMaker XP/VX/VXAce`
-  - 修复与改进 [#975](../../issues/975) [#976](../../issues/976) [#978](../../issues/978) [#985](../../issues/985) [#986](../../issues/986) [#987](../../issues/987)
+- 20261018 v0.129.0
+  - 新增 `原生 WOLF RPG 3` 支持 [#992](../../issues/992) [#994](../../issues/994)
+  - 新增 `百宝箱 - 修改游戏字体` 工具 [#995](../../issues/995)
+  - 优化了原生游戏相关的 AGENT 流程
+  - 修复与改进 [#990](../../issues/990)
 
 ## 开发指南 🛠️
 - 安装 [ [Go](https://go.dev) ] 和 [ [`Node.js`](https://nodejs.org) ]

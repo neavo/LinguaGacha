@@ -22,9 +22,8 @@
 
 ## 주요 장점 📌
 - 대화를 통해 다양한 작업을 자동으로 수행하는 `AGENT` 모드 내장　`👈👈 독보적인 기능`
-- 매우 빠른 번역 속도: 자막 한 편은 10초, 소설 한 권은 1분, 게임 한 편은 5분
 - 클릭 한 번으로 용어집을 생성하여 등장인물 이름 등 고유 명사의 번역을 작품 전체에서 일관되게 유지
-- `DeepSeek-R1 같은` 최고급 모델부터 `Qwen2.5-7B 같은` 소형 로컬 모델까지 최상의 번역 품질 제공
+- 최상의 번역 품질과 가장 빠른 번역 속도: 자막 한 편은 10초, 소설 한 권은 1분, 게임 한 편은 5분
 - 동종 앱 중 가장 뛰어난 서식 및 코드 보존 능력으로 후처리 작업을 크게 줄여, 게임에 직접 적용하는 중국어 패치 제작에 적합
   - `.md`, `.ass`, `.epub` 형식은 원래 서식을 거의 모두 보존
   - 대부분의 `WOLF`, `RenPy`, `RPGMaker`, `Kirikiri` 엔진 게임은 수동 처리 없이 번역 후 바로 플레이 가능
@@ -60,11 +59,9 @@
 ## 사용 안내 📝
 - 종합
   - [기초 튜토리얼](https://github.com/neavo/LinguaGacha/wiki/BasicTutorial)　`👈👈 누구나 따라 할 수 있는 단계별 안내, 초보자 필독`
-  - [WOLF 엔진 게임 고품질 번역 가이드](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForWOLF)
   - [RenPy 엔진 게임 고품질 번역 가이드](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForRenPy)
-  - [RPGMaker 시리즈 엔진 게임 고품질 번역 가이드](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForRPGMaker)
-- 동영상 튜토리얼
-  - [LinguaGacha와 Translator++로 RPGMV 번역하기 (영어)](https://www.youtube.com/watch?v=wtV_IODzi8I)
+  - [RPGMaker 엔진 게임 고품질 번역 가이드](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForRPGMaker)
+  - [WOLF RPG 엔진 게임 고품질 번역 가이드](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForWOLFRPG)
 - 기능 설명
   - [명령줄 모드](https://github.com/neavo/LinguaGacha/wiki/CLIMode)
   - [용어집](https://github.com/neavo/LinguaGacha/wiki/Glossary)　　[텍스트 보호](https://github.com/neavo/LinguaGacha/wiki/TextPreserve)　　[텍스트 치환](https://github.com/neavo/LinguaGacha/wiki/Replacement)
@@ -77,19 +74,22 @@
 - Markdown `.md`
 - [RenPy](https://www.renpy.org)로 내보낸 게임 텍스트 `.rpy`
 - [MTool](https://mtool.app)로 내보낸 게임 텍스트 `.json`
-- [SExtractor](https://github.com/satan53x/SExtractor)로 내보낸 게임 텍스트 `.txt .json .xlsx`
+- [SExtractor](https://github.com/satan53x/SExtractor)로 내보낸 게임 텍스트 `.txt .json`
 - [VNTextPatch](https://github.com/arcusmaximus/VNTranslationTools)로 내보낸 게임 텍스트 `.json`
-- [Translator++](https://dreamsavior.net/translator-plusplus) 프로젝트 파일 `.trans`
-- [Translator++](https://dreamsavior.net/translator-plusplus)로 내보낸 게임 텍스트 `.xlsx`
-- [WOLF 공식 번역 도구](https://silversecond.booth.pm/items/5151747)로 내보낸 게임 텍스트 `.xlsx`
+- `WOLF RPG 3` 게임 파일 기본 지원: 게임 폴더 또는 `.exe` 가져오기
+- `RPG Maker MV/MZ` 게임 파일 기본 지원: 게임 폴더 또는 `.exe` 가져오기
+- `RPG Maker XP/VX/VXAce` 게임 파일 기본 지원: 게임 폴더 또는 `.exe` 가져오기
+- 지원 종료 예정 파일 형식:
+  - [Translator++](https://dreamsavior.net/translator-plusplus) 프로젝트 파일 `.trans`
+  - [SExtractor](https://github.com/satan53x/SExtractor), [Translator++](https://dreamsavior.net/translator-plusplus), [WOLF 공식 번역 도구](https://silversecond.booth.pm/items/5151747)로 내보낸 게임 텍스트 `.xlsx`
 - 구체적인 예시는 [Wiki - 지원 파일 형식](https://github.com/neavo/LinguaGacha/wiki/SupportedFileFormat)을 참고하세요. 지원 형식은 계속 추가되며, [ISSUES](https://github.com/neavo/LinguaGacha/issues)에서 원하는 형식을 요청할 수 있습니다
 
 ## 최근 업데이트 📅
-- 20261016 v0.128.0
-  - `RPGMaker` 게임 파일 네이티브 지원 [#983](../../issues/983)
-    - `RPGMaker MV/MZ`
-    - `RPGMaker XP/VX/VXAce`
-  - 수정 및 개선 [#975](../../issues/975) [#976](../../issues/976) [#978](../../issues/978) [#985](../../issues/985) [#986](../../issues/986) [#987](../../issues/987)
+- 20261018 v0.129.0
+  - `WOLF RPG 3` 네이티브 지원 추가 [#992](../../issues/992) [#994](../../issues/994)
+  - `도구 상자 - 게임 글꼴 변경` 도구 추가 [#995](../../issues/995)
+  - 네이티브 게임 관련 `AGENT` 작업 흐름 개선
+  - 수정 및 개선 [#990](../../issues/990)
 
 ## 개발 안내 🛠️
 - [Go](https://go.dev)와 [`Node.js`](https://nodejs.org)를 설치합니다

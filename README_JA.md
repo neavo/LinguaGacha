@@ -25,9 +25,8 @@
 
 ## 機能の利点 📌
 - 対話を通じてさまざまなタスクを自動で完了する内蔵 `AGENT` モード　`👈👈 独自の強み`
-- 圧倒的な翻訳速度、10秒で字幕1本、1分で小説1冊、5分でゲーム1本
 - 用語集をワンクリックで生成し、キャラクター名などの専門用語の訳語を作品全体で統一
-- 最高の翻訳品質、フラッグシップモデル `DeepSeek-R1など` でも、ローカル小規模モデル　`Qwen2.5-7Bなど` でも
+- 最高の翻訳品質と最速の翻訳速度、10秒で字幕1本、1分で小説1冊、5分でゲーム1本
 - 同種のアプリケーションの中で最強のスタイルとコード保持能力、後工程の作業量を大幅に削減、字幕埋め込み（内嵌字幕）作成に最適
   - `.md` `.ass` `.epub` 形式はほぼすべての元のスタイルを保持可能
   - 大部分の `WOLF`、`RenPy`、`RPGMaker`、`Kirikiri` エンジンゲームは手作業なしで、即翻訳即プレイ可能
@@ -63,10 +62,9 @@
 ## 使い方チュートリアル - English 📝
 - Overall
   - [Basic Tutorial](https://github.com/neavo/LinguaGacha/wiki/BasicTutorialEN)　`👈👈 Step-by-step tutorial, easy to follow, a must-read for beginners`
-  - [Best Practices for High-Quality Translation of WOLF Engine Games](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForWOLFEN)
-  - [Best Practices for High-Quality Translation of RPGMaker Series Engine Games](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForRPGMakerEN)
-- Video Tutorial
-  - [How to Translate RPGMV with LinguaGacha and Translator++ (English)](https://www.youtube.com/watch?v=NbpyL2fMgDc)
+  - [Best Practices for High-Quality Translation of RenPy Engine Games](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForRenPyEN)
+  - [Best Practices for High-Quality Translation of RPGMaker Engine Games](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForRPGMakerEN)
+  - [Best Practices for High-Quality Translation of WOLF RPG Engine Games](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForWOLFRPGEN)
 - Feature Description
   - [CLI Mode](https://github.com/neavo/LinguaGacha/wiki/CLIModeEN)
   - [Glossary](https://github.com/neavo/LinguaGacha/wiki/GlossaryEN)　　[Text Preserve](https://github.com/neavo/LinguaGacha/wiki/TextPreserveEN)　　[Text Replacement](https://github.com/neavo/LinguaGacha/wiki/ReplacementEN)
@@ -79,19 +77,22 @@
 - Markdown `.md`
 - [RenPy](https://www.renpy.org) エクスポート `.rpy`
 - [MTool](https://mtool.app) エクスポート `.json`
-- [SExtractor](https://github.com/satan53x/SExtractor) エクスポート `.txt .json .xlsx`
-- [VNTextPatch](https://github.com/arcusmaximus/VNTranslationTools) exports `.json`
-- [Translator++](https://dreamsavior.net/translator-plusplus) プロジェクト `.trans`
-- [Translator++](https://dreamsavior.net/translator-plusplus) エクスポート `.xlsx`
-- [WOLF 公式翻訳ツール](https://silversecond.booth.pm/items/5151747) エクスポート `.xlsx`
+- [SExtractor](https://github.com/satan53x/SExtractor) エクスポート `.txt .json`
+- [VNTextPatch](https://github.com/arcusmaximus/VNTranslationTools) エクスポート `.json`
+- `WOLF RPG 3` ゲームファイルのネイティブ対応：ゲームフォルダーまたは `.exe` をインポート
+- `RPG Maker MV/MZ` ゲームファイルのネイティブ対応：ゲームフォルダーまたは `.exe` をインポート
+- `RPG Maker XP/VX/VXAce` ゲームファイルのネイティブ対応：ゲームフォルダーまたは `.exe` をインポート
+- サポート終了予定のファイル形式：
+  - [Translator++](https://dreamsavior.net/translator-plusplus) プロジェクト `.trans`
+  - [SExtractor](https://github.com/satan53x/SExtractor)、[Translator++](https://dreamsavior.net/translator-plusplus)、[WOLF 公式翻訳ツール](https://silversecond.booth.pm/items/5151747) エクスポート `.xlsx`
 - 例については [Wiki - 対応フォーマット](https://github.com/neavo/LinguaGacha/wiki/SupportedFileFormatEN) を参照。フォーマットのリクエストは [ISSUES](https://github.com/neavo/LinguaGacha/issues) で提出
 
 ## 最近の更新 📅
-- 20261016 v0.128.0
-  - `RPGMaker` ゲームファイルのネイティブ対応 [#983](../../issues/983)
-    - `RPGMaker MV/MZ`
-    - `RPGMaker XP/VX/VXAce`
-  - 修正と改善 [#975](../../issues/975) [#976](../../issues/976) [#978](../../issues/978) [#985](../../issues/985) [#986](../../issues/986) [#987](../../issues/987)
+- 20261018 v0.129.0
+  - `WOLF RPG 3` のネイティブ対応を追加 [#992](../../issues/992) [#994](../../issues/994)
+  - `ツールボックス - ゲームフォント変更` ツールを追加 [#995](../../issues/995)
+  - ネイティブゲームに関する `AGENT` のワークフローを改善
+  - 修正と改善 [#990](../../issues/990)
 
 ## 開発ガイド 🛠️
 - [Go](https://go.dev) と [`Node.js`](https://nodejs.org) をインストール

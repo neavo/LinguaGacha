@@ -22,9 +22,8 @@
 
 ## Vorteile 📌
 - Integrierter `AGENT`-Modus, der verschiedene Aufgaben automatisch im Dialog erledigt　`👈👈 Exklusive Funktion`
-- Extrem schnelle Übersetzung: Untertitel in zehn Sekunden, ein Roman in einer Minute, ein Spiel in fünf Minuten
 - Erstellt auf Knopfdruck ein Glossar, damit Eigennamen wie Charakternamen im gesamten Werk einheitlich übersetzt werden
-- Beste Übersetzungsqualität sowohl mit Spitzenmodellen `wie DeepSeek-R1` als auch mit kleinen lokalen Modellen `wie Qwen2.5-7B`
+- Beste Übersetzungsqualität und höchste Übersetzungsgeschwindigkeit: Untertitel in zehn Sekunden, ein Roman in einer Minute, ein Spiel in fünf Minuten
 - Führend unter vergleichbaren Anwendungen beim Erhalt von Formatierung und Code; reduziert die Nachbearbeitung erheblich und eignet sich besonders für direkt ins Spiel integrierte chinesische Lokalisierungen
   - Die Formate `.md`, `.ass` und `.epub` behalten nahezu die gesamte ursprüngliche Formatierung bei
   - Die meisten Spiele mit `WOLF`, `RenPy`, `RPGMaker` oder `Kirikiri` benötigen keine manuelle Nachbearbeitung: übersetzen und sofort spielen
@@ -60,11 +59,9 @@
 ## Anleitungen 📝
 - Allgemein
   - [Grundlagen-Tutorial](https://github.com/neavo/LinguaGacha/wiki/BasicTutorial)　`👈👈 Schritt für Schritt erklärt, leicht verständlich und für Einsteiger empfohlen`
-  - [Bewährte Vorgehensweisen für hochwertige Übersetzungen von WOLF-Spielen](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForWOLF)
   - [Bewährte Vorgehensweisen für hochwertige Übersetzungen von RenPy-Spielen](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForRenPy)
   - [Bewährte Vorgehensweisen für hochwertige Übersetzungen von RPGMaker-Spielen](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForRPGMaker)
-- Videoanleitungen
-  - [RPGMV mit LinguaGacha und Translator++ übersetzen (Englisch)](https://www.youtube.com/watch?v=wtV_IODzi8I)
+  - [Bewährte Vorgehensweisen für hochwertige Übersetzungen von WOLF-RPG-Spielen](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForWOLFRPG)
 - Funktionsbeschreibungen
   - [Befehlszeilenmodus](https://github.com/neavo/LinguaGacha/wiki/CLIMode)
   - [Glossar](https://github.com/neavo/LinguaGacha/wiki/Glossary)　　[Textschutz](https://github.com/neavo/LinguaGacha/wiki/TextPreserve)　　[Textersetzung](https://github.com/neavo/LinguaGacha/wiki/Replacement)
@@ -77,19 +74,22 @@
 - Markdown `.md`
 - Mit [RenPy](https://www.renpy.org) exportierte Spieltexte `.rpy`
 - Mit [MTool](https://mtool.app) exportierte Spieltexte `.json`
-- Mit [SExtractor](https://github.com/satan53x/SExtractor) exportierte Spieltexte `.txt .json .xlsx`
+- Mit [SExtractor](https://github.com/satan53x/SExtractor) exportierte Spieltexte `.txt .json`
 - Mit [VNTextPatch](https://github.com/arcusmaximus/VNTranslationTools) exportierte Spieltexte `.json`
-- [Translator++](https://dreamsavior.net/translator-plusplus)-Projektdateien `.trans`
-- Mit [Translator++](https://dreamsavior.net/translator-plusplus) exportierte Spieltexte `.xlsx`
-- Mit dem [offiziellen WOLF-Übersetzungswerkzeug](https://silversecond.booth.pm/items/5151747) exportierte Spieltexte `.xlsx`
+- Native `WOLF RPG 3`-Spieldateien: Spielverzeichnis oder `.exe` importieren
+- Native `RPG Maker MV/MZ`-Spieldateien: Spielverzeichnis oder `.exe` importieren
+- Native `RPG Maker XP/VX/VXAce`-Spieldateien: Spielverzeichnis oder `.exe` importieren
+- Dateiformate mit auslaufender Unterstützung:
+  - [Translator++](https://dreamsavior.net/translator-plusplus)-Projektdateien `.trans`
+  - Mit [SExtractor](https://github.com/satan53x/SExtractor), [Translator++](https://dreamsavior.net/translator-plusplus) oder dem [offiziellen WOLF-Übersetzungswerkzeug](https://silversecond.booth.pm/items/5151747) exportierte Spieltexte `.xlsx`
 - Beispiele finden Sie unter [Wiki – Unterstützte Dateiformate](https://github.com/neavo/LinguaGacha/wiki/SupportedFileFormat). Weitere Formate werden laufend ergänzt. Wünsche können Sie unter [ISSUES](https://github.com/neavo/LinguaGacha/issues) einreichen
 
 ## Neueste Updates 📅
-- 20261016 v0.128.0
-  - Native Unterstützung für `RPGMaker`-Spieldateien [#983](../../issues/983)
-    - `RPGMaker MV/MZ`
-    - `RPGMaker XP/VX/VXAce`
-  - Fehlerbehebungen und Verbesserungen [#975](../../issues/975) [#976](../../issues/976) [#978](../../issues/978) [#985](../../issues/985) [#986](../../issues/986) [#987](../../issues/987)
+- 20261018 v0.129.0
+  - Native Unterstützung für `WOLF RPG 3` hinzugefügt [#992](../../issues/992) [#994](../../issues/994)
+  - Werkzeug `Werkzeugkasten - Spielschrift ändern` hinzugefügt [#995](../../issues/995)
+  - `AGENT`-Abläufe für native Spiele verbessert
+  - Fehlerbehebungen und Verbesserungen [#990](../../issues/990)
 
 ## Entwicklung 🛠️
 - Installieren Sie [Go](https://go.dev) und [`Node.js`](https://nodejs.org)
