@@ -1,5 +1,10 @@
 import { discover_sources } from "../source-discovery";
-import { png_fixture, encrypted_media, MEDIA_KEY } from "../../../test/media-fixture";
+import {
+  png_fixture,
+  media_fixture,
+  encrypted_media,
+  MEDIA_KEY,
+} from "../../../test/media-fixture";
 import { discover_rpgmaker_source } from "./source";
 import fs from "node:fs";
 import os from "node:os";
@@ -8,8 +13,6 @@ import { expect, it, vi } from "vitest";
 import { NativeFs } from "../../../native/native-fs";
 import { evb_fixture } from "../../../test/evb-fixture";
 import { prepare_rpgmaker_source, stage_rpgmaker_source } from "./prepare";
-import { FileFormatService } from "../file-format-service";
-import { read_game_container } from "../shared/game/format";
 
 const PLAIN = png_fixture();
 const SYSTEM =
@@ -38,49 +41,35 @@ function fixture(root: string, packed: boolean): string {
   return root;
 }
 
-it.each([false, true])("准备 %s 固化明文配置，清理原封装且重复导入不重复准备", async (packed) => {
+it.each([false, true])("准备 %s 发布明文并清理密文，重复导入不重复准备", async (packed) => {
   using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-mv-prepare-"));
-  const source = fixture(temp.path, packed);
+  const source = fixture(temp.path, packed),
+    native = new NativeFs();
   if (!packed) fs.writeFileSync(path.join(temp.path, "www/data/System.json"), "\uFEFF" + SYSTEM);
   const original = packed ? fs.readFileSync(source) : null;
-  const service = new FileFormatService({ target_language: "ZH" }, async () => null);
-  const entries = await service.collect_source_file_entries([source]);
-  expect(entries[0]!.source_path).toBe(source);
-  expect(fs.existsSync(path.join(temp.path, "backup_lg"))).toBe(false);
-  const prepared = await service.prepare_source(
-    (await service.discover_import_sources([{ source_path: source, rel_path: "game.zip" }]))[0]!,
-  );
+  await prepare_rpgmaker_source((await discover_rpgmaker_source(source, native))!, native);
   expect(fs.readFileSync(path.join(temp.path, "www/img/a.png"))).toEqual(PLAIN);
-  expect(fs.readFileSync(path.join(temp.path, "www/img/a.rpgmvp"))).toEqual(encrypted_media(PLAIN));
+  expect(fs.existsSync(path.join(temp.path, "www/img/a.rpgmvp"))).toBe(false);
   if (packed) expect(fs.readFileSync(source)).not.toEqual(original);
-  expect(fs.existsSync(path.join(temp.path, ".lg-original"))).toBe(false);
-  const { members } = await read_game_container(prepared.content, "game.zip");
-  for (const [name, member] of members)
-    expect(fs.readFileSync(path.join(temp.path, "backup_lg", name))).toEqual(
-      await member.async("nodebuffer"),
-    );
-  expect(fs.existsSync(path.join(temp.path, "backup_lg/Selected.exe"))).toBe(false);
-  const system = await members.get("www/data/System.json")!.async("string");
+  const system = fs.readFileSync(path.join(temp.path, "www/data/System.json"), "utf8");
   expect(system).toContain('"hasEncryptedImages":false');
   expect(system).toContain('"large":9007199254740993');
   expect(system).toContain('"negative":-0');
   const before = fs.statSync(path.join(temp.path, "www/img/a.png")).mtimeMs;
-  await service.prepare_source(
-    (await service.discover_import_sources([{ source_path: source, rel_path: "game.zip" }]))[0]!,
-  );
+  await prepare_rpgmaker_source((await discover_rpgmaker_source(source, native))!, native);
   expect(fs.statSync(path.join(temp.path, "www/img/a.png")).mtimeMs).toBe(before);
 });
 
-it.each(["media", "commit"])("准备失败 %s 保留原配置和明文", async (phase) => {
+it.each(["media", "commit"])("准备失败 %s 恢复原配置、明文与密文", async (phase) => {
   using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-mv-fail-"));
   const source = fixture(temp.path, false),
     native = new NativeFs();
   if (phase === "media") fs.writeFileSync(path.join(temp.path, "www/img/b.rpgmvp"), "broken");
   if (phase === "commit") {
-    const rename = native.rename.bind(native);
-    vi.spyOn(native, "rename").mockImplementation((from, to) => {
-      rename(from, to);
-      if (from.includes(path.join(".tmp", "stage")) && to.endsWith("a.png")) {
+    const unlink = native.unlink.bind(native);
+    vi.spyOn(native, "unlink").mockImplementation((file, options) => {
+      unlink(file, options);
+      if (file === path.join(temp.path, "www/img/a.rpgmvp")) {
         throw new Error("commit failure");
       }
     });
@@ -90,62 +79,109 @@ it.each(["media", "commit"])("准备失败 %s 保留原配置和明文", async (
   ).rejects.toThrow();
   expect(fs.readFileSync(path.join(temp.path, "www/data/System.json"), "utf8")).toBe(SYSTEM);
   expect(fs.readFileSync(path.join(temp.path, "www/img/a.png"), "utf8")).toBe("old plaintext");
-  expect(fs.readdirSync(temp.path).some((name) => name.startsWith(".linguagacha-"))).toBe(false);
+  expect(fs.readFileSync(path.join(temp.path, "www/img/a.rpgmvp"))).toEqual(encrypted_media(PLAIN));
+  if (phase === "media")
+    expect(fs.readFileSync(path.join(temp.path, "www/img/b.rpgmvp"), "utf8")).toBe("broken");
+  expect(fs.existsSync(path.join(temp.path, ".tmp"))).toBe(false);
 });
 
-it("原稿备份失败保留已解包游戏，重试保存准备后的配置", async () => {
-  using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-mv-backup-retry-"));
-  const source = fixture(temp.path, true);
-  const service = new FileFormatService({ target_language: "ZH" }, async () => null);
-  const write = NativeFs.prototype.write_file;
-  const mock = vi.spyOn(NativeFs.prototype, "write_file").mockImplementation(async function (
-    this: NativeFs,
-    file,
-    bytes,
-  ) {
-    if (file === path.join(temp.path, "backup_lg/www/data/System.json"))
-      throw new Error("backup failure");
-    return write.call(this, file, bytes);
-  });
-  try {
-    await expect(
-      service.prepare_source((await service.collect_source_file_entries([source]))[0]!),
-    ).rejects.toThrow("backup failure");
-  } finally {
-    mock.mockRestore();
-  }
-  expect(fs.readFileSync(path.join(temp.path, "www/img/a.png"))).toEqual(PLAIN);
-  expect(fs.readdirSync(path.join(temp.path, "backup_lg"))).toEqual([]);
-  await service.prepare_source((await service.collect_source_file_entries([source]))[0]!);
-  expect(fs.readFileSync(path.join(temp.path, "backup_lg/www/data/System.json"), "utf8")).toContain(
-    '"hasEncryptedImages":false',
-  );
-});
-
-it("多个 EVB 入口要求明确选择，同根冲突输入明确失败", async () => {
-  using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-mv-entries-"));
+it("EVB 同名密文覆盖散装来源，成功后清理正式密文", async () => {
+  using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-mv-mixed-"));
+  fixture(temp.path, false);
   const source = fixture(temp.path, true),
-    second = path.join(temp.path, "Other.exe");
-  fs.copyFileSync(source, second);
-  const service = new FileFormatService({ target_language: "ZH" }, async () => null);
-  await expect(service.collect_source_file_entries([temp.path])).rejects.toThrow("Multiple EVB");
-  await expect(service.collect_source_file_entries([source, second])).rejects.toThrow(
-    "Conflicting game",
-  );
-  expect((await service.collect_source_file_entries([source]))[0]!.source_path).toBe(source);
+    native = new NativeFs();
+  fs.writeFileSync(path.join(temp.path, "www/img/a.rpgmvp"), "invalid loose media");
+  await prepare_rpgmaker_source((await discover_rpgmaker_source(source, native))!, native);
+  expect(fs.readFileSync(path.join(temp.path, "www/img/a.png"))).toEqual(PLAIN);
+  expect(fs.existsSync(path.join(temp.path, "www/img/a.rpgmvp"))).toBe(false);
+  expect(fs.existsSync(path.join(temp.path, ".tmp"))).toBe(false);
 });
 
-it("显式选择散装启动器时保留入口，不在正式准备时转选同目录封装", async () => {
+it("仅启用音频加密时清理全部音频密文并保留图片", async () => {
+  using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-mv-audio-"));
+  const source = fixture(temp.path, false),
+    native = new NativeFs();
+  native.write_file_sync(
+    path.join(temp.path, "www/data/System.json"),
+    JSON.stringify({
+      hasEncryptedImages: false,
+      hasEncryptedAudio: true,
+      encryptionKey: MEDIA_KEY,
+    }),
+  );
+  const media = [
+    ["a.rpgmvo", "a.ogg", media_fixture("ogg")],
+    ["b.ogg_", "b.ogg", media_fixture("ogg")],
+    ["c.rpgmvm", "c.m4a", media_fixture("m4a")],
+  ] as const;
+  for (const [name, , plain] of media)
+    native.write_file_sync(path.join(temp.path, "www/audio", name), encrypted_media(plain));
+  await prepare_rpgmaker_source((await discover_rpgmaker_source(source, native))!, native);
+  for (const [name, output, plain] of media) {
+    expect(fs.readFileSync(path.join(temp.path, "www/audio", output))).toEqual(plain);
+    expect(fs.existsSync(path.join(temp.path, "www/audio", name))).toBe(false);
+  }
+  expect(fs.readFileSync(path.join(temp.path, "www/img/a.rpgmvp"))).toEqual(encrypted_media(PLAIN));
+  expect(fs.readFileSync(path.join(temp.path, "www/img/a.png"), "utf8")).toBe("old plaintext");
+  expect(
+    JSON.parse(fs.readFileSync(path.join(temp.path, "www/data/System.json"), "utf8")),
+  ).toMatchObject({
+    hasEncryptedImages: false,
+    hasEncryptedAudio: false,
+  });
+});
+
+it.each([false, true])("加密关闭 %s 时保留历史双份、未启用类别与范围外资源", async (disabled) => {
+  using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-mv-scope-"));
+  const source = fixture(temp.path, false),
+    native = new NativeFs();
+  const untouched = new Map([
+    ["www/audio/a.rpgmvo", Buffer.from("disabled audio")],
+    ["www/img/unknown._png", Buffer.from("unsupported extension")],
+    ["outside.rpgmvp", encrypted_media(PLAIN)],
+    ["www/img/plain.png", Buffer.from("user plaintext")],
+  ]);
+  if (disabled) {
+    native.write_file_sync(
+      path.join(temp.path, "www/data/System.json"),
+      SYSTEM.replace('"hasEncryptedImages":true', '"hasEncryptedImages":false'),
+    );
+    untouched.set("www/img/a.rpgmvp", encrypted_media(PLAIN));
+    untouched.set("www/img/a.png", Buffer.from("old plaintext"));
+  }
+  for (const [name, bytes] of untouched) native.write_file_sync(path.join(temp.path, name), bytes);
+  await prepare_rpgmaker_source((await discover_rpgmaker_source(source, native))!, native);
+  for (const [name, bytes] of untouched)
+    expect(fs.readFileSync(path.join(temp.path, name))).toEqual(bytes);
+  expect(fs.existsSync(path.join(temp.path, ".tmp"))).toBe(false);
+});
+
+it("多个密文映射到同一明文时整次失败并保留原目录", async () => {
+  using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-mv-collision-"));
+  const source = fixture(temp.path, false),
+    native = new NativeFs();
+  native.write_file_sync(path.join(temp.path, "www/img/a.png_"), encrypted_media(PLAIN));
+  await expect(
+    prepare_rpgmaker_source((await discover_rpgmaker_source(source, native))!, native),
+  ).rejects.toThrow("Multiple encrypted media sources");
+  for (const name of ["a.rpgmvp", "a.png_"])
+    expect(fs.readFileSync(path.join(temp.path, "www/img", name))).toEqual(encrypted_media(PLAIN));
+  expect(fs.readFileSync(path.join(temp.path, "www/img/a.png"), "utf8")).toBe("old plaintext");
+  expect(fs.readFileSync(path.join(temp.path, "www/data/System.json"), "utf8")).toBe(SYSTEM);
+  expect(fs.existsSync(path.join(temp.path, ".tmp"))).toBe(false);
+});
+
+it("准备沿用显式选择的散装启动器", async () => {
   using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-mv-explicit-"));
   fixture(temp.path, false);
-  const packed = fixture(temp.path, true),
+  const native = new NativeFs(),
+    packed = fixture(temp.path, true),
     original = fs.readFileSync(packed);
   const executable = path.join(temp.path, "Unpacked.exe");
   fs.writeFileSync(executable, "unpacked launcher");
-  const service = new FileFormatService({ target_language: "ZH" }, async () => null);
-  const entry = (await service.collect_source_file_entries([executable]))[0]!;
-  expect(entry.source_path).toBe(executable);
-  await service.prepare_source(entry);
+  const game = (await discover_rpgmaker_source(executable, native))!;
+  expect(game.executable).toBeUndefined();
+  await prepare_rpgmaker_source(game, native);
   expect(fs.readFileSync(packed)).toEqual(original);
   expect(fs.readFileSync(executable, "utf8")).toBe("unpacked launcher");
   expect(fs.readFileSync(path.join(temp.path, "www/img/a.png"))).toEqual(PLAIN);

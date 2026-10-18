@@ -23,7 +23,12 @@ it.each(["", "www"])("目录和可执行文件识别同一游戏，仅收集数�
   const native = new NativeFs();
   const game = (await discover_rpgmaker_source(temp.path, native))!;
   expect(await discover_rpgmaker_source(path.join(temp.path, "Game.exe"), native)).toEqual(game);
-  expect(collect_rpgmaker_files(game, native).map((file) => file.rel_path)).toEqual(
+  expect(
+    collect_rpgmaker_files(
+      game,
+      files.map((file) => [prefix, file].filter(Boolean).join("/")),
+    ),
+  ).toEqual(
     ["data/nested/Map.json", "data/System.json", "js/plugins.js", "js/plugins/menu.js"].map(
       (file) => [prefix, file].filter(Boolean).join("/"),
     ),

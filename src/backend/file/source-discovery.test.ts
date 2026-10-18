@@ -6,6 +6,23 @@ import { NativeFs } from "../../native/native-fs";
 import { evb_fixture } from "../../test/evb-fixture";
 import { discover_source, discover_sources } from "./source-discovery";
 
+it("多个 EVB 入口要求明确选择，同根冲突输入明确失败", async () => {
+  using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-source-evb-"));
+  const native = new NativeFs();
+  const bytes = evb_fixture(
+    new Map([
+      ["data/System.json", Buffer.from("{}")],
+      ["js/rmmz_core.js", Buffer.from("// fixture")],
+    ]),
+  );
+  const source = path.join(temp.path, "Selected.exe"),
+    second = path.join(temp.path, "Other.exe");
+  for (const file of [source, second]) native.write_file_sync(file, bytes);
+  await expect(discover_sources([temp.path], native)).rejects.toThrow("Multiple EVB");
+  await expect(discover_sources([source, second], native)).rejects.toThrow("Conflicting game");
+  expect((await discover_sources([source], native))[0]!.source_path).toBe(source);
+});
+
 it.each(["backup_lg", ".tmp"])(
   "管理目录 %s 扫描时排除，显式选择内部路径报告错误且保留兄弟来源",
   async (name) => {

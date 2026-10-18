@@ -1,4 +1,5 @@
 import path from "node:path";
+import { GAME_FONT_INPUT_EXTENSIONS } from "../../shared/game-font";
 import { default_native_fs, type NativeFs } from "../../native/native-fs";
 import type { JsonRecord } from "../../domain/json";
 import { AppError, read_error_message } from "../../shared/error";
@@ -43,8 +44,12 @@ export class GameFontService {
     });
   }
 
-  /** 内部名称解析失败的文件不能作为字体写入游戏。 */
+  /** 扩展名与内容共同限制输入，使 WOLF 允许覆盖的根目录字体都能被备份识别。 */
   private read_font(font_path: string): GameFont {
+    if (!GAME_FONT_INPUT_EXTENSIONS.includes(path.extname(font_path).slice(1).toLowerCase()))
+      throw new AppError("file.parse_failed", {
+        message: font_path + ": Unsupported font file extension",
+      });
     const bytes = this.fs.read_file(font_path);
     try {
       return {

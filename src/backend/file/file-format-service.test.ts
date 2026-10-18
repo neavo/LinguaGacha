@@ -1,4 +1,6 @@
+import { read_game_container } from "./shared/game/format";
 import { evb_fixture } from "../../test/evb-fixture";
+import { encrypted_media, MEDIA_KEY, png_fixture } from "../../test/media-fixture";
 import { create_pdf_execution } from "./pdf/test-support";
 import fs from "node:fs";
 import os from "node:os";
@@ -336,3 +338,103 @@ it("正式导入先拒绝根目录恢复材料，来源摘要只读", async () =
   expect(fs.readFileSync(path.join(workspace, "rollback/keep"), "utf8")).toBe("recovery");
   expect(fs.readdirSync(path.join(temp.path, "backup_lg"))).toEqual(["keep"]);
 });
+
+it("正式导入容器与完整备份共用数据字节，重复导入保留现状", async () => {
+  using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-import-backup-"));
+  const native = new NativeFs();
+  const service = new FileFormatService({ target_language: "ZH" }, async () => null, native);
+  const files = new Map<string, string | Buffer>([
+    [
+      "www/data/System.json",
+      JSON.stringify({ hasEncryptedImages: true, encryptionKey: MEDIA_KEY }),
+    ],
+    ["www/data/Broken.json", "{"],
+    ["www/js/rpg_core.js", "// fixture"],
+    ["www/js/plugins.js", "[]"],
+    ["www/js/plugins/Menu.js", "// plugin"],
+    ["www/fonts/Main.ttf", "old font"],
+    ["www/fonts/css/game.css", "font config"],
+    ["www/img/a.png_", encrypted_media(png_fixture())],
+  ]);
+  for (const [name, text] of files) native.write_file_sync(path.join(temp.path, name), text);
+  const entry = (await service.collect_source_file_entries([temp.path]))[0]!;
+  const asset = await service.prepare_source(entry);
+  const { members, game_files } = await read_game_container(asset.content, "game.zip");
+  const names = (await game_files!.async("string")).split("\n");
+  expect(names).toContain("www/img/a.png");
+  expect(names).not.toContain("www/img/a.png_");
+  expect(fs.existsSync(path.join(temp.path, "backup_lg/www/img"))).toBe(false);
+  expect([...members.keys()].some((name) => name.includes("fonts/"))).toBe(false);
+  for (const [name, member] of members) {
+    expect(fs.readFileSync(path.join(temp.path, "backup_lg", name))).toEqual(
+      await member.async("nodebuffer"),
+    );
+  }
+  expect(fs.readFileSync(path.join(temp.path, "backup_lg/www/fonts/css/game.css"), "utf8")).toBe(
+    "font config",
+  );
+  await service.prepare_source(entry);
+  expect(fs.readdirSync(path.join(temp.path, "backup_lg"))).toEqual(["www"]);
+  native.write_file_sync(path.join(temp.path, "www/data/System.json"), '{"gameTitle":"changed"}');
+  await service.prepare_source(entry);
+  const directory = path.join(temp.path, "backup_lg");
+  const history = fs.readdirSync(directory).find((name) => name.startsWith("backup_lg_"))!;
+  expect(fs.readFileSync(path.join(directory, history, "www/data/System.json"), "utf8")).toBe(
+    await members.get("www/data/System.json")!.async("string"),
+  );
+  expect(fs.readFileSync(path.join(directory, "www/data/System.json"), "utf8")).toContain(
+    "changed",
+  );
+});
+
+it.each(["read", "existing-read", "backup"])(
+  "导入 %s 失败保留准备结果并允许重试",
+  async (phase) => {
+    using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-source-read-"));
+    const native = new NativeFs();
+    const files = new Map([
+      [
+        "data/System.json",
+        Buffer.from(JSON.stringify({ hasEncryptedImages: true, encryptionKey: MEDIA_KEY })),
+      ],
+      ["js/rmmz_core.js", Buffer.from("// fixture")],
+      ["fonts/Main.ttf", Buffer.from("original font")],
+      ["img/a.png_", encrypted_media(png_fixture())],
+    ]);
+    const source = phase === "backup" ? path.join(temp.path, "Game.exe") : temp.path;
+    if (phase === "backup") native.write_file_sync(source, evb_fixture(files));
+    else
+      for (const [name, bytes] of files) native.write_file_sync(path.join(temp.path, name), bytes);
+    const service = new FileFormatService({ target_language: "ZH" }, async () => null, native);
+    const entry = (await service.collect_source_file_entries([source]))[0]!;
+    if (phase === "existing-read") await service.prepare_source(entry);
+    const read = native.read_file.bind(native);
+    const write = native.write_file.bind(native);
+    vi.spyOn(native, "read_file").mockImplementation((file) => {
+      if (phase !== "backup" && file === path.join(temp.path, "fonts/Main.ttf"))
+        throw new Error("read failure");
+      return read(file);
+    });
+    vi.spyOn(native, "write_file").mockImplementation(async (file, bytes) => {
+      if (file === path.join(temp.path, "backup_lg/data/System.json"))
+        throw new Error("backup failure");
+      await write(file, bytes);
+    });
+    await expect(service.prepare_source(entry)).rejects.toThrow(
+      phase === "backup" ? "backup failure" : "read failure",
+    );
+    expect(fs.readFileSync(path.join(temp.path, "img/a.png"))).toEqual(png_fixture());
+    expect(fs.existsSync(path.join(temp.path, "img/a.png_"))).toBe(false);
+    expect(fs.existsSync(path.join(temp.path, "backup_lg"))).toBe(phase !== "read");
+    if (phase === "existing-read")
+      expect(fs.readdirSync(path.join(temp.path, "backup_lg")).sort()).toEqual(["data", "fonts"]);
+    vi.restoreAllMocks();
+    await service.prepare_source((await service.collect_source_file_entries([source]))[0]!);
+    expect(fs.readFileSync(path.join(temp.path, "backup_lg/fonts/Main.ttf"), "utf8")).toBe(
+      "original font",
+    );
+    expect(fs.readFileSync(path.join(temp.path, "backup_lg/data/System.json"), "utf8")).toContain(
+      '"hasEncryptedImages":false',
+    );
+  },
+);

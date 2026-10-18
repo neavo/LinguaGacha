@@ -1,11 +1,6 @@
 import path from "node:path";
 import type { NativeFs } from "../../../native/native-fs";
-import {
-  assert_regular_path,
-  collect_existing_files,
-  GameSourceConflictError,
-  validate_game_path,
-} from "../source-file-paths";
+import { assert_regular_path, GameSourceConflictError } from "../source-file-paths";
 import { read_bytes } from "../shared/binary";
 import { classify_wolf_archive, classify_wolf_key, type WolfKeyType } from "./archive-crypt";
 
@@ -117,21 +112,12 @@ export async function discover_wolf_source(
   return { root, data_root, archives, key_files };
 }
 
-/** 固化数据和配套描述，素材留在准备后的游戏目录。 */
-export function collect_wolf_files(
-  game: WolfSource,
-  fs: NativeFs,
-): Array<{ source_path: string; rel_path: string }> {
-  const files = new Set<string>();
-  collect_existing_files(game.root, "Data", files, fs);
-  return [...files]
+/** 只固化原稿数据及配套描述，`Data/` 中的图片和音频仍由游戏提供。 */
+export function collect_wolf_files(names: Iterable<string>): string[] {
+  return [...names]
     .filter(
       (name) =>
         /^Data\/BasicData\/.*\.(?:dat|project)$/iu.test(name) || /^Data\/.*\.mps$/iu.test(name),
     )
-    .sort()
-    .map((rel_path) => {
-      validate_game_path(rel_path);
-      return { rel_path, source_path: path.join(game.root, rel_path) };
-    });
+    .sort();
 }

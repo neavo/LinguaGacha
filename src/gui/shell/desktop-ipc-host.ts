@@ -1,4 +1,5 @@
 import { app, BrowserWindow, dialog, ipcMain, shell } from "electron";
+import { GAME_FONT_INPUT_EXTENSIONS } from "../../shared/game-font";
 import { pick_save_path } from "./path-dialog";
 
 import {
@@ -257,7 +258,7 @@ async function pick_path(
         filters: [
           {
             name: (await create_dialog_text_resolver(options))("app.native_file_filter.font_files"),
-            extensions: ["ttf", "otf"],
+            extensions: [...GAME_FONT_INPUT_EXTENSIONS],
           },
         ],
       });

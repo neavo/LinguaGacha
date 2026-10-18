@@ -1,4 +1,4 @@
-import { GameSourceConflictError } from "../source-file-paths";
+import { GameSourceConflictError, sort_game_paths } from "../source-file-paths";
 import path from "node:path";
 import type { NativeFs } from "../../../native/native-fs";
 import { validate_zip_member_path } from "../shared/zip-members";
@@ -106,26 +106,27 @@ export function script_path(content: Uint8Array, version: RGSSVersion): string {
   }
   return "Data/Scripts" + RGSS_VERSIONS[version];
 }
-/** 固化数据和配置指定的脚本，使工程脱离游戏目录后仍能导出。 */
-export function collect_rgss_files(game: RGSSSource, fs: NativeFs) {
-  const { root, version } = game;
-  const names = new Set<string>(["Game.ini"]);
-  const scripts = script_path(fs.read_file(path.join(root, "Game.ini")), version);
-  // 仅沿数据目录收集本代文件，素材继续由原游戏提供。
-  function collect(directory: string): void {
-    for (const entry of fs
-      .read_dirents(path.join(root, directory))
-      .sort((a, b) => a.name.localeCompare(b.name))) {
-      const name = directory + "/" + entry.name;
-      if (entry.isDirectory()) collect(name);
-      else if (entry.isFile() && path.extname(name).toLowerCase() === RGSS_VERSIONS[version])
-        names.add(name);
-    }
-  }
-  collect("Data");
-  // 配置大小写可能与磁盘不同，同一脚本仅保存实际数据清单中的一份。
-  if (![...names].some((name) => name.toLowerCase() === scripts.toLowerCase())) names.add(scripts);
-  return [...names].map((rel_path) => ({ rel_path, source_path: path.join(root, rel_path) }));
+/** 配置和本代数据使用准备后的路径清单，保留配置脚本的实际拼写。 */
+export function collect_rgss_files(
+  version: RGSSVersion,
+  names: Iterable<string>,
+  scripts: string,
+): string[] {
+  const files = [...names];
+  const data = sort_game_paths(
+    files.filter(
+      (name) =>
+        name.toLowerCase().startsWith("data/") &&
+        path.extname(name).toLowerCase() === RGSS_VERSIONS[version],
+    ),
+  );
+  const script = files.find((name) => name.toLowerCase() === scripts.toLowerCase()) ?? scripts; // 缺失脚本仍交给读取入口报错，防止静默遗漏。
+  // 保持配置、数据、外部脚本的原稿顺序，避免重导入时改变条目行号。
+  return [
+    ...files.filter((name) => name.toLowerCase() === "game.ini"),
+    ...data,
+    ...(data.includes(script) ? [] : [script]),
+  ];
 }
 /** 导出以固化原稿确认版本，配置与数据扩展名必须一致。 */
 export async function read_rgss_game(

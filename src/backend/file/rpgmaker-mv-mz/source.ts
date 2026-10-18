@@ -1,8 +1,7 @@
-import { GameSourceConflictError } from "../source-file-paths";
+import { GameSourceConflictError, sort_game_paths } from "../source-file-paths";
 import { read_evb, type EVBMember } from "../shared/evb/archive";
 import path from "node:path";
 import type { NativeFs } from "../../../native/native-fs";
-import type { ProjectSourceFileEntry } from "../file-format-types";
 
 export type RPGMakerSource = Readonly<{
   root: string;
@@ -32,29 +31,19 @@ export function discover_unpacked_rpgmaker_source(
   };
 }
 
-/** 仅原稿准备展开内部文件，摘要和来源识别无需遍历整个游戏。 */
+/** 数据选择只解释准备后的相对路径，目录遍历由共享收集入口负责。 */
 export function collect_rpgmaker_files(
   { root, data_root }: RPGMakerSource,
-  fs: NativeFs,
-): Pick<ProjectSourceFileEntry, "source_path" | "rel_path">[] {
-  const files: string[] = [];
-  // 只收集游戏数据和插件，路径保持相对游戏根目录。
-  function collect(directory: string, extension: string): void {
-    if (!fs.exists(directory)) return;
-    for (const entry of fs.read_dirents(directory).sort((a, b) => a.name.localeCompare(b.name))) {
-      const file = path.join(directory, entry.name);
-      if (entry.isDirectory()) collect(file, extension);
-      else if (entry.isFile() && path.extname(file).toLowerCase() === extension) files.push(file);
-    }
-  }
-  collect(path.join(data_root, "data"), ".json");
-  const plugins = path.join(data_root, "js", "plugins.js");
-  if (fs.exists(plugins)) files.push(plugins);
-  collect(path.join(data_root, "js", "plugins"), ".js");
-  return files.map((file) => ({
-    source_path: file,
-    rel_path: path.relative(root, file).replace(/\\/gu, "/"),
-  }));
+  names: Iterable<string>,
+): string[] {
+  const prefix = path.relative(root, data_root).replaceAll("\\", "/").toLowerCase();
+  const files = [...names].filter((name) => !prefix || name.toLowerCase().startsWith(prefix + "/"));
+  const local = (name: string) => (prefix ? name.slice(prefix.length + 1) : name);
+  return [
+    ...sort_game_paths(files.filter((name) => /^data\/.*\.json$/iu.test(local(name)))),
+    ...files.filter((name) => local(name).toLowerCase() === "js/plugins.js"),
+    ...sort_game_paths(files.filter((name) => /^js\/plugins\/.*\.js$/iu.test(local(name)))),
+  ];
 }
 
 /** MV 打包可能把运行数据放在 `www`，标志文件共同确认游戏根目录。 */
