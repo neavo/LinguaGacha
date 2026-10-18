@@ -79,7 +79,7 @@
 - Native `WOLF RPG 3`-Spieldateien: Spielverzeichnis oder `.exe` importieren
 - Native `RPG Maker MV/MZ`-Spieldateien: Spielverzeichnis oder `.exe` importieren
 - Native `RPG Maker XP/VX/VXAce`-Spieldateien: Spielverzeichnis oder `.exe` importieren
-- Dateiformate mit auslaufender Unterstützung:
+- Unterstützung endet bald:
   - [Translator++](https://dreamsavior.net/translator-plusplus)-Projektdateien `.trans`
   - Mit [SExtractor](https://github.com/satan53x/SExtractor), [Translator++](https://dreamsavior.net/translator-plusplus) oder dem [offiziellen WOLF-Übersetzungswerkzeug](https://silversecond.booth.pm/items/5151747) exportierte Spieltexte `.xlsx`
 - Beispiele finden Sie unter [Wiki – Unterstützte Dateiformate](https://github.com/neavo/LinguaGacha/wiki/SupportedFileFormat). Weitere Formate werden laufend ergänzt. Wünsche können Sie unter [ISSUES](https://github.com/neavo/LinguaGacha/issues) einreichen

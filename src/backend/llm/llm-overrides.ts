@@ -1,5 +1,4 @@
 import type {
-  ModelThinkingLevel as PiModelThinkingLevel,
   OpenAICompletionsCompat,
   OpenAIResponsesCompat,
   AnthropicMessagesCompat,
@@ -8,8 +7,7 @@ import type {
 
 import type { ModelApiFormat } from "../../domain/model";
 
-type CompleteThinkingLevelMap = Readonly<Record<PiModelThinkingLevel, string | null>>;
-
+/** 按协议约束 SDK 兼容参数，避免将其他协议的字段用于当前请求。 */
 type ModelProtocolCompat = {
   OpenAI: OpenAICompletionsCompat;
   OpenAIResponses: OpenAIResponsesCompat;
@@ -28,17 +26,6 @@ export type ModelCapabilityOverride = Readonly<{
     }>;
   };
 }>;
-
-// 两种 OpenAI 协议共用等级语义；null 显式关闭 Pi 的默认等级回退。
-const DOUBAO_THINKING_LEVEL_MAP: CompleteThinkingLevelMap = Object.freeze({
-  off: "minimal", // 豆包以 minimal 表达关闭思考，产品不另设同义等级。
-  minimal: null,
-  low: "low",
-  medium: "medium",
-  high: "high",
-  xhigh: null,
-  max: null,
-});
 
 /** 补齐 Pi 内置目录缺失或落后的事实，上游补齐并验证后删除对应修正。 */
 export const MODEL_CAPABILITY_OVERRIDES: readonly ModelCapabilityOverride[] = Object.freeze([
@@ -59,17 +46,71 @@ export const MODEL_CAPABILITY_OVERRIDES: readonly ModelCapabilityOverride[] = Ob
       },
     },
   },
+  // 第三方模型别名沿用官方 `deepseek-flash` 等级，null 显式关闭 Pi 的默认等级回退。
+  {
+    model_id: "deepseek-v4.1-flash",
+    protocols: {
+      OpenAI: {
+        reasoning: true,
+        thinking_level_map: {
+          off: "none", // 显式覆盖第三方模板的 `off: null`，恢复关闭思考。
+          minimal: null,
+          low: "low",
+          medium: null,
+          high: "high",
+          xhigh: null,
+          max: "max",
+        },
+        compat: {
+          supportsStore: false,
+          supportsReasoningEffort: true, // Pi 可能按中转端点禁用 effort，模型修正须显式启用。
+          maxTokensField: "max_tokens",
+          requiresReasoningContentOnAssistantMessages: true,
+          thinkingFormat: "deepseek",
+          supportsStrictMode: true,
+        },
+      },
+      OpenAIResponses: {
+        reasoning: true,
+        thinking_level_map: {
+          off: "none",
+          minimal: null,
+          low: "low",
+          medium: null,
+          high: "high",
+          xhigh: null,
+          max: "max",
+        },
+      },
+    },
+  },
   {
     model_id: "doubao-seed",
     protocols: {
       OpenAI: {
         reasoning: true,
-        thinking_level_map: DOUBAO_THINKING_LEVEL_MAP,
+        thinking_level_map: {
+          off: "minimal", // 豆包以 minimal 表达关闭思考，产品不另设同义等级。
+          minimal: null,
+          low: "low",
+          medium: "medium",
+          high: "high",
+          xhigh: null,
+          max: null,
+        },
         compat: { supportsReasoningEffort: true, thinkingFormat: "openai" },
       },
       OpenAIResponses: {
         reasoning: true,
-        thinking_level_map: DOUBAO_THINKING_LEVEL_MAP,
+        thinking_level_map: {
+          off: "minimal",
+          minimal: null,
+          low: "low",
+          medium: "medium",
+          high: "high",
+          xhigh: null,
+          max: null,
+        },
       },
     },
   },

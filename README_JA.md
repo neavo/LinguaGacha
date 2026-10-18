@@ -82,7 +82,7 @@
 - `WOLF RPG 3` ゲームファイルのネイティブ対応：ゲームフォルダーまたは `.exe` をインポート
 - `RPG Maker MV/MZ` ゲームファイルのネイティブ対応：ゲームフォルダーまたは `.exe` をインポート
 - `RPG Maker XP/VX/VXAce` ゲームファイルのネイティブ対応：ゲームフォルダーまたは `.exe` をインポート
-- サポート終了予定のファイル形式：
+- サポート終了予定：
   - [Translator++](https://dreamsavior.net/translator-plusplus) プロジェクト `.trans`
   - [SExtractor](https://github.com/satan53x/SExtractor)、[Translator++](https://dreamsavior.net/translator-plusplus)、[WOLF 公式翻訳ツール](https://silversecond.booth.pm/items/5151747) エクスポート `.xlsx`
 - 例については [Wiki - 対応フォーマット](https://github.com/neavo/LinguaGacha/wiki/SupportedFileFormatEN) を参照。フォーマットのリクエストは [ISSUES](https://github.com/neavo/LinguaGacha/issues) で提出

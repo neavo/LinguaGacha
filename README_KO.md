@@ -79,7 +79,7 @@
 - `WOLF RPG 3` 게임 파일 기본 지원: 게임 폴더 또는 `.exe` 가져오기
 - `RPG Maker MV/MZ` 게임 파일 기본 지원: 게임 폴더 또는 `.exe` 가져오기
 - `RPG Maker XP/VX/VXAce` 게임 파일 기본 지원: 게임 폴더 또는 `.exe` 가져오기
-- 지원 종료 예정 파일 형식:
+- 지원 종료 예정:
   - [Translator++](https://dreamsavior.net/translator-plusplus) 프로젝트 파일 `.trans`
   - [SExtractor](https://github.com/satan53x/SExtractor), [Translator++](https://dreamsavior.net/translator-plusplus), [WOLF 공식 번역 도구](https://silversecond.booth.pm/items/5151747)로 내보낸 게임 텍스트 `.xlsx`
 - 구체적인 예시는 [Wiki - 지원 파일 형식](https://github.com/neavo/LinguaGacha/wiki/SupportedFileFormat)을 참고하세요. 지원 형식은 계속 추가되며, [ISSUES](https://github.com/neavo/LinguaGacha/issues)에서 원하는 형식을 요청할 수 있습니다

@@ -54,7 +54,7 @@ export const de_de_project_page = {
   },
   formats: {
     title: "Unterstützte Dateiformate",
-    deprecated_title: "Dateiformate mit auslaufender Unterstützung",
+    deprecated_title: "Unterstützung endet bald",
     txt: "Nur Text",
     md: "Markdown",
     ass: "ASS-Untertitel",

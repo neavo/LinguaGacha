@@ -83,7 +83,7 @@
 - Native `WOLF RPG 3` game files: import the game directory or `.exe`
 - Native `RPG Maker MV/MZ` game files: import the game directory or `.exe`
 - Native `RPG Maker XP/VX/VXAce` game files: import the game directory or `.exe`
-- File formats to be discontinued:
+- Support ending soon:
   - [Translator++](https://dreamsavior.net/translator-plusplus) projects `.trans`
   - [SExtractor](https://github.com/satan53x/SExtractor), [Translator++](https://dreamsavior.net/translator-plusplus), and [WOLF Official Translation Tool](https://silversecond.booth.pm/items/5151747) exports `.xlsx`
 - See [Wiki - Supported Formats](https://github.com/neavo/LinguaGacha/wiki/SupportedFileFormatEN) for examples. Submit format requests via [ISSUES](https://github.com/neavo/LinguaGacha/issues)

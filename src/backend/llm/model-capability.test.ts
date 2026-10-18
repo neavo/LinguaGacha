@@ -78,6 +78,33 @@ describe("统一模型能力", () => {
     },
   );
 
+  it.each(["OpenAI", "OpenAIResponses"] as const)(
+    "%s DeepSeek V4.1 Flash 在目录缺失或等级受限时提供官方思考等级",
+    (api_format) => {
+      const restricted: PiCatalogModel = {
+        ...create_catalog_model("deepseek-v4.1-flash"),
+        api: "openai-completions",
+        reasoning: false,
+        thinkingLevelMap: { off: null, low: null, medium: "medium", xhigh: "xhigh", max: null },
+        compat: { supportsReasoningEffort: false },
+      };
+      for (const catalog of [[], [restricted]]) {
+        const capability = resolve_model_capability(
+          create_model(api_format, "deepseek-v4.1-flash"),
+          catalog,
+        );
+
+        expect(capability.available_thinking_levels).toEqual([
+          "DEFAULT",
+          "OFF",
+          "LOW",
+          "HIGH",
+          "MAX",
+        ]);
+      }
+    },
+  );
+
   it("用户非零容量覆盖自动值并保留压缩预留", () => {
     const context_window = 100_000;
     const requested_max_output_tokens = 90_000;
