@@ -9,7 +9,6 @@ import type { ProjectPreview, ProjectPreviewResponse } from "@shared/project-pre
 import { format_local_timestamp } from "@shared/utils/format-local-timestamp";
 import { TranslationProgressBadge } from "@frontend/features/translation-progress/translation-progress-badge";
 import { Badge } from "@frontend/shadcn/badge";
-import { badgeVariants } from "@frontend/shadcn/badge-variants";
 import {
   BadgeAlert,
   File,
@@ -48,6 +47,7 @@ import {
   format_source_file_parse_failure_toast,
 } from "@frontend/app/feedback/source-file-parse-failure-feedback";
 import "@frontend/pages/project-page/project-page.css";
+import { ProjectSourceFormats } from "@frontend/pages/project-page/components/project-source-formats";
 import { DesktopApiError, api_fetch } from "@frontend/app/desktop/desktop-api";
 import type { ProjectStage } from "@frontend/app/state/desktop-project-change-types";
 import {
@@ -81,11 +81,10 @@ type SelectedProject = {
 };
 
 /**
- * 已选择的源路径集合，保留首个路径用于推导默认工程名。
+ * 已选择的源路径与后端摘要，首个路径用于推导默认工程名。
  */
 type SelectedSource = ProjectSourceFileSummary & {
   source_paths: string[]; // 创建工程时原样提交的归一化用户选择
-  output_name_seed_path: string; // 仅取首个选择推导默认工程文件名
 };
 
 /**
@@ -530,13 +529,6 @@ export function ProjectPage(_props: ProjectPageProps): JSX.Element {
     set_selected_source(null);
   }
 
-  /**
-   * 刷新最近工程列表，数据来源仍是 settings 快照。
-   */
-  async function refresh_recent_projects(): Promise<void> {
-    await refresh_settings();
-  }
-
   useEffect(() => {
     const toast_id = project_loading_toast_id_ref.current;
     const next_message = resolve_project_loading_stage_message(project_session_stage, t);
@@ -644,7 +636,6 @@ export function ProjectPage(_props: ProjectPageProps): JSX.Element {
           source_paths: normalized_source_paths,
           source_file_count,
           format_hit_counts: normalize_project_source_format_hit_counts(payload.format_hit_counts),
-          output_name_seed_path: normalized_source_paths[0]!, // 批量来源以首项确定工程的默认名称和目录。
         });
       }
     } catch {
@@ -723,7 +714,7 @@ export function ProjectPage(_props: ProjectPageProps): JSX.Element {
       await api_fetch<SettingsPayload>("/api/settings/update", {
         project_fixed_path: fixed_directory,
       });
-      await refresh_recent_projects();
+      await refresh_settings();
     }
 
     return join_path(fixed_directory, default_file_name);
@@ -741,7 +732,7 @@ export function ProjectPage(_props: ProjectPageProps): JSX.Element {
 
     try {
       const loaded_default_preset_names = collect_loaded_default_preset_names(settings_snapshot, t);
-      const source_path = selected_source.output_name_seed_path;
+      const source_path = selected_source.source_paths[0]!; // 选择阶段保证非空，首项决定默认名称和目录。
       const source_paths = selected_source.source_paths;
       const output_path = await resolve_project_output_path(source_path);
       if (output_path === null || output_path === "") {
@@ -776,7 +767,7 @@ export function ProjectPage(_props: ProjectPageProps): JSX.Element {
             path: created_project_path,
             name: extract_stem(extract_file_name(created_project_path)),
           });
-          await Promise.all([refresh_recent_projects(), refresh_batch_translation()]);
+          await Promise.all([refresh_settings(), refresh_batch_translation()]);
         },
       });
       if (loaded_default_preset_names.length > 0) {
@@ -863,7 +854,7 @@ export function ProjectPage(_props: ProjectPageProps): JSX.Element {
             path: project_to_open.path,
             name: extract_stem(extract_file_name(project_to_open.path)),
           });
-          await Promise.all([refresh_recent_projects(), refresh_batch_translation()]);
+          await Promise.all([refresh_settings(), refresh_batch_translation()]);
         },
       });
       if (did_align_project_settings) {
@@ -892,7 +883,7 @@ export function ProjectPage(_props: ProjectPageProps): JSX.Element {
       await api_fetch<SettingsPayload>("/api/settings/recent-projects/remove", {
         path: project_path,
       });
-      await refresh_recent_projects();
+      await refresh_settings();
     } catch (error) {
       push_error_toast(t("project_page.open.remove_unavailable"), error);
     }
@@ -1028,7 +1019,7 @@ export function ProjectPage(_props: ProjectPageProps): JSX.Element {
             await api_fetch<SettingsPayload>("/api/settings/recent-projects/remove", {
               path: target_path,
             });
-            await refresh_recent_projects();
+            await refresh_settings();
             set_missing_recent_project(null);
           })();
         }}
@@ -1052,41 +1043,7 @@ export function ProjectPage(_props: ProjectPageProps): JSX.Element {
             <CardContent className="project-home__panel-content">
               {source_selection}
 
-              <section className="project-home__panel-section">
-                <h3 className="project-home__section-title">{t("project_page.formats.title")}</h3>
-                <ul className="project-home__format-tags">
-                  {PROJECT_SOURCE_FORMATS.map((format) => {
-                    const hit_count = selected_source?.format_hit_counts[format.id] ?? 0;
-                    return (
-                      <Tooltip key={format.id}>
-                        <TooltipTrigger
-                          render={
-                            <li
-                              className={badgeVariants({ className: "project-home__format-tag" })}
-                            >
-                              <span className="project-home__format-title">
-                                {t(format.title_key)}
-                              </span>
-                              <span className="project-home__format-extension">
-                                {format.source_kind === "game" ? "Game.exe" : format.extension}
-                              </span>
-                              {hit_count > 0 ? <Badge tone="brand">{hit_count}</Badge> : null}
-                            </li>
-                          }
-                        />
-                        <TooltipContent className="flex-col items-start gap-1">
-                          {(format.description_keys.length > 0
-                            ? format.description_keys
-                            : [format.title_key]
-                          ).map((description_key) => (
-                            <span key={description_key}>{t(description_key)}</span>
-                          ))}
-                        </TooltipContent>
-                      </Tooltip>
-                    );
-                  })}
-                </ul>
-              </section>
+              <ProjectSourceFormats format_hit_counts={selected_source?.format_hit_counts} />
             </CardContent>
 
             <CardFooter className="project-home__footer">

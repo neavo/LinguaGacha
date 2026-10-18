@@ -54,6 +54,7 @@ export const en_us_project_page = {
   },
   formats: {
     title: "Supported File Formats",
+    deprecated_title: "File Formats to Be Discontinued",
     txt: "Plain Text",
     md: "Markdown",
     ass: "ASS Subtitles",

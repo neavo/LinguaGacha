@@ -52,6 +52,7 @@ export const ko_kr_project_page = {
   },
   formats: {
     title: "지원 파일 형식",
+    deprecated_title: "지원 종료 예정 파일 형식",
     txt: "일반 텍스트",
     md: "Markdown",
     ass: "ASS 자막",

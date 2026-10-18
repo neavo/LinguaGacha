@@ -5,7 +5,7 @@ export const de_de_project_page = {
   title: "Projekt-Startseite",
   create: {
     title: "Projekt erstellen",
-    subtitle: "Wählen Sie eine Quelle, um ein eigenständiges .lg-Projekt zu erstellen",
+    subtitle: "Quelle wählen und eigenständiges .lg-Projekt erstellen",
     drop_title: "Klicken oder Quelldatei hierher ziehen",
     ready_status: "{COUNT} Quelldateien ausgewählt",
     loading_toast: "Projekt wird erstellt …",
@@ -54,6 +54,7 @@ export const de_de_project_page = {
   },
   formats: {
     title: "Unterstützte Dateiformate",
+    deprecated_title: "Dateiformate mit auslaufender Unterstützung",
     txt: "Nur Text",
     md: "Markdown",
     ass: "ASS-Untertitel",
