@@ -1,23 +1,36 @@
+/* 页面本身不滚动，选择区独立滚动，动作条始终占据底部。 */
 .game-font-page {
-  min-height: 100%;
   display: flex;
+  min-height: 0;
   flex-direction: column;
+  overflow: hidden;
   gap: var(--ui-list-gap-dense);
 }
 
-.game-font-page__list {
+.game-font-page__fields {
+  display: grid;
+  min-height: 0;
+  flex: 1;
+  align-content: start;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
+.game-font-page__field {
   display: flex;
-  flex: 0 0 auto;
+  min-width: 0;
   flex-direction: column;
-  gap: var(--ui-list-gap-dense);
+  gap: 8px;
 }
 
-.game-font-page__path {
-  overflow-wrap: anywhere;
-}
-
-.game-font-page__command-bar {
-  margin-top: auto;
+.game-font-page__field-title {
+  margin: 0;
+  font-size: var(--ui-font-size-14);
+  line-height: 1.5;
+  font-weight: 500;
+  color: var(--foreground);
 }
 
 .game-font-page__confirm {
@@ -38,4 +51,10 @@
 .game-font-page__confirm dd {
   margin: 0;
   overflow-wrap: anywhere;
+}
+
+@media (max-width: 760px) {
+  .game-font-page__fields {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }

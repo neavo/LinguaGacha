@@ -5,7 +5,6 @@ export const en_us_toolbox_page = {
   title: "Toolbox",
   entries: {
     game_font: {
-      title: "Game Font Replacement",
       description:
         "Supported engines:\n<emphasis>WOLF RPG 3</emphasis>\n<emphasis>RPG Maker MV/MZ</emphasis>",
     },

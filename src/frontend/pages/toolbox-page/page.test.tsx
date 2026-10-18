@@ -29,7 +29,7 @@ describe("ToolboxPage", () => {
     root = null;
   });
 
-  it("点击游戏字体替换入口后进入对应页面", async () => {
+  it("点击修改游戏字体入口后进入对应页面", async () => {
     container = document.createElement("div");
     document.body.append(container);
     root = createRoot(container);
@@ -37,7 +37,7 @@ describe("ToolboxPage", () => {
       root?.render(<ToolboxPage is_sidebar_collapsed={false} />);
     });
 
-    const entry = get_button_by_name(container, "toolbox_page.entries.game_font.title");
+    const entry = get_button_by_name(container, "game_font_page.title");
 
     await act(async () => entry.click());
 
@@ -45,6 +45,7 @@ describe("ToolboxPage", () => {
   });
 });
 
+/** 按入口名称操作页面，路由断言由调用用例负责。 */
 function get_button_by_name(container: HTMLElement, name: string): HTMLButtonElement {
   const button = [...container.querySelectorAll<HTMLButtonElement>("button")].find((candidate) =>
     candidate.textContent?.includes(name),

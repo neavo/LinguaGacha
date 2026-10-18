@@ -110,6 +110,10 @@ export const de_de_app = {
     launching: "Wird verarbeitet …",
   },
   drop: {
+    select_multiple_unavailable:
+      "Es kann nur eine Datei oder ein Ordner gleichzeitig abgelegt werden",
+    select_unavailable:
+      "Der lokale Pfad der abgelegten Datei ist derzeit nicht verfügbar. Bitte verwenden Sie stattdessen die Dateiauswahl …",
     multiple_unavailable: "Es kann nur eine Datei gleichzeitig abgelegt werden",
     unavailable:
       "Der lokale Pfad der abgelegten Datei ist derzeit nicht verfügbar. Bitte verwenden Sie stattdessen die Dateiauswahl …",

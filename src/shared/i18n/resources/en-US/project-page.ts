@@ -76,7 +76,4 @@ export const en_us_project_page = {
     rpgmaker_mv_mz: "RPG Maker MV/MZ Game File",
     rpgmaker_rgss: "RPG Maker XP/VX/VXAce Game File",
   },
-  drop_multiple_unavailable: "Only one file or folder can be dropped at a time",
-  drop_unavailable:
-    "The local path of the dropped file is unavailable right now. Please use the picker instead …",
 } satisfies LocaleMessageSchema<typeof zh_cn_project_page>;

@@ -134,6 +134,7 @@ describe("preload desktop bridge", () => {
     electron_mock.invoke
       .mockResolvedValueOnce({ canceled: false, paths: ["E:/novel/a.txt"] })
       .mockResolvedValueOnce({ canceled: false, paths: ["D:/projects"] })
+      .mockResolvedValueOnce({ canceled: false, paths: ["F:/games/demo"] })
       .mockResolvedValueOnce({ canceled: true, paths: [] });
 
     await bridge.pickProjectSourceFilePath();
@@ -150,8 +151,15 @@ describe("preload desktop bridge", () => {
     });
     expect(localStorage.getItem(LAST_DIALOG_DIRECTORY_STORAGE_KEY)).toBe("D:/projects");
 
+    await bridge.pickGameDirectoryPath();
+    expect(electron_mock.invoke).toHaveBeenNthCalledWith(3, IPC_CHANNEL_PICK_PATH, {
+      kind: "game-directory",
+      default_directory: "D:/projects",
+    });
+    expect(localStorage.getItem(LAST_DIALOG_DIRECTORY_STORAGE_KEY)).toBe("F:/games/demo");
+
     await bridge.pickPromptImportFilePath();
-    expect(localStorage.getItem(LAST_DIALOG_DIRECTORY_STORAGE_KEY)).toBe("D:/projects");
+    expect(localStorage.getItem(LAST_DIALOG_DIRECTORY_STORAGE_KEY)).toBe("F:/games/demo");
   });
 
   it("浏览器本地存储不可用时仍正常完成路径选择", async () => {

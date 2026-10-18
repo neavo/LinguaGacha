@@ -353,20 +353,33 @@ describe("桌面 IPC 宿主", () => {
     expect(read_app_language).toHaveBeenCalledTimes(3);
   });
 
-  it("游戏字体替换的字体与启动程序选择使用各自的过滤器", async () => {
+  it("修改游戏字体的字体、启动程序与游戏目录选择使用各自的对话框", async () => {
     await register_handlers();
-    electron_mock.show_open_dialog.mockResolvedValue({ canceled: false, filePaths: ["C:/game"] });
-    for (const [kind, extensions] of [
-      ["game-font-file", ["ttf", "otf"]],
-      ["game-executable", ["exe"]],
+    electron_mock.show_open_dialog.mockResolvedValue({
+      canceled: false,
+      filePaths: ["C:/game"],
+    });
+    for (const [kind, dialog_options] of [
+      [
+        "game-font-file",
+        {
+          properties: ["openFile"],
+          filters: [{ name: expect.any(String), extensions: ["ttf", "otf"] }],
+        },
+      ],
+      [
+        "game-executable",
+        {
+          properties: ["openFile"],
+          filters: [{ name: expect.any(String), extensions: ["exe"] }],
+        },
+      ],
+      ["game-directory", { properties: ["openDirectory"] }],
     ] as const) {
       await expect(
         invoke(IPC_CHANNEL_PICK_PATH, { kind, default_directory: null }),
       ).resolves.toEqual({ canceled: false, paths: ["C:/game"] });
-      expect(electron_mock.show_open_dialog.mock.lastCall?.at(-1)).toEqual({
-        properties: ["openFile"],
-        filters: [{ name: expect.any(String), extensions }],
-      });
+      expect(electron_mock.show_open_dialog.mock.lastCall?.at(-1)).toEqual(dialog_options);
     }
   });
 

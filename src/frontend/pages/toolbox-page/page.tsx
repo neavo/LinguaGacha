@@ -19,7 +19,7 @@ type ToolboxEntry = {
 // 按展示顺序排列。
 const TOOLBOX_ENTRIES: readonly ToolboxEntry[] = [
   {
-    title_key: "toolbox_page.entries.game_font.title",
+    title_key: "game_font_page.title", // 入口与功能页共用名称。
     description_key: "toolbox_page.entries.game_font.description",
     route_id: "game-font",
   },

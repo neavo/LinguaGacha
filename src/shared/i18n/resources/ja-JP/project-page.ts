@@ -74,7 +74,4 @@ export const ja_jp_project_page = {
     rpgmaker_mv_mz: "RPG Maker MV/MZ ゲームファイル",
     rpgmaker_rgss: "RPG Maker XP/VX/VXAce ゲームファイル",
   },
-  drop_multiple_unavailable: "一度にドロップできるファイルまたはフォルダーは 1 個です",
-  drop_unavailable:
-    "ドロップしたファイルのローカルパスを取得できません。クリックして選択してください …",
 } satisfies LocaleMessageSchema<typeof zh_cn_project_page>;

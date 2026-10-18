@@ -199,6 +199,7 @@ async function pick_path(
         properties: ["openFile", "multiSelections"],
       });
     case "project-source-directory":
+    case "game-directory":
       return pick_open_path(main_window, request.default_directory, {
         properties: ["openDirectory"],
       });

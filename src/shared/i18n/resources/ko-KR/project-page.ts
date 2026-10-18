@@ -74,6 +74,4 @@ export const ko_kr_project_page = {
     rpgmaker_mv_mz: "RPG Maker MV/MZ 게임 파일",
     rpgmaker_rgss: "RPG Maker XP/VX/VXAce 게임 파일",
   },
-  drop_multiple_unavailable: "한 번에 파일 또는 폴더 하나만 놓을 수 있습니다",
-  drop_unavailable: "놓은 파일의 로컬 경로를 읽을 수 없습니다. 클릭하여 선택해 주세요 …",
 } satisfies LocaleMessageSchema<typeof zh_cn_project_page>;

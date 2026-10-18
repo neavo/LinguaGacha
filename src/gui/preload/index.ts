@@ -169,11 +169,17 @@ const DESKTOP_BRIDGE_API: DesktopBridgeApi = {
   async pickPromptExportFilePath(): Promise<DesktopPathPickResult> {
     return invoke_path_picker({ kind: "prompt-export" });
   },
+  /** 选择字体文件，格式筛选由宿主对话框负责。 */
   async pickGameFontFilePath(): Promise<DesktopPathPickResult> {
     return invoke_path_picker({ kind: "game-font-file" });
   },
+  /** 以启动程序定位游戏。 */
   async pickGameExecutablePath(): Promise<DesktopPathPickResult> {
     return invoke_path_picker({ kind: "game-executable" });
+  },
+  /** 以目录定位游戏，并将目录本身作为后续选择的起点。 */
+  async pickGameDirectoryPath(): Promise<DesktopPathPickResult> {
+    return invoke_path_picker({ kind: "game-directory" });
   },
 };
 
@@ -197,7 +203,11 @@ async function invoke_path_picker(intent: DesktopPathPickIntent): Promise<Deskto
 
 /** 目录选择结果直接保存，文件选择结果取其父目录。 */
 function is_directory_pick(intent: DesktopPathPickIntent): boolean {
-  return intent.kind === "project-source-directory" || intent.kind === "fixed-project-directory";
+  return (
+    intent.kind === "project-source-directory" ||
+    intent.kind === "fixed-project-directory" ||
+    intent.kind === "game-directory"
+  );
 }
 
 /** 恢复最近选择目录；存储不可用时交由宿主使用默认目录。 */
