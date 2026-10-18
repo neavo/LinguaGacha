@@ -15,6 +15,7 @@ import { wolf_files } from "../../../../test/wolf-fixture";
 import { wolf_archive_fixture } from "../../../../test/wolf-archive-fixture";
 import { rgss_archive_fixture } from "../../../../test/rgss-archive-fixture";
 import { NativeFs } from "../../../../native/native-fs";
+import { encrypted_media, MEDIA_KEY, png_fixture } from "../../../../test/media-fixture";
 
 let runtime: string;
 beforeAll(() => {
@@ -45,16 +46,28 @@ it("发行线程完成暂存后退出，取消也等到句柄释放，随后仍�
   const executable = path.join(temp.path, "Game.exe"),
     staging = path.join(temp.path, "stage");
   fs.mkdirSync(staging);
+  const native = new NativeFs();
+  const loose = new Map([
+    ["img/a.png_", Buffer.from("invalid loose media")],
+    ["img/b.png_", encrypted_media(png_fixture())],
+  ]);
+  for (const [name, bytes] of loose) native.write_file_sync(path.join(temp.path, name), bytes);
   fs.writeFileSync(
     executable,
     evb_fixture(
       new Map([
         ["large.bin", Buffer.alloc(32 * 1024 * 1024, 42)],
-        ["data/System.json", Buffer.from("{}")],
+        [
+          "data/System.json",
+          Buffer.from(JSON.stringify({ hasEncryptedImages: true, encryptionKey: MEDIA_KEY })),
+        ],
         ["js/rmmz_core.js", Buffer.from("// fixture")],
+        ["img/a.png_", encrypted_media(png_fixture())],
+        ["img/packed.png_", encrypted_media(png_fixture())],
       ]),
     ),
   );
+  const original = fs.readFileSync(executable);
   const execution = build_worker_threads_backend_worker_execution_from_desktop_bundle_dir(
     path.join(runtime, "main"),
   );
@@ -85,9 +98,22 @@ it("发行线程完成暂存后退出，取消也等到句柄释放，随后仍�
     fs.mkdirSync(staging);
     const result = await worker.run(task);
     expect(result.writes).toContain("Game.exe");
+    expect(result.removes).toEqual(expect.arrayContaining([...loose.keys()]));
+    expect(result.removes).toHaveLength(loose.size);
+    for (const name of ["a", "b", "packed"]) {
+      expect(result.writes).toContain("img/" + name + ".png");
+      expect(result.writes).not.toContain("img/" + name + ".png_");
+      expect(fs.readFileSync(path.join(staging, "img/" + name + ".png"))).toEqual(png_fixture());
+    }
+    expect(fs.readFileSync(path.join(staging, "data/System.json"), "utf8")).toContain(
+      '"hasEncryptedImages":false',
+    );
     expect(fs.statSync(path.join(staging, "large.bin")).size).toBe(32 * 1024 * 1024);
     expect(fs.readFileSync(path.join(staging, "Game.exe")).length).toBe(1024);
-    expect(fs.readdirSync(temp.path).sort()).toEqual(["Game.exe", "stage"]);
+    expect(fs.readdirSync(temp.path).sort()).toEqual(["Game.exe", "img", "stage"]);
+    expect(fs.readFileSync(executable).equals(original)).toBe(true);
+    for (const [name, bytes] of loose)
+      expect(fs.readFileSync(path.join(temp.path, name))).toEqual(bytes);
   } finally {
     await worker.dispose();
   }

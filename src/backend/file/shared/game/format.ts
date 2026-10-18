@@ -1,4 +1,3 @@
-import { write_game_backup } from "./backup";
 import {
   validate_game_path,
   assert_game_path_spellings,
@@ -13,7 +12,6 @@ import { AppError } from "../../../../shared/error";
 import type {
   FileFormatServiceWriteContext,
   SourceFileParseWarning,
-  ProjectSourceFileEntry,
 } from "../../file-format-types";
 import { assert_source_file_paths, source_file_output_path } from "../../source-file-paths";
 import { read_zip_members } from "../zip-members";
@@ -28,7 +26,7 @@ export type GameContainer = Readonly<{
   game_files: JSZip.JSZipObject | null; // 早于清单的容器没有该成员。
 }>;
 
-/** 游戏 固化容器必须包含原稿文件，空容器不能作为游戏原稿。 */
+/** 固化容器必须包含原稿文件，空容器不能作为游戏原稿。 */
 export async function read_game_container(
   content: Uint8Array,
   file: string,
@@ -55,36 +53,32 @@ export interface GameMemberHandler {
   ): Promise<{ items: Item[]; warnings: SourceFileParseWarning[] }>;
   render(content: Uint8Array, file: string, items: readonly Item[]): Promise<Uint8Array>;
 }
-/** 游戏原稿清单拥有导入、离线重建与目录导出，格式仅解释成员内容。 */
+/** 游戏原稿容器负责固化、解析与目录导出，格式适配器解释成员内容。 */
 export class GameFormat {
   /** 每个处理器固定其格式适配器和文件入口。 */
   public constructor(
     private readonly adapter: GameFormatAdapter,
     private readonly fs: NativeFs,
   ) {}
-  /** 完整读取并生成容器后备份同一批字节，备份成功才返回。 */
-  public async prepare_source(
-    entries: readonly Pick<ProjectSourceFileEntry, "source_path" | "rel_path">[],
+  /** 容器与备份共用调用方读定的原稿字节，容器只负责数据结构。 */
+  public async create_container(
+    files: ReadonlyMap<string, Uint8Array>,
     file: string,
     root: string,
     signal?: AbortSignal,
   ): Promise<{ content: Uint8Array; warnings: SourceFileParseWarning[] }> {
     signal?.throwIfAborted();
-    const files = new Map<string, Uint8Array>(); // 同一次读取供容器和本次备份使用。
-    assert_game_path_spellings(entries.map((entry) => entry.rel_path));
+    assert_game_path_spellings([...files.keys()]);
     const zip = new JSZip();
     const paths = new Set<string>();
-    for (const entry of entries) {
+    for (const [internal, bytes] of files) {
       signal?.throwIfAborted();
-      const internal = entry.rel_path;
       validate_game_path(internal);
       const key = internal.toLowerCase();
       if (paths.has(key) || key === GAME_FILES_MEMBER)
         throw new AppError("file.invalid_structure", { public_details: { file } });
       paths.add(key);
-      const bytes = this.fs.read_file(entry.source_path);
       zip.file(internal, bytes, { createFolders: false });
-      files.set(internal, bytes);
     }
     if (Object.keys(zip.files).length === 0)
       throw new AppError("file.parse_failed", { public_details: { file } });
@@ -93,7 +87,6 @@ export class GameFormat {
     // 资产存储层统一使用 Zstd 压缩，容器只保存结构和字节，避免重复压缩。
     const content = await zip.generateAsync({ type: "uint8array", compression: "STORE" });
     signal?.throwIfAborted();
-    await write_game_backup(root, files, this.fs, signal);
     return { content, warnings: [] };
   }
 

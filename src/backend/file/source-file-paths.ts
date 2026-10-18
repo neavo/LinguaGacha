@@ -109,6 +109,19 @@ export function assert_game_path_spellings(names: readonly string[]): void {
   }
 }
 
+/** 沿目录逐级排序，保持原稿遍历顺序，避免重新导入时改变条目行号。 */
+export function sort_game_paths(names: Iterable<string>): string[] {
+  return [...names].sort((left, right) => {
+    const a = left.split("/"),
+      b = right.split("/");
+    for (let index = 0; index < Math.min(a.length, b.length); index++) {
+      const order = a[index]!.localeCompare(b[index]!);
+      if (order) return order;
+    }
+    return a.length - b.length;
+  });
+}
+
 /** 包括祖先目录在内拒绝链接和文件占用，检查也能捕获悬空链接。 */
 export function assert_regular_path(target: string, fs: NativeFs): void {
   const parent = path.dirname(target);
@@ -129,7 +142,9 @@ export function collect_existing_files(
   name: string,
   files: Set<string>,
   fs: NativeFs,
+  signal?: AbortSignal,
 ): void {
+  signal?.throwIfAborted();
   const target = path.join(root, name);
   assert_regular_path(target, fs);
   if (!fs.exists(target)) return;
@@ -139,7 +154,9 @@ export function collect_existing_files(
   }
   /** 入口类型已确认，递归复核子目录并复用目录项的文件类型。 */
   function visit(relative: string): void {
+    signal?.throwIfAborted();
     for (const entry of fs.read_dirents(path.join(root, relative))) {
+      signal?.throwIfAborted();
       const child = relative + "/" + entry.name;
       if (entry.isFile()) files.add(child);
       else if (entry.isDirectory()) {

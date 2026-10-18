@@ -53,6 +53,7 @@ export async function stage_rpgmaker_source(
   signal?.throwIfAborted();
   const { root, data_root, executable } = game;
   const writes = new Set<string>();
+  const removes = new Set<string>();
   assert_regular_path(root, fs);
   if (executable) {
     assert_regular_path(executable, fs);
@@ -82,7 +83,7 @@ export async function stage_rpgmaker_source(
       await handle.close();
     }
   }
-  await stage_media(game, staging, writes, fs, signal);
+  await stage_media(game, staging, writes, removes, fs, signal);
   const prefix = path.relative(root, data_root).replaceAll("\\", "/");
   const resolve = (name: string) => path.join(writes.has(name) ? staging : root, name);
   const internal = (name: string) => [prefix, name].filter(Boolean).join("/");
@@ -94,7 +95,7 @@ export async function stage_rpgmaker_source(
     )
   )
     throw new Error("Prepared game is missing MV/MZ engine files");
-  return { writes: [...writes] };
+  return { writes: [...writes], removes: [...removes] };
 }
 
 /** 包内资源覆盖散装资源，原生媒体按整类成功结果关闭配置。 */
@@ -102,6 +103,7 @@ async function stage_media(
   game: RPGMakerSource,
   staging: string,
   writes: Set<string>,
+  removes: Set<string>,
   fs: NativeFs,
   signal?: AbortSignal,
 ): Promise<void> {
@@ -119,11 +121,18 @@ async function stage_media(
   const key = system["encryptionKey"];
   if (typeof key !== "string" || !/^[a-f0-9]{32}$/iu.test(key))
     throw new Error("Invalid RPG Maker encryption key");
-  const files = new Set<string>(writes);
+  const existing = new Set<string>();
   for (const directory of [images ? "img" : null, audio ? "audio" : null]) {
     if (directory)
-      collect_existing_files(root, [prefix, directory].filter(Boolean).join("/"), files, fs);
+      collect_existing_files(
+        root,
+        [prefix, directory].filter(Boolean).join("/"),
+        existing,
+        fs,
+        signal,
+      );
   }
+  const files = new Set([...writes, ...existing]);
   const outputs = new Set<string>();
   for (const name of files) {
     signal?.throwIfAborted();
@@ -148,6 +157,8 @@ async function stage_media(
       signal,
     );
     writes.add(output);
+    writes.delete(name); // 已消费的包内密文只留在暂存区，随事务工作区清理。
+    if (existing.has(name)) removes.add(name); // 正式目录密文由目录事务删除并负责恢复。
   }
   // 固化原稿采用关闭加密后的配置，避免译文生成重新开启加密。
   if (images) system["hasEncryptedImages"] = false;

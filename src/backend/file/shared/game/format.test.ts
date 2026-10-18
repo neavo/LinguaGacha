@@ -3,7 +3,7 @@ import JSZip from "jszip";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { expect, it, vi } from "vitest";
+import { expect, it } from "vitest";
 import { NativeFs } from "../../../../native/native-fs";
 import { create_rpgmaker_mv_mz_adapter } from "../../rpgmaker-mv-mz/rpgmaker-format";
 import { GameFormat, read_game_container } from "./format";
@@ -15,67 +15,23 @@ it("游戏 拒绝没有原稿文件的容器", async () => {
   ).rejects.toMatchObject({ code: "file.invalid_structure" });
 });
 
-it("备份与容器共用读取字节，重复导入归档旧字节", async () => {
-  using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-game-backup-"));
+it("容器只固化调用方提供的数据字节，字体保留在游戏文件清单", async () => {
+  using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-game-container-"));
   const native = new NativeFs();
   const format = new GameFormat(create_rpgmaker_mv_mz_adapter({ target_language: "ZH" }), native);
-  const names = ["www/data/System.json", "www/js/plugins.js", "www/js/plugins/Menu.js"];
-  const entries = names.map((rel_path) => ({
-    rel_path,
-    source_path: path.join(temp.path, rel_path),
-  }));
-  for (const entry of entries)
-    native.write_file_sync(entry.source_path, "original " + entry.rel_path);
-  const read = vi.spyOn(native, "read_file");
-  const prepared = await format.prepare_source(entries, "game.zip", temp.path);
-  const { members: zip } = await read_game_container(prepared.content, "game.zip");
-  const directory = path.join(temp.path, "backup_lg");
-  for (const entry of entries) {
-    expect(read.mock.calls.filter(([file]) => file === entry.source_path)).toHaveLength(1);
-    expect(fs.readFileSync(path.join(directory, entry.rel_path))).toEqual(
-      await zip.get(entry.rel_path)!.async("nodebuffer"),
-    );
-    native.write_file_sync(entry.source_path, "translated");
-  }
-  const repeated = await format.prepare_source(entries, "game.zip", temp.path);
-  const { game_files } = await read_game_container(repeated.content, "game.zip");
-  const history = fs.readdirSync(directory).find((name) => name.startsWith("backup_lg_"))!;
-  for (const entry of entries) {
-    expect(fs.readFileSync(path.join(directory, history, entry.rel_path), "utf8")).toBe(
-      "original " + entry.rel_path,
-    );
-    expect(fs.readFileSync(path.join(directory, entry.rel_path), "utf8")).toBe("translated");
-  }
-  expect(await game_files!.async("string")).toBe(names.join("\n")); // 已有备份目录不属于游戏文件。
+  native.write_file_sync(path.join(temp.path, "fonts/main.ttf"), "font");
+  const data = new Map([["data/System.json", Buffer.from("original")]]);
+  native.write_file_sync(path.join(temp.path, "data/System.json"), "changed on disk");
+  const prepared = await format.create_container(data, "game.zip", temp.path);
+  const { members, game_files } = await read_game_container(prepared.content, "game.zip");
+  expect([...members.keys()]).toEqual(["data/System.json"]);
+  expect(await members.get("data/System.json")!.async("nodebuffer")).toEqual(
+    data.get("data/System.json"),
+  );
+  expect(await game_files!.async("string")).toContain("fonts/main.ttf");
+  expect(fs.existsSync(path.join(temp.path, "backup_lg"))).toBe(false);
 });
 
-it.each([false, true])("已有备份 %s 时读取失败均中止导入，恢复读取后可重试", async (existing) => {
-  using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-source-read-"));
-  const native = new NativeFs();
-  const format = new GameFormat(create_rpgmaker_mv_mz_adapter({ target_language: "ZH" }), native);
-  const root = temp.path;
-  const entries = ["data/System.json", "js/plugins/Menu.js"].map((rel_path) => ({
-    rel_path,
-    source_path: path.join(temp.path, rel_path),
-  }));
-  for (const entry of entries) native.write_file_sync(entry.source_path, "original");
-  if (existing) await format.prepare_source(entries, "game.zip", root);
-  const read = native.read_file.bind(native);
-  const mock = vi.spyOn(native, "read_file").mockImplementation((file) => {
-    if (file === entries[1]!.source_path) throw new Error("read failure");
-    return read(file);
-  });
-  await expect(format.prepare_source(entries, "game.zip", root)).rejects.toThrow("read failure");
-  expect(fs.existsSync(path.join(temp.path, "backup_lg"))).toBe(existing);
-  if (existing)
-    expect(fs.readdirSync(path.join(temp.path, "backup_lg")).sort()).toEqual(["data", "js"]);
-  mock.mockRestore();
-  await format.prepare_source(entries, "game.zip", root);
-  for (const entry of entries)
-    expect(fs.readFileSync(path.join(temp.path, "backup_lg", entry.rel_path), "utf8")).toBe(
-      "original",
-    );
-});
 it("游戏 解析通过共享容器入口拒绝越界成员", async () => {
   const format = new GameFormat(
     create_rpgmaker_mv_mz_adapter({ target_language: "ZH" }),
@@ -87,7 +43,7 @@ it("游戏 解析通过共享容器入口拒绝越界成员", async () => {
   });
 });
 
-it("解析失败保留原始字节，备份与零条目导出仍包含该文件", async () => {
+it("解析失败保留原始字节，零条目导出仍包含该文件", async () => {
   using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-rm-errors-"));
   fs.mkdirSync(path.join(temp.path, "data"));
   fs.mkdirSync(path.join(temp.path, "js"));
@@ -97,11 +53,13 @@ it("解析失败保留原始字节，备份与零条目导出仍包含该文件"
   fs.writeFileSync(path.join(temp.path, "img/pictures/Actor1.png"), "");
   const native = new NativeFs();
   const service = new GameFormat(create_rpgmaker_mv_mz_adapter({ target_language: "ZH" }), native);
-  const entries = ["data/Broken.json", "data/System.json"].map((rel_path) => ({
-    rel_path,
-    source_path: path.join(temp.path, rel_path),
-  }));
-  const prepared = await service.prepare_source(entries, "game.zip", temp.path);
+  const files = new Map(
+    ["data/Broken.json", "data/System.json"].map((name) => [
+      name,
+      native.read_file(path.join(temp.path, name)),
+    ]),
+  );
+  const prepared = await service.create_container(files, "game.zip", temp.path);
   const parsed = await service.read_from_stream(prepared.content, "game.zip");
   expect(parsed.items).toEqual([]);
   expect([...prepared.warnings, ...parsed.warnings]).toMatchObject([
@@ -114,7 +72,6 @@ it("解析失败保留原始字节，备份与零条目导出仍包含该文件"
     "data/Broken.json\ndata/System.json\nimg/pictures/Actor1.png",
   );
   expect(zip_text(archive, "data/Broken.json")).toBe("{");
-  expect(fs.readFileSync(path.join(temp.path, "backup_lg/data/Broken.json"), "utf8")).toBe("{");
   const output = path.join(temp.path, "out");
   await service.write_to_path([], {
     paths: { translated_path: output, bilingual_path: output },

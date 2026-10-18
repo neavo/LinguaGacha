@@ -10,7 +10,14 @@ import {
   validate_game_path,
   assert_game_path_spellings,
   collect_existing_files,
+  sort_game_paths,
 } from "./source-file-paths";
+
+it("原稿路径排序保持逐级目录顺序", () => {
+  expect(
+    sort_game_paths(["Data/a.json", "Data/a/z.json", "Data/System.json", "Data/a/A.json"]),
+  ).toEqual(["Data/a/A.json", "Data/a/z.json", "Data/a.json", "Data/System.json"]);
+});
 
 it("已有文件收集保留嵌套枚举顺序、初始文件、缺失目标和原集合", () => {
   using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-collect-"));
@@ -25,6 +32,27 @@ it("已有文件收集保留嵌套枚举顺序、初始文件、缺失目标和�
   const single = new Set<string>();
   collect_existing_files(temp.path, "Data/a.txt", single, native);
   expect([...single]).toEqual(["Data/a.txt"]);
+});
+
+it.each(["before", "during"])("已有文件收集响应取消：%s", (phase) => {
+  using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-collect-cancel-"));
+  const native = new NativeFs();
+  native.write_file_sync(path.join(temp.path, "Data/nested/a.txt"), "a");
+  const controller = new AbortController();
+  if (phase === "before") controller.abort(new Error("cancel collection"));
+  else {
+    const read = native.read_dirents.bind(native);
+    vi.spyOn(native, "read_dirents").mockImplementation((directory) => {
+      const entries = read(directory);
+      controller.abort(new Error("cancel collection"));
+      return entries;
+    });
+  }
+  const files = new Set<string>();
+  expect(() => collect_existing_files(temp.path, "Data", files, native, controller.signal)).toThrow(
+    "cancel collection",
+  );
+  expect(files.size).toBe(0);
 });
 
 it("入口、祖先、后代和悬空目录链接都拒绝收集", () => {

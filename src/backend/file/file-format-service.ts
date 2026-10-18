@@ -1,7 +1,8 @@
+import { read_game_source_files } from "./shared/game/source-files";
+import { write_game_backup } from "./shared/game/backup";
 import { create_wolf_adapter } from "./wolfrpg/wolf-format";
 import { wolf_default_status } from "./wolfrpg/item";
 import { prepare_wolf_source } from "./wolfrpg/prepare";
-import { collect_wolf_files } from "./wolfrpg/source";
 import { GameFormat } from "./shared/game/format";
 import { build_source_file_parse_failure } from "./source-file-parse-failure-reporter";
 import {
@@ -15,7 +16,6 @@ import type { GamePrepareExecution } from "./shared/game/prepare-worker";
 import { rpgmaker_default_status } from "./rpgmaker-mv-mz/item";
 import { rgss_default_status } from "./rpgmaker-rgss/item";
 import { create_rpgmaker_rgss_adapter } from "./rpgmaker-rgss/rpgmaker-format";
-import { collect_rgss_files } from "./rpgmaker-rgss/source";
 import { prepare_rgss_source } from "./rpgmaker-rgss/prepare";
 import { is_game_file_type, type GameFileType } from "../../shared/project-source-formats";
 import { format_local_timestamp } from "../../shared/utils/format-local-timestamp";
@@ -26,7 +26,6 @@ import {
   assert_regular_path,
 } from "./source-file-paths";
 import { create_rpgmaker_mv_mz_adapter } from "./rpgmaker-mv-mz/rpgmaker-format";
-import { collect_rpgmaker_files } from "./rpgmaker-mv-mz/source";
 import type { PDFExecution } from "./pdf/pdf-worker";
 import { PDFFormat } from "./pdf/pdf-format";
 import path from "node:path";
@@ -61,9 +60,7 @@ import {
   type ProjectSourceFileSummary,
 } from "../../shared/project-source-formats";
 
-/**
- * Backend 公开文件格式门面；具体格式逻辑按稳定格式处理器拆分
- */
+/** 文件格式门面负责来源准备，并按固定配置分发解析和写回。 */
 export class FileFormatService {
   /** 文件重置由格式决定翻译资格，工程服务不解释私有定位。 */
   public static default_status(item: Pick<Item, "file_type" | "extra_field">): ItemStatus {
@@ -314,7 +311,7 @@ export class FileFormatService {
     return result;
   }
 
-  /** 正式导入先准备游戏目录，再固化容器，后续解析使用保存的原稿。 */
+  /** 正式导入准备游戏并固化容器，备份成功后才返回原稿。 */
   public async prepare_source(entry: DiscoveredSource, signal?: AbortSignal) {
     signal?.throwIfAborted();
     const { source, rel_path } = entry;
@@ -325,38 +322,36 @@ export class FileFormatService {
       assert_regular_path(workspace, this.native_fs);
       if (this.native_fs.exists(workspace))
         throw new Error("Unfinished game operation; recovery files: " + workspace);
-    }
-    if (source.kind === "wolfrpg") {
-      await prepare_wolf_source(source.game, this.native_fs, this.game_prepare_execution, signal);
-      return this.games.WOLFRPG.prepare_source(
-        collect_wolf_files(source.game, this.native_fs),
+      let format: GameFormat;
+      if (source.kind === "wolfrpg") {
+        await prepare_wolf_source(source.game, this.native_fs, this.game_prepare_execution, signal);
+        format = this.games.WOLFRPG;
+      } else if (source.kind === "rgss") {
+        await prepare_rgss_source(source.game, this.native_fs, this.game_prepare_execution, signal);
+        format = this.games.RPGMAKER_RGSS;
+      } else {
+        await prepare_rpgmaker_source(
+          source.game,
+          this.native_fs,
+          this.game_prepare_execution,
+          signal,
+        );
+        format = this.games.RPGMAKER_MV_MZ;
+      }
+      const files = read_game_source_files(source, this.native_fs, signal);
+      const container = await format.create_container(
+        files.data,
         rel_path,
         source.game.root,
         signal,
       );
-    }
-    if (source.kind === "rgss") {
-      await prepare_rgss_source(source.game, this.native_fs, this.game_prepare_execution, signal);
-      return this.games.RPGMAKER_RGSS.prepare_source(
-        collect_rgss_files(source.game, this.native_fs),
-        rel_path,
+      await write_game_backup(
         source.game.root,
-        signal,
-      );
-    }
-    if (source.kind === "mv_mz") {
-      await prepare_rpgmaker_source(
-        source.game,
+        new Map([...files.data, ...files.fonts]),
         this.native_fs,
-        this.game_prepare_execution,
         signal,
       );
-      return this.games.RPGMAKER_MV_MZ.prepare_source(
-        collect_rpgmaker_files(source.game, this.native_fs),
-        rel_path,
-        source.game.root,
-        signal,
-      );
+      return container;
     }
     return { content: this.native_fs.read_file(entry.source_path), warnings: [] };
   }

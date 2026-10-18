@@ -12,27 +12,36 @@ import {
 } from "../../source-file-paths";
 import { ProjectAssetPathIndex } from "../../../../shared/project/project-asset-paths";
 
-/** 普通文件优先，只有整批没有文件时才使用目录时间。 */
-function backup_timestamp(entries: readonly string[], fs: NativeFs): string {
+/** 一次统计文件数、字节数和归档时间，只有整批没有文件时才使用目录时间。 */
+async function scan_backup(entries: readonly string[], fs: NativeFs, signal?: AbortSignal) {
   let earliest_file = Infinity;
   let earliest_directory = Infinity;
-  function visit(target: string): void {
+  let count = 0;
+  let size = 0;
+  /** 扫描当前普通内容，拒绝链接并在读取元数据前响应取消。 */
+  async function visit(target: string): Promise<void> {
+    await setImmediate(); // 元数据扫描也允许取消请求进入。
+    signal?.throwIfAborted();
     assert_regular_path(target, fs);
     const stat = fs.stat(target);
     const time = stat.birthtimeMs > 0 ? stat.birthtimeMs : stat.mtimeMs; // 不支持创建时间的文件系统返回 0。
-    if (stat.isFile()) earliest_file = Math.min(earliest_file, time);
-    else {
+    if (stat.isFile()) {
+      earliest_file = Math.min(earliest_file, time);
+      count++;
+      size += stat.size;
+    } else {
       earliest_directory = Math.min(earliest_directory, time);
-      for (const entry of fs.read_dirents(target)) visit(path.join(target, entry.name));
+      for (const entry of fs.read_dirents(target)) await visit(path.join(target, entry.name));
     }
   }
-  for (const target of entries) visit(target);
-  return format_local_timestamp(
+  for (const target of entries) await visit(target);
+  const timestamp = format_local_timestamp(
     new Date(Number.isFinite(earliest_file) ? earliest_file : earliest_directory).toISOString(),
   )!
     .replaceAll("-", "")
     .replace(" ", "_")
     .replaceAll(":", "");
+  return { count, size, timestamp };
 }
 
 /** 名称按大小写共同占位，只有排他创建的重名错误允许重试。 */
@@ -81,9 +90,12 @@ export async function write_game_backup(
       current.push(target);
     }
     if (current.length) {
-      const timestamp = backup_timestamp(current, fs);
+      const previous = await scan_backup(current, fs, signal);
       signal?.throwIfAborted();
-      history = await create_history(directory, timestamp, fs);
+      const size = [...files.values()].reduce((total, bytes) => total + bytes.byteLength, 0);
+      // shortcut: 文件数与总字节数会漏判等规模变化，需要精确内容判断时升级为逐文件哈希。
+      if (previous.count === files.size && previous.size === size) return;
+      history = await create_history(directory, previous.timestamp, fs);
       for (const target of current) {
         await setImmediate(); // 让取消请求能在同步移动之间进入。
         signal?.throwIfAborted();

@@ -58,7 +58,7 @@ export async function stage_wolf_source(
     archive_targets = new ProjectAssetPathIndex(), // 跨归档的同名成员在展开前报冲突。
     staged = new Map<string, string>(),
     strict = new Set<string>();
-  if (fs.exists(game.data_root)) collect_existing_files(game.root, "Data", original, fs);
+  if (fs.exists(game.data_root)) collect_existing_files(game.root, "Data", original, fs, signal);
   for (const name of original) files.set(name, path.join(game.root, name));
   const checkpoint = async () => {
     await setImmediate();
