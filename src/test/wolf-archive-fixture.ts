@@ -5,11 +5,23 @@ import {
   FREE_CHACHA_KEY,
   generate_key,
   old_key,
-  OLD_PASSWORDS,
   xor,
   is_wolf35,
   type WolfKey,
 } from "../backend/file/wolfrpg/archive-crypt";
+
+// 测试输入独立于生产声明，按 UberWolf f4191375 的 `DEFAULT_CRYPT_MODES` 排除末尾 NUL。
+const LEGACY_PASSWORDS: Readonly<Record<number, Buffer>> = {
+  0: Buffer.from("WLFRPrO!p(;s5((8P@((UFWlu$#5(=", "ascii"),
+  300: Buffer.from(
+    "0f53e13e8eb54191521655ae34c98f79592f596b95199b1b359a2fdec97c1296c314b50f53e13e8e",
+    "hex",
+  ),
+  314: Buffer.from(
+    "31f90136a3e38d3c7bc37d25ad6328191bf78e6cc4e5e27682ea4fed61dae0445bb6463b06d5ceb67858d07c82",
+    "hex",
+  ),
+};
 
 /** Huffman 使用固定等权树，数据按反转位序编码，独立于生产解码器。 */
 export function wolf_huffman_fixture(input: Buffer): Buffer {
@@ -138,7 +150,7 @@ export async function wolf_archive_fixture(
   const password =
     version === 1000 || version >= 1010
       ? companion!.subarray(0, companion!.indexOf(0))
-      : OLD_PASSWORDS[version];
+      : LEGACY_PASSWORDS[version];
   const tail = version >= 1010 ? companion!.subarray(companion!.indexOf(0) + 1) : undefined;
   const stream: WolfKey | null =
     version === 100 || version === 200 ? Uint8Array.from(companion ?? FREE_CHACHA_KEY) : null;

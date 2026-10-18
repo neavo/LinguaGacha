@@ -23,7 +23,7 @@ it("游戏根目录、EXE 和 Data 去重为一个资产，解包覆盖散装文
     path.join(root, "Data.wolf"),
     await wolf_archive_fixture(
       new Map([...files].map(([name, bytes]) => [name.slice(5), bytes])),
-      350,
+      0,
     ),
   );
   const service = new FileFormatService({ target_language: "ZH" }, async () => null, native);

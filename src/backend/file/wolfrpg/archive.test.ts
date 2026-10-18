@@ -5,7 +5,37 @@ import { expect, it } from "vitest";
 import { read_wolf_archive } from "./archive";
 import { wolf_archive_fixture } from "../../../test/wolf-archive-fixture";
 import { wolf_crypt_vectors } from "../../../test/wolf-crypt-vectors";
+import { wolf_vector } from "../../../test/wolf-crypt-fixture";
 import { BINARY_IO_CHUNK_BYTES } from "../shared/binary";
+
+// 测试自有内容由 UberWolf v0.6.4 的 v2.225 打包器生成，协议参考 f4191375，固定字节独立于夹具编码器。
+const LEGACY_ARCHIVE_VECTOR =
+  "c4ngYNjAyMDgwAABNowQOgDKL4DylzBDaB4GVLDxx1unp0Iyi37dRKcEOb/r9zDBeBbbeAIiHX+9PR1rVfwifgeSygz/PduUoFRA8Q9/kODlF3479mAxU0imI6D8RSpC8EPxS/9NMunr14hvFdrG8evSC1cMt3wofnR6xxyshmGhJLZxBpSKb3L35AhIfoGuZOOW0uM3787yVp1qUntYSMaDQZqbKyDvR1XXGfGX20Oi/7lrLplX4vnz4iV+nfef2M3bvWqYDXx/6z/efu9TZd6F83xRG42/XzgrPX95ztI1YQvEPuQsV761y/lDznKmvdHTLhoYfT/PF/bBVURr8mquUrlP7u+CLrdV5mn2z1b74Pu7ddaxH9OuLu/tCxVfkMP0tVricEPO8tYn8wo8X169xK/PlSqzfNnk2Wof/ORal0xjvGoAVan0/Vhk+Zqf19tBRudt8pvBF/bDuum26wtmTetWu6gKkAMhRit9nXUu7EPOcl7N1GMfcpa3g925vP18t8rSNcvB2nNgSiA8OAXyZs7SSWyREEGQW9ZfeBUEV/Ly6iX2BQaeOatNClISrLcfXnTMXaX6WkCX4SbzcOnj69mW5ckpz12yJubIWa6Af5MmHzle5xu99lGq0LqCsoeNfO+Ub7i+cKyZL/Y6ztk/lvVayUk5h49H2CvLJlwteRNh0LtK3bhL1TGs6MPmuUef/JK/VHEvM+2qx57b1jv/VSvsYjzfmP1t07LOW43LAQ==";
+
+it("DXArchive 8 crypt=0 的 v2.225 独立向量可读取", async () => {
+  using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-wolf-legacy-vector-"));
+  const filename = path.join(temp.path, "Legacy.wolf");
+  fs.writeFileSync(filename, wolf_vector(LEGACY_ARCHIVE_VECTOR));
+  const expected = new Map([
+    ["日本語/確認.txt", Buffer.from("WOLF v2.225 独立向量")],
+    ["empty.bin", Buffer.alloc(0)],
+  ]);
+  const handle = await fs.promises.open(filename, "r");
+  try {
+    const archive = await read_wolf_archive(handle);
+    expect(archive.version).toBe(0);
+    expect(archive.members.map((member) => member.name).sort()).toEqual(
+      [...expected.keys()].sort(),
+    );
+    for (const member of archive.members) {
+      const chunks: Buffer[] = [];
+      for await (const chunk of archive.chunks(member)) chunks.push(chunk);
+      expect(Buffer.concat(chunks)).toEqual(expected.get(member.name));
+    }
+  } finally {
+    await handle.close();
+  }
+});
 
 /** 需要配套密钥的 marker 使用独立参考向量中的派生结果。 */
 function companion_of(version: number): Buffer | undefined {
@@ -78,7 +108,7 @@ it.each([100, 200, 1000, 1010, 1020])(
   },
 );
 
-it.each([300, 314, 331, 350])(
+it.each([0, 300, 314, 331, 350])(
   "归档 %i 支持嵌套日文、零字节、空目录和不同压缩组合",
   async (version) => {
     using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-wolf-archive-"));
