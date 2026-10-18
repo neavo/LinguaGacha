@@ -1,11 +1,73 @@
-import { expect, it } from "vitest";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { expect, it, vi } from "vitest";
+import { NativeFs } from "../../native/native-fs";
 import {
   assert_source_file_paths,
   source_file_output_path,
   SourceFilePathIndex,
   validate_game_path,
   assert_game_path_spellings,
+  collect_existing_files,
 } from "./source-file-paths";
+
+it("已有文件收集保留嵌套枚举顺序、初始文件、缺失目标和原集合", () => {
+  using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-collect-"));
+  fs.mkdirSync(path.join(temp.path, "Data/nested"), { recursive: true });
+  fs.writeFileSync(path.join(temp.path, "Data/a.txt"), "a");
+  fs.writeFileSync(path.join(temp.path, "Data/nested/b.txt"), "b");
+  const native = new NativeFs();
+  const files = new Set(["existing"]);
+  collect_existing_files(temp.path, "Data", files, native);
+  collect_existing_files(temp.path, "missing", files, native);
+  expect([...files]).toEqual(["existing", "Data/a.txt", "Data/nested/b.txt"]);
+  const single = new Set<string>();
+  collect_existing_files(temp.path, "Data/a.txt", single, native);
+  expect([...single]).toEqual(["Data/a.txt"]);
+});
+
+it("入口、祖先、后代和悬空目录链接都拒绝收集", () => {
+  using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-collect-link-"));
+  fs.mkdirSync(path.join(temp.path, "Data"));
+  fs.mkdirSync(path.join(temp.path, "outside"));
+  fs.symlinkSync(path.join(temp.path, "outside"), path.join(temp.path, "Data/link"), "junction");
+  const native = new NativeFs();
+  for (const name of ["Data", "Data/link", "Data/link/missing"]) {
+    expect(() => collect_existing_files(temp.path, name, new Set(), native)).toThrow("Unsafe");
+  }
+  fs.rmdirSync(path.join(temp.path, "outside"));
+  expect(() => collect_existing_files(temp.path, "Data/link", new Set(), native)).toThrow("Unsafe");
+});
+
+it("枚举后替换的目录链接及访问失败继续向调用者报错", () => {
+  using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-collect-race-"));
+  fs.mkdirSync(path.join(temp.path, "Data/nested"), { recursive: true });
+  fs.mkdirSync(path.join(temp.path, "outside"));
+  const native = new NativeFs();
+  const read = native.read_dirents.bind(native);
+  const enumeration = vi.spyOn(native, "read_dirents").mockImplementationOnce((directory) => {
+    const entries = read(directory);
+    fs.rmdirSync(path.join(temp.path, "Data/nested"));
+    fs.symlinkSync(
+      path.join(temp.path, "outside"),
+      path.join(temp.path, "Data/nested"),
+      "junction",
+    );
+    return entries;
+  });
+  expect(() => collect_existing_files(temp.path, "Data", new Set(), native)).toThrow("Unsafe");
+  enumeration.mockImplementation(() => {
+    throw new Error("access denied");
+  });
+  expect(() => collect_existing_files(temp.path, "Data", new Set(), native)).toThrow(
+    "access denied",
+  );
+  vi.spyOn(native, "lstat").mockImplementation(() => {
+    throw new Error("stat denied");
+  });
+  expect(() => collect_existing_files(temp.path, "Data", new Set(), native)).toThrow("stat denied");
+});
 
 it.each([
   "backup_lg/a.json",

@@ -5,7 +5,7 @@ import {
   copy_range,
   read_bytes,
   write_bytes,
-  BINARY_CHUNK_BYTES,
+  BINARY_IO_CHUNK_BYTES,
   type BinaryFileHandle,
 } from "../binary";
 const MAX_HEADER_BYTES = 1024 * 1024;
@@ -110,6 +110,7 @@ export async function validate_evb_layout(
   const section = pe.sections.find((s) => s.name === ".enigma1")!;
   const fields = await read_bytes(handle, section.raw + OFFSETS[variant][pe.x64 ? 1 : 0], 16);
   const originals = pe.sections.filter((s) => !s.name.startsWith(".enigma"));
+  /** 导入与重定位数据必须位于保留节的非空磁盘区间。 */
   const original = (rva: number, size: number) =>
     size > 0 && originals.some((s) => rva >= s.rva && rva + size <= s.rva + s.size);
   const imports = fields.readUInt32LE(),
@@ -173,12 +174,14 @@ export async function restore_evb_launcher(
     await copy_range(handle, output, 0, en1.raw, 0, signal);
     const overlay = en2.raw + en2.size;
     await copy_range(handle, output, overlay, length - overlay, en1.raw, signal);
+    /** 按字段宽度写回 PE 头，避免覆盖相邻字段。 */
     const patch = async (at: number, value: number, width = 4) => {
       const b = Buffer.alloc(width);
       if (width === 2) b.writeUInt16LE(value);
       else b.writeUInt32LE(value);
       await write_bytes(output, b, at);
     };
+    /** 数据目录的地址与长度成对写回。 */
     const directory = async (index: number, rva: number, size: number) => {
       await patch(pe.dirs + index * 8, rva);
       await patch(pe.dirs + index * 8 + 4, size);
@@ -227,11 +230,11 @@ export async function restore_evb_launcher(
       const matches: number[] = [];
       const width = pe.x64 ? 40 : 24;
       for (const section of originals) {
-        for (let at = 0; at < section.size; at += BINARY_CHUNK_BYTES - width) {
+        for (let at = 0; at < section.size; at += BINARY_IO_CHUNK_BYTES - width) {
           const block = await read_bytes(
             handle,
             section.raw + at,
-            Math.min(BINARY_CHUNK_BYTES, section.size - at),
+            Math.min(BINARY_IO_CHUNK_BYTES, section.size - at),
           );
           let found = block.indexOf(tls);
           while (found >= 0) {
@@ -246,8 +249,10 @@ export async function restore_evb_launcher(
       const image = await read_bytes(handle, pe.opt + (pe.x64 ? 24 : 28), pe.x64 ? 8 : 4);
       const image_base = pe.x64 ? image.readBigUInt64LE() : BigInt(image.readUInt32LE());
       const pointer_width = pe.x64 ? 8 : 4;
+      /** 按架构读取指针，保留 64 位地址精度。 */
       const pointer = (bytes: Buffer, at: number) =>
         pe.x64 ? bytes.readBigUInt64LE(at) : BigInt(bytes.readUInt32LE(at));
+      /** TLS 指针只能引用保留节，结束地址允许指向节尾。 */
       const original_rva = (address: bigint, end = false) => {
         const value = address - image_base;
         assert(value >= 0n && value <= 0xffffffffn, "Invalid original TLS address");

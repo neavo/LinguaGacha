@@ -26,7 +26,8 @@
 import assert from "node:assert/strict";
 import { setImmediate } from "node:timers/promises";
 import {
-  BINARY_CHUNK_BYTES,
+  BINARY_IO_CHUNK_BYTES,
+  BINARY_COMPUTE_STEP_BYTES,
   read_bytes,
   write_bytes,
   type BinaryFileHandle,
@@ -182,16 +183,29 @@ export async function write_wolfx_plaintext(
   match: WolfXMatch,
   signal?: AbortSignal,
 ): Promise<void> {
-  for (let at = 0; at < match.length; at += BINARY_CHUNK_BYTES) {
-    await setImmediate();
+  for (let at = 0; at < match.length; at += BINARY_IO_CHUNK_BYTES) {
     signal?.throwIfAborted();
     const bytes = await read_bytes(
       input,
       match.offset + at,
-      Math.min(BINARY_CHUNK_BYTES, match.length - at),
+      Math.min(BINARY_IO_CHUNK_BYTES, match.length - at),
     );
-    for (let i = 0; i < bytes.length; i++)
-      bytes[i]! ^= match.stream[(match.offset + at + i - 10) % STREAM_BYTES]!;
+    for (let step = 0; step < bytes.length; step += BINARY_COMPUTE_STEP_BYTES) {
+      await setImmediate();
+      signal?.throwIfAborted();
+      const absolute_offset = match.offset + at + step;
+      xor_wolfx_bytes(
+        bytes.subarray(step, step + BINARY_COMPUTE_STEP_BYTES),
+        match.stream,
+        absolute_offset,
+      );
+    }
     await write_bytes(output, bytes, at);
   }
+}
+
+/** 段内索引从零开始，周期密钥流仍由绝对文件偏移定位。 */
+function xor_wolfx_bytes(bytes: Buffer, stream: Uint8Array, absolute_offset: number): void {
+  for (let i = 0; i < bytes.length; i++)
+    bytes[i]! ^= stream[(absolute_offset + i - 10) % STREAM_BYTES]!;
 }

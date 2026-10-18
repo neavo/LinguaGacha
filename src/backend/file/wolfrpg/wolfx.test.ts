@@ -6,6 +6,62 @@ import { wolf_crypt_vectors } from "../../../test/wolf-crypt-vectors";
 import { wolf_vector } from "../../../test/wolf-crypt-fixture";
 import { create_wolfx_candidates, type WolfXCandidates } from "./key-collector";
 import { encode_wolfx_key, match_wolfx, write_wolfx_plaintext } from "./wolfx";
+import { BINARY_IO_CHUNK_BYTES } from "../shared/binary";
+
+it("IO 块内可取消 WOLFX 计算，未完成的块不写入输出", async () => {
+  using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-wolfx-compute-cancel-"));
+  const source = path.join(temp.path, "input"),
+    destination = path.join(temp.path, "output");
+  fs.writeFileSync(source, Buffer.alloc(BINARY_IO_CHUNK_BYTES + 37, 42));
+  const input = await fs.promises.open(source, "r"),
+    output = await fs.promises.open(destination, "w");
+  const controller = new AbortController(),
+    read = input.read.bind(input);
+  Object.assign(input, {
+    read: async (buffer: Buffer, offset: number, length: number, position: number) => {
+      const result = await read(buffer, offset, length, position);
+      // 两次事件循环让出使取消发生在当前 IO 块的计算期间。
+      setImmediate(() => setImmediate(() => controller.abort(new Error("cancel computation"))));
+      return result;
+    },
+  });
+  try {
+    await expect(
+      write_wolfx_plaintext(
+        input,
+        output,
+        { offset: 37, length: BINARY_IO_CHUNK_BYTES, stream: new Uint8Array(256) },
+        controller.signal,
+      ),
+    ).rejects.toThrow("cancel computation");
+    expect(fs.statSync(destination).size).toBe(0);
+  } finally {
+    await input.close();
+    await output.close();
+  }
+});
+
+it("大正文跨 IO 块仍按文件偏移推进周期密钥流", async () => {
+  using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-wolfx-block-"));
+  const stream = Uint8Array.from({ length: 256 }, (_, i) => (i * 73) % 256);
+  const offset = 37;
+  const expected = Buffer.alloc(BINARY_IO_CHUNK_BYTES + 19).fill(
+    Buffer.from(Array.from({ length: 251 }, (_, i) => i)),
+  );
+  const encoded = Buffer.from(expected.map((byte, i) => byte ^ stream[(offset + i - 10) % 256]!));
+  const source = path.join(temp.path, "input"),
+    destination = path.join(temp.path, "output");
+  fs.writeFileSync(source, Buffer.concat([Buffer.alloc(offset), encoded]));
+  const input = await fs.promises.open(source, "r"),
+    output = await fs.promises.open(destination, "w");
+  try {
+    await write_wolfx_plaintext(input, output, { offset, length: expected.length, stream });
+    expect(fs.readFileSync(destination).equals(expected)).toBe(true);
+  } finally {
+    await input.close();
+    await output.close();
+  }
+});
 
 async function decode(bytes: Buffer, candidates: WolfXCandidates): Promise<Buffer | null> {
   using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-wolfx-"));

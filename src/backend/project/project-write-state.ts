@@ -4,14 +4,14 @@ import {
   type BatchTranslationProgress,
   TASK_PROGRESS_STATUSES,
 } from "../../domain/batch-translation";
-import type { ProjectItemPublicRecord } from "../../domain/item";
+import { normalize_item_name_field, type ProjectItemPublicRecord } from "../../domain/item";
 
 import { should_skip_by_language_prefilter } from "../../shared/prefilter/language-prefilter";
 import { read_item_translation_candidates } from "../../shared/prefilter/item-prefilter";
 import { coordinate_project_duplicate_statuses } from "../../shared/project/project-item-duplicates";
 
 export type ProjectWriteState = {
-  files: Record<string, ProjectFileRecord>; // section 镜像，调用方需提供当前完整文件集合
+  files: Record<string, ProjectFileRecord>; // 按 `rel_path` 索引的完整文件集合。
   items: Record<string, ProjectItemPublicRecord>; // 读取或解析边界已收窄的完整公开条目
 };
 
@@ -68,18 +68,18 @@ export function build_translation_extras_from_items(args: {
 /**
  * 将已收窄的条目集合转成按身份索引的独立姓名快照。
  */
-function build_public_item_map(
+function copy_public_items(
   items: Record<string, ProjectItemPublicRecord>,
-): Map<number, ProjectItemPublicRecord> {
-  const item_map = new Map<number, ProjectItemPublicRecord>();
+): Record<string, ProjectItemPublicRecord> {
+  const result: Record<string, ProjectItemPublicRecord> = {};
   for (const item of Object.values(items)) {
-    item_map.set(item.item_id, {
+    result[String(item.item_id)] = {
       ...item,
-      name_src: structuredClone(item.name_src),
-      name_dst: structuredClone(item.name_dst),
-    });
+      name_src: normalize_item_name_field(item.name_src),
+      name_dst: normalize_item_name_field(item.name_dst),
+    };
   }
-  return item_map;
+  return result;
 }
 
 /**
@@ -88,17 +88,13 @@ function build_public_item_map(
 export function compute_project_prefilter_write(
   input: ProjectPrefilterWriteInput,
 ): ProjectPrefilterWriteOutput {
-  const file_type_by_path = new Map<string, string>();
-  for (const file of Object.values(input.state.files)) {
-    file_type_by_path.set(file.rel_path, file.file_type);
-  }
-
-  const item_index = build_public_item_map(input.state.items);
+  const item_index = copy_public_items(input.state.items);
+  const items = Object.values(item_index);
 
   const kvjson_items_by_path = new Map<string, ProjectItemPublicRecord[]>();
 
-  for (const item of item_index.values()) {
-    const file_type = file_type_by_path.get(item.file_path);
+  for (const item of items) {
+    const file_type = input.state.files[item.file_path]?.file_type;
     if (item.status === "LANGUAGE_SKIPPED" || item.status === "DUPLICATED") {
       item.status = "NONE";
     }
@@ -116,7 +112,7 @@ export function compute_project_prefilter_write(
     }
   }
 
-  for (const item of item_index.values()) {
+  for (const item of items) {
     if (item.status !== "NONE" || item.skip_internal_filter) {
       continue;
     }
@@ -159,24 +155,21 @@ export function compute_project_prefilter_write(
   }
 
   const duplicate_changes = coordinate_project_duplicate_statuses(
-    [...item_index.values()],
+    items,
     input.skip_duplicate_source_text_enable,
   );
   for (const change of duplicate_changes) {
-    const item = item_index.get(change.item_id);
+    const item = item_index[String(change.item_id)];
     if (item !== undefined) item.status = change.status;
   }
-  const next_items = Object.fromEntries(
-    [...item_index.values()].map((item) => [String(item.item_id), item]),
-  );
 
   const translation_extras = build_translation_extras_from_items({
     progress: input.progress ?? normalize_batch_translation_progress(undefined),
-    items: item_index.values(),
+    items,
   });
 
   return {
-    items: next_items,
+    items: item_index,
 
     translation_extras,
     prefilter_config: {

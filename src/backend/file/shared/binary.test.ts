@@ -2,32 +2,49 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { expect, it } from "vitest";
-import { read_bytes, write_bytes, copy_range } from "./binary";
+import { read_bytes, write_bytes, copy_range, BINARY_IO_CHUNK_BYTES } from "./binary";
 
-it("短读和短写仍完整复制指定范围，文件提前结束时失败", async () => {
-  using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-binary-"));
+it("范围读写处理短读短写、偏移和截断，跨块取消停止后续写入", async () => {
+  using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-binary-block-"));
   const source = path.join(temp.path, "source"),
     destination = path.join(temp.path, "output");
-  fs.writeFileSync(source, "_payload_");
+  const payload = Buffer.alloc(BINARY_IO_CHUNK_BYTES + 23).fill(
+    Buffer.from(Array.from({ length: 251 }, (_, i) => i)),
+  );
+  fs.writeFileSync(source, Buffer.concat([Buffer.from("_"), payload]));
   const input = await fs.promises.open(source, "r"),
     output = await fs.promises.open(destination, "wx+");
   const read = input.read.bind(input),
     write = output.write.bind(output);
-  // 保留真实文件和句柄，只限制单次 IO 的长度，模拟操作系统允许的短读与短写。
   Object.assign(input, {
     read: (buffer: Buffer, offset: number, length: number, position: number) =>
-      read(buffer, offset, Math.min(length, 2), position),
+      read(buffer, offset, Math.min(length, 17003), position),
   });
   Object.assign(output, {
     write: (buffer: Buffer, offset: number, length: number, position: number) =>
-      write(buffer, offset, Math.min(length, 2), position),
+      write(buffer, offset, Math.min(length, 13001), position),
   });
   try {
-    expect(await read_bytes(input, 1, 7)).toEqual(Buffer.from("payload"));
-    await write_bytes(output, Buffer.from("--"), 0);
-    await copy_range(input, output, 1, 7, 2);
-    expect(fs.readFileSync(destination, "utf8")).toBe("--payload");
-    await expect(read_bytes(input, 8, 2)).rejects.toThrow("Truncated");
+    expect(await read_bytes(input, 1, payload.length)).toEqual(payload);
+    await write_bytes(output, Buffer.from("pre"), 0);
+    await copy_range(input, output, 1, payload.length, 3);
+    expect(fs.readFileSync(destination)).toEqual(Buffer.concat([Buffer.from("pre"), payload]));
+    await expect(read_bytes(input, payload.length, 2)).rejects.toThrow("Truncated");
+    const controller = new AbortController();
+    Object.assign(output, {
+      write: async (buffer: Buffer, offset: number, length: number, position: number) => {
+        const result = await write(buffer, offset, length, position);
+        controller.abort(new Error("cancelled between blocks"));
+        return result;
+      },
+    });
+    await output.truncate(0);
+    await expect(
+      copy_range(input, output, 1, payload.length, 0, controller.signal),
+    ).rejects.toThrow("cancelled between blocks");
+    expect(fs.readFileSync(destination).equals(payload.subarray(0, BINARY_IO_CHUNK_BYTES))).toBe(
+      true,
+    );
   } finally {
     await input.close();
     await output.close();

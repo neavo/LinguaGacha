@@ -54,7 +54,12 @@ describe("compute_project_prefilter_write", () => {
         return ["格式数据"];
       },
     };
-    const original = create_item(1, { src: "hello", name_src: ["姓名", "格式槽"], extra_field });
+    const original = create_item(1, {
+      src: "hello",
+      name_src: ["姓名", "格式槽"],
+      name_dst: ["译名", "译名槽"],
+      extra_field,
+    });
     const state = create_state([original]);
     const result = compute_project_prefilter_write({
       state,
@@ -72,7 +77,26 @@ describe("compute_project_prefilter_write", () => {
     const result_name = result.items["1"]!.name_src;
     if (Array.isArray(result_name)) result_name[0] = "编辑后";
     expect(original.name_src).toEqual(["姓名", "格式槽"]);
+    const result_name_dst = result.items["1"]!.name_dst;
+    if (Array.isArray(result_name_dst)) result_name_dst[0] = "编辑后";
+    expect(original.name_dst).toEqual(["译名", "译名槽"]);
+    result.items["1"]!.status = "PROCESSED";
     expect(original.status).toBe("NONE");
+  });
+  it("稀疏身份与输入顺序不影响重复代表项，输出仍按身份索引", () => {
+    const later = create_item(9001, { src: "同文" });
+    const first = create_item(7, { src: "同文", status: "DUPLICATED" });
+    const result = compute_project_prefilter_write({
+      state: { files: create_state([]).files, items: { later, first } },
+      source_language: "ZH",
+      mtool_optimizer_enable: false,
+      skip_duplicate_source_text_enable: true,
+    });
+    expect(Object.keys(result.items)).toEqual(["7", "9001"]);
+    expect(result.items["7"]!.status).toBe("NONE");
+    expect(result.items["9001"]!.status).toBe("DUPLICATED");
+    expect(result.translation_extras.total_line).toBe(1);
+    expect([later.status, first.status]).toEqual(["NONE", "DUPLICATED"]);
   });
   it("按正文与可见姓名判断翻译候选，正文特殊规则不作用于姓名", () => {
     const result = compute_project_prefilter_write({

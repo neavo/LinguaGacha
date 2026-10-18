@@ -23,7 +23,7 @@
  *
  */
 // Port of UberWolf f4191375d289171b1f29dbc5ca320133b2b4b96a.
-import { BINARY_CHUNK_BYTES } from "../shared/binary";
+import { BINARY_COMPUTE_STEP_BYTES } from "../shared/binary";
 import { setImmediate } from "node:timers/promises";
 /** 已扩展的轮密钥与初始计数器。 */
 export type WolfAesKeys = { key: Uint8Array; iv: Uint8Array };
@@ -47,7 +47,8 @@ export function chacha20_xor(
   for (let i = 0; i < 8; i++) state[i + 4] = key_bytes.readUInt32LE(i * 4);
   for (let i = 0; i < 3; i++) state[i + 13] = nonce_bytes.readUInt32LE(i * 4);
   state[12] = 1 + Math.floor(start / CHACHA_BLOCK_BYTES);
-  const rotate = (value: number, bits: number) => (value << bits) | (value >>> (32 - bits));
+  const rotate = (value: number, bits: number) => (value << bits) | (value >>> (32 - bits)); // 32 位循环左移。
+  /** 原地执行 ChaCha20 的一组四分之一轮。 */
   const quarter = (a: number, b: number, c: number, d: number) => {
     block[a]! += block[b]!;
     block[d] = rotate(block[d]! ^ block[a]!, 16);
@@ -58,7 +59,7 @@ export function chacha20_xor(
     block[c]! += block[d]!;
     block[b] = rotate(block[b]! ^ block[c]!, 7);
   };
-  let skip = start % CHACHA_BLOCK_BYTES;
+  let skip = start % CHACHA_BLOCK_BYTES; // 首块可能从密钥流中部开始。
   for (let at = 0; at < bytes.length;) {
     block.set(state);
     for (let round = 0; round < 10; round++) {
@@ -173,7 +174,7 @@ export async function aes_ctr(
   }
   for (let i = 0; i < skipBlocks; i++) increment();
   for (let at = 0; at < data.length; at += 16) {
-    if (at % BINARY_CHUNK_BYTES === 0) {
+    if (at % BINARY_COMPUTE_STEP_BYTES === 0) {
       await setImmediate();
       signal?.throwIfAborted();
     }
@@ -283,7 +284,7 @@ const WOLF_SHA_ROUNDS = [
 /** WOLF 改写了 SHA512 的初值、轮常量、选择函数和最终累加。 */
 export function wolf_sha512(input: Buffer): string {
   const mask = (1n << 64n) - 1n;
-  const rotate = (x: bigint, n: bigint) => ((x >> n) | (x << (64n - n))) & mask;
+  const rotate = (x: bigint, n: bigint) => ((x >> n) | (x << (64n - n))) & mask; // 64 位循环右移。
   const hash = [...WOLF_SHA_INITIAL];
   const size = Math.ceil((input.length + 17) / 128) * 128,
     bytes = Buffer.alloc(size);

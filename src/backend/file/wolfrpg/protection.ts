@@ -25,7 +25,7 @@
 // Port of UberWolf f4191375d289171b1f29dbc5ca320133b2b4b96a.
 import assert from "node:assert/strict";
 import { setImmediate } from "node:timers/promises";
-import { BINARY_CHUNK_BYTES } from "../shared/binary";
+import { BINARY_COMPUTE_STEP_BYTES } from "../shared/binary";
 import { aes_ctr, expand_aes_key, rng, wolf_sha512 } from "./crypt";
 import { read_wolf_game, read_wolf_game_prefix } from "./game-data";
 
@@ -77,7 +77,7 @@ export async function restore_wolf_core(
   state ^= state >>> 19;
   state ^= state << 7;
   for (let i = 10; i < bytes.length; i++) {
-    if (i % BINARY_CHUNK_BYTES === 0) {
+    if (i % BINARY_COMPUTE_STEP_BYTES === 0) {
       await setImmediate();
       signal?.throwIfAborted();
     }
@@ -122,7 +122,7 @@ export async function restore_wolf_project(input: Buffer, signal?: AbortSignal):
   const bytes = Buffer.from(input),
     random = rng(0);
   for (let i = 0; i < bytes.length; i++) {
-    if (i % BINARY_CHUNK_BYTES === 0) {
+    if (i % BINARY_COMPUTE_STEP_BYTES === 0) {
       await setImmediate();
       signal?.throwIfAborted();
     }
