@@ -73,6 +73,19 @@
   padding-top: 2px;
 }
 
+.project-home__formats {
+  /* 分组保持内容高度，空间不足时由外层滚动，避免第一组标签压到第二组标题上。 */
+  overflow-y: auto;
+  gap: 18px;
+}
+
+.project-home__format-group {
+  display: flex;
+  flex-shrink: 0;
+  flex-direction: column;
+  gap: 12px;
+}
+
 .project-home__recent-section {
   flex: 1.2;
 }

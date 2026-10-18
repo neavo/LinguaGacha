@@ -1,13 +1,11 @@
 import type { LocaleKey } from "./i18n";
-import type { ItemFileType } from "../domain/item";
 
-/**
- * 新建工程支持的互斥文件格式目录；后端发现、摘要统计和启动页展示共用同一顺序。
- */
+/** 后端来源发现、摘要统计和工程主页共用的格式目录。 */
 export const PROJECT_SOURCE_FORMATS = [
   {
     source_kind: "file",
     id: "txt",
+    support_status: "supported",
     extension: ".txt",
     title_key: "project_page.formats.txt",
     description_keys: [],
@@ -15,6 +13,7 @@ export const PROJECT_SOURCE_FORMATS = [
   {
     source_kind: "file",
     id: "md",
+    support_status: "supported",
     extension: ".md",
     title_key: "project_page.formats.md",
     description_keys: [],
@@ -22,46 +21,47 @@ export const PROJECT_SOURCE_FORMATS = [
   {
     source_kind: "file",
     id: "ass",
+    support_status: "supported",
     extension: ".ass",
-    file_type: "ASS",
     title_key: "project_page.formats.ass",
     description_keys: [],
   },
   {
     source_kind: "file",
     id: "ssa",
+    support_status: "supported",
     extension: ".ssa",
-    file_type: "ASS",
     title_key: "project_page.formats.ssa",
     description_keys: [],
   },
   {
     source_kind: "file",
     id: "lrc",
+    support_status: "supported",
     extension: ".lrc",
-    file_type: "LRC",
     title_key: "project_page.formats.lrc",
     description_keys: [],
   },
   {
     source_kind: "file",
     id: "srt",
+    support_status: "supported",
     extension: ".srt",
-    file_type: "SRT",
     title_key: "project_page.formats.srt",
     description_keys: [],
   },
   {
     source_kind: "file",
     id: "vtt",
+    support_status: "supported",
     extension: ".vtt",
-    file_type: "VTT",
     title_key: "project_page.formats.vtt",
     description_keys: [],
   },
   {
     source_kind: "file",
     id: "pdf",
+    support_status: "supported",
     extension: ".pdf",
     title_key: "project_page.formats.pdf",
     description_keys: [],
@@ -69,6 +69,7 @@ export const PROJECT_SOURCE_FORMATS = [
   {
     source_kind: "file",
     id: "epub",
+    support_status: "supported",
     extension: ".epub",
     title_key: "project_page.formats.epub",
     description_keys: [],
@@ -76,6 +77,7 @@ export const PROJECT_SOURCE_FORMATS = [
   {
     source_kind: "file",
     id: "rpy",
+    support_status: "supported",
     extension: ".rpy",
     title_key: "project_page.formats.rpy",
     description_keys: [],
@@ -83,6 +85,7 @@ export const PROJECT_SOURCE_FORMATS = [
   {
     source_kind: "file",
     id: "json",
+    support_status: "supported",
     extension: ".json",
     title_key: "project_page.formats.json",
     description_keys: [
@@ -94,6 +97,7 @@ export const PROJECT_SOURCE_FORMATS = [
   {
     source_kind: "file",
     id: "xlsx",
+    support_status: "deprecated",
     extension: ".xlsx",
     title_key: "project_page.formats.xlsx",
     description_keys: [
@@ -105,6 +109,7 @@ export const PROJECT_SOURCE_FORMATS = [
   {
     source_kind: "file",
     id: "trans",
+    support_status: "deprecated",
     extension: ".trans",
     title_key: "project_page.formats.trans",
     description_keys: [],
@@ -112,6 +117,7 @@ export const PROJECT_SOURCE_FORMATS = [
   {
     source_kind: "game",
     id: "wolfrpg",
+    support_status: "supported",
     extension: ".exe",
     title_key: "project_page.formats.wolfrpg",
     description_keys: [],
@@ -119,6 +125,7 @@ export const PROJECT_SOURCE_FORMATS = [
   {
     source_kind: "game",
     id: "rpgmaker_mv_mz",
+    support_status: "supported",
     extension: ".exe",
     title_key: "project_page.formats.rpgmaker_mv_mz",
     description_keys: [],
@@ -126,6 +133,7 @@ export const PROJECT_SOURCE_FORMATS = [
   {
     source_kind: "game",
     id: "rpgmaker_rgss",
+    support_status: "supported",
     extension: ".exe",
     title_key: "project_page.formats.rpgmaker_rgss",
     description_keys: [],
@@ -133,18 +141,11 @@ export const PROJECT_SOURCE_FORMATS = [
 ] as const satisfies ReadonlyArray<{
   source_kind: "file" | "game";
   id: string;
+  support_status: "supported" | "deprecated"; // 只表达产品支持策略，来源发现与统计仍使用完整目录
   extension: string;
   title_key: LocaleKey;
   description_keys: readonly LocaleKey[];
-  file_type?: ItemFileType;
 }>;
-
-/** 格式目录同时提供零条目字幕的文件身份。 */
-export function read_subtitle_file_type(file_path: string): ItemFileType | null {
-  const extension = /\.[^./\\]+$/u.exec(file_path)?.[0].toLowerCase();
-  const format = PROJECT_SOURCE_FORMATS.find((entry) => entry.extension === extension);
-  return format && "file_type" in format ? format.file_type : null;
-}
 
 /** 支持格式目录的稳定跨层身份。 */
 export type ProjectSourceFormatId = (typeof PROJECT_SOURCE_FORMATS)[number]["id"];
@@ -161,7 +162,7 @@ export type ProjectSourceFileSummary = {
 
 export type GameFileType = "RPGMAKER_MV_MZ" | "RPGMAKER_RGSS" | "WOLFRPG";
 
-/** 原生游戏格式拥有独立导出目录。 */
+/** 识别需要独立导出目录的原生游戏文件类型。 */
 export function is_game_file_type(type: string | undefined): type is GameFileType {
   return type === "RPGMAKER_MV_MZ" || type === "RPGMAKER_RGSS" || type === "WOLFRPG";
 }

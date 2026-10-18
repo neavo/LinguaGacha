@@ -50,6 +50,7 @@ export const zh_cn_project_page = {
   },
   formats: {
     title: "支持文件格式",
+    deprecated_title: "即将停止支持的文件格式",
     txt: "纯文本",
     md: "Markdown",
     ass: "ASS 字幕",
