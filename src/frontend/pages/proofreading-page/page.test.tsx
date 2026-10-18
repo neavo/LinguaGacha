@@ -327,8 +327,8 @@ describe("ProofreadingPage", () => {
 
   it("工程切换关闭文件浮层并重置目录展开状态", async () => {
     // 提供视口尺寸，使文件列表在工程切换时保持可观察。
-    vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockReturnValue(320);
-    vi.spyOn(HTMLElement.prototype, "offsetWidth", "get").mockReturnValue(440);
+    vi.spyOn(HTMLElement.prototype, "clientHeight", "get").mockReturnValue(320);
+    vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(440);
     const state = proofreading_state_fixture.current!;
     state.files = [
       { file_path: "game/tl/chapter.rpy", internal_file_path: null, kind: "item", count: 1 },

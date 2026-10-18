@@ -11,8 +11,8 @@ vi.mock("@frontend/app/locale/locale-context", () => ({
 
 // 无布局环境使用固定视口尺寸，运行真实虚拟列表。
 beforeEach(() => {
-  vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockReturnValue(320);
-  vi.spyOn(HTMLElement.prototype, "offsetWidth", "get").mockReturnValue(440);
+  vi.spyOn(HTMLElement.prototype, "clientHeight", "get").mockReturnValue(320);
+  vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(440);
 });
 afterEach(() => vi.restoreAllMocks());
 
