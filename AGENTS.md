@@ -65,7 +65,11 @@
 
 长期工程文档只收录无法从代码中直接明确、且维护者必须通过外部文档理解的设计意图。局部实现的非显然理由优先写在对应代码旁。
 
-长期工程文档包括 `docs/` 下的 [ARCHITECTURE](docs/ARCHITECTURE.md)、[CLI](docs/CLI.md)、[BACKEND](docs/BACKEND.md)、[AGENT_RUNTIME](docs/AGENT_RUNTIME.md) 和 [FRONTEND](docs/FRONTEND.md)。专题入口归 `ARCHITECTURE`，[WORKFLOW](docs/WORKFLOW.md) 提供开发操作指南。
+- 单个模块内部的取舍写在代码旁。
+- 跨越多个模块或层、修改前必须了解的意图进入长期工程文档。
+- 多个专题共用的原则归 `ARCHITECTURE` 的跨层不变量，专题文档链接引用，不重述。
+
+长期工程文档为 `docs/` 下除 [WORKFLOW](docs/WORKFLOW.md) 外的文档，文档集合与专题归宿以 [ARCHITECTURE](docs/ARCHITECTURE.md#-专题入口) 的专题入口为准。`WORKFLOW` 提供开发操作指南。
 
 - 同一设计意图只有一个权威归宿。相关意图或适用条件变化时，同步更新或删除对应说明。
 - 文档删除、合并或迁移时，同步修正受影响的入口与引用。

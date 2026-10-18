@@ -22,7 +22,7 @@
 |数据库、迁移与 IO|[数据库](../src/backend/database/)、[迁移](../src/backend/migration/)、[平台 IO](../src/native/)|
 |翻译与计算|[批量翻译](../src/backend/batch-translation/)、[计算线程](../src/backend/worker/)|
 |模型与请求|[LLM](../src/backend/llm/)、[网络](../src/backend/network/)|
-|PDF 来源、页面与导出|[PDF](../src/backend/file/pdf/)、[页面写入](../src/backend/project/agent-workspace-page-write.ts)、[打印宿主](../src/native/pdf-host.ts)|
+|PDF 来源、页面与译文生成|[PDF](../src/backend/file/pdf/)、[页面写入](../src/backend/project/agent-workspace-page-write.ts)、[打印宿主](../src/native/pdf-host.ts)|
 
 ### Agent 与前端
 
@@ -57,6 +57,7 @@
 - `npm run build` 包含 TypeScript 检查，Windows 打包还需要 Go 工具链。
 - CLI 命令按实际安装位置定位可执行文件，参数和资源扩展名以帮助为准。
 - CLI 输出字段与退出码见上表对应实现和测试。
+- Windows 更新日志位于安装目录的 `log/update.log`，每次运行覆盖旧日志，可与应用日志一起收集。
 
 ## ✅ 选择验证
 
@@ -91,8 +92,6 @@
 - 执行适用静态检查，交互或机器行为变化时追加对应测试。
 
 Markdown 与 YAML 使用文本或元数据检查，项目格式化脚本不处理这两类文件。
-
-视觉验证入口独立于可选设计流程产物，当前任务和既有界面均可提供设计输入。
 
 ### 静态检查
 
@@ -156,30 +155,38 @@ GUI、preload、native 或 Backend Runtime worker 变化时，先运行相关目
 - 字节传输与关闭：真实 Gateway / Bootstrap 验证。
 - 编解码或 IPC：`src/native/agent-image-host.test.ts` 与工作区 bootstrap 集成测试。
 
-验证发行包入口或资源定位时，设置以下变量，再复用 bootstrap 测试：
-
-|变量|目标|
-|---|---|
-|`LINGUAGACHA_TEST_ELECTRON`|发行包可执行文件|
-|`LINGUAGACHA_TEST_WORKSPACE_RUNTIME`|发行包工作区运行目录|
+发行包入口或资源定位见 [发行包运行验证](#发行包运行验证)。
 
 ### 原生游戏
 
-格式、来源发现或默认排除变化时，运行对应的 `src/backend/file/rpgmaker-mv-mz/`、`src/backend/file/rpgmaker-rgss/` 或 `src/backend/file/wolfrpg/` 与 `project-content-service.test.ts`。共享容器变化同时覆盖三种格式及 `src/backend/file/shared/game/format.test.ts`。文件身份与迁移变化同时运行数据库迁移、工程打开迁移、解析流水线和译文生成测试。
+格式目录位于 `src/backend/file/`，按变化选择测试：
 
-文本规则计算变化覆盖 `text-rule-type.test.ts`、翻译译前流程和校对评估。部署变化执行 `npm run build`，核对发行工作区中的 `oxc-parser` 平台绑定与 `@ruby/prism` WASM。设置 `LINGUAGACHA_TEST_ELECTRON`、`LINGUAGACHA_TEST_WORKSPACE_RUNTIME` 后运行 `javascript.test.ts` 和 `ruby.test.ts`，使用发行 Electron 验证加载与写回。
+|变化|测试|
+|---|---|
+|格式、来源发现或默认排除|对应的 `rpgmaker-mv-mz/`、`rpgmaker-rgss/` 或 `wolfrpg/` 测试，以及 `project-content-service.test.ts`|
+|共享容器|三种格式的测试，以及 `shared/game/format.test.ts`|
+|文件身份与迁移|数据库迁移、工程打开迁移、解析流水线和译文生成测试|
+|文本规则计算|`text-rule-type.test.ts`、翻译译前流程和校对评估|
+|来源或失败边界|`source-discovery.test.ts`、解析流水线、新建与追加导入测试|
+|准备与归档|对应引擎的准备测试，以及 `shared/` 下受影响的协议、IO 与目录事务测试|
+|准备线程|`shared/game/prepare-worker.test.ts`，它使用正式构建入口验证退出与句柄释放|
+|取消或关闭顺序|`runtime-operation-gate.test.ts` 与 `gui-backend-bootstrap.test.ts`|
+|脚本解析器或准备 worker 的部署|[发行包运行验证](#发行包运行验证)|
 
-来源或失败边界变化时，覆盖 `source-discovery.test.ts`、解析流水线、新建与追加导入测试。准备与归档变化时，覆盖对应引擎的准备测试及 `src/backend/file/shared/` 下受影响的协议、IO 与目录事务测试。
+#### 真实样本验收
 
-线程变化运行 `src/backend/file/shared/game/prepare-worker.test.ts`，它使用正式构建入口验证退出与句柄释放。取消或关闭顺序变化同时覆盖 `runtime-operation-gate.test.ts` 与 `gui-backend-bootstrap.test.ts`。部署变化执行 `npm run build`，使用发行 Electron 验证准备 worker 的加载。设置 `LINGUAGACHA_TEST_ELECTRON` 为发行包程序、`LINGUAGACHA_TEST_GAME_WORKER` 为发行 ASAR 内的 `build/dist-electron/game-prepare-worker-entry.js`，再运行上述线程测试中的真实 Electron 用例。
+真实样本使用独立副本与输出目录，WOLF 样本在仓库外验收。外部研究探针和样本不作为构建或自动化测试依赖。
 
-真实样本使用独立副本与输出目录，对照原稿哈希检查提取、解密、备份、重复导入和失败恢复。RGSS 同时覆盖保留与移除散装数据的情况，定位变化后从原稿重建条目再验证导出。协议测试与游戏启动分别验收，Windows 启动须确认所选入口读取外部数据和明文素材。交付时注明未验证的布局、游戏流程和宿主平台。
+- 对照原稿哈希检查提取、解密、备份、重复导入和失败恢复。
+- RGSS 同时覆盖保留与移除散装数据的情况。定位变化后从原稿重建条目，再验证译文生成。
+- WOLF 核对解包哈希、原稿字节和独立 LZ4 解码。游戏运行覆盖中文、选项分支、数据库显示及保留主标题时的存档身份。
+- 协议测试与游戏启动分别验收。Windows 启动须确认所选入口读取外部数据和明文素材。
 
-WOLF 真实样本在仓库外的独立副本验收，核对解包哈希、原稿字节和独立 LZ4 解码。游戏运行验证覆盖中文、选项分支、数据库显示及保留主标题时的存档身份。外部研究探针和样本不作为构建或自动化测试依赖。
+交付时注明未验证的布局、游戏流程和宿主平台。
 
 ### PDF
 
-PDF 来源、页面写入、排版或导出变化时，按影响选择：
+PDF 来源、页面写入、排版或译文生成变化时，按影响选择：
 
 - `src/backend/file/pdf/` 中的目标测试。
 - `agent-workspace-page-write` 与工作区 `service.test.ts`。
@@ -197,7 +204,7 @@ npm test -- --project node src/native/pdf-host.test.ts
 
 - 已完成构建时，直接使用现有产物。
 - `LINGUAGACHA_PDF_QA_DIR` 指定视觉检查产物目录。
-- 验证发行包打印资源时，设置 `LINGUAGACHA_TEST_WORKSPACE_RUNTIME`，使用默认开发 Electron 执行测试脚本。
+- 发行包打印资源见 [发行包运行验证](#发行包运行验证)。
 
 ### 热更新与 Windows 工具
 
@@ -236,3 +243,16 @@ Windows 启动器或更新器变化时，在对应的 `win-cli` 或 `win-berserk
 |工作区入口定位|[workspace-runtime.test.ts](../src/native/workspace-runtime.test.ts)|
 |应用入口与合并后的 SDK|[index.test.ts](../src/index.test.ts) 的仓库外 ASAR 集成测试|
 |部署后的工作区执行|仓库外 Electron bootstrap 集成测试|
+
+### 发行包运行验证
+
+先执行 `npm run build`，再用环境变量把真实 Electron 集成测试指向发行产物：
+
+|变量|指向|使用的测试|
+|---|---|---|
+|`LINGUAGACHA_TEST_ELECTRON`|发行包可执行文件|`bootstrap.test.ts`、`javascript.test.ts`、`ruby.test.ts`、`prepare-worker.test.ts`|
+|`LINGUAGACHA_TEST_WORKSPACE_RUNTIME`|发行包工作区运行目录|`bootstrap.test.ts`、`javascript.test.ts`、`ruby.test.ts`、`pdf-host.test.ts`|
+|`LINGUAGACHA_TEST_GAME_WORKER`|发行 ASAR 内的 `build/dist-electron/game-prepare-worker-entry.js`|`prepare-worker.test.ts`|
+
+- `pdf-host.test.ts` 只设置工作区运行目录，使用默认开发 Electron。
+- 脚本解析器部署还须核对发行工作区中的 `oxc-parser` 平台绑定与 `@ruby/prism` WASM。

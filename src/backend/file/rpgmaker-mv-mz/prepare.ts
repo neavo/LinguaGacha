@@ -14,7 +14,10 @@ import { read_evb_game, type RPGMakerSource } from "./source";
 import { RPGMakerJsonCodec } from "./json-codec";
 import { decrypt_media, MEDIA_EXTENSIONS } from "./media";
 
-/** 正式导入复核身份，转换全部完成后才允许修改游戏目录。 */
+/**
+ * 正式导入复核身份，转换全部完成后才允许修改游戏目录。
+ * 同一游戏目录的不同 EVB 入口不能同时准备，以免展开结果互相覆盖。
+ */
 export async function prepare_rpgmaker_source(
   game: RPGMakerSource,
   fs: NativeFs,
@@ -146,6 +149,7 @@ async function stage_media(
     );
     writes.add(output);
   }
+  // 固化原稿采用关闭加密后的配置，避免译文生成重新开启加密。
   if (images) system["hasEncryptedImages"] = false;
   if (audio) system["hasEncryptedAudio"] = false;
   await fs.write_file(path.join(staging, system_name), codec.stringify(system));

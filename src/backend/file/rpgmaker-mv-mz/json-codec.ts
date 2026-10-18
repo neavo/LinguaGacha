@@ -14,7 +14,7 @@ const json_with_source = JSON as unknown as {
   rawJSON(source: string): object;
 };
 
-/** 每次导出独占数值原稿记录，普通对象与数值继续供事件和路径逻辑使用。 */
+/** 数值原始表示属于资产事实，每次导出独占原稿记录，普通对象与数值继续供事件和路径逻辑使用。 */
 export class RPGMakerJsonCodec {
   private readonly numbers = new WeakMap<object, Map<string, { value: number; source: string }>>();
 

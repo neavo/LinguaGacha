@@ -24,7 +24,10 @@ import { match_wolfx, write_wolfx_plaintext } from "./wolfx";
 import { read_wolf_map } from "./map";
 import { read_wolf_common } from "./common-events";
 
-/** 所有来源统一在准备 worker 中构建明文视图，再由目录事务提交。 */
+/**
+ * 所有来源统一在准备 worker 中构建明文视图，再由目录事务提交。
+ * 引擎优先读取归档，同一资源的 `.wolfx` 也优先于同名明文，因此提交时移除已消费的归档和 `.wolfx`，使散装译文生效。
+ */
 export async function prepare_wolf_source(
   game: WolfSource,
   fs: NativeFs,
