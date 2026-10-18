@@ -30,15 +30,15 @@ it("拒绝无效请求、非字体文件和不支持的游戏", async () => {
     native,
   );
   const bad_font = path.join(path.dirname(game_path), "Data/BasicData/Game.dat");
-  await expect(service.inspect({ font_path, game_path: "" })).rejects.toThrow(
-    "The request parameters are invalid.",
-  );
-  await expect(service.inspect({ font_path: bad_font, game_path })).rejects.toThrow(
-    "Unsupported font file",
-  );
+  await expect(service.inspect({ font_path, game_path: "" })).rejects.toMatchObject({
+    code: "request.validation_failed",
+  });
+  await expect(service.inspect({ font_path: bad_font, game_path })).rejects.toMatchObject({
+    code: "file.parse_failed",
+  });
   await expect(
     service.inspect({ font_path, game_path: path.join(path.dirname(game_path), "Data/MapData") }),
-  ).rejects.toThrow("Unsupported game for font replacement");
+  ).rejects.toMatchObject({ code: "file.invalid_structure" });
 });
 
 it("写入占用持续到解包与替换结束，期间拒绝重复提交", async () => {
@@ -55,15 +55,27 @@ it("写入占用持续到解包与替换结束，期间拒绝重复提交", asyn
     },
     native,
   );
-  await expect(service.inspect(request)).resolves.toEqual({});
+  await service.inspect(request);
   const first = service.apply(request);
   await entered;
-  await expect(service.apply(request)).rejects.toThrow(
-    "The runtime is occupied by another operation.",
-  );
+  await expect(service.apply(request)).rejects.toMatchObject({ code: "runtime.busy" });
   release();
   await first;
   expect(
     fs.existsSync(path.join(path.dirname(request.game_path), path.basename(request.font_path))),
   ).toBe(true);
+});
+
+it("游戏目录与启动程序走同一检查与修改流程", async () => {
+  using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-font-directory-"));
+  const { font_path, game_path } = write_game(temp.path);
+  const request = { font_path, game_path: path.dirname(game_path) };
+  const service = new GameFontService(
+    new RuntimeOperationGate(),
+    new GamePrepareWorker(null, native).run,
+    native,
+  );
+  await service.inspect(request);
+  await service.apply(request);
+  expect(fs.existsSync(path.join(request.game_path, path.basename(font_path)))).toBe(true);
 });

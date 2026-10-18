@@ -76,7 +76,4 @@ export const de_de_project_page = {
     rpgmaker_mv_mz: "RPG Maker MV/MZ Spieldatei",
     rpgmaker_rgss: "RPG Maker XP/VX/VXAce Spieldatei",
   },
-  drop_multiple_unavailable: "Es kann nur eine Datei oder ein Ordner gleichzeitig abgelegt werden",
-  drop_unavailable:
-    "Der lokale Pfad der abgelegten Datei ist derzeit nicht verfügbar. Bitte verwenden Sie stattdessen die Dateiauswahl …",
 } satisfies LocaleMessageSchema<typeof zh_cn_project_page>;

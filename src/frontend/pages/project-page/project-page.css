@@ -6,21 +6,16 @@
   overflow: hidden;
   --project-home-muted: var(--muted-foreground);
   --project-home-subtitle: color-mix(in srgb, var(--foreground) 72%, transparent);
-  --project-home-line: color-mix(in srgb, var(--border) 92%, transparent);
   --project-home-hover: color-mix(in srgb, var(--accent) 70%, transparent);
   --project-home-source: #d97924;
   --project-home-project: #d85f42;
-  --project-home-interactive: var(--primary);
-  --project-home-interactive-bg: color-mix(in srgb, var(--primary) 10%, transparent);
 }
 
 .dark .project-home {
   --project-home-subtitle: color-mix(in srgb, var(--foreground) 84%, transparent);
-  --project-home-line: color-mix(in srgb, var(--border) 100%, transparent);
   --project-home-hover: color-mix(in srgb, var(--accent) 90%, transparent);
   --project-home-source: #ffb454;
   --project-home-project: #ee6f4d;
-  --project-home-interactive-bg: color-mix(in srgb, var(--primary) 16%, transparent);
 }
 
 .project-home__panel {
@@ -92,6 +87,14 @@
   margin-inline: calc(-1 * var(--recent-row-inset));
 }
 
+.project-home__selection--source {
+  --path-selection-card-tone: var(--project-home-source);
+}
+
+.project-home__selection--project {
+  --path-selection-card-tone: var(--project-home-project);
+}
+
 .project-home__section-title {
   font-size: var(--ui-font-size-14);
   line-height: 1.5;
@@ -100,66 +103,11 @@
   color: var(--foreground);
 }
 
-.project-home__dropzone {
-  height: 160px;
-  padding: 20px 24px;
-  border: 2px dashed var(--project-home-line);
-  border-radius: var(--ui-radius-card);
-  background: transparent;
-  transition:
-    border-color 180ms ease,
-    background-color 180ms ease,
-    box-shadow 180ms ease;
-}
-
-.project-home__dropzone:hover,
-.project-home__dropzone:focus-visible,
-.project-home__dropzone[data-drag-active="true"] {
-  border-color: var(--project-home-interactive);
-  background: var(--project-home-interactive-bg);
-  box-shadow: none;
-}
-
-.project-home__dropzone--source,
-.project-home__selected-card--source {
-  color: var(--project-home-source);
-}
-
-.project-home__dropzone--project,
-.project-home__selected-card--project {
-  color: var(--project-home-project);
-}
-
-.project-home__selected-card:hover,
-.project-home__selected-card:focus-within,
-.project-home__selected-card[data-drag-active="true"] {
-  border-color: var(--project-home-interactive);
-  background: var(--project-home-interactive-bg);
-  box-shadow: none;
-}
-
-.project-home__dropzone-icon,
 .project-home__recent-icon {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   color: currentColor;
-}
-
-.project-home__dropzone-title {
-  margin-top: 10px;
-  font-size: var(--ui-font-size-14);
-  line-height: 1.35;
-  letter-spacing: 0;
-  font-weight: 500;
-  color: var(--foreground);
-}
-
-.project-home__selected-card {
-  min-height: 160px;
-  padding: 0;
-  border: 2px dashed var(--project-home-line);
-  background: transparent;
 }
 
 .project-home__format-tags {
@@ -300,49 +248,6 @@
   pointer-events: auto;
 }
 
-.project-home__selected-content {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  padding: 0 24px;
-  text-align: center;
-}
-
-.project-home__selected-summary {
-  display: flex;
-  width: 100%;
-  max-width: 288px;
-  flex-direction: column;
-  align-items: center;
-  gap: 4px;
-  text-align: center;
-}
-
-.project-home__selected-name {
-  width: 100%;
-  margin: 0;
-  overflow: hidden;
-  font-size: var(--ui-font-size-14);
-  line-height: 1.35;
-  letter-spacing: 0;
-  font-weight: 500;
-  color: var(--foreground);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.project-home__selected-status {
-  width: 100%;
-  margin: 0;
-  font-size: var(--ui-font-size-12);
-  line-height: 1.35;
-  color: var(--project-home-subtitle);
-}
-
 .project-home__recent-empty {
   min-height: 214px;
   display: flex;
@@ -363,15 +268,6 @@
   color: color-mix(in srgb, var(--foreground) 40%, transparent);
   font-weight: 400;
   text-align: center;
-}
-
-.project-home__selected-close {
-  position: absolute;
-  top: 8px;
-  right: 8px;
-  z-index: 1;
-  border-radius: var(--ui-radius-pill);
-  color: var(--foreground);
 }
 
 @media (max-width: 1180px) {

@@ -72,6 +72,4 @@ export const zh_cn_project_page = {
     rpgmaker_mv_mz: "RPG Maker MV/MZ 游戏文件",
     rpgmaker_rgss: "RPG Maker XP/VX/VXAce 游戏文件",
   },
-  drop_multiple_unavailable: "一次只能拖拽一个文件或文件夹",
-  drop_unavailable: "当前无法读取拖拽文件的本地路径，请换用点击选择 …",
 } as const;

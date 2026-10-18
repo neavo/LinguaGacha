@@ -108,6 +108,9 @@ export const ja_jp_app = {
     launching: "処理中 …",
   },
   drop: {
+    select_multiple_unavailable: "一度にドロップできるファイルまたはフォルダーは 1 個です",
+    select_unavailable:
+      "ドロップしたファイルのローカルパスを取得できません。クリックして選択してください …",
     multiple_unavailable: "一度にドロップできるファイルは 1 個です",
     unavailable:
       "ドロップしたファイルのローカルパスを取得できません。クリックしてインポートしてください …",

@@ -106,6 +106,8 @@ export const ko_kr_app = {
     launching: "처리 중 …",
   },
   drop: {
+    select_multiple_unavailable: "한 번에 파일 또는 폴더 하나만 놓을 수 있습니다",
+    select_unavailable: "놓은 파일의 로컬 경로를 읽을 수 없습니다. 클릭하여 선택해 주세요 …",
     multiple_unavailable: "한 번에 파일 하나만 놓을 수 있습니다",
     unavailable: "놓은 파일의 로컬 경로를 읽을 수 없습니다. 클릭하여 가져와 주세요 …",
     import_here: "놓아서 규칙 파일 가져오기",

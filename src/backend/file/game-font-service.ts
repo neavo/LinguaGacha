@@ -10,8 +10,9 @@ import { discover_source } from "./source-discovery";
 
 type GameFontRequest = Readonly<{ font_path: string; game_path: string }>; // 游戏路径可以是启动程序或游戏目录。
 
-/** 百宝箱的游戏字体替换，独立于工程会话，直接修改游戏目录。 */
+/** 独立于工程会话修改游戏字体，写入目标由游戏程序或目录确定。 */
 export class GameFontService {
+  /** 注入写入互斥、准备任务与文件访问，检查和修改共用同一组依赖。 */
   public constructor(
     private readonly gate: Pick<RuntimeOperationGate, "run_project_write">, // 与导入、翻译共用游戏目录写入互斥。
     private readonly execute: GamePrepareExecution,
@@ -71,7 +72,7 @@ export class GameFontService {
   }
 }
 
-/** 路径由原生对话框给出，这里只校验形状。 */
+/** 原生选择与拖入共用请求形状，文件有效性由服务读取时检查。 */
 function read_request(body: JsonRecord): GameFontRequest {
   const { font_path, game_path } = body;
   if (
