@@ -28,7 +28,12 @@ import { crc32 } from "node:zlib";
 import { setImmediate } from "node:timers/promises";
 import { WOLF_MAX_DATA_BYTES } from "./lz4";
 import { aes_ctr, chacha20_xor, expand_aes_key, rng, type WolfAesKeys } from "./crypt";
-import { BINARY_CHUNK_BYTES, read_bytes, type BinaryFileHandle } from "../shared/binary";
+import {
+  BINARY_COMPUTE_STEP_BYTES,
+  BINARY_IO_CHUNK_BYTES,
+  read_bytes,
+  type BinaryFileHandle,
+} from "../shared/binary";
 /** 模式标志随当前归档的密钥保存，分块处理共用同一上下文。 */
 export type WolfKey = Uint8Array & { v35?: boolean; chacha?: boolean };
 // 头部 marker 到密码模式的映射，A0/A1/A2/F1 需要同名配套密钥文件。
@@ -77,6 +82,7 @@ async function pro_key_aes(seeds: Uint8Array, signal?: AbortSignal): Promise<Wol
     seed2 = seeds[1]!,
     counter = 0;
   const data = Array.from({ length: 32 }, () => new Uint32Array(256));
+  /** 第一种递推更新 `seed1`，后续链继续消费其状态。 */
   const next1 = () => {
     const part = seed1 ^ (((seed1 << 11) ^ seed1) >>> 8);
     let state = (Math.imul(1664525, (seed1 << 11) ^ part) + 1013904223) >>> 0;
@@ -91,6 +97,7 @@ async function pro_key_aes(seeds: Uint8Array, signal?: AbortSignal): Promise<Wol
     if ((state & 0xfffff) === 0) state += 256;
     return (seed1 = state >>> 0);
   };
+  /** 第二种递推与第一种共用 `seed1`，调用顺序属于派生协议。 */
   const next2 = () => {
     let state = (Math.imul(1664525, seed1) + 1013904223) >>> 0;
     const shift = (seed1 & 7) + 1;
@@ -102,6 +109,7 @@ async function pro_key_aes(seeds: Uint8Array, signal?: AbortSignal): Promise<Wol
     else if (!(state & 65535)) state ^= 0x55aa55aa;
     return (seed1 = state >>> 0);
   };
+  /** 独立推进 `seed2`，为链混合提供另一条随机序列。 */
   const next3 = () => {
     let state = Math.imul(1566083941, seed2) ^ Math.imul(292331520, seed2);
     state ^= (state >>> 17) ^ ((state ^ (state >>> 17)) << 5);
@@ -113,6 +121,7 @@ async function pro_key_aes(seeds: Uint8Array, signal?: AbortSignal): Promise<Wol
     }
     return (seed2 = state >>> 0);
   };
+  /** 原地改写状态行，跨行保留随机状态和调用计数。 */
   const chain = (row: Uint32Array) => {
     for (let i = 0; i < row.length; i++) {
       const rn = next2();
@@ -227,7 +236,7 @@ export async function derive_archive_key(
     assert(bytes.length >= 0x5cb8, "Truncated WOLF A0 key");
     const random = rng(bytes[4]!);
     for (let i = 20; i < bytes.length; i++) {
-      if (i % BINARY_CHUNK_BYTES === 0) {
+      if (i % BINARY_COMPUTE_STEP_BYTES === 0) {
         await setImmediate();
         signal?.throwIfAborted();
       }
@@ -472,10 +481,14 @@ export async function open_wolf_archive_crypt(
     );
     assert(size <= WOLF_MAX_DATA_BYTES, "WOLF member exceeds data limit");
     const result = Buffer.alloc(size);
-    for (let at = 0; at < size; at += BINARY_CHUNK_BYTES) {
+    for (let at = 0; at < size; at += BINARY_IO_CHUNK_BYTES) {
       await setImmediate();
       signal?.throwIfAborted();
-      const bytes = await read_bytes(handle, offset + at, Math.min(BINARY_CHUNK_BYTES, size - at));
+      const bytes = await read_bytes(
+        handle,
+        offset + at,
+        Math.min(BINARY_IO_CHUNK_BYTES, size - at),
+      );
       result.set(bytes, at);
     }
     return result;
@@ -548,6 +561,7 @@ export async function open_wolf_archive_crypt(
   if (is_wolf35(version)) {
     let state =
       (tail ? tail[0]! * tail[1]! + pw[2]! * pw[4]! + pw[11]! : pw[2]! * pw[4]! + pw[12]!) || 1;
+    /** 3.5 的前缀长度取自该独立 xorshift 序列。 */
     const next = () => {
       state ^= state << 11;
       state ^= state >>> 19;
@@ -563,11 +577,15 @@ export async function open_wolf_archive_crypt(
   const outer_read = async (offset: number, size: number): Promise<Buffer> => {
     const bytes = await raw(offset, size);
     if (outer)
-      for (let at = 0; at < size; at += BINARY_CHUNK_BYTES) {
+      for (let at = 0; at < size; at += BINARY_COMPUTE_STEP_BYTES) {
         await setImmediate();
         signal?.throwIfAborted();
         const start = Math.max(offset + at, HEADER_BYTES),
-          end = Math.min(offset + at + BINARY_CHUNK_BYTES, offset + size, file_size - HEADER_BYTES);
+          end = Math.min(
+            offset + at + BINARY_COMPUTE_STEP_BYTES,
+            offset + size,
+            file_size - HEADER_BYTES,
+          );
         if (start < end) xor(bytes.subarray(start - offset, end - offset), outer, start);
       }
     return bytes;
@@ -580,10 +598,10 @@ export async function open_wolf_archive_crypt(
   if (modern && directory_offset < HEADER_BYTES + prefix_size)
     prefix.copy(directory, 0, directory_offset - HEADER_BYTES);
   if (modern) await aes_ctr(directory, aes, Math.ceil(prefix.length / 16), signal);
-  for (let at = 0; at < directory.length; at += BINARY_CHUNK_BYTES) {
+  for (let at = 0; at < directory.length; at += BINARY_COMPUTE_STEP_BYTES) {
     await setImmediate();
     signal?.throwIfAborted();
-    xor(directory.subarray(at, at + BINARY_CHUNK_BYTES), inner, at);
+    xor(directory.subarray(at, at + BINARY_COMPUTE_STEP_BYTES), inner, at);
   }
   /** 成员读取复用已解密前缀，避免重叠区域重复解密。 */
   const read = async (offset: number, size: number): Promise<Buffer> => {

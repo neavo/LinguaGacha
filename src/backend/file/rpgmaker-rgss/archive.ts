@@ -1,10 +1,12 @@
+import { setImmediate } from "node:timers/promises";
 import type { NativeFs } from "../../../native/native-fs";
 import { ProjectAssetPathIndex } from "../../../shared/project/project-asset-paths";
 import { validate_zip_member_path } from "../shared/zip-members";
 import {
   read_bytes,
   write_bytes,
-  BINARY_CHUNK_BYTES,
+  BINARY_IO_CHUNK_BYTES,
+  BINARY_COMPUTE_STEP_BYTES,
   type BinaryFileHandle,
 } from "../shared/binary";
 
@@ -106,23 +108,33 @@ export async function extract_rgss_member(
   const output = await fs.open_file(destination, "wx");
   try {
     let key = member.key;
-    // 共用块大小是四字节整数倍，跨块读取仍与 RGSS 密钥对齐。
-    for (let position = 0; position < member.size; position += BINARY_CHUNK_BYTES) {
+    // IO 块与完整计算段均按四字节对齐，段内可从密钥低位重新开始。
+    for (let position = 0; position < member.size; position += BINARY_IO_CHUNK_BYTES) {
       signal?.throwIfAborted();
       const bytes = await read_bytes(
         handle,
         member.offset + position,
-        Math.min(BINARY_CHUNK_BYTES, member.size - position),
+        Math.min(BINARY_IO_CHUNK_BYTES, member.size - position),
       );
-      for (let i = 0; i < bytes.length; i++) {
-        bytes[i] = bytes[i]! ^ ((key >>> ((i % 4) * 8)) & 255);
-        if (i % 4 === 3) key = next_key(key);
+      for (let step = 0; step < bytes.length; step += BINARY_COMPUTE_STEP_BYTES) {
+        await setImmediate();
+        signal?.throwIfAborted();
+        key = decrypt_rgss_bytes(bytes.subarray(step, step + BINARY_COMPUTE_STEP_BYTES), key);
       }
       await write_bytes(output, bytes, position);
     }
   } finally {
     await output.close();
   }
+}
+
+/** 调用者跨段保存返回的密钥，非四字节尾段只在成员末尾出现。 */
+function decrypt_rgss_bytes(bytes: Buffer, key: number): number {
+  for (let i = 0; i < bytes.length; i++) {
+    bytes[i] = bytes[i]! ^ ((key >>> ((i % 4) * 8)) & 255);
+    if (i % 4 === 3) key = next_key(key);
+  }
+  return key;
 }
 
 /** RGSS 按无符号 32 位整数推进密钥，溢出属于协议。 */

@@ -4,7 +4,12 @@ import { setImmediate } from "node:timers/promises";
 import type { NativeFs } from "../../../native/native-fs";
 import { ProjectAssetPathIndex } from "../../../shared/project/project-asset-paths";
 import { assert_game_path_spellings, validate_game_path } from "../source-file-paths";
-import { BINARY_CHUNK_BYTES, write_bytes, type BinaryFileHandle } from "../shared/binary";
+import {
+  BINARY_COMPUTE_STEP_BYTES,
+  BINARY_IO_CHUNK_BYTES,
+  write_bytes,
+  type BinaryFileHandle,
+} from "../shared/binary";
 import { open_wolf_archive_crypt, xor, type WolfKey, type WolfKeyType } from "./archive-crypt";
 import { decompress_huffman, decompress_dx_lz } from "./archive-codec";
 import { WOLF_MAX_DATA_BYTES } from "./lz4";
@@ -169,15 +174,19 @@ export async function read_wolf_archive(
     const target = member.lz_size < 0 ? member.size : member.lz_size;
     let middle = target,
       at = member.offset,
-      position = member.size,
+      position = member.size, // 成员密钥流从解压后长度开始定位。
       sides: Buffer | undefined,
       side = 0;
     if (member.huffman_size >= 0) {
       const encoded = await read(at, member.huffman_size);
-      for (let offset = 0; offset < encoded.length; offset += BINARY_CHUNK_BYTES) {
+      for (let offset = 0; offset < encoded.length; offset += BINARY_COMPUTE_STEP_BYTES) {
         await setImmediate();
         signal?.throwIfAborted();
-        xor(encoded.subarray(offset, offset + BINARY_CHUNK_BYTES), member.key, position + offset);
+        xor(
+          encoded.subarray(offset, offset + BINARY_COMPUTE_STEP_BYTES),
+          member.key,
+          position + offset,
+        );
       }
       sides = await decompress_huffman(encoded, signal);
       if (huffman_kb === 255 || target <= huffman_kb * 2048) {
@@ -192,12 +201,19 @@ export async function read_wolf_archive(
       at += member.huffman_size;
       position += member.huffman_size;
     }
-    for (let pos = 0; pos < middle; pos += BINARY_CHUNK_BYTES)
-      yield xor(
-        await read(at + pos, Math.min(BINARY_CHUNK_BYTES, middle - pos)),
-        member.key,
-        position + pos,
-      );
+    for (let pos = 0; pos < middle; pos += BINARY_IO_CHUNK_BYTES) {
+      const bytes = await read(at + pos, Math.min(BINARY_IO_CHUNK_BYTES, middle - pos));
+      for (let offset = 0; offset < bytes.length; offset += BINARY_COMPUTE_STEP_BYTES) {
+        await setImmediate();
+        signal?.throwIfAborted();
+        xor(
+          bytes.subarray(offset, offset + BINARY_COMPUTE_STEP_BYTES),
+          member.key,
+          position + pos + offset,
+        );
+      }
+      yield bytes;
+    }
     if (sides) yield sides.subarray(side);
   }
   /** 只对需要 LZ 解释的成员聚合内容，归档整体保持流式读取。 */
@@ -214,10 +230,10 @@ export async function read_wolf_archive(
     for await (const chunk of packed_chunks(member)) parts.push(chunk);
     const content = await decompress_dx_lz(Buffer.concat(parts), signal);
     assert.equal(content.length, member.size, "WOLF member size mismatch");
-    for (let at = 0; at < content.length; at += BINARY_CHUNK_BYTES) {
+    for (let at = 0; at < content.length; at += BINARY_IO_CHUNK_BYTES) {
       await setImmediate();
       signal?.throwIfAborted();
-      yield content.subarray(at, at + BINARY_CHUNK_BYTES);
+      yield content.subarray(at, at + BINARY_IO_CHUNK_BYTES);
     }
   }
   return { version, members, directories, chunks };

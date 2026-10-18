@@ -1,5 +1,5 @@
 import { WOLF_MAX_DATA_BYTES } from "./lz4";
-import { BINARY_CHUNK_BYTES } from "../shared/binary";
+import { BINARY_COMPUTE_STEP_BYTES } from "../shared/binary";
 // Port of UberWolf f4191375d289171b1f29dbc5ca320133b2b4b96a.
 import assert from "node:assert/strict";
 import { setImmediate } from "node:timers/promises";
@@ -45,7 +45,7 @@ export async function decompress_huffman(src: Buffer, signal?: AbortSignal): Pro
   const out = Buffer.alloc(size);
   bits = body * 8; // 正文改为从每个字节的低位开始读取。
   for (let i = 0; i < size; i++) {
-    if (i % BINARY_CHUNK_BYTES === 0) {
+    if (i % BINARY_COMPUTE_STEP_BYTES === 0) {
       await setImmediate();
       signal?.throwIfAborted();
     }
@@ -74,7 +74,7 @@ export async function decompress_dx_lz(src: Buffer, signal?: AbortSignal): Promi
     if (pos >= checkpoint) {
       await setImmediate();
       signal?.throwIfAborted();
-      checkpoint = pos + BINARY_CHUNK_BYTES;
+      checkpoint = pos + BINARY_COMPUTE_STEP_BYTES;
     }
     let c = src[at++]!;
     if (c !== key) {

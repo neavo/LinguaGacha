@@ -5,6 +5,7 @@ import { expect, it } from "vitest";
 import { read_wolf_archive } from "./archive";
 import { wolf_archive_fixture } from "../../../test/wolf-archive-fixture";
 import { wolf_crypt_vectors } from "../../../test/wolf-crypt-vectors";
+import { BINARY_IO_CHUNK_BYTES } from "../shared/binary";
 
 /** 需要配套密钥的 marker 使用独立参考向量中的派生结果。 */
 function companion_of(version: number): Buffer | undefined {
@@ -15,13 +16,42 @@ function companion_of(version: number): Buffer | undefined {
   return vector ? Buffer.from(vector.key, "hex") : undefined;
 }
 
+it.each(["lz", "partial"] as const)(
+  "压缩组合 %s 跨 IO 块保留中间区域与首尾流偏移",
+  async (compression) => {
+    using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-wolf-compressed-block-"));
+    const expected = Buffer.alloc(BINARY_IO_CHUNK_BYTES + 31).fill(
+      Buffer.from(Array.from({ length: 251 }, (_, i) => i)),
+    );
+    const source = path.join(temp.path, "Data.wolf");
+    fs.writeFileSync(
+      source,
+      await wolf_archive_fixture(new Map([["large.bin", expected]]), 350, { compression }),
+    );
+    const handle = await fs.promises.open(source, "r");
+    try {
+      const archive = await read_wolf_archive(handle);
+      const parts: Buffer[] = [];
+      for await (const bytes of archive.chunks(archive.members[0]!)) parts.push(bytes);
+      expect(Buffer.concat(parts).equals(expected)).toBe(true);
+    } finally {
+      await handle.close();
+    }
+  },
+);
+
 it.each([100, 200, 1000, 1010, 1020])(
   "新增 marker %i 的目录、成员及分块流可读取",
   async (version) => {
     using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-wolf-new-archive-"));
     const companion = companion_of(version);
     const files = new Map([
-      ["nested/file.bin", Buffer.alloc(65551, 123)],
+      [
+        "nested/file.bin",
+        Buffer.alloc(BINARY_IO_CHUNK_BYTES + 17).fill(
+          Buffer.from(Array.from({ length: 251 }, (_, i) => i)),
+        ),
+      ],
       ["empty.bin", Buffer.alloc(0)],
     ]);
     const filename = path.join(temp.path, "archive");

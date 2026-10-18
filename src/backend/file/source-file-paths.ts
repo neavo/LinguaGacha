@@ -137,6 +137,17 @@ export function collect_existing_files(
     files.add(name);
     return;
   }
-  for (const entry of fs.read_dirents(target))
-    collect_existing_files(root, name + "/" + entry.name, files, fs);
+  /** 入口类型已确认，递归复核子目录并复用目录项的文件类型。 */
+  function visit(relative: string): void {
+    for (const entry of fs.read_dirents(path.join(root, relative))) {
+      const child = relative + "/" + entry.name;
+      if (entry.isFile()) files.add(child);
+      else if (entry.isDirectory()) {
+        // 进入子目录前重新检查路径，拒绝枚举后被替换的目录链接。
+        assert_regular_path(path.join(root, child), fs);
+        visit(child);
+      } else throw new Error("Unsafe game filesystem path: " + path.join(root, child));
+    }
+  }
+  visit(name);
 }

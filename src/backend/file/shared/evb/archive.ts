@@ -16,7 +16,7 @@ import {
   copy_range,
   read_bytes,
   write_bytes,
-  BINARY_CHUNK_BYTES,
+  BINARY_IO_CHUNK_BYTES,
   type BinaryFileHandle,
 } from "../binary";
 
@@ -70,8 +70,8 @@ async function read_members(
   const end = section.raw + section.size;
   let magic = -1;
   const header_end = Math.min(end, section.raw + MAX_HEADER_BYTES);
-  for (let at = section.raw; at < header_end; at += BINARY_CHUNK_BYTES - 3) {
-    const block = await read_bytes(handle, at, Math.min(BINARY_CHUNK_BYTES, header_end - at));
+  for (let at = section.raw; at < header_end; at += BINARY_IO_CHUNK_BYTES - 3) {
+    const block = await read_bytes(handle, at, Math.min(BINARY_IO_CHUNK_BYTES, header_end - at));
     const found = block.indexOf(MAGIC);
     if (found >= 0) {
       magic = at + found;
@@ -86,7 +86,7 @@ async function read_members(
     assert(at >= section.raw && at + size <= end, "EVB tree outside section");
     if (at < window_at || at + size > window_at + window.length) {
       window_at = at;
-      window = await read_bytes(handle, at, Math.min(BINARY_CHUNK_BYTES, end - at));
+      window = await read_bytes(handle, at, Math.min(BINARY_IO_CHUNK_BYTES, end - at));
     }
     return window.subarray(at - window_at, at - window_at + size);
   }

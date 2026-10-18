@@ -1,7 +1,8 @@
 import type { NativeFs } from "../../../native/native-fs";
 
 export type BinaryFileHandle = Awaited<ReturnType<NativeFs["open_file"]>>;
-export const BINARY_CHUNK_BYTES = 64 * 1024;
+export const BINARY_IO_CHUNK_BYTES = 1024 * 1024; // 顺序读写每块最多处理的字节数。
+export const BINARY_COMPUTE_STEP_BYTES = 64 * 1024; // 同步计算让出并检查取消的字节步长。
 
 /** 目录和媒体共享有界读取，短读不能被误认为完整字段。 */
 export async function read_bytes(
@@ -42,9 +43,9 @@ export async function copy_range(
   destination = 0,
   signal?: AbortSignal,
 ): Promise<void> {
-  for (let at = 0; at < size; at += BINARY_CHUNK_BYTES) {
+  for (let at = 0; at < size; at += BINARY_IO_CHUNK_BYTES) {
     signal?.throwIfAborted();
-    const bytes = await read_bytes(input, offset + at, Math.min(BINARY_CHUNK_BYTES, size - at));
+    const bytes = await read_bytes(input, offset + at, Math.min(BINARY_IO_CHUNK_BYTES, size - at));
     await write_bytes(output, bytes, destination + at);
   }
 }

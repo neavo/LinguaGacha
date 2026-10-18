@@ -20,6 +20,9 @@ describe("条目数据契约", () => {
     if (Array.isArray(public_record.name_dst)) public_record.name_dst[0] = "新译名";
     expect(item.name_dst).toEqual(["译名", "译名槽"]);
     expect(stored.name_dst).toEqual(["译名", "译名槽"]);
+    if (Array.isArray(public_record.name_src)) public_record.name_src[0] = "新原名";
+    expect(item.name_src).toEqual(["原名", "来源槽"]);
+    expect(stored.name_src).toEqual(["原名", "来源槽"]);
   });
   it("格式解析可以没有身份，公开条目必须有身份，私有数据可嵌套 JSON", () => {
     const item = create_item({ extra_field: { slots: [{ value: [null, true, 1, "正文"] }] } });
@@ -38,8 +41,7 @@ describe("条目数据契约", () => {
 
   it("缺失字段由 Schema 诊断，存储字段别名只在公开边界转换", () => {
     const record = create_item({ id: 2, row: 4, name_dst: ["姓名", "后续槽"] });
-    const { dst, ...incomplete } = record;
-    expect(dst).toBe("");
+    const { dst: _dst, ...incomplete } = record;
     expect(collect_project_item_missing_public_fields(incomplete)).toEqual(["dst"]);
     expect(normalize_project_item_public_record(incomplete)).toBeNull();
     expect(normalize_project_item_public_record(record)).toMatchObject({
