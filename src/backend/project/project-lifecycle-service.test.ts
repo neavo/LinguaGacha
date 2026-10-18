@@ -1,4 +1,6 @@
 import { evb_fixture } from "../../test/evb-fixture";
+import { wolf_files } from "../../test/wolf-fixture";
+import { wolf_archive_fixture } from "../../test/wolf-archive-fixture";
 import { ProjectDatabaseAccess } from "../database/database-operations";
 import { create_pdf_execution } from "../file/pdf/test-support";
 import { read_zip_fixture, zip_text } from "../../test/zip-fixture";
@@ -41,6 +43,15 @@ describe("ProjectLifecycleService", () => {
         project: { gameEngine: "kag", files: { chapter: { data: [["こんにちは", ""]] } } },
       }),
     );
+    const game = path.join(root, "game");
+    const exe = write_file(path.join(game, "GamePro.exe"));
+    fs.writeFileSync(
+      path.join(game, "Data.wolf"),
+      await wolf_archive_fixture(
+        new Map([...wolf_files()].map(([name, bytes]) => [name.slice(5), bytes])),
+        0,
+      ),
+    );
     const database = new ProjectDatabase();
     const snapshots: ProjectDataSnapshot[] = [];
     const service = create_service({
@@ -51,7 +62,10 @@ describe("ProjectLifecycleService", () => {
     });
     try {
       const reads = vi.spyOn(ProjectDatabaseAccess.prototype, "get_all_items");
-      await service.create_project_commit({ path: project_path, source_paths: [source, trans] });
+      await service.create_project_commit({
+        path: project_path,
+        source_paths: [source, trans, exe],
+      });
       expect(reads).not.toHaveBeenCalled();
       expect(snapshots[0]?.meta).toMatchObject({
         glossary_enable: true,
@@ -59,6 +73,10 @@ describe("ProjectLifecycleService", () => {
         "migration.asset_file_type_complete": true,
       });
       expect(snapshots[0]?.files["game.trans"]).toMatchObject({ game_engine: "kag" });
+      expect(snapshots[0]?.files["game.zip"]).toMatchObject({ file_type: "WOLFRPG" });
+      expect(snapshots[0]!.items).toEqual(
+        expect.arrayContaining([expect.objectContaining({ src: "原文", file_type: "WOLFRPG" })]),
+      );
       reads.mockClear();
       await service.load_project({ path: project_path });
       expect(reads).toHaveBeenCalledTimes(1);
