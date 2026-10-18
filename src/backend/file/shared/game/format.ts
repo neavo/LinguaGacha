@@ -18,7 +18,7 @@ import type {
 import { assert_source_file_paths, source_file_output_path } from "../../source-file-paths";
 import { read_zip_members } from "../zip-members";
 
-/** 容器根目录的游戏文件清单，供 Agent 核对资源引用，不是游戏原稿成员。 */
+/** 容器根目录的游戏文件清单，供 Agent 核对资源引用。引擎白名单不会在根目录选出 `.txt`，因此不与原稿冲突。 */
 export const GAME_FILES_MEMBER = "game_files.txt";
 
 export type GameFiles = ReadonlyMap<string, JSZip.JSZipObject>;
@@ -90,6 +90,7 @@ export class GameFormat {
       throw new AppError("file.parse_failed", { public_details: { file } });
     // 准备流程已解包归档并解密媒体，此时的目录即游戏运行时可见的文件集合。
     zip.file(GAME_FILES_MEMBER, list_game_files(root, this.fs, signal));
+    // 资产存储层统一使用 Zstd 压缩，容器只保存结构和字节，避免重复压缩。
     const content = await zip.generateAsync({ type: "uint8array", compression: "STORE" });
     signal?.throwIfAborted();
     await write_game_backup(root, files, this.fs, signal);

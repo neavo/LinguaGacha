@@ -2,7 +2,7 @@
 
 CLI 面向文件输入、翻译和译文生成的一次性任务，复用应用已有的模型配置与后端业务能力。
 
-- 进程装配见 [ARCHITECTURE](ARCHITECTURE.md)。
+- 进程装配与跨层不变量见 [ARCHITECTURE](ARCHITECTURE.md)。
 - 命令帮助与验证入口见 [WORKFLOW](WORKFLOW.md)。
 
 ## 📦 临时工程与设置继承
@@ -33,7 +33,7 @@ CLI 面向文件输入、翻译和译文生成的一次性任务，复用应用�
 
 ### PDF 输入
 
-CLI 使用处理文本条目的批量引擎，PDF 翻译需要产品 Agent 的页面处理流程。
+CLI 使用处理文本条目的批量引擎，PDF 翻译需要产品 Agent 的页面处理流程，见 [BACKEND](BACKEND.md#pdf)。
 
 - 任务与译文生成都排除 PDF。
 - 完成结果列出被排除的文件。
