@@ -1,56 +1,53 @@
 import { LoaderCircle } from "lucide-react";
-import { type JSX, useEffect, useMemo, useRef } from "react";
+import { type JSX, useEffect, useMemo, useState } from "react";
 
+import { api_fetch } from "@frontend/app/desktop/desktop-api";
+import { push_error_toast } from "@frontend/app/feedback/desktop-toast";
 import { useI18n } from "@frontend/app/locale/locale-context";
 import { useDebouncedValue } from "@frontend/widgets/interactions/use-debounce";
 import type { ModelEntrySnapshot } from "@frontend/pages/model-page/types";
-import type { AvailableModel } from "@shared/model-catalog";
+import type { AvailableModel, ModelListResult } from "@shared/model-catalog";
 import { Input } from "@frontend/shadcn/input";
 import { AppButton } from "@frontend/widgets/app-button";
 import { AppPageDialog } from "@frontend/widgets/app-page-dialog";
 
 type ModelSelectorDialogProps = {
-  open: boolean;
-  model: ModelEntrySnapshot | null;
-  available_models: AvailableModel[];
+  model: ModelEntrySnapshot;
   readonly: boolean;
-  filter_text: string;
-  is_loading: boolean;
-  onFilterTextChange: (next_text: string) => void;
-  onLoadAvailableModels: (model_id: string) => Promise<void>;
-  onSelectModelId: (model_name: string) => Promise<void>;
+  submitting: boolean;
+  onConfirm: (model_id: string) => void;
   onClose: () => void;
 };
-/** 输入立即回显，模型列表按防抖后的关键词执行本地筛选。 */
-export function ModelSelectorDialog(props: ModelSelectorDialogProps): JSX.Element | null {
+
+/**
+ * 只在一次编辑期间挂载：目录、筛选和临时选择随卸载释放，点击列表只改选择，确认才交给调用方保存。
+ */
+export function ModelSelectorDialog(props: ModelSelectorDialogProps): JSX.Element {
   const { t } = useI18n();
-  const requested_model_id_ref = useRef<string | null>(null);
-  const {
-    available_models,
-    filter_text,
-    is_loading,
-    model,
-    onClose,
-    onFilterTextChange,
-    onLoadAvailableModels,
-    onSelectModelId,
-    open,
-  } = props;
+  const config_id = props.model.id; // 配置条目 ID，查询目录时使用，区别于待编辑的 `model_id`
+  const [available_models, set_available_models] = useState<AvailableModel[]>([]);
+  const [is_loading, set_is_loading] = useState(true);
+  const [filter_text, set_filter_text] = useState("");
+  // 打开时取当前模型 ID，后台快照刷新不覆盖本次选择；不在目录中时视为未选。
+  const [selected_id, set_selected_id] = useState(props.model.model_id);
   const debounced_filter_text = useDebouncedValue(filter_text); // 模型列表只做本地过滤，计算结果统一延迟刷新
 
   useEffect(() => {
-    if (!open || model === null) {
-      requested_model_id_ref.current = null;
-      return;
-    }
-
-    if (requested_model_id_ref.current === model.id) {
-      return;
-    }
-
-    requested_model_id_ref.current = model.id;
-    void onLoadAvailableModels(model.id);
-  }, [model, onLoadAvailableModels, open]);
+    let active = true; // 切换目标或关闭后，迟到的结果和失败通知都要丢弃
+    api_fetch<ModelListResult>("/api/models/list-available", { model_id: config_id })
+      .then((payload) => {
+        if (active) set_available_models(Array.isArray(payload.models) ? payload.models : []);
+      })
+      .catch((error: unknown) => {
+        if (active) push_error_toast(t("app.feedback.read_failed"), error);
+      })
+      .finally(() => {
+        if (active) set_is_loading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [config_id, t]);
 
   const filtered_models = useMemo(() => {
     const keyword = debounced_filter_text.trim().toLowerCase();
@@ -61,18 +58,43 @@ export function ModelSelectorDialog(props: ModelSelectorDialogProps): JSX.Elemen
     }
   }, [available_models, debounced_filter_text]);
 
-  if (model === null) {
-    return null;
-  }
+  // 有效选择以完整目录为准，搜索结果只决定显示范围。
+  const has_selection = available_models.some((model) => model.id === selected_id);
+  const locked = props.readonly || props.submitting; // 只读或提交期间冻结选择与确认
 
   return (
     <AppPageDialog
-      open={open}
+      open
       title={t("model_page.fields.model_id.title")}
       size="md"
-      onClose={onClose}
+      onClose={props.onClose}
+      dismissBehavior={props.submitting ? "blocked" : "default"}
       bodyClassName="overflow-hidden p-0"
-      footer={null}
+      footer={
+        <>
+          <AppButton
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={props.submitting}
+            onClick={props.onClose}
+          >
+            {t("app.action.cancel")}
+          </AppButton>
+          <AppButton
+            type="button"
+            size="sm"
+            disabled={!has_selection || locked}
+            aria-busy={props.submitting || undefined}
+            onClick={() => {
+              props.onConfirm(selected_id);
+            }}
+          >
+            {props.submitting ? <LoaderCircle className="animate-spin" aria-hidden="true" /> : null}
+            {t("app.action.confirm")}
+          </AppButton>
+        </>
+      }
     >
       <div className="model-page__dialog-scroll">
         <div className="model-page__selector-body">
@@ -81,7 +103,7 @@ export function ModelSelectorDialog(props: ModelSelectorDialogProps): JSX.Elemen
             value={filter_text}
             placeholder={t("model_page.dialog.selector.search_placeholder")}
             onChange={(event) => {
-              onFilterTextChange(event.target.value);
+              set_filter_text(event.target.value);
             }}
           />
 
@@ -97,19 +119,21 @@ export function ModelSelectorDialog(props: ModelSelectorDialogProps): JSX.Elemen
               </div>
             ) : (
               <div className="model-page__selector-options">
-                {filtered_models.map((model_name) => (
+                {filtered_models.map((model) => (
                   <AppButton
-                    key={model_name.id}
+                    key={model.id}
                     type="button"
                     variant="outline"
                     size="sm"
                     className="model-page__selector-item"
-                    disabled={props.readonly}
+                    data-selected={model.id === selected_id ? "true" : undefined}
+                    aria-pressed={model.id === selected_id}
+                    disabled={locked}
                     onClick={() => {
-                      void onSelectModelId(model_name.id);
+                      set_selected_id(model.id);
                     }}
                   >
-                    {model_name.id}
+                    {model.id}
                   </AppButton>
                 ))}
               </div>

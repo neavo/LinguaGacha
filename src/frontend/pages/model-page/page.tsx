@@ -10,7 +10,6 @@ import { ModelItemChip } from "@frontend/pages/model-page/components/model-item-
 import { ModelItemMenu } from "@frontend/pages/model-page/components/model-item-menu";
 import { ModelAdvancedSettingsDialog } from "@frontend/pages/model-page/dialogs/model-advanced-settings-dialog";
 import { ModelBasicSettingsDialog } from "@frontend/pages/model-page/dialogs/model-basic-settings-dialog";
-import { ModelSelectorDialog } from "@frontend/pages/model-page/dialogs/model-selector-dialog";
 import { ModelTaskSettingsDialog } from "@frontend/pages/model-page/dialogs/model-task-settings-dialog";
 import { useModelPageState } from "@frontend/pages/model-page/use-model-page-state";
 import { AppButton } from "@frontend/widgets/app-button";
@@ -28,10 +27,6 @@ export function ModelPage(_props: ModelPageProps): JSX.Element {
   const chatgpt_login = useChatGPTLogin();
 
   const model_page_state = useModelPageState();
-  const selector_model =
-    model_page_state.snapshot.models.find(
-      (model) => model.id === model_page_state.selector_state.model_id,
-    ) ?? null;
 
   return (
     <div
@@ -65,11 +60,6 @@ export function ModelPage(_props: ModelPageProps): JSX.Element {
         onPatch={(patch) =>
           model_page_state.update_model_patch(model_page_state.dialog_state.model_id ?? "", patch)
         }
-        onRequestOpenSelector={() => {
-          if (model_page_state.dialog_state.model_id !== null) {
-            model_page_state.open_selector_dialog(model_page_state.dialog_state.model_id);
-          }
-        }}
         onRequestTestModel={() =>
           model_page_state.request_test_model(model_page_state.dialog_state.model_id ?? "")
         }
@@ -101,19 +91,6 @@ export function ModelPage(_props: ModelPageProps): JSX.Element {
           push_toast("warning", t("model_page.feedback.json_format_error"));
         }}
         onClose={model_page_state.close_dialog}
-      />
-
-      <ModelSelectorDialog
-        open={model_page_state.selector_state.open}
-        model={selector_model}
-        available_models={model_page_state.selector_state.available_models}
-        readonly={model_page_state.readonly}
-        filter_text={model_page_state.selector_state.filter_text}
-        is_loading={model_page_state.selector_state.is_loading}
-        onFilterTextChange={model_page_state.set_selector_filter_text}
-        onLoadAvailableModels={model_page_state.load_available_models}
-        onSelectModelId={model_page_state.select_model_id}
-        onClose={model_page_state.close_selector_dialog}
       />
 
       <section className="model-page__list" aria-label={t("model_page.title")}>

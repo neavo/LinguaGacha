@@ -18,7 +18,7 @@ type ModelAdvancedSettingsDialogProps = {
   open: boolean;
   model: ModelEntrySnapshot | null;
   readonly: boolean;
-  onPatch: (patch: Record<string, unknown>) => Promise<void>;
+  onPatch: (patch: Record<string, unknown>) => Promise<boolean>;
   onAgentLimitsAdjusted: () => void;
   onJsonFormatError: () => void;
   onClose: () => void;

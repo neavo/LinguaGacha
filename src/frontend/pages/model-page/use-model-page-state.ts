@@ -2,7 +2,6 @@ import { push_error_toast, push_toast } from "@frontend/app/feedback/desktop-toa
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { api_fetch } from "@frontend/app/desktop/desktop-api";
-import type { ModelListResult } from "@shared/model-catalog";
 import type { ChatGPTAuthSnapshot } from "@shared/model-auth";
 import { apply_model_auth_snapshot } from "@frontend/app/state/model-auth-store";
 import { useRuntimeSnapshot } from "@frontend/app/state/use-desktop-state";
@@ -18,7 +17,6 @@ import type {
   ModelGenerationSnapshot,
   ModelPageSnapshot,
   ModelRequestSnapshot,
-  ModelSelectorState,
   ModelTestResult,
   ModelThinkingSnapshot,
   ModelThresholdSnapshot,
@@ -54,7 +52,6 @@ type UseModelPageStateResult = {
   test_disabled: boolean;
   dialog_state: ModelDialogState;
   confirm_state: ModelConfirmState;
-  selector_state: ModelSelectorState;
   active_dialog_model: ModelEntrySnapshot | null;
   request_add_model: (model_type: ModelType) => Promise<void>;
   request_copy_model: (model_id: string) => Promise<void>;
@@ -62,17 +59,12 @@ type UseModelPageStateResult = {
   request_reset_model: (model_id: string) => void;
   request_logout: () => void;
   request_reorder_models: (model_type: ModelType, ordered_model_ids: string[]) => Promise<void>;
-  update_model_patch: (model_id: string, patch: Record<string, unknown>) => Promise<void>;
+  update_model_patch: (model_id: string, patch: Record<string, unknown>) => Promise<boolean>;
   request_test_model: (model_id: string) => Promise<void>;
   open_dialog: (kind: Exclude<ModelDialogState["kind"], null>, model_id: string) => void;
   close_dialog: () => void;
   confirm_dialog: () => Promise<void>;
   close_confirm: () => void;
-  open_selector_dialog: (model_id: string) => void;
-  close_selector_dialog: () => void;
-  set_selector_filter_text: (next_text: string) => void;
-  load_available_models: (model_id: string) => Promise<void>;
-  select_model_id: (model_name: string) => Promise<void>;
 };
 
 /** 供应商识别色只用于模型分类色条，不进入全局主题语义。 */
@@ -130,17 +122,6 @@ function close_confirm_state(): ModelConfirmState {
   return {
     kind: null,
     model_id: null,
-  };
-}
-
-/** 建立模型列表选择器的初始查询状态。 */
-function create_selector_state(): ModelSelectorState {
-  return {
-    open: false,
-    model_id: null,
-    available_models: [],
-    filter_text: "",
-    is_loading: false,
   };
 }
 
@@ -437,9 +418,6 @@ export function useModelPageState(): UseModelPageStateResult {
   const [is_testing, set_is_testing] = useState(false);
   const [dialog_state, set_dialog_state] = useState<ModelDialogState>(close_dialog_state());
   const [confirm_state, set_confirm_state] = useState<ModelConfirmState>(close_confirm_state());
-  const [selector_state, set_selector_state] =
-    useState<ModelSelectorState>(create_selector_state());
-  const selector_request_ref = useRef(0); // 关闭或重开后丢弃旧查询结果。
   const snapshot_ref = useRef<ModelPageSnapshot>(snapshot);
   const patch_request_seed_ref = useRef(0);
   const latest_patch_request_id_by_model_ref = useRef<Record<string, number>>({});
@@ -495,11 +473,14 @@ export function useModelPageState(): UseModelPageStateResult {
   const readonly = load_status !== "ready" || is_action_running; // 首次快照到达前，配置写入口与页面控件共用锁。
   const test_disabled = is_runtime_busy(runtime_snapshot) || is_testing || is_action_running;
 
-  /** 提交模型字段修改并同步后端快照。 */
+  /**
+   * 提交模型字段修改并同步后端快照。
+   * 只有本次回包仍是该模型最新写入时才返回 `true`，需要据此关闭编辑入口的调用者必须检查结果。
+   */
   const update_model_patch = useCallback(
-    async (model_id: string, patch: Record<string, unknown>): Promise<void> => {
+    async (model_id: string, patch: Record<string, unknown>): Promise<boolean> => {
       if (model_id === "") {
-        return;
+        return false;
       }
 
       const previous_snapshot = snapshot_ref.current;
@@ -516,14 +497,17 @@ export function useModelPageState(): UseModelPageStateResult {
           patch,
         });
         const next_snapshot = normalize_model_page_snapshot(payload);
-        if (latest_patch_request_id_by_model_ref.current[model_id] === request_id) {
-          set_snapshot(next_snapshot);
+        if (latest_patch_request_id_by_model_ref.current[model_id] !== request_id) {
+          return false;
         }
+        set_snapshot(next_snapshot);
+        return true;
       } catch (error) {
         if (latest_patch_request_id_by_model_ref.current[model_id] === request_id) {
           push_error_toast(t("app.feedback.save_failed"), error);
           void refresh_snapshot();
         }
+        return false;
       }
     },
     [refresh_snapshot, t],
@@ -756,86 +740,6 @@ export function useModelPageState(): UseModelPageStateResult {
     set_confirm_state(close_confirm_state());
   }
 
-  /** 打开当前接入点的模型列表选择器。 */
-  function open_selector_dialog(model_id: string): void {
-    selector_request_ref.current += 1;
-    set_selector_state({ ...create_selector_state(), open: true, model_id });
-  }
-
-  /** 关闭选择器并释放当前筛选状态。 */
-  function close_selector_dialog(): void {
-    selector_request_ref.current += 1;
-    set_selector_state(create_selector_state());
-  }
-
-  /** 模型列表筛选保持在选择器本地。 */
-  function set_selector_filter_text(next_text: string): void {
-    set_selector_state((previous_state) => {
-      return {
-        ...previous_state,
-        filter_text: next_text,
-      };
-    });
-  }
-
-  /** 从当前接口读取可选择的模型标识。 */
-  const load_available_models = useCallback(
-    async (model_id: string): Promise<void> => {
-      const request_id = ++selector_request_ref.current;
-      set_selector_state((previous_state) => {
-        return {
-          ...previous_state,
-          open: true,
-          model_id,
-          is_loading: true,
-          available_models: [],
-        };
-      });
-
-      try {
-        const payload = await api_fetch<ModelListResult>("/api/models/list-available", {
-          model_id,
-        });
-        if (request_id !== selector_request_ref.current) return;
-        set_selector_state((previous_state) => {
-          return {
-            ...previous_state,
-            model_id,
-            available_models: Array.isArray(payload.models) ? payload.models : [],
-            is_loading: false,
-          };
-        });
-      } catch (error) {
-        if (request_id !== selector_request_ref.current) return;
-        set_selector_state((previous_state) => {
-          return {
-            ...previous_state,
-            available_models: [],
-            is_loading: false,
-          };
-        });
-        push_error_toast(t("app.feedback.read_failed"), error);
-      }
-    },
-    [t],
-  );
-
-  /** 将选择结果写入当前模型配置。 */
-  const select_model_id = useCallback(
-    async (model_name: string): Promise<void> => {
-      const target_model_id = selector_state.model_id;
-      if (target_model_id === null) {
-        return;
-      }
-
-      await update_model_patch(target_model_id, {
-        model_id: model_name,
-      });
-      close_selector_dialog();
-    },
-    [selector_state.model_id, update_model_patch],
-  );
-
   return {
     load_status,
     refresh_snapshot,
@@ -845,7 +749,6 @@ export function useModelPageState(): UseModelPageStateResult {
     test_disabled,
     dialog_state,
     confirm_state,
-    selector_state,
     active_dialog_model,
     request_add_model,
     request_copy_model,
@@ -859,10 +762,5 @@ export function useModelPageState(): UseModelPageStateResult {
     close_dialog,
     confirm_dialog,
     close_confirm,
-    open_selector_dialog,
-    close_selector_dialog,
-    set_selector_filter_text,
-    load_available_models,
-    select_model_id,
   };
 }

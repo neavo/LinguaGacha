@@ -3,7 +3,6 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { useModelPageState } from "./use-model-page-state";
-import type { ModelListResult } from "@shared/model-catalog";
 
 const { api_fetch_mock, push_toast, translate, runtime } = vi.hoisted(() => ({
   api_fetch_mock: vi.fn(),
@@ -92,80 +91,6 @@ describe("useModelPageState", () => {
     push_toast.mockReset();
     translate.mockClear();
     runtime.owner = null;
-  });
-
-  it("选择器切换目标和关闭后丢弃旧结果", async () => {
-    api_fetch_mock.mockResolvedValueOnce(create_snapshot());
-    await render_hook();
-    api_fetch_mock.mockResolvedValueOnce({
-      models: [{ id: "vertex-fixture", name: "Vertex fixture" }],
-    });
-    await act(async () => latest_state!.load_available_models("custom"));
-    expect(latest_state!.selector_state).toMatchObject({
-      available_models: [{ id: "vertex-fixture", name: "Vertex fixture" }],
-    });
-    const pending = create_deferred<ModelListResult>();
-    api_fetch_mock.mockReturnValueOnce(pending.promise);
-    let completion!: Promise<void>;
-    await act(async () => {
-      completion = latest_state!.load_available_models("responses");
-    });
-    expect(latest_state!.selector_state).toMatchObject({
-      available_models: [],
-      is_loading: true,
-    });
-    await act(async () => latest_state!.close_selector_dialog());
-    await act(async () => {
-      pending.resolve({ models: [{ id: "late", name: "Late" }] });
-      await completion;
-    });
-    expect(latest_state!.selector_state).toMatchObject({
-      open: false,
-      model_id: null,
-      available_models: [],
-    });
-    api_fetch_mock.mockResolvedValueOnce({
-      models: [{ id: "remote-fixture", name: "Remote fixture" }],
-    });
-    await act(async () => latest_state!.load_available_models("custom"));
-    expect(latest_state!.selector_state.available_models).toEqual([
-      { id: "remote-fixture", name: "Remote fixture" },
-    ]);
-  });
-
-  it("重开同一模型后，旧目录不能覆盖新结果", async () => {
-    api_fetch_mock.mockResolvedValueOnce(create_snapshot());
-    await render_hook();
-    const pending = create_deferred<ModelListResult>();
-    api_fetch_mock.mockReturnValueOnce(pending.promise);
-    let completion!: Promise<void>;
-    await act(async () => {
-      completion = latest_state!.load_available_models("custom");
-    });
-    await act(async () => latest_state!.close_selector_dialog());
-    api_fetch_mock.mockResolvedValueOnce({ models: [] });
-    await act(async () => latest_state!.load_available_models("custom"));
-    await act(async () => {
-      pending.resolve({ models: [{ id: "stale", name: "Stale" }] });
-      await completion;
-    });
-    expect(latest_state!.selector_state).toMatchObject({
-      open: true,
-      available_models: [],
-    });
-  });
-
-  it("选择列表模型后立即保存并关闭选择器", async () => {
-    api_fetch_mock.mockResolvedValueOnce(create_snapshot());
-    await render_hook();
-    await act(async () => latest_state!.open_selector_dialog("custom"));
-    api_fetch_mock.mockResolvedValueOnce(create_snapshot());
-    await act(async () => latest_state!.select_model_id("gemini-fixture"));
-    expect(api_fetch_mock).toHaveBeenLastCalledWith("/api/models/update", {
-      model_id: "custom",
-      patch: { model_id: "gemini-fixture" },
-    });
-    expect(latest_state!.selector_state).toMatchObject({ open: false, model_id: null });
   });
 
   it("退出先进入页面确认，取消不请求，确认后才提交退出", async () => {
@@ -392,7 +317,7 @@ describe("useModelPageState", () => {
     const update = create_deferred<ReturnType<typeof create_snapshot>>();
     api_fetch_mock.mockReturnValue(update.promise);
 
-    let request!: Promise<void>;
+    let request!: Promise<boolean>;
     await act(async () => {
       request = latest_state!.update_model_patch("custom", {
         agent: { context_window: 300_000 },
@@ -417,8 +342,8 @@ describe("useModelPageState", () => {
       body.patch?.name === "第一次" ? first.promise : second.promise,
     );
 
-    let first_update!: Promise<void>;
-    let second_update!: Promise<void>;
+    let first_update!: Promise<boolean>;
+    let second_update!: Promise<boolean>;
     await act(async () => {
       first_update = latest_state!.update_model_patch("custom", { name: "第一次" });
       second_update = latest_state!.update_model_patch("custom", { name: "第二次" });
@@ -427,10 +352,36 @@ describe("useModelPageState", () => {
     expect(latest_state?.snapshot.models[1]?.name).toBe("第二次");
 
     second.resolve(create_snapshot("服务端第二次"));
-    await act(async () => second_update);
+    await act(async () => expect(second_update).resolves.toBe(true));
     first.resolve(create_snapshot("服务端第一次"));
-    await act(async () => first_update);
+    await act(async () => expect(first_update).resolves.toBe(false));
 
     expect(latest_state?.snapshot.models[1]?.name).toBe("服务端第二次");
+  });
+
+  it("保存结果区分成功与失败，失败只通知一次并回读快照", async () => {
+    api_fetch_mock.mockResolvedValue(create_snapshot());
+    await render_hook();
+    api_fetch_mock.mockResolvedValueOnce(create_snapshot("已保存"));
+    let result = false;
+    await act(async () => {
+      result = await latest_state!.update_model_patch("custom", { model_id: "next-model" });
+    });
+    expect(result).toBe(true);
+    expect(api_fetch_mock).toHaveBeenLastCalledWith("/api/models/update", {
+      model_id: "custom",
+      patch: { model_id: "next-model" },
+    });
+
+    api_fetch_mock.mockRejectedValueOnce(new Error("save failed"));
+    await act(async () => {
+      result = await latest_state!.update_model_patch("custom", { model_id: "broken" });
+    });
+    expect(result).toBe(false);
+    expect(push_toast).toHaveBeenCalledExactlyOnceWith(
+      "app.feedback.save_failed",
+      expect.any(Error),
+    );
+    expect(api_fetch_mock).toHaveBeenLastCalledWith("/api/models/snapshot", {});
   });
 });

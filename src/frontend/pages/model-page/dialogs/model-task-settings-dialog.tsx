@@ -9,7 +9,7 @@ type ModelTaskSettingsDialogProps = {
   open: boolean;
   model: ModelEntrySnapshot | null;
   readonly: boolean;
-  onPatch: (patch: Record<string, unknown>) => Promise<void>;
+  onPatch: (patch: Record<string, unknown>) => Promise<boolean>;
   onClose: () => void;
 };
 
