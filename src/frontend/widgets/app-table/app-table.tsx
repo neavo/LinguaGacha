@@ -305,6 +305,7 @@ export function AppTable<Row>(props: AppTableProps<Row>): JSX.Element {
   const row_height = row_height_prop ?? APP_TABLE_DEFAULT_ROW_HEIGHT;
   const [viewport_element, set_viewport_element] = useState<HTMLElement | null>(null); // 表体滚动容器，由回调 ref 写入。
   const [viewport_height, set_viewport_height] = useState(row_height);
+  const [scrollbar_width, set_scrollbar_width] = useState(0); // 表体滚动条实际宽度，表头据此留出同宽右侧空白。
   const [drag_overlay_width, set_drag_overlay_width] = useState<number | null>(null);
   const source_row_model = useMemo(
     () => create_array_row_model(rows, get_row_id),
@@ -537,6 +538,26 @@ export function AppTable<Row>(props: AppTableProps<Row>): JSX.Element {
       resize_observer.disconnect();
     };
   }, [row_count, row_height]);
+
+  useEffect(() => {
+    if (viewport_element === null) {
+      return;
+    }
+
+    // 滚动条按需出现时会挤占 viewport 的 content box，观察它即可感知滚动条增减。
+    const update_scrollbar_width = (): void => {
+      set_scrollbar_width(viewport_element.offsetWidth - viewport_element.clientWidth);
+    };
+
+    update_scrollbar_width();
+
+    const resize_observer = new ResizeObserver(update_scrollbar_width);
+    resize_observer.observe(viewport_element);
+
+    return () => {
+      resize_observer.disconnect();
+    };
+  }, [viewport_element]);
 
   const virtualizer = useVirtualizer<HTMLElement, HTMLTableRowElement>({
     count: row_count,
@@ -1659,6 +1680,7 @@ export function AppTable<Row>(props: AppTableProps<Row>): JSX.Element {
     );
   const root_style = {
     "--app-table-row-height": `${row_height.toString()}px`,
+    "--app-table-scrollbar-width": `${scrollbar_width.toString()}px`,
   } as CSSProperties;
 
   return (
