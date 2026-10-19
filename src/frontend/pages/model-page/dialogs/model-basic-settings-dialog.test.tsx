@@ -5,9 +5,49 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { ModelBasicSettingsDialog } from "./model-basic-settings-dialog";
 import { create_model_snapshot } from "@frontend/pages/model-page/model-test-fixture";
 
-vi.mock("@frontend/app/locale/locale-context", () => ({
-  useI18n: () => ({ locale: "zh-CN", t: (key: string) => key }),
+const { api_fetch_mock, translate } = vi.hoisted(() => ({
+  api_fetch_mock: vi.fn(),
+  translate: (key: string) => key, // 与真实语言上下文一样保持稳定引用
 }));
+
+vi.mock("@frontend/app/desktop/desktop-api", () => ({
+  api_fetch: api_fetch_mock,
+}));
+
+vi.mock("@frontend/app/locale/locale-context", () => ({
+  useI18n: () => ({ locale: "zh-CN", t: translate }),
+}));
+
+/** 按完整文案读取按钮。 */
+function find_button(label: string): HTMLButtonElement {
+  const button = Array.from(document.querySelectorAll("button")).find(
+    (candidate) => candidate.textContent === label,
+  );
+  if (button === undefined) throw new Error(`按钮未挂载：${label}`);
+  return button;
+}
+
+/** 读取当前打开的模型 ID 草稿输入框。 */
+function find_model_id_input(): HTMLInputElement | null {
+  return document.querySelector<HTMLInputElement>(
+    'input[placeholder="model_page.fields.model_id.placeholder"]',
+  );
+}
+
+/** 使用原生 setter 触发 React 受控输入。 */
+function change_input_value(input: HTMLInputElement, value: string): void {
+  Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set?.call(input, value);
+  input.dispatchEvent(new Event("input", { bubbles: true }));
+}
+
+/** 手动控制保存完成时机。 */
+function create_deferred<Value>() {
+  let resolve!: (value: Value) => void;
+  const promise = new Promise<Value>((promise_resolve) => {
+    resolve = promise_resolve;
+  });
+  return { promise, resolve };
+}
 
 describe("ModelBasicSettingsDialog", () => {
   let container: HTMLDivElement | null = null;
@@ -18,7 +58,102 @@ describe("ModelBasicSettingsDialog", () => {
     container?.remove();
     container = null;
     root = null;
+    api_fetch_mock.mockReset();
     vi.useRealTimers();
+  });
+
+  /** 挂载或重渲染基础设置弹窗。 */
+  async function render_basic(
+    on_patch: (patch: Record<string, unknown>) => Promise<boolean>,
+    open = true,
+  ): Promise<void> {
+    if (root === null) {
+      container = document.createElement("div");
+      document.body.append(container);
+      root = createRoot(container);
+    }
+    await act(async () => {
+      root?.render(
+        <ModelBasicSettingsDialog
+          open={open}
+          model={create_model_snapshot()}
+          readonly={false}
+          test_disabled
+          onPatch={on_patch}
+          onRequestTestModel={() => {}}
+          onClose={() => {}}
+        />,
+      );
+    });
+  }
+
+  it("手动输入保存成功后关闭，失败时保留草稿", async () => {
+    const on_patch = vi.fn(async () => false);
+    await render_basic(on_patch);
+    await act(async () => find_button("model_page.action.input").click());
+    await act(async () => change_input_value(find_model_id_input()!, "  next-model  "));
+    await act(async () => find_button("app.action.confirm").click());
+
+    expect(on_patch).toHaveBeenLastCalledWith({ model_id: "next-model" });
+    expect(find_model_id_input()?.value).toBe("  next-model  ");
+
+    on_patch.mockResolvedValue(true);
+    await act(async () => find_button("app.action.confirm").click());
+    expect(on_patch).toHaveBeenCalledTimes(2);
+    expect(find_model_id_input()).toBeNull();
+  });
+
+  it("目录选择经确认保存后关闭，失败时保留选择器与选择", async () => {
+    api_fetch_mock.mockResolvedValue({
+      models: [
+        { id: "alpha-model", name: "Alpha" },
+        { id: "beta-model", name: "Beta" },
+      ],
+    });
+    const on_patch = vi.fn(async () => false);
+    await render_basic(on_patch);
+    await act(async () => find_button("model_page.action.fetch").click());
+    await act(async () => find_button("beta-model").click());
+    expect(on_patch).not.toHaveBeenCalled();
+
+    await act(async () => find_button("app.action.confirm").click());
+    expect(on_patch).toHaveBeenLastCalledWith({ model_id: "beta-model" });
+    expect(find_button("beta-model").getAttribute("aria-pressed")).toBe("true");
+
+    on_patch.mockResolvedValue(true);
+    await act(async () => find_button("app.action.confirm").click());
+    expect(on_patch).toHaveBeenCalledTimes(2);
+    expect(document.querySelector(".model-page__selector-list")).toBeNull();
+  });
+
+  it("提交期间禁止重复提交与关闭", async () => {
+    const pending = create_deferred<boolean>();
+    const on_patch = vi.fn(() => pending.promise);
+    await render_basic(on_patch);
+    await act(async () => find_button("model_page.action.input").click());
+    await act(async () => find_button("app.action.confirm").click());
+    const confirm = find_button("app.action.confirm");
+    expect(confirm.disabled).toBe(true);
+    expect(find_button("app.action.cancel").disabled).toBe(true);
+    await act(async () => confirm.click());
+    expect(on_patch).toHaveBeenCalledTimes(1);
+
+    await act(async () => pending.resolve(true));
+    expect(find_model_id_input()).toBeNull();
+  });
+
+  it("基础设置关闭后重开，编辑入口与选择器状态都会重置", async () => {
+    api_fetch_mock.mockResolvedValue({ models: [{ id: "alpha-model", name: "Alpha" }] });
+    const on_patch = vi.fn(async () => true);
+    await render_basic(on_patch);
+    await act(async () => find_button("model_page.action.fetch").click());
+    expect(api_fetch_mock).toHaveBeenCalledTimes(1);
+
+    await render_basic(on_patch, false);
+    await render_basic(on_patch, true);
+    expect(document.querySelector(".model-page__selector-list")).toBeNull();
+    await act(async () => find_button("model_page.action.fetch").click());
+    expect(api_fetch_mock).toHaveBeenCalledTimes(2);
   });
 
   it("接口地址预览包含当前项目作用域与模型", async () => {
@@ -36,8 +171,7 @@ describe("ModelBasicSettingsDialog", () => {
           model={create_model_snapshot({ api_format: "Google", api_url, model_id })}
           readonly={false}
           test_disabled={false}
-          onPatch={async () => {}}
-          onRequestOpenSelector={() => {}}
+          onPatch={async () => true}
           onRequestTestModel={() => {}}
           onClose={() => {}}
         />,
@@ -53,7 +187,7 @@ describe("ModelBasicSettingsDialog", () => {
     container = document.createElement("div");
     document.body.append(container);
     root = createRoot(container);
-    const on_patch = vi.fn(async () => {});
+    const on_patch = vi.fn(async () => true);
     const render_dialog = async (readonly: boolean): Promise<void> => {
       await act(async () => {
         root?.render(
@@ -63,7 +197,6 @@ describe("ModelBasicSettingsDialog", () => {
             model={create_model_snapshot()}
             readonly={readonly}
             onPatch={on_patch}
-            onRequestOpenSelector={() => {}}
             onRequestTestModel={() => {}}
             onClose={() => {}}
           />,
@@ -121,7 +254,7 @@ describe("ModelBasicSettingsDialog", () => {
     container = document.createElement("div");
     document.body.append(container);
     root = createRoot(container);
-    const on_patch = vi.fn(async () => {});
+    const on_patch = vi.fn(async () => true);
     await act(async () => {
       root?.render(
         <ModelBasicSettingsDialog
@@ -134,7 +267,6 @@ describe("ModelBasicSettingsDialog", () => {
           })}
           readonly={false}
           onPatch={on_patch}
-          onRequestOpenSelector={() => {}}
           onRequestTestModel={() => {}}
           onClose={() => {}}
         />,
@@ -161,7 +293,7 @@ describe("ModelBasicSettingsDialog", () => {
       container = document.createElement("div");
       document.body.append(container);
       root = createRoot(container);
-      const on_patch = vi.fn(async () => {});
+      const on_patch = vi.fn(async () => true);
       await act(async () => {
         root?.render(
           <ModelBasicSettingsDialog
@@ -170,7 +302,6 @@ describe("ModelBasicSettingsDialog", () => {
             model={create_model_snapshot({ api_format })}
             readonly={false}
             onPatch={on_patch}
-            onRequestOpenSelector={() => {}}
             onRequestTestModel={() => {}}
             onClose={() => {}}
           />,
@@ -226,8 +357,7 @@ describe("ModelBasicSettingsDialog", () => {
             available_thinking_levels: ["DEFAULT"],
           })}
           readonly={false}
-          onPatch={async () => {}}
-          onRequestOpenSelector={() => {}}
+          onPatch={async () => true}
           onRequestTestModel={() => {}}
           onClose={() => {}}
         />,

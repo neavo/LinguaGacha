@@ -321,6 +321,11 @@
   justify-content: flex-start;
 }
 
+.model-page__selector-item[data-selected="true"] {
+  border-color: color-mix(in srgb, var(--primary) 58%, var(--border));
+  background: color-mix(in srgb, var(--primary) 18%, var(--popover));
+}
+
 .model-page__selector-loading {
   display: flex;
   align-items: center;

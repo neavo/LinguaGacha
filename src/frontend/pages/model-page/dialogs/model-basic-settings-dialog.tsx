@@ -1,4 +1,4 @@
-import { PencilLine, RefreshCw, Send } from "lucide-react";
+import { LoaderCircle, PencilLine, RefreshCw, Send } from "lucide-react";
 import { Fragment, type JSX, useEffect, useState } from "react";
 
 import { MODEL_SPEED_LEVELS, is_model_speed_level, is_model_thinking_level } from "@domain/model";
@@ -8,6 +8,7 @@ import {
   MODEL_THINKING_LEVEL_LABEL_KEY,
   order_model_thinking_levels,
 } from "@frontend/features/model-selection/model-selection-meta";
+import { ModelSelectorDialog } from "@frontend/pages/model-page/dialogs/model-selector-dialog";
 import type { ModelEntrySnapshot } from "@frontend/pages/model-page/types";
 import { AppButton } from "@frontend/widgets/app-button";
 import { Input } from "@frontend/shadcn/input";
@@ -30,8 +31,7 @@ type ModelBasicSettingsDialogProps = {
   model: ModelEntrySnapshot | null;
   readonly: boolean;
   test_disabled: boolean;
-  onPatch: (patch: Record<string, unknown>) => Promise<void>;
-  onRequestOpenSelector: () => void;
+  onPatch: (patch: Record<string, unknown>) => Promise<boolean>;
   onRequestTestModel: () => void;
   onClose: () => void;
 };
@@ -47,12 +47,14 @@ const SPEED_LABEL_KEYS = {
 /** 编辑模型名称、连接信息、思考与速度等级。 */
 export function ModelBasicSettingsDialog(props: ModelBasicSettingsDialogProps): JSX.Element | null {
   const { t } = useI18n();
-  const [is_model_id_editor_open, set_is_model_id_editor_open] = useState(false);
+  // 手动输入与目录选择共用一个编辑入口，一次只打开一个。
+  const [model_id_editor, set_model_id_editor] = useState<null | "input" | "selector">(null);
   const [model_id_input_value, set_model_id_input_value] = useState("");
+  const [is_model_id_submitting, set_is_model_id_submitting] = useState(false); // 两个编辑入口共用的提交互斥
 
   useEffect(() => {
     if (!props.open) {
-      set_is_model_id_editor_open(false);
+      set_model_id_editor(null);
     }
   }, [props.open]);
 
@@ -64,16 +66,23 @@ export function ModelBasicSettingsDialog(props: ModelBasicSettingsDialogProps): 
   const request_url = build_model_request_url(model.api_url, model.api_format, model.model_id);
   const thinking_label = t(MODEL_THINKING_LEVEL_LABEL_KEY[model.thinking.level]);
 
-  /** 项目可能在输入弹窗保持打开时进入锁定态，提交点必须再次守卫。 */
-  async function commit_model_id_input(): Promise<void> {
-    if (props.readonly) {
+  /**
+   * 项目可能在编辑窗口保持打开时进入锁定态，提交点必须再次守卫。
+   * 只有保存成功才结束编辑，失败时保留草稿，错误通知由保存入口负责。
+   */
+  async function commit_model_id(next_model_id: string): Promise<void> {
+    if (props.readonly || is_model_id_submitting) {
       return;
     }
 
-    await props.onPatch({
-      model_id: model_id_input_value.trim(),
-    });
-    set_is_model_id_editor_open(false);
+    set_is_model_id_submitting(true);
+    try {
+      if (await props.onPatch({ model_id: next_model_id })) {
+        set_model_id_editor(null);
+      }
+    } finally {
+      set_is_model_id_submitting(false);
+    }
   }
 
   return (
@@ -178,7 +187,7 @@ export function ModelBasicSettingsDialog(props: ModelBasicSettingsDialogProps): 
                     onClick={() => {
                       // 输入器每次打开时取当前值，后台快照不会覆盖本次输入。
                       set_model_id_input_value(model.model_id);
-                      set_is_model_id_editor_open(true);
+                      set_model_id_editor("input");
                     }}
                   >
                     <PencilLine data-icon="inline-start" />
@@ -189,7 +198,9 @@ export function ModelBasicSettingsDialog(props: ModelBasicSettingsDialogProps): 
                     variant="outline"
                     size="sm"
                     disabled={props.readonly}
-                    onClick={props.onRequestOpenSelector}
+                    onClick={() => {
+                      set_model_id_editor("selector");
+                    }}
                   >
                     <RefreshCw data-icon="inline-start" />
                     {t("model_page.action.fetch")}
@@ -311,12 +322,27 @@ export function ModelBasicSettingsDialog(props: ModelBasicSettingsDialogProps): 
         </div>
       </AppPageDialog>
 
+      {model_id_editor === "selector" ? (
+        <ModelSelectorDialog
+          model={model}
+          readonly={props.readonly}
+          submitting={is_model_id_submitting}
+          onConfirm={(next_model_id) => {
+            void commit_model_id(next_model_id);
+          }}
+          onClose={() => {
+            set_model_id_editor(null);
+          }}
+        />
+      ) : null}
+
       <AppPageDialog
-        open={is_model_id_editor_open}
+        open={model_id_editor === "input"}
         title={t("model_page.fields.model_id.title")}
         size="sm"
+        dismissBehavior={is_model_id_submitting ? "blocked" : "default"}
         onClose={() => {
-          set_is_model_id_editor_open(false);
+          set_model_id_editor(null);
         }}
         footer={
           <>
@@ -324,8 +350,9 @@ export function ModelBasicSettingsDialog(props: ModelBasicSettingsDialogProps): 
               type="button"
               variant="outline"
               size="sm"
+              disabled={is_model_id_submitting}
               onClick={() => {
-                set_is_model_id_editor_open(false);
+                set_model_id_editor(null);
               }}
             >
               {t("app.action.cancel")}
@@ -333,11 +360,15 @@ export function ModelBasicSettingsDialog(props: ModelBasicSettingsDialogProps): 
             <AppButton
               type="button"
               size="sm"
-              disabled={props.readonly}
+              disabled={props.readonly || is_model_id_submitting}
+              aria-busy={is_model_id_submitting || undefined}
               onClick={() => {
-                void commit_model_id_input();
+                void commit_model_id(model_id_input_value.trim());
               }}
             >
+              {is_model_id_submitting ? (
+                <LoaderCircle className="animate-spin" aria-hidden="true" />
+              ) : null}
               {t("app.action.confirm")}
             </AppButton>
           </>
@@ -347,7 +378,7 @@ export function ModelBasicSettingsDialog(props: ModelBasicSettingsDialogProps): 
           autoFocus
           className="model-page__field model-page__field--full"
           value={model_id_input_value}
-          readOnly={props.readonly}
+          readOnly={props.readonly || is_model_id_submitting}
           placeholder={t("model_page.fields.model_id.placeholder")}
           onChange={(event) => {
             set_model_id_input_value(event.target.value);
@@ -355,7 +386,7 @@ export function ModelBasicSettingsDialog(props: ModelBasicSettingsDialogProps): 
           onKeyDown={(event) => {
             if (event.key === "Enter") {
               event.preventDefault();
-              void commit_model_id_input();
+              void commit_model_id(model_id_input_value.trim());
             }
           }}
         />

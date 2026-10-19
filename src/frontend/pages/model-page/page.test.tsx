@@ -31,10 +31,6 @@ vi.mock("@frontend/pages/model-page/dialogs/model-basic-settings-dialog", () => 
   ModelBasicSettingsDialog: () => null,
 }));
 
-vi.mock("@frontend/pages/model-page/dialogs/model-selector-dialog", () => ({
-  ModelSelectorDialog: () => null,
-}));
-
 vi.mock("@frontend/pages/model-page/dialogs/model-task-settings-dialog", () => ({
   ModelTaskSettingsDialog: () => null,
 }));
@@ -69,23 +65,11 @@ function create_model_page_state() {
       ],
       dialog_state: { kind: null, model_id: null },
       active_dialog_model: null,
-      selector_state: {
-        open: false,
-        model_id: null,
-        available_models: [],
-        filter_text: "",
-        is_loading: false,
-      },
       confirm_state: { kind: null, model_id: null },
       open_dialog,
       close_dialog: vi.fn(),
       update_model_patch: vi.fn(),
-      open_selector_dialog: vi.fn(),
       request_test_model: vi.fn(),
-      set_selector_filter_text: vi.fn(),
-      load_available_models: vi.fn(),
-      select_model_id: vi.fn(),
-      close_selector_dialog: vi.fn(),
       confirm_dialog: vi.fn(),
       close_confirm: vi.fn(),
       request_add_model: vi.fn(),

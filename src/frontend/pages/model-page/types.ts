@@ -1,7 +1,6 @@
 import type { ModelSpeedLevel, ModelApiFormat, ModelThinkingLevel, ModelType } from "@domain/model";
 import type { ModelAgentConfig } from "@domain/model-agent";
 import type { ModelAuthType } from "@domain/model";
-import type { AvailableModel } from "@shared/model-catalog";
 
 export type ModelRequestSnapshot = {
   speed_level: ModelSpeedLevel;
@@ -62,14 +61,6 @@ export type ModelConfirmState =
   | { kind: "logout"; model_id: null }
   | { kind: "delete"; model_id: string }
   | { kind: "reset"; model_id: string };
-
-export type ModelSelectorState = {
-  open: boolean;
-  model_id: string | null;
-  available_models: AvailableModel[];
-  filter_text: string;
-  is_loading: boolean;
-};
 
 export type ModelCategorySnapshot = {
   type: ModelType;

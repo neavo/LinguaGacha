@@ -51,7 +51,7 @@ describe("ModelAdvancedSettingsDialog", () => {
     container = document.createElement("div");
     document.body.append(container);
     root = createRoot(container);
-    const on_patch = vi.fn(async () => {});
+    const on_patch = vi.fn(async () => true);
     const on_json_format_error = vi.fn();
     const base_model = create_model_snapshot();
     const render_dialog = async (custom_enabled: boolean): Promise<void> => {
@@ -130,7 +130,7 @@ describe("ModelAdvancedSettingsDialog", () => {
     container = document.createElement("div");
     document.body.append(container);
     root = createRoot(container);
-    const on_patch = vi.fn(async () => {});
+    const on_patch = vi.fn(async () => true);
     const on_agent_limits_adjusted = vi.fn();
     await act(async () => {
       root?.render(
