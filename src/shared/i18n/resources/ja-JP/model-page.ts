@@ -88,7 +88,7 @@ export const ja_jp_model_page = {
     },
     api_url: {
       title: "API アドレス",
-      description: "API アドレスを入力してください。末尾に /v1 が必要か確認してください",
+      description: "下の URL が正しいか、/v1 の不足や余分な追加などがないか、よく確認してください",
       placeholder: "API アドレスを入力 …",
     },
     api_key: {

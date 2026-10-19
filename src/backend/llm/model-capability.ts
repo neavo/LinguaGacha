@@ -22,7 +22,7 @@ import {
   type ModelAgentConfig,
   type ModelAgentLimits,
 } from "../../domain/model-agent";
-import { normalize_pi_api_url } from "./llm-request";
+import { resolve_model_base_url } from "../../domain/model-endpoint";
 import {
   MODEL_CAPABILITY_OVERRIDES,
   type ModelCapabilityOverride,
@@ -406,6 +406,6 @@ function resolve_agent_limits(
 
 /** 与请求共用 API 根地址规则，URL 标准化处理主机大小写和默认端口，路径仍参与匹配。 */
 function normalize_catalog_endpoint(url: string, api_format: ModelApiFormat): string | null {
-  const parsed = URL.parse(normalize_pi_api_url(url, api_format));
+  const parsed = URL.parse(resolve_model_base_url(url, api_format));
   return parsed === null ? null : parsed.href.replace(/\/+$/u, "");
 }

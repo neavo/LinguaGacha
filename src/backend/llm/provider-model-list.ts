@@ -1,16 +1,12 @@
 import { read_json_record, type JsonRecord, type JsonValue } from "../../domain/json";
 import { Model } from "../../domain/model";
 import { CHATGPT_BASE_URL } from "../../domain/model";
+import { resolve_model_base_url } from "../../domain/model-endpoint";
 import type { AvailableModel } from "../../shared/model-catalog";
 import { create_provider_error, read_provider_response_error } from "../network/provider-error";
 import type { ChatGPTAuthService } from "../auth/chatgpt-auth-service";
 import * as AppErrors from "../../shared/error";
-import {
-  get_primary_api_key,
-  normalize_google_api_base_url,
-  normalize_openai_sdk_base_url,
-  read_model_request_snapshot,
-} from "./llm-request";
+import { get_primary_api_key, read_model_request_snapshot } from "./llm-request";
 
 // 模型列表探测沿用浏览器 UA，减少部分服务商对 Node 默认 UA 的拒绝概率。
 const BROWSER_USER_AGENT =
@@ -58,13 +54,14 @@ export async function list_available_models(
       });
     }
     const api_format = Model.normalize_api_format(String(model["api_format"] ?? "OpenAI"));
+    const base_url = resolve_model_base_url(String(model["api_url"] ?? ""), api_format);
     let models: string[];
     if (api_format === "Google") {
-      models = await fetch_google_available_models(model);
+      models = await fetch_google_available_models(model, base_url);
     } else if (api_format === "Anthropic") {
-      models = await fetch_anthropic_available_models(model);
+      models = await fetch_anthropic_available_models(model, base_url);
     } else {
-      models = await fetch_openai_available_models(model);
+      models = await fetch_openai_available_models(model, base_url);
     }
     return models.sort().map((id) => ({ id, name: id }));
   } catch (error) {
@@ -77,9 +74,11 @@ export async function list_available_models(
 /**
  * OpenAI 两种 wire 格式与 Sakura 都复用 `/models` 列表语义。
  */
-async function fetch_openai_available_models(model: JsonRecord): Promise<string[]> {
-  const api_url = normalize_openai_sdk_base_url(String(model["api_url"] ?? ""));
-  const data = await fetch_json(`${api_url}/models`, {
+async function fetch_openai_available_models(
+  model: JsonRecord,
+  base_url: string,
+): Promise<string[]> {
+  const data = await fetch_json(`${base_url}/models`, {
     Authorization: `Bearer ${get_primary_api_key(String(model["api_key"] ?? ""))}`,
     ...build_browser_headers(model),
   });
@@ -89,8 +88,10 @@ async function fetch_openai_available_models(model: JsonRecord): Promise<string[
 /**
  * Google models.list 按 nextPageToken 拉取所有页。
  */
-async function fetch_google_available_models(model: JsonRecord): Promise<string[]> {
-  const api_url = normalize_google_api_base_url(String(model["api_url"] ?? ""));
+async function fetch_google_available_models(
+  model: JsonRecord,
+  base_url: string,
+): Promise<string[]> {
   const headers = {
     "x-goog-api-key": get_primary_api_key(String(model["api_key"] ?? "")),
     ...build_browser_headers(model),
@@ -98,7 +99,7 @@ async function fetch_google_available_models(model: JsonRecord): Promise<string[
   const models: string[] = [];
   let page_token: string | undefined;
   do {
-    const url = new URL(`${api_url}/models`);
+    const url = new URL(`${base_url}/models`);
     url.searchParams.set("pageSize", String(GOOGLE_MODEL_LIST_PAGE_SIZE));
     if (page_token !== undefined) {
       url.searchParams.set("pageToken", page_token);
@@ -115,11 +116,10 @@ async function fetch_google_available_models(model: JsonRecord): Promise<string[
 /**
  * Anthropic models.list 使用 `/v1/models` 与 x-api-key header。
  */
-async function fetch_anthropic_available_models(model: JsonRecord): Promise<string[]> {
-  const api_url = String(model["api_url"] ?? "")
-    .trim()
-    .replace(/\/+$/u, "");
-  const base_url = api_url === "" ? "https://api.anthropic.com" : api_url;
+async function fetch_anthropic_available_models(
+  model: JsonRecord,
+  base_url: string,
+): Promise<string[]> {
   const data = await fetch_json(`${base_url}/v1/models`, {
     "anthropic-version": "2023-06-01",
     "x-api-key": get_primary_api_key(String(model["api_key"] ?? "")),

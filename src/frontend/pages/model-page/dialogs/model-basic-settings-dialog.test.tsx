@@ -21,6 +21,31 @@ describe("ModelBasicSettingsDialog", () => {
     vi.useRealTimers();
   });
 
+  it("接口地址描述显示按协议和模型 ID 生成的实际请求地址", async () => {
+    container = document.createElement("div");
+    document.body.append(container);
+    root = createRoot(container);
+
+    await act(async () => {
+      root?.render(
+        <ModelBasicSettingsDialog
+          open
+          model={create_model_snapshot({ api_format: "Google", model_id: "gemini-test" })}
+          readonly={false}
+          test_disabled={false}
+          onPatch={async () => {}}
+          onRequestOpenSelector={() => {}}
+          onRequestTestModel={() => {}}
+          onClose={() => {}}
+        />,
+      );
+    });
+
+    expect(document.querySelector(".model-page__request-url")?.textContent).toBe(
+      "https://api.example.test/v1beta/models/gemini-test:streamGenerateContent?alt=sse",
+    );
+  });
+
   it("打开的模型 ID 输入器在本地提交期间保持可选择且拒绝 Enter 提交", async () => {
     container = document.createElement("div");
     document.body.append(container);

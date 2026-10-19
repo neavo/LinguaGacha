@@ -89,7 +89,7 @@ export const en_us_model_page = {
     },
     api_url: {
       title: "API URL",
-      description: "Enter API URL and check whether /v1 should be included at the end",
+      description: "Check the URL below carefully for errors, such as a missing or extra /v1",
       placeholder: "Please enter API URL …",
     },
     api_key: {

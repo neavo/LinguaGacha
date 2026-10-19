@@ -4,7 +4,6 @@ import type { JsonRecord } from "../../domain/json";
 import {
   collect_api_keys,
   get_primary_api_key,
-  normalize_pi_api_url,
   read_model_request_snapshot,
   read_request_timeout_ms,
   resolve_one_shot_generation_options,
@@ -65,24 +64,6 @@ describe("LLM 请求策略", () => {
       speed_level: "FAST",
     });
     expect(snapshot).not.toHaveProperty("provider");
-  });
-
-  it("按 Pi adapter 契约归一请求 URL", () => {
-    expect(normalize_pi_api_url("https://google.example", "Google")).toBe(
-      "https://google.example/v1beta",
-    );
-    expect(normalize_pi_api_url("https://api.example/v1/chat/completions", "OpenAI")).toBe(
-      "https://api.example/v1",
-    );
-    expect(normalize_pi_api_url("https://api.example/v1/responses/", "OpenAIResponses")).toBe(
-      "https://api.example/v1",
-    );
-    expect(normalize_pi_api_url("https://sakura.example/v1/chat/completions/", "SakuraLLM")).toBe(
-      "https://sakura.example/v1",
-    );
-    expect(normalize_pi_api_url("https://api.anthropic.com/", "Anthropic")).toBe(
-      "https://api.anthropic.com",
-    );
   });
 
   it("关闭的扩展配置不进入请求策略", () => {
@@ -152,12 +133,6 @@ describe("LLM 请求策略", () => {
         "user-agent": "Custom/1",
       }),
     ).toEqual({ "User-Agent": "Custom/1", "x-opencode-session": "manual-session" });
-  });
-
-  it.each(["v1", "v1beta", "v1alpha"])("Google 保留显式 API 版本 %s", (version) => {
-    expect(normalize_pi_api_url(`https://proxy.example/google/${version}/`, "Google")).toBe(
-      `https://proxy.example/google/${version}`,
-    );
   });
 
   it.each([true, false])("OpenAI 按启用状态 %s 通过正式选项传递 top_p", (enabled) => {

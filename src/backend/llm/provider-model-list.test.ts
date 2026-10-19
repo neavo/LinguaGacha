@@ -119,7 +119,7 @@ describe("provider-model-list", () => {
     });
   });
 
-  it("Anthropic 模型列表排序并使用默认地址和供应商请求头", async () => {
+  it("Anthropic 模型列表排序并使用归一后的根地址和供应商请求头", async () => {
     const fetch_mock = vi.fn(async () =>
       Response.json({ data: [{ id: "claude-z" }, { id: "claude-a" }] }),
     );
@@ -128,11 +128,11 @@ describe("provider-model-list", () => {
       list_available_models({
         api_format: "Anthropic",
         api_key: "anthropic-key",
-        api_url: "",
+        api_url: "https://proxy.example/v1",
       }),
     ).resolves.toEqual(["claude-a", "claude-z"].map((id) => ({ id, name: id })));
 
-    expect(fetch_mock).toHaveBeenCalledWith("https://api.anthropic.com/v1/models", {
+    expect(fetch_mock).toHaveBeenCalledWith("https://proxy.example/v1/models", {
       headers: expect.objectContaining({
         "User-Agent": expect.stringContaining("Chrome/133"),
         "anthropic-version": "2023-06-01",
