@@ -28,23 +28,27 @@
 - 用語集をワンクリックで生成し、キャラクター名などの専門用語の訳語を作品全体で統一
 - 最高の翻訳品質と最速の翻訳速度、10秒で字幕1本、1分で小説1冊、5分でゲーム1本
 - 同種のアプリケーションの中で最強のスタイルとコード保持能力、後工程の作業量を大幅に削減、字幕埋め込み（内嵌字幕）作成に最適
-  - `.md` `.ass` `.epub` 形式はほぼすべての元のスタイルを保持可能
-  - 大部分の `WOLF`、`RenPy`、`RPGMaker`、`Kirikiri` エンジンゲームは手作業なしで、即翻訳即プレイ可能
+  - `字幕`、`電子書籍` は元のスタイルをすべて保持可能
+  - `RenPy`、`RPGMaker`、`WOLF RPG`、`Kirikiri` エンジンゲームは専門知識不要で、即翻訳即プレイ可能
 
 ## ワークフロー 🛸
 - [リリースページ](https://github.com/neavo/LinguaGacha/releases) からアプリケーションをダウンロード
   - Windows:
     - CPU の種類に応じて `*_Windows_x64.zip` または `*_Windows_arm64.zip` をダウンロード
     - 解凍して `app.exe` をダブルクリックして起動
-  - macOS:
+  - <details>
+    <summary>macOS:</summary>
     - CPU の種類に応じて `*_macOS_x64.dmg` または `*_macOS_arm64.dmg` をダウンロード
     - アプリケーションフォルダにドラッグし、まだ起動しないでください
     - ターミナルを開き、`sudo xattr -rd com.apple.quarantine /Applications/LinguaGacha.app` と入力して Enter を押してください
     - システムパスワードを入力し、ターミナルを閉じると、通常通り起動できます
-  - Linux:
+    </details>
+  - <details>
+    <summary>Linux:</summary>
     - CPU の種類に応じて `*_Linux_x64.AppImage` または `*_Linux_arm64.AppImage` をダウンロード
     - `chmod +x LinguaGacha*.AppImage` で実行権限を付与
     - `./LinguaGacha*.AppImage` を実行
+    </details>
 - 信頼できるAIモデルインターフェースを取得。おすすめ：
   - [ [DeepSeek API](https://github.com/neavo/LinguaGacha/wiki/DeepSeekEN) ] (GPU不要)
 - ソーステキストを準備：
@@ -60,39 +64,44 @@
   - `AGENT` で訳文生成をクリック
 
 ## 使い方チュートリアル - English 📝
-- Overall
+- Getting Started
   - [Basic Tutorial](https://github.com/neavo/LinguaGacha/wiki/BasicTutorialEN)　`👈👈 Step-by-step tutorial, easy to follow, a must-read for beginners`
+  - [File Format Support](https://github.com/neavo/LinguaGacha/wiki/SupportedFileFormatEN)
+- Model Setup
+  - [Model Management](https://github.com/neavo/LinguaGacha/wiki/ModelManagementEN)　　[DeepSeek](https://github.com/neavo/LinguaGacha/wiki/DeepSeekEN)
+- Feature Description
+  - [AGENT](https://github.com/neavo/LinguaGacha/wiki/AgentEN)　　[Proofreading](https://github.com/neavo/LinguaGacha/wiki/ProofreadingEN)
+  - [Glossary](https://github.com/neavo/LinguaGacha/wiki/GlossaryEN)　　[Text Preserve](https://github.com/neavo/LinguaGacha/wiki/TextPreserveEN)　　[Text Replacement](https://github.com/neavo/LinguaGacha/wiki/ReplacementEN)
+  - [MTool Optimizer](https://github.com/neavo/LinguaGacha/wiki/MToolOptimizerEN)　　[CLI Mode](https://github.com/neavo/LinguaGacha/wiki/CLIModeEN)
+- Engine Best Practices
   - [Best Practices for High-Quality Translation of RenPy Engine Games](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForRenPyEN)
   - [Best Practices for High-Quality Translation of RPGMaker Engine Games](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForRPGMakerEN)
   - [Best Practices for High-Quality Translation of WOLF RPG Engine Games](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForWOLFRPGEN)
-- Feature Description
-  - [CLI Mode](https://github.com/neavo/LinguaGacha/wiki/CLIModeEN)
-  - [Glossary](https://github.com/neavo/LinguaGacha/wiki/GlossaryEN)　　[Text Preserve](https://github.com/neavo/LinguaGacha/wiki/TextPreserveEN)　　[Text Replacement](https://github.com/neavo/LinguaGacha/wiki/ReplacementEN)
-  - [MTool Optimizer](https://github.com/neavo/LinguaGacha/wiki/MToolOptimizerEN)
-- You can find more details on each feature in the [Wiki](https://github.com/neavo/LinguaGacha/wiki), and you are welcome to share your experience in the [Discussions](https://github.com/neavo/LinguaGacha/discussions)
+- Community Notes
+  - [Machine Translation Notes for Kirikiri Engine Games Without Complex Encryption](https://github.com/neavo/LinguaGacha/discussions/181)
+- You can find more details on each feature in the [Wiki](https://github.com/neavo/LinguaGacha/wiki)
+- You are welcome to share your experience in the [Discussions](https://github.com/neavo/LinguaGacha/discussions)
 
 ## 対応フォーマット 🏷️
 - 字幕 `.srt .ass .ssa .vtt .lrc`
 - 電子書籍 `.txt .pdf .epub`
 - Markdown `.md`
 - [RenPy](https://www.renpy.org) エクスポート `.rpy`
-- [MTool](https://mtool.app) エクスポート `.json`
-- [SExtractor](https://github.com/satan53x/SExtractor) エクスポート `.txt .json`
-- [VNTextPatch](https://github.com/arcusmaximus/VNTranslationTools) エクスポート `.json`
-- `WOLF RPG 3` ゲームファイルのネイティブ対応：ゲームフォルダーまたは `.exe` をインポート
-- `RPG Maker MV/MZ` ゲームファイルのネイティブ対応：ゲームフォルダーまたは `.exe` をインポート
-- `RPG Maker XP/VX/VXAce` ゲームファイルのネイティブ対応：ゲームフォルダーまたは `.exe` をインポート
+- `KV-JSON` ゲームテキスト `.json`、出力元 [MTool](https://mtool.app) [SExtractor](https://github.com/satan53x/SExtractor)
+- `Message-JSON` ゲームテキスト `.json`、出力元 [SExtractor](https://github.com/satan53x/SExtractor) [VNTextPatch](https://github.com/arcusmaximus/VNTranslationTools)
+- `WOLF RPG 3` ゲームファイル：ゲームフォルダーまたは `.exe` をインポート
+- `RPG Maker MV/MZ` ゲームファイル：ゲームフォルダーまたは `.exe` をインポート
+- `RPG Maker XP/VX/VXAce` ゲームファイル：ゲームフォルダーまたは `.exe` をインポート
 - サポート終了予定：
-  - [Translator++](https://dreamsavior.net/translator-plusplus) プロジェクト `.trans`
-  - [SExtractor](https://github.com/satan53x/SExtractor)、[Translator++](https://dreamsavior.net/translator-plusplus)、[WOLF 公式翻訳ツール](https://silversecond.booth.pm/items/5151747) エクスポート `.xlsx`
-- 例については [Wiki - 対応フォーマット](https://github.com/neavo/LinguaGacha/wiki/SupportedFileFormatEN) を参照。フォーマットのリクエストは [ISSUES](https://github.com/neavo/LinguaGacha/issues) で提出
+  - プロジェクトファイル `.trans`、出力元 [Translator++](https://dreamsavior.net/translator-plusplus)
+  - ゲームテキスト `.xlsx`、出力元 [SExtractor](https://github.com/satan53x/SExtractor) [Translator++](https://dreamsavior.net/translator-plusplus) [WOLF 公式翻訳ツール](https://silversecond.booth.pm/items/5151747)
+- 例については [Wiki - 対応フォーマット](https://github.com/neavo/LinguaGacha/wiki/SupportedFileFormatEN) を参照。対応フォーマットは今後も追加予定
 
 ## 最近の更新 📅
-- 20261018 v0.129.0
-  - `WOLF RPG 3` のネイティブ対応を追加 [#992](../../issues/992) [#994](../../issues/994)
-  - `ツールボックス - ゲームフォント変更` ツールを追加 [#995](../../issues/995)
-  - ネイティブゲームに関する `AGENT` のワークフローを改善
-  - 修正と改善 [#990](../../issues/990)
+- 20261019 v0.129.1
+  - `Doubao` モデルの互換性の問題を修正 [#1000](../../issues/1000)
+  - `Vertex` チャネルの互換性の問題を修正 [#1002](../../issues/1002)
+  - 修正と改善 [#999](../../issues/999) [#1001](../../issues/1001)
 
 ## 開発ガイド 🛠️
 - [Go](https://go.dev) と [`Node.js`](https://nodejs.org) をインストール

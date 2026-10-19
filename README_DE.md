@@ -25,23 +25,27 @@
 - Erstellt auf Knopfdruck ein Glossar, damit Eigennamen wie Charakternamen im gesamten Werk einheitlich übersetzt werden
 - Beste Übersetzungsqualität und höchste Übersetzungsgeschwindigkeit: Untertitel in zehn Sekunden, ein Roman in einer Minute, ein Spiel in fünf Minuten
 - Führend unter vergleichbaren Anwendungen beim Erhalt von Formatierung und Code; reduziert die Nachbearbeitung erheblich und eignet sich besonders für direkt ins Spiel integrierte chinesische Lokalisierungen
-  - Die Formate `.md`, `.ass` und `.epub` behalten nahezu die gesamte ursprüngliche Formatierung bei
-  - Die meisten Spiele mit `WOLF`, `RenPy`, `RPGMaker` oder `Kirikiri` benötigen keine manuelle Nachbearbeitung: übersetzen und sofort spielen
+  - `Untertitel` und `E-Books` behalten die gesamte ursprüngliche Formatierung bei
+  - Spiele mit `RenPy`, `RPGMaker`, `WOLF RPG` oder `Kirikiri` erfordern kein Fachwissen: übersetzen und sofort spielen
 
 ## Erste Schritte 🛸
 - Laden Sie die Anwendung von der [Release-Seite](https://github.com/neavo/LinguaGacha/releases) herunter
   - Windows:
     - Laden Sie je nach CPU-Typ `*_Windows_x64.zip` oder `*_Windows_arm64.zip` herunter
     - Entpacken Sie das Archiv und starten Sie die Anwendung per Doppelklick auf `app.exe`
-  - macOS:
+  - <details>
+    <summary>macOS:</summary>
     - Laden Sie je nach CPU-Typ `*_macOS_x64.dmg` oder `*_macOS_arm64.dmg` herunter
     - Ziehen Sie die Anwendung in den Programme-Ordner, starten Sie sie aber noch nicht
     - Öffnen Sie das Terminal, geben Sie `sudo xattr -rd com.apple.quarantine /Applications/LinguaGacha.app` ein und drücken Sie die Eingabetaste
     - Geben Sie Ihr Systempasswort ein und schließen Sie das Terminal. Sie können die Anwendung jetzt normal starten
-  - Linux:
+    </details>
+  - <details>
+    <summary>Linux:</summary>
     - Laden Sie je nach CPU-Typ `*_Linux_x64.AppImage` oder `*_Linux_arm64.AppImage` herunter
     - Erteilen Sie mit `chmod +x LinguaGacha*.AppImage` die Ausführungsberechtigung
     - Führen Sie `./LinguaGacha*.AppImage` aus
+    </details>
 - Besorgen Sie sich Zugang zu einer zuverlässigen KI-Modellschnittstelle. Empfehlung:
   - [ [DeepSeek](https://github.com/neavo/LinguaGacha/wiki/DeepSeek) ], keine Grafikkarte erforderlich
 - Bereiten Sie die zu übersetzenden Texte vor
@@ -57,39 +61,44 @@
   - Klicken Sie in `AGENT` auf die Option zum Generieren der Übersetzung
 
 ## Anleitungen 📝
-- Allgemein
+- Einstieg
   - [Grundlagen-Tutorial](https://github.com/neavo/LinguaGacha/wiki/BasicTutorial)　`👈👈 Schritt für Schritt erklärt, leicht verständlich und für Einsteiger empfohlen`
+  - [Unterstützte Dateiformate](https://github.com/neavo/LinguaGacha/wiki/SupportedFileFormat)
+- Modelleinrichtung
+  - [Modellverwaltung](https://github.com/neavo/LinguaGacha/wiki/ModelManagement)　　[DeepSeek](https://github.com/neavo/LinguaGacha/wiki/DeepSeek)
+- Funktionsbeschreibungen
+  - [AGENT](https://github.com/neavo/LinguaGacha/wiki/Agent)　　[Korrekturlesen](https://github.com/neavo/LinguaGacha/wiki/Proofreading)
+  - [Glossar](https://github.com/neavo/LinguaGacha/wiki/Glossary)　　[Textschutz](https://github.com/neavo/LinguaGacha/wiki/TextPreserve)　　[Textersetzung](https://github.com/neavo/LinguaGacha/wiki/Replacement)
+  - [MTool-Optimierer](https://github.com/neavo/LinguaGacha/wiki/MToolOptimizer)　　[Befehlszeilenmodus](https://github.com/neavo/LinguaGacha/wiki/CLIMode)
+- Engine-Praxis
   - [Bewährte Vorgehensweisen für hochwertige Übersetzungen von RenPy-Spielen](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForRenPy)
   - [Bewährte Vorgehensweisen für hochwertige Übersetzungen von RPGMaker-Spielen](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForRPGMaker)
   - [Bewährte Vorgehensweisen für hochwertige Übersetzungen von WOLF-RPG-Spielen](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForWOLFRPG)
-- Funktionsbeschreibungen
-  - [Befehlszeilenmodus](https://github.com/neavo/LinguaGacha/wiki/CLIMode)
-  - [Glossar](https://github.com/neavo/LinguaGacha/wiki/Glossary)　　[Textschutz](https://github.com/neavo/LinguaGacha/wiki/TextPreserve)　　[Textersetzung](https://github.com/neavo/LinguaGacha/wiki/Replacement)
-  - [MTool-Optimierer](https://github.com/neavo/LinguaGacha/wiki/MToolOptimizer)
-- Ausführlichere Informationen zu den Funktionen finden Sie im [Wiki](https://github.com/neavo/LinguaGacha/wiki). Teilen Sie Ihre Erfahrungen gerne in den [Diskussionen](https://github.com/neavo/LinguaGacha/discussions)
+- Erfahrungen der Community
+  - [Notizen zur maschinellen Übersetzung von Kirikiri-Spielen ohne komplexe Verschlüsselung](https://github.com/neavo/LinguaGacha/discussions/181)
+- Ausführlichere Informationen zu den Funktionen finden Sie im [Wiki](https://github.com/neavo/LinguaGacha/wiki)
+- Teilen Sie Ihre Erfahrungen gerne in den [Diskussionen](https://github.com/neavo/LinguaGacha/discussions)
 
 ## Unterstützte Formate 🏷️
 - Untertitel `.srt .ass .ssa .vtt .lrc`
 - E-Books `.txt .pdf .epub`
 - Markdown `.md`
 - Mit [RenPy](https://www.renpy.org) exportierte Spieltexte `.rpy`
-- Mit [MTool](https://mtool.app) exportierte Spieltexte `.json`
-- Mit [SExtractor](https://github.com/satan53x/SExtractor) exportierte Spieltexte `.txt .json`
-- Mit [VNTextPatch](https://github.com/arcusmaximus/VNTranslationTools) exportierte Spieltexte `.json`
-- Native `WOLF RPG 3`-Spieldateien: Spielverzeichnis oder `.exe` importieren
-- Native `RPG Maker MV/MZ`-Spieldateien: Spielverzeichnis oder `.exe` importieren
-- Native `RPG Maker XP/VX/VXAce`-Spieldateien: Spielverzeichnis oder `.exe` importieren
+- `KV-JSON`-Spieltexte `.json`, Quelle: [MTool](https://mtool.app) [SExtractor](https://github.com/satan53x/SExtractor)
+- `Message-JSON`-Spieltexte `.json`, Quelle: [SExtractor](https://github.com/satan53x/SExtractor) [VNTextPatch](https://github.com/arcusmaximus/VNTranslationTools)
+- `WOLF RPG 3`-Spieldateien: Spielverzeichnis oder `.exe` importieren
+- `RPG Maker MV/MZ`-Spieldateien: Spielverzeichnis oder `.exe` importieren
+- `RPG Maker XP/VX/VXAce`-Spieldateien: Spielverzeichnis oder `.exe` importieren
 - Unterstützung endet bald:
-  - [Translator++](https://dreamsavior.net/translator-plusplus)-Projektdateien `.trans`
-  - Mit [SExtractor](https://github.com/satan53x/SExtractor), [Translator++](https://dreamsavior.net/translator-plusplus) oder dem [offiziellen WOLF-Übersetzungswerkzeug](https://silversecond.booth.pm/items/5151747) exportierte Spieltexte `.xlsx`
-- Beispiele finden Sie unter [Wiki – Unterstützte Dateiformate](https://github.com/neavo/LinguaGacha/wiki/SupportedFileFormat). Weitere Formate werden laufend ergänzt. Wünsche können Sie unter [ISSUES](https://github.com/neavo/LinguaGacha/issues) einreichen
+  - Projektdateien `.trans`, Quelle: [Translator++](https://dreamsavior.net/translator-plusplus)
+  - Spieltexte `.xlsx`, Quelle: [SExtractor](https://github.com/satan53x/SExtractor) [Translator++](https://dreamsavior.net/translator-plusplus) [offizielles WOLF-Übersetzungswerkzeug](https://silversecond.booth.pm/items/5151747)
+- Beispiele finden Sie unter [Wiki – Unterstützte Dateiformate](https://github.com/neavo/LinguaGacha/wiki/SupportedFileFormat). Weitere Formate werden laufend ergänzt
 
 ## Neueste Updates 📅
-- 20261018 v0.129.0
-  - Native Unterstützung für `WOLF RPG 3` hinzugefügt [#992](../../issues/992) [#994](../../issues/994)
-  - Werkzeug `Werkzeugkasten - Spielschrift ändern` hinzugefügt [#995](../../issues/995)
-  - `AGENT`-Abläufe für native Spiele verbessert
-  - Fehlerbehebungen und Verbesserungen [#990](../../issues/990)
+- 20261019 v0.129.1
+  - Kompatibilitätsprobleme mit `Doubao`-Modellen behoben [#1000](../../issues/1000)
+  - Kompatibilitätsprobleme mit dem `Vertex`-Kanal behoben [#1002](../../issues/1002)
+  - Fehlerbehebungen und Verbesserungen [#999](../../issues/999) [#1001](../../issues/1001)
 
 ## Entwicklung 🛠️
 - Installieren Sie [Go](https://go.dev) und [`Node.js`](https://nodejs.org)
