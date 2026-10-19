@@ -41,6 +41,7 @@ import * as AppErrors from "../../shared/error";
 import { default_native_fs } from "../../native/native-fs";
 import type { RuntimeOperationGate } from "../runtime-operation-gate";
 import type { ModelSelectionSnapshot } from "../../shared/model-selection";
+import { resolve_model_endpoint } from "../../domain/model-endpoint";
 
 // 模型页只允许写入这些配置字段，防止表单 patch 污染持久化模型对象
 const PATCH_ALLOWED_KEYS = new Set([
@@ -359,12 +360,31 @@ export class ModelService {
   }
 
   /**
-   * 查询远端实时模型列表；任务级 Key 轮换不参与模型列表探测。
+   * Vertex 生成权限不能证明目录权限，因此 API Key 使用已有目录候选。
    */
   public async list_available_models(request: JsonRecord): Promise<JsonRecord> {
     const { config } = this.load_setting_with_models(false);
     const model = this.get_model_from_request(config, request);
-    const models = await list_available_models(model, this.auth);
+    const endpoint = resolve_model_endpoint(
+      String(model["api_url"] ?? ""),
+      Model.normalize_api_format(model["api_format"]),
+      String(model["model_id"] ?? ""),
+    );
+    const models =
+      endpoint.api === "google-vertex"
+        ? [
+            ...new Map(
+              this.catalog
+                .read_models()
+                .filter(
+                  (entry) =>
+                    entry.api === "google-vertex" &&
+                    (entry.input === undefined || entry.input.includes("text")),
+                )
+                .map((entry) => [entry.id, { id: entry.id, name: entry.name ?? entry.id }]),
+            ).values(),
+          ].sort((left, right) => left.id.localeCompare(right.id))
+        : await list_available_models(model, endpoint.base_url, this.auth);
     return { models: models as unknown as JsonValue };
   }
 

@@ -63,6 +63,54 @@ function response(provider: "alpha" | "beta", changes: Record<string, unknown> =
 }
 
 describe("PiModelCatalog", () => {
+  it("Vertex 目录保留显示名，输入类型变化会触发更新", async () => {
+    const { catalog, paths, warning } = await create_catalog();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) =>
+        url.endsWith("/alpha")
+          ? response("alpha", {
+              api: "google-vertex",
+              name: "Vertex fixture",
+              input: ["text", "image"],
+            })
+          : new Response(null, { status: 304 }),
+      ),
+    );
+    const apply = vi.fn();
+    await catalog.check(async (_models, commit) => {
+      apply();
+      commit();
+    });
+    expect(apply).toHaveBeenCalledOnce();
+    expect(
+      new PiModelCatalog(paths, { warning })
+        .read_models()
+        .find((model) => model.provider === "alpha"),
+    ).toMatchObject({ name: "Vertex fixture", input: ["text", "image"] });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        if (!url.endsWith("/alpha")) return new Response(null, { status: 304 });
+        const updated = response("alpha", {
+          api: "google-vertex",
+          name: "Vertex fixture",
+          input: ["image"],
+        });
+        updated.headers.set("Last-Modified", "Tue, 02 Jun 2026 00:00:00 GMT");
+        return updated;
+      }),
+    );
+    await catalog.check(async (_models, commit) => {
+      apply();
+      commit();
+    });
+    expect(apply).toHaveBeenCalledTimes(2);
+    expect(catalog.read_models().find((model) => model.provider === "alpha")).toMatchObject({
+      name: "Vertex fixture",
+      input: ["image"],
+    });
+  });
   it("公开 Schema 校验保留缺省语义和未知字段，缓存重开仍保留原值", async () => {
     const { catalog, paths, warning } = await create_catalog();
     const compat = {

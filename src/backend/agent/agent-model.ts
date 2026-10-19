@@ -74,7 +74,7 @@ export function register_agent_model(
   // 供应商身份随当前 SDK 分支取得，模型注册快照只提供固定请求头。
   const request_headers = (sessionId: string | undefined) =>
     build_request_headers(
-      snapshot.base_url,
+      snapshot.endpoint.base_url,
       { user_agent: identity.user_agent, session_id: sessionId },
       snapshot.headers,
     );
@@ -186,7 +186,7 @@ export function register_agent_model(
       }),
     );
   }
-  const model = models.getModel(pi.model.provider, snapshot.model_id) as PiModel<PiApi> | undefined;
+  const model = models.getModel(pi.model.provider, pi.model.id) as PiModel<PiApi> | undefined;
   if (model === undefined) {
     throw new AppErrors.AppError("runtime.internal_invariant", {
       diagnostic_context: {

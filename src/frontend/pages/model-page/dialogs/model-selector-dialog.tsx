@@ -14,6 +14,7 @@ type ModelSelectorDialogProps = {
   open: boolean;
   model: ModelEntrySnapshot | null;
   available_models: AvailableModel[];
+  readonly: boolean;
   filter_text: string;
   is_loading: boolean;
   onFilterTextChange: (next_text: string) => void;
@@ -72,6 +73,7 @@ export function ModelSelectorDialog(props: ModelSelectorDialogProps): JSX.Elemen
       size="md"
       onClose={onClose}
       bodyClassName="overflow-hidden p-0"
+      footer={null}
     >
       <div className="model-page__dialog-scroll">
         <div className="model-page__selector-body">
@@ -103,6 +105,7 @@ export function ModelSelectorDialog(props: ModelSelectorDialogProps): JSX.Elemen
                     variant="outline"
                     size="sm"
                     className="model-page__selector-item"
+                    disabled={props.readonly}
                     onClick={() => {
                       void onSelectModelId(model_name.id);
                     }}

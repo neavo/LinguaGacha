@@ -2,7 +2,7 @@ import { push_error_toast, push_toast } from "@frontend/app/feedback/desktop-toa
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { api_fetch } from "@frontend/app/desktop/desktop-api";
-import type { AvailableModel } from "@shared/model-catalog";
+import type { ModelListResult } from "@shared/model-catalog";
 import type { ChatGPTAuthSnapshot } from "@shared/model-auth";
 import { apply_model_auth_snapshot } from "@frontend/app/state/model-auth-store";
 import { useRuntimeSnapshot } from "@frontend/app/state/use-desktop-state";
@@ -41,10 +41,6 @@ type ModelPageSnapshotPayload = {
 
 type ModelCopyPayload = ModelPageSnapshotPayload & {
   copied_model_id: string; // 服务端本次创建的副本，属于同一回包快照。
-};
-
-type ModelListPayload = {
-  models?: AvailableModel[];
 };
 
 type ModelTestPayload = Partial<ModelTestResult>;
@@ -443,6 +439,7 @@ export function useModelPageState(): UseModelPageStateResult {
   const [confirm_state, set_confirm_state] = useState<ModelConfirmState>(close_confirm_state());
   const [selector_state, set_selector_state] =
     useState<ModelSelectorState>(create_selector_state());
+  const selector_request_ref = useRef(0); // 关闭或重开后丢弃旧查询结果。
   const snapshot_ref = useRef<ModelPageSnapshot>(snapshot);
   const patch_request_seed_ref = useRef(0);
   const latest_patch_request_id_by_model_ref = useRef<Record<string, number>>({});
@@ -761,26 +758,14 @@ export function useModelPageState(): UseModelPageStateResult {
 
   /** 打开当前接入点的模型列表选择器。 */
   function open_selector_dialog(model_id: string): void {
-    set_selector_state((previous_state) => {
-      return {
-        ...previous_state,
-        open: true,
-        model_id,
-        filter_text: "",
-      };
-    });
+    selector_request_ref.current += 1;
+    set_selector_state({ ...create_selector_state(), open: true, model_id });
   }
 
   /** 关闭选择器并释放当前筛选状态。 */
   function close_selector_dialog(): void {
-    set_selector_state((previous_state) => {
-      return {
-        ...previous_state,
-        open: false,
-        model_id: null,
-        filter_text: "",
-      };
-    });
+    selector_request_ref.current += 1;
+    set_selector_state(create_selector_state());
   }
 
   /** 模型列表筛选保持在选择器本地。 */
@@ -796,19 +781,22 @@ export function useModelPageState(): UseModelPageStateResult {
   /** 从当前接口读取可选择的模型标识。 */
   const load_available_models = useCallback(
     async (model_id: string): Promise<void> => {
+      const request_id = ++selector_request_ref.current;
       set_selector_state((previous_state) => {
         return {
           ...previous_state,
           open: true,
           model_id,
           is_loading: true,
+          available_models: [],
         };
       });
 
       try {
-        const payload = await api_fetch<ModelListPayload>("/api/models/list-available", {
+        const payload = await api_fetch<ModelListResult>("/api/models/list-available", {
           model_id,
         });
+        if (request_id !== selector_request_ref.current) return;
         set_selector_state((previous_state) => {
           return {
             ...previous_state,
@@ -818,6 +806,7 @@ export function useModelPageState(): UseModelPageStateResult {
           };
         });
       } catch (error) {
+        if (request_id !== selector_request_ref.current) return;
         set_selector_state((previous_state) => {
           return {
             ...previous_state,

@@ -14,6 +14,56 @@ const TEST_USER_AGENT = "LinguaGacha/v1.2.3 (https://github.com/neavo/LinguaGach
 const TEST_REQUEST_IDENTITY = { user_agent: TEST_USER_AGENT, session_id: "test-session" };
 
 describe("LLM 请求策略", () => {
+  it.each(["", "no_key_required", "first\nno_key_required", "gcp-vertex-credentials", "<API_KEY>"])(
+    "Vertex 拒绝可能进入 ADC 的凭据 %s",
+    (api_key) => {
+      expect(() =>
+        read_model_request_snapshot(
+          create_model({
+            api_format: "Google",
+            api_url: "https://aiplatform.googleapis.com/v1",
+            model_id: "gemini-test",
+            api_key,
+          }),
+          TEST_REQUEST_IDENTITY,
+        ),
+      ).toThrow("Vertex requires an API Key");
+    },
+  );
+
+  it("Vertex 冻结请求资源并保留配置身份与多 Key", () => {
+    const snapshot = read_model_request_snapshot(
+      create_model({
+        api_format: "Google",
+        api_url:
+          "https://us-central1-aiplatform.googleapis.com/v1/projects/demo/locations/us-central1",
+        model_id: "gemini-test",
+        api_key: "one\ntwo",
+      }),
+      TEST_REQUEST_IDENTITY,
+    );
+    expect(snapshot).toMatchObject({
+      model_id: "gemini-test",
+      api_keys: ["one", "two"],
+      endpoint: {
+        api: "google-vertex",
+        base_url:
+          "https://us-central1-aiplatform.googleapis.com/v1/projects/demo/locations/us-central1",
+        model_id: "gemini-test",
+      },
+    });
+    expect(() =>
+      read_model_request_snapshot(
+        create_model({
+          api_format: "Google",
+          api_url: "https://aiplatform.googleapis.com/v1/projects/demo/locations/global",
+          model_id: "projects/other/locations/global/publishers/google/models/gemini-test",
+          api_key: "key",
+        }),
+        TEST_REQUEST_IDENTITY,
+      ),
+    ).toThrow("different projects or locations");
+  });
   it("OAuth 地址及大小写混合认证头不能由配置改写", () => {
     const identity = { user_agent: "test", session_id: "run" };
     const model = {
@@ -55,7 +105,7 @@ describe("LLM 请求策略", () => {
     expect(snapshot).toMatchObject({
       api_format: "OpenAI",
       api_keys: ["key-1", "key-2"],
-      base_url: "https://example.com/v1",
+      endpoint: { base_url: "https://example.com/v1", api: "OpenAI", error: null },
       model_id: "gpt-5-mini",
       headers: { "User-Agent": TEST_USER_AGENT, "x-test": "yes" },
       extra_body: { custom: true },

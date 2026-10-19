@@ -27,6 +27,49 @@ const TEST_USER_AGENT = "LinguaGacha/Test";
 const TEST_REQUEST_IDENTITY = { user_agent: TEST_USER_AGENT };
 
 describe("Agent 批量翻译模型", () => {
+  it("Vertex 资源可注册并由 Agent 的真实适配器发送", async () => {
+    const runtime = createModels();
+    const resolved = register_agent_model(
+      runtime,
+      build_config("Google", {
+        api_url: "https://aiplatform.googleapis.com/v1/projects/demo/locations/global",
+        model_id: "gemini-fixture",
+        api_key: "first-key\nsecond-key",
+      }),
+      TEST_REQUEST_IDENTITY,
+      { read_models: () => [] },
+    );
+    const resource = "projects/demo/locations/global/publishers/google/models/gemini-fixture";
+    expect(resolved.model).toMatchObject({
+      id: "gemini-fixture",
+      api: "google-vertex",
+      baseUrl: "https://aiplatform.googleapis.com/v1/projects/demo/locations/global",
+    });
+    expect(resolved.model_config.model_id).toBe("gemini-fixture");
+    const original_fetch = globalThis.fetch;
+    const process_fetch = vi.fn<typeof fetch>(async () =>
+      Response.json({ error: { message: "fixture unavailable" } }, { status: 403 }),
+    );
+    globalThis.fetch = process_fetch;
+    try {
+      const result = await runtime
+        .streamSimple(
+          resolved.model,
+          { messages: [{ role: "user", content: "ping", timestamp: 0 }] },
+          { maxRetries: 0 },
+        )
+        .result();
+      expect(result.stopReason).toBe("error");
+      expect(result.errorMessage).toContain("fixture unavailable");
+      const request = new Request(...process_fetch.mock.calls[0]!);
+      expect(request.url).toBe(
+        `https://aiplatform.googleapis.com/v1/${resource}:streamGenerateContent?alt=sse`,
+      );
+      expect(request.headers.get("x-goog-api-key")).toBe("first-key");
+    } finally {
+      globalThis.fetch = original_fetch;
+    }
+  });
   const catalog_model = (off: boolean): PiCatalogModel => ({
     id: "fixture-model",
     api: "openai-responses",
