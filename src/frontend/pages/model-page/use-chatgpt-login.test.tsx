@@ -43,10 +43,10 @@ function LoginPage(): JSX.Element {
   );
 }
 
-/** 按用户可见名称定位动作，缺失时给出明确错误。 */
+/** 按用户可见名称定位动作，允许按钮同时展示快捷键提示，缺失时给出明确错误。 */
 function button(label: string): HTMLButtonElement {
-  const result = [...document.querySelectorAll("button")].find(
-    (item) => item.textContent === label,
+  const result = [...document.querySelectorAll("button")].find((item) =>
+    item.textContent?.startsWith(label),
   );
   if (!result) throw new Error(`Missing button: ${label}`);
   return result;

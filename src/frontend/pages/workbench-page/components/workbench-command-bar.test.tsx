@@ -117,9 +117,28 @@ describe("WorkbenchCommandBar", () => {
   it("删除按钮只消费上游删除权限", async () => {
     const props = create_workbench_command_bar_props();
     props.can_delete_selected_files = false;
+    props.can_edit_files = false;
+    props.on_add_file = vi.fn();
+    props.on_delete_selected = vi.fn();
     await render_command_bar(props);
 
     expect(find_button("app.action.delete").disabled).toBe(true);
+    expect(find_button("app.action.delete").getAttribute("aria-keyshortcuts")).toBe("Delete");
+    expect(find_button("app.action.delete").querySelector("kbd")?.textContent).toBe("Del");
+    expect(find_button("workbench_page.action.add_file").getAttribute("aria-keyshortcuts")).toBe(
+      "Control+N",
+    );
+    expect(find_button("workbench_page.action.add_file").querySelector("kbd")?.textContent).toBe(
+      "Ctrl+N",
+    );
+    await act(async () => {
+      find_button("app.action.delete").click();
+      find_button("workbench_page.action.add_file").click();
+      window.dispatchEvent(new KeyboardEvent("keydown", { key: "Delete" }));
+      window.dispatchEvent(new KeyboardEvent("keydown", { key: "n", ctrlKey: true }));
+    });
+    expect(props.on_add_file).not.toHaveBeenCalled();
+    expect(props.on_delete_selected).not.toHaveBeenCalled();
   });
 
   it("翻译按钮调用任务启动入口", async () => {

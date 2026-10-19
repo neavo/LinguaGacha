@@ -113,7 +113,7 @@ describe("技能页面", () => {
     /** 通过弹窗中的可见动作文字查找按钮。 */
     const action = (text: string) =>
       [...document.querySelectorAll<HTMLButtonElement>('[role="alertdialog"] button')].find(
-        (button) => button.textContent === text,
+        (button) => button.textContent?.startsWith(text),
       )!;
     await act(async () => action("取消").click());
     expect(mocks.navigate_to_agent).not.toHaveBeenCalled();

@@ -28,7 +28,7 @@ export function useActionShortcut(options: UseActionShortcutOptions): void {
     const handle_keydown = (event: KeyboardEvent): void => {
       if (
         is_action_shortcut_event(event, options.action) &&
-        !should_ignore_action_shortcut_event(event, options.action, options.allow_in_text_editing)
+        !should_ignore_action_shortcut_event(event, options.allow_in_text_editing)
       ) {
         event.preventDefault();
         handle_action_shortcut();

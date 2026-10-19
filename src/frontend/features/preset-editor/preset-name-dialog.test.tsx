@@ -1,24 +1,10 @@
-import { type ReactNode, act } from "react";
+import { act } from "react";
 
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@frontend/app/locale/locale-context", () => ({
   useI18n: () => ({ t: (key: string) => key }),
-}));
-
-vi.mock("@frontend/widgets/interactions/use-action-shortcut", () => ({
-  useActionShortcut: () => {},
-}));
-
-vi.mock("@frontend/widgets/app-page-dialog", () => ({
-  AppPageDialog: (props: { children: ReactNode; footer: ReactNode; title: string }) => (
-    <section>
-      <h1>{props.title}</h1>
-      {props.children}
-      {props.footer}
-    </section>
-  ),
 }));
 
 import { PresetNameDialog } from "./preset-name-dialog";
@@ -36,7 +22,7 @@ describe("PresetNameDialog", () => {
     root = null;
   });
 
-  it("编辑名称并用 Enter 或保存按钮提交", async () => {
+  it("编辑名称后用 Enter 提交，提交期间阻止重复操作", async () => {
     const on_change = vi.fn();
     const on_submit = vi.fn();
     container = document.createElement("div");
@@ -59,7 +45,7 @@ describe("PresetNameDialog", () => {
       );
     });
 
-    const input = container.querySelector("input");
+    const input = document.querySelector("input");
     if (!(input instanceof HTMLInputElement)) {
       throw new Error("缺少预设名称输入框。");
     }
@@ -71,12 +57,29 @@ describe("PresetNameDialog", () => {
       value_setter?.call(input, "新预设");
       input.dispatchEvent(new Event("input", { bubbles: true }));
       input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
-      [...container!.querySelectorAll("button")]
-        .find((button) => button.textContent?.includes("app.action.save"))
-        ?.click();
     });
 
     expect(on_change).toHaveBeenCalledWith("新预设");
-    expect(on_submit).toHaveBeenCalledTimes(2);
+    expect(on_submit).toHaveBeenCalledOnce();
+    await act(async () => {
+      root?.render(
+        <PresetNameDialog
+          state={{
+            open: true,
+            mode: "save",
+            value: "新预设",
+            submitting: true,
+            target_virtual_id: null,
+          }}
+          on_change={on_change}
+          on_submit={on_submit}
+          on_close={() => {}}
+        />,
+      );
+    });
+    await act(async () => {
+      input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+    });
+    expect(on_submit).toHaveBeenCalledOnce();
   });
 });

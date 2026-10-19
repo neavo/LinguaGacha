@@ -16,12 +16,6 @@ vi.mock("@frontend/app/locale/locale-context", () => {
   };
 });
 
-vi.mock("@frontend/widgets/interactions/use-action-shortcut", () => {
-  return {
-    useActionShortcut: shortcut,
-  };
-});
-
 vi.mock("@frontend/widgets/app-editor/app-editor", () => {
   return {
     AppEditor: (props: {
@@ -59,34 +53,6 @@ vi.mock("@frontend/widgets/app-editor/app-editor", () => {
               {props.value.slice(mark.start, mark.end)}
             </span>
           ))}
-        </div>
-      );
-    },
-  };
-});
-
-vi.mock("@frontend/widgets/app-page-dialog", () => {
-  return {
-    AppPageDialog: (props: {
-      open: boolean;
-      title: string;
-      children: ReactNode;
-      footer?: ReactNode;
-      dismissBehavior?: "default" | "escape-only" | "blocked";
-      onClose: () => void;
-    }) => {
-      if (!props.open) {
-        return null;
-      }
-
-      return (
-        <div data-dismiss-behavior={props.dismissBehavior}>
-          <h1>{props.title}</h1>
-          <main>{props.children}</main>
-          <footer>{props.footer}</footer>
-          <button type="button" data-dialog-close-probe onClick={props.onClose}>
-            dialog-close-probe
-          </button>
         </div>
       );
     },
@@ -178,8 +144,6 @@ function get_name_textboxes(
   return [source, translation];
 }
 
-const shortcut = vi.hoisted(() => vi.fn());
-
 describe("ProofreadingEditDialog", () => {
   let container: HTMLDivElement | null = null;
   let root: Root | null = null;
@@ -205,8 +169,6 @@ describe("ProofreadingEditDialog", () => {
       document.body.append(container);
       root = createRoot(container);
     }
-    const rendered = container;
-
     await act(async () => {
       root?.render(
         <ProofreadingEditDialog
@@ -226,10 +188,10 @@ describe("ProofreadingEditDialog", () => {
         />,
       );
     });
-    return rendered;
+    return document.querySelector<HTMLDivElement>('[role="dialog"]')!;
   }
 
-  it("正文或姓名有差异时启用保存，恢复原值时按钮与快捷键均禁用", async () => {
+  it("正文或姓名有差异时启用保存，恢复原值时禁用", async () => {
     const on_save = vi.fn(async () => {});
     const rendered = await render_dialog({ on_save });
     const save = (): HTMLButtonElement =>
@@ -237,18 +199,15 @@ describe("ProofreadingEditDialog", () => {
         button.textContent?.includes("app.action.save"),
       )!;
     expect(save().disabled).toBe(true);
-    expect(shortcut.mock.lastCall?.[0].enabled).toBe(false);
     for (const draft_item of [
       { dst: "修改正文", name_dst: "" },
       { dst: "Magic 和美1优", name_dst: "修改姓名" },
     ]) {
       await render_dialog({ state: create_dialog_state({ draft_item }), on_save });
       expect(save().disabled).toBe(false);
-      expect(shortcut.mock.lastCall?.[0].enabled).toBe(true);
     }
     await render_dialog({ on_save });
     expect(save().disabled).toBe(true);
-    expect(shortcut.mock.lastCall?.[0].enabled).toBe(false);
     save().click();
     expect(on_save).not.toHaveBeenCalled();
   });
@@ -544,13 +503,18 @@ describe("ProofreadingEditDialog", () => {
     expect(rendered.textContent).toContain("proofreading_page.glossary.applied");
   });
 
-  it("编辑态按关闭策略处理，保存中阻止关闭", async () => {
-    const rendered = await render_dialog();
-
-    expect(rendered.querySelector("[data-dismiss-behavior='escape-only']")).not.toBeNull();
-
-    await render_dialog({ state: create_dialog_state({ pending: true }) });
-    expect(rendered.querySelector("[data-dismiss-behavior='blocked']")).not.toBeNull();
+  it("保存中阻止关闭，完成后恢复 Escape 关闭", async () => {
+    const on_close = vi.fn();
+    await render_dialog({ state: create_dialog_state({ pending: true }), on_close });
+    act(() => {
+      document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+    });
+    expect(on_close).not.toHaveBeenCalled();
+    await render_dialog({ on_close });
+    act(() => {
+      document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+    });
+    expect(on_close).toHaveBeenCalledOnce();
   });
 
   it.each(["context", "raw-data"] as const)(
@@ -593,8 +557,11 @@ describe("ProofreadingEditDialog", () => {
       expect(
         rendered.querySelector(".proofreading-page__dialog-form")?.hasAttribute("hidden"),
       ).toBe(true);
-      const back = [...rendered.querySelectorAll<HTMLButtonElement>("footer button")].find(
-        (button) => button.textContent?.includes("proofreading_page.action.back"),
+      expect(document.activeElement).toBe(
+        rendered.querySelector(".proofreading-page__dialog-scroll"),
+      );
+      const back = [...rendered.querySelectorAll<HTMLButtonElement>("button")].find((button) =>
+        button.textContent?.includes("proofreading_page.action.back"),
       )!;
       act(() => back.click());
       expect(on_return_to_edit).toHaveBeenCalledOnce();
@@ -611,7 +578,9 @@ describe("ProofreadingEditDialog", () => {
         on_close,
       });
       expect(rendered.querySelector("[role='status']")).not.toBeNull();
-      act(() => rendered.querySelector<HTMLButtonElement>("[data-dialog-close-probe]")?.click());
+      act(() => {
+        document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+      });
       expect(on_return_to_edit).toHaveBeenCalledTimes(2);
       expect(on_close).not.toHaveBeenCalled();
       await render_dialog({ state: { ...state, pending: true } });

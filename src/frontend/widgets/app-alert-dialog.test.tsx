@@ -104,8 +104,9 @@ describe("应用模态窗", () => {
     );
   });
 
-  it("提交中锁定关闭与动作，并支持无图标进度文案", () => {
+  it("提交中锁定关闭与动作，提交结束后恢复 Escape 关闭", () => {
     const on_close = vi.fn();
+    const on_primary = vi.fn();
     render_dialog(
       <AppActionDialog
         open
@@ -113,7 +114,7 @@ describe("应用模态窗", () => {
         submitting
         submittingLabel="50%"
         submittingIcon={false}
-        primaryAction={{ label: "确认", onSelect: vi.fn() }}
+        primaryAction={{ label: "确认", onSelect: on_primary }}
         onClose={on_close}
       />,
     );
@@ -123,11 +124,35 @@ describe("应用模态窗", () => {
         new KeyboardEvent("keydown", { key: "Escape", code: "Escape", bubbles: true }),
       );
     });
+    press_enter();
 
+    expect(on_close).not.toHaveBeenCalled();
+    expect(on_primary).not.toHaveBeenCalled();
+    expect(read_button("50%")?.getAttribute("aria-keyshortcuts")).toBe("Enter");
+    expect(read_button("50%")?.querySelector("kbd")?.textContent).toBe("Enter");
+    expect(read_button("app.action.cancel")?.getAttribute("aria-keyshortcuts")).toBe("Escape");
+    expect(read_button("app.action.cancel")?.querySelector("kbd")?.textContent).toBe("Esc");
+    click_button("50%");
+    click_button("app.action.cancel");
+    expect(on_primary).not.toHaveBeenCalled();
     expect(on_close).not.toHaveBeenCalled();
     expect(document.body.querySelector('[data-testid="spinner"]')).toBeNull();
     expect(read_button("50%")?.disabled).toBe(true);
     expect(read_button("app.action.cancel")?.disabled).toBe(true);
+    act(() => {
+      root?.render(
+        <AppActionDialog
+          open
+          description="下载完成"
+          primaryAction={{ label: "确认", onSelect: on_primary }}
+          onClose={on_close}
+        />,
+      );
+    });
+    act(() => {
+      document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+    });
+    expect(on_close).toHaveBeenCalledOnce();
   });
 
   it("多动作提交把加载反馈显示在实际触发的次操作上", () => {
@@ -164,17 +189,43 @@ describe("应用模态窗", () => {
     );
 
     const countdown = Array.from(document.querySelectorAll<HTMLButtonElement>("button")).find(
-      (button) => /^\d+s$/.test(button.textContent ?? ""),
+      (button) => /^\d+s/.test(button.textContent ?? ""),
     )!;
     expect(countdown.disabled).toBe(true);
-    click_button(countdown.textContent!);
+    expect(countdown.getAttribute("aria-keyshortcuts")).toBe("Enter");
+    expect(countdown.querySelector("kbd")?.textContent).toBe("Enter");
+    act(() => countdown.click());
+    press_enter();
     expect(on_confirm).not.toHaveBeenCalled();
     const seconds = Number.parseInt(countdown.textContent!, 10);
     act(() => vi.advanceTimersByTime(seconds * 1_000));
     expect(read_button("app.action.confirm")?.disabled).toBe(false);
+    expect(read_button("app.action.confirm")?.querySelector("kbd")).not.toBeNull();
 
-    click_button("app.action.confirm");
+    press_enter();
     expect(on_confirm).toHaveBeenCalledTimes(1);
+  });
+
+  it("业务禁用时保留主操作键位，恢复后允许确认", () => {
+    const on_confirm = vi.fn();
+    const dialog = (disabled: boolean) => (
+      <AppConfirmDialog
+        open
+        description="是否确认？"
+        confirmDisabled={disabled}
+        onConfirm={on_confirm}
+        onClose={vi.fn()}
+      />
+    );
+    render_dialog(dialog(true));
+    expect(read_button("app.action.confirm")?.getAttribute("aria-keyshortcuts")).toBe("Enter");
+    expect(read_button("app.action.confirm")?.querySelector("kbd")?.textContent).toBe("Enter");
+    click_button("app.action.confirm");
+    press_enter();
+    expect(on_confirm).not.toHaveBeenCalled();
+    act(() => root?.render(dialog(false)));
+    press_enter();
+    expect(on_confirm).toHaveBeenCalledOnce();
   });
 
   /** 挂载公共弹窗，由可见操作观察组件行为。 */
@@ -191,9 +242,20 @@ describe("应用模态窗", () => {
   function read_button(text: string): HTMLButtonElement | null {
     return (
       Array.from(document.body.querySelectorAll<HTMLButtonElement>("button")).find(
-        (candidate) => candidate.textContent === text,
+        (candidate) =>
+          candidate.textContent?.replace(candidate.querySelector("kbd")?.textContent ?? "", "") ===
+          text,
       ) ?? null
     );
+  }
+
+  /** 在弹窗本身上按回车，模拟打开后的初始焦点。 */
+  function press_enter(): void {
+    act(() => {
+      document.body
+        .querySelector('[data-slot="alert-dialog-content"]')
+        ?.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+    });
   }
 
   /** 在 React 更新边界内提交按钮操作。 */

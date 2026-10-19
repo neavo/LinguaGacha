@@ -63,6 +63,10 @@ it("未就绪时禁止按钮与快捷键，工程占用期间仍允许导出与�
       item.textContent?.includes(label),
     )!;
   await render(false);
+  expect(button("app.action.create").getAttribute("aria-keyshortcuts")).toBe("Control+N");
+  expect(button("app.action.delete").getAttribute("aria-keyshortcuts")).toBe("Delete");
+  expect(button("app.action.create").querySelector("kbd")?.textContent).toBe("Ctrl+N");
+  expect(button("app.action.delete").querySelector("kbd")?.textContent).toBe("Del");
   expect(container.querySelector(".command-bar")).not.toBeNull();
   expect(container.textContent).not.toContain("app.action.loading");
   expect(container.textContent).not.toContain("actual mode");
@@ -89,6 +93,8 @@ it("未就绪时禁止按钮与快捷键，工程占用期间仍允许导出与�
   );
   expect(create).toHaveBeenCalledOnce();
   await render(true, true);
+  expect(button("app.action.create").getAttribute("aria-keyshortcuts")).toBe("Control+N");
+  expect(button("app.action.delete").getAttribute("aria-keyshortcuts")).toBe("Delete");
   expect(button("app.action.create").disabled).toBe(true);
   expect(button("app.action.export").disabled).toBe(false);
   expect(button("app.action.preset").disabled).toBe(false);

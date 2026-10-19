@@ -60,7 +60,7 @@ export function ModelSelectorDialog(props: ModelSelectorDialogProps): JSX.Elemen
 
   // 有效选择以完整目录为准，搜索结果只决定显示范围。
   const has_selection = available_models.some((model) => model.id === selected_id);
-  const locked = props.readonly || props.submitting; // 只读或提交期间冻结选择与确认
+  const locked = props.readonly || props.submitting; // 只读或提交期间冻结选择
 
   return (
     <AppPageDialog
@@ -68,37 +68,21 @@ export function ModelSelectorDialog(props: ModelSelectorDialogProps): JSX.Elemen
       title={t("model_page.fields.model_id.title")}
       size="md"
       onClose={props.onClose}
-      dismissBehavior={props.submitting ? "blocked" : "default"}
+      submitting={props.submitting}
       bodyClassName="overflow-hidden p-0"
-      footer={
-        <>
-          <AppButton
-            type="button"
-            variant="outline"
-            size="sm"
-            disabled={props.submitting}
-            onClick={props.onClose}
-          >
-            {t("app.action.cancel")}
-          </AppButton>
-          <AppButton
-            type="button"
-            size="sm"
-            disabled={!has_selection || locked}
-            aria-busy={props.submitting || undefined}
-            onClick={() => {
-              props.onConfirm(selected_id);
-            }}
-          >
-            {props.submitting ? <LoaderCircle className="animate-spin" aria-hidden="true" /> : null}
-            {t("app.action.confirm")}
-          </AppButton>
-        </>
-      }
+      primaryAction={{
+        label: t("app.action.confirm"),
+        shortcut: "submit",
+        disabled: !has_selection || props.readonly,
+        onSelect: () => {
+          props.onConfirm(selected_id);
+        },
+      }}
     >
       <div className="model-page__dialog-scroll">
         <div className="model-page__selector-body">
           <Input
+            autoFocus
             className="model-page__field model-page__field--full"
             value={filter_text}
             placeholder={t("model_page.dialog.selector.search_placeholder")}

@@ -1,4 +1,3 @@
-vi.mock("./agent-token-speed", () => ({ AgentTokenSpeed: () => null }));
 import { act, type ComponentProps } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -22,9 +21,11 @@ describe("AgentTaskToolbar", () => {
     root = null;
     container = null;
     request_generation.mockClear();
+    vi.useRealTimers();
   });
 
   it("新任务按钮与输入中的快捷键共用可用性", async () => {
+    vi.useFakeTimers();
     const on_reset = vi.fn();
     const view = await render({ can_reset: true, on_reset });
     const input = view.querySelector("input")!;
@@ -44,6 +45,16 @@ describe("AgentTaskToolbar", () => {
     expect((await trigger()).defaultPrevented).toBe(true);
     expect(on_reset).toHaveBeenCalledOnce();
     await render({ can_reset: false, on_reset });
+    const reset = view.querySelector<HTMLButtonElement>(".agent-composer__reset")!;
+    expect(reset.getAttribute("aria-keyshortcuts")).toBe("Control+N");
+    await act(async () => {
+      reset.parentElement!.dispatchEvent(new MouseEvent("mouseenter", { bubbles: true }));
+      reset.parentElement!.dispatchEvent(new MouseEvent("mousemove", { bubbles: true }));
+      await vi.advanceTimersByTimeAsync(1);
+    });
+    const tooltip = document.querySelector('[role="tooltip"][data-open]');
+    expect(tooltip?.textContent).toContain("agent_page.action.new_task");
+    expect(tooltip?.querySelector("kbd")?.textContent).toBe("Ctrl+N");
     expect((await trigger()).defaultPrevented).toBe(false);
     await act(async () => view.querySelector<HTMLButtonElement>(".agent-composer__reset")?.click());
     expect(on_reset).toHaveBeenCalledOnce();
@@ -89,7 +100,7 @@ describe("AgentTaskToolbar", () => {
     root ??= createRoot(container);
     await act(async () =>
       root?.render(
-        <TooltipProvider>
+        <TooltipProvider delay={0}>
           <input />
           <AgentTaskToolbar
             locked={false}

@@ -228,33 +228,15 @@ export function ProofreadingFilterDialog(props: ProofreadingFilterDialogProps): 
       open={props.open}
       title={t("proofreading_page.action.filter")}
       size="lg"
-      dismissBehavior={submitting ? "blocked" : "default"}
+      submitting={submitting}
       onClose={props.on_close}
       contentClassName="h-[720px] max-h-[calc(100vh-32px)] sm:max-w-[960px]"
       bodyClassName="overflow-hidden p-0"
-      footer={
-        <>
-          <AppButton
-            type="button"
-            variant="outline"
-            size="sm"
-            disabled={submitting}
-            onClick={props.on_close}
-          >
-            {t("app.action.cancel")}
-          </AppButton>
-          <AppButton
-            type="button"
-            size="sm"
-            disabled={submitting}
-            onClick={() => {
-              void handle_confirm();
-            }}
-          >
-            {t("app.action.confirm")}
-          </AppButton>
-        </>
-      }
+      primaryAction={{
+        label: t("app.action.confirm"),
+        shortcut: "submit",
+        onSelect: handle_confirm,
+      }}
     >
       <div className="proofreading-page__filter-dialog-scroll">
         <div className="proofreading-page__filter-layout">

@@ -34,17 +34,11 @@ function resolve_translation_task_confirm_description(
   return t("batch_translation.confirm.stop_description");
 }
 
-// 应用级详情先挂载，动作确认在同一浮层层级中覆盖详情。
+/** 应用级详情先挂载，动作确认在同一浮层层级中覆盖详情。 */
 function BatchTranslationDialogsLayer(): JSX.Element {
   const { t } = useI18n();
   const { batch_translation_task } = useBatchTranslationSession();
   const stats = useProjectTranslationStats();
-  const translation_confirm_description = useMemo(() => {
-    return resolve_translation_task_confirm_description(
-      batch_translation_task.task_confirm_state,
-      t,
-    );
-  }, [t, batch_translation_task.task_confirm_state]);
 
   return (
     <>
@@ -68,12 +62,18 @@ function BatchTranslationDialogsLayer(): JSX.Element {
           batch_translation_task.request_task_action_confirmation("stop-translation")
         }
       />
-      {/* 仅全量重置需要防误触，失败重置及其它任务动作保持即时确认。 */}
+      {/* 重置会批量清空译文，需要倒计时防误触，其它任务动作保持即时确认。 */}
       <AppConfirmDialog
         open={batch_translation_task.task_confirm_state !== null}
-        description={translation_confirm_description}
+        description={resolve_translation_task_confirm_description(
+          batch_translation_task.task_confirm_state,
+          t,
+        )}
         submitting={batch_translation_task.task_confirm_state?.submitting ?? false}
-        confirmDelay={batch_translation_task.task_confirm_state?.kind === "reset-all"}
+        confirmDelay={
+          batch_translation_task.task_confirm_state?.kind === "reset-all" ||
+          batch_translation_task.task_confirm_state?.kind === "reset-failed"
+        }
         onConfirm={batch_translation_task.confirm_task_action}
         onClose={batch_translation_task.close_task_action_confirmation}
       />
@@ -81,7 +81,7 @@ function BatchTranslationDialogsLayer(): JSX.Element {
   );
 }
 
-// 拥有跨页面任务 follow-up，页面只消费展示与动作能力。
+/** 在应用会话内持有翻译任务，页面共同消费展示与动作能力。 */
 export function BatchTranslationSessionProvider(props: { children: ReactNode }): JSX.Element {
   const translation_generation = useTranslationGeneration();
   // 翻译任务常驻于 session 内，确保离开工作台后任务完成确认不丢失。

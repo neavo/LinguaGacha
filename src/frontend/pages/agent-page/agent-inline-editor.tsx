@@ -127,7 +127,7 @@ export function AgentInlineEditor(props: AgentInlineEditorProps): JSX.Element {
                   variant="outline"
                   disabled={read_only}
                   aria-label={t("app.action.cancel")}
-                  aria-keyshortcuts={read_only ? undefined : "Escape"}
+                  aria-keyshortcuts="Escape"
                   onClick={cancel_edit}
                 >
                   {t("app.action.cancel")}
@@ -144,18 +144,13 @@ export function AgentInlineEditor(props: AgentInlineEditorProps): JSX.Element {
                           disabled={!can_submit}
                           aria-label={t("app.action.save")}
                           aria-busy={status === "saving" || undefined}
-                          aria-keyshortcuts={can_submit ? "Enter" : undefined}
+                          aria-keyshortcuts="Enter"
                         >
                           {status === "saving" ? (
                             <LoaderCircle className="animate-spin" aria-hidden="true" />
                           ) : null}
                           <span>{t("app.action.save")}</span>
-                          {can_submit ? (
-                            <ShortcutKbd
-                              action="submit"
-                              className="bg-background/18 text-primary-foreground"
-                            />
-                          ) : null}
+                          <ShortcutKbd action="submit" />
                         </AppButton>
                       </TooltipTarget>
                     }

@@ -73,8 +73,8 @@ function read_selected_texts(): string[] {
 
 /** 按文案读取底栏按钮。 */
 function read_footer_button(label: string): HTMLButtonElement {
-  return Array.from(document.querySelectorAll("button")).find(
-    (button) => button.textContent === label,
+  return Array.from(document.querySelectorAll("button")).find((button) =>
+    button.textContent?.startsWith(label),
   )!;
 }
 

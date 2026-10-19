@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   is_action_shortcut_event,
+  is_dialog_primary_shortcut_event,
   resolve_shortcut_platform,
   should_ignore_action_shortcut_event,
 } from "./keyboard-shortcuts";
@@ -13,6 +14,7 @@ type ShortcutEventInput = {
   altKey?: boolean;
   shiftKey?: boolean;
   isComposing?: boolean;
+  repeat?: boolean;
   target?: EventTarget | null;
 };
 
@@ -25,6 +27,7 @@ function create_shortcut_event(input: ShortcutEventInput): KeyboardEvent {
     altKey: input.altKey ?? false,
     shiftKey: input.shiftKey ?? false,
     isComposing: input.isComposing ?? false,
+    repeat: input.repeat ?? false,
     target: input.target ?? null,
   } as KeyboardEvent;
 }
@@ -54,7 +57,7 @@ describe("keyboard shortcuts", () => {
     expect(is_action_shortcut_event(create_shortcut_event(input), action, platform)).toBe(expected);
   });
 
-  it("页面级新增和删除避开输入框、编辑器与弹窗", () => {
+  it.each(["dialog", "alertdialog"])("页面级快捷键避开输入框、编辑器与 %s", (role) => {
     const input = document.createElement("input");
     const editor = document.createElement("div");
     const editor_child = document.createElement("span");
@@ -62,49 +65,72 @@ describe("keyboard shortcuts", () => {
     const dialog_child = document.createElement("button");
     editor.className = "cm-editor";
     editor.append(editor_child);
-    dialog.setAttribute("data-slot", "dialog-content");
+    dialog.setAttribute("role", role);
     dialog.append(dialog_child);
     document.body.append(input, editor, dialog);
 
     try {
       expect(
         [input, editor_child, dialog_child].map((target) =>
-          should_ignore_action_shortcut_event(
-            create_shortcut_event({ key: "Delete", target }),
-            "delete",
-          ),
+          should_ignore_action_shortcut_event(create_shortcut_event({ key: "Delete", target })),
         ),
       ).toEqual([true, true, true]);
       expect(
         should_ignore_action_shortcut_event(
-          create_shortcut_event({ key: "n", target: dialog_child }),
-          "create",
-        ),
-      ).toBe(true);
-      expect(
-        should_ignore_action_shortcut_event(
           create_shortcut_event({ key: "e", ctrlKey: true, target: dialog_child }),
-          "follow_latest",
           true,
         ),
       ).toBe(true);
       expect(
         should_ignore_action_shortcut_event(
           create_shortcut_event({ key: "n", target: editor_child }),
-          "create",
           true,
-        ),
-      ).toBe(false);
-      expect(
-        should_ignore_action_shortcut_event(
-          create_shortcut_event({ key: "s", target: input }),
-          "save",
         ),
       ).toBe(false);
     } finally {
       input.remove();
       editor.remove();
       dialog.remove();
+    }
+  });
+
+  it("弹窗主操作只响应本弹窗内的有效按键", () => {
+    const popup = document.createElement("div");
+    const input = document.createElement("input");
+    const button = document.createElement("button");
+    const textarea = document.createElement("textarea");
+    const outside = document.createElement("input");
+    popup.append(input, button, textarea);
+    document.body.append(popup, outside);
+
+    try {
+      const cases: [ShortcutEventInput, "save" | "submit", boolean][] = [
+        [{ key: "Enter", target: popup }, "submit", true],
+        [{ key: "Enter", target: input }, "submit", true],
+        [{ key: "Enter", target: button }, "submit", false],
+        [{ key: "Enter", target: textarea }, "submit", false],
+        [{ key: "Enter", target: outside }, "submit", false],
+        [{ key: "Enter", target: input, isComposing: true }, "submit", false],
+        [{ key: "Enter", target: input, shiftKey: true }, "submit", false],
+        [{ key: "Enter", target: input, repeat: true }, "submit", false],
+        [{ key: "Enter", target: input }, "save", false],
+        [{ key: "s", ctrlKey: true, target: textarea }, "save", true],
+        [{ key: "s", ctrlKey: true, target: outside }, "save", false],
+        [{ key: "s", ctrlKey: true, target: input }, "submit", false],
+      ];
+      expect(
+        cases.map(([input_event, shortcut]) =>
+          is_dialog_primary_shortcut_event(
+            create_shortcut_event(input_event),
+            shortcut,
+            popup,
+            "default",
+          ),
+        ),
+      ).toEqual(cases.map(([, , expected]) => expected));
+    } finally {
+      popup.remove();
+      outside.remove();
     }
   });
 });

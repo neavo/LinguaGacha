@@ -265,7 +265,6 @@ export function SkillEditorToolbar(props: {
       {props.action && (
         <AppConfirmDialog
           open={confirming}
-          confirmDelay
           confirmDisabled={props.locked}
           submitting={props.busy}
           description={t(`skills_page.editor.${props.action}_skill_confirm`)}

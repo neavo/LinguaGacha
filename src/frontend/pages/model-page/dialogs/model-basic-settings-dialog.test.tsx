@@ -18,10 +18,10 @@ vi.mock("@frontend/app/locale/locale-context", () => ({
   useI18n: () => ({ locale: "zh-CN", t: translate }),
 }));
 
-/** 按完整文案读取按钮。 */
+/** 按可见文案读取按钮，允许按钮同时展示快捷键提示。 */
 function find_button(label: string): HTMLButtonElement {
-  const button = Array.from(document.querySelectorAll("button")).find(
-    (candidate) => candidate.textContent === label,
+  const button = Array.from(document.querySelectorAll("button")).find((candidate) =>
+    candidate.textContent?.startsWith(label),
   );
   if (button === undefined) throw new Error(`按钮未挂载：${label}`);
   return button;

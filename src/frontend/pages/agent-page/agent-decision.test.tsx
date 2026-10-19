@@ -81,6 +81,9 @@ describe("AgentDecision", () => {
     await act(async () => input.blur());
     expect(session.actions.setQuestionFocused).toHaveBeenLastCalledWith("question-1", false);
     expect(confirm.disabled).toBe(true);
+    expect(confirm.getAttribute("aria-keyshortcuts")).toBe("Enter");
+    await act(async () => confirm.click());
+    expect(on_resolve_question).not.toHaveBeenCalled();
     await enter_custom_text(input, "  按章节处理  ");
     expect(confirm.disabled).toBe(false);
     await act(async () => input.focus());

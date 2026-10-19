@@ -42,33 +42,6 @@ vi.mock("@frontend/app/session/translation-generation/translation-generation-con
   useTranslationGeneration: () => ({ request_generation: task_runtime_mock.request_generation }),
 }));
 
-vi.mock("@frontend/widgets/app-alert-dialog", () => {
-  return {
-    AppConfirmDialog: (props: {
-      open: boolean;
-      description: string;
-      submitting: boolean;
-      onConfirm: () => Promise<void>;
-      onClose: () => void;
-    }) => {
-      if (!props.open) {
-        return null;
-      }
-
-      return (
-        <button
-          type="button"
-          data-testid="task-confirm-dialog"
-          data-submitting={String(props.submitting)}
-          onClick={() => {
-            void props.onConfirm();
-          }}
-        />
-      );
-    },
-  };
-});
-
 /** 隔离后台任务，测试常驻侧栏的组合与回调。 */
 function create_batch_translation_task_fixture(
   overrides: Partial<BatchTranslationTask> = {},
@@ -126,6 +99,7 @@ describe("BatchTranslationSessionProvider", () => {
     container = null;
     root = null;
     task_runtime_mock.batch_translation_task = null;
+    vi.useRealTimers();
   });
 
   /** 用页面替换观察 session 的持续挂载。 */
@@ -138,6 +112,29 @@ describe("BatchTranslationSessionProvider", () => {
       root?.render(<BatchTranslationSessionProvider>{children}</BatchTranslationSessionProvider>);
     });
   }
+
+  it.each([
+    ["reset-all", true],
+    ["reset-failed", true],
+    ["stop-translation", false],
+  ] as const)("%s 的确认受理遵循译文清空保护", async (kind, delayed) => {
+    vi.useFakeTimers();
+    const task = task_runtime_mock.batch_translation_task!;
+    task.task_confirm_state = { kind, submitting: false };
+    await render_provider(null);
+    const confirm = document.querySelector<HTMLButtonElement>(
+      '[data-slot="alert-dialog-primary-action"]',
+    )!;
+    await act(async () => confirm.click());
+    if (delayed) {
+      expect(task.confirm_task_action).not.toHaveBeenCalled();
+      await act(async () =>
+        vi.advanceTimersByTime(Number.parseInt(confirm.textContent!, 10) * 1_000),
+      );
+      await act(async () => confirm.click());
+    }
+    expect(task.confirm_task_action).toHaveBeenCalledOnce();
+  });
 
   it("任务侧栏随 session 挂载，页面切换继续显示并使用共享停止动作", async () => {
     const task = task_runtime_mock.batch_translation_task!;
