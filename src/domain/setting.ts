@@ -27,6 +27,43 @@ export type ProjectSaveMode = (typeof PROJECT_SAVE_MODES)[number];
 /** 应用级工程写入审批偏好，跨对话、工程和应用重启保留。 */
 export const AGENT_APPROVAL_MODES = ["manual", "auto"] as const;
 export type AgentApprovalMode = (typeof AGENT_APPROVAL_MODES)[number];
+/** 出站代理模式；system 使用操作系统设置，manual 使用应用内配置的代理服务器。 */
+export const PROXY_MODES = ["direct", "system", "manual"] as const;
+export type ProxyMode = (typeof PROXY_MODES)[number];
+/** 手动模式的代理协议。 */
+export const PROXY_PROTOCOLS = ["HTTP", "HTTPS", "SOCKS5"] as const;
+export type ProxyProtocol = (typeof PROXY_PROTOCOLS)[number];
+/** 代理设置整体写入，设置文件与快照都不会出现只改一半的手动配置。 */
+export const PROXY_SETTING_SCHEMA = Type.Object(
+  {
+    mode: Type.Enum(PROXY_MODES), // 出站代理模式。
+    protocol: Type.Enum(PROXY_PROTOCOLS), // 手动模式的代理协议。
+    host: Type.String(), // 手动模式的代理主机，不含协议前缀与端口。
+    port: Type.Number(), // 手动模式的代理端口，未配置为 0。
+    username: Type.String(), // 手动模式的代理认证用户名。
+    password: Type.String(), // 手动模式的代理认证密码，保留空格。
+  },
+  { additionalProperties: false },
+);
+export type ProxySettingValue = Static<typeof PROXY_SETTING_SCHEMA>;
+export const DEFAULT_PROXY_SETTING: ProxySettingValue = {
+  mode: "system",
+  protocol: "HTTP",
+  host: "",
+  port: 0,
+  username: "",
+  password: "",
+};
+/** 手动模式的必填字段；命令层据此拒绝保存并定位到界面控件。 */
+export type ProxySettingField = "proxy.host" | "proxy.port" | "proxy.username";
+
+/**
+ * 解析后的代理设置；手动字段不完整时按跟随系统出站，由 effective_mode 给出实际模式。
+ */
+export interface ResolvedProxySetting extends ProxySettingValue {
+  effective_mode: ProxyMode; // 出站实际使用的模式，手动字段不完整时为 system
+  incomplete_field: ProxySettingField | null; // 手动模式下首个缺失或越界的字段
+}
 export const RECENT_PROJECT_SETTING_SCHEMA = Type.Object({
   path: Type.String(), // 最近工程路径。
   name: Type.String(), // 最近工程展示名。
@@ -53,6 +90,7 @@ export const SETTING_SNAPSHOT_SCHEMA = Type.Object(
     pre_translation_replacement_default_preset: Type.String(), // 翻译前替换默认预设标识。
     post_translation_replacement_default_preset: Type.String(), // 翻译后替换默认预设标识。
     translation_custom_prompt_default_preset: Type.String(), // 自定义翻译提示词默认预设标识。
+    proxy: PROXY_SETTING_SCHEMA, // 出站代理配置。
     recent_projects: Type.Array(RECENT_PROJECT_SETTING_SCHEMA), // 最近访问的工程列表。
   },
   { additionalProperties: false },
@@ -83,6 +121,8 @@ export const DEFAULT_SETTING: SettingSnapshot & JsonRecord = {
   pre_translation_replacement_default_preset: "",
   post_translation_replacement_default_preset: "",
   translation_custom_prompt_default_preset: "",
+
+  proxy: { ...DEFAULT_PROXY_SETTING },
 
   recent_projects: [],
   model_selection: {
@@ -202,6 +242,9 @@ export class Setting {
     if (key === "project_save_mode") {
       return Setting.normalize_project_save_mode(value);
     }
+    if (key === "proxy") {
+      return normalize_proxy_setting(value) as unknown as JsonValue;
+    }
     if (key === "recent_projects") {
       return normalize_recent_project_settings(value) as unknown as JsonValue;
     }
@@ -249,6 +292,107 @@ export function is_agent_approval_mode(value: unknown): value is AgentApprovalMo
 /** 旧配置缺失或存储值无效时使用手动审批。 */
 export function normalize_agent_approval_mode(value: unknown): AgentApprovalMode {
   return is_agent_approval_mode(value) ? value : "manual";
+}
+
+/** 写入命令据此拒绝非法代理模式；读取配置时由归一化入口补默认值。 */
+export function is_proxy_mode(value: unknown): value is ProxyMode {
+  return Check(PROXY_SETTING_SCHEMA.properties.mode, value);
+}
+
+/** 写入命令据此拒绝非法代理协议；读取配置时由归一化入口补默认值。 */
+export function is_proxy_protocol(value: unknown): value is ProxyProtocol {
+  return Check(PROXY_SETTING_SCHEMA.properties.protocol, value);
+}
+
+/** 缺失或非法模式按跟随系统处理，行为与旧版本一致。 */
+export function normalize_proxy_mode(value: unknown): ProxyMode {
+  return is_proxy_mode(value) ? value : DEFAULT_PROXY_SETTING.mode;
+}
+
+/** 缺失或非法协议按 HTTP 处理。 */
+export function normalize_proxy_protocol(value: unknown): ProxyProtocol {
+  return is_proxy_protocol(value) ? value : DEFAULT_PROXY_SETTING.protocol;
+}
+
+/** 代理端口范围是 1–65535，0 表示未配置。 */
+export function is_proxy_port(value: number): boolean {
+  return Number.isInteger(value) && value >= 1 && value <= 65535;
+}
+
+/**
+ * 代理主机只收主机名、IPv4 或方括号形式的 IPv6。
+ *
+ * 用 URL 解析同一段文本，确保拼接端口后不会产生查询、片段或路径结构；
+ * 非法 IPv6（如 `[:::]`）会在解析时被拒绝。
+ */
+function is_proxy_host(value: string): boolean {
+  if (value === "" || /[\s/\\@?#]/u.test(value)) return false;
+  if (value.startsWith("[")) {
+    if (!value.endsWith("]")) return false;
+  } else if (value.includes(":")) {
+    return false;
+  }
+  try {
+    const target = new URL(`http://${value}/`);
+    return (
+      target.username === "" &&
+      target.password === "" &&
+      target.port === "" &&
+      target.pathname === "/" &&
+      target.search === "" &&
+      target.hash === ""
+    );
+  } catch {
+    return false;
+  }
+}
+
+/** 代理设置逐字段比较；草稿脏标记与宿主切换判断共用同一口径。 */
+export function is_same_proxy_setting(left: ProxySettingValue, right: ProxySettingValue): boolean {
+  return (
+    left.mode === right.mode &&
+    left.protocol === right.protocol &&
+    left.host === right.host &&
+    left.port === right.port &&
+    left.username === right.username &&
+    left.password === right.password
+  );
+}
+
+/**
+ * 归一代理设置；主机与用户名裁剪空格，密码原样保留，非法枚举回落到默认值
+ */
+export function normalize_proxy_setting(value: unknown): ProxySettingValue {
+  const record = read_setting_record(value);
+  return {
+    mode: normalize_proxy_mode(record["mode"]),
+    protocol: normalize_proxy_protocol(record["protocol"]),
+    host: String(record["host"] ?? "").trim(),
+    port: normalize_number_setting(record["port"], DEFAULT_PROXY_SETTING.port),
+    username: String(record["username"] ?? "").trim(),
+    password: String(record["password"] ?? ""),
+  };
+}
+
+/**
+ * 读取代理设置并算出出站实际使用的模式；手动字段不完整时按跟随系统出站
+ */
+export function read_proxy_setting(value: unknown): ResolvedProxySetting {
+  const setting = normalize_proxy_setting(value);
+  const incomplete_field = setting.mode === "manual" ? find_incomplete_proxy_field(setting) : null;
+  return {
+    ...setting,
+    effective_mode: incomplete_field === null ? setting.mode : "system",
+    incomplete_field,
+  };
+}
+
+/** 手动模式按界面字段顺序返回首个缺失或越界的字段。 */
+function find_incomplete_proxy_field(setting: ProxySettingValue): ProxySettingField | null {
+  if (!is_proxy_host(setting.host)) return "proxy.host";
+  if (!is_proxy_port(setting.port)) return "proxy.port";
+  if (setting.password !== "" && setting.username === "") return "proxy.username";
+  return null;
 }
 
 /**
