@@ -306,13 +306,14 @@
 
 .model-page__selector-list {
   height: 384px;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
 }
 
 .model-page__selector-options {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  padding: 0;
 }
 
 .model-page__selector-item {

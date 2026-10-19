@@ -1,4 +1,4 @@
-import { type JSX, act, type InputHTMLAttributes, type ReactNode, useState } from "react";
+import { type JSX, act, type InputHTMLAttributes, useState } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -18,14 +18,6 @@ vi.mock("@frontend/app/locale/locale-context", () => {
 vi.mock("@frontend/shadcn/input", () => {
   return {
     Input: (props: InputHTMLAttributes<HTMLInputElement>) => <input {...props} />,
-  };
-});
-
-vi.mock("@frontend/shadcn/scroll-area", () => {
-  return {
-    ScrollArea: (props: { children: ReactNode; className?: string }) => (
-      <div className={props.className}>{props.children}</div>
-    ),
   };
 });
 

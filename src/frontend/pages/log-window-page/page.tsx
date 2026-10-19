@@ -74,13 +74,13 @@ type LogDetailState =
   | { status: "ready"; event_id: string; detail: LogDetail };
 
 /**
- * AppTable 会把 table_class_name 同时挂到表头、浮层和表体，从 viewport 内定位避免误取固定表头
+ * AppTable 会把 table_class_name 同时挂到表头、浮层和表体，从 `.app-table__viewport` 内定位避免误取固定表头
  */
 function scroll_log_table_to_top(): void {
   const table_element = document.querySelector<HTMLElement>(
-    '[data-slot="scroll-area-viewport"] .log-window-page__table',
+    ".app-table__viewport .log-window-page__table",
   );
-  const viewport_element = table_element?.closest('[data-slot="scroll-area-viewport"]');
+  const viewport_element = table_element?.closest(".app-table__viewport");
   if (viewport_element instanceof HTMLElement) {
     viewport_element.scrollTop = 0;
   }
@@ -332,7 +332,7 @@ export function LogWindowPage(): JSX.Element {
   function load_older(): void {
     if (logs.loading || !logs.can_load_older) return;
     const first_row = document.querySelector(
-      '[data-slot="scroll-area-viewport"] .log-window-page__table [data-row-index]',
+      ".app-table__viewport .log-window-page__table [data-row-index]",
     );
     const row_index = Number(first_row?.getAttribute("data-row-index") ?? 0);
     set_scroll_anchor((previous) => ({
@@ -515,7 +515,7 @@ export function LogWindowPage(): JSX.Element {
                 const viewport = event.target;
                 if (
                   !(viewport instanceof HTMLElement) ||
-                  viewport.dataset.slot !== "scroll-area-viewport" ||
+                  !viewport.classList.contains("app-table__viewport") ||
                   viewport.scrollTop <= 0
                 )
                   return;

@@ -345,25 +345,15 @@
 
 .proofreading-page__filter-list {
   min-height: 0;
-  min-width: 0;
-  max-width: 100%;
   flex: 1;
-  overflow: hidden;
-}
-
-.proofreading-page__filter-list [data-slot="scroll-area-viewport"] {
-  max-width: 100%;
-  overflow-x: hidden;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
 }
 
 .proofreading-page__filter-list-body {
   display: flex;
-  min-width: 0;
-  width: 100%;
-  max-width: 100%;
   flex-direction: column;
   gap: 6px;
-  padding-right: 0;
 }
 
 .proofreading-page__filter-empty {

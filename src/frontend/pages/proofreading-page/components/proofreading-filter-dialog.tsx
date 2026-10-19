@@ -19,7 +19,6 @@ import {
 import { Badge } from "@frontend/shadcn/badge";
 import { AppButton } from "@frontend/widgets/app-button";
 import { Input } from "@frontend/shadcn/input";
-import { ScrollArea } from "@frontend/shadcn/scroll-area";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@frontend/shadcn/tooltip";
 import { AppPageDialog } from "@frontend/widgets/app-page-dialog";
 
@@ -350,7 +349,7 @@ export function ProofreadingFilterDialog(props: ProofreadingFilterDialogProps): 
               }}
             />
 
-            <ScrollArea className="proofreading-page__filter-list">
+            <div className="proofreading-page__filter-list">
               <div className="proofreading-page__filter-list-body">
                 {visible_term_entries.length > 0 ? (
                   <>
@@ -391,7 +390,7 @@ export function ProofreadingFilterDialog(props: ProofreadingFilterDialogProps): 
                   </div>
                 )}
               </div>
-            </ScrollArea>
+            </div>
           </section>
         </div>
       </div>

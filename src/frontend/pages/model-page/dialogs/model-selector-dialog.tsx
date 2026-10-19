@@ -6,7 +6,6 @@ import { useDebouncedValue } from "@frontend/widgets/interactions/use-debounce";
 import type { ModelEntrySnapshot } from "@frontend/pages/model-page/types";
 import type { AvailableModel } from "@shared/model-catalog";
 import { Input } from "@frontend/shadcn/input";
-import { ScrollArea } from "@frontend/shadcn/scroll-area";
 import { AppButton } from "@frontend/widgets/app-button";
 import { AppPageDialog } from "@frontend/widgets/app-page-dialog";
 
@@ -86,7 +85,7 @@ export function ModelSelectorDialog(props: ModelSelectorDialogProps): JSX.Elemen
             }}
           />
 
-          <ScrollArea className="model-page__selector-list">
+          <div className="model-page__selector-list">
             {is_loading ? (
               <div className="model-page__selector-loading">
                 <LoaderCircle className="animate-spin" />
@@ -115,7 +114,7 @@ export function ModelSelectorDialog(props: ModelSelectorDialogProps): JSX.Elemen
                 ))}
               </div>
             )}
-          </ScrollArea>
+          </div>
         </div>
       </div>
     </AppPageDialog>
