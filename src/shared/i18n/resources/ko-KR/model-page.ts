@@ -88,7 +88,8 @@ export const ko_kr_model_page = {
     },
     api_url: {
       title: "API 주소",
-      description: "API 주소를 입력하세요. 끝에 /v1이 필요한지 확인해 주세요",
+      description:
+        "아래 URL에 /v1이 빠지거나 불필요하게 추가되는 등 오류가 없는지 꼼꼼히 확인해 주세요",
       placeholder: "API 주소 입력 …",
     },
     api_key: {

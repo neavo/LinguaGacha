@@ -198,6 +198,13 @@
   min-width: 128px;
 }
 
+.model-page__request-url {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .model-page__field--md {
   min-width: 256px;
 }

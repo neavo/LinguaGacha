@@ -2,6 +2,7 @@ import { PencilLine, RefreshCw, Send } from "lucide-react";
 import { Fragment, type JSX, useEffect, useState } from "react";
 
 import { MODEL_SPEED_LEVELS, is_model_speed_level, is_model_thinking_level } from "@domain/model";
+import { build_model_request_url } from "@domain/model-endpoint";
 import { useI18n } from "@frontend/app/locale/locale-context";
 import {
   MODEL_THINKING_LEVEL_LABEL_KEY,
@@ -60,6 +61,7 @@ export function ModelBasicSettingsDialog(props: ModelBasicSettingsDialogProps): 
   }
 
   const model = props.model;
+  const request_url = build_model_request_url(model.api_url, model.api_format, model.model_id);
   const thinking_label = t(MODEL_THINKING_LEVEL_LABEL_KEY[model.thinking.level]);
 
   /** 项目可能在输入弹窗保持打开时进入锁定态，提交点必须再次守卫。 */
@@ -109,7 +111,21 @@ export function ModelBasicSettingsDialog(props: ModelBasicSettingsDialogProps): 
                 <SettingCardRow
                   action_width="content"
                   title={t("model_page.fields.api_url.title")}
-                  description={t("model_page.fields.api_url.description")}
+                  description={
+                    <>
+                      {t("model_page.fields.api_url.description")}
+                      <Tooltip>
+                        <TooltipTrigger
+                          render={<span tabIndex={0} className="model-page__request-url" />}
+                        >
+                          {request_url}
+                        </TooltipTrigger>
+                        <TooltipContent side="bottom" className="break-all">
+                          {request_url}
+                        </TooltipContent>
+                      </Tooltip>
+                    </>
+                  }
                   action={
                     <Input
                       className="model-page__field model-page__field--lg"

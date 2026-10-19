@@ -85,7 +85,7 @@ export const zh_cn_model_page = {
     },
     api_url: {
       title: "接口地址",
-      description: "请输入接口地址，请注意辨别结尾是否需要添加 /v1",
+      description: "请认真辨别下方 URL 是否正确，例如是否缺少或多出 /v1",
       placeholder: "请输入接口地址 …",
     },
     api_key: {

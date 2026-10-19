@@ -92,7 +92,8 @@ export const de_de_model_page = {
     },
     api_url: {
       title: "API-URL",
-      description: "API-URL eingeben; prüfen, ob /v1 am Ende nötig ist",
+      description:
+        "Die URL unten sorgfältig auf Fehler prüfen, etwa auf ein fehlendes oder zusätzliches /v1",
       placeholder: "Bitte API-URL eingeben …",
     },
     api_key: {

@@ -17,6 +17,7 @@ import {
   type JsonValue,
 } from "../../domain/json";
 import { normalize_setting_snapshot } from "../../domain/setting";
+import { resolve_model_base_url } from "../../domain/model-endpoint";
 import { ENDPOINT_REQUEST_OVERRIDES } from "./llm-overrides";
 
 /** 身份由任务或对话拥有，请求准备只读取本次冻结值。 */
@@ -41,9 +42,6 @@ export type ModelRequestSnapshot = Readonly<{
 }>;
 
 const DEFAULT_OUTPUT_TOKEN_LIMIT = 4096; // 缺少旧配置字段时的单次输出上限。
-const GOOGLE_DEFAULT_API_BASE_URL = "https://generativelanguage.googleapis.com/v1beta";
-const GOOGLE_API_VERSION_SEGMENT_PATTERN = /\/v1(?:beta|alpha)?$/iu;
-const OPENAI_ENDPOINT_SUFFIX_PATTERN = /\/(?:chat\/completions|responses)$/iu;
 
 /** 多行密钥去空白；本地免密接口仍使用 Pi 要求的非空占位值。 */
 export function collect_api_keys(raw_api_key: string): string[] {
@@ -59,27 +57,6 @@ export function get_primary_api_key(raw_api_key: string): string {
   return collect_api_keys(raw_api_key)[0] ?? "no_key_required";
 }
 
-/** OpenAI SDK 自行拼接端点，配置只保留 API 根地址。 */
-export function normalize_openai_sdk_base_url(url: string): string {
-  return url.trim().replace(/\/+$/u, "").replace(OPENAI_ENDPOINT_SUFFIX_PATTERN, "");
-}
-
-/** Google adapter 直接消费完整版本路径，保留用户显式版本。 */
-export function normalize_google_api_base_url(url: string): string {
-  const normalized = url.trim().replace(/\/+$/u, "");
-  if (normalized === "") return GOOGLE_DEFAULT_API_BASE_URL;
-  return GOOGLE_API_VERSION_SEGMENT_PATTERN.test(normalized) ? normalized : `${normalized}/v1beta`;
-}
-
-/** 按选定协议生成适配器需要的请求根地址。 */
-export function normalize_pi_api_url(url: string, api_format: ModelApiFormat): string {
-  if (api_format === "Google") return normalize_google_api_base_url(url);
-  if (api_format === "OpenAI" || api_format === "OpenAIResponses" || api_format === "SakuraLLM") {
-    return normalize_openai_sdk_base_url(url);
-  }
-  return url.trim().replace(/\/+$/u, "");
-}
-
 /** JSON 配置只在请求边界收窄，扩展字段仅在用户启用时生效。 */
 export function read_model_request_snapshot(
   model: JsonValue,
@@ -90,7 +67,7 @@ export function read_model_request_snapshot(
   const request = read_json_record(record["request"]);
   const threshold = read_json_record(record["threshold"]);
   const thinking = read_json_record(record["thinking"]);
-  const base_url = normalize_pi_api_url(String(record["api_url"] ?? ""), api_format);
+  const base_url = resolve_model_base_url(String(record["api_url"] ?? ""), api_format);
   const auth_type = record["auth_type"] === "oauth" ? "oauth" : "api_key";
   if (auth_type === "oauth") {
     const generation = read_json_record(record["generation"]);
