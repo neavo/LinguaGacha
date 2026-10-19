@@ -10,170 +10,109 @@ const files = new Map([
   ["js/plugins/Menu.js", Buffer.from("original")],
 ]);
 const HISTORY = "backup_lg_20200102_030405";
-const TIME = new Date(2020, 0, 2, 3, 4, 5).getTime();
 
-/** 仅替换旧内容元数据，归档命名不依赖真实创建时间或等待。 */
-function old_times(native: NativeFs, directory: string) {
-  const stat = native.stat.bind(native);
-  vi.spyOn(native, "stat").mockImplementation((target) => {
-    const value = stat(target);
-    if (target.startsWith(directory + path.sep))
-      Object.assign(value, { birthtimeMs: TIME, mtimeMs: TIME });
-    return value;
-  });
-}
-
-it.each(["missing", "history"])("%s 备份目录直接保存本次字节", async (kind) => {
-  using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-backup-empty-"));
+it("按相对路径保存首次字节，同长度和不同长度修改均不覆盖或产生历史", async () => {
+  using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-backup-first-"));
   const native = new NativeFs(),
     directory = path.join(temp.path, "backup_lg");
-  if (kind === "history") native.write_file_sync(path.join(directory, HISTORY, "keep"), "history");
   await write_game_backup(temp.path, files, native);
-  expect(fs.readdirSync(directory).sort()).toEqual(
-    (kind === "history" ? [HISTORY, "data", "js"] : ["data", "js"]).sort(),
-  );
-  for (const [name, bytes] of files)
-    expect(fs.readFileSync(path.join(directory, name))).toEqual(bytes);
+  for (const content of ["[]", "longer content"]) {
+    const next = new Map(files);
+    next.set("data/System.json", Buffer.from(content));
+    await write_game_backup(temp.path, next, native);
+    for (const [name, bytes] of files)
+      expect(fs.readFileSync(path.join(directory, name))).toEqual(bytes);
+    expect(fs.readdirSync(directory).sort()).toEqual(["data", "js"]);
+  }
   expect(fs.existsSync(path.join(temp.path, ".tmp"))).toBe(false);
 });
 
-it("轮换普通旧内容和旧标记，已有历史留在同层，旧工作区作为普通内容归档", async () => {
-  using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-backup-rotate-"));
+it("新增和改名只补存缺项，删除的路径继续保留", async () => {
+  using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-backup-missing-"));
   const native = new NativeFs(),
     directory = path.join(temp.path, "backup_lg");
-  const previous = "BACKUP_LG_20191231_235959_1";
-  for (const name of [
-    "data/old.json",
-    ".linguagacha-backup.json",
-    ".tmp/stage/keep",
-    previous + "/keep",
-  ])
-    native.write_file_sync(path.join(directory, name), name);
-  old_times(native, directory);
   await write_game_backup(temp.path, files, native);
-  for (const name of ["data/old.json", ".linguagacha-backup.json", ".tmp/stage/keep"])
-    expect(fs.readFileSync(path.join(directory, HISTORY, name), "utf8")).toBe(name);
-  expect(fs.readFileSync(path.join(directory, previous, "keep"), "utf8")).toBe(previous + "/keep");
-  expect(fs.existsSync(path.join(directory, HISTORY, previous))).toBe(false);
-  expect(fs.existsSync(path.join(directory, ".linguagacha-backup.json"))).toBe(false);
-  expect(fs.readFileSync(path.join(directory, "data/System.json"), "utf8")).toBe("{}");
+  const next = new Map(files);
+  next.delete("data/System.json");
+  next.set("data/New.json", Buffer.from("new"));
+  await write_game_backup(temp.path, next, native);
+  for (const [name, bytes] of files)
+    expect(fs.readFileSync(path.join(directory, name))).toEqual(bytes);
+  expect(fs.readFileSync(path.join(directory, "data/New.json"), "utf8")).toBe("new");
+  expect(fs.readdirSync(directory).sort()).toEqual(["data", "js"]);
 });
 
-it.each(["mtime", "directories"])("归档时间来自旧内容：%s", async (kind) => {
-  using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-backup-time-"));
+it("沿用旧备份、空文件、历史和残留，无关路径不参与补存检查", async () => {
+  using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-backup-legacy-"));
   const native = new NativeFs(),
-    directory = path.join(temp.path, "backup_lg");
-  native.make_dir(path.join(directory, "nested/empty"));
-  if (kind === "mtime") {
-    native.write_file_sync(path.join(directory, "nested/first"), "first");
-    native.write_file_sync(path.join(directory, "later"), "later file");
-  }
-  const stat = native.stat.bind(native);
-  vi.spyOn(native, "stat").mockImplementation((target) => {
-    const value = stat(target);
-    const earliest = target.endsWith(kind === "directories" ? "empty" : "first");
-    Object.assign(value, { birthtimeMs: 0, mtimeMs: earliest ? TIME : TIME + 60000 });
-    return value;
-  });
+    directory = path.join(temp.path, "backup_lg"),
+    outside = path.join(temp.path, "outside");
+  const previous = new Map([
+    ["data/System.json", ""],
+    ["data/old.json", "old"],
+    [HISTORY + "/data/System.json", "historical original"],
+    [".linguagacha-backup.json", "old marker"],
+    [".tmp/stage/keep", "old staging"],
+  ]);
+  for (const [name, bytes] of previous) native.write_file_sync(path.join(directory, name), bytes);
+  native.write_file_sync(path.join(outside, "keep"), "outside");
+  native.create_directory_link(outside, path.join(directory, "unrelated"));
   await write_game_backup(temp.path, files, native);
-  expect(fs.statSync(path.join(directory, HISTORY, "nested/empty")).isDirectory()).toBe(true);
+  for (const [name, bytes] of previous)
+    expect(fs.readFileSync(path.join(directory, name), "utf8")).toBe(bytes);
+  expect(fs.readFileSync(path.join(directory, "js/plugins/Menu.js"), "utf8")).toBe("original");
+  expect(fs.lstatSync(path.join(directory, "unrelated")).isSymbolicLink()).toBe(true);
+  expect(fs.readdirSync(outside)).toEqual(["keep"]);
 });
 
-it("目录时间早于文件时仍按文件时间归档，大小写目录和普通文件共同占用名称", async () => {
-  using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-backup-collision-"));
-  const native = new NativeFs(),
-    directory = path.join(temp.path, "backup_lg");
-  native.make_dir(path.join(directory, HISTORY.toUpperCase()));
-  native.write_file_sync(path.join(directory, HISTORY + "_1"), "occupied file");
-  native.write_file_sync(path.join(directory, "nested/old"), "old");
-  const stat = native.stat.bind(native);
-  vi.spyOn(native, "stat").mockImplementation((target) => {
-    const value = stat(target);
-    Object.assign(value, { birthtimeMs: value.isDirectory() ? TIME - 60000 : TIME });
-    return value;
-  });
-  await write_game_backup(temp.path, files, native);
-  expect(fs.readFileSync(path.join(directory, HISTORY + "_2", HISTORY + "_1"), "utf8")).toBe(
-    "occupied file",
-  );
-  expect(fs.readFileSync(path.join(directory, HISTORY + "_2/nested/old"), "utf8")).toBe("old");
-});
-
-it.each(["EEXIST", "EACCES"])("归档排他创建错误 %s 只在重名时重试", async (code) => {
-  using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-backup-create-"));
-  const native = new NativeFs(),
-    directory = path.join(temp.path, "backup_lg");
-  native.write_file_sync(path.join(directory, "old"), "old");
-  old_times(native, directory);
-  const create = vi
-    .spyOn(native, "make_dir_exclusive")
-    .mockRejectedValueOnce(Object.assign(new Error(code), { code }));
-  if (code === "EEXIST") {
-    await write_game_backup(temp.path, files, native);
-    expect(fs.readFileSync(path.join(directory, HISTORY + "_1/old"), "utf8")).toBe("old");
-    expect(create).toHaveBeenCalledTimes(2);
-  } else {
-    await expect(write_game_backup(temp.path, files, native)).rejects.toThrow(code);
-    expect(create).toHaveBeenCalledTimes(1);
-    expect(fs.readdirSync(directory)).toEqual(["old"]);
-  }
-});
-
-it.each(["move", "move-cancel", "write", "write-cancel"])(
-  "%s 失败保留现场，下次导入可轮换重试",
+it.each(["write", "cancel", "cancel-last"])(
+  "%s 失败保留已完成文件，重试只补存缺失路径",
   async (phase) => {
-    using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-backup-fail-"));
+    using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-backup-retry-"));
     const native = new NativeFs(),
       directory = path.join(temp.path, "backup_lg"),
-      controller = new AbortController();
-    native.write_file_sync(path.join(directory, "a"), "old a");
-    native.write_file_sync(path.join(directory, "b"), "old bb");
-    old_times(native, directory);
-    const write = native.write_file.bind(native),
+      controller = new AbortController(),
+      cause = new Error(phase + " failure");
+    const write = native.write_file_atomic.bind(native),
       rename = native.rename.bind(native);
-    const writes = vi.spyOn(native, "write_file");
-    if (phase.startsWith("move")) {
-      let moved = 0;
+    if (phase === "write") {
       vi.spyOn(native, "rename").mockImplementation((from, to) => {
-        if (moved++) throw new Error("move failure");
+        if (to === path.join(directory, "js/plugins/Menu.js")) throw cause;
         rename(from, to);
-        if (phase === "move-cancel") controller.abort(new Error("move-cancel failure"));
       });
     } else {
-      let written = 0;
-      writes.mockImplementation(async (file, bytes) => {
-        if (written++) throw new Error("write failure");
-        await write(file, bytes);
-        if (phase === "write-cancel") controller.abort(new Error("write-cancel failure"));
+      vi.spyOn(native, "write_file_atomic").mockImplementation((file, bytes) => {
+        write(file, bytes);
+        if (phase === "cancel-last") {
+          if (file === path.join(directory, "js/plugins/Menu.js")) controller.abort(cause);
+        } else setImmediate(() => controller.abort(cause));
       });
     }
     await expect(
       write_game_backup(temp.path, files, native, controller.signal),
     ).rejects.toMatchObject({
-      cause: { message: phase + " failure" },
-      message: expect.stringContaining(
-        "\nGame backup: " + directory + "\nHistory: " + path.join(directory, HISTORY),
-      ),
+      code: "file.io_failed",
+      cause,
+      message: expect.stringContaining("\nGame backup: " + directory),
     });
-    expect(fs.readFileSync(path.join(directory, HISTORY, "a"), "utf8")).toBe("old a");
-    if (phase.startsWith("move")) {
-      expect(writes).not.toHaveBeenCalled();
-      expect(fs.readFileSync(path.join(directory, "b"), "utf8")).toBe("old bb");
-    } else {
-      expect(fs.readFileSync(path.join(directory, HISTORY, "b"), "utf8")).toBe("old bb");
-      expect(fs.readFileSync(path.join(directory, "data/System.json"), "utf8")).toBe("{}");
-      expect(fs.existsSync(path.join(directory, "js"))).toBe(false);
-    }
+    expect(fs.readFileSync(path.join(directory, "data/System.json"), "utf8")).toBe("{}");
+    expect(fs.existsSync(path.join(directory, "js/plugins/Menu.js"))).toBe(phase === "cancel-last");
     vi.restoreAllMocks();
-    await write_game_backup(temp.path, files, native);
-    for (const [name, bytes] of files)
-      expect(fs.readFileSync(path.join(directory, name))).toEqual(bytes);
-    expect(fs.readFileSync(path.join(directory, HISTORY, "a"), "utf8")).toBe("old a");
+    const next = new Map([
+      ["data/System.json", Buffer.from("changed")],
+      ["js/plugins/Menu.js", Buffer.from("retry")],
+    ]);
+    await write_game_backup(temp.path, next, native);
+    expect(fs.readFileSync(path.join(directory, "data/System.json"), "utf8")).toBe("{}");
+    expect(fs.readFileSync(path.join(directory, "js/plugins/Menu.js"), "utf8")).toBe(
+      phase === "cancel-last" ? "original" : "retry",
+    );
+    expect(fs.readdirSync(directory).sort()).toEqual(["data", "js"]);
   },
 );
 
 it.each([".tmp/a", "backup_lg/a", HISTORY + "/a", "../outside", "Data/a|data/b", "data|data/a"])(
-  "原稿路径校验失败不移动旧内容：%s",
+  "整批路径校验失败时不写入：%s",
   async (names) => {
     using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-backup-path-"));
     const native = new NativeFs(),
@@ -182,103 +121,91 @@ it.each([".tmp/a", "backup_lg/a", HISTORY + "/a", "../outside", "Data/a|data/b",
     await expect(
       write_game_backup(
         temp.path,
-        new Map(names.split("|").map((name) => [name, Buffer.from("new")])),
+        new Map(["first", ...names.split("|")].map((name) => [name, Buffer.from("new")])),
         native,
       ),
     ).rejects.toThrow();
     expect(fs.readdirSync(directory)).toEqual(["keep"]);
+    expect(fs.readFileSync(path.join(directory, "keep"), "utf8")).toBe("old");
   },
 );
 
-it.each(["root", "current", "nested"])("拒绝备份中的链接：%s", async (kind) => {
+it.each(["root", "ancestor", "target"])("拒绝本次访问路径中的链接：%s", async (kind) => {
   using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-backup-link-"));
   const native = new NativeFs(),
     directory = path.join(temp.path, "backup_lg"),
     outside = path.join(temp.path, "outside");
   native.write_file_sync(path.join(outside, "keep"), "outside");
   const link =
-    kind === "root" ? directory : path.join(directory, kind === "nested" ? "data/link" : "link");
+    kind === "root"
+      ? directory
+      : path.join(directory, kind === "ancestor" ? "data" : "data/System.json");
   native.make_dir(path.dirname(link));
   native.create_directory_link(outside, link);
   await expect(write_game_backup(temp.path, files, native)).rejects.toThrow(
     "Unsafe game filesystem path",
   );
+  expect(fs.readdirSync(outside)).toEqual(["keep"]);
   expect(fs.readFileSync(path.join(outside, "keep"), "utf8")).toBe("outside");
   expect(fs.lstatSync(link).isSymbolicLink()).toBe(true);
 });
 
-it("归档前取消保留旧内容，备份流程不接管解包恢复目录", async () => {
+it.each(["root", "ancestor", "target"])("路径类型冲突时保留占用内容：%s", async (kind) => {
+  using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-backup-type-"));
+  const native = new NativeFs(),
+    directory = path.join(temp.path, "backup_lg");
+  const occupied =
+    kind === "root"
+      ? directory
+      : path.join(directory, kind === "ancestor" ? "data" : "data/System.json/keep");
+  native.write_file_sync(occupied, "keep");
+  await expect(write_game_backup(temp.path, files, native)).rejects.toMatchObject({
+    code: "file.io_failed",
+    message: expect.stringContaining("\nGame backup: " + directory),
+  });
+  expect(fs.readFileSync(occupied, "utf8")).toBe("keep");
+  expect(fs.existsSync(path.join(directory, "js"))).toBe(false);
+});
+
+it.each(["before", "skip"])("%s 取消保留旧内容和根目录恢复材料，可重新补存", async (phase) => {
   using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-backup-cancel-"));
   const native = new NativeFs(),
     directory = path.join(temp.path, "backup_lg"),
-    controller = new AbortController();
+    controller = new AbortController(),
+    cause = new Error("cancel backup");
   native.write_file_sync(path.join(temp.path, ".tmp/rollback/keep"), "recovery");
-  native.write_file_sync(path.join(directory, "keep"), "old");
-  const stat = native.stat.bind(native);
-  vi.spyOn(native, "stat").mockImplementation((target) => {
-    const value = stat(target);
-    if (target === path.join(directory, "keep"))
-      controller.abort(new Error("cancel before archive"));
-    return value;
-  });
-  await expect(write_game_backup(temp.path, files, native, controller.signal)).rejects.toThrow(
-    "cancel before archive",
+  native.write_file_sync(path.join(directory, "data/System.json"), "old");
+  if (phase === "before") controller.abort(cause);
+  else {
+    const stat = native.stat.bind(native);
+    vi.spyOn(native, "stat").mockImplementation((target) => {
+      const value = stat(target);
+      if (target === path.join(directory, "data/System.json")) controller.abort(cause);
+      return value;
+    });
+  }
+  const current = new Map([["data/System.json", Buffer.from("new")]]);
+  await expect(write_game_backup(temp.path, current, native, controller.signal)).rejects.toThrow(
+    "cancel backup",
   );
-  expect(fs.readdirSync(directory)).toEqual(["keep"]);
+  vi.restoreAllMocks();
+  await write_game_backup(temp.path, files, native);
+  expect(fs.readFileSync(path.join(directory, "data/System.json"), "utf8")).toBe("old");
+  expect(fs.readFileSync(path.join(directory, "js/plugins/Menu.js"), "utf8")).toBe("original");
   expect(fs.readFileSync(path.join(temp.path, ".tmp/rollback/keep"), "utf8")).toBe("recovery");
 });
 
-it.each(["renamed", "count", "size"])(
-  "快速重复判断只比较当前普通文件数和总大小：%s",
-  async (kind) => {
-    using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-backup-compare-"));
-    const native = new NativeFs();
-    const directory = path.join(temp.path, "backup_lg");
-    await write_game_backup(temp.path, files, native);
-    native.write_file_sync(path.join(directory, HISTORY, "keep"), "ignored history");
-    native.make_dir(path.join(directory, "empty"));
-    const next = new Map(files);
-    if (kind === "renamed") {
-      next.delete("data/System.json");
-      next.set("data/Renamed.json", Buffer.from("[]"));
-    } else if (kind === "count") {
-      next.delete("js/plugins/Menu.js");
-      next.set("data/System.json", Buffer.from("0123456789")); // 总大小相同，文件数不同。
-    } else if (kind === "size") next.set("data/System.json", Buffer.from("longer"));
-    const write = vi.spyOn(native, "write_file");
-    const read = vi.spyOn(native, "read_file");
-    const rename = vi.spyOn(native, "rename");
-    await write_game_backup(temp.path, next, native);
-    expect(read).not.toHaveBeenCalled(); // 旧备份只消费元数据。
-    const histories = fs.readdirSync(directory).filter((name) => name.startsWith("backup_lg_"));
-    if (kind === "renamed") {
-      expect(write).not.toHaveBeenCalled();
-      expect(rename).not.toHaveBeenCalled();
-      expect(histories).toEqual([HISTORY]);
-      for (const [name, bytes] of files)
-        expect(fs.readFileSync(path.join(directory, name))).toEqual(bytes);
-    } else {
-      expect(histories).toHaveLength(2);
-      for (const [name, bytes] of next)
-        expect(fs.readFileSync(path.join(directory, name))).toEqual(bytes);
-      const archive = histories.find((name) => name !== HISTORY)!;
-      for (const [name, bytes] of files)
-        expect(fs.readFileSync(path.join(directory, archive, name))).toEqual(bytes);
-    }
-  },
-);
-
-it("旧备份统计失败时保留原内容并终止写入", async () => {
+it("目标元数据读取失败时保留已有备份并终止补存", async () => {
   using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-backup-stat-"));
-  const native = new NativeFs();
-  await write_game_backup(temp.path, files, native);
+  const native = new NativeFs(),
+    directory = path.join(temp.path, "backup_lg");
+  native.write_file_sync(path.join(directory, "data/System.json"), "old");
   const stat = native.stat.bind(native);
   vi.spyOn(native, "stat").mockImplementation((name) => {
-    if (name.endsWith("System.json")) throw new Error("stat failure");
+    if (name === path.join(directory, "data/System.json")) throw new Error("stat failure");
     return stat(name);
   });
-  const write = vi.spyOn(native, "write_file");
   await expect(write_game_backup(temp.path, files, native)).rejects.toThrow("stat failure");
-  expect(write).not.toHaveBeenCalled();
-  expect(fs.readdirSync(path.join(temp.path, "backup_lg")).sort()).toEqual(["data", "js"]);
+  expect(fs.readFileSync(path.join(directory, "data/System.json"), "utf8")).toBe("old");
+  expect(fs.readdirSync(directory)).toEqual(["data"]);
 });

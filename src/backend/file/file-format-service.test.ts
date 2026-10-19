@@ -339,7 +339,7 @@ it("正式导入先拒绝根目录恢复材料，来源摘要只读", async () =
   expect(fs.readdirSync(path.join(temp.path, "backup_lg"))).toEqual(["keep"]);
 });
 
-it("正式导入容器与完整备份共用数据字节，重复导入保留现状", async () => {
+it("正式导入容器使用当前数据，重复导入保留各路径首次备份", async () => {
   using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-import-backup-"));
   const native = new NativeFs();
   const service = new FileFormatService({ target_language: "ZH" }, async () => null, native);
@@ -376,14 +376,15 @@ it("正式导入容器与完整备份共用数据字节，重复导入保留现�
   await service.prepare_source(entry);
   expect(fs.readdirSync(path.join(temp.path, "backup_lg"))).toEqual(["www"]);
   native.write_file_sync(path.join(temp.path, "www/data/System.json"), '{"gameTitle":"changed"}');
-  await service.prepare_source(entry);
+  const changed = await service.prepare_source(entry);
   const directory = path.join(temp.path, "backup_lg");
-  const history = fs.readdirSync(directory).find((name) => name.startsWith("backup_lg_"))!;
-  expect(fs.readFileSync(path.join(directory, history, "www/data/System.json"), "utf8")).toBe(
+  expect(fs.readdirSync(directory)).toEqual(["www"]);
+  expect(fs.readFileSync(path.join(directory, "www/data/System.json"), "utf8")).toBe(
     await members.get("www/data/System.json")!.async("string"),
   );
-  expect(fs.readFileSync(path.join(directory, "www/data/System.json"), "utf8")).toContain(
-    "changed",
+  const current = await read_game_container(changed.content, "game.zip");
+  expect(await current.members.get("www/data/System.json")!.async("string")).toBe(
+    '{"gameTitle":"changed"}',
   );
 });
 
@@ -409,23 +410,22 @@ it.each(["read", "existing-read", "backup"])(
     const entry = (await service.collect_source_file_entries([source]))[0]!;
     if (phase === "existing-read") await service.prepare_source(entry);
     const read = native.read_file.bind(native);
-    const write = native.write_file.bind(native);
+    const write = native.write_file_atomic.bind(native);
     vi.spyOn(native, "read_file").mockImplementation((file) => {
       if (phase !== "backup" && file === path.join(temp.path, "fonts/Main.ttf"))
         throw new Error("read failure");
       return read(file);
     });
-    vi.spyOn(native, "write_file").mockImplementation(async (file, bytes) => {
+    vi.spyOn(native, "write_file_atomic").mockImplementation((file, bytes) => {
       if (file === path.join(temp.path, "backup_lg/data/System.json"))
         throw new Error("backup failure");
-      await write(file, bytes);
+      write(file, bytes);
     });
     await expect(service.prepare_source(entry)).rejects.toThrow(
       phase === "backup" ? "backup failure" : "read failure",
     );
     expect(fs.readFileSync(path.join(temp.path, "img/a.png"))).toEqual(png_fixture());
     expect(fs.existsSync(path.join(temp.path, "img/a.png_"))).toBe(false);
-    expect(fs.existsSync(path.join(temp.path, "backup_lg"))).toBe(phase !== "read");
     if (phase === "existing-read")
       expect(fs.readdirSync(path.join(temp.path, "backup_lg")).sort()).toEqual(["data", "fonts"]);
     vi.restoreAllMocks();

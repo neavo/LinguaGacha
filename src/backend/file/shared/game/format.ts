@@ -60,7 +60,7 @@ export class GameFormat {
     private readonly adapter: GameFormatAdapter,
     private readonly fs: NativeFs,
   ) {}
-  /** 容器与备份共用调用方读定的原稿字节，容器只负责数据结构。 */
+  /** 容器固化调用方本次读定的原稿字节，只负责数据结构。 */
   public async create_container(
     files: ReadonlyMap<string, Uint8Array>,
     file: string,
