@@ -21,7 +21,10 @@ describe("ModelBasicSettingsDialog", () => {
     vi.useRealTimers();
   });
 
-  it("接口地址描述显示按协议和模型 ID 生成的实际请求地址", async () => {
+  it("接口地址预览包含当前项目作用域与模型", async () => {
+    const api_url =
+      "https://us-central1-aiplatform.googleapis.com/v1/projects/demo/locations/us-central1";
+    const model_id = "gemini-test";
     container = document.createElement("div");
     document.body.append(container);
     root = createRoot(container);
@@ -30,7 +33,7 @@ describe("ModelBasicSettingsDialog", () => {
       root?.render(
         <ModelBasicSettingsDialog
           open
-          model={create_model_snapshot({ api_format: "Google", model_id: "gemini-test" })}
+          model={create_model_snapshot({ api_format: "Google", api_url, model_id })}
           readonly={false}
           test_disabled={false}
           onPatch={async () => {}}
@@ -41,8 +44,8 @@ describe("ModelBasicSettingsDialog", () => {
       );
     });
 
-    expect(document.querySelector(".model-page__request-url")?.textContent).toBe(
-      "https://api.example.test/v1beta/models/gemini-test:streamGenerateContent?alt=sse",
+    expect(document.body.textContent).toContain(
+      `${api_url}/publishers/google/models/${model_id}:streamGenerateContent?alt=sse`,
     );
   });
 

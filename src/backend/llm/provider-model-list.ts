@@ -1,7 +1,6 @@
 import { read_json_record, type JsonRecord, type JsonValue } from "../../domain/json";
 import { Model } from "../../domain/model";
 import { CHATGPT_BASE_URL } from "../../domain/model";
-import { resolve_model_base_url } from "../../domain/model-endpoint";
 import type { AvailableModel } from "../../shared/model-catalog";
 import { create_provider_error, read_provider_response_error } from "../network/provider-error";
 import type { ChatGPTAuthService } from "../auth/chatgpt-auth-service";
@@ -16,10 +15,11 @@ const GOOGLE_MODEL_LIST_PAGE_SIZE = 1000;
 const CHATGPT_MODEL_LIST_CLIENT_VERSION = "0.160.0";
 
 /**
- * 按供应商协议查询远端实时模型列表；任务级 Key 轮换不参与模型列表探测。
+ * 按已解析的根地址查询远端列表；Vertex 候选由 ModelService 提供。
  */
 export async function list_available_models(
   model: JsonRecord,
+  base_url: string,
   auth?: Pick<ChatGPTAuthService, "bind" | "resolve">,
 ): Promise<AvailableModel[]> {
   try {
@@ -54,7 +54,6 @@ export async function list_available_models(
       });
     }
     const api_format = Model.normalize_api_format(String(model["api_format"] ?? "OpenAI"));
-    const base_url = resolve_model_base_url(String(model["api_url"] ?? ""), api_format);
     let models: string[];
     if (api_format === "Google") {
       models = await fetch_google_available_models(model, base_url);

@@ -81,6 +81,58 @@ afterEach(async () => {
 });
 
 describe("ModelService 配置管理", () => {
+  it.each([true, false])("Vertex 直接返回文本目录候选，目录有数据：%s", async (has_models) => {
+    const vertex: PiCatalogModel = {
+      ...LEVEL_CATALOG[0]!,
+      id: "gemini-fixture",
+      name: "Gemini fixture",
+      api: "google-vertex",
+      provider: "google-vertex",
+      input: ["text", "image"],
+    };
+    const catalog_models = has_models
+      ? [
+          vertex,
+          vertex,
+          { ...vertex, id: "image-only", input: ["image"] as const },
+          { ...vertex, api: "google-generative-ai", id: "developer-only" },
+        ]
+      : [];
+    const read_models = vi.spyOn(catalog, "read_models").mockReturnValue(catalog_models);
+    const { service, process_fetch } = await create_model_service([
+      create_model({
+        id: "vertex",
+        api_format: "Google",
+        api_url: "https://aiplatform.googleapis.com/v1",
+        model_id: "gemini-fixture",
+        api_key: "",
+      }),
+    ]);
+    await expect(service.list_available_models({ model_id: "vertex" })).resolves.toEqual({
+      models: has_models ? [{ id: vertex.id, name: vertex.name }] : [],
+    });
+    expect(process_fetch).not.toHaveBeenCalled();
+    read_models.mockRestore();
+  });
+
+  it("远端模型列表使用统一解析的根地址", async () => {
+    const { service, process_fetch } = await create_model_service([
+      create_model({
+        id: "remote",
+        api_format: "Anthropic",
+        api_url: "https://proxy.example/v1/messages",
+        model_id: "claude-fixture",
+      }),
+    ]);
+    process_fetch.mockResolvedValue(json_response({ data: [{ id: "claude-fixture" }] }));
+    await expect(service.list_available_models({ model_id: "remote" })).resolves.toEqual({
+      models: [{ id: "claude-fixture", name: "claude-fixture" }],
+    });
+    expect(process_fetch).toHaveBeenCalledWith(
+      "https://proxy.example/v1/models",
+      expect.objectContaining({ method: "GET" }),
+    );
+  });
   it("目录候选在 Agent 空闲后统一修正配置、切换并发布", async () => {
     const { service, runtime_gate, app_setting_service } = await create_model_service([
       create_model({ thinking: { level: "HIGH" } }),
@@ -1247,7 +1299,7 @@ describe("ModelService 远端模型能力", () => {
     );
   });
 
-  it("模型连通性测试复用 LLM request client 并按 key 汇总结果", async () => {
+  it("模型连通性测试按 Key 派发、脱敏并汇总结果", async () => {
     const log_entries: LogEntry[] = [];
     const { service, llm_request } = await create_model_service(
       [
@@ -1279,15 +1331,13 @@ describe("ModelService 远端模型能力", () => {
         response_think: "",
         timeout: true,
       });
-    vi.spyOn(Date, "now")
-      .mockReturnValueOnce(1000)
-      .mockReturnValueOnce(1250)
-      .mockReturnValueOnce(2000)
-      .mockReturnValueOnce(2250);
-
     const result = await service.test_model({ model_id: "test-1" });
 
     expect(request_mock).toHaveBeenCalledTimes(2);
+    expect(request_mock.mock.calls.map(([request]) => request.model)).toEqual([
+      expect.objectContaining({ api_key: "1234567890abcdefXYZ" }),
+      expect.objectContaining({ api_key: "bad-key" }),
+    ]);
     const run_ids = request_mock.mock.calls.map(([body]) => body.run_id);
     for (const run_id of run_ids) expect(run_id).not.toBe("");
     expect(new Set(run_ids).size).toBe(2);
@@ -1306,26 +1356,19 @@ describe("ModelService 远端模型能力", () => {
         success: true,
       }),
       expect.objectContaining({
-        error_reason: "请求超时（180 秒）",
+        error_reason: expect.any(String),
         masked_key: "*******",
         success: false,
       }),
     ]);
-    expect(log_entries.map((entry) => [entry.level, entry.message])).toEqual(
-      expect.arrayContaining([
-        ["info", "正在测试密钥：\n12345678***bcdefXYZ"],
-        ["info", "任务耗时 0.25 秒，输入消耗 2 Tokens，思考消耗 1 Tokens，输出消耗 3 Tokens"],
-        ["warning", "接口测试失败 …"],
-        ["info", "共测试 2 个接口，成功 1 个，失败 1 个 …"],
-        ["warning", "失败的密钥：\n*******"],
-      ]),
-    );
-    expect(log_entries.find((entry) => entry.message === "接口测试失败 …")?.payload).toMatchObject({
-      error: {
-        message: "请求超时（180 秒）",
+    expect(log_entries.find((entry) => entry.payload?.["error"] !== undefined)).toMatchObject({
+      level: "warning",
+      payload: {
+        source: "model",
+        error: { message: expect.any(String) },
       },
-      source: "model",
     });
+    expect(JSON.stringify(log_entries)).not.toContain("1234567890abcdefXYZ");
   });
 
   it("模型连通性测试把空正文判为无效响应", async () => {

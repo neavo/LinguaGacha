@@ -281,6 +281,10 @@ function read_catalog_model(provider: string, id: string, value: unknown): PiCat
     typeof model.maxTokens !== "number" ||
     !Number.isSafeInteger(model.maxTokens) ||
     model.maxTokens <= 0 ||
+    (model.name !== undefined && typeof model.name !== "string") ||
+    (model.input !== undefined &&
+      (!Array.isArray(model.input) ||
+        !model.input.every((input) => input === "text" || input === "image"))) ||
     (model.thinkingLevelMap !== undefined &&
       !Value.Check(ThinkingLevelMapSchema, model.thinkingLevelMap)) ||
     (model.compat !== undefined && !valid_compat(model.api, model.compat))
@@ -294,6 +298,8 @@ function read_catalog_model(provider: string, id: string, value: unknown): PiCat
     reasoning: model.reasoning,
     contextWindow: model.contextWindow,
     maxTokens: model.maxTokens,
+    ...(typeof model.name === "string" ? { name: model.name } : {}),
+    ...(Array.isArray(model.input) ? { input: model.input as ("text" | "image")[] } : {}),
     ...(model.thinkingLevelMap === undefined
       ? {}
       : {
@@ -307,7 +313,7 @@ function read_catalog_model(provider: string, id: string, value: unknown): PiCat
   };
 }
 
-/** 比较能力内容，排序差异和供应商展示元数据不触发更新。 */
+/** 比较能力与 Vertex 选择项，其他供应商展示元数据不影响应用能力。 */
 function same_models(left: readonly PiCatalogModel[], right: readonly PiCatalogModel[]): boolean {
   const normalize = (models: readonly PiCatalogModel[]) =>
     JSON.stringify(
@@ -320,6 +326,7 @@ function same_models(left: readonly PiCatalogModel[], right: readonly PiCatalogM
           reasoning: model.reasoning,
           contextWindow: model.contextWindow,
           maxTokens: model.maxTokens,
+          ...(model.api === "google-vertex" ? { name: model.name, input: model.input } : {}),
           thinkingLevelMap: stable(model.thinkingLevelMap),
           compat: stable(model.compat),
         }))

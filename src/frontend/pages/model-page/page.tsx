@@ -107,6 +107,7 @@ export function ModelPage(_props: ModelPageProps): JSX.Element {
         open={model_page_state.selector_state.open}
         model={selector_model}
         available_models={model_page_state.selector_state.available_models}
+        readonly={model_page_state.readonly}
         filter_text={model_page_state.selector_state.filter_text}
         is_loading={model_page_state.selector_state.is_loading}
         onFilterTextChange={model_page_state.set_selector_filter_text}

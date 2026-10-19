@@ -17,7 +17,7 @@ import {
   type JsonValue,
 } from "../../domain/json";
 import { normalize_setting_snapshot } from "../../domain/setting";
-import { resolve_model_base_url } from "../../domain/model-endpoint";
+import { resolve_model_endpoint, type ResolvedModelEndpoint } from "../../domain/model-endpoint";
 import { ENDPOINT_REQUEST_OVERRIDES } from "./llm-overrides";
 
 /** 身份由任务或对话拥有，请求准备只读取本次冻结值。 */
@@ -31,8 +31,8 @@ export type ModelRequestSnapshot = Readonly<{
   auth_type: ModelAuthType;
   api_format: ModelApiFormat; // 用户选定的请求协议，与目录模板来源独立。
   api_keys: readonly string[]; // API Key 路径至少保留一个凭据；OAuth 不在快照中保存 token。
-  base_url: string;
-  model_id: string; // 最终请求保留用户配置的原始模型 ID。
+  endpoint: ResolvedModelEndpoint;
+  model_id: string; // 配置身份保留原始 ID，请求资源由 endpoint 拥有。
   headers: Readonly<Record<string, string>>;
   extra_body: Readonly<JsonRecord>;
   generation: Readonly<JsonRecord>;
@@ -42,6 +42,14 @@ export type ModelRequestSnapshot = Readonly<{
 }>;
 
 const DEFAULT_OUTPUT_TOKEN_LIMIT = 4096; // 缺少旧配置字段时的单次输出上限。
+const ENDPOINT_ERRORS = Object.freeze({
+  vertex_path:
+    "Invalid Vertex api_url. Use a host, version root, or projects/{project}/locations/{location}/publishers/google path.",
+  vertex_model:
+    "Invalid Vertex model_id. Enter a model ID or a complete Google publisher model resource.",
+  vertex_scope:
+    "Vertex api_url and model_id specify different projects or locations. Make both fields use the same scope.",
+});
 
 /** 多行密钥去空白；本地免密接口仍使用 Pi 要求的非空占位值。 */
 export function collect_api_keys(raw_api_key: string): string[] {
@@ -67,8 +75,27 @@ export function read_model_request_snapshot(
   const request = read_json_record(record["request"]);
   const threshold = read_json_record(record["threshold"]);
   const thinking = read_json_record(record["thinking"]);
-  const base_url = resolve_model_base_url(String(record["api_url"] ?? ""), api_format);
+  const model_id = String(record["model_id"] ?? "");
+  const endpoint = resolve_model_endpoint(String(record["api_url"] ?? ""), api_format, model_id);
+  if (endpoint.error !== null)
+    throw create_provider_error(ENDPOINT_ERRORS[endpoint.error], undefined, { retryable: false });
+  const base_url = endpoint.base_url;
   const auth_type = record["auth_type"] === "oauth" ? "oauth" : "api_key";
+  const api_keys = auth_type === "oauth" ? [] : collect_api_keys(String(record["api_key"] ?? ""));
+  // Vertex 要求显式 Key，并拒绝 Pi 会转入 ADC 的标记。
+  if (
+    endpoint.api === "google-vertex" &&
+    (api_keys.length === 0 ||
+      api_keys.some(
+        (key) =>
+          key === "no_key_required" || key === "gcp-vertex-credentials" || /^<[^>]+>$/u.test(key),
+      ))
+  )
+    throw create_provider_error(
+      "Vertex requires an API Key in api_key. ADC is not supported.",
+      undefined,
+      { retryable: false },
+    );
   if (auth_type === "oauth") {
     const generation = read_json_record(record["generation"]);
     for (const field of ["temperature", "top_p"])
@@ -95,9 +122,9 @@ export function read_model_request_snapshot(
   return {
     auth_type,
     api_format,
-    api_keys: auth_type === "oauth" ? [] : collect_api_keys(String(record["api_key"] ?? "")),
-    base_url,
-    model_id: String(record["model_id"] ?? ""),
+    api_keys,
+    endpoint,
+    model_id,
     headers: build_request_headers(
       base_url,
       identity,

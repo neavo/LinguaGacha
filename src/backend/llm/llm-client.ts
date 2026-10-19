@@ -51,7 +51,7 @@ export class LLMClient implements LLMClientPort {
     const capability = resolve_model_capability(
       {
         api_format: snapshot.api_format,
-        api_url: snapshot.base_url,
+        api_url: snapshot.endpoint.base_url,
         model_id: snapshot.model_id,
         agent: DEFAULT_MODEL_AGENT_CONFIG,
       },

@@ -23,6 +23,7 @@ describe("provider-model-list", () => {
     await expect(
       list_available_models(
         { auth_type: "oauth", api_format: "OpenAIResponses", api_url: "https://api.openai.com/v1" },
+        "https://api.openai.com/v1",
         {
           bind: () => "session",
           resolve,
@@ -35,41 +36,42 @@ describe("provider-model-list", () => {
     expect(resolve).toHaveBeenCalledWith("session");
     expect(fetch_mock).toHaveBeenCalledOnce();
   });
-  it.each([
-    ["OpenAI", "https://api.example/v1"],
-    ["OpenAIResponses", "https://api.example/v1/responses/"],
-    ["SakuraLLM", "https://api.example/v1/chat/completions/"],
-  ] as const)("%s 模型列表读取 data[].id、排序并附带浏览器 UA", async (api_format, api_url) => {
-    const fetch_mock = vi.fn(async () =>
-      Response.json({
-        data: [{ id: "model-z" }, { id: "" }, { name: "skip" }, { id: "model-a" }],
-      }),
-    );
-    vi.stubGlobal("fetch", fetch_mock);
-    await expect(
-      list_available_models({
-        api_format,
-        api_url,
-        api_key: "key-a\nkey-b",
-        request: {
-          extra_headers: { "X-Trace": "trace-1" },
-          extra_headers_custom_enable: true,
-        },
-      }),
-    ).resolves.toEqual(["model-a", "model-z"].map((id) => ({ id, name: id })));
-
-    expect(fetch_mock).toHaveBeenCalledWith(
-      "https://api.example/v1/models",
-      expect.objectContaining({
-        method: "GET",
-        headers: expect.objectContaining({
-          Authorization: "Bearer key-a",
-          "User-Agent": expect.stringContaining("Chrome/133"),
-          "X-Trace": "trace-1",
+  it.each(["OpenAI", "OpenAIResponses", "SakuraLLM"])(
+    "%s 模型列表读取 data[].id、排序并附带浏览器 UA",
+    async (api_format) => {
+      const fetch_mock = vi.fn(async () =>
+        Response.json({
+          data: [{ id: "model-z" }, { id: "" }, { name: "skip" }, { id: "model-a" }],
         }),
-      }),
-    );
-  });
+      );
+      vi.stubGlobal("fetch", fetch_mock);
+      await expect(
+        list_available_models(
+          {
+            api_format,
+            api_key: "key-a\nkey-b",
+            request: {
+              extra_headers: { "X-Trace": "trace-1" },
+              extra_headers_custom_enable: true,
+            },
+          },
+          "https://api.example/v1",
+        ),
+      ).resolves.toEqual(["model-a", "model-z"].map((id) => ({ id, name: id })));
+
+      expect(fetch_mock).toHaveBeenCalledWith(
+        "https://api.example/v1/models",
+        expect.objectContaining({
+          method: "GET",
+          headers: expect.objectContaining({
+            Authorization: "Bearer key-a",
+            "User-Agent": expect.stringContaining("Chrome/133"),
+            "X-Trace": "trace-1",
+          }),
+        }),
+      );
+    },
+  );
 
   it("Google 模型列表通过 REST 拉取所有页后统一排序", async () => {
     const fetch_mock = vi
@@ -83,15 +85,17 @@ describe("provider-model-list", () => {
       .mockResolvedValueOnce(Response.json({ models: [{ name: "models/gemini-a" }] }));
     vi.stubGlobal("fetch", fetch_mock);
     await expect(
-      list_available_models({
-        api_format: "Google",
-        api_key: "google-key-a\ngoogle-key-b",
-        api_url: "https://generativelanguage.googleapis.com",
-        request: {
-          extra_headers: { "X-Trace": "trace-google" },
-          extra_headers_custom_enable: true,
+      list_available_models(
+        {
+          api_format: "Google",
+          api_key: "google-key-a\ngoogle-key-b",
+          request: {
+            extra_headers: { "X-Trace": "trace-google" },
+            extra_headers_custom_enable: true,
+          },
         },
-      }),
+        "https://generativelanguage.googleapis.com/v1beta",
+      ),
     ).resolves.toEqual(["models/gemini-a", "models/gemini-z"].map((id) => ({ id, name: id })));
 
     const first_url = new URL(String(fetch_mock.mock.calls[0]?.[0]));
@@ -119,17 +123,16 @@ describe("provider-model-list", () => {
     });
   });
 
-  it("Anthropic 模型列表排序并使用归一后的根地址和供应商请求头", async () => {
+  it("Anthropic 模型列表排序并使用供应商请求头", async () => {
     const fetch_mock = vi.fn(async () =>
       Response.json({ data: [{ id: "claude-z" }, { id: "claude-a" }] }),
     );
     vi.stubGlobal("fetch", fetch_mock);
     await expect(
-      list_available_models({
-        api_format: "Anthropic",
-        api_key: "anthropic-key",
-        api_url: "https://proxy.example/v1",
-      }),
+      list_available_models(
+        { api_format: "Anthropic", api_key: "anthropic-key" },
+        "https://proxy.example",
+      ),
     ).resolves.toEqual(["claude-a", "claude-z"].map((id) => ({ id, name: id })));
 
     expect(fetch_mock).toHaveBeenCalledWith("https://proxy.example/v1/models", {
@@ -147,11 +150,10 @@ describe("provider-model-list", () => {
     vi.stubGlobal("fetch", fetch_mock);
 
     await expect(
-      list_available_models({
-        api_format: "OpenAI",
-        api_key: "openai-key",
-        api_url: "https://api.example/v1",
-      }),
+      list_available_models(
+        { api_format: "OpenAI", api_key: "openai-key" },
+        "https://api.example/v1",
+      ),
     ).rejects.toMatchObject({
       code: "model.provider_failed",
       message: "unauthorized",

@@ -296,7 +296,12 @@ function create_snapshot(overrides: Partial<ModelRequestSnapshot> = {}): ModelRe
     auth_type: "api_key",
     api_format: "OpenAI",
     api_keys: ["key"],
-    base_url: "https://example.test",
+    endpoint: {
+      base_url: "https://example.test",
+      api: "OpenAI",
+      model_id: "custom-model",
+      error: null,
+    },
     model_id: "custom-model",
     headers: {},
     extra_body: {},

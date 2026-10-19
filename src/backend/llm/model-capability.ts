@@ -22,7 +22,11 @@ import {
   type ModelAgentConfig,
   type ModelAgentLimits,
 } from "../../domain/model-agent";
-import { resolve_model_base_url } from "../../domain/model-endpoint";
+import {
+  resolve_model_base_url,
+  resolve_model_endpoint,
+  type ResolvedModelEndpoint,
+} from "../../domain/model-endpoint";
 import {
   MODEL_CAPABILITY_OVERRIDES,
   type ModelCapabilityOverride,
@@ -54,6 +58,7 @@ const MODEL_PROVIDER_ORDER = [
   "openai",
   "anthropic",
   "google",
+  "google-vertex",
   "xai",
   "deepseek",
   "moonshotai",
@@ -84,7 +89,7 @@ export type PiCatalogModel = Readonly<
     | "maxTokens"
     | "thinkingLevelMap"
     | "compat"
-  >
+  > & { name?: string; input?: readonly ("text" | "image")[] }
 >;
 
 /** 请求入口共用的能力快照，产品请求策略与 SDK 兼容字段分别消费。 */
@@ -132,17 +137,20 @@ export function resolve_model_capability(
   model: ModelCapabilityInput,
   catalog: readonly PiCatalogModel[],
 ): ResolvedModelCapability {
-  const matches = match_pi_catalog_models(model.model_id, catalog);
-  const selection = select_pi_thinking_template(model, matches);
+  const endpoint = resolve_model_endpoint(model.api_url, model.api_format, model.model_id);
+  const model_id = endpoint.model_id;
+  const matches = match_pi_catalog_models(model_id, catalog);
+  const api_order = resolve_pi_api_order(endpoint.api);
+  const selection = select_pi_thinking_template(model, matches, model_id, api_order);
   const pi_template = selection?.model;
-  const app_override = match_model_capability_override(model.model_id);
+  const app_override = match_model_capability_override(model_id);
   const protocol_override = app_override?.protocols[model.api_format];
   const reasoning = protocol_override?.reasoning ?? pi_template?.reasoning === true;
   const thinking_level_map =
     protocol_override?.thinking_level_map === undefined
       ? pi_template?.thinkingLevelMap
       : { ...pi_template?.thinkingLevelMap, ...protocol_override.thinking_level_map };
-  const template_compat = read_template_compat(model.api_format, selection);
+  const template_compat = read_template_compat(api_order[0], selection);
   const compat =
     protocol_override?.compat === undefined
       ? template_compat
@@ -262,10 +270,11 @@ function is_model_id_word_character(value: string | undefined): boolean {
 function select_pi_thinking_template(
   model: ModelCapabilityInput,
   matches: readonly PiCatalogModel[],
+  model_id: string,
+  api_order: readonly Api[],
 ): TemplateSelection | null {
   const endpoint = normalize_catalog_endpoint(model.api_url, model.api_format);
-  const configured_id = model.model_id.trim().toLowerCase();
-  const api_order = resolve_pi_api_order(model.api_format);
+  const configured_id = model_id.trim().toLowerCase();
   const exact =
     endpoint === null
       ? []
@@ -291,12 +300,11 @@ function select_pi_thinking_template(
 
 /** 兼容字段属于具体协议；OpenAI 两种格式回退只借用思考等级，名称回退去除端点扩展。 */
 function read_template_compat(
-  api_format: ModelApiFormat,
+  target_api: Api | undefined,
   selection: TemplateSelection | null,
 ): PiCatalogModel["compat"] | undefined {
   if (selection === null) return undefined;
   const template = selection.model;
-  const target_api = resolve_pi_api_order(api_format)[0];
   // Azure Responses 与 Responses 共用同一组选项及序列化契约。
   const same_api =
     template.api === target_api ||
@@ -309,13 +317,14 @@ function read_template_compat(
 }
 
 /** 按产品协议选择 Pi API 形态；同形态再交给供应商优先级决胜。 */
-function resolve_pi_api_order(api_format: ModelApiFormat): readonly Api[] {
-  if (api_format === "Google") return ["google-generative-ai"];
-  if (api_format === "Anthropic") return ["anthropic-messages"];
-  if (api_format === "OpenAIResponses") {
+function resolve_pi_api_order(api: ResolvedModelEndpoint["api"]): readonly Api[] {
+  if (api === "google-vertex") return ["google-vertex", "google-generative-ai"];
+  if (api === "google-generative-ai") return ["google-generative-ai", "google-vertex"];
+  if (api === "Anthropic") return ["anthropic-messages"];
+  if (api === "OpenAIResponses") {
     return ["openai-responses", "azure-openai-responses", "openai-completions"];
   }
-  if (api_format === "OpenAI") return ["openai-completions", "openai-responses"];
+  if (api === "OpenAI") return ["openai-completions", "openai-responses"];
   return [];
 }
 

@@ -9,3 +9,8 @@ export const MODEL_CATALOG_UPDATED_EVENT_TOPIC = "model_catalog.updated";
 
 /** 服务商目录的选择项，id 用于推理请求，name 用于显示。 */
 export type AvailableModel = Readonly<{ id: string; name: string }>;
+
+/** 选择器回包承载候选模型，可用性由实际生成请求确认。 */
+export type ModelListResult = Readonly<{
+  models: readonly AvailableModel[];
+}>;
