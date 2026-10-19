@@ -16,7 +16,7 @@ import type { AnthropicOptions } from "@earendil-works/pi-ai/api/anthropic-messa
 
 import { AppError } from "../../shared/error";
 import { resolve_one_shot_generation_options, type ModelRequestSnapshot } from "./llm-request";
-import { apply_one_shot_request_overrides } from "./llm-payload";
+import { apply_request_overrides } from "./llm-payload";
 import type { LLMMessage } from "./llm-types";
 import { resolve_pi_thinking_level, type ResolvedModelCapability } from "./model-capability";
 
@@ -154,7 +154,11 @@ export function resolve_one_shot_pi_request(
       : {}),
     ...(snapshot.api_format === "Anthropic" ? { interleavedThinking: false } : {}),
     onPayload: (payload, active_model) =>
-      apply_one_shot_request_overrides(snapshot, payload, signal, active_model.compat),
+      apply_request_overrides(snapshot, payload, {
+        compat: active_model.compat,
+        request: capability.request,
+        one_shot_signal: signal,
+      }),
   };
   // Google / Anthropic 由 `streamSimple` 转换思考等级，OpenAI 直接调用以保留自动输出上限语义。
   const provider_stream =

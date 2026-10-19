@@ -16,6 +16,12 @@ type ModelProtocolCompat = {
   SakuraLLM: OpenAICompletionsCompat;
 };
 
+/** 产品请求策略由载荷层消费，独立于 SDK 的 `compat`。 */
+export type ModelRequestPolicy = Readonly<{
+  supports_reasoning_summary?: false; // 缺省沿用 SDK，仅声明需要关闭的自动参数。
+}>;
+
+/** 按模型族与协议补齐能力和请求规则，适用于所有接入地址。 */
 export type ModelCapabilityOverride = Readonly<{
   model_id: string;
   protocols: {
@@ -23,6 +29,7 @@ export type ModelCapabilityOverride = Readonly<{
       reasoning?: boolean;
       thinking_level_map?: ThinkingLevelMap;
       compat?: ModelProtocolCompat[Format];
+      request?: ModelRequestPolicy;
     }>;
   };
 }>;
@@ -111,6 +118,8 @@ export const MODEL_CAPABILITY_OVERRIDES: readonly ModelCapabilityOverride[] = Ob
           xhigh: null,
           max: null,
         },
+        // 豆包 Responses 拒绝 `reasoning.summary`，按模型族处理官方与中转请求。
+        request: { supports_reasoning_summary: false },
       },
     },
   },

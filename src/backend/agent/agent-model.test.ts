@@ -122,6 +122,41 @@ beforeEach(() => {
 });
 
 describe("Agent 模型注册", () => {
+  it("豆包 Responses 在实际 SDK 请求中清理自动摘要并保留思考等级", async () => {
+    const { openAIResponsesApi } = await vi.importActual<
+      typeof import("@earendil-works/pi-ai/api/openai-responses.lazy")
+    >("@earendil-works/pi-ai/api/openai-responses.lazy");
+    api_mocks.streamSimple.mockImplementationOnce(openAIResponsesApi().streamSimple);
+    const runtime = createModels();
+    const resolved = register_agent_model(
+      runtime,
+      build_config("OpenAIResponses", {
+        model_id: "doubao-seed-2-1-lite-260915",
+        thinking: { level: "LOW" },
+      }),
+      TEST_REQUEST_IDENTITY,
+      catalog,
+    );
+    let payload: unknown;
+    await runtime
+      .streamSimple(
+        resolved.model,
+        { messages: [{ role: "user", content: "test", timestamp: 0 }] },
+        {
+          reasoning: "low",
+          maxRetries: 0,
+          fetch: async (input, init) => {
+            payload = await new Request(input, init).json();
+            return Response.json({ error: { message: "fake upstream" } }, { status: 400 });
+          },
+        },
+      )
+      .result();
+    expect(payload).toHaveProperty("reasoning.effort", "low");
+    expect(payload).not.toHaveProperty("reasoning.summary");
+    expect(payload).toHaveProperty("include", ["reasoning.encrypted_content"]);
+  });
+
   it.each([
     [429, "subscription_sharing_usage_limit_exceeded", false],
     [503, "subscription_sharing_usage_unavailable", true],

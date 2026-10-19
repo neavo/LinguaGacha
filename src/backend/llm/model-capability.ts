@@ -23,7 +23,11 @@ import {
   type ModelAgentLimits,
 } from "../../domain/model-agent";
 import { normalize_pi_api_url } from "./llm-request";
-import { MODEL_CAPABILITY_OVERRIDES, type ModelCapabilityOverride } from "./llm-overrides";
+import {
+  MODEL_CAPABILITY_OVERRIDES,
+  type ModelCapabilityOverride,
+  type ModelRequestPolicy,
+} from "./llm-overrides";
 
 /** 模型容量规格缺失时的安全运行容量；不据模型名猜测规格。 */
 const FALLBACK_AGENT_LIMITS: ModelAgentLimits = Object.freeze({
@@ -83,6 +87,7 @@ export type PiCatalogModel = Readonly<
   >
 >;
 
+/** 请求入口共用的能力快照，产品请求策略与 SDK 兼容字段分别消费。 */
 export type ResolvedModelCapability = Readonly<{
   agent_config: ModelAgentConfig; // 可持久化的用户配置，0 保留自动语义。
   agent_limits: ModelAgentLimits; // 合并产品策略与用户配置后的运行容量。
@@ -92,6 +97,7 @@ export type ResolvedModelCapability = Readonly<{
   reasoning: boolean;
   thinking_level_map?: ThinkingLevelMap;
   compat?: PiCatalogModel["compat"];
+  request?: ModelRequestPolicy; // 随本次能力解析固定，由载荷层应用。
 }>;
 
 type ModelCapabilityInput = Pick<Model, "api_format" | "api_url" | "model_id" | "agent">;
@@ -164,6 +170,7 @@ export function resolve_model_capability(
     reasoning,
     ...(thinking_level_map === undefined ? {} : { thinking_level_map }),
     ...(compat === undefined ? {} : { compat }),
+    ...(protocol_override?.request === undefined ? {} : { request: protocol_override.request }),
   };
 }
 

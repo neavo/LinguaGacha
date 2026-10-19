@@ -64,7 +64,7 @@ describe("统一模型能力", () => {
   });
 
   it.each(["OpenAI", "OpenAIResponses"] as const)(
-    "%s 豆包提供关闭思考与三个独立思考等级",
+    "%s 豆包提供思考等级并按协议解析请求策略",
     (api_format) => {
       const capability = resolve_capability(api_format, "doubao-seed-evolving");
 
@@ -75,6 +75,9 @@ describe("统一模型能力", () => {
         "MEDIUM",
         "HIGH",
       ]);
+      expect(capability.request).toEqual(
+        api_format === "OpenAIResponses" ? { supports_reasoning_summary: false } : undefined,
+      );
     },
   );
 
