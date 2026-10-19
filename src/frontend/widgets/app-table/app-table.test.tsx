@@ -109,9 +109,21 @@ vi.mock("@frontend/app/locale/locale-context", () => ({
   useI18n: () => ({ t: (key: string) => key }),
 }));
 
-/** 夹具提供固定矩形，尺寸观察只保留装配接口。 */
+/** 夹具提供固定矩形，尺寸观察只记录回调与目标，由用例按需触发。 */
 class TestResizeObserver {
-  observe(): void {}
+  static instances: TestResizeObserver[] = [];
+  readonly callback: () => void;
+  readonly targets: Element[] = [];
+
+  constructor(callback: () => void) {
+    this.callback = callback;
+    TestResizeObserver.instances.push(this);
+  }
+
+  observe(target: Element): void {
+    this.targets.push(target);
+  }
+
   unobserve(): void {}
   disconnect(): void {}
 }
@@ -357,6 +369,7 @@ describe("AppTable", () => {
 
   beforeEach(() => {
     vi.stubGlobal("ResizeObserver", TestResizeObserver);
+    TestResizeObserver.instances = [];
     app_table_test_state.virtual_item_indices = null;
     app_table_test_state.measure.mockClear();
     app_table_test_state.scrollToIndex.mockClear();
@@ -953,6 +966,29 @@ describe("AppTable", () => {
 
     press(50);
     expect(container.querySelector(".app-table__selection-box")).not.toBeNull();
+  });
+
+  it("表头右侧空白跟随表体滚动条实际宽度", async () => {
+    const container = await mount(create_default_props());
+    const viewport = get_table_viewport(container);
+    const read_scrollbar_width = (): string | undefined =>
+      container
+        .querySelector<HTMLElement>(".app-table")
+        ?.style.getPropertyValue("--app-table-scrollbar-width");
+
+    expect(read_scrollbar_width()).toBe("0px");
+
+    Object.defineProperty(viewport, "offsetWidth", { configurable: true, value: 100 });
+    Object.defineProperty(viewport, "clientWidth", { configurable: true, value: 91 });
+    act(() => {
+      TestResizeObserver.instances
+        .filter((observer) => observer.targets.includes(viewport))
+        .forEach((observer) => {
+          observer.callback();
+        });
+    });
+
+    expect(read_scrollbar_width()).toBe("9px");
   });
 
   it("恢复页面状态时会把本地表格的选中行滚入视口", async () => {

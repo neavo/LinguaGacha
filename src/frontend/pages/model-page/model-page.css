@@ -307,7 +307,6 @@
 .model-page__selector-list {
   height: 384px;
   overflow-y: auto;
-  scrollbar-gutter: stable;
 }
 
 .model-page__selector-options {
