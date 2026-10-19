@@ -168,26 +168,46 @@ it("MZ 封装游戏展开后按原路径覆盖字体", async () => {
   );
 });
 
-it.each(["mv_mz", "wolfrpg"] as const)("%s 导入后修改字体使用同一完整备份集合", async (kind) => {
+it.each(["mv", "mz", "wolfrpg"] as const)("%s 反复导入和替换字体共用首次备份", async (kind) => {
   using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-font-import-"));
+  const prefix = kind === "mv" ? "www/" : "";
+  const font_path = kind === "wolfrpg" ? "custom.ttf" : prefix + "fonts/main.ttf";
+  const data_path = kind === "wolfrpg" ? "Data/BasicData/Game.dat" : prefix + "data/System.json";
   const files =
     kind === "wolfrpg"
       ? wolf_files()
       : new Map([
-          ["data/System.json", Buffer.from("{}")],
-          ["js/rmmz_core.js", Buffer.from("// fixture")],
-          ["fonts/main.ttf", Buffer.from("original font")],
-          ["fonts/game.css", Buffer.from("config")],
+          [prefix + "data/System.json", Buffer.from("{}")],
+          [
+            prefix + "js/" + (kind === "mv" ? "rpg_core.js" : "rmmz_core.js"),
+            Buffer.from("// fixture"),
+          ],
         ]);
+  files.set(font_path, Buffer.from("original font"));
   for (const [name, bytes] of files) native.write_file_sync(path.join(temp.path, name), bytes);
   const service = new FileFormatService({ target_language: "ZH" }, async () => null, native);
-  await service.prepare_source((await service.collect_source_file_entries([temp.path]))[0]!);
+  const entry = (await service.collect_source_file_entries([temp.path]))[0]!;
+  await service.prepare_source(entry);
   await replace(temp.path, new Map());
+  expect(fs.readFileSync(path.join(temp.path, font_path))).toEqual(FONT);
+  if (kind !== "wolfrpg")
+    native.write_file_sync(
+      path.join(temp.path, prefix + "data/System.json"),
+      '{"gameTitle":"updated"}',
+    );
+  await service.prepare_source(entry);
+  const next_font = font_fixture([{ text: "Second Font With Longer Name" }]);
+  await replace(temp.path, new Map(), next_font);
+  expect(fs.readFileSync(path.join(temp.path, font_path))).toEqual(next_font);
+  if (kind === "wolfrpg")
+    expect(read_font_fields(path.join(temp.path, data_path))[3]).toBe(
+      "Second Font With Longer Name",
+    );
+  for (const name of [data_path, font_path])
+    expect(fs.readFileSync(path.join(temp.path, "backup_lg", name))).toEqual(files.get(name));
   expect(
     fs.readdirSync(path.join(temp.path, "backup_lg")).some((name) => name.startsWith("backup_lg_")),
   ).toBe(false);
-  if (kind === "wolfrpg")
-    expect(fs.existsSync(path.join(temp.path, "backup_lg/custom.ttf"))).toBe(false);
 });
 
 it.each(["backup", "commit", "cancel"])(
@@ -210,13 +230,13 @@ it.each(["backup", "commit", "cancel"])(
     };
     const controller = new AbortController();
     if (phase === "backup" || phase === "cancel") {
-      const write = local.write_file.bind(local);
-      vi.spyOn(local, "write_file").mockImplementation(async (name, bytes) => {
+      const write = local.write_file_atomic.bind(local);
+      vi.spyOn(local, "write_file_atomic").mockImplementation((name, bytes) => {
         if (name.includes("backup_lg")) {
           if (phase === "backup") throw new Error("backup failure");
           controller.abort(new Error("cancel failure"));
         }
-        await write(name, bytes);
+        write(name, bytes);
       });
     } else {
       const unlink = local.unlink.bind(local);
