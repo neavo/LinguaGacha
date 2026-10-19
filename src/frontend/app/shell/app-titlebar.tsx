@@ -4,7 +4,7 @@ import { type JSX, startTransition } from "react";
 import { useI18n } from "@frontend/app/locale/locale-context";
 import { useSidebar } from "@frontend/shadcn/sidebar-context";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@frontend/shadcn/tooltip";
-import { resolve_shortcut_platform } from "@frontend/widgets/interactions/keyboard-shortcuts";
+import { get_shortcut_aria_keys } from "@frontend/widgets/interactions/keyboard-shortcuts";
 import { ShortcutTooltipRow } from "@frontend/widgets/interactions/shortcut-kbd";
 import { useActionShortcut } from "@frontend/widgets/interactions/use-action-shortcut";
 import "@frontend/app/shell/app-titlebar.css";
@@ -26,7 +26,6 @@ export function AppTitlebar(props: AppTitlebarProps): JSX.Element {
       ? "app.navigation_action.collapse_sidebar"
       : "app.navigation_action.expand_sidebar",
   );
-  const toggle_aria_shortcut = resolve_shortcut_platform() === "mac" ? "Meta+B" : "Control+B"; // ARIA 使用标准键名，键帽使用平台符号。
   /** 点击与快捷键共用低优先级布局更新，避免阻塞正在处理的输入。 */
   function handle_toggle_sidebar(): void {
     startTransition(toggleSidebar);
@@ -50,7 +49,7 @@ export function AppTitlebar(props: AppTitlebarProps): JSX.Element {
                   className="topbar__menu-button"
                   aria-label={toggle_label}
                   aria-expanded={state === "expanded"}
-                  aria-keyshortcuts={toggle_aria_shortcut}
+                  aria-keyshortcuts={get_shortcut_aria_keys("toggle_sidebar")}
                   onClick={handle_toggle_sidebar}
                 >
                   <SidebarToggleIcon size={18} aria-hidden="true" />

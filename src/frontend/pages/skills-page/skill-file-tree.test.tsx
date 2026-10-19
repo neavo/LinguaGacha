@@ -131,7 +131,7 @@ describe("技能文件树", () => {
     const dialog = document.querySelector('[role="alertdialog"]')!;
     await act(async () =>
       [...dialog.querySelectorAll("button")]
-        .find((button) => button.textContent === t("skills_page.editor.delete"))!
+        .find((button) => button.textContent?.startsWith(t("skills_page.editor.delete")))!
         .click(),
     );
     expect(change).toHaveBeenCalledExactlyOnceWith({ operation: "delete", path: "note.md" });

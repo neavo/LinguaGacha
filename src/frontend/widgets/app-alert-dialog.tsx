@@ -4,6 +4,11 @@ import { type JSX, useLayoutEffect, useRef, useState, type ReactNode } from "rea
 import { useI18n } from "@frontend/app/locale/locale-context";
 import { Spinner } from "@frontend/shadcn/spinner";
 import { AppButton } from "@frontend/widgets/app-button";
+import {
+  get_shortcut_aria_keys,
+  is_dialog_primary_shortcut_event,
+} from "@frontend/widgets/interactions/keyboard-shortcuts";
+import { ShortcutKbd } from "@frontend/widgets/interactions/shortcut-kbd";
 
 type AppDialogAction = {
   label: string;
@@ -98,6 +103,8 @@ export function AppActionDialog(props: AppActionDialogProps): JSX.Element {
   const submitting_icon = props.submittingIcon ?? true;
   const title = props.title === null ? null : (props.title ?? t("app.action.confirm"));
   const submitting_action = submitting ? (props.submittingAction ?? "primary") : null;
+  const primary_enabled = !submitting && props.primaryAction.disabled !== true; // 倒计时与业务禁用都经 `disabled` 收口
+  const popup_ref = useRef<HTMLDivElement>(null);
   const close_handled_ref = useRef(false); // 同一次关闭只向受控状态拥有者回流一次
   useLayoutEffect(() => {
     if (props.open) close_handled_ref.current = false;
@@ -108,10 +115,12 @@ export function AppActionDialog(props: AppActionDialogProps): JSX.Element {
       data-slot="alert-dialog"
       open={props.open}
       onOpenChange={(next_open, details) => {
-        if (!next_open && !close_handled_ref.current) {
-          close_handled_ref.current = true;
+        if (!next_open) {
           if (submitting) details.cancel();
-          else props.onClose();
+          else if (!close_handled_ref.current) {
+            close_handled_ref.current = true; // 只有已受理的关闭才去重，提交期间被拦截的 Escape 不占用标记
+            props.onClose();
+          }
         }
       }}
     >
@@ -121,7 +130,19 @@ export function AppActionDialog(props: AppActionDialogProps): JSX.Element {
           className="[-webkit-app-region:no-drag] fixed inset-0 z-(--ui-layer-overlay) bg-black/10 duration-100 supports-backdrop-filter:backdrop-blur-xs data-open:animate-in data-open:fade-in-0 data-closed:animate-out data-closed:fade-out-0"
         />
         <AlertDialogPrimitive.Popup
+          ref={popup_ref}
+          // 默认会聚焦首个按钮「取消」，改为聚焦弹窗本身，回车才能直达主操作。
+          initialFocus={popup_ref}
           data-slot="alert-dialog-content"
+          onKeyDown={(event) => {
+            if (
+              primary_enabled &&
+              is_dialog_primary_shortcut_event(event.nativeEvent, "submit", event.currentTarget)
+            ) {
+              event.preventDefault();
+              void props.primaryAction.onSelect();
+            }
+          }}
           aria-label={title === null ? props.primaryAction.label : undefined}
           className="fixed top-1/2 left-1/2 z-(--ui-layer-overlay) grid w-full max-w-xs -translate-x-1/2 -translate-y-1/2 gap-4 rounded-xl bg-popover p-4 text-popover-foreground ring-1 ring-foreground/10 duration-100 outline-none sm:max-w-sm data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95"
         >
@@ -154,12 +175,14 @@ export function AppActionDialog(props: AppActionDialogProps): JSX.Element {
               size="sm"
               data-slot="alert-dialog-cancel"
               disabled={submitting}
+              aria-keyshortcuts={get_shortcut_aria_keys("cancel")}
               onClick={(event) => {
                 event.preventDefault();
                 props.onClose();
               }}
             >
               {t("app.action.cancel")}
+              <ShortcutKbd action="cancel" />
             </AppButton>
             {props.secondaryAction === undefined ? null : (
               <AppButton
@@ -186,7 +209,8 @@ export function AppActionDialog(props: AppActionDialogProps): JSX.Element {
               variant={props.primaryAction.destructive ? "destructive" : "default"}
               size="sm"
               data-slot="alert-dialog-primary-action"
-              disabled={submitting || props.primaryAction.disabled}
+              disabled={!primary_enabled}
+              aria-keyshortcuts={get_shortcut_aria_keys("submit")}
               onClick={(event) => {
                 event.preventDefault();
                 void props.primaryAction.onSelect();
@@ -200,6 +224,7 @@ export function AppActionDialog(props: AppActionDialogProps): JSX.Element {
               ) : (
                 props.primaryAction.label
               )}
+              <ShortcutKbd action="submit" />
             </AppButton>
           </div>
         </AlertDialogPrimitive.Popup>

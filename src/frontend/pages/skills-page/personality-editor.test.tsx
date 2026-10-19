@@ -107,24 +107,18 @@ describe("角色设定编辑", () => {
       }),
     );
   }
-  /** 从顶栏打开确认窗，按显示的倒计时等待动作开放。 */
+  /** 从顶栏打开确认窗。 */
   async function open_reset() {
     await act(async () =>
       [...container.querySelectorAll<HTMLButtonElement>(".skill-editor__toolbar button")]
         .find((button) => button.getAttribute("aria-label") === "重置")!
         .click(),
     );
-    const countdown = [...document.querySelectorAll('[role="alertdialog"] button')].find((button) =>
-      /^\d+s$/.test(button.textContent ?? ""),
-    )!;
-    await act(async () =>
-      vi.advanceTimersByTime(Number.parseInt(countdown.textContent!, 10) * 1000),
-    );
   }
-  /** 定位倒计时结束后开放的确认动作。 */
+  /** 定位确认动作，允许按钮同时展示快捷键提示。 */
   function confirmation() {
     return [...document.querySelectorAll<HTMLButtonElement>('[role="alertdialog"] button')].find(
-      (button) => button.textContent === "确认",
+      (button) => button.textContent?.startsWith("确认"),
     )!;
   }
   it("角色仅首尾空白变化时，自动保存、显式保存与返回均不提交正文", async () => {
@@ -200,7 +194,7 @@ describe("角色设定编辑", () => {
     expect(disk.body).toBe("Custom role");
     expect(status()).toBe(t("skills_page.editor.saved"));
   });
-  it("重置复用倒计时，等待在途保存后恢复默认并清除撤销历史", async () => {
+  it("重置等待在途保存后恢复默认并清除撤销历史", async () => {
     let release!: () => void;
     hold = () =>
       new Promise<void>((resolve) => {

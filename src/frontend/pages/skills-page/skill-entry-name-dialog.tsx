@@ -2,7 +2,6 @@ import { push_error_toast } from "@frontend/app/feedback/desktop-toast";
 import { type JSX, useState } from "react";
 import { useI18n } from "@frontend/app/locale/locale-context";
 import { Input } from "@frontend/shadcn/input";
-import { AppButton } from "@frontend/widgets/app-button";
 import { AppPageDialog } from "@frontend/widgets/app-page-dialog";
 
 type Props = {
@@ -36,18 +35,14 @@ export function SkillEntryNameDialog(props: Props): JSX.Element {
       open
       title={t(`skills_page.editor.${props.operation}`)}
       size="sm"
-      dismissBehavior={props.busy ? "blocked" : "default"}
+      submitting={props.busy}
       onClose={props.on_close}
-      footer={
-        <>
-          <AppButton size="sm" variant="outline" disabled={props.busy} onClick={props.on_close}>
-            {t("app.action.cancel")}
-          </AppButton>
-          <AppButton size="sm" disabled={disabled || !name.trim()} onClick={() => void submit()}>
-            {t("app.action.confirm")}
-          </AppButton>
-        </>
-      }
+      primaryAction={{
+        label: t("app.action.confirm"),
+        shortcut: "submit",
+        disabled: props.readonly || !name.trim(),
+        onSelect: submit,
+      }}
     >
       <Input
         autoFocus
@@ -57,12 +52,6 @@ export function SkillEntryNameDialog(props: Props): JSX.Element {
         disabled={disabled}
         onFocus={(event) => event.target.select()}
         onChange={(event) => set_name(event.target.value)}
-        onKeyDown={(event) => {
-          if (event.key === "Enter" && !event.nativeEvent.isComposing) {
-            event.preventDefault();
-            void submit();
-          }
-        }}
       />
     </AppPageDialog>
   );

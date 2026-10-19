@@ -1,21 +1,14 @@
-import { act, StrictMode } from "react";
+import { act, StrictMode, type ComponentProps } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { AgentMessageInput } from "@shared/agent";
-import type { AgentInputState } from "@frontend/app/session/agent/agent-chat-context";
-
-type MockComposerProps = {
-  input_state: AgentInputState;
-  read_only?: boolean;
-  on_submit: (message: AgentMessageInput) => void;
-  on_cancel?: () => void;
-};
+import { TooltipProvider } from "@frontend/shadcn/tooltip";
+import type { AgentMessageEditor } from "./agent-message-editor";
 
 const push_toast = vi.hoisted(() => vi.fn());
 vi.mock("@frontend/app/feedback/desktop-toast", () => ({
   push_error_toast: push_toast,
-  push_toast,
 }));
 
 vi.mock("@frontend/app/locale/locale-context", () => ({
@@ -24,25 +17,22 @@ vi.mock("@frontend/app/locale/locale-context", () => ({
   }),
 }));
 
-vi.mock("@frontend/app/feedback/visible-error-message", () => ({
-  resolve_visible_error_message: (_error: unknown, _t: unknown, fallback: string) => fallback,
-}));
-
 vi.mock("./agent-message-editor", () => ({
-  AgentMessageEditor: (props: MockComposerProps) => (
-    <div data-read_only={props.read_only ? "true" : "false"}>
+  AgentMessageEditor: (
+    props: Pick<
+      ComponentProps<typeof AgentMessageEditor>,
+      "input_state" | "on_submit" | "render_actions"
+    >,
+  ) => (
+    <form
+      onSubmit={(event) => {
+        event.preventDefault();
+        props.on_submit({ text: "新内容", attachments: [] });
+      }}
+    >
       <span data-draft>{props.input_state.draft.read().text}</span>
-      <button
-        type="button"
-        data-send
-        onClick={() => props.on_submit({ text: "新内容", attachments: [] })}
-      >
-        send
-      </button>
-      <button type="button" data-cancel disabled={props.read_only} onClick={props.on_cancel}>
-        cancel
-      </button>
-    </div>
+      {props.render_actions({ has_content: true, uploads_pending: false }).submit}
+    </form>
   ),
 }));
 
@@ -67,7 +57,9 @@ describe("AgentInlineEditor", () => {
     const view = render_editor(on_save, on_saved);
 
     expect(view.querySelector("[data-draft]")?.textContent).toBe("原内容");
-    await act(async () => view.querySelector<HTMLButtonElement>("[data-send]")?.click());
+    await act(async () =>
+      view.querySelector<HTMLButtonElement>('[aria-label="app.action.save"]')?.click(),
+    );
 
     expect(on_save).toHaveBeenCalledWith({ text: "新内容", attachments: [] });
     expect(on_saved).toHaveBeenCalledWith({ text: "新内容", attachments: [] });
@@ -87,9 +79,21 @@ describe("AgentInlineEditor", () => {
     const on_saved = vi.fn();
     const view = render_editor(on_save, on_saved, on_cancel);
 
-    await act(async () => view.querySelector<HTMLButtonElement>("[data-send]")?.click());
-    expect(view.querySelector<HTMLDivElement>("[data-read_only]")?.dataset.read_only).toBe("true");
-    await act(async () => view.querySelector<HTMLButtonElement>("[data-cancel]")?.click());
+    await act(async () =>
+      view.querySelector<HTMLButtonElement>('[aria-label="app.action.save"]')?.click(),
+    );
+    const save = view.querySelector<HTMLButtonElement>('[aria-label="app.action.save"]')!;
+    const cancel = view.querySelector<HTMLButtonElement>('[aria-label="app.action.cancel"]')!;
+    expect(save.disabled).toBe(true);
+    expect(save.getAttribute("aria-keyshortcuts")).toBe("Enter");
+    expect(save.querySelector("kbd")?.textContent).toBe("Enter");
+    expect(cancel.getAttribute("aria-keyshortcuts")).toBe("Escape");
+    expect(cancel.querySelector("kbd")?.textContent).toBe("Esc");
+    await act(async () => {
+      save.click();
+      cancel.click();
+    });
+    expect(on_save).toHaveBeenCalledOnce();
     expect(on_cancel).not.toHaveBeenCalled();
 
     release_save();
@@ -97,15 +101,42 @@ describe("AgentInlineEditor", () => {
     expect(on_saved).toHaveBeenCalledWith({ text: "新内容", attachments: [] });
   });
 
-  it("保存失败后保留编辑器并允许再次取消", async () => {
+  it("保存失败后保留草稿与键位，并允许再次保存", async () => {
     const on_cancel = vi.fn();
-    const failed_save = vi.fn(async () => {
+    const failed_save = vi.fn(async (): Promise<void> => {
       throw new Error("offline");
     });
     const failed_view = render_editor(failed_save, vi.fn(), on_cancel);
-    await act(async () => failed_view.querySelector<HTMLButtonElement>("[data-send]")?.click());
+    await act(async () =>
+      failed_view.querySelector<HTMLButtonElement>('[aria-label="app.action.save"]')?.click(),
+    );
     expect(push_toast).toHaveBeenCalledWith("app.feedback.modify_failed", expect.any(Error));
-    await act(async () => failed_view.querySelector<HTMLButtonElement>("[data-cancel]")?.click());
+    const save = failed_view.querySelector<HTMLButtonElement>('[aria-label="app.action.save"]')!;
+    expect(save.disabled).toBe(false);
+    expect(save.getAttribute("aria-keyshortcuts")).toBe("Enter");
+    expect(save.querySelector("kbd")?.textContent).toBe("Enter");
+    failed_save.mockResolvedValueOnce(undefined);
+    await act(async () =>
+      failed_view.querySelector<HTMLButtonElement>('[aria-label="app.action.save"]')?.click(),
+    );
+    expect(failed_save).toHaveBeenCalledTimes(2);
+  });
+
+  it("保存失败后仍可取消", async () => {
+    const on_cancel = vi.fn();
+    const failed_view = render_editor(
+      async () => {
+        throw new Error("offline");
+      },
+      vi.fn(),
+      on_cancel,
+    );
+    await act(async () =>
+      failed_view.querySelector<HTMLButtonElement>('[aria-label="app.action.save"]')?.click(),
+    );
+    await act(async () =>
+      failed_view.querySelector<HTMLButtonElement>('[aria-label="app.action.cancel"]')?.click(),
+    );
     expect(on_cancel).toHaveBeenCalledOnce();
   });
 
@@ -127,15 +158,17 @@ describe("AgentInlineEditor", () => {
     act(() => {
       root?.render(
         <StrictMode>
-          <AgentInlineEditor
-            target={target}
-            skills={[]}
-            command={null}
-            unavailable_reason={null}
-            on_save={on_save}
-            on_saved={on_saved}
-            on_cancel={on_cancel}
-          />
+          <TooltipProvider>
+            <AgentInlineEditor
+              target={target}
+              skills={[]}
+              command={null}
+              unavailable_reason={null}
+              on_save={on_save}
+              on_saved={on_saved}
+              on_cancel={on_cancel}
+            />
+          </TooltipProvider>
         </StrictMode>,
       );
     });

@@ -9,6 +9,7 @@ import {
   CommandBarGroup,
   CommandBarSeparator,
 } from "@frontend/widgets/command-bar/command-bar";
+import { get_shortcut_aria_keys } from "@frontend/widgets/interactions/keyboard-shortcuts";
 import { useActionShortcut } from "@frontend/widgets/interactions/use-action-shortcut";
 import { ShortcutKbd } from "@frontend/widgets/interactions/shortcut-kbd";
 
@@ -44,6 +45,7 @@ export function QualityRuleCommandBar(props: QualityRuleCommandBarProps): JSX.El
   const { t } = useI18n();
   const entries = props.entry_actions;
   const write_disabled = !props.ready || props.readonly; // 写入限制与导出、预设管理的读取限制独立。
+  const delete_disabled = write_disabled || (entries?.selected_entry_count ?? 0) === 0; // 删除还要求已有选中条目
   useActionShortcut({
     action: "create",
     enabled: entries !== undefined && !write_disabled,
@@ -51,7 +53,7 @@ export function QualityRuleCommandBar(props: QualityRuleCommandBarProps): JSX.El
   });
   useActionShortcut({
     action: "delete",
-    enabled: entries !== undefined && !write_disabled && entries.selected_entry_count > 0,
+    enabled: entries !== undefined && !delete_disabled,
     on_trigger: () => {
       void entries?.on_delete_selected();
     },
@@ -67,6 +69,7 @@ export function QualityRuleCommandBar(props: QualityRuleCommandBarProps): JSX.El
                   variant="ghost"
                   size="toolbar"
                   disabled={write_disabled}
+                  aria-keyshortcuts={get_shortcut_aria_keys("create")}
                   onClick={entries.on_create}
                 >
                   <Plus data-icon="inline-start" />
@@ -76,7 +79,8 @@ export function QualityRuleCommandBar(props: QualityRuleCommandBarProps): JSX.El
                 <AppButton
                   variant="ghost"
                   size="toolbar"
-                  disabled={write_disabled || entries.selected_entry_count === 0}
+                  disabled={delete_disabled}
+                  aria-keyshortcuts={get_shortcut_aria_keys("delete")}
                   onClick={() => {
                     void entries.on_delete_selected();
                   }}

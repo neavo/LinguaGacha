@@ -64,9 +64,10 @@ export function WorkbenchDialogs(props: WorkbenchDialogsProps): JSX.Element {
   const description_key = kind === null ? null : CONFIRM_DESCRIPTION_KEY_BY_KIND[kind];
   return (
     <AppConfirmDialog
-      open={description_key !== null && description_key !== undefined}
+      open={description_key !== null}
       description={description_key === null ? "" : t(description_key).replace("{COUNT}", count)}
       submitting={props.dialog_state.submitting}
+      confirmDelay={kind === "reset-file"}
       onConfirm={props.on_confirm}
       onClose={props.on_close}
     />

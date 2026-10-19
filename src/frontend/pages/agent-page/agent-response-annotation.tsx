@@ -111,7 +111,7 @@ export function AgentResponseAnnotationEditor({
                 onClick={on_submit}
               >
                 {t("app.action.save")}
-                <ShortcutKbd action="submit" className="bg-background/18 text-primary-foreground" />
+                <ShortcutKbd action="submit" />
               </AppButton>
             }
           />

@@ -1,4 +1,4 @@
-import { LoaderCircle, PencilLine, RefreshCw, Send } from "lucide-react";
+import { PencilLine, RefreshCw, Send } from "lucide-react";
 import { Fragment, type JSX, useEffect, useState } from "react";
 
 import { MODEL_SPEED_LEVELS, is_model_speed_level, is_model_thinking_level } from "@domain/model";
@@ -340,39 +340,16 @@ export function ModelBasicSettingsDialog(props: ModelBasicSettingsDialogProps): 
         open={model_id_editor === "input"}
         title={t("model_page.fields.model_id.title")}
         size="sm"
-        dismissBehavior={is_model_id_submitting ? "blocked" : "default"}
+        submitting={is_model_id_submitting}
         onClose={() => {
           set_model_id_editor(null);
         }}
-        footer={
-          <>
-            <AppButton
-              type="button"
-              variant="outline"
-              size="sm"
-              disabled={is_model_id_submitting}
-              onClick={() => {
-                set_model_id_editor(null);
-              }}
-            >
-              {t("app.action.cancel")}
-            </AppButton>
-            <AppButton
-              type="button"
-              size="sm"
-              disabled={props.readonly || is_model_id_submitting}
-              aria-busy={is_model_id_submitting || undefined}
-              onClick={() => {
-                void commit_model_id(model_id_input_value.trim());
-              }}
-            >
-              {is_model_id_submitting ? (
-                <LoaderCircle className="animate-spin" aria-hidden="true" />
-              ) : null}
-              {t("app.action.confirm")}
-            </AppButton>
-          </>
-        }
+        primaryAction={{
+          label: t("app.action.confirm"),
+          shortcut: "submit",
+          disabled: props.readonly,
+          onSelect: () => commit_model_id(model_id_input_value.trim()),
+        }}
       >
         <Input
           autoFocus
@@ -382,12 +359,6 @@ export function ModelBasicSettingsDialog(props: ModelBasicSettingsDialogProps): 
           placeholder={t("model_page.fields.model_id.placeholder")}
           onChange={(event) => {
             set_model_id_input_value(event.target.value);
-          }}
-          onKeyDown={(event) => {
-            if (event.key === "Enter") {
-              event.preventDefault();
-              void commit_model_id(model_id_input_value.trim());
-            }
           }}
         />
       </AppPageDialog>

@@ -2,6 +2,8 @@ export type ShortcutAction = "save" | "create" | "delete" | "follow_latest" | "t
 export type ShortcutLabel = ShortcutAction | "cancel" | "submit" | "newline";
 
 export type ShortcutPlatform = "mac" | "default";
+/** 多行输入弹窗用保存键提交，其余弹窗用回车提交。 */
+export type DialogShortcut = "save" | "submit";
 type PrimaryShortcutAction = Exclude<ShortcutAction, "delete">;
 
 type NavigatorLike = {
@@ -35,6 +37,30 @@ const SHORTCUT_LABELS = {
     follow_latest: "Ctrl+E",
     toggle_sidebar: "Ctrl+B",
     cancel: "Esc",
+    submit: "Enter",
+    newline: "Shift+Enter",
+  },
+} satisfies Record<ShortcutPlatform, Record<ShortcutLabel, string>>;
+
+/** `aria-keyshortcuts` 使用 UI Events 标准键名，与键帽的平台符号分开维护。 */
+const SHORTCUT_ARIA_KEYS = {
+  mac: {
+    save: "Meta+S",
+    create: "Meta+N",
+    delete: "Meta+Backspace",
+    follow_latest: "Meta+E",
+    toggle_sidebar: "Meta+B",
+    cancel: "Escape",
+    submit: "Enter",
+    newline: "Shift+Enter",
+  },
+  default: {
+    save: "Control+S",
+    create: "Control+N",
+    delete: "Delete",
+    follow_latest: "Control+E",
+    toggle_sidebar: "Control+B",
+    cancel: "Escape",
     submit: "Enter",
     newline: "Shift+Enter",
   },
@@ -78,6 +104,14 @@ export function get_shortcut_label(
   platform: ShortcutPlatform = resolve_shortcut_platform(),
 ): string {
   return SHORTCUT_LABELS[platform][action];
+}
+
+/** 为 `aria-keyshortcuts` 提供与键帽同源的标准键名。 */
+export function get_shortcut_aria_keys(
+  action: ShortcutLabel,
+  platform: ShortcutPlatform = resolve_shortcut_platform(),
+): string {
+  return SHORTCUT_ARIA_KEYS[platform][action];
 }
 
 /** 只接受平台主修饰键，排除带额外修饰键的其它操作。 */
@@ -140,12 +174,7 @@ export function is_action_shortcut_event(
 
 /** 弹窗拥有其内部按键，页面级动作需避开该区域。 */
 function is_element_inside_dialog(element: Element): boolean {
-  return (
-    element.closest("[data-slot='dialog-content']") !== null ||
-    element.closest("[data-slot='alert-dialog-content']") !== null ||
-    element.closest("[role='dialog']") !== null ||
-    element.closest("[role='alertdialog']") !== null
-  );
+  return element.closest("[role='dialog'], [role='alertdialog']") !== null;
 }
 
 /** 原生输入、富文本与代码编辑器共同构成文本编辑目标。 */
@@ -169,13 +198,8 @@ function is_element_text_editing_target(element: Element): boolean {
 /** 页面级动作只在当前交互目标不会争用同一按键时接管事件。 */
 export function should_ignore_action_shortcut_event(
   event: ShortcutKeyboardEvent,
-  action: ShortcutAction,
   allow_in_text_editing = false,
 ): boolean {
-  if (action === "save") {
-    return false;
-  }
-
   if (!(event.target instanceof Element)) {
     return false;
   }
@@ -185,4 +209,44 @@ export function should_ignore_action_shortcut_event(
     is_element_inside_dialog(event.target) ||
     (!allow_in_text_editing && is_element_text_editing_target(event.target))
   );
+}
+
+type DialogKeyboardEvent = ShortcutKeyboardEvent & Pick<KeyboardEvent, "repeat">;
+
+/**
+ * 判断弹窗内按键是否触发主操作。
+ *
+ * 嵌套弹窗和菜单经 Portal 渲染但 React 事件仍会冒泡，因此按 DOM 包含关系只处理本弹窗内的按键。
+ * 回车只在弹窗本身或单行输入框上提交，按钮、链接、多行输入与编辑器保留原生回车语义。
+ */
+export function is_dialog_primary_shortcut_event(
+  event: DialogKeyboardEvent,
+  shortcut: DialogShortcut,
+  popup: Element,
+  platform: ShortcutPlatform = resolve_shortcut_platform(),
+): boolean {
+  if (event.repeat || !(event.target instanceof Node)) {
+    return false;
+  }
+
+  if (!popup.contains(event.target)) {
+    return false;
+  }
+
+  if (shortcut === "save") {
+    return is_action_shortcut_event(event, "save", platform);
+  }
+
+  if (
+    event.key !== "Enter" ||
+    event.isComposing ||
+    event.altKey ||
+    event.ctrlKey ||
+    event.metaKey ||
+    event.shiftKey
+  ) {
+    return false;
+  }
+
+  return event.target === popup || event.target instanceof HTMLInputElement;
 }

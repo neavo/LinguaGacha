@@ -8,16 +8,6 @@ vi.mock("@frontend/app/locale/locale-context", () => ({
   useI18n: () => ({ t: (key: string) => key }),
 }));
 
-vi.mock("@frontend/widgets/app-page-dialog", () => ({
-  AppPageDialog: (props: { open: boolean; children: ReactNode; footer?: ReactNode }) =>
-    props.open ? (
-      <div>
-        {props.children}
-        {props.footer}
-      </div>
-    ) : null,
-}));
-
 vi.mock("@frontend/shadcn/tooltip", () => ({
   Tooltip: (props: { children?: ReactNode; render?: ReactNode }) => (
     <>{props.render ?? props.children}</>
@@ -57,6 +47,7 @@ describe("ProofreadingFilterDialog", () => {
     root = null;
   });
 
+  /** 使用真实弹窗观察筛选结果，提交互斥由公共控件执行。 */
   async function render_dialog(
     props: Partial<ComponentProps<typeof ProofreadingFilterDialog>> = {},
   ): Promise<HTMLDivElement> {
@@ -79,7 +70,7 @@ describe("ProofreadingFilterDialog", () => {
         />,
       );
     });
-    return container;
+    return document.querySelector<HTMLDivElement>('[role="dialog"]')!;
   }
 
   it("切换结果时提交新的筛选值且不修改输入对象", async () => {

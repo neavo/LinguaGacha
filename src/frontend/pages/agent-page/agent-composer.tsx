@@ -146,7 +146,7 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
                       disabled={stop_action ? !can_stop : !can_submit}
                       aria-label={contextual_submit_label}
                       aria-busy={submit_command_active || undefined}
-                      aria-keyshortcuts={can_submit ? "Enter" : undefined}
+                      aria-keyshortcuts={stop_action ? undefined : "Enter"}
                     >
                       {stopping || (compacting && stop_action) || submit_command_active ? (
                         <LoaderCircle className="animate-spin" aria-hidden="true" />
@@ -159,25 +159,31 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
                   </span>
                 }
               />
-              {submit_command_active ? null : (
-                <TooltipContent className="flex-col items-stretch gap-1 whitespace-nowrap">
-                  {unavailable_reason !== null ? (
-                    <p>{t(AGENT_UNAVAILABLE_REASON_KEYS[unavailable_reason])}</p>
-                  ) : stop_action || queue_full_for_submit ? (
-                    <p>{contextual_submit_label}</p>
-                  ) : (
-                    <>
-                      <ShortcutTooltipRow label={contextual_submit_label} shortcut="submit" />
-                      {!editor_read_only ? (
-                        <ShortcutTooltipRow
-                          label={t("agent_page.input.newline")}
-                          shortcut="newline"
-                        />
-                      ) : null}
-                    </>
-                  )}
-                </TooltipContent>
-              )}
+              <TooltipContent className="flex-col items-stretch gap-1 whitespace-nowrap">
+                {stop_action ? (
+                  <p>{contextual_submit_label}</p>
+                ) : (
+                  <>
+                    <ShortcutTooltipRow
+                      label={t(
+                        continuing_queue ? "agent_page.action.continue" : "agent_page.action.send",
+                      )}
+                      shortcut="submit"
+                    />
+                    {unavailable_reason !== null ? (
+                      <p>{t(AGENT_UNAVAILABLE_REASON_KEYS[unavailable_reason])}</p>
+                    ) : queue_full_for_submit ? (
+                      <p>{contextual_submit_label}</p>
+                    ) : null}
+                    {!editor_read_only ? (
+                      <ShortcutTooltipRow
+                        label={t("agent_page.input.newline")}
+                        shortcut="newline"
+                      />
+                    ) : null}
+                  </>
+                )}
+              </TooltipContent>
             </Tooltip>
           ),
         };

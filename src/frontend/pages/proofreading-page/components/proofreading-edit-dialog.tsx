@@ -10,7 +10,6 @@ import {
 } from "@frontend/features/proofreading/proofreading-label-keys";
 import { ProofreadingContextView } from "@frontend/pages/proofreading-page/components/proofreading-context-view";
 import type { ProofreadingDialogState } from "@frontend/pages/proofreading-page/proofreading-page-ui-types";
-import { useActionShortcut } from "@frontend/widgets/interactions/use-action-shortcut";
 import { AppEditor } from "@frontend/widgets/app-editor/app-editor";
 import type { AppTextMark } from "@frontend/widgets/app-editor/app-editor-code-mirror";
 import {
@@ -24,7 +23,6 @@ import { AppButton } from "@frontend/widgets/app-button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@frontend/shadcn/tooltip";
 import { AppPageDialog } from "@frontend/widgets/app-page-dialog";
 import { AppContentState } from "@frontend/widgets/app-content-state";
-import { ShortcutKbd } from "@frontend/widgets/interactions/shortcut-kbd";
 import { read_optional_item_name_text, read_item_name_text } from "@shared/item-name";
 import {
   AppDropdownMenu,
@@ -331,29 +329,22 @@ export function ProofreadingEditDialog(props: ProofreadingEditDialogProps): JSX.
   const viewer_open = view.kind !== "edit";
   const context_trigger_ref = useRef<HTMLButtonElement>(null);
   const raw_data_trigger_ref = useRef<HTMLButtonElement>(null);
+  const scroll_ref = useRef<HTMLDivElement>(null); // 进入查看视图时承接焦点，原入口按钮随编辑区隐藏
   const previous_view_ref = useRef(view.kind); // 返回编辑时用原视图恢复对应入口的焦点。
-  const save_label = t("app.action.save");
   const has_content_change =
     item !== null &&
     (draft_item.dst !== item.dst || draft_item.name_dst !== read_item_name_text(item.name_dst));
-  const save_disabled = props.readonly || pending || !has_content_change;
 
   useEffect(() => {
     if (previous_view_ref.current !== "edit" && !viewer_open && open) {
       const trigger =
         previous_view_ref.current === "context" ? context_trigger_ref : raw_data_trigger_ref;
       trigger.current?.focus();
+    } else if (previous_view_ref.current === "edit" && viewer_open && open) {
+      scroll_ref.current?.focus();
     }
     previous_view_ref.current = view.kind;
   }, [view.kind, viewer_open, open]);
-
-  useActionShortcut({
-    action: "save",
-    enabled: open && !viewer_open && !save_disabled,
-    on_trigger: () => {
-      void props.on_save();
-    },
-  });
 
   if (item === null) {
     return null;
@@ -419,120 +410,83 @@ export function ProofreadingEditDialog(props: ProofreadingEditDialogProps): JSX.
             : "app.action.edit",
       )}
       size="viewport"
-      dismissBehavior={pending ? "blocked" : viewer_open ? "default" : "escape-only"}
+      dismissBehavior={viewer_open ? "default" : "escape-only"}
+      submitting={pending}
       onClose={viewer_open ? props.on_return_to_edit : props.on_close}
       bodyClassName="overflow-hidden p-0"
-      footerClassName={viewer_open ? undefined : "sm:justify-between"}
-      footer={
-        viewer_open ? (
-          <AppButton
-            type="button"
-            variant="outline"
-            size="sm"
-            autoFocus
-            disabled={pending}
-            onClick={props.on_return_to_edit}
-          >
-            {t("proofreading_page.action.back")}
-            <ShortcutKbd action="cancel" />
-          </AppButton>
-        ) : (
+      closeLabel={viewer_open ? t("proofreading_page.action.back") : undefined}
+      primaryAction={
+        viewer_open
+          ? undefined
+          : {
+              label: t("app.action.save"),
+              shortcut: "save",
+              disabled: props.readonly || !has_content_change,
+              tooltip: t("proofreading_page.tooltip.save_translation_status"),
+              onSelect: props.on_save,
+            }
+      }
+      footerStart={
+        viewer_open ? undefined : (
           <>
-            <div className="flex flex-wrap items-center gap-2">
-              <AppButton
-                type="button"
-                variant="outline"
-                size="sm"
-                disabled={props.readonly || pending}
-                onClick={() => {
-                  props.on_request_retranslate([String(item.item_id)]);
-                }}
-              >
-                <RefreshCcw data-icon="inline-start" />
-                {t("proofreading_page.action.retranslate")}
-              </AppButton>
-              <AppButton
-                type="button"
-                variant="outline"
-                size="sm"
-                disabled={props.readonly || pending}
-                onClick={() => {
-                  props.on_request_clear_translation([String(item.item_id)]);
-                }}
-              >
-                <Eraser data-icon="inline-start" />
-                {t("proofreading_page.action.clear_translation")}
-              </AppButton>
-              <AppDropdownMenu>
-                <AppDropdownMenuTrigger
-                  render={
-                    <AppButton
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      disabled={props.readonly || pending}
-                    >
-                      <ListChecks data-icon="inline-start" />
-                      {t("proofreading_page.action.set_translation_status")}
-                    </AppButton>
-                  }
-                />
-                <AppDropdownMenuContent align="start" matchTriggerWidth={false}>
-                  <AppDropdownMenuGroup>
-                    {ITEM_MANUAL_STATUSES.map((status) => (
-                      <AppDropdownMenuItem
-                        key={status}
-                        onClick={() => {
-                          props.on_request_set_translation_status([String(item.item_id)], status);
-                        }}
-                      >
-                        {t(PROOFREADING_STATUS_LABEL_KEY_BY_CODE[status])}
-                      </AppDropdownMenuItem>
-                    ))}
-                  </AppDropdownMenuGroup>
-                </AppDropdownMenuContent>
-              </AppDropdownMenu>
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <AppButton
-                type="button"
-                variant="outline"
-                size="sm"
-                disabled={pending}
-                onClick={props.on_close}
-              >
-                {t("app.action.cancel")}
-                <ShortcutKbd action="cancel" />
-              </AppButton>
-              <Tooltip>
-                <TooltipTrigger
-                  render={
-                    <AppButton
-                      type="button"
-                      size="sm"
-                      disabled={save_disabled}
+            <AppButton
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={props.readonly || pending}
+              onClick={() => {
+                props.on_request_retranslate([String(item.item_id)]);
+              }}
+            >
+              <RefreshCcw data-icon="inline-start" />
+              {t("proofreading_page.action.retranslate")}
+            </AppButton>
+            <AppButton
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={props.readonly || pending}
+              onClick={() => {
+                props.on_request_clear_translation([String(item.item_id)]);
+              }}
+            >
+              <Eraser data-icon="inline-start" />
+              {t("proofreading_page.action.clear_translation")}
+            </AppButton>
+            <AppDropdownMenu>
+              <AppDropdownMenuTrigger
+                render={
+                  <AppButton
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={props.readonly || pending}
+                  >
+                    <ListChecks data-icon="inline-start" />
+                    {t("proofreading_page.action.set_translation_status")}
+                  </AppButton>
+                }
+              />
+              <AppDropdownMenuContent align="start" matchTriggerWidth={false}>
+                <AppDropdownMenuGroup>
+                  {ITEM_MANUAL_STATUSES.map((status) => (
+                    <AppDropdownMenuItem
+                      key={status}
                       onClick={() => {
-                        void props.on_save();
+                        props.on_request_set_translation_status([String(item.item_id)], status);
                       }}
                     >
-                      {save_label}
-                      <ShortcutKbd
-                        action="save"
-                        className="bg-background/18 text-primary-foreground"
-                      />
-                    </AppButton>
-                  }
-                />
-                <TooltipContent>
-                  {t("proofreading_page.tooltip.save_translation_status")}
-                </TooltipContent>
-              </Tooltip>
-            </div>
+                      {t(PROOFREADING_STATUS_LABEL_KEY_BY_CODE[status])}
+                    </AppDropdownMenuItem>
+                  ))}
+                </AppDropdownMenuGroup>
+              </AppDropdownMenuContent>
+            </AppDropdownMenu>
           </>
         )
       }
     >
-      <div className="proofreading-page__dialog-scroll">
+      <div ref={scroll_ref} tabIndex={-1} className="proofreading-page__dialog-scroll outline-none">
         {view.kind !== "edit" && view.status !== "ready" ? (
           <div className="proofreading-page__dialog-view-state">
             <AppContentState

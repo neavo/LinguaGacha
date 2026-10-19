@@ -31,7 +31,7 @@ import { api_fetch } from "@frontend/app/desktop/desktop-api";
 import { useAppNavigation } from "@frontend/app/navigation/navigation-context";
 import { AppConfirmDialog } from "@frontend/widgets/app-alert-dialog";
 import { AppButton } from "@frontend/widgets/app-button";
-import { resolve_shortcut_platform } from "@frontend/widgets/interactions/keyboard-shortcuts";
+import { get_shortcut_aria_keys } from "@frontend/widgets/interactions/keyboard-shortcuts";
 import { ShortcutTooltipRow } from "@frontend/widgets/interactions/shortcut-kbd";
 import { useActionShortcut } from "@frontend/widgets/interactions/use-action-shortcut";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@frontend/shadcn/tooltip";
@@ -496,9 +496,6 @@ export function AgentConversation({ active = true }: { active?: boolean }): JSX.
   ]);
 
   const follow_latest_label = t("agent_page.action.follow_latest");
-  // 可访问性属性使用标准键名。Tooltip 继续显示用户熟悉的平台符号。
-  const follow_latest_aria_shortcut =
-    resolve_shortcut_platform() === "mac" ? "Meta+E" : "Control+E";
   const follow_latest_status = t("app.tooltip.value", {
     TITLE: follow_latest_label,
     VALUE: t(follow_latest ? "app.state.enabled" : "app.state.disabled"),
@@ -514,7 +511,7 @@ export function AgentConversation({ active = true }: { active?: boolean }): JSX.
             variant="outline"
             aria-label={follow_latest_label}
             aria-pressed={follow_latest}
-            aria-keyshortcuts={follow_latest_aria_shortcut}
+            aria-keyshortcuts={get_shortcut_aria_keys("follow_latest")}
             onClick={toggle_follow_latest}
           >
             <ArrowDownToLine aria-hidden="true" />

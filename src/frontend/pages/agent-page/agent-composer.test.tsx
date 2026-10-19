@@ -32,6 +32,67 @@ describe("AgentComposer", () => {
     container = null;
     root = null;
     draft = new AgentInputDraft();
+    vi.useRealTimers();
+  });
+
+  it("空草稿禁用发送时保留提示，切换停止后移除发送绑定", async () => {
+    vi.useFakeTimers();
+    const view = await render_composer();
+    const submit = view.querySelector<HTMLButtonElement>(".agent-composer__submit")!;
+    expect(submit.disabled).toBe(true);
+    expect(submit.getAttribute("aria-keyshortcuts")).toBe("Enter");
+    const trigger = view.querySelector<HTMLElement>(".agent-composer__submit-shell")!;
+    await act(async () => {
+      trigger.dispatchEvent(new MouseEvent("mouseenter", { bubbles: true }));
+      trigger.dispatchEvent(new MouseEvent("mousemove", { bubbles: true }));
+      await vi.advanceTimersByTimeAsync(1);
+    });
+    expect(document.querySelector('[role="tooltip"][data-open] kbd')?.textContent).toBe("Enter");
+    await render_composer({ state: "running" });
+    expect(submit.disabled).toBe(false);
+    expect(submit.hasAttribute("aria-keyshortcuts")).toBe(false);
+    const tooltip = document.querySelector('[role="tooltip"][data-open]');
+    expect(tooltip?.textContent).toBe("agent_page.action.stop");
+    expect(tooltip?.querySelector("kbd")).toBeNull();
+  });
+
+  it.each([
+    { unavailable_reason: "runtime_busy" as const },
+    { command: "send" as const },
+    { queue_full: true, state: "running" as const },
+  ])("发送暂不可用时保留绑定和 Tooltip：%j", async (options) => {
+    vi.useFakeTimers();
+    const on_send = vi.fn();
+    const view = await render_composer({ ...options, on_send });
+    const editor = get_editor(view);
+    // 提交命令会锁定编辑，但外部草稿同步仍可恢复同一正文。
+    await set_document(editor, "草稿", 2);
+    const submit = view.querySelector<HTMLButtonElement>(".agent-composer__submit")!;
+    expect(submit.disabled).toBe(true);
+    expect(submit.getAttribute("aria-keyshortcuts")).toBe("Enter");
+    await act(async () => {
+      submit.click();
+      editor.contentDOM.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "Enter", bubbles: true }),
+      );
+    });
+    expect(on_send).not.toHaveBeenCalled();
+    const trigger = view.querySelector<HTMLElement>(".agent-composer__submit-shell")!;
+    await act(async () => {
+      trigger.dispatchEvent(new MouseEvent("mouseenter", { bubbles: true }));
+      trigger.dispatchEvent(new MouseEvent("mousemove", { bubbles: true }));
+      await vi.advanceTimersByTimeAsync(1);
+    });
+    const tooltip = document.querySelector('[role="tooltip"][data-open]');
+    expect(tooltip?.textContent).toContain("agent_page.action.send");
+    expect(tooltip?.querySelector("kbd")?.textContent).toBe("Enter");
+    if ("unavailable_reason" in options)
+      expect(tooltip?.textContent).toContain("agent_page.unavailable.runtime_busy");
+    if ("queue_full" in options) expect(tooltip?.textContent).toContain("agent_page.queue.full");
+    await render_composer({ on_send });
+    expect(submit.disabled).toBe(false);
+    await click_send(view);
+    expect(on_send).toHaveBeenCalledOnce();
   });
   it("会话状态控制发送、停止和收尾期间的禁用", async () => {
     const on_send = vi.fn();
@@ -39,11 +100,17 @@ describe("AgentComposer", () => {
     const view = await render_composer({ state: "running", on_send, on_stop });
     const editor = get_editor(view);
     await set_document(editor, "继续补充", 4);
+    expect(view.querySelector(".agent-composer__submit")?.getAttribute("aria-keyshortcuts")).toBe(
+      "Enter",
+    );
     expect(editor.state.readOnly).toBe(false);
     await click_send(view);
     expect(on_send).toHaveBeenCalledWith({ text: "继续补充", attachments: [] });
     expect(on_stop).not.toHaveBeenCalled();
     await set_document(editor, "", 0);
+    expect(view.querySelector(".agent-composer__submit")?.hasAttribute("aria-keyshortcuts")).toBe(
+      false,
+    );
     await click_send(view);
     expect(on_stop).toHaveBeenCalledOnce();
     expect(on_send).toHaveBeenCalledOnce();
@@ -122,7 +189,7 @@ describe("AgentComposer", () => {
     root ??= createRoot(container);
     await act(async () =>
       root?.render(
-        <TooltipProvider>
+        <TooltipProvider delay={0}>
           <AgentComposer
             skills={[]}
             state="idle"

@@ -86,7 +86,7 @@ describe("技能名称弹窗", () => {
     expect(document.querySelector("input")?.value).toBe("说明");
     await act(async () =>
       [...document.querySelectorAll("button")]
-        .find((button) => button.textContent === "取消")!
+        .find((button) => button.textContent?.startsWith("取消"))!
         .click(),
     );
     expect(close).toHaveBeenCalledOnce();

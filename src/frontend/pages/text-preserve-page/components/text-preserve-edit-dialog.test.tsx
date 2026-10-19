@@ -84,12 +84,33 @@ describe("TextPreserveEditDialog", () => {
     expect(rule?.getAttribute("contenteditable")).toBe("false");
     expect(rule?.getAttribute("aria-invalid")).toBe("true");
     expect(find_button("app.action.save")?.disabled).toBe(true);
+    await act(async () => press_save_in(rule!));
+    expect(on_save).not.toHaveBeenCalled();
+  });
+  it("编辑器内的 Ctrl+S 冒泡到弹窗并提交保存", async () => {
+    const on_save = vi.fn(async () => undefined);
+
     await act(async () => {
-      window.dispatchEvent(
-        new KeyboardEvent("keydown", { key: "s", ctrlKey: true, bubbles: true }),
+      root.render(
+        <TextPreserveEditDialog
+          open
+          mode="edit"
+          entry={{ src: "hero", info: "主角" }}
+          saving={false}
+          readonly={false}
+          invalid={false}
+          on_change={vi.fn()}
+          on_save={on_save}
+          on_close={vi.fn(async () => undefined)}
+        />,
       );
     });
-    expect(on_save).not.toHaveBeenCalled();
+
+    const rule = document.querySelector<HTMLElement>(
+      '.cm-content[aria-label="quality_rule_editor.fields.rule"]',
+    )!;
+    await act(async () => press_save_in(rule));
+    expect(on_save).toHaveBeenCalledOnce();
   });
   it("校验失败后将焦点定位到规则编辑器", async () => {
     // 复用同一编辑器实例，观察校验状态变化后的焦点。
@@ -117,6 +138,11 @@ describe("TextPreserveEditDialog", () => {
     expect(rule?.getAttribute("aria-invalid")).toBe("true");
   });
 });
+
+/** 在编辑器内按 Ctrl+S，经弹窗内冒泡验证快捷键链路。 */
+function press_save_in(target: HTMLElement): void {
+  target.dispatchEvent(new KeyboardEvent("keydown", { key: "s", ctrlKey: true, bubbles: true }));
+}
 
 /** 按可见动作文字查找按钮，允许按钮同时展示快捷键提示。 */
 function find_button(text: string): HTMLButtonElement | undefined {

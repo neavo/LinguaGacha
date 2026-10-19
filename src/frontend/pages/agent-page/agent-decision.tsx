@@ -160,7 +160,7 @@ function AgentQuestionDecision(props: {
                       size="icon-xs"
                       disabled={!can_submit}
                       aria-label={t("app.action.confirm")}
-                      aria-keyshortcuts={can_submit ? "Enter" : undefined}
+                      aria-keyshortcuts="Enter"
                       // 保持输入框焦点，点击发送不会先恢复零秒计时。
                       onPointerDown={(event) => event.preventDefault()}
                       onClick={submit_custom_answer}

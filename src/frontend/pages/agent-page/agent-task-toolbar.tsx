@@ -22,7 +22,7 @@ import {
   AppDropdownMenuRadioItem,
   AppDropdownMenuTrigger,
 } from "@frontend/widgets/app-dropdown-menu";
-import { resolve_shortcut_platform } from "@frontend/widgets/interactions/keyboard-shortcuts";
+import { get_shortcut_aria_keys } from "@frontend/widgets/interactions/keyboard-shortcuts";
 import { ShortcutTooltipRow } from "@frontend/widgets/interactions/shortcut-kbd";
 import { useActionShortcut } from "@frontend/widgets/interactions/use-action-shortcut";
 import { AgentComposerModelControls } from "./agent-composer-model-controls";
@@ -46,7 +46,6 @@ export function AgentTaskToolbar(props: {
   // 在提交菜单前清除展开状态，交互区恢复时菜单保持关闭。
   if (props.locked && approval_open) set_approval_open(false);
   const translation_generation = useTranslationGeneration();
-  const new_task_aria_shortcut = resolve_shortcut_platform() === "mac" ? "Meta+N" : "Control+N";
   useActionShortcut({
     action: "create",
     enabled: props.can_reset,
@@ -69,7 +68,7 @@ export function AgentTaskToolbar(props: {
                 variant="ghost"
                 className="agent-composer__reset"
                 disabled={!props.can_reset}
-                aria-keyshortcuts={props.can_reset ? new_task_aria_shortcut : undefined}
+                aria-keyshortcuts={get_shortcut_aria_keys("create")}
                 onClick={props.on_reset}
               >
                 <MessageSquarePlus aria-hidden="true" />
@@ -79,11 +78,7 @@ export function AgentTaskToolbar(props: {
           }
         />
         <TooltipContent>
-          {props.can_reset ? (
-            <ShortcutTooltipRow label={t("agent_page.action.new_task")} shortcut="create" />
-          ) : (
-            <p>{t("agent_page.action.new_task")}</p>
-          )}
+          <ShortcutTooltipRow label={t("agent_page.action.new_task")} shortcut="create" />
         </TooltipContent>
       </Tooltip>
       <AppButton

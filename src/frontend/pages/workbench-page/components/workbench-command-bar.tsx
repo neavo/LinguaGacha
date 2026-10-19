@@ -17,6 +17,10 @@ import {
   CommandBarGroup,
   CommandBarSeparator,
 } from "@frontend/widgets/command-bar/command-bar";
+import {
+  get_shortcut_aria_keys,
+  type ShortcutAction,
+} from "@frontend/widgets/interactions/keyboard-shortcuts";
 import { ShortcutKbd } from "@frontend/widgets/interactions/shortcut-kbd";
 
 type WorkbenchCommandBarProps = {
@@ -36,6 +40,7 @@ type CommandAction = {
   id: "add-file" | "delete-file" | "generate-translation" | "close-project";
   icon: LucideIcon;
   label_key: LocaleKey;
+  shortcut?: ShortcutAction;
   disabled: boolean;
   on_click: () => void;
 };
@@ -57,6 +62,7 @@ export function WorkbenchCommandBar(props: WorkbenchCommandBarProps): JSX.Elemen
       id: "add-file",
       icon: FilePlus2,
       label_key: "workbench_page.action.add_file",
+      shortcut: "create",
       disabled: add_file_disabled,
       on_click: props.on_add_file,
     },
@@ -64,6 +70,7 @@ export function WorkbenchCommandBar(props: WorkbenchCommandBarProps): JSX.Elemen
       id: "delete-file",
       icon: Trash2,
       label_key: "app.action.delete",
+      shortcut: "delete",
       disabled: delete_file_disabled,
       on_click: props.on_delete_selected,
     },
@@ -125,12 +132,16 @@ export function WorkbenchCommandBar(props: WorkbenchCommandBarProps): JSX.Elemen
                   variant="ghost"
                   size="toolbar"
                   disabled={action.disabled}
+                  aria-keyshortcuts={
+                    action.shortcut === undefined
+                      ? undefined
+                      : get_shortcut_aria_keys(action.shortcut)
+                  }
                   onClick={action.on_click}
                 >
                   <Icon data-icon="inline-start" />
                   {t(action.label_key)}
-                  {action.id === "add-file" ? <ShortcutKbd action="create" /> : null}
-                  {action.id === "delete-file" ? <ShortcutKbd action="delete" /> : null}
+                  {action.shortcut === undefined ? null : <ShortcutKbd action={action.shortcut} />}
                 </AppButton>
               </div>
             );
