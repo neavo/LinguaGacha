@@ -46,6 +46,7 @@
   position: relative;
   z-index: 1;
   overflow: hidden;
+  scrollbar-gutter: stable; /* 与表体滚动条槽位等宽，保持列线对齐 */
   border-radius: var(--ui-radius-card) var(--ui-radius-card) 0 0;
   background: var(--app-table-header-bg);
   box-shadow: var(--ui-card-default-shadow);
@@ -71,13 +72,11 @@
   outline: none;
 }
 
-.app-table__scroll {
+.app-table__viewport {
   min-height: 0;
   flex: 1;
-}
-
-.app-table__scroll [data-slot="scroll-area-viewport"] {
-  min-height: 100%;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
 }
 
 .app-table__table {

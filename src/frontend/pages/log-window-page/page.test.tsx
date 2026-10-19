@@ -96,7 +96,7 @@ vi.mock("@frontend/widgets/app-table/app-table", () => {
     ) => (
       <>
         <div className={props.table_class_name} data-table-part="header" />
-        <div data-slot="scroll-area-viewport">
+        <div className="app-table__viewport">
           <div className={props.table_class_name} data-table-part="body">
             {props.rows.map((event, index) => {
               const row_id = props.get_row_id(event, index);
@@ -223,7 +223,7 @@ describe("日志窗口", () => {
   it("接近底部自动翻页，保持选择，回到顶部和整体读取错误仍可重试", async () => {
     await mount();
     const buttons = [...container!.querySelectorAll("button")];
-    const viewport = container!.querySelector<HTMLElement>('[data-slot="scroll-area-viewport"]')!;
+    const viewport = container!.querySelector<HTMLElement>(".app-table__viewport")!;
     Object.defineProperties(viewport, {
       clientHeight: { value: 300, configurable: true },
       scrollHeight: { value: 2000, configurable: true },
@@ -269,7 +269,7 @@ describe("日志窗口", () => {
         </StrictMode>,
       );
     });
-    const viewport = container!.querySelector<HTMLElement>('[data-slot="scroll-area-viewport"]')!;
+    const viewport = container!.querySelector<HTMLElement>(".app-table__viewport")!;
     Object.defineProperties(viewport, {
       clientHeight: { value: 300 },
       scrollHeight: { value: 1000 },

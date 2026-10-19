@@ -221,7 +221,7 @@ function get_table_host(container: HTMLDivElement): HTMLDivElement {
 }
 
 function get_table_viewport(container: HTMLDivElement): HTMLElement {
-  const viewport = container.querySelector<HTMLElement>('[data-slot="scroll-area-viewport"]');
+  const viewport = container.querySelector<HTMLElement>(".app-table__viewport");
   if (viewport === null) {
     throw new Error("缺少表格滚动 viewport。");
   }
@@ -927,6 +927,32 @@ describe("AppTable", () => {
 
     expect(on_selection_change).not.toHaveBeenCalled();
     expect(container.querySelector(".app-table__selection-box")).toBeNull();
+  });
+
+  it("点在原生滚动条槽位时不启动框选", async () => {
+    const container = await mount(create_default_props({ box_selection_enabled: true }));
+    const viewport = get_table_viewport(container);
+    mock_element_rect(viewport, { top: 0 });
+    Object.defineProperty(viewport, "clientWidth", { configurable: true, value: 91 });
+
+    const press = (client_x: number): void => {
+      act(() => {
+        viewport.dispatchEvent(
+          new MouseEvent("pointerdown", {
+            bubbles: true,
+            button: 0,
+            clientX: client_x,
+            clientY: 1,
+          }),
+        );
+      });
+    };
+
+    press(95);
+    expect(container.querySelector(".app-table__selection-box")).toBeNull();
+
+    press(50);
+    expect(container.querySelector(".app-table__selection-box")).not.toBeNull();
   });
 
   it("恢复页面状态时会把本地表格的选中行滚入视口", async () => {
