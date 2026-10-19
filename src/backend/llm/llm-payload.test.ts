@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { apply_request_overrides, apply_one_shot_request_overrides } from "./llm-payload";
+import { apply_request_overrides } from "./llm-payload";
 import type { ModelRequestSnapshot } from "./llm-request";
 
 describe("Pi 载荷的产品规则", () => {
@@ -42,6 +42,41 @@ describe("Pi 载荷的产品规则", () => {
     expect(source.input[0]?.role).toBe("system");
   });
 
+  it("Responses 请求策略仅清理自动摘要，保留其余字段和 SDK 原始载荷", () => {
+    const source = {
+      input: [],
+      reasoning: { effort: "low", summary: "auto", custom: true },
+      include: ["reasoning.encrypted_content"],
+    };
+    const original = structuredClone(source);
+    const snapshot = create_snapshot({ api_format: "OpenAIResponses", thinking_level: "LOW" });
+    const request = { supports_reasoning_summary: false } as const;
+    expect(apply_request_overrides(snapshot, source, { request })).toEqual({
+      ...source,
+      reasoning: { effort: "low", custom: true },
+    });
+    expect(source).toEqual(original);
+  });
+
+  it.each([
+    ["LOW", { effort: "high", summary: "detailed" }],
+    ["DEFAULT", { effort: "high", summary: "auto" }],
+  ] as const)(
+    "Responses %s 的用户 reasoning 扩展保留最终覆盖权：%j",
+    (thinking_level, reasoning) => {
+      const result = apply_request_overrides(
+        create_snapshot({
+          api_format: "OpenAIResponses",
+          thinking_level,
+          extra_body: { reasoning },
+        }),
+        { input: [], reasoning: { effort: "low", summary: "auto", custom: true } },
+        { request: { supports_reasoning_summary: false } },
+      );
+      expect(result).toEqual({ input: [], reasoning });
+    },
+  );
+
   it("Anthropic 扩展保留原生思考并合并输出格式，开启思考时清理采样字段", () => {
     const source = {
       messages: [],
@@ -64,20 +99,17 @@ describe("Pi 载荷的产品规则", () => {
       output_config: { effort: "high", format: { type: "json_schema" } },
     };
     expect(apply_request_overrides(snapshot, source)).toEqual(expected);
-    expect(
-      apply_one_shot_request_overrides(snapshot, source, new AbortController().signal),
-    ).toEqual(expected);
   });
 
   it("Anthropic 显式关闭思考时删除扩展 effort，保留其余输出配置与采样参数", () => {
-    const result = apply_one_shot_request_overrides(
+    const result = apply_request_overrides(
       create_snapshot({
         api_format: "Anthropic",
         generation: { top_p_custom_enable: true, top_p: 0.8 },
         extra_body: { output_config: { effort: "high", format: { type: "json_schema" } } },
       }),
       { thinking: { type: "disabled" } },
-      new AbortController().signal,
+      { one_shot_signal: new AbortController().signal },
     );
     expect(result).toEqual({
       thinking: { type: "disabled" },
@@ -95,7 +127,7 @@ describe("Pi 载荷的产品规则", () => {
 
   it.each([0, 2048])("Google 单次输出上限 %s、采样、安全设置和取消信号按产品约定生效", (limit) => {
     const signal = new AbortController().signal;
-    const result = apply_one_shot_request_overrides(
+    const result = apply_request_overrides(
       create_snapshot({
         api_format: "Google",
         output_token_limit: limit,
@@ -110,7 +142,7 @@ describe("Pi 载荷的产品规则", () => {
         contents: [],
         config: { maxOutputTokens: 4096, thinkingConfig: { thinkingLevel: "HIGH" } },
       },
-      signal,
+      { one_shot_signal: signal },
     );
     expect(result).toMatchObject({
       contents: [],
@@ -220,8 +252,10 @@ describe("Pi 载荷的产品规则", () => {
           thinking_budget_tokens: 1024,
         },
         {
-          chatTemplateArgs: { effort: { $var: "thinking.effort" }, tool_format: "json" },
-          thinkingTokenBudgetField: "thinking_budget_tokens",
+          compat: {
+            chatTemplateArgs: { effort: { $var: "thinking.effort" }, tool_format: "json" },
+            thinkingTokenBudgetField: "thinking_budget_tokens",
+          },
         },
       ),
     ).toEqual({ messages: [], chat_template_args: { tool_format: "json" } });

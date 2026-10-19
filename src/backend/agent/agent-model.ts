@@ -78,14 +78,17 @@ export function register_agent_model(
       { user_agent: identity.user_agent, session_id: sessionId },
       snapshot.headers,
     );
-  // 用户扩展在最终 onPayload 生效。
+  // 两种认证方式均在最终 onPayload 应用产品策略，再合并用户扩展。
   const configured_stream: ProviderStreams["streamSimple"] = (active_model, context, options) =>
     pi.streamSimple(active_model, context, {
       ...options,
       apiKey: api_key,
       headers: request_headers(options?.sessionId),
       onPayload: (payload, active_model) =>
-        apply_request_overrides(snapshot, payload, active_model.compat),
+        apply_request_overrides(snapshot, payload, {
+          compat: active_model.compat,
+          request: capability.request,
+        }),
     });
   if (snapshot.auth_type === "oauth") {
     if (auth === undefined) throw new AppErrors.AppError("model.auth_required");
@@ -115,7 +118,11 @@ export function register_agent_model(
             ...observation.options,
             maxRetries: 0,
             headers: request_headers(options?.sessionId),
-            onPayload: (payload, model) => apply_request_overrides(snapshot, payload, model.compat),
+            onPayload: (payload, model) =>
+              apply_request_overrides(snapshot, payload, {
+                compat: model.compat,
+                request: capability.request,
+              }),
           });
           return (async function* () {
             for await (const event of source) {

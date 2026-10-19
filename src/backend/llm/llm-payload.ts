@@ -3,6 +3,7 @@ import { is_json_record } from "../../domain/json";
 import type { ModelSpeedLevel, ModelApiFormat } from "../../domain/model";
 import { AppError } from "../../shared/error";
 import { apply_chatgpt_payload } from "./chatgpt-request";
+import type { ModelRequestPolicy } from "./llm-overrides";
 import {
   read_custom_number,
   resolve_max_tokens_for_request,
@@ -18,22 +19,18 @@ const RESPONSE_SERVICE_TIERS = {
 
 type PiCompat = PiModel<Api>["compat"];
 
-/** 单次请求仅增加生成设置，思考与用户扩展和 Agent 共用同一入口。 */
-export function apply_one_shot_request_overrides(
-  snapshot: ModelRequestSnapshot,
-  payload: unknown,
-  signal: AbortSignal,
-  compat?: PiCompat,
-): Record<string, unknown> {
-  return apply_request_overrides(snapshot, payload, compat, signal);
-}
+/** 具名参数区分 SDK 兼容字段、产品请求策略与单次请求设置。 */
+type RequestOverrideOptions = Readonly<{
+  compat?: PiCompat;
+  request?: ModelRequestPolicy | undefined;
+  one_shot_signal?: AbortSignal; // 存在时应用单次生成设置，缺省沿用 Agent SDK 设置。
+}>;
 
 /** 清理自动思考控制后合并生成设置和用户扩展；`one_shot_signal` 标识单次请求。 */
 export function apply_request_overrides(
   snapshot: ModelRequestSnapshot,
   payload: unknown,
-  compat?: PiCompat,
-  one_shot_signal?: AbortSignal,
+  { compat, request, one_shot_signal }: RequestOverrideOptions = {},
 ): Record<string, unknown> {
   const record = { ...read_pi_record(payload, snapshot.api_format) };
   if (snapshot.thinking_level === "DEFAULT")
@@ -68,6 +65,8 @@ export function apply_request_overrides(
     return apply_anthropic_extensions(record, snapshot);
   }
   if (snapshot.api_format === "OpenAIResponses") {
+    if (request?.supports_reasoning_summary === false)
+      remove_nested_fields(record, "reasoning", ["summary"]);
     // 应用档位先覆盖 SDK 自动值，用户自定义请求体仍拥有最终覆盖权。
     if (snapshot.speed_level === "DEFAULT") delete record["service_tier"];
     else record["service_tier"] = RESPONSE_SERVICE_TIERS[snapshot.speed_level];

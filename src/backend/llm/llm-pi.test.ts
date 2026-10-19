@@ -152,29 +152,34 @@ describe("pi-ai 请求适配", () => {
     },
   );
 
-  it.each(["OpenAI", "OpenAIResponses"] as const)(
-    "%s 豆包把关闭思考发送为 minimal，并保留开启等级",
-    async (api_format) => {
-      for (const [level, effort] of [
-        ["OFF", "minimal"],
-        ["LOW", "low"],
-        ["MEDIUM", "medium"],
-        ["HIGH", "high"],
-      ] as const) {
-        const request = resolve_request({
-          api_format,
-          model_id: "doubao-seed-evolving",
-          thinking: { level },
-        });
-        const payload = await capture_payload(request);
+  it.each([
+    ["OpenAI", "https://ark.cn-beijing.volces.com/api/v3"],
+    ["OpenAIResponses", "https://ark.cn-beijing.volces.com/api/v3"],
+    ["OpenAIResponses", "https://relay.example/v1"],
+  ] as const)("%s 豆包经 %s 保留思考等级并清理自动摘要参数", async (api_format, api_url) => {
+    for (const [level, effort] of [
+      ["OFF", "minimal"],
+      ["LOW", "low"],
+      ["MEDIUM", "medium"],
+      ["HIGH", "high"],
+    ] as const) {
+      const request = resolve_request({
+        api_format,
+        api_url,
+        model_id: "vendor/doubao-seed-2-1-lite-260915:fast",
+        thinking: { level },
+      });
+      const payload = await capture_payload(request);
 
-        expect(payload).toHaveProperty(
-          api_format === "OpenAI" ? "reasoning_effort" : "reasoning.effort",
-          effort,
-        );
-      }
-    },
-  );
+      expect(payload).toHaveProperty(
+        api_format === "OpenAI" ? "reasoning_effort" : "reasoning.effort",
+        effort,
+      );
+      expect(payload).not.toHaveProperty("reasoning.summary");
+      if (api_format === "OpenAIResponses" && level !== "OFF")
+        expect(payload).toHaveProperty("include", ["reasoning.encrypted_content"]);
+    }
+  });
 
   it.each([
     ["OpenAI", "openai", "openai-completions"],
