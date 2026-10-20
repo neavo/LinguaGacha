@@ -25,8 +25,8 @@
 - Erstellt auf Knopfdruck ein Glossar, damit Eigennamen wie Charakternamen im gesamten Werk einheitlich übersetzt werden
 - Beste Übersetzungsqualität und höchste Übersetzungsgeschwindigkeit: Untertitel in zehn Sekunden, ein Roman in einer Minute, ein Spiel in fünf Minuten
 - Führend unter vergleichbaren Anwendungen beim Erhalt von Formatierung und Code; reduziert die Nachbearbeitung erheblich und eignet sich besonders für direkt ins Spiel integrierte chinesische Lokalisierungen
-  - `Untertitel` und `E-Books` behalten die gesamte ursprüngliche Formatierung bei
-  - Spiele mit `RenPy`, `RPGMaker`, `WOLF RPG` oder `Kirikiri` erfordern kein Fachwissen: übersetzen und sofort spielen
+  - `Untertitel` `E-Books` behalten die gesamte ursprüngliche Formatierung bei
+  - Spiele mit `RenPy` `Godot` `WOLFRPG` `RPGMaker` `Kirikiri` `ACTION GAME MAKER`: übersetzen und sofort spielen
 
 ## Erste Schritte 🛸
 - Laden Sie die Anwendung von der [Release-Seite](https://github.com/neavo/LinguaGacha/releases) herunter
@@ -72,8 +72,8 @@
   - [MTool-Optimierer](https://github.com/neavo/LinguaGacha/wiki/MToolOptimizer)　　[Befehlszeilenmodus](https://github.com/neavo/LinguaGacha/wiki/CLIMode)
 - Engine-Praxis
   - [Bewährte Vorgehensweisen für hochwertige Übersetzungen von RenPy-Spielen](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForRenPy)
+  - [Bewährte Vorgehensweisen für hochwertige Übersetzungen von WOLFRPG-Spielen](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForWOLFRPG)
   - [Bewährte Vorgehensweisen für hochwertige Übersetzungen von RPGMaker-Spielen](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForRPGMaker)
-  - [Bewährte Vorgehensweisen für hochwertige Übersetzungen von WOLF-RPG-Spielen](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForWOLFRPG)
 - Erfahrungen der Community
   - [Notizen zur maschinellen Übersetzung von Kirikiri-Spielen ohne komplexe Verschlüsselung](https://github.com/neavo/LinguaGacha/discussions/181)
 - Ausführlichere Informationen zu den Funktionen finden Sie im [Wiki](https://github.com/neavo/LinguaGacha/wiki)
@@ -86,19 +86,18 @@
 - Mit [RenPy](https://www.renpy.org) exportierte Spieltexte `.rpy`
 - `KV-JSON`-Spieltexte `.json`, Quelle: [MTool](https://mtool.app) [SExtractor](https://github.com/satan53x/SExtractor)
 - `Message-JSON`-Spieltexte `.json`, Quelle: [SExtractor](https://github.com/satan53x/SExtractor) [VNTextPatch](https://github.com/arcusmaximus/VNTranslationTools)
-- `WOLF RPG 3`-Spieldateien: Spielverzeichnis oder `.exe` importieren
-- `RPG Maker MV/MZ`-Spieldateien: Spielverzeichnis oder `.exe` importieren
-- `RPG Maker XP/VX/VXAce`-Spieldateien: Spielverzeichnis oder `.exe` importieren
+- `WOLFRPG 3`-Spieldateien: Spielverzeichnis oder `.exe` importieren
+- `RPGMaker MV/MZ`-Spieldateien: Spielverzeichnis oder `.exe` importieren
+- `RPGMaker XP/VX/VXAce`-Spieldateien: Spielverzeichnis oder `.exe` importieren
 - Unterstützung endet bald:
   - Projektdateien `.trans`, Quelle: [Translator++](https://dreamsavior.net/translator-plusplus)
   - Spieltexte `.xlsx`, Quelle: [SExtractor](https://github.com/satan53x/SExtractor) [Translator++](https://dreamsavior.net/translator-plusplus) [offizielles WOLF-Übersetzungswerkzeug](https://silversecond.booth.pm/items/5151747)
 - Beispiele finden Sie unter [Wiki – Unterstützte Dateiformate](https://github.com/neavo/LinguaGacha/wiki/SupportedFileFormat). Weitere Formate werden laufend ergänzt
 
 ## Neueste Updates 📅
-- 20261019 v0.129.1
-  - Kompatibilitätsprobleme mit `Doubao`-Modellen behoben [#1000](../../issues/1000)
-  - Kompatibilitätsprobleme mit dem `Vertex`-Kanal behoben [#1002](../../issues/1002)
-  - Fehlerbehebungen und Verbesserungen [#999](../../issues/999) [#1001](../../issues/1001)
+- 20261020 v0.130.0
+  - Native Unterstützung für `Godot 4`-Spiele [#1005](../../issues/1005)
+  - Native Unterstützung für `ACTION GAME MAKER`-Spiele [#1005](../../issues/1005)
 
 ## Entwicklung 🛠️
 - Installieren Sie [Go](https://go.dev) und [`Node.js`](https://nodejs.org)

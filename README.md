@@ -25,8 +25,8 @@
 - 一键生成术语表，保证角色姓名等专有名词在整部作品中的译名统一
 - 最优的翻译质量，最快的翻译速度，十秒钟一份字幕，一分钟一本小说，五分钟一部游戏
 - 同类应用中最强的样式与代码保留能力，显著减少后期工作量，是制作内嵌汉化的最佳选择
-  - `字幕`、`电子书` 可以保留所有原有样式
-  - `RenPy`、`RPGMaker`、`WOLF RPG`、`Kirikiri` 引擎游戏无需专业知识，即翻即玩
+  - `字幕` `电子书` 保留所有原有样式
+  - `RenPy` `Godot` `WOLFRPG` `RPGMaker` `Kirikiri` `ACTION GAME MAKER` 游戏即翻即玩
 
 ## 基本流程 🛸
 - 从 [发布页](https://github.com/neavo/LinguaGacha/releases) 下载应用
@@ -72,8 +72,8 @@
   - [MTool 优化器](https://github.com/neavo/LinguaGacha/wiki/MToolOptimizer)　　[命令行模式](https://github.com/neavo/LinguaGacha/wiki/CLIMode)
 - 引擎实践
   - [高质量翻译 RenPy 引擎游戏的最佳实践](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForRenPy)
+  - [高质量翻译 WOLFRPG 引擎游戏的最佳实践](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForWOLFRPG)
   - [高质量翻译 RPGMaker 引擎游戏的最佳实践](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForRPGMaker)
-  - [高质量翻译 WOLF RPG 引擎游戏的最佳实践](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForWOLFRPG)
 - 社区经验
   - [无复杂加密 kirikiri 引擎机翻笔记](https://github.com/neavo/LinguaGacha/discussions/181)
 - 你可以在 [Wiki](https://github.com/neavo/LinguaGacha/wiki) 找到各项功能的更详细介绍
@@ -86,19 +86,18 @@
 - [RenPy](https://www.renpy.org) 导出游戏文本 `.rpy`
 - `KV-JSON` 游戏文本 `.json`，来源 [MTool](https://mtool.app) [SExtractor](https://github.com/satan53x/SExtractor)
 - `Message-JSON` 游戏文本 `.json`，来源 [SExtractor](https://github.com/satan53x/SExtractor) [VNTextPatch](https://github.com/arcusmaximus/VNTranslationTools)
-- `WOLF RPG 3` 游戏文件，支持导入游戏目录或 `.exe`
-- `RPG Maker MV/MZ` 游戏文件，支持导入游戏目录或 `.exe`
-- `RPG Maker XP/VX/VXAce` 游戏文件，支持导入游戏目录或 `.exe`
+- `WOLFRPG 3` 游戏文件，支持导入游戏目录或 `.exe`
+- `RPGMaker MV/MZ` 游戏文件，支持导入游戏目录或 `.exe`
+- `RPGMaker XP/VX/VXAce` 游戏文件，支持导入游戏目录或 `.exe`
 - 即将停止支持：
   - 项目文件 `.trans`，来源 [Translator++](https://dreamsavior.net/translator-plusplus)
   - 游戏文本 `.xlsx`，来源 [SExtractor](https://github.com/satan53x/SExtractor) [Translator++](https://dreamsavior.net/translator-plusplus) [WOLF 官方翻译工具](https://silversecond.booth.pm/items/5151747)
 - 具体示例可见 [Wiki - 支持的文件格式](https://github.com/neavo/LinguaGacha/wiki/SupportedFileFormat)，更多格式将持续添加
 
 ## 近期更新 📅
-- 20261019 v0.129.1
-  - 修复 `豆包` 模型的兼容性问题 [#1000](../../issues/100)
-  - 修复 `Vertex` 渠道的兼容性问题 [#1002](../../issues/1002)
-  - 修复与改进 [#999](../../issues/999) [#1001](../../issues/1001)
+- 20261020 v0.130.0
+  - 原生 `Godot 4` 游戏支持 [#1005](../../issues/1005)
+  - 原生 `ACTION GAME MAKER` 游戏支持 [#1005](../../issues/1005)
 
 ## 开发指南 🛠️
 - 安装 [ [Go](https://go.dev) ] 和 [ [`Node.js`](https://nodejs.org) ]

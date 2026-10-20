@@ -28,8 +28,8 @@
 - 用語集をワンクリックで生成し、キャラクター名などの専門用語の訳語を作品全体で統一
 - 最高の翻訳品質と最速の翻訳速度、10秒で字幕1本、1分で小説1冊、5分でゲーム1本
 - 同種のアプリケーションの中で最強のスタイルとコード保持能力、後工程の作業量を大幅に削減、字幕埋め込み（内嵌字幕）作成に最適
-  - `字幕`、`電子書籍` は元のスタイルをすべて保持可能
-  - `RenPy`、`RPGMaker`、`WOLF RPG`、`Kirikiri` エンジンゲームは専門知識不要で、即翻訳即プレイ可能
+  - `字幕` `電子書籍` は元のスタイルをすべて保持
+  - `RenPy` `Godot` `WOLFRPG` `RPGMaker` `Kirikiri` `ACTION GAME MAKER` のゲームは翻訳後すぐにプレイ可能
 
 ## ワークフロー 🛸
 - [リリースページ](https://github.com/neavo/LinguaGacha/releases) からアプリケーションをダウンロード
@@ -75,8 +75,8 @@
   - [MTool Optimizer](https://github.com/neavo/LinguaGacha/wiki/MToolOptimizerEN)　　[CLI Mode](https://github.com/neavo/LinguaGacha/wiki/CLIModeEN)
 - Engine Best Practices
   - [Best Practices for High-Quality Translation of RenPy Engine Games](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForRenPyEN)
+  - [Best Practices for High-Quality Translation of WOLFRPG Engine Games](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForWOLFRPGEN)
   - [Best Practices for High-Quality Translation of RPGMaker Engine Games](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForRPGMakerEN)
-  - [Best Practices for High-Quality Translation of WOLF RPG Engine Games](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForWOLFRPGEN)
 - Community Notes
   - [Machine Translation Notes for Kirikiri Engine Games Without Complex Encryption](https://github.com/neavo/LinguaGacha/discussions/181)
 - You can find more details on each feature in the [Wiki](https://github.com/neavo/LinguaGacha/wiki)
@@ -89,19 +89,18 @@
 - [RenPy](https://www.renpy.org) エクスポート `.rpy`
 - `KV-JSON` ゲームテキスト `.json`、出力元 [MTool](https://mtool.app) [SExtractor](https://github.com/satan53x/SExtractor)
 - `Message-JSON` ゲームテキスト `.json`、出力元 [SExtractor](https://github.com/satan53x/SExtractor) [VNTextPatch](https://github.com/arcusmaximus/VNTranslationTools)
-- `WOLF RPG 3` ゲームファイル：ゲームフォルダーまたは `.exe` をインポート
-- `RPG Maker MV/MZ` ゲームファイル：ゲームフォルダーまたは `.exe` をインポート
-- `RPG Maker XP/VX/VXAce` ゲームファイル：ゲームフォルダーまたは `.exe` をインポート
+- `WOLFRPG 3` ゲームファイル：ゲームフォルダーまたは `.exe` をインポート
+- `RPGMaker MV/MZ` ゲームファイル：ゲームフォルダーまたは `.exe` をインポート
+- `RPGMaker XP/VX/VXAce` ゲームファイル：ゲームフォルダーまたは `.exe` をインポート
 - サポート終了予定：
   - プロジェクトファイル `.trans`、出力元 [Translator++](https://dreamsavior.net/translator-plusplus)
   - ゲームテキスト `.xlsx`、出力元 [SExtractor](https://github.com/satan53x/SExtractor) [Translator++](https://dreamsavior.net/translator-plusplus) [WOLF 公式翻訳ツール](https://silversecond.booth.pm/items/5151747)
 - 例については [Wiki - 対応フォーマット](https://github.com/neavo/LinguaGacha/wiki/SupportedFileFormatEN) を参照。対応フォーマットは今後も追加予定
 
 ## 最近の更新 📅
-- 20261019 v0.129.1
-  - `Doubao` モデルの互換性の問題を修正 [#1000](../../issues/1000)
-  - `Vertex` チャネルの互換性の問題を修正 [#1002](../../issues/1002)
-  - 修正と改善 [#999](../../issues/999) [#1001](../../issues/1001)
+- 20261020 v0.130.0
+  - `Godot 4` ゲームのネイティブサポート [#1005](../../issues/1005)
+  - `ACTION GAME MAKER` ゲームのネイティブサポート [#1005](../../issues/1005)
 
 ## 開発ガイド 🛠️
 - [Go](https://go.dev) と [`Node.js`](https://nodejs.org) をインストール

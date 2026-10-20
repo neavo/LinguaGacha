@@ -25,8 +25,8 @@
 - 클릭 한 번으로 용어집을 생성하여 등장인물 이름 등 고유 명사의 번역을 작품 전체에서 일관되게 유지
 - 최상의 번역 품질과 가장 빠른 번역 속도: 자막 한 편은 10초, 소설 한 권은 1분, 게임 한 편은 5분
 - 동종 앱 중 가장 뛰어난 서식 및 코드 보존 능력으로 후처리 작업을 크게 줄여, 게임에 직접 적용하는 중국어 패치 제작에 적합
-  - `자막`, `전자책`은 원래 서식을 모두 보존
-  - `RenPy`, `RPGMaker`, `WOLF RPG`, `Kirikiri` 엔진 게임은 전문 지식 없이 번역 후 바로 플레이 가능
+  - `자막` `전자책`은 원래 서식을 모두 보존
+  - `RenPy` `Godot` `WOLFRPG` `RPGMaker` `Kirikiri` `ACTION GAME MAKER` 게임은 번역 후 바로 플레이 가능
 
 ## 기본 사용 흐름 🛸
 - [릴리스 페이지](https://github.com/neavo/LinguaGacha/releases)에서 앱을 다운로드합니다
@@ -72,8 +72,8 @@
   - [MTool 최적화 도구](https://github.com/neavo/LinguaGacha/wiki/MToolOptimizer)　　[명령줄 모드](https://github.com/neavo/LinguaGacha/wiki/CLIMode)
 - 엔진별 가이드
   - [RenPy 엔진 게임 고품질 번역 가이드](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForRenPy)
+  - [WOLFRPG 엔진 게임 고품질 번역 가이드](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForWOLFRPG)
   - [RPGMaker 엔진 게임 고품질 번역 가이드](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForRPGMaker)
-  - [WOLF RPG 엔진 게임 고품질 번역 가이드](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForWOLFRPG)
 - 커뮤니티 경험
   - [복잡한 암호화가 없는 kirikiri 엔진 기계 번역 노트](https://github.com/neavo/LinguaGacha/discussions/181)
 - 각 기능에 대한 더 자세한 설명은 [Wiki](https://github.com/neavo/LinguaGacha/wiki)에서 확인할 수 있습니다
@@ -86,19 +86,18 @@
 - [RenPy](https://www.renpy.org)로 내보낸 게임 텍스트 `.rpy`
 - `KV-JSON` 게임 텍스트 `.json`, 출처 [MTool](https://mtool.app) [SExtractor](https://github.com/satan53x/SExtractor)
 - `Message-JSON` 게임 텍스트 `.json`, 출처 [SExtractor](https://github.com/satan53x/SExtractor) [VNTextPatch](https://github.com/arcusmaximus/VNTranslationTools)
-- `WOLF RPG 3` 게임 파일: 게임 폴더 또는 `.exe` 가져오기
-- `RPG Maker MV/MZ` 게임 파일: 게임 폴더 또는 `.exe` 가져오기
-- `RPG Maker XP/VX/VXAce` 게임 파일: 게임 폴더 또는 `.exe` 가져오기
+- `WOLFRPG 3` 게임 파일: 게임 폴더 또는 `.exe` 가져오기
+- `RPGMaker MV/MZ` 게임 파일: 게임 폴더 또는 `.exe` 가져오기
+- `RPGMaker XP/VX/VXAce` 게임 파일: 게임 폴더 또는 `.exe` 가져오기
 - 지원 종료 예정:
   - 프로젝트 파일 `.trans`, 출처 [Translator++](https://dreamsavior.net/translator-plusplus)
   - 게임 텍스트 `.xlsx`, 출처 [SExtractor](https://github.com/satan53x/SExtractor) [Translator++](https://dreamsavior.net/translator-plusplus) [WOLF 공식 번역 도구](https://silversecond.booth.pm/items/5151747)
 - 구체적인 예시는 [Wiki - 지원 파일 형식](https://github.com/neavo/LinguaGacha/wiki/SupportedFileFormat)을 참고하세요. 지원 형식은 계속 추가됩니다
 
 ## 최근 업데이트 📅
-- 20261019 v0.129.1
-  - `Doubao` 모델 호환성 문제 수정 [#1000](../../issues/1000)
-  - `Vertex` 채널 호환성 문제 수정 [#1002](../../issues/1002)
-  - 수정 및 개선 [#999](../../issues/999) [#1001](../../issues/1001)
+- 20261020 v0.130.0
+  - `Godot 4` 게임 네이티브 지원 [#1005](../../issues/1005)
+  - `ACTION GAME MAKER` 게임 네이티브 지원 [#1005](../../issues/1005)
 
 ## 개발 안내 🛠️
 - [Go](https://go.dev)와 [`Node.js`](https://nodejs.org)를 설치합니다
