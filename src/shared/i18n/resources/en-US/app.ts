@@ -41,8 +41,8 @@ export const en_us_app = {
       manual: "Manual",
     },
     link: {
-      translation: "translation path",
-      updates: "update path",
+      translation: "Translation path",
+      updates: "Update path",
     },
   },
   action: {

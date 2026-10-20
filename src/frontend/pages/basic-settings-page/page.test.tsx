@@ -257,7 +257,7 @@ describe("BasicSettingsPage", () => {
     );
   });
 
-  it("手动代理整组提交草稿，改动前保存不可用", async () => {
+  it("手动代理整组提交草稿，改动前保存与测试均不可用", async () => {
     get_current_basic_settings_state().snapshot.proxy = {
       mode: "manual",
       protocol: "HTTP",
@@ -269,6 +269,7 @@ describe("BasicSettingsPage", () => {
     await mount_page();
 
     expect(get_button("basic_settings_page.fields.proxy.save").disabled).toBe(true);
+    expect(get_button("basic_settings_page.fields.proxy.test").disabled).toBe(false);
 
     await act(async () => {
       set_input_value(
@@ -276,6 +277,9 @@ describe("BasicSettingsPage", () => {
         "10.0.0.2",
       );
     });
+
+    expect(get_button("basic_settings_page.fields.proxy.test").disabled).toBe(true);
+    expect(container?.textContent).toContain("basic_settings_page.feedback.proxy_test_unsaved");
 
     await act(async () => {
       get_button("basic_settings_page.fields.proxy.save").click();
@@ -356,7 +360,53 @@ describe("BasicSettingsPage", () => {
     expect(container?.textContent).toContain("basic_settings_page.status.socks5_auth");
   });
 
-  it("保存按钮收在代理卡片内", async () => {
+  it("测试连接按钮读取已保存配置并展示两条链路结果", async () => {
+    get_current_basic_settings_state().proxy_probe = {
+      translation: { ok: true, status: 204, elapsedMs: 12, route: null, failureReason: null },
+      updates: {
+        ok: false,
+        status: null,
+        elapsedMs: 30,
+        route: "PROXY 127.0.0.1:7890",
+        failureReason: "ECONNREFUSED",
+      },
+    };
+    await mount_page();
+
+    await act(async () => {
+      get_button("basic_settings_page.fields.proxy.test").click();
+      await Promise.resolve();
+    });
+
+    expect(get_current_basic_settings_state().probe_proxy).toHaveBeenCalledOnce();
+    expect(container?.textContent).toContain("basic_settings_page.probe.succeeded");
+    expect(container?.textContent).toContain("basic_settings_page.probe.failed");
+    expect(container?.textContent).toContain("basic_settings_page.probe.route");
+  });
+
+  it("路由解析失败时显示失败提示", async () => {
+    get_current_basic_settings_state().proxy_probe = {
+      translation: {
+        ok: false,
+        status: null,
+        elapsedMs: 0,
+        route: null,
+        failureReason: "resolve failed",
+      },
+      updates: {
+        ok: false,
+        status: null,
+        elapsedMs: 0,
+        route: null,
+        failureReason: "resolve failed",
+      },
+    };
+    await mount_page();
+
+    expect(container?.textContent).toContain("basic_settings_page.probe.route_failed");
+  });
+
+  it("保存与测试按钮收在代理卡片内，链路结果与按钮同处一行", async () => {
     get_current_basic_settings_state().snapshot.proxy = {
       mode: "manual",
       protocol: "HTTP",
@@ -364,6 +414,16 @@ describe("BasicSettingsPage", () => {
       port: 7890,
       username: "",
       password: "",
+    };
+    get_current_basic_settings_state().proxy_probe = {
+      translation: { ok: true, status: 204, elapsedMs: 12, route: null, failureReason: null },
+      updates: {
+        ok: false,
+        status: null,
+        elapsedMs: 30,
+        route: "PROXY 127.0.0.1:7890",
+        failureReason: "ECONNREFUSED",
+      },
     };
     await mount_page();
 
@@ -373,6 +433,11 @@ describe("BasicSettingsPage", () => {
     expect(
       card?.querySelector('input[aria-label="basic_settings_page.fields.proxy.address_label"]'),
     ).not.toBeNull();
+
+    const footer = save_button.closest(".basic-settings-page__proxy-footer");
+    expect(footer).not.toBeNull();
+    expect(footer?.textContent).toContain("basic_settings_page.probe.succeeded");
+    expect(footer?.textContent).toContain("basic_settings_page.probe.route");
   });
 
   it("提交非法请求超时时间时标记红框并弹 toast", async () => {

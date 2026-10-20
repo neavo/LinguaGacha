@@ -20,6 +20,7 @@ import { ProjectLanguageSelect } from "@frontend/features/project-language/proje
 import { useBasicSettingsState } from "@frontend/pages/basic-settings-page/use-basic-settings-state";
 import { is_proxy_mode, is_proxy_protocol, is_same_proxy_setting } from "@domain/setting";
 import { AppButton } from "@frontend/widgets/app-button";
+import { cn } from "@frontend/shadcn/classnames";
 import { Card, CardContent } from "@frontend/shadcn/card";
 import { Input } from "@frontend/shadcn/input";
 import { BooleanSegmentedToggle } from "@frontend/widgets/boolean-segmented-toggle";
@@ -478,20 +479,83 @@ export function BasicSettingsPage(_props: BasicSettingsPageProps): JSX.Element {
               </div>
             ) : null}
 
-            <div className="basic-settings-page__proxy-actions">
-              <AppButton
-                size="sm"
-                disabled={
-                  !proxy_dirty ||
-                  proxy_incomplete_field !== null ||
-                  basic_settings_state.pending_state.proxy
-                }
-                onClick={() => {
-                  void commit_proxy_draft();
-                }}
-              >
-                {t("basic_settings_page.fields.proxy.save")}
-              </AppButton>
+            <div className="basic-settings-page__proxy-footer">
+              {basic_settings_state.proxy_probe !== null ? (
+                <div className="basic-settings-page__proxy-results" aria-live="polite">
+                  {(["translation", "updates"] as const).map((link) => {
+                    const result = basic_settings_state.proxy_probe?.[link];
+                    if (result === undefined) return null;
+                    return (
+                      <span
+                        key={link}
+                        className={cn(
+                          "basic-settings-page__proxy-probe-item",
+                          result.ok
+                            ? "basic-settings-page__proxy-probe-item--ok"
+                            : "basic-settings-page__proxy-probe-item--failed",
+                        )}
+                      >
+                        <span className="basic-settings-page__proxy-probe-link">
+                          {t(`app.proxy.link.${link}`)}
+                        </span>
+                        <span>
+                          {result.ok
+                            ? t("basic_settings_page.probe.succeeded", {
+                                ELAPSED: String(result.elapsedMs),
+                              })
+                            : t("basic_settings_page.probe.failed", {
+                                ELAPSED: String(result.elapsedMs),
+                                // HTTP 错误没有异常的 failureReason，用状态码兜底，避免只显示「失败」。
+                                REASON:
+                                  result.failureReason ??
+                                  (result.status !== null ? `HTTP ${result.status}` : ""),
+                              })}
+                        </span>
+                        <span className="basic-settings-page__proxy-probe-route">
+                          {result.route !== null
+                            ? t("basic_settings_page.probe.route", { ROUTE: result.route })
+                            : t("basic_settings_page.probe.route_failed")}
+                        </span>
+                      </span>
+                    );
+                  })}
+                </div>
+              ) : null}
+
+              <div className="basic-settings-page__proxy-actions">
+                <span className="basic-settings-page__proxy-hint" role="status">
+                  {proxy_dirty ? t("basic_settings_page.feedback.proxy_test_unsaved") : ""}
+                </span>
+                <AppButton
+                  variant="outline"
+                  size="sm"
+                  disabled={
+                    proxy_dirty ||
+                    basic_settings_state.pending_state.proxy ||
+                    basic_settings_state.is_probing_proxy
+                  }
+                  onClick={() => {
+                    void basic_settings_state.probe_proxy();
+                  }}
+                >
+                  {basic_settings_state.is_probing_proxy
+                    ? t("basic_settings_page.probe.running")
+                    : t("basic_settings_page.fields.proxy.test")}
+                </AppButton>
+                <AppButton
+                  size="sm"
+                  disabled={
+                    !proxy_dirty ||
+                    proxy_incomplete_field !== null ||
+                    basic_settings_state.pending_state.proxy
+                  }
+                  onClick={() => {
+                    void commit_proxy_draft();
+                  }}
+                >
+                  {t("basic_settings_page.fields.proxy.save")}
+                </AppButton>
+              </div>
             </div>
           </CardContent>
         </Card>

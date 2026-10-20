@@ -40,6 +40,7 @@ export const zh_cn_basic_settings_page = {
       auth_description: "用户名与密码明文保存在本机，仅用于当前代理",
       password_placeholder: "密码",
       save: "保存代理设置",
+      test: "测试连接",
     },
   },
   status: {
@@ -47,12 +48,20 @@ export const zh_cn_basic_settings_page = {
     manual_incomplete: "手动配置不完整或无效，当前按跟随系统出站",
     socks5_auth: "SOCKS5 认证在应用更新中不可用，更新将改用系统代理",
   },
-
+  probe: {
+    running: "测试中 …",
+    succeeded: "成功 · {ELAPSED} ms",
+    failed: "失败 · {ELAPSED} ms：{REASON}",
+    route: "· 实际路由 {ROUTE}",
+    route_failed: "· 路由解析失败",
+  },
   feedback: {
     proxy_host_invalid: "地址不能为空，也不能包含 http://、端口或空格；IPv6 请用方括号",
     proxy_port_invalid: "端口必须是 1–65535 之间的整数",
     proxy_username_required: "填写密码时必须同时填写用户名",
     proxy_saved: "代理设置已保存",
+    proxy_test_failed: "测试连接失败",
+    proxy_test_unsaved: "先保存改动，再测试连接",
     request_timeout_invalid: "请求超时时间必须填写为有效范围内的数字 …",
     pick_directory_failed: "目录选择失败 …",
   },

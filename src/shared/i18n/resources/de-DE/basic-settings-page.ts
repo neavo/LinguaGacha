@@ -51,6 +51,7 @@ export const de_de_basic_settings_page = {
         "Benutzername und Passwort werden im Klartext auf diesem Rechner gespeichert und gelten nur für diesen Proxy",
       password_placeholder: "Passwort",
       save: "Proxy-Einstellungen speichern",
+      test: "Verbindung testen",
     },
   },
   status: {
@@ -61,13 +62,21 @@ export const de_de_basic_settings_page = {
     socks5_auth:
       "SOCKS5-Authentifizierung ist für App-Updates nicht verfügbar; Updates verwenden den Systemproxy",
   },
-
+  probe: {
+    running: "Wird getestet …",
+    succeeded: "Erfolgreich · {ELAPSED} ms",
+    failed: "Fehlgeschlagen · {ELAPSED} ms: {REASON}",
+    route: "· Verwendete Route {ROUTE}",
+    route_failed: "· Routenauflösung fehlgeschlagen",
+  },
   feedback: {
     proxy_host_invalid:
       "Die Adresse ist erforderlich und darf kein http://, keinen Port und keine Leerzeichen enthalten; IPv6 in Klammern",
     proxy_port_invalid: "Der Port muss eine ganze Zahl zwischen 1 und 65535 sein",
     proxy_username_required: "Benutzername ist erforderlich, wenn ein Passwort gesetzt ist",
     proxy_saved: "Proxy-Einstellungen gespeichert",
+    proxy_test_failed: "Verbindungstest fehlgeschlagen",
+    proxy_test_unsaved: "Änderungen vor dem Testen speichern",
     request_timeout_invalid:
       "Das Anfrage-Timeout muss eine Zahl innerhalb des gültigen Bereichs sein …",
     pick_directory_failed:

@@ -50,6 +50,7 @@ export const en_us_basic_settings_page = {
         "The username and password are stored in plain text on this machine and apply only to this proxy",
       password_placeholder: "Password",
       save: "Save proxy settings",
+      test: "Test connection",
     },
   },
   status: {
@@ -60,13 +61,21 @@ export const en_us_basic_settings_page = {
     socks5_auth:
       "SOCKS5 authentication is unavailable for app updates; updates will use the system proxy",
   },
-
+  probe: {
+    running: "Testing …",
+    succeeded: "Succeeded · {ELAPSED} ms",
+    failed: "Failed · {ELAPSED} ms: {REASON}",
+    route: "· Actual route {ROUTE}",
+    route_failed: "· Route resolution failed",
+  },
   feedback: {
     proxy_host_invalid:
       "The address is required and must not include http://, a port or spaces; use brackets for IPv6",
     proxy_port_invalid: "Port must be an integer between 1 and 65535",
     proxy_username_required: "Username is required when a password is set",
     proxy_saved: "Proxy settings saved",
+    proxy_test_failed: "Connection test failed",
+    proxy_test_unsaved: "Save your changes before testing",
     request_timeout_invalid: "Request timeout must be a number within the valid range …",
     pick_directory_failed:
       "Directory selection failed. Please choose the fixed save directory again …",

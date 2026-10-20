@@ -10,7 +10,7 @@ import type {
 } from "@frontend/app/state/desktop-state-context";
 import { useBasicSettingsState } from "@frontend/pages/basic-settings-page/use-basic-settings-state";
 import type { ProxySettingValue } from "@domain/setting";
-import type { AppProxyRuntimeStatus } from "@shared/proxy";
+import type { AppProxyRuntimeStatus, ProxyProbeSummary } from "@shared/proxy";
 
 type RuntimeFixture = {
   settings_snapshot: SettingsSnapshot;
@@ -43,6 +43,26 @@ const MANUAL_PROXY: ProxySettingValue = {
   port: 7890,
   username: "",
   password: "",
+};
+
+const CHANGED_PROXY: ProxySettingValue = {
+  mode: "manual",
+  protocol: "HTTP",
+  host: "10.0.0.2",
+  port: 7890,
+  username: "",
+  password: "",
+};
+
+const PROBE_SUMMARY: ProxyProbeSummary = {
+  translation: { ok: true, status: 204, elapsedMs: 12, route: null, failureReason: null },
+  updates: {
+    ok: true,
+    status: 200,
+    elapsedMs: 30,
+    route: "PROXY 127.0.0.1:7890",
+    failureReason: null,
+  },
 };
 
 const runtime_fixture: { current: RuntimeFixture } = {
@@ -144,6 +164,20 @@ function create_toast_fixture(): ToastFixture {
       return await task();
     }),
   };
+}
+
+/** 设置读取走快照，探测走独立回调，其余接口返回更新后的快照。 */
+function mock_api_with_probe(update: () => unknown, probe: () => Promise<unknown>): void {
+  vi.mocked(api_fetch).mockImplementation(async (url) => {
+    if (url === "/api/settings/app") {
+      return {
+        settings: runtime_fixture.current.settings_snapshot,
+        proxyStatus: APPLIED_PROXY_STATUS,
+      } as never;
+    }
+    if (url === "/api/settings/proxy/probe") return (await probe()) as never;
+    return update() as never;
+  });
 }
 
 /** 代理状态随设置读取返回，其余接口由各测试决定。 */
@@ -297,5 +331,67 @@ describe("useBasicSettingsState", () => {
     ]);
     expect(latest_state?.snapshot.proxy).toEqual(MANUAL_PROXY);
     expect(latest_state?.proxy_status).toEqual(APPLIED_PROXY_STATUS);
+  });
+
+  it("测试连接只读取已保存配置并保留两条链路结果", async () => {
+    mock_api(() => PROBE_SUMMARY);
+    await render_hook();
+
+    await act(async () => {
+      await latest_state?.probe_proxy();
+    });
+
+    expect(vi.mocked(api_fetch).mock.calls).toEqual([
+      ["/api/settings/app", {}],
+      ["/api/settings/proxy/probe", {}],
+    ]);
+    expect(latest_state?.proxy_probe).toEqual(PROBE_SUMMARY);
+    expect(latest_state?.is_probing_proxy).toBe(false);
+  });
+  it("保存新配置后清除旧探测结果", async () => {
+    mock_api_with_probe(
+      () => ({ settings: create_settings_snapshot({ proxy: CHANGED_PROXY }) }),
+      async () => PROBE_SUMMARY,
+    );
+    await render_hook();
+    await act(async () => {
+      await latest_state?.probe_proxy();
+    });
+    expect(latest_state?.proxy_probe).toEqual(PROBE_SUMMARY);
+
+    await act(async () => {
+      await latest_state?.save_proxy(CHANGED_PROXY);
+    });
+
+    expect(latest_state?.proxy_probe).toBeNull();
+  });
+
+  it("配置变化前发起的探测完成后不写入过期结果", async () => {
+    let resolve_probe!: (value: ProxyProbeSummary) => void;
+    const probe_promise = new Promise<ProxyProbeSummary>((resolve) => {
+      resolve_probe = resolve;
+    });
+    mock_api_with_probe(
+      () => ({ settings: create_settings_snapshot({ proxy: CHANGED_PROXY }) }),
+      () => probe_promise,
+    );
+    await render_hook();
+
+    let probe_done: Promise<void> | null = null;
+    await act(async () => {
+      probe_done = latest_state?.probe_proxy() ?? null;
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      await latest_state?.save_proxy(CHANGED_PROXY);
+    });
+
+    await act(async () => {
+      resolve_probe(PROBE_SUMMARY);
+      await probe_done;
+    });
+
+    expect(latest_state?.proxy_probe).toBeNull();
   });
 });

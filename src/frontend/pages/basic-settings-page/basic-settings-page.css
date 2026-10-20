@@ -58,9 +58,55 @@
   color: var(--ui-warning);
 }
 
+.basic-settings-page__proxy-footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px var(--ui-section-gap);
+}
+
+.basic-settings-page__proxy-results {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px var(--ui-section-gap);
+  min-width: 0;
+  font-size: var(--ui-font-size-12);
+  line-height: 1.5;
+}
+
+.basic-settings-page__proxy-probe-item {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
+  color: var(--muted-foreground);
+}
+
+.basic-settings-page__proxy-probe-item--ok .basic-settings-page__proxy-probe-link {
+  color: var(--ui-success);
+}
+
+.basic-settings-page__proxy-probe-item--failed .basic-settings-page__proxy-probe-link {
+  color: var(--ui-failure);
+}
+
+.basic-settings-page__proxy-probe-link {
+  font-weight: 500;
+}
+
+.basic-settings-page__proxy-probe-route {
+  color: var(--muted-foreground);
+}
+
 .basic-settings-page__proxy-actions {
   display: flex;
   align-items: center;
-  justify-content: flex-end;
   gap: var(--ui-list-gap-dense);
+  margin-inline-start: auto;
+}
+
+.basic-settings-page__proxy-hint {
+  font-size: var(--ui-font-size-12);
+  color: var(--muted-foreground);
 }

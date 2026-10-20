@@ -45,6 +45,7 @@ export const ja_jp_basic_settings_page = {
         "ユーザー名とパスワードは平文でローカルに保存され、このプロキシにのみ使用されます",
       password_placeholder: "パスワード",
       save: "プロキシ設定を保存",
+      test: "接続テスト",
     },
   },
   status: {
@@ -52,13 +53,21 @@ export const ja_jp_basic_settings_page = {
     manual_incomplete: "手動プロキシの設定が不完全または無効なため、システムプロキシで送信します",
     socks5_auth: "SOCKS5 認証はアプリ更新では利用できません。更新はシステムプロキシを使用します",
   },
-
+  probe: {
+    running: "テスト中 …",
+    succeeded: "成功 · {ELAPSED} ms",
+    failed: "失敗 · {ELAPSED} ms：{REASON}",
+    route: "· 実際のルート {ROUTE}",
+    route_failed: "· ルートの解決に失敗しました",
+  },
   feedback: {
     proxy_host_invalid:
       "アドレスは必須です。http://、ポート、空白は含めず、IPv6 は角括弧で囲んでください",
     proxy_port_invalid: "ポートは 1〜65535 の整数で入力してください",
     proxy_username_required: "パスワードを設定する場合はユーザー名も入力してください",
     proxy_saved: "プロキシ設定を保存しました",
+    proxy_test_failed: "接続テストに失敗しました",
+    proxy_test_unsaved: "変更を保存してからテストしてください",
     request_timeout_invalid: "タイムアウトには有効な範囲の数値を入力してください …",
     pick_directory_failed: "フォルダーを選択できませんでした。固定の保存先を選び直してください …",
   },
