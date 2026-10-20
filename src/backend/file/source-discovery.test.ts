@@ -4,7 +4,39 @@ import path from "node:path";
 import { expect, it, vi } from "vitest";
 import { NativeFs } from "../../native/native-fs";
 import { evb_fixture } from "../../test/evb-fixture";
+import { godot_pack_fixture, godot_project_fixture } from "../../test/godot-fixture";
+import { rgss_archive_fixture } from "../../test/rgss-archive-fixture";
+import { wolf_files } from "../../test/wolf-fixture";
 import { discover_source, discover_sources } from "./source-discovery";
+
+it.each([
+  ["GODOT", ".godot"],
+  ["RPGMAKER_MV_MZ", ".rpgmaker"],
+  ["RPGMAKER_RGSS", ".rpgmaker"],
+  ["WOLFRPG", ".wolfrpg"],
+])("%s 来源按游戏根目录名生成 %s 资产", async (file_type, extension) => {
+  using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-source-extension-"));
+  const native = new NativeFs();
+  const root = path.join(temp.path, "我的游戏.zip");
+  if (file_type === "GODOT")
+    native.write_file_sync(
+      path.join(root, "game.pck"),
+      godot_pack_fixture(new Map([["project.binary", godot_project_fixture()]])),
+    );
+  else if (file_type === "RPGMAKER_MV_MZ") {
+    native.write_file_sync(path.join(root, "data/System.json"), "{}");
+    native.write_file_sync(path.join(root, "js/rmmz_core.js"), "// engine");
+  } else if (file_type === "RPGMAKER_RGSS") {
+    native.write_file_sync(path.join(root, "Game.ini"), "[Game]\nScripts=Data/Scripts.rvdata2");
+    native.write_file_sync(path.join(root, "Game.rgss3a"), rgss_archive_fixture(3, new Map()));
+  } else
+    for (const [name, bytes] of wolf_files()) native.write_file_sync(path.join(root, name), bytes);
+  expect(await discover_source(root, native)).toMatchObject({
+    rel_path: "我的游戏.zip" + extension,
+    file_type,
+    source: { kind: "game", file_type },
+  });
+});
 
 it("多个 EVB 入口要求明确选择，同根冲突输入明确失败", async () => {
   using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-source-evb-"));
@@ -89,6 +121,7 @@ it("目录识别失败不会去重掉显式选择的正常散装入口", async (
   fs.writeFileSync(selected, "");
   const entries = await discover_sources([temp.path, selected], new NativeFs());
   expect(entries.map((entry) => entry.source.kind)).toEqual(["failure", "game"]);
+  expect(entries[0]!.rel_path).toBe(path.basename(temp.path));
   expect(entries[1]!.source_path).toBe(selected);
 });
 

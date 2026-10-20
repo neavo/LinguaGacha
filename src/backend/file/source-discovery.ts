@@ -1,4 +1,8 @@
-import { is_preparation_path, GameSourceConflictError } from "./source-file-paths";
+import {
+  is_preparation_path,
+  GameSourceConflictError,
+  GAME_ASSET_EXTENSIONS,
+} from "./source-file-paths";
 import path from "node:path";
 import type { NativeFs } from "../../native/native-fs";
 import {
@@ -70,18 +74,17 @@ async function read_source(
   fs: NativeFs,
   signal?: AbortSignal,
 ): Promise<DiscoveredSource> {
-  let rel_path = path.basename(source_path);
+  const rel_path = path.basename(source_path); // 识别失败时保留真实来源名称。
   try {
     signal?.throwIfAborted();
     if (!fs.exists(source_path))
       throw Object.assign(new Error("Source not found: " + source_path), { code: "ENOENT" });
-    if (fs.stat(source_path).isDirectory()) rel_path += ".zip";
     for (const engine of Object.values(GAME_ENGINES)) {
       const source = await engine.discover(source_path, fs, signal);
       if (source)
         return {
           source_path: engine.source_path(source, source_path),
-          rel_path: path.basename(source.game.root) + ".zip",
+          rel_path: path.basename(source.game.root) + GAME_ASSET_EXTENSIONS[source.file_type],
           file_type: source.file_type,
           source,
         };

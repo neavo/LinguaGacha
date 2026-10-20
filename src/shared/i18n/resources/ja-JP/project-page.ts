@@ -67,6 +67,7 @@ export const ja_jp_project_page = {
     sextractor: "SExtractor から出力したゲームテキスト",
     vntextpatch: "VNTextPatch から出力したゲームテキスト",
     godot: "Godot 4 ゲームファイル",
+    action_game_maker: "ACTION GAME MAKER ゲームファイル",
     wolfrpg: "WOLFRPG 3 ゲームファイル",
     rpgmaker_mv_mz: "RPG Maker MV/MZ ゲームファイル",
     rpgmaker_rgss: "RPG Maker XP/VX/VXAce ゲームファイル",

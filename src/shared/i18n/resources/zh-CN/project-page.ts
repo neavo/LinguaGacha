@@ -65,6 +65,7 @@ export const zh_cn_project_page = {
     sextractor: "SExtractor 导出游戏文本",
     vntextpatch: "VNTextPatch 导出游戏文本",
     godot: "Godot 4 游戏文件",
+    action_game_maker: "ACTION GAME MAKER 游戏文件",
     wolfrpg: "WOLFRPG 3 游戏文件",
     rpgmaker_mv_mz: "RPG Maker MV/MZ 游戏文件",
     rpgmaker_rgss: "RPG Maker XP/VX/VXAce 游戏文件",

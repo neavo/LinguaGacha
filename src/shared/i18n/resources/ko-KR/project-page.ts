@@ -67,6 +67,7 @@ export const ko_kr_project_page = {
     sextractor: "SExtractor에서 내보낸 게임 텍스트",
     vntextpatch: "VNTextPatch에서 내보낸 게임 텍스트",
     godot: "Godot 4 게임 파일",
+    action_game_maker: "ACTION GAME MAKER 게임 파일",
     wolfrpg: "WOLFRPG 3 게임 파일",
     rpgmaker_mv_mz: "RPG Maker MV/MZ 게임 파일",
     rpgmaker_rgss: "RPG Maker XP/VX/VXAce 게임 파일",

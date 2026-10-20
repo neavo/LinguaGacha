@@ -69,6 +69,7 @@ export const en_us_project_page = {
     sextractor: "SExtractor Game Text",
     vntextpatch: "VNTextPatch Game Text",
     godot: "Godot 4 game files",
+    action_game_maker: "ACTION GAME MAKER game files",
     wolfrpg: "WOLFRPG 3 game files",
     rpgmaker_mv_mz: "RPG Maker MV/MZ Game File",
     rpgmaker_rgss: "RPG Maker XP/VX/VXAce Game File",

@@ -6,7 +6,7 @@ import { CacheManager } from "../cache/cache-manager";
 import type { AppSettingService } from "../app/app-setting-service";
 import type { ComputeWorkerClient } from "../worker/compute-worker-client";
 import { ProjectSummaryService } from "./project-summary-service";
-import { read_zip_fixture, write_zip } from "../../test/zip-fixture";
+import { read_zip_fixture, write_zip, zip_text } from "../../test/zip-fixture";
 import {
   create_workbench_import_files_plan,
   create_workbench_reset_file_plan,
@@ -219,7 +219,7 @@ describe("ProjectContentService", () => {
     try {
       const preview = await service.preview_import_files({ source_paths: [root, ordinary] });
       expect(preview.files).toEqual([
-        { source_path: root, target_rel_path: "broken-game.zip", conflict: false },
+        { source_path: root, target_rel_path: "broken-game", conflict: false },
         { source_path: ordinary, target_rel_path: "normal.txt", conflict: false },
       ]);
       const result = await service.import_files({
@@ -261,7 +261,7 @@ describe("ProjectContentService", () => {
         expected_section_revisions: { files: 0, items: 0 },
       });
       expect(await database.get_all_asset_records(lg_path)).toMatchObject([
-        { path: "wolf.zip", file_type: "WOLFRPG" },
+        { path: "wolf.wolfrpg", file_type: "WOLFRPG" },
       ]);
       const baseline = await database.get_all_items(lg_path);
       expect(baseline.find((item) => item.src === "主标题")?.status).toBe("RULE_SKIPPED");
@@ -275,7 +275,7 @@ describe("ProjectContentService", () => {
       });
       fs.renameSync(root, root + "-moved");
       await service.reset_files({
-        rel_paths: ["wolf.zip"],
+        rel_paths: ["wolf.wolfrpg"],
         expected_section_revisions: { items: 2 },
       });
       expect(
@@ -309,11 +309,11 @@ describe("ProjectContentService", () => {
       });
       expect(preview).toEqual({
         files_revision: 0,
-        files: [{ source_path: root, target_rel_path: "packed.zip", conflict: false }],
+        files: [{ source_path: root, target_rel_path: "packed.rpgmaker", conflict: false }],
       });
       expect(fs.readdirSync(root).sort()).toEqual(["Game.ini", "Game.rgss3a"]);
       await database.transaction(lg_path, (writer) =>
-        writer.add_asset(lg_path, "packed.zip", Buffer.from("old"), "RPGMAKER_RGSS", null),
+        writer.add_asset(lg_path, "packed.rpgmaker", Buffer.from("old"), "RPGMAKER_RGSS", null),
       );
       await expect(
         service.import_files({
@@ -346,11 +346,11 @@ describe("ProjectContentService", () => {
       );
       fs.renameSync(root, root + "-moved");
       await service.reset_files({
-        rel_paths: ["packed.zip"],
+        rel_paths: ["packed.rpgmaker"],
         expected_section_revisions: { items: 1 },
       });
       expect(
-        (await database.read_asset_content(lg_path, "packed.zip"))!.equals(Buffer.from("old")),
+        (await database.read_asset_content(lg_path, "packed.rpgmaker"))!.equals(Buffer.from("old")),
       ).toBe(false);
     } finally {
       await database.close();
@@ -428,28 +428,104 @@ describe("ProjectContentService", () => {
         fs.writeFileSync(path.join(root, "js/rmmz_core.js"), "");
       }
       const preview = await service.preview_import_files({ source_paths: roots });
-      const files = preview["files"] as JsonRecord[];
-      expect(files.map((file) => file["target_rel_path"])).toEqual([
-        "game.zip",
-        "game_20261011_123456.zip",
+      expect(preview.files.map((file) => file.target_rel_path)).toEqual([
+        "game.rpgmaker",
+        "game_20261011_123456.rpgmaker",
       ]);
       vi.setSystemTime(new Date(2026, 9, 11, 12, 35, 0));
       await service.import_files({
-        files: files.map((file) => ({
-          source_path: file["source_path"]!,
-          target_rel_path: file["target_rel_path"]!,
-        })),
+        files: preview.files,
         conflict_action: "replace",
         expected_section_revisions: { files: 0, items: 0 },
       });
       expect((await database.get_all_asset_records(lg_path)).map((asset) => asset.path)).toEqual([
         "game_2.zip",
-        "game.zip",
-        "game_20261011_123456.zip",
+        "game.rpgmaker",
+        "game_20261011_123456.rpgmaker",
       ]);
       expect((await database.read_asset_content(lg_path, "game_2.zip"))!.equals(old!)).toBe(true);
       const replacement = await service.preview_import_files({ source_paths: [roots[0]!] });
-      expect(replacement["files"]).toMatchObject([{ target_rel_path: "game.zip" }]);
+      expect(replacement.files).toMatchObject([
+        { target_rel_path: "game.rpgmaker", conflict: true },
+      ]);
+      fs.writeFileSync(path.join(roots[0]!, "data/System.json"), '{"gameTitle":"更新"}');
+      await service.import_files({
+        files: replacement.files,
+        conflict_action: "replace",
+        expected_section_revisions: { files: 1, items: 1 },
+      });
+      expect((await database.get_all_asset_records(lg_path)).map((asset) => asset.path)).toEqual([
+        "game_2.zip",
+        "game.rpgmaker",
+        "game_20261011_123456.rpgmaker",
+      ]);
+      const saved = await database.read_asset_content(lg_path, "game.rpgmaker");
+      expect(zip_text(await read_zip_fixture(saved!), "data/System.json")).toBe(
+        '{"gameTitle":"更新"}',
+      );
+    } finally {
+      await database.close();
+      vi.useRealTimers();
+    }
+  });
+  it("历史 ZIP 重新导入新后缀并继承译文，删除旧资产后保留新身份和译文", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date(2026, 9, 11, 12, 34, 56));
+    const { database, service, lg_path } = await create_service();
+    try {
+      const root = project_path("game");
+      const content = '{"currencyUnit":"こんにちは"}';
+      fs.mkdirSync(path.join(root, "data"), { recursive: true });
+      fs.mkdirSync(path.join(root, "js"));
+      fs.writeFileSync(path.join(root, "data/System.json"), content);
+      fs.writeFileSync(path.join(root, "js/rmmz_core.js"), "");
+      await service.import_files({
+        files: [{ source_path: root, target_rel_path: "game.zip" }],
+        conflict_action: "replace",
+        expected_section_revisions: { files: 0, items: 0 },
+      });
+      const old_items = await database.get_all_items(lg_path);
+      await database.transaction(lg_path, (writer) =>
+        writer.set_items(
+          lg_path,
+          old_items.map((item) => ({
+            ...item,
+            dst: "继承译文",
+            status: "PROCESSED",
+          })),
+        ),
+      );
+      const preview = await service.preview_import_files({ source_paths: [root] });
+      const target = "game_20261011_123456.rpgmaker";
+      expect(preview.files).toEqual([
+        { source_path: root, target_rel_path: target, conflict: false },
+      ]);
+      vi.setSystemTime(new Date(2026, 9, 11, 12, 35, 0));
+      await service.import_files({
+        files: preview.files,
+        conflict_action: "replace",
+        inheritance_mode: "inherit",
+        project_settings: { source_language: "JA", target_language: "ZH" },
+        expected_section_revisions: { files: 1, items: 1 },
+      });
+      expect((await database.get_all_asset_records(lg_path)).map((asset) => asset.path)).toEqual([
+        "game.zip",
+        target,
+      ]);
+      const inherited = (await database.get_all_items(lg_path)).find(
+        (item) => item.file_path === target,
+      );
+      expect(inherited).toMatchObject({ src: "こんにちは", dst: "继承译文", status: "PROCESSED" });
+      const saved = await database.read_asset_content(lg_path, target);
+      await service.delete_files({
+        rel_paths: ["game.zip"],
+        expected_section_revisions: { files: 2, items: 2 },
+      });
+      expect(await database.get_all_asset_records(lg_path)).toMatchObject([
+        { path: target, file_type: "RPGMAKER_MV_MZ" },
+      ]);
+      expect((await database.read_asset_content(lg_path, target))!.equals(saved!)).toBe(true);
+      expect(await database.get_all_items(lg_path)).toEqual([inherited]);
     } finally {
       await database.close();
       vi.useRealTimers();

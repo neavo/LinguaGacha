@@ -55,11 +55,9 @@ export class SourceFileParsePipeline {
     signal?: AbortSignal,
   ): Promise<SourceFileProjectDraft> {
     const parse_result = await this.parse_source_entries(
-      this.format_service
-        .assign_source_file_paths(
-          await this.format_service.collect_source_file_entries(source_paths, signal),
-        )
-        .map((entry) => ({ ...entry, file_type: entry.file_type })),
+      this.format_service.assign_source_file_paths(
+        await this.format_service.collect_source_file_entries(source_paths, signal),
+      ),
       signal,
     );
     const files: SourceFileProjectDraft["files"] = [];
