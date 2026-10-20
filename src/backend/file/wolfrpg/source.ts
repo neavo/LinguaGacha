@@ -3,6 +3,7 @@ import type { NativeFs } from "../../../native/native-fs";
 import { assert_regular_path, GameSourceConflictError } from "../source-file-paths";
 import { read_bytes } from "../shared/binary";
 import { classify_wolf_archive, classify_wolf_key, type WolfKeyType } from "./archive-crypt";
+import { resolve_game_source_input } from "../shared/game/source-input";
 
 export type WolfSource = Readonly<{
   root: string;
@@ -32,10 +33,9 @@ const LAYOUT_MARKERS = [
 
 /** 只使用布局标志确定游戏边界，坏游戏不能降级为普通目录。 */
 export function wolf_source_root(source: string, fs: NativeFs): string | null {
-  if (!fs.exists(source)) return null;
-  const directory = fs.stat(source).isDirectory();
-  if (!directory && path.extname(source).toLowerCase() !== ".exe") return null;
-  const candidate = path.resolve(directory ? source : path.dirname(source));
+  const input = resolve_game_source_input(source, fs);
+  if (!input) return null;
+  const candidate = input.root;
   const roots =
     path.basename(candidate).toLowerCase() === "data"
       ? [candidate, path.dirname(candidate)]

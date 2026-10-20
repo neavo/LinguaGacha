@@ -25,6 +25,8 @@ it("替代扩展名按头区分密钥、归档与普通素材，布局按主名�
     await wolf_archive_fixture(new Map()),
   );
   let game = await discover_wolf_source(path.join(temp.path, "Data"), native);
+  native.write_file_sync(path.join(temp.path, "Game.EXE"), "launcher");
+  expect(await discover_wolf_source(path.join(temp.path, "Game.EXE"), native)).toEqual(game);
   expect(game?.key_files.map((key) => key.type)).toEqual(["A1"]);
   expect(game?.archives.map((archive) => archive.output_prefix)).toEqual(["Data/Picture"]);
   native.write_file_sync(

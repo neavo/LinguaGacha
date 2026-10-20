@@ -29,7 +29,7 @@ it.each(["external", "embedded"])("%s 载体准备、字体回退、重复导入
   const carrier = path.join(temp.path, kind === "embedded" ? "game.exe" : "game.pck");
   fs.writeFileSync(carrier, bytes);
   if (kind === "external") fs.writeFileSync(path.join(temp.path, "game.exe"), prefix);
-  const game = (await discover_godot_source(carrier, native))!;
+  const game = (await discover_godot_source(path.join(temp.path, "game.exe"), native))!;
   expect(game.carrier?.kind).toBe(kind === "embedded" ? "embedded" : "pck");
   const copy = vi.spyOn(native, "copy_file");
   await prepare_game_source({ kind: "game", file_type: "GODOT", game }, native);

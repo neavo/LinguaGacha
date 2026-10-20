@@ -16,6 +16,7 @@ import {
   type PreparedGameFiles,
 } from "../shared/game/source-files";
 import { is_godot_font_file } from "./font";
+import { resolve_game_source_input } from "../shared/game/source-input";
 
 export type GodotCarrier =
   | { kind: "pck"; file: string }
@@ -27,7 +28,6 @@ export type GodotSource = Readonly<{
   carrier: GodotCarrier;
   engine: string;
 }>;
-const INPUT_EXTENSIONS = [".exe", ".pck"];
 
 /** 布局标志保留坏目录的游戏身份，使失败不会降级为普通文件递归。 */
 export function is_godot_root(root: string, fs: NativeFs): boolean {
@@ -46,10 +46,9 @@ export async function discover_godot_source(
   signal?: AbortSignal,
 ): Promise<GodotSource | null> {
   signal?.throwIfAborted();
-  if (!fs.exists(input)) return null;
-  const directory = fs.stat(input).isDirectory();
-  if (!directory && !INPUT_EXTENSIONS.includes(path.extname(input).toLowerCase())) return null;
-  const root = path.resolve(directory ? input : path.dirname(input));
+  const source = resolve_game_source_input(input, fs);
+  if (!source) return null;
+  const { root } = source;
   assert_regular_path(root, fs);
   const entries = fs.read_dirents(root).filter((entry) => entry.isFile());
   const carriers: { file: string; kind: "pck" | "embedded" }[] = entries
@@ -135,13 +134,12 @@ export async function discover_godot_source(
     return null;
   assert(fs.stat(path.join(root, ".godot")).isDirectory(), "Invalid Godot resource directory");
   const executable =
-    !directory && path.extname(input).toLowerCase() === ".exe"
-      ? path.resolve(input)
-      : path.join(
-          root,
-          entries.find((entry) => path.extname(entry.name).toLowerCase() === ".exe")?.name ??
-            "Game.exe",
-        );
+    source.executable ??
+    path.join(
+      root,
+      entries.find((entry) => path.extname(entry.name).toLowerCase() === ".exe")?.name ??
+        "Game.exe",
+    );
   return { root, executable, carrier: null, engine: "4" };
 }
 

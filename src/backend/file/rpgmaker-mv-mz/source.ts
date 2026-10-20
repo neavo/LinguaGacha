@@ -2,6 +2,7 @@ import { GameSourceConflictError, sort_game_paths } from "../source-file-paths";
 import { read_evb, type EVBMember } from "../shared/evb/archive";
 import path from "node:path";
 import type { NativeFs } from "../../../native/native-fs";
+import { resolve_game_source_input } from "../shared/game/source-input";
 
 export type RPGMakerSource = Readonly<{
   root: string;
@@ -15,13 +16,9 @@ export function discover_unpacked_rpgmaker_source(
   source: string,
   fs: NativeFs,
 ): RPGMakerSource | null {
-  if (!fs.exists(source)) return null;
-  const root = fs.stat(source).isDirectory()
-    ? path.resolve(source)
-    : path.extname(source).toLowerCase() === ".exe"
-      ? path.dirname(path.resolve(source))
-      : null;
-  if (root === null) return null;
+  const input = resolve_game_source_input(source, fs);
+  if (!input) return null;
+  const { root } = input;
   const data_root = find_data_root(root, fs);
   if (data_root === undefined) return null;
   return {
@@ -62,16 +59,15 @@ export async function discover_rpgmaker_source(
   fs: NativeFs,
   signal?: AbortSignal,
 ): Promise<RPGMakerSource | null> {
-  if (!fs.exists(source)) return null;
-  const directory = fs.stat(source).isDirectory();
-  if (!directory && path.extname(source).toLowerCase() !== ".exe") return null;
-  const root = directory ? path.resolve(source) : path.dirname(path.resolve(source));
-  const executables = directory
-    ? fs
+  const input = resolve_game_source_input(source, fs);
+  if (!input) return null;
+  const { root } = input;
+  const executables = input.executable
+    ? [input.executable]
+    : fs
         .read_dirents(root)
         .filter((entry) => entry.isFile() && path.extname(entry.name).toLowerCase() === ".exe")
-        .map((entry) => path.join(root, entry.name))
-    : [path.resolve(source)];
+        .map((entry) => path.join(root, entry.name));
   const games: RPGMakerSource[] = [];
   for (const executable of executables) {
     signal?.throwIfAborted();

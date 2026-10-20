@@ -52,10 +52,10 @@ it.each(["xp", "vx", "ace"] as const)(
     fs.mkdirSync(path.join(temp.path, "Graphics"));
     fs.writeFileSync(path.join(temp.path, "Graphics/picture.png"), "old picture");
     const native = new NativeFs();
-    expect(discover_rgss_source(archive, native)?.version).toBe(version);
+    expect(discover_rgss_source(temp.path, native)?.version).toBe(version);
     const service = new FileFormatService({ target_language: "ZH" }, async () => null);
     const prepared = await service.prepare_source(
-      (await service.collect_source_file_entries([archive]))[0]!,
+      (await service.collect_source_file_entries([temp.path]))[0]!,
     );
     const { members } = await read_game_container(prepared.content, "game.zip");
     for (const [name, member] of members)

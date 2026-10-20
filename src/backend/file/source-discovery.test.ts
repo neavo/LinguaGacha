@@ -36,6 +36,22 @@ it.each([
     file_type,
     source: { kind: "game", file_type },
   });
+  if (file_type === "GODOT" || file_type === "RPGMAKER_RGSS") {
+    const files = file_type === "GODOT" ? ["game.pck"] : ["Game.ini", "Game.rgss3a"];
+    for (const name of files) {
+      const input = path.join(root, name);
+      expect((await discover_source(input, native)).source).toEqual({
+        kind: "file",
+        format: undefined,
+      });
+      expect(await discover_sources([input], native)).toEqual([]);
+    }
+  }
+  const exe = path.join(root, "Game.EXE");
+  native.write_file_sync(exe, "");
+  expect(await discover_sources([root, exe], native)).toMatchObject([
+    { file_type, source: { kind: "game", file_type } },
+  ]);
 });
 
 it("多个 EVB 入口要求明确选择，同根冲突输入明确失败", async () => {

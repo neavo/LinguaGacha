@@ -33,7 +33,7 @@ it.each(["external", "embedded"])(
     });
     const source = path.join(temp.path, kind === "embedded" ? "game.exe" : "game.pck");
     fs.writeFileSync(source, bytes);
-    const game = (await discover_godot_source(source, native))!;
+    const game = (await discover_godot_source(kind === "embedded" ? source : temp.path, native))!;
     const worker = new GamePrepareWorker(
       pathToFileURL(path.join(runtime, "main/game-prepare-worker-entry.js")),
     );
