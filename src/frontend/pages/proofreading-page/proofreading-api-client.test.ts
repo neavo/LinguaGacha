@@ -132,8 +132,6 @@ describe("proofreading-api-client", () => {
     });
     expect(api_fetch_mock).toHaveBeenNthCalledWith(1, "/api/proofreading/query", {
       action: "sync",
-      source_language: "ja",
-      target_language: "zh-CN",
     });
     expect(api_fetch_mock).toHaveBeenNthCalledWith(2, "/api/proofreading/query", {
       action: "list",

@@ -4,10 +4,10 @@ export const ko_kr_basic_settings_page = {
   title: "기본 설정",
   fields: {
     source_language: {
-      description: "현재 프로젝트의 입력 텍스트 언어를 설정합니다",
+      description: "입력 텍스트 언어를 설정합니다",
     },
     target_language: {
-      description: "현재 프로젝트의 출력 텍스트 언어를 설정합니다",
+      description: "출력 텍스트 언어를 설정합니다",
     },
     project_save_mode: {
       title: "프로젝트 파일 저장 위치",

@@ -17,9 +17,9 @@ type RuntimeFixture = {
   commit_project_write: ReturnType<typeof vi.fn>;
 };
 
-type EditorSnapshot = Pick<SettingsSnapshot, "source_language" | "request_timeout">;
+type EditorSnapshot = Pick<SettingsSnapshot, "mtool_optimizer_enable" | "request_timeout">;
 
-const PENDING_FIELDS = ["source_language", "request_timeout"] as const;
+const PENDING_FIELDS = ["mtool_optimizer_enable", "request_timeout"] as const;
 const runtime_fixture: { current: RuntimeFixture } = {
   current: create_runtime_fixture(),
 };
@@ -47,11 +47,10 @@ vi.mock("@frontend/app/desktop/desktop-api", () => ({
   DesktopApiError: class DesktopApiError extends Error {},
 }));
 
+/** 用生产归一化规则补齐设置夹具。 */
 function create_settings_snapshot(overrides: Partial<SettingsSnapshot> = {}): SettingsSnapshot {
   return normalize_setting_snapshot({
     app_language: "ZH",
-    source_language: "JA",
-    target_language: "ZH",
     request_timeout: 300,
     mtool_optimizer_enable: false,
     skip_duplicate_source_text_enable: true,
@@ -59,6 +58,7 @@ function create_settings_snapshot(overrides: Partial<SettingsSnapshot> = {}): Se
   });
 }
 
+/** 模拟设置回流与补读，供并发保存和失败恢复用例共享。 */
 function create_runtime_fixture(): RuntimeFixture {
   const settings_snapshot = create_settings_snapshot();
   return {
@@ -78,13 +78,15 @@ function create_runtime_fixture(): RuntimeFixture {
   };
 }
 
+/** 固定选择器身份，避免重新渲染时额外触发同步 effect。 */
 function select_snapshot(settings_snapshot: SettingsSnapshot): EditorSnapshot {
   return {
-    source_language: settings_snapshot.source_language,
+    mtool_optimizer_enable: settings_snapshot.mtool_optimizer_enable,
     request_timeout: settings_snapshot.request_timeout,
   };
 }
 
+/** 手动控制请求完成顺序，验证字段级回滚。 */
 function create_deferred<Value>(): {
   promise: Promise<Value>;
   resolve: (value: Value) => void;
@@ -107,7 +109,7 @@ describe("useSettingsEditor", () => {
   let container: HTMLDivElement | null = null;
   let root: Root | null = null;
   let latest_state: ReturnType<
-    typeof useSettingsEditor<EditorSnapshot, "source_language" | "request_timeout">
+    typeof useSettingsEditor<EditorSnapshot, "mtool_optimizer_enable" | "request_timeout">
   > | null = null;
 
   afterEach(async () => {
@@ -126,6 +128,7 @@ describe("useSettingsEditor", () => {
     vi.mocked(api_fetch).mockReset();
   });
 
+  /** 通过 React 渲染暴露编辑器的公开状态。 */
   function EditorProbe(): JSX.Element | null {
     latest_state = useSettingsEditor({
       select_snapshot,
@@ -134,6 +137,7 @@ describe("useSettingsEditor", () => {
     return null;
   }
 
+  /** 复用挂载根以保留草稿，模拟设置上下文更新。 */
   async function render_hook(): Promise<void> {
     if (container === null) {
       container = document.createElement("div");
@@ -153,14 +157,14 @@ describe("useSettingsEditor", () => {
     runtime_fixture.current = {
       ...runtime_fixture.current,
       settings_snapshot: create_settings_snapshot({
-        source_language: "EN",
+        mtool_optimizer_enable: true,
         request_timeout: 900,
       }),
     };
     await render_hook();
 
     expect(latest_state?.snapshot).toEqual({
-      source_language: "EN",
+      mtool_optimizer_enable: true,
       request_timeout: 900,
     });
   });
@@ -168,11 +172,11 @@ describe("useSettingsEditor", () => {
   it.each([false, true])(
     "提交失败后恢复本次字段的后端事实（已提交：%s），保留其它在途编辑",
     async (committed) => {
-      const source_request = create_deferred<SettingsSnapshotPayload>();
+      const prefilter_request = create_deferred<SettingsSnapshotPayload>();
       const timeout_request = create_deferred<SettingsSnapshotPayload>();
       vi.mocked(api_fetch).mockImplementation(async (_path, body) => {
-        if ("source_language" in (body ?? {})) {
-          return await source_request.promise;
+        if ("mtool_optimizer_enable" in (body ?? {})) {
+          return await prefilter_request.promise;
         }
         return await timeout_request.promise;
       });
@@ -181,11 +185,11 @@ describe("useSettingsEditor", () => {
         throw new Error("设置编辑器测试状态尚未初始化。");
       }
 
-      let source_update: Promise<SettingsSnapshot | null> | null = null;
+      let prefilter_update: Promise<SettingsSnapshot | null> | null = null;
       await act(async () => {
-        source_update =
-          latest_state?.commit_update("source_language", {
-            source_language: "EN",
+        prefilter_update =
+          latest_state?.commit_update("mtool_optimizer_enable", {
+            mtool_optimizer_enable: true,
           }) ?? null;
         await Promise.resolve();
       });
@@ -199,37 +203,37 @@ describe("useSettingsEditor", () => {
       });
 
       expect(latest_state?.snapshot).toEqual({
-        source_language: "EN",
+        mtool_optimizer_enable: true,
         request_timeout: 600,
       });
       expect(latest_state?.pending_state).toEqual({
-        source_language: true,
+        mtool_optimizer_enable: true,
         request_timeout: true,
       });
 
       runtime_fixture.current.refresh_settings.mockResolvedValue(
         create_settings_snapshot({
-          source_language: committed ? "EN" : "JA",
+          mtool_optimizer_enable: committed,
         }),
       );
-      source_request.reject(new Error("update_failed"));
+      prefilter_request.reject(new Error("update_failed"));
       await act(async () => {
-        await source_update;
+        await prefilter_update;
       });
 
       expect(latest_state?.snapshot).toEqual({
-        source_language: committed ? "EN" : "JA",
+        mtool_optimizer_enable: committed,
         request_timeout: 600,
       });
       expect(latest_state?.pending_state).toEqual({
-        source_language: false,
+        mtool_optimizer_enable: false,
         request_timeout: true,
       });
       expect(push_toast).toHaveBeenCalledWith("app.feedback.save_failed", expect.any(Error));
 
       timeout_request.resolve({
         settings: create_settings_snapshot({
-          source_language: committed ? "EN" : "JA",
+          mtool_optimizer_enable: committed,
           request_timeout: 601,
         }),
       });
@@ -238,15 +242,15 @@ describe("useSettingsEditor", () => {
       });
 
       expect(latest_state?.snapshot).toEqual({
-        source_language: committed ? "EN" : "JA",
+        mtool_optimizer_enable: committed,
         request_timeout: 601,
       });
       expect(latest_state?.pending_state).toEqual({
-        source_language: false,
+        mtool_optimizer_enable: false,
         request_timeout: false,
       });
       expect(vi.mocked(api_fetch).mock.calls).toEqual([
-        ["/api/settings/update", { source_language: "EN" }],
+        ["/api/settings/update", { mtool_optimizer_enable: true }],
         ["/api/settings/update", { request_timeout: 600 }],
       ]);
     },
@@ -260,7 +264,7 @@ describe("useSettingsEditor", () => {
     await render_hook();
 
     expect(latest_state?.snapshot).toEqual({
-      source_language: "JA",
+      mtool_optimizer_enable: false,
       request_timeout: 300,
     });
     expect(push_toast).toHaveBeenCalledWith("app.feedback.refresh_failed", expect.any(Error));

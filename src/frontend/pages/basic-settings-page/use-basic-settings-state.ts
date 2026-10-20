@@ -3,7 +3,14 @@ import {
   push_toast,
   run_modal_progress_toast,
 } from "@frontend/app/feedback/desktop-toast";
-import { useCallback } from "react";
+import { useCallback, useMemo, useState } from "react";
+
+import {
+  DEFAULT_PROJECT_LANGUAGE_SETTINGS,
+  type ProjectLanguageKey,
+} from "@domain/project-settings";
+import { api_fetch } from "@frontend/app/desktop/desktop-api";
+import type { ProjectWriteResultPayload } from "@frontend/app/state/desktop-project-write";
 
 import { format_project_settings_aligned_toast } from "@frontend/app/feedback/project-settings-alignment-feedback";
 import { useI18n } from "@frontend/app/locale/locale-context";
@@ -19,16 +26,23 @@ import {
 } from "@frontend/pages/basic-settings-page/types";
 
 const BASIC_SETTINGS_PENDING_FIELDS = [
-  "source_language",
-  "target_language",
   "project_save_mode",
   "output_folder_open_on_finish",
   "request_timeout",
 ] as const;
 
+const PROJECT_SETTINGS_UPDATE_OPERATION = "project.settings.update";
+const IDLE_LANGUAGE_PENDING_STATE: Readonly<Record<ProjectLanguageKey, boolean>> = {
+  source_language: false,
+  target_language: false,
+};
+
 type UseBasicSettingsStateResult = {
   snapshot: BasicSettingsSnapshot;
   pending_state: Record<(typeof BASIC_SETTINGS_PENDING_FIELDS)[number], boolean>;
+  languages: Record<ProjectLanguageKey, string>; // 当前项目语言，保存期间显示本次选择
+  language_pending_state: Record<ProjectLanguageKey, boolean>;
+  language_locked: boolean; // 未加载项目或运行中时不可修改项目语言
   runtime_locked: boolean;
   update_source_language: (next_language: string) => Promise<void>;
   update_target_language: (next_language: string) => Promise<void>;
@@ -45,10 +59,10 @@ function clamp_request_timeout(next_value: number): number {
 }
 
 /**
- * 组合通用设置编辑器与项目预过滤对齐流程，页面不直接拥有后端设置事实。
+ * 组合应用设置编辑器与项目语言写入，页面不直接拥有后端设置事实。
  */
 export function useBasicSettingsState(): UseBasicSettingsStateResult {
-  const { project_snapshot } = useDesktopState();
+  const { project_snapshot, commit_project_write } = useDesktopState();
   const runtime_snapshot = useRuntimeSnapshot();
 
   const { t } = useI18n();
@@ -57,25 +71,56 @@ export function useBasicSettingsState(): UseBasicSettingsStateResult {
     pending_fields: BASIC_SETTINGS_PENDING_FIELDS,
   });
   const runtime_locked = project_snapshot.loaded && is_runtime_busy(runtime_snapshot);
+  const language_locked = !project_snapshot.loaded || runtime_locked;
+  // 保存期间由字段草稿覆盖项目快照，成功或失败恢复后交回已提交事实。
+  const [language_draft, set_language_draft] = useState<
+    Partial<Record<ProjectLanguageKey, string>>
+  >({});
+  const [language_pending_state, set_language_pending_state] = useState<
+    Record<ProjectLanguageKey, boolean>
+  >(IDLE_LANGUAGE_PENDING_STATE);
+  const languages = useMemo<Record<ProjectLanguageKey, string>>(
+    () => ({
+      ...(project_snapshot.languages ?? DEFAULT_PROJECT_LANGUAGE_SETTINGS),
+      ...language_draft,
+    }),
+    [language_draft, project_snapshot.languages],
+  );
 
-  // 后端拥有设置和工程的完整保存；页面只负责输入与反馈。
   const update_language = useCallback(
-    async (field: "source_language" | "target_language", next_language: string): Promise<void> => {
-      if (runtime_locked || snapshot[field] === next_language) return;
+    async (field: ProjectLanguageKey, next_language: string): Promise<void> => {
+      if (language_locked || languages[field] === next_language) return;
       const save = async (): Promise<void> => {
-        const settings = await commit_update(field, { [field]: next_language });
-        if (settings !== null && project_snapshot.loaded) {
+        set_language_draft((previous) => ({ ...previous, [field]: next_language }));
+        set_language_pending_state((previous) => ({ ...previous, [field]: true }));
+        try {
+          await commit_project_write({
+            operation: PROJECT_SETTINGS_UPDATE_OPERATION,
+            run: () =>
+              api_fetch<ProjectWriteResultPayload>("/api/project/settings/update", {
+                [field]: next_language,
+              }),
+          });
           push_toast(
             "info",
             format_project_settings_aligned_toast({
-              settings,
+              settings: { [field]: next_language },
               changed_fields: { [field]: true },
               t,
             }),
           );
+        } catch (error) {
+          push_error_toast(t("app.feedback.save_failed"), error);
+        } finally {
+          set_language_draft((previous) => {
+            const next = { ...previous };
+            delete next[field];
+            return next;
+          });
+          set_language_pending_state((previous) => ({ ...previous, [field]: false }));
         }
       };
-      if (field === "source_language" && project_snapshot.loaded) {
+      if (field === "source_language") {
         await run_modal_progress_toast({
           message: t("app.feedback.project_cache_loading"),
           task: save,
@@ -84,7 +129,7 @@ export function useBasicSettingsState(): UseBasicSettingsStateResult {
         await save();
       }
     },
-    [commit_update, project_snapshot.loaded, runtime_locked, snapshot, t],
+    [commit_project_write, language_locked, languages, t],
   );
 
   const update_project_save_mode = useCallback(
@@ -150,6 +195,9 @@ export function useBasicSettingsState(): UseBasicSettingsStateResult {
   return {
     snapshot,
     pending_state,
+    languages,
+    language_pending_state,
+    language_locked,
     runtime_locked,
     update_source_language: (value) => update_language("source_language", value),
     update_target_language: (value) => update_language("target_language", value),

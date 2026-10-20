@@ -5,10 +5,10 @@ export const en_us_basic_settings_page = {
   title: "Basic Settings",
   fields: {
     source_language: {
-      description: "Set the language of the input text in the current project",
+      description: "Set the language of the input text",
     },
     target_language: {
-      description: "Set the language of the output text in the current project",
+      description: "Set the language of the output text",
     },
     project_save_mode: {
       title: "Project Save Location",

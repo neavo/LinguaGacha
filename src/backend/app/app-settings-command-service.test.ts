@@ -31,15 +31,18 @@ async function create_service() {
   const settings = new AppSettingService(
     new AppPathService({ appRoot: root, builtinRoot: path.join(root, "builtin") }),
   );
-  settings.save_setting({ source_language: "JA", target_language: "ZH" });
+  settings.save_setting({ mtool_optimizer_enable: true, skip_duplicate_source_text_enable: true });
   const session = new ProjectSessionState();
   const project_path = path.join(root, "test.lg");
   await database.create_project(project_path, "test");
+  // 项目语言属于工程事实，应用开关同步时必须原样保留。
   await database.transaction(project_path, (writer) =>
-    writer.set_meta(project_path, "source_language", "JA"),
-  );
-  await database.transaction(project_path, (writer) =>
-    writer.set_meta(project_path, "target_language", "ZH"),
+    writer.upsert_meta_entries(project_path, {
+      source_language: "EN",
+      target_language: "DE",
+      mtool_optimizer_enable: true,
+      skip_duplicate_source_text_enable: true,
+    }),
   );
   session.mark_loaded(project_path);
   const gate = new RuntimeOperationGate();
@@ -78,15 +81,17 @@ describe("AppSettingsCommandService", () => {
       accepted: true,
       changes: [],
     });
-    await expect(f.service.update({ source_language: "EN" })).rejects.toMatchObject({
+    await expect(f.service.update({ mtool_optimizer_enable: false })).rejects.toMatchObject({
       code: "runtime.busy",
     });
     expect(f.settings.read_setting()).toMatchObject({
       request_timeout: 600,
       agent_approval_mode: "auto",
-      source_language: "JA",
+      mtool_optimizer_enable: true,
     });
-    expect(await f.database.get_all_meta(f.project_path)).toMatchObject({ source_language: "JA" });
+    expect(await f.database.get_all_meta(f.project_path)).toMatchObject({
+      mtool_optimizer_enable: true,
+    });
     expect(f.on_commit).not.toHaveBeenCalled();
     f.gate.finish_runtime(lease);
   });
@@ -102,21 +107,32 @@ describe("AppSettingsCommandService", () => {
     expect(f.publish).not.toHaveBeenCalled();
   });
 
-  it("没有工程时语言只保存为应用设置", async () => {
+  it("没有工程时预过滤开关只保存为应用设置", async () => {
     const f = await create_service();
     f.session.clear();
     const lease = f.gate.begin_runtime("model_test");
-    await f.service.update({ source_language: "EN" });
-    expect(f.settings.read_setting()).toMatchObject({ source_language: "EN" });
+    await f.service.update({ mtool_optimizer_enable: false });
+    expect(f.settings.read_setting()).toMatchObject({ mtool_optimizer_enable: false });
     expect(f.on_commit).not.toHaveBeenCalled();
     f.gate.finish_runtime(lease);
   });
 
-  it("同步目标语言时持有完整写租约，成功后才广播设置", async () => {
+  it("应用设置忽略旧语言字段，不写入工程", async () => {
+    const f = await create_service();
+    await f.service.update({ source_language: "KO", target_language: "EN" });
+    expect(f.settings.read_setting()).not.toHaveProperty("source_language");
+    expect(await f.database.get_all_meta(f.project_path)).toMatchObject({
+      source_language: "EN",
+      target_language: "DE",
+    });
+    expect(f.on_commit).not.toHaveBeenCalled();
+  });
+
+  it("同步预过滤开关时持有完整写租约，成功后才广播设置", async () => {
     const f = await create_service();
     const publication = Promise.withResolvers<void>();
     f.on_commit.mockReturnValue(publication.promise);
-    const update = f.service.update({ target_language: "EN" });
+    const update = f.service.update({ mtool_optimizer_enable: false });
     await vi.waitFor(() => expect(f.on_commit).toHaveBeenCalledOnce());
     expect(() => f.gate.begin_runtime("agent")).toThrow(
       expect.objectContaining({ code: "runtime.busy" }),
@@ -126,23 +142,30 @@ describe("AppSettingsCommandService", () => {
     await f.service.update({ request_timeout: 600 });
     publication.resolve();
     await expect(update).resolves.toMatchObject({
-      settings: { target_language: "EN", request_timeout: 600 },
+      settings: { mtool_optimizer_enable: false, request_timeout: 600 },
       accepted: true,
       changes: [],
     });
-    expect(await f.database.get_all_meta(f.project_path)).toMatchObject({ target_language: "EN" });
+    expect(await f.database.get_all_meta(f.project_path)).toMatchObject({
+      mtool_optimizer_enable: false,
+    });
     const lease = f.gate.begin_runtime("agent");
     f.gate.finish_runtime(lease);
   });
 
-  it("预过滤保存由后端读取当前工程，更新语言和条目 revision", async () => {
+  it("预过滤保存采用当前工程语言，更新开关和条目 revision 并保留项目语言", async () => {
     const f = await create_service();
     const before = (await f.database.get_all_meta(f.project_path)) as JsonRecord;
-    await f.service.update({ source_language: "EN" });
+    await f.service.update({ skip_duplicate_source_text_enable: false });
     const after = (await f.database.get_all_meta(f.project_path)) as JsonRecord;
-    expect(after).toMatchObject({ source_language: "EN" });
+    expect(after).toMatchObject({
+      source_language: "EN",
+      target_language: "DE",
+      skip_duplicate_source_text_enable: false,
+      prefilter_config: { source_language: "EN", skip_duplicate_source_text_enable: false },
+    });
     expect(get_section_revision(after, "items")).toBe(get_section_revision(before, "items") + 1);
-    expect(f.settings.read_setting()).toMatchObject({ source_language: "EN" });
+    expect(f.settings.read_setting()).toMatchObject({ skip_duplicate_source_text_enable: false });
   });
 
   it("数据库提交失败补偿配置，释放租约且不发布成功事件", async () => {
@@ -151,14 +174,16 @@ describe("AppSettingsCommandService", () => {
     vi.spyOn(ProjectDatabaseAccess.prototype, "upsert_meta_entries").mockImplementationOnce(() => {
       throw failure;
     });
-    await expect(f.service.update({ target_language: "EN" })).rejects.toMatchObject({
+    await expect(f.service.update({ mtool_optimizer_enable: false })).rejects.toMatchObject({
       code: "runtime.internal_invariant",
       cause: failure,
     });
-    expect(f.settings.read_setting()).toMatchObject({ target_language: "ZH" });
-    expect(await f.database.get_all_meta(f.project_path)).toMatchObject({ target_language: "ZH" });
+    expect(f.settings.read_setting()).toMatchObject({ mtool_optimizer_enable: true });
+    expect(await f.database.get_all_meta(f.project_path)).toMatchObject({
+      mtool_optimizer_enable: true,
+    });
     expect(f.publish).not.toHaveBeenCalled();
-    await f.service.update({ target_language: "EN" });
+    await f.service.update({ mtool_optimizer_enable: false });
   });
 
   it.each(["project", "settings"] as const)(
@@ -170,16 +195,18 @@ describe("AppSettingsCommandService", () => {
         f.publish.mockImplementationOnce(() => {
           throw new Error("settings event failure");
         });
-      await expect(f.service.update({ target_language: "EN" })).rejects.toMatchObject({
+      await expect(f.service.update({ mtool_optimizer_enable: false })).rejects.toMatchObject({
         code: "data.committed_sync_failed",
       });
-      expect(f.settings.read_setting()).toMatchObject({ target_language: "EN" });
+      expect(f.settings.read_setting()).toMatchObject({ mtool_optimizer_enable: false });
       expect(await f.database.get_all_meta(f.project_path)).toMatchObject({
-        target_language: "EN",
+        mtool_optimizer_enable: false,
       });
       expect(f.publish).toHaveBeenCalledWith(
         "settings.changed",
-        expect.objectContaining({ settings: expect.objectContaining({ target_language: "EN" }) }),
+        expect.objectContaining({
+          settings: expect.objectContaining({ mtool_optimizer_enable: false }),
+        }),
       );
     },
   );

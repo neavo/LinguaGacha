@@ -68,14 +68,7 @@ export class ProofreadingQueryService {
       return this.with_revision(result, { item: result.data as unknown as JsonValue });
     }
     if (action === "sync") {
-      const result = await this.cache.sync({
-        ...(request["source_language"] === undefined
-          ? {}
-          : { sourceLanguage: request["source_language"] }),
-        ...(request["target_language"] === undefined
-          ? {}
-          : { targetLanguage: request["target_language"] }),
-      });
+      const result = await this.cache.sync();
       return this.with_revision(result, {
         syncState: result.data as unknown as JsonValue,
         defaultFilters: result.data.defaultFilters as unknown as JsonValue,

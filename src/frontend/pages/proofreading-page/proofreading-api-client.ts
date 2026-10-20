@@ -70,15 +70,13 @@ export function createProofreadingApiClient(): ProofreadingApiClient {
       if (response.item == null) throw new Error("The raw item response is absent.");
       return response.item;
     },
-    /** 语言配置参与校对缓存同步，响应修订供后续保存使用。 */
+    /** 后端按项目语言同步校对缓存，输入语言只用于空响应兜底，响应修订供后续保存使用。 */
     async sync_proofreading_cache(input) {
       const response = await api_fetch<{
         syncState?: ProofreadingSyncState;
         sectionRevisions?: ProjectDataSectionRevisions;
       }>("/api/proofreading/query", {
         action: "sync",
-        source_language: input.sourceLanguage,
-        target_language: input.targetLanguage,
       });
       const syncState = response.syncState ?? {
         projectId: "",

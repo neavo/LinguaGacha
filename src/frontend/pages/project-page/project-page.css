@@ -308,3 +308,9 @@
     width: 100%;
   }
 }
+
+.project-home__language-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ui-list-gap-dense);
+}

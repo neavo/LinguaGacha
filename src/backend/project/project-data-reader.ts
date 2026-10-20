@@ -20,6 +20,10 @@ import { PROJECT_DATA_SECTIONS, type ProjectDataSection } from "../../shared/pro
 import * as AppErrors from "../../shared/error";
 import { normalize_quality_rule_entries } from "../../shared/quality/quality-rule-entry";
 import { read_project_revision } from "../../domain/project-revision";
+import {
+  read_project_language_settings,
+  type ProjectLanguageSettings,
+} from "../../domain/project-settings";
 
 export { PROJECT_DATA_SECTIONS };
 export type { ProjectDataSection };
@@ -32,6 +36,7 @@ export interface ProjectDataSnapshot {
   readonly files: Readonly<Record<string, ProjectFileRecord>>;
   readonly quality: QualityRuleBlock;
   readonly prompts: ProjectPrompts;
+  readonly languages: ProjectLanguageSettings; // 项目语言只在事务提交后随快照进入缓存。
   readonly section_revisions: Readonly<Record<ProjectDataSection, number>>;
 }
 
@@ -56,7 +61,7 @@ export function get_section_revision(meta: JsonRecord, section: string): number 
   if (section === "prompts") {
     return read_project_revision(meta[TRANSLATION_PROMPT.revision_meta_key]);
   }
-  if (section === "files" || section === "items" || section === "pdf") {
+  if (section === "project" || section === "files" || section === "items" || section === "pdf") {
     return read_project_revision(meta[`project_runtime_revision.${section}`]);
   }
   if (section === "proofreading") {
@@ -103,6 +108,7 @@ export class ProjectDataReader {
       files: this.build_files_record_block(project_path),
       quality: this.build_quality_block(project_path, meta),
       prompts: this.build_prompts_block(project_path, meta),
+      languages: read_project_language_settings(meta),
       section_revisions: this.build_section_revisions(meta),
     };
   }
@@ -119,6 +125,10 @@ export class ProjectDataReader {
       project: {
         path: project_state.projectPath,
         loaded: project_state.loaded,
+        languages:
+          project_path === ""
+            ? null
+            : (read_project_language_settings(meta) as unknown as JsonValue),
       },
       projectRevision: Math.max(...Object.values(section_revisions), 0),
       sectionRevisions: section_revisions as unknown as JsonValue,

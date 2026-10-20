@@ -68,6 +68,7 @@ import type {
 } from "@frontend/widgets/app-table/app-table-types";
 
 import type { ProjectDataSectionRevisions } from "@shared/project-event";
+import { DEFAULT_PROJECT_LANGUAGE_SETTINGS } from "@domain/project-settings";
 import {
   build_proofreading_row_id,
   PROOFREADING_OUTCOME_GROUPS,
@@ -95,8 +96,8 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
   const { t } = useI18n();
 
   const { proofreading_lookup_intent, clear_proofreading_lookup_intent } = useAppNavigation();
-  const { settings_snapshot, project_snapshot, commit_project_write, refresh_batch_translation } =
-    useDesktopState();
+  const { project_snapshot, commit_project_write, refresh_batch_translation } = useDesktopState();
+  const project_languages = project_snapshot.languages ?? DEFAULT_PROJECT_LANGUAGE_SETTINGS;
   const task_snapshot = useBatchTranslationSnapshot();
   const runtime_snapshot = useRuntimeSnapshot();
   const sync_task_snapshot = useSyncBatchTranslationSnapshot();
@@ -619,8 +620,8 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
     project_loaded: project_snapshot.loaded,
     project_path: project_snapshot.path,
     proofreading_change_signal,
-    source_language: settings_snapshot.source_language,
-    target_language: settings_snapshot.target_language,
+    source_language: project_languages.source_language,
+    target_language: project_languages.target_language,
     defaultFiltersRef,
     filter_dialog_filters_ref,
     filter_dialog_open_ref,

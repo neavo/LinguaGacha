@@ -23,7 +23,6 @@ type RuntimeFixture = {
     path: string;
   };
   settings_snapshot: {
-    source_language: string;
     mtool_optimizer_enable: boolean;
     skip_duplicate_source_text_enable: boolean;
   };
@@ -80,7 +79,6 @@ function create_runtime_fixture(
       path: "E:/demo/sample.lg",
     },
     settings_snapshot: {
-      source_language: "EN",
       mtool_optimizer_enable: false,
       skip_duplicate_source_text_enable: true,
     },
@@ -607,17 +605,10 @@ describe("useBatchTranslationTask", () => {
         operation: "workbench.translation_write",
       }),
     );
-    expect(api_fetch_mock).toHaveBeenCalledWith(
-      "/api/workbench/translation/reset",
-      expect.objectContaining({
-        mode: "all",
-        project_settings: {
-          source_language: "EN",
-          mtool_optimizer_enable: false,
-          skip_duplicate_source_text_enable: true,
-        },
-      }),
-    );
+    // 全部重置只提交命令，项目语言与预过滤开关由后端从项目事实读取。
+    expect(api_fetch_mock).toHaveBeenCalledWith("/api/workbench/translation/reset", {
+      mode: "all",
+    });
     expect(runtime_fixture.current.refresh_batch_translation).toHaveBeenCalledTimes(1);
     expect(runtime_fixture.current.refresh_batch_translation).toHaveBeenCalledWith();
   });

@@ -75,8 +75,7 @@ export function useBatchTranslationTask(
   const { onRequestGeneration } = options;
   const { t } = useI18n();
 
-  const { project_snapshot, settings_snapshot, commit_project_write, refresh_batch_translation } =
-    useDesktopState();
+  const { project_snapshot, commit_project_write, refresh_batch_translation } = useDesktopState();
   const sync_task_snapshot = useSyncBatchTranslationSnapshot();
   const task_snapshot = useBatchTranslationSnapshot();
   const runtime_snapshot = useRuntimeSnapshot();
@@ -294,19 +293,7 @@ export function useBatchTranslationTask(
         sync_runtime_task_snapshot(next_snapshot);
         set_task_confirm_state(null);
       } else {
-        const reset_request =
-          task_confirm_state.kind === "reset-all"
-            ? {
-                mode: "all",
-                project_settings: {
-                  source_language: String(settings_snapshot.source_language ?? "ALL"),
-                  mtool_optimizer_enable: Boolean(settings_snapshot.mtool_optimizer_enable),
-                  skip_duplicate_source_text_enable: Boolean(
-                    settings_snapshot.skip_duplicate_source_text_enable,
-                  ),
-                },
-              }
-            : { mode: "failed" };
+        const reset_request = { mode: task_confirm_state.kind === "reset-all" ? "all" : "failed" };
         await commit_project_write({
           operation: WORKBENCH_TRANSLATION_WRITE,
           run: async () => {
@@ -343,9 +330,6 @@ export function useBatchTranslationTask(
   }, [
     commit_project_write,
     refresh_batch_translation,
-    settings_snapshot.mtool_optimizer_enable,
-    settings_snapshot.source_language,
-    settings_snapshot.skip_duplicate_source_text_enable,
     sync_runtime_task_snapshot,
     t,
     task_confirm_state,

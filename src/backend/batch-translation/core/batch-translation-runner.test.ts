@@ -9,7 +9,10 @@ import { TASK_PIPELINE_COMMIT_INTERVAL_MS } from "./translation-pipeline";
 import { TranslationWorkerPool } from "../work-unit/translation-worker-pool";
 import { log_error_from_message } from "../../../shared/error";
 import { Model } from "../../../domain/model";
-import { normalize_setting_snapshot } from "../../../domain/setting";
+import {
+  build_project_execution_settings,
+  read_project_language_settings,
+} from "../../../domain/project-settings";
 import { read_text_quality_snapshot } from "../../../shared/text/text-processing";
 import { type BatchTranslationProgress } from "../../../domain/batch-translation";
 import fs from "node:fs";
@@ -192,7 +195,7 @@ describe("BatchTranslationRunner", () => {
         database,
         logManager: null,
         appSettingService: {
-          read_setting: () => ({ source_language: "JA", target_language: "ZH" }),
+          read_setting: () => ({}),
         } as never,
         workerClient: { run: vi.fn(), dispose: vi.fn() } as unknown as ComputeWorkerClient,
       });
@@ -948,7 +951,7 @@ describe("BatchTranslationRunner", () => {
       },
     };
     return {
-      config_snapshot: normalize_setting_snapshot(setting_overrides),
+      config_snapshot: create_execution_settings(setting_overrides),
       model: { ...Model.from_json(model, model.id) },
     };
   }
@@ -981,3 +984,8 @@ describe("BatchTranslationRunner", () => {
     };
   }
 });
+
+/** 测试执行快照与生产一致：应用设置组合项目语言，语言缺省时使用项目默认值。 */
+function create_execution_settings(value: Record<string, unknown>) {
+  return build_project_execution_settings(value, read_project_language_settings(value));
+}

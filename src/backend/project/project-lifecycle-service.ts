@@ -33,11 +33,18 @@ import {
   type JsonValue,
   type MutableJsonRecord,
 } from "../../domain/json";
+import { normalize_setting_snapshot } from "../../domain/setting";
 import {
-  normalize_project_settings_snapshot,
-  normalize_setting_snapshot,
+  APP_PREFILTER_SETTING_KEYS,
+  DEFAULT_PROJECT_LANGUAGE_SETTINGS,
+  parse_project_language_patch,
+  read_app_prefilter_settings,
+  read_project_prefilter_settings,
+  type AppPrefilterSettingKey,
+  type AppPrefilterSettings,
+  type ProjectLanguageSettings,
   type ProjectSettingsSnapshot,
-} from "../../domain/setting";
+} from "../../domain/project-settings";
 import { NativeFs, default_native_fs } from "../../native/native-fs";
 import * as AppErrors from "../../shared/error";
 import type { ProjectSourceFileSummary } from "../../shared/project-source-formats";
@@ -46,13 +53,13 @@ import type { ProjectWriteResult } from "../../shared/project-event";
 import {
   compute_project_prefilter_write,
   build_translation_extras_from_items,
+  type ProjectPrefilterWriteInput,
   type ProjectPrefilterWriteOutput,
 } from "./project-write-state";
 import {
   ProjectDataReader,
   type ProjectDataSnapshot,
   build_section_revisions_from_meta,
-  get_section_revision,
 } from "./project-data-reader";
 import type { CacheManager } from "../cache/cache-manager";
 import {
@@ -70,6 +77,12 @@ import {
 
 const INITIAL_PRESET_REVISION = 1;
 
+/** 打开时应用级预过滤开关的对齐摘要，前端据此展示既有对齐提示。 */
+type ProjectSettingsAlignment = {
+  settings: AppPrefilterSettings;
+  changed: Record<AppPrefilterSettingKey, boolean>;
+};
+
 /**
  * 承载 项目轻生命周期公开接口，公开 loaded/path 与 .lg 写入边界都在这里收口
  */
@@ -84,7 +97,7 @@ export class ProjectLifecycleService {
 
   private readonly log_manager: LogManager; // 记录生命周期解析失败和诊断，响应体不扩大公开协议
 
-  private readonly cache: Pick<CacheManager, "installProject" | "clearProject">; // 安装已提交事实，失败会阻断 loaded。
+  private readonly cache: Pick<CacheManager, "installProject" | "clearProject" | "languages">; // 安装已提交事实，失败会阻断 loaded。
 
   private readonly write_store: ProjectWriteStore; // loaded 工程任务输入统一交给运行期唯一写入口
 
@@ -102,7 +115,7 @@ export class ProjectLifecycleService {
     app_setting_service: AppSettingService,
     paths: AppPathService,
     log_manager: LogManager,
-    cache: Pick<CacheManager, "installProject" | "clearProject">,
+    cache: Pick<CacheManager, "installProject" | "clearProject" | "languages">,
     write_store: ProjectWriteStore,
     private readonly pdf_execution: PDFExecution,
     native_fs: NativeFs = default_native_fs,
@@ -133,6 +146,7 @@ export class ProjectLifecycleService {
       project: {
         path: state.projectPath,
         loaded: state.loaded,
+        languages: state.loaded ? this.cache.languages.readBlock() : null,
       },
     };
   }
@@ -162,19 +176,22 @@ export class ProjectLifecycleService {
         app_setting_service: this.app_setting_service,
       });
 
-      const snapshot = await this.database.transaction(project_path, (writer) => {
+      const opened = await this.database.transaction(project_path, (writer) => {
         writer.set_meta(project_path, "updated_at", this.build_timestamp());
         for (const write of migration_writes) {
           write(writer);
         }
-        return this.coordinate_open_project_duplicates(
+        return this.align_open_project_settings(
           writer,
           project_path,
           new ProjectDataReader(writer).read_snapshot(project_path),
         );
       });
       committed = true;
-      return await this.activate_project(project_path, snapshot);
+      const response = await this.activate_project(project_path, opened.snapshot);
+      return opened.alignment === null
+        ? response
+        : { ...response, settings_alignment: opened.alignment as unknown as JsonValue };
     } catch (cause) {
       if (AppErrors.is_app_error(cause) && cause.code === "data.committed_sync_failed") throw cause;
       if (!committed) throw cause;
@@ -186,6 +203,58 @@ export class ProjectLifecycleService {
     }
   }
 
+  /**
+   * 打开事务内对齐应用级预过滤开关，开关一致时只协调迁移后的重复条目。
+   */
+  private align_open_project_settings(
+    writer: ProjectDatabaseAccess,
+    project_path: string,
+    snapshot: ProjectDataSnapshot,
+  ): { snapshot: ProjectDataSnapshot; alignment: ProjectSettingsAlignment | null } {
+    const { meta, items } = snapshot;
+    const app_settings = read_app_prefilter_settings(this.app_setting_service.read_setting());
+    const stored_settings = read_project_prefilter_settings(meta);
+    const changed = Object.fromEntries(
+      APP_PREFILTER_SETTING_KEYS.map((key) => [
+        key,
+        this.is_setting_mirror_missing(meta, key) || stored_settings[key] !== app_settings[key],
+      ]),
+    ) as Record<AppPrefilterSettingKey, boolean>;
+    if (!Object.values(changed).some(Boolean)) {
+      return {
+        snapshot: this.coordinate_open_project_duplicates(writer, project_path, snapshot),
+        alignment: null,
+      };
+    }
+    // 预过滤同时完成重复条目协调，只回写状态变化的条目。
+    const output = compute_project_prefilter_write({
+      state: {
+        files: { ...snapshot.files },
+        items: Object.fromEntries(items.map((item) => [String(item.item_id), item])),
+      },
+      progress: normalize_batch_translation_progress(meta["translation_extras"]),
+      ...this.build_prefilter_input({ ...snapshot.languages, ...app_settings }),
+    });
+    const next_items = items.map((item) => output.items[String(item.item_id)] ?? item);
+    writer.patch_item_translation_fields(
+      project_path,
+      next_items
+        .filter((item, index) => item.status !== items[index]!.status)
+        .map((item) => ({ item_id: item.item_id, next: item })),
+    );
+    const meta_entries: MutableJsonRecord = {
+      mtool_optimizer_enable: app_settings.mtool_optimizer_enable,
+      skip_duplicate_source_text_enable: app_settings.skip_duplicate_source_text_enable,
+      prefilter_config: output.prefilter_config as unknown as JsonValue,
+      translation_extras: output.translation_extras as unknown as JsonValue,
+    };
+    writer.upsert_meta_entries(project_path, meta_entries);
+    return {
+      snapshot: { ...snapshot, items: next_items, meta: { ...meta, ...meta_entries } },
+      alignment: { settings: app_settings, changed },
+    };
+  }
+
   /** 格式迁移可能改写原文。在同一打开事务内协调最终条目，再让缓存和会话消费。 */
   private coordinate_open_project_duplicates(
     writer: ProjectDatabaseAccess,
@@ -193,12 +262,9 @@ export class ProjectLifecycleService {
     snapshot: ProjectDataSnapshot,
   ): ProjectDataSnapshot {
     const { meta, items } = snapshot;
-    const settings = this.build_stored_project_settings(meta, {
-      ...read_json_record(meta["prefilter_config"]),
-    });
     const changes = coordinate_project_duplicate_statuses(
       items,
-      settings.skip_duplicate_source_text_enable,
+      read_project_prefilter_settings(meta).skip_duplicate_source_text_enable,
     );
     if (changes.length === 0) return snapshot;
     const statuses = new Map(changes.map(({ item_id, status }) => [item_id, status]));
@@ -226,7 +292,7 @@ export class ProjectLifecycleService {
     try {
       this.cache.installProject(project_path, snapshot);
       await this.session_state.mark_loaded(project_path);
-      return this.build_loaded_project_response(project_path);
+      return this.build_loaded_project_response(project_path, snapshot.languages);
     } catch (cause) {
       if (AppErrors.is_app_error(cause) && cause.code === "data.committed_sync_failed") throw cause;
       throw new AppErrors.AppError("data.committed_sync_failed", {
@@ -257,7 +323,7 @@ export class ProjectLifecycleService {
     const project_path = this.resolve_create_project_path(requested_project_path);
     this.assert_no_legacy_create_commit_fields(body);
     const source_paths = this.normalize_source_paths(body["source_paths"]);
-    const project_settings = this.read_create_project_settings(body["project_settings"]);
+    const project_settings = this.read_create_project_settings(body["languages"]);
     // 后端重新解析源文件得到的唯一可信新建草稿。
     const parsed_draft = await new SourceFileParsePipeline(
       this.create_format_service(project_settings),
@@ -380,6 +446,7 @@ export class ProjectLifecycleService {
       "prefilter_config",
       "parsed_items",
       "file_record",
+      "project_settings",
     ]) {
       if (Object.hasOwn(body, field)) {
         throw new AppErrors.AppError("request.validation_failed", {
@@ -390,11 +457,14 @@ export class ProjectLifecycleService {
   }
 
   /**
-   * 读取 create-commit 设置镜像。缺字段时回到当前应用设置，保持空请求可创建空工程
+   * 新建项目使用请求中的初始语言，预过滤开关读取当前应用设置。
    */
   private read_create_project_settings(value: JsonValue | undefined): ProjectSettingsSnapshot {
-    const current = this.build_current_project_settings();
-    return normalize_project_settings_snapshot(value, current);
+    return {
+      ...DEFAULT_PROJECT_LANGUAGE_SETTINGS,
+      ...parse_project_language_patch(value ?? {}),
+      ...read_app_prefilter_settings(this.app_setting_service.read_setting()),
+    };
   }
 
   /**
@@ -449,20 +519,32 @@ export class ProjectLifecycleService {
           }),
         ),
       },
-      source_language: args.settings.source_language,
-      mtool_optimizer_enable: args.settings.mtool_optimizer_enable,
-      skip_duplicate_source_text_enable: args.settings.skip_duplicate_source_text_enable,
+      ...this.build_prefilter_input(args.settings),
     });
   }
 
+  /** 预过滤计算只消费源语言与两个应用开关。 */
+  private build_prefilter_input(
+    settings: ProjectSettingsSnapshot,
+  ): Pick<
+    ProjectPrefilterWriteInput,
+    "source_language" | "mtool_optimizer_enable" | "skip_duplicate_source_text_enable"
+  > {
+    return {
+      source_language: settings.source_language,
+      mtool_optimizer_enable: settings.mtool_optimizer_enable,
+      skip_duplicate_source_text_enable: settings.skip_duplicate_source_text_enable,
+    };
+  }
+
   /**
-   * 新建工程解析使用请求设置镜像，避免文件格式处理读取到过期应用语言
+   * 新建工程解析使用本次选择的项目语言
    */
-  private create_format_service(project_settings: ProjectSettingsSnapshot): FileFormatService {
+  private create_format_service(languages: ProjectLanguageSettings): FileFormatService {
     const config = normalize_setting_snapshot(this.app_setting_service.read_setting());
     return new FileFormatService(
       {
-        target_language: project_settings.target_language,
+        target_language: languages.target_language,
         deduplication_in_bilingual: config.deduplication_in_bilingual,
         write_translated_name_fields_to_file: config.write_translated_name_fields_to_file,
       },
@@ -486,58 +568,6 @@ export class ProjectLifecycleService {
       });
     }
     return public_item;
-  }
-
-  /**
-   * 读取打开工程前的设置对齐预演，不进入 loaded 状态，也不写运行态事实
-   */
-  public async get_open_alignment_preview(body: JsonRecord): Promise<JsonRecord> {
-    const project_path = this.require_body_string(body, "path");
-    this.assert_project_file_exists(project_path);
-    await this.database.prepare(project_path);
-
-    const meta = await this.database.get_all_meta(project_path);
-    const prefilter_config = {
-      ...read_json_record(meta["prefilter_config"] as JsonValue),
-    };
-    const current_settings = this.build_current_project_settings();
-    const project_settings = this.build_stored_project_settings(meta, prefilter_config);
-    const changed = {
-      source_language: project_settings.source_language !== current_settings.source_language,
-      target_language: project_settings.target_language !== current_settings.target_language,
-      mtool_optimizer_enable:
-        this.is_setting_mirror_missing(meta, prefilter_config, "mtool_optimizer_enable") ||
-        project_settings.mtool_optimizer_enable !== current_settings.mtool_optimizer_enable,
-      skip_duplicate_source_text_enable:
-        this.is_setting_mirror_missing(
-          meta,
-          prefilter_config,
-          "skip_duplicate_source_text_enable",
-        ) ||
-        project_settings.skip_duplicate_source_text_enable !==
-          current_settings.skip_duplicate_source_text_enable,
-    };
-    const needs_prefiltered_items =
-      changed.source_language ||
-      changed.mtool_optimizer_enable ||
-      changed.skip_duplicate_source_text_enable;
-    const action = needs_prefiltered_items
-      ? "prefiltered_items"
-      : changed.target_language
-        ? "settings_only"
-        : "load";
-    return {
-      preview: {
-        action,
-        project_path,
-        project_settings,
-        current_settings,
-        changed,
-        section_revisions: needs_prefiltered_items
-          ? this.build_project_alignment_section_revisions(meta)
-          : null,
-      },
-    };
   }
 
   /**
@@ -577,13 +607,14 @@ export class ProjectLifecycleService {
    */
   public async summarize_source_files(body: JsonRecord): Promise<ProjectSourceFileSummary> {
     const source_paths = this.normalize_source_paths(body["source_paths"]);
-    return this.create_format_service(this.build_current_project_settings()).summarize_source_files(
+    // 来源摘要只统计格式命中，项目语言尚未选择时使用默认值。
+    return this.create_format_service(DEFAULT_PROJECT_LANGUAGE_SETTINGS).summarize_source_files(
       source_paths,
     );
   }
 
   /**
-   * 构建工程设置镜像 meta，预过滤与进度事实只取后端计算结果
+   * 构建项目语言、预过滤处理记录与进度 meta
    */
   private build_project_settings_meta(args: {
     project_settings: ProjectSettingsSnapshot;
@@ -600,44 +631,10 @@ export class ProjectLifecycleService {
   }
 
   /**
-   * 打开前 settings alignment 只声明后端事实依赖版本，项目数据实体仍由 loaded 后的读取接口提供
+   * 判断项目是否缺少开关处理记录，缺字段时必须触发预过滤对齐
    */
-  private build_project_alignment_section_revisions(meta: MutableJsonRecord): MutableJsonRecord {
-    return {
-      files: get_section_revision(meta, "files"),
-      items: get_section_revision(meta, "items"),
-    };
-  }
-
-  /**
-   * 读取当前应用设置，作为打开前 settings alignment 的目标值
-   */
-  private build_current_project_settings(): ProjectSettingsSnapshot {
-    return normalize_project_settings_snapshot(this.app_setting_service.read_setting());
-  }
-
-  /**
-   * 读取项目内设置镜像，优先当前 meta，缺失时回退 prefilter_config
-   */
-  private build_stored_project_settings(
-    meta: MutableJsonRecord,
-    prefilter_config: MutableJsonRecord,
-  ): ProjectSettingsSnapshot {
-    return normalize_project_settings_snapshot(
-      meta,
-      normalize_project_settings_snapshot(prefilter_config),
-    );
-  }
-
-  /**
-   * 判断设置镜像是否缺失，缺字段时必须触发预过滤对齐
-   */
-  private is_setting_mirror_missing(
-    meta: MutableJsonRecord,
-    prefilter_config: MutableJsonRecord,
-    key: string,
-  ): boolean {
-    return !(key in meta) && !(key in prefilter_config);
+  private is_setting_mirror_missing(meta: JsonRecord, key: AppPrefilterSettingKey): boolean {
+    return !(key in meta) && !(key in read_json_record(meta["prefilter_config"]));
   }
 
   /**
@@ -711,13 +708,17 @@ export class ProjectLifecycleService {
   }
 
   /**
-   * 构建 loaded 响应，保持公开项目快照形状不扩大
+   * 构建包含已提交项目语言的 loaded 响应
    */
-  private build_loaded_project_response(project_path: string): JsonRecord {
+  private build_loaded_project_response(
+    project_path: string,
+    languages: ProjectLanguageSettings,
+  ): JsonRecord {
     return {
       project: {
         path: project_path,
         loaded: true,
+        languages,
       },
     };
   }

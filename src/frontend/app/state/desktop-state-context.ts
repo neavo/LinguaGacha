@@ -7,6 +7,7 @@ import type { createRuntimeActivityStore } from "@frontend/app/state/runtime-act
 import type { ProjectWriteCommitter } from "@frontend/app/state/desktop-project-write";
 import type { RecentProjectSetting, SettingSnapshot } from "@domain/setting";
 import type { AppLanguage } from "@domain/app-language";
+import type { ProjectLanguageSettings } from "@domain/project-settings";
 import type { RuntimeActivitySnapshot } from "@shared/runtime-activity";
 import type { ProjectChangeSignalSource } from "@frontend/app/state/project-change-signal-store";
 
@@ -17,6 +18,7 @@ export type SettingsSnapshot = SettingSnapshot;
 export type ProjectSnapshot = {
   path: string;
   loaded: boolean;
+  languages: ProjectLanguageSettings | null; // 已加载项目的语言事实，未加载时为 null
 };
 
 export type ProjectSessionStatus = "idle" | "warming" | "ready";

@@ -4,18 +4,18 @@ import { describe, expect, it } from "vitest";
 import { read_text_processing_config, read_text_quality_snapshot } from "./text-processing";
 
 describe("text worker snapshots", () => {
-  it("只投影文本处理需要的设置字段", () => {
+  it("只投影文本处理字段，并保留非默认项目语言", () => {
     expect(
       read_text_processing_config({
-        source_language: "JA",
-        target_language: "ZH",
-        clean_ruby: false,
+        source_language: "EN",
+        target_language: "DE",
+        clean_ruby: true,
         unrelated: "ignored",
       }),
     ).toEqual({
-      source_language: "JA",
-      target_language: "ZH",
-      clean_ruby: false,
+      source_language: "EN",
+      target_language: "DE",
+      clean_ruby: true,
     });
   });
 

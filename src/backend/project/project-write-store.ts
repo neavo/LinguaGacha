@@ -26,7 +26,7 @@ import {
   is_task_progress_status,
   normalize_batch_translation_progress,
 } from "../../domain/batch-translation";
-import { normalize_project_settings_snapshot } from "../../domain/setting";
+import { read_project_prefilter_settings } from "../../domain/project-settings";
 
 import type {
   ProjectDataSection,
@@ -65,7 +65,7 @@ import {
 import type { PromptKind } from "../../domain/prompt";
 import { QUALITY_RULE_KINDS, type QualityRuleKind } from "../../domain/quality";
 
-type RevisionBackedSection = "files" | "items" | "proofreading" | "pdf";
+type RevisionBackedSection = "project" | "files" | "items" | "proofreading" | "pdf";
 const PROJECT_ITEM_WRITE_VALIDATOR = Compile(Type.Array(PROJECT_ITEM_WRITE_SCHEMA)); // 全量写入复用编译结果，校验完成后再替换事实。
 type ProjectWriteRevisionContext = {
   database: ProjectDatabaseAccess;
@@ -120,7 +120,6 @@ type RuntimePreparedChange = {
 /** 控制公开通知，并把同一提交快照交给任务回执。 */
 type RuntimeCommitOptions = {
   onCommitted?: (change: ProjectCommittedChange) => void; // 回执复用事务内修订，避免回读跨越其它事务。
-  publishPublic?: boolean; // settings-only 对齐只同步内部缓存
 };
 
 /**
@@ -406,26 +405,25 @@ export class ProjectWriteStore {
   }
 
   /**
-   * 项目设置镜像提交后同步缓存，公开响应使用空变更语义。
+   * 只写项目设置 meta 时推进 project 修订，提交后同步缓存并发布公开变更。
    */
   public async apply_project_settings_meta(request: {
     projectPath: string;
+    source: string;
     meta: MutableJsonRecord;
   }): Promise<ProjectWriteResult> {
-    return await this.commit_runtime_change(
-      {
-        projectPath: request.projectPath,
-        requireExpectedSectionRevisions: false,
-        revisionSections: ["project"],
-        source: "settings_alignment",
-        updatedSections: ["project"],
-        prepare: (context) => {
-          Object.assign(context.pendingMeta, request.meta);
-          return { writes: [] };
-        },
+    return await this.commit_runtime_change({
+      projectPath: request.projectPath,
+      requireExpectedSectionRevisions: false,
+      revisionSections: ["project"],
+      source: request.source,
+      updatedSections: ["project"],
+      prepare: (context) => {
+        Object.assign(context.pendingMeta, request.meta);
+        this.stage_section_revisions(context);
+        return { writes: [] };
       },
-      { publishPublic: false },
-    );
+    });
   }
 
   /**
@@ -910,9 +908,6 @@ export class ProjectWriteStore {
     try {
       options.onCommitted?.(committed);
       if (committed.updatedSections.length > 0) await this.apply_committed_change(committed);
-      if (options.publishPublic === false) {
-        return this.empty_project_write_result();
-      }
       return this.publish_project_data_change(committed);
     } catch (cause) {
       throw new AppErrors.AppError("data.committed_sync_failed", {
@@ -994,6 +989,7 @@ export class ProjectWriteStore {
   private filter_revision_backed_sections(sections: ProjectDataSection[]): RevisionBackedSection[] {
     return sections.filter(
       (section): section is RevisionBackedSection =>
+        section === "project" ||
         section === "files" ||
         section === "items" ||
         section === "proofreading" ||
@@ -1113,10 +1109,7 @@ export class ProjectWriteStore {
 
   /** 项目 meta 优先于旧 prefilter 镜像，读取当前重复过滤设置。 */
   private is_duplicate_filter_enabled(meta: JsonRecord): boolean {
-    return normalize_project_settings_snapshot(
-      meta,
-      normalize_project_settings_snapshot(read_json_record(meta["prefilter_config"])),
-    ).skip_duplicate_source_text_enable;
+    return read_project_prefilter_settings(meta).skip_duplicate_source_text_enable;
   }
 
   /** 状态和译名不参与质量文本统计，正文实际变化只影响译后规则。 */

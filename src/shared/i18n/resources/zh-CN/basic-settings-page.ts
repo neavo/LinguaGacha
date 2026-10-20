@@ -2,10 +2,10 @@ export const zh_cn_basic_settings_page = {
   title: "基础设置",
   fields: {
     source_language: {
-      description: "设置当前工程中输入文本的语言",
+      description: "设置输入文本的语言",
     },
     target_language: {
-      description: "设置当前工程中输出文本的语言",
+      description: "设置输出文本的语言",
     },
     project_save_mode: {
       title: "工程文件保存位置",

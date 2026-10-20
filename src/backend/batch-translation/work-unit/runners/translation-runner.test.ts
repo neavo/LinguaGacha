@@ -1,6 +1,9 @@
 import type { TranslationRequestPort } from "../../protocol/translation-request";
 import { Model } from "../../../../domain/model";
-import { normalize_setting_snapshot } from "../../../../domain/setting";
+import {
+  build_project_execution_settings,
+  read_project_language_settings,
+} from "../../../../domain/project-settings";
 import { read_text_quality_snapshot } from "../../../../shared/text/text-processing";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
@@ -39,7 +42,7 @@ function create_empty_translation_unit(): TranslationWorkUnit {
     unit_id: "translation-unit-1",
     run_id: "run-1",
     model: { ...Model.from_json({}, "test") },
-    config_snapshot: normalize_setting_snapshot({}),
+    config_snapshot: create_execution_settings({}),
     quality_snapshot: read_text_quality_snapshot({}),
     payload: {
       items: [],
@@ -896,7 +899,7 @@ function create_translation_unit(args: {
     unit_id: "translation-unit-1",
     run_id: "run-1",
     model: { ...Model.from_json(args.model, "test") },
-    config_snapshot: normalize_setting_snapshot(create_config_payload(args.config_overrides)),
+    config_snapshot: create_execution_settings(create_config_payload(args.config_overrides)),
     quality_snapshot: read_text_quality_snapshot(args.quality_snapshot ?? create_quality_payload()),
     payload: {
       items: args.items ?? [
@@ -929,4 +932,9 @@ async function create_template_root(): Promise<string> {
     "utf-8",
   );
   return builtin_root;
+}
+
+/** 测试执行快照与生产一致：应用设置组合项目语言，语言缺省时使用项目默认值。 */
+function create_execution_settings(value: Record<string, unknown>) {
+  return build_project_execution_settings(value, read_project_language_settings(value));
 }

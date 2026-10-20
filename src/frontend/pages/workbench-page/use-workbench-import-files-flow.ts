@@ -15,7 +15,6 @@ import {
   type WorkbenchImportFileCandidate,
   type WorkbenchImportFilesPreview,
   type WorkbenchCommandPlanningState,
-  type WorkbenchPlannerSettings,
   type WorkbenchCommandPlan,
 } from "@shared/workbench/workbench-command-planner";
 import type { WorkbenchDialogState } from "@frontend/pages/workbench-page/types";
@@ -33,7 +32,6 @@ type WorkbenchImportFilesFlowOptions = {
   project_identity: string;
   dialog_state: WorkbenchDialogState;
   get_planning_state: () => WorkbenchCommandPlanningState;
-  planner_settings: WorkbenchPlannerSettings; // 导入命令只需要预过滤设置，不依赖完整应用设置快照
   run_modal_progress_toast: <T>(args: {
     message: string;
     task: () => Promise<T>;
@@ -229,7 +227,6 @@ export function useWorkbenchImportFilesFlow(
         state,
         preview: pending_request.preview,
         conflict_action,
-        settings: options.planner_settings,
         inheritance_mode,
       });
       let import_payload: ProjectWriteResultPayload;

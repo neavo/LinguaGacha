@@ -18,6 +18,7 @@ export const ja_jp_project_page = {
       translation_prompt: "翻訳プロンプト",
     },
     action: "プロジェクトを作成",
+    language_dialog_title: "プロジェクトの言語",
   },
   open: {
     title: "プロジェクトを開く",

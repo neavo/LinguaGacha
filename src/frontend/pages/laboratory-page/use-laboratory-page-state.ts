@@ -1,5 +1,5 @@
 import { useCallback } from "react";
-import { PROJECT_SETTING_KEYS } from "@domain/setting";
+import { APP_PREFILTER_SETTING_KEYS } from "@domain/project-settings";
 
 import { push_toast, run_modal_progress_toast } from "@frontend/app/feedback/desktop-toast";
 import { format_project_settings_aligned_toast } from "@frontend/app/feedback/project-settings-alignment-feedback";
@@ -49,7 +49,7 @@ export function useLaboratoryPageState(): UseLaboratoryPageStateResult {
   // 工程字段受运行锁约束，应用偏好可供后续调用立即读取。
   const update_setting = useCallback(
     async (field: LaboratoryField, next_checked: boolean): Promise<void> => {
-      const affects_project = PROJECT_SETTING_KEYS.some((key) => key === field);
+      const affects_project = APP_PREFILTER_SETTING_KEYS.some((key) => key === field);
       if ((affects_project && runtime_locked) || snapshot[field] === next_checked) return;
       const save = async (): Promise<void> => {
         const settings = await commit_update(field, { [field]: next_checked });

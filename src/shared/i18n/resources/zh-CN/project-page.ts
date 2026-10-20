@@ -16,6 +16,7 @@ export const zh_cn_project_page = {
       translation_prompt: "翻译提示词",
     },
     action: "创建工程",
+    language_dialog_title: "工程语言",
   },
   open: {
     title: "打开工程",

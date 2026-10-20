@@ -128,12 +128,13 @@ export function read_text_quality_snapshot(value: unknown): TextQualitySnapshot 
   };
 }
 
-/** 从配置快照提取文本处理字段，并在任务入口校验语言。 */
+/** 从执行快照提取文本处理字段，并在任务入口校验语言。 */
 export function read_text_processing_config(value: JsonValue | undefined): TextProcessingConfig {
-  const snapshot = normalize_setting_snapshot(value);
+  // 语言来自项目而非应用设置，应用设置归一化会丢弃它们，因此直接读取原始执行快照。
+  const record = read_json_record(value);
   return normalize_text_processing_config({
-    source_language: snapshot.source_language,
-    target_language: snapshot.target_language,
-    clean_ruby: snapshot.clean_ruby,
+    source_language: String(record["source_language"] ?? ""),
+    target_language: String(record["target_language"] ?? ""),
+    clean_ruby: normalize_setting_snapshot(value).clean_ruby,
   });
 }

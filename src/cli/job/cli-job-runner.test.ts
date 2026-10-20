@@ -97,10 +97,7 @@ describe("run_cli_job", () => {
       expect.objectContaining({
         path: expect.stringMatching(/cli-job\.lg$/u),
         source_paths: [paths.input_path],
-        project_settings: expect.objectContaining({
-          source_language: "JA",
-          target_language: "ZH",
-        }),
+        languages: { source_language: "JA", target_language: "ZH" },
       }),
     );
     expect(harness.apply_task_input).toHaveBeenCalledWith(await build_cli_task_input(command));
@@ -120,8 +117,6 @@ describe("run_cli_job", () => {
           translation_custom_prompt_default_preset: "",
 
           output_folder_open_on_finish: false,
-          source_language: "JA",
-          target_language: "ZH",
         },
       ],
       [null],
@@ -304,11 +299,6 @@ function create_backend_services_harness(failures: { unloadFailure?: Error } = {
     backend_services: {
       app: {
         settings: {
-          read_setting: () => ({
-            prefilter_config: {},
-            source_language: "JA",
-            target_language: "ZH",
-          }),
           set_transient_overrides,
         },
       },

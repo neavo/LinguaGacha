@@ -5,10 +5,10 @@ export const de_de_basic_settings_page = {
   title: "Grundeinstellungen",
   fields: {
     source_language: {
-      description: "Legt die Sprache des Eingabetexts im aktuellen Projekt fest",
+      description: "Legt die Sprache des Eingabetexts fest",
     },
     target_language: {
-      description: "Legt die Sprache des Ausgabetexts im aktuellen Projekt fest",
+      description: "Legt die Sprache des Ausgabetexts fest",
     },
     project_save_mode: {
       title: "Projekt-Speicherort",

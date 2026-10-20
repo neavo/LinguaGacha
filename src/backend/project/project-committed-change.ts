@@ -2,6 +2,10 @@ import type { PDFSummary } from "../../shared/pdf";
 import type { JsonRecord } from "../../domain/json";
 import type { ProjectItemPublicRecord } from "../../domain/item";
 import type { ProjectPrompts } from "../../domain/prompt";
+import {
+  read_project_language_settings,
+  type ProjectLanguageSettings,
+} from "../../domain/project-settings";
 import type { QualityRuleBlock } from "../../shared/quality/quality-rule-state";
 import type { QualityStatisticsTextChangeScope } from "../../shared/project-event";
 import type { ProjectDataSection, ProjectDataSectionRevisions } from "../../shared/project-event";
@@ -36,6 +40,7 @@ export type ProjectCommittedChange = Readonly<{
   pdf?: Record<string, PDFSummary>;
   quality?: QualityRuleBlock;
   prompts?: ProjectPrompts;
+  languages?: ProjectLanguageSettings;
 }>;
 
 /** 提交后同步缓存，异常由写入口报告已提交状态。 */
@@ -81,5 +86,6 @@ export function build_project_committed_change(
       : {}),
     ...(affected.has("quality") ? { quality: reader.build_quality_block(project, meta) } : {}),
     ...(affected.has("prompts") ? { prompts: reader.build_prompts_block(project, meta) } : {}),
+    ...(affected.has("project") ? { languages: read_project_language_settings(meta) } : {}),
   };
 }

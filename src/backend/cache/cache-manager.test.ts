@@ -85,10 +85,10 @@ function create_database(
   });
 }
 
-/** 固定语言，避免依赖本机设置。 */
+/** 应用选项使用默认值，项目语言由数据库夹具提供。 */
 function create_settings(): AppSettingService {
   return {
-    read_setting: () => ({ source_language: "JA", target_language: "ZH" }),
+    read_setting: () => ({}),
   } as unknown as AppSettingService;
 }
 
@@ -120,6 +120,41 @@ function create_cache(options: {
 }
 
 describe("CacheManager", () => {
+  it("项目语言随提交更新，缓存同步失败后从已提交事实恢复，卸载后回到默认值", async () => {
+    const project = "E:/Project/languages.lg";
+    const meta = {
+      source_language: "EN",
+      target_language: "KO",
+      "project_runtime_revision.project": 0,
+    };
+    const database = create_database({ meta });
+    const cache = create_cache({ database });
+    await cache.warmProject(project);
+    expect(cache.languages.readBlock()).toEqual({ source_language: "EN", target_language: "KO" });
+
+    meta.target_language = "DE";
+    meta["project_runtime_revision.project"] = 1;
+    const committed = build_project_committed_change(
+      database,
+      {
+        projectPath: project,
+        source: "project_settings_update",
+        updatedSections: ["project"],
+        qualityStatisticsScope: "none",
+      },
+      meta,
+    );
+    vi.spyOn(cache.languages, "replace").mockImplementationOnce(() => {
+      throw new Error("language sync failed");
+    });
+    await expect(cache.applyCommittedChange(committed)).rejects.toThrow("language sync failed");
+    expect(cache.snapshot().freshness).toBe("fresh");
+    expect(cache.languages.readBlock()).toEqual({ source_language: "EN", target_language: "DE" });
+    expect(cache.readSectionRevisions().project).toBe(1);
+    cache.clearProject();
+    expect(cache.languages.readBlock()).toEqual({ source_language: "JA", target_language: "ZH" });
+  });
+
   it("已提交快照安装失败后阻止读取，重新热机恢复完整事实", async () => {
     const project = "E:/Project/demo.lg";
     const database = create_database({ items: [create_item()] });
@@ -229,7 +264,7 @@ describe("CacheManager", () => {
     const cache = create_cache({ database, worker });
     await cache.warmProject("E:/Project/demo.lg");
     const read_items = vi.spyOn(cache.items, "readItems");
-    const initial = await cache.proofreading.sync({});
+    const initial = await cache.proofreading.sync();
     const query = {
       filters: initial.data.defaultFilters,
       keyword: "",
@@ -265,7 +300,7 @@ describe("CacheManager", () => {
       ),
       sectionRevisions: { files: 1 },
     });
-    const updated = await cache.proofreading.sync({});
+    const updated = await cache.proofreading.sync();
     expect(updated.data.files.map((file) => file.file_path)).toEqual([
       "book.pdf",
       "a.txt",

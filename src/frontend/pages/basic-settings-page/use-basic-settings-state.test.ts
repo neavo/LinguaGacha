@@ -16,6 +16,7 @@ type RuntimeFixture = {
   project_snapshot: {
     loaded: boolean;
     path: string;
+    languages: { source_language: string; target_language: string } | null;
   };
   apply_settings_snapshot: ReturnType<typeof vi.fn>;
   commit_project_write: ReturnType<typeof vi.fn>;
@@ -74,11 +75,10 @@ vi.mock("@frontend/app/desktop/desktop-api", () => {
   };
 });
 
+/** 用生产归一化规则补齐应用设置夹具。 */
 function create_settings_snapshot(overrides: Partial<SettingsSnapshot> = {}): SettingsSnapshot {
   return normalize_setting_snapshot({
     app_language: "ZH",
-    source_language: "JA",
-    target_language: "ZH",
     request_timeout: 300,
     mtool_optimizer_enable: false,
     skip_duplicate_source_text_enable: true,
@@ -86,6 +86,7 @@ function create_settings_snapshot(overrides: Partial<SettingsSnapshot> = {}): Se
   });
 }
 
+/** 分别提供应用设置与项目语言，验证保存入口的归属。 */
 function create_runtime_fixture(): RuntimeFixture {
   const settings_snapshot = create_settings_snapshot();
   return {
@@ -94,6 +95,7 @@ function create_runtime_fixture(): RuntimeFixture {
     project_snapshot: {
       loaded: true,
       path: "E:/demo/sample.lg",
+      languages: { source_language: "JA", target_language: "ZH" },
     },
     apply_settings_snapshot: vi.fn((payload: SettingsSnapshotPayload) => {
       const next_settings_snapshot = normalize_setting_snapshot(payload.settings);
@@ -117,6 +119,7 @@ function create_runtime_fixture(): RuntimeFixture {
   };
 }
 
+/** 执行进度提示中的任务并收集保存反馈。 */
 function create_toast_fixture(): ToastFixture {
   return {
     push_toast: vi.fn(),
@@ -147,11 +150,13 @@ describe("useBasicSettingsState", () => {
     vi.mocked(api_fetch).mockReset();
   });
 
+  /** 通过 React 渲染暴露设置 Hook 的公开状态。 */
   function BasicSettingsProbe(): JSX.Element | null {
     latest_state = useBasicSettingsState();
     return null;
   }
 
+  /** 复用挂载根以验证设置与项目快照变化。 */
   async function render_hook(): Promise<void> {
     if (container === null) {
       container = document.createElement("div");
@@ -164,15 +169,60 @@ describe("useBasicSettingsState", () => {
     });
   }
 
-  it("语言保存失败从后端恢复设置，页面只提交一次命令", async () => {
+  it("项目语言保存成功经项目写入口提交，显示补读后的项目语言", async () => {
+    vi.mocked(api_fetch).mockResolvedValue({ accepted: true, changes: [] } as never);
+    runtime_fixture.current.commit_project_write.mockImplementation(
+      async ({ run }: { run: () => Promise<unknown> }) => {
+        const payload = await run();
+        // 写入方等待项目快照补读，这里模拟补读后的项目语言。
+        runtime_fixture.current.project_snapshot = {
+          ...runtime_fixture.current.project_snapshot,
+          languages: { source_language: "EN", target_language: "ZH" },
+        };
+        return { payload, write_result: { accepted: true, changes: [] } };
+      },
+    );
+    await render_hook();
+    await act(async () => {
+      await latest_state?.update_source_language("EN");
+    });
+    await render_hook();
+
+    expect(latest_state?.languages).toEqual({ source_language: "EN", target_language: "ZH" });
+    expect(latest_state?.language_pending_state).toEqual({
+      source_language: false,
+      target_language: false,
+    });
+    expect(runtime_fixture.current.commit_project_write).toHaveBeenCalledWith(
+      expect.objectContaining({ operation: "project.settings.update" }),
+    );
+    expect(vi.mocked(api_fetch).mock.calls).toEqual([
+      ["/api/project/settings/update", { source_language: "EN" }],
+    ]);
+    expect(toast_fixture.current.run_modal_progress_toast).toHaveBeenCalledOnce();
+    expect(toast_fixture.current.push_toast).toHaveBeenCalledWith("info", expect.any(String));
+  });
+
+  it("未加载项目时显示默认语言并禁止修改", async () => {
+    runtime_fixture.current.project_snapshot = { loaded: false, path: "", languages: null };
+    await render_hook();
+    await act(async () => {
+      await latest_state?.update_target_language("EN");
+    });
+    expect(latest_state?.languages).toEqual({ source_language: "JA", target_language: "ZH" });
+    expect(latest_state?.language_locked).toBe(true);
+    expect(api_fetch).not.toHaveBeenCalled();
+  });
+
+  it("项目语言保存失败恢复项目快照值，页面只提交一次命令", async () => {
     vi.mocked(api_fetch).mockRejectedValue(new Error("prefilter_failed"));
     await render_hook();
     await act(async () => {
       await latest_state?.update_source_language("EN");
     });
-    expect(latest_state?.snapshot.source_language).toBe("JA");
+    expect(latest_state?.languages.source_language).toBe("JA");
     expect(vi.mocked(api_fetch).mock.calls).toEqual([
-      ["/api/settings/update", { source_language: "EN" }],
+      ["/api/project/settings/update", { source_language: "EN" }],
     ]);
     expect(toast_fixture.current.push_toast).toHaveBeenCalledExactlyOnceWith(
       "app.feedback.save_failed",

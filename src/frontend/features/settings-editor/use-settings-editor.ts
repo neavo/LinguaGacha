@@ -2,7 +2,7 @@ import { push_error_toast } from "@frontend/app/feedback/desktop-toast";
 import { read_error_message } from "@shared/error";
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { PROJECT_SETTING_KEYS } from "@domain/setting";
+import { APP_PREFILTER_SETTING_KEYS } from "@domain/project-settings";
 import type { ProjectWriteResultPayload } from "@frontend/app/state/desktop-project-write";
 import { api_fetch } from "@frontend/app/desktop/desktop-api";
 import { useI18n } from "@frontend/app/locale/locale-context";
@@ -93,7 +93,7 @@ export function useSettingsEditor<
         [field]: true,
       }));
 
-      const affects_project = PROJECT_SETTING_KEYS.some((key) => Object.hasOwn(patch, key));
+      const affects_project = APP_PREFILTER_SETTING_KEYS.some((key) => Object.hasOwn(patch, key));
       try {
         const run = () =>
           api_fetch<SettingsSnapshotPayload & ProjectWriteResultPayload>(

@@ -16,7 +16,7 @@ import {
 } from "../../shared/workbench/workbench-command-planner";
 import { create_pdf_execution, create_pdf_fixture } from "../file/pdf/test-support";
 
-import { ProjectDataReader } from "./project-data-reader";
+import { ProjectDataReader, get_section_revision } from "./project-data-reader";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -385,7 +385,6 @@ describe("ProjectContentService", () => {
           files: [{ source_path: source, target_rel_path: "game.trans" }],
           conflict_action: "replace",
           inheritance_mode: "inherit",
-          project_settings: { source_language: "JA", target_language: "ZH" },
           expected_section_revisions: await database.read(lg_path, (access) =>
             new ProjectDataReader(access).build_section_revisions(access.get_all_meta(lg_path)),
           ),
@@ -511,7 +510,6 @@ describe("ProjectContentService", () => {
         files: preview.files,
         conflict_action: "replace",
         inheritance_mode: "inherit",
-        project_settings: { source_language: "JA", target_language: "ZH" },
         expected_section_revisions: { files: 1, items: 1 },
       });
       expect((await database.get_all_asset_records(lg_path)).map((asset) => asset.path)).toEqual([
@@ -670,9 +668,11 @@ describe("ProjectContentService", () => {
       files: [{ source_path: source, target_rel_path: "game.zip" }],
       conflict_action: "replace",
       expected_section_revisions: await revisions(),
-      project_settings: { source_language: "ALL", target_language: "ZH" },
     });
     try {
+      await database.transaction(lg_path, (writer) =>
+        writer.set_meta(lg_path, "source_language", "ALL"),
+      );
       write("data/System.json", "{}");
       write("js/rmmz_core.js", "");
       write("data/Old.json", '{"text":"旧文"}');
@@ -830,16 +830,10 @@ describe("ProjectContentService", () => {
           fs.mkdirSync(path.dirname(target), { recursive: true });
           fs.writeFileSync(target, content);
         }
-        const project_settings = {
-          source_language: "JA",
-          target_language: "ZH",
-          skip_duplicate_source_text_enable: true,
-        };
         await service.import_files({
           files: [{ source_path: source, target_rel_path: "game.zip" }],
           conflict_action: "replace",
           expected_section_revisions: { files: 0, items: 0 },
-          project_settings,
         });
         expect(
           (await database.get_all_items(lg_path)).map((item) => [
@@ -866,7 +860,6 @@ describe("ProjectContentService", () => {
         await service.reset_files({
           rel_paths: ["game.zip"],
           expected_section_revisions: { files: 1, items: 1 },
-          project_settings,
         });
         expect(
           (await database.get_all_items(lg_path)).map((item) => [
@@ -875,7 +868,7 @@ describe("ProjectContentService", () => {
             item["dst"],
           ]),
         ).toEqual(expected);
-        await service.reset_translation({ mode: "all", project_settings });
+        await service.reset_translation({ mode: "all" });
         expect(
           (await database.get_all_items(lg_path)).map((item) => [
             item["src"],
@@ -994,138 +987,124 @@ describe("ProjectContentService", () => {
       await database.close();
     }
   });
-  it("写入 settings-only 对齐结果且不 bump 运行态 section", async () => {
-    const publish_project_change = vi.fn();
-    const { database, service, lg_path } = await create_service(publish_project_change);
-
-    const ack = await service.align_settings({
-      mode: "settings_only",
-      project_settings: {
-        source_language: "JA",
-        target_language: "ZH",
-        mtool_optimizer_enable: true,
-        skip_duplicate_source_text_enable: false,
-      },
-    });
-
-    expect(ack).toEqual({ accepted: true, changes: [] });
-    expect(publish_project_change).not.toHaveBeenCalled();
-    expect(await read_meta(database, lg_path, "source_language", "")).toBe("JA");
-    await database.close();
-  });
-
-  it("显式 path 不存在时拒绝 settings-only 对齐且不创建空工程库", async () => {
-    const { database, service } = await create_service();
-    const missing_path = project_path("missing.lg");
-
-    await expect(
-      service.align_settings({
-        path: missing_path,
-        mode: "settings_only",
-        project_settings: {
-          source_language: "JA",
-          target_language: "ZH",
-        },
-      }),
-    ).rejects.toThrow(expect.objectContaining({ code: "project.not_found" }));
-
-    expect(fs.existsSync(missing_path)).toBe(false);
-    await database.close();
-  });
-
-  it.each(["空会话", "已加载其他工程"] as const)(
-    "%s 时按目标路径对齐设置和条目，并保持会话隔离",
-    async (session_kind) => {
-      const publish_project_change = vi.fn(() => null);
-      const { database, service, session_state } = await create_service(publish_project_change);
-      try {
-        if (session_kind === "空会话") await session_state.clear();
-        const initial_session = session_state.snapshot();
-        const other_lg_path = project_path("other.lg");
-        await database.create_project(other_lg_path, "other");
-        await database.transaction(other_lg_path, (writer) =>
-          writer.add_asset(other_lg_path, "other.txt", Buffer.from("原文"), "TXT", null, 0),
-        );
-        await database.transaction(other_lg_path, (writer) =>
-          writer.set_meta(other_lg_path, "source_language", "JA"),
-        );
-        await database.transaction(other_lg_path, (writer) =>
-          writer.set_items(other_lg_path, [
-            create_persistent_item({ file_path: "other.txt", status: "LANGUAGE_SKIPPED" }),
-          ]),
-        );
-        // 工程路径是读取契约的一部分，必须与本次对齐目标一致。
-        const read_pdf_summaries = vi.spyOn(ProjectDatabaseAccess.prototype, "read_pdf_summaries");
-        const ack = await service.align_settings({
-          path: other_lg_path,
-          mode: "prefiltered_items",
-          expected_section_revisions: { items: 0 },
-          project_settings: {
-            source_language: "ALL",
-            target_language: "ZH",
-            mtool_optimizer_enable: false,
-            skip_duplicate_source_text_enable: true,
-          },
-        });
-
-        expect(read_pdf_summaries).toHaveBeenCalledWith(other_lg_path);
-        expect(await read_meta(database, other_lg_path, "source_language", "")).toBe("ALL");
-        expect(await database.get_all_items(other_lg_path)).toEqual([
-          create_persistent_item({ file_path: "other.txt", status: "NONE" }),
-        ]);
-        expect(session_state.snapshot()).toEqual(initial_session);
-        expect(ack).toEqual({ accepted: true, changes: [] });
-        expect(publish_project_change).toHaveBeenCalledWith(
-          expect.objectContaining({
-            projectPath: other_lg_path,
-            source: "settings_alignment",
-            updatedSections: ["items"],
-            items: { mode: "full", records: expect.any(Array) },
-          }),
-        );
-      } finally {
-        await database.close();
-      }
-    },
-  );
-
-  it("settings alignment 的 prefiltered_items 在当前工程发布 items 失效信号", async () => {
+  it("只修改目标语言时推进 project 修订并发布项目变更，条目保持不变", async () => {
     const { publish_project_change } = create_test_project_change_publisher();
     const { database, service, lg_path } = await create_service(publish_project_change);
     await database.transaction(lg_path, (writer) =>
-      writer.add_asset(lg_path, "a.txt", Buffer.from("原文"), "TXT", null),
+      writer.set_items(lg_path, [create_persistent_item({ status: "PROCESSED", dst: "译文" })]),
     );
-    await database.transaction(lg_path, (writer) =>
-      writer.set_items(lg_path, [
-        create_persistent_item({ src: "旧", file_path: "a.txt", row_number: 0 }),
-      ]),
-    );
-    const ack = await service.align_settings({
-      mode: "prefiltered_items",
-      expected_section_revisions: { items: 0 },
-      project_settings: {
-        source_language: "ALL",
-        target_language: "ZH",
-        mtool_optimizer_enable: true,
-        skip_duplicate_source_text_enable: true,
-      },
-    });
+    const before = await database.get_all_items(lg_path);
+
+    const ack = await service.update_project_settings({ target_language: "en" });
 
     expect(ack).toMatchObject({
       accepted: true,
-      changes: [
-        {
-          source: "settings_alignment",
-          updatedSections: ["items"],
-        },
-      ],
+      changes: [{ source: "project_settings_update", updatedSections: ["project"] }],
     });
+    const meta = await database.get_all_meta(lg_path);
+    expect(meta).toMatchObject({ target_language: "EN", "project_runtime_revision.project": 1 });
+    expect(get_section_revision(meta, "items")).toBe(0);
+    expect(await database.get_all_items(lg_path)).toEqual(before);
     expect(publish_project_change.mock.calls[0]?.[0]).toMatchObject({
       projectPath: lg_path,
-      source: "settings_alignment",
-      updatedSections: ["items"],
-      items: { mode: "full", records: expect.any(Array) },
+      updatedSections: ["project"],
+      languages: { source_language: "JA", target_language: "EN" },
     });
+    await database.close();
+  });
+
+  it("目标语言提交后通知失败时保留语言与修订，并要求重载", async () => {
+    const publish = vi.fn(() => {
+      throw new Error("publish failed");
+    });
+    const { database, service, lg_path } = await create_service(publish);
+    try {
+      await expect(
+        service.update_project_settings({ target_language: "EN" }),
+      ).rejects.toMatchObject({
+        code: "data.committed_sync_failed",
+      });
+      expect(await database.get_all_meta(lg_path)).toMatchObject({
+        target_language: "EN",
+        "project_runtime_revision.project": 1,
+      });
+    } finally {
+      await database.close();
+    }
+  });
+
+  it("修改源语言时在同一提交内重算预过滤并发布 project 与 items", async () => {
+    const { publish_project_change } = create_test_project_change_publisher();
+    const { database, service, lg_path } = await create_service(publish_project_change);
+    await database.transaction(lg_path, (writer) =>
+      writer.add_asset(lg_path, "a.txt", Buffer.from("Hello"), "TXT", null, 0),
+    );
+    await database.transaction(lg_path, (writer) =>
+      writer.set_items(lg_path, [
+        create_persistent_item({ src: "Hello", file_path: "a.txt", status: "NONE" }),
+      ]),
+    );
+
+    await service.update_project_settings({ source_language: "JA" });
+    expect(publish_project_change).not.toHaveBeenCalled(); // 默认已是日语，无变化不提交
+    const ack = await service.update_project_settings({ source_language: "EN" });
+    await service.update_project_settings({ source_language: "JA" });
+
+    expect(ack).toMatchObject({
+      changes: [{ source: "project_settings_update", updatedSections: ["project", "items"] }],
+    });
+    expect(publish_project_change.mock.calls[0]?.[0]).toMatchObject({
+      updatedSections: ["project", "items"],
+      items: { mode: "full" },
+      languages: { source_language: "EN", target_language: "ZH" },
+    });
+    // 英文源语言保留英文条目，切回日语后同一条目被语言预过滤。
+    expect(publish_project_change.mock.calls[0]?.[0].items?.records).toMatchObject([
+      { src: "Hello", status: "NONE" },
+    ]);
+    const meta = await database.get_all_meta(lg_path);
+    expect(meta).toMatchObject({
+      source_language: "JA",
+      prefilter_config: { source_language: "JA" },
+      "project_runtime_revision.project": 2,
+      "project_runtime_revision.items": 2,
+    });
+    expect((await database.get_all_items(lg_path)).map((item) => item["status"])).toEqual([
+      "LANGUAGE_SKIPPED",
+    ]);
+    await database.close();
+  });
+
+  it("项目语言写入失败时不留下半份语言或条目结果", async () => {
+    const { publish_project_change } = create_test_project_change_publisher();
+    const { database, service, lg_path } = await create_service(publish_project_change);
+    await database.transaction(lg_path, (writer) =>
+      writer.set_items(lg_path, [create_persistent_item({ src: "Hello" })]),
+    );
+    const before = await database.get_all_items(lg_path);
+    vi.spyOn(ProjectDatabaseAccess.prototype, "upsert_meta_entries").mockImplementationOnce(() => {
+      throw new Error("meta write failed");
+    });
+
+    await expect(service.update_project_settings({ source_language: "EN" })).rejects.toThrow();
+
+    expect(await read_meta(database, lg_path, "source_language", "")).toBe("");
+    expect(await database.get_all_items(lg_path)).toEqual(before);
+    expect(publish_project_change).not.toHaveBeenCalled();
+    await database.close();
+  });
+
+  it.each([
+    { target_language: "ALL" },
+    { source_language: "XX" },
+    { app_language: "ZH" },
+    { source_language: 1 },
+  ])("项目语言请求在边界拒绝非法字段 %o", async (request) => {
+    const { database, service, lg_path } = await create_service();
+    await expect(service.update_project_settings(request)).rejects.toMatchObject({
+      code: "request.validation_failed",
+    });
+    expect(await read_meta(database, lg_path, "target_language", "")).toBe("");
     await database.close();
   });
 
@@ -1148,7 +1127,6 @@ describe("ProjectContentService", () => {
 
     const ack = await service.reset_translation({
       mode: "all",
-      project_settings: { source_language: "JA", target_language: "ZH" },
     });
 
     expect(ack).toMatchObject({
@@ -1246,7 +1224,7 @@ describe("ProjectContentService", () => {
         }),
       );
 
-      await service.reset_translation({ mode: "all", project_settings: { source_language: "JA" } });
+      await service.reset_translation({ mode: "all" });
 
       const items = (await database.get_all_items(lg_path)) as JsonRecord[];
       expect(items.map(({ src, dst, status }) => ({ src, dst, status }))).toEqual([
@@ -1374,7 +1352,6 @@ describe("ProjectContentService", () => {
 
     const reset_all_promise = service.reset_translation({
       mode: "all",
-      project_settings: { source_language: "JA", target_language: "ZH" },
     });
     await parse_started;
     try {
@@ -1400,7 +1377,7 @@ describe("ProjectContentService", () => {
     await database.close();
   });
 
-  it("settings alignment 的 prefiltered_items 拒绝旧最终事实载荷", async () => {
+  it("工作台命令拒绝旧项目设置载荷且不改写条目", async () => {
     const { database, service, lg_path } = await create_service();
     await database.transaction(lg_path, (writer) =>
       writer.add_asset(lg_path, "a.txt", Buffer.from("原文"), "TXT", null),
@@ -1410,12 +1387,9 @@ describe("ProjectContentService", () => {
     );
 
     await expect(
-      service.align_settings({
-        mode: "prefiltered_items",
-        items: [create_public_item()],
-        translation_extras: {},
-        prefilter_config: {},
-        project_settings: { source_language: "JA" },
+      service.reset_files({
+        rel_paths: ["a.txt"],
+        project_settings: { source_language: "EN" },
         expected_section_revisions: { items: 0 },
       }),
     ).rejects.toThrow(expect.objectContaining({ code: "request.validation_failed" }));
@@ -1446,7 +1420,6 @@ describe("ProjectContentService", () => {
     const import_files_promise = service.import_files({
       files: [{ source_path: second_source, target_rel_path: "b.txt" }],
       conflict_action: "skip",
-      project_settings: { source_language: "JA", target_language: "ZH" },
       expected_section_revisions: { files: 0, items: 0 },
     });
     await parse_started;
@@ -1501,7 +1474,6 @@ describe("ProjectContentService", () => {
         { source_path: new_source, target_rel_path: "b.txt" },
       ],
       conflict_action: "skip",
-      project_settings: { source_language: "JA", target_language: "ZH" },
       expected_section_revisions: { files: 0, items: 0 },
     });
 
@@ -1530,7 +1502,6 @@ describe("ProjectContentService", () => {
         { source_path: broken_json, target_rel_path: "broken.json" },
       ],
       conflict_action: "replace",
-      project_settings: { source_language: "JA", target_language: "ZH" },
       expected_section_revisions: { files: 0, items: 0 },
     });
 
@@ -1569,7 +1540,6 @@ describe("ProjectContentService", () => {
       service.import_files({
         files: [{ source_path: broken_json, target_rel_path: "broken.json" }],
         conflict_action: "replace",
-        project_settings: { source_language: "JA", target_language: "ZH" },
         expected_section_revisions: { files: 0, items: 0 },
       }),
     ).rejects.toMatchObject({
@@ -1610,7 +1580,6 @@ describe("ProjectContentService", () => {
     const ack = await service.import_files({
       files: [{ source_path: replace_source, target_rel_path: "a.txt" }],
       conflict_action: "replace",
-      project_settings: { source_language: "JA", target_language: "ZH" },
       expected_section_revisions: { files: 0, items: 0 },
     });
 
@@ -1661,7 +1630,6 @@ describe("ProjectContentService", () => {
       files: [{ source_path: replace_source, target_rel_path: "a.txt" }],
       conflict_action: "replace",
       inheritance_mode: "inherit",
-      project_settings: { source_language: "JA", target_language: "ZH" },
       expected_section_revisions: { files: 0, items: 0 },
     });
 
@@ -1727,7 +1695,6 @@ describe("ProjectContentService", () => {
         files: [{ source_path, target_rel_path: "names.json" }],
         inheritance_mode: "inherit",
         conflict_action: "replace",
-        project_settings: { source_language: "JA", target_language: "ZH" },
         expected_section_revisions: { files: 0, items: 0 },
       });
       expect(
@@ -1758,8 +1725,9 @@ describe("ProjectContentService", () => {
       skip_duplicate_source_text_enable: false,
     };
     const app_settings = {
-      read_setting: () => ({ ...settings, target_language: "ZH" }),
+      read_setting: () => ({ ...settings }),
     } as unknown as AppSettingService;
+    await database.transaction(lg_path, (writer) => writer.upsert_meta_entries(lg_path, settings));
     const cache = new CacheManager({
       database,
       logManager: null,
@@ -1783,7 +1751,6 @@ describe("ProjectContentService", () => {
       const import_plan = create_workbench_import_files_plan({
         state: { files: [], section_revisions: { files: 0, items: 0 } },
         preview,
-        settings,
         conflict_action: "skip",
       });
       await service.import_files(import_plan.requestBody as JsonRecord);
@@ -1812,7 +1779,7 @@ describe("ProjectContentService", () => {
         file_type: "PDF",
         progress: { unit: "page", total_count: 3 },
       });
-      const reset = create_workbench_reset_file_plan({ state, rel_path: " a.json", settings });
+      const reset = create_workbench_reset_file_plan({ state, rel_path: " a.json" });
       await service.reset_files(reset.requestBody as JsonRecord);
       expect(
         (await database.get_all_items(lg_path))
@@ -1834,7 +1801,7 @@ describe("ProjectContentService", () => {
       state = await read_planning_state();
       expect(state.files.map((file) => file.rel_path)).toEqual(order);
       await service.delete_files(
-        create_workbench_delete_files_plan({ state, rel_paths: [" a.json"], settings })
+        create_workbench_delete_files_plan({ state, rel_paths: [" a.json"] })
           .requestBody as JsonRecord,
       );
       expect((await database.get_all_asset_records(lg_path)).map((file) => file.path)).toEqual([
@@ -1910,7 +1877,6 @@ describe("ProjectContentService", () => {
     );
     await service.reset_files({
       rel_paths: ["a.txt"],
-      project_settings: { source_language: "JA" },
       expected_section_revisions: { items: 0 },
     });
 
@@ -1956,7 +1922,6 @@ describe("ProjectContentService", () => {
     );
     const ack = await service.delete_files({
       rel_paths: ["a.txt"],
-      project_settings: { source_language: "JA", target_language: "ZH" },
       expected_section_revisions: { files: 0, items: 0 },
     });
 
@@ -1996,7 +1961,6 @@ describe("ProjectContentService", () => {
     await expect(
       service.reset_translation({
         mode: "all",
-        project_settings: { source_language: "JA" },
       }),
     ).rejects.toThrow(expect.objectContaining({ code: "runtime.busy" }));
 
@@ -2006,16 +1970,13 @@ describe("ProjectContentService", () => {
     await database.close();
   });
 
-  it("任务忙碌时拒绝 settings-only 对齐且不写设置 meta", async () => {
+  it("任务忙碌时拒绝项目语言修改且不写设置 meta", async () => {
     const { database, service, runtime_gate, lg_path } = await create_service();
     runtime_gate.begin_runtime("batch_translation");
 
-    await expect(
-      service.align_settings({
-        mode: "settings_only",
-        project_settings: { source_language: "JA" },
-      }),
-    ).rejects.toThrow(expect.objectContaining({ code: "runtime.busy" }));
+    await expect(service.update_project_settings({ source_language: "EN" })).rejects.toThrow(
+      expect.objectContaining({ code: "runtime.busy" }),
+    );
 
     expect(await read_meta(database, lg_path, "source_language", "")).toBe("");
     await database.close();

@@ -17,6 +17,11 @@ import { FileFormatService } from "./file-format-service";
 import { type Item, create_item } from "../../domain/item";
 import { resolve_app_locale, type AppLanguage } from "../../domain/app-language";
 import { normalize_setting_snapshot, type SettingSnapshot } from "../../domain/setting";
+import {
+  build_project_execution_settings,
+  read_project_language_settings,
+  type ProjectExecutionSettings,
+} from "../../domain/project-settings";
 import { create_text_resolver, format_i18n_message, type LocaleKey } from "../../shared/i18n";
 import { NativeFs, default_native_fs } from "../../native/native-fs";
 import type { GeneratedFilePaths } from "./file-format-types";
@@ -43,7 +48,7 @@ export class TranslationFileGenerationService {
    */
   public constructor(
     private readonly database: ProjectDatabase, // 译文生成读取工程事实和原稿资产的入口
-    private readonly app_setting_service: AppSettingService, // 译文生成语言、格式和完成后动作
+    private readonly app_setting_service: AppSettingService, // 译文生成格式和完成后动作
     private readonly session_state: ProjectSessionState, // 当前 .lg 工程身份
     private readonly output_folder_opener: OutputFolderOpener, // 宿主打开目录的副作用
     private readonly pdf_execution: PDFExecution, // 独立线程的 PDF 计算端口
@@ -103,18 +108,26 @@ export class TranslationFileGenerationService {
   private async run_generation(
     write: (
       project_path: string,
-      config: SettingSnapshot,
+      config: ProjectExecutionSettings,
     ) => Promise<TranslationFileGenerationResult>,
     open_output_folder: boolean,
   ): Promise<TranslationFileGenerationResult> {
-    const config = normalize_setting_snapshot(this.app_setting_service.read_setting());
+    const setting = this.app_setting_service.read_setting();
+    const config = normalize_setting_snapshot(setting);
     this.log_manager?.info(
       this.generation_log_text(config, "app.translation_generation.log.started"),
       { source: FILE_GENERATION_LOG_SOURCE },
     );
     try {
       const project_path = this.session_state.require_loaded_project_path();
-      const result = await write(project_path, config);
+      // GUI 与 CLI 共用项目语言和应用导出选项，本次生成固定使用这份组合快照。
+      const languages = read_project_language_settings(
+        await this.database.get_all_meta(project_path),
+      );
+      const result = await write(
+        project_path,
+        build_project_execution_settings(setting, languages),
+      );
       this.log_manager?.info(
         `${this.generation_log_text(config, "app.translation_generation.log.succeeded")}\n${result.output_path}`,
         { source: FILE_GENERATION_LOG_SOURCE },
@@ -145,7 +158,7 @@ export class TranslationFileGenerationService {
     project_path: string,
     items: Item[],
     paths: GeneratedFilePaths,
-    config: SettingSnapshot,
+    config: ProjectExecutionSettings,
     excluded_files: readonly string[] = [],
   ): Promise<void> {
     const output_items = items.filter((item) => !excluded_files.includes(item.file_path));

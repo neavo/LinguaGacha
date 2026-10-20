@@ -15,6 +15,7 @@ import { create_text_resolver } from "../../shared/i18n";
 import { AppError } from "../../shared/error";
 import type { AppSettingService } from "../app/app-setting-service";
 import { ProjectSessionState } from "../project/project-session-state";
+import { FileFormatService } from "./file-format-service";
 import {
   TranslationFileGenerationService,
   type OutputFolderOpener,
@@ -79,8 +80,6 @@ function create_setting_service(
 ): AppSettingService {
   return {
     read_setting: () => ({
-      source_language: "JA",
-      target_language: "ZH",
       app_language: options.app_language ?? "ZH",
       output_folder_open_on_finish: options.output_folder_open_on_finish ?? false,
       deduplication_in_bilingual: true,
@@ -94,8 +93,10 @@ function create_database(
   items: Array<Record<string, unknown>>,
   assets: Record<string, { content: Buffer; file_type: string }> = {},
   documents: Record<string, PDFDocument> = {},
+  meta: Record<string, unknown> = {},
 ): ProjectDatabase {
   return {
+    get_all_meta: () => meta,
     read_pdf_summaries: () =>
       Object.fromEntries(Object.keys(documents).map((file_path) => [file_path, {}])),
     read_pdf_document: (_project_path: string, file_path: string) => documents[file_path] ?? null,
@@ -356,6 +357,45 @@ describe("TranslationFileGenerationService", () => {
       `${dst}\n${dst}`,
     );
     expect(output_folder_opener).not.toHaveBeenCalled();
+  });
+
+  it("译文生成使用项目目标语言，不读取应用设置中的语言", async () => {
+    const project_path = path.join(temp_dir, "language.lg");
+    const session_state = new ProjectSessionState();
+    session_state.mark_loaded(project_path);
+    const content = Buffer.from("WEBVTT\n\n00:00.000 --> 00:02.000\n<lang ja>こんにちは</lang>\n");
+    const parsed = await new FileFormatService(
+      {
+        target_language: "ZH",
+        deduplication_in_bilingual: true,
+        write_translated_name_fields_to_file: true,
+      },
+      create_pdf_execution(),
+    ).parse_asset("sub.vtt", content, "VTT");
+    if (parsed.kind !== "items") throw new Error("VTT fixture must produce items.");
+    const database = create_database(
+      parsed.items.map((item, index) => ({
+        ...item,
+        id: index + 1,
+        dst: "Hello",
+        status: "PROCESSED",
+      })) as unknown as Array<Record<string, unknown>>,
+      { "sub.vtt": { content, file_type: "VTT" } },
+      {},
+      { target_language: "EN" },
+    );
+    const service = new TranslationFileGenerationService(
+      database,
+      create_setting_service(),
+      session_state,
+      vi.fn<OutputFolderOpener>(),
+      create_pdf_execution(),
+    );
+
+    const result = await service.generate_files();
+    expect(fs.readFileSync(path.join(String(result.output_path), "sub.vtt"), "utf-8")).toContain(
+      "<lang en>Hello</lang>",
+    );
   });
 
   it("MESSAGEJSON 译文生成只在相同可见角色间复用译文", async () => {

@@ -42,6 +42,7 @@ function create_cache_read_port(options: {
   epoch?: number;
   revisions?: Record<string, number>;
   items?: ProjectItemPublicRecord[];
+  languages?: { source_language: "JA" | "EN"; target_language: "ZH" | "EN" };
 }): CacheReadPort {
   const revisions = options.revisions ?? { files: 1, items: 1, quality: 1, proofreading: 0 };
   const items = options.items ?? [create_cache_item()];
@@ -79,14 +80,17 @@ function create_cache_read_port(options: {
     prompts: {
       readBlock: create_empty_project_prompts,
     },
+    languages: {
+      readBlock: () => ({
+        ...(options.languages ?? { source_language: "JA", target_language: "ZH" }),
+      }),
+    },
   };
 }
 
-// 固定测试语言设置，避免缓存测试依赖真实 app setting。
+// 固定测试应用设置，避免缓存测试依赖真实 app setting。
 function create_settings(
   settings: Record<string, unknown> = {
-    source_language: "JA",
-    target_language: "ZH",
     clean_ruby: false,
   },
 ): AppSettingService {
@@ -194,7 +198,7 @@ describe("ProofreadingCache", () => {
       reader: createProofreadingReader(),
     });
 
-    const sync = await cache.sync({});
+    const sync = await cache.sync();
     const view = await cache.list({
       filters: sync.data.defaultFilters,
       keyword: "",
@@ -249,7 +253,7 @@ describe("ProofreadingCache", () => {
       reader: createProofreadingReader(),
     });
 
-    const sync = await cache.sync({});
+    const sync = await cache.sync();
     const view = await cache.list({
       filters: sync.data.defaultFilters,
       keyword: "",
@@ -349,7 +353,7 @@ describe("ProofreadingCache", () => {
 
       const rows = await cache.itemsByRowIds({ row_ids: ["1"] });
 
-      const sync = await cache.sync({});
+      const sync = await cache.sync();
       const view = await cache.list({
         filters: sync.data.defaultFilters,
         keyword: "",
@@ -368,21 +372,26 @@ describe("ProofreadingCache", () => {
     },
   );
 
-  it("文件修订复用文本评估，语言变化重新评估", async () => {
+  it("文件修订复用文本评估，项目语言变化重新评估", async () => {
     const worker = create_worker();
     const revisions = { files: 1, items: 1, quality: 1, proofreading: 0 };
+    const languages: { source_language: "JA"; target_language: "ZH" | "EN" } = {
+      source_language: "JA",
+      target_language: "ZH",
+    };
     const cache = new ProofreadingCache({
       readPages: async () => [],
-      cache: create_cache_read_port({ revisions }),
+      cache: create_cache_read_port({ revisions, languages }),
       appSettingService: create_settings(),
       workerClient: worker,
       reader: createProofreadingReader(),
     });
 
-    await cache.sync({ sourceLanguage: "JA", targetLanguage: "ZH" });
+    await cache.sync();
     revisions.files = 2;
-    await cache.sync({ sourceLanguage: "JA", targetLanguage: "ZH" });
-    await cache.sync({ sourceLanguage: "JA", targetLanguage: "EN" });
+    await cache.sync();
+    languages.target_language = "EN";
+    await cache.sync();
 
     expect(worker.run).toHaveBeenCalledTimes(2);
     expect(
@@ -399,8 +408,6 @@ describe("ProofreadingCache", () => {
   it("完整文本处理配置变化会生成新的缓存身份", async () => {
     const worker = create_worker();
     const settings = {
-      source_language: "JA",
-      target_language: "ZH",
       clean_ruby: false,
     };
     const cache = new ProofreadingCache({
@@ -411,9 +418,9 @@ describe("ProofreadingCache", () => {
       reader: createProofreadingReader(),
     });
 
-    await cache.sync({});
+    await cache.sync();
     settings.clean_ruby = true;
-    await cache.sync({});
+    await cache.sync();
 
     expect(worker.sync_inputs.map((input) => input.processingConfig)).toMatchObject([
       {
@@ -438,14 +445,14 @@ describe("ProofreadingCache", () => {
       workerClient: worker,
       reader: createProofreadingReader(),
     });
-    await cache.sync({});
+    await cache.sync();
 
     await cache.clearProject("E:/Project/other.lg");
-    await cache.sync({});
+    await cache.sync();
     await cache.clearProject("E:/Project/demo.lg");
-    await cache.sync({});
+    await cache.sync();
     await cache.clearProject();
-    await cache.sync({});
+    await cache.sync();
 
     expect(worker.run).toHaveBeenCalledTimes(3);
   });
@@ -466,7 +473,7 @@ describe("ProofreadingCache", () => {
       workerClient: worker,
       reader: createProofreadingReader(),
     });
-    const sync = await cache.sync({});
+    const sync = await cache.sync();
     const view = await cache.list({
       filters: sync.data.defaultFilters,
       keyword: "",
@@ -481,7 +488,7 @@ describe("ProofreadingCache", () => {
       ...create_delta_change({ items: { mode: "delta", records: items } }),
       sectionRevisions: revisions,
     });
-    const next_sync = await cache.sync({});
+    const next_sync = await cache.sync();
     const rows = await cache.itemsByRowIds({ row_ids: ["1"] });
     const warnings = await cache.warnings({
       warning_types: [...PROOFREADING_WARNING_CODES],
@@ -525,7 +532,7 @@ describe("ProofreadingCache", () => {
       workerClient: worker,
       reader: createProofreadingReader(),
     });
-    const sync = await cache.sync({});
+    const sync = await cache.sync();
     const view = await cache.list({
       filters: sync.data.defaultFilters,
       keyword: "",
@@ -572,7 +579,7 @@ describe("ProofreadingCache", () => {
       workerClient: worker,
       reader: createProofreadingReader(),
     });
-    await cache.sync({});
+    await cache.sync();
     revisions.quality = 2;
 
     await cache.applyChange({
@@ -581,7 +588,7 @@ describe("ProofreadingCache", () => {
       }),
       sectionRevisions: revisions,
     });
-    await cache.sync({});
+    await cache.sync();
 
     expect(worker.run).toHaveBeenCalledTimes(2);
   });
@@ -622,7 +629,7 @@ it("页面修订号单独触发补读，滚动和文本增量复用页面与评�
     workerClient: worker,
     reader: createProofreadingReader(),
   });
-  const initial = await service.sync({});
+  const initial = await service.sync();
   const view = await service.list({
     filters: initial.data.defaultFilters,
     keyword: "",
@@ -633,14 +640,14 @@ it("页面修订号单独触发补读，滚动和文本增量复用页面与评�
   expect(view.data.window_rows).toMatchObject([{ kind: "page" }]);
   expect(view.data.row_count).toBe(1);
   revisions.pdf++;
-  const updated = await service.sync({});
+  const updated = await service.sync();
   await service.window({ view_id: view.data.view_id, start: 0, count: 10 });
   expect(updated.data.revisions.pdf).toBe(2);
   expect(worker.run).toHaveBeenCalledTimes(1);
   expect(readPages).toHaveBeenCalledTimes(2);
   revisions.items++;
   await service.applyChange({ ...create_delta_change(), sectionRevisions: revisions });
-  await service.sync({});
+  await service.sync();
   expect(readPages).toHaveBeenCalledTimes(2);
   expect(worker.run).toHaveBeenCalledTimes(1);
   revisions.quality++;
@@ -648,7 +655,7 @@ it("页面修订号单独触发补读，滚动和文本增量复用页面与评�
     ...create_delta_change({ updatedSections: ["quality"] }),
     sectionRevisions: revisions,
   });
-  await service.sync({});
+  await service.sync();
   expect(readPages).toHaveBeenCalledTimes(2);
   expect(worker.run).toHaveBeenCalledTimes(2);
   expect(
@@ -679,7 +686,7 @@ it("页面读取排队期间撤销同步，迟到页面不能恢复旧工程索�
     workerClient: create_worker(),
     reader,
   });
-  const sync = service.sync({});
+  const sync = service.sync();
   const rejected = expect(sync).rejects.toMatchObject({ code: "request.validation_failed" });
   await entered.promise;
   service.clearProject();
@@ -704,7 +711,7 @@ it("撤销同步后，迟到计算结果不能恢复旧工程索引", async () =
     workerClient: worker,
     reader,
   });
-  const sync = service.sync({});
+  const sync = service.sync();
   const rejected = expect(sync).rejects.toThrow();
   await service.clearProject();
   release();
@@ -742,7 +749,7 @@ it.each(["files", "items"] as const)(
       readPages: async () => [],
       appSettingService: create_settings(),
     });
-    const sync = service.sync({});
+    const sync = service.sync();
     const rejected = section === "items" ? expect(sync).rejects.toThrow() : null;
     revisions[section]++;
     files.mockReturnValue([
@@ -787,8 +794,8 @@ it("热同步响应的修订号绑定返回快照，不借用等待期间发生�
     readPages: async () => [],
     appSettingService: create_settings(),
   });
-  await service.sync({});
-  const pending = service.sync({});
+  await service.sync();
+  const pending = service.sync();
   revisions.files = 2;
   await service.applyChange({
     ...create_delta_change({ updatedSections: ["files"] }),
@@ -797,7 +804,7 @@ it("热同步响应的修订号绑定返回快照，不借用等待期间发生�
   const old = await pending;
   expect(old.data.revisions.files).toBe(1);
   expect(old.sectionRevisions.files).toBe(1);
-  const current = await service.sync({});
+  const current = await service.sync();
   expect(current.data.revisions.files).toBe(2);
   expect(current.sectionRevisions.files).toBe(2);
 });
