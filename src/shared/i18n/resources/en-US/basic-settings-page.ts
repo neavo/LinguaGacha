@@ -33,8 +33,40 @@ export const en_us_basic_settings_page = {
       description:
         "Maximum wait for a model reply, in seconds. The task fails if no reply arrives in time.",
     },
+    proxy: {
+      title: "Outbound Proxy",
+      description: "Applies to requests from translation, Agent and app updates",
+      protocol_label: "Protocol",
+      server_label: "Proxy server",
+      address_label: "Address",
+      port_label: "Port",
+      host_placeholder: "proxy.example.com",
+      server_description:
+        "Enter only the host name or IP, without http:// or port; wrap IPv6 in brackets, e.g. [::1]",
+      port_placeholder: "Port",
+      auth_label: "Authentication (optional)",
+      username_placeholder: "Username",
+      auth_description:
+        "The username and password are stored in plain text on this machine and apply only to this proxy",
+      password_placeholder: "Password",
+      save: "Save proxy settings",
+    },
   },
+  status: {
+    apply_failed:
+      "Proxy settings could not be applied; outbound requests use the system proxy: {REASON}",
+    manual_incomplete:
+      "The manual proxy is incomplete or invalid; outbound requests use the system proxy",
+    socks5_auth:
+      "SOCKS5 authentication is unavailable for app updates; updates will use the system proxy",
+  },
+
   feedback: {
+    proxy_host_invalid:
+      "The address is required and must not include http://, a port or spaces; use brackets for IPv6",
+    proxy_port_invalid: "Port must be an integer between 1 and 65535",
+    proxy_username_required: "Username is required when a password is set",
+    proxy_saved: "Proxy settings saved",
     request_timeout_invalid: "Request timeout must be a number within the valid range …",
     pick_directory_failed:
       "Directory selection failed. Please choose the fixed save directory again …",

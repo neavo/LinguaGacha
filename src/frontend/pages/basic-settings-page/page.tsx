@@ -1,18 +1,26 @@
-import { push_error_toast } from "@frontend/app/feedback/desktop-toast";
-import { type JSX, useEffect, useMemo, useState, type KeyboardEvent } from "react";
+import { push_error_toast, push_toast } from "@frontend/app/feedback/desktop-toast";
+import { type JSX, useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 
 import { parse_bounded_setting_number_draft } from "@frontend/features/settings-editor/setting-number-draft";
 import { useI18n } from "@frontend/app/locale/locale-context";
 import "@frontend/pages/basic-settings-page/basic-settings-page.css";
 import {
+  PROXY_MODE_LABEL_KEYS,
+  PROXY_MODE_OPTIONS,
+  PROXY_PROTOCOL_OPTIONS,
   PROJECT_SAVE_MODE_LABEL_KEYS,
   PROJECT_SAVE_MODE_OPTIONS,
   REQUEST_TIMEOUT_MAX,
   REQUEST_TIMEOUT_MIN,
   is_project_save_mode,
+  read_proxy_incomplete_field,
+  type ProxySettingValue,
 } from "@frontend/pages/basic-settings-page/types";
 import { ProjectLanguageSelect } from "@frontend/features/project-language/project-language-select";
 import { useBasicSettingsState } from "@frontend/pages/basic-settings-page/use-basic-settings-state";
+import { is_proxy_mode, is_proxy_protocol, is_same_proxy_setting } from "@domain/setting";
+import { AppButton } from "@frontend/widgets/app-button";
+import { Card, CardContent } from "@frontend/shadcn/card";
 import { Input } from "@frontend/shadcn/input";
 import { BooleanSegmentedToggle } from "@frontend/widgets/boolean-segmented-toggle";
 import { SettingCardRow } from "@frontend/widgets/setting-card-row/setting-card-row";
@@ -61,6 +69,70 @@ export function BasicSettingsPage(_props: BasicSettingsPageProps): JSX.Element {
       : t("basic_settings_page.fields.project_save_mode.description");
 
   const language_locked = basic_settings_state.language_locked;
+
+  // 代理手动字段整体提交：草稿在页面内保留，保存成功后才成为已保存配置。
+  const [proxy_draft, set_proxy_draft] = useState<ProxySettingValue>(() => {
+    return basic_settings_state.snapshot.proxy;
+  });
+  // 草稿仍等于上一份成功基线时视为没有用户编辑；外部快照变化可以安全覆盖草稿。
+  const proxy_baseline = useRef<ProxySettingValue>(basic_settings_state.snapshot.proxy);
+  const saved_proxy = basic_settings_state.snapshot.proxy;
+  const proxy_dirty = !is_same_proxy_setting(proxy_draft, saved_proxy);
+  const proxy_incomplete_field = read_proxy_incomplete_field(proxy_draft);
+  const saved_proxy_incomplete_field = read_proxy_incomplete_field(saved_proxy);
+
+  useEffect(() => {
+    if (!is_same_proxy_setting(proxy_draft, proxy_baseline.current)) return;
+    proxy_baseline.current = saved_proxy;
+    set_proxy_draft(saved_proxy);
+  }, [proxy_draft, saved_proxy]);
+
+  const proxy_mode_options = useMemo(() => {
+    return PROXY_MODE_OPTIONS.map((mode) => {
+      return { value: mode, label: t(PROXY_MODE_LABEL_KEYS[mode]) };
+    });
+  }, [t]);
+
+  const proxy_notices = useMemo(() => {
+    const notices: string[] = [];
+    const status = basic_settings_state.proxy_status;
+    if (status !== null && !status.applied) {
+      notices.push(
+        t("basic_settings_page.status.apply_failed", { REASON: status.failureReason ?? "" }),
+      );
+    }
+    if (saved_proxy_incomplete_field !== null) {
+      notices.push(t("basic_settings_page.status.manual_incomplete"));
+    }
+    if (
+      saved_proxy.mode === "manual" &&
+      saved_proxy.protocol === "SOCKS5" &&
+      saved_proxy.username !== ""
+    ) {
+      notices.push(t("basic_settings_page.status.socks5_auth"));
+    }
+    return notices;
+  }, [basic_settings_state.proxy_status, saved_proxy, saved_proxy_incomplete_field, t]);
+
+  /** 更新草稿字段；端口只接受数字，空值保留为 0 以便就地提示。 */
+  function update_proxy_draft(patch: Partial<ProxySettingValue>): void {
+    set_proxy_draft((previous) => ({ ...previous, ...patch }));
+  }
+
+  /** 校验通过后整体提交代理设置，失败时通用编辑器保留草稿并提示。 */
+  async function commit_proxy_draft(): Promise<void> {
+    if (proxy_incomplete_field !== null) {
+      return;
+    }
+
+    const saved = await basic_settings_state.save_proxy(proxy_draft);
+    if (saved !== null) {
+      // 后端会裁剪首尾空格；草稿以保存响应为准，避免一直停留在「有未保存修改」。
+      proxy_baseline.current = saved;
+      set_proxy_draft(saved);
+      push_toast("success", t("basic_settings_page.feedback.proxy_saved"));
+    }
+  }
 
   useEffect(() => {
     if (is_request_timeout_editing) {
@@ -213,6 +285,216 @@ export function BasicSettingsPage(_props: BasicSettingsPageProps): JSX.Element {
             </div>
           }
         />
+
+        <Card className="basic-settings-page__proxy-card">
+          <CardContent className="basic-settings-page__proxy-card-content">
+            <SettingCardRow
+              embedded
+              action_width="content"
+              title={t("basic_settings_page.fields.proxy.title")}
+              description={t("basic_settings_page.fields.proxy.description")}
+              action={
+                <Select
+                  items={proxy_mode_options}
+                  value={proxy_draft.mode}
+                  disabled={basic_settings_state.pending_state.proxy}
+                  onValueChange={(next_value) => {
+                    if (next_value !== null && is_proxy_mode(next_value)) {
+                      update_proxy_draft({ mode: next_value });
+                    }
+                  }}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectGroup>
+                      {proxy_mode_options.map((option) => (
+                        <SelectItem key={option.value} value={option.value}>
+                          {option.label}
+                        </SelectItem>
+                      ))}
+                    </SelectGroup>
+                  </SelectContent>
+                </Select>
+              }
+            />
+
+            {proxy_draft.mode === "manual" ? (
+              <>
+                <SettingCardRow
+                  embedded
+                  action_width="content"
+                  title={t("basic_settings_page.fields.proxy.server_label")}
+                  description={t("basic_settings_page.fields.proxy.server_description")}
+                  action={
+                    <div className="basic-settings-page__proxy-server">
+                      <Select
+                        items={PROXY_PROTOCOL_OPTIONS.map((protocol) => ({
+                          value: protocol,
+                          label: protocol,
+                        }))}
+                        value={proxy_draft.protocol}
+                        disabled={basic_settings_state.pending_state.proxy}
+                        onValueChange={(next_value) => {
+                          if (next_value !== null && is_proxy_protocol(next_value)) {
+                            update_proxy_draft({ protocol: next_value });
+                          }
+                        }}
+                      >
+                        <SelectTrigger
+                          aria-label={t("basic_settings_page.fields.proxy.protocol_label")}
+                        >
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectGroup>
+                            {PROXY_PROTOCOL_OPTIONS.map((protocol) => (
+                              <SelectItem key={protocol} value={protocol}>
+                                {protocol}
+                              </SelectItem>
+                            ))}
+                          </SelectGroup>
+                        </SelectContent>
+                      </Select>
+
+                      <Input
+                        className="basic-settings-page__proxy-host"
+                        value={proxy_draft.host}
+                        placeholder={t("basic_settings_page.fields.proxy.host_placeholder")}
+                        aria-label={t("basic_settings_page.fields.proxy.address_label")}
+                        aria-invalid={proxy_incomplete_field === "proxy.host" || undefined}
+                        aria-describedby={
+                          proxy_incomplete_field === "proxy.host"
+                            ? "basic-settings-proxy-host-error"
+                            : undefined
+                        }
+                        disabled={basic_settings_state.pending_state.proxy}
+                        onChange={(event) => {
+                          update_proxy_draft({ host: event.target.value });
+                        }}
+                      />
+
+                      <Input
+                        className="basic-settings-page__proxy-port"
+                        inputMode="numeric"
+                        value={proxy_draft.port === 0 ? "" : String(proxy_draft.port)}
+                        placeholder={t("basic_settings_page.fields.proxy.port_placeholder")}
+                        aria-label={t("basic_settings_page.fields.proxy.port_label")}
+                        aria-invalid={proxy_incomplete_field === "proxy.port" || undefined}
+                        aria-describedby={
+                          proxy_incomplete_field === "proxy.port"
+                            ? "basic-settings-proxy-port-error"
+                            : undefined
+                        }
+                        disabled={basic_settings_state.pending_state.proxy}
+                        onChange={(event) => {
+                          const digits = event.target.value.replace(/\D/gu, "");
+                          update_proxy_draft({ port: digits === "" ? 0 : Number(digits) });
+                        }}
+                      />
+                    </div>
+                  }
+                />
+
+                {proxy_incomplete_field === "proxy.host" ||
+                proxy_incomplete_field === "proxy.port" ? (
+                  <p
+                    id={
+                      proxy_incomplete_field === "proxy.host"
+                        ? "basic-settings-proxy-host-error"
+                        : "basic-settings-proxy-port-error"
+                    }
+                    className="basic-settings-page__proxy-field-error"
+                  >
+                    {t(
+                      proxy_incomplete_field === "proxy.host"
+                        ? "basic_settings_page.feedback.proxy_host_invalid"
+                        : "basic_settings_page.feedback.proxy_port_invalid",
+                    )}
+                  </p>
+                ) : null}
+
+                <SettingCardRow
+                  embedded
+                  action_width="content"
+                  title={t("basic_settings_page.fields.proxy.auth_label")}
+                  description={t("basic_settings_page.fields.proxy.auth_description")}
+                  action={
+                    <div className="basic-settings-page__proxy-server">
+                      <Input
+                        className="basic-settings-page__proxy-username"
+                        value={proxy_draft.username}
+                        placeholder={t("basic_settings_page.fields.proxy.username_placeholder")}
+                        aria-label={t("basic_settings_page.fields.proxy.username_placeholder")}
+                        aria-invalid={proxy_incomplete_field === "proxy.username" || undefined}
+                        aria-describedby={
+                          proxy_incomplete_field === "proxy.username"
+                            ? "basic-settings-proxy-username-error"
+                            : undefined
+                        }
+                        disabled={basic_settings_state.pending_state.proxy}
+                        onChange={(event) => {
+                          update_proxy_draft({ username: event.target.value });
+                        }}
+                      />
+
+                      <Input
+                        className="basic-settings-page__proxy-password"
+                        type="password"
+                        value={proxy_draft.password}
+                        placeholder={t("basic_settings_page.fields.proxy.password_placeholder")}
+                        aria-label={t("basic_settings_page.fields.proxy.password_placeholder")}
+                        autoComplete="off"
+                        disabled={basic_settings_state.pending_state.proxy}
+                        onChange={(event) => {
+                          update_proxy_draft({ password: event.target.value });
+                        }}
+                      />
+                    </div>
+                  }
+                />
+
+                {proxy_incomplete_field === "proxy.username" ? (
+                  <p
+                    id="basic-settings-proxy-username-error"
+                    className="basic-settings-page__proxy-field-error"
+                  >
+                    {t("basic_settings_page.feedback.proxy_username_required")}
+                  </p>
+                ) : null}
+              </>
+            ) : null}
+
+            {proxy_notices.length > 0 ? (
+              <div className="basic-settings-page__proxy-notices">
+                {proxy_notices.map((notice) => {
+                  return (
+                    <p key={notice} className="basic-settings-page__proxy-notice">
+                      {notice}
+                    </p>
+                  );
+                })}
+              </div>
+            ) : null}
+
+            <div className="basic-settings-page__proxy-actions">
+              <AppButton
+                size="sm"
+                disabled={
+                  !proxy_dirty ||
+                  proxy_incomplete_field !== null ||
+                  basic_settings_state.pending_state.proxy
+                }
+                onClick={() => {
+                  void commit_proxy_draft();
+                }}
+              >
+                {t("basic_settings_page.fields.proxy.save")}
+              </AppButton>
+            </div>
+          </CardContent>
+        </Card>
       </section>
     </div>
   );

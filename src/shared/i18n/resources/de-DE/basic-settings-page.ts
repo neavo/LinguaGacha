@@ -34,8 +34,40 @@ export const de_de_basic_settings_page = {
       description:
         "Maximale Antwortzeit in Sekunden. Ohne Antwort innerhalb dieser Frist gilt die Aufgabe als fehlgeschlagen.",
     },
+    proxy: {
+      title: "Ausgehender Proxy",
+      description: "Gilt für Anfragen aus Übersetzung, Agent und App-Updates",
+      protocol_label: "Protokoll",
+      server_label: "Proxy-Server",
+      address_label: "Adresse",
+      port_label: "Port",
+      host_placeholder: "proxy.example.com",
+      server_description:
+        "Nur Hostname oder IP eingeben, ohne http:// und Port; IPv6 in Klammern, z. B. [::1]",
+      port_placeholder: "Port",
+      auth_label: "Authentifizierung (optional)",
+      username_placeholder: "Benutzername",
+      auth_description:
+        "Benutzername und Passwort werden im Klartext auf diesem Rechner gespeichert und gelten nur für diesen Proxy",
+      password_placeholder: "Passwort",
+      save: "Proxy-Einstellungen speichern",
+    },
   },
+  status: {
+    apply_failed:
+      "Proxy-Einstellungen konnten nicht angewendet werden; Anfragen nutzen den Systemproxy: {REASON}",
+    manual_incomplete:
+      "Der manuelle Proxy ist unvollständig oder ungültig; Anfragen nutzen den Systemproxy",
+    socks5_auth:
+      "SOCKS5-Authentifizierung ist für App-Updates nicht verfügbar; Updates verwenden den Systemproxy",
+  },
+
   feedback: {
+    proxy_host_invalid:
+      "Die Adresse ist erforderlich und darf kein http://, keinen Port und keine Leerzeichen enthalten; IPv6 in Klammern",
+    proxy_port_invalid: "Der Port muss eine ganze Zahl zwischen 1 und 65535 sein",
+    proxy_username_required: "Benutzername ist erforderlich, wenn ein Passwort gesetzt ist",
+    proxy_saved: "Proxy-Einstellungen gespeichert",
     request_timeout_invalid:
       "Das Anfrage-Timeout muss eine Zahl innerhalb des gültigen Bereichs sein …",
     pick_directory_failed:

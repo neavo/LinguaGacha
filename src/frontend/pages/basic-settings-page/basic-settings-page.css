@@ -12,3 +12,55 @@
   display: flex;
   align-items: center;
 }
+
+.basic-settings-page__proxy-card-content {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ui-section-gap-dense);
+}
+
+.basic-settings-page__proxy-server {
+  display: flex;
+  align-items: center;
+  gap: var(--ui-list-gap-dense);
+}
+
+.basic-settings-page__proxy-host,
+.basic-settings-page__proxy-username {
+  width: 160px;
+}
+
+.basic-settings-page__proxy-port {
+  width: 80px;
+}
+
+.basic-settings-page__proxy-password {
+  width: 128px;
+}
+
+.basic-settings-page__proxy-notices {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.basic-settings-page__proxy-field-error {
+  margin: 0;
+  font-size: var(--ui-font-size-12);
+  line-height: 1.5;
+  color: var(--ui-failure);
+  text-align: end; /* 提示与右侧输入区对齐 */
+}
+
+.basic-settings-page__proxy-notice {
+  font-size: var(--ui-font-size-12);
+  line-height: 1.5;
+  color: var(--ui-warning);
+}
+
+.basic-settings-page__proxy-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--ui-list-gap-dense);
+}

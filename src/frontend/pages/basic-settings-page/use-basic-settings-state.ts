@@ -3,7 +3,7 @@ import {
   push_toast,
   run_modal_progress_toast,
 } from "@frontend/app/feedback/desktop-toast";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import {
   DEFAULT_PROJECT_LANGUAGE_SETTINGS,
@@ -17,18 +17,22 @@ import { useI18n } from "@frontend/app/locale/locale-context";
 import { useDesktopState, useRuntimeSnapshot } from "@frontend/app/state/use-desktop-state";
 import { is_runtime_busy } from "@frontend/app/state/runtime-activity-store";
 import { useSettingsEditor } from "@frontend/features/settings-editor/use-settings-editor";
+import type { AppSettingsResponse } from "@shared/settings";
+import type { AppProxyRuntimeStatus } from "@shared/proxy";
 import {
   REQUEST_TIMEOUT_MAX,
   REQUEST_TIMEOUT_MIN,
   build_basic_settings_snapshot,
   type BasicSettingsSnapshot,
   type ProjectSaveMode,
+  type ProxySettingValue,
 } from "@frontend/pages/basic-settings-page/types";
 
 const BASIC_SETTINGS_PENDING_FIELDS = [
   "project_save_mode",
   "output_folder_open_on_finish",
   "request_timeout",
+  "proxy",
 ] as const;
 
 const PROJECT_SETTINGS_UPDATE_OPERATION = "project.settings.update";
@@ -44,11 +48,13 @@ type UseBasicSettingsStateResult = {
   language_pending_state: Record<ProjectLanguageKey, boolean>;
   language_locked: boolean; // 未加载项目或运行中时不可修改项目语言
   runtime_locked: boolean;
+  proxy_status: AppProxyRuntimeStatus | null; // 首次读取完成前不提示降级
   update_source_language: (next_language: string) => Promise<void>;
   update_target_language: (next_language: string) => Promise<void>;
   update_project_save_mode: (next_mode: ProjectSaveMode) => Promise<void>;
   update_output_folder_open_on_finish: (next_checked: boolean) => Promise<void>;
   update_request_timeout: (next_value: number) => Promise<void>;
+  save_proxy: (next_value: ProxySettingValue) => Promise<ProxySettingValue | null>;
 };
 
 /**
@@ -72,6 +78,23 @@ export function useBasicSettingsState(): UseBasicSettingsStateResult {
   });
   const runtime_locked = project_snapshot.loaded && is_runtime_busy(runtime_snapshot);
   const language_locked = !project_snapshot.loaded || runtime_locked;
+
+  // 代理下发状态只属于运行期，随设置读取响应返回；保存响应不带该状态，成功后重新读取。
+  const [proxy_status, set_proxy_status] = useState<AppProxyRuntimeStatus | null>(null);
+
+  const refresh_proxy_status = useCallback(async (): Promise<void> => {
+    try {
+      const payload = await api_fetch<AppSettingsResponse>("/api/settings/app", {});
+      set_proxy_status(payload.proxyStatus);
+    } catch (error) {
+      push_error_toast(t("app.feedback.refresh_failed"), error);
+    }
+  }, [t]);
+
+  useEffect(() => {
+    void refresh_proxy_status();
+  }, [refresh_proxy_status]);
+
   // 保存期间由字段草稿覆盖项目快照，成功或失败恢复后交回已提交事实。
   const [language_draft, set_language_draft] = useState<
     Partial<Record<ProjectLanguageKey, string>>
@@ -192,6 +215,17 @@ export function useBasicSettingsState(): UseBasicSettingsStateResult {
     [commit_update, snapshot.request_timeout],
   );
 
+  /** 代理配置整体提交；保存成功返回后端归一后的配置，页面据此同步草稿。 */
+  const save_proxy = useCallback(
+    async (next_value: ProxySettingValue): Promise<ProxySettingValue | null> => {
+      const settings = await commit_update("proxy", { proxy: next_value });
+      if (settings === null) return null;
+      await refresh_proxy_status();
+      return settings.proxy;
+    },
+    [commit_update, refresh_proxy_status],
+  );
+
   return {
     snapshot,
     pending_state,
@@ -199,10 +233,12 @@ export function useBasicSettingsState(): UseBasicSettingsStateResult {
     language_pending_state,
     language_locked,
     runtime_locked,
+    proxy_status,
     update_source_language: (value) => update_language("source_language", value),
     update_target_language: (value) => update_language("target_language", value),
     update_project_save_mode,
     update_output_folder_open_on_finish,
     update_request_timeout,
+    save_proxy,
   };
 }

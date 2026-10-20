@@ -3,7 +3,9 @@ import { type ReactNode, act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { DEFAULT_PROXY_SETTING, type ProxySettingValue } from "@domain/setting";
 import { BasicSettingsPage } from "@frontend/pages/basic-settings-page/page";
+import type { AppProxyRuntimeStatus, ProxyProbeSummary } from "@shared/proxy";
 
 const { basic_settings_state_fixture, push_toast_mock } = vi.hoisted(() => {
   return {
@@ -70,21 +72,28 @@ function create_basic_settings_state_fixture() {
       project_fixed_path: "",
       output_folder_open_on_finish: false,
       request_timeout: 300,
+      proxy: { ...DEFAULT_PROXY_SETTING },
     },
     pending_state: {
       project_save_mode: false,
       output_folder_open_on_finish: false,
       request_timeout: false,
+      proxy: false,
     },
     languages: { source_language: "JA", target_language: "ZH" },
     language_pending_state: { source_language: false, target_language: false },
     language_locked: false,
     runtime_locked: false,
+    proxy_status: null as AppProxyRuntimeStatus | null,
+    proxy_probe: null as ProxyProbeSummary | null,
+    is_probing_proxy: false,
     update_source_language: vi.fn(async (_next_language: string) => {}),
     update_target_language: vi.fn(async (_next_language: string) => {}),
     update_project_save_mode: vi.fn(async (_next_mode: "MANUAL" | "FIXED" | "SOURCE") => {}),
     update_output_folder_open_on_finish: vi.fn(async (_next_checked: boolean) => {}),
     update_request_timeout: vi.fn(async (_next_value: number) => {}),
+    save_proxy: vi.fn(async (next_value: ProxySettingValue) => next_value),
+    probe_proxy: vi.fn(async () => {}),
   };
 }
 
@@ -144,6 +153,28 @@ describe("BasicSettingsPage", () => {
   }
 
   /** 在页面中定位超时输入，缺失时终止当前测试。 */
+  function get_button(label: string): HTMLButtonElement {
+    const button = [...(container?.querySelectorAll("button") ?? [])].find(
+      (candidate) => candidate.textContent === label,
+    );
+
+    if (!(button instanceof HTMLButtonElement)) {
+      throw new Error(`未找到按钮：${label}`);
+    }
+
+    return button;
+  }
+
+  function get_proxy_field(label: string): HTMLInputElement {
+    const input = container?.querySelector(`input[aria-label="${label}"]`);
+
+    if (!(input instanceof HTMLInputElement)) {
+      throw new Error(`未找到代理输入项：${label}`);
+    }
+
+    return input;
+  }
+
   function get_request_timeout_input(): HTMLInputElement {
     const input = container?.querySelector('input[type="number"]');
 
@@ -171,6 +202,177 @@ describe("BasicSettingsPage", () => {
 
     expect(get_current_basic_settings_state().update_request_timeout).toHaveBeenCalledTimes(1);
     expect(get_current_basic_settings_state().update_request_timeout).toHaveBeenCalledWith(1234);
+  });
+
+  it("没有用户编辑时跟随外部快照更新草稿", async () => {
+    const initial: ProxySettingValue = {
+      mode: "manual",
+      protocol: "HTTP",
+      host: "127.0.0.1",
+      port: 7890,
+      username: "",
+      password: "",
+    };
+    get_current_basic_settings_state().snapshot.proxy = initial;
+    await mount_page();
+
+    get_current_basic_settings_state().snapshot.proxy = { ...initial, host: "10.0.0.2" };
+    await act(async () => {
+      set_input_value(get_request_timeout_input(), "600");
+    });
+
+    expect(get_proxy_field("basic_settings_page.fields.proxy.address_label").value).toBe(
+      "10.0.0.2",
+    );
+    expect(get_button("basic_settings_page.fields.proxy.save").disabled).toBe(true);
+  });
+
+  it("保存成功后草稿采用后端裁剪后的配置", async () => {
+    const saved_proxy: ProxySettingValue = {
+      mode: "manual",
+      protocol: "HTTP",
+      host: "10.0.0.2",
+      port: 7890,
+      username: "",
+      password: "",
+    };
+    get_current_basic_settings_state().snapshot.proxy = saved_proxy;
+    get_current_basic_settings_state().save_proxy = vi.fn(async () => saved_proxy);
+    await mount_page();
+
+    await act(async () => {
+      set_input_value(
+        get_proxy_field("basic_settings_page.fields.proxy.address_label"),
+        " 10.0.0.2 ",
+      );
+    });
+
+    await act(async () => {
+      get_button("basic_settings_page.fields.proxy.save").click();
+      await Promise.resolve();
+    });
+
+    expect(get_proxy_field("basic_settings_page.fields.proxy.address_label").value).toBe(
+      "10.0.0.2",
+    );
+  });
+
+  it("手动代理整组提交草稿，改动前保存不可用", async () => {
+    get_current_basic_settings_state().snapshot.proxy = {
+      mode: "manual",
+      protocol: "HTTP",
+      host: "127.0.0.1",
+      port: 7890,
+      username: "",
+      password: "",
+    };
+    await mount_page();
+
+    expect(get_button("basic_settings_page.fields.proxy.save").disabled).toBe(true);
+
+    await act(async () => {
+      set_input_value(
+        get_proxy_field("basic_settings_page.fields.proxy.address_label"),
+        "10.0.0.2",
+      );
+    });
+
+    await act(async () => {
+      get_button("basic_settings_page.fields.proxy.save").click();
+      await Promise.resolve();
+    });
+
+    expect(get_current_basic_settings_state().save_proxy).toHaveBeenCalledExactlyOnceWith({
+      mode: "manual",
+      protocol: "HTTP",
+      host: "10.0.0.2",
+      port: 7890,
+      username: "",
+      password: "",
+    });
+    expect(push_toast_mock).toHaveBeenCalledWith(
+      "success",
+      "basic_settings_page.feedback.proxy_saved",
+    );
+  });
+
+  it("手动字段不完整时就地标记并禁止保存", async () => {
+    get_current_basic_settings_state().snapshot.proxy = {
+      mode: "manual",
+      protocol: "HTTP",
+      host: "",
+      port: 7890,
+      username: "",
+      password: "",
+    };
+    await mount_page();
+
+    expect(
+      get_proxy_field("basic_settings_page.fields.proxy.address_label").getAttribute(
+        "aria-invalid",
+      ),
+    ).toBe("true");
+    expect(container?.textContent).toContain("basic_settings_page.feedback.proxy_host_invalid");
+    expect(get_button("basic_settings_page.fields.proxy.save").disabled).toBe(true);
+  });
+
+  it("手动地址带协议前缀时给出同一条就地提示", async () => {
+    get_current_basic_settings_state().snapshot.proxy = {
+      mode: "manual",
+      protocol: "HTTP",
+      host: "http://127.0.0.1:7890",
+      port: 7890,
+      username: "",
+      password: "",
+    };
+    await mount_page();
+
+    expect(
+      get_proxy_field("basic_settings_page.fields.proxy.address_label").getAttribute(
+        "aria-invalid",
+      ),
+    ).toBe("true");
+    expect(container?.textContent).toContain("basic_settings_page.feedback.proxy_host_invalid");
+    expect(get_button("basic_settings_page.fields.proxy.save").disabled).toBe(true);
+  });
+
+  it("降级状态与 SOCKS5 认证限制显示为常驻提示", async () => {
+    get_current_basic_settings_state().snapshot.proxy = {
+      mode: "manual",
+      protocol: "SOCKS5",
+      host: "127.0.0.1",
+      port: 1080,
+      username: "user",
+      password: "pass",
+    };
+    get_current_basic_settings_state().proxy_status = {
+      applied: false,
+      effectiveMode: "system",
+      failureReason: "boom",
+    };
+    await mount_page();
+
+    expect(container?.textContent).toContain("basic_settings_page.status.apply_failed");
+    expect(container?.textContent).toContain("basic_settings_page.status.socks5_auth");
+  });
+
+  it("保存按钮收在代理卡片内", async () => {
+    get_current_basic_settings_state().snapshot.proxy = {
+      mode: "manual",
+      protocol: "HTTP",
+      host: "127.0.0.1",
+      port: 7890,
+      username: "",
+      password: "",
+    };
+    await mount_page();
+
+    const save_button = get_button("basic_settings_page.fields.proxy.save");
+    const card = save_button.closest('[data-slot="card"]');
+    expect(card).not.toBeNull();
+    expect(
+      card?.querySelector('input[aria-label="basic_settings_page.fields.proxy.address_label"]'),
+    ).not.toBeNull();
   });
 
   it("提交非法请求超时时间时标记红框并弹 toast", async () => {
