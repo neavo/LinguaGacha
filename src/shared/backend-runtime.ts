@@ -2,6 +2,7 @@ import type { PDFHostOperation } from "./pdf";
 import type { AgentImageHostOperation } from "./agent-image";
 import type { LogError, LogErrorContext } from "./error";
 import type { LocaleKey } from "./i18n";
+import type { ProxySettingValue } from "../domain/setting";
 
 /** Backend 启动完成后 main 创建窗口所需的最小可克隆快照。 */
 export type BackendRuntimeReady = Readonly<{
@@ -20,6 +21,7 @@ export type BackendRuntimeHostOperation =
   | PDFHostOperation
   | AgentImageHostOperation
   | { kind: "resolve_proxy"; url: string }
+  | { kind: "apply_proxy"; setting: ProxySettingValue } // mode 是生效模式，手动字段不完整时已降级为 system
   | { kind: "open_directory"; path: string }
   | { kind: "pick_save_path"; defaultName: string };
 

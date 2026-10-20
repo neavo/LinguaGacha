@@ -349,6 +349,7 @@ it("删除变更目录后继续执行技能、提交和重置", async () => {
     publishEvent: () => {},
     openOutputFolder: async () => {},
     workerExecution: { kind: "in_process" },
+    appProxyApplier: { apply: async () => {} },
   });
   try {
     await services.project.lifecycle.create_project_commit({

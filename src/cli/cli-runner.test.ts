@@ -15,10 +15,15 @@ const mocks = vi.hoisted(() => ({
   resolve_proxy: vi.fn(),
   dispose_resources: vi.fn(),
   dispose_services: vi.fn(),
+  apply_persisted_proxy: vi.fn(),
   run_cli_job: vi.fn(),
 }));
 
-const backend_services = { marker: "backend-services", dispose: mocks.dispose_services };
+const backend_services = {
+  marker: "backend-services",
+  app: { proxy: { apply_persisted: mocks.apply_persisted_proxy } },
+  dispose: mocks.dispose_services,
+};
 const backend_resources = {
   paths: { marker: "paths" },
   metadata: { marker: "metadata" },
@@ -29,7 +34,7 @@ const backend_resources = {
 };
 
 vi.mock("electron", () => ({
-  app: { whenReady: mocks.when_ready, getAppPath: () => "E:/app.asar" },
+  app: { whenReady: mocks.when_ready, getAppPath: () => "E:/app.asar", on: vi.fn(), off: vi.fn() },
   session: { defaultSession: { resolveProxy: mocks.resolve_proxy } },
 }));
 
@@ -70,6 +75,9 @@ beforeEach(() => {
   mocks.dispose_resources
     .mockReset()
     .mockImplementation(async () => mocks.events.push("dispose-resources"));
+  mocks.apply_persisted_proxy
+    .mockReset()
+    .mockImplementation(async () => mocks.events.push("apply-proxy"));
   mocks.run_cli_job.mockReset().mockImplementation(async () => mocks.events.push("job"));
 });
 
@@ -83,6 +91,7 @@ describe("run_cli_command", () => {
       "ready",
       "resources",
       "services",
+      "apply-proxy",
       "job",
       "dispose-services",
       "dispose-resources",

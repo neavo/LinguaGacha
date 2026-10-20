@@ -499,6 +499,7 @@ function create_options(app_root: string) {
       throw new Error("Unexpected image request");
     },
     systemProxyResolver: { resolveProxy: async () => "DIRECT" },
+    appProxyApplier: { apply: async () => undefined },
     workspaceRuntimeDirectory: create_workspace_runtime_fixture(app_root),
     openDirectory: async () => undefined,
     pickSavePath: async () => null,

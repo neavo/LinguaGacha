@@ -219,7 +219,10 @@ export function register_api_routes(context: ApiRouteContext): void {
   context.postJson("/api/toolbox/game-font/apply", (body) => services.files.gameFont.apply(body));
 
   const settings = services.app.settings;
-  context.postJson("/api/settings/app", () => settings.get_app_settings());
+  context.postJson("/api/settings/app", () => ({
+    ...settings.get_app_settings(),
+    proxyStatus: services.app.proxy.read_status(), // 降级状态只存在于运行期，由读取响应附带
+  }));
   context.postJson("/api/settings/update", (body) => services.app.updateSettings(body));
   context.postJson("/api/settings/recent-projects/add", (body) =>
     settings.add_recent_project(body),

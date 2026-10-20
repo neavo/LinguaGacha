@@ -1425,6 +1425,7 @@ it("PDF 零条目工程按页保存、隔离旧指纹，语言变化后重建工
     openOutputFolder: async () => {},
     pdfHost,
     workerExecution: { kind: "in_process" },
+    appProxyApplier: { apply: async () => {} },
   });
   try {
     resources.settings.set_transient_overrides({

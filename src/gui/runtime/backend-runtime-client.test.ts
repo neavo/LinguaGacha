@@ -334,6 +334,7 @@ function create_client(
       builtinRoot: "E:/app.asar/builtin",
       workspaceRuntimeDirectory: "E:/runtime",
       resolveProxy: resolve_proxy,
+      applyProxy: vi.fn(async () => undefined),
       openDirectory: open_directory,
       pickSavePath: pick_save_path,
       ...(pdfHost === undefined ? {} : { pdfHost }),

@@ -22,6 +22,7 @@ import {
   create_renderer_process_diagnostics_registry,
 } from "./shell/renderer-process-diagnostics";
 import { DesktopUpdateService } from "./shell/desktop-update-service";
+import { ElectronProxyHost } from "../native/electron-proxy-host";
 import { BackendRuntimeClient } from "./runtime/backend-runtime-client";
 
 export interface GuiEntryOptions {
@@ -76,6 +77,19 @@ export function run_gui_entry(options: GuiEntryOptions): void {
       app.isPackaged ? "build/dist/fonts" : "public/fonts",
     ),
   });
+  // Electron 的默认会话在 ready 之前不可读，宿主随 ready 创建并保持单实例。
+  let proxy_host: ElectronProxyHost | null = null;
+
+  /** 宿主端口只在 ready 后使用；缺失说明启动顺序被破坏。 */
+  function require_proxy_host(): ElectronProxyHost {
+    if (proxy_host === null) {
+      throw new AppErrors.AppError("runtime.internal_invariant", {
+        diagnostic_context: { reason: "proxy_host_not_ready" },
+      });
+    }
+    return proxy_host;
+  }
+
   const backend_runtime = new BackendRuntimeClient({
     workerEntryUrl: options.backendRuntimeWorkerEntryUrl,
     appRoot: app_root,
@@ -83,7 +97,9 @@ export function run_gui_entry(options: GuiEntryOptions): void {
     workspaceRuntimeDirectory: workspace_runtime_directory,
     pdfHost: pdf_host,
     imageHost: prepare_agent_image,
-    resolveProxy: (url) => session.defaultSession.resolveProxy(url),
+    // Chromium 栈与 undici 栈共用宿主持有的同一份已下发事实。
+    resolveProxy: (url) => require_proxy_host().resolve_proxy_rules(url),
+    applyProxy: (setting) => require_proxy_host().apply(setting),
     openDirectory: open_directory,
     pickSavePath: async (default_name) => {
       const result = await pick_save_path(win, null, default_name, []);
@@ -193,6 +209,8 @@ export function run_gui_entry(options: GuiEntryOptions): void {
         try {
           await backend_runtime.stop();
         } finally {
+          proxy_host?.dispose();
+          proxy_host = null;
           await pdf_host.dispose();
         }
         await launch_update?.();
@@ -231,6 +249,7 @@ export function run_gui_entry(options: GuiEntryOptions): void {
   // Electron ready 后才能启动 Backend 和创建窗口，保证 app API 与原生资源都已可用。
   app.whenReady().then(async () => {
     try {
+      proxy_host = new ElectronProxyHost(session.defaultSession);
       const backend_start_result = await backend_runtime.start();
       backend_ready = backend_start_result;
       desktop_update_service = new DesktopUpdateService({

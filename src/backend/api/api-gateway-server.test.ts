@@ -371,6 +371,7 @@ describe("ApiGatewayServer", () => {
       publishEvent: () => undefined,
       openOutputFolder: async () => undefined,
       workerExecution: IN_PROCESS_WORKER_EXECUTION,
+      appProxyApplier: { apply: async () => undefined },
     });
     const gateway = new ApiGatewayServer({
       backendServices: backend_services,

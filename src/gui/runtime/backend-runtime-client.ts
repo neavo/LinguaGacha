@@ -1,5 +1,6 @@
 import type { AgentImageHost } from "../../shared/agent-image";
 import type { PDFHost } from "../../shared/pdf";
+import type { AppProxyApplier } from "../../shared/proxy";
 import { randomUUID } from "node:crypto";
 import { Worker } from "node:worker_threads";
 
@@ -47,6 +48,7 @@ export class BackendRuntimeClient {
       pdfHost?: PDFHost;
       imageHost: AgentImageHost;
       resolveProxy: (url: string) => Promise<string>;
+      applyProxy: AppProxyApplier["apply"]; // 出站代理下发，Chromium 栈与 undici 栈共用同一份事实
       openDirectory: (path: string) => Promise<void>;
       pickSavePath: (defaultName: string) => Promise<string | null>;
       onUnexpectedExit: (error: Error) => void;
@@ -189,6 +191,10 @@ export class BackendRuntimeClient {
           break;
         case "resolve_proxy":
           data = await this.options.resolveProxy(operation.url);
+          break;
+        case "apply_proxy":
+          await this.options.applyProxy(operation.setting);
+          data = null;
           break;
         case "open_directory":
           data = await this.options.openDirectory(operation.path);

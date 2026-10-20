@@ -3,6 +3,7 @@ import type { AgentImageHostResult } from "../../shared/agent-image";
 
 import { normalize_app_language } from "../../domain/app-language";
 import { normalize_log_error, to_log_error, type LogError } from "../../shared/error";
+import type { AppProxyApplier } from "../../shared/proxy";
 import type {
   BackendRuntimeHostOperation,
   BackendRuntimeMainMessage,
@@ -86,6 +87,12 @@ export async function run_backend_runtime(args: {
     resolveProxy: async (url: string, signal?: AbortSignal) =>
       String(await call_host({ kind: "resolve_proxy", url }, signal)),
   };
+  // 下发与解析共用 main 的同一份已应用事实：下发失败时保持上一份路由。
+  const app_proxy_applier: AppProxyApplier = {
+    apply: async (setting) => {
+      await call_host({ kind: "apply_proxy", setting });
+    },
+  };
   const bootstrap = new GuiBackendBootstrap({
     imageHost: async (operation, signal) => {
       const result = (await call_host(operation, signal)) as AgentImageHostResult;
@@ -101,6 +108,7 @@ export async function run_backend_runtime(args: {
     appRoot: args.appRoot,
     builtinRoot: args.builtinRoot,
     systemProxyResolver: system_proxy_resolver,
+    appProxyApplier: app_proxy_applier,
     openDirectory: async (path) => {
       await call_host({ kind: "open_directory", path });
     },

@@ -244,6 +244,15 @@ describe("register_api_routes", () => {
     expect(fixture.summarize_source_files).toHaveBeenCalledWith(request);
   });
 
+  it("设置读取附带代理下发状态", () => {
+    const fixture = create_route_fixture();
+
+    expect(read_post_handler(fixture.post_json, "/api/settings/app")({})).toEqual({
+      settings: { app_language: "ZH" },
+      proxyStatus: { applied: true, effectiveMode: "manual", failureReason: null },
+    });
+  });
+
   it("设置更新只调用组合根提供的受保护写入口", () => {
     const fixture = create_route_fixture();
 
@@ -290,6 +299,12 @@ function create_route_fixture() {
   const stop = vi.fn(() => acknowledgement);
   const reset = vi.fn(async () => acknowledgement);
   const update_settings = vi.fn((request: JsonRecord) => ({ settings: request }));
+  const read_settings = vi.fn(() => ({ settings: { app_language: "ZH" } }));
+  const read_proxy_status = vi.fn(() => ({
+    applied: true,
+    effectiveMode: "manual" as const,
+    failureReason: null,
+  }));
   const select_model = vi.fn((request: JsonRecord) => ({ selected: request }));
   const copy_model = vi.fn();
   const source_file_summary = { source_file_count: 1, format_hit_counts: { txt: 1 } };
@@ -318,7 +333,12 @@ function create_route_fixture() {
   } as unknown as AgentService;
   const services = {
     modelCatalog: { get_snapshot: () => catalog_snapshot },
-    app: { metadata: {}, settings: {}, updateSettings: update_settings },
+    app: {
+      metadata: {},
+      settings: { get_app_settings: read_settings },
+      proxy: { read_status: read_proxy_status },
+      updateSettings: update_settings,
+    },
     project: {
       lifecycle: { summarize_source_files },
       summary: {},

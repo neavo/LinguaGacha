@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import {
   Agent,
   Dispatcher,
@@ -108,7 +109,7 @@ export class SystemProxyHttpClient {
   /** 按已解析路由返回直连池，或复用对应协议与地址的代理池。 */
   private resolve_dispatcher(route: SystemProxyRoute): Dispatcher {
     if (route.kind === "direct") return this.direct_dispatcher;
-    const key = `${route.kind}:${route.uri}`;
+    const key = build_proxy_dispatcher_key(route.kind, route.uri);
     const existing = this.proxy_dispatchers.get(key);
     if (existing !== undefined) return existing;
     const dispatcher =
@@ -116,6 +117,23 @@ export class SystemProxyHttpClient {
     this.proxy_dispatchers.set(key, dispatcher);
     return dispatcher;
   }
+}
+
+/**
+ * 代理池键复用同一代理地址；凭据只以指纹参与，连接池本身仍拿到完整 URI。
+ *
+ * 手动模式把用户名与密码放在路由 URI 里，dispatcher 需要原文完成认证，
+ * 但键会长期留在内存并可被诊断打印，因此去掉凭据原文，只留摘要区分。
+ */
+export function build_proxy_dispatcher_key(kind: "proxy" | "socks5", uri: string): string {
+  const target = new URL(uri);
+  if (target.username === "" && target.password === "") return `${kind}:${uri}`;
+  const fingerprint = createHash("sha256")
+    .update(`${target.username}\u0000${target.password}`)
+    .digest("hex");
+  target.username = "";
+  target.password = "";
+  return `${kind}:${target.toString()}#${fingerprint}`;
 }
 
 /** 按 Chromium 返回顺序选择首个可执行路由；只有显式 DIRECT 才允许直连。 */

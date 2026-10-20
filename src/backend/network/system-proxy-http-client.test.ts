@@ -46,7 +46,11 @@ vi.mock("undici", () => {
   };
 });
 
-import { SystemProxyHttpClient, parse_system_proxy_route } from "./system-proxy-http-client";
+import {
+  SystemProxyHttpClient,
+  build_proxy_dispatcher_key,
+  parse_system_proxy_route,
+} from "./system-proxy-http-client";
 import { with_http_response_info } from "./http-response-info";
 
 beforeEach(() => {
@@ -59,6 +63,10 @@ describe("system proxy route", () => {
   it.each([
     ["DIRECT", { kind: "direct" }],
     ["PROXY 127.0.0.1:7890", { kind: "proxy", uri: "http://127.0.0.1:7890/" }],
+    [
+      "PROXY user:pa%20ss@127.0.0.1:7890",
+      { kind: "proxy", uri: "http://user:pa%20ss@127.0.0.1:7890/" },
+    ],
     ["HTTPS proxy.example:443", { kind: "proxy", uri: "https://proxy.example/" }],
     ["SOCKS5 localhost:1080", { kind: "socks5", uri: "socks5://localhost:1080" }],
     ["SOCKS4 old:1080; DIRECT", { kind: "direct" }],
@@ -70,6 +78,41 @@ describe("system proxy route", () => {
     expect(() => parse_system_proxy_route("SOCKS4 old:1080")).toThrow(
       "System proxy returned no supported route.",
     );
+  });
+});
+
+describe("代理连接池键", () => {
+  it("无凭据路由沿用协议与完整地址", () => {
+    expect(build_proxy_dispatcher_key("proxy", "http://127.0.0.1:7890/")).toBe(
+      "proxy:http://127.0.0.1:7890/",
+    );
+  });
+
+  it("有凭据路由只保留凭据指纹，密码变更即换键", () => {
+    const key = build_proxy_dispatcher_key("proxy", "http://user:pa%20ss@127.0.0.1:7890/");
+
+    expect(key).toMatch(/^proxy:http:\/\/127\.0\.0\.1:7890\/#[0-9a-f]{64}$/);
+    expect(build_proxy_dispatcher_key("proxy", "http://user:pa%20ss@127.0.0.1:7890/")).toBe(key);
+    expect(build_proxy_dispatcher_key("proxy", "http://user:other@127.0.0.1:7890/")).not.toBe(key);
+  });
+
+  it("同一凭据复用代理池，凭据变更新建代理池", async () => {
+    const resolve_proxy = vi
+      .fn()
+      .mockResolvedValueOnce("PROXY user:secret@127.0.0.1:7890")
+      .mockResolvedValueOnce("PROXY user:secret@127.0.0.1:7890")
+      .mockResolvedValueOnce("PROXY user:rotated@127.0.0.1:7890");
+    const client = new SystemProxyHttpClient({ resolveProxy: resolve_proxy });
+
+    await client.fetch("https://api.example/a");
+    await client.fetch("https://api.example/b");
+    await client.fetch("https://api.example/c");
+
+    expect(mocks.proxy_dispatchers.map(({ uri }) => uri)).toEqual([
+      "http://user:secret@127.0.0.1:7890/",
+      "http://user:rotated@127.0.0.1:7890/",
+    ]);
+    await client.dispose();
   });
 });
 

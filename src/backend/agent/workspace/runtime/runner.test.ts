@@ -105,6 +105,27 @@ describe("AgentWorkspaceRunner", () => {
     expect(child.send).toHaveBeenCalledTimes(2);
   });
 
+  it("手动代理凭据随同一字符串下发到工作区子进程", async () => {
+    const { child, result } = await start_run(async () => "PROXY user:pa%20ss@127.0.0.1:7890");
+    child.emit("message", {
+      type: "request",
+      id: 1,
+      request: { kind: "resolve_proxy", url: "https://example.com/models" },
+    });
+    await vi.waitFor(() =>
+      expect(child.send).toHaveBeenCalledWith(
+        {
+          type: "response",
+          id: 1,
+          result: { ok: true, value: "PROXY user:pa%20ss@127.0.0.1:7890" },
+        },
+        expect.any(Function),
+      ),
+    );
+    child.emit("close", 0);
+    await result;
+  });
+
   it("父进程拒绝专用工程导出请求，不调用打印宿主", async () => {
     const host = vi.fn(async () => ({ path: "work/result.pdf" }));
     request = { ...request, host };

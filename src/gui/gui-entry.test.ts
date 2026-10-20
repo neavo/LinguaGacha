@@ -67,6 +67,7 @@ const mocks = vi.hoisted(() => {
     dispose_pdf,
     app_exit: vi.fn(),
     app_quit: vi.fn(),
+    app_ready: { value: false },
     resolve_proxy: vi.fn(async () => "DIRECT"),
     session_fetch: vi.fn(async () => new Response()),
     open_path: vi.fn(async () => ""),
@@ -89,13 +90,23 @@ vi.mock("electron", () => ({
     on: vi.fn((event: string, listener: (...args: unknown[]) => void) => {
       mocks.app_listeners.set(event, listener);
     }),
-    whenReady: vi.fn(() => Promise.resolve()),
+    off: vi.fn(),
+    whenReady: vi.fn(() => {
+      mocks.app_ready.value = true;
+      return Promise.resolve();
+    }),
     exit: mocks.app_exit,
     quit: mocks.app_quit,
   },
   BrowserWindow: { getAllWindows: vi.fn(() => []) },
   session: {
-    defaultSession: { fetch: mocks.session_fetch, resolveProxy: mocks.resolve_proxy },
+    get defaultSession() {
+      // 真实 Electron 在 ready 之前读取默认会话会抛错，mock 保持同一约束。
+      if (!mocks.app_ready.value) {
+        throw new TypeError("Session can only be received when app is ready");
+      }
+      return { fetch: mocks.session_fetch, resolveProxy: mocks.resolve_proxy };
+    },
   },
   shell: { openPath: mocks.open_path },
   dialog: { showSaveDialog: mocks.show_save_dialog },
@@ -133,6 +144,7 @@ vi.mock("./shell/renderer-process-diagnostics", () => ({
 
 describe("run_gui_entry", () => {
   beforeEach(() => {
+    mocks.app_ready.value = false;
     mocks.app_listeners.clear();
     mocks.backend_instances.length = 0;
     mocks.update_options.length = 0;

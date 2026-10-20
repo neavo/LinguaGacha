@@ -2,6 +2,7 @@ import { app, session } from "electron";
 import path from "node:path";
 import { resolve_workspace_runtime_directory } from "../native/workspace-runtime";
 
+import { ElectronProxyHost } from "../native/electron-proxy-host";
 import { BackendResources } from "../backend/bootstrap/backend-resources";
 import { BackendServices } from "../backend/bootstrap/backend-services";
 import { run_cli_job } from "./job/cli-job-runner";
@@ -19,12 +20,14 @@ export async function run_cli_command(
   worker_execution: BackendWorkerExecution,
 ): Promise<void> {
   await app.whenReady();
+  // CLI 与 GUI 共用同一份代理设置，也在首个任务前完成下发。
+  const proxy_host = new ElectronProxyHost(session.defaultSession);
   const resources = await BackendResources.start({
     appRoot: app_root,
     builtinRoot: path.join(app.getAppPath(), "builtin"),
     logTargets: { console: false, window: false },
     systemProxyResolver: {
-      resolveProxy: (url) => session.defaultSession.resolveProxy(url),
+      resolveProxy: (url) => proxy_host.resolve_proxy_rules(url),
     },
   });
   let services: BackendServices | null = null;
@@ -44,7 +47,9 @@ export async function run_cli_command(
         projectRoot: app_root,
       }),
       workerExecution: worker_execution,
+      appProxyApplier: { apply: async (setting) => await proxy_host.apply(setting) },
     });
+    await services.app.proxy.apply_persisted();
     await run_cli_job(
       services,
       command,
@@ -58,6 +63,7 @@ export async function run_cli_command(
   }
   await collect_failure(failures, async () => await services?.dispose());
   await collect_failure(failures, async () => await resources.dispose());
+  proxy_host.dispose();
   if (failures.length === 1) throw failures[0];
   if (failures.length > 1) {
     throw new AggregateError(failures, "CLI execution or Backend cleanup failed.");
