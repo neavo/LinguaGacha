@@ -72,6 +72,7 @@
   - [MTool 优化器](https://github.com/neavo/LinguaGacha/wiki/MToolOptimizer)　　[命令行模式](https://github.com/neavo/LinguaGacha/wiki/CLIMode)
 - 引擎实践
   - [高质量翻译 RenPy 引擎游戏的最佳实践](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForRenPy)
+  - [高质量翻译 Godot 引擎游戏的最佳实践](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForGodot)
   - [高质量翻译 WOLFRPG 引擎游戏的最佳实践](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForWOLFRPG)
   - [高质量翻译 RPGMAKER 引擎游戏的最佳实践](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForRPGMaker)
 - 社区经验
@@ -86,6 +87,7 @@
 - [RenPy](https://www.renpy.org) 导出游戏文本 `.rpy`
 - `KV-JSON` 游戏文本 `.json`，来源 [MTool](https://mtool.app) [SExtractor](https://github.com/satan53x/SExtractor)
 - `Message-JSON` 游戏文本 `.json`，来源 [SExtractor](https://github.com/satan53x/SExtractor) [VNTextPatch](https://github.com/arcusmaximus/VNTranslationTools)
+- `Godot 4` 游戏文件，支持导入游戏目录或 `.exe`
 - `WOLFRPG 3` 游戏文件，支持导入游戏目录或 `.exe`
 - `RPGMAKER MV/MZ` 游戏文件，支持导入游戏目录或 `.exe`
 - `RPGMAKER XP/VX/VXAce` 游戏文件，支持导入游戏目录或 `.exe`

@@ -72,6 +72,7 @@
   - [MTool 최적화 도구](https://github.com/neavo/LinguaGacha/wiki/MToolOptimizer)　　[명령줄 모드](https://github.com/neavo/LinguaGacha/wiki/CLIMode)
 - 엔진별 가이드
   - [RenPy 엔진 게임 고품질 번역 가이드](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForRenPy)
+  - [Godot 엔진 게임 고품질 번역 가이드](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForGodot)
   - [WOLFRPG 엔진 게임 고품질 번역 가이드](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForWOLFRPG)
   - [RPGMAKER 엔진 게임 고품질 번역 가이드](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForRPGMaker)
 - 커뮤니티 경험
@@ -86,6 +87,7 @@
 - [RenPy](https://www.renpy.org)로 내보낸 게임 텍스트 `.rpy`
 - `KV-JSON` 게임 텍스트 `.json`, 출처 [MTool](https://mtool.app) [SExtractor](https://github.com/satan53x/SExtractor)
 - `Message-JSON` 게임 텍스트 `.json`, 출처 [SExtractor](https://github.com/satan53x/SExtractor) [VNTextPatch](https://github.com/arcusmaximus/VNTranslationTools)
+- `Godot 4` 게임 파일: 게임 폴더 또는 `.exe` 가져오기
 - `WOLFRPG 3` 게임 파일: 게임 폴더 또는 `.exe` 가져오기
 - `RPGMAKER MV/MZ` 게임 파일: 게임 폴더 또는 `.exe` 가져오기
 - `RPGMAKER XP/VX/VXAce` 게임 파일: 게임 폴더 또는 `.exe` 가져오기

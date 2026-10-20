@@ -72,6 +72,7 @@
   - [MTool-Optimierer](https://github.com/neavo/LinguaGacha/wiki/MToolOptimizer)　　[Befehlszeilenmodus](https://github.com/neavo/LinguaGacha/wiki/CLIMode)
 - Engine-Praxis
   - [Bewährte Vorgehensweisen für hochwertige Übersetzungen von RenPy-Spielen](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForRenPy)
+  - [Bewährte Vorgehensweisen für hochwertige Übersetzungen von Godot-Spielen](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForGodot)
   - [Bewährte Vorgehensweisen für hochwertige Übersetzungen von WOLFRPG-Spielen](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForWOLFRPG)
   - [Bewährte Vorgehensweisen für hochwertige Übersetzungen von RPGMAKER-Spielen](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForRPGMaker)
 - Erfahrungen der Community
@@ -86,6 +87,7 @@
 - Mit [RenPy](https://www.renpy.org) exportierte Spieltexte `.rpy`
 - `KV-JSON`-Spieltexte `.json`, Quelle: [MTool](https://mtool.app) [SExtractor](https://github.com/satan53x/SExtractor)
 - `Message-JSON`-Spieltexte `.json`, Quelle: [SExtractor](https://github.com/satan53x/SExtractor) [VNTextPatch](https://github.com/arcusmaximus/VNTranslationTools)
+- `Godot 4`-Spieldateien: Spielverzeichnis oder `.exe` importieren
 - `WOLFRPG 3`-Spieldateien: Spielverzeichnis oder `.exe` importieren
 - `RPGMAKER MV/MZ`-Spieldateien: Spielverzeichnis oder `.exe` importieren
 - `RPGMAKER XP/VX/VXAce`-Spieldateien: Spielverzeichnis oder `.exe` importieren

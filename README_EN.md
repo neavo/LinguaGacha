@@ -76,6 +76,7 @@
   - [MTool Optimizer](https://github.com/neavo/LinguaGacha/wiki/MToolOptimizerEN)　　[CLI Mode](https://github.com/neavo/LinguaGacha/wiki/CLIModeEN)
 - Engine Best Practices
   - [Best Practices for High-Quality Translation of RenPy Engine Games](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForRenPyEN)
+  - [Best Practices for High-Quality Translation of Godot Engine Games](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForGodotEN)
   - [Best Practices for High-Quality Translation of WOLFRPG Engine Games](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForWOLFRPGEN)
   - [Best Practices for High-Quality Translation of RPGMAKER Engine Games](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForRPGMakerEN)
 - Community Notes
@@ -90,6 +91,7 @@
 - [RenPy](https://www.renpy.org) exports `.rpy`
 - `KV-JSON` game text `.json`, from [MTool](https://mtool.app) [SExtractor](https://github.com/satan53x/SExtractor)
 - `Message-JSON` game text `.json`, from [SExtractor](https://github.com/satan53x/SExtractor) [VNTextPatch](https://github.com/arcusmaximus/VNTranslationTools)
+- `Godot 4` game files: import the game directory or `.exe`
 - `WOLFRPG 3` game files: import the game directory or `.exe`
 - `RPGMAKER MV/MZ` game files: import the game directory or `.exe`
 - `RPGMAKER XP/VX/VXAce` game files: import the game directory or `.exe`

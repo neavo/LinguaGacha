@@ -75,6 +75,7 @@
   - [MTool Optimizer](https://github.com/neavo/LinguaGacha/wiki/MToolOptimizerEN)　　[CLI Mode](https://github.com/neavo/LinguaGacha/wiki/CLIModeEN)
 - Engine Best Practices
   - [Best Practices for High-Quality Translation of RenPy Engine Games](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForRenPyEN)
+  - [Best Practices for High-Quality Translation of Godot Engine Games](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForGodotEN)
   - [Best Practices for High-Quality Translation of WOLFRPG Engine Games](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForWOLFRPGEN)
   - [Best Practices for High-Quality Translation of RPGMAKER Engine Games](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForRPGMakerEN)
 - Community Notes
@@ -89,6 +90,7 @@
 - [RenPy](https://www.renpy.org) エクスポート `.rpy`
 - `KV-JSON` ゲームテキスト `.json`、出力元 [MTool](https://mtool.app) [SExtractor](https://github.com/satan53x/SExtractor)
 - `Message-JSON` ゲームテキスト `.json`、出力元 [SExtractor](https://github.com/satan53x/SExtractor) [VNTextPatch](https://github.com/arcusmaximus/VNTranslationTools)
+- `Godot 4` ゲームファイル：ゲームフォルダーまたは `.exe` をインポート
 - `WOLFRPG 3` ゲームファイル：ゲームフォルダーまたは `.exe` をインポート
 - `RPGMAKER MV/MZ` ゲームファイル：ゲームフォルダーまたは `.exe` をインポート
 - `RPGMAKER XP/VX/VXAce` ゲームファイル：ゲームフォルダーまたは `.exe` をインポート
