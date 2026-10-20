@@ -1,18 +1,10 @@
-import { stage_wolf_source } from "../../wolfrpg/prepare";
-import type { WolfSource } from "../../wolfrpg/source";
+import { GAME_ENGINES, type GameSource } from "./engines";
 import { Worker } from "node:worker_threads";
-import { stage_rpgmaker_source } from "../../rpgmaker-mv-mz/prepare";
-import type { RPGMakerSource } from "../../rpgmaker-mv-mz/source";
-import { stage_rgss_source } from "../../rpgmaker-rgss/prepare";
-import type { RGSSSource } from "../../rpgmaker-rgss/source";
 import type { GamePreparation } from "./prepare";
 import { default_native_fs, type NativeFs } from "../../../../native/native-fs";
 import type { LogError } from "../../../../shared/error";
 
-export type GamePrepareTask =
-  | Readonly<{ kind: "mv_mz"; game: RPGMakerSource; staging: string }>
-  | Readonly<{ kind: "rgss"; game: RGSSSource; staging: string }>
-  | Readonly<{ kind: "wolfrpg"; game: WolfSource; staging: string }>;
+export type GamePrepareTask = GameSource & Readonly<{ staging: string }>;
 export type GamePrepareResponse = { result: GamePreparation } | { error: LogError };
 export type GamePrepareExecution = (
   task: GamePrepareTask,
@@ -25,14 +17,7 @@ export function stage_game_source(
   fs: NativeFs,
   signal?: AbortSignal,
 ): Promise<GamePreparation> {
-  switch (task.kind) {
-    case "wolfrpg":
-      return stage_wolf_source(task, fs, signal);
-    case "mv_mz":
-      return stage_rpgmaker_source(task, fs, signal);
-    case "rgss":
-      return stage_rgss_source(task, fs, signal);
-  }
+  return GAME_ENGINES[task.file_type].stage(task, fs, signal);
 }
 
 /** 按次启动线程，取消时协作关闭文件句柄，退出后才交还暂存目录。 */

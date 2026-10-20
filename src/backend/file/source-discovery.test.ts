@@ -88,7 +88,7 @@ it("目录识别失败不会去重掉显式选择的正常散装入口", async (
   const selected = path.join(temp.path, "unpacked.exe");
   fs.writeFileSync(selected, "");
   const entries = await discover_sources([temp.path, selected], new NativeFs());
-  expect(entries.map((entry) => entry.source.kind)).toEqual(["failure", "mv_mz"]);
+  expect(entries.map((entry) => entry.source.kind)).toEqual(["failure", "game"]);
   expect(entries[1]!.source_path).toBe(selected);
 });
 

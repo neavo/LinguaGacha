@@ -7,6 +7,7 @@ import base_text_preserve_entries from "../../../builtin/text_preserve/preset/ba
 import kag_text_preserve_entries from "../../../builtin/text_preserve/preset/kag.json";
 import renpy_text_preserve_entries from "../../../builtin/text_preserve/preset/renpy.json";
 import rpgmaker_text_preserve_entries from "../../../builtin/text_preserve/preset/rpgmaker.json";
+import godot_text_preserve_entries from "../../../builtin/text_preserve/preset/godot.json";
 import wolf_text_preserve_entries from "../../../builtin/text_preserve/preset/wolf.json";
 
 export { normalize_text_preserve_mode };
@@ -33,6 +34,7 @@ const TEXT_PRESERVE_SMART_PATTERNS_BY_TEXT_TYPE = {
   RENPY: renpy_text_preserve_entries,
   RPGMAKER: rpgmaker_text_preserve_entries,
   WOLF: wolf_text_preserve_entries,
+  GODOT: godot_text_preserve_entries,
 } as const;
 
 /** 文本保护规则按源位置和规则顺序裁决正则候选，统一提供提取与替换操作。 */

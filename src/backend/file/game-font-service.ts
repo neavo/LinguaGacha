@@ -5,7 +5,8 @@ import type { JsonRecord } from "../../domain/json";
 import { AppError, read_error_message } from "../../shared/error";
 import type { RuntimeOperationGate } from "../runtime-operation-gate";
 import { read_font_family_names } from "./shared/game/font-name";
-import { replace_game_font, type GameFont, type GameFontSource } from "./shared/game/font-replace";
+import { GAME_ENGINES, type GameSource } from "./shared/game/engines";
+import { replace_game_font, type GameFont } from "./shared/game/font-replace";
 import type { GamePrepareExecution } from "./shared/game/prepare-worker";
 import { discover_source } from "./source-discovery";
 
@@ -66,10 +67,10 @@ export class GameFontService {
   }
 
   /** 沿用导入的游戏识别，只接受字体替换支持的引擎。 */
-  private async read_game(game_path: string, signal?: AbortSignal): Promise<GameFontSource> {
+  private async read_game(game_path: string, signal?: AbortSignal): Promise<GameSource> {
     const { source } = await discover_source(game_path, this.fs, signal);
     if (source.kind === "failure") throw source.error;
-    if (source.kind !== "wolfrpg" && source.kind !== "mv_mz")
+    if (source.kind !== "game" || !GAME_ENGINES[source.file_type].font_outputs)
       throw new AppError("file.invalid_structure", {
         message: "Unsupported game for font replacement: " + game_path,
       });

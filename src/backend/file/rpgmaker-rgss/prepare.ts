@@ -2,29 +2,8 @@ import path from "node:path";
 import type { NativeFs } from "../../../native/native-fs";
 import { type RGSSSource, RGSS_VERSIONS } from "./source";
 import { extract_rgss_member, read_rgss_archive } from "./archive";
-import type { GamePrepareExecution } from "../shared/game/prepare-worker";
-import { prepare_game_directory, type GamePreparation } from "../shared/game/prepare";
+import type { GamePreparation } from "../shared/game/prepare";
 import { assert_regular_path, validate_game_path } from "../source-file-paths";
-
-/** RGSS 提供解包写入与原封装删除清单，共享入口负责提交和回滚。 */
-export async function prepare_rgss_source(
-  game: RGSSSource,
-  fs: NativeFs,
-  execute?: GamePrepareExecution,
-  signal?: AbortSignal,
-): Promise<void> {
-  signal?.throwIfAborted();
-  if (!game.archive) return;
-  await prepare_game_directory(
-    game.root,
-    fs,
-    (staging) => {
-      const task = { kind: "rgss" as const, game, staging };
-      return execute ? execute(task, signal) : stage_rgss_source(task, fs, signal);
-    },
-    signal,
-  );
-}
 
 /** 解包循环只写暂存目录，正式目录事务由调用者持有。 */
 export async function stage_rgss_source(

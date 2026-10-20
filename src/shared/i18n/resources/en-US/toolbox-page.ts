@@ -6,7 +6,7 @@ export const en_us_toolbox_page = {
   entries: {
     game_font: {
       description:
-        "Supported engines:\n<emphasis>WOLF RPG 3</emphasis>\n<emphasis>RPG Maker MV/MZ</emphasis>",
+        "<emphasis>Godot 4</emphasis>\n<emphasis>WOLFRPG 3</emphasis>\n<emphasis>RPG Maker MV/MZ</emphasis>",
     },
   },
 } satisfies LocaleMessageSchema<typeof zh_cn_toolbox_page>;

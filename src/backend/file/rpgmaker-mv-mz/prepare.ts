@@ -1,48 +1,17 @@
+import { is_json_record } from "../../../domain/json";
 import { restore_evb_launcher } from "../shared/evb/pe";
 import path from "node:path";
 import type { NativeFs } from "../../../native/native-fs";
-import { is_json_record } from "../../../domain/json";
-import { prepare_game_directory, type GamePreparation } from "../shared/game/prepare";
+import type { GamePreparation } from "../shared/game/prepare";
 import {
   assert_regular_path,
   collect_existing_files,
   validate_game_path,
 } from "../source-file-paths";
 import { read_evb, extract_evb_member } from "../shared/evb/archive";
-import type { GamePrepareExecution, GamePrepareTask } from "../shared/game/prepare-worker";
 import { read_evb_game, type RPGMakerSource } from "./source";
 import { RPGMakerJsonCodec } from "./json-codec";
 import { decrypt_media, MEDIA_EXTENSIONS } from "./media";
-
-/**
- * 正式导入复核身份，转换全部完成后才允许修改游戏目录。
- * 同一游戏目录的不同 EVB 入口不能同时准备，以免展开结果互相覆盖。
- */
-export async function prepare_rpgmaker_source(
-  game: RPGMakerSource,
-  fs: NativeFs,
-  execute?: GamePrepareExecution,
-  signal?: AbortSignal,
-): Promise<string> {
-  signal?.throwIfAborted();
-  if (!game.executable) {
-    const system: unknown = JSON.parse(
-      new TextDecoder().decode(fs.read_file(path.join(game.data_root, "data/System.json"))),
-    );
-    if (!is_json_record(system)) throw new Error("Invalid MV/MZ System.json");
-    if (!system["hasEncryptedImages"] && !system["hasEncryptedAudio"]) return game.root;
-  }
-  await prepare_game_directory(
-    game.root,
-    fs,
-    (staging) => {
-      const task: GamePrepareTask = { kind: "mv_mz", game, staging };
-      return execute ? execute(task, signal) : stage_rpgmaker_source(task, fs, signal);
-    },
-    signal,
-  );
-  return game.root;
-}
 
 /** worker 只拥有暂存目录，来源目录中的文件始终只读。 */
 export async function stage_rpgmaker_source(

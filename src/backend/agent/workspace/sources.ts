@@ -1,4 +1,4 @@
-import { read_wolf_sources } from "../../file/wolfrpg/readable";
+import { GAME_ENGINES } from "../../file/shared/game/engines";
 import { is_game_file_type } from "../../../shared/project-source-formats";
 import {
   normalize_project_asset_path,
@@ -6,7 +6,6 @@ import {
 } from "../../../shared/project/project-asset-paths";
 import path from "node:path";
 import { GAME_FILES_MEMBER, read_game_container } from "../../file/shared/game/format";
-import { read_rgss_sources } from "../../file/rpgmaker-rgss/readable";
 import { read_zip_members } from "../../file/shared/zip-members";
 import type { NativeFs } from "../../../native/native-fs";
 
@@ -36,11 +35,8 @@ export async function write_agent_workspace_sources(args: {
           await game_files.async("uint8array"),
         );
       }
-      for await (const [name, bytes] of file.file_type === "WOLFRPG"
-        ? read_wolf_sources(members)
-        : file.file_type === "RPGMAKER_RGSS"
-          ? read_rgss_sources(members)
-          : read_member_bytes(members)) {
+      for await (const [name, bytes] of GAME_ENGINES[file.file_type].workspace_view?.(members) ??
+        read_member_bytes(members)) {
         names.add(name);
         await args.nativeFs.write_file(path.join(target, name), bytes);
       }
