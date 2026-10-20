@@ -22,13 +22,14 @@ export async function run_cli_command(
   await app.whenReady();
   // CLI 与 GUI 共用同一份代理设置，也在首个任务前完成下发。
   const proxy_host = new ElectronProxyHost(session.defaultSession);
+  const system_proxy_resolver = {
+    resolveProxy: (url: string) => proxy_host.resolve_proxy_rules(url),
+  };
   const resources = await BackendResources.start({
     appRoot: app_root,
     builtinRoot: path.join(app.getAppPath(), "builtin"),
     logTargets: { console: false, window: false },
-    systemProxyResolver: {
-      resolveProxy: (url) => proxy_host.resolve_proxy_rules(url),
-    },
+    systemProxyResolver: system_proxy_resolver,
   });
   let services: BackendServices | null = null;
   const failures: unknown[] = [];
@@ -47,7 +48,11 @@ export async function run_cli_command(
         projectRoot: app_root,
       }),
       workerExecution: worker_execution,
-      appProxyApplier: { apply: async (setting) => await proxy_host.apply(setting) },
+      appProxyHost: {
+        apply: async (setting) => await proxy_host.apply(setting),
+        probe: async (url) => await proxy_host.probe(url),
+      },
+      systemProxyResolver: system_proxy_resolver,
     });
     await services.app.proxy.apply_persisted();
     await run_cli_job(

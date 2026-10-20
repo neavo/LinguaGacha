@@ -100,6 +100,7 @@ export function run_gui_entry(options: GuiEntryOptions): void {
     // Chromium 栈与 undici 栈共用宿主持有的同一份已下发事实。
     resolveProxy: (url) => require_proxy_host().resolve_proxy_rules(url),
     applyProxy: (setting) => require_proxy_host().apply(setting),
+    probeProxy: (url) => require_proxy_host().probe(url),
     openDirectory: open_directory,
     pickSavePath: async (default_name) => {
       const result = await pick_save_path(win, null, default_name, []);

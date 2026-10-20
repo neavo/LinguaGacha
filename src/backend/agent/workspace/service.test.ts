@@ -64,6 +64,7 @@ import {
   workspace_execution,
   create_workspace_runtime_fixture,
 } from "../../../test/agent-workspace-fixture";
+import { create_app_proxy_host_fixture } from "../../../test/app-proxy-host-fixture";
 
 const VALID_WORKSPACE_SCRIPT = "console.log(null);";
 
@@ -1425,7 +1426,8 @@ it("PDF 零条目工程按页保存、隔离旧指纹，语言变化后重建工
     openOutputFolder: async () => {},
     pdfHost,
     workerExecution: { kind: "in_process" },
-    appProxyApplier: { apply: async () => {} },
+    appProxyHost: create_app_proxy_host_fixture(),
+    systemProxyResolver: { resolveProxy: async () => "DIRECT" },
   });
   try {
     resources.settings.set_transient_overrides({

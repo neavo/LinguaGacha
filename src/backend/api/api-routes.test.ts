@@ -103,6 +103,7 @@ const POST_PATHS = new Set([
   "/api/toolbox/game-font/apply",
   "/api/settings/app",
   "/api/settings/update",
+  "/api/settings/proxy/probe",
   "/api/settings/recent-projects/add",
   "/api/settings/recent-projects/remove",
   "/api/models/snapshot",
@@ -119,6 +120,17 @@ const POST_PATHS = new Set([
   "/api/batch-translation/stop",
   "/api/batch-translation/snapshot",
 ]);
+
+const probe_summary = {
+  translation: { ok: true, status: 204, elapsedMs: 12, route: null, failureReason: null },
+  updates: {
+    ok: true,
+    status: 200,
+    elapsedMs: 30,
+    route: "PROXY 127.0.0.1:7890",
+    failureReason: null,
+  },
+};
 
 describe("register_api_routes", () => {
   it("注册完整且无重复的公开路径，不锁定注册顺序", () => {
@@ -253,6 +265,14 @@ describe("register_api_routes", () => {
     });
   });
 
+  it("测试连接只读取已保存配置的两条链路", async () => {
+    const fixture = create_route_fixture();
+
+    await expect(
+      read_post_handler(fixture.post_json, "/api/settings/proxy/probe")({}),
+    ).resolves.toBe(probe_summary);
+  });
+
   it("设置更新只调用组合根提供的受保护写入口", () => {
     const fixture = create_route_fixture();
 
@@ -305,6 +325,7 @@ function create_route_fixture() {
     effectiveMode: "manual" as const,
     failureReason: null,
   }));
+  const probe_proxy_links = vi.fn(async () => probe_summary);
   const select_model = vi.fn((request: JsonRecord) => ({ selected: request }));
   const copy_model = vi.fn();
   const source_file_summary = { source_file_count: 1, format_hit_counts: { txt: 1 } };
@@ -336,7 +357,7 @@ function create_route_fixture() {
     app: {
       metadata: {},
       settings: { get_app_settings: read_settings },
-      proxy: { read_status: read_proxy_status },
+      proxy: { read_status: read_proxy_status, probe_links: probe_proxy_links },
       updateSettings: update_settings,
     },
     project: {

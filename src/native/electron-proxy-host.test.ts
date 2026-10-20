@@ -36,7 +36,11 @@ type LoginAnswer = {
 };
 
 /** 记录 setProxy 配置并固定系统规则的 session 替身。 */
-function create_session(system_rules = "DIRECT") {
+function create_session(
+  system_rules = "DIRECT",
+  fetch_impl: (url: string, init?: RequestInit) => Promise<Response> = async () =>
+    new Response(null, { status: 204 }),
+) {
   const applied_configs: Electron.ProxyConfig[] = [];
   const close_all_connections = vi.fn(async (): Promise<void> => {});
   const session = {
@@ -44,6 +48,7 @@ function create_session(system_rules = "DIRECT") {
       applied_configs.push(config);
     },
     resolveProxy: async (_url: string): Promise<string> => system_rules,
+    fetch: fetch_impl,
     closeAllConnections: close_all_connections,
   };
   return { session, applied_configs, close_all_connections };
@@ -124,6 +129,24 @@ describe("ElectronProxyHost", () => {
     expect(close_all_connections).toHaveBeenCalledOnce();
   });
 
+  it("路由解析不返回时探测仍按超时失败结算", async () => {
+    vi.useFakeTimers();
+    try {
+      const { session } = create_session();
+      session.resolveProxy = () => new Promise<string>(() => {});
+      const host = new ElectronProxyHost(session);
+
+      const pending = host.probe("https://api.github.com/zen");
+      await vi.advanceTimersByTimeAsync(5000);
+      const result = await pending;
+
+      expect(result.ok).toBe(false);
+      expect(result.route).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("手动凭据做 URI 编码后只进入 undici 路由", async () => {
     const { session, applied_configs } = create_session();
     const host = new ElectronProxyHost(session);
@@ -198,6 +221,39 @@ describe("ElectronProxyHost", () => {
     expect(
       raise_login({ isProxy: true, host: "127.0.0.1", port: 7890 } as Electron.AuthInfo).prevented,
     ).toBe(false);
+  });
+
+  it("探测回报宿主实际路由与响应状态", async () => {
+    const { session } = create_session("PROXY 10.0.0.1:8080");
+    const host = new ElectronProxyHost(session);
+
+    await host.apply(MANUAL_HTTP);
+
+    const result = await host.probe("https://api.github.com/zen");
+    expect(result).toMatchObject({
+      ok: true,
+      status: 204,
+      // 路由以宿主 resolveProxy 的回答为准，手动模式下即 Chromium 实际使用的规则。
+      route: "PROXY 10.0.0.1:8080",
+      failureReason: null,
+    });
+    expect(result.elapsedMs).toBeGreaterThanOrEqual(0);
+  });
+
+  it("探测失败保留路由与原因，不回退直连", async () => {
+    const { session } = create_session("PROXY 10.0.0.1:8080", async () => {
+      throw new Error("proxy connect ECONNREFUSED");
+    });
+    const host = new ElectronProxyHost(session);
+
+    await host.apply(MANUAL_HTTP);
+
+    await expect(host.probe("https://api.github.com/zen")).resolves.toMatchObject({
+      ok: false,
+      status: null,
+      route: "PROXY 10.0.0.1:8080",
+      failureReason: "proxy connect ECONNREFUSED",
+    });
   });
 
   it("SOCKS5 认证与直连不回答登录挑战", async () => {

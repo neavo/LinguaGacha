@@ -224,6 +224,7 @@ export function register_api_routes(context: ApiRouteContext): void {
     proxyStatus: services.app.proxy.read_status(), // 降级状态只存在于运行期，由读取响应附带
   }));
   context.postJson("/api/settings/update", (body) => services.app.updateSettings(body));
+  context.postJson("/api/settings/proxy/probe", () => services.app.proxy.probe_links());
   context.postJson("/api/settings/recent-projects/add", (body) =>
     settings.add_recent_project(body),
   );

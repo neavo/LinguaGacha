@@ -19,6 +19,7 @@ import { LogManager } from "../log/log-manager";
 import { ApiGatewayServer } from "./api-gateway-server";
 import { ApiStreamHub } from "./api-stream-hub";
 import { AppError } from "../../shared/error";
+import { create_app_proxy_host_fixture } from "../../test/app-proxy-host-fixture";
 
 const IN_PROCESS_WORKER_EXECUTION: BackendWorkerExecution = { kind: "in_process" };
 
@@ -371,7 +372,8 @@ describe("ApiGatewayServer", () => {
       publishEvent: () => undefined,
       openOutputFolder: async () => undefined,
       workerExecution: IN_PROCESS_WORKER_EXECUTION,
-      appProxyApplier: { apply: async () => undefined },
+      appProxyHost: create_app_proxy_host_fixture(),
+      systemProxyResolver: { resolveProxy: async () => "DIRECT" },
     });
     const gateway = new ApiGatewayServer({
       backendServices: backend_services,

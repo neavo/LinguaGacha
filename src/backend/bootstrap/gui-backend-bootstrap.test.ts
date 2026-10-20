@@ -19,6 +19,7 @@ import { GuiBackendBootstrap } from "./gui-backend-bootstrap";
 import { AppPathService } from "../app/app-path-service";
 import { LLMClient } from "../llm/llm-client";
 import { PiModelCatalog } from "../llm/pi-model-catalog";
+import { create_app_proxy_host_fixture } from "../../test/app-proxy-host-fixture";
 
 describe("GuiBackendBootstrap 集成", () => {
   let check_catalog: ReturnType<typeof vi.spyOn>;
@@ -499,7 +500,7 @@ function create_options(app_root: string) {
       throw new Error("Unexpected image request");
     },
     systemProxyResolver: { resolveProxy: async () => "DIRECT" },
-    appProxyApplier: { apply: async () => undefined },
+    appProxyHost: create_app_proxy_host_fixture(),
     workspaceRuntimeDirectory: create_workspace_runtime_fixture(app_root),
     openDirectory: async () => undefined,
     pickSavePath: async () => null,

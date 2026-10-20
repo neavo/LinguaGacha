@@ -208,7 +208,7 @@ describe("BackendRuntimeClient", () => {
   });
 
   it("把宿主回调结果送回 worker，并保留失败诊断", async () => {
-    const { client, resolve_proxy, open_directory, pick_save_path } = create_client();
+    const { client, resolve_proxy, probe_proxy, open_directory, pick_save_path } = create_client();
     pick_save_path.mockResolvedValueOnce("E:/结果.md");
     const start = client.start();
     const worker = get_worker();
@@ -222,6 +222,11 @@ describe("BackendRuntimeClient", () => {
     } satisfies BackendRuntimeWorkerMessage);
     worker.emit("message", {
       type: "host_request",
+      requestId: "probe-1",
+      operation: { kind: "probe_proxy", url: "https://api.github.com/zen" },
+    } satisfies BackendRuntimeWorkerMessage);
+    worker.emit("message", {
+      type: "host_request",
       requestId: "open-1",
       operation: { kind: "open_directory", path: "E:/output" },
     } satisfies BackendRuntimeWorkerMessage);
@@ -230,7 +235,7 @@ describe("BackendRuntimeClient", () => {
       requestId: "save-1",
       operation: { kind: "pick_save_path", defaultName: "结果.md" },
     } satisfies BackendRuntimeWorkerMessage);
-    await vi.waitFor(() => expect(worker.posted_messages).toHaveLength(3));
+    await vi.waitFor(() => expect(worker.posted_messages).toHaveLength(4));
     expect(pick_save_path).toHaveBeenCalledWith("结果.md");
     expect(worker.posted_messages).toContainEqual({
       type: "host_response",
@@ -239,11 +244,20 @@ describe("BackendRuntimeClient", () => {
     });
 
     expect(resolve_proxy).toHaveBeenCalledWith("https://example.com");
+    expect(probe_proxy).toHaveBeenCalledWith("https://api.github.com/zen");
     expect(open_directory).toHaveBeenCalledWith("E:/output");
     expect(worker.posted_messages).toContainEqual({
       type: "host_response",
       requestId: "proxy-1",
       result: { ok: true, data: "DIRECT" },
+    });
+    expect(worker.posted_messages).toContainEqual({
+      type: "host_response",
+      requestId: "probe-1",
+      result: {
+        ok: true,
+        data: { ok: true, status: 204, elapsedMs: 0, route: "DIRECT", failureReason: null },
+      },
     });
     expect(worker.posted_messages).toContainEqual({
       type: "host_response",
@@ -322,6 +336,13 @@ function create_client(
   },
 ) {
   const resolve_proxy = vi.fn(async () => "DIRECT");
+  const probe_proxy = vi.fn(async () => ({
+    ok: true,
+    status: 204,
+    elapsedMs: 0,
+    route: "DIRECT",
+    failureReason: null,
+  }));
   const open_directory = vi.fn(async () => {
     throw new Error("无法打开目录");
   });
@@ -335,6 +356,7 @@ function create_client(
       workspaceRuntimeDirectory: "E:/runtime",
       resolveProxy: resolve_proxy,
       applyProxy: vi.fn(async () => undefined),
+      probeProxy: probe_proxy,
       openDirectory: open_directory,
       pickSavePath: pick_save_path,
       ...(pdfHost === undefined ? {} : { pdfHost }),
@@ -342,6 +364,7 @@ function create_client(
       onUnexpectedExit: on_unexpected_exit,
     }),
     resolve_proxy,
+    probe_proxy,
     open_directory,
     pick_save_path,
     on_unexpected_exit,

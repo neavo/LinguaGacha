@@ -1,12 +1,14 @@
 import { app, type Session } from "electron";
 
 import { is_same_proxy_setting, type ProxySettingValue } from "../domain/setting";
+import { race_abort } from "../shared/abort";
+import type { ProxyProbeResult } from "../shared/proxy";
 
 /** Electron session 中出站代理需要的全部能力。 */
-type ProxySession = Pick<
-  Session,
-  "setProxy" | "resolveProxy" | "closeAllConnections"
->;
+type ProxySession = Pick<Session, "setProxy" | "resolveProxy" | "fetch" | "closeAllConnections">;
+
+/** 探测请求的固定短超时；不可达的代理不应让设置页长时间等待。 */
+const PROXY_PROBE_TIMEOUT_MS = 5000;
 
 /** 宿主登录挑战的监听签名，与 Electron 的 login 事件一致。 */
 type AppLoginListener = (
@@ -77,6 +79,45 @@ export class ElectronProxyHost {
     return build_undici_proxy_rules(applied);
   };
 
+  /**
+   * 按 Chromium 栈探测链路：先回报当前路由，再用同一 session 发一次请求。
+   *
+   * 超时用独立计时器结算，避免宿主未响应 `signal` 时永久等待；超时后不再等待
+   * 已发出的请求，结果只用于设置页提示。
+   */
+  public readonly probe = async (url: string): Promise<ProxyProbeResult> => {
+    const started_at = Date.now();
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), PROXY_PROBE_TIMEOUT_MS);
+    let route: string | null = null;
+    try {
+      // resolveProxy 不支持 signal；与 fetch 共用同一个超时上限。
+      route = await race_abort(this.session.resolveProxy(url), controller.signal);
+      const response = await this.session.fetch(url, {
+        method: "GET",
+        cache: "no-store",
+        signal: controller.signal,
+      });
+      return {
+        ok: response.ok,
+        status: response.status,
+        elapsedMs: Date.now() - started_at,
+        route,
+        failureReason: null,
+      };
+    } catch (error) {
+      return {
+        ok: false,
+        status: null,
+        elapsedMs: Date.now() - started_at,
+        route,
+        failureReason: read_failure_reason(error),
+      };
+    } finally {
+      clearTimeout(timer);
+    }
+  };
+
   /** 解除宿主监听；未释放的监听会跨进程存续。 */
   public dispose(): void {
     app.off("login", this.handle_login);
@@ -122,4 +163,9 @@ function build_undici_proxy_rules(setting: ProxySettingValue): string {
 function format_proxy_credentials(setting: ProxySettingValue): string {
   if (setting.username === "") return "";
   return `${encodeURIComponent(setting.username)}:${encodeURIComponent(setting.password)}@`;
+}
+
+/** 只保留错误文本；探测地址与代理配置都不含用户凭据。 */
+function read_failure_reason(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }

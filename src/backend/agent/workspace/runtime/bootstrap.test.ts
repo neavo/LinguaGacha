@@ -18,6 +18,7 @@ import { createPackage } from "@electron/asar";
 import { resolve_workspace_runtime_entry } from "../../../../native/workspace-runtime";
 import type { AgentWorkspaceRuntimeParentMessage } from "./protocol";
 import { AGENT_IMAGE_MAX_EDGE } from "../../../../shared/agent-image";
+import { create_app_proxy_host_fixture } from "../../../../test/app-proxy-host-fixture";
 
 const electron_path =
   process.env.LINGUAGACHA_TEST_ELECTRON ?? (createRequire(import.meta.url)("electron") as string);
@@ -349,7 +350,8 @@ it("删除变更目录后继续执行技能、提交和重置", async () => {
     publishEvent: () => {},
     openOutputFolder: async () => {},
     workerExecution: { kind: "in_process" },
-    appProxyApplier: { apply: async () => {} },
+    appProxyHost: create_app_proxy_host_fixture(),
+    systemProxyResolver: { resolveProxy: async () => "DIRECT" },
   });
   try {
     await services.project.lifecycle.create_project_commit({

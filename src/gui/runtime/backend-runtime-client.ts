@@ -1,6 +1,6 @@
 import type { AgentImageHost } from "../../shared/agent-image";
 import type { PDFHost } from "../../shared/pdf";
-import type { AppProxyApplier } from "../../shared/proxy";
+import type { AppProxyHost } from "../../shared/proxy";
 import { randomUUID } from "node:crypto";
 import { Worker } from "node:worker_threads";
 
@@ -48,7 +48,8 @@ export class BackendRuntimeClient {
       pdfHost?: PDFHost;
       imageHost: AgentImageHost;
       resolveProxy: (url: string) => Promise<string>;
-      applyProxy: AppProxyApplier["apply"]; // 出站代理下发，Chromium 栈与 undici 栈共用同一份事实
+      applyProxy: AppProxyHost["apply"]; // 出站代理下发，Chromium 栈与 undici 栈共用同一份事实
+      probeProxy: AppProxyHost["probe"]; // 按 Chromium 栈探测链路，只用于设置页测试连接
       openDirectory: (path: string) => Promise<void>;
       pickSavePath: (defaultName: string) => Promise<string | null>;
       onUnexpectedExit: (error: Error) => void;
@@ -195,6 +196,9 @@ export class BackendRuntimeClient {
         case "apply_proxy":
           await this.options.applyProxy(operation.setting);
           data = null;
+          break;
+        case "probe_proxy":
+          data = await this.options.probeProxy(operation.url);
           break;
         case "open_directory":
           data = await this.options.openDirectory(operation.path);

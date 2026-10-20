@@ -3,7 +3,7 @@ import type { AgentImageHostResult } from "../../shared/agent-image";
 
 import { normalize_app_language } from "../../domain/app-language";
 import { normalize_log_error, to_log_error, type LogError } from "../../shared/error";
-import type { AppProxyApplier } from "../../shared/proxy";
+import type { AppProxyHost, ProxyProbeResult } from "../../shared/proxy";
 import type {
   BackendRuntimeHostOperation,
   BackendRuntimeMainMessage,
@@ -88,9 +88,13 @@ export async function run_backend_runtime(args: {
       String(await call_host({ kind: "resolve_proxy", url }, signal)),
   };
   // 下发与解析共用 main 的同一份已应用事实：下发失败时保持上一份路由。
-  const app_proxy_applier: AppProxyApplier = {
+  const app_proxy_applier: AppProxyHost = {
     apply: async (setting) => {
       await call_host({ kind: "apply_proxy", setting });
+    },
+    probe: async (url) => {
+      const result = await call_host({ kind: "probe_proxy", url });
+      return result as ProxyProbeResult;
     },
   };
   const bootstrap = new GuiBackendBootstrap({
@@ -108,7 +112,7 @@ export async function run_backend_runtime(args: {
     appRoot: args.appRoot,
     builtinRoot: args.builtinRoot,
     systemProxyResolver: system_proxy_resolver,
-    appProxyApplier: app_proxy_applier,
+    appProxyHost: app_proxy_applier,
     openDirectory: async (path) => {
       await call_host({ kind: "open_directory", path });
     },

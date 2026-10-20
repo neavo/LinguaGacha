@@ -22,6 +22,7 @@ export type BackendRuntimeHostOperation =
   | AgentImageHostOperation
   | { kind: "resolve_proxy"; url: string }
   | { kind: "apply_proxy"; setting: ProxySettingValue } // mode 是生效模式，手动字段不完整时已降级为 system
+  | { kind: "probe_proxy"; url: string } // 按 Chromium 栈探测链路，结果含实际路由
   | { kind: "open_directory"; path: string }
   | { kind: "pick_save_path"; defaultName: string };
 

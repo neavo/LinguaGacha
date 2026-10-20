@@ -3,7 +3,7 @@ import { GameFontService } from "../file/game-font-service";
 import { configure_rgss_parser } from "../file/rpgmaker-rgss/ruby";
 import { configure_rpgmaker_parser } from "../file/rpgmaker-mv-mz/javascript";
 import type { SettingsUpdateResponse } from "../../shared/settings";
-import type { AppProxyApplier } from "../../shared/proxy";
+import type { AppProxyHost } from "../../shared/proxy";
 import { ProofreadingPagePreview } from "../proofreading/proofreading-page-preview";
 import { resolve_workspace_runtime_entry } from "../../native/workspace-runtime";
 import { pathToFileURL } from "node:url";
@@ -14,6 +14,7 @@ import { AppPathService } from "../app/app-path-service";
 import { AppProxyService } from "../app/app-proxy-service";
 import { AppSettingsCommandService } from "../app/app-settings-command-service";
 import { AppSettingService } from "../app/app-setting-service";
+import type { SystemProxyResolver } from "../network/system-proxy-http-client";
 import { CacheManager } from "../cache/cache-manager";
 import { ProjectDatabase } from "../database/database-operations";
 import { BatchTranslationRunner } from "../batch-translation/core/batch-translation-runner";
@@ -72,7 +73,8 @@ export interface BackendServicesOptions {
   publishEvent: (topic: string, payload: JsonRecord) => void; // 入口层选择公开传输或无输出；业务服务不依赖 SSE
   openOutputFolder: OutputFolderOpener; // GUI 专用副作用，CLI 注入空实现
   workerExecution: BackendWorkerExecution; // 入口层注入的 Backend worker 执行配置
-  appProxyApplier: AppProxyApplier; // 入口层注入的出站代理下发端口，GUI 走宿主操作，CLI 直接作用于本进程 session
+  appProxyHost: AppProxyHost; // 入口层注入的出站代理下发端口，GUI 走宿主操作，CLI 直接作用于本进程 session
+  systemProxyResolver: SystemProxyResolver; // 入口层注入的代理解析，翻译链路据此回报实际路由
 }
 
 /** GUI 扩展与共享业务服务必须引用同一组状态拥有者。 */
@@ -283,7 +285,11 @@ export class BackendServices {
         this.game_prepare_worker.run,
       ),
     };
-    const app_proxy = new AppProxyService(options.appProxyApplier, this.app_setting_service);
+    const app_proxy = new AppProxyService(
+      options.appProxyHost,
+      this.app_setting_service,
+      options.systemProxyResolver,
+    );
     const settings_commands = new AppSettingsCommandService(
       this.app_setting_service,
       this.runtime_gate,

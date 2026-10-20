@@ -78,8 +78,16 @@ async function create_service(
         applied_proxies.push(setting);
         await options.applyProxy?.(setting);
       },
+      probe: async () => ({
+        ok: true,
+        status: 204,
+        elapsedMs: 0,
+        route: null,
+        failureReason: null,
+      }),
     },
     settings,
+    { resolveProxy: async () => "DIRECT" },
   );
   return {
     service: new AppSettingsCommandService(settings, gate, session, content, proxy),
