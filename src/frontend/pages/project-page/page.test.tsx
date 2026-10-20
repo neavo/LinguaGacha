@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { LocaleProvider } from "@frontend/app/locale/locale-provider";
 import { ProjectPage } from "@frontend/pages/project-page/page";
+import { PROJECT_LANGUAGE_PREFERENCE_STORAGE_KEY } from "./project-language-preference";
 import { create_desktop_bridge_api_mock } from "../../../test/desktop-bridge-mock";
 
 const {
@@ -244,6 +245,7 @@ describe("ProjectPage", () => {
   let root: Root | null = null;
 
   beforeEach(() => {
+    window.localStorage.removeItem(PROJECT_LANGUAGE_PREFERENCE_STORAGE_KEY);
     desktop_runtime_fixture.current = create_desktop_runtime_fixture();
     install_desktop_app_fixture();
     window.requestAnimationFrame = (callback: FrameRequestCallback): number => {
@@ -280,6 +282,8 @@ describe("ProjectPage", () => {
     push_progress_toast_mock.mockClear();
     push_toast_mock.mockReset();
     update_progress_toast_mock.mockReset();
+    vi.restoreAllMocks();
+    window.localStorage.removeItem(PROJECT_LANGUAGE_PREFERENCE_STORAGE_KEY);
   });
 
   /** 使用真实中文 i18n 资源挂载项目页。 */
@@ -297,28 +301,44 @@ describe("ProjectPage", () => {
     });
   }
 
-  /** 复用公开交互完成一次源文件选择和工程创建。 */
-  async function create_project_from_selected_source(): Promise<void> {
-    if (container === null) {
-      throw new Error("项目页尚未挂载。");
-    }
-    const page_container = container;
-
-    await act(async () => {
-      get_button_by_text(page_container, "选择文件").click();
-    });
-
-    await act(async () => {
-      get_button_by_text(page_container, "创建工程").click();
-    });
-    await confirm_create_languages();
-  }
-
   /** 新建前的语言弹窗渲染在页面容器外，确认后继续创建。 */
   async function confirm_create_languages(): Promise<void> {
     await act(async () => {
       get_button_by_text(document.body, "确认").click();
     });
+  }
+
+  /** 销毁页面内存后重新进入，验证持久偏好的恢复。 */
+  async function remount_page(): Promise<void> {
+    await act(async () => root?.unmount());
+    container?.remove();
+    await mount_page();
+  }
+
+  /** 从来源选择入口打开语言弹窗。 */
+  async function open_create_languages(): Promise<void> {
+    await act(async () => get_button_by_text(container!, "选择文件").click());
+    await act(async () => get_button_by_text(container!, "创建工程").click());
+  }
+
+  /** 通过下拉替身的按钮选择场景指定的语言。 */
+  async function select_create_languages(source: string, target: string): Promise<void> {
+    await act(async () => {
+      get_button_by_text(document.body, `source_language:${source}`).click();
+      get_button_by_text(document.body, `target_language:${target}`).click();
+    });
+  }
+
+  /** 读取下拉替身展示的当前语言，供用户行为断言使用。 */
+  function read_create_languages() {
+    return {
+      source_language: document
+        .querySelector('[data-field="source_language"]')
+        ?.getAttribute("data-value"),
+      target_language: document
+        .querySelector('[data-field="target_language"]')
+        ?.getAttribute("data-value"),
+    };
   }
 
   it("保留预览文件顺序并用当前工程文件名记录最近打开", async () => {
@@ -383,7 +403,8 @@ describe("ProjectPage", () => {
   it("新建工程默认提交 stem.lg，并用后端真实路径写入最近工程", async () => {
     await mount_page();
 
-    await create_project_from_selected_source();
+    await open_create_languages();
+    await confirm_create_languages();
 
     expect(api_fetch_mock).toHaveBeenCalledWith(
       "/api/session/project/create",
@@ -424,38 +445,108 @@ describe("ProjectPage", () => {
     expect(container!.textContent).toContain("已选择 1 个源文件");
   });
 
-  it("确认后使用所选语言创建，创建失败保留语言选择以便重试", async () => {
+  it("确认后使用所选语言创建，成功后再次新建及重新挂载仍使用该组合", async () => {
     await mount_page();
-    api_fetch_mock.mockImplementation(async (path: string) => {
-      if (path === "/api/session/source-files/summary") {
-        return { source_file_count: 1, format_hit_counts: { txt: 1 } };
-      }
-      if (path === "/api/session/project/create") throw new Error("create failed");
-      return {};
-    });
-    await act(async () => {
-      get_button_by_text(container!, "选择文件").click();
-    });
-    await act(async () => {
-      get_button_by_text(container!, "创建工程").click();
-    });
-    await act(async () => {
-      get_button_by_text(document.body, "source_language:EN").click();
-      get_button_by_text(document.body, "target_language:KO").click();
-    });
+    await open_create_languages();
+    await select_create_languages("EN", "KO");
     await confirm_create_languages();
-    await act(async () => {
-      get_button_by_text(container!, "创建工程").click();
+
+    const languages = { source_language: "EN", target_language: "KO" };
+    expect(api_fetch_mock).toHaveBeenCalledWith(
+      "/api/session/project/create",
+      expect.objectContaining({ languages }),
+    );
+    await open_create_languages();
+    expect(read_create_languages()).toEqual(languages);
+    await act(async () => get_button_by_text(document.body, "取消").click());
+
+    await remount_page();
+    await open_create_languages();
+    expect(read_create_languages()).toEqual(languages);
+  });
+
+  it("取消语言弹窗保留本次草稿，重新挂载恢复此前确认值", async () => {
+    window.localStorage.setItem(
+      PROJECT_LANGUAGE_PREFERENCE_STORAGE_KEY,
+      JSON.stringify({
+        source_language: "KO",
+        target_language: "EN",
+      }),
+    );
+    await mount_page();
+    await open_create_languages();
+    expect(read_create_languages()).toEqual({ source_language: "KO", target_language: "EN" });
+    await select_create_languages("EN", "KO");
+    await act(async () => get_button_by_text(document.body, "取消").click());
+    await act(async () => get_button_by_text(container!, "创建工程").click());
+    expect(read_create_languages()).toEqual({ source_language: "EN", target_language: "KO" });
+    expect(api_fetch_mock).not.toHaveBeenCalledWith(
+      "/api/session/project/create",
+      expect.anything(),
+    );
+
+    await remount_page();
+    await open_create_languages();
+    expect(read_create_languages()).toEqual({ source_language: "KO", target_language: "EN" });
+  });
+
+  it("取消保存路径后保留已确认的语言，重新挂载仍可恢复", async () => {
+    desktop_runtime_fixture.current = create_desktop_runtime_fixture({
+      project_save_mode: "MANUAL",
+    });
+    await mount_page();
+    await open_create_languages();
+    await select_create_languages("EN", "KO");
+    await confirm_create_languages();
+
+    expect(window.desktopApp.pickProjectSavePath).toHaveBeenCalled();
+    expect(api_fetch_mock).not.toHaveBeenCalledWith(
+      "/api/session/project/create",
+      expect.anything(),
+    );
+    await act(async () => get_button_by_text(container!, "创建工程").click());
+    expect(read_create_languages()).toEqual({ source_language: "EN", target_language: "KO" });
+
+    await remount_page();
+    await open_create_languages();
+    expect(read_create_languages()).toEqual({ source_language: "EN", target_language: "KO" });
+  });
+
+  it("偏好写入失败时仍使用内存草稿创建工程", async () => {
+    await mount_page();
+    await open_create_languages();
+    await select_create_languages("EN", "KO");
+    vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+      throw new Error("quota exceeded");
     });
     await confirm_create_languages();
 
-    const create_calls = api_fetch_mock.mock.calls.filter(
-      ([path]) => path === "/api/session/project/create",
+    expect(api_fetch_mock).toHaveBeenCalledWith(
+      "/api/session/project/create",
+      expect.objectContaining({ languages: { source_language: "EN", target_language: "KO" } }),
     );
-    expect(create_calls).toHaveLength(2);
-    for (const [, body] of create_calls) {
-      expect(body).toMatchObject({ languages: { source_language: "EN", target_language: "KO" } });
-    }
+    expect(container!.textContent).toContain("点击或拖拽源文件");
+  });
+
+  it("确认后使用所选语言创建，失败后重试或重新挂载保留已确认选择", async () => {
+    await mount_page();
+    await open_create_languages();
+    await select_create_languages("EN", "KO");
+    api_fetch_mock.mockRejectedValueOnce(new Error("create failed"));
+    await confirm_create_languages();
+    api_fetch_mock.mockClear(); // 重试载荷必须来自后续请求。
+    await act(async () => {
+      get_button_by_text(container!, "创建工程").click();
+    });
+    expect(read_create_languages()).toEqual({ source_language: "EN", target_language: "KO" });
+    await remount_page();
+    await open_create_languages();
+    expect(read_create_languages()).toEqual({ source_language: "EN", target_language: "KO" });
+    await confirm_create_languages();
+    expect(api_fetch_mock).toHaveBeenCalledWith(
+      "/api/session/project/create",
+      expect.objectContaining({ languages: { source_language: "EN", target_language: "KO" } }),
+    );
   });
 
   it("打开工程直接请求后端，并按打开响应中的对齐摘要提示", async () => {

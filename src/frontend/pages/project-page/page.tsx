@@ -55,11 +55,12 @@ import {
   type ProjectSettingsAlignmentChangedFields,
   type ProjectSettingsAlignmentSettings,
 } from "@frontend/app/feedback/project-settings-alignment-feedback";
-import {
-  DEFAULT_PROJECT_LANGUAGE_SETTINGS,
-  type ProjectLanguageKey,
-} from "@domain/project-settings";
+import type { ProjectLanguageKey } from "@domain/project-settings";
 import { ProjectLanguageDialog } from "@frontend/pages/project-page/components/project-language-dialog";
+import {
+  read_project_language_preference,
+  save_project_language_preference,
+} from "@frontend/pages/project-page/project-language-preference";
 import { AppConfirmDialog } from "@frontend/widgets/app-alert-dialog";
 import { open_context_menu_at_click_position } from "@frontend/widgets/app-menu";
 import type { PathDropIssue } from "@frontend/widgets/file-drop-zone/use-path-drop";
@@ -502,9 +503,9 @@ export function ProjectPage(_props: ProjectPageProps): JSX.Element {
   const [is_opening_project, set_is_opening_project] = useState(false);
   const [is_language_dialog_open, set_is_language_dialog_open] = useState(false);
   // 新建语言草稿由项目页持有，取消或创建失败后保留本次选择。
-  const [create_languages, set_create_languages] = useState<ProjectLanguageDraft>({
-    ...DEFAULT_PROJECT_LANGUAGE_SETTINGS,
-  });
+  const [create_languages, set_create_languages] = useState<ProjectLanguageDraft>(
+    read_project_language_preference,
+  );
   const [missing_recent_project, set_missing_recent_project] =
     useState<MissingRecentProjectState>(null);
   const project_loading_toast_id_ref = useRef<string | number | null>(null);
@@ -728,12 +729,12 @@ export function ProjectPage(_props: ProjectPageProps): JSX.Element {
     set_is_language_dialog_open(true);
   }
 
-  /**
-   * 固定本次语言选择并继续创建。
-   */
+  /** 确认即保存偏好，再使用同一份语言快照创建工程。 */
   function confirm_language_dialog(): void {
+    const languages = { ...create_languages }; // 路径选择期间固定本次提交值。
+    save_project_language_preference(languages);
     set_is_language_dialog_open(false);
-    void handle_create_project({ ...create_languages });
+    void handle_create_project(languages);
   }
 
   /**
@@ -797,7 +798,6 @@ export function ProjectPage(_props: ProjectPageProps): JSX.Element {
       }
       clear_selected_source();
       clear_selected_project();
-      set_create_languages({ ...DEFAULT_PROJECT_LANGUAGE_SETTINGS });
     } catch (error) {
       const parse_failure_toast = format_source_file_parse_failure_error_toast(error);
       if (parse_failure_toast !== null) {
