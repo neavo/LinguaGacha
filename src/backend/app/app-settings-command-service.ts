@@ -1,4 +1,4 @@
-import type { SettingsUpdateResponse } from "../../shared/settings";
+import type { SettingsSnapshotResponse, SettingsUpdateResponse } from "../../shared/settings";
 import {
   Setting,
   is_agent_approval_mode,
@@ -16,16 +16,20 @@ import type { ProjectWriteResult } from "../../shared/project-event";
 import type { RuntimeOperationGate } from "../runtime-operation-gate";
 import type { ProjectSessionState } from "../project/project-session-state";
 import type { ProjectContentService } from "../project/project-content-service";
+import type { AppProxyService } from "./app-proxy-service";
 import type { AppSettingService } from "./app-setting-service";
 
 /** 设置命令拥有应用预过滤开关与当前工程同步的完整边界；持久化仍由各自服务负责。 */
 export class AppSettingsCommandService {
+  private proxy_save: Promise<unknown> = Promise.resolve(); // 代理下发与落盘按到达顺序整体串行
+
   /** 复用应用设置、工程身份与唯一写入口。 */
   public constructor(
     private readonly settings: AppSettingService, // 应用配置持久化拥有者
     private readonly gate: RuntimeOperationGate, // 持有准备、提交与补偿的完整写租约
     private readonly session: ProjectSessionState, // 当前工程的权威身份
     private readonly content: ProjectContentService, // 工程设置和预过滤的准备与提交入口
+    private readonly proxy: AppProxyService, // 出站代理下发与运行期状态
   ) {}
 
   /** 保存用户修改；涉及已加载工程时统一完成同步与失败补偿。 */
@@ -43,7 +47,7 @@ export class AppSettingsCommandService {
       !this.session.snapshot().loaded ||
       !APP_PREFILTER_SETTING_KEYS.some((key) => Object.hasOwn(request, key))
     ) {
-      return { ...this.settings.update_app_settings(request), accepted: true, changes: [] };
+      return { ...(await this.write_settings(request)), accepted: true, changes: [] };
     }
     return await this.gate.run_project_write(async () => {
       const before = this.settings.read_setting();
@@ -57,7 +61,7 @@ export class AppSettingsCommandService {
         (key) => next_snapshot[key] !== previous_snapshot[key],
       );
       if (changed_project_keys.length === 0)
-        return { ...this.settings.update_app_settings(request), accepted: true, changes: [] };
+        return { ...(await this.write_settings(request)), accepted: true, changes: [] };
 
       // 项目语言由项目持有，预过滤读取项目语言并只采用新的应用开关。
       const commit = await this.content.prepare_prefilter_settings(
@@ -70,7 +74,7 @@ export class AppSettingsCommandService {
       for (const key of changed_keys) rollback[key] = before[key] ?? null;
 
       // 先保存配置，工程失败时只补偿本次字段。事件等两个存储完成后发布。
-      this.settings.update_app_settings(request, false);
+      await this.write_settings(request, false);
       let result: ProjectWriteResult;
       try {
         result = await commit();
@@ -79,7 +83,7 @@ export class AppSettingsCommandService {
           this.publish_committed_settings(changed_keys, error);
         } else {
           try {
-            this.settings.update_app_settings(rollback, false);
+            await this.write_settings(rollback, false);
           } catch (rollback_error) {
             throw new AggregateError(
               [error, rollback_error],
@@ -95,6 +99,40 @@ export class AppSettingsCommandService {
         ...result,
       };
     });
+  }
+
+  /**
+   * 应用级设置写入：代理字段先下发到宿主，再落盘；落盘失败回滚到上一份配置。
+   *
+   * 其它字段保持原有同步写入。代理整体串行，连续保存按到达顺序应用，最后一次为准。
+   */
+  private async write_settings(
+    request: JsonRecord,
+    publish = true,
+  ): Promise<SettingsSnapshotResponse> {
+    if (!Object.hasOwn(request, "proxy")) {
+      return this.settings.update_app_settings(request, publish);
+    }
+    return await this.run_serialized(async () => {
+      const previous = this.settings.read_setting()["proxy"];
+      await this.proxy.apply_or_throw(request["proxy"]);
+      try {
+        return this.settings.update_app_settings(request, publish);
+      } catch (error) {
+        await this.proxy.revert(previous, error); // 恢复失败时抛出并保留落盘原因
+        throw error;
+      }
+    });
+  }
+
+  /** 代理配置必须先下发、后落盘，串行避免两份保存交错成「文件与出站不一致」。 */
+  private async run_serialized<T>(operation: () => Promise<T>): Promise<T> {
+    const result = this.proxy_save.then(operation, operation);
+    this.proxy_save = result.then(
+      () => undefined,
+      () => undefined,
+    );
+    return await result;
   }
 
   /** 两个存储已完成，通知失败保留 committed 语义与原始故障。 */

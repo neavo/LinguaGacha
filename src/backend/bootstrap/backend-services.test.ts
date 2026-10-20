@@ -131,9 +131,12 @@ describe("BackendServices", () => {
     await expect(services.app.updateSettings({ app_language: "ZH" })).resolves.toMatchObject({
       settings: { app_language: "ZH" },
     });
-    expect(options.appSettingService.update_app_settings).toHaveBeenCalledWith({
-      app_language: "ZH",
-    });
+    expect(options.appSettingService.update_app_settings).toHaveBeenCalledWith(
+      {
+        app_language: "ZH",
+      },
+      true,
+    );
     services.state.runtimeGate.finish_runtime(lease);
     await services.dispose();
   });

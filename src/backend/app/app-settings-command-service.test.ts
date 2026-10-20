@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { AppPathService } from "./app-path-service";
+import { AppProxyService } from "./app-proxy-service";
 import { AppSettingService } from "./app-setting-service";
 import { AppSettingsCommandService } from "./app-settings-command-service";
 import { ProjectDatabase, ProjectDatabaseAccess } from "../database/database-operations";
@@ -13,7 +14,7 @@ import { get_section_revision } from "../project/project-data-reader";
 import { ProjectContentService } from "../project/project-content-service";
 import { RuntimeOperationGate } from "../runtime-operation-gate";
 import type { JsonRecord } from "../../domain/json";
-import type { ProxySettingValue } from "../../domain/setting";
+import { DEFAULT_PROXY_SETTING, type ProxySettingValue } from "../../domain/setting";
 
 const cleanup: Array<() => void> = [];
 afterEach(() => {
@@ -31,7 +32,9 @@ const MANUAL_PROXY: ProxySettingValue = {
 };
 
 /** 配置和 .lg 使用真实存储，故障只注入提交与发布边界。 */
-async function create_service() {
+async function create_service(
+  options: { applyProxy?: (setting: ProxySettingValue) => Promise<void> } = {},
+) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "lg-settings-command-"));
   const database = new ProjectDatabase();
   cleanup.push(async () => {
@@ -68,8 +71,18 @@ async function create_service() {
     create_pdf_execution(),
     settings,
   );
+  const applied_proxies: ProxySettingValue[] = [];
+  const proxy = new AppProxyService(
+    {
+      apply: async (setting) => {
+        applied_proxies.push(setting);
+        await options.applyProxy?.(setting);
+      },
+    },
+    settings,
+  );
   return {
-    service: new AppSettingsCommandService(settings, gate, session, content),
+    service: new AppSettingsCommandService(settings, gate, session, content, proxy),
     settings,
     session,
     gate,
@@ -77,6 +90,7 @@ async function create_service() {
     project_path,
     on_commit,
     publish,
+    applied_proxies,
   };
 }
 
@@ -221,24 +235,47 @@ describe("AppSettingsCommandService", () => {
     },
   );
 
-  it("代理字段非法时拒绝保存，设置文件保持不变", async () => {
+  it("代理设置先下发再落盘", async () => {
     const f = await create_service();
-    const before = f.settings.read_setting();
 
-    await expect(f.service.update({ proxy: { ...MANUAL_PROXY, host: "" } })).rejects.toMatchObject({
-      code: "request.validation_failed",
-      public_details: { field: "proxy.host" },
+    await expect(f.service.update({ proxy: MANUAL_PROXY })).resolves.toMatchObject({
+      accepted: true,
+      changes: [],
     });
-    await expect(
-      f.service.update({ proxy: { ...MANUAL_PROXY, protocol: "SOCKS4" } }),
-    ).rejects.toMatchObject({
-      code: "request.validation_failed",
-      public_details: { field: "proxy.protocol" },
+    expect(f.applied_proxies).toEqual([MANUAL_PROXY]);
+    expect(f.settings.read_setting()["proxy"]).toEqual(MANUAL_PROXY);
+  });
+
+  it("落盘失败时回滚已下发的代理配置", async () => {
+    const f = await create_service();
+    vi.spyOn(AppSettingService.prototype, "update_app_settings").mockImplementationOnce(() => {
+      throw new Error("config write failure");
     });
-    await expect(f.service.update({ proxy: "manual" })).rejects.toMatchObject({
-      code: "request.validation_failed",
-      public_details: { field: "proxy" },
+
+    await expect(f.service.update({ proxy: MANUAL_PROXY })).rejects.toThrow("config write failure");
+
+    // 第一次是本次下发，第二次是回滚到上一份跟随系统配置。
+    expect(f.applied_proxies).toEqual([MANUAL_PROXY, DEFAULT_PROXY_SETTING]);
+    expect(f.settings.read_setting()["proxy"]).toMatchObject({ mode: "system" });
+  });
+
+  it("连续保存代理设置串行下发，以最后一次为准", async () => {
+    const gates: Array<() => void> = [];
+    const f = await create_service({
+      applyProxy: async () => await new Promise<void>((resolve) => gates.push(resolve)),
     });
-    expect(f.settings.read_setting()).toEqual(before);
+
+    const first = f.service.update({ proxy: MANUAL_PROXY });
+    const second = f.service.update({ proxy: { ...MANUAL_PROXY, port: 1080 } });
+    await vi.waitFor(() => expect(f.applied_proxies).toHaveLength(1));
+    expect(f.applied_proxies[0]).toMatchObject({ port: 7890 });
+
+    gates.shift()?.();
+    await vi.waitFor(() => expect(f.applied_proxies).toHaveLength(2));
+    expect(f.applied_proxies[1]).toMatchObject({ port: 1080 });
+    gates.shift()?.();
+    await Promise.all([first, second]);
+
+    expect(f.settings.read_setting()["proxy"]).toMatchObject({ port: 1080 });
   });
 });

@@ -43,6 +43,16 @@ export class AppProxyService {
     }
   }
 
+  /** 落盘失败时恢复上一份配置；恢复失败同时保留落盘原因与恢复原因。 */
+  public async revert(previous: unknown, failure: unknown): Promise<void> {
+    try {
+      await this.apply(previous);
+    } catch (error) {
+      this.status = { ...this.status, failureReason: read_failure_reason(error) };
+      throw new AggregateError([failure, error], "Failed to restore the previous outbound proxy.");
+    }
+  }
+
   /** 读取下发状态；未下发时按跟随系统出站。 */
   public read_status(): AppProxyRuntimeStatus {
     return this.status;

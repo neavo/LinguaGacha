@@ -283,17 +283,19 @@ export class BackendServices {
         this.game_prepare_worker.run,
       ),
     };
+    const app_proxy = new AppProxyService(options.appProxyApplier, this.app_setting_service);
     const settings_commands = new AppSettingsCommandService(
       this.app_setting_service,
       this.runtime_gate,
       session_state,
       this.project.content,
+      app_proxy,
     );
     this.app = {
       paths,
       metadata,
       settings: this.app_setting_service,
-      proxy: new AppProxyService(options.appProxyApplier, this.app_setting_service),
+      proxy: app_proxy,
       updateSettings: (request) => settings_commands.update(request),
     };
     this.proofreading = {
