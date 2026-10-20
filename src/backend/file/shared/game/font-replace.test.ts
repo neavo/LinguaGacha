@@ -1,3 +1,4 @@
+import type { GameSource } from "./engines";
 import { FileFormatService } from "../../file-format-service";
 import fs from "node:fs";
 import os from "node:os";
@@ -13,7 +14,7 @@ import { discover_rpgmaker_source } from "../../rpgmaker-mv-mz/source";
 import { read_wolf_game } from "../../wolfrpg/game-data";
 import { discover_wolf_source } from "../../wolfrpg/source";
 import { read_font_family_names } from "./font-name";
-import { replace_game_font, type GameFontSource } from "./font-replace";
+import { replace_game_font } from "./font-replace";
 import { GamePrepareWorker } from "./prepare-worker";
 
 const FONT = font_fixture([{ text: "Custom Gothic" }]);
@@ -28,7 +29,7 @@ async function replace(
 ): Promise<void> {
   for (const [name, bytes] of files) native.write_file_sync(path.join(root, name), bytes);
   const wolf = await discover_wolf_source(source, native);
-  const game: GameFontSource = wolf
+  const game: GameSource = wolf
     ? { kind: "game", file_type: "WOLFRPG", game: wolf }
     : {
         kind: "game",
@@ -228,7 +229,7 @@ it.each(["backup", "commit", "cancel"])(
     for (const [name, text] of originals) local.write_file_sync(path.join(temp.path, name), text);
     const encrypted = path.join(temp.path, "img/a.png_");
     local.write_file_sync(encrypted, encrypted_media(png_fixture()));
-    const source: GameFontSource = {
+    const source: GameSource = {
       kind: "game",
       file_type: "RPGMAKER_MV_MZ",
       game: (await discover_rpgmaker_source(temp.path, local))!,

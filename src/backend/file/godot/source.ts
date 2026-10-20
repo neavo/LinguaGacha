@@ -9,7 +9,12 @@ import {
 import { read_pack } from "./pack";
 import { read_resource_type } from "./resource";
 import { GODOT_RESOURCE_MAX_BYTES } from "./binary";
-import type { GameSourceFiles, PreparedGameFiles } from "../shared/game/source-files";
+import {
+  collect_game_source_files,
+  type GameSourceFiles,
+  type PreparedGameFiles,
+} from "../shared/game/source-files";
+import { remap_font_import } from "./font";
 
 export type GodotCarrier =
   | { kind: "pck"; file: string }
@@ -146,50 +151,53 @@ export function collect_godot_files(
   signal?: AbortSignal,
   prepared?: PreparedGameFiles,
 ): GameSourceFiles {
-  assert(!prepared, "Godot source files must be collected after preparation commits");
-  const data = new Map<string, Uint8Array>();
-  const visit = (relative: string): void => {
-    signal?.throwIfAborted();
-    for (const entry of fs
-      .read_dirents(path.join(game.root, relative))
-      .sort((a, b) => a.name.localeCompare(b.name))) {
-      const name = relative ? relative + "/" + entry.name : entry.name;
-      if (!relative && is_preparation_path(name)) continue;
-      if (entry.isDirectory()) {
-        visit(name);
-        continue;
-      }
-      if (!entry.isFile()) continue;
-      const extension = path.extname(name).toLowerCase();
-      if (
-        name !== "project.binary" &&
-        ![".gdc", ".gd", ".po", ".scn", ".res", ".translation"].includes(extension)
-      )
-        continue;
-      const file = path.join(game.root, name);
-      assert_regular_path(file, fs);
-      if ([".scn", ".res", ".translation"].includes(extension)) {
-        let type: string | null;
-        try {
-          type = read_resource_type((length) => fs.read_prefix(file, length));
-        } catch {
-          type = null; // 坏候选交给成员解析告警，保留原字节。
+  const roots = fs
+    .read_dirents(game.root)
+    .map((entry) => entry.name)
+    .filter((name) => !is_preparation_path(name))
+    .sort((a, b) => a.localeCompare(b));
+  return collect_game_source_files(
+    game.root,
+    roots,
+    (files) => {
+      const names: string[] = [];
+      for (const [name, file] of files) {
+        signal?.throwIfAborted();
+        const extension = path.extname(name).toLowerCase();
+        if (
+          name !== "project.binary" &&
+          ![".gdc", ".gd", ".po", ".scn", ".res", ".translation"].includes(extension)
+        )
+          continue;
+        assert_regular_path(file, fs);
+        if ([".scn", ".res", ".translation"].includes(extension)) {
+          let type: string | null;
+          try {
+            type = read_resource_type((length) => fs.read_prefix(file, length));
+          } catch {
+            type = null; // 坏候选交给成员解析告警，保留原字节。
+          }
+          const allowed =
+            extension === ".translation"
+              ? ["OptimizedTranslation", "Translation", "TranslationPO"]
+              : ["PackedScene", "Resource"];
+          if (type !== null && !allowed.includes(type)) continue;
         }
-        const allowed =
-          extension === ".translation"
-            ? ["OptimizedTranslation", "Translation", "TranslationPO"]
-            : ["PackedScene", "Resource"];
-        if (type !== null && !allowed.includes(type)) continue;
+        // 从暂存优先的实际路径读头，上限只约束入选成员。
+        assert(
+          fs.stat(file).size <= GODOT_RESOURCE_MAX_BYTES,
+          "Godot member exceeds format processing limit: " + name,
+        );
+        names.push(name);
       }
-      // 上限只约束进入容器的候选，纹理、网格等非文本大资源在类型判断后已跳过。
-      assert(
-        fs.stat(file).size <= GODOT_RESOURCE_MAX_BYTES,
-        "Godot member exceeds format processing limit: " + name,
-      );
-      data.set(name, fs.read_file(file));
-    }
-  };
-  visit("");
-  assert(data.has("project.binary"), "Missing Godot project.binary");
-  return { data, fonts: new Map() };
+      assert(names.includes("project.binary"), "Missing Godot project.binary");
+      return names;
+    },
+    (name, read) =>
+      name.toLowerCase().endsWith(".import") &&
+      remap_font_import(Buffer.from(read(name)).toString("utf8")) !== null,
+    fs,
+    signal,
+    prepared,
+  );
 }

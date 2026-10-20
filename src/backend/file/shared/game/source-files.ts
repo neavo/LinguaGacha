@@ -37,7 +37,7 @@ export function collect_game_source_files(
     read: (name: string) => Uint8Array,
     collect: (name: string) => void,
   ) => string[],
-  is_font: (name: string) => boolean,
+  is_font: (name: string, read: (name: string) => Uint8Array) => boolean,
   fs: NativeFs,
   signal?: AbortSignal,
   prepared?: PreparedGameFiles,
@@ -86,7 +86,7 @@ export function collect_game_source_files(
     return bytes;
   }
   const data_names = select(files, read, collect);
-  const font_names = [...files.keys()].filter(is_font);
+  const font_names = [...files.keys()].filter((name) => is_font(name, read));
   const names = [...new Set([...data_names, ...font_names])];
   assert_game_path_spellings(names);
   const index = new ProjectAssetPathIndex();

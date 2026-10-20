@@ -51,6 +51,10 @@ import { stage_rgss_source } from "../../rpgmaker-rgss/prepare";
 import { create_rpgmaker_rgss_adapter } from "../../rpgmaker-rgss/rpgmaker-format";
 import { read_rgss_metadata, rgss_default_status } from "../../rpgmaker-rgss/item";
 import { read_rgss_sources } from "../../rpgmaker-rgss/readable";
+import type { GameFont } from "./font-replace";
+import { wolf_font_outputs } from "../../wolfrpg/font";
+import { mv_mz_font_outputs } from "../../rpgmaker-mv-mz/font";
+import { godot_font_outputs } from "../../godot/font";
 
 type GameSources = {
   GODOT: GodotSource;
@@ -84,6 +88,7 @@ interface EngineDefinition<G> {
   read_metadata(extra: Item["extra_field"]): { internal_file_path: string };
   default_status(item: Pick<Item, "extra_field">): ItemStatus;
   workspace_view?(members: GameFiles): AsyncIterable<readonly [string, Uint8Array]>;
+  font_outputs?(game: G, files: GameSourceFiles, font: GameFont): ReadonlyMap<string, Uint8Array>;
 }
 export type GameEngine = Omit<EngineDefinition<GameSource>, "discover" | "stage"> & {
   discover(input: string, fs: NativeFs, signal?: AbortSignal): Promise<GameSource | null>;
@@ -104,8 +109,14 @@ function register<K extends GameFileType>(
       throw new Error("Mismatched game engine: " + source.file_type);
     return source.game as GameSources[K];
   };
+  const { font_outputs, ...definition } = engine;
   return {
-    ...engine,
+    ...definition,
+    // 能力缺省表示不支持字体修改，准入与执行共用同一声明。
+    ...(font_outputs && {
+      font_outputs: (source: GameSource, files: GameSourceFiles, font: GameFont) =>
+        font_outputs(game(source), files, font),
+    }),
     async discover(input, fs, signal) {
       const found = await engine.discover(input, fs, signal);
       return found ? ({ kind: "game", file_type, game: found } as GameSource) : null;
@@ -154,6 +165,7 @@ export const GAME_ENGINES: Record<GameFileType, GameEngine> = {
     read_metadata: read_wolf_metadata,
     default_status: wolf_default_status,
     workspace_view: read_wolf_sources,
+    font_outputs: (_game, files, font) => wolf_font_outputs(files.data, files.fonts, font),
   }),
   RPGMAKER_MV_MZ: register("RPGMAKER_MV_MZ", {
     discover: discover_rpgmaker_source,
@@ -185,6 +197,7 @@ export const GAME_ENGINES: Record<GameFileType, GameEngine> = {
     create_adapter: create_rpgmaker_mv_mz_adapter,
     read_metadata: read_rpgmaker_metadata,
     default_status: rpgmaker_default_status,
+    font_outputs: (game, files, font) => mv_mz_font_outputs(game, files.fonts, font),
   }),
   RPGMAKER_RGSS: register("RPGMAKER_RGSS", {
     discover: discover_rgss_source,
@@ -225,6 +238,7 @@ export const GAME_ENGINES: Record<GameFileType, GameEngine> = {
     create_adapter: create_godot_adapter,
     read_metadata: read_godot_metadata,
     default_status: godot_default_status,
+    font_outputs: (_game, files, font) => godot_font_outputs(files.fonts, font.bytes),
   }),
 };
 

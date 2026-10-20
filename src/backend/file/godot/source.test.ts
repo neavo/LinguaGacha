@@ -87,3 +87,29 @@ it("候选漏斗保留 project.binary、脚本、场景、自定义资源与坏�
   ]);
   expect(collect_godot_files(game, native).fonts.size).toBe(0);
 });
+
+it("暂存覆盖正式成员，字体映射单独收集并排除纹理与备份", () => {
+  using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-godot-staged-"));
+  const native = new NativeFs(),
+    staging = path.join(temp.path, ".tmp/staging");
+  const font = Buffer.from('[remap]\ntype="FontFile"\npath="res://font.fontdata"\n');
+  native.write_file_sync(path.join(temp.path, "project.binary"), "old");
+  native.write_file_sync(path.join(temp.path, "scene.res"), build_resource("FontFile", new Map()));
+  native.write_file_sync(path.join(temp.path, "backup_lg/old.import"), font);
+  native.write_file_sync(path.join(temp.path, "texture.import"), '[remap]\ntype="Texture2D"');
+  native.write_file_sync(path.join(staging, "project.binary"), godot_project_fixture());
+  native.write_file_sync(path.join(staging, "scene.res"), build_resource("PackedScene", new Map()));
+  native.write_file_sync(path.join(staging, "fonts/test.ttf.import"), font);
+  const files = collect_godot_files(
+    { root: temp.path, executable: "game.exe", carrier: null, engine: "4" },
+    native,
+    undefined,
+    {
+      staging,
+      result: { writes: ["project.binary", "scene.res", "fonts/test.ttf.import"] },
+    },
+  );
+  expect(files.data.get("project.binary")).toEqual(godot_project_fixture());
+  expect(files.data.has("scene.res")).toBe(true);
+  expect([...files.fonts]).toEqual([["fonts/test.ttf.import", font]]);
+});
