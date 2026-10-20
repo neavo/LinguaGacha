@@ -3,6 +3,7 @@ import { resolve_text_rule_type } from "./text-rule-type";
 
 it("文件格式、TRANS 引擎和通用文本语法共用规则选择", () => {
   expect(resolve_text_rule_type({ file_type: "WOLFRPG" })).toBe("WOLF");
+  expect(resolve_text_rule_type({ file_type: "GODOT" })).toBe("GODOT");
   expect(resolve_text_rule_type({ file_type: "RPGMAKER_MV_MZ" })).toBe("RPGMAKER");
   expect(resolve_text_rule_type({ file_type: "RPGMAKER_RGSS" })).toBe("RPGMAKER");
   expect(resolve_text_rule_type({ file_type: "MESSAGEJSON" })).toBe("KAG");

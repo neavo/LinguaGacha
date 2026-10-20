@@ -7,6 +7,31 @@ import { evb_fixture } from "../../../../test/evb-fixture";
 import { read_evb, extract_evb_member } from "./archive";
 import { BINARY_IO_CHUNK_BYTES } from "../binary";
 
+it("非 EVB 的 PE 节布局留给后续引擎识别，EVB 标志仍触发完整校验", async () => {
+  using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-evb-identity-"));
+  const bytes = evb_fixture(new Map([["data/System.json", Buffer.from("{}")]]));
+  const marker = bytes.indexOf(Buffer.from(".enigma1"));
+  expect(marker).toBeGreaterThan(0);
+  bytes.writeUInt32LE(0xffffffff, marker + 16);
+  const source = path.join(temp.path, "game.exe"),
+    native = new NativeFs();
+  fs.writeFileSync(source, bytes);
+  const invalid = await native.open_file(source, "r");
+  try {
+    await expect(read_evb(invalid)).rejects.toThrow("Truncated PE section");
+  } finally {
+    await invalid.close();
+  }
+  Buffer.from("pck\0\0\0\0\0").copy(bytes, marker);
+  fs.writeFileSync(source, bytes);
+  const other = await native.open_file(source, "r");
+  try {
+    expect(await read_evb(other)).toBeNull();
+  } finally {
+    await other.close();
+  }
+});
+
 it.each(["7_80", "10_70"] as const)("EVB %s 的目录和载荷跨读取窗口保持完整", async (variant) => {
   using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-evb-window-"));
   const files = new Map(

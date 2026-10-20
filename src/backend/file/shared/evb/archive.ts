@@ -41,9 +41,14 @@ export async function read_evb(
   if (coff.readUInt32LE() !== 0x4550) return null;
   const end = offset + 24 + coff.readUInt16LE(20) + coff.readUInt16LE(6) * 40;
   assert(end <= Math.min(length, MAX_HEADER_BYTES), "Unsupported PE header size");
-  const pe = read_pe(await read_bytes(handle, 0, end), length);
-  const section = pe.sections.find((s) => s.name === ".enigma1");
-  if (!section) return null;
+  const header = await read_bytes(handle, 0, end);
+  const sections = offset + 24 + coff.readUInt16LE(20);
+  // 非 EVB 引擎可使用自己的 PE 载荷布局，只在确认 EVB 身份后执行完整节校验。
+  let marked = false;
+  for (let at = sections; at < end; at += 40)
+    if (header.toString("ascii", at, at + 8) === ".enigma1") marked = true;
+  if (!marked) return null;
+  const pe = read_pe(header, length);
   const valid: { variant: Variant; members: EVBMember[] }[] = [];
   for (const variant of Object.keys(OFFSETS) as Variant[]) {
     try {

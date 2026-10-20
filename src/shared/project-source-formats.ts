@@ -95,6 +95,42 @@ export const PROJECT_SOURCE_FORMATS = [
     ],
   },
   {
+    source_kind: "game",
+    id: "godot",
+    file_type: "GODOT",
+    support_status: "supported",
+    extension: ".exe",
+    title_key: "project_page.formats.godot",
+    description_keys: [],
+  },
+  {
+    source_kind: "game",
+    id: "wolfrpg",
+    file_type: "WOLFRPG",
+    support_status: "supported",
+    extension: ".exe",
+    title_key: "project_page.formats.wolfrpg",
+    description_keys: [],
+  },
+  {
+    source_kind: "game",
+    id: "rpgmaker_mv_mz",
+    file_type: "RPGMAKER_MV_MZ",
+    support_status: "supported",
+    extension: ".exe",
+    title_key: "project_page.formats.rpgmaker_mv_mz",
+    description_keys: [],
+  },
+  {
+    source_kind: "game",
+    id: "rpgmaker_rgss",
+    file_type: "RPGMAKER_RGSS",
+    support_status: "supported",
+    extension: ".exe",
+    title_key: "project_page.formats.rpgmaker_rgss",
+    description_keys: [],
+  },
+  {
     source_kind: "file",
     id: "xlsx",
     support_status: "deprecated",
@@ -114,33 +150,10 @@ export const PROJECT_SOURCE_FORMATS = [
     title_key: "project_page.formats.trans",
     description_keys: [],
   },
-  {
-    source_kind: "game",
-    id: "wolfrpg",
-    support_status: "supported",
-    extension: ".exe",
-    title_key: "project_page.formats.wolfrpg",
-    description_keys: [],
-  },
-  {
-    source_kind: "game",
-    id: "rpgmaker_mv_mz",
-    support_status: "supported",
-    extension: ".exe",
-    title_key: "project_page.formats.rpgmaker_mv_mz",
-    description_keys: [],
-  },
-  {
-    source_kind: "game",
-    id: "rpgmaker_rgss",
-    support_status: "supported",
-    extension: ".exe",
-    title_key: "project_page.formats.rpgmaker_rgss",
-    description_keys: [],
-  },
 ] as const satisfies ReadonlyArray<{
   source_kind: "file" | "game";
   id: string;
+  file_type?: GameFileType;
   support_status: "supported" | "deprecated"; // 只表达产品支持策略，来源发现与统计仍使用完整目录
   extension: string;
   title_key: LocaleKey;
@@ -160,9 +173,10 @@ export type ProjectSourceFileSummary = {
   format_hit_counts: ProjectSourceFormatHitCounts; // 包含目录内全部格式，未命中项固定为零
 };
 
-export type GameFileType = "RPGMAKER_MV_MZ" | "RPGMAKER_RGSS" | "WOLFRPG";
+export const GAME_FILE_TYPES = ["WOLFRPG", "RPGMAKER_MV_MZ", "RPGMAKER_RGSS", "GODOT"] as const;
+export type GameFileType = (typeof GAME_FILE_TYPES)[number];
 
 /** 识别需要独立导出目录的原生游戏文件类型。 */
 export function is_game_file_type(type: string | undefined): type is GameFileType {
-  return type === "RPGMAKER_MV_MZ" || type === "RPGMAKER_RGSS" || type === "WOLFRPG";
+  return GAME_FILE_TYPES.some((value) => value === type);
 }

@@ -1,4 +1,3 @@
-import { discover_wolf_source, wolf_source_root, type WolfSource } from "./wolfrpg/source";
 import { is_preparation_path, GameSourceConflictError } from "./source-file-paths";
 import path from "node:path";
 import type { NativeFs } from "../../native/native-fs";
@@ -7,18 +6,11 @@ import {
   type ProjectSourceFormatId,
 } from "../../shared/project-source-formats";
 import type { ProjectSourceFileEntry } from "./file-format-types";
-import {
-  discover_rpgmaker_source,
-  discover_unpacked_rpgmaker_source,
-  type RPGMakerSource,
-} from "./rpgmaker-mv-mz/source";
-import { discover_rgss_source, type RGSSSource } from "./rpgmaker-rgss/source";
+import { GAME_ENGINES, type GameSource } from "./shared/game/engines";
 
 export type SourceIdentity =
   | Readonly<{ kind: "file"; format: ProjectSourceFormatId | undefined }>
-  | Readonly<{ kind: "mv_mz"; game: RPGMakerSource }>
-  | Readonly<{ kind: "rgss"; game: RGSSSource }>
-  | Readonly<{ kind: "wolfrpg"; game: WolfSource }>
+  | GameSource
   | Readonly<{ kind: "failure"; error: unknown }>;
 export type DiscoveredSource = ProjectSourceFileEntry & Readonly<{ source: SourceIdentity }>;
 const FORMATS = new Map<string, ProjectSourceFormatId>(
@@ -84,31 +76,15 @@ async function read_source(
     if (!fs.exists(source_path))
       throw Object.assign(new Error("Source not found: " + source_path), { code: "ENOENT" });
     if (fs.stat(source_path).isDirectory()) rel_path += ".zip";
-    const wolf = await discover_wolf_source(source_path, fs, signal);
-    if (wolf)
-      return {
-        source_path: wolf.root,
-        rel_path: path.basename(wolf.root) + ".zip",
-        file_type: "WOLFRPG",
-        source: { kind: "wolfrpg", game: wolf },
-      };
-    const mv = await discover_rpgmaker_source(source_path, fs, signal);
-    if (mv)
-      return {
-        source_path: mv.executable ?? source_path,
-        rel_path: path.basename(mv.root) + ".zip",
-        file_type: "RPGMAKER_MV_MZ",
-        source: { kind: "mv_mz", game: mv },
-      };
-    const rgss = discover_rgss_source(source_path, fs);
-    if (rgss) {
-      rel_path = path.basename(rgss.root) + ".zip";
-      return {
-        source_path: rgss.root,
-        rel_path,
-        file_type: "RPGMAKER_RGSS",
-        source: { kind: "rgss", game: rgss },
-      };
+    for (const engine of Object.values(GAME_ENGINES)) {
+      const source = await engine.discover(source_path, fs, signal);
+      if (source)
+        return {
+          source_path: engine.source_path(source, source_path),
+          rel_path: path.basename(source.game.root) + ".zip",
+          file_type: source.file_type,
+          source,
+        };
     }
     return {
       source_path,
@@ -126,18 +102,10 @@ async function read_source(
 export function assert_source_identities(entries: readonly DiscoveredSource[], fs: NativeFs): void {
   const roots = new Map<string, string>();
   for (const { source } of entries) {
-    if (source.kind !== "mv_mz" && source.kind !== "rgss" && source.kind !== "wolfrpg") continue;
+    if (source.kind !== "game") continue;
     const root = fs.to_identity_path(source.game.root);
     const identity =
-      source.kind +
-      ":" +
-      fs.to_identity_path(
-        source.kind === "mv_mz"
-          ? (source.game.executable ?? source.game.root)
-          : source.kind === "rgss"
-            ? path.join(source.game.root, source.game.archive ?? "")
-            : source.game.root,
-      );
+      source.file_type + ":" + fs.to_identity_path(GAME_ENGINES[source.file_type].identity(source));
     const previous = roots.get(root);
     if (previous && previous !== identity)
       throw new GameSourceConflictError("Conflicting game sources: " + source.game.root);
@@ -183,9 +151,7 @@ export async function discover_sources(
         directory &&
         (entry.source.kind === "file" ||
           (entry.source.kind === "failure" &&
-            !discover_unpacked_rpgmaker_source(source_path, fs) &&
-            !discover_rgss_source(source_path, fs) &&
-            !wolf_source_root(source_path, fs)));
+            !Object.values(GAME_ENGINES).some((engine) => engine.is_root(source_path, fs))));
       if (container) {
         for (const child of fs
           .read_dirents(source_path)
@@ -213,18 +179,12 @@ export async function discover_sources(
   for (const source of source_paths) if (source.trim()) await visit(source, source);
   assert_source_identities(entries, fs);
   const roots = entries.flatMap(({ source }) =>
-    source.kind === "mv_mz" || source.kind === "rgss" || source.kind === "wolfrpg"
-      ? [fs.to_identity_path(source.game.root)]
-      : [],
+    source.kind === "game" ? [fs.to_identity_path(source.game.root)] : [],
   );
   const seen = new Set<string>();
   return entries.filter((entry) => {
     const source = entry.source;
-    const key = fs.to_identity_path(
-      source.kind === "mv_mz" || source.kind === "rgss" || source.kind === "wolfrpg"
-        ? source.game.root
-        : entry.source_path,
-    );
+    const key = fs.to_identity_path(source.kind === "game" ? source.game.root : entry.source_path);
     const identity = (source.kind === "failure" ? "failure:" : "source:") + key;
     if (seen.has(identity)) return false;
     if (source.kind === "file" && roots.some((root) => key.startsWith(root + path.sep)))

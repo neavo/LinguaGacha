@@ -4,8 +4,7 @@ import { setImmediate } from "node:timers/promises";
 import type { NativeFs } from "../../../native/native-fs";
 import { AppError, read_error_message } from "../../../shared/error";
 import { ProjectAssetPathIndex } from "../../../shared/project/project-asset-paths";
-import { prepare_game_directory, type GamePreparation } from "../shared/game/prepare";
-import type { GamePrepareExecution } from "../shared/game/prepare-worker";
+import type { GamePreparation } from "../shared/game/prepare";
 import {
   assert_game_path_spellings,
   assert_regular_path,
@@ -24,29 +23,7 @@ import { match_wolfx, write_wolfx_plaintext } from "./wolfx";
 import { read_wolf_map } from "./map";
 import { read_wolf_common } from "./common-events";
 
-/**
- * 所有来源统一在准备 worker 中构建明文视图，再由目录事务提交。
- * 引擎优先读取归档，同一资源的 `.wolfx` 也优先于同名明文，因此提交时移除已消费的归档和 `.wolfx`，使散装译文生效。
- */
-export async function prepare_wolf_source(
-  game: WolfSource,
-  fs: NativeFs,
-  execute?: GamePrepareExecution,
-  signal?: AbortSignal,
-): Promise<void> {
-  signal?.throwIfAborted();
-  await prepare_game_directory(
-    game.root,
-    fs,
-    (staging) => {
-      const task = { kind: "wolfrpg" as const, game, staging };
-      return execute ? execute(task, signal) : stage_wolf_source(task, fs, signal);
-    },
-    signal,
-  );
-}
-
-/** 原目录和暂存区构成单份文件视图，密文直到最终复核后才退出发布清单。 */
+/** 引擎优先读取归档和 `.wolfx`，只有明文通过最终复核后才从发布目录移除密文。 */
 export async function stage_wolf_source(
   { game, staging }: Readonly<{ game: WolfSource; staging: string }>,
   fs: NativeFs,

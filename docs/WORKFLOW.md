@@ -163,13 +163,14 @@ GUI、preload、native 或 Backend Runtime worker 变化时，先运行相关目
 
 |变化|测试|
 |---|---|
-|格式、来源发现或默认排除|对应的 `rpgmaker-mv-mz/`、`rpgmaker-rgss/` 或 `wolfrpg/` 测试，以及 `project-content-service.test.ts`|
-|共享容器|三种格式的测试，以及 `shared/game/format.test.ts`|
+|格式、来源发现或默认排除|对应的 `rpgmaker-mv-mz/`、`rpgmaker-rgss/`、`wolfrpg/` 或 `godot/` 测试，以及 `project-content-service.test.ts`|
+|引擎登记表与共享容器|各原生格式的测试、来源发现、校对缓存、Agent 工作区原稿，以及 `shared/game/` 下的对应测试|
 |文件身份与迁移|数据库迁移、工程打开迁移、解析流水线和译文生成测试|
 |文本规则计算|`text-rule-type.test.ts`、翻译译前流程和校对评估|
 |来源或失败边界|`source-discovery.test.ts`、解析流水线、新建与追加导入测试|
 |准备与归档|对应引擎的准备测试，以及 `shared/` 下受影响的协议、IO 与目录事务测试|
 |准备线程|`shared/game/prepare-worker.test.ts`，它使用正式构建入口验证退出与句柄释放|
+|字体工具与引擎字体能力|`game-font-service.test.ts`、`shared/game/font-replace.test.ts`、`shared/game/engines.test.ts` 和对应引擎的字体测试|
 |取消或关闭顺序|`runtime-operation-gate.test.ts` 与 `gui-backend-bootstrap.test.ts`|
 |脚本解析器或准备 worker 的部署|[发行包运行验证](#发行包运行验证)|
 
@@ -180,6 +181,8 @@ GUI、preload、native 或 Backend Runtime worker 变化时，先运行相关目
 - 对照原稿哈希检查提取、解密、备份、重复导入和失败恢复。
 - RGSS 同时覆盖保留与移除散装数据的情况。定位变化后从原稿重建条目，再验证译文生成。
 - WOLF 核对解包哈希、原稿字节和独立 LZ4 解码。游戏运行覆盖中文、选项分支、数据库显示及保留主标题时的存档身份。
+- Godot 核对外置与内嵌 PCK 展开、载体备份和重复导入，再将产品导出的译文拷回启动。运行时验收覆盖语言表 `fallback`、控件中文、脚本加载和系统字体回退。
+- Godot 字体工具按换字体与拷回译文的两种先后顺序验收，启动后核对资产字体控件与未指定字体的控件都取得所选字体。
 - 协议测试与游戏启动分别验收。Windows 启动须确认所选入口读取外部数据和明文素材。
 
 交付时注明未验证的布局、游戏流程和宿主平台。

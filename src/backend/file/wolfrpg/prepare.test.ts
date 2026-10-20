@@ -1,3 +1,4 @@
+import { prepare_game_source } from "../shared/game/engines";
 import { expect, it, vi } from "vitest";
 import fs from "node:fs";
 import os from "node:os";
@@ -8,8 +9,13 @@ import { wolf_archive_fixture } from "../../../test/wolf-archive-fixture";
 import { FileFormatService } from "../file-format-service";
 import { wolf_crypt_vectors } from "../../../test/wolf-crypt-vectors";
 import { wolf_vector } from "../../../test/wolf-crypt-fixture";
-import { discover_wolf_source } from "./source";
-import { prepare_wolf_source, stage_wolf_source } from "./prepare";
+import { discover_wolf_source, type WolfSource } from "./source";
+import { stage_wolf_source } from "./prepare";
+
+/** 为各准备场景补齐引擎来源身份，统一经过正式目录事务。 */
+function prepare_source(game: WolfSource, fs: NativeFs): Promise<void> {
+  return prepare_game_source({ kind: "game", file_type: "WOLFRPG", game }, fs);
+}
 
 function encrypted_fixture(name: string): Buffer {
   return wolf_vector(wolf_crypt_vectors.wolfx.find((vector) => vector.name === name)!.input);
@@ -33,7 +39,7 @@ it.each(["case", "directory", "nested", "structure"])(
         encrypted_fixture("default"),
       );
     await expect(
-      prepare_wolf_source((await discover_wolf_source(temp.path, native))!, native),
+      prepare_source((await discover_wolf_source(temp.path, native))!, native),
     ).rejects.toThrow();
     expect(fs.readFileSync(path.join(temp.path, name + ".wolfx"))).toEqual(
       encrypted_fixture("default"),
@@ -68,7 +74,7 @@ it("三轮事件依赖从可用文件收集候选，覆盖旧明文并移除原�
     await wolf_archive_fixture(new Map([["C.png.wolfx", encrypted_fixture("chain-c")]])),
   );
   const game = (await discover_wolf_source(temp.path, native))!;
-  await prepare_wolf_source(game, native);
+  await prepare_source(game, native);
   expect(fs.readFileSync(path.join(temp.path, "Data/Picture/C.png"), "utf8")).toBe("final output");
   for (const name of [
     "Data/MapData/A.mps.wolfx",
@@ -111,7 +117,7 @@ it("六类核心及延迟解包的 project 成对还原一次，加密 Game.dat 
     path.join(temp.path, "Data/BasicData/SysDatabase.project.wolfx"),
     encrypted_fixture("protected-project"),
   );
-  await prepare_wolf_source((await discover_wolf_source(temp.path, native))!, native);
+  await prepare_source((await discover_wolf_source(temp.path, native))!, native);
   for (const vector of wolf_crypt_vectors.cores)
     expect(fs.readFileSync(path.join(temp.path, "Data/BasicData", vector.name))).toEqual(
       wolf_vector(vector.output),
@@ -121,7 +127,7 @@ it("六类核心及延迟解包的 project 成对还原一次，加密 Game.dat 
       wolf_vector(wolf_crypt_vectors.project.output),
     );
   const write = vi.spyOn(native, "write_file");
-  await prepare_wolf_source((await discover_wolf_source(temp.path, native))!, native);
+  await prepare_source((await discover_wolf_source(temp.path, native))!, native);
   expect(write).not.toHaveBeenCalled();
 });
 
@@ -143,7 +149,7 @@ it("后出现的事件候选使已解文件产生歧义，整次准备保留原�
     encrypted_fixture("late-map"),
   );
   await expect(
-    prepare_wolf_source((await discover_wolf_source(temp.path, native))!, native),
+    prepare_source((await discover_wolf_source(temp.path, native))!, native),
   ).rejects.toThrow("final candidate validation: Ambiguous WOLFX plaintext");
   expect(fs.existsSync(path.join(temp.path, "Data/MapData/Late.mps"))).toBe(false);
   expect(fs.readFileSync(path.join(temp.path, "Data/Picture/ambiguous.bin.wolfx"))).toEqual(
@@ -165,7 +171,7 @@ it("被密文遮蔽的旧明文不能提供自解密候选，无进展时报告�
     wolf_common(0x91, [wolf_command(1000, ["/", "chain-key"], [7])]),
   );
   await expect(
-    prepare_wolf_source((await discover_wolf_source(temp.path, native))!, native),
+    prepare_source((await discover_wolf_source(temp.path, native))!, native),
   ).rejects.toThrow("CommonEvent.dat.wolfx: WolfX");
 });
 
@@ -187,7 +193,7 @@ it.each(["same", "conflict", "missing", "output"])(
       if (mode === "conflict") bytes[30]! ^= 1;
       native.write_file_sync(path.join(temp.path, "Data/List.pak"), bytes);
     }
-    const prepare = prepare_wolf_source((await discover_wolf_source(temp.path, native))!, native);
+    const prepare = prepare_source((await discover_wolf_source(temp.path, native))!, native);
     if (mode === "same") {
       await prepare;
       expect(fs.readFileSync(path.join(temp.path, "Game.wolf"))).toEqual(wolf_vector(vector.input));

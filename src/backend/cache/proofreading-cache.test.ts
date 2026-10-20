@@ -264,7 +264,7 @@ describe("ProofreadingCache", () => {
   });
 
   it.each<{
-    file_type: "TRANS" | "EPUB" | "RPGMAKER_MV_MZ" | "RPGMAKER_RGSS" | "WOLFRPG";
+    file_type: "TRANS" | "EPUB" | "RPGMAKER_MV_MZ" | "RPGMAKER_RGSS" | "WOLFRPG" | "GODOT";
     extra_field: ProjectItemPublicRecord["extra_field"];
     internal_file_path: string;
   }>([
@@ -310,6 +310,17 @@ describe("ProofreadingCache", () => {
       file_type: "EPUB",
       extra_field: { epub: { doc_path: "OEBPS/Text/ch01.xhtml" } },
       internal_file_path: "OEBPS/Text/ch01.xhtml",
+    },
+    {
+      file_type: "GODOT",
+      extra_field: {
+        godot: {
+          internal_file_path: "main.gdc",
+          usage: "text",
+          location: { kind: "gdsc", token: 0 },
+        },
+      },
+      internal_file_path: "main.gdc",
     },
   ])(
     "$file_type 的列表、详情和候选共用运行态内部路径",

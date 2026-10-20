@@ -8,6 +8,7 @@ import JSZip from "jszip";
 import { encode } from "../../file/rpgmaker-rgss/marshal";
 import { ruby_array } from "../../../test/rgss-fixture";
 import { wolf_files } from "../../../test/wolf-fixture";
+import { create_godot_fixture } from "../../../test/godot-fixture";
 
 it("普通原稿按资产相对路径保留原始字节", async () => {
   using root = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-sources-"));
@@ -83,29 +84,51 @@ it.each(["RPGMAKER_MV_MZ", "RPGMAKER_RGSS", "WOLFRPG", "EPUB"])(
     expect(fs.existsSync(path.join(root.path, "outside.json"))).toBe(false);
   },
 );
-it("WOLF 原字节和只读 JSON 投影共同保留，名称冲突时失败", async () => {
-  using root = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-sources-wolf-"));
-  const zip = new JSZip();
-  for (const [name, bytes] of wolf_files()) zip.file(name, bytes);
-  const args = {
-    nativeFs: new NativeFs(),
-    sourceRoot: root.path,
-    files: [{ file_path: "game.zip", file_type: "WOLFRPG" }],
-    readAsset: () => zip.generateAsync({ type: "nodebuffer" }),
-  };
-  await write_agent_workspace_sources(args);
-  expect(fs.readFileSync(path.join(root.path, "game.zip/Data/BasicData/Game.dat"))).toEqual(
-    wolf_files().get("Data/BasicData/Game.dat"),
-  );
-  const projection = JSON.parse(
-    fs.readFileSync(path.join(root.path, "game.zip/Data/BasicData/CommonEvent.dat.json"), "utf8"),
-  );
-  expect(projection.data.events[0].commands[0]).toMatchObject({ code: 101, strings: ["原文"] });
-  zip.file("Data/BasicData/Game.dat.json", "original member");
-  await expect(
-    write_agent_workspace_sources({ ...args, sourceRoot: path.join(root.path, "collision") }),
-  ).rejects.toMatchObject({ code: "request.validation_failed" });
-});
+it.each([
+  {
+    file_type: "WOLFRPG",
+    members: wolf_files(),
+    original: "Data/BasicData/Game.dat",
+    projection: "Data/BasicData/CommonEvent.dat.json",
+    expected: {
+      data: { events: [{ commands: [expect.objectContaining({ code: 101, strings: ["原文"] })] }] },
+    },
+  },
+  {
+    file_type: "GODOT",
+    members: create_godot_fixture(),
+    original: "main.gdc",
+    projection: "main.gdc.json",
+    expected: {
+      type: "GDSC",
+      strings: expect.arrayContaining([expect.objectContaining({ text: "Shared" })]),
+    },
+  },
+])(
+  "$file_type 原字节和只读 JSON 投影共同保留，名称冲突时失败",
+  async ({ file_type, members, original, projection, expected }) => {
+    using root = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-sources-wolf-"));
+    const zip = new JSZip();
+    for (const [name, bytes] of members) zip.file(name, bytes);
+    const args = {
+      nativeFs: new NativeFs(),
+      sourceRoot: root.path,
+      files: [{ file_path: "game.zip", file_type }],
+      readAsset: () => zip.generateAsync({ type: "nodebuffer" }),
+    };
+    await write_agent_workspace_sources(args);
+    expect(fs.readFileSync(path.join(root.path, "game.zip", original))).toEqual(
+      members.get(original),
+    );
+    expect(
+      JSON.parse(fs.readFileSync(path.join(root.path, "game.zip", projection), "utf8")),
+    ).toMatchObject(expected);
+    zip.file(original + ".json", "original member");
+    await expect(
+      write_agent_workspace_sources({ ...args, sourceRoot: path.join(root.path, "collision") }),
+    ).rejects.toMatchObject({ code: "request.validation_failed" });
+  },
+);
 it("拒绝源文件路径逃逸", async () => {
   using root = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-sources-"));
   await expect(

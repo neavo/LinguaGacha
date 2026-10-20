@@ -1,3 +1,4 @@
+import { prepare_game_source } from "../shared/game/engines";
 import { discover_sources } from "../source-discovery";
 import {
   png_fixture,
@@ -5,14 +6,19 @@ import {
   encrypted_media,
   MEDIA_KEY,
 } from "../../../test/media-fixture";
-import { discover_rpgmaker_source } from "./source";
+import { discover_rpgmaker_source, type RPGMakerSource } from "./source";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { expect, it, vi } from "vitest";
 import { NativeFs } from "../../../native/native-fs";
 import { evb_fixture } from "../../../test/evb-fixture";
-import { prepare_rpgmaker_source, stage_rpgmaker_source } from "./prepare";
+import { stage_rpgmaker_source } from "./prepare";
+
+/** 为各准备场景补齐引擎来源身份，统一经过正式目录事务。 */
+function prepare_source(game: RPGMakerSource, fs: NativeFs): Promise<void> {
+  return prepare_game_source({ kind: "game", file_type: "RPGMAKER_MV_MZ", game }, fs);
+}
 
 const PLAIN = png_fixture();
 const SYSTEM =
@@ -47,7 +53,7 @@ it.each([false, true])("准备 %s 发布明文并清理密文，重复导入不�
     native = new NativeFs();
   if (!packed) fs.writeFileSync(path.join(temp.path, "www/data/System.json"), "\uFEFF" + SYSTEM);
   const original = packed ? fs.readFileSync(source) : null;
-  await prepare_rpgmaker_source((await discover_rpgmaker_source(source, native))!, native);
+  await prepare_source((await discover_rpgmaker_source(source, native))!, native);
   expect(fs.readFileSync(path.join(temp.path, "www/img/a.png"))).toEqual(PLAIN);
   expect(fs.existsSync(path.join(temp.path, "www/img/a.rpgmvp"))).toBe(false);
   if (packed) expect(fs.readFileSync(source)).not.toEqual(original);
@@ -56,7 +62,7 @@ it.each([false, true])("准备 %s 发布明文并清理密文，重复导入不�
   expect(system).toContain('"large":9007199254740993');
   expect(system).toContain('"negative":-0');
   const before = fs.statSync(path.join(temp.path, "www/img/a.png")).mtimeMs;
-  await prepare_rpgmaker_source((await discover_rpgmaker_source(source, native))!, native);
+  await prepare_source((await discover_rpgmaker_source(source, native))!, native);
   expect(fs.statSync(path.join(temp.path, "www/img/a.png")).mtimeMs).toBe(before);
 });
 
@@ -75,7 +81,7 @@ it.each(["media", "commit"])("准备失败 %s 恢复原配置、明文与密文"
     });
   }
   await expect(
-    prepare_rpgmaker_source((await discover_rpgmaker_source(source, native))!, native),
+    prepare_source((await discover_rpgmaker_source(source, native))!, native),
   ).rejects.toThrow();
   expect(fs.readFileSync(path.join(temp.path, "www/data/System.json"), "utf8")).toBe(SYSTEM);
   expect(fs.readFileSync(path.join(temp.path, "www/img/a.png"), "utf8")).toBe("old plaintext");
@@ -91,7 +97,7 @@ it("EVB 同名密文覆盖散装来源，成功后清理正式密文", async () 
   const source = fixture(temp.path, true),
     native = new NativeFs();
   fs.writeFileSync(path.join(temp.path, "www/img/a.rpgmvp"), "invalid loose media");
-  await prepare_rpgmaker_source((await discover_rpgmaker_source(source, native))!, native);
+  await prepare_source((await discover_rpgmaker_source(source, native))!, native);
   expect(fs.readFileSync(path.join(temp.path, "www/img/a.png"))).toEqual(PLAIN);
   expect(fs.existsSync(path.join(temp.path, "www/img/a.rpgmvp"))).toBe(false);
   expect(fs.existsSync(path.join(temp.path, ".tmp"))).toBe(false);
@@ -116,7 +122,7 @@ it("仅启用音频加密时清理全部音频密文并保留图片", async () =
   ] as const;
   for (const [name, , plain] of media)
     native.write_file_sync(path.join(temp.path, "www/audio", name), encrypted_media(plain));
-  await prepare_rpgmaker_source((await discover_rpgmaker_source(source, native))!, native);
+  await prepare_source((await discover_rpgmaker_source(source, native))!, native);
   for (const [name, output, plain] of media) {
     expect(fs.readFileSync(path.join(temp.path, "www/audio", output))).toEqual(plain);
     expect(fs.existsSync(path.join(temp.path, "www/audio", name))).toBe(false);
@@ -150,7 +156,7 @@ it.each([false, true])("加密关闭 %s 时保留历史双份、未启用类别�
     untouched.set("www/img/a.png", Buffer.from("old plaintext"));
   }
   for (const [name, bytes] of untouched) native.write_file_sync(path.join(temp.path, name), bytes);
-  await prepare_rpgmaker_source((await discover_rpgmaker_source(source, native))!, native);
+  await prepare_source((await discover_rpgmaker_source(source, native))!, native);
   for (const [name, bytes] of untouched)
     expect(fs.readFileSync(path.join(temp.path, name))).toEqual(bytes);
   expect(fs.existsSync(path.join(temp.path, ".tmp"))).toBe(false);
@@ -162,7 +168,7 @@ it("多个密文映射到同一明文时整次失败并保留原目录", async (
     native = new NativeFs();
   native.write_file_sync(path.join(temp.path, "www/img/a.png_"), encrypted_media(PLAIN));
   await expect(
-    prepare_rpgmaker_source((await discover_rpgmaker_source(source, native))!, native),
+    prepare_source((await discover_rpgmaker_source(source, native))!, native),
   ).rejects.toThrow("Multiple encrypted media sources");
   for (const name of ["a.rpgmvp", "a.png_"])
     expect(fs.readFileSync(path.join(temp.path, "www/img", name))).toEqual(encrypted_media(PLAIN));
@@ -181,7 +187,7 @@ it("准备沿用显式选择的散装启动器", async () => {
   fs.writeFileSync(executable, "unpacked launcher");
   const game = (await discover_rpgmaker_source(executable, native))!;
   expect(game.executable).toBeUndefined();
-  await prepare_rpgmaker_source(game, native);
+  await prepare_source(game, native);
   expect(fs.readFileSync(packed)).toEqual(original);
   expect(fs.readFileSync(executable, "utf8")).toBe("unpacked launcher");
   expect(fs.readFileSync(path.join(temp.path, "www/img/a.png"))).toEqual(PLAIN);
@@ -201,7 +207,8 @@ it("准备消费已识别来源，worker 打开文件后重新核对实际清单
   const open = vi.spyOn(native, "open_file");
   const entry = (await discover_sources([source], native))[0]!;
   expect(open.mock.calls.filter(([file]) => file === source)).toHaveLength(1);
-  if (entry.source.kind !== "mv_mz") throw new Error("Missing game source");
+  if (entry.source.kind !== "game" || entry.source.file_type !== "RPGMAKER_MV_MZ")
+    throw new Error("Missing game source");
   const staging = path.join(temp.path, "stage");
   fs.mkdirSync(staging);
   fs.writeFileSync(
