@@ -231,6 +231,7 @@ export const zh_cn_app = {
   diagnostic: {
     proxy: {
       apply_failed: "下发代理配置失败，已按跟随系统出站 …",
+      request_failed: "代理 {PROXY} 请求失败 …",
     },
     agent: {
       web_search_provider_failed: "网页搜索来源请求失败 …",

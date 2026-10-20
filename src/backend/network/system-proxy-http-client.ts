@@ -29,6 +29,9 @@ export interface SystemProxyResolver {
   resolveProxy: (url: string, signal?: AbortSignal) => Promise<string>; // Electron session 是系统代理规则的唯一来源
 }
 
+/** 代理路由请求失败的回调；地址不含凭据，同一地址每次进程只回调一次。 */
+export type SystemProxyFailureReporter = (address: string, error: unknown) => void;
+
 export type SystemProxyRoute =
   | { kind: "direct" }
   | { kind: "proxy"; uri: string }
@@ -42,16 +45,22 @@ export class SystemProxyHttpClient {
   private readonly resolver: SystemProxyResolver; // 请求时读取 Electron 当前路由，不保存启动快照
   private readonly direct_dispatcher: Dispatcher; // loopback 与显式 DIRECT 共用的自有连接池
   private readonly proxy_dispatchers = new Map<string, Dispatcher>(); // 同一路由复用连接池
+  private readonly report_route_failure: SystemProxyFailureReporter | null; // 代理不可达时按地址归因
+  private readonly reported_routes = new Set<string>(); // 批量请求共用路由，首次失败才写日志
   private previous_globals: FetchGlobals | null = null; // 安装期保存 fetch 及配套构造器，关闭时统一恢复
   private disposed = false; // 释放后拒绝新请求，避免重建已关闭资源
 
   /** 创建自有直连池；代理池延迟到首次命中对应路由时创建。 */
   public constructor(
     resolver: SystemProxyResolver,
-    options: { redirects: "error" | "request" } = { redirects: "error" },
+    options: {
+      redirects: "error" | "request";
+      onRouteFailure?: SystemProxyFailureReporter;
+    } = { redirects: "error" },
   ) {
     this.redirects = options.redirects;
     this.resolver = resolver;
+    this.report_route_failure = options.onRouteFailure ?? null;
     this.direct_dispatcher = new Agent();
   }
 
@@ -63,15 +72,21 @@ export class SystemProxyHttpClient {
     const url = read_request_url(input);
     const signal = init?.signal ?? (input instanceof Request ? input.signal : undefined);
     signal?.throwIfAborted();
-    const dispatcher = this.resolve_dispatcher(
-      await resolve_system_proxy_route(this.resolver, url.href, signal),
-    );
+    const route = await resolve_system_proxy_route(this.resolver, url.href, signal);
+    const dispatcher = this.resolve_dispatcher(route);
     signal?.throwIfAborted();
-    const response = (await undici_fetch(input as Parameters<typeof undici_fetch>[0], {
-      ...(init as Parameters<typeof undici_fetch>[1]),
-      dispatcher,
-      ...(this.redirects === "error" ? { redirect: "error" as const } : {}),
-    })) as unknown as Response;
+    let response: Response;
+    try {
+      response = (await undici_fetch(input as Parameters<typeof undici_fetch>[0], {
+        ...(init as Parameters<typeof undici_fetch>[1]),
+        dispatcher,
+        ...(this.redirects === "error" ? { redirect: "error" as const } : {}),
+      })) as unknown as Response;
+    } catch (error) {
+      // 调用方主动取消不算代理故障，避免把用户停止翻译记成代理不可达。
+      if (signal?.aborted !== true) this.report_failure(route, error);
+      throw error;
+    }
     record_http_response_info(response);
     return response;
   };
@@ -104,6 +119,15 @@ export class SystemProxyHttpClient {
     if (errors.length > 0) {
       throw new AggregateError(errors, "System proxy HTTP client failed to close.");
     }
+  }
+
+  /** 代理路由失败按地址归因；直连失败不属于代理问题，同一地址只报告一次。 */
+  private report_failure(route: SystemProxyRoute, error: unknown): void {
+    if (route.kind === "direct" || this.report_route_failure === null) return;
+    const address = format_proxy_address(route.uri);
+    if (this.reported_routes.has(address)) return;
+    this.reported_routes.add(address);
+    this.report_route_failure(address, error);
   }
 
   /** 按已解析路由返回直连池，或复用对应协议与地址的代理池。 */
@@ -170,6 +194,11 @@ export async function resolve_system_proxy_route(
   const target = new URL(url);
   if (is_loopback_hostname(target.hostname)) return { kind: "direct" };
   return parse_system_proxy_route(await resolver.resolveProxy(target.href, signal));
+}
+
+/** 日志中的代理地址；去掉 userinfo 与路径，凭据不进入日志。 */
+function format_proxy_address(uri: string): string {
+  return new URL(uri).host;
 }
 
 /** fetch 同时接受 URL 文本、URL 和 Request，这里统一为代理解析所需的 URL。 */

@@ -232,6 +232,7 @@ export const ko_kr_app = {
   diagnostic: {
     proxy: {
       apply_failed: "프록시 설정을 적용하지 못해 시스템 프록시로 전송합니다 …",
+      request_failed: "프록시 {PROXY} 요청 실패 …",
     },
     agent: {
       web_search_provider_failed: "웹 검색 공급자 요청에 실패했습니다 …",

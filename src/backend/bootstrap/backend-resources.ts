@@ -10,6 +10,7 @@ import {
   type SystemProxyResolver,
 } from "../network/system-proxy-http-client";
 import type { LogTargets } from "../../shared/log";
+import { to_log_error } from "../../shared/error";
 import { write_bootstrap_error, write_bootstrap_log } from "./bootstrap-log";
 
 export interface BackendResourceOptions {
@@ -58,7 +59,18 @@ export class BackendResources {
       await run_startup_migrations({ paths, log_manager });
       const settings = new AppSettingService(paths);
       set_main_log_language_reader(() => settings.read_app_language());
-      system_proxy_http_client = new SystemProxyHttpClient(options.systemProxyResolver);
+      system_proxy_http_client = new SystemProxyHttpClient(options.systemProxyResolver, {
+        redirects: "error",
+        // 代理不可达时记录一次代理地址，避免批量请求刷屏；直连失败不归因到代理。
+        onRouteFailure: (address, error) => {
+          log_manager.warning(
+            t_main_log("app.diagnostic.proxy.request_failed", { PROXY: address }),
+            {
+              error: to_log_error(error),
+            },
+          );
+        },
+      });
       system_proxy_http_client.install_as_global_fetch();
       return new BackendResources(
         paths,

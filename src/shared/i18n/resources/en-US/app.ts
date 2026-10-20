@@ -236,6 +236,7 @@ export const en_us_app = {
   diagnostic: {
     proxy: {
       apply_failed: "Failed to apply the proxy settings; outbound requests use the system proxy …",
+      request_failed: "Request through proxy {PROXY} failed …",
     },
     agent: {
       web_search_provider_failed: "Web search provider request failed …",

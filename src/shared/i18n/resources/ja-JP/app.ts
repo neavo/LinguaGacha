@@ -240,6 +240,7 @@ export const ja_jp_app = {
   diagnostic: {
     proxy: {
       apply_failed: "プロキシ設定を適用できなかったため、システムプロキシで送信します …",
+      request_failed: "プロキシ {PROXY} 経由のリクエストに失敗しました …",
     },
     agent: {
       web_search_provider_failed: "ウェブ検索プロバイダーへのリクエストに失敗しました …",

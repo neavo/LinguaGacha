@@ -246,6 +246,7 @@ export const de_de_app = {
     proxy: {
       apply_failed:
         "Proxy-Einstellungen konnten nicht angewendet werden; Anfragen nutzen den Systemproxy …",
+      request_failed: "Anfrage über Proxy {PROXY} fehlgeschlagen …",
     },
     agent: {
       web_search_provider_failed: "Anfrage beim Websuchanbieter fehlgeschlagen …",

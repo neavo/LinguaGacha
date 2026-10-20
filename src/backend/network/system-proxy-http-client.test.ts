@@ -195,6 +195,47 @@ describe("SystemProxyHttpClient", () => {
     expect(mocks.fetch).not.toHaveBeenCalled();
   });
 
+  it("代理请求失败按地址归因，凭据不进入回调且同一地址只报告一次", async () => {
+    const failure = new Error("connect ECONNREFUSED");
+    mocks.fetch.mockRejectedValue(failure);
+    const on_route_failure = vi.fn();
+    const client = new SystemProxyHttpClient(
+      { resolveProxy: vi.fn(async () => "SOCKS5 user:secret@127.0.0.1:1080") },
+      { redirects: "error", onRouteFailure: on_route_failure },
+    );
+
+    await expect(client.fetch("https://api.example/a")).rejects.toBe(failure);
+    await expect(client.fetch("https://api.example/b")).rejects.toBe(failure);
+
+    expect(on_route_failure).toHaveBeenCalledExactlyOnceWith("127.0.0.1:1080", failure);
+  });
+
+  it("直连失败与调用方取消不归因到代理", async () => {
+    const on_route_failure = vi.fn();
+    const client = new SystemProxyHttpClient(
+      { resolveProxy: vi.fn(async () => "DIRECT") },
+      { redirects: "error", onRouteFailure: on_route_failure },
+    );
+
+    mocks.fetch.mockRejectedValueOnce(new Error("direct request failed"));
+    await expect(client.fetch("https://api.example/a")).rejects.toThrow("direct request failed");
+
+    const controller = new AbortController();
+    mocks.fetch.mockImplementationOnce(async () => {
+      controller.abort();
+      throw new DOMException("aborted", "AbortError");
+    });
+    const proxied = new SystemProxyHttpClient(
+      { resolveProxy: vi.fn(async () => "PROXY 127.0.0.1:7890") },
+      { redirects: "error", onRouteFailure: on_route_failure },
+    );
+    await expect(
+      proxied.fetch("https://api.example/b", { signal: controller.signal }),
+    ).rejects.toThrow("aborted");
+
+    expect(on_route_failure).not.toHaveBeenCalled();
+  });
+
   it("释放所有自有直连和代理连接池", async () => {
     const client = new SystemProxyHttpClient({
       resolveProxy: vi.fn(async (url) =>
