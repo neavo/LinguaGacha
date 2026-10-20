@@ -41,19 +41,24 @@ it.each(["pck", "embedded"])("Godot %s 字体接入、载体备份与重复换�
     await service.apply(request);
     expect(fs.readFileSync(path.join(root, "override.cfg"), "utf8")).toBe(OVERRIDE);
     expect(fs.existsSync(path.join(root, "backup_lg/override.cfg"))).toBe(false);
+    const font_bytes = read_resource(fs.readFileSync(path.join(root, "lg_font.fontdata")))
+      .properties[0]!.value.value;
+    if (!Buffer.isBuffer(font_bytes)) throw new Error("Expected font bytes");
+    expect(font_bytes.equals(font)).toBe(true);
+    expect(fs.readFileSync(path.join(root, "backup_lg/font.ttf.import")).equals(mapping)).toBe(
+      true,
+    );
+    expect(fs.readFileSync(path.join(root, "backup_lg", carrier)).equals(pack)).toBe(true);
     expect(
-      read_resource(fs.readFileSync(path.join(root, "lg_font.fontdata"))).properties[0]!.value
-        .value,
-    ).toEqual(font);
-    expect(fs.readFileSync(path.join(root, "backup_lg/font.ttf.import"))).toEqual(mapping);
-    expect(fs.readFileSync(path.join(root, "backup_lg", carrier))).toEqual(pack);
-    expect(fs.readFileSync(path.join(root, "project.binary"))).toEqual(files.get("project.binary"));
+      fs.readFileSync(path.join(root, "project.binary")).equals(files.get("project.binary")!),
+    ).toBe(true);
     expect(fs.readFileSync(path.join(root, "font.ttf.import"), "utf8")).toBe(
       mapping.toString().replace("res://old.fontdata", "res://lg_font.fontdata"),
     );
     expect(fs.existsSync(path.join(root, ".tmp"))).toBe(false);
   }
-  if (kind === "embedded") expect(fs.readFileSync(path.join(root, carrier))).toEqual(prefix);
+  if (kind === "embedded")
+    expect(fs.readFileSync(path.join(root, carrier)).equals(prefix)).toBe(true);
   else expect(fs.existsSync(path.join(root, carrier))).toBe(false);
   expect(execute).toHaveBeenCalledTimes(1); // 已展开后的换字体不再启动准备任务。
 });
@@ -99,7 +104,7 @@ it("Godot 没有字体导入且关闭覆盖时保留封包，不提交解包文�
     "No font files found",
   );
   expect(fs.readdirSync(root)).toEqual(["game.pck"]);
-  expect(fs.readFileSync(path.join(root, "game.pck"))).toEqual(pack);
+  expect(fs.readFileSync(path.join(root, "game.pck")).equals(pack)).toBe(true);
 });
 
 /** 游戏以启动程序定位，字体放在游戏目录旁。 */
@@ -192,7 +197,7 @@ it.each(["inspect", "apply"] as const)(
       code: "file.parse_failed",
     });
     for (const [name, bytes] of wolf_files())
-      expect(fs.readFileSync(path.join(root, name))).toEqual(bytes);
+      expect(fs.readFileSync(path.join(root, name)).equals(bytes)).toBe(true);
     expect(fs.readFileSync(path.join(root, "custom.bin"), "utf8")).toBe("original file");
     expect(fs.readdirSync(path.join(root, "backup_lg"))).toEqual(["keep"]);
     expect(fs.readFileSync(path.join(root, "backup_lg/keep"), "utf8")).toBe("original backup");
@@ -215,7 +220,7 @@ it("支持混合大小写扩展名并备份已有同名字体", async () => {
   );
   await service.inspect({ ...request, font_path });
   await service.apply({ ...request, font_path });
-  expect(fs.readFileSync(path.join(root, existing))).toEqual(fs.readFileSync(font_path));
+  expect(fs.readFileSync(path.join(root, existing)).equals(fs.readFileSync(font_path))).toBe(true);
   expect(fs.readFileSync(path.join(root, "backup_lg", existing), "utf8")).toBe("original font");
   expect(
     fs.readdirSync(root).filter((name) => name.toLowerCase() === existing.toLowerCase()),

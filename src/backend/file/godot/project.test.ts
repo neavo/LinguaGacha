@@ -15,6 +15,6 @@ it("ECFG 单项改写保留其余 Variant 原字节，截断配置拒绝读取",
     ["first", "keep"],
     ["fallback", "ja"],
   ]);
-  expect(next[0]!.bytes).toEqual(read_project(original)[0]!.bytes);
+  expect(next[0]!.bytes.equals(read_project(original)[0]!.bytes)).toBe(true);
   expect(() => read_project(original.subarray(0, -1))).toThrow();
 });

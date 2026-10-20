@@ -11,7 +11,9 @@ it.each([0, 63, 65531, 131077])("ChaCha20 在偏移 %i 与 Node 原生算法一�
   const cipher = createCipheriv("chacha20", key, iv);
   cipher.update(Buffer.alloc(start % 64));
   const input = Buffer.alloc(65541, 42);
-  expect(chacha20_xor(Buffer.from(input), key, nonce, start)).toEqual(cipher.update(input));
+  expect(chacha20_xor(Buffer.from(input), key, nonce, start).equals(cipher.update(input))).toBe(
+    true,
+  );
 });
 
 it("修改版 SHA512 匹配固定 C++ 参考摘要", () => {

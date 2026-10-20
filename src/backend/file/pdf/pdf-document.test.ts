@@ -83,9 +83,11 @@ it("待处理与确认保留页共同原样输出资产，无需打印", async (
   const document = read_pdf_document(bytes);
   document.pages[0]!.translation = { kind: "keep", reason: "已确认无需翻译" };
   const print = vi.fn();
-  expect(await build_pdf_document({ title: "book", document, source_bytes: bytes, print })).toEqual(
-    bytes,
-  );
+  expect(
+    Buffer.from(
+      (await build_pdf_document({ title: "book", document, source_bytes: bytes, print }))!,
+    ).equals(bytes),
+  ).toBe(true);
   expect(print).not.toHaveBeenCalled();
 });
 

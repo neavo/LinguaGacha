@@ -122,7 +122,7 @@ it.each([0, 1, 2, 3, 4])("RSCC 模式 %s 解压及有界长度检查", (mode) =>
     compressed,
     Buffer.from("RSCC"),
   ]);
-  expect(decode_resource(bytes).body).toEqual(body);
+  expect(decode_resource(bytes).body.equals(body)).toBe(true);
   const invalid = Buffer.from(bytes);
   invalid.writeUInt32LE(body.length + 1, 12);
   expect(() => decode_resource(invalid)).toThrow();

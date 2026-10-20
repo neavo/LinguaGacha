@@ -370,9 +370,11 @@ it("正式导入容器使用当前数据，重复导入保留各路径首次备�
   expect(fs.existsSync(path.join(temp.path, "backup_lg/www/img"))).toBe(false);
   expect([...members.keys()].some((name) => name.includes("fonts/"))).toBe(false);
   for (const [name, member] of members) {
-    expect(fs.readFileSync(path.join(temp.path, "backup_lg", name))).toEqual(
-      await member.async("nodebuffer"),
-    );
+    expect(
+      fs
+        .readFileSync(path.join(temp.path, "backup_lg", name))
+        .equals(await member.async("nodebuffer")),
+    ).toBe(true);
   }
   expect(fs.readFileSync(path.join(temp.path, "backup_lg/www/fonts/css/game.css"), "utf8")).toBe(
     "font config",
@@ -428,7 +430,7 @@ it.each(["read", "existing-read", "backup"])(
     await expect(service.prepare_source(entry)).rejects.toThrow(
       phase === "backup" ? "backup failure" : "read failure",
     );
-    expect(fs.readFileSync(path.join(temp.path, "img/a.png"))).toEqual(png_fixture());
+    expect(fs.readFileSync(path.join(temp.path, "img/a.png")).equals(png_fixture())).toBe(true);
     expect(fs.existsSync(path.join(temp.path, "img/a.png_"))).toBe(false);
     if (phase === "existing-read")
       expect(fs.readdirSync(path.join(temp.path, "backup_lg")).sort()).toEqual(["data", "fonts"]);
@@ -475,7 +477,9 @@ it("产品门面完成来源摘要、准备、容器、翻译与导出，原稿�
   expect(
     read_translation(fs.readFileSync(output)).slots.some((slot) => slot.text === "产品译文"),
   ).toBe(true);
-  expect(fs.readFileSync(path.join(root, "backup_lg/messages.translation"))).toEqual(
-    files.get("messages.translation"),
-  );
+  expect(
+    fs
+      .readFileSync(path.join(root, "backup_lg/messages.translation"))
+      .equals(files.get("messages.translation")!),
+  ).toBe(true);
 });

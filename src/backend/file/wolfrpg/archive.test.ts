@@ -30,7 +30,7 @@ it("DXArchive 8 crypt=0 的 v2.225 独立向量可读取", async () => {
     for (const member of archive.members) {
       const chunks: Buffer[] = [];
       for await (const chunk of archive.chunks(member)) chunks.push(chunk);
-      expect(Buffer.concat(chunks)).toEqual(expected.get(member.name));
+      expect(Buffer.concat(chunks).equals(expected.get(member.name)!), member.name).toBe(true);
     }
   } finally {
     await handle.close();
@@ -96,7 +96,7 @@ it.each([100, 200, 1000, 1010, 1020])(
       for (const member of archive.members) {
         const chunks = [];
         for await (const chunk of archive.chunks(member)) chunks.push(chunk);
-        expect(Buffer.concat(chunks)).toEqual(files.get(member.name));
+        expect(Buffer.concat(chunks).equals(files.get(member.name)!), member.name).toBe(true);
       }
       if (companion)
         await expect(
@@ -135,7 +135,7 @@ it.each([0, 300, 314, 331, 350])(
         for (const member of archive.members) {
           const parts: Buffer[] = [];
           for await (const chunk of archive.chunks(member)) parts.push(chunk);
-          expect(Buffer.concat(parts)).toEqual(files.get(member.name));
+          expect(Buffer.concat(parts).equals(files.get(member.name)!), member.name).toBe(true);
         }
       } finally {
         await handle.close();
@@ -159,7 +159,7 @@ it.each([331, 350, 1010, 1020])("小归档 %i 的前缀与目录重叠及空归�
       for (const member of archive.members) {
         const chunks = [];
         for await (const chunk of archive.chunks(member)) chunks.push(chunk);
-        expect(Buffer.concat(chunks)).toEqual(files.get(member.name));
+        expect(Buffer.concat(chunks).equals(files.get(member.name)!), member.name).toBe(true);
       }
     } finally {
       await handle.close();

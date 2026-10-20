@@ -85,7 +85,9 @@ it.each(wolf_crypt_vectors.wolfx)("$name 固定向量通过头部候选筛选并
   candidates.masters.add(vector.key);
   candidates.strings.set(vector.string_id, new Set([vector.string]));
   candidates.integers.set(vector.integer_id, new Set([vector.integer >>> 0]));
-  expect(await decode(wolf_vector(vector.input), candidates)).toEqual(wolf_vector(vector.output));
+  expect(
+    (await decode(wolf_vector(vector.input), candidates))!.equals(wolf_vector(vector.output)),
+  ).toBe(true);
 });
 
 it("CESU-8 保留代理码元，所需索引缺失时不能借用其它变量的值", async () => {
@@ -104,9 +106,9 @@ it("同文候选合并，五点采样通过的异文候选报歧义", async () =
   for (const name of ["equivalent", "ambiguous"]) {
     const vector = wolf_crypt_vectors.wolfx.find((v) => v.name === name)!;
     if (name === "equivalent")
-      expect(await decode(wolf_vector(vector.input), candidates)).toEqual(
-        wolf_vector(vector.output),
-      );
+      expect(
+        (await decode(wolf_vector(vector.input), candidates))!.equals(wolf_vector(vector.output)),
+      ).toBe(true);
     else
       await expect(decode(wolf_vector(vector.input), candidates)).rejects.toThrow(
         "Ambiguous WOLFX plaintext",

@@ -118,7 +118,7 @@ it("数据库默认翻译资格与元数据分开，子目录同名文件不套�
   const value = field(array(root)[1]!, "@name")!;
   expect(text(value)).toBe("中文");
   expect(value.pairs![0]![1].t).toBe("T");
-  expect(base(value).data).toEqual(Buffer.from("中文"));
+  expect(base(value).data!.equals(Buffer.from("中文"))).toBe(true);
   expect(read_rgss_metadata(item.extra_field).usage).toBe("text");
 });
 
@@ -164,7 +164,7 @@ it("同槽位的路径别名合并相同译文，冲突时原稿对象完全不�
   alias.dst = "冲突";
   const before = encode(root);
   await expect(write_rgss_data(root, [other, item, alias], "ace")).rejects.toThrow("Conflicting");
-  expect(encode(root)).toEqual(before);
+  expect(encode(root).equals(before)).toBe(true);
   alias.dst = item.dst;
   await write_rgss_data(root, [alias, item, other], "ace");
   expect(text(field(array(root)[0]!, "@name")!)).toBe("一致");

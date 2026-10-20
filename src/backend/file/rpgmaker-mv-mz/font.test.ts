@@ -16,7 +16,7 @@ it("MV 字体输出只覆盖 data_root/fonts 下的字体文件", () => {
     font,
   );
   expect([...outputs.keys()]).toEqual(["www/fonts/a.ttf", "www/fonts/b.woff"]);
-  expect(outputs.get("www/fonts/b.woff")).toEqual(font.bytes);
+  expect(Buffer.from(outputs.get("www/fonts/b.woff")!).equals(font.bytes)).toBe(true);
 });
 
 it("MV 缺少字体目录时失败，不写出任何文件", () => {

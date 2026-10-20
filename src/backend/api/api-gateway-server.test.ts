@@ -102,9 +102,9 @@ describe("ApiGatewayServer", () => {
     );
     expect(image.headers.get("Content-Type")).toBe("image/png");
     expect(image.headers.get("Cache-Control")).toBe("no-store");
-    expect(new Uint8Array(await image.arrayBuffer())).toEqual(
-      Uint8Array.from([0, 255, 1, 128, 13, 10]),
-    );
+    expect(
+      Buffer.from(await image.arrayBuffer()).equals(Uint8Array.from([0, 255, 1, 128, 13, 10])),
+    ).toBe(true);
   });
 
   it("二进制上传与下载通过真实 HTTP 原样往返，未知身份复用公开错误壳", async () => {
@@ -123,7 +123,7 @@ describe("ApiGatewayServer", () => {
     expect(payload.ok).toBe(true);
     expect(payload.data).toMatchObject({ name: "数据 文件.zip", size: 6, imageMimeType: null });
     const downloaded = await fetch(`${baseUrl}/api/agent/uploads/${payload.data.uploadId}`);
-    expect(new Uint8Array(await downloaded.arrayBuffer())).toEqual(original);
+    expect(Buffer.from(await downloaded.arrayBuffer()).equals(original)).toBe(true);
     expect(downloaded.headers.get("Content-Disposition")).toContain("attachment;");
     const empty = await fetch(`${baseUrl}/api/agent/uploads?name=empty.bin`, {
       method: "POST",

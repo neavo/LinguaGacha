@@ -106,7 +106,7 @@ it.each([
   const system = decode(fs.readFileSync(path.join(output, "game/Data/System" + extension)));
   expect(text(field(system, "@game_title")!)).toBe(title);
   expect(text(field(system, "@currency_unit")!)).toBe("金币");
-  expect(fs.readFileSync(path.join(output, "game/Game.ini"))).toEqual(ini);
+  expect(fs.readFileSync(path.join(output, "game/Game.ini")).equals(ini)).toBe(true);
   expect(fs.readFileSync(path.join(output, "game/Data/Broken" + extension), "utf8")).toBe("broken");
   const archive = decode(fs.readFileSync(path.join(output, "game/Custom/Main" + extension)));
   expect(inflateSync(bytes(array(array(archive)[0]!)[2]!)).toString()).toBe('puts "菜单", "keep"');
@@ -116,7 +116,9 @@ it.each([
     asset_reader: () => Buffer.from(prepared.content),
     paths: { translated_path: unchanged, bilingual_path: unchanged },
   });
-  expect(fs.readFileSync(path.join(unchanged, "game/Data/Actors" + extension))).toEqual(actors);
+  expect(fs.readFileSync(path.join(unchanged, "game/Data/Actors" + extension)).equals(actors)).toBe(
+    true,
+  );
 });
 
 it.each([false, true])(
@@ -152,7 +154,9 @@ it.each([false, true])(
       read.mockClear();
       await format.write_to_path([], context);
       expect(read).not.toHaveBeenCalled();
-      expect(fs.readFileSync(path.join(temp.path, "game/Data/System.rvdata2"))).toEqual(original);
+      expect(
+        fs.readFileSync(path.join(temp.path, "game/Data/System.rvdata2")).equals(original),
+      ).toBe(true);
       if (invalid) {
         const valid = new JSZip();
         valid.file("Game.ini", "[Game]\nScripts=Data/Scripts.rvdata2");

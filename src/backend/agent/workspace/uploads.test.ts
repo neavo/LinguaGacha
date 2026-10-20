@@ -38,7 +38,7 @@ it("任意字节和空文件原样保存，清理名称并隔离同名上传", a
   expect(first).toMatchObject({ name: "参考 图(最终).zip", size: 5, imageMimeType: null });
   expect(first.path).toMatch(/^uploads\/[^/\\]+\.zip$/u);
   expect(second.path).not.toBe(first.path);
-  expect(fs.readFileSync(path.join(root, first.path))).toEqual(Buffer.from(bytes));
+  expect(fs.readFileSync(path.join(root, first.path)).equals(Buffer.from(bytes))).toBe(true);
   expect(fs.statSync(path.join(root, second.path)).size).toBe(0);
   expect(() => uploads.get("missing")).toThrow();
   await uploads.close();
@@ -57,7 +57,7 @@ it("图片按跨分块文件头识别，上传保留原字节", async () => {
     new AbortController().signal,
   );
   expect(file.imageMimeType).toBe("image/png");
-  expect(uploads.read_image(file.uploadId)).toEqual(Buffer.from(bytes));
+  expect(Buffer.from(uploads.read_image(file.uploadId)).equals(bytes)).toBe(true);
 });
 
 it("登记失败回收已移动的上传文件，重试后可恢复登记", async () => {
@@ -100,7 +100,7 @@ it("登记期间关闭等待上传收尾，已提交的文件可在重开后读�
   await rejected;
   const restored = new AgentUploadStore(root, new NativeFs(), [record]);
   expect(restored.get(record.uploadId)).toEqual(record);
-  expect(fs.readFileSync(path.join(root, record.path))).toEqual(Buffer.from([9]));
+  expect(fs.readFileSync(path.join(root, record.path)).equals(Buffer.from([9]))).toBe(true);
 });
 
 it("关闭取消等待中的读取，清理半成品且旧身份不能进入新会话", async () => {

@@ -261,7 +261,7 @@ describe("AgentWorkspaceService", () => {
     await expect(
       fixture.service.activate_path("work/结果%20%23%20%2523.md#section"),
     ).resolves.toEqual({ status: "saved" });
-    expect(fs.readFileSync(fixture.destination)).toEqual(fs.readFileSync(fixture.file));
+    expect(fs.readFileSync(fixture.destination).equals(fs.readFileSync(fixture.file))).toBe(true);
     expect(fixture.pick_save_path).toHaveBeenCalledWith("结果 # %23.md");
     await expect(fixture.service.activate_path("work/")).resolves.toEqual({ status: "opened" });
     expect(fixture.open_directory).toHaveBeenCalledExactlyOnceWith(path.dirname(fixture.file));

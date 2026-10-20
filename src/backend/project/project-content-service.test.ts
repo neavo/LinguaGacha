@@ -338,7 +338,9 @@ describe("ProjectContentService", () => {
       });
       expect(fs.existsSync(archive)).toBe(false);
       expect(fs.existsSync(path.join(root, ".lg-original"))).toBe(false);
-      expect(fs.readFileSync(path.join(root, "backup_lg/Data/System.rvdata2"))).toEqual(content);
+      expect(
+        fs.readFileSync(path.join(root, "backup_lg/Data/System.rvdata2")).equals(content),
+      ).toBe(true);
       expect((await service.preview_import_files({ source_paths: [root] })).files).toEqual(
         preview.files.map((file) => ({ ...file, conflict: true })),
       );
@@ -347,9 +349,9 @@ describe("ProjectContentService", () => {
         rel_paths: ["packed.zip"],
         expected_section_revisions: { items: 1 },
       });
-      expect(await database.read_asset_content(lg_path, "packed.zip")).not.toEqual(
-        Buffer.from("old"),
-      );
+      expect(
+        (await database.read_asset_content(lg_path, "packed.zip"))!.equals(Buffer.from("old")),
+      ).toBe(false);
     } finally {
       await database.close();
     }
@@ -445,7 +447,7 @@ describe("ProjectContentService", () => {
         "game.zip",
         "game_20261011_123456.zip",
       ]);
-      expect(await database.read_asset_content(lg_path, "game_2.zip")).toEqual(old);
+      expect((await database.read_asset_content(lg_path, "game_2.zip"))!.equals(old!)).toBe(true);
       const replacement = await service.preview_import_files({ source_paths: [roots[0]!] });
       expect(replacement["files"]).toMatchObject([{ target_rel_path: "game.zip" }]);
     } finally {
@@ -612,7 +614,7 @@ describe("ProjectContentService", () => {
       await expect(service.import_files(await request())).rejects.toThrow();
       expect(fail).toHaveBeenCalledOnce();
       fail.mockRestore();
-      expect(await database.read_asset_content(lg_path, "game.zip")).toEqual(old);
+      expect((await database.read_asset_content(lg_path, "game.zip"))!.equals(old!)).toBe(true);
       expect(await database.get_all_items(lg_path)).toEqual(old_items);
       expect(fs.readFileSync(path.join(source, "backup_lg/data/New.json"), "utf8")).toBe(
         '{"text":"新文"}',
@@ -647,7 +649,7 @@ describe("ProjectContentService", () => {
       expect((await database.get_all_items(lg_path)).some((item) => item.src === "新文")).toBe(
         true,
       );
-      expect(await database.read_asset_content(lg_path, "game.zip")).toEqual(saved);
+      expect((await database.read_asset_content(lg_path, "game.zip"))!.equals(saved)).toBe(true);
       await expect(
         service.import_files({
           ...(await request()),
@@ -659,7 +661,7 @@ describe("ProjectContentService", () => {
           ],
         }),
       ).rejects.toMatchObject({ code: "file.parse_failed" });
-      expect(await database.read_asset_content(lg_path, "game.zip")).toEqual(saved);
+      expect((await database.read_asset_content(lg_path, "game.zip"))!.equals(saved)).toBe(true);
       await service.delete_files({
         rel_paths: ["game.zip"],
         expected_section_revisions: await revisions(),

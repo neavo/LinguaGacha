@@ -24,7 +24,9 @@ it("普通原稿按资产相对路径保留原始字节", async () => {
     readAsset: () => bytes,
   });
   for (const file of files)
-    expect(fs.readFileSync(path.join(root.path, "sources", file.file_path))).toEqual(bytes);
+    expect(fs.readFileSync(path.join(root.path, "sources", file.file_path)).equals(bytes)).toBe(
+      true,
+    );
 });
 
 it.each([
@@ -48,7 +50,9 @@ it.each([
     readAsset: () => content,
   });
   for (const [name, bytes] of members)
-    expect(fs.readFileSync(path.join(root.path, "sources", file_path, name))).toEqual(bytes);
+    expect(fs.readFileSync(path.join(root.path, "sources", file_path, name)).equals(bytes)).toBe(
+      true,
+    );
 });
 
 it("RGSS 生成路径与原始成员冲突时失败，避免覆盖原稿证据", async () => {
@@ -117,9 +121,9 @@ it.each([
       readAsset: () => zip.generateAsync({ type: "nodebuffer" }),
     };
     await write_agent_workspace_sources(args);
-    expect(fs.readFileSync(path.join(root.path, "game.zip", original))).toEqual(
-      members.get(original),
-    );
+    expect(
+      fs.readFileSync(path.join(root.path, "game.zip", original)).equals(members.get(original)!),
+    ).toBe(true);
     expect(
       JSON.parse(fs.readFileSync(path.join(root.path, "game.zip", projection), "utf8")),
     ).toMatchObject(expected);

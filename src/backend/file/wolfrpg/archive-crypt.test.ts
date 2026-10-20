@@ -23,9 +23,11 @@ it.each([
 });
 
 it.each(wolf_crypt_vectors.keys)("$type 密钥派生匹配独立参考字节", async ({ type, input, key }) => {
-  expect(await derive_archive_key(wolf_vector(input), type as WolfKeyType)).toEqual(
-    Buffer.from(key, "hex"),
-  );
+  expect(
+    (await derive_archive_key(wolf_vector(input), type as WolfKeyType)).equals(
+      Buffer.from(key, "hex"),
+    ),
+  ).toBe(true);
   await expect(
     derive_archive_key(wolf_vector(input).subarray(0, 20), type as WolfKeyType),
   ).rejects.toThrow();
@@ -39,8 +41,10 @@ it.each(wolf_crypt_vectors.archiveKeys)(
       pw = Uint8Array.from({ length: 15 }, (_, i) => i + 1);
     const aes = aes_keys(pw, version, tail);
     expect(
-      Buffer.concat([generate_key(pw, false, version, undefined, tail), aes.key, aes.iv]),
-    ).toEqual(wolf_vector(output));
+      Buffer.concat([generate_key(pw, false, version, undefined, tail), aes.key, aes.iv]).equals(
+        wolf_vector(output),
+      ),
+    ).toBe(true);
   },
 );
 

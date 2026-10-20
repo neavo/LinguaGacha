@@ -158,7 +158,7 @@ it.each([false, true])("配置存在=%s 时，报告缺失的配置或脚本位�
   );
   const output = new Map<string, Uint8Array>();
   for await (const [name, bytes] of read_rgss_sources(files)) output.set(name, bytes);
-  if (!has_ini) expect(Buffer.from(output.get("Data/System.rvdata2")!)).toEqual(content);
+  if (!has_ini) expect(Buffer.from(output.get("Data/System.rvdata2")!).equals(content)).toBe(true);
   const diagnostic = has_ini ? "Data/Scripts.rvdata2.error.json" : "rgss.error.json";
   expect(JSON.parse(Buffer.from(output.get(diagnostic)!).toString())).toEqual({
     file: has_ini ? "Data/Scripts.rvdata2" : "Game.ini",

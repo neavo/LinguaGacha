@@ -35,8 +35,8 @@ it("游戏根目录、EXE 和 Data 去重为一个资产，解包覆盖散装文
   const asset = await service.prepare_source(entries[0]!);
   expect(fs.existsSync(path.join(root, "Data.wolf"))).toBe(false);
   for (const [name, bytes] of files) {
-    expect(fs.readFileSync(path.join(root, name))).toEqual(bytes);
-    expect(fs.readFileSync(path.join(root, "backup_lg", name))).toEqual(bytes);
+    expect(fs.readFileSync(path.join(root, name)).equals(bytes)).toBe(true);
+    expect(fs.readFileSync(path.join(root, "backup_lg", name)).equals(bytes)).toBe(true);
   }
   const repeat = await service.collect_source_file_entries([root]);
   await expect(service.prepare_source(repeat[0]!)).resolves.toBeDefined();
@@ -76,7 +76,7 @@ it("游戏根目录、EXE 和 Data 去重为一个资产，解包覆盖散装文
       expect(read_wolf_common(actual).slots.at(-1)!.text).toBe(common.dst);
     else if (name.endsWith("Unregistered.mps"))
       expect(read_wolf_map(actual).slots.some((slot) => slot.text === released.dst)).toBe(true);
-    else expect(actual).toEqual(bytes);
+    else expect(actual.equals(bytes)).toBe(true);
   }
 });
 

@@ -81,7 +81,7 @@ it.each(["Data", "Custom"])("RGSS 收集 %s 配置脚本并复用已枚举的数
   expect([...files.data.keys()].sort()).toEqual(
     ["Game.ini", "Data/System.rvdata2", "Data/nested/Actor.rvdata2", script].sort(),
   );
-  expect(files.data.get(script)).toEqual(Buffer.from("prepared script"));
+  expect(Buffer.from(files.data.get(script)!).equals(Buffer.from("prepared script"))).toBe(true);
   expect(
     read.mock.calls.filter(([name]) => name === path.join(temp.path, "Game.ini")),
   ).toHaveLength(1);

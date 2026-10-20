@@ -111,7 +111,7 @@ it("暂存覆盖正式成员，字体映射单独收集并排除纹理与备份"
       result: { writes: ["project.binary", "scene.res", "fonts/test.ttf.import"] },
     },
   );
-  expect(files.data.get("project.binary")).toEqual(godot_project_fixture());
+  expect(Buffer.from(files.data.get("project.binary")!).equals(godot_project_fixture())).toBe(true);
   expect(files.data.has("scene.res")).toBe(true);
   expect([...files.fonts]).toEqual([["fonts/test.ttf.import", font]]);
 });

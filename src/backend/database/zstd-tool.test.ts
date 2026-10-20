@@ -8,7 +8,7 @@ describe("ZstdTool", () => {
     const compressed = ZstdTool.compress(raw);
 
     expect(compressed.equals(raw)).toBe(false);
-    expect(ZstdTool.decompress(compressed)).toEqual(raw);
+    expect(ZstdTool.decompress(compressed).equals(raw)).toBe(true);
   });
 
   it("解压非法数据时抛出 Zstd 错误", () => {

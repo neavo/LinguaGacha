@@ -64,7 +64,7 @@ it("WOLF 归档与字体替换一次提交，四个字体槽位写入族名并�
     ]),
   );
   for (const [name, bytes] of wolf_files())
-    expect(fs.readFileSync(path.join(temp.path, "backup_lg", name))).toEqual(bytes);
+    expect(fs.readFileSync(path.join(temp.path, "backup_lg", name)).equals(bytes)).toBe(true);
   expect(fs.readFileSync(path.join(temp.path, "backup_lg/Fonts/config.txt"), "utf8")).toBe(
     "font config",
   );
@@ -78,7 +78,7 @@ it("WOLF 归档与字体替换一次提交，四个字体槽位写入族名并�
     5: "Custom Gothic",
     6: "Custom Gothic",
   });
-  expect(fs.readFileSync(path.join(temp.path, "CUSTOM.TTF"))).toEqual(FONT);
+  expect(fs.readFileSync(path.join(temp.path, "CUSTOM.TTF")).equals(FONT)).toBe(true);
   expect(read_font_fields(path.join(temp.path, "backup_lg/Data/BasicData/Game.dat"))[3]).toBe(
     "字体",
   );
@@ -108,7 +108,7 @@ it.each([
     return;
   }
   await expect(pending).rejects.toThrow("Font name cannot be stored");
-  expect(fs.readFileSync(game_file)).toEqual(wolf_game(14, false));
+  expect(fs.readFileSync(game_file).equals(wolf_game(14, false))).toBe(true);
   for (const name of ["custom.ttf", "backup_lg", ".tmp"])
     expect(fs.existsSync(path.join(temp.path, name))).toBe(false);
 });
@@ -130,11 +130,11 @@ it("MV 媒体清理与字体覆盖一次提交，备份原字体且保留加载�
       ["www/fonts/b.woff", "old b"],
     ]),
   );
-  expect(fs.readFileSync(path.join(temp.path, "www/img/a.png"))).toEqual(png_fixture());
+  expect(fs.readFileSync(path.join(temp.path, "www/img/a.png")).equals(png_fixture())).toBe(true);
   expect(fs.existsSync(path.join(temp.path, "www/img/a.rpgmvp"))).toBe(false);
   expect(fs.existsSync(path.join(temp.path, "backup_lg/www/img"))).toBe(false);
   for (const name of ["a.ttf", "b.woff"])
-    expect(fs.readFileSync(path.join(temp.path, "www/fonts", name))).toEqual(FONT);
+    expect(fs.readFileSync(path.join(temp.path, "www/fonts", name)).equals(FONT)).toBe(true);
   expect(fs.readFileSync(path.join(temp.path, "www/fonts/gamefont.css"), "utf8")).toBe(css);
   expect(fs.readFileSync(path.join(temp.path, "backup_lg/www/fonts/b.woff"), "utf8")).toBe("old b");
   expect(fs.readFileSync(path.join(temp.path, "backup_lg/www/fonts/gamefont.css"), "utf8")).toBe(
@@ -162,8 +162,8 @@ it("MZ 封装游戏展开后按原路径覆盖字体", async () => {
     ]),
   );
   await replace(temp.path, new Map([["Game.exe", packed]]), FONT, path.join(temp.path, "Game.exe"));
-  expect(fs.readFileSync(path.join(temp.path, "fonts/main.woff2"))).toEqual(FONT);
-  expect(fs.readFileSync(path.join(temp.path, "img/a.png"))).toEqual(png_fixture());
+  expect(fs.readFileSync(path.join(temp.path, "fonts/main.woff2")).equals(FONT)).toBe(true);
+  expect(fs.readFileSync(path.join(temp.path, "img/a.png")).equals(png_fixture())).toBe(true);
   expect(fs.existsSync(path.join(temp.path, "img/a.png_"))).toBe(false);
   expect(fs.readFileSync(path.join(temp.path, "backup_lg/data/System.json"), "utf8")).toContain(
     "MZ",
@@ -194,7 +194,7 @@ it.each(["mv", "mz", "wolfrpg"] as const)("%s 反复导入和替换字体共用�
   const entry = (await service.collect_source_file_entries([temp.path]))[0]!;
   await service.prepare_source(entry);
   await replace(temp.path, new Map());
-  expect(fs.readFileSync(path.join(temp.path, font_path))).toEqual(FONT);
+  expect(fs.readFileSync(path.join(temp.path, font_path)).equals(FONT)).toBe(true);
   if (kind !== "wolfrpg")
     native.write_file_sync(
       path.join(temp.path, prefix + "data/System.json"),
@@ -203,13 +203,15 @@ it.each(["mv", "mz", "wolfrpg"] as const)("%s 反复导入和替换字体共用�
   await service.prepare_source(entry);
   const next_font = font_fixture([{ text: "Second Font With Longer Name" }]);
   await replace(temp.path, new Map(), next_font);
-  expect(fs.readFileSync(path.join(temp.path, font_path))).toEqual(next_font);
+  expect(fs.readFileSync(path.join(temp.path, font_path)).equals(next_font)).toBe(true);
   if (kind === "wolfrpg")
     expect(read_font_fields(path.join(temp.path, data_path))[3]).toBe(
       "Second Font With Longer Name",
     );
   for (const name of [data_path, font_path])
-    expect(fs.readFileSync(path.join(temp.path, "backup_lg", name))).toEqual(files.get(name));
+    expect(fs.readFileSync(path.join(temp.path, "backup_lg", name)).equals(files.get(name)!)).toBe(
+      true,
+    );
   expect(
     fs.readdirSync(path.join(temp.path, "backup_lg")).some((name) => name.startsWith("backup_lg_")),
   ).toBe(false);
@@ -262,7 +264,7 @@ it.each(["backup", "commit", "cancel"])(
     ).rejects.toThrow(phase + " failure");
     for (const [name, text] of originals)
       expect(fs.readFileSync(path.join(temp.path, name), "utf8")).toBe(text);
-    expect(fs.readFileSync(encrypted)).toEqual(encrypted_media(png_fixture()));
+    expect(fs.readFileSync(encrypted).equals(encrypted_media(png_fixture()))).toBe(true);
     expect(fs.existsSync(path.join(temp.path, ".tmp"))).toBe(false);
     if (phase === "commit")
       expect(fs.readFileSync(path.join(temp.path, "backup_lg/fonts/main.ttf"), "utf8")).toBe(

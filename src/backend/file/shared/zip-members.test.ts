@@ -10,7 +10,7 @@ it("清单包含全部成员及原始字节，不要求成员可解析或有翻�
   zip.file("binary", bytes, { createFolders: false });
   const files = await read_zip_members(await zip.generateAsync({ type: "uint8array" }), "game.zip");
   expect([...files.keys()]).toEqual(["data/Broken.json", "data/Empty.json", "binary"]);
-  expect(await files.get("binary")!.async("uint8array")).toEqual(bytes);
+  expect((await files.get("binary")!.async("nodebuffer")).equals(bytes)).toBe(true);
 });
 
 it.each([

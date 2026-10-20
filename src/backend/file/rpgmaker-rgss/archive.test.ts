@@ -63,7 +63,7 @@ it.each([1, 3] as const)("v%s 按成员读取，跨分块解密并保留 Unicode
     for (const [index, content] of [...files.values()].entries()) {
       const output = path.join(temp.path, "out", members[index]!.name);
       await extract_rgss_member(handle, members[index]!, output, native);
-      expect(fs.readFileSync(output)).toEqual(content);
+      expect(fs.readFileSync(output).equals(content), members[index]!.name).toBe(true);
     }
   } finally {
     await handle.close();

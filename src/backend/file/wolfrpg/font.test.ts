@@ -17,5 +17,5 @@ it("WOLF 字体输出把四个字体槽位写成字体族名，并覆盖原字�
     5: "Custom Gothic",
     6: "Custom Gothic",
   });
-  expect(outputs.get("CUSTOM.TTF")).toEqual(bytes);
+  expect(Buffer.from(outputs.get("CUSTOM.TTF")!).equals(bytes)).toBe(true);
 });
