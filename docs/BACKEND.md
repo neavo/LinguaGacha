@@ -129,7 +129,9 @@ Godot 沿用散装游戏流程。引擎优先读取包内资源，准备时须�
 
 Godot 译文导出依赖系统字体回退，实际显示取决于系统字形和控件字体，字体度量也可能混用。
 
-Godot 字体工具只改写 `.import` 映射，所有导入共用一个 `lg_font.fontdata`。它不修改 `project.binary`，因此与译文导出的先后顺序无关；拷回首次备份的映射即可恢复原字体。
+Godot 字体工具分两层替换，共用一个 `lg_font.fontdata`。改写 FontFile 的 `.import` 映射，覆盖主题、场景与脚本按路径引用的资产字体。在游戏根目录 `override.cfg` 末尾追加 `gui/theme/custom_font`，覆盖落到默认主题字体的控件，项目关闭覆盖时跳过这一层。设置写入 `override.cfg`，因为译文导出会从原稿重新生成 `project.binary`，两层替换因此与导出顺序无关。
+
+只含工具这一节的 `override.cfg` 是工具产物，不进入备份。恢复时拷回 `backup_lg/` 中的映射与 `override.cfg`，备份中没有 `override.cfg` 时删除游戏目录中的该文件。
 
 Godot 语言表只翻译一种 locale：项目 fallback 已有语言表时沿用，否则取登记顺序中第一张表的 locale，并在导出的 `project.binary` 中把 fallback 改为该 locale。当前 locale 没有语言表时，引擎查询 fallback，因此系统语言或游戏内语言菜单选中其他 locale 时也显示译文，无需新增语言表或加载器。
 

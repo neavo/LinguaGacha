@@ -238,7 +238,7 @@ export const GAME_ENGINES: Record<GameFileType, GameEngine> = {
     create_adapter: create_godot_adapter,
     read_metadata: read_godot_metadata,
     default_status: godot_default_status,
-    font_outputs: (_game, files, font) => godot_font_outputs(files.fonts, font.bytes),
+    font_outputs: (_game, files, font) => godot_font_outputs(files.data, files.fonts, font.bytes),
   }),
 };
 

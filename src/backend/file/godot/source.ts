@@ -14,7 +14,7 @@ import {
   type GameSourceFiles,
   type PreparedGameFiles,
 } from "../shared/game/source-files";
-import { remap_font_import } from "./font";
+import { is_godot_font_file } from "./font";
 
 export type GodotCarrier =
   | { kind: "pck"; file: string }
@@ -193,9 +193,7 @@ export function collect_godot_files(
       assert(names.includes("project.binary"), "Missing Godot project.binary");
       return names;
     },
-    (name, read) =>
-      name.toLowerCase().endsWith(".import") &&
-      remap_font_import(Buffer.from(read(name)).toString("utf8")) !== null,
+    is_godot_font_file,
     fs,
     signal,
     prepared,
