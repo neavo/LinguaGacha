@@ -6,10 +6,10 @@ it("场景共享 Variant 只修改目标节点的 text", () => {
   const bytes = create_godot_fixture().get("scene.scn")!,
     before = read_scene(bytes);
   const first = before.properties.find(
-    (property) => property.nodeName === "Display" && property.property === "text",
+    (property) => property.path === "Display" && property.property === "text",
   )!;
   const other = before.properties.find(
-    (property) => property.nodeName === "Unchanged" && property.property === "text",
+    (property) => property.path === "Unchanged" && property.property === "text",
   )!;
   expect(first.reference).toBe(other.reference);
   const after = read_scene(

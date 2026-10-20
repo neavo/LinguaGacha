@@ -68,6 +68,7 @@ it("候选漏斗保留 project.binary、脚本、场景、自定义资源与坏�
     ["font.res", build_resource("FontFile", new Map())],
     ["image.res", build_resource("CompressedTexture2D", new Map())],
     ["bad.res", Buffer.from("broken")],
+    ["Table.RES", build_resource("Translation", new Map())],
     ["backup_lg/old.gd", Buffer.from("backup")],
     [".tmp/old.gd", Buffer.from("stage")],
   ]);
@@ -79,6 +80,7 @@ it("候选漏斗保留 project.binary、脚本、场景、自定义资源与坏�
     engine: "4",
   } as const;
   expect([...collect_godot_files(game, native).data.keys()].sort()).toEqual([
+    "Table.RES",
     "bad.res",
     "data.res",
     "main.gd",

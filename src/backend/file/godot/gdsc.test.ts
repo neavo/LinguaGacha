@@ -1,6 +1,10 @@
 import { expect, it } from "vitest";
-import { create_godot_fixture, gdsc_fixture } from "../../../test/godot-fixture";
-import { read_gdsc, patch_gdsc } from "./gdsc";
+import {
+  create_godot_fixture,
+  gdsc_fixture,
+  GODOT_COMPILED_SCRIPT_FIXTURE,
+} from "../../../test/godot-fixture";
+import { read_gdsc, patch_gdsc, print_gdsc } from "./gdsc";
 
 it.each([
   ["4.3", 100],
@@ -10,7 +14,7 @@ it.each([
   const before = read_gdsc(bytes);
   expect(before.version).toBe(version);
   const shared = before.tokens.filter(
-    (token) => token.type === 3 && before.constants[token.reference]?.value === "Shared",
+    (token) => token.kind === "LITERAL" && before.constants[token.reference]?.value === "Shared",
   );
   expect(shared.length).toBeGreaterThan(1);
   expect(shared[0]!.reference).toBe(shared[1]!.reference);
@@ -40,4 +44,24 @@ it.each([100, 101])("%s 对齐由追加常量的 UTF-8 字节数决定，短 tok
     expect(after.constants[after.tokens[0]!.reference]!.value).toBe(text);
     expect(after.constants[after.tokens[1]!.reference]!.value).toBe("same");
   }
+});
+
+it.each(["4.3", "4.6"] as const)("%s 真实编译脚本保留注解、行号及 tab 嵌套语义", (version) => {
+  const source = GODOT_COMPILED_SCRIPT_FIXTURE.source.split("\n");
+  const g = read_gdsc(Buffer.from(GODOT_COMPILED_SCRIPT_FIXTURE.scripts[version], "base64"));
+  expect(g.version).toBe(version === "4.3" ? 100 : 101);
+  const lines = print_gdsc(g).split("\n");
+  const annotation = g.tokens.find((token) => token.kind === "ANNOTATION")!;
+  expect(g.identifiers[annotation.reference]).toBe("@export");
+  expect(lines[annotation.line - 1]).toMatch(/^@export /u);
+  for (const token of g.tokens.filter((t) => t.kind === "LITERAL")) {
+    const text = g.constants[token.reference]!.value as string;
+    expect(source[token.line - 1]).toContain(text);
+    expect(lines[token.line - 1]).toContain(JSON.stringify(text));
+  }
+  const columns = new Map([...g.columns].map(([index, column]) => [g.tokens[index]!.line, column]));
+  expect([columns.get(5), columns.get(6), columns.get(7)]).toEqual([5, 9, 5]);
+  const indent = (line: string) => line.length - line.trimStart().length;
+  expect(indent(lines[5]!)).toBeGreaterThan(indent(lines[4]!));
+  expect(indent(lines[6]!)).toBe(indent(lines[4]!));
 });

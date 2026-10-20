@@ -5,10 +5,60 @@ export type Value = {
   type: number;
   start: number;
   end: number;
-  value?: string | number | boolean | null | Buffer;
+  value?: string | number | boolean | null | Buffer; // NodePath 为拼好的路径字符串。
   children?: Value[];
   encoding?: "resource_string";
+  length?: number; // Packed 数组的元素个数。
+  ref?: { external: string } | { internal: number }; // 资源对象引用：外部资源路径或当前解析结果 internal 数组的下标。
 };
+/** Marshal 编号即 `Variant::Type`。 */
+export const MARSHAL_VARIANT_TYPES: readonly string[] = [
+  "NIL",
+  "BOOL",
+  "INT",
+  "FLOAT",
+  "STRING",
+  "VECTOR2",
+  "VECTOR2I",
+  "RECT2",
+  "RECT2I",
+  "VECTOR3",
+  "VECTOR3I",
+  "TRANSFORM2D",
+  "VECTOR4",
+  "VECTOR4I",
+  "PLANE",
+  "QUATERNION",
+  "AABB",
+  "BASIS",
+  "TRANSFORM3D",
+  "PROJECTION",
+  "COLOR",
+  "STRING_NAME",
+  "NODE_PATH",
+  "RID",
+  "OBJECT",
+  "CALLABLE",
+  "SIGNAL",
+  "DICTIONARY",
+  "ARRAY",
+  "PACKED_BYTE_ARRAY",
+  "PACKED_INT32_ARRAY",
+  "PACKED_INT64_ARRAY",
+  "PACKED_FLOAT32_ARRAY",
+  "PACKED_FLOAT64_ARRAY",
+  "PACKED_STRING_ARRAY",
+  "PACKED_VECTOR2_ARRAY",
+  "PACKED_VECTOR3_ARRAY",
+  "PACKED_COLOR_ARRAY",
+  "PACKED_VECTOR4_ARRAY",
+];
+/** NodePath 按 Godot 文本形式拼接：绝对路径以 `/` 开头，子名以 `:` 连接。 */
+export const node_path = (
+  names: readonly string[],
+  subnames: readonly string[],
+  absolute: boolean,
+) => (absolute ? "/" : "") + names.join("/") + subnames.map((name) => ":" + name).join("");
 /** Marshal Variant 用于项目配置和 GDSC，类型编号与资源文件协议分别解释。 */
 export function read_variant(r: Reader, depth = 0): Value {
   assert(depth < 64, "Variant depth exceeded");
@@ -18,7 +68,7 @@ export function read_variant(r: Reader, depth = 0): Value {
   assert(type <= 38);
   const wide = !!(header & 0x10000);
   let value: Value["value"];
-  let children: Value[] | undefined;
+  let children: Value[] | undefined, length: number | undefined;
   const child = () => read_variant(r, depth + 1);
   const containerType = (kind: number) => {
     if (kind === 1) r.u32();
@@ -37,8 +87,11 @@ export function read_variant(r: Reader, depth = 0): Value {
     const n = r.u32();
     assert(n & 0x80000000, "Old NodePath unsupported");
     const sub = r.u32(),
-      flags = r.u32();
-    for (let i = 0; i < (n & 0x7fffffff) + sub + (flags & 2 ? 1 : 0); i++) r.string(false, true);
+      flags = r.u32(),
+      parts: string[] = [];
+    for (let i = 0; i < (n & 0x7fffffff) + sub + (flags & 2 ? 1 : 0); i++)
+      parts.push(r.string(false, true));
+    value = node_path(parts.slice(0, n & 0x7fffffff), parts.slice(n & 0x7fffffff), !!(flags & 1));
   } else if (type === 23) r.take(8);
   else if (type === 24) {
     if (wide) r.take(8);
@@ -87,6 +140,7 @@ export function read_variant(r: Reader, depth = 0): Value {
       };
     assert(widths[type]);
     value = r.take(n * widths[type]!);
+    length = n;
     if (type === 29) r.take(pad(n));
   } else {
     const reals: Record<number, number> = {
@@ -95,14 +149,14 @@ export function read_variant(r: Reader, depth = 0): Value {
       9: 3,
       11: 6,
       12: 4,
-      13: 4,
-      15: 6,
-      16: 9,
-      17: 12,
-      18: 4,
+      14: 4,
+      15: 4,
+      16: 6,
+      17: 9,
+      18: 12,
       19: 16,
     };
-    const ints: Record<number, number> = { 6: 2, 8: 4, 10: 3, 14: 4 };
+    const ints: Record<number, number> = { 6: 2, 8: 4, 10: 3, 13: 4 };
     if (reals[type]) r.take(reals[type]! * (wide ? 8 : 4));
     else if (ints[type]) r.take(ints[type]! * 4);
     else if (type === 20) r.take(16);
@@ -114,6 +168,7 @@ export function read_variant(r: Reader, depth = 0): Value {
     end: r.at,
     ...(value === undefined ? {} : { value }),
     ...(children === undefined ? {} : { children }),
+    ...(length === undefined ? {} : { length }),
   };
 }
 /** Marshal String 省略 NUL，以 UTF-8 字节数补齐四字节对齐。 */

@@ -7,7 +7,7 @@ import {
 import {
   read_translation,
   patch_translation,
-  translation_keys,
+  translation_slot,
   plan_translation_locale,
   patch_translation_fallback,
 } from "./translation";
@@ -18,8 +18,10 @@ import { read_project } from "./project";
 it("优化表保留全部哈希身份，只追加目标槽位字节", () => {
   const bytes = create_godot_fixture().get("messages.translation")!,
     before = read_translation(bytes);
-  expect(translation_keys(bytes)("KEY")).toBe(true);
-  expect(translation_keys(bytes)("missing")).toBe(false);
+  expect(before.slots.find((slot) => slot.index === translation_slot(bytes)("KEY"))!.text).toBe(
+    "Translated message",
+  );
+  expect(translation_slot(bytes)("missing")).toBeUndefined();
   const target = before.slots.find((slot) => slot.text === "Translated message")!;
   const result = patch_translation(
       bytes,

@@ -187,8 +187,11 @@ it("PO 写回保留 header、context 与 plural 元数据", async () => {
   expect(output).toContain('msgctxt "fruit"\nmsgid "apple"\nmsgid_plural "apples"');
 });
 
-it("4.6 Translation 写回值数组并保留 context、复数规则和消息键", async () => {
-  const files = create_godot_fixture();
+it.each([
+  ["4.3", "TranslationPO"],
+  ["4.6", "Translation"],
+])("%s %s 只提取译文，写回保留 context、复数规则和消息键", async (engine) => {
+  const files = create_godot_fixture(engine);
   files.set(
     "project.binary",
     godot_project_fixture(

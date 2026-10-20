@@ -55,6 +55,7 @@ import type { GameFont } from "./font-replace";
 import { wolf_font_outputs } from "../../wolfrpg/font";
 import { mv_mz_font_outputs } from "../../rpgmaker-mv-mz/font";
 import { godot_font_outputs } from "../../godot/font";
+import { read_godot_sources } from "../../godot/readable";
 
 type GameSources = {
   GODOT: GodotSource;
@@ -238,6 +239,7 @@ export const GAME_ENGINES: Record<GameFileType, GameEngine> = {
     create_adapter: create_godot_adapter,
     read_metadata: read_godot_metadata,
     default_status: godot_default_status,
+    workspace_view: read_godot_sources,
     font_outputs: (_game, files, font) => godot_font_outputs(files.data, files.fonts, font.bytes),
   }),
 };

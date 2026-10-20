@@ -11,15 +11,33 @@ export function create_godot_fixture(version = "4.6"): Map<string, Buffer> {
     Buffer.concat([u32(32), u32(values.length), ...values.map(u32)]);
   const integer = (value: number) => Buffer.concat([u32(3), u32(value)]);
   const bundled = new Map([
-    ["names", resource_strings(["Control", "Root", "Label", "Display", "Unchanged", "text"])],
+    [
+      "names",
+      resource_strings([
+        "Control",
+        "Root",
+        "Label",
+        "Display",
+        "Unchanged",
+        "text",
+        "Inner",
+        "ui",
+        "pressed",
+        "_on_pressed",
+      ]),
+    ],
     ["variants", Buffer.concat([u32(30), u32(1), u32(5), string("Shared", true)])],
-    ["node_count", integer(3)],
+    ["node_count", integer(4)],
+    // 节点：parent, owner, type, name, instance, 属性数, (属性, 值)×n, 分组数, 分组×n。
     [
       "nodes",
-      integers([-1, -1, 0, 1, -1, 0, 0, 0, 0, 2, 3, -1, 1, 5, 0, 0, 0, 0, 2, 4, -1, 1, 5, 0, 0]),
+      integers([
+        -1, -1, 0, 1, -1, 0, 0, 0, 0, 2, 3, -1, 1, 5, 0, 0, 0, 0, 2, 4, -1, 1, 5, 0, 0, 1, 0, 0, 6,
+        -1, 0, 1, 7,
+      ]),
     ],
-    ["conn_count", integer(0)],
-    ["conns", integers([])],
+    ["conn_count", integer(1)],
+    ["conns", integers([3, 0, 8, 9, 0, 0, 0])], // Inner.pressed → 根节点 _on_pressed。
     ["node_paths", Buffer.concat([u32(30), u32(0)])],
     ["editable_instances", Buffer.concat([u32(30), u32(0)])],
     ["version", integer(3)],
@@ -66,19 +84,33 @@ export function create_godot_fixture(version = "4.6"): Map<string, Buffer> {
       ],
     ]),
   );
+  const string_name = (value: string) => Buffer.concat([u32(44), string(value, true)]);
+  const array = (items: readonly Buffer[]) => Buffer.concat([u32(30), u32(items.length), ...items]);
+  const dictionary = (pairs: readonly (readonly [Buffer, Buffer])[]) =>
+    Buffer.concat([u32(26), u32(pairs.length), ...pairs.flat()]);
+  // 消息 (msgctxt, msgid → 译文)：("", key → old)、(fruit, apple → one、many)。
   const po = build_resource(
     version === "4.3" ? "TranslationPO" : "Translation",
     new Map([
       [
         "messages",
-        Buffer.concat([
-          u32(26),
-          u32(2),
-          resource_strings(["key", "context"]),
-          resource_strings(["old"]),
-          resource_strings(["apple", "fruit"]),
-          resource_strings(["one", "many"]),
-        ]),
+        version === "4.3"
+          ? // TranslationPO：msgctxt → { msgid → PackedStringArray }。
+            dictionary([
+              [string_name(""), dictionary([[string_name("key"), resource_strings(["old"])]])],
+              [
+                string_name("fruit"),
+                dictionary([[string_name("apple"), resource_strings(["one", "many"])]]),
+              ],
+            ])
+          : // Translation：[msgctxt, msgid] → 译文数组。
+            dictionary([
+              [array([string_name(""), string_name("key")]), array([string_name("old")])],
+              [
+                array([string_name("fruit"), string_name("apple")]),
+                array([string_name("one"), string_name("many")]),
+              ],
+            ]),
       ],
       [
         "plural_rules_override",
@@ -275,3 +307,55 @@ export function build_resource(
     Buffer.from("RSCC"),
   ]);
 }
+
+/** 两个内部资源，旧 ID 42 与下标 0 故意不同，验证解析与投影使用同一引用。 */
+export function godot_reference_fixture(named: boolean, version = 3): Buffer {
+  const bodies = [
+    Buffer.concat([string("Resource", true), u32(1), u32(0), u32(5), string("Target", true)]),
+    Buffer.concat([string("Resource", true), u32(1), u32(1), u32(24), u32(2), u32(named ? 0 : 42)]),
+  ];
+  const header = Buffer.concat([
+    u32(0),
+    u32(0),
+    u32(4),
+    u32(0),
+    u32(version),
+    string("Resource", true),
+    u64(0),
+    u32(named ? 1 : 0),
+    Buffer.alloc(8, 255),
+    Buffer.alloc(44),
+    u32(2),
+    string("text", true),
+    string("target", true),
+    u32(0),
+    u32(2),
+  ]);
+  const paths = [
+    string(named ? "local://Resource_target" : "local://42", true),
+    string("res://main.res", true),
+  ];
+  const first = 4 + header.length + paths.reduce((size, p) => size + p.length + 8, 0);
+  return Buffer.concat([
+    Buffer.from("RSRC"),
+    header,
+    paths[0]!,
+    u64(first),
+    paths[1]!,
+    u64(first + bodies[0]!.length),
+    ...bodies,
+    Buffer.from("RSRC"),
+  ]);
+}
+
+/** 自有脚本及官方 4.3-stable / 4.6-stable 编辑器 export-pack 的原始输出，验证真实 token 契约。 */
+export const GODOT_COMPILED_SCRIPT_FIXTURE = {
+  source:
+    'extends Node\n@export var label: String = "Start"\n\nfunc show_label():\n\tif label == "Start":\n\t\tprint("Nested text")\n\tprint("After nested")\n',
+  scripts: {
+    "4.3":
+      "R0RTQ2QAAAAgAgAAKLUv/WAgAVUIAHILIyiALWYN5rwF5h0i9xV4mxmnIEQtHEb40qEDEqwjCJqrchhFE9LSki1T6qNMz5oa9yImnpUG4yqcJJanOGpBOApoLbVAJRiAVKUhklhjOFAF2gNr0QJrDgxBDWiSQktg/pLfQuTPUAH+jf/jHyFRnY7f4w/5L34M6q9M1Od/P8cP8p+ojGqgMrVRF9UJOyCgAhGyPAJg8BDKGyxoMLWAD86IhQCmDzxZsyVszHkDLbZbmJVvZjjanMXTAydkZjSyPE6ETUdbz+I3cJmtUz5aMLs6W0k5MHDHyE1Li/LNU7Jvudu8aaKW36+UPQuOM9wbjFhgifKPnB8WOHcdrrD2M3DxIZzuXVMG",
+    "4.6":
+      "R0RTQ2UAAAAcAgAAKLUv/WAcAVUIADLLIiiALWYN5rwF5n2y+wq8zYxTEKIWDiN86dABCdYRBM1VOYyiCWlpyZYp6qNMz5oa9yImnpUG4yqcJJanOGpBOApoLbVAJRiAVKUhklhjOFAF2gNr0QJrDgxBDWiSQktg/pLfQuTPUAH+jf/jHyFRnfd7/CH/xY9B/ZWJ+vwdP8cP8p+ojGqgNuqiOgE7IKACEbrzAmDwEOaNLGYwtYAPzoglAUwbWDJmC21M8way2LYwM5+ZdbShWSxm4ITMjEaWx4mw6WgrWfwGLrNlykcLZldnqylHA3cbuWVpeb57kn3L3c27ifojv91Sdiw4xHBjMMoCC5R/5Pxe4JTrvMKKn//iozqdu6YM",
+  },
+} as const;

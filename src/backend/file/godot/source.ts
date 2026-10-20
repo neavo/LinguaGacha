@@ -1,3 +1,4 @@
+import { godot_member_kind, is_translation_type } from "./member";
 import assert from "node:assert/strict";
 import path from "node:path";
 import type { NativeFs } from "../../../native/native-fs";
@@ -163,25 +164,26 @@ export function collect_godot_files(
       const names: string[] = [];
       for (const [name, file] of files) {
         signal?.throwIfAborted();
-        const extension = path.extname(name).toLowerCase();
-        if (
-          name !== "project.binary" &&
-          ![".gdc", ".gd", ".po", ".scn", ".res", ".translation"].includes(extension)
-        )
-          continue;
+        const kind = godot_member_kind(name);
+        if (kind === null) continue;
         assert_regular_path(file, fs);
-        if ([".scn", ".res", ".translation"].includes(extension)) {
+        // 二进制候选按文件头判断：GDSC 直接保留，其余读取资源类型过滤素材。
+        if (
+          (kind === "resource" || kind === "translation" || kind === "gdsc") &&
+          fs.read_prefix(file, 4).toString("ascii") !== "GDSC"
+        ) {
           let type: string | null;
           try {
             type = read_resource_type((length) => fs.read_prefix(file, length));
           } catch {
             type = null; // 坏候选交给成员解析告警，保留原字节。
           }
-          const allowed =
-            extension === ".translation"
-              ? ["OptimizedTranslation", "Translation", "TranslationPO"]
-              : ["PackedScene", "Resource"];
-          if (type !== null && !allowed.includes(type)) continue;
+          if (
+            type !== null &&
+            !["PackedScene", "Resource"].includes(type) &&
+            !is_translation_type(type)
+          )
+            continue;
         }
         // 从暂存优先的实际路径读头，上限只约束入选成员。
         assert(

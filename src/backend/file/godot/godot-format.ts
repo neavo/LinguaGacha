@@ -1,3 +1,4 @@
+import { godot_member_kind } from "./member";
 import assert from "node:assert/strict";
 import { create_item, type Item } from "../../../domain/item";
 import { AppError } from "../../../shared/error";
@@ -11,8 +12,7 @@ import { patch_scene } from "./scene";
 import { patch_resource, read_resource, resource_string } from "./resource";
 import { all_values } from "./variant";
 import { string, u32, type Edit } from "./binary";
-import { read_project } from "./project";
-import { read_translation, patch_translation, patch_translation_fallback } from "./translation";
+import { check_locale_member, patch_translation, patch_translation_fallback } from "./translation";
 
 type Change = { original: string; text: string };
 
@@ -25,13 +25,9 @@ export function create_godot_adapter(): GameFormatAdapter {
       const context = new Map<string, Buffer>(),
         failures = new Map<string, unknown>();
       for (const [name, member] of files) {
-        if (name !== "project.binary" && !/\.(?:translation|po)$/u.test(name)) continue;
         try {
           const bytes = Buffer.from(await member.async("uint8array"));
-          if (name === "project.binary") read_project(bytes);
-          else if (name.endsWith(".po")) read_po(bytes.toString("utf8"));
-          else if (read_resource(bytes).type === "OptimizedTranslation") read_translation(bytes);
-          context.set(name, bytes);
+          if (check_locale_member(name, bytes)) context.set(name, bytes);
         } catch (error) {
           failures.set(name, error);
         }
@@ -104,16 +100,16 @@ function render_member(bytes: Buffer, file: string, items: readonly Item[]): Buf
     scenes = new Map<string, Change>(),
     slots = new Map<number, Change>(),
     edits: Edit[] = [];
-  const magic = bytes.toString("ascii", 0, 4);
-  const resource = magic === "RSRC" || magic === "RSCC" ? read_resource(bytes) : null;
+  const kind = godot_member_kind(file, bytes);
+  const resource = kind === "resource" || kind === "translation" ? read_resource(bytes) : null;
   for (const { location, change } of changes.values()) {
     switch (location.kind) {
       case "gdsc":
-        assert(magic === "GDSC");
+        assert(kind === "gdsc");
         gdsc.set(location.token, change);
         break;
       case "gd": {
-        assert(file.endsWith(".gd"));
+        assert(kind === "gd");
         const literal = read_source(bytes.toString("utf8")).find(
           (value) => value.start === location.start,
         );
@@ -122,7 +118,7 @@ function render_member(bytes: Buffer, file: string, items: readonly Item[]): Buf
         break;
       }
       case "po": {
-        assert(file.endsWith(".po"));
+        assert(kind === "po");
         const field = read_po(bytes.toString("utf8")).find(
           (value) => value.start === location.start,
         );

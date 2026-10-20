@@ -2,6 +2,12 @@ import assert from "node:assert/strict";
 import { read_resource, patch_resource, resource_string } from "./resource";
 import { string, u32, type Edit } from "./binary";
 import type { Value } from "./variant";
+const FLAG_ID_IS_PATH = 1 << 30, // 节点编号改为 `node_paths` 下标。
+  FLAG_MASK = (1 << 24) - 1, // 去掉标志位后的下标。
+  NO_PARENT_SAVED = 0x7fffffff, // 父节点不在本场景保存。
+  TYPE_INSTANTIATED = 0x7fffffff, // 实例化节点的类型由被实例化的场景决定。
+  NAME_MASK = (1 << 18) - 1, // 名称下标之上是兄弟序号。
+  PROPERTY_MASK = (1 << 30) - 1; // 属性名下标，高位标记 NodePath 属性。
 /** 场景字典按键值交替存储，键必须是字符串。 */
 export function dictionary(node: Value): Map<string, Value> {
   assert(node.type === 26);
@@ -13,6 +19,20 @@ export function dictionary(node: Value): Map<string, Value> {
   }
   return m;
 }
+/** 打包整数数组按 `int32` 顺序读取，`-1` 表示没有父节点或实例。 */
+function int32s(array: Value) {
+  const buf = array.value;
+  assert(Buffer.isBuffer(buf));
+  let index = 0;
+  return {
+    next() {
+      assert((index + 1) * 4 <= buf.length);
+      return buf.readInt32LE(index++ * 4);
+    },
+    at: () => array.start + 8 + index * 4, // 跳过类型号与元素数。
+    done: () => index * 4 === buf.length,
+  };
+}
 /** PackedScene 的节点属性引用共享 Variant 表，记录引用位置供定点改写。 */
 export function read_scene(bytes: Buffer) {
   const doc = read_resource(bytes);
@@ -21,38 +41,41 @@ export function read_scene(bytes: Buffer) {
     d = dictionary(bundled),
     names = d.get("names")!.children!.map((v) => v.value as string),
     variants = d.get("variants")!,
-    nodes = d.get("nodes")!,
-    buf = nodes.value;
-  assert(Buffer.isBuffer(buf));
+    node_paths = (d.get("node_paths")?.children ?? []).map((v) => String(v.value)),
+    nodes = int32s(d.get("nodes")!);
   const properties: {
     node: number;
-    nodeName: string;
+    path: string;
     nodeType: string;
     property: string;
     reference: number;
     referenceAt: number;
     value: Value;
   }[] = [];
-  let index = 0;
-  const next = () => {
-    assert((index + 1) * 4 <= buf.length);
-    return buf.readUInt32LE(index++ * 4);
+  const tree: { path: string; type: string | null; instance: Value | null; groups: string[] }[] =
+    [];
+  // 父节点总在子节点之前，`node_paths` 中的路径相对场景根。
+  const path_of = (id: number): string => {
+    const path = id & FLAG_ID_IS_PATH ? node_paths[id & FLAG_MASK] : tree[id & FLAG_MASK]?.path;
+    assert(path !== undefined, "Invalid scene node reference");
+    return path;
   };
   for (let i = 0; i < Number(d.get("node_count")!.value); i++) {
-    next();
-    next();
-    const type = next(),
-      nodeName = names[next() & 0x3ffff]!;
-    next();
-    const count = next();
-    for (let j = 0; j < count; j++) {
-      const prop = next() & 0x3fffffff,
-        referenceAt = nodes.start + 8 + index * 4,
-        ref = next();
+    const parent = nodes.next();
+    nodes.next(); // owner
+    const type = nodes.next(),
+      name = names[nodes.next() & NAME_MASK]!,
+      instance = nodes.next(),
+      base = parent < 0 || parent === NO_PARENT_SAVED ? null : path_of(parent),
+      path = base === null ? "." : base === "." ? name : `${base}/${name}`;
+    for (let j = 0, count = nodes.next(); j < count; j++) {
+      const prop = nodes.next() & PROPERTY_MASK,
+        referenceAt = nodes.at(),
+        ref = nodes.next();
       assert(ref < variants.children!.length);
       properties.push({
         node: i,
-        nodeName,
+        path,
         nodeType: names[type] ?? "",
         property: names[prop]!,
         reference: ref,
@@ -60,11 +83,30 @@ export function read_scene(bytes: Buffer) {
         value: variants.children![ref]!,
       });
     }
-    const groups = next();
-    for (let j = 0; j < groups; j++) next();
+    const groups: string[] = [];
+    for (let j = 0, count = nodes.next(); j < count; j++) groups.push(names[nodes.next()]!);
+    tree.push({
+      path,
+      type: type === TYPE_INSTANTIATED ? null : names[type]!,
+      instance: instance < 0 ? null : variants.children![instance & FLAG_MASK]!,
+      groups,
+    });
   }
-  assert.equal(index * 4, buf.length);
-  return { doc, properties, variants };
+  assert(nodes.done());
+  const conns = int32s(d.get("conns")!),
+    version = Number(d.get("version")?.value ?? 1),
+    connections: { from: string; signal: string; to: string; method: string }[] = [];
+  for (let i = 0; i < Number(d.get("conn_count")!.value); i++) {
+    const from = path_of(conns.next()),
+      to = path_of(conns.next()),
+      signal = names[conns.next()]!,
+      method = names[conns.next()]!;
+    conns.next(); // flags
+    for (let j = 0, count = conns.next(); j < count; j++) conns.next(); // binds
+    if (version >= 3) conns.next(); // unbinds
+    connections.push({ from, signal, to, method });
+  }
+  return { doc, properties, variants, nodes: tree, connections };
 }
 /** 追加目标属性的 Variant 并重定向引用，避免修改其它节点的共享值。 */
 export function patch_scene(

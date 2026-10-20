@@ -17,7 +17,7 @@ import {
   splice,
   type Edit,
 } from "./binary";
-import type { Value } from "./variant";
+import { node_path, type Value } from "./variant";
 import { fastlz_decode } from "./fastlz";
 
 /** RSCC 按块解压，每块产出长度与声明一致后才合并。 */
@@ -108,6 +108,53 @@ export function encode_resource(body: Buffer, compressed: boolean): Buffer {
     Buffer.from("RSCC"),
   ]);
 }
+/** 资源文件自有编号，与 Marshal 的 `Variant::Type` 不同。 */
+export const RESOURCE_VARIANT_TYPES: Readonly<Record<number, string>> = {
+  1: "NIL",
+  2: "BOOL",
+  3: "INT",
+  4: "FLOAT",
+  5: "STRING",
+  10: "VECTOR2",
+  11: "RECT2",
+  12: "VECTOR3",
+  13: "PLANE",
+  14: "QUATERNION",
+  15: "AABB",
+  16: "BASIS",
+  17: "TRANSFORM3D",
+  18: "TRANSFORM2D",
+  20: "COLOR",
+  22: "NODE_PATH",
+  23: "RID",
+  24: "OBJECT",
+  25: "INPUT_EVENT",
+  26: "DICTIONARY",
+  30: "ARRAY",
+  31: "PACKED_BYTE_ARRAY",
+  32: "PACKED_INT32_ARRAY",
+  33: "PACKED_FLOAT32_ARRAY",
+  34: "PACKED_STRING_ARRAY",
+  35: "PACKED_VECTOR3_ARRAY",
+  36: "PACKED_COLOR_ARRAY",
+  37: "PACKED_VECTOR2_ARRAY",
+  40: "INT",
+  41: "FLOAT",
+  42: "CALLABLE",
+  43: "SIGNAL",
+  44: "STRING_NAME",
+  45: "VECTOR2I",
+  46: "RECT2I",
+  47: "VECTOR3I",
+  48: "PACKED_INT64_ARRAY",
+  49: "PACKED_FLOAT64_ARRAY",
+  50: "VECTOR4",
+  51: "VECTOR4I",
+  52: "PROJECTION",
+  53: "PACKED_VECTOR4_ARRAY",
+};
+const FORMAT_FLAG_NAMED_SCENE_IDS = 1; // 资源头标志：内部资源引用直接保存内部表下标。
+
 export type Property = {
   resource: number;
   className: string;
@@ -135,17 +182,17 @@ export function read_resource(bytes: Buffer) {
   const real = flags & 4 ? 8 : 4,
     strings: string[] = [];
   for (let i = 0, n = r.count(); i < n; i++) strings.push(r.string(true));
+  const external: { type: string; path: string }[] = []; // 由游戏加载器持有，只读。
   for (let i = 0, n = r.count(); i < n; i++) {
-    r.string(true); // 外部资源类型。
-    r.string(true); // 外部资源路径，由游戏加载器持有。
+    external.push({ type: r.string(true), path: r.string(true) });
     if (flags & 2) r.take(8);
   }
-  const internal: { path: string; offset: number; at: number }[] = [];
+  const internal: { path: string; offset: number; at: number; className: string }[] = [];
   for (let i = 0, n = r.count(); i < n; i++) {
     const p = r.string(true),
       at = r.at,
       offset = r.u64();
-    internal.push({ path: p, offset, at });
+    internal.push({ path: p, offset, at, className: "" });
   }
   const tableEnd = r.at;
   const properties: Property[] = [];
@@ -160,7 +207,7 @@ export function read_resource(bytes: Buffer) {
     const start = r.at,
       t = r.u32();
     let value: Value["value"];
-    let children: Value[] | undefined;
+    let children: Value[] | undefined, length: number | undefined, ref: Value["ref"];
     if (t === 1) value = null;
     else if (t === 2) value = !!r.u32();
     else if (t === 3) value = r.take(4).readInt32LE();
@@ -172,16 +219,29 @@ export function read_resource(bytes: Buffer) {
     else if (t === 5 || t === 44) value = r.string(true);
     else if (t === 22) {
       const a = r.take(2).readUInt16LE(),
-        b = r.take(2).readUInt16LE() & 0x7fff;
-      for (let i = 0; i < a + b; i++) name();
+        b = r.take(2).readUInt16LE(),
+        parts: string[] = [];
+      for (let i = 0; i < a + (b & 0x7fff); i++) parts.push(name());
+      value = node_path(parts.slice(0, a), parts.slice(a), !!(b & 0x8000));
     } else if (t === 23) r.take(4);
     else if (t === 24) {
       const kind = r.u32();
       if (kind === 1) {
-        r.string(true);
-        r.string(true);
-      } else if (kind === 2 || kind === 3) r.u32();
-      else assert(kind === 0);
+        r.string(true); // 旧格式直接给出外部资源类型与路径。
+        ref = { external: r.string(true) };
+      } else if (kind === 2) {
+        const id = r.u32();
+        // Godot 命名 ID 格式直接存表下标，旧格式按 local://<整数 ID> 定位。
+        const index =
+          flags & FORMAT_FLAG_NAMED_SCENE_IDS
+            ? id
+            : internal.findIndex((entry) => entry.path === `local://${id}`);
+        assert(index >= 0 && index < internal.length, "Invalid internal resource reference: " + id);
+        ref = { internal: index };
+      } else if (kind === 3) {
+        const path = external[r.u32()]?.path;
+        if (path !== undefined) ref = { external: path }; // 越界下标由 Godot 按断开的依赖加载为空。
+      } else assert(kind === 0);
     } else if (t === 42 || t === 43) {
     } else if (t === 26 || t === 30) {
       const count = r.count() * (t === 26 ? 2 : 1);
@@ -216,6 +276,7 @@ export function read_resource(bytes: Buffer) {
         };
       assert(n * widths[t]! <= GODOT_RESOURCE_MAX_BYTES);
       value = r.take(n * widths[t]!);
+      length = n;
       if (t === 31) r.take(pad(n));
     } else {
       const widths: Record<number, number> = {
@@ -245,6 +306,8 @@ export function read_resource(bytes: Buffer) {
       end: r.at,
       ...(value === undefined ? {} : { value }),
       ...(children === undefined ? {} : { children }),
+      ...(length === undefined ? {} : { length }),
+      ...(ref === undefined ? {} : { ref }),
     };
   };
   for (let i = 0; i < internal.length; i++) {
@@ -253,6 +316,7 @@ export function read_resource(bytes: Buffer) {
     assert(r.at >= tableEnd && r.at < body.length);
     const className = r.string(true),
       count = r.count();
+    entry.className = className;
     for (let j = 0; j < count; j++) {
       const key = name(),
         v = variant();
@@ -264,6 +328,7 @@ export function read_resource(bytes: Buffer) {
   return {
     ...decoded,
     type,
+    external,
     internal,
     metadataAt,
     metadata,

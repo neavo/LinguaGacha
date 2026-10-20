@@ -1,10 +1,38 @@
+import { godot_member_kind } from "./member";
 import assert from "node:assert/strict";
 import { read_resource, patch_resource } from "./resource";
 import { smaz_decode } from "./smaz";
 import { u32, pad, utf8 } from "./binary";
 import { read_project, patch_project } from "./project";
-import { variant_string } from "./variant";
+import { all_values, variant_string, type Value } from "./variant";
 import { read_po } from "./po";
+const DICTIONARY = 26,
+  ARRAY = 30; // 资源文件编号。
+/** `texts` 是该消息的全部译文字符串，空译文由调用者按用途过滤。 */
+export type TranslationMessage = Readonly<{ key: string; texts: readonly Value[] }>;
+/**
+ * 非优化语言表的 `messages` 有三种形状：
+ * 旧版 `Translation` 为「msgid → 译文」；当前 `Translation` 为「[msgctxt, msgid] → 译文数组」；
+ * `TranslationPO` 为「msgctxt → { msgid → 译文数组 }」。msgctxt 只区分同名消息，不是消息键。
+ */
+export function read_messages(doc: ReturnType<typeof read_resource>): TranslationMessage[] {
+  const pairs = (v: Value | undefined): [Value, Value][] => {
+    const c = v?.children ?? [];
+    return Array.from({ length: c.length >> 1 }, (_, i) => [c[i * 2]!, c[i * 2 + 1]!]);
+  };
+  const message = (key: Value | undefined, value: Value): TranslationMessage => {
+    assert(typeof key?.value === "string", "Invalid translation message key");
+    return {
+      key: key.value,
+      texts: [...all_values(value)].filter((v) => typeof v.value === "string"),
+    };
+  };
+  return pairs(doc.properties.find((p) => p.name === "messages")?.value).flatMap(([key, value]) =>
+    value.type === DICTIONARY
+      ? pairs(value).map(([id, texts]) => message(id, texts))
+      : [message(key.type === ARRAY ? key.children?.[1] : key, value)],
+  );
+}
 /** Godot 以 UTF-8 字节计算桶哈希，零 seed 使用协议初值。 */
 export function translation_hash(s: string, seed = 0): number {
   let h = seed || 0x1000193;
@@ -117,21 +145,34 @@ export function patch_translation(
     },
   ]);
 }
-/** 优化表只存哈希，按 Godot 的一级桶与二级 seed 判断原文是否为本表消息键。 */
-export function translation_keys(bytes: Buffer): (key: string) => boolean {
+/** 优化表只存哈希，按 Godot 的一级桶与二级 seed 查找消息键所在槽位，不是本表消息键时返回 `undefined`。 */
+export function translation_slot(bytes: Buffer): (key: string) => number | undefined {
   const t = read_translation(bytes),
     hashes = t.hash.value as Buffer,
     buckets = t.bucket.value as Buffer,
-    slots = new Map<number, Set<number>>();
-  for (const s of t.slots) slots.set(s.bucket, (slots.get(s.bucket) ?? new Set()).add(s.key));
+    slots = new Map<number, Map<number, number>>();
+  for (const s of t.slots)
+    slots.set(s.bucket, (slots.get(s.bucket) ?? new Map()).set(s.key, s.index));
   return (key) => {
-    if (!hashes.length) return false; // 空表没有消息键，不能按零个桶取模。
+    if (!hashes.length) return undefined; // 空表没有消息键，不能按零个桶取模。
     const bucket = translation_hash(key) % (hashes.length / 4),
       offset = hashes.readUInt32LE(bucket * 4);
-    if (offset === 0xffffffff) return false;
+    if (offset === 0xffffffff) return undefined;
     const seed = buckets.readUInt32LE((offset + 1) * 4);
-    return slots.get(bucket)?.has(translation_hash(key, seed)) ?? false;
+    return slots.get(bucket)?.get(translation_hash(key, seed));
   };
+}
+/** 语言表计划只采用能完整解析的配置与语言表，返回成员是否参与计划，坏成员抛出原错误供成员边界报告。 */
+export function check_locale_member(file: string, bytes: Buffer): boolean {
+  const kind = godot_member_kind(file, bytes);
+  if (kind === "project") read_project(bytes);
+  else if (kind === "po") read_po(bytes.toString("utf8"));
+  else if (kind === "translation") {
+    const doc = read_resource(bytes);
+    if (doc.type === "OptimizedTranslation") read_translation(bytes);
+    else read_messages(doc);
+  } else return false;
+  return true;
 }
 export type LocalePlan = Readonly<{
   fallback: string; // 项目当前 fallback，未配置时为引擎默认 en。
@@ -155,7 +196,7 @@ export function plan_translation_locale(files: ReadonlyMap<string, Buffer>): Loc
     const file = String(entry.value).replace(/^res:\/\//u, ""),
       bytes = files.get(file);
     if (!bytes) continue; // 项目登记但未随包发布的语言表不参与翻译，也不改变 fallback。
-    tables.push({ file, locale: tableLocale(file, bytes) });
+    tables.push({ file, locale: translation_locale(file, bytes) });
   }
   const locale = tables.some((t) => t.locale === fallback) ? fallback : (tables[0]?.locale ?? null);
   return {
@@ -170,8 +211,8 @@ export function patch_translation_fallback(project: Buffer, plan: LocalePlan): B
   return patch_project(project, new Map([[FALLBACK_SETTING, variant_string(plan.locale)]]));
 }
 /** PO 从 header 读取语言，其余表使用资源属性，缺省沿用引擎的 `en`。 */
-function tableLocale(file: string, bytes: Buffer): string {
-  if (file.endsWith(".po")) {
+export function translation_locale(file: string, bytes: Buffer): string {
+  if (godot_member_kind(file, bytes) === "po") {
     const header = read_po(bytes.toString("utf8")).find(
       (field) => field.kind === "msgstr" && /^Language:/mu.test(field.text),
     );

@@ -1,8 +1,14 @@
+import { godot_member_kind } from "./member";
 import type { GodotLocation } from "./item";
-import { read_gdsc } from "./gdsc";
+import { read_gdsc, type TokenKind } from "./gdsc";
 import { read_scene } from "./scene";
 import { read_resource } from "./resource";
-import { read_translation, translation_keys, plan_translation_locale } from "./translation";
+import {
+  read_messages,
+  read_translation,
+  translation_slot,
+  plan_translation_locale,
+} from "./translation";
 import { read_source } from "./gdscript";
 import { all_values, type Value } from "./variant";
 import { read_po } from "./po";
@@ -118,25 +124,6 @@ const CODE_CALLS = new Set([
 ]);
 const DATA_RESOURCE = "Resource"; // 自定义脚本资源的顶层类型；引擎内置资源（字体、着色器、主题等）不承载显示文本。
 const NON_TEXT_CLASSES = new Set(["GDScript", "Shader", "ShaderInclude", "VisualShader"]); // 内嵌代码整体不是显示文本。
-// GDSC 100 与 101 的 token 编号在 PERIOD 之前一致，之后 101 插入 PERIOD_PERIOD_PERIOD。
-const T = {
-  ANNOTATION: 1,
-  IDENTIFIER: 2,
-  LITERAL: 3,
-  EQUAL_EQUAL: 8,
-  BANG_EQUAL: 9,
-  EQUAL: 28,
-  MATCH: 49,
-  ASSERT: 52,
-  IN: 61,
-  BRACKET_OPEN: 73,
-  BRACKET_CLOSE: 74,
-  BRACE_OPEN: 75,
-  BRACE_CLOSE: 76,
-  PARENTHESIS_OPEN: 77,
-  PARENTHESIS_CLOSE: 78,
-} as const;
-const COLON = { 100: 83, 101: 84 } as const;
 const CALL_SCAN_LIMIT = 512; // 只向前查找当前表达式所在调用，超长参数列表按无调用处理。
 type Verdict = boolean | null; // null 表示噪声，false 保留为可人工放行的条目。
 type Gdc = ReturnType<typeof read_gdsc>;
@@ -144,18 +131,18 @@ type Gdc = ReturnType<typeof read_gdsc>;
 function enclosing_call(g: Gdc, index: number): { name: string; keyword: boolean } | undefined {
   let depth = 0;
   for (let i = index - 1; i >= 0 && index - i <= CALL_SCAN_LIMIT; i--) {
-    const type = g.tokens[i]!.type;
-    if (type === T.PARENTHESIS_CLOSE || type === T.BRACKET_CLOSE || type === T.BRACE_CLOSE) depth++;
-    else if (type === T.PARENTHESIS_OPEN || type === T.BRACKET_OPEN || type === T.BRACE_OPEN) {
+    const kind = g.tokens[i]!.kind;
+    if (kind === "PARENTHESIS_CLOSE" || kind === "BRACKET_CLOSE" || kind === "BRACE_CLOSE") depth++;
+    else if (kind === "PARENTHESIS_OPEN" || kind === "BRACKET_OPEN" || kind === "BRACE_OPEN") {
       if (depth--) continue;
-      if (type !== T.PARENTHESIS_OPEN) return undefined;
+      if (kind !== "PARENTHESIS_OPEN") return undefined;
       const callee = g.tokens[i - 1];
-      if (callee?.type === T.IDENTIFIER || callee?.type === T.ANNOTATION)
+      if (callee?.kind === "IDENTIFIER" || callee?.kind === "ANNOTATION")
         return {
           name: g.identifiers[callee.reference]!,
-          keyword: callee.type === T.ANNOTATION,
+          keyword: callee.kind === "ANNOTATION",
         };
-      return callee?.type === T.ASSERT ? { name: "assert", keyword: true } : undefined;
+      return callee?.kind === "ASSERT" ? { name: "assert", keyword: true } : undefined;
     }
   }
   return undefined;
@@ -165,21 +152,20 @@ function classify_script_literal(g: Gdc, index: number, is_key: (s: string) => b
   const text = String(g.constants[g.tokens[index]!.reference]!.value);
   if (is_noise(text)) return null;
   if (is_key(text)) return false;
-  const at = (offset: number) => g.tokens[index + offset];
+  const at = (offset: number) => g.tokens[index + offset]?.kind;
   const name = (offset: number) => {
-    const t = at(offset);
-    return t?.type === T.IDENTIFIER ? g.identifiers[t.reference] : undefined;
+    const t = g.tokens[index + offset];
+    return t?.kind === "IDENTIFIER" ? g.identifiers[t.reference] : undefined;
   };
-  if (at(-1)?.type === T.EQUAL && DISPLAY_PROPERTIES.has(name(-2) ?? "")) return true;
-  if (at(-1)?.type === T.EQUAL && CODE_PROPERTIES.has(name(-2) ?? "")) return false;
+  if (at(-1) === "EQUAL" && DISPLAY_PROPERTIES.has(name(-2) ?? "")) return true;
+  if (at(-1) === "EQUAL" && CODE_PROPERTIES.has(name(-2) ?? "")) return false;
   const call = enclosing_call(g, index);
   if (call && !call.keyword && DISPLAY_CALLS.has(call.name)) return true;
-  if (at(1)?.type === COLON[g.version as 100 | 101]) return false;
-  const compare: number[] = [T.EQUAL_EQUAL, T.BANG_EQUAL, T.IN];
-  if (compare.includes(at(1)?.type ?? -1) || [...compare, T.MATCH].includes(at(-1)?.type ?? -1))
-    return false;
-  const indexed: number[] = [T.IDENTIFIER, T.BRACKET_CLOSE, T.PARENTHESIS_CLOSE];
-  if (at(-1)?.type === T.BRACKET_OPEN && indexed.includes(at(-2)?.type ?? -1)) return false;
+  if (at(1) === "COLON") return false;
+  const compare: (TokenKind | undefined)[] = ["EQUAL_EQUAL", "BANG_EQUAL", "IN"];
+  if (compare.includes(at(1)) || [...compare, "MATCH"].includes(at(-1))) return false;
+  const indexed: (TokenKind | undefined)[] = ["IDENTIFIER", "BRACKET_CLOSE", "PARENTHESIS_CLOSE"];
+  if (at(-1) === "BRACKET_OPEN" && indexed.includes(at(-2))) return false;
   if (call?.keyword) return false;
   if (call && CODE_CALLS.has(call.name)) return false;
   return classify_appearance(text);
@@ -210,7 +196,7 @@ function classify_source_literal(
 }
 /** 语言表消息键集合：优化表只能按哈希判断，其余语言表直接读取键。 */
 function read_keys(file: string, bytes: Buffer): (s: string) => boolean {
-  if (file.endsWith(".po")) {
+  if (godot_member_kind(file, bytes) === "po") {
     const ids = new Set(
       read_po(bytes.toString("utf8"))
         .filter((f) => f.kind === "msgid" || f.kind === "msgid_plural")
@@ -219,11 +205,11 @@ function read_keys(file: string, bytes: Buffer): (s: string) => boolean {
     return (s) => ids.has(s);
   }
   const doc = read_resource(bytes);
-  if (doc.type === "OptimizedTranslation") return translation_keys(bytes);
-  const ids = new Set<string>(),
-    messages = doc.properties.find((p) => p.name === "messages")?.value.children ?? [];
-  for (let i = 0; i < messages.length; i += 2)
-    for (const v of all_values(messages[i]!)) if (typeof v.value === "string") ids.add(v.value);
+  if (doc.type === "OptimizedTranslation") {
+    const slot = translation_slot(bytes);
+    return (s) => slot(s) !== undefined;
+  }
+  const ids = new Set(read_messages(doc).map((message) => message.key));
   return (s) => ids.has(s);
 }
 /**
@@ -246,8 +232,7 @@ function extract(
   tables: ReadonlySet<string>,
   is_key: (s: string) => boolean,
 ): TextEntry[] {
-  const magic = bytes.toString("ascii", 0, 4),
-    entries: TextEntry[] = [];
+  const entries: TextEntry[] = [];
   const add = (location: GodotLocation, original: string, verdict: Verdict) => {
     if (verdict === null) return;
     entries.push({
@@ -263,66 +248,75 @@ function extract(
       : is_key(String(v.value)) && !is_noise(String(v.value))
         ? false
         : classify_appearance(String(v.value));
-  if (magic === "GDSC") {
-    const g = read_gdsc(bytes);
-    for (const t of g.tokens) {
-      const v = g.constants[t.reference];
-      if (t.type !== T.LITERAL || v?.type !== 4 || typeof v.value !== "string") continue;
-      add({ kind: "gdsc", token: t.index }, v.value, classify_script_literal(g, t.index, is_key));
-    }
-  } else if (magic === "RSCC" || magic === "RSRC") {
-    const resource = read_resource(bytes);
-    if (resource.type === "PackedScene") {
-      for (const p of read_scene(bytes).properties) {
-        if ((p.value.type !== 5 && p.value.type !== 44) || typeof p.value.value !== "string")
-          continue;
-        const display =
-          p.value.type === 5 &&
-          !is_noise(p.value.value) &&
-          !is_key(p.value.value) &&
-          (DISPLAY_PROPERTY_PATH.test(p.property) ||
-            (p.property === "title" && TITLE_NODES.has(p.nodeType)));
-        add(
-          { kind: "scene", node: p.node, property: p.property },
-          p.value.value,
-          display ? true : classify_value(p.value),
-        );
+  switch (godot_member_kind(file, bytes)) {
+    case "gdsc": {
+      const g = read_gdsc(bytes);
+      for (const t of g.tokens) {
+        const v = g.constants[t.reference];
+        if (t.kind !== "LITERAL" || v?.type !== 4 || typeof v.value !== "string") continue;
+        add({ kind: "gdsc", token: t.index }, v.value, classify_script_literal(g, t.index, is_key));
       }
-    } else if (resource.type === "OptimizedTranslation") {
-      if (tables.has(file))
+      break;
+    }
+    case "resource": {
+      const resource = read_resource(bytes);
+      if (resource.type === "PackedScene")
+        for (const p of read_scene(bytes).properties) {
+          if ((p.value.type !== 5 && p.value.type !== 44) || typeof p.value.value !== "string")
+            continue;
+          const display =
+            p.value.type === 5 &&
+            !is_noise(p.value.value) &&
+            !is_key(p.value.value) &&
+            (DISPLAY_PROPERTY_PATH.test(p.property) ||
+              (p.property === "title" && TITLE_NODES.has(p.nodeType)));
+          add(
+            { kind: "scene", node: p.node, property: p.property },
+            p.value.value,
+            display ? true : classify_value(p.value),
+          );
+        }
+      else if (resource.type === DATA_RESOURCE)
+        for (const property of resource.properties) {
+          if (NON_TEXT_CLASSES.has(property.className)) continue;
+          for (const v of all_values(property.value))
+            if (typeof v.value === "string" && (v.type === 5 || v.type === 44))
+              add({ kind: "resource", offset: v.start }, v.value, classify_value(v));
+        }
+      break;
+    }
+    case "translation": {
+      if (!tables.has(file)) break;
+      const resource = read_resource(bytes);
+      if (resource.type === "OptimizedTranslation")
         for (const s of read_translation(bytes).slots)
           add({ kind: "slot", word: s.index }, s.text, true);
-    } else if (resource.type === "Translation" || resource.type === "TranslationPO") {
-      const messages = resource.properties.find((p) => p.name === "messages")?.value.children ?? [];
+      else
+        for (const message of read_messages(resource))
+          for (const v of message.texts)
+            if (v.value) add({ kind: "resource", offset: v.start }, v.value as string, true);
+      break;
+    }
+    case "gd": {
+      const source = bytes.toString("utf8");
+      for (const v of read_source(source))
+        if (!v.qualifier)
+          add(
+            { kind: "gd", start: v.start, end: v.end },
+            v.text,
+            classify_source_literal(source, v.start, v.end, v.text, is_key),
+          );
+      break;
+    }
+    case "po":
       if (tables.has(file))
-        for (let i = 1; i < messages.length; i += 2)
-          for (const v of all_values(messages[i]!))
-            if (typeof v.value === "string" && v.value)
-              add({ kind: "resource", offset: v.start }, v.value, true);
-    } else if (resource.type === DATA_RESOURCE)
-      for (const property of resource.properties) {
-        if (NON_TEXT_CLASSES.has(property.className)) continue;
-        for (const v of all_values(property.value))
-          if (typeof v.value === "string" && (v.type === 5 || v.type === 44))
-            add({ kind: "resource", offset: v.start }, v.value, classify_value(v));
-      }
-  } else if (file.endsWith(".gd")) {
-    const source = bytes.toString("utf8");
-    for (const v of read_source(source))
-      if (!v.qualifier)
-        add(
-          { kind: "gd", start: v.start, end: v.end },
-          v.text,
-          classify_source_literal(source, v.start, v.end, v.text, is_key),
-        );
-  } else if (file.endsWith(".po") && tables.has(file)) {
-    for (const field of read_po(bytes.toString("utf8")))
-      if (
-        field.kind === "msgstr" &&
-        field.text &&
-        !/^(?:Project-Id-Version|Language|Content-Type):/mu.test(field.text)
-      )
-        add({ kind: "po", start: field.start, end: field.end }, field.text, true);
+        for (const field of read_po(bytes.toString("utf8")))
+          if (
+            field.kind === "msgstr" &&
+            field.text &&
+            !/^(?:Project-Id-Version|Language|Content-Type):/mu.test(field.text)
+          )
+            add({ kind: "po", start: field.start, end: field.end }, field.text, true);
   }
   return entries;
 }

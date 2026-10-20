@@ -1,7 +1,11 @@
 import { randomBytes } from "node:crypto";
 import { brotliCompressSync, deflateSync, gzipSync, zstdCompressSync } from "node:zlib";
 import { expect, it } from "vitest";
-import { build_resource, create_godot_fixture } from "../../../test/godot-fixture";
+import {
+  build_resource,
+  create_godot_fixture,
+  godot_reference_fixture,
+} from "../../../test/godot-fixture";
 import {
   read_resource,
   patch_resource,
@@ -152,4 +156,23 @@ it.each([false, true])("只读前缀即可取得顶层类型，压缩：%s", (co
   });
   expect(type).toBe("PackedScene");
   expect(Math.max(...requested)).toBeLessThan(bytes.length / 2);
+});
+
+it.each([3, 4, 5, 6])("资源版本 %s 将旧 ID 与命名 ID 归一化为内部表下标", (version) => {
+  for (const named of [false, true]) {
+    const bytes = godot_reference_fixture(named, version);
+    const doc = read_resource(bytes);
+    expect(doc.properties[1]!.value.ref).toEqual({ internal: 0 });
+    expect(doc.internal[0]!.path).toBe(named ? "local://Resource_target" : "local://42");
+    const target = doc.properties[0]!.value;
+    const patched = read_resource(
+      patch_resource(bytes, [
+        { start: target.start, end: target.end, bytes: resource_string("更长的目标") },
+      ]),
+    );
+    expect(patched.properties[1]!.value.ref).toEqual({ internal: 0 });
+    const invalid = Buffer.from(bytes);
+    invalid.writeUInt32LE(999, doc.origin + doc.properties[1]!.value.start + 8);
+    expect(() => read_resource(invalid)).toThrow("Invalid internal resource reference");
+  }
 });
