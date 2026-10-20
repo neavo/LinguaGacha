@@ -19,6 +19,24 @@ import { u32 } from "./godot/binary";
 const native = new NativeFs();
 const OVERRIDE = '[gui]\ntheme/custom_font="res://lg_font.fontdata"\n';
 
+it.each(["inspect", "apply"] as const)("%s 拒绝直接包入口且不准备或写入游戏", async (method) => {
+  using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-font-package-input-"));
+  const root = path.join(temp.path, "game");
+  const game_path = path.join(root, "game.pck");
+  const pack = godot_pack_fixture(create_godot_fixture());
+  native.write_file_sync(game_path, pack);
+  const font_path = path.join(temp.path, "font.ttf");
+  fs.writeFileSync(font_path, font_fixture([{ text: "Test" }]));
+  const execute = vi.fn(new GamePrepareWorker(null, native).run);
+  const service = new GameFontService(new RuntimeOperationGate(), execute, native);
+  await expect(service[method]({ game_path, font_path })).rejects.toMatchObject({
+    code: "file.invalid_structure",
+  });
+  expect(execute).not.toHaveBeenCalled();
+  expect(fs.readdirSync(root)).toEqual(["game.pck"]);
+  expect(fs.readFileSync(game_path).equals(pack)).toBe(true);
+});
+
 it.each(["pck", "embedded"])("Godot %s 字体接入、载体备份与重复换字体", async (kind) => {
   using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-font-godot-"));
   const root = path.join(temp.path, "game");

@@ -11,37 +11,45 @@ import {
   godot_project_fixture,
 } from "../../../test/godot-fixture";
 
-it.each(["directory", "exe", "pck"])(
-  "%s 入口识别同一外置 PCK，扫描去重为一个游戏",
-  async (kind) => {
-    using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-godot-source-"));
-    const native = new NativeFs(),
-      exe = path.join(temp.path, "game.exe"),
-      pck = path.join(temp.path, "game.exe.pck");
-    const executable = Buffer.alloc(512);
-    executable.write("MZ");
-    executable.writeUInt32LE(64, 60);
-    executable.write("PE\0\0", 64);
-    executable.writeUInt16LE(1, 70);
-    executable.write("pck", 88);
-    executable.writeUInt32LE(256, 104);
-    executable.writeUInt32LE(256, 108);
-    fs.writeFileSync(exe, executable);
-    fs.writeFileSync(
-      pck,
-      godot_pack_fixture(new Map([["project.binary", godot_project_fixture()]])),
-    );
-    const game = await discover_godot_source(
-      kind === "directory" ? temp.path : kind === "exe" ? exe : pck,
-      native,
-    );
-    expect(game?.executable).toBe(exe);
-    expect(game?.carrier).toEqual({ kind: "pck", file: pck });
-    expect(await discover_sources([temp.path, exe, pck], native)).toMatchObject([
-      { file_type: "GODOT", source: { kind: "game" } },
-    ]);
-  },
-);
+it("目录和 EXE 识别同一外置 PCK，包文件不能作为入口", async () => {
+  using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-godot-source-"));
+  const native = new NativeFs(),
+    exe = path.join(temp.path, "game.exe"),
+    pck = path.join(temp.path, "game.exe.pck");
+  const executable = Buffer.alloc(512);
+  executable.write("MZ");
+  executable.writeUInt32LE(64, 60);
+  executable.write("PE\0\0", 64);
+  executable.writeUInt16LE(1, 70);
+  executable.write("pck", 88);
+  executable.writeUInt32LE(256, 104);
+  executable.writeUInt32LE(256, 108);
+  fs.writeFileSync(exe, executable);
+  fs.writeFileSync(pck, godot_pack_fixture(new Map([["project.binary", godot_project_fixture()]])));
+  const game = await discover_godot_source(temp.path, native);
+  expect(game?.executable).toBe(exe);
+  expect(game?.carrier).toEqual({ kind: "pck", file: pck });
+  expect(await discover_godot_source(exe, native)).toEqual(game);
+  expect(await discover_godot_source(pck, native)).toBeNull();
+});
+
+it("已展开目录无需 EXE，明确选择程序时保留其路径", async () => {
+  using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-godot-loose-"));
+  const native = new NativeFs();
+  native.write_file_sync(path.join(temp.path, "project.binary"), godot_project_fixture());
+  fs.mkdirSync(path.join(temp.path, ".godot"));
+  expect(await discover_godot_source(temp.path, native)).toMatchObject({
+    root: temp.path,
+    carrier: null,
+  });
+  for (const name of ["a.exe", "selected.EXE"])
+    native.write_file_sync(path.join(temp.path, name), "");
+  const executable = path.join(temp.path, "selected.EXE");
+  expect(await discover_godot_source(executable, native)).toMatchObject({
+    executable,
+    carrier: null,
+  });
+});
 
 it("多载体冲突终止整批，坏 PCK 归集失败并保留正常兄弟来源", async () => {
   using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-godot-conflict-"));
@@ -55,6 +63,9 @@ it("多载体冲突终止整批，坏 PCK 归集失败并保留正常兄弟来�
   ]);
   native.write_file_sync(path.join(root, "b.pck"), "bad");
   await expect(discover_sources([root], native)).rejects.toThrow("Conflicting Godot carriers");
+  const exe = path.join(root, "game.exe");
+  native.write_file_sync(exe, "launcher");
+  await expect(discover_godot_source(exe, native)).rejects.toThrow("Conflicting Godot carriers");
 });
 
 it("候选漏斗保留 project.binary、脚本、场景、自定义资源与坏候选，排除素材和管理目录", () => {

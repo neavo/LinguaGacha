@@ -5,6 +5,7 @@ import { validate_zip_member_path } from "../shared/zip-members";
 import { read_text } from "./value";
 import type { GameFiles } from "../shared/game/format";
 import { read_rgss_archive_version } from "./archive";
+import { resolve_game_source_input } from "../shared/game/source-input";
 
 export const RGSS_VERSIONS = { xp: ".rxdata", vx: ".rvdata", ace: ".rvdata2" } as const;
 export type RGSSVersion = keyof typeof RGSS_VERSIONS;
@@ -16,13 +17,9 @@ export type RGSSSource = {
 };
 /** 发现只读取配置和归档头，错误由来源编排边界统一归集。 */
 export function discover_rgss_source(source: string, fs: NativeFs): RGSSSource | null {
-  if (!fs.exists(source)) return null;
-  const root = fs.stat(source).isDirectory()
-    ? path.resolve(source)
-    : [".exe", ".ini", ...Object.values(RGSS_ARCHIVES)].includes(path.extname(source).toLowerCase())
-      ? path.dirname(path.resolve(source))
-      : null;
-  if (root === null) return null;
+  const input = resolve_game_source_input(source, fs);
+  if (!input) return null;
+  const { root } = input;
   const versions = new Set(
     (Object.keys(RGSS_VERSIONS) as RGSSVersion[]).filter((version) =>
       fs.exists(path.join(root, "Data", "System" + RGSS_VERSIONS[version])),

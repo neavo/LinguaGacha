@@ -452,6 +452,11 @@ it("产品门面完成来源摘要、准备、容器、翻译与导出，原稿�
     files = create_godot_fixture();
   native.write_file_sync(path.join(root, "game.pck"), godot_pack_fixture(files));
   const service = new FileFormatService({ target_language: "ZH" }, create_pdf_execution(), native);
+  const carrier = path.join(root, "game.pck");
+  const [unsupported] = await service.discover_import_sources([
+    { source_path: carrier, rel_path: "game.pck" },
+  ]);
+  expect(unsupported!.source).toEqual({ kind: "file", format: undefined });
   expect(await service.summarize_source_files([root])).toMatchObject({
     source_file_count: 1,
     format_hit_counts: { godot: 1 },

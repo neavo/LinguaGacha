@@ -1,6 +1,7 @@
 import { evb_fixture } from "../../test/evb-fixture";
 import { wolf_files } from "../../test/wolf-fixture";
 import { wolf_archive_fixture } from "../../test/wolf-archive-fixture";
+import { create_godot_fixture, godot_pack_fixture } from "../../test/godot-fixture";
 import { ProjectDatabaseAccess } from "../database/database-operations";
 import { create_pdf_execution } from "../file/pdf/test-support";
 import { read_zip_fixture, zip_text } from "../../test/zip-fixture";
@@ -32,6 +33,26 @@ type TestProjectDatabase = ProjectDatabase & {
 
 describe("ProjectLifecycleService", () => {
   const cleanup_paths: string[] = []; // 生命周期测试会创建真实临时文件，统一登记清理避免污染用户工作区
+
+  it("新建时忽略直接包文件，游戏原件保持完整", async () => {
+    const root = create_temp_dir();
+    const game = path.join(root, "game");
+    const pack = godot_pack_fixture(create_godot_fixture());
+    fs.mkdirSync(game);
+    const carrier = path.join(game, "game.pck");
+    fs.writeFileSync(carrier, pack);
+    const database = new ProjectDatabase();
+    const service = create_service({ database });
+    try {
+      const empty = path.join(root, "empty.lg");
+      await service.create_project_commit({ path: empty, source_paths: [carrier] });
+      expect(await database.get_all_asset_records(empty)).toEqual([]);
+      expect(fs.readdirSync(game)).toEqual(["game.pck"]);
+      expect(fs.readFileSync(carrier).equals(pack)).toBe(true);
+    } finally {
+      await database.close();
+    }
+  });
 
   it("新建复用预过滤条目，重开读取数据库且安装一致快照", async () => {
     const root = create_temp_dir();

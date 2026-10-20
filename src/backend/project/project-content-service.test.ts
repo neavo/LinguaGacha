@@ -291,6 +291,8 @@ describe("ProjectContentService", () => {
     fs.mkdirSync(root);
     fs.writeFileSync(path.join(root, "Game.ini"), "[Game]\nScripts=Data/Scripts.rvdata2");
     const archive = path.join(root, "Game.rgss3a");
+    const exe = path.join(root, "Game.exe");
+    fs.writeFileSync(exe, "");
     // Marshal nil 是有效的零条目原稿，用于证明归档准备与工程写入的完整调用链。
     const content = Buffer.from([4, 8, 48]);
     fs.writeFileSync(
@@ -304,14 +306,18 @@ describe("ProjectContentService", () => {
       ),
     );
     try {
+      const unsupported = await service.preview_import_files({
+        source_paths: [archive, path.join(root, "Game.ini")],
+      });
+      expect(unsupported.files).toEqual([]);
       const preview = await service.preview_import_files({
-        source_paths: [root, archive, path.join(root, "Game.ini")],
+        source_paths: [root, exe, archive, path.join(root, "Game.ini")],
       });
       expect(preview).toEqual({
         files_revision: 0,
         files: [{ source_path: root, target_rel_path: "packed.rpgmaker", conflict: false }],
       });
-      expect(fs.readdirSync(root).sort()).toEqual(["Game.ini", "Game.rgss3a"]);
+      expect(fs.readdirSync(root).sort()).toEqual(["Game.exe", "Game.ini", "Game.rgss3a"]);
       await database.transaction(lg_path, (writer) =>
         writer.add_asset(lg_path, "packed.rpgmaker", Buffer.from("old"), "RPGMAKER_RGSS", null),
       );
@@ -322,7 +328,7 @@ describe("ProjectContentService", () => {
           expected_section_revisions: { files: 0, items: 0 },
         }),
       ).rejects.toMatchObject({ code: "request.validation_failed" });
-      expect(fs.readdirSync(root).sort()).toEqual(["Game.ini", "Game.rgss3a"]);
+      expect(fs.readdirSync(root).sort()).toEqual(["Game.exe", "Game.ini", "Game.rgss3a"]);
       await expect(
         service.import_files({
           files: preview.files!,
@@ -330,7 +336,7 @@ describe("ProjectContentService", () => {
           expected_section_revisions: { files: 99, items: 0 },
         }),
       ).rejects.toMatchObject({ code: "data.revision_conflict" });
-      expect(fs.readdirSync(root).sort()).toEqual(["Game.ini", "Game.rgss3a"]);
+      expect(fs.readdirSync(root).sort()).toEqual(["Game.exe", "Game.ini", "Game.rgss3a"]);
       await service.import_files({
         files: preview.files!,
         conflict_action: "replace",
