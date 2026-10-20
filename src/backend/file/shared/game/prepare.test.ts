@@ -5,6 +5,57 @@ import { expect, it, vi } from "vitest";
 import { NativeFs } from "../../../../native/native-fs";
 import { prepare_game_directory, type GamePreparation } from "./prepare";
 
+it.each(["success", "same-backup", "conflict", "write-failure", "cancel"])(
+  "载体备份移动与回滚：%s",
+  async (kind) => {
+    using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-carrier-backup-"));
+    const native = new NativeFs(),
+      controller = new AbortController();
+    const original = path.join(temp.path, "game.exe"),
+      backup = path.join(temp.path, "backup_lg/game.exe");
+    native.write_file_sync(original, "original carrier");
+    if (kind === "same-backup" || kind === "conflict")
+      native.write_file_sync(backup, kind === "conflict" ? "other version" : "original carrier");
+    const rename = native.rename.bind(native),
+      copy = vi.spyOn(native, "copy_file");
+    vi.spyOn(native, "rename").mockImplementation((from, to) => {
+      if (kind === "write-failure" && from.includes(path.join(".tmp", "stage")))
+        throw new Error("injected write failure");
+      rename(from, to);
+      if (kind === "cancel" && to === backup)
+        controller.abort(new Error("cancel after carrier move"));
+    });
+    const task = prepare_game_directory(
+      temp.path,
+      native,
+      async (staging) => {
+        native.write_file_sync(path.join(staging, "game.exe"), "engine prefix");
+        native.write_file_sync(path.join(staging, "project.binary"), "project");
+        return { writes: ["game.exe", "project.binary"], backups: ["game.exe"] };
+      },
+      controller.signal,
+    );
+    if (["conflict", "write-failure", "cancel"].includes(kind)) {
+      await expect(task).rejects.toThrow(
+        kind === "conflict"
+          ? "Conflicting game carrier backup"
+          : kind === "cancel"
+            ? "cancel after carrier move"
+            : "injected write failure",
+      );
+      expect(fs.readFileSync(original, "utf8")).toBe("original carrier");
+      expect(fs.existsSync(path.join(temp.path, "project.binary"))).toBe(false);
+      expect(fs.existsSync(backup)).toBe(kind === "conflict");
+    } else {
+      await task;
+      expect(fs.readFileSync(original, "utf8")).toBe("engine prefix");
+      expect(fs.readFileSync(backup, "utf8")).toBe("original carrier");
+      if (kind === "success") expect(copy).not.toHaveBeenCalled();
+    }
+    expect(fs.existsSync(path.join(temp.path, ".tmp"))).toBe(false);
+  },
+);
+
 /** 混合覆盖、新增和移除，直接观察目录事务的恢复结果。 */
 function fixture(root: string) {
   fs.mkdirSync(path.join(root, "existing-directory"));

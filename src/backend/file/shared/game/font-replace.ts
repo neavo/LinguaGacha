@@ -10,7 +10,7 @@ import { write_game_backup } from "./backup";
 import { prepare_game_directory } from "./prepare";
 import type { GamePrepareExecution } from "./prepare-worker";
 
-export type GameFontSource = Extract<GameSource, { kind: "wolfrpg" | "mv_mz" }>;
+export type GameFontSource = Extract<GameSource, { file_type: "WOLFRPG" | "RPGMAKER_MV_MZ" }>;
 export type GameFont = Readonly<{
   bytes: Uint8Array;
   file_name: string;
@@ -37,7 +37,7 @@ export async function replace_game_font(
       const writes = new Set(prepared.writes);
       const files = read_game_source_files(source, fs, signal, { staging, result: prepared });
       const outputs =
-        source.kind === "wolfrpg"
+        source.file_type === "WOLFRPG"
           ? wolf_font_outputs(files.data, files.fonts, font)
           : mv_mz_font_outputs(source.game, files.fonts, font);
       // 修改暂存文件前已读定原字节，备份成功后才允许游戏事务提交。

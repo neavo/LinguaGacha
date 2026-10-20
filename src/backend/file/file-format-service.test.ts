@@ -312,7 +312,8 @@ it("识别失败与正常来源共同进入只读摘要，正式导入重新识�
     { source_path: source, rel_path: "game.zip" },
   ]);
   expect(resolved[0]!.source).toMatchObject({
-    kind: "mv_mz",
+    kind: "game",
+    file_type: "RPGMAKER_MV_MZ",
     game: {
       root: temp.path,
       data_root: temp.path,

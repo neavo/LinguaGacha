@@ -29,8 +29,12 @@ async function replace(
   for (const [name, bytes] of files) native.write_file_sync(path.join(root, name), bytes);
   const wolf = await discover_wolf_source(source, native);
   const game: GameFontSource = wolf
-    ? { kind: "wolfrpg", game: wolf }
-    : { kind: "mv_mz", game: (await discover_rpgmaker_source(source, native))! };
+    ? { kind: "game", file_type: "WOLFRPG", game: wolf }
+    : {
+        kind: "game",
+        file_type: "RPGMAKER_MV_MZ",
+        game: (await discover_rpgmaker_source(source, native))!,
+      };
   await replace_game_font(
     game,
     { bytes: font, file_name: "custom.ttf", families: read_font_family_names(font) },
@@ -225,7 +229,8 @@ it.each(["backup", "commit", "cancel"])(
     const encrypted = path.join(temp.path, "img/a.png_");
     local.write_file_sync(encrypted, encrypted_media(png_fixture()));
     const source: GameFontSource = {
-      kind: "mv_mz",
+      kind: "game",
+      file_type: "RPGMAKER_MV_MZ",
       game: (await discover_rpgmaker_source(temp.path, local))!,
     };
     const controller = new AbortController();

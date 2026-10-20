@@ -1,6 +1,5 @@
-import { read_wolf_metadata } from "../file/wolfrpg/item";
-import { read_rgss_metadata } from "../file/rpgmaker-rgss/item";
-import { read_rpgmaker_metadata } from "../file/rpgmaker-mv-mz/item";
+import { GAME_ENGINES } from "../file/shared/game/engines";
+import { is_game_file_type } from "../../shared/project-source-formats";
 import type { PDFDocumentRecord } from "../../shared/pdf";
 import type { AppSettingService } from "../app/app-setting-service";
 import type { ComputeWorkerClient } from "../worker/compute-worker-client";
@@ -476,12 +475,8 @@ export class ProofreadingCache {
 
   /** 格式定位信息只在校对入口解释，普通格式与缺少定位的内容归入无内部路径分组。 */
   private read_internal_file_path(item: ProjectItemPublicRecord): string | null {
-    if (item.file_type === "WOLFRPG")
-      return read_wolf_metadata(item.extra_field).internal_file_path;
-    if (item.file_type === "RPGMAKER_RGSS")
-      return read_rgss_metadata(item.extra_field).internal_file_path;
-    if (item.file_type === "RPGMAKER_MV_MZ")
-      return read_rpgmaker_metadata(item.extra_field).internal_file_path;
+    if (is_game_file_type(item.file_type))
+      return GAME_ENGINES[item.file_type].read_metadata(item.extra_field).internal_file_path;
     const extra = read_json_record(item["extra_field"]);
     const value =
       item["file_type"] === "TRANS"

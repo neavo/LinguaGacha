@@ -48,9 +48,7 @@ export function ProjectSourceFormats(props: ProjectSourceFormatsProps): JSX.Elem
                           })}
                         >
                           <span className="project-home__format-title">{t(format.title_key)}</span>
-                          <span className="project-home__format-extension">
-                            {format.source_kind === "game" ? "Game.exe" : format.extension}
-                          </span>
+                          <span className="project-home__format-extension">{format.extension}</span>
                           {hit_count > 0 ? <Badge tone="brand">{hit_count}</Badge> : null}
                         </li>
                       }

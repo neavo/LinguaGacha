@@ -16,7 +16,7 @@ const AGGRESSIVE_RULES: Array<readonly [RegExp, string]> = [
   [/\|(.+?)\[.+?\]/giu, "$1"], // |漢字[かんじ]
 ];
 
-const AGGRESSIVE_EXCLUDED_TYPES = new Set(["WOLF", "RPGMAKER", "RENPY"]); // 这些脚本格式里括号和竖线很可能是控制语法，不能套用激进规则
+const AGGRESSIVE_EXCLUDED_TYPES = new Set(["WOLF", "RPGMAKER", "RENPY", "GODOT"]); // 这些脚本格式里括号和竖线很可能是控制语法，不能套用激进规则
 
 /**
  * 文本 ruby 标记清理器，负责把常见注音脚手架还原为可翻译正文

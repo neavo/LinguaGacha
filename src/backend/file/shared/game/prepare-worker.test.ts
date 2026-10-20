@@ -16,8 +16,41 @@ import { wolf_archive_fixture } from "../../../../test/wolf-archive-fixture";
 import { rgss_archive_fixture } from "../../../../test/rgss-archive-fixture";
 import { NativeFs } from "../../../../native/native-fs";
 import { encrypted_media, MEDIA_KEY, png_fixture } from "../../../../test/media-fixture";
+import { godot_pack_fixture, create_godot_fixture } from "../../../../test/godot-fixture";
+import { discover_godot_source } from "../../godot/source";
 
 let runtime: string;
+
+it.each(["external", "embedded"])(
+  "Godot %s 载体通过正式准备线程展开，原件保持只读",
+  async (kind) => {
+    using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-godot-worker-"));
+    const staging = path.join(temp.path, "stage"),
+      native = new NativeFs();
+    fs.mkdirSync(staging);
+    const bytes = godot_pack_fixture(create_godot_fixture(), {
+      prefix: kind === "embedded" ? Buffer.alloc(128, 42) : undefined,
+    });
+    const source = path.join(temp.path, kind === "embedded" ? "game.exe" : "game.pck");
+    fs.writeFileSync(source, bytes);
+    const game = (await discover_godot_source(source, native))!;
+    const worker = new GamePrepareWorker(
+      pathToFileURL(path.join(runtime, "main/game-prepare-worker-entry.js")),
+    );
+    try {
+      const result = await worker.run({ kind: "game", file_type: "GODOT", game, staging });
+      expect(result.backups).toEqual([path.basename(source)]);
+      expect(result.writes).toContain("project.binary");
+      expect(fs.existsSync(path.join(staging, "project.binary"))).toBe(true);
+      if (kind === "embedded")
+        expect(fs.readFileSync(path.join(staging, "game.exe"))).toEqual(Buffer.alloc(128, 42));
+      expect(fs.readFileSync(source)).toEqual(bytes);
+    } finally {
+      await worker.dispose();
+    }
+  },
+  30000,
+);
 beforeAll(() => {
   runtime = fs.mkdtempSync(path.join(os.tmpdir(), "lg-game-runtime-"));
   execFileSync(
@@ -74,7 +107,8 @@ it("发行线程完成暂存后退出，取消也等到句柄释放，随后仍�
   if (execution.kind !== "worker_threads") throw new Error("Expected worker execution");
   const worker = new GamePrepareWorker(execution.gamePrepareWorkerEntryUrl);
   const task = {
-    kind: "mv_mz" as const,
+    kind: "game" as const,
+    file_type: "RPGMAKER_MV_MZ" as const,
     game: {
       root: temp.path,
       data_root: temp.path,
@@ -139,7 +173,8 @@ it.each(["rgss", "wolfrpg"] as const)(
     const task =
       kind === "wolfrpg"
         ? {
-            kind,
+            kind: "game" as const,
+            file_type: "WOLFRPG" as const,
             staging,
             game: {
               root: temp.path,
@@ -148,7 +183,12 @@ it.each(["rgss", "wolfrpg"] as const)(
               archives: [{ source_path: path.join(temp.path, archive), output_prefix: "Data" }],
             },
           }
-        : { kind, staging, game: { root: temp.path, version: "ace" as const, archive } };
+        : {
+            kind: "game" as const,
+            file_type: "RPGMAKER_RGSS" as const,
+            staging,
+            game: { root: temp.path, version: "ace" as const, archive },
+          };
     const worker = new GamePrepareWorker(
       pathToFileURL(path.join(runtime, "main/game-prepare-worker-entry.js")),
     );
@@ -198,7 +238,8 @@ it("同进程入口保留显式注入的 NativeFs", async () => {
   try {
     await expect(
       worker.run({
-        kind: "mv_mz",
+        kind: "game",
+        file_type: "RPGMAKER_MV_MZ",
         game: { root, data_root: root, engine: "mz" },
         staging: temp.path,
       }),
@@ -233,7 +274,7 @@ it("仓库外真实 Electron 加载部署准备线程并等待退出", async () 
     import { GamePrepareWorker } from ${JSON.stringify(pathToFileURL(path.resolve("src/backend/file/shared/game/prepare-worker.ts")).href)};
     const root=process.cwd();
     const worker=new GamePrepareWorker(pathToFileURL(process.argv[2]));
-    const task={kind:'wolfrpg',staging:path.join(root,'stage'),game:{root,data_root:path.join(root,'Data'),key_files:[],archives:[{source_path:path.join(root,'Data.wolf'),output_prefix:'Data'}]}};
+    const task={kind:'game',file_type:'WOLFRPG',staging:path.join(root,'stage'),game:{root,data_root:path.join(root,'Data'),key_files:[],archives:[{source_path:path.join(root,'Data.wolf'),output_prefix:'Data'}]}};
     const pending=worker.run(task); const rejected=assert.rejects(pending);
     const deadline=Date.now()+10000;
     while(!fs.existsSync(path.join(task.staging,'Data/large.bin'))) { if(Date.now()>deadline) throw new Error('Worker did not begin extraction'); await setTimeout(1); }

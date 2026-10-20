@@ -69,7 +69,10 @@ export class GameFontService {
   private async read_game(game_path: string, signal?: AbortSignal): Promise<GameFontSource> {
     const { source } = await discover_source(game_path, this.fs, signal);
     if (source.kind === "failure") throw source.error;
-    if (source.kind !== "wolfrpg" && source.kind !== "mv_mz")
+    if (
+      source.kind !== "game" ||
+      (source.file_type !== "WOLFRPG" && source.file_type !== "RPGMAKER_MV_MZ")
+    )
       throw new AppError("file.invalid_structure", {
         message: "Unsupported game for font replacement: " + game_path,
       });

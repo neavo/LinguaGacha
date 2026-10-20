@@ -1,3 +1,4 @@
+import { prepare_game_source } from "../shared/game/engines";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -6,8 +7,18 @@ import { NativeFs } from "../../../native/native-fs";
 import { rgss_archive_fixture } from "../../../test/rgss-archive-fixture";
 import { FileFormatService } from "../file-format-service";
 import { read_game_container } from "../shared/game/format";
-import { prepare_rgss_source } from "./prepare";
-import { discover_rgss_source, RGSS_ARCHIVES, RGSS_VERSIONS, type RGSSVersion } from "./source";
+import {
+  discover_rgss_source,
+  RGSS_ARCHIVES,
+  RGSS_VERSIONS,
+  type RGSSSource,
+  type RGSSVersion,
+} from "./source";
+
+/** 为各准备场景补齐引擎来源身份，统一经过正式目录事务。 */
+function prepare_source(game: RGSSSource, fs: NativeFs): Promise<void> {
+  return prepare_game_source({ kind: "game", file_type: "RPGMAKER_RGSS", game }, fs);
+}
 
 /** 构造归档与内容不同的散装文件，验证覆盖和恢复的数据来源。 */
 function game(
@@ -64,7 +75,7 @@ it.each(["xp", "vx", "ace"] as const)(
     ).toBe("scripts");
     expect(fs.existsSync(path.join(temp.path, "backup_lg/Graphics"))).toBe(false);
     const prepared_entries = fs.readdirSync(temp.path);
-    await prepare_rgss_source(discover_rgss_source(temp.path, native)!, native);
+    await prepare_source(discover_rgss_source(temp.path, native)!, native);
     expect(fs.readdirSync(temp.path)).toEqual(prepared_entries);
   },
 );
@@ -75,7 +86,7 @@ it("已有 System 仍完整解包，保留旧备份和归档外的独立文件",
   fs.mkdirSync(path.join(temp.path, "backup"));
   fs.writeFileSync(path.join(temp.path, "backup_2"), "occupied");
   fs.writeFileSync(path.join(temp.path, "Data/extra.txt"), "extra");
-  await prepare_rgss_source(discover_rgss_source(temp.path, new NativeFs())!, new NativeFs());
+  await prepare_source(discover_rgss_source(temp.path, new NativeFs())!, new NativeFs());
   expect(fs.existsSync(archive)).toBe(false);
   expect(fs.readFileSync(path.join(temp.path, "Data/System.rvdata2"), "utf8")).toBe("system");
   expect(fs.readFileSync(path.join(temp.path, "Data/extra.txt"), "utf8")).toBe("extra");
@@ -93,9 +104,9 @@ it("归档提取失败保留独立数据与归档", async () => {
     if (flags === "wx") throw new Error("extract failure");
     return open(file, flags);
   });
-  await expect(
-    prepare_rgss_source(discover_rgss_source(temp.path, native)!, native),
-  ).rejects.toThrow("extract failure");
+  await expect(prepare_source(discover_rgss_source(temp.path, native)!, native)).rejects.toThrow(
+    "extract failure",
+  );
   expect(fs.existsSync(archive)).toBe(true);
   expect(fs.readFileSync(path.join(temp.path, "Data/Actors.rvdata2"), "utf8")).toBe("old actors");
   expect(fs.readFileSync(path.join(temp.path, "Custom/Main.rvdata2"), "utf8")).toBe("old script");
@@ -112,7 +123,7 @@ it("拒绝经过目录链接的成员，外部文件保持原状", async () => {
   fs.writeFileSync(path.join(outside, "picture.png"), "outside");
   new NativeFs().create_directory_link(outside, path.join(root, "Graphics"));
   await expect(
-    prepare_rgss_source(discover_rgss_source(root, new NativeFs())!, new NativeFs()),
+    prepare_source(discover_rgss_source(root, new NativeFs())!, new NativeFs()),
   ).rejects.toThrow("Unsafe game filesystem path");
   expect(fs.existsSync(archive)).toBe(true);
   expect(fs.readFileSync(path.join(outside, "picture.png"), "utf8")).toBe("outside");
@@ -131,7 +142,7 @@ it.each(["engine", "protocol", "directory-system"])("%s 冲突在备份与改写
   if (kind === "directory-system") fs.mkdirSync(path.join(temp.path, "Data/System.rvdata2"));
   await expect(
     (async () =>
-      prepare_rgss_source(discover_rgss_source(temp.path, new NativeFs())!, new NativeFs()))(),
+      prepare_source(discover_rgss_source(temp.path, new NativeFs())!, new NativeFs()))(),
   ).rejects.toThrow();
   expect(fs.existsSync(archive)).toBe(true);
   expect(
@@ -148,7 +159,7 @@ it("归档不含 System 也完成合并，数据完整性由原稿解析负责",
     archive,
     rgss_archive_fixture(3, new Map([["Data/Actors.rvdata2", Buffer.from("new actors")]])),
   );
-  await prepare_rgss_source(discover_rgss_source(temp.path, new NativeFs())!, new NativeFs());
+  await prepare_source(discover_rgss_source(temp.path, new NativeFs())!, new NativeFs());
   expect(fs.existsSync(archive)).toBe(false);
   expect(fs.existsSync(path.join(temp.path, "Data/System.rvdata2"))).toBe(false);
   expect(fs.readFileSync(path.join(temp.path, "Data/Actors.rvdata2"), "utf8")).toBe("new actors");
