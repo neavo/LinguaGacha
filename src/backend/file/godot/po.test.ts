@@ -8,7 +8,7 @@ it("PO 多行 msgstr 按区间写回，保留注释、context、msgid_plural 与
   expect(field.text).toBe("one apple");
   const output = patch_po(
     source,
-    new Map([[field.start, { original: field.text, text: "一个苹果" }]]),
+    new Map([[field.start, { end: field.end, original: field.text, text: "一个苹果" }]]),
   );
   expect(output.startsWith(source.slice(0, field.start))).toBe(true);
   expect(output.endsWith(source.slice(field.end))).toBe(true);
@@ -17,7 +17,9 @@ it("PO 多行 msgstr 按区间写回，保留注释、context、msgid_plural 与
       .filter((field) => field.kind === "msgstr")
       .map((field) => field.text),
   ).toEqual(["一个苹果", "many apples"]);
-  expect(() =>
-    patch_po(source, new Map([[field.start, { original: "stale", text: "译文" }]])),
-  ).toThrow();
+  for (const change of [
+    { end: field.end, original: "stale", text: "译文" },
+    { end: field.end + 1, original: field.text, text: "译文" },
+  ])
+    expect(() => patch_po(source, new Map([[field.start, change]]))).toThrow();
 });

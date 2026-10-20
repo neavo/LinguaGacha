@@ -82,7 +82,7 @@ it.each(["existing", "first", "none"])("locale 选择：%s，fallback 只按登�
   );
 });
 
-it("PO 单行 header 与 plural 消息键参与语言选择和代码保护", () => {
+it("PO 单行 header 参与语言选择", () => {
   const project = godot_project_fixture(
     new Map([["internationalization/locale/translations", variant_strings(["res://ja.po"])]]),
   );

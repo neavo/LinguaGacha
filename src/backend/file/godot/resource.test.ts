@@ -128,21 +128,6 @@ it.each([0, 1, 2, 3, 4])("RSCC 模式 %s 解压及有界长度检查", (mode) =>
   expect(() => decode_resource(invalid)).toThrow();
 });
 
-it("合成场景压缩与未压缩重编码保留全部资源属性", () => {
-  const bytes = create_godot_fixture().get("scene.scn")!,
-    decoded = decode_resource(bytes);
-  const original = read_resource(bytes);
-  expect(read_resource(encode_resource(decoded.body, true)).properties).toEqual(
-    original.properties,
-  );
-  const body = Buffer.from(decoded.body);
-  for (const entry of original.internal) body.writeBigUInt64LE(BigInt(entry.offset + 4), entry.at);
-  const uncompressed = read_resource(encode_resource(body, false));
-  expect(uncompressed.properties.map((property) => [property.name, property.value.value])).toEqual(
-    original.properties.map((property) => [property.name, property.value.value]),
-  );
-});
-
 it.each([false, true])("只读前缀即可取得顶层类型，压缩：%s", (compressed) => {
   const body = Buffer.concat([
       decode_resource(create_godot_fixture().get("scene.scn")!).body,

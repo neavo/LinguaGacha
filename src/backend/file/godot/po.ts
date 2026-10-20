@@ -40,13 +40,14 @@ export function read_po(source: string): PoField[] {
 /** 仅重写指定 msgstr 区间，注释、上下文和其它复数槽位保持原字节。 */
 export function patch_po(
   source: string,
-  changes: ReadonlyMap<number, { original: string; text: string }>,
+  changes: ReadonlyMap<number, { end: number; original: string; text: string }>,
 ): string {
-  const fields = read_po(source),
+  const fields = new Map(read_po(source).map((field) => [field.start, field])),
     edits = [...changes]
       .map(([at, c]) => {
-        const f = fields.find((f) => f.start === at);
+        const f = fields.get(at);
         assert(f && f.kind === "msgstr", "Not a PO translation");
+        assert.equal(f.end, c.end, "Stale Godot PO span");
         assert.equal(f.text, c.original);
         const isPlural = /^\s*msgstr\[/u.test(source.slice(f.start, f.end));
         return {

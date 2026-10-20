@@ -82,13 +82,14 @@ export function read_source(source: string): Literal[] {
 /** 只替换指定原稿区间，同文引用各自保留，类型限定字符串交由代码持有。 */
 export function patch_source(
   source: string,
-  changes: ReadonlyMap<number, { original: string; text: string }>,
+  changes: ReadonlyMap<number, { end: number; original: string; text: string }>,
 ): string {
-  const literals = read_source(source),
+  const literals = new Map(read_source(source).map((value) => [value.start, value])),
     edits = [...changes]
       .map(([start, c]) => {
-        const v = literals.find((v) => v.start === start);
+        const v = literals.get(start);
         assert(v && !v.qualifier, "Not a display string literal");
+        assert.equal(v.end, c.end, "Stale Godot source span");
         assert.equal(v.text, c.original, "Stale source");
         return { ...v, newText: JSON.stringify(c.text) };
       })

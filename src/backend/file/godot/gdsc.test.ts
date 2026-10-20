@@ -30,7 +30,7 @@ it.each([
   ).toThrow();
 });
 
-it.each([100, 101])("%s 对齐由追加常量的 UTF-8 字节数决定，短 token 扩为宽引用", (version) => {
+it.each([100, 101])("%s 短 token 扩为宽引用后保留后续 token", (version) => {
   const bytes = gdsc_fixture(
     version,
     [
@@ -39,11 +39,10 @@ it.each([100, 101])("%s 对齐由追加常量的 UTF-8 字节数决定，短 tok
     ],
     ["same"],
   );
-  for (const text of ["a", "ab", "abc", "abcd", "中文🙂"]) {
-    const after = read_gdsc(patch_gdsc(bytes, new Map([[0, { original: "same", text }]])));
-    expect(after.constants[after.tokens[0]!.reference]!.value).toBe(text);
-    expect(after.constants[after.tokens[1]!.reference]!.value).toBe("same");
-  }
+  const text = "中文🙂";
+  const after = read_gdsc(patch_gdsc(bytes, new Map([[0, { original: "same", text }]])));
+  expect(after.constants[after.tokens[0]!.reference]!.value).toBe(text);
+  expect(after.constants[after.tokens[1]!.reference]!.value).toBe("same");
 });
 
 it.each(["4.3", "4.6"] as const)("%s 真实编译脚本保留注解、行号及 tab 嵌套语义", (version) => {

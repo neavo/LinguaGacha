@@ -1,8 +1,7 @@
-import { GAME_ENGINES } from "./engines";
+import { GAME_ENGINES, type GameSource } from "./engines";
 import assert from "node:assert/strict";
 import path from "node:path";
 import type { NativeFs } from "../../../../native/native-fs";
-import { read_game_source_files, type GameSource } from "./source-files";
 import { write_game_backup } from "./backup";
 import { prepare_game_directory } from "./prepare";
 import type { GamePrepareExecution } from "./prepare-worker";
@@ -34,7 +33,7 @@ export async function replace_game_font(
         : { writes: [] };
       signal?.throwIfAborted();
       const writes = new Set(prepared.writes);
-      const files = read_game_source_files(source, fs, signal, { staging, result: prepared });
+      const files = engine.collect(source, fs, signal, { staging, result: prepared });
       const outputs = font_outputs(source, files, font);
       // 修改暂存文件前已读定原字节，备份成功后才允许游戏事务提交。
       await write_game_backup(root, new Map([...files.data, ...files.fonts]), fs, signal);

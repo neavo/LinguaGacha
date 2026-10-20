@@ -2,7 +2,7 @@ import { expect, it } from "vitest";
 import { mv_mz_font_outputs } from "./font";
 import type { RPGMakerSource } from "./source";
 
-const game = { root: "/game", data_root: "/game/www" } as RPGMakerSource;
+const game: RPGMakerSource = { root: "/game", data_root: "/game/www", engine: "mv" };
 const font = { bytes: new Uint8Array([7]), file_name: "custom.ttf", families: [] };
 
 it("MV 字体输出只覆盖 data_root/fonts 下的字体文件", () => {

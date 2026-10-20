@@ -14,7 +14,9 @@ it("源码保留注释、raw/triple 字面量、类型限定与 UTF-16 坐标，
   ]);
   const next = patch_source(
     source,
-    new Map([[literals[0]!.start, { original: "😀same", text: '中文\n"引号"' }]]),
+    new Map([
+      [literals[0]!.start, { end: literals[0]!.end, original: "😀same", text: '中文\n"引号"' }],
+    ]),
   );
   expect(read_source(next).map((value) => value.text)).toEqual([
     '中文\n"引号"',
@@ -24,7 +26,18 @@ it("源码保留注释、raw/triple 字面量、类型限定与 UTF-16 坐标，
     "name",
   ]);
   expect(() =>
-    patch_source(source, new Map([[literals[4]!.start, { original: "name", text: "名称" }]])),
+    patch_source(
+      source,
+      new Map([[literals[4]!.start, { end: literals[4]!.end, original: "name", text: "名称" }]]),
+    ),
   ).toThrow();
+  expect(() =>
+    patch_source(
+      source,
+      new Map([
+        [literals[0]!.start, { end: literals[0]!.end + 1, original: "😀same", text: "译文" }],
+      ]),
+    ),
+  ).toThrow("Stale Godot source span");
   expect(() => read_source('"unterminated')).toThrow();
 });

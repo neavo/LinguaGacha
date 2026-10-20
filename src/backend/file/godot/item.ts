@@ -53,6 +53,7 @@ export function read_godot_metadata(extra: Item["extra_field"]): GodotMetadata {
   return value as unknown as GodotMetadata;
 }
 
+/** 重置条目时恢复导入用途决定的默认状态。 */
 export function godot_default_status(item: Pick<Item, "extra_field">): ItemStatus {
   return read_godot_metadata(item.extra_field).usage === "text" ? "NONE" : "RULE_SKIPPED";
 }

@@ -1,5 +1,4 @@
 import { GAME_ENGINES, prepare_game_source } from "./shared/game/engines";
-import { read_game_source_files } from "./shared/game/source-files";
 import { write_game_backup } from "./shared/game/backup";
 import { GameFormat } from "./shared/game/format";
 import { build_source_file_parse_failure } from "./source-file-parse-failure-reporter";
@@ -315,7 +314,7 @@ export class FileFormatService {
         throw new Error("Unfinished game operation; recovery files: " + workspace);
       await prepare_game_source(source, this.native_fs, this.game_prepare_execution, signal);
       const format = this.games[source.file_type];
-      const files = read_game_source_files(source, this.native_fs, signal);
+      const files = GAME_ENGINES[source.file_type].collect(source, this.native_fs, signal);
       const container = await format.create_container(
         files.data,
         rel_path,

@@ -3,7 +3,7 @@ import { create_text_extractor } from "./extract";
 import { build_resource, gdsc_fixture, create_godot_fixture } from "../../../test/godot-fixture";
 import { resource_string } from "./resource";
 
-it.each([100, 101])("候选漏斗按 GDSC %s 的 COLON 编号、显示用途和消息键分类", (version) => {
+it.each([100, 101])("候选漏斗按 GDSC %s 的 COLON 编号和显示用途分类", (version) => {
   const colon = version === 100 ? 83 : 84;
   const cases: [string, readonly [number, number][], readonly string[], boolean | null][] = [
     [

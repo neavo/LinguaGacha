@@ -8,8 +8,6 @@ import {
   validate_game_path,
 } from "../../source-file-paths";
 import type { GamePreparation } from "./prepare";
-import { GAME_ENGINES, type GameSource } from "./engines";
-export type { GameSource } from "./engines";
 
 /** 一次操作读定的原字节，容器与备份共用数据集合。 */
 export type GameSourceFiles = Readonly<{
@@ -17,16 +15,6 @@ export type GameSourceFiles = Readonly<{
   fonts: ReadonlyMap<string, Uint8Array>;
 }>;
 export type PreparedGameFiles = Readonly<{ staging: string; result: GamePreparation }>;
-
-/** 读取准备后、修改前的集合，暂存路径只在本次目录事务内有效。 */
-export function read_game_source_files(
-  source: GameSource,
-  fs: NativeFs,
-  signal?: AbortSignal,
-  prepared?: PreparedGameFiles,
-): GameSourceFiles {
-  return GAME_ENGINES[source.file_type].collect(source, fs, signal, prepared);
-}
 
 /** 引擎声明收集入口和选择器，公共层持有路径检查、暂存覆盖和原字节读取。 */
 export function collect_game_source_files(
@@ -95,7 +83,7 @@ export function collect_game_source_files(
     index.add(name);
   }
   for (const name of data_names) if (!data.has(name)) data.set(name, read(name));
-  const fonts = new Map(font_names.sort().map((name) => [name, data.get(name) ?? read(name)]));
+  const fonts = new Map(font_names.sort().map((name) => [name, read(name)]));
   signal?.throwIfAborted();
   return { data, fonts };
 }

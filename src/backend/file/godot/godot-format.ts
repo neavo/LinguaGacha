@@ -6,8 +6,8 @@ import type { GameFormatAdapter } from "../shared/game/format";
 import { read_godot_metadata, type GodotLocation } from "./item";
 import { create_text_extractor } from "./extract";
 import { patch_gdsc } from "./gdsc";
-import { read_source, patch_source } from "./gdscript";
-import { read_po, patch_po } from "./po";
+import { patch_source } from "./gdscript";
+import { patch_po } from "./po";
 import { patch_scene } from "./scene";
 import { patch_resource, read_resource, resource_string } from "./resource";
 import { all_values } from "./variant";
@@ -95,13 +95,18 @@ function render_member(bytes: Buffer, file: string, items: readonly Item[]): Buf
   }
   if (!changes.size) return bytes;
   const gdsc = new Map<number, Change>(),
-    source = new Map<number, Change>(),
-    po = new Map<number, Change>(),
+    source = new Map<number, Change & { end: number }>(),
+    po = new Map<number, Change & { end: number }>(),
     scenes = new Map<string, Change>(),
     slots = new Map<number, Change>(),
     edits: Edit[] = [];
   const kind = godot_member_kind(file, bytes);
   const resource = kind === "resource" || kind === "translation" ? read_resource(bytes) : null;
+  const values = new Map(
+    resource?.properties.flatMap((property) =>
+      [...all_values(property.value)].map((value) => [value.start, value] as const),
+    ),
+  ); // 原稿偏移只索引一次，全部译文共用。
   for (const { location, change } of changes.values()) {
     switch (location.kind) {
       case "gdsc":
@@ -110,20 +115,12 @@ function render_member(bytes: Buffer, file: string, items: readonly Item[]): Buf
         break;
       case "gd": {
         assert(kind === "gd");
-        const literal = read_source(bytes.toString("utf8")).find(
-          (value) => value.start === location.start,
-        );
-        assert(literal?.end === location.end, "Stale Godot source span");
-        source.set(location.start, change);
+        source.set(location.start, { ...change, end: location.end });
         break;
       }
       case "po": {
         assert(kind === "po");
-        const field = read_po(bytes.toString("utf8")).find(
-          (value) => value.start === location.start,
-        );
-        assert(field?.end === location.end, "Stale Godot PO span");
-        po.set(location.start, change);
+        po.set(location.start, { ...change, end: location.end });
         break;
       }
       case "scene":
@@ -138,9 +135,7 @@ function render_member(bytes: Buffer, file: string, items: readonly Item[]): Buf
         assert(
           resource && resource.type !== "PackedScene" && resource.type !== "OptimizedTranslation",
         );
-        const value = resource.properties
-          .flatMap((property) => [...all_values(property.value)])
-          .find((value) => value.start === location.offset);
+        const value = values.get(location.offset);
         assert(
           value && (value.type === 5 || value.type === 44) && typeof value.value === "string",
           "Invalid Godot string offset",

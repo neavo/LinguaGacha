@@ -228,6 +228,7 @@ export function godot_pack_fixture(
     : pack;
 }
 
+/** 测试自定配置与 Variant 原字节，按 ECFG 记录长度封装。 */
 export function godot_project_fixture(settings: ReadonlyMap<string, Buffer> = new Map()): Buffer {
   return Buffer.concat([
     Buffer.from("ECFG"),
@@ -263,6 +264,7 @@ export function gdsc_fixture(
     ]),
   ]);
 }
+/** 单个内部资源的协议夹具，压缩布局以解压体为偏移原点。 */
 export function build_resource(
   type: string,
   properties: ReadonlyMap<string, Buffer>,
