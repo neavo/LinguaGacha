@@ -35,6 +35,17 @@ export const ja_jp_app = {
       max: "MAX",
     },
   },
+  proxy: {
+    mode: {
+      direct: "直接接続",
+      system: "システムに従う",
+      manual: "手動",
+    },
+    link: {
+      translation: "翻訳経路",
+      updates: "更新経路",
+    },
+  },
   action: {
     move_to_top: "先頭へ移動",
     move_to_bottom: "末尾へ移動",
@@ -227,6 +238,9 @@ export const ja_jp_app = {
     executable_files: "実行ファイル (*.exe)",
   },
   diagnostic: {
+    proxy: {
+      apply_failed: "プロキシ設定を適用できなかったため、システムプロキシで送信します …",
+    },
     agent: {
       web_search_provider_failed: "ウェブ検索プロバイダーへのリクエストに失敗しました …",
       skill_load_failed: "Agent スキルを読み込めませんでした …",
@@ -258,6 +272,10 @@ export const ja_jp_app = {
     },
   },
   log: {
+    proxy: {
+      applied: "送信プロキシを適用しました：{MODE} …",
+      probe_result: "プロキシ経路テスト {LINK}：ステータス {STATUS}、{ELAPSED} ms …",
+    },
     api_test_fail: "API テストに失敗しました …",
     api_test_key: "テスト中のキー：",
     api_test_messages: "タスクのプロンプト：",

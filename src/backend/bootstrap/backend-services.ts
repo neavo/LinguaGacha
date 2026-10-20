@@ -288,6 +288,7 @@ export class BackendServices {
     const app_proxy = new AppProxyService(
       options.appProxyHost,
       this.app_setting_service,
+      this.logManager,
       options.systemProxyResolver,
     );
     const settings_commands = new AppSettingsCommandService(

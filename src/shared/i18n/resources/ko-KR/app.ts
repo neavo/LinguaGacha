@@ -34,6 +34,17 @@ export const ko_kr_app = {
       max: "MAX",
     },
   },
+  proxy: {
+    mode: {
+      direct: "직접 연결",
+      system: "시스템 설정 따르기",
+      manual: "수동",
+    },
+    link: {
+      translation: "번역 경로",
+      updates: "업데이트 경로",
+    },
+  },
   action: {
     move_to_top: "맨 위로 이동",
     move_to_bottom: "맨 아래로 이동",
@@ -219,6 +230,9 @@ export const ko_kr_app = {
     executable_files: "실행 파일 (*.exe)",
   },
   diagnostic: {
+    proxy: {
+      apply_failed: "프록시 설정을 적용하지 못해 시스템 프록시로 전송합니다 …",
+    },
     agent: {
       web_search_provider_failed: "웹 검색 공급자 요청에 실패했습니다 …",
       skill_load_failed: "Agent 스킬을 불러오지 못했습니다 …",
@@ -250,6 +264,10 @@ export const ko_kr_app = {
     },
   },
   log: {
+    proxy: {
+      applied: "아웃바운드 프록시 적용됨: {MODE} …",
+      probe_result: "프록시 경로 테스트 {LINK}: 상태 {STATUS}, {ELAPSED} ms …",
+    },
     api_test_fail: "API 테스트에 실패했습니다 …",
     api_test_key: "테스트 중인 키:",
     api_test_messages: "작업 프롬프트:",

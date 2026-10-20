@@ -35,6 +35,17 @@ export const de_de_app = {
       max: "MAX",
     },
   },
+  proxy: {
+    mode: {
+      direct: "Direkt",
+      system: "Systemeinstellung folgen",
+      manual: "Manuell",
+    },
+    link: {
+      translation: "Übersetzungsweg",
+      updates: "Aktualisierungsweg",
+    },
+  },
   action: {
     move_to_top: "An den Anfang verschieben",
     move_to_bottom: "An das Ende verschieben",
@@ -232,6 +243,10 @@ export const de_de_app = {
     executable_files: "Ausführbare Dateien (*.exe)",
   },
   diagnostic: {
+    proxy: {
+      apply_failed:
+        "Proxy-Einstellungen konnten nicht angewendet werden; Anfragen nutzen den Systemproxy …",
+    },
     agent: {
       web_search_provider_failed: "Anfrage beim Websuchanbieter fehlgeschlagen …",
       skill_load_failed: "Agent-Skill-Laden fehlgeschlagen …",
@@ -265,6 +280,10 @@ export const de_de_app = {
     },
   },
   log: {
+    proxy: {
+      applied: "Ausgehender Proxy aktiv: {MODE} …",
+      probe_result: "Proxy-Wegtest {LINK}: Status {STATUS}, {ELAPSED} ms …",
+    },
     api_test_fail: "API-Test fehlgeschlagen …",
     api_test_key: "Teste Schlüssel:",
     api_test_messages: "Aufgaben-Prompts:",

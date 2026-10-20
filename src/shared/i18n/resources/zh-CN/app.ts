@@ -33,6 +33,17 @@ export const zh_cn_app = {
       max: "MAX",
     },
   },
+  proxy: {
+    mode: {
+      direct: "直连",
+      system: "跟随系统",
+      manual: "手动",
+    },
+    link: {
+      translation: "翻译链路",
+      updates: "更新链路",
+    },
+  },
   action: {
     move_to_top: "移至顶部",
     move_to_bottom: "移至底部",
@@ -218,6 +229,9 @@ export const zh_cn_app = {
     executable_files: "可执行文件 (*.exe)",
   },
   diagnostic: {
+    proxy: {
+      apply_failed: "下发代理配置失败，已按跟随系统出站 …",
+    },
     agent: {
       web_search_provider_failed: "网页搜索来源请求失败 …",
       skill_load_failed: "Agent 技能加载失败 …",
@@ -248,6 +262,10 @@ export const zh_cn_app = {
     },
   },
   log: {
+    proxy: {
+      applied: "出站代理已生效：{MODE} …",
+      probe_result: "代理链路测试 {LINK}：状态 {STATUS}，耗时 {ELAPSED} ms …",
+    },
     api_test_fail: "接口测试失败 …",
     api_test_key: "正在测试密钥：",
     api_test_messages: "任务提示词：",

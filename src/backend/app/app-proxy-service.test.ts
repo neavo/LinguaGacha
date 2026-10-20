@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { AppProxyService } from "./app-proxy-service";
 import type { AppSettingService } from "./app-setting-service";
+import type { LogManager } from "../log/log-manager";
 import type { ProxySettingValue } from "../../domain/setting";
 import type { ProxyProbeResult } from "../../shared/proxy";
 
@@ -35,6 +36,7 @@ function create_service(
   const applied: ProxySettingValue[] = [];
   const probed_urls: string[] = [];
   let remaining_failures = options.failures ?? 0;
+  const log = { info: vi.fn(), warning: vi.fn(), error: vi.fn() } as unknown as LogManager;
   const service = new AppProxyService(
     {
       apply: async (setting) => {
@@ -50,9 +52,10 @@ function create_service(
       },
     },
     { read_setting: () => ({ proxy: options.proxy }) } as unknown as AppSettingService,
+    log,
     { resolveProxy: options.resolveProxy ?? (async () => options.proxyRules ?? "DIRECT") },
   );
-  return { service, applied, probed_urls };
+  return { service, applied, probed_urls, log };
 }
 
 afterEach(() => {
@@ -89,7 +92,7 @@ describe("AppProxyService", () => {
   });
 
   it("启动期下发失败只降级为跟随系统并记录原因", async () => {
-    const { service, applied } = create_service({ proxy: MANUAL, failures: 1 });
+    const { service, applied, log } = create_service({ proxy: MANUAL, failures: 1 });
 
     await expect(service.apply_persisted()).resolves.toBeUndefined();
 
@@ -99,6 +102,7 @@ describe("AppProxyService", () => {
       effectiveMode: "system",
       failureReason: "proxy apply failed",
     });
+    expect(log.error).toHaveBeenCalledOnce();
   });
 
   it("保存路径下发失败记录原因、抛出，并保留上一份生效状态", async () => {
@@ -113,6 +117,7 @@ describe("AppProxyService", () => {
         probe: async () => UPDATES_OK,
       },
       { read_setting: () => ({}) } as unknown as AppSettingService,
+      { info: vi.fn(), warning: vi.fn(), error: vi.fn() } as unknown as LogManager,
       { resolveProxy: async () => "DIRECT" },
     );
 
@@ -166,14 +171,14 @@ describe("AppProxyService", () => {
     expect(probed_urls).toEqual(["https://api.github.com/zen"]);
   });
 
-  it("一条链路失败不影响另一条", async () => {
+  it("一条链路失败不影响另一条，并把失败原因写入日志", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(async () => {
         throw new Error("getaddrinfo ENOTFOUND");
       }),
     );
-    const { service } = create_service({
+    const { service, log } = create_service({
       probe: async () => ({
         ok: false,
         status: null,
@@ -191,6 +196,8 @@ describe("AppProxyService", () => {
       failureReason: "getaddrinfo ENOTFOUND",
     });
     expect(summary.updates.failureReason).toBe("proxy connect ECONNREFUSED");
+    expect(log.warning).toHaveBeenCalledTimes(2);
+    expect(log.info).not.toHaveBeenCalled();
   });
 
   it("翻译链路回报实际路由，凭据不进入界面", async () => {
@@ -232,7 +239,10 @@ describe("AppProxyService", () => {
   });
 
   it("宿主探测抛错时返回可展示的失败结果", async () => {
-    vi.stubGlobal("fetch", vi.fn(async () => new Response(null, { status: 204 })));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response(null, { status: 204 })),
+    );
     const { service } = create_service({
       probe: async () => {
         throw new Error("host operation failed");

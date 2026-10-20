@@ -1,5 +1,6 @@
 import { read_proxy_setting } from "../../domain/setting";
 import { race_abort } from "../../shared/abort";
+import { log_error_from_message } from "../../shared/error";
 import type {
   AppProxyHost,
   AppProxyRuntimeStatus,
@@ -7,13 +8,15 @@ import type {
   ProxyProbeSummary,
 } from "../../shared/proxy";
 import type { AppSettingService } from "./app-setting-service";
+import type { LogManager } from "../log/log-manager";
+import { t_main_log } from "../log/log-text";
 import {
   resolve_system_proxy_route,
   type SystemProxyResolver,
   type SystemProxyRoute,
 } from "../network/system-proxy-http-client";
 
-/** 翻译链路探测地址：固定 204 空正文，不把第三方内容带进结果。 */
+/** 翻译链路探测地址：固定 204 空正文，不把第三方内容带进日志。 */
 const TRANSLATION_PROBE_URL = "https://www.gstatic.com/generate_204";
 /** 更新链路探测地址：与更新检查同主机，走 Chromium 栈。 */
 const UPDATE_PROBE_URL = "https://api.github.com/zen";
@@ -32,10 +35,11 @@ export class AppProxyService {
     failureReason: null,
   };
 
-  /** 保存宿主端口与设置读取入口；设置只用于启动期读取持久化配置。 */
+  /** 保存宿主端口、设置读取入口与日志；设置只用于启动期读取持久化配置。 */
   public constructor(
     private readonly host: AppProxyHost,
     private readonly settings: AppSettingService,
+    private readonly log: LogManager,
     private readonly system_proxy_resolver: SystemProxyResolver, // 翻译链路与 undici 共用同一份代理解析
   ) {}
 
@@ -49,6 +53,9 @@ export class AppProxyService {
         effectiveMode: "system",
         failureReason: read_failure_reason(error),
       };
+      this.log.error(t_main_log("app.diagnostic.proxy.apply_failed"), {
+        error: log_error_from_message(this.status.failureReason ?? ""),
+      });
     }
   }
 
@@ -87,6 +94,8 @@ export class AppProxyService {
       probe_backend_transport(this.system_proxy_resolver, TRANSLATION_PROBE_URL),
       this.probe_update_link(),
     ]);
+    this.log_probe_result("translation", translation);
+    this.log_probe_result("updates", updates);
     return { translation, updates };
   }
 
@@ -105,6 +114,20 @@ export class AppProxyService {
     }
   }
 
+  /** 探测结果进入日志窗口；失败原因单独作为错误上下文，便于关联代理故障。 */
+  private log_probe_result(link: "translation" | "updates", result: ProxyProbeResult): void {
+    const message = t_main_log("app.log.proxy.probe_result", {
+      LINK: t_main_log(`app.proxy.link.${link}`),
+      STATUS: result.status === null ? "-" : String(result.status),
+      ELAPSED: String(result.elapsedMs),
+    });
+    if (result.failureReason === null) {
+      this.log.info(message);
+      return;
+    }
+    this.log.warning(message, { error: log_error_from_message(result.failureReason) });
+  }
+
   /** 生效模式由领域归一给出：手动字段不完整时按跟随系统出站。 */
   private async apply(value: unknown): Promise<void> {
     const resolved = read_proxy_setting(value);
@@ -117,6 +140,7 @@ export class AppProxyService {
       password: resolved.password,
     });
     this.status = { applied: true, effectiveMode: resolved.effective_mode, failureReason: null };
+    this.log.info(t_main_log("app.log.proxy.applied", { MODE: read_mode_text(this.status) }));
   }
 }
 
@@ -190,4 +214,9 @@ function format_probe_route(route: SystemProxyRoute): string {
 /** 下发失败原因只取宿主错误文本；凭据从不进入宿主的代理配置。 */
 function read_failure_reason(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+/** 日志中的模式名称与设置页共用同一词表。 */
+function read_mode_text(status: AppProxyRuntimeStatus): string {
+  return t_main_log(`app.proxy.mode.${status.effectiveMode}`);
 }

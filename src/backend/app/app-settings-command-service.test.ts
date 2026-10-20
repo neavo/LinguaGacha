@@ -5,6 +5,7 @@ import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { AppPathService } from "./app-path-service";
 import { AppProxyService } from "./app-proxy-service";
+import type { LogManager } from "../log/log-manager";
 import { AppSettingService } from "./app-setting-service";
 import { AppSettingsCommandService } from "./app-settings-command-service";
 import { ProjectDatabase, ProjectDatabaseAccess } from "../database/database-operations";
@@ -87,6 +88,7 @@ async function create_service(
       }),
     },
     settings,
+    { info: vi.fn(), warning: vi.fn(), error: vi.fn() } as unknown as LogManager,
     { resolveProxy: async () => "DIRECT" },
   );
   return {
