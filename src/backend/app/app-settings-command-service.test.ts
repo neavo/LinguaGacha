@@ -13,12 +13,22 @@ import { get_section_revision } from "../project/project-data-reader";
 import { ProjectContentService } from "../project/project-content-service";
 import { RuntimeOperationGate } from "../runtime-operation-gate";
 import type { JsonRecord } from "../../domain/json";
+import type { ProxySettingValue } from "../../domain/setting";
 
 const cleanup: Array<() => void> = [];
 afterEach(() => {
   vi.restoreAllMocks();
   for (const close of cleanup.splice(0)) close();
 });
+
+const MANUAL_PROXY: ProxySettingValue = {
+  mode: "manual",
+  protocol: "HTTP",
+  host: "127.0.0.1",
+  port: 7890,
+  username: "",
+  password: "",
+};
 
 /** 配置和 .lg 使用真实存储，故障只注入提交与发布边界。 */
 async function create_service() {
@@ -210,4 +220,25 @@ describe("AppSettingsCommandService", () => {
       );
     },
   );
+
+  it("代理字段非法时拒绝保存，设置文件保持不变", async () => {
+    const f = await create_service();
+    const before = f.settings.read_setting();
+
+    await expect(f.service.update({ proxy: { ...MANUAL_PROXY, host: "" } })).rejects.toMatchObject({
+      code: "request.validation_failed",
+      public_details: { field: "proxy.host" },
+    });
+    await expect(
+      f.service.update({ proxy: { ...MANUAL_PROXY, protocol: "SOCKS4" } }),
+    ).rejects.toMatchObject({
+      code: "request.validation_failed",
+      public_details: { field: "proxy.protocol" },
+    });
+    await expect(f.service.update({ proxy: "manual" })).rejects.toMatchObject({
+      code: "request.validation_failed",
+      public_details: { field: "proxy" },
+    });
+    expect(f.settings.read_setting()).toEqual(before);
+  });
 });

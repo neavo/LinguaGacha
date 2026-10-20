@@ -1,10 +1,16 @@
 import type { SettingsUpdateResponse } from "../../shared/settings";
-import { Setting, is_agent_approval_mode } from "../../domain/setting";
+import {
+  Setting,
+  is_agent_approval_mode,
+  is_proxy_mode,
+  is_proxy_protocol,
+  read_proxy_setting,
+} from "../../domain/setting";
 import {
   APP_PREFILTER_SETTING_KEYS,
   read_app_prefilter_settings,
 } from "../../domain/project-settings";
-import type { JsonRecord, MutableJsonRecord } from "../../domain/json";
+import { is_json_record, type JsonRecord, type MutableJsonRecord } from "../../domain/json";
 import { AppError } from "../../shared/error";
 import type { ProjectWriteResult } from "../../shared/project-event";
 import type { RuntimeOperationGate } from "../runtime-operation-gate";
@@ -24,6 +30,7 @@ export class AppSettingsCommandService {
 
   /** 保存用户修改；涉及已加载工程时统一完成同步与失败补偿。 */
   public async update(request: JsonRecord): Promise<SettingsUpdateResponse> {
+    if (Object.hasOwn(request, "proxy")) validate_proxy_request(request["proxy"]);
     if (
       Object.hasOwn(request, "agent_approval_mode") &&
       !is_agent_approval_mode(request["agent_approval_mode"])
@@ -107,4 +114,23 @@ export class AppSettingsCommandService {
       });
     }
   }
+}
+
+/**
+ * 代理设置整体校验：模式与协议必须是已知值，切到手动时字段必须完整。
+ *
+ * 请求值非法时拒绝保存，设置文件与出站配置都保持不变；手工改坏的文件仍按
+ * `read_proxy_setting` 归一为跟随系统，两者不冲突。
+ */
+function validate_proxy_request(value: unknown): void {
+  if (!is_json_record(value)) throw validation_error("proxy");
+  if (!is_proxy_mode(value["mode"])) throw validation_error("proxy.mode");
+  if (!is_proxy_protocol(value["protocol"])) throw validation_error("proxy.protocol");
+  const incomplete_field = read_proxy_setting(value).incomplete_field;
+  if (incomplete_field !== null) throw validation_error(incomplete_field);
+}
+
+/** 定位到具体控件，界面据此在对应输入项反馈。 */
+function validation_error(field: string): AppError {
+  return new AppError("request.validation_failed", { public_details: { field } });
 }
