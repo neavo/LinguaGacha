@@ -354,7 +354,7 @@ it("删除变更目录后继续执行技能、提交和重置", async () => {
     await services.project.lifecycle.create_project_commit({
       path: path.join(app_root, "project.lg"),
       source_paths: [source],
-      project_settings: { source_language: "EN", target_language: "ZH" },
+      languages: { source_language: "EN", target_language: "ZH" },
     });
     const runner = new AgentWorkspaceRunner({
       paths: resources.paths,
@@ -369,7 +369,6 @@ it("删除变更目录后继续执行技能、提交和重置", async () => {
         },
       },
       paths: resources.paths,
-      settings: resources.settings,
       sessionState: services.state.session,
       cache: services.state.cache,
       proofreading: services.proofreading.query,

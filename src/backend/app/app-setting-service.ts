@@ -41,7 +41,7 @@ export class AppSettingService {
   }
 
   /**
-   * 设置同进程入口的临时覆盖值；CLI 语言参数需要影响任务快照，但不能改写 GUI 配置文件。
+   * 设置同进程入口的临时覆盖值，供 CLI 调整预设与输出选项。
    */
   public set_transient_overrides(overrides: JsonRecord | null): void {
     this.transient_overrides = overrides === null ? null : { ...overrides };

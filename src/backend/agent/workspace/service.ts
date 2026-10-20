@@ -20,12 +20,7 @@ import { random_id } from "../../../shared/utils/identifier";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 
-import {
-  is_json_record,
-  read_json_integer,
-  read_json_record,
-  type JsonRecord,
-} from "../../../domain/json";
+import { is_json_record, read_json_integer, type JsonRecord } from "../../../domain/json";
 import {
   TRANSLATION_PROMPT,
   PROMPT_KINDS,
@@ -37,10 +32,7 @@ import {
   type QualityRuleEntry,
   type QualityRuleKind,
 } from "../../../domain/quality";
-import {
-  normalize_project_settings_snapshot,
-  normalize_setting_snapshot,
-} from "../../../domain/setting";
+import { read_project_prefilter_settings } from "../../../domain/project-settings";
 import * as AppErrors from "../../../shared/error";
 import type { AgentPendingWriteSummary, AgentWorkspaceLinkResult } from "../../../shared/agent";
 import {
@@ -51,7 +43,6 @@ import { PROOFREADING_WARNING_CODES } from "../../../shared/proofreading/proofre
 import { JsonTool } from "../../../shared/utils/json-tool";
 import { NativeFs, default_native_fs } from "../../../native/native-fs";
 import type { AppPathService } from "../../app/app-path-service";
-import type { AppSettingService } from "../../app/app-setting-service";
 import type { CacheReadPort, CacheSnapshot } from "../../cache/cache-types";
 import type { LogManager } from "../../log/log-manager";
 import type { ProjectDatabase } from "../../database/database-operations";
@@ -192,7 +183,6 @@ export class AgentWorkspaceService {
     private readonly options: {
       images: Pick<AgentImageService, "prepare">;
       paths: Pick<AppPathService, "get_agent_workspace_root_dir">;
-      settings: Pick<AppSettingService, "read_setting">;
       sessionState: Pick<ProjectSessionState, "require_loaded_project_path">;
       cache: CacheReadPort;
       proofreading: Pick<ProofreadingQueryService, "query_warnings">;
@@ -477,7 +467,7 @@ export class AgentWorkspaceService {
       "agent_workspace_snapshot_project_changed",
     );
     const revisions = pick_workspace_revisions(start_snapshot.sectionRevisions);
-    const language = read_workspace_language(this.options.settings.read_setting());
+    const language = this.options.cache.languages.readBlock();
     const language_key = JsonTool.stringifyStrict(language);
     const current_items = [...this.options.cache.items.readItems()];
     const snapshot_files = this.options.cache.files
@@ -512,9 +502,7 @@ export class AgentWorkspaceService {
       current: this.options.cache.snapshot(),
       warnings: warning_result,
       languageKey: language_key,
-      currentLanguageKey: JsonTool.stringifyStrict(
-        read_workspace_language(this.options.settings.read_setting()),
-      ),
+      currentLanguageKey: JsonTool.stringifyStrict(this.options.cache.languages.readBlock()),
     });
     await this.ensure_sources({
       projectPath: project_path,
@@ -834,9 +822,7 @@ export class AgentWorkspaceService {
     projectCompatible: boolean;
   } {
     const snapshot = this.options.cache.snapshot();
-    const language_key = JsonTool.stringifyStrict(
-      read_workspace_language(this.options.settings.read_setting()),
-    );
+    const language_key = JsonTool.stringifyStrict(this.options.cache.languages.readBlock());
     const project_compatible =
       snapshot.projectPath === active.projectPath &&
       snapshot.epoch === active.projectEpoch &&
@@ -854,10 +840,7 @@ export class AgentWorkspaceService {
   /** Agent 预演读取项目持久镜像，确保审批采用与事务提交相同的重复过滤口径。 */
   private async read_duplicate_filter_enabled(project_path: string): Promise<boolean> {
     const meta = await this.options.database.get_all_meta(project_path);
-    return normalize_project_settings_snapshot(
-      meta,
-      normalize_project_settings_snapshot(read_json_record(meta["prefilter_config"])),
-    ).skip_duplicate_source_text_enable;
+    return read_project_prefilter_settings(meta).skip_duplicate_source_text_enable;
   }
 
   /** apply 仍要求已有脚本准备出的活动快照。 */
@@ -1180,15 +1163,6 @@ function all_change_paths(): string[] {
       ),
     ),
   ];
-}
-
-/** 工作区只冻结解释业务数据所需的源语言与目标语言。 */
-function read_workspace_language(value: unknown): JsonRecord {
-  const settings = normalize_setting_snapshot(value);
-  return {
-    source_language: settings.source_language,
-    target_language: settings.target_language,
-  };
 }
 
 /** 建立 snapshot 时复制完整七 section revision，隔离 cache 返回的可变引用。 */

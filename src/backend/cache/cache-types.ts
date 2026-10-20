@@ -3,6 +3,7 @@ import type { ProjectFileRecord } from "../project/project-file-records";
 import type { ProjectItemPublicRecord } from "../../domain/item";
 import type { QualityRuleBlock } from "../../shared/quality/quality-rule-state";
 import type { ProjectPrompts } from "../../domain/prompt";
+import type { ProjectLanguageSettings } from "../../domain/project-settings";
 import type { ProjectDataSectionRevisions } from "../../shared/project-event";
 
 /**
@@ -40,6 +41,9 @@ export interface CacheReadPort {
   };
   readonly prompts: {
     readBlock(): ProjectPrompts;
+  };
+  readonly languages: {
+    readBlock(): ProjectLanguageSettings;
   };
 
   readSectionRevisions(): ProjectDataSectionRevisions;

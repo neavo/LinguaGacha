@@ -1,19 +1,8 @@
 import type { SettingsSnapshot } from "@frontend/app/state/desktop-state-context";
 import type { LocaleKey } from "@frontend/app/locale/locale-context";
-import {
-  ALL_LANGUAGE_CODE,
-  PROJECT_SAVE_MODES,
-  SOURCE_LANGUAGE_CODES,
-  TARGET_LANGUAGE_CODES,
-  type ProjectSaveMode,
-} from "@domain/setting";
+import { PROJECT_SAVE_MODES, type ProjectSaveMode } from "@domain/setting";
 
 export type { ProjectSaveMode };
-
-/** “自动检测”在设置协议中的稳定语言值。 */
-export const ALL_LANGUAGE_VALUE = ALL_LANGUAGE_CODE;
-
-export { SOURCE_LANGUAGE_CODES, TARGET_LANGUAGE_CODES };
 
 /** 请求超时输入框接受的后端协议边界。 */
 export const REQUEST_TIMEOUT_MIN = 0;
@@ -21,12 +10,7 @@ export const REQUEST_TIMEOUT_MAX = 9_999_999;
 
 export type BasicSettingsSnapshot = Pick<
   SettingsSnapshot,
-  | "source_language"
-  | "target_language"
-  | "project_save_mode"
-  | "project_fixed_path"
-  | "output_folder_open_on_finish"
-  | "request_timeout"
+  "project_save_mode" | "project_fixed_path" | "output_folder_open_on_finish" | "request_timeout"
 >;
 
 /** 保存模式的协议值到本地化文案映射。 */
@@ -46,8 +30,6 @@ export function build_basic_settings_snapshot(
   settings_snapshot: SettingsSnapshot,
 ): BasicSettingsSnapshot {
   return {
-    source_language: settings_snapshot.source_language,
-    target_language: settings_snapshot.target_language,
     project_save_mode: settings_snapshot.project_save_mode,
     project_fixed_path: settings_snapshot.project_fixed_path,
     output_folder_open_on_finish: settings_snapshot.output_folder_open_on_finish,

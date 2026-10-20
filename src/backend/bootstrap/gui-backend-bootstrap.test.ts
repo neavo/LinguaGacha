@@ -201,12 +201,7 @@ describe("GuiBackendBootstrap 集成", () => {
         body: JSON.stringify({
           path: path.join(app_root, "test.lg"),
           source_paths: [source],
-          project_settings: {
-            source_language: "EN",
-            target_language: "ZH",
-            skip_duplicate_source_text_enable: true,
-            mtool_optimizer_enable: false,
-          },
+          languages: { source_language: "EN", target_language: "ZH" },
         }),
       });
       expect(await created.json()).toMatchObject({ ok: true });
@@ -344,12 +339,7 @@ describe("GuiBackendBootstrap 集成", () => {
         body: JSON.stringify({
           path: path.join(app_root, "test.lg"),
           source_paths: [source],
-          project_settings: {
-            source_language: "EN",
-            target_language: "ZH",
-            skip_duplicate_source_text_enable: true,
-            mtool_optimizer_enable: false,
-          },
+          languages: { source_language: "EN", target_language: "ZH" },
         }),
       });
       expect(await project.json()).toMatchObject({ ok: true });

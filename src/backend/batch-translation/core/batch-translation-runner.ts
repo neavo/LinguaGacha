@@ -1,7 +1,7 @@
 import type { LLMClientPort } from "../../llm/llm-types";
 import type { ChatGPTAuthService } from "../../auth/chatgpt-auth-service";
 import type { LogManager } from "../../log/log-manager";
-import type { SettingSnapshot } from "../../../domain/setting";
+import type { ProjectExecutionSettings } from "../../../domain/project-settings";
 import type {
   TranslationModelSnapshot,
   WorkUnitExecutor,
@@ -32,7 +32,6 @@ import { TranslationProgressAccumulator } from "./progress-accumulator";
 import { TranslationLogReplay } from "./log-replay";
 import { is_task_skipped_item_status } from "../../../domain/batch-translation";
 
-import { normalize_setting_snapshot } from "../../../domain/setting";
 import { read_task_item_status, read_task_item_id } from "../translation-item";
 import type { ItemStatus } from "../../../domain/item";
 
@@ -46,7 +45,7 @@ export type BatchTranslationRunCommand = Readonly<{
 
 /** Service 在运行 lease 内准备的单次执行上下文，Runner 与 worker 共用。 */
 export type BatchTranslationRunContext = Readonly<{
-  config_snapshot: SettingSnapshot;
+  config_snapshot: ProjectExecutionSettings;
   model: TranslationModelSnapshot;
 }>;
 
@@ -132,8 +131,8 @@ export class BatchTranslationRunner {
         model_name: run_context.model.name,
         model_id: run_context.model.model_id,
         thinking_level: run_context.model.thinking.level,
-        source_language: String(run_context.config_snapshot["source_language"]),
-        target_language: String(run_context.config_snapshot["target_language"]),
+        source_language: run_context.config_snapshot.source_language,
+        target_language: run_context.config_snapshot.target_language,
       });
       app_language = run_context.config_snapshot["app_language"];
       const quality_snapshot = this.task_store.build_quality_snapshot();
@@ -416,7 +415,7 @@ export class BatchTranslationRunner {
     if (String(run_context.model["api_format"] ?? "") !== "SakuraLLM") {
       prompt_text = new PromptBuilder(
         this.builtin_root,
-        normalize_setting_snapshot(run_context.config_snapshot),
+        run_context.config_snapshot,
         quality_snapshot,
         [],
       ).build_main();

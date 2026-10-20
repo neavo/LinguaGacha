@@ -7,7 +7,11 @@ import type { TextQualitySnapshot, TextTaskItemRecord } from "../../../shared/te
 import type { LLMMessage } from "../../llm/llm-types";
 import { default_native_fs } from "../../../native/native-fs";
 import { TRANSLATION_PROMPT } from "../../../domain/prompt";
-import { normalize_setting_snapshot, type SettingSnapshot } from "../../../domain/setting";
+import { normalize_setting_snapshot } from "../../../domain/setting";
+import {
+  DEFAULT_PROJECT_LANGUAGE_SETTINGS,
+  type ProjectExecutionSettings,
+} from "../../../domain/project-settings";
 import { resolve_prompt_template_language } from "../../../domain/app-language";
 import { AppError } from "../../../shared/error";
 import { format_i18n_message, type LocaleKey } from "../../../shared/i18n";
@@ -19,7 +23,7 @@ import { format_glossary_entry, type GlossaryEntry } from "../../../shared/quali
  * 提示词构造所需的最小配置快照，worker 只读取语言与提示词增强开关
  */
 export type PromptBuilderConfig = Pick<
-  SettingSnapshot,
+  ProjectExecutionSettings,
   "app_language" | "source_language" | "target_language" | "prompt_enhancement_enable"
 >;
 
@@ -51,12 +55,13 @@ export class PromptBuilder {
     quality_snapshot: TextQualitySnapshot,
     activated_glossary_entries: readonly GlossaryEntry[],
   ) {
+    // 应用设置归一化不含项目语言，语言沿用执行快照，缺失时使用项目默认值。
     const setting_snapshot = normalize_setting_snapshot(config);
     this.builtin_root = builtin_root;
     this.config = {
       app_language: setting_snapshot.app_language,
-      source_language: setting_snapshot.source_language,
-      target_language: setting_snapshot.target_language,
+      source_language: config.source_language ?? DEFAULT_PROJECT_LANGUAGE_SETTINGS.source_language,
+      target_language: config.target_language ?? DEFAULT_PROJECT_LANGUAGE_SETTINGS.target_language,
       prompt_enhancement_enable: setting_snapshot.prompt_enhancement_enable,
     };
     this.quality_snapshot = quality_snapshot;

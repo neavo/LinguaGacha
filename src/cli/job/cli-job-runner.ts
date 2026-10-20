@@ -7,8 +7,7 @@ import type { AppSettingService } from "../../backend/app/app-setting-service";
 import type { BatchTranslationService } from "../../backend/batch-translation/batch-translation-service";
 import type { TranslationFileGenerationService } from "../../backend/file/translation-file-generation-service";
 import type { ProjectLifecycleService } from "../../backend/project/project-lifecycle-service";
-import { normalize_project_settings_snapshot } from "../../domain/setting";
-import type { JsonRecord, JsonValue } from "../../domain/json";
+import type { JsonRecord } from "../../domain/json";
 import type { CLICommandOptions } from "../cli-parser";
 import type { CLIJsonStatusReporter } from "../cli-status-reporter";
 import { build_cli_task_input } from "./cli-task-input";
@@ -21,7 +20,7 @@ type CLIJobStatusReporter = Pick<
 /** CLI job 只消费当前命令所需的共享业务能力。 */
 export interface CLIJobServices {
   app: {
-    settings: Pick<AppSettingService, "read_setting" | "set_transient_overrides">;
+    settings: Pick<AppSettingService, "set_transient_overrides">;
   };
   project: {
     summary: Pick<ProjectSummaryService, "read">;
@@ -58,14 +57,16 @@ export async function run_cli_job(
     backend_services.app.settings.set_transient_overrides({
       ...build_cli_default_preset_overrides(),
       output_folder_open_on_finish: false,
-      source_language: command.sourceLanguage,
-      target_language: command.targetLanguage,
     });
     transient_overrides_active = true;
     await backend_services.project.lifecycle.create_project_commit({
       path: project_path,
       source_paths: command.inputPaths,
-      project_settings: build_project_settings(backend_services, command) as JsonValue,
+      // 命令语言直接写入临时项目，翻译与导出读取同一项目事实。
+      languages: {
+        source_language: command.sourceLanguage,
+        target_language: command.targetLanguage,
+      },
     });
     await backend_services.project.lifecycle.apply_task_input(await build_cli_task_input(command));
 
@@ -126,20 +127,6 @@ function build_cli_default_preset_overrides(): JsonRecord {
     post_translation_replacement_default_preset: "",
     translation_custom_prompt_default_preset: "",
   };
-}
-
-/**
- * 创建工程时写入命令语言参数，并保留当前应用设置里的预过滤开关。
- */
-function build_project_settings(
-  backend_services: CLIJobServices,
-  command: CLICommandOptions,
-): JsonRecord {
-  return normalize_project_settings_snapshot({
-    ...backend_services.app.settings.read_setting(),
-    source_language: command.sourceLanguage,
-    target_language: command.targetLanguage,
-  }) as unknown as JsonRecord;
 }
 
 /**

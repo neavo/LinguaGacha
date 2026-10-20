@@ -44,7 +44,8 @@ type RuntimeSnapshot = {
   taskOutputTokens: number;
   taskRequestInFlightCount: number;
   runtimeOwner: "batch_translation" | "agent" | "model_test" | null;
-  sourceLanguage: string;
+  requestTimeout: number;
+  projectTargetLanguage: string | null;
 };
 
 type StateHandle = Pick<
@@ -188,12 +189,14 @@ function RuntimeProbe(props: {
       taskOutputTokens: task_snapshot.progress.total_output_tokens,
       taskRequestInFlightCount: task_snapshot.request_in_flight_count,
       runtimeOwner: runtime_snapshot.owner,
-      sourceLanguage: state.settings_snapshot.source_language,
+      requestTimeout: state.settings_snapshot.request_timeout,
+      projectTargetLanguage: state.project_snapshot.languages?.target_language ?? null,
     });
   }, [
     props,
     proofreading_signal,
-    state.settings_snapshot.source_language,
+    state.settings_snapshot.request_timeout,
+    state.project_snapshot.languages,
     task_snapshot.progress.line,
     task_snapshot.progress.processed_line,
     task_snapshot.request_in_flight_count,
@@ -382,6 +385,7 @@ function create_project_read_response(
       project: {
         path: response_project_path,
         loaded: true,
+        languages: { source_language: "JA", target_language: "ZH" },
       },
       projectRevision: project_revision,
       sectionRevisions: section_revisions,
@@ -393,6 +397,7 @@ function create_project_read_response(
 
 type RuntimeApiMockOptions = {
   settings?: Record<string, unknown>;
+  project_languages?: Record<string, unknown>;
   project_path?: string;
   batch_translation?: Record<string, unknown>;
   runtime_owner?: "batch_translation" | "agent" | "model_test" | null;
@@ -411,7 +416,13 @@ function install_runtime_api_mock(options: RuntimeApiMockOptions = {}): void {
       return { settings: { app_language: "ZH", ...options.settings } };
     }
     if (path === "/api/session/project/snapshot") {
-      return { project: { path: project_path, loaded: true } };
+      return {
+        project: {
+          path: project_path,
+          loaded: true,
+          languages: options.project_languages ?? { source_language: "JA", target_language: "ZH" },
+        },
+      };
     }
     if (path === "/api/batch-translation/snapshot") {
       return {
@@ -641,11 +652,11 @@ describe("DesktopStateProvider", () => {
     expect(api_fetch_mock).toHaveBeenCalledWith("/api/batch-translation/snapshot", {});
   });
 
-  it("source_language 设置变更会更新设置快照且不额外触发项目缓存刷新信号", async () => {
+  it("应用设置变更会更新设置快照且不额外触发项目缓存刷新信号", async () => {
     const snapshots: RuntimeSnapshot[] = [];
     const event_stream = create_event_source_stub();
 
-    install_runtime_api_mock({ settings: { source_language: "JA" } });
+    install_runtime_api_mock({ settings: { request_timeout: 60 } });
 
     await mount_runtime(
       event_stream.event_source,
@@ -659,9 +670,9 @@ describe("DesktopStateProvider", () => {
 
     await act(async () => {
       event_stream.emit("settings.changed", {
-        keys: ["source_language"],
+        keys: ["request_timeout"],
         settings: {
-          source_language: "EN",
+          request_timeout: 90,
         },
       });
       await Promise.resolve();
@@ -669,18 +680,206 @@ describe("DesktopStateProvider", () => {
 
     await wait_for_condition(() => {
       const latest_snapshot = snapshots.at(-1);
-      return latest_snapshot?.sourceLanguage === "EN";
+      return latest_snapshot?.requestTimeout === 90;
     });
 
     const latest_snapshot = snapshots.at(-1);
 
     expect(latest_snapshot).toMatchObject({
-      sourceLanguage: "EN",
+      requestTimeout: 90,
       workbenchSeq: 1,
       workbenchReason: "project_loaded",
       proofreadingSeq: 1,
       proofreadingReason: "project_loaded",
     });
+  });
+
+  it("project 分区变更补读项目快照语言，重复 eventId 不再补读", async () => {
+    vi.useFakeTimers();
+    const snapshots: RuntimeSnapshot[] = [];
+    const event_stream = create_event_source_stub();
+    const languages = { source_language: "JA", target_language: "ZH" };
+    install_runtime_api_mock({ project_languages: languages });
+
+    await mount_runtime(
+      event_stream.event_source,
+      <RuntimeProbe onSnapshot={(snapshot) => snapshots.push(snapshot)} />,
+    );
+    await wait_for_condition(() => snapshots.at(-1)?.proofreadingSeq === 1);
+    expect(snapshots.at(-1)?.projectTargetLanguage).toBe("ZH");
+    const snapshot_reads = () =>
+      api_fetch_mock.mock.calls.filter(([path]) => path === "/api/session/project/snapshot").length;
+    const reads_before = snapshot_reads();
+
+    languages.target_language = "EN";
+    const event = {
+      source: "project_settings_update",
+      projectPath: "E:/demo/demo.lg",
+      projectRevision: 2,
+      updatedSections: ["project"],
+      sectionRevisions: { project: 1 },
+      qualityStatisticsScope: "none",
+      eventId: "language-1",
+    };
+    await act(async () => {
+      event_stream.emit("project.data_changed", event);
+      event_stream.emit("project.data_changed", event);
+      await Promise.resolve();
+    });
+    await flush_state_refresh_window();
+    await wait_for_condition(() => snapshots.at(-1)?.projectTargetLanguage === "EN");
+
+    expect(snapshot_reads()).toBe(reads_before + 1);
+  });
+
+  it("SSE 语言补读失败后，HTTP 成功回流仍会同步已提交的项目语言", async () => {
+    vi.useFakeTimers();
+    const snapshots: RuntimeSnapshot[] = [];
+    const event_stream = create_event_source_stub();
+    const languages = { source_language: "JA", target_language: "ZH" };
+    let state_handle: StateHandleRef = null;
+    install_runtime_api_mock({ project_languages: languages });
+    await mount_runtime(
+      event_stream.event_source,
+      <>
+        <RuntimeProbe onSnapshot={(snapshot) => snapshots.push(snapshot)} />
+        <StateHandleProbe onState={(state) => (state_handle = state)} />
+      </>,
+    );
+    await wait_for_condition(() => snapshots.at(-1)?.proofreadingSeq === 1);
+
+    languages.target_language = "EN";
+    api_fetch_mock.mockRejectedValueOnce(new Error("snapshot failed"));
+    const event = {
+      eventId: "language-save-after-failed-read",
+      source: "project_settings_update",
+      projectPath: "E:/demo/demo.lg",
+      projectRevision: 2,
+      updatedSections: ["project"],
+      sectionRevisions: { project: 1 },
+      qualityStatisticsScope: "none",
+    };
+    await act(async () => {
+      event_stream.emit("project.data_changed", event);
+    });
+    await flush_state_refresh_window();
+    expect(snapshots.at(-1)?.projectTargetLanguage).toBe("ZH");
+
+    await act(async () => {
+      await state_handle?.commit_project_write({
+        operation: "project.settings.update",
+        run: async () => ({ accepted: true, changes: [event] }),
+      });
+    });
+
+    expect(snapshots.at(-1)?.projectTargetLanguage).toBe("EN");
+  });
+
+  it.each(["同一工程", "切换工程"])("语言补读迟到时不能覆盖最新快照：%s", async (scenario) => {
+    vi.useFakeTimers();
+    const snapshots: RuntimeSnapshot[] = [];
+    const event_stream = create_event_source_stub();
+    let state_handle: StateHandleRef = null;
+    install_runtime_api_mock();
+    await mount_runtime(
+      event_stream.event_source,
+      <>
+        <RuntimeProbe onSnapshot={(snapshot) => snapshots.push(snapshot)} />
+        <StateHandleProbe onState={(state) => (state_handle = state)} />
+      </>,
+    );
+    await wait_for_condition(() => snapshots.at(-1)?.proofreadingSeq === 1);
+
+    let finish_old_read!: (value: unknown) => void;
+    api_fetch_mock.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish_old_read = resolve;
+        }),
+    );
+    await act(async () => {
+      event_stream.emit("project.data_changed", {
+        eventId: "old-project-language",
+        source: "project_settings_update",
+        projectPath: "E:/demo/demo.lg",
+        projectRevision: 2,
+        updatedSections: ["project"],
+        sectionRevisions: { project: 1 },
+        qualityStatisticsScope: "none",
+      });
+    });
+    await flush_state_refresh_window();
+
+    const project_path = scenario === "同一工程" ? "E:/demo/demo.lg" : "E:/demo/next.lg";
+    const next_target_language = scenario === "同一工程" ? "KO" : "ZH";
+    install_runtime_api_mock({
+      project_path,
+      project_languages: { source_language: "EN", target_language: next_target_language },
+      project_read: {
+        sections: create_default_project_sections({
+          project: { path: project_path, loaded: true },
+        }),
+      },
+    });
+    await act(async () => {
+      await state_handle?.refresh_project_snapshot();
+    });
+    await wait_for_condition(() => snapshots.at(-1)?.projectPath === project_path);
+    await act(async () => {
+      finish_old_read({
+        project: {
+          path: "E:/demo/demo.lg",
+          loaded: true,
+          languages: { source_language: "JA", target_language: "EN" },
+        },
+      });
+    });
+    expect(snapshots.at(-1)).toMatchObject({
+      projectPath: project_path,
+      projectTargetLanguage: next_target_language,
+    });
+  });
+
+  it("初始化期间的语言事件在 manifest 返回后补读已提交语言", async () => {
+    const snapshots: RuntimeSnapshot[] = [];
+    const event_stream = create_event_source_stub();
+    const languages = { source_language: "JA", target_language: "ZH" };
+    let state_handle: StateHandleRef = null;
+    install_runtime_api_mock({ project_languages: languages });
+    await mount_runtime(
+      event_stream.event_source,
+      <>
+        <RuntimeProbe onSnapshot={(snapshot) => snapshots.push(snapshot)} />
+        <StateHandleProbe onState={(state) => (state_handle = state)} />
+      </>,
+    );
+    await wait_for_condition(() => snapshots.at(-1)?.proofreadingSeq === 1);
+    let finish_manifest!: (value: unknown) => void;
+    api_fetch_mock.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish_manifest = resolve;
+        }),
+    );
+    let refresh: Promise<void> | undefined;
+    await act(async () => {
+      refresh = state_handle?.refresh_project_state();
+    });
+    languages.target_language = "EN";
+    await act(async () => {
+      event_stream.emit("project.data_changed", {
+        eventId: "warming-language",
+        source: "project_settings_update",
+        projectPath: "E:/demo/demo.lg",
+        projectRevision: 2,
+        updatedSections: ["project"],
+        sectionRevisions: { project: 1 },
+        qualityStatisticsScope: "none",
+      });
+      finish_manifest(create_project_read_response("/api/session/project/manifest", {})!);
+      await refresh;
+    });
+    expect(snapshots.at(-1)?.projectTargetLanguage).toBe("EN");
   });
 
   it("StrictMode 双 effect 后完整任务快照仍会按刷新窗口持续刷新", async () => {

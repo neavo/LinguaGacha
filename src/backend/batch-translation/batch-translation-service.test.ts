@@ -18,6 +18,7 @@ import { RuntimeOperationGate } from "../runtime-operation-gate";
 import { ProjectSessionState } from "../project/project-session-state";
 import { BatchTranslationRunner } from "./core/batch-translation-runner";
 import { normalize_batch_translation_progress } from "../../domain/batch-translation";
+import { DEFAULT_PROJECT_LANGUAGE_SETTINGS } from "../../domain/project-settings";
 
 /** 组合真实任务服务与可控协作者，观察启动和停止命令。 */
 function setup(loaded = true, line = 0) {
@@ -43,6 +44,7 @@ function setup(loaded = true, line = 0) {
         model_selection: { translation: "translation" },
       }),
     },
+    { readBlock: () => DEFAULT_PROJECT_LANGUAGE_SETTINGS },
   );
   return { service, runtime, gate, run };
 }
@@ -215,12 +217,15 @@ it.each([
       row: index,
     }),
   );
-  await database.transaction(project_path, (writer) => writer.set_items(project_path, original));
+  await database.transaction(project_path, (writer) => {
+    writer.set_items(project_path, original);
+    writer.upsert_meta_entries(project_path, { source_language: "EN", target_language: "ZH" });
+  });
   const session = new ProjectSessionState();
   session.mark_loaded(project_path);
   const gate = new RuntimeOperationGate();
   const runtime = new BatchTranslationRuntime(session, database, gate);
-  const settings = { read_setting: () => ({ source_language: "EN", target_language: "ZH" }) };
+  const settings = { read_setting: () => ({}) };
   const cache = new CacheManager({
     database,
     logManager: null,
@@ -255,7 +260,7 @@ it.each([
       },
     },
   });
-  const service = new BatchTranslationService(runner, runtime, session, settings);
+  const service = new BatchTranslationService(runner, runtime, session, settings, cache.languages);
   const lease = gate.begin_runtime("agent");
   const model = Model.from_json({ id: "fake", threshold: { concurrency_limit: 1 } }, "fake");
   try {
@@ -294,6 +299,11 @@ it.each([
       },
     });
     expect(result.progress.total_tokens).toBeGreaterThan(0);
+    // Agent 内批量翻译同样采用项目语言作为本轮执行快照。
+    expect(execute_unit.mock.calls[0]![0].config_snapshot).toMatchObject({
+      source_language: "EN",
+      target_language: "ZH",
+    });
     expect(await database.get_all_items(project_path)).toEqual([
       targets.includes(1) ? { ...original[0], dst: "新译文" } : original[0],
       targets.includes(2) ? { ...original[1], dst: "新译文", status: "PROCESSED" } : original[1],
@@ -372,9 +382,10 @@ it("历史工程批量翻译保留旧分析物理数据、正式术语与资产�
   await database.transaction(project_path, (writer) =>
     writer.set_rule_text(project_path, "translation_prompt", "Translate to {target_language}"),
   );
-  await database.transaction(project_path, (writer) =>
-    writer.set_meta(project_path, "translation_prompt_enable", true),
-  );
+  await database.transaction(project_path, (writer) => {
+    writer.set_meta(project_path, "translation_prompt_enable", true);
+    writer.upsert_meta_entries(project_path, { source_language: "EN", target_language: "ZH" });
+  });
   await database.transaction(project_path, (writer) =>
     writer.add_asset(project_path, "text.txt", Buffer.from("Hello"), "TXT", null),
   );
@@ -409,9 +420,7 @@ it("历史工程批量翻译保留旧分析物理数据、正式术语与资产�
   const cache = new CacheManager({
     database,
     logManager: { warning: vi.fn(), error: vi.fn() } as never,
-    appSettingService: {
-      read_setting: () => ({ source_language: "EN", target_language: "ZH" }),
-    } as never,
+    appSettingService: { read_setting: () => ({}) } as never,
     workerClient: { run: async () => ({}) } as never,
   });
   const writes = new ProjectWriteStore(database, vi.fn(), () => null);
@@ -459,14 +468,18 @@ it("历史工程批量翻译保留旧分析物理数据、正式术语与资产�
       },
       logManager: { append: vi.fn() },
     });
-    const service = new BatchTranslationService(runner, runtime, session, {
-      read_setting: () => ({
-        source_language: "EN",
-        target_language: "ZH",
-        model_selection: { translation: "fake" },
-        models: [{ id: "fake", threshold: { concurrency_limit: 1 } }],
-      }),
-    });
+    const service = new BatchTranslationService(
+      runner,
+      runtime,
+      session,
+      {
+        read_setting: () => ({
+          model_selection: { translation: "fake" },
+          models: [{ id: "fake", threshold: { concurrency_limit: 1 } }],
+        }),
+      },
+      cache.languages,
+    );
     const handle = await service.start_current_project({
       operation: "translate",
       mode: "new",

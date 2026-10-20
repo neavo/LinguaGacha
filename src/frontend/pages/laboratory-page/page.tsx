@@ -1,5 +1,5 @@
 import type { JSX, ReactNode } from "react";
-import { PROJECT_SETTING_KEYS } from "@domain/setting";
+import { APP_PREFILTER_SETTING_KEYS } from "@domain/project-settings";
 import type { ScreenComponentProps } from "@frontend/app/navigation/types";
 import { useI18n } from "@frontend/app/locale/locale-context";
 import "@frontend/pages/laboratory-page/laboratory-page.css";
@@ -31,7 +31,7 @@ export function LaboratoryPage(_props: ScreenComponentProps): JSX.Element {
             stretch
             disabled={
               pending_state[field] ||
-              (runtime_locked && PROJECT_SETTING_KEYS.some((key) => key === field))
+              (runtime_locked && APP_PREFILTER_SETTING_KEYS.some((key) => key === field))
             }
             on_value_change={(value) => {
               void update_setting(field, value);

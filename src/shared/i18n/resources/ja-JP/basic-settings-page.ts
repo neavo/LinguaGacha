@@ -4,10 +4,10 @@ export const ja_jp_basic_settings_page = {
   title: "基本設定",
   fields: {
     source_language: {
-      description: "現在のプロジェクトの入力テキストの言語を設定します",
+      description: "入力テキストの言語を設定します",
     },
     target_language: {
-      description: "現在のプロジェクトの出力テキストの言語を設定します",
+      description: "出力テキストの言語を設定します",
     },
     project_save_mode: {
       title: "プロジェクトファイルの保存先",

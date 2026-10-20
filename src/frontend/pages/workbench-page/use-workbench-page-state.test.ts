@@ -520,11 +520,6 @@ describe("useWorkbenchPageState", () => {
       project_store: {
         getState: () => create_project_store_state({}),
       },
-      settings_snapshot: {
-        source_language: "JA",
-        mtool_optimizer_enable: false,
-        skip_duplicate_source_text_enable: true,
-      },
     };
     await render_hook();
 
@@ -547,11 +542,6 @@ describe("useWorkbenchPageState", () => {
         ],
         conflict_action: "skip",
         inheritance_mode: "none",
-        project_settings: {
-          source_language: "JA",
-          mtool_optimizer_enable: false,
-          skip_duplicate_source_text_enable: true,
-        },
         expected_section_revisions: {
           files: 1,
           items: 2,

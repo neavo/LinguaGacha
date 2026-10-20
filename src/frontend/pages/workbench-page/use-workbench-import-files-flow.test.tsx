@@ -300,11 +300,6 @@ describe("useWorkbenchImportFilesFlow", () => {
         files: [{ source_path: "C:/source/ new.txt ", target_rel_path: " new.txt" }],
         conflict_action: "skip",
         inheritance_mode: "none",
-        project_settings: {
-          source_language: "JA",
-          mtool_optimizer_enable: true,
-          skip_duplicate_source_text_enable: false,
-        },
         expected_section_revisions: {
           files: 1,
           items: 2,
@@ -517,6 +512,7 @@ describe("useWorkbenchImportFilesFlow", () => {
     },
   );
 
+  /** 挂载导入流程并记录每次对话框和请求状态。 */
   async function mount_hook(
     options: {
       state?: WorkbenchCommandPlanningState;
@@ -551,6 +547,7 @@ describe("useWorkbenchImportFilesFlow", () => {
   }
 });
 
+/** 连接真实 Hook 与本地对话框状态，按用例注入写入结果。 */
 function HookProbe(props: {
   state: WorkbenchCommandPlanningState;
   run_project_file_write?: (
@@ -566,11 +563,6 @@ function HookProbe(props: {
     project_identity: "E:/demo/project.lg",
     dialog_state,
     get_planning_state: () => props.state,
-    planner_settings: {
-      source_language: "JA",
-      mtool_optimizer_enable: true,
-      skip_duplicate_source_text_enable: false,
-    },
     run_modal_progress_toast,
     run_project_file_write:
       props.run_project_file_write ??
@@ -596,6 +588,7 @@ function HookProbe(props: {
   return null;
 }
 
+/** 从 React 更新记录中取得最新公开状态。 */
 function latest_snapshot(snapshots: HookSnapshot[]): HookSnapshot {
   const snapshot = snapshots.at(-1);
   if (snapshot === undefined) {
@@ -604,6 +597,7 @@ function latest_snapshot(snapshots: HookSnapshot[]): HookSnapshot {
   return snapshot;
 }
 
+/** 提供已有文件与修订，使冲突处理使用一致的工程基线。 */
 function create_project_store_state(): WorkbenchCommandPlanningState {
   return {
     files: [

@@ -18,6 +18,7 @@ export const ko_kr_project_page = {
       translation_prompt: "번역 프롬프트",
     },
     action: "프로젝트 만들기",
+    language_dialog_title: "프로젝트 언어",
   },
   open: {
     title: "프로젝트 열기",

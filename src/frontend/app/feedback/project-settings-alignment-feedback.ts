@@ -1,14 +1,14 @@
-import { normalize_language_code } from "@domain/setting";
+import { normalize_language_code } from "@domain/language";
 import { get_language_label_key } from "@frontend/app/locale/language-label";
 import type { TextResolver } from "@shared/i18n";
 
 type Translate = TextResolver;
 
 export type ProjectSettingsAlignmentSettings = {
-  source_language: string; // 源语言展示按当前设置镜像解析
-  target_language: string; // 目标语言展示按当前设置镜像解析
-  mtool_optimizer_enable: boolean; // MTool 开关展示为已启用或已禁用
-  skip_duplicate_source_text_enable: boolean; // 重复原文开关展示为已启用或已禁用
+  source_language?: string; // 项目语言修改时展示新的源语言
+  target_language?: string; // 项目语言修改时展示新的目标语言
+  mtool_optimizer_enable?: boolean; // MTool 开关展示为已启用或已禁用
+  skip_duplicate_source_text_enable?: boolean; // 重复原文开关展示为已启用或已禁用
 };
 
 export type ProjectSettingsAlignmentChangedFields = Partial<{
@@ -18,6 +18,7 @@ export type ProjectSettingsAlignmentChangedFields = Partial<{
   skip_duplicate_source_text_enable: boolean;
 }>;
 
+/** 已知语言显示本地化名称，历史未知值保留原始代码以便识别。 */
 function format_language_label(language: string, t: Translate): string {
   const normalized_language = language.trim().toUpperCase();
   const language_code = normalize_language_code(normalized_language);
@@ -33,6 +34,7 @@ function format_language_label(language: string, t: Translate): string {
   return language_label;
 }
 
+/** 按实际变化字段组合设置保存提示，供语言修改与预过滤开关对齐共用。 */
 export function format_project_settings_aligned_toast(args: {
   settings: ProjectSettingsAlignmentSettings;
   changed_fields: ProjectSettingsAlignmentChangedFields;
@@ -44,7 +46,7 @@ export function format_project_settings_aligned_toast(args: {
     rows.push(
       args.t("app.tooltip.value", {
         TITLE: args.t("app.language_role.source"),
-        VALUE: format_language_label(args.settings.source_language, args.t),
+        VALUE: format_language_label(args.settings.source_language ?? "", args.t),
       }),
     );
   }
@@ -53,7 +55,7 @@ export function format_project_settings_aligned_toast(args: {
     rows.push(
       args.t("app.tooltip.value", {
         TITLE: args.t("app.language_role.target"),
-        VALUE: format_language_label(args.settings.target_language, args.t),
+        VALUE: format_language_label(args.settings.target_language ?? "", args.t),
       }),
     );
   }

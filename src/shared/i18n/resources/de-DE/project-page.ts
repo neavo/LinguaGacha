@@ -19,6 +19,7 @@ export const de_de_project_page = {
       translation_prompt: "Übersetzungs-Prompt",
     },
     action: "Projekt erstellen",
+    language_dialog_title: "Projektsprachen",
   },
   open: {
     title: "Projekt öffnen",

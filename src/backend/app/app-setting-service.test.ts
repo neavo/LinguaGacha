@@ -83,10 +83,9 @@ describe("AppSettingService", () => {
 
     expect(result["settings"]).toMatchObject({
       app_language: "ZH",
-      source_language: "JA",
-      target_language: "ZH",
       recent_projects: [],
     });
+    expect(result["settings"]).not.toHaveProperty("source_language");
     expect(result["settings"]).not.toHaveProperty("models");
     expect(saved).toMatchObject({
       app_language: "ZH",
@@ -174,27 +173,23 @@ describe("AppSettingService", () => {
   it("临时覆盖只影响运行期读取且不会写回 config.json", () => {
     const { service, config_path } = create_service();
     write_config(config_path, {
-      source_language: "JA",
-      target_language: "ZH",
+      request_timeout: 60,
       output_folder_open_on_finish: true,
       prompt_enhancement_enable: false,
     });
 
     service.set_transient_overrides({
-      source_language: "ALL",
-      target_language: "EN",
+      request_timeout: 30,
       output_folder_open_on_finish: false,
     });
 
     expect(service.read_setting()).toMatchObject({
-      source_language: "ALL",
-      target_language: "EN",
+      request_timeout: 30,
       output_folder_open_on_finish: false,
       prompt_enhancement_enable: false,
     });
     expect(read_config(config_path)).toMatchObject({
-      source_language: "JA",
-      target_language: "ZH",
+      request_timeout: 60,
       output_folder_open_on_finish: true,
       prompt_enhancement_enable: false,
     });
@@ -202,8 +197,7 @@ describe("AppSettingService", () => {
     service.set_transient_overrides(null);
 
     expect(service.read_setting()).toMatchObject({
-      source_language: "JA",
-      target_language: "ZH",
+      request_timeout: 60,
       output_folder_open_on_finish: true,
       prompt_enhancement_enable: false,
     });

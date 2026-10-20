@@ -62,23 +62,23 @@ vi.mock("@frontend/shadcn/select", () => {
   };
 });
 
+/** 隔离页面输入行为，保存结果由状态 Hook 测试验证。 */
 function create_basic_settings_state_fixture() {
   return {
     snapshot: {
-      source_language: "JA",
-      target_language: "ZH",
       project_save_mode: "MANUAL",
       project_fixed_path: "",
       output_folder_open_on_finish: false,
       request_timeout: 300,
     },
     pending_state: {
-      source_language: false,
-      target_language: false,
       project_save_mode: false,
       output_folder_open_on_finish: false,
       request_timeout: false,
     },
+    languages: { source_language: "JA", target_language: "ZH" },
+    language_pending_state: { source_language: false, target_language: false },
+    language_locked: false,
     runtime_locked: false,
     update_source_language: vi.fn(async (_next_language: string) => {}),
     update_target_language: vi.fn(async (_next_language: string) => {}),
@@ -88,6 +88,7 @@ function create_basic_settings_state_fixture() {
   };
 }
 
+/** 经原生 setter 和输入事件触发 React 的受控输入更新。 */
 function set_input_value(input: HTMLInputElement, value: string): void {
   const value_setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
 
@@ -99,6 +100,7 @@ function set_input_value(input: HTMLInputElement, value: string): void {
   input.dispatchEvent(new Event("input", { bubbles: true }));
 }
 
+/** 读取当前用例的隔离夹具，未初始化时立即暴露错误。 */
 function get_current_basic_settings_state(): ReturnType<
   typeof create_basic_settings_state_fixture
 > {
@@ -130,6 +132,7 @@ describe("BasicSettingsPage", () => {
     push_toast_mock.mockReset();
   });
 
+  /** 挂载真实页面以验证输入、失焦与键盘提交。 */
   async function mount_page(): Promise<void> {
     container = document.createElement("div");
     document.body.append(container);
@@ -140,6 +143,7 @@ describe("BasicSettingsPage", () => {
     });
   }
 
+  /** 在页面中定位超时输入，缺失时终止当前测试。 */
   function get_request_timeout_input(): HTMLInputElement {
     const input = container?.querySelector('input[type="number"]');
 

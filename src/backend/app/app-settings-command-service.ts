@@ -1,10 +1,9 @@
 import type { SettingsUpdateResponse } from "../../shared/settings";
+import { Setting, is_agent_approval_mode } from "../../domain/setting";
 import {
-  Setting,
-  PROJECT_SETTING_KEYS,
-  normalize_project_settings_snapshot,
-  is_agent_approval_mode,
-} from "../../domain/setting";
+  APP_PREFILTER_SETTING_KEYS,
+  read_app_prefilter_settings,
+} from "../../domain/project-settings";
 import type { JsonRecord, MutableJsonRecord } from "../../domain/json";
 import { AppError } from "../../shared/error";
 import type { ProjectWriteResult } from "../../shared/project-event";
@@ -13,7 +12,7 @@ import type { ProjectSessionState } from "../project/project-session-state";
 import type { ProjectContentService } from "../project/project-content-service";
 import type { AppSettingService } from "./app-setting-service";
 
-/** 设置命令拥有应用配置与当前工程同步的完整边界；持久化仍由各自服务负责。 */
+/** 设置命令拥有应用预过滤开关与当前工程同步的完整边界；持久化仍由各自服务负责。 */
 export class AppSettingsCommandService {
   /** 复用应用设置、工程身份与唯一写入口。 */
   public constructor(
@@ -35,7 +34,7 @@ export class AppSettingsCommandService {
     }
     if (
       !this.session.snapshot().loaded ||
-      !PROJECT_SETTING_KEYS.some((key) => Object.hasOwn(request, key))
+      !APP_PREFILTER_SETTING_KEYS.some((key) => Object.hasOwn(request, key))
     ) {
       return { ...this.settings.update_app_settings(request), accepted: true, changes: [] };
     }
@@ -47,16 +46,16 @@ export class AppSettingsCommandService {
         next = next.with_setting_value(key, value);
       const next_snapshot = next.to_snapshot();
       const previous_snapshot = previous.to_snapshot();
-      const changed_project_keys = PROJECT_SETTING_KEYS.filter(
+      const changed_project_keys = APP_PREFILTER_SETTING_KEYS.filter(
         (key) => next_snapshot[key] !== previous_snapshot[key],
       );
       if (changed_project_keys.length === 0)
         return { ...this.settings.update_app_settings(request), accepted: true, changes: [] };
 
-      const commit = await this.content.prepare_settings_alignment(
+      // 项目语言由项目持有，预过滤读取项目语言并只采用新的应用开关。
+      const commit = await this.content.prepare_prefilter_settings(
         this.session.require_loaded_project_path(),
-        normalize_project_settings_snapshot(next_snapshot),
-        changed_project_keys.some((key) => key !== "target_language"),
+        read_app_prefilter_settings(next_snapshot),
       );
       const rollback: MutableJsonRecord = {};
       const next_json = next.to_json();

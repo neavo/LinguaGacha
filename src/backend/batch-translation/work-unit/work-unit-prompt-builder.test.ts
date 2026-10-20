@@ -46,7 +46,8 @@ describe("PromptBuilder", () => {
     const make_builder = (source_language: string, target_language: string) =>
       new PromptBuilder(
         builtin_root,
-        { app_language: "JA", source_language, target_language },
+        // 跨线程快照可能携带未校验文本，这里绕过静态类型验证运行时边界。
+        { app_language: "JA", source_language, target_language } as never,
         create_quality_snapshot(),
         [],
       );

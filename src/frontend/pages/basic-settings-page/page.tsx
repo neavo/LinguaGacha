@@ -2,19 +2,16 @@ import { push_error_toast } from "@frontend/app/feedback/desktop-toast";
 import { type JSX, useEffect, useMemo, useState, type KeyboardEvent } from "react";
 
 import { parse_bounded_setting_number_draft } from "@frontend/features/settings-editor/setting-number-draft";
-import { get_language_label_key } from "@frontend/app/locale/language-label";
 import { useI18n } from "@frontend/app/locale/locale-context";
 import "@frontend/pages/basic-settings-page/basic-settings-page.css";
 import {
-  ALL_LANGUAGE_VALUE,
   PROJECT_SAVE_MODE_LABEL_KEYS,
   PROJECT_SAVE_MODE_OPTIONS,
   REQUEST_TIMEOUT_MAX,
   REQUEST_TIMEOUT_MIN,
-  SOURCE_LANGUAGE_CODES,
-  TARGET_LANGUAGE_CODES,
   is_project_save_mode,
 } from "@frontend/pages/basic-settings-page/types";
+import { ProjectLanguageSelect } from "@frontend/features/project-language/project-language-select";
 import { useBasicSettingsState } from "@frontend/pages/basic-settings-page/use-basic-settings-state";
 import { Input } from "@frontend/shadcn/input";
 import { BooleanSegmentedToggle } from "@frontend/widgets/boolean-segmented-toggle";
@@ -46,30 +43,6 @@ export function BasicSettingsPage(_props: BasicSettingsPageProps): JSX.Element {
     REQUEST_TIMEOUT_MAX,
   );
   const request_timeout_invalid = parsed_request_timeout === null;
-  const source_language_options = useMemo(() => {
-    return [
-      {
-        value: ALL_LANGUAGE_VALUE,
-        label: t(get_language_label_key(ALL_LANGUAGE_VALUE)),
-      },
-      ...SOURCE_LANGUAGE_CODES.map((language_code) => {
-        return {
-          value: language_code,
-          label: t(get_language_label_key(language_code)),
-        };
-      }),
-    ];
-  }, [t]);
-
-  const target_language_options = useMemo(() => {
-    return TARGET_LANGUAGE_CODES.map((language_code) => {
-      return {
-        value: language_code,
-        label: t(get_language_label_key(language_code)),
-      };
-    });
-  }, [t]);
-
   const project_save_mode_options = useMemo(() => {
     return PROJECT_SAVE_MODE_OPTIONS.map((mode) => {
       return {
@@ -87,7 +60,7 @@ export function BasicSettingsPage(_props: BasicSettingsPageProps): JSX.Element {
         })
       : t("basic_settings_page.fields.project_save_mode.description");
 
-  const language_locked = basic_settings_state.runtime_locked;
+  const language_locked = basic_settings_state.language_locked;
 
   useEffect(() => {
     if (is_request_timeout_editing) {
@@ -135,28 +108,16 @@ export function BasicSettingsPage(_props: BasicSettingsPageProps): JSX.Element {
           title={t("app.language_role.source")}
           description={t("basic_settings_page.fields.source_language.description")}
           action={
-            <Select
-              items={source_language_options}
-              value={basic_settings_state.snapshot.source_language}
-              disabled={language_locked || basic_settings_state.pending_state.source_language}
-              onValueChange={(next_value) => {
-                if (next_value !== null)
-                  void basic_settings_state.update_source_language(next_value);
+            <ProjectLanguageSelect
+              field="source_language"
+              value={basic_settings_state.languages.source_language}
+              disabled={
+                language_locked || basic_settings_state.language_pending_state.source_language
+              }
+              on_change={(next_value) => {
+                void basic_settings_state.update_source_language(next_value);
               }}
-            >
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectGroup>
-                  {source_language_options.map((option) => (
-                    <SelectItem key={option.value} value={option.value}>
-                      {option.label}
-                    </SelectItem>
-                  ))}
-                </SelectGroup>
-              </SelectContent>
-            </Select>
+            />
           }
         />
 
@@ -165,28 +126,16 @@ export function BasicSettingsPage(_props: BasicSettingsPageProps): JSX.Element {
           title={t("app.language_role.target")}
           description={t("basic_settings_page.fields.target_language.description")}
           action={
-            <Select
-              items={target_language_options}
-              value={basic_settings_state.snapshot.target_language}
-              disabled={language_locked || basic_settings_state.pending_state.target_language}
-              onValueChange={(next_value) => {
-                if (next_value !== null)
-                  void basic_settings_state.update_target_language(next_value);
+            <ProjectLanguageSelect
+              field="target_language"
+              value={basic_settings_state.languages.target_language}
+              disabled={
+                language_locked || basic_settings_state.language_pending_state.target_language
+              }
+              on_change={(next_value) => {
+                void basic_settings_state.update_target_language(next_value);
               }}
-            >
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectGroup>
-                  {target_language_options.map((option) => (
-                    <SelectItem key={option.value} value={option.value}>
-                      {option.label}
-                    </SelectItem>
-                  ))}
-                </SelectGroup>
-              </SelectContent>
-            </Select>
+            />
           }
         />
 

@@ -126,7 +126,6 @@ export class GuiBackendBootstrap {
       const workspace = new AgentWorkspaceService({
         images,
         paths: resources.paths,
-        settings: resources.settings,
         sessionState: services.state.session,
         cache: services.state.cache,
         proofreading: services.proofreading.query,

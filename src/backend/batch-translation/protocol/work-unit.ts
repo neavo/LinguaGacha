@@ -3,7 +3,7 @@ import { AppError } from "../../../shared/error";
 import { read_log_content } from "../../../shared/log";
 import type { TranslationRequestPort } from "./translation-request";
 import type { Model } from "../../../domain/model";
-import type { SettingSnapshot } from "../../../domain/setting";
+import type { ProjectExecutionSettings } from "../../../domain/project-settings";
 import type { TextQualitySnapshot, TextTaskItemRecord } from "../../../shared/text/text-processing";
 import type { LogError } from "../../../shared/error";
 import type { LogContent } from "../../../shared/log";
@@ -24,7 +24,7 @@ export type TranslationWorkUnit = {
   run_id: string;
   kind: "translation";
   model: TranslationModelSnapshot;
-  config_snapshot: SettingSnapshot;
+  config_snapshot: ProjectExecutionSettings;
   quality_snapshot: TextQualitySnapshot;
   payload: {
     items: TextTaskItemRecord[];

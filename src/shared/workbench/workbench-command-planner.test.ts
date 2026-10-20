@@ -3,12 +3,10 @@ import { describe, expect, it } from "vitest";
 import {
   create_workbench_delete_files_plan,
   create_workbench_import_files_plan,
-  create_workbench_planner_settings,
   create_workbench_reorder_plan,
   create_workbench_reset_file_plan,
   type WorkbenchImportFileCandidate,
   type WorkbenchCommandPlanningState,
-  type WorkbenchPlannerSettings,
 } from "./workbench-command-planner";
 
 /** 当前文件与修订用于校验命令目标和提交范围。 */
@@ -35,23 +33,7 @@ function create_candidate(): WorkbenchImportFileCandidate {
   };
 }
 
-const SETTINGS: WorkbenchPlannerSettings = {
-  source_language: "JA",
-  mtool_optimizer_enable: false,
-  skip_duplicate_source_text_enable: true,
-};
-
 describe("workbench command planner", () => {
-  it("组装工作台设置时只保留后端预过滤字段", () => {
-    const runtime_settings = {
-      ...SETTINGS,
-      target_language: "ZH",
-      request_timeout: 120,
-    };
-
-    expect(create_workbench_planner_settings(runtime_settings)).toEqual(SETTINGS);
-  });
-
   it("重排只接受当前文件完整集合并提交 files revision", () => {
     const state = {
       ...create_state(),
@@ -86,7 +68,6 @@ describe("workbench command planner", () => {
       state: create_state(),
       preview: { files: [create_candidate()], files_revision: 7 },
       conflict_action: "skip",
-      settings: SETTINGS,
       inheritance_mode: "inherit",
     });
 
@@ -99,7 +80,6 @@ describe("workbench command planner", () => {
       ],
       conflict_action: "skip",
       inheritance_mode: "inherit",
-      project_settings: SETTINGS,
       expected_section_revisions: {
         files: 7,
         items: 2,
@@ -120,7 +100,6 @@ describe("workbench command planner", () => {
       state: create_state(),
       preview: { files, files_revision: 1 },
       conflict_action,
-      settings: SETTINGS,
     });
     const expected = [{ source_path: "E:/demo/new.txt", target_rel_path: "new.txt" }];
     if (conflict_action === "replace")
@@ -128,32 +107,28 @@ describe("workbench command planner", () => {
     expect(plan.requestBody).toMatchObject({ files: expected, conflict_action });
   });
 
-  it("重置单文件只提交 rel_paths、设置快照和受影响 section revision", () => {
+  it("重置单文件只提交 rel_paths 和受影响 section revision", () => {
     const plan = create_workbench_reset_file_plan({
       state: create_state(),
       rel_path: "old.txt",
-      settings: SETTINGS,
     });
 
     expect(plan.requestBody).toEqual({
       rel_paths: ["old.txt"],
-      project_settings: SETTINGS,
       expected_section_revisions: {
         items: 2,
       },
     });
   });
 
-  it("删除文件只提交 rel_paths、设置快照和受影响 section revision", () => {
+  it("删除文件只提交 rel_paths 和受影响 section revision", () => {
     const plan = create_workbench_delete_files_plan({
       state: create_state(),
       rel_paths: ["old.txt"],
-      settings: SETTINGS,
     });
 
     expect(plan.requestBody).toEqual({
       rel_paths: ["old.txt"],
-      project_settings: SETTINGS,
       expected_section_revisions: {
         files: 1,
         items: 2,

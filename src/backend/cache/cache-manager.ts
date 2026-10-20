@@ -12,6 +12,10 @@ import type { ProjectCommittedChange } from "../project/project-committed-change
 import type { ComputeWorkerClient } from "../worker/compute-worker-client";
 import { type QualityRuleBlock } from "../../shared/quality/quality-rule-state";
 import { create_empty_project_prompts, type ProjectPrompts } from "../../domain/prompt";
+import {
+  DEFAULT_PROJECT_LANGUAGE_SETTINGS,
+  type ProjectLanguageSettings,
+} from "../../domain/project-settings";
 import { createProofreadingReader } from "../../shared/proofreading/proofreading-reader";
 import type { ProjectDataSectionRevisions } from "../../shared/project-event";
 import type { CacheFreshness, CacheReadPort, CacheSnapshot } from "./cache-types";
@@ -75,6 +79,10 @@ export class CacheManager implements CacheReadPort {
     () => this.recover_if_needed(),
     create_empty_project_prompts,
   );
+  public readonly languages = new ProjectDataBlockCache<ProjectLanguageSettings>(
+    () => this.recover_if_needed(),
+    () => DEFAULT_PROJECT_LANGUAGE_SETTINGS,
+  );
 
   public readonly proofreading: ProofreadingCache;
   public readonly qualityStatistics: QualityRuleStatisticsCache;
@@ -120,6 +128,7 @@ export class CacheManager implements CacheReadPort {
     this.pdf.replace(snapshot.pdf);
     this.quality.replace(snapshot.quality);
     this.prompts.replace(snapshot.prompts);
+    this.languages.replace(snapshot.languages);
     this.qualityStatistics.clear();
     this.proofreading.clearProject();
     this.section_revisions = { ...snapshot.section_revisions };
@@ -145,6 +154,7 @@ export class CacheManager implements CacheReadPort {
     this.pdf.clear();
     this.quality.clear();
     this.prompts.clear();
+    this.languages.clear();
     this.qualityStatistics.clear();
     this.proofreading.clearProject(project_path);
     this.section_revisions = {};
@@ -161,6 +171,7 @@ export class CacheManager implements CacheReadPort {
       if (committed.pdf !== undefined) this.pdf.replace(committed.pdf);
       if (committed.quality !== undefined) this.quality.replace(committed.quality);
       if (committed.prompts !== undefined) this.prompts.replace(committed.prompts);
+      if (committed.languages !== undefined) this.languages.replace(committed.languages);
       // 基础事实、修订与视图失效同步切换，读取不会跨越两次提交。
       this.section_revisions = { ...committed.sectionRevisions };
       this.proofreading.applyChange(committed);

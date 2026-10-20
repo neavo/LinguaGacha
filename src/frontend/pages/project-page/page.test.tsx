@@ -130,6 +130,25 @@ vi.mock("@frontend/shadcn/tooltip", () => {
   };
 });
 
+// 语言下拉替换为按钮，测试直接表达用户选择的语言。
+vi.mock("@frontend/features/project-language/project-language-select", () => {
+  return {
+    ProjectLanguageSelect: (props: {
+      field: string;
+      value: string;
+      on_change: (next_value: string) => void;
+    }) => (
+      <span data-field={props.field} data-value={props.value}>
+        {["JA", "EN", "KO", "ZH"].map((code) => (
+          <button key={code} type="button" onClick={() => props.on_change(code)}>
+            {`${props.field}:${code}`}
+          </button>
+        ))}
+      </span>
+    ),
+  };
+});
+
 vi.mock("@frontend/widgets/app-alert-dialog", () => {
   return {
     AppConfirmDialog: () => null,
@@ -140,8 +159,6 @@ vi.mock("@frontend/widgets/app-alert-dialog", () => {
 function create_settings_snapshot(overrides: Record<string, unknown> = {}) {
   return {
     app_language: "ZH",
-    source_language: "JA",
-    target_language: "ZH",
     project_save_mode: "SOURCE",
     project_fixed_path: "",
     output_folder_open_on_finish: false,
@@ -294,6 +311,14 @@ describe("ProjectPage", () => {
     await act(async () => {
       get_button_by_text(page_container, "创建工程").click();
     });
+    await confirm_create_languages();
+  }
+
+  /** 新建前的语言弹窗渲染在页面容器外，确认后继续创建。 */
+  async function confirm_create_languages(): Promise<void> {
+    await act(async () => {
+      get_button_by_text(document.body, "确认").click();
+    });
   }
 
   it("保留预览文件顺序并用当前工程文件名记录最近打开", async () => {
@@ -372,6 +397,111 @@ describe("ProjectPage", () => {
     });
   });
 
+  it("点击创建先选择工程语言，取消保留来源且不创建", async () => {
+    await mount_page();
+    await act(async () => {
+      get_button_by_text(container!, "选择文件").click();
+    });
+    await act(async () => {
+      get_button_by_text(container!, "创建工程").click();
+    });
+
+    expect(document.body.textContent).toContain("工程语言");
+    expect(
+      document.querySelector('[data-field="source_language"]')?.getAttribute("data-value"),
+    ).toBe("JA");
+    expect(
+      document.querySelector('[data-field="target_language"]')?.getAttribute("data-value"),
+    ).toBe("ZH");
+    await act(async () => {
+      get_button_by_text(document.body, "取消").click();
+    });
+
+    expect(api_fetch_mock).not.toHaveBeenCalledWith(
+      "/api/session/project/create",
+      expect.anything(),
+    );
+    expect(container!.textContent).toContain("已选择 1 个源文件");
+  });
+
+  it("确认后使用所选语言创建，创建失败保留语言选择以便重试", async () => {
+    await mount_page();
+    api_fetch_mock.mockImplementation(async (path: string) => {
+      if (path === "/api/session/source-files/summary") {
+        return { source_file_count: 1, format_hit_counts: { txt: 1 } };
+      }
+      if (path === "/api/session/project/create") throw new Error("create failed");
+      return {};
+    });
+    await act(async () => {
+      get_button_by_text(container!, "选择文件").click();
+    });
+    await act(async () => {
+      get_button_by_text(container!, "创建工程").click();
+    });
+    await act(async () => {
+      get_button_by_text(document.body, "source_language:EN").click();
+      get_button_by_text(document.body, "target_language:KO").click();
+    });
+    await confirm_create_languages();
+    await act(async () => {
+      get_button_by_text(container!, "创建工程").click();
+    });
+    await confirm_create_languages();
+
+    const create_calls = api_fetch_mock.mock.calls.filter(
+      ([path]) => path === "/api/session/project/create",
+    );
+    expect(create_calls).toHaveLength(2);
+    for (const [, body] of create_calls) {
+      expect(body).toMatchObject({ languages: { source_language: "EN", target_language: "KO" } });
+    }
+  });
+
+  it("打开工程直接请求后端，并按打开响应中的对齐摘要提示", async () => {
+    const project_path = "E:/Source/aligned.lg";
+    desktop_runtime_fixture.current = create_desktop_runtime_fixture({
+      recent_projects: [{ path: project_path, name: "aligned" }],
+    });
+    api_fetch_mock.mockImplementation(async (path: string) => {
+      if (path === "/api/session/project/preview")
+        return {
+          preview: {
+            file_paths: [],
+            translation_stats: {
+              total_items: 0,
+              completed_count: 0,
+              skipped_count: 0,
+              failed_count: 0,
+              pending_count: 0,
+              completion_percent: 0,
+            },
+          },
+        };
+      if (path === "/api/session/project/open")
+        return {
+          project: { path: project_path, loaded: true },
+          settings_alignment: {
+            settings: { mtool_optimizer_enable: false, skip_duplicate_source_text_enable: true },
+            changed: { mtool_optimizer_enable: true, skip_duplicate_source_text_enable: false },
+          },
+        };
+      return {};
+    });
+    await mount_page();
+    await act(async () => {
+      get_button_by_text(container!, "aligned").click();
+    });
+    await act(async () => {
+      get_button_by_text(container!, "打开工程").click();
+    });
+
+    expect(api_fetch_mock.mock.calls.map(([path]) => path)).not.toContain(
+      "/api/session/project/open-preview",
+    );
+    expect(push_toast_mock).toHaveBeenCalledWith("info", expect.stringContaining("MTool 优化器"));
+  });
+
   it("来源摘要全部失败时展示具体文件原因，重新选择仍可恢复", async () => {
     const source = "E:/Source/broken.exe";
     vi.mocked(window.desktopApp.pickProjectSourceFilePath).mockResolvedValueOnce({
@@ -448,6 +578,7 @@ describe("ProjectPage", () => {
     await act(async () => {
       get_button_by_text(container as HTMLElement, "创建工程").click();
     });
+    await confirm_create_languages();
 
     expect(api_fetch_mock).toHaveBeenCalledWith("/api/session/source-files/summary", {
       source_paths: selected_paths,
@@ -485,6 +616,7 @@ describe("ProjectPage", () => {
     await act(async () => {
       get_button_by_text(container!, "创建工程").click();
     });
+    await confirm_create_languages();
     expect(api_fetch_mock).toHaveBeenCalledWith(
       "/api/session/project/create",
       expect.objectContaining({ source_paths, path: "E:/Source/a.lg" }),
@@ -502,6 +634,7 @@ describe("ProjectPage", () => {
     await act(async () => {
       get_button_by_text(container!, "创建工程").click();
     });
+    await confirm_create_languages();
     expect(api_fetch_mock).toHaveBeenCalledWith(
       "/api/session/project/create",
       expect.objectContaining({ source_paths }),
@@ -603,6 +736,7 @@ describe("ProjectPage", () => {
     await act(async () => {
       get_button_by_text(container!, "创建工程").click();
     });
+    await confirm_create_languages();
     const dropzone = get_button_by_text(container!, "已选择 1 个源文件");
     expect(dropzone.disabled).toBe(true);
     expect(get_button_by_text(container!, "选择文件").disabled).toBe(true);

@@ -24,7 +24,6 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { ProjectItemPublicRecord } from "../../../domain/item";
-import { DEFAULT_SETTING } from "../../../domain/setting";
 import { read_json_record, type JsonRecord } from "../../../domain/json";
 import { QUALITY_RULE_KINDS, type QualityRuleKind } from "../../../domain/quality";
 import * as AppErrors from "../../../shared/error";
@@ -1107,7 +1106,7 @@ describe("AgentWorkspaceService", () => {
     const work_file = path.join(fixture.workspace_root, AGENT_WORKSPACE_WORK_ROOT, "state.json");
     fs.writeFileSync(work_file, "state");
     if (field === "epoch") fixture.snapshot.epoch += 1;
-    else fixture.setting.target_language = "EN";
+    else fixture.languages.target_language = "EN";
     fixture.query_warnings.mockRejectedValueOnce(new Error("warning query failed"));
 
     await expect(run_workspace(fixture)).rejects.toMatchObject({
@@ -1178,6 +1177,7 @@ async function create_fixture(temp_dir: string, native_fs?: NativeFs) {
       }),
     },
 
+    languages: { readBlock: () => ({ ...languages }) },
     readSectionRevisions: () => ({ ...snapshot.sectionRevisions }),
     snapshot: () => ({ ...snapshot, sectionRevisions: { ...snapshot.sectionRevisions } }),
   };
@@ -1219,7 +1219,10 @@ async function create_fixture(temp_dir: string, native_fs?: NativeFs) {
     operation(),
   );
   const warning_item = items[0] as JsonRecord;
-  const setting = { ...DEFAULT_SETTING };
+  const languages: { source_language: "JA"; target_language: "ZH" | "EN" } = {
+    source_language: "JA",
+    target_language: "ZH",
+  };
   const read_asset_content = vi.fn(async (): Promise<Buffer> => Buffer.from("源文件正文", "utf-8"));
   const query_warnings = vi.fn(async () => ({
     projectPath: snapshot.projectPath,
@@ -1262,7 +1265,6 @@ async function create_fixture(temp_dir: string, native_fs?: NativeFs) {
     paths: {
       get_agent_workspace_root_dir: () => workspace_parent,
     },
-    settings: { read_setting: () => ({ ...setting }) },
     sessionState: { require_loaded_project_path: () => snapshot.projectPath },
     cache,
     proofreading: { query_warnings },
@@ -1290,7 +1292,7 @@ async function create_fixture(temp_dir: string, native_fs?: NativeFs) {
     pick_save_path,
     workspace_root,
     snapshot,
-    setting,
+    languages,
     query_warnings,
     run,
     write_store,
@@ -1425,16 +1427,14 @@ it("PDF 零条目工程按页保存、隔离旧指纹，语言变化后重建工
     workerExecution: { kind: "in_process" },
   });
   try {
-    resources.settings.set_transient_overrides({ source_language: "EN", target_language: "ZH" });
+    resources.settings.set_transient_overrides({
+      skip_duplicate_source_text_enable: true,
+      mtool_optimizer_enable: false,
+    });
     await services.project.lifecycle.create_project_commit({
       path: path.join(directory.path, "project.lg"),
       source_paths: [source],
-      project_settings: {
-        source_language: "EN",
-        target_language: "ZH",
-        skip_duplicate_source_text_enable: true,
-        mtool_optimizer_enable: false,
-      },
+      languages: { source_language: "EN", target_language: "ZH" },
     });
     const workspace = new AgentWorkspaceService({
       images: {
@@ -1448,7 +1448,6 @@ it("PDF 零条目工程按页保存、隔离旧指纹，语言变化后重建工
         }),
       },
       paths: resources.paths,
-      settings: resources.settings,
       sessionState: services.state.session,
       cache: services.state.cache,
       proofreading: services.proofreading.query,
@@ -1620,13 +1619,10 @@ it("PDF 零条目工程按页保存、隔离旧指纹，语言变化后重建工
         )
       )["status"],
     ).toBe("applied");
-    resources.settings.set_transient_overrides({ source_language: "ALL", target_language: "DE" });
-    await resources.database.transaction(project_path, (writer) =>
-      writer.upsert_meta_entries(project_path, {
-        source_language: "ALL",
-        target_language: "DE",
-      }),
-    );
+    await services.project.content.update_project_settings({
+      source_language: "ALL",
+      target_language: "DE",
+    });
     await resources.database.close_project(project_path);
     await workspace.run("", new AbortController().signal);
     const rows = fs

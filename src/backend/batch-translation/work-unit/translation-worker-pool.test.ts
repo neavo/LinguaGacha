@@ -1,5 +1,8 @@
 import { Model } from "../../../domain/model";
-import { normalize_setting_snapshot } from "../../../domain/setting";
+import {
+  build_project_execution_settings,
+  read_project_language_settings,
+} from "../../../domain/project-settings";
 import { read_text_quality_snapshot } from "../../../shared/text/text-processing";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
@@ -47,7 +50,7 @@ describe("TranslationWorkerPool", () => {
         unit_id: "unit-1",
         kind: "translation",
         model: { ...Model.from_json({}, "test") },
-        config_snapshot: normalize_setting_snapshot({
+        config_snapshot: create_execution_settings({
           app_language: "ZH",
           source_language: "JA",
           target_language: "ZH",
@@ -141,7 +144,13 @@ parentPort?.on("message", (message) => {
     try {
       await expect(
         pool.execute_unit(
-          create_translation_unit("worker-thread-unit"),
+          {
+            ...create_translation_unit("worker-thread-unit"),
+            config_snapshot: create_execution_settings({
+              source_language: "EN",
+              target_language: "KO",
+            }),
+          },
           new AbortController().signal,
           { request: llm_request },
         ),
@@ -167,6 +176,10 @@ parentPort?.on("message", (message) => {
         expect.objectContaining({
           run_id: "run-1",
           work_unit_id: "worker-thread-unit",
+          config_snapshot: expect.objectContaining({
+            source_language: "EN",
+            target_language: "KO",
+          }),
         }),
         expect.any(AbortSignal),
       );
@@ -319,7 +332,7 @@ function create_translation_unit(unit_id: string) {
     unit_id,
     kind: "translation" as const,
     model: { ...Model.from_json({}, "test") },
-    config_snapshot: normalize_setting_snapshot({
+    config_snapshot: create_execution_settings({
       app_language: "ZH",
       source_language: "JA",
       target_language: "ZH",
@@ -363,4 +376,9 @@ async function create_temp_root(): Promise<string> {
   const app_root = await mkdtemp(path.join(tmpdir(), "linguagacha-pool-"));
   cleanup_roots.push(app_root);
   return app_root;
+}
+
+/** 测试执行快照与生产一致：应用设置组合项目语言，语言缺省时使用项目默认值。 */
+function create_execution_settings(value: Record<string, unknown>) {
+  return build_project_execution_settings(value, read_project_language_settings(value));
 }

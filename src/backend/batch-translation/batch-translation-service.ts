@@ -12,7 +12,8 @@ import type { RuntimeLease } from "../runtime-operation-gate";
 import type { AppSettingService } from "../app/app-setting-service";
 import { Model } from "../../domain/model";
 import { is_item_status } from "../../domain/item";
-import { normalize_setting_snapshot } from "../../domain/setting";
+import { build_project_execution_settings } from "../../domain/project-settings";
+import type { CacheReadPort } from "../cache/cache-types";
 import { resolve_model_for_usage } from "../model/model-config-resolver";
 import { AppError } from "../../shared/error";
 import {
@@ -39,6 +40,7 @@ export class BatchTranslationService {
     private readonly runtime: BatchTranslationRuntime,
     private readonly session: ProjectSessionState,
     private readonly settings: Pick<AppSettingService, "read_setting">,
+    private readonly languages: CacheReadPort["languages"], // 已提交的项目语言
   ) {}
   /** 转接共享运行态的快照订阅。 */
   public subscribe(listener: BatchTranslationSnapshotListener): () => void {
@@ -112,13 +114,13 @@ export class BatchTranslationService {
     );
     return await handle.completion;
   }
-  /** 运行 lease 内统一准备设置与模型，跨入 Runner 时隔离嵌套配置引用。 */
+  /** 运行 lease 内组合应用设置与项目语言并准备模型，本轮执行固定使用该快照。 */
   private read_run_context(model?: Model): BatchTranslationRunContext {
     const settings = this.settings.read_setting();
     const raw_model = model?.to_json() ?? resolve_model_for_usage(settings, "translation");
     if (raw_model === null) throw new AppError("model.not_found");
     return {
-      config_snapshot: normalize_setting_snapshot(settings),
+      config_snapshot: build_project_execution_settings(settings, this.languages.readBlock()),
       model: { ...Model.from_json(raw_model, "") },
     };
   }

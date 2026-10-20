@@ -55,6 +55,11 @@ import {
   type ProjectSettingsAlignmentChangedFields,
   type ProjectSettingsAlignmentSettings,
 } from "@frontend/app/feedback/project-settings-alignment-feedback";
+import {
+  DEFAULT_PROJECT_LANGUAGE_SETTINGS,
+  type ProjectLanguageKey,
+} from "@domain/project-settings";
+import { ProjectLanguageDialog } from "@frontend/pages/project-page/components/project-language-dialog";
 import { AppConfirmDialog } from "@frontend/widgets/app-alert-dialog";
 import { open_context_menu_at_click_position } from "@frontend/widgets/app-menu";
 import type { PathDropIssue } from "@frontend/widgets/file-drop-zone/use-path-drop";
@@ -105,15 +110,16 @@ type ProjectCreateCommitPayload = {
 };
 
 /**
- * 打开工程前 settings alignment 预演结果。
+ * 打开工程响应；后端在打开事务内对齐应用级预过滤开关时附带摘要。
  */
-type ProjectOpenAlignmentPreviewPayload = {
-  preview?: {
-    action?: string;
-    section_revisions?: Record<string, unknown> | null;
+type ProjectOpenPayload = {
+  settings_alignment?: {
+    settings?: ProjectSettingsAlignmentSettings;
     changed?: ProjectSettingsAlignmentChangedFields;
   };
 };
+
+type ProjectLanguageDraft = Record<ProjectLanguageKey, string>;
 
 /**
  * 默认预设设置字段白名单，控制新建成功后的提示内容。
@@ -276,20 +282,6 @@ function normalize_project_source_format_hit_counts(value: unknown): ProjectSour
   return Object.fromEntries(
     PROJECT_SOURCE_FORMATS.map((format) => [format.id, normalize_count(record[format.id])]),
   ) as ProjectSourceFormatHitCounts;
-}
-
-/**
- * 提取 settings alignment 需要的项目镜像字段。
- */
-function build_project_prefilter_settings(
-  settings_snapshot: SettingsSnapshot,
-): ProjectSettingsAlignmentSettings {
-  return {
-    source_language: settings_snapshot.source_language,
-    target_language: settings_snapshot.target_language,
-    mtool_optimizer_enable: settings_snapshot.mtool_optimizer_enable,
-    skip_duplicate_source_text_enable: settings_snapshot.skip_duplicate_source_text_enable,
-  };
 }
 
 /**
@@ -508,6 +500,11 @@ export function ProjectPage(_props: ProjectPageProps): JSX.Element {
   const [is_preview_loading, set_is_preview_loading] = useState(false);
   const [is_creating_project, set_is_creating_project] = useState(false);
   const [is_opening_project, set_is_opening_project] = useState(false);
+  const [is_language_dialog_open, set_is_language_dialog_open] = useState(false);
+  // 新建语言草稿由项目页持有，取消或创建失败后保留本次选择。
+  const [create_languages, set_create_languages] = useState<ProjectLanguageDraft>({
+    ...DEFAULT_PROJECT_LANGUAGE_SETTINGS,
+  });
   const [missing_recent_project, set_missing_recent_project] =
     useState<MissingRecentProjectState>(null);
   const project_loading_toast_id_ref = useRef<string | number | null>(null);
@@ -721,9 +718,28 @@ export function ProjectPage(_props: ProjectPageProps): JSX.Element {
   }
 
   /**
+   * 点击创建先选择项目语言，确认后才进入保存路径与创建流程。
+   */
+  function open_language_dialog(): void {
+    if (selected_source === null || source_selection_disabled) {
+      return;
+    }
+
+    set_is_language_dialog_open(true);
+  }
+
+  /**
+   * 固定本次语言选择并继续创建。
+   */
+  function confirm_language_dialog(): void {
+    set_is_language_dialog_open(false);
+    void handle_create_project({ ...create_languages });
+  }
+
+  /**
    * 提交新建工程请求，成功后刷新会话、任务和最近工程。
    */
-  async function handle_create_project(): Promise<void> {
+  async function handle_create_project(languages: ProjectLanguageDraft): Promise<void> {
     if (selected_source === null || source_selection_disabled) {
       return;
     }
@@ -749,7 +765,7 @@ export function ProjectPage(_props: ProjectPageProps): JSX.Element {
             {
               source_paths,
               path: normalized_output_path,
-              project_settings: build_project_prefilter_settings(settings_snapshot),
+              languages,
             },
           );
           const failure_toast = format_source_file_parse_failure_toast(create_payload.failed_files);
@@ -781,6 +797,7 @@ export function ProjectPage(_props: ProjectPageProps): JSX.Element {
       }
       clear_selected_source();
       clear_selected_project();
+      set_create_languages({ ...DEFAULT_PROJECT_LANGUAGE_SETTINGS });
     } catch (error) {
       const parse_failure_toast = format_source_file_parse_failure_error_toast(error);
       if (parse_failure_toast !== null) {
@@ -795,7 +812,7 @@ export function ProjectPage(_props: ProjectPageProps): JSX.Element {
   }
 
   /**
-   * 打开既有工程前先执行设置对齐预演，再加载后端会话。
+   * 打开既有工程；后端在同一打开事务内对齐应用级预过滤开关。
    */
   async function handle_open_project(): Promise<void> {
     if (selected_project === null || selected_project.preview === null || is_opening_project) {
@@ -806,48 +823,15 @@ export function ProjectPage(_props: ProjectPageProps): JSX.Element {
 
     try {
       const project_to_open = selected_project;
-      let did_align_project_settings = false;
-      let aligned_changed_fields: ProjectSettingsAlignmentChangedFields = {};
+      let settings_alignment: ProjectOpenPayload["settings_alignment"];
 
       await run_project_loading_modal({
         initial_message: t("project_page.open.loading_toast"),
         task: async () => {
-          const alignment_payload = await api_fetch<ProjectOpenAlignmentPreviewPayload>(
-            "/api/session/project/open-preview",
-            {
-              path: project_to_open.path,
-            },
-          );
-          const alignment_preview = alignment_payload.preview ?? {};
-          const alignment_action = String(alignment_preview.action ?? "load");
-          const alignment_settings = build_project_prefilter_settings(settings_snapshot);
-          const alignment_changed_fields = alignment_preview.changed ?? {};
-
-          if (alignment_action === "settings_only") {
-            await api_fetch("/api/workbench/settings-alignment/apply", {
-              path: project_to_open.path,
-              mode: "settings_only",
-              project_settings: alignment_settings,
-            });
-            did_align_project_settings = true;
-            aligned_changed_fields = alignment_changed_fields;
-          } else if (alignment_action === "prefiltered_items") {
-            const section_revisions = alignment_preview.section_revisions ?? {};
-            await api_fetch("/api/workbench/settings-alignment/apply", {
-              path: project_to_open.path,
-              mode: "prefiltered_items",
-              project_settings: alignment_settings,
-              expected_section_revisions: {
-                items: Number(section_revisions.items ?? 0),
-              },
-            });
-            did_align_project_settings = true;
-            aligned_changed_fields = alignment_changed_fields;
-          }
-
-          await api_fetch("/api/session/project/open", {
+          const open_payload = await api_fetch<ProjectOpenPayload>("/api/session/project/open", {
             path: project_to_open.path,
           });
+          settings_alignment = open_payload.settings_alignment;
           set_project_session_status("warming");
           await refresh_project_snapshot();
           await api_fetch<SettingsPayload>("/api/settings/recent-projects/add", {
@@ -857,12 +841,12 @@ export function ProjectPage(_props: ProjectPageProps): JSX.Element {
           await Promise.all([refresh_settings(), refresh_batch_translation()]);
         },
       });
-      if (did_align_project_settings) {
+      if (settings_alignment !== undefined) {
         push_toast(
           "info",
           format_project_settings_aligned_toast({
-            settings: build_project_prefilter_settings(settings_snapshot),
-            changed_fields: aligned_changed_fields,
+            settings: settings_alignment.settings ?? {},
+            changed_fields: settings_alignment.changed ?? {},
             t,
           }),
         );
@@ -1006,6 +990,18 @@ export function ProjectPage(_props: ProjectPageProps): JSX.Element {
 
   return (
     <>
+      <ProjectLanguageDialog
+        open={is_language_dialog_open}
+        languages={create_languages}
+        on_change={(field, next_value) => {
+          set_create_languages((previous) => ({ ...previous, [field]: next_value }));
+        }}
+        on_confirm={confirm_language_dialog}
+        on_close={() => {
+          set_is_language_dialog_open(false);
+        }}
+      />
+
       <AppConfirmDialog
         open={missing_recent_project !== null}
         description={missing_recent_project_description}
@@ -1053,9 +1049,7 @@ export function ProjectPage(_props: ProjectPageProps): JSX.Element {
                 loading_label={t("app.action.loading")}
                 is_loading={is_creating_project}
                 disabled={selected_source === null || source_selection_disabled}
-                on_click={() => {
-                  void handle_create_project();
-                }}
+                on_click={open_language_dialog}
               />
             </CardFooter>
           </Card>

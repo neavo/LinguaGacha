@@ -1,11 +1,5 @@
 import type { SourceFileParseFailureRecord } from "../source-file-parse-failure";
 
-export type WorkbenchPlannerSettings = {
-  source_language: string; // 后端预过滤使用的源语言设置
-  mtool_optimizer_enable: boolean; // 后端 KVJSON 优化预过滤开关
-  skip_duplicate_source_text_enable: boolean; // 后端同文件重复原文过滤开关
-};
-
 type WorkbenchCommandSection = "files" | "items" | "pdf";
 type WorkbenchSectionRevisions = Record<string, number | undefined>;
 
@@ -64,18 +58,6 @@ function build_expected_revisions(
   return expected_section_revisions;
 }
 
-// 从完整运行态设置提取出工作台 planner 可消费的命令设置。
-export function create_workbench_planner_settings(
-  settings: WorkbenchPlannerSettings,
-): WorkbenchPlannerSettings {
-  // 工作台写入边界只保留预过滤设置，避免完整应用设置泄漏进命令规划。
-  return {
-    source_language: settings.source_language,
-    mtool_optimizer_enable: settings.mtool_optimizer_enable,
-    skip_duplicate_source_text_enable: settings.skip_duplicate_source_text_enable,
-  };
-}
-
 // 重排命令必须完整覆盖当前文件集合，不能提交局部排序片段。
 export function create_workbench_reorder_plan(args: {
   state: WorkbenchCommandPlanningState;
@@ -99,11 +81,10 @@ export function create_workbench_reorder_plan(args: {
   };
 }
 
-// 重置文件只提交目标路径和设置镜像，items 与计算元数据由后端重算。
+// 重置文件只提交目标路径，items 与计算元数据由后端按项目设置重算。
 export function create_workbench_reset_file_plan(args: {
   state: WorkbenchCommandPlanningState;
   rel_path: string;
-  settings: WorkbenchPlannerSettings;
 }): WorkbenchCommandPlan {
   const file_map = build_file_map(args.state);
   const target_rel_path = args.rel_path;
@@ -120,7 +101,6 @@ export function create_workbench_reset_file_plan(args: {
     updatedSections: sections,
     requestBody: {
       rel_paths: [target_rel_path],
-      project_settings: create_workbench_planner_settings(args.settings),
       expected_section_revisions: build_expected_revisions(args.state, sections),
     },
   };
@@ -130,7 +110,6 @@ export function create_workbench_reset_file_plan(args: {
 export function create_workbench_delete_files_plan(args: {
   state: WorkbenchCommandPlanningState;
   rel_paths: string[];
-  settings: WorkbenchPlannerSettings;
 }): WorkbenchCommandPlan {
   const target_rel_paths = normalize_target_rel_paths(args.rel_paths);
   const file_map = build_file_map(args.state);
@@ -142,7 +121,6 @@ export function create_workbench_delete_files_plan(args: {
     updatedSections: ["files", "items"],
     requestBody: {
       rel_paths: target_rel_paths,
-      project_settings: create_workbench_planner_settings(args.settings),
       expected_section_revisions: build_expected_revisions(args.state, ["files", "items"]),
     },
   };
@@ -165,7 +143,6 @@ export function create_workbench_import_files_plan(args: {
   state: WorkbenchCommandPlanningState;
   preview: WorkbenchImportFilesPreview;
   conflict_action: WorkbenchFileConflictAction;
-  settings: WorkbenchPlannerSettings;
   inheritance_mode?: WorkbenchTranslationInheritanceMode;
 }): WorkbenchCommandPlan {
   const files = args.preview.files
@@ -178,7 +155,6 @@ export function create_workbench_import_files_plan(args: {
       files,
       conflict_action: args.conflict_action,
       inheritance_mode: args.inheritance_mode ?? "none",
-      project_settings: create_workbench_planner_settings(args.settings),
       expected_section_revisions: {
         files: args.preview.files_revision,
         items: args.state.section_revisions.items ?? 0,
