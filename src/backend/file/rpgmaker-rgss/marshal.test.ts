@@ -16,11 +16,11 @@ const ruby_fixtures = {
 };
 it.each(Object.entries(ruby_fixtures))("独立 Ruby 协议夹具逐字节往返：%s", (_name, hex) => {
   const original = Buffer.from(hex, "hex");
-  expect(encode(decode(original))).toEqual(original);
+  expect(encode(decode(original)).equals(original)).toBe(true);
 });
 it("保留 Ruby 字节与共享引用，替换首个位置后其他位置仍共享原字符串", () => {
   const root = decode(aliases);
-  expect(encode(root)).toEqual(aliases);
+  expect(encode(root).equals(aliases)).toBe(true);
   array(root)[0] = replace_text(array(root)[0]!, "中文");
   const output = decode(encode(root));
   expect(array(output).map(text)).toEqual(["中文", "source", "source"]);

@@ -54,9 +54,9 @@ it.each([false, true])("准备 %s 发布明文并清理密文，重复导入不�
   if (!packed) fs.writeFileSync(path.join(temp.path, "www/data/System.json"), "\uFEFF" + SYSTEM);
   const original = packed ? fs.readFileSync(source) : null;
   await prepare_source((await discover_rpgmaker_source(source, native))!, native);
-  expect(fs.readFileSync(path.join(temp.path, "www/img/a.png"))).toEqual(PLAIN);
+  expect(fs.readFileSync(path.join(temp.path, "www/img/a.png")).equals(PLAIN)).toBe(true);
   expect(fs.existsSync(path.join(temp.path, "www/img/a.rpgmvp"))).toBe(false);
-  if (packed) expect(fs.readFileSync(source)).not.toEqual(original);
+  if (packed) expect(fs.readFileSync(source).equals(original!)).toBe(false);
   const system = fs.readFileSync(path.join(temp.path, "www/data/System.json"), "utf8");
   expect(system).toContain('"hasEncryptedImages":false');
   expect(system).toContain('"large":9007199254740993');
@@ -85,7 +85,9 @@ it.each(["media", "commit"])("准备失败 %s 恢复原配置、明文与密文"
   ).rejects.toThrow();
   expect(fs.readFileSync(path.join(temp.path, "www/data/System.json"), "utf8")).toBe(SYSTEM);
   expect(fs.readFileSync(path.join(temp.path, "www/img/a.png"), "utf8")).toBe("old plaintext");
-  expect(fs.readFileSync(path.join(temp.path, "www/img/a.rpgmvp"))).toEqual(encrypted_media(PLAIN));
+  expect(
+    fs.readFileSync(path.join(temp.path, "www/img/a.rpgmvp")).equals(encrypted_media(PLAIN)),
+  ).toBe(true);
   if (phase === "media")
     expect(fs.readFileSync(path.join(temp.path, "www/img/b.rpgmvp"), "utf8")).toBe("broken");
   expect(fs.existsSync(path.join(temp.path, ".tmp"))).toBe(false);
@@ -98,7 +100,7 @@ it("EVB 同名密文覆盖散装来源，成功后清理正式密文", async () 
     native = new NativeFs();
   fs.writeFileSync(path.join(temp.path, "www/img/a.rpgmvp"), "invalid loose media");
   await prepare_source((await discover_rpgmaker_source(source, native))!, native);
-  expect(fs.readFileSync(path.join(temp.path, "www/img/a.png"))).toEqual(PLAIN);
+  expect(fs.readFileSync(path.join(temp.path, "www/img/a.png")).equals(PLAIN)).toBe(true);
   expect(fs.existsSync(path.join(temp.path, "www/img/a.rpgmvp"))).toBe(false);
   expect(fs.existsSync(path.join(temp.path, ".tmp"))).toBe(false);
 });
@@ -124,10 +126,12 @@ it("仅启用音频加密时清理全部音频密文并保留图片", async () =
     native.write_file_sync(path.join(temp.path, "www/audio", name), encrypted_media(plain));
   await prepare_source((await discover_rpgmaker_source(source, native))!, native);
   for (const [name, output, plain] of media) {
-    expect(fs.readFileSync(path.join(temp.path, "www/audio", output))).toEqual(plain);
+    expect(fs.readFileSync(path.join(temp.path, "www/audio", output)).equals(plain)).toBe(true);
     expect(fs.existsSync(path.join(temp.path, "www/audio", name))).toBe(false);
   }
-  expect(fs.readFileSync(path.join(temp.path, "www/img/a.rpgmvp"))).toEqual(encrypted_media(PLAIN));
+  expect(
+    fs.readFileSync(path.join(temp.path, "www/img/a.rpgmvp")).equals(encrypted_media(PLAIN)),
+  ).toBe(true);
   expect(fs.readFileSync(path.join(temp.path, "www/img/a.png"), "utf8")).toBe("old plaintext");
   expect(
     JSON.parse(fs.readFileSync(path.join(temp.path, "www/data/System.json"), "utf8")),
@@ -158,7 +162,7 @@ it.each([false, true])("加密关闭 %s 时保留历史双份、未启用类别�
   for (const [name, bytes] of untouched) native.write_file_sync(path.join(temp.path, name), bytes);
   await prepare_source((await discover_rpgmaker_source(source, native))!, native);
   for (const [name, bytes] of untouched)
-    expect(fs.readFileSync(path.join(temp.path, name))).toEqual(bytes);
+    expect(fs.readFileSync(path.join(temp.path, name)).equals(bytes)).toBe(true);
   expect(fs.existsSync(path.join(temp.path, ".tmp"))).toBe(false);
 });
 
@@ -171,7 +175,9 @@ it("多个密文映射到同一明文时整次失败并保留原目录", async (
     prepare_source((await discover_rpgmaker_source(source, native))!, native),
   ).rejects.toThrow("Multiple encrypted media sources");
   for (const name of ["a.rpgmvp", "a.png_"])
-    expect(fs.readFileSync(path.join(temp.path, "www/img", name))).toEqual(encrypted_media(PLAIN));
+    expect(
+      fs.readFileSync(path.join(temp.path, "www/img", name)).equals(encrypted_media(PLAIN)),
+    ).toBe(true);
   expect(fs.readFileSync(path.join(temp.path, "www/img/a.png"), "utf8")).toBe("old plaintext");
   expect(fs.readFileSync(path.join(temp.path, "www/data/System.json"), "utf8")).toBe(SYSTEM);
   expect(fs.existsSync(path.join(temp.path, ".tmp"))).toBe(false);
@@ -188,9 +194,9 @@ it("准备沿用显式选择的散装启动器", async () => {
   const game = (await discover_rpgmaker_source(executable, native))!;
   expect(game.executable).toBeUndefined();
   await prepare_source(game, native);
-  expect(fs.readFileSync(packed)).toEqual(original);
+  expect(fs.readFileSync(packed).equals(original)).toBe(true);
   expect(fs.readFileSync(executable, "utf8")).toBe("unpacked launcher");
-  expect(fs.readFileSync(path.join(temp.path, "www/img/a.png"))).toEqual(PLAIN);
+  expect(fs.readFileSync(path.join(temp.path, "www/img/a.png")).equals(PLAIN)).toBe(true);
 });
 
 it("准备消费已识别来源，worker 打开文件后重新核对实际清单", async () => {

@@ -15,6 +15,6 @@ it("EPUB 容器保证 mimetype 首项、STORE 与无扩展字段，保留二进�
   expect(bytes.readUInt16LE(28)).toBe(0);
   expect(bytes.subarray(30, 38).toString()).toBe("mimetype");
   const archive = await JSZip.loadAsync(bytes);
-  expect((await archive.file("OPS/图片.bin")?.async("uint8array")) ?? null).toEqual(image);
+  expect((await archive.file("OPS/图片.bin")!.async("nodebuffer")).equals(image)).toBe(true);
   expect((await archive.file("OPS/正文.xhtml")?.async("string")) ?? null).toBe("<p>你好</p>");
 });

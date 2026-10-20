@@ -21,7 +21,7 @@ it("按相对路径保存首次字节，同长度和不同长度修改均不覆�
     next.set("data/System.json", Buffer.from(content));
     await write_game_backup(temp.path, next, native);
     for (const [name, bytes] of files)
-      expect(fs.readFileSync(path.join(directory, name))).toEqual(bytes);
+      expect(fs.readFileSync(path.join(directory, name)).equals(bytes)).toBe(true);
     expect(fs.readdirSync(directory).sort()).toEqual(["data", "js"]);
   }
   expect(fs.existsSync(path.join(temp.path, ".tmp"))).toBe(false);
@@ -37,7 +37,7 @@ it("新增和改名只补存缺项，删除的路径继续保留", async () => {
   next.set("data/New.json", Buffer.from("new"));
   await write_game_backup(temp.path, next, native);
   for (const [name, bytes] of files)
-    expect(fs.readFileSync(path.join(directory, name))).toEqual(bytes);
+    expect(fs.readFileSync(path.join(directory, name)).equals(bytes)).toBe(true);
   expect(fs.readFileSync(path.join(directory, "data/New.json"), "utf8")).toBe("new");
   expect(fs.readdirSync(directory).sort()).toEqual(["data", "js"]);
 });

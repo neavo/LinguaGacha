@@ -77,9 +77,11 @@ it.each(["existing", "first", "none"])("locale 选择：%s，fallback 只按登�
     settings.find((setting) => setting.name === "internationalization/locale/fallback")!.value
       .value,
   ).toBe(kind === "first" ? "ja" : fallback);
-  expect(settings.find((setting) => setting.name === "unrelated")!.bytes).toEqual(
-    read_project(original).find((setting) => setting.name === "unrelated")!.bytes,
-  );
+  expect(
+    settings
+      .find((setting) => setting.name === "unrelated")!
+      .bytes.equals(read_project(original).find((setting) => setting.name === "unrelated")!.bytes),
+  ).toBe(true);
 });
 
 it("PO 单行 header 参与语言选择", () => {

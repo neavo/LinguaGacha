@@ -83,7 +83,7 @@ it.each([
     for (const member of archive.members) {
       const target = path.join(temp.path, "out", member.name);
       await extract_evb_member(handle, member, target, native);
-      expect(fs.readFileSync(target)).toEqual(files.get(member.name));
+      expect(fs.readFileSync(target).equals(files.get(member.name)!), member.name).toBe(true);
     }
   } finally {
     await handle.close();

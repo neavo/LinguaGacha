@@ -4,8 +4,40 @@ import path from "node:path";
 import { expect, it } from "vitest";
 import { read_bytes, write_bytes, copy_range, BINARY_IO_CHUNK_BYTES } from "./binary";
 
-it("范围读写处理短读短写、偏移和截断，跨块取消停止后续写入", async () => {
+it("范围读写处理短读短写、偏移和截断", async () => {
   using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-binary-block-"));
+  const source = path.join(temp.path, "source"),
+    destination = path.join(temp.path, "output");
+  const payload = Buffer.from("short read and write");
+  fs.writeFileSync(source, Buffer.concat([Buffer.from("_"), payload]));
+  const input = await fs.promises.open(source, "r"),
+    output = await fs.promises.open(destination, "wx+");
+  const read = input.read.bind(input),
+    write = output.write.bind(output);
+  Object.assign(input, {
+    read: (buffer: Buffer, offset: number, length: number, position: number) =>
+      read(buffer, offset, Math.min(length, 3), position),
+  });
+  Object.assign(output, {
+    write: (buffer: Buffer, offset: number, length: number, position: number) =>
+      write(buffer, offset, Math.min(length, 2), position),
+  });
+  try {
+    expect((await read_bytes(input, 1, payload.length)).equals(payload)).toBe(true);
+    await write_bytes(output, Buffer.from("pre"), 0);
+    await write_bytes(output, payload, 3);
+    expect(fs.readFileSync(destination).equals(Buffer.concat([Buffer.from("pre"), payload]))).toBe(
+      true,
+    );
+    await expect(read_bytes(input, payload.length, 2)).rejects.toThrow("Truncated");
+  } finally {
+    await input.close();
+    await output.close();
+  }
+});
+
+it("跨块复制保留完整字节和偏移，块间取消停止后续写入", async () => {
+  using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-binary-copy-"));
   const source = path.join(temp.path, "source"),
     destination = path.join(temp.path, "output");
   const payload = Buffer.alloc(BINARY_IO_CHUNK_BYTES + 23).fill(
@@ -14,22 +46,13 @@ it("范围读写处理短读短写、偏移和截断，跨块取消停止后续�
   fs.writeFileSync(source, Buffer.concat([Buffer.from("_"), payload]));
   const input = await fs.promises.open(source, "r"),
     output = await fs.promises.open(destination, "wx+");
-  const read = input.read.bind(input),
-    write = output.write.bind(output);
-  Object.assign(input, {
-    read: (buffer: Buffer, offset: number, length: number, position: number) =>
-      read(buffer, offset, Math.min(length, 17003), position),
-  });
-  Object.assign(output, {
-    write: (buffer: Buffer, offset: number, length: number, position: number) =>
-      write(buffer, offset, Math.min(length, 13001), position),
-  });
+  const write = output.write.bind(output);
   try {
-    expect(await read_bytes(input, 1, payload.length)).toEqual(payload);
     await write_bytes(output, Buffer.from("pre"), 0);
     await copy_range(input, output, 1, payload.length, 3);
-    expect(fs.readFileSync(destination)).toEqual(Buffer.concat([Buffer.from("pre"), payload]));
-    await expect(read_bytes(input, payload.length, 2)).rejects.toThrow("Truncated");
+    expect(fs.readFileSync(destination).equals(Buffer.concat([Buffer.from("pre"), payload]))).toBe(
+      true,
+    );
     const controller = new AbortController();
     Object.assign(output, {
       write: async (buffer: Buffer, offset: number, length: number, position: number) => {

@@ -34,8 +34,10 @@ it.each(["external", "embedded"])("%s 载体准备、字体回退、重复导入
   const copy = vi.spyOn(native, "copy_file");
   await prepare_game_source({ kind: "game", file_type: "GODOT", game }, native);
   expect(copy).not.toHaveBeenCalled();
-  expect(fs.readFileSync(path.join(temp.path, "backup_lg", path.basename(carrier)))).toEqual(bytes);
-  expect(fs.readFileSync(path.join(temp.path, "game.exe"))).toEqual(prefix);
+  expect(
+    fs.readFileSync(path.join(temp.path, "backup_lg", path.basename(carrier))).equals(bytes),
+  ).toBe(true);
+  expect(fs.readFileSync(path.join(temp.path, "game.exe")).equals(prefix)).toBe(true);
   expect(fs.existsSync(path.join(temp.path, "game.pck"))).toBe(false);
   expect(
     read_resource(fs.readFileSync(path.join(temp.path, ".godot/imported/font.fontdata")))

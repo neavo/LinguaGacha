@@ -43,8 +43,10 @@ it.each(["external", "embedded"])(
       expect(result.writes).toContain("project.binary");
       expect(fs.existsSync(path.join(staging, "project.binary"))).toBe(true);
       if (kind === "embedded")
-        expect(fs.readFileSync(path.join(staging, "game.exe"))).toEqual(Buffer.alloc(128, 42));
-      expect(fs.readFileSync(source)).toEqual(bytes);
+        expect(fs.readFileSync(path.join(staging, "game.exe")).equals(Buffer.alloc(128, 42))).toBe(
+          true,
+        );
+      expect(fs.readFileSync(source).equals(bytes)).toBe(true);
     } finally {
       await worker.dispose();
     }
@@ -137,7 +139,10 @@ it("发行线程完成暂存后退出，取消也等到句柄释放，随后仍�
     for (const name of ["a", "b", "packed"]) {
       expect(result.writes).toContain("img/" + name + ".png");
       expect(result.writes).not.toContain("img/" + name + ".png_");
-      expect(fs.readFileSync(path.join(staging, "img/" + name + ".png"))).toEqual(png_fixture());
+      expect(
+        fs.readFileSync(path.join(staging, "img/" + name + ".png")).equals(png_fixture()),
+        name,
+      ).toBe(true);
     }
     expect(fs.readFileSync(path.join(staging, "data/System.json"), "utf8")).toContain(
       '"hasEncryptedImages":false',
@@ -147,7 +152,7 @@ it("发行线程完成暂存后退出，取消也等到句柄释放，随后仍�
     expect(fs.readdirSync(temp.path).sort()).toEqual(["Game.exe", "img", "stage"]);
     expect(fs.readFileSync(executable).equals(original)).toBe(true);
     for (const [name, bytes] of loose)
-      expect(fs.readFileSync(path.join(temp.path, name))).toEqual(bytes);
+      expect(fs.readFileSync(path.join(temp.path, name)).equals(bytes), name).toBe(true);
   } finally {
     await worker.dispose();
   }
@@ -160,15 +165,14 @@ it.each(["rgss", "wolfrpg"] as const)(
     using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-game-worker-"));
     const staging = path.join(temp.path, "stage");
     fs.mkdirSync(staging);
-    const wolf = new Map([
-      ["large.bin", Buffer.alloc(8 * 1024 * 1024, 42)],
-      ...[...wolf_files()].map(([name, bytes]): [string, Buffer] => [name.slice(5), bytes]),
-    ]);
+    const files = new Map<string, Buffer>([["large.bin", Buffer.alloc(8 * 1024 * 1024, 42)]]);
+    if (kind === "wolfrpg")
+      for (const [name, bytes] of wolf_files()) files.set(name.slice(5), bytes);
     const archive = kind === "wolfrpg" ? "Data.wolf" : "Game.rgss3a";
     const bytes =
       kind === "wolfrpg"
-        ? await wolf_archive_fixture(wolf, 100, { empty_directory: true })
-        : rgss_archive_fixture(3, new Map([["large.bin", Buffer.alloc(8 * 1024 * 1024, 42)]]));
+        ? await wolf_archive_fixture(files, 100, { empty_directory: true })
+        : rgss_archive_fixture(3, files);
     fs.writeFileSync(path.join(temp.path, archive), bytes);
     const task =
       kind === "wolfrpg"
@@ -192,16 +196,20 @@ it.each(["rgss", "wolfrpg"] as const)(
     const worker = new GamePrepareWorker(
       pathToFileURL(path.join(runtime, "main/game-prepare-worker-entry.js")),
     );
-    const pending = worker.run(task);
-    const rejected = expect(pending).rejects.toThrow();
-    const active_file = path.join(staging, kind === "wolfrpg" ? "Data/large.bin" : "large.bin");
-    const deadline = Date.now() + 10000;
-    while (!fs.existsSync(active_file)) {
-      if (Date.now() > deadline) throw new Error("Worker did not begin extraction");
-      await setTimeout(1);
+    try {
+      const pending = worker.run(task);
+      const rejected = expect(pending).rejects.toThrow();
+      const active_file = path.join(staging, kind === "wolfrpg" ? "Data/large.bin" : "large.bin");
+      const deadline = Date.now() + 10000;
+      while (!fs.existsSync(active_file)) {
+        if (Date.now() > deadline) throw new Error("Worker did not begin extraction");
+        await setTimeout(1);
+      }
+      await worker.dispose();
+      await rejected;
+    } finally {
+      await worker.dispose();
     }
-    await worker.dispose();
-    await rejected;
     fs.rmSync(staging, { recursive: true });
     fs.mkdirSync(staging);
     const next = new GamePrepareWorker(
@@ -219,7 +227,7 @@ it.each(["rgss", "wolfrpg"] as const)(
     } finally {
       await next.dispose();
     }
-    expect(fs.readFileSync(path.join(temp.path, archive))).toEqual(bytes);
+    expect(fs.readFileSync(path.join(temp.path, archive)).equals(bytes), archive).toBe(true);
     fs.rmSync(staging, { recursive: true });
   },
   30000,
@@ -275,10 +283,12 @@ it("仓库外真实 Electron 加载部署准备线程并等待退出", async () 
     const root=process.cwd();
     const worker=new GamePrepareWorker(pathToFileURL(process.argv[2]));
     const task={kind:'game',file_type:'WOLFRPG',staging:path.join(root,'stage'),game:{root,data_root:path.join(root,'Data'),key_files:[],archives:[{source_path:path.join(root,'Data.wolf'),output_prefix:'Data'}]}};
-    const pending=worker.run(task); const rejected=assert.rejects(pending);
-    const deadline=Date.now()+10000;
-    while(!fs.existsSync(path.join(task.staging,'Data/large.bin'))) { if(Date.now()>deadline) throw new Error('Worker did not begin extraction'); await setTimeout(1); }
-    await worker.dispose(); await rejected;
+    try {
+      const pending=worker.run(task); const rejected=assert.rejects(pending);
+      const deadline=Date.now()+10000;
+      while(!fs.existsSync(path.join(task.staging,'Data/large.bin'))) { if(Date.now()>deadline) throw new Error('Worker did not begin extraction'); await setTimeout(1); }
+      await worker.dispose(); await rejected;
+    } finally { await worker.dispose(); }
     fs.rmSync(task.staging,{recursive:true}); fs.mkdirSync(task.staging);
     const next=new GamePrepareWorker(pathToFileURL(process.argv[2]));
     try { const result=await next.run(task); assert(result.writes.includes('Data/BasicData/Game.dat')); assert.deepEqual(result.removes,['Data.wolf']); assert(result.directories.includes('Data/Empty')); assert(!fs.existsSync(path.join(task.staging,'Data/Empty'))); }

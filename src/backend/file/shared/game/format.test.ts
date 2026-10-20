@@ -25,9 +25,11 @@ it("容器只固化调用方提供的数据字节，字体保留在游戏文件�
   const prepared = await format.create_container(data, "game.zip", temp.path);
   const { members, game_files } = await read_game_container(prepared.content, "game.zip");
   expect([...members.keys()]).toEqual(["data/System.json"]);
-  expect(await members.get("data/System.json")!.async("nodebuffer")).toEqual(
-    data.get("data/System.json"),
-  );
+  expect(
+    (await members.get("data/System.json")!.async("nodebuffer")).equals(
+      data.get("data/System.json")!,
+    ),
+  ).toBe(true);
   expect(await game_files!.async("string")).toContain("fonts/main.ttf");
   expect(fs.existsSync(path.join(temp.path, "backup_lg"))).toBe(false);
 });

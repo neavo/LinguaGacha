@@ -93,19 +93,19 @@ it.each([
     expect(restored.readUInt16LE(70)).toBe(2);
     expect(restored.readUInt32LE(104)).toBe(0x1100);
     expect(restored.readUInt32LE(144)).toBe(0x3000);
-    expect(restored.subarray(1024, 1024 + table.length)).toEqual(table);
+    expect(restored.subarray(1024, 1024 + table.length).equals(table)).toBe(true);
     expect(restored.readUInt32LE(directories + 24)).toBe(0x2000);
     expect(restored.readUInt32LE(directories + 28)).toBe(table.length);
-    expect(restored.subarray(640, 640 + tls.length)).toEqual(tls);
+    expect(restored.subarray(640, 640 + tls.length).equals(tls)).toBe(true);
     expect(restored.readUInt32LE(directories + 72)).toBe(0x1080);
     expect(restored.readUInt32LE(directories + 76)).toBe(tls.length);
-    expect(restored.subarray(1536)).toEqual(overlay);
+    expect(restored.subarray(1536).equals(overlay)).toBe(true);
     expect(restored.readUInt32LE(directories + 32)).toBe(1543);
     expect(restored.readUInt32LE(directories + 36)).toBe(11);
     expect(restored.readUInt32LE(directories + 8)).toBe(0x1000);
-    expect(restored.subarray(section_headers + 80, section_headers + 160)).toEqual(
-      Buffer.alloc(80),
-    );
+    expect(
+      restored.subarray(section_headers + 80, section_headers + 160).equals(Buffer.alloc(80)),
+    ).toBe(true);
   } finally {
     await handle.close();
   }

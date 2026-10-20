@@ -87,9 +87,11 @@ it("按排序快照维护 asset，并可更新和读取内容", async () => {
     { path: "cover.bin", sort_order: 1, file_type: "NONE" },
     { path: "chapter-b.txt", sort_order: 2, file_type: "TXT" },
   ]);
-  expect(await database.read_asset_content(lg_path, "chapter-b.txt")).toEqual(
-    Buffer.from("updated-beta"),
-  );
+  expect(
+    (await database.read_asset_content(lg_path, "chapter-b.txt"))!.equals(
+      Buffer.from("updated-beta"),
+    ),
+  ).toBe(true);
 });
 
 it("批量替换 item 后保持回查顺序并支持字段补丁", async () => {
@@ -261,7 +263,9 @@ it("兼容读取旧压缩 asset bytes", async () => {
   ).run("legacy.txt", compressed, 6, compressed.byteLength);
   db.close();
 
-  expect(await database.read_asset_content(lg_path, "legacy.txt")).toEqual(Buffer.from("legacy"));
+  expect(
+    (await database.read_asset_content(lg_path, "legacy.txt"))!.equals(Buffer.from("legacy")),
+  ).toBe(true);
 });
 
 it("PDF 源文件在解析后变化时导入事务保留旧资产和译稿", async () => {
@@ -282,7 +286,9 @@ it("PDF 源文件在解析后变化时导入事务保留旧资产和译稿", asy
       ),
     ),
   ).rejects.toThrow(expect.objectContaining({ code: "file.parse_failed" }));
-  expect(await database.read_asset_content(lg_path, "book.pdf")).toEqual(Buffer.from(bytes));
+  expect((await database.read_asset_content(lg_path, "book.pdf"))!.equals(Buffer.from(bytes))).toBe(
+    true,
+  );
   expect(await database.read_pdf_document(lg_path, "book.pdf")).toEqual(document);
 });
 

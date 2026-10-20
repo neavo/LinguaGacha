@@ -33,8 +33,8 @@ describe("原生文件系统门面", () => {
     const target = path.join(temp_dir, "preview.bin");
     fs.writeFileSync(target, Buffer.from([0, 255, 1, 128]));
     const native_fs = new NativeFs();
-    expect(native_fs.read_prefix(target, 2)).toEqual(Buffer.from([0, 255]));
-    expect(native_fs.read_prefix(target, 8)).toEqual(Buffer.from([0, 255, 1, 128]));
+    expect(native_fs.read_prefix(target, 2).equals(Buffer.from([0, 255]))).toBe(true);
+    expect(native_fs.read_prefix(target, 8).equals(Buffer.from([0, 255, 1, 128]))).toBe(true);
   });
 
   it.each(["copy", "write"])("%s 完成后替换目标并保留原始字节", (operation) => {
@@ -46,8 +46,8 @@ describe("原生文件系统门面", () => {
     fs.writeFileSync(target, "旧文件");
     if (operation === "copy") native_fs.copy_file_atomic(source, target);
     else native_fs.write_file_atomic(target, bytes);
-    expect(fs.readFileSync(target)).toEqual(bytes);
-    expect(fs.readFileSync(source)).toEqual(bytes);
+    expect(fs.readFileSync(target).equals(bytes)).toBe(true);
+    expect(fs.readFileSync(source).equals(bytes)).toBe(true);
     expect(fs.readdirSync(temp_dir).sort()).toEqual(["source.bin", "target.bin"]);
   });
 

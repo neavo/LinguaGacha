@@ -66,7 +66,9 @@ describe("MV/MZ 原稿写回", () => {
           Object.assign(item, { status: "PROCESSED", dst: translations.get(item.src) });
       }
       const output = await members.render(bytes, file, items);
-      expect(await members.render(bytes, file, [...items].reverse())).toEqual(output);
+      expect(
+        Buffer.from(await members.render(bytes, file, [...items].reverse())).equals(output),
+      ).toBe(true);
       const text = Buffer.from(output).toString();
       const script = json ? null : read_javascript_strings(text);
       if (script && !script.ok) throw new Error("Output script is invalid");

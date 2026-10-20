@@ -19,7 +19,7 @@ it.each([
     target = path.join(temp.path, "asset." + extension);
   fs.writeFileSync(source, encrypted_media(plain));
   await decrypt_media(source, target, MEDIA_KEY, new NativeFs());
-  expect(fs.readFileSync(target)).toEqual(plain);
+  expect(fs.readFileSync(target).equals(plain)).toBe(true);
 });
 
 it.each([

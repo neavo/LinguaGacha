@@ -202,7 +202,7 @@ describe("TranslationFileGenerationService", () => {
         if (entry === "directory" && file === "empty.lrc") {
           expect(fs.existsSync(path.join(result.output_path, file))).toBe(false);
         } else {
-          expect(fs.readFileSync(path.join(result.output_path, file))).toEqual(content);
+          expect(fs.readFileSync(path.join(result.output_path, file)).equals(content)).toBe(true);
         }
       }
     },
@@ -267,9 +267,9 @@ describe("TranslationFileGenerationService", () => {
           omitted_pages: empty.pages.length,
         },
       ]);
-      expect(fs.readFileSync(path.join(result.output_path, "original.pdf"))).toEqual(
-        Buffer.from(source),
-      );
+      expect(
+        fs.readFileSync(path.join(result.output_path, "original.pdf")).equals(Buffer.from(source)),
+      ).toBe(true);
       const exported = read_pdf_document(
         new Uint8Array(fs.readFileSync(path.join(result.output_path, "book.pdf"))),
       );
@@ -306,7 +306,9 @@ describe("TranslationFileGenerationService", () => {
       create_pdf_execution(),
     );
     const output = await service.generate_files();
-    expect(fs.readFileSync(path.join(output.output_path, "book.pdf"))).toEqual(Buffer.from(source));
+    expect(
+      fs.readFileSync(path.join(output.output_path, "book.pdf")).equals(Buffer.from(source)),
+    ).toBe(true);
     document.pages[0]!.page = 4;
     const directory = path.join(temp_dir, "conflict");
     await expect(service.generate_files_to_directory(directory)).rejects.toMatchObject({

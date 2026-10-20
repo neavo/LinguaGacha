@@ -10,7 +10,7 @@ it.each(wolf_crypt_vectors.cores)(
     const filename = "Data/BasicData/" + name;
     const result = await restore_wolf_core(filename, wolf_vector(input));
     expect(result?.protected).toBe(true);
-    expect(result?.bytes).toEqual(wolf_vector(output));
+    expect(result!.bytes.equals(wolf_vector(output))).toBe(true);
     expect(await restore_wolf_core(filename, result!.bytes)).toBeNull();
     if (name === "Game.dat") expect(() => read_wolf_game(result!.bytes)).not.toThrow();
   },
@@ -21,7 +21,7 @@ it("拒绝历史保护和截断，project RNG 从零重新开始", async () => {
     restore_wolf_core("Data/BasicData/Game.dat", Buffer.from([0, 0x50, 0, 0, 0, 0x55])),
   ).rejects.toThrow("Unsupported WOLF core protection");
   // MSVC srand(0) 的前八次低字节，独立于生产 RNG。
-  expect(await restore_wolf_project(Buffer.alloc(8))).toEqual(
-    Buffer.from("2627f6859715ad1d", "hex"),
-  );
+  expect(
+    (await restore_wolf_project(Buffer.alloc(8))).equals(Buffer.from("2627f6859715ad1d", "hex")),
+  ).toBe(true);
 });

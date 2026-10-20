@@ -59,14 +59,16 @@ it.each(["xp", "vx", "ace"] as const)(
     );
     const { members } = await read_game_container(prepared.content, "game.zip");
     for (const [name, member] of members)
-      expect(fs.readFileSync(path.join(temp.path, "backup_lg", name))).toEqual(
-        await member.async("nodebuffer"),
-      );
+      expect(
+        fs
+          .readFileSync(path.join(temp.path, "backup_lg", name))
+          .equals(await member.async("nodebuffer")),
+      ).toBe(true);
     expect(fs.existsSync(path.join(temp.path, ".lg-original"))).toBe(false);
     expect(fs.existsSync(path.join(temp.path, ".tmp"))).toBe(false);
     expect(fs.existsSync(archive)).toBe(false);
     for (const [name, bytes] of files)
-      expect(fs.readFileSync(path.join(temp.path, name))).toEqual(bytes);
+      expect(fs.readFileSync(path.join(temp.path, name)).equals(bytes)).toBe(true);
     expect(
       fs.readFileSync(
         path.join(temp.path, "backup_lg/Custom/Main" + RGSS_VERSIONS[version]),

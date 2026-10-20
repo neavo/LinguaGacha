@@ -48,7 +48,9 @@ it("零条目旧 JSON 和 WOLF 工作簿从原稿识别一次，身份与完成�
       "NONE",
       "WOLFXLSX",
     ]);
-    expect(await database.read_asset_content(project, "wolf.xlsx")).toEqual(Buffer.from(xlsx));
+    expect(
+      (await database.read_asset_content(project, "wolf.xlsx"))!.equals(Buffer.from(xlsx)),
+    ).toBe(true);
     expect(
       await empty_asset_file_type_migration({
         ...context,

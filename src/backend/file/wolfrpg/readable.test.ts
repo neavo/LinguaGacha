@@ -77,5 +77,5 @@ it("地图登记资格在条目和 Agent 投影中一致", async () => {
   ).toBe("metadata");
   expect(projections.get(common_path)!.some((slot) => slot.text === "")).toBe(true);
   for (const [name, member] of (await read_game_container(content, "game.zip")).members)
-    expect(await member.async("nodebuffer")).toEqual(files.get(name));
+    expect((await member.async("nodebuffer")).equals(files.get(name)!)).toBe(true);
 });

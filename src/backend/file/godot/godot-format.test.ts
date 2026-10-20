@@ -53,7 +53,9 @@ it.each(["4.3", "4.6"])(
     expect(
       read_translation(Buffer.from(output)).slots.some((slot) => slot.text === "中文译文"),
     ).toBe(true);
-    expect(await handler.render(original, "messages.translation", [])).toEqual(original);
+    expect(
+      Buffer.from(await handler.render(original, "messages.translation", [])).equals(original),
+    ).toBe(true);
     const project = await handler.render(files.get("project.binary")!, "project.binary", []);
     expect(
       read_project(Buffer.from(project)).find(
@@ -123,9 +125,11 @@ it.each(["broken", "empty-hash"])("语言表 %s 独立处理，正常成员仍�
   );
   expect(parsed.items.map((item) => item.src)).toEqual(["Hello world"]);
   const handler = await handler_for(files);
-  expect(await handler.render(files.get("bad.translation")!, "bad.translation", [])).toEqual(
-    files.get("bad.translation"),
-  );
+  expect(
+    Buffer.from(await handler.render(files.get("bad.translation")!, "bad.translation", [])).equals(
+      files.get("bad.translation")!,
+    ),
+  ).toBe(true);
 });
 
 it("Resource 与源码区间写回校验完整定位，空译文保留人工清空语义", async () => {
@@ -218,9 +222,12 @@ it.each([
   const updated_values = after.properties.find((property) => property.name === "messages")!.value
     .children!;
   for (let index = 0; index < original_values.length; index += 2)
-    expect(after.body.subarray(updated_values[index]!.start, updated_values[index]!.end)).toEqual(
-      before.body.subarray(original_values[index]!.start, original_values[index]!.end),
-    );
+    expect(
+      after.body
+        .subarray(updated_values[index]!.start, updated_values[index]!.end)
+        .equals(before.body.subarray(original_values[index]!.start, original_values[index]!.end)),
+      `messages[${index}]`,
+    ).toBe(true);
   const metadata = before.properties.find((property) => property.name === "plural_rules_override")!;
   expect(after.properties.find((property) => property.name === metadata.name)!.value.value).toEqual(
     metadata.value.value,

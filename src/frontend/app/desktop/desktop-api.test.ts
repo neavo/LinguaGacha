@@ -57,7 +57,7 @@ describe("desktop-api", () => {
       expect.objectContaining({ body: file, signal: controller.signal }),
     );
     const blob = await api_blob("/api/agent/uploads/id", controller.signal);
-    expect(new Uint8Array(await blob.arrayBuffer())).toEqual(Uint8Array.of(0, 255));
+    expect(Buffer.from(await blob.arrayBuffer()).equals(Uint8Array.of(0, 255))).toBe(true);
     await expect(api_blob("/api/agent/uploads/missing", controller.signal)).rejects.toMatchObject({
       code: "file.not_found",
     });
