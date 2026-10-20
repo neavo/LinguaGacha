@@ -473,7 +473,7 @@ it("产品门面完成来源摘要、准备、容器、翻译与导出，原稿�
     source_files: [{ path: entry.rel_path, file_type: "GODOT" }],
     asset_reader: () => Buffer.from(container.content),
   });
-  const output = path.join(out, path.basename(entry.rel_path, ".zip"), "messages.translation");
+  const output = path.join(out, "game/messages.translation");
   expect(
     read_translation(fs.readFileSync(output)).slots.some((slot) => slot.text === "产品译文"),
   ).toBe(true);

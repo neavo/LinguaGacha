@@ -1,6 +1,6 @@
 import path from "node:path";
 import type { NativeFs } from "../../native/native-fs";
-import { is_game_file_type } from "../../shared/project-source-formats";
+import { is_game_file_type, type GameFileType } from "../../shared/project-source-formats";
 import { AppError } from "../../shared/error";
 import { validate_zip_member_path } from "./shared/zip-members";
 import {
@@ -10,16 +10,27 @@ import {
 
 export const GAME_BACKUP_DIRECTORY = "backup_lg";
 export const GAME_WORKSPACE_DIRECTORY = ".tmp";
+/** 来源命名与输出校验共用后缀，来源入口格式由 `PROJECT_SOURCE_FORMATS` 维护。 */
+export const GAME_ASSET_EXTENSIONS = Object.freeze({
+  GODOT: ".godot",
+  RPGMAKER_MV_MZ: ".rpgmaker",
+  RPGMAKER_RGSS: ".rpgmaker",
+  WOLFRPG: ".wolfrpg",
+} satisfies Record<GameFileType, string>);
 
-/** 译文输出位置：游戏 移除最后一个 `.zip` 作为独占目录，其余格式保留资产路径。 */
+/** 译文输出位置：游戏移除最后一个合法资产后缀作为独占目录，其余格式保留资产路径。 */
 export function source_file_output_path(file: string, file_type?: string): string {
   const normalized = normalize_project_asset_path(file);
   if (!is_game_file_type(file_type)) return normalized;
-  if (!normalized.endsWith(".zip") || normalized.endsWith("/.zip") || normalized === ".zip")
+  const extension = path.posix.extname(normalized);
+  if (
+    extension !== GAME_ASSET_EXTENSIONS[file_type] &&
+    extension !== ".zip" // 历史游戏资产保留 `.zip` 身份与输出目录。
+  )
     throw new AppError("request.validation_failed", {
       diagnostic_context: { reason: "invalid_game_asset_path", path: file },
     });
-  return validate_zip_member_path(normalized.slice(0, -4));
+  return validate_zip_member_path(normalized.slice(0, -extension.length));
 }
 
 /** 资产身份与译文输出位置分别占位，游戏输出目录由该资产独占。 */

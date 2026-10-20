@@ -101,7 +101,7 @@ export const PROJECT_SOURCE_FORMATS = [
     support_status: "supported",
     extension: ".exe",
     title_key: "project_page.formats.godot",
-    description_keys: [],
+    description_keys: ["project_page.formats.godot", "project_page.formats.action_game_maker"],
   },
   {
     source_kind: "game",

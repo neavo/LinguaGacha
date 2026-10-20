@@ -209,15 +209,10 @@ it("多个带后缀同名游戏混合导入，入口去重并按原目录名导�
   ];
   const draft = await new SourceFileParsePipeline(service).build_project_draft(inputs);
   expect(draft.failed_files).toEqual([]);
-  expect(
-    (await service.collect_source_file_entries(inputs))
-      .filter((entry) => entry.file_type === "RPGMAKER_MV_MZ")
-      .map((entry) => entry.rel_path),
-  ).toEqual([`${name}.zip`, `${name}.zip`]);
   const second_game = draft.files[1]!.rel_path;
-  expect(second_game.slice(name.length)).toMatch(/^_\d{8}_\d{6}\.zip$/u);
+  expect(second_game.slice(name.length)).toMatch(/^_\d{8}_\d{6}\.rpgmaker$/u);
   expect(draft.files.map((file) => [file.rel_path, file.file_type])).toEqual([
-    [`${name}.zip`, "RPGMAKER_MV_MZ"],
+    [`${name}.rpgmaker`, "RPGMAKER_MV_MZ"],
     [second_game, "RPGMAKER_MV_MZ"],
     [path.join(path.basename(temp.path), "readme.txt"), "TXT"],
   ]);
@@ -226,7 +221,7 @@ it("多个带后缀同名游戏混合导入，入口去重并按原目录名导�
       .filter((item) => item.file_type === "RPGMAKER_MV_MZ")
       .map((item) => [item.file_path, item.row]),
   ).toEqual([
-    [`${name}.zip`, 0],
+    [`${name}.rpgmaker`, 0],
     [second_game, 0],
   ]);
   for (const item of draft.items)
@@ -243,7 +238,10 @@ it("多个带后缀同名游戏混合导入，入口去重并按原目录名导�
   });
   expect(
     JSON.parse(
-      fs.readFileSync(path.join(output, second_game.slice(0, -4), "www/data/System.json"), "utf8"),
+      fs.readFileSync(
+        path.join(output, path.basename(second_game, ".rpgmaker"), "www/data/System.json"),
+        "utf8",
+      ),
     ),
   ).toEqual({ currencyUnit: "游戏1译" });
 });

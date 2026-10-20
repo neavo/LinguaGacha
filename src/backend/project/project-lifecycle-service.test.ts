@@ -73,7 +73,7 @@ describe("ProjectLifecycleService", () => {
         "migration.asset_file_type_complete": true,
       });
       expect(snapshots[0]?.files["game.trans"]).toMatchObject({ game_engine: "kag" });
-      expect(snapshots[0]?.files["game.zip"]).toMatchObject({ file_type: "WOLFRPG" });
+      expect(snapshots[0]?.files["game.wolfrpg"]).toMatchObject({ file_type: "WOLFRPG" });
       expect(snapshots[0]!.items).toEqual(
         expect.arrayContaining([expect.objectContaining({ src: "原文", file_type: "WOLFRPG" })]),
       );
@@ -752,11 +752,11 @@ describe("ProjectLifecycleService", () => {
       });
       expect(result["failed_files"]).toBeUndefined();
       const archive = await read_zip_fixture(
-        (await database.read_asset_content(project_path, "game.zip"))!,
+        (await database.read_asset_content(project_path, "game.rpgmaker"))!,
       );
       expect(zip_text(archive, "js/plugins/bad.js")).toEqual(fs.readFileSync(source, "utf8"));
       expect(await database.get_all_asset_records(project_path)).toMatchObject([
-        { path: "game.zip", file_type: "RPGMAKER_MV_MZ" },
+        { path: "game.rpgmaker", file_type: "RPGMAKER_MV_MZ" },
       ]);
       expect(await database.get_all_items(project_path)).toEqual([]);
       expect(log_manager.warning).toHaveBeenCalledWith(
@@ -766,7 +766,7 @@ describe("ProjectLifecycleService", () => {
             warnings: [
               expect.objectContaining({
                 code: "script_syntax_error",
-                rel_path: "game.zip",
+                rel_path: "game.rpgmaker",
                 internal_file_path: "js/plugins/bad.js",
               }),
             ],

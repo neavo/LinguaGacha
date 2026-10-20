@@ -572,7 +572,7 @@ describe("AgentWorkspaceService", () => {
   });
 
   it("RGSS 明文随修订重建，落盘失败清理后允许重试", async () => {
-    const file_path = "game.zip";
+    const file_path = "game.rpgmaker";
     const native = new NativeFs();
     const fixture = await create_fixture(temp_dir, native);
     vi.spyOn(fixture.cache.files, "readFileEntries").mockReturnValue([

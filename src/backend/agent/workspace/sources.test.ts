@@ -30,7 +30,7 @@ it("普通原稿按资产相对路径保留原始字节", async () => {
 });
 
 it.each([
-  ["RPGMAKER_MV_MZ", "game.zip.zip"],
+  ["RPGMAKER_MV_MZ", "game.zip.rpgmaker"],
   ["EPUB", "小说/书.epub"],
 ])("%s 按资产相对路径展开并保留所有成员字节", async (file_type, file_path) => {
   using root = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-sources-rm-"));
@@ -91,6 +91,7 @@ it.each(["RPGMAKER_MV_MZ", "RPGMAKER_RGSS", "WOLFRPG", "EPUB"])(
 it.each([
   {
     file_type: "WOLFRPG",
+    file_path: "game.wolfrpg",
     members: wolf_files(),
     original: "Data/BasicData/Game.dat",
     projection: "Data/BasicData/CommonEvent.dat.json",
@@ -100,6 +101,7 @@ it.each([
   },
   {
     file_type: "GODOT",
+    file_path: "game.godot",
     members: create_godot_fixture(),
     original: "main.gdc",
     projection: "main.gdc.json",
@@ -110,22 +112,22 @@ it.each([
   },
 ])(
   "$file_type 原字节和只读 JSON 投影共同保留，名称冲突时失败",
-  async ({ file_type, members, original, projection, expected }) => {
+  async ({ file_type, file_path, members, original, projection, expected }) => {
     using root = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-sources-wolf-"));
     const zip = new JSZip();
     for (const [name, bytes] of members) zip.file(name, bytes);
     const args = {
       nativeFs: new NativeFs(),
       sourceRoot: root.path,
-      files: [{ file_path: "game.zip", file_type }],
+      files: [{ file_path, file_type }],
       readAsset: () => zip.generateAsync({ type: "nodebuffer" }),
     };
     await write_agent_workspace_sources(args);
     expect(
-      fs.readFileSync(path.join(root.path, "game.zip", original)).equals(members.get(original)!),
+      fs.readFileSync(path.join(root.path, file_path, original)).equals(members.get(original)!),
     ).toBe(true);
     expect(
-      JSON.parse(fs.readFileSync(path.join(root.path, "game.zip", projection), "utf8")),
+      JSON.parse(fs.readFileSync(path.join(root.path, file_path, projection), "utf8")),
     ).toMatchObject(expected);
     zip.file(original + ".json", "original member");
     await expect(
