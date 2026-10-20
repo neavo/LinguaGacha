@@ -30,7 +30,7 @@
 - Optimal translation quality and the fastest translation speed: subtitles in ten seconds, novels in one minute, games in five minutes
 - The strongest style and code retention capability among similar applications, significantly reducing post-processing workload, making it the best choice for creating embedded Chinese localization.
   - `Subtitles` `E-books` retain all original styles
-  - Games built with `RenPy` `Godot` `WOLFRPG` `RPGMaker` `Kirikiri` `ACTION GAME MAKER`: translate and play
+  - Games built with `RenPy` `Godot` `WOLFRPG` `RPGMAKER` `Kirikiri` `ACTION GAME MAKER`: translate and play
 
 ## Basic Workflow 🛸
 - Download application from [Releases page](https://github.com/neavo/LinguaGacha/releases)
@@ -77,7 +77,7 @@
 - Engine Best Practices
   - [Best Practices for High-Quality Translation of RenPy Engine Games](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForRenPyEN)
   - [Best Practices for High-Quality Translation of WOLFRPG Engine Games](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForWOLFRPGEN)
-  - [Best Practices for High-Quality Translation of RPGMaker Engine Games](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForRPGMakerEN)
+  - [Best Practices for High-Quality Translation of RPGMAKER Engine Games](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForRPGMakerEN)
 - Community Notes
   - [Machine Translation Notes for Kirikiri Engine Games Without Complex Encryption](https://github.com/neavo/LinguaGacha/discussions/181)
 - You can find more details on each feature in the [Wiki](https://github.com/neavo/LinguaGacha/wiki)
@@ -91,8 +91,8 @@
 - `KV-JSON` game text `.json`, from [MTool](https://mtool.app) [SExtractor](https://github.com/satan53x/SExtractor)
 - `Message-JSON` game text `.json`, from [SExtractor](https://github.com/satan53x/SExtractor) [VNTextPatch](https://github.com/arcusmaximus/VNTranslationTools)
 - `WOLFRPG 3` game files: import the game directory or `.exe`
-- `RPGMaker MV/MZ` game files: import the game directory or `.exe`
-- `RPGMaker XP/VX/VXAce` game files: import the game directory or `.exe`
+- `RPGMAKER MV/MZ` game files: import the game directory or `.exe`
+- `RPGMAKER XP/VX/VXAce` game files: import the game directory or `.exe`
 - Support ending soon:
   - Project files `.trans`, from [Translator++](https://dreamsavior.net/translator-plusplus)
   - Game text `.xlsx`, from [SExtractor](https://github.com/satan53x/SExtractor) [Translator++](https://dreamsavior.net/translator-plusplus) [WOLF Official Translation Tool](https://silversecond.booth.pm/items/5151747)

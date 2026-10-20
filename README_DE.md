@@ -26,7 +26,7 @@
 - Beste Übersetzungsqualität und höchste Übersetzungsgeschwindigkeit: Untertitel in zehn Sekunden, ein Roman in einer Minute, ein Spiel in fünf Minuten
 - Führend unter vergleichbaren Anwendungen beim Erhalt von Formatierung und Code; reduziert die Nachbearbeitung erheblich und eignet sich besonders für direkt ins Spiel integrierte chinesische Lokalisierungen
   - `Untertitel` `E-Books` behalten die gesamte ursprüngliche Formatierung bei
-  - Spiele mit `RenPy` `Godot` `WOLFRPG` `RPGMaker` `Kirikiri` `ACTION GAME MAKER`: übersetzen und sofort spielen
+  - Spiele mit `RenPy` `Godot` `WOLFRPG` `RPGMAKER` `Kirikiri` `ACTION GAME MAKER`: übersetzen und sofort spielen
 
 ## Erste Schritte 🛸
 - Laden Sie die Anwendung von der [Release-Seite](https://github.com/neavo/LinguaGacha/releases) herunter
@@ -73,7 +73,7 @@
 - Engine-Praxis
   - [Bewährte Vorgehensweisen für hochwertige Übersetzungen von RenPy-Spielen](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForRenPy)
   - [Bewährte Vorgehensweisen für hochwertige Übersetzungen von WOLFRPG-Spielen](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForWOLFRPG)
-  - [Bewährte Vorgehensweisen für hochwertige Übersetzungen von RPGMaker-Spielen](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForRPGMaker)
+  - [Bewährte Vorgehensweisen für hochwertige Übersetzungen von RPGMAKER-Spielen](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForRPGMaker)
 - Erfahrungen der Community
   - [Notizen zur maschinellen Übersetzung von Kirikiri-Spielen ohne komplexe Verschlüsselung](https://github.com/neavo/LinguaGacha/discussions/181)
 - Ausführlichere Informationen zu den Funktionen finden Sie im [Wiki](https://github.com/neavo/LinguaGacha/wiki)
@@ -87,8 +87,8 @@
 - `KV-JSON`-Spieltexte `.json`, Quelle: [MTool](https://mtool.app) [SExtractor](https://github.com/satan53x/SExtractor)
 - `Message-JSON`-Spieltexte `.json`, Quelle: [SExtractor](https://github.com/satan53x/SExtractor) [VNTextPatch](https://github.com/arcusmaximus/VNTranslationTools)
 - `WOLFRPG 3`-Spieldateien: Spielverzeichnis oder `.exe` importieren
-- `RPGMaker MV/MZ`-Spieldateien: Spielverzeichnis oder `.exe` importieren
-- `RPGMaker XP/VX/VXAce`-Spieldateien: Spielverzeichnis oder `.exe` importieren
+- `RPGMAKER MV/MZ`-Spieldateien: Spielverzeichnis oder `.exe` importieren
+- `RPGMAKER XP/VX/VXAce`-Spieldateien: Spielverzeichnis oder `.exe` importieren
 - Unterstützung endet bald:
   - Projektdateien `.trans`, Quelle: [Translator++](https://dreamsavior.net/translator-plusplus)
   - Spieltexte `.xlsx`, Quelle: [SExtractor](https://github.com/satan53x/SExtractor) [Translator++](https://dreamsavior.net/translator-plusplus) [offizielles WOLF-Übersetzungswerkzeug](https://silversecond.booth.pm/items/5151747)

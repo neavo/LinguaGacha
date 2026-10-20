@@ -29,7 +29,7 @@
 - 最高の翻訳品質と最速の翻訳速度、10秒で字幕1本、1分で小説1冊、5分でゲーム1本
 - 同種のアプリケーションの中で最強のスタイルとコード保持能力、後工程の作業量を大幅に削減、字幕埋め込み（内嵌字幕）作成に最適
   - `字幕` `電子書籍` は元のスタイルをすべて保持
-  - `RenPy` `Godot` `WOLFRPG` `RPGMaker` `Kirikiri` `ACTION GAME MAKER` のゲームは翻訳後すぐにプレイ可能
+  - `RenPy` `Godot` `WOLFRPG` `RPGMAKER` `Kirikiri` `ACTION GAME MAKER` のゲームは翻訳後すぐにプレイ可能
 
 ## ワークフロー 🛸
 - [リリースページ](https://github.com/neavo/LinguaGacha/releases) からアプリケーションをダウンロード
@@ -76,7 +76,7 @@
 - Engine Best Practices
   - [Best Practices for High-Quality Translation of RenPy Engine Games](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForRenPyEN)
   - [Best Practices for High-Quality Translation of WOLFRPG Engine Games](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForWOLFRPGEN)
-  - [Best Practices for High-Quality Translation of RPGMaker Engine Games](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForRPGMakerEN)
+  - [Best Practices for High-Quality Translation of RPGMAKER Engine Games](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForRPGMakerEN)
 - Community Notes
   - [Machine Translation Notes for Kirikiri Engine Games Without Complex Encryption](https://github.com/neavo/LinguaGacha/discussions/181)
 - You can find more details on each feature in the [Wiki](https://github.com/neavo/LinguaGacha/wiki)
@@ -90,8 +90,8 @@
 - `KV-JSON` ゲームテキスト `.json`、出力元 [MTool](https://mtool.app) [SExtractor](https://github.com/satan53x/SExtractor)
 - `Message-JSON` ゲームテキスト `.json`、出力元 [SExtractor](https://github.com/satan53x/SExtractor) [VNTextPatch](https://github.com/arcusmaximus/VNTranslationTools)
 - `WOLFRPG 3` ゲームファイル：ゲームフォルダーまたは `.exe` をインポート
-- `RPGMaker MV/MZ` ゲームファイル：ゲームフォルダーまたは `.exe` をインポート
-- `RPGMaker XP/VX/VXAce` ゲームファイル：ゲームフォルダーまたは `.exe` をインポート
+- `RPGMAKER MV/MZ` ゲームファイル：ゲームフォルダーまたは `.exe` をインポート
+- `RPGMAKER XP/VX/VXAce` ゲームファイル：ゲームフォルダーまたは `.exe` をインポート
 - サポート終了予定：
   - プロジェクトファイル `.trans`、出力元 [Translator++](https://dreamsavior.net/translator-plusplus)
   - ゲームテキスト `.xlsx`、出力元 [SExtractor](https://github.com/satan53x/SExtractor) [Translator++](https://dreamsavior.net/translator-plusplus) [WOLF 公式翻訳ツール](https://silversecond.booth.pm/items/5151747)

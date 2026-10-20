@@ -26,7 +26,7 @@
 - 최상의 번역 품질과 가장 빠른 번역 속도: 자막 한 편은 10초, 소설 한 권은 1분, 게임 한 편은 5분
 - 동종 앱 중 가장 뛰어난 서식 및 코드 보존 능력으로 후처리 작업을 크게 줄여, 게임에 직접 적용하는 중국어 패치 제작에 적합
   - `자막` `전자책`은 원래 서식을 모두 보존
-  - `RenPy` `Godot` `WOLFRPG` `RPGMaker` `Kirikiri` `ACTION GAME MAKER` 게임은 번역 후 바로 플레이 가능
+  - `RenPy` `Godot` `WOLFRPG` `RPGMAKER` `Kirikiri` `ACTION GAME MAKER` 게임은 번역 후 바로 플레이 가능
 
 ## 기본 사용 흐름 🛸
 - [릴리스 페이지](https://github.com/neavo/LinguaGacha/releases)에서 앱을 다운로드합니다
@@ -73,7 +73,7 @@
 - 엔진별 가이드
   - [RenPy 엔진 게임 고품질 번역 가이드](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForRenPy)
   - [WOLFRPG 엔진 게임 고품질 번역 가이드](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForWOLFRPG)
-  - [RPGMaker 엔진 게임 고품질 번역 가이드](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForRPGMaker)
+  - [RPGMAKER 엔진 게임 고품질 번역 가이드](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForRPGMaker)
 - 커뮤니티 경험
   - [복잡한 암호화가 없는 kirikiri 엔진 기계 번역 노트](https://github.com/neavo/LinguaGacha/discussions/181)
 - 각 기능에 대한 더 자세한 설명은 [Wiki](https://github.com/neavo/LinguaGacha/wiki)에서 확인할 수 있습니다
@@ -87,8 +87,8 @@
 - `KV-JSON` 게임 텍스트 `.json`, 출처 [MTool](https://mtool.app) [SExtractor](https://github.com/satan53x/SExtractor)
 - `Message-JSON` 게임 텍스트 `.json`, 출처 [SExtractor](https://github.com/satan53x/SExtractor) [VNTextPatch](https://github.com/arcusmaximus/VNTranslationTools)
 - `WOLFRPG 3` 게임 파일: 게임 폴더 또는 `.exe` 가져오기
-- `RPGMaker MV/MZ` 게임 파일: 게임 폴더 또는 `.exe` 가져오기
-- `RPGMaker XP/VX/VXAce` 게임 파일: 게임 폴더 또는 `.exe` 가져오기
+- `RPGMAKER MV/MZ` 게임 파일: 게임 폴더 또는 `.exe` 가져오기
+- `RPGMAKER XP/VX/VXAce` 게임 파일: 게임 폴더 또는 `.exe` 가져오기
 - 지원 종료 예정:
   - 프로젝트 파일 `.trans`, 출처 [Translator++](https://dreamsavior.net/translator-plusplus)
   - 게임 텍스트 `.xlsx`, 출처 [SExtractor](https://github.com/satan53x/SExtractor) [Translator++](https://dreamsavior.net/translator-plusplus) [WOLF 공식 번역 도구](https://silversecond.booth.pm/items/5151747)
