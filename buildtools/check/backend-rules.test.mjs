@@ -55,7 +55,7 @@ describe("backend boundary rules", () => {
         "src/backend/api/api-routes.ts": 'app.get("/api/health", handler);',
         "src/backend/database/store.ts": 'import "node:sqlite";',
         "src/backend/model/catalog.test.ts": 'import OpenAI from "openai";',
-        "src/backend/network/system-proxy-http-client.ts": [
+        "src/backend/network/proxy-http-client.ts": [
           'import { fetch as undici_fetch } from "undici";',
           'undici_fetch("https://example.com");',
         ].join("\n"),

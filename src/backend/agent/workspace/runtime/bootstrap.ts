@@ -4,7 +4,7 @@ import { bind_host } from "../../tools/host";
 import { readFile } from "node:fs/promises";
 import { isBuiltin, registerHooks } from "node:module";
 
-import { SystemProxyHttpClient } from "../../../network/system-proxy-http-client";
+import { ProxyHttpClient } from "../../../network/proxy-http-client";
 import { create_agent_workspace_runtime_api } from "./api";
 import type {
   AgentWorkspaceRuntimeParentMessage,
@@ -49,7 +49,7 @@ const request_channel = new AgentWorkspaceRequestChannel(send_message, (pending)
 process.on("message", (message: AgentWorkspaceRuntimeParentMessage) => {
   if (message.type === "response") request_channel.accept(message);
 });
-const client = new SystemProxyHttpClient(
+const client = new ProxyHttpClient(
   {
     resolveProxy: async (url, signal) => {
       const result = await request_channel.call({ kind: "resolve_proxy", url }, signal);

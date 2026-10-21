@@ -1,6 +1,7 @@
 import { app, session } from "electron";
 import path from "node:path";
 import { resolve_workspace_runtime_directory } from "../native/workspace-runtime";
+import { configure_app_proxy } from "../native/app-proxy";
 
 import { BackendResources } from "../backend/bootstrap/backend-resources";
 import { BackendServices } from "../backend/bootstrap/backend-services";
@@ -19,11 +20,12 @@ export async function run_cli_command(
   worker_execution: BackendWorkerExecution,
 ): Promise<void> {
   await app.whenReady();
+  await configure_app_proxy();
   const resources = await BackendResources.start({
     appRoot: app_root,
     builtinRoot: path.join(app.getAppPath(), "builtin"),
     logTargets: { console: false, window: false },
-    systemProxyResolver: {
+    proxyResolver: {
       resolveProxy: (url) => session.defaultSession.resolveProxy(url),
     },
   });

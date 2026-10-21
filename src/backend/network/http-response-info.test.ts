@@ -1,7 +1,7 @@
 import { createServer } from "node:http";
 import { once } from "node:events";
 import type { AddressInfo } from "node:net";
-import { SystemProxyHttpClient } from "./system-proxy-http-client";
+import { ProxyHttpClient } from "./proxy-http-client";
 import { LLMClient } from "../llm/llm-client";
 import { read_builtin_pi_models } from "../llm/pi-model-catalog";
 import type { LLMRequestBody } from "../llm/llm-types";
@@ -81,7 +81,7 @@ describe("HTTP 响应事实", () => {
       server.listen(0, "127.0.0.1");
       await once(server, "listening");
       const root = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
-      const transport = new SystemProxyHttpClient({ resolveProxy: async () => "DIRECT" });
+      const transport = new ProxyHttpClient({ resolveProxy: async () => "DIRECT" });
       transport.install_as_global_fetch();
       try {
         const client = new LLMClient({

@@ -338,7 +338,7 @@ it("删除变更目录后继续执行技能、提交和重置", async () => {
     appRoot: app_root,
     builtinRoot: path.join(app_root, "builtin"),
     logTargets: { console: false, window: false },
-    systemProxyResolver: { resolveProxy: async () => "DIRECT" },
+    proxyResolver: { resolveProxy: async () => "DIRECT" },
   });
   const services = new BackendServices({
     paths: resources.paths,
@@ -360,7 +360,7 @@ it("删除变更目录后继续执行技能、提交和重置", async () => {
       paths: resources.paths,
       executablePath: electron_path,
       runtimeDirectory: runtime,
-      systemProxyResolver: { resolveProxy: async () => "DIRECT" },
+      proxyResolver: { resolveProxy: async () => "DIRECT" },
     });
     const service = new AgentWorkspaceService({
       images: {
@@ -505,9 +505,7 @@ it("网页流、重定向与代理等待在真实子进程中工作", async () =
     );
     await ready;
     release("UNSUPPORTED");
-    expect(output_content((await pending).stdout)).toContain(
-      "System proxy returned no supported route",
-    );
+    expect(output_content((await pending).stdout)).toContain("Proxy returned no supported route");
   } finally {
     server.closeAllConnections();
     await new Promise<void>((resolve, reject) =>
@@ -640,7 +638,7 @@ it.each([false, true])(
         paths: skill_paths,
         executablePath: electron_path,
         runtimeDirectory: runtime_link,
-        systemProxyResolver: { resolveProxy: async () => "DIRECT" },
+        proxyResolver: { resolveProxy: async () => "DIRECT" },
       }).run(
         {
           workspacePath: logical_workspace,
@@ -788,7 +786,7 @@ async function run(
     paths: skill_paths,
     executablePath: electron_path,
     runtimeDirectory: runtime,
-    systemProxyResolver: { resolveProxy },
+    proxyResolver: { resolveProxy },
   }).run(
     {
       workspacePath: workspace,

@@ -31,7 +31,17 @@ afterEach(() => {
 });
 
 describe("run_cli_entry", () => {
-  it("读取发布目录 version.txt 并把版本写到 stdout", async () => {
+  it("帮助在代理配置无效时直接完成", async () => {
+    vi.stubEnv("LG_PROXY", "invalid-proxy");
+    spy_process_write(process.stdout);
+    await expect(
+      run_cli_entry(["--help"], process.cwd(), IN_PROCESS_WORKER_EXECUTION),
+    ).resolves.toBe(0);
+    expect(run_cli_command_mock).not.toHaveBeenCalled();
+  });
+
+  it("代理配置无效时仍读取发布版本并写入 stdout", async () => {
+    vi.stubEnv("LG_PROXY", "invalid-proxy");
     using temp_root = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "linguagacha-cli-entry-"));
     const app_root = temp_root.path;
     const stdout = spy_process_write(process.stdout);
@@ -42,6 +52,7 @@ describe("run_cli_entry", () => {
     );
 
     expect(stdout.messages).toEqual(["1.2.3\n"]);
+    expect(run_cli_command_mock).not.toHaveBeenCalled();
   });
 
   it("命令成功时透传运行配置且不追加 stdout", async () => {
@@ -72,18 +83,17 @@ describe("run_cli_entry", () => {
     expect(run_cli_command_mock).not.toHaveBeenCalled();
   });
 
-  it("运行期错误返回 1 并只把错误写入 stderr", async () => {
+  it("运行失败返回 1 并写入 stderr", async () => {
     run_cli_command_mock.mockRejectedValue(new Error("job failed"));
     const stderr = spy_process_write(process.stderr);
-
     await expect(
       run_cli_entry([...TRANSLATE_ARGV], "E:/App", IN_PROCESS_WORKER_EXECUTION),
     ).resolves.toBe(1);
-
     expect(stderr.messages).toEqual(["job failed\n"]);
   });
 });
 
+/** 收集标准流输出，验证入口的错误与退出码。 */
 function spy_process_write(stream: NodeJS.WriteStream): { messages: string[] } {
   const messages: string[] = [];
   vi.spyOn(stream, "write").mockImplementation((chunk: string | Uint8Array) => {

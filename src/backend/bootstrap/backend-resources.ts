@@ -5,10 +5,7 @@ import { ProjectDatabase } from "../database/database-operations";
 import { LogManager } from "../log/log-manager";
 import { set_main_log_language_reader, t_main_log } from "../log/log-text";
 import { run_startup_migrations } from "../migration/startup-migrations";
-import {
-  SystemProxyHttpClient,
-  type SystemProxyResolver,
-} from "../network/system-proxy-http-client";
+import { ProxyHttpClient, type ProxyResolver } from "../network/proxy-http-client";
 import type { LogTargets } from "../../shared/log";
 import { write_bootstrap_error, write_bootstrap_log } from "./bootstrap-log";
 
@@ -16,14 +13,12 @@ export interface BackendResourceOptions {
   appRoot: string; // 安装根与便携数据位置
   builtinRoot: string; // 当前版本只读内置资产根
   logTargets?: Partial<LogTargets>; // 入口按 GUI 或 CLI 选择日志出口
-  systemProxyResolver: SystemProxyResolver; // Electron session 提供的系统代理事实
+  proxyResolver: ProxyResolver; // Electron session 提供的应用代理事实
 }
 
-/**
- * 入口共享的基础资源生命周期；业务服务、Agent 与公开传输由各自组合根装配。
- */
+/** 入口共享基础资源的生命周期。各组合根装配业务服务、Agent 与公开传输。 */
 export class BackendResources {
-  private disposed = false;
+  private disposed = false; // 入口可能重复关闭，资源只释放一次。
 
   /** start 完成后一次性交付全部已初始化资源。 */
   private constructor(
@@ -32,7 +27,7 @@ export class BackendResources {
     public readonly settings: AppSettingService,
     public readonly database: ProjectDatabase,
     public readonly logManager: LogManager,
-    private readonly system_proxy_http_client: SystemProxyHttpClient,
+    private readonly proxy_http_client: ProxyHttpClient, // 全局 Fetch 与连接池随本组资源释放。
   ) {}
 
   /** 启动迁移、设置、日志、数据库与共享出站 HTTP transport。 */
@@ -47,7 +42,7 @@ export class BackendResources {
       ...(options.logTargets === undefined ? {} : { targets: options.logTargets }),
     });
     const database = new ProjectDatabase();
-    let system_proxy_http_client: SystemProxyHttpClient | null = null;
+    let proxy_http_client: ProxyHttpClient | null = null;
 
     try {
       write_bootstrap_log("", log_manager);
@@ -58,15 +53,15 @@ export class BackendResources {
       await run_startup_migrations({ paths, log_manager });
       const settings = new AppSettingService(paths);
       set_main_log_language_reader(() => settings.read_app_language());
-      system_proxy_http_client = new SystemProxyHttpClient(options.systemProxyResolver);
-      system_proxy_http_client.install_as_global_fetch();
+      proxy_http_client = new ProxyHttpClient(options.proxyResolver);
+      proxy_http_client.install_as_global_fetch();
       return new BackendResources(
         paths,
         metadata,
         settings,
         database,
         log_manager,
-        system_proxy_http_client,
+        proxy_http_client,
       );
     } catch (error) {
       const failures: unknown[] = [error];
@@ -79,7 +74,7 @@ export class BackendResources {
       } catch (log_error) {
         failures.push(log_error);
       }
-      await collect_failure(failures, async () => await system_proxy_http_client?.dispose());
+      await collect_failure(failures, async () => await proxy_http_client?.dispose());
       await collect_failure(failures, () => database.close());
       await collect_failure(failures, async () => await log_manager.shutdown());
       set_main_log_language_reader(null);
@@ -90,12 +85,12 @@ export class BackendResources {
     }
   }
 
-  /** 逆序释放共享 transport、数据库与日志；单项失败不跳过后续资源。 */
+  /** 逆序释放共享 transport、数据库与日志。单项失败不跳过后续资源。 */
   public async dispose(): Promise<void> {
     if (this.disposed) return;
     this.disposed = true;
     const failures: unknown[] = [];
-    await collect_failure(failures, async () => await this.system_proxy_http_client.dispose());
+    await collect_failure(failures, async () => await this.proxy_http_client.dispose());
     await collect_failure(failures, () => this.database.close());
     await collect_failure(failures, async () => await this.logManager.shutdown());
     set_main_log_language_reader(null);

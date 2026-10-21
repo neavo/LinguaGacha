@@ -10,7 +10,7 @@ import { is_json_record, type JsonRecord, type JsonValue } from "../../../../dom
 import type { AgentImageOptions } from "../../../../shared/agent-image";
 import { default_native_fs } from "../../../../native/native-fs";
 import { resolve_workspace_runtime_entry } from "../../../../native/workspace-runtime";
-import type { SystemProxyResolver } from "../../../network/system-proxy-http-client";
+import type { ProxyResolver } from "../../../network/proxy-http-client";
 import type { AppPathService } from "../../../app/app-path-service";
 import { AGENT_WORKSPACE_RUNTIME_POLICY } from "./policy";
 import type {
@@ -52,7 +52,7 @@ export type AgentWorkspaceExecution = Readonly<{
   stderr: AgentWorkspaceOutput;
 }>;
 
-/** 程序失败保留可修复的执行记录；宿主故障继续使用应用诊断通道。 */
+/** 程序失败保留可修复的执行记录。宿主故障继续使用应用诊断通道。 */
 export class AgentWorkspaceRunError extends Error {
   /** 执行失败携带同一份输出记录，服务层直接投影给模型。 */
   public constructor(
@@ -63,11 +63,11 @@ export class AgentWorkspaceRunError extends Error {
   }
 }
 
-/** 父进程拥有执行、取消与回收；Node 自身拥有程序及其异步任务的完成语义。 */
+/** 父进程拥有执行、取消与回收。Node 自身拥有程序及其异步任务的完成语义。 */
 export class AgentWorkspaceRunner {
   private readonly executable_path: string;
   private readonly runtime_directory: string;
-  private readonly system_proxy_resolver: SystemProxyResolver;
+  private readonly proxy_resolver: ProxyResolver; // 经宿主查询当前 Session，子进程共用同一代理策略。
   private readonly paths: Pick<
     AppPathService,
     "get_agent_user_skill_dir" | "get_agent_builtin_skill_dir"
@@ -77,12 +77,12 @@ export class AgentWorkspaceRunner {
   public constructor(options: {
     executablePath?: string;
     runtimeDirectory: string;
-    systemProxyResolver: SystemProxyResolver;
+    proxyResolver: ProxyResolver;
     paths: Pick<AppPathService, "get_agent_user_skill_dir" | "get_agent_builtin_skill_dir">;
   }) {
     this.executable_path = path.resolve(options.executablePath ?? process.execPath);
     this.runtime_directory = path.resolve(options.runtimeDirectory);
-    this.system_proxy_resolver = options.systemProxyResolver;
+    this.proxy_resolver = options.proxyResolver;
     this.paths = options.paths;
   }
 
@@ -138,7 +138,7 @@ export class AgentWorkspaceRunner {
         // 读取范围是当前系统账户可访问的本机文件，写入限定在授权目录。
         "--allow-fs-read=*",
         ...[...write_paths].map((directory) => `--allow-fs-write=${directory}`),
-        // 包括主程序在内都按工作区入口解析模块；work 本身是链接时仍能发现工作区 node_modules。
+        // 包括主程序在内都按工作区入口解析模块。work 本身是链接时仍能发现工作区 node_modules。
         "--preserve-symlinks",
         "--preserve-symlinks-main",
         "--import",
@@ -194,7 +194,7 @@ export class AgentWorkspaceRunner {
         for (const controller of requests.values()) controller.abort(reason);
         requests.clear();
       };
-      /** 所有强制终止路径共用一次回收；输出等 close 后收齐。 */
+      /** 所有强制终止路径共用一次回收。输出等 close 后收齐。 */
       const terminate = (reason: unknown): void => {
         if (terminal_error !== undefined) return;
         terminal_error = reason;
@@ -220,7 +220,7 @@ export class AgentWorkspaceRunner {
           if (request.kind === "emit_image")
             return await execute_image_request(request, controller.signal, run_request.emitImage);
           if (request.kind === "resolve_proxy" && typeof request.url === "string")
-            return await this.system_proxy_resolver.resolveProxy(request.url, controller.signal);
+            return await this.proxy_resolver.resolveProxy(request.url, controller.signal);
           return await execute_host_request(request, controller.signal, run_request.host);
         };
         const operation = execute()

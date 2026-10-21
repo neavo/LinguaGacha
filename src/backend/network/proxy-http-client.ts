@@ -1,6 +1,6 @@
 import {
   Agent,
-  Dispatcher,
+  type Dispatcher,
   ProxyAgent,
   Socks5ProxyAgent,
   fetch as undici_fetch,
@@ -24,29 +24,27 @@ const FETCH_CONSTRUCTORS = {
   FormData: UndiciFormData,
 } as unknown as Omit<FetchGlobals, "fetch">;
 
-export interface SystemProxyResolver {
-  resolveProxy: (url: string, signal?: AbortSignal) => Promise<string>; // Electron session 是系统代理规则的唯一来源
+export interface ProxyResolver {
+  resolveProxy: (url: string, signal?: AbortSignal) => Promise<string>; // Electron session 是应用代理规则的唯一来源
 }
 
-export type SystemProxyRoute =
+export type ProxyRoute =
   | { kind: "direct" }
   | { kind: "proxy"; uri: string }
   | { kind: "socks5"; uri: string };
 
-/**
- * 当前线程唯一的普通远端 HTTP Client；每次请求重新解析路由，只缓存可复用的代理连接池。
- */
-export class SystemProxyHttpClient {
-  private readonly redirects: "error" | "request"; // 后端禁止重定向；工作区遵循 fetch 调用者选项
-  private readonly resolver: SystemProxyResolver; // 请求时读取 Electron 当前路由，不保存启动快照
+/** 当前线程唯一的普通远端 HTTP Client。每次请求重新解析路由，连接池按路由复用。 */
+export class ProxyHttpClient {
+  private readonly redirects: "error" | "request"; // 后端禁止重定向。工作区遵循 fetch 调用者选项
+  private readonly resolver: ProxyResolver; // 请求时读取 Electron 当前路由，不保存启动快照
   private readonly direct_dispatcher: Dispatcher; // loopback 与显式 DIRECT 共用的自有连接池
   private readonly proxy_dispatchers = new Map<string, Dispatcher>(); // 同一路由复用连接池
   private previous_globals: FetchGlobals | null = null; // 安装期保存 fetch 及配套构造器，关闭时统一恢复
   private disposed = false; // 释放后拒绝新请求，避免重建已关闭资源
 
-  /** 创建自有直连池；代理池延迟到首次命中对应路由时创建。 */
+  /** 创建自有直连池，代理池在首次请求时创建。 */
   public constructor(
-    resolver: SystemProxyResolver,
+    resolver: ProxyResolver,
     options: { redirects: "error" | "request" } = { redirects: "error" },
   ) {
     this.redirects = options.redirects;
@@ -54,16 +52,16 @@ export class SystemProxyHttpClient {
     this.direct_dispatcher = new Agent();
   }
 
-  /** 普通远端 HTTP 共用此 Fetch；专用安全下载链路仍显式选择自己的 dispatcher。 */
+  /** 普通远端 HTTP 共用此 Fetch，专用安全下载链路显式选择自己的 dispatcher。 */
   public readonly fetch: typeof globalThis.fetch = async (input, init) => {
     if (this.disposed) {
-      throw new Error("System proxy HTTP client is disposed.");
+      throw new Error("Proxy HTTP client is disposed.");
     }
     const url = read_request_url(input);
     const signal = init?.signal ?? (input instanceof Request ? input.signal : undefined);
     signal?.throwIfAborted();
     const dispatcher = this.resolve_dispatcher(
-      await resolve_system_proxy_route(this.resolver, url.href, signal),
+      await resolve_proxy_route(this.resolver, url.href, signal),
     );
     signal?.throwIfAborted();
     const response = (await undici_fetch(input as Parameters<typeof undici_fetch>[0], {
@@ -78,7 +76,7 @@ export class SystemProxyHttpClient {
   /** Backend 线程只有一个普通 HTTP transport，第三方 SDK 也从同一全局入口取用。 */
   public install_as_global_fetch(): void {
     if (this.disposed || this.previous_globals !== null) {
-      throw new Error("System proxy HTTP client cannot be installed in its current state.");
+      throw new Error("Proxy HTTP client cannot be installed in its current state.");
     }
     const { fetch, Request, Response, Headers, FormData } = globalThis;
     this.previous_globals = { fetch, Request, Response, Headers, FormData };
@@ -101,12 +99,12 @@ export class SystemProxyHttpClient {
       .filter((result): result is PromiseRejectedResult => result.status === "rejected")
       .map((result) => result.reason);
     if (errors.length > 0) {
-      throw new AggregateError(errors, "System proxy HTTP client failed to close.");
+      throw new AggregateError(errors, "Proxy HTTP client failed to close.");
     }
   }
 
   /** 按已解析路由返回直连池，或复用对应协议与地址的代理池。 */
-  private resolve_dispatcher(route: SystemProxyRoute): Dispatcher {
+  private resolve_dispatcher(route: ProxyRoute): Dispatcher {
     if (route.kind === "direct") return this.direct_dispatcher;
     const key = `${route.kind}:${route.uri}`;
     const existing = this.proxy_dispatchers.get(key);
@@ -118,8 +116,8 @@ export class SystemProxyHttpClient {
   }
 }
 
-/** 按 Chromium 返回顺序选择首个可执行路由；只有显式 DIRECT 才允许直连。 */
-export function parse_system_proxy_route(proxy_rules: string): SystemProxyRoute {
+/** 按 Chromium 返回顺序选择首个可执行路由，只有显式 DIRECT 才允许直连。 */
+export function parse_proxy_route(proxy_rules: string): ProxyRoute {
   for (const rule of proxy_rules.split(";")) {
     const trimmed_rule = rule.trim();
     if (trimmed_rule === "") continue;
@@ -140,18 +138,18 @@ export function parse_system_proxy_route(proxy_rules: string): SystemProxyRoute 
       if (uri !== null) return { kind: "socks5", uri };
     }
   }
-  throw new Error("System proxy returned no supported route.");
+  throw new Error("Proxy returned no supported route.");
 }
 
-/** Electron session 是系统路线权威；本机端点保持直连，其余 URL 每次读取当前代理事实。 */
-export async function resolve_system_proxy_route(
-  resolver: SystemProxyResolver,
+/** 本机端点保持直连，其余 URL 每次向 Electron Session 查询当前路由。 */
+export async function resolve_proxy_route(
+  resolver: ProxyResolver,
   url: string,
   signal?: AbortSignal,
-): Promise<SystemProxyRoute> {
+): Promise<ProxyRoute> {
   const target = new URL(url);
   if (is_loopback_hostname(target.hostname)) return { kind: "direct" };
-  return parse_system_proxy_route(await resolver.resolveProxy(target.href, signal));
+  return parse_proxy_route(await resolver.resolveProxy(target.href, signal));
 }
 
 /** fetch 同时接受 URL 文本、URL 和 Request，这里统一为代理解析所需的 URL。 */
@@ -160,7 +158,7 @@ function read_request_url(input: Parameters<typeof globalThis.fetch>[0]): URL {
   return new URL(input.url);
 }
 
-/** Chromium 代理目标通常省略 scheme；无效目标留给后续候选继续匹配。 */
+/** Chromium 代理目标通常省略 scheme，无效目标由后续候选接续。 */
 function build_proxy_uri(protocol: "http" | "https" | "socks5", target: string): string | null {
   const trimmed_target = target.trim();
   if (trimmed_target === "") return null;
