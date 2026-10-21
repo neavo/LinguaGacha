@@ -16,7 +16,11 @@ import { wolf_archive_fixture } from "../../../../test/wolf-archive-fixture";
 import { rgss_archive_fixture } from "../../../../test/rgss-archive-fixture";
 import { NativeFs } from "../../../../native/native-fs";
 import { encrypted_media, MEDIA_KEY, png_fixture } from "../../../../test/media-fixture";
-import { godot_pack_fixture, create_godot_fixture } from "../../../../test/godot-fixture";
+import {
+  godot_pack_fixture,
+  godot_executable_fixture,
+  create_godot_fixture,
+} from "../../../../test/godot-fixture";
 import { discover_godot_source } from "../../godot/source";
 
 let runtime: string;
@@ -53,6 +57,40 @@ it.each(["external", "embedded"])(
   },
   30000,
 );
+it("Godot 密钥扫描收到取消后协作退出并释放载体句柄", async () => {
+  using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-godot-worker-cancel-"));
+  const native = new NativeFs(),
+    staging = path.join(temp.path, "stage"),
+    executable = path.join(temp.path, "game.exe");
+  fs.mkdirSync(staging);
+  const key = Buffer.alloc(32, 73),
+    prefix = godot_executable_fixture(undefined, 1536 + 2 * 1024 * 1024, true);
+  const bytes = godot_pack_fixture(create_godot_fixture(), {
+    prefix,
+    encryption_key: key,
+    encrypt_directory: true,
+    resource_prefix: false,
+  });
+  fs.writeFileSync(executable, bytes);
+  const game = (await discover_godot_source(executable, native))!;
+  const worker = new GamePrepareWorker(
+    pathToFileURL(path.join(runtime, "main/game-prepare-worker-entry.js")),
+  );
+  const controller = new AbortController(),
+    timer = globalThis.setTimeout(() => controller.abort(), 250);
+  try {
+    await expect(
+      worker.run({ kind: "game", file_type: "GODOT", game, staging }, controller.signal),
+    ).rejects.toThrow();
+    expect(fs.readdirSync(staging)).toEqual([]);
+    expect(fs.readFileSync(executable).equals(bytes)).toBe(true);
+    fs.renameSync(executable, executable + ".released");
+  } finally {
+    globalThis.clearTimeout(timer);
+    await worker.dispose();
+  }
+}, 30000);
+
 beforeAll(() => {
   runtime = fs.mkdtempSync(path.join(os.tmpdir(), "lg-game-runtime-"));
   execFileSync(

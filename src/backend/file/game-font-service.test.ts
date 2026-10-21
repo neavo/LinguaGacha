@@ -244,3 +244,38 @@ it("支持混合大小写扩展名并备份已有同名字体", async () => {
     fs.readdirSync(root).filter((name) => name.toLowerCase() === existing.toLowerCase()),
   ).toEqual([existing]);
 });
+
+it("字体检查只读返回包顺序，修改使用同一确认顺序", async () => {
+  using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-font-pack-order-"));
+  const game = path.join(temp.path, "game"),
+    font_path = path.join(temp.path, "font.ttf");
+  fs.writeFileSync(font_path, font_fixture([{ text: "Font" }]));
+  for (const [name, text] of [
+    ["game.pck", "base"],
+    ["patch.pck", "patch"],
+  ])
+    native.write_file_sync(
+      path.join(game, name!),
+      godot_pack_fixture(new Map([...create_godot_fixture(), ["main.gd", Buffer.from(text!)]])),
+    );
+  const worker = new GamePrepareWorker(null, native),
+    service = new GameFontService(new RuntimeOperationGate(), worker.run, native);
+  const request = { game_path: game, font_path };
+  expect(await service.inspect(request)).toMatchObject({
+    godot_packs: [{ game_root: game, external_pcks: ["game.pck", "patch.pck"] }],
+  });
+  expect(fs.readdirSync(game).sort()).toEqual(["game.pck", "patch.pck"]);
+  await expect(
+    service.apply({
+      ...request,
+      godot_pack_orders: [{ game_root: game, ordered_pcks: ["game.pck"] }],
+    }),
+  ).rejects.toMatchObject({ code: "request.validation_failed" });
+  expect(fs.existsSync(path.join(game, "backup_lg"))).toBe(false);
+  await service.apply({
+    ...request,
+    godot_pack_orders: [{ game_root: game, ordered_pcks: ["patch.pck", "game.pck"] }],
+  });
+  expect(fs.readFileSync(path.join(game, "main.gd"), "utf8")).toBe("base");
+  await worker.dispose();
+});

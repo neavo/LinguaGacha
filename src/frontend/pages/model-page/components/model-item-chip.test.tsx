@@ -3,6 +3,8 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { create_model_snapshot } from "@frontend/pages/model-page/model-test-fixture";
+import { LocaleProvider } from "@frontend/app/locale/locale-provider";
+import { TooltipProvider } from "@frontend/shadcn/tooltip";
 import { ModelItemChip } from "./model-item-chip";
 
 const { use_sortable_mock } = vi.hoisted(() => ({
@@ -53,18 +55,22 @@ describe("ModelItemChip", () => {
 
     await act(async () => {
       root?.render(
-        <ModelItemChip
-          index={0}
-          model={create_model_snapshot({ name: "翻译模型" })}
-          drag_disabled={true}
-          drag_aria_label="拖拽翻译模型"
-          menu={<button type="button">配置动作</button>}
-        />,
+        <LocaleProvider locale="zh-CN">
+          <TooltipProvider>
+            <ModelItemChip
+              index={0}
+              model={create_model_snapshot({ name: "翻译模型" })}
+              drag_disabled={true}
+              menu={<button type="button">配置动作</button>}
+            />
+          </TooltipProvider>
+        </LocaleProvider>,
       );
     });
 
+    const drag_label = "禁止拖拽";
     const drag_button = container.querySelector<HTMLButtonElement>(
-      'button[aria-label="拖拽翻译模型"]',
+      `button[aria-label="${drag_label}"]`,
     );
     const model_button = [...container.querySelectorAll("button")].find(
       (button) => button.textContent?.trim() === "翻译模型",

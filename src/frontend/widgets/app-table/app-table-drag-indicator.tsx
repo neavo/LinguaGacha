@@ -1,7 +1,7 @@
 import { GripVertical } from "lucide-react";
 
 import { useI18n } from "@frontend/app/locale/locale-context";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@frontend/shadcn/tooltip";
+import { Tooltip, TooltipContent, TooltipTrigger, TooltipTarget } from "@frontend/shadcn/tooltip";
 import type { JSX, Ref } from "react";
 
 type AppTableDragIndicatorProps = {
@@ -16,7 +16,7 @@ type AppTableDragIndicatorProps = {
 export function AppTableDragIndicator(props: AppTableDragIndicatorProps): JSX.Element {
   const { t } = useI18n();
   const drag_state = props.dragging ? "dragging" : props.disabled ? "disabled" : "enabled";
-  const tooltip_label = drag_state === "disabled" ? t("app.drag.disabled") : t("app.drag.enabled");
+  const tooltip_label = t(props.disabled ? "app.drag.disabled" : "app.drag.enabled");
   const indicator = (
     <button
       type="button"
@@ -40,8 +40,18 @@ export function AppTableDragIndicator(props: AppTableDragIndicatorProps): JSX.El
   }
 
   return (
-    <Tooltip>
-      <TooltipTrigger render={indicator} />
+    <Tooltip disabled={props.dragging}>
+      <TooltipTrigger
+        render={
+          <TooltipTarget
+            className="app-table__drag-target"
+            data-app-table-ignore-box-select="true"
+            data-app-table-ignore-row-click="true"
+          >
+            {indicator}
+          </TooltipTarget>
+        }
+      />
       <TooltipContent>
         <p>{tooltip_label}</p>
       </TooltipContent>

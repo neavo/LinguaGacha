@@ -185,6 +185,8 @@ export class BackendServices {
       options.workerExecution.kind === "in_process"
         ? null
         : options.workerExecution.gamePrepareWorkerEntryUrl,
+      undefined,
+      this.logManager,
     );
     this.compute_worker_client = new ComputeWorkerClient({
       execution: options.workerExecution,

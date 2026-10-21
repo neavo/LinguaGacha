@@ -1,3 +1,5 @@
+import type { GodotPackOrder } from "../../shared/godot";
+import { godot_pack_preview, read_godot_pack_orders } from "../file/godot/source";
 import { build_source_file_parse_failure } from "../file/source-file-parse-failure-reporter";
 import type { GamePrepareExecution } from "../file/shared/game/prepare-worker";
 import { assert_source_file_paths } from "../file/source-file-paths";
@@ -146,8 +148,14 @@ export class ProjectContentService {
         ? [build_source_file_parse_failure({ ...entry, error: entry.source.error })]
         : [],
     );
+    const godot_packs = entries.flatMap((entry) =>
+      entry.source.kind === "game" && entry.source.file_type === "GODOT"
+        ? [godot_pack_preview(entry.source.game)]
+        : [],
+    );
     return {
       files_revision: snapshot.files_revision,
+      ...(godot_packs.length ? { godot_packs } : {}),
       ...(failed_files.length ? { failed_files } : {}),
       files: entries.map((entry) => {
         const target = normalize_project_asset_path(entry.rel_path);
@@ -200,6 +208,7 @@ export class ProjectContentService {
           });
         incoming_paths.add(key);
       }
+      const godot_orders = read_godot_pack_orders(request["godot_pack_orders"]);
       const parse_result = await this.parse_import_file_commands(
         project_path,
         snapshot.asset_records,
@@ -211,6 +220,7 @@ export class ProjectContentService {
             ),
         ),
         signal,
+        godot_orders,
       );
       signal.throwIfAborted();
       this.assert_project_import_has_parseable_files(parse_result);
@@ -637,6 +647,7 @@ export class ProjectContentService {
     assets: readonly ProjectAssetRecord[],
     files: readonly ImportProjectFileCommand[],
     signal: AbortSignal,
+    orders?: readonly GodotPackOrder[],
   ): Promise<SourceFileParseResult> {
     const format_service = await this.create_format_service(project_path);
     const by_path = new Map(
@@ -652,6 +663,7 @@ export class ProjectContentService {
         };
       }),
       signal,
+      orders,
     );
     const final_files = new Map<string, { path: string; file_type: string }>(by_path);
     for (const command of commands)

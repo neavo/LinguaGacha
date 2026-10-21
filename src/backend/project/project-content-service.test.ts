@@ -1,3 +1,4 @@
+import { create_godot_fixture, godot_pack_fixture } from "../../test/godot-fixture";
 import { wolf_files } from "../../test/wolf-fixture";
 import { wolf_archive_fixture } from "../../test/wolf-archive-fixture";
 import { evb_fixture } from "../../test/evb-fixture";
@@ -182,6 +183,47 @@ afterEach(() => {
 });
 
 describe("ProjectContentService", () => {
+  it("追加导入的只读包预览和正式请求共用覆盖顺序", async () => {
+    const { database, service } = await create_service();
+    const game = project_path("ordered-game");
+    fs.mkdirSync(game);
+    for (const [name, text] of [
+      ["game.pck", "base"],
+      ["patch.pck", "patch"],
+    ])
+      fs.writeFileSync(
+        path.join(game, name!),
+        godot_pack_fixture(new Map([...create_godot_fixture(), ["main.gd", Buffer.from(text!)]])),
+      );
+    try {
+      const preview = await service.preview_import_files({ source_paths: [game] });
+      expect(preview.godot_packs?.[0]?.external_pcks).toEqual(["game.pck", "patch.pck"]);
+      expect(fs.readdirSync(game).sort()).toEqual(["game.pck", "patch.pck"]);
+      const body = {
+        files: preview.files.map(({ source_path, target_rel_path }) => ({
+          source_path,
+          target_rel_path,
+        })),
+        expected_section_revisions: { files: preview.files_revision, items: 0 },
+        conflict_action: "replace",
+      };
+      await expect(
+        service.import_files({
+          ...body,
+          godot_pack_orders: [{ game_root: game, ordered_pcks: ["patch.pck"] }],
+        }),
+      ).rejects.toMatchObject({ code: "request.validation_failed" });
+      expect(fs.existsSync(path.join(game, "backup_lg"))).toBe(false);
+      await service.import_files({
+        ...body,
+        godot_pack_orders: [{ game_root: game, ordered_pcks: ["patch.pck", "game.pck"] }],
+      });
+      expect(fs.readFileSync(path.join(game, "main.gd"), "utf8")).toBe("base");
+    } finally {
+      await database.close();
+    }
+  });
+
   it("预览使用资产快照修订和准确拼写，同批同名来源分配独立名称", async () => {
     const { database, service, lg_path } = await create_service();
     const sources = ["left/ A.json", "right/A.json", "other/A.json"].map(project_path);

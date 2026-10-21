@@ -41,6 +41,41 @@ vi.mock("@frontend/app/desktop/desktop-api", async (importOriginal) => {
 });
 
 describe("useWorkbenchImportFilesFlow", () => {
+  it.each([false, true])("Godot 排序取消=%s，确认后才进入导入并提交最终顺序", async (cancel) => {
+    const game_root = "C:/games/demo",
+      orders = [{ game_root, ordered_pcks: ["patch.pck", "base.pck"] }];
+    api_fetch_mock
+      .mockResolvedValueOnce({
+        files_revision: 1,
+        files: [{ source_path: game_root, target_rel_path: "demo.godot", conflict: false }],
+        godot_packs: [{ game_root, game_name: "demo", external_pcks: ["base.pck", "patch.pck"] }],
+      })
+      .mockResolvedValueOnce({ accepted: true, changes: [] });
+    const snapshots = await mount_hook();
+    let pending!: Promise<void>;
+    await act(async () => {
+      pending = latest_snapshot(snapshots).flow.request_add_files_from_paths([game_root]);
+    });
+    expect(latest_snapshot(snapshots).flow.godot_pack_order.dialog_props.games).toHaveLength(1);
+    expect(api_fetch_mock).toHaveBeenCalledTimes(1);
+    await act(async () => {
+      latest_snapshot(snapshots).flow.godot_pack_order.finish(cancel ? null : orders);
+      await pending;
+    });
+    if (cancel) {
+      expect(latest_snapshot(snapshots).dialog_state.kind).toBeNull();
+      expect(api_fetch_mock).toHaveBeenCalledTimes(1);
+    } else {
+      await act(async () => {
+        await latest_snapshot(snapshots).flow.confirm_dialog();
+      });
+      expect(api_fetch_mock).toHaveBeenLastCalledWith(
+        "/api/workbench/files/import",
+        expect.objectContaining({ godot_pack_orders: orders }),
+      );
+    }
+  });
+
   it.each(["empty", "invalid", "error"])(
     "重新准备失败退出旧确认，恢复后只提交新请求：%s",
     async (failure) => {

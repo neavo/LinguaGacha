@@ -231,9 +231,9 @@ export const GAME_ENGINES: Record<GameFileType, GameEngine> = {
   GODOT: register("GODOT", {
     discover: discover_godot_source,
     is_root: is_godot_root,
-    source_path: (game) => game.root,
-    identity: (game) => (game.carrier?.kind === "pck" ? game.carrier.file : game.executable),
-    needs_stage: (game) => game.carrier !== null,
+    source_path: (game, input) => (path.resolve(input) === game.root ? game.root : game.executable),
+    identity: (game) => game.executable,
+    needs_stage: (game) => game.embedded !== null || game.external.length > 0,
     stage: stage_godot_source,
     collect: collect_godot_files,
     create_adapter: create_godot_adapter,

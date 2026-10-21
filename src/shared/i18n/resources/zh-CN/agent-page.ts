@@ -125,7 +125,6 @@ export const zh_cn_agent_page = {
   queue: {
     no_message_text: "无消息正文",
     attachments: "{count} 个附件",
-    reorder: "拖动排序",
     send_now: "立即发送",
     sending: "正在发送",
     delete: "删除消息",

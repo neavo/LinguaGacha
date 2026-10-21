@@ -75,10 +75,44 @@ describe("useGameFontPageState", () => {
     await act(async () => state.drop_path("game_path", GAME_PATH));
   }
 
+  it.each([false, true])("字体排序取消=%s，确认顺序传入修改请求", async (cancel) => {
+    const game_root = "E:/game",
+      orders = [{ game_root, ordered_pcks: ["patch.pck", "base.pck"] }];
+    vi.mocked(api_fetch).mockResolvedValueOnce({
+      godot_packs: [{ game_root, game_name: "game", external_pcks: ["base.pck", "patch.pck"] }],
+    });
+    await select_both();
+    await act(async () => {
+      void state.request_apply();
+    });
+    expect(state.godot_pack_order.dialog_props.games).toHaveLength(1);
+    expect(state.confirm_open).toBe(false);
+    await act(async () => state.godot_pack_order.finish(cancel ? null : orders));
+    if (cancel) {
+      expect(state.can_apply).toBe(true);
+      expect(api_fetch).toHaveBeenCalledTimes(1);
+    } else {
+      expect(state.confirm_open).toBe(true);
+      await act(async () => state.confirm_apply());
+      expect(api_fetch).toHaveBeenLastCalledWith(
+        "/api/toolbox/game-font/apply",
+        expect.objectContaining({ godot_pack_orders: orders }),
+      );
+      await act(async () => state.request_apply());
+      expect(state.godot_pack_order.dialog_props.games).toHaveLength(0);
+      expect(state.confirm_open).toBe(true);
+      await act(async () => state.confirm_apply());
+      expect(api_fetch).toHaveBeenLastCalledWith(
+        "/api/toolbox/game-font/apply",
+        expect.objectContaining({ godot_pack_orders: [{ game_root, ordered_pcks: [] }] }),
+      );
+    }
+  });
+
   it("确认期间锁定输入，取消确认后保留执行资格", async () => {
     await select_both();
     const paths = { font_path: FONT_PATH, game_path: GAME_PATH };
-    act(() => state.request_apply());
+    await act(async () => state.request_apply());
     expect(state.confirm_open).toBe(true);
     expect(state.input_locked).toBe(true);
     await act(async () => state.drop_path("game_path", "E:/ignored"));
@@ -111,7 +145,7 @@ describe("useGameFontPageState", () => {
     await act(async () => state.clear_path("font_path"));
     expect(state.paths.font_path).toBeNull();
     expect(state.can_apply).toBe(false);
-    act(() => state.request_apply());
+    await act(async () => state.request_apply());
     expect(state.confirm_open).toBe(false);
   });
 
@@ -141,7 +175,7 @@ describe("useGameFontPageState", () => {
 
     await act(async () => state.drop_path("game_path", GAME_PATH));
     vi.mocked(api_fetch).mockRejectedValueOnce(new Error("Write failed"));
-    act(() => state.request_apply());
+    await act(async () => state.request_apply());
     await act(async () => state.confirm_apply());
     expect(toast.push_error_toast).toHaveBeenLastCalledWith(
       "game_font_page.feedback.apply_failed",

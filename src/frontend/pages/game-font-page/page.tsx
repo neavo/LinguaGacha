@@ -1,3 +1,4 @@
+import { GodotPackOrderDialog } from "@frontend/features/godot-pack-order/godot-pack-order-dialog";
 import type { JSX } from "react";
 import { FileType, FolderOpen, Gamepad2, Play, SquareTerminal } from "lucide-react";
 
@@ -122,6 +123,7 @@ export function GameFontPage(_props: ScreenComponentProps): JSX.Element {
         }
       />
 
+      <GodotPackOrderDialog {...state.godot_pack_order.dialog_props} />
       <AppActionDialog
         open={state.confirm_open}
         description={t("game_font_page.confirm.description")}

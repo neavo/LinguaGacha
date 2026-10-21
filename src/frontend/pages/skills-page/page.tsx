@@ -19,7 +19,7 @@ import {
 import { useSortable } from "@dnd-kit/react/sortable";
 import { BadgeHelp, GripVertical } from "lucide-react";
 import { Card } from "@frontend/shadcn/card";
-import { Tooltip, TooltipTrigger, TooltipContent } from "@frontend/shadcn/tooltip";
+import { Tooltip, TooltipTrigger, TooltipContent, TooltipTarget } from "@frontend/shadcn/tooltip";
 import { useAppNavigation } from "@frontend/app/navigation/navigation-context";
 import { AppActionDialog } from "@frontend/widgets/app-alert-dialog";
 import { AppButton } from "@frontend/widgets/app-button";
@@ -88,7 +88,7 @@ function SkillsList({
             disabled={pending || state.status !== "ready"}
             onClick={on_personality}
           />
-          <SkillHandle disabled />
+          <SkillHandle disabled dragging={false} />
           <h3 className="skills-page__heading">
             <span>personality</span>
           </h3>
@@ -194,7 +194,11 @@ function SkillCard(props: SkillCardProps): JSX.Element {
         disabled={props.pending || props.dragging}
         onClick={() => props.on_open({ source: skill.source, name: skill.name })}
       />
-      <SkillHandle disabled={drag_disabled} handle_ref={props.handle_ref} />
+      <SkillHandle
+        disabled={drag_disabled}
+        dragging={props.dragging ?? false}
+        handle_ref={props.handle_ref}
+      />
       <h3 className="skills-page__heading">
         <span>{skill.name}</span>
         {skill.source === "builtin" && <Badge tone="neutral">{t("skills_page.readonly")}</Badge>}
@@ -217,16 +221,18 @@ function SkillCard(props: SkillCardProps): JSX.Element {
 /** 内置与用户技能共用把手外观，只有用户条目绑定排序。 */
 function SkillHandle({
   disabled,
+  dragging,
   handle_ref,
 }: {
   disabled: boolean;
+  dragging: boolean;
   handle_ref?: Ref<HTMLButtonElement> | undefined;
 }): JSX.Element {
   const { t } = useI18n();
   const drag_label = t(disabled ? "app.drag.disabled" : "app.drag.enabled");
   return (
-    <Tooltip>
-      <TooltipTrigger render={<span className="skills-page__handle-slot" />}>
+    <Tooltip disabled={dragging}>
+      <TooltipTrigger render={<TooltipTarget className="skills-page__handle-slot" />}>
         <AppButton
           ref={handle_ref}
           variant="ghost"

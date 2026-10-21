@@ -126,7 +126,6 @@ export function ModelPage(_props: ModelPageProps): JSX.Element {
                 model={model}
                 index={index}
                 drag_disabled={drag_disabled}
-                drag_aria_label={t("app.drag.handle")}
                 menu={
                   <ModelItemMenu
                     model={model}

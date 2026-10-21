@@ -40,6 +40,54 @@ type TestProjectDatabase = ProjectDatabase & {
 describe("ProjectLifecycleService", () => {
   const cleanup_paths: string[] = []; // 生命周期测试会创建真实临时文件，统一登记清理避免污染用户工作区
 
+  it("新建来源摘要只读，确认顺序传到准备，错误顺序不创建工程", async () => {
+    const root = create_temp_dir(),
+      game = path.join(root, "ordered"),
+      project = path.join(root, "ordered.lg");
+    fs.mkdirSync(game);
+    for (const [name, text] of [
+      ["game.pck", "base"],
+      ["patch2.pck", "two"],
+      ["patch10.pck", "ten"],
+    ])
+      fs.writeFileSync(
+        path.join(game, name!),
+        godot_pack_fixture(new Map([...create_godot_fixture(), ["main.gd", Buffer.from(text!)]])),
+      );
+    const database = new ProjectDatabase(),
+      service = create_service({ database });
+    try {
+      expect((await service.summarize_source_files({ source_paths: [game] })).godot_packs).toEqual([
+        {
+          game_root: game,
+          game_name: "ordered",
+          external_pcks: ["game.pck", "patch2.pck", "patch10.pck"],
+        },
+      ]);
+      expect(fs.readdirSync(game).sort()).toEqual(["game.pck", "patch10.pck", "patch2.pck"]);
+      await expect(
+        service.create_project_commit({
+          path: project,
+          source_paths: [game],
+          godot_pack_orders: [{ game_root: game, ordered_pcks: ["game.pck"] }],
+        }),
+      ).rejects.toMatchObject({ code: "request.validation_failed" });
+      expect(fs.existsSync(project)).toBe(false);
+      expect(fs.existsSync(path.join(game, "backup_lg"))).toBe(false);
+      await service.create_project_commit({
+        path: project,
+        source_paths: [game],
+        godot_pack_orders: [
+          { game_root: game, ordered_pcks: ["game.pck", "patch10.pck", "patch2.pck"] },
+        ],
+      });
+      expect(fs.readFileSync(path.join(game, "main.gd"), "utf8")).toBe("two");
+      expect(await database.get_all_asset_records(project)).toHaveLength(1);
+    } finally {
+      await database.close();
+    }
+  });
+
   it("新建时忽略直接包文件，游戏原件保持完整", async () => {
     const root = create_temp_dir();
     const game = path.join(root, "game");

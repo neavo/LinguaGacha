@@ -1,3 +1,6 @@
+import { GODOT_PACK_ORDER_REFRESH_ACTION } from "@shared/godot";
+import type { GodotPackOrder } from "@shared/godot";
+import { useGodotPackOrder } from "@frontend/features/godot-pack-order/use-godot-pack-order";
 import { push_error_toast } from "@frontend/app/feedback/desktop-toast";
 import { useCallback, useEffect, useState, type Dispatch, type SetStateAction } from "react";
 
@@ -20,6 +23,7 @@ import {
 import type { WorkbenchDialogState } from "@frontend/pages/workbench-page/types";
 
 type PendingImportFilesRequest = {
+  godot_pack_orders: readonly GodotPackOrder[];
   preview: WorkbenchImportFilesPreview; // 后端拥有目标名称、冲突分类和修订。
   conflict_action: WorkbenchFileConflictAction;
   source_paths: string[];
@@ -48,6 +52,7 @@ type WorkbenchImportFilesFlowOptions = {
 };
 
 export type WorkbenchImportFilesFlow = {
+  godot_pack_order: ReturnType<typeof useGodotPackOrder>;
   request_add_files_from_paths: (source_paths: string[]) => Promise<void>;
   confirm_dialog: () => Promise<boolean>;
   secondary_dialog: () => Promise<boolean>;
@@ -98,12 +103,14 @@ function normalize_workbench_import_candidate(
 export function useWorkbenchImportFilesFlow(
   options: WorkbenchImportFilesFlowOptions,
 ): WorkbenchImportFilesFlow {
+  const godot_pack_order = useGodotPackOrder();
   const [pending_import_files_request, set_pending_import_files_request] =
     useState<PendingImportFilesRequest | null>(null);
 
   useEffect(() => {
     set_pending_import_files_request(null);
-  }, [options.project_identity]);
+    godot_pack_order.finish(null);
+  }, [options.project_identity, godot_pack_order.finish]);
 
   /**
    * 打开译文继承确认对话框，按冲突策略筛出本次真正会导入的文件。
@@ -190,7 +197,10 @@ export function useWorkbenchImportFilesFlow(
         return;
       }
 
+      const godot_pack_orders = await godot_pack_order.request_order(import_preview.godot_packs);
+      if (godot_pack_orders === null) return;
       const pending_request: PendingImportFilesRequest = {
+        godot_pack_orders,
         preview: import_preview,
         conflict_action: "skip",
         source_paths: normalized_source_paths,
@@ -209,7 +219,7 @@ export function useWorkbenchImportFilesFlow(
 
       open_import_inheritance_dialog(pending_request, "skip");
     },
-    [open_import_inheritance_dialog, options],
+    [open_import_inheritance_dialog, options, godot_pack_order.request_order],
   );
 
   /**
@@ -229,17 +239,35 @@ export function useWorkbenchImportFilesFlow(
         conflict_action,
         inheritance_mode,
       });
+      const selected_paths = new Set(
+        pending_request.preview.files
+          .filter((file) => conflict_action === "replace" || !file.conflict)
+          .flatMap((file) => {
+            const value = file.source_path.replaceAll("\\", "/").toLowerCase();
+            return [value, value.replace(/\/[^/]+\.exe$/iu, "")];
+          }),
+      );
+      const godot_pack_orders = pending_request.godot_pack_orders.filter((game) =>
+        selected_paths.has(game.game_root.replaceAll("\\", "/").toLowerCase()),
+      );
       let import_payload: ProjectWriteResultPayload;
       try {
         import_payload = await options.run_modal_progress_toast({
           message: options.t("workbench_page.feedback.add_file_loading_toast"),
           task: () =>
             options.run_project_file_write(import_plan, (body) =>
-              api_fetch<ProjectWriteResultPayload>("/api/workbench/files/import", body),
+              api_fetch<ProjectWriteResultPayload>("/api/workbench/files/import", {
+                ...body,
+                ...(godot_pack_orders.length ? { godot_pack_orders } : {}),
+              }),
             ),
         });
       } catch (error) {
-        if (!(error instanceof DesktopApiError) || error.code !== "data.revision_conflict")
+        if (
+          !(error instanceof DesktopApiError) ||
+          (error.code !== "data.revision_conflict" &&
+            error.details.action !== GODOT_PACK_ORDER_REFRESH_ACTION)
+        )
           throw error;
         await request_add_files_from_paths(pending_request.source_paths);
         return;
@@ -317,6 +345,7 @@ export function useWorkbenchImportFilesFlow(
   }, [options]);
 
   return {
+    godot_pack_order,
     request_add_files_from_paths,
     confirm_dialog,
     secondary_dialog,

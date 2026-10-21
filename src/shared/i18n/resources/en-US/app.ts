@@ -2,6 +2,10 @@ import { zh_cn_app } from "../zh-CN/app";
 import type { LocaleMessageSchema } from "../../types";
 
 export const en_us_app = {
+  godot_pack_order: {
+    title: "Resource pack priority",
+    description: "Later resource packs override resources with the same name in earlier packs",
+  },
   media: {
     zoom_out: "Zoom out",
     zoom_in: "Zoom in",

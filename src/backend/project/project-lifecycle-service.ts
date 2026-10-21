@@ -1,3 +1,4 @@
+import { read_godot_pack_orders } from "../file/godot/source";
 import type { GamePrepareExecution } from "../file/shared/game/prepare-worker";
 import type { SourceFileParseWarning } from "../file/file-format-types";
 import { normalize_batch_translation_progress } from "../../domain/batch-translation";
@@ -327,7 +328,7 @@ export class ProjectLifecycleService {
     // 后端重新解析源文件得到的唯一可信新建草稿。
     const parsed_draft = await new SourceFileParsePipeline(
       this.create_format_service(project_settings),
-    ).build_project_draft(source_paths, signal);
+    ).build_project_draft(source_paths, signal, read_godot_pack_orders(body["godot_pack_orders"]));
     signal.throwIfAborted();
     this.assert_create_commit_has_importable_files(parsed_draft);
     // 将可信草稿转成持久项目事实的唯一计算结果。

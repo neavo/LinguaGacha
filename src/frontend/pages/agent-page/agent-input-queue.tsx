@@ -83,6 +83,7 @@ function AgentInputQueueItem(props: {
   // 编辑目标原位替换整行，避免第二个 Composer 继续占用队列操作位。
   const editor = props.editing ? (props.render_editor?.(props.item) ?? null) : null;
   const item_actions_disabled = props.disabled || sending || editor !== null;
+  const drag_label = t(item_actions_disabled ? "app.drag.disabled" : "app.drag.enabled");
   const sortable = useSortable({
     ...SORTABLE_OPTIONS,
     index: props.index,
@@ -100,7 +101,7 @@ function AgentInputQueueItem(props: {
   const preview = props.item.text || t("agent_page.queue.no_message_text");
   return (
     <li ref={sortable.ref} className="agent-input-queue__item">
-      <Tooltip>
+      <Tooltip disabled={sortable.isDragSource}>
         <TooltipTrigger
           render={
             <TooltipTarget>
@@ -110,7 +111,7 @@ function AgentInputQueueItem(props: {
                 variant="ghost"
                 className="agent-input-queue__drag"
                 disabled={item_actions_disabled}
-                aria-label={t("agent_page.queue.reorder")}
+                aria-label={drag_label}
                 ref={sortable.handleRef}
               >
                 <GripVertical aria-hidden="true" />
@@ -119,7 +120,7 @@ function AgentInputQueueItem(props: {
           }
         />
         <TooltipContent side="top">
-          <p>{t("agent_page.queue.reorder")}</p>
+          <p>{drag_label}</p>
         </TooltipContent>
       </Tooltip>
       <span className="agent-input-queue__preview">{preview}</span>

@@ -1,3 +1,4 @@
+import { GODOT_PACK_ORDER_REFRESH_ACTION } from "../../../shared/godot";
 import { godot_member_kind, is_translation_type } from "./member";
 import assert from "node:assert/strict";
 import path from "node:path";
@@ -7,7 +8,10 @@ import {
   assert_regular_path,
   is_preparation_path,
 } from "../source-file-paths";
-import { read_pack } from "./pack";
+import { read_pack_header, type GodotPackHeader } from "./pack";
+import { read_executable } from "./executable";
+import type { GodotPackOrder, GodotPackPreview } from "../../../shared/godot";
+import { AppError } from "../../../shared/error";
 import { read_resource_type } from "./resource";
 import { GODOT_RESOURCE_MAX_BYTES } from "./binary";
 import {
@@ -18,18 +22,44 @@ import {
 import { is_godot_font_file } from "./font";
 import { resolve_game_source_input } from "../shared/game/source-input";
 
-export type GodotCarrier =
-  | { kind: "pck"; file: string }
-  | { kind: "embedded"; start: number }
-  | null;
+export type GodotCarrier = Readonly<{ file: string; header: GodotPackHeader }>;
 export type GodotSource = Readonly<{
   root: string;
   executable: string;
-  carrier: GodotCarrier;
-  engine: string;
+  embedded: GodotCarrier | null;
+  external: readonly GodotCarrier[];
+  settings_file: string | null; // 启动配置的归属先于资源排序确定。
 }>;
 
-/** 布局标志保留坏目录的游戏身份，使失败不会降级为普通文件递归。 */
+const EMPTY_PACK_MARKER = Buffer.from("LinguaGacha empty PCK v1");
+const EMPTY_PACK_BYTES = 116;
+
+const PACK_NAMES = new Intl.Collator("en", { numeric: true, sensitivity: "base" }); // 默认顺序独立于界面语言。
+/** 数字相等时使用字面排序，消除大小写和前导零造成的枚举顺序差异。 */
+function compare_pack_names(left: string, right: string): number {
+  return PACK_NAMES.compare(left, right) || (left < right ? -1 : left > right ? 1 : 0);
+}
+
+/** v2 空包供各 Godot 4 模板识别，保留标记支持重复发现。 */
+export function create_empty_pack(): Buffer {
+  const bytes = Buffer.alloc(EMPTY_PACK_BYTES);
+  bytes.write("GDPC");
+  bytes.writeUInt32LE(2, 4);
+  bytes.writeUInt32LE(4, 8);
+  bytes.writeBigUInt64LE(BigInt(EMPTY_PACK_BYTES), 24);
+  EMPTY_PACK_MARKER.copy(bytes, 32);
+  return bytes;
+}
+
+/** 只识别本程序生成的完整零成员结构，普通空包仍按来源处理。 */
+function is_empty_pack(file: string, fs: NativeFs): boolean {
+  return (
+    fs.stat(file).size === EMPTY_PACK_BYTES &&
+    fs.read_prefix(file, EMPTY_PACK_BYTES).equals(create_empty_pack())
+  );
+}
+
+/** 坏包也保留游戏目录身份，防止递归导入其中的普通文件。 */
 export function is_godot_root(root: string, fs: NativeFs): boolean {
   return (
     fs.exists(path.join(root, "project.binary")) ||
@@ -39,7 +69,7 @@ export function is_godot_root(root: string, fs: NativeFs): boolean {
   );
 }
 
-/** 发现只读目录、包头和内嵌尾部，载体内容校验由准备线程执行。 */
+/** 发现只读包头，不解密目录，避免预览占用准备线程或改写来源。 */
 export async function discover_godot_source(
   input: string,
   fs: NativeFs,
@@ -51,96 +81,142 @@ export async function discover_godot_source(
   const { root } = source;
   assert_regular_path(root, fs);
   const entries = fs.read_dirents(root).filter((entry) => entry.isFile());
-  const carriers: { file: string; kind: "pck" | "embedded" }[] = entries
-    .filter((entry) => path.extname(entry.name).toLowerCase() === ".pck")
-    .map((entry) => ({ file: path.join(root, entry.name), kind: "pck" }));
-  for (const entry of entries.filter(
-    (entry) => path.extname(entry.name).toLowerCase() === ".exe",
-  )) {
+  const external: GodotCarrier[] = [];
+  const embedded: GodotCarrier[] = [];
+  for (const entry of entries) {
     signal?.throwIfAborted();
+    const extension = path.extname(entry.name).toLowerCase();
+    if (extension !== ".pck" && extension !== ".exe") continue;
     const file = path.join(root, entry.name);
     assert_regular_path(file, fs);
-    const size = fs.stat(file).size;
-    if (size < 12) continue;
-    const footer = await fs.read_range(file, size - 12, 12);
-    if (footer.subarray(8).toString() === "GDPC") carriers.push({ file, kind: "embedded" });
-    else {
-      // 只有 PE section 的内嵌布局也须报告，不允许把它误当成已展开游戏。
-      const dos = fs.read_prefix(file, 64);
-      if (dos.toString("ascii", 0, 2) !== "MZ" || dos.length < 64) continue;
-      const pe = await fs.read_range(file, dos.readUInt32LE(60), 24);
-      if (pe.length < 24 || pe.toString("ascii", 0, 4) !== "PE\0\0") continue;
-      const count = pe.readUInt16LE(6),
-        optional = pe.readUInt16LE(20);
-      assert(count <= 96, "Invalid PE section count");
-      const sections = await fs.read_range(file, dos.readUInt32LE(60) + 24 + optional, count * 40);
-      for (let at = 0; at + 40 <= sections.length; at += 40) {
-        if (
-          sections
-            .toString("ascii", at, at + 8)
-            .replace(/\0.*$/u, "")
-            .toLowerCase() !== "pck"
-        )
-          continue;
-        const offset = sections.readUInt32LE(at + 20);
-        // 导出模板的 pck 节可只有零占位，展开后的引擎前缀也保留旧节表，只有实际包头才说明未知内嵌布局。
-        if (
-          sections.readUInt32LE(at + 16) >= 4 &&
-          offset + 4 <= size &&
-          (await fs.read_range(file, offset, 4)).toString() === "GDPC"
-        )
-          throw new Error("Unsupported embedded PCK layout: " + file);
-      }
-    }
-  }
-  if (carriers.length > 1) throw new GameSourceConflictError("Conflicting Godot carriers: " + root);
-  const carrier = carriers[0];
-  if (carrier) {
-    assert_regular_path(carrier.file, fs);
-    const handle = await fs.open_file(carrier.file, "r");
+    if (extension === ".pck" && is_empty_pack(file, fs)) continue;
+    const handle = await fs.open_file(file, "r");
     try {
-      const pack = await read_pack(handle, signal);
-      if (carrier.kind === "pck")
-        assert.equal(pack.start, 0, "External PCK contains an executable prefix");
-      const name = path.basename(carrier.file, path.extname(carrier.file));
-      const executable =
-        carrier.kind === "embedded"
-          ? carrier.file
-          : path.join(
-              root,
-              entries.find(
-                (entry) =>
-                  path.extname(entry.name).toLowerCase() === ".exe" &&
-                  [
-                    path.basename(entry.name, path.extname(entry.name)).toLowerCase(),
-                    entry.name.toLowerCase(),
-                  ].includes(name.toLowerCase()),
-              )?.name ?? name + ".exe",
-            );
-      return {
-        root,
-        executable,
-        engine: pack.engine.join("."),
-        carrier:
-          carrier.kind === "pck"
-            ? { kind: "pck", file: carrier.file }
-            : { kind: "embedded", start: pack.start },
-      };
+      if (extension === ".exe") {
+        const size = (await handle.stat()).size;
+        if (size < 12) continue;
+        const footer = await fs.read_range(file, size - 12, 12);
+        if (footer.subarray(8).toString() !== "GDPC") {
+          const pe = await read_executable(handle);
+          for (const section of pe?.sections ?? [])
+            if (
+              section.name.toLowerCase() === "pck" &&
+              section.size >= 4 &&
+              (await fs.read_range(file, section.raw, 4)).toString() === "GDPC"
+            )
+              throw new Error("Unsupported embedded PCK layout: " + file);
+          continue;
+        }
+      }
+      const header = await read_pack_header(handle, signal);
+      if (extension === ".pck")
+        assert.equal(header.start, 0, "External PCK contains an executable prefix");
+      (extension === ".pck" ? external : embedded).push({ file, header });
     } finally {
       await handle.close();
     }
   }
-  if (!fs.exists(path.join(root, "project.binary")) || !fs.exists(path.join(root, ".godot")))
-    return null;
-  assert(fs.stat(path.join(root, ".godot")).isDirectory(), "Invalid Godot resource directory");
+  external.sort((a, b) => compare_pack_names(path.basename(a.file), path.basename(b.file)));
+  const selected = source.executable
+    ? embedded.find(
+        (carrier) => fs.to_identity_path(carrier.file) === fs.to_identity_path(source.executable!),
+      )
+    : undefined;
+  if (embedded.length > 1 && !selected)
+    throw new GameSourceConflictError("Multiple Godot executables; select an EXE: " + root);
+  const base = selected ?? embedded[0] ?? null;
+  const loose =
+    fs.exists(path.join(root, "project.binary")) && fs.exists(path.join(root, ".godot"));
+  if (!base && !external.length && !loose) return null;
+  const executables = entries
+    .filter((entry) => path.extname(entry.name).toLowerCase() === ".exe")
+    .sort((a, b) => compare_pack_names(a.name, b.name));
+  const first = external[0];
+  const matched = executables.find((entry) =>
+    external.some((carrier) =>
+      [entry.name + ".pck", path.parse(entry.name).name + ".pck"].some(
+        (name) => path.basename(carrier.file).toLowerCase() === name.toLowerCase(),
+      ),
+    ),
+  );
   const executable =
+    base?.file ??
     source.executable ??
     path.join(
       root,
-      entries.find((entry) => path.extname(entry.name).toLowerCase() === ".exe")?.name ??
-        "Game.exe",
+      matched?.name ??
+        executables[0]?.name ??
+        (first ? path.parse(first.file).name + ".exe" : "Game.exe"),
     );
-  return { root, executable, carrier: null, engine: "4" };
+  const startup =
+    base ?? external.find((carrier) => is_startup_pack(carrier.file, executable)) ?? first;
+  if (loose && !base && !external.length)
+    assert(fs.stat(path.join(root, ".godot")).isDirectory(), "Invalid Godot resource directory");
+  return {
+    root,
+    executable,
+    embedded: base,
+    external,
+    settings_file: startup?.file ?? null,
+  };
+}
+
+/** 剥离后 EXE 自动尝试的两个启动槽位都不能留下空包。 */
+export function is_startup_pack(file: string, executable: string): boolean {
+  return [
+    executable + ".pck",
+    path.join(path.dirname(executable), path.parse(executable).name + ".pck"),
+  ].some((slot) => slot.toLowerCase() === file.toLowerCase());
+}
+
+/** 预览仅暴露目录和包名，载体及密钥留在后端。 */
+export function godot_pack_preview(game: GodotSource) {
+  return {
+    game_root: game.root,
+    game_name: path.basename(game.root),
+    external_pcks: game.external.map((carrier) => path.basename(carrier.file)),
+  } satisfies GodotPackPreview;
+}
+
+/** 请求边界拒绝重复游戏和非字符串列表，集合核对由来源持有者完成。 */
+export function read_godot_pack_orders(value: unknown): readonly GodotPackOrder[] | undefined {
+  if (value === undefined) return undefined;
+  if (!Array.isArray(value)) throw new AppError("request.validation_failed");
+  const roots = new Set<string>();
+  return value.map((entry: unknown) => {
+    if (
+      !entry ||
+      typeof entry !== "object" ||
+      !("game_root" in entry) ||
+      typeof entry.game_root !== "string" ||
+      !entry.game_root ||
+      !("ordered_pcks" in entry) ||
+      !Array.isArray(entry.ordered_pcks) ||
+      !entry.ordered_pcks.every((name: unknown) => typeof name === "string")
+    )
+      throw new AppError("request.validation_failed");
+    const root = path.resolve(entry.game_root).toLowerCase();
+    if (roots.has(root)) throw new AppError("request.validation_failed");
+    roots.add(root);
+    return { game_root: entry.game_root, ordered_pcks: [...entry.ordered_pcks] };
+  });
+}
+
+/** 确认顺序须完整匹配当前集合，来源变化时让界面重新预览。 */
+export function apply_godot_pack_order(game: GodotSource, order: GodotPackOrder): GodotSource {
+  const carriers = new Map(game.external.map((carrier) => [path.basename(carrier.file), carrier]));
+  const names = order.ordered_pcks;
+  if (
+    path.resolve(order.game_root).toLowerCase() !== game.root.toLowerCase() ||
+    names.length !== carriers.size ||
+    new Set(names).size !== names.length ||
+    names.some((name) => !carriers.has(name))
+  )
+    throw new AppError("request.validation_failed", {
+      message: "Godot resource pack list changed; refresh the preview and confirm the order again",
+      public_details: { action: GODOT_PACK_ORDER_REFRESH_ACTION },
+    });
+  return { ...game, external: names.map((name) => carriers.get(name)!) };
 }
 
 /** 资源头只读顶层类型，坏候选仍进入容器，由成员解析边界报告并保留。 */

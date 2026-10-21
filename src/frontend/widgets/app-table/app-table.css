@@ -340,9 +340,14 @@
   min-width: 0;
 }
 
-.app-table__cell-with-drag > .app-table__drag-indicator {
+.app-table__cell-with-drag > .app-table__drag-indicator,
+.app-table__cell-with-drag > .app-table__drag-target {
   flex-shrink: 0;
   margin: 0;
+}
+
+.app-table__drag-target {
+  margin: 0 auto;
 }
 
 .app-table__drag-indicator {

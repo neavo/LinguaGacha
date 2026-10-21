@@ -129,7 +129,6 @@ export const en_us_agent_page = {
   queue: {
     no_message_text: "No message text",
     attachments: "{count} attachments",
-    reorder: "Drag to reorder",
     send_now: "Send now",
     sending: "Sending",
     delete: "Delete message",

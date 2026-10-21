@@ -133,6 +133,7 @@ export type WorkbenchImportFileCandidate = {
 };
 
 export type WorkbenchImportFilesPreview = {
+  godot_packs?: readonly import("../godot").GodotPackPreview[];
   files_revision: number; // 与命名和冲突分类来自同一次数据库读取。
   files: WorkbenchImportFileCandidate[];
   failed_files?: SourceFileParseFailureRecord[];

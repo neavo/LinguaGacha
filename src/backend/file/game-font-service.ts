@@ -1,3 +1,4 @@
+import { apply_godot_pack_order, godot_pack_preview, read_godot_pack_orders } from "./godot/source";
 import path from "node:path";
 import { GAME_FONT_INPUT_EXTENSIONS } from "../../shared/game-font";
 import { default_native_fs, type NativeFs } from "../../native/native-fs";
@@ -25,8 +26,8 @@ export class GameFontService {
   public async inspect(body: JsonRecord): Promise<JsonRecord> {
     const request = read_request(body);
     this.read_font(request.font_path);
-    await this.read_game(request.game_path);
-    return {};
+    const game = await this.read_game(request.game_path);
+    return { godot_packs: game.file_type === "GODOT" ? [godot_pack_preview(game.game)] : [] };
   }
 
   /** 写入占用覆盖重新识别、解包、替换、回滚和清理的全过程。 */
@@ -34,13 +35,14 @@ export class GameFontService {
     const request = read_request(body);
     return this.gate.run_project_write(async (signal) => {
       const font = this.read_font(request.font_path);
-      await replace_game_font(
-        await this.read_game(request.game_path, signal),
-        font,
-        this.fs,
-        this.execute,
-        signal,
-      );
+      let game = await this.read_game(request.game_path, signal);
+      const orders = read_godot_pack_orders(body["godot_pack_orders"]);
+      if (orders?.length) {
+        if (orders.length !== 1 || game.file_type !== "GODOT")
+          throw new AppError("request.validation_failed");
+        game = { ...game, game: apply_godot_pack_order(game.game, orders[0]!) };
+      }
+      await replace_game_font(game, font, this.fs, this.execute, signal);
       return {};
     });
   }

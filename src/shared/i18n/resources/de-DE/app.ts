@@ -2,6 +2,11 @@ import { zh_cn_app } from "../zh-CN/app";
 import type { LocaleMessageSchema } from "../../types";
 
 export const de_de_app = {
+  godot_pack_order: {
+    title: "Priorität der Ressourcenpakete",
+    description:
+      "Spätere Ressourcenpakete überschreiben gleichnamige Ressourcen aus früheren Paketen",
+  },
   media: {
     zoom_out: "Verkleinern",
     zoom_in: "Vergrößern",
