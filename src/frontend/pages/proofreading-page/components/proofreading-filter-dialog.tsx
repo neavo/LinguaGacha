@@ -6,6 +6,7 @@ import { type JSX, useEffect, useMemo, useState } from "react";
 import { Check, LoaderCircle, Minus } from "lucide-react";
 
 import { useI18n } from "@frontend/app/locale/locale-context";
+import { Card } from "@frontend/shadcn/card";
 import {
   PROOFREADING_OUTCOME_GROUP_LABEL_KEY_BY_CODE,
   PROOFREADING_STATUS_LABEL_KEY_BY_CODE,
@@ -240,7 +241,8 @@ export function ProofreadingFilterDialog(props: ProofreadingFilterDialogProps): 
     >
       <div className="proofreading-page__filter-dialog-scroll">
         <div className="proofreading-page__filter-layout">
-          <section
+          <Card
+            variant="group"
             className="proofreading-page__filter-section proofreading-page__filter-section--compact-toggles"
             aria-busy={props.loading}
           >
@@ -295,9 +297,10 @@ export function ProofreadingFilterDialog(props: ProofreadingFilterDialogProps): 
                 </div>
               );
             })}
-          </section>
+          </Card>
 
-          <section
+          <Card
+            variant="group"
             className="proofreading-page__filter-section"
             aria-labelledby="proofreading-filter-group-glossary"
           >
@@ -373,7 +376,7 @@ export function ProofreadingFilterDialog(props: ProofreadingFilterDialogProps): 
                 )}
               </div>
             </div>
-          </section>
+          </Card>
         </div>
       </div>
     </AppPageDialog>

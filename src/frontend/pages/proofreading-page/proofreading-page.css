@@ -163,14 +163,9 @@
 }
 
 .proofreading-page__filter-section {
-  display: flex;
   min-height: 0;
   min-width: 0;
-  flex-direction: column;
   gap: 10px;
-  border: 1px solid var(--border);
-  border-radius: var(--ui-radius-card);
-  background: color-mix(in srgb, var(--muted) 58%, var(--popover));
   padding: 10px;
 }
 
@@ -389,16 +384,9 @@
   gap: 16px;
 }
 
-.proofreading-page__dialog-file-card,
-.proofreading-page__dialog-content-block,
-.proofreading-page__dialog-status-section {
-  border: 1px solid var(--border);
-  border-radius: var(--ui-radius-card);
-  background: color-mix(in srgb, var(--muted) 58%, var(--popover));
-}
-
 .proofreading-page__dialog-file-card {
-  display: flex;
+  flex: 0 0 auto;
+  flex-direction: row;
   align-items: center;
   gap: 0;
   padding: 0;
@@ -619,8 +607,7 @@
 }
 
 .proofreading-page__dialog-status-section {
-  display: flex;
-  flex-direction: column;
+  flex: 0 0 auto;
   gap: 8px;
   padding: 12px 16px;
 }

@@ -6,6 +6,7 @@ import { Card, CardContent } from "@frontend/shadcn/card";
 import "@frontend/widgets/setting-card-row/setting-card-row.css";
 
 type SettingCardRowProps = {
+  variant?: "default" | "group";
   title: string;
   description: ReactNode;
   action: ReactNode;
@@ -20,6 +21,7 @@ const DESCRIPTION_COMPONENT_MAP: RichTextComponentMap = {
   },
 };
 
+/** 组合说明与操作区，表面变体由所在页面或弹窗选择。 */
 export function SettingCardRow(props: SettingCardRowProps): JSX.Element {
   const description_content =
     typeof props.description === "string"
@@ -28,6 +30,7 @@ export function SettingCardRow(props: SettingCardRowProps): JSX.Element {
 
   return (
     <Card
+      variant={props.variant ?? "default"}
       className={cn(
         "setting-card-row",
         props.action_width === "content" && "setting-card-row--content-action",

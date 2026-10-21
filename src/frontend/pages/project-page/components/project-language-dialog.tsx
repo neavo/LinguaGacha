@@ -32,6 +32,7 @@ export function ProjectLanguageDialog(props: ProjectLanguageDialogProps): JSX.El
     >
       <div className="project-home__language-list">
         <SettingCardRow
+          variant="group"
           action_width="content"
           title={t("app.language_role.source")}
           description={t("basic_settings_page.fields.source_language.description")}
@@ -46,6 +47,7 @@ export function ProjectLanguageDialog(props: ProjectLanguageDialogProps): JSX.El
           }
         />
         <SettingCardRow
+          variant="group"
           action_width="content"
           title={t("app.language_role.target")}
           description={t("basic_settings_page.fields.target_language.description")}

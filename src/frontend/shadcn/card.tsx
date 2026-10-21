@@ -4,8 +4,9 @@ import { useRender } from "@base-ui/react/use-render";
 
 import { cn } from "@frontend/shadcn/classnames";
 
-type CardVariant = "default" | "panel" | "table" | "toolbar";
+type CardVariant = "default" | "panel" | "table" | "toolbar" | "group";
 
+/** 统一容器表面，通过 `render` 保留消费方的元素语义。 */
 function Card({
   className,
   variant = "default",
@@ -39,12 +40,14 @@ function Card({
   });
 }
 
+/** 头部与正文共享变体间距，相邻正文省略顶部内边距。 */
 function CardHeader({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div data-slot="card-header" className={cn("flex min-w-0 flex-col", className)} {...props} />
   );
 }
 
+/** 卡片标题沿用工作区标题的字号与字距。 */
 function CardTitle({ className, ...props }: React.ComponentProps<"h3">) {
   return (
     <h3
@@ -58,6 +61,7 @@ function CardTitle({ className, ...props }: React.ComponentProps<"h3">) {
   );
 }
 
+/** 说明文字使用次级层级，并允许在窄容器内收缩。 */
 function CardDescription({ className, ...props }: React.ComponentProps<"p">) {
   return (
     <p
@@ -71,10 +75,12 @@ function CardDescription({ className, ...props }: React.ComponentProps<"p">) {
   );
 }
 
+/** 正文间距由容器变体与相邻头部共同决定。 */
 function CardContent({ className, ...props }: React.ComponentProps<"div">) {
   return <div data-slot="card-content" className={cn("min-w-0", className)} {...props} />;
 }
 
+/** 页脚使用变体间距组织同一容器的操作。 */
 function CardFooter({ className, ...props }: React.ComponentProps<"div">) {
   return <div data-slot="card-footer" className={cn("flex items-center", className)} {...props} />;
 }

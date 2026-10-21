@@ -1,5 +1,6 @@
 import type { JSX, ReactNode } from "react";
 import { useI18n } from "@frontend/app/locale/locale-context";
+import { Card } from "@frontend/shadcn/card";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@frontend/shadcn/tooltip";
 
 /** 校对详情共用文件条和双栏结构，编辑状态、状态区和操作由各自内容拥有者提供。 */
@@ -14,7 +15,7 @@ export function ProofreadingDetailLayout(props: {
   const { t } = useI18n();
   return (
     <div className="proofreading-page__dialog-form" hidden={props.hidden}>
-      <section className="proofreading-page__dialog-file-card">
+      <Card variant="group" className="proofreading-page__dialog-file-card">
         <Tooltip>
           <TooltipTrigger
             render={<span className="proofreading-page__dialog-file-path">{props.file_label}</span>}
@@ -22,8 +23,8 @@ export function ProofreadingDetailLayout(props: {
           <TooltipContent>{props.file_label}</TooltipContent>
         </Tooltip>
         {props.file_actions}
-      </section>
-      <section className="proofreading-page__dialog-content-block">
+      </Card>
+      <Card variant="group" className="proofreading-page__dialog-content-block">
         <section className="proofreading-page__dialog-content-section">
           <span className="proofreading-page__dialog-content-title font-medium">
             {t("proofreading_page.fields.source")}
@@ -36,7 +37,7 @@ export function ProofreadingDetailLayout(props: {
           </span>
           {props.translation}
         </section>
-      </section>
+      </Card>
       {props.children}
     </div>
   );

@@ -80,7 +80,6 @@
 .log-window-page__table-card,
 .log-window-page__detail {
   min-height: 0;
-  border-radius: var(--ui-radius-card);
 }
 
 .log-window-page__table-card-content {
@@ -143,13 +142,7 @@
 }
 
 .log-window-page__detail {
-  display: flex;
   min-width: 0;
-  flex-direction: column;
-  border: 1px solid var(--ui-card-default-border);
-  background: var(--ui-card-default-surface);
-  box-shadow: var(--ui-card-default-shadow);
-  overflow: hidden;
 }
 
 .log-window-page__detail-head {

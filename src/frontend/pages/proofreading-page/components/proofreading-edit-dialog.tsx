@@ -4,6 +4,7 @@ import { BookOpenText, Braces, Eraser, ListChecks, RefreshCcw } from "lucide-rea
 
 import { ITEM_MANUAL_STATUSES, type ItemManualStatus } from "@domain/item";
 import { useI18n } from "@frontend/app/locale/locale-context";
+import { Card } from "@frontend/shadcn/card";
 import {
   PROOFREADING_STATUS_LABEL_KEY_BY_CODE,
   PROOFREADING_WARNING_LABEL_KEY_BY_CODE,
@@ -612,7 +613,7 @@ export function ProofreadingEditDialog(props: ProofreadingEditDialogProps): JSX.
             </>
           }
         >
-          <section className="proofreading-page__dialog-status-section">
+          <Card variant="group" className="proofreading-page__dialog-status-section">
             <h3 className="proofreading-page__dialog-status-title font-medium">
               {t("proofreading_page.fields.status")}
             </h3>
@@ -645,7 +646,7 @@ export function ProofreadingEditDialog(props: ProofreadingEditDialogProps): JSX.
                 );
               })}
             </div>
-          </section>
+          </Card>
         </ProofreadingDetailLayout>
       </div>
     </AppPageDialog>

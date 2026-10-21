@@ -97,6 +97,7 @@ export function ModelBasicSettingsDialog(props: ModelBasicSettingsDialogProps): 
         <div className="model-page__dialog-scroll">
           <div className="model-page__setting-list">
             <SettingCardRow
+              variant="group"
               action_width="content"
               title={t("model_page.fields.name.title")}
               description={t("model_page.fields.name.description")}
@@ -118,6 +119,7 @@ export function ModelBasicSettingsDialog(props: ModelBasicSettingsDialogProps): 
             {model.auth_type !== "oauth" ? (
               <>
                 <SettingCardRow
+                  variant="group"
                   action_width="content"
                   title={t("model_page.fields.api_url.title")}
                   description={
@@ -151,6 +153,7 @@ export function ModelBasicSettingsDialog(props: ModelBasicSettingsDialogProps): 
                 />
 
                 <SettingCardRow
+                  variant="group"
                   className="model-page__setting-card-row--block"
                   title={t("model_page.fields.api_key.title")}
                   description={t("model_page.fields.api_key.description")}
@@ -171,6 +174,7 @@ export function ModelBasicSettingsDialog(props: ModelBasicSettingsDialogProps): 
             ) : null}
 
             <SettingCardRow
+              variant="group"
               action_width="content"
               title={t("model_page.fields.model_id.title")}
               description={t("model_page.fields.model_id.description").replace(
@@ -222,6 +226,7 @@ export function ModelBasicSettingsDialog(props: ModelBasicSettingsDialogProps): 
             />
 
             <SettingCardRow
+              variant="group"
               action_width="content"
               title={t("model_page.fields.thinking.title")}
               description={t("model_page.fields.thinking.description")}
@@ -275,6 +280,7 @@ export function ModelBasicSettingsDialog(props: ModelBasicSettingsDialogProps): 
             />
             {model.api_format === "OpenAIResponses" ? (
               <SettingCardRow
+                variant="group"
                 action_width="content"
                 title={t("model_page.fields.speed.title")}
                 description={t("model_page.fields.speed.description")}

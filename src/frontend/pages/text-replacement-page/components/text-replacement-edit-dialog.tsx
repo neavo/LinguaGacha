@@ -2,6 +2,7 @@ import { type JSX, useEffect, useRef } from "react";
 import { CaseSensitive, Regex } from "lucide-react";
 
 import { useI18n } from "@frontend/app/locale/locale-context";
+import { Card } from "@frontend/shadcn/card";
 import type {
   TextReplacementDialogMode,
   TextReplacementEntryDraft,
@@ -52,7 +53,11 @@ export function TextReplacementEditDialog(props: TextReplacementEditDialogProps)
     >
       <div className="text-replacement-page__dialog-scroll">
         <div className="text-replacement-page__dialog-form">
-          <div className="text-replacement-page__dialog-main-panel">
+          <Card
+            variant="group"
+            render={<div />}
+            className="text-replacement-page__dialog-main-panel"
+          >
             <div className="text-replacement-page__dialog-main-panel-content">
               <div className="text-replacement-page__dialog-section">
                 <span className="text-replacement-page__dialog-section-title font-medium">
@@ -88,10 +93,14 @@ export function TextReplacementEditDialog(props: TextReplacementEditDialogProps)
                 />
               </div>
             </div>
-          </div>
+          </Card>
 
           <div className="text-replacement-page__dialog-rule-grid">
-            <div className="text-replacement-page__dialog-rule-item">
+            <Card
+              variant="group"
+              render={<div />}
+              className="text-replacement-page__dialog-rule-item"
+            >
               <div className="text-replacement-page__dialog-rule-copy">
                 <span className="text-replacement-page__rule-badge-wrap" aria-hidden="true">
                   <span
@@ -115,9 +124,13 @@ export function TextReplacementEditDialog(props: TextReplacementEditDialogProps)
                   });
                 }}
               />
-            </div>
+            </Card>
 
-            <div className="text-replacement-page__dialog-rule-item">
+            <Card
+              variant="group"
+              render={<div />}
+              className="text-replacement-page__dialog-rule-item"
+            >
               <div className="text-replacement-page__dialog-rule-copy">
                 <span className="text-replacement-page__rule-badge-wrap" aria-hidden="true">
                   <span
@@ -141,7 +154,7 @@ export function TextReplacementEditDialog(props: TextReplacementEditDialogProps)
                   });
                 }}
               />
-            </div>
+            </Card>
           </div>
         </div>
       </div>

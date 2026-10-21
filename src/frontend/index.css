@@ -124,6 +124,7 @@
   --sidebar-accent-foreground: #4b515b;
   --sidebar-border: #d2d7df;
   --sidebar-ring: #d97924;
+  --ui-group-surface: color-mix(in srgb, var(--muted) 58%, var(--popover));
   --ui-card-default-surface: color-mix(in srgb, var(--card) 95%, white 5%);
   --ui-card-default-border: color-mix(in srgb, var(--border) 72%, white 28%);
   --ui-card-default-border-hover: color-mix(in srgb, var(--border) 72%, var(--primary) 28%);
@@ -377,6 +378,14 @@ svg {
     --card-footer-bottom: var(--ui-space-card-y);
     --card-header-gap: var(--ui-space-card-copy-gap);
     --card-footer-gap: var(--ui-space-card-footer-gap);
+  }
+
+  [data-slot="card"][data-variant="group"] {
+    --card-surface-current: var(--ui-group-surface);
+    --card-border-current: var(--border);
+    --card-border-hover-current: var(--border);
+    --card-shadow-current: none;
+    --card-shadow-hover-current: none;
   }
 
   [data-slot="card"][data-variant="panel"] {

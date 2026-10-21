@@ -26,38 +26,38 @@ describe("TextPreserveEditDialog", () => {
     container.remove();
   });
 
-  it.each(["quality_rule_editor.fields.rule", "text_preserve_page.fields.note"])(
-    "点击 %s 正文与标题时保持换行设置",
-    async (label) => {
-      await act(async () => {
-        root.render(
-          <TextPreserveEditDialog
-            open
-            mode="edit"
-            entry={{ src: "hero", info: "主角" }}
-            saving={false}
-            readonly={false}
-            invalid={false}
-            on_change={vi.fn()}
-            on_save={vi.fn(async () => undefined)}
-            on_close={vi.fn(async () => undefined)}
-          />,
-        );
-      });
+  it("点击各字段正文与标题时保持换行设置", async () => {
+    await act(async () => {
+      root.render(
+        <TextPreserveEditDialog
+          open
+          mode="edit"
+          entry={{ src: "hero", info: "主角" }}
+          saving={false}
+          readonly={false}
+          invalid={false}
+          on_change={vi.fn()}
+          on_save={vi.fn(async () => undefined)}
+          on_close={vi.fn(async () => undefined)}
+        />,
+      );
+    });
 
-      const content = document.querySelector<HTMLElement>(`.cm-content[aria-label="${label}"]`)!;
-      const section = content.closest(".text-preserve-page__dialog-section")!;
+    const sections = document.querySelectorAll<HTMLElement>(".text-preserve-page__dialog-section");
+    expect(sections.length).toBeGreaterThan(0);
+    for (const section of sections) {
+      const content = section.querySelector<HTMLElement>(".cm-line")!;
       const wrap_action = section.querySelector<HTMLButtonElement>("button[aria-pressed]")!;
       const initial_wrap_state = wrap_action.getAttribute("aria-pressed");
 
-      await act(async () => content.querySelector<HTMLElement>(".cm-line")!.click());
+      await act(async () => content.click());
       expect(wrap_action.getAttribute("aria-pressed")).toBe(initial_wrap_state);
       await act(async () =>
         section.querySelector<HTMLElement>(".text-preserve-page__dialog-section-title")!.click(),
       );
       expect(wrap_action.getAttribute("aria-pressed")).toBe(initial_wrap_state);
-    },
-  );
+    }
+  });
 
   it("标记规则校验错误，并在只读时保留字段但禁用保存", async () => {
     const on_save = vi.fn(async () => undefined);

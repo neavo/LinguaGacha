@@ -2,6 +2,7 @@ import type { JSX } from "react";
 import { CaseSensitive } from "lucide-react";
 
 import { useI18n } from "@frontend/app/locale/locale-context";
+import { Card } from "@frontend/shadcn/card";
 import type { GlossaryDialogMode, GlossaryEntryDraft } from "@frontend/pages/glossary-page/types";
 import { BooleanSegmentedToggle } from "@frontend/widgets/boolean-segmented-toggle";
 import { AppEditor } from "@frontend/widgets/app-editor/app-editor";
@@ -41,7 +42,7 @@ export function GlossaryEditDialog(props: GlossaryEditDialogProps): JSX.Element 
     >
       <div className="glossary-page__dialog-scroll">
         <div className="glossary-page__dialog-form">
-          <div className="glossary-page__dialog-main-panel">
+          <Card variant="group" render={<div />} className="glossary-page__dialog-main-panel">
             <div className="glossary-page__dialog-main-panel-content">
               <div className="glossary-page__dialog-section">
                 <span className="glossary-page__dialog-section-title font-medium">
@@ -91,10 +92,10 @@ export function GlossaryEditDialog(props: GlossaryEditDialogProps): JSX.Element 
                 />
               </div>
             </div>
-          </div>
+          </Card>
 
           <div className="glossary-page__dialog-rule-grid">
-            <div className="glossary-page__dialog-rule-item">
+            <Card variant="group" render={<div />} className="glossary-page__dialog-rule-item">
               <div className="glossary-page__dialog-rule-copy">
                 <span className="glossary-page__rule-badge-wrap" aria-hidden="true">
                   <span
@@ -118,7 +119,7 @@ export function GlossaryEditDialog(props: GlossaryEditDialogProps): JSX.Element 
                   });
                 }}
               />
-            </div>
+            </Card>
           </div>
         </div>
       </div>

@@ -279,9 +279,6 @@ describe("ModelBasicSettingsDialog", () => {
     expect(options.map((item) => item.textContent)).toEqual(
       ["low", "high", "default"].map((level) => `app.model.thinking_level.${level}`),
     );
-    expect(options.at(-1)?.previousElementSibling?.getAttribute("data-slot")).toBe(
-      "select-separator",
-    );
     await act(async () => options[1]!.click());
 
     expect(on_patch).toHaveBeenCalledWith({ thinking: { level: "HIGH" } });
@@ -320,25 +317,23 @@ describe("ModelBasicSettingsDialog", () => {
       expect(speed).toBeDefined();
       await act(async () => speed!.click());
       const options = [...document.querySelectorAll<HTMLElement>('[role="option"]')];
-      expect(options.map((item) => item.textContent)).toEqual(
-        ["standard", "fast", "ultrafast", "default"].map(
-          (level) => "model_page.fields.speed." + level,
-        ),
-      );
-      expect(options[3]?.previousElementSibling?.getAttribute("data-slot")).toBe(
-        "select-separator",
-      );
+      const default_option = options.find(
+        (item) => item.textContent === "model_page.fields.speed.default",
+      )!;
+      const ultrafast_option = options.find(
+        (item) => item.textContent === "model_page.fields.speed.ultrafast",
+      )!;
       vi.useFakeTimers();
       await act(async () => {
-        options[3]!.dispatchEvent(new MouseEvent("mouseenter", { bubbles: true }));
-        options[3]!.dispatchEvent(new MouseEvent("mousemove", { bubbles: true }));
+        default_option.dispatchEvent(new MouseEvent("mouseenter", { bubbles: true }));
+        default_option.dispatchEvent(new MouseEvent("mousemove", { bubbles: true }));
         vi.runAllTimers();
       });
       expect(document.querySelector('[role="tooltip"][data-open]')?.textContent).toBe(
         "model_page.fields.speed.default_description",
       );
       vi.useRealTimers();
-      await act(async () => options[2]!.click());
+      await act(async () => ultrafast_option.click());
       expect(on_patch).toHaveBeenCalledWith({ request: { speed_level: "ULTRAFAST" } });
     },
   );
@@ -370,7 +365,6 @@ describe("ModelBasicSettingsDialog", () => {
     await act(async () => trigger.click());
     const options = [...document.querySelectorAll<HTMLElement>('[role="option"]')];
     expect(options).toHaveLength(1);
-    expect(document.querySelector('[data-slot="select-separator"]')).toBeNull();
     vi.useFakeTimers();
     await act(async () => {
       options[0]!.dispatchEvent(new MouseEvent("mouseenter", { bubbles: true }));

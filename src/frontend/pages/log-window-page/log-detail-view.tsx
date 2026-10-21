@@ -1,6 +1,7 @@
 import type { JSX } from "react";
 import type { LogDetail } from "@frontend/app/desktop/desktop-api";
 import { useI18n } from "@frontend/app/locale/locale-context";
+import { Card } from "@frontend/shadcn/card";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@frontend/shadcn/tooltip";
 import { Badge } from "@frontend/shadcn/badge";
 import { AppEditor } from "@frontend/widgets/app-editor/app-editor";
@@ -12,7 +13,7 @@ type LogDetailViewProps = {
   detail: LogDetail;
 };
 
-/** 按 LogContent 判别字段渲染普通文本、Agent JSON 或翻译对照。 */
+/** 按 `LogContent` 判别字段渲染普通文本、Agent JSON 或翻译对照。 */
 export function LogDetailView(props: LogDetailViewProps): JSX.Element {
   const { t } = useI18n();
   const { content } = props.detail;
@@ -24,10 +25,10 @@ export function LogDetailView(props: LogDetailViewProps): JSX.Element {
   );
   const error_view =
     error_text === "" ? null : (
-      <section className="log-detail-view__card log-detail-view__error">
+      <Card variant="group" className="log-detail-view__card log-detail-view__error">
         <h3>{t("log_window_page.detail.content.error")}</h3>
         <pre>{error_text}</pre>
-      </section>
+      </Card>
     );
 
   if (typeof content === "string" || content.kind === "agent" || content.kind === "text") {
@@ -36,7 +37,7 @@ export function LogDetailView(props: LogDetailViewProps): JSX.Element {
         <AppEditor
           variant="viewer"
           syntax={typeof content === "string" || content.kind === "text" ? "plain" : "json"}
-          class_name="log-detail-view__card log-detail-view__card--editor"
+          class_name="log-detail-view__editor"
           value={format_log_content_text(content)}
           aria_label={t("log_window_page.detail.title")}
         />
@@ -47,15 +48,19 @@ export function LogDetailView(props: LogDetailViewProps): JSX.Element {
 
   return (
     <div className="log-detail-view">
-      <div className="log-detail-view__card log-detail-view__summary">
+      <Card
+        variant="group"
+        render={<div />}
+        className="log-detail-view__card log-detail-view__summary"
+      >
         {content.summary.map((text, index) => (
           <p key={`${index.toString()}:${text}`}>{text}</p>
         ))}
-      </div>
+      </Card>
 
       {error_view}
 
-      <section className="log-detail-view__card log-detail-view__result">
+      <Card variant="group" className="log-detail-view__card log-detail-view__result">
         <ol className="log-detail-view__items">
           {content.pairs.map((pair, index) => (
             <li key={index} className="log-detail-view__item">
@@ -105,16 +110,17 @@ export function LogDetailView(props: LogDetailViewProps): JSX.Element {
             </li>
           ))}
         </ol>
-      </section>
+      </Card>
 
       {content.sections.map((section, index) => (
-        <section
+        <Card
+          variant="group"
           key={`${index.toString()}:${section.title}`}
           className="log-detail-view__card log-detail-view__process"
         >
           <h3>{section.title}</h3>
           <pre>{section.text}</pre>
-        </section>
+        </Card>
       ))}
     </div>
   );

@@ -1,4 +1,5 @@
 import type { JSX } from "react";
+import { Card } from "@frontend/shadcn/card";
 import { CircleStop } from "lucide-react";
 
 import "./batch-translation.css";
@@ -23,9 +24,7 @@ type BatchTranslationDetailSheetProps = {
   on_request_stop_confirmation: () => void;
 };
 
-/**
- * BatchTranslationDetailSheet 展示任务详情和停止入口，所有文本来自 display 数据。
- */
+/** 展示翻译任务详情，停止操作交给所属流程确认。 */
 export function BatchTranslationDetailSheet(props: BatchTranslationDetailSheetProps): JSX.Element {
   return (
     <Sheet
@@ -47,7 +46,7 @@ export function BatchTranslationDetailSheet(props: BatchTranslationDetailSheetPr
             <p className="text-muted-foreground">{props.empty_text}</p>
           ) : (
             <>
-              <section className="batch-translation__section">
+              <Card variant="group" className="batch-translation__section">
                 <div className="batch-translation__section-head batch-translation__section-head--inline">
                   <h3 className="batch-translation__section-title">
                     {props.display.waveform_title}
@@ -57,9 +56,9 @@ export function BatchTranslationDetailSheet(props: BatchTranslationDetailSheetPr
                   </Badge>
                 </div>
                 <BatchTranslationWaveform history={props.display.waveform_history} />
-              </section>
+              </Card>
 
-              <section className="batch-translation__section">
+              <Card variant="group" className="batch-translation__section">
                 <div className="batch-translation__section-head">
                   <h3 className="batch-translation__section-title">
                     {props.display.metrics_title}
@@ -107,7 +106,7 @@ export function BatchTranslationDetailSheet(props: BatchTranslationDetailSheetPr
                     </article>
                   ))}
                 </div>
-              </section>
+              </Card>
             </>
           )}
         </div>

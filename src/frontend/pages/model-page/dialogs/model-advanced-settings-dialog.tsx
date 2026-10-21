@@ -33,7 +33,7 @@ type JsonParseResult =
       ok: false;
     };
 
-type SliderFieldName = "top_p" | "temperature";
+type GenerationFieldName = "top_p" | "temperature";
 type AgentLimitFieldName = keyof ModelAgentConfig;
 type RequestJsonFieldName = "extra_headers" | "extra_body";
 
@@ -56,8 +56,8 @@ const AGENT_LIMIT_FIELDS = [
   },
 ] as const;
 
-type SliderFieldConfig = {
-  field_name: SliderFieldName;
+type GenerationFieldConfig = {
+  field_name: GenerationFieldName;
   title_key: "model_page.fields.top_p.title" | "model_page.fields.temperature.title";
   description_key:
     | "model_page.fields.top_p.description"
@@ -69,7 +69,7 @@ type SliderFieldConfig = {
 };
 
 /** 两个生成参数共用同一渲染与归一流程，差异只保留在字段配置。 */
-const SLIDER_FIELD_CONFIGS = [
+const GENERATION_FIELD_CONFIGS = [
   {
     field_name: "top_p",
     title_key: "model_page.fields.top_p.title",
@@ -88,7 +88,7 @@ const SLIDER_FIELD_CONFIGS = [
     max: 2,
     step: 0.01,
   },
-] as const satisfies readonly SliderFieldConfig[];
+] as const satisfies readonly GenerationFieldConfig[];
 
 /** 自定义请求 JSON 字段共用编辑、启用与展示配置。 */
 const REQUEST_JSON_FIELD_CONFIGS = [
@@ -108,7 +108,7 @@ const REQUEST_JSON_FIELD_CONFIGS = [
   },
 ] as const;
 
-/** 把用户输入收窄为 JSON object；空文本等价于空配置。 */
+/** 把用户输入收窄为 JSON 对象，空文本等价于空配置。 */
 function parse_request_json_text(value: string): JsonParseResult {
   const trimmed_value = value.trim();
   if (trimmed_value === "") {
@@ -162,10 +162,10 @@ function create_request_json_drafts(
   };
 }
 
-/** 从当前模型构造所有滑块的数值状态。 */
-function create_slider_value_state(
+/** 从当前模型构造生成参数的有效数值。 */
+function create_generation_value_state(
   model: ModelEntrySnapshot | null,
-): Record<SliderFieldName, number> {
+): Record<GenerationFieldName, number> {
   if (model === null) {
     return {
       top_p: 0,
@@ -180,19 +180,22 @@ function create_slider_value_state(
 }
 
 /** 为允许临时无效输入的数字框构造独立文本状态。 */
-function create_slider_text_state(
+function create_generation_text_state(
   model: ModelEntrySnapshot | null,
-): Record<SliderFieldName, string> {
-  const slider_value_state = create_slider_value_state(model);
+): Record<GenerationFieldName, string> {
+  const values = create_generation_value_state(model);
 
   return {
-    top_p: slider_value_state.top_p.toFixed(2),
-    temperature: slider_value_state.temperature.toFixed(2),
+    top_p: values.top_p.toFixed(2),
+    temperature: values.temperature.toFixed(2),
   };
 }
 
 /** 按字段边界和步长归一用户输入。 */
-function normalize_slider_value(field_config: SliderFieldConfig, raw_value: number): number {
+function normalize_generation_value(
+  field_config: GenerationFieldConfig,
+  raw_value: number,
+): number {
   const clamped_value = Math.min(field_config.max, Math.max(field_config.min, raw_value));
   const step_count = Math.round((clamped_value - field_config.min) / field_config.step);
   return Number((field_config.min + step_count * field_config.step).toFixed(2));
@@ -232,11 +235,12 @@ export function ModelAdvancedSettingsDialog(
   const [agent_limit_draft, set_agent_limit_draft] = useState(
     create_agent_limit_draft(props.model),
   );
-  const [slider_values, set_slider_values] = useState<Record<SliderFieldName, number>>(
-    create_slider_value_state(props.model),
+  // 有效数值用于失效输入回退，文本草稿保留用户尚未提交的中间态。
+  const [generation_values, set_generation_values] = useState<Record<GenerationFieldName, number>>(
+    create_generation_value_state(props.model),
   );
-  const [slider_texts, set_slider_texts] = useState<Record<SliderFieldName, string>>(
-    create_slider_text_state(props.model),
+  const [generation_texts, set_generation_texts] = useState<Record<GenerationFieldName, string>>(
+    create_generation_text_state(props.model),
   );
 
   if (props.model === null) {
@@ -298,6 +302,7 @@ export function ModelAdvancedSettingsDialog(
         <div className="model-page__setting-list">
           {AGENT_LIMIT_FIELDS.map((field_config) => (
             <SettingCardRow
+              variant="group"
               key={field_config.field_name}
               title={t(field_config.title_key)}
               description={t(field_config.description_key)}
@@ -325,14 +330,13 @@ export function ModelAdvancedSettingsDialog(
 
           {model.auth_type === "oauth"
             ? null
-            : SLIDER_FIELD_CONFIGS.map((field_config) => {
-                const current_value = slider_values[field_config.field_name] ?? 0;
-                const current_text =
-                  slider_texts[field_config.field_name] ?? current_value.toFixed(2);
-                const current_enabled = Boolean(model.generation[field_config.enabled_key]);
+            : GENERATION_FIELD_CONFIGS.map((field_config) => {
+                const current_value = generation_values[field_config.field_name];
+                const current_text = generation_texts[field_config.field_name];
+                const current_enabled = model.generation[field_config.enabled_key];
 
                 return (
-                  <Card key={field_config.field_name}>
+                  <Card variant="group" key={field_config.field_name}>
                     <CardContent className="model-page__advanced-card-content">
                       <div className="model-page__advanced-card-head">
                         <div className="model-page__advanced-card-copy">
@@ -353,7 +357,7 @@ export function ModelAdvancedSettingsDialog(
                                 disabled={props.readonly}
                                 onChange={(event) => {
                                   const next_text = event.target.value;
-                                  set_slider_texts((previous_state) => {
+                                  set_generation_texts((previous_state) => {
                                     return {
                                       ...previous_state,
                                       [field_config.field_name]: next_text,
@@ -364,17 +368,17 @@ export function ModelAdvancedSettingsDialog(
                                   const trimmed_text = current_text.trim();
                                   const parsed_value = Number(trimmed_text);
                                   if (trimmed_text !== "" && Number.isFinite(parsed_value)) {
-                                    const normalized_value = normalize_slider_value(
+                                    const normalized_value = normalize_generation_value(
                                       field_config,
                                       parsed_value,
                                     );
-                                    set_slider_values((previous_state) => {
+                                    set_generation_values((previous_state) => {
                                       return {
                                         ...previous_state,
                                         [field_config.field_name]: normalized_value,
                                       };
                                     });
-                                    set_slider_texts((previous_state) => {
+                                    set_generation_texts((previous_state) => {
                                       return {
                                         ...previous_state,
                                         [field_config.field_name]: normalized_value.toFixed(2),
@@ -389,7 +393,7 @@ export function ModelAdvancedSettingsDialog(
                                       });
                                     }
                                   } else {
-                                    set_slider_texts((previous_state) => {
+                                    set_generation_texts((previous_state) => {
                                       return {
                                         ...previous_state,
                                         [field_config.field_name]: current_value.toFixed(2),
@@ -428,7 +432,7 @@ export function ModelAdvancedSettingsDialog(
             const read_only = props.readonly || !enabled;
 
             return (
-              <Card key={field_config.field_name}>
+              <Card variant="group" key={field_config.field_name}>
                 <CardContent className="model-page__advanced-card-content">
                   <div className="model-page__advanced-card-head">
                     <div className="model-page__advanced-card-copy">
