@@ -30,8 +30,7 @@ export async function prepare_game_directory(
   let staging: string | null = null;
   let rollback: string | null = null;
   let workspace: string | null = null;
-  const recovery_files = new Map<string, string>(); // 每个旧文件只保存一份回滚副本。
-  const changed = new Set<string>(); // 同一载体先备份再覆盖时仍只回滚一次，按首次修改的逆序恢复。
+  const recovery_files = new Map<string, string | null>(); // 按首次修改顺序登记，null 表示本轮新增目标。
   const created_directories: string[] = []; // 仅移除本次创建的空目录。
   // 同步文件操作之间让出事件循环，使取消请求能进入。
   const checkpoint = async () => {
@@ -91,7 +90,7 @@ export async function prepare_game_directory(
     const ordered_directories = [...directories].sort(
       (left, right) => left.split("/").length - right.split("/").length || (left < right ? -1 : 1),
     );
-    const rollback_files = new Set<string>();
+    const existing_targets = new Set<string>();
     const directory_entries = new Map<string, Map<string, string | null>>();
     for (const name of [...ordered_directories, ...targets, ...backup_names]) {
       await checkpoint();
@@ -122,11 +121,7 @@ export async function prepare_game_directory(
         } else {
           if (!fs.stat(target).isFile())
             throw new Error("Game file conflicts with directory: " + name);
-          if (
-            !backup_names.includes(name) &&
-            !(backups.has(name) && !fs.exists(backups.get(name)!))
-          )
-            rollback_files.add(name);
+          if (!backup_names.includes(name)) existing_targets.add(name);
         }
       }
     }
@@ -138,12 +133,16 @@ export async function prepare_game_directory(
     }
     rollback = path.join(workspace, "rollback");
     await fs.make_dir_exclusive(rollback);
-    for (const name of rollback_files) {
-      await checkpoint();
-      const destination = path.join(rollback, name);
-      fs.copy_file(path.join(root, name), destination);
-      recovery_files.set(name, destination);
-    }
+    /** 首次修改保存旧目标，后续写入继续使用同一恢复来源。 */
+    const save_target = (name: string) => {
+      if (recovery_files.has(name)) return;
+      const target = path.join(root, name);
+      if (existing_targets.has(name)) {
+        const saved = path.join(rollback!, name);
+        fs.rename(target, saved);
+        recovery_files.set(name, saved); // 移动后立即登记，取消不能落在两步之间。
+      } else recovery_files.set(name, null);
+    };
     for (const name of ordered_directories) {
       await checkpoint();
       const directory = path.join(root, name);
@@ -160,36 +159,35 @@ export async function prepare_game_directory(
       await checkpoint();
       assert_regular_path(destination, fs);
       if (fs.exists(destination)) {
-        // 同内容的长期备份保留，当前载体按普通删除处理，回滚副本已保存。
-        changed.add(name);
-        fs.unlink(path.join(root, name));
+        save_target(name);
       } else {
         fs.rename(path.join(root, name), destination);
         recovery_files.set(name, destination);
-        changed.add(name);
       }
     }
     for (const name of plan.writes) {
       await checkpoint();
       const destination = path.join(root, name);
       assert_regular_path(destination, fs);
-      changed.add(name);
+      save_target(name);
       fs.rename(path.join(staging, name), destination); // 暂存位于游戏目录所在卷，直接替换避免在目标旁生成临时文件。
     }
     for (const name of plan.removes ?? []) {
       await checkpoint();
-      changed.add(name);
-      fs.unlink(path.join(root, name));
+      const target = path.join(root, name);
+      assert_regular_path(target, fs);
+      fs.stat(target); // 缺失的删除目标仍须报告错误。
+      save_target(name);
+      if (fs.exists(target)) fs.unlink(target);
     }
     signal?.throwIfAborted();
     // 此处完成来源转换；后续清理失败不能撤销已提交的游戏。
   } catch (cause) {
     const recovery_errors: string[] = [];
-    for (const name of [...changed].reverse()) {
+    for (const [name, saved] of [...recovery_files].reverse()) {
       try {
         assert_regular_path(path.join(root, name), fs);
-        const saved = recovery_files.get(name);
-        if (saved) fs.rename(saved, path.join(root, name));
+        if (saved !== null) fs.rename(saved, path.join(root, name));
         else fs.unlink(path.join(root, name), { force: true });
       } catch (error) {
         recovery_errors.push(read_error_message(error));
@@ -245,6 +243,7 @@ async function same_file(
   signal?: AbortSignal,
 ): Promise<boolean> {
   if (fs.stat(left).size !== fs.stat(right).size) return false;
+  /** 流式计算载体摘要，块间继续响应取消。 */
   const digest = async (file: string): Promise<string> => {
     const hash = createHash("sha256");
     for await (const bytes of fs.create_read_stream(file)) {

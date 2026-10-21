@@ -8,11 +8,16 @@ import { create_text_extractor } from "./extract";
 import { patch_gdsc } from "./gdsc";
 import { patch_source } from "./gdscript";
 import { patch_po } from "./po";
-import { patch_scene } from "./scene";
+import { read_scene, patch_scene } from "./scene";
 import { patch_resource, read_resource, resource_string } from "./resource";
 import { all_values } from "./variant";
 import { string, u32, type Edit } from "./binary";
-import { check_locale_member, patch_translation, patch_translation_fallback } from "./translation";
+import {
+  check_locale_member,
+  read_translation,
+  patch_translation,
+  patch_translation_fallback,
+} from "./translation";
 
 type Change = { original: string; text: string };
 
@@ -20,7 +25,8 @@ type Change = { original: string; text: string };
 export function create_godot_adapter(): GameFormatAdapter {
   return {
     file_type: "GODOT",
-    internal_path: (item) => read_godot_metadata(item.extra_field).internal_file_path,
+    internal_path: (item) => read_godot_metadata(item.extra_field).internal_file_path, // 按持久坐标定位原稿成员。
+    /** 为一次容器操作建立语言表计划，并保留成员级解析失败。 */
     async create_members(files) {
       const context = new Map<string, Buffer>(),
         failures = new Map<string, unknown>();
@@ -34,6 +40,7 @@ export function create_godot_adapter(): GameFormatAdapter {
       }
       const extractor = create_text_extractor(context);
       return {
+        /** 按成员原坐标提取条目，失败继续交给容器边界报告。 */
         async read_file(content, file) {
           if (failures.has(file)) throw failures.get(file);
           return {
@@ -56,6 +63,7 @@ export function create_godot_adapter(): GameFormatAdapter {
             warnings: [],
           };
         },
+        /** 应用持久坐标上的译文，并按语言表计划调整回退语言。 */
         async render(content, file, items) {
           try {
             const bytes = Buffer.from(content);
@@ -158,7 +166,8 @@ function render_member(bytes: Buffer, file: string, items: readonly Item[]): Buf
   if (gdsc.size) return patch_gdsc(bytes, gdsc);
   if (source.size) return Buffer.from(patch_source(bytes.toString("utf8"), source));
   if (po.size) return Buffer.from(patch_po(bytes.toString("utf8"), po));
-  if (scenes.size) return patch_scene(bytes, scenes);
-  if (slots.size) return patch_translation(bytes, slots);
-  return patch_resource(bytes, edits);
+  if (scenes.size) return patch_scene(read_scene(resource!), scenes);
+  if (slots.size) return patch_translation(read_translation(resource!), slots);
+  assert(resource);
+  return patch_resource(resource, edits);
 }

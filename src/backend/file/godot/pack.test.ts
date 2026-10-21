@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { expect, it } from "vitest";
+import { expect, it, vi } from "vitest";
 import { NativeFs } from "../../../native/native-fs";
 import { godot_pack_fixture } from "../../../test/godot-fixture";
 import { read_pack, extract_pack_member } from "./pack";
@@ -31,6 +31,49 @@ it.each([2, 3, 4])("PCK v%s 读取相对和绝对 file_base、内嵌尾部并按
         await handle.close();
       }
     }
+});
+
+it.each(["window", "long-record", "truncated"])("明文目录窗口处理 %s", async (kind) => {
+  using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-godot-directory-window-"));
+  const files =
+    kind === "long-record"
+      ? new Map([["a".repeat(65532), Buffer.from("payload")]])
+      : new Map(
+          Array.from({ length: 1800 }, (_, index) => [
+            `members/${index}.txt`,
+            Buffer.from(String(index)),
+          ]),
+        );
+  const bytes = godot_pack_fixture(files, { resource_prefix: false }),
+    native = new NativeFs(),
+    source = path.join(temp.path, "game.pck");
+  native.write_file_sync(source, bytes);
+  const handle = await native.open_file(source, "r+");
+  try {
+    const read = vi.spyOn(handle, "read");
+    if (kind === "truncated") {
+      // 保留有效包头，只截断目录记录，不能让头部预检代替目录校验。
+      await handle.truncate(110);
+      await expect(read_pack(handle)).rejects.toThrow("PCK directory exceeds processing limit");
+    } else {
+      const pack = await read_pack(handle);
+      expect(pack.members.map((member) => member.name)).toEqual([...files.keys()]);
+      if (kind === "window") {
+        expect(read.mock.calls.length).toBeLessThan(files.size);
+        await extract_pack_member(
+          handle,
+          pack.members.at(-1)!,
+          path.join(temp.path, "last"),
+          native,
+        );
+        expect(native.read_file(path.join(temp.path, "last"))).toEqual(
+          files.get("members/1799.txt"),
+        );
+      }
+    }
+  } finally {
+    await handle.close();
+  }
 });
 
 it.each(["../escape", "a\\b", "a:b", "NUL.txt", "a.", "a/../b", "/root", "backup_lg/a", "a\0x"])(

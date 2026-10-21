@@ -15,6 +15,9 @@ import { apply_godot_pack_order, discover_godot_source } from "./source";
 import { prepare_game_source } from "../shared/game/engines";
 import { read_resource } from "./resource";
 import { u32 } from "./binary";
+import { stage_godot_source } from "./prepare";
+import { GODOT_CRYPT_HEADER_BYTES } from "./crypt";
+import { setImmediate } from "node:timers/promises";
 
 it.each(["external", "embedded"])("%s 载体准备、字体回退、重复导入与原载体备份", async (kind) => {
   using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-godot-prepare-"));
@@ -34,9 +37,7 @@ it.each(["external", "embedded"])("%s 载体准备、字体回退、重复导入
   if (kind === "external") fs.writeFileSync(path.join(temp.path, "game.exe"), prefix);
   const game = (await discover_godot_source(path.join(temp.path, "game.exe"), native))!;
   expect(Boolean(game.embedded)).toBe(kind === "embedded");
-  const copy = vi.spyOn(native, "copy_file");
   await prepare_game_source({ kind: "game", file_type: "GODOT", game }, native);
-  expect(copy).not.toHaveBeenCalled();
   expect(
     fs.readFileSync(path.join(temp.path, "backup_lg", path.basename(carrier))).equals(bytes),
   ).toBe(true);
@@ -52,6 +53,108 @@ it.each(["external", "embedded"])("%s 载体准备、字体回退、重复导入
   const create = vi.spyOn(native, "make_dir_exclusive");
   await prepare_game_source({ kind: "game", file_type: "GODOT", game: loose }, native);
   expect(create).not.toHaveBeenCalled();
+});
+
+it.each(["io", "cancel"])("并发提取 %s 后等待全部写入与句柄收尾", async (kind) => {
+  using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-godot-extraction-settle-"));
+  const native = new NativeFs(),
+    controller = new AbortController(),
+    staging = path.join(temp.path, "staging");
+  const bytes = godot_pack_fixture(
+    new Map([
+      ["project.binary", godot_project_fixture()],
+      ["slow.bin", Buffer.alloc(1024, 1)],
+      ["bad.bin", Buffer.alloc(1024, 2)],
+    ]),
+  );
+  native.write_file_sync(path.join(temp.path, "game.pck"), bytes);
+  const game = (await discover_godot_source(temp.path, native))!;
+  await native.make_dir_async(staging);
+  const slow_started = Promise.withResolvers<void>(),
+    failure_started = Promise.withResolvers<void>(),
+    release = Promise.withResolvers<void>();
+  const handles: Awaited<ReturnType<NativeFs["open_file"]>>[] = [],
+    open = native.open_file.bind(native);
+  vi.spyOn(native, "open_file").mockImplementation(async (file, flags) => {
+    const handle = await open(file, flags);
+    handles.push(handle);
+    if (flags === "wx" && file.endsWith("slow.bin")) {
+      const write = handle.write.bind(handle);
+      vi.spyOn(handle, "write").mockImplementation(async (...args: Parameters<typeof write>) => {
+        slow_started.resolve();
+        await release.promise;
+        return write(...args);
+      });
+    }
+    if (flags === "wx" && file.endsWith("bad.bin")) {
+      const write = handle.write.bind(handle);
+      vi.spyOn(handle, "write").mockImplementation(async (...args: Parameters<typeof write>) => {
+        await slow_started.promise;
+        failure_started.resolve();
+        if (kind === "cancel") {
+          controller.abort(new Error("extraction cancelled"));
+          return write(...args);
+        }
+        throw new Error("extraction IO failure");
+      });
+    }
+    return handle;
+  });
+  let settled = false;
+  const task = stage_godot_source({ game, staging }, native, controller.signal).finally(() => {
+    settled = true;
+  });
+  const rejected = expect(task).rejects.toThrow(
+    kind === "cancel" ? "extraction cancelled" : "extraction IO failure",
+  );
+  try {
+    await failure_started.promise;
+    await setImmediate();
+    expect(settled).toBe(false);
+  } finally {
+    release.resolve();
+  }
+  await rejected;
+  expect(handles.every((handle) => handle.fd === -1)).toBe(true);
+  for (const name of ["slow.bin", "bad.bin"])
+    expect(native.exists(path.join(staging, name))).toBe(false);
+  expect(native.read_file(path.join(temp.path, "game.pck"))).toEqual(bytes);
+});
+
+it("并发解密拒绝实际损坏密文并保留载体", async () => {
+  using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-godot-encrypted-corruption-"));
+  const native = new NativeFs(),
+    key = Buffer.alloc(32, 73);
+  const bytes = godot_pack_fixture(
+    new Map([
+      ["project.binary", godot_project_fixture()],
+      ["bad.bin", Buffer.alloc(2048, 5)],
+    ]),
+    {
+      encryption_key: key,
+      encrypted_members: ["project.binary", "bad.bin"],
+    },
+  );
+  const file = path.join(temp.path, "game.pck");
+  native.write_file_sync(file, bytes);
+  native.write_file_sync(path.join(temp.path, "game.exe"), godot_executable_fixture(key));
+  const handle = await native.open_file(file, "r");
+  let offset: number;
+  try {
+    offset = (await read_pack(handle)).members.find((member) => member.name === "bad.bin")!.offset;
+  } finally {
+    await handle.close();
+  }
+  const damaged = offset + GODOT_CRYPT_HEADER_BYTES + 128;
+  bytes[damaged] = bytes[damaged]! ^ 1;
+  native.write_file_sync(file, bytes);
+  const game = (await discover_godot_source(temp.path, native))!;
+  await expect(
+    prepare_game_source({ kind: "game", file_type: "GODOT", game }, native),
+  ).rejects.toThrow("Encrypted PCK MD5 mismatch");
+  expect(native.read_file(file)).toEqual(bytes);
+  expect(native.exists(path.join(temp.path, ".tmp"))).toBe(false);
+  expect(native.exists(path.join(temp.path, "backup_lg"))).toBe(false);
 });
 
 it("选择同目录启动器时仍将 EXE 前缀写回内嵌载体，保留启动器原件", async () => {

@@ -17,17 +17,24 @@ import { read_project } from "./project";
 
 it("优化表保留全部哈希身份，只追加目标槽位字节", () => {
   const bytes = create_godot_fixture().get("messages.translation")!,
-    before = read_translation(bytes);
-  expect(before.slots.find((slot) => slot.index === translation_slot(bytes)("KEY"))!.text).toBe(
+    before = read_translation(read_resource(bytes));
+  expect(patch_translation(before, new Map())).toBe(bytes);
+  expect(() =>
+    patch_translation(
+      before,
+      new Map([[before.slots[0]!.index, { original: "stale", text: "译文" }]]),
+    ),
+  ).toThrow();
+  expect(before.slots.find((slot) => slot.index === translation_slot(before)("KEY"))!.text).toBe(
     "Translated message",
   );
-  expect(translation_slot(bytes)("missing")).toBeUndefined();
+  expect(translation_slot(before)("missing")).toBeUndefined();
   const target = before.slots.find((slot) => slot.text === "Translated message")!;
   const result = patch_translation(
-      bytes,
+      before,
       new Map([[target.index, { original: target.text, text: "翻译后的消息" }]]),
     ),
-    after = read_translation(result);
+    after = read_translation(read_resource(result));
   expect(after.hash.value).toEqual(before.hash.value);
   expect(after.slots.map((slot) => [slot.bucket, slot.seed, slot.key])).toEqual(
     before.slots.map((slot) => [slot.bucket, slot.seed, slot.key]),

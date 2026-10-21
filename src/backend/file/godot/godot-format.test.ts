@@ -17,6 +17,7 @@ import { read_po } from "./po";
 import { variant_strings } from "./variant";
 import { u32 } from "./binary";
 
+/** 用真实 ZIP 成员创建本次容器操作的处理器。 */
 async function handler_for(files: ReadonlyMap<string, Buffer>) {
   const zip = new JSZip();
   for (const [name, bytes] of files) zip.file(name, bytes);
@@ -51,7 +52,9 @@ it.each(["4.3", "4.6"])(
       { ...item, status: "PROCESSED", dst: "中文译文" },
     ]);
     expect(
-      read_translation(Buffer.from(output)).slots.some((slot) => slot.text === "中文译文"),
+      read_translation(read_resource(Buffer.from(output))).slots.some(
+        (slot) => slot.text === "中文译文",
+      ),
     ).toBe(true);
     expect(
       Buffer.from(await handler.render(original, "messages.translation", [])).equals(original),

@@ -18,7 +18,8 @@ import { Reader, utf8 } from "./binary";
 import { decrypt_block, read_encrypted_block } from "./crypt";
 
 const PACK_HEADER_BYTES = 96,
-  DIRECTORY_MAX_BYTES = 64 * 1024 * 1024;
+  DIRECTORY_MAX_BYTES = 64 * 1024 * 1024,
+  DIRECTORY_WINDOW_BYTES = 64 * 1024;
 export type PackMember = Readonly<{
   name: string;
   offset: number;
@@ -89,6 +90,8 @@ export async function read_pack(
   const { start, end, directory, base, count } = header;
   let at = directory + 4;
   let plain: Reader | undefined;
+  let window: Buffer = Buffer.alloc(0),
+    window_start = 0;
   if (header.flags & 1) {
     assert(key, "Godot PCK requires an encryption key");
     const block = await read_encrypted_block(handle, at, end);
@@ -98,6 +101,7 @@ export async function read_pack(
     plain = new Reader(Buffer.concat(chunks));
     at += block.stored_size;
   }
+  /** 逻辑字段读取复用目录窗口，加密目录直接消费已验证明文。 */
   const take = async (size: number): Promise<Buffer> => {
     signal?.throwIfAborted();
     if (plain) return plain.take(size);
@@ -105,7 +109,20 @@ export async function read_pack(
       at + size <= end && at + size - directory <= DIRECTORY_MAX_BYTES,
       "PCK directory exceeds processing limit",
     );
-    const bytes = await read_bytes(handle, at, size);
+    if (at < window_start || at + size > window_start + window.length) {
+      window_start = at;
+      window = await read_bytes(
+        handle,
+        at,
+        Math.min(
+          Math.max(DIRECTORY_WINDOW_BYTES, size),
+          end - at,
+          DIRECTORY_MAX_BYTES - (at - directory),
+        ),
+      );
+    }
+    const bytes = window.subarray(at - window_start, at - window_start + size);
+    // 预读取不推进目录逻辑位置，区间检查仍以实际消费的字段为准。
     at += size;
     return bytes;
   };
