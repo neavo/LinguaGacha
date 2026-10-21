@@ -505,7 +505,7 @@ describe("EPUB 正文片段写回", () => {
     const expected_sources = ["第一片段", "前漢后", "锚点", "链接", "引文尾文", "旧段落", "结尾"];
     expect(items.map((item) => item.src.trim())).toEqual(expected_sources);
     for (const [index, item] of items.entries()) {
-      item.dst = `译文${index}`;
+      item.dst = `译文${index}<ruby>`;
       item.status = "PROCESSED";
     }
     const out = path.join(temp.path, "book.epub");
@@ -521,7 +521,7 @@ describe("EPUB 正文片段写回", () => {
     ).toHaveLength(1);
     const visible = ast.build_canonical_block_text(ast.find_descendants(root, "body")[0]!);
     for (const [index, source] of expected_sources.entries()) {
-      expect(visible).toContain(`译文${index}`);
+      expect(visible).toContain(`译文${index}<ruby>`);
       expect(visible.includes(source)).toBe(bilingual);
     }
   });
@@ -636,4 +636,35 @@ it.each([undefined, "译文", ""])("含 ruby 的块写回 %j 保留锚点、链�
     const root = ast.parse_xhtml_or_html(Buffer.from(text));
     expect(ast.build_canonical_block_text(ast.find_descendants(root, "p")[0]!)).toBe(dst);
   }
+});
+
+it("旧 ruby 槽位继续按原定位写回", async () => {
+  using dir = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-epub-legacy-modes-"));
+  const asset = await create_epub_fixture("<ruby>漢<rt>かん</rt></ruby>字");
+  const ast = new EpubAst();
+  const slot = create_item({
+    src: "漢\n字",
+    dst: "汉\n字",
+    status: "PROCESSED",
+    file_type: "EPUB",
+    file_path: "book.epub",
+    tag: "OPS/chapter.xhtml",
+    extra_field: {
+      epub: {
+        mode: "slot_per_line",
+        doc_path: "OPS/chapter.xhtml",
+        block_path: "/html[1]/body[1]/p[1]",
+        parts: [
+          { slot: "text", path: "/html[1]/body[1]/p[1]/ruby[1]" },
+          { slot: "tail", path: "/html[1]/body[1]/p[1]/ruby[1]" },
+        ],
+        src_digest: ast.sha1_hex_with_null_separator(["漢", "字"]),
+      },
+    },
+  });
+  const out = path.join(dir.path, "book.epub");
+  await create_writer().build_epub(asset, [slot], out, false);
+  expect(await read_epub_entry_text(fs.readFileSync(out))).toContain(
+    "<ruby>汉<rt>かん</rt></ruby>字",
+  );
 });

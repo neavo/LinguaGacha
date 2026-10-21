@@ -229,7 +229,7 @@ export class TranslationWorkUnitRunner {
         pipeline_contexts: TranslationPrePipelineContext[];
       } {
     const activated = this.resolve_activated_glossary_entries(quality, items);
-    const pipeline = new TranslationPrePipeline(config, quality);
+    const pipeline = new TranslationPrePipeline(quality);
     const projected_precedings = pipeline.project_precedings(precedings);
     const pipeline_contexts: TranslationPrePipelineContext[] = [];
     const request_items: TranslationRequestItem[] = [];

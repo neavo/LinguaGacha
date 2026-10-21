@@ -1,6 +1,5 @@
 import type { PDFSummary } from "../../shared/pdf";
 import { AppError } from "../../shared/error";
-import type { AppSettingService } from "../app/app-setting-service";
 import type { ProjectDatabase } from "../database/database-operations";
 import type { LogManager } from "../log/log-manager";
 import {
@@ -25,10 +24,10 @@ import { ProofreadingCache } from "./proofreading-cache";
 import { QualityRuleStatisticsCache } from "./quality-rule-statistics-cache";
 
 /**
- * CacheManager 内部的小型数据块缓存；只隔离顶层对象，嵌套 JSON 按不可变值使用。
+ * 数据块缓存只隔离顶层对象，嵌套 JSON 按不可变值使用。
  */
 class ProjectDataBlockCache<T extends object> {
-  private block: T; // 当前完整块；替换与清理均由此缓存拥有。
+  private block: T; // 当前块的替换与清理由本缓存拥有。
 
   /** 恢复钩子由组合根提供，每次读取先确认热缓存可用。 */
   public constructor(
@@ -93,14 +92,12 @@ export class CacheManager implements CacheReadPort {
   public constructor(options: {
     database: ProjectDatabase;
     logManager: Pick<LogManager, "warning" | "error"> | null;
-    appSettingService: AppSettingService;
     workerClient: ComputeWorkerClient;
   }) {
     this.database = options.database;
     this.log_manager = options.logManager;
     this.proofreading = new ProofreadingCache({
       cache: this,
-      appSettingService: options.appSettingService,
       workerClient: options.workerClient,
       reader: createProofreadingReader(),
       readPages: (projectPath) => this.database.read_pdf_documents(projectPath),
@@ -136,7 +133,7 @@ export class CacheManager implements CacheReadPort {
   }
 
   /**
-   * 清理当前项目缓存；传入其它项目路径时忽略迟到卸载事件。
+   * 只清理当前项目，避免迟到卸载事件清除新工程缓存。
    */
   public clearProject(project_path?: string): void {
     if (

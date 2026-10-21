@@ -3,7 +3,6 @@ import { create_empty_quality_rule_block } from "../project/project-data-reader"
 import { describe, expect, it, vi } from "vitest";
 
 import type { ProjectItemPublicRecord } from "../../domain/item";
-import type { AppSettingService } from "../app/app-setting-service";
 import type { ComputeWorkerClient } from "../worker/compute-worker-client";
 import {
   createProofreadingReader,
@@ -88,17 +87,6 @@ function create_cache_read_port(options: {
   };
 }
 
-// 固定测试应用设置，避免缓存测试依赖真实 app setting。
-function create_settings(
-  settings: Record<string, unknown> = {
-    clean_ruby: false,
-  },
-): AppSettingService {
-  return {
-    read_setting: () => settings,
-  } as unknown as AppSettingService;
-}
-
 // 记录 proofreading_sync 输入，并用真实 list reader 评估 worker 返回值。
 function create_worker(before_sync?: () => Promise<void>): ComputeWorkerClient & {
   sync_inputs: ProofreadingSyncInput[];
@@ -150,7 +138,6 @@ describe("ProofreadingCache", () => {
     const cache = new ProofreadingCache({
       readPages: async () => [],
       cache: create_cache_read_port({ items: [item] }),
-      appSettingService: create_settings(),
       workerClient: worker,
       reader: createProofreadingReader(),
     });
@@ -181,7 +168,6 @@ describe("ProofreadingCache", () => {
     const cache = new ProofreadingCache({
       readPages: async () => [],
       cache: { ...cache_port, items, snapshot: () => structuredClone(cache_port.snapshot()) },
-      appSettingService: create_settings(),
       workerClient: create_worker(),
       reader: createProofreadingReader(),
     });
@@ -193,7 +179,6 @@ describe("ProofreadingCache", () => {
     const cache = new ProofreadingCache({
       readPages: async () => [],
       cache: create_cache_read_port({}),
-      appSettingService: create_settings(),
       workerClient: worker,
       reader: createProofreadingReader(),
     });
@@ -248,7 +233,6 @@ describe("ProofreadingCache", () => {
     const cache = new ProofreadingCache({
       readPages: async () => [],
       cache: cache_port,
-      appSettingService: create_settings(),
       workerClient: worker,
       reader: createProofreadingReader(),
     });
@@ -346,7 +330,6 @@ describe("ProofreadingCache", () => {
       const cache = new ProofreadingCache({
         readPages: async () => [],
         cache: cache_port,
-        appSettingService: create_settings(),
         workerClient: worker,
         reader: createProofreadingReader(),
       });
@@ -382,7 +365,6 @@ describe("ProofreadingCache", () => {
     const cache = new ProofreadingCache({
       readPages: async () => [],
       cache: create_cache_read_port({ revisions, languages }),
-      appSettingService: create_settings(),
       workerClient: worker,
       reader: createProofreadingReader(),
     });
@@ -405,43 +387,11 @@ describe("ProofreadingCache", () => {
     ]);
   });
 
-  it("完整文本处理配置变化会生成新的缓存身份", async () => {
-    const worker = create_worker();
-    const settings = {
-      clean_ruby: false,
-    };
-    const cache = new ProofreadingCache({
-      readPages: async () => [],
-      cache: create_cache_read_port({}),
-      appSettingService: create_settings(settings),
-      workerClient: worker,
-      reader: createProofreadingReader(),
-    });
-
-    await cache.sync();
-    settings.clean_ruby = true;
-    await cache.sync();
-
-    expect(worker.sync_inputs.map((input) => input.processingConfig)).toMatchObject([
-      {
-        source_language: "JA",
-        target_language: "ZH",
-        clean_ruby: false,
-      },
-      {
-        source_language: "JA",
-        target_language: "ZH",
-        clean_ruby: true,
-      },
-    ]);
-  });
-
   it("只清理匹配工程或当前校对缓存", async () => {
     const worker = create_worker();
     const cache = new ProofreadingCache({
       readPages: async () => [],
       cache: create_cache_read_port({}),
-      appSettingService: create_settings(),
       workerClient: worker,
       reader: createProofreadingReader(),
     });
@@ -469,7 +419,6 @@ describe("ProofreadingCache", () => {
     const cache = new ProofreadingCache({
       readPages: async () => [],
       cache: create_cache_read_port({ revisions, items }),
-      appSettingService: create_settings(),
       workerClient: worker,
       reader: createProofreadingReader(),
     });
@@ -528,7 +477,6 @@ describe("ProofreadingCache", () => {
     const cache = new ProofreadingCache({
       readPages: async () => [],
       cache: create_cache_read_port({ revisions, items }),
-      appSettingService: create_settings(),
       workerClient: worker,
       reader: createProofreadingReader(),
     });
@@ -575,7 +523,6 @@ describe("ProofreadingCache", () => {
     const cache = new ProofreadingCache({
       readPages: async () => [],
       cache: create_cache_read_port({ revisions }),
-      appSettingService: create_settings(),
       workerClient: worker,
       reader: createProofreadingReader(),
     });
@@ -625,7 +572,6 @@ it("页面修订号单独触发补读，滚动和文本增量复用页面与评�
   const service = new ProofreadingCache({
     cache,
     readPages,
-    appSettingService: create_settings(),
     workerClient: worker,
     reader: createProofreadingReader(),
   });
@@ -682,7 +628,6 @@ it("页面读取排队期间撤销同步，迟到页面不能恢复旧工程索�
       await release.promise;
       return [];
     },
-    appSettingService: create_settings(),
     workerClient: create_worker(),
     reader,
   });
@@ -707,7 +652,6 @@ it("撤销同步后，迟到计算结果不能恢复旧工程索引", async () =
   const service = new ProofreadingCache({
     cache,
     readPages,
-    appSettingService: create_settings(),
     workerClient: worker,
     reader,
   });
@@ -747,7 +691,6 @@ it.each(["files", "items"] as const)(
       workerClient: worker,
       reader,
       readPages: async () => [],
-      appSettingService: create_settings(),
     });
     const sync = service.sync();
     const rejected = section === "items" ? expect(sync).rejects.toThrow() : null;
@@ -792,7 +735,6 @@ it("热同步响应的修订号绑定返回快照，不借用等待期间发生�
     reader: createProofreadingReader(),
     workerClient: create_worker(),
     readPages: async () => [],
-    appSettingService: create_settings(),
   });
   await service.sync();
   const pending = service.sync();

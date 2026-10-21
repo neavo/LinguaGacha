@@ -18,10 +18,11 @@ describe("设置快照", () => {
       recent_projects: [{ path: " p.lg ", name: "工程" }],
     });
     expect(setting.to_json()["project_fixed_path"]).toBe(" Mixed/Path ");
+    expect(setting.to_json()).not.toHaveProperty("clean_ruby");
+    expect(setting.to_snapshot()).not.toHaveProperty("clean_ruby");
     expect(setting.to_json()).not.toHaveProperty("source_language"); // 语言归项目所有，旧配置字段不再保留
     expect(setting.to_snapshot()).toMatchObject({
       project_fixed_path: "Mixed/Path",
-      clean_ruby: true,
       request_timeout: 45,
     });
     expect(Check(SETTING_SNAPSHOT_SCHEMA, setting.to_snapshot())).toBe(true);

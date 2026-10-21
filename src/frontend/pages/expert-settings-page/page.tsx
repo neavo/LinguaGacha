@@ -17,7 +17,7 @@ type ExpertSettingsPageProps = {
   is_sidebar_collapsed: boolean;
 };
 
-/** 编辑器保存应用设置；数值草稿在提交前保留本地输入。 */
+/** 页面保留数值草稿，提交时交给设置编辑器保存。 */
 export function ExpertSettingsPage(_props: ExpertSettingsPageProps): JSX.Element {
   const { t } = useI18n();
 
@@ -28,34 +28,13 @@ export function ExpertSettingsPage(_props: ExpertSettingsPageProps): JSX.Element
     },
   );
   const [is_preceding_lines_threshold_editing, set_is_preceding_lines_threshold_editing] =
-    useState(false);
+    useState(false); // 编辑期间保留草稿，避免快照更新覆盖输入。
   const parsed_preceding_lines_threshold = parse_bounded_setting_number_draft(
     preceding_lines_threshold_draft,
     PRECEDING_LINES_THRESHOLD_MIN,
     PRECEDING_LINES_THRESHOLD_MAX,
   );
   const preceding_lines_threshold_invalid = parsed_preceding_lines_threshold === null;
-  /** 开关复用可见标题作为无障碍名称。 */
-  function render_boolean_toggle(options: {
-    title_key:
-      | "expert_settings_page.fields.clean_ruby.title"
-      | "expert_settings_page.fields.deduplication_in_bilingual.title"
-      | "expert_settings_page.fields.write_translated_name_fields_to_file.title";
-    value: boolean;
-    disabled: boolean;
-    on_value_change: (next_value: boolean) => void;
-  }): JSX.Element {
-    return (
-      <BooleanSegmentedToggle
-        aria_label={t(options.title_key)}
-        value={options.value}
-        stretch
-        disabled={options.disabled}
-        on_value_change={options.on_value_change}
-      />
-    );
-  }
-
   useEffect(() => {
     if (is_preceding_lines_threshold_editing) {
       return;
@@ -133,29 +112,19 @@ export function ExpertSettingsPage(_props: ExpertSettingsPageProps): JSX.Element
         />
 
         <SettingCardRow
-          title={t("expert_settings_page.fields.clean_ruby.title")}
-          description={t("expert_settings_page.fields.clean_ruby.description")}
-          action={render_boolean_toggle({
-            title_key: "expert_settings_page.fields.clean_ruby.title",
-            value: expert_settings_state.snapshot.clean_ruby,
-            disabled: expert_settings_state.pending_state.clean_ruby,
-            on_value_change: (next_value) => {
-              void expert_settings_state.update_clean_ruby(next_value);
-            },
-          })}
-        />
-
-        <SettingCardRow
           title={t("expert_settings_page.fields.deduplication_in_bilingual.title")}
           description={t("expert_settings_page.fields.deduplication_in_bilingual.description")}
-          action={render_boolean_toggle({
-            title_key: "expert_settings_page.fields.deduplication_in_bilingual.title",
-            value: expert_settings_state.snapshot.deduplication_in_bilingual,
-            disabled: expert_settings_state.pending_state.deduplication_in_bilingual,
-            on_value_change: (next_value) => {
-              void expert_settings_state.update_deduplication_in_bilingual(next_value);
-            },
-          })}
+          action={
+            <BooleanSegmentedToggle
+              aria_label={t("expert_settings_page.fields.deduplication_in_bilingual.title")}
+              value={expert_settings_state.snapshot.deduplication_in_bilingual}
+              stretch
+              disabled={expert_settings_state.pending_state.deduplication_in_bilingual}
+              on_value_change={(next_value) => {
+                void expert_settings_state.update_deduplication_in_bilingual(next_value);
+              }}
+            />
+          }
         />
 
         <SettingCardRow
@@ -163,14 +132,19 @@ export function ExpertSettingsPage(_props: ExpertSettingsPageProps): JSX.Element
           description={t(
             "expert_settings_page.fields.write_translated_name_fields_to_file.description",
           )}
-          action={render_boolean_toggle({
-            title_key: "expert_settings_page.fields.write_translated_name_fields_to_file.title",
-            value: expert_settings_state.snapshot.write_translated_name_fields_to_file,
-            disabled: expert_settings_state.pending_state.write_translated_name_fields_to_file,
-            on_value_change: (next_value) => {
-              void expert_settings_state.update_write_translated_name_fields_to_file(next_value);
-            },
-          })}
+          action={
+            <BooleanSegmentedToggle
+              aria_label={t(
+                "expert_settings_page.fields.write_translated_name_fields_to_file.title",
+              )}
+              value={expert_settings_state.snapshot.write_translated_name_fields_to_file}
+              stretch
+              disabled={expert_settings_state.pending_state.write_translated_name_fields_to_file}
+              on_value_change={(next_value) => {
+                void expert_settings_state.update_write_translated_name_fields_to_file(next_value);
+              }}
+            />
+          }
         />
       </section>
     </div>

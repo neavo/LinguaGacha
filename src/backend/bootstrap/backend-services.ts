@@ -67,7 +67,7 @@ export interface BackendServicesOptions {
   appSettingService: AppSettingService; // 配置文件唯一读写入口
   database: ProjectDatabase; // 由 Bootstrap 持有并负责关闭，服务层只组合业务能力
   logManager: LogManager; // Backend 内部日志和任务日志的唯一汇聚点
-  publishEvent: (topic: string, payload: JsonRecord) => void; // 入口层选择公开传输或无输出；业务服务不依赖 SSE
+  publishEvent: (topic: string, payload: JsonRecord) => void; // 公开事件的传输方式归入口层选择。
   openOutputFolder: OutputFolderOpener; // GUI 专用副作用，CLI 注入空实现
   workerExecution: BackendWorkerExecution; // 入口层注入的 Backend worker 执行配置
 }
@@ -117,7 +117,7 @@ export interface BackendFileServices {
 }
 
 /**
- * GUI 与 CLI 共享的业务服务组合根；状态拥有者只在这里装配。
+ * GUI 与 CLI 共用此组合根装配业务服务及其状态拥有者。
  */
 export class BackendServices {
   public readonly modelAuth: ChatGPTAuthService; // GUI、CLI 和 Agent 共用账户生命周期。
@@ -194,7 +194,6 @@ export class BackendServices {
     this.cache_manager = new CacheManager({
       database: options.database,
       logManager: this.logManager,
-      appSettingService: this.app_setting_service,
       workerClient: this.compute_worker_client,
     });
     const apply_committed_change = this.cache_manager.applyCommittedChange.bind(this.cache_manager);
@@ -369,7 +368,7 @@ export class BackendServices {
     });
   }
 
-  /** GUI 启动后后台检查一次；CLI 只使用已加载缓存。 */
+  /** GUI 启动后检查一次。CLI 使用已加载缓存。 */
   public start_model_catalog_check(): void {
     if (this.catalog_check !== null) return;
     this.catalog_check = this.modelCatalog.check((models, commit, signal) =>
@@ -385,7 +384,7 @@ export class BackendServices {
   }
 
   /**
-   * 释放组合根拥有的运行态资源；数据库和日志由 Bootstrap 关闭。
+   * 组合根释放运行态资源。Bootstrap 关闭数据库和日志。
    */
   public async dispose(): Promise<void> {
     const errors: unknown[] = [];

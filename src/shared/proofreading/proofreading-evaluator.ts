@@ -132,7 +132,7 @@ function compare_preserved_segments(pair: ProofreadingTextPair): ProofreadingWar
       };
 }
 
-/** 正文与姓名共用判断算法；调用方负责遵循各字段实际的翻译准备语义。 */
+/** 调用方按各字段的翻译准备语义提供输入。 */
 function evaluate_text_pair(
   pair: ProofreadingTextPair,
   config: TextProcessingConfig,
@@ -199,7 +199,6 @@ export function evaluateProofreadingItem(args: {
     src: item.src,
     name_src: read_optional_item_name_text(item.name_src),
     text_type: text_type,
-    config: args.processingConfig,
     preserve_rule: sample_rule,
     pre_replacements: args.quality_context.pre_replacements,
     start_ordinal: 0,

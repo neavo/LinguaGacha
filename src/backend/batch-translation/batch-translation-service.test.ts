@@ -229,7 +229,6 @@ it.each([
   const cache = new CacheManager({
     database,
     logManager: null,
-    appSettingService: settings as never,
     workerClient: { run: vi.fn() } as never,
   });
   const writes = new ProjectWriteStore(database, vi.fn(), () => null);
@@ -420,7 +419,6 @@ it("历史工程批量翻译保留旧分析物理数据、正式术语与资产�
   const cache = new CacheManager({
     database,
     logManager: { warning: vi.fn(), error: vi.fn() } as never,
-    appSettingService: { read_setting: () => ({}) } as never,
     workerClient: { run: async () => ({}) } as never,
   });
   const writes = new ProjectWriteStore(database, vi.fn(), () => null);

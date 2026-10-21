@@ -42,7 +42,6 @@ export const SETTING_SNAPSHOT_SCHEMA = Type.Object(
     output_folder_open_on_finish: Type.Boolean(), // 译文生成成功后是否打开输出目录。
     request_timeout: Type.Number(), // 等待模型回复的超时时间，单位为秒。
     preceding_lines_threshold: Type.Number(), // 单个翻译任务最多携带的参考上文行数。
-    clean_ruby: Type.Boolean(), // 翻译文本的注音清理开关。
     deduplication_in_bilingual: Type.Boolean(), // 双语文件原译文相同时是否只写一份正文。
     write_translated_name_fields_to_file: Type.Boolean(), // 导出时是否使用角色译名。
     prompt_enhancement_enable: Type.Boolean(), // 翻译提示词增强开关。
@@ -72,7 +71,6 @@ export const DEFAULT_SETTING: SettingSnapshot & JsonRecord = {
   output_folder_open_on_finish: false,
   request_timeout: 180,
   preceding_lines_threshold: 0,
-  clean_ruby: false,
   deduplication_in_bilingual: true,
   write_translated_name_fields_to_file: true,
   prompt_enhancement_enable: true,
@@ -99,10 +97,10 @@ export const DEFAULT_SETTING: SettingSnapshot & JsonRecord = {
 const PROJECT_SAVE_MODE_SET = new Set<ProjectSaveMode>(PROJECT_SAVE_MODES);
 
 /**
- * Setting 是 userdata/config.json 的业务实体；文件名保留 config.json，但领域语义统一为设置
+ * `Setting` 是 `userdata/config.json` 的业务实体。
  */
 export class Setting {
-  public readonly data: JsonRecord; // 完整设置文件形状；设置快照只从白名单计算
+  public readonly data: JsonRecord; // 设置快照只消费白名单字段。
 
   /** 保存从 JSON 归一后的设置字段。 */
   private constructor(data: JsonRecord) {
@@ -241,7 +239,7 @@ export function is_project_save_mode(value: unknown): value is ProjectSaveMode {
   return PROJECT_SAVE_MODE_SET.has(value as ProjectSaveMode);
 }
 
-/** 写入命令据此拒绝非法模式；读取配置时由归一化入口补默认值。 */
+/** 写入拒绝非法模式。读取配置时补默认值。 */
 export function is_agent_approval_mode(value: unknown): value is AgentApprovalMode {
   return Check(SETTING_SNAPSHOT_SCHEMA.properties.agent_approval_mode, value);
 }

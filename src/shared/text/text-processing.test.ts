@@ -9,13 +9,11 @@ describe("text worker snapshots", () => {
       read_text_processing_config({
         source_language: "EN",
         target_language: "DE",
-        clean_ruby: true,
         unrelated: "ignored",
       }),
     ).toEqual({
       source_language: "EN",
       target_language: "DE",
-      clean_ruby: true,
     });
   });
 

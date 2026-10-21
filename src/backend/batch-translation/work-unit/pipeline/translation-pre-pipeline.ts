@@ -12,7 +12,6 @@ import {
   type PreparedTranslationSourceLine,
 } from "../../../../shared/text/translation-source";
 import type {
-  TextProcessingConfig,
   TextQualitySnapshot,
   TextTaskItemRecord,
 } from "../../../../shared/text/text-processing";
@@ -42,17 +41,15 @@ export interface TranslationPrePipelineContext {
  * 翻译译前 pipeline，负责把 item 源文本转换成模型输入和显式恢复上下文
  */
 export class TranslationPrePipeline {
-  private readonly config: TextProcessingConfig; // 语言与文本修复策略的任务启动快照
   private readonly quality_snapshot: TextQualitySnapshot; // 保护与译前替换规则的同轮快照
   private readonly pre_replacements: CompiledTextReplacements | null; // 启用时只编译一次，同一 work unit 复用
   private readonly preserve_rules = new Map<string, TextPreserveRule>(); // 同一 work unit 的规则快照按文本类型复用。
   private next_reference_ordinal = 0; // 单个 work unit 内按模型输入顺序生成扁平 token
 
   /**
-   * 绑定配置快照和质量快照，pipeline 不读取全局会话缓存
+   * 绑定质量快照，pipeline 不读取全局会话缓存
    */
-  public constructor(config: TextProcessingConfig, quality_snapshot: TextQualitySnapshot) {
-    this.config = config;
+  public constructor(quality_snapshot: TextQualitySnapshot) {
     this.quality_snapshot = quality_snapshot;
     this.pre_replacements = quality_snapshot.pre_replacement_enable
       ? compile_text_replacements(quality_snapshot.pre_replacement_entries)
@@ -60,7 +57,7 @@ export class TranslationPrePipeline {
   }
 
   /**
-   * 按固定顺序执行：引用投影、纯文本 ruby、保护、替换
+   * 按固定顺序执行：引用投影、保护、替换
    */
   public process_item(
     item: TextTaskItemRecord,
@@ -86,7 +83,6 @@ export class TranslationPrePipeline {
       src: source_text,
       name_src: read_optional_item_name_text(item.name_src),
       text_type,
-      config: this.config,
       preserve_rule,
       pre_replacements: this.pre_replacements,
       start_ordinal: this.next_reference_ordinal,
@@ -131,16 +127,13 @@ export class TranslationPrePipeline {
 
   /** 投影只读上文并延续当前 work unit 序号，不保存无需恢复的映射。 */
   public project_precedings(items: TextTaskItemRecord[]): TextTaskItemRecord[] {
-    return items.map((item) => ({
-      ...item,
-      src: this.project_text(String(item.src ?? "")).text,
-    }));
-  }
-
-  /** 为 work unit 中的所有模型输入分配唯一递增的资源引用序号。 */
-  private project_text(text: string): ReturnType<typeof project_text_resource_references> {
-    const projection = project_text_resource_references(text, this.next_reference_ordinal);
-    this.next_reference_ordinal = projection.next_ordinal;
-    return projection;
+    return items.map((item) => {
+      const projection = project_text_resource_references(
+        String(item.src ?? ""),
+        this.next_reference_ordinal,
+      );
+      this.next_reference_ordinal = projection.next_ordinal;
+      return { ...item, src: projection.text };
+    });
   }
 }

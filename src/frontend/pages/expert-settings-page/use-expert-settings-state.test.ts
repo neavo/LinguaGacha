@@ -2,13 +2,12 @@ import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import type { ExpertSettingsSnapshot } from "./types";
+import { PRECEDING_LINES_THRESHOLD_MIN, type ExpertSettingsSnapshot } from "./types";
 import { useExpertSettingsState } from "./use-expert-settings-state";
 
 const commit_update = vi.fn(async () => null);
 const snapshot: ExpertSettingsSnapshot = {
-  preceding_lines_threshold: 3,
-  clean_ruby: false,
+  preceding_lines_threshold: PRECEDING_LINES_THRESHOLD_MIN + 3,
   deduplication_in_bilingual: false,
   write_translated_name_fields_to_file: false,
 };
@@ -18,7 +17,6 @@ vi.mock("@frontend/features/settings-editor/use-settings-editor", () => ({
     snapshot,
     pending_state: {
       preceding_lines_threshold: false,
-      clean_ruby: false,
       deduplication_in_bilingual: false,
       write_translated_name_fields_to_file: false,
     },
@@ -66,11 +64,11 @@ describe("useExpertSettingsState", () => {
     await render_hook();
 
     await act(async () => {
-      await latest_state?.update_preceding_lines_threshold(-1);
+      await latest_state?.update_preceding_lines_threshold(PRECEDING_LINES_THRESHOLD_MIN - 1);
     });
 
     expect(commit_update).toHaveBeenCalledWith("preceding_lines_threshold", {
-      preceding_lines_threshold: 0,
+      preceding_lines_threshold: PRECEDING_LINES_THRESHOLD_MIN,
     });
   });
 });

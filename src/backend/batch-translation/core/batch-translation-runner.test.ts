@@ -194,9 +194,6 @@ describe("BatchTranslationRunner", () => {
       const cache = new CacheManager({
         database,
         logManager: null,
-        appSettingService: {
-          read_setting: () => ({}),
-        } as never,
         workerClient: { run: vi.fn(), dispose: vi.fn() } as unknown as ComputeWorkerClient,
       });
       const publish_change = vi.fn(() => null);
@@ -889,7 +886,7 @@ describe("BatchTranslationRunner", () => {
   }
 
   /**
-   * 提供 BatchTranslationRunner 必需的完整项目端口；用例只覆盖与目标分支相关的方法。
+   * 提供本用例所需的 `BatchTranslationRunner` 项目端口。
    */
   function create_task_store(
     overrides: Partial<BatchTranslationRunnerOptions["taskStore"]> = {},

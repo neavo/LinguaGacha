@@ -50,7 +50,6 @@ function evaluate(args: {
     processingConfig: {
       source_language: args.sourceLanguage,
       target_language: args.targetLanguage ?? "ZH",
-      clean_ruby: false,
       ...args.processingConfig,
     },
     sample_rule_cache: new Map(),
@@ -485,14 +484,13 @@ describe("proofreading-evaluator", () => {
     ).toEqual([{ code: "FOREIGN_CHAR_RESIDUE", target_field: "name_dst", fragments: ["Alice"] }]);
   });
 
-  it("注音清理和译前替换都沿用翻译的资源保护边界", () => {
+  it("源文准备和译前替换沿用翻译的资源保护边界", () => {
     const text = "甘岸久弥[https://mypage.syosetu.com/1300935/]";
     expect(
       evaluate({
         src: text,
         dst: text,
         sourceLanguage: "JA",
-        processingConfig: { clean_ruby: true },
       }).warnings,
     ).toEqual([]);
     const quality = create_quality({
