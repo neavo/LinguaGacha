@@ -21,12 +21,13 @@
 - 如您的项目涉及任何商业行为或者商业收益，在使用 [LinguaGacha](https://github.com/neavo/LinguaGacha) 前，请先与作者联系以获得授权！
 
 ## 功能优势 📌
+- 最优的翻译质量，最快的翻译速度
+  - 完美保留各种 `字幕` `电子书` 的样式效果
+  - 自动生成术语表，保证专有名词在整部作品中的统一
+  - 十秒钟一份字幕，一分钟一本小说，五分钟一部游戏
 - 内置 `AGENT` 模式，通过对话自动完成各种任务　`👈👈 独家绝技`
-- 一键生成术语表，保证角色姓名等专有名词在整部作品中的译名统一
-- 最优的翻译质量，最快的翻译速度，十秒钟一份字幕，一分钟一本小说，五分钟一部游戏
-- 同类应用中最强的样式与代码保留能力，显著减少后期工作量，是制作内嵌汉化的最佳选择
-  - `字幕` `电子书` 保留所有原有样式
-  - `RenPy` `Godot` `WOLFRPG` `RPGMAKER` `Kirikiri` `ACTION GAME MAKER` 游戏即翻即玩
+  - 无需任何技术知识，游戏即翻即玩
+  - 主流引擎覆盖 - `RenPy` `Godot` `WOLFRPG` `RPGMAKER` `Kirikiri` `ACTION GAME MAKER`
 
 ## 基本流程 🛸
 - 从 [发布页](https://github.com/neavo/LinguaGacha/releases) 下载应用
@@ -48,21 +49,18 @@
     </details>
 - 获取一个可靠的 AI 大模型接口，推荐：
   - [ [DeepSeek](https://github.com/neavo/LinguaGacha/wiki/DeepSeek) ]，无显卡要求
-- 准备要翻译的文本
-  - `字幕`、`电子书` 等一般不需要预处理
-  - `游戏文本` 需要根据游戏引擎选择合适的工具进行提取
 - 启动应用
   - 将 `待翻译的文件` 拖到页面上创建项目
-  - 在 `基础设置` 中设置原文语言、译文语言等必要信息
-  - 在 `AGENT` 中选择模型，依次点击界面上预设指令完成以下步骤：
+  - 在 `基础设置` 页面设置原文语言、译文语言等必要信息
+  - 在 `AGENT` 页面选择模型，依次点击界面上预设指令完成以下步骤：
     - `术语提取`　`👈👈 可选但推荐，对质量很重要`
     - `全文翻译`
     - `自动审校`　`👈👈 可选但推荐，对质量很重要`
-  - 在 `AGENT` 中点击生成译文
+  - 在 `AGENT` 或 `工作台` 页面点击生成译文
 
 ## 使用教程 📝
 - 入门
-  - [基础教程](https://github.com/neavo/LinguaGacha/wiki/BasicTutorial)　`👈👈 手把手教学，有手就行，新手必看`
+  - [基础教程](https://github.com/neavo/LinguaGacha/wiki/BasicTutorial)　`👈 手把手教学，有手就行，新手必看`
   - [文件格式支持](https://github.com/neavo/LinguaGacha/wiki/SupportedFileFormat)
 - 模型设置
   - [模型管理](https://github.com/neavo/LinguaGacha/wiki/ModelManagement)　　[DeepSeek](https://github.com/neavo/LinguaGacha/wiki/DeepSeek)
@@ -81,25 +79,25 @@
 - 也欢迎在 [讨论区](https://github.com/neavo/LinguaGacha/discussions) 投稿你的使用心得
 
 ## 文本格式 🏷️
-- 字幕 `.srt .ass .ssa .vtt .lrc`
-- 电子书 `.txt .pdf .epub`
-- Markdown `.md`
-- [RenPy](https://www.renpy.org) 导出游戏文本 `.rpy`
-- `KV-JSON` 游戏文本 `.json`，来源 [MTool](https://mtool.app) [SExtractor](https://github.com/satan53x/SExtractor)
-- `Message-JSON` 游戏文本 `.json`，来源 [SExtractor](https://github.com/satan53x/SExtractor) [VNTextPatch](https://github.com/arcusmaximus/VNTranslationTools)
-- `Godot 4` 游戏文件，支持导入游戏目录或 `.exe`
-- `WOLFRPG 3` 游戏文件，支持导入游戏目录或 `.exe`
-- `RPGMAKER MV/MZ` 游戏文件，支持导入游戏目录或 `.exe`
-- `RPGMAKER XP/VX/VXAce` 游戏文件，支持导入游戏目录或 `.exe`
-- 即将停止支持：
-  - 项目文件 `.trans`，来源 [Translator++](https://dreamsavior.net/translator-plusplus)
-  - 游戏文本 `.xlsx`，来源 [SExtractor](https://github.com/satan53x/SExtractor) [Translator++](https://dreamsavior.net/translator-plusplus) [WOLF 官方翻译工具](https://silversecond.booth.pm/items/5151747)
-- 具体示例可见 [Wiki - 支持的文件格式](https://github.com/neavo/LinguaGacha/wiki/SupportedFileFormat)，更多格式将持续添加
+| 类型 | 格式 | 说明 |
+|:---|:---|:---|
+| 字幕 | `.srt` `.ass` `.ssa` `.vtt` `.lrc` | - |
+| 电子书 | `.txt` `.pdf` `.epub` | - |
+| Markdown | `.md` | - |
+| `KV-JSON` 游戏文本 | `.json` | 来源 [[MTool](https://mtool.app)] [[SExtractor](https://github.com/satan53x/SExtractor)] |
+| `Message-JSON` 游戏文本 | `.json` | 来源 [[SExtractor](https://github.com/satan53x/SExtractor)] [[VNTextPatch](https://github.com/arcusmaximus/VNTranslationTools)] |
+| `RenPy` 游戏文本 | `.rpy` | 教程 [[高质量翻译 RenPy 游戏的最佳实践](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForRenPy)] |
+| `Godot 4` 游戏文件 | `.exe` 或 游戏目录 | 教程 [[高质量翻译 Godot 游戏的最佳实践](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForGodot)] |
+| `WOLFRPG 3` 游戏文件 | `.exe` 或 游戏目录 | 教程 [[高质量翻译 WOLFRPG 游戏的最佳实践](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForWOLFRPG)] |
+| `RPGMAKER MV/MZ` 游戏文件 | `.exe` 或 游戏目录 | 教程 [[高质量翻译 RPGMAKER 游戏的最佳实践](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForRPGMaker)] |
+| `RPGMAKER XP/VX/VXAce` 游戏文件 | `.exe` 或 游戏目录 | 教程 [[高质量翻译 RPGMAKER 游戏的最佳实践](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForRPGMaker)] |
+| `.xlsx` 游戏文本 | `.xlsx` | 来源 [SExtractor](https://github.com/satan53x/SExtractor) [Translator++](https://dreamsavior.net/translator-plusplus) [WOLF 官方翻译工具](https://silversecond.booth.pm/items/5151747)　`👈 即将停止支持` |
+| `.trans` 项目文件 | `.trans` | 来源 [Translator++](https://dreamsavior.net/translator-plusplus)　`👈 即将停止支持` |
 
 ## 近期更新 📅
-- 20261020 v0.130.0
-  - 原生 `Godot 4` 游戏支持 [#1005](../../issues/1005)
-  - 原生 `ACTION GAME MAKER` 游戏支持 [#1005](../../issues/1005)
+- 20261021 v0.130.1
+  - 原生 `Godot 4` 加密游戏支持 [#1011](../../issues/1011)
+  - 修复与改进 [#1013](../../issues/1013) [#1014](../../issues/1014) [#1015](../../issues/1015)
 
 ## 开发指南 🛠️
 - 安装 [ [Go](https://go.dev) ] 和 [ [`Node.js`](https://nodejs.org) ]

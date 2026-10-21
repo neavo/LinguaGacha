@@ -24,12 +24,13 @@
 - 商業活動や利益を伴うプロジェクトの場合は、[LinguaGacha](https://github.com/neavo/LinguaGacha) を使用する前に、著者に連絡して許可を得てください！
 
 ## 機能の利点 📌
+- 最高の翻訳品質と最速の翻訳速度
+  - さまざまな `字幕` `電子書籍` のスタイルを完全に保持
+  - 用語集を自動生成し、固有名詞の訳語を作品全体で統一
+  - 10秒で字幕1本、1分で小説1冊、5分でゲーム1本
 - 対話を通じてさまざまなタスクを自動で完了する内蔵 `AGENT` モード　`👈👈 独自の強み`
-- 用語集をワンクリックで生成し、キャラクター名などの専門用語の訳語を作品全体で統一
-- 最高の翻訳品質と最速の翻訳速度、10秒で字幕1本、1分で小説1冊、5分でゲーム1本
-- 同種のアプリケーションの中で最強のスタイルとコード保持能力、後工程の作業量を大幅に削減、字幕埋め込み（内嵌字幕）作成に最適
-  - `字幕` `電子書籍` は元のスタイルをすべて保持
-  - `RenPy` `Godot` `WOLFRPG` `RPGMAKER` `Kirikiri` `ACTION GAME MAKER` のゲームは翻訳後すぐにプレイ可能
+  - 技術的な知識は不要。ゲームは翻訳後すぐにプレイ可能
+  - 主要エンジンに対応 - `RenPy` `Godot` `WOLFRPG` `RPGMAKER` `Kirikiri` `ACTION GAME MAKER`
 
 ## ワークフロー 🛸
 - [リリースページ](https://github.com/neavo/LinguaGacha/releases) からアプリケーションをダウンロード
@@ -51,21 +52,18 @@
     </details>
 - 信頼できるAIモデルインターフェースを取得。おすすめ：
   - [ [DeepSeek API](https://github.com/neavo/LinguaGacha/wiki/DeepSeekEN) ] (GPU不要)
-- ソーステキストを準備：
-  - `字幕`/`電子書籍`は通常、前処理が不要
-  - `ゲームテキスト`は特定のゲームエンジンに適したツールを使用して抽出が必要
 - アプリケーションを起動：
   - `翻訳するファイル` をページにドラッグしてプロジェクトを作成
-  - `基本設定` でソース言語、ターゲット言語などの必要な情報を設定
-  - `AGENT` でモデルを選択し、画面上のプリセット指示を順にクリックして以下の手順を実行：
+  - `基本設定` ページでソース言語、ターゲット言語などの必要な情報を設定
+  - `AGENT` ページでモデルを選択し、画面上のプリセット指示を順にクリックして以下の手順を実行：
     - `用語抽出`　`👈👈 任意ですが推奨。翻訳品質に大きく影響します`
     - `全文翻訳`
     - `自動校正`　`👈👈 任意ですが推奨。翻訳品質に大きく影響します`
-  - `AGENT` で訳文生成をクリック
+  - `AGENT` または `ワークベンチ` ページで訳文生成をクリック
 
 ## 使い方チュートリアル - English 📝
 - Getting Started
-  - [Basic Tutorial](https://github.com/neavo/LinguaGacha/wiki/BasicTutorialEN)　`👈👈 Step-by-step tutorial, easy to follow, a must-read for beginners`
+  - [Basic Tutorial](https://github.com/neavo/LinguaGacha/wiki/BasicTutorialEN)　`👈 Step-by-step tutorial, easy to follow, a must-read for beginners`
   - [File Format Support](https://github.com/neavo/LinguaGacha/wiki/SupportedFileFormatEN)
 - Model Setup
   - [Model Management](https://github.com/neavo/LinguaGacha/wiki/ModelManagementEN)　　[DeepSeek](https://github.com/neavo/LinguaGacha/wiki/DeepSeekEN)
@@ -84,25 +82,25 @@
 - You are welcome to share your experience in the [Discussions](https://github.com/neavo/LinguaGacha/discussions)
 
 ## 対応フォーマット 🏷️
-- 字幕 `.srt .ass .ssa .vtt .lrc`
-- 電子書籍 `.txt .pdf .epub`
-- Markdown `.md`
-- [RenPy](https://www.renpy.org) エクスポート `.rpy`
-- `KV-JSON` ゲームテキスト `.json`、出力元 [MTool](https://mtool.app) [SExtractor](https://github.com/satan53x/SExtractor)
-- `Message-JSON` ゲームテキスト `.json`、出力元 [SExtractor](https://github.com/satan53x/SExtractor) [VNTextPatch](https://github.com/arcusmaximus/VNTranslationTools)
-- `Godot 4` ゲームファイル：ゲームフォルダーまたは `.exe` をインポート
-- `WOLFRPG 3` ゲームファイル：ゲームフォルダーまたは `.exe` をインポート
-- `RPGMAKER MV/MZ` ゲームファイル：ゲームフォルダーまたは `.exe` をインポート
-- `RPGMAKER XP/VX/VXAce` ゲームファイル：ゲームフォルダーまたは `.exe` をインポート
-- サポート終了予定：
-  - プロジェクトファイル `.trans`、出力元 [Translator++](https://dreamsavior.net/translator-plusplus)
-  - ゲームテキスト `.xlsx`、出力元 [SExtractor](https://github.com/satan53x/SExtractor) [Translator++](https://dreamsavior.net/translator-plusplus) [WOLF 公式翻訳ツール](https://silversecond.booth.pm/items/5151747)
-- 例については [Wiki - 対応フォーマット](https://github.com/neavo/LinguaGacha/wiki/SupportedFileFormatEN) を参照。対応フォーマットは今後も追加予定
+| 種類 | 形式 | 説明 |
+|:---|:---|:---|
+| 字幕 | `.srt` `.ass` `.ssa` `.vtt` `.lrc` | - |
+| 電子書籍 | `.txt` `.pdf` `.epub` | - |
+| Markdown | `.md` | - |
+| `KV-JSON` ゲームテキスト | `.json` | 出力元 [[MTool](https://mtool.app)] [[SExtractor](https://github.com/satan53x/SExtractor)] |
+| `Message-JSON` ゲームテキスト | `.json` | 出力元 [[SExtractor](https://github.com/satan53x/SExtractor)] [[VNTextPatch](https://github.com/arcusmaximus/VNTranslationTools)] |
+| `RenPy` ゲームテキスト | `.rpy` | ガイド [[RenPy ゲームの高品質翻訳ガイド](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForRenPyEN)] |
+| `Godot 4` ゲームファイル | `.exe` またはゲームフォルダー | ガイド [[Godot ゲームの高品質翻訳ガイド](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForGodotEN)] |
+| `WOLFRPG 3` ゲームファイル | `.exe` またはゲームフォルダー | ガイド [[WOLFRPG ゲームの高品質翻訳ガイド](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForWOLFRPGEN)] |
+| `RPGMAKER MV/MZ` ゲームファイル | `.exe` またはゲームフォルダー | ガイド [[RPGMAKER ゲームの高品質翻訳ガイド](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForRPGMakerEN)] |
+| `RPGMAKER XP/VX/VXAce` ゲームファイル | `.exe` またはゲームフォルダー | ガイド [[RPGMAKER ゲームの高品質翻訳ガイド](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForRPGMakerEN)] |
+| `.xlsx` ゲームテキスト | `.xlsx` | 出力元 [SExtractor](https://github.com/satan53x/SExtractor) [Translator++](https://dreamsavior.net/translator-plusplus) [WOLF 公式翻訳ツール](https://silversecond.booth.pm/items/5151747)　`👈 サポート終了予定` |
+| `.trans` プロジェクトファイル | `.trans` | 出力元 [Translator++](https://dreamsavior.net/translator-plusplus)　`👈 サポート終了予定` |
 
 ## 最近の更新 📅
-- 20261020 v0.130.0
-  - `Godot 4` ゲームのネイティブサポート [#1005](../../issues/1005)
-  - `ACTION GAME MAKER` ゲームのネイティブサポート [#1005](../../issues/1005)
+- 20261021 v0.130.1
+  - 暗号化された `Godot 4` ゲームのネイティブサポート [#1011](../../issues/1011)
+  - 修正と改善 [#1013](../../issues/1013) [#1014](../../issues/1014) [#1015](../../issues/1015)
 
 ## 開発ガイド 🛠️
 - [Go](https://go.dev) と [`Node.js`](https://nodejs.org) をインストール
