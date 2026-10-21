@@ -106,12 +106,7 @@
 }
 
 .text-preserve-page__dialog-main-panel {
-  display: flex;
   min-height: 0;
-  flex-direction: column;
-  border: 1px solid var(--border);
-  border-radius: var(--ui-radius-card);
-  background: color-mix(in srgb, var(--muted) 58%, var(--popover));
 }
 
 .text-preserve-page__dialog-main-panel-content {

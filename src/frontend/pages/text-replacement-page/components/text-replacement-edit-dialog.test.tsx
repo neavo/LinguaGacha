@@ -26,38 +26,40 @@ describe("TextReplacementEditDialog", () => {
     container.remove();
   });
 
-  it.each(["quality_rule_editor.fields.source", "text_replacement_page.fields.replacement"])(
-    "点击 %s 正文与标题时保持换行设置",
-    async (label) => {
-      await act(async () => {
-        root.render(
-          <TextReplacementEditDialog
-            open
-            mode="edit"
-            entry={{ src: "hero", dst: "勇者", regex: false, case_sensitive: true }}
-            saving={false}
-            readonly={false}
-            invalid={false}
-            on_change={vi.fn()}
-            on_save={vi.fn(async () => undefined)}
-            on_close={vi.fn(async () => undefined)}
-          />,
-        );
-      });
+  it("点击各字段正文与标题时保持换行设置", async () => {
+    await act(async () => {
+      root.render(
+        <TextReplacementEditDialog
+          open
+          mode="edit"
+          entry={{ src: "hero", dst: "勇者", regex: false, case_sensitive: true }}
+          saving={false}
+          readonly={false}
+          invalid={false}
+          on_change={vi.fn()}
+          on_save={vi.fn(async () => undefined)}
+          on_close={vi.fn(async () => undefined)}
+        />,
+      );
+    });
 
-      const content = document.querySelector<HTMLElement>(`.cm-content[aria-label="${label}"]`)!;
-      const section = content.closest(".text-replacement-page__dialog-section")!;
+    const sections = document.querySelectorAll<HTMLElement>(
+      ".text-replacement-page__dialog-section",
+    );
+    expect(sections.length).toBeGreaterThan(0);
+    for (const section of sections) {
+      const content = section.querySelector<HTMLElement>(".cm-line")!;
       const wrap_action = section.querySelector<HTMLButtonElement>("button[aria-pressed]")!;
       const initial_wrap_state = wrap_action.getAttribute("aria-pressed");
 
-      await act(async () => content.querySelector<HTMLElement>(".cm-line")!.click());
+      await act(async () => content.click());
       expect(wrap_action.getAttribute("aria-pressed")).toBe(initial_wrap_state);
       await act(async () =>
         section.querySelector<HTMLElement>(".text-replacement-page__dialog-section-title")!.click(),
       );
       expect(wrap_action.getAttribute("aria-pressed")).toBe(initial_wrap_state);
-    },
-  );
+    }
+  });
 
   it("通过独立规则控件更新正则与大小写状态", async () => {
     const on_change = vi.fn();

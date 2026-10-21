@@ -32,14 +32,11 @@
   /* 卡片按内容展开，纵向滚动统一交给详情区。 */
   flex: 0 0 auto;
   padding: 10px 12px;
-  border: 1px solid var(--border);
-  border-radius: var(--ui-radius-card);
-  background: var(--ui-card-default-surface);
 }
 
-.log-detail-view__card--editor {
+.log-detail-view__editor {
   --app-editor-font-size: var(--ui-font-size-12);
-  padding: 0;
+  flex: 0 0 auto;
 }
 
 .log-detail-view__summary {

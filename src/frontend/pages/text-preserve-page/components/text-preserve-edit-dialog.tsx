@@ -1,5 +1,6 @@
 import { type JSX, useEffect, useRef } from "react";
 import { useI18n } from "@frontend/app/locale/locale-context";
+import { Card } from "@frontend/shadcn/card";
 import type {
   TextPreserveDialogMode,
   TextPreserveEntryDraft,
@@ -49,7 +50,7 @@ export function TextPreserveEditDialog(props: TextPreserveEditDialogProps): JSX.
     >
       <div className="text-preserve-page__dialog-scroll">
         <div className="text-preserve-page__dialog-form">
-          <div className="text-preserve-page__dialog-main-panel">
+          <Card variant="group" render={<div />} className="text-preserve-page__dialog-main-panel">
             <div className="text-preserve-page__dialog-main-panel-content">
               <div className="text-preserve-page__dialog-section">
                 <span className="text-preserve-page__dialog-section-title font-medium">
@@ -85,7 +86,7 @@ export function TextPreserveEditDialog(props: TextPreserveEditDialogProps): JSX.
                 />
               </div>
             </div>
-          </div>
+          </Card>
         </div>
       </div>
     </AppPageDialog>

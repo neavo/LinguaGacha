@@ -1,7 +1,3 @@
-.setting-card-row {
-  overflow: hidden;
-}
-
 .setting-card-row__content {
   display: flex;
   align-items: center;

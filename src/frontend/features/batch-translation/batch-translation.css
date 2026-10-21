@@ -72,12 +72,8 @@
 }
 
 .batch-translation__section {
-  display: flex;
-  flex-direction: column;
+  flex: 0 0 auto;
   gap: 10px;
-  border: 1px solid var(--border);
-  border-radius: var(--ui-radius-card);
-  background: color-mix(in srgb, var(--muted) 58%, var(--popover));
   padding: 14px;
 }
 

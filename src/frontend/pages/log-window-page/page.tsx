@@ -564,7 +564,11 @@ export function LogWindowPage(): JSX.Element {
             </CardContent>
           </Card>
 
-          <aside className="log-window-page__detail" aria-label={t("log_window_page.detail.title")}>
+          <Card
+            render={<aside />}
+            className="log-window-page__detail"
+            aria-label={t("log_window_page.detail.title")}
+          >
             <div className="log-window-page__detail-head">
               <h2>{t("log_window_page.detail.title")}</h2>
               <div className="log-window-page__detail-head-actions">
@@ -650,7 +654,7 @@ export function LogWindowPage(): JSX.Element {
               </div>
             </div>
             {render_detail()}
-          </aside>
+          </Card>
         </section>
       </div>
     </main>

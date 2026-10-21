@@ -420,11 +420,11 @@ Portal 浮层遵循固定语义栈：Dialog 与 Sheet 使用 `--ui-layer-overlay
 
 ### Cards / Containers
 
-- **Corner Style:** default、panel、table 和 toolbar 共用 4px 小圆角。
-- **Background:** 各变体由全局 card surface token 混合卡片与背景色，暗色主题保持同一层级顺序。
-- **Shadow Strategy:** 使用 Elevation & Depth 中的低阴影；只有可交互卡片获得 hover、active 与 focus-visible 反馈。
+- **Corner Style:** `default`、`panel`、`table`、`toolbar` 和 `group` 共用 4px 小圆角。
+- **Background:** 独立内容面与嵌入分组使用各自的全局 surface token，暗色主题沿用相同职责。
+- **Shadow Strategy:** 独立内容面使用 Elevation & Depth 中的低阴影，`group` 使用 `--border` 描边且无阴影；只有可交互卡片获得 hover、active 与 focus-visible 反馈。
 - **Border:** 1px 伪元素描边；hover 仅把边框少量混入主色。
-- **Internal Padding:** default 为 16px，panel 为 24px，table 和 toolbar 把 padding 让给内部结构。
+- **Internal Padding:** `default` 与 `group` 的内容插槽为 16px，`panel` 为 24px，`table` 和 `toolbar` 把 padding 让给内部结构。直接传入子内容时由消费方设置布局与间距。
 
 ### Inputs / Fields
 

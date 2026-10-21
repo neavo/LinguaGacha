@@ -26,11 +26,7 @@ describe("GlossaryEditDialog", () => {
     container.remove();
   });
 
-  it.each([
-    "quality_rule_editor.fields.source",
-    "glossary_page.fields.translation",
-    "glossary_page.fields.description",
-  ])("点击 %s 正文与标题时保持换行设置", async (label) => {
+  it("点击各字段正文与标题时保持换行设置", async () => {
     await act(async () => {
       root.render(
         <GlossaryEditDialog
@@ -46,17 +42,20 @@ describe("GlossaryEditDialog", () => {
       );
     });
 
-    const content = document.querySelector<HTMLElement>(`.cm-content[aria-label="${label}"]`)!;
-    const section = content.closest(".glossary-page__dialog-section")!;
-    const wrap_action = section.querySelector<HTMLButtonElement>("button[aria-pressed]")!;
-    const initial_wrap_state = wrap_action.getAttribute("aria-pressed");
+    const sections = document.querySelectorAll<HTMLElement>(".glossary-page__dialog-section");
+    expect(sections.length).toBeGreaterThan(0);
+    for (const section of sections) {
+      const content = section.querySelector<HTMLElement>(".cm-line")!;
+      const wrap_action = section.querySelector<HTMLButtonElement>("button[aria-pressed]")!;
+      const initial_wrap_state = wrap_action.getAttribute("aria-pressed");
 
-    await act(async () => content.querySelector<HTMLElement>(".cm-line")!.click());
-    expect(wrap_action.getAttribute("aria-pressed")).toBe(initial_wrap_state);
-    await act(async () =>
-      section.querySelector<HTMLElement>(".glossary-page__dialog-section-title")!.click(),
-    );
-    expect(wrap_action.getAttribute("aria-pressed")).toBe(initial_wrap_state);
+      await act(async () => content.click());
+      expect(wrap_action.getAttribute("aria-pressed")).toBe(initial_wrap_state);
+      await act(async () =>
+        section.querySelector<HTMLElement>(".glossary-page__dialog-section-title")!.click(),
+      );
+      expect(wrap_action.getAttribute("aria-pressed")).toBe(initial_wrap_state);
+    }
   });
 
   it("切换术语规则并保存，只读时禁用编辑与保存", async () => {
