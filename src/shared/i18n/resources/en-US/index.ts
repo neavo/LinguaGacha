@@ -5,9 +5,8 @@ import { en_us_batch_translation } from "./batch-translation";
 import { en_us_agent_page } from "./agent-page";
 import { en_us_agent_runtime } from "./agent-runtime";
 import { en_us_app } from "./app";
-import { en_us_basic_settings_page } from "./basic-settings-page";
+import { en_us_function_settings_page } from "./function-settings-page";
 import { en_us_custom_prompt_page } from "./custom-prompt-page";
-import { en_us_expert_settings_page } from "./expert-settings-page";
 import { en_us_glossary_page } from "./glossary-page";
 import { en_us_laboratory_page } from "./laboratory-page";
 import { en_us_log_window_page } from "./log-window-page";
@@ -30,9 +29,8 @@ export const en_us_messages = {
   agent_page: en_us_agent_page,
   agent_runtime: en_us_agent_runtime,
   app: en_us_app,
-  basic_settings_page: en_us_basic_settings_page,
+  function_settings_page: en_us_function_settings_page,
   custom_prompt_page: en_us_custom_prompt_page,
-  expert_settings_page: en_us_expert_settings_page,
   glossary_page: en_us_glossary_page,
   laboratory_page: en_us_laboratory_page,
   toolbox_page: en_us_toolbox_page,

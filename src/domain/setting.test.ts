@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   DEFAULT_SETTING,
+  CONTEXT_LINES_THRESHOLD_MAX,
   normalize_setting_snapshot,
   SETTING_SNAPSHOT_SCHEMA,
   Setting,
@@ -19,6 +20,26 @@ describe("设置快照", () => {
       expect(output).not.toHaveProperty("deduplication_in_bilingual");
       expect(output).not.toHaveProperty("write_translated_name_fields_to_file");
       expect(output).toHaveProperty("preceding_lines_threshold", 7);
+      expect(output).toHaveProperty("following_lines_threshold", 0);
+    }
+  });
+  it.each([
+    ["3.9", 3],
+    [-2.8, 0],
+    [Infinity, 0],
+    [NaN, 0],
+    ["bad", 0],
+    [CONTEXT_LINES_THRESHOLD_MAX + 1, CONTEXT_LINES_THRESHOLD_MAX],
+  ])("前后文读取、更新与快照使用同一计数边界：%s", (value, expected) => {
+    for (const field of ["preceding_lines_threshold", "following_lines_threshold"] as const) {
+      const setting = Setting.from_json({ [field]: value });
+      expect(setting.to_json()[field]).toBe(expected);
+      expect(setting.to_snapshot()[field]).toBe(expected);
+      expect(Setting.from_json({}).with_setting_value(field, value).to_snapshot()[field]).toBe(
+        expected,
+      );
+      expect(normalize_setting_snapshot({ [field]: value })[field]).toBe(expected);
+      expect(Check(SETTING_SNAPSHOT_SCHEMA, setting.to_snapshot())).toBe(true);
     }
   });
   it("读取与更新的结果满足同一快照结构，并保留文本边界", () => {

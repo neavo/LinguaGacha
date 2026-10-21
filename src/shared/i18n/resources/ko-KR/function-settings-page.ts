@@ -1,8 +1,18 @@
-import type { zh_cn_basic_settings_page } from "../zh-CN/basic-settings-page";
+import type { zh_cn_function_settings_page } from "../zh-CN/function-settings-page";
 import type { LocaleMessageSchema } from "../../types";
-export const ko_kr_basic_settings_page = {
-  title: "기본 설정",
+export const ko_kr_function_settings_page = {
+  title: "기능 설정",
   fields: {
+    preceding_lines_threshold: {
+      title: "참고할 앞선 문맥의 항목 수",
+      description:
+        "각 작업에 참고용으로 포함할 앞선 문맥의 텍스트 항목 수를 설정합니다. 토큰 사용량이 증가합니다. 기본적으로 비활성화됩니다.",
+    },
+    following_lines_threshold: {
+      title: "참고할 뒤따르는 문맥의 항목 수",
+      description:
+        "각 작업에 참고용으로 포함할 뒤따르는 문맥의 텍스트 항목 수를 설정합니다. 토큰 사용량이 증가합니다. 기본적으로 비활성화됩니다.",
+    },
     source_language: {
       description: "입력 텍스트 언어를 설정합니다",
     },
@@ -31,7 +41,11 @@ export const ko_kr_basic_settings_page = {
     },
   },
   feedback: {
+    preceding_lines_threshold_invalid:
+      "참고할 앞선 문맥의 항목 수는 0에서 9999999 사이의 정수여야 합니다 …",
+    following_lines_threshold_invalid:
+      "참고할 뒤따르는 문맥의 항목 수는 0에서 9999999 사이의 정수여야 합니다 …",
     request_timeout_invalid: "요청 제한 시간에 유효한 범위의 숫자를 입력해 주세요 …",
     pick_directory_failed: "폴더를 선택하지 못했습니다. 지정 저장 폴더를 다시 선택해 주세요 …",
   },
-} satisfies LocaleMessageSchema<typeof zh_cn_basic_settings_page>;
+} satisfies LocaleMessageSchema<typeof zh_cn_function_settings_page>;

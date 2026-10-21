@@ -1,3 +1,4 @@
+import { normalize_context_lines_threshold } from "@domain/setting";
 import {
   push_error_toast,
   push_toast,
@@ -20,12 +21,14 @@ import { useSettingsEditor } from "@frontend/features/settings-editor/use-settin
 import {
   REQUEST_TIMEOUT_MAX,
   REQUEST_TIMEOUT_MIN,
-  build_basic_settings_snapshot,
-  type BasicSettingsSnapshot,
+  build_function_settings_snapshot,
+  type FunctionSettingsSnapshot,
   type ProjectSaveMode,
-} from "@frontend/pages/basic-settings-page/types";
+} from "@frontend/pages/function-settings-page/types";
 
-const BASIC_SETTINGS_PENDING_FIELDS = [
+const FUNCTION_SETTINGS_PENDING_FIELDS = [
+  "preceding_lines_threshold",
+  "following_lines_threshold",
   "project_save_mode",
   "output_folder_open_on_finish",
   "request_timeout",
@@ -37,9 +40,9 @@ const IDLE_LANGUAGE_PENDING_STATE: Readonly<Record<ProjectLanguageKey, boolean>>
   target_language: false,
 };
 
-type UseBasicSettingsStateResult = {
-  snapshot: BasicSettingsSnapshot;
-  pending_state: Record<(typeof BASIC_SETTINGS_PENDING_FIELDS)[number], boolean>;
+type UseFunctionSettingsStateResult = {
+  snapshot: FunctionSettingsSnapshot;
+  pending_state: Record<(typeof FUNCTION_SETTINGS_PENDING_FIELDS)[number], boolean>;
   languages: Record<ProjectLanguageKey, string>; // 当前项目语言，保存期间显示本次选择
   language_pending_state: Record<ProjectLanguageKey, boolean>;
   language_locked: boolean; // 未加载项目或运行中时不可修改项目语言
@@ -48,6 +51,8 @@ type UseBasicSettingsStateResult = {
   update_target_language: (next_language: string) => Promise<void>;
   update_project_save_mode: (next_mode: ProjectSaveMode) => Promise<void>;
   update_output_folder_open_on_finish: (next_checked: boolean) => Promise<void>;
+  update_preceding_lines_threshold: (next_value: number) => Promise<void>;
+  update_following_lines_threshold: (next_value: number) => Promise<void>;
   update_request_timeout: (next_value: number) => Promise<void>;
 };
 
@@ -61,14 +66,14 @@ function clamp_request_timeout(next_value: number): number {
 /**
  * 组合应用设置编辑器与项目语言写入，页面不直接拥有后端设置事实。
  */
-export function useBasicSettingsState(): UseBasicSettingsStateResult {
+export function useFunctionSettingsState(): UseFunctionSettingsStateResult {
   const { project_snapshot, commit_project_write } = useDesktopState();
   const runtime_snapshot = useRuntimeSnapshot();
 
   const { t } = useI18n();
   const { snapshot, pending_state, commit_update } = useSettingsEditor({
-    select_snapshot: build_basic_settings_snapshot,
-    pending_fields: BASIC_SETTINGS_PENDING_FIELDS,
+    select_snapshot: build_function_settings_snapshot,
+    pending_fields: FUNCTION_SETTINGS_PENDING_FIELDS,
   });
   const runtime_locked = project_snapshot.loaded && is_runtime_busy(runtime_snapshot);
   const language_locked = !project_snapshot.loaded || runtime_locked;
@@ -153,7 +158,7 @@ export function useBasicSettingsState(): UseBasicSettingsStateResult {
             project_fixed_path: selected_path,
           });
         } catch (error) {
-          push_error_toast(t("basic_settings_page.feedback.pick_directory_failed"), error);
+          push_error_toast(t("function_settings_page.feedback.pick_directory_failed"), error);
         }
         return;
       }
@@ -192,6 +197,19 @@ export function useBasicSettingsState(): UseBasicSettingsStateResult {
     [commit_update, snapshot.request_timeout],
   );
 
+  /** 前后文共用领域计数规则，各字段独立保存。 */
+  const update_context_threshold = useCallback(
+    async (
+      field: "preceding_lines_threshold" | "following_lines_threshold",
+      value: number,
+    ): Promise<void> => {
+      const normalized = normalize_context_lines_threshold(value);
+      if (snapshot[field] === normalized) return;
+      await commit_update(field, { [field]: normalized });
+    },
+    [commit_update, snapshot],
+  );
+
   return {
     snapshot,
     pending_state,
@@ -204,5 +222,9 @@ export function useBasicSettingsState(): UseBasicSettingsStateResult {
     update_project_save_mode,
     update_output_folder_open_on_finish,
     update_request_timeout,
+    update_preceding_lines_threshold: (value) =>
+      update_context_threshold("preceding_lines_threshold", value),
+    update_following_lines_threshold: (value) =>
+      update_context_threshold("following_lines_threshold", value),
   };
 }

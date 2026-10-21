@@ -189,7 +189,8 @@ export const ko_kr_app = {
     builder_control_character_samples: "제어 문자 예시:",
     builder_glossary_header: "용어집 <원문 용어> -> <번역 용어> #<용어 정보>:",
     builder_input: "입력:",
-    builder_preceding_context: "앞선 문맥:",
+    builder_preceding_context: "앞 문맥 (참고용):",
+    builder_following_context: "뒤 문맥 (참고용):",
   },
   translation_generation: {
     action: "번역문 생성",

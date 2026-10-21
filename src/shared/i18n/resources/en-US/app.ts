@@ -192,7 +192,8 @@ export const en_us_app = {
     builder_control_character_samples: "Control Characters Samples:",
     builder_glossary_header: "Glossary <Original Term> -> <Translated Term> #<Term Information>:",
     builder_input: "Input:",
-    builder_preceding_context: "Preceding Context:",
+    builder_preceding_context: "Preceding context (for reference only):",
+    builder_following_context: "Following context (for reference only):",
   },
   translation_generation: {
     action: "Generate Translation",

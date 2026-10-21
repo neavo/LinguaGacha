@@ -1,14 +1,14 @@
-.expert-settings-page {
+.function-settings-page {
   min-height: 100%;
 }
 
-.expert-settings-page__list {
+.function-settings-page__list {
   display: flex;
   flex-direction: column;
   gap: var(--ui-list-gap-dense);
 }
 
-.expert-settings-page__number-field {
+.function-settings-page__number-field {
   display: flex;
   align-items: center;
 }

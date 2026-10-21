@@ -51,7 +51,8 @@ interface TranslationWorkUnitRequest {
   config_snapshot: TranslationWorkUnit["config_snapshot"]; // Frozen processing and locale settings.
   quality_snapshot: TextQualitySnapshot; // Frozen text rules shared by prompt and pipelines.
   items: TextTaskItemRecord[]; // Item snapshots owned by this work unit.
-  precedings: TextTaskItemRecord[]; // Context-only items; never written back.
+  precedings: TextTaskItemRecord[]; // 只读上文，不参与译文写回。
+  followings: TextTaskItemRecord[]; // 只读下文，不参与译文写回。
 }
 
 /** Runner 结果，尚未包装进跨线程执行信封。 */
@@ -86,6 +87,7 @@ export class TranslationWorkUnitRunner {
         quality_snapshot: unit.quality_snapshot,
         items: unit.payload.items,
         precedings: unit.payload.precedings,
+        followings: unit.payload.followings,
       },
       signal,
     );
@@ -115,8 +117,14 @@ export class TranslationWorkUnitRunner {
     const config = read_text_processing_config(request.config_snapshot);
     const quality = request.quality_snapshot;
     const items = structuredClone(request.items);
-    const precedings = structuredClone(request.precedings);
-    const prepared = this.prepare_request_data(request, config, quality, items, precedings);
+    const prepared = this.prepare_request_data(
+      request,
+      config,
+      quality,
+      items,
+      request.precedings,
+      request.followings,
+    );
     if (prepared.done) return prepared.result;
     const is_sakura = String(read_json_record(request.model)["api_format"] ?? "") === "SakuraLLM";
     const result = this.empty_result(items); // 多次请求共用用量与日志，字段写回在执行完成后进行。
@@ -135,6 +143,7 @@ export class TranslationWorkUnitRunner {
             mode,
             prepared.samples,
             prepared.projected_precedings,
+            prepared.projected_followings,
           );
       const start_time = Date.now();
       const response = await this.llm_client.request(
@@ -218,6 +227,7 @@ export class TranslationWorkUnitRunner {
     quality: TextQualitySnapshot,
     items: TextTaskItemRecord[],
     precedings: TextTaskItemRecord[],
+    followings: TextTaskItemRecord[],
   ):
     | { done: true; result: TranslationWorkUnitResult }
     | {
@@ -226,11 +236,14 @@ export class TranslationWorkUnitRunner {
         builder: PromptBuilder;
         samples: string[];
         projected_precedings: TextTaskItemRecord[];
+        projected_followings: TextTaskItemRecord[];
         pipeline_contexts: TranslationPrePipelineContext[];
       } {
     const activated = this.resolve_activated_glossary_entries(quality, items);
     const pipeline = new TranslationPrePipeline(quality);
-    const projected_precedings = pipeline.project_precedings(precedings);
+    // 投影创建条目副本，上下文无需深拷贝且不参与写回。
+    const projected_precedings = pipeline.project_context_items(precedings);
+    const projected_followings = pipeline.project_context_items(followings);
     const pipeline_contexts: TranslationPrePipelineContext[] = [];
     const request_items: TranslationRequestItem[] = [];
     for (const [item_index, item] of items.entries()) {
@@ -260,6 +273,7 @@ export class TranslationWorkUnitRunner {
       builder,
       samples,
       projected_precedings,
+      projected_followings,
       pipeline_contexts,
     };
   }

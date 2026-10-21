@@ -4,10 +4,9 @@ import { ja_jp_skills_page } from "./skills-page";
 import { ja_jp_agent_page } from "./agent-page";
 import { ja_jp_agent_runtime } from "./agent-runtime";
 import { ja_jp_app } from "./app";
-import { ja_jp_basic_settings_page } from "./basic-settings-page";
+import { ja_jp_function_settings_page } from "./function-settings-page";
 import { ja_jp_batch_translation } from "./batch-translation";
 import { ja_jp_custom_prompt_page } from "./custom-prompt-page";
-import { ja_jp_expert_settings_page } from "./expert-settings-page";
 import { ja_jp_glossary_page } from "./glossary-page";
 import { ja_jp_laboratory_page } from "./laboratory-page";
 import { ja_jp_log_window_page } from "./log-window-page";
@@ -30,10 +29,9 @@ export const ja_jp_messages = {
   agent_page: ja_jp_agent_page,
   agent_runtime: ja_jp_agent_runtime,
   app: ja_jp_app,
-  basic_settings_page: ja_jp_basic_settings_page,
+  function_settings_page: ja_jp_function_settings_page,
   batch_translation: ja_jp_batch_translation,
   custom_prompt_page: ja_jp_custom_prompt_page,
-  expert_settings_page: ja_jp_expert_settings_page,
   glossary_page: ja_jp_glossary_page,
   laboratory_page: ja_jp_laboratory_page,
   toolbox_page: ja_jp_toolbox_page,

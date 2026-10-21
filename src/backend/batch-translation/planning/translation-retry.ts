@@ -35,6 +35,7 @@ export function plan_translation_retry(
       work_unit_id: crypto.randomUUID(),
       items,
       precedings: [],
+      followings: [],
       retry_count: !is_single && items.length === 1 ? 0 : context.retry_count + 1, // 多条拆成单条时开始单条计数。
     });
   }

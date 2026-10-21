@@ -76,6 +76,7 @@ describe("PromptBuilder", () => {
       "text",
       [],
       [],
+      [],
     );
     const input = result.messages[1]?.content ?? "";
     expect(input).toContain('{"id":3,"text":"甲\\n乙"}');
@@ -112,11 +113,18 @@ describe("PromptBuilder", () => {
       "text",
       ["\\n[1]", "<b>", "\\n[1]", ""],
       [{ src: "上一句" }],
+      [{ src: "下一句" }],
     );
 
     expect(result.messages[0]?.content).toContain("日文");
     expect(result.messages[0]?.content).toContain("中文");
-    expect(result.messages[1]?.content).toContain("参考上文");
+    const content = String(result.messages[1]?.content);
+    expect(content).toContain("上一句");
+    expect(content).toContain("下一句");
+    expect(content.indexOf("上一句")).toBeLessThan(content.indexOf("下一句"));
+    expect(content.indexOf("下一句")).toBeLessThan(content.indexOf("Alice ->"));
+    expect(content.split("```jsonline")[1]).not.toMatch(/上一句|下一句/);
+    expect(result.console_log.join("\n")).toContain("下一句");
     expect(result.messages[1]?.content).toContain("Alice -> 爱丽丝 #女性人名");
     expect(result.messages[1]?.content).toContain("控制字符示例：\n\\n[1], <b>");
     expect(result.messages[1]?.content).toContain('{"id":0,"text":"Alice\\\\n[1]"}');
@@ -134,6 +142,10 @@ describe("PromptBuilder", () => {
       "text",
       [],
       [{ src: "previous" }],
+      [{ src: "following" }],
+    );
+    expect(prompt.messages[1]?.content).toContain(
+      format_i18n_message("en-US", "app.prompt.builder_following_context"),
     );
     expect(prompt.messages[0]?.content).toContain("Translation prefix");
     expect(prompt.messages[0]?.content).toContain("Translate from Japanese to Chinese.");
@@ -189,7 +201,13 @@ describe("PromptBuilder", () => {
       [{ entry_id: "foo", src: "foo", dst: "乙", info: "备注", case_sensitive: false }],
     );
 
-    const result = builder.generate_prompt([create_line({ text_src: "abc foo" })], "text", [], []);
+    const result = builder.generate_prompt(
+      [create_line({ text_src: "abc foo" })],
+      "text",
+      [],
+      [],
+      [],
+    );
     const user_prompt = result.messages[1]?.content ?? "";
 
     expect(user_prompt).toContain("Glossary");
@@ -212,6 +230,7 @@ describe("PromptBuilder", () => {
       [create_line({ text_src: "正文" })],
       "text",
       ["<a>"],
+      [],
       [],
     );
 
@@ -244,6 +263,7 @@ describe("PromptBuilder", () => {
     const result = builder.generate_prompt(
       [create_line({ text_src: "HP is low" })],
       "text",
+      [],
       [],
       [],
     );
@@ -280,6 +300,7 @@ describe("PromptBuilder", () => {
         create_line({ request_id: 1, text_src: "地の文", actor_src: null }),
       ],
       "actor_text",
+      [],
       [],
       [],
     );

@@ -69,6 +69,7 @@ describe("TranslationWorkerPool", () => {
         payload: {
           items: [{ id: 1, src: "こんにちは", dst: "", status: "NONE", text_type: "TXT" }],
           precedings: [],
+          followings: [],
         },
       },
       new AbortController().signal,
@@ -351,6 +352,7 @@ function create_translation_unit(unit_id: string) {
     payload: {
       items: [{ id: 1, src: "こんにちは", dst: "", status: "NONE", text_type: "TXT" }],
       precedings: [],
+      followings: [],
     },
   };
 }

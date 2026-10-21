@@ -188,7 +188,8 @@ export const zh_cn_app = {
     builder_control_character_samples: "控制字符示例：",
     builder_glossary_header: "术语表 <术语原文> -> <术语译文> #<术语信息>:",
     builder_input: "输入：",
-    builder_preceding_context: "参考上文：",
+    builder_preceding_context: "参考上文（仅供参考）：",
+    builder_following_context: "参考下文（仅供参考）：",
   },
   translation_generation: {
     action: "生成译文",

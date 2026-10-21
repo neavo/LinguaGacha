@@ -29,6 +29,7 @@ export type TranslationWorkUnit = {
   payload: {
     items: TextTaskItemRecord[];
     precedings: TextTaskItemRecord[];
+    followings: TextTaskItemRecord[];
   };
 };
 

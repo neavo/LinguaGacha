@@ -5,9 +5,8 @@ import { zh_cn_batch_translation } from "./batch-translation";
 import { zh_cn_agent_page } from "./agent-page";
 import { zh_cn_agent_runtime } from "./agent-runtime";
 import { zh_cn_app } from "./app";
-import { zh_cn_basic_settings_page } from "./basic-settings-page";
+import { zh_cn_function_settings_page } from "./function-settings-page";
 import { zh_cn_custom_prompt_page } from "./custom-prompt-page";
-import { zh_cn_expert_settings_page } from "./expert-settings-page";
 import { zh_cn_glossary_page } from "./glossary-page";
 import { zh_cn_laboratory_page } from "./laboratory-page";
 import { zh_cn_log_window_page } from "./log-window-page";
@@ -28,9 +27,8 @@ export const zh_cn_messages = {
   agent_page: zh_cn_agent_page,
   agent_runtime: zh_cn_agent_runtime,
   app: zh_cn_app,
-  basic_settings_page: zh_cn_basic_settings_page,
+  function_settings_page: zh_cn_function_settings_page,
   custom_prompt_page: zh_cn_custom_prompt_page,
-  expert_settings_page: zh_cn_expert_settings_page,
   glossary_page: zh_cn_glossary_page,
   laboratory_page: zh_cn_laboratory_page,
   toolbox_page: zh_cn_toolbox_page,

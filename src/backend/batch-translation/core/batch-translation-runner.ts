@@ -261,6 +261,7 @@ export class BatchTranslationRunner {
         payload: {
           items: context.items,
           precedings: context.precedings,
+          followings: context.followings,
         },
       },
       signal,

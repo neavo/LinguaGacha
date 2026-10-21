@@ -1,6 +1,14 @@
-export const zh_cn_basic_settings_page = {
-  title: "基础设置",
+export const zh_cn_function_settings_page = {
+  title: "功能设置",
   fields: {
+    preceding_lines_threshold: {
+      title: "参考前文条目数",
+      description: "设置每个任务携带的参考前文条目数，会增加 Token 消耗，默认禁用",
+    },
+    following_lines_threshold: {
+      title: "参考后文条目数",
+      description: "设置每个任务携带的参考后文条目数，会增加 Token 消耗，默认禁用",
+    },
     source_language: {
       description: "设置输入文本的语言",
     },
@@ -27,6 +35,8 @@ export const zh_cn_basic_settings_page = {
     },
   },
   feedback: {
+    preceding_lines_threshold_invalid: "参考前文条目数必须填写为 0 至 9999999 的整数 …",
+    following_lines_threshold_invalid: "参考后文条目数必须填写为 0 至 9999999 的整数 …",
     request_timeout_invalid: "请求超时时间必须填写为有效范围内的数字 …",
     pick_directory_failed: "目录选择失败 …",
   },

@@ -108,6 +108,68 @@ describe("BatchTranslationRunner", () => {
     },
   );
 
+  it("前后文贯通规划和请求，只有目标条目写回", async () => {
+    const builtin_root = create_template_root();
+    const pool = new TranslationWorkerPool({
+      builtinRoot: builtin_root,
+      execution: { kind: "in_process" },
+    });
+    const runtime = create_task_runtime();
+    const items = [1, 2, 3].map((id) => create_pending_item(id, "demo.txt", `原文${id}。`));
+    const original = structuredClone(items);
+    const committed: MutableJsonRecord[] = [];
+    const request: BatchTranslationRunnerOptions["llmClient"]["request"] = vi.fn(async (body) => {
+      const prompt = String(body.messages[1]?.content);
+      expect(prompt).toContain("原文1。");
+      expect(prompt).toContain("原文3。");
+      expect(prompt.split("```jsonline")[1]).toBe('\n{"id":0,"text":"原文2。"}\n```');
+      return {
+        response_result: '{"id":0,"text":"译文2。"}',
+        response_think: "",
+        input_tokens: 1,
+        reasoning_tokens: 0,
+        output_tokens: 1,
+        cancelled: false,
+        timeout: false,
+      };
+    });
+    const runner = new BatchTranslationRunner({
+      llmClient: { request },
+      builtinRoot: builtin_root,
+      taskRuntime: runtime,
+      executorClient: pool,
+      taskPlanner: create_test_task_planner(),
+      logManager: create_log_manager(),
+      taskStore: create_task_store({
+        get_translation_items: () => items,
+        commit_translation_batch: async (updated) => {
+          committed.push(...updated);
+          return { changed_item_ids: [], section_revisions: {} };
+        },
+      }),
+    });
+    try {
+      const handle = runtime.begin_standalone("translate");
+      await runtime.execute(handle, () =>
+        runner.run(
+          handle,
+          { operation: "translate", mode: "continue", item_ids: [2], item_statuses: ["NONE"] },
+          create_run_context(1, 512, {
+            preceding_lines_threshold: 1,
+            following_lines_threshold: 1,
+          }),
+        ),
+      );
+      await handle.completion;
+      expect(request).toHaveBeenCalledTimes(1);
+      expect(committed.map((item) => [item.id, item.dst])).toEqual([[2, "译文2。"]]);
+      expect(items).toEqual(original);
+    } finally {
+      await runtime.dispose();
+      await pool.dispose();
+    }
+  });
+
   it("翻译单条重试超限后提交 ERROR 且不回填原文", async () => {
     const committed_batches: MutableJsonRecord[] = [];
     const done = create_status_waiter("done");

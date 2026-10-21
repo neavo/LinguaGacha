@@ -125,8 +125,8 @@ export class TranslationPrePipeline {
     return context;
   }
 
-  /** 投影只读上文并延续当前 work unit 序号，不保存无需恢复的映射。 */
-  public project_precedings(items: TextTaskItemRecord[]): TextTaskItemRecord[] {
+  /** 投影只读上下文并延续当前 work unit 序号，不保存无需恢复的映射。 */
+  public project_context_items(items: TextTaskItemRecord[]): TextTaskItemRecord[] {
     return items.map((item) => {
       const projection = project_text_resource_references(
         String(item.src ?? ""),

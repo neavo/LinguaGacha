@@ -197,7 +197,8 @@ export const ja_jp_app = {
     builder_control_character_samples: "制御文字の例：",
     builder_glossary_header: "用語集 <原語> -> <訳語> #<用語情報>:",
     builder_input: "入力：",
-    builder_preceding_context: "前の文脈：",
+    builder_preceding_context: "前の文脈（参照のみ）：",
+    builder_following_context: "後の文脈（参照のみ）：",
   },
   translation_generation: {
     action: "訳文を出力",

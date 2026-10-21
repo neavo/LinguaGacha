@@ -1,9 +1,8 @@
 import { createElement } from "react";
 
-import { BasicSettingsPage } from "@frontend/pages/basic-settings-page/page";
+import { FunctionSettingsPage } from "@frontend/pages/function-settings-page/page";
 import { AgentPage } from "@frontend/pages/agent-page/page";
 import { CustomPromptPage } from "@frontend/pages/custom-prompt-page/page";
-import { ExpertSettingsPage } from "@frontend/pages/expert-settings-page/page";
 import { GameFontPage } from "@frontend/pages/game-font-page/page";
 import { GlossaryPage } from "@frontend/pages/glossary-page/page";
 import { LaboratoryPage } from "@frontend/pages/laboratory-page/page";
@@ -54,13 +53,9 @@ export const SCREEN_REGISTRY: ScreenRegistry = {
     component: WorkbenchPage,
     title_key: "workbench_page.title",
   },
-  "basic-settings": {
-    component: BasicSettingsPage,
-    title_key: "basic_settings_page.title",
-  },
-  "expert-settings": {
-    component: ExpertSettingsPage,
-    title_key: "expert_settings_page.title",
+  "function-settings": {
+    component: FunctionSettingsPage,
+    title_key: "function_settings_page.title",
   },
   glossary: {
     component: GlossaryPage,

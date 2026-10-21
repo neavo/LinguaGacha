@@ -164,6 +164,7 @@ function create_settings_snapshot(overrides: Record<string, unknown> = {}) {
     output_folder_open_on_finish: false,
     request_timeout: 120,
     preceding_lines_threshold: 0,
+    following_lines_threshold: 0,
     mtool_optimizer_enable: true,
     skip_duplicate_source_text_enable: true,
     glossary_default_preset: "",

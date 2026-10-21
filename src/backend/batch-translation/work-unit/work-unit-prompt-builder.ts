@@ -76,16 +76,20 @@ export class PromptBuilder {
     mode: TranslationPromptMode,
     samples: string[],
     precedings: TextTaskItemRecord[],
+    followings: TextTaskItemRecord[],
   ): PromptBuildResult {
     const messages: LLMMessage[] = [];
     const console_log: string[] = [];
     const instruction_text = this.build_main(mode);
     const user_parts: string[] = [];
 
-    const preceding = this.build_preceding(precedings);
-    if (preceding !== "") {
-      user_parts.push(preceding);
-      console_log.push(preceding);
+    for (const section of [
+      this.build_context(precedings, "app.prompt.builder_preceding_context"),
+      this.build_context(followings, "app.prompt.builder_following_context"),
+    ]) {
+      if (section === "") continue;
+      user_parts.push(section);
+      console_log.push(section);
     }
 
     const glossary = this.build_glossary(" -> ");
@@ -157,18 +161,18 @@ export class PromptBuilder {
   }
 
   /**
-   * 参考上文只放 user prompt，避免系统指令随上下文变化
+   * 参考上下文只放 user prompt，避免系统指令随上下文变化
    */
-  private build_preceding(precedings: TextTaskItemRecord[]): string {
-    if (precedings.length === 0) {
+  private build_context(items: TextTaskItemRecord[], title: LocaleKey): string {
+    if (items.length === 0) {
       return "";
     }
-    const lines = precedings.map((item) =>
+    const lines = items.map((item) =>
       String(item.src ?? "")
         .trim()
         .replaceAll("\n", "\\n"),
     );
-    return `${this.t("app.prompt.builder_preceding_context")}\n${lines.join("\n")}`;
+    return `${this.t(title)}\n${lines.join("\n")}`;
   }
 
   /**

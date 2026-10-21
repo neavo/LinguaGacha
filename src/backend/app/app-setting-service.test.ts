@@ -28,6 +28,30 @@ afterEach(() => {
 });
 
 describe("AppSettingService", () => {
+  it("旧配置保留前文并补后文默认值，新后文进入落盘和事件快照", () => {
+    const { service, paths, config_path, events } = create_service();
+    write_config(config_path, { preceding_lines_threshold: 7 });
+    expect(service.get_app_settings().settings).toMatchObject({
+      preceding_lines_threshold: 7,
+      following_lines_threshold: 0,
+    });
+    expect(service.update_app_settings({ following_lines_threshold: 4.9 }).settings).toMatchObject({
+      preceding_lines_threshold: 7,
+      following_lines_threshold: 4,
+    });
+    expect(read_config(config_path)).toMatchObject({
+      preceding_lines_threshold: 7,
+      following_lines_threshold: 4,
+    });
+    expect(new AppSettingService(paths).get_app_settings().settings).toMatchObject({
+      following_lines_threshold: 4,
+    });
+    expect(events.at(-1)?.payload).toMatchObject({
+      keys: ["following_lines_threshold"],
+      settings: { preceding_lines_threshold: 7, following_lines_threshold: 4 },
+    });
+  });
+
   it("审批偏好保存后广播设置，重建服务仍使用保存值", () => {
     const { service, paths, events } = create_service();
     expect(service.read_setting()["agent_approval_mode"]).toBe("manual");
