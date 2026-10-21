@@ -136,6 +136,7 @@ npm test -- --project renderer <测试文件路径...>
 
 GUI、preload、native 或 Backend Runtime worker 变化时，先运行相关目标测试。
 
+- 应用代理变化：运行 [app-proxy.test.ts](../src/native/app-proxy.test.ts)。它用真实 Electron 与本地代理验证 Chromium 和 Undici 的路由及传输。
 - 共享资源或生命周期变化：运行 `BackendResources` 与 `GuiBackendBootstrap` 的真实集成测试。
 - 文件删除或清理变化：运行 `src/native/native-fs.test.ts` 与调用者测试。前者在 Windows 用真实 Electron 验证只读文件与目录删除。
 - 加载、资源定位或跨进程启动契约变化：低层测试不足时，追加对应真实 Electron 集成或 smoke 验证。

@@ -82,7 +82,7 @@ export async function run_backend_runtime(args: {
   };
   const desktop_bundle_dir = resolve_desktop_bundle_dir_from_module_url(args.moduleUrl);
   // 普通模型请求与 Node fetch 共用同一宿主解析端口，避免两套代理事实漂移。
-  const system_proxy_resolver = {
+  const proxy_resolver = {
     resolveProxy: async (url: string, signal?: AbortSignal) =>
       String(await call_host({ kind: "resolve_proxy", url }, signal)),
   };
@@ -100,7 +100,7 @@ export async function run_backend_runtime(args: {
     },
     appRoot: args.appRoot,
     builtinRoot: args.builtinRoot,
-    systemProxyResolver: system_proxy_resolver,
+    proxyResolver: proxy_resolver,
     openDirectory: async (path) => {
       await call_host({ kind: "open_directory", path });
     },

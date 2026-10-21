@@ -12,7 +12,7 @@ renderer 通过 `window.desktopApp` 使用按用途划分的宿主能力。
 
 - 原生对话框选择位置，后端执行业务文件写入。
 - main 处理外链、系统注意力、原生文本菜单和更新下载。
-- Chromium 联网使用 session 的系统代理，后端网络策略见 [BACKEND](BACKEND.md)。
+- Chromium 联网使用 Electron 默认 Session 的应用代理，网络策略见 [BACKEND](BACKEND.md#应用代理)。
 
 后端地址由启动结果注入，HTTP / SSE 经 `desktop-api.ts` 统一处理，使页面共用连接、错误和恢复行为。
 

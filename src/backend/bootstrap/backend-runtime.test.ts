@@ -136,7 +136,7 @@ describe("run_backend_runtime", () => {
     const bootstrap_options = runtime_mocks.constructor_options[0] as {
       appRoot: string;
       builtinRoot: string;
-      systemProxyResolver: { resolveProxy: (url: string) => Promise<string> };
+      proxyResolver: { resolveProxy: (url: string) => Promise<string> };
       openDirectory: (path: string) => Promise<void>;
       pickSavePath: (name: string) => Promise<string | null>;
     };
@@ -144,7 +144,7 @@ describe("run_backend_runtime", () => {
       appRoot: "E:/app",
       builtinRoot: "E:/app.asar/builtin",
     });
-    const proxy = bootstrap_options.systemProxyResolver.resolveProxy("https://example.com");
+    const proxy = bootstrap_options.proxyResolver.resolveProxy("https://example.com");
     const proxy_request = get_host_request(port, "resolve_proxy");
     port.emit({
       type: "host_response",
@@ -207,11 +207,11 @@ describe("run_backend_runtime", () => {
       port,
     });
     const bootstrap_options = runtime_mocks.constructor_options[0] as {
-      systemProxyResolver: { resolveProxy: (url: string, signal: AbortSignal) => Promise<string> };
+      proxyResolver: { resolveProxy: (url: string, signal: AbortSignal) => Promise<string> };
     };
     const controller = new AbortController();
     const reason = new Error("用户停止 Agent");
-    const proxy = bootstrap_options.systemProxyResolver.resolveProxy(
+    const proxy = bootstrap_options.proxyResolver.resolveProxy(
       "https://example.com",
       controller.signal,
     );

@@ -306,6 +306,6 @@ function build_runner(
       get_agent_builtin_skill_dir: () => path.join(directory, "builtin-skills"),
     },
     runtimeDirectory: directory,
-    systemProxyResolver: { resolveProxy },
+    proxyResolver: { resolveProxy },
   });
 }

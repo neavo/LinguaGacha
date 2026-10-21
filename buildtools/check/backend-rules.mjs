@@ -11,7 +11,7 @@ const API_GATEWAY_RELATIVE_PATH = "src/backend/api/api-gateway-server.ts";
 const API_ROUTES_RELATIVE_PATH = "src/backend/api/api-routes.ts";
 const NATIVE_FS_RELATIVE_PATH = "src/native/native-fs.ts";
 const WORKSPACE_RUNTIME_BOOTSTRAP_PATH = "src/backend/agent/workspace/runtime/bootstrap.ts";
-const SYSTEM_PROXY_HTTP_CLIENT_RELATIVE_PATH = "src/backend/network/system-proxy-http-client.ts";
+const PROXY_HTTP_CLIENT_RELATIVE_PATH = "src/backend/network/proxy-http-client.ts";
 const BACKEND_SERVICES_RELATIVE_PATH = "src/backend/bootstrap/backend-services.ts";
 
 /**
@@ -56,7 +56,7 @@ function create_backend_module_ownership_rule() {
   };
 }
 
-/** Undici dispatcher 与全局 fetch 统一由 network 的系统代理客户端拥有。 */
+/** Undici dispatcher 与全局 fetch 统一由 network 的应用代理客户端拥有。 */
 function create_backend_outbound_network_rule() {
   return {
     name: "后端出站网络边界",
@@ -67,7 +67,7 @@ function create_backend_outbound_network_rule() {
           is_backend_production_source(file_path) || is_cli_production_source(file_path),
       )) {
         const relative_path = context.relative_path(file_path);
-        if (relative_path === SYSTEM_PROXY_HTTP_CLIENT_RELATIVE_PATH) continue;
+        if (relative_path === PROXY_HTTP_CLIENT_RELATIVE_PATH) continue;
         const content = context.read_file(file_path);
         for (const import_entry of context.read_imports(file_path)) {
           if (import_entry.specifier !== "undici") {
@@ -75,13 +75,13 @@ function create_backend_outbound_network_rule() {
           }
           errors.push({
             line: import_entry.line,
-            message: "Undici 传输只能由 system-proxy-http-client 拥有",
+            message: "Undici 传输只能由 proxy-http-client 拥有",
             relative_path,
           });
         }
 
         const matches = find_pattern_errors(content, /\bglobalThis\.fetch\s*=/g, () => {
-          return "全局 fetch 只能由 network 的系统代理客户端安装";
+          return "全局 fetch 只能由 network 的应用代理客户端安装";
         });
         errors.push(...matches.map((match) => ({ ...match, relative_path })));
       }

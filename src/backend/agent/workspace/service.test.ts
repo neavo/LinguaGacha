@@ -1412,7 +1412,7 @@ it("PDF 零条目工程按页保存、隔离旧指纹，语言变化后重建工
     appRoot: directory.path,
     builtinRoot: path.join(directory.path, "builtin"),
     logTargets: { console: false, window: false },
-    systemProxyResolver: { resolveProxy: async () => "DIRECT" },
+    proxyResolver: { resolveProxy: async () => "DIRECT" },
   });
   const pdfHost = vi.fn<PDFHost>(async () => create_pdf_fixture(["Translated page"]));
   const services = new BackendServices({

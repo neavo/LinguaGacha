@@ -12,6 +12,7 @@ const mocks = vi.hoisted(() => ({
   resource_options: [] as unknown[],
   service_options: [] as unknown[],
   when_ready: vi.fn(),
+  configure_proxy: vi.fn(),
   resolve_proxy: vi.fn(),
   dispose_resources: vi.fn(),
   dispose_services: vi.fn(),
@@ -35,6 +36,7 @@ vi.mock("electron", () => ({
 
 vi.mock("../backend/bootstrap/backend-resources", () => ({
   BackendResources: class {
+    /** 记录资源启动，验证代理配置先于后端装配。 */
     public static async start(options: unknown): Promise<unknown> {
       mocks.events.push("resources");
       mocks.resource_options.push(options);
@@ -45,6 +47,7 @@ vi.mock("../backend/bootstrap/backend-resources", () => ({
 
 vi.mock("../backend/bootstrap/backend-services", () => ({
   BackendServices: class {
+    /** 捕获装配依赖，隔离真实任务与资源。 */
     public constructor(options: unknown) {
       mocks.events.push("services");
       mocks.service_options.push(options);
@@ -54,6 +57,7 @@ vi.mock("../backend/bootstrap/backend-services", () => ({
 }));
 
 vi.mock("./job/cli-job-runner", () => ({ run_cli_job: mocks.run_cli_job }));
+vi.mock("../native/app-proxy", () => ({ configure_app_proxy: mocks.configure_proxy }));
 vi.mock("./cli-output", () => ({ write_stdout: vi.fn() }));
 
 import { run_cli_command } from "./cli-runner";
@@ -63,6 +67,7 @@ beforeEach(() => {
   mocks.resource_options.length = 0;
   mocks.service_options.length = 0;
   mocks.when_ready.mockReset().mockImplementation(async () => mocks.events.push("ready"));
+  mocks.configure_proxy.mockReset().mockImplementation(async () => mocks.events.push("proxy"));
   mocks.resolve_proxy.mockReset().mockResolvedValue("DIRECT");
   mocks.dispose_services
     .mockReset()
@@ -74,6 +79,27 @@ beforeEach(() => {
 });
 
 describe("run_cli_command", () => {
+  it("等待代理配置完成才启动 Backend", async () => {
+    const configured = Promise.withResolvers<void>();
+    mocks.configure_proxy.mockReturnValueOnce(configured.promise);
+    const pending = run_cli_command("E:/App", create_translate_command(), { kind: "in_process" });
+    await vi.waitFor(() => expect(mocks.configure_proxy).toHaveBeenCalledOnce());
+    expect(mocks.resource_options).toEqual([]);
+    configured.resolve();
+    await pending;
+    expect(mocks.resource_options).toHaveLength(1);
+  });
+
+  it("代理配置失败向 CLI 错误出口传播并阻止 Backend 启动", async () => {
+    const error = new Error("LG_PROXY invalid");
+    mocks.configure_proxy.mockRejectedValueOnce(error);
+    await expect(
+      run_cli_command("E:/App", create_translate_command(), { kind: "in_process" }),
+    ).rejects.toBe(error);
+    expect(mocks.resource_options).toEqual([]);
+    expect(mocks.run_cli_job).not.toHaveBeenCalled();
+  });
+
   it("只组装共享 Backend 能力并在 job 后逆序释放", async () => {
     const command = create_translate_command();
 
@@ -81,6 +107,7 @@ describe("run_cli_command", () => {
 
     expect(mocks.events).toEqual([
       "ready",
+      "proxy",
       "resources",
       "services",
       "job",
@@ -94,7 +121,7 @@ describe("run_cli_command", () => {
       logTargets: { console: false, window: false },
     });
     await expect(
-      resource_options.systemProxyResolver.resolveProxy("https://api.example/v1"),
+      resource_options.proxyResolver.resolveProxy("https://api.example/v1"),
     ).resolves.toBe("DIRECT");
     const service_options = mocks.service_options[0] as BackendServicesOptions;
     expect(service_options).toMatchObject({
@@ -129,6 +156,7 @@ describe("run_cli_command", () => {
   });
 });
 
+/** 构造翻译任务，聚焦 CLI 装配与资源释放。 */
 function create_translate_command(): CLICommandOptions {
   return {
     command: "translate",

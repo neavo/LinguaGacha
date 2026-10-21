@@ -67,6 +67,7 @@ const mocks = vi.hoisted(() => {
     dispose_pdf,
     app_exit: vi.fn(),
     app_quit: vi.fn(),
+    configure_proxy: vi.fn(async (): Promise<void> => undefined),
     resolve_proxy: vi.fn(async () => "DIRECT"),
     session_fetch: vi.fn(async () => new Response()),
     open_path: vi.fn(async () => ""),
@@ -103,6 +104,7 @@ vi.mock("electron", () => ({
 vi.mock("../native/pdf-host", () => ({
   create_pdf_host: () => Object.assign(vi.fn(), { dispose: mocks.dispose_pdf }),
 }));
+vi.mock("../native/app-proxy", () => ({ configure_app_proxy: mocks.configure_proxy }));
 vi.mock("./runtime/backend-runtime-client", () => ({
   BackendRuntimeClient: mocks.BackendRuntimeClient,
 }));
@@ -140,6 +142,38 @@ describe("run_gui_entry", () => {
     mocks.backend_start.mockResolvedValue(mocks.ready);
     mocks.backend_stop.mockResolvedValue(undefined);
     mocks.dispose_pdf.mockResolvedValue(undefined);
+    mocks.configure_proxy.mockReset().mockResolvedValue(undefined);
+  });
+
+  it("等待代理配置完成才启动 Backend", async () => {
+    const configured = Promise.withResolvers<void>();
+    mocks.configure_proxy.mockReturnValueOnce(configured.promise);
+    run_gui_entry({
+      desktopBundleDir: "E:/app/dist-electron",
+      backendRuntimeWorkerEntryUrl: new URL("file:///worker.js"),
+    });
+    await vi.waitFor(() => expect(mocks.configure_proxy).toHaveBeenCalledOnce());
+    expect(mocks.backend_start).not.toHaveBeenCalled();
+    configured.resolve();
+    await vi.waitFor(() => expect(mocks.create_main_window).toHaveBeenCalledOnce());
+  });
+
+  it("代理配置失败阻止 Backend 启动并显示启动错误", async () => {
+    mocks.configure_proxy.mockRejectedValueOnce(new Error("LG_PROXY invalid"));
+    const stderr = vi.spyOn(process.stderr, "write").mockReturnValue(true);
+    run_gui_entry({
+      desktopBundleDir: "E:/app/dist-electron",
+      backendRuntimeWorkerEntryUrl: new URL("file:///worker.js"),
+    });
+    await vi.waitFor(() => expect(mocks.app_exit).toHaveBeenCalledWith(1));
+    expect(mocks.backend_start).not.toHaveBeenCalled();
+    expect(mocks.create_main_window).not.toHaveBeenCalled();
+    expect(mocks.show_native_error).toHaveBeenCalledWith(
+      "LinguaGacha 启动失败",
+      "LG_PROXY invalid",
+    );
+    expect(stderr).toHaveBeenCalledWith("[startup] LG_PROXY invalid\n");
+    expect(mocks.dispose_pdf).toHaveBeenCalledOnce();
   });
 
   it("Backend ready 后以 Electron 默认会话装配更新器、IPC 和窗口", async () => {

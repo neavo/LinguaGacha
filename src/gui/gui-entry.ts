@@ -1,4 +1,5 @@
 import { resolve_workspace_runtime_directory } from "../native/workspace-runtime";
+import { configure_app_proxy } from "../native/app-proxy";
 import { app, BrowserWindow, session, shell } from "electron";
 import path from "node:path";
 
@@ -30,7 +31,7 @@ export interface GuiEntryOptions {
 }
 
 /**
- * 启动 Electron GUI 入口；模块导入本身不注册 Electron 事件，便于顶层 index 分发 CLI。
+ * 启动 Electron GUI 入口。模块导入本身不注册 Electron 事件，便于顶层 index 分发 CLI。
  */
 export function run_gui_entry(options: GuiEntryOptions): void {
   const desktop_bundle_dir = options.desktopBundleDir;
@@ -94,7 +95,7 @@ export function run_gui_entry(options: GuiEntryOptions): void {
       void quit_app_after_backend_shutdown(1);
     },
   });
-  // 窗口诊断失败不能形成新的 unhandled rejection；fatal 路径另行等待并兜底 stderr。
+  // 窗口诊断失败不能形成新的 unhandled rejection。fatal 路径另行等待并兜底 stderr。
   const record_host_diagnostic: BackendRuntimeClient["recordHostDiagnostic"] = async (args) => {
     try {
       await backend_runtime.recordHostDiagnostic(args);
@@ -215,7 +216,7 @@ export function run_gui_entry(options: GuiEntryOptions): void {
     getBackendRuntimeClient: () => backend_runtime,
   });
 
-  // 所有窗口关闭时进入应用退出；日志窗口也要一起收掉，避免诊断窗口单独存活。
+  // 所有窗口关闭时进入应用退出。日志窗口也要一起收掉，避免诊断窗口单独存活。
   app.on("window-all-closed", () => {
     win = null;
     log_window_host?.close();
@@ -231,6 +232,7 @@ export function run_gui_entry(options: GuiEntryOptions): void {
   // Electron ready 后才能启动 Backend 和创建窗口，保证 app API 与原生资源都已可用。
   app.whenReady().then(async () => {
     try {
+      await configure_app_proxy();
       const backend_start_result = await backend_runtime.start();
       backend_ready = backend_start_result;
       desktop_update_service = new DesktopUpdateService({

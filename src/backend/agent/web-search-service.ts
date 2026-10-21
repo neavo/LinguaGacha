@@ -20,7 +20,7 @@ import type {
 const WEB_SEARCH_PROVIDER_TIMEOUT_MS = 8_000; // 单家连接、调用与会话重建共用一次预算
 const WEB_SEARCH_RESULT_LIMIT = 10; // 仅约束支持数量参数的供应商，不构成模型侧契约
 
-/** 供应商内部失败分类；只有全部来源一致时才提升为同名产品错误。 */
+/** 供应商内部失败分类。只有全部来源一致时才提升为同名产品错误。 */
 type SearchProviderFailureCode =
   | "rate_limited"
   | "timeout"
@@ -101,7 +101,7 @@ class SearchProviderError extends Error {
   }
 }
 
-/** 应用级固定搜索服务；成功来源晋升，并在后续失败时环形回访其它来源。 */
+/** 应用级固定搜索服务。成功来源晋升，并在后续失败时环形回访其它来源。 */
 export class WebSearchService {
   private readonly clients = new Map<AgentWebSearchProvider, McpClient>(); // 拥有连接中的客户端及可复用会话
   private preferred_provider_index = 0; // 仅随应用进程存在，工程切换不重置
@@ -113,7 +113,7 @@ export class WebSearchService {
     private readonly log_manager: Pick<LogManager, "warning">,
   ) {}
 
-  /** 从当前首选开始串行尝试，成功来源晋升；调用方取消不触发后续来源。 */
+  /** 从当前首选开始串行尝试，成功来源晋升。调用方取消不触发后续来源。 */
   public readonly search: AgentWebSearchPort = async (
     query,
     caller_signal,
@@ -141,7 +141,7 @@ export class WebSearchService {
           ? new SearchProviderError(provider.name, "timeout", error)
           : normalize_provider_error(provider.name, error);
         failures.push(failure);
-        // 回退成功也要保留失败来源；最终受控错误只向模型公开汇总分类。
+        // 回退成功也要保留失败来源。最终受控错误只向模型公开汇总分类。
         this.log_manager.warning(t_main_log("app.diagnostic.agent.web_search_provider_failed"), {
           source: "web_search",
           error: failure,
@@ -168,7 +168,7 @@ export class WebSearchService {
     }
   }
 
-  /** 单家操作拥有握手、调用与重建的取消；仅会话过期重试一次，共用外层预算。 */
+  /** 单家操作拥有握手、调用与重建的取消。仅会话过期重试一次，共用外层预算。 */
   private async search_provider(
     spec: SearchProviderSpec,
     query: string,
@@ -177,9 +177,9 @@ export class WebSearchService {
     signal.throwIfAborted();
     let cancelled_close: Promise<void> | undefined; // 取消监听器启动关闭，操作退出前等待结算
     const cancel = (): void => {
-      // Pi 的 connect 不接收 signal；关闭客户端同时中断握手和工具请求的 HTTP。
+      // Pi 的 connect 不接收 signal。关闭客户端同时中断握手和工具请求的 HTTP。
       cancelled_close = this.close_client(spec.name, signal.reason);
-      // 监听器不能 await，先接住拒绝；finally 会等待并传播同一关闭错误。
+      // 监听器不能 await，先接住拒绝。finally 会等待并传播同一关闭错误。
       void cancelled_close.catch(() => undefined);
     };
     signal.addEventListener("abort", cancel, { once: true });
@@ -207,7 +207,7 @@ export class WebSearchService {
     }
   }
 
-  /** 延迟创建并登记所有权；默认 initialize 握手与全局 fetch 共用现有供应商及系统代理契约。 */
+  /** 延迟创建并登记所有权。initialize 握手与全局 Fetch 共用供应商及应用代理契约。 */
   private async require_client(spec: SearchProviderSpec, signal: AbortSignal): Promise<McpClient> {
     signal.throwIfAborted();
     if (this.disposed) throw new AgentToolError({ code: "web_search.unavailable" });
@@ -223,12 +223,12 @@ export class WebSearchService {
     client.onClose(() => {
       if (this.clients.get(spec.name) === client) this.clients.delete(spec.name);
     });
-    // `connect` 失败由 Pi 关闭连接，`onClose` 同步移除登记；取消由单家操作结算。
+    // `connect` 失败由 Pi 关闭连接，`onClose` 同步移除登记。取消由单家操作结算。
     await client.connect(transport);
     return client;
   }
 
-  /** 先移除拥有的引用再关闭；清理失败时同时保留触发清理的原始原因。 */
+  /** 先移除拥有的引用再关闭。清理失败时同时保留触发清理的原始原因。 */
   private async close_client(provider: AgentWebSearchProvider, cause?: unknown): Promise<void> {
     const client = this.clients.get(provider);
     this.clients.delete(provider);
@@ -243,7 +243,7 @@ export class WebSearchService {
   }
 }
 
-/** 协议结构由 SDK 校验；业务只接收非空文本并识别供应商自己的失败结果。 */
+/** 协议结构由 SDK 校验。业务只接收非空文本并识别供应商自己的失败结果。 */
 function read_search_text(spec: SearchProviderSpec, result: CallToolResult): string {
   const text = result.content
     .filter((block) => block.type === "text")
@@ -297,7 +297,7 @@ function normalize_provider_error(
   return new SearchProviderError(provider, "unavailable", error);
 }
 
-/** 固定的非空供应商集合全部失败后汇总；只有原因一致时保留细分错误。 */
+/** 固定的非空供应商集合全部失败后汇总。只有原因一致时保留细分错误。 */
 function create_search_error(failures: readonly SearchProviderError[]): AgentToolError {
   const first_code = failures[0]!.code;
   const code = failures.every((failure) => failure.code === first_code)

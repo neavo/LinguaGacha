@@ -10,7 +10,7 @@ import { AgentWorkspaceRunner } from "../agent/workspace/runtime/runner";
 import { ApiGatewayServer } from "../api/api-gateway-server";
 import { ApiStreamHub } from "../api/api-stream-hub";
 import { t_main_log } from "../log/log-text";
-import type { SystemProxyResolver } from "../network/system-proxy-http-client";
+import type { ProxyResolver } from "../network/proxy-http-client";
 import type { BackendWorkerExecution } from "../worker/worker-execution";
 import { AppError } from "../../shared/error";
 import type { LogTargets } from "../../shared/log";
@@ -26,7 +26,7 @@ export interface GuiBackendBootstrapOptions {
   appRoot: string; // 安装根与便携数据位置
   builtinRoot: string; // 当前版本只读内置资产根
   logTargets?: Partial<LogTargets>; // GUI Backend 日志出口
-  systemProxyResolver: SystemProxyResolver; // Electron main 提供的代理解析端口
+  proxyResolver: ProxyResolver; // Electron main 提供的代理解析端口
   workspaceRuntimeDirectory: string; // 与 runner 同版本的标准 npm 环境
   openDirectory: (path: string) => Promise<void>; // Electron main 副作用端口
   pickSavePath: (defaultName: string) => Promise<string | null>; // 原生保存选择，取消返回 null
@@ -121,7 +121,7 @@ export class GuiBackendBootstrap {
       const runner = new AgentWorkspaceRunner({
         paths: resources.paths,
         runtimeDirectory: this.options.workspaceRuntimeDirectory,
-        systemProxyResolver: this.options.systemProxyResolver,
+        proxyResolver: this.options.proxyResolver,
       });
       const workspace = new AgentWorkspaceService({
         images,
