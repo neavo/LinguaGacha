@@ -14,8 +14,6 @@ import { EPUBFormat } from "./epub-format";
 function create_format(): EPUBFormat {
   return new EPUBFormat({
     target_language: "ZH",
-    deduplication_in_bilingual: true,
-    write_translated_name_fields_to_file: true,
   });
 }
 

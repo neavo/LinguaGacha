@@ -4,7 +4,7 @@ import path from "node:path";
 import { JsonTool } from "../../../shared/utils/json-tool";
 import type { JsonValue } from "../../../domain/json";
 import { group_items, write_text_file } from "../shared/file-format-helpers";
-import { type GeneratedFilePaths, type FileFormatServiceConfig } from "../file-format-types";
+import { type GeneratedFilePaths } from "../file-format-types";
 import { type Item, create_item } from "../../../domain/item";
 import { read_json_record } from "../../../domain/json";
 import { resolve_output_item_name } from "../../../shared/item-name";
@@ -14,11 +14,6 @@ import { resolve_output_item_name } from "../../../shared/item-name";
  * 单值类的正文生效规则见 `read_translation_for_generation()`。
  */
 export class MESSAGEJSONFormat {
-  /**
-   * 配置决定人名字段写回策略
-   */
-  public constructor(private readonly config: FileFormatServiceConfig) {}
-
   /**
    * 只解析数组内含 message 字符串的对象，name/names 作为角色名字段保存
    */
@@ -63,7 +58,6 @@ export class MESSAGEJSONFormat {
           const name = resolve_output_item_name({
             name_src: item.name_src,
             name_dst: item.name_dst,
-            write_translated_name_fields_to_file: this.config.write_translated_name_fields_to_file,
           });
           if (typeof name === "string") {
             return { name, message };

@@ -30,11 +30,6 @@ interface WriterExtra {
  */
 export class RenpyWriter {
   /**
-   * 姓名写回策略由格式服务配置传入。
-   */
-  public constructor(private readonly write_translated_name_fields_to_file: boolean | undefined) {}
-
-  /**
    * 逐条校验原稿定位，校验失败的条目保留原行。
    */
   public apply_items_to_lines(lines: string[], items: Item[]): void {
@@ -91,7 +86,7 @@ export class RenpyWriter {
   }
 
   /**
-   * NAME 槽按导出配置解析业务姓名文本，正文槽使用带回退 KV 规则。
+   * NAME 槽优先使用当前条目译名，正文槽使用带回退 KV 规则。
    */
   public build_replacements(
     item: Item,
@@ -112,7 +107,6 @@ export class RenpyWriter {
         const name = resolve_output_item_name({
           name_src: item.name_src,
           name_dst: item.name_dst,
-          write_translated_name_fields_to_file: this.write_translated_name_fields_to_file,
         });
         const name_text = read_item_name_text(name);
         if (name_text !== "") {

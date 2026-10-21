@@ -7,7 +7,7 @@ import {
   split_text_lines_for_items,
   write_text_file,
 } from "../shared/file-format-helpers";
-import { type GeneratedFilePaths, type FileFormatServiceConfig } from "../file-format-types";
+import { type GeneratedFilePaths } from "../file-format-types";
 import { type Item, create_item } from "../../../domain/item";
 
 /**
@@ -15,11 +15,6 @@ import { type Item, create_item } from "../../../domain/item";
  * 单值类的正文生效规则见 `read_translation_for_generation()`。
  */
 export class TXTFormat {
-  /**
-   * 配置决定原译文相同时的双语去重策略
-   */
-  public constructor(private readonly config: FileFormatServiceConfig) {}
-
   /**
    * 解析时保留原始行号，空行也作为可被排除或处理的普通条目
    */
@@ -37,7 +32,7 @@ export class TXTFormat {
   }
 
   /**
-   * 写出译文和双语文件，双语去重口径由共享配置控制
+   * 写出译文和双语文件，原译文相同时只输出一次
    */
   public async write_to_path(items: Item[], paths: GeneratedFilePaths): Promise<void> {
     for (const [rel_path, group] of group_items(items, "TXT")) {
@@ -48,11 +43,7 @@ export class TXTFormat {
       const bilingual = group
         .map((item) => {
           const item_dst = read_translation_for_generation(item) ?? item.src;
-          return this.config.deduplication_in_bilingual && item.src === item_dst
-            ? item_dst
-            : item_dst === ""
-              ? item.src
-              : `${item.src}\n${item_dst}`;
+          return item.src === item_dst || item_dst === "" ? item.src : `${item.src}\n${item_dst}`;
         })
         .join("\n");
       await write_text_file(path.join(paths.bilingual_path, rel_path), bilingual);

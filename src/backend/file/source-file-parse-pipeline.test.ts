@@ -15,8 +15,6 @@ function create_format_service(): FileFormatService {
   return new FileFormatService(
     {
       target_language: "ZH",
-      deduplication_in_bilingual: true,
-      write_translated_name_fields_to_file: true,
     },
     create_pdf_execution(),
   );

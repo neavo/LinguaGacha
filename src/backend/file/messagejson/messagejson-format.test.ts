@@ -9,7 +9,7 @@ import { MESSAGEJSONFormat } from "./messagejson-format";
 
 describe("MESSAGEJSONFormat", () => {
   it("解析 name、names 和纯 message 条目且不预填译文", () => {
-    const format = new MESSAGEJSONFormat({ target_language: "ZH" });
+    const format = new MESSAGEJSONFormat();
 
     const items = format.read_items(
       [
@@ -31,7 +31,7 @@ describe("MESSAGEJSONFormat", () => {
   });
 
   it("非数组 JSON 不按 MESSAGEJSON 解析", () => {
-    const format = new MESSAGEJSONFormat({ target_language: "ZH" });
+    const format = new MESSAGEJSONFormat();
 
     expect(format.read_items({ a: 1 }, "m.json")).toEqual([]);
   });
@@ -40,7 +40,7 @@ describe("MESSAGEJSONFormat", () => {
     using temp_dir = fs.mkdtempDisposableSync(
       path.join(os.tmpdir(), "linguagacha-messagejson-format-"),
     );
-    const format = new MESSAGEJSONFormat({ target_language: "ZH" });
+    const format = new MESSAGEJSONFormat();
 
     await format.write_to_path(
       [
@@ -68,10 +68,7 @@ describe("MESSAGEJSONFormat", () => {
     using temp_dir = fs.mkdtempDisposableSync(
       path.join(os.tmpdir(), "linguagacha-messagejson-format-"),
     );
-    const format = new MESSAGEJSONFormat({
-      target_language: "ZH",
-      write_translated_name_fields_to_file: true,
-    });
+    const format = new MESSAGEJSONFormat();
     await format.write_to_path(
       [
         create_item({
@@ -134,14 +131,11 @@ describe("MESSAGEJSONFormat", () => {
     expect(result).toContainEqual({ message: "m3" });
   });
 
-  it("禁用译名写回时还原 name_src 并按行号排序", async () => {
+  it("按行号排序写回译名并保留姓名数组附加信息", async () => {
     using temp_dir = fs.mkdtempDisposableSync(
       path.join(os.tmpdir(), "linguagacha-messagejson-format-"),
     );
-    const format = new MESSAGEJSONFormat({
-      target_language: "ZH",
-      write_translated_name_fields_to_file: false,
-    });
+    const format = new MESSAGEJSONFormat();
 
     await format.write_to_path(
       [
@@ -175,8 +169,8 @@ describe("MESSAGEJSONFormat", () => {
     expect(
       JSON.parse(fs.readFileSync(path.join(temp_dir.path, "message", "a.json"), "utf-8")),
     ).toEqual([
-      { names: ["甲", "乙"], message: "new0" },
-      { name: "原名", message: "new1" },
+      { names: ["A", "乙"], message: "new0" },
+      { name: "译名", message: "new1" },
     ]);
   });
 });

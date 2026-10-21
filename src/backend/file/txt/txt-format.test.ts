@@ -9,7 +9,7 @@ import { TXTFormat } from "./txt-format";
 
 describe("TXTFormat", () => {
   it("按不同换行符拆分 TXT 流并标记文件类型", async () => {
-    const format = new TXTFormat({ target_language: "ZH" });
+    const format = new TXTFormat();
 
     const items = await format.read_from_stream(
       new TextEncoder().encode("第一行\r\n第二行\n第三行"),
@@ -23,10 +23,7 @@ describe("TXTFormat", () => {
 
   it("写出译文和双语 TXT 文件", async () => {
     using temp_dir = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "linguagacha-txt-format-"));
-    const format = new TXTFormat({
-      target_language: "ZH",
-      deduplication_in_bilingual: true,
-    });
+    const format = new TXTFormat();
     await format.write_to_path(
       [
         create_item({
@@ -62,10 +59,7 @@ describe("TXTFormat", () => {
 
   it("完成空译文写空行，双语只保留原文", async () => {
     using temp_dir = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "linguagacha-txt-format-"));
-    const format = new TXTFormat({
-      target_language: "ZH",
-      deduplication_in_bilingual: true,
-    });
+    const format = new TXTFormat();
 
     await format.write_to_path(
       [

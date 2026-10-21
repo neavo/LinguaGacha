@@ -5,21 +5,6 @@ export const zh_cn_expert_settings_page = {
       title: "参考上文行数阈值",
       description: "每个翻译任务最多可携带的参考上文的行数，默认禁用",
     },
-    deduplication_in_bilingual: {
-      title: "双语输出文件中原文与译文一致的文本只输出一次",
-      description: "在字幕与电子书中，如目标文本的原文与译文一致是否只输出一次，默认启用",
-    },
-    write_translated_name_fields_to_file: {
-      title: "将姓名字段译文写入输出文件",
-      description:
-        "部分 <emphasis>GalGame</emphasis> 中，姓名字段数据与立绘、配音等资源文件绑定，翻译后会报错，此时可以关闭该功能，默认启用" +
-        "\n" +
-        "支持格式：" +
-        "\n" +
-        "• RenPy 导出游戏文本（.rpy）" +
-        "\n" +
-        "• VNTextPatch 或 SExtractor 导出带 name 字段的游戏文本（.json）",
-    },
   },
   feedback: {
     preceding_lines_threshold_invalid: "参考上文行数阈值必须填写为有效范围内的数字 …",

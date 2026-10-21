@@ -90,20 +90,20 @@ export class FileFormatService {
     this.games = Object.fromEntries(
       Object.entries(GAME_ENGINES).map(([type, engine]) => [
         type,
-        new GameFormat(engine.create_adapter(config), native_fs),
+        new GameFormat(engine.create_adapter(), native_fs),
       ]),
     ) as Record<GameFileType, GameFormat>;
-    this.txt = new TXTFormat(config);
+    this.txt = new TXTFormat();
     this.md = new MDV2Format();
-    this.ass = new ASSFormat(config);
-    this.srt = new SRTFormat(config);
+    this.ass = new ASSFormat();
+    this.srt = new SRTFormat();
     this.vtt = new VTTFormat(config);
-    this.lrc = new LRCFormat(config);
+    this.lrc = new LRCFormat();
     this.kvjson = new KVJSONFormat();
-    this.messagejson = new MESSAGEJSONFormat(config);
+    this.messagejson = new MESSAGEJSONFormat();
     this.xlsx = new XLSXFormat();
     this.trans = new TRANSFormat();
-    this.renpy = new RenPyFormat(config);
+    this.renpy = new RenPyFormat();
     this.epub = new EPUBFormat(config);
   }
 

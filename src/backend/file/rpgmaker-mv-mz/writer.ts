@@ -3,7 +3,6 @@ import { read_rpgmaker_metadata } from "./item";
 import type { Item } from "../../../domain/item";
 import { read_json_record, type JsonValue } from "../../../domain/json";
 import { read_item_name_text, resolve_output_item_name } from "../../../shared/item-name";
-import type { FileFormatServiceConfig } from "../file-format-types";
 import { decode_javascript_string, encode_javascript_string } from "./javascript";
 import { RPGMakerJsonCodec } from "./json-codec";
 import { type RPGMakerLocation, type RPGMakerRootLocation, type JsonPath } from "./types";
@@ -26,7 +25,6 @@ const BLOCK_CONTINUATIONS = new Map<number, number>([
 export function write_rpgmaker_items(
   root: JsonValue,
   items: readonly Item[],
-  config: FileFormatServiceConfig,
   codec = new RPGMakerJsonCodec(),
 ): JsonValue {
   const replacements: Replacement[] = [];
@@ -68,8 +66,8 @@ export function write_rpgmaker_items(
     replace(location, item.dst);
     if (location.kind === "block" && location.name_path) {
       const name = resolve_output_item_name({
-        ...item,
-        write_translated_name_fields_to_file: config.write_translated_name_fields_to_file ?? true,
+        name_src: item.name_src,
+        name_dst: item.name_dst,
       });
       if (name !== null)
         replace({ kind: "field", path: location.name_path }, read_item_name_text(name));

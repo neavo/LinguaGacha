@@ -28,38 +28,25 @@ describe("item-name", () => {
     expect(write_item_name_text(null, "Alicia")).toBe("Alicia");
   });
 
-  it("导出开启译名写回时逐条优先使用第 0 槽译名", () => {
+  it("导出逐条优先使用第 0 槽译名", () => {
     expect(
       resolve_output_item_name({
         name_src: "太郎",
         name_dst: "塔罗",
-        write_translated_name_fields_to_file: true,
       }),
     ).toBe("塔罗");
     expect(
       resolve_output_item_name({
         name_src: "太郎",
         name_dst: null,
-        write_translated_name_fields_to_file: true,
       }),
     ).toBe("太郎");
     expect(
       resolve_output_item_name({
         name_src: ["太郎", "花子"],
         name_dst: ["塔罗", "不使用"],
-        write_translated_name_fields_to_file: true,
       }),
     ).toEqual(["塔罗", "花子"]);
-  });
-
-  it("导出关闭译名写回时只使用源姓名事实", () => {
-    expect(
-      resolve_output_item_name({
-        name_src: ["太郎", "花子"],
-        name_dst: ["塔罗", "华子"],
-        write_translated_name_fields_to_file: false,
-      }),
-    ).toEqual(["太郎", "花子"]);
   });
 
   it("按规范 JSON 形状比较姓名字段", () => {

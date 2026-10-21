@@ -1,7 +1,6 @@
 import { type Item, create_item } from "../../../domain/item";
 import { decode_text_content } from "../../../shared/utils/text-tool";
 import { split_text_lines_for_items } from "../shared/file-format-helpers";
-import { type FileFormatServiceConfig } from "../file-format-types";
 import { read_translation_for_generation } from "../shared/translation-generation-text";
 import {
   needs_bilingual_text,
@@ -22,9 +21,6 @@ type ASSUnit = {
 
 /** ASS／SSA 共用 `Events` 解析，旧条目通过既有分行位置定位原始资产。 */
 export class ASSFormat {
-  /** 固定当前双语输出设置。 */
-  public constructor(private readonly config: FileFormatServiceConfig) {}
-
   /** 从末列 `Text` 提取正文，保留既有的整行正文条目契约。 */
   public async read_from_stream(content: Uint8Array, file: string): Promise<Item[]> {
     const text = await decode_text_content(content);
@@ -55,12 +51,7 @@ export class ASSFormat {
         unit.prefix + body.replace(/\r\n|\r|\n/gu, "\\N") + unit.line.ending;
       translated += before + render(target);
       bilingual +=
-        before +
-        render(
-          needs_bilingual_text(source, target, this.config.deduplication_in_bilingual)
-            ? `${source}\n${target}`
-            : source,
-        );
+        before + render(needs_bilingual_text(source, target) ? `${source}\n${target}` : source);
       cursor = unit.line.start + unit.line.text.length + unit.line.ending.length;
     }
     return {

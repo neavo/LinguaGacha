@@ -86,7 +86,6 @@ async function create_service(
       session_state,
       write_store,
       create_pdf_execution(),
-      null,
       undefined,
       log_manager,
     ),

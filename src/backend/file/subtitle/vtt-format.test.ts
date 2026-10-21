@@ -7,7 +7,7 @@ import { promisify } from "node:util";
 import { expect, it } from "vitest";
 import { VTTFormat } from "./vtt-format";
 
-const format = new VTTFormat({ target_language: "ZH", deduplication_in_bilingual: true });
+const format = new VTTFormat({ target_language: "ZH" });
 it("标签保留在结构中，正文槽位分别翻译且新增换行是真实显示换行", async () => {
   const text =
     "WEBVTT\r\n\r\nSTYLE\r\n::cue { color: red }\r\n\r\nREGION\r\nid:bottom\r\n\r\nNOTE before\r\nkept\r\n\r\nfirst\r\n00:01.000 --> 00:03.000 line:90%\r\n<v Alice><b><00:01.100>Hello</b>, world.\r\nGoodbye.\r\n\r\nNOTE tail\r\nkept\r\n";
@@ -87,7 +87,7 @@ it("零正文文件与空 cue 保留结构", async () => {
 it("Chromium 原生解析保留同标识字幕，并接受逐字降级与双语注音输出", async () => {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), "linguagacha-vtt-native-"));
   try {
-    const format = new VTTFormat({ target_language: "ZH", deduplication_in_bilingual: true });
+    const format = new VTTFormat({ target_language: "ZH" });
     const source =
       "WEBVTT\n\nSTYLE\n::cue { color: red }\n\ncue\n00:01.000 --> 00:02.000\n<v Alice><b><00:01.100>Hello</b> &amp; <ruby>漢<rt>かん</ruby> <lang en>world</lang>\n\ncue\n00:00.000 --> 00:01.000\nSecond\n";
     const items = await format.read_from_stream(Buffer.from(source), "sub.vtt");

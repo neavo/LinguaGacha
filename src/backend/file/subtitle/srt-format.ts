@@ -2,7 +2,6 @@ import { read_translation_for_generation } from "../shared/translation-generatio
 
 import { decode_text_content } from "../../../shared/utils/text-tool";
 import { split_text_lines_for_items } from "../shared/file-format-helpers";
-import { type FileFormatServiceConfig } from "../file-format-types";
 import { type Item, create_item } from "../../../domain/item";
 import { AppError } from "../../../shared/error";
 import { split_text_lines } from "../../../shared/text/text-lines";
@@ -13,11 +12,6 @@ import { needs_bilingual_text, type SubtitleOutput } from "./subtitle-text";
  * 单值类的正文生效规则见 `read_translation_for_generation()`。
  */
 export class SRTFormat {
-  /**
-   * 配置决定原译文相同时的双语去重策略
-   */
-  public constructor(private readonly config: FileFormatServiceConfig) {}
-
   /**
    * 解析时按空行切块，只接受「序号 + 时间轴 + 正文」结构
    */
@@ -69,11 +63,7 @@ export class SRTFormat {
       const time_code = String(item.extra_field ?? "");
       const item_dst = read_translation_for_generation(item) ?? item.src;
       // 空正文省略单语字幕块，输出序号连续；双语版仍保留原文和原时间轴。
-      const content = needs_bilingual_text(
-        item.src,
-        item_dst,
-        this.config.deduplication_in_bilingual,
-      )
+      const content = needs_bilingual_text(item.src, item_dst)
         ? `${item.src}\n${item_dst}`
         : item.src;
       // 尾部换行属于块间分隔，正文内部的空行会截断当前字幕。

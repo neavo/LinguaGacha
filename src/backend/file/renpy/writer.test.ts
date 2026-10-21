@@ -7,7 +7,7 @@ import { RenpyWriter } from "./writer";
 
 describe("RenPy 写回器", () => {
   it("按 NAME 和 DIALOGUE 槽构造替换并按序号写入字面量", () => {
-    const writer = new RenpyWriter(true);
+    const writer = new RenpyWriter();
     const item = create_item({ status: "PROCESSED", dst: "新台词", name_dst: "新名字" });
     const replacements = writer.build_replacements(
       item,
@@ -27,13 +27,13 @@ describe("RenPy 写回器", () => {
     );
   });
 
-  it("禁用姓名译名写回时用源姓名替换 NAME 槽", () => {
-    const writer = new RenpyWriter(false);
+  it("译名为空时用源姓名替换 NAME 槽", () => {
+    const writer = new RenpyWriter();
     const item = create_item({
       status: "PROCESSED",
       dst: "新台词",
       name_src: "原名",
-      name_dst: "译名",
+      name_dst: "",
     });
     const replacements = writer.build_replacements(
       item,
@@ -51,7 +51,7 @@ describe("RenPy 写回器", () => {
   });
 
   it("LABEL 写回使用模板代码并保留 PushMove 尾随字符串", () => {
-    const writer = new RenpyWriter(true);
+    const writer = new RenpyWriter();
     const lines = ['    # "Man" "old" with PushMove("x")', '    "Man" "" with PushMove("x")'];
     const item = build_apply_item(lines, {
       dst: "new",
@@ -67,7 +67,7 @@ describe("RenPy 写回器", () => {
   });
 
   it("LABEL 写回只替换 cb_name 前的对白字符串", () => {
-    const writer = new RenpyWriter(true);
+    const writer = new RenpyWriter();
     const lines = ['    # "old text" (cb_name="mr")', '    "old text" (cb_name="mr")'];
     const item = build_apply_item(lines, {
       dst: "new text",
@@ -79,7 +79,7 @@ describe("RenPy 写回器", () => {
   });
 
   it("STRINGS 写回在目标 new 行上替换 STRING 槽", () => {
-    const writer = new RenpyWriter(true);
+    const writer = new RenpyWriter();
     const lines = ['    old "START"', '    new ""'];
     const item = build_apply_item(lines, {
       kind: "STRINGS",
@@ -92,7 +92,7 @@ describe("RenPy 写回器", () => {
   });
 
   it("摘要或 extra_field 形状不合法时跳过写回", () => {
-    const writer = new RenpyWriter(true);
+    const writer = new RenpyWriter();
     const lines = ['    # e "old"', '    e "old"'];
     const bad_digest = build_apply_item(lines, {
       dst: "new",
@@ -123,7 +123,7 @@ describe("RenPy 写回器", () => {
   });
 
   it("批量写回只修改通过原稿校验的条目", () => {
-    const writer = new RenpyWriter(true);
+    const writer = new RenpyWriter();
     const lines = ['    # e "old"', '    e "old"'];
     const ok = build_apply_item(lines, {
       dst: "new",
@@ -137,7 +137,7 @@ describe("RenPy 写回器", () => {
 });
 
 it("同值源码保持原切片，正文与姓名编辑采用普通字符串编码", () => {
-  const writer = new RenpyWriter(true);
+  const writer = new RenpyWriter();
   const code = String.raw`"A\'B" r"a  \n"`;
   expect(
     writer.replace_literals_by_index(
@@ -206,7 +206,7 @@ function build_apply_item(
 }
 
 it.each(["", "已有译文"])("未完成 Ren’Py 正文回退源目标 %j，完成空正文直接清空", (source) => {
-  const writer = new RenpyWriter(true);
+  const writer = new RenpyWriter();
   const lines = ['    old "old"', `    new "${source}"`];
   const item = build_apply_item(lines, {
     kind: "STRINGS",

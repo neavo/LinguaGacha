@@ -4,7 +4,7 @@ import { ASSFormat } from "./ass-ssa-format";
 
 const FORMAT = "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text";
 const PREFIX = "Dialogue: 0,0:00:01.00,0:00:02.00,Default,,0,0,0,,";
-const format = new ASSFormat({ target_language: "ZH", deduplication_in_bilingual: true });
+const format = new ASSFormat();
 
 it("按正文边界写回同值字段、正文逗号与模板字面量，保留原始布局", async () => {
   const prefix = "Dialogue: 0,0:00:01.00,0:00:02.00,{{CONTENT}},Hello,0,0,0,,";

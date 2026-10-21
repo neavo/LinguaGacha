@@ -31,11 +31,9 @@ export type FileFormatReadResult =
     }
   | { kind: "pdf"; document: PDFDocument };
 
-/** 文件格式处理器共享配置，来源于应用设置或测试显式注入。 */
+/** 文件格式处理器共享配置，使用项目目标语言。 */
 export interface FileFormatServiceConfig {
   target_language: string; // 决定 EPUB 阅读排版等目标语言写回策略
-  deduplication_in_bilingual?: boolean; // 原译文相同时双语文件只写一份
-  write_translated_name_fields_to_file?: boolean; // 姓名字段是否使用译名写回
 }
 
 /**

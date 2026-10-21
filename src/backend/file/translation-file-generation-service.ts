@@ -166,8 +166,6 @@ export class TranslationFileGenerationService {
     const format_service = new FileFormatService(
       {
         target_language: config.target_language,
-        deduplication_in_bilingual: config.deduplication_in_bilingual,
-        write_translated_name_fields_to_file: config.write_translated_name_fields_to_file,
       },
       this.pdf_execution,
       this.native_fs,

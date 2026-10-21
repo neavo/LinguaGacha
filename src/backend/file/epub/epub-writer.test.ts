@@ -16,8 +16,6 @@ import { distribute_text_to_slots, EpubWriter } from "./epub-writer";
 function create_writer(target_language = "ZH"): EpubWriter {
   return new EpubWriter({
     target_language,
-    deduplication_in_bilingual: true,
-    write_translated_name_fields_to_file: true,
   });
 }
 
@@ -638,13 +636,13 @@ it.each([undefined, "译文", ""])("含 ruby 的块写回 %j 保留锚点、链�
   }
 });
 
-it("旧 ruby 槽位继续按原定位写回", async () => {
+it.each(["汉\n字", "漢\n字"])("旧 ruby 槽位按原定位写回，双语同文不重复：%s", async (dst) => {
   using dir = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-epub-legacy-modes-"));
   const asset = await create_epub_fixture("<ruby>漢<rt>かん</rt></ruby>字");
   const ast = new EpubAst();
   const slot = create_item({
     src: "漢\n字",
-    dst: "汉\n字",
+    dst,
     status: "PROCESSED",
     file_type: "EPUB",
     file_path: "book.epub",
@@ -663,8 +661,40 @@ it("旧 ruby 槽位继续按原定位写回", async () => {
     },
   });
   const out = path.join(dir.path, "book.epub");
-  await create_writer().build_epub(asset, [slot], out, false);
-  expect(await read_epub_entry_text(fs.readFileSync(out))).toContain(
-    "<ruby>汉<rt>かん</rt></ruby>字",
+  await create_writer().build_epub(asset, [slot], out, true);
+  const text = await read_epub_entry_text(fs.readFileSync(out));
+  expect(text).toContain(`<ruby>${dst.split("\n")[0]}<rt>かん</rt></ruby>字`);
+  expect(ast.find_descendants(ast.parse_xhtml_or_html(Buffer.from(text)), "p")).toHaveLength(
+    dst === slot.src ? 1 : 2,
   );
 });
+
+it.each(["block_text", "text_run", "legacy"])(
+  "%s 双语同文只输出一次并保留内联排版",
+  async (mode) => {
+    using dir = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-epub-identical-"));
+    const zip = await read_zip_fixture(await create_epub_fixture("正文"));
+    const content =
+      mode === "block_text"
+        ? '<ruby class="italic">同文<rt>どうぶん</rt></ruby>'
+        : '<span class="italic">同文</span>';
+    zip.set(
+      "OPS/chapter.xhtml",
+      `<html><body>${mode === "text_run" ? content : `<p>${content}</p>`}</body></html>`,
+    );
+    const asset = await write_zip(zip);
+    const ast = new EpubAst();
+    const items = await ast.read_from_stream(asset, "book.epub");
+    expect(items).toHaveLength(1);
+    const item = items[0]!;
+    if (mode === "legacy") item.extra_field = null;
+    else expect(read_epub_extra(item)?.["mode"]).toBe(mode);
+    item.dst = item.src;
+    item.status = "PROCESSED";
+    const out = path.join(dir.path, "book.epub");
+    await create_writer().build_epub(asset, items, out, true);
+    const text = await read_epub_entry_text(fs.readFileSync(out));
+    expect(text).toContain(content);
+    expect(text.match(/同文/gu)).toHaveLength(1);
+  },
+);

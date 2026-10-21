@@ -4,7 +4,6 @@ import { create_item } from "../../../domain/item";
 import type { RPGMakerLocation } from "./types";
 import { write_rpgmaker_items } from "./writer";
 
-const config = { target_language: "ZH" };
 const command = (code: number, text: string, indent = 0) => ({ code, indent, parameters: [text] });
 /** 使用保存定位构造译文，验证写回独立于用途分类。 */
 function translated(location: RPGMakerLocation, dst = "译文") {
@@ -25,18 +24,14 @@ describe("持久 RPG Maker 定位写回", () => {
       const root = { before: "原文", settings: '{"text":"原文","count":1}' };
       const original = structuredClone(root);
       expect(() =>
-        write_rpgmaker_items(
-          root,
-          [
-            translated({ kind: "field", path: ["before"] }),
-            translated({
-              kind: "json",
-              container: { kind: "field", path: ["settings"] },
-              path: [key],
-            }),
-          ],
-          config,
-        ),
+        write_rpgmaker_items(root, [
+          translated({ kind: "field", path: ["before"] }),
+          translated({
+            kind: "json",
+            container: { kind: "field", path: ["settings"] },
+            path: [key],
+          }),
+        ]),
       ).toThrow();
       expect(root).toEqual(original);
     },
@@ -50,7 +45,7 @@ describe("持久 RPG Maker 定位写回", () => {
       const root = { settings: JSON.stringify({ inner: JSON.stringify({ text: "原文" }) }) };
       const original = structuredClone(root);
       const items = [leaf, conflict];
-      expect(() => write_rpgmaker_items(root, reverse ? items.reverse() : items, config)).toThrow();
+      expect(() => write_rpgmaker_items(root, reverse ? items.reverse() : items)).toThrow();
       expect(root).toEqual(original);
     }
   });
@@ -58,11 +53,9 @@ describe("持久 RPG Maker 定位写回", () => {
   it("字段与关联字段按保存路径写回", () => {
     const root = { choices: ["原文", "保留"], branch: "原文" };
     expect(
-      write_rpgmaker_items(
-        root,
-        [translated({ kind: "field", path: ["choices", 0], mirrors: [["branch"]] })],
-        config,
-      ),
+      write_rpgmaker_items(root, [
+        translated({ kind: "field", path: ["choices", 0], mirrors: [["branch"]] }),
+      ]),
     ).toEqual({ choices: ["译文", "保留"], branch: "译文" });
   });
 
@@ -76,7 +69,7 @@ describe("持久 RPG Maker 定位写回", () => {
     { kind: "field", path: ["__proto__", "text"] },
   ] satisfies RPGMakerLocation[])("拒绝不存在、类型错误或重复的字段 $path", (location) => {
     const root = { text: "原文", count: 1, array: ["原文"] };
-    expect(() => write_rpgmaker_items(root, [translated(location)], config)).toThrow();
+    expect(() => write_rpgmaker_items(root, [translated(location)])).toThrow();
     expect(root).toEqual({ text: "原文", count: 1, array: ["原文"] });
   });
 
@@ -92,15 +85,11 @@ describe("持久 RPG Maker 定位写回", () => {
       ],
       other: [command(105, "头"), command(405, "滚动"), command(0, "")],
     };
-    write_rpgmaker_items(
-      root,
-      [
-        translated({ kind: "block", path: ["list"], start: 1, end: 3, code: 401 }, "合并"),
-        translated({ kind: "block", path: ["list"], start: 3, end: 5, code: 108 }, "一\n二\n三"),
-        translated({ kind: "block", path: ["other"], start: 1, end: 2, code: 405 }, "滚一\n滚二"),
-      ],
-      config,
-    );
+    write_rpgmaker_items(root, [
+      translated({ kind: "block", path: ["list"], start: 1, end: 3, code: 401 }, "合并"),
+      translated({ kind: "block", path: ["list"], start: 3, end: 5, code: 108 }, "一\n二\n三"),
+      translated({ kind: "block", path: ["other"], start: 1, end: 2, code: 405 }, "滚一\n滚二"),
+    ]);
     expect(root.list).toEqual([
       command(101, "头"),
       command(401, "合并"),
@@ -134,30 +123,26 @@ describe("持久 RPG Maker 定位写回", () => {
     );
     item.name_src = "原名";
     item.name_dst = "译名";
-    write_rpgmaker_items(root, [item], config);
+    write_rpgmaker_items(root, [item]);
     expect(root.list[0]?.parameters[4]).toBe("译名");
     expect(root.list[1]).toEqual(command(401, "新增文本"));
   });
 
   it("空对话插入与相邻脚本替换共用起点时保留原始索引", () => {
     const root = { list: [command(101, "头"), command(355, 'say("旧");'), command(0, "")] };
-    write_rpgmaker_items(
-      root,
-      [
-        translated({ kind: "block", path: ["list"], start: 1, end: 1, code: 401 }, "对白"),
-        translated(
-          {
-            kind: "script",
-            container: { kind: "block", path: ["list"], start: 1, end: 2, code: 355 },
-            start: 4,
-            end: 7,
-            template: false,
-          },
-          "脚本",
-        ),
-      ],
-      config,
-    );
+    write_rpgmaker_items(root, [
+      translated({ kind: "block", path: ["list"], start: 1, end: 1, code: 401 }, "对白"),
+      translated(
+        {
+          kind: "script",
+          container: { kind: "block", path: ["list"], start: 1, end: 2, code: 355 },
+          start: 4,
+          end: 7,
+          template: false,
+        },
+        "脚本",
+      ),
+    ]);
     expect(root.list).toEqual([
       command(101, "头"),
       command(401, "对白"),
@@ -178,23 +163,22 @@ describe("持久 RPG Maker 定位写回", () => {
   ])("拒绝损坏事件范围或指令结构 %j", (range) => {
     const root = { list: [command(101, "头"), command(401, "甲"), command(401, "乙")] };
     expect(() =>
-      write_rpgmaker_items(root, [translated({ kind: "block", path: ["list"], ...range })], config),
+      write_rpgmaker_items(root, [translated({ kind: "block", path: ["list"], ...range })]),
     ).toThrow();
   });
 
   it("重复块、与块交叠的字段及不一致缩进均拒绝", () => {
     const root = { list: [command(101, "头"), command(401, "甲")] };
     const block = translated({ kind: "block", path: ["list"], start: 1, end: 2, code: 401 });
-    expect(() => write_rpgmaker_items(root, [block, block], config)).toThrow();
+    expect(() => write_rpgmaker_items(root, [block, block])).toThrow();
     expect(() =>
-      write_rpgmaker_items(
-        root,
-        [block, translated({ kind: "field", path: ["list", 1, "parameters", 0] })],
-        config,
-      ),
+      write_rpgmaker_items(root, [
+        block,
+        translated({ kind: "field", path: ["list", 1, "parameters", 0] }),
+      ]),
     ).toThrow();
     root.list[1]!.indent = 1;
-    expect(() => write_rpgmaker_items(root, [block], config)).toThrow();
+    expect(() => write_rpgmaker_items(root, [block])).toThrow();
   });
 
   it("保存的 JS 偏移按容器归组，重复文本独立替换并保留模板表达式", () => {
@@ -241,7 +225,7 @@ describe("持久 RPG Maker 定位写回", () => {
         "尾",
       ),
     ];
-    write_rpgmaker_items(root, items, config);
+    write_rpgmaker_items(root, items);
     expect(root.first).toBe('say("引号\\"\\n😀", "独立");');
     expect(root.second).toBe("const x = `\\`前\\${字}${name}尾`;");
     expect(parseSync("output.js", root.first + root.second).errors).toEqual([]);
@@ -256,18 +240,14 @@ describe("持久 RPG Maker 定位写回", () => {
     { start: 5, end: 8 },
   ])("拒绝损坏 JS 范围或字面量 %j", (range) => {
     expect(() =>
-      write_rpgmaker_items(
-        'say("原文");',
-        [
-          translated({
-            kind: "script",
-            container: { kind: "field", path: [] },
-            ...range,
-            template: false,
-          }),
-        ],
-        config,
-      ),
+      write_rpgmaker_items('say("原文");', [
+        translated({
+          kind: "script",
+          container: { kind: "field", path: [] },
+          ...range,
+          template: false,
+        }),
+      ]),
     ).toThrow();
   });
 
@@ -286,6 +266,6 @@ describe("持久 RPG Maker 定位写回", () => {
       end: 14,
       template: true,
     });
-    expect(() => write_rpgmaker_items("const x = `一二三`;", [first, second], config)).toThrow();
+    expect(() => write_rpgmaker_items("const x = `一二三`;", [first, second])).toThrow();
   });
 });

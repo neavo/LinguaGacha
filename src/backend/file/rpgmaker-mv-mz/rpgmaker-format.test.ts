@@ -3,10 +3,7 @@ import { create_rpgmaker_mv_mz_adapter } from "./rpgmaker-format";
 import { read_javascript_strings } from "./javascript";
 import { create_item } from "../../../domain/item";
 
-const members = await create_rpgmaker_mv_mz_adapter({
-  target_language: "ZH",
-  write_translated_name_fields_to_file: true,
-}).create_members(new Map());
+const members = await create_rpgmaker_mv_mz_adapter().create_members(new Map());
 const command = (code: number, parameters: unknown[], indent = 0) => ({ code, parameters, indent }); // 保留原稿指令结构与写回索引。
 
 describe("MV/MZ 原稿写回", () => {

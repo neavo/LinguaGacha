@@ -8,11 +8,7 @@ import {
   type ExpertSettingsSnapshot,
 } from "@frontend/pages/expert-settings-page/types";
 
-const EXPERT_SETTINGS_PENDING_FIELDS = [
-  "preceding_lines_threshold",
-  "deduplication_in_bilingual",
-  "write_translated_name_fields_to_file",
-] as const;
+const EXPERT_SETTINGS_PENDING_FIELDS = ["preceding_lines_threshold"] as const;
 
 type ExpertSettingsPendingField = (typeof EXPERT_SETTINGS_PENDING_FIELDS)[number];
 
@@ -20,8 +16,6 @@ type UseExpertSettingsStateResult = {
   snapshot: ExpertSettingsSnapshot;
   pending_state: Record<ExpertSettingsPendingField, boolean>;
   update_preceding_lines_threshold: (next_value: number) => Promise<void>;
-  update_deduplication_in_bilingual: (next_checked: boolean) => Promise<void>;
-  update_write_translated_name_fields_to_file: (next_checked: boolean) => Promise<void>;
 };
 
 /** 将输入值限制在后端设置允许的区间。 */
@@ -56,35 +50,9 @@ export function useExpertSettingsState(): UseExpertSettingsStateResult {
     [commit_update, snapshot.preceding_lines_threshold],
   );
 
-  /** 双语去重选项变化后才提交。 */
-  const update_deduplication_in_bilingual = useCallback(
-    async (next_checked: boolean): Promise<void> => {
-      if (snapshot.deduplication_in_bilingual !== next_checked) {
-        await commit_update("deduplication_in_bilingual", {
-          deduplication_in_bilingual: next_checked,
-        });
-      }
-    },
-    [commit_update, snapshot.deduplication_in_bilingual],
-  );
-
-  /** 角色译名导出选项变化后才提交。 */
-  const update_write_translated_name_fields_to_file = useCallback(
-    async (next_checked: boolean): Promise<void> => {
-      if (snapshot.write_translated_name_fields_to_file !== next_checked) {
-        await commit_update("write_translated_name_fields_to_file", {
-          write_translated_name_fields_to_file: next_checked,
-        });
-      }
-    },
-    [commit_update, snapshot.write_translated_name_fields_to_file],
-  );
-
   return {
     snapshot,
     pending_state,
     update_preceding_lines_threshold,
-    update_deduplication_in_bilingual,
-    update_write_translated_name_fields_to_file,
   };
 }
