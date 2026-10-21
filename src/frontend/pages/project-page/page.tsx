@@ -1,3 +1,6 @@
+import { GODOT_PACK_ORDER_REFRESH_ACTION } from "@shared/godot";
+import { useGodotPackOrder } from "@frontend/features/godot-pack-order/use-godot-pack-order";
+import { GodotPackOrderDialog } from "@frontend/features/godot-pack-order/godot-pack-order-dialog";
 import {
   push_error_toast,
   push_toast,
@@ -495,6 +498,7 @@ export function ProjectPage(_props: ProjectPageProps): JSX.Element {
   } = useDesktopState();
 
   const { t } = useI18n();
+  const pack_order = useGodotPackOrder();
   const [selected_source, set_selected_source] = useState<SelectedSource | null>(null);
   const [selected_project, set_selected_project] = useState<SelectedProject | null>(null);
   const [is_source_checking, set_is_source_checking] = useState(false);
@@ -632,6 +636,7 @@ export function ProjectPage(_props: ProjectPageProps): JSX.Element {
       } else {
         set_selected_source({
           source_paths: normalized_source_paths,
+          godot_packs: payload.godot_packs ?? [],
           source_file_count,
           format_hit_counts: normalize_project_source_format_hit_counts(payload.format_hit_counts),
         });
@@ -751,6 +756,8 @@ export function ProjectPage(_props: ProjectPageProps): JSX.Element {
       const loaded_default_preset_names = collect_loaded_default_preset_names(settings_snapshot, t);
       const source_path = selected_source.source_paths[0]!; // 选择阶段保证非空，首项决定默认名称和目录。
       const source_paths = selected_source.source_paths;
+      const godot_pack_orders = await pack_order.request_order(selected_source.godot_packs);
+      if (godot_pack_orders === null) return;
       const output_path = await resolve_project_output_path(source_path);
       if (output_path === null || output_path === "") {
         return;
@@ -765,6 +772,7 @@ export function ProjectPage(_props: ProjectPageProps): JSX.Element {
             "/api/session/project/create",
             {
               source_paths,
+              ...(godot_pack_orders.length ? { godot_pack_orders } : {}),
               path: normalized_output_path,
               languages,
             },
@@ -799,6 +807,12 @@ export function ProjectPage(_props: ProjectPageProps): JSX.Element {
       clear_selected_source();
       clear_selected_project();
     } catch (error) {
+      if (
+        error instanceof DesktopApiError &&
+        error.details.action === GODOT_PACK_ORDER_REFRESH_ACTION
+      ) {
+        await handle_select_source_paths(selected_source.source_paths);
+      }
       const parse_failure_toast = format_source_file_parse_failure_error_toast(error);
       if (parse_failure_toast !== null) {
         push_error_toast(t("app.feedback.create_failed"), parse_failure_toast);
@@ -990,6 +1004,7 @@ export function ProjectPage(_props: ProjectPageProps): JSX.Element {
 
   return (
     <>
+      <GodotPackOrderDialog {...pack_order.dialog_props} />
       <ProjectLanguageDialog
         open={is_language_dialog_open}
         languages={create_languages}

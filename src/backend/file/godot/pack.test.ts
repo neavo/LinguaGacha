@@ -117,3 +117,35 @@ it.each(["md5", "cancel", "short-read"])("展开 %s 失败关闭句柄并删除�
     await handle.close();
   }
 });
+
+it.each([false, true])("标准加密目录=%s，混合成员按目录解密展开", async (encrypt_directory) => {
+  using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-godot-encrypted-"));
+  const native = new NativeFs(),
+    key = Buffer.alloc(32, 37);
+  const files = new Map([
+    ["a", Buffer.from("encrypted member")],
+    ["b", Buffer.from("plain")],
+  ]);
+  const source = path.join(temp.path, "encrypted.pck");
+  fs.writeFileSync(
+    source,
+    godot_pack_fixture(files, {
+      version: 4,
+      encryption_key: key,
+      encrypt_directory,
+      encrypted_members: ["a"],
+    }),
+  );
+  const handle = await native.open_file(source, "r+");
+  try {
+    const pack = await read_pack(handle, undefined, key),
+      member = pack.members[0]!;
+    const output = path.join(temp.path, "output");
+    await extract_pack_member(handle, member, output, native, undefined, key);
+    expect(fs.readFileSync(output).equals(files.get("a")!)).toBe(true);
+    if (encrypt_directory)
+      await expect(read_pack(handle, undefined, Buffer.alloc(32, 1))).rejects.toThrow("MD5");
+  } finally {
+    await handle.close();
+  }
+});

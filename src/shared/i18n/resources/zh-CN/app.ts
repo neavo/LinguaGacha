@@ -1,6 +1,10 @@
 import type { LanguageCode } from "../../../../domain/language";
 
 export const zh_cn_app = {
+  godot_pack_order: {
+    title: "资源包优先级",
+    description: "后面的资源包会覆盖前面资源包中的同名资源",
+  },
   media: {
     zoom_out: "缩小",
     zoom_in: "放大",

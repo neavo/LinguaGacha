@@ -1,6 +1,9 @@
+import { GODOT_PACK_ORDER_REFRESH_ACTION } from "@shared/godot";
+import { useGodotPackOrder } from "@frontend/features/godot-pack-order/use-godot-pack-order";
+import type { GodotPackPreview, GodotPackOrder } from "@shared/godot";
 import { useRef, useState } from "react";
 
-import { api_fetch } from "@frontend/app/desktop/desktop-api";
+import { api_fetch, DesktopApiError } from "@frontend/app/desktop/desktop-api";
 import {
   push_error_toast,
   push_toast,
@@ -17,6 +20,9 @@ type GameFontPhase = "editing" | "picking" | "checking" | "ready" | "confirming"
 /** 拥有路径、检查、确认与执行状态，游戏文件的检查与写入全部由后端完成。 */
 export function useGameFontPageState() {
   const { t } = useI18n();
+  const godot_pack_order = useGodotPackOrder();
+  const [godot_packs, set_godot_packs] = useState<readonly GodotPackPreview[]>([]);
+  const [orders, set_orders] = useState<readonly GodotPackOrder[]>([]);
   const [paths, set_paths] = useState<GamePaths>({ font_path: null, game_path: null });
   const [phase, set_phase] = useState<GameFontPhase>("editing");
   const busy_ref = useRef(false); // 阶段提交前，同一轮事件内的重复触发由同步占用拒绝。
@@ -37,13 +43,19 @@ export function useGameFontPageState() {
   async function update_path(field: GamePathField, value: string | null): Promise<void> {
     const next = { ...paths, [field]: value };
     set_paths(next);
+    set_godot_packs([]);
+    set_orders([]);
     if (next.font_path === null || next.game_path === null) {
       set_phase("editing");
       return;
     }
     set_phase("checking");
     try {
-      await api_fetch("/api/toolbox/game-font/inspect", next);
+      const preview = await api_fetch<{ godot_packs?: readonly GodotPackPreview[] }>(
+        "/api/toolbox/game-font/inspect",
+        next,
+      );
+      set_godot_packs(preview.godot_packs ?? []);
       set_phase("ready");
     } catch (error) {
       set_phase("editing"); // 保留输入，用户可以更换或清除。
@@ -79,21 +91,51 @@ export function useGameFontPageState() {
     if (phase !== "confirming" || busy_ref.current) return;
     busy_ref.current = true;
     set_phase("running");
+    let refresh_packs = false;
     try {
       await run_modal_progress_toast({
         message: t("game_font_page.feedback.applying"),
-        task: () => api_fetch("/api/toolbox/game-font/apply", paths),
+        task: () =>
+          api_fetch("/api/toolbox/game-font/apply", {
+            ...paths,
+            ...(orders.length ? { godot_pack_orders: orders } : {}),
+          }),
       });
+      set_godot_packs((current) => current.map((game) => ({ ...game, external_pcks: [] })));
+      set_orders([]);
       push_toast("success", t("game_font_page.feedback.apply_success"));
     } catch (error) {
+      refresh_packs =
+        error instanceof DesktopApiError &&
+        error.details.action === GODOT_PACK_ORDER_REFRESH_ACTION;
       push_error_toast(t("game_font_page.feedback.apply_failed"), error);
     } finally {
       busy_ref.current = false;
       set_phase("ready"); // 保留选择，便于再次修改或重试。
+      if (refresh_packs) await update_path("game_path", paths.game_path);
+    }
+  }
+
+  /** 全部来源通过同一排序入口取得快照，取消后恢复编辑资格。 */
+  async function request_apply(): Promise<void> {
+    if (phase !== "ready" || busy_ref.current) return;
+    busy_ref.current = true;
+    set_phase("checking");
+    try {
+      const selected = await godot_pack_order.request_order(godot_packs);
+      if (selected === null) {
+        set_phase("ready");
+        return;
+      }
+      set_orders(selected);
+      set_phase("confirming");
+    } finally {
+      busy_ref.current = false;
     }
   }
 
   return {
+    godot_pack_order,
     paths,
     input_locked,
     loading: phase === "checking" || phase === "running",
@@ -105,7 +147,7 @@ export function useGameFontPageState() {
     drop_path: (field: GamePathField, path: string) =>
       run_exclusive(() => update_path(field, path)),
     clear_path: (field: GamePathField) => run_exclusive(() => update_path(field, null)),
-    request_apply: () => set_phase((current) => (current === "ready" ? "confirming" : current)), // 检查通过才可进入确认。
+    request_apply,
     confirm_apply,
     close_confirm: () => set_phase((current) => (current === "confirming" ? "ready" : current)), // 取消确认保留检查结果。
   };

@@ -1,3 +1,4 @@
+import type { LogManager } from "../../../log/log-manager";
 import { GAME_ENGINES, type GameSource } from "./engines";
 import { Worker } from "node:worker_threads";
 import type { GamePreparation } from "./prepare";
@@ -29,6 +30,7 @@ export class GamePrepareWorker {
   public constructor(
     private readonly entry: URL | null,
     private readonly fs: NativeFs = default_native_fs,
+    private readonly log_manager?: Pick<LogManager, "info">,
   ) {}
 
   /** 固定任务快照，并把调用取消与实例关闭合成一个生命周期。 */
@@ -37,7 +39,18 @@ export class GamePrepareWorker {
       ? AbortSignal.any([signal, this.lifetime.signal])
       : this.lifetime.signal;
     combined.throwIfAborted();
-    const pending = this.execute(structuredClone(task), combined);
+    const snapshot = structuredClone(task);
+    if (snapshot.file_type === "GODOT")
+      this.log_manager?.info("Godot resource override order", {
+        context: {
+          game_root: snapshot.game.root,
+          packs: [
+            ...(snapshot.game.embedded ? [snapshot.game.embedded.file] : []),
+            ...snapshot.game.external.map((carrier) => carrier.file),
+          ],
+        },
+      });
+    const pending = this.execute(snapshot, combined);
     this.active.add(pending);
     try {
       return await pending;

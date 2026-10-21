@@ -33,6 +33,29 @@ function create_service(): FileFormatService {
 }
 
 describe("FileFormatService", () => {
+  it("已展开游戏的零包预览也检查正式执行前新增的包", async () => {
+    using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-empty-pack-preview-"));
+    const native = new NativeFs(),
+      service = create_service();
+    for (const [name, bytes] of create_godot_fixture())
+      native.write_file_sync(path.join(temp.path, name), bytes);
+    const preview = await service.summarize_source_files([temp.path]);
+    expect(preview.godot_packs?.[0]?.external_pcks).toEqual([]);
+    native.write_file_sync(
+      path.join(temp.path, "extra.pck"),
+      godot_pack_fixture(create_godot_fixture()),
+    );
+    await expect(
+      service.collect_source_file_entries([temp.path], undefined, [
+        { game_root: temp.path, ordered_pcks: [] },
+      ]),
+    ).rejects.toMatchObject({
+      code: "request.validation_failed",
+      public_details: { action: "refresh_godot_packs" },
+    });
+    expect(native.exists(path.join(temp.path, "backup_lg"))).toBe(false);
+  });
+
   it("JSON 分发保留编码、标准语法和已保存格式身份的接受范围", async () => {
     const service = create_service();
     const encoded = iconv.encode(JSON.stringify({ café: "élève" }), "windows-1252");

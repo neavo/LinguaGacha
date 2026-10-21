@@ -91,15 +91,18 @@
   opacity: 0.9;
 }
 
-.model-page__drag-handle {
-  touch-action: none;
+.model-page__drag-slot {
   position: absolute;
   top: 50%;
   left: 0;
   z-index: 2;
+  transform: translateY(-50%);
+}
+
+.model-page__drag-handle {
+  touch-action: none;
   cursor: grab;
   color: color-mix(in srgb, var(--foreground) 72%, transparent);
-  transform: translateY(-50%);
 }
 
 .model-page__drag-handle:hover {

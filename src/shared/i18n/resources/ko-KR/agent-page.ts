@@ -131,7 +131,6 @@ export const ko_kr_agent_page = {
   queue: {
     no_message_text: "메시지 본문 없음",
     attachments: "첨부 파일 {count}개",
-    reorder: "드래그하여 순서 변경",
     send_now: "지금 전송",
     sending: "전송 중",
     delete: "메시지 삭제",

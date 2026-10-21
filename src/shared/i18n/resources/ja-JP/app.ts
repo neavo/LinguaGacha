@@ -2,6 +2,10 @@ import type { zh_cn_app } from "../zh-CN/app";
 import type { LocaleMessageSchema } from "../../types";
 
 export const ja_jp_app = {
+  godot_pack_order: {
+    title: "リソースパックの優先順位",
+    description: "後のリソースパックが、前のパック内の同名リソースを上書きします",
+  },
   media: {
     zoom_out: "縮小",
     zoom_in: "拡大",

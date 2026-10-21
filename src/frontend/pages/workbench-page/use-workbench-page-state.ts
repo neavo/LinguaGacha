@@ -213,6 +213,7 @@ function resolve_workbench_selection_after_snapshot(args: {
 }
 
 export type UseWorkbenchPageStateResult = {
+  godot_pack_order: ReturnType<typeof useWorkbenchImportFilesFlow>["godot_pack_order"];
   cache_status: "idle" | "refreshing" | "ready" | "error";
   consumed_revisions: ProjectDataSectionRevisions;
   required_sections: ProjectDataSection[];
@@ -790,6 +791,7 @@ export function useWorkbenchPageState(): UseWorkbenchPageStateResult {
   }
 
   return {
+    godot_pack_order: import_files_flow.godot_pack_order,
     cache_status,
     consumed_revisions,
     required_sections: WORKBENCH_REQUIRED_SECTIONS,

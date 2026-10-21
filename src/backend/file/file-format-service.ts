@@ -1,3 +1,5 @@
+import type { GodotPackOrder } from "../../shared/godot";
+import { apply_godot_pack_order, godot_pack_preview } from "./godot/source";
 import { GAME_ENGINES, prepare_game_source } from "./shared/game/engines";
 import { write_game_backup } from "./shared/game/backup";
 import { GameFormat } from "./shared/game/format";
@@ -204,14 +206,19 @@ export class FileFormatService {
   public async collect_source_file_entries(
     source_paths: string[],
     signal?: AbortSignal,
+    orders?: readonly GodotPackOrder[],
   ): Promise<DiscoveredSource[]> {
-    return discover_sources(source_paths, this.native_fs, signal);
+    return this.apply_godot_orders(
+      await discover_sources(source_paths, this.native_fs, signal),
+      orders,
+    );
   }
 
   /** 导入确认后的目标路径固定；识别错误也保留在同一批次中。 */
   public async discover_import_sources(
     entries: readonly ProjectSourceFileEntry[],
     signal?: AbortSignal,
+    orders?: readonly GodotPackOrder[],
   ): Promise<DiscoveredSource[]> {
     const result: DiscoveredSource[] = [];
     for (const entry of entries) {
@@ -223,6 +230,29 @@ export class FileFormatService {
       });
     }
     assert_source_identities(result, this.native_fs);
+    return this.apply_godot_orders(result, orders);
+  }
+
+  /** 正式请求的全部顺序先校验，任何错误都早于准备写入。 */
+  private apply_godot_orders(
+    entries: DiscoveredSource[],
+    orders?: readonly GodotPackOrder[],
+  ): DiscoveredSource[] {
+    if (!orders) return entries;
+    const remaining = new Set(orders);
+    const result = entries.map((entry) => {
+      const source = entry.source;
+      if (source.kind !== "game" || source.file_type !== "GODOT") return entry;
+      const order = orders.find(
+        (order) =>
+          this.native_fs.to_identity_path(order.game_root) ===
+          this.native_fs.to_identity_path(source.game.root),
+      );
+      if (!order) return entry;
+      remaining.delete(order);
+      return { ...entry, source: { ...source, game: apply_godot_pack_order(source.game, order) } };
+    });
+    if (remaining.size) throw new AppError("request.validation_failed");
     return result;
   }
 
@@ -362,8 +392,14 @@ export class FileFormatService {
       }
     }
 
+    const godot_packs = source_files.flatMap((entry) =>
+      entry.source.kind === "game" && entry.source.file_type === "GODOT"
+        ? [godot_pack_preview(entry.source.game)]
+        : [],
+    );
     return {
       ...(failed_files.length ? { failed_files } : {}),
+      ...(godot_packs.length ? { godot_packs } : {}),
       source_file_count: source_files.length,
       format_hit_counts,
     };

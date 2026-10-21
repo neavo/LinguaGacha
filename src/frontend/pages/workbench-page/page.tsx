@@ -1,3 +1,4 @@
+import { GodotPackOrderDialog } from "@frontend/features/godot-pack-order/godot-pack-order-dialog";
 import type { JSX } from "react";
 import { useTranslationGeneration } from "@frontend/app/session/translation-generation/translation-generation-context";
 import { useProjectTranslationStats } from "@frontend/app/session/project-translation-stats-context";
@@ -60,6 +61,7 @@ export function WorkbenchPage(_props: WorkbenchPageProps): JSX.Element {
         on_generate_translation={translation_generation.request_generation}
         on_close_project={workbench_state.request_close_project}
       />
+      <GodotPackOrderDialog {...workbench_state.godot_pack_order.dialog_props} />
       <WorkbenchDialogs
         dialog_state={workbench_state.dialog_state}
         on_confirm={() => {

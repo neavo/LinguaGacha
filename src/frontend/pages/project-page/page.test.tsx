@@ -150,11 +150,10 @@ vi.mock("@frontend/features/project-language/project-language-select", () => {
   };
 });
 
-vi.mock("@frontend/widgets/app-alert-dialog", () => {
-  return {
-    AppConfirmDialog: () => null,
-  };
-});
+vi.mock("@frontend/widgets/app-alert-dialog", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@frontend/widgets/app-alert-dialog")>()),
+  AppConfirmDialog: () => null,
+}));
 
 /** 构造项目页需要的最小设置快照，并允许场景定点覆写。 */
 function create_settings_snapshot(overrides: Record<string, unknown> = {}) {
@@ -340,6 +339,36 @@ describe("ProjectPage", () => {
         ?.getAttribute("data-value"),
     };
   }
+
+  it.each([false, true])("多外部包排序取消=%s，确认后才创建工程", async (cancel) => {
+    const game_root = "E:/game";
+    api_fetch_mock.mockResolvedValueOnce({
+      source_file_count: 1,
+      format_hit_counts: { godot: 1 },
+      godot_packs: [{ game_root, game_name: "game", external_pcks: ["base.pck", "patch.pck"] }],
+    });
+    await mount_page();
+    await open_create_languages();
+    await confirm_create_languages();
+    expect(document.querySelector('[role="dialog"] ol')?.textContent).toContain("base.pck");
+    expect(api_fetch_mock.mock.calls.some(([path]) => path === "/api/session/project/create")).toBe(
+      false,
+    );
+    await act(async () => {
+      get_button_by_text(document.body, cancel ? "取消" : "确认").click();
+    });
+    if (cancel)
+      expect(
+        api_fetch_mock.mock.calls.some(([path]) => path === "/api/session/project/create"),
+      ).toBe(false);
+    else
+      expect(api_fetch_mock).toHaveBeenCalledWith(
+        "/api/session/project/create",
+        expect.objectContaining({
+          godot_pack_orders: [{ game_root, ordered_pcks: ["base.pck", "patch.pck"] }],
+        }),
+      );
+  });
 
   it("保留预览文件顺序并用当前工程文件名记录最近打开", async () => {
     const paths = [

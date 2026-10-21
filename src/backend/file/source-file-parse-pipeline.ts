@@ -1,3 +1,4 @@
+import type { GodotPackOrder } from "../../shared/godot";
 import type { Item, ProjectItemPersistentRecord } from "../../domain/item";
 import type { SourceFileParseFailureRecord } from "../../shared/source-file-parse-failure";
 import { build_source_file_parse_failure } from "./source-file-parse-failure-reporter";
@@ -53,10 +54,11 @@ export class SourceFileParsePipeline {
   public async build_project_draft(
     source_paths: string[],
     signal?: AbortSignal,
+    orders?: readonly GodotPackOrder[],
   ): Promise<SourceFileProjectDraft> {
     const parse_result = await this.parse_source_entries(
       this.format_service.assign_source_file_paths(
-        await this.format_service.collect_source_file_entries(source_paths, signal),
+        await this.format_service.collect_source_file_entries(source_paths, signal, orders),
       ),
       signal,
     );

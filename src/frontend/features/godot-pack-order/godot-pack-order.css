@@ -1,0 +1,64 @@
+.godot-pack-order {
+  display: grid;
+  min-width: 0;
+  gap: var(--ui-list-gap-dense);
+}
+.godot-pack-order__heading {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.godot-pack-order__title {
+  margin: 0;
+  font-size: var(--ui-font-size-16);
+  font-weight: 500;
+  line-height: 1.35;
+}
+.godot-pack-order__description {
+  margin: 0;
+  font-size: var(--ui-font-size-13);
+  line-height: 1.5;
+  color: var(--muted-foreground);
+}
+.godot-pack-order__group {
+  min-width: 0;
+  gap: 8px;
+  padding: var(--ui-space-card-y) var(--ui-space-card-x);
+}
+.godot-pack-order__game {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.godot-pack-order__list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.godot-pack-order__row {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+}
+.godot-pack-order__row:not(:last-child) {
+  border-bottom: 1px solid var(--ui-table-divider-soft);
+}
+.godot-pack-order__row[data-dragging] {
+  background: var(--accent);
+}
+.godot-pack-order__number {
+  min-width: 24px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted-foreground);
+}
+.godot-pack-order__name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--ui-font-size-13);
+  user-select: text;
+}

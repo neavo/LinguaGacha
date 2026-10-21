@@ -168,6 +168,7 @@ export type ProjectSourceFormatHitCounts = Record<ProjectSourceFormatId, number>
 
 /** 源路径发现完成后返回给 renderer 的公开摘要。 */
 export type ProjectSourceFileSummary = {
+  godot_packs?: readonly import("./godot").GodotPackPreview[];
   failed_files?: import("./source-file-parse-failure").SourceFileParseFailureRecord[];
   source_file_count: number; // 递归发现并按真实路径去重后的支持文件总数
   format_hit_counts: ProjectSourceFormatHitCounts; // 包含目录内全部格式，未命中项固定为零
