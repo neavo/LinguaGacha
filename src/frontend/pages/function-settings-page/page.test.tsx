@@ -3,12 +3,12 @@ import { type ReactNode, act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { BasicSettingsPage } from "@frontend/pages/basic-settings-page/page";
+import { FunctionSettingsPage } from "@frontend/pages/function-settings-page/page";
 
-const { basic_settings_state_fixture, push_toast_mock } = vi.hoisted(() => {
+const { function_settings_state_fixture, push_toast_mock } = vi.hoisted(() => {
   return {
-    basic_settings_state_fixture: {
-      current: null as ReturnType<typeof create_basic_settings_state_fixture> | null,
+    function_settings_state_fixture: {
+      current: null as ReturnType<typeof create_function_settings_state_fixture> | null,
     },
     push_toast_mock: vi.fn(),
   };
@@ -27,9 +27,9 @@ vi.mock("@frontend/app/feedback/desktop-toast", () => ({
   push_toast: push_toast_mock,
 }));
 
-vi.mock("@frontend/pages/basic-settings-page/use-basic-settings-state", () => {
+vi.mock("@frontend/pages/function-settings-page/use-function-settings-state", () => {
   return {
-    useBasicSettingsState: () => basic_settings_state_fixture.current,
+    useFunctionSettingsState: () => function_settings_state_fixture.current,
   };
 });
 
@@ -63,18 +63,22 @@ vi.mock("@frontend/shadcn/select", () => {
 });
 
 /** 隔离页面输入行为，保存结果由状态 Hook 测试验证。 */
-function create_basic_settings_state_fixture() {
+function create_function_settings_state_fixture() {
   return {
     snapshot: {
       project_save_mode: "MANUAL",
       project_fixed_path: "",
       output_folder_open_on_finish: false,
       request_timeout: 300,
+      preceding_lines_threshold: 2,
+      following_lines_threshold: 0,
     },
     pending_state: {
       project_save_mode: false,
       output_folder_open_on_finish: false,
       request_timeout: false,
+      preceding_lines_threshold: false,
+      following_lines_threshold: false,
     },
     languages: { source_language: "JA", target_language: "ZH" },
     language_pending_state: { source_language: false, target_language: false },
@@ -84,6 +88,8 @@ function create_basic_settings_state_fixture() {
     update_target_language: vi.fn(async (_next_language: string) => {}),
     update_project_save_mode: vi.fn(async (_next_mode: "MANUAL" | "FIXED" | "SOURCE") => {}),
     update_output_folder_open_on_finish: vi.fn(async (_next_checked: boolean) => {}),
+    update_preceding_lines_threshold: vi.fn(async (_next_value: number) => {}),
+    update_following_lines_threshold: vi.fn(async (_next_value: number) => {}),
     update_request_timeout: vi.fn(async (_next_value: number) => {}),
   };
 }
@@ -101,22 +107,22 @@ function set_input_value(input: HTMLInputElement, value: string): void {
 }
 
 /** 读取当前用例的隔离夹具，未初始化时立即暴露错误。 */
-function get_current_basic_settings_state(): ReturnType<
-  typeof create_basic_settings_state_fixture
+function get_current_function_settings_state(): ReturnType<
+  typeof create_function_settings_state_fixture
 > {
-  if (basic_settings_state_fixture.current === null) {
-    throw new Error("基础设置页面测试状态尚未初始化。");
+  if (function_settings_state_fixture.current === null) {
+    throw new Error("功能设置页面测试状态尚未初始化。");
   }
 
-  return basic_settings_state_fixture.current;
+  return function_settings_state_fixture.current;
 }
 
-describe("BasicSettingsPage", () => {
+describe("FunctionSettingsPage", () => {
   let container: HTMLDivElement | null = null;
   let root: Root | null = null;
 
   beforeEach(() => {
-    basic_settings_state_fixture.current = create_basic_settings_state_fixture();
+    function_settings_state_fixture.current = create_function_settings_state_fixture();
   });
 
   afterEach(async () => {
@@ -139,59 +145,48 @@ describe("BasicSettingsPage", () => {
     root = createRoot(container);
 
     await act(async () => {
-      root?.render(<BasicSettingsPage is_sidebar_collapsed={false} />);
+      root?.render(<FunctionSettingsPage is_sidebar_collapsed={false} />);
     });
   }
 
-  /** 在页面中定位超时输入，缺失时终止当前测试。 */
-  function get_request_timeout_input(): HTMLInputElement {
-    const input = container?.querySelector('input[type="number"]');
-
-    if (!(input instanceof HTMLInputElement)) {
-      throw new Error("未找到请求超时时间输入框。");
-    }
-
-    return input;
-  }
-
-  it("输入请求超时时间时只更新本地草稿，失焦后再提交", async () => {
+  it("七项设置按固定顺序排列", async () => {
     await mount_page();
-    const input = get_request_timeout_input();
-
-    await act(async () => {
-      set_input_value(input, "1234");
-    });
-
-    expect(get_current_basic_settings_state().update_request_timeout).not.toHaveBeenCalled();
-
-    await act(async () => {
-      input.dispatchEvent(new FocusEvent("focusout", { bubbles: true }));
-      await Promise.resolve();
-    });
-
-    expect(get_current_basic_settings_state().update_request_timeout).toHaveBeenCalledTimes(1);
-    expect(get_current_basic_settings_state().update_request_timeout).toHaveBeenCalledWith(1234);
+    expect(
+      [...container!.querySelectorAll("section section")].map((row) =>
+        row.getAttribute("aria-label"),
+      ),
+    ).toEqual([
+      "app.language_role.source",
+      "app.language_role.target",
+      ...[
+        "preceding_lines_threshold",
+        "following_lines_threshold",
+        "request_timeout",
+        "project_save_mode",
+        "output_folder_open_on_finish",
+      ].map((field) => `function_settings_page.fields.${field}.title`),
+    ]);
   });
 
-  it("提交非法请求超时时间时标记红框并弹 toast", async () => {
-    await mount_page();
-    const input = get_request_timeout_input();
-
-    await act(async () => {
-      set_input_value(input, "");
-    });
-
-    expect(input.getAttribute("aria-invalid")).toBe("true");
-
-    await act(async () => {
-      input.dispatchEvent(new FocusEvent("focusout", { bubbles: true }));
-      await Promise.resolve();
-    });
-
-    expect(get_current_basic_settings_state().update_request_timeout).not.toHaveBeenCalled();
-    expect(push_toast_mock).toHaveBeenCalledWith(
-      "app.feedback.save_failed",
-      "basic_settings_page.feedback.request_timeout_invalid",
-    );
-  });
+  it.each(["preceding_lines_threshold", "following_lines_threshold"] as const)(
+    "%s 提交到对应设置入口",
+    async (field) => {
+      await mount_page();
+      const input = container!.querySelector<HTMLInputElement>(
+        `input[aria-label="function_settings_page.fields.${field}.title"]`,
+      )!;
+      await act(async () => set_input_value(input, "7"));
+      await act(async () =>
+        input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })),
+      );
+      expect(
+        get_current_function_settings_state()[`update_${field}`],
+      ).toHaveBeenCalledExactlyOnceWith(7);
+      const other =
+        field === "preceding_lines_threshold"
+          ? "following_lines_threshold"
+          : "preceding_lines_threshold";
+      expect(get_current_function_settings_state()[`update_${other}`]).not.toHaveBeenCalled();
+    },
+  );
 });

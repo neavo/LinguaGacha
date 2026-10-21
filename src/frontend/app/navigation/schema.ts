@@ -6,7 +6,6 @@ import {
   BookOpenCheck,
   Boxes,
   FlaskConical,
-  GraduationCap,
   Grid2x2Check,
   ListTree,
   ReplaceAll,
@@ -55,14 +54,9 @@ export const NAVIGATION_GROUPS: NavigationGroup[] = [
     id: "setting",
     items: [
       {
-        id: "basic-settings",
+        id: "function-settings",
         icon: SlidersHorizontal,
-        title_key: "basic_settings_page.title",
-      },
-      {
-        id: "expert-settings",
-        icon: GraduationCap,
-        title_key: "expert_settings_page.title",
+        title_key: "function_settings_page.title",
       },
     ],
   },

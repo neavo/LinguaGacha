@@ -35,7 +35,7 @@ export function ProjectLanguageDialog(props: ProjectLanguageDialogProps): JSX.El
           variant="group"
           action_width="content"
           title={t("app.language_role.source")}
-          description={t("basic_settings_page.fields.source_language.description")}
+          description={t("function_settings_page.fields.source_language.description")}
           action={
             <ProjectLanguageSelect
               field="source_language"
@@ -50,7 +50,7 @@ export function ProjectLanguageDialog(props: ProjectLanguageDialogProps): JSX.El
           variant="group"
           action_width="content"
           title={t("app.language_role.target")}
-          description={t("basic_settings_page.fields.target_language.description")}
+          description={t("function_settings_page.fields.target_language.description")}
           action={
             <ProjectLanguageSelect
               field="target_language"

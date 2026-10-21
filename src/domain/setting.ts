@@ -21,6 +21,9 @@ export {
   type TargetLanguageCode,
 } from "./language";
 
+export const CONTEXT_LINES_THRESHOLD_MIN = 0;
+export const CONTEXT_LINES_THRESHOLD_MAX = 9_999_999;
+
 export const PROJECT_SAVE_MODES = ["MANUAL", "FIXED", "SOURCE"] as const; // ProjectSaveMode 是项目保存位置策略，页面和设置服务都从这里取合法值
 
 export type ProjectSaveMode = (typeof PROJECT_SAVE_MODES)[number];
@@ -41,7 +44,14 @@ export const SETTING_SNAPSHOT_SCHEMA = Type.Object(
     project_fixed_path: Type.String(), // 固定保存模式使用的工程目录。
     output_folder_open_on_finish: Type.Boolean(), // 译文生成成功后是否打开输出目录。
     request_timeout: Type.Number(), // 等待模型回复的超时时间，单位为秒。
-    preceding_lines_threshold: Type.Number(), // 单个翻译任务最多携带的参考上文行数。
+    preceding_lines_threshold: Type.Integer({
+      minimum: CONTEXT_LINES_THRESHOLD_MIN,
+      maximum: CONTEXT_LINES_THRESHOLD_MAX,
+    }), // 参考上文按文本条目计数。
+    following_lines_threshold: Type.Integer({
+      minimum: CONTEXT_LINES_THRESHOLD_MIN,
+      maximum: CONTEXT_LINES_THRESHOLD_MAX,
+    }), // 参考下文按文本条目计数。
     prompt_enhancement_enable: Type.Boolean(), // 翻译提示词增强开关。
     mtool_optimizer_enable: Type.Boolean(), // MTool 文本预过滤优化开关。
     skip_duplicate_source_text_enable: Type.Boolean(), // 重复来源条目的过滤开关。
@@ -69,6 +79,7 @@ export const DEFAULT_SETTING: SettingSnapshot & JsonRecord = {
   output_folder_open_on_finish: false,
   request_timeout: 180,
   preceding_lines_threshold: 0,
+  following_lines_threshold: 0,
   prompt_enhancement_enable: true,
   mtool_optimizer_enable: true,
   skip_duplicate_source_text_enable: true,
@@ -202,6 +213,9 @@ export class Setting {
     if (key === "model_selection") {
       return normalize_model_selection(value) as unknown as JsonValue;
     }
+    if (key === "preceding_lines_threshold" || key === "following_lines_threshold") {
+      return normalize_context_lines_threshold(value);
+    }
     const schema = SETTING_SNAPSHOT_SCHEMA.properties[key as SettingKey];
     if (Type.IsBoolean(schema)) {
       return read_json_boolean(value, Boolean(DEFAULT_SETTING[key]));
@@ -295,3 +309,11 @@ function normalize_recent_project_settings(value: unknown): RecentProjectSetting
 }
 
 export const normalize_project_save_mode = Setting.normalize_project_save_mode;
+
+/** 前后文共用整数边界，旧小数沿用截断口径。 */
+export function normalize_context_lines_threshold(value: unknown): number {
+  return Math.min(
+    CONTEXT_LINES_THRESHOLD_MAX,
+    Math.max(CONTEXT_LINES_THRESHOLD_MIN, Math.trunc(normalize_number_setting(value, 0))),
+  );
+}

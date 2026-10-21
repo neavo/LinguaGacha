@@ -1,8 +1,18 @@
-import type { zh_cn_basic_settings_page } from "../zh-CN/basic-settings-page";
+import type { zh_cn_function_settings_page } from "../zh-CN/function-settings-page";
 import type { LocaleMessageSchema } from "../../types";
-export const ja_jp_basic_settings_page = {
-  title: "基本設定",
+export const ja_jp_function_settings_page = {
+  title: "機能設定",
   fields: {
+    preceding_lines_threshold: {
+      title: "参照する前文の項目数",
+      description:
+        "各タスクに含める参考前文の項目数を設定します。トークン消費量が増えます。既定では無効です。",
+    },
+    following_lines_threshold: {
+      title: "参照する後文の項目数",
+      description:
+        "各タスクに含める参考後文の項目数を設定します。トークン消費量が増えます。既定では無効です。",
+    },
     source_language: {
       description: "入力テキストの言語を設定します",
     },
@@ -30,7 +40,11 @@ export const ja_jp_basic_settings_page = {
     },
   },
   feedback: {
+    preceding_lines_threshold_invalid:
+      "参照する前文の項目数は 0 から 9999999 の整数で入力してください …",
+    following_lines_threshold_invalid:
+      "参照する後文の項目数は 0 から 9999999 の整数で入力してください …",
     request_timeout_invalid: "タイムアウトには有効な範囲の数値を入力してください …",
     pick_directory_failed: "フォルダーを選択できませんでした。固定の保存先を選び直してください …",
   },
-} satisfies LocaleMessageSchema<typeof zh_cn_basic_settings_page>;
+} satisfies LocaleMessageSchema<typeof zh_cn_function_settings_page>;

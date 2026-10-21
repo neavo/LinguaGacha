@@ -1,4 +1,5 @@
 import type { TextTaskItemRecord } from "../../../shared/text/text-processing";
+import { normalize_context_lines_threshold } from "../../../domain/setting";
 import crypto from "node:crypto";
 import { read_item_source_text_parts } from "../../../shared/item-text";
 
@@ -18,9 +19,9 @@ type TranslationTokenMetric = Readonly<{
 }>;
 
 const DEFAULT_INPUT_TOKEN_LIMIT = 512; // 模型未配置 token 限制时使用保守默认值，避免一次塞入过长 prompt。
-const HASH_YIELD_EVERY_ITEMS = 1024; // 主线程计算 hash 时分批让出事件循环，避免大项目启动阶段长时间无响应。
+const PLANNING_YIELD_EVERY_ITEMS = 1024; // 规划扫描分批让出事件循环，避免大项目启动阶段长时间无响应。
 
-const END_LINE_PUNCTUATION = new Set([".", "。", "?", "？", "!", "！", "…", "'", '"', "」", "』"]); // 向前选取上文时，仅接纳以这些标点结尾的条目。
+const END_LINE_PUNCTUATION = new Set([".", "。", "?", "？", "!", "！", "…", "'", '"', "」", "』"]); // 选取前后文时，仅接纳以这些标点结尾的条目。
 
 /**
  * TranslationPlanner 是后台任务初始规划器：它复用进程内 token 缓存，并把精确计数交给 planning worker。
@@ -37,7 +38,7 @@ export class TranslationPlanner {
   }
 
   /**
-   * 构建翻译初始上下文，切块使用精确 token 指标并按模型协议准备 preceding。
+   * 构建翻译初始上下文，切块使用精确 token 指标并按模型协议准备前后文。
    */
   public async build_translation_plan(
     items: TextTaskItemRecord[],
@@ -47,24 +48,26 @@ export class TranslationPlanner {
     target_ids?: ReadonlySet<number>,
   ): Promise<TranslationContext[]> {
     const threshold = this.get_input_token_limit(model, DEFAULT_INPUT_TOKEN_LIMIT);
-    const is_sakura = String(model["api_format"] ?? "") === "SakuraLLM"; // Sakura 专用提示词仅消费本批正文，不使用额外前文。
+    const is_sakura = String(model["api_format"] ?? "") === "SakuraLLM"; // Sakura 专用提示词仅消费本批正文，不使用额外前后文。
     const metrics = await this.resolve_item_metrics(
       target_ids === undefined
         ? items
         : items.filter((item) => target_ids.has(read_task_item_id(item))),
       signal,
     );
-    const chunks = this.generate_item_chunks(
+    const chunks = await this.generate_item_chunks(
       items,
       metrics,
       threshold,
-      is_sakura ? 0 : read_json_integer(config["preceding_lines_threshold"], 0),
+      is_sakura ? 0 : normalize_context_lines_threshold(config["preceding_lines_threshold"]),
+      is_sakura ? 0 : normalize_context_lines_threshold(config["following_lines_threshold"]),
       signal,
     );
-    return chunks.map(({ chunk_items, precedings }) => ({
+    return chunks.map(({ chunk_items, precedings, followings }) => ({
       work_unit_id: crypto.randomUUID(),
       items: chunk_items,
       precedings,
+      followings,
       retry_count: 0,
     }));
   }
@@ -72,20 +75,54 @@ export class TranslationPlanner {
   /**
    * 初始切块实现，只依赖 item 快照和已解析 token 指标，不在主线程执行 tokenizer。
    */
-  private generate_item_chunks(
+  private async generate_item_chunks(
     items: TextTaskItemRecord[],
     metric_by_id: ReadonlyMap<number, TranslationTokenMetric>,
     input_token_threshold: number,
     preceding_lines_threshold: number,
+    following_lines_threshold: number,
     signal: AbortSignal,
-  ): Array<{ chunk_items: TextTaskItemRecord[]; precedings: TextTaskItemRecord[] }> {
+  ): Promise<
+    Array<{
+      chunk_items: TextTaskItemRecord[];
+      precedings: TextTaskItemRecord[];
+      followings: TextTaskItemRecord[];
+    }>
+  > {
     const line_limit = Math.max(8, Math.trunc(input_token_threshold / 16));
-    const chunks: Array<{ chunk_items: TextTaskItemRecord[]; precedings: TextTaskItemRecord[] }> =
-      [];
+    const chunks: Array<{
+      chunk_items: TextTaskItemRecord[];
+      precedings: TextTaskItemRecord[];
+      followings: TextTaskItemRecord[];
+    }> = [];
     let chunk_start = 0; // 当前单元首条目标在完整工程序列中的位置。
+    let chunk_end = 0; // 目标可能不连续，后文从最后目标的真实索引开始。
     let line_length = 0;
     let token_length = 0;
     let chunk: TextTaskItemRecord[] = [];
+    /** 按完整序列中的首尾位置装配当前块及其上下文。 */
+    const finish_chunk = async (): Promise<void> => {
+      const file_path = String(chunk[0]?.file_path ?? "");
+      chunks.push({
+        chunk_items: chunk,
+        precedings: await this.scan_context(
+          items,
+          chunk_start - 1,
+          file_path,
+          -1,
+          preceding_lines_threshold,
+          signal,
+        ),
+        followings: await this.scan_context(
+          items,
+          chunk_end + 1,
+          file_path,
+          1,
+          following_lines_threshold,
+          signal,
+        ),
+      });
+    };
     for (const [index, item] of items.entries()) {
       this.throw_if_aborted(signal);
       const metric = metric_by_id.get(read_task_item_id(item));
@@ -98,34 +135,19 @@ export class TranslationPlanner {
           token_length + metric.token_count > input_token_threshold ||
           String(item["file_path"] ?? "") !== String(chunk[chunk.length - 1]?.["file_path"] ?? ""))
       ) {
-        chunks.push({
-          chunk_items: chunk,
-          precedings: this.generate_preceding_chunk(
-            items,
-            chunk,
-            chunk_start,
-            preceding_lines_threshold,
-          ),
-        });
+        await finish_chunk();
         line_length = 0;
         token_length = 0;
         chunk = [];
       }
       if (chunk.length === 0) chunk_start = index;
+      chunk_end = index;
       chunk.push(item);
       line_length += metric.line_count;
       token_length += metric.token_count;
     }
     if (chunk.length > 0) {
-      chunks.push({
-        chunk_items: chunk,
-        precedings: this.generate_preceding_chunk(
-          items,
-          chunk,
-          chunk_start,
-          preceding_lines_threshold,
-        ),
-      });
+      await finish_chunk();
     }
     return chunks;
   }
@@ -172,7 +194,7 @@ export class TranslationPlanner {
         }
         pending.targets.push({ item_id, line_count });
       }
-      if (index > 0 && index % HASH_YIELD_EVERY_ITEMS === 0) {
+      if (index > 0 && index % PLANNING_YIELD_EVERY_ITEMS === 0) {
         await new Promise<void>((resolve) => setImmediate(resolve));
       }
     }
@@ -194,37 +216,33 @@ export class TranslationPlanner {
     return metrics;
   }
 
-  /**
-   * 生成翻译上文块，边界跟随文件路径和句末标点。
-   */
-  private generate_preceding_chunk(
+  /** 前后文共用边界，扫描期间定期让出事件循环以响应取消。 */
+  private async scan_context(
     items: TextTaskItemRecord[],
-    chunk: TextTaskItemRecord[],
     start: number,
-    preceding_lines_threshold: number,
-  ): MutableJsonRecord[] {
-    const result: MutableJsonRecord[] = [];
-    const current_file_path = String(chunk[chunk.length - 1]?.["file_path"] ?? "");
-    for (let index = start - 1; index >= 0; index -= 1) {
-      const item = items[index];
-      if (item === undefined || is_task_skipped_item_status(read_task_item_status(item))) {
-        continue;
+    file_path: string,
+    direction: -1 | 1,
+    limit: number,
+    signal: AbortSignal,
+  ): Promise<TextTaskItemRecord[]> {
+    const result: TextTaskItemRecord[] = [];
+    if (limit === 0) return result;
+    let scanned = 0;
+    for (let index = start; index >= 0 && index < items.length; index += direction) {
+      if (++scanned % PLANNING_YIELD_EVERY_ITEMS === 0) {
+        await new Promise<void>((resolve) => setImmediate(resolve));
       }
-      const src = String(item["src"] ?? "").trim();
-      if (src === "" || result.length >= preceding_lines_threshold) {
-        break;
-      }
-      if (String(item["file_path"] ?? "") !== current_file_path) {
-        break;
-      }
-      const last_char = src.at(-1) ?? "";
-      if (END_LINE_PUNCTUATION.has(last_char)) {
-        result.push(item);
-      } else {
-        break;
-      }
+      this.throw_if_aborted(signal);
+      const item = items[index]!;
+      // 文件边界优先于跳过状态，避免跨过异文件的已过滤条目。
+      if (String(item.file_path ?? "") !== file_path) break;
+      if (is_task_skipped_item_status(read_task_item_status(item))) continue;
+      const src = String(item.src ?? "").trim();
+      if (src === "" || !END_LINE_PUNCTUATION.has(src.at(-1) ?? "")) break;
+      result.push(item);
+      if (result.length >= limit) break;
     }
-    return result.reverse();
+    return direction === -1 ? result.reverse() : result;
   }
 
   /**

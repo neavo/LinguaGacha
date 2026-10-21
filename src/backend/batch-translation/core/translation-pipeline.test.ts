@@ -270,6 +270,7 @@ function context(id: number) {
     work_unit_id: String(id),
     items: [],
     precedings: [],
+    followings: [],
     retry_count: 0,
   };
 }

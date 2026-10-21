@@ -2,18 +2,19 @@ import { describe, expect, it } from "vitest";
 import type { TranslationContext } from "./translation-plan-types";
 import { plan_translation_retry } from "./translation-retry";
 
-/** 保留源文与上文快照，验证重试阶段的载荷选择。 */
+/** 保留源文与前后文快照，验证重试阶段的载荷选择。 */
 function create_context(retry_count: number, ids: number[]): TranslationContext {
   return {
     work_unit_id: "original",
     items: ids.map((id) => ({ id, src: `原文${id}`, status: "NONE" })),
     precedings: [{ id: 9, src: "上文" }],
+    followings: [{ id: 10, src: "下文" }],
     retry_count,
   };
 }
 
 describe("plan_translation_retry", () => {
-  it("对半切只重试失败条目，保留本轮源文与顺序并去掉上文", () => {
+  it("对半切只重试失败条目，保留本轮源文与顺序并清空前后文", () => {
     const context = create_context(0, [1, 2, 3, 4, 5]);
     const returned = context.items.toReversed().map((item) => ({
       ...item,
@@ -23,8 +24,18 @@ describe("plan_translation_retry", () => {
     const result = plan_translation_retry(context, returned);
     expect(result.error_items).toEqual([]);
     expect(result.retry_contexts).toMatchObject([
-      { items: [context.items[0], context.items[2]], precedings: [], retry_count: 1 },
-      { items: [context.items[3], context.items[4]], precedings: [], retry_count: 1 },
+      {
+        items: [context.items[0], context.items[2]],
+        precedings: [],
+        followings: [],
+        retry_count: 1,
+      },
+      {
+        items: [context.items[3], context.items[4]],
+        precedings: [],
+        followings: [],
+        retry_count: 1,
+      },
     ]);
   });
 

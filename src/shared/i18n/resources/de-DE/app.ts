@@ -202,7 +202,8 @@ export const de_de_app = {
     builder_glossary_header:
       "Glossar <Originalbegriff> -> <Übersetzter Begriff> #<Begriffsinformation>:",
     builder_input: "Eingabe:",
-    builder_preceding_context: "Vorhergehender Kontext:",
+    builder_preceding_context: "Vorheriger Kontext (nur als Referenz):",
+    builder_following_context: "Folgender Kontext (nur als Referenz):",
   },
   translation_generation: {
     action: "Übersetzung erstellen",

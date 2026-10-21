@@ -8,7 +8,7 @@ import type {
   SettingsSnapshot,
   SettingsSnapshotPayload,
 } from "@frontend/app/state/desktop-state-context";
-import { useBasicSettingsState } from "@frontend/pages/basic-settings-page/use-basic-settings-state";
+import { useFunctionSettingsState } from "@frontend/pages/function-settings-page/use-function-settings-state";
 
 type RuntimeFixture = {
   settings_snapshot: SettingsSnapshot;
@@ -129,10 +129,10 @@ function create_toast_fixture(): ToastFixture {
   };
 }
 
-describe("useBasicSettingsState", () => {
+describe("useFunctionSettingsState", () => {
   let container: HTMLDivElement | null = null;
   let root: Root | null = null;
-  let latest_state: ReturnType<typeof useBasicSettingsState> | null = null;
+  let latest_state: ReturnType<typeof useFunctionSettingsState> | null = null;
 
   afterEach(async () => {
     if (root !== null) {
@@ -151,8 +151,8 @@ describe("useBasicSettingsState", () => {
   });
 
   /** 通过 React 渲染暴露设置 Hook 的公开状态。 */
-  function BasicSettingsProbe(): JSX.Element | null {
-    latest_state = useBasicSettingsState();
+  function FunctionSettingsProbe(): JSX.Element | null {
+    latest_state = useFunctionSettingsState();
     return null;
   }
 
@@ -165,7 +165,7 @@ describe("useBasicSettingsState", () => {
     }
 
     await act(async () => {
-      root?.render(createElement(BasicSettingsProbe));
+      root?.render(createElement(FunctionSettingsProbe));
     });
   }
 
@@ -244,5 +244,47 @@ describe("useBasicSettingsState", () => {
       ["/api/settings/update", { request_timeout: 600 }],
     ]);
     expect(latest_state?.snapshot.request_timeout).toBe(600);
+  });
+  it("前后文独立保存并恢复失败字段，只发出一次失败通知", async () => {
+    await render_hook();
+    expect(runtime_fixture.current.refresh_settings).toHaveBeenCalledTimes(1);
+    vi.mocked(api_fetch).mockResolvedValueOnce({
+      settings: create_settings_snapshot({ preceding_lines_threshold: 3 }),
+    } as never);
+    await act(async () => {
+      await latest_state?.update_preceding_lines_threshold(3);
+    });
+    expect(latest_state?.snapshot.preceding_lines_threshold).toBe(3);
+    let reject_save!: (error: Error) => void;
+    vi.mocked(api_fetch).mockImplementationOnce(
+      () =>
+        new Promise((_resolve, reject) => {
+          reject_save = reject;
+        }),
+    );
+    let save!: Promise<void>;
+    await act(async () => {
+      save = latest_state!.update_following_lines_threshold(4);
+    });
+    expect(latest_state?.snapshot.following_lines_threshold).toBe(4);
+    expect(latest_state?.pending_state.following_lines_threshold).toBe(true);
+    expect(latest_state?.pending_state.preceding_lines_threshold).toBe(false);
+    await act(async () => {
+      reject_save(new Error("save failed"));
+      await save;
+    });
+    expect(latest_state?.snapshot).toMatchObject({
+      preceding_lines_threshold: 3,
+      following_lines_threshold: 0,
+    });
+    expect(latest_state?.pending_state.following_lines_threshold).toBe(false);
+    expect(toast_fixture.current.push_toast).toHaveBeenCalledExactlyOnceWith(
+      "app.feedback.save_failed",
+      expect.any(Error),
+    );
+    expect(vi.mocked(api_fetch).mock.calls).toEqual([
+      ["/api/settings/update", { preceding_lines_threshold: 3 }],
+      ["/api/settings/update", { following_lines_threshold: 4 }],
+    ]);
   });
 });
