@@ -79,11 +79,7 @@ export function read_subtitle_target(slot: SubtitleSlot, items: ReadonlyMap<numb
   return item ? (read_translation_for_generation(item) ?? item.src) : slot.text;
 }
 
-/** 非空目标正文按双语去重设置决定是否追加。 */
-export function needs_bilingual_text(
-  source: string,
-  target: string,
-  deduplicate?: boolean,
-): boolean {
-  return target.trim() !== "" && !(deduplicate && source === target);
+/** 非空且与原文不同的目标正文才追加。 */
+export function needs_bilingual_text(source: string, target: string): boolean {
+  return target.trim() !== "" && source !== target;
 }

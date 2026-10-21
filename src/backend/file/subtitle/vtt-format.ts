@@ -101,11 +101,7 @@ export class VTTFormat {
       const keep_target = source_text.trim() === "" || target_text.trim() !== "";
       const source_body = bodies.map((body) => body.source).join("");
       const target_body = bodies.map((body) => body.target).join("");
-      const combine = needs_bilingual_text(
-        source_text,
-        target_text,
-        this.config.deduplication_in_bilingual,
-      );
+      const combine = needs_bilingual_text(source_text, target_text);
       let bilingual_body = source_body;
       if (combine) {
         // 两部分各自闭合作用域，省略的结束标签在双语连接处显式补齐。

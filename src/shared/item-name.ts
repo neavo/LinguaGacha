@@ -3,7 +3,6 @@ import { type ItemNameField, normalize_item_name_field } from "../domain/item";
 type ResolveOutputItemNameInput = {
   name_src: ItemNameField | undefined;
   name_dst: ItemNameField | undefined;
-  write_translated_name_fields_to_file?: boolean | undefined; // 缺省与 undefined 均采用译名，只有 false 明确选择原名。
 };
 
 // 姓名数组只有第 0 槽是当前可见姓名，后续槽位作为格式附加信息保留。
@@ -32,24 +31,12 @@ export function write_item_name_text(current: unknown, next_name: string): ItemN
   return next_name;
 }
 
-// 生成译文时按设置选择源姓名或译名，并保持源字段原有标量/数组形状。
+// 生成译文时优先使用译名，空译名回退源姓名，并保持源字段原有标量/数组形状。
 export function resolve_output_item_name(input: ResolveOutputItemNameInput): ItemNameField {
-  const source_name = normalize_item_name_field(input.name_src);
-  if (input.write_translated_name_fields_to_file === false) {
-    return source_name;
-  }
-
   const translation_name = read_item_name_text(input.name_dst);
-  if (translation_name === "") {
-    return source_name;
-  }
-
-  if (Array.isArray(source_name)) {
-    const names = [...source_name];
-    names[0] = translation_name;
-    return names;
-  }
-  return translation_name;
+  return translation_name === ""
+    ? normalize_item_name_field(input.name_src)
+    : write_item_name_text(input.name_src, translation_name);
 }
 
 // 比较前先走领域归一，避免 null、空值和姓名数组产生并行语义。

@@ -34,7 +34,6 @@ import {
   type JsonValue,
   type MutableJsonRecord,
 } from "../../domain/json";
-import { normalize_setting_snapshot } from "../../domain/setting";
 import {
   APP_PREFILTER_SETTING_KEYS,
   DEFAULT_PROJECT_LANGUAGE_SETTINGS,
@@ -542,12 +541,9 @@ export class ProjectLifecycleService {
    * 新建工程解析使用本次选择的项目语言
    */
   private create_format_service(languages: ProjectLanguageSettings): FileFormatService {
-    const config = normalize_setting_snapshot(this.app_setting_service.read_setting());
     return new FileFormatService(
       {
         target_language: languages.target_language,
-        deduplication_in_bilingual: config.deduplication_in_bilingual,
-        write_translated_name_fields_to_file: config.write_translated_name_fields_to_file,
       },
       this.pdf_execution,
       this.native_fs,

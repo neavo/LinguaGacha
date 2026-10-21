@@ -50,9 +50,9 @@ export class EpubWriter {
   private readonly preserve_reading_layout: boolean;
 
   /**
-   * 写回策略依赖导出配置，尤其是双语去重和目标语言路径规则
+   * 目标语言决定阅读排版策略
    */
-  public constructor(private readonly config: FileFormatServiceConfig) {
+  public constructor(config: FileFormatServiceConfig) {
     this.preserve_reading_layout = EPUB_READING_LAYOUT_TARGET_LANGUAGES.has(
       config.target_language.trim().toUpperCase(),
     );
@@ -334,10 +334,7 @@ export class EpubWriter {
         continue;
       }
 
-      if (
-        allow_bilingual_insert &&
-        !(this.config.deduplication_in_bilingual === true && item.src === item_dst)
-      ) {
+      if (allow_bilingual_insert && item.src !== item_dst) {
         const block_path = typeof epub["block_path"] === "string" ? epub["block_path"] : "";
         this.collect_bilingual_block_ref(
           root,
@@ -416,13 +413,12 @@ export class EpubWriter {
 
   /** 片段不含图片、链接或锚点边界；译文替换片段，双语只复制该片段的原文。 */
   private apply_text_run(run: EpubTextRun, item: Item, text: string, bilingual: boolean): void {
-    // 未翻译片段保留原内联排版；双语明确要求重复原文时才继续插入。
-    if (item.src === text && (!bilingual || this.config.deduplication_in_bilingual === true))
-      return;
+    // 同文片段保留原内联排版。
+    if (item.src === text) return;
     const { container, nodes } = run;
     const start = container.children.indexOf(nodes[0] as ChildNode);
     const replacements: ChildNode[] = [];
-    if (bilingual && !(this.config.deduplication_in_bilingual === true && item.src === text)) {
+    if (bilingual) {
       const original = new Element("span", { style: "opacity:0.50;" }, []);
       this.ast.replace_element_children(original, nodes);
       replacements.push(original);
@@ -460,15 +456,8 @@ export class EpubWriter {
     if (this.ast.sha1_hex(current_src) !== src_digest) {
       return false;
     }
-    if (
-      item.src === item_dst &&
-      (!allow_bilingual_insert || this.config.deduplication_in_bilingual === true)
-    )
-      return true;
-    if (
-      allow_bilingual_insert &&
-      !(this.config.deduplication_in_bilingual === true && item.src === item_dst)
-    ) {
+    if (item.src === item_dst) return true;
+    if (allow_bilingual_insert) {
       this.collect_bilingual_block_ref(
         root,
         elem_by_path,
@@ -613,11 +602,7 @@ export class EpubWriter {
       }
       const item = target_items[item_index] as Item;
       const item_dst = this.read_output_text(item, is_nav_page);
-      if (
-        bilingual &&
-        !is_nav_page &&
-        !(this.config.deduplication_in_bilingual === true && item.src === item_dst)
-      ) {
+      if (bilingual && !is_nav_page && item.src !== item_dst) {
         const parent = dom.parent;
         if (parent instanceof Element) {
           const clone = this.ast.clone_element(dom);

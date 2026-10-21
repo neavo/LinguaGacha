@@ -1,7 +1,6 @@
 import type { Item } from "../../../domain/item";
 import { decode_text_content } from "../../../shared/utils/text-tool";
 import { split_text_lines } from "../../../shared/text/text-lines";
-import type { FileFormatServiceConfig } from "../file-format-types";
 import {
   bind_subtitle_items,
   create_subtitle_items,
@@ -21,9 +20,6 @@ type LRCUnit = SubtitleSlot & { prefix: string; ending: string; end: number; row
 
 /** LRC 的时间标签与非正文行留在源资产，一源行最多产生一个正文条目。 */
 export class LRCFormat {
-  /** 固定当前双语输出设置。 */
-  public constructor(private readonly config: FileFormatServiceConfig) {}
-
   /** 导入先移除逐字时间，使条目正文可直接参与翻译与校对。 */
   public async read_from_stream(content: Uint8Array, file: string): Promise<Item[]> {
     const text = await decode_text_content(content);
@@ -52,9 +48,7 @@ export class LRCFormat {
       const target_lines = split_text_lines(target);
       translated += render(target_lines);
       bilingual += render(
-        needs_bilingual_text(unit.text, target, this.config.deduplication_in_bilingual)
-          ? [unit.text, ...target_lines]
-          : [unit.text],
+        needs_bilingual_text(unit.text, target) ? [unit.text, ...target_lines] : [unit.text],
       );
       cursor = unit.end;
     }

@@ -82,8 +82,6 @@ function create_setting_service(
     read_setting: () => ({
       app_language: options.app_language ?? "ZH",
       output_folder_open_on_finish: options.output_folder_open_on_finish ?? false,
-      deduplication_in_bilingual: true,
-      write_translated_name_fields_to_file: true,
     }),
   } as unknown as AppSettingService;
 }
@@ -367,8 +365,6 @@ describe("TranslationFileGenerationService", () => {
     const parsed = await new FileFormatService(
       {
         target_language: "ZH",
-        deduplication_in_bilingual: true,
-        write_translated_name_fields_to_file: true,
       },
       create_pdf_execution(),
     ).parse_asset("sub.vtt", content, "VTT");

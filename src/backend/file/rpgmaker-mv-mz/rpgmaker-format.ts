@@ -2,15 +2,14 @@ import type { GameFormatAdapter } from "../shared/game/format";
 import path from "node:path";
 import { AppError } from "../../../shared/error";
 import { decode_text_content } from "../../../shared/utils/text-tool";
-import type { FileFormatServiceConfig } from "../file-format-types";
 import { read_rpgmaker_metadata } from "./item";
 import { create_rpgmaker_extractor } from "./extractor";
 import { read_rpgmaker_json } from "./json";
 import { write_rpgmaker_items } from "./writer";
 import { RPGMakerJsonCodec } from "./json-codec";
 
-/** 格式配置由服务固定，成员处理器只解释内容和持久定位。 */
-export function create_rpgmaker_mv_mz_adapter(config: FileFormatServiceConfig): GameFormatAdapter {
+/** 成员处理器只解释内容和持久定位。 */
+export function create_rpgmaker_mv_mz_adapter(): GameFormatAdapter {
   return {
     file_type: "RPGMAKER_MV_MZ",
     internal_path: (item) => read_rpgmaker_metadata(item.extra_field).internal_file_path,
@@ -32,12 +31,7 @@ export function create_rpgmaker_mv_mz_adapter(config: FileFormatServiceConfig): 
           const source = await decode_text_content(content);
           const json = path.extname(file).toLowerCase() === ".json";
           const codec = new RPGMakerJsonCodec(); // 每次渲染独占数值原稿记录。
-          const root = write_rpgmaker_items(
-            json ? codec.parse(source) : source,
-            completed,
-            config,
-            codec,
-          );
+          const root = write_rpgmaker_items(json ? codec.parse(source) : source, completed, codec);
           return Buffer.from(json ? codec.stringify(root) : String(root));
         } catch (cause) {
           throw new AppError("file.invalid_structure", { cause, public_details: { file } });

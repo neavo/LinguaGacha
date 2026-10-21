@@ -52,17 +52,11 @@ function create_expert_settings_state_fixture() {
   return {
     snapshot: {
       preceding_lines_threshold: 0,
-      deduplication_in_bilingual: false,
-      write_translated_name_fields_to_file: false,
     },
     pending_state: {
       preceding_lines_threshold: false,
-      deduplication_in_bilingual: false,
-      write_translated_name_fields_to_file: false,
     },
     update_preceding_lines_threshold: vi.fn(async (_next_value: number) => {}),
-    update_deduplication_in_bilingual: vi.fn(async (_next_checked: boolean) => {}),
-    update_write_translated_name_fields_to_file: vi.fn(async (_next_checked: boolean) => {}),
   };
 }
 

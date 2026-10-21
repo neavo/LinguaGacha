@@ -7,7 +7,7 @@ import {
   split_text_lines_for_items,
   write_text_file,
 } from "../shared/file-format-helpers";
-import { type GeneratedFilePaths, type FileFormatServiceConfig } from "../file-format-types";
+import { type GeneratedFilePaths } from "../file-format-types";
 import { type Item } from "../../../domain/item";
 import { build_items_for_writeback, get_item_target_line } from "./compat";
 import { RenpyExtractor } from "./extractor";
@@ -18,11 +18,6 @@ import { RenpyWriter } from "./writer";
  * RenPy 翻译脚本格式门面，只编排 AST 管线和文件读写。
  */
 export class RenPyFormat {
-  /**
-   * 构造时固定配置，确保姓名字段写回策略和导出服务一致。
-   */
-  public constructor(private readonly config: FileFormatServiceConfig) {}
-
   /**
    * 解码后按翻译块解析，抽取带原稿定位信息的条目。
    */
@@ -49,10 +44,7 @@ export class RenPyFormat {
       const prepared_items = normalized_items.sort(
         (left, right) => get_item_target_line(left) - get_item_target_line(right),
       );
-      new RenpyWriter(this.config.write_translated_name_fields_to_file).apply_items_to_lines(
-        lines,
-        prepared_items,
-      );
+      new RenpyWriter().apply_items_to_lines(lines, prepared_items);
       await write_text_file(path.join(paths.translated_path, rel_path), lines.join("\n"));
     }
   }

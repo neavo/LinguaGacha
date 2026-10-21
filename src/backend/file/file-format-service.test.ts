@@ -26,8 +26,6 @@ function create_service(): FileFormatService {
   return new FileFormatService(
     {
       target_language: "ZH",
-      deduplication_in_bilingual: true,
-      write_translated_name_fields_to_file: true,
     },
     create_pdf_execution(),
   );
@@ -276,18 +274,11 @@ describe("FileFormatService", () => {
     ]);
   });
 
-  it("RenPy 导出通过 FileFormatService 注入姓名字段配置", async () => {
+  it("RenPy 导出通过 FileFormatService 写入当前条目译名", async () => {
     using temp_dir = fs.mkdtempDisposableSync(
       path.join(os.tmpdir(), "linguagacha-file-format-service-"),
     );
-    const service = new FileFormatService(
-      {
-        target_language: "ZH",
-        deduplication_in_bilingual: true,
-        write_translated_name_fields_to_file: false,
-      },
-      create_pdf_execution(),
-    );
+    const service = create_service();
     const text = ["translate schinese start:", "", '    # "Alice" "Hello"', '    "艾丽丝" ""'].join(
       "\n",
     );
@@ -310,7 +301,7 @@ describe("FileFormatService", () => {
     });
 
     expect(fs.readFileSync(path.join(temp_dir.path, "script.rpy"), "utf-8")).toContain(
-      '"Alice" "你好"',
+      '"爱丽丝" "你好"',
     );
   });
 });

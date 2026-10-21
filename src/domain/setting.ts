@@ -42,8 +42,6 @@ export const SETTING_SNAPSHOT_SCHEMA = Type.Object(
     output_folder_open_on_finish: Type.Boolean(), // 译文生成成功后是否打开输出目录。
     request_timeout: Type.Number(), // 等待模型回复的超时时间，单位为秒。
     preceding_lines_threshold: Type.Number(), // 单个翻译任务最多携带的参考上文行数。
-    deduplication_in_bilingual: Type.Boolean(), // 双语文件原译文相同时是否只写一份正文。
-    write_translated_name_fields_to_file: Type.Boolean(), // 导出时是否使用角色译名。
     prompt_enhancement_enable: Type.Boolean(), // 翻译提示词增强开关。
     mtool_optimizer_enable: Type.Boolean(), // MTool 文本预过滤优化开关。
     skip_duplicate_source_text_enable: Type.Boolean(), // 重复来源条目的过滤开关。
@@ -71,8 +69,6 @@ export const DEFAULT_SETTING: SettingSnapshot & JsonRecord = {
   output_folder_open_on_finish: false,
   request_timeout: 180,
   preceding_lines_threshold: 0,
-  deduplication_in_bilingual: true,
-  write_translated_name_fields_to_file: true,
   prompt_enhancement_enable: true,
   mtool_optimizer_enable: true,
   skip_duplicate_source_text_enable: true,

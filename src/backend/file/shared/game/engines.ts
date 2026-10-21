@@ -13,7 +13,6 @@ import type { Item, ItemStatus } from "../../../../domain/item";
 import { is_json_record } from "../../../../domain/json";
 import { GAME_FONT_EXTENSIONS } from "../../../../shared/game-font";
 import type { GameFileType } from "../../../../shared/project-source-formats";
-import type { FileFormatServiceConfig } from "../../file-format-types";
 import type { GameFiles, GameFormatAdapter } from "./format";
 import {
   collect_game_source_files,
@@ -85,7 +84,7 @@ interface EngineDefinition<G> {
     signal?: AbortSignal,
     prepared?: PreparedGameFiles,
   ): GameSourceFiles;
-  create_adapter(config: FileFormatServiceConfig): GameFormatAdapter;
+  create_adapter(): GameFormatAdapter;
   read_metadata(extra: Item["extra_field"]): { internal_file_path: string };
   default_status(item: Pick<Item, "extra_field">): ItemStatus;
   workspace_view?(members: GameFiles): AsyncIterable<readonly [string, Uint8Array]>;

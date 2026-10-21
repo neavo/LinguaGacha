@@ -9,6 +9,18 @@ import {
 import { Check } from "typebox/value";
 
 describe("设置快照", () => {
+  it("序列化与快照均移除旧输出设置", () => {
+    const setting = Setting.from_json({
+      deduplication_in_bilingual: false,
+      write_translated_name_fields_to_file: true,
+      preceding_lines_threshold: 7,
+    });
+    for (const output of [setting.to_json(), setting.to_snapshot()]) {
+      expect(output).not.toHaveProperty("deduplication_in_bilingual");
+      expect(output).not.toHaveProperty("write_translated_name_fields_to_file");
+      expect(output).toHaveProperty("preceding_lines_threshold", 7);
+    }
+  });
   it("读取与更新的结果满足同一快照结构，并保留文本边界", () => {
     const setting = Setting.from_json({
       source_language: " en ",

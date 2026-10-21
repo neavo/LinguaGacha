@@ -18,7 +18,7 @@ it("游戏 拒绝没有原稿文件的容器", async () => {
 it("容器只固化调用方提供的数据字节，字体保留在游戏文件清单", async () => {
   using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-game-container-"));
   const native = new NativeFs();
-  const format = new GameFormat(create_rpgmaker_mv_mz_adapter({ target_language: "ZH" }), native);
+  const format = new GameFormat(create_rpgmaker_mv_mz_adapter(), native);
   native.write_file_sync(path.join(temp.path, "fonts/main.ttf"), "font");
   const data = new Map([["data/System.json", Buffer.from("original")]]);
   native.write_file_sync(path.join(temp.path, "data/System.json"), "changed on disk");
@@ -35,10 +35,7 @@ it("容器只固化调用方提供的数据字节，字体保留在游戏文件�
 });
 
 it("游戏 解析通过共享容器入口拒绝越界成员", async () => {
-  const format = new GameFormat(
-    create_rpgmaker_mv_mz_adapter({ target_language: "ZH" }),
-    new NativeFs(),
-  );
+  const format = new GameFormat(create_rpgmaker_mv_mz_adapter(), new NativeFs());
   const bytes = await write_zip(new Map([["../outside.json", "{}"]]));
   await expect(format.read_from_stream(bytes, "game.zip")).rejects.toMatchObject({
     code: "file.invalid_structure",
@@ -54,7 +51,7 @@ it("解析失败保留原始字节，零条目导出仍包含该文件", async (
   fs.mkdirSync(path.join(temp.path, "img/pictures"), { recursive: true });
   fs.writeFileSync(path.join(temp.path, "img/pictures/Actor1.png"), "");
   const native = new NativeFs();
-  const service = new GameFormat(create_rpgmaker_mv_mz_adapter({ target_language: "ZH" }), native);
+  const service = new GameFormat(create_rpgmaker_mv_mz_adapter(), native);
   const files = new Map(
     ["data/Broken.json", "data/System.json"].map((name) => [
       name,

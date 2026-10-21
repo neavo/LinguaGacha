@@ -2,7 +2,7 @@ import { expect, it } from "vitest";
 import { create_item } from "../../../domain/item";
 import { SRTFormat } from "./srt-format";
 
-const format = new SRTFormat({ target_language: "ZH", deduplication_in_bilingual: true });
+const format = new SRTFormat();
 it("解析字幕序号、时间轴和实际换行，跳过非数字序号块", async () => {
   const text =
     "\n1\n00:00:01,000 --> 00:00:02,000\n第一句\n\nx\nwrong\n跳过\n\n2\n00:00:03,000 --> 00:00:04,000\n第二句\n第二行\n";
@@ -39,7 +39,7 @@ it.each(["", " \n "])("完成空正文 %j 省略单语块，未完成回源，�
   ).toEqual([[1, "保留"]]);
   expect(output.bilingual).toContain("7\n00:00:01,000 --> 00:00:02,000\n删除\n\n");
 });
-it.each([false, true])("双语去重=%s 控制同文输出", (deduplicate) => {
+it("双语同文只输出一次", () => {
   const item = create_item({
     src: "同文",
     dst: "同文",
@@ -47,11 +47,8 @@ it.each([false, true])("双语去重=%s 控制同文输出", (deduplicate) => {
     row: 1,
     extra_field: "time",
   });
-  const output = new SRTFormat({
-    target_language: "ZH",
-    deduplication_in_bilingual: deduplicate,
-  }).render_text("", [item], "sub.srt");
-  expect(output.bilingual).toBe(`1\ntime\n同文${deduplicate ? "" : "\n同文"}\n\n`);
+  const output = new SRTFormat().render_text("", [item], "sub.srt");
+  expect(output.bilingual).toBe(`1\ntime\n同文\n\n`);
 });
 it("没有正文的源文件直接保留，不生成伪造条目", () => {
   expect(format.render_text("\n", [], "empty.srt")).toEqual({ translated: "\n", bilingual: "\n" });

@@ -10,7 +10,6 @@ import {
   PRECEDING_LINES_THRESHOLD_MIN,
 } from "@frontend/pages/expert-settings-page/types";
 import { Input } from "@frontend/shadcn/input";
-import { BooleanSegmentedToggle } from "@frontend/widgets/boolean-segmented-toggle";
 import { SettingCardRow } from "@frontend/widgets/setting-card-row/setting-card-row";
 
 type ExpertSettingsPageProps = {
@@ -108,42 +107,6 @@ export function ExpertSettingsPage(_props: ExpertSettingsPageProps): JSX.Element
                 }}
               />
             </div>
-          }
-        />
-
-        <SettingCardRow
-          title={t("expert_settings_page.fields.deduplication_in_bilingual.title")}
-          description={t("expert_settings_page.fields.deduplication_in_bilingual.description")}
-          action={
-            <BooleanSegmentedToggle
-              aria_label={t("expert_settings_page.fields.deduplication_in_bilingual.title")}
-              value={expert_settings_state.snapshot.deduplication_in_bilingual}
-              stretch
-              disabled={expert_settings_state.pending_state.deduplication_in_bilingual}
-              on_value_change={(next_value) => {
-                void expert_settings_state.update_deduplication_in_bilingual(next_value);
-              }}
-            />
-          }
-        />
-
-        <SettingCardRow
-          title={t("expert_settings_page.fields.write_translated_name_fields_to_file.title")}
-          description={t(
-            "expert_settings_page.fields.write_translated_name_fields_to_file.description",
-          )}
-          action={
-            <BooleanSegmentedToggle
-              aria_label={t(
-                "expert_settings_page.fields.write_translated_name_fields_to_file.title",
-              )}
-              value={expert_settings_state.snapshot.write_translated_name_fields_to_file}
-              stretch
-              disabled={expert_settings_state.pending_state.write_translated_name_fields_to_file}
-              on_value_change={(next_value) => {
-                void expert_settings_state.update_write_translated_name_fields_to_file(next_value);
-              }}
-            />
           }
         />
       </section>

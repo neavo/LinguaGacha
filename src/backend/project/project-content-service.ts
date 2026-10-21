@@ -17,7 +17,6 @@ import { build_project_file_records, type ProjectFileRecord } from "./project-fi
 import type { PDFDocument } from "../../shared/pdf";
 import type { PDFExecution } from "../file/pdf/pdf-worker";
 import type { JsonRecord, JsonValue, MutableJsonRecord } from "../../domain/json";
-import type { AppSettingService } from "../app/app-setting-service";
 import { ProjectDatabase, type ProjectAssetRecord } from "../database/database-operations";
 import { FileFormatService } from "../file/file-format-service";
 import {
@@ -42,7 +41,6 @@ import {
   type Item,
 } from "../../domain/item";
 import { is_json_record } from "../../domain/json";
-import { normalize_setting_snapshot } from "../../domain/setting";
 import {
   parse_project_language_patch,
   read_project_language_settings,
@@ -97,8 +95,6 @@ export class ProjectContentService {
 
   private readonly write_store: ProjectWriteStore; // 工作台只提交结构性业务意图，事务和事件交给 ProjectWriteStore
 
-  private readonly app_setting_service: AppSettingService | null; // 文件重解析需要当前应用级格式配置；测试可为空并使用稳定默认值
-
   private readonly native_fs: NativeFs; // 来源解析使用宿主文件 IO，.lg 写入仍归 ProjectDatabase。
 
   private readonly log_manager: Pick<LogManager, "warning"> | null; // 记录批量文件解析失败明细，不影响事务边界
@@ -112,7 +108,6 @@ export class ProjectContentService {
     session_state: ProjectSessionState,
     write_store: ProjectWriteStore,
     private readonly pdf_execution: PDFExecution,
-    app_setting_service: AppSettingService | null = null,
     native_fs: NativeFs = default_native_fs,
     log_manager: Pick<LogManager, "warning"> | null = null,
     private readonly game_prepare_execution?: GamePrepareExecution,
@@ -121,7 +116,6 @@ export class ProjectContentService {
     this.runtime_gate = runtime_gate;
     this.session_state = session_state;
     this.write_store = write_store;
-    this.app_setting_service = app_setting_service;
     this.native_fs = native_fs;
     this.log_manager = log_manager;
   }
@@ -724,18 +718,15 @@ export class ProjectContentService {
   }
 
   /**
-   * 文件解析使用项目目标语言与当前应用格式配置
+   * 文件解析使用项目目标语言
    */
   private async create_format_service(project_path: string): Promise<FileFormatService> {
-    const config = normalize_setting_snapshot(this.app_setting_service?.read_setting() ?? {});
     const languages = read_project_language_settings(
       await this.database.get_all_meta(project_path),
     );
     return new FileFormatService(
       {
         target_language: languages.target_language,
-        deduplication_in_bilingual: config.deduplication_in_bilingual,
-        write_translated_name_fields_to_file: config.write_translated_name_fields_to_file,
       },
       this.pdf_execution,
       this.native_fs,

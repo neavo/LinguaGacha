@@ -8,8 +8,6 @@ import { useExpertSettingsState } from "./use-expert-settings-state";
 const commit_update = vi.fn(async () => null);
 const snapshot: ExpertSettingsSnapshot = {
   preceding_lines_threshold: PRECEDING_LINES_THRESHOLD_MIN + 3,
-  deduplication_in_bilingual: false,
-  write_translated_name_fields_to_file: false,
 };
 
 vi.mock("@frontend/features/settings-editor/use-settings-editor", () => ({
@@ -17,8 +15,6 @@ vi.mock("@frontend/features/settings-editor/use-settings-editor", () => ({
     snapshot,
     pending_state: {
       preceding_lines_threshold: false,
-      deduplication_in_bilingual: false,
-      write_translated_name_fields_to_file: false,
     },
     commit_update,
   }),

@@ -80,7 +80,7 @@ it("旧工程迁移保留身份与前序写入，关闭重开后实际导出已�
     const reopened = await database.get_all_items(project_path);
     expect(reopened).toEqual(items);
     expect(await build_project_open_writes(context)).toEqual([]);
-    const format = new EPUBFormat({ target_language: "ZH", deduplication_in_bilingual: true });
+    const format = new EPUBFormat({ target_language: "ZH" });
     const translated_path = path.join(temp.path, "translated");
     const bilingual_path = path.join(temp.path, "bilingual");
     await format.write_to_path(

@@ -1,7 +1,7 @@
 import { expect, it } from "vitest";
 import { LRCFormat } from "./lrc-format";
 
-const format = new LRCFormat({ target_language: "ZH", deduplication_in_bilingual: true });
+const format = new LRCFormat();
 it("逐字降级、多时间标签和多行双语写回保留元数据、offset 与文件尾", async () => {
   const text =
     "[ti:Title]\r\n[offset:-100]\r\n[00:12.30][00:45.60]<00:12.30>Hello <00:12.80>world[00:13.00]\r\n[00:50]\r\n# tail";

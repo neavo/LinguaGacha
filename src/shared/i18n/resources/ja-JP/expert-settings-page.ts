@@ -7,21 +7,6 @@ export const ja_jp_expert_settings_page = {
       title: "参照する前文の最大行数",
       description: "各翻訳タスクに添付できる前文の最大行数です。既定では無効です",
     },
-    deduplication_in_bilingual: {
-      title: "対訳ファイルで原文と訳文が同じ場合は 1 回だけ出力",
-      description: "字幕と電子書籍で原文と訳文が同じ場合、1 回だけ出力します。既定で有効です",
-    },
-    write_translated_name_fields_to_file: {
-      title: "名前フィールドの訳文を出力ファイルに書き込む",
-      description:
-        "一部の <emphasis>GalGame</emphasis> では名前が立ち絵や音声などのリソースと紐づいています。翻訳後にエラーが出る場合は無効にできます。既定で有効です" +
-        "\n" +
-        "対応形式：" +
-        "\n" +
-        "• RenPy から出力したゲームテキスト（.rpy）" +
-        "\n" +
-        "• VNTextPatch または SExtractor から出力した name フィールド付きゲームテキスト（.json）",
-    },
   },
   feedback: {
     preceding_lines_threshold_invalid: "前文の最大行数には有効な範囲の数値を入力してください …",
