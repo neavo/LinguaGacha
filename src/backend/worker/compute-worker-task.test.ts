@@ -33,7 +33,6 @@ describe("run_compute_worker_task", () => {
         processingConfig: {
           source_language: "JA",
           target_language: "ZH",
-          clean_ruby: false,
         },
       },
     });

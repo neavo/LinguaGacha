@@ -1,5 +1,3 @@
-import { TextRubyCleaner } from "./text-ruby-cleaner";
-import type { TextProcessingConfig } from "./text-processing";
 import { type TextPreserveAnalysis, type TextPreserveRule } from "./text-preserve-rules";
 import { apply_text_replacements, type CompiledTextReplacements } from "./text-replacement-rules";
 import {
@@ -11,7 +9,7 @@ import {
 
 export type PreparedTranslationSourceLine = {
   prepared_text: string; // 实际请求和校对共用的完整源文，保留行直接保存原文。
-  preserve_analysis: TextPreserveAnalysis; // 绑定 prepared_text；校对复用同一阶段的保护段裁决。
+  preserve_analysis: TextPreserveAnalysis; // 校对复用 `prepared_text` 对应阶段的保护段裁决。
 } & (
   | { state: "preserved" }
   | {
@@ -24,17 +22,16 @@ export type PreparedTranslationSourceLine = {
 
 export type PreparedTranslationSource = {
   body: TextResourceReferenceProjection; // 原始正文的资源映射，覆盖每行准备及译后恢复。
-  name: TextResourceReferenceProjection | null; // 可见姓名按整段投影，不执行正文清理与替换。
+  name: TextResourceReferenceProjection | null; // 可见姓名按整段投影，不执行正文替换。
   prepared_lines: PreparedTranslationSourceLine[];
   samples: string[]; // 汇总去重后的请求样例，逐行结果只保存保护分析。
 };
 
-/** 翻译与校对共用完整源文准备；资源在清理、分行和替换前隔离。 */
+/** 资源在源文分行和替换前隔离，翻译与校对共用准备结果。 */
 export function prepare_translation_source(args: {
   src: string;
   name_src: string | null;
   text_type: string;
-  config: Pick<TextProcessingConfig, "clean_ruby">;
   preserve_rule: TextPreserveRule;
   pre_replacements: CompiledTextReplacements | null;
   start_ordinal: number;
@@ -50,8 +47,6 @@ export function prepare_translation_source(args: {
   const prepared_lines = body.text.split("\n").map((raw_text) =>
     prepare_translation_source_line({
       raw_text,
-      text_type: args.text_type,
-      config: args.config,
       preserve_rule: args.preserve_rule,
       pre_replacements: args.pre_replacements,
       reference_mappings: body.mappings,
@@ -76,8 +71,6 @@ export function prepare_translation_source(args: {
 /** 按翻译入口的既定顺序准备单行，并同时生成校对使用的源文投影。 */
 function prepare_translation_source_line(args: {
   raw_text: string;
-  text_type: string;
-  config: Pick<TextProcessingConfig, "clean_ruby">;
   preserve_rule: TextPreserveRule;
   pre_replacements: CompiledTextReplacements | null;
   reference_mappings: readonly TextResourceReferenceMapping[];
@@ -93,13 +86,8 @@ function prepare_translation_source_line(args: {
     };
   };
 
-  const text_type = args.text_type.toUpperCase();
   const reference_mappings = args.reference_mappings;
-  let text = args.config.clean_ruby
-    ? transform_projected_text_resource_references(args.raw_text, reference_mappings, (value) =>
-        TextRubyCleaner.clean(value, text_type),
-      )
-    : args.raw_text;
+  let text = args.raw_text;
   if (text.trim() === "") return preserved(args.preserve_rule.analyze(args.raw_text));
 
   const leading_whitespace = text.match(/^\s*/u)?.[0] ?? "";

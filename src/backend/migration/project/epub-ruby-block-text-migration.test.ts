@@ -2,6 +2,7 @@ import { write_zip, read_zip_fixture } from "../../../test/zip-fixture";
 
 import { describe, expect, it, vi } from "vitest";
 
+import { EpubAst } from "../../file/epub/epub-ast";
 import type { MutableJsonRecord } from "../../../domain/json";
 import type { ProjectDatabaseAccess } from "../../database/database-operations";
 import { create_epub_fixture } from "../../../test/epub-fixture";
@@ -21,6 +22,7 @@ describe("EpubRubyBlockTextMigration", () => {
           name_src: "宝條直希",
           name_dst: "宝条直希",
           extra_field: {
+            note: "保留条目附加数据",
             epub: {
               mode: "slot_per_line",
               doc_path: "OPS/chapter.xhtml",
@@ -55,13 +57,7 @@ describe("EpubRubyBlockTextMigration", () => {
     for (const write of writes) {
       write(database as unknown as ProjectDatabaseAccess);
     }
-    const migrated_items = vi.mocked(database.set_items).mock.calls[0]?.[1];
-    const [migrated_item] = migrated_items as MutableJsonRecord[];
-    if (migrated_item === undefined) {
-      throw new Error("EPUB ruby 迁移未生成 item。");
-    }
-
-    expect(migrated_items).toEqual([
+    expect(database.set_items.mock.calls[0]?.[1]).toEqual([
       expect.objectContaining({
         id: 7,
         src: "宝條直希",
@@ -69,16 +65,17 @@ describe("EpubRubyBlockTextMigration", () => {
         name_src: "宝條直希",
         name_dst: "宝条直希",
         status: "PROCESSED",
+        extra_field: {
+          note: "保留条目附加数据",
+          epub: expect.objectContaining({
+            mode: "block_text",
+            doc_path: "OPS/chapter.xhtml",
+            block_path: "/html[1]/body[1]/p[1]",
+            src_digest: expect.any(String),
+          }),
+        },
       }),
     ]);
-    expect((migrated_item["extra_field"] as MutableJsonRecord).epub).toEqual(
-      expect.objectContaining({
-        mode: "block_text",
-        doc_path: "OPS/chapter.xhtml",
-        block_path: "/html[1]/body[1]/p[1]",
-        src_digest: expect.any(String),
-      }),
-    );
     expect(database.bump_section_revisions).toHaveBeenCalledWith("demo.lg", ["items"]);
   });
 
@@ -136,40 +133,94 @@ describe("EpubRubyBlockTextMigration", () => {
         extra_field: { epub: expect.objectContaining({ mode: "block_text" }) },
       }),
     ]);
-    ruby.extra_field.epub.ruby_clean_candidate.cleaned_src = "不同正文";
-    const unsafe = create_migration({
-      items: [plain, ruby],
-      asset_content_by_path: { "book.epub": await write_zip(zip) },
-    });
-    expect(await unsafe.migration.build_writes("demo.lg", unsafe.items)).toEqual([]);
   });
 
-  it("原始 EPUB 缺失时保留旧工程", async () => {
-    const { migration, items } = create_migration({
-      items: [
-        {
-          src: "宝\n條",
-          extra_field: {
-            epub: {
-              ruby_clean_candidate: {
-                cleaned_src: "宝條",
+  it("按旧摘要匹配，拒绝重复块、错误正文和失效路径", async () => {
+    const asset = await create_epub_fixture("<ruby>A <rt>旧注音</rt></ruby> B");
+    const old: MutableJsonRecord = {
+      id: 9,
+      src: "旧分行",
+      dst: "已有译文",
+      status: "PROCESSED",
+      file_type: "EPUB",
+      file_path: "book.epub",
+      tag: "OPS/chapter.xhtml",
+      extra_field: {
+        epub: {
+          mode: "slot_per_line",
+          doc_path: "OPS/chapter.xhtml",
+          block_path: "/html[1]/body[1]/p[1]",
+          ruby_clean_candidate: { cleaned_digest: new EpubAst().sha1_hex("A B") },
+        },
+      },
+    };
+    const valid = create_migration({ items: [old], asset_content_by_path: { "book.epub": asset } });
+    for (const write of await valid.migration.build_writes("demo.lg", valid.items))
+      write(valid.database as unknown as ProjectDatabaseAccess);
+    expect(valid.database.set_items.mock.calls[0]?.[1]).toEqual([
+      expect.objectContaining({ id: 9, src: "A B", dst: "已有译文", status: "PROCESSED" }),
+    ]);
+    const duplicate = create_migration({
+      items: [old, { ...old, id: 10 }],
+      asset_content_by_path: { "book.epub": asset },
+    });
+    expect(
+      await duplicate.migration.build_writes("demo.lg", duplicate.items),
+      "拒绝重复块",
+    ).toEqual([]);
+    const bad = structuredClone(old);
+    const metadata = (bad["extra_field"] as MutableJsonRecord)["epub"] as MutableJsonRecord;
+    (metadata["ruby_clean_candidate"] as MutableJsonRecord)["cleaned_src"] = "错误正文";
+    const source_first = create_migration({
+      items: [bad],
+      asset_content_by_path: { "book.epub": asset },
+    });
+    expect(
+      await source_first.migration.build_writes("demo.lg", source_first.items),
+      "错误正文不能退回有效摘要",
+    ).toEqual([]);
+    (metadata["ruby_clean_candidate"] as MutableJsonRecord)["cleaned_src"] = "A B";
+    metadata["block_path"] = "/html[1]/body[1]/p[2]";
+    const rejected = create_migration({
+      items: [old, bad],
+      asset_content_by_path: { "book.epub": asset },
+    });
+    expect(
+      await rejected.migration.build_writes("demo.lg", rejected.items),
+      "拒绝整文件写入",
+    ).toEqual([]);
+  });
+
+  it.each([undefined, Buffer.from("invalid epub")])(
+    "原始 EPUB 缺失或无法解析时保留旧工程：%j",
+    async (asset) => {
+      const { migration, items } = create_migration({
+        items: [
+          {
+            src: "宝\n條",
+            extra_field: {
+              epub: {
+                ruby_clean_candidate: {
+                  cleaned_src: "宝條",
+                },
               },
             },
+            tag: "OPS/chapter.xhtml",
+            row: 0,
+            file_type: "EPUB",
+            file_path: "missing.epub",
           },
-          tag: "OPS/chapter.xhtml",
-          row: 0,
-          file_type: "EPUB",
-          file_path: "missing.epub",
-        },
-      ],
-    });
+        ],
+        asset_content_by_path: asset === undefined ? {} : { "missing.epub": asset },
+      });
 
-    await expect(migration.build_writes("demo.lg", items)).resolves.toEqual([]);
-  });
+      await expect(migration.build_writes("demo.lg", items)).resolves.toEqual([]);
+    },
+  );
 });
 
 /**
- * EPUB ruby 测试用内存 database stub 固定 items 与 asset bytes，专注验证类型化写入输出。
+ * 用内存数据库记录迁移写入，原资产由各用例提供。
  */
 function create_migration(options: {
   items?: MutableJsonRecord[];

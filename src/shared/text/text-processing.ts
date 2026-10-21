@@ -9,7 +9,6 @@ import {
   type ConfiguredSourceLanguageCode,
   type TargetLanguageCode,
 } from "../../domain/language";
-import { normalize_setting_snapshot } from "../../domain/setting";
 import {
   QualityRule,
   type GlossaryEntry,
@@ -24,14 +23,12 @@ export interface TextProcessingConfig {
   file_contexts?: Readonly<Record<string, TextFileContext>>;
   source_language: ConfiguredSourceLanguageCode; // 源/目标语言在快照恢复时完成归一与校验
   target_language: TargetLanguageCode;
-  clean_ruby: boolean; // 只控制字面文本注音标记，结构化格式组装留在导入器
 }
 
 /** 将外部设置收窄为翻译与校对共享的规范语言配置。 */
 export function normalize_text_processing_config(args: {
   source_language: string;
   target_language: string;
-  clean_ruby: boolean;
 }): TextProcessingConfig {
   const source_language = normalize_source_language_code(args.source_language);
   if (source_language === null) {
@@ -51,7 +48,6 @@ export function normalize_text_processing_config(args: {
   return {
     source_language,
     target_language,
-    clean_ruby: args.clean_ruby,
   };
 }
 
@@ -135,6 +131,5 @@ export function read_text_processing_config(value: JsonValue | undefined): TextP
   return normalize_text_processing_config({
     source_language: String(record["source_language"] ?? ""),
     target_language: String(record["target_language"] ?? ""),
-    clean_ruby: normalize_setting_snapshot(value).clean_ruby,
   });
 }

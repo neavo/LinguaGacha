@@ -8,21 +8,6 @@ export const ko_kr_expert_settings_page = {
       description:
         "각 번역 작업에 포함할 수 있는 앞선 문맥의 최대 줄 수입니다. 기본적으로 사용하지 않습니다",
     },
-    clean_ruby: {
-      title: "원문의 후리가나 제거",
-      description:
-        "루비 주석의 독음을 제거하고 본문만 남깁니다. 기본적으로 사용하지 않습니다" +
-        "\n" +
-        "모델은 루비 주석을 제대로 이해하지 못하는 경우가 많아 제거하면 번역 품질을 높일 수 있습니다. 지원 형식의 예시:" +
-        "\n" +
-        "• <ruby>漢字<rt>かんじ</rt></ruby>" +
-        "\n" +
-        "• (漢字/かんじ) [漢字/かんじ] |漢字[かんじ]" +
-        "\n" +
-        "• \\r[漢字,かんじ] \\rb[漢字,かんじ] [r_かんじ][ch_漢字] [ch_漢字]" +
-        "\n" +
-        '• [ruby text=かんじ] [ruby text = かんじ] [ruby text="かんじ"] [ruby text = "かんじ"]',
-    },
     deduplication_in_bilingual: {
       title: "대역 파일에서 원문과 번역문이 같으면 한 번만 출력",
       description:

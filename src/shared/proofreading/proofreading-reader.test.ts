@@ -14,7 +14,7 @@ import type { ConfiguredSourceLanguageCode, TargetLanguageCode } from "../../dom
 import { PROOFREADING_WARNING_CODES } from "./proofreading-types";
 import type { TextProcessingConfig } from "../text/text-processing";
 
-/** 提供本轮评估使用的语言与注音清理配置。 */
+/** 提供本轮评估使用的源语言与目标语言。 */
 function create_processing_config(
   source_language: ConfiguredSourceLanguageCode = "JA",
   target_language: TargetLanguageCode = "ZH",
@@ -22,7 +22,6 @@ function create_processing_config(
   return {
     source_language,
     target_language,
-    clean_ruby: false,
   };
 }
 

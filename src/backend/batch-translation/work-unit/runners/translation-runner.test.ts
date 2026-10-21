@@ -838,7 +838,6 @@ function create_config_payload(overrides: JsonRecord = {}): JsonRecord {
     app_language: "ZH",
     source_language: "JA",
     target_language: "ZH",
-    clean_ruby: false,
     ...overrides,
   };
 }

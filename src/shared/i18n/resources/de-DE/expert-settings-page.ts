@@ -9,19 +9,6 @@ export const de_de_expert_settings_page = {
       description:
         "Maximale Zahl vorheriger Kontextzeilen pro Übersetzungsaufgabe. Standardmäßig deaktiviert.",
     },
-    clean_ruby: {
-      title: "Ruby-Text bereinigen",
-      description:
-        "Ruby-Lesungen entfernen, Grundtext behalten (standardmäßig aus). Modelle verstehen Ruby oft nicht; Entfernen kann die Übersetzung verbessern. Formatbeispiele:" +
-        "\n" +
-        "• <ruby>漢字<rt>かんじ</rt></ruby>" +
-        "\n" +
-        "• (漢字/かんじ) [漢字/かんじ] |漢字[かんじ]" +
-        "\n" +
-        "• \\r[漢字,かんじ] \\rb[漢字,かんじ] [r_かんじ][ch_漢字] [ch_漢字]" +
-        "\n" +
-        '• [ruby text=かんじ] [ruby text = かんじ] [ruby text="かんじ"] [ruby text = "かんじ"]',
-    },
     deduplication_in_bilingual: {
       title:
         "Nur einmal ausgeben, wenn Quelle und Ziel in zweisprachigen Ausgabedateien identisch sind",

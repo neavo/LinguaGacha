@@ -4,7 +4,6 @@ import { wolf_archive_fixture } from "../../test/wolf-archive-fixture";
 import { evb_fixture } from "../../test/evb-fixture";
 import { rgss_archive_fixture } from "../../test/rgss-archive-fixture";
 import { CacheManager } from "../cache/cache-manager";
-import type { AppSettingService } from "../app/app-setting-service";
 import type { ComputeWorkerClient } from "../worker/compute-worker-client";
 import { ProjectSummaryService } from "./project-summary-service";
 import { read_zip_fixture, write_zip, zip_text } from "../../test/zip-fixture";
@@ -1766,14 +1765,10 @@ describe("ProjectContentService", () => {
       mtool_optimizer_enable: true,
       skip_duplicate_source_text_enable: false,
     };
-    const app_settings = {
-      read_setting: () => ({ ...settings }),
-    } as unknown as AppSettingService;
     await database.transaction(lg_path, (writer) => writer.upsert_meta_entries(lg_path, settings));
     const cache = new CacheManager({
       database,
       logManager: null,
-      appSettingService: app_settings,
       workerClient: { run: vi.fn(), dispose: vi.fn() } as unknown as ComputeWorkerClient,
     });
     const summary = new ProjectSummaryService(session_state, cache);

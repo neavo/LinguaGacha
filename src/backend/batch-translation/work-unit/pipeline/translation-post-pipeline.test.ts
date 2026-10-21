@@ -280,7 +280,7 @@ describe("TranslationPostPipeline", () => {
  */
 function create_pipeline_pair(config: TextProcessingConfig, quality_snapshot: TextQualitySnapshot) {
   return {
-    pre: new TranslationPrePipeline(config, quality_snapshot),
+    pre: new TranslationPrePipeline(quality_snapshot),
     post: new TranslationPostPipeline(config, quality_snapshot),
   };
 }
@@ -305,7 +305,6 @@ function create_config(overrides: Partial<TextProcessingConfig> = {}): TextProce
   return {
     source_language: "JA",
     target_language: "ZH",
-    clean_ruby: false,
     ...overrides,
   };
 }

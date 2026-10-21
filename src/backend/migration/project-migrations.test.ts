@@ -4,10 +4,12 @@ import path from "node:path";
 import { expect, it } from "vitest";
 import { ProjectDatabase } from "../database/database-operations";
 import type { AppSettingService } from "../app/app-setting-service";
-import { create_epub_fixture } from "../../test/epub-fixture";
+import { create_epub_fixture, read_epub_entry_text } from "../../test/epub-fixture";
+import { create_item } from "../../domain/item";
+import { EPUBFormat } from "../file/epub/epub-format";
 import { build_project_open_writes } from "./project-migrations";
 
-it("打开旧工程按顺序迁移设置、提示词和文件，并保留前序写入", async () => {
+it("旧工程迁移保留身份与前序写入，关闭重开后实际导出已有译文", async () => {
   using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-project-migrations-"));
   const project_path = path.join(temp.path, "fixture.lg");
   const epub_content = await create_epub_fixture("<ruby>漢<rt>かん</rt></ruby>");
@@ -74,7 +76,28 @@ it("打开旧工程按顺序迁移设置、提示词和文件，并保留前序�
     });
     expect(await database.get_rule_text(project_path, "translation_prompt")).toBe("旧提示词");
     expect(await build_project_open_writes(context)).toEqual([]);
-    expect(await database.get_all_items(project_path)).toEqual(items);
+    await database.close_project(project_path);
+    const reopened = await database.get_all_items(project_path);
+    expect(reopened).toEqual(items);
+    expect(await build_project_open_writes(context)).toEqual([]);
+    const format = new EPUBFormat({ target_language: "ZH", deduplication_in_bilingual: true });
+    const translated_path = path.join(temp.path, "translated");
+    const bilingual_path = path.join(temp.path, "bilingual");
+    await format.write_to_path(
+      reopened.map(create_item),
+      { translated_path, bilingual_path },
+      (file) => database.read_asset_content(project_path, file),
+    );
+    const translated = await read_epub_entry_text(
+      fs.readFileSync(path.join(translated_path, "book.epub")),
+    );
+    const bilingual = await read_epub_entry_text(
+      fs.readFileSync(path.join(bilingual_path, "book.epub")),
+    );
+    expect(translated).toContain("汉");
+    expect(translated).not.toContain("かん");
+    expect(bilingual).toContain("<ruby>漢<rt>かん</rt></ruby>");
+    expect(bilingual).toContain("汉");
   } finally {
     await database.close();
   }

@@ -18,7 +18,6 @@ describe("prepare_translation_source", () => {
         name_src: null,
         start_ordinal: 0,
         text_type: "TXT",
-        config: { clean_ruby: false },
         preserve_rule,
         pre_replacements: compile_text_replacements([
           { src: "one", dst: "<Q>one", regex: false, case_sensitive: true },
@@ -37,13 +36,12 @@ describe("prepare_translation_source", () => {
       },
     });
   });
-  it("完整入口先隔离资源，正文执行清理和替换，姓名保留整段输入", () => {
+  it("完整入口先隔离资源，正文保留注音并执行替换，姓名保留整段输入", () => {
     const preserve_rule = build_text_preserve_rule({ mode: "off", text_type: "NONE", entries: [] });
     const result = prepare_translation_source({
       src: "甘岸久弥[https://mypage.syosetu.com/1300935/]\r\n[漢字/かんじ]: https://example.com/(a)",
       name_src: "[姓名/せいめい]: https://example.com/name",
       text_type: "NONE",
-      config: { clean_ruby: true },
       preserve_rule,
       start_ordinal: 4,
       pre_replacements: compile_text_replacements([
@@ -53,7 +51,7 @@ describe("prepare_translation_source", () => {
     expect(result.name?.text).toBe("[姓名/せいめい]: lg-uri/4");
     expect(result.prepared_lines.map((line) => line.prepared_text)).toEqual([
       "甘岸久弥[lg-uri/5]",
-      "漢字： lg-uri/6",
+      "[漢字/かんじ]： lg-uri/6",
     ]);
     expect(result.body.mappings.map((mapping) => mapping.value)).toEqual([
       "https://mypage.syosetu.com/1300935/",

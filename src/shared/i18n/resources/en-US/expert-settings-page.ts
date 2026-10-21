@@ -9,19 +9,6 @@ export const en_us_expert_settings_page = {
       description:
         "Maximum number of preceding lines to include as context for each translation task, disabled by default",
     },
-    clean_ruby: {
-      title: "Clean Ruby Text",
-      description:
-        "Remove ruby readings, keep base text (off by default). Models often misread ruby; removal may improve translation. Supported formats include:" +
-        "\n" +
-        "• <ruby>漢字<rt>かんじ</rt></ruby>" +
-        "\n" +
-        "• (漢字/かんじ) [漢字/かんじ] |漢字[かんじ]" +
-        "\n" +
-        "• \\r[漢字,かんじ] \\rb[漢字,かんじ] [r_かんじ][ch_漢字] [ch_漢字]" +
-        "\n" +
-        '• [ruby text=かんじ] [ruby text = かんじ] [ruby text="かんじ"] [ruby text = "かんじ"]',
-    },
     deduplication_in_bilingual: {
       title: "Output Only Once if Source and Target are Identical in Bilingual Output Files",
       description:

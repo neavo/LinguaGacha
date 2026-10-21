@@ -1,7 +1,6 @@
 import { ProjectDataReader, create_empty_quality_rule_block } from "../project/project-data-reader";
 import { describe, expect, it, vi } from "vitest";
 
-import type { AppSettingService } from "../app/app-setting-service";
 import type { ProjectDatabase, ProjectDatabaseAccess } from "../database/database-operations";
 import type { LogManager } from "../log/log-manager";
 import type { ComputeWorkerClient } from "../worker/compute-worker-client";
@@ -85,13 +84,6 @@ function create_database(
   });
 }
 
-/** 应用选项使用默认值，项目语言由数据库夹具提供。 */
-function create_settings(): AppSettingService {
-  return {
-    read_setting: () => ({}),
-  } as unknown as AppSettingService;
-}
-
 /** 使用真实评估函数，记录重算次数。 */
 function create_worker(): ComputeWorkerClient & { run: ReturnType<typeof vi.fn> } {
   return {
@@ -114,7 +106,6 @@ function create_cache(options: {
   return new CacheManager({
     database: options.database as unknown as ProjectDatabase,
     logManager: options.logManager ?? null,
-    appSettingService: create_settings(),
     workerClient: options.worker ?? create_worker(),
   });
 }

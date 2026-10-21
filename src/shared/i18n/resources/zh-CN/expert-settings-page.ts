@@ -5,21 +5,6 @@ export const zh_cn_expert_settings_page = {
       title: "参考上文行数阈值",
       description: "每个翻译任务最多可携带的参考上文的行数，默认禁用",
     },
-    clean_ruby: {
-      title: "清理原文中的注音文本",
-      description:
-        "移除注音上标中的注音部分，仅保留正文部分，默认禁用" +
-        "\n" +
-        "文本中的注音上标通常不能被模型正确理解，进行清理可以提升翻译质量，支持的注音格式包括但不限于：" +
-        "\n" +
-        "• <ruby>漢字<rt>かんじ</rt></ruby>" +
-        "\n" +
-        "• (漢字/かんじ) [漢字/かんじ] |漢字[かんじ]" +
-        "\n" +
-        "• \\r[漢字,かんじ] \\rb[漢字,かんじ] [r_かんじ][ch_漢字] [ch_漢字]" +
-        "\n" +
-        '• [ruby text=かんじ] [ruby text = かんじ] [ruby text="かんじ"] [ruby text = "かんじ"]',
-    },
     deduplication_in_bilingual: {
       title: "双语输出文件中原文与译文一致的文本只输出一次",
       description: "在字幕与电子书中，如目标文本的原文与译文一致是否只输出一次，默认启用",
