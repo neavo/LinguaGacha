@@ -247,10 +247,11 @@ it.each(["backup", "commit", "cancel"])(
         write(name, bytes);
       });
     } else {
-      const unlink = local.unlink.bind(local);
-      vi.spyOn(local, "unlink").mockImplementation((file, options) => {
-        unlink(file, options);
-        if (file === encrypted) throw new Error("commit failure");
+      const rename = local.rename.bind(local);
+      vi.spyOn(local, "rename").mockImplementation((from, to) => {
+        if (from === encrypted && to.includes(path.join(".tmp", "rollback")))
+          throw new Error("commit failure");
+        rename(from, to);
       });
     }
     await expect(

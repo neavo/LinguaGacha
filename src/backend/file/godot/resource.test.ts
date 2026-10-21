@@ -55,7 +55,7 @@ it.each([false, true])("改写前置子资源时修正后续内部资源指针�
     target = before.properties[0]!.value,
     replacement = resource_string("更长的第一个资源🙂");
   const after = read_resource(
-    patch_resource(bytes, [{ start: target.start, end: target.end, bytes: replacement }]),
+    patch_resource(before, [{ start: target.start, end: target.end, bytes: replacement }]),
   );
   expect(after.internal[1]!.offset).toBe(
     before.internal[1]!.offset + replacement.length - (target.end - target.start),
@@ -82,7 +82,7 @@ it.each([false, true])("资源往返修正内部位置并保留未修改属性�
     before = read_resource(bytes);
   const text = before.properties[0]!.value;
   const after = read_resource(
-    patch_resource(bytes, [
+    patch_resource(before, [
       {
         start: text.start,
         end: text.end,
@@ -97,9 +97,9 @@ it.each([false, true])("资源往返修正内部位置并保留未修改属性�
   expect(after.internal.map((entry) => entry.offset)).toEqual(
     before.internal.map((entry) => entry.offset),
   );
-  expect(patch_resource(bytes, [])).toBe(bytes);
+  expect(patch_resource(before, [])).toBe(bytes);
   expect(() =>
-    patch_resource(bytes, [
+    patch_resource(before, [
       { start: text.start, end: text.end, bytes: Buffer.alloc(0) },
       { start: text.start + 1, end: text.end, bytes: Buffer.alloc(0) },
     ]),
@@ -151,7 +151,7 @@ it.each([3, 4, 5, 6])("资源版本 %s 将旧 ID 与命名 ID 归一化为内部
     expect(doc.internal[0]!.path).toBe(named ? "local://Resource_target" : "local://42");
     const target = doc.properties[0]!.value;
     const patched = read_resource(
-      patch_resource(bytes, [
+      patch_resource(doc, [
         { start: target.start, end: target.end, bytes: resource_string("更长的目标") },
       ]),
     );

@@ -1,6 +1,6 @@
 import { godot_member_kind } from "./member";
 import assert from "node:assert/strict";
-import { read_resource, patch_resource } from "./resource";
+import { read_resource, patch_resource, type ResourceDocument } from "./resource";
 import { smaz_decode } from "./smaz";
 import { u32, pad, utf8 } from "./binary";
 import { read_project, patch_project } from "./project";
@@ -15,11 +15,13 @@ export type TranslationMessage = Readonly<{ key: string; texts: readonly Value[]
  * 旧版 `Translation` 为「msgid → 译文」；当前 `Translation` 为「[msgctxt, msgid] → 译文数组」；
  * `TranslationPO` 为「msgctxt → { msgid → 译文数组 }」。msgctxt 只区分同名消息，不是消息键。
  */
-export function read_messages(doc: ReturnType<typeof read_resource>): TranslationMessage[] {
+export function read_messages(doc: ResourceDocument): TranslationMessage[] {
+  /** 将字典的交替子项还原为键值对。 */
   const pairs = (v: Value | undefined): [Value, Value][] => {
     const c = v?.children ?? [];
     return Array.from({ length: c.length >> 1 }, (_, i) => [c[i * 2]!, c[i * 2 + 1]!]);
   };
+  /** 消息键与全部复数译文共用同一个输出结构。 */
   const message = (key: Value | undefined, value: Value): TranslationMessage => {
     assert(typeof key?.value === "string", "Invalid translation message key");
     return {
@@ -43,10 +45,9 @@ export function translation_hash(s: string, seed = 0): number {
   return h;
 }
 /** 优化表通过两级桶定位字符串，解码后保留槽位坐标与哈希身份。 */
-export function read_translation(bytes: Buffer) {
-  const doc = read_resource(bytes);
+export function read_translation(doc: ResourceDocument) {
   assert.equal(doc.type, "OptimizedTranslation");
-  const prop = (n: string) => doc.properties.find((p) => p.name === n)!.value;
+  const prop = (n: string) => doc.properties.find((p) => p.name === n)!.value; // 定位优化表的必需属性。
   const hash = prop("hash_table"),
     bucket = prop("bucket_table"),
     strings = prop("strings");
@@ -59,9 +60,6 @@ export function read_translation(bytes: Buffer) {
       bucket: number;
       seed: number;
       key: number;
-      offset: number;
-      compressed: number;
-      size: number;
       text: string;
     }[] = [];
   const seen = new Set<number>();
@@ -89,9 +87,6 @@ export function read_translation(bytes: Buffer) {
         bucket: i / 4,
         seed,
         key,
-        offset: at,
-        compressed,
-        size,
         text: utf8.decode(decoded.subarray(0, -1)),
       });
     }
@@ -102,17 +97,15 @@ export function read_translation(bytes: Buffer) {
     bucket,
     strings,
     slots,
-    locale: String(doc.properties.find((p) => p.name === "locale")?.value.value ?? "en"),
   };
 }
 /** 译文追加到字符串池，仅更新对应槽位的位置和长度。 */
 export function patch_translation(
-  bytes: Buffer,
+  t: ReturnType<typeof read_translation>,
   changes: ReadonlyMap<number, { original: string; text: string }>,
 ): Buffer {
-  if (!changes.size) return bytes;
-  const t = read_translation(bytes),
-    buckets = Buffer.from(t.bucket.value as Buffer),
+  if (!changes.size) return t.doc.bytes;
+  const buckets = Buffer.from(t.bucket.value as Buffer),
     parts = [t.strings.value as Buffer];
   let offset = parts[0]!.length;
   for (const [index, c] of changes) {
@@ -127,7 +120,7 @@ export function patch_translation(
     offset += b.length;
   }
   const strings = Buffer.concat(parts);
-  return patch_resource(bytes, [
+  return patch_resource(t.doc, [
     {
       start: t.bucket.start,
       end: t.bucket.end,
@@ -146,9 +139,10 @@ export function patch_translation(
   ]);
 }
 /** 优化表只存哈希，按 Godot 的一级桶与二级 seed 查找消息键所在槽位，不是本表消息键时返回 `undefined`。 */
-export function translation_slot(bytes: Buffer): (key: string) => number | undefined {
-  const t = read_translation(bytes),
-    hashes = t.hash.value as Buffer,
+export function translation_slot(
+  t: ReturnType<typeof read_translation>,
+): (key: string) => number | undefined {
+  const hashes = t.hash.value as Buffer,
     buckets = t.bucket.value as Buffer,
     slots = new Map<number, Map<number, number>>();
   for (const s of t.slots)
@@ -169,7 +163,7 @@ export function check_locale_member(file: string, bytes: Buffer): boolean {
   else if (kind === "po") read_po(bytes.toString("utf8"));
   else if (kind === "translation") {
     const doc = read_resource(bytes);
-    if (doc.type === "OptimizedTranslation") read_translation(bytes);
+    if (doc.type === "OptimizedTranslation") read_translation(doc);
     else read_messages(doc);
   } else return false;
   return true;
@@ -189,7 +183,7 @@ const FALLBACK_SETTING = "internationalization/locale/fallback",
 export function plan_translation_locale(files: ReadonlyMap<string, Buffer>): LocalePlan {
   const project = files.get("project.binary"),
     settings = project ? read_project(project) : [],
-    setting = (name: string) => settings.find((s) => s.name === name)?.value;
+    setting = (name: string) => settings.find((s) => s.name === name)?.value; // 按配置键读取语言表计划的输入。
   const fallback = String(setting(FALLBACK_SETTING)?.value ?? "en"),
     tables: { file: string; locale: string }[] = [];
   for (const entry of setting(TRANSLATIONS_SETTING)?.children ?? []) {

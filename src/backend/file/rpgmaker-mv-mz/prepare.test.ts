@@ -72,12 +72,15 @@ it.each(["media", "commit"])("准备失败 %s 恢复原配置、明文与密文"
     native = new NativeFs();
   if (phase === "media") fs.writeFileSync(path.join(temp.path, "www/img/b.rpgmvp"), "broken");
   if (phase === "commit") {
-    const unlink = native.unlink.bind(native);
-    vi.spyOn(native, "unlink").mockImplementation((file, options) => {
-      unlink(file, options);
-      if (file === path.join(temp.path, "www/img/a.rpgmvp")) {
+    const rename = native.rename.bind(native);
+    vi.spyOn(native, "rename").mockImplementation((from, to) => {
+      if (
+        from === path.join(temp.path, "www/img/a.rpgmvp") &&
+        to.includes(path.join(".tmp", "rollback"))
+      ) {
         throw new Error("commit failure");
       }
+      rename(from, to);
     });
   }
   await expect(

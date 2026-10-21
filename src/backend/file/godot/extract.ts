@@ -27,6 +27,7 @@ export type TextEntry = Readonly<{
  */
 const NOISE = /\p{Co}|^(?:res|user|uid):\/\/|^#[0-9a-f]{3,8}$/iu;
 const MARKUP = /%[-+0*]*(?:\d+|\*)?(?:\.(?:\d+|\*))?[scdoxXfv%]|\{[^{}]*\}|\[[^[\]]*\]/gu; // Godot 格式占位符与 BBCode 标签。
+/** 排除私用区、资源标识和无可见文字的字符串。 */
 const is_noise = (text: string): boolean =>
   NOISE.test(text) || !/\p{L}/u.test(text.replace(MARKUP, ""));
 const TEXT_APPEARANCE = /\s|[^\p{ASCII}]/u;
@@ -152,7 +153,8 @@ function classify_script_literal(g: Gdc, index: number, is_key: (s: string) => b
   const text = String(g.constants[g.tokens[index]!.reference]!.value);
   if (is_noise(text)) return null;
   if (is_key(text)) return false;
-  const at = (offset: number) => g.tokens[index + offset]?.kind;
+  const at = (offset: number) => g.tokens[index + offset]?.kind; // 读取当前字面量邻近的 token 类型。
+  /** 读取当前字面量邻近的标识符名称。 */
   const name = (offset: number) => {
     const t = g.tokens[index + offset];
     return t?.kind === "IDENTIFIER" ? g.identifiers[t.reference] : undefined;
@@ -206,7 +208,7 @@ function read_keys(file: string, bytes: Buffer): (s: string) => boolean {
   }
   const doc = read_resource(bytes);
   if (doc.type === "OptimizedTranslation") {
-    const slot = translation_slot(bytes);
+    const slot = translation_slot(read_translation(doc));
     return (s) => slot(s) !== undefined;
   }
   const ids = new Set(read_messages(doc).map((message) => message.key));
@@ -219,10 +221,10 @@ function read_keys(file: string, bytes: Buffer): (s: string) => boolean {
 export function create_text_extractor(files: ReadonlyMap<string, Buffer>) {
   const plan = plan_translation_locale(files),
     keys = [...plan.tables].map((file) => read_keys(file, files.get(file)!)),
-    is_key = (s: string) => keys.some((has) => has(s));
+    is_key = (s: string) => keys.some((has) => has(s)); // 选定语言表共同决定消息键身份。
   return {
     plan,
-    extract: (file: string, bytes: Buffer) => extract(file, bytes, plan.tables, is_key),
+    extract: (file: string, bytes: Buffer) => extract(file, bytes, plan.tables, is_key), // 成员共用本次语言表计划与消息键集合。
   };
 }
 /** 成员按格式解释原稿坐标，语言表只提取选定 locale 的译文槽位。 */
@@ -233,6 +235,7 @@ function extract(
   is_key: (s: string) => boolean,
 ): TextEntry[] {
   const entries: TextEntry[] = [];
+  /** 噪声不产生条目，其余结果保留可翻译或规则跳过状态。 */
   const add = (location: GodotLocation, original: string, verdict: Verdict) => {
     if (verdict === null) return;
     entries.push({
@@ -261,7 +264,7 @@ function extract(
     case "resource": {
       const resource = read_resource(bytes);
       if (resource.type === "PackedScene")
-        for (const p of read_scene(bytes).properties) {
+        for (const p of read_scene(resource).properties) {
           if ((p.value.type !== 5 && p.value.type !== 44) || typeof p.value.value !== "string")
             continue;
           const display =
@@ -289,7 +292,7 @@ function extract(
       if (!tables.has(file)) break;
       const resource = read_resource(bytes);
       if (resource.type === "OptimizedTranslation")
-        for (const s of read_translation(bytes).slots)
+        for (const s of read_translation(resource).slots)
           add({ kind: "slot", word: s.index }, s.text, true);
       else
         for (const message of read_messages(resource))

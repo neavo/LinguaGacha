@@ -1,3 +1,4 @@
+import { read_resource } from "./godot/resource";
 import { create_godot_fixture, godot_pack_fixture } from "../../test/godot-fixture";
 import { read_godot_metadata } from "./godot/item";
 import { read_translation } from "./godot/translation";
@@ -503,7 +504,9 @@ it("产品门面完成来源摘要、准备、容器、翻译与导出，原稿�
   });
   const output = path.join(out, "game/messages.translation");
   expect(
-    read_translation(fs.readFileSync(output)).slots.some((slot) => slot.text === "产品译文"),
+    read_translation(read_resource(fs.readFileSync(output))).slots.some(
+      (slot) => slot.text === "产品译文",
+    ),
   ).toBe(true);
   expect(
     fs

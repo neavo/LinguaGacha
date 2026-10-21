@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { read_resource, patch_resource, resource_string } from "./resource";
+import { patch_resource, resource_string, type ResourceDocument } from "./resource";
 import { string, u32, type Edit } from "./binary";
 import type { Value } from "./variant";
 const FLAG_ID_IS_PATH = 1 << 30, // 节点编号改为 `node_paths` 下标。
@@ -25,17 +25,17 @@ function int32s(array: Value) {
   assert(Buffer.isBuffer(buf));
   let index = 0;
   return {
+    /** 消费下一个整数，越过数组边界时拒绝场景。 */
     next() {
       assert((index + 1) * 4 <= buf.length);
       return buf.readInt32LE(index++ * 4);
     },
     at: () => array.start + 8 + index * 4, // 跳过类型号与元素数。
-    done: () => index * 4 === buf.length,
+    done: () => index * 4 === buf.length, // 场景记录必须恰好消费完整数组。
   };
 }
 /** PackedScene 的节点属性引用共享 Variant 表，记录引用位置供定点改写。 */
-export function read_scene(bytes: Buffer) {
-  const doc = read_resource(bytes);
+export function read_scene(doc: ResourceDocument) {
   assert.equal(doc.type, "PackedScene");
   const bundled = doc.properties.find((p) => p.name === "_bundled")!.value,
     d = dictionary(bundled),
@@ -48,7 +48,6 @@ export function read_scene(bytes: Buffer) {
     path: string;
     nodeType: string;
     property: string;
-    reference: number;
     referenceAt: number;
     value: Value;
   }[] = [];
@@ -78,7 +77,6 @@ export function read_scene(bytes: Buffer) {
         path,
         nodeType: names[type] ?? "",
         property: names[prop]!,
-        reference: ref,
         referenceAt,
         value: variants.children![ref]!,
       });
@@ -110,12 +108,11 @@ export function read_scene(bytes: Buffer) {
 }
 /** 追加目标属性的 Variant 并重定向引用，避免修改其它节点的共享值。 */
 export function patch_scene(
-  bytes: Buffer,
+  s: ReturnType<typeof read_scene>,
   changes: ReadonlyMap<string, { original: string; text: string }>,
 ): Buffer {
-  if (!changes.size) return bytes;
-  const s = read_scene(bytes),
-    edits: Edit[] = [],
+  if (!changes.size) return s.doc.bytes;
+  const edits: Edit[] = [],
     added: Buffer[] = [];
   let count = s.variants.children!.length;
   for (const [key, c] of changes) {
@@ -133,5 +130,5 @@ export function patch_scene(
     { start: s.variants.start + 4, end: s.variants.start + 8, bytes: u32(count) },
     { start: s.variants.end, end: s.variants.end, bytes: Buffer.concat(added) },
   );
-  return patch_resource(bytes, edits);
+  return patch_resource(s.doc, edits);
 }

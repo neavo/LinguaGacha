@@ -16,7 +16,9 @@ import {
 import { enable_system_fallback } from "./font";
 import { create_empty_pack, is_startup_pack, type GodotSource } from "./source";
 import { repair_executable } from "./executable";
-import { find_pack_key } from "./key";
+import { create_pack_key_finder, type PackKeyProbe } from "./key";
+
+const EXTRACTION_CONCURRENCY = 4;
 
 /** worker 只写同卷暂存，全部载体及最终资源交给共享事务一次提交。 */
 export async function stage_godot_source(
@@ -36,6 +38,19 @@ export async function stage_godot_source(
     key: Buffer | undefined; // 只留在准备 worker，来源快照和回包不携带密钥。
   }[] = [];
   let executable: BinaryFileHandle | undefined;
+  let find_key: ReturnType<typeof create_pack_key_finder> | undefined;
+  /** 首次解密时打开 EXE，本次载体集合共用一个密钥查找器。 */
+  const key_for = async (probe: PackKeyProbe) => {
+    if (!find_key) {
+      executable = game.embedded ? handles[0]! : await fs.open_file(game.executable, "r");
+      find_key = create_pack_key_finder(
+        executable,
+        game.embedded?.header.start ?? (await executable.stat()).size,
+        signal,
+      );
+    }
+    return find_key(probe);
+  };
   try {
     for (const carrier of carriers) {
       assert_regular_path(carrier.file, fs);
@@ -44,35 +59,30 @@ export async function stage_godot_source(
       const original = await handle.stat();
       let key: Buffer | undefined;
       if (carrier.header.flags & 1) {
-        executable ??= game.embedded ? handles[0]! : await fs.open_file(game.executable, "r");
-        key = await find_pack_key(
-          executable,
-          handle,
-          carrier.header.directory + 4,
-          carrier.header.end,
-          true,
-          game.embedded?.header.start ?? (await executable.stat()).size,
-          signal,
-        );
+        key = await key_for({
+          payload: handle,
+          offset: carrier.header.directory + 4,
+          end: carrier.header.end,
+          kind: "directory",
+        });
       }
       const pack = await read_pack(handle, signal, key);
       const { members: _members, ...header } = pack;
       assert.deepEqual(header, carrier.header, "Godot carrier changed before preparation");
       if (!key) {
-        const encrypted = pack.members
-          .filter((member) => member.encrypted && member.size > 0) // 空明文无法区分正确与错误的密钥。
-          .sort((a, b) => a.size - b.size)[0];
+        const encrypted_members = pack.members.filter(
+          (member) => member.encrypted && member.size > 0,
+        );
+        const encrypted =
+          encrypted_members.find((member) => member.name === "project.binary") ??
+          encrypted_members.sort((a, b) => a.size - b.size)[0];
         if (encrypted) {
-          executable ??= game.embedded ? handles[0]! : await fs.open_file(game.executable, "r");
-          key = await find_pack_key(
-            executable,
-            handle,
-            encrypted.offset,
-            pack.end,
-            false,
-            game.embedded?.header.start ?? (await executable.stat()).size,
-            signal,
-          );
+          key = await key_for({
+            payload: handle,
+            offset: encrypted.offset,
+            end: pack.end,
+            kind: encrypted.name === "project.binary" ? "project" : "unknown",
+          });
         }
       }
       inputs.push({ file: carrier.file, handle, original, pack, key });
@@ -115,10 +125,36 @@ export async function stage_godot_source(
         while (!(await reader.next()).done) signal?.throwIfAborted();
       }
     }
-    for (const [name, { input, member }] of final) {
+    const controller = new AbortController();
+    const extraction_signal = signal
+      ? AbortSignal.any([signal, controller.signal])
+      : controller.signal;
+    const members = final.entries(); // 共享迭代器让每个最终成员只分配给一个消费循环。
+    /** 消费最终成员，首个失败通过组内取消通知其他循环收尾。 */
+    const extract = async () => {
+      try {
+        for (const [name, { input, member }] of members) {
+          extraction_signal.throwIfAborted();
+          await extract_pack_member(
+            input.handle,
+            member,
+            path.join(staging, name),
+            fs,
+            extraction_signal,
+            input.key,
+          );
+        }
+      } catch (error) {
+        controller.abort(error);
+      }
+    };
+    // 全部消费循环收尾后才能关闭共享句柄或让目录事务清理暂存文件。
+    await Promise.allSettled(Array.from({ length: EXTRACTION_CONCURRENCY }, extract));
+    extraction_signal.throwIfAborted();
+    // 字体修正串行执行，避免多个大资源的解码缓冲同时驻留。
+    for (const [name, { member }] of final) {
       signal?.throwIfAborted();
       const destination = path.join(staging, name);
-      await extract_pack_member(input.handle, member, destination, fs, signal, input.key);
       if (name.endsWith(".fontdata")) {
         assert(member.size <= GODOT_RESOURCE_MAX_BYTES, "Font resource exceeds processing limit");
         const bytes = fs.read_file(destination),

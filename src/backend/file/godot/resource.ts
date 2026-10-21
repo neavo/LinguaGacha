@@ -161,8 +161,21 @@ export type Property = {
   name: string;
   value: Value;
 };
+/** 单次成员处理共用原字节与解码坐标，无修改时保留原编码。 */
+export type ResourceDocument = Readonly<{
+  bytes: Buffer;
+  body: Buffer;
+  compressed: boolean;
+  origin: number;
+  type: string;
+  external: { type: string; path: string }[];
+  internal: readonly { path: string; offset: number; at: number; className: string }[];
+  metadataAt: number;
+  metadata: number;
+  properties: readonly Property[];
+}>;
 /** 资源 Variant 坐标相对解压体，内部指针按文件是否压缩转换原点。 */
-export function read_resource(bytes: Buffer) {
+export function read_resource(bytes: Buffer): ResourceDocument {
   const decoded = decode_resource(bytes),
     { body, origin } = decoded,
     r = new Reader(body);
@@ -196,12 +209,14 @@ export function read_resource(bytes: Buffer) {
   }
   const tableEnd = r.at;
   const properties: Property[] = [];
+  /** 字符串名称可以内联编码，也可以引用文档的字符串表。 */
   const name = (): string => {
     const id = r.u32();
     if (id & 0x80000000) return utf8.decode(r.take(id & 0x7fffffff)).replace(/\0$/u, "");
     assert(id < strings.length);
     return strings[id]!;
   };
+  /** 读取资源 Variant，并保留后续定点写回所需的解压体坐标。 */
   const variant = (depth = 0): Value => {
     assert(depth < 64);
     const start = r.at,
@@ -326,6 +341,7 @@ export function read_resource(bytes: Buffer) {
     if (next !== undefined) assert(r.at <= next - origin, "Resource overlaps next");
   }
   return {
+    bytes,
     ...decoded,
     type,
     external,
@@ -336,10 +352,10 @@ export function read_resource(bytes: Buffer) {
   };
 }
 /** 按原稿区间写回，同时修正后续内部资源与元数据指针。 */
-export function patch_resource(bytes: Buffer, edits: readonly Edit[]): Buffer {
-  if (!edits.length) return bytes;
-  const doc = read_resource(bytes);
+export function patch_resource(doc: ResourceDocument, edits: readonly Edit[]): Buffer {
+  if (!edits.length) return doc.bytes;
   const pointerEdits: Edit[] = [];
+  /** 内部资源指针按其前方 edits 的长度变化调整。 */
   const moved = (offset: number) =>
     offset +
     edits.reduce(

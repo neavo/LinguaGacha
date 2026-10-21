@@ -13,7 +13,6 @@ import {
   plan_translation_locale,
   read_messages,
   read_translation,
-  translation_locale,
   translation_slot,
   type LocalePlan,
 } from "./translation";
@@ -94,7 +93,7 @@ function* write_projection(
   for (const [name, text] of outputs) yield [name, Buffer.from(text)];
 }
 
-const json = (value: unknown): string => JSON.stringify(value, null, 2);
+const json = (value: unknown): string => JSON.stringify(value, null, 2); // 序列化供工作区读取的成员投影。
 
 /** 语言表以外的成员。`.gd`、`.po` 原文可读，不生成投影，只提供反查消息键的候选。 */
 function read_member(
@@ -157,7 +156,7 @@ function read_member(
       resources[p.resource]!.properties[p.name] = variant_json(p.value, RESOURCE_VARIANT_TYPES);
   let body: JsonRecord;
   if (doc.type === "PackedScene") {
-    const scene = read_scene(bytes),
+    const scene = read_scene(doc),
       nodes = scene.nodes.map(({ path, type, instance, groups }) => ({
         path,
         type,
@@ -200,13 +199,14 @@ function read_table(
   const doc = read_resource(bytes),
     strings: ReadableString[] = [];
   if (doc.type === "OptimizedTranslation") {
-    const slot = translation_slot(bytes),
+    const translation = read_translation(doc),
+      slot = translation_slot(translation),
       found = new Map<number, string>();
     for (const key of keys) {
       const index = slot(key);
       if (index !== undefined && !found.has(index)) found.set(index, key);
     }
-    for (const s of read_translation(bytes).slots)
+    for (const s of translation.slots)
       strings.push({
         location: { kind: "slot", word: s.index },
         text: s.text,
@@ -228,7 +228,7 @@ function read_table(
       json({
         internal_file_path: file,
         type: doc.type,
-        locale: translation_locale(file, bytes),
+        locale: String(doc.properties.find((p) => p.name === "locale")?.value.value ?? "en"),
         selected: plan.tables.has(file),
         strings,
       }),
