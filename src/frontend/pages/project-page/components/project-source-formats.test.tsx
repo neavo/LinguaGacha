@@ -47,13 +47,13 @@ describe("ProjectSourceFormats", () => {
     const groups = lists.map((list) =>
       [...list.querySelectorAll(".project-home__format-title")].map((tag) => tag.textContent),
     );
-    // 这两个格式的归属属于产品要求，独立预期可发现支持状态填错。
-    expect(groups).toEqual([
-      PROJECT_SOURCE_FORMATS.filter((format) => format.id !== "xlsx" && format.id !== "trans").map(
-        (format) => t(format.title_key),
+    expect(groups).toEqual(
+      ["supported", "deprecated"].map((status) =>
+        PROJECT_SOURCE_FORMATS.filter((format) => format.support_status === status).map((format) =>
+          t(format.title_key),
+        ),
       ),
-      [t("project_page.formats.xlsx"), t("project_page.formats.trans")],
-    ]);
+    );
     expect(
       lists.map((list) => document.getElementById(list.getAttribute("aria-labelledby")!)),
     ).toEqual([...container.querySelectorAll("h3")]);

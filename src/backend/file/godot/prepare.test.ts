@@ -116,8 +116,8 @@ it.each(["io", "cancel"])("并发提取 %s 后等待全部写入与句柄收尾"
   }
   await rejected;
   expect(handles.every((handle) => handle.fd === -1)).toBe(true);
-  for (const name of ["slow.bin", "bad.bin"])
-    expect(native.exists(path.join(staging, name))).toBe(false);
+  // 已完成成员留在暂存区，由外层目录事务清理。
+  expect(native.exists(path.join(staging, "bad.bin"))).toBe(false);
   expect(native.read_file(path.join(temp.path, "game.pck"))).toEqual(bytes);
 });
 

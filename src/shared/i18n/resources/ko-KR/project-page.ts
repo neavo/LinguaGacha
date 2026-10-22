@@ -62,6 +62,7 @@ export const ko_kr_project_page = {
     vtt: "WebVTT 자막",
     pdf: "PDF 전자책",
     epub: "EPUB 전자책",
+    renpy: "RenPy 게임 파일",
     rpy: "RenPy 게임 텍스트",
     json: "JSON 게임 텍스트",
     mtool: "MTool에서 내보낸 게임 텍스트",

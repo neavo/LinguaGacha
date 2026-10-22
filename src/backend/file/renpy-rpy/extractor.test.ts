@@ -41,7 +41,7 @@ describe("RenPy extractor", () => {
       }),
     ]);
     expect(items[1]?.extra_field).toMatchObject({
-      renpy: {
+      renpy_rpy: {
         pair: { template_line: 5, target_line: 6 },
         slots: [
           { role: "NAME", lit_index: 0 },
@@ -81,6 +81,7 @@ describe("RenPy extractor", () => {
   });
 });
 
+/** 从脚本行经过真实解析器生成测试条目。 */
 function extract(lines: string[]): Item[] {
   return new RenpyExtractor().extract(parse_document(lines), "script.rpy");
 }

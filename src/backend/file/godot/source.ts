@@ -275,3 +275,25 @@ export function collect_godot_files(
     prepared,
   );
 }
+
+/** 字体替换只需项目设置及字体映射，不读取脚本和翻译表。 */
+export function collect_godot_fonts(
+  game: GodotSource,
+  fs: NativeFs,
+  signal?: AbortSignal,
+  prepared?: PreparedGameFiles,
+): GameSourceFiles {
+  const roots = fs
+    .read_dirents(game.root)
+    .map((entry) => entry.name)
+    .filter((name) => !is_preparation_path(name));
+  return collect_game_source_files(
+    game.root,
+    roots,
+    () => ["project.binary"],
+    is_godot_font_file,
+    fs,
+    signal,
+    prepared,
+  );
+}

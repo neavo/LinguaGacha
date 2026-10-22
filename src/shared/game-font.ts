@@ -1,9 +1,5 @@
-/** 原生选择器与后端准入共用支持内部族名解析的字体格式。 */
-export const GAME_FONT_INPUT_EXTENSIONS: readonly string[] = ["ttf", "otf"];
+/** 原生选择器与后端准入只接受 TTF 输入。 */
+export const GAME_FONT_INPUT_EXTENSIONS: readonly string[] = ["ttf"];
 
-/** 既有游戏还可能按 Web 字体路径加载，备份识别与替换目标共用此集合。 */
-export const GAME_FONT_EXTENSIONS: readonly string[] = [
-  ...GAME_FONT_INPUT_EXTENSIONS,
-  "woff",
-  "woff2",
-];
+/** 游戏替换目标独立于输入格式，保留既有 Web 字体路径。 */
+export const GAME_FONT_EXTENSIONS: readonly string[] = ["ttf", "otf", "woff", "woff2"];

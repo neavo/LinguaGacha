@@ -6,7 +6,7 @@ export const en_us_toolbox_page = {
   entries: {
     game_font: {
       description:
-        "<emphasis>Godot 4</emphasis>\n<emphasis>WOLFRPG 3</emphasis>\n<emphasis>RPGMAKER MV/MZ</emphasis>",
+        "<emphasis>RenPy</emphasis>\n<emphasis>Godot 4</emphasis>\n<emphasis>WOLFRPG 3</emphasis>\n<emphasis>RPGMAKER MV/MZ</emphasis>",
     },
   },
 } satisfies LocaleMessageSchema<typeof zh_cn_toolbox_page>;

@@ -100,6 +100,11 @@
   margin-inline: calc(-1 * var(--recent-row-inset));
 }
 
+.project-home .project-home__selection--source,
+.project-home .project-home__selection--project {
+  min-height: 128px;
+}
+
 .project-home__selection--source {
   --path-selection-card-tone: var(--project-home-source);
 }

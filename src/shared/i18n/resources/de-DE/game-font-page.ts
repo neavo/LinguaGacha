@@ -8,7 +8,7 @@ export const de_de_game_font_page = {
     font_file: {
       title: "Schriftdatei",
       description: "Klicken oder Schriftdatei hierher ziehen",
-      hint: "Unterstützt TTF und OTF",
+      hint: "Unterstützt TTF",
     },
   },
   action: {

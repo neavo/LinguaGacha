@@ -99,9 +99,9 @@ describe("RenPy 写回器", () => {
       slots: [{ role: "DIALOGUE", lit_index: 0 }],
     });
     const extra = bad_digest.extra_field as {
-      renpy: { digest: { template_raw_sha1: string } };
+      renpy_rpy: { digest: { template_raw_sha1: string } };
     };
-    extra.renpy.digest.template_raw_sha1 = "bad";
+    extra.renpy_rpy.digest.template_raw_sha1 = "bad";
 
     expect(writer.apply_item(lines.slice(), bad_digest)).toBe(false);
     // 定位元数据可能来自旧工程，超出源目标字面量范围的槽位应跳过。
@@ -116,7 +116,7 @@ describe("RenPy 写回器", () => {
         create_item({
           status: "PROCESSED",
           dst: "new",
-          extra_field: { renpy: { pair: [], digest: {} } },
+          extra_field: { renpy_rpy: { pair: [], digest: {} } },
         }),
       ),
     ).toBe(false);
@@ -184,7 +184,7 @@ function build_apply_item(
     dst: options.dst,
     name_dst: options.name_dst ?? "新名字",
     extra_field: {
-      renpy: {
+      renpy_rpy: {
         v: 1,
         block: {
           lang: "schinese",

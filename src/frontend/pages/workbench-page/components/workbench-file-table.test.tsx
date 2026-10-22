@@ -113,7 +113,10 @@ describe("WorkbenchFileTable", () => {
   });
 
   it("普通文件无 AGENT 胶囊，文件扩展名不参与类型判断", async () => {
-    await render([create_entry("text.pdf"), { ...create_entry("script.rpy"), file_type: "RENPY" }]);
+    await render([
+      create_entry("text.pdf"),
+      { ...create_entry("script.rpy"), file_type: "RENPY_RPY" },
+    ]);
     expect(container.textContent).not.toContain("workbench_page.table.agent");
   });
 

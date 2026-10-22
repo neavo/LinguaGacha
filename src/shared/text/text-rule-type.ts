@@ -1,4 +1,5 @@
 import { has_language_character } from "../../domain/language";
+import { scan_renpy_boundaries } from "./renpy-boundaries";
 
 export type TextRuleType = "NONE" | "MD" | "KAG" | "WOLF" | "RENPY" | "RPGMAKER" | "GODOT";
 export type TextFileContext = Readonly<{ file_type: string; game_engine?: string | undefined }>;
@@ -17,6 +18,7 @@ export function resolve_text_rule_type(
       return "WOLF";
     case "GODOT":
       return "GODOT";
+    case "RENPY_RPY":
     case "RENPY":
       return "RENPY";
     case "MESSAGEJSON":
@@ -50,7 +52,6 @@ const RPGMAKER_PATTERNS = [
   /if\(.{0,8}[vs]\[\d+\].{0,16}\)/iu, // if(!s[982]) if(v[982] >= 1)
   /[/\\][a-z]{1,8}[<[][a-z\d]{0,16}[>\]]/iu, // /c[xy12] \bc[xy12] <\bc[xy12]>
 ];
-const RENPY_CONTROL_TAG_PATTERN = /\{([^{}]*?)\}|\[([^[\]]*?)\]/giu;
 
 /** 通用格式缺少引擎身份时，按控制语法选择文本规则。 */
 function infer_item_text_type_from_source(src: string): TextRuleType {
@@ -68,8 +69,8 @@ function infer_item_text_type_from_source(src: string): TextRuleType {
 
 // Ren'Py 控制标签内不含日韩文本时才视为语法标签，避免误判正文括号
 function has_renpy_control_tag(src: string): boolean {
-  for (const match of src.matchAll(RENPY_CONTROL_TAG_PATTERN)) {
-    const body = String(match[1] ?? match[2] ?? "");
+  for (const match of scan_renpy_boundaries(src)) {
+    const body = match.value.slice(1, -1);
     if (!has_language_character(body, "JA") && !has_language_character(body, "KO")) {
       return true;
     }

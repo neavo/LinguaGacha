@@ -2,12 +2,12 @@ import assert from "node:assert/strict";
 import path from "node:path";
 import type { JsonRecord, JsonValue } from "../../../domain/json";
 import type { GameFiles } from "../shared/game/format";
+import type { ReadableFile } from "../shared/game/readable";
 import { base, decode, symbol, type MarshalNode } from "./marshal";
 import { array, integer, text, read_text } from "./value";
 import { read_rgss_script } from "./scripts";
 import { read_rgss_game, RGSS_VERSIONS } from "./source";
 
-type ReadableFile = readonly [name: string, content: Uint8Array];
 const SCRIPT_INDEX_WIDTH = 4;
 
 /** JSON Pointer 指向首次展开位置，数组、字符串也保留共享与循环身份。 */
