@@ -31,7 +31,6 @@ it("普通原稿按资产相对路径保留原始字节", async () => {
 
 it.each([
   ["RPGMAKER_MV_MZ", "game.zip.rpgmaker"],
-  ["RENPY_NATIVE", "game.renpy"],
   ["EPUB", "小说/书.epub"],
 ])("%s 按资产相对路径展开并保留所有成员字节", async (file_type, file_path) => {
   using root = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-sources-rm-"));
@@ -43,7 +42,6 @@ it.each([
     ["game_files.txt", Buffer.from("data/Broken.json\nimg/pictures/Actor1.png")], // 游戏容器的文件清单单独写出。
   ]);
   for (const [name, bytes] of members) zip.file(name, bytes);
-  if (file_type === "RENPY_NATIVE") zip.file("__metadata__.json", "{}");
   const content = await zip.generateAsync({ type: "nodebuffer" });
   await write_agent_workspace_sources({
     nativeFs: new NativeFs(),
@@ -51,10 +49,6 @@ it.each([
     files: [{ file_path, file_type }],
     readAsset: () => content,
   });
-  if (file_type === "RENPY_NATIVE")
-    expect(fs.existsSync(path.join(root.path, "sources", file_path, "__metadata__.json"))).toBe(
-      false,
-    );
   for (const [name, bytes] of members)
     expect(fs.readFileSync(path.join(root.path, "sources", file_path, name)).equals(bytes)).toBe(
       true,

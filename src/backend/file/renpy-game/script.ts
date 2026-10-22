@@ -8,6 +8,7 @@ import {
 import { attributes, class_name, node_string, resolve_node, type PickleNode } from "./pickle";
 import type { CompiledSlot } from "./compiled";
 import type { ScriptDiagnostic } from "../file-format-types";
+import { DISPLAY_DEFINES, DISPLAY_SCREEN_DISPLAYABLES, DISPLAY_SCREEN_KEYWORDS } from "./usage";
 
 export const node_value = (node: PickleNode | undefined): PickleNode["value"] =>
   node ? resolve_node(node).value : null;
@@ -66,8 +67,25 @@ export function code_edge(node: PickleNode): PickleNode | undefined {
   return undefined;
 }
 
+/** `PyExpr` 与 `PyCode` 各自保存源码位置，其他节点没有。 */
+export function code_location(node: PickleNode): [filename: string, line: number | null] {
+  node = resolve_node(node);
+  const location = is_pyexpr(node)
+    ? node_children(node.args).slice(1, 3)
+    : class_name(node) === "renpy.ast.PyCode"
+      ? node_children(node_children(node.state)[2])
+      : [];
+  const line = node_value(location[1]);
+  return [node_text(location[0]), typeof line === "number" ? line : null];
+}
+/** 语句行号：`renpy.ast` 节点保存 `linenumber`，SL2 节点保存 `location`。 */
+export function statement_line(node: PickleNode): number | null {
+  const fields = attributes(node);
+  const line = node_value(fields.get("linenumber") ?? node_children(fields.get("location"))[1]);
+  return typeof line === "number" ? line : null;
+}
 /** Define 的命名空间与变量名可能分开序列化。 */
-function definition_target(fields: Map<string, PickleNode>): string {
+export function definition_target(fields: Map<string, PickleNode>): string {
   const store = node_text(fields.get("store"));
   return (
     (store && store !== "store" ? store.replace(/^store\./u, "") + "." : "") +
@@ -84,6 +102,37 @@ function script_children(node: PickleNode): PickleNode[] {
     ...(node.args ? [node.args] : []),
     ...(fields.size === 0 && node.state ? [node.state] : []),
   ];
+}
+
+/** 语句子树中的最小与最大行号，不跟随 `next` 执行链。 */
+export function block_lines(edge: PickleNode): [first: number, last: number] | null {
+  let first = Infinity,
+    last = -Infinity;
+  const seen = new Set<PickleNode>(),
+    pending = [edge];
+  while (pending.length) {
+    const node = resolve_node(pending.pop()!);
+    if (seen.has(node)) continue;
+    seen.add(node);
+    const line = statement_line(node);
+    if (line !== null) {
+      first = Math.min(first, line);
+      last = Math.max(last, line);
+    }
+    pending.push(...script_children(node));
+  }
+  return first <= last ? [first, last] : null;
+}
+/** 菜单项不保存行号：选项正文位于其子块首行之前，无子块的标题正文紧跟上一项。 */
+export function menu_item_lines(menu: PickleNode): (number | null)[] {
+  let previous = statement_line(menu);
+  return node_children(attributes(menu).get("items")).map((item) => {
+    const block = node_children(item)[2];
+    const lines = block ? block_lines(block) : null;
+    const result = lines ? lines[0] - 1 : previous === null ? null : previous + 1;
+    previous = lines ? lines[1] : result;
+    return result;
+  });
 }
 
 /** 反向索引容器消费者。标量 GET 保持独立边，容器 GET 才共享子字段。 */
@@ -134,7 +183,7 @@ export type RenpyCode = Readonly<{
   mode: PythonMode;
   slot: number | null;
   edge: PickleNode | undefined;
-  legacy: PickleNode | undefined;
+  legacy: PickleNode | undefined; // SL1 界面的 Python AST，只由 Python 2 引擎生成（8.0 编译 SL1 即失败），因此只识别 `_ast.*`。
   owner: string;
   field: string;
   phase: RenpyPhase;
@@ -146,14 +195,20 @@ export type RenpyCode = Readonly<{
   filename: string | null;
   line: number | null;
 }>;
+/** 源码偏移所在的原始文件行。编译坐标缺失时不制造行号。 */
+export function code_line(code: RenpyCode, offset: number): number | null {
+  if (code.line === null) return null;
+  return code.line + (code.source?.slice(0, offset).split("\n").length ?? 1) - 1;
+}
 /** 原源码偏移始终保留。编译坐标缺失时不制造文件行列。 */
 export function code_diagnostic(code: RenpyCode, diagnostic: PythonDiagnostic): ScriptDiagnostic {
+  const line = code_line(code, diagnostic.start);
   const before = code.source?.slice(0, diagnostic.start) ?? "";
-  const lines = before.split("\n");
   return {
-    message: `${code.filename ?? "<unknown>"}:${code.line === null ? "?" : code.line + lines.length - 1} / ${code.owner} / slot ${code.slot} / ${code.field}@${code.edge?.start ?? code.legacy?.start}: [${diagnostic.start}, ${diagnostic.end}) ${diagnostic.reason}`,
-    line: code.line === null ? null : code.line + lines.length - 1,
-    column: code.line === null || lines.length === 1 ? null : lines.at(-1)!.length + 1,
+    message: `${code.filename ?? "<unknown>"}:${line ?? "?"} / ${code.owner} / slot ${code.slot} / ${code.field}@${code.edge?.start ?? code.legacy?.start}: [${diagnostic.start}, ${diagnostic.end}) ${diagnostic.reason}`,
+    line,
+    column:
+      line === null || !before.includes("\n") ? null : before.length - before.lastIndexOf("\n"),
   };
 }
 /** PyCode 的源码 PyExpr 继承外层编译模式。 */
@@ -233,10 +288,7 @@ export function script_codes(script: { slots: readonly CompiledSlot[] }): RenpyC
           (current.display || /^(?:code|positional\.\d+|keyword\.\d+)$/u.test(current.field)))
       ) {
         const source_edge = code_edge(edge);
-        const location = is_pyexpr(node)
-          ? node_children(node.args).slice(1, 3)
-          : node_children(node_children(node.state)[2]);
-        const location_line = node_value(location[1]);
+        const [location_file, location_line] = code_location(node);
         const legacy =
           !source_edge && cls === "renpy.ast.PyCode" ? node_children(node.state)[1] : undefined;
         result.push({
@@ -247,8 +299,8 @@ export function script_codes(script: { slots: readonly CompiledSlot[] }): RenpyC
           legacy,
           mode: code_mode(node),
           field: current.field || "expression",
-          filename: node_text(location[0]) || current.filename,
-          line: typeof location_line === "number" ? location_line : current.line,
+          filename: location_file || current.filename,
+          line: location_line ?? current.line,
         });
         return;
       }
@@ -264,13 +316,12 @@ export function script_codes(script: { slots: readonly CompiledSlot[] }): RenpyC
         if (code)
           descend(code, "code", {
             target,
-            display: /^(?:config\.(?:name|window_title)|gui\.about)$/u.test(target),
+            display: DISPLAY_DEFINES.includes(target),
           });
       }
       if (cls === "renpy.sl2.slast.SLDisplayable") {
-        const display = /(?:text\.Text|ui\._textbutton|ui\._label)$/u.test(
-          node_text(fields.get("displayable")),
-        );
+        const displayable = node_text(fields.get("displayable"));
+        const display = DISPLAY_SCREEN_DISPLAYABLES.some((name) => displayable.endsWith(name));
         node_children(fields.get("positional")).forEach((child, index) =>
           descend(child, "positional." + index, { display: display && index === 0 }),
         );
@@ -278,7 +329,7 @@ export function script_codes(script: { slots: readonly CompiledSlot[] }): RenpyC
           const pair = node_children(entry);
           if (pair[1])
             descend(pair[1], "keyword." + index, {
-              display: /^(?:text|tooltip|alt)$/u.test(node_text(pair[0])),
+              display: DISPLAY_SCREEN_KEYWORDS.includes(node_text(pair[0])),
             });
         });
       }

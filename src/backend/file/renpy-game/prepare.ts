@@ -22,7 +22,7 @@ import { read_loading, resolve_loading } from "./loading";
 import type { RenpySource } from "./source";
 import { generated_members, is_generated_member } from "./generated";
 import { PythonSession } from "./python-syntax";
-import { read_profile } from "./profile";
+import { is_python2, read_profile } from "./profile";
 
 type ArchiveInput = {
   name: string;
@@ -162,7 +162,7 @@ export async function stage_renpy_source(
       const script = {
         bytes,
         slots: await read_compiled_async(bytes, signal),
-        python2: !game.profile.version.startsWith("8."),
+        python2: is_python2(game.profile),
       };
       const loading = await read_loading(script, name, game.profile, session, signal);
       declarations.push(...loading.declarations);

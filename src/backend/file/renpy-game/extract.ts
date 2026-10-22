@@ -13,12 +13,8 @@ import {
   type PickleNode,
 } from "./pickle";
 import { encode_python } from "./python";
-import {
-  PythonSession,
-  PythonSyntaxError,
-  type PythonFacts,
-  type PythonConstant,
-} from "./python-syntax";
+import { PythonSession, PythonSyntaxError, type PythonFacts } from "./python-syntax";
+import { LEGACY_DISPLAY_CALLS, string_usage, type RenpyUsage } from "./usage";
 import {
   node_value as value,
   node_children as children,
@@ -30,9 +26,12 @@ import {
   script_codes,
   analyze_code,
   code_diagnostic,
+  code_line,
+  menu_item_lines,
+  statement_line,
+  type RenpyCode,
 } from "./script";
 
-export type RenpyUsage = "say" | "menu" | "display" | "paragraph" | "code" | "string";
 export type RenpyCoordinate = {
   slot: number;
   edge: number; // 未分帧 Pickle 中的消费边偏移。
@@ -46,6 +45,8 @@ export type RenpyCandidate = {
   usage: RenpyUsage;
   coordinates: RenpyCoordinate[];
   owners: string[]; // 本次解析确定的全部语句消费者，不作为可编辑元数据保存。
+  percent: boolean; // 代码字面量是 `%` 格式化的左操作数，导出要求译文保持格式记号。不持久化。
+  line: number | null; // 原始 `.rpy` 行号，供可读视图定位。不持久化。
 };
 export type RenpyString = {
   language: string | null;
@@ -61,35 +62,6 @@ export type RenpyScript = {
   warnings: ScriptDiagnostic[];
   python2: boolean;
 };
-
-/** 关键字绑定属于具体引擎接口，未知调用不从参数名称推测用途。 */
-const DISPLAY_CALLS: Readonly<Record<string, readonly string[]>> = {
-  _: ["s"],
-  __: ["s"],
-  ___: ["s"],
-  Character: ["name"],
-  Text: ["text"],
-  Notify: ["message"],
-  Confirm: ["prompt"],
-  "renpy.notify": ["message"],
-  "renpy.input": ["prompt"],
-};
-/** 参数位置必须已确定，完整表达式才可继承语句的显示用途。 */
-function string_usage(token: PythonConstant, display: boolean): RenpyUsage {
-  const binding = token.argument;
-  const matches = (index: number, names: readonly string[]) =>
-    binding?.kind === "positional"
-      ? binding.index === index
-      : binding?.kind === "keyword" && names.includes(binding.name);
-  if (token.call === "_p" && matches(0, ["s"])) return "paragraph";
-  if (token.call === "renpy.say" && matches(1, ["what"])) return "say";
-  if (
-    (display && token.whole) ||
-    (Object.hasOwn(DISPLAY_CALLS, token.call) && matches(0, DISPLAY_CALLS[token.call]!))
-  )
-    return "display";
-  return "code";
-}
 
 const display_text = (node: PickleNode): string => {
   const scalar = resolve_node(node).value;
@@ -149,7 +121,7 @@ function write_groups(
     if (missing_slot) {
       warnings.push({
         message: "Incomplete Ren'Py slot write group: " + first.key,
-        line: null,
+        line: first.line,
         column: null,
       });
       continue;
@@ -164,7 +136,7 @@ function write_groups(
     ) {
       warnings.push({
         message: "Unresolved Ren'Py shared consumer: " + first.key,
-        line: null,
+        line: first.line,
         column: null,
       });
       continue;
@@ -176,6 +148,7 @@ function write_groups(
           ? first.key
           : JSON.stringify(group.map((candidate) => candidate.key).sort()),
       owners,
+      percent: group.some((candidate) => candidate.percent),
       coordinates: [
         ...new Map(
           group
@@ -235,16 +208,19 @@ export async function extract_script(
       edge: PickleNode,
       source: string,
       usage: RenpyUsage,
-      start?: number,
-      end?: number,
+      line: number | null,
+      { start, end, percent = false }: { start?: number; end?: number; percent?: boolean } = {},
     ): void => {
-      const key = JSON.stringify([owner, field, start ?? null, source, usage]);
+      // 用途由位置与当前规则推出，不属于身份。规则调整后，既有条目仍能按位置找回。
+      const key = JSON.stringify([owner, field, start ?? null, source]);
       const candidate = candidates.get(key) ?? {
         key,
         text: source,
         usage,
         coordinates: [],
         owners: [owner],
+        percent,
+        line,
       };
       const required_owners = required.get(key) ?? new Set<string>();
       for (const consumer of consumers(edge)) required_owners.add(consumer);
@@ -269,7 +245,7 @@ export async function extract_script(
     /** 旧界面保存 Python AST，按调用位置区分显示字符串和程序值。 */
     const legacy = (
       edge: PickleNode,
-      owner: string,
+      record: RenpyCode,
       field: string,
       display = false,
       ancestors = new Set<PickleNode>(),
@@ -282,10 +258,17 @@ export async function extract_script(
       if (class_name(node) === "_ast.Str") {
         const string = fields.get("s");
         const seen = seen_legacy.get(node) ?? new Set<string>();
-        if (string && !seen.has(owner)) {
-          seen.add(owner);
+        if (string && !seen.has(record.owner)) {
+          seen.add(record.owner);
           seen_legacy.set(node, seen);
-          add(owner, field, string, display_text(string), display ? "display" : "code");
+          add(
+            record.owner,
+            field,
+            string,
+            display_text(string),
+            display ? "display" : "code",
+            record.line,
+          );
         }
         return;
       }
@@ -297,24 +280,24 @@ export async function extract_script(
         args.forEach((arg, index) =>
           legacy(
             arg,
-            owner,
+            record,
             field + ".args." + index,
-            index === 0 && /^(?:text|textbutton|label|Character|Text|_|__|___|_p)$/u.test(name),
+            index === 0 && LEGACY_DISPLAY_CALLS.includes(name),
             next,
           ),
         );
         for (const [key, child] of fields)
-          if (key !== "args") legacy(child, owner, field + "." + key, false, next);
+          if (key !== "args") legacy(child, record, field + "." + key, false, next);
       } else {
         node.children.forEach((child, index) =>
-          legacy(child, owner, field + "." + index, display, next),
+          legacy(child, record, field + "." + index, display, next),
         );
-        for (const [key, child] of fields) legacy(child, owner, field + "." + key, display, next);
+        for (const [key, child] of fields) legacy(child, record, field + "." + key, display, next);
       }
     };
     for (const record of records.filter((entry) => entry.slot === slot.slot && !entry.translated)) {
       if (record.legacy) {
-        legacy(record.legacy, record.owner, record.field);
+        legacy(record.legacy, record, record.field);
         continue;
       }
       let tokens: PythonFacts;
@@ -344,8 +327,8 @@ export async function extract_script(
             record.edge!,
             token.value,
             string_usage(token, record.display),
-            token.start,
-            token.end,
+            code_line(record, token.start),
+            token,
           );
       }
     }
@@ -353,15 +336,18 @@ export async function extract_script(
       if (node.kind !== "object" || excluded.has(node)) continue;
       const cls = class_name(node),
         fields = attributes(node),
-        owner = statement_identity(node) ?? "<script>";
+        owner = statement_identity(node) ?? "<script>",
+        line = statement_line(node);
       if (cls === "renpy.ast.Say" || cls === "renpy.ast.TranslateSay") {
         const edge = fields.get("what");
         if (edge && value(fields.get("language")) === null)
-          add(owner, "what", edge, text(edge), "say");
+          add(owner, "what", edge, text(edge), "say", line);
       } else if (cls === "renpy.ast.Menu") {
+        const lines = menu_item_lines(node);
         children(fields.get("items")).forEach((item, index) => {
           const edge = children(item)[0];
-          if (edge && text(edge)) add(owner, "items." + index, edge, text(edge), "menu");
+          if (edge && text(edge))
+            add(owner, "items." + index, edge, text(edge), "menu", lines[index]!);
         });
       } else if (cls === "renpy.ast.TranslateString") {
         const language_value = value(fields.get("language"));
@@ -374,7 +360,16 @@ export async function extract_script(
         const language = language_value === null ? null : text(fields.get("language"));
         const original = text(fields.get("old")),
           translated = text(fields.get("new"));
-        if (language === null) add(owner, "new", fields.get("new")!, translated, "string");
+        const new_line = value(children(fields.get("newloc"))[1]); // `new` 可在 `old` 之后另起一行。
+        if (language === null)
+          add(
+            owner,
+            "new",
+            fields.get("new")!,
+            translated,
+            "string",
+            typeof new_line === "number" ? new_line : line,
+          );
         if (slot === slots.at(-1))
           strings.push({
             language,

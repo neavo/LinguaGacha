@@ -9,6 +9,7 @@ import {
   type PreparedGameFiles,
 } from "../shared/game/source-files";
 import {
+  is_python2,
   read_profile,
   collect_common,
   type RenpyProfile,
@@ -80,13 +81,7 @@ export async function collect_renpy_files(
   for (const [member, bytes] of result.data) {
     signal?.throwIfAborted();
     for (const code of script_codes({ slots: read_compiled(bytes) })) {
-      const facts = await audit_code(
-        code,
-        member,
-        session,
-        !game.profile.version.startsWith("8."),
-        signal,
-      );
+      const facts = await audit_code(code, member, session, is_python2(game.profile), signal);
       if (facts.references.some((entry) => entry.startsWith("layout."))) include_layout = true;
       if (facts.bare_references.some((name) => name === "config" || name === "renpy.config"))
         assignments.add(null);

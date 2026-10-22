@@ -77,32 +77,36 @@ it.each(["6.99.8", "8.0.3"])("%s 离线重载、人工放行与重复导出共�
   expect(native.exists(path.join(out, "demo", GAME_METADATA_MEMBER))).toBe(false);
 });
 
-it("失效坐标在落盘前失败", async () => {
-  using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-renpy-stale-"));
-  const native = create_renpy_fixture(temp.path),
-    format = new GameFormat(create_renpy_adapter(), native);
-  const files = await collect_renpy_files(
-    (await discover_renpy_source(temp.path, native))!,
-    native,
-  );
+/** 固化测试游戏并读出条目，导出上下文指向临时输出目录。 */
+async function import_fixture(root: string, native: ReturnType<typeof create_renpy_fixture>) {
+  const files = await collect_renpy_files((await discover_renpy_source(root, native))!, native);
+  const format = new GameFormat(create_renpy_adapter(), native);
   const asset = await format.create_container(
     files.data,
     "demo.renpy",
-    temp.path,
+    root,
     undefined,
     files.metadata,
   );
-  const parsed = await format.read_from_stream(asset.content, "demo.renpy");
-  const item = parsed.items.find((entry) => entry.src.startsWith("First line"))!;
-  const out = path.join(temp.path, "out");
+  const { items } = await format.read_from_stream(asset.content, "demo.renpy");
+  const out = path.join(root, "out");
+  const context = {
+    paths: { translated_path: out, bilingual_path: out },
+    source_files: [{ path: "demo.renpy", file_type: "RENPY_NATIVE" }],
+    asset_reader: () => Buffer.from(asset.content),
+  };
+  return { format, items, context };
+}
+
+it("失效坐标在落盘前失败", async () => {
+  using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-renpy-stale-"));
+  const native = create_renpy_fixture(temp.path);
+  const { format, items, context } = await import_fixture(temp.path, native);
+  const item = items.find((entry) => entry.src.startsWith("First line"))!;
   await expect(
-    format.write_to_path([{ ...item, src: "stale", dst: "译文", status: "PROCESSED" }], {
-      paths: { translated_path: out, bilingual_path: out },
-      source_files: [{ path: "demo.renpy", file_type: "RENPY_NATIVE" }],
-      asset_reader: () => Buffer.from(asset.content),
-    }),
+    format.write_to_path([{ ...item, src: "stale", dst: "译文", status: "PROCESSED" }], context),
   ).rejects.toThrow("candidate changed");
-  expect(native.exists(out)).toBe(false);
+  expect(native.exists(context.paths.translated_path)).toBe(false);
 });
 it("跨成员 None 字符串写 new，保留语言按新键重映射并拒绝冲突", async () => {
   using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-renpy-strings-"));
@@ -120,29 +124,12 @@ it("跨成员 None 字符串写 new，保留语言按新键重映射并拒绝冲
       { language: "french", old: "A  B", text: "French paragraph" },
     ]),
   );
-  const files = await collect_renpy_files(
-    (await discover_renpy_source(temp.path, native))!,
-    native,
-  );
-  const format = new GameFormat(create_renpy_adapter(), native);
-  const asset = await format.create_container(
-    files.data,
-    "demo.renpy",
-    temp.path,
-    undefined,
-    files.metadata,
-  );
-  const { items } = await format.read_from_stream(asset.content, "demo.renpy");
+  const { format, items, context } = await import_fixture(temp.path, native);
   expect(items.some((item) => item.src === "Common question?")).toBe(false);
   const base = items.find((item) => item.src === "Existing base text")!;
   const display = items.find((item) => item.src === "First line [lg_name].")!;
   const paragraph = items.find((item) => item.src === "A  B")!;
-  const out = path.join(temp.path, "out");
-  const context = {
-    paths: { translated_path: out, bilingual_path: out },
-    source_files: [{ path: "demo.renpy", file_type: "RENPY_NATIVE" }],
-    asset_reader: () => Buffer.from(asset.content),
-  };
+  const out = context.paths.translated_path;
   await format.write_to_path(
     [
       { ...base, status: "PROCESSED", dst: "基础译文" },
@@ -165,4 +152,43 @@ it("跨成员 None 字符串写 new，保留语言按新键重映射并拒绝冲
   await expect(
     format.write_to_path([{ ...display, status: "PROCESSED", dst: "Occupied" }], context),
   ).rejects.toThrow("Conflicting generated");
+});
+
+it("以旧用途保存的条目按位置找回，导出按本次解析的用途校验", async () => {
+  using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-renpy-usage-"));
+  const native = create_renpy_fixture(temp.path);
+  const { format, items, context } = await import_fixture(temp.path, native);
+  const say = items.find((item) => item.src === "First line [lg_name].")!;
+  const stale = {
+    ...say,
+    status: "PROCESSED" as const,
+    extra_field: {
+      renpy_game: { ...(say.extra_field as { renpy_game: object }).renpy_game, usage: "code" },
+    },
+  };
+  await expect(
+    format.write_to_path([{ ...stale, dst: "首句 [lg_name。" }], context),
+  ).rejects.toThrow("Unclosed Ren'Py interpolation");
+  await format.write_to_path([{ ...stale, dst: "首句 [lg_name]。" }], context);
+});
+
+it.each([
+  ["Hello %s %%", "你好 %s", false],
+  ["Hello %s %%", "你好 %s %%，100%", false],
+  ["Hello %s %%", "你好 %s %%", true],
+  ["%(a)s and %(b)s", "%(b)s 与 %(a)s", true],
+])("`%%` 左操作数 %s 译为 %s 时导出%s", async (src, dst, accepted) => {
+  using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-renpy-percent-"));
+  const native = create_renpy_fixture(temp.path);
+  native.write_file_sync(
+    path.join(temp.path, "game/percent.rpyc"),
+    code_fixture('a = Text("Hello %s %%" % name)\nb = Text("%(a)s and %(b)s" % values)'),
+  );
+  const { format, items, context } = await import_fixture(temp.path, native);
+  const item = { ...items.find((entry) => entry.src === src)!, status: "PROCESSED" as const, dst };
+  if (accepted) await format.write_to_path([item], context);
+  else
+    await expect(format.write_to_path([item], context)).rejects.toThrow(
+      "Ren'Py percent format changed",
+    );
 });

@@ -129,6 +129,9 @@ describe("text-preserve-rules", () => {
     expect(rule.collect("{名前}")).toEqual([]);
     expect(rule.collect("[a[0]]")).toEqual(["[a[0]]"]);
     expect(rule.analyze("Hello [a[0]]").unpreserved_text.trim()).toBe("Hello");
+    expect(collect_non_blank_text_preserve_segments("%(count)d 个，100% 完成", rule)).toEqual([
+      "%(count)d",
+    ]);
   });
 
   it("收集保护段时会忽略只包含空白的命中", () => {

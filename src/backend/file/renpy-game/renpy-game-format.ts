@@ -1,8 +1,7 @@
 import { PythonSession } from "./python-syntax";
 import assert from "node:assert/strict";
 import { createHash, randomUUID } from "node:crypto";
-import { create_item } from "../../../domain/item";
-import { read_json_record } from "../../../domain/json";
+import { create_item, type Item } from "../../../domain/item";
 import { GAME_METADATA_MEMBER, type GameFormatAdapter } from "../shared/game/format";
 import {
   extract_script,
@@ -12,10 +11,39 @@ import {
   type RenpyString,
   type RenpyCandidate,
 } from "./extract";
-import { read_renpy_metadata } from "./item";
+import { read_renpy_metadata, type RenpyMetadata } from "./item";
+import { is_python2, read_renpy_format_metadata } from "./profile";
 import { RENPY_LANGUAGE_FILE, RENPY_STRINGS_FILE, RENPY_GENERATED_MARKER } from "./generated";
 import { encode_python, paragraph_text } from "./python";
 import { scan_renpy_boundaries } from "../../../shared/text/renpy-boundaries";
+
+/** Python `%` 格式记号：`%%`、`%(name)` 与位置转换说明，以及无法构成说明的单独 `%`。 */
+const PYTHON_PERCENT_TOKEN =
+  /%%|%(?:\([^)]+\))?[#0 +-]*(?:\d+|\*)?(?:\.(?:\d+|\*))?[diouxXeEfFgGcrs]|%/gu;
+/** 完整记号序列，包括字面百分号 `%%`。命名记号按名称取参，按多重集比较。 */
+function percent_tokens(text: string): string[] {
+  const tokens = text.match(PYTHON_PERCENT_TOKEN) ?? [];
+  return tokens.some((token) => token.startsWith("%(")) ? tokens.sort() : tokens;
+}
+/** 插值和文本标签必须闭合，`{#…}` 是引擎查表上下文，不能增删。 */
+function check_text(item: Item, file: string, usage: RenpyMetadata["usage"]): void {
+  if (usage !== "code") {
+    let at = 0;
+    for (const boundary of scan_renpy_boundaries(item.dst)) {
+      assert(
+        !/[[{]/u.test(item.dst.slice(at, boundary.index)),
+        "Unclosed Ren'Py interpolation or tag: " + file,
+      );
+      at = boundary.index + boundary.value.length;
+    }
+    assert(!/[[{]/u.test(item.dst.slice(at)), "Unclosed Ren'Py interpolation or tag: " + file);
+  }
+  const tags = (value: string) =>
+    scan_renpy_boundaries(value)
+      .filter((entry) => entry.value.startsWith("{#"))
+      .map((entry) => entry.value);
+  assert.deepEqual(tags(item.dst), tags(item.src), "Ren'Py context tags changed: " + file);
+}
 
 /** 导出只保留原字节和候选索引。完整 Pickle 图按成员释放。 */
 type IndexedScript = Pick<RenpyScript, "bytes" | "digest" | "warnings"> & {
@@ -34,20 +62,8 @@ export function create_renpy_adapter(): GameFormatAdapter {
       const member = files.get(GAME_METADATA_MEMBER);
       assert(member, "Missing Ren'Py format metadata; import the game again");
       const metadata_bytes = await member.async("uint8array");
-      const metadata = read_json_record(
-        JSON.parse(Buffer.from(metadata_bytes).toString("utf8")) as unknown,
-      );
-      assert(metadata["schema"] === "linguagacha-renpy-1", "Unknown Ren'Py metadata schema");
-      const profile = read_json_record(metadata["profile"]);
-      assert(
-        profile["old_substitutions"] === null || typeof profile["old_substitutions"] === "boolean",
-        "Invalid Ren'Py text semantics",
-      );
-      const common = metadata["common"];
-      assert(
-        Array.isArray(common) && common.every((entry) => typeof entry === "string"),
-        "Invalid Ren'Py common strings",
-      );
+      const { profile, common } = read_renpy_format_metadata(metadata_bytes);
+      const python2 = is_python2(profile);
       const common_digest = createHash("sha256").update(metadata_bytes).digest("hex");
       const scripts = new Map<string, IndexedScript>(),
         table = new Map<string, RenpyString>();
@@ -58,11 +74,7 @@ export function create_renpy_adapter(): GameFormatAdapter {
         assert(/^game\/.*\.rpym?c$/u.test(name), "Invalid Ren'Py compiled member: " + name);
         let script: RenpyScript;
         try {
-          script = await extract_script(
-            await entry.async("uint8array"),
-            !String(profile["version"]).startsWith("8."),
-            session,
-          );
+          script = await extract_script(await entry.async("uint8array"), python2, session);
         } catch (cause) {
           throw new Error(
             "Cannot index Ren'Py member " + name + "; restore a supported original compiled file",
@@ -90,7 +102,7 @@ export function create_renpy_adapter(): GameFormatAdapter {
       const lookup_text = (text: string, usage: string): string =>
         usage === "paragraph"
           ? paragraph_text(text)
-          : usage === "menu" && profile["old_substitutions"] === true
+          : usage === "menu" && profile.old_substitutions === true
             ? text.replaceAll("%%", "%")
             : text;
       const redirected = (text: string, usage: string): boolean =>
@@ -103,7 +115,7 @@ export function create_renpy_adapter(): GameFormatAdapter {
           if (file === GAME_METADATA_MEMBER)
             return {
               warnings: [],
-              items: (common as string[])
+              items: common
                 .filter((original) => !table.has(table_key(null, original)))
                 .map((original, row) =>
                   create_item({
@@ -171,56 +183,32 @@ export function create_renpy_adapter(): GameFormatAdapter {
           for (const item of items) {
             if (item.status !== "PROCESSED") continue;
             const location = read_renpy_metadata(item.extra_field);
-            const key = JSON.stringify([location.internal_file_path, location.key]);
+            const file = location.internal_file_path;
+            const key = JSON.stringify([file, location.key]);
             assert(!seen.has(key), "Duplicate Ren'Py translation coordinate");
             seen.add(key);
-            assert(
-              !item.dst.includes("\0"),
-              "Ren'Py translation contains NUL: " + location.internal_file_path,
-            );
-            if (location.usage !== "code") {
-              let at = 0;
-              for (const boundary of scan_renpy_boundaries(item.dst)) {
-                assert(
-                  !/[[{]/u.test(item.dst.slice(at, boundary.index)),
-                  "Unclosed Ren'Py interpolation or tag: " + location.internal_file_path,
-                );
-                at = boundary.index + boundary.value.length;
-              }
+            assert(!item.dst.includes("\0"), "Ren'Py translation contains NUL: " + file);
+            if (file === GAME_METADATA_MEMBER) {
               assert(
-                !/[[{]/u.test(item.dst.slice(at)),
-                "Unclosed Ren'Py interpolation or tag: " + location.internal_file_path,
-              );
-            }
-            const tags = (value: string) =>
-              scan_renpy_boundaries(value)
-                .filter((entry) => entry.value.startsWith("{#"))
-                .map((entry) => entry.value);
-            assert.deepEqual(
-              tags(item.dst),
-              tags(item.src),
-              "Ren'Py context tags changed: " + location.internal_file_path,
-            );
-            if (location.usage === "common") {
-              assert(
-                location.internal_file_path === GAME_METADATA_MEMBER &&
-                  location.digest === common_digest &&
+                location.digest === common_digest &&
                   location.key === item.src &&
                   common.includes(item.src),
                 "Ren'Py common original changed",
               );
+              check_text(item, file, "common");
               if (item.dst !== item.src)
                 add_string({ language: null, old: item.src, text: item.dst });
               continue;
             }
-            const script = scripts.get(location.internal_file_path);
+            const script = scripts.get(file);
             assert(
               script && script.digest === location.digest,
-              "Ren'Py original digest changed: " + location.internal_file_path,
+              "Ren'Py original digest changed: " + file,
             );
+            // 条目只按位置找回。后续检查使用本次解析的用途，不使用条目保存的用途。
             const candidate = script.candidates.get(location.key);
             assert(
-              candidate && candidate.text === item.src && candidate.usage === location.usage,
+              candidate && candidate.text === item.src,
               "Ren'Py candidate changed; reparse the original asset",
             );
             assert(
@@ -232,22 +220,30 @@ export function create_renpy_adapter(): GameFormatAdapter {
               location.coordinates,
               "Ren'Py write group changed",
             );
+            check_text(item, file, candidate.usage);
+            // `%` 左操作数在运行时格式化，记号不一致会使游戏抛出异常。
+            if (candidate.percent)
+              assert.deepEqual(
+                percent_tokens(item.dst),
+                percent_tokens(item.src),
+                "Ren'Py percent format changed: " + file + " / " + item.src,
+              );
             if (item.dst === item.src) continue;
             let translation = item.dst;
             if (candidate.usage === "say" || candidate.usage === "menu") {
               assert(
-                profile["old_substitutions"] !== null || !translation.includes("%"),
+                profile.old_substitutions !== null || !translation.includes("%"),
                 "Unknown Ren'Py percent semantics",
               );
-              if (profile["old_substitutions"] === true)
-                translation = translation.replace(
-                  /%%|%\([^)]+\)[#0 +-]*\d*(?:\.\d+)?[diouxXeEfFgGcrs]|%/gu,
-                  (token) => (token === "%" ? "%%" : token),
+              // 旧式替换以整个 store 为映射，只有 `%%` 与命名记号成立，其余 `%` 须转义。
+              if (profile.old_substitutions === true)
+                translation = translation.replace(PYTHON_PERCENT_TOKEN, (token) =>
+                  token === "%%" || token.startsWith("%(") ? token : "%" + token,
                 );
             }
-            const entry = changes.get(location.internal_file_path) ?? [];
+            const entry = changes.get(file) ?? [];
             entry.push({ candidate, text: translation });
-            changes.set(location.internal_file_path, entry);
+            changes.set(file, entry);
             if (candidate.usage !== "string") {
               const original_key = lookup_text(item.src, candidate.usage);
               const new_key = lookup_text(translation, candidate.usage);
@@ -261,11 +257,7 @@ export function create_renpy_adapter(): GameFormatAdapter {
             rendered.set(
               file,
               await patch_script(
-                await extract_script(
-                  scripts.get(file)!.bytes,
-                  !String(profile["version"]).startsWith("8."),
-                  session,
-                ),
+                await extract_script(scripts.get(file)!.bytes, python2, session),
                 entries,
                 [],
                 session,

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import path from "node:path";
 import type { Node } from "web-tree-sitter";
+import { read_json_record } from "../../../domain/json";
 import type { NativeFs } from "../../../native/native-fs";
 import { assert_regular_path, collect_existing_files } from "../source-file-paths";
 import { paragraph_text, PythonDecodeError } from "./python";
@@ -20,6 +21,36 @@ export type RenpyFormatMetadata = {
   profile: RenpyProfile;
   common: string[];
 };
+/** 适配器与可读视图共用的元数据入口，只校验下游实际读取的字段。 */
+export function read_renpy_format_metadata(bytes: Uint8Array): RenpyFormatMetadata {
+  const metadata = read_json_record(JSON.parse(Buffer.from(bytes).toString("utf8")) as unknown);
+  assert(metadata["schema"] === "linguagacha-renpy-1", "Unknown Ren'Py metadata schema");
+  const profile = read_json_record(metadata["profile"]);
+  assert(typeof profile["version"] === "string", "Invalid Ren'Py version");
+  assert(
+    profile["old_substitutions"] === null || typeof profile["old_substitutions"] === "boolean",
+    "Invalid Ren'Py text semantics",
+  );
+  const common = metadata["common"];
+  assert(
+    Array.isArray(common) && common.every((entry) => typeof entry === "string"),
+    "Invalid Ren'Py common strings",
+  );
+  return metadata as RenpyFormatMetadata;
+}
+/** 8.x 起引擎运行在 Python 3，此前的字面量按 Python 2 解码。 */
+export const is_python2 = (profile: Pick<RenpyProfile, "version">): boolean =>
+  !profile.version.startsWith("8.");
+/** 引擎源码摘要的已知写法：读取写法决定换行是否先统一，计算写法须与之配套。 */
+const DIGEST_RULES = [
+  { open: 'open(rpyfn,"rU")', read: "f.read()", digest: "universal" }, // 6.99–7.3
+  {
+    open: 'open(rpyfn,"rU",encoding="utf-8")',
+    read: 'f.read().encode("utf-8")',
+    digest: "universal",
+  }, // 7.4：合法 UTF-8 下与上一行字节相同
+  { open: 'open(rpyfn,"rb")', read: "f.read()", digest: "raw" }, // 7.5 起
+] as const;
 /** CST token 序列用于核对已知引擎形态，注释和格式不参与规则匹配。 */
 function signature(node: Node): string {
   if (node.type === "comment") return "";
@@ -101,19 +132,15 @@ export async function read_profile(
       (script.shapes.has('"lock.txt"') || script.shapes.has('"/lock.txt"')),
     "Unknown Ren'Py loading rules",
   );
-  const mode = script.shapes.has('open(rpyfn,"rU")')
-    ? "rU"
-    : script.shapes.has('open(rpyfn,"rb")')
-      ? "rb"
-      : null;
-  assert(mode, "Unknown Ren'Py source digest rule");
   const salted = script.shapes.has("f.read()+RPYC_MAGIC");
-  assert(
-    ["hashlib", "md5"].some((name) =>
-      script.shapes.has(`${name}.md5(f.read()${salted ? "+RPYC_MAGIC" : ""}).digest()`),
-    ),
-    "Unknown Ren'Py source digest algorithm",
+  const rule = DIGEST_RULES.find(
+    ({ open, read }) =>
+      script.shapes.has(open) &&
+      ["hashlib", "md5"].some((name) =>
+        script.shapes.has(`${name}.md5(${read}${salted ? "+RPYC_MAGIC" : ""}).digest()`),
+      ),
   );
+  assert(rule, "Unknown Ren'Py source digest rule");
   const salt = script.values.get("RPYC_MAGIC")?.[0] ?? "";
   assert(typeof salt === "string" && (!salted || salt), "Unknown Ren'Py digest salt");
   const version_source = await read("__init__.py");
@@ -151,7 +178,7 @@ export async function read_profile(
   return {
     version,
     archives: recursive ? "recursive" : "top-level",
-    digest: mode === "rU" ? "universal" : "raw",
+    digest: rule.digest,
     salt,
     ren_python: script.shapes.has('fn.endswith("_ren.py")'),
     script_order: script.shapes.has("self.script_files.sort(key=game_key)")

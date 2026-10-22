@@ -26,6 +26,7 @@ export type PythonConstant = {
   argument: PythonArgument | undefined;
   whole: boolean;
   dynamic: boolean;
+  percent: boolean; // 字符串是 `%` 格式化的左操作数。
 };
 export type PythonAssignment = {
   target: string;
@@ -289,14 +290,17 @@ export class PythonSession {
             continue;
           }
           if (typeof value !== "string") continue;
-          let expression = node;
+          let expression = node,
+            percent = false;
           while (
             expression.parent?.type === "parenthesized_expression" ||
             (expression.parent?.type === "binary_operator" &&
               expression.parent.childForFieldName("operator")?.text === "%" &&
               expression.parent.childForFieldName("left")?.id === expression.id)
-          )
+          ) {
+            percent ||= expression.parent.type === "binary_operator";
             expression = expression.parent;
+          }
           const parent = expression.parent;
           const keyword =
             parent?.type === "keyword_argument"
@@ -347,6 +351,7 @@ export class PythonSession {
               expression.parent?.type === "expression_statement" &&
               expression.parent.parent?.id === root.id,
             dynamic,
+            percent,
           });
         }
         return facts;

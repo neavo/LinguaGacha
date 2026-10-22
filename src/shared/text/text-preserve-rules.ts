@@ -5,6 +5,7 @@ import {
 } from "../../domain/quality";
 import base_text_preserve_entries from "../../../builtin/text_preserve/preset/base.json";
 import kag_text_preserve_entries from "../../../builtin/text_preserve/preset/kag.json";
+import renpy_text_preserve_entries from "../../../builtin/text_preserve/preset/renpy.json";
 import { scan_renpy_boundaries } from "./renpy-boundaries";
 import rpgmaker_text_preserve_entries from "../../../builtin/text_preserve/preset/rpgmaker.json";
 import godot_text_preserve_entries from "../../../builtin/text_preserve/preset/godot.json";
@@ -31,7 +32,7 @@ const TEXT_PRESERVE_SMART_PATTERNS_BY_TEXT_TYPE = {
   NONE: [],
   MD: [],
   KAG: kag_text_preserve_entries,
-  RENPY: [],
+  RENPY: renpy_text_preserve_entries.filter((entry) => entry.src.startsWith("%")), // 方括号与花括号由 `scan_renpy_boundaries` 按嵌套规则识别。
   RPGMAKER: rpgmaker_text_preserve_entries,
   WOLF: wolf_text_preserve_entries,
   GODOT: godot_text_preserve_entries,

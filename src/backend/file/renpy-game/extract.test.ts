@@ -58,29 +58,6 @@ it.each(["config.window_title", "identifier"])(
   },
 );
 
-it("显示调用按实际参数绑定分类，资源参数和未知调用保持 code", async () => {
-  const source =
-    'Text(font="gui.ttf", text="Caption"); Text("Hello", font="other.ttf"); unknown(text="identifier"); renpy.say(who="Eileen", what="Dialogue"); Text(*args, "Uncertain"); Text(unknown(text="Nested"))';
-  const code = object(
-    "PyCode",
-    tuple(opcode(0x4b, 1), pickle_string(source), tuple(), pickle_string("exec")),
-  );
-  const script = await extract_script(
-    compiled_nodes([object("Python", dictionary({ name: pickle_string("parameters"), code }))]),
-  );
-  expect(Object.fromEntries(script.candidates.map((entry) => [entry.text, entry.usage]))).toEqual({
-    "gui.ttf": "code",
-    Caption: "display",
-    Hello: "display",
-    "other.ttf": "code",
-    identifier: "code",
-    Eileen: "code",
-    Dialogue: "say",
-    Uncertain: "code",
-    Nested: "code",
-  });
-});
-
 it("跨语句共享容器归为一个写回组，各槽位中的独立消费者同时更新", async () => {
   const shared = Buffer.concat([option(), opcode(0x71, 0)]);
   const script = await extract_script(
@@ -339,4 +316,35 @@ it("改写消费原始坐标与原值，并保留配置读取和后续赋值", a
       session,
     ),
   ).rejects.toThrow("loading span changed");
+});
+
+it("候选行号指向原始脚本行：代码字面量按源码内换行偏移，对白取语句行号", async () => {
+  const code = object(
+    "PyCode",
+    tuple(
+      opcode(0x4b, 1),
+      pickle_string('a = 1\nb = Text("Second")'),
+      tuple(pickle_string("game/test.rpy"), opcode(0x4b, 10)),
+      pickle_string("exec"),
+    ),
+  );
+  const identity = (serial: number) =>
+    tuple(pickle_string("game/test.rpy"), opcode(0x4b, 1), opcode(0x4b, serial));
+  const script = await extract_script(
+    compiled_nodes([
+      object("Python", dictionary({ name: identity(1), code })),
+      object(
+        "Say",
+        dictionary({
+          name: identity(2),
+          linenumber: opcode(0x4b, 20),
+          what: pickle_string("Line"),
+        }),
+      ),
+    ]),
+  );
+  expect(Object.fromEntries(script.candidates.map((entry) => [entry.text, entry.line]))).toEqual({
+    Second: 11,
+    Line: 20,
+  });
 });

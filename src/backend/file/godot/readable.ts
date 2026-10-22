@@ -1,6 +1,7 @@
 import { godot_member_kind } from "./member";
 import type { JsonRecord, JsonValue } from "../../../domain/json";
 import type { GameFiles } from "../shared/game/format";
+import { readable_json, write_projection, type ReadableFile } from "../shared/game/readable";
 import type { GodotLocation } from "./item";
 import { read_gdsc, print_gdsc } from "./gdsc";
 import { read_source } from "./gdscript";
@@ -18,7 +19,6 @@ import {
 } from "./translation";
 import { all_values, MARSHAL_VARIANT_TYPES, type Value } from "./variant";
 
-type ReadableFile = readonly [name: string, content: Uint8Array];
 type ReadableString = { location: GodotLocation; text: string; context: string | null };
 type VariantTypes = Readonly<Record<number, string>>;
 
@@ -71,30 +71,6 @@ function table_type(file: string, bytes: Buffer): string | null {
   }
 }
 
-/** 单个成员解析失败时写出错误投影，原字节已经写出。 */
-function* write_projection(
-  file: string,
-  read: () => (readonly [string, string])[],
-): Generator<ReadableFile> {
-  let outputs: (readonly [string, string])[];
-  try {
-    outputs = read();
-  } catch (error) {
-    outputs = [
-      [
-        file + ".json",
-        json({
-          internal_file_path: file,
-          error: error instanceof Error ? error.message : String(error),
-        }),
-      ],
-    ];
-  }
-  for (const [name, text] of outputs) yield [name, Buffer.from(text)];
-}
-
-const json = (value: unknown): string => JSON.stringify(value, null, 2); // 序列化供工作区读取的成员投影。
-
 /** 语言表以外的成员。`.gd`、`.po` 原文可读，不生成投影，只提供反查消息键的候选。 */
 function read_member(
   file: string,
@@ -115,7 +91,7 @@ function read_member(
     return [
       [
         file + ".json",
-        json({
+        readable_json({
           internal_file_path: file,
           type: "ProjectSettings",
           settings,
@@ -139,7 +115,7 @@ function read_member(
     }
     return [
       [file + ".gd", print_gdsc(g)],
-      [file + ".json", json({ internal_file_path: file, type: "GDSC", strings })],
+      [file + ".json", readable_json({ internal_file_path: file, type: "GDSC", strings })],
     ];
   }
   if (kind !== "resource") return [];
@@ -186,7 +162,9 @@ function read_member(
     body = { external: doc.external, resources };
   }
   for (const s of strings) keys.add(s.text);
-  return [[file + ".json", json({ internal_file_path: file, type: doc.type, ...body, strings })]];
+  return [
+    [file + ".json", readable_json({ internal_file_path: file, type: doc.type, ...body, strings })],
+  ];
 }
 
 /** 全部 locale 的语言表都写出投影，未选中的表只作对照语料，`selected` 与条目范围一致。 */
@@ -225,7 +203,7 @@ function read_table(
   return [
     [
       file + ".json",
-      json({
+      readable_json({
         internal_file_path: file,
         type: doc.type,
         locale: String(doc.properties.find((p) => p.name === "locale")?.value.value ?? "en"),

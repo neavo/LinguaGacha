@@ -8,9 +8,9 @@ import {
   opcode,
   tuple,
 } from "../../../test/renpy-fixture";
-import { pickle_string } from "./pickle";
+import { class_name, pickle_string } from "./pickle";
 import { read_compiled } from "./compiled";
-import { script_codes, analyze_code, code_diagnostic } from "./script";
+import { script_codes, analyze_code, code_diagnostic, menu_item_lines } from "./script";
 
 it("PyCode 内的 PyExpr 只按外层 hide 模式分析一次", () => {
   const expression = Buffer.concat([
@@ -109,4 +109,26 @@ it("共享代码保留每个消费者的用途上下文，缺失编译位置保�
   const diagnostic = code_diagnostic(records[0]!, { start: 1, end: 4, reason: "uncertain" });
   expect(diagnostic).toMatchObject({ line: null, column: null });
   expect(diagnostic.message).toContain("[1, 4)");
+});
+
+it("菜单项行号：选项取子块首行的上一行，标题紧跟上一项", () => {
+  const pass = (line: number) => object("Pass", dictionary({ linenumber: opcode(0x4b, line) }));
+  const item = (label: string, block: Buffer) =>
+    tuple(pickle_string(label), pickle_string("True"), block);
+  const menu = object(
+    "Menu",
+    dictionary({
+      linenumber: opcode(0x4b, 10),
+      items: tuple(
+        item("Caption", opcode(0x4e)),
+        item("A", tuple(pass(13))),
+        item("B", tuple(pass(16), pass(17))),
+        item("After", opcode(0x4e)),
+      ),
+    }),
+  );
+  const nodes = read_compiled(compiled_slots([[menu]]))[0]!.graph.nodes;
+  expect(menu_item_lines(nodes.find((node) => class_name(node) === "renpy.ast.Menu")!)).toEqual([
+    11, 12, 15, 18,
+  ]);
 });

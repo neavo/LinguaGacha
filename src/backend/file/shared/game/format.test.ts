@@ -34,10 +34,9 @@ it("旧容器的保留路径同名普通文件仍作为原稿读取", async () =
   );
   const legacy = await read_game_container(bytes, "game.zip");
   expect(legacy.members.has(GAME_METADATA_MEMBER)).toBe(true);
-  expect(legacy.metadata).toBeNull();
   const declared = await read_game_container(bytes, "game.zip", true);
   expect(declared.members.has(GAME_METADATA_MEMBER)).toBe(false);
-  expect(await declared.metadata!.async("string")).toBe("ordinary");
+  expect(await declared.input.get(GAME_METADATA_MEMBER)!.async("string")).toBe("ordinary");
 });
 it.each(["data/file", "DATA/file", "data/file/extra"])(
   "生成输出冲突 %s 在落盘前失败",

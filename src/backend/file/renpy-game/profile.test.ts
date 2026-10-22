@@ -62,3 +62,21 @@ it("静态档案识别实际 lock 路径，忽略注释中的伪规则", async (
   );
   await expect(read_profile(temp.path, native)).rejects.toThrow("Unknown Ren'Py archive discovery");
 });
+
+it.each([
+  ['open(rpyfn, "rU")', "hashlib.md5(f.read())", "universal"],
+  ['open(rpyfn, "rU", encoding="utf-8")', 'hashlib.md5(f.read().encode("utf-8"))', "universal"],
+  ['open(rpyfn, "rU", encoding="utf-8")', "hashlib.md5(f.read())", null],
+])("源码摘要按读取与计算写法成对识别：%s / %s", async (open, digest, expected) => {
+  using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-renpy-digest-"));
+  const native = create_renpy_fixture(temp.path);
+  native.write_file_sync(
+    path.join(temp.path, "renpy/script.py"),
+    `with ${open} as f:\n    rpydigest = ${digest}.digest()\nrpycdigest = None\nlock = "lock.txt"\n`,
+  );
+  if (expected) expect((await read_profile(temp.path, native)).digest).toBe(expected);
+  else
+    await expect(read_profile(temp.path, native)).rejects.toThrow(
+      "Unknown Ren'Py source digest rule",
+    );
+});

@@ -22,11 +22,11 @@ export const GAME_FILES_MEMBER = "game_files.txt";
 export const GAME_METADATA_MEMBER = "__metadata__.json";
 
 export type GameFiles = ReadonlyMap<string, JSZip.JSZipObject>;
-/** 原稿、格式元数据与文件清单分开返回，由调用方选择消费范围。 */
+/** 原稿与解析输入分开返回：导出只写出原稿，适配器与可读视图解析同一份输入。 */
 export type GameContainer = Readonly<{
-  members: GameFiles;
+  members: GameFiles; // 原稿成员。
+  input: GameFiles; // 原稿加格式元数据，`create_members` 与 `workspace_view` 共用，保证视图与条目同源。
   game_files: JSZip.JSZipObject | null; // 早于清单的容器没有该成员。
-  metadata: JSZip.JSZipObject | null;
 }>;
 
 /** 固化容器必须包含原稿文件，空容器不能作为游戏原稿。 */
@@ -35,15 +35,15 @@ export async function read_game_container(
   file: string,
   has_metadata = false,
 ): Promise<GameContainer> {
-  const members = new Map(await read_zip_members(content, file));
-  const game_files = members.get(GAME_FILES_MEMBER) ?? null;
-  members.delete(GAME_FILES_MEMBER);
+  const input = new Map(await read_zip_members(content, file));
+  const game_files = input.get(GAME_FILES_MEMBER) ?? null;
+  input.delete(GAME_FILES_MEMBER);
   // 只有显式声明元数据的格式使用保留入口，旧格式的同名普通成员仍是原稿。
-  const metadata = has_metadata ? (members.get(GAME_METADATA_MEMBER) ?? null) : null;
+  const members = new Map(input);
   if (has_metadata) members.delete(GAME_METADATA_MEMBER);
   if (members.size === 0)
     throw new AppError("file.invalid_structure", { public_details: { file } });
-  return { members, game_files, metadata };
+  return { members, input, game_files };
 }
 
 /** 格式提供成员解析与写回，公共流程持有原稿清单和目录 IO。 */
@@ -109,13 +109,7 @@ export class GameFormat {
     content: Uint8Array,
     file: string,
   ): Promise<{ items: Item[]; warnings: SourceFileParseWarning[] }> {
-    const { members: files, metadata } = await read_game_container(
-      content,
-      file,
-      this.adapter.has_metadata,
-    );
-    const input = new Map(files);
-    if (metadata) input.set(GAME_METADATA_MEMBER, metadata);
+    const { input } = await read_game_container(content, file, this.adapter.has_metadata);
     const handler = await this.adapter.create_members(input);
     const items: Item[] = [];
     const warnings: SourceFileParseWarning[] = [];
@@ -165,13 +159,11 @@ export class GameFormat {
       const content = await context.asset_reader(file.path);
       if (content === null)
         throw new AppError("file.not_found", { public_details: { file: file.path } });
-      const { members: files, metadata } = await read_game_container(
+      const { members: files, input } = await read_game_container(
         content,
         file.path,
         this.adapter.has_metadata,
       );
-      const input = new Map(files);
-      if (metadata) input.set(GAME_METADATA_MEMBER, metadata);
       const handler = await this.adapter.create_members(input);
       const group = groups.get(file.path);
       for (const internal of group?.keys() ?? []) {

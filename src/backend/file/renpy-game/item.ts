@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 import type { Item, ItemStatus } from "../../../domain/item";
 import { read_json_record } from "../../../domain/json";
 import { validate_game_path } from "../source-file-paths";
-import type { RenpyCoordinate, RenpyUsage } from "./extract";
+import type { RenpyCoordinate } from "./extract";
+import type { RenpyUsage } from "./usage";
 
 export type RenpyMetadata = {
   internal_file_path: string;

@@ -9,6 +9,7 @@ import { renpy_font_outputs } from "../../renpy-game/font";
 import { stage_renpy_source } from "../../renpy-game/prepare";
 import { create_renpy_adapter } from "../../renpy-game/renpy-game-format";
 import { read_renpy_metadata, renpy_default_status } from "../../renpy-game/item";
+import { read_renpy_sources } from "../../renpy-game/readable";
 import {
   discover_godot_source,
   is_godot_root,
@@ -24,6 +25,7 @@ import { is_json_record } from "../../../../domain/json";
 import { GAME_FONT_EXTENSIONS } from "../../../../shared/game-font";
 import type { GameFileType } from "../../../../shared/project-source-formats";
 import type { GameFiles, GameFormatAdapter } from "./format";
+import type { ReadableFile } from "./readable";
 import {
   collect_game_source_files,
   type GameSourceFiles,
@@ -98,7 +100,7 @@ interface EngineDefinition<G> {
   create_adapter(): GameFormatAdapter;
   read_metadata(extra: Item["extra_field"]): { internal_file_path: string };
   default_status(item: Pick<Item, "extra_field">): ItemStatus;
-  workspace_view?(members: GameFiles): AsyncIterable<readonly [string, Uint8Array]>;
+  workspace_view?(input: GameFiles): AsyncIterable<ReadableFile>;
   font_outputs?(game: G, files: GameSourceFiles, font: GameFont): ReadonlyMap<string, Uint8Array>;
 }
 export type GameEngine = Omit<EngineDefinition<GameSource>, "discover" | "stage"> & {
@@ -153,6 +155,7 @@ export const GAME_ENGINES: Record<GameFileType, GameEngine> = {
     create_adapter: create_renpy_adapter,
     read_metadata: read_renpy_metadata,
     default_status: renpy_default_status,
+    workspace_view: read_renpy_sources,
     font_outputs: (_game, files, font) => renpy_font_outputs(files.fonts, font),
   }),
   WOLFRPG: register("WOLFRPG", {
