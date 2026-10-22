@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import path from "node:path";
 import { setImmediate } from "node:timers/promises";
-import { createHash } from "node:crypto";
 import type { NativeFs } from "../../../native/native-fs";
 import {
   assert_regular_path,
@@ -10,7 +9,7 @@ import {
 } from "../source-file-paths";
 import { ProjectAssetPathIndex } from "../../../shared/project/project-asset-paths";
 import type { GamePreparation } from "../shared/game/prepare";
-import { read_bytes, BINARY_IO_CHUNK_BYTES, type BinaryFileHandle } from "../shared/binary";
+import type { BinaryFileHandle } from "../shared/binary";
 import {
   read_archive,
   read_archive_member,
@@ -19,8 +18,9 @@ import {
 } from "./archive";
 import { source_digest, read_compiled_async } from "./compiled";
 import { patch_script } from "./extract";
-import { script_codes, audit_code, code_diagnostic, type RenpyCode } from "./script";
-import { generated_members, type RenpySource } from "./source";
+import { read_loading, resolve_loading } from "./loading";
+import type { RenpySource } from "./source";
+import { generated_members, is_generated_member } from "./generated";
 import { PythonSession } from "./python-syntax";
 import { read_profile } from "./profile";
 
@@ -55,8 +55,12 @@ export async function stage_renpy_source(
         name.endsWith(".rpa") &&
         (game.profile.archives === "recursive" || name.split("/").length === 2),
     )
-    .sort()
-    .reverse();
+    .sort((a, b) => {
+      // 递归索引按归档 stem 排序；旧引擎先排列目录文件名，再去掉扩展名。
+      const left = game.profile.archives === "recursive" ? a.slice(0, -4) : a;
+      const right = game.profile.archives === "recursive" ? b.slice(0, -4) : b;
+      return left < right ? 1 : left > right ? -1 : 0;
+    });
   assert(
     ![...loose].some((name) => /\.(?:rpe|rpi)$/iu.test(name)),
     "Unsupported Ren'Py extension or protected archive; use a standard game layout",
@@ -86,6 +90,7 @@ export async function stage_renpy_source(
             member.name,
         );
         const relative = "game/" + member.name;
+        assert(!is_generated_member(relative), "Reserved Ren'Py resource in archive: " + relative);
         spellings.push(relative);
         if (!packed.has(relative)) packed.set(relative, { input, member });
       }
@@ -106,8 +111,6 @@ export async function stage_renpy_source(
     const is_source = (name: string) =>
       /\.rpym?$/u.test(name) || (game.profile.ren_python && name.endsWith("_ren.py"));
     const is_script = (name: string) => /\.rpym?c$/u.test(name);
-    const final = new Map(packed);
-    for (const name of loose) final.delete(name);
     const snapshots = new Map<string, ReturnType<NativeFs["stat"]>>(); // 提交前复核本次实际读取的散装文件。
     /** 散装文件优先，准备期间只读取本轮选定的来源。 */
     const read = async (name: string): Promise<Buffer> => {
@@ -148,179 +151,50 @@ export async function stage_renpy_source(
       backups.push(name);
     }
     const changed = new Map<string, Buffer>();
-    let force = false;
-    const archive_orders: { file: string; names: string[] }[] = [];
-    const force_values = new Set<string>();
+    const declarations: Awaited<ReturnType<typeof read_loading>>["declarations"] = [];
+    // 脚本发现使用初始化前的归档索引；普通 .py 与显式加载的 rpym 模块不提供主脚本初始化声明。
     for (const name of new Set([...loose, ...packed.keys()])) {
       await setImmediate();
       signal?.throwIfAborted();
-      if (generated.has(name) || /^game\/(?:cache|saves)\//u.test(name)) continue;
-      if (!is_script(name) && !name.endsWith(".py")) continue;
+      if (!name.endsWith(".rpyc") || generated.has(name) || /^game\/(?:cache|saves)\//u.test(name))
+        continue;
       const bytes = await read(name);
-      const script = is_script(name)
-        ? {
-            bytes,
-            slots: await read_compiled_async(bytes, signal),
-            python2: !game.profile.version.startsWith("8."),
-          }
-        : null;
-      const codes = script
-        ? script_codes(script)
-        : [
-            {
-              source: bytes.toString("utf8"),
-              mode: "exec",
-              slot: null,
-              edge: undefined,
-              legacy: undefined,
-              owner: "<module>",
-              field: "source",
-              phase: "runtime",
-              target: "",
-              display: false,
-              translated: false,
-              filename: name,
-              line: 1,
-            } satisfies RenpyCode,
-          ];
-      for (const code of codes) {
-        const facts = await audit_code(
-          code,
-          name,
-          session,
-          !game.profile.version.startsWith("8."),
-          signal,
-        );
-        const location =
-          name +
-          ": " +
-          code_diagnostic(code, {
-            start: 0,
-            end: code.source?.length ?? 0,
-            reason: "loading configuration",
-          }).message;
-        assert(
-          !facts.bare_references.some((name) => name === "config" || name === "renpy.config") &&
-            !facts.references.some(
-              (name) =>
-                [
-                  "config.file_open_callback",
-                  "config.searchpath",
-                  "archive_handlers",
-
-                  "__dict__",
-                ].includes(name.replace(/^renpy\./u, "")) ||
-                name.endsWith(".__dict__") ||
-                name.endsWith(".archive_handlers"),
-            ),
-          "Unsupported loading configuration in " + location + "; restore standard engine loading",
-        );
-        for (const target of ["config.archives", "config.force_archives"]) {
-          if (target === "config.archives" && game.profile.archives !== "top-level") continue;
-          const references = facts.references.filter(
-            (entry) => entry === target || entry === "renpy." + target,
-          );
-          if (!references.length) continue;
-          const assignments = facts.assignments.filter((entry) => entry.target === target);
-          assert(
-            code.phase === "init",
-            target + " requires unconditional initialization: " + location,
-          );
-          assert(
-            assignments.length === references.length &&
-              assignments.every((entry) => entry.root && entry.operation === "="),
-            "Dynamic " + target + " in " + location + "; use one unconditional literal assignment",
-          );
-          for (const assignment of assignments) {
-            if (target === "config.archives") {
-              const names = assignment.value;
-              assert(
-                Array.isArray(names) &&
-                  names.every((entry): entry is string => typeof entry === "string"),
-                "Dynamic archive order in " + location,
-              );
-              assert(
-                names.every(
-                  (entry) => /^[^/\\:]+$/u.test(entry) && entry !== "." && entry !== "..",
-                ),
-                "External archive path in " + location,
-              );
-              archive_orders.push({ file: name, names });
-            } else {
-              assert(
-                script && typeof assignment.value === "boolean",
-                "Dynamic force_archives in " + location,
-              );
-              force_values.add(String(assignment.value));
-              if (assignment.value) {
-                force = true;
-                changed.set(name, await patch_script(script, [], true, session, signal));
-              }
-            }
-          }
-        }
-      }
+      const script = {
+        bytes,
+        slots: await read_compiled_async(bytes, signal),
+        python2: !game.profile.version.startsWith("8."),
+      };
+      const loading = await read_loading(script, name, game.profile, session, signal);
+      declarations.push(...loading.declarations);
+      if (loading.changes.length)
+        changed.set(name, await patch_script(script, [], loading.changes, session, signal));
     }
-    assert(
-      force_values.size <= 1,
-      "Ren'Py switches force_archives during execution; keep a single static loading mode",
+    const loading = resolve_loading(
+      declarations,
+      game.profile,
+      new Set([...loose, ...packed.keys()]),
     );
-    /** 顺序变化只有在资源字节相同时才允许合并，摘要计算保持有界内存。 */
-    const hash_member = async (entry: PackedMember): Promise<string> => {
-      const hash = createHash("sha256");
-      for (const part of entry.member.parts) {
-        hash.update(part.prefix);
-        for (let at = 0; at < part.size; at += BINARY_IO_CHUNK_BYTES) {
-          signal?.throwIfAborted();
-          hash.update(
-            await read_bytes(
-              entry.input.handle,
-              part.offset + at,
-              Math.min(BINARY_IO_CHUNK_BYTES, part.size - at),
-            ),
-          );
-        }
+    const runtime_inputs =
+      game.profile.archives === "top-level" && loading.archives
+        ? loading.archives.flatMap((stem) =>
+            inputs.filter((entry) => entry.name === "game/" + stem + ".rpa"),
+          )
+        : inputs;
+    const runtime = new Map<string, PackedMember>();
+    for (const input of runtime_inputs)
+      for (const member of input.members.values()) {
+        const name = "game/" + member.name;
+        if (!runtime.has(name)) runtime.set(name, { input, member });
       }
-      return hash.digest("hex");
-    };
-    for (const order of archive_orders) {
-      const after = new Map<string, PackedMember>();
-      for (const stem of order.names) {
-        const input = inputs.find((entry) => entry.name === "game/" + stem + ".rpa");
-        assert(input, "Unknown archive " + stem + " in " + order.file);
-        for (const member of input.members.values())
-          if (!after.has("game/" + member.name))
-            after.set("game/" + member.name, { input, member });
-      }
-      for (const [name, before] of packed) {
-        if (is_script(name) || is_source(name) || (!force && loose.has(name))) continue;
-        const selected = after.get(name);
-        assert(
-          selected &&
-            (selected.input === before.input ||
-              (await hash_member(selected)) === (await hash_member(before))),
-          "Archive source changes between initialization phases: " +
-            name +
-            " in " +
-            order.file +
-            "; keep one resource source before preparation",
-        );
-      }
-    }
-    if (force)
-      for (const [name, member] of packed)
-        if (!is_script(name) && !is_source(name) && loose.has(name)) {
-          final.set(name, member);
-          backups.push(name);
-        }
+    // 每个输出路径在此选定一次来源；后续写入和字体收集直接消费展开结果。
     const writes: string[] = [];
-    for (const [name, { input, member }] of final) {
-      signal?.throwIfAborted();
+    for (const name of packed.keys()) {
       if (is_source(name) || /^game\/(?:cache|saves)\//u.test(name)) continue;
-      assert(
-        !/\/zz_lg_(?:language|strings)\.rpym?c?$/iu.test(name),
-        "Reserved Ren'Py resource in archive: " + name,
-      );
+      const selected = is_script(name) ? packed.get(name) : runtime.get(name);
+      if (!selected || (loose.has(name) && (is_script(name) || !loading.force))) continue;
+      if (loose.has(name)) backups.push(name);
+      const { input, member } = selected;
+      signal?.throwIfAborted();
       const target = path.join(staging, name);
       fs.ensure_parent_dir(target);
       const output = await fs.open_file(target, "wx");

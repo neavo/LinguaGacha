@@ -12,6 +12,7 @@ export type RenpyProfile = {
   digest: "universal" | "raw";
   salt: string;
   ren_python: boolean;
+  script_order: "filename" | "grouped";
   old_substitutions: boolean | null;
 };
 export type RenpyFormatMetadata = {
@@ -153,6 +154,9 @@ export async function read_profile(
     digest: mode === "rU" ? "universal" : "raw",
     salt,
     ren_python: script.shapes.has('fn.endswith("_ren.py")'),
+    script_order: script.shapes.has("self.script_files.sort(key=game_key)")
+      ? "grouped"
+      : "filename",
     old_substitutions,
   };
 }

@@ -36,7 +36,11 @@ export async function replace_game_font(
       const files = await engine.collect(source, fs, signal, { staging, result: prepared });
       const outputs = font_outputs(source, files, font);
       // 修改暂存文件前已读定原字节，备份成功后才允许游戏事务提交。
-      await write_game_backup(root, new Map([...files.data, ...files.fonts]), fs, signal);
+      // 准备事务拥有被遮蔽散装文件的原字节，不能先用暂存字节占用其备份路径。
+      const originals = new Map(
+        [...files.data, ...files.fonts].filter(([name]) => !prepared.backups?.includes(name)),
+      );
+      await write_game_backup(root, originals, fs, signal);
       for (const [name, bytes] of outputs) {
         signal?.throwIfAborted();
         const target = path.join(staging, name);

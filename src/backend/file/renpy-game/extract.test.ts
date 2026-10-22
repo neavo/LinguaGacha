@@ -1,4 +1,9 @@
+import { read_loading } from "./loading";
+import { read_compiled, write_compiled } from "./compiled";
+import { PythonSession } from "./python-syntax";
+import { script_codes } from "./script";
 import {
+  code_fixture,
   compiled_fixture,
   compiled_nodes,
   compiled_slots,
@@ -306,4 +311,32 @@ it("Python 2 原稿与写回使用同一解码条件，不确定常量不能通�
   await expect(patch_script(script, [{ candidate: uncertain, text: "unsafe" }])).rejects.toThrow(
     "code span changed",
   );
+});
+
+it("改写消费原始坐标与原值，并保留配置读取和后续赋值", async () => {
+  using session = await PythonSession.create();
+  const data = read_compiled(
+    code_fixture(
+      "config.force_archives = (True)\nprevious = config.force_archives\nconfig.force_archives = False",
+    ),
+  )[0]!.data;
+  const bytes = write_compiled(
+    compiled_fixture(),
+    [1, 2].map((slot) => ({ slot, data })),
+  );
+  const script = { bytes, slots: read_compiled(bytes), python2: false };
+  const loading = await read_loading(script, "game/test.rpyc", { archives: "top-level" }, session);
+  const output = await patch_script(script, [], loading.changes, session);
+  expect(script_codes({ slots: read_compiled(output) }).map((code) => code.source)).toEqual([
+    "config.force_archives = False\nprevious = config.force_archives\nconfig.force_archives = False",
+    "config.force_archives = False\nprevious = config.force_archives\nconfig.force_archives = False",
+  ]);
+  await expect(
+    patch_script(
+      script,
+      [],
+      loading.changes.map((change) => ({ ...change, original: "False" })),
+      session,
+    ),
+  ).rejects.toThrow("loading span changed");
 });

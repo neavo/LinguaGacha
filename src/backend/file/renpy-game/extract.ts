@@ -396,11 +396,16 @@ export async function extract_script(
 }
 
 export type RenpyChange = { candidate: RenpyCandidate; text: string };
+export type RenpyLoadingChange = Required<
+  Pick<RenpyCoordinate, "slot" | "edge" | "start" | "end">
+> & {
+  original: string;
+};
 /** 同一代码字符串的多个 UTF-16 区间先合并，再按原始消费边写回全部槽位。 */
 export async function patch_script(
   script: Pick<RenpyScript, "bytes" | "slots" | "python2">,
   changes: readonly RenpyChange[],
-  loading = false,
+  loading: readonly RenpyLoadingChange[] = [],
   session?: PythonSession,
   signal?: AbortSignal,
 ): Promise<Buffer> {
@@ -408,7 +413,11 @@ export async function patch_script(
     using owned = await PythonSession.create();
     return await patch_script(script, changes, loading, owned, signal);
   }
-  if (!changes.length && !loading) return script.bytes;
+  if (!changes.length && !loading.length) return script.bytes;
+  assert(
+    loading.every((change) => script.slots.some((slot) => slot.slot === change.slot)),
+    "Missing Ren'Py loading slot",
+  );
   for (const { candidate } of changes)
     assert(
       script.slots.every((slot) =>
@@ -440,20 +449,22 @@ export async function patch_script(
       );
       return { source: record.source, mode: record.mode };
     };
-    if (loading)
-      for (const record of records) {
-        const facts = await analyze_code(record, session, script.python2, signal);
-        const spans = facts.assignments
-          .filter(
-            (entry) =>
-              entry.root &&
-              entry.operation === "=" &&
-              entry.target === "config.force_archives" &&
-              entry.value === true,
-          )
-          .map((entry) => ({ start: entry.start, end: entry.end, text: "False" }));
-        if (spans.length) codes.set(record.edge!.start, { edge: record.edge!, changes: spans });
-      }
+    for (const change of loading) {
+      if (change.slot !== slot.slot) continue;
+      const edge = nodes.get(change.edge);
+      assert(edge, "Missing Ren'Py loading coordinate");
+      const source = source_record(edge).source;
+      assert(
+        change.start >= 0 &&
+          change.end > change.start &&
+          change.end <= source.length &&
+          source.slice(change.start, change.end) === change.original,
+        "Ren'Py loading span changed",
+      );
+      const entry = codes.get(edge.start) ?? { edge, changes: [] };
+      entry.changes.push({ start: change.start, end: change.end, text: "False" });
+      codes.set(edge.start, entry);
+    }
     const set = (edge: PickleNode, replacement: Buffer) => {
       const existing = edits.get(edge.start);
       assert(

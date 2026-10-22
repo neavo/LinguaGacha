@@ -40,7 +40,7 @@ it("散装资源优先，归档源码保持非活动，重复准备保持结果"
     stage_renpy_source({ game, staging }, native),
   );
 });
-it.each(["missing", "stale", "valid"])("活动源码 %s 的审计在目录提交之前完成", async (kind) => {
+it.each(["missing", "stale", "valid"])("活动源码 %s 的摘要验证在目录提交之前完成", async (kind) => {
   using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-renpy-source-"));
   const native = create_renpy_fixture(temp.path),
     source = Buffer.from('label start:\n    "Hello"\n');
@@ -109,9 +109,19 @@ it.each(["init", "early"] as const)(
         await extract_script(native.read_file(path.join(temp.path, "game/script.rpyc"))),
       ).map((code) => code.source),
     ).toContain("config.force_archives = False\n");
+    const backup = path.join(temp.path, "backup_lg/game/script.rpyc");
+    expect(native.read_file(backup)).toEqual(
+      code_fixture("config.force_archives = True\n", context),
+    );
+    await prepare_game_directory(temp.path, native, (staging) =>
+      stage_renpy_source({ game, staging }, native),
+    );
+    expect(native.read_file(backup)).toEqual(
+      code_fixture("config.force_archives = True\n", context),
+    );
   },
 );
-it.each([false, true])("归档顺序改变的不同来源内容相同=%s", async (same) => {
+it("按声明选择归档资源，允许默认来源内容不同", async () => {
   using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-renpy-order-"));
   const native = create_renpy_fixture(temp.path);
   native.write_file_sync(
@@ -120,7 +130,7 @@ it.each([false, true])("归档顺序改变的不同来源内容相同=%s", async
   );
   native.write_file_sync(
     path.join(temp.path, "game/a.rpa"),
-    archive_fixture(new Map([["resource.txt", Buffer.from(same ? "same" : "different")]])),
+    archive_fixture(new Map([["resource.txt", Buffer.from("different")]])),
   );
   native.write_file_sync(
     path.join(temp.path, "game/z.rpa"),
@@ -130,57 +140,33 @@ it.each([false, true])("归档顺序改变的不同来源内容相同=%s", async
   const prepare = prepare_game_directory(temp.path, native, (staging) =>
     stage_renpy_source({ game, staging }, native),
   );
-  if (same) {
-    await prepare;
-    expect(native.read_text_file(path.join(temp.path, "game/resource.txt"))).toBe("same");
-  } else {
-    await expect(prepare).rejects.toThrow("source changes");
-    expect(native.exists(path.join(temp.path, "game/a.rpa"))).toBe(true);
-  }
+  await prepare;
+  expect(native.read_text_file(path.join(temp.path, "game/resource.txt"))).toBe("different");
 });
 
-it.each(["conditional", "runtime"] as const)(
-  "%s 加载赋值在准备前拒绝，保留全部输入",
-  async (context) => {
-    using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-renpy-loading-"));
-    const native = create_renpy_fixture(temp.path);
-    const script = code_fixture("config.force_archives = True", context);
-    const archive = archive_fixture(new Map([["resource.txt", Buffer.from("archive")]]));
-    native.write_file_sync(path.join(temp.path, "game/script.rpyc"), script);
-    native.write_file_sync(path.join(temp.path, "game/archive.rpa"), archive);
-    native.write_file_sync(path.join(temp.path, "game/resource.txt"), "loose");
-    const game = (await discover_renpy_source(temp.path, native))!;
-    await expect(
-      prepare_game_directory(temp.path, native, (staging) =>
-        stage_renpy_source({ game, staging }, native),
-      ),
-    ).rejects.toThrow(/unconditional initialization/u);
-    expect(native.read_file(path.join(temp.path, "game/script.rpyc"))).toEqual(script);
-    expect(native.read_file(path.join(temp.path, "game/archive.rpa"))).toEqual(archive);
-    expect(native.read_text_file(path.join(temp.path, "game/resource.txt"))).toBe("loose");
-    expect(native.exists(path.join(temp.path, "backup_lg"))).toBe(false);
-  },
-);
-
-it.each([
-  "if flag:\n    config.force_archives = True",
-  "for value in values:\n    config.force_archives = True",
-  "def configure():\n    config.force_archives = True",
-  "config.force_archives = choose()",
-  "setattr(config, 'force_archives', True)",
-  "alias = config\nalias.force_archives = True",
-])("拒绝 Python 控制流与间接加载修改：%s", async (source) => {
-  using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-renpy-control-"));
+it("普通 Python 资源与业务对象引用保持原字节", async () => {
+  using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-renpy-resource-"));
   const native = create_renpy_fixture(temp.path);
-  const bytes = code_fixture(source);
-  native.write_file_sync(path.join(temp.path, "game/script.rpyc"), bytes);
+  const note = Buffer.from([0xff, 0, 0x81, 0x23]);
+  const script = code_fixture(
+    "attributes = actor.__dict__\nsettings = config\nif flag:\n    update(settings)\ndef configure():\n    return config.archives\n",
+  );
+  native.write_file_sync(path.join(temp.path, "game/notes.py"), note);
+  native.write_file_sync(path.join(temp.path, "game/script.rpyc"), script);
+  native.write_file_sync(
+    path.join(temp.path, "game/archive.rpa"),
+    archive_fixture(new Map([["packed.py", note]])),
+  );
   const game = (await discover_renpy_source(temp.path, native))!;
-  await expect(
-    stage_renpy_source({ game, staging: path.join(temp.path, "stage") }, native),
-  ).rejects.toThrow(/Dynamic|Unsupported loading/u);
-  expect(native.read_file(path.join(temp.path, "game/script.rpyc"))).toEqual(bytes);
+  await prepare_game_directory(temp.path, native, (staging) =>
+    stage_renpy_source({ game, staging }, native),
+  );
+  expect(native.read_file(path.join(temp.path, "game/notes.py"))).toEqual(note);
+  expect(native.read_file(path.join(temp.path, "game/packed.py"))).toEqual(note);
+  expect(native.read_file(path.join(temp.path, "game/script.rpyc"))).toEqual(script);
 });
-it("缩进初始化中的多行加载声明正确写回，注释和字符串不参与审计", async () => {
+
+it("缩进初始化中的多行加载声明正确写回，注释和字符串不参与加载声明", async () => {
   using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-renpy-indented-"));
   const native = create_renpy_fixture(temp.path);
   native.write_file_sync(
@@ -200,14 +186,102 @@ it("缩进初始化中的多行加载声明正确写回，注释和字符串不�
   );
 });
 
-it("必要加载源码解析失败报告成员与原始偏移，准备不提交变更", async () => {
-  using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-renpy-location-"));
+it("无法静态读取的普通编译代码不阻止资源准备", async () => {
+  using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-renpy-unknown-"));
   const native = create_renpy_fixture(temp.path);
   const bytes = code_fixture("    config.archives = [");
   native.write_file_sync(path.join(temp.path, "game/script.rpyc"), bytes);
   const game = (await discover_renpy_source(temp.path, native))!;
-  await expect(
-    stage_renpy_source({ game, staging: path.join(temp.path, "stage") }, native),
-  ).rejects.toThrow(/game\/script.rpyc:.*\[.*Invalid Python syntax/u);
+  await prepare_game_directory(temp.path, native, (staging) =>
+    stage_renpy_source({ game, staging }, native),
+  );
   expect(native.read_file(path.join(temp.path, "game/script.rpyc"))).toEqual(bytes);
+});
+it("引擎支持的 _ren.py 仍要求源码与编译摘要配对", async () => {
+  using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-renpy-ren-source-"));
+  const native = create_renpy_fixture(temp.path);
+  const engine = path.join(temp.path, "renpy/script.py");
+  native.write_file_sync(
+    engine,
+    native.read_text_file(engine) + '\nif fn.endswith("_ren.py"):\n    pass\n',
+  );
+  const source = Buffer.from("print('source')\n");
+  native.write_file_sync(path.join(temp.path, "game/script_ren.py"), source);
+  const game = (await discover_renpy_source(temp.path, native))!;
+  const prepare = () =>
+    prepare_game_directory(temp.path, native, (staging) =>
+      stage_renpy_source({ game, staging }, native),
+    );
+  await expect(prepare()).rejects.toThrow("Stale compiled script");
+  const compiled = Buffer.from(native.read_file(path.join(temp.path, "game/script.rpyc")));
+  source_digest(source, "raw", "").copy(compiled, compiled.length - 16);
+  native.write_file_sync(path.join(temp.path, "game/script.rpyc"), compiled);
+  await prepare();
+  expect(native.exists(path.join(temp.path, "game/script_ren.py"))).toBe(false);
+  expect(native.read_file(path.join(temp.path, "backup_lg/game/script_ren.py"))).toEqual(source);
+});
+
+it("默认脚本发现与声明后的资源来源分别选择", async () => {
+  using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-renpy-phases-"));
+  const native = create_renpy_fixture(temp.path);
+  fs.unlinkSync(path.join(temp.path, "game/script.rpyc"));
+  const initial = code_fixture("config.archives = ['a']\n");
+  native.write_file_sync(
+    path.join(temp.path, "game/z.rpa"),
+    archive_fixture(
+      new Map([
+        ["script.rpyc", initial],
+        ["resource.txt", Buffer.from("z")],
+        ["excluded.txt", Buffer.from("excluded")],
+      ]),
+    ),
+  );
+  native.write_file_sync(
+    path.join(temp.path, "game/a.rpa"),
+    archive_fixture(
+      new Map([
+        ["script.rpyc", code_fixture("config.archives = ['z']\n")],
+        ["resource.txt", Buffer.from("a")],
+      ]),
+    ),
+  );
+  const game = (await discover_renpy_source(temp.path, native))!;
+  await prepare_game_directory(temp.path, native, (staging) =>
+    stage_renpy_source({ game, staging }, native),
+  );
+  expect(native.read_file(path.join(temp.path, "game/script.rpyc"))).toEqual(initial);
+  expect(native.read_text_file(path.join(temp.path, "game/resource.txt"))).toBe("a");
+  expect(native.exists(path.join(temp.path, "game/excluded.txt"))).toBe(false);
+});
+it.each([false, true])("默认归档覆盖使用对应引擎的排序键，递归=%s", async (recursive) => {
+  using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-renpy-priority-"));
+  const native = create_renpy_fixture(temp.path, recursive);
+  for (const stem of ["a", "a-more"])
+    native.write_file_sync(
+      path.join(temp.path, "game", stem + ".rpa"),
+      archive_fixture(new Map([["resource.txt", Buffer.from(stem)]])),
+    );
+  const game = (await discover_renpy_source(temp.path, native))!;
+  await prepare_game_directory(temp.path, native, (staging) =>
+    stage_renpy_source({ game, staging }, native),
+  );
+  expect(native.read_text_file(path.join(temp.path, "game/resource.txt"))).toBe(
+    recursive ? "a-more" : "a",
+  );
+});
+
+it("归档中的生成资源在正式提交前拒绝", async () => {
+  using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-renpy-reserved-"));
+  const native = create_renpy_fixture(temp.path);
+  const archive = archive_fixture(new Map([["zz_lg_font.rpy", Buffer.from("foreign")]]));
+  const file = path.join(temp.path, "game/archive.rpa");
+  native.write_file_sync(file, archive);
+  const game = (await discover_renpy_source(temp.path, native))!;
+  await expect(
+    prepare_game_directory(temp.path, native, (staging) =>
+      stage_renpy_source({ game, staging }, native),
+    ),
+  ).rejects.toThrow("Reserved Ren'Py resource");
+  expect(native.read_file(file)).toEqual(archive);
+  expect(native.exists(path.join(temp.path, "backup_lg"))).toBe(false);
 });

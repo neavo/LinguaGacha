@@ -199,10 +199,11 @@ export function strings_fixture(
     ),
   );
 }
-/** 独立构造可供静态审计的最小编译结构，不依赖外部游戏或 Python。 */
+/** 独立构造初始化与运行时编译结构，不依赖外部游戏或 Python。 */
 export function code_fixture(
   source: string,
   context: "init" | "conditional" | "runtime" | "early" = "init",
+  priority = 0,
 ): Buffer {
   const code = object(
     "PyCode",
@@ -228,7 +229,9 @@ export function code_fixture(
           dictionary({ entries: tuple(tuple(pickle_string("persistent.flag"), tuple(statement))) }),
         )
       : statement;
-  return compiled_nodes([object("Init", dictionary({ block: tuple(block) }))]);
+  return compiled_nodes([
+    object("Init", dictionary({ priority: opcode(0x4b, priority), block: tuple(block) })),
+  ]);
 }
 /** 最小标准引擎只服务静态发现，测试不启动或执行这些源码。 */
 export function create_renpy_fixture(root: string, recursive = false): NativeFs {

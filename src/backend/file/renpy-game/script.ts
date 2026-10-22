@@ -138,6 +138,8 @@ export type RenpyCode = Readonly<{
   owner: string;
   field: string;
   phase: RenpyPhase;
+  priority: number | null; // 初始化优先级缺失时保留未知，加载声明读取负责拒绝。
+  early: boolean; // `EarlyPython` 先于所有 `Init` 优先级执行。
   target: string;
   display: boolean;
   translated: boolean;
@@ -172,6 +174,8 @@ export function script_codes(script: { slots: readonly CompiledSlot[] }): RenpyC
       owner: string;
       field: string;
       phase: RenpyPhase;
+      priority: number | null;
+      early: boolean;
       target: string;
       display: boolean;
       translated: boolean;
@@ -191,9 +195,12 @@ export function script_codes(script: { slots: readonly CompiledSlot[] }): RenpyC
         line = node_value(fields.get("linenumber"));
       if (filename) current.filename = filename;
       if (typeof line === "number") current.line = line;
-      if (cls === "renpy.ast.Init" || cls === "renpy.ast.EarlyPython")
+      if (cls === "renpy.ast.Init" || cls === "renpy.ast.EarlyPython") {
         current.phase = current.phase === "top" ? "init" : "runtime";
-      else if (
+        current.early = cls === "renpy.ast.EarlyPython";
+        const priority = node_value(fields.get("priority"));
+        current.priority = current.early ? 0 : typeof priority === "number" ? priority : null;
+      } else if (
         cls.startsWith("renpy.ast.") &&
         !["renpy.ast.Python", "renpy.ast.Define", "renpy.ast.PyCode", "renpy.ast.PyExpr"].includes(
           cls,
@@ -208,6 +215,8 @@ export function script_codes(script: { slots: readonly CompiledSlot[] }): RenpyC
       const key = JSON.stringify([
         current.owner,
         current.phase,
+        current.priority,
+        current.early,
         current.translated,
         current.target,
         current.display,
@@ -290,6 +299,8 @@ export function script_codes(script: { slots: readonly CompiledSlot[] }): RenpyC
       owner: "<script>",
       field: "",
       phase: "top",
+      priority: 0,
+      early: false,
       target: "",
       display: false,
       translated: false,
@@ -360,7 +371,7 @@ export async function analyze_code(
   }
   return facts;
 }
-/** 加载规则失败附加成员与编译位置，资源故障和取消保持原始异常。 */
+/** 翻译语义分析失败附加成员与编译位置，资源故障和取消保持原始异常。 */
 export async function audit_code(
   code: RenpyCode,
   member: string,

@@ -69,6 +69,31 @@ describe("useGameFontPageState", () => {
     toast.push_error_toast.mockReset();
   });
 
+  it("拖入 OTF 时立即拒绝，大小写 TTF 仍进入后端内容检查", async () => {
+    await act(async () => state.drop_path("font_path", "E:/font.otf"));
+    expect(state.paths.font_path).toBeNull();
+    expect(toast.push_error_toast).toHaveBeenCalledOnce();
+    expect(api_fetch).not.toHaveBeenCalled();
+    await act(async () => state.drop_path("font_path", "E:/font.TtF"));
+    await act(async () => state.drop_path("game_path", GAME_PATH));
+    expect(api_fetch).toHaveBeenCalledWith(INSPECT, {
+      font_path: "E:/font.TtF",
+      game_path: GAME_PATH,
+    });
+  });
+
+  it("选择器返回不支持的扩展名后仍可重新选择", async () => {
+    vi.mocked(window.desktopApp.pickGameFontFilePath).mockResolvedValueOnce({
+      canceled: false,
+      paths: ["E:/font.otf"],
+    });
+    await act(async () => state.pick_font_file());
+    expect(state.input_locked).toBe(false);
+    expect(state.paths.font_path).toBeNull();
+    await select_both();
+    expect(state.can_apply).toBe(true);
+  });
+
   /** 字体经对话框、游戏经拖入进入同一路径入口，并完成一次检查。 */
   async function select_both(): Promise<void> {
     await act(async () => state.pick_font_file());

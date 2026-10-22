@@ -228,7 +228,7 @@ export const ja_jp_app = {
     json_files: "JSON ファイル (*.json)",
     excel_files: "Excel ファイル (*.xlsx)",
     supported_txt_files: "対応ファイル (*.txt)",
-    font_files: "フォントファイル (*.ttf *.otf)",
+    font_files: "フォントファイル (*.ttf)",
     executable_files: "実行ファイル (*.exe)",
   },
   diagnostic: {

@@ -13,6 +13,13 @@ it("加载规则由源码形态决定，未知形态不能按版本号回退", a
     "version_tuple = (99, 0, 0, 0)",
   );
   expect((await read_profile(temp.path, native)).archives).toBe("top-level");
+  const script = path.join(temp.path, "renpy/script.py");
+  expect((await read_profile(temp.path, native)).script_order).toBe("filename");
+  native.write_file_sync(
+    script,
+    native.read_text_file(script) + "\nself.script_files.sort(key=game_key)\n",
+  );
+  expect((await read_profile(temp.path, native)).script_order).toBe("grouped");
   native.write_file_sync(path.join(temp.path, "renpy/main.py"), "custom_loader()");
   await expect(async () => await read_profile(temp.path, native)).rejects.toThrow(
     "Unknown Ren'Py archive discovery",

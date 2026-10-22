@@ -4,7 +4,8 @@ import path from "node:path";
 import { expect, it } from "vitest";
 import { GameFormat, GAME_METADATA_MEMBER } from "../shared/game/format";
 import { create_renpy_adapter } from "./renpy-game-format";
-import { collect_renpy_files, discover_renpy_source, RENPY_GENERATED_FILES } from "./source";
+import { collect_renpy_files, discover_renpy_source } from "./source";
+import { RENPY_LANGUAGE_FILE, RENPY_STRINGS_FILE } from "./generated";
 import {
   create_renpy_fixture,
   compiled_fixture,
@@ -14,10 +15,16 @@ import {
 import { extract_script } from "./extract";
 import { encode_python } from "./python";
 
-it("离线重载、人工放行与重复导出共用固化资产", async () => {
+it.each(["6.99.8", "8.0.3"])("%s 离线重载、人工放行与重复导出共用固化资产", async (version) => {
   using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-renpy-format-"));
   const root = path.join(temp.path, "original"),
     native = create_renpy_fixture(root);
+  native.write_file_sync(
+    path.join(root, "renpy/__init__.py"),
+    "version_tuple = (" + version.split(".").join(", ") + ", 0)\n",
+  );
+  if (version.startsWith("6."))
+    fs.renameSync(path.join(root, "lib/py3-windows-x86_64"), path.join(root, "lib/windows-i686"));
   const files = await collect_renpy_files((await discover_renpy_source(root, native))!, native);
   const format = new GameFormat(create_renpy_adapter(), native);
   const container = await format.create_container(
@@ -49,21 +56,22 @@ it("离线重载、人工放行与重复导出共用固化资产", async () => {
   };
   await format.write_to_path(items, context);
   const first = native.read_file(path.join(out, "demo/game/script.rpyc"));
-  const generated = native.read_text_file(path.join(out, "demo", RENPY_GENERATED_FILES[0]));
+  const generated = native.read_text_file(path.join(out, "demo", RENPY_LANGUAGE_FILE));
   expect((await extract_script(first)).candidates.map((candidate) => candidate.text)).toEqual(
     expect.arrayContaining(["首句 [lg_name]。", "人工放行"]),
   );
-  expect(native.read_text_file(path.join(out, "demo", RENPY_GENERATED_FILES[1]))).toContain(
-    encode_python("公共问题？"),
+  expect(native.read_text_file(path.join(out, "demo", RENPY_STRINGS_FILE))).toContain(
+    encode_python("公共问题？").slice(1),
+  );
+  expect(native.read_text_file(path.join(out, "demo", RENPY_STRINGS_FILE))).toContain(
+    'old "Common question?"',
   );
   await format.write_to_path(items, context);
   expect(native.read_file(path.join(out, "demo/game/script.rpyc"))).toEqual(first);
-  expect(native.read_text_file(path.join(out, "demo", RENPY_GENERATED_FILES[0]))).not.toBe(
-    generated,
-  );
+  expect(native.read_text_file(path.join(out, "demo", RENPY_LANGUAGE_FILE))).not.toBe(generated);
   await format.write_to_path([], context);
   expect(native.read_file(path.join(out, "demo/game/script.rpyc"))).toEqual(compiled_fixture());
-  expect(native.read_text_file(path.join(out, "demo", RENPY_GENERATED_FILES[1]))).not.toContain(
+  expect(native.read_text_file(path.join(out, "demo", RENPY_STRINGS_FILE))).not.toContain(
     "translate",
   );
   expect(native.exists(path.join(out, "demo", GAME_METADATA_MEMBER))).toBe(false);
@@ -148,12 +156,12 @@ it("跨成员 None 字符串写 new，保留语言按新键重映射并拒绝冲
   expect(table).toContainEqual(
     expect.objectContaining({ language: null, old: "Common question?", text: "基础译文" }),
   );
-  const generated = native.read_text_file(path.join(out, "demo", RENPY_GENERATED_FILES[1]));
+  const generated = native.read_text_file(path.join(out, "demo", RENPY_STRINGS_FILE));
   expect(generated).toContain("translate french strings:");
-  expect(generated).toContain("old " + encode_python("Translated [lg_name]."));
-  expect(generated).toContain("new " + encode_python("French text"));
-  expect(generated).toContain("old " + encode_python("C  D"));
-  expect(generated).toContain("new " + encode_python("French paragraph"));
+  expect(generated).toContain('old "Translated [lg_name]."');
+  expect(generated).toContain('new "French text"');
+  expect(generated).toContain('old "C  D"');
+  expect(generated).toContain('new "French paragraph"');
   await expect(
     format.write_to_path([{ ...display, status: "PROCESSED", dst: "Occupied" }], context),
   ).rejects.toThrow("Conflicting generated");

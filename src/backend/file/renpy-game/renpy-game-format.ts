@@ -13,7 +13,7 @@ import {
   type RenpyCandidate,
 } from "./extract";
 import { read_renpy_metadata } from "./item";
-import { RENPY_GENERATED_FILES, RENPY_GENERATED_MARKER } from "./source";
+import { RENPY_LANGUAGE_FILE, RENPY_STRINGS_FILE, RENPY_GENERATED_MARKER } from "./generated";
 import { encode_python, paragraph_text } from "./python";
 import { scan_renpy_boundaries } from "../../../shared/text/renpy-boundaries";
 
@@ -267,23 +267,24 @@ export function create_renpy_adapter(): GameFormatAdapter {
                   session,
                 ),
                 entries,
-                false,
+                [],
                 session,
               ),
             );
           let strings = RENPY_GENERATED_MARKER + "\n";
+          // old/new 已使用 Unicode 语义，6.x 还会自动添加 u 前缀，因此生成时去掉 Python 前缀。
           for (const entry of additions.values()) {
             assert(
               entry.language === null || /^[A-Za-z_]\w*$/u.test(entry.language),
               "Invalid Ren'Py language identifier",
             );
-            strings += `\ntranslate ${entry.language ?? "None"} strings:\n    old ${encode_python(entry.old)}\n    new ${encode_python(entry.text)}\n`;
+            strings += `\ntranslate ${entry.language ?? "None"} strings:\n    old ${encode_python(entry.old).slice(1)}\n    new ${encode_python(entry.text).slice(1)}\n`;
           }
           const id = randomUUID();
           const language = `${RENPY_GENERATED_MARKER}\ninit 1999 python:\n    if getattr(persistent, '_linguagacha_base_language', None) != '${id}':\n        persistent._linguagacha_base_language = '${id}'\n        _preferences.language = None\n    config.language = None\n`;
           return new Map([
-            [RENPY_GENERATED_FILES[0], Buffer.from(language)],
-            [RENPY_GENERATED_FILES[1], Buffer.from(strings)],
+            [RENPY_LANGUAGE_FILE, Buffer.from(language)],
+            [RENPY_STRINGS_FILE, Buffer.from(strings)],
           ]);
         },
         /** 没有写回计划的成员直接使用原字节。 */

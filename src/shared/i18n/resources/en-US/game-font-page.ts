@@ -8,7 +8,7 @@ export const en_us_game_font_page = {
     font_file: {
       title: "Font File",
       description: "Click or Drag Font File",
-      hint: "Supports TTF and OTF",
+      hint: "Supports TTF",
     },
   },
   action: {

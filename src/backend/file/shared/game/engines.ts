@@ -5,6 +5,7 @@ import {
   collect_renpy_files,
   type RenpySource,
 } from "../../renpy-game/source";
+import { renpy_font_outputs } from "../../renpy-game/font";
 import { stage_renpy_source } from "../../renpy-game/prepare";
 import { create_renpy_adapter } from "../../renpy-game/renpy-game-format";
 import { read_renpy_metadata, renpy_default_status } from "../../renpy-game/item";
@@ -152,6 +153,7 @@ export const GAME_ENGINES: Record<GameFileType, GameEngine> = {
     create_adapter: create_renpy_adapter,
     read_metadata: read_renpy_metadata,
     default_status: renpy_default_status,
+    font_outputs: (_game, files, font) => renpy_font_outputs(files.fonts, font),
   }),
   WOLFRPG: register("WOLFRPG", {
     discover: discover_wolf_source,

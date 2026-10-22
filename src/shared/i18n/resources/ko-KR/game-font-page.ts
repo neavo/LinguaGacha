@@ -8,7 +8,7 @@ export const ko_kr_game_font_page = {
     font_file: {
       title: "글꼴 파일",
       description: "클릭하거나 글꼴 파일 놓기",
-      hint: "TTF, OTF 지원",
+      hint: "TTF 지원",
     },
   },
   action: {

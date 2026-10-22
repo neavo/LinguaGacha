@@ -91,7 +91,6 @@ export function GameFontPage(_props: ScreenComponentProps): JSX.Element {
           <PathSelectionCard
             icon={FileType}
             title={t("game_font_page.fields.font_file.description")}
-            hint={t("game_font_page.fields.font_file.hint")}
             summary={build_summary(state.paths.font_path)}
             clear_label={t("app.action.reset")}
             on_clear={() => void state.clear_path("font_path")}

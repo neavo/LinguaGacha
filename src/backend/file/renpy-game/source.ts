@@ -16,9 +16,8 @@ import {
 } from "./profile";
 import { read_compiled } from "./compiled";
 import { script_codes, audit_code } from "./script";
+import { generated_members } from "./generated";
 
-export const RENPY_GENERATED_MARKER = "# LinguaGacha RenPy generated v1";
-export const RENPY_GENERATED_FILES = ["game/zz_lg_language.rpy", "game/zz_lg_strings.rpy"] as const;
 export type RenpySource = Readonly<{ root: string; profile: RenpyProfile }>;
 /** 目录扫描先识别游戏边界，避免把引擎脚本当成普通来源导入。 */
 export function is_renpy_root(input: string, fs: NativeFs): boolean {
@@ -44,32 +43,6 @@ export async function discover_renpy_source(
   if (!is_renpy_root(root, fs)) return null;
   return { root, profile: await read_profile(root, fs, signal) };
 }
-/** 保留名称必须带产品标记，重导入同时排除源码和其编译产物。 */
-export function generated_members(
-  files: ReadonlyMap<string, string>,
-  read: (name: string) => Uint8Array,
-): Set<string> {
-  const excluded = new Set<string>();
-  for (const name of RENPY_GENERATED_FILES) {
-    const actual = [...files.keys()].find((entry) => entry.toLowerCase() === name);
-    if (actual) {
-      assert(
-        actual === name &&
-          Buffer.from(read(name))
-            .toString("utf8")
-            .startsWith(RENPY_GENERATED_MARKER + "\n"),
-        "Reserved Ren'Py file conflict: " + actual,
-      );
-      excluded.add(name);
-      excluded.add(name + "c");
-    } else
-      assert(
-        !files.has(name + "c"),
-        "Orphaned LinguaGacha compiled resource; restore its generated source: " + name,
-      );
-  }
-  return excluded;
-}
 /** 只固化编译脚本和离线生成所需的公共字符串，素材留在游戏目录。 */
 export async function collect_renpy_files(
   game: RenpySource,
@@ -93,7 +66,7 @@ export async function collect_renpy_files(
         )
         .sort();
     },
-    () => false,
+    (name) => /^game\/(?!cache\/|saves\/).*\.(?:ttf|otf)$/iu.test(name),
     fs,
     signal,
     prepared,

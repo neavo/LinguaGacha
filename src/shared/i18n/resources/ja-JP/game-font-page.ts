@@ -8,7 +8,7 @@ export const ja_jp_game_font_page = {
     font_file: {
       title: "フォントファイル",
       description: "クリックまたはフォントファイルをドロップ",
-      hint: "TTF、OTF に対応",
+      hint: "TTF に対応",
     },
   },
   action: {

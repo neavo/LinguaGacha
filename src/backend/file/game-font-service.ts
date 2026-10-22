@@ -47,7 +47,7 @@ export class GameFontService {
     });
   }
 
-  /** 扩展名与内容共同限制输入，使 WOLF 允许覆盖的根目录字体都能被备份识别。 */
+  /** 输入扩展名限定为 TTF，字体族名沿用原有解析器读取。 */
   private read_font(font_path: string): GameFont {
     if (!GAME_FONT_INPUT_EXTENSIONS.includes(path.extname(font_path).slice(1).toLowerCase()))
       throw new AppError("file.parse_failed", {

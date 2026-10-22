@@ -224,7 +224,7 @@ export const en_us_app = {
     json_files: "JSON files (*.json)",
     excel_files: "Excel files (*.xlsx)",
     supported_txt_files: "Supported files (*.txt)",
-    font_files: "Font files (*.ttf *.otf)",
+    font_files: "Font files (*.ttf)",
     executable_files: "Executable files (*.exe)",
   },
   diagnostic: {
