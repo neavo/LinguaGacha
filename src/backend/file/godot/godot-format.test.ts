@@ -1,3 +1,4 @@
+import { GameDirectoryOperations } from "../shared/game/game-directory-operations";
 import JSZip from "jszip";
 import { expect, it } from "vitest";
 import {
@@ -30,7 +31,11 @@ it.each(["4.3", "4.6"])(
     const files = create_godot_fixture(engine),
       zip = new JSZip();
     for (const [name, bytes] of files) zip.file(name, bytes);
-    const format = new GameFormat(create_godot_adapter(), new NativeFs());
+    const format = new GameFormat(
+      new GameDirectoryOperations(),
+      create_godot_adapter(),
+      new NativeFs(),
+    );
     const result = await format.read_from_stream(
       await zip.generateAsync({ type: "uint8array" }),
       "game.zip",
@@ -118,7 +123,11 @@ it.each(["broken", "empty-hash"])("语言表 %s 独立处理，正常成员仍�
   ]);
   const zip = new JSZip();
   for (const [name, bytes] of files) zip.file(name, bytes);
-  const format = new GameFormat(create_godot_adapter(), new NativeFs());
+  const format = new GameFormat(
+    new GameDirectoryOperations(),
+    create_godot_adapter(),
+    new NativeFs(),
+  );
   const parsed = await format.read_from_stream(
     await zip.generateAsync({ type: "uint8array" }),
     "game.zip",

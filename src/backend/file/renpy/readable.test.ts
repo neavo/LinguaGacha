@@ -1,3 +1,4 @@
+import { GameDirectoryOperations } from "../shared/game/game-directory-operations";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -69,7 +70,11 @@ it("可读视图按原行号还原脚本，字符串的视图行与原稿行分�
   const game = (await discover_renpy_source(temp.path, native))!;
   const data = collect_renpy_files(game, native);
   const members = new Map([...data, ["game/lines.rpyc", lines_fixture()]]);
-  const container = await new GameFormat(create_renpy_adapter(), native).create_container(
+  const container = await new GameFormat(
+    new GameDirectoryOperations(),
+    create_renpy_adapter(),
+    native,
+  ).create_container(
     members,
     "demo.renpy",
     temp.path,

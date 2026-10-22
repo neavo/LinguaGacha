@@ -1,12 +1,55 @@
+import { GameDirectoryOperations } from "./game-directory-operations";
 import { read_zip_fixture, zip_text, write_zip } from "../../../../test/zip-fixture";
 import JSZip from "jszip";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { expect, it } from "vitest";
+import { expect, it, vi } from "vitest";
 import { NativeFs } from "../../../../native/native-fs";
 import { create_rpgmaker_mv_mz_adapter } from "../../rpgmaker-mv-mz/rpgmaker-format";
 import { GameFormat, read_game_container, GAME_METADATA_MEMBER } from "./format";
+
+it("输出占用持续到取消清理完成，取消后保留原目录", async () => {
+  using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-export-stop-"));
+  const operations = new GameDirectoryOperations();
+  const native = new NativeFs();
+  const root = path.join(temp.path, "game");
+  native.write_file_sync(path.join(root, "data/System.json"), "original");
+  const entered = Promise.withResolvers<void>();
+  const release = Promise.withResolvers<void>();
+  const write = native.write_file.bind(native);
+  vi.spyOn(native, "write_file").mockImplementationOnce(async (file, bytes) => {
+    entered.resolve();
+    await release.promise;
+    await write(file, bytes);
+  });
+  const format = new GameFormat(operations, create_rpgmaker_mv_mz_adapter(), native);
+  const bytes = await write_zip(new Map([["data/System.json", "{}"]]));
+  const job = format.write_to_path([], {
+    paths: { translated_path: temp.path, bilingual_path: temp.path },
+    source_files: [{ path: "game.rpgmaker", file_type: "RPGMAKER_MV_MZ" }],
+    asset_reader: () => Buffer.from(bytes),
+  });
+  const result = expect(job).rejects.toMatchObject({ code: "runtime.disposed" });
+  try {
+    await entered.promise;
+    await expect(operations.run([root], async () => undefined)).rejects.toMatchObject({
+      code: "file.busy",
+    });
+    const stopped = vi.fn();
+    const stopping = operations.stop().then(stopped);
+    await Promise.resolve();
+    expect(stopped).not.toHaveBeenCalled();
+    release.resolve();
+    await result;
+    await stopping;
+    expect(fs.readFileSync(path.join(root, "data/System.json"), "utf8")).toBe("original");
+    expect(fs.existsSync(path.join(root, ".tmp"))).toBe(false);
+  } finally {
+    release.resolve();
+    await Promise.allSettled([job]);
+  }
+});
 
 it("游戏 拒绝没有原稿文件的容器", async () => {
   const zip = new JSZip().folder("data")!;
@@ -16,7 +59,11 @@ it("游戏 拒绝没有原稿文件的容器", async () => {
 });
 it("创建容器时拒绝占用保留成员的子路径", async () => {
   using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-game-reserved-"));
-  const format = new GameFormat(create_rpgmaker_mv_mz_adapter(), new NativeFs());
+  const format = new GameFormat(
+    new GameDirectoryOperations(),
+    create_rpgmaker_mv_mz_adapter(),
+    new NativeFs(),
+  );
   await expect(
     format.create_container(
       new Map([["game_files.txt/child", Buffer.from("data")]]),
@@ -43,6 +90,7 @@ it.each(["data/file", "DATA/file", "data/file/extra"])(
   async (generated) => {
     using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-game-export-"));
     const format = new GameFormat(
+      new GameDirectoryOperations(),
       {
         file_type: "RPGMAKER_MV_MZ",
         internal_path: () => "data/file",
@@ -79,7 +127,11 @@ it.each(["data/file", "DATA/file", "data/file/extra"])(
 it("容器只固化调用方提供的数据字节，字体保留在游戏文件清单", async () => {
   using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-game-container-"));
   const native = new NativeFs();
-  const format = new GameFormat(create_rpgmaker_mv_mz_adapter(), native);
+  const format = new GameFormat(
+    new GameDirectoryOperations(),
+    create_rpgmaker_mv_mz_adapter(),
+    native,
+  );
   native.write_file_sync(path.join(temp.path, "fonts/main.ttf"), "font");
   const data = new Map([["data/System.json", Buffer.from("original")]]);
   native.write_file_sync(path.join(temp.path, "data/System.json"), "changed on disk");
@@ -96,7 +148,11 @@ it("容器只固化调用方提供的数据字节，字体保留在游戏文件�
 });
 
 it("游戏 解析通过共享容器入口拒绝越界成员", async () => {
-  const format = new GameFormat(create_rpgmaker_mv_mz_adapter(), new NativeFs());
+  const format = new GameFormat(
+    new GameDirectoryOperations(),
+    create_rpgmaker_mv_mz_adapter(),
+    new NativeFs(),
+  );
   const bytes = await write_zip(new Map([["../outside.json", "{}"]]));
   await expect(format.read_from_stream(bytes, "game.zip")).rejects.toMatchObject({
     code: "file.invalid_structure",
@@ -112,7 +168,11 @@ it("解析失败保留原始字节，零条目导出仍包含该文件", async (
   fs.mkdirSync(path.join(temp.path, "img/pictures"), { recursive: true });
   fs.writeFileSync(path.join(temp.path, "img/pictures/Actor1.png"), "");
   const native = new NativeFs();
-  const service = new GameFormat(create_rpgmaker_mv_mz_adapter(), native);
+  const service = new GameFormat(
+    new GameDirectoryOperations(),
+    create_rpgmaker_mv_mz_adapter(),
+    native,
+  );
   const files = new Map(
     ["data/Broken.json", "data/System.json"].map((name) => [
       name,
@@ -147,6 +207,7 @@ it("按游戏资产提交，后续资产暂存失败保留此前成功输出与�
   using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-game-asset-commit-"));
   const native = new NativeFs();
   const format = new GameFormat(
+    new GameDirectoryOperations(),
     {
       file_type: "RPGMAKER_MV_MZ",
       internal_path: () => "data/file",
@@ -178,4 +239,36 @@ it("按游戏资产提交，后续资产暂存失败保留此前成功输出与�
   ).rejects.toThrow("second asset failed");
   expect(native.read_text_file(path.join(temp.path, "first/data/file"))).toBe("first output");
   expect(fs.readdirSync(path.join(temp.path, "second"))).toEqual(["keep.txt"]);
+});
+
+it("关闭发生在资产提交后时，保留已提交文件且不读取后续资产", async () => {
+  using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-export-next-"));
+  const operations = new GameDirectoryOperations();
+  const native = new NativeFs();
+  const remove = native.remove_async.bind(native);
+  let stopping: Promise<void> | undefined;
+  vi.spyOn(native, "remove_async").mockImplementationOnce(async (file, options) => {
+    await remove(file, options);
+    stopping = operations.stop(); // 已提交资产的清理结束，下一资产尚未取得占用。
+  });
+  const format = new GameFormat(operations, create_rpgmaker_mv_mz_adapter(), native);
+  const bytes = await write_zip(new Map([["data/System.json", "{}"]]));
+  const reads: string[] = [];
+  await expect(
+    format.write_to_path([], {
+      paths: { translated_path: temp.path, bilingual_path: temp.path },
+      source_files: ["first.rpgmaker", "second.rpgmaker"].map((path) => ({
+        path,
+        file_type: "RPGMAKER_MV_MZ",
+      })),
+      asset_reader: (file) => {
+        reads.push(file);
+        return Buffer.from(bytes);
+      },
+    }),
+  ).rejects.toMatchObject({ code: "runtime.disposed" });
+  await stopping;
+  expect(reads).toEqual(["first.rpgmaker"]);
+  expect(native.read_text_file(path.join(temp.path, "first/data/System.json"))).toBe("{}");
+  expect(fs.readdirSync(temp.path)).toEqual(["first"]);
 });

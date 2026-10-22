@@ -1,3 +1,4 @@
+import { GameDirectoryOperations } from "../file/shared/game/game-directory-operations";
 import { configure_python_parser } from "../file/renpy/python-syntax";
 import { GamePrepareWorker } from "../file/shared/game/prepare-worker";
 import { GameFontService } from "../file/game-font-service";
@@ -131,6 +132,7 @@ export class BackendServices {
   private readonly pdf_worker: PDFWorker; // 独立文档计算与取消，随业务根释放
   private readonly compute_worker_client: ComputeWorkerClient; // 缓存的校对与质量统计共享，随业务根释放
   private readonly task_runtime: BatchTranslationRuntime; // 关闭时先等待任务收束，再释放执行池
+  private readonly game_directory_operations = new GameDirectoryOperations(); // 所有文件服务共用目录占用，独立于模型运行。
   private readonly runtime_gate = new RuntimeOperationGate(); // 执行占用与工程写入共享的唯一门禁
   private readonly work_unit_worker_pool: TranslationWorkerPool;
   private readonly planning_worker_pool: PlanningWorkerPool;
@@ -217,6 +219,7 @@ export class BackendServices {
 
     this.task_runtime = new BatchTranslationRuntime(session_state, database, this.runtime_gate);
     const lifecycle = new ProjectLifecycleService(
+      this.game_directory_operations,
       options.database,
       this.runtime_gate,
       session_state,
@@ -272,6 +275,7 @@ export class BackendServices {
 
       summary: new ProjectSummaryService(session_state, this.cache_manager),
       content: new ProjectContentService(
+        this.game_directory_operations,
         options.database,
         this.runtime_gate,
         session_state,
@@ -327,6 +331,7 @@ export class BackendServices {
     };
     this.files = {
       translationGeneration: new TranslationFileGenerationService(
+        this.game_directory_operations,
         options.database,
         this.app_setting_service,
         session_state,
@@ -334,7 +339,7 @@ export class BackendServices {
         this.pdf_worker.run,
         this.logManager,
       ),
-      gameFont: new GameFontService(this.runtime_gate, this.game_prepare_worker.run),
+      gameFont: new GameFontService(this.game_directory_operations, this.game_prepare_worker.run),
     };
     this.model = new ModelService(
       paths,
@@ -380,9 +385,12 @@ export class BackendServices {
     );
   }
 
-  /** Gateway 排空在途导入前，先取消并等待完整工程写操作收尾。 */
-  public async stop_project_writes(): Promise<void> {
-    await this.runtime_gate.stop_project_writes();
+  /** Gateway 排空请求前，取消并等待工程写入与游戏目录操作收尾。 */
+  public async stop_file_operations(): Promise<void> {
+    await Promise.all([
+      this.runtime_gate.stop_project_writes(),
+      this.game_directory_operations.stop(),
+    ]);
   }
 
   /**
@@ -390,7 +398,7 @@ export class BackendServices {
    */
   public async dispose(): Promise<void> {
     const errors: unknown[] = [];
-    const project_writes = this.stop_project_writes();
+    const file_operations = this.stop_file_operations();
     this.modelCatalog.dispose();
     try {
       await this.catalog_check;
@@ -407,7 +415,11 @@ export class BackendServices {
     } catch (error) {
       errors.push(error);
     }
-    await project_writes; // 写占用释放前，准备线程、目录恢复和工程操作必须全部收尾。
+    try {
+      await file_operations; // 目录恢复和业务收尾完成后才能释放准备线程。
+    } catch (error) {
+      errors.push(error);
+    }
     const worker_results = await Promise.allSettled([
       this.model.dispose(),
       this.work_unit_worker_pool.dispose(),

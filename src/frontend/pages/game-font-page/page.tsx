@@ -8,7 +8,7 @@ import { useI18n } from "@frontend/app/locale/locale-context";
 import "@frontend/pages/game-font-page/game-font-page.css";
 import { useGameFontPageState } from "@frontend/pages/game-font-page/use-game-font-page-state";
 import { Spinner } from "@frontend/shadcn/spinner";
-import { AppActionDialog } from "@frontend/widgets/app-alert-dialog";
+import { AppConfirmDialog } from "@frontend/widgets/app-alert-dialog";
 import { AppButton } from "@frontend/widgets/app-button";
 import {
   AppContextMenu,
@@ -123,22 +123,11 @@ export function GameFontPage(_props: ScreenComponentProps): JSX.Element {
       />
 
       <GodotPackOrderDialog {...state.godot_pack_order.dialog_props} />
-      <AppActionDialog
+      <AppConfirmDialog
         open={state.confirm_open}
         description={t("app.game_backup_warning")}
-        details={
-          <dl className="game-font-page__confirm">
-            <dt>{t("game_font_page.fields.game.title")}</dt>
-            <dd>{state.paths.game_path}</dd>
-            <dt>{t("game_font_page.fields.font_file.title")}</dt>
-            <dd>{state.paths.font_path}</dd>
-          </dl>
-        }
-        primaryAction={{
-          label: t("game_font_page.action.start"),
-          onSelect: state.confirm_apply,
-          delayed: true,
-        }}
+        confirmDelay
+        onConfirm={state.confirm_apply}
         onClose={state.close_confirm}
       />
     </div>

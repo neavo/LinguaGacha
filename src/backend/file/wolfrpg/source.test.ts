@@ -1,3 +1,4 @@
+import { GameDirectoryOperations } from "../shared/game/game-directory-operations";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -61,7 +62,12 @@ it("名为 Data 的游戏根目录仍可识别，单独归档不能成为工程�
     path.join(root, "Data/Picture.wolf"),
     await wolf_archive_fixture(new Map()),
   );
-  const service = new FileFormatService({ target_language: "ZH" }, async () => null, native);
+  const service = new FileFormatService(
+    new GameDirectoryOperations(),
+    { target_language: "ZH" },
+    async () => null,
+    native,
+  );
   const entries = await service.collect_source_file_entries([root, path.join(root, "Data")]);
   expect(entries).toHaveLength(1);
   expect(entries[0]!.file_type).toBe("WOLFRPG");
@@ -73,7 +79,12 @@ it("坏游戏边界阻止普通文件递归导入，根归档与分目录归档�
   using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-wolf-source-"));
   const native = new NativeFs(),
     root = path.join(temp.path, "game"),
-    service = new FileFormatService({ target_language: "ZH" }, async () => null, native);
+    service = new FileFormatService(
+      new GameDirectoryOperations(),
+      { target_language: "ZH" },
+      async () => null,
+      native,
+    );
   native.write_file_sync(path.join(root, "Data/BasicData.wolf"), Buffer.alloc(64));
   native.write_file_sync(path.join(root, "notes.txt"), "must not become an ordinary source");
   const entries = await service.collect_source_file_entries([temp.path]);

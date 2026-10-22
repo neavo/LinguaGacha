@@ -33,26 +33,6 @@
   color: var(--foreground);
 }
 
-.game-font-page__confirm {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  gap: 6px 16px;
-  margin: 0;
-  border-radius: var(--radius-md);
-  background: color-mix(in srgb, var(--muted) 55%, transparent);
-  padding: 8px 12px;
-  font-size: var(--ui-font-size-14);
-}
-
-.game-font-page__confirm dt {
-  color: var(--muted-foreground);
-}
-
-.game-font-page__confirm dd {
-  margin: 0;
-  overflow-wrap: anywhere;
-}
-
 @media (max-width: 760px) {
   .game-font-page__fields {
     grid-template-columns: minmax(0, 1fr);

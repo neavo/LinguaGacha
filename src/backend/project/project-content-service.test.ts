@@ -1,3 +1,4 @@
+import { GameDirectoryOperations } from "../file/shared/game/game-directory-operations";
 import { create_godot_fixture, godot_pack_fixture } from "../../test/godot-fixture";
 import { create_renpy_fixture } from "../../test/renpy-fixture";
 import { wolf_files } from "../../test/wolf-fixture";
@@ -82,6 +83,7 @@ async function create_service(
   return {
     database,
     service: new ProjectContentService(
+      new GameDirectoryOperations(),
       database,
       runtime_gate,
       session_state,

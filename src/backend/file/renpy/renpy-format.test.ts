@@ -1,3 +1,4 @@
+import { GameDirectoryOperations } from "../shared/game/game-directory-operations";
 import { read_renpy_metadata } from "./item";
 import { PythonSession } from "./python-syntax";
 import fs from "node:fs";
@@ -30,7 +31,7 @@ it.each(["6.99.8", "8.0.3"])("%s 离线重载、人工放行与重复导出共�
     fs.renameSync(path.join(root, "lib/py3-windows-x86_64"), path.join(root, "lib/windows-i686"));
   const game = (await discover_renpy_source(root, native))!;
   const data = collect_renpy_files(game, native);
-  const format = new GameFormat(create_renpy_adapter(), native);
+  const format = new GameFormat(new GameDirectoryOperations(), create_renpy_adapter(), native);
   const container = await format.create_container(
     data,
     "demo.renpy",
@@ -39,10 +40,11 @@ it.each(["6.99.8", "8.0.3"])("%s 离线重载、人工放行与重复导出共�
     await build_renpy_metadata(game, data, native),
   );
   fs.renameSync(root, path.join(temp.path, "unavailable"));
-  const parsed = await new GameFormat(create_renpy_adapter(), native).read_from_stream(
-    container.content,
-    "demo.renpy",
-  );
+  const parsed = await new GameFormat(
+    new GameDirectoryOperations(),
+    create_renpy_adapter(),
+    native,
+  ).read_from_stream(container.content, "demo.renpy");
   expect(parsed.warnings).toEqual([]);
   const display = parsed.items.find((item) => item.src === "First line [lg_name].")!;
   const code = parsed.items.find((item) => item.status === "RULE_SKIPPED")!;
@@ -87,7 +89,7 @@ it.each(["6.99.8", "8.0.3"])("%s 离线重载、人工放行与重复导出共�
 async function import_fixture(root: string, native: ReturnType<typeof create_renpy_fixture>) {
   const game = (await discover_renpy_source(root, native))!;
   const data = collect_renpy_files(game, native);
-  const format = new GameFormat(create_renpy_adapter(), native);
+  const format = new GameFormat(new GameDirectoryOperations(), create_renpy_adapter(), native);
   const asset = await format.create_container(
     data,
     "demo.renpy",

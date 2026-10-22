@@ -1,3 +1,4 @@
+import { GameDirectoryOperations } from "./game-directory-operations";
 import type { GameSource } from "./engines";
 import { FileFormatService } from "../../file-format-service";
 import fs from "node:fs";
@@ -165,7 +166,12 @@ it.each(["mv", "mz", "wolfrpg"] as const)("%s 反复导入和替换字体", asyn
         ]);
   files.set(font_path, Buffer.from("original font"));
   for (const [name, bytes] of files) native.write_file_sync(path.join(temp.path, name), bytes);
-  const service = new FileFormatService({ target_language: "ZH" }, async () => null, native);
+  const service = new FileFormatService(
+    new GameDirectoryOperations(),
+    { target_language: "ZH" },
+    async () => null,
+    native,
+  );
   const entry = (await service.collect_source_file_entries([temp.path]))[0]!;
   await service.prepare_source(entry);
   await replace(temp.path, new Map());

@@ -65,12 +65,9 @@ describe("run_cli_job", () => {
   it("原生游戏输入只向 stderr 提示备份，stdout 不受影响", async () => {
     const harness = create_backend_services_harness();
     const paths = create_cli_paths();
-    vi.spyOn(
-      harness.backend_services.project.lifecycle,
-      "summarize_source_files",
-    ).mockResolvedValue({ contains_game: true } as Awaited<
-      ReturnType<typeof harness.backend_services.project.lifecycle.summarize_source_files>
-    >);
+    harness.create_project_commit.mockImplementationOnce(async (_request, notify) => {
+      notify?.();
+    });
     vi.spyOn(harness.backend_services.project.summary, "read").mockResolvedValue({
       projectPath: "test.lg",
       sectionRevisions: {},
@@ -82,9 +79,6 @@ describe("run_cli_job", () => {
       await run_cli_job(harness.backend_services, create_command(paths), harness.status_reporter);
       expect(stderr).toHaveBeenCalledExactlyOnceWith(expect.any(String));
       expect(stdout).not.toHaveBeenCalled();
-      expect(stderr.mock.invocationCallOrder[0]).toBeLessThan(
-        harness.create_project_commit.mock.invocationCallOrder[0]!,
-      ); // 提示必须早于游戏目录改写。
     } finally {
       stderr.mockRestore();
       stdout.mockRestore();
@@ -128,6 +122,7 @@ describe("run_cli_job", () => {
         source_paths: [paths.input_path],
         languages: { source_language: "JA", target_language: "ZH" },
       }),
+      expect.any(Function),
     );
     expect(harness.apply_task_input).toHaveBeenCalledWith(await build_cli_task_input(command));
     expect(harness.generate_files_to_directory).toHaveBeenCalledWith(paths.output_dir, []);
@@ -294,7 +289,7 @@ function create_backend_services_harness(failures: { unloadFailure?: Error } = {
   const set_transient_overrides = vi.fn((value: unknown) => {
     events.push(value === null ? "settings_reset" : "settings");
   });
-  const create_project_commit = vi.fn(async (request: { path: string }) => {
+  const create_project_commit = vi.fn(async (request: { path: string }, _notify?: () => void) => {
     events.push("create");
     created_project_paths.push(request.path);
     cleanup_roots.push(path.dirname(request.path));
@@ -357,7 +352,6 @@ function create_backend_services_harness(failures: { unloadFailure?: Error } = {
           }),
         },
         lifecycle: {
-          summarize_source_files: async () => ({ contains_game: false }),
           apply_task_input,
           create_project_commit,
           unload_project,

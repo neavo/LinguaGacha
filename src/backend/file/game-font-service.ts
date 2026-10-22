@@ -4,7 +4,8 @@ import { GAME_FONT_INPUT_EXTENSIONS } from "../../shared/game-font";
 import { default_native_fs, type NativeFs } from "../../native/native-fs";
 import type { JsonRecord } from "../../domain/json";
 import { AppError, read_error_message } from "../../shared/error";
-import type { RuntimeOperationGate } from "../runtime-operation-gate";
+import { GameDirectoryOperations } from "./shared/game/game-directory-operations";
+import { resolve_game_source_input } from "./shared/game/source-input";
 import { read_font_family_names } from "./shared/game/font-name";
 import { GAME_ENGINES, type GameSource } from "./shared/game/engines";
 import { replace_game_font, type GameFont } from "./shared/game/font-replace";
@@ -17,34 +18,50 @@ type GameFontRequest = Readonly<{ font_path: string; game_path: string }>; // �
 export class GameFontService {
   /** 注入写入互斥、准备任务与文件访问，检查和修改共用同一组依赖。 */
   public constructor(
-    private readonly gate: Pick<RuntimeOperationGate, "run_project_write">, // 与导入、翻译共用游戏目录写入互斥。
+    private readonly game_directory_operations: GameDirectoryOperations,
     private readonly execute: GamePrepareExecution,
     private readonly fs: NativeFs = default_native_fs,
   ) {}
 
-  /** 选择后尽早报告不支持的字体或游戏，不占用写入。 */
+  /** 短暂占用目录检查游戏，用户确认期间释放占用。 */
   public async inspect(body: JsonRecord): Promise<JsonRecord> {
     const request = read_request(body);
-    this.read_font(request.font_path);
-    const game = await this.read_game(request.game_path);
-    return { godot_packs: game.file_type === "GODOT" ? [godot_pack_preview(game.game)] : [] };
+    return this.game_directory_operations.run(
+      [this.read_root(request.game_path)],
+      async (signal) => {
+        this.read_font(request.font_path);
+        const game = await this.read_game(request.game_path, signal);
+        return { godot_packs: game.file_type === "GODOT" ? [godot_pack_preview(game.game)] : [] };
+      },
+    );
   }
 
   /** 写入占用覆盖重新识别、解包、替换、回滚和清理的全过程。 */
   public async apply(body: JsonRecord): Promise<JsonRecord> {
     const request = read_request(body);
-    return this.gate.run_project_write(async (signal) => {
-      const font = this.read_font(request.font_path);
-      let game = await this.read_game(request.game_path, signal);
-      const orders = read_godot_pack_orders(body["godot_pack_orders"]);
-      if (orders?.length) {
-        if (orders.length !== 1 || game.file_type !== "GODOT")
-          throw new AppError("request.validation_failed");
-        game = { ...game, game: apply_godot_pack_order(game.game, orders[0]!) };
-      }
-      await replace_game_font(game, font, this.fs, this.execute, signal);
-      return {};
-    });
+    return this.game_directory_operations.run(
+      [this.read_root(request.game_path)],
+      async (signal) => {
+        const font = this.read_font(request.font_path);
+        let game = await this.read_game(request.game_path, signal);
+        const orders = read_godot_pack_orders(body["godot_pack_orders"]);
+        if (orders?.length) {
+          if (orders.length !== 1 || game.file_type !== "GODOT")
+            throw new AppError("request.validation_failed");
+          game = { ...game, game: apply_godot_pack_order(game.game, orders[0]!) };
+        }
+        await replace_game_font(game, font, this.fs, this.execute, signal);
+        return {};
+      },
+    );
+  }
+
+  /** 只确定目录范围，游戏识别在取得占用后执行。 */
+  private read_root(input: string): string {
+    const resolved = resolve_game_source_input(input, this.fs);
+    if (!resolved)
+      throw new AppError("file.invalid_structure", { message: "Unsupported game input: " + input });
+    return resolved.root;
   }
 
   /** 输入扩展名限定为 TTF，字体族名沿用原有解析器读取。 */

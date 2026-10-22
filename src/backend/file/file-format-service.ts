@@ -1,3 +1,5 @@
+import { resolve_game_source_input } from "./shared/game/source-input";
+import { GameDirectoryOperations } from "./shared/game/game-directory-operations";
 import type { GodotPackOrder } from "../../shared/godot";
 import { apply_godot_pack_order, godot_pack_preview } from "./godot/source";
 import { GAME_ENGINES, prepare_game_source } from "./shared/game/engines";
@@ -80,6 +82,7 @@ export class FileFormatService {
    * 构造时固定各格式处理器，保证一次服务实例内配置一致
    */
   public constructor(
+    private readonly game_directory_operations: GameDirectoryOperations,
     config: FileFormatServiceConfig,
     private readonly pdf_execution: PDFExecution,
     native_fs: NativeFs = default_native_fs,
@@ -89,7 +92,7 @@ export class FileFormatService {
     this.games = Object.fromEntries(
       Object.entries(GAME_ENGINES).map(([type, engine]) => [
         type,
-        new GameFormat(engine.create_adapter(), native_fs),
+        new GameFormat(this.game_directory_operations, engine.create_adapter(), native_fs),
       ]),
     ) as Record<GameFileType, GameFormat>;
     this.txt = new TXTFormat();
@@ -199,6 +202,23 @@ export class FileFormatService {
       file_type: type as ItemFileType,
       items: await format.read_from_stream(content, rel_path),
     };
+  }
+
+  /** 来源发现到原稿固化共用一次占用，内部发现与准备不重复申请。 */
+  public async with_source_directories<T>(
+    source_paths: readonly string[],
+    operation: (signal: AbortSignal) => Promise<T>,
+    signal?: AbortSignal,
+  ): Promise<T> {
+    const directories = source_paths.map((input) => {
+      try {
+        return resolve_game_source_input(input, this.native_fs)?.root ?? input;
+      } catch {
+        // 来源检查统一归集读取失败；失败的 EXE 仍保守占用其父目录。
+        return path.extname(input).toLowerCase() === ".exe" ? path.dirname(input) : input;
+      }
+    });
+    return this.game_directory_operations.run(directories, operation, signal);
   }
 
   /** 新建、摘要和预览共用发现结果，正式导入重新识别本次选定来源。 */
@@ -360,7 +380,9 @@ export class FileFormatService {
    * 按文件发现的同一去重口径汇总总数和互斥扩展名命中数，不提前解析文件内容。
    */
   public async summarize_source_files(source_paths: string[]): Promise<ProjectSourceFileSummary> {
-    const entries = await this.collect_source_file_entries(source_paths);
+    const entries = await this.with_source_directories(source_paths, (signal) =>
+      this.collect_source_file_entries(source_paths, signal),
+    );
     const source_files = entries.filter((entry) => entry.source.kind !== "failure");
     const failed_files = entries.flatMap((entry) =>
       entry.source.kind === "failure"

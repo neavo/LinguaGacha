@@ -1,3 +1,4 @@
+import { GameDirectoryOperations } from "../shared/game/game-directory-operations";
 import { prepare_game_source } from "../shared/game/engines";
 import { expect, it, vi } from "vitest";
 import fs from "node:fs";
@@ -241,7 +242,12 @@ it.each(["root", "split"])("%s 归档移除后保留空目录及嵌套空目录"
     const members = new Map([["Nested/Empty/", Buffer.alloc(0)]]);
     native.write_file_sync(path.join(temp.path, archives[1]!), await wolf_archive_fixture(members));
   }
-  const service = new FileFormatService({ target_language: "ZH" }, async () => null, native);
+  const service = new FileFormatService(
+    new GameDirectoryOperations(),
+    { target_language: "ZH" },
+    async () => null,
+    native,
+  );
   await service.prepare_source((await service.collect_source_file_entries([temp.path]))[0]!);
   expect(fs.statSync(path.join(temp.path, "Data/EnemyGraphic")).isDirectory()).toBe(true);
   expect(fs.statSync(path.join(temp.path, "Data/BasicData/Nested/Empty")).isDirectory()).toBe(true);
@@ -267,7 +273,12 @@ it("归档中的数据提示前缀在暂存时移除，准备结果为引擎可�
       350,
     ),
   );
-  const service = new FileFormatService({ target_language: "ZH" }, async () => null, native);
+  const service = new FileFormatService(
+    new GameDirectoryOperations(),
+    { target_language: "ZH" },
+    async () => null,
+    native,
+  );
   await service.prepare_source((await service.collect_source_file_entries([temp.path]))[0]!);
   expect(fs.readFileSync(path.join(temp.path, "Data/BasicData/Game.dat")).equals(game)).toBe(true);
 });
@@ -302,7 +313,12 @@ it.each(["unsupported", "core", "map-read", "companion-read"])(
     if (failure === "unsupported") packed.writeUInt32LE((999 << 16) | 2, 44);
     native.write_file_sync(path.join(root, "Data.wolf"), packed);
     native.write_file_sync(path.join(root, "Data/BasicData/CommonEvent.dat"), "original loose");
-    const service = new FileFormatService({ target_language: "ZH" }, async () => null, native);
+    const service = new FileFormatService(
+      new GameDirectoryOperations(),
+      { target_language: "ZH" },
+      async () => null,
+      native,
+    );
     const entries = await service.collect_source_file_entries([root]);
     await expect(service.prepare_source(entries[0]!)).rejects.toThrow(
       failure === "unsupported"
