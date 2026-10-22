@@ -64,6 +64,7 @@ export const de_de_project_page = {
     vtt: "WebVTT-Untertitel",
     pdf: "PDF-E-Book",
     epub: "EPUB-E-Book",
+    renpy_game: "RenPy-Spieldateien",
     rpy: "RenPy-Spieltext",
     json: "JSON-Spieltext",
     mtool: "MTool-Spieltext",

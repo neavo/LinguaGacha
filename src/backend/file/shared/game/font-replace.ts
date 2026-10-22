@@ -33,7 +33,7 @@ export async function replace_game_font(
         : { writes: [] };
       signal?.throwIfAborted();
       const writes = new Set(prepared.writes);
-      const files = engine.collect(source, fs, signal, { staging, result: prepared });
+      const files = await engine.collect(source, fs, signal, { staging, result: prepared });
       const outputs = font_outputs(source, files, font);
       // 修改暂存文件前已读定原字节，备份成功后才允许游戏事务提交。
       await write_game_backup(root, new Map([...files.data, ...files.fonts]), fs, signal);

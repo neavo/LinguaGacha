@@ -164,7 +164,7 @@ GUI、preload、native 或 Backend Runtime worker 变化时，先运行相关目
 
 |变化|测试|
 |---|---|
-|格式、来源发现或默认排除|对应的 `rpgmaker-mv-mz/`、`rpgmaker-rgss/`、`wolfrpg/` 或 `godot/` 测试，以及 `project-content-service.test.ts`|
+|格式、来源发现或默认排除|对应的 `rpgmaker-mv-mz/`、`rpgmaker-rgss/`、`wolfrpg/`、`godot/` 或 `renpy-game/` 测试，以及 `project-content-service.test.ts`|
 |引擎登记表与共享容器|各原生格式的测试、来源发现、校对缓存、Agent 工作区原稿，以及 `shared/game/` 下的对应测试|
 |文件身份与迁移|数据库迁移、工程打开迁移、解析流水线和译文生成测试|
 |文本规则计算|`text-rule-type.test.ts`、翻译译前流程和校对评估|
@@ -184,6 +184,8 @@ GUI、preload、native 或 Backend Runtime worker 变化时，先运行相关目
 - WOLF 核对解包哈希、原稿字节和独立 LZ4 解码。游戏运行覆盖中文、选项分支、数据库显示及保留主标题时的存档身份。
 - Godot 核对外置与内嵌 PCK 展开、PE 修正、载体备份和重复导入，再将产品导出的译文拷回启动。运行时验收覆盖语言表 `fallback`、控件中文、脚本加载、系统字体回退、补丁副作用和资源目录枚举。禁用 `--path` 的样本从副本游戏目录直接启动。
 - Godot 字体工具按换字体与拷回译文的两种先后顺序验收，启动后核对资产字体控件与未指定字体的控件都取得所选字体。
+- Ren’Py 使用 `input/renpy_*` 的独立副本与隔离存档。分别验证归档展开、活动源码摘要、备份与重复导入。用产品生成结果覆盖准备后的副本，核对运行时文本和语句身份，并比较启动前后的编译文件哈希。字体能力尚未接入时，以运行时文本值验证写回，单列字形显示限制。
+- Ren’Py 的构造数据测试覆盖协议和写回行为。引擎兼容性使用真实游戏验收，并单独检查 `lock.txt` 与只读目录中的生成资源首次编译。文本保护变化同时运行 `renpy-boundaries.test.ts`、`text-preserve-rules.test.ts` 和旧 `renpy/` 格式测试。
 - 协议测试与游戏启动分别验收。Windows 启动须确认所选入口读取外部数据和明文素材。
 
 交付时注明未验证的布局、游戏流程和宿主平台。
@@ -235,6 +237,8 @@ Windows 启动器或更新器变化时，在对应的 `win-cli` 或 `win-berserk
 - `runAsNode` fuse 保持开启，供工作区启动 Electron Node 子进程。
 - Windows 启动器和更新器完成对应 Go module 的测试与构建。
 
+运行 Ren’Py 解析测试前执行 `node buildtools/build-workspace.mjs`。发行解析资源使用下方 `prepare-worker.test.ts` 入口验证。
+
 根安装使用 `npm ci`，保证依赖来源可复现。
 
 `afterPack` 中的测试、构建或复制失败都会终止打包。
@@ -255,8 +259,8 @@ Windows 启动器或更新器变化时，在对应的 `win-cli` 或 `win-berserk
 |变量|指向|使用的测试|
 |---|---|---|
 |`LINGUAGACHA_TEST_ELECTRON`|发行包可执行文件|`bootstrap.test.ts`、`javascript.test.ts`、`ruby.test.ts`、`prepare-worker.test.ts`|
-|`LINGUAGACHA_TEST_WORKSPACE_RUNTIME`|发行包工作区运行目录|`bootstrap.test.ts`、`javascript.test.ts`、`ruby.test.ts`、`pdf-host.test.ts`|
+|`LINGUAGACHA_TEST_WORKSPACE_RUNTIME`|发行包工作区运行目录|`bootstrap.test.ts`、`javascript.test.ts`、`ruby.test.ts`、`pdf-host.test.ts`、`prepare-worker.test.ts`|
 |`LINGUAGACHA_TEST_GAME_WORKER`|发行 ASAR 内的 `build/dist-electron/game-prepare-worker-entry.js`|`prepare-worker.test.ts`|
 
 - `pdf-host.test.ts` 只设置工作区运行目录，使用默认开发 Electron。
-- 脚本解析器部署还须核对发行工作区中的 `oxc-parser` 平台绑定与 `@ruby/prism` WASM。
+- 脚本解析器部署还须核对发行工作区中的 `oxc-parser` 平台绑定与 `@ruby/prism` WASM，以及 `web-tree-sitter` 和 `python/tree-sitter-python.wasm`、许可证。Python 语法包的原生 addon 不部署。

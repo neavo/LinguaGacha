@@ -1,5 +1,14 @@
 import path from "node:path";
 import {
+  discover_renpy_source,
+  is_renpy_root,
+  collect_renpy_files,
+  type RenpySource,
+} from "../../renpy-game/source";
+import { stage_renpy_source } from "../../renpy-game/prepare";
+import { create_renpy_adapter } from "../../renpy-game/renpy-game-format";
+import { read_renpy_metadata, renpy_default_status } from "../../renpy-game/item";
+import {
   discover_godot_source,
   is_godot_root,
   collect_godot_files,
@@ -57,6 +66,7 @@ import { godot_font_outputs } from "../../godot/font";
 import { read_godot_sources } from "../../godot/readable";
 
 type GameSources = {
+  RENPY_NATIVE: RenpySource;
   GODOT: GodotSource;
   WOLFRPG: WolfSource;
   RPGMAKER_MV_MZ: RPGMakerSource;
@@ -83,7 +93,7 @@ interface EngineDefinition<G> {
     fs: NativeFs,
     signal?: AbortSignal,
     prepared?: PreparedGameFiles,
-  ): GameSourceFiles;
+  ): GameSourceFiles | Promise<GameSourceFiles>;
   create_adapter(): GameFormatAdapter;
   read_metadata(extra: Item["extra_field"]): { internal_file_path: string };
   default_status(item: Pick<Item, "extra_field">): ItemStatus;
@@ -131,6 +141,18 @@ function register<K extends GameFileType>(
 }
 
 export const GAME_ENGINES: Record<GameFileType, GameEngine> = {
+  RENPY_NATIVE: register("RENPY_NATIVE", {
+    discover: discover_renpy_source,
+    is_root: is_renpy_root,
+    source_path: (game) => game.root,
+    identity: (game) => game.root,
+    needs_stage: () => true,
+    stage: stage_renpy_source,
+    collect: collect_renpy_files,
+    create_adapter: create_renpy_adapter,
+    read_metadata: read_renpy_metadata,
+    default_status: renpy_default_status,
+  }),
   WOLFRPG: register("WOLFRPG", {
     discover: discover_wolf_source,
     is_root: wolf_source_root,

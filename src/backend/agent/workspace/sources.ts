@@ -25,7 +25,11 @@ export async function write_agent_workspace_sources(args: {
     if (content === null) throw new Error(`Project source asset is missing: ${file.file_path}`);
     const target = path.join(args.sourceRoot, relative_path);
     if (is_game_file_type(file.file_type)) {
-      const { members, game_files } = await read_game_container(content, file.file_path);
+      const { members, game_files } = await read_game_container(
+        content,
+        file.file_path,
+        GAME_ENGINES[file.file_type].create_adapter().has_metadata,
+      );
       await args.nativeFs.make_dir_async(target);
       const names = new ProjectAssetPathIndex(); // 清单、生成文件与原始成员冲突时中止，交由工作区清理整个投影。
       if (game_files !== null) {

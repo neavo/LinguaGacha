@@ -31,6 +31,7 @@ export class GamePrepareWorker {
     private readonly entry: URL | null,
     private readonly fs: NativeFs = default_native_fs,
     private readonly log_manager?: Pick<LogManager, "info">,
+    private readonly workspaceRuntimeDirectory?: string,
   ) {}
 
   /** 固定任务快照，并把调用取消与实例关闭合成一个生命周期。 */
@@ -70,7 +71,9 @@ export class GamePrepareWorker {
     if (!this.entry) {
       return stage_game_source(task, this.fs, signal);
     }
-    const worker = new Worker(this.entry, { workerData: task });
+    const worker = new Worker(this.entry, {
+      workerData: { task, workspaceRuntimeDirectory: this.workspaceRuntimeDirectory },
+    });
     let response: GamePrepareResponse | undefined;
     const abort = () => worker.postMessage("abort"); // 取消仅发消息，等待线程释放句柄。
     signal.addEventListener("abort", abort, { once: true });

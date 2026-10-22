@@ -5,7 +5,7 @@ import {
 } from "../../domain/quality";
 import base_text_preserve_entries from "../../../builtin/text_preserve/preset/base.json";
 import kag_text_preserve_entries from "../../../builtin/text_preserve/preset/kag.json";
-import renpy_text_preserve_entries from "../../../builtin/text_preserve/preset/renpy.json";
+import { scan_renpy_boundaries } from "./renpy-boundaries";
 import rpgmaker_text_preserve_entries from "../../../builtin/text_preserve/preset/rpgmaker.json";
 import godot_text_preserve_entries from "../../../builtin/text_preserve/preset/godot.json";
 import wolf_text_preserve_entries from "../../../builtin/text_preserve/preset/wolf.json";
@@ -31,7 +31,7 @@ const TEXT_PRESERVE_SMART_PATTERNS_BY_TEXT_TYPE = {
   NONE: [],
   MD: [],
   KAG: kag_text_preserve_entries,
-  RENPY: renpy_text_preserve_entries,
+  RENPY: [],
   RPGMAKER: rpgmaker_text_preserve_entries,
   WOLF: wolf_text_preserve_entries,
   GODOT: godot_text_preserve_entries,
@@ -40,9 +40,11 @@ const TEXT_PRESERVE_SMART_PATTERNS_BY_TEXT_TYPE = {
 /** 文本保护规则按源位置和规则顺序裁决正则候选，统一提供提取与替换操作。 */
 export class TextPreserveRule {
   private readonly patterns: RegExp[];
+  private readonly renpy: boolean;
 
   /** 一次编译本轮规则，后续文本操作复用同一组正则。 */
-  public constructor(entries: readonly Pick<TextPreserveEntry, "src">[]) {
+  public constructor(entries: readonly Pick<TextPreserveEntry, "src">[], renpy = false) {
+    this.renpy = renpy;
     this.patterns = entries.map(({ src }) => new RegExp(src, "giu"));
   }
 
@@ -89,7 +91,18 @@ export class TextPreserveRule {
 
   /** 收集全部候选后统一裁决重叠，避免规则遍历顺序改变文本顺序。 */
   private collect_sample_matches(text: string): TextPreserveMatch[] {
-    const candidates: TextPreserveMatch[] = [];
+    const candidates: TextPreserveMatch[] = this.renpy
+      ? scan_renpy_boundaries(text)
+          .filter(
+            (match) =>
+              match.value.startsWith("{#") ||
+              /^\[[A-Za-z_]\w*(?:\[|\()/u.test(match.value) ||
+              !/[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/u.test(
+                match.value,
+              ),
+          )
+          .map((match) => ({ ...match, definition_index: -1 }))
+      : [];
     this.patterns.forEach((pattern, definition_index) => {
       // `matchAll` 使用正则副本，每次调用从头匹配。
       for (const match of text.matchAll(pattern)) {
@@ -167,10 +180,10 @@ export function build_text_preserve_rule(args: {
   text_type: string;
   entries: readonly TextPreserveEntry[];
 }): TextPreserveRule {
-  return new TextPreserveRule([
-    ...base_text_preserve_entries,
-    ...resolve_text_preserve_entries(args),
-  ]);
+  return new TextPreserveRule(
+    [...base_text_preserve_entries, ...resolve_text_preserve_entries(args)],
+    normalize_text_preserve_mode(args.mode) === "smart" && args.text_type.toUpperCase() === "RENPY",
+  );
 }
 
 /**

@@ -1,3 +1,4 @@
+import { configure_python_parser } from "../file/renpy-game/python-syntax";
 import { GamePrepareWorker } from "../file/shared/game/prepare-worker";
 import { GameFontService } from "../file/game-font-service";
 import { configure_rgss_parser } from "../file/rpgmaker-rgss/ruby";
@@ -154,6 +155,7 @@ export class BackendServices {
     if (options.workspaceRuntimeDirectory) {
       configure_rpgmaker_parser(options.workspaceRuntimeDirectory);
       configure_rgss_parser(options.workspaceRuntimeDirectory);
+      configure_python_parser(options.workspaceRuntimeDirectory);
     }
     this.publish_event = options.publishEvent;
     const paths = options.paths;
@@ -187,6 +189,7 @@ export class BackendServices {
         : options.workerExecution.gamePrepareWorkerEntryUrl,
       undefined,
       this.logManager,
+      options.workspaceRuntimeDirectory,
     );
     this.compute_worker_client = new ComputeWorkerClient({
       execution: options.workerExecution,

@@ -13,6 +13,7 @@ import type { GamePreparation } from "./prepare";
 export type GameSourceFiles = Readonly<{
   data: ReadonlyMap<string, Uint8Array>;
   fonts: ReadonlyMap<string, Uint8Array>;
+  metadata?: Uint8Array; // 仅进入工程容器，游戏备份使用 data 和 fonts。
 }>;
 export type PreparedGameFiles = Readonly<{ staging: string; result: GamePreparation }>;
 

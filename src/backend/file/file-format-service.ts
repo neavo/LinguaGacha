@@ -344,12 +344,13 @@ export class FileFormatService {
         throw new Error("Unfinished game operation; recovery files: " + workspace);
       await prepare_game_source(source, this.native_fs, this.game_prepare_execution, signal);
       const format = this.games[source.file_type];
-      const files = GAME_ENGINES[source.file_type].collect(source, this.native_fs, signal);
+      const files = await GAME_ENGINES[source.file_type].collect(source, this.native_fs, signal);
       const container = await format.create_container(
         files.data,
         rel_path,
         source.game.root,
         signal,
+        files.metadata,
       );
       await write_game_backup(
         source.game.root,

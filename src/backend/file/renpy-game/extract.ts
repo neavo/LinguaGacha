@@ -1,0 +1,550 @@
+import type { ScriptDiagnostic } from "../file-format-types";
+import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
+import { read_compiled, write_compiled, type CompiledSlot } from "./compiled";
+import {
+  attributes,
+  class_name,
+  node_string,
+  resolve_node,
+  patch_edge,
+  pickle_string,
+  read_pickle,
+  type PickleNode,
+} from "./pickle";
+import { encode_python } from "./python";
+import {
+  PythonSession,
+  PythonSyntaxError,
+  type PythonFacts,
+  type PythonConstant,
+} from "./python-syntax";
+import {
+  node_value as value,
+  node_children as children,
+  node_text as text,
+  statement_identity,
+  code_edge,
+  is_pyexpr,
+  script_consumers,
+  script_codes,
+  analyze_code,
+  code_diagnostic,
+} from "./script";
+
+export type RenpyUsage = "say" | "menu" | "display" | "paragraph" | "code" | "string";
+export type RenpyCoordinate = {
+  slot: number;
+  edge: number; // 未分帧 Pickle 中的消费边偏移。
+  field: string;
+  start?: number; // 代码字符串内的 UTF-16 区间。
+  end?: number;
+};
+export type RenpyCandidate = {
+  key: string;
+  text: string;
+  usage: RenpyUsage;
+  coordinates: RenpyCoordinate[];
+  owners: string[]; // 本次解析确定的全部语句消费者，不作为可编辑元数据保存。
+};
+export type RenpyString = {
+  language: string | null;
+  old: string;
+  text: string;
+};
+export type RenpyScript = {
+  bytes: Buffer;
+  digest: string;
+  slots: CompiledSlot[];
+  candidates: RenpyCandidate[];
+  strings: RenpyString[];
+  warnings: ScriptDiagnostic[];
+  python2: boolean;
+};
+
+/** 关键字绑定属于具体引擎接口，未知调用不从参数名称推测用途。 */
+const DISPLAY_CALLS: Readonly<Record<string, readonly string[]>> = {
+  _: ["s"],
+  __: ["s"],
+  ___: ["s"],
+  Character: ["name"],
+  Text: ["text"],
+  Notify: ["message"],
+  Confirm: ["prompt"],
+  "renpy.notify": ["message"],
+  "renpy.input": ["prompt"],
+};
+/** 参数位置必须已确定，完整表达式才可继承语句的显示用途。 */
+function string_usage(token: PythonConstant, display: boolean): RenpyUsage {
+  const binding = token.argument;
+  const matches = (index: number, names: readonly string[]) =>
+    binding?.kind === "positional"
+      ? binding.index === index
+      : binding?.kind === "keyword" && names.includes(binding.name);
+  if (token.call === "_p" && matches(0, ["s"])) return "paragraph";
+  if (token.call === "renpy.say" && matches(1, ["what"])) return "say";
+  if (
+    (display && token.whole) ||
+    (Object.hasOwn(DISPLAY_CALLS, token.call) && matches(0, DISPLAY_CALLS[token.call]!))
+  )
+    return "display";
+  return "code";
+}
+
+const display_text = (node: PickleNode): string => {
+  const scalar = resolve_node(node).value;
+  return Buffer.isBuffer(scalar) ? scalar.toString("utf8") : node_string(node); // 旧界面按 UTF-8 替换非法字节，候选保持玩家实际看到的值。
+};
+
+const coordinate_key = (coordinate: RenpyCoordinate) =>
+  JSON.stringify([coordinate.slot, coordinate.edge, coordinate.start, coordinate.end]);
+
+/** 共享边连接跨槽位的消费者。缺少任一消费者或槽位时不提供可写条目。 */
+function write_groups(
+  candidates: RenpyCandidate[],
+  required: ReadonlyMap<string, Set<string>>,
+  slots: readonly CompiledSlot[],
+  warnings: ScriptDiagnostic[],
+): RenpyCandidate[] {
+  const parents = new Map(candidates.map((candidate) => [candidate, candidate])); // 并查集合并经共享边间接相连的候选。
+  const find = (candidate: RenpyCandidate): RenpyCandidate => {
+    let root = candidate;
+    while (parents.get(root) !== root) root = parents.get(root)!;
+    while (candidate !== root) {
+      const next = parents.get(candidate)!;
+      parents.set(candidate, root);
+      candidate = next;
+    }
+    return root;
+  };
+  const targets = new Map<string, RenpyCandidate>();
+  for (const candidate of candidates)
+    for (const coordinate of candidate.coordinates) {
+      const key = coordinate_key(coordinate),
+        prior = targets.get(key);
+      if (prior) parents.set(find(candidate), find(prior));
+      else targets.set(key, candidate);
+    }
+  const groups = new Map<RenpyCandidate, RenpyCandidate[]>();
+  for (const candidate of candidates) {
+    const root = find(candidate),
+      group = groups.get(root) ?? [];
+    group.push(candidate);
+    groups.set(root, group);
+  }
+  const result: RenpyCandidate[] = [];
+  for (const group of groups.values()) {
+    const first = group[0]!,
+      owners = [...new Set(group.flatMap((candidate) => candidate.owners))];
+    const missing_slot = owners.some((owner) =>
+      slots.some(
+        (slot) =>
+          !group.some(
+            (candidate) =>
+              candidate.owners.includes(owner) &&
+              candidate.coordinates.some((coordinate) => coordinate.slot === slot.slot),
+          ),
+      ),
+    );
+    if (missing_slot) {
+      warnings.push({
+        message: "Incomplete Ren'Py slot write group: " + first.key,
+        line: null,
+        column: null,
+      });
+      continue;
+    }
+    if (
+      group.some(
+        (candidate) =>
+          candidate.text !== first.text ||
+          candidate.usage !== first.usage ||
+          [...(required.get(candidate.key) ?? [])].some((owner) => !owners.includes(owner)),
+      )
+    ) {
+      warnings.push({
+        message: "Unresolved Ren'Py shared consumer: " + first.key,
+        line: null,
+        column: null,
+      });
+      continue;
+    }
+    result.push({
+      ...first,
+      key:
+        group.length === 1
+          ? first.key
+          : JSON.stringify(group.map((candidate) => candidate.key).sort()),
+      owners,
+      coordinates: [
+        ...new Map(
+          group
+            .flatMap((candidate) => candidate.coordinates)
+            .map((coordinate) => [coordinate_key(coordinate), coordinate]),
+        ).values(),
+      ],
+    });
+  }
+  return result;
+}
+
+/** 全部槽位先解析，必要索引缺失时让资产创建失败，避免生成不完整的字符串表。 */
+export async function extract_script(
+  input: Uint8Array,
+  python2 = false,
+  session?: PythonSession,
+): Promise<RenpyScript> {
+  if (!session) {
+    using owned = await PythonSession.create();
+    return await extract_script(input, python2, owned);
+  }
+  const bytes = Buffer.from(input);
+  const slots = read_compiled(bytes);
+  const candidates = new Map<string, RenpyCandidate>(),
+    required = new Map<string, Set<string>>(),
+    strings: RenpyString[] = [],
+    warnings: ScriptDiagnostic[] = [];
+  const records = script_codes({ slots });
+  for (const slot of slots) {
+    const consumers = script_consumers(slot.graph.root);
+    const excluded = new Set<PickleNode>(); // 其他语言的子图不产生基础语言候选。
+    /** 只沿翻译块向下遍历，next 可能指向块外的基础语言语句。 */
+    const mark_language = (edge: PickleNode): void => {
+      const node = resolve_node(edge);
+      if (excluded.has(node)) return;
+      excluded.add(node);
+      for (const child of node.children) mark_language(child);
+      const fields = attributes(node);
+      for (const [key, child] of fields) if (key !== "next") mark_language(child);
+      if (node.args) mark_language(node.args);
+      if (fields.size === 0 && node.state) mark_language(node.state);
+    };
+    for (const node of slot.graph.nodes)
+      if (node.kind === "object" && class_name(node) === "renpy.ast.Translate") {
+        const fields = attributes(node);
+        if (value(fields.get("language")) !== null) {
+          const block = fields.get("block");
+          if (block) mark_language(block);
+        }
+      }
+    const seen_legacy = new Map<PickleNode, Set<string>>();
+    /** 同一语句在多个槽位和别名节点中出现时，合并其消费边。 */
+    const add = (
+      owner: string,
+      field: string,
+      edge: PickleNode,
+      source: string,
+      usage: RenpyUsage,
+      start?: number,
+      end?: number,
+    ): void => {
+      const key = JSON.stringify([owner, field, start ?? null, source, usage]);
+      const candidate = candidates.get(key) ?? {
+        key,
+        text: source,
+        usage,
+        coordinates: [],
+        owners: [owner],
+      };
+      const required_owners = required.get(key) ?? new Set<string>();
+      for (const consumer of consumers(edge)) required_owners.add(consumer);
+      required.set(key, required_owners);
+      const coordinate: RenpyCoordinate = {
+        slot: slot.slot,
+        edge: edge.start,
+        field,
+        ...(start !== undefined ? { start, end: end! } : {}),
+      };
+      if (
+        !candidate.coordinates.some(
+          (entry) =>
+            entry.slot === coordinate.slot &&
+            entry.edge === coordinate.edge &&
+            entry.start === coordinate.start,
+        )
+      )
+        candidate.coordinates.push(coordinate);
+      candidates.set(key, candidate);
+    };
+    /** 旧界面保存 Python AST，按调用位置区分显示字符串和程序值。 */
+    const legacy = (
+      edge: PickleNode,
+      owner: string,
+      field: string,
+      display = false,
+      ancestors = new Set<PickleNode>(),
+    ) => {
+      const node = resolve_node(edge);
+      if (ancestors.has(node)) return;
+      const next = new Set(ancestors);
+      next.add(node);
+      const fields = attributes(node);
+      if (class_name(node) === "_ast.Str") {
+        const string = fields.get("s");
+        const seen = seen_legacy.get(node) ?? new Set<string>();
+        if (string && !seen.has(owner)) {
+          seen.add(owner);
+          seen_legacy.set(node, seen);
+          add(owner, field, string, display_text(string), display ? "display" : "code");
+        }
+        return;
+      }
+      if (class_name(node) === "_ast.Call") {
+        const func = fields.get("func"),
+          function_fields = func ? attributes(func) : new Map<string, PickleNode>();
+        const name = text(function_fields.get("attr") ?? function_fields.get("id"));
+        const args = children(fields.get("args"));
+        args.forEach((arg, index) =>
+          legacy(
+            arg,
+            owner,
+            field + ".args." + index,
+            index === 0 && /^(?:text|textbutton|label|Character|Text|_|__|___|_p)$/u.test(name),
+            next,
+          ),
+        );
+        for (const [key, child] of fields)
+          if (key !== "args") legacy(child, owner, field + "." + key, false, next);
+      } else {
+        node.children.forEach((child, index) =>
+          legacy(child, owner, field + "." + index, display, next),
+        );
+        for (const [key, child] of fields) legacy(child, owner, field + "." + key, display, next);
+      }
+    };
+    for (const record of records.filter((entry) => entry.slot === slot.slot && !entry.translated)) {
+      if (record.legacy) {
+        legacy(record.legacy, record.owner, record.field);
+        continue;
+      }
+      let tokens: PythonFacts;
+      try {
+        tokens = await analyze_code(record, session, python2);
+      } catch (error) {
+        if (!(error instanceof PythonSyntaxError)) throw error;
+        warnings.push(code_diagnostic(record, error.diagnostic));
+        continue;
+      }
+      warnings.push(...tokens.diagnostics.map((diagnostic) => code_diagnostic(record, diagnostic)));
+      for (const token of tokens.constants) {
+        if (token.dynamic) {
+          warnings.push(
+            code_diagnostic(record, {
+              start: token.start,
+              end: token.end,
+              reason: "Dynamic Python string expression",
+            }),
+          );
+          continue;
+        }
+        if (token.value)
+          add(
+            record.owner,
+            record.field,
+            record.edge!,
+            token.value,
+            string_usage(token, record.display),
+            token.start,
+            token.end,
+          );
+      }
+    }
+    for (const node of slot.graph.nodes) {
+      if (node.kind !== "object" || excluded.has(node)) continue;
+      const cls = class_name(node),
+        fields = attributes(node),
+        owner = statement_identity(node) ?? "<script>";
+      if (cls === "renpy.ast.Say" || cls === "renpy.ast.TranslateSay") {
+        const edge = fields.get("what");
+        if (edge && value(fields.get("language")) === null)
+          add(owner, "what", edge, text(edge), "say");
+      } else if (cls === "renpy.ast.Menu") {
+        children(fields.get("items")).forEach((item, index) => {
+          const edge = children(item)[0];
+          if (edge && text(edge)) add(owner, "items." + index, edge, text(edge), "menu");
+        });
+      } else if (cls === "renpy.ast.TranslateString") {
+        const language_value = value(fields.get("language"));
+        assert(
+          language_value === null ||
+            typeof language_value === "string" ||
+            Buffer.isBuffer(language_value),
+          "Invalid translation language",
+        );
+        const language = language_value === null ? null : text(fields.get("language"));
+        const original = text(fields.get("old")),
+          translated = text(fields.get("new"));
+        if (language === null) add(owner, "new", fields.get("new")!, translated, "string");
+        if (slot === slots.at(-1))
+          strings.push({
+            language,
+            old: original,
+            text: translated,
+          });
+      }
+    }
+  }
+  return {
+    bytes,
+    digest: createHash("sha256").update(bytes).digest("hex"),
+    slots,
+    candidates: write_groups([...candidates.values()], required, slots, warnings),
+    strings,
+    warnings,
+    python2,
+  };
+}
+
+export type RenpyChange = { candidate: RenpyCandidate; text: string };
+/** 同一代码字符串的多个 UTF-16 区间先合并，再按原始消费边写回全部槽位。 */
+export async function patch_script(
+  script: Pick<RenpyScript, "bytes" | "slots" | "python2">,
+  changes: readonly RenpyChange[],
+  loading = false,
+  session?: PythonSession,
+  signal?: AbortSignal,
+): Promise<Buffer> {
+  if (!session) {
+    using owned = await PythonSession.create();
+    return await patch_script(script, changes, loading, owned, signal);
+  }
+  if (!changes.length && !loading) return script.bytes;
+  for (const { candidate } of changes)
+    assert(
+      script.slots.every((slot) =>
+        candidate.coordinates.some((coordinate) => coordinate.slot === slot.slot),
+      ),
+      "Incomplete Ren'Py slot write group",
+    );
+  const slots = [];
+  for (const slot of script.slots) {
+    const consumers = changes.length ? script_consumers(slot.graph.root) : null;
+    const edits = new Map<number, { edge: PickleNode; replacement: Buffer }>();
+    const codes = new Map<
+      number,
+      { edge: PickleNode; changes: { start: number; end: number; text: string }[] }
+    >();
+    const nodes = new Map(slot.graph.nodes.map((node) => [node.start, node]));
+    const literals = new Map<number, Map<number, PythonFacts["constants"][number]>>(); // 同一代码字符串只扫描一次。
+    const code_updates = new Map<PickleNode, string>(); // 哈希更新在全部代码区间合并后执行。
+    const records = script_codes({ slots: [slot] }).filter((code) => code.edge);
+    const sources = new Map(records.map((code) => [code.edge!.start, code]));
+    const source_record = (edge: PickleNode) => {
+      const record = sources.get(edge.start);
+      assert(record && record.source !== null, "Missing Ren'Py source record");
+      assert(
+        records
+          .filter((entry) => entry.edge!.start === edge.start)
+          .every((entry) => entry.mode === record.mode),
+        "Conflicting Ren'Py compile modes",
+      );
+      return { source: record.source, mode: record.mode };
+    };
+    if (loading)
+      for (const record of records) {
+        const facts = await analyze_code(record, session, script.python2, signal);
+        const spans = facts.assignments
+          .filter(
+            (entry) =>
+              entry.root &&
+              entry.operation === "=" &&
+              entry.target === "config.force_archives" &&
+              entry.value === true,
+          )
+          .map((entry) => ({ start: entry.start, end: entry.end, text: "False" }));
+        if (spans.length) codes.set(record.edge!.start, { edge: record.edge!, changes: spans });
+      }
+    const set = (edge: PickleNode, replacement: Buffer) => {
+      const existing = edits.get(edge.start);
+      assert(
+        !existing || existing.replacement.equals(replacement),
+        "Conflicting shared Ren'Py consumer at " + edge.start,
+      );
+      edits.set(edge.start, { edge, replacement });
+    };
+    for (const change of changes) {
+      const covered = new Set<string>();
+      for (const coordinate of change.candidate.coordinates) {
+        if (coordinate.slot !== slot.slot) continue;
+        const edge = nodes.get(coordinate.edge);
+        assert(edge, "Missing Ren'Py coordinate");
+        for (const owner of consumers!(edge)) {
+          assert(change.candidate.owners.includes(owner), "Unresolved Ren'Py shared consumer");
+          covered.add(owner);
+        }
+        if (coordinate.start === undefined) {
+          assert.equal(display_text(edge), change.candidate.text, "Ren'Py original text changed");
+          set(edge, pickle_string(change.text));
+        } else {
+          let tokens = literals.get(edge.start);
+          if (!tokens) {
+            const facts = await session.analyze(source_record(edge), script.python2, signal);
+            tokens = new Map(
+              facts.constants
+                .filter((token) => !token.dynamic)
+                .map((token) => [token.start, token]),
+            );
+            literals.set(edge.start, tokens);
+          }
+          const token = tokens.get(coordinate.start);
+          assert(
+            token && token.end === coordinate.end && token.value === change.candidate.text,
+            "Ren'Py code span changed",
+          );
+          const entry = codes.get(edge.start) ?? { edge, changes: [] };
+          entry.changes.push({
+            start: coordinate.start,
+            end: coordinate.end!,
+            text: encode_python(change.text),
+          });
+          codes.set(edge.start, entry);
+        }
+      }
+      assert(
+        change.candidate.owners.every((owner) => covered.has(owner)),
+        "Incomplete Ren'Py slot consumer group",
+      );
+    }
+    for (const { edge, changes: spans } of codes.values()) {
+      let source = text(edge),
+        boundary = source.length;
+      for (const span of spans.sort((a, b) => b.start - a.start)) {
+        assert(span.end <= boundary, "Overlapping Ren'Py code changes");
+        boundary = span.start;
+        source = source.slice(0, span.start) + span.text + source.slice(span.end);
+      }
+      await session.analyze({ ...source_record(edge), source }, script.python2, signal);
+      set(edge, pickle_string(source));
+      code_updates.set(edge, source);
+    }
+    for (const node of slot.graph.nodes) {
+      if (node.kind !== "object") continue;
+      const edge = code_edge(node),
+        source = edge ? code_updates.get(edge) : undefined;
+      if (source === undefined) continue;
+      if (is_pyexpr(node)) {
+        const hash = children(node.args)[4];
+        if (hash) {
+          // 引擎按 Unicode 码点计算 FNV-1a，不能按 UTF-8 字节计算。
+          let number = 0x811c9dc5;
+          for (const char of source)
+            number = Math.imul(number ^ char.codePointAt(0)!, 0x01000193) >>> 0;
+          const encoded = Buffer.alloc(7);
+          encoded[0] = 0x8a;
+          encoded[1] = 5;
+          encoded.writeUInt32LE(number, 2);
+          set(hash, encoded);
+        }
+      } else if (class_name(node) === "renpy.ast.PyCode") {
+        const hash = children(node.state)[5];
+        if (hash) set(hash, Buffer.from([0x4e])); // None 让引擎重算代码哈希，保留各版本的内部处理规则。
+      }
+    }
+    let data = slot.data;
+    for (const edit of [...edits.values()].sort((a, b) => b.edge.start - a.edge.start))
+      data = patch_edge(data, edit.edge, edit.replacement);
+    read_pickle(data);
+    slots.push({ slot: slot.slot, data });
+  }
+  return write_compiled(script.bytes, slots);
+}
