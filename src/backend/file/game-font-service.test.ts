@@ -1,3 +1,4 @@
+import { GameDirectoryOperations } from "./shared/game/game-directory-operations";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -5,7 +6,6 @@ import { expect, it, vi } from "vitest";
 import { NativeFs } from "../../native/native-fs";
 import { font_fixture } from "../../test/font-fixture";
 import { wolf_files } from "../../test/wolf-fixture";
-import { RuntimeOperationGate } from "../runtime-operation-gate";
 import { GameFontService } from "./game-font-service";
 import { GamePrepareWorker } from "./shared/game/prepare-worker";
 import {
@@ -28,7 +28,7 @@ it.each(["inspect", "apply"] as const)("%s 拒绝直接包入口且不准备或�
   const font_path = path.join(temp.path, "font.ttf");
   fs.writeFileSync(font_path, font_fixture([{ text: "Test" }]));
   const execute = vi.fn(new GamePrepareWorker(null, native).run);
-  const service = new GameFontService(new RuntimeOperationGate(), execute, native);
+  const service = new GameFontService(new GameDirectoryOperations(), execute, native);
   await expect(service[method]({ game_path, font_path })).rejects.toMatchObject({
     code: "file.invalid_structure",
   });
@@ -51,7 +51,7 @@ it.each(["pck", "embedded"])("Godot %s 字体接入、载体覆盖与重复换�
   native.write_file_sync(path.join(root, carrier), pack);
   const request = { game_path: root, font_path: path.join(temp.path, "custom.ttf") };
   const execute = vi.fn(new GamePrepareWorker(null, native).run);
-  const service = new GameFontService(new RuntimeOperationGate(), execute, native);
+  const service = new GameFontService(new GameDirectoryOperations(), execute, native);
   for (const family of ["First", "Second"]) {
     const font = font_fixture([{ text: family }]);
     fs.writeFileSync(request.font_path, font);
@@ -84,7 +84,7 @@ it.each(["inspect", "apply"] as const)("%s 拒绝未登记字体能力的 RGSS",
   const font_path = path.join(temp.path, "font.ttf");
   fs.writeFileSync(font_path, font_fixture([{ text: "Test" }]));
   const execute = vi.fn(new GamePrepareWorker(null, native).run);
-  const service = new GameFontService(new RuntimeOperationGate(), execute, native);
+  const service = new GameFontService(new GameDirectoryOperations(), execute, native);
   await expect(service[method]({ game_path: root, font_path })).rejects.toMatchObject({
     code: "file.invalid_structure",
   });
@@ -109,7 +109,7 @@ it("Godot 没有字体导入且关闭覆盖时保留封包，不提交解包文�
   const font_path = path.join(temp.path, "font.ttf");
   fs.writeFileSync(font_path, font_fixture([{ text: "Test" }]));
   const service = new GameFontService(
-    new RuntimeOperationGate(),
+    new GameDirectoryOperations(),
     new GamePrepareWorker(null, native).run,
     native,
   );
@@ -134,7 +134,7 @@ it("拒绝无效请求、非字体文件和不支持的游戏", async () => {
   using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-font-reject-"));
   const { font_path, game_path } = write_game(temp.path);
   const service = new GameFontService(
-    new RuntimeOperationGate(),
+    new GameDirectoryOperations(),
     new GamePrepareWorker(null, native).run,
     native,
   );
@@ -157,7 +157,7 @@ it("写入占用持续到解包与替换结束，期间拒绝重复提交", asyn
   const { promise: entered, resolve: enter } = Promise.withResolvers<void>();
   const { promise: released, resolve: release } = Promise.withResolvers<void>();
   const service = new GameFontService(
-    new RuntimeOperationGate(),
+    new GameDirectoryOperations(),
     async (task, signal) => {
       enter();
       await released;
@@ -167,10 +167,16 @@ it("写入占用持续到解包与替换结束，期间拒绝重复提交", asyn
   );
   await service.inspect(request);
   const first = service.apply(request);
-  await entered;
-  await expect(service.apply(request)).rejects.toMatchObject({ code: "runtime.busy" });
-  release();
-  await first;
+  try {
+    await entered;
+    await expect(service.apply(request)).rejects.toMatchObject({ code: "file.busy" });
+    await expect(
+      service.inspect({ ...request, game_path: path.dirname(request.game_path) }),
+    ).rejects.toMatchObject({ code: "file.busy" });
+  } finally {
+    release();
+    await first;
+  }
   expect(
     fs.existsSync(path.join(path.dirname(request.game_path), path.basename(request.font_path))),
   ).toBe(true);
@@ -181,7 +187,7 @@ it("游戏目录与启动程序走同一检查与修改流程", async () => {
   const { font_path, game_path } = write_game(temp.path);
   const request = { font_path, game_path: path.dirname(game_path) };
   const service = new GameFontService(
-    new RuntimeOperationGate(),
+    new GameDirectoryOperations(),
     new GamePrepareWorker(null, native).run,
     native,
   );
@@ -202,7 +208,7 @@ it.each(["inspect", "apply"] as const)(
     local.write_file_sync(path.join(root, "custom.bin"), "original file");
     local.write_file_sync(path.join(root, "backup_lg/keep"), "original backup");
     const service = new GameFontService(
-      new RuntimeOperationGate(),
+      new GameDirectoryOperations(),
       new GamePrepareWorker(null, local).run,
       local,
     );
@@ -227,7 +233,7 @@ it("支持混合大小写扩展名并覆盖已有同名字体", async () => {
   const existing = "CUSTOM.TTF";
   native.write_file_sync(path.join(root, existing), "original font");
   const service = new GameFontService(
-    new RuntimeOperationGate(),
+    new GameDirectoryOperations(),
     new GamePrepareWorker(null, native).run,
     native,
   );
@@ -253,7 +259,7 @@ it("字体检查只读返回包顺序，修改使用同一确认顺序", async (
       godot_pack_fixture(new Map([...create_godot_fixture(), ["main.gd", Buffer.from(text!)]])),
     );
   const worker = new GamePrepareWorker(null, native),
-    service = new GameFontService(new RuntimeOperationGate(), worker.run, native);
+    service = new GameFontService(new GameDirectoryOperations(), worker.run, native);
   const request = { game_path: game, font_path };
   expect(await service.inspect(request)).toMatchObject({
     godot_packs: [{ game_root: game, external_pcks: ["game.pck", "patch.pck"] }],
@@ -278,7 +284,7 @@ it.each(["inspect", "apply"] as const)("%s 按扩展名拒绝 OTF 输入", async
   using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-font-content-"));
   const request = write_game(temp.path);
   const execute = vi.fn(new GamePrepareWorker(null, native).run);
-  const service = new GameFontService(new RuntimeOperationGate(), execute, native);
+  const service = new GameFontService(new GameDirectoryOperations(), execute, native);
   const font_path = path.join(temp.path, "rejected.otf");
   fs.writeFileSync(font_path, font_fixture([{ text: "Rejected" }]));
   await expect(service[method]({ ...request, font_path })).rejects.toMatchObject({
@@ -295,7 +301,7 @@ it.each(["inspect", "apply"] as const)("%s 对 TTF 路径沿用原有 SFNT 解�
   bytes.write("OTTO", 0, "latin1");
   fs.writeFileSync(request.font_path, bytes);
   const service = new GameFontService(
-    new RuntimeOperationGate(),
+    new GameDirectoryOperations(),
     new GamePrepareWorker(null, native).run,
     native,
   );

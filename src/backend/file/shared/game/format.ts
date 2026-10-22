@@ -1,3 +1,4 @@
+import type { GameDirectoryOperations } from "./game-directory-operations";
 import { write_game_directory } from "./directory";
 import {
   validate_game_path,
@@ -68,6 +69,7 @@ export interface GameMemberHandler {
 export class GameFormat {
   /** 每个处理器固定其格式适配器和文件入口。 */
   public constructor(
+    private readonly game_directory_operations: GameDirectoryOperations,
     private readonly adapter: GameFormatAdapter,
     private readonly fs: NativeFs,
   ) {}
@@ -149,49 +151,56 @@ export class GameFormat {
     assert_source_file_paths(context.source_files);
     for (const file of context.source_files) {
       if (file.file_type !== this.adapter.file_type) continue;
-      const content = await context.asset_reader(file.path);
-      if (content === null)
-        throw new AppError("file.not_found", { public_details: { file: file.path } });
-      const { members: files, input } = await read_game_container(
-        content,
-        file.path,
-        this.adapter.has_metadata,
-      );
-      const handler = await this.adapter.create_members(input);
-      const group = groups.get(file.path);
-      for (const internal of group?.keys() ?? []) {
-        if (!input.has(internal))
-          throw new AppError("file.invalid_structure", { public_details: { file: file.path } });
-      }
       const directory = source_file_output_path(file.path, file.file_type);
-      const extra = await handler.prepare_export?.([...(group?.values() ?? [])].flat());
-      const names = [...files.keys(), ...(extra?.keys() ?? [])];
-      // 暂存前检查成员边界，清单冲突由目录事务统一检查。
-      for (const name of names) validate_game_path(name);
-      for (const name of extra?.keys() ?? []) {
-        if (
-          name.toLowerCase() === GAME_FILES_MEMBER ||
-          (this.adapter.has_metadata && name.toLowerCase() === GAME_METADATA_MEMBER)
-        )
-          throw new Error("Generated output conflicts with reserved game metadata: " + name);
-      }
-      await write_game_directory(
-        path.join(context.paths.translated_path, directory),
-        this.fs,
-        async (staging) => {
-          for (const [name, member] of files) {
-            const bytes = await handler.render(
-              await member.async("uint8array"),
-              name,
-              group?.get(name) ?? [],
-            );
-            await this.fs.write_file(path.join(staging, name), bytes);
-          }
-          for (const [name, bytes] of extra ?? [])
-            await this.fs.write_file(path.join(staging, name), bytes);
-          return { writes: names };
-        },
-      );
+      const root = path.join(context.paths.translated_path, directory);
+      await this.game_directory_operations.run([root], async (signal) => {
+        const content = await context.asset_reader(file.path);
+        if (content === null)
+          throw new AppError("file.not_found", { public_details: { file: file.path } });
+        const { members: files, input } = await read_game_container(
+          content,
+          file.path,
+          this.adapter.has_metadata,
+        );
+        const handler = await this.adapter.create_members(input);
+        const group = groups.get(file.path);
+        for (const internal of group?.keys() ?? []) {
+          if (!input.has(internal))
+            throw new AppError("file.invalid_structure", { public_details: { file: file.path } });
+        }
+        const extra = await handler.prepare_export?.([...(group?.values() ?? [])].flat());
+        const names = [...files.keys(), ...(extra?.keys() ?? [])];
+        // 暂存前检查成员边界，清单冲突由目录事务统一检查。
+        for (const name of names) validate_game_path(name);
+        for (const name of extra?.keys() ?? []) {
+          if (
+            name.toLowerCase() === GAME_FILES_MEMBER ||
+            (this.adapter.has_metadata && name.toLowerCase() === GAME_METADATA_MEMBER)
+          )
+            throw new Error("Generated output conflicts with reserved game metadata: " + name);
+        }
+        await write_game_directory(
+          root,
+          this.fs,
+          async (staging) => {
+            for (const [name, member] of files) {
+              signal.throwIfAborted();
+              const bytes = await handler.render(
+                await member.async("uint8array"),
+                name,
+                group?.get(name) ?? [],
+              );
+              await this.fs.write_file(path.join(staging, name), bytes);
+            }
+            for (const [name, bytes] of extra ?? []) {
+              signal.throwIfAborted();
+              await this.fs.write_file(path.join(staging, name), bytes);
+            }
+            return { writes: names };
+          },
+          signal,
+        );
+      });
     }
   }
 

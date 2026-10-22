@@ -28,7 +28,7 @@ export interface CLIJobServices {
     summary: Pick<ProjectSummaryService, "read">;
     lifecycle: Pick<
       ProjectLifecycleService,
-      "summarize_source_files" | "create_project_commit" | "apply_task_input" | "unload_project"
+      "create_project_commit" | "apply_task_input" | "unload_project"
     >;
   };
   batchTranslation: Pick<BatchTranslationService, "subscribe" | "start_current_project">;
@@ -61,23 +61,23 @@ export async function run_cli_job(
       output_folder_open_on_finish: false,
     });
     transient_overrides_active = true;
-    const { contains_game } = await backend_services.project.lifecycle.summarize_source_files({
-      source_paths: command.inputPaths,
-    });
-    // CLI 在改写游戏目录前提示备份，stdout 保留给 JSONL 协议。
-    if (contains_game)
-      write_stderr(
-        `${format_i18n_message("zh-CN", "app.game_backup_warning")} | ${format_i18n_message("en-US", "app.game_backup_warning")}`,
-      );
-    await backend_services.project.lifecycle.create_project_commit({
-      path: project_path,
-      source_paths: command.inputPaths,
-      // 命令语言直接写入临时项目，翻译与导出读取同一项目事实。
-      languages: {
-        source_language: command.sourceLanguage,
-        target_language: command.targetLanguage,
+    await backend_services.project.lifecycle.create_project_commit(
+      {
+        path: project_path,
+        source_paths: command.inputPaths,
+        // 命令语言直接写入临时项目，翻译与导出读取同一项目事实。
+        languages: {
+          source_language: command.sourceLanguage,
+          target_language: command.targetLanguage,
+        },
       },
-    });
+      () => {
+        // 正式来源发现后、任何游戏准备前输出，stdout 保留给 JSONL 协议。
+        write_stderr(
+          `${format_i18n_message("zh-CN", "app.game_backup_warning")} | ${format_i18n_message("en-US", "app.game_backup_warning")}`,
+        );
+      },
+    );
     await backend_services.project.lifecycle.apply_task_input(await build_cli_task_input(command));
 
     const { entries } = (await backend_services.project.summary.read()).snapshot;

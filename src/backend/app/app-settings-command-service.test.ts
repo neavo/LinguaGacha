@@ -1,3 +1,4 @@
+import { GameDirectoryOperations } from "../file/shared/game/game-directory-operations";
 import { create_pdf_execution } from "../file/pdf/test-support";
 import fs from "node:fs";
 import os from "node:os";
@@ -51,6 +52,7 @@ async function create_service() {
   const on_commit = vi.fn();
   const writes = new ProjectWriteStore(database, on_commit, null);
   const content = new ProjectContentService(
+    new GameDirectoryOperations(),
     database,
     gate,
     session,

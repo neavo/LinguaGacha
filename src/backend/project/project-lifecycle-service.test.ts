@@ -1,3 +1,5 @@
+import { FileFormatService } from "../file/file-format-service";
+import { GameDirectoryOperations } from "../file/shared/game/game-directory-operations";
 import { evb_fixture } from "../../test/evb-fixture";
 import { wolf_files } from "../../test/wolf-fixture";
 import { wolf_archive_fixture } from "../../test/wolf-archive-fixture";
@@ -39,6 +41,38 @@ type TestProjectDatabase = ProjectDatabase & {
 
 describe("ProjectLifecycleService", () => {
   const cleanup_paths: string[] = []; // 生命周期测试会创建真实临时文件，统一登记清理避免污染用户工作区
+
+  it.each([false, true])("正式创建只发现一次，游戏通知先于本批全部准备：%s", async (games) => {
+    const root = create_temp_dir();
+    const paths = games
+      ? ["first", "second"].map((name) => {
+          const game = path.join(root, name);
+          fs.mkdirSync(game);
+          fs.writeFileSync(path.join(game, "game.pck"), godot_pack_fixture(create_godot_fixture()));
+          return game;
+        })
+      : [write_file(path.join(root, "text.txt"), "原文")];
+    const database = new ProjectDatabase();
+    const service = create_service({ database });
+    const discover = vi.spyOn(FileFormatService.prototype, "collect_source_file_entries");
+    const notify = vi.fn(() => {
+      for (const game of paths) {
+        expect(fs.readdirSync(game)).toEqual(["game.pck"]);
+      }
+    });
+    try {
+      const project = path.join(root, "new.lg");
+      await service.create_project_commit({ path: project, source_paths: paths }, notify);
+      expect(discover).toHaveBeenCalledTimes(1);
+      expect(notify).toHaveBeenCalledTimes(games ? 1 : 0);
+      expect(await database.get_all_asset_records(project)).toHaveLength(paths.length);
+      if (games)
+        for (const game of paths) expect(fs.existsSync(path.join(game, "game.pck"))).toBe(false);
+    } finally {
+      discover.mockRestore();
+      await database.close();
+    }
+  });
 
   it("新建来源摘要只读，确认顺序传到准备，错误顺序不创建工程", async () => {
     const root = create_temp_dir(),
@@ -1035,6 +1069,7 @@ describe("ProjectLifecycleService", () => {
     const project_event_handler = options.project_event_handler ?? vi.fn();
     let languages: ProjectLanguageSettings = DEFAULT_PROJECT_LANGUAGE_SETTINGS;
     return new ProjectLifecycleService(
+      new GameDirectoryOperations(),
       options.database,
       create_runtime_gate(options.task_busy ?? false),
       options.session_state ?? create_session_state(),

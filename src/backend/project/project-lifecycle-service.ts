@@ -1,3 +1,4 @@
+import { GameDirectoryOperations } from "../file/shared/game/game-directory-operations";
 import { read_godot_pack_orders } from "../file/godot/source";
 import type { GamePrepareExecution } from "../file/shared/game/prepare-worker";
 import type { SourceFileParseWarning } from "../file/file-format-types";
@@ -109,6 +110,7 @@ export class ProjectLifecycleService {
    * 初始化项目生命周期依赖，保持公开路由层只负责装配
    */
   public constructor(
+    private readonly game_directory_operations: GameDirectoryOperations,
     database: ProjectDatabase,
     runtime_gate: RuntimeOperationGate,
     session_state: ProjectSessionState,
@@ -306,9 +308,13 @@ export class ProjectLifecycleService {
   /**
    * 后端按用户源路径生成当前格式工程事实，提交后直接激活。
    */
-  public async create_project_commit(body: JsonRecord): Promise<JsonRecord> {
+  public async create_project_commit(
+    body: JsonRecord,
+    on_game_sources_detected?: () => void,
+  ): Promise<JsonRecord> {
     return await this.runtime_gate.run_project_write(
-      async (signal) => await this.create_project_commit_under_lease(body, signal),
+      async (signal) =>
+        await this.create_project_commit_under_lease(body, signal, on_game_sources_detected),
     );
   }
 
@@ -318,6 +324,7 @@ export class ProjectLifecycleService {
   private async create_project_commit_under_lease(
     body: JsonRecord,
     signal: AbortSignal,
+    on_game_sources_detected?: () => void,
   ): Promise<JsonRecord> {
     const requested_project_path = this.require_body_string(body, "path");
     const project_path = this.resolve_create_project_path(requested_project_path);
@@ -325,9 +332,23 @@ export class ProjectLifecycleService {
     const source_paths = this.normalize_source_paths(body["source_paths"]);
     const project_settings = this.read_create_project_settings(body["languages"]);
     // 后端重新解析源文件得到的唯一可信新建草稿。
-    const parsed_draft = await new SourceFileParsePipeline(
-      this.create_format_service(project_settings),
-    ).build_project_draft(source_paths, signal, read_godot_pack_orders(body["godot_pack_orders"]));
+    const format_service = this.create_format_service(project_settings);
+    const parsed_draft = await format_service.with_source_directories(
+      source_paths,
+      async (signal) => {
+        const entries = format_service.assign_source_file_paths(
+          await format_service.collect_source_file_entries(
+            source_paths,
+            signal,
+            read_godot_pack_orders(body["godot_pack_orders"]),
+          ),
+        );
+        // CLI 备份提示必须先于本批全部准备操作，通知失败时也不能开始改写来源。
+        if (entries.some((entry) => entry.source.kind === "game")) on_game_sources_detected?.();
+        return new SourceFileParsePipeline(format_service).build_project_draft(entries, signal);
+      },
+      signal,
+    );
     signal.throwIfAborted();
     this.assert_create_commit_has_importable_files(parsed_draft);
     // 将可信草稿转成持久项目事实的唯一计算结果。
@@ -542,6 +563,7 @@ export class ProjectLifecycleService {
    */
   private create_format_service(languages: ProjectLanguageSettings): FileFormatService {
     return new FileFormatService(
+      this.game_directory_operations,
       {
         target_language: languages.target_language,
       },

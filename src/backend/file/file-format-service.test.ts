@@ -1,3 +1,4 @@
+import { GameDirectoryOperations } from "./shared/game/game-directory-operations";
 import { read_resource } from "./godot/resource";
 import { create_godot_fixture, godot_pack_fixture } from "../../test/godot-fixture";
 import { read_godot_metadata } from "./godot/item";
@@ -24,6 +25,7 @@ import { PROJECT_SOURCE_FORMATS } from "../../shared/project-source-formats";
  */
 function create_service(): FileFormatService {
   return new FileFormatService(
+    new GameDirectoryOperations(),
     {
       target_language: "ZH",
     },
@@ -32,6 +34,29 @@ function create_service(): FileFormatService {
 }
 
 describe("FileFormatService", () => {
+  it("目录占用入口的读取失败仍按单个来源归集，保留正常文件", async () => {
+    using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-source-stat-failure-"));
+    const native = new NativeFs();
+    const bad = path.join(temp.path, "game.exe");
+    const good = path.join(temp.path, "good.txt");
+    fs.writeFileSync(bad, "launcher");
+    fs.writeFileSync(good, "正文");
+    const stat = native.stat.bind(native);
+    vi.spyOn(native, "stat").mockImplementation((file) => {
+      if (file === bad) throw new Error("stat denied");
+      return stat(file);
+    });
+    const service = new FileFormatService(
+      new GameDirectoryOperations(native),
+      { target_language: "ZH" },
+      create_pdf_execution(),
+      native,
+    );
+    const result = await service.summarize_source_files([bad, good]);
+    expect(result.source_file_count).toBe(1);
+    expect(result.failed_files).toMatchObject([{ source_path: bad, message: "stat denied" }]);
+  });
+
   it("已展开游戏的零包预览也检查正式执行前新增的包", async () => {
     using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-empty-pack-preview-"));
     const native = new NativeFs(),
@@ -83,6 +108,7 @@ describe("FileFormatService", () => {
     const native = new NativeFs();
     const write = vi.spyOn(native, "write_file").mockResolvedValue();
     const service = new FileFormatService(
+      new GameDirectoryOperations(),
       { target_language: "ZH" },
       create_pdf_execution(),
       native,
@@ -313,7 +339,11 @@ it("识别失败与正常来源共同进入只读摘要，正式导入重新识�
     text = path.join(temp.path, "ok.txt");
   fs.writeFileSync(source, evb_fixture(new Map()).subarray(0, -1));
   fs.writeFileSync(text, "text");
-  const service = new FileFormatService({ target_language: "ZH" }, async () => null);
+  const service = new FileFormatService(
+    new GameDirectoryOperations(),
+    { target_language: "ZH" },
+    async () => null,
+  );
   const summary = await service.summarize_source_files([temp.path]);
   expect(summary.source_file_count).toBe(1);
   expect(summary.failed_files).toMatchObject([{ source_path: source }]);
@@ -349,7 +379,12 @@ it("正式导入先拒绝根目录恢复材料，来源摘要只读", async () =
   const workspace = path.join(temp.path, ".tmp");
   native.write_file_sync(path.join(workspace, "rollback/keep"), "recovery");
   native.write_file_sync(path.join(temp.path, "backup_lg/keep"), "old backup");
-  const service = new FileFormatService({ target_language: "ZH" }, async () => null, native);
+  const service = new FileFormatService(
+    new GameDirectoryOperations(),
+    { target_language: "ZH" },
+    async () => null,
+    native,
+  );
   expect((await service.summarize_source_files([temp.path])).source_file_count).toBe(1);
   const entry = (await service.collect_source_file_entries([temp.path]))[0]!;
   await expect(service.prepare_source(entry)).rejects.toThrow(
@@ -362,7 +397,12 @@ it("正式导入先拒绝根目录恢复材料，来源摘要只读", async () =
 it("正式导入容器使用当前数据，不在游戏目录生成备份", async () => {
   using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-import-current-"));
   const native = new NativeFs();
-  const service = new FileFormatService({ target_language: "ZH" }, async () => null, native);
+  const service = new FileFormatService(
+    new GameDirectoryOperations(),
+    { target_language: "ZH" },
+    async () => null,
+    native,
+  );
   const files = new Map<string, string | Buffer>([
     [
       "www/data/System.json",
@@ -406,7 +446,12 @@ it.each(["read", "existing-read"])("导入 %s 失败保留准备结果并允许�
     ["img/a.png_", encrypted_media(png_fixture())],
   ]);
   for (const [name, bytes] of files) native.write_file_sync(path.join(temp.path, name), bytes);
-  const service = new FileFormatService({ target_language: "ZH" }, async () => null, native);
+  const service = new FileFormatService(
+    new GameDirectoryOperations(),
+    { target_language: "ZH" },
+    async () => null,
+    native,
+  );
   const entry = (await service.collect_source_file_entries([temp.path]))[0]!;
   if (phase === "existing-read") await service.prepare_source(entry);
   const read = native.read_file.bind(native);
@@ -430,7 +475,12 @@ it("产品门面完成来源摘要、准备、容器、翻译与导出", async (
     native = new NativeFs(),
     files = create_godot_fixture();
   native.write_file_sync(path.join(root, "game.pck"), godot_pack_fixture(files));
-  const service = new FileFormatService({ target_language: "ZH" }, create_pdf_execution(), native);
+  const service = new FileFormatService(
+    new GameDirectoryOperations(),
+    { target_language: "ZH" },
+    create_pdf_execution(),
+    native,
+  );
   const carrier = path.join(root, "game.pck");
   const [unsupported] = await service.discover_import_sources([
     { source_path: carrier, rel_path: "game.pck" },

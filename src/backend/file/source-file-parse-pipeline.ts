@@ -1,4 +1,3 @@
-import type { GodotPackOrder } from "../../shared/godot";
 import type { Item, ProjectItemPersistentRecord } from "../../domain/item";
 import type { SourceFileParseFailureRecord } from "../../shared/source-file-parse-failure";
 import { build_source_file_parse_failure } from "./source-file-parse-failure-reporter";
@@ -36,10 +35,10 @@ export type SourceFileProjectDraft = {
 };
 
 /**
- * 源文件解析流水线统一承载目录展开、文件读取、格式解析和失败明细归一。
+ * 源文件解析流水线消费已发现来源，统一准备、解析和归集失败。
  */
 export class SourceFileParsePipeline {
-  private readonly format_service: FileFormatService; // 格式分发和相对路径分配的唯一入口
+  private readonly format_service: FileFormatService; // 来源准备和格式分发共用本次设置快照。
 
   /**
    * 构造时固定格式服务，保证一次解析使用同一设置快照。
@@ -52,16 +51,10 @@ export class SourceFileParsePipeline {
    * 新建工程按来源顺序分配条目身份并准备资产写入。
    */
   public async build_project_draft(
-    source_paths: string[],
+    entries: readonly SourceFileParseCommand[],
     signal?: AbortSignal,
-    orders?: readonly GodotPackOrder[],
   ): Promise<SourceFileProjectDraft> {
-    const parse_result = await this.parse_source_entries(
-      this.format_service.assign_source_file_paths(
-        await this.format_service.collect_source_file_entries(source_paths, signal, orders),
-      ),
-      signal,
-    );
+    const parse_result = await this.parse_source_entries(entries, signal);
     const files: SourceFileProjectDraft["files"] = [];
     const items: SourceFileProjectDraft["items"] = [];
     let next_item_id = 1; // 由后端顺序分配，避免 renderer 伪造数据库主键

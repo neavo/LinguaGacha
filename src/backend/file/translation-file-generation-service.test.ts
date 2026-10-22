@@ -1,3 +1,4 @@
+import { GameDirectoryOperations } from "./shared/game/game-directory-operations";
 import type { ProjectDatabaseAccess } from "../database/database-operations";
 import { read_pdf_document } from "./pdf/pdf-document";
 import { create_pdf_execution, create_pdf_fixture } from "./pdf/test-support";
@@ -51,6 +52,7 @@ it("渲染校验开始前已关闭真实工程连接，校验失败保留文件�
     });
     const execute = vi.fn();
     const service = new TranslationFileGenerationService(
+      new GameDirectoryOperations(),
       database,
       create_setting_service(),
       session,
@@ -154,6 +156,7 @@ describe("TranslationFileGenerationService", () => {
     const session = new ProjectSessionState();
     session.mark_loaded(path.join(temp_dir, "legacy.lg"));
     const service = new TranslationFileGenerationService(
+      new GameDirectoryOperations(),
       create_database(items, {
         "old/sub.txt": {
           content: Buffer.from(`[Events]\n${fields}\n${prefix}原文\n`),
@@ -187,6 +190,7 @@ describe("TranslationFileGenerationService", () => {
       const session = new ProjectSessionState();
       session.mark_loaded(path.join(temp_dir, "empty.lg"));
       const service = new TranslationFileGenerationService(
+        new GameDirectoryOperations(),
         create_database([], assets),
         create_setting_service(),
         session,
@@ -233,6 +237,7 @@ describe("TranslationFileGenerationService", () => {
       session.mark_loaded(path.join(temp_dir, "project.lg"));
       const host = vi.fn(async () => create_pdf_fixture(["Translated"]));
       const service = new TranslationFileGenerationService(
+        new GameDirectoryOperations(),
         database,
         create_setting_service(),
         session,
@@ -298,6 +303,7 @@ describe("TranslationFileGenerationService", () => {
     const session = new ProjectSessionState();
     session.mark_loaded(path.join(temp_dir, "project.lg"));
     const service = new TranslationFileGenerationService(
+      new GameDirectoryOperations(),
       database,
       create_setting_service(),
       session,
@@ -343,6 +349,7 @@ describe("TranslationFileGenerationService", () => {
     ]);
     const output_folder_opener = vi.fn<OutputFolderOpener>();
     const service = new TranslationFileGenerationService(
+      new GameDirectoryOperations(),
       database,
       create_setting_service(),
       session_state,
@@ -363,6 +370,7 @@ describe("TranslationFileGenerationService", () => {
     session_state.mark_loaded(project_path);
     const content = Buffer.from("WEBVTT\n\n00:00.000 --> 00:02.000\n<lang ja>こんにちは</lang>\n");
     const parsed = await new FileFormatService(
+      new GameDirectoryOperations(),
       {
         target_language: "ZH",
       },
@@ -381,6 +389,7 @@ describe("TranslationFileGenerationService", () => {
       { target_language: "EN" },
     );
     const service = new TranslationFileGenerationService(
+      new GameDirectoryOperations(),
       database,
       create_setting_service(),
       session_state,
@@ -434,6 +443,7 @@ describe("TranslationFileGenerationService", () => {
       },
     ]);
     const service = new TranslationFileGenerationService(
+      new GameDirectoryOperations(),
       database,
       create_setting_service(),
       session_state,
@@ -483,6 +493,7 @@ describe("TranslationFileGenerationService", () => {
       { "readme.md": { content: Buffer.from(source), file_type: "MD_V2" } },
     );
     const service = new TranslationFileGenerationService(
+      new GameDirectoryOperations(),
       database,
       create_setting_service(),
       session_state,
@@ -514,6 +525,7 @@ describe("TranslationFileGenerationService", () => {
     ]);
     const log_collector = { info: vi.fn(), error: vi.fn() };
     const service = new TranslationFileGenerationService(
+      new GameDirectoryOperations(),
       database,
       create_setting_service({ app_language: "DE" }),
       session_state,
@@ -563,6 +575,7 @@ describe("TranslationFileGenerationService", () => {
     ]);
     const output_folder_opener = vi.fn<OutputFolderOpener>().mockResolvedValue(undefined);
     const service = new TranslationFileGenerationService(
+      new GameDirectoryOperations(),
       database,
       create_setting_service({ output_folder_open_on_finish: true }),
       session_state,
@@ -592,6 +605,7 @@ describe("TranslationFileGenerationService", () => {
     ]);
     const output_folder_opener = vi.fn<OutputFolderOpener>();
     const service = new TranslationFileGenerationService(
+      new GameDirectoryOperations(),
       database,
       create_setting_service({ output_folder_open_on_finish: true }),
       session_state,
@@ -630,6 +644,7 @@ describe("TranslationFileGenerationService", () => {
     const error = new Error("open failed");
     const output_folder_opener = vi.fn<OutputFolderOpener>().mockRejectedValue(error);
     const service = new TranslationFileGenerationService(
+      new GameDirectoryOperations(),
       database,
       create_setting_service({ output_folder_open_on_finish: true }),
       session_state,
@@ -682,6 +697,7 @@ describe("TranslationFileGenerationService", () => {
       }
       const execute = create_pdf_execution();
       const service = new TranslationFileGenerationService(
+        new GameDirectoryOperations(),
         database,
         create_setting_service({ output_folder_open_on_finish: true }),
         session_state,
@@ -728,6 +744,7 @@ describe("TranslationFileGenerationService", () => {
       throw error;
     });
     const service = new TranslationFileGenerationService(
+      new GameDirectoryOperations(),
       database,
       create_setting_service(),
       session,

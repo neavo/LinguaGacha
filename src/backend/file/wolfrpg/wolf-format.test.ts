@@ -1,3 +1,4 @@
+import { GameDirectoryOperations } from "../shared/game/game-directory-operations";
 import { expect, it } from "vitest";
 import fs from "node:fs";
 import os from "node:os";
@@ -26,7 +27,12 @@ it("游戏根目录、EXE 和 Data 去重为一个资产，解包覆盖散装文
       0,
     ),
   );
-  const service = new FileFormatService({ target_language: "ZH" }, async () => null, native);
+  const service = new FileFormatService(
+    new GameDirectoryOperations(),
+    { target_language: "ZH" },
+    async () => null,
+    native,
+  );
   const sources = [root, path.join(root, "GamePro.exe"), path.join(root, "Data")];
   const entries = await service.collect_source_file_entries(sources);
   expect(entries).toHaveLength(1);
@@ -100,7 +106,11 @@ it.each([
 });
 
 it("缺少核心配对整项失败，损坏的独立地图保留警告和零条目原稿", async () => {
-  const service = new FileFormatService({ target_language: "ZH" }, async () => null),
+  const service = new FileFormatService(
+      new GameDirectoryOperations(),
+      { target_language: "ZH" },
+      async () => null,
+    ),
     zip = new JSZip();
   for (const [name, bytes] of wolf_files()) zip.file(name, bytes);
   zip.file("Data/MapData/Broken.mps", Buffer.from([1]));

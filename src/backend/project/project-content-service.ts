@@ -1,3 +1,4 @@
+import { GameDirectoryOperations } from "../file/shared/game/game-directory-operations";
 import type { GodotPackOrder } from "../../shared/godot";
 import { godot_pack_preview, read_godot_pack_orders } from "../file/godot/source";
 import { build_source_file_parse_failure } from "../file/source-file-parse-failure-reporter";
@@ -103,6 +104,7 @@ export class ProjectContentService {
    * 注入 database、互斥门闩和会话状态，保持写库边界可测试
    */
   public constructor(
+    private readonly game_directory_operations: GameDirectoryOperations,
     database: ProjectDatabase,
     runtime_gate: RuntimeOperationGate,
     session_state: ProjectSessionState,
@@ -125,7 +127,9 @@ export class ProjectContentService {
     const project_path = this.session_state.require_loaded_project_path();
     const format_service = await this.create_format_service(project_path);
     const source_paths = this.normalize_string_list(request["source_paths"]);
-    const sources = await format_service.collect_source_file_entries(source_paths);
+    const sources = await format_service.with_source_directories(source_paths, (signal) =>
+      format_service.collect_source_file_entries(source_paths, signal),
+    );
     const snapshot = await this.database.read(project_path, (reader) => ({
       assets: reader.get_all_asset_records(project_path),
       files_revision: get_section_revision(reader.get_all_meta(project_path), "files"),
@@ -648,26 +652,34 @@ export class ProjectContentService {
     const by_path = new Map(
       assets.map((asset) => [normalize_project_asset_path(asset.path).toLowerCase(), asset]),
     );
-    const commands = await format_service.discover_import_sources(
-      files.map((file) => {
-        const asset = by_path.get(normalize_project_asset_path(file.target_rel_path).toLowerCase());
-        return {
-          source_path: file.source_path,
-          rel_path: asset?.path ?? file.target_rel_path,
-          file_type: asset?.file_type,
-        };
-      }),
+    return format_service.with_source_directories(
+      files.map((file) => file.source_path),
+      async (signal) => {
+        const commands = await format_service.discover_import_sources(
+          files.map((file) => {
+            const asset = by_path.get(
+              normalize_project_asset_path(file.target_rel_path).toLowerCase(),
+            );
+            return {
+              source_path: file.source_path,
+              rel_path: asset?.path ?? file.target_rel_path,
+              file_type: asset?.file_type,
+            };
+          }),
+          signal,
+          orders,
+        );
+        const final_files = new Map<string, { path: string; file_type: string }>(by_path);
+        for (const command of commands)
+          final_files.set(normalize_project_asset_path(command.rel_path).toLowerCase(), {
+            path: command.rel_path,
+            file_type: command.file_type ?? "",
+          });
+        assert_source_file_paths(final_files.values());
+        return new SourceFileParsePipeline(format_service).parse_import_commands(commands, signal);
+      },
       signal,
-      orders,
     );
-    const final_files = new Map<string, { path: string; file_type: string }>(by_path);
-    for (const command of commands)
-      final_files.set(normalize_project_asset_path(command.rel_path).toLowerCase(), {
-        path: command.rel_path,
-        file_type: command.file_type ?? "",
-      });
-    assert_source_file_paths(final_files.values());
-    return new SourceFileParsePipeline(format_service).parse_import_commands(commands, signal);
   }
 
   /**
@@ -726,6 +738,7 @@ export class ProjectContentService {
       await this.database.get_all_meta(project_path),
     );
     return new FileFormatService(
+      this.game_directory_operations,
       {
         target_language: languages.target_language,
       },

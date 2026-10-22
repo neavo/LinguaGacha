@@ -1,3 +1,7 @@
+import { font_fixture } from "../../test/font-fixture";
+import { create_godot_fixture, godot_pack_fixture } from "../../test/godot-fixture";
+import { GameFormat } from "../file/shared/game/format";
+import { read_json_record } from "../../domain/json";
 import { png_fixture, encrypted_media, MEDIA_KEY } from "../../test/media-fixture";
 import { NativeFs } from "../../native/native-fs";
 import { Model } from "../../domain/model";
@@ -27,65 +31,178 @@ describe("GuiBackendBootstrap 集成", () => {
   });
   afterEach(() => vi.restoreAllMocks());
 
-  it("关闭在途导入时等待目录回滚与清理，随后才关闭数据库和 Gateway", async () => {
-    using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-import-shutdown-"));
-    const game = path.join(temp.path, "game");
-    fs.mkdirSync(path.join(game, "data"), { recursive: true });
-    fs.mkdirSync(path.join(game, "js"));
-    fs.mkdirSync(path.join(game, "img"));
-    const original = JSON.stringify({ hasEncryptedImages: true, encryptionKey: MEDIA_KEY });
-    fs.writeFileSync(path.join(game, "data/System.json"), original);
-    fs.writeFileSync(path.join(game, "js/rmmz_core.js"), "// fixture");
-    fs.writeFileSync(path.join(game, "img/a.png_"), encrypted_media(png_fixture()));
-    const committed = Promise.withResolvers<void>(),
-      cleanup = Promise.withResolvers<void>(),
-      release = Promise.withResolvers<void>();
-    const rename = NativeFs.prototype.rename,
-      remove = NativeFs.prototype.remove_async;
-    vi.spyOn(NativeFs.prototype, "rename").mockImplementation(function (this: NativeFs, from, to) {
-      rename.call(this, from, to);
-      if (from.includes(path.join(".tmp", "stage")) && to.endsWith("a.png")) committed.resolve();
-    });
-    vi.spyOn(NativeFs.prototype, "remove_async").mockImplementation(async function (
-      this: NativeFs,
-      target,
-      options,
-    ) {
-      if (target === path.join(game, ".tmp")) {
-        cleanup.resolve();
-        await release.promise;
+  it.each(["create", "import"])(
+    "%s 固化原稿期间阻止同目录字体、预览与输出，结束后可重试",
+    async (operation) => {
+      using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-directory-boundary-"));
+      const game = path.join(temp.path, "game");
+      fs.mkdirSync(game);
+      fs.writeFileSync(path.join(game, "game.pck"), godot_pack_fixture(create_godot_fixture()));
+      const font_path = path.join(temp.path, "font.ttf");
+      fs.writeFileSync(font_path, font_fixture([{ text: "Selected" }]));
+      const bootstrap = new GuiBackendBootstrap(create_options(temp.path));
+      const entered = Promise.withResolvers<void>();
+      const release = Promise.withResolvers<void>();
+      let pending: Promise<unknown> | undefined;
+      try {
+        const { backendServices: services, apiBaseUrl } = await bootstrap.start();
+        await services.project.lifecycle.create_project_commit({
+          path: path.join(temp.path, "first.lg"),
+          source_paths: [game],
+        });
+        const preview = await services.project.content.preview_import_files({
+          source_paths: [game],
+        });
+        const manifest = await services.project.readManifest();
+        const create = GameFormat.prototype.create_container;
+        vi.spyOn(GameFormat.prototype, "create_container").mockImplementationOnce(async function (
+          this: GameFormat,
+          ...args
+        ) {
+          entered.resolve();
+          await release.promise;
+          return create.apply(this, args);
+        });
+        pending =
+          operation === "create"
+            ? services.project.lifecycle.create_project_commit({
+                path: path.join(temp.path, "next.lg"),
+                source_paths: [game],
+              })
+            : services.project.content.import_files({
+                files: preview.files.map(({ source_path, target_rel_path }) => ({
+                  source_path,
+                  target_rel_path,
+                })),
+                conflict_action: "replace",
+                expected_section_revisions: {
+                  files: preview.files_revision,
+                  items: read_json_record(manifest.sectionRevisions).items ?? 0,
+                },
+              });
+        await entered.promise;
+        expect(fs.existsSync(path.join(game, ".tmp"))).toBe(false);
+        for (const method of ["inspect", "apply"]) {
+          const response = await fetch(apiBaseUrl + "/api/toolbox/game-font/" + method, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ game_path: game, font_path }),
+          });
+          expect(response.status).toBe(423);
+          expect(await response.json()).toMatchObject({ error: { code: "file.busy" } });
+        }
+        await expect(
+          services.project.content.preview_import_files({ source_paths: [game] }),
+        ).rejects.toMatchObject({ code: "file.busy" });
+        await expect(
+          services.files.translationGeneration.generate_files_to_directory(temp.path),
+        ).rejects.toMatchObject({ code: "file.busy" });
+        release.resolve();
+        await pending;
+        await expect(
+          services.files.gameFont.inspect({ game_path: game, font_path }),
+        ).resolves.toBeDefined();
+        await expect(
+          services.files.translationGeneration.generate_files_to_directory(temp.path),
+        ).resolves.toMatchObject({ accepted: true });
+      } finally {
+        release.resolve();
+        await Promise.allSettled(pending ? [pending] : []);
+        await bootstrap.stop();
       }
-      await remove.call(this, target, options);
-    });
-    const bootstrap = new GuiBackendBootstrap(create_options(temp.path));
-    try {
-      const started = await bootstrap.start();
-      const request = fetch(started.apiBaseUrl + "/api/session/project/create", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ path: path.join(temp.path, "cancelled.lg"), source_paths: [game] }),
+    },
+  );
+
+  it.each(["import", "font"])(
+    "关闭在途 %s 时等待目录回滚与清理，随后才关闭数据库和 Gateway",
+    async (operation) => {
+      using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-import-shutdown-"));
+      const game = path.join(temp.path, "game");
+      fs.mkdirSync(path.join(game, "data"), { recursive: true });
+      fs.mkdirSync(path.join(game, "js"));
+      fs.mkdirSync(path.join(game, "img"));
+      fs.mkdirSync(path.join(game, "fonts"));
+      fs.writeFileSync(path.join(game, "fonts/main.ttf"), "original font");
+      const font_path = path.join(temp.path, "selected.ttf");
+      fs.writeFileSync(font_path, font_fixture([{ text: "Selected" }]));
+      const original = JSON.stringify({ hasEncryptedImages: true, encryptionKey: MEDIA_KEY });
+      fs.writeFileSync(path.join(game, "data/System.json"), original);
+      fs.writeFileSync(path.join(game, "js/rmmz_core.js"), "// fixture");
+      fs.writeFileSync(path.join(game, "img/a.png_"), encrypted_media(png_fixture()));
+      const committed = Promise.withResolvers<void>(),
+        cleanup = Promise.withResolvers<void>(),
+        release = Promise.withResolvers<void>();
+      const rename = NativeFs.prototype.rename,
+        remove = NativeFs.prototype.remove_async;
+      vi.spyOn(NativeFs.prototype, "rename").mockImplementation(function (
+        this: NativeFs,
+        from,
+        to,
+      ) {
+        rename.call(this, from, to);
+        if (from.includes(path.join(".tmp", "stage")) && to.endsWith("a.png")) committed.resolve();
       });
-      const settled = Promise.allSettled([request]);
-      await committed.promise;
-      let stopped = false;
-      const closing = bootstrap.stop().then(() => {
-        stopped = true;
+      vi.spyOn(NativeFs.prototype, "remove_async").mockImplementation(async function (
+        this: NativeFs,
+        target,
+        options,
+      ) {
+        if (target === path.join(game, ".tmp")) {
+          cleanup.resolve();
+          await release.promise;
+        }
+        await remove.call(this, target, options);
       });
-      await cleanup.promise;
-      expect(stopped).toBe(false);
-      expect(fs.readFileSync(path.join(game, "data/System.json"), "utf8")).toBe(original);
-      expect(fs.existsSync(path.join(game, "img/a.png"))).toBe(false);
-      release.resolve();
-      await closing;
-      await settled;
-      expect(bootstrap.isStopped()).toBe(true);
-      expect(fs.existsSync(path.join(temp.path, "cancelled.lg"))).toBe(false);
-      expect(fs.existsSync(path.join(game, ".tmp"))).toBe(false);
-    } finally {
-      release.resolve();
-      await bootstrap.stop();
-    }
-  }, 15000);
+      const bootstrap = new GuiBackendBootstrap(create_options(temp.path));
+      try {
+        const started = await bootstrap.start();
+        const gate = started.backendServices.state.runtimeGate;
+        const lease = operation === "font" ? gate.begin_runtime("agent") : null;
+        const request = fetch(
+          started.apiBaseUrl +
+            (operation === "font" ? "/api/toolbox/game-font/apply" : "/api/session/project/create"),
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(
+              operation === "font"
+                ? { game_path: game, font_path }
+                : { path: path.join(temp.path, "cancelled.lg"), source_paths: [game] },
+            ),
+          },
+        );
+        const settled = Promise.allSettled([request]);
+        await committed.promise;
+        if (lease) {
+          gate.finish_runtime(lease);
+          const next = gate.begin_runtime("agent");
+          await expect(gate.run_agent_project_write(async () => "committed")).resolves.toBe(
+            "committed",
+          );
+          gate.finish_runtime(next);
+        }
+        let stopped = false;
+        const closing = bootstrap.stop().then(() => {
+          stopped = true;
+        });
+        await cleanup.promise;
+        expect(stopped).toBe(false);
+        expect(fs.readFileSync(path.join(game, "data/System.json"), "utf8")).toBe(original);
+        expect(fs.existsSync(path.join(game, "img/a.png"))).toBe(false);
+        expect(fs.readFileSync(path.join(game, "fonts/main.ttf"), "utf8")).toBe("original font");
+        release.resolve();
+        await closing;
+        await settled;
+        expect(bootstrap.isStopped()).toBe(true);
+        expect(fs.existsSync(path.join(temp.path, "cancelled.lg"))).toBe(false);
+        expect(fs.existsSync(path.join(game, ".tmp"))).toBe(false);
+      } finally {
+        release.resolve();
+        await bootstrap.stop();
+      }
+    },
+    15000,
+  );
 
   it("技能管理在无工程时可用，空白对话立即采用开关和排序", async () => {
     using temporary = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-skills-gateway-"));

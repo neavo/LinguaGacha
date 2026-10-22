@@ -1,3 +1,4 @@
+import { GameDirectoryOperations } from "./shared/game/game-directory-operations";
 import type { PDFExecution } from "./pdf/pdf-worker";
 import { AppError, is_app_error } from "../../shared/error";
 import type {
@@ -47,6 +48,7 @@ export class TranslationFileGenerationService {
    * 译文生成服务依赖当前 .lg 数据库、设置和项目会话，不直接读取渲染进程状态
    */
   public constructor(
+    private readonly game_directory_operations: GameDirectoryOperations,
     private readonly database: ProjectDatabase, // 译文生成读取工程事实和原稿资产的入口
     private readonly app_setting_service: AppSettingService, // 译文生成格式和完成后动作
     private readonly session_state: ProjectSessionState, // 当前 .lg 工程身份
@@ -164,6 +166,7 @@ export class TranslationFileGenerationService {
     const output_items = items.filter((item) => !excluded_files.includes(item.file_path));
     this.fill_duplicated_translations(output_items);
     const format_service = new FileFormatService(
+      this.game_directory_operations,
       {
         target_language: config.target_language,
       },

@@ -1,3 +1,4 @@
+import { GameDirectoryOperations } from "./shared/game/game-directory-operations";
 import { create_pdf_execution, create_pdf_fixture } from "./pdf/test-support";
 import fs from "node:fs";
 import os from "node:os";
@@ -13,6 +14,7 @@ import { create_item } from "../../domain/item";
 /** 固定解析配置，避免读取本机设置。 */
 function create_format_service(): FileFormatService {
   return new FileFormatService(
+    new GameDirectoryOperations(),
     {
       target_language: "ZH",
     },
@@ -52,8 +54,11 @@ describe("SourceFileParsePipeline", () => {
       "ASS",
       "VTT",
     ];
-    const pipeline = new SourceFileParsePipeline(create_format_service());
-    const draft = await pipeline.build_project_draft(source_paths);
+    const service = create_format_service();
+    const pipeline = new SourceFileParsePipeline(service);
+    const draft = await pipeline.build_project_draft(
+      service.assign_source_file_paths(await service.collect_source_file_entries(source_paths)),
+    );
     expect(draft.failed_files).toEqual([]);
     expect(draft.files.map((file) => file.file_type)).toEqual(expected_types);
     expect(draft.items.every((item) => item["src"] !== "")).toBe(true);
@@ -116,9 +121,14 @@ describe("SourceFileParsePipeline", () => {
     fs.writeFileSync(source_file, "原文", "utf-8");
     fs.writeFileSync(broken_json, "{", "utf-8");
     fs.writeFileSync(ignored_file, "noise", "utf-8");
-    const pipeline = new SourceFileParsePipeline(create_format_service());
+    const service = create_format_service();
+    const pipeline = new SourceFileParsePipeline(service);
 
-    const draft = await pipeline.build_project_draft([source_file, broken_json, ignored_file]);
+    const draft = await pipeline.build_project_draft(
+      service.assign_source_file_paths(
+        await service.collect_source_file_entries([source_file, broken_json, ignored_file]),
+      ),
+    );
 
     expect(draft.files.map(({ content: _content, ...file }) => file)).toEqual([
       {
@@ -153,7 +163,8 @@ describe("SourceFileParsePipeline", () => {
     );
     const source_file = path.join(temp_dir.path, "script.txt");
     fs.writeFileSync(source_file, "原文", "utf-8");
-    const pipeline = new SourceFileParsePipeline(create_format_service());
+    const service = create_format_service();
+    const pipeline = new SourceFileParsePipeline(service);
 
     const result = await pipeline.parse_import_commands([
       {
@@ -198,14 +209,20 @@ it("多个带后缀同名游戏混合导入，入口去重并按原目录名导�
     fs.writeFileSync(path.join(root, "Game.exe"), "");
   }
   fs.writeFileSync(path.join(temp.path, "readme.txt"), "说明");
-  const service = new FileFormatService({ target_language: "ZH" }, async () => null);
+  const service = new FileFormatService(
+    new GameDirectoryOperations(),
+    { target_language: "ZH" },
+    async () => null,
+  );
   const inputs = [
     path.join(roots[0]!, "data/System.json"),
     temp.path,
     ...roots,
     path.join(roots[0]!, "Game.exe"),
   ];
-  const draft = await new SourceFileParsePipeline(service).build_project_draft(inputs);
+  const draft = await new SourceFileParsePipeline(service).build_project_draft(
+    service.assign_source_file_paths(await service.collect_source_file_entries(inputs)),
+  );
   expect(draft.failed_files).toEqual([]);
   const second_game = draft.files[1]!.rel_path;
   expect(second_game.slice(name.length)).toMatch(/^_\d{8}_\d{6}\.rpgmaker$/u);

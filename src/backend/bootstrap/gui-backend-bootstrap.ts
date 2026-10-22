@@ -241,11 +241,11 @@ export class GuiBackendBootstrap {
     this.images = null;
     const gateway = this.gateway;
     this.gateway = null;
-    // Gateway 停止受理时同步取消在途接口测试与工程写入，排空须等到目录恢复结束。
+    // Gateway 停止受理时同步取消在途接口测试与文件操作，排空须等到目录恢复结束。
     await Promise.all([
       collect_failure(failures, async () => await gateway?.stop()),
       collect_failure(failures, async () => await this.services?.model.dispose()),
-      collect_failure(failures, async () => await this.services?.stop_project_writes()),
+      collect_failure(failures, async () => await this.services?.stop_file_operations()),
     ]);
 
     this.resources?.settings.set_stream_publisher(null);

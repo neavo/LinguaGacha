@@ -1,3 +1,4 @@
+import { GameDirectoryOperations } from "../shared/game/game-directory-operations";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -9,7 +10,6 @@ import {
   create_renpy_fixture,
 } from "../../../test/renpy-fixture";
 import { font_fixture } from "../../../test/font-fixture";
-import { RuntimeOperationGate } from "../../runtime-operation-gate";
 import { GameFontService } from "../game-font-service";
 import { GamePrepareWorker } from "../shared/game/prepare-worker";
 import { GameFormat } from "../shared/game/format";
@@ -64,7 +64,7 @@ it.each([false, true])("产品入口合并归档与字体事务，译文先写=%
     code_fixture("config.force_archives = True"),
   );
   const service = new GameFontService(
-    new RuntimeOperationGate(),
+    new GameDirectoryOperations(),
     new GamePrepareWorker(null, native).run,
     native,
   );
@@ -72,7 +72,7 @@ it.each([false, true])("产品入口合并归档与字体事务，译文先写=%
   const first = font_fixture([{ text: "First" }]),
     second = font_fixture([{ text: "Second" }]);
   native.write_file_sync(request.font_path, first);
-  const format = new GameFormat(create_renpy_adapter(), native);
+  const format = new GameFormat(new GameDirectoryOperations(), create_renpy_adapter(), native);
   // 导出使用真实原稿容器，覆盖目标就是已准备的游戏目录。
   async function translate(): Promise<void> {
     const game = (await discover_renpy_source(root, native))!;
@@ -135,7 +135,7 @@ it("字体提交失败恢复原归档和散装文件，并能重试", async () =
   const request = { game_path: root, font_path: path.join(temp.path, "font.ttf") };
   native.write_file_sync(request.font_path, font_fixture([{ text: "Selected" }]));
   const service = new GameFontService(
-    new RuntimeOperationGate(),
+    new GameDirectoryOperations(),
     new GamePrepareWorker(null, native).run,
     native,
   );

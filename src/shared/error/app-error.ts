@@ -40,6 +40,7 @@ export const APP_ERROR_DEFINITIONS = {
     severity: "fault",
   },
   "file.not_found": { message: "The file does not exist.", status: 404, severity: "expected" },
+  "file.busy": { message: "The game directory is busy.", status: 423, severity: "expected" },
   "file.preview_too_large": {
     message: "The file exceeds the preview size limit.",
     status: 415,
