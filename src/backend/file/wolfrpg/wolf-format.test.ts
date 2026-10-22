@@ -34,15 +34,10 @@ it("游戏根目录、EXE 和 Data 去重为一个资产，解包覆盖散装文
   expect((await service.summarize_source_files(sources)).format_hit_counts.wolfrpg).toBe(1);
   const asset = await service.prepare_source(entries[0]!);
   expect(fs.existsSync(path.join(root, "Data.wolf"))).toBe(false);
-  for (const [name, bytes] of files) {
+  for (const [name, bytes] of files)
     expect(fs.readFileSync(path.join(root, name)).equals(bytes)).toBe(true);
-    expect(fs.readFileSync(path.join(root, "backup_lg", name)).equals(bytes)).toBe(true);
-  }
   const repeat = await service.collect_source_file_entries([root]);
   await expect(service.prepare_source(repeat[0]!)).resolves.toBeDefined();
-  expect(
-    (await service.collect_source_file_entries([path.join(root, "backup_lg")]))[0]!.source.kind,
-  ).toBe("failure");
   const parsed = await service.parse_asset("game.zip", asset.content, "WOLFRPG");
   if (parsed.kind !== "items") throw new Error("Expected items");
   expect(parsed.warnings).toEqual([]);

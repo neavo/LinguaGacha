@@ -9,11 +9,10 @@ import {
 } from "../../source-file-paths";
 import type { GameDirectoryChanges } from "./directory";
 
-/** 一次操作读定的原字节，容器与备份共用数据集合。 */
-export type GameSourceFiles = Readonly<{
-  data: ReadonlyMap<string, Uint8Array>;
-  fonts: ReadonlyMap<string, Uint8Array>;
-}>;
+/** 一次操作读定的原字节，按相对路径索引。 */
+export type GameSourceData = ReadonlyMap<string, Uint8Array>;
+/** 字体工具读定的原字节：数据承载字体配置，字体为替换目标。 */
+export type GameSourceFiles = Readonly<{ data: GameSourceData; fonts: GameSourceData }>;
 export type PreparedGameFiles = Readonly<{ staging: string; result: GameDirectoryChanges }>;
 
 /** 引擎声明收集入口和选择器，公共层持有路径检查、暂存覆盖和原字节读取。 */
@@ -25,7 +24,7 @@ export function collect_game_source_files(
     read: (name: string) => Uint8Array,
     collect: (name: string) => void,
   ) => string[],
-  is_font: (name: string, read: (name: string) => Uint8Array) => boolean,
+  is_font: ((name: string, read: (name: string) => Uint8Array) => boolean) | null, // null 表示不收集字体。
   fs: NativeFs,
   signal?: AbortSignal,
   prepared?: PreparedGameFiles,
@@ -74,7 +73,7 @@ export function collect_game_source_files(
     return bytes;
   }
   const data_names = select(files, read, collect);
-  const font_names = [...files.keys()].filter((name) => is_font(name, read));
+  const font_names = is_font ? [...files.keys()].filter((name) => is_font(name, read)) : [];
   const names = [...new Set([...data_names, ...font_names])];
   assert_game_path_spellings(names);
   const index = new ProjectAssetPathIndex();

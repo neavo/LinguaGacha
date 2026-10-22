@@ -6,6 +6,7 @@ import { NativeFs } from "../../../native/native-fs";
 import {
   discover_godot_source,
   collect_godot_files,
+  collect_godot_fonts,
   apply_godot_pack_order,
   read_godot_pack_orders,
   create_empty_pack,
@@ -102,7 +103,7 @@ it("候选漏斗保留 project.binary、脚本、场景、自定义资源与坏�
     external: [],
     settings_file: null,
   } as const;
-  expect([...collect_godot_files(game, native).data.keys()].sort()).toEqual([
+  expect([...collect_godot_files(game, native).keys()].sort()).toEqual([
     "Table.RES",
     "bad.res",
     "data.res",
@@ -110,10 +111,9 @@ it("候选漏斗保留 project.binary、脚本、场景、自定义资源与坏�
     "project.binary",
     "scene.scn",
   ]);
-  expect(collect_godot_files(game, native).fonts.size).toBe(0);
 });
 
-it("暂存覆盖正式成员，字体映射单独收集并排除纹理与备份", () => {
+it("暂存覆盖正式成员，字体工具单独收集字体映射并排除纹理与备份", () => {
   using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-godot-staged-"));
   const native = new NativeFs(),
     staging = path.join(temp.path, ".tmp/staging");
@@ -125,24 +125,23 @@ it("暂存覆盖正式成员，字体映射单独收集并排除纹理与备份"
   native.write_file_sync(path.join(staging, "project.binary"), godot_project_fixture());
   native.write_file_sync(path.join(staging, "scene.res"), build_resource("PackedScene", new Map()));
   native.write_file_sync(path.join(staging, "fonts/test.ttf.import"), font);
-  const files = collect_godot_files(
-    {
-      root: temp.path,
-      executable: "game.exe",
-      embedded: null,
-      external: [],
-      settings_file: null,
-    },
-    native,
-    undefined,
-    {
-      staging,
-      result: { writes: ["project.binary", "scene.res", "fonts/test.ttf.import"] },
-    },
-  );
-  expect(Buffer.from(files.data.get("project.binary")!).equals(godot_project_fixture())).toBe(true);
-  expect(files.data.has("scene.res")).toBe(true);
-  expect([...files.fonts]).toEqual([["fonts/test.ttf.import", font]]);
+  const game = {
+    root: temp.path,
+    executable: "game.exe",
+    embedded: null,
+    external: [],
+    settings_file: null,
+  } as const;
+  const prepared = {
+    staging,
+    result: { writes: ["project.binary", "scene.res", "fonts/test.ttf.import"] },
+  };
+  const data = collect_godot_files(game, native, undefined, prepared);
+  expect(Buffer.from(data.get("project.binary")!).equals(godot_project_fixture())).toBe(true);
+  expect(data.has("scene.res")).toBe(true);
+  expect([...collect_godot_fonts(game, native, undefined, prepared).fonts]).toEqual([
+    ["fonts/test.ttf.import", font],
+  ]);
 });
 
 it("外部包按固定自然顺序预览，排序必须完整覆盖来源集合", async () => {

@@ -66,7 +66,7 @@ describe("workbench command planner", () => {
   it("导入新文件只提交源路径、目标路径、同名策略、继承模式和 revision 锁", () => {
     const plan = create_workbench_import_files_plan({
       state: create_state(),
-      preview: { files: [create_candidate()], files_revision: 7 },
+      preview: { files: [create_candidate()], files_revision: 7, contains_game: false },
       conflict_action: "skip",
       inheritance_mode: "inherit",
     });
@@ -98,7 +98,7 @@ describe("workbench command planner", () => {
     ];
     const plan = create_workbench_import_files_plan({
       state: create_state(),
-      preview: { files, files_revision: 1 },
+      preview: { files, files_revision: 1, contains_game: false },
       conflict_action,
     });
     const expected = [{ source_path: "E:/demo/new.txt", target_rel_path: "new.txt" }];

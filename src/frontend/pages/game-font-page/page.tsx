@@ -125,7 +125,7 @@ export function GameFontPage(_props: ScreenComponentProps): JSX.Element {
       <GodotPackOrderDialog {...state.godot_pack_order.dialog_props} />
       <AppActionDialog
         open={state.confirm_open}
-        description={t("game_font_page.confirm.description")}
+        description={t("app.game_backup_warning")}
         details={
           <dl className="game-font-page__confirm">
             <dt>{t("game_font_page.fields.game.title")}</dt>
@@ -134,7 +134,11 @@ export function GameFontPage(_props: ScreenComponentProps): JSX.Element {
             <dd>{state.paths.font_path}</dd>
           </dl>
         }
-        primaryAction={{ label: t("game_font_page.action.start"), onSelect: state.confirm_apply }}
+        primaryAction={{
+          label: t("game_font_page.action.start"),
+          onSelect: state.confirm_apply,
+          delayed: true,
+        }}
         onClose={state.close_confirm}
       />
     </div>

@@ -11,6 +11,8 @@ import type { JsonRecord } from "../../domain/json";
 import type { CLICommandOptions } from "../cli-parser";
 import type { CLIJsonStatusReporter } from "../cli-status-reporter";
 import { build_cli_task_input } from "./cli-task-input";
+import { write_stderr } from "../cli-output";
+import { format_i18n_message } from "../../shared/i18n";
 
 type CLIJobStatusReporter = Pick<
   CLIJsonStatusReporter,
@@ -26,7 +28,7 @@ export interface CLIJobServices {
     summary: Pick<ProjectSummaryService, "read">;
     lifecycle: Pick<
       ProjectLifecycleService,
-      "create_project_commit" | "apply_task_input" | "unload_project"
+      "summarize_source_files" | "create_project_commit" | "apply_task_input" | "unload_project"
     >;
   };
   batchTranslation: Pick<BatchTranslationService, "subscribe" | "start_current_project">;
@@ -59,6 +61,14 @@ export async function run_cli_job(
       output_folder_open_on_finish: false,
     });
     transient_overrides_active = true;
+    const { contains_game } = await backend_services.project.lifecycle.summarize_source_files({
+      source_paths: command.inputPaths,
+    });
+    // CLI 在改写游戏目录前提示备份，stdout 保留给 JSONL 协议。
+    if (contains_game)
+      write_stderr(
+        `${format_i18n_message("zh-CN", "app.game_backup_warning")} | ${format_i18n_message("en-US", "app.game_backup_warning")}`,
+      );
     await backend_services.project.lifecycle.create_project_commit({
       path: project_path,
       source_paths: command.inputPaths,

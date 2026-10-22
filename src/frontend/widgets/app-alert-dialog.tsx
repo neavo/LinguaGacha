@@ -18,6 +18,7 @@ type AppDialogAction = {
 
 type AppDialogPrimaryAction = AppDialogAction & {
   destructive?: boolean;
+  delayed?: boolean; // 危险动作在开放确认前启用统一倒计时
 };
 
 type AppDialogActionPosition = "primary" | "secondary";
@@ -51,35 +52,9 @@ type AppActionDialogProps = AppDialogBaseProps & {
 // 延迟确认采用统一时长，业务层只判断动作是否需要保护。
 const CONFIRM_DELAY_SECONDS = 3;
 
-/** 固定承载取消/确认语义，并在危险动作需要时统一延迟确认。 */
+/** 固定承载取消/确认语义，危险动作的倒计时由 `AppActionDialog` 统一实现。 */
 export function AppConfirmDialog(props: AppConfirmDialogProps): JSX.Element {
   const { t } = useI18n();
-  const [remaining_seconds, set_remaining_seconds] = useState(0); // 当前弹窗的瞬时倒计时，不进入业务状态
-
-  useLayoutEffect(() => {
-    if (!props.open || !props.confirmDelay) {
-      set_remaining_seconds(0);
-      return;
-    }
-
-    // 在弹窗绘制前锁定确认按钮，避免打开瞬间短暂暴露可提交状态。
-    set_remaining_seconds(CONFIRM_DELAY_SECONDS);
-    // 每秒递减，归零后立即停止，避免确认框关闭后继续持有定时器。
-    const timer_id = window.setInterval(() => {
-      set_remaining_seconds((previous_seconds) => {
-        if (previous_seconds <= 1) {
-          window.clearInterval(timer_id);
-          return 0;
-        }
-
-        return previous_seconds - 1;
-      });
-    }, 1_000);
-
-    return () => window.clearInterval(timer_id);
-  }, [props.confirmDelay, props.open]);
-
-  const confirm_is_delayed = props.open && remaining_seconds > 0; // 同时驱动可见秒数与动作禁用，避免两套状态漂移
   return (
     <AppActionDialog
       open={props.open}
@@ -87,9 +62,10 @@ export function AppConfirmDialog(props: AppConfirmDialogProps): JSX.Element {
       description={props.description}
       submitting={props.submitting}
       primaryAction={{
-        label: confirm_is_delayed ? `${remaining_seconds}s` : t("app.action.confirm"),
+        label: t("app.action.confirm"),
         onSelect: props.onConfirm,
-        disabled: confirm_is_delayed || props.confirmDisabled === true,
+        disabled: props.confirmDisabled === true,
+        delayed: props.confirmDelay === true,
       }}
       onClose={props.onClose}
     />
@@ -103,7 +79,33 @@ export function AppActionDialog(props: AppActionDialogProps): JSX.Element {
   const submitting_icon = props.submittingIcon ?? true;
   const title = props.title === null ? null : (props.title ?? t("app.action.confirm"));
   const submitting_action = submitting ? (props.submittingAction ?? "primary") : null;
-  const primary_enabled = !submitting && props.primaryAction.disabled !== true; // 倒计时与业务禁用都经 `disabled` 收口
+  const delayed = props.primaryAction.delayed === true;
+  const [remaining_seconds, set_remaining_seconds] = useState(0); // 当前弹窗的瞬时倒计时，不进入业务状态
+  useLayoutEffect(() => {
+    if (!props.open || !delayed) {
+      set_remaining_seconds(0);
+      return;
+    }
+
+    // 在弹窗绘制前锁定主操作，避免打开瞬间短暂暴露可提交状态。
+    set_remaining_seconds(CONFIRM_DELAY_SECONDS);
+    // 每秒递减，归零后立即停止，避免弹窗关闭后继续持有定时器。
+    const timer_id = window.setInterval(() => {
+      set_remaining_seconds((previous_seconds) => {
+        if (previous_seconds <= 1) {
+          window.clearInterval(timer_id);
+          return 0;
+        }
+
+        return previous_seconds - 1;
+      });
+    }, 1_000);
+
+    return () => window.clearInterval(timer_id);
+  }, [delayed, props.open]);
+  const primary_is_delayed = props.open && remaining_seconds > 0; // 同时驱动可见秒数与动作禁用，避免两套状态漂移
+  const primary_enabled =
+    !submitting && !primary_is_delayed && props.primaryAction.disabled !== true;
   const popup_ref = useRef<HTMLDivElement>(null);
   const close_handled_ref = useRef(false); // 同一次关闭只向受控状态拥有者回流一次
   useLayoutEffect(() => {
@@ -221,6 +223,8 @@ export function AppActionDialog(props: AppActionDialogProps): JSX.Element {
                   {submitting_icon ? <Spinner data-icon="inline-start" /> : null}
                   {props.submittingLabel ?? t("app.action.loading")}
                 </>
+              ) : primary_is_delayed ? (
+                `${remaining_seconds}s`
               ) : (
                 props.primaryAction.label
               )}

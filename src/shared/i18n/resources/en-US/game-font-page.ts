@@ -16,7 +16,6 @@ export const en_us_game_font_page = {
     pick_directory: "Select Game Folder",
     start: "Modify",
   },
-  confirm: { description: "Modify the game font …?" },
   feedback: {
     inspect_failed: "Detection failed …",
     apply_failed: "Modification failed …",

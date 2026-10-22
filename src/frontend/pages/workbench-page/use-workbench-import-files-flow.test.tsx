@@ -33,6 +33,10 @@ vi.mock("@frontend/app/feedback/desktop-toast", async (importOriginal) => ({
 
 const api_fetch_mock = vi.mocked(api_fetch);
 
+vi.mock("@frontend/app/locale/locale-context", () => ({
+  useI18n: () => ({ t: (key: string) => key }),
+}));
+
 vi.mock("@frontend/app/desktop/desktop-api", async (importOriginal) => {
   return {
     ...(await importOriginal<typeof import("@frontend/app/desktop/desktop-api")>()),
@@ -41,13 +45,14 @@ vi.mock("@frontend/app/desktop/desktop-api", async (importOriginal) => {
 });
 
 describe("useWorkbenchImportFilesFlow", () => {
-  it.each([false, true])("Godot 排序取消=%s，确认后才进入导入并提交最终顺序", async (cancel) => {
+  it.each(["backup", "order", null])("游戏确认取消于 %s，完成确认后才导入", async (cancel) => {
     const game_root = "C:/games/demo",
       orders = [{ game_root, ordered_pcks: ["patch.pck", "base.pck"] }];
     api_fetch_mock
       .mockResolvedValueOnce({
         files_revision: 1,
         files: [{ source_path: game_root, target_rel_path: "demo.godot", conflict: false }],
+        contains_game: true,
         godot_packs: [{ game_root, game_name: "demo", external_pcks: ["base.pck", "patch.pck"] }],
       })
       .mockResolvedValueOnce({ accepted: true, changes: [] });
@@ -56,6 +61,16 @@ describe("useWorkbenchImportFilesFlow", () => {
     await act(async () => {
       pending = latest_snapshot(snapshots).flow.request_add_files_from_paths([game_root]);
     });
+    expect(latest_snapshot(snapshots).flow.godot_pack_order.dialog_props.games).toHaveLength(0);
+    await act(async () => {
+      latest_snapshot(snapshots).flow.game_backup_confirm.finish(cancel !== "backup");
+    });
+    if (cancel === "backup") {
+      await pending;
+      expect(latest_snapshot(snapshots).dialog_state.kind).toBeNull();
+      expect(api_fetch_mock).toHaveBeenCalledTimes(1);
+      return;
+    }
     expect(latest_snapshot(snapshots).flow.godot_pack_order.dialog_props.games).toHaveLength(1);
     expect(api_fetch_mock).toHaveBeenCalledTimes(1);
     await act(async () => {

@@ -150,11 +150,6 @@ vi.mock("@frontend/features/project-language/project-language-select", () => {
   };
 });
 
-vi.mock("@frontend/widgets/app-alert-dialog", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@frontend/widgets/app-alert-dialog")>()),
-  AppConfirmDialog: () => null,
-}));
-
 /** 构造项目页需要的最小设置快照，并允许场景定点覆写。 */
 function create_settings_snapshot(overrides: Record<string, unknown> = {}) {
   return {
@@ -280,6 +275,7 @@ describe("ProjectPage", () => {
     push_toast_mock.mockReset();
     update_progress_toast_mock.mockReset();
     vi.restoreAllMocks();
+    vi.useRealTimers();
     window.localStorage.removeItem(PROJECT_LANGUAGE_PREFERENCE_STORAGE_KEY);
   });
 
@@ -338,15 +334,32 @@ describe("ProjectPage", () => {
     };
   }
 
-  it.each([false, true])("多外部包排序取消=%s，确认后才创建工程", async (cancel) => {
+  it.each(["backup", "order", null])("游戏确认取消于 %s，完成确认后才创建工程", async (cancel) => {
     const game_root = "E:/game";
     api_fetch_mock.mockResolvedValueOnce({
       source_file_count: 1,
+      contains_game: true,
       format_hit_counts: { godot: 1 },
       godot_packs: [{ game_root, game_name: "game", external_pcks: ["base.pck", "patch.pck"] }],
     });
     await mount_page();
+    vi.useFakeTimers();
     await open_create_languages();
+    const primary = [...document.querySelectorAll("button")].find((button) =>
+      /^\d+s/u.test(button.textContent ?? ""),
+    )!;
+    expect(primary.disabled).toBe(true);
+    expect(document.querySelector('[data-field="source_language"]')).toBeNull();
+    if (cancel === "backup") {
+      await act(async () => get_button_by_text(document.body, "取消").click());
+      expect(document.querySelector('[data-field="source_language"]')).toBeNull();
+      expect(
+        api_fetch_mock.mock.calls.some(([path]) => path === "/api/session/project/create"),
+      ).toBe(false);
+      return;
+    }
+    act(() => vi.advanceTimersByTime(Number.parseInt(primary.textContent!, 10) * 1_000));
+    await act(async () => primary.click());
     await confirm_create_languages();
     expect(document.querySelector('[role="dialog"] ol')?.textContent).toContain("base.pck");
     expect(api_fetch_mock.mock.calls.some(([path]) => path === "/api/session/project/create")).toBe(

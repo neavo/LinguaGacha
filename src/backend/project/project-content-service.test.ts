@@ -359,7 +359,7 @@ describe("ProjectContentService", () => {
       await database.close();
     }
   });
-  it("RGSS 预览与跳过保持源目录，陈旧确认不备份，正式提交准备后可离线重建", async () => {
+  it("RGSS 预览与跳过保持源目录，陈旧确认不改动游戏，正式提交准备后可离线重建", async () => {
     const { database, service, lg_path } = await create_service();
     const root = project_path("packed");
     fs.mkdirSync(root);
@@ -389,6 +389,7 @@ describe("ProjectContentService", () => {
       });
       expect(preview).toEqual({
         files_revision: 0,
+        contains_game: true,
         files: [{ source_path: root, target_rel_path: "packed.rpgmaker", conflict: false }],
       });
       expect(fs.readdirSync(root).sort()).toEqual(["Game.exe", "Game.ini", "Game.rgss3a"]);
@@ -418,9 +419,7 @@ describe("ProjectContentService", () => {
       });
       expect(fs.existsSync(archive)).toBe(false);
       expect(fs.existsSync(path.join(root, ".lg-original"))).toBe(false);
-      expect(
-        fs.readFileSync(path.join(root, "backup_lg/Data/System.rvdata2")).equals(content),
-      ).toBe(true);
+      expect(fs.readFileSync(path.join(root, "Data/System.rvdata2")).equals(content)).toBe(true);
       expect((await service.preview_import_files({ source_paths: [root] })).files).toEqual(
         preview.files.map((file) => ({ ...file, conflict: true })),
       );
@@ -704,6 +703,7 @@ describe("ProjectContentService", () => {
       });
       expect(preview).toEqual({
         files_revision: 0,
+        contains_game: false,
         files: [
           { source_path: source, target_rel_path: "script.txt", conflict: false },
           { source_path: broken, target_rel_path: "broken.json", conflict: false },
@@ -722,7 +722,7 @@ describe("ProjectContentService", () => {
     }
   });
 
-  it("同一游戏目录新增原稿后整体替换，提交失败保留备份并支持离线重建和独立删除", async () => {
+  it("同一游戏目录新增原稿后整体替换，提交失败保留旧工程并支持离线重建和独立删除", async () => {
     const log_manager = create_log_manager();
     const { database, service, lg_path } = await create_service(undefined, log_manager);
     const source = project_path("game");
@@ -772,9 +772,6 @@ describe("ProjectContentService", () => {
       fail.mockRestore();
       expect((await database.read_asset_content(lg_path, "game.zip"))!.equals(old!)).toBe(true);
       expect(await database.get_all_items(lg_path)).toEqual(old_items);
-      expect(fs.readFileSync(path.join(source, "backup_lg/data/New.json"), "utf8")).toBe(
-        '{"text":"新文"}',
-      ); // 备份不随工程提交失败回滚。
       await service.import_files(await request());
       const saved = (await database.read_asset_content(lg_path, "game.zip"))!;
       expect([...(await read_zip_fixture(saved)).keys()]).not.toContain("data/Old.json");

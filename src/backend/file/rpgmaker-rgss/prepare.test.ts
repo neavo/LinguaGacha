@@ -45,7 +45,7 @@ function game(
 }
 
 it.each(["xp", "vx", "ace"] as const)(
-  "%s 完整解包后备份原稿，重复准备直接使用散装来源",
+  "%s 完整解包后原稿取自散装文件，重复准备直接使用散装来源",
   async (version) => {
     using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-rgss-prepare-"));
     const { archive, files } = game(temp.path, version);
@@ -60,22 +60,13 @@ it.each(["xp", "vx", "ace"] as const)(
     const { members } = await read_game_container(prepared.content, "game.zip");
     for (const [name, member] of members)
       expect(
-        fs
-          .readFileSync(path.join(temp.path, "backup_lg", name))
-          .equals(await member.async("nodebuffer")),
+        fs.readFileSync(path.join(temp.path, name)).equals(await member.async("nodebuffer")),
       ).toBe(true);
     expect(fs.existsSync(path.join(temp.path, ".lg-original"))).toBe(false);
     expect(fs.existsSync(path.join(temp.path, ".tmp"))).toBe(false);
     expect(fs.existsSync(archive)).toBe(false);
     for (const [name, bytes] of files)
       expect(fs.readFileSync(path.join(temp.path, name)).equals(bytes)).toBe(true);
-    expect(
-      fs.readFileSync(
-        path.join(temp.path, "backup_lg/Custom/Main" + RGSS_VERSIONS[version]),
-        "utf8",
-      ),
-    ).toBe("scripts");
-    expect(fs.existsSync(path.join(temp.path, "backup_lg/Graphics"))).toBe(false);
     const prepared_entries = fs.readdirSync(temp.path);
     await prepare_source(discover_rgss_source(temp.path, native)!, native);
     expect(fs.readdirSync(temp.path)).toEqual(prepared_entries);
@@ -131,7 +122,7 @@ it("拒绝经过目录链接的成员，外部文件保持原状", async () => {
   expect(fs.readFileSync(path.join(outside, "picture.png"), "utf8")).toBe("outside");
 });
 
-it.each(["engine", "protocol", "directory-system"])("%s 冲突在备份与改写之前失败", async (kind) => {
+it.each(["engine", "protocol", "directory-system"])("%s 冲突在改写之前失败", async (kind) => {
   using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-rgss-conflict-"));
   const { archive } = game(temp.path, "ace");
   if (kind === "engine")

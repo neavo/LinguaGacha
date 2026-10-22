@@ -136,6 +136,7 @@ export type WorkbenchImportFilesPreview = {
   godot_packs?: readonly import("../godot").GodotPackPreview[];
   files_revision: number; // 与命名和冲突分类来自同一次数据库读取。
   files: WorkbenchImportFileCandidate[];
+  contains_game: boolean; // 原生游戏会改写游戏目录，界面据此提示完整备份。
   failed_files?: SourceFileParseFailureRecord[];
 };
 

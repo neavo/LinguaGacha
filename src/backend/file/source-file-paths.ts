@@ -8,7 +8,7 @@ import {
   ProjectAssetPathIndex,
 } from "../../shared/project/project-asset-paths";
 
-export const GAME_BACKUP_DIRECTORY = "backup_lg";
+const LEGACY_GAME_BACKUP_DIRECTORY = "backup_lg"; // 旧版本生成的备份目录，见 `is_preparation_path`。
 export const GAME_WORKSPACE_DIRECTORY = ".tmp";
 /** 来源命名与输出校验共用后缀，来源入口格式由 `PROJECT_SOURCE_FORMATS` 维护。 */
 export const GAME_ASSET_EXTENSIONS = Object.freeze({
@@ -83,22 +83,20 @@ export function assert_source_file_paths(
 /** 同根入口互相冲突属于整批输入错误，不能降级为逐文件失败。 */
 export class GameSourceConflictError extends Error {}
 
-/** 历史目录仅按名称识别，内容不承担原稿身份。 */
-export function is_game_backup_history_name(name: string): boolean {
-  return /^backup_lg_\d{8}_\d{6}(?:_[1-9]\d*)?$/iu.test(name);
-}
-
-/** 准备工作区、备份与历史归档占用的顶层名称，不属于游戏文件。 */
+/**
+ * 扫描排除准备工作区和旧版备份，避免将恢复材料导入为原稿。
+ * `validate_game_path` 同时拒绝写入这些路径，防止写入结果在下次扫描时被遗漏。
+ */
 export function is_preparation_path(name: string): boolean {
   const first = name.split("/")[0]!.toLowerCase();
   return (
-    first === GAME_BACKUP_DIRECTORY ||
     first === GAME_WORKSPACE_DIRECTORY ||
-    is_game_backup_history_name(first)
+    first === LEGACY_GAME_BACKUP_DIRECTORY ||
+    /^backup_lg_\d{8}_\d{6}(?:_[1-9]\d*)?$/u.test(first)
   );
 }
 
-/** 准备目录和备份名称保留给提交层，归档不能占用它们。 */
+/** 准备目录和旧版备份名称保留给提交层，归档不能占用它们。 */
 export function validate_game_path(name: string): void {
   if (validate_zip_member_path(name) !== name) throw new Error("Noncanonical game path: " + name);
   if (is_preparation_path(name))

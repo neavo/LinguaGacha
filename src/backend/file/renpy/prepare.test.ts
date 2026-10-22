@@ -36,7 +36,7 @@ it("散装资源优先，归档源码保持非活动，重复准备保持结果"
   expect(native.read_text_file(path.join(temp.path, "game/cache/ignored.rpa"))).toBe(
     "not an archive",
   );
-  expect(native.exists(path.join(temp.path, "backup_lg/game/nested/archive.rpa"))).toBe(true);
+  expect(native.exists(path.join(temp.path, "game/nested/archive.rpa"))).toBe(false);
   await write_game_directory(temp.path, native, (staging) =>
     stage_renpy_source({ game, staging }, native),
   );
@@ -60,7 +60,6 @@ it.each(["missing", "stale", "valid"])("活动源码 %s 的摘要验证在目录
   if (kind === "valid") {
     await prepare;
     expect(native.exists(path.join(temp.path, "game/script.rpy"))).toBe(false);
-    expect(native.read_file(path.join(temp.path, "backup_lg/game/script.rpy"))).toEqual(source);
   } else {
     await expect(prepare).rejects.toThrow(/compiled script/u);
     expect(native.read_file(path.join(temp.path, "game/script.rpy"))).toEqual(source);
@@ -84,7 +83,7 @@ it("嵌套归档保持非活动，准备拒绝将它激活", async () => {
   expect(native.exists(path.join(temp.path, "game/archive.rpa"))).toBe(true);
 });
 it.each(["init", "early"] as const)(
-  "%s 强制归档在原执行位置适配，并把被遮蔽的散装资源备份",
+  "%s 强制归档在原执行位置适配，并覆盖被遮蔽的散装资源",
   async (context) => {
     using session = await PythonSession.create();
     using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-renpy-force-"));
@@ -103,9 +102,6 @@ it.each(["init", "early"] as const)(
       stage_renpy_source({ game, staging }, native),
     );
     expect(native.read_text_file(path.join(temp.path, "game/resource.txt"))).toBe("archive");
-    expect(native.read_text_file(path.join(temp.path, "backup_lg/game/resource.txt"))).toBe(
-      "loose",
-    );
     expect(
       script_codes(
         await extract_script(
@@ -115,15 +111,8 @@ it.each(["init", "early"] as const)(
         ),
       ).map((code) => code.source),
     ).toContain("config.force_archives = False\n");
-    const backup = path.join(temp.path, "backup_lg/game/script.rpyc");
-    expect(native.read_file(backup)).toEqual(
-      code_fixture("config.force_archives = True\n", context),
-    );
     await write_game_directory(temp.path, native, (staging) =>
       stage_renpy_source({ game, staging }, native),
-    );
-    expect(native.read_file(backup)).toEqual(
-      code_fixture("config.force_archives = True\n", context),
     );
   },
 );
@@ -225,7 +214,6 @@ it("引擎支持的 _ren.py 仍要求源码与编译摘要配对", async () => {
   native.write_file_sync(path.join(temp.path, "game/script.rpyc"), compiled);
   await prepare();
   expect(native.exists(path.join(temp.path, "game/script_ren.py"))).toBe(false);
-  expect(native.read_file(path.join(temp.path, "backup_lg/game/script_ren.py"))).toEqual(source);
 });
 
 it("默认脚本发现与声明后的资源来源分别选择", async () => {

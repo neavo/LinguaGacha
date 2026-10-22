@@ -61,6 +61,7 @@ describe("GameFontPage", () => {
     await act(async () => root.unmount());
     container.remove();
     vi.mocked(api_fetch).mockReset();
+    vi.useRealTimers();
   });
 
   /** 从游戏菜单选择目录，再点击字体框选择字体。 */
@@ -79,12 +80,17 @@ describe("GameFontPage", () => {
     expect(container.textContent).toContain(GAME_PATH);
     expect(get_button("开始修改")).toHaveProperty("disabled", false);
 
+    vi.useFakeTimers();
     await act(async () => get_button("开始修改").click());
+    const primary = document.querySelector<HTMLButtonElement>(
+      '[data-slot="alert-dialog-primary-action"]',
+    )!;
+    expect(primary.disabled).toBe(true); // 备份提示倒计时结束前不能开始。
+    const seconds = Number.parseInt(primary.textContent!, 10);
+    act(() => vi.advanceTimersByTime(seconds * 1_000));
     const details = [...document.querySelectorAll('[data-slot="alert-dialog-details"] dd')];
     expect(details.map((element) => element.textContent)).toEqual([GAME_PATH, FONT_PATH]);
-    await act(async () =>
-      document.querySelector<HTMLElement>('[data-slot="alert-dialog-primary-action"]')!.click(),
-    );
+    await act(async () => primary.click());
     expect(api_fetch).toHaveBeenLastCalledWith("/api/toolbox/game-font/apply", paths);
   });
 });

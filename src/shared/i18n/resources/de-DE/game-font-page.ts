@@ -16,7 +16,6 @@ export const de_de_game_font_page = {
     pick_directory: "Spielordner wählen",
     start: "Ändern",
   },
-  confirm: { description: "Spielschrift ändern …?" },
   feedback: {
     inspect_failed: "Erkennung fehlgeschlagen …",
     apply_failed: "Ändern fehlgeschlagen …",

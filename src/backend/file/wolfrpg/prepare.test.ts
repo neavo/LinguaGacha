@@ -270,9 +270,6 @@ it("归档中的数据提示前缀在暂存时移除，准备结果为引擎可�
   const service = new FileFormatService({ target_language: "ZH" }, async () => null, native);
   await service.prepare_source((await service.collect_source_file_entries([temp.path]))[0]!);
   expect(fs.readFileSync(path.join(temp.path, "Data/BasicData/Game.dat")).equals(game)).toBe(true);
-  expect(
-    fs.readFileSync(path.join(temp.path, "backup_lg/Data/BasicData/Game.dat")).equals(game),
-  ).toBe(true);
 });
 
 it.each(["unsupported", "core", "map-read", "companion-read"])(

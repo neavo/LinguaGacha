@@ -151,6 +151,7 @@ export class ProjectContentService {
       files_revision: snapshot.files_revision,
       ...(godot_packs.length ? { godot_packs } : {}),
       ...(failed_files.length ? { failed_files } : {}),
+      contains_game: entries.some((entry) => entry.source.kind === "game"),
       files: entries.map((entry) => {
         const target = normalize_project_asset_path(entry.rel_path);
         const previous = existing.get(target.toLowerCase());

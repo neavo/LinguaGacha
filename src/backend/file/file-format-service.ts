@@ -1,7 +1,6 @@
 import type { GodotPackOrder } from "../../shared/godot";
 import { apply_godot_pack_order, godot_pack_preview } from "./godot/source";
 import { GAME_ENGINES, prepare_game_source } from "./shared/game/engines";
-import { write_game_backup } from "./shared/game/backup";
 import { GameFormat } from "./shared/game/format";
 import { build_source_file_parse_failure } from "./source-file-parse-failure-reporter";
 import {
@@ -331,7 +330,7 @@ export class FileFormatService {
     return result;
   }
 
-  /** 正式导入准备游戏并固化容器，备份成功后才返回原稿。 */
+  /** 正式导入准备游戏并固化容器后返回原稿。 */
   public async prepare_source(entry: DiscoveredSource, signal?: AbortSignal) {
     signal?.throwIfAborted();
     const { source, rel_path } = entry;
@@ -344,24 +343,13 @@ export class FileFormatService {
         throw new Error("Unfinished game operation; recovery files: " + workspace);
       await prepare_game_source(source, this.native_fs, this.game_prepare_execution, signal);
       const format = this.games[source.file_type];
-      const files = await GAME_ENGINES[source.file_type].collect(source, this.native_fs, signal);
+      const data = await GAME_ENGINES[source.file_type].collect(source, this.native_fs, signal);
       const container = await format.create_container(
-        files.data,
+        data,
         rel_path,
         source.game.root,
         signal,
-        await GAME_ENGINES[source.file_type].build_metadata?.(
-          source,
-          files,
-          this.native_fs,
-          signal,
-        ),
-      );
-      await write_game_backup(
-        source.game.root,
-        new Map([...files.data, ...files.fonts]),
-        this.native_fs,
-        signal,
+        await GAME_ENGINES[source.file_type].build_metadata?.(source, data, this.native_fs, signal),
       );
       return container;
     }
@@ -406,6 +394,7 @@ export class FileFormatService {
     return {
       ...(failed_files.length ? { failed_files } : {}),
       ...(godot_packs.length ? { godot_packs } : {}),
+      contains_game: source_files.some((entry) => entry.source.kind === "game"),
       source_file_count: source_files.length,
       format_hit_counts,
     };

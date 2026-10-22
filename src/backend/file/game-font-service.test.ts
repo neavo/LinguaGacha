@@ -37,7 +37,7 @@ it.each(["inspect", "apply"] as const)("%s 拒绝直接包入口且不准备或�
   expect(fs.readFileSync(game_path).equals(pack)).toBe(true);
 });
 
-it.each(["pck", "embedded"])("Godot %s 字体接入、载体备份与重复换字体", async (kind) => {
+it.each(["pck", "embedded"])("Godot %s 字体接入、载体覆盖与重复换字体", async (kind) => {
   using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-font-godot-"));
   const root = path.join(temp.path, "game");
   const files = create_godot_fixture();
@@ -58,15 +58,10 @@ it.each(["pck", "embedded"])("Godot %s 字体接入、载体备份与重复换�
     await service.inspect(request);
     await service.apply(request);
     expect(fs.readFileSync(path.join(root, "override.cfg"), "utf8")).toBe(OVERRIDE);
-    expect(fs.existsSync(path.join(root, "backup_lg/override.cfg"))).toBe(false);
     const font_bytes = read_resource(fs.readFileSync(path.join(root, "lg_font.fontdata")))
       .properties[0]!.value.value;
     if (!Buffer.isBuffer(font_bytes)) throw new Error("Expected font bytes");
     expect(font_bytes.equals(font)).toBe(true);
-    expect(fs.readFileSync(path.join(root, "backup_lg/font.ttf.import")).equals(mapping)).toBe(
-      true,
-    );
-    expect(fs.readFileSync(path.join(root, "backup_lg", carrier)).equals(pack)).toBe(true);
     expect(
       fs.readFileSync(path.join(root, "project.binary")).equals(files.get("project.binary")!),
     ).toBe(true);
@@ -223,7 +218,7 @@ it.each(["inspect", "apply"] as const)(
   },
 );
 
-it("支持混合大小写扩展名并备份已有同名字体", async () => {
+it("支持混合大小写扩展名并覆盖已有同名字体", async () => {
   using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-font-supported-"));
   const request = write_game(temp.path);
   const root = path.dirname(request.game_path);
@@ -239,7 +234,6 @@ it("支持混合大小写扩展名并备份已有同名字体", async () => {
   await service.inspect({ ...request, font_path });
   await service.apply({ ...request, font_path });
   expect(fs.readFileSync(path.join(root, existing)).equals(fs.readFileSync(font_path))).toBe(true);
-  expect(fs.readFileSync(path.join(root, "backup_lg", existing), "utf8")).toBe("original font");
   expect(
     fs.readdirSync(root).filter((name) => name.toLowerCase() === existing.toLowerCase()),
   ).toEqual([existing]);

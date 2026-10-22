@@ -6,6 +6,7 @@ export const en_us_app = {
     title: "Resource pack priority",
     description: "Later resource packs override resources with the same name in earlier packs",
   },
+  game_backup_warning: "Back up the entire game directory before proceeding …!",
   media: {
     zoom_out: "Zoom out",
     zoom_in: "Zoom in",

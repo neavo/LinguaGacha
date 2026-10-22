@@ -5,6 +5,7 @@ import type { NativeFs } from "../../../native/native-fs";
 import { assert_regular_path } from "../source-file-paths";
 import {
   collect_game_source_files,
+  type GameSourceData,
   type GameSourceFiles,
   type PreparedGameFiles,
 } from "../shared/game/source-files";
@@ -44,14 +45,14 @@ export async function discover_renpy_source(
   using session = await PythonSession.create();
   return { root, profile: await read_profile(root, fs, signal, session) };
 }
-/** 收集固化所需的编译脚本，字体原件仅用于备份。 */
+/** 收集固化所需的编译脚本。 */
 export function collect_renpy_files(
   game: RenpySource,
   fs: NativeFs,
   signal?: AbortSignal,
   prepared?: PreparedGameFiles,
-): GameSourceFiles {
-  const result = collect_game_source_files(
+): GameSourceData {
+  const { data } = collect_game_source_files(
     game.root,
     ["game"],
     (files, read) => {
@@ -66,27 +67,27 @@ export function collect_renpy_files(
         )
         .sort();
     },
-    (name) => /^game\/(?!cache\/|saves\/).*\.(?:ttf|otf)$/iu.test(name),
+    null,
     fs,
     signal,
     prepared,
   );
   assert(
-    result.data.size > 0,
+    data.size > 0,
     "Ren'Py game contains no compiled scripts; start the original game once before importing",
   );
-  return result;
+  return data;
 }
 /** 导入使用已读定的原件构建离线语义，字体收集不触发脚本分析。 */
 export async function build_renpy_metadata(
   game: RenpySource,
-  files: GameSourceFiles,
+  data: GameSourceData,
   fs: NativeFs,
   signal?: AbortSignal,
 ): Promise<Uint8Array> {
   const assignments = new Set<boolean | null>();
   let include_layout = false;
-  for (const [member, bytes] of files.data) {
+  for (const [member, bytes] of data) {
     signal?.throwIfAborted();
     using session = await PythonSession.create();
     for (const code of script_codes({ slots: read_compiled(bytes) })) {

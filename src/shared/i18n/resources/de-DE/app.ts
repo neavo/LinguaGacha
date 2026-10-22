@@ -7,6 +7,8 @@ export const de_de_app = {
     description:
       "Spätere Ressourcenpakete überschreiben gleichnamige Ressourcen aus früheren Paketen",
   },
+  game_backup_warning:
+    "Vor dem Fortfahren wird eine vollständige Sicherung des Spielordners empfohlen …!",
   media: {
     zoom_out: "Verkleinern",
     zoom_in: "Vergrößern",

@@ -29,14 +29,14 @@ it.each(["6.99.8", "8.0.3"])("%s 离线重载、人工放行与重复导出共�
   if (version.startsWith("6."))
     fs.renameSync(path.join(root, "lib/py3-windows-x86_64"), path.join(root, "lib/windows-i686"));
   const game = (await discover_renpy_source(root, native))!;
-  const files = collect_renpy_files(game, native);
+  const data = collect_renpy_files(game, native);
   const format = new GameFormat(create_renpy_adapter(), native);
   const container = await format.create_container(
-    files.data,
+    data,
     "demo.renpy",
     root,
     undefined,
-    await build_renpy_metadata(game, files, native),
+    await build_renpy_metadata(game, data, native),
   );
   fs.renameSync(root, path.join(temp.path, "unavailable"));
   const parsed = await new GameFormat(create_renpy_adapter(), native).read_from_stream(
@@ -86,14 +86,14 @@ it.each(["6.99.8", "8.0.3"])("%s 离线重载、人工放行与重复导出共�
 /** 固化测试游戏并读出条目，导出上下文指向临时输出目录。 */
 async function import_fixture(root: string, native: ReturnType<typeof create_renpy_fixture>) {
   const game = (await discover_renpy_source(root, native))!;
-  const files = collect_renpy_files(game, native);
+  const data = collect_renpy_files(game, native);
   const format = new GameFormat(create_renpy_adapter(), native);
   const asset = await format.create_container(
-    files.data,
+    data,
     "demo.renpy",
     root,
     undefined,
-    await build_renpy_metadata(game, files, native),
+    await build_renpy_metadata(game, data, native),
   );
   const { items } = await format.read_from_stream(asset.content, "demo.renpy");
   const out = path.join(root, "out");
