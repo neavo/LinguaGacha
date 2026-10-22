@@ -1,5 +1,6 @@
 import { GodotPackOrderDialog } from "@frontend/features/godot-pack-order/godot-pack-order-dialog";
 import type { JSX } from "react";
+import { AppConfirmDialog } from "@frontend/widgets/app-alert-dialog";
 import { useTranslationGeneration } from "@frontend/app/session/translation-generation/translation-generation-context";
 import { useProjectTranslationStats } from "@frontend/app/session/project-translation-stats-context";
 import { useI18n } from "@frontend/app/locale/locale-context";
@@ -62,6 +63,7 @@ export function WorkbenchPage(_props: WorkbenchPageProps): JSX.Element {
         on_close_project={workbench_state.request_close_project}
       />
       <GodotPackOrderDialog {...workbench_state.godot_pack_order.dialog_props} />
+      <AppConfirmDialog {...workbench_state.game_backup_confirm.dialog_props} />
       <WorkbenchDialogs
         dialog_state={workbench_state.dialog_state}
         on_confirm={() => {

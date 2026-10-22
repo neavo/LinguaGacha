@@ -62,6 +62,35 @@ describe("run_cli_job", () => {
     ]);
   });
 
+  it("原生游戏输入只向 stderr 提示备份，stdout 不受影响", async () => {
+    const harness = create_backend_services_harness();
+    const paths = create_cli_paths();
+    vi.spyOn(
+      harness.backend_services.project.lifecycle,
+      "summarize_source_files",
+    ).mockResolvedValue({ contains_game: true } as Awaited<
+      ReturnType<typeof harness.backend_services.project.lifecycle.summarize_source_files>
+    >);
+    vi.spyOn(harness.backend_services.project.summary, "read").mockResolvedValue({
+      projectPath: "test.lg",
+      sectionRevisions: {},
+      snapshot: { entries: [] },
+    });
+    const stderr = vi.spyOn(process.stderr, "write").mockReturnValue(true);
+    const stdout = vi.spyOn(process.stdout, "write").mockReturnValue(true);
+    try {
+      await run_cli_job(harness.backend_services, create_command(paths), harness.status_reporter);
+      expect(stderr).toHaveBeenCalledExactlyOnceWith(expect.any(String));
+      expect(stdout).not.toHaveBeenCalled();
+      expect(stderr.mock.invocationCallOrder[0]).toBeLessThan(
+        harness.create_project_commit.mock.invocationCallOrder[0]!,
+      ); // 提示必须早于游戏目录改写。
+    } finally {
+      stderr.mockRestore();
+      stdout.mockRestore();
+    }
+  });
+
   it("等待翻译终态后按顺序应用资源、译文生成并清理", async () => {
     const paths = create_cli_paths();
     const harness = create_backend_services_harness();
@@ -327,7 +356,12 @@ function create_backend_services_harness(failures: { unloadFailure?: Error } = {
             },
           }),
         },
-        lifecycle: { apply_task_input, create_project_commit, unload_project },
+        lifecycle: {
+          summarize_source_files: async () => ({ contains_game: false }),
+          apply_task_input,
+          create_project_commit,
+          unload_project,
+        },
       },
       files: { translationGeneration: { generate_files_to_directory } },
       batchTranslation: {

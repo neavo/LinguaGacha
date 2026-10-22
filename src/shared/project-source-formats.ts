@@ -179,6 +179,7 @@ export type ProjectSourceFormatHitCounts = Record<ProjectSourceFormatId, number>
 export type ProjectSourceFileSummary = {
   godot_packs?: readonly import("./godot").GodotPackPreview[];
   failed_files?: import("./source-file-parse-failure").SourceFileParseFailureRecord[];
+  contains_game: boolean; // 原生游戏会改写游戏目录，界面据此提示完整备份。
   source_file_count: number; // 递归发现并按真实路径去重后的支持文件总数
   format_hit_counts: ProjectSourceFormatHitCounts; // 包含目录内全部格式，未命中项固定为零
 };

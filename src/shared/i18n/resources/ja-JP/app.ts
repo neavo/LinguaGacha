@@ -6,6 +6,7 @@ export const ja_jp_app = {
     title: "リソースパックの優先順位",
     description: "後のリソースパックが、前のパック内の同名リソースを上書きします",
   },
+  game_backup_warning: "操作の前にゲームフォルダ全体をバックアップすることをおすすめします …!",
   media: {
     zoom_out: "縮小",
     zoom_in: "拡大",

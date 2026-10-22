@@ -29,7 +29,7 @@ const DISABLE_OVERRIDE = "application/config/disable_project_settings_override";
 
 /**
  * 字体修改改写的成员：FontFile 导入映射与游戏根目录的 `override.cfg`。
- * 只含工具这一节的 `override.cfg` 是工具产物，不收集，避免后续导入把它当原件备份。
+ * 只含工具这一节的 `override.cfg` 是工具产物，不当作原件收集。
  */
 export function is_godot_font_file(name: string, read: (name: string) => Uint8Array): boolean {
   const lower = name.toLowerCase();

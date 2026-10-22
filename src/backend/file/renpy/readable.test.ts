@@ -67,14 +67,14 @@ it("可读视图按原行号还原脚本，字符串的视图行与原稿行分�
   using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-renpy-readable-"));
   const native = create_renpy_fixture(temp.path);
   const game = (await discover_renpy_source(temp.path, native))!;
-  const files = collect_renpy_files(game, native);
-  const members = new Map([...files.data, ["game/lines.rpyc", lines_fixture()]]);
+  const data = collect_renpy_files(game, native);
+  const members = new Map([...data, ["game/lines.rpyc", lines_fixture()]]);
   const container = await new GameFormat(create_renpy_adapter(), native).create_container(
     members,
     "demo.renpy",
     temp.path,
     undefined,
-    await build_renpy_metadata(game, files, native),
+    await build_renpy_metadata(game, data, native),
   );
   const { input } = await read_game_container(container.content, "demo.renpy", true);
   const outputs = new Map<string, string>();

@@ -145,7 +145,7 @@ export class SourceFileParsePipeline {
           parsed_items: parsed.kind === "items" ? parsed.items : [],
         });
       } catch (error) {
-        if (signal?.aborted) throw error; // 保留取消收尾中的恢复失败及备份位置。
+        if (signal?.aborted) throw error; // 保留取消收尾中的恢复失败及恢复材料位置。
         failed_files.push(build_source_file_parse_failure({ ...entry, error }));
       }
     }

@@ -18,12 +18,12 @@ it("游戏入口共用身份，收集时排除缓存和已生成资源", async (
     game = (await discover_renpy_source(temp.path, native))!;
   expect(await discover_renpy_source(path.join(temp.path, "Game.exe"), native)).toEqual(game);
   expect(await discover_renpy_source(path.join(temp.path, "game"), native)).toEqual(game);
-  const before = collect_renpy_files(game, native).data;
+  const before = collect_renpy_files(game, native);
   const generated = path.join(temp.path, RENPY_LANGUAGE_FILE);
   native.write_file_sync(generated, RENPY_GENERATED_MARKER + "\n");
   native.write_file_sync(generated + "c", compiled_fixture());
   native.write_file_sync(path.join(temp.path, "game/cache/unused.rpyc"), "not a compiled script");
-  expect(collect_renpy_files(game, native).data).toEqual(before);
+  expect(collect_renpy_files(game, native)).toEqual(before);
   native.write_file_sync(generated, "unrelated source");
   expect(() => collect_renpy_files(game, native)).toThrow("Reserved Ren'Py file conflict");
 });
@@ -41,9 +41,9 @@ it("百分号语义只接受确定的初始化赋值", async () => {
       path.join(temp.path, "game/script.rpyc"),
       code_fixture("config.old_substitutions = " + expression, context),
     );
-    const files = collect_renpy_files(game, native);
+    const data = collect_renpy_files(game, native);
     expect(
-      read_renpy_format_metadata(await build_renpy_metadata(game, files, native)).old_substitutions,
+      read_renpy_format_metadata(await build_renpy_metadata(game, data, native)).old_substitutions,
     ).toBe(expected);
   }
 });

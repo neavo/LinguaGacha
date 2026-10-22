@@ -16,7 +16,6 @@ export const ko_kr_game_font_page = {
     pick_directory: "게임 폴더 선택",
     start: "변경 시작",
   },
-  confirm: { description: "게임 글꼴을 변경하시겠습니까 …?" },
   feedback: {
     inspect_failed: "인식하지 못했습니다 …",
     apply_failed: "변경하지 못했습니다 …",

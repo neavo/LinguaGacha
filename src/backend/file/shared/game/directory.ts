@@ -1,6 +1,5 @@
 import { setImmediate } from "node:timers/promises";
 import path from "node:path";
-import { createHash } from "node:crypto";
 import type { NativeFs } from "../../../../native/native-fs";
 import { AppError, read_error_message } from "../../../../shared/error";
 import { ProjectAssetPathIndex } from "../../../../shared/project/project-asset-paths";
@@ -9,7 +8,6 @@ import {
   validate_game_path,
   assert_game_path_spellings,
   GAME_WORKSPACE_DIRECTORY,
-  GAME_BACKUP_DIRECTORY,
 } from "../../source-file-paths";
 
 /** 暂存完成后的变更清单，由主线程提交到游戏目录。 */
@@ -17,7 +15,6 @@ export type GameDirectoryChanges = Readonly<{
   writes: readonly string[];
   directories?: readonly string[];
   removes?: readonly string[];
-  backups?: readonly string[]; // 原载体同卷移动到长期备份，避免复制大包。
 }>;
 
 /** 正式目录的唯一写入口，调用方持有写入占用直到 worker、回滚和清理结束。 */
@@ -59,43 +56,19 @@ export async function write_game_directory(
     await fs.make_dir_exclusive(staging);
     const plan = await stage(staging);
     signal?.throwIfAborted();
-    const targets = [
-      ...new Set([...plan.writes, ...(plan.removes ?? []), ...(plan.backups ?? [])]),
-    ];
+    const targets = [...plan.writes, ...(plan.removes ?? [])];
     const directories = new Set(plan.directories ?? []);
     for (const name of [...targets, ...directories]) validate_game_path(name);
     const declared = new ProjectAssetPathIndex();
-    for (const name of [...plan.writes, ...(plan.removes ?? [])]) declared.add(name);
-    const backups = new Map<string, string>();
-    for (const name of plan.backups ?? []) {
-      if (backups.has(name) || plan.removes?.includes(name))
-        throw new Error("Duplicate game backup: " + name);
-      const original = path.join(root, name),
-        destination = path.join(root, GAME_BACKUP_DIRECTORY, name);
-      assert_regular_path(original, fs);
-      assert_regular_path(destination, fs);
-      if (!fs.stat(original).isFile()) throw new Error("Missing game carrier: " + name);
-      if (
-        fs.exists(destination) &&
-        (!fs.stat(destination).isFile() || !(await same_file(original, destination, fs, signal)))
-      )
-        throw new Error(
-          "Conflicting game carrier backup; move backup_lg before importing: " + name,
-        );
-      backups.set(name, destination);
-    }
-    // 备份路径由事务生成，管理目录不允许来自引擎成员清单。
-    const backup_names = [...backups.keys()].map((name) => GAME_BACKUP_DIRECTORY + "/" + name);
+    for (const name of targets) declared.add(name); // 每个目标只允许一次写入或移除。
     // 显式目录和文件父目录共同声明正式目录需求，不能按文件占位加入资产索引。
-    for (const name of [...directories, ...plan.writes, ...backup_names]) {
+    for (const name of [...directories, ...plan.writes]) {
       const parts = name.split("/");
       for (let length = 1; length < parts.length; length++)
         directories.add(parts.slice(0, length).join("/"));
     }
-    assert_game_path_spellings([...targets, ...backup_names, ...directories]);
-    const paths = new ProjectAssetPathIndex();
-    const file_paths = new Set([...targets, ...backup_names].map((name) => name.toLowerCase()));
-    for (const name of [...targets, ...backup_names]) paths.add(name);
+    assert_game_path_spellings([...targets, ...directories]);
+    const file_paths = new Set(targets.map((name) => name.toLowerCase()));
     for (const name of directories)
       if (file_paths.has(name.toLowerCase()))
         throw new Error("Game file conflicts with required directory: " + name);
@@ -104,7 +77,7 @@ export async function write_game_directory(
     );
     const existing_targets = new Set<string>();
     const directory_entries = new Map<string, Map<string, string | null>>();
-    for (const name of [...ordered_directories, ...targets, ...backup_names]) {
+    for (const name of [...ordered_directories, ...targets]) {
       await checkpoint();
       const target = path.join(root, name);
       assert_regular_path(target, fs);
@@ -133,7 +106,7 @@ export async function write_game_directory(
         } else {
           if (!fs.stat(target).isFile())
             throw new Error("Game file conflicts with directory: " + name);
-          if (!backup_names.includes(name)) existing_targets.add(name);
+          existing_targets.add(name);
         }
       }
     }
@@ -145,9 +118,8 @@ export async function write_game_directory(
     }
     rollback = path.join(workspace, "rollback");
     await fs.make_dir_exclusive(rollback);
-    /** 首次修改保存旧目标，后续写入继续使用同一恢复来源。 */
+    /** 修改前同卷移动旧目标，失败时按登记顺序逆序恢复。 */
     const save_target = (name: string) => {
-      if (recovery_files.has(name)) return;
       const target = path.join(root, name);
       if (existing_targets.has(name)) {
         const saved = path.join(rollback!, name);
@@ -167,16 +139,6 @@ export async function write_game_directory(
         created_directories.push(directory);
       }
     }
-    for (const [name, destination] of backups) {
-      await checkpoint();
-      assert_regular_path(destination, fs);
-      if (fs.exists(destination)) {
-        save_target(name);
-      } else {
-        fs.rename(path.join(root, name), destination);
-        recovery_files.set(name, destination);
-      }
-    }
     for (const name of plan.writes) {
       await checkpoint();
       const destination = path.join(root, name);
@@ -190,7 +152,6 @@ export async function write_game_directory(
       assert_regular_path(target, fs);
       fs.stat(target); // 缺失的删除目标仍须报告错误。
       save_target(name);
-      if (fs.exists(target)) fs.unlink(target);
     }
     signal?.throwIfAborted();
     // 此处完成来源转换。后续清理失败不能撤销已提交的游戏。
@@ -252,25 +213,4 @@ export async function write_game_directory(
         "Game directory committed. Cleanup failed: " + workspace + "\n" + read_error_message(cause),
     });
   }
-}
-
-/** 大载体只流式核对指纹，重复导入不能覆盖不同版本的恢复依据。 */
-async function same_file(
-  left: string,
-  right: string,
-  fs: NativeFs,
-  signal?: AbortSignal,
-): Promise<boolean> {
-  if (fs.stat(left).size !== fs.stat(right).size) return false;
-  /** 流式计算载体摘要，块间继续响应取消。 */
-  const digest = async (file: string): Promise<string> => {
-    const hash = createHash("sha256");
-    for await (const bytes of fs.create_read_stream(file)) {
-      signal?.throwIfAborted();
-      hash.update(bytes);
-    }
-    signal?.throwIfAborted();
-    return hash.digest("hex");
-  };
-  return (await digest(left)) === (await digest(right));
 }

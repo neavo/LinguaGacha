@@ -1,6 +1,7 @@
 import { GODOT_PACK_ORDER_REFRESH_ACTION } from "@shared/godot";
 import { useGodotPackOrder } from "@frontend/features/godot-pack-order/use-godot-pack-order";
 import { GodotPackOrderDialog } from "@frontend/features/godot-pack-order/godot-pack-order-dialog";
+import { useGameBackupConfirm } from "@frontend/features/game-backup-confirm/use-game-backup-confirm";
 import {
   push_error_toast,
   push_toast,
@@ -499,6 +500,7 @@ export function ProjectPage(_props: ProjectPageProps): JSX.Element {
 
   const { t } = useI18n();
   const pack_order = useGodotPackOrder();
+  const backup_confirm = useGameBackupConfirm();
   const [selected_source, set_selected_source] = useState<SelectedSource | null>(null);
   const [selected_project, set_selected_project] = useState<SelectedProject | null>(null);
   const [is_source_checking, set_is_source_checking] = useState(false);
@@ -637,6 +639,7 @@ export function ProjectPage(_props: ProjectPageProps): JSX.Element {
         set_selected_source({
           source_paths: normalized_source_paths,
           godot_packs: payload.godot_packs ?? [],
+          contains_game: payload.contains_game === true,
           source_file_count,
           format_hit_counts: normalize_project_source_format_hit_counts(payload.format_hit_counts),
         });
@@ -724,12 +727,13 @@ export function ProjectPage(_props: ProjectPageProps): JSX.Element {
   }
 
   /**
-   * 点击创建先选择项目语言，确认后才进入保存路径与创建流程。
+   * 点击创建先提示备份原生游戏，再选择项目语言，确认后才进入保存路径与创建流程。
    */
-  function open_language_dialog(): void {
+  async function open_language_dialog(): Promise<void> {
     if (selected_source === null || source_selection_disabled) {
       return;
     }
+    if (!(await backup_confirm.request_confirm(selected_source.contains_game))) return;
 
     set_is_language_dialog_open(true);
   }
@@ -1005,6 +1009,7 @@ export function ProjectPage(_props: ProjectPageProps): JSX.Element {
   return (
     <>
       <GodotPackOrderDialog {...pack_order.dialog_props} />
+      <AppConfirmDialog {...backup_confirm.dialog_props} />
       <ProjectLanguageDialog
         open={is_language_dialog_open}
         languages={create_languages}
@@ -1064,7 +1069,7 @@ export function ProjectPage(_props: ProjectPageProps): JSX.Element {
                 loading_label={t("app.action.loading")}
                 is_loading={is_creating_project}
                 disabled={selected_source === null || source_selection_disabled}
-                on_click={open_language_dialog}
+                on_click={() => void open_language_dialog()}
               />
             </CardFooter>
           </Card>

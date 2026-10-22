@@ -43,7 +43,7 @@ it("RenPy 通过正式准备线程展开并释放归档句柄", async () => {
   );
   try {
     const result = await worker.run({ kind: "game", file_type: "RENPY", game, staging });
-    expect(result.backups).toEqual(["game/archive.rpa"]);
+    expect(result.removes).toEqual(["game/archive.rpa"]);
     expect(native.read_text_file(path.join(staging, "game/resource.txt"))).toBe("resource");
     fs.renameSync(path.join(temp.path, "game/archive.rpa"), path.join(temp.path, "released.rpa"));
   } finally {
@@ -69,7 +69,7 @@ it.each(["external", "embedded"])(
     );
     try {
       const result = await worker.run({ kind: "game", file_type: "GODOT", game, staging });
-      expect(result.backups).toEqual([path.basename(source)]);
+      expect(result.removes).toEqual(kind === "external" ? ["game.pck"] : []); // 内嵌 EXE 已由 writes 覆盖。
       expect(result.writes).toContain("project.binary");
       expect(fs.existsSync(path.join(staging, "project.binary"))).toBe(true);
       if (kind === "embedded")
@@ -370,7 +370,7 @@ it("仓库外真实 Electron 加载部署准备线程并等待退出", async () 
       const game = ${JSON.stringify(renpy)};
       const staging = path.join(game.root, 'stage');
       const result = await renpy.run({kind:'game',file_type:'RENPY',game,staging});
-      assert(result.backups.includes('game/archive.rpa'));
+      assert(result.removes.includes('game/archive.rpa'));
       assert.equal(fs.readFileSync(path.join(staging,'game/resource.txt'),'utf8'),'resource');
     } finally { await renpy.dispose(); }
     console.log('game-worker-deployment-ok');

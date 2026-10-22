@@ -6,6 +6,7 @@ export const ko_kr_app = {
     title: "리소스 팩 우선순위",
     description: "뒤에 있는 리소스 팩이 앞에 있는 팩의 같은 이름 리소스를 덮어씁니다",
   },
+  game_backup_warning: "작업 전에 게임 폴더 전체를 백업하는 것을 권장합니다 …!",
   media: {
     zoom_out: "축소",
     zoom_in: "확대",

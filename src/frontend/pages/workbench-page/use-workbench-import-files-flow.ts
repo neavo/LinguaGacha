@@ -1,6 +1,7 @@
 import { GODOT_PACK_ORDER_REFRESH_ACTION } from "@shared/godot";
 import type { GodotPackOrder } from "@shared/godot";
 import { useGodotPackOrder } from "@frontend/features/godot-pack-order/use-godot-pack-order";
+import { useGameBackupConfirm } from "@frontend/features/game-backup-confirm/use-game-backup-confirm";
 import { push_error_toast } from "@frontend/app/feedback/desktop-toast";
 import { useCallback, useEffect, useState, type Dispatch, type SetStateAction } from "react";
 
@@ -53,6 +54,7 @@ type WorkbenchImportFilesFlowOptions = {
 
 export type WorkbenchImportFilesFlow = {
   godot_pack_order: ReturnType<typeof useGodotPackOrder>;
+  game_backup_confirm: ReturnType<typeof useGameBackupConfirm>;
   request_add_files_from_paths: (source_paths: string[]) => Promise<void>;
   confirm_dialog: () => Promise<boolean>;
   secondary_dialog: () => Promise<boolean>;
@@ -104,13 +106,15 @@ export function useWorkbenchImportFilesFlow(
   options: WorkbenchImportFilesFlowOptions,
 ): WorkbenchImportFilesFlow {
   const godot_pack_order = useGodotPackOrder();
+  const game_backup_confirm = useGameBackupConfirm();
   const [pending_import_files_request, set_pending_import_files_request] =
     useState<PendingImportFilesRequest | null>(null);
 
   useEffect(() => {
     set_pending_import_files_request(null);
+    game_backup_confirm.finish(false);
     godot_pack_order.finish(null);
-  }, [options.project_identity, godot_pack_order.finish]);
+  }, [options.project_identity, game_backup_confirm.finish, godot_pack_order.finish]);
 
   /**
    * 打开译文继承确认对话框，按冲突策略筛出本次真正会导入的文件。
@@ -176,6 +180,7 @@ export function useWorkbenchImportFilesFlow(
           );
           return {
             ...payload,
+            contains_game: payload.contains_game === true,
             files: Array.isArray(payload.files)
               ? payload.files.flatMap((file) => {
                   const candidate = normalize_workbench_import_candidate(file);
@@ -197,6 +202,7 @@ export function useWorkbenchImportFilesFlow(
         return;
       }
 
+      if (!(await game_backup_confirm.request_confirm(import_preview.contains_game))) return;
       const godot_pack_orders = await godot_pack_order.request_order(import_preview.godot_packs);
       if (godot_pack_orders === null) return;
       const pending_request: PendingImportFilesRequest = {
@@ -219,7 +225,12 @@ export function useWorkbenchImportFilesFlow(
 
       open_import_inheritance_dialog(pending_request, "skip");
     },
-    [open_import_inheritance_dialog, options, godot_pack_order.request_order],
+    [
+      open_import_inheritance_dialog,
+      options,
+      game_backup_confirm.request_confirm,
+      godot_pack_order.request_order,
+    ],
   );
 
   /**
@@ -346,6 +357,7 @@ export function useWorkbenchImportFilesFlow(
 
   return {
     godot_pack_order,
+    game_backup_confirm,
     request_add_files_from_paths,
     confirm_dialog,
     secondary_dialog,

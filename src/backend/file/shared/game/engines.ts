@@ -31,6 +31,7 @@ import type { GameFiles, GameFormatAdapter } from "./format";
 import type { ReadableFile } from "./readable";
 import {
   collect_game_source_files,
+  type GameSourceData,
   type GameSourceFiles,
   type PreparedGameFiles,
 } from "./source-files";
@@ -94,24 +95,30 @@ interface EngineDefinition<G> {
     fs: NativeFs,
     signal?: AbortSignal,
   ): Promise<GameDirectoryChanges>;
+  /** 正式导入只读定进入原稿容器的数据，字体由字体工具单独收集。 */
   collect(
     game: G,
     fs: NativeFs,
     signal?: AbortSignal,
     prepared?: PreparedGameFiles,
-  ): GameSourceFiles | Promise<GameSourceFiles>;
+  ): GameSourceData | Promise<GameSourceData>;
   create_adapter(): GameFormatAdapter;
   read_metadata(extra: Item["extra_field"]): { internal_file_path: string };
   default_status(item: Pick<Item, "extra_field">): ItemStatus;
   workspace_view?(input: GameFiles): AsyncIterable<ReadableFile>;
   build_metadata?(
     game: G,
-    files: GameSourceFiles,
+    data: GameSourceData,
     fs: NativeFs,
     signal?: AbortSignal,
   ): Promise<Uint8Array>;
   font?: {
-    collect: EngineDefinition<G>["collect"];
+    collect(
+      game: G,
+      fs: NativeFs,
+      signal?: AbortSignal,
+      prepared?: PreparedGameFiles,
+    ): GameSourceFiles | Promise<GameSourceFiles>;
     outputs(game: G, files: GameSourceFiles, font: GameFont): ReadonlyMap<string, Uint8Array>;
   };
 }
@@ -153,10 +160,10 @@ function register<K extends GameFileType>(
     ...(build_metadata && {
       build_metadata: (
         source: GameSource,
-        files: GameSourceFiles,
+        data: GameSourceData,
         fs: NativeFs,
         signal?: AbortSignal,
-      ) => build_metadata(game(source), files, fs, signal),
+      ) => build_metadata(game(source), data, fs, signal),
     }),
     async discover(input, fs, signal) {
       const found = await engine.discover(input, fs, signal);
@@ -200,26 +207,13 @@ export const GAME_ENGINES: Record<GameFileType, GameEngine> = {
     collect: (game, fs, signal, prepared) =>
       collect_game_source_files(
         game.root,
-        [
-          "Data",
-          "Fonts",
-          ...fs
-            .read_dirents(game.root)
-            .filter((entry) =>
-              GAME_FONT_EXTENSIONS.includes(path.extname(entry.name).slice(1).toLowerCase()),
-            )
-            .map((entry) => entry.name),
-        ],
+        ["Data"],
         (files) => collect_wolf_files(files.keys()),
-        (name) =>
-          /^Fonts\//iu.test(name) ||
-          /^Data\/Fonts\//iu.test(name) ||
-          (!name.includes("/") &&
-            GAME_FONT_EXTENSIONS.includes(path.extname(name).slice(1).toLowerCase())),
+        null,
         fs,
         signal,
         prepared,
-      ),
+      ).data,
     create_adapter: create_wolf_adapter,
     read_metadata: read_wolf_metadata,
     default_status: wolf_default_status,
@@ -267,13 +261,13 @@ export const GAME_ENGINES: Record<GameFileType, GameEngine> = {
       const local = (name: string) => [prefix, name].filter(Boolean).join("/");
       return collect_game_source_files(
         game.root,
-        ["data", "js/plugins", "js/plugins.js", "fonts"].map(local),
+        ["data", "js/plugins", "js/plugins.js"].map(local),
         (files) => collect_rpgmaker_files(game, files.keys()),
-        (name) => name.toLowerCase().startsWith(local("fonts").toLowerCase() + "/"),
+        null,
         fs,
         signal,
         prepared,
-      );
+      ).data;
     },
     create_adapter: create_rpgmaker_mv_mz_adapter,
     read_metadata: read_rpgmaker_metadata,
@@ -308,7 +302,7 @@ export const GAME_ENGINES: Record<GameFileType, GameEngine> = {
     collect: (game, fs, signal, prepared) =>
       collect_game_source_files(
         game.root,
-        ["Data", "Game.ini", "Fonts"],
+        ["Data", "Game.ini"],
         (files, read, collect) => {
           const ini =
             [...files.keys()].find((name) => name.toLowerCase() === "game.ini") ?? "Game.ini";
@@ -316,11 +310,11 @@ export const GAME_ENGINES: Record<GameFileType, GameEngine> = {
           if (!/^Data\//iu.test(scripts)) collect(scripts);
           return collect_rgss_files(game.version, files.keys(), scripts);
         },
-        (name) => /^Fonts\//iu.test(name),
+        null,
         fs,
         signal,
         prepared,
-      ),
+      ).data,
     create_adapter: create_rpgmaker_rgss_adapter,
     read_metadata: read_rgss_metadata,
     default_status: rgss_default_status,

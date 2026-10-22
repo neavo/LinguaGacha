@@ -16,7 +16,6 @@ export const ja_jp_game_font_page = {
     pick_directory: "ゲームフォルダーを選択",
     start: "変更を開始",
   },
-  confirm: { description: "ゲームフォントを変更してもよろしいですか …?" },
   feedback: {
     inspect_failed: "判定に失敗しました …",
     apply_failed: "変更に失敗しました …",

@@ -32,7 +32,7 @@ type ArchiveInput = {
 };
 type PackedMember = { input: ArchiveInput; member: ArchiveMember };
 
-/** 暂存器只写 staging，原归档与活动源码由共享目录事务移动并备份。 */
+/** 暂存器只写 staging，原归档与活动源码由共享目录事务移除。 */
 export async function stage_renpy_source(
   { game, staging }: Readonly<{ game: RenpySource; staging: string }>,
   fs: NativeFs,
@@ -126,7 +126,7 @@ export async function stage_renpy_source(
       assert(member, "Missing Ren'Py member: " + name);
       return read_archive_member(member.input.handle, member.member);
     };
-    const backups = [...archives];
+    const sources: string[] = [];
     const source_pairs = new Set<string>();
     for (const name of loose) {
       if (!is_source(name) || generated.has(name)) continue;
@@ -150,7 +150,7 @@ export async function stage_renpy_source(
             .equals(source_digest(original, game.profile.digest, game.profile.salt)),
         "Stale compiled script for " + name + "; start the original game once before importing",
       );
-      backups.push(name);
+      sources.push(name); // 源码留在目录里，引擎会用它重新编译，盖掉已修改的 .rpyc。
     }
     const changed = new Map<string, Buffer>();
     const declarations: Awaited<ReturnType<typeof read_loading>>["declarations"] = [];
@@ -195,7 +195,6 @@ export async function stage_renpy_source(
       if (is_source(name) || /^game\/(?:cache|saves)\//u.test(name)) continue;
       const selected = is_script(name) ? packed.get(name) : runtime.get(name);
       if (!selected || (loose.has(name) && (is_script(name) || !loading.force))) continue;
-      if (loose.has(name)) backups.push(name);
       const { input, member } = selected;
       signal?.throwIfAborted();
       const target = path.join(staging, name);
@@ -209,7 +208,6 @@ export async function stage_renpy_source(
       writes.push(name);
     }
     for (const [name, bytes] of changed) {
-      if (loose.has(name)) backups.push(name);
       await fs.write_file(path.join(staging, name), bytes);
       if (!writes.includes(name)) writes.push(name);
     }
@@ -230,7 +228,7 @@ export async function stage_renpy_source(
       for (const key of ["size", "mtimeMs", "ctimeMs", "ino"] as const)
         assert(current[key] === original[key], "Ren'Py input changed during preparation: " + name);
     }
-    return { writes, backups: [...new Set(backups)] };
+    return { writes, removes: [...archives, ...sources] };
   } finally {
     await Promise.all(opened.map((handle) => handle.close()));
   }

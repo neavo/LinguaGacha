@@ -5,6 +5,7 @@ export const zh_cn_app = {
     title: "资源包优先级",
     description: "后面的资源包会覆盖前面资源包中的同名资源",
   },
+  game_backup_warning: "在操作前建议完整备份游戏目录 …!",
   media: {
     zoom_out: "缩小",
     zoom_in: "放大",

@@ -192,7 +192,13 @@ export async function stage_godot_source(
           "Godot carrier changed during preparation",
         );
     }
-    return { writes, backups: carriers.map((carrier) => path.basename(carrier.file)) };
+    // 内嵌 EXE 和其余外置包已由 writes 覆盖，启动包留在目录会被引擎优先加载。
+    return {
+      writes,
+      removes: game.external
+        .filter((carrier) => is_startup_pack(carrier.file, game.executable))
+        .map((carrier) => path.basename(carrier.file)),
+    };
   } finally {
     // 内嵌 EXE 复用包句柄，外置 EXE 的句柄由本次准备单独持有。
     if (executable && !handles.includes(executable)) await executable.close();

@@ -255,6 +255,7 @@ describe("FileFormatService", () => {
     expect(
       await service.summarize_source_files(["", source_a, first_txt, ignored, source_b, source_a]),
     ).toEqual({
+      contains_game: false,
       source_file_count: 3,
       format_hit_counts: expected_format_hit_counts,
     });
@@ -358,8 +359,8 @@ it("正式导入先拒绝根目录恢复材料，来源摘要只读", async () =
   expect(fs.readdirSync(path.join(temp.path, "backup_lg"))).toEqual(["keep"]);
 });
 
-it("正式导入容器使用当前数据，重复导入保留各路径首次备份", async () => {
-  using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-import-backup-"));
+it("正式导入容器使用当前数据，不在游戏目录生成备份", async () => {
+  using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-import-current-"));
   const native = new NativeFs();
   const service = new FileFormatService({ target_language: "ZH" }, async () => null, native);
   const files = new Map<string, string | Buffer>([
@@ -382,85 +383,48 @@ it("正式导入容器使用当前数据，重复导入保留各路径首次备�
   const names = (await game_files!.async("string")).split("\n");
   expect(names).toContain("www/img/a.png");
   expect(names).not.toContain("www/img/a.png_");
-  expect(fs.existsSync(path.join(temp.path, "backup_lg/www/img"))).toBe(false);
   expect([...members.keys()].some((name) => name.includes("fonts/"))).toBe(false);
-  for (const [name, member] of members) {
-    expect(
-      fs
-        .readFileSync(path.join(temp.path, "backup_lg", name))
-        .equals(await member.async("nodebuffer")),
-    ).toBe(true);
-  }
-  expect(fs.readFileSync(path.join(temp.path, "backup_lg/www/fonts/css/game.css"), "utf8")).toBe(
-    "font config",
-  );
-  await service.prepare_source(entry);
-  expect(fs.readdirSync(path.join(temp.path, "backup_lg"))).toEqual(["www"]);
   native.write_file_sync(path.join(temp.path, "www/data/System.json"), '{"gameTitle":"changed"}');
   const changed = await service.prepare_source(entry);
-  const directory = path.join(temp.path, "backup_lg");
-  expect(fs.readdirSync(directory)).toEqual(["www"]);
-  expect(fs.readFileSync(path.join(directory, "www/data/System.json"), "utf8")).toBe(
-    await members.get("www/data/System.json")!.async("string"),
-  );
+  expect(fs.existsSync(path.join(temp.path, "backup_lg"))).toBe(false);
   const current = await read_game_container(changed.content, "game.zip");
   expect(await current.members.get("www/data/System.json")!.async("string")).toBe(
     '{"gameTitle":"changed"}',
   );
 });
 
-it.each(["read", "existing-read", "backup"])(
-  "导入 %s 失败保留准备结果并允许重试",
-  async (phase) => {
-    using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-source-read-"));
-    const native = new NativeFs();
-    const files = new Map([
-      [
-        "data/System.json",
-        Buffer.from(JSON.stringify({ hasEncryptedImages: true, encryptionKey: MEDIA_KEY })),
-      ],
-      ["js/rmmz_core.js", Buffer.from("// fixture")],
-      ["fonts/Main.ttf", Buffer.from("original font")],
-      ["img/a.png_", encrypted_media(png_fixture())],
-    ]);
-    const source = phase === "backup" ? path.join(temp.path, "Game.exe") : temp.path;
-    if (phase === "backup") native.write_file_sync(source, evb_fixture(files));
-    else
-      for (const [name, bytes] of files) native.write_file_sync(path.join(temp.path, name), bytes);
-    const service = new FileFormatService({ target_language: "ZH" }, async () => null, native);
-    const entry = (await service.collect_source_file_entries([source]))[0]!;
-    if (phase === "existing-read") await service.prepare_source(entry);
-    const read = native.read_file.bind(native);
-    const write = native.write_file_atomic.bind(native);
-    vi.spyOn(native, "read_file").mockImplementation((file) => {
-      if (phase !== "backup" && file === path.join(temp.path, "fonts/Main.ttf"))
-        throw new Error("read failure");
-      return read(file);
-    });
-    vi.spyOn(native, "write_file_atomic").mockImplementation((file, bytes) => {
-      if (file === path.join(temp.path, "backup_lg/data/System.json"))
-        throw new Error("backup failure");
-      write(file, bytes);
-    });
-    await expect(service.prepare_source(entry)).rejects.toThrow(
-      phase === "backup" ? "backup failure" : "read failure",
-    );
-    expect(fs.readFileSync(path.join(temp.path, "img/a.png")).equals(png_fixture())).toBe(true);
-    expect(fs.existsSync(path.join(temp.path, "img/a.png_"))).toBe(false);
-    if (phase === "existing-read")
-      expect(fs.readdirSync(path.join(temp.path, "backup_lg")).sort()).toEqual(["data", "fonts"]);
-    vi.restoreAllMocks();
-    await service.prepare_source((await service.collect_source_file_entries([source]))[0]!);
-    expect(fs.readFileSync(path.join(temp.path, "backup_lg/fonts/Main.ttf"), "utf8")).toBe(
-      "original font",
-    );
-    expect(fs.readFileSync(path.join(temp.path, "backup_lg/data/System.json"), "utf8")).toContain(
-      '"hasEncryptedImages":false',
-    );
-  },
-);
+it.each(["read", "existing-read"])("导入 %s 失败保留准备结果并允许重试", async (phase) => {
+  using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-source-read-"));
+  const native = new NativeFs();
+  const files = new Map([
+    [
+      "data/System.json",
+      Buffer.from(JSON.stringify({ hasEncryptedImages: true, encryptionKey: MEDIA_KEY })),
+    ],
+    ["js/rmmz_core.js", Buffer.from("// fixture")],
+    ["data/Actors.json", Buffer.from("[]")],
+    ["img/a.png_", encrypted_media(png_fixture())],
+  ]);
+  for (const [name, bytes] of files) native.write_file_sync(path.join(temp.path, name), bytes);
+  const service = new FileFormatService({ target_language: "ZH" }, async () => null, native);
+  const entry = (await service.collect_source_file_entries([temp.path]))[0]!;
+  if (phase === "existing-read") await service.prepare_source(entry);
+  const read = native.read_file.bind(native);
+  vi.spyOn(native, "read_file").mockImplementation((file) => {
+    if (file === path.join(temp.path, "data/Actors.json")) throw new Error("read failure");
+    return read(file);
+  });
+  await expect(service.prepare_source(entry)).rejects.toThrow("read failure");
+  expect(fs.readFileSync(path.join(temp.path, "img/a.png")).equals(png_fixture())).toBe(true);
+  expect(fs.existsSync(path.join(temp.path, "img/a.png_"))).toBe(false);
+  vi.restoreAllMocks();
+  await service.prepare_source((await service.collect_source_file_entries([temp.path]))[0]!);
+  expect(fs.readFileSync(path.join(temp.path, "data/System.json"), "utf8")).toContain(
+    '"hasEncryptedImages":false',
+  );
+});
 
-it("产品门面完成来源摘要、准备、容器、翻译与导出，原稿字节与备份各有归属", async () => {
+it("产品门面完成来源摘要、准备、容器、翻译与导出", async () => {
   using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-godot-product-"));
   const root = path.join(temp.path, "game"),
     native = new NativeFs(),
@@ -498,10 +462,5 @@ it("产品门面完成来源摘要、准备、容器、翻译与导出，原稿�
     read_translation(read_resource(fs.readFileSync(output))).slots.some(
       (slot) => slot.text === "产品译文",
     ),
-  ).toBe(true);
-  expect(
-    fs
-      .readFileSync(path.join(root, "backup_lg/messages.translation"))
-      .equals(files.get("messages.translation")!),
   ).toBe(true);
 });

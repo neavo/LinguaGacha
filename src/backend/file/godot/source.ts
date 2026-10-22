@@ -16,6 +16,7 @@ import { read_resource_type } from "./resource";
 import { GODOT_RESOURCE_MAX_BYTES } from "./binary";
 import {
   collect_game_source_files,
+  type GameSourceData,
   type GameSourceFiles,
   type PreparedGameFiles,
 } from "../shared/game/source-files";
@@ -225,7 +226,7 @@ export function collect_godot_files(
   fs: NativeFs,
   signal?: AbortSignal,
   prepared?: PreparedGameFiles,
-): GameSourceFiles {
+): GameSourceData {
   const roots = fs
     .read_dirents(game.root)
     .map((entry) => entry.name)
@@ -269,11 +270,11 @@ export function collect_godot_files(
       assert(names.includes("project.binary"), "Missing Godot project.binary");
       return names;
     },
-    is_godot_font_file,
+    null,
     fs,
     signal,
     prepared,
-  );
+  ).data;
 }
 
 /** 字体替换只需项目设置及字体映射，不读取脚本和翻译表。 */

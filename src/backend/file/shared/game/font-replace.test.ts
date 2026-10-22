@@ -50,7 +50,7 @@ function read_font_fields(file: string): Record<number, string> {
     .fields;
 }
 
-it("WOLF 归档与字体替换一次提交，四个字体槽位写入族名并备份原 Game.dat", async () => {
+it("WOLF 归档与字体替换一次提交，四个字体槽位写入族名", async () => {
   using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-font-wolf-"));
   const archive = await wolf_archive_fixture(
     new Map([...wolf_files()].map(([name, bytes]): [string, Buffer] => [name.slice(5), bytes])),
@@ -63,13 +63,6 @@ it("WOLF 归档与字体替换一次提交，四个字体槽位写入族名并�
       ["CUSTOM.TTF", "old root font"],
     ]),
   );
-  expect(fs.readFileSync(path.join(temp.path, "backup_lg/Data/BasicData/Game.dat"))).toEqual(
-    wolf_files().get("Data/BasicData/Game.dat"),
-  );
-  expect(fs.existsSync(path.join(temp.path, "backup_lg/Fonts/config.txt"))).toBe(false);
-  expect(fs.readFileSync(path.join(temp.path, "backup_lg/CUSTOM.TTF"), "utf8")).toBe(
-    "old root font",
-  );
   expect(fs.existsSync(path.join(temp.path, "Data.wolf"))).toBe(false);
   expect(read_font_fields(path.join(temp.path, "Data/BasicData/Game.dat"))).toMatchObject({
     3: "Custom Gothic",
@@ -78,9 +71,6 @@ it("WOLF 归档与字体替换一次提交，四个字体槽位写入族名并�
     6: "Custom Gothic",
   });
   expect(fs.readFileSync(path.join(temp.path, "CUSTOM.TTF")).equals(FONT)).toBe(true);
-  expect(read_font_fields(path.join(temp.path, "backup_lg/Data/BasicData/Game.dat"))[3]).toBe(
-    "字体",
-  );
 });
 
 it.each([
@@ -112,7 +102,7 @@ it.each([
     expect(fs.existsSync(path.join(temp.path, name))).toBe(false);
 });
 
-it("MV 媒体清理与字体覆盖一次提交，备份原字体且保留加载配置", async () => {
+it("MV 媒体清理与字体覆盖一次提交，保留加载配置", async () => {
   using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-font-mv-"));
   const css = '@font-face { font-family: GameFont; src: url("b.woff") format("woff"); }';
   await replace(
@@ -131,12 +121,9 @@ it("MV 媒体清理与字体覆盖一次提交，备份原字体且保留加载�
   );
   expect(fs.readFileSync(path.join(temp.path, "www/img/a.png")).equals(png_fixture())).toBe(true);
   expect(fs.existsSync(path.join(temp.path, "www/img/a.rpgmvp"))).toBe(false);
-  expect(fs.existsSync(path.join(temp.path, "backup_lg/www/img"))).toBe(false);
   for (const name of ["a.ttf", "b.woff"])
     expect(fs.readFileSync(path.join(temp.path, "www/fonts", name)).equals(FONT)).toBe(true);
   expect(fs.readFileSync(path.join(temp.path, "www/fonts/gamefont.css"), "utf8")).toBe(css);
-  expect(fs.readFileSync(path.join(temp.path, "backup_lg/www/fonts/b.woff"), "utf8")).toBe("old b");
-  expect(fs.existsSync(path.join(temp.path, "backup_lg/www/fonts/gamefont.css"))).toBe(false);
 });
 
 it("MZ 封装游戏展开后按原路径覆盖字体", async () => {
@@ -159,13 +146,9 @@ it("MZ 封装游戏展开后按原路径覆盖字体", async () => {
   expect(fs.readFileSync(path.join(temp.path, "fonts/main.woff2")).equals(FONT)).toBe(true);
   expect(fs.readFileSync(path.join(temp.path, "img/a.png")).equals(png_fixture())).toBe(true);
   expect(fs.existsSync(path.join(temp.path, "img/a.png_"))).toBe(false);
-
-  expect(fs.readFileSync(path.join(temp.path, "backup_lg/fonts/main.woff2"), "utf8")).toBe(
-    "old main",
-  );
 });
 
-it.each(["mv", "mz", "wolfrpg"] as const)("%s 反复导入和替换字体共用首次备份", async (kind) => {
+it.each(["mv", "mz", "wolfrpg"] as const)("%s 反复导入和替换字体", async (kind) => {
   using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-font-import-"));
   const prefix = kind === "mv" ? "www/" : "";
   const font_path = kind === "wolfrpg" ? "custom.ttf" : prefix + "fonts/main.ttf";
@@ -200,68 +183,44 @@ it.each(["mv", "mz", "wolfrpg"] as const)("%s 反复导入和替换字体共用�
     expect(read_font_fields(path.join(temp.path, data_path))[3]).toBe(
       "Second Font With Longer Name",
     );
-  for (const name of [data_path, font_path])
-    expect(fs.readFileSync(path.join(temp.path, "backup_lg", name)).equals(files.get(name)!)).toBe(
-      true,
-    );
-  expect(
-    fs.readdirSync(path.join(temp.path, "backup_lg")).some((name) => name.startsWith("backup_lg_")),
-  ).toBe(false);
 });
 
-it.each(["backup", "commit", "cancel"])(
-  "字体修改 %s 失败时恢复原游戏，保留已完成备份",
-  async (phase) => {
-    using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-font-failure-"));
-    const local = new NativeFs();
-    const originals = new Map([
-      ["data/System.json", JSON.stringify({ hasEncryptedImages: true, encryptionKey: MEDIA_KEY })],
-      ["js/rmmz_core.js", "// fixture"],
-      ["fonts/main.ttf", "old font"],
-      ["img/a.png", "old plaintext"],
-    ]);
-    for (const [name, text] of originals) local.write_file_sync(path.join(temp.path, name), text);
-    const encrypted = path.join(temp.path, "img/a.png_");
-    local.write_file_sync(encrypted, encrypted_media(png_fixture()));
-    const source: GameSource = {
-      kind: "game",
-      file_type: "RPGMAKER_MV_MZ",
-      game: (await discover_rpgmaker_source(temp.path, local))!,
-    };
-    const controller = new AbortController();
-    if (phase === "backup" || phase === "cancel") {
-      const write = local.write_file_atomic.bind(local);
-      vi.spyOn(local, "write_file_atomic").mockImplementation((name, bytes) => {
-        if (name.includes("backup_lg")) {
-          if (phase === "backup") throw new Error("backup failure");
-          controller.abort(new Error("cancel failure"));
-        }
-        write(name, bytes);
-      });
-    } else {
-      const rename = local.rename.bind(local);
-      vi.spyOn(local, "rename").mockImplementation((from, to) => {
-        if (from === encrypted && to.includes(path.join(".tmp", "rollback")))
-          throw new Error("commit failure");
-        rename(from, to);
-      });
-    }
-    await expect(
-      replace_game_font(
-        source,
-        { bytes: FONT, file_name: "custom.ttf", families: ["Custom Gothic"] },
-        local,
-        new GamePrepareWorker(null, local).run,
-        controller.signal,
-      ),
-    ).rejects.toThrow(phase + " failure");
-    for (const [name, text] of originals)
-      expect(fs.readFileSync(path.join(temp.path, name), "utf8")).toBe(text);
-    expect(fs.readFileSync(encrypted).equals(encrypted_media(png_fixture()))).toBe(true);
-    expect(fs.existsSync(path.join(temp.path, ".tmp"))).toBe(false);
-    if (phase === "commit")
-      expect(fs.readFileSync(path.join(temp.path, "backup_lg/fonts/main.ttf"), "utf8")).toBe(
-        "old font",
-      );
-  },
-);
+it.each(["commit", "cancel"])("字体修改 %s 失败时恢复原游戏", async (phase) => {
+  using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-font-failure-"));
+  const local = new NativeFs();
+  const originals = new Map([
+    ["data/System.json", JSON.stringify({ hasEncryptedImages: true, encryptionKey: MEDIA_KEY })],
+    ["js/rmmz_core.js", "// fixture"],
+    ["fonts/main.ttf", "old font"],
+    ["img/a.png", "old plaintext"],
+  ]);
+  for (const [name, text] of originals) local.write_file_sync(path.join(temp.path, name), text);
+  const encrypted = path.join(temp.path, "img/a.png_");
+  local.write_file_sync(encrypted, encrypted_media(png_fixture()));
+  const source: GameSource = {
+    kind: "game",
+    file_type: "RPGMAKER_MV_MZ",
+    game: (await discover_rpgmaker_source(temp.path, local))!,
+  };
+  const controller = new AbortController();
+  const rename = local.rename.bind(local);
+  vi.spyOn(local, "rename").mockImplementation((from, to) => {
+    const removing = from === encrypted && to.includes(path.join(".tmp", "rollback"));
+    if (removing && phase === "commit") throw new Error("commit failure");
+    rename(from, to);
+    if (removing) controller.abort(new Error("cancel failure"));
+  });
+  await expect(
+    replace_game_font(
+      source,
+      { bytes: FONT, file_name: "custom.ttf", families: ["Custom Gothic"] },
+      local,
+      new GamePrepareWorker(null, local).run,
+      controller.signal,
+    ),
+  ).rejects.toThrow(phase + " failure");
+  for (const [name, text] of originals)
+    expect(fs.readFileSync(path.join(temp.path, name), "utf8")).toBe(text);
+  expect(fs.readFileSync(encrypted).equals(encrypted_media(png_fixture()))).toBe(true);
+  expect(fs.existsSync(path.join(temp.path, ".tmp"))).toBe(false);
+});

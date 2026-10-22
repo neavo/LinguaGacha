@@ -5,64 +5,6 @@ import { expect, it, vi } from "vitest";
 import { NativeFs } from "../../../../native/native-fs";
 import { write_game_directory, type GameDirectoryChanges } from "./directory";
 
-it.each([
-  "success",
-  "same-backup",
-  "conflict",
-  "write-failure",
-  "cancel",
-  "same-backup-write-failure",
-  "same-backup-cancel",
-])("载体备份移动与回滚：%s", async (kind) => {
-  using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-carrier-backup-"));
-  const native = new NativeFs(),
-    controller = new AbortController();
-  const original = path.join(temp.path, "game.exe"),
-    backup = path.join(temp.path, "backup_lg/game.exe");
-  native.write_file_sync(original, "original carrier");
-  if (kind.startsWith("same-backup") || kind === "conflict")
-    native.write_file_sync(backup, kind === "conflict" ? "other version" : "original carrier");
-  const rename = native.rename.bind(native),
-    copy = vi.spyOn(native, "copy_file");
-  vi.spyOn(native, "rename").mockImplementation((from, to) => {
-    if (kind.endsWith("write-failure") && from.includes(path.join(".tmp", "stage")))
-      throw new Error("injected write failure");
-    rename(from, to);
-    if (kind === "cancel" && to === backup)
-      controller.abort(new Error("cancel after carrier move"));
-    if (kind === "same-backup-cancel" && to.includes(path.join(".tmp", "rollback")))
-      controller.abort(new Error("cancel after carrier move"));
-  });
-  const task = write_game_directory(
-    temp.path,
-    native,
-    async (staging) => {
-      native.write_file_sync(path.join(staging, "game.exe"), "engine prefix");
-      native.write_file_sync(path.join(staging, "project.binary"), "project");
-      return { writes: ["game.exe", "project.binary"], backups: ["game.exe"] };
-    },
-    controller.signal,
-  );
-  if (kind === "conflict" || kind.endsWith("write-failure") || kind.endsWith("cancel")) {
-    await expect(task).rejects.toThrow(
-      kind === "conflict"
-        ? "Conflicting game carrier backup"
-        : kind.endsWith("cancel")
-          ? "cancel after carrier move"
-          : "injected write failure",
-    );
-    expect(fs.readFileSync(original, "utf8")).toBe("original carrier");
-    expect(fs.existsSync(path.join(temp.path, "project.binary"))).toBe(false);
-    expect(fs.existsSync(backup)).toBe(kind === "conflict" || kind.startsWith("same-backup"));
-  } else {
-    await task;
-    expect(fs.readFileSync(original, "utf8")).toBe("engine prefix");
-    expect(fs.readFileSync(backup, "utf8")).toBe("original carrier");
-  }
-  expect(fs.existsSync(path.join(temp.path, ".tmp"))).toBe(false);
-  expect(copy).not.toHaveBeenCalled();
-});
-
 /** 混合覆盖、新增和移除，直接观察目录事务的恢复结果。 */
 function fixture(root: string) {
   fs.mkdirSync(path.join(root, "existing-directory"));
@@ -81,7 +23,7 @@ function fixture(root: string) {
   };
 }
 
-it.each(["backup", "backup-cancel", "directory", "directory-cancel", "commit", "remove", "cancel"])(
+it.each(["save", "save-cancel", "directory", "directory-cancel", "commit", "remove", "cancel"])(
   "%s 失败恢复覆盖、新增及移除目标",
   async (phase) => {
     using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-prepare-rollback-"));
@@ -98,14 +40,14 @@ it.each(["backup", "backup-cancel", "directory", "directory-cancel", "commit", "
           controller.abort(new Error("directory-cancel failure"));
       });
     }
-    if (phase === "backup" || phase === "backup-cancel" || phase === "remove") {
+    if (phase === "save" || phase === "save-cancel" || phase === "remove") {
       const rename = native.rename.bind(native);
       vi.spyOn(native, "rename").mockImplementation((from, to) => {
         if (to.includes(path.join(".tmp", "rollback"))) {
-          if (phase === "backup" || (phase === "remove" && from.endsWith("archive.bin")))
+          if (phase === "save" || (phase === "remove" && from.endsWith("archive.bin")))
             throw new Error(phase + " failure");
           rename(from, to);
-          if (phase === "backup-cancel") controller.abort(new Error("backup-cancel failure"));
+          if (phase === "save-cancel") controller.abort(new Error("save-cancel failure"));
         } else rename(from, to);
       });
     }
@@ -135,6 +77,7 @@ it("显式空目录和文件父目录统一创建，已有目录复用且不依�
   using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-prepare-directories-"));
   const native = new NativeFs(),
     stage = fixture(temp.path);
+  const copy = vi.spyOn(native, "copy_file");
   await write_game_directory(temp.path, native, async (staging) => {
     const plan = await stage(staging);
     return { ...plan, directories: [...plan.directories, "empty/nested"] }; // 同一目录声明可以合并。
@@ -143,10 +86,17 @@ it("显式空目录和文件父目录统一创建，已有目录复用且不依�
   expect(fs.statSync(path.join(temp.path, "existing-directory/empty")).isDirectory()).toBe(true);
   expect(fs.readFileSync(path.join(temp.path, "existing-directory/keep.txt"), "utf8")).toBe("keep");
   expect(fs.readFileSync(path.join(temp.path, "new/added.txt"), "utf8")).toBe("added");
+  expect(fs.readFileSync(path.join(temp.path, "existing.txt"), "utf8")).toBe("replacement");
   expect(fs.existsSync(path.join(temp.path, "archive.bin"))).toBe(false);
+  expect(fs.existsSync(path.join(temp.path, ".tmp"))).toBe(false);
+  expect(fs.existsSync(path.join(temp.path, "backup_lg"))).toBe(false);
+  expect(copy).not.toHaveBeenCalled(); // 大载体通过同卷移动保留回滚材料。
 });
 
 it.each<GameDirectoryChanges>([
+  { writes: ["added.txt", "added.txt"] },
+  { writes: [], removes: ["occupied", "occupied"] },
+  { writes: ["occupied"], removes: ["occupied"] },
   { writes: ["added.txt"], directories: ["occupied"] },
   { writes: ["added.txt"], directories: ["occupied/nested"] },
   { writes: ["occupied/nested.txt"] },
@@ -159,7 +109,7 @@ it.each<GameDirectoryChanges>([
   { writes: ["added.txt"], directories: ["../outside"] },
   { writes: ["added.txt"], directories: ["new/"] },
   { writes: ["added.txt"], directories: ["backup_lg/new"] },
-])("文件与目录冲突在备份和正式目录变更前失败：%j", async (plan) => {
+])("重复目标或文件与目录冲突在正式目录变更前失败：%j", async (plan) => {
   using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-prepare-directory-conflict-"));
   const native = new NativeFs();
   fs.mkdirSync(path.join(temp.path, "existing-directory"));
@@ -176,7 +126,6 @@ it.each<GameDirectoryChanges>([
   expect(fs.readdirSync(temp.path).sort()).toEqual(["existing-directory", "occupied"]);
   expect(fs.readFileSync(path.join(temp.path, "occupied"), "utf8")).toBe("original");
   expect(fs.readdirSync(path.join(temp.path, "existing-directory"))).toEqual(["keep.txt"]);
-  expect(fs.existsSync(path.join(temp.path, "backup_lg"))).toBe(false);
 });
 
 it("目录要求拒绝链接祖先，不在链接目标中创建目录", async () => {
@@ -221,7 +170,7 @@ it("空目录回滚失败保留恢复材料，原文件和已有目录已经恢�
   expect(fs.statSync(path.join(temp.path, "empty/nested")).isDirectory()).toBe(true);
 });
 
-it("恢复失败保留备份与暂存材料并报告位置", async () => {
+it("恢复失败保留回滚与暂存材料并报告位置", async () => {
   using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-prepare-recovery-"));
   const stage = fixture(temp.path),
     native = new NativeFs(),
@@ -239,42 +188,6 @@ it("恢复失败保留备份与暂存材料并报告位置", async () => {
   expect(fs.readFileSync(path.join(temp.path, "archive.bin"), "utf8")).toBe("archive");
   expect(fs.existsSync(path.join(temp.path, ".tmp"))).toBe(true);
 });
-
-it.each(["remove", "replace", "commit-failure"])(
-  "原封装 %s 通过移动保存，唯一副本支持失败回滚",
-  async (mode) => {
-    using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-original-copy-"));
-    const stage = fixture(temp.path),
-      native = new NativeFs();
-    const copy = vi.spyOn(native, "copy_file");
-    if (mode === "commit-failure") {
-      const rename = native.rename.bind(native);
-      vi.spyOn(native, "rename").mockImplementation((from, to) => {
-        if (from.includes(path.join(".tmp", "stage")) && to.endsWith("existing.txt"))
-          throw new Error("commit failure");
-        rename(from, to);
-      });
-    }
-    const prepare = write_game_directory(temp.path, native, async (staging) => {
-      const plan = await stage(staging);
-      if (mode === "remove") return plan;
-      fs.writeFileSync(path.join(staging, "archive.bin"), "launcher");
-      return { ...plan, writes: ["archive.bin", ...plan.writes], removes: [] };
-    });
-    if (mode === "commit-failure") {
-      await expect(prepare).rejects.toThrow("commit failure");
-      expect(fs.readFileSync(path.join(temp.path, "archive.bin"), "utf8")).toBe("archive");
-      expect(fs.readFileSync(path.join(temp.path, "existing.txt"), "utf8")).toBe("original");
-    } else {
-      await prepare;
-      expect(fs.existsSync(path.join(temp.path, ".tmp"))).toBe(false);
-      expect(fs.existsSync(path.join(temp.path, "backup_lg"))).toBe(false);
-      if (mode === "remove") expect(fs.existsSync(path.join(temp.path, "archive.bin"))).toBe(false);
-      else expect(fs.readFileSync(path.join(temp.path, "archive.bin"), "utf8")).toBe("launcher");
-    }
-    expect(copy).not.toHaveBeenCalled();
-  },
-);
 
 it("提交后清理失败报告残留位置，保留已完成转换与回滚材料", async () => {
   using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-prepare-cleanup-"));
