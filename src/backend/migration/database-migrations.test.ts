@@ -100,6 +100,20 @@ it.each([false, true])("真实旧工程完整升级及早期步骤已完成：%s
     JSON.stringify({ src: "# 旧正文", file_path: "old.md", file_type: "MD", row: 0 }),
   );
   db.prepare("INSERT INTO items VALUES (3, ?)").run("broken-json");
+  db.prepare("INSERT INTO assets VALUES (3, ?, ?, ?, ?)").run(
+    "script.rpy",
+    compressed,
+    original.length,
+    compressed.length,
+  );
+  db.prepare("INSERT INTO items VALUES (4, ?)").run(
+    JSON.stringify({
+      file_path: "script.rpy",
+      file_type: "RENPY",
+      dst: "译文",
+      extra_field: { renpy: { v: 1 } },
+    }),
+  );
   const early_ids = [
     "project-rule-storage",
     "quality-rule-entry-identity",
@@ -133,14 +147,35 @@ it.each([false, true])("真实旧工程完整升级及早期步骤已完成：%s
     db.prepare("SELECT file_type FROM assets WHERE path = ?").get("old.md")?.["file_type"],
   ).toBe("MD");
   expect(rows[2]!["data"]).toBe("broken-json");
+  expect(
+    db.prepare("SELECT file_type FROM assets WHERE path = 'script.rpy'").get()?.["file_type"],
+  ).toBe("RENPY_RPY");
+  expect(JSON.parse(String(rows[3]!["data"]))).toMatchObject({
+    dst: "译文",
+    extra_field: { renpy_rpy: { v: 1 } },
+  });
   expect(read_meta(db, PROJECT_DATABASE_APPLIED_WRITEBACK_MIGRATIONS_META_KEY)).toEqual([
     ...early_ids,
     "project-item-public-contract",
     "asset-file-type",
+    "renpy-rpy-file-type",
   ]);
   expect(db.prepare("SELECT sort_order FROM assets").get()?.["sort_order"]).toBe(0);
   const meta = db.prepare("SELECT * FROM meta ORDER BY key").all();
   run_project_database_migrations(db);
   expect(db.prepare("SELECT data FROM items ORDER BY id").all()).toEqual(rows);
   expect(db.prepare("SELECT * FROM meta ORDER BY key").all()).toEqual(meta);
+});
+
+it("空库完成迁移后新增的原生 Ren’Py 资产在重新打开时保留身份", () => {
+  using db = new DatabaseSync(":memory:");
+  run_project_database_migrations(db);
+  db.exec(
+    "INSERT INTO assets (path, file_type, data, original_size, compressed_size) VALUES ('game.renpy', 'RENPY', X'', 0, 0)",
+  );
+  const item = { file_path: "game.renpy", extra_field: { renpy: { key: "say:1" } } };
+  db.prepare("INSERT INTO items(data) VALUES (?)").run(JSON.stringify(item));
+  run_project_database_migrations(db);
+  expect(db.prepare("SELECT file_type FROM assets").get()?.["file_type"]).toBe("RENPY");
+  expect(JSON.parse(String(db.prepare("SELECT data FROM items").get()?.["data"]))).toEqual(item);
 });

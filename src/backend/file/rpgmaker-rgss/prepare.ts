@@ -2,7 +2,7 @@ import path from "node:path";
 import type { NativeFs } from "../../../native/native-fs";
 import { type RGSSSource, RGSS_VERSIONS } from "./source";
 import { extract_rgss_member, read_rgss_archive } from "./archive";
-import type { GamePreparation } from "../shared/game/prepare";
+import type { GameDirectoryChanges } from "../shared/game/directory";
 import { assert_regular_path, validate_game_path } from "../source-file-paths";
 
 /** 解包循环只写暂存目录，正式目录事务由调用者持有。 */
@@ -10,7 +10,7 @@ export async function stage_rgss_source(
   { game, staging }: Readonly<{ game: RGSSSource; staging: string }>,
   fs: NativeFs,
   signal?: AbortSignal,
-): Promise<GamePreparation> {
+): Promise<GameDirectoryChanges> {
   signal?.throwIfAborted();
   const { root, version, archive } = game;
   if (!archive) return { writes: [] };

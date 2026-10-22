@@ -62,6 +62,7 @@ export const ja_jp_project_page = {
     vtt: "WebVTT 字幕",
     pdf: "PDF 電子書籍",
     epub: "EPUB 電子書籍",
+    renpy: "RenPy ゲームファイル",
     rpy: "RenPy ゲームテキスト",
     json: "JSON ゲームテキスト",
     mtool: "MTool から出力したゲームテキスト",

@@ -2,7 +2,7 @@ import { is_json_record } from "../../../domain/json";
 import { restore_evb_launcher } from "../shared/evb/pe";
 import path from "node:path";
 import type { NativeFs } from "../../../native/native-fs";
-import type { GamePreparation } from "../shared/game/prepare";
+import type { GameDirectoryChanges } from "../shared/game/directory";
 import {
   assert_regular_path,
   collect_existing_files,
@@ -18,7 +18,7 @@ export async function stage_rpgmaker_source(
   { game, staging }: Readonly<{ game: RPGMakerSource; staging: string }>,
   fs: NativeFs,
   signal?: AbortSignal,
-): Promise<GamePreparation> {
+): Promise<GameDirectoryChanges> {
   signal?.throwIfAborted();
   const { root, data_root, executable } = game;
   const writes = new Set<string>();

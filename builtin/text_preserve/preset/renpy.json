@@ -6,5 +6,9 @@
   {
     "src": "\\[[^\\[\\p{Script=Han}\\p{Script=Hiragana}\\p{Script=Katakana}\\p{Script=Hangul}]*?\\]",
     "info": "[renpy.version_only]"
+  },
+  {
+    "src": "%(?:\\([^)]+\\))?[-#0+]*(?:\\d+|\\*)?(?:\\.(?:\\d+|\\*))?[diouxXeEfFgGcrs%]",
+    "info": "%s、%(name)s、%.2f"
   }
 ]

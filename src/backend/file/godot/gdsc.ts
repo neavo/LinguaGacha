@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { zstdDecompressSync, zstdCompressSync } from "node:zlib";
-import { Reader, GODOT_RESOURCE_MAX_BYTES, u32, splice } from "./binary";
+import { Reader, GODOT_RESOURCE_MAX_BYTES, u32 } from "./binary";
+import { splice } from "../shared/splice";
 import { read_variant, variant_string, type Value } from "./variant";
 /** GDSC 100 沿用 4.3 的 `Token::Type` 顺序。 */
 const GDSC_TOKENS_100 = [
@@ -105,7 +106,7 @@ const GDSC_TOKENS_100 = [
   "TK_EOF",
 ] as const;
 const PERIOD_PERIOD_END = GDSC_TOKENS_100.indexOf("PERIOD_PERIOD") + 1;
-// 4.6-stable 的 GDSC 101 在 PERIOD_PERIOD 后插入一项；TK_CONST / TK_IN / TK_VOID 沿用既有语义名。
+// 4.6-stable 的 GDSC 101 在 PERIOD_PERIOD 后插入一项。TK_CONST / TK_IN / TK_VOID 沿用既有语义名。
 const GDSC_TOKENS_101 = [
   ...GDSC_TOKENS_100.slice(0, PERIOD_PERIOD_END),
   "PERIOD_PERIOD_PERIOD",
@@ -136,7 +137,7 @@ export function read_gdsc(bytes: Buffer) {
     identifiersCount = r.count(),
     constantsCount = r.count(),
     lineCount = r.count();
-  if (version === 100) r.u32(); // GDSC 100 的 body 头含保留字段，共 20 字节；101 为 16 字节。
+  if (version === 100) r.u32(); // GDSC 100 的 body 头含保留字段，共 20 字节。101 为 16 字节。
   const tokenCount = r.count();
   const identifiers: string[] = [];
   for (let i = 0; i < identifiersCount; i++) {

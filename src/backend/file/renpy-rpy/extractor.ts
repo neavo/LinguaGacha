@@ -91,7 +91,7 @@ export class RenpyExtractor {
       name_src,
       name_dst,
       row: template_stmt.line_no,
-      file_type: "RENPY",
+      file_type: "RENPY_RPY",
       file_path: rel_path,
 
       // 源文件已保存的正文或姓名译文变化表示接受整条结果，同名可能是有意保留。
@@ -177,7 +177,7 @@ export class RenpyExtractor {
     slots: RenpySlot[],
   ): JsonValue {
     return {
-      renpy: {
+      renpy_rpy: {
         v: RENPY_EXTRA_VERSION,
         block: {
           lang: block.lang,

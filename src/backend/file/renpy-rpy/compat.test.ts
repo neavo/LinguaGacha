@@ -24,6 +24,11 @@ describe("RenPy 兼容层", () => {
       ["schinese", "start", "a"],
       ["schinese", "start", "b"],
     ]);
+    const items = [item];
+    const prepared = build_items_for_writeback("script.rpy", build_lines(), items);
+    expect(prepared).toEqual(items);
+    prepared.pop(); // 写回入口可重排自己的数组，调用方的条目集合仍归调用方所有。
+    expect(items).toEqual([item]);
   });
 
   it("旧 AST extra 缺少版本时重解析原文件并迁移译文", () => {
@@ -106,7 +111,7 @@ describe("RenPy 兼容层", () => {
         }),
       ],
       [item],
-      null,
+      new Set(),
     );
 
     expect(item.dst).toBe("");
@@ -159,7 +164,7 @@ function make_ast_item(options: {
     status: "PROCESSED",
     src: "Hello",
     dst: options.dst,
-    extra_field: { renpy },
+    extra_field: { renpy_rpy: renpy },
   });
 }
 

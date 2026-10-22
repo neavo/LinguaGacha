@@ -227,9 +227,9 @@ it("支持混合大小写扩展名并备份已有同名字体", async () => {
   using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-font-supported-"));
   const request = write_game(temp.path);
   const root = path.dirname(request.game_path);
-  const font_path = path.join(temp.path, "custom.OtF");
+  const font_path = path.join(temp.path, "custom.TtF");
   fs.renameSync(request.font_path, font_path);
-  const existing = "CUSTOM.OTF";
+  const existing = "CUSTOM.TTF";
   native.write_file_sync(path.join(root, existing), "original font");
   const service = new GameFontService(
     new RuntimeOperationGate(),
@@ -278,4 +278,34 @@ it("字体检查只读返回包顺序，修改使用同一确认顺序", async (
   });
   expect(fs.readFileSync(path.join(game, "main.gd"), "utf8")).toBe("base");
   await worker.dispose();
+});
+
+it.each(["inspect", "apply"] as const)("%s 按扩展名拒绝 OTF 输入", async (method) => {
+  using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-font-content-"));
+  const request = write_game(temp.path);
+  const execute = vi.fn(new GamePrepareWorker(null, native).run);
+  const service = new GameFontService(new RuntimeOperationGate(), execute, native);
+  const font_path = path.join(temp.path, "rejected.otf");
+  fs.writeFileSync(font_path, font_fixture([{ text: "Rejected" }]));
+  await expect(service[method]({ ...request, font_path })).rejects.toMatchObject({
+    code: "file.parse_failed",
+  });
+  expect(execute).not.toHaveBeenCalled();
+  expect(fs.existsSync(path.join(path.dirname(request.game_path), "backup_lg"))).toBe(false);
+});
+
+it.each(["inspect", "apply"] as const)("%s 对 TTF 路径沿用原有 SFNT 解析", async (method) => {
+  using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-font-sfnt-"));
+  const request = write_game(temp.path);
+  const bytes = font_fixture([{ text: "Custom Gothic" }]);
+  bytes.write("OTTO", 0, "latin1");
+  fs.writeFileSync(request.font_path, bytes);
+  const service = new GameFontService(
+    new RuntimeOperationGate(),
+    new GamePrepareWorker(null, native).run,
+    native,
+  );
+  await expect(service[method](request)).resolves.toEqual(
+    method === "inspect" ? { godot_packs: [] } : {},
+  );
 });

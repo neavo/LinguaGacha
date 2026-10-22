@@ -173,7 +173,7 @@ export class RenpyWriter {
    */
   private read_writer_extra(item: Item): WriterExtra | null {
     const extra = read_json_record(item.extra_field);
-    const renpy = read_json_record(extra["renpy"]);
+    const renpy = read_json_record(extra["renpy_rpy"]);
     const pair = read_json_record(renpy["pair"]);
     const digest = read_json_record(renpy["digest"]);
     const block = read_json_record(renpy["block"]);

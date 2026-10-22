@@ -5,7 +5,7 @@ import { expect, it, vi } from "vitest";
 import { NativeFs } from "../../../../native/native-fs";
 import { GAME_ENGINES, type GameSource } from "./engines";
 
-it.each(["", "www"])("MV/MZ 合并暂存、移除清单并递归保留字体配套文件：%s", (prefix) => {
+it.each(["", "www"])("MV/MZ 合并暂存、移除清单并递归保留字体配套文件：%s", async (prefix) => {
   using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-source-files-mv-"));
   const native = new NativeFs();
   const local = (name: string) => [prefix, name].filter(Boolean).join("/");
@@ -24,7 +24,7 @@ it.each(["", "www"])("MV/MZ 合并暂存、移除清单并递归保留字体配�
   native.write_file_sync(path.join(staging, local("data/System.json")), "prepared data");
   native.write_file_sync(path.join(staging, local("Fonts/Main.ttf")), "prepared font");
   native.write_file_sync(path.join(staging, local("Fonts/new/config.css")), "prepared config");
-  const files = GAME_ENGINES.RPGMAKER_MV_MZ.collect(
+  const files = await GAME_ENGINES.RPGMAKER_MV_MZ.collect(
     {
       kind: "game",
       file_type: "RPGMAKER_MV_MZ",
@@ -50,7 +50,7 @@ it.each(["", "www"])("MV/MZ 合并暂存、移除清单并递归保留字体配�
   expect(Buffer.from(files.fonts.get(local("Fonts/Main.ttf"))!).toString()).toBe("prepared font");
 });
 
-it.each(["Data", "Custom"])("RGSS 收集 %s 配置脚本并复用已枚举的数据目录", (directory) => {
+it.each(["Data", "Custom"])("RGSS 收集 %s 配置脚本并复用已枚举的数据目录", async (directory) => {
   using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-source-files-rgss-"));
   const native = new NativeFs();
   const script = directory + "/Main.rvdata2";
@@ -74,7 +74,7 @@ it.each(["Data", "Custom"])("RGSS 收集 %s 配置脚本并复用已枚举的数
   native.write_file_sync(path.join(staging, script), "prepared script");
   const enumerate = vi.spyOn(native, "read_dirents");
   const read = vi.spyOn(native, "read_file");
-  const files = GAME_ENGINES.RPGMAKER_RGSS.collect(source, native, undefined, {
+  const files = await GAME_ENGINES.RPGMAKER_RGSS.collect(source, native, undefined, {
     staging,
     result: { writes: [script] },
   });
@@ -91,12 +91,12 @@ it.each(["Data", "Custom"])("RGSS 收集 %s 配置脚本并复用已枚举的数
     enumerate.mock.calls.filter(([name]) => name === path.join(temp.path, "Data")),
   ).toHaveLength(1);
   fs.unlinkSync(path.join(temp.path, script));
-  expect(() => GAME_ENGINES.RPGMAKER_RGSS.collect(source, native)).toThrow(
-    "Missing game source file",
-  );
+  await expect(
+    async () => await GAME_ENGINES.RPGMAKER_RGSS.collect(source, native),
+  ).rejects.toThrow("Missing game source file");
 });
 
-it("WOLF 收集原稿与字体，无关素材只参与目录枚举", () => {
+it("WOLF 收集原稿与字体，无关素材只参与目录枚举", async () => {
   using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-source-files-wolf-"));
   const native = new NativeFs();
   for (const name of [
@@ -115,7 +115,7 @@ it("WOLF 收集原稿与字体，无关素材只参与目录枚举", () => {
     ["Data/Picture/a.png", "Data/Sound/a.ogg"].map((name) => path.join(temp.path, name)),
   );
   const accesses = (["stat", "lstat", "read_file"] as const).map((name) => vi.spyOn(native, name));
-  const files = GAME_ENGINES.WOLFRPG.collect(
+  const files = await GAME_ENGINES.WOLFRPG.collect(
     {
       kind: "game",
       file_type: "WOLFRPG",

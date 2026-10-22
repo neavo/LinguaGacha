@@ -1,4 +1,5 @@
 import { create_godot_fixture, godot_pack_fixture } from "../../test/godot-fixture";
+import { create_renpy_fixture } from "../../test/renpy-fixture";
 import { wolf_files } from "../../test/wolf-fixture";
 import { wolf_archive_fixture } from "../../test/wolf-archive-fixture";
 import { evb_fixture } from "../../test/evb-fixture";
@@ -321,6 +322,39 @@ describe("ProjectContentService", () => {
       expect(
         (await database.get_all_items(lg_path)).map(({ src, status }) => ({ src, status })),
       ).toEqual(baseline.map(({ src, status }) => ({ src, status })));
+    } finally {
+      await database.close();
+    }
+  });
+  it("RenPy 工程关闭重开后可离线重置原稿与默认用途", async () => {
+    const { database, service, lg_path } = await create_service();
+    const root = project_path("renpy");
+    create_renpy_fixture(root);
+    try {
+      const preview = await service.preview_import_files({
+        source_paths: [root, path.join(root, "Game.exe"), path.join(root, "game")],
+      });
+      expect(preview.files).toHaveLength(1);
+      await service.import_files({
+        files: preview.files!,
+        conflict_action: "replace",
+        expected_section_revisions: { files: 0, items: 0 },
+      });
+      expect(await database.get_all_asset_records(lg_path)).toMatchObject([
+        { path: "renpy.renpy", file_type: "RENPY" },
+      ]);
+      const original = await database.get_all_items(lg_path);
+      expect(original.some((item) => item.status === "RULE_SKIPPED")).toBe(true);
+      expect(original.some((item) => item.src === "Common question?")).toBe(true);
+      await database.close();
+      fs.renameSync(root, root + "-unavailable");
+      await service.reset_files({
+        rel_paths: ["renpy.renpy"],
+        expected_section_revisions: { items: 1 },
+      });
+      expect(
+        (await database.get_all_items(lg_path)).map(({ src, status }) => ({ src, status })),
+      ).toEqual(original.map(({ src, status }) => ({ src, status })));
     } finally {
       await database.close();
     }
@@ -1702,7 +1736,7 @@ describe("ProjectContentService", () => {
         writer.add_asset(lg_path, "old.json", Buffer.from("[]"), "MESSAGEJSON", null),
       );
       await database.transaction(lg_path, (writer) =>
-        writer.add_asset(lg_path, "old.rpy", Buffer.from(""), "RENPY", null),
+        writer.add_asset(lg_path, "old.rpy", Buffer.from(""), "RENPY_RPY", null),
       );
       await database.transaction(lg_path, (writer) =>
         writer.set_items(
@@ -1724,7 +1758,7 @@ describe("ProjectContentService", () => {
               dst,
               name_src,
               name_dst,
-              file_type: text_type === "KAG" ? "MESSAGEJSON" : "RENPY",
+              file_type: text_type === "KAG" ? "MESSAGEJSON" : "RENPY_RPY",
               file_path: text_type === "KAG" ? "old.json" : "old.rpy",
               status: "PROCESSED",
             }),

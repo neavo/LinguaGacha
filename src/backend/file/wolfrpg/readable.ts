@@ -1,10 +1,9 @@
 import type { GameFiles } from "../shared/game/format";
+import type { ReadableFile } from "../shared/game/readable";
 import { create_wolf_context } from "./wolf-format";
 
 /** JSON 只读投影使用相同结构解析器，失败成员保留原字节及诊断。 */
-export async function* read_wolf_sources(
-  files: GameFiles,
-): AsyncGenerator<readonly [string, Uint8Array]> {
+export async function* read_wolf_sources(files: GameFiles): AsyncGenerator<ReadableFile> {
   const context = await create_wolf_context(files);
   for (const [file, member] of files) {
     const content = await member.async("uint8array");

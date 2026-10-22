@@ -4,7 +4,7 @@ import type { NativeFs } from "../../../native/native-fs";
 import { copy_range, type BinaryFileHandle } from "../shared/binary";
 import { assert_game_path_spellings, assert_regular_path } from "../source-file-paths";
 import { ProjectAssetPathIndex } from "../../../shared/project/project-asset-paths";
-import type { GamePreparation } from "../shared/game/prepare";
+import type { GameDirectoryChanges } from "../shared/game/directory";
 import { GODOT_RESOURCE_MAX_BYTES } from "./binary";
 import {
   read_pack_member,
@@ -25,7 +25,7 @@ export async function stage_godot_source(
   { game, staging }: Readonly<{ game: GodotSource; staging: string }>,
   fs: NativeFs,
   signal?: AbortSignal,
-): Promise<GamePreparation> {
+): Promise<GameDirectoryChanges> {
   signal?.throwIfAborted();
   const carriers = [...(game.embedded ? [game.embedded] : []), ...game.external];
   if (!carriers.length) return { writes: [] };

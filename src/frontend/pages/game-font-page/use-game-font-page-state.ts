@@ -1,3 +1,4 @@
+import { GAME_FONT_INPUT_EXTENSIONS } from "@shared/game-font";
 import { GODOT_PACK_ORDER_REFRESH_ACTION } from "@shared/godot";
 import { useGodotPackOrder } from "@frontend/features/godot-pack-order/use-godot-pack-order";
 import type { GodotPackPreview, GodotPackOrder } from "@shared/godot";
@@ -41,6 +42,20 @@ export function useGameFontPageState() {
 
   /** 对话框、拖入与清除的共同入口：撤销旧检查结果，两项齐全时检查当前组合。 */
   async function update_path(field: GamePathField, value: string | null): Promise<void> {
+    if (
+      field === "font_path" &&
+      value !== null &&
+      !GAME_FONT_INPUT_EXTENSIONS.includes(value.match(/\.([^.\\/]+)$/u)?.[1]?.toLowerCase() ?? "")
+    ) {
+      push_error_toast(
+        t("game_font_page.feedback.inspect_failed"),
+        new DesktopApiError({
+          code: "file.parse_failed",
+          message: t("game_font_page.fields.font_file.hint"),
+        }),
+      );
+      return;
+    }
     const next = { ...paths, [field]: value };
     set_paths(next);
     set_godot_packs([]);
@@ -78,11 +93,8 @@ export function useGameFontPageState() {
       } catch (error) {
         push_error_toast(t("app.feedback.operation_failed"), error);
       }
-      if (selected === undefined) {
-        set_phase(previous_phase); // 取消选择时保留原路径及其检查结果。
-        return;
-      }
-      await update_path(field, selected);
+      set_phase(previous_phase); // 取消、失败或扩展名被拒绝时恢复选择前的阶段。
+      if (selected !== undefined) await update_path(field, selected);
     });
   }
 

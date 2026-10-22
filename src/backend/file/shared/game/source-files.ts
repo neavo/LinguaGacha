@@ -7,14 +7,14 @@ import {
   assert_regular_path,
   validate_game_path,
 } from "../../source-file-paths";
-import type { GamePreparation } from "./prepare";
+import type { GameDirectoryChanges } from "./directory";
 
 /** 一次操作读定的原字节，容器与备份共用数据集合。 */
 export type GameSourceFiles = Readonly<{
   data: ReadonlyMap<string, Uint8Array>;
   fonts: ReadonlyMap<string, Uint8Array>;
 }>;
-export type PreparedGameFiles = Readonly<{ staging: string; result: GamePreparation }>;
+export type PreparedGameFiles = Readonly<{ staging: string; result: GameDirectoryChanges }>;
 
 /** 引擎声明收集入口和选择器，公共层持有路径检查、暂存覆盖和原字节读取。 */
 export function collect_game_source_files(

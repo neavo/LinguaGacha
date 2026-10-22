@@ -29,6 +29,7 @@ export const ITEM_FILE_TYPES = [
   "XLSX",
   "WOLFXLSX",
   "WOLFRPG",
+  "RENPY_RPY",
   "RENPY",
   "TRANS",
   "RPGMAKER_MV_MZ",

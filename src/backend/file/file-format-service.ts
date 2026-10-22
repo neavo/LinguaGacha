@@ -28,7 +28,7 @@ import { ASSFormat } from "./subtitle/ass-ssa-format";
 import { KVJSONFormat } from "./kvjson/kvjson-format";
 import { MDV2Format } from "./markdown/md-v2-format";
 import { MESSAGEJSONFormat } from "./messagejson/messagejson-format";
-import { RenPyFormat } from "./renpy/renpy-format";
+import { RenpyRpyFormat } from "./renpy-rpy/renpy-rpy-format";
 import { SRTFormat } from "./subtitle/srt-format";
 import { VTTFormat } from "./subtitle/vtt-format";
 import { LRCFormat } from "./subtitle/lrc-format";
@@ -73,7 +73,7 @@ export class FileFormatService {
   private readonly messagejson: MESSAGEJSONFormat;
   private readonly xlsx: XLSXFormat;
   private readonly trans: TRANSFormat;
-  private readonly renpy: RenPyFormat;
+  private readonly renpy_rpy: RenpyRpyFormat;
   private readonly epub: EPUBFormat;
   private readonly games: Record<GameFileType, GameFormat>;
 
@@ -103,7 +103,7 @@ export class FileFormatService {
     this.messagejson = new MESSAGEJSONFormat();
     this.xlsx = new XLSXFormat();
     this.trans = new TRANSFormat();
-    this.renpy = new RenPyFormat();
+    this.renpy_rpy = new RenpyRpyFormat();
     this.epub = new EPUBFormat(config);
   }
 
@@ -130,7 +130,7 @@ export class FileFormatService {
       ".vtt": "VTT",
       ".lrc": "LRC",
       ".epub": "EPUB",
-      ".rpy": "RENPY",
+      ".rpy": "RENPY_RPY",
       ".trans": "TRANS",
       ".pdf": "PDF",
     };
@@ -190,7 +190,7 @@ export class FileFormatService {
       VTT: this.vtt,
       LRC: this.lrc,
       EPUB: this.epub,
-      RENPY: this.renpy,
+      RENPY_RPY: this.renpy_rpy,
     };
     if (!type || !Object.hasOwn(formats, type))
       return { kind: "items", file_type: "NONE", items: [] };
@@ -214,7 +214,7 @@ export class FileFormatService {
     );
   }
 
-  /** 导入确认后的目标路径固定；识别错误也保留在同一批次中。 */
+  /** 导入确认后的目标路径固定。识别错误也保留在同一批次中。 */
   public async discover_import_sources(
     entries: readonly ProjectSourceFileEntry[],
     signal?: AbortSignal,
@@ -272,7 +272,7 @@ export class FileFormatService {
     const assigned = new SourceFilePathIndex();
     const result: T[] = [...entries];
     const directories = new Map<string, string>(); // 同一准备操作中的目录前缀只改名一次，子文件共同迁移。
-    // 普通目录先占位，游戏避让；结果仍按用户输入顺序返回。
+    // 普通目录先占位，游戏避让。结果仍按用户输入顺序返回。
     const order = entries
       .map((entry, index) => ({ entry, index }))
       .sort(
@@ -344,12 +344,18 @@ export class FileFormatService {
         throw new Error("Unfinished game operation; recovery files: " + workspace);
       await prepare_game_source(source, this.native_fs, this.game_prepare_execution, signal);
       const format = this.games[source.file_type];
-      const files = GAME_ENGINES[source.file_type].collect(source, this.native_fs, signal);
+      const files = await GAME_ENGINES[source.file_type].collect(source, this.native_fs, signal);
       const container = await format.create_container(
         files.data,
         rel_path,
         source.game.root,
         signal,
+        await GAME_ENGINES[source.file_type].build_metadata?.(
+          source,
+          files,
+          this.native_fs,
+          signal,
+        ),
       );
       await write_game_backup(
         source.game.root,
@@ -418,7 +424,7 @@ export class FileFormatService {
     await this.messagejson.write_to_path(items, paths);
     await this.xlsx.write_to_path(items, paths, asset_reader);
     await this.trans.write_to_path(items, paths, asset_reader);
-    await this.renpy.write_to_path(items, paths, asset_reader);
+    await this.renpy_rpy.write_to_path(items, paths, asset_reader);
     await this.epub.write_to_path(items, paths, asset_reader);
   }
 

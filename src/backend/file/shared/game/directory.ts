@@ -13,7 +13,7 @@ import {
 } from "../../source-file-paths";
 
 /** 暂存完成后的变更清单，由主线程提交到游戏目录。 */
-export type GamePreparation = Readonly<{
+export type GameDirectoryChanges = Readonly<{
   writes: readonly string[];
   directories?: readonly string[];
   removes?: readonly string[];
@@ -21,16 +21,17 @@ export type GamePreparation = Readonly<{
 }>;
 
 /** 正式目录的唯一写入口，调用方持有写入占用直到 worker、回滚和清理结束。 */
-export async function prepare_game_directory(
+export async function write_game_directory(
   root: string,
   fs: NativeFs,
-  stage: (directory: string) => Promise<GamePreparation>,
+  stage: (directory: string) => Promise<GameDirectoryChanges>,
   signal?: AbortSignal,
 ): Promise<void> {
   let staging: string | null = null;
   let rollback: string | null = null;
   let workspace: string | null = null;
   const recovery_files = new Map<string, string | null>(); // 按首次修改顺序登记，null 表示本轮新增目标。
+  const created_roots: string[] = []; // 新导出目录及缺失父目录归本次事务，恢复材料清理成功后才移除。
   const created_directories: string[] = []; // 仅移除本次创建的空目录。
   // 同步文件操作之间让出事件循环，使取消请求能进入。
   const checkpoint = async () => {
@@ -40,6 +41,17 @@ export async function prepare_game_directory(
   try {
     signal?.throwIfAborted();
     assert_regular_path(root, fs);
+    const missing: string[] = [];
+    for (
+      let directory = path.resolve(root);
+      !fs.exists(directory);
+      directory = path.dirname(directory)
+    )
+      missing.push(directory);
+    for (const directory of missing.reverse()) {
+      await fs.make_dir_exclusive(directory);
+      created_roots.push(directory);
+    }
     const candidate = path.join(root, GAME_WORKSPACE_DIRECTORY);
     await fs.make_dir_exclusive(candidate);
     workspace = candidate; // 创建成功后才取得清理所有权，不能接管已有恢复材料。
@@ -181,7 +193,7 @@ export async function prepare_game_directory(
       if (fs.exists(target)) fs.unlink(target);
     }
     signal?.throwIfAborted();
-    // 此处完成来源转换；后续清理失败不能撤销已提交的游戏。
+    // 此处完成来源转换。后续清理失败不能撤销已提交的游戏。
   } catch (cause) {
     const recovery_errors: string[] = [];
     for (const [name, saved] of [...recovery_files].reverse()) {
@@ -207,6 +219,16 @@ export async function prepare_game_directory(
         recovery_errors.push(workspace + ": " + read_error_message(error));
       }
     }
+    if (!recovery_errors.length)
+      for (const directory of created_roots.reverse()) {
+        try {
+          fs.remove_empty_dir(directory);
+        } catch (error) {
+          recovery_errors.push(directory + ": " + read_error_message(error));
+          break;
+        }
+      }
+    if (!recovery_errors.length && cause instanceof AppError) throw cause; // 恢复成功后保留格式错误的原始分类。
     throw new AppError("file.io_failed", {
       cause,
       message: [
@@ -227,10 +249,7 @@ export async function prepare_game_directory(
     throw new AppError("file.io_failed", {
       cause,
       message:
-        "Game preparation committed. Cleanup failed: " +
-        workspace +
-        "\n" +
-        read_error_message(cause),
+        "Game directory committed. Cleanup failed: " + workspace + "\n" + read_error_message(cause),
     });
   }
 }

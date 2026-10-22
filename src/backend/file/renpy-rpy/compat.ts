@@ -12,16 +12,14 @@ export function build_items_for_writeback(
   rel_path: string,
   lines: string[],
   items: Item[],
-  extractor = new RenpyExtractor(),
 ): Item[] {
-  const cloned_items = structuredClone(items);
-  if (cloned_items.length > 0 && cloned_items.every(has_current_ast_extra_field)) {
-    return cloned_items;
+  if (items.length > 0 && items.every(has_current_ast_extra_field)) {
+    return [...items]; // 写回入口会排序数组，条目及其元数据只读。
   }
 
-  const parsed_items = extractor.extract(parse_document(lines), rel_path);
-  const ast_written_target_lines = transfer_ast_translations(cloned_items, parsed_items);
-  transfer_legacy_translations(cloned_items, parsed_items, ast_written_target_lines);
+  const parsed_items = new RenpyExtractor().extract(parse_document(lines), rel_path);
+  const ast_written_target_lines = transfer_ast_translations(items, parsed_items);
+  transfer_legacy_translations(items, parsed_items, ast_written_target_lines);
   return parsed_items;
 }
 
@@ -29,7 +27,7 @@ export function build_items_for_writeback(
  * 当前 AST extra 必须具备写回器所需的版本、块、配对、槽位和摘要。
  */
 export function has_current_ast_extra_field(item: Item): boolean {
-  const renpy = read_json_record(read_json_record(item.extra_field)["renpy"]);
+  const renpy = read_json_record(read_json_record(item.extra_field)["renpy_rpy"]);
   if (renpy["v"] !== RENPY_EXTRA_VERSION) {
     return false;
   }
@@ -54,7 +52,7 @@ export function has_current_ast_extra_field(item: Item): boolean {
  * 从 AST extra 读取目标行，用于排序和历史迁移覆盖保护。
  */
 export function get_item_target_line(item: Item): number {
-  const renpy = read_json_record(read_json_record(item.extra_field)["renpy"]);
+  const renpy = read_json_record(read_json_record(item.extra_field)["renpy_rpy"]);
   const pair = read_json_record(renpy["pair"]);
   return typeof pair["target_line"] === "number" ? Math.trunc(pair["target_line"]) : 0;
 }
@@ -63,7 +61,7 @@ export function get_item_target_line(item: Item): number {
  * AST key 用块归属和模板摘要定位同一条原始模板，rstrip 摘要用于兼容行尾空白变化。
  */
 export function build_ast_keys(item: Item): RenpyAstKey[] {
-  const renpy = read_json_record(read_json_record(item.extra_field)["renpy"]);
+  const renpy = read_json_record(read_json_record(item.extra_field)["renpy_rpy"]);
   const block = read_json_record(renpy["block"]);
   const digest = read_json_record(renpy["digest"]);
   const lang = block["lang"];
@@ -122,7 +120,7 @@ export function transfer_ast_translations(existing_items: Item[], new_items: Ite
 export function transfer_legacy_translations(
   legacy_items: Item[],
   new_items: Item[],
-  skip_target_lines: Set<number> | null,
+  skip_target_lines: ReadonlySet<number>,
 ): void {
   const legacy_by_key = new Map<string, Item[]>();
   let current_lang: string | null = null;
@@ -148,7 +146,7 @@ export function transfer_legacy_translations(
 
   for (const item of new_items) {
     const target_line = get_item_target_line(item);
-    if (skip_target_lines?.has(target_line)) {
+    if (skip_target_lines.has(target_line)) {
       continue;
     }
     const candidates = pick_candidates(build_ast_keys(item), legacy_by_key);

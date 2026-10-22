@@ -63,11 +63,10 @@ it("WOLF 归档与字体替换一次提交，四个字体槽位写入族名并�
       ["CUSTOM.TTF", "old root font"],
     ]),
   );
-  for (const [name, bytes] of wolf_files())
-    expect(fs.readFileSync(path.join(temp.path, "backup_lg", name)).equals(bytes)).toBe(true);
-  expect(fs.readFileSync(path.join(temp.path, "backup_lg/Fonts/config.txt"), "utf8")).toBe(
-    "font config",
+  expect(fs.readFileSync(path.join(temp.path, "backup_lg/Data/BasicData/Game.dat"))).toEqual(
+    wolf_files().get("Data/BasicData/Game.dat"),
   );
+  expect(fs.existsSync(path.join(temp.path, "backup_lg/Fonts/config.txt"))).toBe(false);
   expect(fs.readFileSync(path.join(temp.path, "backup_lg/CUSTOM.TTF"), "utf8")).toBe(
     "old root font",
   );
@@ -137,12 +136,7 @@ it("MV 媒体清理与字体覆盖一次提交，备份原字体且保留加载�
     expect(fs.readFileSync(path.join(temp.path, "www/fonts", name)).equals(FONT)).toBe(true);
   expect(fs.readFileSync(path.join(temp.path, "www/fonts/gamefont.css"), "utf8")).toBe(css);
   expect(fs.readFileSync(path.join(temp.path, "backup_lg/www/fonts/b.woff"), "utf8")).toBe("old b");
-  expect(fs.readFileSync(path.join(temp.path, "backup_lg/www/fonts/gamefont.css"), "utf8")).toBe(
-    css,
-  );
-  expect(fs.readFileSync(path.join(temp.path, "backup_lg/www/data/System.json"), "utf8")).toContain(
-    "MV",
-  );
+  expect(fs.existsSync(path.join(temp.path, "backup_lg/www/fonts/gamefont.css"))).toBe(false);
 });
 
 it("MZ 封装游戏展开后按原路径覆盖字体", async () => {
@@ -165,9 +159,7 @@ it("MZ 封装游戏展开后按原路径覆盖字体", async () => {
   expect(fs.readFileSync(path.join(temp.path, "fonts/main.woff2")).equals(FONT)).toBe(true);
   expect(fs.readFileSync(path.join(temp.path, "img/a.png")).equals(png_fixture())).toBe(true);
   expect(fs.existsSync(path.join(temp.path, "img/a.png_"))).toBe(false);
-  expect(fs.readFileSync(path.join(temp.path, "backup_lg/data/System.json"), "utf8")).toContain(
-    "MZ",
-  );
+
   expect(fs.readFileSync(path.join(temp.path, "backup_lg/fonts/main.woff2"), "utf8")).toBe(
     "old main",
   );
