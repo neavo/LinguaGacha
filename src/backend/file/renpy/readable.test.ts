@@ -15,7 +15,7 @@ import { read_renpy_metadata } from "./item";
 import { pickle_string } from "./pickle";
 import { read_renpy_sources } from "./readable";
 import { create_renpy_adapter } from "./renpy-format";
-import { collect_renpy_files, discover_renpy_source } from "./source";
+import { build_renpy_metadata, collect_renpy_files, discover_renpy_source } from "./source";
 
 type Projection = {
   strings: {
@@ -66,17 +66,15 @@ function lines_fixture(): Buffer {
 it("可读视图按原行号还原脚本，字符串的视图行与原稿行分开给出，键与条目一致", async () => {
   using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-renpy-readable-"));
   const native = create_renpy_fixture(temp.path);
-  const files = await collect_renpy_files(
-    (await discover_renpy_source(temp.path, native))!,
-    native,
-  );
+  const game = (await discover_renpy_source(temp.path, native))!;
+  const files = collect_renpy_files(game, native);
   const members = new Map([...files.data, ["game/lines.rpyc", lines_fixture()]]);
   const container = await new GameFormat(create_renpy_adapter(), native).create_container(
     members,
     "demo.renpy",
     temp.path,
     undefined,
-    files.metadata,
+    await build_renpy_metadata(game, files, native),
   );
   const { input } = await read_game_container(container.content, "demo.renpy", true);
   const outputs = new Map<string, string>();

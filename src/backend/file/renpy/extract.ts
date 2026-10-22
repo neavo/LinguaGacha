@@ -1,3 +1,4 @@
+import { splice } from "../shared/splice";
 import type { ScriptDiagnostic } from "../file-format-types";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
@@ -7,13 +8,18 @@ import {
   class_name,
   node_string,
   resolve_node,
-  patch_edge,
+  edge_edit,
   pickle_string,
   read_pickle,
   type PickleNode,
 } from "./pickle";
 import { encode_python } from "./python";
-import { PythonSession, PythonSyntaxError, type PythonFacts } from "./python-syntax";
+import {
+  type PythonSession,
+  PythonSyntaxError,
+  type PythonFacts,
+  type PythonMode,
+} from "./python-syntax";
 import { LEGACY_DISPLAY_CALLS, string_usage, type RenpyUsage } from "./usage";
 import {
   node_value as value,
@@ -166,13 +172,9 @@ function write_groups(
 /** 全部槽位先解析，必要索引缺失时让资产创建失败，避免生成不完整的字符串表。 */
 export async function extract_script(
   input: Uint8Array,
-  python2 = false,
-  session?: PythonSession,
+  python2: boolean,
+  session: PythonSession,
 ): Promise<RenpyScript> {
-  if (!session) {
-    using owned = await PythonSession.create();
-    return await extract_script(input, python2, owned);
-  }
   const bytes = Buffer.from(input);
   const slots = read_compiled(bytes);
   const candidates = new Map<string, RenpyCandidate>(),
@@ -294,7 +296,7 @@ export async function extract_script(
       }
     };
     for (const record of records.filter((entry) => entry.slot === slot.slot && !entry.translated)) {
-      if (record.legacy) {
+      if (record.source === null) {
         legacy(record.legacy, record, record.field);
         continue;
       }
@@ -322,7 +324,7 @@ export async function extract_script(
           add(
             record.owner,
             record.field,
-            record.edge!,
+            record.edge,
             token.value,
             string_usage(token, record.display),
             code_line(record, token.start),
@@ -398,14 +400,10 @@ export type RenpyLoadingChange = Required<
 export async function patch_script(
   script: Pick<RenpyScript, "bytes" | "slots" | "python2">,
   changes: readonly RenpyChange[],
-  loading: readonly RenpyLoadingChange[] = [],
-  session?: PythonSession,
+  loading: readonly RenpyLoadingChange[],
+  session: PythonSession,
   signal?: AbortSignal,
 ): Promise<Buffer> {
-  if (!session) {
-    using owned = await PythonSession.create();
-    return await patch_script(script, changes, loading, owned, signal);
-  }
   if (!changes.length && !loading.length) return script.bytes;
   assert(
     loading.every((change) => script.slots.some((slot) => slot.slot === change.slot)),
@@ -429,18 +427,22 @@ export async function patch_script(
     const nodes = new Map(slot.graph.nodes.map((node) => [node.start, node]));
     const literals = new Map<number, Map<number, PythonFacts["constants"][number]>>(); // 同一代码字符串只扫描一次。
     const code_updates = new Map<PickleNode, string>(); // 哈希更新在全部代码区间合并后执行。
-    const records = script_codes({ slots: [slot] }).filter((code) => code.edge);
-    const sources = new Map(records.map((code) => [code.edge!.start, code]));
+    const sources = new Map<number, { source: string; mode: PythonMode; consistent: boolean }>();
+    for (const code of script_codes({ slots: [slot] })) {
+      if (code.source === null) continue;
+      const prior = sources.get(code.edge.start);
+      sources.set(code.edge.start, {
+        source: code.source,
+        mode: code.mode,
+        consistent: !prior || (prior.consistent && prior.mode === code.mode),
+      });
+    }
+    // 只在写回消费边时拒绝模式冲突，未修改的共享源码保留原样。
     const source_record = (edge: PickleNode) => {
       const record = sources.get(edge.start);
-      assert(record && record.source !== null, "Missing Ren'Py source record");
-      assert(
-        records
-          .filter((entry) => entry.edge!.start === edge.start)
-          .every((entry) => entry.mode === record.mode),
-        "Conflicting Ren'Py compile modes",
-      );
-      return { source: record.source, mode: record.mode };
+      assert(record, "Missing Ren'Py source record");
+      assert(record.consistent, "Conflicting Ren'Py compile modes");
+      return record;
     };
     for (const change of loading) {
       if (change.slot !== slot.slot) continue;
@@ -510,13 +512,19 @@ export async function patch_script(
       );
     }
     for (const { edge, changes: spans } of codes.values()) {
-      let source = text(edge),
-        boundary = source.length;
-      for (const span of spans.sort((a, b) => b.start - a.start)) {
-        assert(span.end <= boundary, "Overlapping Ren'Py code changes");
-        boundary = span.start;
-        source = source.slice(0, span.start) + span.text + source.slice(span.end);
+      const original = text(edge);
+      let at = 0;
+      const parts: string[] = [];
+      for (const span of spans.sort((a, b) => a.start - b.start)) {
+        assert(
+          span.start >= at && span.end >= span.start && span.end <= original.length,
+          "Overlapping Ren'Py code changes",
+        );
+        parts.push(original.slice(at, span.start), span.text);
+        at = span.end;
       }
+      parts.push(original.slice(at));
+      const source = parts.join("");
       await session.analyze({ ...source_record(edge), source }, script.python2, signal);
       set(edge, pickle_string(source));
       code_updates.set(edge, source);
@@ -544,9 +552,10 @@ export async function patch_script(
         if (hash) set(hash, Buffer.from([0x4e])); // None 让引擎重算代码哈希，保留各版本的内部处理规则。
       }
     }
-    let data = slot.data;
-    for (const edit of [...edits.values()].sort((a, b) => b.edge.start - a.edge.start))
-      data = patch_edge(data, edit.edge, edit.replacement);
+    const data = splice(
+      slot.data,
+      [...edits.values()].map((edit) => edge_edit(edit.edge, edit.replacement)),
+    );
     read_pickle(data);
     slots.push({ slot: slot.slot, data });
   }

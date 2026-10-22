@@ -72,7 +72,7 @@ export class GameFontService {
   private async read_game(game_path: string, signal?: AbortSignal): Promise<GameSource> {
     const { source } = await discover_source(game_path, this.fs, signal);
     if (source.kind === "failure") throw source.error;
-    if (source.kind !== "game" || !GAME_ENGINES[source.file_type].font_outputs)
+    if (source.kind !== "game" || !GAME_ENGINES[source.file_type].font)
       throw new AppError("file.invalid_structure", {
         message: "Unsupported game for font replacement: " + game_path,
       });

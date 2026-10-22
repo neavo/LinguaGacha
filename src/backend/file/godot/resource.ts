@@ -6,17 +6,8 @@ import {
   gunzipSync,
   brotliDecompressSync,
 } from "node:zlib";
-import {
-  Reader,
-  GODOT_RESOURCE_MAX_BYTES,
-  pad,
-  string,
-  u32,
-  u64,
-  utf8,
-  splice,
-  type Edit,
-} from "./binary";
+import { Reader, GODOT_RESOURCE_MAX_BYTES, pad, string, u32, u64, utf8 } from "./binary";
+import { splice, type Edit } from "../shared/splice";
 import { node_path, type Value } from "./variant";
 import { fastlz_decode } from "./fastlz";
 

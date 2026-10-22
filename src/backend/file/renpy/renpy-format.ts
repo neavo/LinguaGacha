@@ -12,7 +12,7 @@ import {
   type RenpyCandidate,
 } from "./extract";
 import { read_renpy_metadata, type RenpyMetadata } from "./item";
-import { is_python2, read_renpy_format_metadata } from "./profile";
+import { read_renpy_format_metadata } from "./profile";
 import { RENPY_LANGUAGE_FILE, RENPY_STRINGS_FILE, RENPY_GENERATED_MARKER } from "./generated";
 import { encode_python, paragraph_text } from "./python";
 import { read_compiled } from "./compiled";
@@ -46,8 +46,8 @@ function check_text(item: Item, file: string, usage: RenpyMetadata["usage"]): vo
   assert.deepEqual(tags(item.dst), tags(item.src), "Ren'Py context tags changed: " + file);
 }
 
-/** 导出只保留原字节和候选索引。完整 Pickle 图按成员释放。 */
-type IndexedScript = Pick<RenpyScript, "bytes" | "digest" | "warnings"> & {
+/** 导出只保留候选索引。完整 Pickle 图按成员释放。 */
+type IndexedScript = Pick<RenpyScript, "digest" | "warnings"> & {
   candidates: ReadonlyMap<string, RenpyCandidate>;
 };
 
@@ -59,12 +59,12 @@ export function create_renpy_adapter(): GameFormatAdapter {
     internal_path: (item) => read_renpy_metadata(item.extra_field).internal_file_path,
     /** 先建立全资产字符串表，成员提取与导出共用同一个索引。 */
     async create_members(files) {
-      using session = await PythonSession.create();
       const member = files.get(GAME_METADATA_MEMBER);
       assert(member, "Missing Ren'Py format metadata; import the game again");
       const metadata_bytes = await member.async("uint8array");
-      const { profile, common } = read_renpy_format_metadata(metadata_bytes);
-      const python2 = is_python2(profile);
+      const { python_major, old_substitutions, common } =
+        read_renpy_format_metadata(metadata_bytes);
+      const python2 = python_major === 2;
       const common_digest = createHash("sha256").update(metadata_bytes).digest("hex");
       const scripts = new Map<string, IndexedScript>(),
         table = new Map<string, RenpyString>();
@@ -73,6 +73,7 @@ export function create_renpy_adapter(): GameFormatAdapter {
       for (const [name, entry] of files) {
         if (name === GAME_METADATA_MEMBER) continue;
         assert(/^game\/.*\.rpym?c$/u.test(name), "Invalid Ren'Py compiled member: " + name);
+        using session = await PythonSession.create();
         let script: RenpyScript;
         try {
           script = await extract_script(await entry.async("uint8array"), python2, session);
@@ -83,7 +84,6 @@ export function create_renpy_adapter(): GameFormatAdapter {
           );
         }
         scripts.set(name, {
-          bytes: script.bytes,
           digest: script.digest,
           warnings: script.warnings,
           candidates: new Map(script.candidates.map((candidate) => [candidate.key, candidate])),
@@ -98,12 +98,19 @@ export function create_renpy_adapter(): GameFormatAdapter {
           table.set(key, string);
         }
       }
-      const rendered = new Map<string, Buffer>(); // 全部译文校验成功后才允许共享层写出。
+      const changes = new Map<string, RenpyChange[]>(); // 处理器只服务一次资产操作。
+      const languages = new Map<string, RenpyString[]>(); // 原文对应的其他语言映射。
+      for (const string of table.values()) {
+        if (string.language === null) continue;
+        const entries = languages.get(string.old) ?? [];
+        entries.push(string);
+        languages.set(string.old, entries);
+      }
       /** 菜单百分号与段落标记使用引擎处理后的字符串表键。 */
       const lookup_text = (text: string, usage: string): string =>
         usage === "paragraph"
           ? paragraph_text(text)
-          : usage === "menu" && profile.old_substitutions === true
+          : usage === "menu" && old_substitutions === true
             ? text.replaceAll("%%", "%")
             : text;
       const redirected = (text: string, usage: string): boolean =>
@@ -130,7 +137,6 @@ export function create_renpy_adapter(): GameFormatAdapter {
                         digest: common_digest,
                         usage: "common",
                         key: original,
-                        coordinates: [],
                       },
                     },
                   }),
@@ -153,7 +159,6 @@ export function create_renpy_adapter(): GameFormatAdapter {
                       digest: script.digest,
                       usage: candidate.usage,
                       key: candidate.key,
-                      coordinates: candidate.coordinates.map((coordinate) => ({ ...coordinate })),
                     },
                   },
                 }),
@@ -165,12 +170,9 @@ export function create_renpy_adapter(): GameFormatAdapter {
             })),
           };
         },
-        /** 先处理跨成员冲突，再编译每个发生变化的成员。 */
+        /** 校验全部条目并建立跨成员写回计划。 */
         async prepare_export(items) {
-          using session = await PythonSession.create();
-          rendered.clear();
           const additions = new Map<string, RenpyString>(),
-            changes = new Map<string, RenpyChange[]>(),
             seen = new Set<string>();
           const add_string = (entry: RenpyString) => {
             const key = table_key(entry.language, entry.old),
@@ -206,7 +208,7 @@ export function create_renpy_adapter(): GameFormatAdapter {
               script && script.digest === location.digest,
               "Ren'Py original digest changed: " + file,
             );
-            // 条目只按位置找回。后续检查使用本次解析的用途，不使用条目保存的用途。
+            // 条目只按候选身份找回。后续检查使用本次解析的用途，不使用条目保存的用途。
             const candidate = script.candidates.get(location.key);
             assert(
               candidate && candidate.text === item.src,
@@ -215,11 +217,6 @@ export function create_renpy_adapter(): GameFormatAdapter {
             assert(
               !redirected(candidate.text, candidate.usage),
               "Translate the existing base-language string entry: " + item.src,
-            );
-            assert.deepEqual(
-              candidate.coordinates,
-              location.coordinates,
-              "Ren'Py write group changed",
             );
             check_text(item, file, candidate.usage);
             // `%` 左操作数在运行时格式化，记号不一致会使游戏抛出异常。
@@ -233,11 +230,11 @@ export function create_renpy_adapter(): GameFormatAdapter {
             let translation = item.dst;
             if (candidate.usage === "say" || candidate.usage === "menu") {
               assert(
-                profile.old_substitutions !== null || !translation.includes("%"),
+                old_substitutions !== null || !translation.includes("%"),
                 "Unknown Ren'Py percent semantics",
               );
               // 旧式替换以整个 store 为映射，只有 `%%` 与命名记号成立，其余 `%` 须转义。
-              if (profile.old_substitutions === true)
+              if (old_substitutions === true)
                 translation = translation.replace(PYTHON_PERCENT_TOKEN, (token) =>
                   token === "%%" || token.startsWith("%(") ? token : "%" + token,
                 );
@@ -248,23 +245,9 @@ export function create_renpy_adapter(): GameFormatAdapter {
             if (candidate.usage !== "string") {
               const original_key = lookup_text(item.src, candidate.usage);
               const new_key = lookup_text(translation, candidate.usage);
-              for (const string of table.values())
-                if (string.language !== null && string.old === original_key)
-                  add_string({ language: string.language, old: new_key, text: string.text });
+              for (const string of languages.get(original_key) ?? [])
+                add_string({ language: string.language, old: new_key, text: string.text });
             }
-          }
-          // 候选已按固化原稿校验，写回只重建当前成员的图，避免再次提取全部候选。
-          for (const [file, entries] of changes) {
-            const bytes = scripts.get(file)!.bytes;
-            rendered.set(
-              file,
-              await patch_script(
-                { bytes, slots: read_compiled(bytes), python2 },
-                entries,
-                [],
-                session,
-              ),
-            );
           }
           let strings = RENPY_GENERATED_MARKER + "\n";
           // old/new 已使用 Unicode 语义，6.x 还会自动添加 u 前缀，因此生成时去掉 Python 前缀。
@@ -284,7 +267,16 @@ export function create_renpy_adapter(): GameFormatAdapter {
         },
         /** 没有写回计划的成员直接使用原字节。 */
         async render(content, file) {
-          return rendered.get(file) ?? content;
+          const entries = changes.get(file);
+          if (!entries) return content;
+          using session = await PythonSession.create();
+          const bytes = Buffer.from(content);
+          return await patch_script(
+            { bytes, slots: read_compiled(bytes), python2 },
+            entries,
+            [],
+            session,
+          );
         },
       };
     },

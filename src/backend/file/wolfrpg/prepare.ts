@@ -4,7 +4,7 @@ import { setImmediate } from "node:timers/promises";
 import type { NativeFs } from "../../../native/native-fs";
 import { AppError, read_error_message } from "../../../shared/error";
 import { ProjectAssetPathIndex } from "../../../shared/project/project-asset-paths";
-import type { GamePreparation } from "../shared/game/prepare";
+import type { GameDirectoryChanges } from "../shared/game/directory";
 import {
   assert_game_path_spellings,
   assert_regular_path,
@@ -28,7 +28,7 @@ export async function stage_wolf_source(
   { game, staging }: Readonly<{ game: WolfSource; staging: string }>,
   fs: NativeFs,
   signal?: AbortSignal,
-): Promise<GamePreparation> {
+): Promise<GameDirectoryChanges> {
   const files = new Map<string, string>(),
     original = new Set<string>(),
     directories = new Set<string>(),
@@ -174,7 +174,7 @@ export async function stage_wolf_source(
       projects.delete(requested);
       progress = true;
     }
-    // 密钥来源独立解析，不要求完整数据库集合；被 WolfX 遮蔽的旧明文不能提供候选。
+    // 密钥来源独立解析，不要求完整数据库集合。被 WolfX 遮蔽的旧明文不能提供候选。
     if (encrypted.size)
       for (const [name, source] of files) {
         if (

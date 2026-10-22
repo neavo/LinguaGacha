@@ -214,7 +214,7 @@ export class FileFormatService {
     );
   }
 
-  /** 导入确认后的目标路径固定；识别错误也保留在同一批次中。 */
+  /** 导入确认后的目标路径固定。识别错误也保留在同一批次中。 */
   public async discover_import_sources(
     entries: readonly ProjectSourceFileEntry[],
     signal?: AbortSignal,
@@ -272,7 +272,7 @@ export class FileFormatService {
     const assigned = new SourceFilePathIndex();
     const result: T[] = [...entries];
     const directories = new Map<string, string>(); // 同一准备操作中的目录前缀只改名一次，子文件共同迁移。
-    // 普通目录先占位，游戏避让；结果仍按用户输入顺序返回。
+    // 普通目录先占位，游戏避让。结果仍按用户输入顺序返回。
     const order = entries
       .map((entry, index) => ({ entry, index }))
       .sort(
@@ -350,7 +350,12 @@ export class FileFormatService {
         rel_path,
         source.game.root,
         signal,
-        files.metadata,
+        await GAME_ENGINES[source.file_type].build_metadata?.(
+          source,
+          files,
+          this.native_fs,
+          signal,
+        ),
       );
       await write_game_backup(
         source.game.root,

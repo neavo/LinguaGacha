@@ -1,6 +1,6 @@
 ---
 name: renpy
-description: 翻译、审校或分析 Ren'Py 原生游戏（`.rpyc` 编译脚本）前必须首先加载，提供原稿结构与可读视图、条目默认状态、显示文本与程序值的区分、控制符与 `%` 格式串，以及批量翻译后的补漏和检查方法。
+description: 翻译、审校或分析 RenPy 游戏前必须首先加载，提供原稿结构与可读视图、条目默认状态、显示文本与程序值的区分、控制符与 `%` 格式串，以及批量翻译后的补漏和检查方法。
 ---
 
 本技能只提供 Ren'Py 引擎知识，翻译、审校和提交流程按 `translation` 执行。
@@ -12,7 +12,7 @@ description: 翻译、审校或分析 Ren'Py 原生游戏（`.rpyc` 编译脚本
 |文件|内容|
 |---|---|
 |`game_files.txt`|准备后游戏目录的完整文件清单，每行一个相对路径，包括图片、音频、字体和 JSON 等数据文件|
-|`__metadata__.json`|`profile` 为引擎档案（`version`、`old_substitutions` 等），`common` 为引擎公共界面字符串|
+|`__metadata__.json`|`engine_version` 为引擎版本，`python_major` 为 Python 代际，`old_substitutions` 为百分号语义，`common` 为引擎公共界面字符串|
 |`game/x.rpyc.rpy`|按原始行号还原的近似脚本，不能编译。编译时丢失的注释写作空行，ATL 写作 `# ATL`，6.99 旧式界面写作 `# legacy screen language`，其余无法还原的语句写作 `# <类名>`|
 |`game/x.rpyc.json`|`{ internal_file_path, strings, warnings }`。解析失败的成员只有 `internal_file_path` 和 `error`|
 
@@ -24,7 +24,7 @@ description: 翻译、审校或分析 Ren'Py 原生游戏（`.rpyc` 编译脚本
 - `source_line` 是原始 `.rpy` 的行号，未知时为 `null`。近似脚本按它排布，两者通常相同。同一原始行有多条语句时，例如一段三引号对白拆成的多句，后面的语句在近似脚本中顺延，`line` 随之增大。
 - 菜单选项没有自己的行号，`source_line` 取其子块首行的上一行。选项与子块之间有空行或注释时，这个行号会偏前。
 
-## 条目坐标
+## 条目定位
 
 `item_extra` 中的 `renpy`：
 
@@ -33,7 +33,7 @@ description: 翻译、审校或分析 Ren'Py 原生游戏（`.rpyc` 编译脚本
 |`internal_file_path`|成员路径，公共界面字符串为 `__metadata__.json`|
 |`usage`|导入时的用途分类，决定默认状态|
 |`key`|与 `strings[].key` 逐字相同，可以按值比较。公共界面字符串的 `key` 是原文|
-|`coordinates`、`digest`|写回坐标与原稿摘要，不要修改|
+|`digest`|固化原稿摘要，不要修改|
 
 |`usage`|位置|默认状态|
 |---|---|---|
@@ -69,12 +69,12 @@ description: 翻译、审校或分析 Ren'Py 原生游戏（`.rpyc` 编译脚本
 
 # 写回粒度
 
-每个条目只改写自己的写回组：
+导出校验 `digest`、`key` 和原文后，从固化原稿重建该条目的完整写回组：
 
 - 对白、菜单和字符串表改写该字段，同一节点被多条语句共享时一起改写。
 - 代码字面量按完整字面量区间写回，保留区间外的代码。
 - 条目原文在其他语言的字符串表中作为 `old` 时，导出自动以译文为新键生成同一映射，其他语言仍可使用。
-- 导出生成 `game/zz_lg_language.rpy` 和 `game/zz_lg_strings.rpy`，前者把游戏固定为基础语言，后者写入公共界面字符串和上述映射。
+- 导出生成 `game/zz_lg_language.rpy` 和 `game/zz_lg_strings.rpy`，前者在本次导出后的首次启动重置语言偏好。后者写入公共界面字符串和上述映射。
 
 导出结果只适用于已准备的游戏目录，即归档已解开、源码已移出的目录。
 
@@ -86,12 +86,12 @@ description: 翻译、审校或分析 Ren'Py 原生游戏（`.rpyc` 编译脚本
 - 文本标签整体保留并保持配对，例如 `{b}…{/b}`、`{color=#fff}…{/color}`、`{a=[url]}…{/a}`。
 - `{#…}` 是查表上下文，原样保留。
 
-以下规则由导出校验，违反时整个导出失败：
+以下规则由导出校验，违反时当前游戏资产导出失败：
 
 - `say`、`menu`、`display`、`paragraph`、`string`、`common` 条目中的 `[`、`{` 必须闭合。
 - `{#…}` 与原文一致，不能增删。
 - 字符串是 `%` 运算的左操作数时，译文的记号序列要与原文一致，包括字面百分号 `%%`。`%s`、`%d` 等按位置代入，顺序不能变。含 `%(name)s` 时按名称代入，可以换序。单独的 `%` 必须写作 `%%`。
-- `__metadata__.json` 的 `profile.old_substitutions` 为 `null` 时，对白和菜单译文中不能出现 `%`。为 `true` 时，对白和菜单中的 `%` 由导出自动转义，`%(name)s` 保持替换。
+- `__metadata__.json` 的 `old_substitutions` 为 `null` 时，对白和菜单译文中不能出现 `%`。为 `true` 时，对白和菜单中的 `%` 由导出自动转义，`%(name)s` 保持替换。
 - 译文不能含 NUL 字符。
 
 导出不检查插值和文本标签是否与原文一致：`{b}Hello{/b}` 译为 `你好` 也能导出。这类问题只能由文本保护警告和「翻译后检查」发现。文本保护默认保护插值、文本标签和 `%` 格式记号。

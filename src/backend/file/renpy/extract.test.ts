@@ -29,6 +29,7 @@ const option = () => tuple(tuple(pickle_string("Shared choice"), pickle_string("
 it.each(["config.window_title", "identifier"])(
   "共享源码的消费者 %s 参与完整写回组",
   async (target) => {
+    using session = await PythonSession.create();
     const code = object(
       "PyCode",
       tuple(opcode(0x4b, 1), pickle_string('"Shared"'), tuple(), pickle_string("eval")),
@@ -43,6 +44,8 @@ it.each(["config.window_title", "identifier"])(
         define("config.name", Buffer.concat([code, opcode(0x71, 0)])),
         define(target, opcode(0x68, 0)),
       ]),
+      false,
+      session,
     );
     if (target === "identifier") {
       expect(script.candidates).toEqual([]);
@@ -51,7 +54,14 @@ it.each(["config.window_title", "identifier"])(
       expect(script.candidates).toHaveLength(1);
       expect(script.candidates[0]!.owners).toHaveLength(2);
       const output = await extract_script(
-        await patch_script(script, [{ candidate: script.candidates[0]!, text: "共同标题" }]),
+        await patch_script(
+          script,
+          [{ candidate: script.candidates[0]!, text: "共同标题" }],
+          [],
+          session,
+        ),
+        false,
+        session,
       );
       expect(output.candidates.map((entry) => entry.text)).toEqual(["共同标题"]);
     }
@@ -59,18 +69,23 @@ it.each(["config.window_title", "identifier"])(
 );
 
 it("跨语句共享容器归为一个写回组，各槽位中的独立消费者同时更新", async () => {
+  using session = await PythonSession.create();
   const shared = Buffer.concat([option(), opcode(0x71, 0)]);
   const script = await extract_script(
     compiled_slots([
       [menu(1, option()), menu(2, option())],
       [menu(1, shared), menu(2, opcode(0x68, 0))],
     ]),
+    false,
+    session,
   );
   expect(script.candidates).toHaveLength(1);
   const candidate = script.candidates[0]!;
   expect(candidate.coordinates).toHaveLength(3);
   const output = await extract_script(
-    await patch_script(script, [{ candidate, text: "共同译文" }]),
+    await patch_script(script, [{ candidate, text: "共同译文" }], [], session),
+    false,
+    session,
   );
   expect(output.candidates.map((entry) => entry.text)).toEqual(["共同译文"]);
   for (const slot of output.slots) {
@@ -86,6 +101,7 @@ it("跨语句共享容器归为一个写回组，各槽位中的独立消费者�
 });
 
 it("共享容器的未知消费者阻止候选写回，不连带修改程序字段", async () => {
+  using session = await PythonSession.create();
   const shared = Buffer.concat([option(), opcode(0x71, 0)]);
   const unknown = object(
     "UserStatement",
@@ -94,20 +110,30 @@ it("共享容器的未知消费者阻止候选写回，不连带修改程序字�
       parsed: opcode(0x68, 0),
     }),
   );
-  const script = await extract_script(compiled_nodes([menu(1, shared), unknown]));
+  const script = await extract_script(compiled_nodes([menu(1, shared), unknown]), false, session);
   expect(script.candidates).toEqual([]);
   expect(script.warnings.map((entry) => entry.message).join("\n")).toMatch(/consumer/u);
 });
 
 it("只共享字符串 memo 的独立字段仍可分别翻译", async () => {
+  using session = await PythonSession.create();
   const label = Buffer.concat([pickle_string("Shared choice"), opcode(0x71, 0)]);
   const options = (text: Buffer) => tuple(tuple(text, pickle_string("True"), tuple()));
   const script = await extract_script(
     compiled_nodes([menu(1, options(label)), menu(2, options(opcode(0x68, 0)))]),
+    false,
+    session,
   );
   expect(script.candidates).toHaveLength(2);
   const output = await extract_script(
-    await patch_script(script, [{ candidate: script.candidates[0]!, text: "独立译文" }]),
+    await patch_script(
+      script,
+      [{ candidate: script.candidates[0]!, text: "独立译文" }],
+      [],
+      session,
+    ),
+    false,
+    session,
   );
   expect(output.candidates.map((candidate) => candidate.text)).toEqual([
     "独立译文",
@@ -116,6 +142,7 @@ it("只共享字符串 memo 的独立字段仍可分别翻译", async () => {
 });
 
 it("旧界面的 Python AST 仍提取显示文本并保留可写坐标", async () => {
+  using session = await PythonSession.create();
   const ast = (name: string, fields: Record<string, Buffer>) =>
     Buffer.concat([
       Buffer.from("c_ast\n" + name + "\n"),
@@ -137,43 +164,54 @@ it("旧界面的 Python AST 仍提取显示文本并保留可写坐标", async (
     ),
   );
   const screen = object("Screen", dictionary({ name: pickle_string("legacy"), code }));
-  const script = await extract_script(compiled_nodes([screen]));
+  const script = await extract_script(compiled_nodes([screen]), false, session);
   expect(script.warnings).toEqual([]);
   expect(script.candidates).toHaveLength(1);
   expect(script.candidates[0]!.usage).toBe("display");
   expect(
     (
       await extract_script(
-        await patch_script(script, [{ candidate: script.candidates[0]!, text: "旧界面译文" }]),
+        await patch_script(
+          script,
+          [{ candidate: script.candidates[0]!, text: "旧界面译文" }],
+          [],
+          session,
+        ),
+        false,
+        session,
       )
     ).candidates[0]!.text,
   ).toBe("旧界面译文");
 });
 
 it("无法覆盖全部槽位的候选不开放，写回入口拒绝不完整坐标", async () => {
+  using session = await PythonSession.create();
   const bytes = compiled_slots([[menu(1, option())], [menu(2, option())]]);
-  const script = await extract_script(bytes);
+  const script = await extract_script(bytes, false, session);
   expect(script.candidates).toEqual([]);
   expect(script.warnings.map((entry) => entry.message).join("\n")).toMatch(/slot/u);
-  const complete = await extract_script(compiled_fixture());
+  const complete = await extract_script(compiled_fixture(), false, session);
   const original = complete.candidates.find((candidate) => candidate.usage === "say")!;
   const partial = {
     ...original,
     coordinates: original.coordinates.filter((coordinate) => coordinate.slot === 1),
   };
   await expect(
-    async () => await patch_script(complete, [{ candidate: partial, text: "译文" }]),
+    async () => await patch_script(complete, [{ candidate: partial, text: "译文" }], [], session),
   ).rejects.toThrow(/slot/u);
 });
 
 it("新版 PyExpr 界面和角色名可写回，代码缓存哈希同步失效", async () => {
-  const script = await extract_script(compiled_fixture());
+  using session = await PythonSession.create();
+  const script = await extract_script(compiled_fixture(), false, session);
   for (const original of ["Raw Caption", "Raw Button", "Raw Hero"]) {
     const candidate = script.candidates.find((entry) => entry.text === original)!;
     expect(candidate?.usage).toBe("display");
     expect(new Set(candidate.coordinates.map((entry) => entry.slot)).size).toBe(2);
     const output = await extract_script(
-      await patch_script(script, [{ candidate, text: "新文本🙂" }]),
+      await patch_script(script, [{ candidate, text: "新文本🙂" }], [], session),
+      false,
+      session,
     );
     expect(output.candidates.some((entry) => entry.text === "新文本🙂")).toBe(true);
     for (const slot of output.slots)
@@ -191,11 +229,12 @@ it("新版 PyExpr 界面和角色名可写回，代码缓存哈希同步失效",
 it.each(["legacy", "modern"] as const)(
   "%s 多槽位写回保持身份，重复生成稳定，未修改原字节保留",
   async (layout) => {
+    using session = await PythonSession.create();
     const bytes = compiled_fixture(layout);
-    const script = await extract_script(bytes);
+    const script = await extract_script(bytes, false, session);
     const candidate = script.candidates.find((entry) => entry.usage === "say")!;
-    const output = await patch_script(script, [{ candidate, text: "编译译文🙂" }]);
-    const rendered = await extract_script(output);
+    const output = await patch_script(script, [{ candidate, text: "编译译文🙂" }], [], session);
+    const rendered = await extract_script(output, false, session);
     const translated = rendered.candidates.find((entry) => entry.text === "编译译文🙂")!;
     expect(new Set(translated.coordinates.map((entry) => entry.slot))).toEqual(new Set([1, 2]));
     const identities = (value: typeof script) =>
@@ -218,13 +257,16 @@ it.each(["legacy", "modern"] as const)(
           }),
       );
     expect(identities(rendered)).toEqual(identities(script));
-    expect(await patch_script(script, [{ candidate, text: "编译译文🙂" }])).toEqual(output);
-    expect(await patch_script(script, [])).toBe(script.bytes);
+    expect(await patch_script(script, [{ candidate, text: "编译译文🙂" }], [], session)).toEqual(
+      output,
+    );
+    expect(await patch_script(script, [], [], session)).toBe(script.bytes);
     expect(output.subarray(-16)).not.toEqual(bytes.subarray(-16));
   },
 );
 
 it("相邻常量按完整区间写回，保留区间外源码并拒绝不完整常量区间", async () => {
+  using session = await PythonSession.create();
   const source =
     "renpy.say(actor(a, b), (u'中文🙂' # kept inside constant\r\n '续行')) # outside\r\n";
   const pyexpr = Buffer.concat([
@@ -245,12 +287,16 @@ it("相邻常量按完整区间写回，保留区间外源码并拒绝不完整�
     "Python",
     dictionary({ name: tuple(pickle_string("test.rpy"), opcode(0x4b, 1)), code: pycode }),
   );
-  const script = await extract_script(compiled_nodes([statement]));
+  const script = await extract_script(compiled_nodes([statement]), false, session);
   expect(script.warnings).toEqual([]);
   expect(script.candidates).toHaveLength(1);
   const candidate = script.candidates[0]!;
   expect(candidate).toMatchObject({ text: "中文🙂续行", usage: "say" });
-  const output = await extract_script(await patch_script(script, [{ candidate, text: "新文" }]));
+  const output = await extract_script(
+    await patch_script(script, [{ candidate, text: "新文" }], [], session),
+    false,
+    session,
+  );
   const strings = output.slots[0]!.graph.nodes.filter(
     (node) => node.kind === "unicode" || node.kind === "bytes",
   ).map((node) => node_string(node));
@@ -262,12 +308,13 @@ it("相邻常量按完整区间写回，保留区间外源码并拒绝不完整�
       end: coordinate.start! + 7,
     })),
   };
-  await expect(patch_script(script, [{ candidate: partial, text: "新文" }])).rejects.toThrow(
-    "code span changed",
-  );
+  await expect(
+    patch_script(script, [{ candidate: partial, text: "新文" }], [], session),
+  ).rejects.toThrow("code span changed");
 });
 
 it("Python 2 原稿与写回使用同一解码条件，不确定常量不能通过手造坐标写入", async () => {
+  using session = await PythonSession.create();
   const source = String.raw`Text(u"Known"); Text("\u0061")`;
   const code = object(
     "PyCode",
@@ -276,18 +323,21 @@ it("Python 2 原稿与写回使用同一解码条件，不确定常量不能通�
   const bytes = compiled_nodes([
     object("Python", dictionary({ name: pickle_string("decode"), code })),
   ]);
-  const script = await extract_script(bytes, true);
+  const script = await extract_script(bytes, true, session);
   expect(script.candidates.map((entry) => entry.text)).toEqual(["Known"]);
   expect(script.warnings[0]?.message).toContain("Ambiguous Python 2");
-  const patched = await patch_script(script, [
-    { candidate: script.candidates[0]!, text: "确定译文" },
-  ]);
-  expect((await extract_script(patched, true)).candidates[0]?.text).toBe("确定译文");
-  const python3 = await extract_script(bytes, false);
-  const uncertain = python3.candidates.find((entry) => entry.text === "a")!;
-  await expect(patch_script(script, [{ candidate: uncertain, text: "unsafe" }])).rejects.toThrow(
-    "code span changed",
+  const patched = await patch_script(
+    script,
+    [{ candidate: script.candidates[0]!, text: "确定译文" }],
+    [],
+    session,
   );
+  expect((await extract_script(patched, true, session)).candidates[0]?.text).toBe("确定译文");
+  const python3 = await extract_script(bytes, false, session);
+  const uncertain = python3.candidates.find((entry) => entry.text === "a")!;
+  await expect(
+    patch_script(script, [{ candidate: uncertain, text: "unsafe" }], [], session),
+  ).rejects.toThrow("code span changed");
 });
 
 it("改写消费原始坐标与原值，并保留配置读取和后续赋值", async () => {
@@ -319,6 +369,7 @@ it("改写消费原始坐标与原值，并保留配置读取和后续赋值", a
 });
 
 it("候选行号指向原始脚本行：代码字面量按源码内换行偏移，对白取语句行号", async () => {
+  using session = await PythonSession.create();
   const code = object(
     "PyCode",
     tuple(
@@ -342,6 +393,8 @@ it("候选行号指向原始脚本行：代码字面量按源码内换行偏移�
         }),
       ),
     ]),
+    false,
+    session,
   );
   expect(Object.fromEntries(script.candidates.map((entry) => [entry.text, entry.line]))).toEqual({
     Second: 11,

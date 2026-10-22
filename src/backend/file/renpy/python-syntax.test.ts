@@ -83,6 +83,15 @@ it("解析让出事件循环，取消后同一会话可以重用，独立操作�
     other.analyze({ source: "'second'", mode: "eval" }),
   ]);
   expect(results.map((result) => result.constants[0]?.value)).toEqual(["first", "second"]);
+  const cached_cancel = new AbortController();
+  const cancellation = setImmediate().then(() =>
+    cached_cancel.abort(new Error("cached cancelled")),
+  );
+  await expect(async () => {
+    for (let index = 0; index < 10_000; index++)
+      await session.analyze({ source: "'first'", mode: "eval" }, false, cached_cancel.signal);
+  }).rejects.toThrow("cached cancelled");
+  await cancellation;
 });
 
 it("旧式百分号保留可写常量和调用用途，转义反斜线不冒充 Unicode 转义", async () => {
@@ -132,4 +141,19 @@ it("参数绑定区分关键字、确定位置和展开后的未知位置，嵌�
     { value: "known", call: "Text", argument: { kind: "keyword", name: "text" } },
     { value: "nested", call: "inner", argument: { kind: "positional", index: 0 } },
   ]);
+});
+
+it("会话复用分析事实，模式和 Python 代际分别缓存", async () => {
+  using session = await PythonSession.create();
+  const input = { source: "'hello'", mode: "eval" as const };
+  const facts = await session.analyze(input, false);
+  expect(await session.analyze(input, false)).toBe(facts);
+  expect((await session.analyze({ ...input, mode: "exec" }, false)).expression).toBeUndefined();
+  const bytes = { source: String.raw`'\u0061'`, mode: "eval" as const };
+  expect((await session.analyze(bytes, false)).constants.map((entry) => entry.value)).toEqual([
+    "a",
+  ]);
+  expect((await session.analyze(bytes, true)).constants).toEqual([]);
+  using next = await PythonSession.create();
+  expect(await next.analyze(input, false)).not.toBe(facts);
 });

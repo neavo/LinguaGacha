@@ -14,7 +14,7 @@ import { GameFontService } from "../game-font-service";
 import { GamePrepareWorker } from "../shared/game/prepare-worker";
 import { GameFormat } from "../shared/game/format";
 import { create_renpy_adapter } from "./renpy-format";
-import { collect_renpy_files, discover_renpy_source } from "./source";
+import { build_renpy_metadata, collect_renpy_files, discover_renpy_source } from "./source";
 import {
   RENPY_FONT_FILE,
   RENPY_LANGUAGE_FILE,
@@ -77,7 +77,8 @@ it.each([false, true])(
     const format = new GameFormat(create_renpy_adapter(), native);
     // 导出使用真实原稿容器，覆盖目标就是已准备的游戏目录。
     async function translate(): Promise<void> {
-      const files = await collect_renpy_files((await discover_renpy_source(root, native))!, native);
+      const game = (await discover_renpy_source(root, native))!;
+      const files = collect_renpy_files(game, native);
       expect([...files.data.keys()]).not.toContain(RENPY_FONT_FILE + "c");
       expect([...files.data.keys()].some((name) => /\.(?:ttf|otf)$/u.test(name))).toBe(false);
       const asset = await format.create_container(
@@ -85,7 +86,7 @@ it.each([false, true])(
         "demo.renpy",
         root,
         undefined,
-        files.metadata,
+        await build_renpy_metadata(game, files, native),
       );
       await format.write_to_path([], {
         paths: { translated_path: temp.path, bilingual_path: temp.path },

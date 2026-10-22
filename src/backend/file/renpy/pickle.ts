@@ -1,3 +1,4 @@
+import type { Edit } from "../shared/splice";
 import assert from "node:assert/strict";
 import { setImmediate } from "node:timers/promises";
 
@@ -357,14 +358,13 @@ export function pickle_string(value: string): Buffer {
   header.writeUInt32LE(bytes.length, 1);
   return Buffer.concat([header, bytes]);
 }
-/** 保留 memo 的原值，只替换当前消费边。 */
-export function patch_edge(data: Buffer, edge: PickleNode, bytes: Buffer): Buffer {
+/** 将消费边转换为原稿区间，memo 原值继续供其他引用使用。 */
+export function edge_edit(edge: PickleNode, bytes: Buffer): Edit {
   if (edge.kind !== "ref" && edge.memo_end !== undefined)
-    return Buffer.concat([
-      data.subarray(0, edge.memo_end),
-      Buffer.from([0x30]),
-      bytes,
-      data.subarray(edge.memo_end),
-    ]);
-  return Buffer.concat([data.subarray(0, edge.start), bytes, data.subarray(edge.end)]);
+    return {
+      start: edge.memo_end,
+      end: edge.memo_end,
+      bytes: Buffer.concat([Buffer.from([0x30]), bytes]), // POP 丢弃当前消费值，再压入新值。
+    };
+  return { start: edge.start, end: edge.end, bytes };
 }

@@ -12,7 +12,7 @@ type LoadingDeclaration = {
   value: boolean | string[];
 };
 
-/** 只消费直接初始化赋值；普通代码、配置读取和未知表达式不提供加载事实。 */
+/** 只消费直接初始化赋值。普通代码、配置读取和未知表达式不提供加载事实。 */
 export async function read_loading(
   script: Pick<RenpyScript, "slots" | "python2">,
   file: string,
@@ -42,10 +42,6 @@ export async function read_loading(
         } else if (target === "config.force_archives") {
           if (typeof value !== "boolean") continue;
           if (value) {
-            assert(
-              code.edge && code.slot !== null,
-              "Missing force_archives write location: " + file,
-            );
             const change = {
               slot: code.slot,
               edge: code.edge.start,
@@ -71,7 +67,7 @@ export async function read_loading(
   return { declarations: declarations ?? [], changes: [...changes.values()] };
 }
 
-/** 引擎先按脚本名执行 EarlyPython，再按 Init 优先级稳定排序；同一代码内保留赋值顺序。 */
+/** 引擎先按脚本名执行 EarlyPython，再按 Init 优先级稳定排序。同一代码内保留赋值顺序。 */
 export function resolve_loading(
   declarations: readonly LoadingDeclaration[],
   profile: Pick<RenpyProfile, "archives" | "script_order">,
@@ -82,7 +78,7 @@ export function resolve_loading(
 } {
   let archives: string[] | undefined;
   let force = false;
-  // 新引擎的 libs/mods 标记改变脚本排序；排序键沿用 script.sort_script_files。
+  // 新引擎的 libs/mods 标记改变脚本排序。排序键沿用 script.sort_script_files。
   const file_key = (file: string): [number, string, string] => {
     const name = file.slice(5, -5);
     if (profile.script_order === "filename") return [0, name, name];

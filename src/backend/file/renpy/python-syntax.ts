@@ -9,16 +9,17 @@ import { decode_python, PythonDecodeError, type PythonLiteral } from "./python";
 export type PythonMode = "eval" | "exec" | "hide";
 export type PythonInput = Readonly<{ source: string; mode: PythonMode }>;
 export type PythonArgument =
-  | { kind: "positional"; index: number }
-  | { kind: "keyword"; name: string };
+  | Readonly<{ kind: "positional"; index: number }>
+  | Readonly<{ kind: "keyword"; name: string }>;
 export type PythonDiagnostic = Readonly<{ start: number; end: number; reason: string }>;
 /** 仅表示源码分析失败，业务层补充来源并决定终止或保留原稿。 */
 export class PythonSyntaxError extends Error {
+  /** 保留源码范围，供成员诊断映射原始位置。 */
   constructor(public readonly diagnostic: PythonDiagnostic) {
     super(`${diagnostic.reason} at ${diagnostic.start}`);
   }
 }
-export type PythonConstant = {
+export type PythonConstant = Readonly<{
   start: number;
   end: number;
   value: string;
@@ -27,24 +28,24 @@ export type PythonConstant = {
   whole: boolean;
   dynamic: boolean;
   percent: boolean; // 字符串是 `%` 格式化的左操作数。
-};
-export type PythonAssignment = {
+}>;
+export type PythonAssignment = Readonly<{
   target: string;
   root: boolean;
   operation: string;
   value: PythonValue;
   start: number;
   end: number;
-};
-export type PythonValue = string | number | boolean | null | PythonValue[] | undefined;
-export type PythonFacts = {
-  constants: PythonConstant[];
-  assignments: PythonAssignment[];
-  references: string[];
-  bare_references: string[];
-  diagnostics: PythonDiagnostic[];
-  expression: { value: PythonValue; start: number; end: number } | undefined;
-};
+}>;
+export type PythonValue = string | number | boolean | null | readonly PythonValue[] | undefined;
+export type PythonFacts = Readonly<{
+  constants: readonly PythonConstant[];
+  assignments: readonly PythonAssignment[];
+  references: readonly string[];
+  bare_references: readonly string[];
+  diagnostics: readonly PythonDiagnostic[];
+  expression: Readonly<{ value: PythonValue; start: number; end: number }> | undefined;
+}>;
 const PARSE_SLICE_MS = 8;
 const WALK_SLICE_NODES = 512;
 let runtime_directory: string | undefined;
@@ -129,10 +130,13 @@ export function python_value(node: Node | null, python2 = false, bytes = false):
   return undefined;
 }
 export type PythonView = { root: Node; nodes: readonly Node[]; offset: number };
-/** 一次操作独占可变 Parser，树和游标只活到消费回调结束。 */
+/** 调用方持有会话，树和游标只活到消费回调结束。 */
 export class PythonSession {
+  private cache_hits = 0;
+  private readonly facts = new Map<string, PythonFacts>(); // 仅保留本成员的成功分析，释放会话时清空。
+  /** 接管已配置语言的 `Parser`，释放责任归当前会话。 */
   private constructor(private readonly parser: Parser) {}
-  /** 每次操作独占 `Parser`，语言资源在线程内复用。 */
+  /** 每个会话独占 `Parser`，语言资源在线程内复用。 */
   public static async create(): Promise<PythonSession> {
     const loaded = await load_language();
     const parser = new loaded.module.Parser();
@@ -141,6 +145,7 @@ export class PythonSession {
   }
   /** 操作结束时释放 `Parser` 持有的 WASM 资源。 */
   public [Symbol.dispose](): void {
+    this.facts.clear();
     this.parser.delete();
   }
   /** 回调只在树存活期间消费 CST，所有退出路径都释放树并重置解析器。 */
@@ -149,7 +154,7 @@ export class PythonSession {
     consume: (view: PythonView) => T,
     signal?: AbortSignal,
   ): Promise<T> {
-    // Ren'Py py_compile 接受缩进代码体；包装不属于用户控制流。
+    // Ren'Py py_compile 接受缩进代码体。包装不属于用户控制流。
     const prefix =
       input.mode === "eval"
         ? "(\n"
@@ -213,23 +218,32 @@ export class PythonSession {
       this.parser.reset();
     }
   }
-  /** 返回独立语法事实，范围扣除临时包装，常量采用调用方指定的解码条件。 */
+  /** 返回共享只读语法事实，范围扣除临时包装，常量采用调用方指定的解码条件。 */
   public async analyze(
     input: PythonInput,
     python2 = false,
     signal?: AbortSignal,
   ): Promise<PythonFacts> {
-    return this.read(
+    signal?.throwIfAborted();
+    const key = JSON.stringify([input.source, input.mode, python2]);
+    const cached = this.facts.get(key);
+    if (cached) {
+      // 连续命中也须让取消事件进入，避免只执行微任务而阻塞宿主。
+      if (++this.cache_hits % WALK_SLICE_NODES === 0) {
+        await setImmediate();
+        signal?.throwIfAborted();
+      }
+      return cached;
+    }
+    const result = await this.read(
       input,
       ({ root, nodes, offset }) => {
-        const facts: PythonFacts = {
-          constants: [],
-          assignments: [],
-          references: [],
-          bare_references: [],
-          diagnostics: [],
-          expression: undefined,
-        };
+        const constants: PythonConstant[] = [],
+          assignments: PythonAssignment[] = [],
+          references: string[] = [],
+          bare_references: string[] = [],
+          diagnostics: PythonDiagnostic[] = [];
+        let expression_value: PythonFacts["expression"];
         if (input.mode === "eval") {
           const wrapper = root.namedChildren[0]?.namedChildren[0];
           const expression = wrapper ? python_children(wrapper)[0] : undefined;
@@ -240,7 +254,7 @@ export class PythonSession {
             } catch (error) {
               if (!(error instanceof PythonDecodeError)) throw error;
             }
-            facts.expression = {
+            expression_value = {
               value,
               start: expression.startIndex - offset,
               end: expression.endIndex - offset,
@@ -250,8 +264,8 @@ export class PythonSession {
         for (const node of nodes) {
           if (["identifier", "attribute"].includes(node.type)) {
             const name = python_name(node);
-            facts.references.push(name);
-            if (node.parent?.type !== "attribute") facts.bare_references.push(name);
+            references.push(name);
+            if (node.parent?.type !== "attribute") bare_references.push(name);
           }
           if (["assignment", "augmented_assignment"].includes(node.type)) {
             const right = node.childForFieldName("right");
@@ -262,7 +276,7 @@ export class PythonSession {
               if (!(error instanceof PythonDecodeError)) throw error;
               value = undefined;
             }
-            facts.assignments.push({
+            assignments.push({
               target: python_name(node.childForFieldName("left")),
               root:
                 node.parent?.type === "expression_statement" && node.parent.parent?.id === root.id,
@@ -283,7 +297,7 @@ export class PythonSession {
             value = python_value(node, python2);
           } catch (error) {
             if (!(error instanceof PythonDecodeError)) throw error;
-            facts.diagnostics.push({
+            diagnostics.push({
               start: node.startIndex - offset,
               end: node.endIndex - offset,
               reason: error.message,
@@ -325,7 +339,7 @@ export class PythonSession {
                 ancestor.childForFieldName("operator")?.text !== "%")
             )
               dynamic = true;
-          facts.constants.push({
+          constants.push({
             start: node.startIndex - offset,
             end: node.endIndex - offset,
             value,
@@ -355,9 +369,18 @@ export class PythonSession {
             percent,
           });
         }
-        return facts;
+        return {
+          constants,
+          assignments,
+          references,
+          bare_references,
+          diagnostics,
+          expression: expression_value,
+        };
       },
       signal,
     );
+    this.facts.set(key, result);
+    return result;
   }
 }

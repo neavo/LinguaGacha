@@ -1,3 +1,4 @@
+import { write_game_directory } from "./directory";
 import {
   validate_game_path,
   assert_game_path_spellings,
@@ -146,14 +147,6 @@ export class GameFormat {
       groups.set(item.file_path, files);
     }
     assert_source_file_paths(context.source_files);
-    // 全部容器路径检查完成后再落盘，防止非法清单留下部分导出。
-    const outputs: Array<{
-      file: string;
-      member: JSZip.JSZipObject;
-      items: Item[];
-      handler: GameMemberHandler;
-    }> = [];
-    const generated: Array<{ file: string; content: Uint8Array }> = [];
     for (const file of context.source_files) {
       if (file.file_type !== this.adapter.file_type) continue;
       const content = await context.asset_reader(file.path);
@@ -172,41 +165,34 @@ export class GameFormat {
       }
       const directory = source_file_output_path(file.path, file.file_type);
       const extra = await handler.prepare_export?.([...(group?.values() ?? [])].flat());
-      for (const [name, content] of extra ?? []) {
-        validate_game_path(name);
+      const names = [...files.keys(), ...(extra?.keys() ?? [])];
+      // 暂存前检查成员边界，清单冲突由目录事务统一检查。
+      for (const name of names) validate_game_path(name);
+      for (const name of extra?.keys() ?? []) {
         if (
           name.toLowerCase() === GAME_FILES_MEMBER ||
           (this.adapter.has_metadata && name.toLowerCase() === GAME_METADATA_MEMBER)
         )
           throw new Error("Generated output conflicts with reserved game metadata: " + name);
-        generated.push({ file: directory + "/" + name, content });
       }
-      for (const [name, member] of files) {
-        outputs.push({
-          file: directory + "/" + name,
-          member,
-          items: group?.get(name) ?? [],
-          handler,
-        });
-      }
-    }
-    const index = new ProjectAssetPathIndex();
-    const names = [...outputs, ...generated].map((output) => output.file);
-    assert_game_path_spellings(names);
-    for (const name of names) index.add(name);
-    for (const output of outputs) {
-      const content = await output.handler.render(
-        await output.member.async("uint8array"),
-        output.member.name,
-        output.items,
+      await write_game_directory(
+        path.join(context.paths.translated_path, directory),
+        this.fs,
+        async (staging) => {
+          for (const [name, member] of files) {
+            const bytes = await handler.render(
+              await member.async("uint8array"),
+              name,
+              group?.get(name) ?? [],
+            );
+            await this.fs.write_file(path.join(staging, name), bytes);
+          }
+          for (const [name, bytes] of extra ?? [])
+            await this.fs.write_file(path.join(staging, name), bytes);
+          return { writes: names };
+        },
       );
-      await this.fs.write_file(path.join(context.paths.translated_path, output.file), content);
     }
-    for (const output of generated)
-      await this.fs.write_file(
-        path.join(context.paths.translated_path, output.file),
-        output.content,
-      );
   }
 
   /** 文件级遗漏与脚本级警告共用现有操作日志。 */

@@ -1,3 +1,4 @@
+import assert from "node:assert/strict";
 import {
   PythonSyntaxError,
   type PythonMode,
@@ -182,11 +183,8 @@ export function script_consumers(root: PickleNode): (edge: PickleNode) => Readon
 
 type RenpyPhase = "top" | "init" | "runtime";
 export type RenpyCode = Readonly<{
-  source: string | null;
   mode: PythonMode;
-  slot: number | null;
-  edge: PickleNode | undefined;
-  legacy: PickleNode | undefined; // SL1 界面的 Python AST，只由 Python 2 引擎生成（8.0 编译 SL1 即失败），因此只识别 `_ast.*`。
+  slot: number;
   owner: string;
   field: string;
   phase: RenpyPhase;
@@ -197,7 +195,11 @@ export type RenpyCode = Readonly<{
   translated: boolean;
   filename: string | null;
   line: number | null;
-}>;
+}> &
+  (
+    | Readonly<{ source: string; edge: PickleNode; legacy?: never }>
+    | Readonly<{ source: null; edge?: never; legacy: PickleNode }>
+  );
 /** 源码偏移所在的原始文件行。编译坐标缺失时不制造行号。 */
 export function code_line(code: RenpyCode, offset: number): number | null {
   if (code.line === null) return null;
@@ -258,7 +260,7 @@ export function script_codes(script: { slots: readonly CompiledSlot[] }): RenpyC
         current.translated = true;
       const compiled = cls === "renpy.ast.PyCode" || is_pyexpr(node);
       const scalar = node.kind === "unicode" || node.kind === "bytes";
-      // 同一容器可有多个消费者；同一消费者的循环和别名只访问一次。
+      // 同一容器可有多个消费者。同一消费者的循环和别名只访问一次。
       const key = JSON.stringify([
         current.owner,
         current.phase,
@@ -283,12 +285,16 @@ export function script_codes(script: { slots: readonly CompiledSlot[] }): RenpyC
         const [location_file, location_line] = code_location(node);
         const legacy =
           !source_edge && cls === "renpy.ast.PyCode" ? node_children(node.state)[1] : undefined;
+        assert(
+          source_edge || (legacy && class_name(legacy).startsWith("_ast.")),
+          "Missing Ren'Py source or legacy Python AST",
+        );
         result.push({
           ...current,
           slot: slot.slot,
-          source: source_edge ? node_text(source_edge) : null,
-          edge: source_edge,
-          legacy,
+          ...(source_edge
+            ? { source: node_text(source_edge), edge: source_edge }
+            : { source: null, legacy: legacy! }),
           mode: code_mode(node),
           field: current.field || "expression",
           filename: location_file || current.filename,
@@ -355,11 +361,11 @@ export function script_codes(script: { slots: readonly CompiledSlot[] }): RenpyC
 }
 /** 引擎保存的旧 Python AST 直接提供加载访问事实，不创建伪源码。 */
 function legacy_facts(root: PickleNode): PythonFacts {
-  const facts: PythonFacts = {
+  const facts = {
     constants: [],
     assignments: [],
-    references: [],
-    bare_references: [],
+    references: [] as string[],
+    bare_references: [] as string[],
     diagnostics: [],
     expression: undefined,
   };
@@ -401,18 +407,17 @@ export async function analyze_code(
 ): Promise<PythonFacts> {
   const facts =
     code.source === null
-      ? legacy_facts(code.legacy!)
+      ? legacy_facts(code.legacy)
       : await session.analyze({ source: code.source, mode: code.mode }, python2, signal);
-  if (code.target && facts.expression) {
-    facts.references.push(code.target);
-    facts.assignments.push({
-      target: code.target,
-      root: true,
-      operation: "=",
-      ...facts.expression,
-    });
-  }
-  return facts;
+  if (!code.target || !facts.expression) return facts;
+  return {
+    ...facts,
+    references: [...facts.references, code.target],
+    assignments: [
+      ...facts.assignments,
+      { target: code.target, root: true, operation: "=", ...facts.expression },
+    ],
+  };
 }
 /** 翻译语义分析失败附加成员与编译位置，资源故障和取消保持原始异常。 */
 export async function audit_code(

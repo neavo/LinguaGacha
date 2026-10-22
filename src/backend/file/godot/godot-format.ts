@@ -11,7 +11,8 @@ import { patch_po } from "./po";
 import { read_scene, patch_scene } from "./scene";
 import { patch_resource, read_resource, resource_string } from "./resource";
 import { all_values } from "./variant";
-import { string, u32, type Edit } from "./binary";
+import { string, u32 } from "./binary";
+import { type Edit } from "../shared/splice";
 import {
   check_locale_member,
   read_translation,

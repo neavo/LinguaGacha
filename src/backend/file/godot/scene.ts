@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { patch_resource, resource_string, type ResourceDocument } from "./resource";
-import { string, u32, type Edit } from "./binary";
+import { string, u32 } from "./binary";
+import { type Edit } from "../shared/splice";
 import type { Value } from "./variant";
 const FLAG_ID_IS_PATH = 1 << 30, // 节点编号改为 `node_paths` 下标。
   FLAG_MASK = (1 << 24) - 1, // 去掉标志位后的下标。

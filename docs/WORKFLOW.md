@@ -169,7 +169,7 @@ GUI、preload、native 或 Backend Runtime worker 变化时，先运行相关目
 |文件身份与迁移|数据库迁移、工程打开迁移、解析流水线和译文生成测试|
 |文本规则计算|`text-rule-type.test.ts`、翻译译前流程和校对评估|
 |来源或失败边界|`source-discovery.test.ts`、解析流水线、新建与追加导入测试|
-|准备与归档|对应引擎的准备测试，以及 `shared/` 下受影响的协议、IO 与目录事务测试|
+|准备、归档与游戏资产输出提交|对应引擎的准备或导出测试，以及 [目录事务](../src/backend/file/shared/game/directory.test.ts)、`shared/` 下受影响的协议与 IO 测试|
 |准备线程|`shared/game/prepare-worker.test.ts`，它使用正式构建入口验证退出与句柄释放|
 |字体工具与引擎字体能力|`game-font-service.test.ts`、`shared/game/font-replace.test.ts`、`shared/game/engines.test.ts` 和对应引擎的字体测试|
 |取消或关闭顺序|`runtime-operation-gate.test.ts` 与 `gui-backend-bootstrap.test.ts`|

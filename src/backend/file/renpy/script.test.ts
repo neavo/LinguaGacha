@@ -90,9 +90,14 @@ it("相同源码保留各自来源与槽位，Define 目标不改变源码范围
   using session = await PythonSession.create();
   const facts = await analyze_code(records[0]!, session, false);
   expect(facts.constants[0]).toMatchObject({ start: 0, end: 6, value: "Same" });
+  const other = await analyze_code(records[1]!, session, false);
   expect(facts.assignments).toMatchObject([
     { target: "config.name", start: 0, end: 6, value: "Same" },
   ]);
+  expect(other.assignments.map((entry) => entry.target)).toEqual(["other"]);
+  expect((await session.analyze({ source: '"Same"', mode: "eval" }, false)).assignments).toEqual(
+    [],
+  );
 });
 it("共享代码保留每个消费者的用途上下文，缺失编译位置保持未知", () => {
   const shared = Buffer.concat([pycode('"Shared"'), opcode(0x71, 0)]);

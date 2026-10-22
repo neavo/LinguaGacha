@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { expect, it, vi } from "vitest";
 import { NativeFs } from "../../../../native/native-fs";
-import { prepare_game_directory, type GamePreparation } from "./prepare";
+import { write_game_directory, type GameDirectoryChanges } from "./directory";
 
 it.each([
   "success",
@@ -33,7 +33,7 @@ it.each([
     if (kind === "same-backup-cancel" && to.includes(path.join(".tmp", "rollback")))
       controller.abort(new Error("cancel after carrier move"));
   });
-  const task = prepare_game_directory(
+  const task = write_game_directory(
     temp.path,
     native,
     async (staging) => {
@@ -119,9 +119,9 @@ it.each(["backup", "backup-cancel", "directory", "directory-cancel", "commit", "
         }
       });
     }
-    await expect(
-      prepare_game_directory(temp.path, native, stage, controller.signal),
-    ).rejects.toThrow(phase + " failure");
+    await expect(write_game_directory(temp.path, native, stage, controller.signal)).rejects.toThrow(
+      phase + " failure",
+    );
     expect(fs.readFileSync(path.join(temp.path, "existing.txt"), "utf8")).toBe("original");
     expect(fs.readFileSync(path.join(temp.path, "archive.bin"), "utf8")).toBe("archive");
     expect(fs.existsSync(path.join(temp.path, "new"))).toBe(false);
@@ -135,7 +135,7 @@ it("显式空目录和文件父目录统一创建，已有目录复用且不依�
   using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-prepare-directories-"));
   const native = new NativeFs(),
     stage = fixture(temp.path);
-  await prepare_game_directory(temp.path, native, async (staging) => {
+  await write_game_directory(temp.path, native, async (staging) => {
     const plan = await stage(staging);
     return { ...plan, directories: [...plan.directories, "empty/nested"] }; // 同一目录声明可以合并。
   });
@@ -146,7 +146,7 @@ it("显式空目录和文件父目录统一创建，已有目录复用且不依�
   expect(fs.existsSync(path.join(temp.path, "archive.bin"))).toBe(false);
 });
 
-it.each<GamePreparation>([
+it.each<GameDirectoryChanges>([
   { writes: ["added.txt"], directories: ["occupied"] },
   { writes: ["added.txt"], directories: ["occupied/nested"] },
   { writes: ["occupied/nested.txt"] },
@@ -167,7 +167,7 @@ it.each<GamePreparation>([
   fs.writeFileSync(path.join(temp.path, "occupied"), "original");
   const rename = vi.spyOn(native, "rename");
   await expect(
-    prepare_game_directory(temp.path, native, async (staging) => {
+    write_game_directory(temp.path, native, async (staging) => {
       for (const name of plan.writes) await native.write_file(path.join(staging, name), "new");
       return plan;
     }),
@@ -187,7 +187,7 @@ it("目录要求拒绝链接祖先，不在链接目标中创建目录", async (
   fs.mkdirSync(outside);
   fs.symlinkSync(outside, path.join(root, "link"), "junction");
   await expect(
-    prepare_game_directory(root, new NativeFs(), async () => ({
+    write_game_directory(root, new NativeFs(), async () => ({
       writes: [],
       directories: ["link/empty"],
     })),
@@ -211,7 +211,7 @@ it("空目录回滚失败保留恢复材料，原文件和已有目录已经恢�
       throw new Error("directory restore failure");
     remove(directory);
   });
-  await expect(prepare_game_directory(temp.path, native, stage)).rejects.toThrow(
+  await expect(write_game_directory(temp.path, native, stage)).rejects.toThrow(
     /Recovery or cleanup failed:.*directory restore failure/u,
   );
   expect(fs.readFileSync(path.join(temp.path, "existing.txt"), "utf8")).toBe("original");
@@ -231,7 +231,7 @@ it("恢复失败保留备份与暂存材料并报告位置", async () => {
     if (from.includes(path.join(".tmp", "rollback"))) throw new Error("restore failed");
     rename(from, to);
   });
-  await expect(prepare_game_directory(temp.path, native, stage)).rejects.toThrow(
+  await expect(write_game_directory(temp.path, native, stage)).rejects.toThrow(
     /Rollback:.*rollback[\s\S]*Recovery or cleanup failed:.*restore failed[\s\S]*Staging:/u,
   );
   const rollback = ".tmp/rollback";
@@ -255,7 +255,7 @@ it.each(["remove", "replace", "commit-failure"])(
         rename(from, to);
       });
     }
-    const prepare = prepare_game_directory(temp.path, native, async (staging) => {
+    const prepare = write_game_directory(temp.path, native, async (staging) => {
       const plan = await stage(staging);
       if (mode === "remove") return plan;
       fs.writeFileSync(path.join(staging, "archive.bin"), "launcher");
@@ -281,8 +281,8 @@ it("提交后清理失败报告残留位置，保留已完成转换与回滚材�
   const stage = fixture(temp.path),
     native = new NativeFs();
   vi.spyOn(native, "remove_async").mockRejectedValueOnce(new Error("cleanup failure"));
-  await expect(prepare_game_directory(temp.path, native, stage)).rejects.toThrow(
-    /Game preparation committed. Cleanup failed:.*\.tmp/u,
+  await expect(write_game_directory(temp.path, native, stage)).rejects.toThrow(
+    /Game directory committed. Cleanup failed:.*\.tmp/u,
   );
   expect(fs.readFileSync(path.join(temp.path, "existing.txt"), "utf8")).toBe("replacement");
   expect(fs.existsSync(path.join(temp.path, "archive.bin"))).toBe(false);
@@ -299,7 +299,7 @@ it.each(["case", "directory", "reserved"])("提交前拒绝路径冲突 %s 并�
     kind === "case" ? "Data/KEEP.txt" : kind === "directory" ? "Data" : "backup_lg/a.txt",
   ];
   await expect(
-    prepare_game_directory(temp.path, new NativeFs(), async (staging) => {
+    write_game_directory(temp.path, new NativeFs(), async (staging) => {
       for (const name of names) {
         const target = path.join(staging, name);
         fs.mkdirSync(path.dirname(target), { recursive: true });
@@ -329,7 +329,7 @@ it.each([{ names: ["Keep.txt", "keep.txt"] }, { names: ["keep.txt", "Keep.txt"] 
       );
     });
     await expect(
-      prepare_game_directory(temp.path, native, async (staging) => {
+      write_game_directory(temp.path, native, async (staging) => {
         fs.writeFileSync(path.join(staging, "keep.txt"), "translated");
         return { writes: ["keep.txt"] };
       }),
@@ -344,7 +344,7 @@ it("已有根目录工作区不被准备流程接管或清理", async () => {
     keep = path.join(temp.path, ".tmp/keep");
   native.write_file_sync(keep, "recovery");
   const stage = vi.fn(async () => ({ writes: [] }));
-  await expect(prepare_game_directory(temp.path, native, stage)).rejects.toThrow();
+  await expect(write_game_directory(temp.path, native, stage)).rejects.toThrow();
   expect(stage).not.toHaveBeenCalled();
   expect(fs.readFileSync(keep, "utf8")).toBe("recovery");
 });
@@ -354,7 +354,7 @@ it("移除缺失目标仍失败，并恢复此前已覆盖和新增的文件", a
   const native = new NativeFs();
   native.write_file_sync(path.join(temp.path, "old"), "original");
   await expect(
-    prepare_game_directory(temp.path, native, async (staging) => {
+    write_game_directory(temp.path, native, async (staging) => {
       native.write_file_sync(path.join(staging, "old"), "replacement");
       native.write_file_sync(path.join(staging, "new"), "added");
       return { writes: ["old", "new"], removes: ["missing"] };
@@ -362,4 +362,31 @@ it("移除缺失目标仍失败，并恢复此前已覆盖和新增的文件", a
   ).rejects.toThrow("ENOENT");
   expect(native.read_file(path.join(temp.path, "old")).toString()).toBe("original");
   expect(fs.readdirSync(temp.path)).toEqual(["old"]);
+});
+
+it.each(["stage", "commit", "cancel"])("新输出目录在 %s 失败后清理本轮目录", async (failure) => {
+  using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-new-output-"));
+  const native = new NativeFs(),
+    controller = new AbortController();
+  const root = path.join(temp.path, "output/game");
+  const rename = native.rename.bind(native);
+  vi.spyOn(native, "rename").mockImplementation((from, to) => {
+    if (failure === "commit" && to.endsWith("second")) throw new Error("injected commit");
+    rename(from, to);
+    if (failure === "cancel") controller.abort(new Error("injected cancel"));
+  });
+  await expect(
+    write_game_directory(
+      root,
+      native,
+      async (staging) => {
+        native.write_file_sync(path.join(staging, "first"), "one");
+        native.write_file_sync(path.join(staging, "second"), "two");
+        if (failure === "stage") throw new Error("injected stage");
+        return { writes: ["first", "second"] };
+      },
+      controller.signal,
+    ),
+  ).rejects.toThrow("injected");
+  expect(fs.readdirSync(temp.path)).toEqual([]);
 });

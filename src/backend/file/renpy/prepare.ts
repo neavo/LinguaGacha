@@ -8,7 +8,7 @@ import {
   assert_game_path_spellings,
 } from "../source-file-paths";
 import { ProjectAssetPathIndex } from "../../../shared/project/project-asset-paths";
-import type { GamePreparation } from "../shared/game/prepare";
+import type { GameDirectoryChanges } from "../shared/game/directory";
 import type { BinaryFileHandle } from "../shared/binary";
 import {
   read_archive,
@@ -22,7 +22,7 @@ import { read_loading, resolve_loading } from "./loading";
 import type { RenpySource } from "./source";
 import { generated_members, is_generated_member } from "./generated";
 import { PythonSession } from "./python-syntax";
-import { is_python2, read_profile } from "./profile";
+import { read_profile } from "./profile";
 
 type ArchiveInput = {
   name: string;
@@ -37,13 +37,15 @@ export async function stage_renpy_source(
   { game, staging }: Readonly<{ game: RenpySource; staging: string }>,
   fs: NativeFs,
   signal?: AbortSignal,
-): Promise<GamePreparation> {
-  using session = await PythonSession.create();
-  assert.deepEqual(
-    await read_profile(game.root, fs, signal, session),
-    game.profile,
-    "Ren'Py engine rules changed after discovery; import again",
-  );
+): Promise<GameDirectoryChanges> {
+  {
+    using session = await PythonSession.create();
+    assert.deepEqual(
+      await read_profile(game.root, fs, signal, session),
+      game.profile,
+      "Ren'Py engine rules changed after discovery; import again",
+    );
+  }
   const loose = new Set<string>();
   collect_existing_files(game.root, "game", loose, fs, signal);
   for (const name of loose) if (/^game\/(?:cache|saves)\//u.test(name)) loose.delete(name);
@@ -56,7 +58,7 @@ export async function stage_renpy_source(
         (game.profile.archives === "recursive" || name.split("/").length === 2),
     )
     .sort((a, b) => {
-      // 递归索引按归档 stem 排序；旧引擎先排列目录文件名，再去掉扩展名。
+      // 递归索引按归档 stem 排序。旧引擎先排列目录文件名，再去掉扩展名。
       const left = game.profile.archives === "recursive" ? a.slice(0, -4) : a;
       const right = game.profile.archives === "recursive" ? b.slice(0, -4) : b;
       return left < right ? 1 : left > right ? -1 : 0;
@@ -152,17 +154,18 @@ export async function stage_renpy_source(
     }
     const changed = new Map<string, Buffer>();
     const declarations: Awaited<ReturnType<typeof read_loading>>["declarations"] = [];
-    // 脚本发现使用初始化前的归档索引；普通 .py 与显式加载的 rpym 模块不提供主脚本初始化声明。
+    // 脚本发现使用初始化前的归档索引。普通 .py 与显式加载的 rpym 模块不提供主脚本初始化声明。
     for (const name of new Set([...loose, ...packed.keys()])) {
       await setImmediate();
       signal?.throwIfAborted();
       if (!name.endsWith(".rpyc") || generated.has(name) || /^game\/(?:cache|saves)\//u.test(name))
         continue;
+      using session = await PythonSession.create();
       const bytes = await read(name);
       const script = {
         bytes,
         slots: await read_compiled_async(bytes, signal),
-        python2: is_python2(game.profile),
+        python2: game.profile.python_major === 2,
       };
       const loading = await read_loading(script, name, game.profile, session, signal);
       declarations.push(...loading.declarations);
@@ -186,7 +189,7 @@ export async function stage_renpy_source(
         const name = "game/" + member.name;
         if (!runtime.has(name)) runtime.set(name, { input, member });
       }
-    // 每个输出路径在此选定一次来源；后续写入和字体收集直接消费展开结果。
+    // 每个输出路径在此选定一次来源。后续写入和字体收集直接消费展开结果。
     const writes: string[] = [];
     for (const name of packed.keys()) {
       if (is_source(name) || /^game\/(?:cache|saves)\//u.test(name)) continue;

@@ -3,7 +3,7 @@ import { GAME_METADATA_MEMBER, type GameFiles } from "../shared/game/format";
 import { readable_json, write_projection, type ReadableFile } from "../shared/game/readable";
 import { extract_script, type RenpyCandidate } from "./extract";
 import { attributes, class_name, resolve_node, type PickleNode } from "./pickle";
-import { is_python2, read_renpy_format_metadata } from "./profile";
+import { read_renpy_format_metadata } from "./profile";
 import { PythonSession } from "./python-syntax";
 import {
   block_lines,
@@ -33,12 +33,12 @@ export async function* read_renpy_sources(files: GameFiles): AsyncGenerator<Read
   assert(member, "Missing Ren'Py format metadata; import the game again");
   const metadata = read_renpy_format_metadata(await member.async("uint8array"));
   yield [GAME_METADATA_MEMBER, Buffer.from(readable_json(metadata))];
-  using session = await PythonSession.create();
   for (const [file, entry] of files) {
     if (file === GAME_METADATA_MEMBER) continue;
+    using session = await PythonSession.create();
     const bytes = await entry.async("uint8array");
     yield* write_projection(file, async () => {
-      const script = await extract_script(bytes, is_python2(metadata.profile), session);
+      const script = await extract_script(bytes, metadata.python_major === 2, session);
       const slot = script.slots[0]!;
       const writer = new ScriptWriter();
       for (const statement of children(children(slot.graph.root)[1])) render(writer, statement, 0);

@@ -9,7 +9,6 @@ import {
   type PreparedGameFiles,
 } from "../shared/game/source-files";
 import {
-  is_python2,
   read_profile,
   collect_common,
   type RenpyProfile,
@@ -42,16 +41,16 @@ export async function discover_renpy_source(
     root = path.dirname(root);
   } else if (path.basename(root).toLowerCase() === "game") root = path.dirname(root);
   if (!is_renpy_root(root, fs)) return null;
-  return { root, profile: await read_profile(root, fs, signal) };
+  using session = await PythonSession.create();
+  return { root, profile: await read_profile(root, fs, signal, session) };
 }
-/** 只固化编译脚本和离线生成所需的公共字符串，素材留在游戏目录。 */
-export async function collect_renpy_files(
+/** 收集固化所需的编译脚本，字体原件仅用于备份。 */
+export function collect_renpy_files(
   game: RenpySource,
   fs: NativeFs,
   signal?: AbortSignal,
   prepared?: PreparedGameFiles,
-): Promise<GameSourceFiles> {
-  using session = await PythonSession.create();
+): GameSourceFiles {
   const result = collect_game_source_files(
     game.root,
     ["game"],
@@ -76,12 +75,28 @@ export async function collect_renpy_files(
     result.data.size > 0,
     "Ren'Py game contains no compiled scripts; start the original game once before importing",
   );
+  return result;
+}
+/** 导入使用已读定的原件构建离线语义，字体收集不触发脚本分析。 */
+export async function build_renpy_metadata(
+  game: RenpySource,
+  files: GameSourceFiles,
+  fs: NativeFs,
+  signal?: AbortSignal,
+): Promise<Uint8Array> {
   const assignments = new Set<boolean | null>();
   let include_layout = false;
-  for (const [member, bytes] of result.data) {
+  for (const [member, bytes] of files.data) {
     signal?.throwIfAborted();
+    using session = await PythonSession.create();
     for (const code of script_codes({ slots: read_compiled(bytes) })) {
-      const facts = await audit_code(code, member, session, is_python2(game.profile), signal);
+      const facts = await audit_code(
+        code,
+        member,
+        session,
+        game.profile.python_major === 2,
+        signal,
+      );
       if (facts.references.some((entry) => entry.startsWith("layout."))) include_layout = true;
       if (facts.bare_references.some((name) => name === "config" || name === "renpy.config"))
         assignments.add(null);
@@ -108,10 +123,34 @@ export async function collect_renpy_files(
       : assignments.size === 1
         ? [...assignments][0]!
         : null;
+  using session = await PythonSession.create();
   const metadata: RenpyFormatMetadata = {
     schema: "linguagacha-renpy-1",
-    profile: { ...game.profile, old_substitutions },
+    engine_version: game.profile.version,
+    python_major: game.profile.python_major,
+    old_substitutions,
     common: await collect_common(game.root, fs, signal, include_layout, session),
   };
-  return { ...result, metadata: Buffer.from(JSON.stringify(metadata)) };
+  return Buffer.from(JSON.stringify(metadata));
+}
+
+/** 字体工具只读取有效字体及生成资源归属标记。 */
+export function collect_renpy_fonts(
+  game: RenpySource,
+  fs: NativeFs,
+  signal?: AbortSignal,
+  prepared?: PreparedGameFiles,
+): GameSourceFiles {
+  return collect_game_source_files(
+    game.root,
+    ["game"],
+    (files, read) => {
+      generated_members(files, read);
+      return [];
+    },
+    (name) => /^game\/(?!cache\/|saves\/).*\.(?:ttf|otf)$/iu.test(name),
+    fs,
+    signal,
+    prepared,
+  );
 }

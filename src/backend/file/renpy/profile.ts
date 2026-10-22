@@ -5,10 +5,11 @@ import { read_json_record } from "../../../domain/json";
 import type { NativeFs } from "../../../native/native-fs";
 import { assert_regular_path, collect_existing_files } from "../source-file-paths";
 import { paragraph_text, PythonDecodeError } from "./python";
-import { PythonSession, python_value, python_name, type PythonValue } from "./python-syntax";
+import { type PythonSession, python_value, python_name, type PythonValue } from "./python-syntax";
 
 export type RenpyProfile = {
   version: string;
+  python_major: 2 | 3;
   archives: "top-level" | "recursive";
   digest: "universal" | "raw";
   salt: string;
@@ -18,17 +19,22 @@ export type RenpyProfile = {
 };
 export type RenpyFormatMetadata = {
   schema: "linguagacha-renpy-1";
-  profile: RenpyProfile;
+  engine_version: string;
+  python_major: 2 | 3;
+  old_substitutions: boolean | null;
   common: string[];
 };
 /** 适配器与可读视图共用的元数据入口，只校验下游实际读取的字段。 */
 export function read_renpy_format_metadata(bytes: Uint8Array): RenpyFormatMetadata {
   const metadata = read_json_record(JSON.parse(Buffer.from(bytes).toString("utf8")) as unknown);
   assert(metadata["schema"] === "linguagacha-renpy-1", "Unknown Ren'Py metadata schema");
-  const profile = read_json_record(metadata["profile"]);
-  assert(typeof profile["version"] === "string", "Invalid Ren'Py version");
+  assert(typeof metadata["engine_version"] === "string", "Invalid Ren'Py version");
   assert(
-    profile["old_substitutions"] === null || typeof profile["old_substitutions"] === "boolean",
+    metadata["python_major"] === 2 || metadata["python_major"] === 3,
+    "Invalid Ren'Py Python generation",
+  );
+  assert(
+    metadata["old_substitutions"] === null || typeof metadata["old_substitutions"] === "boolean",
     "Invalid Ren'Py text semantics",
   );
   const common = metadata["common"];
@@ -38,9 +44,6 @@ export function read_renpy_format_metadata(bytes: Uint8Array): RenpyFormatMetada
   );
   return metadata as RenpyFormatMetadata;
 }
-/** 8.x 起引擎运行在 Python 3，此前的字面量按 Python 2 解码。 */
-export const is_python2 = (profile: Pick<RenpyProfile, "version">): boolean =>
-  !profile.version.startsWith("8.");
 /** 引擎源码摘要的已知写法：读取写法决定换行是否先统一，计算写法须与之配套。 */
 const DIGEST_RULES = [
   { open: 'open(rpyfn,"rU")', read: "f.read()", digest: "universal" }, // 6.99–7.3
@@ -68,13 +71,9 @@ function signature(node: Node): string {
 export async function read_profile(
   root: string,
   fs: NativeFs,
-  signal?: AbortSignal,
-  session?: PythonSession,
+  signal: AbortSignal | undefined,
+  session: PythonSession,
 ): Promise<RenpyProfile> {
-  if (!session) {
-    using owned = await PythonSession.create();
-    return await read_profile(root, fs, signal, owned);
-  }
   const read = async (name: string) => {
     const file = path.join(root, "renpy", name);
     assert_regular_path(file, fs);
@@ -177,6 +176,7 @@ export async function read_profile(
   }
   return {
     version,
+    python_major: python3 ? 3 : 2,
     archives: recursive ? "recursive" : "top-level",
     digest: rule.digest,
     salt,
@@ -191,14 +191,10 @@ export async function read_profile(
 export async function collect_common(
   root: string,
   fs: NativeFs,
-  signal?: AbortSignal,
-  include_layout = false,
-  session?: PythonSession,
+  signal: AbortSignal | undefined,
+  include_layout: boolean,
+  session: PythonSession,
 ): Promise<string[]> {
-  if (!session) {
-    using owned = await PythonSession.create();
-    return await collect_common(root, fs, signal, include_layout, owned);
-  }
   const common = path.join(root, "renpy/common"),
     files = new Set<string>(),
     result = new Set<string>();

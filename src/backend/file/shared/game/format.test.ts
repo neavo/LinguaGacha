@@ -142,3 +142,40 @@ it("解析失败保留原始字节，零条目导出仍包含该文件", async (
   expect(fs.readFileSync(path.join(output, "game/data/System.json"), "utf8")).toBe("{}");
   expect(fs.existsSync(path.join(output, "game/game_files.txt"))).toBe(false);
 });
+
+it("按游戏资产提交，后续资产暂存失败保留此前成功输出与已有文件", async () => {
+  using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-game-asset-commit-"));
+  const native = new NativeFs();
+  const format = new GameFormat(
+    {
+      file_type: "RPGMAKER_MV_MZ",
+      internal_path: () => "data/file",
+      async create_members() {
+        return {
+          async read_file() {
+            return { items: [], warnings: [] };
+          },
+          async render(content) {
+            if (Buffer.from(content).toString() === "fail") throw new Error("second asset failed");
+            return content;
+          },
+        };
+      },
+    },
+    native,
+  );
+  const assets = new Map([
+    ["first.rpgmaker", await write_zip(new Map([["data/file", "first output"]]))],
+    ["second.rpgmaker", await write_zip(new Map([["data/file", "fail"]]))],
+  ]);
+  native.write_file_sync(path.join(temp.path, "second/keep.txt"), "keep");
+  await expect(
+    format.write_to_path([], {
+      paths: { translated_path: temp.path, bilingual_path: temp.path },
+      source_files: [...assets.keys()].map((path) => ({ path, file_type: "RPGMAKER_MV_MZ" })),
+      asset_reader: (file) => Buffer.from(assets.get(file)!),
+    }),
+  ).rejects.toThrow("second asset failed");
+  expect(native.read_text_file(path.join(temp.path, "first/data/file"))).toBe("first output");
+  expect(fs.readdirSync(path.join(temp.path, "second"))).toEqual(["keep.txt"]);
+});

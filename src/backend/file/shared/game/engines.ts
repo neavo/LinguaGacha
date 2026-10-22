@@ -3,6 +3,8 @@ import {
   discover_renpy_source,
   is_renpy_root,
   collect_renpy_files,
+  collect_renpy_fonts,
+  build_renpy_metadata,
   type RenpySource,
 } from "../../renpy/source";
 import { renpy_font_outputs } from "../../renpy/font";
@@ -14,6 +16,7 @@ import {
   discover_godot_source,
   is_godot_root,
   collect_godot_files,
+  collect_godot_fonts,
   type GodotSource,
 } from "../../godot/source";
 import { stage_godot_source } from "../../godot/prepare";
@@ -31,7 +34,7 @@ import {
   type GameSourceFiles,
   type PreparedGameFiles,
 } from "./source-files";
-import { prepare_game_directory, type GamePreparation } from "./prepare";
+import { write_game_directory, type GameDirectoryChanges } from "./directory";
 import type { GamePrepareExecution } from "./prepare-worker";
 import {
   discover_wolf_source,
@@ -90,7 +93,7 @@ interface EngineDefinition<G> {
     task: Readonly<{ game: G; staging: string }>,
     fs: NativeFs,
     signal?: AbortSignal,
-  ): Promise<GamePreparation>;
+  ): Promise<GameDirectoryChanges>;
   collect(
     game: G,
     fs: NativeFs,
@@ -101,7 +104,16 @@ interface EngineDefinition<G> {
   read_metadata(extra: Item["extra_field"]): { internal_file_path: string };
   default_status(item: Pick<Item, "extra_field">): ItemStatus;
   workspace_view?(input: GameFiles): AsyncIterable<ReadableFile>;
-  font_outputs?(game: G, files: GameSourceFiles, font: GameFont): ReadonlyMap<string, Uint8Array>;
+  build_metadata?(
+    game: G,
+    files: GameSourceFiles,
+    fs: NativeFs,
+    signal?: AbortSignal,
+  ): Promise<Uint8Array>;
+  font?: {
+    collect: EngineDefinition<G>["collect"];
+    outputs(game: G, files: GameSourceFiles, font: GameFont): ReadonlyMap<string, Uint8Array>;
+  };
 }
 export type GameEngine = Omit<EngineDefinition<GameSource>, "discover" | "stage"> & {
   discover(input: string, fs: NativeFs, signal?: AbortSignal): Promise<GameSource | null>;
@@ -109,7 +121,7 @@ export type GameEngine = Omit<EngineDefinition<GameSource>, "discover" | "stage"
     task: GameSource & { staging: string },
     fs: NativeFs,
     signal?: AbortSignal,
-  ): Promise<GamePreparation>;
+  ): Promise<GameDirectoryChanges>;
 };
 
 /** 在登记边界保留 file_type 与载荷的对应关系，分发后只由对应引擎消费。 */
@@ -122,13 +134,29 @@ function register<K extends GameFileType>(
       throw new Error("Mismatched game engine: " + source.file_type);
     return source.game as GameSources[K];
   };
-  const { font_outputs, ...definition } = engine;
+  const { font, build_metadata, ...definition } = engine;
   return {
     ...definition,
     // 能力缺省表示不支持字体修改，准入与执行共用同一声明。
-    ...(font_outputs && {
-      font_outputs: (source: GameSource, files: GameSourceFiles, font: GameFont) =>
-        font_outputs(game(source), files, font),
+    ...(font && {
+      font: {
+        collect: (
+          source: GameSource,
+          fs: NativeFs,
+          signal?: AbortSignal,
+          prepared?: PreparedGameFiles,
+        ) => font.collect(game(source), fs, signal, prepared),
+        outputs: (source: GameSource, files: GameSourceFiles, selected: GameFont) =>
+          font.outputs(game(source), files, selected),
+      },
+    }),
+    ...(build_metadata && {
+      build_metadata: (
+        source: GameSource,
+        files: GameSourceFiles,
+        fs: NativeFs,
+        signal?: AbortSignal,
+      ) => build_metadata(game(source), files, fs, signal),
     }),
     async discover(input, fs, signal) {
       const found = await engine.discover(input, fs, signal);
@@ -152,11 +180,15 @@ export const GAME_ENGINES: Record<GameFileType, GameEngine> = {
     needs_stage: () => true,
     stage: stage_renpy_source,
     collect: collect_renpy_files,
+    build_metadata: build_renpy_metadata,
     create_adapter: create_renpy_adapter,
     read_metadata: read_renpy_metadata,
     default_status: renpy_default_status,
     workspace_view: read_renpy_sources,
-    font_outputs: (_game, files, font) => renpy_font_outputs(files.fonts, font),
+    font: {
+      collect: collect_renpy_fonts,
+      outputs: (_game, files, font) => renpy_font_outputs(files.fonts, font),
+    },
   }),
   WOLFRPG: register("WOLFRPG", {
     discover: discover_wolf_source,
@@ -192,7 +224,29 @@ export const GAME_ENGINES: Record<GameFileType, GameEngine> = {
     read_metadata: read_wolf_metadata,
     default_status: wolf_default_status,
     workspace_view: read_wolf_sources,
-    font_outputs: (_game, files, font) => wolf_font_outputs(files.data, files.fonts, font),
+    font: {
+      collect: (game, fs, signal, prepared) =>
+        collect_game_source_files(
+          game.root,
+          [
+            "Data/BasicData",
+            ...fs
+              .read_dir_names(game.root)
+              .filter((name) =>
+                GAME_FONT_EXTENSIONS.includes(path.extname(name).slice(1).toLowerCase()),
+              ),
+          ],
+          (files) =>
+            [...files.keys()].filter((name) => name.toLowerCase() === "data/basicdata/game.dat"),
+          (name) =>
+            !name.includes("/") &&
+            GAME_FONT_EXTENSIONS.includes(path.extname(name).slice(1).toLowerCase()),
+          fs,
+          signal,
+          prepared,
+        ),
+      outputs: (_game, files, font) => wolf_font_outputs(files.data, files.fonts, font),
+    },
   }),
   RPGMAKER_MV_MZ: register("RPGMAKER_MV_MZ", {
     discover: discover_rpgmaker_source,
@@ -224,7 +278,25 @@ export const GAME_ENGINES: Record<GameFileType, GameEngine> = {
     create_adapter: create_rpgmaker_mv_mz_adapter,
     read_metadata: read_rpgmaker_metadata,
     default_status: rpgmaker_default_status,
-    font_outputs: (game, files, font) => mv_mz_font_outputs(game, files.fonts, font),
+    font: {
+      collect: (game, fs, signal, prepared) => {
+        const fonts = [path.relative(game.root, game.data_root).replaceAll("\\", "/"), "fonts"]
+          .filter(Boolean)
+          .join("/");
+        return collect_game_source_files(
+          game.root,
+          [fonts],
+          () => [],
+          (name) =>
+            path.posix.dirname(name).toLowerCase() === fonts.toLowerCase() &&
+            GAME_FONT_EXTENSIONS.includes(path.extname(name).slice(1).toLowerCase()),
+          fs,
+          signal,
+          prepared,
+        );
+      },
+      outputs: (game, files, font) => mv_mz_font_outputs(game, files.fonts, font),
+    },
   }),
   RPGMAKER_RGSS: register("RPGMAKER_RGSS", {
     discover: discover_rgss_source,
@@ -266,7 +338,10 @@ export const GAME_ENGINES: Record<GameFileType, GameEngine> = {
     read_metadata: read_godot_metadata,
     default_status: godot_default_status,
     workspace_view: read_godot_sources,
-    font_outputs: (_game, files, font) => godot_font_outputs(files.data, files.fonts, font.bytes),
+    font: {
+      collect: collect_godot_fonts,
+      outputs: (_game, files, font) => godot_font_outputs(files.data, files.fonts, font.bytes),
+    },
   }),
 };
 
@@ -279,7 +354,7 @@ export async function prepare_game_source(
 ): Promise<void> {
   signal?.throwIfAborted();
   if (!GAME_ENGINES[source.file_type].needs_stage(source, fs)) return;
-  await prepare_game_directory(
+  await write_game_directory(
     source.game.root,
     fs,
     (staging) => {
