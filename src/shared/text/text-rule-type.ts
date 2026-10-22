@@ -18,8 +18,8 @@ export function resolve_text_rule_type(
       return "WOLF";
     case "GODOT":
       return "GODOT";
+    case "RENPY_RPY":
     case "RENPY":
-    case "RENPY_NATIVE":
       return "RENPY";
     case "MESSAGEJSON":
       return "KAG";

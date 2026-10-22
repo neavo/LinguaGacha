@@ -1,4 +1,4 @@
-import { configure_python_parser } from "../file/renpy-game/python-syntax";
+import { configure_python_parser } from "../file/renpy/python-syntax";
 import { GamePrepareWorker } from "../file/shared/game/prepare-worker";
 import { GameFontService } from "../file/game-font-service";
 import { configure_rgss_parser } from "../file/rpgmaker-rgss/ruby";

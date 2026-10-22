@@ -1,4 +1,4 @@
-import { configure_python_parser } from "../../renpy-game/python-syntax";
+import { configure_python_parser } from "../../renpy/python-syntax";
 import { parentPort, workerData } from "node:worker_threads";
 import { default_native_fs } from "../../../../native/native-fs";
 import { to_log_error } from "../../../../shared/error";

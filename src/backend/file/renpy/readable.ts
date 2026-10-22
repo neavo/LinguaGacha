@@ -25,7 +25,7 @@ const text = (edge: PickleNode | undefined): string => {
 
 /**
  * 每个编译脚本写出近似脚本 `x.rpyc.rpy` 与字符串映射 `x.rpyc.json`。
- * `strings[].key` 与条目的 `renpy_game.key` 相同。`line` 是字符串在近似脚本中的实际行，`source_line` 是原始 `.rpy` 的行。
+ * `strings[].key` 与条目的 `renpy.key` 相同。`line` 是字符串在近似脚本中的实际行，`source_line` 是原始 `.rpy` 的行。
  * 同一原始行有多条语句时，近似脚本顺延后面的语句，两者因此不同。
  */
 export async function* read_renpy_sources(files: GameFiles): AsyncGenerator<ReadableFile> {

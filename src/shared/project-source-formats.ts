@@ -76,11 +76,11 @@ export const PROJECT_SOURCE_FORMATS = [
   },
   {
     source_kind: "game",
-    id: "renpy_game",
-    file_type: "RENPY_NATIVE",
+    id: "renpy",
+    file_type: "RENPY",
     support_status: "supported",
     extension: ".exe",
-    title_key: "project_page.formats.renpy_game",
+    title_key: "project_page.formats.renpy",
     description_keys: [],
   },
   {
@@ -188,7 +188,7 @@ export const GAME_FILE_TYPES = [
   "RPGMAKER_MV_MZ",
   "RPGMAKER_RGSS",
   "GODOT",
-  "RENPY_NATIVE",
+  "RENPY",
 ] as const;
 export type GameFileType = (typeof GAME_FILE_TYPES)[number];
 

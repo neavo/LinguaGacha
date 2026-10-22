@@ -14,7 +14,7 @@ export type RenpyMetadata = {
 };
 /** 在持久化边界收窄坐标形状，实际原文与目标由导出入口校验。 */
 export function read_renpy_metadata(extra: Item["extra_field"]): RenpyMetadata {
-  const value = read_json_record(read_json_record(extra)["renpy_game"]);
+  const value = read_json_record(read_json_record(extra)["renpy"]);
   assert(typeof value["internal_file_path"] === "string", "Invalid Ren'Py member");
   validate_game_path(value["internal_file_path"]);
   assert(

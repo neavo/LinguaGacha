@@ -60,7 +60,7 @@ export const zh_cn_project_page = {
     vtt: "WebVTT 字幕",
     pdf: "PDF 电子书",
     epub: "EPUB 电子书",
-    renpy_game: "RenPy 游戏文件",
+    renpy: "RenPy 游戏文件",
     rpy: "RenPy 游戏文本",
     json: "JSON 游戏文本",
     mtool: "MTool 导出游戏文本",

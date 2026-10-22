@@ -26,7 +26,7 @@ description: 翻译、审校或分析 Ren'Py 原生游戏（`.rpyc` 编译脚本
 
 ## 条目坐标
 
-`item_extra` 中的 `renpy_game`：
+`item_extra` 中的 `renpy`：
 
 |字段|含义|
 |---|---|

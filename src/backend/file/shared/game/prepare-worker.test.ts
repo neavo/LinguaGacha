@@ -23,7 +23,7 @@ import {
 } from "../../../../test/godot-fixture";
 import { discover_godot_source } from "../../godot/source";
 import { create_renpy_fixture, archive_fixture } from "../../../../test/renpy-fixture";
-import { discover_renpy_source } from "../../renpy-game/source";
+import { discover_renpy_source } from "../../renpy/source";
 
 let runtime: string;
 it("RenPy 通过正式准备线程展开并释放归档句柄", async () => {
@@ -42,7 +42,7 @@ it("RenPy 通过正式准备线程展开并释放归档句柄", async () => {
     path.resolve("build/resources/workspace"),
   );
   try {
-    const result = await worker.run({ kind: "game", file_type: "RENPY_NATIVE", game, staging });
+    const result = await worker.run({ kind: "game", file_type: "RENPY", game, staging });
     expect(result.backups).toEqual(["game/archive.rpa"]);
     expect(native.read_text_file(path.join(staging, "game/resource.txt"))).toBe("resource");
     fs.renameSync(path.join(temp.path, "game/archive.rpa"), path.join(temp.path, "released.rpa"));
@@ -323,13 +323,13 @@ it("同进程入口保留显式注入的 NativeFs", async () => {
 
 it("仓库外真实 Electron 加载部署准备线程并等待退出", async () => {
   using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-game-electron-"));
-  const renpy_root = path.join(temp.path, "renpy-game");
+  const renpy_root = path.join(temp.path, "renpy");
   const renpy_fs = create_renpy_fixture(renpy_root);
   renpy_fs.write_file_sync(
     path.join(renpy_root, "game/archive.rpa"),
     archive_fixture(new Map([["resource.txt", Buffer.from("resource")]])),
   );
-  const renpy_game = await discover_renpy_source(renpy_root, renpy_fs);
+  const renpy = await discover_renpy_source(renpy_root, renpy_fs);
   const entry = path.join(temp.path, "entry.ts"),
     staging = path.join(temp.path, "stage");
   fs.mkdirSync(staging);
@@ -367,9 +367,9 @@ it("仓库外真实 Electron 加载部署准备线程并等待退出", async () 
     fs.rmSync(task.staging,{recursive:true});
     const renpy = new GamePrepareWorker(pathToFileURL(process.argv[2]), undefined, undefined, process.argv[3]);
     try {
-      const game = ${JSON.stringify(renpy_game)};
+      const game = ${JSON.stringify(renpy)};
       const staging = path.join(game.root, 'stage');
-      const result = await renpy.run({kind:'game',file_type:'RENPY_NATIVE',game,staging});
+      const result = await renpy.run({kind:'game',file_type:'RENPY',game,staging});
       assert(result.backups.includes('game/archive.rpa'));
       assert.equal(fs.readFileSync(path.join(staging,'game/resource.txt'),'utf8'),'resource');
     } finally { await renpy.dispose(); }

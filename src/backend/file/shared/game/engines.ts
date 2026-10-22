@@ -4,12 +4,12 @@ import {
   is_renpy_root,
   collect_renpy_files,
   type RenpySource,
-} from "../../renpy-game/source";
-import { renpy_font_outputs } from "../../renpy-game/font";
-import { stage_renpy_source } from "../../renpy-game/prepare";
-import { create_renpy_adapter } from "../../renpy-game/renpy-game-format";
-import { read_renpy_metadata, renpy_default_status } from "../../renpy-game/item";
-import { read_renpy_sources } from "../../renpy-game/readable";
+} from "../../renpy/source";
+import { renpy_font_outputs } from "../../renpy/font";
+import { stage_renpy_source } from "../../renpy/prepare";
+import { create_renpy_adapter } from "../../renpy/renpy-format";
+import { read_renpy_metadata, renpy_default_status } from "../../renpy/item";
+import { read_renpy_sources } from "../../renpy/readable";
 import {
   discover_godot_source,
   is_godot_root,
@@ -69,7 +69,7 @@ import { godot_font_outputs } from "../../godot/font";
 import { read_godot_sources } from "../../godot/readable";
 
 type GameSources = {
-  RENPY_NATIVE: RenpySource;
+  RENPY: RenpySource;
   GODOT: GodotSource;
   WOLFRPG: WolfSource;
   RPGMAKER_MV_MZ: RPGMakerSource;
@@ -144,7 +144,7 @@ function register<K extends GameFileType>(
 }
 
 export const GAME_ENGINES: Record<GameFileType, GameEngine> = {
-  RENPY_NATIVE: register("RENPY_NATIVE", {
+  RENPY: register("RENPY", {
     discover: discover_renpy_source,
     is_root: is_renpy_root,
     source_path: (game) => game.root,

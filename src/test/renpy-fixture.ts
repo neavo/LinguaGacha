@@ -1,8 +1,8 @@
-import { configure_python_parser } from "../backend/file/renpy-game/python-syntax";
+import { configure_python_parser } from "../backend/file/renpy/python-syntax";
 import fs from "node:fs";
 import path from "node:path";
 import { deflateSync } from "node:zlib";
-import { pickle_string } from "../backend/file/renpy-game/pickle";
+import { pickle_string } from "../backend/file/renpy/pickle";
 import { NativeFs } from "../native/native-fs";
 
 configure_python_parser(path.resolve("build/resources/workspace"));
@@ -182,6 +182,7 @@ export function compiled_slots(nodes: readonly (readonly Buffer[])[]): Buffer {
   });
   return Buffer.concat([header, ...slots, Buffer.alloc(16)]);
 }
+/** 构造跨语言字符串表，供提取、重定向与导出测试共用。 */
 export function strings_fixture(
   entries: { language: string | null; old: string; text: string }[],
 ): Buffer {

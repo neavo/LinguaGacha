@@ -9,7 +9,7 @@ it("持久坐标拒绝非法区间，默认状态只取决于用途", () => {
     key: "candidate",
     coordinates: [{ slot: 1, edge: 12, field: "code", start: 0, end: 5 }],
   };
-  const item = { extra_field: { renpy_game: metadata } };
+  const item = { extra_field: { renpy: metadata } };
   expect(read_renpy_metadata(item.extra_field)).toEqual(metadata);
   expect(renpy_default_status(item)).toBe("RULE_SKIPPED");
   metadata.usage = "display";

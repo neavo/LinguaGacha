@@ -164,7 +164,7 @@ GUI、preload、native 或 Backend Runtime worker 变化时，先运行相关目
 
 |变化|测试|
 |---|---|
-|格式、来源发现或默认排除|对应的 `rpgmaker-mv-mz/`、`rpgmaker-rgss/`、`wolfrpg/`、`godot/` 或 `renpy-game/` 测试，以及 `project-content-service.test.ts`|
+|格式、来源发现或默认排除|对应的 `rpgmaker-mv-mz/`、`rpgmaker-rgss/`、`wolfrpg/`、`godot/` 或 `renpy/` 测试，以及 `project-content-service.test.ts`|
 |引擎登记表与共享容器|各原生格式的测试、来源发现、校对缓存、Agent 工作区原稿，以及 `shared/game/` 下的对应测试|
 |文件身份与迁移|数据库迁移、工程打开迁移、解析流水线和译文生成测试|
 |文本规则计算|`text-rule-type.test.ts`、翻译译前流程和校对评估|
@@ -186,7 +186,7 @@ GUI、preload、native 或 Backend Runtime worker 变化时，先运行相关目
 - Godot 字体工具按换字体与拷回译文的两种先后顺序验收，启动后核对资产字体控件与未指定字体的控件都取得所选字体。
 - Ren’Py 准备变化使用 `input/renpy_01` 至 `input/renpy_04` 的独立副本与隔离存档，通过 `prepare_game_source` 验证准备和重复准备。记录版本、备份哈希与启动日志，保留 6.x 启动证据。核对 `renpy_03` 场景笔记的原字节和 `renpy_04` 业务对象加载。验收探针只加入副本，每个样本独立记录失败归因。
 - Ren’Py 字体与译文变化通过 `GameFontService.inspect/apply` 和格式导出入口验证两种覆盖顺序。核对原路径字体、默认正文字体与首次备份的哈希。启动后检查文本、语句身份、中文渲染、语言初始化和语言切换后的断行设置。比较启动前后的编译文件哈希，确认生成资源未进入原稿。
-- Ren’Py 引擎兼容性由真实游戏验收，另查 `lock.txt` 与只读目录中的生成资源首次编译。文本保护变化运行 `renpy-boundaries.test.ts`、`text-preserve-rules.test.ts` 和旧 `renpy/` 格式测试。
+- Ren’Py 引擎兼容性由真实游戏验收，另查 `lock.txt` 与只读目录中的生成资源首次编译。文本保护变化运行 `renpy-boundaries.test.ts`、`text-preserve-rules.test.ts` 和 `renpy-rpy/` 格式测试。
 - 协议测试与游戏启动分别验收。Windows 启动须确认所选入口读取外部数据和明文素材。
 
 交付时注明未验证的布局、游戏流程和宿主平台。

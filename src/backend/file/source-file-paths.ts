@@ -12,7 +12,7 @@ export const GAME_BACKUP_DIRECTORY = "backup_lg";
 export const GAME_WORKSPACE_DIRECTORY = ".tmp";
 /** 来源命名与输出校验共用后缀，来源入口格式由 `PROJECT_SOURCE_FORMATS` 维护。 */
 export const GAME_ASSET_EXTENSIONS = Object.freeze({
-  RENPY_NATIVE: ".renpy",
+  RENPY: ".renpy",
   GODOT: ".godot",
   RPGMAKER_MV_MZ: ".rpgmaker",
   RPGMAKER_RGSS: ".rpgmaker",

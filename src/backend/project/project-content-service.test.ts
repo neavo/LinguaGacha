@@ -341,7 +341,7 @@ describe("ProjectContentService", () => {
         expected_section_revisions: { files: 0, items: 0 },
       });
       expect(await database.get_all_asset_records(lg_path)).toMatchObject([
-        { path: "renpy.renpy", file_type: "RENPY_NATIVE" },
+        { path: "renpy.renpy", file_type: "RENPY" },
       ]);
       const original = await database.get_all_items(lg_path);
       expect(original.some((item) => item.status === "RULE_SKIPPED")).toBe(true);
@@ -1736,7 +1736,7 @@ describe("ProjectContentService", () => {
         writer.add_asset(lg_path, "old.json", Buffer.from("[]"), "MESSAGEJSON", null),
       );
       await database.transaction(lg_path, (writer) =>
-        writer.add_asset(lg_path, "old.rpy", Buffer.from(""), "RENPY", null),
+        writer.add_asset(lg_path, "old.rpy", Buffer.from(""), "RENPY_RPY", null),
       );
       await database.transaction(lg_path, (writer) =>
         writer.set_items(
@@ -1758,7 +1758,7 @@ describe("ProjectContentService", () => {
               dst,
               name_src,
               name_dst,
-              file_type: text_type === "KAG" ? "MESSAGEJSON" : "RENPY",
+              file_type: text_type === "KAG" ? "MESSAGEJSON" : "RENPY_RPY",
               file_path: text_type === "KAG" ? "old.json" : "old.rpy",
               status: "PROCESSED",
             }),

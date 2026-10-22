@@ -13,7 +13,7 @@ import { RuntimeOperationGate } from "../../runtime-operation-gate";
 import { GameFontService } from "../game-font-service";
 import { GamePrepareWorker } from "../shared/game/prepare-worker";
 import { GameFormat } from "../shared/game/format";
-import { create_renpy_adapter } from "./renpy-game-format";
+import { create_renpy_adapter } from "./renpy-format";
 import { collect_renpy_files, discover_renpy_source } from "./source";
 import {
   RENPY_FONT_FILE,
@@ -89,7 +89,7 @@ it.each([false, true])(
       );
       await format.write_to_path([], {
         paths: { translated_path: temp.path, bilingual_path: temp.path },
-        source_files: [{ path: "demo.renpy", file_type: "RENPY_NATIVE" }],
+        source_files: [{ path: "demo.renpy", file_type: "RENPY" }],
         asset_reader: () => Buffer.from(asset.content),
       });
     }

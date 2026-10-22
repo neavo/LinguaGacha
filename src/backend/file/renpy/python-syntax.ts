@@ -81,6 +81,7 @@ async function load_language() {
 }
 export const python_children = (node: Node): Node[] =>
   node.namedChildren.filter((child) => child.type !== "comment");
+/** 只解析静态属性链，调用和下标表达式没有可确定的名称。 */
 export function python_name(node: Node | null): string {
   if (!node) return "";
   if (node.type === "identifier") return node.text;

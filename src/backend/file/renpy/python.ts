@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 
 /** 常量语义不确定时允许局部跳过，调用方仍须传播资源与程序错误。 */
 export class PythonDecodeError extends Error {}
+/** 用可局部跳过的解码错误报告不支持的字面量。 */
 function require_literal(condition: boolean, reason: string): asserts condition {
   if (!condition) throw new PythonDecodeError(reason);
 }

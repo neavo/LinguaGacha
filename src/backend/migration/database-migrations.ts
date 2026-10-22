@@ -1,4 +1,5 @@
 import { run_asset_file_type_migration } from "./database/asset-file-type-migration";
+import { run_renpy_rpy_file_type_migration } from "./database/renpy-rpy-file-type-migration";
 import type { DatabaseSync } from "node:sqlite";
 import type { DatabaseWritebackMigration } from "./migration-types";
 import { JsonTool } from "../../shared/utils/json-tool";
@@ -10,7 +11,7 @@ import { run_project_rule_storage_migration } from "./database/project-rule-stor
 import { run_quality_rule_entry_identity_migration } from "./database/quality-rule-entry-identity-migration";
 import { run_trans_item_metadata_migration } from "./database/trans-item-metadata-migration";
 
-// 顺序是历史升级契约：规则存储先于身份，基础 Item 先于 TRANS，最后补公开字段。
+// 顺序属于升级契约：先补齐条目，再将文件身份移交资产，最后重命名旧 Ren’Py 格式。
 const DATABASE_WRITEBACK_MIGRATIONS: readonly DatabaseWritebackMigration[] = [
   { id: "project-rule-storage", run: run_project_rule_storage_migration },
   { id: "quality-rule-entry-identity", run: run_quality_rule_entry_identity_migration },
@@ -18,6 +19,7 @@ const DATABASE_WRITEBACK_MIGRATIONS: readonly DatabaseWritebackMigration[] = [
   { id: "trans-item-metadata", run: run_trans_item_metadata_migration },
   { id: "project-item-public-contract", run: run_project_item_public_contract_migration },
   { id: "asset-file-type", run: run_asset_file_type_migration },
+  { id: "renpy-rpy-file-type", run: run_renpy_rpy_file_type_migration },
 ];
 export const PROJECT_DATABASE_APPLIED_WRITEBACK_MIGRATIONS_META_KEY =
   "applied_writeback_migrations";

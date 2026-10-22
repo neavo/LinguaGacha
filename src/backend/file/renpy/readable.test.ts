@@ -14,7 +14,7 @@ import { GAME_METADATA_MEMBER, GameFormat, read_game_container } from "../shared
 import { read_renpy_metadata } from "./item";
 import { pickle_string } from "./pickle";
 import { read_renpy_sources } from "./readable";
-import { create_renpy_adapter } from "./renpy-game-format";
+import { create_renpy_adapter } from "./renpy-format";
 import { collect_renpy_files, discover_renpy_source } from "./source";
 
 type Projection = {
