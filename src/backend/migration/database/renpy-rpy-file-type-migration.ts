@@ -11,9 +11,7 @@ import { write_item_migration } from "./item-migration";
  * 打开旧工程时，在 `asset-file-type` 迁移完成后执行一次。
  * 新工程在写入资产前已完成迁移，因此原生游戏资产保留 `RENPY` 身份。
  *
- * 不处理范围：
  * 历史字符串 `extra_field` 由 `.rpy` 写回兼容入口恢复译文。
- * 未发布的 `RENPY_NATIVE` 和 `renpy_game` 数据沿用未知格式处理。
  */
 export function run_renpy_rpy_file_type_migration(db: DatabaseSync): void {
   // 改名后无法再查询旧类型，先保存路径以限定条目迁移范围。

@@ -23,6 +23,7 @@ import {
   code_edge,
   is_pyexpr,
   script_consumers,
+  script_children,
   script_codes,
   analyze_code,
   code_diagnostic,
@@ -68,6 +69,7 @@ const display_text = (node: PickleNode): string => {
   return Buffer.isBuffer(scalar) ? scalar.toString("utf8") : node_string(node); // 旧界面按 UTF-8 替换非法字节，候选保持玩家实际看到的值。
 };
 
+/** 消费边与源码区间共同确定写入位置，字段名不参与共享边判定。 */
 const coordinate_key = (coordinate: RenpyCoordinate) =>
   JSON.stringify([coordinate.slot, coordinate.edge, coordinate.start, coordinate.end]);
 
@@ -186,11 +188,7 @@ export async function extract_script(
       const node = resolve_node(edge);
       if (excluded.has(node)) return;
       excluded.add(node);
-      for (const child of node.children) mark_language(child);
-      const fields = attributes(node);
-      for (const [key, child] of fields) if (key !== "next") mark_language(child);
-      if (node.args) mark_language(node.args);
-      if (fields.size === 0 && node.state) mark_language(node.state);
+      for (const child of script_children(node)) mark_language(child);
     };
     for (const node of slot.graph.nodes)
       if (node.kind === "object" && class_name(node) === "renpy.ast.Translate") {

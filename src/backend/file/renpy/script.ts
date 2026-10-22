@@ -10,10 +10,13 @@ import type { CompiledSlot } from "./compiled";
 import type { ScriptDiagnostic } from "../file-format-types";
 import { DISPLAY_DEFINES, DISPLAY_SCREEN_DISPLAYABLES, DISPLAY_SCREEN_KEYWORDS } from "./usage";
 
+/** 可选字段缺失时沿用 Pickle 的空值语义。 */
 export const node_value = (node: PickleNode | undefined): PickleNode["value"] =>
   node ? resolve_node(node).value : null;
+/** 容器引用先解析，缺失字段视为空集合。 */
 export const node_children = (node: PickleNode | undefined): PickleNode[] =>
   node ? resolve_node(node).children : [];
+/** 缺失文本字段为空，已有字段仍执行协议字符串校验。 */
 export const node_text = (node: PickleNode | undefined): string => (node ? node_string(node) : "");
 
 /** 新旧身份字段采用同一口径，翻译包装后缀不创建新的语句身份。 */
@@ -94,7 +97,7 @@ export function definition_target(fields: Map<string, PickleNode>): string {
 }
 
 /** next 是执行链，不属于当前语句的结构子树。 */
-function script_children(node: PickleNode): PickleNode[] {
+export function script_children(node: PickleNode): PickleNode[] {
   const fields = attributes(node);
   return [
     ...node.children,
@@ -225,18 +228,7 @@ function code_mode(node: PickleNode): PythonMode {
 export function script_codes(script: { slots: readonly CompiledSlot[] }): RenpyCode[] {
   const result: RenpyCode[] = [];
   for (const slot of script.slots) {
-    type Context = {
-      owner: string;
-      field: string;
-      phase: RenpyPhase;
-      priority: number | null;
-      early: boolean;
-      target: string;
-      display: boolean;
-      translated: boolean;
-      filename: string | null;
-      line: number | null;
-    };
+    type Context = Omit<RenpyCode, "source" | "mode" | "slot" | "edge" | "legacy">;
     const seen = new Map<PickleNode, Set<string>>();
     const visit = (edge: PickleNode, context: Context): void => {
       const node = resolve_node(edge),

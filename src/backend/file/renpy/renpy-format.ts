@@ -15,6 +15,7 @@ import { read_renpy_metadata, type RenpyMetadata } from "./item";
 import { is_python2, read_renpy_format_metadata } from "./profile";
 import { RENPY_LANGUAGE_FILE, RENPY_STRINGS_FILE, RENPY_GENERATED_MARKER } from "./generated";
 import { encode_python, paragraph_text } from "./python";
+import { read_compiled } from "./compiled";
 import { scan_renpy_boundaries } from "../../../shared/text/renpy-boundaries";
 
 /** Python `%` 格式记号：`%%`、`%(name)` 与位置转换说明，以及无法构成说明的单独 `%`。 */
@@ -252,17 +253,19 @@ export function create_renpy_adapter(): GameFormatAdapter {
                   add_string({ language: string.language, old: new_key, text: string.text });
             }
           }
-          // 所有确认译文先成功应用，再交给共享层落盘。
-          for (const [file, entries] of changes)
+          // 候选已按固化原稿校验，写回只重建当前成员的图，避免再次提取全部候选。
+          for (const [file, entries] of changes) {
+            const bytes = scripts.get(file)!.bytes;
             rendered.set(
               file,
               await patch_script(
-                await extract_script(scripts.get(file)!.bytes, python2, session),
+                { bytes, slots: read_compiled(bytes), python2 },
                 entries,
                 [],
                 session,
               ),
             );
+          }
           let strings = RENPY_GENERATED_MARKER + "\n";
           // old/new 已使用 Unicode 语义，6.x 还会自动添加 u 前缀，因此生成时去掉 Python 前缀。
           for (const entry of additions.values()) {
