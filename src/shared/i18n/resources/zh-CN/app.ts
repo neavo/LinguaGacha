@@ -199,7 +199,7 @@ export const zh_cn_app = {
       checking: "正在检查校对警告 …",
       check_failed: "读取校对警告失败，仍可继续生成当前译文 …",
       warning_description:
-        "检查到 {COUNT} 个校对警告，推荐使用 AGENT 自动审校后再生成译文，是否确认继续 …?",
+        "检测到 {COUNT} 个校对警告，警告并非一定是错误，但建议先使用 AGENT 执行至少一次自动审校，是否确认继续生成译文 …?",
       retry_check: "重新检查",
       continue_generate: "继续生成",
     },

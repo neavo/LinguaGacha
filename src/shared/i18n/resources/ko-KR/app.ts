@@ -200,7 +200,7 @@ export const ko_kr_app = {
       checking: "교정 경고 확인 중 …",
       check_failed: "교정 경고를 읽지 못했습니다. 현재 번역문 생성은 계속할 수 있습니다 …",
       warning_description:
-        "교정 경고가 {COUNT}개 있습니다. AGENT로 자동 교정한 후 번역문을 생성하는 것을 권장합니다. 계속할까요 …?",
+        "교정 경고가 {COUNT}개 감지되었습니다. 경고가 반드시 오류를 의미하지는 않지만, 먼저 AGENT로 자동 교정을 최소 한 번 실행하는 것을 권장합니다. 번역문을 계속 생성할까요 …?",
       retry_check: "다시 확인",
       continue_generate: "생성 계속",
     },

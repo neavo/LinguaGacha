@@ -204,7 +204,7 @@ export const en_us_app = {
       check_failed:
         "Proofreading warnings could not be loaded. You can still generate the current translation …",
       warning_description:
-        "Detected {COUNT} proofreading warnings. We recommend using AGENT to review and fix them automatically before generating the translation. Continue anyway …?",
+        "Detected {COUNT} proofreading warnings. Warnings do not necessarily indicate errors, but we recommend running at least one automatic review with AGENT first. Continue generating the translation …?",
       retry_check: "Check Again",
       continue_generate: "Generate Anyway",
     },
