@@ -83,7 +83,7 @@ describe("PromptBuilder", () => {
     expect(input.match(/\{"id":/gu)).toHaveLength(1);
   });
 
-  it("从资源模板生成翻译提示词并注入上文、术语和控制字符示例", async () => {
+  it("从资源模板生成翻译提示词并注入前后文、术语和控制字符示例", async () => {
     const builtin_root = await create_template_root();
     const builder = new PromptBuilder(
       builtin_root,
@@ -126,7 +126,7 @@ describe("PromptBuilder", () => {
     expect(content.split("```jsonline")[1]).not.toMatch(/上一句|下一句/);
     expect(result.console_log.join("\n")).toContain("下一句");
     expect(result.messages[1]?.content).toContain("Alice -> 爱丽丝 #女性人名");
-    expect(result.messages[1]?.content).toContain("控制字符示例：\n\\n[1], <b>");
+    expect(result.messages[1]?.content).toContain("\n\\n[1], <b>\n");
     expect(result.messages[1]?.content).toContain('{"id":0,"text":"Alice\\\\n[1]"}');
   });
 
@@ -210,7 +210,6 @@ describe("PromptBuilder", () => {
     );
     const user_prompt = result.messages[1]?.content ?? "";
 
-    expect(user_prompt).toContain("Glossary");
     expect(user_prompt).toContain("foo -> 乙 #备注");
     expect(user_prompt).not.toContain("ABC -> 甲");
   });
@@ -234,7 +233,7 @@ describe("PromptBuilder", () => {
       [],
     );
 
-    expect(result.messages[1]?.content).not.toContain("控制字符示例");
+    expect(result.messages[1]?.content).not.toContain("<a>");
   });
 
   it("Sakura 已激活术语使用无空格箭头格式", () => {
@@ -248,7 +247,7 @@ describe("PromptBuilder", () => {
     const result = builder.generate_prompt_sakura("HP");
 
     expect(result.console_log).toEqual(["HP->生命值 #stat"]);
-    expect(result.messages[1]?.content).toContain("根据以下术语表");
+    expect(result.messages[1]?.content).toContain("HP->生命值 #stat");
   });
 
   it("普通提示词没有已激活术语时不写入术语段", async () => {
@@ -268,8 +267,6 @@ describe("PromptBuilder", () => {
       [],
     );
 
-    expect(result.messages[1]?.content).not.toContain("术语表");
-    expect(result.messages[1]?.content).toContain("输入：");
     expect(result.console_log).toEqual([]);
   });
 

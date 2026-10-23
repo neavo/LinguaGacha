@@ -7,8 +7,8 @@ function create_context(retry_count: number, ids: number[]): TranslationContext 
   return {
     work_unit_id: "original",
     items: ids.map((id) => ({ id, src: `原文${id}`, status: "NONE" })),
-    precedings: [{ id: 9, src: "上文" }],
-    followings: [{ id: 10, src: "下文" }],
+    precedings: [{ id: 9, src: "前文" }],
+    followings: [{ id: 10, src: "后文" }],
     retry_count,
   };
 }

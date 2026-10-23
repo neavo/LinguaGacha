@@ -419,18 +419,18 @@ describe("TranslationWorkUnitRunner", () => {
       ],
     });
     unit.payload.precedings = [
-      { id: 9, src: "上文 https://previous.example", status: "PROCESSED", text_type: "TXT" },
+      { id: 9, src: "前文 https://previous.example", status: "PROCESSED", text_type: "TXT" },
     ];
 
-    unit.payload.followings = [{ id: 10, src: "下文 https://following.example", status: "NONE" }];
+    unit.payload.followings = [{ id: 10, src: "后文 https://following.example", status: "NONE" }];
     const original = structuredClone(unit);
     const result = await runner.execute_unit(unit, new AbortController().signal);
     expect(unit).toEqual(original);
     expect(result.output.items.map((item) => item.id)).toEqual([1, 2]);
-    expect(captured_requests[0]?.messages[1]?.content).toContain("下文 lg-uri/1");
-    expect(read_translation_log(result.logs[0]).summary.join("\n")).toContain("下文 lg-uri/1");
+    expect(captured_requests[0]?.messages[1]?.content).toContain("后文 lg-uri/1");
+    expect(read_translation_log(result.logs[0]).summary.join("\n")).toContain("后文 lg-uri/1");
 
-    expect(captured_requests[0]?.messages[1]?.content).toContain("上文 lg-uri/0");
+    expect(captured_requests[0]?.messages[1]?.content).toContain("前文 lg-uri/0");
     expect(captured_requests[0]?.messages[1]?.content).toContain(
       '{"id":0,"actor":"Alice lg-uri/2","text":"打开 lg-uri/3"}',
     );

@@ -69,7 +69,7 @@ export class PromptBuilder {
   }
 
   /**
-   * 生成普通翻译提示词；system 放稳定指令，user 放本次输入和术语
+   * system 放稳定指令。user 放本次输入、参考文本和术语。
    */
   public generate_prompt(
     items: TranslationRequestItem[],
@@ -78,37 +78,24 @@ export class PromptBuilder {
     precedings: TextTaskItemRecord[],
     followings: TextTaskItemRecord[],
   ): PromptBuildResult {
-    const messages: LLMMessage[] = [];
-    const console_log: string[] = [];
     const instruction_text = this.build_main(mode);
-    const user_parts: string[] = [];
-
-    for (const section of [
+    // 日志回显参考段。待翻译输入由日志 pairs 单独承载。
+    const console_log = [
       this.build_context(precedings, "app.prompt.builder_preceding_context"),
       this.build_context(followings, "app.prompt.builder_following_context"),
-    ]) {
-      if (section === "") continue;
-      user_parts.push(section);
-      console_log.push(section);
-    }
-
-    const glossary = this.build_glossary(" -> ");
-    if (glossary !== "") {
-      user_parts.push(glossary);
-      console_log.push(glossary);
-    }
-
-    const control_samples = this.build_control_characters_samples(instruction_text, samples);
-    if (control_samples !== "") {
-      user_parts.push(control_samples);
-      console_log.push(control_samples);
-    }
-
-    user_parts.push(this.build_inputs(items, mode));
-
-    messages.push({ role: "system", content: instruction_text });
-    messages.push({ role: "user", content: user_parts.join("\n\n") });
-    return { messages, console_log };
+      this.build_glossary(" -> "),
+      this.build_control_characters_samples(instruction_text, samples),
+    ].filter((section) => section !== "");
+    return {
+      messages: [
+        { role: "system", content: instruction_text },
+        {
+          role: "user",
+          content: [...console_log, this.build_inputs(items, mode)].join("\n\n"),
+        },
+      ],
+      console_log,
+    };
   }
 
   /** 构建 SakuraLLM 批量正文使用的纯文本提示词。 */
