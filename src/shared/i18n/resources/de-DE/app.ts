@@ -215,7 +215,7 @@ export const de_de_app = {
       check_failed:
         "Korrekturwarnungen konnten nicht geladen werden. Die aktuelle Übersetzung kann trotzdem erstellt werden …",
       warning_description:
-        "Es wurden {COUNT} Korrekturwarnungen gefunden. Wir empfehlen, sie vor dem Erstellen der Übersetzung automatisch mit AGENT zu prüfen und zu beheben. Trotzdem fortfahren …?",
+        "Es wurden {COUNT} Korrekturwarnungen erkannt. Warnungen weisen nicht unbedingt auf Fehler hin. Wir empfehlen jedoch, zuerst mindestens eine automatische Prüfung mit AGENT durchzuführen. Mit dem Erstellen der Übersetzung fortfahren …?",
       retry_check: "Erneut prüfen",
       continue_generate: "Trotzdem erstellen",
     },
