@@ -47,11 +47,11 @@ export const SETTING_SNAPSHOT_SCHEMA = Type.Object(
     preceding_lines_threshold: Type.Integer({
       minimum: CONTEXT_LINES_THRESHOLD_MIN,
       maximum: CONTEXT_LINES_THRESHOLD_MAX,
-    }), // 参考上文按文本条目计数。
+    }), // 参考前文按文本条目计数。
     following_lines_threshold: Type.Integer({
       minimum: CONTEXT_LINES_THRESHOLD_MIN,
       maximum: CONTEXT_LINES_THRESHOLD_MAX,
-    }), // 参考下文按文本条目计数。
+    }), // 参考后文按文本条目计数。
     prompt_enhancement_enable: Type.Boolean(), // 翻译提示词增强开关。
     mtool_optimizer_enable: Type.Boolean(), // MTool 文本预过滤优化开关。
     skip_duplicate_source_text_enable: Type.Boolean(), // 重复来源条目的过滤开关。

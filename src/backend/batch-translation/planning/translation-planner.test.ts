@@ -32,7 +32,7 @@ describe("TranslationPlanner", () => {
     expect(count_items.mock.calls[0]?.[0]).toHaveLength(1);
   });
 
-  it("翻译切块在 token 阈值处拆分，并为后续块保留同文件句末上文", async () => {
+  it("翻译切块在 token 阈值处拆分，并为后续块保留同文件句末前文", async () => {
     const planner = create_planner(async (items) => items.map(() => 12));
     const items = [
       create_item({ id: 1, src: "前一句。", file_path: "chapter.txt" }),

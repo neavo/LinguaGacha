@@ -80,10 +80,10 @@ describe("TranslationPrePipeline", () => {
     expect(context.request_item?.actor_src).toBe("Alice");
   });
 
-  it("在 work unit 内按上文、姓名和正文顺序投影文本引用", () => {
+  it("在 work unit 内按前文、姓名和正文顺序投影文本引用", () => {
     const pipeline = new TranslationPrePipeline(create_quality_snapshot());
     const precedings = pipeline.project_context_items([
-      { src: "上文 https://example.com", file_type: "TXT" },
+      { src: "前文 https://example.com", file_type: "TXT" },
     ]);
     const context = pipeline.process_item({
       src: "查看 image.png",
@@ -91,7 +91,7 @@ describe("TranslationPrePipeline", () => {
       file_type: "TXT",
     });
 
-    expect(precedings[0]?.src).toBe("上文 lg-uri/0");
+    expect(precedings[0]?.src).toBe("前文 lg-uri/0");
     expect(context.request_item).toMatchObject({
       text_src: "查看 lg-uri/2",
       actor_src: "Alice lg-uri/1",

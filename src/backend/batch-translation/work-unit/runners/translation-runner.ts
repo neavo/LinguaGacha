@@ -51,8 +51,8 @@ interface TranslationWorkUnitRequest {
   config_snapshot: TranslationWorkUnit["config_snapshot"]; // Frozen processing and locale settings.
   quality_snapshot: TextQualitySnapshot; // Frozen text rules shared by prompt and pipelines.
   items: TextTaskItemRecord[]; // Item snapshots owned by this work unit.
-  precedings: TextTaskItemRecord[]; // 只读上文，不参与译文写回。
-  followings: TextTaskItemRecord[]; // 只读下文，不参与译文写回。
+  precedings: TextTaskItemRecord[]; // 只读前文，不参与译文写回。
+  followings: TextTaskItemRecord[]; // 只读后文，不参与译文写回。
 }
 
 /** Runner 结果，尚未包装进跨线程执行信封。 */
