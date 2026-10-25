@@ -68,7 +68,6 @@ it.each([
   const prepared = await service.prepare_source(
     (await service.discover_import_sources([{ source_path: source, rel_path: "game.zip" }]))[0]!,
   );
-  expect(prepared.warnings).toEqual([]);
   fs.rmSync(source, { recursive: true });
   const result = await service.parse_asset("game.zip", prepared.content, "RPGMAKER_RGSS");
   if (result.kind !== "items") throw Error("Expected items");

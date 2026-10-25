@@ -1,3 +1,4 @@
+import { read_project_additional_files } from "./project-additional-files";
 import type { QualityStatisticsTextChangeScope } from "../../shared/project-event";
 import { assert_source_file_paths } from "../file/source-file-paths";
 import type { CacheManager } from "../cache/cache-manager";
@@ -83,6 +84,7 @@ export type ProjectAssetWrite =
       path: string;
       content: Uint8Array;
       fileType: string;
+      additionalFiles?: readonly string[]; // 游戏资产的附加原稿成员，缺省表示没有附加原稿。
       pdfDocument: PDFDocument | null;
       sortOrder: number;
     }
@@ -91,6 +93,7 @@ export type ProjectAssetWrite =
       path: string;
       content: Uint8Array;
       fileType: string;
+      additionalFiles?: readonly string[]; // 游戏资产的附加原稿成员，缺省表示没有附加原稿。
       pdfDocument: PDFDocument | null;
     }
   | {
@@ -310,11 +313,19 @@ export class ProjectWriteStore {
               .get_all_asset_records(request.projectPath)
               .map((asset) => [asset.path, asset]),
           );
+          // 附加原稿清单与资产同事务提交，共用 files 修订使离线读取和工作区缓存同步失效。
+          const additional_files = read_project_additional_files(revision_context.meta);
           for (const write of request.assetWrites) {
+            delete additional_files[write.path];
             if (write.kind === "delete") files.delete(write.path);
-            else files.set(write.path, { path: write.path, file_type: write.fileType });
+            else {
+              files.set(write.path, { path: write.path, file_type: write.fileType });
+              if (write.additionalFiles?.length)
+                additional_files[write.path] = [...write.additionalFiles];
+            }
           }
           assert_source_file_paths(files.values()); // 事务内核对最终集合，陈旧预览和直接请求都不能绕过。
+          revision_context.pendingMeta["additional_files"] = additional_files;
         }
         const pdf_changed =
           (request.resetPDFPaths?.length ?? 0) > 0 ||
@@ -363,7 +374,6 @@ export class ProjectWriteStore {
         if (request.meta !== undefined && Object.keys(request.meta).length > 0) {
           Object.assign(revision_context.pendingMeta, request.meta);
         }
-
         this.stage_section_revisions({
           ...revision_context,
           sections: updated_sections,

@@ -11,7 +11,7 @@ import { renpy_font_outputs } from "../../renpy/font";
 import { stage_renpy_source } from "../../renpy/prepare";
 import { create_renpy_adapter } from "../../renpy/renpy-format";
 import { read_renpy_metadata, renpy_default_status } from "../../renpy/item";
-import { read_renpy_sources } from "../../renpy/readable";
+import { read_renpy_projections } from "../../renpy/readable";
 import {
   discover_godot_source,
   is_godot_root,
@@ -46,7 +46,7 @@ import {
 import { stage_wolf_source } from "../../wolfrpg/prepare";
 import { create_wolf_adapter } from "../../wolfrpg/wolf-format";
 import { read_wolf_metadata, wolf_default_status } from "../../wolfrpg/item";
-import { read_wolf_sources } from "../../wolfrpg/readable";
+import { read_wolf_projections } from "../../wolfrpg/readable";
 import {
   discover_rpgmaker_source,
   discover_unpacked_rpgmaker_source,
@@ -65,12 +65,12 @@ import {
 import { stage_rgss_source } from "../../rpgmaker-rgss/prepare";
 import { create_rpgmaker_rgss_adapter } from "../../rpgmaker-rgss/rpgmaker-format";
 import { read_rgss_metadata, rgss_default_status } from "../../rpgmaker-rgss/item";
-import { read_rgss_sources } from "../../rpgmaker-rgss/readable";
+import { read_rgss_projections } from "../../rpgmaker-rgss/readable";
 import type { GameFont } from "./font-replace";
 import { wolf_font_outputs } from "../../wolfrpg/font";
 import { mv_mz_font_outputs } from "../../rpgmaker-mv-mz/font";
 import { godot_font_outputs } from "../../godot/font";
-import { read_godot_sources } from "../../godot/readable";
+import { read_godot_projections } from "../../godot/readable";
 
 type GameSources = {
   RENPY: RenpySource;
@@ -89,6 +89,7 @@ interface EngineDefinition<G> {
   is_root(input: string, fs: NativeFs): unknown;
   source_path(game: G, input: string): string;
   identity(game: G): string;
+  includes_additional_file(game: G, name: string): boolean; // 声明附加原稿的扫描范围，扩展名和翻译成员排除归共享层。
   needs_stage(game: G, fs: NativeFs): boolean;
   stage(
     task: Readonly<{ game: G; staging: string }>,
@@ -105,7 +106,8 @@ interface EngineDefinition<G> {
   create_adapter(): GameFormatAdapter;
   read_metadata(extra: Item["extra_field"]): { internal_file_path: string };
   default_status(item: Pick<Item, "extra_field">): ItemStatus;
-  workspace_view?(input: GameFiles): AsyncIterable<ReadableFile>;
+  /** 只生成可读视图，原件由工作区共享层展开。 */
+  workspace_projections?(input: GameFiles): AsyncIterable<ReadableFile>;
   build_metadata?(
     game: G,
     data: GameSourceData,
@@ -171,6 +173,7 @@ function register<K extends GameFileType>(
     },
     source_path: (source, input) => engine.source_path(game(source), input),
     identity: (source) => engine.identity(game(source)),
+    includes_additional_file: (source, name) => engine.includes_additional_file(game(source), name),
     needs_stage: (source, fs) => engine.needs_stage(game(source), fs),
     stage: (task, fs, signal) =>
       engine.stage({ game: game(task), staging: task.staging }, fs, signal),
@@ -180,6 +183,7 @@ function register<K extends GameFileType>(
 
 export const GAME_ENGINES: Record<GameFileType, GameEngine> = {
   RENPY: register("RENPY", {
+    includes_additional_file: (_game, name) => /^game\/(?!cache\/|saves\/)/iu.test(name), // `game/` 外是引擎文件，cache 与 saves 是运行时生成物。
     discover: discover_renpy_source,
     is_root: is_renpy_root,
     source_path: (game) => game.root,
@@ -191,13 +195,14 @@ export const GAME_ENGINES: Record<GameFileType, GameEngine> = {
     create_adapter: create_renpy_adapter,
     read_metadata: read_renpy_metadata,
     default_status: renpy_default_status,
-    workspace_view: read_renpy_sources,
+    workspace_projections: read_renpy_projections,
     font: {
       collect: collect_renpy_fonts,
       outputs: (_game, files, font) => renpy_font_outputs(files.fonts, font),
     },
   }),
   WOLFRPG: register("WOLFRPG", {
+    includes_additional_file: () => true,
     discover: discover_wolf_source,
     is_root: wolf_source_root,
     source_path: (game) => game.root,
@@ -217,7 +222,7 @@ export const GAME_ENGINES: Record<GameFileType, GameEngine> = {
     create_adapter: create_wolf_adapter,
     read_metadata: read_wolf_metadata,
     default_status: wolf_default_status,
-    workspace_view: read_wolf_sources,
+    workspace_projections: read_wolf_projections,
     font: {
       collect: (game, fs, signal, prepared) =>
         collect_game_source_files(
@@ -243,6 +248,11 @@ export const GAME_ENGINES: Record<GameFileType, GameEngine> = {
     },
   }),
   RPGMAKER_MV_MZ: register("RPGMAKER_MV_MZ", {
+    includes_additional_file: (game, name) => {
+      // 数据根目录外是 NW.js 运行时文件。
+      const prefix = path.relative(game.root, game.data_root).replaceAll("\\", "/").toLowerCase();
+      return prefix === "" || name.toLowerCase().startsWith(prefix + "/");
+    },
     discover: discover_rpgmaker_source,
     is_root: discover_unpacked_rpgmaker_source,
     source_path: (game, input) => game.executable ?? input,
@@ -293,6 +303,7 @@ export const GAME_ENGINES: Record<GameFileType, GameEngine> = {
     },
   }),
   RPGMAKER_RGSS: register("RPGMAKER_RGSS", {
+    includes_additional_file: () => true,
     discover: discover_rgss_source,
     is_root: discover_rgss_source,
     source_path: (game) => game.root,
@@ -318,9 +329,10 @@ export const GAME_ENGINES: Record<GameFileType, GameEngine> = {
     create_adapter: create_rpgmaker_rgss_adapter,
     read_metadata: read_rgss_metadata,
     default_status: rgss_default_status,
-    workspace_view: read_rgss_sources,
+    workspace_projections: read_rgss_projections,
   }),
   GODOT: register("GODOT", {
+    includes_additional_file: (_game, name) => !name.toLowerCase().startsWith(".godot/"), // `.godot/` 是编辑器导入缓存。
     discover: discover_godot_source,
     is_root: is_godot_root,
     source_path: (game, input) => (path.resolve(input) === game.root ? game.root : game.executable),
@@ -331,7 +343,7 @@ export const GAME_ENGINES: Record<GameFileType, GameEngine> = {
     create_adapter: create_godot_adapter,
     read_metadata: read_godot_metadata,
     default_status: godot_default_status,
-    workspace_view: read_godot_sources,
+    workspace_projections: read_godot_projections,
     font: {
       collect: collect_godot_fonts,
       outputs: (_game, files, font) => godot_font_outputs(files.data, files.fonts, font.bytes),

@@ -10,6 +10,7 @@ export type SourceFileParseCommand = import("./source-discovery").DiscoveredSour
 export type SourceFileParsedDraft = SourceFileParseCommand & {
   file_type: ProjectFileType; // 解析器提供文件身份，零条目字幕也保留类型
   game_engine?: string; // 导入继承按引擎区分相同正文的文本规则身份。
+  additional_files: readonly string[]; // 游戏容器中的附加原稿成员，其他格式为空。
   content: Uint8Array;
   pdf_document: PDFDocument | null; // PDF 独立文档，文本格式为空
   parsed_items: Item[]; // 格式解析器已补齐的条目草稿，身份由工程入口分配
@@ -27,6 +28,7 @@ export type SourceFileProjectDraft = {
     rel_path: string;
     file_type: ProjectFileType;
     sort_index: number;
+    additional_files: readonly string[];
     content: Uint8Array;
     pdf_document: PDFDocument | null;
   }>; // 资产写入清单，文件类型同时用于新建预过滤。
@@ -66,6 +68,7 @@ export class SourceFileParsePipeline {
         sort_index,
         pdf_document: draft.pdf_document,
         content: draft.content,
+        additional_files: draft.additional_files,
       });
       for (const parsed_item of draft.parsed_items) {
         const item_payload = {
@@ -122,14 +125,19 @@ export class SourceFileParsePipeline {
         const prepared = await this.format_service.prepare_source(entry, signal);
         signal?.throwIfAborted();
         const { content } = prepared;
-        warnings.push(...prepared.warnings);
-        const parsed = await this.format_service.parse_asset(entry.rel_path, content, file_type);
+        const parsed = await this.format_service.parse_asset(
+          entry.rel_path,
+          content,
+          file_type,
+          prepared.additional_files,
+        );
         if (parsed.kind === "items") warnings.push(...(parsed.warnings ?? []));
         file_drafts.push({
           ...(parsed.kind === "items" && parsed.game_engine !== undefined
             ? { game_engine: parsed.game_engine }
             : {}),
           content,
+          additional_files: prepared.additional_files,
           source: entry.source,
           source_path: entry.source_path,
           rel_path: entry.rel_path,

@@ -6,6 +6,7 @@ import {
   assert_game_path_spellings,
   assert_regular_path,
   validate_game_path,
+  is_preparation_path,
 } from "../../source-file-paths";
 import type { GameDirectoryChanges } from "./directory";
 
@@ -14,6 +15,49 @@ export type GameSourceData = ReadonlyMap<string, Uint8Array>;
 /** 字体工具读定的原字节：数据承载字体配置，字体为替换目标。 */
 export type GameSourceFiles = Readonly<{ data: GameSourceData; fonts: GameSourceData }>;
 export type PreparedGameFiles = Readonly<{ staging: string; result: GameDirectoryChanges }>;
+
+const ADDITIONAL_EXTENSIONS = new Set([".txt", ".json", ".csv", ".tsv"]); // 附加原稿只收集常见明文数据格式。
+
+/** 完整清单与附加原稿共用一次遍历。翻译成员由引擎收集，`includes` 只限定附加原稿的扫描范围。 */
+export function collect_game_import_files(
+  root: string,
+  translation: GameSourceData,
+  includes: (name: string) => boolean,
+  fs: NativeFs,
+  signal?: AbortSignal,
+): { data: GameSourceData; additional_files: string[]; game_files: string } {
+  const data = new Map(translation); // 保留引擎已读定的字节，附加原稿只补充其他成员。
+  const additional_files: string[] = [];
+  const names: string[] = []; // 完整清单也包含不收录字节的素材。
+  /** 清单覆盖整个游戏，扫描范围只限制附加原稿的字节读取。 */
+  const visit = (relative: string): void => {
+    signal?.throwIfAborted();
+    assert_regular_path(path.join(root, relative), fs);
+    for (const entry of fs.read_dirents(path.join(root, relative))) {
+      signal?.throwIfAborted();
+      const name = relative === "" ? entry.name : relative + "/" + entry.name;
+      if (is_preparation_path(name)) continue;
+      if (entry.isDirectory()) visit(name);
+      else if (entry.isFile()) {
+        if (!/[\r\n]/u.test(name)) names.push(name); // 行格式不能表示含换行的名称。
+        if (
+          translation.has(name) ||
+          !includes(name) ||
+          !ADDITIONAL_EXTENSIONS.has(path.extname(name).toLowerCase())
+        )
+          continue;
+        validate_game_path(name);
+        const target = path.join(root, name);
+        assert_regular_path(target, fs);
+        data.set(name, fs.read_file(target));
+        additional_files.push(name);
+      }
+    }
+  };
+  visit("");
+  signal?.throwIfAborted();
+  return { data, additional_files: additional_files.sort(), game_files: names.sort().join("\n") };
+}
 
 /** 引擎声明收集入口和选择器，公共层持有路径检查、暂存覆盖和原字节读取。 */
 export function collect_game_source_files(

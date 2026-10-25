@@ -10,7 +10,7 @@ import {
   ruby_symbol,
 } from "../../../test/rgss-fixture";
 import { decode, encode, type MarshalNode } from "./marshal";
-import { read_rgss_json, read_rgss_sources } from "./readable";
+import { read_rgss_json, read_rgss_projections } from "./readable";
 import { read_game_container } from "../shared/game/format";
 import { write_text } from "./value";
 import { RGSS_VERSIONS } from "./source";
@@ -125,26 +125,25 @@ it.each(Object.values(RGSS_VERSIONS))(
       "fixture",
     );
     const output = new Map<string, Uint8Array>();
-    for await (const [name, content] of read_rgss_sources(files)) output.set(name, content);
+    for await (const [name, content] of read_rgss_projections(files)) output.set(name, content);
     const read = (name: string) => Buffer.from(output.get(name)!).toString("utf8");
-    expect(read(`Custom/Scripts${extension}/0000.rb`)).toBe(source);
-    expect(read(`Custom/Scripts${extension}/0002.rb`)).toBe(source);
-    expect(output.has(`Custom/Scripts${extension}/0001.rb`)).toBe(false);
-    expect(JSON.parse(read(`Custom/Scripts${extension}/scripts.json`))).toEqual([
+    expect(read(`Custom/Scripts${extension}.reference/0000.rb`)).toBe(source);
+    expect(read(`Custom/Scripts${extension}.reference/0002.rb`)).toBe(source);
+    expect(output.has(`Custom/Scripts${extension}.reference/0001.rb`)).toBe(false);
+    expect(JSON.parse(read(`Custom/Scripts${extension}.reference/scripts.json`))).toEqual([
       { index: 0, id: 9, name: "../重复", encoding: "cp932", file: "0000.rb" },
       { index: 1, id: 10, name: "../重复", error: expect.any(String) },
       { index: 2, id: 11, name: "", encoding: "cp932", file: "0002.rb" },
     ]);
-    expect(JSON.parse(read(`Data/System${extension}.json`))).toEqual({
+    expect(JSON.parse(read(`Data/System${extension}.reference.json`))).toEqual({
       $class: "RPG::System",
       $fields: { "@game_title": "标题" },
     });
-    expect(JSON.parse(read(`Data/Broken${extension}.error.json`))).toMatchObject({
+    expect(JSON.parse(read(`Data/Broken${extension}.error.reference.json`))).toMatchObject({
       file: `Data/Broken${extension}`,
       error: expect.any(String),
     });
-    expect(read(`Data/Broken${extension}`)).toBe("broken");
-    expect(output.has(`Data/System${extension}`)).toBe(false);
+    for (const name of files.keys()) expect(output.has(name)).toBe(false);
   },
 );
 
@@ -157,9 +156,11 @@ it.each([false, true])("配置存在=%s 时，报告缺失的配置或脚本位�
     "fixture",
   );
   const output = new Map<string, Uint8Array>();
-  for await (const [name, bytes] of read_rgss_sources(files)) output.set(name, bytes);
-  if (!has_ini) expect(Buffer.from(output.get("Data/System.rvdata2")!).equals(content)).toBe(true);
-  const diagnostic = has_ini ? "Data/Scripts.rvdata2.error.json" : "rgss.error.json";
+  for await (const [name, bytes] of read_rgss_projections(files)) output.set(name, bytes);
+  for (const name of files.keys()) expect(output.has(name)).toBe(false);
+  const diagnostic = has_ini
+    ? "Data/Scripts.rvdata2.error.reference.json"
+    : "Game.ini.error.reference.json";
   expect(JSON.parse(Buffer.from(output.get(diagnostic)!).toString())).toEqual({
     file: has_ini ? "Data/Scripts.rvdata2" : "Game.ini",
     error: expect.any(String),

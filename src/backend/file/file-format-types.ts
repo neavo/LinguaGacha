@@ -61,5 +61,6 @@ export interface FileFormatWriteContext {
 
 /** 文件调度拥有源文件集合，单格式写回上下文只携带 IO。 */
 export type FileFormatServiceWriteContext = FileFormatWriteContext & {
+  additional_files?: Readonly<Record<string, readonly string[]>>; // 资产路径到附加原稿的映射，附加原稿不参与导出。
   source_files: readonly { path: string; file_type: string }[]; // 原始资产的文件集合，零条目字幕也参与导出
 };

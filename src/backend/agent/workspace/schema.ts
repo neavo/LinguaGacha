@@ -171,9 +171,12 @@ export const AGENT_WORKSPACE_PROMPT_UPDATE_SCHEMA = Type.Object(
   { additionalProperties: false },
 );
 
-/** project_meta.json 只承载解释快照所需的语言、数量和文件顺序。 */
+/** project_meta.json 提供语言、数量、文件顺序和附加原稿的处理归属。 */
 export const AGENT_WORKSPACE_PROJECT_META_SCHEMA = Type.Object(
   {
+    additional_files: Type.Record(Type.String(), Type.Array(Type.String()), {
+      description: "资产路径到附加原稿成员路径的映射，附加原稿不产生条目，按系统指令制作补丁",
+    }),
     source_language: Type.String(),
     target_language: Type.String(),
     counts: Type.Object(

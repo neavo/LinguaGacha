@@ -1,3 +1,4 @@
+import { read_project_additional_files } from "../project/project-additional-files";
 import { GameDirectoryOperations } from "./shared/game/game-directory-operations";
 import type { PDFExecution } from "./pdf/pdf-worker";
 import { AppError, is_app_error } from "../../shared/error";
@@ -175,6 +176,9 @@ export class TranslationFileGenerationService {
     );
     await format_service.write_items(output_items, {
       paths,
+      additional_files: read_project_additional_files(
+        await this.database.get_all_meta(project_path),
+      ),
       asset_reader: (rel_path) => this.database.read_asset_content(project_path, rel_path),
       source_files: (await this.database.get_all_asset_records(project_path)).filter(
         (file) => !excluded_files.includes(file.path),

@@ -385,6 +385,11 @@ export class ProjectLifecycleService {
           }) as unknown as JsonRecord,
         );
         writer.upsert_meta_entries(project_path, {
+          additional_files: Object.fromEntries(
+            parsed_draft.files
+              .filter((file) => file.additional_files.length > 0)
+              .map((file) => [file.rel_path, [...file.additional_files]]),
+          ),
           translation_prompt_legacy_migrated: true,
           "migration.asset_file_type_complete": true,
         });

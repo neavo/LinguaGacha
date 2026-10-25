@@ -121,35 +121,31 @@ function* read_scripts(root: MarshalNode, name: string): Generator<ReadableFile>
   yield json_file(`${name}/scripts.json`, manifest);
 }
 
-/** 逐成员生成原稿明文，解析失败保留位置与原因。工作区 IO 由调用者处理。 */
-export async function* read_rgss_sources(files: GameFiles): AsyncGenerator<ReadableFile> {
+/** 逐成员生成可读视图，解析失败保留位置与原因。工作区 IO 由调用者处理。 */
+export async function* read_rgss_projections(files: GameFiles): AsyncGenerator<ReadableFile> {
   let game: Awaited<ReturnType<typeof read_rgss_game>> | undefined;
   try {
     game = await read_rgss_game(files);
   } catch (error) {
-    yield json_file("rgss.error.json", { file: "Game.ini", error: reason(error) });
+    yield json_file("Game.ini.error.reference.json", { file: "Game.ini", error: reason(error) });
   }
   if (game && ![...files.keys()].some((name) => name.toLowerCase() === game.scripts.toLowerCase()))
-    yield json_file(`${game.scripts}.error.json`, {
+    yield json_file(`${game.scripts}.error.reference.json`, {
       file: game.scripts,
       error: "Missing script archive",
     });
   for (const [name, member] of files) {
+    if (!game || path.extname(name).toLowerCase() !== RGSS_VERSIONS[game.version]) continue;
     const content = await member.async("uint8array");
-    if (!game || path.extname(name).toLowerCase() !== RGSS_VERSIONS[game.version]) {
-      yield [name, content];
-      continue;
-    }
     try {
       const root = decode(content);
       if (name.toLowerCase() === game.scripts.toLowerCase()) {
-        yield* read_scripts(root, name);
+        yield* read_scripts(root, name + ".reference");
       } else {
-        yield json_file(`${name}.json`, read_rgss_json(root));
+        yield json_file(`${name}.reference.json`, read_rgss_json(root));
       }
     } catch (error) {
-      yield json_file(`${name}.error.json`, { file: name, error: reason(error) });
-      yield [name, content];
+      yield json_file(`${name}.error.reference.json`, { file: name, error: reason(error) });
     }
   }
 }

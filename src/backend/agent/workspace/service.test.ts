@@ -570,7 +570,7 @@ describe("AgentWorkspaceService", () => {
     expect(fixture.read_asset_content).toHaveBeenCalledTimes(3);
   });
 
-  it("RGSS 明文随修订重建，落盘失败清理后允许重试", async () => {
+  it("RGSS 可读视图与附加原稿清单随修订重建，落盘失败清理后允许重试", async () => {
     const file_path = "game.rpgmaker";
     const native = new NativeFs();
     const fixture = await create_fixture(temp_dir, native);
@@ -578,23 +578,29 @@ describe("AgentWorkspaceService", () => {
       { rel_path: file_path, file_type: "RPGMAKER_RGSS", sort_index: 0 },
     ]);
     const empty = encode(ruby_array([]));
-    // 两份原稿仅改变成员名，用于观察旧明文清理和新明文发布。
+    // 两份原稿仅改变成员名，用于观察可读视图的清理和发布。
     const archive = async (name: string) =>
       new JSZip()
         .file("Game.ini", "[Game]\n")
         .file("Data/System.rvdata2", empty)
         .file("Data/Scripts.rvdata2", empty)
         .file(`Data/${name}.rvdata2`, empty)
+        .file(`custom/${name}.json`, "{")
         .generateAsync({ type: "nodebuffer" });
     fixture.read_asset_content.mockResolvedValue(await archive("Old"));
     await run_workspace(fixture);
 
     fixture.snapshot.sectionRevisions.files = 2;
+    fixture.read_meta.mockResolvedValue({ additional_files: { [file_path]: ["custom/New.json"] } });
     fixture.read_asset_content.mockResolvedValue(await archive("New"));
     await run_workspace(fixture);
     const game = path.join(fixture.workspace_root, "sources", file_path);
-    const new_file = path.join(game, "Data/New.rvdata2.json");
-    expect(fs.existsSync(path.join(game, "Data/Old.rvdata2.json"))).toBe(false);
+    expect(
+      JSON.parse(fs.readFileSync(path.join(fixture.workspace_root, "project_meta.json"), "utf8"))
+        .additional_files,
+    ).toEqual({ [file_path]: ["custom/New.json"] });
+    const new_file = path.join(game, "Data/New.rvdata2.reference.json");
+    expect(fs.existsSync(path.join(game, "Data/Old.rvdata2.reference.json"))).toBe(false);
     expect(JSON.parse(fs.readFileSync(new_file, "utf8"))).toEqual([]);
 
     fixture.snapshot.sectionRevisions.files += 1;
@@ -1259,6 +1265,7 @@ async function create_fixture(temp_dir: string, native_fs?: NativeFs) {
     originalWidth: 1,
     originalHeight: 1,
   }));
+  const read_meta = vi.fn(async () => ({}) as JsonRecord);
   const service = new AgentWorkspaceService({
     images: { prepare: prepare_image },
     runtimeDirectory: create_workspace_runtime_fixture(temp_dir),
@@ -1269,7 +1276,7 @@ async function create_fixture(temp_dir: string, native_fs?: NativeFs) {
     cache,
     proofreading: { query_warnings },
     database: {
-      get_all_meta: async () => ({}),
+      get_all_meta: read_meta,
       read_asset_content,
       read_pdf_document: async () => null,
       read_pdf_documents: async () => [],
@@ -1298,6 +1305,7 @@ async function create_fixture(temp_dir: string, native_fs?: NativeFs) {
     write_store,
     items,
     read_asset_content,
+    read_meta,
     active_path: () =>
       fs.existsSync(path.join(workspace_root, AGENT_WORKSPACE_PATHS.contract))
         ? workspace_root

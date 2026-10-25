@@ -7,20 +7,23 @@ description: 翻译、审校或分析 RenPy 游戏前必须首先加载，提供
 
 # 原稿与条目
 
-每个游戏是一个工程资产，条目的 `file_path` 指向整个游戏。导入前已解开 `.rpa` 归档并移出 `.rpy` 源码，原稿只有编译脚本。`sources/<file_path>/` 包含：
+每个游戏是一个工程资产，条目的 `file_path` 指向整个游戏。导入前已解开 `.rpa` 归档并移出 `.rpy` 源码，翻译输入为编译脚本和格式元数据。`sources/<file_path>/` 包含：
 
 |文件|内容|
 |---|---|
-|`game_files.txt`|准备后游戏目录的完整文件清单，每行一个相对路径，包括图片、音频、字体和 JSON 等数据文件|
+|`game_files.reference.txt`|准备后游戏目录的完整文件清单，每行一个相对路径，包括图片、音频、字体和 JSON 等数据文件|
 |`__metadata__.json`|`engine_version` 为引擎版本，`python_major` 为 Python 代际，`old_substitutions` 为百分号语义，`common` 为引擎公共界面字符串|
-|`game/x.rpyc.rpy`|按原始行号还原的近似脚本，不能编译。编译时丢失的注释写作空行，ATL 写作 `# ATL`，6.99 旧式界面写作 `# legacy screen language`，其余无法还原的语句写作 `# <类名>`|
-|`game/x.rpyc.json`|`{ internal_file_path, strings, warnings }`。解析失败的成员只有 `internal_file_path` 和 `error`|
+|`game/x.rpyc`|编译原件|
+|`game/x.rpyc.reference.rpy`|按原始行号还原的近似脚本，不能编译。编译时丢失的注释写作空行，ATL 写作 `# ATL`，6.99 旧式界面写作 `# legacy screen language`，其余无法还原的语句写作 `# <类名>`|
+|`game/x.rpyc.reference.json`|`{ internal_file_path, strings, warnings }`。解析失败时换成错误投影 `x.rpyc.error.reference.json`，其中只有 `internal_file_path` 和 `error`|
 
-`.rpymc` 按同样规则生成 `x.rpymc.rpy` 和 `x.rpymc.json`。
+`.rpymc` 按同样规则生成 `x.rpymc.reference.rpy` 和 `x.rpymc.reference.json`。
+
+附加原稿的扫描范围是 `game/`，排除 `game/cache/` 与 `game/saves/`。
 
 `strings` 列出成员中全部可写回的字符串，每项为 `{ key, text, usage, line, source_line }`，包括因重定向而不产生条目的字符串。`warnings` 每项为 `{ message, source_line }`，列出不产生条目的位置。
 
-- `line` 是字符串在 `x.rpyc.rpy` 中的实际行，按它读取上下文。6.99 旧式界面、ATL 和自定义语句（如 `layeredimage`）内部的字符串不在近似脚本中，`line` 为 `null`，按 `source_line` 找到所属语句。
+- `line` 是字符串在 `x.rpyc.reference.rpy` 中的实际行，按它读取上下文。6.99 旧式界面、ATL 和自定义语句（如 `layeredimage`）内部的字符串不在近似脚本中，`line` 为 `null`，按 `source_line` 找到所属语句。
 - `source_line` 是原始 `.rpy` 的行号，未知时为 `null`。近似脚本按它排布，两者通常相同。同一原始行有多条语句时，例如一段三引号对白拆成的多句，后面的语句在近似脚本中顺延，`line` 随之增大。
 - 菜单选项没有自己的行号，`source_line` 取其子块首行的上一行。选项与子块之间有空行或注释时，这个行号会偏前。
 
@@ -113,8 +116,8 @@ description: 翻译、审校或分析 RenPy 游戏前必须首先加载，提供
 
 候选为含源语言文字的 `code` 条目。逐条处理：
 
-1. 按 `strings[].line` 打开 `x.rpyc.rpy` 读取上下文。
-2. 在全部 `*.rpyc.rpy` 中搜索读取该值的代码：调用的函数、`screen`、`def` 或类的定义，赋值的变量在何处插值或比较。
+1. 按 `strings[].line` 打开 `x.rpyc.reference.rpy` 读取上下文。
+2. 在全部 `*.rpyc.reference.rpy` 中搜索读取该值的代码：调用的函数、`screen`、`def` 或类的定义，赋值的变量在何处插值或比较。
 3. 按读取结果判定：
    - 显示到界面、对话、提示或历史记录：`显示`，由 Agent 翻译。
    - 用作程序值：`保留`。
@@ -152,6 +155,5 @@ description: 翻译、审校或分析 RenPy 游戏前必须首先加载，提供
 - 投影中有 `error` 的成员。
 - 图片中的文字。
 - 存档和历史记录中已保存的旧文本，读档后仍显示原文。
-- JSON 等脚本以外的数据文件，它们只出现在 `game_files.txt` 中。
 - 通过 `RENPY_LANGUAGE` 环境变量指定的语言。
 - 可见文本补漏和依赖协调依据静态代码调查，无法证明没有遗漏。建议用户在游戏中抽查，并用截图定位遗漏。

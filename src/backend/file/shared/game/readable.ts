@@ -14,7 +14,7 @@ export async function* write_projection(
   } catch (error) {
     outputs = [
       [
-        file + ".json",
+        file + ".error.reference.json",
         readable_json({
           internal_file_path: file,
           error: error instanceof Error ? error.message : String(error),

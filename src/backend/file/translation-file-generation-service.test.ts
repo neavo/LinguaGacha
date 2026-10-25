@@ -2,6 +2,7 @@ import { GameDirectoryOperations } from "./shared/game/game-directory-operations
 import type { ProjectDatabaseAccess } from "../database/database-operations";
 import { read_pdf_document } from "./pdf/pdf-document";
 import { create_pdf_execution, create_pdf_fixture } from "./pdf/test-support";
+import { write_zip } from "../../test/zip-fixture";
 import type { PDFDocument } from "../../shared/pdf";
 import fs from "node:fs";
 import os from "node:os";
@@ -362,6 +363,38 @@ describe("TranslationFileGenerationService", () => {
       `${dst}\n${dst}`,
     );
     expect(output_folder_opener).not.toHaveBeenCalled();
+  });
+
+  it("游戏导出读取附加原稿清单，保留输出目录中已安装的补丁", async () => {
+    const output = path.join(temp_dir, "output");
+    const patch = path.join(output, "game/custom/a.json");
+    fs.mkdirSync(path.dirname(patch), { recursive: true });
+    fs.writeFileSync(patch, "installed patch");
+    const session_state = new ProjectSessionState();
+    session_state.mark_loaded(path.join(temp_dir, "game.lg"));
+    const content = Buffer.from(
+      await write_zip(
+        new Map([
+          ["data/System.json", "{}"],
+          ["custom/a.json", "{"],
+        ]),
+      ),
+    );
+    const service = new TranslationFileGenerationService(
+      new GameDirectoryOperations(),
+      create_database(
+        [],
+        { "game.zip": { content, file_type: "RPGMAKER_MV_MZ" } },
+        {},
+        { additional_files: { "game.zip": ["custom/a.json"] } },
+      ),
+      create_setting_service(),
+      session_state,
+      async () => {},
+      create_pdf_execution(),
+    );
+    await service.generate_files_to_directory(output);
+    expect(fs.readFileSync(patch, "utf8")).toBe("installed patch");
   });
 
   it("译文生成使用项目目标语言，不读取应用设置中的语言", async () => {

@@ -35,7 +35,7 @@ it.each(["6.99.8", "8.0.3"])("%s 离线重载、人工放行与重复导出共�
   const container = await format.create_container(
     data,
     "demo.renpy",
-    root,
+    [...data.keys()].join("\n"),
     undefined,
     await build_renpy_metadata(game, data, native),
   );
@@ -44,7 +44,7 @@ it.each(["6.99.8", "8.0.3"])("%s 离线重载、人工放行与重复导出共�
     new GameDirectoryOperations(),
     create_renpy_adapter(),
     native,
-  ).read_from_stream(container.content, "demo.renpy");
+  ).read_from_stream(container, "demo.renpy");
   expect(parsed.warnings).toEqual([]);
   const display = parsed.items.find((item) => item.src === "First line [lg_name].")!;
   const code = parsed.items.find((item) => item.status === "RULE_SKIPPED")!;
@@ -58,7 +58,7 @@ it.each(["6.99.8", "8.0.3"])("%s 离线重载、人工放行与重复导出共�
   const context = {
     paths: { translated_path: out, bilingual_path: out },
     source_files: [{ path: "demo.renpy", file_type: "RENPY" }],
-    asset_reader: () => Buffer.from(container.content),
+    asset_reader: () => Buffer.from(container),
   };
   await format.write_to_path(items, context);
   const first = native.read_file(path.join(out, "demo/game/script.rpyc"));
@@ -93,16 +93,16 @@ async function import_fixture(root: string, native: ReturnType<typeof create_ren
   const asset = await format.create_container(
     data,
     "demo.renpy",
-    root,
+    [...data.keys()].join("\n"),
     undefined,
     await build_renpy_metadata(game, data, native),
   );
-  const { items } = await format.read_from_stream(asset.content, "demo.renpy");
+  const { items } = await format.read_from_stream(asset, "demo.renpy");
   const out = path.join(root, "out");
   const context = {
     paths: { translated_path: out, bilingual_path: out },
     source_files: [{ path: "demo.renpy", file_type: "RENPY" }],
-    asset_reader: () => Buffer.from(asset.content),
+    asset_reader: () => Buffer.from(asset),
   };
   return { format, items, context };
 }

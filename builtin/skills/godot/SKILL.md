@@ -7,29 +7,31 @@ description: 翻译、审校或分析 Godot 4 游戏前必须首先加载，提�
 
 # 原稿与条目
 
-每个游戏是一个工程资产，条目的 `file_path` 指向整个游戏。`sources/<file_path>/` 只包含以下成员，其余资源不在其中：
+每个游戏是一个工程资产，条目的 `file_path` 指向整个游戏。`sources/<file_path>/` 包含以下成员的原件，并在原件旁写出投影：
 
-|成员|内容|附加投影|
+|成员|内容|投影|
 |---|---|---|
-|`project.binary`|工程设置|`project.binary.json`|
-|`.gdc`|编译后的 GDScript|`x.gdc.gd` 还原脚本，`x.gdc.json`|
-|`.gd`|GDScript 源码|无，原文可读。解析失败时写出错误投影 `x.gd.json`|
-|`.scn`、`.res`|二进制场景 `PackedScene` 或自定义资源 `Resource`|`x.scn.json`、`x.res.json`|
-|`.translation`|语言表，全部 locale|`x.translation.json`|
-|`.po`|PO 语言表|无，原文可读。解析失败时写出错误投影 `x.po.json`|
+|`project.binary`|工程设置|`project.binary.reference.json`|
+|`.gdc`|编译后的 GDScript|`x.gdc.reference.gd` 还原脚本，`x.gdc.reference.json`|
+|`.gd`|GDScript 源码|无，原文可读|
+|`.scn`、`.res`|二进制场景 `PackedScene` 或自定义资源 `Resource`|`x.scn.reference.json`、`x.res.reference.json`|
+|`.translation`|语言表，全部 locale|`x.translation.reference.json`|
+|`.po`|PO 语言表|无，原文可读|
 
-候选按扩展名发现，不区分大小写。二进制成员按文件头识别：`GDSC` 是编译脚本，`RSRC`、`RSCC` 按资源 `type` 区分语言表和其他资源，例如 `.res` 也可能是语言表。投影文件名在成员路径后追加 `.json` 或 `.gd`。
+候选按扩展名发现，不区分大小写。二进制成员按文件头识别：`GDSC` 是编译脚本，`RSRC`、`RSCC` 按资源 `type` 区分语言表和其他资源，例如 `.res` 也可能是语言表。投影文件名在成员路径后追加 `.reference.json` 或 `.reference.gd`。成员解析失败时只写出错误投影 `<成员路径>.error.reference.json`。
+
+附加原稿的扫描范围是游戏根目录，排除 `.godot/`。
 
 路径对应关系：
 
 - 导出的场景通常位于 `.godot/exported/<编号>/export-<哈希>-<名称>.scn`，代码和 `external` 中引用的是原始路径 `res://…/<名称>.tscn`，按名称对应。
 - 编译脚本保留原路径，只把扩展名 `.gd` 换成 `.gdc`。代码和 `external` 中仍写作 `res://…/x.gd`。
 
-`sources/<file_path>/game_files.txt` 每行列出游戏目录中的一个文件路径，路径相对游戏根目录。PCK 已在导入前展开，清单包含全部资源，例如图片、音频、`.remap`、`.import` 和 JSON、CSV 等自定义数据文件。较早导入的工程没有该文件。
+`sources/<file_path>/game_files.reference.txt` 每行列出游戏目录中的一个文件路径，路径相对游戏根目录。PCK 已在导入前展开，清单包含全部资源，例如图片、音频、`.remap`、`.import` 和 JSON、CSV 等自定义数据文件。较早导入的工程没有该文件。
 
 ## 投影
 
-投影都是 JSON，统一结构如下，解析失败的成员只有 `internal_file_path` 和 `error`：
+JSON 投影的统一结构如下，错误投影只有 `internal_file_path` 和 `error`：
 
 |字段|含义|
 |---|---|
@@ -41,7 +43,7 @@ description: 翻译、审校或分析 Godot 4 游戏前必须首先加载，提�
 
 |类型|正文字段|`context`|
 |---|---|---|
-|`GDSC`|无，源码在 `x.gdc.gd`|`line N`，即 `x.gdc.gd` 的第 N 行|
+|`GDSC`|无，源码在 `x.gdc.reference.gd`|`line N`，即 `x.gdc.reference.gd` 的第 N 行|
 |`PackedScene`|`external` 外部资源，`resources` 内部资源，`nodes[]` 为 `{ path, type, instance, groups, properties }`，`connections[]` 为 `{ from, signal, to, method }`|`<节点路径>:<属性>`|
 |资源|`external`，`resources[]` 为 `{ path, class, properties }`|`<类名>.<属性>`|
 |语言表|`locale`，`selected` 表示是否为本次翻译的表|消息键，无法还原时为 `null`|
@@ -60,7 +62,7 @@ description: 翻译、审校或分析 Godot 4 游戏前必须首先加载，提�
 |`{ "$sub_resource": N }`|内部资源，`N` 是 `resources` 的下标|
 |`{ "$type": "VECTOR2" }`|向量、颜色等数值类型，Packed 数组另有 `$length`。`PackedStringArray` 直接写作字符串数组|
 
-`x.gdc.gd` 按原行号还原，注释在编译时已丢失，空格只是近似。行号和字面量与原脚本一致，可以直接搜索。
+`x.gdc.reference.gd` 按原行号还原，注释在编译时已丢失，空格只是近似。行号和字面量与原脚本一致，可以直接搜索。
 
 ## 条目坐标
 
@@ -68,7 +70,7 @@ description: 翻译、审校或分析 Godot 4 游戏前必须首先加载，提�
 
 |`kind`|坐标|对应位置|
 |---|---|---|
-|`gdsc`|`token`|`x.gdc.json` 的 `strings`，`context` 给出行号|
+|`gdsc`|`token`|`x.gdc.reference.json` 的 `strings`，`context` 给出行号|
 |`scene`|`node`、`property`|`nodes[node]` 的属性，`node` 是 `nodes` 的下标|
 |`resource`|`offset`|资源或非优化语言表的 `strings`|
 |`slot`|`word`|优化语言表的 `strings`|
@@ -122,7 +124,7 @@ description: 翻译、审校或分析 Godot 4 游戏前必须首先加载，提�
 2. 否则翻译 `internationalization/locale/translations` 登记顺序中第一张表的 locale，导出时把 `fallback` 改为该 locale。
 3. 登记了但没有随包发布的表不参与选择。
 
-locale 精确比较，`en` 和 `en_US` 不算匹配。`project.binary.json` 的 `translation` 给出本次结果，语言表投影的 `selected` 与之一致。
+locale 精确比较，`en` 和 `en_US` 不算匹配。`project.binary.reference.json` 的 `translation` 给出本次结果，语言表投影的 `selected` 与之一致。
 
 未选中的表在投影中作为对照语料。优化语言表只存哈希，`context` 是用脚本、场景、资源中的字符串和其他语言表的消息键反查出的消息键，找不到时为 `null`。
 
@@ -139,7 +141,7 @@ locale 精确比较，`en` 和 `en_US` 不算匹配。`project.binary.json` 的 
 
 `NONE` 的原文同时用作比较值、字典键、`match` 分支、下标、存档值或查找键时，只译一处会改变游戏行为：
 
-1. 用原文搜索 `sources/<file_path>/` 下的 `.gd`、`.gdc.gd` 和全部 JSON 投影。
+1. 用原文搜索 `sources/<file_path>/` 下的 `.gd`、`.gdc.reference.gd` 和全部 JSON 投影。
 2. 按读取该值的代码，判断每个位置是显示、比较、查找键还是存档值。
 3. 需要一起改的位置使用同一译名，通过各自的条目提交。证据不足时列为未决，报告位置和原因。
 
@@ -166,7 +168,7 @@ locale 精确比较，`en` 和 `en_US` 不算匹配。`project.binary.json` 的 
 |找不到读取代码|`保留`，记录搜索范围|
 |有读取代码，但用途无法确认，例如按动态键读取|`未决`|
 
-`.gdc` 的读取代码在 `x.gdc.gd` 的 `context` 行附近，场景属性的读取代码在挂载脚本中，脚本见节点的 `script` 属性。
+`.gdc` 的读取代码在 `x.gdc.reference.gd` 的 `context` 行附近，场景属性的读取代码在挂载脚本中，脚本见节点的 `script` 属性。
 
 # 翻译后检查
 
@@ -189,7 +191,7 @@ locale 精确比较，`en` 和 `en_US` 不算匹配。`project.binary.json` 的 
 
 - 未选中 locale 的语言表。系统语言或游戏内语言菜单命中这些表时，游戏仍显示其中的原文。
 - C# 和 Mono 的 DLL、GDExtension 原生库。
-- 文本格式的 `.tscn`、`.tres`，以及 JSON、CSV、对话插件等自定义数据文件，它们只出现在 `game_files.txt` 中。
+- 文本格式的 `.tscn`、`.tres`，以及附加原稿范围以外的自定义数据文件，它们只出现在 `game_files.reference.txt` 中。
 - 图片中的文字。
 - 投影中有 `error` 的成员。
 - 可见文本补漏和依赖协调依据静态代码调查，无法证明没有遗漏。建议用户在游戏中抽查，并用截图定位遗漏。
