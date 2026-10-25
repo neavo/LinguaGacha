@@ -755,10 +755,17 @@ describe("ProjectContentService", () => {
       await database.transaction(lg_path, (writer) =>
         writer.add_asset(lg_path, "other.txt", Buffer.from("保留"), "TXT", null),
       );
+      write("custom/old.json", "{");
       await service.import_files(await request());
       const old = await database.read_asset_content(lg_path, "game.zip");
+      expect(await read_meta(database, lg_path, "additional_files", {})).toEqual({
+        "game.zip": ["custom/old.json"],
+      });
+      const old_meta = await database.get_all_meta(lg_path);
       const old_items = await database.get_all_items(lg_path);
       fs.unlinkSync(path.join(source, "data/Old.json"));
+      fs.unlinkSync(path.join(source, "custom/old.json"));
+      write("custom/new.json", "{");
       write("data/System.json", "{}");
       write("js/rmmz_core.js", "");
       write("data/New.json", '{"text":"新文"}');
@@ -774,7 +781,11 @@ describe("ProjectContentService", () => {
       fail.mockRestore();
       expect((await database.read_asset_content(lg_path, "game.zip"))!.equals(old!)).toBe(true);
       expect(await database.get_all_items(lg_path)).toEqual(old_items);
+      expect(await database.get_all_meta(lg_path)).toEqual(old_meta);
       await service.import_files(await request());
+      expect(await read_meta(database, lg_path, "additional_files", {})).toEqual({
+        "game.zip": ["custom/new.json"],
+      });
       const saved = (await database.read_asset_content(lg_path, "game.zip"))!;
       expect([...(await read_zip_fixture(saved)).keys()]).not.toContain("data/Old.json");
       expect(await database.get_all_items(lg_path)).toMatchObject([
@@ -800,6 +811,7 @@ describe("ProjectContentService", () => {
         }),
       );
       fs.renameSync(source, source + "-moved");
+      await database.close_project(lg_path);
       await service.reset_translation({ mode: "all" });
       expect((await database.get_all_items(lg_path)).some((item) => item.src === "新文")).toBe(
         true,
@@ -821,6 +833,7 @@ describe("ProjectContentService", () => {
         rel_paths: ["game.zip"],
         expected_section_revisions: await revisions(),
       });
+      expect(await read_meta(database, lg_path, "additional_files", {})).toEqual({});
       expect((await database.get_all_asset_records(lg_path)).map((file) => file.path)).toEqual([
         "other.txt",
       ]);

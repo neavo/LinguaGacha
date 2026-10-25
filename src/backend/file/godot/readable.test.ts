@@ -4,7 +4,7 @@ import { godot_reference_fixture, create_godot_fixture } from "../../../test/god
 import { read_game_container } from "../shared/game/format";
 import { create_godot_adapter } from "./godot-format";
 import { read_godot_metadata } from "./item";
-import { read_godot_sources } from "./readable";
+import { read_godot_projections } from "./readable";
 
 type Projection = {
   error?: string;
@@ -26,10 +26,11 @@ async function read_fixture(engine: string, extra: ReadonlyMap<string, Buffer> =
     "game.zip",
   );
   const outputs = new Map<string, Buffer>();
-  for await (const [name, bytes] of read_godot_sources(members))
+  for await (const [name, bytes] of read_godot_projections(members))
     outputs.set(name, Buffer.from(bytes));
+  for (const name of members.keys()) expect(outputs.has(name)).toBe(false);
   const projection = (name: string) =>
-    JSON.parse(outputs.get(name + ".json")!.toString()) as Projection;
+    JSON.parse(outputs.get(name + ".reference.json")!.toString()) as Projection;
   return { files, members, outputs, projection };
 }
 
@@ -96,14 +97,15 @@ it.each(["4.3", "4.6"])(
   },
 );
 
-it("坏成员与坏语言表写出错误投影并保留原字节", async () => {
-  const { outputs, projection } = await read_fixture(
+it("坏成员与坏语言表写出错误投影", async () => {
+  const { outputs } = await read_fixture(
     "4.6",
     new Map([["broken.translation", Buffer.from("RSCCbroken")]]),
   );
   for (const file of ["broken.scn", "broken.translation"]) {
-    expect(outputs.get(file)!.toString()).toMatch(/^RS..broken$/u);
-    expect(projection(file).error).toEqual(expect.any(String));
+    expect(JSON.parse(outputs.get(file + ".error.reference.json")!.toString()).error).toEqual(
+      expect.any(String),
+    );
   }
 });
 

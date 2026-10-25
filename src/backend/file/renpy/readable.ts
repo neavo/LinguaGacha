@@ -24,15 +24,14 @@ const text = (edge: PickleNode | undefined): string => {
 };
 
 /**
- * 每个编译脚本写出近似脚本 `x.rpyc.rpy` 与字符串映射 `x.rpyc.json`。
+ * 每个编译脚本写出近似脚本 `x.rpyc.reference.rpy` 与字符串映射 `x.rpyc.reference.json`。
  * `strings[].key` 与条目的 `renpy.key` 相同。`line` 是字符串在近似脚本中的实际行，`source_line` 是原始 `.rpy` 的行。
  * 同一原始行有多条语句时，近似脚本顺延后面的语句，两者因此不同。
  */
-export async function* read_renpy_sources(files: GameFiles): AsyncGenerator<ReadableFile> {
+export async function* read_renpy_projections(files: GameFiles): AsyncGenerator<ReadableFile> {
   const member = files.get(GAME_METADATA_MEMBER);
   assert(member, "Missing Ren'Py format metadata; import the game again");
   const metadata = read_renpy_format_metadata(await member.async("uint8array"));
-  yield [GAME_METADATA_MEMBER, Buffer.from(readable_json(metadata))];
   for (const [file, entry] of files) {
     if (file === GAME_METADATA_MEMBER) continue;
     using session = await PythonSession.create();
@@ -43,9 +42,9 @@ export async function* read_renpy_sources(files: GameFiles): AsyncGenerator<Read
       const writer = new ScriptWriter();
       for (const statement of children(children(slot.graph.root)[1])) render(writer, statement, 0);
       return [
-        [file + ".rpy", writer.lines.join("\n") + "\n"],
+        [file + ".reference.rpy", writer.lines.join("\n") + "\n"],
         [
-          file + ".json",
+          file + ".reference.json",
           readable_json({
             internal_file_path: file,
             strings: script.candidates.map((candidate) => ({

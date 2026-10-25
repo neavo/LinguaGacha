@@ -1,3 +1,4 @@
+import { read_project_additional_files } from "../../project/project-additional-files";
 import { AgentWorkspaceDirectories } from "./directories";
 import type { AgentFileAttachment } from "../../../shared/agent";
 import type { ProofreadingClientItem } from "../../../shared/proofreading/proofreading-types";
@@ -504,7 +505,11 @@ export class AgentWorkspaceService {
       languageKey: language_key,
       currentLanguageKey: JsonTool.stringifyStrict(this.options.cache.languages.readBlock()),
     });
+    const additional_files = read_project_additional_files(
+      await this.options.database.get_all_meta(project_path),
+    );
     await this.ensure_sources({
+      additionalFiles: additional_files,
       projectPath: project_path,
       projectEpoch: start_snapshot.epoch,
       filesRevision: read_json_integer(start_snapshot.sectionRevisions.files, 0),
@@ -526,6 +531,7 @@ export class AgentWorkspaceService {
         ),
       },
       files: snapshot_files,
+      additional_files,
     };
     await this.clear_snapshot();
     try {
@@ -856,6 +862,7 @@ export class AgentWorkspaceService {
     projectPath: string;
     projectEpoch: number;
     filesRevision: number;
+    additionalFiles: Readonly<Record<string, readonly string[]>>; // 与资产共用 files 修订，缓存键无需单独包含。
     files: ReadonlyArray<{ file_path: string; file_type: string }>;
   }): Promise<void> {
     const current = this.source_cache;
@@ -876,6 +883,7 @@ export class AgentWorkspaceService {
         nativeFs: this.native_fs,
         sourceRoot: source_path,
         files: args.files,
+        additionalFiles: args.additionalFiles,
         readAsset: (file_path) =>
           this.options.database.read_asset_content(args.projectPath, file_path),
       });

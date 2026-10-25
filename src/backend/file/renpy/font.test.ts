@@ -82,14 +82,14 @@ it.each([false, true])("产品入口合并归档与字体事务，译文先写=%
     const asset = await format.create_container(
       data,
       "demo.renpy",
-      root,
+      [...data.keys()].join("\n"),
       undefined,
       await build_renpy_metadata(game, data, native),
     );
     await format.write_to_path([], {
       paths: { translated_path: temp.path, bilingual_path: temp.path },
       source_files: [{ path: "demo.renpy", file_type: "RENPY" }],
-      asset_reader: () => Buffer.from(asset.content),
+      asset_reader: () => Buffer.from(asset),
     });
   }
   if (translation_first) await translate();

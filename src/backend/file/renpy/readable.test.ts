@@ -11,10 +11,10 @@ import {
   opcode,
   tuple,
 } from "../../../test/renpy-fixture";
-import { GAME_METADATA_MEMBER, GameFormat, read_game_container } from "../shared/game/format";
+import { GameFormat, read_game_container } from "../shared/game/format";
 import { read_renpy_metadata } from "./item";
 import { pickle_string } from "./pickle";
-import { read_renpy_sources } from "./readable";
+import { read_renpy_projections } from "./readable";
 import { create_renpy_adapter } from "./renpy-format";
 import { build_renpy_metadata, collect_renpy_files, discover_renpy_source } from "./source";
 
@@ -77,21 +77,20 @@ it("可读视图按原行号还原脚本，字符串的视图行与原稿行分�
   ).create_container(
     members,
     "demo.renpy",
-    temp.path,
+    [...members.keys()].join("\n"),
     undefined,
     await build_renpy_metadata(game, data, native),
   );
-  const { input } = await read_game_container(container.content, "demo.renpy", true);
+  const { input } = await read_game_container(container, "demo.renpy", true);
   const outputs = new Map<string, string>();
-  for await (const [name, bytes] of read_renpy_sources(input))
+  for await (const [name, bytes] of read_renpy_projections(input))
     outputs.set(name, Buffer.from(bytes).toString());
-  const projection = (name: string) => JSON.parse(outputs.get(name + ".json")!) as Projection;
+  const projection = (name: string) =>
+    JSON.parse(outputs.get(name + ".reference.json")!) as Projection;
 
-  expect(JSON.parse(outputs.get(GAME_METADATA_MEMBER)!)).toMatchObject({
-    common: ["Common question?"],
-  });
+  for (const name of input.keys()) expect(outputs.has(name)).toBe(false);
 
-  const script = outputs.get("game/lines.rpyc.rpy")!.split("\n");
+  const script = outputs.get("game/lines.rpyc.reference.rpy")!.split("\n");
   expect(script.slice(2, 8)).toEqual([
     "python:",
     "    x = 1",

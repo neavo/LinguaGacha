@@ -29,6 +29,37 @@ import {
 } from "./agent-workspace-write";
 
 describe("ProjectWriteStore", () => {
+  it("替换资产时清空其附加原稿清单，保留其他资产的清单", async () => {
+    const { database, project_path, store } = await create_store("additional-files");
+    await database.transaction(project_path, (writer) => {
+      writer.add_asset(project_path, "game.godot", Buffer.from("old"), "GODOT", null);
+      writer.add_asset(project_path, "other.godot", Buffer.from("other"), "GODOT", null);
+      writer.set_meta(project_path, "additional_files", {
+        "game.godot": ["data/a.json"],
+        "other.godot": ["b.txt"],
+      });
+    });
+    await store.replace_project_items_and_files({
+      projectPath: project_path,
+      expectedSectionRevisions: { files: 0 },
+      revisionSections: ["files"],
+      updatedSections: ["files"],
+      source: "project_import_files",
+      assetWrites: [
+        {
+          kind: "update",
+          path: "game.godot",
+          content: Buffer.from("new"),
+          fileType: "GODOT",
+          pdfDocument: null,
+          additionalFiles: [],
+        },
+      ],
+    });
+    expect((await database.get_all_meta(project_path)).additional_files).toEqual({
+      "other.godot": ["b.txt"],
+    });
+  });
   it.each([
     ["game", "game/readme.txt"],
     ["game/readme.txt", "game"],

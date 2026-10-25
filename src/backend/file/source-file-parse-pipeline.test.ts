@@ -1,3 +1,10 @@
+import { create_renpy_fixture } from "../../test/renpy-fixture";
+import { wolf_files } from "../../test/wolf-fixture";
+import { encode } from "./rpgmaker-rgss/marshal";
+import { ruby_array } from "../../test/rgss-fixture";
+import { create_godot_fixture, godot_pack_fixture } from "../../test/godot-fixture";
+import { read_game_container } from "./shared/game/format";
+import { NativeFs } from "../../native/native-fs";
 import { GameDirectoryOperations } from "./shared/game/game-directory-operations";
 import { create_pdf_execution, create_pdf_fixture } from "./pdf/test-support";
 import fs from "node:fs";
@@ -21,6 +28,71 @@ function create_format_service(): FileFormatService {
     create_pdf_execution(),
   );
 }
+
+it.each(["RPGMAKER_MV_MZ", "RPGMAKER_RGSS", "WOLFRPG", "GODOT", "RENPY"])(
+  "%s 按范围保存附加原稿，解析只消费翻译成员",
+  async (engine) => {
+    using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-additional-"));
+    const native = new NativeFs();
+    const root = path.join(temp.path, "game");
+    const write = (name: string, bytes: string | Uint8Array) =>
+      native.write_file_sync(path.join(root, name), bytes);
+    if (engine === "RPGMAKER_MV_MZ") {
+      write("www/data/System.json", "{}");
+      write("www/data/Custom.json", '{"text":"正式条目"}');
+      write("www/js/rmmz_core.js", "");
+    } else if (engine === "RPGMAKER_RGSS") {
+      write("Game.ini", "[Game]\nScripts=Data/Scripts.rvdata2");
+      write("Data/System.rvdata2", encode(ruby_array([])));
+      write("Data/Scripts.rvdata2", encode(ruby_array([])));
+    } else if (engine === "WOLFRPG") {
+      for (const [name, bytes] of wolf_files()) write(name, bytes);
+    } else if (engine === "GODOT") {
+      write("game.pck", godot_pack_fixture(create_godot_fixture()));
+    } else create_renpy_fixture(root);
+    const prefix = engine === "RPGMAKER_MV_MZ" ? "www/" : engine === "RENPY" ? "game/" : "";
+    const extra = new Map([
+      [prefix + "custom/empty.TXT", Buffer.alloc(0)],
+      [prefix + "custom/broken.json", Buffer.from("{")],
+      [prefix + "custom/bytes.csv", Buffer.from([0xff, 0x80, 0])],
+      [prefix + "custom/table.tsv", Buffer.from("a\tb")],
+    ]);
+    for (const [name, bytes] of extra) write(name, bytes);
+    write("backup_lg/ignored.json", "{}");
+    write("backup_lg_20261025_120000/ignored.txt", "ignored");
+    if (engine === "RPGMAKER_MV_MZ") write("outside.json", "{}");
+    if (engine === "RENPY") {
+      write("outside.json", "{}");
+      write("game/cache/ignored.json", "{}");
+      write("game/saves/ignored.txt", "ignored");
+    }
+    if (engine === "GODOT") write(".godot/ignored.json", "{}");
+    const service = new FileFormatService(
+      new GameDirectoryOperations(),
+      { target_language: "ZH" },
+      create_pdf_execution(),
+      native,
+    );
+    const entries = await service.collect_source_file_entries([root]);
+    const draft = await new SourceFileParsePipeline(service).build_project_draft(entries);
+    expect(draft.failed_files).toEqual([]);
+    expect(draft.warnings).toEqual([]);
+    expect(draft.files).toHaveLength(1);
+    const file = draft.files[0]!;
+    expect(file.file_type).toBe(engine);
+    expect(new Set(file.additional_files)).toEqual(new Set(extra.keys()));
+    const container = await read_game_container(
+      file.content,
+      file.rel_path,
+      engine === "RENPY",
+      file.additional_files,
+    );
+    for (const [name, bytes] of extra)
+      expect(await container.additional.get(name)!.async("nodebuffer")).toEqual(bytes);
+    if (engine === "RPGMAKER_MV_MZ")
+      expect(draft.items.some((item) => item.src === "正式条目")).toBe(true);
+  },
+);
 
 describe("SourceFileParsePipeline", () => {
   it("字幕工程重开后保持文件身份和正文位置，零条目文件参与导出", async () => {
@@ -133,6 +205,7 @@ describe("SourceFileParsePipeline", () => {
     expect(draft.files.map(({ content: _content, ...file }) => file)).toEqual([
       {
         rel_path: "script.txt",
+        additional_files: [],
         pdf_document: null,
         file_type: "TXT",
         sort_index: 0,

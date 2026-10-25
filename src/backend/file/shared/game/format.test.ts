@@ -9,6 +9,53 @@ import { NativeFs } from "../../../../native/native-fs";
 import { create_rpgmaker_mv_mz_adapter } from "../../rpgmaker-mv-mz/rpgmaker-format";
 import { GameFormat, read_game_container, GAME_METADATA_MEMBER } from "./format";
 
+it("附加原稿统一分流，旧清单兼容且常规导出保留已有补丁", async () => {
+  using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-additional-export-"));
+  const bytes = await write_zip(
+    new Map([
+      ["data/System.json", "{}"],
+      ["custom/broken.json", "{"],
+      ["game_files.txt", "real game data"],
+      ["game_files.reference.txt", "data/System.json\ncustom/broken.json\ngame_files.txt"],
+    ]),
+  );
+  const additional_files = ["custom/broken.json", "game_files.txt"];
+  const container = await read_game_container(bytes, "game.rpgmaker", false, additional_files);
+  expect([...container.input.keys()]).toEqual(["data/System.json"]);
+  expect(await container.additional.get("game_files.txt")!.async("string")).toBe("real game data");
+  const native = new NativeFs();
+  const format = new GameFormat(
+    new GameDirectoryOperations(),
+    create_rpgmaker_mv_mz_adapter(),
+    native,
+  );
+  expect(await format.read_from_stream(bytes, "game.rpgmaker", additional_files)).toEqual({
+    items: [],
+    warnings: [],
+  });
+  native.write_file_sync(path.join(temp.path, "game/custom/broken.json"), "installed patch");
+  await format.write_to_path([], {
+    paths: { translated_path: temp.path, bilingual_path: temp.path },
+    source_files: [{ path: "game.rpgmaker", file_type: "RPGMAKER_MV_MZ" }],
+    additional_files: { "game.rpgmaker": additional_files },
+    asset_reader: () => Buffer.from(bytes),
+  });
+  expect(native.read_text_file(path.join(temp.path, "game/custom/broken.json"))).toBe(
+    "installed patch",
+  );
+  const old = await read_game_container(
+    await write_zip(
+      new Map([
+        ["data/System.json", "{}"],
+        ["game_files.txt", "legacy list"],
+      ]),
+    ),
+    "old.zip",
+  );
+  expect(await old.game_files!.async("string")).toBe("legacy list");
+  expect([...old.members.keys()]).toEqual(["data/System.json"]);
+});
+
 it("输出占用持续到取消清理完成，取消后保留原目录", async () => {
   using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-export-stop-"));
   const operations = new GameDirectoryOperations();
@@ -57,21 +104,23 @@ it("游戏 拒绝没有原稿文件的容器", async () => {
     read_game_container(await zip.generateAsync({ type: "uint8array" }), "game.zip"),
   ).rejects.toMatchObject({ code: "file.invalid_structure" });
 });
-it("创建容器时拒绝占用保留成员的子路径", async () => {
-  using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-game-reserved-"));
-  const format = new GameFormat(
-    new GameDirectoryOperations(),
-    create_rpgmaker_mv_mz_adapter(),
-    new NativeFs(),
-  );
-  await expect(
-    format.create_container(
-      new Map([["game_files.txt/child", Buffer.from("data")]]),
-      "game.zip",
-      temp.path,
-    ),
-  ).rejects.toThrow();
-});
+it.each([{ names: ["game_files.reference.txt/child"] }, { names: ["data/a.json", "DATA/b.json"] }])(
+  "固化时拒绝保留路径冲突或目录拼写冲突：$names",
+  async ({ names }) => {
+    const format = new GameFormat(
+      new GameDirectoryOperations(),
+      create_rpgmaker_mv_mz_adapter(),
+      new NativeFs(),
+    );
+    await expect(
+      format.create_container(
+        new Map(names.map((name) => [name, Buffer.from("data")])),
+        "game.zip",
+        "",
+      ),
+    ).rejects.toThrow();
+  },
+);
 it("旧容器的保留路径同名普通文件仍作为原稿读取", async () => {
   const bytes = await write_zip(
     new Map([
@@ -135,8 +184,12 @@ it("容器只固化调用方提供的数据字节，字体保留在游戏文件�
   native.write_file_sync(path.join(temp.path, "fonts/main.ttf"), "font");
   const data = new Map([["data/System.json", Buffer.from("original")]]);
   native.write_file_sync(path.join(temp.path, "data/System.json"), "changed on disk");
-  const prepared = await format.create_container(data, "game.zip", temp.path);
-  const { members, game_files } = await read_game_container(prepared.content, "game.zip");
+  const prepared = await format.create_container(
+    data,
+    "game.zip",
+    "data/System.json\nfonts/main.ttf",
+  );
+  const { members, game_files } = await read_game_container(prepared, "game.zip");
   expect([...members.keys()]).toEqual(["data/System.json"]);
   expect(
     (await members.get("data/System.json")!.async("nodebuffer")).equals(
@@ -179,16 +232,24 @@ it("解析失败保留原始字节，零条目导出仍包含该文件", async (
       native.read_file(path.join(temp.path, name)),
     ]),
   );
-  const prepared = await service.create_container(files, "game.zip", temp.path);
-  const parsed = await service.read_from_stream(prepared.content, "game.zip");
+  const prepared = await service.create_container(
+    files,
+    "game.zip",
+    "data/Broken.json\ndata/System.json\nimg/pictures/Actor1.png",
+  );
+  const parsed = await service.read_from_stream(prepared, "game.zip");
   expect(parsed.items).toEqual([]);
-  expect([...prepared.warnings, ...parsed.warnings]).toMatchObject([
+  expect(parsed.warnings).toMatchObject([
     { code: "internal_file_parse_failed", internal_file_path: "data/Broken.json" },
   ]);
-  expect(Buffer.from(prepared.content).readUInt16LE(8)).toBe(0); // ZIP STORE 是原稿存储协议。
-  const archive = await read_zip_fixture(prepared.content);
-  expect([...archive.keys()]).toEqual(["data/Broken.json", "data/System.json", "game_files.txt"]);
-  expect(zip_text(archive, "game_files.txt")).toBe(
+  expect(Buffer.from(prepared).readUInt16LE(8)).toBe(0); // ZIP STORE 是原稿存储协议。
+  const archive = await read_zip_fixture(prepared);
+  expect([...archive.keys()]).toEqual([
+    "data/Broken.json",
+    "data/System.json",
+    "game_files.reference.txt",
+  ]);
+  expect(zip_text(archive, "game_files.reference.txt")).toBe(
     "data/Broken.json\ndata/System.json\nimg/pictures/Actor1.png",
   );
   expect(zip_text(archive, "data/Broken.json")).toBe("{");
@@ -196,11 +257,11 @@ it("解析失败保留原始字节，零条目导出仍包含该文件", async (
   await service.write_to_path([], {
     paths: { translated_path: output, bilingual_path: output },
     source_files: [{ path: "game.zip", file_type: "RPGMAKER_MV_MZ" }],
-    asset_reader: () => Buffer.from(prepared.content),
+    asset_reader: () => Buffer.from(prepared),
   });
   expect(fs.readFileSync(path.join(output, "game/data/Broken.json"), "utf8")).toBe("{");
   expect(fs.readFileSync(path.join(output, "game/data/System.json"), "utf8")).toBe("{}");
-  expect(fs.existsSync(path.join(output, "game/game_files.txt"))).toBe(false);
+  expect(fs.existsSync(path.join(output, "game/game_files.reference.txt"))).toBe(false);
 });
 
 it("按游戏资产提交，后续资产暂存失败保留此前成功输出与已有文件", async () => {

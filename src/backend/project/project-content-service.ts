@@ -1,3 +1,4 @@
+import { read_project_additional_files } from "./project-additional-files";
 import { GameDirectoryOperations } from "../file/shared/game/game-directory-operations";
 import type { GodotPackOrder } from "../../shared/godot";
 import { godot_pack_preview, read_godot_pack_orders } from "../file/godot/source";
@@ -232,6 +233,7 @@ export class ProjectContentService {
         mode: "add" | "replace";
         pdf_document: PDFDocument | null;
         content: Uint8Array;
+        additional_files: readonly string[];
         target_rel_path: string;
         file_record: {
           rel_path: string;
@@ -279,6 +281,7 @@ export class ProjectContentService {
           mode: existing_record === undefined ? "add" : "replace",
           pdf_document: file.pdf_document,
           content: file.content,
+          additional_files: file.additional_files,
           target_rel_path,
           file_record,
         });
@@ -322,6 +325,7 @@ export class ProjectContentService {
               content: file.content,
               fileType: file.file_record.file_type,
               pdfDocument: file.pdf_document,
+              additionalFiles: file.additional_files,
               sortOrder: file.file_record.sort_index,
             }
           : {
@@ -330,6 +334,7 @@ export class ProjectContentService {
               content: file.content,
               fileType: file.file_record.file_type,
               pdfDocument: file.pdf_document,
+              additionalFiles: file.additional_files,
             },
       );
       const write_result = await this.write_store.replace_project_items_and_files({
@@ -977,6 +982,9 @@ export class ProjectContentService {
     const format_service = await this.create_format_service(project_path);
     const items: Item[] = [];
     const warnings: SourceFileParseWarning[] = [];
+    const additional_files = read_project_additional_files(
+      await this.database.get_all_meta(project_path),
+    );
     for (const record of await this.database.get_all_asset_records(project_path)) {
       const content = await this.database.read_asset_content(project_path, record.path);
       if (content === null) {
@@ -990,7 +998,12 @@ export class ProjectContentService {
         });
       }
       if ((await this.database.read_pdf_document(project_path, record.path)) !== null) continue;
-      const parsed = await format_service.parse_asset(record.path, content, record.file_type);
+      const parsed = await format_service.parse_asset(
+        record.path,
+        content,
+        record.file_type,
+        additional_files[record.path],
+      );
       if (parsed.kind === "items") {
         items.push(...parsed.items);
         warnings.push(...(parsed.warnings ?? []));

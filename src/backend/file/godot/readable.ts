@@ -23,10 +23,10 @@ type ReadableString = { location: GodotLocation; text: string; context: string |
 type VariantTypes = Readonly<Record<number, string>>;
 
 /**
- * 原字节旁写出 JSON 投影，`strings[].location` 与条目的 `godot.location` 结构相同。
+ * 只生成可读视图，`strings[].location` 与条目的 `godot.location` 结构相同。
  * 语言表最后处理：优化表只存哈希，用其他成员和语言表中出现过的字符串反查消息键。
  */
-export async function* read_godot_sources(files: GameFiles): AsyncGenerator<ReadableFile> {
+export async function* read_godot_projections(files: GameFiles): AsyncGenerator<ReadableFile> {
   const members = new Map<string, Buffer>();
   for (const [name, member] of files)
     members.set(name, Buffer.from(await member.async("uint8array")));
@@ -44,10 +44,7 @@ export async function* read_godot_sources(files: GameFiles): AsyncGenerator<Read
   for (const [file, bytes] of members) {
     const type = table_type(file, bytes);
     if (type !== null) tables.set(file, type);
-    else {
-      yield [file, bytes];
-      yield* write_projection(file, () => read_member(file, bytes, plan, keys));
-    }
+    else yield* write_projection(file, () => read_member(file, bytes, plan, keys));
   }
   // 非优化表的消息键也是优化表的候选，先写出非优化表。
   const order = [...tables].sort(
@@ -55,7 +52,6 @@ export async function* read_godot_sources(files: GameFiles): AsyncGenerator<Read
   );
   for (const [file] of order) {
     const bytes = members.get(file)!;
-    yield [file, bytes];
     yield* write_projection(file, () => read_table(file, bytes, plan, keys));
   }
 }
@@ -90,7 +86,7 @@ function read_member(
       settings[s.name] = variant_json(s.value, MARSHAL_VARIANT_TYPES);
     return [
       [
-        file + ".json",
+        file + ".reference.json",
         readable_json({
           internal_file_path: file,
           type: "ProjectSettings",
@@ -114,8 +110,11 @@ function read_member(
         });
     }
     return [
-      [file + ".gd", print_gdsc(g)],
-      [file + ".json", readable_json({ internal_file_path: file, type: "GDSC", strings })],
+      [file + ".reference.gd", print_gdsc(g)],
+      [
+        file + ".reference.json",
+        readable_json({ internal_file_path: file, type: "GDSC", strings }),
+      ],
     ];
   }
   if (kind !== "resource") return [];
@@ -163,7 +162,10 @@ function read_member(
   }
   for (const s of strings) keys.add(s.text);
   return [
-    [file + ".json", readable_json({ internal_file_path: file, type: doc.type, ...body, strings })],
+    [
+      file + ".reference.json",
+      readable_json({ internal_file_path: file, type: doc.type, ...body, strings }),
+    ],
   ];
 }
 
@@ -202,7 +204,7 @@ function read_table(
     }
   return [
     [
-      file + ".json",
+      file + ".reference.json",
       readable_json({
         internal_file_path: file,
         type: doc.type,

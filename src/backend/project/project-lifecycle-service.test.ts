@@ -154,6 +154,7 @@ describe("ProjectLifecycleService", () => {
     );
     const game = path.join(root, "game");
     const exe = write_file(path.join(game, "GamePro.exe"));
+    fs.writeFileSync(path.join(game, "dialogue.json"), "{");
     fs.writeFileSync(
       path.join(game, "Data.wolf"),
       await wolf_archive_fixture(
@@ -178,6 +179,7 @@ describe("ProjectLifecycleService", () => {
       expect(reads).not.toHaveBeenCalled();
       expect(snapshots[0]?.meta).toMatchObject({
         glossary_enable: true,
+        additional_files: { "game.wolfrpg": ["dialogue.json"] },
         translation_prompt_legacy_migrated: true,
         "migration.asset_file_type_complete": true,
       });
@@ -194,6 +196,7 @@ describe("ProjectLifecycleService", () => {
       const { meta: second_meta, ...loaded } = snapshots[1]!;
       expect(loaded).toEqual(created);
       expect(second_meta.translation_extras).toEqual(first_meta.translation_extras);
+      expect(second_meta.additional_files).toEqual(first_meta.additional_files);
     } finally {
       await database.close();
     }

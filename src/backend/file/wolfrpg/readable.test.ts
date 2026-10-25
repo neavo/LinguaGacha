@@ -4,7 +4,7 @@ import JSZip from "jszip";
 import { wolf_files, wolf_common, wolf_command } from "../../../test/wolf-fixture";
 import { FileFormatService } from "../file-format-service";
 import { read_game_container } from "../shared/game/format";
-import { read_wolf_sources } from "./readable";
+import { read_wolf_projections } from "./readable";
 import { read_wolf_common } from "./common-events";
 import { read_wolf_map } from "./map";
 import { read_wolf_metadata, wolf_location_key } from "./item";
@@ -30,12 +30,13 @@ it("地图登记资格在条目和 Agent 投影中一致", async () => {
     string,
     Pick<WolfSlot, "text" | "location" | "usage" | "context">[]
   >();
-  for await (const [name, bytes] of read_wolf_sources(
+  for await (const [name, bytes] of read_wolf_projections(
     (await read_game_container(content, "game.zip")).members,
   )) {
-    if ([registered, unregistered, common_path].some((file) => name === file + ".json"))
+    expect(files.has(name)).toBe(false);
+    if ([registered, unregistered, common_path].some((file) => name === file + ".reference.json"))
       projections.set(
-        name.slice(0, -5),
+        name.slice(0, -".reference.json".length),
         (
           JSON.parse(Buffer.from(bytes).toString()) as {
             strings: Pick<WolfSlot, "text" | "location" | "usage" | "context">[];

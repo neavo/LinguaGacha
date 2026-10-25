@@ -1,3 +1,4 @@
+import { collect_game_import_files } from "./shared/game/source-files";
 import { resolve_game_source_input } from "./shared/game/source-input";
 import { GameDirectoryOperations } from "./shared/game/game-directory-operations";
 import type { GodotPackOrder } from "../../shared/godot";
@@ -116,12 +117,13 @@ export class FileFormatService {
     rel_path: string,
     content: Uint8Array,
     file_type?: string,
+    additional_files: readonly string[] = [],
   ): Promise<FileFormatReadResult> {
     if (is_game_file_type(file_type))
       return {
         kind: "items",
         file_type,
-        ...(await this.games[file_type].read_from_stream(content, rel_path)),
+        ...(await this.games[file_type].read_from_stream(content, rel_path, additional_files)),
       };
     const by_extension: Record<string, string> = {
       ".txt": "TXT",
@@ -363,17 +365,28 @@ export class FileFormatService {
         throw new Error("Unfinished game operation; recovery files: " + workspace);
       await prepare_game_source(source, this.native_fs, this.game_prepare_execution, signal);
       const format = this.games[source.file_type];
-      const data = await GAME_ENGINES[source.file_type].collect(source, this.native_fs, signal);
-      const container = await format.create_container(
-        data,
-        rel_path,
+      const engine = GAME_ENGINES[source.file_type];
+      const translation = await engine.collect(source, this.native_fs, signal); // 格式元数据只消费翻译成员。
+      const collected = collect_game_import_files(
         source.game.root,
+        translation,
+        (name) => engine.includes_additional_file(source, name),
+        this.native_fs,
         signal,
-        await GAME_ENGINES[source.file_type].build_metadata?.(source, data, this.native_fs, signal),
       );
-      return container;
+      const content = await format.create_container(
+        collected.data,
+        rel_path,
+        collected.game_files,
+        signal,
+        await engine.build_metadata?.(source, translation, this.native_fs, signal),
+      );
+      return { content, additional_files: collected.additional_files };
     }
-    return { content: this.native_fs.read_file(entry.source_path), warnings: [] };
+    return {
+      content: this.native_fs.read_file(entry.source_path),
+      additional_files: [],
+    };
   }
 
   /**
