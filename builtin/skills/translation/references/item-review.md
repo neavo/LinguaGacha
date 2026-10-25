@@ -103,7 +103,7 @@
 
 |警告|类型|判断重点|
 |---|---|---|
-|`FOREIGN_CHAR_RESIDUE`|事实型|`fragments` 中的局部漏翻补译，源语言文字、记号与注音按 `writing-guide` 的 `references/translation.md` 的「书写系统」判断|
+|`FOREIGN_CHAR_RESIDUE`|事实型／启发型|`fragments` 中只含拉丁字母的片段为启发型，其余片段为事实型。两类片段都按 `writing-guide` 的 `references/translation.md` 的「书写系统」判断|
 |`TEXT_PRESERVE`|事实型|无需翻译的结构文本是否被误翻|
 |`LINE_COUNT_MISMATCH`|事实型|原文与译文的行数是否对齐，换行及跨行结构是否完整|
 |`SIMILARITY`|启发型|是否存在漏翻，原文信息与功能是否已表达|
