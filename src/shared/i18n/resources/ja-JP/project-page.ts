@@ -27,11 +27,12 @@ export const ja_jp_project_page = {
     recent_title: "最近開いた項目",
     empty: "最近開いたプロジェクトはありません",
     ready_status: "プロジェクトの準備ができました",
-    preview_loading_toast: "プロジェクトのプレビューを読み込み中 …",
     loading_toast: "プロジェクトを読み込み中 …",
     preview_unavailable: "プロジェクトのプレビューを読み込めませんでした …",
     action: "プロジェクトを開く",
     remove_unavailable: "最近使った項目を削除できません。しばらくしてから再試行してください …",
+    newer_app_version_description:
+      "このファイルの対象アプリバージョンは <emphasis>v{VERSION}</emphasis> です。古いバージョンで開くとデータが破損する可能性があります。続けて開きますか …?",
     missing_file_description: "プロジェクトファイルが利用できません。一覧から削除しますか …?",
   },
   preview: {

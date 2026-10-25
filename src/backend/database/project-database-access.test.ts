@@ -12,7 +12,7 @@ let temp_dir: string;
 let database: ProjectDatabase;
 beforeEach(() => {
   temp_dir = fs.mkdtempSync(path.join(os.tmpdir(), "lg-database-access-"));
-  database = new ProjectDatabase();
+  database = new ProjectDatabase("1.0.0");
 });
 afterEach(async () => {
   await database.close();
@@ -160,7 +160,7 @@ it("事务同步写入 item、规则和 meta，并让工程摘要反映当前事
 
   expect(await database.get_rule_text(lg_path, "prompt.translation")).toBe("请保持语气");
   expect(await database.get_rules(lg_path, "glossary")).toEqual([{ src: "姫", dst: "公主" }]);
-  expect(await database.get_project_summary(lg_path)).toEqual(
+  expect(await database.read_project_preview(lg_path)).toEqual(
     expect.objectContaining({
       file_paths: ["chapter.txt"],
       updated_at: "2026-05-16T00:00:00.000Z",
@@ -176,7 +176,7 @@ it("事务同步写入 item、规则和 meta，并让工程摘要反映当前事
   );
 });
 
-it("工程预览在重排并重新打开后返回完整文件顺序", async () => {
+it("工程预览按稳定 id 返回文件集合，不依赖工作台重排", async () => {
   const { database, lg_path } = await create_database_project("preview-order");
   for (const file_path of ["a.txt", "b.txt", "c.txt", "d.txt", "e.txt"]) {
     await database.transaction(lg_path, (writer) =>
@@ -187,8 +187,8 @@ it("工程预览在重排并重新打开后返回完整文件顺序", async () =
     writer.update_asset_sort_orders(lg_path, ["e.txt", "c.txt", "a.txt", "d.txt", "b.txt"]),
   );
   await database.close_project(lg_path);
-  expect(await database.get_project_summary(lg_path)).toMatchObject({
-    file_paths: ["e.txt", "c.txt", "a.txt", "d.txt", "b.txt"],
+  expect(await database.read_project_preview(lg_path)).toMatchObject({
+    file_paths: ["a.txt", "b.txt", "c.txt", "d.txt", "e.txt"],
   });
 });
 

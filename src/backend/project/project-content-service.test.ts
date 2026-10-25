@@ -68,7 +68,7 @@ async function create_service(
   session_state: ProjectSessionState;
   lg_path: string;
 }> {
-  const database = new ProjectDatabase();
+  const database = new ProjectDatabase("1.0.0");
   const session_state = new ProjectSessionState();
   const lg_path = project_path("demo.lg");
   await database.create_project(lg_path, "demo");
@@ -1336,7 +1336,7 @@ describe("ProjectContentService", () => {
     expect(items.map((item) => item["src"])).toEqual(expected);
     expect(items.every((item) => Number(item["id"]) > 21 && item["dst"] === "")).toBe(true);
     await database.close();
-    const reopened = new ProjectDatabase();
+    const reopened = new ProjectDatabase("1.0.0");
     expect(await reopened.get_all_items(lg_path)).toEqual(items);
     await reopened.close();
   });

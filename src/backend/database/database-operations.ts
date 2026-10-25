@@ -1,4 +1,8 @@
 import path from "node:path";
+import { compare_app_version, parse_app_version } from "../../shared/app-version";
+import type { ProjectPreview } from "../../shared/project-preview";
+import { read_project_file_version } from "./project-file-version";
+import { read_project_preview } from "./project-preview";
 import { DatabaseSync } from "node:sqlite";
 import { NodeSqliteDatabase } from "@earendil-works/pi-durable/storage/sqlite/node";
 import { NativeFs, default_native_fs } from "../../native/native-fs";
@@ -16,7 +20,7 @@ export type {
   ProjectItemTranslationWrite,
 } from "./project-database-access";
 const SQLITE_AUTO_VACUUM_FULL = 1; // SQLite 的 FULL 物理回收模式。
-const SQLITE_BUSY_TIMEOUT_MS = 5000; // 首次 WAL 配置也受等待上限约束。
+const SQLITE_BUSY_TIMEOUT_MS = 5000; // 版本查询与 WAL 配置均受等待上限约束。
 /** 关闭失败的连接仍由数据库层持有，以便再次回收。 */
 interface ProjectDatabaseConnectionRecord {
   readonly normalized_path: string;
@@ -29,7 +33,10 @@ export class ProjectDatabase {
   private readonly queues = new Map<string, Promise<void>>(); // 完成屏障独立于连接寿命。
   private readonly storage_maintenance_deferred_paths = new Set<string>(); // 整理失败在当前实例内暂缓。
   /** 提前核对资产压缩能力，使工程入口及时报告运行环境缺失。 */
-  public constructor(private readonly native_fs: NativeFs = default_native_fs) {
+  public constructor(
+    private readonly current_app_version: string,
+    private readonly native_fs: NativeFs = default_native_fs,
+  ) {
     if (!ZstdTool.isRuntimeAvailable()) throw new AppErrors.AppError("runtime.capability_missing");
   }
   /** 失败交给调用者，队列保留完成屏障，让后续批次仍可执行。 */
@@ -70,16 +77,62 @@ export class ProjectDatabase {
       if (record) this.close_connection_record(record);
     });
   }
-  /** 迁移与物理整理属于工程准备阶段，避免每次短连接重复执行。 */
-  public async prepare(project_path: string): Promise<void> {
-    await this.use_connection(project_path, async (record) => {
-      this.apply_project_storage_mode(record.normalized_path, record.db);
-      try {
-        run_project_database_migrations(record.db);
-      } catch (error) {
-        throw database_error(error, project_path, "migration");
-      }
-    });
+  /** 同一工程批次先查询版本，确认满足后才启用写入和迁移。 */
+  public async prepare(
+    project_path: string,
+    confirmed_target_app_version?: unknown,
+  ): Promise<void> {
+    await this.use_connection(
+      project_path,
+      async (record) => {
+        const target = read_project_file_version(record.db);
+        const current = parse_app_version(this.current_app_version)!;
+        if (
+          target &&
+          compare_app_version(target, current) > 0 &&
+          confirmed_target_app_version !== target.value
+        ) {
+          throw new AppErrors.AppError("project.newer_app_version", {
+            public_details: {
+              target_app_version: target.value,
+              current_app_version: current.value,
+            },
+          });
+        }
+        this.enable_project_writes(record);
+        try {
+          run_project_database_migrations(record.db, this.current_app_version);
+        } catch (error) {
+          throw database_error(error, project_path, "migration");
+        }
+        this.apply_project_storage_mode(record.normalized_path, record.db);
+      },
+      true,
+      "query",
+    );
+  }
+  /** 概览查询共享工程队列，读取事务使多条 SQL 消费同一快照。 */
+  public read_project_preview(project_path: string): Promise<ProjectPreview> {
+    return this.use_connection(
+      project_path,
+      async (record) => {
+        record.db.exec("BEGIN");
+        try {
+          const preview = read_project_preview(record.db);
+          record.db.exec("COMMIT");
+          return preview;
+        } catch (error) {
+          try {
+            record.db.exec("ROLLBACK");
+          } catch (cleanup) {
+            throw database_cleanup_error(error, cleanup);
+          }
+          throw error;
+        }
+      },
+      false,
+      "query",
+    );
   }
   /** 排他创建文件，失败时按提交状态决定是否删除本次新文件。 */
   public async create_project(
@@ -101,8 +154,9 @@ export class ProjectDatabase {
         await this.execute_connection(
           normalized,
           async (record) => {
+            // 结构迁移已建立版本事实，项目初始化沿用该版本。
+            run_project_database_migrations(record.db, this.current_app_version);
             this.apply_project_storage_mode(normalized, record.db);
-            run_project_database_migrations(record.db);
             return this.execute_transaction(record, (writer) => {
               const now = new Date().toISOString();
               writer.upsert_meta_entries(normalized, { name, created_at: now, updated_at: now });
@@ -224,11 +278,6 @@ export class ProjectDatabase {
   ): Promise<ReturnType<ProjectDatabaseAccess["get_rule_text"]>> {
     return this.read(args[0], (reader) => reader.get_rule_text(...args));
   }
-  public get_project_summary(
-    ...args: Parameters<ProjectDatabaseAccess["get_project_summary"]>
-  ): Promise<ReturnType<ProjectDatabaseAccess["get_project_summary"]>> {
-    return this.read(args[0], (reader) => reader.get_project_summary(...args));
-  }
   public read_asset_content(
     ...args: Parameters<ProjectDatabaseAccess["read_asset_content"]>
   ): Promise<ReturnType<ProjectDatabaseAccess["read_asset_content"]>> {
@@ -246,9 +295,10 @@ export class ProjectDatabase {
     project_path: string,
     callback: (record: ProjectDatabaseConnectionRecord) => Promise<T>,
     write: boolean | (() => boolean) = false,
+    mode: "write" | "query" = "write",
   ): Promise<T> {
     return this.schedule(project_path, () =>
-      this.execute_connection(project_path, callback, write),
+      this.execute_connection(project_path, callback, write, mode),
     );
   }
   /** 先完成操作，再关闭连接。已提交的收尾失败不能被当作可重试写入。 */
@@ -256,13 +306,25 @@ export class ProjectDatabase {
     project_path: string,
     callback: (record: ProjectDatabaseConnectionRecord) => Promise<T>,
     write: boolean | (() => boolean) = false,
+    mode: "write" | "query" = "write",
   ): Promise<T> {
+    // 取得队列后检查，防止等待期间文件被移走后 SQLite 静默创建空库。
+    if (mode === "query" && !this.native_fs.exists(project_path)) {
+      throw new AppErrors.AppError("project.not_found", {
+        public_details: { filename: path.basename(project_path) },
+      });
+    }
     const record = this.open_project_record(path.resolve(project_path));
     let result: { ok: true; value: T } | { ok: false; error: unknown };
     try {
+      if (mode === "query") record.db.exec("PRAGMA query_only=ON");
+      else this.enable_project_writes(record);
       result = { ok: true, value: await callback(record) };
     } catch (error) {
-      result = { ok: false, error };
+      result = {
+        ok: false,
+        error: mode === "query" ? database_error(error, project_path, mode) : error,
+      };
     }
     try {
       this.close_connection_record(record);
@@ -295,7 +357,6 @@ export class ProjectDatabase {
     const cached = this.connection_records.get(normalized_path);
     if (cached !== undefined) this.close_connection_record(cached);
     let record: ProjectDatabaseConnectionRecord | undefined;
-    let operation = "open"; // 记录首个失败的连接初始化阶段。
     try {
       this.native_fs.make_dir(path.dirname(normalized_path));
       const db = new DatabaseSync(this.native_fs.to_native_path(normalized_path), {
@@ -308,13 +369,9 @@ export class ProjectDatabase {
       };
       // 登记后再初始化，关闭失败仍由本实例持有并回收。
       this.connection_records.set(normalized_path, record);
-      operation = "journal_mode";
-      db.exec("PRAGMA journal_mode=WAL");
-      operation = "synchronous";
-      db.exec("PRAGMA synchronous=NORMAL");
       return record;
     } catch (error) {
-      const failure = database_error(error, normalized_path, operation);
+      const failure = database_error(error, normalized_path, "open");
       if (record !== undefined) {
         try {
           this.close_connection_record(record);
@@ -323,6 +380,20 @@ export class ProjectDatabase {
         }
       }
       throw failure;
+    }
+  }
+
+  /** 查询阶段结束后再启用写入配置，SDK 批次仍沿用现有写入能力。 */
+  private enable_project_writes(record: ProjectDatabaseConnectionRecord): void {
+    let operation = "query_only";
+    try {
+      record.db.exec("PRAGMA query_only=OFF");
+      operation = "journal_mode";
+      record.db.exec("PRAGMA journal_mode=WAL");
+      operation = "synchronous";
+      record.db.exec("PRAGMA synchronous=NORMAL");
+    } catch (error) {
+      throw database_error(error, record.normalized_path, operation);
     }
   }
 
@@ -341,7 +412,7 @@ export class ProjectDatabase {
       db.exec("PRAGMA auto_vacuum=FULL");
       db.exec("VACUUM");
     } catch {
-      // 物理回收不改变业务数据语义。当前实例暂缓后续整理，让正常迁移继续判断工程是否可用。
+      // 物理回收不改变业务数据语义。当前实例暂缓后续整理，已提交的迁移事实继续有效。
       this.storage_maintenance_deferred_paths.add(normalized_path);
     }
   }

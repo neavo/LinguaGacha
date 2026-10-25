@@ -1,3 +1,4 @@
+import { DesktopApiError } from "@frontend/app/desktop/desktop-api";
 import { type ReactNode, act, cloneElement, isValidElement } from "react";
 
 import { createRoot, type Root } from "react-dom/client";
@@ -381,6 +382,63 @@ describe("ProjectPage", () => {
       );
   });
 
+  it.each(["loading", "failed"])("预览 %s 时仍能打开，打开后的迟到结果不再消费", async (state) => {
+    const preview = Promise.withResolvers<object>();
+    api_fetch_mock.mockImplementation((path: string) =>
+      path.endsWith("/preview") ? preview.promise : Promise.resolve({}),
+    );
+    await mount_page();
+    await drop_paths(get_button_by_text(container!, "点击或拖拽 .lg 文件"), ["E:/open.lg"]);
+    if (state === "failed") await act(async () => preview.reject(new Error("preview failed")));
+    expect(get_button_by_text(container!, "打开工程").disabled).toBe(false);
+    expect(push_progress_toast_mock).not.toHaveBeenCalled();
+    push_toast_mock.mockClear();
+    await act(async () => get_button_by_text(container!, "打开工程").click());
+    expect(api_fetch_mock).toHaveBeenCalledWith("/api/session/project/open", {
+      path: "E:/open.lg",
+    });
+    if (state === "loading") {
+      expect(
+        api_fetch_mock.mock.calls.find(([path]) => path.endsWith("/preview"))?.[2].aborted,
+      ).toBe(true);
+      await act(async () => preview.reject(new Error("late preview failure")));
+      expect(push_toast_mock).not.toHaveBeenCalled();
+    }
+    expect(get_button_by_text(container!, "open.lg")).toBeDefined();
+  });
+
+  it("高版本确认强调完整版本并接入延迟确认", async () => {
+    api_fetch_mock.mockImplementation(async (path: string, body: Record<string, unknown>) => {
+      if (path.endsWith("/preview")) throw new Error("preview unavailable");
+      if (path.endsWith("/open") && !body.confirmed_target_app_version)
+        throw new DesktopApiError({
+          code: "project.newer_app_version",
+          details: {
+            target_app_version: "2.1.0",
+            current_app_version: "1.0.0",
+          },
+        });
+      return {};
+    });
+    await mount_page();
+    await drop_paths(get_button_by_text(container!, "点击或拖拽 .lg 文件"), ["E:/newer.lg"]);
+    push_toast_mock.mockClear();
+    vi.useFakeTimers();
+    await act(async () => get_button_by_text(container!, "打开工程").click());
+    expect(document.querySelector(".project-home__version-emphasis")?.textContent).toBe("v2.1.0");
+    expect(push_toast_mock).not.toHaveBeenCalled();
+    const primary = [...document.querySelectorAll("button")].find((button) =>
+      /^\d+s/u.test(button.textContent ?? ""),
+    )!;
+    expect(primary.disabled).toBe(true);
+    act(() => vi.advanceTimersByTime(Number.parseInt(primary.textContent!, 10) * 1000));
+    await act(async () => primary.click());
+    expect(api_fetch_mock).toHaveBeenCalledWith("/api/session/project/open", {
+      path: "E:/newer.lg",
+      confirmed_target_app_version: "2.1.0",
+    });
+  });
+
   it("保留预览文件顺序并用当前工程文件名记录最近打开", async () => {
     const paths = [
       "folder/chapter03.txt",
@@ -468,12 +526,6 @@ describe("ProjectPage", () => {
     });
 
     expect(document.body.textContent).toContain("工程语言");
-    expect(
-      document.querySelector('[data-field="source_language"]')?.getAttribute("data-value"),
-    ).toBe("JA");
-    expect(
-      document.querySelector('[data-field="target_language"]')?.getAttribute("data-value"),
-    ).toBe("ZH");
     await act(async () => {
       get_button_by_text(document.body, "取消").click();
     });
@@ -587,50 +639,6 @@ describe("ProjectPage", () => {
       "/api/session/project/create",
       expect.objectContaining({ languages: { source_language: "EN", target_language: "KO" } }),
     );
-  });
-
-  it("打开工程直接请求后端，并按打开响应中的对齐摘要提示", async () => {
-    const project_path = "E:/Source/aligned.lg";
-    desktop_runtime_fixture.current = create_desktop_runtime_fixture({
-      recent_projects: [{ path: project_path, name: "aligned" }],
-    });
-    api_fetch_mock.mockImplementation(async (path: string) => {
-      if (path === "/api/session/project/preview")
-        return {
-          preview: {
-            file_paths: [],
-            translation_stats: {
-              total_items: 0,
-              completed_count: 0,
-              skipped_count: 0,
-              failed_count: 0,
-              pending_count: 0,
-              completion_percent: 0,
-            },
-          },
-        };
-      if (path === "/api/session/project/open")
-        return {
-          project: { path: project_path, loaded: true },
-          settings_alignment: {
-            settings: { mtool_optimizer_enable: false, skip_duplicate_source_text_enable: true },
-            changed: { mtool_optimizer_enable: true, skip_duplicate_source_text_enable: false },
-          },
-        };
-      return {};
-    });
-    await mount_page();
-    await act(async () => {
-      get_button_by_text(container!, "aligned").click();
-    });
-    await act(async () => {
-      get_button_by_text(container!, "打开工程").click();
-    });
-
-    expect(api_fetch_mock.mock.calls.map(([path]) => path)).not.toContain(
-      "/api/session/project/open-preview",
-    );
-    expect(push_toast_mock).toHaveBeenCalledWith("info", expect.stringContaining("MTool 优化器"));
   });
 
   it("来源摘要全部失败时展示具体文件原因，重新选择仍可恢复", async () => {

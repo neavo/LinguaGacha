@@ -230,7 +230,7 @@ describe("BatchTranslationRunner", () => {
       const retranslate = operation === "retranslate";
       const builtin_root = create_template_root();
       const project_path = path.join(builtin_root, "task.lg");
-      const database = new ProjectDatabase();
+      const database = new ProjectDatabase("1.0.0");
       await database.create_project(project_path, "test");
       await database.transaction(project_path, (writer) =>
         writer.set_items(project_path, [

@@ -23,7 +23,7 @@ it("读取批次中的写入已提交后关闭失败，保留已提交错误", a
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "lg-agent-close-"));
   roots.push(root);
   const file = path.join(root, "project.lg");
-  const database = new ProjectDatabase();
+  const database = new ProjectDatabase("1.0.0");
   await database.create_project(file, "test");
   const store = database.open_agent_store(file);
   const failure = new Error("close failed");
@@ -45,7 +45,7 @@ it("SDK 与工程并发提交、失败回滚，会话空闲时只复制 lg 即�
   roots.push(root);
   const file = path.join(root, "project.lg");
   const copy = path.join(root, "copy.lg");
-  const database = new ProjectDatabase();
+  const database = new ProjectDatabase("1.0.0");
   await database.create_project(file, "测试");
   const store = database.open_agent_store(file);
   await store.create("-t75szF5");
@@ -90,11 +90,18 @@ it("SDK 与工程并发提交、失败回滚，会话空闲时只复制 lg 即�
       read_finished = true;
       return meta;
     });
+    let preview_finished = false;
+    const preview = database.read_project_preview(file).then((result) => {
+      preview_finished = true;
+      return result;
+    });
     await Promise.resolve();
+    expect(preview_finished).toBe(false);
     expect(read_finished).toBe(false);
     release.resolve();
     await rejected;
     await progress;
+    expect((await preview).file_paths).toEqual([]);
     expect(await queued_read).not.toHaveProperty("rolled_back");
     expect(await database.get_all_meta(file)).toHaveProperty("translation_extras", { line: 123 });
     expect((await store.read())?.data.uploads).toEqual([]);
@@ -127,7 +134,7 @@ it("SDK 与工程并发提交、失败回滚，会话空闲时只复制 lg 即�
     await store.close();
     await database.close();
   }
-  const reopened = new ProjectDatabase();
+  const reopened = new ProjectDatabase("1.0.0");
   const restored = reopened.open_agent_store(copy);
   const sdk = await Harness.open(
     await restored.open_storage(),
@@ -148,7 +155,7 @@ it("读取工程时拒绝无效激活指针和缺失登记", async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "lg-agent-invalid-id-"));
   roots.push(root);
   const file = path.join(root, "project.lg");
-  const database = new ProjectDatabase();
+  const database = new ProjectDatabase("1.0.0");
   await database.create_project(file, "测试");
   const store = database.open_agent_store(file);
   try {

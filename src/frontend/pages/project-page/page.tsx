@@ -1,3 +1,6 @@
+import { AppContentState } from "@frontend/widgets/app-content-state";
+import { useProjectOpen } from "./use-project-open";
+import { render_rich_text } from "@frontend/app/locale/rich-text";
 import { GODOT_PACK_ORDER_REFRESH_ACTION } from "@shared/godot";
 import { useGodotPackOrder } from "@frontend/features/godot-pack-order/use-godot-pack-order";
 import { GodotPackOrderDialog } from "@frontend/features/godot-pack-order/godot-pack-order-dialog";
@@ -9,7 +12,7 @@ import {
   update_progress_toast,
   dismiss_toast,
 } from "@frontend/app/feedback/desktop-toast";
-import type { ProjectPreview, ProjectPreviewResponse } from "@shared/project-preview";
+import type { ProjectPreview } from "@shared/project-preview";
 import { format_local_timestamp } from "@shared/utils/format-local-timestamp";
 import { TranslationProgressBadge } from "@frontend/features/translation-progress/translation-progress-badge";
 import { Badge } from "@frontend/shadcn/badge";
@@ -54,11 +57,6 @@ import "@frontend/pages/project-page/project-page.css";
 import { ProjectSourceFormats } from "@frontend/pages/project-page/components/project-source-formats";
 import { DesktopApiError, api_fetch } from "@frontend/app/desktop/desktop-api";
 import type { ProjectStage } from "@frontend/app/state/desktop-project-change-types";
-import {
-  format_project_settings_aligned_toast,
-  type ProjectSettingsAlignmentChangedFields,
-  type ProjectSettingsAlignmentSettings,
-} from "@frontend/app/feedback/project-settings-alignment-feedback";
 import type { ProjectLanguageKey } from "@domain/project-settings";
 import { ProjectLanguageDialog } from "@frontend/pages/project-page/components/project-language-dialog";
 import {
@@ -83,26 +81,11 @@ type ProjectPageProps = {
 };
 
 /**
- * 已选择的 .lg 工程及其可选预览结果。
- */
-type SelectedProject = {
-  path: string;
-  preview: ProjectPreview | null;
-};
-
-/**
  * 已选择的源路径与后端摘要，首个路径用于推导默认工程名。
  */
 type SelectedSource = ProjectSourceFileSummary & {
   source_paths: string[]; // 创建工程时原样提交的归一化用户选择
 };
-
-/**
- * 最近工程缺失时弹窗只需要记住待移除路径。
- */
-type MissingRecentProjectState = {
-  path: string;
-} | null;
 
 /**
  * 新建工程提交后的公开载荷，failed_files 交给专用 formatter 收窄。
@@ -112,16 +95,6 @@ type ProjectCreateCommitPayload = {
     path?: string;
   };
   failed_files?: unknown;
-};
-
-/**
- * 打开工程响应；后端在打开事务内对齐应用级预过滤开关时附带摘要。
- */
-type ProjectOpenPayload = {
-  settings_alignment?: {
-    settings?: ProjectSettingsAlignmentSettings;
-    changed?: ProjectSettingsAlignmentChangedFields;
-  };
 };
 
 type ProjectLanguageDraft = Record<ProjectLanguageKey, string>;
@@ -170,10 +143,10 @@ type RecentProjectRowProps = {
 };
 
 /**
- * 工程预览面板只依赖已归一的 selected project。
+ * 工程预览面板只消费已取得的摘要。
  */
 type ProjectPreviewPanelProps = {
-  project: SelectedProject;
+  preview: ProjectPreview;
 };
 
 /**
@@ -371,8 +344,7 @@ function RecentProjectEmptyState(): JSX.Element {
  */
 function ProjectPreviewPanel(props: ProjectPreviewPanelProps): JSX.Element {
   const { t } = useI18n();
-  const preview = props.project.preview;
-  if (preview === null) return <></>;
+  const preview = props.preview;
   return (
     <div className="project-home__preview-panel">
       <dl className="project-home__preview-list">
@@ -502,29 +474,32 @@ export function ProjectPage(_props: ProjectPageProps): JSX.Element {
   const pack_order = useGodotPackOrder();
   const backup_confirm = useGameBackupConfirm();
   const [selected_source, set_selected_source] = useState<SelectedSource | null>(null);
-  const [selected_project, set_selected_project] = useState<SelectedProject | null>(null);
   const [is_source_checking, set_is_source_checking] = useState(false);
-  const [is_preview_loading, set_is_preview_loading] = useState(false);
   const [is_creating_project, set_is_creating_project] = useState(false);
-  const [is_opening_project, set_is_opening_project] = useState(false);
   const [is_language_dialog_open, set_is_language_dialog_open] = useState(false);
   // 新建语言草稿由项目页持有，取消或创建失败后保留本次选择。
   const [create_languages, set_create_languages] = useState<ProjectLanguageDraft>(
     read_project_language_preference,
   );
-  const [missing_recent_project, set_missing_recent_project] =
-    useState<MissingRecentProjectState>(null);
   const project_loading_toast_id_ref = useRef<string | number | null>(null);
   const recent_projects = settings_snapshot.recent_projects.slice(0, 5);
   const has_recent_projects = recent_projects.length > 0;
   const source_selection_disabled = is_source_checking || is_creating_project; // 摘要与创建共用来源快照，期间冻结所有编辑入口。
 
-  /**
-   * 清空打开工程选择，保留源文件选择。
-   */
-  function clear_selected_project(): void {
-    set_selected_project(null);
-  }
+  const {
+    selected_project,
+    preview_state,
+    is_opening_project,
+    pending_confirmation,
+    missing_recent_project,
+    clear_selected_project,
+    select_project_path,
+    handle_open_project,
+    handle_recent_project_remove,
+    confirm_open,
+    cancel_confirmation,
+    close_missing_recent,
+  } = useProjectOpen(run_project_loading_modal);
 
   /**
    * 清空新建工程源文件选择，保留打开工程选择。
@@ -549,7 +524,7 @@ export function ProjectPage(_props: ProjectPageProps): JSX.Element {
   }, [project_session_stage, t]);
 
   /**
-   * 包裹创建、打开和预览流程，统一展示可更新的模态进度。
+   * 包裹创建和打开流程，统一展示可更新的模态进度。
    */
   async function run_project_loading_modal(args: {
     initial_message: string;
@@ -569,41 +544,6 @@ export function ProjectPage(_props: ProjectPageProps): JSX.Element {
         project_loading_toast_id_ref.current = null;
       }
       dismiss_toast(toast_id);
-    }
-  }
-
-  /**
-   * 选择工程路径并读取预览，最近工程缺失时转入移除确认。
-   */
-  async function select_project_path(project_path: string, from_recent = false): Promise<void> {
-    set_is_preview_loading(true);
-    set_selected_project({
-      path: project_path,
-      preview: null,
-    });
-
-    try {
-      await run_project_loading_modal({
-        initial_message: t("project_page.open.preview_loading_toast"),
-        task: async () => {
-          const payload = await api_fetch<ProjectPreviewResponse>("/api/session/project/preview", {
-            path: project_path,
-          });
-          set_selected_project({ path: project_path, preview: payload.preview });
-        },
-      });
-    } catch (error) {
-      if (from_recent && error instanceof DesktopApiError && error.code === "project.not_found") {
-        set_missing_recent_project({
-          path: project_path,
-        });
-      } else {
-        push_error_toast(t("project_page.open.preview_unavailable"), error);
-      }
-
-      set_selected_project(null);
-    } finally {
-      set_is_preview_loading(false);
     }
   }
 
@@ -830,68 +770,6 @@ export function ProjectPage(_props: ProjectPageProps): JSX.Element {
   }
 
   /**
-   * 打开既有工程；后端在同一打开事务内对齐应用级预过滤开关。
-   */
-  async function handle_open_project(): Promise<void> {
-    if (selected_project === null || selected_project.preview === null || is_opening_project) {
-      return;
-    }
-
-    set_is_opening_project(true);
-
-    try {
-      const project_to_open = selected_project;
-      let settings_alignment: ProjectOpenPayload["settings_alignment"];
-
-      await run_project_loading_modal({
-        initial_message: t("project_page.open.loading_toast"),
-        task: async () => {
-          const open_payload = await api_fetch<ProjectOpenPayload>("/api/session/project/open", {
-            path: project_to_open.path,
-          });
-          settings_alignment = open_payload.settings_alignment;
-          set_project_session_status("warming");
-          await refresh_project_snapshot();
-          await api_fetch<SettingsPayload>("/api/settings/recent-projects/add", {
-            path: project_to_open.path,
-            name: extract_stem(extract_file_name(project_to_open.path)),
-          });
-          await Promise.all([refresh_settings(), refresh_batch_translation()]);
-        },
-      });
-      if (settings_alignment !== undefined) {
-        push_toast(
-          "info",
-          format_project_settings_aligned_toast({
-            settings: settings_alignment.settings ?? {},
-            changed_fields: settings_alignment.changed ?? {},
-            t,
-          }),
-        );
-      }
-    } catch (error) {
-      push_error_toast(t("app.feedback.load_failed"), error);
-      return;
-    } finally {
-      set_is_opening_project(false);
-    }
-  }
-
-  /**
-   * 从最近工程列表移除路径后刷新 settings 快照。
-   */
-  async function handle_recent_project_remove(project_path: string): Promise<void> {
-    try {
-      await api_fetch<SettingsPayload>("/api/settings/recent-projects/remove", {
-        path: project_path,
-      });
-      await refresh_settings();
-    } catch (error) {
-      push_error_toast(t("project_page.open.remove_unavailable"), error);
-    }
-  }
-
-  /**
    * 拖入问题保留当前选择，只提示改用点击选择。
    */
   function handle_drop_issue(issue: PathDropIssue): void {
@@ -969,7 +847,7 @@ export function ProjectPage(_props: ProjectPageProps): JSX.Element {
       }
       clear_label={t("app.action.reset")}
       on_clear={clear_selected_project}
-      disabled={is_preview_loading || is_opening_project}
+      disabled={is_opening_project || is_creating_project}
       onClick={() => {
         void handle_select_project_file();
       }}
@@ -1000,8 +878,12 @@ export function ProjectPage(_props: ProjectPageProps): JSX.Element {
       ) : (
         <RecentProjectEmptyState />
       )
-    ) : selected_project.preview !== null ? (
-      <ProjectPreviewPanel project={selected_project} />
+    ) : preview_state.status === "ready" ? (
+      <ProjectPreviewPanel preview={preview_state.preview} />
+    ) : preview_state.status === "loading" ? (
+      <AppContentState status="loading" />
+    ) : preview_state.status === "failed" ? (
+      <AppContentState status="error" />
     ) : null;
   const missing_recent_project_description =
     missing_recent_project === null ? "" : t("project_page.open.missing_file_description");
@@ -1010,6 +892,28 @@ export function ProjectPage(_props: ProjectPageProps): JSX.Element {
     <>
       <GodotPackOrderDialog {...pack_order.dialog_props} />
       <AppConfirmDialog {...backup_confirm.dialog_props} />
+      <AppConfirmDialog
+        open={pending_confirmation !== null}
+        confirmDelay
+        description={
+          pending_confirmation === null
+            ? ""
+            : render_rich_text(
+                t("project_page.open.newer_app_version_description", {
+                  VERSION: pending_confirmation.target_app_version,
+                }),
+                {
+                  emphasis: (children) => (
+                    <span className="project-home__version-emphasis font-medium">{children}</span>
+                  ),
+                },
+              )
+        }
+        onConfirm={() => {
+          void confirm_open();
+        }}
+        onClose={cancel_confirmation}
+      />
       <ProjectLanguageDialog
         open={is_language_dialog_open}
         languages={create_languages}
@@ -1031,17 +935,9 @@ export function ProjectPage(_props: ProjectPageProps): JSX.Element {
             return;
           }
 
-          void (async () => {
-            await api_fetch<SettingsPayload>("/api/settings/recent-projects/remove", {
-              path: target_path,
-            });
-            await refresh_settings();
-            set_missing_recent_project(null);
-          })();
+          void handle_recent_project_remove(target_path);
         }}
-        onClose={() => {
-          set_missing_recent_project(null);
-        }}
+        onClose={close_missing_recent}
       />
 
       <div className="project-home page-shell page-shell--full">
@@ -1106,12 +1002,7 @@ export function ProjectPage(_props: ProjectPageProps): JSX.Element {
                 label={t("project_page.open.action")}
                 loading_label={t("app.action.loading")}
                 is_loading={is_opening_project}
-                disabled={
-                  selected_project === null ||
-                  selected_project.preview === null ||
-                  is_preview_loading ||
-                  is_opening_project
-                }
+                disabled={selected_project === null || is_creating_project || is_opening_project}
                 on_click={() => {
                   void handle_open_project();
                 }}

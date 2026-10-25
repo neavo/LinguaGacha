@@ -33,7 +33,7 @@ import {
 type TestProjectDatabase = ProjectDatabase & {
   upsert_meta_entries: ReturnType<typeof vi.fn>;
   patch_item_translation_fields: ReturnType<typeof vi.fn>;
-  get_project_summary: ReturnType<typeof vi.fn>;
+  read_project_preview: ReturnType<typeof vi.fn>;
   close_project: ReturnType<typeof vi.fn>;
   create_project: ReturnType<typeof vi.fn>;
   transaction: ReturnType<typeof vi.fn>;
@@ -52,7 +52,7 @@ describe("ProjectLifecycleService", () => {
           return game;
         })
       : [write_file(path.join(root, "text.txt"), "原文")];
-    const database = new ProjectDatabase();
+    const database = new ProjectDatabase("1.0.0");
     const service = create_service({ database });
     const discover = vi.spyOn(FileFormatService.prototype, "collect_source_file_entries");
     const notify = vi.fn(() => {
@@ -88,7 +88,7 @@ describe("ProjectLifecycleService", () => {
         path.join(game, name!),
         godot_pack_fixture(new Map([...create_godot_fixture(), ["main.gd", Buffer.from(text!)]])),
       );
-    const database = new ProjectDatabase(),
+    const database = new ProjectDatabase("1.0.0"),
       service = create_service({ database });
     try {
       expect((await service.summarize_source_files({ source_paths: [game] })).godot_packs).toEqual([
@@ -129,7 +129,7 @@ describe("ProjectLifecycleService", () => {
     fs.mkdirSync(game);
     const carrier = path.join(game, "game.pck");
     fs.writeFileSync(carrier, pack);
-    const database = new ProjectDatabase();
+    const database = new ProjectDatabase("1.0.0");
     const service = create_service({ database });
     try {
       const empty = path.join(root, "empty.lg");
@@ -161,7 +161,7 @@ describe("ProjectLifecycleService", () => {
         0,
       ),
     );
-    const database = new ProjectDatabase();
+    const database = new ProjectDatabase("1.0.0");
     const snapshots: ProjectDataSnapshot[] = [];
     const service = create_service({
       database,
@@ -201,7 +201,7 @@ describe("ProjectLifecycleService", () => {
 
   it.each(["create", "load"] as const)("%s 快照准备失败回滚且不发布", async (operation) => {
     const project_path = path.join(create_temp_dir(), "rollback.lg");
-    const database = new ProjectDatabase();
+    const database = new ProjectDatabase("1.0.0");
     const session_state = create_session_state();
     const publish = vi.fn();
     try {
@@ -232,7 +232,7 @@ describe("ProjectLifecycleService", () => {
 
   it("新建提交后缓存失败保留工程，重开能恢复当前事实", async () => {
     const project_path = path.join(create_temp_dir(), "committed.lg");
-    const database = new ProjectDatabase();
+    const database = new ProjectDatabase("1.0.0");
     const session_state = create_session_state();
     const publish = vi.fn().mockImplementationOnce(() => {
       throw new Error("install failed");
@@ -262,7 +262,7 @@ describe("ProjectLifecycleService", () => {
 
   it.each(["close", "cache"])("加载提交后 %s 失败保留事实与恢复信息", async (phase) => {
     const project_path = path.join(create_temp_dir(), "scope.lg");
-    const database = new ProjectDatabase();
+    const database = new ProjectDatabase("1.0.0");
     await database.create_project(project_path, "scope");
     await database.transaction(project_path, (writer) =>
       writer.set_meta(project_path, "updated_at", "before"),
@@ -390,7 +390,7 @@ describe("ProjectLifecycleService", () => {
 
   it.each([true, false])("打开项目在缓存热机前协调同文件重复状态，开关为 %s", async (enabled) => {
     const project_path = path.join(create_temp_dir(), "duplicates.lg");
-    const database = new ProjectDatabase();
+    const database = new ProjectDatabase("1.0.0");
     try {
       await database.create_project(project_path, "duplicates", (database) => {
         database.set_meta(project_path, "skip_duplicate_source_text_enable", enabled);
@@ -533,7 +533,7 @@ describe("ProjectLifecycleService", () => {
   it("连续打开语言不同的工程时各自保留项目语言", async () => {
     const app_root = create_temp_dir();
     const source_path = write_file(path.join(app_root, "source", "script.txt"), "こんにちは");
-    const database = new ProjectDatabase();
+    const database = new ProjectDatabase("1.0.0");
     const service = create_service({ app_root, database });
     const project_a = path.join(app_root, "a.lg");
     const project_b = path.join(app_root, "b.lg");
@@ -582,7 +582,7 @@ describe("ProjectLifecycleService", () => {
     const app_root = create_temp_dir();
     const project_path = path.join(app_root, "created.lg");
     const source_path = write_file(path.join(app_root, "source", "script.txt"), "こんにちは");
-    const database = new ProjectDatabase();
+    const database = new ProjectDatabase("1.0.0");
     const service = create_service({
       app_root,
       database,
@@ -633,7 +633,7 @@ describe("ProjectLifecycleService", () => {
   it("create-commit 目标工程已存在时追加时间戳写入新路径", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date(2026, 5, 2, 3, 4, 5));
-    const database = new ProjectDatabase();
+    const database = new ProjectDatabase("1.0.0");
     try {
       const app_root = create_temp_dir();
       const project_path = write_file(path.join(app_root, "created.lg"), "old-project");
@@ -668,7 +668,7 @@ describe("ProjectLifecycleService", () => {
   it("create-commit 时间戳路径也存在时追加递增序号", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date(2026, 5, 2, 3, 4, 5));
-    const database = new ProjectDatabase();
+    const database = new ProjectDatabase("1.0.0");
     try {
       const app_root = create_temp_dir();
       const project_path = write_file(path.join(app_root, "created.lg"), "old-project");
@@ -720,7 +720,7 @@ describe("ProjectLifecycleService", () => {
       path.join(app_root, "builtin", "translation_prompt", "preset", "base.txt"),
       "翻译提示词",
     );
-    const database = new ProjectDatabase();
+    const database = new ProjectDatabase("1.0.0");
     const service = create_service({
       app_root,
       database,
@@ -774,7 +774,7 @@ describe("ProjectLifecycleService", () => {
   it("create-commit 在单个默认预设读取失败时继续创建可用工程", async () => {
     const app_root = create_temp_dir();
     const project_path = path.join(app_root, "created-with-missing-preset.lg");
-    const database = new ProjectDatabase();
+    const database = new ProjectDatabase("1.0.0");
     const log_manager = create_log_manager();
     const service = create_service({
       app_root,
@@ -842,7 +842,7 @@ describe("ProjectLifecycleService", () => {
       "{",
     );
     if (kind === "evb") fs.writeFileSync(broken_json, evb_fixture(new Map()).subarray(0, -1));
-    const database = new ProjectDatabase();
+    const database = new ProjectDatabase("1.0.0");
     const log_manager = create_log_manager();
     const service = create_service({
       app_root,
@@ -888,7 +888,7 @@ describe("ProjectLifecycleService", () => {
     write_file(path.join(game, "data/System.json"), "{}");
     write_file(path.join(game, "js/rmmz_core.js"), "");
     const source = write_file(path.join(game, "js/plugins/bad.js"), "<test>");
-    const database = new ProjectDatabase();
+    const database = new ProjectDatabase("1.0.0");
     const log_manager = create_log_manager();
     const service = create_service({ app_root, database, log_manager });
     try {
@@ -928,7 +928,7 @@ describe("ProjectLifecycleService", () => {
     const app_root = create_temp_dir();
     const project_path = path.join(app_root, "all-failed.lg");
     const broken_json = write_file(path.join(app_root, "source", "broken.json"), "{");
-    const database = new ProjectDatabase();
+    const database = new ProjectDatabase("1.0.0");
     const log_manager = create_log_manager();
     const service = create_service({
       app_root,
@@ -967,9 +967,36 @@ describe("ProjectLifecycleService", () => {
     }
   });
 
+  it("高版本打开在业务写入前释放占用并保留当前会话，确认后可重试", async () => {
+    const project_path = path.join(create_temp_dir(), "newer.lg");
+    const database = new ProjectDatabase("1.0.0");
+    const session_state = create_session_state({ loaded: true, projectPath: "current.lg" });
+    const project_event_handler = vi.fn();
+    const service = create_service({ database, session_state, project_event_handler });
+    try {
+      await database.create_project(project_path, "newer");
+      await database.transaction(project_path, (writer) =>
+        writer.set_meta(project_path, "target_app_version", "2.0.0"),
+      );
+      const before = fs.readFileSync(project_path);
+      await expect(service.load_project({ path: project_path })).rejects.toMatchObject({
+        code: "project.newer_app_version",
+        public_details: { target_app_version: "2.0.0", current_app_version: "1.0.0" },
+      });
+      expect(session_state.snapshot()).toEqual({ loaded: true, projectPath: "current.lg" });
+      expect(project_event_handler).not.toHaveBeenCalled();
+      expect(fs.readFileSync(project_path)).toEqual(before);
+      await service.load_project({ path: project_path, confirmed_target_app_version: "2.0.0" });
+      expect(session_state.snapshot()).toEqual({ loaded: true, projectPath: project_path });
+      expect((await database.get_all_meta(project_path)).target_app_version).toBe("2.0.0");
+    } finally {
+      await database.close();
+    }
+  });
+
   it("preview 在任务运行时读取另一工程的磁盘概览并保留当前会话", async () => {
     const project_path = path.join(create_temp_dir(), "preview.lg");
-    const database = new ProjectDatabase();
+    const database = new ProjectDatabase("1.0.0");
     await database.create_project(project_path, "preview");
     const session_state = create_session_state({ loaded: true, projectPath: "current.lg" });
     const project_event_handler = vi.fn();
@@ -988,16 +1015,6 @@ describe("ProjectLifecycleService", () => {
     } finally {
       await database.close();
     }
-  });
-
-  it("preview 在文件缺失时抛出 project.not_found", async () => {
-    const service = create_service({ database: create_database() });
-
-    await expect(
-      service.get_project_preview({
-        path: path.join(create_temp_dir(), "missing.lg"),
-      }),
-    ).rejects.toThrow(expect.objectContaining({ code: "project.not_found" }));
   });
 
   it("unload 先发布内部卸载事件，再清理会话和 database 缓存", async () => {
@@ -1038,14 +1055,14 @@ describe("ProjectLifecycleService", () => {
     expect(database.close_project).not.toHaveBeenCalled();
   });
 
-  // 每个用例使用独立临时目录，覆盖项目文件存在性判断且不污染工作区。
+  // 每个用例独占临时目录，隔离工程和来源文件。
   function create_temp_dir(): string {
     const temp_dir = fs.mkdtempSync(path.join(os.tmpdir(), "linguagacha-project-lifecycle-"));
     cleanup_paths.push(temp_dir);
     return temp_dir;
   }
 
-  // 生命周期服务通过真实文件存在性判断工程路径，测试文件写入集中走这个 helper。
+  // 文件内容同时供来源解析和真实数据库场景使用。
   function write_file(file_path: string, content = "demo"): string {
     fs.mkdirSync(path.dirname(file_path), { recursive: true });
     fs.writeFileSync(file_path, content, "utf-8");
@@ -1109,12 +1126,12 @@ describe("ProjectLifecycleService", () => {
       calls?: string[];
     } = {},
   ): TestProjectDatabase {
-    const get_project_summary = vi.fn();
+    const read_project_preview = vi.fn();
     const close_project = vi.fn(() => {
       options.calls?.push("closeProject");
     });
     return {
-      get_project_summary,
+      read_project_preview,
       prepare: async () => {},
       async read<T>(_path: string, callback: (reader: ProjectDatabaseAccess) => T): Promise<T> {
         return callback(this as unknown as ProjectDatabaseAccess);

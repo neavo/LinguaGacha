@@ -36,7 +36,7 @@ describe("ApiGatewayServer", () => {
     const log_manager = create_log_manager(app_root);
     const { gateway, backend_services } = create_gateway_fixture(
       app_root,
-      new ProjectDatabase(),
+      new ProjectDatabase("1.0.0"),
       log_manager,
     );
     const warning = vi.spyOn(log_manager, "warning");
@@ -165,7 +165,7 @@ describe("ApiGatewayServer", () => {
 
   it("文件查询提供轻量摘要和完整详情", async () => {
     const app_root = create_app_root();
-    const database = new ProjectDatabase();
+    const database = new ProjectDatabase("1.0.0");
     const log_manager = create_log_manager(app_root);
     const full_message = `启动完成\n${"完整详情".repeat(400)}\n详情尾部`;
     log_manager.info(full_message, { source: "test" });
@@ -206,7 +206,7 @@ describe("ApiGatewayServer", () => {
 
   it("接收 renderer 异常诊断并写入统一日志", async () => {
     const app_root = create_app_root();
-    const database = new ProjectDatabase();
+    const database = new ProjectDatabase("1.0.0");
     const log_manager = create_log_manager(app_root);
     const gateway = create_gateway_fixture(app_root, database, log_manager).gateway;
 
@@ -274,7 +274,7 @@ describe("ApiGatewayServer", () => {
       () => stderr_write.mockRestore(),
       () => console_error.mockRestore(),
     );
-    const fixture = create_gateway_fixture(create_app_root(), new ProjectDatabase());
+    const fixture = create_gateway_fixture(create_app_root(), new ProjectDatabase("1.0.0"));
     /** 让测试等待处理器真正进入在途阶段。 */
     let mark_handler_started: () => void = () => undefined;
     const handler_started = new Promise<void>((resolve) => {
@@ -349,7 +349,7 @@ describe("ApiGatewayServer", () => {
 
   /** 为生命周期测试创建可自动释放的网关。 */
   function create_gateway(): ApiGatewayServer {
-    return create_gateway_fixture(create_app_root(), new ProjectDatabase()).gateway;
+    return create_gateway_fixture(create_app_root(), new ProjectDatabase("1.0.0")).gateway;
   }
 
   /** 组合真实后端服务，隔离 Agent 与宿主能力。 */

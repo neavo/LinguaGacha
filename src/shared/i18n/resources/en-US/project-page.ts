@@ -28,12 +28,13 @@ export const en_us_project_page = {
     recent_title: "Recent Projects",
     empty: "No recent projects",
     ready_status: "Project Ready",
-    preview_loading_toast: "Reading project preview …",
     loading_toast: "Loading project …",
     preview_unavailable: "Failed to read project preview …",
     action: "Open Project",
     remove_unavailable:
       "Unable to remove this recent project entry right now. Please try again later …",
+    newer_app_version_description:
+      "This file targets app version <emphasis>v{VERSION}</emphasis>. Opening it with an older app version may corrupt data. Do you confirm that you want to continue …?",
     missing_file_description: "The project file is invalid. Remove it from the list …?",
   },
   preview: {

@@ -25,11 +25,12 @@ export const zh_cn_project_page = {
     recent_title: "最近打开",
     empty: "暂无最近打开的工程",
     ready_status: "工程已就绪",
-    preview_loading_toast: "正在读取工程预览 …",
     loading_toast: "正在加载工程 …",
     preview_unavailable: "读取工程预览失败 …",
     action: "打开工程",
     remove_unavailable: "移除最近使用记录失败 …",
+    newer_app_version_description:
+      "此文件对应的应用版本为 <emphasis>v{VERSION}</emphasis>，使用低版本应用打开可能导致数据损坏，是否确认继续打开 …?",
     missing_file_description: "工程文件已失效，是否从列表中移除 …?",
   },
   preview: {

@@ -8,7 +8,7 @@ import { row_number, row_text } from "../migration-row";
  * 旧工程可能缺少新表或 `assets.sort_order`，而当前文件顺序、asset 读取和后续写回迁移都依赖它。
  *
  * 生效场景：
- * `ProjectDatabase` 首次打开任意 `.lg` 连接时执行，先补齐 schema，再允许其它迁移读取项目事实。
+ * `ProjectDatabase` 创建或正式打开准备时执行，先补齐 schema，再允许其它迁移读取项目事实。
  *
  * 不处理范围：
  * 本文件只补物理结构，不写业务版本标记。规则和 Item 的数据写回由后续独立 Case 处理。

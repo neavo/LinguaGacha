@@ -1,7 +1,5 @@
 import { database_error } from "./database-error";
-import type { ProjectPreview } from "../../shared/project-preview";
 import { read_project_revision } from "../../domain/project-revision";
-import { build_project_translation_stats } from "../../shared/project-translation-stats";
 import type { PDFDocument, PDFDocumentRecord, PDFPage, PDFSummary } from "../../shared/pdf";
 import { read_pdf_document } from "../../shared/pdf-schema";
 import path from "node:path";
@@ -371,11 +369,6 @@ export class ProjectDatabaseAccess {
     this.with_project_connection(project_path, (db) => this.write_rule_text(db, rule_type, text));
   }
 
-  /** 聚合工程元数据和条目进度，供列表与状态读取。 */
-  public get_project_summary(project_path: string): ProjectPreview {
-    return this.with_project_connection(project_path, (db) => this.read_project_summary(db));
-  }
-
   /**
    * 按 asset 路径读取解压后的内容，隐藏 .lg 内部压缩格式
    */
@@ -738,31 +731,6 @@ export class ProjectDatabaseAccess {
     } catch {
       return "";
     }
-  }
-
-  /**
-   * 读取工程摘要，供打开预览和运行态快速判断使用
-   */
-  private read_project_summary(db: DatabaseSync): ProjectPreview {
-    const meta = this.value_record(this.read_all_meta(db));
-    const assets = db.prepare("SELECT path FROM assets ORDER BY sort_order ASC, id ASC").all();
-    const items = db
-      .prepare("SELECT data FROM items ORDER BY id ASC")
-      .all()
-      .map((row) => {
-        const item = this.value_record(json_parse(row["data"]));
-        return {
-          file_path: String(item["file_path"] ?? ""),
-          status: String(item["status"] ?? "NONE"),
-        };
-      });
-    const file_paths = assets.map((asset) => row_text(asset, "path"));
-    return {
-      file_paths,
-      created_at: String(meta["created_at"] ?? ""),
-      updated_at: String(meta["updated_at"] ?? ""),
-      translation_stats: build_project_translation_stats(items),
-    };
   }
 
   /**

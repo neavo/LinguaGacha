@@ -13,7 +13,7 @@ it("旧工程迁移保留身份与前序写入，关闭重开后实际导出已�
   using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-project-migrations-"));
   const project_path = path.join(temp.path, "fixture.lg");
   const epub_content = await create_epub_fixture("<ruby>漢<rt>かん</rt></ruby>");
-  const database = new ProjectDatabase();
+  const database = new ProjectDatabase("1.0.0");
   try {
     await database.create_project(project_path, "fixture", (database) => {
       database.add_asset(project_path, "book.epub", epub_content, "EPUB", null);
