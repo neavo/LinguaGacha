@@ -1,6 +1,5 @@
 import { expect, it } from "vitest";
 import { WolfReader, encode_wolf_string } from "./binary";
-
 it("CP932 和 UTF-8 保留空文本、换行和控制符，不可编码字符明确失败", () => {
   for (const utf8 of [false, true])
     for (const text of ["", "日本語\n\\cdb[0:1:2]", ...(utf8 ? ["𠮷"] : [])]) {
@@ -8,6 +7,12 @@ it("CP932 和 UTF-8 保留空文本、换行和控制符，不可编码字符明
       expect(reader.string()).toBe(text);
       reader.done();
     }
+  const embedded = Buffer.from([3, 0, 0, 0, 65, 0, 0]);
+  expect(() => new WolfReader(embedded).string()).toThrow("Embedded WOLF string terminator");
+  const description = new WolfReader(embedded);
+  expect(description.description()).toBe("A\0");
+  expect(description.descriptions).toEqual([{ start: 0, end: embedded.length, text: "A\0" }]);
+  expect(description.slots).toEqual([]);
   expect(() => encode_wolf_string("𠮷", false)).toThrow("CP932");
   expect(() => new WolfReader(Buffer.from([2, 0, 0, 0, 65])).string()).toThrow("Truncated");
   expect(() => new WolfReader(Buffer.from([1, 0, 0, 0, 65])).string()).toThrow("Unterminated");

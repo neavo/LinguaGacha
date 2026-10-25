@@ -2,8 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { expect, it } from "vitest";
-import { wolf_crypt_vectors } from "../../../test/wolf-crypt-vectors";
-import { wolf_vector } from "../../../test/wolf-crypt-fixture";
+import { wolf_vectors, wolf_vector } from "../../../test/wolf-vectors";
 import { create_wolfx_candidates, type WolfXCandidates } from "./key-collector";
 import { encode_wolfx_key, match_wolfx, write_wolfx_plaintext } from "./wolfx";
 import { BINARY_IO_CHUNK_BYTES } from "../shared/binary";
@@ -80,7 +79,7 @@ async function decode(bytes: Buffer, candidates: WolfXCandidates): Promise<Buffe
   }
 }
 
-it.each(wolf_crypt_vectors.wolfx)("$name 固定向量通过头部候选筛选并跨块解密", async (vector) => {
+it.each(wolf_vectors.wolfx)("$name 固定向量通过头部候选筛选并跨块解密", async (vector) => {
   const candidates = create_wolfx_candidates();
   candidates.masters.add(vector.key);
   candidates.strings.set(vector.string_id, new Set([vector.string]));
@@ -92,7 +91,7 @@ it.each(wolf_crypt_vectors.wolfx)("$name 固定向量通过头部候选筛选并
 
 it("CESU-8 保留代理码元，所需索引缺失时不能借用其它变量的值", async () => {
   expect(encode_wolfx_key("🔑").toString("hex")).toBe("eda0bdedb491");
-  const vector = wolf_crypt_vectors.wolfx.find((v) => v.name === "string")!,
+  const vector = wolf_vectors.wolfx.find((v) => v.name === "string")!,
     candidates = create_wolfx_candidates();
   candidates.strings.set(vector.string_id + 1, new Set([vector.string]));
   expect(await decode(wolf_vector(vector.input), candidates)).toBeNull();
@@ -102,9 +101,9 @@ it("CESU-8 保留代理码元，所需索引缺失时不能借用其它变量的
 
 it("同文候选合并，五点采样通过的异文候选报歧义", async () => {
   const candidates = create_wolfx_candidates();
-  candidates.strings.set(1, new Set(wolf_crypt_vectors.ambiguity));
+  candidates.strings.set(1, new Set(wolf_vectors.ambiguity));
   for (const name of ["equivalent", "ambiguous"]) {
-    const vector = wolf_crypt_vectors.wolfx.find((v) => v.name === name)!;
+    const vector = wolf_vectors.wolfx.find((v) => v.name === name)!;
     if (name === "equivalent")
       expect(
         (await decode(wolf_vector(vector.input), candidates))!.equals(wolf_vector(vector.output)),

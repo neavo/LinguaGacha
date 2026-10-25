@@ -1,7 +1,7 @@
 import { expect, it } from "vitest";
 import { createCipheriv } from "node:crypto";
-import { chacha20_xor, wolf_sha512 } from "./crypt";
-
+import { chacha20_xor, wolf_sha512, mt19937 } from "./crypt";
+import { wolf_vectors } from "../../../test/wolf-vectors";
 it.each([0, 63, 65531, 131077])("ChaCha20 在偏移 %i 与 Node 原生算法一致", (start) => {
   const key = Buffer.from(Array.from({ length: 32 }, (_, i) => i)),
     nonce = Buffer.from("000000090000004a00000000", "hex"),
@@ -22,4 +22,9 @@ it("修改版 SHA512 匹配固定 C++ 参考摘要", () => {
   ).toBe(
     "75f210aa1a0b5e24d9c71e72f0d32be60197e1736ba536ba70f7295b0502e77909d9d862cbb6344894951c9c7154eb51baf6a1dfa4c55dad0fc3bfcd62587fa2",
   );
+});
+
+it.each(wolf_vectors.mt)("MT19937 seed=$seed 匹配 C++ 标准库", ({ seed, words }) => {
+  const next = mt19937(seed);
+  expect(Array.from({ length: words.length }, next)).toEqual(words);
 });

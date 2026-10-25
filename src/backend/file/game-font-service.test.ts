@@ -8,13 +8,14 @@ import { font_fixture } from "../../test/font-fixture";
 import { wolf_files } from "../../test/wolf-fixture";
 import { GameFontService } from "./game-font-service";
 import { GamePrepareWorker } from "./shared/game/prepare-worker";
+import { read_resource } from "./godot/resource";
+import { u32 } from "./godot/binary";
+import { wolf_vectors, wolf_vector } from "../../test/wolf-vectors";
 import {
   create_godot_fixture,
   godot_pack_fixture,
   godot_project_fixture,
 } from "../../test/godot-fixture";
-import { read_resource } from "./godot/resource";
-import { u32 } from "./godot/binary";
 
 const native = new NativeFs();
 const OVERRIDE = '[gui]\ntheme/custom_font="res://lg_font.fontdata"\n';
@@ -308,4 +309,26 @@ it.each(["inspect", "apply"] as const)("%s 对 TTF 路径沿用原有 SFNT 解�
   await expect(service[method](request)).resolves.toEqual(
     method === "inspect" ? { godot_packs: [] } : {},
   );
+});
+
+it("WOLF 根目录加密字体在同一事务中解密并被替换", async () => {
+  using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-font-wolfx-"));
+  const request = write_game(temp.path),
+    root = path.dirname(request.game_path);
+  const cipher = path.join(root, "CUSTOM.TTF.wolfx");
+  fs.writeFileSync(
+    cipher,
+    wolf_vector(wolf_vectors.wolfx.find((v) => v.name === "default")!.input),
+  );
+  const service = new GameFontService(
+    new GameDirectoryOperations(),
+    new GamePrepareWorker(null, native).run,
+    native,
+  );
+  await service.inspect(request);
+  await service.apply(request);
+  expect(
+    fs.readFileSync(path.join(root, "CUSTOM.TTF")).equals(fs.readFileSync(request.font_path)),
+  ).toBe(true);
+  expect(fs.existsSync(cipher)).toBe(false);
 });

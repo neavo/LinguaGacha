@@ -1,8 +1,7 @@
 import { createHash } from "node:crypto";
 import { aes_ctr } from "./crypt";
 import { expect, it } from "vitest";
-import { wolf_crypt_vectors } from "../../../test/wolf-crypt-vectors";
-import { wolf_vector } from "../../../test/wolf-crypt-fixture";
+import { wolf_vectors, wolf_vector } from "../../../test/wolf-vectors";
 import {
   aes_keys,
   classify_wolf_archive,
@@ -22,7 +21,7 @@ it.each([
   expect(() => classify_wolf_archive(header)).toThrow("Unsupported WOLF archive: crypt=" + marker);
 });
 
-it.each(wolf_crypt_vectors.keys)("$type 密钥派生匹配独立参考字节", async ({ type, input, key }) => {
+it.each(wolf_vectors.keys)("$type 密钥派生匹配独立参考字节", async ({ type, input, key }) => {
   expect(
     (await derive_archive_key(wolf_vector(input), type as WolfKeyType)).equals(
       Buffer.from(key, "hex"),
@@ -33,7 +32,7 @@ it.each(wolf_crypt_vectors.keys)("$type 密钥派生匹配独立参考字节", a
   ).rejects.toThrow();
 });
 
-it.each(wolf_crypt_vectors.archiveKeys)(
+it.each(wolf_vectors.archiveKeys)(
   "$version 的 tail、内层流和 AES 参数匹配独立向量",
   ({ version, key, output }) => {
     const bytes = Buffer.from(key, "hex"),

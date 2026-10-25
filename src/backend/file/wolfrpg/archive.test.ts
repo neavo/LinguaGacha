@@ -4,10 +4,8 @@ import path from "node:path";
 import { expect, it } from "vitest";
 import { read_wolf_archive } from "./archive";
 import { wolf_archive_fixture } from "../../../test/wolf-archive-fixture";
-import { wolf_crypt_vectors } from "../../../test/wolf-crypt-vectors";
-import { wolf_vector } from "../../../test/wolf-crypt-fixture";
+import { wolf_vectors, wolf_vector } from "../../../test/wolf-vectors";
 import { BINARY_IO_CHUNK_BYTES } from "../shared/binary";
-
 // 测试自有内容由 UberWolf v0.6.4 的 v2.225 打包器生成，协议参考 f4191375，固定字节独立于夹具编码器。
 const LEGACY_ARCHIVE_VECTOR =
   "c4ngYNjAyMDgwAABNowQOgDKL4DylzBDaB4GVLDxx1unp0Iyi37dRKcEOb/r9zDBeBbbeAIiHX+9PR1rVfwifgeSygz/PduUoFRA8Q9/kODlF3479mAxU0imI6D8RSpC8EPxS/9NMunr14hvFdrG8evSC1cMt3wofnR6xxyshmGhJLZxBpSKb3L35AhIfoGuZOOW0uM3787yVp1qUntYSMaDQZqbKyDvR1XXGfGX20Oi/7lrLplX4vnz4iV+nfef2M3bvWqYDXx/6z/efu9TZd6F83xRG42/XzgrPX95ztI1YQvEPuQsV761y/lDznKmvdHTLhoYfT/PF/bBVURr8mquUrlP7u+CLrdV5mn2z1b74Pu7ddaxH9OuLu/tCxVfkMP0tVricEPO8tYn8wo8X169xK/PlSqzfNnk2Wof/ORal0xjvGoAVan0/Vhk+Zqf19tBRudt8pvBF/bDuum26wtmTetWu6gKkAMhRit9nXUu7EPOcl7N1GMfcpa3g925vP18t8rSNcvB2nNgSiA8OAXyZs7SSWyREEGQW9ZfeBUEV/Ly6iX2BQaeOatNClISrLcfXnTMXaX6WkCX4SbzcOnj69mW5ckpz12yJubIWa6Af5MmHzle5xu99lGq0LqCsoeNfO+Ub7i+cKyZL/Y6ztk/lvVayUk5h49H2CvLJlwteRNh0LtK3bhL1TGs6MPmuUef/JK/VHEvM+2qx57b1jv/VSvsYjzfmP1t07LOW43LAQ==";
@@ -42,7 +40,7 @@ function companion_of(version: number): Buffer | undefined {
   const type = ({ 200: "F1", 1000: "A0", 1010: "A1", 1020: "A2" } as Record<number, string>)[
     version
   ];
-  const vector = wolf_crypt_vectors.keys.find((key) => key.type === type);
+  const vector = wolf_vectors.keys.find((key) => key.type === type);
   return vector ? Buffer.from(vector.key, "hex") : undefined;
 }
 
@@ -208,3 +206,33 @@ it("损坏目录的越界、循环、重复目标和路径穿越在展开前拒�
     }
   }
 });
+
+it.each(wolf_vectors.archives)(
+  "独立打包器 crypt=$marker 覆盖短成员密钥和空目录",
+  async ({ marker, input }) => {
+    using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-wolf-reference-"));
+    const file = path.join(temp.path, "Data.wolf");
+    fs.writeFileSync(file, wolf_vector(input));
+    const handle = await fs.promises.open(file, "r");
+    try {
+      const archive = await read_wolf_archive(handle, undefined, async () => companion_of(marker)!);
+      expect(archive.directories.toSorted()).toEqual(["empty-directory", "nested"]);
+      const payload = Buffer.alloc(1024 * 1024 + 317);
+      for (let i = 0; i < payload.length; i++) payload[i] = (i * 13 + (i >>> 8)) % 251;
+      const expected = new Map([
+        ["nested/payload.bin", payload],
+        ["a", Buffer.from("short key path")],
+        ["empty.bin", Buffer.alloc(0)],
+        ["short.txt", Buffer.from("independent-reference archive payload")],
+      ]);
+      expect(archive.members.map((m) => m.name).sort()).toEqual([...expected.keys()].sort());
+      for (const member of archive.members) {
+        const chunks = [];
+        for await (const chunk of archive.chunks(member)) chunks.push(chunk);
+        expect(Buffer.concat(chunks).equals(expected.get(member.name)!), member.name).toBe(true);
+      }
+    } finally {
+      await handle.close();
+    }
+  },
+);

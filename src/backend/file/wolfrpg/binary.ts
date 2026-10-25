@@ -3,15 +3,17 @@ import iconv from "iconv-lite";
 import { compress_lz4, decompress_lz4, WOLF_MAX_DATA_BYTES } from "./lz4";
 import type { WolfLocation } from "./item";
 
+export type WolfByteRange = Readonly<{ start: number; end: number }>;
+type WolfDescription = WolfByteRange & Readonly<{ text: string }>;
+
 /** 字节区间仅属于本次解析，持久定位由 `location` 保存。 */
-export type WolfSlot = Readonly<{
-  start: number;
-  end: number;
-  text: string;
-  location: WolfLocation;
-  usage: "text" | "metadata";
-  context: string;
-}>;
+export type WolfSlot = WolfByteRange &
+  Readonly<{
+    text: string;
+    location: WolfLocation;
+    usage: "text" | "metadata";
+    context: string;
+  }>;
 const MAX_COUNT = 1000000; // 计数字段上限，拒绝损坏长度造成的超大分配。
 /** 未识别协议必须在目录提交前拒绝，与可保留原稿的成员解析失败分开。 */
 export class WolfProtocolError extends Error {}
@@ -22,12 +24,14 @@ export type WolfDocument = {
   compression: number | null; // LZ4 封装前的头部长度，`null` 表示散装数据。
   slots: WolfSlot[];
   details: unknown;
+  descriptions?: readonly WolfDescription[];
   offsets?: readonly number[]; // `Game.dat` 中随字符串总长度变化的长度与偏移字段。
 };
 
 /** 读取边界先验证再推进，未知区域保留在同一字节缓冲区。 */
 export class WolfReader {
   public readonly slots: WolfSlot[] = [];
+  public readonly descriptions: WolfDescription[] = [];
   /** 固定当前文件的字节、游标和编码。 */
   public constructor(
     public readonly bytes: Buffer,
@@ -68,18 +72,29 @@ export class WolfReader {
     usage: WolfSlot["usage"] = "metadata",
     context = "",
   ): string {
-    const start = this.at,
-      size = this.uint();
-    assert(size >= 1, "Invalid WOLF string length");
-    const bytes = this.take(size);
-    assert.equal(bytes[size - 1], 0, "Unterminated WOLF string");
-    const text = new TextDecoder(this.utf8 ? "utf-8" : "shift-jis", {
-      fatal: true,
-      ignoreBOM: true,
-    }).decode(bytes.subarray(0, -1));
+    const start = this.at;
+    const text = this.read_string();
     assert(!text.includes("\0"), "Embedded WOLF string terminator");
     if (location) this.slots.push({ start, end: this.at, text, location, usage, context });
     return text;
+  }
+  /** 说明允许内部 C0。字节区间供准备阶段清理，不参与翻译定位。 */
+  public description(): string {
+    const start = this.at,
+      text = this.read_string();
+    this.descriptions.push({ start, end: this.at, text });
+    return text;
+  }
+  /** 普通字符串和说明共用长度、终止符与编码校验。 */
+  private read_string(): string {
+    const size = this.uint();
+    assert(size >= 1, "Invalid WOLF string length");
+    const bytes = this.take(size);
+    assert.equal(bytes[size - 1], 0, "Unterminated WOLF string");
+    return new TextDecoder(this.utf8 ? "utf-8" : "shift-jis", {
+      fatal: true,
+      ignoreBOM: true,
+    }).decode(bytes.subarray(0, -1));
   }
   /** 要求完整消费布局，避免遗漏未知尾部。 */
   public done(): void {
@@ -149,7 +164,7 @@ export function encode_wolf_string(text: string, utf8: boolean): Buffer {
 /** 区间替换保留未知字节，随后更新 Game.dat 偏移并恢复原封装。 */
 export function replace_wolf_slots(
   document: WolfDocument,
-  edits: ReadonlyMap<WolfSlot, string>,
+  edits: ReadonlyMap<WolfByteRange, string>,
 ): Uint8Array {
   if (!edits.size) return document.original;
   const sorted = [...edits].sort(([a], [b]) => a.start - b.start),
@@ -180,4 +195,18 @@ export function replace_wolf_slots(
     bytes = Buffer.concat([bytes.subarray(0, document.compression), sizes, packed]);
   }
   return bytes;
+}
+
+/** 仅清理解析器声明的说明字段，保留 LF、CR 和其它字段的原始字节。 */
+export function normalize_wolf_descriptions(document: WolfDocument): Uint8Array {
+  const edits = new Map<WolfByteRange, string>();
+  for (const field of document.descriptions ?? []) {
+    const text = [...field.text]
+      .filter(
+        (character) => character.charCodeAt(0) >= 32 || character === "\n" || character === "\r",
+      )
+      .join("");
+    if (text !== field.text) edits.set(field, text);
+  }
+  return replace_wolf_slots(document, edits);
 }

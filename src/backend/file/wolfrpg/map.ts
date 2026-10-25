@@ -47,8 +47,9 @@ export function read_wolf_map(input: Uint8Array): WolfDocument & { details: Wolf
     Number.isSafeInteger(width * height * layers) && width * height * layers < 10000000,
     "Invalid WOLF map dimensions",
   );
-  if (reader.uint() !== 0xffffffff) {
-    reader.at -= 4;
+  // CP932 总是保存完整图块数组，只有 UTF-8 将 0xffffffff 解释为省略标记。
+  if (!doc.utf8 || reader.uint() !== 0xffffffff) {
+    if (doc.utf8) reader.at -= 4;
     reader.take(width * height * layers * 4);
   }
   const events = [];
