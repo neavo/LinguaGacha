@@ -1,3 +1,4 @@
+import { parse_app_version, compare_app_version, type AppVersion } from "@shared/app-version";
 import { JsonTool } from "../../../shared/utils/json-tool";
 import { normalize_backend_api_base_url } from "@shared/backend-api";
 import {
@@ -42,12 +43,6 @@ export type GithubReleaseUpdate = {
   latest_version: string; // GitHub release tag 归一出的三段式版本号
   release_url: string; // 自动更新不可用时交给 renderer 打开的发布页
   windows_zip_urls: WindowsReleaseZipUrls; // renderer 只保存 release 解析结果，目标架构由 main 判定
-};
-
-type SemanticVersion = {
-  major: number;
-  minor: number;
-  patch: number;
 };
 
 export type DesktopLocalErrorCode =
@@ -165,32 +160,8 @@ function build_api_url(base_url: string, path: string): string {
 }
 
 /** 提取三段版本用于更新比较，不参与展示文案。 */
-function parse_semantic_version(value: string): SemanticVersion | null {
-  const version_match = value.match(/(\d+)\.(\d+)\.(\d+)/u);
-  if (version_match === null) {
-    return null;
-  }
-
-  return {
-    major: Number(version_match[1]),
-    minor: Number(version_match[2]),
-    patch: Number(version_match[3]),
-  };
-}
-
-/**
- * 比较三段式版本号，返回值符号表达 left 相对 right 的新旧关系。
- */
-function compare_semantic_version(left: SemanticVersion, right: SemanticVersion): number {
-  if (left.major !== right.major) {
-    return left.major - right.major;
-  }
-
-  if (left.minor !== right.minor) {
-    return left.minor - right.minor;
-  }
-
-  return left.patch - right.patch;
+function parse_semantic_version(value: string): AppVersion | null {
+  return parse_app_version(value.match(/([0-9]+)\.([0-9]+)\.([0-9]+)/u)?.[0]);
 }
 
 /** 收窄发布元数据，保留下载选择所需的有效资产。 */
@@ -213,16 +184,16 @@ function normalize_github_release_update(
     return null;
   }
 
-  if (compare_semantic_version(latest_semantic_version, current_semantic_version) <= 0) {
+  if (compare_app_version(latest_semantic_version, current_semantic_version) <= 0) {
     return null;
   }
 
   return {
-    latest_version: `${latest_semantic_version.major}.${latest_semantic_version.minor}.${latest_semantic_version.patch}`,
+    latest_version: latest_semantic_version.value,
     release_url,
     windows_zip_urls: select_windows_release_zip_urls(
       payload.assets,
-      `${latest_semantic_version.major}.${latest_semantic_version.minor}.${latest_semantic_version.patch}`,
+      latest_semantic_version.value,
     ),
   };
 }

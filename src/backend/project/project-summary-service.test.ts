@@ -22,7 +22,7 @@ it("工作台同步读取提交缓存，PDF 修改、文本提交及文件删除
   const project = path.join(root, "test.lg");
   const bytes = create_pdf_fixture();
   const document = read_pdf_document(bytes);
-  const database = new ProjectDatabase();
+  const database = new ProjectDatabase("1.0.0");
   const session = new ProjectSessionState();
   const cache = new CacheManager({
     database,

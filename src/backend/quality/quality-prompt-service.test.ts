@@ -21,7 +21,7 @@ import { build_translation_output_format } from "../../shared/text/translation-o
 
 describe("QualityPromptService", () => {
   it("覆盖正文经真实持久化往返，重置删除记录并导出当前默认正文", async () => {
-    const database = new ProjectDatabase();
+    const database = new ProjectDatabase("1.0.0");
     cleanup_databases.push(database);
     const { service, session_state, app_root } = create_service(database);
     const project_path = path.join(create_temp_dir(), "overrides.lg");
@@ -122,7 +122,7 @@ describe("QualityPromptService", () => {
   });
 
   it("保存提示词时把 typed revision 请求交给 ProjectWriteStore", async () => {
-    const database = new ProjectDatabase();
+    const database = new ProjectDatabase("1.0.0");
     cleanup_databases.push(database);
     const { service, session_state, published } = create_service(database);
     const project_path = path.join(create_temp_dir(), "prompt.lg");

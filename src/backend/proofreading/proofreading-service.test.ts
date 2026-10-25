@@ -39,7 +39,7 @@ async function create_service(task_busy = false): Promise<{
   publisher: ReturnType<typeof create_test_project_change_publisher>;
   runtime_gate: RuntimeOperationGate;
 }> {
-  const database = new ProjectDatabase();
+  const database = new ProjectDatabase("1.0.0");
   cleanup_databases.push(database);
   const session_state = new ProjectSessionState();
   const lg_path = project_path("proofreading.lg");

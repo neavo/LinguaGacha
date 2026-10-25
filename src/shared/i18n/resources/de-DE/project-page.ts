@@ -28,12 +28,13 @@ export const de_de_project_page = {
     recent_title: "Letzte Projekte",
     empty: "Keine letzten Projekte",
     ready_status: "Projekt bereit",
-    preview_loading_toast: "Projektvorschau wird gelesen …",
     loading_toast: "Projekt wird geladen …",
     preview_unavailable: "Fehler beim Lesen der Projektvorschau …",
     action: "Projekt öffnen",
     remove_unavailable:
       "Dieser letzte Projekteintrag kann derzeit nicht entfernt werden. Bitte versuchen Sie es später erneut …",
+    newer_app_version_description:
+      "Diese Datei ist für App-Version <emphasis>v{VERSION}</emphasis> vorgesehen. Das Öffnen mit einer älteren App-Version kann Daten beschädigen. Möchten Sie die Datei trotzdem öffnen …?",
     missing_file_description: "Die Projektdatei ist ungültig. Aus der Liste entfernen …?",
   },
   preview: {

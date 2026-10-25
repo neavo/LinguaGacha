@@ -1,3 +1,4 @@
+import { update_project_file_version } from "../database/project-file-version";
 import { run_asset_file_type_migration } from "./database/asset-file-type-migration";
 import { run_renpy_rpy_file_type_migration } from "./database/renpy-rpy-file-type-migration";
 import type { DatabaseSync } from "node:sqlite";
@@ -24,18 +25,23 @@ const DATABASE_WRITEBACK_MIGRATIONS: readonly DatabaseWritebackMigration[] = [
 export const PROJECT_DATABASE_APPLIED_WRITEBACK_MIGRATIONS_META_KEY =
   "applied_writeback_migrations";
 
-/** 首次打开连接先补结构，再执行逐项原子写回。完成标记与数据在同一事务保存。 */
+/** 创建或打开准备先补结构，再执行逐项原子写回。完成标记与数据在同一事务保存。 */
 export function run_project_database_migrations(
   db: DatabaseSync,
+  current_app_version: string,
   writeback_migrations: readonly DatabaseWritebackMigration[] = DATABASE_WRITEBACK_MIGRATIONS,
 ): void {
-  run_in_transaction(db, () => run_project_schema_migration(db));
+  run_in_transaction(db, () => {
+    run_project_schema_migration(db);
+    update_project_file_version(db, current_app_version);
+  });
   const writeback_ids = writeback_migrations.map(({ id }) => id);
   const applied_ids = read_applied_writeback_migration_ids(db);
   for (const migration of writeback_migrations) {
     if (applied_ids.has(migration.id)) continue;
     run_in_transaction(db, () => {
       migration.run(db);
+      update_project_file_version(db, current_app_version);
       applied_ids.add(migration.id);
       write_applied_writeback_migration_ids(db, applied_ids, writeback_ids);
     });

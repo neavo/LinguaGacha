@@ -1104,7 +1104,7 @@ describe("ProjectWriteStore", () => {
   }> {
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), `linguagacha-write-${name}-`));
     const project_path = path.join(directory, `${name}.lg`);
-    const database = new ProjectDatabase();
+    const database = new ProjectDatabase("1.0.0");
     const project_event_handler = options.projectEventHandler ?? vi.fn();
     const published_changes: ProjectCommittedChange[] = [];
     await database.create_project(project_path, name);

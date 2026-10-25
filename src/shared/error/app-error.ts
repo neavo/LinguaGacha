@@ -29,6 +29,11 @@ export const APP_ERROR_DEFINITIONS = {
     severity: "expected",
   },
   "project.not_loaded": { message: "No project is loaded.", status: 409, severity: "expected" },
+  "project.newer_app_version": {
+    message: "The project targets a newer application version. Confirmation is required.",
+    status: 409,
+    severity: "expected",
+  },
   "project.not_found": {
     message: "The project file does not exist.",
     status: 404,

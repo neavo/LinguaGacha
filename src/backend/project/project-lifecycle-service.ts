@@ -167,10 +167,9 @@ export class ProjectLifecycleService {
    */
   private async load_project_under_lease(body: JsonRecord): Promise<JsonRecord> {
     const project_path = this.require_body_string(body, "path");
-    this.assert_project_file_exists(project_path);
     let committed = false; // 包含连接释放在内的提交后步骤都只能要求恢复。
     try {
-      await this.database.prepare(project_path);
+      await this.database.prepare(project_path, body["confirmed_target_app_version"]);
       // 打开期迁移只生成 operation，和 updated_at 一起提交后才暴露 loaded 状态
       const migration_writes = await build_project_open_writes({
         project_path,
@@ -616,9 +615,7 @@ export class ProjectLifecycleService {
    */
   public async get_project_preview(body: JsonRecord): Promise<ProjectPreviewResponse> {
     const project_path = this.require_body_string(body, "path");
-    this.assert_project_file_exists(project_path);
-    await this.database.prepare(project_path);
-    return { preview: await this.database.get_project_summary(project_path) };
+    return { preview: await this.database.read_project_preview(project_path) };
   }
 
   /**
@@ -787,17 +784,6 @@ export class ProjectLifecycleService {
       throw new AppErrors.AppError("request.validation_failed");
     }
     return value;
-  }
-
-  /**
-   * 打开既有工程前必须先确认文件存在，缺失时映射为 project.not_found
-   */
-  private assert_project_file_exists(project_path: string): void {
-    if (!this.native_fs.exists(project_path)) {
-      throw new AppErrors.AppError("project.not_found", {
-        public_details: { filename: path.basename(project_path) },
-      });
-    }
   }
 
   /**

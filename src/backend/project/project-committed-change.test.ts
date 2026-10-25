@@ -9,7 +9,7 @@ import { build_project_committed_change } from "./project-committed-change";
 it("规范行增量与修订使用提交快照，不受后续数据库变化影响", async () => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), "lg-committed-change-"));
   const project = path.join(directory, "project.lg");
-  const database = new ProjectDatabase();
+  const database = new ProjectDatabase("1.0.0");
   try {
     await database.create_project(project, "test");
     await database.transaction(project, (writer) =>
@@ -54,7 +54,7 @@ it("规范行增量与修订使用提交快照，不受后续数据库变化影�
 it.each(["items", "files", "pdf"] as const)("提交快照只读取实际变化的 %s 分区", async (section) => {
   using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-commit-sections-"));
   const project = path.join(temp.path, "project.lg");
-  const database = new ProjectDatabase();
+  const database = new ProjectDatabase("1.0.0");
   try {
     await database.create_project(project, "test");
     await database.transaction(project, (writer) =>

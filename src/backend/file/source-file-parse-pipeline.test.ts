@@ -63,7 +63,7 @@ describe("SourceFileParsePipeline", () => {
     expect(draft.files.map((file) => file.file_type)).toEqual(expected_types);
     expect(draft.items.every((item) => item["src"] !== "")).toBe(true);
 
-    const database = new ProjectDatabase();
+    const database = new ProjectDatabase("1.0.0");
     const project_path = path.join(temp_dir.path, "project.lg");
     try {
       await database.create_project(project_path, "文件类型", (database) => {

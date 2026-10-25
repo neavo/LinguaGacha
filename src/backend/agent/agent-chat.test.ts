@@ -288,7 +288,7 @@ async function project() {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "lg-chat-"));
   roots.push(root);
   const file = path.join(root, "project.lg");
-  const database = new ProjectDatabase();
+  const database = new ProjectDatabase("1.0.0");
   await database.create_project(file, "持久化");
   return { database, file };
 }

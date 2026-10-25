@@ -27,11 +27,12 @@ export const ko_kr_project_page = {
     recent_title: "최근 열었던 프로젝트",
     empty: "최근 열었던 프로젝트가 없습니다",
     ready_status: "프로젝트 준비 완료",
-    preview_loading_toast: "프로젝트 미리 보기 읽는 중 …",
     loading_toast: "프로젝트 불러오는 중 …",
     preview_unavailable: "프로젝트 미리 보기 읽기 실패 …",
     action: "프로젝트 열기",
     remove_unavailable: "최근 사용 기록을 제거할 수 없습니다. 잠시 후 다시 시도해 주세요 …",
+    newer_app_version_description:
+      "이 파일의 대상 앱 버전은 <emphasis>v{VERSION}</emphasis>입니다. 이전 버전의 앱으로 열면 데이터가 손상될 수 있습니다. 계속 여시겠습니까 …?",
     missing_file_description: "프로젝트 파일을 사용할 수 없습니다. 목록에서 제거할까요 …?",
   },
   preview: {

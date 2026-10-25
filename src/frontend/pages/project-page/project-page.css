@@ -319,3 +319,8 @@
   flex-direction: column;
   gap: var(--ui-list-gap-dense);
 }
+
+.project-home__version-emphasis {
+  color: var(--primary);
+  overflow-wrap: anywhere;
+}

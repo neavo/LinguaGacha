@@ -10,7 +10,7 @@ import { normalize_batch_translation_progress } from "../../domain/batch-transla
 
 /** 用内存数据库与真实运行门禁验证完成链。 */
 function setup() {
-  const database = new ProjectDatabase();
+  const database = new ProjectDatabase("1.0.0");
   const gate = new RuntimeOperationGate();
   const session = new ProjectSessionState();
   const runtime = new BatchTranslationRuntime(session, database, gate);

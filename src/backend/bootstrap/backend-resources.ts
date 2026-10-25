@@ -37,11 +37,12 @@ export class BackendResources {
       builtinRoot: options.builtinRoot,
     });
     const metadata = new AppMetadataService(paths);
+    const current_app_version = metadata.read_version();
     const log_manager = new LogManager({
       logDir: paths.get_log_dir(),
       ...(options.logTargets === undefined ? {} : { targets: options.logTargets }),
     });
-    const database = new ProjectDatabase();
+    const database = new ProjectDatabase(current_app_version);
     let proxy_http_client: ProxyHttpClient | null = null;
 
     try {
