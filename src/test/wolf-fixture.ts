@@ -108,7 +108,7 @@ export function wolf_map(version = 0x65, utf8 = true): Buffer {
     wolf_uint(1),
     wolf_uint(1),
     ...(version >= 0x67 ? [wolf_uint(0), wolf_uint(4)] : []),
-    wolf_uint(0xffffffff),
+    ...(utf8 ? [wolf_uint(0xffffffff)] : [Buffer.alloc((version >= 0x67 ? 4 : 3) * 4, 0xff)]),
     Buffer.from([0x6f]),
     wolf_uint(12345),
     wolf_uint(77),

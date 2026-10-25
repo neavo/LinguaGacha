@@ -27,7 +27,7 @@ import assert from "node:assert/strict";
 import { crc32 } from "node:zlib";
 import { setImmediate } from "node:timers/promises";
 import { WOLF_MAX_DATA_BYTES } from "./lz4";
-import { aes_ctr, chacha20_xor, expand_aes_key, rng, type WolfAesKeys } from "./crypt";
+import { aes_ctr, chacha20_xor, expand_aes_key, rng, pro_key_aes, type WolfAesKeys } from "./crypt";
 import {
   BINARY_COMPUTE_STEP_BYTES,
   BINARY_IO_CHUNK_BYTES,
@@ -91,128 +91,6 @@ export function classify_wolf_archive(header: Buffer): WolfArchiveMarker | null 
 /** 首字节只标识类型，内容由密钥派生校验。 */
 export function classify_wolf_key(header: Buffer): WolfKeyType | null {
   return WOLF_KEY_TYPES[header[0] ?? -1] ?? null;
-}
-
-/** A1/A2 的自定义 RNG 链只在当前派生调用内保存状态。 */
-async function pro_key_aes(seeds: Uint8Array, signal?: AbortSignal): Promise<WolfAesKeys> {
-  let seed1 = seeds[0]!,
-    seed2 = seeds[1]!,
-    counter = 0;
-  const data = Array.from({ length: 32 }, () => new Uint32Array(256));
-  /** 第一种递推更新 `seed1`，后续链继续消费其状态。 */
-  const next1 = () => {
-    const part = seed1 ^ (((seed1 << 11) ^ seed1) >>> 8);
-    let state = (Math.imul(1664525, (seed1 << 11) ^ part) + 1013904223) >>> 0;
-    state ^= ((13 * part + 95) & 1) === 0 ? state >>> 3 : state << 2;
-    if (state & 0x400) {
-      state ^= state << 21;
-      state ^= state >>> 9;
-    } else {
-      state ^= state << 2;
-      state ^= state >>> 22;
-    }
-    if ((state & 0xfffff) === 0) state += 256;
-    return (seed1 = state >>> 0);
-  };
-  /** 第二种递推与第一种共用 `seed1`，调用顺序属于派生协议。 */
-  const next2 = () => {
-    let state = (Math.imul(1664525, seed1) + 1013904223) >>> 0;
-    const shift = (seed1 & 7) + 1;
-    if (state % 3 === 1) state ^= state >>> shift;
-    else if (state % 3 === 2) state = ~state + (state << shift);
-    else state ^= state << shift;
-    state >>>= 0;
-    if (!state) state = 0x173bef;
-    else if (!(state & 65535)) state ^= 0x55aa55aa;
-    return (seed1 = state >>> 0);
-  };
-  /** 独立推进 `seed2`，为链混合提供另一条随机序列。 */
-  const next3 = () => {
-    let state = Math.imul(1566083941, seed2) ^ Math.imul(292331520, seed2);
-    state ^= (state >>> 17) ^ ((state ^ (state >>> 17)) << 5);
-    state = Math.imul(69069, state ^ ((state ^ (state >>> 11)) & 0x3fffffff)) >>> 0;
-    if (!state) state = 1566083941;
-    else {
-      if (!(state & 65535)) state ^= 0x59a6f141;
-      if (!(state & 0xfffff)) state += 256;
-    }
-    return (seed2 = state >>> 0);
-  };
-  /** 原地改写状态行，跨行保留随机状态和调用计数。 */
-  const chain = (row: Uint32Array) => {
-    for (let i = 0; i < row.length; i++) {
-      const rn = next2();
-      let value = (rn ^ next3()) >>> 0;
-      counter = (counter + 1) >>> 0;
-      if (!(counter & 1)) value = (value + next3()) >>> 0;
-      if (!(counter % 3)) value = (value ^ (next1() + 3)) >>> 0;
-      if (!(counter % 7)) value = (value + next3() + 1) >>> 0;
-      if (!(counter & 7)) value = Math.imul(value, next1()) >>> 0;
-      if (!(((i + seed1) >>> 0) % 5)) value = (value ^ next1()) >>> 0;
-      if (!(counter % 9)) value = (value + next2() + 4) >>> 0;
-      if (!(counter % 24)) value = (value + next2() + 7) >>> 0;
-      if (!(counter % 31)) value = (value + Math.imul(3, next3())) >>> 0;
-      if (!(counter % 61)) value = (value + next3() + 1) >>> 0;
-      if (!(counter % 161)) value = (value + next2()) >>> 0;
-      if ((rn & 65535) === 256) value = (value + Math.imul(3, next3())) >>> 0;
-      row[i] = value;
-    }
-  };
-  for (const row of data) {
-    await setImmediate();
-    signal?.throwIfAborted();
-    chain(row);
-  }
-  const crypt = new Uint8Array(48);
-  for (let idx = 0; idx < crypt.length; idx++) {
-    await setImmediate();
-    signal?.throwIfAborted();
-    let a2 = (idx + seeds[3]!) >>> 0,
-      a3 = (seeds[2]! - idx) >>> 0;
-    for (let i = 0, iterations = 20; i < iterations; i++) {
-      const row = (a2 ^ next1()) & 31,
-        column = (a3 ^ next2()) & 255;
-      a3 = data[row]![column]!;
-      switch (((a2 + counter) >>> 0) % 20) {
-        case 1:
-          chain(data[(a2 + 5) & 31]!);
-          break;
-        case 2:
-          a3 = (a3 ^ next1()) >>> 0;
-          break;
-        case 5:
-          if (!(a2 & 0xfffff)) crypt[idx]! ^= next3();
-          break;
-        case 9:
-        case 14:
-          crypt[next2() % 48]! += a3;
-          break;
-        case 11:
-          crypt[idx]! ^= next1();
-          break;
-        case 17:
-          iterations++;
-          break;
-        case 19:
-          if (!(a2 & 65535)) crypt[idx]! ^= next2();
-          break;
-      }
-      a2 = (a2 + next3()) >>> 0;
-      iterations = Math.min(iterations, 50);
-    }
-    crypt[idx]! += a3;
-  }
-  const indexes = Uint8Array.from({ length: 48 }, (_, i) => i),
-    random = rng(seeds[1]! ^ seeds[2]!);
-  for (let i = 0; i < indexes.length; i++) {
-    const j = random() % 48;
-    [indexes[i], indexes[j]] = [indexes[j]!, indexes[i]!];
-  }
-  const result = Uint8Array.from(indexes, (i) => crypt[i]!);
-  return {
-    key: expand_aes_key(result.subarray(0, 16)),
-    iv: result.subarray(16, 32),
-  };
 }
 
 /** 密钥头只标识类型，长度、取样位置和 NUL/tail 都在 worker 内校验。 */
@@ -295,8 +173,9 @@ const SALT_PASSWORD_331 = Uint8Array.from([
   0x60, 0x9b, 0x4a, 0x38, 0x17, 0xf3, 0x69, 0x59, 0xa4, 0xc7, 0x9a, 0x43, 0x63, 0xe6, 0x54, 0xaf,
   0xdb, 0xbb, 0x43, 0x58,
 ]);
-/** 旧版密钥由交错字节的两个 CRC32 拼成七字节。 */
+/** 短材料先追加协议盐，再由交错字节的两个 CRC32 派生七字节密钥。 */
 export function old_key(source: Uint8Array): Buffer {
+  if (source.length < 4) source = Buffer.concat([source, Buffer.from("DXBDXARC")]);
   const a: number[] = [],
     b: number[] = [];
   for (let i = 0; i < source.length; i++) (i % 2 ? b : a).push(source[i]!);

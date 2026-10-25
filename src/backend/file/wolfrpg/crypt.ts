@@ -331,3 +331,151 @@ export function wolf_sha512(input: Buffer): string {
   }
   return hash.map((x) => x.toString(16).padStart(16, "0")).join("");
 }
+
+/** 核心 `0x55/0x56` 与 `A1/A2` 共用自定义 RNG 链，状态归当前派生调用。 */
+export async function pro_key_aes(seeds: Uint8Array, signal?: AbortSignal): Promise<WolfAesKeys> {
+  let seed1 = seeds[0]!,
+    seed2 = seeds[1]!,
+    counter = 0;
+  const data = Array.from({ length: 32 }, () => new Uint32Array(256));
+  /** 第一种递推更新 `seed1`，后续链继续消费其状态。 */
+  const next1 = () => {
+    const part = seed1 ^ (((seed1 << 11) ^ seed1) >>> 8);
+    let state = (Math.imul(1664525, (seed1 << 11) ^ part) + 1013904223) >>> 0;
+    state ^= ((13 * part + 95) & 1) === 0 ? state >>> 3 : state << 2;
+    if (state & 0x400) {
+      state ^= state << 21;
+      state ^= state >>> 9;
+    } else {
+      state ^= state << 2;
+      state ^= state >>> 22;
+    }
+    if ((state & 0xfffff) === 0) state += 256;
+    return (seed1 = state >>> 0);
+  };
+  /** 第二种递推与第一种共用 `seed1`，调用顺序属于派生协议。 */
+  const next2 = () => {
+    let state = (Math.imul(1664525, seed1) + 1013904223) >>> 0;
+    const shift = (seed1 & 7) + 1;
+    if (state % 3 === 1) state ^= state >>> shift;
+    else if (state % 3 === 2) state = ~state + (state << shift);
+    else state ^= state << shift;
+    state >>>= 0;
+    if (!state) state = 0x173bef;
+    else if (!(state & 65535)) state ^= 0x55aa55aa;
+    return (seed1 = state >>> 0);
+  };
+  /** 独立推进 `seed2`，为链混合提供另一条随机序列。 */
+  const next3 = () => {
+    let state = Math.imul(1566083941, seed2) ^ Math.imul(292331520, seed2);
+    state ^= (state >>> 17) ^ ((state ^ (state >>> 17)) << 5);
+    state = Math.imul(69069, state ^ ((state ^ (state >>> 11)) & 0x3fffffff)) >>> 0;
+    if (!state) state = 1566083941;
+    else {
+      if (!(state & 65535)) state ^= 0x59a6f141;
+      if (!(state & 0xfffff)) state += 256;
+    }
+    return (seed2 = state >>> 0);
+  };
+  /** 原地改写状态行，跨行保留随机状态和调用计数。 */
+  const chain = (row: Uint32Array) => {
+    for (let i = 0; i < row.length; i++) {
+      const rn = next2();
+      let value = (rn ^ next3()) >>> 0;
+      counter = (counter + 1) >>> 0;
+      if (!(counter & 1)) value = (value + next3()) >>> 0;
+      if (!(counter % 3)) value = (value ^ (next1() + 3)) >>> 0;
+      if (!(counter % 7)) value = (value + next3() + 1) >>> 0;
+      if (!(counter & 7)) value = Math.imul(value, next1()) >>> 0;
+      if (!(((i + seed1) >>> 0) % 5)) value = (value ^ next1()) >>> 0;
+      if (!(counter % 9)) value = (value + next2() + 4) >>> 0;
+      if (!(counter % 24)) value = (value + next2() + 7) >>> 0;
+      if (!(counter % 31)) value = (value + Math.imul(3, next3())) >>> 0;
+      if (!(counter % 61)) value = (value + next3() + 1) >>> 0;
+      if (!(counter % 161)) value = (value + next2()) >>> 0;
+      if ((rn & 65535) === 256) value = (value + Math.imul(3, next3())) >>> 0;
+      row[i] = value;
+    }
+  };
+  for (const row of data) {
+    await setImmediate();
+    signal?.throwIfAborted();
+    chain(row);
+  }
+  const crypt = new Uint8Array(48);
+  for (let idx = 0; idx < crypt.length; idx++) {
+    await setImmediate();
+    signal?.throwIfAborted();
+    let a2 = (idx + seeds[3]!) >>> 0,
+      a3 = (seeds[2]! - idx) >>> 0;
+    for (let i = 0, iterations = 20; i < iterations; i++) {
+      const row = (a2 ^ next1()) & 31,
+        column = (a3 ^ next2()) & 255;
+      a3 = data[row]![column]!;
+      switch (((a2 + counter) >>> 0) % 20) {
+        case 1:
+          chain(data[(a2 + 5) & 31]!);
+          break;
+        case 2:
+          a3 = (a3 ^ next1()) >>> 0;
+          break;
+        case 5:
+          if (!(a2 & 0xfffff)) crypt[idx]! ^= next3();
+          break;
+        case 9:
+        case 14:
+          crypt[next2() % 48]! += a3;
+          break;
+        case 11:
+          crypt[idx]! ^= next1();
+          break;
+        case 17:
+          iterations++;
+          break;
+        case 19:
+          if (!(a2 & 65535)) crypt[idx]! ^= next2();
+          break;
+      }
+      a2 = (a2 + next3()) >>> 0;
+      iterations = Math.min(iterations, 50);
+    }
+    crypt[idx]! += a3;
+  }
+  const indexes = Uint8Array.from({ length: 48 }, (_, i) => i),
+    random = rng(seeds[1]! ^ seeds[2]!);
+  for (let i = 0; i < indexes.length; i++) {
+    const j = random() % 48;
+    [indexes[i], indexes[j]] = [indexes[j]!, indexes[i]!];
+  }
+  const result = Uint8Array.from(indexes, (i) => crypt[i]!);
+  return {
+    key: expand_aes_key(result.subarray(0, 16)),
+    iv: result.subarray(16, 32),
+  };
+}
+
+/** 标准 MT19937，核心 0x55/0x56 使用完整的无符号 32 位输出。 */
+export function mt19937(seed: number): () => number {
+  const size = 624,
+    period = 397;
+  const state = new Uint32Array(size);
+  state[0] = seed >>> 0;
+  for (let i = 1; i < size; i++)
+    state[i] = (Math.imul(1812433253, state[i - 1]! ^ (state[i - 1]! >>> 30)) + i) >>> 0;
+  let index = size;
+  return () => {
+    if (index === size) {
+      for (let i = 0; i < size; i++) {
+        const value = (state[i]! & 0x80000000) | (state[(i + 1) % size]! & 0x7fffffff);
+        state[i] = state[(i + period) % size]! ^ (value >>> 1) ^ (value & 1 ? 0x9908b0df : 0);
+      }
+      index = 0;
+    }
+    let value = state[index++]!;
+    value ^= value >>> 11;
+    value ^= (value << 7) & 0x9d2c5680;
+    value ^= (value << 15) & 0xefc60000;
+    value ^= value >>> 18;
+    return value >>> 0;
+  };
+}

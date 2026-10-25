@@ -36,7 +36,7 @@ export function read_wolf_database(
     const names: string[] = [];
     for (let m = p.count(), record = 0; record < m; record++)
       names.push(p.string({ kind: "database_record", type, record }));
-    p.string();
+    p.description(); // 类型说明只供准备阶段清理，不登记翻译槽位。
     const meta = p.count();
     assert(meta >= fields.length, "Invalid WOLF database field metadata");
     for (const field of fields) field.type = p.byte();
@@ -123,6 +123,7 @@ export function read_wolf_database(
       utf8: doc.utf8,
       compression: null,
       slots: p.slots,
+      descriptions: p.descriptions,
       details: { types: types.map(({ name, fields, names }) => ({ name, fields, names })) },
     },
     types,

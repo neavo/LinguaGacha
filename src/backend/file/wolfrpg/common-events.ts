@@ -4,7 +4,7 @@ import { read_wolf_command, WOLF_COMMAND, type WolfCommand } from "./commands";
 import { RESOURCE_EXTENSIONS } from "../../../shared/text/text-resource-reference";
 
 const MAGIC = [0, 0x57, 0, 0, 0x4f, 0x4c, 0, 0x46, 0x43, 0];
-const VERSIONS = [0x90, 0x91, 0x93, 0xcc]; // 支持的布局版本。
+const VERSIONS = [0x90, 0x91, 0xc9, 0x93, 0xcc]; // 支持的布局版本。
 const COMPRESSED = [0x93, 0xcc]; // 其中使用 LZ4 封装的版本。
 const SELF_VARIABLE_BASE = 1600000; // 变量编号 1600000 + k 指所在公共事件的 \cself[k]。
 const DATABASE_READ = 1; // `250` 标志位 12–15 为该值时，从数据库读入变量。
@@ -57,8 +57,8 @@ export function read_wolf_common(
           doc.compression !== null,
         ),
       );
-    const description = reader.string();
     reader.string();
+    const description = reader.description(); // 第二个字符串才是允许清理 C0 的说明字段。
     reader.expect(0x8f);
     for (let n = reader.count(); n; n--) reader.string();
     reader.take(reader.count());
@@ -79,6 +79,7 @@ export function read_wolf_common(
   assert(reader.byte() >= 0x89, "Invalid WOLF common file terminator");
   reader.done();
   doc.slots = reader.slots;
+  doc.descriptions = reader.descriptions;
   return Object.assign(doc, { details: { version: doc.bytes[10]!, events } });
 }
 
