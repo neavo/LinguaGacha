@@ -141,11 +141,14 @@ function read_non_negative_integer(value: unknown): number {
   return Math.trunc(read_non_negative_number(value));
 }
 
-/** 本次连续不可用期间的恢复事实，供任务快照和页面共同消费。 */
-export type BatchTranslationRequestRecovery = Readonly<{
-  retry_count: number; // 实际派发的恢复请求总数，任一密钥恢复正常后清零。
-  retry_at: number | null; // 毫秒时间戳，收束或探测期间尚无下一次派发时间。
-}>;
+/** 全部密钥不可用且没有普通请求在途时的恢复阶段；阶段由调度器决定，前端时钟只更新秒数。 */
+export type BatchTranslationRequestRecovery =
+  | Readonly<{
+      phase: "waiting";
+      retry_count: number; // 连续全部不可用期间实际派发的恢复请求数，任一密钥恢复正常后清零。
+      retry_at: number; // 毫秒时间戳，同时考虑密钥冷却和请求速率。
+    }>
+  | Readonly<{ phase: "retrying" }>; // 恢复请求在途。
 
 export type BatchTranslationRequestState = Readonly<{
   request_in_flight_count: number;

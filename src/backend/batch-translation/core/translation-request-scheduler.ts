@@ -181,19 +181,18 @@ export class TranslationRequestScheduler implements TranslationRequestPort {
 
   /** 页面只读取恢复事实；正常并发占满和独立速率等待不构成密钥故障。 */
   private read_recovery(): BatchTranslationRequestRecovery | null {
-    if (
-      this.keys.some((key) => key.state === "ready") ||
-      (this.queue.length === 0 && this.in_flight === 0)
-    )
-      return null;
-    const retry_count = this.recovery_retry_count;
+    if (this.terminal_error !== null) return null; // 终止后只等待在途请求收尾。
+    // draining 密钥仍有普通请求在途，其结算优先于其他密钥的探测提示。
+    if (this.keys.some((key) => key.state === "ready" || key.state === "draining")) return null;
     if (this.keys.some((key) => key.state === "probing"))
-      return Object.freeze({ retry_count, retry_at: null });
+      return Object.freeze({ phase: "retrying" });
+    if (this.queue.length === 0) return null; // 全部密钥冷却且没有待派发请求。
     const now = Date.now();
-    const delay = this.read_dispatch_delay(now);
-    if (this.in_flight < this.concurrency_limit && Number.isFinite(delay))
-      return Object.freeze({ retry_count, retry_at: now + Math.ceil(delay) });
-    return Object.freeze({ retry_count, retry_at: null });
+    return Object.freeze({
+      phase: "waiting",
+      retry_count: this.recovery_retry_count,
+      retry_at: now + Math.ceil(this.read_dispatch_delay(now)),
+    });
   }
 
   /** 轮换扫描当前可用密钥，冷却结束的密钥仅取得一次恢复资格。 */

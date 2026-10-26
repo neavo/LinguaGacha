@@ -176,15 +176,18 @@ export function normalize_batch_translation_snapshot(
 /** HTTP 与 SSE 共用校验入口，并冻结恢复事实供历史快照共享。 */
 function normalize_request_recovery(raw: unknown): BatchTranslationRequestRecovery | null {
   if (typeof raw !== "object" || raw === null) return null;
-  const { retry_count, retry_at } = raw as Record<string, unknown>;
+  const { phase, retry_count, retry_at } = raw as Record<string, unknown>;
+  if (phase === "retrying") return Object.freeze({ phase });
   if (
+    phase !== "waiting" ||
     typeof retry_count !== "number" ||
     !Number.isSafeInteger(retry_count) ||
     retry_count < 0 ||
-    (retry_at !== null && (typeof retry_at !== "number" || !Number.isFinite(retry_at)))
+    typeof retry_at !== "number" ||
+    !Number.isFinite(retry_at)
   )
     return null;
-  return Object.freeze({ retry_count, retry_at });
+  return Object.freeze({ phase, retry_count, retry_at });
 }
 /** 隔离历史展示中的进度和待处理 ID 引用。 */
 export function clone_translation_task_snapshot(

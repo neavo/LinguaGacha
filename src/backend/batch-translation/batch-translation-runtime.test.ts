@@ -129,13 +129,13 @@ describe("批量翻译完成链", () => {
     try {
       await runtime.execute(handle, () => work.promise);
       await runtime.publish_status(handle, "running");
-      const recovery = { retry_count: 3, retry_at: Date.now() + 60_000 };
+      const recovery = { phase: "waiting" as const, retry_count: 3, retry_at: Date.now() + 60_000 };
       runtime.update_request_state(handle, {
         request_in_flight_count: 0,
         request_recovery: recovery,
       });
       recovery.retry_count = 99;
-      expect((await runtime.build_snapshot()).request_recovery?.retry_count).toBe(3);
+      expect((await runtime.build_snapshot()).request_recovery).toMatchObject({ retry_count: 3 });
       await runtime.request_stop();
       runtime.update_request_state(handle, {
         request_in_flight_count: 1,
