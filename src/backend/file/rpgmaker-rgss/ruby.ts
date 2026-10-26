@@ -50,8 +50,8 @@ export async function parse_ruby(
   source: string,
 ): Promise<{ ok: true; syntax: RubySyntax } | { ok: false; diagnostics: ScriptDiagnostic[] }> {
   const { parse, prism } = await load_parser();
-  const result = parse(source, { encoding: false });
   const buffer = Buffer.from(source);
+  const result = parse(buffer, { encoding: false });
   if (result.errors.length)
     return {
       ok: false,
@@ -287,7 +287,7 @@ export async function write_ruby_strings(
   );
   const { parse } = await load_parser();
   assert(
-    parse(output, { encoding: false }).errors.length === 0,
+    parse(Buffer.from(output), { encoding: false }).errors.length === 0,
     "Translated Ruby script is invalid",
   );
   return output;
