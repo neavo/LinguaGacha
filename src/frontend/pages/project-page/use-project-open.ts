@@ -24,7 +24,7 @@ type ProjectOpenPayload = {
 };
 type LoadingModal = (args: { initial_message: string; task: () => Promise<void> }) => Promise<void>;
 
-/** 页面本地拥有打开意图。预览结果不决定是否允许打开，确认绑定本次路径与版本。 */
+/** 页面本地拥有打开意图。普通预览失败仍可打开。确认绑定本次路径与版本。 */
 export function useProjectOpen(run_loading_modal: LoadingModal) {
   const { t } = useI18n();
   const {
@@ -67,6 +67,12 @@ export function useProjectOpen(run_loading_modal: LoadingModal) {
     set_pending_confirmation(null);
   }
 
+  /** 最近工程缺失时结束打开意图。移除确认单独保留本次路径。 */
+  function show_missing_recent_project(target: SelectedProject): void {
+    clear_selected_project();
+    set_missing_recent_project(target);
+  }
+
   /** 先保存路径，允许用户在预览完成前发起打开。 */
   async function select_project_path(path: string, from_recent = false): Promise<void> {
     if (opening.current) return;
@@ -85,6 +91,10 @@ export function useProjectOpen(run_loading_modal: LoadingModal) {
       if (preview_request.current === request) set_preview_state({ status: "ready", preview });
     } catch (error) {
       if (preview_request.current !== request) return;
+      if (from_recent && error instanceof DesktopApiError && error.code === "project.not_found") {
+        show_missing_recent_project({ path, from_recent });
+        return;
+      }
       set_preview_state({ status: "failed" });
       push_error_toast(t("project_page.open.preview_unavailable"), error);
     } finally {
@@ -149,7 +159,7 @@ export function useProjectOpen(run_loading_modal: LoadingModal) {
           }
         }
         if (target.from_recent && error.code === "project.not_found") {
-          set_missing_recent_project(target);
+          show_missing_recent_project(target);
           return;
         }
       }

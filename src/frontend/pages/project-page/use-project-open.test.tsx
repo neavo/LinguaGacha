@@ -73,15 +73,16 @@ it("切换、清空和卸载隔离旧预览的成功、失败与收尾", async (
     void flow.select_project_path("first.lg");
   });
   act(() => {
-    void flow.select_project_path("second.lg");
+    void flow.select_project_path("second.lg", true);
   });
   await act(async () => first.resolve(preview));
   expect(flow.selected_project?.path).toBe("second.lg");
   expect(flow.preview_state.status).toBe("loading");
   act(() => flow.clear_selected_project());
-  await act(async () => second.reject(new Error("late failure")));
+  await act(async () => second.reject(new DesktopApiError({ code: "project.not_found" })));
   expect(flow.selected_project).toBeNull();
   expect(flow.preview_state.status).toBe("idle");
+  expect(flow.missing_recent_project).toBeNull();
   act(() => {
     void flow.select_project_path("third.lg");
   });
@@ -127,15 +128,29 @@ it("同帧打开只受理一次，取消和卸载结束确认意图", async () =
   expect(mocks.api).toHaveBeenCalledTimes(1);
 });
 
-it("最近工程预览缺失保留选择，正式打开缺失才提供移除入口", async () => {
+it.each(["preview", "open"])("最近工程在 %s 缺失时结束打开意图并确认移除", async (stage) => {
+  if (stage === "open") await act(async () => flow.select_project_path("missing.lg", true));
   mocks.api.mockRejectedValue(new DesktopApiError({ code: "project.not_found" }));
-  await act(async () => flow.select_project_path("missing.lg", true));
-  expect(flow.selected_project?.path).toBe("missing.lg");
-  expect(flow.missing_recent_project).toBeNull();
   await act(async () => {
-    await flow.handle_open_project();
+    if (stage === "preview") await flow.select_project_path("missing.lg", true);
+    else await flow.handle_open_project();
   });
+  expect(flow.selected_project).toBeNull();
+  expect(flow.preview_state.status).toBe("idle");
+  expect(flow.is_opening_project).toBe(false);
   expect(flow.missing_recent_project?.path).toBe("missing.lg");
+  expect(mocks.error).not.toHaveBeenCalled();
+});
+
+it("移除失败保留确认，重试成功后刷新记录并关闭确认", async () => {
+  mocks.api.mockRejectedValueOnce(new DesktopApiError({ code: "project.not_found" }));
+  await act(async () => flow.select_project_path("missing.lg", true));
+  const error = new Error("remove failed");
+  mocks.api.mockRejectedValueOnce(error);
+  await act(async () => flow.handle_recent_project_remove("missing.lg"));
+  expect(mocks.error).toHaveBeenCalledWith(expect.any(String), error);
+  expect(flow.missing_recent_project?.path).toBe("missing.lg");
+  expect(mocks.state.refresh_settings).not.toHaveBeenCalled();
   mocks.api.mockResolvedValue({});
   await act(async () => flow.handle_recent_project_remove("missing.lg"));
   expect(mocks.api).toHaveBeenLastCalledWith("/api/settings/recent-projects/remove", {
@@ -143,6 +158,23 @@ it("最近工程预览缺失保留选择，正式打开缺失才提供移除入�
   });
   expect(mocks.state.refresh_settings).toHaveBeenCalledOnce();
   expect(flow.missing_recent_project).toBeNull();
+});
+
+it("非最近来源缺失沿用普通错误处理且不提供移除确认", async () => {
+  const error = new DesktopApiError({ code: "project.not_found" });
+  mocks.api.mockRejectedValue(error);
+  await act(async () => flow.select_project_path("picked.lg"));
+  expect(flow.selected_project?.path).toBe("picked.lg");
+  expect(flow.preview_state.status).toBe("failed");
+  expect(flow.missing_recent_project).toBeNull();
+  expect(mocks.error).toHaveBeenCalledWith(expect.any(String), error);
+  mocks.error.mockClear();
+  await act(async () => {
+    await flow.handle_open_project();
+  });
+  expect(flow.selected_project?.path).toBe("picked.lg");
+  expect(flow.missing_recent_project).toBeNull();
+  expect(mocks.error).toHaveBeenCalledWith(expect.any(String), error);
 });
 
 it("打开成功后刷新会话，并消费后端设置对齐结果", async () => {

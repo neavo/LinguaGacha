@@ -407,6 +407,25 @@ describe("ProjectPage", () => {
     expect(get_button_by_text(container!, "open.lg")).toBeDefined();
   });
 
+  it("点击失效最近工程立即确认移除，取消后保留记录并禁用打开", async () => {
+    desktop_runtime_fixture.current = create_desktop_runtime_fixture({
+      recent_projects: [{ path: "E:/missing.lg", name: "失效工程" }],
+    });
+    api_fetch_mock.mockRejectedValueOnce(new DesktopApiError({ code: "project.not_found" }));
+    await mount_page();
+    await act(async () => get_button_by_text(container!, "失效工程").click());
+    expect(document.querySelector('[role="alertdialog"]')).not.toBeNull();
+    expect(container!.textContent).not.toContain("工程已就绪");
+    expect(get_button_by_text(container!, "打开工程").disabled).toBe(true);
+    expect(push_toast_mock).not.toHaveBeenCalled();
+    api_fetch_mock.mockClear();
+    await act(async () => get_button_by_text(document.body, "取消").click());
+    expect(document.querySelector('[role="alertdialog"]')).toBeNull();
+    expect(get_button_by_text(container!, "失效工程")).toBeDefined();
+    expect(get_button_by_text(container!, "打开工程").disabled).toBe(true);
+    expect(api_fetch_mock).not.toHaveBeenCalled();
+  });
+
   it("高版本确认强调完整版本并接入延迟确认", async () => {
     api_fetch_mock.mockImplementation(async (path: string, body: Record<string, unknown>) => {
       if (path.endsWith("/preview")) throw new Error("preview unavailable");
