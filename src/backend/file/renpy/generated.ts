@@ -15,7 +15,7 @@ export function is_generated_member(name: string): boolean {
 
 /** 保留名称必须带产品标记，重导入同时排除源码和其编译产物。 */
 export function generated_members(
-  files: ReadonlyMap<string, string>,
+  files: ReadonlyMap<string, string | null>,
   read: (name: string) => Uint8Array,
 ): Set<string> {
   const excluded = new Set<string>();

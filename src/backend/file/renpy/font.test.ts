@@ -84,7 +84,7 @@ it.each([false, true])("产品入口合并归档与字体事务，译文先写=%
       "demo.renpy",
       [...data.keys()].join("\n"),
       undefined,
-      await build_renpy_metadata(game, data, native),
+      await build_renpy_metadata(game, { data, complete: true }, native),
     );
     await format.write_to_path([], {
       paths: { translated_path: temp.path, bilingual_path: temp.path },

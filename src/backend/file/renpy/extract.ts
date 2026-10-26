@@ -67,12 +67,14 @@ export type RenpyScript = {
   candidates: RenpyCandidate[];
   strings: RenpyString[];
   warnings: ScriptDiagnostic[];
+  extraction_complete: boolean;
   python2: boolean;
 };
 
+/** 旧界面的字节串按 UTF-8 解码，候选保持玩家实际看到的替换字符。 */
 const display_text = (node: PickleNode): string => {
   const scalar = resolve_node(node).value;
-  return Buffer.isBuffer(scalar) ? scalar.toString("utf8") : node_string(node); // 旧界面按 UTF-8 替换非法字节，候选保持玩家实际看到的值。
+  return Buffer.isBuffer(scalar) ? scalar.toString("utf8") : node_string(node);
 };
 
 /** 消费边与源码区间共同确定写入位置，字段名不参与共享边判定。 */
@@ -85,7 +87,8 @@ function write_groups(
   required: ReadonlyMap<string, Set<string>>,
   slots: readonly CompiledSlot[],
   warnings: ScriptDiagnostic[],
-): RenpyCandidate[] {
+): { candidates: RenpyCandidate[]; extraction_complete: boolean } {
+  let extraction_complete = true;
   const parents = new Map(candidates.map((candidate) => [candidate, candidate])); // 并查集合并经共享边间接相连的候选。
   const find = (candidate: RenpyCandidate): RenpyCandidate => {
     let root = candidate;
@@ -127,6 +130,7 @@ function write_groups(
       ),
     );
     if (missing_slot) {
+      extraction_complete = false;
       warnings.push({
         message: "Incomplete Ren'Py slot write group: " + first.key,
         line: first.line,
@@ -142,6 +146,7 @@ function write_groups(
           [...(required.get(candidate.key) ?? [])].some((owner) => !owners.includes(owner)),
       )
     ) {
+      extraction_complete = false;
       warnings.push({
         message: "Unresolved Ren'Py shared consumer: " + first.key,
         line: first.line,
@@ -166,7 +171,7 @@ function write_groups(
       ],
     });
   }
-  return result;
+  return { candidates: result, extraction_complete };
 }
 
 /** 全部槽位先解析，必要索引缺失时让资产创建失败，避免生成不完整的字符串表。 */
@@ -177,6 +182,7 @@ export async function extract_script(
 ): Promise<RenpyScript> {
   const bytes = Buffer.from(input);
   const slots = read_compiled(bytes);
+  let extraction_complete = true;
   const candidates = new Map<string, RenpyCandidate>(),
     required = new Map<string, Set<string>>(),
     strings: RenpyString[] = [],
@@ -305,12 +311,17 @@ export async function extract_script(
         tokens = await analyze_code(record, session, python2);
       } catch (error) {
         if (!(error instanceof PythonSyntaxError)) throw error;
+        extraction_complete = false;
         warnings.push(code_diagnostic(record, error.diagnostic));
         continue;
       }
-      warnings.push(...tokens.diagnostics.map((diagnostic) => code_diagnostic(record, diagnostic)));
+      for (const diagnostic of tokens.diagnostics) {
+        extraction_complete = false;
+        warnings.push(code_diagnostic(record, diagnostic));
+      }
       for (const token of tokens.constants) {
         if (token.dynamic) {
+          extraction_complete = false;
           warnings.push(
             code_diagnostic(record, {
               start: token.start,
@@ -379,11 +390,13 @@ export async function extract_script(
       }
     }
   }
+  const grouped = write_groups([...candidates.values()], required, slots, warnings);
   return {
     bytes,
     digest: createHash("sha256").update(bytes).digest("hex"),
     slots,
-    candidates: write_groups([...candidates.values()], required, slots, warnings),
+    candidates: grouped.candidates,
+    extraction_complete: extraction_complete && grouped.extraction_complete,
     strings,
     warnings,
     python2,

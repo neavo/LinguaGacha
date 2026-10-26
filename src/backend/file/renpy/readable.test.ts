@@ -79,7 +79,7 @@ it("可读视图按原行号还原脚本，字符串的视图行与原稿行分�
     "demo.renpy",
     [...members.keys()].join("\n"),
     undefined,
-    await build_renpy_metadata(game, data, native),
+    await build_renpy_metadata(game, { data, complete: true }, native),
   );
   const { input } = await read_game_container(container, "demo.renpy", true);
   const outputs = new Map<string, string>();

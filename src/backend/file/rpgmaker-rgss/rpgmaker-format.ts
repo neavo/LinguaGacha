@@ -1,7 +1,7 @@
 import path from "node:path";
 import { AppError } from "../../../shared/error";
 import type { GameFormatAdapter } from "../shared/game/format";
-import { read_rgss_game } from "./source";
+import { read_rgss_game, RGSS_VERSIONS } from "./source";
 import { read_rgss_metadata } from "./item";
 import { decode, encode } from "./marshal";
 import { read_rgss_data, write_rgss_data } from "./data";
@@ -20,6 +20,8 @@ export function create_rpgmaker_rgss_adapter(): GameFormatAdapter {
         read_file: async (content, file) => {
           if (path.extname(file).toLowerCase() === ".ini") return { items: [], warnings: [] };
           const game = await read_game();
+          if (path.extname(file).toLowerCase() !== RGSS_VERSIONS[game.version])
+            return { items: [], warnings: [] };
           return read_rgss_data(
             decode(content),
             file,

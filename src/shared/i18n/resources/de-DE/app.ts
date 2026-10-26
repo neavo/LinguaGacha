@@ -2,6 +2,10 @@ import { zh_cn_app } from "../zh-CN/app";
 import type { LocaleMessageSchema } from "../../types";
 
 export const de_de_app = {
+  source_operation: {
+    success: "Quelldaten erfolgreich verarbeitet …",
+    failed: "Verarbeitung der Quelldaten fehlgeschlagen …",
+  },
   godot_pack_order: {
     title: "Priorität der Ressourcenpakete",
     description:

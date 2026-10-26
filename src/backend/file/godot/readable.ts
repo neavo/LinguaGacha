@@ -1,7 +1,14 @@
 import { godot_member_kind } from "./member";
+import assert from "node:assert/strict";
+import { GODOT_RESOURCE_MAX_BYTES } from "./binary";
 import type { JsonRecord, JsonValue } from "../../../domain/json";
 import type { GameFiles } from "../shared/game/format";
-import { readable_json, write_projection, type ReadableFile } from "../shared/game/readable";
+import {
+  readable_json,
+  write_projection,
+  type ProjectionFailure,
+  type ReadableFile,
+} from "../shared/game/readable";
 import type { GodotLocation } from "./item";
 import { read_gdsc, print_gdsc } from "./gdsc";
 import { read_source } from "./gdscript";
@@ -26,10 +33,27 @@ type VariantTypes = Readonly<Record<number, string>>;
  * 只生成可读视图，`strings[].location` 与条目的 `godot.location` 结构相同。
  * 语言表最后处理：优化表只存哈希，用其他成员和语言表中出现过的字符串反查消息键。
  */
-export async function* read_godot_projections(files: GameFiles): AsyncGenerator<ReadableFile> {
+export async function* read_godot_projections(
+  files: GameFiles,
+  report?: ProjectionFailure,
+  signal?: AbortSignal,
+): AsyncGenerator<ReadableFile> {
   const members = new Map<string, Buffer>();
-  for (const [name, member] of files)
-    members.set(name, Buffer.from(await member.async("uint8array")));
+  for (const [name, member] of files) {
+    signal?.throwIfAborted();
+    try {
+      const bytes = Buffer.from(await member.async("uint8array"));
+      signal?.throwIfAborted();
+      assert(
+        bytes.length <= GODOT_RESOURCE_MAX_BYTES,
+        "Godot member exceeds format processing limit: " + name,
+      );
+      members.set(name, bytes);
+    } catch (error) {
+      signal?.throwIfAborted();
+      report?.(name, error);
+    }
+  }
   const context = new Map<string, Buffer>();
   for (const [name, bytes] of members) {
     try {
@@ -44,7 +68,7 @@ export async function* read_godot_projections(files: GameFiles): AsyncGenerator<
   for (const [file, bytes] of members) {
     const type = table_type(file, bytes);
     if (type !== null) tables.set(file, type);
-    else yield* write_projection(file, () => read_member(file, bytes, plan, keys));
+    else yield* write_projection(file, () => read_member(file, bytes, plan, keys), report, signal);
   }
   // 非优化表的消息键也是优化表的候选，先写出非优化表。
   const order = [...tables].sort(
@@ -52,7 +76,7 @@ export async function* read_godot_projections(files: GameFiles): AsyncGenerator<
   );
   for (const [file] of order) {
     const bytes = members.get(file)!;
-    yield* write_projection(file, () => read_table(file, bytes, plan, keys));
+    yield* write_projection(file, () => read_table(file, bytes, plan, keys), report, signal);
   }
 }
 

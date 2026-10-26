@@ -6,6 +6,60 @@ import { NativeFs } from "../../../native/native-fs";
 import { godot_pack_fixture } from "../../../test/godot-fixture";
 import { read_pack, extract_pack_member } from "./pack";
 
+it.each([true, false])("完整载荷区间复用要求一致的成员声明：%s", async (matching) => {
+  using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-godot-shared-payload-"));
+  const bytes = godot_pack_fixture(
+    new Map([
+      ["a", Buffer.from("same")],
+      ["b", Buffer.from(matching ? "same" : "diff")],
+    ]),
+    { version: 3 },
+  );
+  const first = 104 + bytes.readUInt32LE(100);
+  const second_name = first + 36;
+  const second = second_name + 4 + bytes.readUInt32LE(second_name);
+  bytes.writeBigUInt64LE(bytes.readBigUInt64LE(first), second);
+  const file = path.join(temp.path, "source");
+  fs.writeFileSync(file, bytes);
+  const native = new NativeFs(),
+    handle = await native.open_file(file, "r");
+  try {
+    if (!matching) await expect(read_pack(handle)).rejects.toThrow("Overlapping PCK payload");
+    else {
+      const pack = await read_pack(handle);
+      const target = path.join(temp.path, "shared");
+      await extract_pack_member(handle, pack.members[1]!, target, native);
+      expect(fs.readFileSync(target, "utf8")).toBe("same");
+    }
+  } finally {
+    await handle.close();
+  }
+});
+
+it("PCK 同名目录记录保留原始顺序和载荷边界", async () => {
+  using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-godot-duplicate-"));
+  const bytes = godot_pack_fixture(
+    new Map([
+      ["a.txt", Buffer.from("first")],
+      ["b.txt", Buffer.from("second")],
+    ]),
+  );
+  bytes.write("a.txt", bytes.indexOf("b.txt"));
+  const native = new NativeFs(),
+    source = path.join(temp.path, "source");
+  fs.writeFileSync(source, bytes);
+  const handle = await native.open_file(source, "r");
+  try {
+    const pack = await read_pack(handle);
+    expect(pack.members.map(({ name, size }) => ({ name, size }))).toEqual([
+      { name: "a.txt", size: 5 },
+      { name: "a.txt", size: 6 },
+    ]);
+  } finally {
+    await handle.close();
+  }
+});
+
 it.each([2, 3, 4])("PCK v%s 读取相对和绝对 file_base、内嵌尾部并按 MD5 展开", async (version) => {
   using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-godot-pack-"));
   const native = new NativeFs();

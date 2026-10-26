@@ -3,31 +3,10 @@ import { describe, expect, it, vi } from "vitest";
 import { AppError } from "../../shared/error";
 import {
   build_source_file_parse_failure,
-  log_source_file_parse_failures,
-  log_source_file_parse_warnings,
+  log_source_file_diagnostics,
 } from "./source-file-parse-failure-reporter";
 
 describe("source-file-parse-failure-reporter", () => {
-  it("脚本警告日志包含文件、JSON 路径和每个诊断的位置与原因", () => {
-    const warning = vi.fn();
-    log_source_file_parse_warnings({
-      source: "project-import",
-      log_manager: { warning },
-      warnings: [
-        {
-          code: "script_syntax_error",
-          rel_path: "game",
-          internal_file_path: "data/CommonEvents.json",
-          json_path: [1, "list", 0, "parameters", 0],
-          diagnostics: [{ message: "Unexpected token", line: 2, column: 4 }],
-        },
-      ],
-    });
-    expect(warning).toHaveBeenCalledWith(
-      'game/data/CommonEvents.json $[1]["list"][0]["parameters"][0]:2:4 - Unexpected token',
-      expect.objectContaining({ source: "project-import" }),
-    );
-  });
   it("把解析、缺失和其它 IO 异常归一为稳定失败记录", () => {
     const parse_failure = build_source_file_parse_failure({
       source_path: "E:/input/broken.json",
@@ -66,31 +45,55 @@ describe("source-file-parse-failure-reporter", () => {
     ).toBe("file.parse_failed");
   });
 
-  it("日志输出用户可见原因和结构化文件上下文", () => {
+  it("每个来源失败和每个局部遗漏各记一条日志，保留原始异常与定位", () => {
     const warning = vi.fn();
-    const failure = build_source_file_parse_failure({
-      source_path: "E:/input/broken.json",
-      rel_path: "broken.json",
-      error: new SyntaxError("bad json"),
-    });
-
-    log_source_file_parse_failures({
-      failures: [failure],
+    const first = new SyntaxError("bad json");
+    const member_error = { name: "Error", message: "member denied" };
+    log_source_file_diagnostics({
+      source: "project-import",
       log_manager: { warning },
-      source: "file-preview",
+      failures: [
+        { source_path: "E:/input/broken.json", rel_path: "broken.json", error: first },
+        { source_path: "E:/input/locked.txt", rel_path: "locked.txt", error: new Error("locked") },
+      ],
+      warnings: [
+        {
+          code: "script_syntax_error",
+          rel_path: "game",
+          internal_file_path: "data/CommonEvents.json",
+          json_path: [1, "list", 0, "parameters", 0],
+          diagnostics: [{ message: "Unexpected token", line: 2, column: 4 }],
+        },
+        {
+          code: "source_preparation_failed",
+          rel_path: "game",
+          internal_file_path: "data/Locked.json",
+          stage: "read",
+          error: member_error,
+          diagnostics: [{ message: "member denied", line: null, column: null }],
+        },
+      ],
     });
 
-    expect(warning).toHaveBeenCalledWith(expect.stringContaining("broken.json"), {
-      source: "file-preview",
+    expect(warning).toHaveBeenCalledTimes(4);
+    expect(warning).toHaveBeenNthCalledWith(1, "broken.json - bad json", {
+      source: "project-import",
+      error: first,
       context: {
-        failed_files: [
-          {
-            source_path: "E:/input/broken.json",
-            rel_path: "broken.json",
-            code: "file.parse_failed",
-          },
-        ],
+        source_path: "E:/input/broken.json",
+        rel_path: "broken.json",
+        code: "file.parse_failed",
       },
     });
+    expect(warning).toHaveBeenNthCalledWith(
+      3,
+      'game/data/CommonEvents.json $[1]["list"][0]["parameters"][0]:2:4 - Unexpected token',
+      expect.objectContaining({ source: "project-import", error: undefined }),
+    );
+    expect(warning).toHaveBeenNthCalledWith(
+      4,
+      "game/data/Locked.json  - member denied",
+      expect.objectContaining({ error: member_error }),
+    );
   });
 });

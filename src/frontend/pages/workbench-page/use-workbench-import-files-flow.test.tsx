@@ -492,14 +492,9 @@ describe("useWorkbenchImportFilesFlow", () => {
     expect(api_fetch_mock).toHaveBeenCalledOnce();
   });
 
-  it.each(["partial", "all"])(
-    "正式导入 %s 失败只在操作结束后提示一次，保留重试入口",
+  it.each(["success", "failed"])(
+    "正式导入 %s 只在操作结束后提示一次，失败保留重试入口",
     async (mode) => {
-      const failure = {
-        filename: "broken.json",
-        code: "file.parse_failed",
-        message: "Parser rejected the file",
-      };
       api_fetch_mock.mockResolvedValueOnce({
         files_revision: 1,
         files: [
@@ -525,26 +520,15 @@ describe("useWorkbenchImportFilesFlow", () => {
       expect(latest_snapshot(snapshots).dialog_state.submitting).toBe(true);
       expect(read_progress_toast()).toMatchObject({ presentation: "modal" });
       await act(async () => {
-        if (mode === "all")
-          pending.reject(
-            new DesktopApiError({
-              code: "file.parse_failed",
-              details: { failed_files: [failure] },
-            }),
-          );
-        else
-          pending.resolve({
-            accepted: true,
-            changes: [],
-            failed_files: [failure],
-          } as unknown as ProjectWriteResultPayload);
+        if (mode === "failed") pending.reject(new DesktopApiError({ code: "file.parse_failed" }));
+        else pending.resolve({ accepted: true, changes: [] });
         await submission;
       });
       expect(read_progress_toast()).toBeNull();
-      if (mode === "all") {
+      if (mode === "failed") {
         expect(error_toast).toHaveBeenCalledExactlyOnceWith(
           "app.feedback.operation_failed",
-          "broken.json - Parser rejected the file",
+          expect.objectContaining({ code: "file.parse_failed" }),
         );
         expect(latest_snapshot(snapshots).dialog_state).toMatchObject({
           kind: "inherit-import-files",
@@ -553,8 +537,8 @@ describe("useWorkbenchImportFilesFlow", () => {
         expect(push_toast).not.toHaveBeenCalled();
       } else {
         expect(push_toast).toHaveBeenCalledExactlyOnceWith(
-          "warning",
-          "broken.json - Parser rejected the file",
+          "success",
+          "app.source_operation.success",
         );
         expect(latest_snapshot(snapshots).dialog_state.kind).toBeNull();
         expect(error_toast).not.toHaveBeenCalled();

@@ -1,4 +1,5 @@
 import { setImmediate } from "node:timers/promises";
+import { randomUUID } from "node:crypto";
 import path from "node:path";
 import type { NativeFs } from "../../../../native/native-fs";
 import { AppError, read_error_message } from "../../../../shared/error";
@@ -17,16 +18,78 @@ export type GameDirectoryChanges = Readonly<{
   removes?: readonly string[];
 }>;
 
+export type GameDirectoryCleanupReporter = (directory: string, error: unknown) => void;
+
+const WORKSPACE_PHASES = ["preparing", "writing", "garbage"] as const;
+
+/** 调用方持有目录占用。未知布局与尚未确认终态的材料必须人工处理。 */
+export function assert_game_directory_ready(root: string, fs: NativeFs): void {
+  const base = path.join(root, GAME_WORKSPACE_DIRECTORY);
+  assert_regular_path(base, fs);
+  if (!fs.exists(base)) return;
+  for (const entry of fs.read_dirents(base)) {
+    const directory = path.join(base, entry.name);
+    assert_regular_path(directory, fs);
+    if (!entry.isDirectory() || !WORKSPACE_PHASES.some((phase) => phase === entry.name))
+      throw new Error("Unknown game recovery layout: " + directory);
+    for (const execution of fs.read_dirents(directory)) {
+      const target = path.join(directory, execution.name);
+      assert_regular_path(target, fs);
+      if (
+        entry.name === "writing" ||
+        !execution.isDirectory() ||
+        !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/u.test(execution.name)
+      )
+        throw new Error("Unfinished game operation; recovery files: " + target);
+    }
+  }
+}
+
+/** 终态归属已确认，清理失败只留下可回收材料。 */
+async function cleanup_game_workspace(
+  directory: string,
+  fs: NativeFs,
+  report?: GameDirectoryCleanupReporter,
+): Promise<void> {
+  try {
+    await fs.remove_async(directory, { recursive: true });
+  } catch (cause) {
+    report?.(directory, cause);
+  }
+}
+
 /** 正式目录的唯一写入口，调用方持有写入占用直到 worker、回滚和清理结束。 */
 export async function write_game_directory(
   root: string,
   fs: NativeFs,
-  stage: (directory: string) => Promise<GameDirectoryChanges>,
+  stage: (directory: string) => Promise<GameDirectoryChanges | null>,
   signal?: AbortSignal,
+  report?: GameDirectoryCleanupReporter,
 ): Promise<void> {
   let staging: string | null = null;
   let rollback: string | null = null;
   let workspace: string | null = null;
+  const base = path.join(root, GAME_WORKSPACE_DIRECTORY);
+  const execution = randomUUID();
+  /** 同卷重命名先确认阶段，再更新本次实际路径。 */
+  const move_workspace = (phase: "writing" | "garbage") => {
+    const destination = path.join(base, phase, execution);
+    fs.rename(workspace!, destination);
+    workspace = destination;
+    staging = path.join(workspace, "stage");
+    if (rollback !== null) rollback = path.join(workspace, "rollback");
+  };
+  /** 仅移除已空的管理目录，保留清理失败的终态材料。 */
+  const remove_empty_workspace = () => {
+    for (const directory of [...WORKSPACE_PHASES.map((phase) => path.join(base, phase)), base]) {
+      try {
+        if (fs.exists(directory) && fs.read_dir_names(directory).length === 0)
+          fs.remove_empty_dir(directory);
+      } catch (cause) {
+        report?.(directory, cause);
+      }
+    }
+  };
   const recovery_files = new Map<string, string | null>(); // 按首次修改顺序登记，null 表示本轮新增目标。
   const created_roots: string[] = []; // 新导出目录及缺失父目录归本次事务，恢复材料清理成功后才移除。
   const created_directories: string[] = []; // 仅移除本次创建的空目录。
@@ -49,13 +112,26 @@ export async function write_game_directory(
       await fs.make_dir_exclusive(directory);
       created_roots.push(directory);
     }
-    const candidate = path.join(root, GAME_WORKSPACE_DIRECTORY);
+    assert_game_directory_ready(root, fs);
+    for (const phase of WORKSPACE_PHASES) {
+      const directory = path.join(base, phase);
+      await fs.make_dir_async(directory);
+      for (const entry of fs.read_dir_names(directory))
+        await cleanup_game_workspace(path.join(directory, entry), fs, report);
+    }
+    const candidate = path.join(base, "preparing", execution);
     await fs.make_dir_exclusive(candidate);
-    workspace = candidate; // 创建成功后才取得清理所有权，不能接管已有恢复材料。
+    workspace = candidate;
     staging = path.join(workspace, "stage");
     await fs.make_dir_exclusive(staging);
     const plan = await stage(staging);
     signal?.throwIfAborted();
+    if (plan === null) {
+      move_workspace("garbage");
+      await cleanup_game_workspace(workspace!, fs, report);
+      remove_empty_workspace();
+      return;
+    }
     const targets = [...plan.writes, ...(plan.removes ?? [])];
     const directories = new Set(plan.directories ?? []);
     for (const name of [...targets, ...directories]) validate_game_path(name);
@@ -116,7 +192,8 @@ export async function write_game_directory(
       if (!fs.stat(path.join(staging, name)).isFile())
         throw new Error("Missing staged file: " + name);
     }
-    rollback = path.join(workspace, "rollback");
+    move_workspace("writing"); // 正式目录变更必须晚于阶段切换。
+    rollback = path.join(workspace!, "rollback");
     await fs.make_dir_exclusive(rollback);
     /** 修改前同卷移动旧目标，失败时按登记顺序逆序恢复。 */
     const save_target = (name: string) => {
@@ -175,12 +252,16 @@ export async function write_game_directory(
     }
     if (!recovery_errors.length && workspace) {
       try {
-        await fs.remove_async(workspace, { recursive: true });
+        move_workspace("garbage");
       } catch (error) {
         recovery_errors.push(workspace + ": " + read_error_message(error));
       }
+      if (!recovery_errors.length) {
+        await cleanup_game_workspace(workspace!, fs, report);
+        remove_empty_workspace();
+      }
     }
-    if (!recovery_errors.length)
+    if (!recovery_errors.length && !fs.exists(base))
       for (const directory of created_roots.reverse()) {
         try {
           fs.remove_empty_dir(directory);
@@ -202,15 +283,25 @@ export async function write_game_directory(
       ]
         .filter(Boolean)
         .join("\n"),
+      public_details: {
+        directory_changed: recovery_errors.length > 0,
+        directory_state: recovery_errors.length ? "unconfirmed" : "restored",
+      },
     });
   }
   try {
-    await fs.remove_async(workspace, { recursive: true });
+    move_workspace("garbage");
   } catch (cause) {
     throw new AppError("file.io_failed", {
       cause,
       message:
-        "Game directory committed. Cleanup failed: " + workspace + "\n" + read_error_message(cause),
+        "Game directory committed. Final state unconfirmed: " +
+        workspace +
+        "\n" +
+        read_error_message(cause),
+      public_details: { directory_changed: true, directory_state: "unconfirmed" },
     });
   }
+  await cleanup_game_workspace(workspace!, fs, report);
+  remove_empty_workspace();
 }

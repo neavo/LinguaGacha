@@ -65,7 +65,7 @@ describe("workspace_run", () => {
     controller.abort(reason);
     released.resolve();
 
-    await expect(result).resolves.toMatchObject({ details: workspace_execution() });
+    await expect(result).resolves.toHaveProperty("details", workspace_execution()); // 回执只含执行记录。
   });
   it("脚本和刷新同时失败保留主回执与两个原始原因", async () => {
     const script_error = new AgentToolError({ code: "script_failed", scriptPath: "work/run.mjs" });

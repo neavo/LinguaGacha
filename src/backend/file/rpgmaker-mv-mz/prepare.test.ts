@@ -76,7 +76,7 @@ it.each(["media", "commit"])("准备失败 %s 恢复原配置、明文与密文"
     vi.spyOn(native, "rename").mockImplementation((from, to) => {
       if (
         from === path.join(temp.path, "www/img/a.rpgmvp") &&
-        to.includes(path.join(".tmp", "rollback"))
+        to.includes(path.sep + "rollback" + path.sep)
       ) {
         throw new Error("commit failure");
       }

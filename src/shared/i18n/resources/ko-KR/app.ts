@@ -2,6 +2,10 @@ import type { zh_cn_app } from "../zh-CN/app";
 import type { LocaleMessageSchema } from "../../types";
 
 export const ko_kr_app = {
+  source_operation: {
+    success: "원본 처리 성공 …",
+    failed: "원본 처리 실패 …",
+  },
   godot_pack_order: {
     title: "리소스 팩 우선순위",
     description: "뒤에 있는 리소스 팩이 앞에 있는 팩의 같은 이름 리소스를 덮어씁니다",

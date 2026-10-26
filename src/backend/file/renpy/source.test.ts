@@ -1,3 +1,4 @@
+import { complete_game_preparation } from "../shared/game/preparation";
 import { read_renpy_format_metadata } from "./profile";
 import { RENPY_LANGUAGE_FILE, RENPY_GENERATED_MARKER } from "./generated";
 import fs from "node:fs";
@@ -43,7 +44,8 @@ it("百分号语义只接受确定的初始化赋值", async () => {
     );
     const data = collect_renpy_files(game, native);
     expect(
-      read_renpy_format_metadata(await build_renpy_metadata(game, data, native)).old_substitutions,
+      read_renpy_format_metadata(await build_renpy_metadata(game, { data, complete: true }, native))
+        .old_substitutions,
     ).toBe(expected);
   }
 });
@@ -66,7 +68,7 @@ it("字体来自有效暂存集合，缓存、存档和备份不进入字体或�
     (await discover_renpy_source(temp.path, native))!,
     native,
     undefined,
-    { staging, result: { writes: ["game/main.ttf", "game/extra.OTF"] } },
+    complete_game_preparation(staging, { writes: ["game/main.ttf", "game/extra.OTF"] }).sources,
   );
   expect([...files.fonts.keys()]).toEqual(["game/extra.OTF", "game/main.ttf"]);
   expect(Buffer.from(files.fonts.get("game/main.ttf")!).toString()).toBe("prepared Type 1");

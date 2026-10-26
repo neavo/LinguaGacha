@@ -28,7 +28,7 @@ it("散装资源优先，归档源码保持非活动，重复准备保持结果"
   native.write_file_sync(path.join(temp.path, "game/loose.txt"), "loose");
   const game = (await discover_renpy_source(temp.path, native))!;
   await write_game_directory(temp.path, native, (staging) =>
-    stage_renpy_source({ game, staging }, native),
+    stage_renpy_source({ game, staging }, native).then((prepared) => prepared.changes),
   );
   expect(native.read_text_file(path.join(temp.path, "game/asset.bin"))).toBe("fragmented resource");
   expect(native.read_text_file(path.join(temp.path, "game/loose.txt"))).toBe("loose");
@@ -38,7 +38,7 @@ it("散装资源优先，归档源码保持非活动，重复准备保持结果"
   );
   expect(native.exists(path.join(temp.path, "game/nested/archive.rpa"))).toBe(false);
   await write_game_directory(temp.path, native, (staging) =>
-    stage_renpy_source({ game, staging }, native),
+    stage_renpy_source({ game, staging }, native).then((prepared) => prepared.changes),
   );
 });
 it.each(["missing", "stale", "valid"])("活动源码 %s 的摘要验证在目录提交之前完成", async (kind) => {
@@ -55,7 +55,7 @@ it.each(["missing", "stale", "valid"])("活动源码 %s 的摘要验证在目录
   }
   const game = (await discover_renpy_source(temp.path, native))!;
   const prepare = write_game_directory(temp.path, native, (staging) =>
-    stage_renpy_source({ game, staging }, native),
+    stage_renpy_source({ game, staging }, native).then((prepared) => prepared.changes),
   );
   if (kind === "valid") {
     await prepare;
@@ -76,7 +76,7 @@ it("嵌套归档保持非活动，准备拒绝将它激活", async () => {
   const game = (await discover_renpy_source(temp.path, native))!;
   await expect(
     write_game_directory(temp.path, native, (staging) =>
-      stage_renpy_source({ game, staging }, native),
+      stage_renpy_source({ game, staging }, native).then((prepared) => prepared.changes),
     ),
   ).rejects.toThrow("would become active");
   expect(native.exists(path.join(temp.path, "game/nested.rpa"))).toBe(false);
@@ -99,7 +99,7 @@ it.each(["init", "early"] as const)(
     );
     const game = (await discover_renpy_source(temp.path, native))!;
     await write_game_directory(temp.path, native, (staging) =>
-      stage_renpy_source({ game, staging }, native),
+      stage_renpy_source({ game, staging }, native).then((prepared) => prepared.changes),
     );
     expect(native.read_text_file(path.join(temp.path, "game/resource.txt"))).toBe("archive");
     expect(
@@ -112,7 +112,7 @@ it.each(["init", "early"] as const)(
       ).map((code) => code.source),
     ).toContain("config.force_archives = False\n");
     await write_game_directory(temp.path, native, (staging) =>
-      stage_renpy_source({ game, staging }, native),
+      stage_renpy_source({ game, staging }, native).then((prepared) => prepared.changes),
     );
   },
 );
@@ -133,7 +133,7 @@ it("按声明选择归档资源，允许默认来源内容不同", async () => {
   );
   const game = (await discover_renpy_source(temp.path, native))!;
   const prepare = write_game_directory(temp.path, native, (staging) =>
-    stage_renpy_source({ game, staging }, native),
+    stage_renpy_source({ game, staging }, native).then((prepared) => prepared.changes),
   );
   await prepare;
   expect(native.read_text_file(path.join(temp.path, "game/resource.txt"))).toBe("different");
@@ -154,7 +154,7 @@ it("普通 Python 资源与业务对象引用保持原字节", async () => {
   );
   const game = (await discover_renpy_source(temp.path, native))!;
   await write_game_directory(temp.path, native, (staging) =>
-    stage_renpy_source({ game, staging }, native),
+    stage_renpy_source({ game, staging }, native).then((prepared) => prepared.changes),
   );
   expect(native.read_file(path.join(temp.path, "game/notes.py"))).toEqual(note);
   expect(native.read_file(path.join(temp.path, "game/packed.py"))).toEqual(note);
@@ -189,7 +189,7 @@ it("无法静态读取的普通编译代码不阻止资源准备", async () => {
   native.write_file_sync(path.join(temp.path, "game/script.rpyc"), bytes);
   const game = (await discover_renpy_source(temp.path, native))!;
   await write_game_directory(temp.path, native, (staging) =>
-    stage_renpy_source({ game, staging }, native),
+    stage_renpy_source({ game, staging }, native).then((prepared) => prepared.changes),
   );
   expect(native.read_file(path.join(temp.path, "game/script.rpyc"))).toEqual(bytes);
 });
@@ -206,7 +206,7 @@ it("引擎支持的 _ren.py 仍要求源码与编译摘要配对", async () => {
   const game = (await discover_renpy_source(temp.path, native))!;
   const prepare = () =>
     write_game_directory(temp.path, native, (staging) =>
-      stage_renpy_source({ game, staging }, native),
+      stage_renpy_source({ game, staging }, native).then((prepared) => prepared.changes),
     );
   await expect(prepare()).rejects.toThrow("Stale compiled script");
   const compiled = Buffer.from(native.read_file(path.join(temp.path, "game/script.rpyc")));
@@ -242,7 +242,7 @@ it("默认脚本发现与声明后的资源来源分别选择", async () => {
   );
   const game = (await discover_renpy_source(temp.path, native))!;
   await write_game_directory(temp.path, native, (staging) =>
-    stage_renpy_source({ game, staging }, native),
+    stage_renpy_source({ game, staging }, native).then((prepared) => prepared.changes),
   );
   expect(native.read_file(path.join(temp.path, "game/script.rpyc"))).toEqual(initial);
   expect(native.read_text_file(path.join(temp.path, "game/resource.txt"))).toBe("a");
@@ -258,7 +258,7 @@ it.each([false, true])("默认归档覆盖使用对应引擎的排序键，递�
     );
   const game = (await discover_renpy_source(temp.path, native))!;
   await write_game_directory(temp.path, native, (staging) =>
-    stage_renpy_source({ game, staging }, native),
+    stage_renpy_source({ game, staging }, native).then((prepared) => prepared.changes),
   );
   expect(native.read_text_file(path.join(temp.path, "game/resource.txt"))).toBe(
     recursive ? "a-more" : "a",
@@ -274,7 +274,7 @@ it("归档中的生成资源在正式提交前拒绝", async () => {
   const game = (await discover_renpy_source(temp.path, native))!;
   await expect(
     write_game_directory(temp.path, native, (staging) =>
-      stage_renpy_source({ game, staging }, native),
+      stage_renpy_source({ game, staging }, native).then((prepared) => prepared.changes),
     ),
   ).rejects.toThrow("Reserved Ren'Py resource");
   expect(native.read_file(file)).toEqual(archive);

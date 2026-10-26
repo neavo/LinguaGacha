@@ -1,4 +1,5 @@
 import path from "node:path";
+import type { LogManager } from "../../../log/log-manager";
 import { default_native_fs, type NativeFs } from "../../../../native/native-fs";
 import { AppError } from "../../../../shared/error";
 
@@ -7,7 +8,21 @@ export class GameDirectoryOperations {
   private readonly lifetime = new AbortController(); // 停止后永久拒绝新操作。
   private readonly active = new Map<readonly string[], Promise<void>>(); // Promise 在业务收尾后完成。
 
-  public constructor(private readonly fs: NativeFs = default_native_fs) {}
+  /** 文件服务共用目录占用，维护诊断交给应用日志。 */
+  public constructor(
+    private readonly fs: NativeFs = default_native_fs,
+    private readonly log_manager?: Pick<LogManager, "warning">,
+  ) {}
+
+  /** 维护诊断进入应用日志，不改变目录事务的业务结果。 */
+  public readonly report_cleanup = (directory: string, error: unknown): void => {
+    this.log_manager?.warning("游戏临时目录清理失败。", {
+      source: "game_directory",
+      context: { directory },
+      error,
+      targets: { window: false },
+    });
+  };
 
   /** 整批检查并取得目录占用，异常和取消都由业务完成收尾后释放。 */
   public async run<T>(

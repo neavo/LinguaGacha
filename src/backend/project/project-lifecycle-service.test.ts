@@ -604,7 +604,7 @@ describe("ProjectLifecycleService", () => {
           path: project_path,
           languages: { source_language: "JA", target_language: "ZH" },
         }),
-      ).resolves.toEqual({
+      ).resolves.toMatchObject({
         project: { path: project_path, loaded: true, languages: DEFAULT_PROJECT_LANGUAGE_SETTINGS },
       });
 
@@ -652,7 +652,7 @@ describe("ProjectLifecycleService", () => {
           source_paths: [path.dirname(source_path)],
           path: project_path,
         }),
-      ).resolves.toEqual({
+      ).resolves.toMatchObject({
         project: {
           path: resolved_project_path,
           loaded: true,
@@ -691,7 +691,7 @@ describe("ProjectLifecycleService", () => {
           source_paths: [path.dirname(source_path)],
           path: project_path,
         }),
-      ).resolves.toEqual({
+      ).resolves.toMatchObject({
         project: {
           path: resolved_project_path,
           loaded: true,
@@ -740,7 +740,7 @@ describe("ProjectLifecycleService", () => {
           source_paths: [],
           path: project_path,
         }),
-      ).resolves.toEqual({
+      ).resolves.toMatchObject({
         project: { path: project_path, loaded: true, languages: DEFAULT_PROJECT_LANGUAGE_SETTINGS },
       });
 
@@ -794,7 +794,7 @@ describe("ProjectLifecycleService", () => {
           source_paths: [],
           path: project_path,
         }),
-      ).resolves.toEqual({
+      ).resolves.toMatchObject({
         project: { path: project_path, loaded: true, languages: DEFAULT_PROJECT_LANGUAGE_SETTINGS },
       });
 
@@ -859,25 +859,28 @@ describe("ProjectLifecycleService", () => {
           source_paths: [source_dir],
           path: project_path,
         }),
-      ).resolves.toEqual({
+      ).resolves.toMatchObject({
         project: { path: project_path, loaded: true, languages: DEFAULT_PROJECT_LANGUAGE_SETTINGS },
-        failed_files: [
-          {
-            source_path: broken_json,
-            rel_path: kind === "json" ? path.join("source", "broken.json") : "broken.exe",
-            filename: path.basename(broken_json),
-            code: kind === "json" ? "file.parse_failed" : "file.io_failed",
-            message: expect.any(String),
-          },
-        ],
+        source_operation: { saved_assets: kind === "json" ? 2 : 1, directory_changes: [] },
       });
 
       expect(await database.get_all_asset_records(project_path)).toEqual([
-        { path: path.join("source", "script.txt"), sort_order: 0, file_type: "TXT" },
+        ...(kind === "json"
+          ? [{ path: path.join("source", "broken.json"), sort_order: 0, file_type: "NONE" }]
+          : []),
+        {
+          path: path.join("source", "script.txt"),
+          sort_order: kind === "json" ? 1 : 0,
+          file_type: "TXT",
+        },
       ]);
       expect(log_manager.warning).toHaveBeenCalledWith(
-        expect.any(String),
-        expect.objectContaining({ source: "project-lifecycle" }),
+        expect.stringContaining(path.basename(broken_json)),
+        expect.objectContaining({
+          source: "project-lifecycle",
+          error: expect.anything(),
+          context: expect.objectContaining({ source_path: broken_json }),
+        }),
       );
     } finally {
       await database.close();
@@ -899,7 +902,7 @@ describe("ProjectLifecycleService", () => {
         source_paths: [game],
         path: project_path,
       });
-      expect(result["failed_files"]).toBeUndefined();
+      expect(result["source_operation"]).toEqual({ saved_assets: 1, directory_changes: [] });
       const archive = await read_zip_fixture(
         (await database.read_asset_content(project_path, "game.rpgmaker"))!,
       );
@@ -912,13 +915,11 @@ describe("ProjectLifecycleService", () => {
         expect.stringContaining("bad.js"),
         expect.objectContaining({
           context: {
-            warnings: [
-              expect.objectContaining({
-                code: "script_syntax_error",
-                rel_path: "game.rpgmaker",
-                internal_file_path: "js/plugins/bad.js",
-              }),
-            ],
+            warning: expect.objectContaining({
+              code: "script_syntax_error",
+              rel_path: "game.rpgmaker",
+              internal_file_path: "js/plugins/bad.js",
+            }),
           },
         }),
       );
@@ -927,7 +928,7 @@ describe("ProjectLifecycleService", () => {
     }
   });
 
-  it("create-commit 全部源文件解析失败时不创建工程并返回失败明细", async () => {
+  it("create-commit 全部源文件解析失败时保存可靠原稿并记录日志", async () => {
     const app_root = create_temp_dir();
     const project_path = path.join(app_root, "all-failed.lg");
     const broken_json = write_file(path.join(app_root, "source", "broken.json"), "{");
@@ -945,24 +946,41 @@ describe("ProjectLifecycleService", () => {
           source_paths: [path.dirname(broken_json)],
           path: project_path,
         }),
-      ).rejects.toMatchObject({
-        code: "file.parse_failed",
-        public_details: {
-          failed_files: [
-            {
-              source_path: broken_json,
-              rel_path: path.join("source", "broken.json"),
-              filename: "broken.json",
-              code: "file.parse_failed",
-              message: expect.any(String),
-            },
-          ],
-        },
-      });
+      ).resolves.toMatchObject({ source_operation: { saved_assets: 1, directory_changes: [] } });
 
-      expect(fs.existsSync(project_path)).toBe(false);
+      expect(
+        (
+          await database.read_asset_content(project_path, path.join("source", "broken.json"))
+        )?.toString(),
+      ).toBe("{");
       expect(log_manager.warning).toHaveBeenCalledWith(
         expect.any(String),
+        expect.objectContaining({ source: "project-lifecycle" }),
+      );
+    } finally {
+      await database.close();
+    }
+  });
+
+  it("create-commit 没有来源实际保存时失败并记录日志", async () => {
+    const app_root = create_temp_dir();
+    const broken = write_file(path.join(app_root, "source", "broken.exe"), "");
+    fs.writeFileSync(broken, evb_fixture(new Map()).subarray(0, -1));
+    const database = new ProjectDatabase("1.0.0");
+    const log_manager = create_log_manager();
+    const service = create_service({ app_root, database, log_manager });
+    try {
+      await expect(
+        service.create_project_commit({
+          source_paths: [path.dirname(broken)],
+          path: path.join(app_root, "none.lg"),
+        }),
+      ).rejects.toMatchObject({
+        code: "file.parse_failed",
+        public_details: { source_operation: { saved_assets: 0, directory_changes: [] } },
+      });
+      expect(log_manager.warning).toHaveBeenCalledWith(
+        expect.stringContaining("broken.exe"),
         expect.objectContaining({ source: "project-lifecycle" }),
       );
     } finally {

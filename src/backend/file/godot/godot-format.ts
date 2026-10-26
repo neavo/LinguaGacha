@@ -1,5 +1,6 @@
 import { godot_member_kind } from "./member";
 import assert from "node:assert/strict";
+import { GODOT_RESOURCE_MAX_BYTES } from "./binary";
 import { create_item, type Item } from "../../../domain/item";
 import { AppError } from "../../../shared/error";
 import type { GameFormatAdapter } from "../shared/game/format";
@@ -34,6 +35,10 @@ export function create_godot_adapter(): GameFormatAdapter {
       for (const [name, member] of files) {
         try {
           const bytes = Buffer.from(await member.async("uint8array"));
+          assert(
+            bytes.length <= GODOT_RESOURCE_MAX_BYTES,
+            "Godot member exceeds format processing limit: " + name,
+          );
           if (check_locale_member(name, bytes)) context.set(name, bytes);
         } catch (error) {
           failures.set(name, error);
@@ -43,6 +48,10 @@ export function create_godot_adapter(): GameFormatAdapter {
       return {
         /** 按成员原坐标提取条目，失败继续交给容器边界报告。 */
         async read_file(content, file) {
+          assert(
+            content.length <= GODOT_RESOURCE_MAX_BYTES,
+            "Godot member exceeds format processing limit: " + file,
+          );
           if (failures.has(file)) throw failures.get(file);
           return {
             items: extractor.extract(file, Buffer.from(content)).map((entry, row) =>

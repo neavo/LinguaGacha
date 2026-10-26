@@ -66,7 +66,7 @@ afterAll(async () => {
   if (root) await rm(root, { recursive: true, force: true });
 });
 
-it.each(["uploads/input.bin", "sources/game.zip/Data/System.rvdata2.json"])(
+it.each(["uploads/input.bin", "sources/game.zip/Data/System.rvdata2.json", "source_issues.jsonl"])(
   "%s 在真实工作区只读，可复制到 work 后修改",
   async (source) => {
     await mkdir(path.dirname(path.join(workspace, source)), { recursive: true });

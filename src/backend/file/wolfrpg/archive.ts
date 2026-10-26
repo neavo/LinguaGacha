@@ -94,8 +94,7 @@ export async function read_wolf_archive(
   };
   const members: WolfArchiveMember[] = [],
     directories: string[] = [],
-    visited = new Set<number>(),
-    paths = new Set<string>();
+    visited = new Set<number>();
   const pending = [{ offset: 0, folder: "", keys: [] as Buffer[] }];
   while (pending.length) {
     await setImmediate();
@@ -126,10 +125,9 @@ export async function read_wolf_archive(
         filename = folder + entry.text;
       validate_game_path(filename);
       assert(
-        !paths.has(filename.toLowerCase()) && paths.size < MAX_MEMBERS,
-        "Duplicate or excessive WOLF members: " + filename,
+        members.length + directories.length < MAX_MEMBERS,
+        "Excessive WOLF members: " + filename,
       );
-      paths.add(filename.toLowerCase());
       if (u64(at + 8) & 16) {
         directories.push(filename);
         pending.push({
@@ -168,7 +166,15 @@ export async function read_wolf_archive(
   }
   assert_game_path_spellings([...directories, ...members.map((member) => member.name)]);
   const index = new ProjectAssetPathIndex();
-  for (const member of members) index.add(member.name);
+  for (const name of new Set(members.map((member) => member.name))) index.add(name);
+  const file_names = new Set(members.map((member) => member.name.toLowerCase()));
+  for (const name of directories) {
+    const conflict = index.find_conflict(name);
+    assert(
+      !file_names.has(name.toLowerCase()) && (conflict === null || conflict === name.toLowerCase()),
+      "WOLF file conflicts with directory",
+    );
+  }
   /** 首尾 Huffman 区域合并还原，中间原始区域直接分块传输。 */
   async function* packed_chunks(member: WolfArchiveMember): AsyncGenerator<Buffer> {
     const target = member.lz_size < 0 ? member.size : member.lz_size;
@@ -236,7 +242,12 @@ export async function read_wolf_archive(
       yield content.subarray(at, at + BINARY_IO_CHUNK_BYTES);
     }
   }
-  return { version, members, directories, chunks };
+  return {
+    version,
+    members: [...new Map(members.map((member) => [member.name, member])).values()],
+    directories,
+    chunks,
+  };
 }
 
 /** 零字节成员也创建目标文件，异常路径由外层事务负责清理。 */

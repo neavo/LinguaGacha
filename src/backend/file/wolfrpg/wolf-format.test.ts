@@ -98,14 +98,17 @@ it.each([
   const context = await create_wolf_context(
     new Map([...files].map(([name, bytes]) => [name, { async: async () => bytes }])),
   );
-  const system = await context.read("Data/BasicData/SysDatabase.dat", new Uint8Array());
+  const system = await context.read(
+    "Data/BasicData/SysDatabase.dat",
+    files.get("Data/BasicData/SysDatabase.dat")!,
+  );
   expect(system!.slots.map((slot) => [slot.text, slot.usage])).toEqual([
     ["MapData/Map001.mps", "metadata"],
     ["城镇", usage],
   ]);
 });
 
-it("缺少核心配对整项失败，损坏的独立地图保留警告和零条目原稿", async () => {
+it("缺少核心配对保留独立成员条目，损坏地图报告局部失败", async () => {
   const service = new FileFormatService(
       new GameDirectoryOperations(),
       { target_language: "ZH" },
@@ -124,5 +127,8 @@ it("缺少核心配对整项失败，损坏的独立地图保留警告和零条�
   zip.remove("Data/BasicData/SysDatabase.project");
   await expect(
     service.parse_asset("game.zip", await zip.generateAsync({ type: "uint8array" }), "WOLFRPG"),
-  ).rejects.toThrow("Missing WOLF companion");
+  ).resolves.toMatchObject({
+    extraction_complete: false,
+    items: expect.arrayContaining([expect.objectContaining({ file_type: "WOLFRPG" })]),
+  });
 });

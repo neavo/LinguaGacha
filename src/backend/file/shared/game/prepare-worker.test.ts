@@ -43,7 +43,7 @@ it("RenPy 通过正式准备线程展开并释放归档句柄", async () => {
   );
   try {
     const result = await worker.run({ kind: "game", file_type: "RENPY", game, staging });
-    expect(result.removes).toEqual(["game/archive.rpa"]);
+    expect(result.changes!.removes).toEqual(["game/archive.rpa"]);
     expect(native.read_text_file(path.join(staging, "game/resource.txt"))).toBe("resource");
     fs.renameSync(path.join(temp.path, "game/archive.rpa"), path.join(temp.path, "released.rpa"));
   } finally {
@@ -69,8 +69,8 @@ it.each(["external", "embedded"])(
     );
     try {
       const result = await worker.run({ kind: "game", file_type: "GODOT", game, staging });
-      expect(result.removes).toEqual(kind === "external" ? ["game.pck"] : []); // 内嵌 EXE 已由 writes 覆盖。
-      expect(result.writes).toContain("project.binary");
+      expect(result.changes!.removes).toEqual(kind === "external" ? ["game.pck"] : []); // 内嵌 EXE 已由 writes 覆盖。
+      expect(result.changes!.writes).toContain("project.binary");
       expect(fs.existsSync(path.join(staging, "project.binary"))).toBe(true);
       if (kind === "embedded")
         expect(fs.readFileSync(path.join(staging, "game.exe")).equals(Buffer.alloc(128, 42))).toBe(
@@ -197,12 +197,12 @@ it("发行线程完成暂存后退出，取消也等到句柄释放，随后仍�
     fs.rmSync(staging, { recursive: true }); // Windows 文件句柄仍占用时，此处会失败。
     fs.mkdirSync(staging);
     const result = await worker.run(task);
-    expect(result.writes).toContain("Game.exe");
-    expect(result.removes).toEqual(expect.arrayContaining([...loose.keys()]));
-    expect(result.removes).toHaveLength(loose.size);
+    expect(result.changes!.writes).toContain("Game.exe");
+    expect(result.changes!.removes).toEqual(expect.arrayContaining([...loose.keys()]));
+    expect(result.changes!.removes).toHaveLength(loose.size);
     for (const name of ["a", "b", "packed"]) {
-      expect(result.writes).toContain("img/" + name + ".png");
-      expect(result.writes).not.toContain("img/" + name + ".png_");
+      expect(result.changes!.writes).toContain("img/" + name + ".png");
+      expect(result.changes!.writes).not.toContain("img/" + name + ".png_");
       expect(
         fs.readFileSync(path.join(staging, "img/" + name + ".png")).equals(png_fixture()),
         name,
@@ -281,9 +281,9 @@ it.each(["rgss", "wolfrpg"] as const)(
     );
     try {
       const result = await next.run(task);
-      expect(result.removes).toEqual([archive]);
+      expect(result.changes!.removes).toEqual([archive]);
       if (kind === "wolfrpg") {
-        expect(result.directories).toEqual(
+        expect(result.changes!.directories).toEqual(
           expect.arrayContaining(["Data", "Data/Empty", "Data/BasicData", "Data/MapData"]),
         );
         expect(fs.existsSync(path.join(staging, "Data/Empty"))).toBe(false);
@@ -315,7 +315,14 @@ it("同进程入口保留显式注入的 NativeFs", async () => {
         game: { root, data_root: root, engine: "mz" },
         staging: temp.path,
       }),
-    ).rejects.toThrow("injected filesystem");
+    ).resolves.toMatchObject({
+      changes: null,
+      diagnostics: [
+        expect.objectContaining({
+          error: expect.objectContaining({ message: "injected filesystem" }),
+        }),
+      ],
+    });
   } finally {
     await worker.dispose();
   }
@@ -362,7 +369,7 @@ it("仓库外真实 Electron 加载部署准备线程并等待退出", async () 
     } finally { await worker.dispose(); }
     fs.rmSync(task.staging,{recursive:true}); fs.mkdirSync(task.staging);
     const next=new GamePrepareWorker(pathToFileURL(process.argv[2]));
-    try { const result=await next.run(task); assert(result.writes.includes('Data/BasicData/Game.dat')); assert.deepEqual(result.removes,['Data.wolf']); assert(result.directories.includes('Data/Empty')); assert(!fs.existsSync(path.join(task.staging,'Data/Empty'))); }
+    try { const result=await next.run(task); assert(result.changes!.writes.includes('Data/BasicData/Game.dat')); assert.deepEqual(result.changes!.removes,['Data.wolf']); assert(result.changes!.directories.includes('Data/Empty')); assert(!fs.existsSync(path.join(task.staging,'Data/Empty'))); }
     finally { await next.dispose(); }
     fs.rmSync(task.staging,{recursive:true});
     const renpy = new GamePrepareWorker(pathToFileURL(process.argv[2]), undefined, undefined, process.argv[3]);
@@ -370,7 +377,7 @@ it("仓库外真实 Electron 加载部署准备线程并等待退出", async () 
       const game = ${JSON.stringify(renpy)};
       const staging = path.join(game.root, 'stage');
       const result = await renpy.run({kind:'game',file_type:'RENPY',game,staging});
-      assert(result.removes.includes('game/archive.rpa'));
+      assert(result.changes!.removes.includes('game/archive.rpa'));
       assert.equal(fs.readFileSync(path.join(staging,'game/resource.txt'),'utf8'),'resource');
     } finally { await renpy.dispose(); }
     console.log('game-worker-deployment-ok');

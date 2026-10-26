@@ -140,14 +140,18 @@ describe("GuiBackendBootstrap 集成", () => {
         to,
       ) {
         rename.call(this, from, to);
-        if (from.includes(path.join(".tmp", "stage")) && to.endsWith("a.png")) committed.resolve();
+        if (
+          from.startsWith(path.join(game, ".tmp", "writing") + path.sep) &&
+          to === path.join(game, "img", "a.png")
+        )
+          committed.resolve();
       });
       vi.spyOn(NativeFs.prototype, "remove_async").mockImplementation(async function (
         this: NativeFs,
         target,
         options,
       ) {
-        if (target === path.join(game, ".tmp")) {
+        if (path.dirname(target) === path.join(game, ".tmp", "garbage")) {
           cleanup.resolve();
           await release.promise;
         }

@@ -1,7 +1,6 @@
 import { GameDirectoryOperations } from "../file/shared/game/game-directory-operations";
 import { read_godot_pack_orders } from "../file/godot/source";
 import type { GamePrepareExecution } from "../file/shared/game/prepare-worker";
-import type { SourceFileParseWarning } from "../file/file-format-types";
 import { normalize_batch_translation_progress } from "../../domain/batch-translation";
 import { coordinate_project_duplicate_statuses } from "../../shared/project/project-item-duplicates";
 import type { ProjectDatabaseAccess } from "../database/database-operations";
@@ -14,8 +13,8 @@ import type { AppSettingService } from "../app/app-setting-service";
 import type { ProjectDatabase } from "../database/database-operations";
 import { FileFormatService } from "../file/file-format-service";
 import {
-  log_source_file_parse_failures,
-  log_source_file_parse_warnings,
+  log_source_file_diagnostics,
+  source_operation_error,
 } from "../file/source-file-parse-failure-reporter";
 import {
   SourceFileParsePipeline,
@@ -49,7 +48,6 @@ import {
 import { NativeFs, default_native_fs } from "../../native/native-fs";
 import * as AppErrors from "../../shared/error";
 import type { ProjectSourceFileSummary } from "../../shared/project-source-formats";
-import type { SourceFileParseFailureRecord } from "../../shared/source-file-parse-failure";
 import type { ProjectWriteResult } from "../../shared/project-event";
 import {
   compute_project_prefilter_write,
@@ -348,65 +346,78 @@ export class ProjectLifecycleService {
       },
       signal,
     );
-    signal.throwIfAborted();
-    this.assert_create_commit_has_importable_files(parsed_draft);
-    // 将可信草稿转成持久项目事实的唯一计算结果。
-    const prefilter_output = this.compute_create_project_prefilter_output({
-      draft: parsed_draft,
-      settings: project_settings,
-    });
-    const default_preset_input = this.default_preset_reader.read();
-    let snapshot!: ProjectDataSnapshot; // 初始化事务同步产出，失败时数据库入口抛错并清理新文件。
+    this.log_create_commit_parse_diagnostics(parsed_draft);
+    let saved_assets = 0;
+    try {
+      signal.throwIfAborted();
+      this.assert_create_commit_has_importable_files(parsed_draft);
+      // 将可信草稿转成持久项目事实的唯一计算结果。
+      const prefilter_output = this.compute_create_project_prefilter_output({
+        draft: parsed_draft,
+        settings: project_settings,
+      });
+      const default_preset_input = this.default_preset_reader.read();
+      let snapshot!: ProjectDataSnapshot; // 初始化事务同步产出，失败时数据库入口抛错并清理新文件。
 
-    await this.database.create_project(
-      project_path,
-      this.build_project_name(source_paths, project_path),
-      (writer) => {
-        this.write_default_presets(writer, project_path, default_preset_input);
-        for (const file of parsed_draft.files) {
-          writer.add_asset(
+      await this.database.create_project(
+        project_path,
+        this.build_project_name(source_paths, project_path),
+        (writer) => {
+          this.write_default_presets(writer, project_path, default_preset_input);
+          for (const file of parsed_draft.files) {
+            writer.add_asset(
+              project_path,
+              file.rel_path,
+              file.content,
+              file.file_type,
+              file.pdf_document,
+              file.sort_index,
+            );
+          }
+          writer.set_items(
             project_path,
-            file.rel_path,
-            file.content,
-            file.file_type,
-            file.pdf_document,
-            file.sort_index,
+            build_project_item_persistent_records(prefilter_output.items) as unknown as JsonValue[],
           );
-        }
-        writer.set_items(
-          project_path,
-          build_project_item_persistent_records(prefilter_output.items) as unknown as JsonValue[],
-        );
-        writer.upsert_meta_entries(
-          project_path,
-          this.build_project_settings_meta({
-            project_settings,
-            prefilter_output,
-          }) as unknown as JsonRecord,
-        );
-        writer.upsert_meta_entries(project_path, {
-          additional_files: Object.fromEntries(
-            parsed_draft.files
-              .filter((file) => file.additional_files.length > 0)
-              .map((file) => [file.rel_path, [...file.additional_files]]),
-          ),
-          translation_prompt_legacy_migrated: true,
-          "migration.asset_file_type_complete": true,
-        });
-        // 预过滤条目已分配身份并通过校验，写库只转换持久字段，提交后缓存可复用同一事实。
-        snapshot = new ProjectDataReader(writer).read_snapshot(
-          project_path,
-          Object.values(prefilter_output.items).sort((left, right) => left.item_id - right.item_id),
-        );
-      },
-    );
+          writer.upsert_meta_entries(
+            project_path,
+            this.build_project_settings_meta({
+              project_settings,
+              prefilter_output,
+            }) as unknown as JsonRecord,
+          );
+          writer.upsert_meta_entries(project_path, {
+            additional_files: Object.fromEntries(
+              parsed_draft.files
+                .filter((file) => file.additional_files.length > 0)
+                .map((file) => [file.rel_path, [...file.additional_files]]),
+            ),
+            translation_prompt_legacy_migrated: true,
+            "migration.asset_file_type_complete": true,
+          });
+          // 预过滤条目已分配身份并通过校验，写库只转换持久字段，提交后缓存可复用同一事实。
+          snapshot = new ProjectDataReader(writer).read_snapshot(
+            project_path,
+            Object.values(prefilter_output.items).sort(
+              (left, right) => left.item_id - right.item_id,
+            ),
+          );
+        },
+      );
 
-    const response = await this.activate_project(project_path, snapshot);
-    this.log_create_commit_parse_diagnostics(parsed_draft.failed_files, parsed_draft.warnings);
-    this.default_preset_reader.log_loaded_names(default_preset_input.loaded_names);
-    return parsed_draft.failed_files.length === 0
-      ? response
-      : { ...response, failed_files: parsed_draft.failed_files as unknown as JsonValue };
+      saved_assets = parsed_draft.files.length; // 激活失败仍由外层回执保留已经提交的资产数量。
+      const response = await this.activate_project(project_path, snapshot);
+      this.default_preset_reader.log_loaded_names(default_preset_input.loaded_names);
+      return {
+        ...response,
+        source_operation: {
+          saved_assets: parsed_draft.files.length,
+          directory_changes: parsed_draft.directory_changes,
+        },
+      };
+    } catch (error) {
+      if (signal.aborted) throw error;
+      throw source_operation_error(error, parsed_draft.directory_changes, saved_assets);
+    }
   }
 
   /**
@@ -493,35 +504,22 @@ export class ProjectLifecycleService {
   }
 
   /**
-   * 只在存在候选源文件且全部解析失败时阻断。空工程创建仍保留原有测试和内部语义。
+   * 候选来源均未取得可靠原稿时阻断。没有候选来源的显式空工程仍允许创建。
    */
   private assert_create_commit_has_importable_files(draft: SourceFileProjectDraft): void {
-    if (draft.files.length > 0 || draft.failed_files.length === 0) {
+    if (draft.files.length > 0 || draft.failures.length === 0) {
       return;
     }
-    this.log_create_commit_parse_diagnostics(draft.failed_files, draft.warnings);
     throw new AppErrors.AppError("file.parse_failed", {
-      public_details: {
-        failed_files: draft.failed_files as unknown as JsonValue,
-      },
       diagnostic_context: { reason: "all_source_files_parse_failed" },
     });
   }
 
-  /**
-   * 新建工程诊断统一记录文件失败与未提取脚本的位置。
-   */
-  private log_create_commit_parse_diagnostics(
-    failed_files: SourceFileParseFailureRecord[],
-    warnings: SourceFileParseWarning[],
-  ): void {
-    log_source_file_parse_warnings({
-      warnings,
-      log_manager: this.log_manager,
-      source: "project-lifecycle",
-    });
-    log_source_file_parse_failures({
-      failures: failed_files,
+  /** 新建工程诊断逐条记录来源失败与未提取脚本的位置。 */
+  private log_create_commit_parse_diagnostics(draft: SourceFileProjectDraft): void {
+    log_source_file_diagnostics({
+      failures: draft.failures,
+      warnings: draft.warnings,
       log_manager: this.log_manager,
       source: "project-lifecycle",
     });

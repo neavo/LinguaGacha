@@ -30,6 +30,7 @@ it("附加原稿统一分流，旧清单兼容且常规导出保留已有补丁"
     native,
   );
   expect(await format.read_from_stream(bytes, "game.rpgmaker", additional_files)).toEqual({
+    extraction_complete: true,
     items: [],
     warnings: [],
   });
@@ -212,6 +213,32 @@ it("游戏 解析通过共享容器入口拒绝越界成员", async () => {
   });
 });
 
+it("成员解析失败保留异常链与堆栈", async () => {
+  const cause = new Error("payload unavailable");
+  const error = new Error("member parse failed", { cause });
+  const adapter = create_rpgmaker_mv_mz_adapter();
+  adapter.create_members = async () => ({
+    read_file: async () => {
+      throw error;
+    },
+    render: async (content) => content,
+  });
+  const format = new GameFormat(new GameDirectoryOperations(), adapter, new NativeFs());
+  const bytes = await write_zip(new Map([["data/Broken.json", "{}"]]));
+  const parsed = await format.read_from_stream(bytes, "game.zip");
+  expect(parsed.extraction_complete).toBe(false);
+  expect(parsed.warnings).toMatchObject([
+    {
+      internal_file_path: "data/Broken.json",
+      error: {
+        message: error.message,
+        stack: expect.stringContaining("member parse failed"),
+        cause_chain: [expect.objectContaining({ message: cause.message })],
+      },
+    },
+  ]);
+});
+
 it("解析失败保留原始字节，零条目导出仍包含该文件", async () => {
   using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-rm-errors-"));
   fs.mkdirSync(path.join(temp.path, "data"));
@@ -289,6 +316,7 @@ it("按游戏资产提交，后续资产暂存失败保留此前成功输出与�
   const assets = new Map([
     ["first.rpgmaker", await write_zip(new Map([["data/file", "first output"]]))],
     ["second.rpgmaker", await write_zip(new Map([["data/file", "fail"]]))],
+    ["third.rpgmaker", await write_zip(new Map([["data/file", "third output"]]))],
   ]);
   native.write_file_sync(path.join(temp.path, "second/keep.txt"), "keep");
   await expect(
@@ -299,6 +327,7 @@ it("按游戏资产提交，后续资产暂存失败保留此前成功输出与�
     }),
   ).rejects.toThrow("second asset failed");
   expect(native.read_text_file(path.join(temp.path, "first/data/file"))).toBe("first output");
+  expect(native.read_text_file(path.join(temp.path, "third/data/file"))).toBe("third output");
   expect(fs.readdirSync(path.join(temp.path, "second"))).toEqual(["keep.txt"]);
 });
 

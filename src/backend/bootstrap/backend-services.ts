@@ -132,7 +132,7 @@ export class BackendServices {
   private readonly pdf_worker: PDFWorker; // 独立文档计算与取消，随业务根释放
   private readonly compute_worker_client: ComputeWorkerClient; // 缓存的校对与质量统计共享，随业务根释放
   private readonly task_runtime: BatchTranslationRuntime; // 关闭时先等待任务收束，再释放执行池
-  private readonly game_directory_operations = new GameDirectoryOperations(); // 所有文件服务共用目录占用，独立于模型运行。
+  private readonly game_directory_operations: GameDirectoryOperations; // 所有文件服务共用目录占用，独立于模型运行。
   private readonly runtime_gate = new RuntimeOperationGate(); // 执行占用与工程写入共享的唯一门禁
   private readonly work_unit_worker_pool: TranslationWorkerPool;
   private readonly planning_worker_pool: PlanningWorkerPool;
@@ -168,6 +168,7 @@ export class BackendServices {
 
     this.app_setting_service = options.appSettingService;
     this.logManager = options.logManager;
+    this.game_directory_operations = new GameDirectoryOperations(undefined, this.logManager);
     this.modelCatalog = new PiModelCatalog(paths, this.logManager);
     this.modelAuth = new ChatGPTAuthService(paths, this.runtime_gate, options.publishEvent);
     const llm_client = new LLMClient({

@@ -5,7 +5,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { expect, it, vi } from "vitest";
-import { GameFormat, GAME_METADATA_MEMBER } from "../shared/game/format";
+import { GameFormat, GAME_METADATA_MEMBER, read_game_container } from "../shared/game/format";
 import { create_renpy_adapter } from "./renpy-format";
 import { build_renpy_metadata, collect_renpy_files, discover_renpy_source } from "./source";
 import { RENPY_LANGUAGE_FILE, RENPY_STRINGS_FILE } from "./generated";
@@ -17,6 +17,50 @@ import {
 } from "../../../test/renpy-fixture";
 import { extract_script } from "./extract";
 import { encode_python } from "./python";
+
+it("独立代码写回只解析目标脚本，空译文导出只更新生成资源", async () => {
+  using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-renpy-export-dependencies-"));
+  const native = create_renpy_fixture(temp.path);
+  const game = (await discover_renpy_source(temp.path, native))!;
+  const data = collect_renpy_files(game, native);
+  const format = new GameFormat(new GameDirectoryOperations(), create_renpy_adapter(), native);
+  const content = await format.create_container(
+    data,
+    "demo.renpy",
+    "",
+    undefined,
+    await build_renpy_metadata(game, { data, complete: true }, native),
+  );
+  const parsed = await format.read_from_stream(content, "demo.renpy");
+  const code = parsed.items.find((item) => read_renpy_metadata(item.extra_field).usage === "code")!;
+  const { input } = await read_game_container(content, "demo.renpy", true);
+  const target = read_renpy_metadata(code.extra_field).internal_file_path;
+  const extra = {
+    ...input.get(target)!,
+    async: vi.fn(async () => {
+      throw new Error("unrelated script must not be parsed");
+    }),
+  };
+  const files = new Map(input);
+  files.set("game/unrelated.rpyc", extra);
+  const handler = await create_renpy_adapter().create_members(files);
+  const generated = await handler.prepare_export!([
+    { ...code, status: "PROCESSED", dst: "独立代码" },
+  ]);
+  expect(extra.async).not.toHaveBeenCalled();
+  expect(generated.has(RENPY_LANGUAGE_FILE)).toBe(true);
+  const rendered = await handler.render(await input.get(target)!.async("uint8array"), target, []);
+  using session = await PythonSession.create();
+  expect(
+    (await extract_script(rendered, false, session)).candidates.some(
+      (candidate) => candidate.text === "独立代码",
+    ),
+  ).toBe(true);
+  extra.async.mockClear();
+  const empty = await create_renpy_adapter().create_members(files);
+  expect((await empty.prepare_export!([])).get(RENPY_STRINGS_FILE)).toBeDefined();
+  expect(extra.async).not.toHaveBeenCalled();
+});
 
 it.each(["6.99.8", "8.0.3"])("%s 离线重载、人工放行与重复导出共用固化资产", async (version) => {
   using session = await PythonSession.create();
@@ -37,7 +81,7 @@ it.each(["6.99.8", "8.0.3"])("%s 离线重载、人工放行与重复导出共�
     "demo.renpy",
     [...data.keys()].join("\n"),
     undefined,
-    await build_renpy_metadata(game, data, native),
+    await build_renpy_metadata(game, { data, complete: true }, native),
   );
   fs.renameSync(root, path.join(temp.path, "unavailable"));
   const parsed = await new GameFormat(
@@ -95,7 +139,7 @@ async function import_fixture(root: string, native: ReturnType<typeof create_ren
     "demo.renpy",
     [...data.keys()].join("\n"),
     undefined,
-    await build_renpy_metadata(game, data, native),
+    await build_renpy_metadata(game, { data, complete: true }, native),
   );
   const { items } = await format.read_from_stream(asset, "demo.renpy");
   const out = path.join(root, "out");
@@ -235,7 +279,7 @@ it("Ren'Py 配套输出提交失败后恢复整个资产", async () => {
   const rename = native.rename.bind(native);
   vi.spyOn(native, "rename").mockImplementation((from, to) => {
     if (
-      from.includes(path.join(".tmp", "stage")) &&
+      from.includes(path.sep + "stage" + path.sep) &&
       to.endsWith(path.normalize(RENPY_STRINGS_FILE))
     )
       throw new Error("injected commit failure");

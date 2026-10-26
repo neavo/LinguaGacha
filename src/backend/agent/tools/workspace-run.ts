@@ -4,6 +4,7 @@ import type { ToolRegistration } from "@earendil-works/pi-durable";
 
 import { define_agent_tool, agent_tool_result } from "../tool-definition";
 import { AGENT_WORKSPACE_CONTRACT } from "./contract";
+import { AGENT_WORKSPACE_PATHS } from "../workspace/paths";
 import {
   AGENT_WORKSPACE_RUN_ROOT,
   AGENT_WORKSPACE_RUNTIME_POLICY,
@@ -60,6 +61,7 @@ export function create_agent_workspace_run_tool(options: {
       "### 工作区数据",
       "",
       "- `sources/<file_path>`：工程原稿，只读。",
+      `- \`${AGENT_WORKSPACE_PATHS.sourceIssues}\` 是 \`sources\` 的准备过程遇到的异常项目记录，只读，文件为空表示没有异常，结论依赖原稿完整时先读取该文件。`,
       "- `datasets` 都是只读快照，修改写入对应的 `changes` 后由 `workspace_apply` 提交。",
       ...Object.entries(AGENT_WORKSPACE_CONTRACT.datasets).map(([name, dataset]) => {
         const operations = Object.keys(AGENT_WORKSPACE_CONTRACT.changes[name] ?? {});

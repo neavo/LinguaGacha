@@ -57,7 +57,7 @@ export async function read_archive(
   for (let i = 0; i < root.children.length; i += 2) {
     const name = node_string(root.children[i]!).replaceAll("\\", "/");
     validate_game_path(name);
-    paths.add(name);
+    if (!members.has(name)) paths.add(name);
     const list = resolve_node(root.children[i + 1]!);
     assert(list.kind === "list" && list.children.length > 0, "Invalid RPA member: " + name);
     const parts = list.children.map((entry) => {

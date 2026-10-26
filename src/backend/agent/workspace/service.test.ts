@@ -79,6 +79,64 @@ describe("AgentWorkspaceService", () => {
     vi.restoreAllMocks();
   });
 
+  it("原稿全部读取失败仍执行脚本并记录问题，同修订只重试失败资产，成功后清空记录", async () => {
+    const fixture = await create_fixture(temp_dir);
+    const issues = path.join(fixture.workspace_root, AGENT_WORKSPACE_PATHS.sourceIssues);
+    fixture.read_asset_content.mockRejectedValueOnce(new Error("read failure"));
+    await run_workspace(fixture);
+    expect(fixture.run).toHaveBeenCalledOnce();
+    expect(read_jsonl(issues)).toEqual([
+      { asset_path: "script.txt", stage: "read", message: "read failure" },
+    ]);
+    await run_workspace(fixture);
+    expect(read_jsonl(issues)).toEqual([]);
+    const reads = fixture.read_asset_content.mock.calls.length;
+    await run_workspace(fixture);
+    expect(fixture.read_asset_content).toHaveBeenCalledTimes(reads);
+    expect(read_jsonl(issues)).toEqual([]);
+  });
+
+  it("原稿读取期间取消，等待读取收尾后停止准备且不执行脚本", async () => {
+    const fixture = await create_fixture(temp_dir);
+    const controller = new AbortController();
+    const cancellation = new Error("cancel source preparation");
+    fixture.read_asset_content.mockImplementationOnce(async () => {
+      controller.abort(cancellation);
+      return Buffer.from("original");
+    });
+    await expect(fixture.service.run(VALID_WORKSPACE_SCRIPT, controller.signal)).rejects.toBe(
+      cancellation,
+    );
+    expect(fixture.run).not.toHaveBeenCalled();
+    expect(fixture.read_asset_content).toHaveBeenCalledOnce();
+    expect(fs.existsSync(path.join(fixture.workspace_root, "sources", "script.txt"))).toBe(false);
+    expect(
+      fs.existsSync(path.join(fixture.workspace_root, AGENT_WORKSPACE_PATHS.sourceIssues)),
+    ).toBe(false);
+  });
+
+  it("重试成果的记录发布失败时保留重试范围，下次重新读取并发布", async () => {
+    const native = new NativeFs();
+    const fixture = await create_fixture(temp_dir, native);
+    const issues = path.join(fixture.workspace_root, AGENT_WORKSPACE_PATHS.sourceIssues);
+    fixture.read_asset_content.mockRejectedValueOnce(new Error("read failure"));
+    await run_workspace(fixture);
+    const previous = fs.readFileSync(issues, "utf8");
+    const write = vi.spyOn(native, "write_file_atomic").mockImplementationOnce(() => {
+      throw new Error("issue write failed");
+    });
+    await expect(run_workspace(fixture)).rejects.toMatchObject({
+      public_details: { action: "workspace_run", phase: "prepare_workspace" },
+    });
+    expect(fixture.run).toHaveBeenCalledOnce();
+    expect(fs.readFileSync(issues, "utf8")).toBe(previous);
+    const reads = fixture.read_asset_content.mock.calls.length;
+    write.mockRestore();
+    await run_workspace(fixture);
+    expect(fixture.read_asset_content).toHaveBeenCalledTimes(reads + 1);
+    expect(read_jsonl(issues)).toEqual([]);
+  });
+
   it("脚本图片按调用顺序固定字节，文件覆盖与删除不改变已接收内容", async () => {
     const fixture = await create_fixture(temp_dir);
     fixture.run.mockImplementationOnce(async (request, signal) => {
@@ -566,6 +624,9 @@ describe("AgentWorkspaceService", () => {
     await fixture.service.close();
     await fixture.service.activate_chat("test0001", [], async () => {});
     expect(fs.existsSync(path.join(fixture.workspace_root, "sources"))).toBe(false);
+    expect(
+      fs.existsSync(path.join(fixture.workspace_root, AGENT_WORKSPACE_PATHS.sourceIssues)),
+    ).toBe(false);
     await run_workspace(fixture);
     expect(fixture.read_asset_content).toHaveBeenCalledTimes(3);
   });
@@ -609,11 +670,22 @@ describe("AgentWorkspaceService", () => {
       await write(file, ...args);
       if (file === new_file) throw new Error("source write failed");
     });
-    await expect(run_workspace(fixture)).rejects.toThrow();
-    expect(fs.existsSync(path.join(fixture.workspace_root, "sources"))).toBe(false);
+    const issues = path.join(fixture.workspace_root, AGENT_WORKSPACE_PATHS.sourceIssues);
+    await run_workspace(fixture);
+    expect(read_jsonl(issues)).toEqual([
+      {
+        asset_path: file_path,
+        member_path: "Data/New.rvdata2.reference.json",
+        stage: "write",
+        message: "source write failed",
+      },
+    ]);
+    expect(fs.existsSync(new_file)).toBe(false);
+    expect(fs.existsSync(path.join(game, "Game.ini"))).toBe(true);
     fail.mockRestore();
     await run_workspace(fixture);
     expect(JSON.parse(fs.readFileSync(new_file, "utf8"))).toEqual([]);
+    expect(read_jsonl(issues)).toEqual([]);
   });
 
   it("work 跨快照、apply 与普通 revision 变化保留，显式 reset 时清理", async () => {
@@ -727,9 +799,7 @@ describe("AgentWorkspaceService", () => {
       cause: expect.objectContaining({ message: "contract write failed" }),
     });
     expect(cleanup_started_while_write_pending).toBe(false);
-    expect(fs.readdirSync(fixture.workspace_root).sort()).toEqual(
-      [...environment_files, "sources"].sort(),
-    );
+    expect(fs.readdirSync(fixture.workspace_root).sort()).toEqual([...environment_files].sort());
   });
 
   it("脚本错误和 runtime 故障保留已经写入的工作文件与阶段", async () => {

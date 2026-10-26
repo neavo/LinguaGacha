@@ -14,7 +14,7 @@ description: 翻译、审校或分析 RPGMAKER 游戏（XP、VX、VX Ace、MV、
 |MV、MZ|`data/*.json`，MV 可能带 `www/` 前缀。事件指令为 `list[]` 中的 `code` 与 `parameters`|`js/plugins.js` 保存插件参数，`js/plugins/*.js` 为插件源码|
 |XP、VX、VX Ace|`Data/` 下每个数据文件旁有 JSON 投影 `<原文件名>.reference.json`。对象写作 `$class` 与 `$fields`，字段名带 `@`，`$ref` 指向首次出现的位置|还原源码位于 `Data/<脚本档案>.reference/NNNN.rb`，脚本名称见同目录 `scripts.json`|
 
-`sources/<file_path>/game_files.reference.txt` 每行列出一个游戏目录中的文件路径。路径相对游戏根目录，包含图片、音频等素材。较早导入的工程没有该文件。
+`sources/<file_path>/game_files.reference.txt` 每行列出一个游戏目录中的文件路径。路径相对游戏根目录，包含图片、音频等素材。导入时读取失败的文件仍列在清单中。较早导入的工程没有该文件。
 
 附加原稿的扫描范围：MV、MZ 为数据根目录，路径保留 `www/` 前缀。XP、VX、VX Ace 为游戏根目录。
 
@@ -138,7 +138,7 @@ RGSS 的事件指令编号与上表相同。`122` 的脚本操作数只存在于
 
 交付时说明以下未覆盖范围：
 
-- `*.error.reference.json` 记录的解析失败成员，以及有语法错误、未产生条目的脚本。
+- `source_issues.jsonl` 记录的成员，以及有语法错误、未产生条目的脚本。
 - MV、MZ 核心 JS 与 `Game.ini` 的标题等不产生条目的文件，数据、插件和脚本以外的文件，以及图片中的文字。
 - 证据不足、保持未决的依赖，以及需要协调但没有条目可写、也未制作补丁的位置。
 - 可见文本补漏依据静态代码调查，无法证明没有遗漏。建议用户在游戏中抽查，并用截图定位遗漏。

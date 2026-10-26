@@ -8,7 +8,12 @@ import {
   assert_game_path_spellings,
 } from "../source-file-paths";
 import { ProjectAssetPathIndex } from "../../../shared/project/project-asset-paths";
-import type { GameDirectoryChanges } from "../shared/game/directory";
+import {
+  complete_game_preparation,
+  source_diagnostic,
+  type SourceDiagnostic,
+  type GamePreparation,
+} from "../shared/game/preparation";
 import type { BinaryFileHandle } from "../shared/binary";
 import {
   read_archive,
@@ -37,7 +42,7 @@ export async function stage_renpy_source(
   { game, staging }: Readonly<{ game: RenpySource; staging: string }>,
   fs: NativeFs,
   signal?: AbortSignal,
-): Promise<GameDirectoryChanges> {
+): Promise<GamePreparation> {
   {
     using session = await PythonSession.create();
     assert.deepEqual(
@@ -126,6 +131,21 @@ export async function stage_renpy_source(
       assert(member, "Missing Ren'Py member: " + name);
       return read_archive_member(member.input.handle, member.member);
     };
+    const captured = new Map<string, Buffer>();
+    const diagnostics: SourceDiagnostic[] = [];
+    let loading_complete = true;
+    const selected_files = new Map<string, string | null>();
+    /** 部分准备只交付原字节，失败的加载补丁不能替代可靠原稿。 */
+    const partial = async (): Promise<GamePreparation> => {
+      for (const name of packed.keys())
+        if (!selected_files.has(name)) selected_files.set(name, null);
+      for (const [name, bytes] of captured) {
+        const target = path.join(staging, "originals", name);
+        await fs.write_file(target, bytes);
+        selected_files.set(name, target);
+      }
+      return { sources: { files: selected_files, excluded: archives }, changes: null, diagnostics };
+    };
     const sources: string[] = [];
     const source_pairs = new Set<string>();
     for (const name of loose) {
@@ -161,17 +181,26 @@ export async function stage_renpy_source(
       if (!name.endsWith(".rpyc") || generated.has(name) || /^game\/(?:cache|saves)\//u.test(name))
         continue;
       using session = await PythonSession.create();
-      const bytes = await read(name);
-      const script = {
-        bytes,
-        slots: await read_compiled_async(bytes, signal),
-        python2: game.profile.python_major === 2,
-      };
-      const loading = await read_loading(script, name, game.profile, session, signal);
-      declarations.push(...loading.declarations);
-      if (loading.changes.length)
-        changed.set(name, await patch_script(script, [], loading.changes, session, signal));
+      try {
+        const bytes = await read(name);
+        captured.set(name, bytes);
+        const script = {
+          bytes,
+          slots: await read_compiled_async(bytes, signal),
+          python2: game.profile.python_major === 2,
+        };
+        const loading = await read_loading(script, name, game.profile, session, signal);
+        declarations.push(...loading.declarations);
+        if (loading.changes.length)
+          changed.set(name, await patch_script(script, [], loading.changes, session, signal));
+      } catch (error) {
+        signal?.throwIfAborted();
+        loading_complete = false;
+        selected_files.set(name, null);
+        diagnostics.push(source_diagnostic("prepare", error, name));
+      }
     }
+    if (!loading_complete) return await partial();
     const loading = resolve_loading(
       declarations,
       game.profile,
@@ -199,18 +228,33 @@ export async function stage_renpy_source(
       signal?.throwIfAborted();
       const target = path.join(staging, name);
       fs.ensure_parent_dir(target);
-      const output = await fs.open_file(target, "wx");
       try {
-        await copy_archive_member(input.handle, output, member, signal);
-      } finally {
-        await output.close();
+        const output = await fs.open_file(target, "wx");
+        try {
+          await copy_archive_member(input.handle, output, member, signal);
+        } finally {
+          await output.close();
+        }
+        writes.push(name);
+        selected_files.set(name, target);
+      } catch (error) {
+        signal?.throwIfAborted();
+        selected_files.set(name, null);
+        diagnostics.push(source_diagnostic("read", error, name));
       }
-      writes.push(name);
     }
+    if ([...selected_files.values()].includes(null)) return await partial();
     for (const [name, bytes] of changed) {
-      await fs.write_file(path.join(staging, name), bytes);
-      if (!writes.includes(name)) writes.push(name);
+      try {
+        await fs.write_file(path.join(staging, name), bytes);
+        if (!writes.includes(name)) writes.push(name);
+      } catch (error) {
+        signal?.throwIfAborted();
+        loading_complete = false;
+        diagnostics.push(source_diagnostic("prepare", error, name));
+      }
     }
+    if (!loading_complete) return await partial();
     for (const input of inputs) {
       assert_regular_path(path.join(game.root, input.name), fs);
       const current = await input.handle.stat(),
@@ -228,7 +272,7 @@ export async function stage_renpy_source(
       for (const key of ["size", "mtimeMs", "ctimeMs", "ino"] as const)
         assert(current[key] === original[key], "Ren'Py input changed during preparation: " + name);
     }
-    return { writes, removes: [...archives, ...sources] };
+    return complete_game_preparation(staging, { writes, removes: [...archives, ...sources] });
   } finally {
     await Promise.all(opened.map((handle) => handle.close()));
   }

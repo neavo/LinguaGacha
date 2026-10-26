@@ -15,7 +15,7 @@ import {
   type BinaryFileHandle,
 } from "../shared/binary";
 import { Reader, utf8 } from "./binary";
-import { decrypt_block, read_encrypted_block } from "./crypt";
+import { decrypt_block, read_encrypted_block, GODOT_CRYPT_HEADER_BYTES } from "./crypt";
 
 const PACK_HEADER_BYTES = 96,
   DIRECTORY_MAX_BYTES = 64 * 1024 * 1024,
@@ -147,12 +147,8 @@ export async function read_pack(
     const flags = record.u32();
     assert((flags & ~1) === 0, "Removal/delta/unknown PCK member");
     const encrypted = Boolean(flags & 1);
-    const block = encrypted ? await read_encrypted_block(handle, offset, end) : null;
-    if (block) {
-      assert.equal(block.size, length, "Encrypted PCK member length mismatch");
-      assert.equal(block.md5, md5, "Encrypted PCK member digest mismatch");
-    }
-    const stored_size = block?.stored_size ?? length;
+    // 目录已声明明文长度。载荷头和摘要留给最终成员读取，覆盖项不触发解码。
+    const stored_size = encrypted ? GODOT_CRYPT_HEADER_BYTES + Math.ceil(length / 16) * 16 : length;
     assert(
       Number.isSafeInteger(offset) &&
         Number.isSafeInteger(offset + stored_size) &&
@@ -167,22 +163,27 @@ export async function read_pack(
   assert_game_path_spellings(members.map((member) => member.name));
   for (const member of members) {
     validate_game_path(member.name);
-    paths.add(member.name);
     assert(
       !member.stored_size || member.offset + member.stored_size <= directory || member.offset >= at,
       "PCK member overlaps directory",
     );
   }
+  for (const name of new Set(members.map((member) => member.name))) paths.add(name);
   const sorted = members.filter((member) => member.stored_size).sort((a, b) => a.offset - b.offset);
   for (let index = 1; index < sorted.length; index++)
     assert(
-      sorted[index - 1]!.offset + sorted[index - 1]!.stored_size <= sorted[index]!.offset,
+      sorted[index - 1]!.offset + sorted[index - 1]!.stored_size <= sorted[index]!.offset ||
+        (sorted[index - 1]!.offset === sorted[index]!.offset &&
+          sorted[index - 1]!.stored_size === sorted[index]!.stored_size &&
+          sorted[index - 1]!.size === sorted[index]!.size &&
+          sorted[index - 1]!.md5 === sorted[index]!.md5 &&
+          sorted[index - 1]!.encrypted === sorted[index]!.encrypted),
       "Overlapping PCK payload",
     );
   return { ...header, members };
 }
 
-/** 被覆盖的成员也消费同一校验流，损坏载荷不能随资源叠加被隐藏。 */
+/** 最终选中的成员在读取时校验载荷。 */
 export async function* read_pack_member(
   handle: BinaryFileHandle,
   member: PackMember,

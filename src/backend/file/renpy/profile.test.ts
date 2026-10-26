@@ -6,6 +6,26 @@ import { expect, it } from "vitest";
 import { create_renpy_fixture } from "../../../test/renpy-fixture";
 import { read_profile, collect_common, read_renpy_format_metadata } from "./profile";
 
+it.each([
+  ["True", true],
+  ["False", false],
+  ["choose_semantics()", null],
+] as const)("替换语义 %s 保留确定值或未知", async (expression, expected) => {
+  using session = await PythonSession.create();
+  using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-renpy-semantics-"));
+  const native = create_renpy_fixture(temp.path);
+  const config = path.join(temp.path, "renpy/config.py");
+  native.write_file_sync(
+    config,
+    native
+      .read_text_file(config)
+      .replace("old_substitutions = True", "old_substitutions = " + expression),
+  );
+  expect((await read_profile(temp.path, native, undefined, session)).old_substitutions).toBe(
+    expected,
+  );
+});
+
 it("加载规则由源码形态决定，未知形态不能按版本号回退", async () => {
   using session = await PythonSession.create();
   using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-renpy-profile-"));
@@ -107,4 +127,9 @@ it("离线元数据独立校验必需字段，不从引擎版本补 Python 代�
   expect(() =>
     read_renpy_format_metadata(Buffer.from(JSON.stringify({ ...metadata, python_major: 4 }))),
   ).toThrow("Python generation");
+  expect(() =>
+    read_renpy_format_metadata(
+      Buffer.from(JSON.stringify({ ...metadata, scripts_incomplete: "true" })),
+    ),
+  ).toThrow("script completeness");
 });

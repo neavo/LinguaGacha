@@ -10,10 +10,6 @@ import type { ProjectWriteResultPayload } from "@frontend/app/state/desktop-proj
 import type { LocaleKey } from "@frontend/app/locale/locale-context";
 import { normalize_source_paths } from "@frontend/app/desktop/source-paths";
 import {
-  format_source_file_parse_failure_error_toast,
-  format_source_file_parse_failure_toast,
-} from "@frontend/app/feedback/source-file-parse-failure-feedback";
-import {
   create_workbench_import_files_plan,
   type WorkbenchFileConflictAction,
   type WorkbenchImportFileCandidate,
@@ -261,9 +257,8 @@ export function useWorkbenchImportFilesFlow(
       const godot_pack_orders = pending_request.godot_pack_orders.filter((game) =>
         selected_paths.has(game.game_root.replaceAll("\\", "/").toLowerCase()),
       );
-      let import_payload: ProjectWriteResultPayload;
       try {
-        import_payload = await options.run_modal_progress_toast({
+        await options.run_modal_progress_toast({
           message: options.t("workbench_page.feedback.add_file_loading_toast"),
           task: () =>
             options.run_project_file_write(import_plan, (body) =>
@@ -283,10 +278,7 @@ export function useWorkbenchImportFilesFlow(
         await request_add_files_from_paths(pending_request.source_paths);
         return;
       }
-      const failure_toast = format_source_file_parse_failure_toast(import_payload.failed_files);
-      if (failure_toast !== null) {
-        options.push_toast("warning", failure_toast);
-      }
+      options.push_toast("success", options.t("app.source_operation.success"));
       set_pending_import_files_request(null);
       options.set_dialog_state(close_dialog_state());
     },
@@ -317,10 +309,7 @@ export function useWorkbenchImportFilesFlow(
           await execute_import_files_request(pending, primary ? "inherit" : "none");
         }
       } catch (error) {
-        push_error_toast(
-          options.t("app.feedback.operation_failed"),
-          format_source_file_parse_failure_error_toast(error) ?? error,
-        );
+        push_error_toast(options.t("app.feedback.operation_failed"), error);
         options.set_dialog_submitting(false);
       }
       return true;

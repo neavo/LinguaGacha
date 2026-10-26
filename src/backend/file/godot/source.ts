@@ -13,7 +13,6 @@ import { read_executable } from "./executable";
 import type { GodotPackOrder, GodotPackPreview } from "../../../shared/godot";
 import { AppError } from "../../../shared/error";
 import { read_resource_type } from "./resource";
-import { GODOT_RESOURCE_MAX_BYTES } from "./binary";
 import {
   collect_game_source_files,
   type GameSourceData,
@@ -84,6 +83,7 @@ export async function discover_godot_source(
   const entries = fs.read_dirents(root).filter((entry) => entry.isFile());
   const external: GodotCarrier[] = [];
   const embedded: GodotCarrier[] = [];
+  const failed_executables: unknown[] = [];
   for (const entry of entries) {
     signal?.throwIfAborted();
     const extension = path.extname(entry.name).toLowerCase();
@@ -91,8 +91,9 @@ export async function discover_godot_source(
     const file = path.join(root, entry.name);
     assert_regular_path(file, fs);
     if (extension === ".pck" && is_empty_pack(file, fs)) continue;
-    const handle = await fs.open_file(file, "r");
+    let handle: Awaited<ReturnType<NativeFs["open_file"]>> | undefined;
     try {
+      handle = await fs.open_file(file, "r");
       if (extension === ".exe") {
         const size = (await handle.stat()).size;
         if (size < 12) continue;
@@ -113,8 +114,16 @@ export async function discover_godot_source(
       if (extension === ".pck")
         assert.equal(header.start, 0, "External PCK contains an executable prefix");
       (extension === ".pck" ? external : embedded).push({ file, header });
+    } catch (error) {
+      signal?.throwIfAborted();
+      if (
+        extension !== ".exe" ||
+        (source.executable && fs.to_identity_path(file) === fs.to_identity_path(source.executable))
+      )
+        throw error;
+      failed_executables.push(error);
     } finally {
-      await handle.close();
+      await handle?.close();
     }
   }
   external.sort((a, b) => compare_pack_names(path.basename(a.file), path.basename(b.file)));
@@ -128,7 +137,10 @@ export async function discover_godot_source(
   const base = selected ?? embedded[0] ?? null;
   const loose =
     fs.exists(path.join(root, "project.binary")) && fs.exists(path.join(root, ".godot"));
-  if (!base && !external.length && !loose) return null;
+  if (!base && !external.length && !loose) {
+    if (failed_executables.length) throw failed_executables[0];
+    return null;
+  }
   const executables = entries
     .filter((entry) => path.extname(entry.name).toLowerCase() === ".exe")
     .sort((a, b) => compare_pack_names(a.name, b.name));
@@ -241,6 +253,10 @@ export function collect_godot_files(
         signal?.throwIfAborted();
         const kind = godot_member_kind(name);
         if (kind === null) continue;
+        if (file === null) {
+          names.push(name);
+          continue;
+        }
         assert_regular_path(file, fs);
         // 二进制候选按文件头判断：GDSC 直接保留，其余读取资源类型过滤素材。
         if (
@@ -260,14 +276,10 @@ export function collect_godot_files(
           )
             continue;
         }
-        // 从暂存优先的实际路径读头，上限只约束入选成员。
-        assert(
-          fs.stat(file).size <= GODOT_RESOURCE_MAX_BYTES,
-          "Godot member exceeds format processing limit: " + name,
-        );
         names.push(name);
       }
-      assert(names.includes("project.binary"), "Missing Godot project.binary");
+      if (!prepared?.on_read_failure)
+        assert(names.includes("project.binary"), "Missing Godot project.binary");
       return names;
     },
     null,

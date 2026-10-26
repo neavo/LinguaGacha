@@ -27,6 +27,27 @@ afterEach(() => {
 });
 
 describe("run_cli_job", () => {
+  it("最终回执保留实际保存数量与目录副作用", async () => {
+    const harness = create_backend_services_harness();
+    const source_operation = { saved_assets: 1, directory_changes: ["game"] };
+    harness.create_project_commit.mockResolvedValueOnce({ source_operation });
+    vi.spyOn(harness.backend_services.project.summary, "read").mockResolvedValue({
+      projectPath: "test.lg",
+      sectionRevisions: {},
+      snapshot: { entries: [] },
+    });
+    await run_cli_job(
+      harness.backend_services,
+      create_command(create_cli_paths()),
+      harness.status_reporter,
+    );
+    expect(harness.status_reporter.emit_finished).toHaveBeenCalledWith(
+      "done",
+      undefined,
+      [],
+      source_operation,
+    );
+  });
   it("纯 PDF 输入报告排除文件并跳过模型与批量运行", async () => {
     const harness = create_backend_services_harness();
     const paths = create_cli_paths();
@@ -57,9 +78,12 @@ describe("run_cli_job", () => {
     expect(harness.generate_files_to_directory).toHaveBeenCalledWith(paths.output_dir, [
       "book.pdf",
     ]);
-    expect(harness.status_reporter.emit_finished).toHaveBeenCalledWith("done", undefined, [
-      "book.pdf",
-    ]);
+    expect(harness.status_reporter.emit_finished).toHaveBeenCalledWith(
+      "done",
+      undefined,
+      ["book.pdf"],
+      undefined,
+    );
   });
 
   it("原生游戏输入只向 stderr 提示备份，stdout 不受影响", async () => {
@@ -67,6 +91,7 @@ describe("run_cli_job", () => {
     const paths = create_cli_paths();
     harness.create_project_commit.mockImplementationOnce(async (_request, notify) => {
       notify?.();
+      return {};
     });
     vi.spyOn(harness.backend_services.project.summary, "read").mockResolvedValue({
       projectPath: "test.lg",
@@ -177,7 +202,12 @@ describe("run_cli_job", () => {
     expect(harness.set_transient_overrides).toHaveBeenLastCalledWith(null);
     expect(harness.unload_project).toHaveBeenCalledOnce();
     expect(harness.subscriber_count()).toBe(0);
-    expect(harness.status_reporter.emit_finished).toHaveBeenCalledWith("error", error);
+    expect(harness.status_reporter.emit_finished).toHaveBeenCalledWith(
+      "error",
+      error,
+      [],
+      undefined,
+    );
     expect(harness.generate_files_to_directory).not.toHaveBeenCalled();
     expect_temp_project_removed(harness.created_project_paths);
   });
@@ -228,7 +258,12 @@ describe("run_cli_job", () => {
     await rejection;
 
     expect(harness.status_reporter.emit_finished).toHaveBeenCalledOnce();
-    expect(harness.status_reporter.emit_finished).toHaveBeenCalledWith("error", unload_failure);
+    expect(harness.status_reporter.emit_finished).toHaveBeenCalledWith(
+      "error",
+      unload_failure,
+      [],
+      undefined,
+    );
     expect_temp_project_removed(harness.created_project_paths);
   });
 
@@ -252,7 +287,12 @@ describe("run_cli_job", () => {
       expect.objectContaining({ message: "Translation task failed" }),
       unload_failure,
     ]);
-    expect(harness.status_reporter.emit_finished).toHaveBeenCalledWith("error", command_error);
+    expect(harness.status_reporter.emit_finished).toHaveBeenCalledWith(
+      "error",
+      command_error,
+      [],
+      undefined,
+    );
     expect_temp_project_removed(harness.created_project_paths);
   });
 });
@@ -294,6 +334,7 @@ function create_backend_services_harness(failures: { unloadFailure?: Error } = {
     created_project_paths.push(request.path);
     cleanup_roots.push(path.dirname(request.path));
     fs.writeFileSync(request.path, "临时工程哨兵", "utf-8");
+    return {};
   });
   const apply_task_input = vi.fn(async () => {
     events.push("apply");

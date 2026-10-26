@@ -19,6 +19,7 @@ const NEIGHBOR_CONTEXT_MIN_LENGTH = 64; // 为相邻成员预留短摘要，长�
 export function create_rpgmaker_extractor(rel_path: string) {
   const items: Item[] = [];
   const warnings: SourceFileParseWarning[] = [];
+  let extraction_complete = true;
 
   /** 事件正文、选项、默认翻译字段和模板片段按原文保存，空对白仍可携带姓名。 */
   function add(
@@ -44,6 +45,7 @@ export function create_rpgmaker_extractor(rel_path: string) {
   /** 元数据与完整脚本字符串可能嵌套 JSON，每次解码增加一级定位，叶子沿用外层用途。 */
   function expand(src: string, metadata: Omit<RPGMakerMetadata, "internal_file_path">): void {
     const context = metadata.source_context ?? JSON.stringify(metadata.location);
+    /** 递归解码文本容器，保留叶子在原稿中的完整写回位置。 */
     function visit(text: string, location: RPGMakerLocation, nearby?: NearbyMembers): void {
       const decoded = parse_json_container(text);
       if (decoded === null) {
@@ -79,6 +81,7 @@ export function create_rpgmaker_extractor(rel_path: string) {
   function script(src: string, container: RPGMakerRootLocation): void {
     const result = read_javascript_strings(src);
     if (!result.ok) {
+      extraction_complete = false;
       warnings.push({
         code: "script_syntax_error",
         rel_path,
@@ -107,7 +110,16 @@ export function create_rpgmaker_extractor(rel_path: string) {
         },
       });
   }
-  return { items, warnings, add, expand, script };
+  return {
+    items,
+    warnings,
+    add,
+    expand,
+    script,
+    get extraction_complete() {
+      return extraction_complete;
+    },
+  };
 }
 
 /** 标量和解析失败均是普通文本，只有对象与数组形成解码边界。 */

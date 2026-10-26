@@ -23,6 +23,23 @@ function encrypted_fixture(name: string): Buffer {
   return wolf_vector(wolf_vectors.wolfx.find((vector) => vector.name === name)!.input);
 }
 
+it("根归档与分包按确定顺序覆盖，同名旧载荷不参与展开", async () => {
+  using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-wolf-overrides-"));
+  const native = new NativeFs();
+  const root_files = new Map([...wolf_files()].map(([name, bytes]) => [name.slice(5), bytes]));
+  root_files.set("BasicData/extra.txt", Buffer.from("old"));
+  native.write_file_sync(path.join(temp.path, "Data.wolf"), await wolf_archive_fixture(root_files));
+  native.write_file_sync(
+    path.join(temp.path, "Data/BasicData.wolf"),
+    await wolf_archive_fixture(new Map([["extra.txt", Buffer.from("winner")]])),
+  );
+  const game = (await discover_wolf_source(temp.path, native))!;
+  await prepare_source(game, native);
+  expect(native.read_text_file(path.join(temp.path, "Data/BasicData/extra.txt"))).toBe("winner");
+  expect(native.exists(path.join(temp.path, "Data.wolf"))).toBe(false);
+  expect(native.exists(path.join(temp.path, "Data/BasicData.wolf"))).toBe(false);
+});
+
 it.each(["case", "directory", "nested", "structure"])(
   "WolfX %s 冲突或结构错误在目录提交前失败",
   async (mode) => {
@@ -92,7 +109,7 @@ it("三轮事件依赖从可用文件收集候选，覆盖旧明文并移除原�
       { game: (await discover_wolf_source(temp.path, native))!, staging },
       native,
     ),
-  ).toMatchObject({ writes: [], removes: [] });
+  ).toMatchObject({ changes: { writes: [], removes: [] } });
 });
 
 it("六类核心及 project 成对还原一次，重复准备不再写入", async () => {
@@ -303,7 +320,7 @@ it.each(["unsupported", "core", "map-read", "companion-read"])(
       const read = native.read_file.bind(native);
       const suffix = failure === "map-read" ? "Map001.mps" : "DataBase.project";
       vi.spyOn(native, "read_file").mockImplementation((file) => {
-        if (file.includes(path.join(".tmp", "stage")) && file.endsWith(suffix))
+        if (file.includes(path.sep + "stage" + path.sep) && file.endsWith(suffix))
           throw new Error("staged read failure");
         return read(file);
       });
@@ -322,13 +339,13 @@ it.each(["unsupported", "core", "map-read", "companion-read"])(
       native,
     );
     const entries = await service.collect_source_file_entries([root]);
-    await expect(service.prepare_source(entries[0]!)).rejects.toThrow(
-      failure === "unsupported"
-        ? "crypt=999"
-        : failure === "core"
-          ? "Missing WOLF companion"
-          : "staged read failure",
-    );
+    if (failure === "unsupported")
+      await expect(service.prepare_source(entries[0]!)).rejects.toThrow("crypt=999");
+    else
+      await expect(service.prepare_source(entries[0]!)).resolves.toMatchObject({
+        directory_changed: false,
+        diagnostics: expect.any(Array),
+      });
     expect(fs.readFileSync(path.join(root, "Data.wolf")).equals(packed)).toBe(true);
     expect(fs.readFileSync(path.join(root, "Data/BasicData/CommonEvent.dat"), "utf8")).toBe(
       "original loose",

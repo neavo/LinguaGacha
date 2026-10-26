@@ -4,7 +4,12 @@ import { setImmediate } from "node:timers/promises";
 import type { NativeFs } from "../../../native/native-fs";
 import { AppError, read_error_message } from "../../../shared/error";
 import { ProjectAssetPathIndex } from "../../../shared/project/project-asset-paths";
-import type { GameDirectoryChanges } from "../shared/game/directory";
+import {
+  complete_game_preparation,
+  source_diagnostic,
+  type SourceDiagnostic,
+  type GamePreparation,
+} from "../shared/game/preparation";
 import {
   assert_game_path_spellings,
   assert_regular_path,
@@ -29,11 +34,11 @@ export async function stage_wolf_source(
   { game, staging }: Readonly<{ game: WolfSource; staging: string }>,
   fs: NativeFs,
   signal?: AbortSignal,
-): Promise<GameDirectoryChanges> {
+): Promise<GamePreparation> {
   const files = new Map<string, string>(),
     original = new Set<string>(),
     directories = new Set<string>(),
-    archive_targets = new ProjectAssetPathIndex(), // 跨归档的同名成员在展开前报冲突。
+    archive_targets = new ProjectAssetPathIndex(), // 同名资源先覆盖，索引拒绝大小写别名和路径占用冲突。
     staged = new Set<string>(),
     strict = new Set<string>(); // 只有本次转换过的成员必须通过严格复核。
   if (fs.exists(game.data_root)) collect_existing_files(game.root, "Data", original, fs, signal);
@@ -48,12 +53,13 @@ export async function stage_wolf_source(
   /** 写入转换结果并登记严格复核，归档原样展开不经过此入口。 */
   const write = async (name: string, bytes: Buffer) => {
     const target = path.join(staging, name);
-    await fs.make_dir_async(path.dirname(target));
     await fs.write_file(target, bytes);
     files.set(name, target);
     staged.add(name);
     strict.add(name);
   };
+  const diagnostics: SourceDiagnostic[] = [];
+  const unavailable = new Set<string>();
   const keys = new Map<WolfKeyType, Buffer>();
   /** 同类型的配套密钥按原字节去重，多个归档共用一次派生结果。 */
   const companion = async (mode: WolfKeyType): Promise<Buffer> => {
@@ -74,11 +80,11 @@ export async function stage_wolf_source(
     keys.set(mode, key);
     return key;
   };
-  const opened: Array<{
-    handle: BinaryFileHandle;
-    archive: WolfArchive;
-    prefix: string;
-  }> = [];
+  const opened: BinaryFileHandle[] = []; // 归档选择结果持有载荷，句柄清单只负责统一释放。
+  const selected = new Map<
+    string,
+    { archive: WolfArchive; member: WolfArchive["members"][number] }
+  >();
   try {
     for (const source of game.archives) {
       await checkpoint(signal);
@@ -95,161 +101,196 @@ export async function stage_wolf_source(
           cause,
         );
       }
-      opened.push({ handle, archive, prefix: source.output_prefix });
+      opened.push(handle);
       directories.add(source.output_prefix);
       for (const directory of archive.directories)
         directories.add(source.output_prefix + "/" + directory);
       for (const member of archive.members) {
         const name = source.output_prefix + "/" + member.name;
         validate_game_path(name);
-        archive_targets.add(name);
+        if (!selected.has(name)) archive_targets.add(name);
+        selected.set(name, { archive, member });
         assert_regular_path(path.join(game.root, name), fs);
       }
     }
-    for (const { archive, prefix } of opened)
-      for (const member of archive.members) {
-        await checkpoint(signal);
-        const name = prefix + "/" + member.name,
-          target = path.join(staging, name);
+    assert_game_path_spellings([...selected.keys(), ...directories]);
+    for (const [name, { archive, member }] of selected) {
+      await checkpoint(signal);
+      const target = path.join(staging, name);
+      files.delete(name); // 胜出载荷读取失败时不回落到散装旧文件。
+      try {
         await fs.make_dir_async(path.dirname(target));
         await extract_wolf_member(archive, member, target, fs, signal);
         files.set(name, target);
         staged.add(name);
-      }
-  } finally {
-    await Promise.all(opened.map(({ handle }) => handle.close()));
-  }
-
-  const encrypted = new Map([...files].filter(([name]) => /\.wolfx$/iu.test(name)));
-  const encrypted_targets = new Map([...encrypted.keys()].map((name) => [name.slice(0, -6), name]));
-  // 配套密钥是保留成员，归档或 WolfX 的输出不能把它当作旧明文覆盖。
-  for (const key of game.key_files) {
-    const name = path.relative(game.root, key.source_path).replaceAll("\\", "/");
-    assert(
-      !staged.has(name) && !encrypted_targets.has(name),
-      "WOLF output conflicts with companion key: " + name,
-    );
-  }
-  assert_game_path_spellings([...files.keys(), ...directories, ...encrypted_targets.keys()]);
-  // 原稿、归档输出与 WolfX 输出合并后，大小写重名或文件与目录重叠在解密前失败。
-  const paths = new ProjectAssetPathIndex();
-  for (const name of new Set([...files.keys(), ...encrypted_targets.keys()])) {
-    validate_game_path(name);
-    paths.add(name);
-  }
-  for (const name of encrypted_targets.keys())
-    assert(!encrypted.has(name), "Conflicting WOLFX ciphertext target: " + name);
-  for (const name of encrypted.keys())
-    assert(!/\.(?:dat|project)\.wolfx$/iu.test(name), name + ": WolfX: unsupported core layout");
-  await restore_core_files(files, fs, write, signal);
-  await normalize_descriptions(files, fs, write, strict, signal);
-  const pending = new Set(encrypted.keys()),
-    parsed = new Set<string>(),
-    candidates = create_wolfx_candidates();
-  /** 密文覆盖的旧明文只有在解密成功后才能提供候选。 */
-  const available = (name: string) => {
-    const cipher = encrypted_targets.get(name);
-    return cipher === undefined || !pending.has(cipher);
-  };
-  if (encrypted.size) {
-    const common = [...files].find(([name]) => /^Data\/BasicData\/CommonEvent\.dat$/iu.test(name));
-    if (common) {
-      try {
-        for (const event of read_wolf_common(fs.read_file(common[1])).details.events)
-          collect_wolfx_keys(event.commands, candidates);
-      } catch (cause) {
-        throw failure(common[0], "key collection", cause);
+      } catch (error) {
+        signal?.throwIfAborted();
+        unavailable.add(name);
+        diagnostics.push(source_diagnostic("read", error, name));
       }
     }
+  } finally {
+    await Promise.all(opened.map((handle) => handle.close()));
   }
-  const default_candidates = create_wolfx_candidates();
-  /** 引擎仅用默认键加载字体。 */
-  const keys_for = (name: string) =>
-    /\.(?:ttf|ttc|otf)\.wolfx$/iu.test(name) ? default_candidates : candidates;
-  // 只有新解出的地图能继续增加候选，核心与配对不参与重试。
-  for (;;) {
-    let progress = false;
-    // 密钥来源独立解析，不要求完整数据库集合。被 WolfX 遮蔽的旧明文不能提供候选。
-    if (encrypted.size)
-      for (const [name, source] of files) {
-        if (!available(name) || parsed.has(name) || !/\.mps$/iu.test(name)) continue;
-        await checkpoint(signal);
-        const content = fs.read_file(source);
+
+  /** 失败来源继续占位，收集器只能消费本次已确认的原稿。 */
+  const partial = (): GamePreparation => ({
+    sources: {
+      files: new Map<string, string | null>([
+        ...files,
+        ...[...unavailable].map((name) => [name, null] as const),
+      ]),
+      excluded: game.archives.map((archive) =>
+        path.relative(game.root, archive.source_path).replaceAll("\\", "/"),
+      ),
+    },
+    changes: null,
+    diagnostics,
+  });
+  if (unavailable.size) return partial();
+  try {
+    const encrypted = new Map([...files].filter(([name]) => /\.wolfx$/iu.test(name)));
+    const encrypted_targets = new Map(
+      [...encrypted.keys()].map((name) => [name.slice(0, -6), name]),
+    );
+    // 配套密钥是保留成员，归档或 WolfX 的输出不能把它当作旧明文覆盖。
+    for (const key of game.key_files) {
+      const name = path.relative(game.root, key.source_path).replaceAll("\\", "/");
+      assert(
+        !staged.has(name) && !encrypted_targets.has(name),
+        "WOLF output conflicts with companion key: " + name,
+      );
+    }
+    assert_game_path_spellings([...files.keys(), ...directories, ...encrypted_targets.keys()]);
+    // 原稿、归档输出与 WolfX 输出合并后，大小写重名或文件与目录重叠在解密前失败。
+    const paths = new ProjectAssetPathIndex();
+    for (const name of new Set([...files.keys(), ...encrypted_targets.keys()])) {
+      validate_game_path(name);
+      paths.add(name);
+    }
+    for (const name of encrypted_targets.keys())
+      assert(!encrypted.has(name), "Conflicting WOLFX ciphertext target: " + name);
+    for (const name of encrypted.keys())
+      assert(!/\.(?:dat|project)\.wolfx$/iu.test(name), name + ": WolfX: unsupported core layout");
+    await restore_core_files(files, fs, write, signal);
+    await normalize_descriptions(files, fs, write, strict, signal);
+    const pending = new Set(encrypted.keys()),
+      parsed = new Set<string>(),
+      candidates = create_wolfx_candidates();
+    /** 密文覆盖的旧明文只有在解密成功后才能提供候选。 */
+    const available = (name: string) => {
+      const cipher = encrypted_targets.get(name);
+      return cipher === undefined || !pending.has(cipher);
+    };
+    if (encrypted.size) {
+      const common = [...files].find(([name]) =>
+        /^Data\/BasicData\/CommonEvent\.dat$/iu.test(name),
+      );
+      if (common) {
         try {
-          for (const event of read_wolf_map(content).details.events)
-            for (const page of event.pages) collect_wolfx_keys(page.commands, candidates);
+          for (const event of read_wolf_common(fs.read_file(common[1])).details.events)
+            collect_wolfx_keys(event.commands, candidates);
         } catch (cause) {
-          if (strict.has(name) || cause instanceof WolfProtocolError)
-            throw failure(name, "key collection", cause);
-          // 未改的坏地图不提供任何候选，保留原稿供导入报告警告。
+          throw failure(common[0], "key collection", cause);
         }
-        parsed.add(name);
       }
-    const missing: string[] = [];
-    for (const name of pending) {
-      await checkpoint(signal);
-      const handle = await fs.open_file(encrypted.get(name)!, "r");
-      try {
-        const result = await match_wolfx(handle, keys_for(name), signal);
-        if (!result.match) {
-          missing.push(
-            name +
-              ": WolfX: insufficient local key material: " +
-              (result.missing.join(", ") || "no matching static candidate"),
-          );
-          continue;
+    }
+    const default_candidates = create_wolfx_candidates();
+    /** 引擎仅用默认键加载字体。 */
+    const keys_for = (name: string) =>
+      /\.(?:ttf|ttc|otf)\.wolfx$/iu.test(name) ? default_candidates : candidates;
+    // 只有新解出的地图能继续增加候选，核心与配对不参与重试。
+    for (;;) {
+      let progress = false;
+      // 密钥来源独立解析，不要求完整数据库集合。被 WolfX 遮蔽的旧明文不能提供候选。
+      if (encrypted.size)
+        for (const [name, source] of files) {
+          if (!available(name) || parsed.has(name) || !/\.mps$/iu.test(name)) continue;
+          await checkpoint(signal);
+          const content = fs.read_file(source);
+          try {
+            for (const event of read_wolf_map(content).details.events)
+              for (const page of event.pages) collect_wolfx_keys(page.commands, candidates);
+          } catch (cause) {
+            if (strict.has(name) || cause instanceof WolfProtocolError)
+              throw failure(name, "key collection", cause);
+            // 未改的坏地图不提供任何候选，保留原稿供导入报告警告。
+          }
+          parsed.add(name);
         }
-        const target_name = name.slice(0, -6),
-          target = path.join(staging, target_name);
-        assert_regular_path(path.join(game.root, target_name), fs);
-        await fs.make_dir_async(path.dirname(target));
-        const output = await fs.open_file(target, "w");
+      const missing: string[] = [];
+      for (const name of pending) {
+        await checkpoint(signal);
+        const handle = await fs.open_file(encrypted.get(name)!, "r");
         try {
-          await write_wolfx_plaintext(handle, output, result.match, signal);
+          const result = await match_wolfx(handle, keys_for(name), signal);
+          if (!result.match) {
+            missing.push(
+              name +
+                ": WolfX: insufficient local key material: " +
+                (result.missing.join(", ") || "no matching static candidate"),
+            );
+            continue;
+          }
+          const target_name = name.slice(0, -6),
+            target = path.join(staging, target_name);
+          assert_regular_path(path.join(game.root, target_name), fs);
+          await fs.make_dir_async(path.dirname(target));
+          const output = await fs.open_file(target, "w");
+          try {
+            await write_wolfx_plaintext(handle, output, result.match, signal);
+          } finally {
+            await output.close();
+          }
+          files.set(target_name, target);
+          staged.add(target_name);
+          strict.add(target_name);
+          files.delete(name);
+          staged.delete(name);
+          pending.delete(name);
+          progress = true;
+        } catch (cause) {
+          throw failure(name, "WolfX", cause);
         } finally {
-          await output.close();
+          await handle.close();
         }
-        files.set(target_name, target);
-        staged.add(target_name);
-        strict.add(target_name);
-        files.delete(name);
-        staged.delete(name);
-        pending.delete(name);
-        progress = true;
+      }
+      if (!progress) {
+        assert(!pending.size, "Unresolved WOLF dependencies: " + missing.join("; "));
+        break;
+      }
+    }
+    // 新解出的事件可能增加候选，全部已解密文必须参与最终歧义判断。
+    for (const [name, source] of encrypted) {
+      await checkpoint(signal);
+      const handle = await fs.open_file(source, "r");
+      try {
+        assert((await match_wolfx(handle, keys_for(name), signal)).match, "WOLFX candidate lost");
       } catch (cause) {
-        throw failure(name, "WolfX", cause);
+        throw failure(name, "final candidate validation", cause);
       } finally {
         await handle.close();
       }
     }
-    if (!progress) {
-      assert(!pending.size, "Unresolved WOLF dependencies: " + missing.join("; "));
-      break;
-    }
+    await validate_wolf_source(fs, files, strict, signal);
+    return complete_game_preparation(staging, {
+      writes: [...staged],
+      directories: [...directories],
+      removes: [
+        ...game.archives.map((archive) =>
+          path.relative(game.root, archive.source_path).replaceAll("\\", "/"),
+        ),
+        ...[...encrypted.keys()].filter((name) => original.has(name)),
+      ],
+    });
+  } catch (error) {
+    signal?.throwIfAborted();
+    for (const name of strict) unavailable.add(name);
+    for (const name of files.keys())
+      if (/\.wolfx$/iu.test(name)) unavailable.add(name.slice(0, -6));
+    diagnostics.push(source_diagnostic("prepare", error));
+    return partial();
   }
-  // 新解出的事件可能增加候选，全部已解密文必须参与最终歧义判断。
-  for (const [name, source] of encrypted) {
-    await checkpoint(signal);
-    const handle = await fs.open_file(source, "r");
-    try {
-      assert((await match_wolfx(handle, keys_for(name), signal)).match, "WOLFX candidate lost");
-    } catch (cause) {
-      throw failure(name, "final candidate validation", cause);
-    } finally {
-      await handle.close();
-    }
-  }
-  await validate_wolf_source(fs, files, strict, signal);
-  return {
-    writes: [...staged],
-    directories: [...directories],
-    removes: [
-      ...game.archives.map((archive) =>
-        path.relative(game.root, archive.source_path).replaceAll("\\", "/"),
-      ),
-      ...[...encrypted.keys()].filter((name) => original.has(name)),
-    ],
-  };
 }
 
 /** 核心和已识别协议在提交前完整解析，辅助文件按原稿保留。 */

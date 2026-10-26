@@ -50,7 +50,14 @@ export class GameFontService {
             throw new AppError("request.validation_failed");
           game = { ...game, game: apply_godot_pack_order(game.game, orders[0]!) };
         }
-        await replace_game_font(game, font, this.fs, this.execute, signal);
+        await replace_game_font(
+          game,
+          font,
+          this.fs,
+          this.execute,
+          signal,
+          this.game_directory_operations.report_cleanup,
+        );
         return {};
       },
     );

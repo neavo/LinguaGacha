@@ -7,21 +7,21 @@ description: 翻译、审校或分析 RenPy 游戏前必须首先加载，提供
 
 # 原稿与条目
 
-每个游戏是一个工程资产，条目的 `file_path` 指向整个游戏。导入前已解开 `.rpa` 归档并移出 `.rpy` 源码，翻译输入为编译脚本和格式元数据。`sources/<file_path>/` 包含：
+每个游戏是一个工程资产，条目的 `file_path` 指向整个游戏。导入时解开 `.rpa` 归档并移出 `.rpy` 源码，翻译输入为编译脚本和格式元数据。导入准备未完成时游戏目录保持原样，原稿只包含已读取的成员。`sources/<file_path>/` 包含：
 
 |文件|内容|
 |---|---|
-|`game_files.reference.txt`|准备后游戏目录的完整文件清单，每行一个相对路径，包括图片、音频、字体和 JSON 等数据文件|
-|`__metadata__.json`|`engine_version` 为引擎版本，`python_major` 为 Python 代际，`old_substitutions` 为百分号语义，`common` 为引擎公共界面字符串|
+|`game_files.reference.txt`|游戏目录的文件清单，每行一个相对路径，包括图片、音频、字体和 JSON 等数据文件。导入时读取失败的文件仍列在清单中|
+|`__metadata__.json`|`engine_version` 为引擎版本，`python_major` 为 Python 代际。`old_substitutions` 为百分号语义，`null` 表示未知。`common` 为公共界面字符串，`null` 表示收集不完整。`scripts_incomplete: true` 表示编译脚本有已知遗漏|
 |`game/x.rpyc`|编译原件|
 |`game/x.rpyc.reference.rpy`|按原始行号还原的近似脚本，不能编译。编译时丢失的注释写作空行，ATL 写作 `# ATL`，6.99 旧式界面写作 `# legacy screen language`，其余无法还原的语句写作 `# <类名>`|
-|`game/x.rpyc.reference.json`|`{ internal_file_path, strings, warnings }`。解析失败时换成错误投影 `x.rpyc.error.reference.json`，其中只有 `internal_file_path` 和 `error`|
+|`game/x.rpyc.reference.json`|`{ internal_file_path, strings }`。解析失败时不生成投影，失败记录在 `source_issues.jsonl`|
 
 `.rpymc` 按同样规则生成 `x.rpymc.reference.rpy` 和 `x.rpymc.reference.json`。
 
 附加原稿的扫描范围是 `game/`，排除 `game/cache/` 与 `game/saves/`。
 
-`strings` 列出成员中全部可写回的字符串，每项为 `{ key, text, usage, line, source_line }`，包括因重定向而不产生条目的字符串。`warnings` 每项为 `{ message, source_line }`，列出不产生条目的位置。
+`strings` 列出成员中全部可写回的字符串，每项为 `{ key, text, usage, line, source_line }`，包括因重定向而不产生条目的字符串。`source_issues.jsonl` 中 `stage` 为 `reference` 的记录也包括不产生条目的位置，`message` 给出键或 `文件:行号`。
 
 - `line` 是字符串在 `x.rpyc.reference.rpy` 中的实际行，按它读取上下文。6.99 旧式界面、ATL 和自定义语句（如 `layeredimage`）内部的字符串不在近似脚本中，`line` 为 `null`，按 `source_line` 找到所属语句。
 - `source_line` 是原始 `.rpy` 的行号，未知时为 `null`。近似脚本按它排布，两者通常相同。同一原始行有多条语句时，例如一段三引号对白拆成的多句，后面的语句在近似脚本中顺延，`line` 随之增大。
@@ -65,9 +65,9 @@ description: 翻译、审校或分析 RenPy 游戏前必须首先加载，提供
 以下字符串不产生条目：
 
 - 非基础语言的 `translate` 块与 `translate <语言> strings`。
-- f-string 和 `+` 拼接中的字符串，它们列在 `warnings` 中。
+- f-string 和 `+` 拼接中的字符串，它们记录在 `source_issues.jsonl`。
 - 空字符串。
-- `warnings` 中的槽位写回组不完整、共享消费者无法解析等位置。
+- `source_issues.jsonl` 中的槽位写回组不完整、共享消费者无法解析等位置。
 - 重定向：对白、菜单、显示或段落文本已作为 `old` 出现在 `translate None strings` 中时，引擎显示该表的 `new`。这些位置不产生条目，要翻译对应的 `string` 条目。`strings` 中仍列出它们，所以按 `key` 可能找不到条目。
 
 # 写回粒度
@@ -151,8 +151,8 @@ description: 翻译、审校或分析 RenPy 游戏前必须首先加载，提供
 交付时说明以下未覆盖范围：
 
 - 自定义语句 `UserStatement` 的文本在两种情况下不产生条目：6.99 不保存解析结果 `parsed`，以及 `parsed` 中是普通字符串。
-- `warnings` 中的位置和动态拼接的文本。
-- 投影中有 `error` 的成员。
+- `source_issues.jsonl` 记录的成员和位置，以及动态拼接的文本。
+- `__metadata__.json` 的 `common` 为 `null` 或 `scripts_incomplete` 为 `true` 时，公共界面字符串不产生条目。
 - 图片中的文字。
 - 存档和历史记录中已保存的旧文本，读档后仍显示原文。
 - 通过 `RENPY_LANGUAGE` 环境变量指定的语言。
