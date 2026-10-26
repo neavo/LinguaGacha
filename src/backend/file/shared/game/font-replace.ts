@@ -2,8 +2,9 @@ import { GAME_ENGINES, type GameSource } from "./engines";
 import assert from "node:assert/strict";
 import path from "node:path";
 import type { NativeFs } from "../../../../native/native-fs";
-import { write_game_directory } from "./directory";
+import { write_game_directory, type GameDirectoryCleanupReporter } from "./directory";
 import type { GamePrepareExecution } from "./prepare-worker";
+import { complete_game_preparation } from "./preparation";
 
 export type GameFont = Readonly<{
   bytes: Uint8Array;
@@ -18,6 +19,7 @@ export async function replace_game_font(
   fs: NativeFs,
   execute: GamePrepareExecution,
   signal?: AbortSignal,
+  report_cleanup?: GameDirectoryCleanupReporter,
 ): Promise<void> {
   const engine = GAME_ENGINES[source.file_type];
   const capability = engine.font;
@@ -28,18 +30,20 @@ export async function replace_game_font(
     async (staging) => {
       const prepared = engine.needs_stage(source, fs)
         ? await execute({ ...source, staging }, signal)
-        : { writes: [] };
+        : complete_game_preparation(staging, { writes: [] });
       signal?.throwIfAborted();
-      const writes = new Set(prepared.writes);
-      const files = await capability.collect(source, fs, signal, { staging, result: prepared });
+      assert(prepared.changes, "Incomplete preparation for font replacement");
+      const writes = new Set(prepared.changes.writes);
+      const files = await capability.collect(source, fs, signal, prepared.sources);
       const outputs = capability.outputs(source, files, font);
       for (const [name, bytes] of outputs) {
         signal?.throwIfAborted();
         await fs.write_file(path.join(staging, name), bytes);
         writes.add(name);
       }
-      return { ...prepared, writes: [...writes] };
+      return { ...prepared.changes, writes: [...writes] };
     },
     signal,
+    report_cleanup,
   );
 }

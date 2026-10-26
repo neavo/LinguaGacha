@@ -89,7 +89,6 @@ it("Hash 键、默认值、二进制载荷与额外包装不会丢失，引用�
       "@binary": {
         $type: "string",
         $bytes: raw.toString("base64"),
-        $error: expect.any(String),
       },
       "@wrapped": {
         $type: "I",
@@ -125,24 +124,24 @@ it.each(Object.values(RGSS_VERSIONS))(
       "fixture",
     );
     const output = new Map<string, Uint8Array>();
-    for await (const [name, content] of read_rgss_projections(files)) output.set(name, content);
+    const errors: string[] = [];
+    for await (const [name, content] of read_rgss_projections(files, (name) => errors.push(name)))
+      output.set(name, content);
     const read = (name: string) => Buffer.from(output.get(name)!).toString("utf8");
     expect(read(`Custom/Scripts${extension}.reference/0000.rb`)).toBe(source);
     expect(read(`Custom/Scripts${extension}.reference/0002.rb`)).toBe(source);
     expect(output.has(`Custom/Scripts${extension}.reference/0001.rb`)).toBe(false);
     expect(JSON.parse(read(`Custom/Scripts${extension}.reference/scripts.json`))).toEqual([
       { index: 0, id: 9, name: "../重复", encoding: "cp932", file: "0000.rb" },
-      { index: 1, id: 10, name: "../重复", error: expect.any(String) },
+      { index: 1, id: 10, name: "../重复" },
       { index: 2, id: 11, name: "", encoding: "cp932", file: "0002.rb" },
     ]);
     expect(JSON.parse(read(`Data/System${extension}.reference.json`))).toEqual({
       $class: "RPG::System",
       $fields: { "@game_title": "标题" },
     });
-    expect(JSON.parse(read(`Data/Broken${extension}.error.reference.json`))).toMatchObject({
-      file: `Data/Broken${extension}`,
-      error: expect.any(String),
-    });
+    expect(output.has(`Data/Broken${extension}.error.reference.json`)).toBe(false);
+    expect(errors).toContain(`Data/Broken${extension}`);
     for (const name of files.keys()) expect(output.has(name)).toBe(false);
   },
 );
@@ -156,13 +155,10 @@ it.each([false, true])("配置存在=%s 时，报告缺失的配置或脚本位�
     "fixture",
   );
   const output = new Map<string, Uint8Array>();
-  for await (const [name, bytes] of read_rgss_projections(files)) output.set(name, bytes);
+  const errors: string[] = [];
+  for await (const [name, bytes] of read_rgss_projections(files, (name) => errors.push(name)))
+    output.set(name, bytes);
   for (const name of files.keys()) expect(output.has(name)).toBe(false);
-  const diagnostic = has_ini
-    ? "Data/Scripts.rvdata2.error.reference.json"
-    : "Game.ini.error.reference.json";
-  expect(JSON.parse(Buffer.from(output.get(diagnostic)!).toString())).toEqual({
-    file: has_ini ? "Data/Scripts.rvdata2" : "Game.ini",
-    error: expect.any(String),
-  });
+  expect(errors).toContain(has_ini ? "Data/Scripts.rvdata2" : "Game.ini");
+  expect([...output.keys()].some((name) => name.endsWith(".error.reference.json"))).toBe(false);
 });

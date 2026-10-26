@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import path from "node:path";
 import type { JsonRecord, JsonValue } from "../../../domain/json";
 import type { GameFiles } from "../shared/game/format";
-import type { ReadableFile } from "../shared/game/readable";
+import type { ProjectionFailure, ReadableFile } from "../shared/game/readable";
 import { base, decode, symbol, type MarshalNode } from "./marshal";
 import { array, integer, text, read_text } from "./value";
 import { read_rgss_script } from "./scripts";
@@ -11,7 +11,7 @@ import { read_rgss_game, RGSS_VERSIONS } from "./source";
 const SCRIPT_INDEX_WIDTH = 4;
 
 /** JSON Pointer 指向首次展开位置，数组、字符串也保留共享与循环身份。 */
-export function read_rgss_json(root: MarshalNode): JsonValue {
+export function read_rgss_json(root: MarshalNode, report?: (error: unknown) => void): JsonValue {
   const seen = new Map<MarshalNode, string>(); // 按节点身份去重，相同文本仍可属于不同对象。
   /** 先登记对象再展开成员，引用返回已有位置。 */
   function read(node: MarshalNode, pointer: string): JsonValue {
@@ -37,10 +37,10 @@ export function read_rgss_json(root: MarshalNode): JsonValue {
       try {
         return text(node.owner ?? node);
       } catch (error) {
+        report?.(error);
         return {
           $type: "string",
           $bytes: base(node).data!.toString("base64"),
-          $error: reason(error),
         };
       }
     }
@@ -67,7 +67,7 @@ export function read_rgss_json(root: MarshalNode): JsonValue {
         result.$value = read_text(node.data);
         delete result.$bytes;
       } catch (error) {
-        result.$error = reason(error); // 非文本名称保留原字节及解码失败原因。
+        report?.(error); // 非文本名称保留原字节，异常只交给日志。
       }
     }
     if (node.flag !== undefined) result.$flag = node.flag;
@@ -85,20 +85,21 @@ export function read_rgss_json(root: MarshalNode): JsonValue {
   return read(root, "#");
 }
 
-/** 局部失败写入明文，保留解析器提供的原因。 */
-function reason(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
-
 /** 统一明文编码，换行便于按行读取与搜索。 */
 function json_file(name: string, value: JsonValue): ReadableFile {
   return [name, Buffer.from(JSON.stringify(value, null, 2) + "\n")];
 }
 
 /** 脚本名称只进入清单，文件名由序号决定，保留源码本身的行号。 */
-function* read_scripts(root: MarshalNode, name: string): Generator<ReadableFile> {
+function* read_scripts(
+  root: MarshalNode,
+  name: string,
+  report?: ProjectionFailure,
+  signal?: AbortSignal,
+): Generator<ReadableFile> {
   const manifest: JsonRecord[] = [];
   for (const [index, node] of array(root).entries()) {
+    signal?.throwIfAborted();
     const entry: JsonRecord = { index };
     manifest.push(entry);
     let source: string;
@@ -111,7 +112,8 @@ function* read_scripts(root: MarshalNode, name: string): Generator<ReadableFile>
       entry.encoding = script.encoding;
       source = script.source;
     } catch (error) {
-      entry.error = reason(error);
+      signal?.throwIfAborted();
+      report?.(name, error);
       continue;
     }
     const file = `${String(index).padStart(SCRIPT_INDEX_WIDTH, "0")}.rb`;
@@ -122,30 +124,43 @@ function* read_scripts(root: MarshalNode, name: string): Generator<ReadableFile>
 }
 
 /** 逐成员生成可读视图，解析失败保留位置与原因。工作区 IO 由调用者处理。 */
-export async function* read_rgss_projections(files: GameFiles): AsyncGenerator<ReadableFile> {
+export async function* read_rgss_projections(
+  files: GameFiles,
+  report?: ProjectionFailure,
+  signal?: AbortSignal,
+): AsyncGenerator<ReadableFile> {
   let game: Awaited<ReturnType<typeof read_rgss_game>> | undefined;
   try {
     game = await read_rgss_game(files);
   } catch (error) {
-    yield json_file("Game.ini.error.reference.json", { file: "Game.ini", error: reason(error) });
+    signal?.throwIfAborted();
+    report?.("Game.ini", error);
   }
-  if (game && ![...files.keys()].some((name) => name.toLowerCase() === game.scripts.toLowerCase()))
-    yield json_file(`${game.scripts}.error.reference.json`, {
-      file: game.scripts,
-      error: "Missing script archive",
-    });
+  if (game && ![...files.keys()].some((name) => name.toLowerCase() === game?.scripts.toLowerCase()))
+    report?.(game.scripts, new Error("Missing script archive"));
   for (const [name, member] of files) {
-    if (!game || path.extname(name).toLowerCase() !== RGSS_VERSIONS[game.version]) continue;
-    const content = await member.async("uint8array");
+    signal?.throwIfAborted();
+    if (
+      !Object.values(RGSS_VERSIONS).some(
+        (extension) => path.extname(name).toLowerCase() === extension,
+      )
+    )
+      continue;
     try {
+      const content = await member.async("uint8array");
+      signal?.throwIfAborted();
       const root = decode(content);
-      if (name.toLowerCase() === game.scripts.toLowerCase()) {
-        yield* read_scripts(root, name + ".reference");
+      if (name.toLowerCase() === game?.scripts.toLowerCase()) {
+        yield* read_scripts(root, name + ".reference", report, signal);
       } else {
-        yield json_file(`${name}.reference.json`, read_rgss_json(root));
+        yield json_file(
+          `${name}.reference.json`,
+          read_rgss_json(root, (error) => report?.(name, error)),
+        );
       }
     } catch (error) {
-      yield json_file(`${name}.error.reference.json`, { file: name, error: reason(error) });
+      signal?.throwIfAborted();
+      report?.(name, error);
     }
   }
 }

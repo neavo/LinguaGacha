@@ -28,14 +28,20 @@ import { is_json_record } from "../../../../domain/json";
 import { GAME_FONT_EXTENSIONS } from "../../../../shared/game-font";
 import type { GameFileType } from "../../../../shared/project-source-formats";
 import type { GameFiles, GameFormatAdapter } from "./format";
-import type { ReadableFile } from "./readable";
+import type { ReadableFile, ProjectionFailure } from "./readable";
 import {
   collect_game_source_files,
   type GameSourceData,
   type GameSourceFiles,
   type PreparedGameFiles,
 } from "./source-files";
-import { write_game_directory, type GameDirectoryChanges } from "./directory";
+import { write_game_directory, type GameDirectoryCleanupReporter } from "./directory";
+import {
+  complete_game_preparation,
+  source_diagnostic,
+  type GamePreparation,
+  type SourceDiagnostic,
+} from "./preparation";
 import type { GamePrepareExecution } from "./prepare-worker";
 import {
   discover_wolf_source,
@@ -85,17 +91,18 @@ export type GameSource = {
 
 /** 登记顺序决定发现优先级。引擎只声明格式行为，正式目录写入归共享事务持有。 */
 interface EngineDefinition<G> {
-  discover(input: string, fs: NativeFs, signal?: AbortSignal): G | null | Promise<G | null>;
-  is_root(input: string, fs: NativeFs): unknown;
-  source_path(game: G, input: string): string;
-  identity(game: G): string;
+  discover(input: string, fs: NativeFs, signal?: AbortSignal): G | null | Promise<G | null>; // 识别入口并确认加载规则。
+  is_root(input: string, fs: NativeFs): unknown; // 目录扫描据此停止递归，避免把游戏成员作为普通来源导入。
+  source_path(game: G, input: string): string; // 返回交付给导入流程的来源路径。
+  identity(game: G): string; // 多个输入入口按同一游戏身份去重。
   includes_additional_file(game: G, name: string): boolean; // 声明附加原稿的扫描范围，扩展名和翻译成员排除归共享层。
-  needs_stage(game: G, fs: NativeFs): boolean;
+  needs_stage(game: G, fs: NativeFs): boolean; // 判断本次来源是否需要目录准备。
+  /** Worker 只写暂存目录，可靠原稿与正式目录计划分别交付。 */
   stage(
     task: Readonly<{ game: G; staging: string }>,
     fs: NativeFs,
     signal?: AbortSignal,
-  ): Promise<GameDirectoryChanges>;
+  ): Promise<GamePreparation>;
   /** 正式导入只读定进入原稿容器的数据，字体由字体工具单独收集。 */
   collect(
     game: G,
@@ -103,25 +110,32 @@ interface EngineDefinition<G> {
     signal?: AbortSignal,
     prepared?: PreparedGameFiles,
   ): GameSourceData | Promise<GameSourceData>;
-  create_adapter(): GameFormatAdapter;
-  read_metadata(extra: Item["extra_field"]): { internal_file_path: string };
-  default_status(item: Pick<Item, "extra_field">): ItemStatus;
+  create_adapter(): GameFormatAdapter; // 每次容器操作独享格式上下文。
+  read_metadata(extra: Item["extra_field"]): { internal_file_path: string }; // 从条目定位容器成员。
+  default_status(item: Pick<Item, "extra_field">): ItemStatus; // 按引擎用途规则确定默认翻译资格。
   /** 只生成可读视图，原件由工作区共享层展开。 */
-  workspace_projections?(input: GameFiles): AsyncIterable<ReadableFile>;
+  workspace_projections?(
+    input: GameFiles,
+    report?: ProjectionFailure,
+    signal?: AbortSignal,
+  ): AsyncIterable<ReadableFile>;
+  /** 固化离线解析需要的语义，来源遗漏由格式按实际依赖解释。 */
   build_metadata?(
     game: G,
-    data: GameSourceData,
+    sources: Readonly<{ data: GameSourceData; complete: boolean }>,
     fs: NativeFs,
     signal?: AbortSignal,
+    report?: (diagnostic: SourceDiagnostic) => void,
   ): Promise<Uint8Array>;
   font?: {
+    /** 字体工具单独收集配置与字体，避免触发文本提取。 */
     collect(
       game: G,
       fs: NativeFs,
       signal?: AbortSignal,
       prepared?: PreparedGameFiles,
     ): GameSourceFiles | Promise<GameSourceFiles>;
-    outputs(game: G, files: GameSourceFiles, font: GameFont): ReadonlyMap<string, Uint8Array>;
+    outputs(game: G, files: GameSourceFiles, font: GameFont): ReadonlyMap<string, Uint8Array>; // 生成同次目录提交的字体及配置。
   };
 }
 export type GameEngine = Omit<EngineDefinition<GameSource>, "discover" | "stage"> & {
@@ -130,7 +144,7 @@ export type GameEngine = Omit<EngineDefinition<GameSource>, "discover" | "stage"
     task: GameSource & { staging: string },
     fs: NativeFs,
     signal?: AbortSignal,
-  ): Promise<GameDirectoryChanges>;
+  ): Promise<GamePreparation>;
 };
 
 /** 在登记边界保留 file_type 与载荷的对应关系，分发后只由对应引擎消费。 */
@@ -162,10 +176,11 @@ function register<K extends GameFileType>(
     ...(build_metadata && {
       build_metadata: (
         source: GameSource,
-        data: GameSourceData,
+        sources: Readonly<{ data: GameSourceData; complete: boolean }>,
         fs: NativeFs,
         signal?: AbortSignal,
-      ) => build_metadata(game(source), data, fs, signal),
+        report?: (diagnostic: SourceDiagnostic) => void,
+      ) => build_metadata(game(source), sources, fs, signal, report),
     }),
     async discover(input, fs, signal) {
       const found = await engine.discover(input, fs, signal);
@@ -317,9 +332,18 @@ export const GAME_ENGINES: Record<GameFileType, GameEngine> = {
         (files, read, collect) => {
           const ini =
             [...files.keys()].find((name) => name.toLowerCase() === "game.ini") ?? "Game.ini";
-          const scripts = script_path(read(ini), game.version);
+          let scripts: string;
+          try {
+            scripts = script_path(read(ini), game.version);
+          } catch (error) {
+            if (!prepared?.on_read_failure) throw error;
+            prepared.on_read_failure(source_diagnostic("read", error, ini));
+            return [...files.keys()].filter(
+              (name) => name.toLowerCase() === "game.ini" || /\.(?:rxdata|rvdata2?)$/iu.test(name),
+            );
+          }
           if (!/^Data\//iu.test(scripts)) collect(scripts);
-          return collect_rgss_files(game.version, files.keys(), scripts);
+          return collect_rgss_files(files.keys(), scripts);
         },
         null,
         fs,
@@ -357,18 +381,44 @@ export async function prepare_game_source(
   fs: NativeFs,
   execute?: GamePrepareExecution,
   signal?: AbortSignal,
+  capture?: (prepared: GamePreparation) => Promise<void>,
+  report_cleanup?: GameDirectoryCleanupReporter,
 ): Promise<void> {
   signal?.throwIfAborted();
-  if (!GAME_ENGINES[source.file_type].needs_stage(source, fs)) return;
+  let needs_stage: boolean;
+  try {
+    needs_stage = GAME_ENGINES[source.file_type].needs_stage(source, fs);
+  } catch (error) {
+    if (signal?.aborted || !capture) throw error;
+    await capture({
+      sources: { files: new Map(), excluded: [] },
+      changes: null,
+      diagnostics: [source_diagnostic("prepare", error)],
+    });
+    return;
+  }
+  if (!needs_stage) {
+    await capture?.(complete_game_preparation("", { writes: [] }));
+    return;
+  }
   await write_game_directory(
     source.game.root,
     fs,
-    (staging) => {
+    async (staging) => {
       const task = { ...source, staging };
-      return execute
+      const prepared = await (execute
         ? execute(task, signal)
-        : GAME_ENGINES[source.file_type].stage(task, fs, signal);
+        : GAME_ENGINES[source.file_type].stage(task, fs, signal));
+      await capture?.(prepared);
+      if (!prepared.changes && !capture)
+        throw new Error(
+          prepared.diagnostics.map((diagnostic) => diagnostic.error.message).join("\n") ||
+            "Incomplete game preparation",
+          { cause: prepared.diagnostics },
+        );
+      return prepared.changes;
     },
     signal,
+    report_cleanup,
   );
 }

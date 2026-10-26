@@ -2,6 +2,7 @@ import type { CLICommandName } from "./cli-parser";
 import type { JsonRecord, JsonValue } from "../domain/json";
 import type { BatchTranslationRunStatus } from "../domain/batch-translation";
 import { JsonTool } from "../shared/utils/json-tool";
+import type { SourceOperationResult } from "../shared/source-operation";
 
 type NowProvider = () => Date;
 type JsonLineWriter = (line: string) => void;
@@ -91,6 +92,7 @@ export class CLIJsonStatusReporter {
     status: BatchTranslationRunStatus | "error",
     error?: unknown,
     excluded_files: readonly string[] = [],
+    source_operation?: SourceOperationResult,
   ): void {
     if (this.finished) {
       return;
@@ -104,6 +106,7 @@ export class CLIJsonStatusReporter {
       timestamp: this.timestamp(),
     };
     if (excluded_files.length) event["excluded_files"] = [...excluded_files];
+    if (source_operation) event["source_operation"] = source_operation;
     if (status === "error" && error !== undefined) {
       event["error"] = {
         message: error instanceof Error ? error.message : String(error),

@@ -101,8 +101,8 @@
 
 - 翻译与审校结果通过 `workspace_apply` 写入工程
 - 可用的译文文件由用户在工作台点击「生成译文」输出，修改原稿副本不会进入工程或译文文件
-- 游戏中未由解析器负责的 `.txt`、`.json`、`.csv`、`.tsv` 作为附加原稿保存，扫描范围见引擎技能。`project_meta.json` 的 `additional_files` 按资产列出附加原稿，它们不产生条目，也不参与生成译文
-- 应用生成的还原脚本、JSON 投影、文件清单和诊断带有 `.reference` 标记，`.reference` 目录内的文件同样如此。它们只供阅读和定位，不能放入补丁。原件名称也可能含有 `.reference`，归属以 `additional_files` 和条目为准
+- 游戏中未由解析器负责的 `.txt`、`.json`、`.csv`、`.tsv`、`.ks` 作为附加原稿保存，扫描范围见引擎技能。`project_meta.json` 的 `additional_files` 按资产列出附加原稿，它们不产生条目，也不参与生成译文
+- 应用生成的还原脚本、JSON 投影和文件清单带有 `.reference` 标记，`.reference` 目录内的文件同样如此。它们只供阅读和定位，不能放入补丁。原件名称也可能含有 `.reference`，归属以 `additional_files` 和条目为准
 
 翻译附加原稿时，按以下流程制作补丁：
 

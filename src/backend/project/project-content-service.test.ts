@@ -270,9 +270,7 @@ describe("ProjectContentService", () => {
         conflict_action: "replace",
         expected_section_revisions: { files: 0, items: 0 },
       });
-      expect(result.failed_files).toMatchObject([
-        { source_path: root, message: "Invalid cp932 text" },
-      ]);
+      expect(result.source_operation).toEqual({ saved_assets: 1, directory_changes: [] });
       expect((await database.get_all_asset_records(lg_path)).map((file) => file.path)).toEqual([
         "normal.txt",
       ]);
@@ -369,8 +367,8 @@ describe("ProjectContentService", () => {
     const archive = path.join(root, "Game.rgss3a");
     const exe = path.join(root, "Game.exe");
     fs.writeFileSync(exe, "");
-    // Marshal nil 是有效的零条目原稿，用于证明归档准备与工程写入的完整调用链。
-    const content = Buffer.from([4, 8, 48]);
+    // 空数组是有效的零条目数据和脚本列表。
+    const content = Buffer.from([4, 8, 91, 0]);
     fs.writeFileSync(
       archive,
       rgss_archive_fixture(
@@ -404,7 +402,10 @@ describe("ProjectContentService", () => {
           conflict_action: "skip",
           expected_section_revisions: { files: 0, items: 0 },
         }),
-      ).rejects.toMatchObject({ code: "request.validation_failed" });
+      ).rejects.toMatchObject({
+        code: "request.validation_failed",
+        diagnostic_context: { reason: "no_processed_targets" },
+      });
       expect(fs.readdirSync(root).sort()).toEqual(["Game.exe", "Game.ini", "Game.rgss3a"]);
       await expect(
         service.import_files({
@@ -716,9 +717,7 @@ describe("ProjectContentService", () => {
         conflict_action: "replace",
         expected_section_revisions: { files: 0, items: 0 },
       });
-      expect(result.failed_files).toMatchObject([
-        { source_path: broken, code: "file.parse_failed" },
-      ]);
+      expect(result.source_operation).toEqual({ saved_assets: 2, directory_changes: [] });
     } finally {
       await database.close();
     }
@@ -771,6 +770,14 @@ describe("ProjectContentService", () => {
       write("data/New.json", '{"text":"新文"}');
       write("data/Broken.json", "{");
       write("js/plugins.js", 'const broken = "');
+      await expect(service.import_files(await request())).rejects.toMatchObject({
+        code: "file.parse_failed",
+      });
+      expect((await database.read_asset_content(lg_path, "game.zip"))!.equals(old!)).toBe(true);
+      expect(await database.get_all_items(lg_path)).toEqual(old_items);
+      expect(await database.get_all_meta(lg_path)).toEqual(old_meta);
+      write("data/Broken.json", "{}");
+      write("js/plugins.js", "");
       const fail = vi
         .spyOn(ProjectDatabaseAccess.prototype, "set_items")
         .mockImplementationOnce(() => {
@@ -791,25 +798,18 @@ describe("ProjectContentService", () => {
       expect(await database.get_all_items(lg_path)).toMatchObject([
         { src: "新文", file_path: "game.zip" },
       ]);
-      expect(log_manager.warning).toHaveBeenCalledWith(
-        expect.any(String),
-        expect.objectContaining({
-          context: {
-            warnings: expect.arrayContaining([
-              expect.objectContaining({
-                rel_path: "game.zip",
-                internal_file_path: "data/Broken.json",
-                code: "internal_file_parse_failed",
-              }),
-              expect.objectContaining({
-                rel_path: "game.zip",
-                internal_file_path: "js/plugins.js",
-                code: "script_syntax_error",
-              }),
-            ]),
-          },
-        }),
-      );
+      for (const [internal_file_path, code] of [
+        ["data/Broken.json", "internal_file_parse_failed"],
+        ["js/plugins.js", "script_syntax_error"],
+      ] as const)
+        expect(log_manager.warning).toHaveBeenCalledWith(
+          expect.stringContaining(internal_file_path),
+          expect.objectContaining({
+            context: {
+              warning: expect.objectContaining({ rel_path: "game.zip", internal_file_path, code }),
+            },
+          }),
+        );
       fs.renameSync(source, source + "-moved");
       await database.close_project(lg_path);
       await service.reset_translation({ mode: "all" });
@@ -1354,6 +1354,48 @@ describe("ProjectContentService", () => {
     await reopened.close();
   });
 
+  it.each([true, false])(
+    "全部重置提取不完整只记录一次原因，已有诊断：%s",
+    async (has_diagnostic) => {
+      const log_manager = create_log_manager();
+      const { database, service, lg_path } = await create_service(undefined, log_manager);
+      try {
+        await database.transaction(lg_path, (writer) => {
+          writer.add_asset(lg_path, "a.txt", Buffer.from("original"), "TXT", null);
+          writer.set_items(lg_path, [create_persistent_item({ dst: "old", status: "PROCESSED" })]);
+        });
+        const original = await database.get_all_items(lg_path);
+        vi.spyOn(FileFormatService.prototype, "parse_asset").mockResolvedValueOnce({
+          kind: "items",
+          file_type: "TXT",
+          items: [],
+          extraction_complete: false,
+          warnings: has_diagnostic
+            ? [
+                {
+                  code: "internal_file_parse_failed",
+                  rel_path: "a.txt",
+                  diagnostics: [{ message: "member unavailable", line: null, column: null }],
+                },
+              ]
+            : [],
+        });
+        await expect(service.reset_translation({ mode: "all" })).rejects.toMatchObject({
+          code: "file.parse_failed",
+        });
+        expect(await database.get_all_items(lg_path)).toEqual(original);
+        expect(log_manager.warning).toHaveBeenCalledTimes(1);
+        if (has_diagnostic)
+          expect(log_manager.warning).toHaveBeenCalledWith(
+            expect.stringContaining("member unavailable"),
+            expect.anything(),
+          );
+      } finally {
+        await database.close();
+      }
+    },
+  );
+
   it.each(["missing", "parse", "commit"])(
     "全部重置在 %s 失败时保留条目和项目元数据",
     async (failure) => {
@@ -1394,6 +1436,46 @@ describe("ProjectContentService", () => {
       await database.close();
     },
   );
+
+  it("全部重置只替换完整资产，失败资产避开预过滤并保留条目身份及译文", async () => {
+    const { database, service, lg_path } = await create_service();
+    try {
+      await database.transaction(lg_path, (writer) => {
+        writer.add_asset(lg_path, "a.json", Buffer.from("{"), "KVJSON", null, 0);
+        writer.add_asset(lg_path, "b.txt", Buffer.from("新正文"), "TXT", null, 1);
+        writer.set_items(lg_path, [
+          create_persistent_item({
+            item_id: 50,
+            file_path: "a.json",
+            src: "保留原文",
+            dst: "保留译文",
+            status: "PROCESSED",
+            file_type: "KVJSON",
+          }),
+          create_persistent_item({
+            item_id: 51,
+            file_path: "b.txt",
+            src: "旧正文",
+            dst: "旧译文",
+            status: "PROCESSED",
+          }),
+        ]);
+      });
+      const retained = (await database.get_all_items(lg_path)).find(
+        (item) => item.file_path === "a.json",
+      );
+      await service.reset_translation({ mode: "all" });
+      const items = await database.get_all_items(lg_path);
+      expect(items.find((item) => item.file_path === "a.json")).toEqual(retained);
+      expect(items.find((item) => item.file_path === "b.txt")).toMatchObject({
+        src: "新正文",
+        dst: "",
+      });
+      expect(Number(items.find((item) => item.file_path === "b.txt")!.id)).toBeGreaterThan(51);
+    } finally {
+      await database.close();
+    }
+  });
 
   it("translation reset 拒绝旧最终事实载荷且不清空既有 items", async () => {
     const { database, service, lg_path } = await create_service();
@@ -1575,7 +1657,7 @@ describe("ProjectContentService", () => {
     await database.close();
   });
 
-  it.each(["json", "evb"])("导入工作台文件时跳过 %s 失败来源并继续写入成功文件", async (kind) => {
+  it.each(["json", "evb"])("导入 %s 失败时按原稿是否可靠决定保存", async (kind) => {
     const log_manager = create_log_manager();
     const { database, service, lg_path } = await create_service(undefined, log_manager);
     const valid_source = project_path("valid.txt");
@@ -1593,18 +1675,11 @@ describe("ProjectContentService", () => {
 
     expect(ack).toMatchObject({
       accepted: true,
-      failed_files: [
-        {
-          source_path: broken_json,
-          rel_path: "broken.json",
-          filename: path.basename(broken_json),
-          code: kind === "json" ? "file.parse_failed" : "file.io_failed",
-          message: expect.any(String),
-        },
-      ],
+      source_operation: { saved_assets: kind === "json" ? 2 : 1 },
     });
     expect(await database.get_all_asset_records(lg_path)).toEqual([
       { path: "valid.txt", sort_order: 0, file_type: "TXT" },
+      ...(kind === "json" ? [{ path: "broken.json", sort_order: 1, file_type: "NONE" }] : []),
     ]);
     expect(await database.get_all_items(lg_path)).toEqual([
       create_persistent_item({ src: "新", file_path: "valid.txt", row_number: 0 }),
@@ -1616,7 +1691,7 @@ describe("ProjectContentService", () => {
     await database.close();
   });
 
-  it("导入工作台文件全部解析失败时不写入工程并返回失败明细", async () => {
+  it("导入工作台文件全部解析失败时仍保存可靠原稿并记录日志", async () => {
     const log_manager = create_log_manager();
     const { database, service, lg_path } = await create_service(undefined, log_manager);
     const broken_json = project_path("broken.json");
@@ -1628,22 +1703,15 @@ describe("ProjectContentService", () => {
         conflict_action: "replace",
         expected_section_revisions: { files: 0, items: 0 },
       }),
-    ).rejects.toMatchObject({
-      code: "file.parse_failed",
-      public_details: {
-        failed_files: [
-          {
-            source_path: broken_json,
-            rel_path: "broken.json",
-            filename: "broken.json",
-            code: "file.parse_failed",
-            message: expect.any(String),
-          },
-        ],
-      },
+    ).resolves.toMatchObject({
+      accepted: true,
+      source_operation: { saved_assets: 1, directory_changes: [] },
     });
 
-    expect(await database.get_all_asset_records(lg_path)).toEqual([]);
+    expect(await database.get_all_asset_records(lg_path)).toEqual([
+      { path: "broken.json", file_type: "NONE", sort_order: 0 },
+    ]);
+    expect((await database.read_asset_content(lg_path, "broken.json"))?.toString()).toBe("{");
     expect(log_manager.warning).toHaveBeenCalledWith(
       expect.stringContaining("broken.json"),
       expect.objectContaining({ source: "project-import" }),

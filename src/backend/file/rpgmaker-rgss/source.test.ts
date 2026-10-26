@@ -68,7 +68,7 @@ it.each(["../Scripts.rvdata2", "C:\\Scripts.rvdata2", "Data/Scripts.rxdata"])(
     expect(() => script_path(Buffer.from("[Game]\nScripts=" + value), "ace")).toThrow();
   },
 );
-it("容器版本由原稿核对，混合版本不能继续解析", async () => {
+it("容器按当前系统确定代际，附带旧代际资源仍可保留", async () => {
   const { members: files } = await read_game_container(
     await write_zip(
       new Map([
@@ -79,5 +79,5 @@ it("容器版本由原稿核对，混合版本不能继续解析", async () => {
     ),
     "game.zip",
   );
-  await expect(read_rgss_game(files)).rejects.toThrow("Mixed RGSS");
+  await expect(read_rgss_game(files)).resolves.toMatchObject({ version: "ace" });
 });

@@ -1,3 +1,4 @@
+import { complete_game_preparation } from "./preparation";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -36,7 +37,7 @@ it.each(["link", "staged-link", "case", "unsafe", "cancel"])(
         () => false,
         native,
         controller.signal,
-        { staging, result: { writes } },
+        complete_game_preparation(staging, { writes }).sources,
       ),
     ).toThrow();
   },

@@ -31,7 +31,7 @@ it.each([
   ).rejects.toMatchObject({ code: "file.invalid_structure" });
 });
 
-it("拒绝 ZIP 中的同名记录，避免加载时覆盖成员后丢失原稿", async () => {
+it("ZIP 同名记录使用最后一个载荷", async () => {
   const zip = new JSZip().file("a.txt", "first").file("b.txt", "second");
   const bytes = await zip.generateAsync({ type: "nodebuffer" });
   for (
@@ -40,7 +40,7 @@ it("拒绝 ZIP 中的同名记录，避免加载时覆盖成员后丢失原稿",
     offset = bytes.indexOf("b.txt", offset + 1)
   )
     bytes.write("a.txt", offset); // 同时修改本地文件头和中央目录，不改变记录长度。
-  await expect(read_zip_members(bytes, "book.epub")).rejects.toMatchObject({
-    code: "file.invalid_structure",
-  });
+  const members = await read_zip_members(bytes, "book.epub");
+  expect([...members.keys()]).toEqual(["a.txt"]);
+  expect(await members.get("a.txt")!.async("string")).toBe("second");
 });

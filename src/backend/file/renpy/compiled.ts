@@ -50,11 +50,9 @@ function compressed_slots(input: Uint8Array): { slot: number; compressed: Buffer
   }
   return slots;
 }
-/** 解压字节与压缩比共同限制不可信载荷的内存开销。 */
+/** 解压器在分配期间限制输出大小。 */
 function inflate_slot(compressed: Buffer): Buffer {
-  const inflated = inflateSync(compressed, { maxOutputLength: PICKLE_MAX_BYTES });
-  assert(inflated.length <= compressed.length * 100, "RPYC exceeds compression ratio limit");
-  return inflated;
+  return inflateSync(compressed, { maxOutputLength: PICKLE_MAX_BYTES });
 }
 /** 统一返回未分帧坐标，协议 5 的后续写回无需维护帧长度。 */
 export function read_compiled(input: Uint8Array): CompiledSlot[] {

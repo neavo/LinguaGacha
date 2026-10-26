@@ -1,6 +1,11 @@
 import assert from "node:assert/strict";
 import { GAME_METADATA_MEMBER, type GameFiles } from "../shared/game/format";
-import { readable_json, write_projection, type ReadableFile } from "../shared/game/readable";
+import {
+  readable_json,
+  write_projection,
+  type ProjectionFailure,
+  type ReadableFile,
+} from "../shared/game/readable";
 import { extract_script, type RenpyCandidate } from "./extract";
 import { attributes, class_name, resolve_node, type PickleNode } from "./pickle";
 import { read_renpy_format_metadata } from "./profile";
@@ -28,37 +33,49 @@ const text = (edge: PickleNode | undefined): string => {
  * `strings[].key` 与条目的 `renpy.key` 相同。`line` 是字符串在近似脚本中的实际行，`source_line` 是原始 `.rpy` 的行。
  * 同一原始行有多条语句时，近似脚本顺延后面的语句，两者因此不同。
  */
-export async function* read_renpy_projections(files: GameFiles): AsyncGenerator<ReadableFile> {
+export async function* read_renpy_projections(
+  files: GameFiles,
+  report?: ProjectionFailure,
+  signal?: AbortSignal,
+): AsyncGenerator<ReadableFile> {
   const member = files.get(GAME_METADATA_MEMBER);
   assert(member, "Missing Ren'Py format metadata; import the game again");
   const metadata = read_renpy_format_metadata(await member.async("uint8array"));
   for (const [file, entry] of files) {
+    signal?.throwIfAborted();
     if (file === GAME_METADATA_MEMBER) continue;
-    using session = await PythonSession.create();
-    const bytes = await entry.async("uint8array");
-    yield* write_projection(file, async () => {
-      const script = await extract_script(bytes, metadata.python_major === 2, session);
-      const slot = script.slots[0]!;
-      const writer = new ScriptWriter();
-      for (const statement of children(children(slot.graph.root)[1])) render(writer, statement, 0);
-      return [
-        [file + ".reference.rpy", writer.lines.join("\n") + "\n"],
-        [
-          file + ".reference.json",
-          readable_json({
-            internal_file_path: file,
-            strings: script.candidates.map((candidate) => ({
-              key: candidate.key,
-              text: candidate.text,
-              usage: candidate.usage,
-              line: writer.line_of(candidate, slot.slot),
-              source_line: candidate.line,
-            })),
-            warnings: script.warnings.map(({ message, line }) => ({ message, source_line: line })),
-          }),
-        ],
-      ];
-    });
+    yield* write_projection(
+      file,
+      async () => {
+        using session = await PythonSession.create();
+        const bytes = await entry.async("uint8array");
+        signal?.throwIfAborted();
+        const script = await extract_script(bytes, metadata.python_major === 2, session);
+        for (const warning of script.warnings) report?.(file, new Error(warning.message));
+        const slot = script.slots[0]!;
+        const writer = new ScriptWriter();
+        for (const statement of children(children(slot.graph.root)[1]))
+          render(writer, statement, 0);
+        return [
+          [file + ".reference.rpy", writer.lines.join("\n") + "\n"],
+          [
+            file + ".reference.json",
+            readable_json({
+              internal_file_path: file,
+              strings: script.candidates.map((candidate) => ({
+                key: candidate.key,
+                text: candidate.text,
+                usage: candidate.usage,
+                line: writer.line_of(candidate, slot.slot),
+                source_line: candidate.line,
+              })),
+            }),
+          ],
+        ];
+      },
+      report,
+      signal,
+    );
   }
 }
 

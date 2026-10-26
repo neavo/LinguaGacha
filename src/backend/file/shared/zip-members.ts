@@ -9,13 +9,7 @@ export async function read_zip_members(
 ): Promise<ReadonlyMap<string, JSZip.JSZipObject>> {
   try {
     const zip = new JSZip();
-    // JSZip 默认覆盖同名记录，必须在清单写入时拒绝，加载后已无法识别丢失的成员。
-    zip.files = new Proxy(zip.files, {
-      set(files, name, entry: JSZip.JSZipObject) {
-        if (Object.hasOwn(files, name)) throw new Error("Duplicate ZIP member");
-        return Reflect.set(files, name, entry);
-      },
-    });
+    // JSZip 按归档记录顺序保留最后一个同名成员，下方校验最终路径集合。
     await zip.loadAsync(content);
     const paths = new ProjectAssetPathIndex(); // 文件及其父目录用于检查双向占用。
     const files = new Map<string, JSZip.JSZipObject>();

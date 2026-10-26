@@ -22,7 +22,8 @@ export type RenpyFormatMetadata = {
   engine_version: string;
   python_major: 2 | 3;
   old_substitutions: boolean | null;
-  common: string[];
+  common: string[] | null; // `null` 表示无法重建公共字符串，不能伪装为空表。
+  scripts_incomplete?: true; // 记录已知脚本遗漏，离线字符串表不能从剩余成员推断完整性。
 };
 /** 适配器与可读视图共用的元数据入口，只校验下游实际读取的字段。 */
 export function read_renpy_format_metadata(bytes: Uint8Array): RenpyFormatMetadata {
@@ -39,7 +40,12 @@ export function read_renpy_format_metadata(bytes: Uint8Array): RenpyFormatMetada
   );
   const common = metadata["common"];
   assert(
-    Array.isArray(common) && common.every((entry) => typeof entry === "string"),
+    metadata["scripts_incomplete"] === undefined || metadata["scripts_incomplete"] === true,
+    "Invalid Ren'Py script completeness",
+  );
+  assert(
+    common === null ||
+      (Array.isArray(common) && common.every((entry) => typeof entry === "string")),
     "Invalid Ren'Py common strings",
   );
   return metadata as RenpyFormatMetadata;
@@ -159,12 +165,13 @@ export async function read_profile(
     ? tuple.slice(0, 3).join(".")
     : (version_info?.values.get("version")?.[0] ?? "unknown");
   assert(typeof version === "string", "Unknown Ren'Py version declaration");
-  assert(config.values.get("old_substitutions")?.[0] === true, "Unknown Ren'Py percent semantics");
   assert(
     config.values.get("force_archives")?.[0] === false,
     "Unknown Ren'Py default archive policy",
   );
-  let old_substitutions: boolean | null = true;
+  const substitutions = config.values.get("old_substitutions");
+  let old_substitutions: boolean | null =
+    substitutions?.length === 1 && typeof substitutions[0] === "boolean" ? substitutions[0] : null;
   const compatibility = path.join(root, "game/script_version.txt");
   if (fs.exists(compatibility)) {
     const numbers = fs.read_text_file(compatibility).match(/\d+/gu)?.slice(0, 3).map(Number);

@@ -1,3 +1,4 @@
+import { complete_game_preparation } from "../shared/game/preparation";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -132,10 +133,9 @@ it("暂存覆盖正式成员，字体工具单独收集字体映射并排除纹�
     external: [],
     settings_file: null,
   } as const;
-  const prepared = {
-    staging,
-    result: { writes: ["project.binary", "scene.res", "fonts/test.ttf.import"] },
-  };
+  const prepared = complete_game_preparation(staging, {
+    writes: ["project.binary", "scene.res", "fonts/test.ttf.import"],
+  }).sources;
   const data = collect_godot_files(game, native, undefined, prepared);
   expect(Buffer.from(data.get("project.binary")!).equals(godot_project_fixture())).toBe(true);
   expect(data.has("scene.res")).toBe(true);

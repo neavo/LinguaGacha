@@ -10,6 +10,7 @@ export const AGENT_WORKSPACE_PATHS = Object.freeze({
   pages: "pages/entries.jsonl",
   warnings: "items/warnings.jsonl",
   prompts: "prompts.json",
+  sourceIssues: "source_issues.jsonl", // 宿主维护的当前原稿准备问题，与 sources 同寿命。
 } as const);
 
 /** 四类质量规则直接按领域 kind 落盘。 */

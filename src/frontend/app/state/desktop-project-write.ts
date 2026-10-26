@@ -10,7 +10,6 @@ import { AppError, type LogErrorContextInput, type RendererErrorContextInput } f
 export type ProjectWriteResultPayload = {
   accepted?: unknown;
   changes?: unknown;
-  failed_files?: unknown;
 };
 
 export type ProjectWriteResult = {
@@ -34,7 +33,7 @@ export type ProjectWriteCommitRequest<
 export type ProjectWriteCommitResult<
   TPayload extends ProjectWriteResultPayload = ProjectWriteResultPayload,
 > = {
-  payload: TPayload; // 保留后端原始响应，供导入流程读取 failed_files 等扩展字段
+  payload: TPayload; // 保留后端原始响应，供页面读取扩展字段
   write_result: ProjectWriteResult; // 已经进入项目事件管线的规范化 changes
 };
 
@@ -123,6 +122,7 @@ export function useProjectWriteCommitter(
   );
 }
 
+/** 拒绝无效写入事件，使调用方重读工程事实，避免应用半份回执。 */
 function normalize_project_write_change_event(
   change: unknown,
   index: number,

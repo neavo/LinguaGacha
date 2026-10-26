@@ -18,7 +18,7 @@ description: 翻译、审校或分析 Godot 4 游戏前必须首先加载，提�
 |`.translation`|语言表，全部 locale|`x.translation.reference.json`|
 |`.po`|PO 语言表|无，原文可读|
 
-候选按扩展名发现，不区分大小写。二进制成员按文件头识别：`GDSC` 是编译脚本，`RSRC`、`RSCC` 按资源 `type` 区分语言表和其他资源，例如 `.res` 也可能是语言表。投影文件名在成员路径后追加 `.reference.json` 或 `.reference.gd`。成员解析失败时只写出错误投影 `<成员路径>.error.reference.json`。
+候选按扩展名发现，不区分大小写。二进制成员按文件头识别：`GDSC` 是编译脚本。`RSRC`、`RSCC` 按资源 `type` 区分语言表和其他资源，例如 `.res` 也可能是语言表。投影文件名在成员路径后追加 `.reference.json` 或 `.reference.gd`。成员解析失败时不生成投影，失败记录在 `source_issues.jsonl`。
 
 附加原稿的扫描范围是游戏根目录，排除 `.godot/`。
 
@@ -27,11 +27,11 @@ description: 翻译、审校或分析 Godot 4 游戏前必须首先加载，提�
 - 导出的场景通常位于 `.godot/exported/<编号>/export-<哈希>-<名称>.scn`，代码和 `external` 中引用的是原始路径 `res://…/<名称>.tscn`，按名称对应。
 - 编译脚本保留原路径，只把扩展名 `.gd` 换成 `.gdc`。代码和 `external` 中仍写作 `res://…/x.gd`。
 
-`sources/<file_path>/game_files.reference.txt` 每行列出游戏目录中的一个文件路径，路径相对游戏根目录。PCK 已在导入前展开，清单包含全部资源，例如图片、音频、`.remap`、`.import` 和 JSON、CSV 等自定义数据文件。较早导入的工程没有该文件。
+`sources/<file_path>/game_files.reference.txt` 每行列出一个相对游戏根目录的文件路径。PCK 成员按展开后的路径列出，清单包含全部资源，例如图片、音频、`.remap`、`.import` 和 JSON、CSV 等自定义数据文件。导入时读取失败的文件仍列在清单中。较早导入的工程没有该文件。
 
 ## 投影
 
-JSON 投影的统一结构如下，错误投影只有 `internal_file_path` 和 `error`：
+JSON 投影的统一结构如下：
 
 |字段|含义|
 |---|---|
@@ -193,5 +193,5 @@ locale 精确比较，`en` 和 `en_US` 不算匹配。`project.binary.reference.
 - C# 和 Mono 的 DLL、GDExtension 原生库。
 - 文本格式的 `.tscn`、`.tres`，以及附加原稿范围以外的自定义数据文件，它们只出现在 `game_files.reference.txt` 中。
 - 图片中的文字。
-- 投影中有 `error` 的成员。
+- `source_issues.jsonl` 记录的成员。
 - 可见文本补漏和依赖协调依据静态代码调查，无法证明没有遗漏。建议用户在游戏中抽查，并用截图定位遗漏。

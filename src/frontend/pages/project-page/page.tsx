@@ -49,10 +49,6 @@ import { Spinner } from "@frontend/shadcn/spinner";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@frontend/shadcn/tooltip";
 import { type LocaleKey, useI18n } from "@frontend/app/locale/locale-context";
 import { normalize_source_paths } from "@frontend/app/desktop/source-paths";
-import {
-  format_source_file_parse_failure_error_toast,
-  format_source_file_parse_failure_toast,
-} from "@frontend/app/feedback/source-file-parse-failure-feedback";
 import "@frontend/pages/project-page/project-page.css";
 import { ProjectSourceFormats } from "@frontend/pages/project-page/components/project-source-formats";
 import { DesktopApiError, api_fetch } from "@frontend/app/desktop/desktop-api";
@@ -87,14 +83,11 @@ type SelectedSource = ProjectSourceFileSummary & {
   source_paths: string[]; // 创建工程时原样提交的归一化用户选择
 };
 
-/**
- * 新建工程提交后的公开载荷，failed_files 交给专用 formatter 收窄。
- */
+/** 新建工程提交后的公开载荷。 */
 type ProjectCreateCommitPayload = {
   project?: {
     path?: string;
   };
-  failed_files?: unknown;
 };
 
 type ProjectLanguageDraft = Record<ProjectLanguageKey, string>;
@@ -571,9 +564,8 @@ export function ProjectPage(_props: ProjectPageProps): JSX.Element {
 
       if (source_file_count === 0) {
         set_selected_source(null);
-        const failure_toast = format_source_file_parse_failure_toast(payload.failed_files);
-        if (failure_toast !== null)
-          push_error_toast(t("project_page.create.unavailable"), failure_toast);
+        if (Array.isArray(payload.failed_files) && payload.failed_files.length)
+          push_error_toast(t("project_page.create.unavailable"), t("app.source_operation.failed"));
         else push_toast("warning", t("project_page.create.unavailable"));
       } else {
         set_selected_source({
@@ -721,10 +713,7 @@ export function ProjectPage(_props: ProjectPageProps): JSX.Element {
               languages,
             },
           );
-          const failure_toast = format_source_file_parse_failure_toast(create_payload.failed_files);
-          if (failure_toast !== null) {
-            push_toast("warning", failure_toast);
-          }
+          push_toast("success", t("app.source_operation.success"));
           const created_project_path =
             typeof create_payload.project?.path === "string" &&
             create_payload.project.path.trim() !== ""
@@ -757,11 +746,7 @@ export function ProjectPage(_props: ProjectPageProps): JSX.Element {
       ) {
         await handle_select_source_paths(selected_source.source_paths);
       }
-      const parse_failure_toast = format_source_file_parse_failure_error_toast(error);
-      if (parse_failure_toast !== null) {
-        push_error_toast(t("app.feedback.create_failed"), parse_failure_toast);
-        return;
-      }
+
       push_error_toast(t("app.feedback.create_failed"), error);
       return;
     } finally {

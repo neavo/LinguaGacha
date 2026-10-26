@@ -641,7 +641,7 @@ describe("ProjectPage", () => {
     );
   });
 
-  it("来源摘要全部失败时展示具体文件原因，重新选择仍可恢复", async () => {
+  it("来源摘要失败只提示结果，重新选择仍可恢复", async () => {
     const source = "E:/Source/broken.exe";
     vi.mocked(window.desktopApp.pickProjectSourceFilePath).mockResolvedValueOnce({
       canceled: false,
@@ -668,14 +668,8 @@ describe("ProjectPage", () => {
     await act(async () => {
       get_button_by_text(container as HTMLElement, "选择文件").click();
     });
-    expect(push_toast_mock).toHaveBeenCalledWith(
-      expect.any(String),
-      expect.stringContaining("broken.exe"),
-    );
-    expect(push_toast_mock).toHaveBeenCalledWith(
-      expect.any(String),
-      expect.stringContaining("EVB header damaged"),
-    );
+    expect(push_toast_mock).toHaveBeenCalledOnce();
+    expect(JSON.stringify(push_toast_mock.mock.calls)).not.toContain("EVB header damaged");
     vi.mocked(window.desktopApp.pickProjectSourceFilePath).mockResolvedValueOnce({
       canceled: false,
       paths: ["E:/Source/good.txt"],

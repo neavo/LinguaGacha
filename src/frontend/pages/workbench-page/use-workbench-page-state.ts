@@ -27,7 +27,6 @@ import type {
 } from "@frontend/app/state/desktop-project-write";
 import { useI18n } from "@frontend/app/locale/locale-context";
 import { api_fetch } from "@frontend/app/desktop/desktop-api";
-import { format_source_file_parse_failure_error_toast } from "@frontend/app/feedback/source-file-parse-failure-feedback";
 import {
   close_dialog_state,
   useWorkbenchImportFilesFlow,
@@ -757,12 +756,6 @@ export function useWorkbenchPageState(): UseWorkbenchPageStateResult {
         }
       }
     } catch (error) {
-      const parse_failure_toast = format_source_file_parse_failure_error_toast(error);
-      if (parse_failure_toast !== null) {
-        push_error_toast(t("app.feedback.operation_failed"), parse_failure_toast);
-        set_dialog_submitting(false);
-        return;
-      }
       const fallback_message =
         current_dialog_state.kind === "close-project"
           ? t("workbench_page.feedback.close_project_failed")

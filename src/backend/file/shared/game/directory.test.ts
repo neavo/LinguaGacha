@@ -4,6 +4,34 @@ import path from "node:path";
 import { expect, it, vi } from "vitest";
 import { NativeFs } from "../../../../native/native-fs";
 import { write_game_directory, type GameDirectoryChanges } from "./directory";
+import { GameDirectoryOperations } from "./game-directory-operations";
+
+it.each(["writing", "garbage"])("阶段切换到 %s 失败保留明确结果", async (phase) => {
+  using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-game-phase-"));
+  const native = new NativeFs(),
+    rename = native.rename.bind(native);
+  native.write_file_sync(path.join(temp.path, "original"), "old");
+  vi.spyOn(native, "rename").mockImplementation((from, to) => {
+    if (path.basename(path.dirname(to)) === phase) throw new Error("phase failure");
+    rename(from, to);
+  });
+  await expect(
+    write_game_directory(temp.path, native, async (staging) => {
+      native.write_file_sync(path.join(staging, "original"), "new");
+      return { writes: ["original"] };
+    }),
+  ).rejects.toThrow(phase === "garbage" ? "Final state unconfirmed" : "phase failure");
+  expect(native.read_text_file(path.join(temp.path, "original"))).toBe(
+    phase === "garbage" ? "new" : "old",
+  );
+  if (phase === "garbage") {
+    const stage = vi.fn(async () => ({ writes: [] }));
+    await expect(write_game_directory(temp.path, native, stage)).rejects.toThrow(
+      "Unfinished game operation",
+    );
+    expect(stage).not.toHaveBeenCalled();
+  }
+});
 
 /** 混合覆盖、新增和移除，直接观察目录事务的恢复结果。 */
 function fixture(root: string) {
@@ -43,7 +71,7 @@ it.each(["save", "save-cancel", "directory", "directory-cancel", "commit", "remo
     if (phase === "save" || phase === "save-cancel" || phase === "remove") {
       const rename = native.rename.bind(native);
       vi.spyOn(native, "rename").mockImplementation((from, to) => {
-        if (to.includes(path.join(".tmp", "rollback"))) {
+        if (to.includes(path.sep + "rollback" + path.sep)) {
           if (phase === "save" || (phase === "remove" && from.endsWith("archive.bin")))
             throw new Error(phase + " failure");
           rename(from, to);
@@ -55,7 +83,7 @@ it.each(["save", "save-cancel", "directory", "directory-cancel", "commit", "remo
       const rename = native.rename.bind(native);
       vi.spyOn(native, "rename").mockImplementation((from, to) => {
         rename(from, to);
-        if (from.includes(path.join(".tmp", "stage")) && to.endsWith("added.txt")) {
+        if (from.includes(path.sep + "stage" + path.sep) && to.endsWith("added.txt")) {
           if (phase === "cancel") controller.abort(new Error("cancel failure"));
           else throw new Error("commit failure");
         }
@@ -122,7 +150,12 @@ it.each<GameDirectoryChanges>([
       return plan;
     }),
   ).rejects.toThrow();
-  expect(rename).not.toHaveBeenCalled();
+  expect(
+    rename.mock.calls.every(
+      ([from, to]) =>
+        from.includes(path.sep + ".tmp" + path.sep) && to.includes(path.sep + ".tmp" + path.sep),
+    ),
+  ).toBe(true);
   expect(fs.readdirSync(temp.path).sort()).toEqual(["existing-directory", "occupied"]);
   expect(fs.readFileSync(path.join(temp.path, "occupied"), "utf8")).toBe("original");
   expect(fs.readdirSync(path.join(temp.path, "existing-directory"))).toEqual(["keep.txt"]);
@@ -177,31 +210,52 @@ it("恢复失败保留回滚与暂存材料并报告位置", async () => {
     rename = native.rename.bind(native);
   vi.spyOn(native, "rename").mockImplementation((from, to) => {
     if (to.endsWith("added.txt")) throw new Error("commit failed");
-    if (from.includes(path.join(".tmp", "rollback"))) throw new Error("restore failed");
+    if (from.includes(path.sep + "rollback" + path.sep)) throw new Error("restore failed");
     rename(from, to);
   });
   await expect(write_game_directory(temp.path, native, stage)).rejects.toThrow(
     /Rollback:.*rollback[\s\S]*Recovery or cleanup failed:.*restore failed[\s\S]*Staging:/u,
   );
-  const rollback = ".tmp/rollback";
+  const rollback = path.join(
+    ".tmp",
+    "writing",
+    fs.readdirSync(path.join(temp.path, ".tmp/writing"))[0]!,
+    "rollback",
+  );
   expect(fs.readFileSync(path.join(temp.path, rollback, "existing.txt"), "utf8")).toBe("original");
   expect(fs.readFileSync(path.join(temp.path, "archive.bin"), "utf8")).toBe("archive");
   expect(fs.existsSync(path.join(temp.path, ".tmp"))).toBe(true);
 });
 
-it("提交后清理失败报告残留位置，保留已完成转换与回滚材料", async () => {
+it("提交后清理失败保留终态材料，下次操作可以回收并继续", async () => {
   using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-prepare-cleanup-"));
   const stage = fixture(temp.path),
     native = new NativeFs();
+  const log = { warning: vi.fn() };
+  const operations = new GameDirectoryOperations(native, log);
   vi.spyOn(native, "remove_async").mockRejectedValueOnce(new Error("cleanup failure"));
-  await expect(write_game_directory(temp.path, native, stage)).rejects.toThrow(
-    /Game directory committed. Cleanup failed:.*\.tmp/u,
-  );
+  await write_game_directory(temp.path, native, stage, undefined, operations.report_cleanup);
+  expect(log.warning).toHaveBeenCalledExactlyOnceWith(expect.any(String), {
+    source: "game_directory",
+    context: { directory: expect.stringContaining(path.join(".tmp", "garbage")) },
+    error: expect.objectContaining({ message: "cleanup failure" }),
+    targets: { window: false },
+  });
   expect(fs.readFileSync(path.join(temp.path, "existing.txt"), "utf8")).toBe("replacement");
   expect(fs.existsSync(path.join(temp.path, "archive.bin"))).toBe(false);
-  expect(fs.readFileSync(path.join(temp.path, ".tmp/rollback/archive.bin"), "utf8")).toBe(
-    "archive",
-  );
+  const execution = fs.readdirSync(path.join(temp.path, ".tmp/garbage"))[0]!;
+  expect(
+    fs.readFileSync(
+      path.join(temp.path, ".tmp/garbage", execution, "rollback/archive.bin"),
+      "utf8",
+    ),
+  ).toBe("archive");
+  await write_game_directory(temp.path, native, async (staging) => {
+    native.write_file_sync(path.join(staging, "next.txt"), "next");
+    return { writes: ["next.txt"] };
+  });
+  expect(native.read_text_file(path.join(temp.path, "next.txt"))).toBe("next");
+  expect(fs.existsSync(path.join(temp.path, ".tmp"))).toBe(false);
 });
 
 it.each(["case", "directory", "reserved"])("提交前拒绝路径冲突 %s 并保留原文件", async (kind) => {

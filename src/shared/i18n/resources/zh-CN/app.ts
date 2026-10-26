@@ -1,6 +1,10 @@
 import type { LanguageCode } from "../../../../domain/language";
 
 export const zh_cn_app = {
+  source_operation: {
+    success: "来源处理成功 …",
+    failed: "来源处理失败 …",
+  },
   godot_pack_order: {
     title: "资源包优先级",
     description: "后面的资源包会覆盖前面资源包中的同名资源",

@@ -1,5 +1,15 @@
 import type { PDFDocument } from "../../shared/pdf";
 import type { Item, ItemFileType } from "../../domain/item";
+import type { SourceDiagnostic } from "./shared/game/preparation";
+
+/** 原稿字节与目录副作用独立交付，完整性只约束已有资产替换。 */
+export type PreparedSource = Readonly<{
+  content: Uint8Array;
+  additional_files: readonly string[];
+  source_complete: boolean;
+  directory_changed: boolean;
+  diagnostics: readonly SourceDiagnostic[];
+}>;
 
 /** 解析器语法诊断供后端日志定位，位置按脚本内 UTF-16 列计数。 */
 export type ScriptDiagnostic = Readonly<{
@@ -10,7 +20,9 @@ export type ScriptDiagnostic = Readonly<{
 
 /** 跳过的内部文件或脚本统一记录诊断，已取得的原稿仍参与保存和导出。 */
 export type SourceFileParseWarning = Readonly<{
-  code: "script_syntax_error" | "internal_file_parse_failed";
+  stage?: SourceDiagnostic["stage"];
+  error?: SourceDiagnostic["error"];
+  code: "script_syntax_error" | "internal_file_parse_failed" | "source_preparation_failed";
   rel_path: string;
   internal_file_path?: string;
   location?: string; // 格式私有定位在日志边界转成可读位置。
@@ -28,6 +40,7 @@ export type FileFormatReadResult =
       file_type: ItemFileType;
       game_engine?: string; // TRANS 导入继承使用的文本规则上下文。
       warnings?: SourceFileParseWarning[];
+      extraction_complete?: boolean; // 解析器明确报告遗漏，诊断仅用于解释。
     }
   | { kind: "pdf"; document: PDFDocument };
 

@@ -47,7 +47,7 @@ function check_text(item: Item, file: string, usage: RenpyMetadata["usage"]): vo
 }
 
 /** 导出只保留候选索引。完整 Pickle 图按成员释放。 */
-type IndexedScript = Pick<RenpyScript, "digest" | "warnings"> & {
+type IndexedScript = Pick<RenpyScript, "digest" | "warnings" | "extraction_complete"> & {
   candidates: ReadonlyMap<string, RenpyCandidate>;
 };
 
@@ -57,55 +57,70 @@ export function create_renpy_adapter(): GameFormatAdapter {
     file_type: "RENPY",
     has_metadata: true,
     internal_path: (item) => read_renpy_metadata(item.extra_field).internal_file_path,
-    /** 先建立全资产字符串表，成员提取与导出共用同一个索引。 */
+    /** 读取建立全局字符串表，写回按实际候选决定索引范围。 */
     async create_members(files) {
       const member = files.get(GAME_METADATA_MEMBER);
       assert(member, "Missing Ren'Py format metadata; import the game again");
       const metadata_bytes = await member.async("uint8array");
-      const { python_major, old_substitutions, common } =
+      const { python_major, old_substitutions, common, scripts_incomplete } =
         read_renpy_format_metadata(metadata_bytes);
       const python2 = python_major === 2;
       const common_digest = createHash("sha256").update(metadata_bytes).digest("hex");
       const scripts = new Map<string, IndexedScript>(),
         table = new Map<string, RenpyString>();
+      const failures = new Map<string, unknown>();
+      let table_complete = scripts_incomplete !== true;
       const table_key = (language: string | null, original: string) =>
         JSON.stringify([language, original]);
-      for (const [name, entry] of files) {
-        if (name === GAME_METADATA_MEMBER) continue;
-        assert(/^game\/.*\.rpym?c$/u.test(name), "Invalid Ren'Py compiled member: " + name);
-        using session = await PythonSession.create();
-        let script: RenpyScript;
-        try {
-          script = await extract_script(await entry.async("uint8array"), python2, session);
-        } catch (cause) {
-          throw new Error(
-            "Cannot index Ren'Py member " + name + "; restore a supported original compiled file",
-            { cause },
-          );
+      let all_indexed = false;
+      // 同一操作复用索引。仅代码写回无需解释其他脚本的字符串表。
+      const index_scripts = async (names?: Iterable<string>): Promise<void> => {
+        if (names === undefined && all_indexed) return;
+        for (const name of names ?? files.keys()) {
+          if (name === GAME_METADATA_MEMBER || scripts.has(name) || failures.has(name)) continue;
+          const entry = files.get(name);
+          assert(entry, "Missing Ren'Py compiled member: " + name);
+          assert(/^game\/.*\.rpym?c$/u.test(name), "Invalid Ren'Py compiled member: " + name);
+          using session = await PythonSession.create();
+          let script: RenpyScript;
+          try {
+            script = await extract_script(await entry.async("uint8array"), python2, session);
+          } catch (cause) {
+            failures.set(
+              name,
+              new Error(
+                "Cannot index Ren'Py member " +
+                  name +
+                  "; restore a supported original compiled file",
+                { cause },
+              ),
+            );
+            table_complete = false;
+            continue;
+          }
+          scripts.set(name, {
+            digest: script.digest,
+            warnings: script.warnings,
+            extraction_complete: script.extraction_complete,
+            candidates: new Map(script.candidates.map((candidate) => [candidate.key, candidate])),
+          });
+          for (const string of script.strings) {
+            const key = table_key(string.language, string.old),
+              prior = table.get(key);
+            if (prior && prior.text !== string.text) {
+              table_complete = false;
+              failures.set(
+                name,
+                new Error("Conflicting Ren'Py string table: " + name + " / " + string.old),
+              );
+              continue;
+            }
+            table.set(key, string);
+          }
         }
-        scripts.set(name, {
-          digest: script.digest,
-          warnings: script.warnings,
-          candidates: new Map(script.candidates.map((candidate) => [candidate.key, candidate])),
-        });
-        for (const string of script.strings) {
-          const key = table_key(string.language, string.old),
-            prior = table.get(key);
-          assert(
-            !prior || prior.text === string.text,
-            "Conflicting Ren'Py string table: " + name + " / " + string.old,
-          );
-          table.set(key, string);
-        }
-      }
+        if (names === undefined) all_indexed = true;
+      };
       const changes = new Map<string, RenpyChange[]>(); // 处理器只服务一次资产操作。
-      const languages = new Map<string, RenpyString[]>(); // 原文对应的其他语言映射。
-      for (const string of table.values()) {
-        if (string.language === null) continue;
-        const entries = languages.get(string.old) ?? [];
-        entries.push(string);
-        languages.set(string.old, entries);
-      }
       /** 菜单百分号与段落标记使用引擎处理后的字符串表键。 */
       const lookup_text = (text: string, usage: string): string =>
         usage === "paragraph"
@@ -120,10 +135,13 @@ export function create_renpy_adapter(): GameFormatAdapter {
       return {
         /** 已有基础语言条目拥有译文，避免同一显示文本产生两个写入口。 */
         async read_file(_content, file) {
+          await index_scripts();
+          if (failures.has(file)) throw failures.get(file);
           if (file === GAME_METADATA_MEMBER)
             return {
+              extraction_complete: table_complete && common !== null,
               warnings: [],
-              items: common
+              items: (table_complete ? (common ?? []) : [])
                 .filter((original) => !table.has(table_key(null, original)))
                 .map((original, row) =>
                   create_item({
@@ -144,7 +162,12 @@ export function create_renpy_adapter(): GameFormatAdapter {
             };
           const script = scripts.get(file)!;
           return {
+            extraction_complete: script.extraction_complete && table_complete,
             items: [...script.candidates.values()]
+              .filter(
+                (candidate) =>
+                  table_complete || candidate.usage === "string" || candidate.usage === "code",
+              )
               .filter((candidate) => !redirected(candidate.text, candidate.usage))
               .map((candidate, row) =>
                 create_item({
@@ -172,6 +195,31 @@ export function create_renpy_adapter(): GameFormatAdapter {
         },
         /** 校验全部条目并建立跨成员写回计划。 */
         async prepare_export(items) {
+          const translated = items.filter((item) => item.status === "PROCESSED");
+          await index_scripts(
+            translated.map((item) => read_renpy_metadata(item.extra_field).internal_file_path),
+          );
+          // 使用本次解析的用途，不能凭持久化条目的旧用途跳过真实依赖。
+          const needs_table = translated.some((item) => {
+            const location = read_renpy_metadata(item.extra_field);
+            return (
+              location.internal_file_path === GAME_METADATA_MEMBER ||
+              scripts.get(location.internal_file_path)?.candidates.get(location.key)?.usage !==
+                "code"
+            );
+          });
+          if (needs_table) {
+            await index_scripts();
+            assert(table_complete, "Incomplete Ren'Py string table prevents writeback");
+          }
+          const languages = new Map<string, RenpyString[]>();
+          if (needs_table)
+            for (const string of table.values()) {
+              if (string.language === null) continue;
+              const entries = languages.get(string.old) ?? [];
+              entries.push(string);
+              languages.set(string.old, entries);
+            }
           const additions = new Map<string, RenpyString>(),
             seen = new Set<string>();
           const add_string = (entry: RenpyString) => {
@@ -183,8 +231,7 @@ export function create_renpy_adapter(): GameFormatAdapter {
             );
             if (!prior) additions.set(key, entry);
           };
-          for (const item of items) {
-            if (item.status !== "PROCESSED") continue;
+          for (const item of translated) {
             const location = read_renpy_metadata(item.extra_field);
             const file = location.internal_file_path;
             const key = JSON.stringify([file, location.key]);
@@ -195,7 +242,7 @@ export function create_renpy_adapter(): GameFormatAdapter {
               assert(
                 location.digest === common_digest &&
                   location.key === item.src &&
-                  common.includes(item.src),
+                  common?.includes(item.src),
                 "Ren'Py common original changed",
               );
               check_text(item, file, "common");
@@ -242,7 +289,7 @@ export function create_renpy_adapter(): GameFormatAdapter {
             const entry = changes.get(file) ?? [];
             entry.push({ candidate, text: translation });
             changes.set(file, entry);
-            if (candidate.usage !== "string") {
+            if (candidate.usage !== "string" && candidate.usage !== "code") {
               const original_key = lookup_text(item.src, candidate.usage);
               const new_key = lookup_text(translation, candidate.usage);
               for (const string of languages.get(original_key) ?? [])

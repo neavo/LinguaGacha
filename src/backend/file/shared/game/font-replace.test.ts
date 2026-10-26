@@ -211,7 +211,7 @@ it.each(["commit", "cancel"])("字体修改 %s 失败时恢复原游戏", async 
   const controller = new AbortController();
   const rename = local.rename.bind(local);
   vi.spyOn(local, "rename").mockImplementation((from, to) => {
-    const removing = from === encrypted && to.includes(path.join(".tmp", "rollback"));
+    const removing = from === encrypted && to.includes(path.sep + "rollback" + path.sep);
     if (removing && phase === "commit") throw new Error("commit failure");
     rename(from, to);
     if (removing) controller.abort(new Error("cancel failure"));

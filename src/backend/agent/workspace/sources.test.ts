@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { expect, it } from "vitest";
+import { expect, it, vi } from "vitest";
 import { NativeFs } from "../../../native/native-fs";
 import { write_agent_workspace_sources } from "./sources";
 import JSZip from "jszip";
@@ -110,7 +110,10 @@ it.each(["Data/System.rvdata2.reference.json", "game_files.reference.txt/real.js
         additionalFiles: { "game.zip": [additional] },
         readAsset: () => zip.generateAsync({ type: "nodebuffer" }),
       }),
-    ).rejects.toMatchObject({ code: "request.validation_failed" });
+    ).resolves.toMatchObject([
+      { retry: false, issues: [expect.objectContaining({ stage: "reference" })] },
+    ]);
+    expect(fs.readFileSync(path.join(root.path, "game.zip", additional), "utf8")).toBe("original");
   },
 );
 
@@ -125,7 +128,9 @@ it.each(["GODOT", "EPUB"])("%s 拒绝越界容器成员，外部路径没有写�
       files: [{ file_path: "game.zip", file_type }],
       readAsset: () => content,
     }),
-  ).rejects.toMatchObject({ code: "file.invalid_structure" });
+  ).resolves.toMatchObject([
+    { retry: false, issues: [{ asset_path: "game.zip", stage: "archive" }] },
+  ]);
   expect(fs.existsSync(path.join(root.path, "outside.json"))).toBe(false);
 });
 it.each([
@@ -180,14 +185,25 @@ it.each([
       files: [{ file_path, file_type }],
       readAsset: () => zip.generateAsync({ type: "nodebuffer" }),
     };
-    await write_agent_workspace_sources(args);
+    const report = vi.fn();
+    const results = await write_agent_workspace_sources({ ...args, report });
+    expect(results).toMatchObject([
+      {
+        retry: false,
+        issues: expect.arrayContaining([
+          expect.objectContaining({ asset_path: file_path, member_path: broken }),
+        ]),
+      },
+    ]);
+    // 日志与问题记录来自同一诊断，逐条对应。
+    expect(report.mock.calls.map(([, diagnostic]) => diagnostic.error.message)).toEqual(
+      results[0]!.issues.map((issue) => issue.message),
+    );
     for (const [name, bytes] of members)
       expect(fs.readFileSync(path.join(root.path, file_path, name))).toEqual(bytes);
-    expect(
-      JSON.parse(
-        fs.readFileSync(path.join(root.path, file_path, broken + ".error.reference.json"), "utf8"),
-      ),
-    ).toMatchObject({ error: expect.any(String) });
+    expect(fs.existsSync(path.join(root.path, file_path, broken + ".error.reference.json"))).toBe(
+      false,
+    );
     expect(
       JSON.parse(fs.readFileSync(path.join(root.path, file_path, projection), "utf8")),
     ).toMatchObject(expected);

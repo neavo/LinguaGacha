@@ -74,7 +74,7 @@ it("名为 Data 的游戏根目录仍可识别，单独归档不能成为工程�
     [],
   );
 });
-it("坏游戏边界阻止普通文件递归导入，根归档与分目录归档冲突在准备前失败", async () => {
+it("坏游戏边界阻止普通文件递归导入，根归档与有效分包按稳定顺序选择", async () => {
   using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-wolf-source-"));
   const native = new NativeFs(),
     root = path.join(temp.path, "game"),
@@ -90,8 +90,15 @@ it("坏游戏边界阻止普通文件递归导入，根归档与分目录归档�
   expect(entries).toHaveLength(1);
   expect(entries[0]!.source.kind).toBe("failure");
   native.write_file_sync(path.join(root, "Data.wolf"), await wolf_archive_fixture(new Map()));
-  await expect(service.collect_source_file_entries([root])).rejects.toThrow(
-    "Conflicting WOLF data archives",
+  expect((await service.collect_source_file_entries([root]))[0]?.source.kind).toBe("failure");
+  native.write_file_sync(
+    path.join(root, "Data/BasicData.wolf"),
+    await wolf_archive_fixture(new Map()),
   );
+  const game = await discover_wolf_source(root, native);
+  expect(game?.archives.map((archive) => archive.output_prefix)).toEqual([
+    "Data",
+    "Data/BasicData",
+  ]);
   expect(fs.existsSync(path.join(root, "backup_lg"))).toBe(false);
 });

@@ -104,6 +104,8 @@ async function read_members(
   position += legacy ? main_size + 4 : 15;
   const result: EVBMember[] = [],
     names = new Set<string>(),
+    file_names = new Set<string>(),
+    directories = new Set<string>(),
     spellings: string[] = [],
     paths = new ProjectAssetPathIndex();
   let count = 0;
@@ -131,10 +133,11 @@ async function read_members(
       validate_game_path(name);
     }
     const full = [parent, name].filter(Boolean).join("/");
-    assert(!names.has(full.toLowerCase()), "Duplicate EVB member");
+    assert(kind !== 3 || !names.has(full.toLowerCase()), "Duplicate EVB directory");
     names.add(full.toLowerCase());
     if (full) spellings.push(full);
     if (kind === 3) {
+      directories.add(full.toLowerCase());
       position = legacy ? start + size + 4 : position + 25;
       for (let i = 0; i < children; i++) await node(full, depth + 1);
     } else {
@@ -145,7 +148,9 @@ async function read_members(
       const offset = legacy ? position + 49 : data;
       assert(offset >= section.raw && offset + stored <= end, "EVB member outside section");
       validate_game_path(full);
-      paths.add(full);
+      assert(!directories.has(full.toLowerCase()), "EVB file conflicts with directory");
+      if (!file_names.has(full)) paths.add(full);
+      file_names.add(full);
       result.push({ name: full, offset, stored, size: length });
       if (legacy) position = offset + stored;
       else {
@@ -161,7 +166,7 @@ async function read_members(
     const conflict = name ? paths.find_conflict(name) : null;
     assert(conflict === null || conflict === name, "EVB file blocks directory");
   }
-  return result;
+  return [...new Map(result.map((member) => [member.name, member])).values()];
 }
 
 /** 未压缩成员直接复制，压缩成员逐块解码并核对总长度。 */

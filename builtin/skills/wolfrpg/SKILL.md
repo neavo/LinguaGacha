@@ -7,12 +7,12 @@ description: 翻译、审校或分析 WOLF RPG Editor 游戏前必须首先加�
 
 # 原稿与条目
 
-每个游戏是一个工程资产，条目的 `file_path` 指向整个游戏。`sources/<file_path>/` 包含 `Data/BasicData/` 下的 `.dat`、`.project` 和各地图 `.mps`，素材文件的内容不在其中。解析器支持的成员旁有投影 `<成员路径>.reference.json`，解析失败时换成错误投影 `<成员路径>.error.reference.json`。投影包含：
+每个游戏是一个工程资产，条目的 `file_path` 指向整个游戏。`sources/<file_path>/` 包含 `Data/BasicData/` 下的 `.dat`、`.project` 和各地图 `.mps`。解析器支持的成员旁有投影 `<成员路径>.reference.json`。解析失败时不生成投影，失败记录在 `source_issues.jsonl`。配套文件缺失时投影仍写出结构，但 `usage` 不代表实际用途，该成员同样记录在 `source_issues.jsonl`。投影包含：
 
 - `data`：解析后的结构。公共事件和地图事件的指令为 `{ code, integers, strings }`，数据库为类型、字段、数据名与字符串值。
 - `strings`：全部可编辑槽位，`usage` 为 `text` 或 `metadata`，`context` 说明来源。
 
-`sources/<file_path>/game_files.reference.txt` 每行列出一个游戏目录中的文件路径，路径相对游戏根目录。指令和数据库中的素材路径通常省略开头的 `Data/`。较早导入的工程没有该文件。
+`sources/<file_path>/game_files.reference.txt` 每行列出一个游戏目录中的文件路径，路径相对游戏根目录。导入时读取失败的文件仍列在清单中。指令和数据库中的素材路径通常省略开头的 `Data/`。较早导入的工程没有该文件。
 
 附加原稿的扫描范围是游戏根目录。
 
@@ -102,4 +102,5 @@ WOLF 用字符串在运行时查找对象：
 
 - 拼接路径和按名引用依据静态追踪，运行时计算出的路径和名称无法完全证明。
 - 翻译数据库名称后，旧存档中按名称保存的数据可能对不上。
+- `source_issues.jsonl` 记录的成员。
 - 图片中的文字，以及原稿以外的文件。

@@ -1,3 +1,4 @@
+import { source_diagnostic, type SourceDiagnostic } from "../shared/game/preparation";
 import { PythonSession } from "./python-syntax";
 import assert from "node:assert/strict";
 import path from "node:path";
@@ -81,41 +82,48 @@ export function collect_renpy_files(
 /** 导入使用已读定的原件构建离线语义，字体收集不触发脚本分析。 */
 export async function build_renpy_metadata(
   game: RenpySource,
-  data: GameSourceData,
+  sources: Readonly<{ data: GameSourceData; complete: boolean }>,
   fs: NativeFs,
   signal?: AbortSignal,
+  report?: (diagnostic: SourceDiagnostic) => void,
 ): Promise<Uint8Array> {
-  const assignments = new Set<boolean | null>();
+  const assignments = new Set<boolean | null>(sources.complete ? [] : [null]);
   let include_layout = false;
-  for (const [member, bytes] of data) {
+  for (const [member, bytes] of sources.data) {
     signal?.throwIfAborted();
     using session = await PythonSession.create();
-    for (const code of script_codes({ slots: read_compiled(bytes) })) {
-      const facts = await audit_code(
-        code,
-        member,
-        session,
-        game.profile.python_major === 2,
-        signal,
-      );
-      if (facts.references.some((entry) => entry.startsWith("layout."))) include_layout = true;
-      if (facts.bare_references.some((name) => name === "config" || name === "renpy.config"))
-        assignments.add(null);
-      const references = facts.references.filter(
-        (entry) =>
-          entry === "config.old_substitutions" || entry === "renpy.config.old_substitutions",
-      );
-      if (!references.length) continue;
-      const values = facts.assignments.filter(
-        (entry) => entry.target === "config.old_substitutions",
-      );
-      if (code.phase !== "init" || values.length !== references.length) assignments.add(null);
-      for (const entry of values)
-        assignments.add(
-          entry.root && entry.operation === "=" && typeof entry.value === "boolean"
-            ? entry.value
-            : null,
+    try {
+      for (const code of script_codes({ slots: read_compiled(bytes) })) {
+        const facts = await audit_code(
+          code,
+          member,
+          session,
+          game.profile.python_major === 2,
+          signal,
         );
+        if (facts.references.some((entry) => entry.startsWith("layout."))) include_layout = true;
+        if (facts.bare_references.some((name) => name === "config" || name === "renpy.config"))
+          assignments.add(null);
+        const references = facts.references.filter(
+          (entry) =>
+            entry === "config.old_substitutions" || entry === "renpy.config.old_substitutions",
+        );
+        if (!references.length) continue;
+        const values = facts.assignments.filter(
+          (entry) => entry.target === "config.old_substitutions",
+        );
+        if (code.phase !== "init" || values.length !== references.length) assignments.add(null);
+        for (const entry of values)
+          assignments.add(
+            entry.root && entry.operation === "=" && typeof entry.value === "boolean"
+              ? entry.value
+              : null,
+          );
+      }
+    } catch (error) {
+      signal?.throwIfAborted();
+      assignments.add(null);
+      report?.(source_diagnostic("archive", error, member));
     }
   }
   const old_substitutions =
@@ -125,12 +133,24 @@ export async function build_renpy_metadata(
         ? [...assignments][0]!
         : null;
   using session = await PythonSession.create();
+  let common: string[] | null;
+  try {
+    // 缺失脚本可能引用旧布局，无法确认公共字符串的收集范围。
+    common = sources.complete
+      ? await collect_common(game.root, fs, signal, include_layout, session)
+      : null;
+  } catch (error) {
+    signal?.throwIfAborted();
+    common = null;
+    report?.(source_diagnostic("archive", error, "renpy/common"));
+  }
   const metadata: RenpyFormatMetadata = {
     schema: "linguagacha-renpy-1",
     engine_version: game.profile.version,
     python_major: game.profile.python_major,
     old_substitutions,
-    common: await collect_common(game.root, fs, signal, include_layout, session),
+    common,
+    ...(sources.complete ? {} : { scripts_incomplete: true as const }),
   };
   return Buffer.from(JSON.stringify(metadata));
 }

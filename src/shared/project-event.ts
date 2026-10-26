@@ -1,4 +1,4 @@
-import type { SourceFileParseFailureRecord } from "./source-file-parse-failure";
+import type { SourceOperationResult } from "./source-operation";
 
 // section 顺序同时约束 manifest、项目变更和 renderer 初始化刷新顺序
 export const PROJECT_DATA_SECTIONS = [
@@ -42,7 +42,7 @@ export type ProjectChangeEvent = {
 export type ProjectWriteResult = {
   accepted: true;
   changes: ProjectChangeEvent[];
-  failed_files?: SourceFileParseFailureRecord[];
+  source_operation?: SourceOperationResult;
 };
 
 // 公开的工程数据变更 SSE 主题，renderer 从此入口消费工程变化。

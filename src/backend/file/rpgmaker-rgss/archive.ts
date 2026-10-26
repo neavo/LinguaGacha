@@ -54,6 +54,7 @@ export async function read_rgss_archive(
   }
   const members: RGSSArchiveMember[] = [];
   const paths = new ProjectAssetPathIndex();
+  const names = new Set<string>();
   while (version === 3 || cursor < length) {
     const offset = version === 3 ? await integer() : 0;
     if (version === 3 && offset === 0) {
@@ -73,7 +74,8 @@ export async function read_rgss_archive(
     const name = validate_zip_member_path(
       new TextDecoder("utf-8", { fatal: true }).decode(name_bytes),
     );
-    paths.add(name);
+    if (!names.has(name)) paths.add(name);
+    names.add(name);
     const member_size = version === 1 ? await integer() : size;
     const member_offset = version === 1 ? cursor : offset;
     if (member_offset + member_size > length)
@@ -93,7 +95,7 @@ export async function read_rgss_archive(
       end = member.offset + member.size;
     }
   }
-  return members;
+  return [...new Map(members.map((member) => [member.name, member])).values()];
 }
 
 /** 分块解密写入独占暂存文件，内存占用不随归档大小增长。 */

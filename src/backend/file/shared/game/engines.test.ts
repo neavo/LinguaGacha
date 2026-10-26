@@ -1,3 +1,4 @@
+import { complete_game_preparation } from "./preparation";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -28,13 +29,10 @@ it.each(["", "www"])("MV/MZ 合并暂存与移除清单：%s", async (prefix) =>
     },
     native,
     undefined,
-    {
-      staging,
-      result: {
-        writes: [local("data/System.json")],
-        removes: [local("data/Removed.json")],
-      },
-    },
+    complete_game_preparation(staging, {
+      writes: [local("data/System.json")],
+      removes: [local("data/Removed.json")],
+    }).sources,
   );
   expect([...data.keys()]).toEqual(
     ["data/System.json", "js/plugins.js", "js/plugins/Menu.js"].map(local).sort(),
@@ -59,10 +57,12 @@ it.each(["Data", "Custom"])("RGSS 收集 %s 配置脚本并复用已枚举的数
   native.write_file_sync(path.join(staging, script), "prepared script");
   const enumerate = vi.spyOn(native, "read_dirents");
   const read = vi.spyOn(native, "read_file");
-  const data = await GAME_ENGINES.RPGMAKER_RGSS.collect(source, native, undefined, {
-    staging,
-    result: { writes: [script] },
-  });
+  const data = await GAME_ENGINES.RPGMAKER_RGSS.collect(
+    source,
+    native,
+    undefined,
+    complete_game_preparation(staging, { writes: [script] }).sources,
+  );
   expect([...data.keys()].sort()).toEqual(
     ["Game.ini", "Data/System.rvdata2", "Data/nested/Actor.rvdata2", script].sort(),
   );

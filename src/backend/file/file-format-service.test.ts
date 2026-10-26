@@ -1,9 +1,10 @@
 import { GameDirectoryOperations } from "./shared/game/game-directory-operations";
 import { read_resource } from "./godot/resource";
+import { read_pack } from "./godot/pack";
 import { create_godot_fixture, godot_pack_fixture } from "../../test/godot-fixture";
 import { read_godot_metadata } from "./godot/item";
 import { read_translation } from "./godot/translation";
-import { read_game_container } from "./shared/game/format";
+import { GAME_METADATA_MEMBER, read_game_container } from "./shared/game/format";
 import { evb_fixture } from "../../test/evb-fixture";
 import { encrypted_media, MEDIA_KEY, png_fixture } from "../../test/media-fixture";
 import { create_pdf_execution } from "./pdf/test-support";
@@ -19,6 +20,66 @@ import { NativeFs } from "../../native/native-fs";
 import { write_zip } from "../../test/zip-fixture";
 import { FileFormatService } from "./file-format-service";
 import { PROJECT_SOURCE_FORMATS } from "../../shared/project-source-formats";
+import { create_renpy_fixture, compiled_fixture } from "../../test/renpy-fixture";
+import { read_renpy_metadata } from "./renpy/item";
+import { read_renpy_format_metadata } from "./renpy/profile";
+import { create_renpy_adapter } from "./renpy/renpy-format";
+
+it.each(["script", "additional"])("Ren’Py %s 读取失败按真实依赖保留离线语义", async (failure) => {
+  using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-renpy-partial-context-"));
+  const root = path.join(temp.path, "game");
+  const native = create_renpy_fixture(root);
+  const service = new FileFormatService(
+    new GameDirectoryOperations(native),
+    { target_language: "ZH" },
+    async () => null,
+    native,
+  );
+  const entry = (await service.collect_source_file_entries([root]))[0]!;
+  const original = await service.prepare_source(entry);
+  const original_parsed = await service.parse_asset(entry.rel_path, original.content, "RENPY");
+  if (original_parsed.kind !== "items") throw new Error("Expected Ren’Py items");
+  const display = original_parsed.items.find(
+    (item) => read_renpy_metadata(item.extra_field).usage === "say",
+  )!;
+  const missing = path.join(root, "game", failure === "script" ? "missing.rpyc" : "notes.json");
+  native.write_file_sync(missing, failure === "script" ? compiled_fixture() : "{}");
+  const read = native.read_file.bind(native);
+  const unavailable = vi.spyOn(native, "read_file").mockImplementation((file) => {
+    if (file === missing) throw new Error("original unreadable");
+    return read(file);
+  });
+  const prepared = await service.prepare_source(entry).finally(() => unavailable.mockRestore());
+  expect(prepared.source_complete).toBe(false);
+  fs.renameSync(root, path.join(temp.path, "offline"));
+  const { input } = await read_game_container(prepared.content, entry.rel_path, true);
+  const metadata = read_renpy_format_metadata(
+    await input.get(GAME_METADATA_MEMBER)!.async("uint8array"),
+  );
+  const parsed = await service.parse_asset(entry.rel_path, prepared.content, "RENPY");
+  if (parsed.kind !== "items") throw new Error("Expected Ren’Py items");
+  expect(parsed.extraction_complete).toBe(failure !== "script");
+  expect(parsed.items.some((item) => read_renpy_metadata(item.extra_field).usage === "say")).toBe(
+    failure !== "script",
+  );
+  const handler = await create_renpy_adapter().create_members(input);
+  const write = handler.prepare_export!([{ ...display, status: "PROCESSED", dst: "译文" }]);
+  if (failure === "script") {
+    await expect(write).rejects.toThrow("Incomplete Ren'Py string table");
+    expect(metadata.old_substitutions).toBeNull();
+    expect(metadata.common).toBeNull();
+    const code = parsed.items.find(
+      (item) => read_renpy_metadata(item.extra_field).usage === "code",
+    )!;
+    const independent = await create_renpy_adapter().create_members(input);
+    await expect(
+      independent.prepare_export!([{ ...code, status: "PROCESSED", dst: "代码译文" }]),
+    ).resolves.toBeInstanceOf(Map);
+  } else {
+    await expect(write).resolves.toBeInstanceOf(Map);
+    expect(metadata.old_substitutions).toBe(true);
+  }
+});
 
 /**
  * 测试统一使用显式配置，避免依赖用户本机设置
@@ -32,6 +93,49 @@ function create_service(): FileFormatService {
     create_pdf_execution(),
   );
 }
+
+it.each(["member", "commit"])("Godot %s 失败仍归档可靠原稿，胜出资源不回退", async (failure) => {
+  using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-source-partial-"));
+  const native = new NativeFs(),
+    pack = path.join(temp.path, "game.pck");
+  const files = create_godot_fixture();
+  native.write_file_sync(pack, godot_pack_fixture(files));
+  if (failure === "member") {
+    const handle = await native.open_file(pack, "r+");
+    try {
+      const member = (await read_pack(handle)).members.find(
+        (member) => member.name === "main.gdc",
+      )!;
+      await handle.write(Buffer.from([255]), 0, 1, member.offset);
+    } finally {
+      await handle.close();
+    }
+    native.write_file_sync(path.join(temp.path, "main.gdc"), "old loser");
+  } else {
+    const rename = native.rename.bind(native);
+    vi.spyOn(native, "rename").mockImplementation((from, to) => {
+      if (from.includes(path.sep + "stage" + path.sep) && to.endsWith("project.binary"))
+        throw new Error("commit failed");
+      rename(from, to);
+    });
+  }
+  const original = native.read_file(pack);
+  const service = new FileFormatService(
+    new GameDirectoryOperations(),
+    { target_language: "ZH" },
+    async () => null,
+    native,
+  );
+  const prepared = await service.prepare_source(
+    (await service.collect_source_file_entries([temp.path]))[0]!,
+  );
+  expect(prepared.directory_changed).toBe(false);
+  expect(prepared.source_complete).toBe(failure === "commit");
+  expect(native.read_file(pack)).toEqual(original);
+  const container = await read_game_container(prepared.content, "game.godot");
+  expect(container.members.has("project.binary")).toBe(true);
+  expect(container.members.has("main.gdc")).toBe(failure === "commit");
+});
 
 describe("FileFormatService", () => {
   it("目录占用入口的读取失败仍按单个来源归集，保留正常文件", async () => {
@@ -388,7 +492,7 @@ it("正式导入先拒绝根目录恢复材料，来源摘要只读", async () =
   expect((await service.summarize_source_files([temp.path])).source_file_count).toBe(1);
   const entry = (await service.collect_source_file_entries([temp.path]))[0]!;
   await expect(service.prepare_source(entry)).rejects.toThrow(
-    "Unfinished game operation; recovery files: " + workspace,
+    "Unknown game recovery layout: " + path.join(workspace, "rollback"),
   );
   expect(fs.readFileSync(path.join(workspace, "rollback/keep"), "utf8")).toBe("recovery");
   expect(fs.readdirSync(path.join(temp.path, "backup_lg"))).toEqual(["keep"]);
@@ -459,7 +563,11 @@ it.each(["read", "existing-read"])("导入 %s 失败保留准备结果并允许�
     if (file === path.join(temp.path, "data/Actors.json")) throw new Error("read failure");
     return read(file);
   });
-  await expect(service.prepare_source(entry)).rejects.toThrow("read failure");
+  await expect(service.prepare_source(entry)).resolves.toMatchObject({
+    source_complete: false,
+    directory_changed: phase === "read",
+    diagnostics: expect.arrayContaining([expect.objectContaining({ stage: "read" })]),
+  });
   expect(fs.readFileSync(path.join(temp.path, "img/a.png")).equals(png_fixture())).toBe(true);
   expect(fs.existsSync(path.join(temp.path, "img/a.png_"))).toBe(false);
   vi.restoreAllMocks();

@@ -13,6 +13,11 @@ import type { CLIJsonStatusReporter } from "../cli-status-reporter";
 import { build_cli_task_input } from "./cli-task-input";
 import { write_stderr } from "../cli-output";
 import { format_i18n_message } from "../../shared/i18n";
+import {
+  read_source_operation_result,
+  type SourceOperationResult,
+} from "../../shared/source-operation";
+import { is_app_error } from "../../shared/error";
 
 type CLIJobStatusReporter = Pick<
   CLIJsonStatusReporter,
@@ -50,6 +55,7 @@ export async function run_cli_job(
   let transient_overrides_active = false; // 防止输入校验失败时写入多余撤销调用
   let excluded_files: string[] = [];
   const failures: unknown[] = []; // 按发生顺序保留业务与收尾错误，同时继续后续清理
+  let source_operation: SourceOperationResult | undefined;
 
   try {
     assert_existing_inputs(command);
@@ -61,7 +67,7 @@ export async function run_cli_job(
       output_folder_open_on_finish: false,
     });
     transient_overrides_active = true;
-    await backend_services.project.lifecycle.create_project_commit(
+    const created = await backend_services.project.lifecycle.create_project_commit(
       {
         path: project_path,
         source_paths: command.inputPaths,
@@ -78,6 +84,7 @@ export async function run_cli_job(
         );
       },
     );
+    source_operation = read_source_operation_result(created.source_operation);
     await backend_services.project.lifecycle.apply_task_input(await build_cli_task_input(command));
 
     const { entries } = (await backend_services.project.summary.read()).snapshot;
@@ -91,6 +98,8 @@ export async function run_cli_job(
       excluded_files,
     );
   } catch (error) {
+    if (is_app_error(error))
+      source_operation ??= read_source_operation_result(error.public_details?.source_operation);
     failures.push(error);
   }
 
@@ -119,11 +128,11 @@ export async function run_cli_job(
       failures.length === 1
         ? failures[0]
         : new AggregateError(failures, "CLI job execution or temporary resource cleanup failed.");
-    status_reporter.emit_finished("error", error);
+    status_reporter.emit_finished("error", error, [], source_operation);
     throw error;
   }
 
-  status_reporter.emit_finished("done", undefined, excluded_files);
+  status_reporter.emit_finished("done", undefined, excluded_files, source_operation);
 }
 
 /**

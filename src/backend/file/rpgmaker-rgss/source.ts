@@ -40,11 +40,13 @@ export function discover_rgss_source(source: string, fs: NativeFs): RGSSSource |
     )!;
     versions.add(version);
   }
-  const archive = archives[0]?.name ?? null;
+  let archive: string | null = null;
   if (!fs.exists(path.join(root, "Game.ini")) && versions.size === 0) return null;
   {
     const content = fs.read_file(path.join(root, "Game.ini"));
     const ini = decode_ini(content);
+    const observed = new Set(versions);
+    versions.clear();
     const scripts = read_ini_value(ini, "Scripts");
     const library = read_ini_value(ini, "Library");
     for (const version of Object.keys(RGSS_VERSIONS) as RGSSVersion[]) {
@@ -56,9 +58,15 @@ export function discover_rgss_source(source: string, fs: NativeFs): RGSSSource |
     }
     const generation = /(?:^|[\\/])RGSS([123])\d*[^\\/]*\.dll$/iu.exec(library ?? "")?.[1];
     if (generation) versions.add(generation === "1" ? "xp" : generation === "2" ? "vx" : "ace");
+    if (!versions.size) for (const version of observed) versions.add(version);
     const version = [...versions][0];
     if (!version) return null;
-    if (archives.length > 1) throw new GameSourceConflictError("Conflicting RGSS archive entries");
+    const active_archives = archives.filter(
+      (entry) => path.extname(entry.name).toLowerCase() === RGSS_ARCHIVES[version],
+    );
+    if (active_archives.length > 1)
+      throw new GameSourceConflictError("Conflicting RGSS archive entries");
+    archive = active_archives[0]?.name ?? null;
     if (versions.size !== 1) throw new Error("Conflicting RGSS engine versions");
     script_path(content, version);
     if (archive) {
@@ -104,17 +112,15 @@ export function script_path(content: Uint8Array, version: RGSSVersion): string {
   return "Data/Scripts" + RGSS_VERSIONS[version];
 }
 /** 配置和本代数据使用准备后的路径清单，保留配置脚本的实际拼写。 */
-export function collect_rgss_files(
-  version: RGSSVersion,
-  names: Iterable<string>,
-  scripts: string,
-): string[] {
+export function collect_rgss_files(names: Iterable<string>, scripts: string): string[] {
   const files = [...names];
   const data = sort_game_paths(
     files.filter(
       (name) =>
         name.toLowerCase().startsWith("data/") &&
-        path.extname(name).toLowerCase() === RGSS_VERSIONS[version],
+        Object.values(RGSS_VERSIONS).some(
+          (extension) => path.extname(name).toLowerCase() === extension,
+        ),
     ),
   );
   const script = files.find((name) => name.toLowerCase() === scripts.toLowerCase()) ?? scripts; // 缺失脚本仍交给读取入口报错，防止静默遗漏。
@@ -129,21 +135,23 @@ export function collect_rgss_files(
 export async function read_rgss_game(
   files: GameFiles,
 ): Promise<{ version: RGSSVersion; scripts: string }> {
+  const ini = [...files].find(([name]) => name.toLowerCase() === "game.ini")?.[1];
+  if (!ini) throw new Error("Missing Game.ini");
+  const content = await ini.async("uint8array");
+  const configured = read_ini_value(decode_ini(content), "Scripts");
   const versions = (Object.keys(RGSS_VERSIONS) as RGSSVersion[]).filter((version) =>
-    [...files.keys()].some((name) => name.toLowerCase() === "data/system" + RGSS_VERSIONS[version]),
+    configured
+      ? path.extname(configured).toLowerCase() === RGSS_VERSIONS[version]
+      : [...files.keys()].some(
+          (name) => name.toLowerCase() === "data/system" + RGSS_VERSIONS[version],
+        ),
   );
   if (versions.length !== 1) throw new Error("Ambiguous RGSS version");
   const version = versions[0]!;
-  const ini = [...files].find(([name]) => name.toLowerCase() === "game.ini")?.[1];
-  if (!ini) throw new Error("Missing Game.ini");
-  const scripts = script_path(await ini.async("uint8array"), version);
   if (
-    [...files.keys()].some(
-      (name) =>
-        /\.(?:rxdata|rvdata2?)$/iu.test(name) &&
-        path.extname(name).toLowerCase() !== RGSS_VERSIONS[version],
-    )
+    ![...files.keys()].some((name) => name.toLowerCase() === "data/system" + RGSS_VERSIONS[version])
   )
-    throw new Error("Mixed RGSS versions");
+    throw new Error("Missing RGSS System for configured version");
+  const scripts = script_path(content, version);
   return { version, scripts };
 }

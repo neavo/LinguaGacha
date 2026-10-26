@@ -29,6 +29,29 @@ function create_format_service(): FileFormatService {
   );
 }
 
+it("MV/MZ 配置解析失败仍保留原稿和其他有效条目", async () => {
+  using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-source-config-failure-"));
+  const native = new NativeFs();
+  native.write_file_sync(path.join(temp.path, "data/System.json"), "{");
+  native.write_file_sync(path.join(temp.path, "data/Good.json"), '{"text":"可靠原文"}');
+  native.write_file_sync(path.join(temp.path, "js/rmmz_core.js"), "");
+  const service = new FileFormatService(
+    new GameDirectoryOperations(),
+    { target_language: "ZH" },
+    async () => null,
+    native,
+  );
+  const result = await new SourceFileParsePipeline(service).parse_import_commands(
+    await service.collect_source_file_entries([temp.path]),
+  );
+  expect(result.failures).toEqual([]);
+  expect(result.directory_changes).toEqual([]);
+  expect(result.file_drafts).toMatchObject([{ source_complete: true, extraction_complete: false }]);
+  expect(result.file_drafts[0]!.parsed_items.some((item) => item.src === "可靠原文")).toBe(true);
+  const container = await read_game_container(result.file_drafts[0]!.content, "game.rpgmaker");
+  expect(await container.members.get("data/System.json")!.async("string")).toBe("{");
+});
+
 it.each(["RPGMAKER_MV_MZ", "RPGMAKER_RGSS", "WOLFRPG", "GODOT", "RENPY"])(
   "%s 按范围保存附加原稿，解析只消费翻译成员",
   async (engine) => {
@@ -56,6 +79,7 @@ it.each(["RPGMAKER_MV_MZ", "RPGMAKER_RGSS", "WOLFRPG", "GODOT", "RENPY"])(
       [prefix + "custom/broken.json", Buffer.from("{")],
       [prefix + "custom/bytes.csv", Buffer.from([0xff, 0x80, 0])],
       [prefix + "custom/table.tsv", Buffer.from("a\tb")],
+      [prefix + "custom/scenario.ks", Buffer.from("[label]\n原稿")],
     ]);
     for (const [name, bytes] of extra) write(name, bytes);
     write("backup_lg/ignored.json", "{}");
@@ -75,7 +99,7 @@ it.each(["RPGMAKER_MV_MZ", "RPGMAKER_RGSS", "WOLFRPG", "GODOT", "RENPY"])(
     );
     const entries = await service.collect_source_file_entries([root]);
     const draft = await new SourceFileParsePipeline(service).build_project_draft(entries);
-    expect(draft.failed_files).toEqual([]);
+    expect(draft.failures).toEqual([]);
     expect(draft.warnings).toEqual([]);
     expect(draft.files).toHaveLength(1);
     const file = draft.files[0]!;
@@ -131,7 +155,7 @@ describe("SourceFileParsePipeline", () => {
     const draft = await pipeline.build_project_draft(
       service.assign_source_file_paths(await service.collect_source_file_entries(source_paths)),
     );
-    expect(draft.failed_files).toEqual([]);
+    expect(draft.failures).toEqual([]);
     expect(draft.files.map((file) => file.file_type)).toEqual(expected_types);
     expect(draft.items.every((item) => item["src"] !== "")).toBe(true);
 
@@ -183,7 +207,7 @@ describe("SourceFileParsePipeline", () => {
     }
   });
 
-  it("新建工程草稿跳过不支持格式，并保留支持格式解析失败明细", async () => {
+  it("新建工程草稿保留解析失败的可靠原稿及失败明细", async () => {
     using temp_dir = fs.mkdtempDisposableSync(
       path.join(os.tmpdir(), "linguagacha-source-file-pipeline-"),
     );
@@ -210,6 +234,13 @@ describe("SourceFileParsePipeline", () => {
         file_type: "TXT",
         sort_index: 0,
       },
+      {
+        rel_path: "broken.json",
+        additional_files: [],
+        pdf_document: null,
+        file_type: "NONE",
+        sort_index: 1,
+      },
     ]);
     expect(draft.items).toEqual([
       expect.objectContaining({
@@ -219,14 +250,8 @@ describe("SourceFileParsePipeline", () => {
         file_type: "TXT",
       }),
     ]);
-    expect(draft.failed_files).toEqual([
-      {
-        source_path: broken_json,
-        rel_path: "broken.json",
-        filename: "broken.json",
-        code: "file.parse_failed",
-        message: expect.any(String),
-      },
+    expect(draft.failures).toEqual([
+      { source_path: broken_json, rel_path: "broken.json", error: expect.any(Error) },
     ]);
   });
 
@@ -248,7 +273,7 @@ describe("SourceFileParsePipeline", () => {
       },
     ]);
 
-    expect(result.failed_files).toEqual([]);
+    expect(result.failures).toEqual([]);
     expect(result.file_drafts).toEqual([
       expect.objectContaining({
         source_path: source_file,
@@ -296,7 +321,7 @@ it("多个带后缀同名游戏混合导入，入口去重并按原目录名导�
   const draft = await new SourceFileParsePipeline(service).build_project_draft(
     service.assign_source_file_paths(await service.collect_source_file_entries(inputs)),
   );
-  expect(draft.failed_files).toEqual([]);
+  expect(draft.failures).toEqual([]);
   const second_game = draft.files[1]!.rel_path;
   expect(second_game.slice(name.length)).toMatch(/^_\d{8}_\d{6}\.rpgmaker$/u);
   expect(draft.files.map((file) => [file.rel_path, file.file_type])).toEqual([

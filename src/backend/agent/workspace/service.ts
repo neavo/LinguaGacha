@@ -77,7 +77,7 @@ import {
 } from "./runtime/runner";
 import { prepare_agent_workspace_changes } from "./changes";
 import { AGENT_WORKSPACE_RUN_ROOT, AGENT_WORKSPACE_WORK_ROOT } from "./runtime/policy";
-import { write_agent_workspace_sources } from "./sources";
+import { write_agent_workspace_sources, type WorkspaceSourceResult } from "./sources";
 
 /** 预览采用有界读取，完整文件通过另存为交付。 */
 export const AGENT_DOCUMENT_MAX_BYTES = 2 * 1024 * 1024;
@@ -127,6 +127,7 @@ type AgentWorkspaceSourceCache = {
   projectPath: string; // 关联的当前工程身份
   projectEpoch: number; // 隔离同路径重新加载后的旧投影
   filesRevision: number; // 只在源资产集合变化时重新生成
+  assets: Map<string, WorkspaceSourceResult>;
 };
 
 type WorkspacePath = Readonly<{
@@ -378,7 +379,12 @@ export class AgentWorkspaceService {
       return {
         path: file_path,
         kind: stat.isDirectory() ? "directory" : "file",
-        scope: scope === "work" || scope === "sources" || scope === "uploads" ? scope : "snapshot",
+        scope:
+          scope === "work" || scope === "sources" || scope === "uploads"
+            ? scope
+            : inside_path === AGENT_WORKSPACE_PATHS.sourceIssues
+              ? "sources"
+              : "snapshot",
       };
     } catch (cause) {
       if (AppErrors.is_app_error(cause)) throw cause;
@@ -414,10 +420,7 @@ export class AgentWorkspaceService {
       },
     );
     await this.clear_snapshot();
-    await this.native_fs.remove_async(path.join(this.root_path, "sources"), {
-      recursive: true,
-      force: true,
-    });
+    await this.clear_sources();
     await this.native_fs.make_dir_async(this.work_path);
     this.native_fs.copy_file(
       path.join(this.options.runtimeDirectory, "package.json"),
@@ -508,13 +511,6 @@ export class AgentWorkspaceService {
     const additional_files = read_project_additional_files(
       await this.options.database.get_all_meta(project_path),
     );
-    await this.ensure_sources({
-      additionalFiles: additional_files,
-      projectPath: project_path,
-      projectEpoch: start_snapshot.epoch,
-      filesRevision: read_json_integer(start_snapshot.sectionRevisions.files, 0),
-      files: snapshot_files,
-    });
 
     const pdf_documents = snapshot_files.some((file) => file.file_type === "PDF")
       ? await this.options.database.read_pdf_documents(project_path)
@@ -617,6 +613,10 @@ export class AgentWorkspaceService {
       revisions,
       languageKey: language_key,
     };
+    if (!this.read_freshness(this.active).snapshotFresh) {
+      await this.clear_snapshot();
+      throw workspace_validation_error("agent_workspace_snapshot_project_changed");
+    }
   }
 
   /** 脚本已完成的写入跨失败和停止保留，阶段更新由本次执行借用会话写入口。 */
@@ -647,6 +647,19 @@ export class AgentWorkspaceService {
           await this.create_snapshot_locked();
         }
         phase = WorkspaceRunPhase.PREPARE_WORKSPACE;
+        const snapshot = this.require_active();
+        await this.ensure_sources({
+          signal,
+          projectPath: snapshot.projectPath,
+          projectEpoch: snapshot.projectEpoch,
+          filesRevision: read_json_integer(snapshot.revisions.files, 0),
+          files: this.options.cache.files
+            .readFileEntries()
+            .map((entry) => ({ file_path: entry.rel_path, file_type: entry.file_type })),
+          additionalFiles: read_project_additional_files(
+            await this.options.database.get_all_meta(snapshot.projectPath),
+          ),
+        });
         // 脚本可删除可写目录。每次执行前补齐目录，保留已有提交意图。
         const directories = new Set([
           AGENT_WORKSPACE_RUN_ROOT,
@@ -660,6 +673,11 @@ export class AgentWorkspaceService {
         const run_path = `${AGENT_WORKSPACE_RUN_ROOT}/${random_id()}`;
         const script_path = `${run_path}.mjs`;
         await this.native_fs.write_file(path.join(this.root_path, script_path), script);
+        signal.throwIfAborted();
+        if (!this.read_freshness(snapshot).snapshotFresh) {
+          await this.clear_sources();
+          throw workspace_validation_error("agent_workspace_snapshot_project_changed");
+        }
         phase = WorkspaceRunPhase.EXECUTE;
         const execution = await this.options.run(
           {
@@ -677,10 +695,7 @@ export class AgentWorkspaceService {
           },
           signal,
         );
-        return {
-          execution,
-          images: image_output.read(),
-        };
+        return { execution, images: image_output.read() };
       } catch (error) {
         if (is_agent_cancellation(error, signal)) throw error;
         if (error instanceof AgentWorkspaceRunError) {
@@ -857,45 +872,78 @@ export class AgentWorkspaceService {
     return this.active;
   }
 
-  /** 每个工作区文件快照展开一次，连续 `workspace_run` 复用同一个 `sources` 目录。 */
+  /**
+   * 同修订复用已尝试资产，只重试 IO 失败。先发布完整问题记录，再发布缓存。
+   * 记录无法写入时阻止脚本执行，避免 Agent 读到与原稿不符的说明。工程身份由 `run` 在执行前复核。
+   */
   private async ensure_sources(args: {
+    signal: AbortSignal;
     projectPath: string;
     projectEpoch: number;
     filesRevision: number;
     additionalFiles: Readonly<Record<string, readonly string[]>>; // 与资产共用 files 修订，缓存键无需单独包含。
     files: ReadonlyArray<{ file_path: string; file_type: string }>;
   }): Promise<void> {
-    const current = this.source_cache;
+    let cache = this.source_cache;
     if (
-      current?.projectPath === args.projectPath &&
-      current.projectEpoch === args.projectEpoch &&
-      current.filesRevision === args.filesRevision
+      cache?.projectPath !== args.projectPath ||
+      cache.projectEpoch !== args.projectEpoch ||
+      cache.filesRevision !== args.filesRevision
     ) {
-      return;
-    }
-    const source_path = path.join(this.root_path, "sources");
-    this.link_versions.sources += 1;
-    this.source_cache = null;
-    // 激活已隔离旧工作区，snapshot、run 与 apply 由 exclusive 串行。完整生成前应用内没有 sources 读者。
-    await this.native_fs.remove_async(source_path, { recursive: true, force: true });
-    try {
-      await write_agent_workspace_sources({
-        nativeFs: this.native_fs,
-        sourceRoot: source_path,
-        files: args.files,
-        additionalFiles: args.additionalFiles,
-        readAsset: (file_path) =>
-          this.options.database.read_asset_content(args.projectPath, file_path),
-      });
-      this.source_cache = {
+      // exclusive 串行准备与脚本执行，旧修订必须清理完成后才能发布新原稿。
+      await this.clear_sources();
+      cache = {
         projectPath: args.projectPath,
         projectEpoch: args.projectEpoch,
         filesRevision: args.filesRevision,
+        assets: new Map(),
       };
-    } catch (error) {
-      await this.remove_workspace_directory(source_path);
-      throw error;
     }
+    const attempted = await write_agent_workspace_sources({
+      nativeFs: this.native_fs,
+      sourceRoot: path.join(this.root_path, "sources"),
+      signal: args.signal,
+      files: args.files.filter((file) => cache.assets.get(file.file_path)?.retry ?? true),
+      additionalFiles: args.additionalFiles,
+      readAsset: (file_path) =>
+        this.options.database.read_asset_content(args.projectPath, file_path),
+      report: (asset, diagnostic) =>
+        this.options.logManager.warning("Agent 原稿准备未完成。", {
+          source: "agent_workspace",
+          context: { asset, ...diagnostic },
+        }),
+    });
+    // 记录发布成功后才替换缓存，发布失败时仍保留原有重试范围。
+    const assets = new Map(cache.assets);
+    for (const result of attempted) assets.set(result.file_path, result);
+    this.native_fs.write_file_atomic(
+      path.join(this.root_path, AGENT_WORKSPACE_PATHS.sourceIssues),
+      [...assets.values()]
+        .flatMap((result) => result.issues)
+        .sort(
+          (left, right) =>
+            left.asset_path.localeCompare(right.asset_path) ||
+            (left.member_path ?? "").localeCompare(right.member_path ?? "") ||
+            left.stage.localeCompare(right.stage),
+        )
+        .map((issue) => JsonTool.stringifyStrict(issue) + "\n")
+        .join(""),
+    );
+    this.source_cache = { ...cache, assets };
+  }
+
+  /** 原稿与问题记录共用生命周期，工程身份或文件修订变化时一起失效。 */
+  private async clear_sources(): Promise<void> {
+    this.link_versions.sources += 1;
+    this.source_cache = null;
+    await this.native_fs.remove_async(path.join(this.root_path, "sources"), {
+      recursive: true,
+      force: true,
+    });
+    await this.native_fs.remove_async(
+      path.join(this.root_path, AGENT_WORKSPACE_PATHS.sourceIssues),
+      { force: true },
+    );
   }
 
   /** 清除数据快照与工作变更，保留独立生命周期的 sources 和 work。 */
@@ -922,19 +970,7 @@ export class AgentWorkspaceService {
     );
   }
 
-  /** 清理失败的源文件投影，下一次读取仍按工程事实重新生成。 */
-  private async remove_workspace_directory(workspace_path: string): Promise<void> {
-    try {
-      await this.native_fs.remove_async(workspace_path, { recursive: true, force: true });
-    } catch (error) {
-      this.options.logManager.warning("Agent 工作区临时目录清理失败。", {
-        source: "agent_workspace",
-        error,
-      });
-    }
-  }
-
-  /** snapshot、run 与 apply 在服务内串行，避免固定目录被交叉刷新。 */
+  /** 准备、执行与应用共用串行边界，防止固定目录被并发刷新。 */
   private async exclusive<T>(action: () => Promise<T>): Promise<T> {
     if (this.busy) throw new AppErrors.AppError("runtime.busy");
     this.busy = true;
