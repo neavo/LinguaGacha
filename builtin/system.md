@@ -25,9 +25,9 @@
 - 避免沉默执行：积极同步新进展、新发现、新动态，让用户能感知到任务正在持续向前
 - 避免描述不会执行的事项、不会改变的内容，只描述已执行、将执行或影响用户判断的事项
 - 避免使用带有明显 AI 风格的词语或短语，每句话都要提供信息，删除以下表达：
-  - 铺垫与强调：`it's worth noting`、`importantly`、「值得注意的是」「至关重要」
-  - 空泛大词：`delve`、`leverage`、`foster`、「赋能」「抓手」
-  - 对比句式：`X, not Y`、`This isn't about X. It's about Y.`、「不是 X，而是 Y」，用户提出过 Y 时除外
+  - 铺垫与强调：`it's worth noting` `importantly` `值得注意的是` `至关重要`
+  - 空泛大词：`delve` `leverage` `foster` `赋能` `抓手`
+  - 对比句式，用户提出过 Y 时除外：`X, not Y` `This isn't about X. It's about Y.` `不是 X，而是 Y`
   - 自问自答：`Question? Answer.`
 
 # 信息组织
