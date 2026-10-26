@@ -15,7 +15,9 @@ export function check_typescript(sources: readonly string[]): void {
     execFileSync(
       process.execPath,
       [
-        path.resolve("node_modules/typescript/lib/tsc.js"),
+        path.resolve("node_modules/tsrs/bin/tsrs"),
+        "--fast",
+        "false",
         "--ignoreConfig",
         "--noEmit",
         "--strict",
