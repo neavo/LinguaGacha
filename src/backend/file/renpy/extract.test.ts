@@ -16,6 +16,7 @@ import { expect, it } from "vitest";
 import { extract_script, patch_script } from "./extract";
 import { attributes, class_name, node_string, resolve_node, pickle_string } from "./pickle";
 
+/** 菜单身份保持独立，选项容器可由用例共享。 */
 const menu = (serial: number, items: Buffer) =>
   object(
     "Menu",
@@ -24,7 +25,62 @@ const menu = (serial: number, items: Buffer) =>
       items,
     }),
   );
+/** 固定选项正文，隔离共享容器对写回组的影响。 */
 const option = () => tuple(tuple(pickle_string("Shared choice"), pickle_string("True"), tuple()));
+
+/** 构造缺少稳定名称的对白，验证编译槽位之间的对应关系。 */
+const fallback_say = (cls: string) =>
+  object(
+    cls,
+    dictionary({
+      filename: pickle_string("game/dialogue.rpy"),
+      linenumber: opcode(0x4b, 10),
+      what: pickle_string("Dialogue"),
+    }),
+  );
+
+it("跨槽位转换的回退对白身份合并后可双槽位写回", async () => {
+  using session = await PythonSession.create();
+  const script = await extract_script(
+    compiled_slots([[fallback_say("Say")], [fallback_say("TranslateSay")]]),
+    false,
+    session,
+  );
+  expect(script.extraction_complete).toBe(true);
+  expect(script.candidates).toHaveLength(1);
+  const output = await extract_script(
+    await patch_script(script, [{ candidate: script.candidates[0]!, text: "译文" }], [], session),
+    false,
+    session,
+  );
+  expect(output.extraction_complete).toBe(true);
+  expect(output.candidates[0]).toMatchObject({
+    text: "译文",
+    coordinates: [{ slot: 1 }, { slot: 2 }],
+  });
+});
+
+it("程序拼接字面量可独立写回，动态显示片段仍阻止完整提取", async () => {
+  using session = await PythonSession.create();
+  const script = await extract_script(code_fixture('asset = prefix + " suffix"'), false, session);
+  expect(script.extraction_complete).toBe(true);
+  expect(script.candidates).toMatchObject([{ text: " suffix", usage: "code" }]);
+  const output = await patch_script(
+    script,
+    [{ candidate: script.candidates[0]!, text: " changed" }],
+    [],
+    session,
+  );
+  expect(script_codes({ slots: read_compiled(output) })[0]?.source).toBe(
+    'asset = prefix + u" changed"',
+  );
+  for (const source of ['renpy.say(None, prefix + "text")', 'Text(text=prefix + "text")']) {
+    const display = await extract_script(code_fixture(source), false, session);
+    expect(display.extraction_complete).toBe(false);
+    expect(display.candidates).toEqual([]);
+    expect(display.warnings[0]?.message).toContain("Dynamic Python string");
+  }
+});
 
 it.each(["config.window_title", "identifier"])(
   "共享源码的消费者 %s 参与完整写回组",

@@ -1,6 +1,19 @@
 import { GameDirectoryOperations } from "../file/shared/game/game-directory-operations";
 import { create_godot_fixture, godot_pack_fixture } from "../../test/godot-fixture";
-import { create_renpy_fixture } from "../../test/renpy-fixture";
+import {
+  create_renpy_fixture,
+  compiled_slots,
+  object,
+  dictionary,
+  tuple,
+  opcode,
+} from "../../test/renpy-fixture";
+import { pickle_string } from "../file/renpy/pickle";
+import { PythonSession } from "../file/renpy/python-syntax";
+import { extract_script } from "../file/renpy/extract";
+import { create_renpy_adapter } from "../file/renpy/renpy-format";
+import { GameFormat } from "../file/shared/game/format";
+import { NativeFs } from "../../native/native-fs";
 import { wolf_files } from "../../test/wolf-fixture";
 import { wolf_archive_fixture } from "../../test/wolf-archive-fixture";
 import { evb_fixture } from "../../test/evb-fixture";
@@ -1326,6 +1339,113 @@ describe("ProjectContentService", () => {
         total_output_tokens: 0,
         time: 0,
       });
+    } finally {
+      await database.close();
+    }
+  });
+
+  it("Ren’Py 旧项目重开后可导出，全部重置补齐跨槽位对白并清除译文", async () => {
+    const { database, service, lg_path } = await create_service();
+    const file = "dialogue.renpy",
+      member = "game/dialogue.rpyc";
+    /** 两类节点共用位置和正文，复现编译槽位转换。 */
+    const say = (cls: string, line: number, text: string) =>
+      object(
+        cls,
+        dictionary({
+          filename: pickle_string("game/dialogue.rpy"),
+          linenumber: opcode(0x4b, line),
+          what: pickle_string(text),
+        }),
+      );
+    // 程序标识拼接必须允许整个资产参与重置。
+    const code = object(
+      "Python",
+      dictionary({
+        name: pickle_string("program"),
+        code: object(
+          "PyCode",
+          tuple(
+            opcode(0x4b, 1),
+            pickle_string('asset = prefix + " suffix"'),
+            tuple(),
+            pickle_string("exec"),
+          ),
+        ),
+      }),
+    );
+    const bytes = compiled_slots(
+      ["Say", "TranslateSay"].map((cls) => [
+        say("TranslateSay", 10, "Existing dialogue"),
+        say(cls, 20, "Recovered dialogue"),
+        code,
+      ]),
+    );
+    const format = new GameFormat(
+      new GameDirectoryOperations(),
+      create_renpy_adapter(),
+      new NativeFs(),
+    );
+    const content = await format.create_container(
+      new Map([[member, bytes]]),
+      file,
+      member,
+      undefined,
+      Buffer.from(
+        JSON.stringify({
+          schema: "linguagacha-renpy-1",
+          engine_version: "test",
+          python_major: 3,
+          old_substitutions: false,
+          common: [],
+        }),
+      ),
+    );
+    const parsed = await format.read_from_stream(content, file);
+    const existing = parsed.items.find((item) => item.src === "Existing dialogue")!;
+    const old_key = JSON.stringify([
+      JSON.stringify(["renpy.ast.TranslateSay", "game/dialogue.rpy", "10"]),
+      "what",
+      null,
+      "Existing dialogue",
+    ]);
+    expect(read_json_record(read_json_record(existing.extra_field)["renpy"])["key"]).toBe(old_key);
+    const old_items = [{ ...existing, id: 1, dst: "已有译文", status: "PROCESSED" as const }];
+    try {
+      await database.transaction(lg_path, (writer) => {
+        writer.add_asset(lg_path, file, Buffer.from(content), "RENPY", null);
+        writer.set_items(lg_path, old_items);
+        writer.set_meta(lg_path, "source_language", "EN");
+      });
+      await database.close();
+      expect(await database.get_all_items(lg_path)).toEqual(old_items);
+      const output = project_path("export");
+      await format.write_to_path(old_items, {
+        paths: { translated_path: output, bilingual_path: output },
+        source_files: [{ path: file, file_type: "RENPY" }],
+        asset_reader: (path) => database.read_asset_content(lg_path, path),
+      });
+      using session = await PythonSession.create();
+      const exported = await extract_script(
+        fs.readFileSync(path.join(output, "dialogue", member)),
+        false,
+        session,
+      );
+      expect(
+        exported.candidates.find((item) => item.text === "已有译文")?.coordinates,
+      ).toMatchObject([{ slot: 1 }, { slot: 2 }]);
+      await service.reset_translation({ mode: "all" });
+      const reset = await database.get_all_items(lg_path);
+      expect(reset.map(({ src, dst, status }) => ({ src, dst, status }))).toEqual(
+        expect.arrayContaining([
+          { src: "Existing dialogue", dst: "", status: "NONE" },
+          { src: "Recovered dialogue", dst: "", status: "NONE" },
+          { src: " suffix", dst: "", status: "RULE_SKIPPED" },
+        ]),
+      );
+      expect(reset).toHaveLength(3);
+      await database.close();
+      expect(await database.get_all_items(lg_path)).toEqual(reset);
     } finally {
       await database.close();
     }

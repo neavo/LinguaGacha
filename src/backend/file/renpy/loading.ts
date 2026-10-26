@@ -22,9 +22,10 @@ export async function read_loading(
 ): Promise<{ declarations: LoadingDeclaration[]; changes: RenpyLoadingChange[] }> {
   const changes = new Map<string, RenpyLoadingChange>(); // 多个消费者共享同一源码边时只改写一次。
   let declarations: LoadingDeclaration[] | undefined; // 槽位是同一脚本的不同表示，加载声明必须一致。
+  const records = script_codes(script);
   for (const slot of script.slots) {
     const current: LoadingDeclaration[] = [];
-    for (const code of script_codes({ slots: [slot] })) {
+    for (const code of records.filter((entry) => entry.slot === slot.slot)) {
       if (code.phase !== "init" || code.source === null) continue;
       let facts;
       try {

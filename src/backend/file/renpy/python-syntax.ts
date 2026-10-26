@@ -27,6 +27,7 @@ export type PythonConstant = Readonly<{
   argument: PythonArgument | undefined;
   whole: boolean;
   dynamic: boolean;
+  writable: boolean; // 完整字面量具有独立替换范围，插值内部片段除外。
   percent: boolean; // 字符串是 `%` 格式化的左操作数。
 }>;
 export type PythonAssignment = Readonly<{
@@ -305,15 +306,16 @@ export class PythonSession {
             continue;
           }
           if (typeof value !== "string") continue;
+          // 外层表达式提供参数用途，字面量自身的范围负责独立写回。
           let expression = node,
             percent = false;
           while (
             expression.parent?.type === "parenthesized_expression" ||
-            (expression.parent?.type === "binary_operator" &&
-              expression.parent.childForFieldName("operator")?.text === "%" &&
-              expression.parent.childForFieldName("left")?.id === expression.id)
+            expression.parent?.type === "binary_operator"
           ) {
-            percent ||= expression.parent.type === "binary_operator";
+            percent ||=
+              expression.parent.childForFieldName("operator")?.text === "%" &&
+              expression.parent.childForFieldName("left")?.id === expression.id;
             expression = expression.parent;
           }
           const parent = expression.parent;
@@ -327,18 +329,23 @@ export class PythonSession {
             args?.type === "argument_list"
               ? python_name(args.parent?.childForFieldName("function") ?? null)
               : "";
-          let dynamic = false;
+          // 插值容器影响替换边界，二元表达式影响翻译语义，两者分别记录。
+          let writable = true,
+            dynamic = false;
           for (
-            let ancestor = node.parent;
-            ancestor && ancestor.id !== root.id;
-            ancestor = ancestor.parent
-          )
+            let child = node;
+            child.parent && child.parent.id !== root.id;
+            child = child.parent
+          ) {
+            const ancestor = child.parent;
+            if (["interpolation", "string"].includes(ancestor.type)) writable = false;
             if (
-              ["interpolation", "string"].includes(ancestor.type) ||
-              (ancestor.type === "binary_operator" &&
-                ancestor.childForFieldName("operator")?.text !== "%")
+              ancestor.type === "binary_operator" &&
+              (ancestor.childForFieldName("operator")?.text !== "%" ||
+                ancestor.childForFieldName("left")?.id !== child.id)
             )
               dynamic = true;
+          }
           constants.push({
             start: node.startIndex - offset,
             end: node.endIndex - offset,
@@ -366,6 +373,7 @@ export class PythonSession {
               expression.parent?.type === "expression_statement" &&
               expression.parent.parent?.id === root.id,
             dynamic,
+            writable,
             percent,
           });
         }

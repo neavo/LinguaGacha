@@ -44,14 +44,31 @@ it("加载赋值保留逻辑根与用户条件，字符串和注释不冒充配�
   expect(facts.references).not.toContain("config.searchpath");
   expect(facts.references).not.toContain("config.file_open_callback");
 });
-it("动态拼接、字节串与 f-string 不冒充可写常量", async () => {
+it("动态表达式保留完整字面量的写回范围，字节串与 f-string 保留诊断", async () => {
   using session = await PythonSession.create();
   const facts = await session.analyze({
     source: "x = 'hello' + name\ny = f'{name}'\nz = b'bytes'",
     mode: "exec",
   });
-  expect(facts.constants).toMatchObject([{ value: "hello", dynamic: true }]);
+  expect(facts.constants).toMatchObject([{ value: "hello", dynamic: true, writable: true }]);
   expect(facts.diagnostics).toHaveLength(2);
+});
+
+it("拼接保留显示参数与字面量范围，插值内部字面量不能独立写回", async () => {
+  using session = await PythonSession.create();
+  const source = 'renpy.say(None, prefix + "text")';
+  const facts = await session.analyze({ source, mode: "exec" });
+  const token = facts.constants[0]!;
+  expect(token).toMatchObject({
+    call: "renpy.say",
+    argument: { kind: "positional", index: 1 },
+    dynamic: true,
+    writable: true,
+  });
+  expect(source.slice(token.start, token.end)).toBe('"text"');
+  const interpolation = await session.analyze({ source: `f"{lookup('key')}"`, mode: "eval" });
+  expect(interpolation.constants).toMatchObject([{ value: "key", writable: false }]);
+  expect(interpolation.diagnostics).toHaveLength(1);
 });
 it.each(["if True:\npass", "def f():", "'unclosed"])(
   "拒绝容错恢复的无效源码：%s",

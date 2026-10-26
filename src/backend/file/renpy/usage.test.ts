@@ -19,3 +19,9 @@ it.each([
     Object.fromEntries(facts.constants.map((token) => [token.value, string_usage(token, false)])),
   ).toEqual(expected);
 });
+
+it("界面外层拼接表达式仍具有显示用途", async () => {
+  using session = await PythonSession.create();
+  const facts = await session.analyze({ source: 'prefix + "caption"', mode: "eval" });
+  expect(string_usage(facts.constants[0]!, true)).toBe("display");
+});

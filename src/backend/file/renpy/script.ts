@@ -53,6 +53,77 @@ export function statement_identity(node: PickleNode): string | null {
   return null;
 }
 
+/** 其他语言子图不提供基础语言身份或候选，`next` 可指向块外语句。 */
+export function script_excluded(slots: readonly CompiledSlot[]): ReadonlySet<PickleNode> {
+  const excluded = new Set<PickleNode>();
+  /** 共享节点只遍历一次，避免翻译块中的引用环重复展开。 */
+  const mark = (edge: PickleNode): void => {
+    const node = resolve_node(edge);
+    if (excluded.has(node)) return;
+    excluded.add(node);
+    for (const child of script_children(node)) mark(child);
+  };
+  for (const slot of slots)
+    for (const node of slot.graph.nodes)
+      if (node.kind === "object" && class_name(node) === "renpy.ast.Translate") {
+        const fields = attributes(node);
+        const block = fields.get("block");
+        if (node_value(fields.get("language")) !== null && block) mark(block);
+      }
+  return excluded;
+}
+
+/** 仅协调跨槽位唯一对应的回退身份，独立 `TranslateSay` 的旧键保持稳定。 */
+export function script_identities(
+  slots: readonly CompiledSlot[],
+  excluded = script_excluded(slots),
+): ReadonlyMap<PickleNode, string> {
+  const identities = new Map<PickleNode, string>();
+  // 同位置、同正文的全部对白共同参与判定，完整身份和重复节点会阻止协调。
+  const dialogues = new Map<
+    string,
+    { node: PickleNode; slot: number; cls: string; fallback: boolean }[]
+  >();
+  for (const slot of slots)
+    for (const node of slot.graph.nodes) {
+      const identity = statement_identity(node);
+      if (identity !== null) identities.set(node, identity);
+      const cls = class_name(node),
+        fields = attributes(node);
+      if (
+        node.kind !== "object" ||
+        excluded.has(node) ||
+        !["renpy.ast.Say", "renpy.ast.TranslateSay"].includes(cls) ||
+        node_value(fields.get("language")) !== null
+      )
+        continue;
+      const filename = node_text(fields.get("filename")),
+        line = node_value(fields.get("linenumber"));
+      if (!filename || typeof line !== "number" || !fields.has("what")) continue;
+      const key = JSON.stringify([filename, line, node_text(fields.get("what"))]);
+      const group = dialogues.get(key) ?? [];
+      const name = fields.get("name") ?? fields.get("_name");
+      // 完整身份已经参与旧条目的持久定位，不能被回退身份覆盖。
+      const fallback =
+        (!name || resolve_node(name).kind !== "tuple") &&
+        node_value(name) === null &&
+        !(fields.has("name_version") && fields.has("name_serial"));
+      group.push({ node, slot: slot.slot, cls, fallback });
+      dialogues.set(key, group);
+    }
+  for (const group of dialogues.values()) {
+    if (
+      !group.every((entry) => entry.fallback) ||
+      new Set(group.map((entry) => entry.slot)).size !== group.length ||
+      new Set(group.map((entry) => entry.cls)).size !== 2
+    )
+      continue;
+    const say = group.find((entry) => entry.cls === "renpy.ast.Say")!;
+    for (const entry of group) identities.set(entry.node, identities.get(say.node)!);
+  }
+  return identities;
+}
+
 /** 新版引擎将 PyExpr 移入 astsupport，序列化职责保持相同。 */
 export function is_pyexpr(node: PickleNode): boolean {
   return /^renpy\.(?:ast|astsupport)\.PyExpr$/u.test(class_name(node));
@@ -140,17 +211,17 @@ export function menu_item_lines(menu: PickleNode): (number | null)[] {
 }
 
 /** 反向索引容器消费者。标量 GET 保持独立边，容器 GET 才共享子字段。 */
-export function script_consumers(root: PickleNode): (edge: PickleNode) => ReadonlySet<string> {
-  const parents = new Map<PickleNode, Set<PickleNode>>(),
-    identities = new Map<PickleNode, string>();
+export function script_consumers(
+  root: PickleNode,
+  statements: ReadonlyMap<PickleNode, string>,
+): (edge: PickleNode) => ReadonlySet<string> {
+  const parents = new Map<PickleNode, Set<PickleNode>>();
   const pending = [root],
     visited = new Set<PickleNode>();
   while (pending.length) {
     const node = pending.pop()!;
     if (visited.has(node)) continue;
     visited.add(node);
-    const owner = statement_identity(node);
-    if (owner !== null) identities.set(node, owner);
     for (const edge of script_children(node)) {
       const resolved = resolve_node(edge);
       const child = resolved.kind === "object" || resolved.children.length > 0 ? resolved : edge;
@@ -171,7 +242,7 @@ export function script_consumers(root: PickleNode): (edge: PickleNode) => Readon
       const node = pending.pop()!;
       if (seen.has(node)) continue;
       seen.add(node);
-      const identity = identities.get(node);
+      const identity = statements.get(node);
       if (identity !== undefined) owners.add(identity);
       else if (node === root) owners.add("<script>");
       else pending.push(...(parents.get(node) ?? []));
@@ -227,7 +298,10 @@ function code_mode(node: PickleNode): PythonMode {
   return mode;
 }
 /** 编译结构只在此处解释，记录保留每个槽位、语句和消费边的实际上下文。 */
-export function script_codes(script: { slots: readonly CompiledSlot[] }): RenpyCode[] {
+export function script_codes(
+  script: { slots: readonly CompiledSlot[] },
+  identities = script_identities(script.slots),
+): RenpyCode[] {
   const result: RenpyCode[] = [];
   for (const slot of script.slots) {
     type Context = Omit<RenpyCode, "source" | "mode" | "slot" | "edge" | "legacy">;
@@ -236,9 +310,9 @@ export function script_codes(script: { slots: readonly CompiledSlot[] }): RenpyC
       const node = resolve_node(edge),
         cls = class_name(node),
         fields = attributes(node);
-      const identity = statement_identity(node);
+      const identity = identities.get(node);
       let current = { ...context };
-      if (identity !== null)
+      if (identity !== undefined)
         current = { ...current, owner: identity, field: "", target: "", display: false };
       const filename = node_text(fields.get("filename")),
         line = node_value(fields.get("linenumber"));
