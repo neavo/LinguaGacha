@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { normalize_batch_translation_progress } from "../../domain/batch-translation";
+import {
+  normalize_batch_translation_progress,
+  type BatchTranslationRequestRecovery,
+} from "../../domain/batch-translation";
 import {
   create_empty_batch_translation_snapshot,
   should_open_translation_generation_followup,
@@ -10,13 +13,29 @@ import {
 } from "./batch-translation";
 
 describe("批量翻译展示", () => {
+  it.each([
+    [{ phase: "retrying" }, { phase: "retrying" }],
+    [{ retry_count: 0, retry_at: 123_000 }, null],
+    [{ phase: "waiting", retry_count: 0, retry_at: null }, null],
+  ])("恢复结构按阶段校验：%j", (request_recovery, expected) => {
+    expect(
+      normalize_batch_translation_snapshot({
+        // 模拟 HTTP / SSE 收到不符合静态类型的外部载荷。
+        batch_translation: {
+          status: "running",
+          request_recovery: request_recovery as unknown as BatchTranslationRequestRecovery,
+        },
+      }).request_recovery,
+    ).toEqual(expected);
+  });
   it("恢复信息归一后供历史快照共享，停止时清空", () => {
-    const recovery = { retry_count: 4, retry_at: 123_000 };
+    const recovery = { phase: "waiting" as const, retry_count: 4, retry_at: 123_000 };
     const snapshot = normalize_batch_translation_snapshot({
       batch_translation: { status: "running", request_recovery: recovery },
     });
     recovery.retry_count = 99;
     expect(clone_translation_task_snapshot(snapshot).request_recovery).toEqual({
+      phase: "waiting",
       retry_count: 4,
       retry_at: 123_000,
     });

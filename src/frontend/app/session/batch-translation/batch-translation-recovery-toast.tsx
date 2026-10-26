@@ -17,22 +17,22 @@ export function BatchTranslationRecoveryToast(): null {
     }
     // 每次显示都按截止时间重算，后台页面恢复后也能显示实际剩余秒数。
     const update = (): void => {
-      const count = String(recovery.retry_count);
-      const seconds =
-        recovery.retry_at !== null
-          ? Math.max(0, Math.ceil((recovery.retry_at - Date.now()) / COUNTDOWN_INTERVAL_MS))
-          : 0;
-      const key =
-        seconds > 0
-          ? "batch_translation.feedback.keys_retry_wait"
-          : "batch_translation.feedback.keys_retry_running";
-      push_toast("warning", t(key, { count, seconds: String(seconds) }), {
+      const message =
+        recovery.phase === "waiting"
+          ? t("batch_translation.feedback.keys_retry_wait", {
+              count: String(recovery.retry_count),
+              seconds: String(
+                Math.max(0, Math.ceil((recovery.retry_at - Date.now()) / COUNTDOWN_INTERVAL_MS)),
+              ),
+            })
+          : t("batch_translation.feedback.keys_retry_running");
+      push_toast("warning", message, {
         id: RECOVERY_TOAST_ID,
         dismissible: false,
       });
     };
     update();
-    if (recovery.retry_at === null) return;
+    if (recovery.phase !== "waiting") return;
     const timer = window.setInterval(update, COUNTDOWN_INTERVAL_MS);
     return () => window.clearInterval(timer);
   }, [recovery, t]);

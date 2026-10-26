@@ -207,7 +207,7 @@ describe("TranslationRequestScheduler", () => {
     expect(request).toHaveBeenCalledTimes(4);
     expect(state).toHaveBeenLastCalledWith({
       request_in_flight_count: 0,
-      request_recovery: { retry_count: 3, retry_at: 165_000 },
+      request_recovery: { phase: "waiting", retry_count: 3, retry_at: 165_000 },
     });
     controller.abort();
     expect(await result).toMatchObject({ code: "runtime.cancelled" });
@@ -247,7 +247,7 @@ describe("TranslationRequestScheduler", () => {
     expect(request).toHaveBeenCalledTimes(1);
     expect(state).toHaveBeenLastCalledWith({
       request_in_flight_count: 0,
-      request_recovery: { retry_count: 0, retry_at: 15_000 },
+      request_recovery: { phase: "waiting", retry_count: 0, retry_at: 15_000 },
     });
     for (const delay of [1, 30_000, 60_000, 60_000]) await vi.advanceTimersByTimeAsync(delay);
     expect(started_at).toEqual([0, 15_000, 45_000, 105_000, 165_000]);
@@ -286,17 +286,19 @@ describe("TranslationRequestScheduler", () => {
     active[0]!.resolve(failure());
     await vi.advanceTimersByTimeAsync(60_000);
     expect(count).toBe(3);
-    expect(state.mock.lastCall?.[0].request_recovery).toEqual({
-      retry_at: null,
-      retry_count: 0,
-    });
+    expect(state.mock.lastCall?.[0].request_recovery).toBeNull();
     active[1]!.resolve(failure());
     active[2]!.resolve(failure());
     await vi.advanceTimersByTimeAsync(14_999);
     expect(count).toBe(3);
+    expect(state.mock.lastCall?.[0].request_recovery).toEqual({
+      phase: "waiting",
+      retry_count: 0,
+      retry_at: 75_000,
+    });
     await vi.advanceTimersByTimeAsync(1);
     expect(count).toBe(4);
-    expect(state.mock.lastCall?.[0].request_recovery).toEqual({ retry_at: null, retry_count: 1 });
+    expect(state.mock.lastCall?.[0].request_recovery).toEqual({ phase: "retrying" });
     await vi.advanceTimersByTimeAsync(60_000);
     expect(count).toBe(4);
     active[3]!.resolve(failure());
@@ -308,6 +310,35 @@ describe("TranslationRequestScheduler", () => {
     expect((await Promise.all(results)).every((result) => result.response_result === "ok")).toBe(
       true,
     );
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("普通请求在途时抑制并行探测提示，收束后显示重试", async () => {
+    const active = [deferred(), deferred(), deferred(), deferred()];
+    const request = vi.fn<LLMClientPort["request"]>();
+    for (const pending of active) request.mockReturnValueOnce(pending.promise);
+    request.mockResolvedValue(response());
+    const { scheduler, state } = setup(request, "A\nB", { concurrency_limit: 3, rpm_limit: 60 });
+    const results = [1, 2, 3].map((id) =>
+      scheduler.request(body(String(id)), new AbortController().signal),
+    );
+    await vi.advanceTimersByTimeAsync(2_000);
+    active[0]!.resolve(failure());
+    active[1]!.resolve(failure());
+    await vi.advanceTimersByTimeAsync(15_000);
+    expect(request).toHaveBeenCalledTimes(4);
+    expect(request.mock.lastCall?.[0].model).toMatchObject({ api_key: "B" });
+    expect(state.mock.lastCall?.[0]).toEqual({
+      request_in_flight_count: 2,
+      request_recovery: null,
+    });
+    active[2]!.resolve(failure());
+    await vi.advanceTimersByTimeAsync(0);
+    expect(state.mock.lastCall?.[0].request_recovery).toEqual({ phase: "retrying" });
+    active[3]!.resolve(response());
+    await vi.advanceTimersByTimeAsync(30_000);
+    await Promise.all(results);
+    expect(state.mock.lastCall?.[0].request_recovery).toBeNull();
     expect(vi.getTimerCount()).toBe(0);
   });
 
@@ -334,16 +365,18 @@ describe("TranslationRequestScheduler", () => {
     expect(state.mock.lastCall?.[0].request_recovery).toBeNull();
     await vi.advanceTimersByTimeAsync(60_000);
     expect(state.mock.lastCall?.[0].request_recovery).toEqual({
+      phase: "waiting",
       retry_count: 0,
       retry_at: 120_000,
     });
     await vi.advanceTimersByTimeAsync(60_000);
     expect(state.mock.lastCall?.[0].request_recovery).toEqual({
+      phase: "waiting",
       retry_count: 1,
       retry_at: 180_000,
     });
     await vi.advanceTimersByTimeAsync(60_000);
-    expect(state.mock.lastCall?.[0].request_recovery).toEqual({ retry_at: null, retry_count: 2 });
+    expect(state.mock.lastCall?.[0].request_recovery).toEqual({ phase: "retrying" });
     controller.abort();
     expect(probe_signal?.aborted).toBe(true);
     probe.resolve(response({ cancelled: true }));
@@ -352,7 +385,7 @@ describe("TranslationRequestScheduler", () => {
     expect(vi.getTimerCount()).toBe(0);
   });
 
-  it("首次故障收束期间的成功立即清零，待重试批次继续执行", async () => {
+  it("首次故障收束期间成功恢复，待重试批次继续执行且始终隐藏提示", async () => {
     const first = deferred();
     const second = deferred();
     const request = vi
@@ -360,7 +393,7 @@ describe("TranslationRequestScheduler", () => {
       .mockReturnValueOnce(first.promise)
       .mockReturnValueOnce(second.promise)
       .mockResolvedValue(response());
-    const { scheduler } = setup(request);
+    const { scheduler, state } = setup(request);
     const results = [
       scheduler.request(body("1"), new AbortController().signal),
       scheduler.request(body("2"), new AbortController().signal),
@@ -373,6 +406,7 @@ describe("TranslationRequestScheduler", () => {
     );
     expect(request).toHaveBeenCalledTimes(3);
     expect(Date.now()).toBe(0);
+    expect(state.mock.calls.every(([snapshot]) => snapshot.request_recovery === null)).toBe(true);
   });
 
   it("在途取消沿原 signal 收束", async () => {
