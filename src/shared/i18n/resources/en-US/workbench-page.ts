@@ -33,7 +33,7 @@ export const en_us_workbench_page = {
       description: "{COUNT} files with the same name were detected. Choose how to handle them …",
     },
     inherit_import: {
-      description: "Use completed translations from the current project to fill the new files …?",
+      description: "Use completed translations to fill the imported files …?",
       fill: "Fill",
       do_not_fill: "Do Not Fill",
     },

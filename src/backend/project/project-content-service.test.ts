@@ -438,15 +438,14 @@ describe("ProjectContentService", () => {
       await database.close();
     }
   });
-  it("TRANS 替换按引擎身份继承译文，变更或移除引擎后重新匹配", async () => {
+  it("TRANS 替换在引擎变更或移除后仍继承译文", async () => {
     const { database, service, lg_path } = await create_service();
     const source = project_path("game.trans");
     try {
       for (const [engine, expected_translation] of [
         ["kag", ""],
-        ["kag", "译文"],
-        ["wolf", ""],
-        [undefined, ""],
+        ["wolf", "译文"],
+        [undefined, "译文"],
       ] as const) {
         fs.writeFileSync(
           source,
@@ -479,7 +478,7 @@ describe("ProjectContentService", () => {
         expect(items).toMatchObject([
           { dst: expected_translation, status: expected_translation === "" ? "NONE" : "PROCESSED" },
         ]);
-        // 下一次替换仍有已完成候选，确保引擎变化真正参与继承匹配。
+        // 下一次替换以已完成条目为候选，引擎变化不影响继承。
         await database.transaction(lg_path, (writer) =>
           writer.set_items(
             lg_path,
@@ -1800,71 +1799,38 @@ describe("ProjectContentService", () => {
     await database.close();
   });
 
-  it("整条继承匹配源身份，按完整结果投票并支持空正文", async () => {
+  it("替换导入时被规则过滤的条目按上下文继承旧译文", async () => {
     const { database, service, lg_path } = await create_service();
     try {
-      const source_path = project_path("names.json");
-      fs.writeFileSync(
-        source_path,
-        JSON.stringify([
-          { name: "太郎", message: "こんにちは" },
-          { name: "花子", message: "こんにちは" },
-          { name: "俊輔", message: "" },
-        ]),
-      );
+      const source_path = project_path("a-new.txt");
+      fs.writeFileSync(source_path, "前文\nEV1\n后文", "utf-8");
       await database.transaction(lg_path, (writer) =>
-        writer.add_asset(lg_path, "old.json", Buffer.from("[]"), "MESSAGEJSON", null),
-      );
-      await database.transaction(lg_path, (writer) =>
-        writer.add_asset(lg_path, "old.rpy", Buffer.from(""), "RENPY_RPY", null),
+        writer.add_asset(lg_path, "a.txt", Buffer.from(""), "TXT", null),
       );
       await database.transaction(lg_path, (writer) =>
         writer.set_items(
           lg_path,
-          (
-            [
-              // 相同正文的译名分开投票，同票时保留最早的完整结果。
-              ["こんにちは", "你好", "太郎", "少数译名", "KAG"],
-              ["こんにちは", "你好", "太郎", "太郎译名", "KAG"],
-              ["こんにちは", "你好", "太郎", "太郎译名", "KAG"],
-              ["こんにちは", "错误类型译文", "花子", "错误类型译名", "RENPY"],
-              ["", "", "俊輔", "俊辅", "KAG"],
-              ["", "", "俊輔", "另一个译名", "KAG"],
-            ] as const
-          ).map(([src, dst, name_src, name_dst, text_type], index) =>
+          ["前文", "EV1", "后文"].map((src, index) =>
             create_persistent_item({
               item_id: index + 1,
               src,
-              dst,
-              name_src,
-              name_dst,
-              file_type: text_type === "KAG" ? "MESSAGEJSON" : "RENPY_RPY",
-              file_path: text_type === "KAG" ? "old.json" : "old.rpy",
-              status: "PROCESSED",
+              row_number: index,
+              ...(src === "EV1" ? { dst: "事件一", status: "PROCESSED" } : {}),
             }),
           ),
         ),
       );
       await service.import_files({
-        files: [{ source_path, target_rel_path: "names.json" }],
+        files: [{ source_path, target_rel_path: "a.txt" }],
         inheritance_mode: "inherit",
         conflict_action: "replace",
         expected_section_revisions: { files: 0, items: 0 },
       });
-      expect(
-        ((await database.get_all_items(lg_path)) as JsonRecord[]).filter(
-          (item) => item.file_path === "names.json",
-        ),
-      ).toMatchObject([
-        {
-          src: "こんにちは",
-          name_src: "太郎",
-          dst: "你好",
-          name_dst: "太郎译名",
-          status: "PROCESSED",
-        },
-        { src: "こんにちは", name_src: "花子", dst: "", name_dst: null, status: "NONE" },
-        { src: "", name_src: "俊輔", dst: "", name_dst: "俊辅", status: "PROCESSED" },
+      // 新版 `EV1` 先被规则过滤，上下文一致仍接收旧译文。
+      expect(await database.get_all_items(lg_path)).toMatchObject([
+        { id: 4, src: "前文", dst: "", status: "NONE" },
+        { id: 5, src: "EV1", dst: "事件一", status: "PROCESSED" },
+        { id: 6, src: "后文", dst: "", status: "NONE" },
       ]);
     } finally {
       await database.close();

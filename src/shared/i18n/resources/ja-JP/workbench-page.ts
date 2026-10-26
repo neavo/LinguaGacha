@@ -33,7 +33,7 @@ export const ja_jp_workbench_page = {
       description: "同名のファイルが {COUNT} 個あります。処理方法を選択してください …",
     },
     inherit_import: {
-      description: "現在のプロジェクトの翻訳済みテキストを使って、新しいファイルを埋めますか …?",
+      description: "翻訳済みの訳文を使って、インポートしたファイルを埋めますか …?",
       fill: "埋める",
       do_not_fill: "埋めない",
     },
