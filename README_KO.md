@@ -86,18 +86,20 @@
 | Markdown | `.md` | - |
 | `KV-JSON` 게임 텍스트 | `.json` | 출처 [[MTool](https://mtool.app)] [[SExtractor](https://github.com/satan53x/SExtractor)] |
 | `Message-JSON` 게임 텍스트 | `.json` | 출처 [[SExtractor](https://github.com/satan53x/SExtractor)] [[VNTextPatch](https://github.com/arcusmaximus/VNTranslationTools)] |
-| `RenPy` 게임 텍스트 | `.rpy` | 가이드 [[RenPy 게임 고품질 번역 가이드](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForRenPy)] |
+| `RenPy` 게임 파일 | `.exe` 또는 게임 폴더 | 가이드 [[RenPy 게임 고품질 번역 가이드](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForRenPy)] |
 | `Godot 4` 게임 파일 | `.exe` 또는 게임 폴더 | 가이드 [[Godot 게임 고품질 번역 가이드](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForGodot)] |
 | `WOLFRPG 3` 게임 파일 | `.exe` 또는 게임 폴더 | 가이드 [[WOLFRPG 게임 고품질 번역 가이드](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForWOLFRPG)] |
 | `RPGMAKER MV/MZ` 게임 파일 | `.exe` 또는 게임 폴더 | 가이드 [[RPGMAKER 게임 고품질 번역 가이드](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForRPGMaker)] |
 | `RPGMAKER XP/VX/VXAce` 게임 파일 | `.exe` 또는 게임 폴더 | 가이드 [[RPGMAKER 게임 고품질 번역 가이드](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForRPGMaker)] |
+| `.rpy` 게임 텍스트 | `.rpy` | `👈 지원 종료 예정` |
 | `.xlsx` 게임 텍스트 | `.xlsx` | 출처 [SExtractor](https://github.com/satan53x/SExtractor) [Translator++](https://dreamsavior.net/translator-plusplus) [WOLF 공식 번역 도구](https://silversecond.booth.pm/items/5151747)　`👈 지원 종료 예정` |
 | `.trans` 프로젝트 파일 | `.trans` | 출처 [Translator++](https://dreamsavior.net/translator-plusplus)　`👈 지원 종료 예정` |
 
 ## 최근 업데이트 📅
-- 20261021 v0.130.1
-  - 암호화된 `Godot 4` 게임 네이티브 지원 [#1011](../../issues/1011)
-  - 수정 및 개선 [#1013](../../issues/1013) [#1014](../../issues/1014) [#1015](../../issues/1015)
+- 20261026 v0.131.0
+  - `RenPy` 게임 네이티브 지원 [#1022](../../issues/1022)
+  - 게임 엔진 호환성 개선 [#1025](../../issues/1025) [#1026](../../issues/1026) [#1028](../../issues/1028)
+  - 수정 및 개선 [#1018](../../issues/1018) [#1019](../../issues/1019) [#1020](../../issues/1020) [#1021](../../issues/1021) [#1024](../../issues/1024) [#1027](../../issues/1027) [#1028](../../issues/1028)
 
 ## 개발 안내 🛠️
 - [Go](https://go.dev)와 [`Node.js`](https://nodejs.org)를 설치합니다

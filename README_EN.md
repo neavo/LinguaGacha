@@ -90,18 +90,20 @@
 | Markdown | `.md` | - |
 | `KV-JSON` game text | `.json` | Source: [[MTool](https://mtool.app)] [[SExtractor](https://github.com/satan53x/SExtractor)] |
 | `Message-JSON` game text | `.json` | Source: [[SExtractor](https://github.com/satan53x/SExtractor)] [[VNTextPatch](https://github.com/arcusmaximus/VNTranslationTools)] |
-| `RenPy` game text | `.rpy` | Guide: [[Best Practices for High-Quality Translation of RenPy Games](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForRenPyEN)] |
+| `RenPy` game files | `.exe` or game directory | Guide: [[Best Practices for High-Quality Translation of RenPy Games](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForRenPyEN)] |
 | `Godot 4` game files | `.exe` or game directory | Guide: [[Best Practices for High-Quality Translation of Godot Games](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForGodotEN)] |
 | `WOLFRPG 3` game files | `.exe` or game directory | Guide: [[Best Practices for High-Quality Translation of WOLFRPG Games](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForWOLFRPGEN)] |
 | `RPGMAKER MV/MZ` game files | `.exe` or game directory | Guide: [[Best Practices for High-Quality Translation of RPGMAKER Games](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForRPGMakerEN)] |
 | `RPGMAKER XP/VX/VXAce` game files | `.exe` or game directory | Guide: [[Best Practices for High-Quality Translation of RPGMAKER Games](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForRPGMakerEN)] |
+| `.rpy` game text | `.rpy` | `👈 Support ending soon` |
 | `.xlsx` game text | `.xlsx` | Source: [SExtractor](https://github.com/satan53x/SExtractor) [Translator++](https://dreamsavior.net/translator-plusplus) [WOLF Official Translation Tool](https://silversecond.booth.pm/items/5151747)　`👈 Support ending soon` |
 | `.trans` project files | `.trans` | Source: [Translator++](https://dreamsavior.net/translator-plusplus)　`👈 Support ending soon` |
 
 ## Recent Updates 📅
-- 20261021 v0.130.1
-  - Native support for encrypted `Godot 4` games [#1011](../../issues/1011)
-  - Fixes and improvements [#1013](../../issues/1013) [#1014](../../issues/1014) [#1015](../../issues/1015)
+- 20261026 v0.131.0
+  - Native support for `RenPy` games [#1022](../../issues/1022)
+  - Game engine compatibility improvements [#1025](../../issues/1025) [#1026](../../issues/1026) [#1028](../../issues/1028)
+  - Fixes and improvements [#1018](../../issues/1018) [#1019](../../issues/1019) [#1020](../../issues/1020) [#1021](../../issues/1021) [#1024](../../issues/1024) [#1027](../../issues/1027) [#1028](../../issues/1028)
 
 ## Development Guide 🛠️
 - Install [Go](https://go.dev) and [`Node.js`](https://nodejs.org)

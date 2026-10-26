@@ -89,18 +89,20 @@
 | Markdown | `.md` | - |
 | `KV-JSON` ゲームテキスト | `.json` | 出力元 [[MTool](https://mtool.app)] [[SExtractor](https://github.com/satan53x/SExtractor)] |
 | `Message-JSON` ゲームテキスト | `.json` | 出力元 [[SExtractor](https://github.com/satan53x/SExtractor)] [[VNTextPatch](https://github.com/arcusmaximus/VNTranslationTools)] |
-| `RenPy` ゲームテキスト | `.rpy` | ガイド [[RenPy ゲームの高品質翻訳ガイド](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForRenPyEN)] |
+| `RenPy` ゲームファイル | `.exe` またはゲームフォルダー | ガイド [[RenPy ゲームの高品質翻訳ガイド](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForRenPyEN)] |
 | `Godot 4` ゲームファイル | `.exe` またはゲームフォルダー | ガイド [[Godot ゲームの高品質翻訳ガイド](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForGodotEN)] |
 | `WOLFRPG 3` ゲームファイル | `.exe` またはゲームフォルダー | ガイド [[WOLFRPG ゲームの高品質翻訳ガイド](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForWOLFRPGEN)] |
 | `RPGMAKER MV/MZ` ゲームファイル | `.exe` またはゲームフォルダー | ガイド [[RPGMAKER ゲームの高品質翻訳ガイド](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForRPGMakerEN)] |
 | `RPGMAKER XP/VX/VXAce` ゲームファイル | `.exe` またはゲームフォルダー | ガイド [[RPGMAKER ゲームの高品質翻訳ガイド](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForRPGMakerEN)] |
+| `.rpy` ゲームテキスト | `.rpy` | `👈 サポート終了予定` |
 | `.xlsx` ゲームテキスト | `.xlsx` | 出力元 [SExtractor](https://github.com/satan53x/SExtractor) [Translator++](https://dreamsavior.net/translator-plusplus) [WOLF 公式翻訳ツール](https://silversecond.booth.pm/items/5151747)　`👈 サポート終了予定` |
 | `.trans` プロジェクトファイル | `.trans` | 出力元 [Translator++](https://dreamsavior.net/translator-plusplus)　`👈 サポート終了予定` |
 
 ## 最近の更新 📅
-- 20261021 v0.130.1
-  - 暗号化された `Godot 4` ゲームのネイティブサポート [#1011](../../issues/1011)
-  - 修正と改善 [#1013](../../issues/1013) [#1014](../../issues/1014) [#1015](../../issues/1015)
+- 20261026 v0.131.0
+  - `RenPy` ゲームのネイティブサポート [#1022](../../issues/1022)
+  - ゲームエンジンの互換性を改善 [#1025](../../issues/1025) [#1026](../../issues/1026) [#1028](../../issues/1028)
+  - 修正と改善 [#1018](../../issues/1018) [#1019](../../issues/1019) [#1020](../../issues/1020) [#1021](../../issues/1021) [#1024](../../issues/1024) [#1027](../../issues/1027) [#1028](../../issues/1028)
 
 ## 開発ガイド 🛠️
 - [Go](https://go.dev) と [`Node.js`](https://nodejs.org) をインストール

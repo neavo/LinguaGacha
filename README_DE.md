@@ -86,18 +86,20 @@
 | Markdown | `.md` | - |
 | `KV-JSON` Spieltexte | `.json` | Quelle: [[MTool](https://mtool.app)] [[SExtractor](https://github.com/satan53x/SExtractor)] |
 | `Message-JSON` Spieltexte | `.json` | Quelle: [[SExtractor](https://github.com/satan53x/SExtractor)] [[VNTextPatch](https://github.com/arcusmaximus/VNTranslationTools)] |
-| `RenPy` Spieltexte | `.rpy` | Anleitung: [[Bewährte Vorgehensweisen für hochwertige Übersetzungen von RenPy-Spielen](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForRenPy)] |
+| `RenPy` Spieldateien | `.exe` oder Spielverzeichnis | Anleitung: [[Bewährte Vorgehensweisen für hochwertige Übersetzungen von RenPy-Spielen](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForRenPy)] |
 | `Godot 4` Spieldateien | `.exe` oder Spielverzeichnis | Anleitung: [[Bewährte Vorgehensweisen für hochwertige Übersetzungen von Godot-Spielen](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForGodot)] |
 | `WOLFRPG 3` Spieldateien | `.exe` oder Spielverzeichnis | Anleitung: [[Bewährte Vorgehensweisen für hochwertige Übersetzungen von WOLFRPG-Spielen](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForWOLFRPG)] |
 | `RPGMAKER MV/MZ` Spieldateien | `.exe` oder Spielverzeichnis | Anleitung: [[Bewährte Vorgehensweisen für hochwertige Übersetzungen von RPGMAKER-Spielen](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForRPGMaker)] |
 | `RPGMAKER XP/VX/VXAce` Spieldateien | `.exe` oder Spielverzeichnis | Anleitung: [[Bewährte Vorgehensweisen für hochwertige Übersetzungen von RPGMAKER-Spielen](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForRPGMaker)] |
+| `.rpy` Spieltexte | `.rpy` | `👈 Unterstützung endet bald` |
 | `.xlsx` Spieltexte | `.xlsx` | Quelle: [SExtractor](https://github.com/satan53x/SExtractor) [Translator++](https://dreamsavior.net/translator-plusplus) [offizielles WOLF-Übersetzungswerkzeug](https://silversecond.booth.pm/items/5151747)　`👈 Unterstützung endet bald` |
 | `.trans` Projektdateien | `.trans` | Quelle: [Translator++](https://dreamsavior.net/translator-plusplus)　`👈 Unterstützung endet bald` |
 
 ## Neueste Updates 📅
-- 20261021 v0.130.1
-  - Native Unterstützung für verschlüsselte `Godot 4`-Spiele [#1011](../../issues/1011)
-  - Korrekturen und Verbesserungen [#1013](../../issues/1013) [#1014](../../issues/1014) [#1015](../../issues/1015)
+- 20261026 v0.131.0
+  - Native Unterstützung für `RenPy`-Spiele [#1022](../../issues/1022)
+  - Verbesserte Kompatibilität mit Spiel-Engines [#1025](../../issues/1025) [#1026](../../issues/1026) [#1028](../../issues/1028)
+  - Korrekturen und Verbesserungen [#1018](../../issues/1018) [#1019](../../issues/1019) [#1020](../../issues/1020) [#1021](../../issues/1021) [#1024](../../issues/1024) [#1027](../../issues/1027) [#1028](../../issues/1028)
 
 ## Entwicklung 🛠️
 - Installieren Sie [Go](https://go.dev) und [`Node.js`](https://nodejs.org)

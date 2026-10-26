@@ -86,18 +86,20 @@
 | Markdown | `.md` | - |
 | `KV-JSON` 游戏文本 | `.json` | 来源 [[MTool](https://mtool.app)] [[SExtractor](https://github.com/satan53x/SExtractor)] |
 | `Message-JSON` 游戏文本 | `.json` | 来源 [[SExtractor](https://github.com/satan53x/SExtractor)] [[VNTextPatch](https://github.com/arcusmaximus/VNTranslationTools)] |
-| `RenPy` 游戏文本 | `.rpy` | 教程 [[高质量翻译 RenPy 游戏的最佳实践](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForRenPy)] |
+| `RenPy` 游戏文件 | `.exe` 或 游戏目录 | 教程 [[高质量翻译 RenPy 游戏的最佳实践](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForRenPy)] |
 | `Godot 4` 游戏文件 | `.exe` 或 游戏目录 | 教程 [[高质量翻译 Godot 游戏的最佳实践](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForGodot)] |
 | `WOLFRPG 3` 游戏文件 | `.exe` 或 游戏目录 | 教程 [[高质量翻译 WOLFRPG 游戏的最佳实践](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForWOLFRPG)] |
 | `RPGMAKER MV/MZ` 游戏文件 | `.exe` 或 游戏目录 | 教程 [[高质量翻译 RPGMAKER 游戏的最佳实践](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForRPGMaker)] |
 | `RPGMAKER XP/VX/VXAce` 游戏文件 | `.exe` 或 游戏目录 | 教程 [[高质量翻译 RPGMAKER 游戏的最佳实践](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForRPGMaker)] |
+| `.rpy` 游戏文本 | `.rpy` | `👈 即将停止支持` |
 | `.xlsx` 游戏文本 | `.xlsx` | 来源 [SExtractor](https://github.com/satan53x/SExtractor) [Translator++](https://dreamsavior.net/translator-plusplus) [WOLF 官方翻译工具](https://silversecond.booth.pm/items/5151747)　`👈 即将停止支持` |
 | `.trans` 项目文件 | `.trans` | 来源 [Translator++](https://dreamsavior.net/translator-plusplus)　`👈 即将停止支持` |
 
 ## 近期更新 📅
-- 20261021 v0.130.1
-  - 原生 `Godot 4` 加密游戏支持 [#1011](../../issues/1011)
-  - 修复与改进 [#1013](../../issues/1013) [#1014](../../issues/1014) [#1015](../../issues/1015)
+- 20261026 v0.131.0
+  - 原生 `RenPy` 游戏支持 [#1022](../../issues/1022)
+  - 游戏引擎兼容性优化 [#1025](../../issues/1025) [#1026](../../issues/1026) [#1028](../../issues/1028)
+  - 修复与改进 [#1018](../../issues/1018) [#1019](../../issues/1019) [#1020](../../issues/1020) [#1021](../../issues/1021) [#1024](../../issues/1024) [#1027](../../issues/1027) [#1028](../../issues/1028)
 
 ## 开发指南 🛠️
 - 安装 [ [Go](https://go.dev) ] 和 [ [`Node.js`](https://nodejs.org) ]
