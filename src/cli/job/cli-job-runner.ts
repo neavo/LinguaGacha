@@ -1,5 +1,5 @@
 import type { ProjectSummaryService } from "../../backend/project/project-summary-service";
-import fs from "node:fs";
+import { default_native_fs as fs } from "../../native/native-fs";
 import os from "node:os";
 import path from "node:path";
 
@@ -59,8 +59,8 @@ export async function run_cli_job(
 
   try {
     assert_existing_inputs(command);
-    fs.mkdirSync(command.outputDir, { recursive: true });
-    temp_root = await fs.promises.mkdtemp(path.join(os.tmpdir(), "linguagacha-cli-"));
+    fs.make_dir(command.outputDir);
+    temp_root = await fs.make_temp_dir(path.join(os.tmpdir(), "linguagacha-cli-"));
     const project_path = path.join(temp_root, "cli-job.lg");
     backend_services.app.settings.set_transient_overrides({
       ...build_cli_default_preset_overrides(),
@@ -117,7 +117,7 @@ export async function run_cli_job(
       failures.push(error);
     }
     try {
-      await fs.promises.rm(temp_root, { recursive: true, force: true });
+      await fs.remove_async(temp_root, { recursive: true, force: true });
     } catch (error) {
       failures.push(error);
     }
@@ -153,12 +153,12 @@ function build_cli_default_preset_overrides(): JsonRecord {
  */
 function assert_existing_inputs(command: CLICommandOptions): void {
   for (const input_path of command.inputPaths) {
-    if (!fs.existsSync(input_path)) {
+    if (!fs.exists(input_path)) {
       throw new Error(`Input path does not exist: ${input_path}`);
     }
   }
   for (const resource_path of collect_resource_paths(command)) {
-    if (!fs.existsSync(resource_path)) {
+    if (!fs.exists(resource_path)) {
       throw new Error(`Resource file does not exist: ${resource_path}`);
     }
   }

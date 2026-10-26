@@ -139,6 +139,7 @@ GUI、preload、native 或 Backend Runtime worker 变化时，先运行相关目
 - 应用代理变化：运行 [app-proxy.test.ts](../src/native/app-proxy.test.ts)。它用真实 Electron 与本地代理验证 Chromium 和 Undici 的路由及传输。
 - 共享资源或生命周期变化：运行 `BackendResources` 与 `GuiBackendBootstrap` 的真实集成测试。
 - 文件删除或清理变化：运行 `src/native/native-fs.test.ts` 与调用者测试。前者在 Windows 用真实 Electron 验证只读文件与目录删除。
+- 用户文件语义变化：运行 `src/native/native-fs.test.ts`。它在 Electron 主进程、后端线程与 `ELECTRON_RUN_AS_NODE` 中验证 ASAR 档案按普通文件处理。普通 Node 测试不识别 ASAR。
 - 加载、资源定位或跨进程启动契约变化：低层测试不足时，追加对应真实 Electron 集成或 smoke 验证。
 
 端到端 UI 冒烟在用户明确要求，或存在具体高风险且低层验证不足时执行。真机应用通过 `npm run dev` 启动。
@@ -233,7 +234,7 @@ Windows 启动器或更新器变化时，在对应的 `win-cli` 或 `win-berserk
 
 - 使用 `npm exec -- asar list <app.asar 路径>` 检查应用入口、前端资源及文件范围。用户数据、项目源码和原始应用依赖树应排除。
 - Electron 语言资源与 `LOCALES` 一致。
-- 内置资源随应用部署。
+- `builtin/`、`fonts/`、`workspace/` 和 `pdf-print.css` 位于发行 `resources/`。`app.asar` 不含 `builtin/` 和字体。
 - 工作区包含实际依赖清单、标准 `node_modules`、内部包和运行资源。
 - `runAsNode` fuse 保持开启，供工作区启动 Electron Node 子进程。
 - Windows 启动器和更新器完成对应 Go module 的测试与构建。
@@ -259,9 +260,11 @@ Windows 启动器或更新器变化时，在对应的 `win-cli` 或 `win-berserk
 
 |变量|指向|使用的测试|
 |---|---|---|
+|`LINGUAGACHA_TEST_RESOURCES`|发行包 `resources` 目录|`app-resources.test.ts`|
 |`LINGUAGACHA_TEST_ELECTRON`|发行包可执行文件|`bootstrap.test.ts`、`javascript.test.ts`、`ruby.test.ts`、`prepare-worker.test.ts`|
 |`LINGUAGACHA_TEST_WORKSPACE_RUNTIME`|发行包工作区运行目录|`bootstrap.test.ts`、`javascript.test.ts`、`ruby.test.ts`、`pdf-host.test.ts`、`prepare-worker.test.ts`|
 |`LINGUAGACHA_TEST_GAME_WORKER`|发行 ASAR 内的 `build/dist-electron/game-prepare-worker-entry.js`|`prepare-worker.test.ts`|
 
 - `pdf-host.test.ts` 只设置工作区运行目录，使用默认开发 Electron。
+- 资源部署或字体路径变化时，按上表指向发行包运行 `app-resources.test.ts` 与 `pdf-host.test.ts`。两者分别验证界面与 PDF 加载同一份字体。
 - 脚本解析器部署还须核对发行工作区中的 `oxc-parser` 平台绑定与 `@ruby/prism` WASM，以及 `web-tree-sitter` 和 `python/tree-sitter-python.wasm`、许可证。Python 语法包的原生 addon 不部署。

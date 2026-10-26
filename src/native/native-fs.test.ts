@@ -3,6 +3,7 @@ import { promisify } from "node:util";
 import { createRequire } from "node:module";
 import { pathToFileURL } from "node:url";
 import { build } from "vite";
+import { createPackage } from "@electron/asar";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -27,6 +28,72 @@ afterEach(async () => {
     force: true,
   });
 });
+
+it("Electron 主进程、后端线程与 Node 子进程把 ASAR 档案按普通文件处理", async () => {
+  const source = path.join(temp_dir, "archive-source");
+  fs.mkdirSync(source);
+  fs.writeFileSync(path.join(source, "hidden.txt"), "archive");
+  const archive = path.join(temp_dir, "archive.asar");
+  await createPackage(source, archive);
+  await build({
+    configFile: false,
+    logLevel: "silent",
+    build: {
+      outDir: path.join(temp_dir, "bundle"),
+      lib: {
+        entry: {
+          native: path.resolve("src/native/native-fs.ts"),
+          discovery: path.resolve("src/backend/file/source-discovery.ts"),
+        },
+        formats: ["es"],
+        fileName: (_format, name) => `${name}.mjs`,
+      },
+      rolldownOptions: { external: [/^node:/u], platform: "node" },
+      minify: false,
+    },
+  });
+  const entry = path.join(temp_dir, "probe.cjs");
+  // 探针在主进程与 worker 中各跑一次。ASAR 包装会把档案当目录，并拒绝首次异步创建同名目录。
+  fs.writeFileSync(
+    entry,
+    `
+    const assert = require('node:assert/strict');
+    const path = require('node:path');
+    const { Worker, isMainThread } = require('node:worker_threads');
+    (async () => {
+      const { NativeFs } = await import(${JSON.stringify(pathToFileURL(path.join(temp_dir, "bundle/native.mjs")).href)});
+      const { discover_sources } = await import(${JSON.stringify(pathToFileURL(path.join(temp_dir, "bundle/discovery.mjs")).href)});
+      const native = new NativeFs();
+      const root = path.join(${JSON.stringify(temp_dir)}, process.env.ELECTRON_RUN_AS_NODE ? 'node' : 'electron', isMainThread ? 'main' : 'worker');
+      const file = path.join(root, 'app.asar', 'nested', 'story.txt');
+      const copy = path.join(root, 'archive.asar');
+      await native.write_file(file, 'story');
+      native.copy_file(${JSON.stringify(archive)}, copy);
+      assert.equal(native.stat(copy).isFile(), true);
+      await assert.rejects(native.write_file(path.join(copy, 'nested', 'blocked.txt'), 'blocked'));
+      assert.deepEqual(native.read_file(copy), native.read_file(${JSON.stringify(archive)}));
+      assert.deepEqual((await discover_sources([root], native)).map(x => x.source_path), [file]);
+      if (isMainThread) {
+        await new Promise((resolve,reject) => new Worker(__filename).on('error',reject).on('exit',code => code === 0 ? resolve() : reject(new Error('worker exit '+code))));
+        console.log('real-fs-ok');
+        if (!process.env.ELECTRON_RUN_AS_NODE) require('electron').app.exit(0);
+      }
+    })().catch(error => { console.error(error); if(isMainThread && !process.env.ELECTRON_RUN_AS_NODE) require('electron').app.exit(1); else process.exit(1); });
+  `,
+  );
+  const executable = createRequire(import.meta.url)("electron") as string;
+  for (const run_as_node of [false, true]) {
+    const env = { ...process.env };
+    delete env.ELECTRON_RUN_AS_NODE;
+    if (run_as_node) env.ELECTRON_RUN_AS_NODE = "1";
+    const result = await promisify(execFile)(executable, [entry], {
+      env,
+      timeout: 30_000,
+      windowsHide: true,
+    });
+    expect(result.stdout).toContain("real-fs-ok");
+  }
+}, 60_000);
 
 describe("原生文件系统门面", () => {
   it("预览读取限制字节数并保留短文件的完整字节", () => {

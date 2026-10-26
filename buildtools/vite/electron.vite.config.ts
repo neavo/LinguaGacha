@@ -51,6 +51,15 @@ export default defineConfig({
   },
   renderer: {
     root: project_path("src/frontend"),
+    experimental: {
+      renderBuiltUrl(filename, { type, hostType }) {
+        // 发行 CSS 从 ASAR 外加载与 PDF 共用的字体，开发服务器仍使用 public。
+        if (type === "public" && filename.startsWith("fonts/")) {
+          return (hostType === "css" ? "../../../../" : "../../../") + filename;
+        }
+        return { relative: true };
+      },
+    },
     publicDir: project_path("public"),
     server: {
       host: "127.0.0.1",

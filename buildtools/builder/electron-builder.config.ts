@@ -6,8 +6,10 @@ export default {
   appId: "me.neavo.linguagacha",
   asar: true,
   electronFuses: { runAsNode: true }, // 工作区复用 Electron 的 Node 子进程入口
-  // builder 会过滤复制源直属的 node_modules；从 resources 映射整棵运行目录以保留标准依赖树。
   extraResources: [
+    { from: "builtin", to: "builtin" }, // 业务按真实路径读取版本资源
+    { from: "public/fonts", to: "fonts" }, // 界面与 PDF 共用同一份字体
+    // builder 会过滤复制源直属的 node_modules；从 resources 映射整棵运行目录以保留标准依赖树。
     { from: "build/resources", to: ".", filter: ["workspace/**/*", "pdf-print.css"] },
   ],
   productName: "LinguaGacha",
@@ -17,7 +19,7 @@ export default {
     output: "build/release/${version}",
   },
   afterPack: "buildtools/builder/after-pack.mjs",
-  files: ["build/dist/**/*", "build/dist-electron/**/*", "builtin/**/*"],
+  files: ["build/dist/**/*", "build/dist-electron/**/*", "!build/dist/fonts/**/*"], // 界面字体改由 resources/fonts 提供
   win: {
     target: ["zip"],
     artifactName: "${productName}_v${version}_Windows_${arch}.${ext}",

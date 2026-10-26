@@ -42,7 +42,7 @@ export class BackendRuntimeClient {
     private readonly options: {
       workerEntryUrl: URL;
       appRoot: string; // 安装根与便携 userdata 语义原样交给 Backend
-      builtinRoot: string; // app.asar 内置资产根必须显式跨线程传递
+      builtinRoot: string; // 真实内置资源根必须显式跨线程传递
       workspaceRuntimeDirectory: string; // 当前版本的工作区包与只读资源根
       pdfHost?: PDFHost;
       imageHost: AgentImageHost;

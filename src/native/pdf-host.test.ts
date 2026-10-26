@@ -66,7 +66,7 @@ it("真实打印保持图文分页、隔离脚本并在取消后继续调度", a
         const host = create_pdf_host(${JSON.stringify({
           stylesPath: path.resolve(runtime, "..", "pdf-print.css"),
           fontsDirectory: process.env.LINGUAGACHA_TEST_WORKSPACE_RUNTIME
-            ? path.resolve(runtime, "..", "app.asar", "build/dist/fonts")
+            ? path.resolve(runtime, "..", "fonts")
             : path.resolve("public/fonts"),
         })});
         const source = new Uint8Array(await fs.readFile(${JSON.stringify(path.join(directory, "source.pdf"))}));
