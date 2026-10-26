@@ -96,6 +96,10 @@
 | `.trans` Projektdateien | `.trans` | Quelle: [Translator++](https://dreamsavior.net/translator-plusplus)　`👈 Unterstützung endet bald` |
 
 ## Neueste Updates 📅
+- 20261027 v0.131.1
+  - Verbesserte Kompatibilität mit Spiel-Engines [#1036](../../issues/1036) [#1037](../../issues/1037)
+  - Korrekturen und Verbesserungen [#1034](../../issues/1034) [#1035](../../issues/1035)
+
 - 20261026 v0.131.0
   - Native Unterstützung für `RenPy`-Spiele [#1022](../../issues/1022)
   - Verbesserte Kompatibilität mit Spiel-Engines [#1025](../../issues/1025) [#1026](../../issues/1026) [#1028](../../issues/1028)
