@@ -1,9 +1,15 @@
-import fs from "node:fs";
+import node_fs from "node:fs";
+import { createRequire } from "node:module";
 import type { FileHandle } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import path from "node:path";
 
 import { NativePathPolicy, default_native_path_policy } from "./native-path";
+
+// Electron 的 ASAR 包装会把用户档案当目录，并使首次异步创建同名目录失败。
+const fs: typeof node_fs = process.versions.electron
+  ? createRequire(import.meta.url)("original-fs")
+  : node_fs;
 
 /**
  * 删除选项只暴露项目实际使用的安全子集。
@@ -112,12 +118,12 @@ export class NativeFs {
   /**
    * 读取文件或目录状态，调用方根据业务语义判断文件类型。
    */
-  public stat(target_path: string): fs.Stats {
+  public stat(target_path: string): node_fs.Stats {
     return fs.statSync(this.to_native_path(target_path));
   }
 
   /** 读取入口本身，保留目录链接与失效链接的身份。 */
-  public lstat(target_path: string): fs.Stats {
+  public lstat(target_path: string): node_fs.Stats {
     return fs.lstatSync(this.to_native_path(target_path));
   }
 
@@ -143,8 +149,13 @@ export class NativeFs {
   /**
    * 读取目录项和类型信息，供递归扫描避免额外 stat。
    */
-  public read_dirents(directory: string): fs.Dirent[] {
+  public read_dirents(directory: string): node_fs.Dirent[] {
     return fs.readdirSync(this.to_native_path(directory), { withFileTypes: true });
+  }
+
+  /** CLI 临时工程使用原生排他目录分配，避免自行管理随机名称。 */
+  public async make_temp_dir(prefix: string): Promise<string> {
+    return await fs.promises.mkdtemp(this.to_native_path(prefix));
   }
 
   /** 原子占用新会话目录，碰撞由调用方重新生成身份。 */
@@ -207,12 +218,12 @@ export class NativeFs {
   }
 
   /** 流式读取大文件，仍复用平台长路径策略。 */
-  public create_read_stream(file_path: string): fs.ReadStream {
+  public create_read_stream(file_path: string): node_fs.ReadStream {
     return fs.createReadStream(this.to_native_path(file_path));
   }
 
   /** 流式写入大文件，并同步补齐父目录后立即返回 writable。 */
-  public create_write_stream(file_path: string): fs.WriteStream {
+  public create_write_stream(file_path: string): node_fs.WriteStream {
     this.ensure_parent_dir(file_path);
     return fs.createWriteStream(this.to_native_path(file_path));
   }

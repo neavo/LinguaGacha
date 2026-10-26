@@ -1,4 +1,4 @@
-import fs from "node:fs";
+import { default_native_fs as fs } from "../native/native-fs";
 import path from "node:path";
 
 import { build_cli_help, write_stderr, write_stdout } from "./cli-output";
@@ -43,12 +43,12 @@ export async function run_cli_entry(
  */
 function read_cli_version(app_root: string): string {
   const version_path = path.join(app_root, "version.txt");
-  if (fs.existsSync(version_path)) {
-    return fs.readFileSync(version_path, "utf-8").trim();
+  if (fs.exists(version_path)) {
+    return fs.read_text_file(version_path, "utf-8").trim();
   }
   const package_path = path.join(process.cwd(), "package.json");
-  if (fs.existsSync(package_path)) {
-    const package_json = JSON.parse(fs.readFileSync(package_path, "utf-8")) as {
+  if (fs.exists(package_path)) {
+    const package_json = JSON.parse(fs.read_text_file(package_path, "utf-8")) as {
       version?: unknown;
     };
     return String(package_json.version ?? "0.0.0");

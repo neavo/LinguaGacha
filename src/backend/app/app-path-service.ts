@@ -107,7 +107,7 @@ export class AppPathService {
     return this.data_root;
   }
 
-  /** 返回版本内置资产根。发布态位于 app.asar，开发态位于仓库 builtin。 */
+  /** 返回版本内置资产根。发布态位于 resources/builtin，开发态位于仓库 builtin。 */
   public get_builtin_root(): string {
     return this.builtin_root;
   }

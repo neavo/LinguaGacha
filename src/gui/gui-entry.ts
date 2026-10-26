@@ -1,3 +1,4 @@
+import { resolve_app_resources } from "../native/app-resources";
 import { resolve_workspace_runtime_directory } from "../native/workspace-runtime";
 import { configure_app_proxy } from "../native/app-proxy";
 import { app, BrowserWindow, session, shell } from "electron";
@@ -61,26 +62,21 @@ export function run_gui_entry(options: GuiEntryOptions): void {
   }
 
   const app_root = app.isPackaged ? path.dirname(process.execPath) : process.cwd();
-  const builtin_root = path.join(app.getAppPath(), "builtin"); // app.asar 内当前版本只读资产根
+  const app_resources = resolve_app_resources({
+    packaged: app.isPackaged,
+    resourcesPath: process.resourcesPath,
+    projectRoot: app.getAppPath(),
+  });
   const workspace_runtime_directory = resolve_workspace_runtime_directory({
     packaged: app.isPackaged,
     resourcesPath: process.resourcesPath,
     projectRoot: process.cwd(),
   });
-  const pdf_host = create_pdf_host({
-    stylesPath: path.join(
-      app.isPackaged ? process.resourcesPath : path.join(app.getAppPath(), "build/resources"),
-      "pdf-print.css",
-    ),
-    fontsDirectory: path.join(
-      app.getAppPath(),
-      app.isPackaged ? "build/dist/fonts" : "public/fonts",
-    ),
-  });
+  const pdf_host = create_pdf_host(app_resources);
   const backend_runtime = new BackendRuntimeClient({
     workerEntryUrl: options.backendRuntimeWorkerEntryUrl,
     appRoot: app_root,
-    builtinRoot: builtin_root,
+    builtinRoot: app_resources.builtinRoot,
     workspaceRuntimeDirectory: workspace_runtime_directory,
     pdfHost: pdf_host,
     imageHost: prepare_agent_image,

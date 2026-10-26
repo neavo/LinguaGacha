@@ -14,9 +14,6 @@ import { create_pdf_fixture } from "../../../file/pdf/test-support";
 import { BackendResources } from "../../../bootstrap/backend-resources";
 import { BackendServices } from "../../../bootstrap/backend-services";
 import { AgentWorkspaceService } from "../service";
-import { createPackage } from "@electron/asar";
-import { resolve_workspace_runtime_entry } from "../../../../native/workspace-runtime";
-import type { AgentWorkspaceRuntimeParentMessage } from "./protocol";
 import { AGENT_IMAGE_MAX_EDGE } from "../../../../shared/agent-image";
 
 const electron_path =
@@ -261,72 +258,6 @@ it("用户技能目录链接可创建、替换和删除包，失败前的写入�
     skill_paths.get_agent_user_skill_dir = () => original;
     await unlink(link);
   }
-});
-
-it("发布态 ASAR 技能导入脚本、资源和预装依赖", async () => {
-  const directory = await mkdtemp(path.join(root, "asar-"));
-  const source = path.join(directory, "source");
-  const skill = path.join(source, "builtin/skills/fixture");
-  await mkdir(skill, { recursive: true });
-  await writeFile(path.join(skill, "asset.txt"), "原包资源");
-  await writeFile(path.join(skill, "helper.mjs"), "export const heading = '# fixture';");
-  await writeFile(
-    path.join(skill, "entry.mjs"),
-    `
-    import { readFile, writeFile } from 'node:fs/promises';
-    import { unified } from 'unified';
-    import remarkParse from 'remark-parse';
-    import { heading } from './helper.mjs';
-    const asset = new URL('./asset.txt', import.meta.url);
-    let denied = false;
-    try { await writeFile(asset, 'changed'); }
-    catch(error) { if(error.code !== 'ERR_ACCESS_DENIED') throw error; denied = true; }
-    console.log(JSON.stringify({
-      text: await readFile(asset, 'utf8'), denied,
-      type: unified().use(remarkParse).parse(heading).children[0].type,
-      worker: import.meta.resolve('@lg/pdf/worker').endsWith('/worker.mjs'),
-    }));
-  `,
-  );
-  const archive = path.join(directory, "app.asar");
-  await createPackage(source, archive);
-  const skill_root = path.join(archive, "builtin/skills");
-  const start: AgentWorkspaceRuntimeParentMessage = {
-    type: "start",
-    userSkillDirectory: skill_paths.get_agent_user_skill_dir(),
-    skillRoots: [pathToFileURL(skill_root + path.sep).href],
-  };
-  // 普通 Node 测试宿主不识别 ASAR。由真实 Electron 加载生产 bootstrap，重放父进程初始化消息。
-  const output = execFileSync(
-    electron_path,
-    [
-      "--permission",
-      "--allow-fs-read=*",
-      "--preserve-symlinks",
-      "--preserve-symlinks-main",
-      "--input-type=module",
-      "-e",
-      `
-      setImmediate(() => process.emit('message', ${JSON.stringify(start)}));
-      await import(${JSON.stringify(pathToFileURL(resolve_workspace_runtime_entry(runtime, "@lg/workspace/bootstrap")).href)});
-      await import(${JSON.stringify(pathToFileURL(path.join(skill_root, "fixture/entry.mjs")).href)});
-    `,
-    ],
-    {
-      cwd: workspace,
-      env: { ...process.env, ELECTRON_RUN_AS_NODE: "1", NODE_OPTIONS: "" },
-      windowsHide: true,
-      encoding: "utf8",
-      timeout: RUN_TIMEOUT_MS,
-      stdio: "pipe",
-    },
-  );
-  expect(JSON.parse(output)).toEqual({
-    text: "原包资源",
-    denied: true,
-    type: "heading",
-    worker: true,
-  });
 });
 
 it("删除变更目录后继续执行技能、提交和重置", async () => {
