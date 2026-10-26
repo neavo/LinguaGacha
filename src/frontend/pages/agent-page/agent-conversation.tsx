@@ -361,7 +361,7 @@ export function AgentConversation({ active = true }: { active?: boolean }): JSX.
         input.replace_history(target.message.text, message.text);
         return;
       }
-      await agent_actions.reviseLatestRound(target.entryId, message);
+      await agent_actions.reviseRound(target.entryId, message);
       if (target.role === "user") {
         input.replace_history(target.message.text, message.text);
       }

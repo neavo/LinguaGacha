@@ -429,7 +429,7 @@ export class AgentService {
           await this.fork_round(request);
           break;
         case "revise":
-          await this.revise_latest_round(request);
+          await this.revise_round(request);
           break;
         case "continue":
           await this.continue_chat(request);
@@ -603,8 +603,8 @@ export class AgentService {
     });
   }
 
-  /** 限制最新轮次的可修订目标，完成预检后才切换历史分支。 */
-  public async revise_latest_round(request: JsonRecord): Promise<AgentCommandAck> {
+  /** 用户输入按轮次修订，助手回复仅限最新轮次末条。预检完成后才创建分支。 */
+  public async revise_round(request: JsonRecord): Promise<AgentCommandAck> {
     const chat = await this.command_chat(request["chatId"] ?? this.chat_id);
     const commandId = read_input_command_id(request);
     // 直接调用与 HTTP 入口共用命令登记、失败结算和恢复事实。
@@ -618,27 +618,34 @@ export class AgentService {
     if (this.execution !== null) throw new AppErrors.AppError("runtime.busy");
     const revision = normalize_agent_revision_request(request, this.resolve_file);
     if (revision === null) throw agent_queue_validation_error("agent_revision_unavailable");
-    const userIndex = chat.entries.findLastIndex(
-      (entry) => entry.kind === "user_message" && entry.delivery === "round",
+    const entries = chat.entries;
+    const index = entries.findIndex((entry) => entry.id === revision.entryId);
+    const target = entries[index];
+    // 日志记录目标所属轮次，历史修订不能误记为最新轮次。
+    const round = entries.findLast(
+      (entry, position) =>
+        position <= index && entry.kind === "user_message" && entry.delivery === "round",
     );
-    const user = chat.entries[userIndex];
-    const output = chat.entries.findLast(
-      (entry, index) => index > userIndex && entry.kind === "assistant_message",
-    );
-    const target =
-      revision.entryId === user?.id ? user : revision.entryId === output?.id ? output : undefined;
-    if (
-      target === undefined ||
-      target.status === "running" ||
-      (target.kind === "assistant_message" &&
-        (revision.message.text === "" || revision.message.attachments.length > 0))
-    )
+    const valid =
+      target?.kind === "user_message"
+        ? target.delivery === "round" && target.status !== "running"
+        : target?.kind === "assistant_message" &&
+          target.status !== "running" &&
+          revision.message.text !== "" &&
+          revision.message.attachments.length === 0 &&
+          !entries.some(
+            (entry, position) =>
+              position > index &&
+              (entry.kind === "assistant_message" ||
+                (entry.kind === "user_message" && entry.delivery === "round")),
+          );
+    if (!valid || target === undefined || round === undefined)
       throw agent_queue_validation_error("agent_revision_unavailable");
     this.session_state.require_loaded_project_path();
     const execution = this.begin_execution(read_input_command_id(request));
     return this.accept(execution, async () => {
       if (target.kind === "assistant_message") {
-        chat.log.revise(user!.id, "assistant", revision.message.text);
+        chat.log.revise(round.id, "assistant", revision.message.text);
         await chat.revise_assistant(target, revision.message.text, read_input_command_id(request));
         this.release(execution);
         return;
@@ -646,7 +653,7 @@ export class AgentService {
       const resolved = await this.prepare_model(chat, execution);
       const prepared = await this.prepare_message(revision.message);
       this.assert_execution(execution);
-      chat.log.revise(user!.id, "user", revision.message.text);
+      chat.log.revise(round.id, "user", revision.message.text);
       execution.commandId = commandId;
       await chat.revise_user(target, resolved.model, resolved.thinkingLevel, commandId);
       const accepted = await this.submit_round(chat, execution, revision.message, prepared);

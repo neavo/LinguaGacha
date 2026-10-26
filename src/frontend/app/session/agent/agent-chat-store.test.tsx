@@ -1607,7 +1607,7 @@ describe("AgentChatStore", () => {
     });
 
     await act(async () => {
-      await latest.reviseLatestRound("user-1", { text: "历史消息", attachments: [] });
+      await latest.reviseRound("user-1", { text: "历史消息", attachments: [] });
     });
 
     expect(desktop_api_mocks.api_fetch).toHaveBeenCalledWith("/api/agent/round/revise", {
@@ -1642,7 +1642,7 @@ describe("AgentChatStore", () => {
     latest.input.draft.write({ text: "普通草稿", attachments: image_attachments("draft-image") });
 
     await act(async () => {
-      await latest.reviseLatestRound("user-1", { text: "新消息", attachments: [] });
+      await latest.reviseRound("user-1", { text: "新消息", attachments: [] });
     });
 
     expect(desktop_api_mocks.api_fetch).toHaveBeenCalledWith("/api/agent/round/revise", {

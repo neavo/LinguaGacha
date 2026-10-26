@@ -16,6 +16,7 @@ import {
   LiveDoc,
   UsageDoc,
   type Conversation,
+  type ConversationId,
   type EntryId,
   type Submission,
   type TaskId,
@@ -70,6 +71,25 @@ type SubmittedInput = {
   input: AgentInputRecord;
   prepared: PreparedAgentMessage;
 };
+/** 轮次分叉与用户修订共用事务内更新，避免旧意图进入新分支。 */
+function switch_branch(state: AgentChatData, conversationId: ConversationId): void {
+  state.activeConversationId = conversationId;
+  state.queue = { items: [], paused: false };
+  state.doing = null;
+}
+
+/** 正常受理与回执恢复共用状态更新。调用者只提交首次受理。 */
+function accept_input_command(
+  state: AgentChatData,
+  commandId: string,
+  conversationId: ConversationId,
+): void {
+  const command = state.commands[commandId]!;
+  command.status = "accepted";
+  // 助手修订直接提交历史，只有用户修订经过 SDK 输入受理。
+  if (command.kind === "revise") switch_branch(state, conversationId);
+}
+
 /** 唯一执行对象同时承担迟到身份校验和资源所有权，恢复时沿用同一租约。 */
 export type AgentExecution = {
   readonly controller: AbortController;
@@ -620,11 +640,9 @@ export class AgentChat {
           : await tx.submissionByRequest(saved.conversationId, saved.requestId);
       const state = await tx.doc(AgentChatDoc, this.options.chatId, null);
       const command = state.commands[commandId]!;
-      if (command.status === "pending") {
-        command.status = submission === undefined ? "cancelled" : "accepted";
-        if (submission !== undefined && command.kind === "revise")
-          state.activeConversationId = submission.conversationId;
-      }
+      if (command.status !== "pending") return;
+      if (submission === undefined) command.status = "cancelled";
+      else accept_input_command(state, commandId, submission.conversationId);
     }, BACKGROUND_CONTEXT);
     // 未受理的候选分支退出后，后续请求重新使用已提交的活动身份。
     this.conversation = (await this.harness.conversation(
@@ -719,10 +737,7 @@ export class AgentChat {
       withAbortSignal(execution.controller.signal, BACKGROUND_CONTEXT),
     );
     if (commandId !== undefined) {
-      await this.change((state) => {
-        state.commands[commandId]!.status = "accepted";
-        state.activeConversationId = conversation.id;
-      });
+      await this.change((state) => accept_input_command(state, commandId, conversation.id));
       delete execution.commandId;
     }
     const accepted = { submission, input, prepared };
@@ -998,9 +1013,7 @@ export class AgentChat {
         ownership: { kind: "ownerless" },
         init: async (tx, id) => {
           const state = await tx.doc(AgentChatDoc, this.options.chatId, null);
-          state.activeConversationId = id;
-          state.queue = { items: [], paused: false };
-          state.doing = null;
+          switch_branch(state, id);
           if (commandId !== undefined) state.commands[commandId]!.status = "accepted";
         },
       },
@@ -1010,7 +1023,7 @@ export class AgentChat {
     await this.flush();
   }
 
-  /** 候选分支固定本轮配置，输入受理后才替换活动历史。 */
+  /** 候选分支从目标轮次开始前分叉并固定本轮配置，输入受理后才替换活动历史。 */
   public async revise_user(
     entry: AgentEntry,
     model: Model<Api>,

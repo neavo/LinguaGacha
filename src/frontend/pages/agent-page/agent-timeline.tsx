@@ -91,14 +91,14 @@ export function AgentTimeline(props: AgentTimelineProps): JSX.Element {
 
             follow_reset_revision={props.follow_reset_revision}
             t={t}
-            revision_available={index === roundIds.length - 1}
+            is_latest_round={index === roundIds.length - 1}
             on_continue={props.on_continue}
             on_fork={props.on_fork}
             fork_disabled={props.fork_disabled}
             on_edit={props.on_edit}
             render_entry_editor={props.render_entry_editor}
-            revision_disabled={index === roundIds.length - 1 ? props.revision_disabled : false}
-            continue_disabled={index === roundIds.length - 1 ? props.continue_disabled : false}
+            revision_disabled={props.revision_disabled}
+            continue_disabled={props.continue_disabled}
             on_open_tool={set_selected_tool_id}
           />
         ))}
@@ -119,7 +119,7 @@ type AgentRoundProps = {
 
   follow_reset_revision: number;
   t: Translate;
-  revision_available: boolean;
+  is_latest_round: boolean;
   on_continue: () => void;
   on_edit: (entry: UserEntry | AssistantEntry) => void;
   render_entry_editor?: ((entry: UserEntry | AssistantEntry) => ReactNode | null) | undefined;
@@ -140,15 +140,17 @@ const AgentRound = memo(function AgentRound(props: AgentRoundProps): ReactNode {
     mention_ranges.length === 1 &&
     mention_ranges[0]?.from === 0 &&
     mention_ranges[0]?.to === user.text.length;
-  const revision_available = props.revision_available && user.status !== "running";
-  const show_failure_continue = revision_available && user.status === "error";
+  const ended = user.status !== "running";
+  // 任意已结束轮次可编辑起始输入，助手修订与失败继续只属于最新轮次。
+  const latest_ended = props.is_latest_round && ended;
+  const show_failure_continue = latest_ended && user.status === "error";
   const user_editor = props.render_entry_editor?.(user) ?? null;
   return (
     <>
       <AgentMessageFrame
         role="user"
         actions={
-          revision_available && user_editor === null ? (
+          ended && user_editor === null ? (
             <AgentMessageActions
               entry={user}
               t={props.t}
@@ -181,7 +183,7 @@ const AgentRound = memo(function AgentRound(props: AgentRoundProps): ReactNode {
           entryId={id}
           latestAssistantId={latestAssistantId}
           on_fork={user.status === "running" ? undefined : props.on_fork}
-          revisionAvailable={revision_available}
+          revisionAvailable={latest_ended}
         />
       ))}
       {show_failure_continue ? (

@@ -415,8 +415,8 @@ describe("AgentConversation", () => {
 
   it("原位编辑时整页暂停接收，局部图片只写入编辑消息", async () => {
     const input = build_state().input;
-    const reviseLatestRound = vi.fn(async () => undefined);
-    const view = await render_page({ input, reviseLatestRound });
+    const reviseRound = vi.fn(async () => undefined);
+    const view = await render_page({ input, reviseRound });
     const edit = [
       ...view.querySelectorAll<HTMLButtonElement>(
         ".agent-message-frame--user .agent-message-actions button",
@@ -436,7 +436,7 @@ describe("AgentConversation", () => {
     await act(async () =>
       view.querySelector<HTMLButtonElement>(".agent-composer__inline-submit")!.click(),
     );
-    expect(reviseLatestRound).toHaveBeenCalledWith(
+    expect(reviseRound).toHaveBeenCalledWith(
       expect.any(String),
       expect.objectContaining({
         attachments: [uploaded_file("webp-inline.png")],
@@ -1126,7 +1126,7 @@ describe("AgentConversation", () => {
   });
 
   it("历史消息原位编辑直接保存输入与输出", async () => {
-    const reviseLatestRound = vi.fn(async () => undefined);
+    const reviseRound = vi.fn(async () => undefined);
     const entries = [
       user_entry("user-write", "原输入", "success", 0, 3),
       workspace_apply_entry("apply-1"),
@@ -1136,7 +1136,7 @@ describe("AgentConversation", () => {
     ordinary_input.draft.write({ text: "普通草稿", attachments: [] });
     const view = await render_page({
       entries,
-      reviseLatestRound,
+      reviseRound,
       input: ordinary_input,
     });
 
@@ -1163,14 +1163,14 @@ describe("AgentConversation", () => {
         .querySelector<HTMLButtonElement>(".agent-composer--inline .agent-composer__inline-submit")
         ?.click(),
     );
-    expect(reviseLatestRound).toHaveBeenCalledWith("user-write", {
+    expect(reviseRound).toHaveBeenCalledWith("user-write", {
       text: "新输入",
       attachments: [],
     });
     expect(ordinary_input.replace_history).toHaveBeenCalledWith("原输入", "新输入");
     expect(document.body.querySelector('[data-slot="alert-dialog-content"]')).toBeNull();
 
-    reviseLatestRound.mockClear();
+    reviseRound.mockClear();
     const assistant_edit = [
       ...view.querySelectorAll<HTMLButtonElement>(
         ".agent-message-frame--assistant .agent-message-actions button",
@@ -1191,7 +1191,7 @@ describe("AgentConversation", () => {
         .querySelector<HTMLButtonElement>(".agent-composer--inline .agent-composer__inline-submit")
         ?.click(),
     );
-    expect(reviseLatestRound).toHaveBeenCalledWith("assistant-write", {
+    expect(reviseRound).toHaveBeenCalledWith("assistant-write", {
       text: "新输出",
       attachments: [],
     });
@@ -1199,10 +1199,10 @@ describe("AgentConversation", () => {
   });
 
   it("原位输入修改受理失败时保留编辑内容并显示修改错误", async () => {
-    const reviseLatestRound = vi.fn(() => Promise.reject(new Error("offline")));
+    const reviseRound = vi.fn(() => Promise.reject(new Error("offline")));
     const view = await render_page({
       entries: [user_entry("user-1", "原输入", "success", 0, 1)],
-      reviseLatestRound,
+      reviseRound,
     });
 
     const edit = [
@@ -1370,7 +1370,7 @@ function build_state(overrides: Partial<AgentPageState> = {}): AgentPageState {
     },
     send: vi.fn(async () => undefined),
     forkRound: vi.fn(async () => undefined),
-    reviseLatestRound: vi.fn(async () => undefined),
+    reviseRound: vi.fn(async () => undefined),
     updateQueuedMessage: vi.fn(async () => undefined),
     deleteQueuedMessage: vi.fn(async () => undefined),
     reorderQueuedMessages: vi.fn(async () => undefined),

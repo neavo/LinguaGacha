@@ -238,7 +238,7 @@ describe("AgentTimeline", () => {
     }
   });
 
-  it("最新失败轮次可分别修改输入与输出，且只保留一处继续入口", async () => {
+  it("历史输入均可编辑，助手修订与继续入口只属于最新失败轮次", async () => {
     const view = await render_timeline([
       user_entry("user-old-error", "旧任务", "error", 0, 2_000),
       assistant_entry("assistant-old-error", "旧部分结果", "error", 1_000),
@@ -269,18 +269,13 @@ describe("AgentTimeline", () => {
     const edits = [
       ...view.querySelectorAll<HTMLButtonElement>(".agent-message-actions button"),
     ].filter((button) => button.textContent === "agent_page.action.edit");
-    expect(edits).toHaveLength(2);
     expect(latest_footer.querySelector("button")).toBeNull();
-    await act(async () => edits[0]?.click());
-    expect(on_edit).toHaveBeenNthCalledWith(
-      1,
-      expect.objectContaining({ kind: "user_message", id: "user-error" }),
-    );
-    await act(async () => edits[1]?.click());
-    expect(on_edit).toHaveBeenNthCalledWith(
-      2,
-      expect.objectContaining({ kind: "assistant_message", id: "assistant-error" }),
-    );
+    for (const button of edits) await act(async () => button.click());
+    expect(on_edit.mock.calls.map(([entry]) => entry.id)).toEqual([
+      "user-old-error",
+      "user-error",
+      "assistant-error",
+    ]);
   });
 
   it("成功轮次只允许修改最终助手回复，状态行不提供回合重试", async () => {

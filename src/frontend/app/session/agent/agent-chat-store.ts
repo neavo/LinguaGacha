@@ -95,7 +95,7 @@ export type AgentInputState = {
 export type AgentChatActions = Readonly<{
   send: (message: AgentMessageInput) => Promise<void>;
   forkRound: (roundId: string) => Promise<void>;
-  reviseLatestRound: (entryId: string, message: AgentMessageInput) => Promise<void>;
+  reviseRound: (entryId: string, message: AgentMessageInput) => Promise<void>;
   updateQueuedMessage: (id: string, message: AgentMessageInput) => Promise<void>;
   deleteQueuedMessage: (id: string) => Promise<void>;
   reorderQueuedMessages: (ids: readonly string[]) => Promise<void>;
@@ -201,7 +201,7 @@ export class AgentChatStore {
     this.actions = {
       send: this.send,
       forkRound: this.fork_round,
-      reviseLatestRound: this.revise_latest_round,
+      reviseRound: this.revise_round,
       updateQueuedMessage: this.update_queued_message,
       deleteQueuedMessage: this.delete_queued_message,
       reorderQueuedMessages: this.reorder_queued_messages,
@@ -727,8 +727,8 @@ export class AgentChatStore {
     );
   };
 
-  /** 仅在已恢复的空闲会话提交修订内容。 */
-  private readonly revise_latest_round = async (
+  /** 仅在已恢复的空闲会话提交轮次修订内容。 */
+  private readonly revise_round = async (
     entry_id: string,
     message: AgentMessageInput,
   ): Promise<void> => {

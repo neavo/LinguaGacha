@@ -148,7 +148,7 @@ export type AgentInputQueueSnapshot = JsonRecord & {
   items: AgentQueuedInput[];
 };
 
-/** 最新轮次修订同时携带目标身份与完整替换内容。 */
+/** 轮次修订同时携带目标身份与完整替换内容。 */
 export type AgentRevisionRequest = JsonRecord & {
   entryId: string;
   message: AgentMessageInput;
