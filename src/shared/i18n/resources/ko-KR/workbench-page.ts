@@ -32,7 +32,7 @@ export const ko_kr_workbench_page = {
       description: "이름이 같은 파일 {COUNT}개를 발견했습니다. 처리 방법을 선택해 주세요 …",
     },
     inherit_import: {
-      description: "현재 프로젝트에서 번역이 완료된 텍스트로 새 파일을 채울까요 …?",
+      description: "완료된 번역문으로 가져온 파일을 채울까요 …?",
       fill: "채우기",
       do_not_fill: "채우지 않기",
     },

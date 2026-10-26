@@ -4,7 +4,7 @@ import { scan_renpy_boundaries } from "./renpy-boundaries";
 export type TextRuleType = "NONE" | "MD" | "KAG" | "WOLF" | "RENPY" | "RPGMAKER" | "GODOT";
 export type TextFileContext = Readonly<{ file_type: string; game_engine?: string | undefined }>;
 
-/** 文件上下文属于文件，规则类别只在文本处理与跨文件匹配时计算。 */
+/** 文件上下文属于文件，规则类别只在文本处理时计算。 */
 export function resolve_text_rule_type(
   item: { src?: string; file_type?: string },
   file?: TextFileContext,

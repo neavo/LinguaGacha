@@ -30,7 +30,7 @@ export const zh_cn_workbench_page = {
       description: "检测到 {COUNT} 个同名文件，请选择处理方式 …",
     },
     inherit_import: {
-      description: "是否使用当前工程中已完成的翻译文本填充新文件 …?",
+      description: "是否使用已完成的译文填充导入的文件 …?",
       fill: "填充",
       do_not_fill: "不填充",
     },

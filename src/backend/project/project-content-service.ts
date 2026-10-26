@@ -14,12 +14,11 @@ import { normalize_project_asset_path } from "../../shared/project/project-asset
 import type { SourceFileParseWarning } from "../file/file-format-types";
 import type { WorkbenchImportFilesPreview } from "../../shared/workbench/workbench-command-planner";
 import { get_section_revision, ProjectDataReader } from "./project-data-reader";
-import { resolve_text_rule_type, type TextFileContext } from "../../shared/text/text-rule-type";
 import {
   normalize_batch_translation_progress,
   type BatchTranslationProgress,
 } from "../../domain/batch-translation";
-import { read_optional_item_name_text, read_item_name_text } from "../../shared/item-name";
+import { inherit_completed_translations } from "./project-translation-inheritance";
 import { build_project_file_records, type ProjectFileRecord } from "./project-file-records";
 import type { PDFDocument } from "../../shared/pdf";
 import type { PDFExecution } from "../file/pdf/pdf-worker";
@@ -306,15 +305,13 @@ export class ProjectContentService {
           settings,
         });
         if (String(request["inheritance_mode"] ?? "none") === "inherit") {
-          this.inherit_completed_translations({
+          inherit_completed_translations(
             old_items,
-            files: current_files,
-            old_files: snapshot.files,
-            next_items: imported_item_ids.flatMap((item_id) => {
+            imported_item_ids.flatMap((item_id) => {
               const item = write_output.items[String(item_id)];
               return item === undefined ? [] : [item];
             }),
-          });
+          );
           write_output = await this.compute_prefilter_output({
             project_path,
             files: current_files,
@@ -909,76 +906,6 @@ export class ProjectContentService {
       seed = Math.max(seed, item_id);
     }
     return seed;
-  }
-
-  /**
-   * 将新解析条目按完整源身份继承旧已完成译文，候选选择只在后端执行
-   */
-  private inherit_completed_translations(args: {
-    old_items: ProjectItemPublicRecord[];
-    next_items: ProjectItemPublicRecord[];
-    files: Record<string, TextFileContext>;
-    old_files: Record<string, TextFileContext>;
-  }): void {
-    const candidate_map = this.build_translation_inheritance_candidates(
-      args.old_items,
-      args.old_files,
-    );
-    for (const item of args.next_items) {
-      // 重复状态只减少翻译请求，用户要求继承时仍接收已有成果。
-      if (item.status !== "NONE" && item.status !== "DUPLICATED") {
-        continue;
-      }
-      const candidate = candidate_map.get(
-        this.translation_inheritance_key(item, args.files[item.file_path]),
-      );
-      if (candidate === undefined) continue;
-      item.dst = candidate.dst;
-      item.name_dst = candidate.name_dst;
-      item.status = candidate.status;
-    }
-  }
-
-  /** 源身份包含可见姓名和文本类型，整条继承不能把不同角色的译名与完成状态混用。 */
-  private translation_inheritance_key(
-    item: ProjectItemPublicRecord,
-    file?: TextFileContext,
-  ): string {
-    return JSON.stringify([
-      item.src,
-      read_optional_item_name_text(item.name_src),
-      resolve_text_rule_type(item, file),
-    ]);
-  }
-
-  /** 同一源身份按完整译文结果计数，优先选择最多且最早出现的已完成结果。 */
-  private build_translation_inheritance_candidates(
-    old_items: ProjectItemPublicRecord[],
-    files: Record<string, TextFileContext>,
-  ): Map<string, ProjectItemPublicRecord> {
-    type Candidate = {
-      item: ProjectItemPublicRecord; // 首次出现的完整结果，包含姓名形状。
-      count: number; // 同一正文与可见译名结果的出现次数。
-    };
-    const groups = new Map<string, Map<string, Candidate>>();
-    for (const item of old_items) {
-      // 人工完成允许空正文；仅姓名的完成结果也能继承。
-      if (item.status !== "PROCESSED") continue;
-      const key = this.translation_inheritance_key(item, files[item.file_path]);
-      const candidates = groups.get(key) ?? new Map<string, Candidate>();
-      const result_key = JSON.stringify([item.dst, read_item_name_text(item.name_dst)]);
-      const candidate = candidates.get(result_key);
-      if (candidate === undefined) candidates.set(result_key, { item, count: 1 });
-      else candidate.count += 1;
-      groups.set(key, candidates);
-    }
-    return new Map(
-      [...groups].map(([key, candidates]) => [
-        key,
-        // `Map` 保留首次出现顺序，稳定排序使同票候选沿用最早结果。
-        [...candidates.values()].sort((left, right) => right.count - left.count)[0]!.item,
-      ]),
-    );
   }
 
   /**

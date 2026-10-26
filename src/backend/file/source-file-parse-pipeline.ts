@@ -11,7 +11,7 @@ export type SourceFileParsedDraft = SourceFileParseCommand & {
   source_complete: boolean; // 原稿遗漏会阻止整组替换，可靠成员仍允许新增。
   extraction_complete: boolean; // 原稿可靠性由准备边界保证，替换还要求提取完整。
   file_type: ProjectFileType; // 解析器提供文件身份，零条目字幕也保留类型
-  game_engine?: string; // 导入继承按引擎区分相同正文的文本规则身份。
+  game_engine?: string; // TRANS 原稿的引擎上下文，供文本规则计算。
   additional_files: readonly string[]; // 游戏容器中的附加原稿成员，其他格式为空。
   content: Uint8Array;
   pdf_document: PDFDocument | null; // PDF 独立文档，文本格式为空

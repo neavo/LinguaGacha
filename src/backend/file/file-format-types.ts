@@ -38,7 +38,7 @@ export type FileFormatReadResult =
       kind: "items";
       items: Item[];
       file_type: ItemFileType;
-      game_engine?: string; // TRANS 导入继承使用的文本规则上下文。
+      game_engine?: string; // TRANS 原稿的引擎上下文，供文本规则计算。
       warnings?: SourceFileParseWarning[];
       extraction_complete?: boolean; // 解析器明确报告遗漏，诊断仅用于解释。
     }
