@@ -48,7 +48,7 @@ export const LEGACY_DISPLAY_CALLS: readonly string[] = Object.freeze([
   "_p",
 ]);
 
-/** 参数位置必须已确定，完整表达式才可继承语句的显示用途。 */
+/** 参数位置与外层表达式确定用途，字面量能否独立写回由提取层判断。 */
 export function string_usage(token: PythonConstant, display: boolean): RenpyUsage {
   const binding = token.argument;
   const matches = (index: number, names: readonly string[]) =>

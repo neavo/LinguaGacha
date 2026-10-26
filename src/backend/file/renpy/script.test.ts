@@ -10,7 +10,14 @@ import {
 } from "../../../test/renpy-fixture";
 import { class_name, pickle_string } from "./pickle";
 import { read_compiled } from "./compiled";
-import { script_codes, analyze_code, code_diagnostic, menu_item_lines } from "./script";
+import {
+  script_codes,
+  script_identities,
+  statement_identity,
+  analyze_code,
+  code_diagnostic,
+  menu_item_lines,
+} from "./script";
 
 it("PyCode 内的 PyExpr 只按外层 hide 模式分析一次", () => {
   const expression = Buffer.concat([
@@ -136,4 +143,56 @@ it("菜单项行号：选项取子块首行的上一行，标题紧跟上一项"
   expect(menu_item_lines(nodes.find((node) => class_name(node) === "renpy.ast.Menu")!)).toEqual([
     11, 12, 15, 18,
   ]);
+});
+
+/** 固定位置和正文，只改变身份字段或语言来验证协调边界。 */
+const dialogue = (cls: string, fields: Record<string, Buffer> = {}) =>
+  object(
+    cls,
+    dictionary({
+      filename: pickle_string("game/dialogue.rpy"),
+      linenumber: opcode(0x4b, 10),
+      what: pickle_string("Dialogue"),
+      ...fields,
+    }),
+  );
+
+it.each([
+  ["独立 TranslateSay", [dialogue("TranslateSay")], [dialogue("TranslateSay")]],
+  ["不同正文", [dialogue("Say")], [dialogue("TranslateSay", { what: pickle_string("Different") })]],
+  ["缺少槽位对白", [dialogue("Say")], []],
+  [
+    "其他语言对白",
+    [dialogue("Say")],
+    [dialogue("TranslateSay", { language: pickle_string("translated") })],
+  ],
+  [
+    "其他语言翻译块",
+    [dialogue("Say")],
+    [
+      object(
+        "Translate",
+        dictionary({
+          language: pickle_string("translated"),
+          block: tuple(dialogue("TranslateSay")),
+        }),
+      ),
+    ],
+  ],
+  ["重复对应", [dialogue("Say")], [dialogue("TranslateSay"), dialogue("TranslateSay")]],
+  [
+    "完整身份与回退身份混合",
+    [dialogue("Say", { name: tuple(pickle_string("stable"), opcode(0x4b, 7)) })],
+    [dialogue("TranslateSay")],
+  ],
+] as const)("身份协调保留原身份：%s", (_case, first, second) => {
+  const slots = read_compiled(compiled_slots([first, second]));
+  const identities = script_identities(slots);
+  const original = slots.flatMap((slot) =>
+    slot.graph.nodes.flatMap((node) => {
+      const identity = statement_identity(node);
+      return identity === null ? [] : [[node, identity] as const];
+    }),
+  );
+  expect([...identities]).toEqual(original);
 });

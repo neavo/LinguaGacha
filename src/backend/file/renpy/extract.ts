@@ -25,11 +25,11 @@ import {
   node_value as value,
   node_children as children,
   node_text as text,
-  statement_identity,
+  script_identities,
+  script_excluded,
   code_edge,
   is_pyexpr,
   script_consumers,
-  script_children,
   script_codes,
   analyze_code,
   code_diagnostic,
@@ -187,25 +187,11 @@ export async function extract_script(
     required = new Map<string, Set<string>>(),
     strings: RenpyString[] = [],
     warnings: ScriptDiagnostic[] = [];
-  const records = script_codes({ slots });
+  const excluded = script_excluded(slots);
+  const identities = script_identities(slots, excluded);
+  const records = script_codes({ slots }, identities);
   for (const slot of slots) {
-    const consumers = script_consumers(slot.graph.root);
-    const excluded = new Set<PickleNode>(); // 其他语言的子图不产生基础语言候选。
-    /** 只沿翻译块向下遍历，next 可能指向块外的基础语言语句。 */
-    const mark_language = (edge: PickleNode): void => {
-      const node = resolve_node(edge);
-      if (excluded.has(node)) return;
-      excluded.add(node);
-      for (const child of script_children(node)) mark_language(child);
-    };
-    for (const node of slot.graph.nodes)
-      if (node.kind === "object" && class_name(node) === "renpy.ast.Translate") {
-        const fields = attributes(node);
-        if (value(fields.get("language")) !== null) {
-          const block = fields.get("block");
-          if (block) mark_language(block);
-        }
-      }
+    const consumers = script_consumers(slot.graph.root, identities);
     const seen_legacy = new Map<PickleNode, Set<string>>();
     /** 同一语句在多个槽位和别名节点中出现时，合并其消费边。 */
     const add = (
@@ -320,7 +306,8 @@ export async function extract_script(
         warnings.push(code_diagnostic(record, diagnostic));
       }
       for (const token of tokens.constants) {
-        if (token.dynamic) {
+        const usage = string_usage(token, record.display);
+        if (!token.writable || (token.dynamic && usage !== "code")) {
           extraction_complete = false;
           warnings.push(
             code_diagnostic(record, {
@@ -337,7 +324,7 @@ export async function extract_script(
             record.field,
             record.edge,
             token.value,
-            string_usage(token, record.display),
+            usage,
             code_line(record, token.start),
             token,
           );
@@ -347,7 +334,7 @@ export async function extract_script(
       if (node.kind !== "object" || excluded.has(node)) continue;
       const cls = class_name(node),
         fields = attributes(node),
-        owner = statement_identity(node) ?? "<script>",
+        owner = identities.get(node) ?? "<script>",
         line = statement_line(node);
       if (cls === "renpy.ast.Say" || cls === "renpy.ast.TranslateSay") {
         const edge = fields.get("what");
@@ -430,8 +417,10 @@ export async function patch_script(
       "Incomplete Ren'Py slot write group",
     );
   const slots = [];
+  const identities = script_identities(script.slots);
+  const records = script_codes(script, identities);
   for (const slot of script.slots) {
-    const consumers = changes.length ? script_consumers(slot.graph.root) : null;
+    const consumers = changes.length ? script_consumers(slot.graph.root, identities) : null;
     const edits = new Map<number, { edge: PickleNode; replacement: Buffer }>();
     const codes = new Map<
       number,
@@ -441,7 +430,7 @@ export async function patch_script(
     const literals = new Map<number, Map<number, PythonFacts["constants"][number]>>(); // 同一代码字符串只扫描一次。
     const code_updates = new Map<PickleNode, string>(); // 哈希更新在全部代码区间合并后执行。
     const sources = new Map<number, { source: string; mode: PythonMode; consistent: boolean }>();
-    for (const code of script_codes({ slots: [slot] })) {
+    for (const code of records.filter((entry) => entry.slot === slot.slot)) {
       if (code.source === null) continue;
       const prior = sources.get(code.edge.start);
       sources.set(code.edge.start, {
@@ -500,14 +489,17 @@ export async function patch_script(
             const facts = await session.analyze(source_record(edge), script.python2, signal);
             tokens = new Map(
               facts.constants
-                .filter((token) => !token.dynamic)
+                .filter((token) => token.writable)
                 .map((token) => [token.start, token]),
             );
             literals.set(edge.start, tokens);
           }
           const token = tokens.get(coordinate.start);
           assert(
-            token && token.end === coordinate.end && token.value === change.candidate.text,
+            token &&
+              (!token.dynamic || change.candidate.usage === "code") &&
+              token.end === coordinate.end &&
+              token.value === change.candidate.text,
             "Ren'Py code span changed",
           );
           const entry = codes.get(edge.start) ?? { edge, changes: [] };
