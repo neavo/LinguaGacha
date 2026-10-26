@@ -1,6 +1,11 @@
 import { expect, it } from "vitest";
 import { create_text_extractor } from "./extract";
-import { build_resource, gdsc_fixture, create_godot_fixture } from "../../../test/godot-fixture";
+import {
+  build_resource,
+  gdsc_fixture,
+  create_godot_fixture,
+  godot_nested_scene_fixture,
+} from "../../../test/godot-fixture";
 import { resource_string } from "./resource";
 
 it.each([100, 101])("候选漏斗按 GDSC %s 的 COLON 编号和显示用途分类", (version) => {
@@ -148,4 +153,26 @@ it("源码与自定义 Resource 收集文字，内置非文本资源忽略", () 
       .map((entry) => entry.original),
   ).toEqual(["Hello world"]);
   expect(extractor.extract("font.res", build_resource("FontFile", properties))).toEqual([]);
+});
+
+it("场景容器保护整个字典键子树，嵌套键名不赋予显示语义", () => {
+  const files = create_godot_fixture();
+  const entries = create_text_extractor(files).extract("nested.scn", godot_nested_scene_fixture());
+  expect(
+    entries
+      .filter((e) => e.location.kind === "scene_value" && e.location.node === 1)
+      .map((e) => [e.original, e.eligible]),
+  ).toEqual([
+    ["text", false],
+    ["Token", false],
+    ["Inner key", false],
+    ["Key child", false],
+    ["Hello world", true],
+    ["names", false],
+    ["Alice", false],
+    ["Bob Smith", true],
+    ["Named value", false],
+    ["Shared", false],
+  ]);
+  expect(entries).toHaveLength(20);
 });

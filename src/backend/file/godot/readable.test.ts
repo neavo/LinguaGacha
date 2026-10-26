@@ -1,6 +1,10 @@
 import { expect, it } from "vitest";
 import JSZip from "jszip";
-import { godot_reference_fixture, create_godot_fixture } from "../../../test/godot-fixture";
+import {
+  godot_reference_fixture,
+  create_godot_fixture,
+  godot_nested_scene_fixture,
+} from "../../../test/godot-fixture";
 import { read_game_container } from "../shared/game/format";
 import { create_godot_adapter } from "./godot-format";
 import { read_godot_metadata } from "./item";
@@ -35,7 +39,10 @@ async function read_fixture(engine: string, extra: ReadonlyMap<string, Buffer> =
 }
 
 it.each(["4.3", "4.6"])("%s 条目坐标都能在投影中找到同一原文", async (engine) => {
-  const { files, members, projection } = await read_fixture(engine);
+  const { files, members, projection } = await read_fixture(
+    engine,
+    new Map([["nested.scn", godot_nested_scene_fixture()]]),
+  );
   const handler = await create_godot_adapter().create_members(members);
   let checked = 0;
   for (const [name, bytes] of files) {

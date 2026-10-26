@@ -15,7 +15,7 @@ import { read_source } from "./gdscript";
 import { read_project } from "./project";
 import { read_po } from "./po";
 import { read_resource, read_resource_type, RESOURCE_VARIANT_TYPES } from "./resource";
-import { read_scene } from "./scene";
+import { read_scene, scene_strings } from "./scene";
 import {
   check_locale_member,
   plan_translation_locale,
@@ -165,12 +165,8 @@ function read_member(
       }));
     for (const p of scene.properties) {
       nodes[p.node]!.properties[p.property] = variant_json(p.value, RESOURCE_VARIANT_TYPES);
-      if ((p.value.type === 5 || p.value.type === 44) && typeof p.value.value === "string")
-        strings.push({
-          location: { kind: "scene", node: p.node, property: p.property },
-          text: p.value.value,
-          context: `${p.path}:${p.property}`,
-        });
+      for (const entry of scene_strings(p))
+        strings.push({ location: entry.location, text: entry.value.value, context: entry.context });
     }
     body = { external: doc.external, resources, nodes, connections: scene.connections };
   } else {

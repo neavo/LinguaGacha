@@ -8,6 +8,7 @@ export type GodotLocation =
   | { kind: "gdsc"; token: number }
   | { kind: "gd" | "po"; start: number; end: number }
   | { kind: "scene"; node: number; property: string }
+  | { kind: "scene_value"; node: number; property: string; offset: number }
   | { kind: "resource"; offset: number }
   | { kind: "slot"; word: number };
 export type GodotMetadata = {
@@ -20,6 +21,7 @@ const LOCATION_FIELDS = {
   gd: ["start", "end"],
   po: ["start", "end"],
   scene: ["node", "property"],
+  scene_value: ["node", "property", "offset"],
   resource: ["offset"],
   slot: ["word"],
 } as const;

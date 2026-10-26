@@ -11,11 +11,20 @@ it("元数据默认用途与坐标收窄，非法路径或不完整定位拒绝�
   expect(godot_default_status({ extra_field: { godot: { ...godot, usage: "text" } } })).toBe(
     "NONE",
   );
+  expect(
+    read_godot_metadata({
+      godot: { ...godot, location: { kind: "scene_value", node: 1, property: "data", offset: 32 } },
+    }).location.kind,
+  ).toBe("scene_value");
   for (const invalid of [
     { ...godot, internal_file_path: "../a" },
     { ...godot, usage: "other" },
     { ...godot, location: { kind: "gd", start: 1, end: 0 } },
     { ...godot, location: { kind: "scene", node: 0 } },
+    ...[-1, 0.5, Number.MAX_SAFE_INTEGER + 1, null].map((offset) => ({
+      ...godot,
+      location: { kind: "scene_value", node: 1, property: "data", offset },
+    })),
   ])
     expect(() => read_godot_metadata({ godot: invalid })).toThrow();
 });
