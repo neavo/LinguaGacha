@@ -836,6 +836,37 @@ describe("AgentService", () => {
     );
   });
 
+  it("用户修订受理后的重复请求和状态查询保留新入队内容", async () => {
+    const { service } = await create_service();
+    await service.send_message({ text: "原输入", attachments: [] });
+    await wait_for_idle(service);
+    const before = service.get_snapshot();
+    const user = before.entries.find((entry) => entry.kind === "user_message")!;
+    const request = {
+      chatId: before.chatId,
+      commandId: "user-revision",
+      entryId: user.id,
+      message: { text: "修订输入", attachments: [] },
+    };
+    fake_agent_state.mode = "pending";
+    try {
+      await service.input_command("revise", request);
+      await vi.waitFor(() => expect(fake_agent_state.release_pending).not.toBeNull());
+      await service.send_message({ text: "新排队意图", attachments: [] });
+      const queue = service.get_snapshot().inputQueue;
+      expect(queue.items.map((item) => item.text)).toEqual(["新排队意图"]);
+      const calls = fake_agent_state.model_call_count;
+      expect(await service.input_command("revise", request)).toMatchObject({ status: "accepted" });
+      expect(await service.input_command_status(request)).toMatchObject({ status: "accepted" });
+      expect(service.get_snapshot().inputQueue).toEqual(queue);
+      expect(fake_agent_state.model_call_count).toBe(calls);
+    } finally {
+      fake_agent_state.mode = "success";
+      fake_agent_state.release_pending?.();
+      await wait_for_idle(service);
+    }
+  });
+
   it("快照沿用技能加载结果的展示顺序，并在变更状态前拒绝非法消息", async () => {
     const fixture = await create_service();
 
@@ -1988,7 +2019,7 @@ describe("AgentService", () => {
     const identity = service.get_snapshot().chatId;
     const user = service.get_snapshot().entries.findLast((entry) => entry.kind === "user_message");
     if (user === undefined) throw new Error("缺少 user 条目");
-    await service.revise_latest_round({
+    await service.revise_round({
       entryId: user.id,
       message: { text: user.text, attachments: [] },
     });
@@ -2017,7 +2048,7 @@ describe("AgentService", () => {
     const user = service.get_snapshot().entries.find((entry) => entry.kind === "user_message");
     if (user === undefined) throw new Error("缺少 user 条目");
 
-    await service.revise_latest_round({
+    await service.revise_round({
       entryId: user.id,
       message: { text: user.text, attachments: user.attachments },
     });
@@ -2051,7 +2082,7 @@ describe("AgentService", () => {
     expect(first_usage.input).toBeGreaterThan(0);
     expect(first_usage.output).toBeGreaterThan(0);
 
-    await service.revise_latest_round({
+    await service.revise_round({
       entryId: user.id,
       message: { text: "重试任务", attachments: [] },
     });
@@ -2066,7 +2097,7 @@ describe("AgentService", () => {
       .get_snapshot()
       .entries.find((entry) => entry.kind === "user_message");
     if (revised_user === undefined) throw new Error("缺少修订后的 user 条目");
-    await service.revise_latest_round({
+    await service.revise_round({
       entryId: revised_user.id,
       message: { text: "再次重试", attachments: [] },
     });
@@ -2127,39 +2158,58 @@ describe("AgentService", () => {
     ).toBe(true);
   });
 
-  it("修改最新 user 后删除原输入并重新调用模型", async () => {
+  it("修改中间轮次 user 后保留前缀，替换目标及后续轮次并重新调用模型", async () => {
     const { service } = await create_service();
-    await service.send_message({
-      text: "原输入",
-      attachments: [uploaded_file("old-image")],
-    });
-    await wait_for_idle(service);
-    const user = service.get_snapshot().entries.findLast((entry) => entry.kind === "user_message");
-    if (user === undefined) throw new Error("缺少可修改 user 条目");
+    for (const text of ["第一轮", "原输入", "第三轮"]) {
+      if (text === "原输入") fake_agent_state.mode = "pending";
+      await service.send_message({ text, attachments: [] });
+      if (text === "原输入") {
+        await service.send_message({ text: "旧轮次插队消息", attachments: [] });
+        const queued = service.get_snapshot().inputQueue.items[0]!;
+        await vi.waitFor(() => expect(service.get_snapshot().inputQueue.canSendNow).toBe(true));
+        await service.send_queued_message({ id: queued.id });
+        fake_agent_state.mode = "success";
+        fake_agent_state.release_pending?.();
+      }
+      await wait_for_idle(service);
+    }
+    const before = service.get_snapshot().entries;
+    expect(before).toContainEqual(
+      expect.objectContaining({ text: "旧轮次插队消息", delivery: "steer" }),
+    );
+    const user = before.find((entry) => entry.kind === "user_message" && entry.text === "原输入");
+    const old_assistant = before.find((entry) => entry.kind === "assistant_message");
+    if (user === undefined || old_assistant === undefined) throw new Error("缺少历史轮次条目");
+    const prefix = before.slice(0, before.indexOf(user));
 
-    await service.revise_latest_round({
+    await expect(
+      service.revise_round({
+        entryId: old_assistant.id,
+        message: { text: "旧回复修订", attachments: [] },
+      }),
+    ).rejects.toThrow(expect.objectContaining({ code: "request.validation_failed" }));
+    await service.revise_round({
       entryId: user.id,
-      message: {
-        text: "新输入",
-        attachments: [uploaded_file("new-image")],
-      },
+      message: { text: "新输入", attachments: [uploaded_file("new-image")] },
     });
     await wait_for_idle(service);
 
     const entries = service.get_snapshot().entries;
-    expect(entries[0]).toMatchObject({
-      kind: "user_message",
-      text: "新输入",
-      attachments: [uploaded_file("new-image")],
-      status: "success",
-    });
-    expect(entries.filter((entry) => entry.kind === "user_message")).toHaveLength(1);
-    expect(entries.filter((entry) => entry.kind === "assistant_message")).toHaveLength(1);
-    expect(fake_agent_state.prompts).toEqual([
-      expect.stringContaining("原输入"),
-      expect.stringContaining("新输入"),
+    expect(entries.slice(0, prefix.length)).toEqual(prefix);
+    expect(entries.filter((entry) => entry.kind === "user_message")).toEqual([
+      expect.objectContaining({ text: "第一轮" }),
+      expect.objectContaining({
+        text: "新输入",
+        attachments: [uploaded_file("new-image")],
+        status: "success",
+      }),
     ]);
-    expect(JSON.stringify(fake_agent_state.model_contexts.at(-1))).not.toContain("原输入");
+    expect(fake_agent_state.prompts.at(-1)).toContain("新输入");
+    const context = JSON.stringify(fake_agent_state.model_contexts.at(-1));
+    expect(context).toContain("第一轮");
+    expect(context).not.toContain("原输入");
+    expect(context).not.toContain("第三轮");
+    expect(context).not.toContain("旧轮次插队消息");
   });
 
   it("认证失效时仍可修改最新 assistant，并保留此前完整工具历史", async () => {
@@ -2178,13 +2228,13 @@ describe("AgentService", () => {
     const calls_before_edit = fake_agent_state.model_call_count;
 
     await expect(
-      service.revise_latest_round({
+      service.revise_round({
         entryId: intermediate_assistant.id,
         message: { text: "越过最终输出", attachments: [] },
       }),
     ).rejects.toThrow(expect.objectContaining({ code: "request.validation_failed" }));
     await expect(
-      service.revise_latest_round({
+      service.revise_round({
         entryId: assistant.id,
         message: {
           text: "",
@@ -2194,7 +2244,7 @@ describe("AgentService", () => {
     ).rejects.toThrow(expect.objectContaining({ code: "request.validation_failed" }));
 
     fake_agent_state.auth_configured = false;
-    await service.revise_latest_round({
+    await service.revise_round({
       entryId: assistant.id,
       message: { text: "人工修订", attachments: [] },
     });
@@ -2226,7 +2276,7 @@ describe("AgentService", () => {
       expect.objectContaining({ code: "request.validation_failed" }),
     );
     await expect(
-      service.revise_latest_round({
+      service.revise_round({
         entryId: "stale",
         message: { text: "越权修改", attachments: [] },
       }),
@@ -2556,7 +2606,7 @@ describe("AgentService", () => {
     await session_state.mark_loaded("other.lg");
     await session_state.mark_loaded("test.lg");
     fake_agent_state.auth_configured = false;
-    await service.revise_latest_round({
+    await service.revise_round({
       entryId: stopped_assistant!.id,
       message: { text: "停止后的人工修订", attachments: [] },
     });
@@ -3026,7 +3076,7 @@ describe("AgentService", () => {
     fake_agent_state.auth_configured = false;
 
     await expect(
-      service.revise_latest_round({
+      service.revise_round({
         entryId: user.id,
         message: { text: "不会提交", attachments: [] },
       }),
@@ -3726,7 +3776,7 @@ describe("AgentService", () => {
     const before = service.get_snapshot().entries;
     expect(before.filter((entry) => entry.kind === "user_message")).toHaveLength(1);
     await expect(
-      service.revise_latest_round({ entryId: before[0]!.id, message: file_message }),
+      service.revise_round({ entryId: before[0]!.id, message: file_message }),
     ).rejects.toThrow("decode failed");
     expect(service.get_snapshot().entries).toEqual(before);
   });

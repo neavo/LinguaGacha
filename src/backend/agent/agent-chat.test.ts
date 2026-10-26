@@ -618,10 +618,18 @@ it("完整轮次分叉保留前缀，清空后续意图并拒绝旧分支目标"
   await expect(chat.fork_round(later.id)).rejects.toThrow();
 });
 
-it("用户修订在 SDK 受理后切换历史，采用本次模型与思考等级", async () => {
+it("压缩后修订早期输入在受理时切换历史与旧意图，并采用本次模型配置", async () => {
   const { chat, provider } = await create_chat();
-  provider.setResponses([fauxAssistantMessage("原答"), fauxAssistantMessage("新答")]);
+  provider.setResponses([fauxAssistantMessage("原答")]);
   await talk(chat, "原问");
+  provider.setResponses([
+    fauxAssistantMessage("待移除回答一"),
+    fauxAssistantMessage("待移除回答二"),
+    fauxAssistantMessage("待移除摘要"),
+  ]);
+  await talk(chat, "历史内容 ".repeat(16_000));
+  const previous = await talk(chat, "后续内容 ".repeat(16_000));
+  expect(await chat.compact("manual", previous)).toEqual({ status: "success" });
   const before = structuredClone(chat.entries);
   const active = chat.state.activeConversationId;
   await chat.change((state) => {
@@ -632,7 +640,9 @@ it("用户修订在 SDK 受理后切换历史，采用本次模型与思考等�
       conversationId: null,
       requestId: null,
     };
+    state.doing = "旧任务";
   });
+  await chat.change_queue((queue) => queue.enqueue({ text: "旧队列", attachments: [] }));
   const replacement = fauxProvider({
     models: [{ id: "replacement", reasoning: true, contextWindow: 256_000 }],
   });
@@ -642,6 +652,7 @@ it("用户修订在 SDK 受理后切换历史，采用本次模型与思考等�
   await chat.revise_user(before[0]!, replacement.getModel(), "high", "revision");
   expect(chat.state.activeConversationId).toBe(active);
   expect(chat.entries).toEqual(before);
+  expect(chat.state.doing).toBe("旧任务");
   const execution: AgentExecution = {
     controller: new AbortController(),
     stop_reason: null,
@@ -666,12 +677,20 @@ it("用户修订在 SDK 受理后切换历史，采用本次模型与思考等�
   );
   expect(chat.state.commands.revision!.status).toBe("accepted");
   expect(chat.state.activeConversationId).not.toBe(active);
+  expect(chat.state.doing).toBeNull();
+  expect(chat.queue.read_snapshot(false).items).toEqual([]);
   await chat.run(accepted, execution);
   await chat.finish_round(execution, "success", null);
   chat.execution = null;
   expect(respond).toHaveBeenCalledOnce();
   expect(respond.mock.calls[0]![1]?.reasoning).toBe("high");
   expect(respond.mock.calls[0]![3].id).toBe("replacement");
+  const context = JSON.stringify(respond.mock.calls[0]![0].messages);
+  expect(context).toContain("新问");
+  expect(context).not.toContain("原问");
+  expect(context).not.toContain("待移除");
+  expect(context).not.toContain("历史内容");
+  expect(context).not.toContain("后续内容");
   expect(chat.entries).toMatchObject([{ text: "新问" }, { parts: [{ text: "新答" }] }]);
 });
 
@@ -693,7 +712,9 @@ it.each([false, true])("SQLite 重开按修订输入回执恢复分支：已受�
       conversationId: null,
       requestId: null,
     };
+    state.doing = "旧任务";
   });
+  await first.chat.change_queue((queue) => queue.enqueue({ text: "旧队列", attachments: [] }));
   await first.chat.revise_user(original[0]!, first.provider.getModel(), "off", "revision");
   if (admitted) {
     execution.commandId = "revision";
@@ -722,6 +743,10 @@ it.each([false, true])("SQLite 重开按修订输入回执恢复分支：已受�
   try {
     expect(restored.chat.state.commands.revision!.status).toBe(admitted ? "accepted" : "cancelled");
     expect(restored.chat.entries[0]).toMatchObject({ text: admitted ? "新问" : "原问" });
+    expect(restored.chat.state.doing).toBe(admitted ? null : "旧任务");
+    expect(restored.chat.queue.read_snapshot(false).items.map((item) => item.text)).toEqual(
+      admitted ? [] : ["旧队列"],
+    );
     expect(restored.provider.state.callCount).toBe(0);
   } finally {
     await restored.chat.close();
