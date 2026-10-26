@@ -9,7 +9,7 @@ import { create_text_extractor } from "./extract";
 import { patch_gdsc } from "./gdsc";
 import { patch_source } from "./gdscript";
 import { patch_po } from "./po";
-import { read_scene, patch_scene } from "./scene";
+import { read_scene, patch_scene, type SceneChange } from "./scene";
 import { patch_resource, read_resource, resource_string } from "./resource";
 import { all_values } from "./variant";
 import { string, u32 } from "./binary";
@@ -101,13 +101,15 @@ function render_member(bytes: Buffer, file: string, items: readonly Item[]): Buf
     const key =
       location.kind === "scene"
         ? `${location.kind}:${location.node}:${location.property}`
-        : location.kind === "gdsc"
-          ? `${location.kind}:${location.token}`
-          : location.kind === "resource"
-            ? `${location.kind}:${location.offset}`
-            : location.kind === "slot"
-              ? `${location.kind}:${location.word}`
-              : `${location.kind}:${location.start}`;
+        : location.kind === "scene_value"
+          ? `${location.kind}:${location.node}:${location.property}:${location.offset}`
+          : location.kind === "gdsc"
+            ? `${location.kind}:${location.token}`
+            : location.kind === "resource"
+              ? `${location.kind}:${location.offset}`
+              : location.kind === "slot"
+                ? `${location.kind}:${location.word}`
+                : `${location.kind}:${location.start}`;
     assert(!changes.has(key), "Duplicate Godot location");
     changes.set(key, { location, change: { original: item.src, text: item.dst } });
   }
@@ -115,16 +117,18 @@ function render_member(bytes: Buffer, file: string, items: readonly Item[]): Buf
   const gdsc = new Map<number, Change>(),
     source = new Map<number, Change & { end: number }>(),
     po = new Map<number, Change & { end: number }>(),
-    scenes = new Map<string, Change>(),
+    scenes: SceneChange[] = [],
     slots = new Map<number, Change>(),
     edits: Edit[] = [];
   const kind = godot_member_kind(file, bytes);
   const resource = kind === "resource" || kind === "translation" ? read_resource(bytes) : null;
   const values = new Map(
-    resource?.properties.flatMap((property) =>
-      [...all_values(property.value)].map((value) => [value.start, value] as const),
-    ),
-  ); // 原稿偏移只索引一次，全部译文共用。
+    resource && resource.type !== "PackedScene" && resource.type !== "OptimizedTranslation"
+      ? resource.properties.flatMap((property) =>
+          [...all_values(property.value)].map((value) => [value.start, value] as const),
+        )
+      : [],
+  ); // 资源偏移共用一次索引。场景和优化语言表由各自写入器定位。
   for (const { location, change } of changes.values()) {
     switch (location.kind) {
       case "gdsc":
@@ -142,8 +146,9 @@ function render_member(bytes: Buffer, file: string, items: readonly Item[]): Buf
         break;
       }
       case "scene":
+      case "scene_value":
         assert(resource?.type === "PackedScene");
-        scenes.set(`${location.node}:${location.property}`, change);
+        scenes.push({ location, ...change });
         break;
       case "slot":
         assert(resource?.type === "OptimizedTranslation");
@@ -176,7 +181,7 @@ function render_member(bytes: Buffer, file: string, items: readonly Item[]): Buf
   if (gdsc.size) return patch_gdsc(bytes, gdsc);
   if (source.size) return Buffer.from(patch_source(bytes.toString("utf8"), source));
   if (po.size) return Buffer.from(patch_po(bytes.toString("utf8"), po));
-  if (scenes.size) return patch_scene(read_scene(resource!), scenes);
+  if (scenes.length) return patch_scene(read_scene(resource!), scenes);
   if (slots.size) return patch_translation(read_translation(resource!), slots);
   assert(resource);
   return patch_resource(resource, edits);

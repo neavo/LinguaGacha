@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
-import { patch_resource, resource_string, type ResourceDocument } from "./resource";
+import { patch_resource, type ResourceDocument } from "./resource";
 import { string, u32 } from "./binary";
-import { type Edit } from "../shared/splice";
+import { splice, type Edit } from "../shared/splice";
 import type { Value } from "./variant";
+import type { GodotLocation } from "./item";
 const FLAG_ID_IS_PATH = 1 << 30, // 节点编号改为 `node_paths` 下标。
   FLAG_MASK = (1 << 24) - 1, // 去掉标志位后的下标。
   NO_PARENT_SAVED = 0x7fffffff, // 父节点不在本场景保存。
@@ -107,25 +108,92 @@ export function read_scene(doc: ResourceDocument) {
   }
   return { doc, properties, variants, nodes: tree, connections };
 }
-/** 追加目标属性的 Variant 并重定向引用，避免修改其它节点的共享值。 */
+type SceneProperty = ReturnType<typeof read_scene>["properties"][number];
+type SceneLocation = Extract<GodotLocation, { kind: "scene" | "scene_value" }>;
+export type SceneChange = { location: SceneLocation; original: string; text: string };
+type SceneString = {
+  location: SceneLocation;
+  value: Value & { value: string };
+  isKey: boolean;
+  context: string;
+};
+
+/** 字符串偏移绑定原稿。阅读上下文只展示容器位置。 */
+export function* scene_strings(property: SceneProperty): Generator<SceneString> {
+  const base = { node: property.node, property: property.property };
+  /** 遍历内联容器，并将字典键身份传给整个键子树。 */
+  function* visit(value: Value, context: string, isKey: boolean): Generator<SceneString> {
+    if ((value.type === 5 || value.type === 44) && typeof value.value === "string") {
+      yield {
+        location:
+          value === property.value
+            ? { kind: "scene", ...base }
+            : { kind: "scene_value", ...base, offset: value.start },
+        value: value as Value & { value: string },
+        isKey,
+        context,
+      };
+    } else if (value.type === 26) {
+      const children = value.children!;
+      for (let i = 0; i < children.length; i += 2) {
+        const key = children[i]!;
+        yield* visit(key, `${context}[${i / 2}].key`, true);
+        const label = typeof key.value === "string" ? JSON.stringify(key.value) : i / 2;
+        yield* visit(children[i + 1]!, `${context}[${label}].value`, isKey);
+      }
+    } else if (value.type === 30 || value.type === 34) {
+      for (const [i, child] of value.children!.entries())
+        yield* visit(child, `${context}[${i}]`, isKey);
+    }
+  }
+  yield* visit(property.value, `${property.path}:${property.property}`, false);
+}
+
+/** 每个目标属性只追加一个 Variant 副本，保留原容器字节及其它节点的共享值。 */
 export function patch_scene(
   s: ReturnType<typeof read_scene>,
-  changes: ReadonlyMap<string, { original: string; text: string }>,
+  changes: readonly SceneChange[],
 ): Buffer {
-  if (!changes.size) return s.doc.bytes;
+  if (!changes.length) return s.doc.bytes;
+  const properties = new Map(s.properties.map((p) => [`${p.node}:${p.property}`, p]));
+  const groups = new Map<SceneProperty, SceneChange[]>();
+  for (const change of changes) {
+    const { location } = change;
+    const property = properties.get(`${location.node}:${location.property}`);
+    assert(property, "Invalid scene property");
+    const group = groups.get(property) ?? [];
+    group.push(change);
+    groups.set(property, group);
+  }
   const edits: Edit[] = [],
     added: Buffer[] = [];
   let count = s.variants.children!.length;
-  for (const [key, c] of changes) {
-    const p = s.properties.find((p) => `${p.node}:${p.property}` === key);
-    assert(p && (p.value.type === 5 || p.value.type === 44), "Invalid scene property");
-    assert.equal(p.value.value, c.original, "Stale scene text");
+  for (const [property, changes] of groups) {
+    // 每个属性只遍历一次。共享原值的不同属性分别收集修改。
+    const values = new Map([...scene_strings(property)].map(({ value }) => [value.start, value]));
+    const replacements = new Map<number, Edit>();
+    for (const change of changes) {
+      const offset =
+        change.location.kind === "scene" ? property.value.start : change.location.offset;
+      const value = values.get(offset);
+      assert(value, "Invalid scene string offset");
+      assert.equal(value.value, change.original, "Stale scene text");
+      assert(!replacements.has(offset), "Duplicate scene string");
+      replacements.set(offset, {
+        start: value.start - property.value.start,
+        end: value.end - property.value.start,
+        bytes:
+          value.encoding === "resource_string"
+            ? string(change.text, true)
+            : Buffer.concat([u32(value.type), string(change.text, true)]),
+      });
+    }
     added.push(
-      p.value.type === 44
-        ? Buffer.concat([u32(44), string(c.text, true)])
-        : resource_string(c.text),
+      splice(s.doc.body.subarray(property.value.start, property.value.end), [
+        ...replacements.values(),
+      ]),
     );
-    edits.push({ start: p.referenceAt, end: p.referenceAt + 4, bytes: u32(count++) });
+    edits.push({ start: property.referenceAt, end: property.referenceAt + 4, bytes: u32(count++) });
   }
   edits.push(
     { start: s.variants.start + 4, end: s.variants.start + 8, bytes: u32(count) },

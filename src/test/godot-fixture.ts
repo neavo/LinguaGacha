@@ -9,53 +9,7 @@ export function create_godot_fixture(version = "4.6"): Map<string, Buffer> {
     Buffer.concat([u32(34), u32(values.length), ...values.map((value) => string(value, true))]);
   const integers = (values: readonly number[]) =>
     Buffer.concat([u32(32), u32(values.length), ...values.map(u32)]);
-  const integer = (value: number) => Buffer.concat([u32(3), u32(value)]);
-  const bundled = new Map([
-    [
-      "names",
-      resource_strings([
-        "Control",
-        "Root",
-        "Label",
-        "Display",
-        "Unchanged",
-        "text",
-        "Inner",
-        "ui",
-        "pressed",
-        "_on_pressed",
-      ]),
-    ],
-    ["variants", Buffer.concat([u32(30), u32(1), u32(5), string("Shared", true)])],
-    ["node_count", integer(4)],
-    // 节点：parent, owner, type, name, instance, 属性数, (属性, 值)×n, 分组数, 分组×n。
-    [
-      "nodes",
-      integers([
-        -1, -1, 0, 1, -1, 0, 0, 0, 0, 2, 3, -1, 1, 5, 0, 0, 0, 0, 2, 4, -1, 1, 5, 0, 0, 1, 0, 0, 6,
-        -1, 0, 1, 7,
-      ]),
-    ],
-    ["conn_count", integer(1)],
-    ["conns", integers([3, 0, 8, 9, 0, 0, 0])], // Inner.pressed → 根节点 _on_pressed。
-    ["node_paths", Buffer.concat([u32(30), u32(0)])],
-    ["editable_instances", Buffer.concat([u32(30), u32(0)])],
-    ["version", integer(3)],
-  ]);
-  const scene = build_resource(
-    "PackedScene",
-    new Map([
-      [
-        "_bundled",
-        Buffer.concat([
-          u32(26),
-          u32(bundled.size),
-          ...[...bundled].flatMap(([name, value]) => [u32(5), string(name, true), value]),
-        ]),
-      ],
-    ]),
-    true,
-  );
+  const scene = godot_scene_fixture();
   const messages = ["Translated message", "Shared message"].map((text) => Buffer.from(text + "\0"));
   const strings = Buffer.concat(messages);
   const translation = build_resource(
@@ -138,6 +92,89 @@ export function create_godot_fixture(version = "4.6"): Map<string, Buffer> {
     ["po.translation", po],
     [".godot/global_script_class_cache.cfg", Buffer.from("list=[]\n")],
   ]);
+}
+
+/** 两个节点共享同一属性值，供场景提取、投影和写回契约共用。 */
+function godot_scene_fixture(
+  value = Buffer.concat([u32(5), string("Shared", true)]),
+  compressed = true,
+): Buffer {
+  const resource_strings = (values: readonly string[]) =>
+    Buffer.concat([u32(34), u32(values.length), ...values.map((value) => string(value, true))]);
+  const integers = (values: readonly number[]) =>
+    Buffer.concat([u32(32), u32(values.length), ...values.map(u32)]);
+  const integer = (value: number) => Buffer.concat([u32(3), u32(value)]);
+  const bundled = new Map([
+    [
+      "names",
+      resource_strings([
+        "Control",
+        "Root",
+        "Label",
+        "Display",
+        "Unchanged",
+        "text",
+        "Inner",
+        "ui",
+        "pressed",
+        "_on_pressed",
+      ]),
+    ],
+    ["variants", Buffer.concat([u32(30), u32(1), value])],
+    ["node_count", integer(4)],
+    // 节点：parent, owner, type, name, instance, 属性数, (属性, 值)×n, 分组数, 分组×n。
+    [
+      "nodes",
+      integers([
+        -1, -1, 0, 1, -1, 0, 0, 0, 0, 2, 3, -1, 1, 5, 0, 0, 0, 0, 2, 4, -1, 1, 5, 0, 0, 1, 0, 0, 6,
+        -1, 0, 1, 7,
+      ]),
+    ],
+    ["conn_count", integer(1)],
+    ["conns", integers([3, 0, 8, 9, 0, 0, 0])], // Inner.pressed → 根节点 _on_pressed。
+    ["node_paths", Buffer.concat([u32(30), u32(0)])],
+    ["editable_instances", Buffer.concat([u32(30), u32(0)])],
+    ["version", integer(3)],
+  ]);
+  return build_resource(
+    "PackedScene",
+    new Map([
+      [
+        "_bundled",
+        Buffer.concat([
+          u32(26),
+          u32(bundled.size),
+          ...[...bundled].flatMap(([name, value]) => [u32(5), string(name, true), value]),
+        ]),
+      ],
+    ]),
+    compressed,
+  );
+}
+
+/** 混合容器含复合字典键、标识符、噪声与普通数值。 */
+export function godot_nested_scene_fixture(compressed = true): Buffer {
+  const text = (s: string) => Buffer.concat([u32(5), string(s, true)]);
+  const array = (...values: Buffer[]) => Buffer.concat([u32(30), u32(values.length), ...values]);
+  const dictionary = (...pairs: [Buffer, Buffer][]) =>
+    Buffer.concat([u32(26), u32(pairs.length), ...pairs.flat()]);
+  return godot_scene_fixture(
+    array(
+      dictionary(
+        [text("text"), text("Token")],
+        [array(dictionary([text("Inner key"), text("Key child")])), text("Hello world")],
+        [
+          text("names"),
+          Buffer.concat([u32(34), u32(2), string("Alice", true), string("Bob Smith", true)]),
+        ],
+      ),
+      Buffer.concat([u32(44), string("Named value", true)]),
+      text("res://noise"),
+      Buffer.concat([u32(3), u32(42)]),
+      text("Shared"),
+    ),
+    compressed,
+  );
 }
 
 /** `extends RefCounted; func values(): return ["Shared", "Shared"]`，行表保留函数体缩进。 */

@@ -1,7 +1,7 @@
 import { godot_member_kind } from "./member";
 import type { GodotLocation } from "./item";
 import { read_gdsc, type TokenKind } from "./gdsc";
-import { read_scene } from "./scene";
+import { read_scene, scene_strings } from "./scene";
 import { read_resource } from "./resource";
 import {
   read_messages,
@@ -176,8 +176,8 @@ function classify_script_literal(g: Gdc, index: number, is_key: (s: string) => b
 function classify_appearance(text: string): Verdict {
   return is_noise(text) ? null : TEXT_APPEARANCE.test(text);
 }
-/** StringName 是引擎标识符类型，非噪声值一律规则跳过。 */
-function classify_string_name(text: string): Verdict {
+/** 字典键与 StringName 承载标识用途，非噪声值一律规则跳过。 */
+function classify_protected_string(text: string): Verdict {
   return is_noise(text) ? null : false;
 }
 /** 源码脚本没有 token，只用字面量两侧字符识别字典键和比较。 */
@@ -247,7 +247,7 @@ function extract(
   // 场景与资源字符串若是语言表消息键，控件会经 tr() 显示语言表译文，字符串本身不再翻译。
   const classify_value = (v: Value): Verdict =>
     v.type === 44
-      ? classify_string_name(String(v.value))
+      ? classify_protected_string(String(v.value))
       : is_key(String(v.value)) && !is_noise(String(v.value))
         ? false
         : classify_appearance(String(v.value));
@@ -265,19 +265,25 @@ function extract(
       const resource = read_resource(bytes);
       if (resource.type === "PackedScene")
         for (const p of read_scene(resource).properties) {
-          if ((p.value.type !== 5 && p.value.type !== 44) || typeof p.value.value !== "string")
-            continue;
-          const display =
-            p.value.type === 5 &&
-            !is_noise(p.value.value) &&
-            !is_key(p.value.value) &&
-            (DISPLAY_PROPERTY_PATH.test(p.property) ||
-              (p.property === "title" && TITLE_NODES.has(p.nodeType)));
-          add(
-            { kind: "scene", node: p.node, property: p.property },
-            p.value.value,
-            display ? true : classify_value(p.value),
-          );
+          for (const entry of scene_strings(p)) {
+            const { value, location, isKey } = entry;
+            const display =
+              location.kind === "scene" &&
+              value.type === 5 &&
+              !is_noise(value.value) &&
+              !is_key(value.value) &&
+              (DISPLAY_PROPERTY_PATH.test(p.property) ||
+                (p.property === "title" && TITLE_NODES.has(p.nodeType)));
+            add(
+              location,
+              value.value,
+              isKey
+                ? classify_protected_string(value.value)
+                : display
+                  ? true
+                  : classify_value(value),
+            );
+          }
         }
       else if (resource.type === DATA_RESOURCE)
         for (const property of resource.properties) {
