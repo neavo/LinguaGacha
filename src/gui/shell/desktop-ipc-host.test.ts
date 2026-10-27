@@ -299,7 +299,7 @@ describe("桌面 IPC 宿主", () => {
     });
     await expect(
       invoke(IPC_CHANNEL_PICK_PATH, {
-        kind: "fixed-project-directory",
+        kind: "directory",
         default_path: "C:/fixed",
         default_directory: "D:/recent",
       }),

@@ -3,6 +3,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { useTranslationGenerationFlow } from "./use-translation-generation-flow";
+import { create_desktop_bridge_api_mock } from "../../../test/desktop-bridge-mock";
 
 const mocks = vi.hoisted(() => ({
   api_fetch: vi.fn(),
@@ -10,6 +11,7 @@ const mocks = vi.hoisted(() => ({
   navigate_to_agent: vi.fn(),
   selected_route: "workbench",
   project_snapshot: { loaded: true, path: "E:/demo/sample.lg" },
+  settings_snapshot: { translation_save_mode: "PROJECT", translation_fixed_path: "" },
 }));
 
 vi.mock("@frontend/app/desktop/desktop-api", () => ({ api_fetch: mocks.api_fetch }));
@@ -26,7 +28,10 @@ vi.mock("@frontend/app/navigation/navigation-context", () => ({
   }),
 }));
 vi.mock("@frontend/app/state/use-desktop-state", () => ({
-  useDesktopState: () => ({ project_snapshot: mocks.project_snapshot }),
+  useDesktopState: () => ({
+    project_snapshot: mocks.project_snapshot,
+    settings_snapshot: mocks.settings_snapshot,
+  }),
 }));
 
 /** 通过渲染提交后的公开返回值观察译文生成流程。 */
@@ -46,15 +51,19 @@ describe("useTranslationGenerationFlow", () => {
   let latest_flow: ReturnType<typeof useTranslationGenerationFlow> | null = null;
 
   beforeEach(() => {
+    vi.stubGlobal("desktopApp", create_desktop_bridge_api_mock());
     mocks.api_fetch.mockReset();
     mocks.push_toast.mockReset();
     mocks.navigate_to_agent.mockReset();
     mocks.selected_route = "workbench";
     mocks.project_snapshot.loaded = true;
     mocks.project_snapshot.path = "E:/demo/sample.lg";
+    mocks.settings_snapshot.translation_save_mode = "PROJECT";
+    mocks.settings_snapshot.translation_fixed_path = "";
   });
 
   afterEach(async () => {
+    vi.unstubAllGlobals();
     if (root !== null) {
       await act(async () => root?.unmount());
     }
@@ -166,7 +175,10 @@ describe("useTranslationGenerationFlow", () => {
       await Promise.resolve();
     });
     expect(latest_flow?.state.phase).toBe("generating");
-    expect(mocks.api_fetch).toHaveBeenCalledWith("/api/translation/files/generate", {});
+    expect(mocks.api_fetch).toHaveBeenCalledWith("/api/translation/files/generate", {
+      project_path: "E:/demo/sample.lg",
+      output_directory: "E:/demo",
+    });
     expect(
       mocks.api_fetch.mock.calls.filter(([path]) => path === "/api/translation/files/generate"),
     ).toHaveLength(1);
@@ -174,6 +186,74 @@ describe("useTranslationGenerationFlow", () => {
     await act(async () => resolve_generation?.());
     expect(latest_flow?.state.phase).toBe("closed");
     expect(mocks.push_toast).not.toHaveBeenCalled();
+  });
+
+  it.each(["FIXED", "MANUAL"])("%s 模式使用确定的输出父目录", async (mode) => {
+    mocks.settings_snapshot.translation_save_mode = mode;
+    mocks.settings_snapshot.translation_fixed_path = "E:/fixed";
+    const pick = vi
+      .spyOn(window.desktopApp, "pickDirectory")
+      .mockResolvedValue({ canceled: false, paths: ["E:/chosen"] });
+    mocks.api_fetch
+      .mockResolvedValueOnce({
+        projectPath: mocks.project_snapshot.path,
+        warningSummary: { total_count: 0, entries: [] },
+      })
+      .mockResolvedValueOnce({ accepted: true });
+    await render_probe();
+    act(() => latest_flow?.request_generation());
+    await flush_microtasks();
+    await act(async () => {
+      await latest_flow?.confirm_generation();
+    });
+    expect(mocks.api_fetch).toHaveBeenLastCalledWith("/api/translation/files/generate", {
+      project_path: "E:/demo/sample.lg",
+      output_directory: mode === "FIXED" ? "E:/fixed" : "E:/chosen",
+    });
+    expect(pick).toHaveBeenCalledTimes(mode === "MANUAL" ? 1 : 0);
+    pick.mockRestore();
+  });
+
+  it("取消或工程切换后迟到的选择不会生成文件", async () => {
+    mocks.settings_snapshot.translation_save_mode = "MANUAL";
+    let resolve_pick!: (value: { canceled: boolean; paths: string[] }) => void;
+    const pick = vi.spyOn(window.desktopApp, "pickDirectory").mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolve_pick = resolve;
+        }),
+    );
+    mocks.api_fetch.mockResolvedValue({
+      projectPath: mocks.project_snapshot.path,
+      warningSummary: { total_count: 0, entries: [] },
+    });
+    await render_probe();
+    act(() => latest_flow?.request_generation());
+    await flush_microtasks();
+    let pending!: Promise<void>;
+    act(() => {
+      pending = latest_flow!.confirm_generation();
+    });
+    await act(async () => {
+      resolve_pick({ canceled: true, paths: [] });
+      await pending;
+    });
+    expect(latest_flow?.state.phase).toBe("closed");
+    act(() => latest_flow?.request_generation());
+    await flush_microtasks();
+    act(() => {
+      pending = latest_flow!.confirm_generation();
+    });
+    mocks.project_snapshot.path = "E:/demo/next.lg";
+    await render_probe();
+    await act(async () => {
+      resolve_pick({ canceled: false, paths: ["E:/chosen"] });
+      await pending;
+    });
+    expect(
+      mocks.api_fetch.mock.calls.filter(([url]) => url === "/api/translation/files/generate"),
+    ).toHaveLength(0);
+    pick.mockRestore();
   });
 
   it("译文生成业务错误与传输失败共用失败提示并允许重试", async () => {

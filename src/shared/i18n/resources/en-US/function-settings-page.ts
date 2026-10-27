@@ -4,6 +4,12 @@ import type { LocaleMessageSchema } from "../../types";
 export const en_us_function_settings_page = {
   title: "Function Settings",
   fields: {
+    source_language: {
+      description: "Set the language of the input text",
+    },
+    target_language: {
+      description: "Set the language of the output text",
+    },
     preceding_lines_threshold: {
       title: "Preceding Context Entries",
       description:
@@ -14,34 +20,33 @@ export const en_us_function_settings_page = {
       description:
         "Set the number of following text entries included as context in each task. This increases token usage. Disabled by default.",
     },
-    source_language: {
-      description: "Set the language of the input text",
-    },
-    target_language: {
-      description: "Set the language of the output text",
+    request_timeout: {
+      title: "Request Timeout",
+      description:
+        "Maximum wait for a model reply, in seconds. The task fails if no reply arrives in time.",
     },
     project_save_mode: {
       title: "Project Save Location",
       description: "Set the save location for project files when creating a new project",
-      description_fixed:
-        "Set the save location for project files when creating a new project" +
-        "\n" +
-        "currently {PATH}",
       options: {
         manual: "Choose every time",
         fixed: "Fixed directory",
         source: "Next to source files",
       },
     },
+    translation_save_mode: {
+      title: "Translation Save Location",
+      description: "Set where translation files are saved when generating translations",
+      options: {
+        manual: "Choose every time",
+        fixed: "Fixed directory",
+        project: "Next to the project file",
+      },
+    },
     output_folder_open_on_finish: {
       title: "Open Output Folder When Translation File Is Generated",
       description:
         "When enabled, the output folder will be opened after the translated file is generated successfully",
-    },
-    request_timeout: {
-      title: "Request Timeout",
-      description:
-        "Maximum wait for a model reply, in seconds. The task fails if no reply arrives in time.",
     },
   },
   feedback: {

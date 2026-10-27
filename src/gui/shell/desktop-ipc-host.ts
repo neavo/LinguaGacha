@@ -220,7 +220,7 @@ async function pick_path(
       return pick_open_path(main_window, request.default_directory, {
         properties: ["openFile", "multiSelections"],
       });
-    case "fixed-project-directory":
+    case "directory":
       return pick_open_path(
         main_window,
         typeof request.default_path === "string" && request.default_path !== ""

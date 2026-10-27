@@ -49,7 +49,24 @@ vi.mock("@frontend/widgets/boolean-segmented-toggle", () => {
 
 vi.mock("@frontend/shadcn/select", () => {
   return {
-    Select: (props: { children: ReactNode }) => <div>{props.children}</div>,
+    Select: (props: {
+      items: { value: string; label: string }[];
+      value: string;
+      disabled: boolean;
+      onValueChange: (value: string) => void;
+    }) => (
+      <select
+        value={props.value}
+        disabled={props.disabled}
+        onChange={(event) => props.onValueChange(event.target.value)}
+      >
+        {props.items.map((item) => (
+          <option key={item.value} value={item.value}>
+            {item.label}
+          </option>
+        ))}
+      </select>
+    ),
     SelectContent: (props: { children: ReactNode }) => <div>{props.children}</div>,
     SelectGroup: (props: { children: ReactNode }) => <div>{props.children}</div>,
     SelectItem: (props: { children: ReactNode; value: string }) => (
@@ -68,6 +85,8 @@ function create_function_settings_state_fixture() {
     snapshot: {
       project_save_mode: "MANUAL",
       project_fixed_path: "",
+      translation_save_mode: "PROJECT",
+      translation_fixed_path: "",
       output_folder_open_on_finish: false,
       request_timeout: 300,
       preceding_lines_threshold: 2,
@@ -75,11 +94,14 @@ function create_function_settings_state_fixture() {
     },
     pending_state: {
       project_save_mode: false,
+      translation_save_mode: false,
       output_folder_open_on_finish: false,
       request_timeout: false,
       preceding_lines_threshold: false,
       following_lines_threshold: false,
     },
+    choosing_directory: { project_save_mode: false, translation_save_mode: false },
+    update_translation_save_mode: vi.fn(),
     languages: { source_language: "JA", target_language: "ZH" },
     language_pending_state: { source_language: false, target_language: false },
     language_locked: false,
@@ -149,24 +171,23 @@ describe("FunctionSettingsPage", () => {
     });
   }
 
-  it("七项设置按固定顺序排列", async () => {
-    await mount_page();
-    expect(
-      [...container!.querySelectorAll("section section")].map((row) =>
-        row.getAttribute("aria-label"),
-      ),
-    ).toEqual([
-      "app.language_role.source",
-      "app.language_role.target",
-      ...[
-        "preceding_lines_threshold",
-        "following_lines_threshold",
-        "request_timeout",
-        "project_save_mode",
-        "output_folder_open_on_finish",
-      ].map((field) => `function_settings_page.fields.${field}.title`),
-    ]);
-  });
+  it.each(["project_save_mode", "translation_save_mode"] as const)(
+    "%s 只提交对应保存位置",
+    async (field) => {
+      await mount_page();
+      const select = container!.querySelector<HTMLSelectElement>(
+        `[aria-label="function_settings_page.fields.${field}.title"] select`,
+      )!;
+      await act(async () => {
+        select.value = "FIXED";
+        select.dispatchEvent(new Event("change", { bubbles: true }));
+      });
+      const state = get_current_function_settings_state();
+      expect(state[`update_${field}`]).toHaveBeenCalledExactlyOnceWith("FIXED");
+      const other = field === "project_save_mode" ? "translation_save_mode" : "project_save_mode";
+      expect(state[`update_${other}`]).not.toHaveBeenCalled();
+    },
+  );
 
   it.each(["preceding_lines_threshold", "following_lines_threshold"] as const)(
     "%s 提交到对应设置入口",

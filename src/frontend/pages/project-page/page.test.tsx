@@ -194,7 +194,7 @@ function install_desktop_app_fixture(): void {
     value: create_desktop_bridge_api_mock({
       methods: {
         getPathForFile: vi.fn(() => ""),
-        pickFixedProjectDirectory: vi.fn(async () => ({ canceled: true, paths: [] })),
+        pickDirectory: vi.fn(async () => ({ canceled: true, paths: [] })),
         pickProjectFilePath: vi.fn(async () => ({ canceled: true, paths: [] })),
         pickProjectSavePath: vi.fn(async () => ({ canceled: true, paths: [] })),
         pickProjectSourceDirectoryPath: vi.fn(async () => ({ canceled: true, paths: [] })),

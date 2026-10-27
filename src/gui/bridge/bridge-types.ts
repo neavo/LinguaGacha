@@ -45,7 +45,7 @@ export type DesktopPathPickIntent =
   | { kind: "project-file" }
   | { kind: "project-save"; default_name: string }
   | { kind: "workbench-files" }
-  | { kind: "fixed-project-directory"; default_path?: string }
+  | { kind: "directory"; default_path?: string }
   | { kind: "glossary-import" }
   | { kind: "glossary-export"; default_name: string }
   | { kind: "prompt-import" }

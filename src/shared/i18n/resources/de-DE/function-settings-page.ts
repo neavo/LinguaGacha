@@ -4,6 +4,12 @@ import type { LocaleMessageSchema } from "../../types";
 export const de_de_function_settings_page = {
   title: "Funktionseinstellungen",
   fields: {
+    source_language: {
+      description: "Legt die Sprache des Eingabetexts fest",
+    },
+    target_language: {
+      description: "Legt die Sprache des Ausgabetexts fest",
+    },
     preceding_lines_threshold: {
       title: "Anzahl vorhergehender Kontexteinträge",
       description:
@@ -14,35 +20,35 @@ export const de_de_function_settings_page = {
       description:
         "Legt fest, wie viele nachfolgende Texteinträge jede Aufgabe als Kontext enthält. Dies erhöht den Tokenverbrauch. Standardmäßig deaktiviert.",
     },
-    source_language: {
-      description: "Legt die Sprache des Eingabetexts fest",
-    },
-    target_language: {
-      description: "Legt die Sprache des Ausgabetexts fest",
+    request_timeout: {
+      title: "Anfrage-Timeout",
+      description:
+        "Maximale Antwortzeit in Sekunden. Ohne Antwort innerhalb dieser Frist gilt die Aufgabe als fehlgeschlagen.",
     },
     project_save_mode: {
       title: "Projekt-Speicherort",
       description:
         "Legt den Speicherort für Projektdateien beim Erstellen eines neuen Projekts fest",
-      description_fixed:
-        "Legt den Speicherort für Projektdateien beim Erstellen eines neuen Projekts fest" +
-        "\n" +
-        "aktuell {PATH}",
       options: {
         manual: "Jedes Mal auswählen",
         fixed: "Fester Ordner",
         source: "Neben den Quelldateien",
       },
     },
+    translation_save_mode: {
+      title: "Speicherort der Übersetzung",
+      description:
+        "Legt den Speicherort für Übersetzungsdateien beim Erstellen der Übersetzung fest",
+      options: {
+        manual: "Jedes Mal auswählen",
+        fixed: "Fester Ordner",
+        project: "Neben der Projektdatei",
+      },
+    },
     output_folder_open_on_finish: {
       title: "Ausgabeordner öffnen, wenn die Übersetzungsdatei erstellt wurde",
       description:
         "Wenn aktiviert, wird der Ausgabeordner geöffnet, nachdem die übersetzte Datei erfolgreich erstellt wurde",
-    },
-    request_timeout: {
-      title: "Anfrage-Timeout",
-      description:
-        "Maximale Antwortzeit in Sekunden. Ohne Antwort innerhalb dieser Frist gilt die Aufgabe als fehlgeschlagen.",
     },
   },
   feedback: {

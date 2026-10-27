@@ -1736,7 +1736,10 @@ it("PDF 零条目工程按页保存、隔离旧指纹，语言变化后重建工
         )
       )["status"],
     ).toBe("applied");
-    const output = await services.files.translationGeneration.generate_files();
+    const output = await services.files.translationGeneration.generate_files({
+      project_path: services.state.session.require_loaded_project_path(),
+      output_directory: path.dirname(services.state.session.require_loaded_project_path()),
+    });
     expect(pdfHost.mock.calls[0]?.[0].html).toContain(draft.translation.markdown);
     expect(output.pdf_files).toEqual([
       {

@@ -9,6 +9,7 @@ import type {
   SettingsSnapshotPayload,
 } from "@frontend/app/state/desktop-state-context";
 import { useFunctionSettingsState } from "@frontend/pages/function-settings-page/use-function-settings-state";
+import { create_desktop_bridge_api_mock } from "../../../test/desktop-bridge-mock";
 
 type RuntimeFixture = {
   settings_snapshot: SettingsSnapshot;
@@ -135,6 +136,7 @@ describe("useFunctionSettingsState", () => {
   let latest_state: ReturnType<typeof useFunctionSettingsState> | null = null;
 
   afterEach(async () => {
+    vi.unstubAllGlobals();
     if (root !== null) {
       await act(async () => {
         root?.unmount();
@@ -286,5 +288,102 @@ describe("useFunctionSettingsState", () => {
       ["/api/settings/update", { preceding_lines_threshold: 3 }],
       ["/api/settings/update", { following_lines_threshold: 4 }],
     ]);
+  });
+
+  it("两个固定目录独立选择，取消和保存失败保留原设置", async () => {
+    vi.stubGlobal("desktopApp", create_desktop_bridge_api_mock());
+    runtime_fixture.current.settings_snapshot = create_settings_snapshot({
+      project_fixed_path: "E:/projects",
+      translation_fixed_path: "E:/translations",
+    });
+    const pick = vi.spyOn(window.desktopApp, "pickDirectory");
+    pick
+      .mockResolvedValueOnce({ canceled: true, paths: [] })
+      .mockResolvedValueOnce({ canceled: false, paths: ["E:/new"] })
+      .mockResolvedValueOnce({ canceled: false, paths: ["E:/other"] });
+    await render_hook();
+    await act(async () => {
+      await latest_state?.update_project_save_mode("FIXED");
+    });
+    expect(api_fetch).not.toHaveBeenCalled();
+    vi.mocked(api_fetch).mockResolvedValueOnce({
+      settings: create_settings_snapshot({
+        project_fixed_path: "E:/projects",
+        translation_save_mode: "FIXED",
+        translation_fixed_path: "E:/new",
+      }),
+    } as never);
+    await act(async () => {
+      await latest_state?.update_translation_save_mode("FIXED");
+    });
+    expect(api_fetch).toHaveBeenLastCalledWith("/api/settings/update", {
+      translation_save_mode: "FIXED",
+      translation_fixed_path: "E:/new",
+    });
+    expect(latest_state?.snapshot.project_fixed_path).toBe("E:/projects");
+    await act(async () => {
+      await latest_state?.update_translation_save_mode("FIXED");
+    });
+    expect(pick).toHaveBeenCalledTimes(2);
+    vi.mocked(api_fetch).mockRejectedValueOnce(new Error("save failed"));
+    await act(async () => {
+      await latest_state?.update_project_save_mode("FIXED");
+    });
+    expect(latest_state?.snapshot.translation_fixed_path).toBe("E:/new");
+    expect(latest_state?.snapshot.project_save_mode).toBe("MANUAL");
+    expect(latest_state?.snapshot.project_fixed_path).toBe("E:/projects");
+    expect(toast_fixture.current.push_toast).toHaveBeenCalledExactlyOnceWith(
+      "app.feedback.save_failed",
+      expect.any(Error),
+    );
+    expect(pick.mock.calls.map(([path]) => path)).toEqual([
+      "E:/projects",
+      "E:/translations",
+      "E:/projects",
+    ]);
+    pick.mockRestore();
+  });
+
+  it("选择和保存期间分别标记对应行忙碌", async () => {
+    vi.stubGlobal("desktopApp", create_desktop_bridge_api_mock());
+    let resolve_pick!: (value: { canceled: boolean; paths: string[] }) => void;
+    vi.spyOn(window.desktopApp, "pickDirectory").mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolve_pick = resolve;
+        }),
+    );
+    let resolve_save!: (value: unknown) => void;
+    vi.mocked(api_fetch).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolve_save = resolve;
+        }),
+    );
+    await render_hook();
+    let pending!: Promise<void>;
+    act(() => {
+      pending = latest_state!.update_translation_save_mode("FIXED");
+    });
+    expect(latest_state?.choosing_directory).toEqual({
+      project_save_mode: false,
+      translation_save_mode: true,
+    });
+    await act(async () => {
+      resolve_pick({ canceled: false, paths: ["E:/chosen"] });
+      await Promise.resolve();
+    });
+    expect(latest_state?.pending_state.translation_save_mode).toBe(true);
+    expect(latest_state?.pending_state.project_save_mode).toBe(false);
+    await act(async () => {
+      resolve_save({
+        settings: create_settings_snapshot({
+          translation_save_mode: "FIXED",
+          translation_fixed_path: "E:/chosen",
+        }),
+      });
+      await pending;
+    });
+    expect(latest_state?.pending_state.translation_save_mode).toBe(false);
   });
 });

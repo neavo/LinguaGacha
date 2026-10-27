@@ -117,6 +117,67 @@ function create_database(
 }
 
 describe("TranslationFileGenerationService", () => {
+  it("GUI 校验请求后在指定父目录生成，并避开两个目录的重名", async () => {
+    const project_path = path.join(temp_dir, "demo.lg");
+    const output_directory = path.join(temp_dir, "destination");
+    fs.mkdirSync(output_directory);
+    fs.writeFileSync(project_path, "project");
+    const session = new ProjectSessionState();
+    session.mark_loaded(project_path);
+    const database = create_database([
+      {
+        id: 1,
+        src: "原文",
+        dst: "译文",
+        status: "PROCESSED",
+        file_type: "TXT",
+        file_path: "script.txt",
+        row: 0,
+      },
+    ]);
+    const read = vi.spyOn(database, "get_all_meta");
+    const service = new TranslationFileGenerationService(
+      new GameDirectoryOperations(),
+      database,
+      create_setting_service(),
+      session,
+      async () => {},
+      create_pdf_execution(),
+    );
+    const text = create_text_resolver("zh-CN");
+    fs.mkdirSync(
+      path.join(output_directory, `demo_${text("app.translation_generation.directory.bilingual")}`),
+    );
+    for (const request of [
+      {},
+      { project_path: "other", output_directory },
+      { project_path, output_directory: "relative" },
+      { project_path, output_directory: path.join(temp_dir, "missing") },
+      { project_path, output_directory: project_path },
+    ]) {
+      await expect(service.generate_files(request)).rejects.toMatchObject({
+        code: "translation.generation_failed",
+      });
+    }
+    expect(read).not.toHaveBeenCalled();
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date(2026, 0, 2, 3, 4, 5));
+      const first = await service.generate_files({ project_path, output_directory });
+      const second = await service.generate_files({ project_path, output_directory });
+      const third = await service.generate_files({ project_path, output_directory });
+      expect(new Set([first.output_path, second.output_path, third.output_path]).size).toBe(3);
+      expect(path.basename(first.output_path)).not.toBe(
+        `demo_${text("app.translation_generation.directory.translated")}`,
+      );
+      for (const result of [first, second, third]) {
+        expect(path.dirname(result.output_path)).toBe(output_directory);
+        expect(fs.readFileSync(path.join(result.output_path, "script.txt"), "utf8")).toBe("译文");
+      }
+    } finally {
+      vi.useRealTimers();
+    }
+  });
   it("旧 ASS／SRT 条目通过新字幕入口导出，条目事实无需迁移", async () => {
     const time = "00:00:01,000 --> 00:00:02,000";
     const fields =
@@ -200,7 +261,10 @@ describe("TranslationFileGenerationService", () => {
       );
       const result =
         entry === "gui"
-          ? await service.generate_files()
+          ? await service.generate_files({
+              project_path: session.require_loaded_project_path(),
+              output_directory: temp_dir,
+            })
           : await service.generate_files_to_directory(path.join(temp_dir, "out"), ["empty.lrc"]);
       for (const [file, { content }] of Object.entries(assets)) {
         if (entry === "directory" && file === "empty.lrc") {
@@ -247,7 +311,10 @@ describe("TranslationFileGenerationService", () => {
       );
       const result =
         entry === "gui"
-          ? await service.generate_files()
+          ? await service.generate_files({
+              project_path: session.require_loaded_project_path(),
+              output_directory: temp_dir,
+            })
           : await service.generate_files_to_directory(path.join(temp_dir, "out"));
       expect(result.pdf_files).toEqual([
         {
@@ -311,7 +378,10 @@ describe("TranslationFileGenerationService", () => {
       async () => {},
       create_pdf_execution(),
     );
-    const output = await service.generate_files();
+    const output = await service.generate_files({
+      project_path: session.require_loaded_project_path(),
+      output_directory: temp_dir,
+    });
     expect(
       fs.readFileSync(path.join(output.output_path, "book.pdf")).equals(Buffer.from(source)),
     ).toBe(true);
@@ -358,7 +428,10 @@ describe("TranslationFileGenerationService", () => {
       create_pdf_execution(),
     );
 
-    const result = await service.generate_files();
+    const result = await service.generate_files({
+      project_path: session_state.require_loaded_project_path(),
+      output_directory: temp_dir,
+    });
     expect(fs.readFileSync(path.join(String(result.output_path), "script.txt"), "utf-8")).toBe(
       `${dst}\n${dst}`,
     );
@@ -430,7 +503,10 @@ describe("TranslationFileGenerationService", () => {
       create_pdf_execution(),
     );
 
-    const result = await service.generate_files();
+    const result = await service.generate_files({
+      project_path: session_state.require_loaded_project_path(),
+      output_directory: temp_dir,
+    });
     expect(fs.readFileSync(path.join(String(result.output_path), "sub.vtt"), "utf-8")).toContain(
       "<lang en>Hello</lang>",
     );
@@ -484,7 +560,10 @@ describe("TranslationFileGenerationService", () => {
       create_pdf_execution(),
     );
 
-    const result = await service.generate_files();
+    const result = await service.generate_files({
+      project_path: session_state.require_loaded_project_path(),
+      output_directory: temp_dir,
+    });
 
     expect(
       JSON.parse(fs.readFileSync(path.join(String(result.output_path), "actors.json"), "utf-8")),
@@ -534,7 +613,10 @@ describe("TranslationFileGenerationService", () => {
       create_pdf_execution(),
     );
 
-    const result = await service.generate_files();
+    const result = await service.generate_files({
+      project_path: session_state.require_loaded_project_path(),
+      output_directory: temp_dir,
+    });
 
     expect(fs.readFileSync(path.join(String(result.output_path), "readme.md"), "utf-8")).toBe(
       "# Title\n\n![Cover](data:image/png;base64,AAAA)\n",
@@ -576,7 +658,12 @@ describe("TranslationFileGenerationService", () => {
       `demo_${text("app.translation_generation.directory.bilingual")}`,
     );
 
-    await expect(service.generate_files()).resolves.toEqual({
+    await expect(
+      service.generate_files({
+        project_path: session_state.require_loaded_project_path(),
+        output_directory: temp_dir,
+      }),
+    ).resolves.toEqual({
       accepted: true,
       pdf_files: [],
       output_path: translated_path,
@@ -616,7 +703,10 @@ describe("TranslationFileGenerationService", () => {
       create_pdf_execution(),
     );
 
-    const result = await service.generate_files();
+    const result = await service.generate_files({
+      project_path: session_state.require_loaded_project_path(),
+      output_directory: temp_dir,
+    });
     expect(output_folder_opener).toHaveBeenCalledExactlyOnceWith(result.output_path);
   });
 
@@ -686,7 +776,12 @@ describe("TranslationFileGenerationService", () => {
       log_collector,
     );
 
-    await expect(service.generate_files()).resolves.toMatchObject({ accepted: true });
+    await expect(
+      service.generate_files({
+        project_path: session_state.require_loaded_project_path(),
+        output_directory: temp_dir,
+      }),
+    ).resolves.toMatchObject({ accepted: true });
 
     expect(log_collector.error).toHaveBeenCalledExactlyOnceWith(
       create_text_resolver("zh-CN")("app.translation_generation.log.open_output_folder_failed"),
@@ -745,7 +840,10 @@ describe("TranslationFileGenerationService", () => {
 
       const result =
         entry === "gui-write"
-          ? service.generate_files()
+          ? service.generate_files({
+              project_path: session_state.require_loaded_project_path(),
+              output_directory: temp_dir,
+            })
           : service.generate_files_to_directory(path.join(temp_dir, "out"));
       await expect(result).rejects.toMatchObject({
         code: "translation.generation_failed",
@@ -784,6 +882,11 @@ describe("TranslationFileGenerationService", () => {
       async () => {},
       create_pdf_execution(),
     );
-    await expect(service.generate_files()).rejects.toBe(error);
+    await expect(
+      service.generate_files({
+        project_path: session.require_loaded_project_path(),
+        output_directory: temp_dir,
+      }),
+    ).rejects.toBe(error);
   });
 });

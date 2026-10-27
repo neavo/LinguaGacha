@@ -27,6 +27,12 @@ export const CONTEXT_LINES_THRESHOLD_MAX = 9_999_999;
 export const PROJECT_SAVE_MODES = ["MANUAL", "FIXED", "SOURCE"] as const; // ProjectSaveMode 是项目保存位置策略，页面和设置服务都从这里取合法值
 
 export type ProjectSaveMode = (typeof PROJECT_SAVE_MODES)[number];
+export const TRANSLATION_SAVE_MODES = ["MANUAL", "FIXED", "PROJECT"] as const; // 译文以工程文件作为相对位置基准。
+export type TranslationSaveMode = (typeof TRANSLATION_SAVE_MODES)[number];
+/** 在页面输入和设置读取处收窄译文保存模式。 */
+export function is_translation_save_mode(value: unknown): value is TranslationSaveMode {
+  return TRANSLATION_SAVE_MODES.includes(value as TranslationSaveMode);
+}
 /** 应用级工程写入审批偏好，跨对话、工程和应用重启保留。 */
 export const AGENT_APPROVAL_MODES = ["manual", "auto"] as const;
 export type AgentApprovalMode = (typeof AGENT_APPROVAL_MODES)[number];
@@ -42,6 +48,8 @@ export const SETTING_SNAPSHOT_SCHEMA = Type.Object(
     app_language: Type.Enum(APP_LANGUAGE_DEFINITIONS.map(({ code }) => code)), // 界面与日志文案的应用语言。
     project_save_mode: Type.Enum(PROJECT_SAVE_MODES), // 新建工程的保存位置策略。
     project_fixed_path: Type.String(), // 固定保存模式使用的工程目录。
+    translation_save_mode: Type.Enum(TRANSLATION_SAVE_MODES), // GUI 译文生成的保存位置策略。
+    translation_fixed_path: Type.String(), // 译文固定模式使用的输出父目录。
     output_folder_open_on_finish: Type.Boolean(), // 译文生成成功后是否打开输出目录。
     request_timeout: Type.Number(), // 等待模型回复的超时时间，单位为秒。
     preceding_lines_threshold: Type.Integer({
@@ -76,6 +84,8 @@ export const DEFAULT_SETTING: SettingSnapshot & JsonRecord = {
   app_language: "ZH",
   project_save_mode: "MANUAL",
   project_fixed_path: "",
+  translation_save_mode: "PROJECT",
+  translation_fixed_path: "",
   output_folder_open_on_finish: false,
   request_timeout: 180,
   preceding_lines_threshold: 0,
@@ -206,6 +216,9 @@ export class Setting {
     }
     if (key === "project_save_mode") {
       return Setting.normalize_project_save_mode(value);
+    }
+    if (key === "translation_save_mode") {
+      return is_translation_save_mode(value) ? value : "PROJECT";
     }
     if (key === "recent_projects") {
       return normalize_recent_project_settings(value) as unknown as JsonValue;
