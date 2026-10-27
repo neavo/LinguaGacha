@@ -2,9 +2,9 @@ import { zh_cn_app } from "../zh-CN/app";
 import type { LocaleMessageSchema } from "../../types";
 
 export const en_us_app = {
-  source_operation: {
-    success: "Source processing succeeded …",
-    failed: "Source processing failed …",
+  data_refresh: {
+    success: "Data refresh succeeded …",
+    failed: "Data refresh failed …",
   },
   godot_pack_order: {
     title: "Resource pack priority",

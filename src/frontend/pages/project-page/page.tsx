@@ -554,7 +554,7 @@ export function ProjectPage(_props: ProjectPageProps): JSX.Element {
       if (source_file_count === 0) {
         set_selected_source(null);
         if (Array.isArray(payload.failed_files) && payload.failed_files.length)
-          push_error_toast(t("project_page.create.unavailable"), t("app.source_operation.failed"));
+          push_error_toast(t("project_page.create.unavailable"), t("app.data_refresh.failed"));
         else push_toast("warning", t("project_page.create.unavailable"));
       } else {
         set_selected_source({
@@ -702,7 +702,6 @@ export function ProjectPage(_props: ProjectPageProps): JSX.Element {
               languages,
             },
           );
-          push_toast("success", t("app.source_operation.success"));
           const created_project_path =
             typeof create_payload.project?.path === "string" &&
             create_payload.project.path.trim() !== ""

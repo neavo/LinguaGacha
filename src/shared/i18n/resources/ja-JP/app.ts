@@ -2,9 +2,9 @@ import type { zh_cn_app } from "../zh-CN/app";
 import type { LocaleMessageSchema } from "../../types";
 
 export const ja_jp_app = {
-  source_operation: {
-    success: "原稿処理に成功しました …",
-    failed: "原稿処理に失敗しました …",
+  data_refresh: {
+    success: "データの更新に成功しました …",
+    failed: "データの更新に失敗しました …",
   },
   godot_pack_order: {
     title: "リソースパックの優先順位",
