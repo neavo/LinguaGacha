@@ -151,9 +151,10 @@ const DESKTOP_BRIDGE_API: DesktopBridgeApi = {
   async pickWorkbenchFilePath(): Promise<DesktopPathPickResult> {
     return invoke_path_picker({ kind: "workbench-files" });
   },
-  async pickFixedProjectDirectory(default_path?: string): Promise<DesktopPathPickResult> {
+  /** 将默认目录交给宿主，复用最近目录和取消结果的处理。 */
+  async pickDirectory(default_path?: string): Promise<DesktopPathPickResult> {
     return invoke_path_picker({
-      kind: "fixed-project-directory",
+      kind: "directory",
       ...(default_path === undefined ? {} : { default_path }),
     });
   },
@@ -205,7 +206,7 @@ async function invoke_path_picker(intent: DesktopPathPickIntent): Promise<Deskto
 function is_directory_pick(intent: DesktopPathPickIntent): boolean {
   return (
     intent.kind === "project-source-directory" ||
-    intent.kind === "fixed-project-directory" ||
+    intent.kind === "directory" ||
     intent.kind === "game-directory"
   );
 }

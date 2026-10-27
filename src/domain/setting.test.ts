@@ -10,6 +10,21 @@ import {
 import { Check } from "typebox/value";
 
 describe("设置快照", () => {
+  it("旧设置默认保存到工程旁，译文固定目录可独立保留", () => {
+    const old = Setting.from_json({ project_fixed_path: "E:/projects" });
+    expect(old.to_snapshot()).toMatchObject({
+      translation_save_mode: "PROJECT",
+      translation_fixed_path: "",
+    });
+    const updated = old
+      .with_setting_value("translation_save_mode", "FIXED")
+      .with_setting_value("translation_fixed_path", "E:/translations");
+    expect(Setting.from_json(updated.to_json()).to_snapshot()).toMatchObject({
+      project_fixed_path: "E:/projects",
+      translation_save_mode: "FIXED",
+      translation_fixed_path: "E:/translations",
+    });
+  });
   it("序列化与快照均移除旧输出设置", () => {
     const setting = Setting.from_json({
       deduplication_in_bilingual: false,

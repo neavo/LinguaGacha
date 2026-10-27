@@ -1,4 +1,8 @@
-import { normalize_context_lines_threshold } from "@domain/setting";
+import {
+  normalize_context_lines_threshold,
+  type ProjectSaveMode,
+  type TranslationSaveMode,
+} from "@domain/setting";
 import {
   push_error_toast,
   push_toast,
@@ -23,13 +27,13 @@ import {
   REQUEST_TIMEOUT_MIN,
   build_function_settings_snapshot,
   type FunctionSettingsSnapshot,
-  type ProjectSaveMode,
 } from "@frontend/pages/function-settings-page/types";
 
 const FUNCTION_SETTINGS_PENDING_FIELDS = [
   "preceding_lines_threshold",
   "following_lines_threshold",
   "project_save_mode",
+  "translation_save_mode",
   "output_folder_open_on_finish",
   "request_timeout",
 ] as const;
@@ -50,6 +54,8 @@ type UseFunctionSettingsStateResult = {
   update_source_language: (next_language: string) => Promise<void>;
   update_target_language: (next_language: string) => Promise<void>;
   update_project_save_mode: (next_mode: ProjectSaveMode) => Promise<void>;
+  update_translation_save_mode: (next_mode: TranslationSaveMode) => Promise<void>;
+  choosing_directory: Record<"project_save_mode" | "translation_save_mode", boolean>;
   update_output_folder_open_on_finish: (next_checked: boolean) => Promise<void>;
   update_preceding_lines_threshold: (next_value: number) => Promise<void>;
   update_following_lines_threshold: (next_value: number) => Promise<void>;
@@ -74,6 +80,11 @@ export function useFunctionSettingsState(): UseFunctionSettingsStateResult {
   const { snapshot, pending_state, commit_update } = useSettingsEditor({
     select_snapshot: build_function_settings_snapshot,
     pending_fields: FUNCTION_SETTINGS_PENDING_FIELDS,
+  });
+  // 原生目录选择的等待状态独立于设置保存，两行分别维护。
+  const [choosing_directory, set_choosing_directory] = useState({
+    project_save_mode: false,
+    translation_save_mode: false,
   });
   const runtime_locked = project_snapshot.loaded && is_runtime_busy(runtime_snapshot);
   const language_locked = !project_snapshot.loaded || runtime_locked;
@@ -137,37 +148,34 @@ export function useFunctionSettingsState(): UseFunctionSettingsStateResult {
     [commit_project_write, language_locked, languages, t],
   );
 
-  const update_project_save_mode = useCallback(
-    async (next_mode: ProjectSaveMode): Promise<void> => {
-      if (snapshot.project_save_mode === next_mode) {
-        return;
-      }
-
+  /** 两类保存位置共用目录选择流程，模式与路径在同一次请求中提交。 */
+  const update_save_mode = useCallback(
+    async (
+      field: "project_save_mode" | "translation_save_mode",
+      next_mode: ProjectSaveMode | TranslationSaveMode,
+    ): Promise<void> => {
+      if (snapshot[field] === next_mode) return;
+      const path_field =
+        field === "project_save_mode" ? "project_fixed_path" : "translation_fixed_path";
       if (next_mode === "FIXED") {
+        let selected_path: string;
+        set_choosing_directory((previous) => ({ ...previous, [field]: true }));
         try {
-          const result = await window.desktopApp.pickFixedProjectDirectory(
-            snapshot.project_fixed_path,
-          );
-          const selected_path = result.paths[0] ?? "";
-          if (result.canceled || selected_path === "") {
-            return;
-          }
-
-          await commit_update("project_save_mode", {
-            project_save_mode: next_mode,
-            project_fixed_path: selected_path,
-          });
+          const result = await window.desktopApp.pickDirectory(snapshot[path_field]);
+          if (result.canceled || !result.paths[0]) return;
+          selected_path = result.paths[0];
         } catch (error) {
           push_error_toast(t("function_settings_page.feedback.pick_directory_failed"), error);
+          return;
+        } finally {
+          set_choosing_directory((previous) => ({ ...previous, [field]: false }));
         }
+        await commit_update(field, { [field]: next_mode, [path_field]: selected_path });
         return;
       }
-
-      await commit_update("project_save_mode", {
-        project_save_mode: next_mode,
-      });
+      await commit_update(field, { [field]: next_mode });
     },
-    [commit_update, snapshot.project_fixed_path, snapshot.project_save_mode, t],
+    [commit_update, snapshot, t],
   );
 
   const update_output_folder_open_on_finish = useCallback(
@@ -219,7 +227,9 @@ export function useFunctionSettingsState(): UseFunctionSettingsStateResult {
     runtime_locked,
     update_source_language: (value) => update_language("source_language", value),
     update_target_language: (value) => update_language("target_language", value),
-    update_project_save_mode,
+    choosing_directory,
+    update_project_save_mode: (mode) => update_save_mode("project_save_mode", mode),
+    update_translation_save_mode: (mode) => update_save_mode("translation_save_mode", mode),
     update_output_folder_open_on_finish,
     update_request_timeout,
     update_preceding_lines_threshold: (value) =>

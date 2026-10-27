@@ -209,8 +209,8 @@ export function register_api_routes(context: ApiRouteContext): void {
   context.postJson("/api/quality/prompts/presets/rename", (body) => prompts.rename_preset(body));
   context.postJson("/api/quality/prompts/presets/delete", (body) => prompts.delete_preset(body));
 
-  context.postJson("/api/translation/files/generate", () =>
-    services.files.translationGeneration.generate_files(),
+  context.postJson("/api/translation/files/generate", (body) =>
+    services.files.translationGeneration.generate_files(body),
   );
 
   context.postJson("/api/toolbox/game-font/inspect", (body) =>

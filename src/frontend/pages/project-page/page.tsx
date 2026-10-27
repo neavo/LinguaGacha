@@ -52,6 +52,7 @@ import { normalize_source_paths } from "@frontend/app/desktop/source-paths";
 import "@frontend/pages/project-page/project-page.css";
 import { ProjectSourceFormats } from "@frontend/pages/project-page/components/project-source-formats";
 import { DesktopApiError, api_fetch } from "@frontend/app/desktop/desktop-api";
+import { extract_parent_dir } from "@frontend/app/desktop/path";
 import type { ProjectStage } from "@frontend/app/state/desktop-project-change-types";
 import type { ProjectLanguageKey } from "@domain/project-settings";
 import { ProjectLanguageDialog } from "@frontend/pages/project-page/components/project-language-dialog";
@@ -193,18 +194,6 @@ function extract_file_name(file_path: string): string {
  */
 function extract_stem(file_name: string): string {
   return file_name.replace(/\.[^.]+$/u, "");
-}
-
-/**
- * 提取父目录，SOURCE 保存模式使用源文件所在目录。
- */
-function extract_parent_dir(file_path: string): string {
-  const normalized_index = Math.max(file_path.lastIndexOf("/"), file_path.lastIndexOf("\\"));
-  if (normalized_index <= 0) {
-    return "";
-  }
-
-  return file_path.slice(0, normalized_index);
 }
 
 /**
@@ -642,7 +631,7 @@ export function ProjectPage(_props: ProjectPageProps): JSX.Element {
 
     let fixed_directory = settings_snapshot.project_fixed_path;
     if (fixed_directory === "") {
-      const result = await window.desktopApp.pickFixedProjectDirectory();
+      const result = await window.desktopApp.pickDirectory();
       const selected_path = result.paths[0] ?? null;
       if (result.canceled || selected_path === null) {
         return null;

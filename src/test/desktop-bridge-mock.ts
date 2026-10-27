@@ -49,7 +49,7 @@ export function create_desktop_bridge_api_mock(
     pickProjectFilePath: async () => ({ canceled: true, paths: [] }),
     pickProjectSavePath: async () => ({ canceled: true, paths: [] }),
     pickWorkbenchFilePath: async () => ({ canceled: true, paths: [] }),
-    pickFixedProjectDirectory: async () => ({ canceled: true, paths: [] }),
+    pickDirectory: async () => ({ canceled: true, paths: [] }),
     pickGlossaryImportFilePath: async () => ({ canceled: true, paths: [] }),
     pickGlossaryExportPath: async () => ({ canceled: true, paths: [] }),
     pickPromptImportFilePath: async () => ({ canceled: true, paths: [] }),

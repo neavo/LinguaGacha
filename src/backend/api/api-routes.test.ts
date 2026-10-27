@@ -253,6 +253,13 @@ describe("register_api_routes", () => {
     expect(fixture.update_settings).toHaveBeenCalledWith({ app_language: "ZH" });
   });
 
+  it("译文生成路由原样转交工程和输出目录", () => {
+    const fixture = create_route_fixture();
+    const request = { project_path: "E:/demo.lg", output_directory: "E:/output" };
+    read_post_handler(fixture.post_json, "/api/translation/files/generate")(request);
+    expect(fixture.generate_files).toHaveBeenCalledExactlyOnceWith(request);
+  });
+
   it("组合选模载荷原样转交唯一选模入口", () => {
     const fixture = create_route_fixture();
     const request = { target: "translation", model_id: "a", thinking_level: "HIGH" };
@@ -290,6 +297,7 @@ function create_route_fixture() {
   const stop = vi.fn(() => acknowledgement);
   const reset = vi.fn(async () => acknowledgement);
   const update_settings = vi.fn((request: JsonRecord) => ({ settings: request }));
+  const generate_files = vi.fn();
   const select_model = vi.fn((request: JsonRecord) => ({ selected: request }));
   const copy_model = vi.fn();
   const source_file_summary = { source_file_count: 1, format_hit_counts: { txt: 1 } };
@@ -326,7 +334,7 @@ function create_route_fixture() {
     },
     proofreading: { query: {}, commands: {} },
     quality: { statistics: {}, rules: {}, prompts: {} },
-    files: { preview: {}, translationGeneration: {} },
+    files: { preview: {}, translationGeneration: { generate_files } },
     model: {
       get_selection_snapshot: vi.fn(() => ({
         model_selection: { translation: "a", agent: "c" },
@@ -383,6 +391,7 @@ function create_route_fixture() {
     start_task,
     stop,
     update_settings,
+    generate_files,
     select_model,
     copy_model,
   };

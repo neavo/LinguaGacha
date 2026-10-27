@@ -1,10 +1,14 @@
 import { push_error_toast } from "@frontend/app/feedback/desktop-toast";
-import type { TranslationFileGenerationResult } from "@shared/translation-generation";
+import type {
+  TranslationFileGenerationRequest,
+  TranslationFileGenerationResult,
+} from "@shared/translation-generation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { format_agent_reference } from "@shared/agent-reference";
 import type { ProofreadingWarningSummary } from "@shared/proofreading/proofreading-types";
 import { api_fetch } from "@frontend/app/desktop/desktop-api";
+import { extract_parent_dir } from "@frontend/app/desktop/path";
 import { useI18n } from "@frontend/app/locale/locale-context";
 import { useAppNavigation } from "@frontend/app/navigation/navigation-context";
 import { useDesktopState } from "@frontend/app/state/use-desktop-state";
@@ -49,7 +53,7 @@ export function useTranslationGenerationFlow(): TranslationGenerationFlow {
   const { t } = useI18n();
 
   const { navigate_to_agent, selected_route } = useAppNavigation();
-  const { project_snapshot } = useDesktopState();
+  const { project_snapshot, settings_snapshot } = useDesktopState();
   const [state, set_state] = useState<TranslationGenerationState>({ phase: "closed" });
   const state_ref = useRef(state); // 稳定动作读取即时 phase，阻止同一帧重复提交
   const project_ref = useRef(project_snapshot); // 异步查询完成时核对当前项目身份
@@ -123,17 +127,49 @@ export function useTranslationGenerationFlow(): TranslationGenerationFlow {
       return;
     }
     const generation = request_generation_ref.current;
+    const project = project_ref.current;
+    const mode = settings_snapshot.translation_save_mode; // 目录选择期间固定本次保存策略。
+    const fixed_path = settings_snapshot.translation_fixed_path;
     apply_state({ phase: "generating", previous: current_state });
     try {
-      await api_fetch<TranslationFileGenerationResult>("/api/translation/files/generate", {});
+      let output_directory = mode === "FIXED" ? fixed_path : extract_parent_dir(project.path);
+      if (mode === "MANUAL") {
+        const result = await window.desktopApp.pickDirectory();
+        if (
+          generation !== request_generation_ref.current ||
+          !project_ref.current.loaded ||
+          project_ref.current.path !== project.path
+        )
+          return;
+        if (result.canceled || !result.paths[0]) {
+          apply_state({ phase: "closed" });
+          return;
+        }
+        output_directory = result.paths[0];
+      }
+      const request: TranslationFileGenerationRequest = {
+        project_path: project.path,
+        output_directory,
+      };
+      await api_fetch<TranslationFileGenerationResult>("/api/translation/files/generate", request);
       if (generation !== request_generation_ref.current) return;
       apply_state({ phase: "closed" });
     } catch (error) {
-      if (generation !== request_generation_ref.current) return;
+      if (
+        generation !== request_generation_ref.current ||
+        !project_ref.current.loaded ||
+        project_ref.current.path !== project.path
+      )
+        return;
       push_error_toast(t("app.translation_generation.log.failed"), error);
       apply_state(current_state);
     }
-  }, [apply_state, t]);
+  }, [
+    apply_state,
+    settings_snapshot.translation_fixed_path,
+    settings_snapshot.translation_save_mode,
+    t,
+  ]);
 
   /** 进入 Agent 时保留用户草稿，只有空草稿才补入审校建议。 */
   const jump_to_agent = useCallback((): void => {

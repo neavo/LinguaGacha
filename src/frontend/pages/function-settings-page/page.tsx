@@ -1,28 +1,27 @@
-import { type JSX, useMemo } from "react";
-import { CONTEXT_LINES_THRESHOLD_MIN, CONTEXT_LINES_THRESHOLD_MAX } from "@domain/setting";
+import { type JSX } from "react";
+import {
+  CONTEXT_LINES_THRESHOLD_MIN,
+  CONTEXT_LINES_THRESHOLD_MAX,
+  TRANSLATION_SAVE_MODES,
+  PROJECT_SAVE_MODES,
+  is_project_save_mode,
+  is_translation_save_mode,
+} from "@domain/setting";
+import { SaveLocationRow } from "./save-location-row";
 import { NumberSettingRow } from "./number-setting-row";
 
 import { useI18n } from "@frontend/app/locale/locale-context";
 import "@frontend/pages/function-settings-page/function-settings-page.css";
 import {
   PROJECT_SAVE_MODE_LABEL_KEYS,
-  PROJECT_SAVE_MODE_OPTIONS,
+  TRANSLATION_SAVE_MODE_LABEL_KEYS,
   REQUEST_TIMEOUT_MAX,
   REQUEST_TIMEOUT_MIN,
-  is_project_save_mode,
 } from "@frontend/pages/function-settings-page/types";
 import { ProjectLanguageSelect } from "@frontend/features/project-language/project-language-select";
 import { useFunctionSettingsState } from "@frontend/pages/function-settings-page/use-function-settings-state";
 import { BooleanSegmentedToggle } from "@frontend/widgets/boolean-segmented-toggle";
 import { SettingCardRow } from "@frontend/widgets/setting-card-row/setting-card-row";
-import {
-  Select,
-  SelectContent,
-  SelectGroup,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@frontend/shadcn/select";
 
 type FunctionSettingsPageProps = {
   is_sidebar_collapsed: boolean;
@@ -32,22 +31,14 @@ export function FunctionSettingsPage(_props: FunctionSettingsPageProps): JSX.Ele
   const { t } = useI18n();
 
   const function_settings_state = useFunctionSettingsState();
-  const project_save_mode_options = useMemo(() => {
-    return PROJECT_SAVE_MODE_OPTIONS.map((mode) => {
-      return {
-        value: mode,
-        label: t(PROJECT_SAVE_MODE_LABEL_KEYS[mode]),
-      };
-    });
-  }, [t]);
-
-  const project_save_mode_description =
-    function_settings_state.snapshot.project_save_mode === "FIXED" &&
-    function_settings_state.snapshot.project_fixed_path !== ""
-      ? t("function_settings_page.fields.project_save_mode.description_fixed", {
-          PATH: function_settings_state.snapshot.project_fixed_path,
-        })
-      : t("function_settings_page.fields.project_save_mode.description");
+  const project_save_mode_options = PROJECT_SAVE_MODES.map((mode) => ({
+    value: mode,
+    label: t(PROJECT_SAVE_MODE_LABEL_KEYS[mode]),
+  }));
+  const translation_save_mode_options = TRANSLATION_SAVE_MODES.map((mode) => ({
+    value: mode,
+    label: t(TRANSLATION_SAVE_MODE_LABEL_KEYS[mode]),
+  }));
 
   const language_locked = function_settings_state.language_locked;
 
@@ -129,35 +120,35 @@ export function FunctionSettingsPage(_props: FunctionSettingsPageProps): JSX.Ele
           on_commit={function_settings_state.update_request_timeout}
         />
 
-        <SettingCardRow
-          action_width="content"
+        <SaveLocationRow
           title={t("function_settings_page.fields.project_save_mode.title")}
-          description={project_save_mode_description}
-          action={
-            <Select
-              items={project_save_mode_options}
-              value={function_settings_state.snapshot.project_save_mode}
-              disabled={function_settings_state.pending_state.project_save_mode}
-              onValueChange={(next_value) => {
-                if (next_value !== null && is_project_save_mode(next_value)) {
-                  void function_settings_state.update_project_save_mode(next_value);
-                }
-              }}
-            >
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectGroup>
-                  {project_save_mode_options.map((option) => (
-                    <SelectItem key={option.value} value={option.value}>
-                      {option.label}
-                    </SelectItem>
-                  ))}
-                </SelectGroup>
-              </SelectContent>
-            </Select>
+          description={t("function_settings_page.fields.project_save_mode.description")}
+          options={project_save_mode_options}
+          mode={function_settings_state.snapshot.project_save_mode}
+          fixed_path={function_settings_state.snapshot.project_fixed_path}
+          busy={
+            function_settings_state.pending_state.project_save_mode ||
+            function_settings_state.choosing_directory.project_save_mode
           }
+          on_mode_change={(value) => {
+            if (is_project_save_mode(value))
+              void function_settings_state.update_project_save_mode(value);
+          }}
+        />
+        <SaveLocationRow
+          title={t("function_settings_page.fields.translation_save_mode.title")}
+          description={t("function_settings_page.fields.translation_save_mode.description")}
+          options={translation_save_mode_options}
+          mode={function_settings_state.snapshot.translation_save_mode}
+          fixed_path={function_settings_state.snapshot.translation_fixed_path}
+          busy={
+            function_settings_state.pending_state.translation_save_mode ||
+            function_settings_state.choosing_directory.translation_save_mode
+          }
+          on_mode_change={(value) => {
+            if (is_translation_save_mode(value))
+              void function_settings_state.update_translation_save_mode(value);
+          }}
         />
 
         <SettingCardRow

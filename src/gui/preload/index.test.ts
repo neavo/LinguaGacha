@@ -189,6 +189,19 @@ describe("preload desktop bridge", () => {
     });
   });
 
+  it("通用目录选择传递默认路径并保留取消结果", async () => {
+    await import_preload_with_startup_args();
+    const bridge = electron_mock.exposed_api!;
+    electron_mock.invoke.mockResolvedValueOnce({ canceled: true, paths: [] });
+    await expect(bridge.pickDirectory("E:/saved")).resolves.toEqual({ canceled: true, paths: [] });
+    expect(electron_mock.invoke).toHaveBeenLastCalledWith(IPC_CHANNEL_PICK_PATH, {
+      kind: "directory",
+      default_path: "E:/saved",
+      default_directory: null,
+    });
+    expect(localStorage.getItem(LAST_DIALOG_DIRECTORY_STORAGE_KEY)).toBeNull();
+  });
+
   it("下载更新只转发同一 request id 的进度并在完成后解绑监听", async () => {
     await import_preload_with_startup_args();
     const bridge = electron_mock.exposed_api;

@@ -35,7 +35,7 @@ export interface DesktopBridgeApi {
   pickProjectFilePath: () => Promise<DesktopPathPickResult>; // 打开已有工程只通过 main 原生对话框返回受控路径
   pickProjectSavePath: (default_name: string) => Promise<DesktopPathPickResult>; // 工程保存路径由 renderer 给出默认名，main 负责系统对话框确认
   pickWorkbenchFilePath: () => Promise<DesktopPathPickResult>; // 工作台追加文件入口允许多选，去重与解析不放在 preload
-  pickFixedProjectDirectory: (default_path?: string) => Promise<DesktopPathPickResult>; // 固定工程目录选择可以带入当前配置路径，最终路径仍由 main 确认
+  pickDirectory: (default_path?: string) => Promise<DesktopPathPickResult>; // 目录选择可带入默认路径，最终路径由 main 确认
   pickGlossaryImportFilePath: () => Promise<DesktopPathPickResult>; // 术语导入导出只暴露路径选择，具体格式读写由业务流程处理
   pickGlossaryExportPath: (default_name: string) => Promise<DesktopPathPickResult>; // 术语导出路径由 main 保存对话框确认，序列化格式由业务流程按后缀决定
   pickPromptImportFilePath: () => Promise<DesktopPathPickResult>; // Prompt 导入导出只暴露纯文本路径选择，不让 renderer 触碰 Node 文件 API

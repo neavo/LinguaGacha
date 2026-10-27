@@ -12,3 +12,7 @@
   display: flex;
   align-items: center;
 }
+
+.function-settings-page__save-location-row .setting-card-row__description {
+  white-space: pre-line;
+}
