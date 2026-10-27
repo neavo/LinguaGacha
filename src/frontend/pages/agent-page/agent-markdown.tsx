@@ -32,6 +32,7 @@ import { useAppearance } from "@frontend/app/appearance/appearance-context";
 import { api_blob } from "@frontend/app/desktop/desktop-api";
 import { useI18n } from "@frontend/app/locale/locale-context";
 import { resolve_agent_workspace_href } from "@shared/agent-workspace-file";
+import { MARKDOWN_BASE_COMPONENTS } from "@frontend/widgets/app-markdown";
 import { AgentMarkdownLink } from "./agent-markdown-link";
 import { AgentFileContext, AgentMarkdownPathContext } from "./agent-file-context";
 import type { Heading, Root, RootContent } from "mdast";
@@ -40,6 +41,7 @@ import { AgentFileTrigger } from "./agent-file-trigger";
 
 import "streamdown/styles.css";
 import "katex/dist/katex.min.css";
+import "@frontend/widgets/app-markdown.css";
 import "./agent-markdown.css";
 
 type AgentMarkdownProps = {
@@ -76,18 +78,7 @@ const MERMAID_THEME_CSS = `
 `;
 // 普通正文使用原生标签，让产品 CSS 独立拥有排版；稳定映射避免流式更新重挂交互组件。
 const MARKDOWN_COMPONENTS: Components = {
-  h1: "h1",
-  h2: "h2",
-  h3: "h3",
-  h4: "h4",
-  h5: "h5",
-  h6: "h6",
-  ul: "ul",
-  ol: "ol",
-  li: "li",
-  blockquote: "blockquote",
-  hr: "hr",
-  strong: "strong",
+  ...MARKDOWN_BASE_COMPONENTS,
   a: AgentMarkdownLink,
   img: AgentMarkdownImage,
   table: AgentMarkdownTable,
@@ -147,14 +138,14 @@ export const AgentMarkdown = memo(function AgentMarkdown(props: AgentMarkdownPro
     <AgentMarkdownPathContext value={props.document_path ?? ""}>
       <div
         ref={markdown_ref}
-        className="agent-markdown"
+        className="app-markdown agent-markdown"
         onWheelCapture={scroll_past_inline_diagram}
         onPointerDownCapture={focus_inline_diagram}
         onKeyDownCapture={leave_inline_diagram}
       >
         {/* 关闭默认块间距，避免原始 HTML 块额外叠加留白。 */}
         <Streamdown
-          className="agent-markdown__content space-y-0"
+          className="app-markdown__content agent-markdown__content space-y-0"
           // 文档一次解析完整语法树，使重复标题和引用定义在整篇内共享作用域。
           mode={props.document_path ? "static" : "streaming"}
           isAnimating={props.streaming}

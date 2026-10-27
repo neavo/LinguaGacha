@@ -11,6 +11,7 @@ vi.mock("./desktop/desktop-api", () => ({
   check_github_release_update: async () => ({
     latest_version: "1.2.4",
     release_url: "https://example.com/release",
+    release_notes: "",
     windows_zip_urls: {},
   }),
 }));

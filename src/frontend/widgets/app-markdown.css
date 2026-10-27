@@ -1,0 +1,180 @@
+/* Markdown 语义归解析器，这里只维护紧凑阅读表面和产品交互样式。 */
+
+.app-markdown {
+  min-width: 0;
+  width: 100%;
+  margin: 0;
+  color: var(--foreground);
+  font-size: var(--ui-font-size-13);
+  line-height: 1.65;
+  overflow-wrap: anywhere;
+  user-select: text;
+}
+
+/* Block flow */
+
+.app-markdown h1,
+.app-markdown h2,
+.app-markdown h3,
+.app-markdown h4,
+.app-markdown h5,
+.app-markdown h6 {
+  margin: 20px 0 8px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.app-markdown h1 {
+  font-size: var(--ui-font-size-16);
+}
+
+.app-markdown h2 {
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
+  padding-bottom: 5px;
+  font-size: var(--ui-font-size-14);
+}
+
+.app-markdown h3,
+.app-markdown h4,
+.app-markdown h5,
+.app-markdown h6 {
+  color: color-mix(in srgb, var(--foreground) 88%, var(--muted-foreground));
+  font-size: var(--ui-font-size-13);
+}
+
+.app-markdown p,
+.app-markdown ul,
+.app-markdown ol,
+.app-markdown blockquote,
+.app-markdown pre,
+.app-markdown table {
+  margin: 10px 0;
+}
+
+.app-markdown ul,
+.app-markdown ol {
+  padding-left: 22px;
+}
+
+.app-markdown ul {
+  list-style-type: disc;
+}
+
+.app-markdown ol {
+  list-style-type: decimal;
+}
+
+.app-markdown li + li {
+  margin-top: 4px;
+}
+
+.app-markdown li > ul,
+.app-markdown li > ol {
+  margin: 4px 0;
+}
+
+.app-markdown .contains-task-list,
+.app-markdown .task-list-item {
+  list-style: none;
+}
+
+.app-markdown .task-list-item > input {
+  width: 14px;
+  height: 14px;
+  margin: 0 6px 0 0;
+  accent-color: var(--primary);
+  vertical-align: -2px;
+}
+
+/* Links and inline syntax */
+
+.app-markdown strong {
+  font-weight: 600;
+}
+
+.app-markdown a {
+  border-radius: var(--ui-radius-button);
+  color: var(--primary);
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, var(--primary) 52%, transparent);
+  text-underline-offset: 2px;
+}
+
+.app-markdown a:hover {
+  text-decoration-color: currentcolor;
+}
+
+.app-markdown a:focus-visible {
+  outline: 1px solid var(--ring);
+  outline-offset: 2px;
+}
+
+.app-markdown del {
+  color: color-mix(in srgb, var(--muted-foreground) 88%, var(--foreground));
+}
+
+/* A quote is a reading transcript: keep its soft line breaks visible. */
+
+.app-markdown blockquote {
+  border-left: 1px solid var(--primary);
+  background: color-mix(in srgb, var(--muted) 38%, transparent);
+  padding: 8px 12px;
+  color: color-mix(in srgb, var(--foreground) 90%, var(--muted-foreground));
+  white-space: normal;
+}
+
+.app-markdown blockquote > p {
+  white-space: pre-line;
+}
+
+.app-markdown hr {
+  margin: 18px 0;
+  border: 0;
+  border-top: 1px solid color-mix(in srgb, var(--border) 76%, transparent);
+}
+
+.app-markdown code {
+  border-radius: var(--ui-radius-button);
+  background: var(--muted);
+  padding: 1px 4px;
+  font-size: var(--ui-font-size-12);
+}
+
+/* Code and syntax highlighting */
+
+.app-markdown pre {
+  max-width: 100%;
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  background: var(--popover);
+  padding: 10px;
+  white-space: pre;
+}
+
+.app-markdown pre code {
+  background: transparent;
+  padding: 0;
+}
+
+/* GFM footnotes */
+
+.app-markdown [data-footnotes] {
+  margin: 12px 0 0;
+  border-top: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
+  padding-top: 8px;
+  color: var(--muted-foreground);
+  font-size: var(--ui-font-size-12);
+}
+
+.app-markdown [data-footnotes] ol {
+  margin: 0;
+}
+
+.app-markdown__content > :first-child,
+.app-markdown blockquote > :first-child {
+  margin-top: 0;
+}
+.app-markdown__content > :last-child,
+.app-markdown blockquote > :last-child {
+  margin-bottom: 0;
+}

@@ -45,7 +45,7 @@ export function AgentFileTrigger({
   }, [context?.active, path]);
   /** 文件操作共用一次用户可见错误反馈。 */
   const report = (error: unknown): void => {
-    push_error_toast(t("agent_page.error.activate_link"), error);
+    push_error_toast(t("app.feedback.activate_link"), error);
   };
   /** 保存对话框返回前合并重复保存，取消时安静结束。 */
   const save = async (): Promise<void> => {

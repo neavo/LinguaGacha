@@ -2,6 +2,7 @@ import { AlertDialog as AlertDialogPrimitive } from "@base-ui/react/alert-dialog
 import { type JSX, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 
 import { useI18n } from "@frontend/app/locale/locale-context";
+import { cn } from "@frontend/shadcn/classnames";
 import { Spinner } from "@frontend/shadcn/spinner";
 import { AppButton } from "@frontend/widgets/app-button";
 import {
@@ -45,6 +46,7 @@ type AppConfirmDialogProps = Omit<
 };
 
 type AppActionDialogProps = AppDialogBaseProps & {
+  contentClassName?: string;
   primaryAction: AppDialogPrimaryAction;
   secondaryAction?: AppDialogAction | undefined;
 };
@@ -78,6 +80,7 @@ export function AppActionDialog(props: AppActionDialogProps): JSX.Element {
   const submitting = props.submitting ?? false;
   const submitting_icon = props.submittingIcon ?? true;
   const title = props.title === null ? null : (props.title ?? t("app.action.confirm"));
+  const has_header = title !== null || props.description != null;
   const submitting_action = submitting ? (props.submittingAction ?? "primary") : null;
   const delayed = props.primaryAction.delayed === true;
   const [remaining_seconds, set_remaining_seconds] = useState(0); // 当前弹窗的瞬时倒计时，不进入业务状态
@@ -146,31 +149,47 @@ export function AppActionDialog(props: AppActionDialogProps): JSX.Element {
             }
           }}
           aria-label={title === null ? props.primaryAction.label : undefined}
-          className="fixed top-1/2 left-1/2 z-(--ui-layer-overlay) grid w-full max-w-xs -translate-x-1/2 -translate-y-1/2 gap-4 rounded-xl bg-popover p-4 text-popover-foreground ring-1 ring-foreground/10 duration-100 outline-none sm:max-w-sm data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95"
-        >
-          <div data-slot="alert-dialog-header" className="grid place-items-start gap-1.5 text-left">
-            {title === null ? null : (
-              <AlertDialogPrimitive.Title
-                data-slot="alert-dialog-title"
-                className="font-heading text-base font-medium"
-              >
-                {title}
-              </AlertDialogPrimitive.Title>
-            )}
-            <AlertDialogPrimitive.Description
-              render={<div />}
-              data-slot="alert-dialog-description"
-              className="w-full min-w-0 text-sm text-balance whitespace-pre-line text-left text-muted-foreground md:text-pretty *:[a]:underline *:[a]:underline-offset-3 *:[a]:hover:text-foreground"
-            >
-              {props.description}
-            </AlertDialogPrimitive.Description>
-          </div>
-          {props.details === undefined ? null : (
-            <div data-slot="alert-dialog-details">{props.details}</div>
+          className={cn(
+            "fixed top-1/2 left-1/2 z-(--ui-layer-overlay) flex max-h-[calc(100vh-32px)] w-[calc(100%-32px)] max-w-xs -translate-x-1/2 -translate-y-1/2 flex-col gap-4 rounded-xl bg-popover p-4 text-popover-foreground ring-1 ring-foreground/10 duration-100 outline-none sm:max-w-sm data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95",
+            props.contentClassName,
           )}
+        >
+          {has_header || props.details != null ? (
+            <div className="min-h-0 overflow-y-auto">
+              {has_header ? (
+                <div
+                  data-slot="alert-dialog-header"
+                  className="grid place-items-start gap-1.5 text-left"
+                >
+                  {title === null ? null : (
+                    <AlertDialogPrimitive.Title
+                      data-slot="alert-dialog-title"
+                      className="font-heading text-base font-medium"
+                    >
+                      {title}
+                    </AlertDialogPrimitive.Title>
+                  )}
+                  {props.description == null ? null : (
+                    <AlertDialogPrimitive.Description
+                      render={<div />}
+                      data-slot="alert-dialog-description"
+                      className="w-full min-w-0 text-sm text-balance whitespace-pre-line text-left text-muted-foreground md:text-pretty *:[a]:underline *:[a]:underline-offset-3 *:[a]:hover:text-foreground"
+                    >
+                      {props.description}
+                    </AlertDialogPrimitive.Description>
+                  )}
+                </div>
+              ) : null}
+              {props.details == null ? null : (
+                <div data-slot="alert-dialog-details" className={has_header ? "mt-4" : undefined}>
+                  {props.details}
+                </div>
+              )}
+            </div>
+          ) : null}
           <div
             data-slot="alert-dialog-footer"
-            className="-mx-4 -mb-4 flex flex-col-reverse gap-2 rounded-b-xl border-t bg-muted/50 p-4 sm:flex-row sm:flex-wrap sm:justify-end"
+            className="-mx-4 -mb-4 flex shrink-0 flex-col-reverse gap-2 rounded-b-xl border-t bg-muted/50 p-4 sm:flex-row sm:flex-wrap sm:justify-end"
           >
             <AppButton
               variant="outline"

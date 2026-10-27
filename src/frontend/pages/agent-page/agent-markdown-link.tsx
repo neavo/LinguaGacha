@@ -1,9 +1,7 @@
-import { push_error_toast } from "@frontend/app/feedback/desktop-toast";
-import { useContext, useRef, type ComponentProps, type JSX } from "react";
+import { useContext, type ComponentProps, type JSX } from "react";
 import type { ExtraProps } from "streamdown";
 import { resolve_agent_workspace_href } from "@shared/agent-workspace-file";
-import { open_external_url } from "@frontend/app/desktop/desktop-api";
-import { useI18n } from "@frontend/app/locale/locale-context";
+import { useExternalLink } from "@frontend/app/desktop/use-external-link";
 import { AgentFileTrigger } from "./agent-file-trigger";
 import { AgentFileContext, AgentMarkdownPathContext } from "./agent-file-context";
 
@@ -14,10 +12,9 @@ export function AgentMarkdownLink({
   children,
   ...props
 }: ComponentProps<"a"> & ExtraProps): JSX.Element {
-  const { t } = useI18n();
+  const activate = useExternalLink();
   const documents = useContext(AgentFileContext);
   const base_path = useContext(AgentMarkdownPathContext);
-  const pending = useRef(false);
   if (!href) return <span>{children}</span>;
   const external = /^(?:[a-z][a-z\d+.-]*:|\/\/)/iu.test(href);
   if (!external && !href.startsWith("#")) {
@@ -34,18 +31,6 @@ export function AgentMarkdownLink({
       </AgentFileTrigger>
     );
   }
-  /** 宿主打开外链期间合并重复点击，失败只在入口反馈一次。 */
-  const activate = async (): Promise<void> => {
-    if (pending.current) return;
-    pending.current = true;
-    try {
-      await open_external_url(href.startsWith("//") ? `https:${href}` : href);
-    } catch (error) {
-      push_error_toast(t("agent_page.error.activate_link"), error);
-    } finally {
-      pending.current = false;
-    }
-  };
   return (
     <a
       {...props}
@@ -68,7 +53,7 @@ export function AgentMarkdownLink({
           return;
         }
         event.preventDefault();
-        void activate();
+        void activate(href);
       }}
     >
       {children}

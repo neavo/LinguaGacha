@@ -158,7 +158,6 @@ export const ja_jp_agent_page = {
   upload: { uploading: "アップロード中", failed: "アップロードに失敗" },
   file_saved: "ファイルを保存しました",
   error: {
-    activate_link: "リンクを処理できませんでした …",
     decision: "回答を送信できませんでした。再試行してください …",
     restore: "セッションを復元できませんでした。再試行してください …",
     connection: "接続が切れました。再接続を待っています …",

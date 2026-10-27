@@ -161,7 +161,6 @@ export const en_us_agent_page = {
   upload: { uploading: "Uploading", failed: "Upload failed" },
   file_saved: "File saved",
   error: {
-    activate_link: "Failed to process the link …",
     decision: "Could not submit your decision. Please try again …",
     restore: "The session could not be restored. Try again …",
     connection: "Connection interrupted. Waiting to reconnect …",

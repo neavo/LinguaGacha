@@ -68,6 +68,7 @@ export const en_us_app = {
     select_folder: "Select Folder",
   },
   feedback: {
+    activate_link: "Failed to process the link …",
     load_failed: "Load failed …",
     refresh_failed: "Refresh failed …",
     query_failed: "Query failed …",
@@ -111,7 +112,7 @@ export const en_us_app = {
     duplicate_description: "{COUNT} duplicate rules were detected. Choose how to handle them …",
   },
   update: {
-    confirm_description: "LinguaGacha v{VERSION} is available. Download the update …?",
+    action: "Update",
     restart_confirm: "Restart and Update",
     launching: "Processing …",
   },

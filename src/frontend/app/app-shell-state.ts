@@ -12,7 +12,7 @@ export type UpdateDialogState =
 
 type ProjectSessionStatus = "idle" | "warming" | "ready";
 type AppTranslator = (
-  key: "app.action.confirm" | "app.update.launching" | "app.update.restart_confirm",
+  key: "app.update.action" | "app.update.launching" | "app.update.restart_confirm",
 ) => string;
 
 // 无项目时允许点击并记录目标，加载完成后恢复访问。
@@ -63,7 +63,7 @@ export function format_update_progress_label(progress_percent: number): string {
 }
 
 /** 由更新阶段选择主操作文案。 */
-export function resolve_update_confirm_label(state: UpdateDialogState, t: AppTranslator): string {
+export function resolve_update_action_label(state: UpdateDialogState, t: AppTranslator): string {
   if (state.phase === "ready_to_restart") {
     return t("app.update.restart_confirm");
   }
@@ -74,7 +74,7 @@ export function resolve_update_confirm_label(state: UpdateDialogState, t: AppTra
     return t("app.update.launching");
   }
 
-  return t("app.action.confirm");
+  return t("app.update.action");
 }
 
 /** 将替换功能分组解析为默认可访问页面。 */
