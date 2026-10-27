@@ -104,6 +104,24 @@ describe("应用模态窗", () => {
     );
   });
 
+  it("无标题的动作弹窗保留说明，并使用主操作命名", () => {
+    render_dialog(
+      <AppActionDialog
+        open
+        title={null}
+        description="登录地址"
+        primaryAction={{ label: "打开登录页", onSelect: vi.fn() }}
+        onClose={vi.fn()}
+      />,
+    );
+
+    const dialog = document.body.querySelector('[role="alertdialog"]');
+    expect(dialog?.getAttribute("aria-label")).toBe("打开登录页");
+    expect(dialog?.querySelector('[data-slot="alert-dialog-description"]')?.textContent).toBe(
+      "登录地址",
+    );
+  });
+
   it("提交中锁定关闭与动作，提交结束后恢复 Escape 关闭", () => {
     const on_close = vi.fn();
     const on_primary = vi.fn();

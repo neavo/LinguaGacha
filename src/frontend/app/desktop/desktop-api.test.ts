@@ -265,6 +265,7 @@ describe("desktop-api", () => {
         ok: true,
         status: 200,
         json: async () => ({
+          body: "  # 标题\n\n    缩进\n",
           tag_name: "MANUAL_BUILD_v1.2.4",
           html_url: "https://github.com/neavo/LinguaGacha/releases/tag/MANUAL_BUILD_v1.2.4",
           assets: [
@@ -302,6 +303,7 @@ describe("desktop-api", () => {
     expect(update).toEqual({
       latest_version: "1.2.4",
       release_url: "https://github.com/neavo/LinguaGacha/releases/tag/MANUAL_BUILD_v1.2.4",
+      release_notes: "  # 标题\n\n    缩进\n",
       windows_zip_urls: {
         x64: "https://github.com/neavo/LinguaGacha/releases/download/MANUAL_BUILD_v1.2.4/LinguaGacha_v1.2.4_Windows_x64.zip",
         arm64:
@@ -337,6 +339,7 @@ describe("desktop-api", () => {
     await expect(check_github_release_update("1.2.3")).resolves.toEqual({
       latest_version: "1.2.4",
       release_url: "https://github.com/neavo/LinguaGacha/releases/tag/v1.2.4",
+      release_notes: "",
       windows_zip_urls: {
         arm64: "https://github.com/neavo/LinguaGacha/releases/download/v1.2.4/arm64.zip",
       },
@@ -370,6 +373,7 @@ describe("desktop-api", () => {
     await expect(check_github_release_update("1.2.3")).resolves.toEqual({
       latest_version: "1.2.4",
       release_url: "https://github.com/neavo/LinguaGacha/releases/tag/v1.2.4",
+      release_notes: "",
       windows_zip_urls: {},
     });
   });
@@ -462,5 +466,23 @@ describe("desktop-api", () => {
       message: "The file changed on disk.",
     });
     await expect(promise).rejects.toBeInstanceOf(DesktopApiError);
+  });
+
+  it.each([null, 42])("无效发行正文仍返回更新", async (body) => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({
+        ok: true,
+        json: async () => ({
+          tag_name: "v1.2.4",
+          html_url: "https://github.com/neavo/LinguaGacha/releases/tag/v1.2.4",
+          body,
+        }),
+      })),
+    );
+    const { check_github_release_update } = await import("./desktop-api");
+    await expect(check_github_release_update("1.2.3")).resolves.toMatchObject({
+      release_notes: "",
+    });
   });
 });

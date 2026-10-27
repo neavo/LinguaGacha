@@ -68,6 +68,7 @@ export const ko_kr_app = {
     select_folder: "폴더 선택",
   },
   feedback: {
+    activate_link: "링크를 처리하지 못했습니다 …",
     load_failed: "불러오기 실패 …",
     refresh_failed: "새로 고침 실패 …",
     query_failed: "조회 실패 …",
@@ -110,7 +111,7 @@ export const ko_kr_app = {
     duplicate_description: "중복 규칙 {COUNT}개를 발견했습니다. 처리 방법을 선택해 주세요 …",
   },
   update: {
-    confirm_description: "LinguaGacha v{VERSION} 업데이트가 있습니다. 다운로드할까요 …?",
+    action: "업데이트",
     restart_confirm: "다시 시작하여 업데이트",
     launching: "처리 중 …",
   },

@@ -9,13 +9,14 @@ import {
   resolve_disabled_route_ids,
   resolve_project_route_after_snapshot,
   resolve_route_selection,
-  resolve_update_confirm_label,
+  resolve_update_action_label,
   type UpdateDialogState,
 } from "@frontend/app/app-shell-state";
 
 const release: GithubReleaseUpdate = {
   latest_version: "1.2.4",
   release_url: "https://github.com/neavo/LinguaGacha/releases/tag/v1.2.4",
+  release_notes: "",
   windows_zip_urls: { x64: "https://example.com/update.zip" },
 };
 const t = (key: string): string => key;
@@ -27,18 +28,18 @@ describe("App 更新弹窗状态", () => {
     submitting: boolean;
     label: string;
   }>([
-    { state: { phase: "idle" }, open: false, submitting: false, label: "app.action.confirm" },
+    { state: { phase: "idle" }, open: false, submitting: false, label: "app.update.action" },
     {
       state: { phase: "available", release, zip_path: null },
       open: false,
       submitting: false,
-      label: "app.action.confirm",
+      label: "app.update.action",
     },
     {
       state: { phase: "confirming", release },
       open: true,
       submitting: false,
-      label: "app.action.confirm",
+      label: "app.update.action",
     },
     {
       state: { phase: "downloading", release, progress_percent: 45.678 },
@@ -61,7 +62,7 @@ describe("App 更新弹窗状态", () => {
   ])("按 $state.phase 阶段解析可见性、提交态和按钮", ({ state, open, submitting, label }) => {
     expect(is_update_dialog_open(state)).toBe(open);
     expect(is_update_dialog_submitting(state)).toBe(submitting);
-    expect(resolve_update_confirm_label(state, t)).toBe(label);
+    expect(resolve_update_action_label(state, t)).toBe(label);
     expect(read_update_release(state)).toBe(state.phase === "idle" ? null : release);
   });
 

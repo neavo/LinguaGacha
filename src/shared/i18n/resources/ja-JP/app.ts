@@ -69,6 +69,7 @@ export const ja_jp_app = {
     select_folder: "フォルダーを選択",
   },
   feedback: {
+    activate_link: "リンクを処理できませんでした …",
     load_failed: "読み込みに失敗しました …",
     refresh_failed: "更新に失敗しました …",
     query_failed: "検索に失敗しました …",
@@ -112,7 +113,7 @@ export const ja_jp_app = {
     duplicate_description: "重複するルールが {COUNT} 件あります。処理方法を選択してください …",
   },
   update: {
-    confirm_description: "LinguaGacha v{VERSION} が見つかりました。更新をダウンロードしますか …?",
+    action: "更新",
     restart_confirm: "再起動して更新",
     launching: "処理中 …",
   },

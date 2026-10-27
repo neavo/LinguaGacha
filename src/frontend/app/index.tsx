@@ -48,18 +48,16 @@ import { useI18n } from "@frontend/app/locale/locale-context";
 import { SidebarInset, SidebarProvider } from "@frontend/shadcn/sidebar";
 import { Toaster } from "@frontend/shadcn/sonner";
 import { TooltipProvider } from "@frontend/shadcn/tooltip";
+import { UpdateDialog } from "@frontend/app/shell/update-dialog";
 import { AppSidebar } from "@frontend/app/shell/app-sidebar";
 import { AppTitlebar } from "@frontend/app/shell/app-titlebar";
-import { AppActionDialog, AppConfirmDialog } from "@frontend/widgets/app-alert-dialog";
+import { AppConfirmDialog } from "@frontend/widgets/app-alert-dialog";
 import { LogWindowPage } from "@frontend/pages/log-window-page/page";
 import {
-  is_update_dialog_open,
-  is_update_dialog_submitting,
   read_update_release,
   resolve_disabled_route_ids,
   resolve_project_route_after_snapshot,
   resolve_route_selection,
-  resolve_update_confirm_label,
   type UpdateDialogState,
 } from "@frontend/app/app-shell-state";
 import type { DesktopUpdateDownloadProgress, DesktopUpdateDownloadResult } from "@gui/bridge-types";
@@ -611,22 +609,9 @@ function AppContent(): JSX.Element {
         </main>
       </SidebarProvider>
 
-      <AppActionDialog
-        open={is_update_dialog_open(update_dialog_state)}
-        description={
-          update_release === null
-            ? ""
-            : t("app.update.confirm_description", {
-                VERSION: update_release.latest_version,
-              })
-        }
-        submitting={is_update_dialog_submitting(update_dialog_state)}
-        submittingLabel={resolve_update_confirm_label(update_dialog_state, t)}
-        submittingIcon={update_dialog_state.phase === "launching"}
-        primaryAction={{
-          label: resolve_update_confirm_label(update_dialog_state, t),
-          onSelect: handle_confirm_update_dialog,
-        }}
+      <UpdateDialog
+        state={update_dialog_state}
+        onConfirm={handle_confirm_update_dialog}
         onClose={close_update_dialog}
       />
 

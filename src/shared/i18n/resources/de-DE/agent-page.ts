@@ -164,7 +164,6 @@ export const de_de_agent_page = {
   },
   file_saved: "Datei gespeichert",
   error: {
-    activate_link: "Der Link konnte nicht verarbeitet werden …",
     decision: "Die Entscheidung konnte nicht gesendet werden. Bitte erneut versuchen …",
     restore: "Die Sitzung konnte nicht wiederhergestellt werden. Bitte erneut versuchen …",
     connection: "Verbindung unterbrochen. Wiederverbindung wird abgewartet …",

@@ -36,11 +36,13 @@ type ApiEnvelope<data_type> = {
 type GithubReleasePayload = {
   tag_name?: unknown;
   html_url?: unknown;
+  body?: unknown;
   assets?: unknown;
 };
 
 export type GithubReleaseUpdate = {
   latest_version: string; // GitHub release tag 归一出的三段式版本号
+  release_notes: string;
   release_url: string; // 自动更新不可用时交给 renderer 打开的发布页
   windows_zip_urls: WindowsReleaseZipUrls; // renderer 只保存 release 解析结果，目标架构由 main 判定
 };
@@ -191,6 +193,7 @@ function normalize_github_release_update(
   return {
     latest_version: latest_semantic_version.value,
     release_url,
+    release_notes: typeof payload.body === "string" ? payload.body : "",
     windows_zip_urls: select_windows_release_zip_urls(
       payload.assets,
       latest_semantic_version.value,

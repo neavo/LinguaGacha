@@ -67,6 +67,7 @@ export const zh_cn_app = {
     select_folder: "选择文件夹",
   },
   feedback: {
+    activate_link: "处理链接失败 …",
     load_failed: "加载失败 …",
     refresh_failed: "刷新失败 …",
     query_failed: "查询失败 …",
@@ -109,7 +110,7 @@ export const zh_cn_app = {
     duplicate_description: "检测到 {COUNT} 条重复规则，请选择处理方式 …",
   },
   update: {
-    confirm_description: "检查到 LinguaGacha v{VERSION}，是否下载更新 …?",
+    action: "更新",
     restart_confirm: "重启并更新",
     launching: "处理中 …",
   },

@@ -71,6 +71,7 @@ export const de_de_app = {
     select_folder: "Ordner auswählen",
   },
   feedback: {
+    activate_link: "Der Link konnte nicht verarbeitet werden …",
     load_failed: "Laden fehlgeschlagen …",
     refresh_failed: "Aktualisieren fehlgeschlagen …",
     query_failed: "Abfrage fehlgeschlagen …",
@@ -116,7 +117,7 @@ export const de_de_app = {
       "{COUNT} doppelte Regeln wurden erkannt. Wählen Sie, wie damit umgegangen werden soll …",
   },
   update: {
-    confirm_description: "LinguaGacha v{VERSION} ist verfügbar. Update herunterladen …?",
+    action: "Aktualisieren",
     restart_confirm: "Neustarten und aktualisieren",
     launching: "Wird verarbeitet …",
   },
