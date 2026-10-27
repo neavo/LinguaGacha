@@ -7,7 +7,6 @@ export const DISPLAY_CALLS: Readonly<Record<string, readonly string[]>> = Object
   _: ["s"],
   __: ["s"],
   ___: ["s"],
-  Character: ["name"],
   Text: ["text"],
   Notify: ["message"],
   Confirm: ["prompt"],
@@ -35,12 +34,11 @@ export const DISPLAY_SCREEN_DISPLAYABLES: readonly string[] = Object.freeze([
 ]);
 /** SL2 控件中按显示处理的属性。 */
 export const DISPLAY_SCREEN_KEYWORDS: readonly string[] = Object.freeze(["text", "tooltip", "alt"]);
-/** 6.99 旧式界面语言中首个位置参数为显示文本的调用。 */
+/** Ren’Py 6.99 引擎的旧式界面语言中，首个位置参数为显示文本的调用。 */
 export const LEGACY_DISPLAY_CALLS: readonly string[] = Object.freeze([
   "text",
   "textbutton",
   "label",
-  "Character",
   "Text",
   "_",
   "__",

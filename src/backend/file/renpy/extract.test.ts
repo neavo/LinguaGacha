@@ -197,7 +197,7 @@ it("只共享字符串 memo 的独立字段仍可分别翻译", async () => {
   ]);
 });
 
-it("旧界面的 Python AST 仍提取显示文本并保留可写坐标", async () => {
+it("早期 Ren’Py 引擎界面脚本的 Python AST 可提取显示文本并保留写回坐标", async () => {
   using session = await PythonSession.create();
   const ast = (name: string, fields: Record<string, Buffer>) =>
     Buffer.concat([
@@ -238,6 +238,71 @@ it("旧界面的 Python AST 仍提取显示文本并保留可写坐标", async (
       )
     ).candidates[0]!.text,
   ).toBe("旧界面译文");
+});
+
+it.each([
+  ["positional", "display"],
+  ["keyword", "display"],
+  ["dynamic", "code"],
+  ["unknown-kind", "code"],
+  ["explicit-static", "display"],
+  ["expanded", "code"],
+  ["dynamic-marker", "code"],
+] as const)("早期 Ren’Py 引擎 Python AST 的 Character 姓名资格：%s", async (mode, usage) => {
+  const ast = (name: string, fields: Record<string, Buffer>) =>
+    Buffer.concat([
+      Buffer.from("c_ast\n" + name + "\n"),
+      opcode(0x29, 0x81),
+      dictionary(fields),
+      opcode(0x62),
+    ]);
+  const reference = (name: string) => ast("Name", { id: pickle_string(name) });
+  const keyword = (name: string, value: Buffer) =>
+    ast("keyword", { arg: pickle_string(name), value });
+  const literal = ast("Str", { s: pickle_string("Alice") });
+  const name =
+    mode === "dynamic-marker"
+      ? ast("Call", { func: reference("_"), args: tuple(literal) })
+      : literal;
+  const keywords: Buffer[] = [];
+  if (mode === "keyword") keywords.push(keyword("name", name));
+  if (mode === "dynamic" || mode === "dynamic-marker")
+    keywords.push(keyword("dynamic", reference("True")));
+  if (mode === "unknown-kind" || mode === "explicit-static")
+    keywords.push(keyword("kind", reference("unknown")));
+  if (mode === "explicit-static") keywords.push(keyword("dynamic", reference("False")));
+  const call = ast("Call", {
+    func: reference("Character"),
+    args: mode === "keyword" ? tuple() : tuple(name),
+    keywords: tuple(...keywords),
+    ...(mode === "expanded" ? { kwargs: reference("options") } : {}),
+  });
+  const code = object(
+    "PyCode",
+    tuple(
+      opcode(0x4b, 1),
+      ast("Module", { body: tuple(call) }),
+      tuple(pickle_string("game/legacy.rpy"), opcode(0x4b, 1)),
+      pickle_string("exec"),
+    ),
+  );
+  using session = await PythonSession.create();
+  const script = await extract_script(
+    compiled_nodes([object("Screen", dictionary({ name: pickle_string("legacy"), code }))]),
+    true,
+    session,
+  );
+  expect(script.candidates).toHaveLength(1);
+  expect(script.candidates[0]).toMatchObject({ text: "Alice", usage });
+  if (usage === "display") {
+    const output = await patch_script(
+      script,
+      [{ candidate: script.candidates[0]!, text: "爱丽丝" }],
+      [],
+      session,
+    );
+    expect((await extract_script(output, true, session)).candidates[0]?.text).toBe("爱丽丝");
+  }
 });
 
 it("无法覆盖全部槽位的候选不开放，写回入口拒绝不完整坐标", async () => {
@@ -456,4 +521,14 @@ it("候选行号指向原始脚本行：代码字面量按源码内换行偏移�
     Second: 11,
     Line: 20,
   });
+});
+
+it.each([
+  ["Character('Name')", "display"],
+  ["Character(_('Name'), dynamic=True)", "code"],
+])("姓名参数的默认资格只取决于当前 Character 调用：%s", async (expression, usage) => {
+  using session = await PythonSession.create();
+  const script = await extract_script(code_fixture(`a = ${expression}`), false, session);
+  expect(script.candidates).toMatchObject([{ text: "Name", usage }]);
+  expect(script.extraction_complete).toBe(true);
 });

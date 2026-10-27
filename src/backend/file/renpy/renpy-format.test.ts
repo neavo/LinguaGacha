@@ -14,7 +14,14 @@ import {
   compiled_fixture,
   strings_fixture,
   code_fixture,
+  compiled_nodes,
+  compiled_slots,
+  dictionary,
+  object,
+  opcode,
+  tuple,
 } from "../../../test/renpy-fixture";
+import { pickle_string } from "./pickle";
 import { extract_script } from "./extract";
 import { encode_python } from "./python";
 
@@ -293,4 +300,184 @@ it("Ren'Py 配套输出提交失败后恢复整个资产", async () => {
     expect(native.read_file(path.join(directory, name))).toEqual(bytes);
   expect(native.exists(path.join(directory, RENPY_STRINGS_FILE))).toBe(false);
   expect(native.exists(path.join(directory, ".tmp"))).toBe(false);
+});
+
+/** 对白身份与 who 表达式由测试独立构造。 */
+function speaker_say(who: string | Buffer, serial: number, what = `Line ${serial}`): Buffer {
+  return object(
+    "Say",
+    dictionary({
+      name: tuple(pickle_string("game/dialogue.rpy"), opcode(0x4b, 1), opcode(0x4b, serial)),
+      who: typeof who === "string" ? pickle_string(who) : who,
+      what: pickle_string(what),
+    }),
+  );
+}
+
+it.each([
+  ["'Alice'", "Alice"],
+  ["('Al' 'ice')", "Alice"],
+  ["Character('Alice', color='#fff')", "Alice"],
+  ["Character('expr', dynamic=True)", null],
+  ["protagonist", null],
+])("只提取当前语句的明确姓名：%s", async (who, expected) => {
+  using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-renpy-speaker-"));
+  const native = create_renpy_fixture(temp.path);
+  native.write_file_sync(
+    path.join(temp.path, "game/characters.rpyc"),
+    code_fixture("protagonist = Character('Defined Alice')"),
+  );
+  native.write_file_sync(
+    path.join(temp.path, "game/dialogue.rpyc"),
+    compiled_slots([[speaker_say(who, 1)], [speaker_say(who, 1)]]),
+  );
+  const { items, format, context } = await import_fixture(temp.path, native);
+  const dialogue = items.find((item) => item.src === "Line 1")!;
+  expect(dialogue.name_src).toBe(expected);
+  expect(items.find((item) => item.src === "Defined Alice")).toMatchObject({
+    name_src: null,
+    status: "NONE",
+  });
+  if (!expected) return;
+  expect(items.some((item) => item.src === expected)).toBe(false);
+  await format.write_to_path(
+    [{ ...dialogue, dst: dialogue.src, name_dst: "爱丽丝", status: "PROCESSED" }],
+    context,
+  );
+  using session = await PythonSession.create();
+  const output = await extract_script(
+    native.read_file(path.join(context.paths.translated_path, "demo/game/dialogue.rpyc")),
+    false,
+    session,
+  );
+  expect(output.candidates).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({
+        text: "爱丽丝",
+        coordinates: [expect.objectContaining({ slot: 1 }), expect.objectContaining({ slot: 2 })],
+      }),
+      expect.objectContaining({ text: "Line 1" }),
+    ]),
+  );
+  if (who.includes("color"))
+    expect(output.candidates.some((candidate) => candidate.text === "#fff")).toBe(true);
+  await expect(
+    format.write_to_path(
+      [{ ...dialogue, dst: dialogue.src, name_src: "stale", name_dst: "错", status: "PROCESSED" }],
+      context,
+    ),
+  ).rejects.toThrow("speaker original changed");
+});
+
+it("槽位说话者不一致时保留正文唯一写入口和独立姓名", async () => {
+  using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-renpy-speaker-slots-"));
+  const native = create_renpy_fixture(temp.path);
+  native.write_file_sync(
+    path.join(temp.path, "game/dialogue.rpyc"),
+    compiled_slots([[speaker_say("'Alice'", 1)], [speaker_say("'Beth'", 1)]]),
+  );
+  const { items } = await import_fixture(temp.path, native);
+  expect(items.filter((item) => item.src === "Line 1")).toHaveLength(1);
+  expect(items.find((item) => item.src === "Line 1")!.name_src).toBeNull();
+});
+
+it.each(["Hello", "Alice"])("字符串表拥有 %s 的唯一写入口", async (text) => {
+  using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-renpy-speaker-table-"));
+  const native = create_renpy_fixture(temp.path);
+  native.write_file_sync(
+    path.join(temp.path, "game/dialogue.rpyc"),
+    compiled_nodes([speaker_say("'Alice'", 1, "Hello")]),
+  );
+  native.write_file_sync(
+    path.join(temp.path, "game/table.rpyc"),
+    strings_fixture([{ language: null, old: text, text: "Base text" }]),
+  );
+  const { items } = await import_fixture(temp.path, native);
+  expect(items.some((item) => item.src === text)).toBe(false);
+  expect(items.every((item) => item.name_src === null)).toBe(true);
+  expect(items.some((item) => item.src === "Base text")).toBe(true);
+});
+
+it("旧独立姓名和旧动态表达式保留候选身份及人工导出资格", async () => {
+  using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-renpy-speaker-legacy-"));
+  const native = create_renpy_fixture(temp.path);
+  const bytes = code_fixture(
+    "protagonist = Character('Alice')\ndynamic = Character('expression', dynamic=True)",
+  );
+  native.write_file_sync(path.join(temp.path, "game/characters.rpyc"), bytes);
+  native.write_file_sync(
+    path.join(temp.path, "game/dialogue.rpyc"),
+    compiled_nodes([speaker_say("protagonist", 1)]),
+  );
+  const { items, format, context } = await import_fixture(temp.path, native);
+  using session = await PythonSession.create();
+  const original = await extract_script(bytes, false, session);
+  const dialogue = items.find((item) => item.src === "Line 1")!;
+  const legacy = original.candidates.map((candidate, index) => ({
+    ...dialogue,
+    row: 100 + index,
+    src: candidate.text,
+    dst: index === 0 ? "旧姓名" : "legacy_expression",
+    name_src: null,
+    name_dst: null,
+    status: "PROCESSED" as const,
+    extra_field: {
+      renpy: {
+        internal_file_path: "game/characters.rpyc",
+        digest: original.digest,
+        key: candidate.key,
+        usage: "display",
+      },
+    },
+  }));
+  await format.write_to_path(legacy, context);
+  const output = await extract_script(
+    native.read_file(path.join(context.paths.translated_path, "demo/game/characters.rpyc")),
+    false,
+    session,
+  );
+  expect(output.candidates.map((candidate) => candidate.text)).toEqual([
+    "旧姓名",
+    "legacy_expression",
+  ]);
+});
+
+it.each([false, true])("共享姓名消费边只在完整正文写入组内开放：%s", async (shared) => {
+  using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-renpy-name-consumers-"));
+  const native = create_renpy_fixture(temp.path);
+  const expression = Buffer.concat([
+    Buffer.from("crenpy.astsupport\nPyExpr\n"),
+    tuple(pickle_string("'Alice'")),
+    opcode(0x52, 0x71, 0),
+  ]);
+  native.write_file_sync(
+    path.join(temp.path, "game/dialogue.rpyc"),
+    compiled_nodes([
+      speaker_say(shared ? expression : "'Alice'", 1),
+      speaker_say(shared ? opcode(0x68, 0) : "'Alice'", 2),
+    ]),
+  );
+  const { items, format, context } = await import_fixture(temp.path, native);
+  const lines = items.filter((item) => item.src === "Line 1" || item.src === "Line 2");
+  expect(lines.map((item) => item.name_src)).toEqual(shared ? [null, null] : ["Alice", "Alice"]);
+  expect(items.filter((item) => item.src === "Alice")).toHaveLength(shared ? 1 : 0);
+  if (shared) return;
+  await format.write_to_path(
+    lines.map((item, index) => ({
+      ...item,
+      dst: item.src,
+      name_dst: index ? "乙" : "甲",
+      status: "PROCESSED",
+    })),
+    context,
+  );
+  using session = await PythonSession.create();
+  const output = await extract_script(
+    native.read_file(path.join(context.paths.translated_path, "demo/game/dialogue.rpyc")),
+    false,
+    session,
+  );
+  expect(output.candidates.map((candidate) => candidate.text)).toEqual(
+    expect.arrayContaining(["甲", "乙", "Line 1", "Line 2"]),
+  );
 });

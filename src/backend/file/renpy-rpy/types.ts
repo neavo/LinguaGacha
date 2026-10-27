@@ -1,5 +1,5 @@
-// RenPy AST extra 的当前版本，兼容层用它判断是否可直接交给写回器。
-export const RENPY_EXTRA_VERSION = 1;
+// v2 的字符串槽包含单引号与 Python 前缀，旧槽位由现有兼容入口从原稿重建。
+export const RENPY_EXTRA_VERSION = 2;
 
 // translate 块类型集中定义，避免解析器、抽取器、写回器各自散落字符串。
 export type RenpyBlockKind = "LABEL" | "STRINGS" | "PYTHON" | "OTHER";
@@ -11,7 +11,7 @@ export type RenpyStatementKind = "TEMPLATE" | "TARGET" | "META" | "BLANK" | "OTH
 export type RenpySlotRole = "DIALOGUE" | "NAME" | "STRING";
 
 /**
- * RenPy 双引号字面量必须保留列号，写回时才能精准替换目标槽位。
+ * RenPy 字符串字面量必须保留列号，写回时才能精准替换目标槽位。
  */
 export interface RenpyStringLiteral {
   start_col: number;
@@ -26,6 +26,7 @@ export interface RenpyStringLiteral {
 export interface RenpySlot {
   role: RenpySlotRole;
   lit_index: number;
+  end_lit_index?: number; // Python 相邻字符串共用一个姓名替换范围。
 }
 
 /**

@@ -1,3 +1,6 @@
+import { RENPY_EXTRA_VERSION } from "./types";
+import path from "node:path";
+import { configure_python_parser } from "../renpy/python-syntax";
 import { describe, expect, it } from "vitest";
 
 import { type Item, create_item } from "../../../domain/item";
@@ -10,8 +13,8 @@ import {
   transfer_legacy_translations,
 } from "./compat";
 
-describe("RenPy 兼容层", () => {
-  it("识别当前 AST extra 并构造主摘要与去行尾空白摘要键", () => {
+describe("RenPy 项目条目兼容", () => {
+  it("识别当前 AST extra 并构造主摘要与去行尾空白摘要键", async () => {
     const item = make_ast_item({
       digest: "a",
       fallback_digest: "b",
@@ -25,13 +28,13 @@ describe("RenPy 兼容层", () => {
       ["schinese", "start", "b"],
     ]);
     const items = [item];
-    const prepared = build_items_for_writeback("script.rpy", build_lines(), items);
+    const prepared = await build_items_for_writeback("script.rpy", build_lines(), items);
     expect(prepared).toEqual(items);
     prepared.pop(); // 写回入口可重排自己的数组，调用方的条目集合仍归调用方所有。
     expect(items).toEqual([item]);
   });
 
-  it("旧 AST extra 缺少版本时重解析原文件并迁移译文", () => {
+  it("历史项目定位元数据缺少版本时从原稿重建并保留译文", async () => {
     const lines = build_lines();
     const legacy_ast = make_ast_item({
       digest: sha1_hex('    # e "Hello"'),
@@ -40,13 +43,13 @@ describe("RenPy 兼容层", () => {
       with_version: false,
     });
 
-    const [rebuilt] = build_items_for_writeback("script.rpy", lines, [legacy_ast]);
+    const [rebuilt] = await build_items_for_writeback("script.rpy", lines, [legacy_ast]);
 
     expect(rebuilt?.dst).toBe("你好");
     expect(has_current_ast_extra_field(rebuilt!)).toBe(true);
   });
 
-  it("历史字符串 extra 只迁移译文，不直接驱动写回", () => {
+  it("历史字符串 extra 只迁移译文，不直接驱动写回", async () => {
     const lines = build_lines();
     const legacy_items = [
       create_item({ row: 1, extra_field: "translate schinese start:" }),
@@ -60,7 +63,7 @@ describe("RenPy 兼容层", () => {
       }),
     ];
 
-    const [rebuilt] = build_items_for_writeback("script.rpy", lines, legacy_items);
+    const [rebuilt] = await build_items_for_writeback("script.rpy", lines, legacy_items);
 
     expect(rebuilt).toEqual(
       expect.objectContaining({
@@ -71,7 +74,7 @@ describe("RenPy 兼容层", () => {
     );
   });
 
-  it("AST 迁移命中的目标行会阻止历史译文覆盖", () => {
+  it("AST 迁移命中的目标行会阻止历史译文覆盖", async () => {
     const lines = build_lines();
     const current = make_ast_item({
       digest: sha1_hex('    # e "Hello"'),
@@ -87,7 +90,11 @@ describe("RenPy 兼容层", () => {
     });
     const header = create_item({ row: 1, extra_field: "translate schinese start:" });
 
-    const [rebuilt] = build_items_for_writeback("script.rpy", lines, [header, current, legacy]);
+    const [rebuilt] = await build_items_for_writeback("script.rpy", lines, [
+      header,
+      current,
+      legacy,
+    ]);
 
     expect(rebuilt?.dst).toBe("当前译文");
   });
@@ -158,7 +165,7 @@ function make_ast_item(options: {
     },
   };
   if (options.with_version !== false) {
-    renpy["v"] = 1;
+    renpy["v"] = RENPY_EXTRA_VERSION;
   }
   return create_item({
     status: "PROCESSED",
@@ -168,17 +175,19 @@ function make_ast_item(options: {
   });
 }
 
-it("重建旧 AST 保留空正文、空姓名与人工状态", () => {
+it("重建历史项目条目保留空正文、空姓名与人工状态", async () => {
   const source = make_ast_item({
     digest: sha1_hex('    # e "Hello"'),
     target_line: 3,
     with_version: false,
     dst: "",
   });
-  const [item] = build_items_for_writeback(
+  const [item] = await build_items_for_writeback(
     "a.rpy",
     ["translate schinese start:", '    # e "Hello"', '    e ""'],
     [source],
   );
   expect(item).toMatchObject({ dst: "", name_dst: null, status: "PROCESSED" });
 });
+
+configure_python_parser(path.resolve("build/resources/workspace"));

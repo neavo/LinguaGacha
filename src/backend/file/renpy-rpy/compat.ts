@@ -5,19 +5,17 @@ import { RenpyExtractor } from "./extractor";
 import { sha1_hex } from "./lexer";
 import { RENPY_EXTRA_VERSION, type RenpyAstKey } from "./types";
 
-/**
- * 历史项目导入或数据库迁移能稳定补齐当前 AST extra 后，可以整体删除本兼容入口。
- */
-export function build_items_for_writeback(
+/** 导出时从原稿恢复历史项目条目的定位信息。 */
+export async function build_items_for_writeback(
   rel_path: string,
   lines: string[],
   items: Item[],
-): Item[] {
+): Promise<Item[]> {
   if (items.length > 0 && items.every(has_current_ast_extra_field)) {
     return [...items]; // 写回入口会排序数组，条目及其元数据只读。
   }
 
-  const parsed_items = new RenpyExtractor().extract(parse_document(lines), rel_path);
+  const parsed_items = await new RenpyExtractor().extract(parse_document(lines), rel_path);
   const ast_written_target_lines = transfer_ast_translations(items, parsed_items);
   transfer_legacy_translations(items, parsed_items, ast_written_target_lines);
   return parsed_items;
@@ -83,7 +81,7 @@ export function build_ast_keys(item: Item): RenpyAstKey[] {
 }
 
 /**
- * 当前 AST 或旧 AST extra 的译文先迁移到重新解析出的规范条目。
+ * 按定位摘要将历史项目译文复制到重新解析出的条目。
  */
 export function transfer_ast_translations(existing_items: Item[], new_items: Item[]): Set<number> {
   const existing_by_key = new Map<string, Item[]>();

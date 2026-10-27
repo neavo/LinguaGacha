@@ -1,22 +1,18 @@
 import { describe, expect, it } from "vitest";
 
-import {
-  find_character_name_lit_index,
-  find_dialogue_string_group,
-  match_template_to_target,
-  pair_old_new,
-  statements_equal,
-} from "./matcher";
+import { find_dialogue, match_template_to_target, pair_old_new, statements_equal } from "./matcher";
 import { parse_document, parse_statement } from "./parser";
 
 describe("RenPy matcher", () => {
+  it("旁白后缀中的字符串不作为带属性的对白", () => {
+    const statement = parse_statement(1, '"Narration" with "transition"', "LABEL");
+    expect(find_dialogue(statement)).toEqual({ index: 0, who_end: 0 });
+  });
+
   it("忽略 Character 字面量中的括号和对白后的函数参数", () => {
     const template = parse_statement(1, '    # Character(")") "Hello" with PushMove("x")', "LABEL");
     const target = parse_statement(2, '    Character(")") "你好" with PushMove("y")', "LABEL");
-    const name_index = find_character_name_lit_index(template);
-
-    expect(name_index).toBe(0);
-    expect(find_dialogue_string_group(template, name_index)).toEqual([1]);
+    expect(find_dialogue(template)?.index).toBe(1);
     expect(statements_equal(template, target)).toBe(true);
   });
 

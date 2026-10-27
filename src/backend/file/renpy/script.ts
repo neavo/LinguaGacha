@@ -269,6 +269,7 @@ export type RenpyCode = Readonly<{
 }> &
   (
     | Readonly<{ source: string; edge: PickleNode; legacy?: never }>
+    // legacy 指早期 Ren’Py 引擎写入编译文件的 Python AST，与旧 .lg 项目兼容无关。
     | Readonly<{ source: null; edge?: never; legacy: PickleNode }>
   );
 /** 源码偏移所在的原始文件行。编译坐标缺失时不制造行号。 */
@@ -353,7 +354,9 @@ export function script_codes(
       if (
         compiled ||
         (scalar &&
-          (current.display || /^(?:code|positional\.\d+|keyword\.\d+)$/u.test(current.field)))
+          (current.display ||
+            /^(?:code|positional\.\d+|keyword\.\d+)$/u.test(current.field) ||
+            current.field === "who"))
       ) {
         const source_edge = code_edge(edge);
         const [location_file, location_line] = code_location(node);
@@ -433,7 +436,7 @@ export function script_codes(
   }
   return result;
 }
-/** 引擎保存的旧 Python AST 直接提供加载访问事实，不创建伪源码。 */
+/** 早期 Ren’Py 引擎保存的 Python AST 直接提供加载访问事实，不创建伪源码。 */
 function legacy_facts(root: PickleNode): PythonFacts {
   const facts = {
     constants: [],

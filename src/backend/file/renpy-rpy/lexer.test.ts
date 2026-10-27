@@ -6,13 +6,13 @@ import {
   unescape_renpy_string,
   is_translatable_text,
   looks_like_resource_reference,
-  scan_double_quoted_literals,
+  scan_string_literals,
 } from "./lexer";
 
 describe("RenPy lexer", () => {
   it("扫描转义字面量并生成稳定语句骨架", () => {
     const code = 'Character("A\\"B") "line\\nnext" with PushMove("x")';
-    const literals = scan_double_quoted_literals(code);
+    const literals = scan_string_literals(code);
 
     expect(literals.map((literal) => literal.value)).toEqual(['A"B', "line\nnext", "x"]);
     expect(build_skeleton(code, literals)).toBe('Character("{}") "{}" with PushMove("{}")');
@@ -62,7 +62,7 @@ it("编码保留空值、反斜杠、连续空白、控制字符和文本标记"
 
 it("原始字符串保留转义与空白，骨架保留前缀，未闭合引号拒绝扫描", () => {
   const code = String.raw`e r"a  \n"`;
-  const [literal] = scan_double_quoted_literals(code);
+  const [literal] = scan_string_literals(code);
   expect(literal).toMatchObject({
     start_col: 2,
     end_col: code.length,
@@ -70,5 +70,5 @@ it("原始字符串保留转义与空白，骨架保留前缀，未闭合引号�
     value: String.raw`a  \n`,
   });
   expect(build_skeleton(code)).toBe('e r"{}"');
-  expect(scan_double_quoted_literals(String.raw`e "trailing\"`)).toEqual([]);
+  expect(scan_string_literals(String.raw`e "trailing\"`)).toEqual([]);
 });
