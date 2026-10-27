@@ -88,6 +88,15 @@ export const PROJECT_SOURCE_FORMATS = [
   },
   {
     source_kind: "game",
+    id: "godot",
+    file_type: "GODOT",
+    support_status: "supported",
+    extension: ".exe",
+    title_key: "project_page.formats.godot",
+    description_keys: ["project_page.formats.godot", "project_page.formats.action_game_maker"],
+  },
+  {
+    source_kind: "game",
     id: "renpy",
     file_type: "RENPY",
     support_status: "supported",
@@ -103,15 +112,6 @@ export const PROJECT_SOURCE_FORMATS = [
     extension: ".exe",
     title_key: "project_page.formats.tyrano",
     description_keys: [],
-  },
-  {
-    source_kind: "game",
-    id: "godot",
-    file_type: "GODOT",
-    support_status: "supported",
-    extension: ".exe",
-    title_key: "project_page.formats.godot",
-    description_keys: ["project_page.formats.godot", "project_page.formats.action_game_maker"],
   },
   {
     source_kind: "game",
